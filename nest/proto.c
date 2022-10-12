@@ -624,6 +624,9 @@ channel_export_stopped(struct rt_export_request *req)
   mb_free(c->out_req.name);
   c->out_req.name = NULL;
 
+  bmap_free(&c->export_map);
+  bmap_free(&c->export_reject_map);
+
   channel_check_stopped(c);
 }
 
@@ -751,9 +754,6 @@ channel_do_pause(struct channel *c)
     rt_stop_export(&c->out_req, channel_export_stopped);
 
   channel_roa_unsubscribe_all(c);
-
-  bmap_free(&c->export_map);
-  bmap_free(&c->export_reject_map);
 }
 
 static void
@@ -778,7 +778,6 @@ channel_do_down(struct channel *c)
 
   c->proto->active_channels--;
 
-  // bmap_free(&c->export_map);
   memset(&c->import_stats, 0, sizeof(struct channel_import_stats));
   memset(&c->export_stats, 0, sizeof(struct channel_export_stats));
 
