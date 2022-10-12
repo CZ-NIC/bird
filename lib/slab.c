@@ -236,7 +236,7 @@ sl_new(pool *p, uint size)
       + sizeof(u32) * s->head_bitfield_len
       + align - 1)
     / align * align;
-  } while (s->objs_per_slab * size + s->head_size > page_size);
+  } while (s->objs_per_slab * size + s->head_size > (size_t) page_size);
 
   if (!s->objs_per_slab)
     bug("Slab: object too large");
