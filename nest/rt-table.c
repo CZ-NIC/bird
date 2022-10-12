@@ -899,6 +899,9 @@ rt_notify_basic(struct channel *c, const net_addr *net, rte *new, rte *old)
   if (old && !bmap_test(&c->export_map, old->id))
     old = NULL;
 
+  if (old && (old->sender == c->in_req.hook))
+    bug("bad-behaved pipe");
+
   if (!new && !old)
     return;
 
