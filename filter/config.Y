@@ -28,9 +28,9 @@ f_new_var(struct sym_scope *s)
   /*
    * - A variable is an offset on vstack from vbase.
    * - Vbase is set on filter start / function call.
-   * - Scopes contain anonymous scopes (blocks) inside filter/function scope
+   * - Scopes contain (non-frame) block scopes inside filter/function scope
    * - Each scope knows number of vars in that scope
-   * - Offset is therefore a sum of 'slots' up to named scope
+   * - Offset is therefore a sum of 'slots' up to filter/function scope
    * - New variables are added on top of vstk, so intermediate values cannot
    *   be there during FI_VAR_INIT. I.e. no 'var' inside 'term'.
    * - Also, each f_line must always have its scope, otherwise a variable may
@@ -39,7 +39,7 @@ f_new_var(struct sym_scope *s)
 
   int offset = s->slots++;
 
-  while (!s->name)
+  while (s->block)
   {
     s = s->next;
     ASSERT(s);
@@ -465,10 +465,12 @@ filter:
      cf_assert_symbol($1, SYM_FILTER);
      $$ = $1->filter;
    }
- | filter_body {
+ | { cf_push_scope(NULL); } filter_body {
      struct filter *f = cfg_alloc(sizeof(struct filter));
-     *f = (struct filter) { .root = $1 };
+     *f = (struct filter) { .root = $2 };
      $$ = f;
+
+     cf_pop_scope();
    }
  ;
 
@@ -913,13 +915,13 @@ cmd:
    }
  | FOR {
      /* Reserve space for walk data on stack */
-     cf_push_scope(NULL);
+     cf_push_block_scope();
      conf_this_scope->slots += 2;
    } for_var IN
    /* Parse term in the parent scope */
    { conf_this_scope->active = 0; } term { conf_this_scope->active = 1; }
    DO cmd {
-     cf_pop_scope();
+     cf_pop_block_scope();
      $$ = f_new_inst(FI_FOR_INIT, $6, $3);
      $$->next = f_new_inst(FI_FOR_NEXT, $3, $9);
    }

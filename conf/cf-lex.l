@@ -812,7 +812,7 @@ cf_push_soft_scope(void)
   if (conf_this_scope->soft_scopes < 0xfe)
     conf_this_scope->soft_scopes++;
   else
-    cf_push_scope(NULL);
+    cf_push_block_scope();
 }
 
 /**
@@ -826,7 +826,7 @@ cf_pop_soft_scope(void)
   if (conf_this_scope->soft_scopes)
     conf_this_scope->soft_scopes--;
   else
-    cf_pop_scope();
+    cf_pop_block_scope();
 }
 
 /**
@@ -841,7 +841,7 @@ cf_swap_soft_scope(void)
   if (conf_this_scope->soft_scopes)
   {
     conf_this_scope->soft_scopes--;
-    cf_push_scope(NULL);
+    cf_push_block_scope();
   }
 }
 

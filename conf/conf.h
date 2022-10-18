@@ -134,6 +134,7 @@ struct sym_scope {
   struct symbol *name;			/* Name of this scope */
   uint slots;				/* Variable slots */
   byte active;				/* Currently entered */
+  byte block;				/* No independent stack frame */
   byte soft_scopes;			/* Number of soft scopes above */
 };
 
@@ -219,6 +220,12 @@ void cf_push_scope(struct symbol *);
 void cf_pop_scope(void);
 void cf_push_soft_scope(void);
 void cf_pop_soft_scope(void);
+
+static inline void cf_push_block_scope(void)
+{ cf_push_scope(NULL); conf_this_scope->block = 1; }
+
+static inline void cf_pop_block_scope(void)
+{ ASSERT(conf_this_scope->block); cf_pop_scope(); }
 
 char *cf_symbol_class_name(struct symbol *sym);
 
