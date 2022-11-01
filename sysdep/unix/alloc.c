@@ -41,8 +41,17 @@ struct free_page {
 };
 #endif
 
+#define EP_POS_MAX	((page_size - OFFSETOF(struct empty_pages, pages)) / sizeof (void *))
+
+struct empty_pages {
+  node n;
+  uint pos;
+  void *pages[0];
+};
+
 struct free_pages {
   list pages;
+  list empty;
   u16 min, max;		/* Minimal and maximal number of free pages kept */
   uint cnt;		/* Number of empty pages */
   event cleanup;
@@ -103,6 +112,16 @@ alloc_page(void)
     return fp;
   }
 
+  if (!EMPTY_LIST(fps->empty))
+  {
+    struct empty_pages *ep = HEAD(fps->empty);
+    if (ep->pos)
+      return ep->pages[--ep->pos];
+
+    rem_node(&ep->n);
+    return ep;
+  }
+
   return alloc_sys_page();
 #endif
 }
@@ -145,18 +164,36 @@ global_free_pages_cleanup_event(void *data UNUSED)
     fps->cnt++;
   }
 
-  for (uint seen = 0; (seen < CLEANUP_PAGES_BULK) && (fps->cnt > fps->max / 2); seen++)
+  int limit = CLEANUP_PAGES_BULK;
+  while (--limit && (fps->cnt > fps->max / 2))
   {
     struct free_page *fp = SKIP_BACK(struct free_page, n, TAIL(fps->pages));
     rem_node(&fp->n);
+    fps->cnt--;
 
-    if (munmap(fp, page_size) == 0)
-      fps->cnt--;
-    else if (errno == ENOMEM)
-      add_head(&fps->pages, &fp->n);
+    struct empty_pages *ep;
+    if (EMPTY_LIST(fps->empty) || ((ep = HEAD(fps->empty))->pos == EP_POS_MAX))
+    {
+      ep = (struct empty_pages *) fp;
+      *ep = (struct empty_pages) {};
+      add_head(&fps->empty, &ep->n);
+    }
     else
-      bug("munmap(%p) failed: %m", fp);
+    {
+      ep->pages[ep->pos++] = fp;
+      if (madvise(fp, page_size,
+#ifdef CONFIG_MADV_DONTNEED_TO_FREE
+	    MADV_DONTNEED
+#else
+	    MADV_FREE
+#endif
+	    ) < 0)
+	bug("madvise(%p) failed: %m", fp);
+    }
   }
+
+  if (!limit)
+    ev_schedule(&fps->cleanup);
 }
 #endif
 
@@ -174,6 +211,7 @@ resource_sys_init(void)
     struct free_pages *fps = &global_free_pages;
 
     init_list(&fps->pages);
+    init_list(&fps->empty);
     global_free_pages_cleanup_event(NULL);
     return;
   }

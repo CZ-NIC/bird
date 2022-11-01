@@ -20,6 +20,7 @@
 #define CONFIG_RESTRICTED_PRIVILEGES
 #define CONFIG_INCLUDE_SYSPRIV_H "sysdep/linux/syspriv.h"
 
+#define CONFIG_MADV_DONTNEED_TO_FREE
 
 #ifndef AF_MPLS
 #define AF_MPLS 28
