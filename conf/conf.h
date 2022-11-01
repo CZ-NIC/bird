@@ -96,7 +96,7 @@ void order_shutdown(int gr);
 
 
 /* Pools */
-
+extern pool *config_pool;
 extern linpool *cfg_mem;
 
 #define cfg_alloc(size) lp_alloc(cfg_mem, size)

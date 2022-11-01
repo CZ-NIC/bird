@@ -180,7 +180,7 @@ flow6_opts:
 flow_builder_init:
 {
   if (this_flow == NULL)
-    this_flow = flow_builder_init(&root_pool);
+    this_flow = flow_builder_init(config_pool);	  /* FIXME: This should be allocated from tmp in future */
   else
     flow_builder_clear(this_flow);
 };

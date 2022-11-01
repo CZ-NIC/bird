@@ -128,11 +128,11 @@ ca_lookup(pool *p, const char *name, int f_type)
 
   static int inited = 0;
   if (!inited) {
-    idm_init(&ca_idm, &root_pool, 8);
-    HASH_INIT(ca_hash, &root_pool, CA_ORDER);
+    idm_init(&ca_idm, config_pool, 8);
+    HASH_INIT(ca_hash, config_pool, CA_ORDER);
 
     ca_storage_max = 256;
-    ca_storage = mb_allocz(&root_pool, sizeof(struct ca_storage *) * ca_storage_max);
+    ca_storage = mb_allocz(config_pool, sizeof(struct ca_storage *) * ca_storage_max);
 
     inited++;
   }
@@ -152,7 +152,7 @@ ca_lookup(pool *p, const char *name, int f_type)
       ca_storage = mb_realloc(ca_storage, sizeof(struct ca_storage *) * ca_storage_max * 2);
     }
 
-    cas = mb_allocz(&root_pool, sizeof(struct ca_storage) + strlen(name) + 1);
+    cas = mb_allocz(config_pool, sizeof(struct ca_storage) + strlen(name) + 1);
     cas->fda = f_new_dynamic_attr(ea_type, f_type, EA_CUSTOM(id));
     cas->uc = 1;
 

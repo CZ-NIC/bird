@@ -717,7 +717,7 @@ cf_lex_symbol(const char *data)
 static void
 cf_lex_init_kh(void)
 {
-  HASH_INIT(kw_hash, &root_pool, KW_ORDER);
+  HASH_INIT(kw_hash, config_pool, KW_ORDER);
 
   struct keyword *k;
   for (k=keyword_list; k->name; k++)

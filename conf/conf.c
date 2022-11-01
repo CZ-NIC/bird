@@ -61,6 +61,7 @@
 static jmp_buf conf_jmpbuf;
 
 struct config *config, *new_config;
+pool *config_pool;
 
 static struct config *old_config;	/* Old configuration */
 static struct config *future_config;	/* New config held here if recon requested during recon */
@@ -89,7 +90,7 @@ int undo_available;			/* Undo was not requested from last reconfiguration */
 struct config *
 config_alloc(const char *name)
 {
-  pool *p = rp_new(&root_pool, "Config");
+  pool *p = rp_new(config_pool, "Config");
   linpool *l = lp_new_default(p);
   struct config *c = lp_allocz(l, sizeof(struct config));
 
@@ -491,10 +492,12 @@ config_timeout(timer *t UNUSED)
 void
 config_init(void)
 {
-  config_event = ev_new(&root_pool);
+  config_pool = rp_new(&root_pool, "Configurations");
+
+  config_event = ev_new(config_pool);
   config_event->hook = config_done;
 
-  config_timer = tm_new(&root_pool);
+  config_timer = tm_new(config_pool);
   config_timer->hook = config_timeout;
 }
 
