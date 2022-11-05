@@ -5,9 +5,6 @@
  *      (c) 2022 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
- *
- *      Parts of this file were auto-generated using mib2c
- *      using mib2c.create-dataset.conf
  */
 
 #include "nest/bird.h"

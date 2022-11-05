@@ -10,9 +10,21 @@ void snmp_ping(struct snmp_proto *p);
 
 #define AGENTX_VERSION              1
 
-#define SNMP_OSPF_MIB 14	      /* part of oid .1.3.6.1.2.1.14 */
-#define SNMP_BGP4_MIB 15	      /* part of oid .1.3.6.1.2.1.15 */
+#define SNMP_STATE_START 0
+#define SNMP_STATE_BGP 1
+#define SNMP_STATE_INVALID 2
+
+#define SNMP_MIB_2        1           /* last of oid .1.3.6.1.2.1     */
+#define SNMP_OSPF_MIB    14	      /* part of oid .1.3.6.1.2.1.14  */
+#define SNMP_BGP4_MIB    15	      /* part of oid .1.3.6.1.2.1.15  */
 #define SNMP_OSPFv3_MIB 192	      /* part of oid .1.3.6.1.2.1.192 */
+
+enum SNMP_CLASSES {
+  SNMP_CLASS_INVALID = 0,
+  SNMP_CLASS_BGP = 1,
+  SNMP_CLASS_OSPF,
+  SNMP_CLASS_END,
+};
 
 #define BGP4_VERSIONS 0x10
 
@@ -243,4 +255,11 @@ enum agentx_response_err {
 } PACKED;
 
 int snmp_rx(sock *sk, uint size);
+int snmp_valid_ip4_index_safe(struct oid *o, uint start);
+int snmp_valid_ip4_index(struct oid *o, uint start);
+void snmp_oid_ip4_index(struct oid *o, ip4_addr addr);
+
+uint snmp_oid_size(struct oid *o);
+
+static byte *snmp_mib_fill(struct snmp_proto *p, struct oid *oid, u8 mib_class, byte *buf, uint size, uint contid, int byte_ord);
 #endif
