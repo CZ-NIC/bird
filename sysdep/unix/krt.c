@@ -302,6 +302,12 @@ krt_uptodate(rte *a, rte *b)
   return (a->attrs == b->attrs);
 }
 
+static void
+krt_learn_alien_attr(struct channel *c, rte *e)
+{
+  ea_set_attr_u32(&e->attrs, &ea_gen_preference, 0, c->preference);
+}
+
 /* Called when alien route is discovered during scan */
 static void
 krt_learn_scan(struct krt_proto *p, rte *e)
@@ -311,7 +317,7 @@ krt_learn_scan(struct krt_proto *p, rte *e)
     .src = rt_get_source(&p->p, krt_metric(e)),
   };
 
-  ea_set_attr_u32(&e0.attrs, &ea_gen_preference, 0, p->p.main_channel->preference);
+  krt_learn_alien_attr(p->p.main_channel, &e0);
 
   rte_update(p->p.main_channel, e->net, &e0, e0.src);
   rt_unlock_source(e0.src);
