@@ -299,12 +299,13 @@ rpki_cache_change_state(struct rpki_cache *cache, const enum rpki_cache_state ne
 
   case RPKI_CS_NO_INCR_UPDATE_AVAIL:
     /* Server was unable to answer the last Serial Query and sent Cache Reset. */
-    rpki_cache_change_state(cache, RPKI_CS_RESET);
-    break;
-
   case RPKI_CS_ERROR_NO_DATA_AVAIL:
     /* No validation records are available on the cache server. */
-    rpki_cache_change_state(cache, RPKI_CS_RESET);
+
+    if (old_state == RPKI_CS_ESTABLISHED)
+      rpki_cache_change_state(cache, RPKI_CS_RESET);
+    else
+      rpki_schedule_next_retry(cache);
     break;
 
   case RPKI_CS_ERROR_FATAL:
@@ -486,6 +487,11 @@ rpki_retry_hook(timer *tm)
       CACHE_TRACE(D_EVENTS, cache, "Sync takes more time than retry interval %us, resetting connection.", cache->retry_interval);
       rpki_cache_change_state(cache, RPKI_CS_ERROR_TRANSPORT);
     }
+    break;
+
+  case RPKI_CS_NO_INCR_UPDATE_AVAIL:
+  case RPKI_CS_ERROR_NO_DATA_AVAIL:
+    rpki_cache_change_state(cache, RPKI_CS_RESET);
     break;
 
   default:

@@ -262,7 +262,7 @@ bgp_prepare_capabilities(struct bgp_conn *conn)
   }
 
   /* Allocate and fill per-AF fields */
-  WALK_LIST(c, p->p.channels)
+  BGP_WALK_CHANNELS(p, c)
   {
     ac = &caps->af_data[caps->af_count++];
     ac->afi = c->afi;
@@ -681,7 +681,7 @@ bgp_check_capabilities(struct bgp_conn *conn)
   /* This is partially overlapping with bgp_conn_enter_established_state(),
      but we need to run this just after we receive OPEN message */
 
-  WALK_LIST(c, p->p.channels)
+  BGP_WALK_CHANNELS(p, c)
   {
     const struct bgp_af_caps *loc = bgp_find_af_caps(local,  c->afi);
     const struct bgp_af_caps *rem = bgp_find_af_caps(remote, c->afi);

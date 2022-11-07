@@ -500,6 +500,9 @@ struct bgp_parse_state {
 #define BGP_RX_BUFFER_EXT_SIZE	65535
 #define BGP_TX_BUFFER_EXT_SIZE	65535
 
+#define BGP_CF_WALK_CHANNELS(P,C) WALK_LIST(C, P->c.channels) if (C->c.channel == &channel_bgp)
+#define BGP_WALK_CHANNELS(P,C) WALK_LIST(C, P->p.channels) if (C->c.channel == &channel_bgp)
+
 static inline int bgp_channel_is_ipv4(struct bgp_channel *c)
 { return BGP_AFI(c->afi) == BGP_AFI_IPV4; }
 

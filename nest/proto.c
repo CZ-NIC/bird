@@ -985,6 +985,9 @@ static int reconfigure_type;  /* Hack to propagate type info to channel_reconfig
 int
 channel_reconfigure(struct channel *c, struct channel_config *cf)
 {
+  /* Touched by reconfiguration */
+  c->stale = 0;
+
   /* FIXME: better handle these changes, also handle in_keep_filtered */
   if ((c->table != cf->table->table) ||
       (cf->ra_mode && (c->ra_mode != cf->ra_mode)) ||

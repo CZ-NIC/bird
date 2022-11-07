@@ -263,7 +263,7 @@ static inline struct bgp_channel *
 bgp_find_channel(struct bgp_proto *p, u32 afi)
 {
   struct bgp_channel *c;
-  WALK_LIST(c, p->p.channels)
+  BGP_WALK_CHANNELS(p, c)
     if (c->afi == afi)
       return c;
 
@@ -597,7 +597,7 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   /* Summary state of ADD_PATH RX for active channels */
   uint summary_add_path_rx = 0;
 
-  WALK_LIST(c, p->p.channels)
+  BGP_WALK_CHANNELS(p, c)
   {
     const struct bgp_af_caps *loc = bgp_find_af_caps(local, c->afi);
     const struct bgp_af_caps *rem = bgp_find_af_caps(peer,  c->afi);
@@ -679,7 +679,7 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   p->channel_count = num;
   p->summary_add_path_rx = summary_add_path_rx;
 
-  WALK_LIST(c, p->p.channels)
+  BGP_WALK_CHANNELS(p, c)
   {
     if (c->c.disabled)
       continue;
@@ -758,7 +758,7 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
   p->gr_active_num = 0;
 
   struct bgp_channel *c;
-  WALK_LIST(c, p->p.channels)
+  BGP_WALK_CHANNELS(p, c)
   {
     /* FIXME: perhaps check for channel state instead of disabled flag? */
     if (c->c.disabled)
@@ -898,7 +898,7 @@ bgp_graceful_restart_timeout(timer *t)
   if (p->llgr_ready)
   {
     struct bgp_channel *c;
-    WALK_LIST(c, p->p.channels)
+    BGP_WALK_CHANNELS(p, c)
     {
       /* Channel is not in GR and is already flushed */
       if (!c->gr_active)
@@ -1447,6 +1447,10 @@ bgp_reload_routes(struct channel *C)
   struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
 
+  /* Ignore non-BGP channels */
+  if (C->channel != &channel_bgp)
+    return;
+
   ASSERT(p->conn && p->route_refresh);
   bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
 }
@@ -1456,6 +1460,10 @@ bgp_feed_begin(struct channel *C, int initial)
 {
   struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
+
+  /* Ignore non-BGP channels */
+  if (C->channel != &channel_bgp)
+    return;
 
   /* This should not happen */
   if (!p->conn)
@@ -1487,6 +1495,10 @@ bgp_feed_end(struct channel *C)
 {
   struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
+
+  /* Ignore non-BGP channels */
+  if (C->channel != &channel_bgp)
+    return;
 
   if (c->feed_out_table)
   {
@@ -1610,7 +1622,7 @@ bgp_start(struct proto *P)
   if (p->p.gr_recovery && p->cf->gr_mode)
   {
     struct bgp_channel *c;
-    WALK_LIST(c, p->p.channels)
+    BGP_WALK_CHANNELS(p, c)
       channel_graceful_restart_lock(&c->c);
   }
 
@@ -1769,7 +1781,7 @@ bgp_init(struct proto_config *CF)
 
   /* Add all channels */
   struct bgp_channel_config *cc;
-  WALK_LIST(cc, CF->channels)
+  BGP_CF_WALK_CHANNELS(cf, cc)
     proto_add_channel(P, &cc->c);
 
   return P;
@@ -1915,7 +1927,7 @@ bgp_find_channel_config(struct bgp_config *cf, u32 afi)
 {
   struct bgp_channel_config *cc;
 
-  WALK_LIST(cc, cf->c.channels)
+  BGP_CF_WALK_CHANNELS(cf, cc)
     if (cc->afi == afi)
       return cc;
 
@@ -2065,7 +2077,7 @@ bgp_postconfig(struct proto_config *CF)
 
 
   struct bgp_channel_config *cc;
-  WALK_LIST(cc, CF->channels)
+  BGP_CF_WALK_CHANNELS(cf, cc)
   {
     /* Handle undefined import filter */
     if (cc->c.in_filter == FILTER_UNDEF)
@@ -2172,19 +2184,15 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   WALK_LIST(C, p->p.channels)
     C->stale = 1;
 
-  WALK_LIST(cc, new->c.channels)
+  BGP_CF_WALK_CHANNELS(new, cc)
   {
     C = (struct channel *) bgp_find_channel(p, cc->afi);
     same = proto_configure_channel(P, &C, &cc->c) && same;
-
-    if (C)
-      C->stale = 0;
   }
 
   WALK_LIST_DELSAFE(C, C2, p->p.channels)
     if (C->stale)
       same = proto_configure_channel(P, &C, NULL) && same;
-
 
   if (same && (p->start_state > BSS_PREPARE))
     bgp_update_bfd(p, new->bfd);
@@ -2629,6 +2637,9 @@ bgp_show_proto_info(struct proto *P)
     WALK_LIST(c, p->p.channels)
     {
       channel_show_info(&c->c);
+
+      if (c->c.channel != &channel_bgp)
+	continue;
 
       if (p->gr_active_num)
 	cli_msg(-1006, "    Neighbor GR:    %s", bgp_gr_states[c->gr_active]);
