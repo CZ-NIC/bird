@@ -1149,7 +1149,7 @@ This argument can be omitted if there exists only a single instance.
 	Show the list of symbols defined in the configuration (names of
 	protocols, routing tables etc.).
 
-	<tag><label id="cli-show-route">show route [[for] <m/prefix/|<m/IP/] [table (<m/t/ | all)] [filter <m/f/|where <m/c/] [(export|preexport|noexport) <m/p/] [protocol <m/p/] [(stats|count)] [<m/options/]</tag>
+	<tag><label id="cli-show-route">show route [[for] <m/prefix/|<m/IP/] [table (<m/t/ | all)] [(import|export) table <m/p/.<m/c/] [filter <m/f/|where <m/c/] [(export|preexport|noexport) <m/p/] [protocol <m/p/] [(stats|count)] [<m/options/]</tag>
 	Show contents of specified routing tables, that is routes, their metrics
 	and (in case the <cf/all/ switch is given) all their attributes.
 
@@ -1168,6 +1168,11 @@ This argument can be omitted if there exists only a single instance.
 	arguments of several other switches (e.g., <cf/export/, <cf/protocol/).
 	Last, the set of default tables is used: <cf/master4/, <cf/master6/ and
 	each first table of any other network type.
+
+	<p>There are internal tables when <cf/(import|export) table/ options
+	are used for some channels. They can be selected explicitly with
+	<cf/(import|export) table/ switch, specifying protocol <m/p/ and
+	channel name <m/c/.
 
 	<p>You can also ask for printing only routes processed and accepted by
 	a given filter (<cf>filter <m/name/</cf> or <cf>filter { <m/filter/ }

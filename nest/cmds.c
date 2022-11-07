@@ -118,6 +118,7 @@ cmd_show_memory(void)
   print_size("Routing tables:", rmemsize(rt_table_pool));
   print_size("Route attributes:", rmemsize(rta_pool));
   print_size("Protocols:", rmemsize(proto_pool));
+  print_size("Current config:", rmemsize(config_pool));
   struct resmem total = rmemsize(&root_pool);
 #ifdef HAVE_MMAP
   int pk  = atomic_load_explicit(&pages_kept, memory_order_relaxed)
