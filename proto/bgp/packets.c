@@ -1112,6 +1112,10 @@ bgp_use_next_hop(struct bgp_export_state *s, eattr *a)
   if ((ipa_is_ip4(*nh) != bgp_channel_is_ipv4(c)) && !c->ext_next_hop)
     return 0;
 
+  /* Do not pass NEXT_HOP between different VRFs */
+  if (p->p.vrf && s->src && s->src->p.vrf && (p->p.vrf != s->src->p.vrf))
+    return 0;
+
   /* Keep it when exported to internal peers */
   if (p->is_interior && ipa_nonzero(*nh))
     return 1;
@@ -1148,6 +1152,10 @@ bgp_use_gateway(struct bgp_export_state *s)
   if ((ipa_is_ip4(nhad->nh.gw) != bgp_channel_is_ipv4(c)) && !c->ext_next_hop)
     return NULL;
 
+  /* Do not use gateway from different VRF */
+  if (p->p.vrf && nhad->nh.iface && (p->p.vrf != nhad->nh.iface->master))
+    return 0;
+
   /* Use it when exported to internal peers */
   if (p->is_interior)
     return &nhad->nh;
@@ -1177,6 +1185,8 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
 	uint lnum = nhloc->labels ? nhloc->labels : 1;
 	bgp_set_attr_data(to, BA_MPLS_LABEL_STACK, 0, labels, lnum * 4);
       }
+      else
+	bgp_unset_attr(to, BA_MPLS_LABEL_STACK);
     }
     else
     {
@@ -1190,6 +1200,8 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
 	u32 implicit_null = BGP_MPLS_NULL;
 	bgp_set_attr_data(to, BA_MPLS_LABEL_STACK, 0, &implicit_null, 4);
       }
+      else
+	bgp_unset_attr(to, BA_MPLS_LABEL_STACK);
     }
   }
 

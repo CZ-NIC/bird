@@ -134,6 +134,14 @@ same_tree(const struct f_tree *t1, const struct f_tree *t2)
   return 1;
 }
 
+int
+tree_node_count(const struct f_tree *t)
+{
+  if (t == NULL)
+    return 0;
+
+  return 1 + tree_node_count(t->left) + tree_node_count(t->right);
+}
 
 static void
 tree_node_format(const struct f_tree *t, buffer *buf)
