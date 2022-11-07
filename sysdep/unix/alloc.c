@@ -45,6 +45,18 @@ struct free_page {
 };
 #endif
 
+#define EP_POS_MAX	((page_size - OFFSETOF(struct empty_pages, pages)) / sizeof (void *))
+
+struct empty_pages {
+  struct empty_pages *next;
+  uint pos;
+  void *pages[0];
+};
+
+DEFINE_DOMAIN(resource);
+static DOMAIN(resource) empty_pages_domain;
+static struct empty_pages *empty_pages = NULL;
+
 static struct free_page * _Atomic page_stack = NULL;
 static _Thread_local struct free_page * local_page_stack = NULL;
 
@@ -76,6 +88,7 @@ extern int shutting_down; /* Shutdown requested. */
 void *
 alloc_page(void)
 {
+  /* If the system page allocator is goofy, we use posix_memalign to get aligned blocks of memory. */
   if (use_fake)
   {
     void *ptr = NULL;
@@ -88,6 +101,7 @@ alloc_page(void)
   }
 
 #ifdef HAVE_MMAP
+  /* If there is any free page kept hot in this thread, we use it. */
   struct free_page *fp = local_page_stack;
   if (fp)
   {
@@ -97,6 +111,7 @@ alloc_page(void)
     return fp;
   }
 
+  /* If there is any free page kept hot in global storage, we use it. */
   rcu_read_lock();
   fp = atomic_load_explicit(&page_stack, memory_order_acquire);
   while (fp && !atomic_compare_exchange_strong_explicit(
@@ -105,22 +120,43 @@ alloc_page(void)
     ;
   rcu_read_unlock();
 
-  if (!fp)
+  if (fp)
   {
-    void *ptr = alloc_sys_page();
-    for (int i=1; i<ALLOC_PAGES_AT_ONCE; i++)
-      free_page(ptr + page_size * i);
-    return ptr;
+    atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
+    return fp;
   }
 
-  atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
-  return fp;
+  /* If there is any free page kept cold, we use that. */
+  LOCK_DOMAIN(resource, empty_pages_domain);
+  if (empty_pages) {
+    if (empty_pages->pos)
+      /* Either the keeper page contains at least one cold page pointer, return that */
+      fp = empty_pages->pages[--empty_pages->pos];
+    else
+    {
+      /* Or the keeper page has no more cold page pointer, return the keeper page */
+      fp = (struct free_page *) empty_pages;
+      empty_pages = empty_pages->next;
+    }
+  }
+  UNLOCK_DOMAIN(resource, empty_pages_domain);
+
+  if (fp)
+    return fp;
+
+  /* And in the worst case, allocate some new pages by mmap() */
+  void *ptr = alloc_sys_page();
+  for (int i=1; i<ALLOC_PAGES_AT_ONCE; i++)
+    free_page(ptr + page_size * i);
+
+  return ptr;
 #endif
 }
 
 void
 free_page(void *ptr)
 {
+  /* If the system page allocator is goofy, we just free the block and care no more. */
   if (use_fake)
   {
     free(ptr);
@@ -128,6 +164,7 @@ free_page(void *ptr)
   }
 
 #ifdef HAVE_MMAP
+  /* We primarily try to keep the pages locally. */
   struct free_page *fp = ptr;
   if (shutting_down || (pages_kept_here < KEEP_PAGES_MAX_LOCAL))
   {
@@ -137,6 +174,7 @@ free_page(void *ptr)
     return;
   }
 
+  /* If there are too many local pages, we add the free page to the global hot-free-page list */
   rcu_read_lock();
   struct free_page *next = atomic_load_explicit(&page_stack, memory_order_acquire);
 
@@ -146,17 +184,22 @@ free_page(void *ptr)
 	memory_order_acq_rel, memory_order_acquire));
   rcu_read_unlock();
 
+  /* And if there are too many global hot free pages, we ask for page cleanup */
   if (atomic_fetch_add_explicit(&pages_kept, 1, memory_order_relaxed) >= KEEP_PAGES_MAX)
     SCHEDULE_CLEANUP;
 #endif
 }
 
+/* When the routine is going to sleep for a long time, we flush the local
+ * hot page cache to not keep dirty pages for nothing. */
 void
 flush_local_pages(void)
 {
   if (use_fake || !local_page_stack || shutting_down)
     return;
 
+  /* We first count the pages to enable consistency checking.
+   * Also, we need to know the last page. */
   struct free_page *last = local_page_stack, *next;
   int check_count = 1;
   while (next = atomic_load_explicit(&last->next, memory_order_acquire))
@@ -165,20 +208,26 @@ flush_local_pages(void)
     last = next;
   }
 
+  /* The actual number of pages must be equal to the counter value. */
   ASSERT_DIE(check_count == pages_kept_here);
 
+  /* Repeatedly trying to insert the whole page list into global page stack at once. */
   rcu_read_lock();
   next = atomic_load_explicit(&page_stack, memory_order_acquire);
 
+  /* First we set the outwards pointer (from our last),
+   * then we try to set the inwards pointer to our first page. */
   do atomic_store_explicit(&last->next, next, memory_order_release);
   while (!atomic_compare_exchange_strong_explicit(
 	&page_stack, &next, local_page_stack,
 	memory_order_acq_rel, memory_order_acquire));
   rcu_read_unlock();
 
+  /* Finished. Now the local stack is empty. */
   local_page_stack = NULL;
   pages_kept_here = 0;
 
+  /* Check the state of global page cache and maybe schedule its cleanup. */
   atomic_fetch_sub_explicit(&pages_kept_locally, check_count, memory_order_relaxed);
   if (atomic_fetch_add_explicit(&pages_kept, check_count, memory_order_relaxed) >= KEEP_PAGES_MAX)
     SCHEDULE_CLEANUP;
@@ -188,6 +237,7 @@ flush_local_pages(void)
 static void
 page_cleanup(void *_ UNUSED)
 {
+  /* Cleanup on shutdown is ignored. All pages may be kept hot, OS will take care. */
   if (shutting_down)
     return;
 
@@ -195,18 +245,37 @@ page_cleanup(void *_ UNUSED)
   if (!stack)
     return;
 
-  synchronize_rcu();
+  /* Cleanup gets called when hot free page cache is too big.
+   * Moving some pages to the cold free page cache. */
 
   do {
-    struct free_page *f = stack;
-    stack = atomic_load_explicit(&f->next, memory_order_acquire);
+    synchronize_rcu();
+    struct free_page *fp = stack;
+    stack = atomic_load_explicit(&fp->next, memory_order_acquire);
 
-    if (munmap(f, page_size) == 0)
-      continue;
-    else if (errno != ENOMEM)
-      bug("munmap(%p) failed: %m", f);
+    LOCK_DOMAIN(resource, empty_pages_domain);
+    /* Empty pages are stored as pointers. To store them, we need a pointer block. */
+    if (!empty_pages || (empty_pages->pos == EP_POS_MAX))
+    {
+      /* There is either no pointer block or the last block is full. We use this block as a pointer block. */
+      empty_pages = (struct empty_pages *) fp;
+      *empty_pages = (struct empty_pages) {};
+    }
     else
-      free_page(f);
+    {
+      /* We store this block as a pointer into the first free place
+       * and tell the OS that the underlying memory is trash. */
+      empty_pages->pages[empty_pages->pos++] = fp;
+      if (madvise(fp, page_size,
+#ifdef CONFIG_MADV_DONTNEED_TO_FREE
+	    MADV_DONTNEED
+#else
+	    MADV_FREE
+#endif
+	    ) < 0)
+	bug("madvise(%p) failed: %m", fp);
+    }
+    UNLOCK_DOMAIN(resource, empty_pages_domain);
   }
   while ((atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed) >= KEEP_PAGES_MAX / 2) && stack);
 
@@ -225,22 +294,22 @@ void
 resource_sys_init(void)
 {
 #ifdef HAVE_MMAP
+  /* Check what page size the system supports */
   if (!(page_size = sysconf(_SC_PAGESIZE)))
     die("System page size must be non-zero");
 
-  if (u64_popcount(page_size) == 1)
+  if ((u64_popcount(page_size) == 1) && (page_size >= (1 << 10)) && (page_size <= (1 << 18)))
   {
+    /* We assume that page size has only one bit and is between 1K and 256K (incl.).
+     * Otherwise, the assumptions in lib/slab.c (sl_head's num_full range) aren't met. */
 
-    for (int i = 0; i < (KEEP_PAGES_MIN * 2); i++)
-      free_page(alloc_page());
-
-    page_cleanup(NULL);
+    empty_pages_domain = DOMAIN_NEW(resource, "Empty Pages");
     initialized = 1;
     return;
   }
 
   /* Too big or strange page, use the aligned allocator instead */
-  log(L_WARN "Got strange memory page size (%lu), using the aligned allocator instead", page_size);
+  log(L_WARN "Got strange memory page size (%ld), using the aligned allocator instead", (s64) page_size);
   use_fake = 1;
 #endif
 
