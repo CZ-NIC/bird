@@ -23,6 +23,9 @@ INSTALL=@INSTALL@
 INSTALL_PROGRAM=@INSTALL_PROGRAM@
 INSTALL_DATA=@INSTALL_DATA@
 
+STAYRTR_BINARY=@STAYRTR_BINARY@
+NETLAB_DATA_SUFFIX=v2
+
 client=$(addprefix $(exedir)/,@CLIENT@)
 daemon=$(exedir)/bird
 protocols=@protocols@
@@ -184,6 +187,16 @@ test: testsclean check
 check: tests tests_run
 tests: $(tests_targets)
 tests_run: $(tests_targets_ok)
+
+aux-test-prepare: all
+	$(E)echo Preparing netlab test suite ...
+	$(Q)cd $(srcdir) && git submodule update --init --force --checkout aux-tools
+	$(Q)cd $(srcdir)/aux-tools && git clean -fxdq || true
+	$(Q)cd $(srcdir)/aux-tools/netlab/common && ln $(shell readlink -f $(exedir)/bird) && ln $(shell readlink -f $(exedir)/birdc)
+	$(Q)cd $(srcdir)/aux-tools/netlab/common && ln -s $(STAYRTR_BINARY) stayrtr
+	$(E)echo Netlab test suite prepared. 
+
+-include $(srcdir)/aux-tools/netlab/tests-$(NETLAB_DATA_SUFFIX).mk
 
 STATIC_CHECKERS_ENABLE := nullability.NullableDereferenced nullability.NullablePassedToNonnull nullability.NullableReturnedFromNonnull optin.portability.UnixAPI valist.CopyToSelf valist.Uninitialized valist.Unterminated
 STATIC_CHECKERS_DISABLE := deadcode.DeadStores

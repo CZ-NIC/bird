@@ -4,7 +4,6 @@ variables:
   GIT_STRATEGY: fetch
   DOCKER_CMD: docker --config="$HOME/.docker/$CI_JOB_ID/"
   IMG_BASE: registry.nic.cz/labs/bird
-  TOOLS_DIR: /var/lib/gitlab-runner/bird-tools
   STAYRTR_BINARY: /var/lib/gitlab-runner/stayrtr-0.1-108-g8d18a41-linux-x86_64
 
 stages:
@@ -526,13 +525,8 @@ build-birdlab:
   script:
     - DIR=$(pwd)
     - autoreconf
-    - ./configure
-    - make
-    - cd $TOOLS_DIR
-    - sudo git clean -fx
-    - git pull --ff-only
-    - mv $DIR/bird $DIR/birdc netlab/common
-    - ln -s $STAYRTR_BINARY netlab/common/stayrtr
+    - ./configure --with-stayrtr=$STAYRTR_BINARY
+    - make aux-test-prepare
 
 .test: &test-base
   stage: test
@@ -541,146 +535,145 @@ build-birdlab:
     - birdlab
     - amd64
   script:
-    - cd $TOOLS_DIR/netlab
-    - sudo ./stop
-    - sudo ./runtest -s v2 -m check $TEST_NAME
+    - cd aux-tools/netlab
+    - make -f tests-v2.mk NETLAB_TEST_SHOW_OUTPUT=1 netlab-test-$TEST_NAME
 
 test-ospf-base:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ospf-base
+    TEST_NAME: ospf-base
 
 test-ospf-default:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ospf-default
+    TEST_NAME: ospf-default
 
 test-ospf-priority:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ospf-priority
+    TEST_NAME: ospf-priority
 
 test-ospf-nbma:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ospf-nbma
+    TEST_NAME: ospf-nbma
 
 test-ospf-ptmp:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ospf-ptmp
+    TEST_NAME: ospf-ptmp
 
 test-ospf-authentication:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ospf-authentication
+    TEST_NAME: ospf-authentication
 
 test-ospf-bfd:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ospf-bfd
+    TEST_NAME: ospf-bfd
 
 test-ospf-custom:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ospf-custom
+    TEST_NAME: ospf-custom
 
 test-ospf-area:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ospf-area
+    TEST_NAME: ospf-area
 
 test-ospf-vrf:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ospf-vrf
+    TEST_NAME: ospf-vrf
 
 test-bgp-base:
   <<: *test-base
   variables:
-    TEST_NAME: cf-bgp-base
+    TEST_NAME: bgp-base
 
 test-bgp-auth:
   <<: *test-base
   variables:
-    TEST_NAME: cf-bgp-auth
+    TEST_NAME: bgp-auth
 
 test-bgp-int:
   <<: *test-base
   variables:
-    TEST_NAME: cf-bgp-int
+    TEST_NAME: bgp-int
 
 test-bgp-merged:
   <<: *test-base
   variables:
-    TEST_NAME: cf-bgp-merged
+    TEST_NAME: bgp-merged
 
 test-bgp-flowspec:
   <<: *test-base
   variables:
-    TEST_NAME: cf-bgp-flowspec
+    TEST_NAME: bgp-flowspec
 
 test-bgp-rs-multitab:
   <<: *test-base
   variables:
-    TEST_NAME: cf-bgp-rs-multitab
+    TEST_NAME: bgp-rs-multitab
 
 test-ebgp-loop:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ebgp-loop
+    TEST_NAME: ebgp-loop
 
 test-ebgp-star:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ebgp-star
+    TEST_NAME: ebgp-star
 
 test-ebgp-role:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ebgp-role
+    TEST_NAME: ebgp-role
 
 test-ebgp-graceful:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ebgp-graceful
+    TEST_NAME: ebgp-graceful
 
 test-ebgp-import-limit:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ebgp-import-limit
+    TEST_NAME: ebgp-import-limit
 
 test-ibgp-loop:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ibgp-loop
+    TEST_NAME: ibgp-loop
 
 test-ibgp-loop-big:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ibgp-loop-big
+    TEST_NAME: ibgp-loop-big
 
 test-ibgp-flat:
   <<: *test-base
   variables:
-    TEST_NAME: cf-ibgp-flat
+    TEST_NAME: ibgp-flat
 
 test-babel-base:
   <<: *test-base
   variables:
-    TEST_NAME: cf-babel-base
+    TEST_NAME: babel-base
 
 test-babel-auth:
   <<: *test-base
   variables:
-    TEST_NAME: cf-babel-auth
+    TEST_NAME: babel-auth
 
 test-rip-base:
   <<: *test-base
   variables:
-    TEST_NAME: cf-rip-base
+    TEST_NAME: rip-base
 
 test-kernel-learn:
   <<: *test-base
   variables:
-    TEST_NAME: cf-kernel-learn
+    TEST_NAME: kernel-learn
