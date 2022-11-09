@@ -282,6 +282,9 @@ cmd_read_config(const char *name)
 void
 cmd_check_config(const char *name)
 {
+  if (cli_access_restricted())
+    return;
+
   struct config *conf = cmd_read_config(name);
   if (!conf)
     return;
