@@ -68,9 +68,17 @@ AC_ARG_WITH([iproutedir],
   [given_iproutedir="yes"]
 )
 
+AC_ARG_WITH([stayrtr],
+  [AS_HELP_STRING([--with-stayrtr=PATH], [path to stayrtr built binary for RPKI testing @<:@/usr/bin/stayrtr@:>@])],
+  [],
+  [with_stayrtr="/usr/bin/stayrtr"]
+)
+
 AC_ARG_VAR([FLEX], [location of the Flex program])
 AC_ARG_VAR([BISON], [location of the Bison program])
 AC_ARG_VAR([M4], [location of the M4 program])
+
+AC_SUBST([STAYRTR_BINARY], [${with_stayrtr}])
 
 if test "$enable_debug_expensive" = yes; then
   enable_debug=yes
