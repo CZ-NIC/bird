@@ -1173,6 +1173,11 @@ This argument can be omitted if there exists only a single instance.
 	restarted otherwise. Changes in filters usually lead to restart of
 	affected protocols.
 
+	The previous configuration is saved and the user can switch back to it
+	with <ref id="cli-configure-undo" name="configure undo"> command. The
+	old saved configuration is released (even if the reconfiguration attempt
+	fails due to e.g. a syntax error).
+
 	If <cf/soft/ option is used, changes in filters does not cause BIRD to
 	restart affected protocols, therefore already accepted routes (according
 	to old filters) would be still propagated, but new routes would be
