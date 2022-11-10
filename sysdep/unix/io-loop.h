@@ -7,6 +7,7 @@
 #ifndef _BIRD_SYSDEP_UNIX_IO_LOOP_H_
 #define _BIRD_SYSDEP_UNIX_IO_LOOP_H_
 
+#include <semaphore.h>
 #include "lib/rcu.h"
 
 struct pipe
@@ -19,6 +20,8 @@ void pipe_pollin(struct pipe *, struct pollfd *);
 void pipe_drain(struct pipe *);
 void pipe_kick(struct pipe *);
 
+DEFINE_DOMAIN(resource);
+
 struct birdloop
 {
   pool *pool;
@@ -27,11 +30,12 @@ struct birdloop
   event_list event_list;
   list sock_list;
   uint sock_num;
+  _Atomic int sock_close_requests;
+  sem_t sock_close_sem;
 
-  BUFFER(sock *) poll_sk;
+  DOMAIN(resource) poll_domain;
   BUFFER(struct pollfd) poll_fd;
   u8 poll_changed;
-  u8 close_scheduled;
 
   uint ping_pending;
   _Atomic u32 ping_sent;
