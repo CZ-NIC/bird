@@ -37,7 +37,7 @@ enum BGP4_MIB {
 struct oid;
 
 void snmp_bgp_register(void);
-int snmp_bgp_is_supported(struct oid *o);
+// - int snmp_bgp_is_supported(struct oid *o);
 
 int snmp_bgp_valid_ip4(struct oid *o);
 u8 snmp_bgp_state(struct oid *o);

@@ -103,7 +103,7 @@ enum agentx_type {
   log(L_INFO "LOAD_STR(), %p %u", p->p.pool, l + 1); \
   s = mb_allocz(p->p.pool, l + 1);  \
   memcpy(s, b, l);		    \
-  b += str_size(s);
+  b += snmp_str_size(s);
 
 #define SNMP_LOAD_CONTEXT(p, h, b, s, l)      \
   if (h->flags & AGENTX_NON_DEFAULT_CONTEXT)  \
@@ -111,8 +111,8 @@ enum agentx_type {
     LOAD_STR(p, b, s, l, h->flags & AGENTX_NETWORK_BYTE_ORDER); }
 
 #define SNMP_COPY_OID(b, o) \
-  memcpy(b, o, oid_size(o));   \
-  b += oid_size(o);
+  memcpy(b, o, snmp_oid_size(o));   \
+  b += snmp_oid_size(o);
 
 #define SNMP_COPY_VB(b, s, e)	\
   memcpy(b, s, 4);		\
@@ -120,11 +120,11 @@ enum agentx_type {
   SNMP_COPY_OID(b, &s->name)	\
   SNMP_COPY_OID(b, e)
 
-#define BGP_DATA_(v, d, p, o) \
-  (v)->type = d;		  \
-  p += o;
+#define BGP_DATA_(varbind, type_, packet, offset) \
+  (varbind)->type = type_;		  \
+  packet += offset;
 
-#define BGP_DATA(v, d, p) BGP_DATA_(v, d, p, 4)
+#define BGP_DATA(varbind, type_, packet) BGP_DATA_(varbind, type_, packet, 4)
 
 struct agentx_header {
   u8 version;
@@ -158,6 +158,11 @@ struct agentx_varbind {
 struct agentx_search_range {
   struct oid start;
   struct oid end;
+};
+
+struct agentx_getbulk {
+  u16 non_repeaters;
+  u16 max_repetitions;
 };
 
 struct agentx_response {
@@ -255,11 +260,6 @@ enum agentx_response_err {
 } PACKED;
 
 int snmp_rx(sock *sk, uint size);
-int snmp_valid_ip4_index_safe(struct oid *o, uint start);
-int snmp_valid_ip4_index(struct oid *o, uint start);
-void snmp_oid_ip4_index(struct oid *o, ip4_addr addr);
-
-uint snmp_oid_size(struct oid *o);
 
 static byte *snmp_mib_fill(struct snmp_proto *p, struct oid *oid, u8 mib_class, byte *buf, uint size, uint contid, int byte_ord);
 #endif

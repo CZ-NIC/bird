@@ -12,10 +12,18 @@
 #include "bgp_mib.h"
 #include "subagent.h"
 #include "snmp.h"
+#include "snmp_utils.h"
+#include "snmp_internal.h"
 
 #define SNMP_EXPECTED(actual, expected) \
   bt_debug("%s  expected: %3u   actual: %3u\n", \
     #expected, expected, actual);
+
+#ifdef CPU_BIG_ENDIAN
+  #define BYTE_ORD 1
+#else
+  #define BYTE_ORD 0
+#endif
 
 void
 dump_oid(struct oid *oid)
@@ -31,11 +39,10 @@ dump_oid(struct oid *oid)
 }
 
 void
-dump_bgp_state_values(void)
+test_fill(struct snmp_proto *p)
 {
-    // TODO XXX here
+  ((struct proto *) p)->pool = &root_pool;
 }
-
 
 static void
 test_oid(struct oid *oid, uint base_size)
@@ -142,9 +149,131 @@ test_oid(struct oid *oid, uint base_size)
 }
 
 static int
+t_s_is_oid_empty(void)
+{
+  bt_assert(snmp_is_oid_empty(NULL) == 0);
+
+  struct oid *blank = mb_alloc(&root_pool, sizeof(struct oid));
+  blank->n_subid = 0;
+  blank->prefix = 0;
+  blank->include = 0;
+
+  bt_assert(snmp_is_oid_empty(blank) == 1);
+
+  struct oid *prefixed = mb_alloc(&root_pool, sizeof(struct oid) + 3 * sizeof(u32));
+  prefixed->n_subid = 3;
+  prefixed->prefix = 100;
+  prefixed->include = 1;
+
+  u32 prefixed_arr[] = { ~((u32) 0), 0, 256 };
+  memcpy(&prefixed->ids, prefixed_arr, sizeof(prefixed_arr) /
+    sizeof(prefixed_arr[0]));
+
+  bt_assert(snmp_is_oid_empty(prefixed) == 0);
+
+  struct oid *to_prefix = mb_alloc(&root_pool, sizeof(struct oid) + 8 * sizeof(u32));
+  to_prefix->n_subid = 8;
+  to_prefix->prefix = 0;
+  to_prefix->include = 1;
+
+  u32 to_prefix_arr[] = {1, 3, 6, 1, 100, ~((u32) 0), 0, 256 };
+  memcpy(&to_prefix->n_subid, to_prefix_arr, sizeof(to_prefix_arr) /
+    sizeof(to_prefix_arr[0]));
+
+  bt_assert(snmp_is_oid_empty(to_prefix) == 0);
+
+  struct oid *unprefixable = mb_alloc(&root_pool, sizeof(struct oid) + 2 * sizeof(u32));
+  unprefixable->n_subid = 2;
+  unprefixable->prefix = 0;
+  unprefixable->include = 0;
+
+  u32 unpref[] = { 65535, 4 };
+  memcpy(&unprefixable->ids, unpref, sizeof(unpref) / sizeof(unpref[0]));
+
+  bt_assert(snmp_is_oid_empty(unprefixable) == 0);
+
+  struct oid *unprefixable2 = mb_alloc(&root_pool, sizeof(struct oid) + 8 * sizeof(u32));
+  unprefixable2->n_subid = 8;
+  unprefixable2->prefix = 0;
+  unprefixable2->include = 1;
+
+  u32 unpref2[] = { 1, 3, 6, 2, 1, 2, 15, 6 };
+  memcpy(&unprefixable2->ids, unpref2, sizeof(unpref2) / sizeof(unpref2[0]));
+
+  bt_assert(snmp_is_oid_empty(unprefixable2) == 0);
+
+  return 1;
+}
+
+static int
+t_s_prefixize(void)
+{
+  struct oid *nulled = NULL;
+
+  struct snmp_proto snmp_proto;
+
+  test_fill(&snmp_proto);
+
+  bt_debug("before seg fault\n");
+  struct oid *tmp = snmp_prefixize(&snmp_proto, nulled, BYTE_ORD);
+  bt_debug("after snmp_prefixize() call\n");
+  bt_assert( NULL == tmp );
+
+  bt_debug("after assert\n");
+  struct oid *blank = mb_allocz(&root_pool, sizeof(struct oid));
+
+  /* here the byte order should not matter */
+  bt_assert(snmp_is_oid_empty(snmp_prefixize(&snmp_proto, blank, 1 - BYTE_ORD)) == 1);
+
+  struct oid *prefixed = mb_alloc(&root_pool, sizeof(struct oid) + 3 * sizeof(u32));
+  prefixed->n_subid = 3;
+  prefixed->prefix = 100;
+  prefixed->include = 1;
+
+  u32 prefixed_arr[] = { ~((u32) 0), 0, 256 };
+  memcpy(&prefixed->ids, prefixed_arr, sizeof(prefixed_arr) /
+    sizeof(prefixed_arr[0]));
+
+    bt_assert(memcmp(snmp_prefixize(&snmp_proto, prefixed, BYTE_ORD), prefixed, snmp_oid_size(prefixed)) == 0);
+
+  struct oid *to_prefix = mb_alloc(&root_pool, sizeof(struct oid) + 8 * sizeof(u32));
+  to_prefix->n_subid = 8;
+  to_prefix->prefix = 0;
+  to_prefix->include = 1;
+
+  u32 to_prefix_arr[] = {1, 3, 6, 1, 100, ~((u32) 0), 0, 256 };
+  memcpy(&to_prefix->n_subid, to_prefix_arr, sizeof(to_prefix_arr) /
+    sizeof(to_prefix_arr[0]));
+
+  bt_assert(memcmp(snmp_prefixize(&snmp_proto, to_prefix, BYTE_ORD), prefixed, snmp_oid_size(prefixed)) == 0);
+
+  struct oid *unprefixable = mb_alloc(&root_pool, sizeof(struct oid) + 2 * sizeof(u32));
+  unprefixable->n_subid = 2;
+  unprefixable->prefix = 0;
+  unprefixable->include = 0;
+
+  u32 unpref[] = { 65535, 4 };
+  memcpy(&unprefixable->ids, unpref, sizeof(unpref) / sizeof(unpref[0]));
+
+  bt_assert(snmp_prefixize(&snmp_proto, unprefixable, BYTE_ORD) == NULL);
+
+  struct oid *unprefixable2 = mb_alloc(&root_pool, sizeof(struct oid) + 8 * sizeof(u32));
+  unprefixable2->n_subid = 8;
+  unprefixable2->prefix = 0;
+  unprefixable2->include = 1;
+
+  u32 unpref2[] = { 1, 3, 6, 2, 1, 2, 15, 6 };
+  memcpy(&unprefixable2->ids, unpref2, sizeof(unpref2) / sizeof(unpref2[0]));
+
+  bt_assert(snmp_prefixize(&snmp_proto, unprefixable2, BYTE_ORD) == NULL);
+
+  return 1;
+}
+
+static int
 t_s_bgp_state(void)
 {
-  struct oid *oid = alloca(sizeof(struct oid) + 10 * sizeof(32));
+  struct oid *oid = mb_alloc(&root_pool, sizeof(struct oid) + 10 * sizeof(u32));
 
   /* oid header */
   oid->n_subid = 0;
@@ -181,9 +310,6 @@ t_s_bgp_state(void)
   oid->ids[8] = 0xFFFF;
   test_oid(oid, 4);
 
-  bt_debug("testing too long oids\n");
-  bt_debug("not implemented\n");
-  bt_debug("exiting\n");
   return 1;
 }
 
@@ -192,6 +318,10 @@ int main(int argc, char **argv)
   bt_init(argc, argv);
 
   bt_test_suite(t_s_bgp_state, "Function snmp_bgp_state()");
+
+  bt_test_suite(t_s_is_oid_empty, "Function snmp_is_oid_empty()");
+
+  bt_test_suite(t_s_prefixize, "Function snmp_prefixize()");
 
   return bt_exit_value();
 }

@@ -1,4 +1,4 @@
-src := snmp.c subagent.c bgp_mib.c
+src := snmp.c snmp_utils.c subagent.c bgp_mib.c
 obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)

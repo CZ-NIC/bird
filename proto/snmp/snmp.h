@@ -106,7 +106,4 @@ struct snmp_proto {
   uint errs;
 };
 
-/* fixes bugs when making tests */
-//struct protocol proto_snmp;
-
 #endif
