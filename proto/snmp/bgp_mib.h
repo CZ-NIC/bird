@@ -45,7 +45,7 @@ u8 snmp_bgp_get_valid(u8 state);
 u8 snmp_bgp_getnext_valid(u8 state);
 
 struct oid *search_bgp_mib(struct snmp_proto *p , struct oid *o_start, struct oid *o_end, uint contid);
-byte * snmp_bgp_fill(struct snmp_proto *p, struct oid *oid, byte *buf, uint size, uint contid UNUSED, int byte_ord);
+byte * snmp_bgp_fill(struct snmp_proto *p, struct agentx_varbind *vb, byte *buf, uint size, uint contid UNUSED, int byte_ord);
 
 #define BGP4_MIB_VERSION 1
 #define BGP4_MIB_LOCAL_AS 2

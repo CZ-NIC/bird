@@ -407,9 +407,11 @@ update_bgp_oid(struct oid *oid, u8 state)
 static struct oid *
 bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, u8 state UNUSED)
 {
+  log(L_INFO "bgp_find_dynamic_oid()");
   ip4_addr ip4 = ip4_from_oid(o_start);
   ip4_addr dest = ip4_from_oid(o_end);
 
+  log(L_INFO "ip addresses build");
   net_addr *net = mb_allocz(p->p.pool, sizeof(struct net_addr));
   net_fill_ip4(net, ip4, IP4_MAX_PREFIX_LENGTH);
 
@@ -495,18 +497,23 @@ search_bgp_mib(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, uin
 }
 
 static byte *
-bgp_fill_dynamic(struct snmp_proto *p, struct oid *oid, byte *pkt, uint size
+bgp_fill_dynamic(struct snmp_proto *p, struct agentx_varbind *vb, byte *pkt, uint size
 UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
 {
-  struct agentx_varbind *vb = (void *) pkt;
-  *pkt += snmp_vb_size(vb);
+  //log(L_INFO "bgp_fill_dynamic() valid ip %s", snmp_bgp_valid_ip4(oid) ? "true" : "false");
+
+  struct oid *oid = &vb->name;
 
   ip_addr addr;
   if (snmp_bgp_valid_ip4(oid))
     addr = ipa_from_ip4(ip4_from_oid(oid));
   else
-    return snmp_no_such_object(pkt, vb);
+  {
+    vb->type = AGENTX_NO_SUCH_OBJECT;
+    return pkt;
+  }
 
+  log(L_INFO " -> ip addr %I", addr);
   // TODO XXX deal with possible change of (remote) ip
   struct snmp_bgp_peer *pe = HASH_FIND(p->bgp_hash, SNMP_HASH, addr);
 
@@ -525,8 +532,15 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
     else
     {
       die("Binded bgp protocol not found!");
-      return snmp_no_such_object(pkt, vb);
+      vb->type = AGENTX_NO_SUCH_OBJECT;
+      return pkt;
     }
+  }
+
+  else
+  {
+    vb->type = AGENTX_NO_SUCH_OBJECT;
+    return pkt;
   }
 
   struct bgp_conn *bgp_conn = bgp_proto->conn;
@@ -690,23 +704,25 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
       break;
   }
 
-  return NULL;
+  return pkt;
 }
 
 static byte *
-bgp_fill_static(struct snmp_proto *p, struct oid *oid, byte *buf, uint size
+bgp_fill_static(struct snmp_proto *p, struct agentx_varbind *vb, byte *pkt, uint size
 UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
 {
   log(L_INFO "snmp bgp_fill_static ()\n");
 
-  struct agentx_varbind *vb = (void *) buf;
-  byte *pkt = buf + snmp_vb_size(vb);
+  struct oid *oid = &vb->name;
 
   /* snmp_bgp_state() check only prefix. To be sure on oid equivalence we need to
    * compare the oid->n_subid length. All BGP static fields have same n_subid.
    */
   if (oid->n_subid != 3)
-    return snmp_no_such_object(buf, vb);
+  {
+    vb->type = AGENTX_NO_SUCH_OBJECT;
+    return pkt;
+  }
 
   switch (state)
   {
@@ -725,6 +741,9 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
       STORE_PTR(pkt, p->local_as);
       BGP_DATA(vb, AGENTX_INTEGER, pkt);
       break;
+
+    case BGP_INTERNAL_BGP:
+      vb->type = AGENTX_NO_SUCH_OBJECT;
   }
 
   log(L_INFO "snmp ended with non empty pkt\n");
@@ -732,20 +751,29 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
 }
 
 byte *
-snmp_bgp_fill(struct snmp_proto *p UNUSED, struct oid *oid, byte *buf UNUSED,
+snmp_bgp_fill(struct snmp_proto *p, struct agentx_varbind *vb, byte *buf UNUSED,
 uint size UNUSED, uint contid UNUSED, int byte_ord UNUSED)
 {
-  u8 state = snmp_bgp_state(oid);
+  u8 state = snmp_bgp_state(&vb->name);
+  //log(L_INFO "snmp_bgp_fill() state %u is dynamic %s has value %s", state, is_dynamic(state) ? "true" : "false", snmp_bgp_has_value(state) ? "true" : "false");
 
   if (!is_dynamic(state))
-    return bgp_fill_static(p, oid, buf, size, contid, byte_ord, state);
+    return bgp_fill_static(p, vb, buf, size, contid, byte_ord, state);
 
   if (is_dynamic(state) && snmp_bgp_has_value(state))
-    return bgp_fill_dynamic(p, oid, buf, size, contid, byte_ord, state);
+    return bgp_fill_dynamic(p, vb, buf, size, contid, byte_ord, state);
 
   else
   {
-    // TODO XXX fix here
-    return snmp_no_such_object(buf, NULL);
+    return buf;
   }
+  /*
+  {
+    log(L_INFO "has no value");
+    struct agentx_varbind *vb = snmp_create_varbind(buf, oid);
+    buf += snmp_varbind_size(vb);
+    vb->type = AGENTX_NO_SUCH_OBJECT;
+    return buf;
+  }
+  */
 }

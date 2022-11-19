@@ -33,7 +33,7 @@ static uint parse_get_pdu(struct snmp_proto *p, byte *buf, uint size);
 static uint parse_gets_pdu(struct snmp_proto *p, byte *buf, uint size);
 static byte *prepare_response(struct snmp_proto *p, byte *buf, uint size);
 static void response_err_ind(byte *buf, uint err, uint ind);
-static struct oid *search_mib(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, struct oid *o_curr, uint contid);
+static struct oid *search_mib(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, struct oid *o_curr, u8 mib_class, uint contid);
 static inline byte *find_n_fill(struct snmp_proto *p, struct oid *o, byte *buf, uint size, uint contid, int byte_ord);
 
 static const char * const snmp_errs[] = {
@@ -525,6 +525,96 @@ get_mib_class(struct oid *oid)
   } 
 }
 
+static byte *
+snmp_get_next(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
+byte *pkt, uint rsize, uint contid, u8 mib_class, int byte_ord)
+{
+  log(L_INFO "type GetNext-PDU");
+  struct oid *o_copy;
+  o_copy = search_mib(p, o_start, o_end, NULL, mib_class, contid);
+
+  log(L_INFO "search result");
+  snmp_oid_dump(o_copy);
+
+  struct snmp_error error = (struct snmp_error) {
+    .oid = o_start,
+    .type = AGENTX_END_OF_MIB_VIEW,
+  };
+
+  pkt = snmp_mib_fill(
+    p, o_copy, mib_class, pkt, rsize, &error, contid, byte_ord
+  );
+
+  if (o_copy)
+  {
+    mb_free(o_copy);
+  }
+
+  return pkt;
+}
+
+static byte *
+snmp_get_bulk(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, byte *pkt, uint size, struct agentx_bulk_state *state, uint contid, int byte_ord)
+{
+  log(L_INFO "type GetBulk-PDU");
+
+  u8 mib_class = get_mib_class(o_start);
+
+  if (state->index <= state->getbulk.non_repeaters)
+  {
+    return snmp_get_next(p, o_start, o_end, pkt, size, contid, mib_class, byte_ord);
+  }
+
+  else
+  {
+    u8 mib_class = get_mib_class(o_start);
+    struct oid *o_curr = NULL;
+    struct oid *o_predecessor;
+
+    uint i = 0;
+    do
+    {
+      o_predecessor = o_curr;
+      o_curr = search_mib(p, o_start, o_end, o_curr, mib_class, contid);
+      mib_class = get_mib_class(o_curr);
+      i++;
+    } while (o_curr != NULL && i < state->repetition);
+
+    log("bulk search result - repeating");
+    snmp_oid_dump(o_curr);
+
+    struct snmp_error error = (struct snmp_error) {
+      .oid = (o_predecessor != NULL) ? o_predecessor : o_start,
+      .type = AGENTX_END_OF_MIB_VIEW,
+    };
+
+    return snmp_mib_fill(p, o_curr, mib_class, pkt, size, &error, contid, byte_ord);
+
+    // REMOVE ME
+    #if 0
+    last *byte = pkt;
+    if (o_curr)
+    {
+      pkt = snmp_mib_fill(p, o_curr, mib_class, pkt, size, contid, byte_ord);
+    }
+
+    else if (!o_curr || pkt == last)
+    {
+      state->failed++;
+
+      if (!o_predecessor)
+	o_predecessor = o_start;
+
+      struct agentx_varbind *vb = snmp_create_varbind(pkt, o_predecessor);
+      pkt += snmp_varbind_size(vb);
+      vb->type = AGENTX_END_OF_MIB_VIEW;
+    }
+    
+    return pkt;
+    #endif
+  }
+}
+
 /* req is request */
 static uint
 parse_gets_pdu(struct snmp_proto *p, byte *req, uint size)
@@ -552,6 +642,21 @@ parse_gets_pdu(struct snmp_proto *p, byte *req, uint size)
   SNMP_LOAD_CONTEXT(p, h, req, context, clen);
 
   res_pkt = prepare_response(p, res, rsize);
+
+  /* used only for state AGENTX_GET_BULK_PDU */
+  struct agentx_bulk_state bulk_state;
+
+  if (h->type == AGENTX_GET_BULK_PDU)
+  {
+    struct agentx_getbulk *bulk = (void*) res_pkt;
+    res_pkt += sizeof(struct agentx_getbulk);
+    bulk_state = (struct agentx_bulk_state) {
+      .getbulk.non_repeaters = LOAD(bulk->non_repeaters, byte_ord),
+      .getbulk.max_repetitions = LOAD(bulk->max_repetitions, byte_ord),
+      .index = 1,
+      .repetition = 1,
+    };
+  }
 
   uint ind = 1;
   int err = 0;
@@ -584,38 +689,40 @@ parse_gets_pdu(struct snmp_proto *p, byte *req, uint size)
 
     u8 mib_class = get_mib_class(o_start);
 
-    log(L_INFO "get mib_class () -> next pdu parsing ... ");
+    log(L_INFO "get mib_class () %d -> next pdu parsing ... ", mib_class);
 
     switch (h->type)
     {
       case AGENTX_GET_PDU:
 	log(L_INFO "type Get-PDU");
-	res_pkt = snmp_mib_fill(p, o_start, mib_class, res_pkt, rsize, 0, byte_ord);
+
+	struct snmp_error error = (struct snmp_error) {
+	  .oid = o_start,
+	  .type = AGENTX_NO_SUCH_OBJECT,
+	};
+
+	res_pkt = snmp_mib_fill(p, o_start, mib_class, res_pkt, rsize, &error, 0, byte_ord);
+
 	//res_pkt = find_n_fill(p, o_start, res_pkt, rsize, 0, byte_ord);
 	break;
 
       case AGENTX_GET_NEXT_PDU:
-	log(L_INFO "type GetNext-PDU");
+	res_pkt = snmp_get_next(p, o_start, o_end, res_pkt, rsize, 0, mib_class, byte_ord);
 
-	o_start = search_mib(p, o_start, o_end, NULL, 0);
-	if (o_start)
-	  res_pkt = snmp_mib_fill(p, o_start, mib_class, res_pkt, rsize, 0, byte_ord);
-	  //res_pkt = find_n_fill(p, o_start, res_pkt, rsize, 0, byte_ord);
-	else
-	{
-	  log(L_INFO "null o_start GetNext-PDU err handling next");
-	  err = -2;
-	  continue;
-	}
 	break;
 
-      case AGENTX_GET_BULK_PDU:
+      case AGENTX_GET_BULK_PDU: 
+	res_pkt = snmp_get_bulk(p, o_start, o_end, res_pkt, rsize, &bulk_state, 0, byte_ord);
+	break;
+
+      // REMOVE ME
+      #if 0
       {
 	log(L_INFO "type GetBulk-PDU");
 
 	struct oid  *o_curr = NULL;
 	/* TODO add res packet size limiting logic */
-	while ((o_curr = search_mib(p, o_start, o_end, o_curr, 0)) != NULL)
+	while ((o_curr = search_mib(p, o_start, o_end, o_curr, mib_class, 0)) != NULL)
 	{
 	  res_pkt = snmp_mib_fill(p, o_curr, mib_class, res_pkt, rsize, 0, byte_ord);
 	  //res_pkt = find_n_fill(p, o_curr, res_pkt, rsize, 0, byte_ord);
@@ -632,6 +739,7 @@ parse_gets_pdu(struct snmp_proto *p, byte *req, uint size)
 	}
 	break;
       }
+      #endif 
     }
 
     mb_free(o_start);
@@ -861,7 +969,7 @@ has_inet_prefix(struct oid *o)
 /* tree is tree with "internet" prefix .1.3.6.1 
    working only with o_start, o_end allocated in heap (not from buffer)*/
 static struct oid *
-search_mib(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, struct oid *o_curr, uint contid UNUSED)
+search_mib(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, struct oid *o_curr, u8 mib_class, uint contid UNUSED)
 {
   log(L_INFO "search_mib()");
 
@@ -881,8 +989,23 @@ search_mib(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, struct 
     switch (o_curr->ids[1])
     {
       case SNMP_BGP4_MIB:
-	return search_bgp_mib(p, o_curr, o_end, 0);
-        
+	o_curr = search_bgp_mib(p, o_curr, o_end, 0);
+
+	if (o_curr != NULL)
+	  return o_curr;
+
+	
+	/* fall through */
+
+	/*
+	case SNMP_OSPF_MIB:
+	  o_curr = search_bgp_mib(p, o_curr, o_end, 0);
+
+	  if (o_curr != NULL)
+	    return o_curr;
+	  // fall through
+	 */
+	
       default:
         return NULL;
     }
@@ -914,8 +1037,8 @@ find_bgp_one(struct bgp_proto *bp, struct oid *o, byte *pkt, uint size UNUSED, u
   else
     b_state = MAX(b_in->state, b_out->state);
 
-  struct agentx_varbind *vb = (void *) pkt;
-  pkt += snmp_vb_size(vb);
+  struct agentx_varbind *vb = snmp_create_varbind(pkt, o);
+  pkt += snmp_varbind_size(vb);
 
   switch (o->ids[4])
   {
@@ -1059,7 +1182,7 @@ find_bgp_one(struct bgp_proto *bp, struct oid *o, byte *pkt, uint size UNUSED, u
 
     case SNMP_BGP_FSM_ESTABLISHED_TIME:
     case SNMP_BGP_IN_UPDATE_ELAPSED_TIME:
-      return snmp_no_such_object(pkt, vb);
+      vb->type = AGENTX_NO_SUCH_OBJECT;      
 
     /* no default */
   }
@@ -1071,8 +1194,8 @@ find_bgp_one(struct bgp_proto *bp, struct oid *o, byte *pkt, uint size UNUSED, u
 static byte *
 snmp_bgp_record(struct snmp_proto *p, struct oid *o, byte *buf, uint size, uint contid)
 {
-  struct agentx_varbind *vb = (void *) buf;
-  byte *pkt = buf + snmp_vb_size(vb);
+  struct agentx_varbind *vb = snmp_create_varbind(buf, o);
+  byte *pkt = buf + snmp_varbind_size(vb);
 
   switch (o->ids[2])
   {
@@ -1094,7 +1217,7 @@ snmp_bgp_record(struct snmp_proto *p, struct oid *o, byte *buf, uint size, uint 
       /* end part of .1.3.6.1.2.1.15.3.1.x.a.b.c.d */
       if (o->n_subid < 9 || o->ids[3] != SNMP_BGP_PEER_ENTRY
 	  || o->ids[4] == 0 || o->ids[4] > 24)
-	return snmp_no_such_object(pkt, vb);
+	vb->type = AGENTX_NO_SUCH_OBJECT;
 
       // TODO enumerate range requests
       ip_addr addr = ipa_build4(o->ids[5], o->ids[6], o->ids[7], o->ids[8]);
@@ -1121,15 +1244,17 @@ snmp_bgp_record(struct snmp_proto *p, struct oid *o, byte *buf, uint size, uint 
       */
 
       if (!bp)
-	/* pkt += 0; no data */
-	return snmp_no_such_object(pkt, vb);
+      { /* pkt += 0; no data inserted into the packet */
+	vb->type = AGENTX_NO_SUCH_OBJECT;
+	return pkt;
+      }
 
       return find_bgp_one(bp, o, buf, size, contid);
       break;
 
     default:
       /* pkt += 0; no data */
-      return snmp_no_such_object(pkt, vb);
+      vb->type = AGENTX_NO_SUCH_OBJECT;
   }
 
   return pkt;
@@ -1147,26 +1272,33 @@ find_ospf_record(struct snmp_proto *p, struct oid *o, byte *buf, uint size)
 static inline byte *
 find_prefixed(struct snmp_proto *p, struct oid *o, byte *buf, uint size, uint contid)
 {
-  struct agentx_varbind *vb = (void *) buf;
-
-  memcpy(&vb->name, o, snmp_oid_size(o));
+  log(L_INFO "find_prefixed() - shouldn't be called");
+  struct agentx_varbind *vb = snmp_create_varbind(buf, o);
+  buf += snmp_varbind_size(vb);
 
                        /* SNMPv2   mgmt		     mib-2 */
   if (o->n_subid < 2 || (o->prefix != 2 && o->ids[0] != 1))
-    snmp_no_such_object(buf + snmp_vb_size(vb), vb);
+  {
+    vb->type = AGENTX_NO_SUCH_OBJECT;
+    return buf;
+  }
 
   switch (o->ids[1])
   {
     case SNMP_BGP4_MIB:
       log(L_INFO "find_prefixed() BGP4");
-      return snmp_bgp_record(p, o, buf, size, contid);
+      //return snmp_bgp_record(p, o, buf, size, contid);
+      return buf;
 
     case SNMP_OSPFv3_MIB:
-      return snmp_no_such_object(buf, vb);
-      //return find_ospf_record(p, o, buf, size);
+      //return snmp_no_such_object(buf, vb);
+	  //return find_ospf_record(p, o, buf, size);
+     return buf; 
 
     default:
-      return snmp_no_such_object(buf, vb);
+      vb->type = AGENTX_NO_SUCH_OBJECT;
+      return buf; 
+      //return snmp_no_such_object(buf, vb);
   }
 }
 
@@ -1237,24 +1369,38 @@ find_n_fill(struct snmp_proto *p, struct oid *o, byte *buf, uint size, uint cont
 /**
  * snmp_mib_fill - 
  */
-static byte *snmp_mib_fill(struct snmp_proto *p, struct oid *oid, u8 mib_class, byte *buf, uint size, uint contid, int byte_ord)
-{ 
+static byte *snmp_mib_fill(struct snmp_proto *p, struct oid *oid, u8 mib_class,
+byte *buf, uint size, struct snmp_error *error, uint contid, int byte_ord)
+{
   log(L_INFO "snmp_mib_fill()");
-  struct agentx_varbind *vb = (void *) buf;
 
-  memcpy(&vb->name, oid, snmp_oid_size(oid));
+  if (oid == NULL)
+    return buf;
+
+  struct agentx_varbind *vb = snmp_create_varbind(buf, oid);
+  buf += snmp_varbind_size(vb);
 
                        /* SNMPv2   mgmt		     mib-2 */
   if (oid->n_subid < 2 || (oid->prefix != 2 && oid->ids[0] != 1))
-    return snmp_no_such_object(buf + snmp_vb_size(vb), vb);
+  {
+    vb->type = AGENTX_NO_SUCH_OBJECT; 
+    return buf;
+  }
 
+  byte *last = buf;
   switch (mib_class)
   {
     case SNMP_CLASS_BGP:
-      buf = snmp_bgp_fill(p, oid, buf, size, contid, byte_ord);
+      buf = snmp_bgp_fill(p, vb, buf, size, contid, byte_ord);
       break;
   }
  
+  if (last == buf)
+  {
+    buf = snmp_fix_varbind(vb, error->oid);
+    vb->type = error->type;
+  }
+
   return buf;
 }
 

@@ -185,6 +185,19 @@ struct agentx_un_register_pdu {
   u8 padd;
 };
 
+struct agentx_bulk_state {
+  struct agentx_getbulk getbulk;
+  u16 index;
+  u16 repetition;
+  byte* packet;
+  u16 failed;
+};
+
+struct snmp_error {
+  struct oid *oid;
+  uint type;
+};
+
 enum agentx_pdu {
   AGENTX_OPEN_PDU		=  1,
   AGENTX_CLOSE_PDU		=  2,
@@ -261,5 +274,7 @@ enum agentx_response_err {
 
 int snmp_rx(sock *sk, uint size);
 
-static byte *snmp_mib_fill(struct snmp_proto *p, struct oid *oid, u8 mib_class, byte *buf, uint size, uint contid, int byte_ord);
+static byte *snmp_mib_fill(struct snmp_proto *p, struct oid *oid, u8 mib_class,
+byte *buf, uint size, struct snmp_error *error, uint contid, int byte_ord);
+
 #endif
