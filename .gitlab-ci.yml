@@ -684,3 +684,44 @@ test-kernel-learn:
   <<: *test-base
   variables:
     TEST_NAME: cf-kernel-learn
+
+
+.build-birdlab-base: &build-birdlab-base
+  stage: build
+  script:
+    - autoreconf
+    - ./configure
+    - gmake
+    - gmake check
+
+build-birdlab-debian-11:
+  <<: *build-birdlab-base
+  tags:
+    - birdlab-debian-11
+    - amd64
+
+build-birdlab-centos-08:
+  <<: *build-birdlab-base
+  tags:
+    - birdlab-centos-08
+    - amd64
+
+build-birdlab-fedora-37:
+  <<: *build-birdlab-base
+  tags:
+    - birdlab-fedora-37
+    - amd64
+
+build-birdlab-freebsd-13:
+  <<: *build-birdlab-base
+  tags:
+    - birdlab-freebsd-13
+    - amd64
+
+build-birdlab-openbsd-71:
+  <<: *build-birdlab-base
+  variables:
+     AUTOCONF_VERSION: "2.71"
+  tags:
+    - birdlab-openbsd-71
+    - amd64
