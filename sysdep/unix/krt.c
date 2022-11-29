@@ -937,7 +937,7 @@ krt_rt_notify(struct proto *P, struct channel *ch UNUSED, net *net,
    * kernel, which would remove the new imported route instead.
    */
   rte *best = net->routes;
-  if (!new && best && (best->attrs->src->proto == P))
+  if (!new && best && (best->src->proto == P))
     return;
 #endif
 
