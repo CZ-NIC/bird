@@ -26,6 +26,9 @@
  *
  */
 
+static byte *snmp_mib_fill(struct snmp_proto *p, struct oid *oid, u8 mib_class,
+byte *buf, uint size, struct snmp_error *error, uint contid, int byte_ord);
+
 static int parse_response(struct snmp_proto *p, byte *buf, uint size);
 static int snmp_stop_ack(sock *sk, uint size);
 static void do_response(struct snmp_proto *p, byte *buf, uint size);
@@ -35,6 +38,7 @@ static byte *prepare_response(struct snmp_proto *p, byte *buf, uint size);
 static void response_err_ind(byte *buf, uint err, uint ind);
 static struct oid *search_mib(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, struct oid *o_curr, u8 mib_class, uint contid);
 static inline byte *find_n_fill(struct snmp_proto *p, struct oid *o, byte *buf, uint size, uint contid, int byte_ord);
+
 
 static const char * const snmp_errs[] = {
   #define SNMP_ERR_SHIFT 256
@@ -541,15 +545,28 @@ byte *pkt, uint rsize, uint contid, u8 mib_class, int byte_ord)
     .type = AGENTX_END_OF_MIB_VIEW,
   };
 
+  /*
   pkt = snmp_mib_fill(
     p, o_copy, mib_class, pkt, rsize, &error, contid, byte_ord
   );
+  */
 
   if (o_copy)
   {
+    pkt = snmp_mib_fill(
+      p, o_copy, mib_class, pkt, rsize, &error, contid, byte_ord
+    );
+
     mb_free(o_copy);
   }
+  else
+  {
+    struct agentx_varbind *vb = snmp_create_varbind(pkt, o_start);
+    pkt += snmp_varbind_size(vb);
+    vb->type = AGENTX_NO_SUCH_OBJECT;
+  }
 
+  log(L_INFO "over HERE ");
   return pkt;
 }
 
@@ -1316,6 +1333,9 @@ struct oid *
 snmp_prefixize(struct snmp_proto *proto, struct oid *oid, int byte_ord)
 {
   const u32 prefix[] = {1, 3, 6, 1};
+
+  if (oid == NULL)
+    return NULL;
 
   if (snmp_is_oid_empty(oid))
   {

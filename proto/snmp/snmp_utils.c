@@ -238,3 +238,63 @@ void snmp_oid_dump(struct oid *oid)
   log(L_WARN "OID DUMP END ====");
   log(L_WARN);
 }
+
+/** snmp_oid_compare - find the lexicographical order relation between @left and @right
+ * @left: left object id relation operant
+ * @right: right object id relation operant
+ *
+ * function returns 0 if left == right -1 if left < right and 1 otherwise
+ */
+int
+snmp_oid_compare(struct oid *left, struct oid *right)
+{
+  const u32 INTERNET_PREFIX[] = {1, 3, 6, 1};
+
+  if (left->prefix == 0 && right->prefix == 0)
+    goto test_ids;
+
+  if (right->prefix == 0)
+  {
+    struct oid *temp = left;
+    left = right;
+    right = temp;
+  }
+
+  if (left->prefix == 0)
+  {
+    for (int i = 0; i < 4; i++)
+      if (left->ids[i] < INTERNET_PREFIX[i])
+	return -1;
+      else if (left->ids[i] > INTERNET_PREFIX[i])
+	return 1;
+
+    for (int i = 0; i < MIN(left->n_subid - 4, right->n_subid); i++)
+      if (left->ids[i + 4] < right->ids[i])
+	return -1;
+      else if (left->ids[i + 4] > right->ids[i])
+	return 1;
+
+    goto all_same;
+  }
+
+  if (left->prefix < right->prefix)
+    return -1;
+  else if (left->prefix > right->prefix)
+    return 1;
+
+test_ids:
+  for (int i = 0; i < MIN(left->n_subid, right->n_subid); i++)
+    if (left->ids[i] < right->ids[i])
+      return -1;
+    else if (left->ids[i] > right->ids[i])
+      return 1;
+
+all_same:
+  /* shorter sequence is before longer in lexicografical order  */
+  if (left->n_subid < right->n_subid)
+    return -1;
+  else if (left->n_subid > right->n_subid)
+    return 1;
+  else
+    return 0;
+}

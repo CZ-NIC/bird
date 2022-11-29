@@ -29,4 +29,6 @@ void snmp_oid_ip4_index(struct oid *o, uint start, ip4_addr addr);
 
 void snmp_oid_dump(struct oid *oid);
 
+int snmp_oid_compare(struct oid *left, struct oid *right);
+
 #endif

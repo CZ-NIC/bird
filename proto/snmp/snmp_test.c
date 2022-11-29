@@ -25,18 +25,13 @@
   #define BYTE_ORD 0
 #endif
 
-void
-dump_oid(struct oid *oid)
-{
-  bt_debug(" OID DUMP: \n");
-  bt_debug("  n_subid = %3u  prefix = %3u  include %s  --- \n",
-    oid->n_subid, oid->prefix, (oid->include != 0) ? "yes" : "no" );
+#define OID_ALLOCATE(size) mb_alloc(&root_pool, sizeof(struct oid) + (size) * sizeof (u32))
 
-  for (int i = 0; i < oid->n_subid; i++)
-    bt_debug(" %u:  %u\n", i + 1, oid->ids[i]);
-
-  bt_debug(" OID DUMP END\n");
-}
+#define OID_INIT(oid, n_subid_, prefix_, include_, arr_)      \
+  (oid)->n_subid = (n_subid_);				      \
+  (oid)->prefix = (prefix_);				      \
+  (oid)->include = (include_);				      \
+  memcpy((oid)->ids, (arr_), sizeof(arr_));		      \
 
 void
 test_fill(struct snmp_proto *p)
@@ -68,7 +63,7 @@ test_oid(struct oid *oid, uint base_size)
   oid->n_subid = base_size + 4;
   oid->ids[2] = 3;
   oid->ids[3] = 1;   // BGP4-MIB::bgpPeerEntry
-  dump_oid(oid);
+  snmp_oid_dump(oid);
   SNMP_EXPECTED(snmp_bgp_state(oid), BGP_INTERNAL_PEER_ENTRY);
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_PEER_ENTRY);
 
@@ -215,6 +210,13 @@ t_s_prefixize(void)
   test_fill(&snmp_proto);
 
   bt_debug("before seg fault\n");
+
+  if (snmp_is_oid_empty(NULL))
+    bt_debug("null oid is empty");
+  else
+    bt_debug("null oid is not empty");
+  
+  bt_debug("main cause\n");
   struct oid *tmp = snmp_prefixize(&snmp_proto, nulled, BYTE_ORD);
   bt_debug("after snmp_prefixize() call\n");
   bt_assert( NULL == tmp );
@@ -271,6 +273,135 @@ t_s_prefixize(void)
 }
 
 static int
+t_oid_compare(void)
+{
+  /* same length, no prefix */
+  struct oid *l1 = OID_ALLOCATE(5);
+  {
+    u32 arr[] = { 1, 2, 3, 4, 5 };
+    OID_INIT(l1, 5, 0, 1, arr);
+  }
+
+
+  struct oid *r1 = OID_ALLOCATE(5);
+  {
+    u32 arr[] = { 1, 2, 3, 4, 6 };
+    OID_INIT(r1, 5, 0, 0, arr);
+  }
+
+  bt_assert(snmp_oid_compare(l1, r1) == -1);
+  bt_assert(snmp_oid_compare(r1, l1) ==  1);
+
+  bt_assert(snmp_oid_compare(l1, l1) ==  0);
+  bt_assert(snmp_oid_compare(r1, r1) ==  0);
+
+  /* same results for prefixed oids */
+  l1->prefix = 1;
+  r1->prefix = 1;
+
+  bt_assert(snmp_oid_compare(l1, r1) == -1);
+  bt_assert(snmp_oid_compare(r1, l1) ==  1);
+
+  bt_assert(snmp_oid_compare(l1, l1) ==  0);
+  bt_assert(snmp_oid_compare(r1, r1) ==  0);
+
+  mb_free(l1);
+  mb_free(r1);
+
+
+  /* different length, no prefix */
+  l1 = OID_ALLOCATE(4);
+  {
+    u32 arr[] = { 1, 2, 3, 4 };
+    OID_INIT(l1, 4, 0, 0, arr);
+  }
+
+  r1 = OID_ALLOCATE(5);
+  {
+    u32 arr[] = { 1, 2, 3, 4, 1 };
+    OID_INIT(l1, 5, 0, 1, arr);
+  }
+
+  bt_assert(snmp_oid_compare(l1, r1) == -1);
+  bt_assert(snmp_oid_compare(r1, l1) ==  1);
+
+  bt_assert(snmp_oid_compare(l1, l1) ==  0);
+  bt_assert(snmp_oid_compare(r1, r1) ==  0);
+
+  /* same results for prefixed oids */
+  l1->prefix = 3;
+  r1->prefix = 3;
+
+  bt_assert(snmp_oid_compare(l1, r1) == -1);
+  bt_assert(snmp_oid_compare(r1, l1) ==  1);
+
+  bt_assert(snmp_oid_compare(l1, l1) ==  0);
+  bt_assert(snmp_oid_compare(r1, r1) ==  0);
+
+  mb_free(l1);
+  mb_free(r1);
+
+
+  /* inverse order different length, no prefix */  
+  l1 = OID_ALLOCATE(4);
+  {
+    u32 arr[] = { 1, 2, 3, 5 };
+    OID_INIT(l1, 4, 0, 0, arr);
+  }
+
+  r1 = OID_ALLOCATE(5);
+  {
+    u32 arr[] = { 1, 2, 3, 4, 1 };
+    OID_INIT(r1, 5, 0, 0, arr);
+  }
+
+  bt_assert(snmp_oid_compare(l1, r1) ==  1);
+  bt_assert(snmp_oid_compare(r1, l1) == -1);
+
+  bt_assert(snmp_oid_compare(l1, l1) ==  0);
+  bt_assert(snmp_oid_compare(r1, r1) ==  0);
+
+  /* same results for prefixed oids */
+  l1->prefix = 254;
+  r1->prefix = 254;
+
+  bt_assert(snmp_oid_compare(l1, r1) ==  1);
+  bt_assert(snmp_oid_compare(r1, l1) == -1);
+
+  bt_assert(snmp_oid_compare(l1, l1) ==  0);
+  bt_assert(snmp_oid_compare(r1, r1) ==  0);
+
+  mb_free(l1);
+  mb_free(r1);
+
+
+/* ==== MIXED PREFIXED / NON PREFIXED OID compare ==== */
+  /* same length, mixed */
+  l1 = OID_ALLOCATE(6);  /* OID .1.2.17.3.21.4 */
+  {
+    u32 arr[] = { 1, 2, 17, 3, 21, 4 };
+    OID_INIT(l1, 6, 0, 1, arr);
+  }
+
+  r1 = OID_ALLOCATE(1);  /* OID .1.3.6.1.5.3 */
+  {
+    u32 arr[] = { 3 };
+    OID_INIT(l1, 1, 5, 1, arr);
+  }
+
+  bt_assert(snmp_oid_compare(l1, r1) == -1);
+  bt_assert(snmp_oid_compare(r1, l1) ==  1);
+
+  bt_assert(snmp_oid_compare(l1, l1) ==  0);
+  bt_assert(snmp_oid_compare(r1, r1) ==  0);
+
+  mb_free(l1);
+  mb_free(r1);
+
+  return 1;
+}
+
+static int
 t_s_bgp_state(void)
 {
   struct oid *oid = mb_alloc(&root_pool, sizeof(struct oid) + 10 * sizeof(u32));
@@ -322,6 +453,8 @@ int main(int argc, char **argv)
   bt_test_suite(t_s_is_oid_empty, "Function snmp_is_oid_empty()");
 
   bt_test_suite(t_s_prefixize, "Function snmp_prefixize()");
+
+  bt_test_suite(t_oid_compare, "Function snmp_oid_compare()");
 
   return bt_exit_value();
 }

@@ -2,6 +2,7 @@
 #define _BIRD_SNMP_BGP_MIB_H_
 
 #include "snmp.h"
+#include "subagent.h"
 
 /* peers attributes */
 enum BGP4_MIB {

@@ -23,6 +23,15 @@ static void snmp_startup(struct snmp_proto *p);
 static void snmp_startup_timeout(timer *t);
 static void snmp_start_locked(struct object_lock *lock);
 
+
+static const char * const snmp_state[] = {
+  [SNMP_ERR]	  = "SNMP ERROR",
+  [SNMP_DELAY]	  = "SNMP DELAY",
+  [SNMP_INIT]	  = "SNMP INIT",
+  [SNMP_REGISTR]  = "SNMP REGISTERING",
+  [SNMP_CONN]	  = "SNMP CONNECTED",
+};
+
 static struct proto *
 snmp_init(struct proto_config *CF)
 {
@@ -50,6 +59,7 @@ snmp_init(struct proto_config *CF)
 static void
 snmp_startup_timeout(timer *t)
 {
+  log(L_INFO "startup timer triggered");
   snmp_startup(t->data);
 }
 
@@ -59,6 +69,9 @@ snmp_startup(struct snmp_proto *p)
   /* starting agentX communicaiton channel */
   log(L_INFO "preparing lock");
   struct object_lock *lock;
+  log(L_INFO "snmp_startup() object lock state %p", p->lock);
+
+  /* we could have the lock already acquired but be in ERROR state */
   lock = p->lock = olock_new(p->p.pool);
 
   lock->type = OBJLOCK_TCP;
@@ -135,6 +148,9 @@ snmp_sock_err(sock *sk, int err)
 
   rfree(p->sock);
   p->sock = NULL;
+
+  rfree(p->lock);
+  p->lock = NULL;
 
   p->state = SNMP_ERR;
   tm_start(p->startup_timer, 15 S);
@@ -222,9 +238,12 @@ snmp_reconfigure(struct proto *P, struct proto_config *CF)
 
 static void snmp_show_proto_info(struct proto *P)
 {
-  //struct snmp_proto *sp = (void *) P;
+  struct snmp_proto *sp = (void *) P;
   struct snmp_config *c = (void *) P->cf;
 
+  cli_msg(-1006, "");
+  cli_msg(-1006, " snmp status %s", snmp_state[sp->state]);
+  cli_msg(-1006, "");
   cli_msg(-1006, "  BGP peers");
   struct snmp_bond *bond;
   WALK_LIST(bond, c->bgp_entries)

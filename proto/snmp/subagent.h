@@ -274,7 +274,4 @@ enum agentx_response_err {
 
 int snmp_rx(sock *sk, uint size);
 
-static byte *snmp_mib_fill(struct snmp_proto *p, struct oid *oid, u8 mib_class,
-byte *buf, uint size, struct snmp_error *error, uint contid, int byte_ord);
-
 #endif
