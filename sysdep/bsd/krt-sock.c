@@ -347,7 +347,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
 }
 
 void
-krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old)
+krt_replace_rte(struct krt_proto *p, net *n UNUSED, rte *new, rte *old)
 {
   int err = 0;
 
@@ -519,7 +519,6 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   net = net_get(p->p.main_channel->table, &ndst);
 
   rta a = {
-    .src = p->p.main_source,
     .source = RTS_INHERIT,
     .scope = SCOPE_UNIVERSE,
   };
@@ -580,7 +579,7 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   }
 
  done:
-  e = rte_get_temp(&a);
+  e = rte_get_temp(&a, p->p.main_source);
   e->net = net;
 
   ea_list *ea = alloca(sizeof(ea_list) + 1 * sizeof(eattr));
@@ -1203,7 +1202,7 @@ kif_update_sysdep_addr(struct iface *i)
     return 0;
 
   ip4_addr old = i->sysdep;
-  i->sysdep = ipa_to_ip4(ipa_from_sa4(&ifr.ifr_addr));
+  i->sysdep = ipa_to_ip4(ipa_from_sa4((sockaddr *) &ifr.ifr_addr));
 
   return !ip4_equal(i->sysdep, old);
 }
