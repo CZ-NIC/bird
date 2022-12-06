@@ -1112,7 +1112,20 @@ rte_announce(rtable *tab, uint type, net *net, rte *new, rte *old,
       break;
 
     case RA_ACCEPTED:
-      rt_notify_accepted(c, net, new, old, 0);
+      /*
+       * The (new != old) condition is problematic here, as it would break
+       * the second usage pattern (announcement after bulk change, used in
+       * rt_next_hop_update_net(), which sends both new and old as NULL).
+       *
+       * But recursive next hops do not work with sorted tables anyways,
+       * such configuration is forbidden in BGP and not supported in
+       * rt_notify_accepted().
+       *
+       * The condition is needed to eliminate spurious announcements where
+       * both old and new routes are not valid (so they are NULL).
+       */
+      if (new != old)
+	rt_notify_accepted(c, net, new, old, 0);
       break;
 
     case RA_MERGED:
