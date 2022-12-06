@@ -31,4 +31,5 @@ void snmp_oid_dump(struct oid *oid);
 
 int snmp_oid_compare(struct oid *left, struct oid *right);
 
+struct oid *snmp_prefixize(struct snmp_proto *p, struct oid *o, int byte_ord);
 #endif

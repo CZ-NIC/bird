@@ -13,7 +13,6 @@
 #include "subagent.h"
 #include "snmp.h"
 #include "snmp_utils.h"
-#include "snmp_internal.h"
 
 #define SNMP_EXPECTED(actual, expected) \
   bt_debug("%s  expected: %3u   actual: %3u\n", \

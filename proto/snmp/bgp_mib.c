@@ -106,6 +106,67 @@ ip4_from_oid(const struct oid *o)
 o->ids[8]) : IP4_NONE;
 }
 
+static void
+print_bgp_record(struct bgp_config *config)
+{
+  struct proto_config *cf = (struct proto_config *) config;
+  struct proto *P = cf->proto;
+  struct bgp_proto *bgp_proto = (struct bgp_proto *) cf->proto;
+  struct bgp_conn *conn = bgp_proto->conn;
+
+  log(L_INFO "    name: %s", cf->name);
+  log(L_INFO "");
+  log(L_INFO "    rem. identifier: %u", bgp_proto->remote_id);
+  log(L_INFO "    local ip: %I", config->local_ip);
+  log(L_INFO "    remote ip: %I", config->remote_ip);
+  log(L_INFO "    local port: %u", config->local_port);
+  log(L_INFO "    remote port: %u", config->remote_port);
+
+  // crashes ?
+  if (conn) {
+    log(L_INFO "    state: %u", conn->state);
+    log(L_INFO "    remote as: %u", conn->remote_caps->as4_number);
+  }
+
+
+  log(L_INFO "    in updates: %u", bgp_proto->stats.rx_updates);
+  log(L_INFO "    out updates: %u", bgp_proto->stats.tx_updates);
+  log(L_INFO "    in total: %u", bgp_proto->stats.rx_messages);
+  log(L_INFO "    out total: %u", bgp_proto->stats.tx_messages);
+  log(L_INFO "    fsm transitions: %u",
+bgp_proto->stats.fsm_established_transitions);
+
+  // not supported yet
+  log(L_INFO "    fsm total time: --");
+  log(L_INFO "    retry interval: %u", config->connect_retry_time);
+
+  log(L_INFO "    hold configurated: %u", config->hold_time );
+  log(L_INFO "    keep alive config: %u", config->keepalive_time );
+
+  // unknown
+  log(L_INFO "    min AS origin. int.: --");
+  log(L_INFO "    min route advertisement: %u", 0 );
+  log(L_INFO "    in update elapsed time: %u", 0 );
+
+  if (!conn)
+    log(L_INFO "  no connection established");
+
+  log(L_INFO "  outgoinin_conn state %u", bgp_proto->outgoing_conn.state + 1);
+  log(L_INFO "  incoming_conn state: %u", bgp_proto->incoming_conn.state + 1);
+
+}
+
+static void
+print_bgp_record_all(struct snmp_proto *p)
+{
+  log(L_INFO "dumping watched bgp status");
+  HASH_WALK(p->bgp_hash, next, peer)
+  {
+    print_bgp_record(peer->config);
+  }
+  HASH_WALK_END;
+}
+
 /**
  * snmp_bgp_state - linearize oid from BGP4-MIB
  * @oid: prefixed object identifier from BGP4-MIB::bgp subtree
@@ -470,6 +531,11 @@ search_bgp_mib(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, uin
   u8 start_state = snmp_bgp_state(o_start);
   //u8 state_curr = snmp_bgp_state(o_start);
   //u8 state_end = (o_end) ? snmp_bgp_state(o_end) : 0;
+
+
+
+  // print debugging information
+  print_bgp_record_all(p);
 
   if (o_start->include && snmp_bgp_has_value(start_state) &&
       !is_dynamic(start_state) && o_start->n_subid == 3)

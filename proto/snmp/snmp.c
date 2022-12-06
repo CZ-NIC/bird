@@ -66,7 +66,10 @@ snmp_startup_timeout(timer *t)
 static void
 snmp_startup(struct snmp_proto *p)
 {
+  p->state = SNMP_INIT;
+
   /* starting agentX communicaiton channel */
+
   log(L_INFO "preparing lock");
   struct object_lock *lock;
   log(L_INFO "snmp_startup() object lock state %p", p->lock);
@@ -258,8 +261,8 @@ static void snmp_show_proto_info(struct proto *P)
     cli_msg(-1006, "");
     cli_msg(-1006, "    rem. identifier: %u", bp->remote_id);
     // learn more !!
-    cli_msg(-1006, "    admin status: %s", (p->disabled) ? "start" :
-	      "stop");
+    cli_msg(-1006, "    admin status: %s", (p->disabled) ? "stop" :
+	      "start");
     // version ?
     cli_msg(-1006, "    version: 4");
     cli_msg(-1006, "    local ip: %u", bcf->local_ip);

@@ -106,4 +106,6 @@ struct snmp_proto {
   uint errs;
 };
 
+#define snmp_log(x) log(L_INFO "snmp" x);
+
 #endif
