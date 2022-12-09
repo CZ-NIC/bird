@@ -120,8 +120,11 @@ struct bgp_config {
   unsigned llgr_time;			/* Long-lived graceful restart stale time */
   unsigned connect_delay_time;		/* Minimum delay between connect attempts */
   unsigned connect_retry_time;		/* Timeout for connect attempts */
-  unsigned hold_time, initial_hold_time;
+  unsigned hold_time;
+  unsigned min_hold_time;		/* Minimum accepted hold time */
+  unsigned initial_hold_time;
   unsigned keepalive_time;
+  unsigned min_keepalive_time;		/* Minimum accepted keepalive time */
   unsigned error_amnesia_time;		/* Errors are forgotten after */
   unsigned error_delay_time_min;	/* Time to wait after an error is detected */
   unsigned error_delay_time_max;
