@@ -2750,9 +2750,16 @@ using the following configuration parameters:
 
 	<tag><label id="bgp-hold-time">hold time <m/number/</tag>
 	Time in seconds to wait for a Keepalive message from the other side
-	before considering the connection stale. Default: depends on agreement
-	with the neighboring router, we prefer 240 seconds if the other side is
-	willing to accept it.
+	before considering the connection stale. The effective value is
+	negotiated during session establishment and it is a minimum of this
+	configured value and the value proposed by the peer. The zero value has
+	a special meaning, signifying that no keepalives are used. Default: 240
+	seconds.
+
+	<tag><label id="bgp-min-hold-time">min hold time <m/number/</tag>
+	Minimum value of the hold time that is accepted during session negotiation.
+	If the peer proposes a lower value, the session is rejected with error.
+	Default: none.
 
 	<tag><label id="bgp-startup-hold-time">startup hold time <m/number/</tag>
 	Value of the hold timer used before the routers have a chance to exchange
@@ -2760,7 +2767,14 @@ using the following configuration parameters:
 
 	<tag><label id="bgp-keepalive-time">keepalive time <m/number/</tag>
 	Delay in seconds between sending of two consecutive Keepalive messages.
+	The effective value depends on the negotiated hold time, as it is scaled
+	to maintain proportion between the keepalive time and the hold time.
 	Default: One third of the hold time.
+
+	<tag><label id="bgp-min-keepalive-time">min keepalive time <m/number/</tag>
+	Minimum value of the keepalive time that is accepted during session
+	negotiation. If the proposed hold time would lead to a lower value of
+	the keepalive time, the session is rejected with error. Default: none.
 
 	<tag><label id="bgp-connect-delay-time">connect delay time <m/number/</tag>
 	Delay in seconds between protocol startup and the first attempt to

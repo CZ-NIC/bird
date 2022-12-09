@@ -847,7 +847,23 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   if (bgp_read_options(conn, pkt+29, pkt[28], len-29) < 0)
     return;
 
+  /* RFC 4271 4.2 - hold time must be either 0 or at least 3 */
   if (hold > 0 && hold < 3)
+  { bgp_error(conn, 2, 6, pkt+22, 2); return; }
+
+  /* Compute effective hold and keepalive times */
+  uint hold_time = MIN(hold, p->cf->hold_time);
+  uint keepalive_time = p->cf->keepalive_time ?
+    (p->cf->keepalive_time * hold_time / p->cf->hold_time) :
+    hold_time / 3;
+
+  /* Keepalive time might be rounded down to zero */
+  if (hold_time && !keepalive_time)
+    keepalive_time = 1;
+
+  /* Check effective values against configured minimums */
+  if ((hold_time < p->cf->min_hold_time) ||
+      (keepalive_time < p->cf->min_keepalive_time))
   { bgp_error(conn, 2, 6, pkt+22, 2); return; }
 
   /* RFC 6286 2.2 - router ID is nonzero and AS-wide unique */
@@ -947,8 +963,8 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   }
 
   /* Update our local variables */
-  conn->hold_time = MIN(hold, p->cf->hold_time);
-  conn->keepalive_time = p->cf->keepalive_time ? : conn->hold_time / 3;
+  conn->hold_time = hold_time;
+  conn->keepalive_time = keepalive_time;
   conn->as4_session = conn->local_caps->as4_support && caps->as4_support;
   conn->ext_messages = conn->local_caps->ext_messages && caps->ext_messages;
   p->remote_id = id;
