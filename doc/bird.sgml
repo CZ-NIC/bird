@@ -2982,6 +2982,13 @@ be used in explicit configuration.
 	be examined later by <cf/show route/, and can be used to reconfigure
 	import filters without full route refresh. Default: off.
 
+	Note that currently the import table breaks routes with recursive
+	nexthops (e.g. ones from IBGP, see <ref id="bgp-gateway" name="gateway
+	recursive">), they are not properly updated after next hop change. For
+	the same reason, it also breaks re-evaluation of flowspec routes with
+	<ref id="bgp-validate" name="flowspec validation"> option enabled on
+	flowspec channels.
+
 	<tag><label id="bgp-export-table">export table <m/switch/</tag>
 	A BGP export table contains all routes sent to given BGP neighbor, after
 	application of export filters. It is also called <em/Adj-RIB-Out/ in BGP
