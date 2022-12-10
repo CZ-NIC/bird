@@ -153,7 +153,7 @@ submit_init_command(char *cmd_raw)
   if (!cmd)
   {
     cleanup();
-    exit(0);
+    exit(1);
   }
 
   submit_server_command(cmd);
