@@ -37,7 +37,7 @@ snmp_init(struct proto_config *CF)
 {
   struct proto *P = proto_new(CF);
   struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
-  struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, CF);
+  const struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, CF);
 
   p->rl_gen = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
 
@@ -57,6 +57,17 @@ snmp_init(struct proto_config *CF)
   return P;
 }
 
+static void snmp_down(struct snmp_proto *p)
+{
+  if (p->sock != NULL)
+    mb_free(p->sock);
+
+  if (p->lock != NULL)
+    rfree(p->lock);
+
+  proto_notify_state(&p->p, PS_DOWN);
+}
+
 static void
 snmp_startup_timeout(timer *t)
 {
@@ -67,6 +78,16 @@ snmp_startup_timeout(timer *t)
 static void
 snmp_startup(struct snmp_proto *p)
 {
+  //snmp_log("changing proto_snmp state to INIT");
+
+  if (p->state == SNMP_CONN ||
+      p->state == SNMP_REGISTR)
+  {
+    snmp_log("startup() with invalid state %u", p->state);
+    return;
+  }
+
+  snmp_log("snmp_startup()");
   p->state = SNMP_INIT;
 
   /* starting agentX communicaiton channel */
@@ -78,6 +99,10 @@ snmp_startup(struct snmp_proto *p)
   /* we could have the lock already acquired but be in ERROR state */
   lock = p->lock = olock_new(p->p.pool);
 
+  // lock->addr
+  // lock->port
+  // lock->iface
+  // lock->vrf
   lock->type = OBJLOCK_TCP;
   lock->hook = snmp_start_locked;
   lock->data = p;
@@ -116,10 +141,13 @@ snmp_start_locked(struct object_lock *lock)
   p->to_send = 0;
   p->errs = 0;
 
-  snmp_startup(p);
+  // snmp_startup(p);
 
   if (sk_open(s) < 0)
+  {
     log(L_ERR "Cannot open listening socket");
+    snmp_down(p);
+  }
 
   snmp_log("socket ready!, trying to connect");
 }
@@ -141,6 +169,9 @@ snmp_connected(sock *sk)
   sk->tx_hook = snmp_tx;
 
   snmp_start_subagent(p);
+
+  // TODO ping interval
+  tm_set(p->ping_timer, 15 S);
 }
 
 static void
@@ -159,6 +190,7 @@ snmp_sock_err(sock *sk, int err)
 
   snmp_log("changing proto_snmp state to ERR[OR]");
   p->state = SNMP_ERR;
+  // TODO ping interval
   tm_start(p->startup_timer, 15 S);
 }
 
@@ -178,9 +210,10 @@ snmp_start(struct proto *P)
   p->bgp_trie = f_new_trie(p->pool, cf->bonds);
 
   p->ping_timer = tm_new_init(p->p.pool, snmp_ping_timer, p, 0, 0);
-  tm_set(p->ping_timer, current_time() + 2 S);
+  // tm_set(p->ping_timer, current_time() + 2 S);
 
-
+/* remove duplicate lock acquiring code */
+#if 0
   /* starting agentX communicaiton channel */
   snmp_log("preparing lock");
   struct object_lock *lock;
@@ -195,6 +228,8 @@ snmp_start(struct proto *P)
 
   snmp_log("local ip: %I:%u, remote ip: %I:%u",
     p->local_ip, p->local_port, p->remote_ip, p->remote_port);
+
+#endif
 
   /* create copy of bonds to bgp */
   HASH_INIT(p->bgp_hash, p->p.pool, 10);
@@ -219,6 +254,7 @@ snmp_start(struct proto *P)
     }
   }
 
+  snmp_startup(p);
   return PS_START;
 }
 
@@ -226,7 +262,7 @@ static int
 snmp_reconfigure(struct proto *P, struct proto_config *CF)
 {
   struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
-  struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, CF);
+  const struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, CF);
 
   p->local_ip = cf->local_ip;
   p->remote_ip = cf->remote_ip;
