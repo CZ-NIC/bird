@@ -37,6 +37,16 @@ snmp_pkt_len(byte *buf, byte *pkt)
 }
 
 /**
+ * create new null oid (blank)
+ * @p: pool hodling snmp_proto structure
+ */
+struct oid *
+snmp_oid_blank(struct snmp_proto *p)
+{
+  return mb_allocz(p->p.pool, sizeof(struct oid));
+}
+
+/**
  * snmp_str_size - return in packet size of supplied string
  * @str: measured string
  *
@@ -58,6 +68,16 @@ snmp_oid_size(struct oid *o)
 {
   //return 4 + o->n_subid * 4;
   return 4 + (o->n_subid << 2);
+}
+
+/**
+ * snmp_get_size - calculate size for allocation
+ * @n_subid: number of ids in oid
+ */
+inline size_t
+snmp_oid_sizeof(uint n_subid)
+{
+  return sizeof(struct oid) + n_subid * sizeof(u32);
 }
 
 /**
@@ -191,12 +211,11 @@ snmp_put_oid(byte *buf, struct oid *oid)
 byte *
 snmp_put_fbyte(byte *buf, u8 data)
 {
-  log(L_INFO "paste_fbyte()");
+  // log(L_INFO "paste_fbyte()");
   put_u8(buf, data);
   put_u24(++buf, 0);  // PADDING
   return buf + 3;
 }
-
 
 void
 snmp_oid_ip4_index(struct oid *o, uint start, ip4_addr addr)
@@ -297,4 +316,56 @@ all_same:
     return 1;
   else
     return 0;
+}
+
+struct snmp_register *
+snmp_register_create(struct snmp_proto *p, u8 mib_class)
+{
+  struct snmp_register *r = mb_alloc(p->p.pool, sizeof(struct snmp_register));
+
+  r->n.prev = r->n.next = NULL;
+
+  r->session_id = p->session_id;
+  r->transaction_id = p->transaction_id;
+  r->packet_id = p->packet_id;
+
+  r->mib_class = mib_class;
+
+  return r;
+}
+
+int
+snmp_register_same(struct snmp_register *r, struct agentx_header *h, u8 class)
+{
+  return
+    (r->mib_class == class) &&
+    (r->session_id == h->session_id) &&
+    (r->transaction_id == h->transaction_id) &&
+    (r->packet_id == h->packet_id);
+}
+
+void
+snmp_register_ack(struct snmp_proto *p, struct agentx_header *h)
+{
+  struct snmp_register *reg;
+  WALK_LIST(reg, p->register_queue)
+  {
+    // TODO add support for more mib trees (other than BGP)
+    if (snmp_register_same(reg, h, SNMP_BGP4_MIB))
+    {
+      struct snmp_registered_oid *ro = \
+	 mb_alloc(p->p.pool, sizeof(struct snmp_registered_oid));
+
+      ro->n.prev = ro->n.next = NULL;
+
+      ro->oid = reg->oid;
+
+      rem_node(&reg->n);
+      p->register_to_ack--;
+
+      add_tail(&p->bgp_registered, &ro->n);
+
+      return;
+    }
+  }
 }

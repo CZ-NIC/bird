@@ -94,7 +94,6 @@ snmp_startup(struct snmp_proto *p)
 
   snmp_log("preparing lock");
   struct object_lock *lock;
-  snmp_log("snmp_startup() object lock state %p", p->lock);
 
   /* we could have the lock already acquired but be in ERROR state */
   lock = p->lock = olock_new(p->p.pool);
@@ -209,6 +208,9 @@ snmp_start(struct proto *P)
   p->pool = lp_new(p->p.pool);
   p->bgp_trie = f_new_trie(p->pool, cf->bonds);
 
+  init_list(&p->register_queue);
+  init_list(&p->bgp_registered);
+
   p->ping_timer = tm_new_init(p->p.pool, snmp_ping_timer, p, 0, 0);
   // tm_set(p->ping_timer, current_time() + 2 S);
 
@@ -270,6 +272,9 @@ snmp_reconfigure(struct proto *P, struct proto_config *CF)
   p->remote_port = cf->remote_port;
   p->local_as = cf->local_as;
   p->timeout = 15;
+
+  /* workaround to make the registration happen */
+  p->register_to_ack = 1;
 
   /* TODO walk all bind protocols and find their (new) IP
     to update HASH table */
@@ -359,7 +364,7 @@ snmp_postconfig(struct proto_config *CF)
 static void
 snmp_ping_timer(struct timer *tm)
 {
-  snmp_log("snmp_ping_timer() ");
+  // snmp_log("snmp_ping_timer() ");
   struct snmp_proto *p = tm->data;
 
   if (p->state == SNMP_CONN)
@@ -374,6 +379,7 @@ snmp_ping_timer(struct timer *tm)
 static int
 snmp_shutdown(struct proto *P)
 {
+  snmp_log("snmp_shutdown()");
   struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
   p->state = SNMP_INIT;
 

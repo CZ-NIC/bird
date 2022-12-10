@@ -72,6 +72,20 @@ struct snmp_bgp_peer {
   struct snmp_bgp_peer *next;
 };
 
+struct snmp_register {
+  node n;
+  u8 mib_class;
+  u32 session_id;
+  u32 transaction_id;
+  u32 packet_id;
+  struct oid *oid;
+};
+
+struct snmp_registered_oid {
+  node n;
+  struct oid *oid;
+};
+
 struct snmp_proto {
   struct proto p;
   struct object_lock *lock;
@@ -84,12 +98,17 @@ struct snmp_proto {
   u32 local_as;
 
   sock *sock;
+  // timeout for what ??
   u8 timeout;
 
   u32 session_id;
   u32 transaction_id;
   u32 packet_id;
 
+  uint register_to_ack;		    /* counter of pending responses to register-pdu */
+  list register_queue;		    /* list containing snmp_register records */
+  list bgp_registered;		    /* list of currently registered bgp oids
+				      (struct snmp_registered_oid) */
   //struct iface *iface;
 
   // map
@@ -106,5 +125,15 @@ struct snmp_proto {
   uint to_send;
   uint errs;
 };
+
+/*
+struct snmp_pdu {
+  node n;
+
+  //u32 session_id;
+  u32 transaction_id;
+  u32 packet_id; // in future need support for ranges of packet_id-s
+};
+*/
 
 #endif

@@ -25,24 +25,24 @@ static const char * const debug_bgp_states[] = {
   [BGP_INTERNAL_IDENTIFIER] = "BGP_INTERNAL_IDENTIFIER",
   [BGP_INTERNAL_STATE] = "BGP_INTERNAL_STATE",
   [BGP_INTERNAL_ADMIN_STATUS] = "BGP_INTERNAL_ADMIN_STATUS",
-  [BGP_INTERNAL_NEGOTIATED_VERSION] = "BGP_INTERNAL_NEGOTIATED_VERSION", 
+  [BGP_INTERNAL_NEGOTIATED_VERSION] = "BGP_INTERNAL_NEGOTIATED_VERSION",
   [BGP_INTERNAL_LOCAL_ADDR] = "BGP_INTERNAL_LOCAL_ADDR",
-  [BGP_INTERNAL_LOCAL_PORT] = "BGP_INTERNAL_LOCAL_PORT", 
+  [BGP_INTERNAL_LOCAL_PORT] = "BGP_INTERNAL_LOCAL_PORT",
   [BGP_INTERNAL_REMOTE_ADDR] = "BGP_INTERNAL_REMOTE_ADDR",
-  [BGP_INTERNAL_REMOTE_PORT] = "BGP_INTERNAL_REMOTE_PORT", 
+  [BGP_INTERNAL_REMOTE_PORT] = "BGP_INTERNAL_REMOTE_PORT",
   [BGP_INTERNAL_REMOTE_AS] = "BGP_INTERNAL_REMOTE_AS",
   [BGP_INTERNAL_RX_UPDATES] = "BGP_INTERNAL_RX_UPDATES",
   [BGP_INTERNAL_TX_UPDATES] = "BGP_INTERNAL_TX_UPDATES",
   [BGP_INTERNAL_RX_MESSAGES] = "BGP_INTERNAL_RX_MESSAGES",
   [BGP_INTERNAL_TX_MESSAGES] = "BGP_INTERNAL_TX_MESSAGES",
-  [BGP_INTERNAL_LAST_ERROR] = "BGP_INTERNAL_LAST_ERROR", 
+  [BGP_INTERNAL_LAST_ERROR] = "BGP_INTERNAL_LAST_ERROR",
   [BGP_INTERNAL_FSM_TRANSITIONS] = "BGP_INTERNAL_FSM_TRANSITIONS",
   [BGP_INTERNAL_FSM_ESTABLISHED_TIME] = "BGP_INTERNAL_FSM_ESTABLISHED_TIME",
   [BGP_INTERNAL_RETRY_INTERVAL] = "BGP_INTERNAL_RETRY_INTERVAL",
   [BGP_INTERNAL_HOLD_TIME] = "BGP_INTERNAL_HOLD_TIME",
   [BGP_INTERNAL_KEEPALIVE] = "BGP_INTERNAL_KEEPALIVE",
   [BGP_INTERNAL_HOLD_TIME_CONFIGURED] = "BGP_INTERNAL_HOLD_TIME_CONFIGURED",
-  [BGP_INTERNAL_KEEPALIVE_CONFIGURED] = "BGP_INTERNAL_KEEPALIVE_CONFIGURED",  
+  [BGP_INTERNAL_KEEPALIVE_CONFIGURED] = "BGP_INTERNAL_KEEPALIVE_CONFIGURED",
   [BGP_INTERNAL_ORIGINATION_INTERVAL] = "BGP_INTERNAL_ORIGINATION_INTERVAL",
   [BGP_INTERNAL_MIN_ROUTE_ADVERTISEMENT] = "BGP_INTERNAL_MIN_ROUTE_ADVERTISEMENT",
   [BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME] = "BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME",
@@ -51,8 +51,106 @@ static const char * const debug_bgp_states[] = {
 };
 
 void
-snmp_bgp_register()
-{}
+snmp_bgp_register(struct snmp_proto *p)
+{
+  snmp_log("snmp_bgp_register()");
+
+  u32 arr_bgp[] = {1, 15, 1};
+
+  { /* registering whole BGP4-MIB subtree */
+    snmp_log("snmp_proto %p (%p)", p, p->p.pool);
+    struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
+
+    struct oid *oid = mb_alloc(p->p.pool, snmp_oid_sizeof(2));
+    put_u8(&oid->n_subid, 2);
+    put_u8(&oid->prefix, 2);
+
+    memcpy(oid->ids, arr_bgp, 2 * sizeof(u32));
+
+    registering->oid = oid;
+    add_tail(&p->register_queue, &registering->n);
+    p->register_to_ack++;
+
+    snmp_register(p, oid, 0, 1);
+  }
+
+  // TODO squash bgpVersion and bgpLocalAs to one PDU
+  { /* registering BGP4-MIB::bgpVersion */
+    snmp_log("snmp_proto %p (%p)", p, p->p.pool);
+    struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
+
+    struct oid *oid = mb_alloc(p->p.pool, snmp_oid_sizeof(3));
+    put_u8(&oid->n_subid, 3);
+    put_u8(&oid->prefix, 2);
+
+    memcpy(oid->ids, arr_bgp, 3 * sizeof(u32));
+
+    registering->oid = oid;
+    add_tail(&p->register_queue, &registering->n);
+    p->register_to_ack++;
+
+    snmp_register(p, oid, 0, 1);
+  }
+
+  { /* registering BGP4-MIB::bgpLocalAs */
+    struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
+
+    struct oid *oid = mb_alloc(p->p.pool, snmp_oid_sizeof(3));
+    put_u8(&oid->n_subid, 3);
+    put_u8(&oid->prefix, 2);
+
+    memcpy(oid->ids, arr_bgp, 2 * sizeof(u32));
+    STORE(oid->ids[2], 2);
+
+    registering->oid = oid;
+    add_tail(&p->register_queue, &registering->n);
+    p->register_to_ack++;
+
+    snmp_register(p, oid, 0, 1);
+  }
+
+  { /* registering BGP4-MIB::bgpPeerTable */
+    struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
+
+    struct oid *oid = mb_alloc(p->p.pool, snmp_oid_sizeof(3));
+    put_u8(&oid->n_subid, 3);
+    put_u8(&oid->prefix, 2);
+
+    memcpy(oid->ids, arr_bgp, 2 * sizeof(u32));
+    STORE(oid->ids[2], 3);
+
+    registering->oid = oid;
+    add_tail(&p->register_queue, &registering->n);
+    p->register_to_ack++;
+
+    snmp_register(p, oid, 0, 1);
+  }
+
+  /* register dynamic BGP4-MIB::bgpPeerEntry.* */
+
+  u32 arr_with_prefix[] = { 1, 15, 3, 1, 1};
+  snmp_log("before hash walk - registering dynamic parts");
+  HASH_WALK(p->bgp_hash, next, peer)
+  {
+    struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
+
+    struct oid *oid = mb_alloc(p->p.pool, snmp_oid_sizeof(10));
+
+    put_u8(&oid->n_subid, 9);
+    put_u8(&oid->prefix, 2);
+
+    memcpy(oid->ids, arr_with_prefix, 5 * sizeof(u32));
+
+    snmp_oid_ip4_index(oid, 5, ipa_to_ip4(peer->peer_ip));
+
+    registering->oid = oid;
+    add_tail(&p->register_queue, &registering->n);
+
+    snmp_register(p, oid, 0, 1);
+  }
+  HASH_WALK_END;
+  snmp_log("after hash walk");
+}
 
 int
 snmp_bgp_valid_ip4(struct oid *o)
@@ -110,7 +208,7 @@ static void
 print_bgp_record(struct bgp_config *config)
 {
   struct proto_config *cf = (struct proto_config *) config;
-  struct proto *P = cf->proto;
+  // struct proto *P = cf->proto;
   struct bgp_proto *bgp_proto = (struct bgp_proto *) cf->proto;
   struct bgp_conn *conn = bgp_proto->conn;
 
@@ -381,14 +479,14 @@ update_bgp_oid(struct oid *oid, u8 state)
   {
     case BGP_INTERNAL_BGP:
       /* could destroy same old data */
-      oid = mb_realloc(oid, sizeof(struct oid) + 2 * sizeof(u32));
+      oid = mb_realloc(oid, snmp_oid_sizeof(2));
       oid->n_subid = 2;
       oid->ids[0] = 1;
       oid->ids[1] = SNMP_BGP4_MIB;
       break;
 
     case BGP_INTERNAL_VERSION:
-      oid = mb_realloc(oid, sizeof(struct oid) + 3 * sizeof(u32));
+      oid = mb_realloc(oid, snmp_oid_sizeof(3));
       oid->n_subid = 3;
       oid->ids[2] = SNMP_BGP_VERSION;
       break;
@@ -398,7 +496,7 @@ update_bgp_oid(struct oid *oid, u8 state)
       break;
 
     case BGP_INTERNAL_IDENTIFIER:
-      oid = mb_realloc(oid, sizeof(struct oid) + 9 * sizeof(u32));
+      oid = mb_realloc(oid, snmp_oid_sizeof(9));
       oid->n_subid = 9;
       oid->ids[2] = SNMP_BGP_PEER_TABLE;
       oid->ids[3] = SNMP_BGP_PEER_ENTRY;
@@ -484,7 +582,7 @@ bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, struct oid *o_en
 
   if (trie_walk_next(ws, net) && ip4_less(net4_prefix(net), dest))
   {
-    struct oid *o = mb_allocz(p->p.pool, sizeof(struct oid) + 9 * sizeof(u32));
+    struct oid *o = mb_allocz(p->p.pool, snmp_oid_sizeof(9));
     o->n_subid = 9;
 
     memcpy(o, o_start, snmp_oid_size(o_start));

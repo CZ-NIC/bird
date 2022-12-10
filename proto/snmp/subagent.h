@@ -273,6 +273,8 @@ enum agentx_response_err {
 } PACKED;
 
 int snmp_rx(sock *sk, uint size);
+void snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len);
+void snmp_unregister(struct snmp_proto *p, struct oid *oid, uint index, uint len);
 
 // debug wrapper
 #define snmp_log(...) log(L_INFO "snmp " __VA_ARGS__)
