@@ -29,7 +29,7 @@ typedef struct cli {
   node n;				/* Node in list of all log hooks */
   pool *pool;
   void *priv;				/* Private to sysdep layer */
-  byte *rx_buf, *rx_pos, *rx_aux;	/* sysdep */
+  byte *rx_buf, *rx_pos;		/* sysdep */
   struct cli_out *tx_buf, *tx_pos, *tx_write;
   event *event;
   void (*cont)(struct cli *c);
