@@ -45,12 +45,13 @@ snmp_init(struct proto_config *CF)
   p->remote_ip = cf->remote_ip;
   p->local_port = cf->local_port;
   p->remote_port = cf->remote_port;
+  snmp_log("chaning proto_snmp state to INIT");
   p->state = SNMP_INIT;
 
   // p->timeout = cf->timeout;
   p->timeout = 15;
 
-  log(L_INFO "snmp_reconfigure() lip: %I:%u rip: %I:%u",
+  snmp_log("snmp_reconfigure() lip: %I:%u rip: %I:%u",
     cf->local_ip, cf->local_port, cf->remote_ip, cf->remote_port);
 
   return P;
@@ -59,7 +60,7 @@ snmp_init(struct proto_config *CF)
 static void
 snmp_startup_timeout(timer *t)
 {
-  log(L_INFO "startup timer triggered");
+  snmp_log("startup timer triggered");
   snmp_startup(t->data);
 }
 
@@ -70,9 +71,9 @@ snmp_startup(struct snmp_proto *p)
 
   /* starting agentX communicaiton channel */
 
-  log(L_INFO "preparing lock");
+  snmp_log("preparing lock");
   struct object_lock *lock;
-  log(L_INFO "snmp_startup() object lock state %p", p->lock);
+  snmp_log("snmp_startup() object lock state %p", p->lock);
 
   /* we could have the lock already acquired but be in ERROR state */
   lock = p->lock = olock_new(p->p.pool);
@@ -81,17 +82,19 @@ snmp_startup(struct snmp_proto *p)
   lock->hook = snmp_start_locked;
   lock->data = p;
 
+  snmp_log("lock acquiring");
   olock_acquire(lock);
-  log(L_INFO "lock acquiring");
 
-  log(L_INFO "local ip: %I:%u, remote ip: %I:%u",
+  /*
+  snmp_log("local ip: %I:%u, remote ip: %I:%u",
     p->local_ip, p->local_port, p->remote_ip, p->remote_port);
+  */
 }
 
 static void
 snmp_start_locked(struct object_lock *lock)
 {
-  log(L_INFO "snmp_start_locked() - preparing socket ");
+  snmp_log("snmp_start_locked() - lock acquired; preparing socket ");
   struct snmp_proto *p = lock->data;
 
   sock *s = sk_new(p->p.pool);
@@ -118,21 +121,20 @@ snmp_start_locked(struct object_lock *lock)
   if (sk_open(s) < 0)
     log(L_ERR "Cannot open listening socket");
 
-  log(L_INFO "socket ready!, trying to connect");
+  snmp_log("socket ready!, trying to connect");
 }
 
 static void
 snmp_tx(sock *sk UNUSED)
 {
-  log(L_INFO "snmp_tx() something, yay!");
+  snmp_log("snmp_tx() something, yay!");
 }
-
 
 static void
 snmp_connected(sock *sk)
 {
   struct snmp_proto *p = sk->data;
-  log(L_INFO "snmp_connected() connection created");
+  snmp_log("snmp_connected() connection created");
   byte *buf UNUSED = sk->rbuf;
 
   sk->rx_hook = snmp_rx;
@@ -144,7 +146,7 @@ snmp_connected(sock *sk)
 static void
 snmp_sock_err(sock *sk, int err)
 {
-  log(L_INFO "snmp_sock_err() %s - err no: %d",  strerror(err), err);
+  snmp_log("snmp_sock_err() %s - err no: %d",  strerror(err), err);
 
   struct snmp_proto *p = sk->data;
   tm_stop(p->ping_timer);
@@ -155,6 +157,7 @@ snmp_sock_err(sock *sk, int err)
   rfree(p->lock);
   p->lock = NULL;
 
+  snmp_log("changing proto_snmp state to ERR[OR]");
   p->state = SNMP_ERR;
   tm_start(p->startup_timer, 15 S);
 }
@@ -162,7 +165,7 @@ snmp_sock_err(sock *sk, int err)
 static int
 snmp_start(struct proto *P)
 {
-  log(L_INFO "snmp_start() - starting timer (almost)");
+  snmp_log("snmp_start() - starting timer (almost)");
   struct snmp_proto *p = (void *) P;
   struct snmp_config *cf = (struct snmp_config *) P->cf;
 
@@ -179,7 +182,7 @@ snmp_start(struct proto *P)
 
 
   /* starting agentX communicaiton channel */
-  log(L_INFO "preparing lock");
+  snmp_log("preparing lock");
   struct object_lock *lock;
   lock = p->lock = olock_new(p->p.pool);
 
@@ -188,9 +191,9 @@ snmp_start(struct proto *P)
   lock->data = p;
 
   olock_acquire(lock);
-  log(L_INFO "lock acquired");
+  snmp_log("lock acquired");
 
-  log(L_INFO "local ip: %I:%u, remote ip: %I:%u",
+  snmp_log("local ip: %I:%u, remote ip: %I:%u",
     p->local_ip, p->local_port, p->remote_ip, p->remote_port);
 
   /* create copy of bonds to bgp */
@@ -234,8 +237,9 @@ snmp_reconfigure(struct proto *P, struct proto_config *CF)
 
   /* TODO walk all bind protocols and find their (new) IP
     to update HASH table */
-  log(L_INFO "snmp_reconfigure() lip: %I:%u rip: %I:%u",
+  snmp_log("snmp_reconfigure() lip: %I:%u rip: %I:%u",
     p->local_ip, p->local_port, p->remote_ip, p->remote_port);
+
   return 1;
 }
 
@@ -319,7 +323,7 @@ snmp_postconfig(struct proto_config *CF)
 static void
 snmp_ping_timer(struct timer *tm)
 {
-  log(L_INFO "snmp_ping_timer() ");
+  snmp_log("snmp_ping_timer() ");
   struct snmp_proto *p = tm->data;
 
   if (p->state == SNMP_CONN)

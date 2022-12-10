@@ -114,52 +114,51 @@ print_bgp_record(struct bgp_config *config)
   struct bgp_proto *bgp_proto = (struct bgp_proto *) cf->proto;
   struct bgp_conn *conn = bgp_proto->conn;
 
-  log(L_INFO "    name: %s", cf->name);
-  log(L_INFO "");
-  log(L_INFO "    rem. identifier: %u", bgp_proto->remote_id);
-  log(L_INFO "    local ip: %I", config->local_ip);
-  log(L_INFO "    remote ip: %I", config->remote_ip);
-  log(L_INFO "    local port: %u", config->local_port);
-  log(L_INFO "    remote port: %u", config->remote_port);
+  snmp_log("    name: %s", cf->name);
+  snmp_log("");
+  snmp_log("    rem. identifier: %u", bgp_proto->remote_id);
+  snmp_log("    local ip: %I", config->local_ip);
+  snmp_log("    remote ip: %I", config->remote_ip);
+  snmp_log("    local port: %u", config->local_port);
+  snmp_log("    remote port: %u", config->remote_port);
 
   // crashes ?
   if (conn) {
-    log(L_INFO "    state: %u", conn->state);
-    log(L_INFO "    remote as: %u", conn->remote_caps->as4_number);
+    snmp_log("    state: %u", conn->state);
+    snmp_log("    remote as: %u", conn->remote_caps->as4_number);
   }
 
 
-  log(L_INFO "    in updates: %u", bgp_proto->stats.rx_updates);
-  log(L_INFO "    out updates: %u", bgp_proto->stats.tx_updates);
-  log(L_INFO "    in total: %u", bgp_proto->stats.rx_messages);
-  log(L_INFO "    out total: %u", bgp_proto->stats.tx_messages);
-  log(L_INFO "    fsm transitions: %u",
+  snmp_log("    in updates: %u", bgp_proto->stats.rx_updates);
+  snmp_log("    out updates: %u", bgp_proto->stats.tx_updates);
+  snmp_log("    in total: %u", bgp_proto->stats.rx_messages);
+  snmp_log("    out total: %u", bgp_proto->stats.tx_messages);
+  snmp_log("    fsm transitions: %u",
 bgp_proto->stats.fsm_established_transitions);
 
   // not supported yet
-  log(L_INFO "    fsm total time: --");
-  log(L_INFO "    retry interval: %u", config->connect_retry_time);
+  snmp_log("    fsm total time: --");
+  snmp_log("    retry interval: %u", config->connect_retry_time);
 
-  log(L_INFO "    hold configurated: %u", config->hold_time );
-  log(L_INFO "    keep alive config: %u", config->keepalive_time );
+  snmp_log("    hold configurated: %u", config->hold_time );
+  snmp_log("    keep alive config: %u", config->keepalive_time );
 
   // unknown
-  log(L_INFO "    min AS origin. int.: --");
-  log(L_INFO "    min route advertisement: %u", 0 );
-  log(L_INFO "    in update elapsed time: %u", 0 );
+  snmp_log("    min AS origin. int.: --");
+  snmp_log("    min route advertisement: %u", 0 );
+  snmp_log("    in update elapsed time: %u", 0 );
 
   if (!conn)
-    log(L_INFO "  no connection established");
+    snmp_log("  no connection established");
 
-  log(L_INFO "  outgoinin_conn state %u", bgp_proto->outgoing_conn.state + 1);
-  log(L_INFO "  incoming_conn state: %u", bgp_proto->incoming_conn.state + 1);
-
+  snmp_log("  outgoinin_conn state %u", bgp_proto->outgoing_conn.state + 1);
+  snmp_log("  incoming_conn state: %u", bgp_proto->incoming_conn.state + 1);
 }
 
 static void
 print_bgp_record_all(struct snmp_proto *p)
 {
-  log(L_INFO "dumping watched bgp status");
+  snmp_log("dumping watched bgp status");
   HASH_WALK(p->bgp_hash, next, peer)
   {
     print_bgp_record(peer->config);
@@ -468,15 +467,15 @@ update_bgp_oid(struct oid *oid, u8 state)
 static struct oid *
 bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, u8 state UNUSED)
 {
-  log(L_INFO "bgp_find_dynamic_oid()");
+  snmp_log("bgp_find_dynamic_oid()");
   ip4_addr ip4 = ip4_from_oid(o_start);
   ip4_addr dest = ip4_from_oid(o_end);
 
-  log(L_INFO "ip addresses build");
+  snmp_log("ip addresses build");
   net_addr *net = mb_allocz(p->p.pool, sizeof(struct net_addr));
   net_fill_ip4(net, ip4, IP4_MAX_PREFIX_LENGTH);
 
-  log(L_INFO "dynamic part of BGP mib");
+  snmp_log("dynamic part of BGP mib");
 
   struct f_trie_walk_state *ws = mb_allocz(p->p.pool,
 					   sizeof(struct f_trie_walk_state));
@@ -566,7 +565,7 @@ static byte *
 bgp_fill_dynamic(struct snmp_proto *p, struct agentx_varbind *vb, byte *pkt, uint size
 UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
 {
-  //log(L_INFO "bgp_fill_dynamic() valid ip %s", snmp_bgp_valid_ip4(oid) ? "true" : "false");
+  //snmp_log("bgp_fill_dynamic() valid ip %s", snmp_bgp_valid_ip4(oid) ? "true" : "false");
 
   struct oid *oid = &vb->name;
 
@@ -579,7 +578,7 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
     return pkt;
   }
 
-  log(L_INFO " -> ip addr %I", addr);
+  snmp_log(" -> ip addr %I", addr);
   // TODO XXX deal with possible change of (remote) ip
   struct snmp_bgp_peer *pe = HASH_FIND(p->bgp_hash, SNMP_HASH, addr);
 
@@ -777,7 +776,7 @@ static byte *
 bgp_fill_static(struct snmp_proto *p, struct agentx_varbind *vb, byte *pkt, uint size
 UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
 {
-  log(L_INFO "snmp bgp_fill_static ()\n");
+  snmp_log("snmp bgp_fill_static ()\n");
 
   struct oid *oid = &vb->name;
 
@@ -812,7 +811,7 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
       vb->type = AGENTX_NO_SUCH_OBJECT;
   }
 
-  log(L_INFO "snmp ended with non empty pkt\n");
+  snmp_log("snmp ended with non empty pkt\n");
   return pkt;
 }
 
@@ -821,7 +820,7 @@ snmp_bgp_fill(struct snmp_proto *p, struct agentx_varbind *vb, byte *buf UNUSED,
 uint size UNUSED, uint contid UNUSED, int byte_ord UNUSED)
 {
   u8 state = snmp_bgp_state(&vb->name);
-  //log(L_INFO "snmp_bgp_fill() state %u is dynamic %s has value %s", state, is_dynamic(state) ? "true" : "false", snmp_bgp_has_value(state) ? "true" : "false");
+  //snmp_log("snmp_bgp_fill() state %u is dynamic %s has value %s", state, is_dynamic(state) ? "true" : "false", snmp_bgp_has_value(state) ? "true" : "false");
 
   if (!is_dynamic(state))
     return bgp_fill_static(p, vb, buf, size, contid, byte_ord, state);
@@ -835,7 +834,7 @@ uint size UNUSED, uint contid UNUSED, int byte_ord UNUSED)
   }
   /*
   {
-    log(L_INFO "has no value");
+    snmp_log("has no value");
     struct agentx_varbind *vb = snmp_create_varbind(buf, oid);
     buf += snmp_varbind_size(vb);
     vb->type = AGENTX_NO_SUCH_OBJECT;

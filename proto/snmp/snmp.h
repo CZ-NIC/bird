@@ -91,7 +91,8 @@ struct snmp_proto {
   u32 packet_id;
 
   //struct iface *iface;
-  // map goes here
+
+  // map
   struct f_trie *bgp_trie;
   HASH(struct snmp_bgp_peer) bgp_hash;
   struct tbf rl_gen;
@@ -105,7 +106,5 @@ struct snmp_proto {
   uint to_send;
   uint errs;
 };
-
-#define snmp_log(x) log(L_INFO "snmp" x);
 
 #endif

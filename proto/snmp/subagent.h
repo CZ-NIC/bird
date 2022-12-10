@@ -274,4 +274,7 @@ enum agentx_response_err {
 
 int snmp_rx(sock *sk, uint size);
 
+// debug wrapper
+#define snmp_log(...) log(L_INFO "snmp " __VA_ARGS__)
+
 #endif
