@@ -190,6 +190,10 @@ static inline void
 sockaddr_fill_dl(struct sockaddr_dl *sa, struct iface *ifa)
 {
   uint len = OFFSETOF(struct sockaddr_dl, sdl_data);
+
+  /* Workaround for FreeBSD 13.0 */
+  len = MAX(len, sizeof(struct sockaddr));
+
   memset(sa, 0, len);
   sa->sdl_len = len;
   sa->sdl_family = AF_LINK;
