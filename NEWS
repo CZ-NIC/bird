@@ -1,3 +1,40 @@
+Version 2.0.11 (2022-11-12)
+  o BGP roles (RFC 9234)
+  o BGP: Keepalive time scaling
+  o BGP: New 'min hold time' and 'min keepalive time' options
+  o BGP: New 'next hop prefer global' option
+  o Filter: For loops and direct recursion
+  o Filter: Mixed declarations of local variables
+  o Filter: Improved static type checks
+  o Filter: Literal [] for empty set
+  o Linux: Netlink KRT improvements
+  o BSD: Experimental support for Netlink API
+  o Memory management improvements
+  o Many bugfixes
+
+  Notes:
+
+  In contrast to prior versions, configured keepalive time in BGP now scales
+  with negotiated hold time to maintain proportion between the keepalive time
+  and the hold time.
+
+  The Linux KRT was updated to use the recent API for IPv6 ECMP routes instead
+  of the legacy one. Consequently, the Linux versions older than 4.11 are no
+  longer supported, at least for IPv6 ECMP routes. Also, routing table scanning
+  now runs separately for each table to avoid congestion.
+
+  There is a minor change in recursive next hop processing. Previously,
+  recursive next hop must be resolved through a non-recursive route, now it must
+  be resolved through a prefix where both the best route and all routes with the
+  same preference (as the best route) are non-recursive. The old behavior might
+  lead in some corner cases to an infinite loop of recursive next hop resolution
+  due to a priority inversion.
+
+  There is a minor change in the 'configure undo' command, it is no longer
+  available after failed reconfiguration, as the old configuration is already
+  released.
+
+
 Version 2.0.10 (2022-06-16)
   o BGP performance improvements
   o BFD: New 'strict bind' option
