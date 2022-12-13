@@ -28,6 +28,7 @@ m4_divert(-1)')
 m4_define(CF_keywd, `m4_ifdef([[CF_tok_$1]],,[[m4_define([[CF_tok_$1]],1)CF_handle_kw($1)]])')
 m4_define(CF_KEYWORDS, `m4_define([[CF_toks]],[[]])CF_iterate([[CF_keywd]], [[$@]])m4_ifelse(CF_toks,,,%token[[]]CF_toks
 )DNL')
+m4_define(CF_KEYWORDS_EXCLUSIVE, `CF_KEYWORDS($@)')
 
 # CLI commands generate keywords as well
 m4_define(CF_CLI, `CF_KEYWORDS(m4_translit($1, [[ ]], [[,]]))

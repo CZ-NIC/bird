@@ -119,7 +119,6 @@ CF_DECLS
 %type <t> text opttext
 %type <bs> bytestring
 %type <s> symbol
-%type <kw> kw_sym
 
 %type <v> bytestring_text text_or_ipa
 %type <x> bytestring_expr
@@ -178,7 +177,7 @@ expr_us:
  | expr US { $$ = $1 US_; }
  ;
 
-symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN | kw_sym { $$ = cf_symbol_from_keyword($1); } ;
+symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN | KEYWORD { $$ = cf_symbol_from_keyword($1); } ;
 
 /* Switches */
 

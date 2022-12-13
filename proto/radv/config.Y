@@ -50,8 +50,6 @@ CF_ENUM(T_ENUM_RA_PREFERENCE, RA_PREF_, LOW, MEDIUM, HIGH)
 
 CF_GRAMMAR
 
-kw_sym: CUSTOM | OPTION | VALUE ;
-
 proto: radv_proto ;
 
 radv_proto_start: proto_start RADV
