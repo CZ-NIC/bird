@@ -17,16 +17,7 @@
 
 #define CONFIG_INCLUDE_SYSIO_H "sysdep/bsd/sysio.h"
 #define CONFIG_INCLUDE_KRTSYS_H "sysdep/linux/krt-sys.h"
-
-#define	CONFIG_FREEBSD_NETLINK
-
-#ifndef	AF_MPLS
-#define	AF_MPLS	39
-#endif
-
-#ifndef	SO_RCVBUFFORCE
-#define	SO_RCVBUFFORCE	SO_RCVBUF
-#endif
+#define CONFIG_INCLUDE_NLSYS_H "sysdep/bsd-netlink/netlink-sys.h"
 
 /*
 Link: sysdep/unix
