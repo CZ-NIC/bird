@@ -15,6 +15,7 @@
 #ifdef __FreeBSD__
 /* Should be defined in sysdep/cf/bsd.h, but it is flavor-specific */
 #define CONFIG_DONTROUTE_UNICAST
+#define CONFIG_USE_IP_MREQN
 #endif
 
 #ifdef __NetBSD__
@@ -45,12 +46,20 @@
 #define INIT_MREQ4(maddr,ifa) \
   { .imr_multiaddr = ipa_to_in4(maddr), .imr_interface = ip4_to_in4(ifa->sysdep) }
 
+#define INIT_MREQN4(maddr,ifa) \
+  { .imr_multiaddr = ipa_to_in4(maddr), .imr_ifindex = ifa->index }
+
 static inline int
 sk_setup_multicast4(sock *s)
 {
-  struct in_addr ifa = ip4_to_in4(s->iface->sysdep);
   u8 ttl = s->ttl;
   u8 n = 0;
+
+#ifdef CONFIG_USE_IP_MREQN
+  struct ip_mreqn ifa = { .imr_ifindex = s->iface->index };
+#else
+  struct in_addr ifa = ip4_to_in4(s->iface->sysdep);
+#endif
 
   /* This defines where should we send _outgoing_ multicasts */
   if (setsockopt(s->fd, IPPROTO_IP, IP_MULTICAST_IF, &ifa, sizeof(ifa)) < 0)
@@ -68,7 +77,11 @@ sk_setup_multicast4(sock *s)
 static inline int
 sk_join_group4(sock *s, ip_addr maddr)
 {
+#ifdef CONFIG_USE_IP_MREQN
+  struct ip_mreqn mr = INIT_MREQN4(maddr, s->iface);
+#else
   struct ip_mreq mr = INIT_MREQ4(maddr, s->iface);
+#endif
 
   if (setsockopt(s->fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mr, sizeof(mr)) < 0)
     ERR("IP_ADD_MEMBERSHIP");
@@ -79,7 +92,11 @@ sk_join_group4(sock *s, ip_addr maddr)
 static inline int
 sk_leave_group4(sock *s, ip_addr maddr)
 {
+#ifdef CONFIG_USE_IP_MREQN
+  struct ip_mreqn mr = INIT_MREQN4(maddr, s->iface);
+#else
   struct ip_mreq mr = INIT_MREQ4(maddr, s->iface);
+#endif
 
   if (setsockopt(s->fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mr, sizeof(mr)) < 0)
     ERR("IP_ADD_MEMBERSHIP");
