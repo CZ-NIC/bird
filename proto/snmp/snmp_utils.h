@@ -39,4 +39,6 @@ struct oid *snmp_prefixize(struct snmp_proto *p, struct oid *o, int byte_ord);
 struct snmp_register *snmp_register_create(struct snmp_proto *p, u8 mib_class);
 
 void snmp_register_ack(struct snmp_proto *p, struct agentx_header *h);
+
+void snmp_dump_packet(byte *pkt, uint size);
 #endif

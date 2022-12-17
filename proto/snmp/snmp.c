@@ -25,11 +25,14 @@ static void snmp_start_locked(struct object_lock *lock);
 
 
 static const char * const snmp_state[] = {
-  [SNMP_ERR]	  = "SNMP ERROR",
-  [SNMP_DELAY]	  = "SNMP DELAY",
-  [SNMP_INIT]	  = "SNMP INIT",
-  [SNMP_REGISTR]  = "SNMP REGISTERING",
-  [SNMP_CONN]	  = "SNMP CONNECTED",
+  [SNMP_ERR]	      = "SNMP ERROR",
+  [SNMP_DELAY]	      = "SNMP DELAY",
+  [SNMP_INIT]	      = "SNMP INIT",
+  [SNMP_REGISTER]     = "SNMP REGISTERING",
+  [SNMP_CONN]	      = "SNMP CONNECTED",
+  [SNMP_STOP]	      = "SNMP STOP",
+  [SNMP_DOWN]	      = "SNMP DOWN",
+  [SNMP_LISTEN]	      = "SNMP LISTEN",
 };
 
 static struct proto *
@@ -57,13 +60,25 @@ snmp_init(struct proto_config *CF)
   return P;
 }
 
-static void snmp_down(struct snmp_proto *p)
+static inline void
+snmp_cleanup(struct snmp_proto *p)
 {
+  rfree(p->startup_timer);
+  rfree(p->ping_timer);
+
   if (p->sock != NULL)
-    mb_free(p->sock);
+    rfree(p->sock);
 
   if (p->lock != NULL)
     rfree(p->lock);
+
+  p->state = SNMP_DOWN;
+}
+
+void
+snmp_down(struct snmp_proto *p)
+{
+  snmp_cleanup(p);
 
   proto_notify_state(&p->p, PS_DOWN);
 }
@@ -76,12 +91,22 @@ snmp_startup_timeout(timer *t)
 }
 
 static void
+snmp_stop_timeout(timer *t)
+{
+  snmp_log("stop timer triggered");
+
+  struct snmp_proto *p = t->data;
+
+  snmp_down(p);
+}
+
+static void
 snmp_startup(struct snmp_proto *p)
 {
   //snmp_log("changing proto_snmp state to INIT");
 
   if (p->state == SNMP_CONN ||
-      p->state == SNMP_REGISTR)
+      p->state == SNMP_REGISTER)
   {
     snmp_log("startup() with invalid state %u", p->state);
     return;
@@ -118,7 +143,7 @@ snmp_startup(struct snmp_proto *p)
 static void
 snmp_start_locked(struct object_lock *lock)
 {
-  snmp_log("snmp_start_locked() - lock acquired; preparing socket ");
+  snmp_log("snmp_start_locked() - lock acquired; preparing socket");
   struct snmp_proto *p = lock->data;
 
   sock *s = sk_new(p->p.pool);
@@ -189,6 +214,7 @@ snmp_sock_err(sock *sk, int err)
 
   snmp_log("changing proto_snmp state to ERR[OR]");
   p->state = SNMP_ERR;
+
   // TODO ping interval
   tm_start(p->startup_timer, 15 S);
 }
@@ -381,13 +407,31 @@ snmp_shutdown(struct proto *P)
 {
   snmp_log("snmp_shutdown()");
   struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
-  p->state = SNMP_INIT;
 
   tm_stop(p->ping_timer);
-  tm_stop(p->startup_timer);
 
-  snmp_stop_subagent(p);
-  return PS_DOWN;
+  /* connection established => close the connection */
+  if (p->state == SNMP_CONN)
+  {
+    p->state = SNMP_STOP;
+
+    /* startup time is reused for connection closing */
+    p->startup_timer->hook = snmp_stop_timeout;
+
+    // TODO timeout duration ??
+    tm_set(p->startup_timer, 15 S);
+
+    snmp_stop_subagent(p);
+
+    return PS_STOP;
+  }
+
+  /* no connection to close */
+  else
+  {
+    snmp_cleanup(p);
+    return PS_DOWN;
+  }
 }
 
 struct protocol proto_snmp = {

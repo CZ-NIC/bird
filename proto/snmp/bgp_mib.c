@@ -15,7 +15,7 @@
 #include "subagent.h"
 #include "bgp_mib.h"
 
-static const char * const debug_bgp_states[] = {
+static const char * const debug_bgp_states[] UNUSED = {
   [BGP_INTERNAL_INVALID] = "BGP_INTERNAL_INVALID",
   [BGP_INTERNAL_BGP] = "BGP_INTERNAL_BGP",
   [BGP_INTERNAL_VERSION] = "BGP_INTERNAL_VERSION",
@@ -55,17 +55,17 @@ snmp_bgp_register(struct snmp_proto *p)
 {
   snmp_log("snmp_bgp_register()");
 
-  u32 arr_bgp[] = {1, 15, 1};
+  u32 bgp_mib_prefix[] = {1, 15, 1};
 
   { /* registering whole BGP4-MIB subtree */
-    snmp_log("snmp_proto %p (%p)", p, p->p.pool);
+    //snmp_log("snmp_proto %p (%p)", p, p->p.pool);
     struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
 
     struct oid *oid = mb_alloc(p->p.pool, snmp_oid_sizeof(2));
     put_u8(&oid->n_subid, 2);
     put_u8(&oid->prefix, 2);
 
-    memcpy(oid->ids, arr_bgp, 2 * sizeof(u32));
+    memcpy(oid->ids, bgp_mib_prefix, 2 * sizeof(u32));
 
     registering->oid = oid;
     add_tail(&p->register_queue, &registering->n);
@@ -76,14 +76,14 @@ snmp_bgp_register(struct snmp_proto *p)
 
   // TODO squash bgpVersion and bgpLocalAs to one PDU
   { /* registering BGP4-MIB::bgpVersion */
-    snmp_log("snmp_proto %p (%p)", p, p->p.pool);
+    //snmp_log("snmp_proto %p (%p)", p, p->p.pool);
     struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
 
     struct oid *oid = mb_alloc(p->p.pool, snmp_oid_sizeof(3));
     put_u8(&oid->n_subid, 3);
     put_u8(&oid->prefix, 2);
 
-    memcpy(oid->ids, arr_bgp, 3 * sizeof(u32));
+    memcpy(oid->ids, bgp_mib_prefix, 3 * sizeof(u32));
 
     registering->oid = oid;
     add_tail(&p->register_queue, &registering->n);
@@ -99,7 +99,7 @@ snmp_bgp_register(struct snmp_proto *p)
     put_u8(&oid->n_subid, 3);
     put_u8(&oid->prefix, 2);
 
-    memcpy(oid->ids, arr_bgp, 2 * sizeof(u32));
+    memcpy(oid->ids, bgp_mib_prefix, 2 * sizeof(u32));
     STORE(oid->ids[2], 2);
 
     registering->oid = oid;
@@ -116,7 +116,7 @@ snmp_bgp_register(struct snmp_proto *p)
     put_u8(&oid->n_subid, 3);
     put_u8(&oid->prefix, 2);
 
-    memcpy(oid->ids, arr_bgp, 2 * sizeof(u32));
+    memcpy(oid->ids, bgp_mib_prefix, 2 * sizeof(u32));
     STORE(oid->ids[2], 3);
 
     registering->oid = oid;
@@ -128,7 +128,7 @@ snmp_bgp_register(struct snmp_proto *p)
 
   /* register dynamic BGP4-MIB::bgpPeerEntry.* */
 
-  u32 arr_with_prefix[] = { 1, 15, 3, 1, 1};
+  u32 bgp_peer_entry[] = { 1, 15, 3, 1, 1};
   snmp_log("before hash walk - registering dynamic parts");
   HASH_WALK(p->bgp_hash, next, peer)
   {
@@ -139,7 +139,7 @@ snmp_bgp_register(struct snmp_proto *p)
     put_u8(&oid->n_subid, 9);
     put_u8(&oid->prefix, 2);
 
-    memcpy(oid->ids, arr_with_prefix, 5 * sizeof(u32));
+    memcpy(oid->ids, bgp_peer_entry, 5 * sizeof(u32));
 
     snmp_oid_ip4_index(oid, 5, ipa_to_ip4(peer->peer_ip));
 
@@ -262,6 +262,7 @@ print_bgp_record_all(struct snmp_proto *p)
     print_bgp_record(peer->config);
   }
   HASH_WALK_END;
+  snmp_log("dumping watched end");
 }
 
 /**
@@ -569,33 +570,53 @@ bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, struct oid *o_en
   ip4_addr ip4 = ip4_from_oid(o_start);
   ip4_addr dest = ip4_from_oid(o_end);
 
-  snmp_log("ip addresses build");
+  snmp_log("ip addresses build (ip4) %I (dest) %I", ip4, dest);
+
+  // why am I allocated dynamically ?!
   net_addr *net = mb_allocz(p->p.pool, sizeof(struct net_addr));
   net_fill_ip4(net, ip4, IP4_MAX_PREFIX_LENGTH);
 
   snmp_log("dynamic part of BGP mib");
 
+  // why am I allocated dynamically ?!
   struct f_trie_walk_state *ws = mb_allocz(p->p.pool,
 					   sizeof(struct f_trie_walk_state));
 
   trie_walk_init(ws, p->bgp_trie, NULL);
 
-  if (trie_walk_next(ws, net) && ip4_less(net4_prefix(net), dest))
+  snmp_log("walk init");
+
+  if (trie_walk_next(ws, net)) // && ip4_less(net4_prefix(net), dest))
   {
-    struct oid *o = mb_allocz(p->p.pool, snmp_oid_sizeof(9));
-    o->n_subid = 9;
+    snmp_log("trie_walk_next() returned true");
+    if (ip4_less(net4_prefix(net), dest))  // <- delete me
+    {
+      snmp_log("ip4_less() returned treu");
+      struct oid *o = mb_allocz(p->p.pool, snmp_oid_sizeof(9));
+      o->n_subid = 9;
 
-    memcpy(o, o_start, snmp_oid_size(o_start));
-    snmp_oid_ip4_index(o, 5, net4_prefix(net));
+      memcpy(o, o_start, snmp_oid_size(o_start));
+      snmp_oid_ip4_index(o, 5, net4_prefix(net));
 
-    mb_free(net);
-    mb_free(ws);
+      mb_free(net);
+      mb_free(ws);
 
-    return o;
+      return o;
+    }
+
+    // delete me
+    else
+    {
+      snmp_log("ip4_less() returned false");
+      mb_free(net);
+      mb_free(ws);
+    }
+    // delete me end
   }
 
   else
   {
+    snmp_log("trie_walk_next() returned false, cleaning");
     mb_free(net);
     mb_free(ws);
   }
@@ -607,6 +628,8 @@ static struct oid *
 search_bgp_dynamic(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, uint contid
 UNUSED, u8 next_state)
 {
+  snmp_log("search_bgp_dynamic() dynamic part Yaaay!");
+
   /* TODO can be remove after implementing all BGP4-MIB::bgpPeerTable columns */
   struct oid *copy = o_start;
   do {
@@ -630,13 +653,13 @@ search_bgp_mib(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, uin
   //u8 state_end = (o_end) ? snmp_bgp_state(o_end) : 0;
 
 
-
   // print debugging information
   print_bgp_record_all(p);
 
   if (o_start->include && snmp_bgp_has_value(start_state) &&
       !is_dynamic(start_state) && o_start->n_subid == 3)
   {
+    snmp_log("search_bgp_mib() first search element (due to include field) returned");
     o_start->include = 0;  /* disable including for next time */
     return o_start;
   }
@@ -644,8 +667,12 @@ search_bgp_mib(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, uin
   /* if state is_dynamic() then has more value and need find the right one */
   else if (!is_dynamic(start_state))
   {
+    snmp_log("seach_bgp_mib() static part");
     u8 next_state = snmp_bgp_next_state(start_state);
     o_start = update_bgp_oid(o_start, next_state);
+
+    snmp_log("search_bgp_mib() is NOT next_state dynamic %s",
+      !is_dynamic(next_state) ? "true" : "false");
 
     if (!is_dynamic(next_state))
       return o_start;
@@ -689,6 +716,7 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
 	ipa_equal(addr, ((struct bgp_proto *) proto)->remote_ip))
     {
       bgp_proto = (struct bgp_proto *) proto;
+      snmp_log("bgp_dynamic_fill() using bgp_proto %p", bgp_proto);
     }
 
     /* binded bgp protocol not found */

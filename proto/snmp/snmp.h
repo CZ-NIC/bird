@@ -29,11 +29,16 @@
 #define SNMP_RX_BUFFER_SIZE 2048
 #define SNMP_TX_BUFFER_SIZE 2048
 
-#define SNMP_ERR 0
-#define SNMP_DELAY 1
-#define SNMP_INIT 2
-#define SNMP_REGISTR 3
-#define SNMP_CONN 4
+enum snmp_proto_state {
+  SNMP_ERR = 0,
+  SNMP_DELAY,
+  SNMP_INIT,
+  SNMP_REGISTER,
+  SNMP_CONN,
+  SNMP_STOP,
+  SNMP_DOWN,
+  SNMP_LISTEN,
+};
 
 /* hash table macros */
 #define SNMP_HASH_KEY(n)  n->peer_ip

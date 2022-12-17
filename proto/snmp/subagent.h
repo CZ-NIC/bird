@@ -264,8 +264,8 @@ enum agentx_response_err {
   AGENTX_RES_INDEX_NONE_AVAIL	    = 260,
   AGENTX_RES_NOT_ALLOCATED	    = 261,
   AGENTX_RES_UNSUPPORTED_CONTEXT    = 262,
-  AGENTX_RES_DUPLICATE_REGISTR	    = 263,
-  AGENTX_RES_UNKNOWN_REGISTR	    = 264,
+  AGENTX_RES_DUPLICATE_REGISTER	    = 263,
+  AGENTX_RES_UNKNOWN_REGISTER	    = 264,
   AGENTX_RES_UNKNOWN_AGENT_CAPS	    = 265,
   AGENTX_RES_PARSE_ERROR	    = 266,
   AGENTX_RES_REQUEST_DENIED	    = 267,
@@ -273,6 +273,8 @@ enum agentx_response_err {
 } PACKED;
 
 int snmp_rx(sock *sk, uint size);
+int snmp_rx_stop(sock *sk, uint size);
+void snmp_down(struct snmp_proto *p);
 void snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len);
 void snmp_unregister(struct snmp_proto *p, struct oid *oid, uint index, uint len);
 

@@ -11,7 +11,7 @@
 #include "snmp_utils.h"
 
 /**
- * snmp_is_oid_empty - check if oid is null-valued 
+ * snmp_is_oid_empty - check if oid is null-valued
  * @oid: object identifier to check
  *
  * Test if the oid header is full of zeroes. For @oid NULL returns 0.
@@ -347,6 +347,8 @@ snmp_register_same(struct snmp_register *r, struct agentx_header *h, u8 class)
 void
 snmp_register_ack(struct snmp_proto *p, struct agentx_header *h)
 {
+  snmp_log("snmp_register_ack()");
+
   struct snmp_register *reg;
   WALK_LIST(reg, p->register_queue)
   {
@@ -361,11 +363,24 @@ snmp_register_ack(struct snmp_proto *p, struct agentx_header *h)
       ro->oid = reg->oid;
 
       rem_node(&reg->n);
+      mb_free(reg);
       p->register_to_ack--;
 
       add_tail(&p->bgp_registered, &ro->n);
 
+      snmp_log("  register note find %u", list_length(&p->bgp_registered));
       return;
     }
   }
+
+  snmp_log("unknown registration");
+}
+
+void
+snmp_dump_packet(byte *pkt, uint size)
+{
+  snmp_log("dump");
+  for (int i = 0; i < size; i += 4)
+    snmp_log("pkt [%d]  0x%02x%02x%02x%02x", i, pkt[i],pkt[i+1],pkt[i+2],pkt[i+3]);
+  snmp_log("end dump");
 }
