@@ -15,8 +15,22 @@
 #ifdef __FreeBSD__
 /* Should be defined in sysdep/cf/bsd.h, but it is flavor-specific */
 #define CONFIG_DONTROUTE_UNICAST
+
+#if __FreeBSD_version >= 1201000
 #define CONFIG_USE_IP_MREQN
 #endif
+
+#endif
+
+
+#ifdef __OpenBSD__
+
+#if OpenBSD >= 202105
+#define CONFIG_USE_IP_MREQN
+#endif
+
+#endif
+
 
 #ifdef __NetBSD__
 
@@ -29,6 +43,7 @@
 #endif
 
 #endif
+
 
 #ifdef __DragonFly__
 #define TCP_MD5SIG	TCP_SIGNATURE_ENABLE
