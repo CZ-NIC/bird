@@ -104,7 +104,6 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
 
   /* We skip rta_lookup() here */
   rte *e = rte_get_temp(a, src);
-  e->pflags = 0;
 
   if (r->cmds)
   {

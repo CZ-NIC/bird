@@ -77,13 +77,6 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
       a->cached = 0;
       a->hostentry = NULL;
       e = rte_get_temp(a, src);
-      e->pflags = new->pflags;
-
-#ifdef CONFIG_BGP
-      /* Hack to cleanup cached value */
-      if (e->src->proto->proto == &proto_bgp)
-	e->pflags &= ~(BGP_REF_STALE | BGP_REF_NOT_STALE);
-#endif
     }
   else
     {

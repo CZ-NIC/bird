@@ -715,7 +715,6 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
 
     rta *a = rta_lookup(&a0);
     rte *rte = rte_get_temp(a, p->p.main_source);
-    rte->pflags = 0;
 
     e->unreachable = 1;
     rte_update2(c, e->n.addr, rte, p->p.main_source);

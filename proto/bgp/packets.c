@@ -1464,7 +1464,6 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
   rta *a = rta_clone(s->cached_rta);
   rte *e = rte_get_temp(a, s->last_src);
 
-  e->pflags = 0;
   rte_update3(&s->channel->c, n, e, s->last_src);
 }
 
