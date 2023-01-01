@@ -92,7 +92,6 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
 
       a = rta_lookup(&a0);
       e = rte_get_temp(a, src);
-      e->pflags = 0;
       rte_update2(c, net, e, src);
     }
 }

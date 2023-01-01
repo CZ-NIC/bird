@@ -162,7 +162,6 @@ perf_loop(void *data)
 
   for (uint i=0; i<N; i++) {
     rte *e = rte_get_temp(p->data[i].a, p->p.main_source);
-    e->pflags = 0;
 
     rte_update(P, &(p->data[i].net), e);
   }
