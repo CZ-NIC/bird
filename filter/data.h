@@ -141,8 +141,15 @@ struct f_tree {
   void *data;
 };
 
+#ifdef ENABLE_COMPACT_TRIES
+/* Compact 4-way tries */
+#define TRIE_STEP		2
+#define TRIE_STACK_LENGTH	65
+#else
+/* Faster 16-way tries */
 #define TRIE_STEP		4
 #define TRIE_STACK_LENGTH	33
+#endif
 
 struct f_trie_node4
 {
