@@ -410,7 +410,7 @@ if test "$enable_debug" = yes ; then
     fi
   fi
 
-  if test "enable_debug_expensive" = yes ; then
+  if test "$enable_debug_expensive" = yes ; then
     AC_DEFINE([ENABLE_EXPENSIVE_CHECKS], [1], [Define to 1 if you want to run expensive consistency checks.])
   fi
 fi
