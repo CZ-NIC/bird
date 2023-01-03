@@ -94,6 +94,7 @@ void protos_dump_all(void);
 #define GA_UNKNOWN	0		/* Attribute not recognized */
 #define GA_NAME		1		/* Result = name */
 #define GA_FULL		2		/* Result = both name and value */
+#define GA_HIDDEN	3		/* Attribute should not be printed */
 
 /*
  *	Known protocols

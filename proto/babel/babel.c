@@ -2081,9 +2081,6 @@ babel_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
 {
   switch (a->id)
   {
-  case EA_BABEL_SEQNO:
-    return GA_FULL;
-
   case EA_BABEL_METRIC:
     bsprintf(buf, "metric: %d", a->u.data);
     return GA_FULL;
@@ -2095,6 +2092,9 @@ babel_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
     bsprintf(buf, "router_id: %lR", rid);
     return GA_FULL;
   }
+
+  case EA_BABEL_SEQNO:
+    return GA_HIDDEN;
 
   default:
     return GA_UNKNOWN;

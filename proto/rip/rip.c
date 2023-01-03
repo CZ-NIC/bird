@@ -1233,6 +1233,9 @@ rip_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
     bsprintf(buf, "tag: %04x", a->u.data);
     return GA_FULL;
 
+  case EA_RIP_FROM:
+    return GA_HIDDEN;
+
   default:
     return GA_UNKNOWN;
   }

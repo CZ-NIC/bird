@@ -981,7 +981,9 @@ ea_show(struct cli *c, const eattr *e)
 	  bsprintf(pos, "<type %02x>", e->type);
 	}
     }
-  cli_printf(c, -1012, "\t%s", buf);
+
+  if (status != GA_HIDDEN)
+    cli_printf(c, -1012, "\t%s", buf);
 }
 
 /**
