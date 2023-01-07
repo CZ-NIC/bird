@@ -676,16 +676,15 @@ switch_body: /* EMPTY */ { $$ = NULL; }
  | switch_body switch_items ':' cmds_scoped  {
      /* Fill data fields */
      struct f_tree *t;
-     struct f_line *line = f_linearize($4, 0);
      for (t = $2; t; t = t->left)
-       t->data = line;
+       t->data = $4;
      $$ = f_merge_items($1, $2);
    }
  | switch_body ELSECOL cmds_scoped {
      struct f_tree *t = f_new_tree();
      t->from.type = t->to.type = T_VOID;
      t->right = t;
-     t->data = f_linearize($3, 0);
+     t->data = $3;
      $$ = f_merge_items($1, t);
  }
  ;
@@ -972,7 +971,7 @@ cmd:
    }
  | function_call ';' { $$ = f_new_inst(FI_DROP_RESULT, $1); }
  | CASE term '{' switch_body '}' {
-      $$ = f_new_inst(FI_SWITCH, $2, build_tree($4));
+      $$ = f_new_inst(FI_SWITCH, $2, $4);
    }
 
  | dynamic_attr '.' EMPTY ';' { $$ = f_generate_empty($1); }

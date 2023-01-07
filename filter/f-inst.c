@@ -1285,14 +1285,33 @@
 
     FID_MEMBER(struct f_tree *, tree, [[!same_tree(f1->tree, f2->tree)]], "tree %p", item->tree);
 
+    FID_LINEARIZE_BODY()
+    /* Linearize all branches in switch */
+    struct f_inst *last_inst = NULL;
+    struct f_line *last_line = NULL;
+    for (struct f_tree *t = whati->tree; t; t = t->left)
+    {
+      if (t->data != last_inst)
+      {
+	last_inst = t->data;
+	last_line = f_linearize(t->data, 0);
+      }
+
+      t->data = last_line;
+    }
+
+    /* Balance the tree */
+    item->tree = build_tree(whati->tree);
+
     FID_ITERATE_BODY()
-      tree_walk(whati->tree, f_add_tree_lines, fit);
+    tree_walk(whati->tree, f_add_tree_lines, fit);
 
     FID_INTERPRET_BODY()
-    const struct f_tree *t = find_tree(tree, &v1);
+    /* In parse-time use find_tree_linear(), in runtime use find_tree() */
+    const struct f_tree *t = FID_HIC(,find_tree,find_tree_linear)(tree, &v1);
     if (!t) {
       v1.type = T_VOID;
-      t = find_tree(tree, &v1);
+      t = FID_HIC(,find_tree,find_tree_linear)(tree, &v1);
       if (!t) {
 	debug( "No else statement?\n");
 	FID_HIC(,break,return NULL);
