@@ -31,6 +31,7 @@
 #include "lib/lists.h"
 #include "sysdep/unix/unix.h"
 
+static int dbg_fd = -1;
 static FILE *dbgf;
 static list *current_log_list;
 static char *current_syslog_name; /* NULL -> syslog closed */
@@ -324,6 +325,21 @@ debug(const char *msg, ...)
   va_end(args);
 }
 
+/**
+ * debug_safe - async-safe write to debug output
+ * @msg: a string message
+ *
+ * This function prints the message @msg to the debugging output in a
+ * way that is async safe and can be used in signal handlers. No newline
+ * character is appended.
+ */
+void
+debug_safe(const char *msg)
+{
+  if (dbg_fd >= 0)
+    write(dbg_fd, msg, strlen(msg));
+}
+
 static list *
 default_log_list(int initial, const char **syslog_name)
 {
@@ -422,8 +438,10 @@ done:
 void
 log_init_debug(char *f)
 {
+  dbg_fd = -1;
   if (dbgf && dbgf != stderr)
     fclose(dbgf);
+
   if (!f)
     dbgf = NULL;
   else if (!*f)
@@ -434,6 +452,10 @@ log_init_debug(char *f)
     fprintf(stderr, "bird: Unable to open debug file %s: %s\n", f, strerror(errno));
     exit(1);
   }
+
   if (dbgf)
+  {
     setvbuf(dbgf, NULL, _IONBF, 0);
+    dbg_fd = fileno(dbgf);
+  }
 }
