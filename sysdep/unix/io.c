@@ -2128,6 +2128,8 @@ watchdog_sigalrm(int sig UNUSED)
   config->latency_limit = 0xffffffff;
   io_update_time();
 
+  debug_safe("Watchdog timer timed out\n");
+
   /* We want core dump */
   abort();
 }
