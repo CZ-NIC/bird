@@ -219,7 +219,7 @@ install-docs:
 
 # Cleanup
 clean::
-	rm -f $(objdir)/sysdep/paths.h
+	rm -f $(objdir)/sysdep/paths.h $(objdir)/nest/proto-build.c
 	rm -f $(addprefix $(exedir)/,bird birdc birdcl)
 	find $(objdir) -name "*.[od]" -exec rm -f '{}' '+'
 
