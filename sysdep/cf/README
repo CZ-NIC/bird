@@ -14,3 +14,6 @@ CONFIG_DONTROUTE_UNICAST Use MSG_DONTROUTE flag for unicast packets (def for Fre
 CONFIG_USE_HDRINCL	Use IP_HDRINCL instead of control messages for source address on raw IP sockets.
 
 CONFIG_RESTRICTED_PRIVILEGES	Implements restricted privileges using drop_uid()
+
+CONFIG_MADV_DONTNEED_TO_FREE	To free pages, use MADV_DONTNEED instead of MADV_FREE (linux)
+CONFIG_DISABLE_THP	Disable transparent huge pages (linux)
