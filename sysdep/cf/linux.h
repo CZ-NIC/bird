@@ -24,6 +24,7 @@
 #define CONFIG_INCLUDE_SYSPRIV_H "sysdep/linux/syspriv.h"
 
 #define CONFIG_MADV_DONTNEED_TO_FREE
+#define CONFIG_DISABLE_THP
 
 #ifndef AF_MPLS
 #define AF_MPLS 28
