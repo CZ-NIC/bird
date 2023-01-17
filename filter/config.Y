@@ -305,7 +305,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	IF, THEN, ELSE, CASE,
 	FOR, IN, DO,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
-	FROM, GW, NET, MASK, PROTO, SOURCE, SCOPE, DEST, IFNAME, IFINDEX, WEIGHT, GW_MPLS,
+	FROM, GW, NET, MASK, PROTO, SOURCE, SCOPE, DEST, IFNAME, IFINDEX, WEIGHT, GW_MPLS, ONLINK,
 	PREFERENCE,
 	ROA_CHECK, ASN, SRC, DST,
 	IS_V4, IS_V6,
@@ -795,6 +795,7 @@ static_attr:
  | WEIGHT  { $$ = f_new_static_attr(T_INT,        SA_WEIGHT,	0); }
  | PREFERENCE { $$ = f_new_static_attr(T_INT,	  SA_PREF,	0); }
  | GW_MPLS { $$ = f_new_static_attr(T_INT,        SA_GW_MPLS,	0); }
+ | ONLINK  { $$ = f_new_static_attr(T_BOOL,       SA_ONLINK,	0); }
  ;
 
 term:
