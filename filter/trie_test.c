@@ -432,9 +432,6 @@ test_match_net(list *prefixes, struct f_trie *trie, const net_addr *net)
 static int
 t_match_random_net(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   int v6 = 0;
   for (int round = 0; round < TESTS_NUM; round++)
   {
@@ -452,16 +449,12 @@ t_match_random_net(void)
     tmp_flush();
   }
 
-  bt_bird_cleanup();
   return 1;
 }
 
 static int
 t_match_inner_net(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   int v6 = 0;
   for (int round = 0; round < TESTS_NUM; round++)
   {
@@ -482,16 +475,12 @@ t_match_inner_net(void)
     tmp_flush();
   }
 
-  bt_bird_cleanup();
   return 1;
 }
 
 static int
 t_match_outer_net(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   int v6 = 0;
   for (int round = 0; round < TESTS_NUM; round++)
   {
@@ -513,7 +502,6 @@ t_match_outer_net(void)
   }
 
   v6 = !v6;
-  bt_bird_cleanup();
   return 1;
 }
 
@@ -574,16 +562,11 @@ benchmark_trie_dataset(const char *filename, int plus)
 static int UNUSED
 t_bench_trie_datasets_subset(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   /* Specific datasets, not included */
   benchmark_trie_dataset("trie-data-bgp-1", 0);
   benchmark_trie_dataset("trie-data-bgp-10", 0);
   benchmark_trie_dataset("trie-data-bgp-100", 0);
   benchmark_trie_dataset("trie-data-bgp-1000", 0);
-
-  bt_bird_cleanup();
 
   return 1;
 }
@@ -591,16 +574,11 @@ t_bench_trie_datasets_subset(void)
 static int UNUSED
 t_bench_trie_datasets_random(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   /* Specific datasets, not included */
   benchmark_trie_dataset("trie-data-bgp-1", 1);
   benchmark_trie_dataset("trie-data-bgp-10", 1);
   benchmark_trie_dataset("trie-data-bgp-100", 1);
   benchmark_trie_dataset("trie-data-bgp-1000", 1);
-
-  bt_bird_cleanup();
 
   return 1;
 }
@@ -609,9 +587,6 @@ t_bench_trie_datasets_random(void)
 static int
 t_trie_same(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   int v6 = 0;
   for (int round = 0; round < TESTS_NUM*4; round++)
   {
@@ -632,7 +607,6 @@ t_trie_same(void)
     tmp_flush();
   }
 
-  bt_bird_cleanup();
   return 1;
 }
 
@@ -652,9 +626,6 @@ log_networks(const net_addr *a, const net_addr *b)
 static int
 t_trie_walk(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   for (int round = 0; round < TESTS_NUM*8; round++)
   {
     int level = round / TESTS_NUM;
@@ -763,7 +734,6 @@ t_trie_walk(void)
     tmp_flush();
   }
 
-  bt_bird_cleanup();
   return 1;
 }
 
@@ -802,9 +772,6 @@ find_covering_nets(struct f_prefix *prefixes, int num, const net_addr *net, net_
 static int
 t_trie_walk_to_root(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   for (int round = 0; round < TESTS_NUM * 4; round++)
   {
     int level = round / TESTS_NUM;
@@ -876,7 +843,6 @@ t_trie_walk_to_root(void)
     tmp_flush();
   }
 
-  bt_bird_cleanup();
   return 1;
 }
 
@@ -884,6 +850,8 @@ int
 main(int argc, char *argv[])
 {
   bt_init(argc, argv);
+  bt_bird_init();
+  bt_config_parse(BT_CONFIG_SIMPLE);
 
   bt_test_suite(t_match_random_net, "Testing random prefix matching");
   bt_test_suite(t_match_inner_net, "Testing random inner prefix matching");

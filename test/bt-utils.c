@@ -71,12 +71,6 @@ bt_bird_init(void)
   protos_build();
 }
 
-void bt_bird_cleanup(void)
-{
-  config = new_config = NULL;
-  the_bird_unlock();
-}
-
 static char *
 bt_load_file(const char *filename, int quiet)
 {

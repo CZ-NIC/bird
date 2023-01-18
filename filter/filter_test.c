@@ -85,6 +85,5 @@ main(int argc, char *argv[])
   WALK_LIST(t, config->tests)
     bt_test_suite_base(run_function, t->fn_name, t, 0, BT_TIMEOUT, "%s", t->dsc);
 
-  bt_bird_cleanup();
   return bt_exit_value();
 }
