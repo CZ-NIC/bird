@@ -58,6 +58,7 @@ struct free_pages {
 };
 
 static void global_free_pages_cleanup_event(void *);
+static void *alloc_cold_page(void);
 
 static struct free_pages global_free_pages = {
   .min = KEEP_PAGES_MAIN_MIN,
@@ -114,6 +115,14 @@ alloc_page(void)
 
     return fp;
   }
+  else
+    return alloc_cold_page();
+}
+
+static void *
+alloc_cold_page(void)
+{
+  struct free_pages *fps = &global_free_pages;
 
   /* If there is any free page kept cold, we use that. */
   if (!EMPTY_LIST(fps->empty))
@@ -170,12 +179,7 @@ global_free_pages_cleanup_event(void *data UNUSED)
 
   /* Cleanup may get called when hot free page cache is short of pages. Replenishing. */
   while (fps->cnt / 2 < fps->min)
-  {
-    struct free_page *fp = alloc_sys_page();
-    fp->n = (node) {};
-    add_tail(&fps->pages, &fp->n);
-    fps->cnt++;
-  }
+    free_page(alloc_cold_page());
 
   /* Or the hot free page cache is too big. Moving some pages to the cold free page cache. */
   for (int limit = CLEANUP_PAGES_BULK; limit && (fps->cnt > fps->max / 2); fps->cnt--, limit--)
