@@ -21,6 +21,9 @@
 
 #ifdef CONFIG_DISABLE_THP
 #include <sys/prctl.h>
+#ifndef PR_SET_THP_DISABLE
+#define PR_SET_THP_DISABLE 41
+#endif
 #endif
 
 long page_size = 0;
@@ -78,7 +81,7 @@ alloc_sys_page(void)
   void *ptr = mmap(NULL, page_size, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
   if (ptr == MAP_FAILED)
-    bug("mmap(%lu) failed: %m", page_size);
+    die("mmap(%ld) failed: %m", (s64) page_size);
 
   return ptr;
 }
@@ -99,7 +102,7 @@ alloc_page(void)
     int err = posix_memalign(&ptr, page_size, page_size);
 
     if (err || !ptr)
-      bug("posix_memalign(%lu) failed", (long unsigned int) page_size);
+      die("posix_memalign(%ld) failed", (s64) page_size);
 
     return ptr;
   }
@@ -229,7 +232,7 @@ resource_sys_init(void)
 #ifdef CONFIG_DISABLE_THP
   /* Disable transparent huge pages, they do not work properly with madvice(MADV_DONTNEED) */
   if (prctl(PR_SET_THP_DISABLE,  (unsigned long) 1,  (unsigned long) 0,  (unsigned long) 0,  (unsigned long) 0) < 0)
-    die("prctl(PR_SET_THP_DISABLE) failed: %m");
+    log(L_WARN "Cannot disable transparent huge pages: prctl(PR_SET_THP_DISABLE) failed: %m");
 #endif
 
 #ifdef HAVE_MMAP
