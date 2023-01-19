@@ -307,14 +307,14 @@ cli_event(void *data)
 }
 
 cli *
-cli_new(void *priv)
+cli_new(struct birdsock *sock)
 {
   pool *p = rp_new(cli_pool, "CLI");
   cli *c = mb_alloc(p, sizeof(cli));
 
   bzero(c, sizeof(cli));
   c->pool = p;
-  c->priv = priv;
+  c->sock = sock;
   c->event = ev_new(p);
   c->event->hook = cli_event;
   c->event->data = c;
@@ -415,7 +415,12 @@ cli_free(cli *c)
   if (c == cmd_reconfig_stored_cli)
     cmd_reconfig_stored_cli = NULL;
 
-  if (!defer)
+  if (defer)
+  {
+    rfree(c->sock);
+    c->sock = NULL;
+  }
+  else
     rfree(c->pool);
 }
 

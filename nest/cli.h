@@ -28,7 +28,7 @@ struct cli_out {
 typedef struct cli {
   node n;				/* Node in list of all log hooks */
   pool *pool;
-  void *priv;				/* Private to sysdep layer */
+  struct birdsock *sock;		/* Underlying socket */
   byte *rx_buf, *rx_pos, *rx_aux;	/* sysdep */
   struct cli_out *tx_buf, *tx_pos, *tx_write;
   event *event;
@@ -63,7 +63,7 @@ static inline void cli_separator(cli *c)
 
 /* Functions provided to sysdep layer */
 
-cli *cli_new(void *);
+cli *cli_new(struct birdsock *);
 void cli_init(void);
 void cli_free(cli *);
 void cli_kick(cli *);

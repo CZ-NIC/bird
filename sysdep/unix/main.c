@@ -395,7 +395,8 @@ static char *path_control_socket = PATH_CONTROL_SOCKET;
 static void
 cli_write(cli *c)
 {
-  sock *s = c->priv;
+  sock *s = c->sock;
+  ASSERT_DIE(c->sock);
 
   while (c->tx_pos)
     {
@@ -419,7 +420,9 @@ cli_write(cli *c)
 void
 cli_write_trigger(cli *c)
 {
-  sock *s = c->priv;
+  sock *s = c->sock;
+  if (!s)
+    return;
 
   if (s->tbuf == NULL)
     cli_write(c);
@@ -434,7 +437,8 @@ cli_tx(sock *s)
 int
 cli_get_command(cli *c)
 {
-  sock *s = c->priv;
+  sock *s = c->sock;
+  ASSERT_DIE(c->sock);
   byte *t = c->rx_aux ? : s->rbuf;
   byte *tend = s->rpos;
   byte *d = c->rx_pos;
@@ -477,6 +481,7 @@ cli_err(sock *s, int err)
       else
 	log(L_INFO "CLI connection closed");
     }
+
   cli_free(s->data);
 }
 

@@ -233,6 +233,7 @@ static int
 rt_show_cleanup(struct cli *c)
 {
   struct rt_show_data *d = c->rover;
+  c->cleanup = NULL;
 
   /* Cancel the feed */
   if (d->req.hook)
