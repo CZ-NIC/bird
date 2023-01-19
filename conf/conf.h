@@ -71,6 +71,7 @@ struct config *config_alloc(const char *name);
 int config_parse(struct config *);
 int cli_parse(struct config *);
 void config_free(struct config *);
+void config_free_old(void);
 int config_commit(struct config *, int type, uint timeout);
 int config_confirm(void);
 int config_undo(void);

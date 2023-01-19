@@ -5,6 +5,7 @@ variables:
   DOCKER_CMD: docker --config="$HOME/.docker/$CI_JOB_ID/"
   IMG_BASE: registry.nic.cz/labs/bird
   TOOLS_DIR: /var/lib/gitlab-runner/bird-tools
+  STAYRTR_BINARY: /var/lib/gitlab-runner/stayrtr-0.1-108-g8d18a41-linux-x86_64
 
 stages:
   - image
@@ -506,6 +507,7 @@ build-birdlab:
     - sudo git clean -fx
     - git pull --ff-only
     - mv $DIR/bird $DIR/birdc netlab/common
+    - ln -s $STAYRTR_BINARY netlab/common/stayrtr
 
 .test: &test-base
   stage: test
@@ -516,7 +518,7 @@ build-birdlab:
   script:
     - cd $TOOLS_DIR/netlab
     - sudo ./stop
-    - sudo ./runtest -m check $TEST_NAME
+    - sudo ./runtest -s v3 -m check $TEST_NAME
 
 test-ospf-base:
   <<: *test-base
@@ -588,6 +590,16 @@ test-bgp-merged:
   variables:
     TEST_NAME: cf-bgp-merged
 
+test-bgp-flowspec:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-flowspec
+
+test-bgp-rs-multitab:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-rs-multitab
+
 test-ebgp-loop:
   <<: *test-base
   variables:
@@ -598,12 +610,32 @@ test-ebgp-star:
   variables:
     TEST_NAME: cf-ebgp-star
 
+test-ebgp-role:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-role
+
+test-ebgp-graceful:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-graceful
+
+test-ebgp-import-limit:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-import-limit
+
 test-ibgp-loop:
   <<: *test-base
   variables:
     TEST_NAME: cf-ibgp-loop
 
-test-ibgp-star:
+test-ibgp-loop-big:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ibgp-loop-big
+
+test-ibgp-flat:
   <<: *test-base
   variables:
     TEST_NAME: cf-ibgp-flat
@@ -622,3 +654,8 @@ test-rip-base:
   <<: *test-base
   variables:
     TEST_NAME: cf-rip-base
+
+test-kernel-learn:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-kernel-learn

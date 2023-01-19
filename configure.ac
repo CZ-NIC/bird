@@ -226,6 +226,8 @@ else
       ;;
     openbsd*)
       sysdesc=bsd
+      CPPFLAGS="$CPPFLAGS -I/usr/local/include"
+      LDFLAGS="$LDFLAGS -L/usr/local/lib"
       ;;
     dragonfly*)
       sysdesc=bsd

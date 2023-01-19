@@ -245,6 +245,8 @@ async_config(void)
 {
   struct config *conf;
 
+  config_free_old();
+
   log(L_INFO "Reconfiguration requested by SIGHUP");
   if (!unix_read_config(&conf, config_name))
     {
@@ -283,6 +285,9 @@ cmd_read_config(const char *name)
 void
 cmd_check_config(const char *name)
 {
+  if (cli_access_restricted())
+    return;
+
   struct config *conf = cmd_read_config(name);
   if (!conf)
     return;
@@ -326,6 +331,8 @@ cmd_reconfig(const char *name, int type, uint timeout)
 {
   if (cli_access_restricted())
     return;
+
+  config_free_old();
 
   struct config *conf = cmd_read_config(name);
   if (!conf)
