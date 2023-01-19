@@ -697,7 +697,7 @@ to set options.
         thresholds; first value is the low threshold (when to resume), the
         second one is the high threshold (when to pause). The higher is the
         threshold, the more memory can get used. In most cases, the defaults
-	should work for you. Default: 128, 512.
+	should work for you. Default: 1024 8192.
 
 	<tag><label id="rtable-export-settle-time">export settle time <m/time/ <m/time/</tag>
 	Minimum and maximum settle times, respectively, for export announcements.

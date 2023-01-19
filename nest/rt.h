@@ -141,8 +141,10 @@ struct rtable_private {
   uint rr_counter;			/* Number of currently running route refreshes,
 					   in fact sum of (stale_set - stale_pruned) over all importers
 					   + one for each TIS_FLUSHING importer */
+  uint wait_counter;			/* Number of imports in TIS_WAITING state */
   byte prune_state;			/* Table prune state, 1 -> scheduled, 2-> running */
   byte prune_trie;			/* Prune prefix trie during next table prune */
+  byte imports_flushing;		/* Some imports are being flushed right now */
   byte nhu_state;			/* Next Hop Update state */
   byte nhu_corked;			/* Next Hop Update is corked with this state */
   byte export_used;			/* Pending Export pruning is scheduled */

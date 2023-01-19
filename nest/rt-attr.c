@@ -568,6 +568,8 @@ static struct resclass ea_class_ref_class = {
 static void
 ea_class_init(void)
 {
+  ASSERT_DIE(ea_class_global == NULL);
+
   idm_init(&ea_class_idm, rta_pool, EA_CLASS_INITIAL_MAX);
   ea_class_global = mb_allocz(rta_pool,
       sizeof(*ea_class_global) * (ea_class_max = EA_CLASS_INITIAL_MAX));

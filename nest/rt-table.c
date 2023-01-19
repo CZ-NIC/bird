@@ -1515,6 +1515,7 @@ rt_export_hook(void *_data)
   }
 
   int used = 0;
+  int no_next = 0;
 
   /* Process the export */
   for (uint i=0; i<RT_EXPORT_BULK; i++)
@@ -1522,12 +1523,16 @@ rt_export_hook(void *_data)
     used += rte_export(c, c->rpe_next);
 
     if (!c->rpe_next)
+    {
+      no_next = 1;
       break;
+    }
   }
 
   if (used)
-    RT_LOCKED(tab, _)
-      rt_export_used(c->table, c->h.req->name, "finished export bulk");
+    RT_LOCKED(tab, t)
+      if (no_next || t->cork_active)
+	rt_export_used(c->table, c->h.req->name, no_next ? "finished export bulk" : "cork active");
 
   rt_send_export_event(&c->h);
 }
@@ -2058,10 +2063,11 @@ rt_stop_import(struct rt_import_request *req, void (*stopped)(struct rt_import_r
     rt_set_import_state(hook, TIS_STOP);
     hook->stopped = stopped;
 
+    /* Cancel table rr_counter */
     if (hook->stale_set != hook->stale_pruned)
-      tab->rr_counter -= (hook->stale_set - hook->stale_pruned - 1);
-    else
-      tab->rr_counter++;
+      tab->rr_counter -= (hook->stale_set - hook->stale_pruned);
+
+    tab->rr_counter++;
 
     hook->stale_set = hook->stale_pruned = hook->stale_pruning = hook->stale_valid = 0;
   }
@@ -2222,7 +2228,7 @@ rt_table_export_stop_locked(struct rt_export_hook *hh)
   switch (atomic_load_explicit(&hh->export_state, memory_order_relaxed))
   {
     case TES_HUNGRY:
-      rt_trace(tab, D_EVENTS, "Stopping export hook %s must wait for uncorking; %p", hook->h.req->name, hook->h.n.next);
+      rt_trace(tab, D_EVENTS, "Stopping export hook %s must wait for uncorking", hook->h.req->name);
       return 0;
     case TES_FEEDING:
       switch (hh->req->addr_mode)
@@ -2241,7 +2247,10 @@ rt_table_export_stop_locked(struct rt_export_hook *hh)
 	  fit_get(&tab->fib, &hook->feed_fit);
 	  break;
       }
+      break;
 
+    case TES_STOP:
+      bug("Tried to repeatedly stop the same export hook %s", hook->h.req->name);
   }
 
   rt_trace(tab, D_EVENTS, "Stopping export hook %s right now", hook->h.req->name);
@@ -2332,7 +2341,7 @@ rt_refresh_begin(struct rt_import_request *req)
            e->rte.stale_cycle = 0;
       }
     FIB_WALK_END;
-    tab->rr_counter -= (hook->stale_set - hook->stale_pruned - 1);
+    tab->rr_counter -= hook->stale_set - hook->stale_pruned;
     hook->stale_set = 1;
     hook->stale_valid = 0;
     hook->stale_pruned = 0;
@@ -2343,8 +2352,10 @@ rt_refresh_begin(struct rt_import_request *req)
     /* Let's reserve the stale_cycle zero value for always-invalid routes */
     hook->stale_set = 1;
     hook->stale_valid = 0;
-    tab->rr_counter++;
   }
+
+  /* The table must know that we're route-refreshing */
+  tab->rr_counter++;
 
   if (req->trace_routes & D_STATES)
     log(L_TRACE "%s: route refresh begin [%u]", req->name, hook->stale_set);
@@ -2371,6 +2382,7 @@ rt_refresh_end(struct rt_import_request *req)
     hook->stale_valid++;
     ASSERT_DIE(hook->stale_set == hook->stale_valid);
 
+    /* Here we can't kick the timer as we aren't in the table service loop */
     rt_schedule_prune(tab);
 
     if (req->trace_routes & D_STATES)
@@ -2853,7 +2865,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   }
 
   /* Start the service thread */
-  t->loop = birdloop_new(p, DOMAIN_ORDER(service), mb_sprintf(p, "Routing tahle %s", t->name));
+  t->loop = birdloop_new(p, DOMAIN_ORDER(service), mb_sprintf(p, "Routing table %s", t->name));
   birdloop_enter(t->loop);
   birdloop_flag_set_handler(t->loop, &t->fh);
   birdloop_leave(t->loop);
@@ -3021,27 +3033,27 @@ again:
     }
   }
 
-  uint flushed_channels = 0;
-
   /* Close flushed channels */
   WALK_LIST2_DELSAFE(ih, n, x, tab->imports, n)
     if (ih->import_state == TIS_FLUSHING)
     {
+      DBG("flushing %s %s rr %u", ih->req->name, tab->name, tab->rr_counter);
       ih->flush_seq = tab->exporter.next_seq;
       rt_set_import_state(ih, TIS_WAITING);
-      flushed_channels++;
       tab->rr_counter--;
+      tab->wait_counter++;
     }
     else if (ih->stale_pruning != ih->stale_pruned)
     {
-      tab->rr_counter -= (ih->stale_pruned - ih->stale_pruning);
+      DBG("pruning %s %s rr %u set %u valid %u pruning %u pruned %u", ih->req->name, tab->name, tab->rr_counter, ih->stale_set, ih->stale_valid, ih->stale_pruning, ih->stale_pruned);
+      tab->rr_counter -= (ih->stale_pruning - ih->stale_pruned);
       ih->stale_pruned = ih->stale_pruning;
       if (ih->req->trace_routes & D_STATES)
 	log(L_TRACE "%s: table prune after refresh end [%u]", ih->req->name, ih->stale_pruned);
     }
 
   /* In some cases, we may want to directly proceed to export cleanup */
-  if (EMPTY_LIST(tab->exporter.e.hooks) && flushed_channels)
+  if (EMPTY_LIST(tab->exporter.e.hooks) && tab->wait_counter)
     rt_export_cleanup(tab);
 }
 
@@ -3202,13 +3214,15 @@ rt_export_cleanup(struct rtable_private *tab)
 
 done:;
   struct rt_import_hook *ih; node *x;
-  WALK_LIST2_DELSAFE(ih, n, x, tab->imports, n)
-    if (ih->import_state == TIS_WAITING)
-      if (!first || (first->seq >= ih->flush_seq))
-      {
-	ih->import_state = TIS_CLEARED;
-	ev_send(ih->req->list, &ih->announce_event);
-      }
+  if (tab->wait_counter)
+    WALK_LIST2_DELSAFE(ih, n, x, tab->imports, n)
+      if (ih->import_state == TIS_WAITING)
+	if (!first || (first->seq >= ih->flush_seq))
+	{
+	  ih->import_state = TIS_CLEARED;
+	  tab->wait_counter--;
+	  ev_send(ih->req->list, &ih->announce_event);
+	}
 
   if ((tab->gc_counter += want_prune) >= tab->config->gc_threshold)
     rt_kick_prune_timer(tab);
@@ -3287,7 +3301,7 @@ rt_unlock_trie(struct rtable_private *tab, struct f_trie *trie)
       if (tab->trie && (tab->trie->prefix_count > (2 * tab->fib.entries)))
       {
 	tab->prune_trie = 1;
-	rt_schedule_prune(tab);
+	rt_kick_prune_timer(tab);
       }
     }
   }
@@ -3940,8 +3954,8 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->addr_type = addr_type;
   c->gc_threshold = 1000;
   c->gc_period = (uint) -1;	/* set in rt_postconfig() */
-  c->cork_threshold.low = 128;
-  c->cork_threshold.high = 512;
+  c->cork_threshold.low = 1024;
+  c->cork_threshold.high = 8192;
   c->export_settle = (struct settle_config) {
     .min = 1 MS,
     .max = 100 MS,
@@ -4042,6 +4056,7 @@ rt_check_cork_high(struct rtable_private *tab)
   {
     tab->cork_active = 1;
     rt_cork_acquire();
+    rt_export_used(&tab->exporter, tab->name, "corked");
 
     rt_trace(tab, D_STATES, "Corked");
   }
