@@ -557,7 +557,14 @@ void cmd_reconfig_undo_notify(void) {}
 #include "lib/net.h"
 #include "conf/conf.h"
 void sysdep_preconfig(struct config *c UNUSED) {}
-int sysdep_commit(struct config *new UNUSED, struct config *old UNUSED) { return 0; }
+
+void bird_thread_commit(struct config *new, struct config *old);
+int sysdep_commit(struct config *new, struct config *old)
+{
+  bird_thread_commit(new, old);
+  return 0;
+}
+
 void sysdep_shutdown_done(void) {}
 
 #include "nest/cli.h"

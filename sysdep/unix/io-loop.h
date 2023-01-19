@@ -21,26 +21,16 @@ void pipe_kick(struct pipe *);
 
 struct birdloop
 {
+  node n;
+
   pool *pool;
 
   struct timeloop time;
   event_list event_list;
   list sock_list;
-  uint sock_num;
-
-  BUFFER(sock *) poll_sk;
-  BUFFER(struct pollfd) poll_fd;
-  u8 poll_changed;
-  u8 close_scheduled;
+  int sock_num;
 
   uint ping_pending;
-  _Atomic u32 ping_sent;
-  struct pipe wakeup;
-
-  pthread_t thread_id;
-  pthread_attr_t thread_attr;
-
-  struct rcu_birdloop rcu;
 
   uint links;
 
@@ -51,6 +41,36 @@ struct birdloop
   void *stop_data;
 
   struct birdloop *prev_loop;
+
+  struct bird_thread *thread;
+  struct pollfd *pfd;
+
+  u64 total_time_spent_ns;
+};
+
+struct bird_thread
+{
+  node n;
+
+  struct pollfd *pfd;
+  uint pfd_max;
+
+  _Atomic u32 ping_sent;
+  _Atomic u32 run_cleanup;
+  _Atomic u32 poll_changed;
+
+  struct pipe wakeup;
+  event_list priority_events;
+
+  pthread_t thread_id;
+  pthread_attr_t thread_attr;
+
+  struct rcu_thread rcu;
+
+  list loops;
+  pool *pool;
+
+  event cleanup_event;
 };
 
 #endif

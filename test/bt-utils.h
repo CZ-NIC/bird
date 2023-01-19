@@ -28,7 +28,6 @@ uint bt_naive_pow(uint base, uint power);
 void bt_bytes_to_hex(char *buf, const byte *in_data, size_t size);
 
 void bt_bird_init(void);
-void bt_bird_cleanup(void);
 struct config *bt_config_parse(const char *cfg);
 struct config *bt_config_file_parse(const char *filepath);
 

@@ -11,7 +11,6 @@
 
 #include "lib/resource.h"
 #include "lib/locking.h"
-#include "lib/rcu.h"
 
 #include <stdatomic.h>
 

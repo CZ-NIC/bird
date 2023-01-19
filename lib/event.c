@@ -261,7 +261,7 @@ ev_send(event_list *l, event *e)
 	memory_order_acq_rel, memory_order_acquire));
 
   edlog(l, e, next, 4, EDL_SEND);
-  birdloop_ping(l->loop);
+  if (l->loop) birdloop_ping(l->loop);
 }
 
 void io_log_event(void *hook, void *data);

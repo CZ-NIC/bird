@@ -70,6 +70,12 @@ domain_free(struct domain_generic *dg)
   xfree(dg);
 }
 
+const char *
+domain_name(struct domain_generic *dg)
+{
+  return dg->name;
+}
+
 uint dg_order(struct domain_generic *dg)
 {
   return dg->order;

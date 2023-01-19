@@ -101,6 +101,12 @@ mrtdump_base:
  ;
 
 
+conf: THREADS expr {
+    if ($2 < 1) cf_error("Number of threads must be at least one.");
+    new_config->thread_count = $2;
+}
+
+
 conf: debug_unix ;
 
 debug_unix:
@@ -145,6 +151,11 @@ CF_CLI_HELP(GRACEFUL, restart, [[Shut the daemon down for graceful restart]])
 CF_CLI(GRACEFUL RESTART,,, [[Shut the daemon down for graceful restart]])
 { cmd_graceful_restart(); } ;
 
+CF_CLI(SHOW THREADS,,, [[Write out thread information]])
+{ cmd_show_threads(0); } ;
+
+CF_CLI(SHOW THREADS ALL,,, [[Write out thread and IO loop information]])
+{ cmd_show_threads(1); } ;
 
 cfg_name:
    /* empty */ { $$ = NULL; }

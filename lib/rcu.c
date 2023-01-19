@@ -17,11 +17,11 @@
 #include "lib/locking.h"
 
 _Atomic uint rcu_gp_ctl = RCU_NEST_CNT;
-_Thread_local struct rcu_birdloop *this_rcu_birdloop = NULL;
+_Thread_local struct rcu_thread *this_rcu_thread = NULL;
 
-static list rcu_birdloop_list;
+static list rcu_thread_list;
 
-static struct rcu_birdloop main_rcu_birdloop;
+static struct rcu_thread main_rcu_thread;
 
 DEFINE_DOMAIN(resource);
 static DOMAIN(resource) rcu_domain;
@@ -37,8 +37,8 @@ static void
 update_counter_and_wait(void)
 {
   atomic_fetch_xor(&rcu_gp_ctl, RCU_GP_PHASE);
-  struct rcu_birdloop *rc;
-  WALK_LIST(rc, rcu_birdloop_list)
+  struct rcu_thread *rc;
+  WALK_LIST(rc, rcu_thread_list)
     while (rcu_gp_ongoing(&rc->ctl))
       birdloop_yield();
 }
@@ -53,19 +53,19 @@ synchronize_rcu(void)
 }
 
 void
-rcu_birdloop_start(struct rcu_birdloop *rc)
+rcu_thread_start(struct rcu_thread *rc)
 {
   LOCK_DOMAIN(resource, rcu_domain);
-  add_tail(&rcu_birdloop_list, &rc->n);
-  this_rcu_birdloop = rc;
+  add_tail(&rcu_thread_list, &rc->n);
+  this_rcu_thread = rc;
   UNLOCK_DOMAIN(resource, rcu_domain);
 }
 
 void
-rcu_birdloop_stop(struct rcu_birdloop *rc)
+rcu_thread_stop(struct rcu_thread *rc)
 {
   LOCK_DOMAIN(resource, rcu_domain);
-  this_rcu_birdloop = NULL;
+  this_rcu_thread = NULL;
   rem_node(&rc->n);
   UNLOCK_DOMAIN(resource, rcu_domain);
 }
@@ -74,6 +74,6 @@ void
 rcu_init(void)
 {
   rcu_domain = DOMAIN_NEW(resource, "Read-Copy-Update");
-  init_list(&rcu_birdloop_list);
-  rcu_birdloop_start(&main_rcu_birdloop);
+  init_list(&rcu_thread_list);
+  rcu_thread_start(&main_rcu_thread);
 }

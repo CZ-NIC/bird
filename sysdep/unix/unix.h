@@ -16,6 +16,7 @@ struct pool;
 struct iface;
 struct birdsock;
 struct rfile;
+struct config;
 
 /* main.c */
 
@@ -32,6 +33,8 @@ void cmd_reconfig_undo(void);
 void cmd_reconfig_status(void);
 void cmd_shutdown(void);
 void cmd_graceful_restart(void);
+void cmd_show_threads(int);
+void bird_thread_commit(struct config *new, struct config *old);
 
 #define UNIX_DEFAULT_CONFIGURE_TIMEOUT	300
 

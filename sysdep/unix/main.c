@@ -200,9 +200,11 @@ sysdep_preconfig(struct config *c)
 }
 
 int
-sysdep_commit(struct config *new, struct config *old UNUSED)
+sysdep_commit(struct config *new, struct config *old)
 {
   log_switch(0, &new->logfiles, new->syslog_name);
+  bird_thread_commit(new, old);
+
   return 0;
 }
 

@@ -14,6 +14,7 @@ struct domain_generic;
 /* Here define the global lock order; first to last. */
 struct lock_order {
   struct domain_generic *the_bird;
+  struct domain_generic *control;
   struct domain_generic *proto;
   struct domain_generic *service;
   struct domain_generic *rtable;
@@ -33,6 +34,9 @@ struct domain_generic *domain_new(const char *name, uint order);
 
 #define DOMAIN_FREE(type, d)	domain_free((d).type)
 void domain_free(struct domain_generic *);
+
+#define DOMAIN_NAME(type, d)	domain_name((d).type)
+const char *domain_name(struct domain_generic *);
 
 #define DOMAIN_NULL(type)   (DOMAIN(type)) {}
 

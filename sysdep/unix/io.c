@@ -2254,7 +2254,7 @@ io_loop(void)
       }
 
       /* A hack to reload main io_loop() when something has changed asynchronously. */
-      pipe_pollin(&main_birdloop.wakeup, &pfd[0]);
+      pipe_pollin(&main_birdloop.thread->wakeup, &pfd[0]);
 
       nfds = 1;
 
@@ -2332,8 +2332,8 @@ io_loop(void)
 	  if (pfd[0].revents & POLLIN)
 	  {
 	    /* IO loop reload requested */
-	    pipe_drain(&main_birdloop.wakeup);
-	    atomic_exchange_explicit(&main_birdloop.ping_sent, 0, memory_order_acq_rel);
+	    pipe_drain(&main_birdloop.thread->wakeup);
+	    atomic_exchange_explicit(&main_birdloop.thread->ping_sent, 0, memory_order_acq_rel);
 	    continue;
 	  }
 

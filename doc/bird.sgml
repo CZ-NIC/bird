@@ -532,6 +532,12 @@ include "tablename.conf";;
 	killed by abort signal. The timeout has effective granularity of
 	seconds, zero means disabled. Default: disabled (0).
 
+	<tag><label id="opt-threads">threads <m/number/</tag>
+	Set how many worker threads should BIRD spawn. Tests show that every
+        thread can utilize one complete CPU core, therefore you probably want to
+        keep at least one free core. The maximum feasible thread count heavily
+        depends on the actual workload and must be determined by testing or estimation. Default: 1
+
 	<tag><label id="opt-mrtdump">mrtdump "<m/filename/"</tag>
 	Set MRTdump file name. This option must be specified to allow MRTdump
 	feature. Default: no dump file.

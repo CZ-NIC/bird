@@ -21,33 +21,33 @@
 
 extern _Atomic uint rcu_gp_ctl;
 
-struct rcu_birdloop {
+struct rcu_thread {
   node n;
   _Atomic uint ctl;
 };
 
-extern _Thread_local struct rcu_birdloop *this_rcu_birdloop;
+extern _Thread_local struct rcu_thread *this_rcu_thread;
 
 static inline void rcu_read_lock(void)
 {
-  uint cmp = atomic_load_explicit(&this_rcu_birdloop->ctl, memory_order_acquire);
+  uint cmp = atomic_load_explicit(&this_rcu_thread->ctl, memory_order_acquire);
 
   if (cmp & RCU_NEST_MASK)
-    atomic_store_explicit(&this_rcu_birdloop->ctl, cmp + RCU_NEST_CNT, memory_order_relaxed);
+    atomic_store_explicit(&this_rcu_thread->ctl, cmp + RCU_NEST_CNT, memory_order_relaxed);
   else
-    atomic_store(&this_rcu_birdloop->ctl, atomic_load_explicit(&rcu_gp_ctl, memory_order_acquire));
+    atomic_store(&this_rcu_thread->ctl, atomic_load_explicit(&rcu_gp_ctl, memory_order_acquire));
 }
 
 static inline void rcu_read_unlock(void)
 {
-  atomic_fetch_sub(&this_rcu_birdloop->ctl, RCU_NEST_CNT);
+  atomic_fetch_sub(&this_rcu_thread->ctl, RCU_NEST_CNT);
 }
 
 void synchronize_rcu(void);
 
 /* Registering and unregistering a birdloop. To be called from birdloop implementation */
-void rcu_birdloop_start(struct rcu_birdloop *);
-void rcu_birdloop_stop(struct rcu_birdloop *);
+void rcu_thread_start(struct rcu_thread *);
+void rcu_thread_stop(struct rcu_thread *);
 
 /* Run this from resource init */
 void rcu_init(void);
