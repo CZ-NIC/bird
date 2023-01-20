@@ -908,10 +908,10 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 	(local_role == BGP_ROLE_PROVIDER && neigh_role == BGP_ROLE_CUSTOMER) ||
 	(local_role == BGP_ROLE_RS_CLIENT && neigh_role == BGP_ROLE_RS_SERVER) ||
 	(local_role == BGP_ROLE_RS_SERVER && neigh_role == BGP_ROLE_RS_CLIENT)))
-  { bgp_error(conn, 2, 11, NULL, 0); return; }
+  { bgp_error(conn, 2, 11, &neigh_role, -1); return; }
 
   if ((p->cf->require_roles) && (neigh_role == BGP_ROLE_UNDEFINED))
-  { bgp_error(conn, 2, 11, NULL, 0); return; }
+  { bgp_error(conn, 2, 11, &neigh_role, -1); return; }
 
   /* Check the other connection */
   other = (conn == &p->outgoing_conn) ? &p->incoming_conn : &p->outgoing_conn;
@@ -3157,6 +3157,12 @@ bgp_log_error(struct bgp_proto *p, u8 class, char *msg, uint code, uint subcode,
 	  t += bsprintf(t, ": %u", (len == 2) ? get_u16(data) : get_u32(data));
 	  goto done;
 	}
+
+      if ((code == 2) && (subcode == 11) && (len == 1))
+        {
+	  t += bsprintf(t, " (%s)", bgp_format_role_name(get_u8(data)));
+	  goto done;
+        }
 
       /* RFC 8203 - shutdown communication */
       if (((code == 6) && ((subcode == 2) || (subcode == 4))))
