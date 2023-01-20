@@ -3352,8 +3352,8 @@ ea_set_hostentry(ea_list **to, rtable *dep, rtable *src, ip_addr gw, ip_addr ll,
   struct {
     struct adata ad;
     struct hostentry *he;
-    u32 labels[lnum];
-  } *head = (void *) tmp_alloc_adata(sizeof *head - sizeof(struct adata));
+    u32 labels[0];
+  } *head = (void *) tmp_alloc_adata(sizeof *head + sizeof(u32) * lnum - sizeof(struct adata));
 
   RT_LOCKED(src, tab)
     head->he = rt_get_hostentry(tab, gw, ll, dep);

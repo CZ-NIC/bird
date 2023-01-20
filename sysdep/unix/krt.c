@@ -290,18 +290,6 @@ krt_metric(rte *a)
   return ea ? ea->u.data : 0;
 }
 
-static inline int
-krt_same_key(rte *a, rte *b)
-{
-  return (krt_metric(a) == krt_metric(b));
-}
-
-static inline int
-krt_uptodate(rte *a, rte *b)
-{
-  return (a->attrs == b->attrs);
-}
-
 static void
 krt_learn_alien_attr(struct channel *c, rte *e)
 {
@@ -444,10 +432,13 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
   switch (src)
     {
     case KRT_SRC_KERNEL:
-      goto ignore;
+      krt_trace_in(p, e, "ignored");
+      return;
 
     case KRT_SRC_REDIRECT:
-      goto delete;
+      krt_trace_in(p, e, "deleting");
+      krt_replace_rte(p, e->net, NULL, e);
+      return;
 
     case  KRT_SRC_ALIEN:
       if (KRT_CF->learn)
@@ -457,6 +448,7 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
       return;
     }
 #endif
+
   /* The rest is for KRT_SRC_BIRD (or KRT_SRC_UNKNOWN) */
 
   RT_LOCKED(p->p.main_channel->table, tab)
@@ -719,7 +711,11 @@ static int
 krt_preexport(struct channel *C, rte *e)
 {
   if (e->src->owner == &C->proto->sources)
+#ifdef CONFIG_SINGLE_ROUTE
+    return 1;
+#else
     return -1;
+#endif
 
   if (!krt_capable(e))
     return -1;
@@ -737,14 +733,8 @@ krt_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net,
     return;
 
 #ifdef CONFIG_SINGLE_ROUTE
-  /*
-   * Implicit withdraw - when the imported kernel route becomes the best one,
-   * we know that the previous one exported to the kernel was already removed,
-   * but if we processed the update as usual, we would send withdraw to the
-   * kernel, which would remove the new imported route instead.
-   */
-  rte *best = net->routes;
-  if (!new && best && (best->attrs->src->proto == P))
+  /* Got the same route as we imported. Keep it, do nothing. */
+  if (new && new->src->owner == &P->sources)
     return;
 #endif
 

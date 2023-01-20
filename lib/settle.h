@@ -32,7 +32,7 @@ struct settle {
 
 STATIC_ASSERT(OFFSETOF(struct settle, hook) == OFFSETOF(struct settle, tm) + OFFSETOF(timer, hook));
 
-#define SETTLE_INIT(_cfp, _hook, _data) (struct settle) { .tm = { .data = (_data), }, .hook = (_hook), .cf = ({ASSERT_DIE((_cfp)->min <= (_cfp)->max); *(_cfp); }), }
+#define SETTLE_INIT(_cfp, _hook, _data) (struct settle) { .tm = { .data = (_data), .hook = TYPE_CAST(void (*)(struct settle *), void (*)(struct timer *), (_hook)), }, .cf = ({ASSERT_DIE((_cfp)->min <= (_cfp)->max); *(_cfp); }), }
 
 
 static inline void settle_init(struct settle *s, struct settle_config *cf, void (*hook)(struct settle *), void *data)

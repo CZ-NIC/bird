@@ -9,13 +9,22 @@
 #ifndef _BIRD_BIRDLIB_H_
 #define _BIRD_BIRDLIB_H_
 
+#include <stddef.h>
+
 #include "sysdep/config.h"
 #include "lib/alloca.h"
 
 /* Ugly structure offset handling macros */
 
 #define SAME_TYPE(a, b)	({ int _ = ((a) != (b)); !_; })
+#define TYPE_CAST(from, to, what) ( SAME_TYPE(((from) NULL), (what)), ((to) (what)))
+
+#ifdef offsetof
+#define OFFSETOF offsetof
+#else
 #define OFFSETOF(s, i) ((size_t) &((s *)0)->i)
+#endif
+
 #define SKIP_BACK(s, i, p) ({ s *_ptr = ((s *)((char *)p - OFFSETOF(s, i))); SAME_TYPE(&_ptr->i, p); _ptr; })
 #define BIRD_ALIGN(s, a) (((s)+a-1)&~(a-1))
 #define CPU_STRUCT_ALIGN  (MAX_(_Alignof(void*), _Alignof(u64)))
