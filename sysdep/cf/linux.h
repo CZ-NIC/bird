@@ -17,6 +17,8 @@
 #define CONFIG_INCLUDE_SYSIO_H "sysdep/linux/sysio.h"
 #define CONFIG_INCLUDE_KRTSYS_H "sysdep/linux/krt-sys.h"
 
+#define CONFIG_LINUX_NETLINK
+
 #define CONFIG_RESTRICTED_PRIVILEGES
 #define CONFIG_INCLUDE_SYSPRIV_H "sysdep/linux/syspriv.h"
 

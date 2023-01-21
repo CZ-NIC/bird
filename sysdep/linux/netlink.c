@@ -6,7 +6,6 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#include <alloca.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -29,10 +28,16 @@
 #include "lib/macro.h"
 #include "conf/conf.h"
 
+#ifdef CONFIG_LINUX_NETLINK
 #include <asm/types.h>
 #include <linux/if.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
+#endif
+#ifdef CONFIG_FREEBSD_NETLINK
+#include <netlink/netlink.h>
+#include <netlink/netlink_route.h>
+#endif
 
 #ifdef HAVE_MPLS_KERNEL
 #include <linux/lwtunnel.h>
