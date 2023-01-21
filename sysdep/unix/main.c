@@ -448,7 +448,7 @@ cli_get_command(cli *c)
 {
   sock *s = c->sock;
   ASSERT_DIE(c->sock);
-  byte *t = c->rx_aux ? : s->rbuf;
+  byte *t = s->rbuf;
   byte *tend = s->rpos;
   byte *d = c->rx_pos;
   byte *dend = c->rx_buf + CLI_RX_BUF_SIZE - 2;
@@ -459,16 +459,22 @@ cli_get_command(cli *c)
 	t++;
       else if (*t == '\n')
 	{
-	  t++;
-	  c->rx_pos = c->rx_buf;
-	  c->rx_aux = t;
 	  *d = 0;
+	  t++;
+
+	  /* Move remaining data and reset pointers */
+	  uint rest = (t < tend) ? (tend - t) : 0;
+	  memmove(s->rbuf, t, rest);
+	  s->rpos = s->rbuf + rest;
+	  c->rx_pos = c->rx_buf;
+
 	  return (d < dend) ? 1 : -1;
 	}
       else if (d < dend)
 	*d++ = *t++;
     }
-  c->rx_aux = s->rpos = s->rbuf;
+
+  s->rpos = s->rbuf;
   c->rx_pos = d;
   return 0;
 }
@@ -516,7 +522,6 @@ cli_connect(sock *s, uint size UNUSED)
   s->pool = c->pool;		/* We need to have all the socket buffers allocated in the cli pool */
   s->fast_rx = 1;
   c->rx_pos = c->rx_buf;
-  c->rx_aux = NULL;
   rmove(s, c->pool);
   return 1;
 }

@@ -3145,8 +3145,8 @@ bgp_log_error(struct bgp_proto *p, u8 class, char *msg, uint code, uint subcode,
 
   if (len)
     {
-      /* Bad peer AS - we would like to print the AS */
-      if ((code == 2) && (subcode == 2) && ((len == 2) || (len == 4)))
+      /* Bad peer AS / unacceptable hold time - print the value as decimal number */
+      if ((code == 2) && ((subcode == 2) || (subcode == 6)) && ((len == 2) || (len == 4)))
 	{
 	  t += bsprintf(t, ": %u", (len == 2) ? get_u16(data) : get_u32(data));
 	  goto done;
