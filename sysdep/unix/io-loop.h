@@ -9,6 +9,8 @@
 
 #include "lib/rcu.h"
 
+#include <pthread.h>
+
 struct pipe
 {
   int fd[2];
