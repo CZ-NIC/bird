@@ -2075,6 +2075,21 @@ bgp_postconfig(struct proto_config *CF)
   if (internal && cf->enforce_first_as)
     cf_error("Enforce first AS check is requires EBGP sessions");
 
+  if (cf->keepalive_time > cf->hold_time)
+    cf_error("Keepalive time must be at most hold time");
+
+  if (cf->keepalive_time > (cf->hold_time / 2))
+    log(L_WARN "Keepalive time should be at most 1/2 of hold time");
+
+  if (cf->min_hold_time > cf->hold_time)
+    cf_error("Min hold time (%u) exceeds hold time (%u)",
+	     cf->min_hold_time, cf->hold_time);
+
+  uint keepalive_time = cf->keepalive_time ?: cf->hold_time / 3;
+  if (cf->min_keepalive_time > keepalive_time)
+    cf_error("Min keepalive time (%u) exceeds keepalive time (%u)",
+	     cf->min_keepalive_time, keepalive_time);
+
 
   struct bgp_channel_config *cc;
   BGP_CF_WALK_CHANNELS(cf, cc)
