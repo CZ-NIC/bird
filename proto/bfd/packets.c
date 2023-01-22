@@ -374,6 +374,10 @@ bfd_rx_hook(sock *sk, uint len)
     /* FIXME: better session matching and message */
     if (!s)
       return 1;
+
+    /* For active sessions we require matching remote id */
+    if ((s->loc_state == BFD_STATE_UP) && (ntohl(pkt->snd_id) != s->rem_id))
+      DROP("mismatched remote id", ntohl(pkt->snd_id));
   }
 
   /* bfd_check_authentication() has its own error logging */
