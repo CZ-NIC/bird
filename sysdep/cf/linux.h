@@ -16,6 +16,7 @@
 
 #define CONFIG_INCLUDE_SYSIO_H "sysdep/linux/sysio.h"
 #define CONFIG_INCLUDE_KRTSYS_H "sysdep/linux/krt-sys.h"
+#define CONFIG_INCLUDE_NLSYS_H "sysdep/linux/netlink-sys.h"
 
 #define CONFIG_LINUX_NETLINK
 

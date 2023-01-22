@@ -28,56 +28,7 @@
 #include "lib/macro.h"
 #include "conf/conf.h"
 
-#ifdef CONFIG_LINUX_NETLINK
-#include <asm/types.h>
-#include <linux/if.h>
-#include <linux/netlink.h>
-#include <linux/rtnetlink.h>
-#endif
-#ifdef CONFIG_FREEBSD_NETLINK
-#include <netlink/netlink.h>
-#include <netlink/netlink_route.h>
-#endif
-
-#ifdef HAVE_MPLS_KERNEL
-#include <linux/lwtunnel.h>
-#endif
-
-#ifndef MSG_TRUNC			/* Hack: Several versions of glibc miss this one :( */
-#define MSG_TRUNC 0x20
-#endif
-
-#ifndef IFA_FLAGS
-#define IFA_FLAGS 8
-#endif
-
-#ifndef IFF_LOWER_UP
-#define IFF_LOWER_UP 0x10000
-#endif
-
-#ifndef RTA_TABLE
-#define RTA_TABLE  15
-#endif
-
-#ifndef RTA_VIA
-#define RTA_VIA	 18
-#endif
-
-#ifndef RTA_NEWDST
-#define RTA_NEWDST  19
-#endif
-
-#ifndef RTA_ENCAP_TYPE
-#define RTA_ENCAP_TYPE	21
-#endif
-
-#ifndef RTA_ENCAP
-#define RTA_ENCAP  22
-#endif
-
-#ifndef NETLINK_GET_STRICT_CHK
-#define NETLINK_GET_STRICT_CHK 12
-#endif
+#include CONFIG_INCLUDE_NLSYS_H
 
 #define krt_ipv4(p) ((p)->af == AF_INET)
 
@@ -416,7 +367,7 @@ nl_error(struct nlmsghdr *h, int ignore_esrch)
       return ENOBUFS;
     }
   e = (struct nlmsgerr *) NLMSG_DATA(h);
-  ec = -e->error;
+  ec = netlink_error_to_os(e->error);
   if (ec && !(ignore_esrch && (ec == ESRCH)))
     log_rl(&rl_netlink_err, L_WARN "Netlink: %s", strerror(ec));
   return ec;
