@@ -1260,6 +1260,7 @@ static struct ea_class ea_rip_from = {
   .name = "rip_from",
   .type = T_IFACE,
   .readonly = 1,
+  .hidden = 1,
 };
 
 void

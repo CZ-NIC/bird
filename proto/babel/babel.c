@@ -2100,6 +2100,7 @@ static struct ea_class ea_babel_seqno = {
   .name = "babel_seqno",
   .type = T_INT,
   .readonly = 1,
+  .hidden = 1,
 };
 
 
