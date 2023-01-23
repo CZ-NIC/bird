@@ -21,11 +21,15 @@
  * on the list being the best one (i.e., the one we currently use
  * for routing), the order of the other ones is undetermined.
  *
- * The &rte contains information specific to the route (preference, protocol
- * metrics, time of last modification etc.) and a pointer to a &rta structure
- * (see the route attribute module for a precise explanation) holding the
- * remaining route attributes which are expected to be shared by multiple
- * routes in order to conserve memory.
+ * The &rte contains information about the route. There are net and src, which
+ * together forms a key identifying the route in a routing table. There is a
+ * pointer to a &rta structure (see the route attribute module for a precise
+ * explanation) holding the route attributes, which are primary data about the
+ * route. There are several technical fields used by routing table code (route
+ * id, REF_* flags), There is also the pflags field, holding protocol-specific
+ * flags. They are not used by routing table code, but by protocol-specific
+ * hooks. In contrast to route attributes, they are not primary data and their
+ * validity is also limited to the routing table.
  *
  * There are several mechanisms that allow automatic update of routes in one
  * routing table (dst) as a result of changes in another routing table (src).
@@ -1594,10 +1598,9 @@ rte_validate(struct channel *ch, rte *e)
 static int
 rte_same(rte *x, rte *y)
 {
-  /* rte.flags are not checked, as they are mostly internal to rtable */
+  /* rte.flags / rte.pflags are not checked, as they are internal to rtable */
   return
     x->attrs == y->attrs &&
-    x->pflags == y->pflags &&
     x->src == y->src &&
     rte_is_filtered(x) == rte_is_filtered(y);
 }
