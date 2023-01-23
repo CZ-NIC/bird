@@ -209,7 +209,7 @@ struct ks_msg
     memcpy(p, body, (l > sizeof(*p) ? sizeof(*p) : l));\
     body += l;}
 
-static inline void
+static inline void UNUSED
 sockaddr_fill_dl(struct sockaddr_dl *sa, struct iface *ifa)
 {
   uint len = OFFSETOF(struct sockaddr_dl, sdl_data);

@@ -20,6 +20,10 @@
 #include <sys/mman.h>
 #endif
 
+#ifdef CONFIG_DISABLE_THP
+#include <sys/prctl.h>
+#endif
+
 long page_size = 0;
 
 #ifdef HAVE_MMAP
@@ -293,6 +297,12 @@ page_cleanup(void *_ UNUSED)
 void
 resource_sys_init(void)
 {
+#ifdef CONFIG_DISABLE_THP
+  /* Disable transparent huge pages, they do not work properly with madvice(MADV_DONTNEED) */
+  if (prctl(PR_SET_THP_DISABLE,  (unsigned long) 1,  (unsigned long) 0,  (unsigned long) 0,  (unsigned long) 0) < 0)
+    die("prctl(PR_SET_THP_DISABLE) failed: %m");
+#endif
+
 #ifdef HAVE_MMAP
   /* Check what page size the system supports */
   if (!(page_size = sysconf(_SC_PAGESIZE)))
