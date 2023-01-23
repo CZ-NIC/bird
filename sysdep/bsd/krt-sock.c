@@ -47,6 +47,11 @@ const int rt_default_ecmp = 0;
  * table_id is specified explicitly as sysctl scan argument, while in FreeBSD it
  * is handled implicitly by changing default table using setfib() syscall.
  *
+ * OpenBSD allows to use route metric. The behavior is controlled by these macro
+ * KRT_USE_METRIC, which enables use of rtm_priority in route send/recevive.
+ * There is also KRT_DEFAULT_METRIC and KRT_MAX_METRIC for default and maximum
+ * metric values.
+ *
  * KRT_SHARED_SOCKET	- use shared kernel socked instead of one for each krt_proto
  * KRT_USE_SETFIB_SCAN	- use setfib() for sysctl() route scan
  * KRT_USE_SETFIB_SOCK	- use SO_SETFIB socket option for kernel sockets
@@ -63,12 +68,23 @@ const int rt_default_ecmp = 0;
 
 #ifdef __OpenBSD__
 #define KRT_MAX_TABLES (RT_TABLEID_MAX+1)
+#define KRT_USE_METRIC
+#define KRT_MAX_METRIC 255
+#define KRT_DEFAULT_METRIC 56
 #define KRT_SHARED_SOCKET
 #define KRT_USE_SYSCTL_7
 #endif
 
 #ifndef KRT_MAX_TABLES
 #define KRT_MAX_TABLES 1
+#endif
+
+#ifndef KRT_MAX_METRIC
+#define KRT_MAX_METRIC 0
+#endif
+
+#ifndef KRT_DEFAULT_METRIC
+#define KRT_DEFAULT_METRIC 0
 #endif
 
 
@@ -141,6 +157,10 @@ extern int setfib(int fib);
 #ifdef KRT_SHARED_SOCKET
 static struct krt_proto *krt_table_map[KRT_MAX_TABLES][2];
 #endif
+
+
+/* Make it available to parser code */
+const uint krt_max_metric = KRT_MAX_METRIC;
 
 
 /* Route socket message processing */
@@ -236,6 +256,10 @@ krt_send_route(struct krt_proto *p, int cmd, const rte *e)
 
 #ifdef KRT_SHARED_SOCKET
   msg.rtm.rtm_tableid = KRT_CF->sys.table_id;
+#endif
+
+#ifdef KRT_USE_METRIC
+  msg.rtm.rtm_priority = KRT_CF->sys.metric;
 #endif
 
 #ifdef RTF_REJECT
@@ -602,6 +626,11 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
 
   ea_set_attr(&e0.attrs,
       EA_LITERAL_EMBEDDED(&ea_krt_source, 0, src2));
+
+#ifdef KRT_USE_METRIC
+  ea_set_attr(&e0.attrs,
+      EA_LITERAL_EMBEDDED(&ea_krt_metric, 0, msg->rtm.rtm_priority));
+#endif
 
   if (scan)
     krt_got_route(p, &e0, src);
@@ -1163,7 +1192,7 @@ krt_sys_shutdown(struct krt_proto *p)
 int
 krt_sys_reconfigure(struct krt_proto *p UNUSED, struct krt_config *n, struct krt_config *o)
 {
-  return n->sys.table_id == o->sys.table_id;
+  return (n->sys.table_id == o->sys.table_id) && (n->sys.metric == o->sys.metric);
 }
 
 void
@@ -1176,11 +1205,13 @@ krt_sys_preconfig(struct config *c UNUSED)
 void krt_sys_init_config(struct krt_config *c)
 {
   c->sys.table_id = 0; /* Default table */
+  c->sys.metric = KRT_DEFAULT_METRIC;
 }
 
 void krt_sys_copy_config(struct krt_config *d, struct krt_config *s)
 {
   d->sys.table_id = s->sys.table_id;
+  d->sys.metric = s->sys.metric;
 }
 
 

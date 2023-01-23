@@ -10,7 +10,7 @@ CF_HDR
 
 CF_DECLS
 
-CF_KEYWORDS(KERNEL, TABLE)
+CF_KEYWORDS(KERNEL, TABLE, METRIC)
 
 CF_GRAMMAR
 
@@ -24,6 +24,14 @@ kern_sys_item:
 	  cf_error("Kernel table id must be in range 0-%u", krt_max_tables - 1);
 
 	THIS_KRT->sys.table_id = $3;
+   }
+ | METRIC expr {
+     if ($2 && !krt_max_metric)
+       cf_error("Kernel route metric not supported");
+     if ($2 > krt_max_metric)
+       cf_error("Kernel table id must be in range 0-%u", krt_max_metric);
+
+     THIS_KRT->sys.metric = $2;
    }
  ;
 
