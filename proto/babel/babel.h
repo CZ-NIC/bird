@@ -44,6 +44,8 @@
 #define BABEL_ROUTE_REFRESH_FACTOR(X)	((btime)(X)*5/2)	/* 2.5 */
 #define BABEL_SEQNO_REQUEST_RETRY	4
 #define BABEL_SEQNO_REQUEST_EXPIRY	(2 S_)
+#define BABEL_SEQNO_FORWARD_EXPIRY	(10 S_)
+#define BABEL_SEQNO_DUP_SUPPRESS_TIME	(1 S_)
 #define BABEL_GARBAGE_INTERVAL		(300 S_)
 #define BABEL_RXCOST_WIRED		96
 #define BABEL_RXCOST_WIRELESS		256
@@ -236,7 +238,6 @@ struct babel_neighbor {
   btime init_expiry;
 
   list routes;				/* Routes this neighbour has sent us (struct babel_route) */
-  list requests;			/* Seqno requests bound to this neighbor */
 };
 
 struct babel_source {
@@ -266,13 +267,13 @@ struct babel_route {
 
 struct babel_seqno_request {
   node n;
-  node nbr_node;
   u64 router_id;
   u16 seqno;
+  u8 forwarded;
   u8 hop_count;
   u8 count;
   btime expires;
-  struct babel_neighbor *nbr;
+  btime dup_suppress_time;
 };
 
 struct babel_entry {
