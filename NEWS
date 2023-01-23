@@ -1,3 +1,9 @@
+Version 2.0.12 (2023-01-23)
+  o Filter: New 'onlink' route attribute
+  o Compile-time option to use 4-way tries instead of 16-way ones
+  o BSD: Support for kernel route metric and other improvements
+  o Important bugfixes
+
 Version 2.0.11 (2022-11-12)
   o BGP roles (RFC 9234)
   o BGP: Keepalive time scaling
