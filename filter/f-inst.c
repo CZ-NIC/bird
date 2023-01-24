@@ -694,7 +694,6 @@
       case SA_WEIGHT:	RESULT(sa.f_type, i, rta->nh.weight + 1); break;
       case SA_PREF:	RESULT(sa.f_type, i, rta->pref); break;
       case SA_GW_MPLS:	RESULT(sa.f_type, i, rta->nh.labels ? rta->nh.label[0] : MPLS_NULL); break;
-      case SA_ONLINK:	RESULT(sa.f_type, i, rta->nh.flags & RNF_ONLINK ? 1 : 0); break;
 
       default:
 	bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
@@ -721,8 +720,8 @@
       case SA_GW:
 	{
 	  ip_addr ip = v1.val.ip;
-	  struct iface *ifa = ipa_is_link_local(ip) || (rta->nh.flags & RNF_ONLINK) ? rta->nh.iface : NULL;
-	  neighbor *n = neigh_find((*fs->rte)->src->proto, ip, ifa, (rta->nh.flags & RNF_ONLINK) ? NEF_ONLINK : 0);
+	  struct iface *ifa = ipa_is_link_local(ip) ? rta->nh.iface : NULL;
+	  neighbor *n = neigh_find((*fs->rte)->src->proto, ip, ifa, 0);
 	  if (!n || (n->scope == SCOPE_HOST))
 	    runtime( "Invalid gw address" );
 
@@ -800,15 +799,6 @@
 
       case SA_PREF:
 	rta->pref = v1.val.i;
-	break;
-
-      case SA_ONLINK:
-	{
-	  if (v1.val.i)
-	    rta->nh.flags |= RNF_ONLINK;
-	  else
-	    rta->nh.flags &= ~RNF_ONLINK;
-	}
 	break;
 
       default:

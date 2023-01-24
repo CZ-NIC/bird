@@ -1816,14 +1816,6 @@ Common route attributes are:
 	creation/removal. Zero is returned for routes with undefined outgoing
 	interfaces. Read-only.
 
-	<tag><label id="rta-onlink"><m/bool/ onlink</tag>
-	Onlink flag means that the specified nexthop is accessible on the
-	interface regardless of IP prefixes configured on the interface.
-	The attribute can be used to configure such next hops by first setting
-	<cf/onlink = true/ and <cf/ifname/, and then setting <cf/gw/. Possible
-	use case for setting this flag is to automatically build overlay IP-IP
-	networks on linux.
-
 	<tag><label id="rta-weight"><m/int/ weight</tag>
 	Multipath weight of route next hops. Valid values are 1-256. Reading
 	returns the weight of the first next hop, setting it sets weights of all
