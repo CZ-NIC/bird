@@ -263,9 +263,9 @@ radv_iface_find(struct radv_proto *p, struct iface *what)
 }
 
 static void
-radv_iface_add(struct object_lock *lock)
+radv_iface_add(void *_ifa)
 {
-  struct radv_iface *ifa = lock->data;
+  struct radv_iface *ifa = _ifa;
   struct radv_proto *p = ifa->ra;
 
   if (! radv_sk_open(ifa))
@@ -302,8 +302,10 @@ radv_iface_new(struct radv_proto *p, struct iface *iface, struct radv_iface_conf
   lock->type = OBJLOCK_IP;
   lock->port = ICMPV6_PROTO;
   lock->iface = iface;
-  lock->data = ifa;
-  lock->hook = radv_iface_add;
+  lock->event = (event) {
+    .hook = radv_iface_add,
+    .data = ifa,
+  };
   ifa->lock = lock;
 
   olock_acquire(lock);

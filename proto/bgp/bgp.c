@@ -1467,9 +1467,9 @@ bgp_feed_end(struct channel *C)
 
 
 static void
-bgp_start_locked(struct object_lock *lock)
+bgp_start_locked(void *_p)
 {
-  struct bgp_proto *p = lock->data;
+  struct bgp_proto *p = _p;
   const struct bgp_config *cf = p->cf;
 
   if (p->p.proto_state != PS_START)
@@ -1574,8 +1574,10 @@ bgp_start(struct proto *P)
   lock->iface = p->cf->iface;
   lock->vrf = p->cf->iface ? NULL : p->p.vrf;
   lock->type = OBJLOCK_TCP;
-  lock->hook = bgp_start_locked;
-  lock->data = p;
+  lock->event = (event) {
+    .hook = bgp_start_locked,
+    .data = p,
+  };
 
   /* For dynamic BGP, we use inst 1 to avoid collisions with regular BGP */
   if (bgp_is_dynamic(p))

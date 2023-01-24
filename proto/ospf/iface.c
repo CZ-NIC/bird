@@ -484,9 +484,9 @@ ospf_iface_find(struct ospf_proto *p, struct iface *what)
 }
 
 static void
-ospf_iface_add(struct object_lock *lock)
+ospf_iface_add(void *_ifa)
 {
-  struct ospf_iface *ifa = lock->data;
+  struct ospf_iface *ifa = _ifa;
   struct ospf_proto *p = ifa->oa->po;
 
   /* Open socket if interface is not stub */
@@ -668,8 +668,10 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
   lock->port = OSPF_PROTO;
   lock->inst = ifa->instance_id;
   lock->iface = iface;
-  lock->data = ifa;
-  lock->hook = ospf_iface_add;
+  lock->event = (event) {
+    .hook = ospf_iface_add,
+    .data = ifa,
+  };
 
   olock_acquire(lock);
 }
