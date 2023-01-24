@@ -249,8 +249,6 @@ page_cleanup(void *_ UNUSED)
   if (!stack)
     return;
 
-  /* Cleanup gets called when hot free page cache is too big.
-   * Moving some pages to the cold free page cache. */
 
   do {
     synchronize_rcu();
