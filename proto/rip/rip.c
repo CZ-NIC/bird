@@ -667,9 +667,9 @@ rip_iface_update_bfd(struct rip_iface *ifa)
 
 
 static void
-rip_iface_locked(struct object_lock *lock)
+rip_iface_locked(void *_ifa)
 {
-  struct rip_iface *ifa = lock->data;
+  struct rip_iface *ifa = _ifa;
   struct rip_proto *p = ifa->rip;
 
   if (!rip_open_socket(ifa))
@@ -731,8 +731,11 @@ rip_add_iface(struct rip_proto *p, struct iface *iface, struct rip_iface_config 
   lock->type = OBJLOCK_UDP;
   lock->port = ic->port;
   lock->iface = iface;
-  lock->data = ifa;
-  lock->hook = rip_iface_locked;
+  lock->event = (event) {
+    .hook = rip_iface_locked,
+    .data = ifa,
+  };
+  lock->target = &global_event_list;
   ifa->lock = lock;
 
   olock_acquire(lock);

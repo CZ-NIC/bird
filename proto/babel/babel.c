@@ -1761,9 +1761,9 @@ babel_find_iface(struct babel_proto *p, struct iface *what)
 }
 
 static void
-babel_iface_locked(struct object_lock *lock)
+babel_iface_locked(void *_ifa)
 {
-  struct babel_iface *ifa = lock->data;
+  struct babel_iface *ifa = _ifa;
   struct babel_proto *p = ifa->proto;
 
   if (!babel_open_socket(ifa))
@@ -1818,8 +1818,11 @@ babel_add_iface(struct babel_proto *p, struct iface *new, struct babel_iface_con
   lock->addr = IP6_BABEL_ROUTERS;
   lock->port = ifa->cf->port;
   lock->iface = ifa->iface;
-  lock->hook = babel_iface_locked;
-  lock->data = ifa;
+  lock->event = (event) {
+    .hook = babel_iface_locked,
+    .data = ifa,
+  };
+  lock->target = &global_event_list;
 
   olock_acquire(lock);
 }
