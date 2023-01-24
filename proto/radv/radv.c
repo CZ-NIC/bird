@@ -666,6 +666,9 @@ radv_reconfigure(struct proto *P, struct proto_config *CF)
   struct iface *iface;
   WALK_LIST(iface, iface_list)
   {
+    if (p->p.vrf && p->p.vrf != iface->master)
+      continue;
+
     if (!(iface->flags & IF_UP))
       continue;
 
