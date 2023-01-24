@@ -43,10 +43,6 @@
 
 #include "pipe.h"
 
-#ifdef CONFIG_BGP
-#include "proto/bgp/bgp.h"
-#endif
-
 static void
 pipe_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *new, const rte *old)
 {

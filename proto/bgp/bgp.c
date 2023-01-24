@@ -2431,7 +2431,7 @@ bgp_show_afis(int code, char *s, u32 *afis, uint count)
   cli_msg(code, b.start);
 }
 
-static const char *
+const char *
 bgp_format_role_name(u8 role)
 {
   static const char *bgp_role_names[] = { "provider", "rs_server", "rs_client", "customer", "peer" };
