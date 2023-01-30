@@ -49,6 +49,10 @@
 static inline int ge_mod64k(uint a, uint b)
 { return (u16)(a - b) < 0x8000; }
 
+/* Strict inequality version of the above */
+static inline int gt_mod64k(uint a, uint b)
+{ return ge_mod64k(a, b) && a != b; }
+
 static void babel_expire_requests(struct babel_proto *p, struct babel_entry *e);
 static void babel_select_route(struct babel_proto *p, struct babel_entry *e, struct babel_route *mod);
 static inline void babel_announce_retraction(struct babel_proto *p, struct babel_entry *e);
@@ -559,7 +563,7 @@ babel_is_feasible(struct babel_source *s, u16 seqno, u16 metric)
 {
   return !s ||
     (metric == BABEL_INFINITY) ||
-    (seqno > s->seqno) ||
+    gt_mod64k(seqno, s->seqno) ||
     ((seqno == s->seqno) && (metric < s->metric));
 }
 
@@ -1013,7 +1017,7 @@ babel_send_update_(struct babel_iface *ifa, btime changed, struct fib *rtable)
       struct babel_source *s = babel_get_source(p, e, e->router_id);
       s->expires = current_time() + BABEL_GARBAGE_INTERVAL;
 
-      if ((msg.update.seqno > s->seqno) ||
+      if (gt_mod64k(msg.update.seqno, s->seqno) ||
 	  ((msg.update.seqno == s->seqno) && (msg.update.metric < s->metric)))
       {
 	s->seqno = msg.update.seqno;
