@@ -1308,9 +1308,10 @@ babel_handle_update(union babel_msg *m, struct babel_iface *ifa)
 
   /*
    * RFC section 3.8.2.2 - Dealing with unfeasible updates. Generate a one-off
-   * (not retransmitted) unicast seqno request to the originator of this update
+   * (not retransmitted) unicast seqno request to the originator of this update.
+   * Note: !feasible -> s exists, check for 's' is just for clarity / safety.
    */
-  if (!feasible && (metric != BABEL_INFINITY) &&
+  if (!feasible && s && (metric != BABEL_INFINITY) &&
       (!best || (r == best) || (metric < best->metric)))
     babel_generate_seqno_request(p, e, s->router_id, s->seqno + 1, nbr);
 
