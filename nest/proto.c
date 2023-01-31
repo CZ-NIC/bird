@@ -57,7 +57,11 @@ static inline void channel_reset_limit(struct channel_limit *l);
 
 
 static inline int proto_is_done(struct proto *p)
-{ return (p->proto_state == PS_DOWN) && (p->active_channels == 0); }
+{
+  return (p->proto_state == PS_DOWN)
+    && (p->active_channels == 0)
+    && EMPTY_TLIST(proto_neigh, &p->neighbors);
+}
 
 static inline int channel_is_active(struct channel *c)
 { return (c->channel_state == CS_START) || (c->channel_state == CS_UP); }
@@ -962,14 +966,18 @@ proto_event(void *ptr)
 
   if (p->do_start)
   {
-    if_feed_baby(p);
+    iface_subscribe(&p->iface_sub);
     p->do_start = 0;
   }
 
   if (p->do_stop)
   {
+    iface_unsubscribe(&p->iface_sub);
+    neigh_prune(p);
+
     p->do_stop = 0;
   }
+
   if (proto_is_done(p))
   {
     if (p->proto->cleanup)
@@ -1860,7 +1868,6 @@ proto_do_stop(struct proto *p)
   p->down_sched = 0;
   p->gr_recovery = 0;
 
-
   if (p->main_source)
   {
     rt_unlock_source(p->main_source);
@@ -1877,7 +1884,6 @@ static void
 proto_do_down(struct proto *p)
 {
   p->down_code = 0;
-  neigh_prune(p);
   rfree(p->pool);
   p->pool = NULL;
 

@@ -579,8 +579,8 @@ radv_init(struct proto_config *CF)
 
   P->preexport = radv_preexport;
   P->rt_notify = radv_rt_notify;
-  P->if_notify = radv_if_notify;
-  P->ifa_notify = radv_ifa_notify;
+  P->iface_sub.if_notify = radv_if_notify;
+  P->iface_sub.ifa_notify = radv_ifa_notify;
 
   return P;
 }

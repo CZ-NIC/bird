@@ -171,6 +171,7 @@ struct proto {
   struct rte_src *main_source;		/* Primary route source */
   struct iface *vrf;			/* Related VRF instance, NULL if global */
   TLIST_LIST(proto_neigh) neighbors;	/* List of neighbor structures */
+  struct iface_subscription iface_sub;	/* Interface notification subscription */
 
   const char *name;			/* Name of this instance (== cf->name) */
   u32 debug;				/* Debugging flags */
@@ -210,10 +211,7 @@ struct proto {
    *	   feed_end	Notify channel about finish of route feeding.
    */
 
-  void (*if_notify)(struct proto *, unsigned flags, struct iface *i);
-  void (*ifa_notify)(struct proto *, unsigned flags, struct ifa *a);
   void (*rt_notify)(struct proto *, struct channel *, struct network *net, struct rte *new, struct rte *old);
-  void (*neigh_notify)(struct neighbor *neigh);
   int (*preexport)(struct channel *, struct rte *rt);
   void (*reload_routes)(struct channel *);
   void (*feed_begin)(struct channel *, int initial);

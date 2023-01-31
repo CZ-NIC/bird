@@ -1686,7 +1686,7 @@ bgp_init(struct proto_config *CF)
 
   P->rt_notify = bgp_rt_notify;
   P->preexport = bgp_preexport;
-  P->neigh_notify = bgp_neigh_notify;
+  P->iface_sub.neigh_notify = bgp_neigh_notify;
   P->reload_routes = bgp_reload_routes;
   P->feed_begin = bgp_feed_begin;
   P->feed_end = bgp_feed_end;

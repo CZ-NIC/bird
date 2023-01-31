@@ -370,8 +370,8 @@ ospf_init(struct proto_config *CF)
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
 
   P->rt_notify = ospf_rt_notify;
-  P->if_notify = ospf_if_notify;
-  P->ifa_notify = cf->ospf2 ? ospf_ifa_notify2 : ospf_ifa_notify3;
+  P->iface_sub.if_notify = ospf_if_notify;
+  P->iface_sub.ifa_notify = cf->ospf2 ? ospf_ifa_notify2 : ospf_ifa_notify3;
   P->preexport = ospf_preexport;
   P->reload_routes = ospf_reload_routes;
   P->feed_begin = ospf_feed_begin;

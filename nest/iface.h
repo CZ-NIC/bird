@@ -9,6 +9,7 @@
 #ifndef _BIRD_IFACE_H_
 #define _BIRD_IFACE_H_
 
+#include "lib/event.h"
 #include "lib/lists.h"
 #include "lib/tlists.h"
 #include "lib/ip.h"
@@ -27,6 +28,7 @@ struct ifa {				/* Interface address */
   ip_addr opposite;			/* Opposite end of a point-to-point link */
   unsigned scope;			/* Interface address scope */
   unsigned flags;			/* Analogous to iface->flags */
+  unsigned uc;				/* Use (link) count */
 };
 
 extern struct iface default_vrf;
@@ -45,6 +47,7 @@ struct iface {
   struct ifa *llv6;			/* Primary link-local address for IPv6 */
   ip4_addr sysdep;			/* Arbitrary IPv4 address for internal sysdep use */
   list neighbors;			/* All neighbors on this interface */
+  unsigned uc;				/* Use (link) count */
 };
 
 #define IF_UP 1				/* Currently just IF_ADMIN_UP */
@@ -115,12 +118,15 @@ void ifa_delete(struct ifa *);
 void if_start_update(void);
 void if_end_partial_update(struct iface *);
 void if_end_update(void);
-void if_feed_baby(struct proto *);
 struct iface *if_find_by_index(unsigned);
 struct iface *if_find_by_name(const char *);
 struct iface *if_get_by_name(const char *);
 void if_recalc_all_preferred_addresses(void);
 
+void if_link(struct iface *);
+void if_unlink(struct iface *);
+void ifa_link(struct ifa *);
+void ifa_unlink(struct ifa *);
 
 /* The Neighbor Cache */
 
@@ -138,6 +144,7 @@ typedef struct neighbor {
   u16 flags;				/* NEF_* flags */
   s16 scope;				/* Address scope, -1 for unreachable neighbors,
 					   SCOPE_HOST when it's our own address */
+  uint uc;				/* Use (link) count */
 } neighbor;
 
 #define TLIST_PREFIX proto_neigh
@@ -163,6 +170,63 @@ void neigh_if_link(struct iface *);
 void neigh_ifa_up(struct ifa *a);
 void neigh_ifa_down(struct ifa *a);
 void neigh_init(struct pool *);
+
+void neigh_link(neighbor *);
+void neigh_unlink(neighbor *);
+
+/*
+ *	Notification mechanism
+ */
+
+#define TLIST_PREFIX ifnot
+#define TLIST_TYPE struct iface_notification
+#define TLIST_ITEM nn
+#define TLIST_WANT_WALK
+#define TLIST_WANT_ADD_TAIL
+
+struct iface_notification {
+  TLIST_DEFAULT_NODE;
+  enum {
+    IFNOT_INVALID,
+    IFNOT_ADDRESS,
+    IFNOT_INTERFACE,
+    IFNOT_NEIGHBOR,
+  } type;
+  unsigned flags;
+  union {
+    struct ifa *a;
+    struct iface *i;
+    neighbor *n;
+  };
+};
+
+#include "lib/tlists.h"
+
+#define TLIST_PREFIX ifsub
+#define TLIST_TYPE struct iface_subscription
+#define TLIST_ITEM n
+#define TLIST_WANT_WALK
+#define TLIST_WANT_ADD_TAIL
+
+struct iface_subscription {
+  TLIST_DEFAULT_NODE;
+
+  event event;
+  TLIST_LIST(ifnot) queue;
+
+  void (*if_notify)(struct proto *, unsigned flags, struct iface *i);
+  void (*ifa_notify)(struct proto *, unsigned flags, struct ifa *a);
+  void (*neigh_notify)(struct neighbor *neigh);
+};
+
+#include "lib/tlists.h"
+
+void if_enqueue_notify(struct iface_notification);
+void if_enqueue_notify_to(struct iface_notification x, struct iface_subscription *s);
+
+void iface_flush_notifications(struct iface_subscription *);
+void iface_subscribe(struct iface_subscription *);
+void iface_unsubscribe(struct iface_subscription *);
 
 /*
  *	Interface Pattern Lists

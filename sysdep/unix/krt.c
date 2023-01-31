@@ -1046,7 +1046,7 @@ krt_init(struct proto_config *CF)
 
   p->p.preexport = krt_preexport;
   p->p.rt_notify = krt_rt_notify;
-  p->p.if_notify = krt_if_notify;
+  p->p.iface_sub.if_notify = krt_if_notify;
   p->p.reload_routes = krt_reload_routes;
   p->p.feed_end = krt_feed_end;
 
