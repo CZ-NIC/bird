@@ -147,8 +147,13 @@ static inline void TLIST_NAME(rem_node)(TLIST_LIST_STRUCT *list, TLIST_TYPE *nod
 #error "You should first include lib/tlists.h without requesting a TLIST"
 #endif
 
-#define TLIST_NODE(_name, _type)	struct _name##_node { _type *next; _type *prev; }
+#define TLIST_NODE_CONTENTS(_type)	{ _type *next; _type *prev; }
+#define TLIST_NODE(_name, _type)	struct _name##_node TLIST_NODE_CONTENTS(_type) 
+#define TLIST_DEFAULT_NODE		struct MACRO_CONCAT_AFTER(TLIST_PREFIX,_node) \
+					TLIST_NODE_CONTENTS(TLIST_TYPE) TLIST_ITEM
+
 #define TLIST_LIST(_name)		struct _name##_list 
+
 
 /* Use ->first and ->last to access HEAD and TAIL */
 #define THEAD(_name, _list)  (_list)->first
