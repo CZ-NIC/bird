@@ -105,7 +105,8 @@ babel_find_source(struct babel_entry *e, u64 router_id)
 }
 
 static struct babel_source *
-babel_get_source(struct babel_proto *p, struct babel_entry *e, u64 router_id)
+babel_get_source(struct babel_proto *p, struct babel_entry *e, u64 router_id,
+                 u16 initial_seqno)
 {
   struct babel_source *s = babel_find_source(e, router_id);
 
@@ -115,7 +116,7 @@ babel_get_source(struct babel_proto *p, struct babel_entry *e, u64 router_id)
   s = sl_allocz(p->source_slab);
   s->router_id = router_id;
   s->expires = current_time() + BABEL_GARBAGE_INTERVAL;
-  s->seqno = 0;
+  s->seqno = initial_seqno;
   s->metric = BABEL_INFINITY;
   add_tail(&e->sources, NODE s);
 
@@ -1011,10 +1012,10 @@ babel_send_update_(struct babel_iface *ifa, btime changed, struct fib *rtable)
 
     babel_enqueue(&msg, ifa);
 
-    /* Update feasibility distance for redistributed routes */
+    /* RFC 6126 3.7.3 - update feasibility distance for redistributed routes */
     if (e->router_id != p->router_id)
     {
-      struct babel_source *s = babel_get_source(p, e, e->router_id);
+      struct babel_source *s = babel_get_source(p, e, e->router_id, msg.update.seqno);
       s->expires = current_time() + BABEL_GARBAGE_INTERVAL;
 
       if (gt_mod64k(msg.update.seqno, s->seqno) ||
