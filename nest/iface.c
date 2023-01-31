@@ -386,15 +386,6 @@ if_end_update(void)
     }
 }
 
-void
-if_flush_ifaces(struct proto *p)
-{
-  if (p->debug & D_EVENTS)
-    log(L_TRACE "%s: Flushing interfaces", p->name);
-  if_start_update();
-  if_end_update();
-}
-
 /**
  * if_feed_baby - advertise interfaces to a new protocol
  * @p: protocol to feed

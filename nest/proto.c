@@ -968,11 +968,8 @@ proto_event(void *ptr)
 
   if (p->do_stop)
   {
-    if (p->proto == &proto_unix_iface)
-      if_flush_ifaces(p);
     p->do_stop = 0;
   }
-
   if (proto_is_done(p))
   {
     if (p->proto->cleanup)
@@ -1863,8 +1860,6 @@ proto_do_stop(struct proto *p)
   p->down_sched = 0;
   p->gr_recovery = 0;
 
-  p->do_stop = 1;
-  ev_schedule(p->event);
 
   if (p->main_source)
   {
@@ -1873,6 +1868,9 @@ proto_do_stop(struct proto *p)
   }
 
   proto_stop_channels(p);
+
+  p->do_stop = 1;
+  ev_schedule(p->event);
 }
 
 static void

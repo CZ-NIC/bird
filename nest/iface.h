@@ -114,7 +114,6 @@ void ifa_delete(struct ifa *);
 void if_start_update(void);
 void if_end_partial_update(struct iface *);
 void if_end_update(void);
-void if_flush_ifaces(struct proto *p);
 void if_feed_baby(struct proto *);
 struct iface *if_find_by_index(unsigned);
 struct iface *if_find_by_name(const char *);
