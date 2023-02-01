@@ -3,9 +3,11 @@ obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
 
-$(objdir)/nest/proto-build.c: $(lastword $(MAKEFILE_LIST))
+$(o)proto-build.c: Makefile $(lastword $(MAKEFILE_LIST)) $(objdir)/.dir-stamp
 	$(E)echo GEN $@
-	$(Q)echo "$(patsubst %,void %_build(void); ,$(PROTO_BUILD)) void protos_build_gen(void) { $(patsubst %,  %_build(); ,$(PROTO_BUILD))}" > $@
+	$(Q)echo "\n $(patsubst %, void %_build(void);\n,$(PROTO_BUILD))\nvoid protos_build_gen(void) {\n $(patsubst %, %_build();\n,$(PROTO_BUILD))}" > $@
+
+prepare: $(o)proto-build.c
 
 tests_src := a-set_test.c a-path_test.c
 tests_targets := $(tests_targets) $(tests-target-files)
