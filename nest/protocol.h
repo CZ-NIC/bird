@@ -9,9 +9,10 @@
 #ifndef _BIRD_PROTOCOL_H_
 #define _BIRD_PROTOCOL_H_
 
-#include "lib/lists.h"
+#include "lib/tlists.h"
 #include "lib/resource.h"
 #include "lib/event.h"
+#include "nest/iface.h"
 #include "nest/route.h"
 #include "conf/conf.h"
 
@@ -169,8 +170,9 @@ struct proto {
   struct channel *main_channel;		/* Primary channel */
   struct rte_src *main_source;		/* Primary route source */
   struct iface *vrf;			/* Related VRF instance, NULL if global */
+  TLIST_LIST(proto_neigh) neighbors;	/* List of neighbor structures */
 
-  const char *name;				/* Name of this instance (== cf->name) */
+  const char *name;			/* Name of this instance (== cf->name) */
   u32 debug;				/* Debugging flags */
   u32 mrtdump;				/* MRTDump flags */
   uint active_channels;			/* Number of active channels */

@@ -10,6 +10,7 @@
 #define _BIRD_IFACE_H_
 
 #include "lib/lists.h"
+#include "lib/tlists.h"
 #include "lib/ip.h"
 
 extern list iface_list;
@@ -126,6 +127,7 @@ void if_recalc_all_preferred_addresses(void);
 typedef struct neighbor {
   node n;				/* Node in neighbor hash table chain */
   node if_n;				/* Node in per-interface neighbor list */
+  TLIST_NODE(proto_neigh, struct neighbor) proto_n;
   ip_addr addr;				/* Address of the neighbor */
   struct ifa *ifa;			/* Ifa on related iface */
   struct iface *iface;			/* Interface it's connected to */
@@ -138,6 +140,13 @@ typedef struct neighbor {
 					   SCOPE_HOST when it's our own address */
 } neighbor;
 
+#define TLIST_PREFIX proto_neigh
+#define TLIST_TYPE struct neighbor
+#define TLIST_ITEM proto_n
+#define TLIST_WANT_WALK
+#define TLIST_WANT_ADD_TAIL
+#include "lib/tlists.h"
+
 #define NEF_STICKY	1
 #define NEF_ONLINK	2
 #define NEF_IFACE	4		/* Entry for whole iface */
@@ -147,7 +156,7 @@ neighbor *neigh_find(struct proto *p, ip_addr a, struct iface *ifa, uint flags);
 
 void neigh_dump(neighbor *);
 void neigh_dump_all(void);
-void neigh_prune(void);
+void neigh_prune(struct proto *);
 void neigh_if_up(struct iface *);
 void neigh_if_down(struct iface *);
 void neigh_if_link(struct iface *);

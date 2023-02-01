@@ -256,6 +256,7 @@ neigh_find(struct proto *p, ip_addr a, struct iface *iface, uint flags)
   n = sl_allocz(neigh_slab);
   add_tail(&neigh_hash_table[h], &n->n);
   add_tail((scope >= 0) ? &iface->neighbors : &sticky_neigh_list, &n->if_n);
+  proto_neigh_add_tail(&p->neighbors, n);
   n->addr = a;
   n->ifa = addr;
   n->iface = iface;
@@ -308,7 +309,7 @@ neigh_dump_all(void)
 static inline void
 neigh_notify(neighbor *n)
 {
-  if (n->proto->neigh_notify && (n->proto->proto_state != PS_STOP))
+  if (n->proto && n->proto->neigh_notify && (n->proto->proto_state != PS_STOP))
     n->proto->neigh_notify(n);
 }
 
@@ -343,8 +344,12 @@ neigh_down(neighbor *n)
 static inline void
 neigh_free(neighbor *n)
 {
+  proto_neigh_rem_node(&n->proto->neighbors, n);
+  n->proto = NULL;
+
   rem_node(&n->n);
   rem_node(&n->if_n);
+
   sl_free(n);
 }
 
@@ -519,15 +524,6 @@ neigh_ifa_down(struct ifa *a)
       neigh_update(n, i);
 }
 
-static inline void
-neigh_prune_one(neighbor *n)
-{
-  if (n->proto->proto_state != PS_DOWN)
-    return;
-
-  neigh_free(n);
-}
-
 /**
  * neigh_prune - prune neighbor cache
  *
@@ -536,16 +532,10 @@ neigh_prune_one(neighbor *n)
  * is shut down to get rid of all its heritage.
  */
 void
-neigh_prune(void)
+neigh_prune(struct proto *p)
 {
-  neighbor *n;
-  node *m;
-  int i;
-
-  DBG("Pruning neighbors\n");
-  for(i=0; i<NEIGH_HASH_SIZE; i++)
-    WALK_LIST_DELSAFE(n, m, neigh_hash_table[i])
-      neigh_prune_one(n);
+  while (!EMPTY_TLIST(proto_neigh, &p->neighbors))
+    neigh_free(THEAD(proto_neigh, &p->neighbors));
 }
 
 /**

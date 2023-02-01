@@ -1877,7 +1877,7 @@ static void
 proto_do_down(struct proto *p)
 {
   p->down_code = 0;
-  neigh_prune();
+  neigh_prune(p);
   rfree(p->pool);
   p->pool = NULL;
 
