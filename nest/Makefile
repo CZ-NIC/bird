@@ -5,7 +5,7 @@ $(cf-local)
 
 $(o)proto-build.c: Makefile $(lastword $(MAKEFILE_LIST)) $(objdir)/.dir-stamp
 	$(E)echo GEN $@
-	$(Q)echo "\n $(patsubst %, void %_build(void);\n,$(PROTO_BUILD))\nvoid protos_build_gen(void) {\n $(patsubst %, %_build();\n,$(PROTO_BUILD))}" > $@
+	$(Q)echo "$(patsubst %,void %_build(void); ,$(PROTO_BUILD)) void protos_build_gen(void) { $(patsubst %,  %_build(); ,$(PROTO_BUILD))}" > $@
 
 prepare: $(o)proto-build.c
 
