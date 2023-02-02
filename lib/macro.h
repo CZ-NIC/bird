@@ -26,6 +26,8 @@
 #define MACRO_DROP(...)
 #define MACRO_UNPAREN(...) __VA_ARGS__
 #define MACRO_SEP(a, b, sep)  a sep b
+#define MACRO_STR(a)  #a
+#define MACRO_STR_AFTER(a) MACRO_STR(a)
 
 /* Aliases for some special chars */
 #define MACRO_COMMA ,
