@@ -127,7 +127,11 @@
 #include "bgp.h"
 
 
+static void bgp_listen_create(void *);
+
 static list STATIC_LIST_INIT(bgp_sockets);		/* Global list of listening sockets */
+static list STATIC_LIST_INIT(bgp_listen_pending);	/* Global list of listening socket open requests */
+static event bgp_listen_event = { .hook = bgp_listen_create };
 
 
 static void bgp_connect(struct bgp_proto *p);
@@ -139,73 +143,33 @@ static void bgp_update_bfd(struct bgp_proto *p, const struct bfd_options *bfd);
 
 static int bgp_incoming_connection(sock *sk, uint dummy UNUSED);
 static void bgp_listen_sock_err(sock *sk UNUSED, int err);
+static void bgp_initiate_disable(struct bgp_proto *p, int err_val);
 
-/**
- * bgp_open - open a BGP instance
- * @p: BGP instance
- *
- * This function allocates and configures shared BGP resources, mainly listening
- * sockets. Should be called as the last step during initialization (when lock
- * is acquired and neighbor is ready). When error, caller should change state to
- * PS_DOWN and return immediately.
- */
-static int
-bgp_open(struct bgp_proto *p)
+static inline int
+bgp_setup_auth(struct bgp_proto *p, int enable)
 {
-  struct bgp_socket *bs = NULL;
-  struct iface *ifa = p->cf->strict_bind ? p->cf->iface : NULL;
-  ip_addr addr = p->cf->strict_bind ? p->cf->local_ip :
-    (p->ipv4 ? IPA_NONE4 : IPA_NONE6);
-  uint port = p->cf->local_port;
-  uint flags = p->cf->free_bind ? SKF_FREEBIND : 0;
-  uint flag_mask = SKF_FREEBIND;
+  if (p->cf->password && p->listen.sock)
+  {
+    ip_addr prefix = p->cf->remote_ip;
+    int pxlen = -1;
 
-  /* We assume that cf->iface is defined iff cf->local_ip is link-local */
-
-  WALK_LIST(bs, bgp_sockets)
-    if (ipa_equal(bs->sk->saddr, addr) &&
-	(bs->sk->sport == port) &&
-	(bs->sk->iface == ifa) &&
-	(bs->sk->vrf == p->p.vrf) &&
-	((bs->sk->flags & flag_mask) == flags))
+    if (p->cf->remote_range)
     {
-      bs->uc++;
-      p->sock = bs;
-      return 0;
+      prefix = net_prefix(p->cf->remote_range);
+      pxlen = net_pxlen(p->cf->remote_range);
     }
 
-  sock *sk = sk_new(proto_pool);
-  sk->type = SK_TCP_PASSIVE;
-  sk->ttl = 255;
-  sk->saddr = addr;
-  sk->sport = port;
-  sk->iface = ifa;
-  sk->vrf = p->p.vrf;
-  sk->flags = flags;
-  sk->tos = IP_PREC_INTERNET_CONTROL;
-  sk->rbsize = BGP_RX_BUFFER_SIZE;
-  sk->tbsize = BGP_TX_BUFFER_SIZE;
-  sk->rx_hook = bgp_incoming_connection;
-  sk->err_hook = bgp_listen_sock_err;
+    int rv = sk_set_md5_auth(p->listen.sock->sk,
+			     p->cf->local_ip, prefix, pxlen, p->cf->iface,
+			     enable ? p->cf->password : NULL, p->cf->setkey);
 
-  if (sk_open(sk) < 0)
-    goto err;
+    if (rv < 0)
+      sk_log_error(p->listen.sock->sk, p->p.name);
 
-  bs = mb_allocz(proto_pool, sizeof(struct bgp_socket));
-  bs->sk = sk;
-  bs->uc = 1;
-  p->sock = bs;
-  sk->data = bs;
-
-  add_tail(&bgp_sockets, &bs->n);
-
-  return 0;
-
-err:
-  sk_log_error(sk, p->p.name);
-  log(L_ERR "%s: Cannot open listening socket", p->p.name);
-  rfree(sk);
-  return -1;
+    return rv;
+  }
+  else
+    return 0;
 }
 
 /**
@@ -217,43 +181,119 @@ err:
 static void
 bgp_close(struct bgp_proto *p)
 {
-  struct bgp_socket *bs = p->sock;
+  struct bgp_listen_request *req = &p->listen;
+  struct bgp_socket *bs = req->sock;
 
-  ASSERT(bs && bs->uc);
+  ASSERT(bs);
 
-  if (--bs->uc)
-    return;
+  req->sock = NULL;
+  rem_node(&req->n);
 
-  rfree(bs->sk);
-  rem_node(&bs->n);
-  mb_free(bs);
+  if (EMPTY_LIST(bs->requests))
+    ev_schedule(&bgp_listen_event);
 }
 
-static inline int
-bgp_setup_auth(struct bgp_proto *p, int enable)
+/**
+ * bgp_open - open a BGP instance
+ * @p: BGP instance
+ *
+ * This function allocates and configures shared BGP resources, mainly listening
+ * sockets. Should be called as the last step during initialization (when lock
+ * is acquired and neighbor is ready). When error, caller should change state to
+ * PS_DOWN and return immediately.
+ */
+static void
+bgp_open(struct bgp_proto *p)
 {
-  if (p->cf->password)
-  {
-    ip_addr prefix = p->cf->remote_ip;
-    int pxlen = -1;
+  struct bgp_listen_request *req = &p->listen;
+  /* We assume that cf->iface is defined iff cf->local_ip is link-local */
+  req->iface = p->cf->strict_bind ? p->cf->iface : NULL;
+  req->vrf = p->p.vrf;
+  req->addr = p->cf->strict_bind ? p->cf->local_ip :
+    (p->ipv4 ? IPA_NONE4 : IPA_NONE6);
+  req->port = p->cf->local_port;
+  req->flags = p->cf->free_bind ? SKF_FREEBIND : 0;
 
-    if (p->cf->remote_range)
+  add_tail(&bgp_listen_pending, &req->n);
+  ev_schedule(&bgp_listen_event);
+}
+
+static void
+bgp_listen_create(void *_ UNUSED)
+{
+  uint flag_mask = SKF_FREEBIND;
+
+  struct bgp_listen_request *req;
+  WALK_LIST_FIRST(req, bgp_listen_pending)
+  {
+    struct bgp_proto *p = SKIP_BACK(struct bgp_proto, listen, req);
+    rem_node(&req->n);
+
+    /* First try to find existing socket */
+    struct bgp_socket *bs;
+    WALK_LIST(bs, bgp_sockets)
+      if (ipa_equal(bs->sk->saddr, req->addr) &&
+	  (bs->sk->sport == req->port) &&
+	  (bs->sk->iface == req->iface) &&
+	  (bs->sk->vrf == req->vrf) &&
+	  ((bs->sk->flags & flag_mask) == req->flags))
+	break;
+
+    /* Not found any */
+    if (!NODE_VALID(bs))
     {
-      prefix = net_prefix(p->cf->remote_range);
-      pxlen = net_pxlen(p->cf->remote_range);
+      sock *sk = sk_new(proto_pool);
+      sk->type = SK_TCP_PASSIVE;
+      sk->ttl = 255;
+      sk->saddr = req->addr;
+      sk->sport = req->port;
+      sk->iface = req->iface;
+      sk->vrf = req->vrf;
+      sk->flags = req->flags;
+      sk->tos = IP_PREC_INTERNET_CONTROL;
+      sk->rbsize = BGP_RX_BUFFER_SIZE;
+      sk->tbsize = BGP_TX_BUFFER_SIZE;
+      sk->rx_hook = bgp_incoming_connection;
+      sk->err_hook = bgp_listen_sock_err;
+
+      if (sk_open(sk) < 0)
+      {
+	sk_log_error(sk, p->p.name);
+	log(L_ERR "%s: Cannot open listening socket", p->p.name);
+	rfree(sk);
+	bgp_initiate_disable(p, BEM_NO_SOCKET);
+
+	continue;
+      }
+
+      bs = mb_allocz(proto_pool, sizeof(struct bgp_socket));
+      bs->sk = sk;
+      sk->data = bs;
+
+      init_list(&bs->requests);
+      add_tail(&bgp_sockets, &bs->n);
     }
 
-    int rv = sk_set_md5_auth(p->sock->sk,
-			     p->cf->local_ip, prefix, pxlen, p->cf->iface,
-			     enable ? p->cf->password : NULL, p->cf->setkey);
+    add_tail(&bs->requests, &req->n);
+    req->sock = bs;
 
-    if (rv < 0)
-      sk_log_error(p->sock->sk, p->p.name);
-
-    return rv;
+    if (bgp_setup_auth(p, 1) < 0)
+    {
+      bgp_close(p);
+      bgp_initiate_disable(p, BEM_INVALID_MD5);
+    }
   }
-  else
-    return 0;
+
+  /* Cleanup leftover listening sockets */
+  struct bgp_socket *bs;
+  node *nxt;
+  WALK_LIST_DELSAFE(bs, nxt, bgp_sockets)
+    if (EMPTY_LIST(bs->requests))
+    {
+      rfree(bs->sk);
+      rem_node(&bs->n);
+      mb_free(bs);
+    }
 }
 
 static inline struct bgp_channel *
@@ -296,13 +336,7 @@ bgp_startup_timeout(timer *t)
 static void
 bgp_initiate(struct bgp_proto *p)
 {
-  int err_val;
-
-  if (bgp_open(p) < 0)
-  { err_val = BEM_NO_SOCKET; goto err1; }
-
-  if (bgp_setup_auth(p, 1) < 0)
-  { err_val = BEM_INVALID_MD5; goto err2; }
+  bgp_open(p);
 
   if (p->cf->bfd)
     bgp_update_bfd(p, p->cf->bfd);
@@ -315,12 +349,11 @@ bgp_initiate(struct bgp_proto *p)
   }
   else
     bgp_startup(p);
+}
 
-  return;
-
-err2:
-  bgp_close(p);
-err1:
+static void
+bgp_initiate_disable(struct bgp_proto *p, int err_val)
+{
   p->p.disabled = 1;
   bgp_store_error(p, NULL, BE_MISC, err_val);
 
@@ -1146,12 +1179,15 @@ static struct bgp_proto *
 bgp_find_proto(sock *sk)
 {
   struct bgp_proto *best = NULL;
-  struct bgp_proto *p;
+  struct bgp_socket *bs = sk->data;
+  struct bgp_listen_request *req;
 
   /* sk->iface is valid only if src or dst address is link-local */
   int link = ipa_is_link_local(sk->saddr) || ipa_is_link_local(sk->daddr);
 
-  WALK_LIST(p, proto_list)
+  WALK_LIST(req, bs->requests)
+  {
+    struct bgp_proto *p = SKIP_BACK(struct bgp_proto, listen, req);
     if ((p->p.proto == &proto_bgp) &&
 	(ipa_equal(p->remote_ip, sk->daddr) || bgp_is_dynamic(p)) &&
 	(!p->cf->remote_range || ipa_in_netX(sk->daddr, p->cf->remote_range)) &&
@@ -1165,6 +1201,7 @@ bgp_find_proto(sock *sk)
       if (!bgp_is_dynamic(p))
 	break;
     }
+  }
 
   return best;
 }
