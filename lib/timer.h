@@ -99,11 +99,13 @@ tm_set_max(timer *t, btime when)
 }
 
 static inline void
-tm_start_max(timer *t, btime after)
+tm_start_max_in(timer *t, btime after, struct birdloop *loop)
 {
   btime rem = tm_remains(t);
-  tm_start(t, MAX_(rem, after));
+  tm_start_in(t, MAX_(rem, after), loop);
 }
+
+#define tm_start_max(t, after)	tm_start_max_in(t, after, &main_birdloop)
 
 /* In sysdep code */
 void times_update(void);

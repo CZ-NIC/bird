@@ -123,6 +123,8 @@ struct proto {
   struct proto_config *cf_new;		/* Configuration we want to switch to after shutdown (NULL=delete) */
   pool *pool;				/* Pool containing local objects */
   event *event;				/* Protocol event */
+  timer *restart_timer;			/* Timer to restart the protocol from limits */
+  event *restart_event;			/* Event to restart/shutdown the protocol from limits */
   struct birdloop *loop;		/* BIRDloop running this protocol */
 
   list channels;			/* List of channels to rtables (struct channel) */

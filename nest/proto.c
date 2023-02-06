@@ -30,7 +30,6 @@ static list STATIC_LIST_INIT(protocol_list);
 #define CD(c, msg, args...) ({ if (c->debug & D_STATES) log(L_TRACE "%s.%s: " msg, c->proto->name, c->name ?: "?", ## args); })
 #define PD(p, msg, args...) ({ if (p->debug & D_STATES) log(L_TRACE "%s: " msg, p->name, ## args); })
 
-static timer *proto_shutdown_timer;
 static timer *gr_wait_timer;
 
 #define GRS_NONE	0
@@ -47,7 +46,6 @@ static char *c_states[] = { "DOWN", "START", "UP", "STOP", "RESTART" };
 extern struct protocol proto_unix_iface;
 
 static void channel_request_reload(struct channel *c);
-static void proto_shutdown_loop(timer *);
 static void proto_rethink_goal(struct proto *p);
 static char *proto_state_name(struct proto *p);
 static void channel_init_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf);
@@ -1866,8 +1864,6 @@ protos_build(void)
   protos_build_gen();
 
   proto_pool = rp_new(&root_pool, "Protocols");
-  proto_shutdown_timer = tm_new(proto_pool);
-  proto_shutdown_timer->hook = proto_shutdown_loop;
 }
 
 
@@ -1875,23 +1871,39 @@ protos_build(void)
 int proto_restart;
 
 static void
-proto_shutdown_loop(timer *t UNUSED)
+proto_restart_event_hook(void *_p)
 {
-  struct proto *p, *p_next;
+  struct proto *p = _p;
+  if (!p->down_sched)
+    return;
 
-  WALK_LIST_DELSAFE(p, p_next, proto_list)
-    if (p->down_sched)
-    {
-      proto_restart = (p->down_sched == PDS_RESTART);
+  proto_restart = (p->down_sched == PDS_RESTART);
+  p->disabled = 1;
+  proto_rethink_goal(p);
 
-      p->disabled = 1;
-      proto_rethink_goal(p);
-      if (proto_restart)
-      {
-	p->disabled = 0;
-	proto_rethink_goal(p);
-      }
-    }
+  p->restart_event = NULL;
+  p->restart_timer = NULL;
+
+  if (proto_restart)
+    /* No need to call proto_rethink_goal() here again as the proto_cleanup() routine will
+     * call it after the protocol stops ... and both these routines are fixed to main_birdloop.
+     */
+    p->disabled = 0;
+}
+
+static void
+proto_send_restart_event(struct proto *p)
+{
+  if (!p->restart_event)
+    p->restart_event = ev_new_init(p->pool, proto_restart_event_hook, p);
+
+  ev_send(&global_event_list, p->restart_event);
+}
+
+static void
+proto_send_restart_event_from_timer(struct timer *t)
+{
+  proto_send_restart_event((struct proto *) t->data);
 }
 
 static inline void
@@ -1906,7 +1918,21 @@ proto_schedule_down(struct proto *p, byte restart, byte code)
 
   p->down_sched = restart ? PDS_RESTART : PDS_DISABLE;
   p->down_code = code;
-  tm_start_max(proto_shutdown_timer, restart ? 250 MS : 0);
+
+  if (!restart)
+  {
+    if (p->restart_timer && tm_active(p->restart_timer))
+      tm_stop(p->restart_timer);
+
+    proto_send_restart_event(p);
+  }
+  else
+  {
+    if (!p->restart_timer)
+      p->restart_timer = tm_new_init(p->pool, proto_send_restart_event_from_timer, p, 0, 0);
+
+    tm_start_max_in(p->restart_timer, 250 MS, p->loop);
+  }
 }
 
 /**
