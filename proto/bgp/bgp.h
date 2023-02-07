@@ -266,8 +266,8 @@ struct bgp_caps {
 
 struct bgp_socket {
   node n;				/* Node in global bgp_sockets */
+  list requests;			/* Listen requests */
   sock *sk;				/* Real listening socket */
-  u32 uc;				/* Use count */
 };
 
 struct bgp_stats {
@@ -302,6 +302,16 @@ struct bgp_conn {
   uint hold_time, keepalive_time;	/* Times calculated from my and neighbor's requirements */
 };
 
+struct bgp_listen_request {
+  node n;				/* Node in bgp_socket / pending list */
+  struct bgp_socket *sock;		/* Assigned socket */
+  ip_addr addr;
+  struct iface *iface;
+  struct iface *vrf;
+  uint port;
+  uint flags;
+};
+
 struct bgp_proto {
   struct proto p;
   const struct bgp_config *cf;		/* Shortcut to BGP configuration */
@@ -333,7 +343,7 @@ struct bgp_proto {
   struct bgp_conn incoming_conn;	/* Incoming connection we have neither accepted nor rejected yet */
   struct object_lock *lock;		/* Lock for neighbor connection */
   struct neighbor *neigh;		/* Neighbor entry corresponding to remote ip, NULL if multihop */
-  struct bgp_socket *sock;		/* Shared listening socket */
+  struct bgp_listen_request listen;	/* Shared listening socket */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
   struct birdsock *postponed_sk;	/* Postponed incoming socket for dynamic BGP */
   event *uncork_ev;			/* Uncork event in case of congestion */

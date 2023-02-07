@@ -272,7 +272,7 @@ perf_init(struct proto_config *CF)
 
   switch (p->mode) {
     case PERF_MODE_IMPORT:
-      P->ifa_notify = perf_ifa_notify;
+      P->iface_sub.ifa_notify = perf_ifa_notify;
       break;
     case PERF_MODE_EXPORT:
       P->rt_notify = perf_rt_notify;

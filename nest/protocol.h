@@ -9,9 +9,10 @@
 #ifndef _BIRD_PROTOCOL_H_
 #define _BIRD_PROTOCOL_H_
 
-#include "lib/lists.h"
+#include "lib/tlists.h"
 #include "lib/resource.h"
 #include "lib/event.h"
+#include "nest/iface.h"
 #include "lib/settle.h"
 #include "nest/rt.h"
 #include "nest/limit.h"
@@ -59,6 +60,7 @@ struct protocol {
   void (*dump)(struct proto *);			/* Debugging dump */
   int (*start)(struct proto *);			/* Start the instance */
   int (*shutdown)(struct proto *);		/* Stop the instance */
+  void (*cleanup)(struct proto *);		/* Cleanup the instance right before tearing it all down */
   void (*get_status)(struct proto *, byte *buf); /* Get instance status (for `show protocols' command) */
 //  int (*get_attr)(const struct eattr *, byte *buf, int buflen);	/* ASCIIfy dynamic attribute (returns GA_*) */
   void (*show_proto_info)(struct proto *);	/* Show protocol info (for `show protocols all' command) */
@@ -128,8 +130,10 @@ struct proto {
   struct rte_src *main_source;		/* Primary route source */
   struct rte_owner sources;		/* Route source owner structure */
   struct iface *vrf;			/* Related VRF instance, NULL if global */
+  TLIST_LIST(proto_neigh) neighbors;	/* List of neighbor structures */
+  struct iface_subscription iface_sub;	/* Interface notification subscription */
 
-  const char *name;				/* Name of this instance (== cf->name) */
+  const char *name;			/* Name of this instance (== cf->name) */
   u32 debug;				/* Debugging flags */
   u32 mrtdump;				/* MRTDump flags */
   uint active_channels;			/* Number of active channels */
@@ -167,10 +171,7 @@ struct proto {
    *	   feed_end	Notify channel about finish of route feeding.
    */
 
-  void (*if_notify)(struct proto *, unsigned flags, struct iface *i);
-  void (*ifa_notify)(struct proto *, unsigned flags, struct ifa *a);
   void (*rt_notify)(struct proto *, struct channel *, const net_addr *net, struct rte *new, const struct rte *old);
-  void (*neigh_notify)(struct neighbor *neigh);
   int (*preexport)(struct channel *, struct rte *rt);
   void (*reload_routes)(struct channel *);
   void (*feed_begin)(struct channel *, int initial);
@@ -337,7 +338,13 @@ void proto_notify_state(struct proto *p, unsigned state);
  */
 
 static inline int proto_is_inactive(struct proto *p)
-{ return (p->active_channels == 0) && (p->active_loops == 0) && (p->sources.uc == 0); }
+{
+  return (p->active_channels == 0)
+      && (p->active_loops == 0)
+      && (p->sources.uc == 0)
+      && EMPTY_TLIST(proto_neigh, &p->neighbors)
+    ;
+}
 
 
 /*

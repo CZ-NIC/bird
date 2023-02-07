@@ -60,10 +60,12 @@ main(int argc, char **argv)
 	  {
 	    uint i, e;
 	    if (scanf("%x/%d", &i, &e) != 2)
+	    {
 	      if (feof(stdin))
 		break;
-	    else
-	      fprintf(stderr, "BUGGG\n");
+	      else
+		fprintf(stderr, "BUGGG\n");
+	    }
 //	    i >>= (32-e);
 //	    i |= (i >> e);
             cnt++;

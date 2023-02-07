@@ -2438,7 +2438,7 @@ babel_init(struct proto_config *CF)
   proto_configure_channel(P, &p->ip4_channel, cf->ip4_channel);
   proto_configure_channel(P, &p->ip6_channel, cf->ip6_channel);
 
-  P->if_notify = babel_if_notify;
+  P->iface_sub.if_notify = babel_if_notify;
   P->rt_notify = babel_rt_notify;
   P->preexport = babel_preexport;
 

@@ -994,7 +994,7 @@ bfd_init(struct proto_config *c)
 {
   struct proto *p = proto_new(c);
 
-  p->neigh_notify = bfd_neigh_notify;
+  p->iface_sub.neigh_notify = bfd_neigh_notify;
 
   return p;
 }

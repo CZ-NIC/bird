@@ -256,13 +256,16 @@ neigh_find(struct proto *p, ip_addr a, struct iface *iface, uint flags)
   n = sl_allocz(neigh_slab);
   add_tail(&neigh_hash_table[h], &n->n);
   add_tail((scope >= 0) ? &iface->neighbors : &sticky_neigh_list, &n->if_n);
+  proto_neigh_add_tail(&p->neighbors, n);
   n->addr = a;
-  n->ifa = addr;
-  n->iface = iface;
-  n->ifreq = ifreq;
+  ifa_link(n->ifa = addr);
+  if_link(n->iface = iface);
+  if_link(n->ifreq = ifreq);
   n->proto = p;
   n->flags = flags;
   n->scope = scope;
+
+  neigh_link(n);
 
   return n;
 }
@@ -308,19 +311,20 @@ neigh_dump_all(void)
 static inline void
 neigh_notify(neighbor *n)
 {
-  if (n->proto->neigh_notify && (n->proto->proto_state != PS_STOP))
-    n->proto->neigh_notify(n);
+  if_enqueue_notify_to((struct iface_notification) { .type = IFNOT_NEIGHBOR, .n = n, }, &n->proto->iface_sub);
 }
 
 static void
 neigh_up(neighbor *n, struct iface *i, struct ifa *a, int scope)
 {
   DBG("Waking up sticky neighbor %I\n", n->addr);
-  n->iface = i;
-  n->ifa = a;
+  if_link(n->iface = i);
+  ifa_link(n->ifa = a);
+
   n->scope = scope;
 
-  rem_node(&n->if_n);
+  rem_node(&n->if_n); /* HACK: Here the neighbor is always in the sticky list,
+			 regardless whether it is sticky or not */
   add_tail(&i->neighbors, &n->if_n);
 
   neigh_notify(n);
@@ -330,21 +334,48 @@ static void
 neigh_down(neighbor *n)
 {
   DBG("Flushing neighbor %I on %s\n", n->addr, n->iface->name);
-  n->iface = NULL;
-  n->ifa = NULL;
+
   n->scope = -1;
 
   rem_node(&n->if_n);
   add_tail(&sticky_neigh_list, &n->if_n);
 
+  ifa_unlink(n->ifa);
+  n->ifa = NULL;
+
+  if_unlink(n->iface);
+  n->iface = NULL;
+
   neigh_notify(n);
 }
 
-static inline void
-neigh_free(neighbor *n)
+void
+neigh_link(neighbor *n)
 {
+  n->uc++;
+}
+
+void
+neigh_unlink(neighbor *n)
+{
+  if (--n->uc)
+    return;
+
+  struct proto *p = n->proto;
+  proto_neigh_rem_node(&p->neighbors, n);
+
+  if ((p->proto_state == PS_DOWN) && EMPTY_TLIST(proto_neigh, &p->neighbors))
+    ev_schedule(p->event);
+
+  n->proto = NULL;
+
   rem_node(&n->n);
   rem_node(&n->if_n);
+
+  ifa_unlink(n->ifa);
+  if_unlink(n->iface);
+  if_unlink(n->ifreq);
+
   sl_free(n);
 }
 
@@ -394,7 +425,8 @@ neigh_update(neighbor *n, struct iface *iface)
   {
     if (ifa != n->ifa)
     {
-      n->ifa = ifa;
+      ifa_unlink(n->ifa);
+      ifa_link(n->ifa = ifa);
       neigh_notify(n);
     }
 
@@ -408,7 +440,7 @@ neigh_update(neighbor *n, struct iface *iface)
 
   if ((n->scope < 0) && !(n->flags & NEF_STICKY))
   {
-    neigh_free(n);
+    neigh_unlink(n);
     return;
   }
 
@@ -519,15 +551,6 @@ neigh_ifa_down(struct ifa *a)
       neigh_update(n, i);
 }
 
-static inline void
-neigh_prune_one(neighbor *n)
-{
-  if (n->proto->proto_state != PS_DOWN)
-    return;
-
-  neigh_free(n);
-}
-
 /**
  * neigh_prune - prune neighbor cache
  *
@@ -536,16 +559,12 @@ neigh_prune_one(neighbor *n)
  * is shut down to get rid of all its heritage.
  */
 void
-neigh_prune(void)
+neigh_prune(struct proto *p)
 {
-  neighbor *n;
-  node *m;
-  int i;
+  WALK_TLIST_DELSAFE(proto_neigh, n, &p->neighbors)
+    neigh_unlink(n);
 
-  DBG("Pruning neighbors\n");
-  for(i=0; i<NEIGH_HASH_SIZE; i++)
-    WALK_LIST_DELSAFE(n, m, neigh_hash_table[i])
-      neigh_prune_one(n);
+  ASSERT_DIE(EMPTY_TLIST(proto_neigh, &p->neighbors));
 }
 
 /**

@@ -1134,6 +1134,8 @@ proto_configure_channel(struct proto *p, struct channel **pc, struct channel_con
 static void
 proto_cleanup(struct proto *p)
 {
+  CALL(p->proto->cleanup, p);
+
   rfree(p->pool);
   p->pool = NULL;
 
@@ -1162,8 +1164,8 @@ proto_event(void *ptr)
 
   if (p->do_stop)
   {
-    if (p->proto == &proto_unix_iface)
-      if_flush_ifaces(p);
+    iface_unsubscribe(&p->iface_sub);
+    neigh_prune(p);
 
     p->do_stop = 0;
   }
@@ -2053,7 +2055,7 @@ proto_do_start(struct proto *p)
     p->sources.class = &default_rte_owner_class;
 
   if (!p->cf->late_if_feed)
-    if_feed_baby(p);
+    iface_subscribe(&p->iface_sub);
 }
 
 static void
@@ -2066,7 +2068,7 @@ proto_do_up(struct proto *p)
   proto_start_channels(p);
 
   if (p->cf->late_if_feed)
-    if_feed_baby(p);
+    iface_subscribe(&p->iface_sub);
 }
 
 static inline void
@@ -2098,7 +2100,6 @@ static void
 proto_do_down(struct proto *p)
 {
   p->down_code = 0;
-  neigh_prune();
 
   /* Shutdown is finished in the protocol event */
   if (proto_is_done(p))

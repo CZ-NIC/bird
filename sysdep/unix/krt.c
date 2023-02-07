@@ -163,6 +163,15 @@ kif_shutdown(struct proto *P)
   return PS_DOWN;
 }
 
+static void
+kif_cleanup(struct proto *p)
+{
+  if (p->debug & D_EVENTS)
+    log(L_TRACE "%s: Flushing interfaces", p->name);
+  if_start_update();
+  if_end_update();
+}
+
 static int
 kif_reconfigure(struct proto *p, struct proto_config *new)
 {
@@ -238,6 +247,7 @@ struct protocol proto_unix_iface = {
   .init =		kif_init,
   .start =		kif_start,
   .shutdown =		kif_shutdown,
+  .cleanup =		kif_cleanup,
   .reconfigure =	kif_reconfigure,
   .copy_config =	kif_copy_config
 };
@@ -845,7 +855,7 @@ krt_init(struct proto_config *CF)
 
   p->p.preexport = krt_preexport;
   p->p.rt_notify = krt_rt_notify;
-  p->p.if_notify = krt_if_notify;
+  p->p.iface_sub.if_notify = krt_if_notify;
   p->p.reload_routes = krt_reload_routes;
   p->p.feed_end = krt_feed_end;
 

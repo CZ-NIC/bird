@@ -460,7 +460,7 @@ static_init(struct proto_config *CF)
 
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
 
-  P->neigh_notify = static_neigh_notify;
+  P->iface_sub.neigh_notify = static_neigh_notify;
   P->reload_routes = static_reload_routes;
   P->sources.class = &static_rte_owner_class;
 

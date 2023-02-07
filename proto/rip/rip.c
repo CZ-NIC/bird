@@ -1156,9 +1156,9 @@ rip_init(struct proto_config *CF)
 
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
 
-  P->if_notify = rip_if_notify;
+  P->iface_sub.if_notify = rip_if_notify;
   P->rt_notify = rip_rt_notify;
-  P->neigh_notify = rip_neigh_notify;
+  P->iface_sub.neigh_notify = rip_neigh_notify;
   P->reload_routes = rip_reload_routes;
   P->sources.class = &rip_rte_owner_class;
 
