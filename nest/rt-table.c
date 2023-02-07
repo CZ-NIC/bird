@@ -2677,6 +2677,8 @@ rt_flowspec_link(rtable *src_pub, rtable *dst_pub)
 
   int lock_dst = 0;
 
+  birdloop_enter(dst_pub->loop);
+
   RT_LOCKED(src_pub, src)
   {
     struct rt_flowspec_link *ln = rt_flowspec_find_link(src, dst_pub);
@@ -2689,7 +2691,7 @@ rt_flowspec_link(rtable *src_pub, rtable *dst_pub)
       ln->dst = dst_pub;
       ln->req = (struct rt_export_request) {
 	.name = mb_sprintf(p, "%s.flowspec.notifier", dst_pub->name),
-	.list = &global_work_list,
+	.list = birdloop_event_list(dst_pub->loop),
 	.trace_routes = src->config->debug,
 	.dump_req = rt_flowspec_dump_req,
 	.log_state_change = rt_flowspec_log_state_change,
@@ -2706,6 +2708,8 @@ rt_flowspec_link(rtable *src_pub, rtable *dst_pub)
 
   if (lock_dst)
     rt_lock_table(dst_pub);
+
+  birdloop_leave(dst_pub->loop);
 }
 
 static void
@@ -2721,6 +2725,8 @@ rt_flowspec_link_stopped(struct rt_export_request *req)
 void
 rt_flowspec_unlink(rtable *src, rtable *dst)
 {
+  birdloop_enter(dst->loop);
+
   struct rt_flowspec_link *ln;
   RT_LOCKED(src, t)
   {
@@ -2731,6 +2737,8 @@ rt_flowspec_unlink(rtable *src, rtable *dst)
     if (!--ln->uc)
       rt_stop_export(&ln->req, rt_flowspec_link_stopped);
   }
+
+  birdloop_leave(dst->loop);
 }
 
 static void
