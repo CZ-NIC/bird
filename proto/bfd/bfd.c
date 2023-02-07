@@ -657,7 +657,17 @@ bfd_request_notify(struct bfd_request *req, u8 state, u8 diag)
   req->down = (old_state == BFD_STATE_UP) && (state == BFD_STATE_DOWN);
 
   if (req->hook)
+  {
+    struct birdloop *target = !birdloop_inside(req->target) ? req->target : NULL;
+
+    if (target)
+      birdloop_enter(target);
+
     req->hook(req);
+
+    if (target)
+      birdloop_leave(target);
+  }
 }
 
 static int
@@ -676,7 +686,6 @@ bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
 
   uint ifindex = req->iface ? req->iface->index : 0;
   struct bfd_session *s = bfd_find_session_by_addr(p, req->addr, ifindex);
-  u8 state, diag;
 
   if (!s)
     s = bfd_add_session(p, req->addr, req->local, req->iface, &req->opts);
@@ -686,11 +695,15 @@ bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
   req->session = s;
 
   bfd_lock_sessions(p);
-  state = s->loc_state;
-  diag = s->loc_diag;
+
+  int notify = !NODE_VALID(&s->n);
+  if (notify)
+    add_tail(&p->notify_list, &s->n);
+
   bfd_unlock_sessions(p);
 
-  bfd_request_notify(req, state, diag);
+  if (notify)
+    ev_send(&global_event_list, &p->notify_event);
 
   return 1;
 }
@@ -698,6 +711,26 @@ bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
 static void
 bfd_pickup_requests(void *_data UNUSED)
 {
+  /* NOTE TO MY FUTURE SELF
+   *
+   * Functions bfd_take_requests() and bfd_drop_requests() need to have
+   * consistent &bfd_global.wait_list and this is ensured only by having these
+   * functions called from bfd_start() and bfd_shutdown() which are both called
+   * in PROTO_LOCKED_FROM_MAIN context, i.e. always from &main_birdloop.
+   *
+   * This pickup event is also called in &main_birdloop, therefore we can
+   * freely do BFD_LOCK/BFD_UNLOCK while processing all the requests. All BFD
+   * protocols capable of bfd_add_request() are either started before this code
+   * happens or after that.
+   *
+   * If BFD protocols could start in parallel with this routine, they might
+   * miss some of the waiting requests, thus if anybody tries to start
+   * protocols or run this pickup event outside &main_birdloop in future, they
+   * shall ensure that this race condition is mitigated somehow.
+   *
+   * Thank you, my future self, for understanding. Have a nice day!
+   */
+
   node *n;
   WALK_LIST(n, bfd_global.proto_list)
   {
@@ -714,12 +747,16 @@ bfd_pickup_requests(void *_data UNUSED)
   }
 
   BFD_LOCK;
-  node *rn, *rnxt;
-  WALK_LIST_DELSAFE(rn, rnxt, bfd_global.pickup_list)
+  while (!EMPTY_LIST(bfd_global.pickup_list))
   {
-    rem_node(rn);
-    add_tail(&bfd_global.wait_list, rn);
-    bfd_request_notify(SKIP_BACK(struct bfd_request, n, rn), BFD_STATE_ADMIN_DOWN, 0);
+    struct bfd_request *req = SKIP_BACK(struct bfd_request, n, HEAD(bfd_global.pickup_list));
+    rem_node(&req->n);
+    BFD_UNLOCK;
+
+    bfd_request_notify(req, BFD_STATE_ADMIN_DOWN, 0);
+
+    BFD_LOCK;
+    add_tail(&bfd_global.wait_list, &req->n);
   }
   BFD_UNLOCK;
 }
@@ -749,7 +786,6 @@ bfd_drop_requests(struct bfd_proto *p)
       rem_node(&req->n);
       add_tail(&bfd_global.pickup_list, &req->n);
       req->session = NULL;
-      bfd_request_notify(req, BFD_STATE_ADMIN_DOWN, 0);
     }
 
     ev_send(&global_event_list, &bfd_pickup_event);
@@ -766,6 +802,7 @@ struct bfd_request *
 bfd_request_session(pool *p, ip_addr addr, ip_addr local,
 		    struct iface *iface, struct iface *vrf,
 		    void (*hook)(struct bfd_request *), void *data,
+		    struct birdloop *target,
 		    const struct bfd_options *opts)
 {
   struct bfd_request *req = ralloc(p, &bfd_request_class);
@@ -778,8 +815,10 @@ bfd_request_session(pool *p, ip_addr addr, ip_addr local,
   if (opts)
     req->opts = *opts;
 
+  ASSERT_DIE(target || !hook);
   req->hook = hook;
   req->data = data;
+  req->target = target;
 
   req->session = NULL;
 
@@ -854,7 +893,7 @@ bfd_neigh_notify(struct neighbor *nb)
   if ((nb->scope > 0) && !n->req)
   {
     ip_addr local = ipa_nonzero(n->local) ? n->local : nb->ifa->ip;
-    n->req = bfd_request_session(p->p.pool, n->addr, local, nb->iface, p->p.vrf, NULL, NULL, NULL);
+    n->req = bfd_request_session(p->p.pool, n->addr, local, nb->iface, p->p.vrf, NULL, NULL, NULL, NULL);
   }
 
   if ((nb->scope <= 0) && n->req)
@@ -871,7 +910,7 @@ bfd_start_neighbor(struct bfd_proto *p, struct bfd_neighbor *n)
 
   if (n->multihop)
   {
-    n->req = bfd_request_session(p->p.pool, n->addr, n->local, NULL, p->p.vrf, NULL, NULL, NULL);
+    n->req = bfd_request_session(p->p.pool, n->addr, n->local, NULL, p->p.vrf, NULL, NULL, NULL, NULL);
     return;
   }
 

@@ -777,7 +777,7 @@ ospf_neigh_update_bfd(struct ospf_neighbor *n, int use_bfd)
   if (use_bfd && !n->bfd_req)
     n->bfd_req = bfd_request_session(n->pool, n->ip, n->ifa->addr->ip,
 				     n->ifa->iface, p->p.vrf,
-				     ospf_neigh_bfd_hook, n, NULL);
+				     ospf_neigh_bfd_hook, n, p->p.loop, NULL);
 
   if (!use_bfd && n->bfd_req)
   {

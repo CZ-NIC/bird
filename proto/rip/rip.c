@@ -543,7 +543,7 @@ rip_update_bfd(struct rip_proto *p, struct rip_neighbor *n)
     ip_addr saddr = rip_is_v2(p) ? n->ifa->sk->saddr : n->nbr->ifa->ip;
     n->bfd_req = bfd_request_session(p->p.pool, n->nbr->addr, saddr,
 				     n->nbr->iface, p->p.vrf,
-				     rip_bfd_notify, n, NULL);
+				     rip_bfd_notify, n, p->p.loop, NULL);
   }
 
   if (!use_bfd && n->bfd_req)

@@ -35,6 +35,7 @@ struct bfd_request {
 
   void (*hook)(struct bfd_request *);
   void *data;
+  struct birdloop *target;
 
   struct bfd_session *session;
 
@@ -57,14 +58,14 @@ static inline struct bfd_options * bfd_new_options(void)
 
 #ifdef CONFIG_BFD
 
-struct bfd_request * bfd_request_session(pool *p, ip_addr addr, ip_addr local, struct iface *iface, struct iface *vrf, void (*hook)(struct bfd_request *), void *data, const struct bfd_options *opts);
+struct bfd_request * bfd_request_session(pool *p, ip_addr addr, ip_addr local, struct iface *iface, struct iface *vrf, void (*hook)(struct bfd_request *), void *data, struct birdloop *target, const struct bfd_options *opts);
 void bfd_update_request(struct bfd_request *req, const struct bfd_options *opts);
 
 static inline void cf_check_bfd(int use UNUSED) { }
 
 #else
 
-static inline struct bfd_request * bfd_request_session(pool *p UNUSED, ip_addr addr UNUSED, ip_addr local UNUSED, struct iface *iface UNUSED, struct iface *vrf UNUSED, void (*hook)(struct bfd_request *) UNUSED, void *data UNUSED, const struct bfd_options *opts UNUSED) { return NULL; }
+static inline struct bfd_request * bfd_request_session(pool *p UNUSED, ip_addr addr UNUSED, ip_addr local UNUSED, struct iface *iface UNUSED, struct iface *vrf UNUSED, void (*hook)(struct bfd_request *) UNUSED, void *data UNUSED, struct birdloop *target UNUSED, const struct bfd_options *opts UNUSED) { return NULL; }
 static inline void bfd_update_request(struct bfd_request *req UNUSED, const struct bfd_options *opts UNUSED) { };
 
 static inline void cf_check_bfd(int use) { if (use) cf_error("BFD not available"); }
