@@ -1003,8 +1003,18 @@ babel_send_update_(struct babel_iface *ifa, btime changed, struct fib *rtable)
     msg.update.router_id = e->router_id;
     net_copy(&msg.update.net, e->n.addr);
 
-    msg.update.next_hop = ((e->n.addr->type == NET_IP4) ?
-			   ifa->next_hop_ip4 : ifa->next_hop_ip6);
+    if (e->n.addr->type == NET_IP4)
+    {
+      /* Always prefer IPv4 nexthop if set */
+      if (ipa_nonzero(ifa->next_hop_ip4))
+        msg.update.next_hop = ifa->next_hop_ip4;
+
+      /* Only send IPv6 nexthop if enabled */
+      else if (ifa->cf->ext_next_hop)
+        msg.update.next_hop = ifa->next_hop_ip6;
+    }
+    else
+      msg.update.next_hop = ifa->next_hop_ip6;
 
     /* Do not send route if next hop is unknown, e.g. no configured IPv4 address */
     if (ipa_zero(msg.update.next_hop))
@@ -1260,6 +1270,13 @@ babel_handle_update(union babel_msg *m, struct babel_iface *ifa)
   if (!c || (c->channel_state != CS_UP))
   {
     DBG("Babel: Ignoring update for inactive address family.\n");
+    return;
+  }
+
+  /* Reject IPv4 via IPv6 routes if disabled */
+  if ((msg->net.type == NET_IP4) && ipa_is_ip6(msg->next_hop) && !ifa->cf->ext_next_hop)
+  {
+    DBG("Babel: Ignoring disabled IPv4 via IPv6 route.\n");
     return;
   }
 
@@ -1729,7 +1746,7 @@ babel_iface_update_addr4(struct babel_iface *ifa)
   ip_addr addr4 = ifa->iface->addr4 ? ifa->iface->addr4->ip : IPA_NONE;
   ifa->next_hop_ip4 = ipa_nonzero(ifa->cf->next_hop_ip4) ? ifa->cf->next_hop_ip4 : addr4;
 
-  if (ipa_zero(ifa->next_hop_ip4) && p->ip4_channel)
+  if (ipa_zero(ifa->next_hop_ip4) && p->ip4_channel && !ifa->cf->ext_next_hop)
     log(L_WARN "%s: Missing IPv4 next hop address for %s", p->p.name, ifa->ifname);
 
   if (ifa->up)
@@ -1806,8 +1823,8 @@ babel_add_iface(struct babel_proto *p, struct iface *new, struct babel_iface_con
   ifa->next_hop_ip4 = ipa_nonzero(ic->next_hop_ip4) ? ic->next_hop_ip4 : addr4;
   ifa->next_hop_ip6 = ipa_nonzero(ic->next_hop_ip6) ? ic->next_hop_ip6 : ifa->addr;
 
-  if (ipa_zero(ifa->next_hop_ip4) && p->ip4_channel)
-    log(L_WARN "%s: Missing IPv4 next hop address for %s", p->p.name, new->name);
+  if (ipa_zero(ifa->next_hop_ip4) && p->ip4_channel && !ic->ext_next_hop)
+    log(L_WARN "%s: Missing IPv4 next hop address for %s", p->p.name, ifa->ifname);
 
   init_list(&ifa->neigh_list);
   ifa->hello_seqno = 1;
@@ -1927,7 +1944,7 @@ babel_reconfigure_iface(struct babel_proto *p, struct babel_iface *ifa, struct b
   if ((new->auth_type != BABEL_AUTH_NONE) && (new->auth_type != old->auth_type))
     babel_auth_reset_index(ifa);
 
-  if (ipa_zero(ifa->next_hop_ip4) && p->ip4_channel)
+  if (ipa_zero(ifa->next_hop_ip4) && p->ip4_channel && !new->ext_next_hop)
     log(L_WARN "%s: Missing IPv4 next hop address for %s", p->p.name, ifa->ifname);
 
   if (ifa->next_hello > (current_time() + new->hello_interval))

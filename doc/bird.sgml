@@ -1929,6 +1929,7 @@ protocol babel [<name>] {
 		check link <switch>;
 		next hop ipv4 <address>;
 		next hop ipv6 <address>;
+		extended next hop <switch>;
 		authentication none|mac [permissive];
 		password "&lt;text&gt;";
 		password "&lt;text&gt;" {
@@ -2032,6 +2033,11 @@ protocol babel [<name>] {
       interface. If not set, the same link-local address that is used as the
       source for Babel packets will be used. In normal operation, it should not
       be necessary to set this option.
+
+      <tag><label id="babel-extended-next-hop">extended next hop <m/switch/</tag>
+      If enabled, BIRD will accept and emit IPv4 routes with an IPv6 next
+      hop when IPv4 addresses are absent from the interface as described in
+      <rfc id="9229">. Default: yes.
 
       <tag><label id="babel-authentication">authentication none|mac [permissive]</tag>
       Selects authentication method to be used. <cf/none/ means that packets
