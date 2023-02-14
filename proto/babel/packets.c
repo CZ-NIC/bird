@@ -1704,6 +1704,7 @@ babel_read_pc(struct babel_tlv *hdr, union babel_msg *m UNUSED,
   state->auth.pc_seen = 1;
   state->auth.index_len = index_len;
   state->auth.index = tlv->index;
+  state->auth.unicast = state->is_unicast;
   state->current_tlv_endpos += index_len;
 
   return PARSE_SUCCESS;

@@ -1566,7 +1566,8 @@ babel_auth_check_pc(struct babel_iface *ifa, struct babel_msg_auth *msg)
     n->auth_index_len = msg->index_len;
     memcpy(n->auth_index, msg->index, msg->index_len);
 
-    n->auth_pc = msg->pc;
+    n->auth_pc_unicast = msg->pc;
+    n->auth_pc_multicast = msg->pc;
     n->auth_passed = 1;
 
     return 1;
@@ -1585,16 +1586,30 @@ babel_auth_check_pc(struct babel_iface *ifa, struct babel_msg_auth *msg)
     return 0;
   }
 
-  /* (6) Index matches; only accept if PC is greater than last */
-  if (n->auth_pc >= msg->pc)
+  /*
+   * (6) Index matches; only accept if PC is greater than last. We keep separate
+   * counters for unicast and multicast because multicast packets can be delayed
+   * significantly on wireless networks (enough to be received out of order).
+   * Separate counters are safe because the packet destination address is part
+   * of the MAC pseudo-header (so unicast packets can't be replayed as multicast
+   * and vice versa).
+   */
+  u32 auth_pc = msg->unicast ? n->auth_pc_unicast : n->auth_pc_multicast;
+  if (auth_pc >= msg->pc)
   {
     LOG_PKT_AUTH("Authentication failed for %I on %s - "
-		 "lower packet counter (rcv %u, old %u)",
-                 msg->sender, ifa->ifname, msg->pc, n->auth_pc);
+		 "lower %s packet counter (rcv %u, old %u)",
+                 msg->sender, ifa->ifname,
+		 msg->unicast ? "unicast" : "multicast",
+		 msg->pc, auth_pc);
     return 0;
   }
 
-  n->auth_pc = msg->pc;
+  if (msg->unicast)
+    n->auth_pc_unicast = msg->pc;
+  else
+    n->auth_pc_multicast = msg->pc;
+
   n->auth_passed = 1;
 
   return 1;
