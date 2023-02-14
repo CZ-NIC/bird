@@ -229,7 +229,8 @@ struct babel_neighbor {
   u16 next_hello_seqno;
   uint last_hello_int;
 
-  u32 auth_pc;
+  u32 auth_pc_unicast;
+  u32 auth_pc_multicast;
   u8 auth_passed;
   u8 auth_index_len;
   u8 auth_index[BABEL_AUTH_INDEX_LEN];
@@ -407,6 +408,7 @@ struct babel_msg_auth {
   u8 challenge_seen;
   u8 challenge_len;
   u8 challenge[BABEL_AUTH_MAX_NONCE_LEN];
+  u8 unicast;
 };
 
 static inline int babel_sadr_enabled(struct babel_proto *p)
