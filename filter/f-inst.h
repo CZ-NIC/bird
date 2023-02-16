@@ -100,8 +100,6 @@ static inline struct f_dynamic_attr f_new_dynamic_attr_bit(u8 bit, enum f_type f
 { return (struct f_dynamic_attr) { .type = EAF_TYPE_BITFIELD, .bit = bit, .f_type = f_type, .ea_code = code }; }   /* f_type currently unused; will be handy for static type checking */
 static inline struct f_static_attr f_new_static_attr(int f_type, int code, int readonly)
 { return (struct f_static_attr) { .f_type = f_type, .sa_code = code, .readonly = readonly }; }
-struct f_inst *f_generate_complex(enum f_instruction_code fi_code, struct f_dynamic_attr da, struct f_inst *argument);
-struct f_inst *f_generate_roa_check(struct rtable_config *table, struct f_inst *prefix, struct f_inst *asn);
 
 /* Hook for call bt_assert() function in configuration */
 extern void (*bt_assert_hook)(int result, const struct f_line_item *assert);
