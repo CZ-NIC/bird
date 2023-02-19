@@ -97,7 +97,7 @@ struct bgp_config {
   int capabilities;			/* Enable capability handshake [RFC 5492] */
   int enable_refresh;			/* Enable local support for route refresh [RFC 2918] */
   int enable_as4;			/* Enable local support for 4B AS numbers [RFC 6793] */
-  int enable_extended_messages;		/* Enable local support for extended messages [draft] */
+  int enable_extended_messages;		/* Enable local support for extended messages [RFC 8654] */
   int enable_hostname;			/* Enable local support for hostname [draft] */
   u32 rr_cluster_id;			/* Route reflector cluster ID, if different from local ID */
   int rr_client;			/* Whether neighbor is RR client of me */
@@ -239,7 +239,7 @@ struct bgp_caps {
   u32 as4_number;			/* Announced ASN */
 
   u8 as4_support;			/* Four-octet AS capability, RFC 6793 */
-  u8 ext_messages;			/* Extended message length,  RFC draft */
+  u8 ext_messages;			/* Extended message length,  RFC 8654 */
   u8 route_refresh;			/* Route refresh capability, RFC 2918 */
   u8 enhanced_refresh;			/* Enhanced route refresh,   RFC 7313 */
   u8 role;				/* BGP role capability,      RFC 9234 */
