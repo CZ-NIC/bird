@@ -1885,7 +1885,7 @@ protocol sections.
 <label id="babel-intro">
 
 <p>The Babel protocol
-(<rfc id="6126">) is a loop-avoiding distance-vector routing protocol that is
+(<rfc id="8966">) is a loop-avoiding distance-vector routing protocol that is
 robust and efficient both in ordinary wired networks and in wireless mesh
 networks. Babel is conceptually very simple in its operation and "just works"
 in its default configuration, though some configuration is possible and in some
