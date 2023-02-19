@@ -14,9 +14,8 @@
 /**
  * DOC: The Babel protocol
  *
- * Babel (RFC6126) is a loop-avoiding distance-vector routing protocol that is
- * robust and efficient both in ordinary wired networks and in wireless mesh
- * networks.
+ * The Babel is a loop-avoiding distance-vector routing protocol that is robust
+ * and efficient both in ordinary wired networks and in wireless mesh networks.
  *
  * The Babel protocol keeps state for each neighbour in a &babel_neighbor
  * struct, tracking received Hello and I Heard You (IHU) messages. A
@@ -33,6 +32,12 @@
  * an entry is updated by receiving updates from the network or when modified by
  * internal timers. The function selects from feasible and reachable routes the
  * one with the lowest metric to be announced to the core.
+ *
+ * Supported standards:
+ * RFC 8966 - The Babel Routing Protocol
+ * RFC 8967 - MAC Authentication for Babel
+ * RFC 9079 - Source Specific Routing for Babel
+ * RFC 9229 - IPv4 Routes with IPv6 Next Hop for Babel
  */
 
 #include <stdlib.h>
@@ -294,7 +299,7 @@ babel_expire_routes(struct babel_proto *p)
 }
 
 /*
- * Add seqno request to the table of pending requests (RFC 6216 3.2.6) and send
+ * Add seqno request to the table of pending requests (RFC 8966 3.2.6) and send
  * it to network. Do nothing if it is already in the table.
  */
 
@@ -1022,7 +1027,7 @@ babel_send_update_(struct babel_iface *ifa, btime changed, struct fib *rtable)
 
     babel_enqueue(&msg, ifa);
 
-    /* RFC 6126 3.7.3 - update feasibility distance for redistributed routes */
+    /* RFC 8966 3.7.3 - update feasibility distance for redistributed routes */
     if (e->router_id != p->router_id)
     {
       struct babel_source *s = babel_get_source(p, e, e->router_id, msg.update.seqno);
@@ -1325,7 +1330,7 @@ babel_handle_update(union babel_msg *m, struct babel_iface *ifa)
   best = e->selected;
 
   /*
-   * RFC section 3.8.2.2 - Dealing with unfeasible updates. Generate a one-off
+   * RFC 8966 3.8.2.2 - dealing with unfeasible updates. Generate a one-off
    * (not retransmitted) unicast seqno request to the originator of this update.
    * Note: !feasible -> s exists, check for 's' is just for clarity / safety.
    */
@@ -1370,7 +1375,7 @@ babel_handle_route_request(union babel_msg *m, struct babel_iface *ifa)
   struct babel_proto *p = ifa->proto;
   struct babel_msg_route_request *msg = &m->route_request;
 
-  /* RFC 6126 3.8.1.1 */
+  /* RFC 8966 3.8.1.1 */
 
   /* Wildcard request - full update on the interface */
   if (msg->full)
@@ -1428,7 +1433,7 @@ babel_handle_seqno_request(union babel_msg *m, struct babel_iface *ifa)
   struct babel_proto *p = ifa->proto;
   struct babel_msg_seqno_request *msg = &m->seqno_request;
 
-  /* RFC 6126 3.8.1.2 */
+  /* RFC 8966 3.8.1.2 */
 
   TRACE(D_PACKETS, "Handling seqno request for %N router-id %lR seqno %d hop count %d",
 	&msg->net, msg->router_id, msg->seqno, msg->hop_count);
