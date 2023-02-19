@@ -195,8 +195,12 @@ cleanup:
 void
 config_free(struct config *c)
 {
-  if (c)
-    rfree(c->pool);
+  if (!c)
+    return;
+
+  ASSERT(!c->obstacle_count);
+
+  rfree(c->pool);
 }
 
 /**
@@ -205,10 +209,14 @@ config_free(struct config *c)
  * This function frees the old configuration (%old_config) that is saved for the
  * purpose of undo. It is useful before parsing a new config when reconfig is
  * requested, to avoid keeping three (perhaps memory-heavy) configs together.
+ * Configuration is not freed when it is still active during reconfiguration.
  */
 void
 config_free_old(void)
 {
+  if (!old_config || old_config->obstacle_count)
+    return;
+
   tm_stop(config_timer);
   undo_available = 0;
 
