@@ -2400,6 +2400,8 @@ avoid routing loops.
 <item> <rfc id="8092"> - BGP Large Communities Attribute
 <item> <rfc id="8203"> - BGP Administrative Shutdown Communication
 <item> <rfc id="8212"> - Default EBGP Route Propagation Behavior without Policies
+<item> <rfc id="8654"> - Extended Message Support for BGP
+<item> <rfc id="9072"> - Extended Optional Parameters Length for BGP OPEN Message
 <item> <rfc id="9117"> - Revised Validation Procedure for BGP Flow Specifications
 <item> <rfc id="9234"> - Route Leak Prevention and Detection Using Roles
 </itemize>

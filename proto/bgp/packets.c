@@ -518,7 +518,7 @@ bgp_read_capabilities(struct bgp_conn *conn, byte *pos, int len)
       }
       break;
 
-    case  6: /* Extended message length capability, RFC draft */
+    case  6: /* Extended message length capability, RFC 8654 */
       if (cl != 0)
 	goto err;
 
@@ -711,7 +711,7 @@ bgp_read_options(struct bgp_conn *conn, byte *pos, uint len, uint rest)
   struct bgp_proto *p = conn->bgp;
   int ext = 0;
 
-  /* Handle extended length (draft-ietf-idr-ext-opt-param-07) */
+  /* Handle extended length, RFC 9072 */
   if ((len > 0) && (rest > 0) && (pos[0] == 255))
   {
     if (rest < 3)
@@ -796,7 +796,7 @@ bgp_create_open(struct bgp_conn *conn, byte *buf)
       buf[10] = 2;		/* Option 2: Capability list */
       buf[11] = len;		/* Option data length */
     }
-    else /* draft-ietf-idr-ext-opt-param-07 */
+    else /* Extended length, RFC 9072 */
     {
       /* Move capabilities 4 B forward */
       memmove(buf + 16, pos, len);

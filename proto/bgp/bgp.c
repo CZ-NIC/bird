@@ -101,9 +101,9 @@
  * RFC 8203 - BGP Administrative Shutdown Communication
  * RFC 8212 - Default EBGP Route Propagation Behavior without Policies
  * RFC 8654 - Extended Message Support for BGP
+ * RFC 9072 - Extended Optional Parameters Length for BGP OPEN Message
  * RFC 9117 - Revised Validation Procedure for BGP Flow Specifications
  * RFC 9234 - Route Leak Prevention and Detection Using Roles
- * draft-ietf-idr-ext-opt-param-07
  * draft-uttaro-idr-bgp-persistence-04
  * draft-walton-bgp-hostname-capability-02
  */
