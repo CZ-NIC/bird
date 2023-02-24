@@ -16,14 +16,24 @@ struct pipe
   int fd[2];
 };
 
+struct pfd {
+  BUFFER(struct pollfd) pfd;
+  BUFFER(struct birdloop *) loop;
+};
+
+void sockets_prepare(struct birdloop *, struct pfd *);
+
 void pipe_new(struct pipe *);
-void pipe_pollin(struct pipe *, struct pollfd *);
+void pipe_pollin(struct pipe *, struct pfd *);
 void pipe_drain(struct pipe *);
 void pipe_kick(struct pipe *);
 
 struct birdloop
 {
   node n;
+
+  event event;
+  timer timer;
 
   pool *pool;
 
@@ -36,6 +46,9 @@ struct birdloop
 
   uint links;
 
+  _Atomic u32 thread_transition;
+#define LTT_PING  1
+#define LTT_MOVE  2
   _Atomic u32 flags;
   struct birdloop_flag_handler *flag_handler;
 
@@ -45,7 +58,6 @@ struct birdloop
   struct birdloop *prev_loop;
 
   struct bird_thread *thread;
-  struct pollfd *pfd;
 
   u64 total_time_spent_ns;
 };
@@ -54,15 +66,12 @@ struct bird_thread
 {
   node n;
 
-  struct pollfd *pfd;
-  uint pfd_max;
-
-  _Atomic u32 ping_sent;
-  _Atomic u32 run_cleanup;
   _Atomic u32 poll_changed;
 
   struct pipe wakeup;
   event_list priority_events;
+
+  struct birdloop *meta;
 
   pthread_t thread_id;
   pthread_attr_t thread_attr;
@@ -71,6 +80,7 @@ struct bird_thread
 
   list loops;
   pool *pool;
+  struct pfd *pfd;
 
   event cleanup_event;
 };

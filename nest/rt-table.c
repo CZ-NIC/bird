@@ -4073,6 +4073,7 @@ rt_delete(void *tab_)
 
   RT_UNLOCK(RT_PUB(tab));
 
+  birdloop_free(tab->loop);
   rfree(tab->rp);
   config_del_obstacle(conf);
 

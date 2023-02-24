@@ -140,7 +140,7 @@ times_update(void)
 
   if ((ts.tv_sec < 0) || (((u64) ts.tv_sec) > ((u64) 1 << 40)))
     log(L_WARN "Monotonic clock is crazy");
-  
+
   btime new_time = ts.tv_sec S + ts.tv_nsec NS;
 
   if (new_time < old_time)
@@ -722,7 +722,6 @@ sk_log_error(sock *s, const char *p)
  *	Actual struct birdsock code
  */
 
-static list sock_list;
 static struct birdsock *current_sock;
 static struct birdsock *stored_sock;
 
@@ -1026,7 +1025,7 @@ sk_setup(sock *s)
 static void
 sk_insert(sock *s)
 {
-  add_tail(&sock_list, &s->n);
+  add_tail(&main_birdloop.sock_list, &s->n);
 }
 
 static void
@@ -2049,7 +2048,7 @@ sk_dump_all(void)
   sock *s;
 
   debug("Open sockets:\n");
-  WALK_LIST(n, sock_list)
+  WALK_LIST(n, main_birdloop.sock_list)
   {
     s = SKIP_BACK(sock, n, n);
     debug("%p ", s);
@@ -2208,7 +2207,7 @@ watchdog_stop(void)
 void
 io_init(void)
 {
-  init_list(&sock_list);
+  init_list(&main_birdloop.sock_list);
   ev_init_list(&global_event_list, &main_birdloop, "Global event list");
   ev_init_list(&global_work_list, &main_birdloop, "Global work list");
   ev_init_list(&main_birdloop.event_list, &main_birdloop, "Global fast event list");
@@ -2229,12 +2228,11 @@ void
 io_loop(void)
 {
   int poll_tout, timeout;
-  int nfds, events, pout;
+  int events, pout;
   timer *t;
-  sock *s;
-  node *n;
-  int fdmax = 256;
-  struct pollfd *pfd = xmalloc(fdmax * sizeof(struct pollfd));
+  struct pfd pfd;
+  BUFFER_INIT(pfd.pfd, &root_pool, 16);
+  BUFFER_INIT(pfd.loop, &root_pool, 16);
 
   watchdog_start1();
   for(;;)
@@ -2255,39 +2253,11 @@ io_loop(void)
 	poll_tout = MIN(poll_tout, timeout);
       }
 
-      /* A hack to reload main io_loop() when something has changed asynchronously. */
-      pipe_pollin(&main_birdloop.thread->wakeup, &pfd[0]);
+      BUFFER_FLUSH(pfd.pfd);
+      BUFFER_FLUSH(pfd.loop);
 
-      nfds = 1;
-
-      WALK_LIST(n, sock_list)
-	{
-	  pfd[nfds] = (struct pollfd) { .fd = -1 }; /* everything other set to 0 by this */
-	  s = SKIP_BACK(sock, n, n);
-	  if (s->rx_hook)
-	    {
-	      pfd[nfds].fd = s->fd;
-	      pfd[nfds].events |= POLLIN;
-	    }
-	  if (s->tx_hook && s->ttx != s->tpos)
-	    {
-	      pfd[nfds].fd = s->fd;
-	      pfd[nfds].events |= POLLOUT;
-	    }
-	  if (pfd[nfds].fd != -1)
-	    {
-	      s->index = nfds;
-	      nfds++;
-	    }
-	  else
-	    s->index = -1;
-
-	  if (nfds >= fdmax)
-	    {
-	      fdmax *= 2;
-	      pfd = xrealloc(pfd, fdmax * sizeof(struct pollfd));
-	    }
-	}
+      pipe_pollin(&main_birdloop.thread->wakeup, &pfd);
+      sockets_prepare(&main_birdloop, &pfd);
 
       /*
        * Yes, this is racy. But even if the signal comes before this test
@@ -2319,7 +2289,7 @@ io_loop(void)
       /* And finally enter poll() to find active sockets */
       watchdog_stop();
       birdloop_leave(&main_birdloop);
-      pout = poll(pfd, nfds, poll_tout);
+      pout = poll(pfd.pfd.data, pfd.pfd.used, poll_tout);
       birdloop_enter(&main_birdloop);
       watchdog_start();
 
@@ -2331,18 +2301,18 @@ io_loop(void)
 	}
       if (pout)
 	{
-	  if (pfd[0].revents & POLLIN)
+	  if (pfd.pfd.data[0].revents & POLLIN)
 	  {
 	    /* IO loop reload requested */
 	    pipe_drain(&main_birdloop.thread->wakeup);
-	    atomic_exchange_explicit(&main_birdloop.thread->ping_sent, 0, memory_order_acq_rel);
+	    atomic_fetch_and_explicit(&main_birdloop.thread_transition, ~LTT_PING, memory_order_acq_rel);
 	    continue;
 	  }
 
 	  times_update();
 
 	  /* guaranteed to be non-empty */
-	  current_sock = SKIP_BACK(sock, n, HEAD(sock_list));
+	  current_sock = SKIP_BACK(sock, n, HEAD(main_birdloop.sock_list));
 
 	  while (current_sock)
 	    {
@@ -2357,19 +2327,19 @@ io_loop(void)
 	      int steps;
 
 	      steps = MAX_STEPS;
-	      if (s->fast_rx && (pfd[s->index].revents & POLLIN) && s->rx_hook)
+	      if (s->fast_rx && (pfd.pfd.data[s->index].revents & POLLIN) && s->rx_hook)
 		do
 		  {
 		    steps--;
 		    io_log_event(s->rx_hook, s->data);
-		    e = sk_read(s, pfd[s->index].revents);
+		    e = sk_read(s, pfd.pfd.data[s->index].revents);
 		    if (s != current_sock)
 		      goto next;
 		  }
 		while (e && s->rx_hook && steps);
 
 	      steps = MAX_STEPS;
-	      if (pfd[s->index].revents & POLLOUT)
+	      if (pfd.pfd.data[s->index].revents & POLLOUT)
 		do
 		  {
 		    steps--;
@@ -2392,7 +2362,7 @@ io_loop(void)
 	  int count = 0;
 	  current_sock = stored_sock;
 	  if (current_sock == NULL)
-	    current_sock = SKIP_BACK(sock, n, HEAD(sock_list));
+	    current_sock = SKIP_BACK(sock, n, HEAD(main_birdloop.sock_list));
 
 	  while (current_sock && count < MAX_RX_STEPS)
 	    {
@@ -2403,18 +2373,18 @@ io_loop(void)
 		  goto next2;
 		}
 
-	      if (!s->fast_rx && (pfd[s->index].revents & POLLIN) && s->rx_hook)
+	      if (!s->fast_rx && (pfd.pfd.data[s->index].revents & POLLIN) && s->rx_hook)
 		{
 		  count++;
 		  io_log_event(s->rx_hook, s->data);
-		  sk_read(s, pfd[s->index].revents);
+		  sk_read(s, pfd.pfd.data[s->index].revents);
 		  if (s != current_sock)
 		    goto next2;
 		}
 
-	      if (pfd[s->index].revents & (POLLHUP | POLLERR))
+	      if (pfd.pfd.data[s->index].revents & (POLLHUP | POLLERR))
 		{
-		  sk_err(s, pfd[s->index].revents);
+		  sk_err(s, pfd.pfd.data[s->index].revents);
 		  if (s != current_sock)
 		    goto next2;
 		}

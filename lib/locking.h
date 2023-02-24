@@ -13,6 +13,7 @@ struct domain_generic;
 
 /* Here define the global lock order; first to last. */
 struct lock_order {
+  struct domain_generic *meta;
   struct domain_generic *the_bird;
   struct domain_generic *control;
   struct domain_generic *proto;

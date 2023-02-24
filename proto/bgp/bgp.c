@@ -217,6 +217,8 @@ bgp_open(struct bgp_proto *p)
   req->port = p->cf->local_port;
   req->flags = p->cf->free_bind ? SKF_FREEBIND : 0;
 
+  BGP_TRACE(D_EVENTS, "Requesting listen socket at %I%J port %u", req->addr, req->iface, req->port);
+
   add_tail(&bgp_listen_pending, &req->n);
   ev_schedule(&bgp_listen_event);
 }
@@ -243,7 +245,9 @@ bgp_listen_create(void *_ UNUSED)
 	break;
 
     /* Not found any */
-    if (!NODE_VALID(bs))
+    if (NODE_VALID(bs))
+      BGP_TRACE(D_EVENTS, "Found a listening socket: %p", bs);
+    else
     {
       sock *sk = sk_new(proto_pool);
       sk->type = SK_TCP_PASSIVE;
@@ -275,6 +279,8 @@ bgp_listen_create(void *_ UNUSED)
 
       init_list(&bs->requests);
       add_tail(&bgp_sockets, &bs->n);
+
+      BGP_TRACE(D_EVENTS, "Created new listening socket: %p", bs);
     }
 
     add_tail(&bs->requests, &req->n);
