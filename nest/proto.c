@@ -516,8 +516,8 @@ channel_start_export(struct channel *c)
     .log_state_change = channel_export_log_state_change,
   };
 
-  bmap_init(&c->export_map, c->proto->pool, 1024);
-  bmap_init(&c->export_reject_map, c->proto->pool, 1024);
+  bmap_init(&c->export_map, c->proto->pool, 16);
+  bmap_init(&c->export_reject_map, c->proto->pool, 16);
 
   channel_reset_limit(c, &c->out_limit, PLD_OUT);
 
@@ -597,8 +597,8 @@ channel_export_stopped(struct rt_export_request *req)
 
     channel_reset_limit(c, &c->out_limit, PLD_OUT);
 
-    bmap_reset(&c->export_map, 1024);
-    bmap_reset(&c->export_reject_map, 1024);
+    bmap_reset(&c->export_map, 16);
+    bmap_reset(&c->export_reject_map, 16);
 
     rt_request_export(c->table, req);
     return;

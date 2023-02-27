@@ -2215,7 +2215,7 @@ rt_init_export(struct rt_exporter *re UNUSED, struct rt_export_hook *hook)
 {
   hook->event.data = hook;
 
-  bmap_init(&hook->seq_map, hook->pool, 1024);
+  bmap_init(&hook->seq_map, hook->pool, 16);
 
   /* Regular export */
   rt_set_export_state(hook, TES_FEEDING);
@@ -3206,7 +3206,7 @@ rt_export_cleanup(struct rtable_private *tab)
 	    continue;
 
 	  ASSERT_DIE(atomic_load_explicit(&eh->last_export, memory_order_acquire) == NULL);
-	  bmap_reset(&eh->h.seq_map, 1024);
+	  bmap_reset(&eh->h.seq_map, 16);
 	}
 
 	tab->exporter.next_seq = 1;
