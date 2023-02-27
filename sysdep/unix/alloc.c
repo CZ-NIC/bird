@@ -73,7 +73,7 @@ static event page_cleanup_event = { .hook = page_cleanup, };
 
 _Atomic int pages_kept = 0;
 _Atomic int pages_kept_locally = 0;
-static int pages_kept_here = 0;
+static _Thread_local int pages_kept_here = 0;
 
 static void *
 alloc_sys_page(void)
