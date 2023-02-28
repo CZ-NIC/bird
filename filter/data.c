@@ -315,6 +315,10 @@ clist_set_type(const struct f_tree *set, struct f_val *v)
 
   switch (set->from.type)
   {
+  case T_INT:
+    v->type = T_INT;
+    return 1;
+
   case T_PAIR:
     v->type = T_PAIR;
     return 1;
@@ -522,7 +526,7 @@ val_in_range(const struct f_val *v1, const struct f_val *v2)
   if ((v1->type == T_INT) && (v2->type == T_PATH))
     return as_path_contains(v2->val.ad, v1->val.i, 1);
 
-  if (((v1->type == T_PAIR) || (v1->type == T_QUAD)) && (v2->type == T_CLIST))
+  if (((v1->type == T_INT) || (v1->type == T_PAIR) || (v1->type == T_QUAD)) && (v2->type == T_CLIST))
     return int_set_contains(v2->val.ad, v1->val.i);
   /* IP->Quad implicit conversion */
   if (val_is_ip4(v1) && (v2->type == T_CLIST))

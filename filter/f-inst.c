@@ -1359,7 +1359,7 @@
       /* Community (or cluster) list */
       struct f_val dummy;
 
-      if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
+      if ((v2.type == T_INT) || (v2.type == T_PAIR) || (v2.type == T_QUAD))
 	RESULT_(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, v2.val.i) ]]);
       /* IP->Quad implicit conversion */
       else if (val_is_ip4(&v2))
@@ -1421,7 +1421,7 @@
       /* Community (or cluster) list */
       struct f_val dummy;
 
-      if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
+      if ((v2.type == T_INT) || (v2.type == T_PAIR) || (v2.type == T_QUAD))
 	RESULT_(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, v2.val.i) ]]);
       /* IP->Quad implicit conversion */
       else if (val_is_ip4(&v2))
