@@ -168,7 +168,7 @@ ev_postpone(event *e)
 }
 
 static void
-ev_dump(resource *r)
+ev_dump(resource *r, unsigned indent UNUSED)
 {
   event *e = (event *) r;
 

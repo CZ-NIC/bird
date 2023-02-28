@@ -41,7 +41,7 @@
 #endif
 
 static void slab_free(resource *r);
-static void slab_dump(resource *r);
+static void slab_dump(resource *r, unsigned indent);
 static resource *slab_lookup(resource *r, unsigned long addr);
 static struct resmem slab_memsize(resource *r);
 
@@ -118,7 +118,7 @@ slab_free(resource *r)
 }
 
 static void
-slab_dump(resource *r)
+slab_dump(resource *r, unsigned indent UNUSED)
 {
   slab *s = (slab *) r;
   int cnt = 0;
@@ -378,7 +378,7 @@ slab_free(resource *r)
 }
 
 static void
-slab_dump(resource *r)
+slab_dump(resource *r, unsigned indent UNUSED)
 {
   slab *s = (slab *) r;
   int ec=0, pc=0, fc=0;
@@ -390,6 +390,15 @@ slab_dump(resource *r)
   WALK_TLIST(sl_head, h, &s->full_heads)
     fc++;
   debug("(%de+%dp+%df blocks per %d objs per %d bytes)\n", ec, pc, fc, s->objs_per_slab, s->obj_size);
+
+  char x[16];
+  bsprintf(x, "%%%ds%%s %%p\n", indent + 2);
+  WALK_TLIST(sl_head, h, &s->full_heads)
+    debug(x, "", "full", h);
+  WALK_TLIST(sl_head, h, &s->partial_heads)
+    debug(x, "", "partial", h);
+  WALK_TLIST(sl_head, h, &s->empty_heads)
+    debug(x, "", "empty", h);
 }
 
 static struct resmem

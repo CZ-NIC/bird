@@ -58,7 +58,7 @@ tm_free(resource *r)
 }
 
 static void
-tm_dump(resource *r)
+tm_dump(resource *r, unsigned indent UNUSED)
 {
   timer *t = (void *) r;
 

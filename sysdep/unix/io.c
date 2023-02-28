@@ -76,7 +76,7 @@ rf_free(resource *r)
 }
 
 static void
-rf_dump(resource *r)
+rf_dump(resource *r, unsigned indent UNUSED)
 {
   struct rfile *a = (struct rfile *) r;
 
@@ -862,7 +862,7 @@ sk_reallocate(sock *s)
 }
 
 static void
-sk_dump(resource *r)
+sk_dump(resource *r, unsigned indent UNUSED)
 {
   sock *s = (sock *) r;
   static char *sk_type_names[] = { "TCP<", "TCP>", "TCP", "UDP", NULL, "IP", NULL, "MAGIC", "UNIX<", "UNIX", "SSH>", "SSH", "DEL!" };
@@ -2053,7 +2053,7 @@ sk_dump_all(void)
   {
     s = SKIP_BACK(sock, n, n);
     debug("%p ", s);
-    sk_dump(&s->r);
+    sk_dump(&s->r, 3);
   }
   debug("\n");
 }

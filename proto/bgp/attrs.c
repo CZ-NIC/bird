@@ -1839,7 +1839,7 @@ bgp_pending_tx_rfree(resource *r)
   HASH_WALK_END;
 }
 
-static void bgp_pending_tx_dump(resource *r UNUSED) { debug("\n"); }
+static void bgp_pending_tx_dump(resource *r UNUSED, unsigned indent UNUSED) { debug("\n"); }
 
 static struct resclass bgp_pending_tx_class = {
   .name = "BGP Pending TX",

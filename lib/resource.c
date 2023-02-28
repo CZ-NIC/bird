@@ -30,7 +30,7 @@
  * is freed upon shutdown of the module.
  */
 
-static void pool_dump(resource *);
+static void pool_dump(resource *, unsigned);
 static void pool_free(resource *);
 static resource *pool_lookup(resource *, unsigned long);
 static struct resmem pool_memsize(resource *P);
@@ -45,8 +45,6 @@ static struct resclass pool_class = {
 };
 
 pool root_pool;
-
-static int indent;
 
 /**
  * rp_new - create a resource pool
@@ -95,16 +93,14 @@ pool_free(resource *P)
 }
 
 static void
-pool_dump(resource *P)
+pool_dump(resource *P, unsigned indent)
 {
   pool *p = (pool *) P;
   resource *r;
 
   debug("%s\n", p->name);
-  indent += 3;
   WALK_LIST(r, p->inside)
-    rdump(r);
-  indent -= 3;
+    rdump(r, indent + 3);
 }
 
 static struct resmem
@@ -194,7 +190,7 @@ rfree(void *res)
  * It works by calling a class-specific dump function.
  */
 void
-rdump(void *res)
+rdump(void *res, unsigned indent)
 {
   char x[16];
   resource *r = res;
@@ -204,7 +200,7 @@ rdump(void *res)
   if (r)
     {
       debug("%s ", r->class->name);
-      r->class->dump(r);
+      r->class->dump(r, indent);
     }
   else
     debug("NULL\n");
@@ -264,7 +260,7 @@ rlookup(unsigned long a)
 
   debug("Looking up %08lx\n", a);
   if (r = pool_lookup(&root_pool.r, a))
-    rdump(r);
+    rdump(r, 3);
   else
     debug("Not found.\n");
 }
@@ -331,7 +327,7 @@ static void mbl_free(resource *r UNUSED)
 {
 }
 
-static void mbl_debug(resource *r)
+static void mbl_debug(resource *r, unsigned indent UNUSED)
 {
   struct mblock *m = (struct mblock *) r;
 

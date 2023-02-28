@@ -2801,12 +2801,19 @@ rt_free(resource *_r)
 }
 
 static void
-rt_res_dump(resource *_r)
+rt_res_dump(resource *_r, unsigned indent)
 {
   struct rtable_private *r = SKIP_BACK(struct rtable_private, r, _r);
 
   debug("name \"%s\", addr_type=%s, rt_count=%u, use_count=%d\n",
       r->name, net_label[r->addr_type], r->rt_count, r->use_count);
+
+  char x[32];
+  bsprintf(x, "%%%dspending export %%p\n", indent + 2);
+
+  node *n;
+  WALK_LIST(n, r->exporter.pending)
+    debug(x, "", n);
 }
 
 static struct resclass rt_class = {

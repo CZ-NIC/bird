@@ -107,7 +107,7 @@ olock_free(resource *r)
 }
 
 static void
-olock_dump(resource *r)
+olock_dump(resource *r, unsigned indent UNUSED)
 {
   struct object_lock *l = (struct object_lock *) r;
   static char *olock_states[] = { "free", "locked", "waiting", "event" };

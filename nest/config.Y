@@ -868,7 +868,7 @@ sym_args:
 
 CF_CLI_HELP(DUMP, ..., [[Dump debugging information]])
 CF_CLI(DUMP RESOURCES,,, [[Dump all allocated resource]])
-{ rdump(&root_pool); cli_msg(0, ""); } ;
+{ rdump(&root_pool, 0); cli_msg(0, ""); } ;
 CF_CLI(DUMP SOCKETS,,, [[Dump open sockets]])
 { sk_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP EVENTS,,, [[Dump event log]])

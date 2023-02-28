@@ -42,7 +42,7 @@ struct linpool {
 };
 
 static void lp_free(resource *);
-static void lp_dump(resource *);
+static void lp_dump(resource *, unsigned);
 static resource *lp_lookup(resource *, unsigned long);
 static struct resmem lp_memsize(resource *r);
 
@@ -262,11 +262,12 @@ lp_free(resource *r)
 }
 
 static void
-lp_dump(resource *r)
+lp_dump(resource *r, unsigned indent)
 {
   linpool *m = (linpool *) r;
   struct lp_chunk *c;
   int cnt, cntl;
+  char x[32];
 
   for(cnt=0, c=m->first; c; c=c->next, cnt++)
     ;
@@ -277,6 +278,14 @@ lp_dump(resource *r)
 	cntl,
 	m->total,
 	m->total_large);
+
+  bsprintf(x, "%%%dschunk %%p\n", indent + 2);
+  for (c=m->first; c; c=c->next)
+    debug(x, "", c);
+
+  bsprintf(x, "%%%dslarge %%p\n", indent + 2);
+  for (c=m->first_large; c; c=c->next)
+    debug(x, "", c);
 }
 
 static struct resmem

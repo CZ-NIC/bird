@@ -30,7 +30,7 @@ struct resclass {
   char *name;				/* Resource class name */
   unsigned size;			/* Standard size of single resource */
   void (*free)(resource *);		/* Freeing function */
-  void (*dump)(resource *);		/* Dump to debug output */
+  void (*dump)(resource *, unsigned indent);		/* Dump to debug output */
   resource *(*lookup)(resource *, unsigned long);	/* Look up address (only for debugging) */
   struct resmem (*memsize)(resource *);	/* Return size of memory used by the resource, may be NULL */
 };
@@ -51,7 +51,7 @@ void resource_init(void);
 pool *rp_new(pool *, const char *);	/* Create new pool */
 pool *rp_newf(pool *, const char *, ...);	/* Create a new pool with a formatted string as its name */
 void rfree(void *);			/* Free single resource */
-void rdump(void *);			/* Dump to debug output */
+void rdump(void *, unsigned indent);	/* Dump to debug output */
 struct resmem rmemsize(void *res);		/* Return size of memory used by the resource */
 void rlookup(unsigned long);		/* Look up address (only for debugging) */
 void rmove(void *, pool *);		/* Move to a different pool */

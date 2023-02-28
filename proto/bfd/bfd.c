@@ -860,7 +860,7 @@ bfd_request_free(resource *r)
 }
 
 static void
-bfd_request_dump(resource *r)
+bfd_request_dump(resource *r, unsigned indent UNUSED)
 {
   struct bfd_request *req = (struct bfd_request *) r;
 
