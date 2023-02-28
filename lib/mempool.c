@@ -231,9 +231,9 @@ lp_restore(linpool *m, lp_state *p)
   struct lp_chunk *c;
 
   /* Move ptr to the saved pos and free all newer large chunks */
-  m->current = c = p->current;
-  m->ptr = p->ptr;
-  m->end = c ? c->data + LP_DATA_SIZE : NULL;
+  m->current = c = p->current ?: m->first;
+  m->ptr = p->ptr ?: (c ? c->data : NULL);
+  m->end = c ? (c->data + LP_DATA_SIZE) : NULL;
   m->total_large = p->total_large;
 
   while ((c = m->first_large) && (c != p->large))
