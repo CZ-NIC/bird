@@ -935,6 +935,8 @@ main(int argc, char **argv)
   if (parse_and_exit)
     exit(0);
 
+  flush_local_pages();
+
   if (!run_in_foreground)
     {
       pid_t pid = fork();

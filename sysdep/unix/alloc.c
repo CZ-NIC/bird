@@ -118,6 +118,8 @@ alloc_page(void)
     return fp;
   }
 
+  ASSERT_DIE(pages_kept_here == 0);
+
   /* If there is any free page kept hot in global storage, we use it. */
   rcu_read_lock();
   fp = atomic_load_explicit(&page_stack, memory_order_acquire);
@@ -176,6 +178,8 @@ free_page(void *ptr)
   if (shutting_down || (pages_kept_here < KEEP_PAGES_MAX_LOCAL))
   {
     atomic_store_explicit(&fp->next, local_page_stack, memory_order_relaxed);
+    local_page_stack = fp;
+
     atomic_fetch_add_explicit(&pages_kept_locally, 1, memory_order_relaxed);
     pages_kept_here++;
     return;
