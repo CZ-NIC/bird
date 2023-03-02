@@ -3072,7 +3072,7 @@ again:
     }
 
   /* In some cases, we may want to directly proceed to export cleanup */
-  if (EMPTY_LIST(tab->exporter.e.hooks) && tab->wait_counter)
+  if (tab->wait_counter && (EMPTY_LIST(tab->exporter.e.hooks) || !tab->exporter.first))
     rt_export_cleanup(tab);
 }
 
