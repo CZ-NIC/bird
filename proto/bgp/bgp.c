@@ -2670,6 +2670,9 @@ bgp_show_proto_info(struct proto *P)
 	    tm_remains(p->conn->hold_timer), p->conn->hold_time);
     cli_msg(-1006, "    Keepalive timer:  %t/%u",
 	    tm_remains(p->conn->keepalive_timer), p->conn->keepalive_time);
+    cli_msg(-1006, "    TX pending:       %d bytes%s",
+	    p->conn->sk->tpos - p->conn->sk->ttx,
+	    ev_active(p->conn->tx_ev) ? " (refill scheduled)" : "");
   }
 
 #if 0
@@ -2723,6 +2726,22 @@ bgp_show_proto_info(struct proto *P)
 
       if (c->base_table)
 	cli_msg(-1006, "    Base table:     %s", c->base_table->name);
+
+      uint bucket_cnt = 0;
+      uint prefix_cnt = 0;
+      struct bgp_bucket *buck;
+      struct bgp_prefix *px;
+      if (c->ptx)
+	WALK_LIST(buck, c->ptx->bucket_queue)
+	{
+	  bucket_cnt++;
+	  WALK_LIST(px, buck->prefixes)
+	    if (px->cur)
+	      prefix_cnt++;
+	}
+
+      cli_msg(-1006, "    Pending %u attribute sets with total %u prefixes to send",
+	 bucket_cnt, prefix_cnt);
     }
   }
 }
