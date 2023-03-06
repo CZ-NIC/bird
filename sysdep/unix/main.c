@@ -889,7 +889,6 @@ main(int argc, char **argv)
   log_switch(1, NULL, NULL);
 
   random_init();
-  net_init();
   resource_init();
   timer_init();
   olock_init();
