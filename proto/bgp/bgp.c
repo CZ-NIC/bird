@@ -365,8 +365,7 @@ bgp_startup(struct bgp_proto *p)
   if (p->postponed_sk)
   {
     /* Apply postponed incoming connection */
-    sk_unmain(p->postponed_sk);
-    sk_start(p->postponed_sk);
+    sk_reloop(p->postponed_sk, p->p.loop);
 
     bgp_setup_conn(p, &p->incoming_conn);
     bgp_setup_sk(&p->incoming_conn, p->postponed_sk);
@@ -1243,7 +1242,7 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   s->tos = IP_PREC_INTERNET_CONTROL;
   s->password = p->cf->password;
   s->tx_hook = bgp_connected;
-  s->flags = SKF_THREAD;
+  s->flags = p->cf->free_bind ? SKF_FREEBIND : 0;
   BGP_TRACE(D_EVENTS, "Connecting to %I%J from local address %I%J",
 	    s->daddr, ipa_is_link_local(s->daddr) ? p->cf->iface : NULL,
 	    s->saddr, ipa_is_link_local(s->saddr) ? s->iface : NULL);
