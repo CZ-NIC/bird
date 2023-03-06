@@ -185,6 +185,7 @@ typedef union rtable {
 #define RTF_CLEANUP	1
 #define RTF_NHU		2
 #define RTF_EXPORT	4
+#define RTF_DELETE	8
 
 extern struct rt_cork {
   _Atomic uint active;

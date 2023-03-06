@@ -2573,6 +2573,14 @@ rt_flag_handler(struct birdloop_flag_handler *fh, u32 flags)
 	rt_prune_table(tab);
     }
 
+    if (flags & RTF_DELETE)
+    {
+      if (tab->hostcache)
+	rt_stop_export(&tab->hostcache->req, NULL);
+
+      rt_unlock_table(tab);
+    }
+
     rt_unlock_table(tab);
   }
 }
@@ -4155,16 +4163,13 @@ rt_commit(struct config *new, struct config *old)
 	  config_add_obstacle(old);
 	  rt_lock_table(tab);
 
-	  if (tab->hostcache)
-	  {
-	    rt_stop_export(&tab->hostcache->req, NULL);
-	    if (ev_get_list(&tab->hostcache->update) == &rt_cork.queue)
-	      ev_postpone(&tab->hostcache->update);
-	  }
-
 	  rt_check_cork_low(tab);
-	  rt_unlock_table(tab);
 
+	  if (tab->hostcache && ev_get_list(&tab->hostcache->update) == &rt_cork.queue)
+	    ev_postpone(&tab->hostcache->update);
+
+	  /* Force one more loop run */
+	  birdloop_flag(tab->loop, RTF_DELETE);
 	  RT_UNLOCK(tab);
 	}
     }
@@ -4583,7 +4588,7 @@ rt_init_hostcache(struct rtable_private *tab)
 
   hc->req = (struct rt_export_request) {
     .name = mb_sprintf(tab->rp, "%s.hcu.notifier", tab->name),
-    .list = &global_work_list,
+    .list = birdloop_event_list(tab->loop),
     .trace_routes = tab->config->debug,
     .dump_req = hc_notify_dump_req,
     .log_state_change = hc_notify_log_state_change,
