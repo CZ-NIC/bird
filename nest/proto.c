@@ -1784,10 +1784,10 @@ protos_dump_all(void)
   debug("Protocols:\n");
 
   struct proto *p;
-  WALK_LIST(p, proto_list)
+  WALK_LIST(p, proto_list) PROTO_LOCKED_FROM_MAIN(p)
   {
 #define DPF(x)	(p->x ? " " #x : "")
-    debug("  protocol %s (%p) state %s with %d active channels flags: %s%s%s%s%s\n",
+    debug("  protocol %s (%p) state %s with %d active channels flags: %s%s%s%s\n",
 	p->name, p, p_states[p->proto_state], p->active_channels,
 	DPF(disabled), DPF(active), DPF(do_stop), DPF(reconfiguring));
 #undef DPF
