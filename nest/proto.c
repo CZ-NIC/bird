@@ -52,6 +52,7 @@ static void channel_init_limit(struct channel *c, struct limit *l, int dir, stru
 static void channel_update_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf);
 static void channel_reset_limit(struct channel *c, struct limit *l, int dir);
 static void channel_feed_end(struct channel *c);
+static void channel_stop_export(struct channel *c);
 static void channel_export_stopped(struct rt_export_request *req);
 static void channel_check_stopped(struct channel *c);
 
@@ -302,14 +303,9 @@ channel_roa_in_changed(struct settle *se)
 {
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, settle, se);
   struct channel *c = s->c;
-  int active = !!c->reload_req.hook;
 
-  CD(c, "Reload triggered by RPKI change%s", active ? " - already active" : "");
-
-  if (!active)
-    channel_request_reload(c);
-  else
-    c->reload_pending = 1;
+  CD(c, "Reload triggered by RPKI change");
+  channel_request_reload(c);
 }
 
 static void
@@ -321,9 +317,7 @@ channel_roa_out_changed(struct settle *se)
   CD(c, "Feeding triggered by RPKI change");
 
   c->refeed_pending = 1;
-
-  if (c->out_req.hook)
-    rt_stop_export(&c->out_req, channel_export_stopped);
+  channel_stop_export(c);
 }
 
 static void
@@ -408,6 +402,7 @@ static void
 channel_roa_unsubscribe(struct roa_subscription *s)
 {
   rt_stop_export(&s->req, channel_roa_unsubscribed);
+  settle_cancel(&s->settle);
 }
 
 static void
@@ -551,7 +546,7 @@ channel_check_stopped(struct channel *c)
   switch (c->channel_state)
   {
     case CS_STOP:
-      if (!EMPTY_LIST(c->roa_subscriptions) || c->out_req.hook || c->in_req.hook)
+      if (!EMPTY_LIST(c->roa_subscriptions) || c->out_req.hook || c->in_req.hook || c->reload_req.hook)
 	return;
 
       channel_set_state(c, CS_DOWN);
@@ -559,13 +554,11 @@ channel_check_stopped(struct channel *c)
 
       break;
     case CS_PAUSE:
-      if (!EMPTY_LIST(c->roa_subscriptions) || c->out_req.hook)
+      if (!EMPTY_LIST(c->roa_subscriptions) || c->out_req.hook || c->reload_req.hook)
 	return;
 
       channel_set_state(c, CS_START);
       break;
-    default:
-      bug("Stopped channel in a bad state: %d", c->channel_state);
   }
 
   DBG("%s.%s: Channel requests/hooks stopped (in state %s)\n", c->proto->name, c->name, c_states[c->channel_state]);
@@ -616,8 +609,6 @@ channel_export_stopped(struct rt_export_request *req)
 static void
 channel_feed_end(struct channel *c)
 {
-  struct rt_export_request *req = &c->out_req;
-
   /* Reset export limit if the feed ended with acceptable number of exported routes */
   struct limit *l = &c->out_limit;
   if (c->refeeding &&
@@ -629,7 +620,7 @@ channel_feed_end(struct channel *c)
     channel_reset_limit(c, &c->out_limit, PLD_OUT);
 
     c->refeed_pending = 1;
-    rt_stop_export(req, channel_export_stopped);
+    channel_stop_export(c);
     return;
   }
 
@@ -637,7 +628,7 @@ channel_feed_end(struct channel *c)
     c->proto->feed_end(c);
 
   if (c->refeed_pending)
-    rt_stop_export(req, channel_export_stopped);
+    channel_stop_export(c);
   else
     c->refeeding = 0;
 }
@@ -647,6 +638,13 @@ void
 channel_schedule_reload(struct channel *c)
 {
   ASSERT(c->in_req.hook);
+
+  if (c->reload_req.hook)
+  {
+    CD(c, "Reload triggered before the previous one has finished");
+    c->reload_pending = 1;
+    return;
+  }
 
   rt_refresh_begin(&c->in_req);
   rt_request_export(c->table, &c->reload_req);
@@ -660,6 +658,9 @@ channel_reload_stopped(struct rt_export_request *req)
   /* Restart reload */
   if (c->reload_pending)
     channel_request_reload(c);
+
+  if (c->channel_state != CS_UP)
+    channel_check_stopped(c);
 }
 
 static void
@@ -669,7 +670,9 @@ channel_reload_log_state_change(struct rt_export_request *req, u8 state)
 
   if (state == TES_READY)
   {
-    rt_refresh_end(&c->in_req);
+    if (c->channel_state == CS_UP)
+      rt_refresh_end(&c->in_req);
+
     rt_stop_export(req, channel_reload_stopped);
   }
 }
@@ -724,20 +727,18 @@ channel_do_up(struct channel *c)
 static void
 channel_do_pause(struct channel *c)
 {
+  /* Drop ROA subscriptions */
+  channel_roa_unsubscribe_all(c);
+
   /* Need to abort feeding */
-  if (c->reload_req.hook)
-  {
-    c->reload_pending = 0;
+  c->reload_pending = 0;
+
+  if (c->reload_req.hook && c->reload_req.hook->export_state != TES_STOP)
     rt_stop_export(&c->reload_req, channel_reload_stopped);
-  }
 
   /* Stop export */
-  if (c->refeed_pending)
-    c->refeed_pending = 0;
-  else if (c->out_req.hook)
-    rt_stop_export(&c->out_req, channel_export_stopped);
-
-  channel_roa_unsubscribe_all(c);
+  c->refeed_pending = 0;
+  channel_stop_export(c);
 }
 
 static void
@@ -858,6 +859,15 @@ channel_request_feeding(struct channel *c)
     return;
 
   c->refeed_pending = 1;
+  channel_stop_export(c);
+}
+
+static void
+channel_stop_export(struct channel *c)
+{
+  if (!c->out_req.hook || (c->out_req.hook->export_state == TES_STOP))
+    return;
+
   rt_stop_export(&c->out_req, channel_export_stopped);
 }
 
@@ -1437,6 +1447,8 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
       p = oc->proto;
       sym = cf_find_symbol(new, oc->name);
 
+      struct birdloop *proto_loop = PROTO_ENTER_FROM_MAIN(p);
+
       /* Handle dynamic protocols */
       if (!sym && oc->parent && !new->shutdown)
       {
@@ -1462,8 +1474,11 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
 	nc->proto = p;
 
 	/* We will try to reconfigure protocol p */
-	if (! force_reconfig && proto_reconfigure(p, oc, nc, type))
+	if (!force_reconfig && proto_reconfigure(p, oc, nc, type))
+	{
+	  PROTO_LEAVE_FROM_MAIN(proto_loop);
 	  continue;
+	}
 
 	if (nc->parent)
 	{
@@ -1501,6 +1516,8 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
       }
 
       p->reconfiguring = 1;
+      PROTO_LEAVE_FROM_MAIN(proto_loop);
+
       config_add_obstacle(old);
       proto_rethink_goal(p);
     }
