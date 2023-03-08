@@ -4406,8 +4406,10 @@ void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *n
   for (uint i=0; i<count; i++)
     if (feed[i]->sender == c->in_req.hook)
     {
+      /* Strip the table-specific information */
+      rte new = rte_init_from(feed[i]);
+
       /* Strip the later attribute layers */
-      rte new = *feed[i];
       while (new.attrs->next)
 	new.attrs = new.attrs->next;
 

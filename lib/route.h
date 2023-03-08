@@ -46,6 +46,16 @@ static inline int rte_is_valid(rte *r) { return r && !(r->flags & REF_FILTERED);
 /* Route just has REF_FILTERED flag */
 static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); }
 
+/* Strip the route of the table-specific values */
+static inline rte rte_init_from(const rte *r)
+{
+  return (rte) {
+    .attrs = r->attrs,
+    .net = r->net,
+    .src = r->src,
+  };
+}
+
 struct rte_src {
   struct rte_src *next;			/* Hash chain */
   struct rte_owner *owner;		/* Route source owner */

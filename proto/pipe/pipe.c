@@ -62,12 +62,9 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *
 
   if (new)
     {
-      rte e0 = {
-	.attrs = new->attrs,
-	.src = new->src,
-	.generation = new->generation + 1,
-      };
+      rte e0 = rte_init_from(new);
 
+      e0.generation = new->generation + 1;
       ea_unset_attr(&e0.attrs, 0, &ea_gen_hostentry);
 
       rte_update(dst, n, &e0, new->src);
