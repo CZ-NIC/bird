@@ -1390,7 +1390,7 @@ proto_reconfigure(struct proto *p, struct proto_config *oc, struct proto_config 
       (nc->vrf != oc->vrf))
     return 0;
 
-  p->name = nc->name;
+  p->sources.name = p->name = nc->name;
   p->debug = nc->debug;
   p->mrtdump = nc->mrtdump;
   reconfigure_type = type;
