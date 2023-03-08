@@ -1702,7 +1702,16 @@ bgp_get_prefix(struct bgp_pending_tx *c, const net_addr *net, struct rte_src *sr
   struct bgp_prefix *px = HASH_FIND(c->prefix_hash, PXH, net, path_id_hash, hash);
 
   if (px)
+  {
+    if (!add_path_tx && (path_id != px->path_id))
+    {
+      rt_unlock_source(rt_find_source_global(px->path_id));
+      rt_lock_source(src);
+      px->path_id = path_id;
+    }
+
     return px;
+  }
 
   if (c->prefix_slab)
     px = sl_alloc(c->prefix_slab);
