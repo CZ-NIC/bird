@@ -690,7 +690,7 @@ channel_reload_dump_req(struct rt_export_request *req)
 void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
 
 /* Called by protocol to activate in_table */
-void
+static void
 channel_setup_in_table(struct channel *c)
 {
   c->reload_req = (struct rt_export_request) {
@@ -701,8 +701,6 @@ channel_setup_in_table(struct channel *c)
     .dump_req = channel_reload_dump_req,
     .log_state_change = channel_reload_log_state_change,
   };
-
-  c->in_keep |= RIK_PREFILTER;
 }
 
 
@@ -710,6 +708,9 @@ static void
 channel_do_start(struct channel *c)
 {
   c->proto->active_channels++;
+
+  if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
+    channel_setup_in_table(c);
 
   CALL(c->channel->start, c);
 
@@ -882,7 +883,7 @@ channel_request_reload(struct channel *c)
 
   CD(c, "Reload requested");
 
-  if (c->in_keep & RIK_PREFILTER)
+  if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
     channel_schedule_reload(c);
   else
     c->proto->reload_routes(c);

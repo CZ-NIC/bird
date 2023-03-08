@@ -329,6 +329,9 @@ bgp_channel_end:
   if (!this_channel->table)
     cf_error("Routing table not specified");
 
+  if (BGP_CC->import_table)
+    this_channel->in_keep |= RIK_PREFILTER;
+
   this_channel = NULL;
 };
 

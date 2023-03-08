@@ -642,7 +642,6 @@ struct channel *proto_add_channel(struct proto *p, struct channel_config *cf);
 int proto_configure_channel(struct proto *p, struct channel **c, struct channel_config *cf);
 
 void channel_set_state(struct channel *c, uint state);
-void channel_setup_in_table(struct channel *c);
 void channel_schedule_reload(struct channel *c);
 
 static inline void channel_init(struct channel *c) { channel_set_state(c, CS_START); }
