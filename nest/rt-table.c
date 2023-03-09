@@ -3939,6 +3939,7 @@ rt_new_default_table(struct symbol *s)
   for (uint addr_type = 0; addr_type < NET_MAX; addr_type++)
     if (s == new_config->def_tables[addr_type])
     {
+      ASSERT_DIE(!s->table);
       s->table = rt_new_table(s, addr_type);
       return;
     }
@@ -3962,6 +3963,9 @@ rt_get_default_table(struct config *cf, uint addr_type)
 struct rtable_config *
 rt_new_table(struct symbol *s, uint addr_type)
 {
+  if (s->table)
+    cf_error("Duplicate configuration of table %s", s->name);
+
   struct rtable_config *c = cfg_allocz(sizeof(struct rtable_config));
 
   if (s == new_config->def_tables[addr_type])
