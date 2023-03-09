@@ -314,6 +314,7 @@ debug(const char *msg, ...)
   va_start(args, msg);
   if (dbgf)
     {
+#if 0
       struct timespec dbg_time;
       clock_gettime(CLOCK_MONOTONIC, &dbg_time);
       uint nsec;
@@ -333,7 +334,7 @@ debug(const char *msg, ...)
       int n = bsnprintf(pos, max, "%u.%09u: [%04x] ", sec, nsec, THIS_THREAD_ID);
       pos += n;
       max -= n;
-
+#endif
       if (bvsnprintf(pos, max, msg, args) < 0)
 	bug("Extremely long debug output, split it.");
 
