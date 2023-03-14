@@ -66,8 +66,7 @@ snmp_str_size(const char *str)
 uint
 snmp_oid_size(struct oid *o)
 {
-  //return 4 + o->n_subid * 4;
-  return 4 + (o->n_subid << 2);
+  return 4 + (o->n_subid * 4);
 }
 
 /**
@@ -192,10 +191,10 @@ snmp_put_oid(byte *buf, struct oid *oid)
   for (uint i = 0; i < oid->n_subid; i++)
     *(((u32 *) buf) + i) = oid->ids[i];
 #else
-  put_u32s(buf, oid->ids, oid->n_subid << 2);
+  put_u32s(buf, oid->ids, oid->n_subid * 4);
 #endif
 
-  return buf + (oid->n_subid << 2);
+  return buf + oid->n_subid * 4;
 }
 
 /**
@@ -235,7 +234,7 @@ void snmp_oid_dump(struct oid *oid)
   {
     log(L_WARN "is eqaul to NULL");
     log(L_WARN "OID DUMP END ====");
-    log(L_WARN);
+    log(L_WARN ".");
     return;
   }
 
@@ -243,7 +242,7 @@ void snmp_oid_dump(struct oid *oid)
   {
     log(L_WARN "is empty");
     log(L_WARN "OID DUMP END ====");
-    log(L_WARN);
+    log(L_WARN ".");
     return;
   }
 
@@ -380,7 +379,7 @@ void
 snmp_dump_packet(byte *pkt, uint size)
 {
   snmp_log("dump");
-  for (int i = 0; i < size; i += 4)
+  for (uint i = 0; i < size; i += 4)
     snmp_log("pkt [%d]  0x%02x%02x%02x%02x", i, pkt[i],pkt[i+1],pkt[i+2],pkt[i+3]);
   snmp_log("end dump");
 }

@@ -48,6 +48,7 @@ snmp_init(struct proto_config *CF)
   p->remote_ip = cf->remote_ip;
   p->local_port = cf->local_port;
   p->remote_port = cf->remote_port;
+  p->local_as = cf->local_as;
   snmp_log("chaning proto_snmp state to INIT");
   p->state = SNMP_INIT;
 

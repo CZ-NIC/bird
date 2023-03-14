@@ -281,7 +281,7 @@ snmp_bgp_state(struct oid *oid)
    */
 
   u8 state = BGP_INTERNAL_NO_VALUE;
-      
+
   u8 candidate;
   switch (oid->n_subid)
   {
@@ -320,9 +320,9 @@ snmp_bgp_state(struct oid *oid)
       /* u8 candidate; */
       switch (oid->ids[2])
       {
-	
+
 	case SNMP_BGP_VERSION:
-	  state = BGP_INTERNAL_VERSION; 
+	  state = BGP_INTERNAL_VERSION;
 	  break;
 	case SNMP_BGP_LOCAL_AS:
 	  state = BGP_INTERNAL_LOCAL_AS;
@@ -342,9 +342,9 @@ snmp_bgp_state(struct oid *oid)
 	  }
 
 	  else /* oid->ids[2] > SNMP_BGP_PEER_TABLE */
-	    state = BGP_INTERNAL_END; 
+	    state = BGP_INTERNAL_END;
       }
-      state = (state == BGP_INTERNAL_NO_VALUE) ? 
+      state = (state == BGP_INTERNAL_NO_VALUE) ?
 	candidate : state;
 
       /* fall through */
@@ -361,7 +361,7 @@ snmp_bgp_state(struct oid *oid)
 static inline int
 is_dynamic(u8 state)
 {
-  return (state >= BGP_INTERNAL_IDENTIFIER && 
+  return (state >= BGP_INTERNAL_IDENTIFIER &&
 	  state <= BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME);
 }
 
@@ -397,7 +397,7 @@ snmp_bgp_get_valid(u8 state)
    * SNMP_BGP_FSM_ESTABLISHED_TIME SNMP_BGP_IN_UPDATE_ELAPSED_TIME
    */
   if (state == 1 || state == 4 || state == 5 ||
-      state == 21 || state == 29) 
+      state == 21 || state == 29)
     return 0;
   else
     return state;
@@ -511,7 +511,7 @@ update_bgp_oid(struct oid *oid, u8 state)
       oid->ids[4] = update;		      \
       break;
 
-    SNMP_UPDATE_CASE(BGP_INTERNAL_STATE, SNMP_BGP_STATE) 
+    SNMP_UPDATE_CASE(BGP_INTERNAL_STATE, SNMP_BGP_STATE)
 
     SNMP_UPDATE_CASE(BGP_INTERNAL_ADMIN_STATUS, SNMP_BGP_ADMIN_STATUS)
 
@@ -859,6 +859,7 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
       BGP_DATA(vb, AGENTX_OCTET_STRING, pkt);
       break;
 
+    // TODO finish me here
     case BGP_INTERNAL_FSM_TRANSITIONS:
       break;
     case BGP_INTERNAL_FSM_ESTABLISHED_TIME:
@@ -903,6 +904,7 @@ bgp_fill_static(struct snmp_proto *p, struct agentx_varbind *vb, byte *pkt, uint
 UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
 {
   snmp_log("snmp bgp_fill_static ()\n");
+  byte *temp = pkt;
 
   struct oid *oid = &vb->name;
 
@@ -937,7 +939,8 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
       vb->type = AGENTX_NO_SUCH_OBJECT;
   }
 
-  snmp_log("snmp ended with non empty pkt\n");
+  snmp_log("snmp ended with non empty pkt %u starting from %p to %p\n", pkt -
+temp, temp, pkt);
   return pkt;
 }
 
