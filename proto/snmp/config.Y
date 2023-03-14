@@ -35,7 +35,7 @@ snmp_proto:
  | snmp_proto REMOTE ipa ';' { SNMP_CFG->remote_ip = $3; if(ipa_zero($3))
 cf_error("Invalid remote ip address"); }
  | snmp_proto LOCAL AS expr ';' { if ($4<1 || $4>65535) cf_error("invalid local as");
-  SNMP_CFG->local_as = $4; }
+				  SNMP_CFG->local_as = $4; }
  ;
 
 snmp_proto_start: proto_start SNMP

@@ -101,8 +101,9 @@ enum agentx_type {
 #define LOAD_STR(p, b, s, l, bo)    \
   l = LOAD(*((u32 *) b), bo);	    \
   log(L_INFO "LOAD_STR(), %p %u", p->p.pool, l + 1); \
-  s = mb_allocz(p->p.pool, l + 1);  \
+  s = mb_alloc(p->p.pool, l + 1);  \
   memcpy(s, b, l);		    \
+  s[l] = '\0'; /* set term. char */ \
   b += snmp_str_size(s);
 
 #define SNMP_LOAD_CONTEXT(p, h, b, s, l)      \
