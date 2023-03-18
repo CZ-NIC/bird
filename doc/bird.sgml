@@ -1113,14 +1113,16 @@ This argument can be omitted if there exists only a single instance.
 	Show the list of symbols defined in the configuration (names of
 	protocols, routing tables etc.).
 
-	<tag><label id="cli-show-route">show route [[for] <m/prefix/|<m/IP/] [table (<m/t/ | all)] [(import|export) table <m/p/.<m/c/] [filter <m/f/|where <m/c/] [(export|preexport|noexport) <m/p/] [protocol <m/p/] [(stats|count)] [<m/options/]</tag>
+	<tag><label id="cli-show-route">show route [[(for|in)] <m/prefix/|for <m/IP/] [table (<m/t/|all)] [(import|export) table <m/p/.<m/c/] [filter <m/f/|where <m/cond/] [(export|preexport|noexport) <m/p/] [protocol <m/p/] [(stats|count)] [<m/options/]</tag>
 	Show contents of specified routing tables, that is routes, their metrics
 	and (in case the <cf/all/ switch is given) all their attributes.
 
 	<p>You can specify a <m/prefix/ if you want to print routes for a
 	specific network. If you use <cf>for <m/prefix or IP/</cf>, you'll get
 	the entry which will be used for forwarding of packets to the given
-	destination. By default, all routes for each network are printed with
+	destination. Finally, if you use <cf>in <m/prefix/</cf>, you get all
+	prefixes covered by the given prefix.
+	By default, all routes for each network are printed with
 	the selected one at the top, unless <cf/primary/ is given in which case
 	only the selected route is shown.
 
