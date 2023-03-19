@@ -2327,16 +2327,16 @@ rt_refresh_begin(struct rt_import_request *req)
 {
   struct rt_import_hook *hook = req->hook;
   ASSERT_DIE(hook);
-  ASSERT_DIE(hook->stale_set == hook->stale_valid);
 
   RT_LOCKED(hook->table, tab)
   {
 
   /* If the pruning routine is too slow */
-  if ((hook->stale_pruned < hook->stale_valid) && (hook->stale_pruned + 128 < hook->stale_valid)
-      || (hook->stale_pruned > hook->stale_valid) && (hook->stale_pruned > hook->stale_valid + 128))
+  if (((hook->stale_set - hook->stale_pruned) & 0xff) >= 240)
   {
-    log(L_WARN "Route refresh flood in table %s", hook->table->name);
+    log(L_WARN "Route refresh flood in table %s (stale_set=%u, stale_pruned=%u)", hook->table->name, hook->stale_set, hook->stale_pruned);
+
+    /* Forcibly set all old routes' stale cycle to zero. */
     FIB_WALK(&tab->fib, net, n)
       {
        for (struct rte_storage *e = n->routes; e; e = e->next)
@@ -2344,18 +2344,14 @@ rt_refresh_begin(struct rt_import_request *req)
            e->rte.stale_cycle = 0;
       }
     FIB_WALK_END;
+
+    /* Smash the route refresh counter and zero everything. */
     tab->rr_counter -= hook->stale_set - hook->stale_pruned;
-    hook->stale_set = 1;
-    hook->stale_valid = 0;
-    hook->stale_pruned = 0;
+    hook->stale_set = hook->stale_valid = hook->stale_pruning = hook->stale_pruned = 0;
   }
-  /* Setting a new value of the stale modifier */
-  else if (!++hook->stale_set)
-  {
-    /* Let's reserve the stale_cycle zero value for always-invalid routes */
-    hook->stale_set = 1;
-    hook->stale_valid = 0;
-  }
+
+  /* Now we can safely increase the stale_set modifier */
+  hook->stale_set++;
 
   /* The table must know that we're route-refreshing */
   tab->rr_counter++;
@@ -2382,14 +2378,18 @@ rt_refresh_end(struct rt_import_request *req)
 
   RT_LOCKED(hook->table, tab)
   {
-    hook->stale_valid++;
-    ASSERT_DIE(hook->stale_set == hook->stale_valid);
+    /* Now valid routes are only those one with the latest stale_set value */
+    uint cnt = hook->stale_set - hook->stale_valid;
+    hook->stale_valid = hook->stale_set;
 
     /* Here we can't kick the timer as we aren't in the table service loop */
     rt_schedule_prune(tab);
 
     if (req->trace_routes & D_STATES)
-      log(L_TRACE "%s: route refresh end [%u]", req->name, hook->stale_valid);
+      if (cnt > 1)
+	log(L_TRACE "%s: route refresh end (x%u) [%u]", req->name, cnt, hook->stale_valid);
+      else
+	log(L_TRACE "%s: route refresh end [%u]", req->name, hook->stale_valid);
   }
 }
 
