@@ -131,8 +131,8 @@ snmp_valid_ip4_index_unsafe(struct oid *o, uint start)
   for (int i = 0; i < 4; i++)
     if (o->ids[start + i] >= 256)
       return 0;	// false
- 
-  return 1; // true 
+
+  return 1; // true
 }
 
 /**
@@ -161,6 +161,17 @@ snmp_put_str(byte *buf, const char *str)
     buf[len + i] = 0x00;  // PADDING
 
   return buf + snmp_str_size(str);
+}
+
+byte *
+snmp_put_ip4(byte *buf, ip_addr addr)
+{
+  /* octet string has size 4 bytes */
+  STORE_PTR(buf, 4);
+
+  put_u32(buf+4, ipa_to_u32(addr));
+
+  return buf + 8;
 }
 
 byte *
@@ -258,25 +269,35 @@ void snmp_oid_dump(struct oid *oid)
 }
 
 /** snmp_oid_compare - find the lexicographical order relation between @left and @right
+ * both @left and @right has to be non-blank.
  * @left: left object id relation operant
  * @right: right object id relation operant
  *
- * function returns 0 if left == right -1 if left < right and 1 otherwise
+ * function returns 0 if left == right,
+ *   -1 if left < right,
+ *   and 1 otherwise
  */
 int
 snmp_oid_compare(struct oid *left, struct oid *right)
 {
   const u32 INTERNET_PREFIX[] = {1, 3, 6, 1};
 
+  /*
+  if (snmp_is_oid_empty(left) && snmp_is_oid_empty(right))
+    return 0;
+
+  if (snmp_is_oid_empty(right))
+    return -1;
+
+  if (snmp_is_oid_empty(left))
+    return 1;
+  */
+
   if (left->prefix == 0 && right->prefix == 0)
     goto test_ids;
 
   if (right->prefix == 0)
-  {
-    struct oid *temp = left;
-    left = right;
-    right = temp;
-  }
+    return (-1) * snmp_oid_compare(right, left);
 
   if (left->prefix == 0)
   {

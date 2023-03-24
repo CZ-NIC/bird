@@ -26,6 +26,8 @@ byte *snmp_put_str(byte *buf, const char *str);
 byte *snmp_put_blank(byte *buf);
 byte *snmp_put_oid(byte *buf, struct oid *oid);
 
+byte *snmp_put_ip4(byte *buf, ip_addr ip4);
+
 byte *snmp_put_fbyte(byte *buf, u8 data);
 
 void snmp_oid_ip4_index(struct oid *o, uint start, ip4_addr addr);
