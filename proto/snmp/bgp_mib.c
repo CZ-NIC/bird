@@ -74,8 +74,9 @@ snmp_bgp_register(struct snmp_proto *p)
     snmp_register(p, oid, 0, 1);
   }
 
+  /*
   // TODO squash bgpVersion and bgpLocalAs to one PDU
-  { /* registering BGP4-MIB::bgpVersion */
+  { / * registering BGP4-MIB::bgpVersion * /
     //snmp_log("snmp_proto %p (%p)", p, p->p.pool);
     struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
 
@@ -92,7 +93,7 @@ snmp_bgp_register(struct snmp_proto *p)
     snmp_register(p, oid, 0, 1);
   }
 
-  { /* registering BGP4-MIB::bgpLocalAs */
+  { / * registering BGP4-MIB::bgpLocalAs * /
     struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
 
     struct oid *oid = mb_alloc(p->p.pool, snmp_oid_sizeof(3));
@@ -109,7 +110,7 @@ snmp_bgp_register(struct snmp_proto *p)
     snmp_register(p, oid, 0, 1);
   }
 
-  { /* registering BGP4-MIB::bgpPeerTable */
+  { / * registering BGP4-MIB::bgpPeerTable * /
     struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
 
     struct oid *oid = mb_alloc(p->p.pool, snmp_oid_sizeof(3));
@@ -126,7 +127,7 @@ snmp_bgp_register(struct snmp_proto *p)
     snmp_register(p, oid, 0, 1);
   }
 
-  /* register dynamic BGP4-MIB::bgpPeerEntry.* */
+  / * register dynamic BGP4-MIB::bgpPeerEntry.* * /
 
   u32 bgp_peer_entry[] = { 1, 15, 3, 1, 1};
   snmp_log("before hash walk - registering dynamic parts");
@@ -150,6 +151,8 @@ snmp_bgp_register(struct snmp_proto *p)
   }
   HASH_WALK_END;
   snmp_log("after hash walk");
+
+  */
 }
 
 int
@@ -570,7 +573,7 @@ bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, struct oid *o_en
   ip4_addr ip4 = ip4_from_oid(o_start);
   ip4_addr dest = ip4_from_oid(o_end);
 
-  snmp_log("ip addresses build (ip4) %I (dest) %I", ip4, dest);
+  snmp_log("ip addresses build (ip4) %I (dest) %I", ipa_from_ip4(ip4), ipa_from_ip4(dest));
 
   // why am I allocated dynamically ?!
   net_addr *net = mb_allocz(p->p.pool, sizeof(struct net_addr));
@@ -591,7 +594,7 @@ bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, struct oid *o_en
     snmp_log("trie_walk_next() returned true");
     if (ip4_less(net4_prefix(net), dest))  // <- delete me
     {
-      snmp_log("ip4_less() returned treu");
+      snmp_log("ip4_less() returned true");
       struct oid *o = mb_allocz(p->p.pool, snmp_oid_sizeof(9));
       o->n_subid = 9;
 
@@ -607,7 +610,7 @@ bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, struct oid *o_en
     // delete me
     else
     {
-      snmp_log("ip4_less() returned false");
+      snmp_log("ip4_less() returned false for %I >= %I", net4_prefix(net), dest);
       mb_free(net);
       mb_free(ws);
     }
@@ -626,19 +629,25 @@ bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, struct oid *o_en
 
 static struct oid *
 search_bgp_dynamic(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, uint contid
-UNUSED, u8 next_state)
+UNUSED, u8 current_state)
 {
   snmp_log("search_bgp_dynamic() dynamic part Yaaay!");
 
   /* TODO can be remove after implementing all BGP4-MIB::bgpPeerTable columns */
-  struct oid *copy = o_start;
+  u8 next_state = current_state;
+  struct oid *o_copy = o_start;
   do {
-    o_start = copy = update_bgp_oid(copy, next_state);
+    snmp_log("do-while state %u", next_state);
+    snmp_oid_dump(o_start);
+    o_start = o_copy = update_bgp_oid(o_copy, next_state);
 
     o_start = bgp_find_dynamic_oid(p, o_start, o_end, next_state);
+    snmp_log("found");
+    snmp_oid_dump(o_start);
 
     next_state = snmp_bgp_next_state(next_state);
 
+    snmp_log("looping");
   } while (o_start == NULL && next_state < BGP_INTERNAL_END);
 
   return o_start;
@@ -663,27 +672,53 @@ search_bgp_mib(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, uin
     o_start->include = 0;  /* disable including for next time */
     return o_start;
   }
-
-  /* if state is_dynamic() then has more value and need find the right one */
-  else if (!is_dynamic(start_state))
+  else if (o_start->include && snmp_bgp_has_value(start_state) &&
+      is_dynamic(start_state))
   {
-    snmp_log("seach_bgp_mib() static part");
-    u8 next_state = snmp_bgp_next_state(start_state);
-    o_start = update_bgp_oid(o_start, next_state);
-
-    snmp_log("search_bgp_mib() is NOT next_state dynamic %s",
-      !is_dynamic(next_state) ? "true" : "false");
-
-    if (!is_dynamic(next_state))
-      return o_start;
-
-    else
-      /* no need to check that retval < o_end -- done by bgp_find_dynamic_oid() */
-      return search_bgp_dynamic(p, o_start, o_end, 0, next_state);
+    snmp_log("search_bgp_mib() first search element matched dynamic entry!");
+    return search_bgp_dynamic(p, o_start, o_end, contid, start_state);
   }
 
-  /* no need to check that retval < o_end -- done by bgp_find_dynamic_oid() */
-  return search_bgp_dynamic(p, o_start, o_end, 0, start_state);
+
+  /* o_start is not inclusive */
+
+  u8 next_state = snmp_bgp_next_state(start_state);
+  // TODO more checks ?!?
+  if (!is_dynamic(next_state))
+  {
+    o_start = update_bgp_oid(o_start, next_state);
+    snmp_log("next state is also not dynamic");
+    //snmp_oid_dump(o_start);
+    return o_start;
+  }
+
+  /* is_dynamic(next_state) == 1 */
+  return search_bgp_dynamic(p, o_start, o_end, 0, next_state);
+
+//  // TODO readable rewrite
+//  /* if state is_dynamic() then has more value and need find the right one */
+//  else if (!is_dynamic(start_state))
+//  {
+//    snmp_log("seach_bgp_mib() static part");
+//    u8 next_state = snmp_bgp_next_state(start_state);
+//    snmp_log(" bgp states old %u new %u", start_state, next_state);
+//    snmp_oid_dump(o_start);
+//    o_start = update_bgp_oid(o_start, next_state);
+//    snmp_oid_dump(o_start);
+//
+//    snmp_log("search_bgp_mib() is NOT next_state dynamic %s",
+//      !is_dynamic(next_state) ? "true" : "false");
+//
+//    if (!is_dynamic(next_state))
+//      return o_start;
+//
+//    else
+//      /* no need to check that retval < o_end -- done by bgp_find_dynamic_oid() */
+//      return search_bgp_dynamic(p, o_start, o_end, 0, next_state);
+//  }
+//
+//  /* no need to check that retval < o_end -- done by bgp_find_dynamic_oid() */
+//  return search_bgp_dynamic(p, o_start, o_end, 0, start_state);
 }
 
 static byte *
@@ -753,13 +788,16 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
   else
     bgp_state = MAX(bgp_in->state, bgp_out->state);
 
+  btime now;
   switch (state)
   {
 
     case BGP_INTERNAL_IDENTIFIER:
       if (bgp_state == BS_OPENCONFIRM || bgp_state == BS_ESTABLISHED)
       {
-	STORE_PTR(pkt, ipa_to_u32(bgp_proto->remote_ip));
+	snmp_put_ip4(pkt, bgp_proto->remote_ip);
+	pkt += 4;
+	/* the inserted ip has size 8 bytes, the BGP_DATA will increment by 4B */
 	BGP_DATA(vb, AGENTX_IP_ADDRESS, pkt);
       }
       else
@@ -795,7 +833,9 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
 
     case BGP_INTERNAL_LOCAL_ADDR:
       // TODO XXX bgp_proto->link_addr & zero local_ip
-      STORE_PTR(pkt, ipa_to_u32(bgp_proto->local_ip));
+      snmp_put_ip4(pkt, bgp_proto->local_ip);
+      pkt += 4;
+      /* the inserted ip has size 8 bytes, the BGP_DATA will increment by 4B */
       BGP_DATA(vb, AGENTX_IP_ADDRESS, pkt);
       break;
 
@@ -805,7 +845,9 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
       break;
 
     case BGP_INTERNAL_REMOTE_ADDR:
-      STORE_PTR(pkt, ipa_to_u32(bgp_proto->remote_ip));
+      snmp_put_ip4(pkt, bgp_proto->remote_ip);
+      pkt += 4;
+      /* the inserted ip has size 8 bytes, the BGP_DATA will increment by 4B */
       BGP_DATA(vb, AGENTX_IP_ADDRESS, pkt);
       break;
 
@@ -861,25 +903,51 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
 
     // TODO finish me here
     case BGP_INTERNAL_FSM_TRANSITIONS:
+      STORE_PTR(pkt, bgp_stats->fsm_established_transitions);
+      BGP_DATA(vb, AGENTX_COUNTER_32, pkt);
       break;
+
     case BGP_INTERNAL_FSM_ESTABLISHED_TIME:
       break;
+
     case BGP_INTERNAL_RETRY_INTERVAL:
+      // retry interval != 0
+      STORE_PTR(pkt, bgp_conf->connect_retry_time);
+      BGP_DATA(vb, AGENTX_INTEGER, pkt);
       break;
+
     case BGP_INTERNAL_HOLD_TIME:
+      // (0, 3..65535)
+      STORE_PTR(pkt, bgp_conn->hold_time);
+      BGP_DATA(vb, AGENTX_INTEGER, pkt);
       break;
+
     case BGP_INTERNAL_KEEPALIVE:
+      STORE_PTR(pkt, bgp_conn->keepalive_time);
+      BGP_DATA(vb, AGENTX_INTEGER, pkt);
       break;
+
     case BGP_INTERNAL_HOLD_TIME_CONFIGURED:
+      STORE_PTR(pkt, bgp_conf->hold_time);
+      BGP_DATA(vb, AGENTX_INTEGER, pkt);
       break;
     case BGP_INTERNAL_KEEPALIVE_CONFIGURED:
+      STORE_PTR(pkt, bgp_conf->keepalive_time);
+      BGP_DATA(vb, AGENTX_INTEGER, pkt);
       break;
+
+    // finish me here
     case BGP_INTERNAL_ORIGINATION_INTERVAL:
       break;
     case BGP_INTERNAL_MIN_ROUTE_ADVERTISEMENT:
       break;
+
     case BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME:
+      now = current_time();
+      STORE_PTR(pkt, (now - bgp_proto->last_rx_update) TO_S );
+      BGP_DATA(vb, AGENTX_GAUGE_32, pkt);
       break;
+
     case BGP_INTERNAL_END:
       break;
 
