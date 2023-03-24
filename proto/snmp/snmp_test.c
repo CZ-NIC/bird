@@ -8,6 +8,7 @@
  */
 
 #include "test/birdtest.h"
+#include "test/bt-utils.h"
 
 #include "bgp_mib.h"
 #include "subagent.h"
@@ -60,11 +61,14 @@ test_oid(struct oid *oid, uint base_size)
 
   bt_debug("testing BGP4-MIB::bgpPeerEntry\n");
   oid->n_subid = base_size + 4;
+  bt_debug("arith\n");
   oid->ids[2] = 3;
   oid->ids[3] = 1;   // BGP4-MIB::bgpPeerEntry
-  snmp_oid_dump(oid);
-  SNMP_EXPECTED(snmp_bgp_state(oid), BGP_INTERNAL_PEER_ENTRY);
+  bt_debug("dumpping\n");
+  bt_debug("after dump, assertion\n");
+  // SNMP_EXPECTED(snmp_bgp_state(oid), BGP_INTERNAL_PEER_ENTRY);
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_PEER_ENTRY);
+  bt_debug("finish\n");
 
   oid->n_subid = base_size + 5;
   oid->ids[2] = 3;
@@ -77,69 +81,74 @@ test_oid(struct oid *oid, uint base_size)
 
   oid->ids[4] = 3;    // BGP4-MIB::bgpPeerAdminStatus
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_ADMIN_STATUS);
-  
+
+  bt_debug("     1/4\n");
   oid->ids[4] = 4;    // BGP4-MIB::bgpPeerNegotiatedVersion
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_NEGOTIATED_VERSION);
-  
+
   oid->ids[4] = 5;    // BGP4-MIB::bgpPeerLocalAddr
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_LOCAL_ADDR);
-  
+
   oid->ids[4] = 6;    // BGP4-MIB::bgpPeerLocalPort
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_LOCAL_PORT);
-  
+
   oid->ids[4] = 7;    // BGP4-MIB::bgpPeerRemoteAddr
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_REMOTE_ADDR);
-  
+
   oid->ids[4] = 8;    // BGP4-MIB::bgpPeerRemotePort
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_REMOTE_PORT);
-  
+
   oid->ids[4] = 9;    // BGP4-MIB::bgpPeerRemoteAs
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_REMOTE_AS);
-  
+
   oid->ids[4] = 10;   // BGP4-MIB::bgpPeerInUpdates
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_RX_UPDATES);
-  
+
+  bt_debug("   1/2 \n");
   oid->ids[4] = 11;   // BGP4-MIB::bgpPeerOutUpdates
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_TX_UPDATES);
-  
+
   oid->ids[4] = 12;   // BGP4-MIB::bgpPeerInTotalMessages
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_RX_MESSAGES);
-  
+
   oid->ids[4] = 13;   // BGP4-MIB::bgpPeerOutTotalMessages
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_TX_MESSAGES);
-  
+
   oid->ids[4] = 14;   // BGP4-MIB::bgpPeerLastError
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_LAST_ERROR);
-  
+
   oid->ids[4] = 15;   // BGP4-MIB::bgpPeerFsmEstablishedTransitions
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_FSM_TRANSITIONS);
-  
+
   oid->ids[4] = 16;   // BGP4-MIB::bgpPeerFsmEstablishedTime
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_FSM_ESTABLISHED_TIME);
-  
+
   oid->ids[4] = 17;   // BGP4-MIB::bgpPeerConnectionRetryInterval
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_RETRY_INTERVAL);
-  
+  bt_debug( "     3/4\n");
+
   oid->ids[4] = 18;   // BGP4-MIB::bgpPeerHoldTime
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_HOLD_TIME);
-  
+
   oid->ids[4] = 19;   // BGP4-MIB::bgpPeerKeepAlive
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_KEEPALIVE);
-  
+
   oid->ids[4] = 20;   // BGP4-MIB::bgpPeerHoldTimeConfigured
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_HOLD_TIME_CONFIGURED);
-  
+
   oid->ids[4] = 21;   // BGP4-MIB::bgpPeerKeepAliveConfigured
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_KEEPALIVE_CONFIGURED);
-  
+
   oid->ids[4] = 22;   // BGP4-MIB::bgpPeerMinASOriginationInterval
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_ORIGINATION_INTERVAL);
-  
+
   oid->ids[4] = 23;   // BGP4-MIB::bgpPeerMinRouteAdvertisementInverval
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_MIN_ROUTE_ADVERTISEMENT);
 
   oid->ids[4] = 24;   // BGP4-MIB::bgpPeerInUpdateElapsedTime
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME);
+
+  bt_debug("testing BGP4-MIB::bgpPeerEntry end\n");
 }
 
 static int
@@ -214,7 +223,7 @@ t_s_prefixize(void)
     bt_debug("null oid is empty");
   else
     bt_debug("null oid is not empty");
-  
+
   bt_debug("main cause\n");
   struct oid *tmp = snmp_prefixize(&snmp_proto, nulled, BYTE_ORD);
   bt_debug("after snmp_prefixize() call\n");
@@ -232,21 +241,30 @@ t_s_prefixize(void)
   prefixed->include = 1;
 
   u32 prefixed_arr[] = { ~((u32) 0), 0, 256 };
-  memcpy(&prefixed->ids, prefixed_arr, sizeof(prefixed_arr) /
-    sizeof(prefixed_arr[0]));
+  memcpy(&prefixed->ids, prefixed_arr, sizeof(prefixed_arr));
 
-    bt_assert(memcmp(snmp_prefixize(&snmp_proto, prefixed, BYTE_ORD), prefixed, snmp_oid_size(prefixed)) == 0);
+  struct oid *copy = mb_alloc(&root_pool, snmp_oid_size(prefixed));
+  memcpy(copy, prefixed, snmp_oid_size(prefixed));
+
+  struct oid *result = snmp_prefixize(&snmp_proto, copy, BYTE_ORD);
+  bt_assert(memcmp(result, prefixed, snmp_oid_size(prefixed)) == 0);
+  //bt_assert(memcmp(snmp_prefixize(&snmp_proto, copy, BYTE_ORD), prefixed, snmp_oid_size(prefixed)) == 0);
+
+  mb_free(copy);
 
   struct oid *to_prefix = mb_alloc(&root_pool, sizeof(struct oid) + 8 * sizeof(u32));
   to_prefix->n_subid = 8;
   to_prefix->prefix = 0;
   to_prefix->include = 1;
 
-  u32 to_prefix_arr[] = {1, 3, 6, 1, 100, ~((u32) 0), 0, 256 };
-  memcpy(&to_prefix->n_subid, to_prefix_arr, sizeof(to_prefix_arr) /
-    sizeof(to_prefix_arr[0]));
 
-  bt_assert(memcmp(snmp_prefixize(&snmp_proto, to_prefix, BYTE_ORD), prefixed, snmp_oid_size(prefixed)) == 0);
+  u32 to_prefix_arr[] = {1, 3, 6, 1, 100, ~((u32) 0), 0, 256 };
+  memcpy(to_prefix->ids, to_prefix_arr, sizeof(to_prefix_arr));
+
+  struct oid *temp = snmp_prefixize(&snmp_proto, to_prefix, BYTE_ORD);
+
+  //bt_assert(memcmp(snmp_prefixize(&snmp_proto, to_prefix, BYTE_ORD), prefixed, snmp_oid_size(prefixed)) == 0);
+  bt_assert(memcmp(temp, prefixed, snmp_oid_size(prefixed)) == 0);
 
   struct oid *unprefixable = mb_alloc(&root_pool, sizeof(struct oid) + 2 * sizeof(u32));
   unprefixable->n_subid = 2;
@@ -304,8 +322,19 @@ t_oid_compare(void)
   bt_assert(snmp_oid_compare(l1, l1) ==  0);
   bt_assert(snmp_oid_compare(r1, r1) ==  0);
 
+  /* different prefix -- has higher priority */
+  l1->prefix = 8;
+  r1->prefix = 4;
+
+  bt_assert(snmp_oid_compare(l1, r1) ==  1);
+  bt_assert(snmp_oid_compare(r1, l1) == -1);
+
+  bt_assert(snmp_oid_compare(l1, l1) ==  0);
+  bt_assert(snmp_oid_compare(r1, r1) ==  0);
+
   mb_free(l1);
   mb_free(r1);
+
 
 
   /* different length, no prefix */
@@ -318,7 +347,7 @@ t_oid_compare(void)
   r1 = OID_ALLOCATE(5);
   {
     u32 arr[] = { 1, 2, 3, 4, 1 };
-    OID_INIT(l1, 5, 0, 1, arr);
+    OID_INIT(r1, 5, 0, 1, arr);
   }
 
   bt_assert(snmp_oid_compare(l1, r1) == -1);
@@ -337,11 +366,22 @@ t_oid_compare(void)
   bt_assert(snmp_oid_compare(l1, l1) ==  0);
   bt_assert(snmp_oid_compare(r1, r1) ==  0);
 
+  /* different prefix -- has higher priority */
+  l1->prefix = 17;
+  r1->prefix = 14;
+
+  bt_assert(snmp_oid_compare(l1, r1) ==  1);
+  bt_assert(snmp_oid_compare(r1, l1) == -1);
+
+  bt_assert(snmp_oid_compare(l1, l1) ==  0);
+  bt_assert(snmp_oid_compare(r1, r1) ==  0);
+
   mb_free(l1);
   mb_free(r1);
 
 
-  /* inverse order different length, no prefix */  
+
+  /* inverse order different length, no prefix */
   l1 = OID_ALLOCATE(4);
   {
     u32 arr[] = { 1, 2, 3, 5 };
@@ -370,8 +410,16 @@ t_oid_compare(void)
   bt_assert(snmp_oid_compare(l1, l1) ==  0);
   bt_assert(snmp_oid_compare(r1, r1) ==  0);
 
+  /* different prefix -- has higher priority */
+  l1->prefix = 127;
+  r1->prefix = 35;
+
+  bt_assert(snmp_oid_compare(l1, r1) ==  1);
+  bt_assert(snmp_oid_compare(r1, l1) == -1);
+
   mb_free(l1);
   mb_free(r1);
+
 
 
 /* ==== MIXED PREFIXED / NON PREFIXED OID compare ==== */
@@ -385,7 +433,7 @@ t_oid_compare(void)
   r1 = OID_ALLOCATE(1);  /* OID .1.3.6.1.5.3 */
   {
     u32 arr[] = { 3 };
-    OID_INIT(l1, 1, 5, 1, arr);
+    OID_INIT(r1, 1, 5, 1, arr);
   }
 
   bt_assert(snmp_oid_compare(l1, r1) == -1);
@@ -446,6 +494,8 @@ t_s_bgp_state(void)
 int main(int argc, char **argv)
 {
   bt_init(argc, argv);
+
+  bt_bird_init();
 
   bt_test_suite(t_s_bgp_state, "Function snmp_bgp_state()");
 

@@ -276,8 +276,8 @@ refresh_ids(struct snmp_proto *p, struct agentx_header *h)
  * @size: number of packet bytes in buffer
  * retval number of byte parsed
  *
- * Function parse_ptk() parses Response-PDU and calls do_response().
- * Returns number of bytes parsed by function excluding size of header.
+ * function parse_ptk() parses response-pdu and calls do_response().
+ * returns number of bytes parsed by function excluding size of header.
  */
 static uint
 parse_pkt(struct snmp_proto *p, byte *pkt, uint size)
@@ -357,14 +357,15 @@ parse_pkt(struct snmp_proto *p, byte *pkt, uint size)
   // logical error: need to return number of actually parsed bytes, not what was
   // announced in the packet
   return parsed_len;
-  #if 0
+
+#if 0
   /* whole buffer was parsed while generating response */
   if (len == size)
     return pkt_size;
     return 1; /* meaning buffer is empty */
   else
     return 0; /* meaning buffer stil contain some data to be parsed, parsing is not finished */
-  #endif
+#endif
 }
 
 static uint
@@ -390,9 +391,9 @@ parse_response(struct snmp_proto *p, byte *res, uint size)
   }
 
   snmp_log("  endianity: %s, session %u, transaction: %u", (h->flags & AGENTX_NETWORK_BYTE_ORDER) ? "big end":
-"little end", h->session_id, h->transaction_id);
+	   "little end", h->session_id, h->transaction_id);
   snmp_log("  sid: %3u\ttid: %3u\tpid: %3u", p->session_id, p->transaction_id,
-p->packet_id);
+	   p->packet_id);
 
   snmp_log("  pkt size %u", h->payload);
   // snmp_log("uptime: %u s", r->uptime);
@@ -401,8 +402,7 @@ p->packet_id);
     do_response(p, res, size);
   else
     /* erronous packet should be dropped quietly */
-    snmp_log("an error occured '%s'", snmp_errs[get_u16(&r->err) -
-SNMP_ERR_SHIFT]);
+    snmp_log("an error occured '%s'", snmp_errs[get_u16(&r->err) - SNMP_ERR_SHIFT]);
 
   return pkt_size + sizeof(struct agentx_header);
 }
@@ -696,7 +696,7 @@ static uint parse_gets_pdu(struct snmp_proto *p, byte *req, uint size)
     {
       snmp_log("too big o_start or o_end");
       snmp_log("o_start_b packet: %u  o_end_b packet: %u   packet size: %u",
-snmp_oid_size(o_start_b), snmp_oid_size(o_end_b), size);
+      snmp_oid_size(o_start_b), snmp_oid_size(o_end_b), size);
       err = -1;  /* parse error too big n_subid (greater than message) */
       continue;
     }
@@ -1003,11 +1003,16 @@ has_inet_prefix(struct oid *o)
 static int
 upper_bound_check(struct oid *found, struct oid *bound)
 {
+  snmp_log("upper_bound_check(*f, *b) %p %p is_empty() %d", found, bound,
+	  snmp_is_oid_empty(bound));
+
+  // TODO manage NULL in found & bound
+
   if (snmp_is_oid_empty(bound))
     return 1;
 
   if (snmp_oid_compare(found, bound) < 0)
-    return 0;
+    return 1;
 
   return 0;
 }
@@ -1051,7 +1056,7 @@ search_mib_unchecked(struct snmp_proto *p, struct oid *o_start, struct oid *o_en
 	 */
 
       default:
-        return NULL;
+	return NULL;
     }
   }
 
@@ -1095,36 +1100,43 @@ find_ospf_record(struct snmp_proto *p, struct oid *o, byte *buf, uint size)
 struct oid *
 snmp_prefixize(struct snmp_proto *proto, struct oid *oid, int byte_ord)
 {
+  snmp_log("snmp_prefixize()");
   const u32 prefix[] = {1, 3, 6, 1};
 
   if (oid == NULL)
-    return NULL;
+  { snmp_log("NULL"); return NULL; }
 
   if (snmp_is_oid_empty(oid))
   {
     /* allocate new zeroed oid */
+    snmp_log("blank");
     return snmp_oid_blank(proto);
   }
-  else if (LOAD(oid->n_subid, byte_ord) != 0)
-  {
-    struct oid *new = mb_allocz(proto->p.pool, snmp_oid_size(oid));
+
+  /* already in prefixed form */
+  else if (oid->prefix != 0) {
+    struct oid *new = mb_alloc(proto->p.pool, snmp_oid_size(oid));
     memcpy(new, oid, snmp_oid_size(oid));
+    snmp_log("already prefixed");
     return new;
   }
 
   if (oid->n_subid < 5)
-    return NULL;
+  {  snmp_log("too small"); return NULL; }
 
   for (int i = 0; i < 4; i++)
     if (LOAD(oid->ids[i], byte_ord) != prefix[i])
-      return NULL;
+      { snmp_log("different prefix"); return NULL; }
 
-  /* validity chech here */
+  /* validity check here */
   if (oid->ids[4] >= 256)
-    return NULL;
+    { snmp_log("outside byte first id"); return NULL; }
 
   struct oid *new = mb_alloc(proto->p.pool,
           sizeof(struct oid) + MAX((oid->n_subid - 5) * sizeof(u32), 0));
+  snmp_log(" new %p new->ids %p &new->ids %p   oid %p oid->ids %p oid->ids[5] %p"
+"&oid->ids[5] %p &(oid->ids[5]) %p", new, new->ids, &new->ids, oid, oid->ids,
+oid->ids[5], &oid->ids[5], &(oid->ids[5]));
 
   memcpy(new, oid, sizeof(struct oid));
   new->n_subid = oid->n_subid - 5;
