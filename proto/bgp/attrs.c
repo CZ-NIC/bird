@@ -2280,24 +2280,8 @@ bgp_get_neighbor(rte *r)
 static inline int
 rte_stale(rte *r)
 {
-  if (r->pflags & BGP_REF_STALE)
-    return 1;
-
-  if (r->pflags & BGP_REF_NOT_STALE)
-    return 0;
-
-  /* If staleness is unknown, compute and cache it */
   eattr *a = ea_find(r->attrs, BGP_EA_ID(BA_COMMUNITY));
-  if (a && int_set_contains(a->u.ptr, BGP_COMM_LLGR_STALE))
-  {
-    r->pflags |= BGP_REF_STALE;
-    return 1;
-  }
-  else
-  {
-    r->pflags |= BGP_REF_NOT_STALE;
-    return 0;
-  }
+  return a && int_set_contains(a->u.ptr, BGP_COMM_LLGR_STALE);
 }
 
 int
@@ -2702,8 +2686,6 @@ bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n, struct rt
     /* Mark the route as LLGR */
     rte e0 = *r;
     bgp_set_attr_ptr(&e0.attrs, BA_COMMUNITY, flags, int_set_add(tmp_linpool, ad, BGP_COMM_LLGR_STALE));
-    e0.pflags &= ~BGP_REF_NOT_STALE;
-    e0.pflags |= BGP_REF_STALE;
 
     /* We need to update the route but keep it stale. */
     ASSERT_DIE(irh->stale_set == irh->stale_valid + 1);
