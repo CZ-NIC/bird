@@ -177,15 +177,6 @@ proto_find_channel_by_name(struct proto *p, const char *n)
   return NULL;
 }
 
-int channel_preimport(struct rt_import_request *req, rte *new, rte *old);
-
-void rt_notify_optimal(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
-void rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
-void rt_feed_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
-void rt_notify_accepted(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
-void rt_notify_merged(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
-
-
 /**
  * proto_add_channel - connect protocol to a routing table
  * @p: protocol instance
@@ -686,8 +677,6 @@ channel_reload_dump_req(struct rt_export_request *req)
   struct channel *c = SKIP_BACK(struct channel, reload_req, req);
   debug("  Channel %s.%s import reload request %p\n", c->proto->name, c->name, req);
 }
-
-void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
 
 /* Called by protocol to activate in_table */
 static void

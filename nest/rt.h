@@ -438,6 +438,22 @@ void rt_stop_export_common(struct rt_export_hook *hook);
 void rt_export_stopped(struct rt_export_hook *hook);
 void rt_exporter_init(struct rt_exporter *re);
 
+/*
+ * Channel export hooks. To be refactored out.
+ */
+
+int channel_preimport(struct rt_import_request *req, rte *new, rte *old);
+
+void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
+
+void rt_notify_optimal(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
+void rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
+void rt_feed_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
+void rt_notify_accepted(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
+void rt_notify_merged(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
+
+
+
 /* Types of route announcement, also used as flags */
 #define RA_UNDEF	0		/* Undefined RA type */
 #define RA_OPTIMAL	1		/* Announcement of optimal route change */
