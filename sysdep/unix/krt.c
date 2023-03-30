@@ -355,7 +355,7 @@ rte_feed_count(net *n)
 }
 
 static void
-rte_feed_obtain(net *n, rte **feed, uint count)
+rte_feed_obtain(net *n, const rte **feed, uint count)
 {
   uint i = 0;
   for (struct rte_storage *e = n->routes; e; e = e->next)
@@ -386,7 +386,7 @@ krt_export_net(struct krt_proto *p, net *net)
     if (!count)
       return NULL;
 
-    rte **feed = alloca(count * sizeof(rte *));
+    const rte **feed = alloca(count * sizeof(rte *));
     rte_feed_obtain(net, feed, count);
     return rt_export_merged(c, feed, count, krt_filter_lp, 1);
   }
@@ -793,7 +793,7 @@ krt_feed_end(struct channel *C)
 }
 
 static int
-krt_rte_better(rte *new, rte *old)
+krt_rte_better(const rte *new, const rte *old)
 {
   u32 n = ea_get_int(new->attrs, &ea_krt_metric, IGP_METRIC_UNKNOWN);
   u32 o = ea_get_int(old->attrs, &ea_krt_metric, IGP_METRIC_UNKNOWN);

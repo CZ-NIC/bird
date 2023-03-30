@@ -406,7 +406,7 @@ static_reload_routes(struct channel *C)
 }
 
 static int
-static_rte_better(rte *new, rte *old)
+static_rte_better(const rte *new, const rte *old)
 {
   u32 n = ea_get_int(new->attrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
   u32 o = ea_get_int(old->attrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
@@ -414,7 +414,7 @@ static_rte_better(rte *new, rte *old)
 }
 
 static int
-static_rte_mergable(rte *pri, rte *sec)
+static_rte_mergable(const rte *pri, const rte *sec)
 {
   u32 a = ea_get_int(pri->attrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
   u32 b = ea_get_int(sec->attrs, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN);
@@ -709,7 +709,7 @@ static_copy_config(struct proto_config *dest, struct proto_config *src)
 }
 
 static void
-static_get_route_info(rte *rte, byte *buf)
+static_get_route_info(const rte *rte, byte *buf)
 {
   eattr *a = ea_find(rte->attrs, &ea_gen_igp_metric);
   u32 pref = rt_get_preference(rte);

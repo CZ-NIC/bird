@@ -41,10 +41,10 @@ typedef struct rte {
 #define REF_PENDING	32		/* Route has not propagated completely yet */
 
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
-static inline int rte_is_valid(rte *r) { return r && !(r->flags & REF_FILTERED); }
+static inline int rte_is_valid(const rte *r) { return r && !(r->flags & REF_FILTERED); }
 
 /* Route just has REF_FILTERED flag */
-static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); }
+static inline int rte_is_filtered(const rte *r) { return !!(r->flags & REF_FILTERED); }
 
 /* Strip the route of the table-specific values */
 static inline rte rte_init_from(const rte *r)
@@ -65,9 +65,9 @@ struct rte_src {
 };
 
 struct rte_owner_class {
-  void (*get_route_info)(struct rte *, byte *buf); /* Get route information (for `show route' command) */
-  int (*rte_better)(struct rte *, struct rte *);
-  int (*rte_mergable)(struct rte *, struct rte *);
+  void (*get_route_info)(const rte *, byte *buf); /* Get route information (for `show route' command) */
+  int (*rte_better)(const rte *, const rte *);
+  int (*rte_mergable)(const rte *, const rte *);
   u32 (*rte_igp_metric)(const rte *);
 };
 
@@ -430,7 +430,7 @@ ea_copy_attr(ea_list **to, ea_list *from, const struct ea_class *def)
 
 /* Preference: first-order comparison */
 extern struct ea_class ea_gen_preference;
-static inline u32 rt_get_preference(rte *rt)
+static inline u32 rt_get_preference(const rte *rt)
 { return ea_get_int(rt->attrs, &ea_gen_preference, 0); }
 
 /* IGP metric: second-order comparison */

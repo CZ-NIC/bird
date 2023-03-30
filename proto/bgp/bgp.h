@@ -615,17 +615,17 @@ int bgp_done_bucket(struct bgp_channel *c, struct bgp_bucket *b);
 
 void bgp_done_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucket *buck);
 
-int bgp_rte_better(struct rte *, struct rte *);
-int bgp_rte_mergable(rte *pri, rte *sec);
+int bgp_rte_better(const rte *, const rte *);
+int bgp_rte_mergable(const rte *pri, const rte *sec);
 int bgp_rte_recalculate(struct rtable_private *table, net *net, rte *new, rte *old, rte *old_best);
-void bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *rpe UNUSED, rte **feed, uint count);
+void bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *rpe UNUSED, const rte **feed, uint count);
 u32 bgp_rte_igp_metric(const rte *);
 void bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, const rte *old);
 int bgp_preexport(struct channel *, struct rte *);
-void bgp_get_route_info(struct rte *, byte *);
+void bgp_get_route_info(const rte *, byte *);
 int bgp_total_aigp_metric_(const rte *e, u64 *metric, const struct adata **ad);
 
-static inline struct bgp_proto *bgp_rte_proto(struct rte *rte)
+static inline struct bgp_proto *bgp_rte_proto(const rte *rte)
 {
   return (rte->src->owner->class == &bgp_rte_owner_class) ?
     SKIP_BACK(struct bgp_proto, p.sources, rte->src->owner) : NULL;

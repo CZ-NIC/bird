@@ -1958,7 +1958,7 @@ bgp_out_table_feed(void *data)
 
       if (hook->h.req->export_bulk)
       {
-	rte *feed = &es.rte;
+	const rte *feed = &es.rte;
 	hook->h.req->export_bulk(hook->h.req, n->net, &rpe, &feed, 1);
       }
       else if (hook->h.req->export_one)
@@ -2273,7 +2273,7 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
 
 
 static inline u32
-bgp_get_neighbor(rte *r)
+bgp_get_neighbor(const rte *r)
 {
   eattr *e = ea_find(r->attrs, BGP_EA_ID(BA_AS_PATH));
   u32 as;
@@ -2287,14 +2287,14 @@ bgp_get_neighbor(rte *r)
 }
 
 static inline int
-rte_stale(rte *r)
+rte_stale(const rte *r)
 {
   eattr *a = ea_find(r->attrs, BGP_EA_ID(BA_COMMUNITY));
   return a && int_set_contains(a->u.ptr, BGP_COMM_LLGR_STALE);
 }
 
 int
-bgp_rte_better(rte *new, rte *old)
+bgp_rte_better(const rte *new, const rte *old)
 {
   struct bgp_proto *new_bgp = bgp_rte_proto(new);
   struct bgp_proto *old_bgp = bgp_rte_proto(old);
@@ -2439,7 +2439,7 @@ bgp_rte_better(rte *new, rte *old)
 
 
 int
-bgp_rte_mergable(rte *pri, rte *sec)
+bgp_rte_mergable(const rte *pri, const rte *sec)
 {
   struct bgp_proto *pri_bgp = bgp_rte_proto(pri);
   struct bgp_proto *sec_bgp = bgp_rte_proto(sec);
@@ -2657,7 +2657,7 @@ bgp_rte_recalculate(struct rtable_private *table, net *net, rte *new, rte *old, 
 }
 
 void
-bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *rpe UNUSED, rte **feed, uint count)
+bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *rpe UNUSED, const rte **feed, uint count)
 {
   struct bgp_channel *c = SKIP_BACK(struct bgp_channel, stale_feed, req);
   struct rt_import_hook *irh = c->c.in_req.hook;
@@ -2665,7 +2665,7 @@ bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n, struct rt
   /* Find our routes among others */
   for (uint i=0; i<count; i++)
   {
-    rte *r = feed[i];
+    const rte *r = feed[i];
 
     if (
 	!rte_is_valid(r) ||			/* Not a valid route */
@@ -2755,7 +2755,7 @@ bgp_process_as4_attrs(ea_list **attrs, struct linpool *pool)
 }
 
 void
-bgp_get_route_info(rte *e, byte *buf)
+bgp_get_route_info(const rte *e, byte *buf)
 {
   eattr *p = ea_find(e->attrs, BGP_EA_ID(BA_AS_PATH));
   eattr *o = ea_find(e->attrs, BGP_EA_ID(BA_ORIGIN));

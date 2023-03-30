@@ -40,7 +40,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   byte tm[TM_DATETIME_BUFFER_SIZE], info[256];
   ea_list *a = e->attrs;
   int sync_error = d->tab->kernel ? krt_get_sync_error(d->tab->kernel, e) : 0;
-  void (*get_route_info)(struct rte *, byte *buf);
+  void (*get_route_info)(const rte *, byte *buf);
   eattr *nhea = net_type_match(e->net, NB_DEST) ?
     ea_find(a, &ea_gen_nexthop) : NULL;
   struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
@@ -93,7 +93,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
 }
 
 static void
-rt_show_net(struct rt_show_data *d, const net_addr *n, rte **feed, uint count)
+rt_show_net(struct rt_show_data *d, const net_addr *n, const rte **feed, uint count)
 {
   struct cli *c = d->cli;
   byte ia[NET_MAX_TEXT_LENGTH+1];
@@ -211,7 +211,7 @@ rt_show_net(struct rt_show_data *d, const net_addr *n, rte **feed, uint count)
 
 static void
 rt_show_net_export_bulk(struct rt_export_request *req, const net_addr *n,
-    struct rt_pending_export *rpe UNUSED, rte **feed, uint count)
+    struct rt_pending_export *rpe UNUSED, const rte **feed, uint count)
 {
   struct rt_show_data *d = SKIP_BACK(struct rt_show_data, req, req);
   return rt_show_net(d, n, feed, count);

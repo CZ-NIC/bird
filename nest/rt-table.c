@@ -670,9 +670,9 @@ rte_free(struct rte_storage *e)
 }
 
 static int				/* Actually better or at least as good as */
-rte_better(rte *new, rte *old)
+rte_better(const rte *new, const rte *old)
 {
-  int (*better)(rte *, rte *);
+  int (*better)(const rte *, const rte *);
 
   if (!rte_is_valid(old))
     return 1;
@@ -701,9 +701,9 @@ rte_better(rte *new, rte *old)
 }
 
 static int
-rte_mergable(rte *pri, rte *sec)
+rte_mergable(const rte *pri, const rte *sec)
 {
-  int (*mergable)(rte *, rte *);
+  int (*mergable)(const rte *, const rte *);
 
   if (!rte_is_valid(pri) || !rte_is_valid(sec))
     return 0;
@@ -771,7 +771,7 @@ rte_feed_count(net *n)
 }
 
 static void
-rte_feed_obtain(net *n, struct rte **feed, uint count)
+rte_feed_obtain(net *n, const rte **feed, uint count)
 {
   uint i = 0;
   for (struct rte_storage *e = n->routes; e; e = e->next)
@@ -921,7 +921,7 @@ channel_rpe_mark_seen(struct rt_export_request *req, struct rt_pending_export *r
 
 void
 rt_notify_accepted(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *first,
-    struct rte **feed, uint count)
+    const rte **feed, uint count)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
 
@@ -985,13 +985,13 @@ done:
 }
 
 rte *
-rt_export_merged(struct channel *c, struct rte **feed, uint count, linpool *pool, int silent)
+rt_export_merged(struct channel *c, const rte **feed, uint count, linpool *pool, int silent)
 {
   _Thread_local static rte rloc;
 
   // struct proto *p = c->proto;
   struct nexthop_adata *nhs = NULL;
-  rte *best0 = feed[0];
+  const rte *best0 = feed[0];
   rte *best = NULL;
 
   if (!rte_is_valid(best0))
@@ -1048,7 +1048,7 @@ rt_export_merged(struct channel *c, struct rte **feed, uint count, linpool *pool
 
 void
 rt_notify_merged(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *first,
-    struct rte **feed, uint count)
+    const rte **feed, uint count)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
 
@@ -1063,7 +1063,7 @@ rt_notify_merged(struct rt_export_request *req, const net_addr *n, struct rt_pen
     return;
 #endif
 
-  rte *old_best = NULL;
+  const rte *old_best = NULL;
   /* Find old best route */
   for (uint i = 0; i < count; i++)
     if (bmap_test(&c->export_map, feed[i]->id))
@@ -1140,7 +1140,7 @@ rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pend
 }
 
 void
-rt_feed_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe UNUSED, rte **feed, uint count)
+rt_feed_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe UNUSED, const rte **feed, uint count)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
 
@@ -1223,7 +1223,7 @@ rte_export(struct rt_table_export_hook *th, struct rt_pending_export *rpe)
     net *net = SKIP_BACK(struct network, n.addr, (net_addr (*)[0]) n);
     RT_LOCK(tab);
     uint count = rte_feed_count(net);
-    rte **feed = NULL;
+    const rte **feed = NULL;
     if (count)
     {
       feed = alloca(count * sizeof(rte *));
@@ -4204,7 +4204,7 @@ typedef struct {
   union {
     struct rt_pending_export *rpe;
     struct {
-      rte **feed;
+      const rte **feed;
       uint *start;
     };
   };
@@ -4257,7 +4257,7 @@ rt_process_feed(struct rt_table_export_hook *c, rt_feed_block *b)
     b->start[b->pos] = b->cnt;
     for (uint p = 0; p < b->pos; p++)
     {
-      rte **feed = &b->feed[b->start[p]];
+      const rte **feed = &b->feed[b->start[p]];
       c->h.req->export_bulk(c->h.req, feed[0]->net, NULL, feed, b->start[p+1] - b->start[p]);
     }
   }
@@ -4403,7 +4403,7 @@ rt_feed_for(void *data)
  *	Import table
  */
 
-void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe UNUSED, rte **feed, uint count)
+void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe UNUSED, const rte **feed, uint count)
 {
   struct channel *c = SKIP_BACK(struct channel, reload_req, req);
 

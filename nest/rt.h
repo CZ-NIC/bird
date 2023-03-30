@@ -303,7 +303,7 @@ struct rt_export_request {
    *	   and for RA_ANY, both are set to accomodate for feeding all routes but receiving single changes
    */
   void (*export_one)(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
-  void (*export_bulk)(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
+  void (*export_bulk)(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, const rte **feed, uint count);
 
   void (*dump_req)(struct rt_export_request *req);
   void (*log_state_change)(struct rt_export_request *req, u8);
@@ -444,13 +444,13 @@ void rt_exporter_init(struct rt_exporter *re);
 
 int channel_preimport(struct rt_import_request *req, rte *new, rte *old);
 
-void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
+void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, const rte **feed, uint count);
 
 void rt_notify_optimal(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
 void rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
-void rt_feed_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
-void rt_notify_accepted(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
-void rt_notify_merged(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, rte **feed, uint count);
+void rt_feed_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, const rte **feed, uint count);
+void rt_notify_accepted(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, const rte **feed, uint count);
+void rt_notify_merged(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, const rte **feed, uint count);
 
 
 
@@ -576,7 +576,7 @@ static inline net *net_find_valid(struct rtable_private *tab, const net_addr *ad
 static inline net *net_get(struct rtable_private *tab, const net_addr *addr) { return (net *) fib_get(&tab->fib, addr); }
 net *net_route(struct rtable_private *tab, const net_addr *n);
 int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
-rte *rt_export_merged(struct channel *c, rte ** feed, uint count, linpool *pool, int silent);
+rte *rt_export_merged(struct channel *c, const rte ** feed, uint count, linpool *pool, int silent);
 void rt_refresh_begin(struct rt_import_request *);
 void rt_refresh_end(struct rt_import_request *);
 void rt_modify_stale(rtable *t, struct rt_import_request *);

@@ -1119,7 +1119,7 @@ rip_reload_routes(struct channel *C)
 static struct rte_owner_class rip_rte_owner_class;
 
 static inline struct rip_proto *
-rip_rte_proto(struct rte *rte)
+rip_rte_proto(const rte *rte)
 {
   return (rte->src->owner->class == &rip_rte_owner_class) ?
     SKIP_BACK(struct rip_proto, p.sources, rte->src->owner) : NULL;
@@ -1132,7 +1132,7 @@ rip_rte_igp_metric(const rte *rt)
 }
 
 static int
-rip_rte_better(struct rte *new, struct rte *old)
+rip_rte_better(const rte *new, const rte *old)
 {
   return rip_rte_igp_metric(new) < rip_rte_igp_metric(old);
 }
@@ -1231,7 +1231,7 @@ rip_reconfigure(struct proto *P, struct proto_config *CF)
 }
 
 static void
-rip_get_route_info(rte *rte, byte *buf)
+rip_get_route_info(const rte *rte, byte *buf)
 {
   struct rip_proto *p = rip_rte_proto(rte);
   u32 rt_metric = ea_get_int(rte->attrs, &ea_rip_metric, p->infinity);

@@ -2068,7 +2068,7 @@ babel_dump(struct proto *P)
 }
 
 static void
-babel_get_route_info(rte *rte, byte *buf)
+babel_get_route_info(const rte *rte, byte *buf)
 {
   u64 rid = 0;
   eattr *e = ea_find(rte->attrs, &ea_babel_router_id);
@@ -2388,7 +2388,7 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *net,
 }
 
 static int
-babel_rte_better(struct rte *new, struct rte *old)
+babel_rte_better(const rte *new, const rte *old)
 {
   uint new_metric = ea_get_int(new->attrs, &ea_babel_metric, BABEL_INFINITY);
   uint old_metric = ea_get_int(old->attrs, &ea_babel_metric, BABEL_INFINITY);
