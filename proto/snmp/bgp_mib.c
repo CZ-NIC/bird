@@ -155,7 +155,7 @@ snmp_bgp_register(struct snmp_proto *p)
   */
 }
 
-int
+static int
 snmp_bgp_valid_ip4(struct oid *o)
 {
   return snmp_valid_ip4_index(o, 5);
@@ -204,7 +204,7 @@ static inline struct ip4_addr
 ip4_from_oid(const struct oid *o)
 {
   return (o->n_subid == 9) ? ip4_build(o->ids[5], o->ids[6], o->ids[7],
-o->ids[8]) : IP4_NONE;
+o->ids[8]) : ip4_from_u32(0xFFFFFFFF);
 }
 
 static void
@@ -390,7 +390,7 @@ snmp_bgp_has_value(u8 state)
  * @state: BGP linearized state
  *
  * Returns @state if has value in BGP4-MIB, zero otherwise. Used for Get-PDU
- * packets.
+ * ackets.
  */
 u8
 snmp_bgp_get_valid(u8 state)
@@ -571,6 +571,7 @@ bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, struct oid *o_en
 {
   snmp_log("bgp_find_dynamic_oid()");
   ip4_addr ip4 = ip4_from_oid(o_start);
+  /* dest is 255.255.255.255 if o_end is empty */
   ip4_addr dest = ip4_from_oid(o_end);
 
   snmp_log("ip addresses build (ip4) %I (dest) %I", ipa_from_ip4(ip4), ipa_from_ip4(dest));
@@ -592,7 +593,12 @@ bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, struct oid *o_en
   if (trie_walk_next(ws, net)) // && ip4_less(net4_prefix(net), dest))
   {
     snmp_log("trie_walk_next() returned true");
-    if (ip4_less(net4_prefix(net), dest))  // <- delete me
+
+    /*
+     * if the o_end is empty then there are no conditions on the ip4 addr
+     */
+    int cmp = ip4_compare(net4_prefix(net), dest);
+    if (cmp < 0 || (cmp == 0 && snmp_is_oid_empty(o_end)))
     {
       snmp_log("ip4_less() returned true");
       struct oid *o = mb_allocz(p->p.pool, snmp_oid_sizeof(9));
