@@ -1959,7 +1959,7 @@ bgp_out_table_feed(void *data)
       if (hook->h.req->export_bulk)
       {
 	const rte *feed = &es.rte;
-	hook->h.req->export_bulk(hook->h.req, n->net, &rpe, &feed, 1);
+	hook->h.req->export_bulk(hook->h.req, n->net, &rpe, &rpe, &feed, 1);
       }
       else if (hook->h.req->export_one)
 	hook->h.req->export_one(hook->h.req, n->net, &rpe);
@@ -2657,7 +2657,9 @@ bgp_rte_recalculate(struct rtable_private *table, net *net, rte *new, rte *old, 
 }
 
 void
-bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *rpe UNUSED, const rte **feed, uint count)
+bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n,
+    struct rt_pending_export *first, struct rt_pending_export *last,
+    const rte **feed, uint count)
 {
   struct bgp_channel *c = SKIP_BACK(struct bgp_channel, stale_feed, req);
   struct rt_import_hook *irh = c->c.in_req.hook;
@@ -2705,6 +2707,8 @@ bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n, struct rt
     /* Restore the memory state */
     lp_restore(tmp_linpool, &tmpp);
   }
+
+  rpe_mark_seen_all(req->hook, first, last, NULL);
 }
 
 

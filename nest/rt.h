@@ -303,7 +303,9 @@ struct rt_export_request {
    *	   and for RA_ANY, both are set to accomodate for feeding all routes but receiving single changes
    */
   void (*export_one)(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
-  void (*export_bulk)(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, const rte **feed, uint count);
+  void (*export_bulk)(struct rt_export_request *req, const net_addr *net,
+      struct rt_pending_export *rpe, struct rt_pending_export *last,
+      const rte **feed, uint count);
 
   void (*dump_req)(struct rt_export_request *req);
   void (*log_state_change)(struct rt_export_request *req, u8);
@@ -422,8 +424,11 @@ struct rt_pending_export *rpe_next(struct rt_pending_export *rpe, struct rte_src
 /* Mark the pending export processed */
 void rpe_mark_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
 
-#define rpe_mark_seen_all(hook, first, src) \
-  RPE_WALK((first), _rpe, (src)) rpe_mark_seen((hook), _rpe)
+#define rpe_mark_seen_all(hook, first, last, src) do { \
+  RPE_WALK((first), _rpe, (src)) { \
+    rpe_mark_seen((hook), _rpe); \
+    if (_rpe == last) break; \
+  }} while (0)
 
 /* Get pending export seen status */
 int rpe_get_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
@@ -444,13 +449,13 @@ void rt_exporter_init(struct rt_exporter *re);
 
 int channel_preimport(struct rt_import_request *req, rte *new, rte *old);
 
-void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, const rte **feed, uint count);
+void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first, struct rt_pending_export *last, const rte **feed, uint count);
 
 void rt_notify_optimal(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
 void rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
-void rt_feed_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, const rte **feed, uint count);
-void rt_notify_accepted(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, const rte **feed, uint count);
-void rt_notify_merged(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe, const rte **feed, uint count);
+void rt_feed_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first, struct rt_pending_export *last, const rte **feed, uint count);
+void rt_notify_accepted(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first, struct rt_pending_export *last, const rte **feed, uint count);
+void rt_notify_merged(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first, struct rt_pending_export *last, const rte **feed, uint count);
 
 
 

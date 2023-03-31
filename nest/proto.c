@@ -319,7 +319,7 @@ channel_export_one_roa(struct rt_export_request *req, const net_addr *net UNUSED
   /* TODO: use the information about what roa has changed */
   settle_kick(&s->settle, s->c->proto->loop);
 
-  rpe_mark_seen_all(req->hook, first, NULL);
+  rpe_mark_seen_all(req->hook, first, NULL, NULL);
 }
 
 static void

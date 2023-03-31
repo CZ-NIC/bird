@@ -211,7 +211,8 @@ rt_show_net(struct rt_show_data *d, const net_addr *n, const rte **feed, uint co
 
 static void
 rt_show_net_export_bulk(struct rt_export_request *req, const net_addr *n,
-    struct rt_pending_export *rpe UNUSED, const rte **feed, uint count)
+    struct rt_pending_export *first UNUSED, struct rt_pending_export *last UNUSED,
+    const rte **feed, uint count)
 {
   struct rt_show_data *d = SKIP_BACK(struct rt_show_data, req, req);
   return rt_show_net(d, n, feed, count);

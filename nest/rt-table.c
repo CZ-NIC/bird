@@ -920,7 +920,8 @@ channel_rpe_mark_seen(struct rt_export_request *req, struct rt_pending_export *r
 }
 
 void
-rt_notify_accepted(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *first,
+rt_notify_accepted(struct rt_export_request *req, const net_addr *n,
+    struct rt_pending_export *first, struct rt_pending_export *last,
     const rte **feed, uint count)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
@@ -975,6 +976,8 @@ done:
 	old_best = &rpe->old->rte;
       }
     }
+    if (rpe == last)
+      break;
   }
 
   /* Nothing to export */
@@ -1047,7 +1050,8 @@ rt_export_merged(struct channel *c, const rte **feed, uint count, linpool *pool,
 }
 
 void
-rt_notify_merged(struct rt_export_request *req, const net_addr *n, struct rt_pending_export *first,
+rt_notify_merged(struct rt_export_request *req, const net_addr *n,
+    struct rt_pending_export *first, struct rt_pending_export *last,
     const rte **feed, uint count)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
@@ -1084,6 +1088,8 @@ rt_notify_merged(struct rt_export_request *req, const net_addr *n, struct rt_pen
 	old_best = &rpe->old->rte;
       }
     }
+    if (rpe == last)
+      break;
   }
 
   /* Prepare new merged route */
@@ -1140,7 +1146,9 @@ rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pend
 }
 
 void
-rt_feed_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe UNUSED, const rte **feed, uint count)
+rt_feed_any(struct rt_export_request *req, const net_addr *net,
+    struct rt_pending_export *first, struct rt_pending_export *last,
+    const rte **feed, uint count)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
 
@@ -1150,6 +1158,13 @@ rt_feed_any(struct rt_export_request *req, const net_addr *net, struct rt_pendin
       rte n0 = *feed[i];
       rt_notify_basic(c, net, &n0, NULL);
     }
+
+  RPE_WALK(first, rpe, NULL)
+  {
+    channel_rpe_mark_seen(req, rpe);
+    if (rpe == last)
+      break;
+  }
 }
 
 void
@@ -1222,6 +1237,7 @@ rte_export(struct rt_table_export_hook *th, struct rt_pending_export *rpe)
   {
     net *net = SKIP_BACK(struct network, n.addr, (net_addr (*)[0]) n);
     RT_LOCK(tab);
+    struct rt_pending_export *last = net->last;
     uint count = rte_feed_count(net);
     const rte **feed = NULL;
     if (count)
@@ -1230,7 +1246,7 @@ rte_export(struct rt_table_export_hook *th, struct rt_pending_export *rpe)
       rte_feed_obtain(net, feed, count);
     }
     RT_UNLOCK(tab);
-    hook->req->export_bulk(hook->req, n, rpe, feed, count);
+    hook->req->export_bulk(hook->req, n, rpe, last, feed, count);
   }
   else
     bug("Export request must always provide an export method");
@@ -2620,7 +2636,7 @@ rt_flowspec_export_one(struct rt_export_request *req, const net_addr *net, struc
       || !trie_match_net(dst->flowspec_trie, net))
   {
     RT_UNLOCK(dst_pub);
-    rpe_mark_seen_all(req->hook, first, NULL);
+    rpe_mark_seen_all(req->hook, first, NULL, NULL);
     return;
   }
 
@@ -4205,7 +4221,10 @@ typedef struct {
     struct rt_pending_export *rpe;
     struct {
       const rte **feed;
-      uint *start;
+      struct rt_feed_block_aux {
+	struct rt_pending_export *first, *last;
+	uint start;
+      } *aux;
     };
   };
 } rt_feed_block;
@@ -4224,11 +4243,19 @@ rt_prepare_feed(struct rt_table_export_hook *c, net *n, rt_feed_block *b)
       if (!b->cnt)
       {
 	b->feed = tmp_alloc(sizeof(rte *) * MAX(MAX_FEED_BLOCK, cnt));
-	b->start = tmp_alloc(sizeof(uint) * ((cnt >= MAX_FEED_BLOCK) ? 2 : (MAX_FEED_BLOCK + 2 - cnt)));
+
+	uint aux_block_size = (cnt >= MAX_FEED_BLOCK) ? 2 : (MAX_FEED_BLOCK + 2 - cnt);
+	b->aux = tmp_alloc(sizeof(struct rt_feed_block_aux) * aux_block_size);
       }
 
       rte_feed_obtain(n, &b->feed[b->cnt], cnt);
-      b->start[b->pos++] = b->cnt;
+
+      b->aux[b->pos++] = (struct rt_feed_block_aux) {
+	.start = b->cnt,
+	.first = n->first,
+	.last = n->last,
+      };
+
       b->cnt += cnt;
     }
     else if (b->pos == MAX_FEED_BLOCK)
@@ -4242,7 +4269,6 @@ rt_prepare_feed(struct rt_table_export_hook *c, net *n, rt_feed_block *b)
     }
   }
 
-  rpe_mark_seen_all(&c->h, n->first, NULL);
   return 1;
 }
 
@@ -4254,11 +4280,13 @@ rt_process_feed(struct rt_table_export_hook *c, rt_feed_block *b)
 
   if (c->h.req->export_bulk)
   {
-    b->start[b->pos] = b->cnt;
+    b->aux[b->pos].start =  b->cnt;
     for (uint p = 0; p < b->pos; p++)
     {
-      const rte **feed = &b->feed[b->start[p]];
-      c->h.req->export_bulk(c->h.req, feed[0]->net, NULL, feed, b->start[p+1] - b->start[p]);
+      struct rt_feed_block_aux *aux = &b->aux[p];
+      const rte **feed = &b->feed[aux->start];
+
+      c->h.req->export_bulk(c->h.req, feed[0]->net, aux->first, aux->last, feed, (aux+1)->start - aux->start);
     }
   }
   else
@@ -4403,7 +4431,9 @@ rt_feed_for(void *data)
  *	Import table
  */
 
-void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe UNUSED, const rte **feed, uint count)
+void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *net,
+    struct rt_pending_export *first, struct rt_pending_export *last,
+    const rte **feed, uint count)
 {
   struct channel *c = SKIP_BACK(struct channel, reload_req, req);
 
@@ -4420,6 +4450,8 @@ void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *n
       /* And reload the route */
       rte_update(c, net, &new, new.src);
     }
+
+  rpe_mark_seen_all(req->hook, first, last, NULL);
 }
 
 
@@ -4548,7 +4580,7 @@ hc_notify_export_one(struct rt_export_request *req, const net_addr *net, struct 
   RT_LOCKED((rtable *) hc->update.data, tab)
     if (ev_active(&hc->update) || !trie_match_net(hc->trie, net))
     {
-      rpe_mark_seen_all(req->hook, first, NULL);
+      rpe_mark_seen_all(req->hook, first, NULL, NULL);
       interested = 0;
     }
 
