@@ -973,7 +973,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
       conn->hold_time, conn->keepalive_time, p->remote_as, p->remote_id, conn->as4_session);
 
   bgp_schedule_packet(conn, NULL, PKT_KEEPALIVE);
-  bgp_start_timer(conn->hold_timer, conn->hold_time);
+  bgp_start_timer(p, conn->hold_timer, conn->hold_time);
   bgp_conn_enter_openconfirm_state(conn);
 }
 
@@ -2572,7 +2572,7 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
   if (conn->state != BS_ESTABLISHED)
   { bgp_error(conn, 5, fsm_err_subcode[conn->state], NULL, 0); return; }
 
-  bgp_start_timer(conn->hold_timer, conn->hold_time);
+  bgp_start_timer(p, conn->hold_timer, conn->hold_time);
 
   struct lp_state tmpp;
   lp_save(tmp_linpool, &tmpp);
@@ -2913,7 +2913,7 @@ bgp_fire_tx(struct bgp_conn *conn)
   {
     conn->packets_to_send &= ~(1 << PKT_KEEPALIVE);
     BGP_TRACE(D_PACKETS, "Sending KEEPALIVE");
-    bgp_start_timer(conn->keepalive_timer, conn->keepalive_time);
+    bgp_start_timer(p, conn->keepalive_timer, conn->keepalive_time);
     return bgp_send(conn, PKT_KEEPALIVE, BGP_HEADER_LENGTH);
   }
   else while (conn->channels_to_send)
@@ -3002,7 +3002,7 @@ bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type)
     conn->packets_to_send |= 1 << type;
 
   if ((conn->sk->tpos == conn->sk->tbuf) && !ev_active(conn->tx_ev))
-    ev_schedule(conn->tx_ev);
+    proto_send_event(&p->p, conn->tx_ev);
 }
 void
 bgp_kick_tx(void *vconn)
@@ -3219,7 +3219,7 @@ bgp_rx_keepalive(struct bgp_conn *conn)
   struct bgp_proto *p = conn->bgp;
 
   BGP_TRACE(D_PACKETS, "Got KEEPALIVE");
-  bgp_start_timer(conn->hold_timer, conn->hold_time);
+  bgp_start_timer(p, conn->hold_timer, conn->hold_time);
 
   if (conn->state == BS_OPENCONFIRM)
   { bgp_conn_enter_established_state(conn); return; }

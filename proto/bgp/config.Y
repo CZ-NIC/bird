@@ -52,6 +52,7 @@ proto: bgp_proto '}'  ;
 
 bgp_proto_start: proto_start BGP {
      this_proto = proto_config_new(&proto_bgp, $1);
+     this_proto->loop_order = DOMAIN_ORDER(proto);
      BGP_CFG->local_port = BGP_PORT;
      BGP_CFG->remote_port = BGP_PORT;
      BGP_CFG->multihop = -1;	/* undefined */
