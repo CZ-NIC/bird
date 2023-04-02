@@ -232,6 +232,15 @@ void channel_graceful_restart_unlock(struct channel *c);
 
 #define DEFAULT_GR_WAIT	240
 
+static inline event_list *proto_event_list(struct proto *p)
+{ return p->loop == &main_birdloop ? &global_event_list : birdloop_event_list(p->loop); }
+
+static inline event_list *proto_work_list(struct proto *p)
+{ return p->loop == &main_birdloop ? &global_work_list : birdloop_event_list(p->loop); }
+
+static inline void proto_send_event(struct proto *p, event *e)
+{ ev_send(proto_event_list(p), e); }
+
 void channel_show_limit(struct limit *l, const char *dsc, int active, int action);
 void channel_show_info(struct channel *c);
 void channel_cmd_debug(struct channel *c, uint mask);
@@ -249,6 +258,17 @@ struct proto *proto_get_named(struct symbol *, struct protocol *);
 struct proto *proto_iterate_named(struct symbol *sym, struct protocol *proto, struct proto *old);
 
 #define PROTO_WALK_CMD(sym,pr,p) for(struct proto *p = NULL; p = proto_iterate_named(sym, pr, p); )
+
+#define PROTO_ENTER_FROM_MAIN(p)    ({ \
+    ASSERT_DIE(birdloop_inside(&main_birdloop)); \
+    struct birdloop *_loop = (p)->loop; \
+    if (_loop != &main_birdloop) birdloop_enter(_loop); \
+    _loop; \
+    })
+
+#define PROTO_LEAVE_FROM_MAIN(loop) ({ if (loop != &main_birdloop) birdloop_leave(loop); })
+
+#define PROTO_LOCKED_FROM_MAIN(p)	for (struct birdloop *_proto_loop = PROTO_ENTER_FROM_MAIN(p); _proto_loop; PROTO_LEAVE_FROM_MAIN(_proto_loop), (_proto_loop = NULL))
 
 
 #define CMD_RELOAD	0

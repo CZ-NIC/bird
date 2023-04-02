@@ -58,27 +58,6 @@ static void channel_check_stopped(struct channel *c);
 static inline int proto_is_done(struct proto *p)
 { return (p->proto_state == PS_DOWN) && proto_is_inactive(p); }
 
-static inline event_list *proto_event_list(struct proto *p)
-{ return p->loop == &main_birdloop ? &global_event_list : birdloop_event_list(p->loop); }
-
-static inline event_list *proto_work_list(struct proto *p)
-{ return p->loop == &main_birdloop ? &global_work_list : birdloop_event_list(p->loop); }
-
-static inline void proto_send_event(struct proto *p)
-{ ev_send(proto_event_list(p), p->event); }
-
-#define PROTO_ENTER_FROM_MAIN(p)    ({ \
-    ASSERT_DIE(birdloop_inside(&main_birdloop)); \
-    struct birdloop *_loop = (p)->loop; \
-    if (_loop != &main_birdloop) birdloop_enter(_loop); \
-    _loop; \
-    })
-
-#define PROTO_LEAVE_FROM_MAIN(loop) ({ if (loop != &main_birdloop) birdloop_leave(loop); })
-
-#define PROTO_LOCKED_FROM_MAIN(p)	for (struct birdloop *_proto_loop = PROTO_ENTER_FROM_MAIN(p); _proto_loop; PROTO_LEAVE_FROM_MAIN(_proto_loop), (_proto_loop = NULL))
-
-
 static inline int channel_is_active(struct channel *c)
 { return (c->channel_state != CS_DOWN); }
 
@@ -576,7 +555,7 @@ channel_check_stopped(struct channel *c)
 	return;
 
       channel_set_state(c, CS_DOWN);
-      proto_send_event(c->proto);
+      proto_send_event(c->proto, c->proto->event);
 
       break;
     case CS_PAUSE:
@@ -794,7 +773,7 @@ channel_do_down(struct channel *c)
 
   /* Schedule protocol shutddown */
   if (proto_is_done(c->proto))
-    proto_send_event(c->proto);
+    proto_send_event(c->proto, c->proto->event);
 }
 
 void
@@ -2119,7 +2098,7 @@ proto_do_stop(struct proto *p)
   rt_destroy_sources(&p->sources, p->event);
 
   p->do_stop = 1;
-  proto_send_event(p);
+  proto_send_event(p, p->event);
 }
 
 static void
@@ -2129,7 +2108,7 @@ proto_do_down(struct proto *p)
 
   /* Shutdown is finished in the protocol event */
   if (proto_is_done(p))
-    proto_send_event(p);
+    proto_send_event(p, p->event);
 }
 
 
