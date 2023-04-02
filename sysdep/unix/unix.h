@@ -9,6 +9,9 @@
 #ifndef _BIRD_UNIX_H_
 #define _BIRD_UNIX_H_
 
+#include "nest/bird.h"
+#include "lib/io-loop.h"
+
 #include <sys/socket.h>
 #include <signal.h>
 
@@ -110,7 +113,7 @@ extern volatile sig_atomic_t async_shutdown_flag;
 void io_init(void);
 void io_loop(void);
 void io_log_dump(void);
-int sk_open_unix(struct birdsock *s, char *name);
+int sk_open_unix(struct birdsock *s, struct birdloop *, char *name);
 struct rfile *rf_open(struct pool *, const char *name, const char *mode);
 void *rf_file(struct rfile *f);
 int rf_fileno(struct rfile *f);

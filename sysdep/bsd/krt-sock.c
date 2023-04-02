@@ -1088,7 +1088,7 @@ krt_sock_open(pool *pool, void *data, int table_id UNUSED)
   sk->fd = fd;
   sk->data = data;
 
-  if (sk_open(sk) < 0)
+  if (sk_open(sk, &main_birdloop) < 0)
     bug("krt-sock: sk_open failed");
 
   return sk;

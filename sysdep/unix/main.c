@@ -542,7 +542,7 @@ cli_init_unix(uid_t use_uid, gid_t use_gid)
   /* Return value intentionally ignored */
   unlink(path_control_socket);
 
-  if (sk_open_unix(s, path_control_socket) < 0)
+  if (sk_open_unix(s, &main_birdloop, path_control_socket) < 0)
     die("Cannot create control socket %s: %m", path_control_socket);
 
   if (use_uid || use_gid)

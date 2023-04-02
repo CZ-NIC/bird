@@ -28,10 +28,8 @@ rpki_tr_tcp_open(struct rpki_tr_sock *tr)
 
   sk->type = SK_TCP_ACTIVE;
 
-  if (sk_open(sk) != 0)
+  if (sk_open(sk, tr->cache->p->p.loop) != 0)
     return RPKI_TR_ERROR;
-
-  sk_start(sk);
 
   return RPKI_TR_SUCCESS;
 }

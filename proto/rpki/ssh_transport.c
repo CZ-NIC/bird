@@ -35,10 +35,8 @@ rpki_tr_ssh_open(struct rpki_tr_sock *tr)
   sk->ssh->subsystem = "rpki-rtr";
   sk->ssh->state = SK_SSH_CONNECT;
 
-  if (sk_open(sk) != 0)
+  if (sk_open(sk, cache->p->p.loop) != 0)
     return RPKI_TR_ERROR;
-
-  sk_start(sk);
 
   return RPKI_TR_SUCCESS;
 }

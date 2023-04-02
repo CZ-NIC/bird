@@ -22,6 +22,7 @@ struct pfd {
 };
 
 void sockets_prepare(struct birdloop *, struct pfd *);
+void socket_changed(struct birdsock *);
 
 void pipe_new(struct pipe *);
 void pipe_pollin(struct pipe *, struct pfd *);
@@ -40,11 +41,11 @@ struct birdloop
   struct timeloop time;
   event_list event_list;
   list sock_list;
+  struct birdsock *sock_active;
   int sock_num;
+  uint sock_changed;
 
   uint ping_pending;
-
-  uint links;
 
   _Atomic u32 thread_transition;
 #define LTT_PING  1
@@ -66,8 +67,6 @@ struct bird_thread
 {
   node n;
 
-  _Atomic u32 poll_changed;
-
   struct pipe wakeup;
   event_list priority_events;
 
@@ -83,6 +82,8 @@ struct bird_thread
   struct pfd *pfd;
 
   event cleanup_event;
+
+  int sock_changed;
 };
 
 #endif

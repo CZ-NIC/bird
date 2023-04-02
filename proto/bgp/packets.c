@@ -3015,7 +3015,7 @@ bgp_kick_tx(void *vconn)
     ;
 
   if (!max && !ev_active(conn->tx_ev))
-    ev_schedule(conn->tx_ev);
+    proto_send_event(&conn->bgp->p, conn->tx_ev);
 }
 
 void
@@ -3023,13 +3023,14 @@ bgp_tx(sock *sk)
 {
   struct bgp_conn *conn = sk->data;
 
+  ASSERT_DIE(birdloop_inside(conn->bgp->p.loop));
   DBG("BGP: TX hook\n");
   uint max = 1024;
   while (--max && (bgp_fire_tx(conn) > 0))
     ;
 
   if (!max && !ev_active(conn->tx_ev))
-    ev_schedule(conn->tx_ev);
+    proto_send_event(&conn->bgp->p, conn->tx_ev);
 }
 
 

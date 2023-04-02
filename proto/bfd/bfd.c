@@ -603,16 +603,10 @@ bfd_free_iface(struct bfd_iface *ifa)
     return;
 
   if (ifa->sk)
-  {
-    sk_stop(ifa->sk);
     rfree(ifa->sk);
-  }
 
   if (ifa->rx)
-  {
-    sk_stop(ifa->rx);
     rfree(ifa->rx);
-  }
 
   rem_node(&ifa->n);
   mb_free(ifa);
@@ -1099,11 +1093,6 @@ bfd_shutdown(struct proto *P)
     bfd_stop_neighbor(p, bn);
 
   bfd_drop_requests(p);
-
-  if (p->rx4_1) sk_stop(p->rx4_1);
-  if (p->rx4_m) sk_stop(p->rx4_m);
-  if (p->rx6_1) sk_stop(p->rx6_1);
-  if (p->rx6_m) sk_stop(p->rx6_m);
 
   return PS_DOWN;
 }

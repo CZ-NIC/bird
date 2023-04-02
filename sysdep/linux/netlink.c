@@ -2043,7 +2043,7 @@ nl_open_async(void)
   sk->rx_hook = nl_async_hook;
   sk->err_hook = nl_async_err_hook;
   sk->fd = fd;
-  if (sk_open(sk) < 0)
+  if (sk_open(sk, &main_birdloop) < 0)
     bug("Netlink: sk_open failed");
 }
 

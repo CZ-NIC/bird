@@ -85,7 +85,6 @@ rpki_tr_open(struct rpki_tr_sock *tr)
   sk->rbsize = RPKI_RX_BUFFER_SIZE;
   sk->tbsize = RPKI_TX_BUFFER_SIZE;
   sk->tos = IP_PREC_INTERNET_CONTROL;
-  sk->flags |= SKF_THREAD;
   sk->vrf = cache->p->p.vrf;
 
   if (ipa_zero(sk->daddr) && sk->host)
@@ -121,7 +120,6 @@ rpki_tr_close(struct rpki_tr_sock *tr)
 
   if (tr->sk)
   {
-    sk_stop(tr->sk);
     rfree(tr->sk);
     tr->sk = NULL;
   }

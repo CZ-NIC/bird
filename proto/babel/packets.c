@@ -1617,7 +1617,7 @@ babel_open_socket(struct babel_iface *ifa)
   sk->ttl = 1;
   sk->flags = SKF_LADDR_RX;
 
-  if (sk_open(sk) < 0)
+  if (sk_open(sk, p->p.loop) < 0)
     goto err;
 
   if (sk_setup_multicast(sk) < 0)

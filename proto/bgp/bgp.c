@@ -263,7 +263,7 @@ bgp_listen_create(void *_ UNUSED)
       sk->rx_hook = bgp_incoming_connection;
       sk->err_hook = bgp_listen_sock_err;
 
-      if (sk_open(sk) < 0)
+      if (sk_open(sk, &main_birdloop) < 0)
       {
 	sk_log_error(sk, p->p.name);
 	log(L_ERR "%s: Cannot open listening socket", p->p.name);
@@ -1203,7 +1203,7 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   bgp_setup_sk(conn, s);
   bgp_conn_set_state(conn, BS_CONNECT);
 
-  if (sk_open(s) < 0)
+  if (sk_open(s, p->p.loop) < 0)
     goto err;
 
   /* Set minimal receive TTL if needed */

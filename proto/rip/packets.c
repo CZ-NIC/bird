@@ -1012,7 +1012,7 @@ rip_open_socket(struct rip_iface *ifa)
 
   /* sk->rbsize and sk->tbsize are handled in rip_iface_update_buffers() */
 
-  if (sk_open(sk) < 0)
+  if (sk_open(sk, p->p.loop) < 0)
     goto err;
 
   if (ifa->cf->mode == RIP_IM_MULTICAST)

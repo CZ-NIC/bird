@@ -136,7 +136,7 @@ ospf_sk_open(struct ospf_iface *ifa)
   sk->flags = SKF_LADDR_RX | (ifa->check_ttl ? SKF_TTL_RX : 0);
   sk->ttl = ifa->cf->ttl_security ? 255 : 1;
 
-  if (sk_open(sk) < 0)
+  if (sk_open(sk, p->p.loop) < 0)
     goto err;
 
   /* 12 is an offset of the checksum in an OSPFv3 packet */
@@ -220,7 +220,7 @@ ospf_open_vlink_sk(struct ospf_proto *p)
   sk->data = (void *) p;
   sk->flags = 0;
 
-  if (sk_open(sk) < 0)
+  if (sk_open(sk, p->p.loop) < 0)
     goto err;
 
   /* 12 is an offset of the checksum in an OSPFv3 packet */

@@ -80,17 +80,22 @@ typedef struct birdsock {
   const char *password;			/* Password for MD5 authentication */
   const char *err;			/* Error message */
   struct ssh_sock *ssh;			/* Used in SK_SSH */
-  struct event reloop;			/* Reloop event */
+  struct birdloop *loop;		/* BIRDLoop owning this socket */
 } sock;
 
 sock *sock_new(pool *);			/* Allocate new socket */
 #define sk_new(X) sock_new(X)		/* Wrapper to avoid name collision with OpenSSL */
 
-int sk_open(sock *);			/* Open socket */
+int sk_open(sock *, struct birdloop *);		/* Open socket */
+void sk_reloop(sock *, struct birdloop *);	/* Move socket to another loop. Both loops must be locked. */
+
 int sk_rx_ready(sock *s);
+_Bool sk_tx_pending(sock *s);
 int sk_send(sock *, uint len);		/* Send data, <0=err, >0=ok, 0=sleep */
 int sk_send_to(sock *, uint len, ip_addr to, uint port); /* sk_send to given destination */
 void sk_reallocate(sock *);		/* Free and allocate tbuf & rbuf */
+void sk_pause_rx(struct birdloop *loop, sock *s);
+void sk_resume_rx(struct birdloop *loop, sock *s, int (*hook)(sock *, uint));
 void sk_set_rbsize(sock *s, uint val);	/* Resize RX buffer */
 void sk_set_tbsize(sock *s, uint val);	/* Resize TX buffer, keeping content */
 void sk_set_tbuf(sock *s, void *tbuf);	/* Switch TX buffer, NULL-> return to internal */
@@ -114,6 +119,7 @@ int sk_set_icmp6_filter(sock *s, int p1, int p2);
 void sk_log_error(sock *s, const char *p);
 
 byte * sk_rx_buffer(sock *s, int *len);	/* Temporary */
+sock *sk_next(sock *s);
 
 extern int sk_priority_control;		/* Suggested priority for control traffic, should be sysdep define */
 
@@ -127,11 +133,9 @@ extern int sk_priority_control;		/* Suggested priority for control traffic, shou
 #define SKF_HIGH_PORT	0x20	/* Choose port from high range if possible */
 #define SKF_FREEBIND	0x40	/* Allow socket to bind to a nonlocal address */
 
-#define SKF_THREAD	0x100	/* Socked used in thread, Do not add to main loop */
 #define SKF_TRUNCATED	0x200	/* Received packet was truncated, set by IO layer */
 #define SKF_HDRINCL	0x400	/* Used internally */
 #define SKF_PKTINFO	0x800	/* Used internally */
-#define SKF_PASSIVE_THREAD  0x1000  /* Child sockets used in thread, do not add to main loop */
 
 /*
  *	Socket types		     SA SP DA DP IF  TTL SendTo	(?=may, -=must not, *=must)
