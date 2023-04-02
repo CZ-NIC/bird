@@ -3264,16 +3264,25 @@ bgp_rx_packet(struct bgp_conn *conn, byte *pkt, uint len)
 void
 bgp_uncork(void *vp)
 {
+  /* The uncork event is run from &main_birdloop and there is no useful way how
+   * to assign the target loop to it, thus we have to lock it ourselves. */
+
   struct bgp_proto *p = vp;
+  if (!p)
+    return;
+
+  birdloop_enter(p->p.loop);
 
   if (p && p->conn && (p->conn->state == BS_ESTABLISHED) && !p->conn->sk->rx_hook)
   {
     struct birdsock *sk = p->conn->sk;
     ASSERT_DIE(sk->rpos > sk->rbuf);
-    sk->rx_hook = bgp_rx;
+    sk_resume_rx(p->p.loop, sk, bgp_rx);
     bgp_rx(sk, sk->rpos - sk->rbuf);
     BGP_TRACE(D_PACKETS, "Uncorked");
   }
+
+  birdloop_leave(p->p.loop);
 }
 
 /**
@@ -3302,7 +3311,7 @@ bgp_rx(sock *sk, uint size)
 	return 0;
       if ((conn->state == BS_ESTABLISHED) && rt_cork_check(conn->bgp->uncork_ev))
       {
-	sk->rx_hook = NULL;
+	sk_pause_rx(p->p.loop, sk);
 	BGP_TRACE(D_PACKETS, "Corked");
 	return 0;
       }
