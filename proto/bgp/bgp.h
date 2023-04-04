@@ -587,7 +587,9 @@ bgp_set_attr_data(ea_list **to, struct linpool *pool, uint code, uint flags, voi
   bgp_set_attr(to, pool, code, flags, (uintptr_t) a);
 }
 
-#define bgp_unset_attr(to, pool, code) ea_unset_attr(to, pool, 0, code)
+static inline void
+bgp_unset_attr(ea_list **to, struct linpool *pool, uint code)
+{ ea_unset_attr(to, pool, 0, EA_CODE(PROTOCOL_BGP, code)); }
 
 int bgp_encode_mp_reach_mrt(struct bgp_write_state *s, eattr *a, byte *buf, uint size);
 
