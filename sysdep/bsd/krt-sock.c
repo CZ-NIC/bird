@@ -277,14 +277,17 @@ krt_send_route(struct krt_proto *p, int cmd, const rte *e)
    */
   if (!i)
   {
-    WALK_LIST(j, iface_list)
+    j = if_walk_first();
+    while (j)
     {
       if (j->flags & IF_LOOPBACK)
       {
         i = j;
         break;
       }
+      j = if_walk_next(j);
     }
+    if_walk_done();
 
     if (!i)
     {

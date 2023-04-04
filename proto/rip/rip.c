@@ -807,9 +807,7 @@ rip_reconfigure_iface(struct rip_proto *p, struct rip_iface *ifa, struct rip_ifa
 static void
 rip_reconfigure_ifaces(struct rip_proto *p, struct rip_config *cf)
 {
-  struct iface *iface;
-
-  WALK_LIST(iface, iface_list)
+  IFACE_WALK(iface)
   {
     if (p->p.vrf && p->p.vrf != iface->master)
       continue;

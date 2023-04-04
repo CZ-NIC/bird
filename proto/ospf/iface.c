@@ -1225,10 +1225,9 @@ ospf_ifa_notify3(struct proto *P, uint flags, struct ifa *a)
 static void
 ospf_reconfigure_ifaces2(struct ospf_proto *p)
 {
-  struct iface *iface;
   struct ifa *a;
 
-  WALK_LIST(iface, iface_list)
+  IFACE_WALK(iface)
   {
     if (p->p.vrf && p->p.vrf != iface->master)
       continue;
@@ -1274,10 +1273,9 @@ ospf_reconfigure_ifaces2(struct ospf_proto *p)
 static void
 ospf_reconfigure_ifaces3(struct ospf_proto *p)
 {
-  struct iface *iface;
   struct ifa *a;
 
-  WALK_LIST(iface, iface_list)
+  IFACE_WALK(iface)
   {
     if (p->p.vrf && p->p.vrf != iface->master)
       continue;

@@ -1944,9 +1944,7 @@ babel_reconfigure_iface(struct babel_proto *p, struct babel_iface *ifa, struct b
 static void
 babel_reconfigure_ifaces(struct babel_proto *p, struct babel_config *cf)
 {
-  struct iface *iface;
-
-  WALK_LIST(iface, iface_list)
+  IFACE_WALK(iface)
   {
     if (p->p.vrf && p->p.vrf != iface->master)
       continue;

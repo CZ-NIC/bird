@@ -9,12 +9,11 @@
 #ifndef _BIRD_IFACE_H_
 #define _BIRD_IFACE_H_
 
+#include "lib/locking.h"
 #include "lib/event.h"
 #include "lib/lists.h"
 #include "lib/tlists.h"
 #include "lib/ip.h"
-
-extern list iface_list;
 
 struct proto;
 struct pool;
@@ -112,6 +111,7 @@ void ifa_dump(struct ifa *);
 void if_show(void);
 void if_show_summary(void);
 struct iface *if_update(struct iface *);
+struct iface *if_update_locked(struct iface *);
 void if_delete(struct iface *old);
 struct ifa *ifa_update(struct ifa *);
 void ifa_delete(struct ifa *);
@@ -119,14 +119,16 @@ void if_start_update(void);
 void if_end_partial_update(struct iface *);
 void if_end_update(void);
 struct iface *if_find_by_index(unsigned);
+struct iface *if_find_by_index_locked(unsigned);
 struct iface *if_find_by_name(const char *);
 struct iface *if_get_by_name(const char *);
 void if_recalc_all_preferred_addresses(void);
 
-void if_link(struct iface *);
-void if_unlink(struct iface *);
-void ifa_link(struct ifa *);
-void ifa_unlink(struct ifa *);
+struct iface *if_walk_first(void);
+struct iface *if_walk_next(struct iface *);
+void if_walk_done(void);
+
+#define IFACE_WALK(_i)	for (struct iface *_i = if_walk_first(); _i || (if_walk_done(), 0); _i = if_walk_next(_i))
 
 /* The Neighbor Cache */
 
@@ -161,9 +163,7 @@ typedef struct neighbor {
 
 neighbor *neigh_find(struct proto *p, ip_addr a, struct iface *ifa, uint flags);
 
-void neigh_dump(neighbor *);
 void neigh_dump_all(void);
-void neigh_prune(struct proto *);
 void neigh_if_up(struct iface *);
 void neigh_if_down(struct iface *);
 void neigh_if_link(struct iface *);
@@ -212,6 +212,7 @@ struct iface_subscription {
   TLIST_DEFAULT_NODE;
 
   event event;
+  event_list *target;
   TLIST_LIST(ifnot) queue;
 
   void (*if_notify)(struct proto *, unsigned flags, struct iface *i);

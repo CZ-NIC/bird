@@ -1142,7 +1142,6 @@ proto_event(void *ptr)
   if (p->do_stop)
   {
     iface_unsubscribe(&p->iface_sub);
-    neigh_prune(p);
 
     p->do_stop = 0;
   }
@@ -1218,6 +1217,8 @@ proto_start(struct proto *p)
 
   if (p->cf->loop_order != DOMAIN_ORDER(the_bird))
     p->loop = birdloop_new(p->pool, p->cf->loop_order, p->pool->name);
+
+  p->iface_sub.target = proto_event_list(p);
 
   PROTO_LOCKED_FROM_MAIN(p)
     proto_notify_state(p, (p->proto->start ? p->proto->start(p) : PS_UP));
