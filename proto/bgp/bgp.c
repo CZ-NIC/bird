@@ -1524,15 +1524,22 @@ static void
 bgp_update_bfd(struct bgp_proto *p, const struct bfd_options *bfd)
 {
   if (bfd && p->bfd_req)
+  {
+    BGP_TRACE(D_EVENTS, "Updating existing BFD request");
     bfd_update_request(p->bfd_req, bfd);
+  }
 
   if (bfd && !p->bfd_req && !bgp_is_dynamic(p))
+  {
     p->bfd_req = bfd_request_session(p->p.pool, p->remote_ip, p->local_ip,
 				     p->cf->multihop ? NULL : p->neigh->iface,
 				     p->p.vrf, bgp_bfd_notify, p, p->p.loop, bfd);
+    BGP_TRACE(D_EVENTS, "Requesting a new BFD session");
+  }
 
   if (!bfd && p->bfd_req)
   {
+    BGP_TRACE(D_EVENTS, "Retracting the BFD request");
     rfree(p->bfd_req);
     p->bfd_req = NULL;
   }

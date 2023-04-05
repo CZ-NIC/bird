@@ -121,6 +121,7 @@ static struct {
   list wait_list;
   list pickup_list;
   list proto_list;
+  uint pickup_reload;
 } bfd_global;
 
 const char *bfd_state_names[] = { "AdminDown", "Down", "Init", "Up" };
@@ -670,18 +671,29 @@ bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
   struct bfd_config *cf = (struct bfd_config *) (p->p.cf);
 
   if (p->p.vrf && (p->p.vrf != req->vrf))
+  {
+    TRACE(D_EVENTS, "Not accepting request to %I with different VRF", req->addr);
     return 0;
+  }
 
   if (ipa_is_ip4(req->addr) ? !cf->accept_ipv4 : !cf->accept_ipv6)
+  {
+    TRACE(D_EVENTS, "Not accepting request to %I (AF limit)", req->addr);
     return 0;
+  }
 
   if (req->iface ? !cf->accept_direct : !cf->accept_multihop)
+  {
+    TRACE(D_EVENTS, "Not accepting %s request to %I", req->iface ? "direct" : "multihop", req->addr);
     return 0;
+  }
 
   uint ifindex = req->iface ? req->iface->index : 0;
   struct bfd_session *s = bfd_find_session_by_addr(p, req->addr, ifindex);
 
-  if (!s)
+  if (s)
+    TRACE(D_EVENTS, "Session to %I reused", s->addr);
+  else
     s = bfd_add_session(p, req->addr, req->local, req->iface, &req->opts);
 
   rem_node(&req->n);
@@ -725,33 +737,57 @@ bfd_pickup_requests(void *_data UNUSED)
    * Thank you, my future self, for understanding. Have a nice day!
    */
 
-  node *n;
-  WALK_LIST(n, bfd_global.proto_list)
-  {
-    struct bfd_proto *p = SKIP_BACK(struct bfd_proto, bfd_node, n);
-    birdloop_enter(p->p.loop);
-    BFD_LOCK;
-
-    node *rn, *rnxt;
-    WALK_LIST_DELSAFE(rn, rnxt, bfd_global.pickup_list)
-      bfd_add_request(p, SKIP_BACK(struct bfd_request, n, rn));
-
-    BFD_UNLOCK;
-    birdloop_leave(p->p.loop);
-  }
+  DBG("BFD pickup loop starting");
 
   BFD_LOCK;
-  while (!EMPTY_LIST(bfd_global.pickup_list))
-  {
-    struct bfd_request *req = SKIP_BACK(struct bfd_request, n, HEAD(bfd_global.pickup_list));
-    rem_node(&req->n);
+  do {
+    bfd_global.pickup_reload = 0;
     BFD_UNLOCK;
 
-    bfd_request_notify(req, BFD_STATE_ADMIN_DOWN, 0);
+    node *n;
+    WALK_LIST(n, bfd_global.proto_list)
+    {
+      struct bfd_proto *p = SKIP_BACK(struct bfd_proto, bfd_node, n);
+      birdloop_enter(p->p.loop);
+      BFD_LOCK;
+
+      TRACE(D_EVENTS, "Picking up new requests (%d available)", list_length(&bfd_global.pickup_list));
+
+      node *rn, *rnxt;
+      WALK_LIST_DELSAFE(rn, rnxt, bfd_global.pickup_list)
+	bfd_add_request(p, SKIP_BACK(struct bfd_request, n, rn));
+
+      BFD_UNLOCK;
+
+      /* Remove sessions with no requests */
+      HASH_WALK_DELSAFE(p->session_hash_id, next_id, s)
+      {
+	if (EMPTY_LIST(s->request_list))
+	  bfd_remove_session_locked(p, s);
+      }
+      HASH_WALK_END;
+
+      birdloop_leave(p->p.loop);
+    }
 
     BFD_LOCK;
-    add_tail(&bfd_global.wait_list, &req->n);
-  }
+  } while (bfd_global.pickup_reload);
+
+  list tmp_list;
+  init_list(&tmp_list);
+  add_tail_list(&tmp_list, &bfd_global.pickup_list);
+
+  init_list(&bfd_global.pickup_list);
+  BFD_UNLOCK;
+
+  log(L_TRACE "No protocol for %d BFD requests", list_length(&tmp_list));
+
+  node *n;
+  WALK_LIST(n, tmp_list)
+    bfd_request_notify(SKIP_BACK(struct bfd_request, n, n), BFD_STATE_ADMIN_DOWN, 0);
+
+  BFD_LOCK;
+  add_tail_list(&bfd_global.wait_list, &tmp_list);
   BFD_UNLOCK;
 }
 
@@ -817,8 +853,10 @@ bfd_request_session(pool *p, ip_addr addr, ip_addr local,
   req->session = NULL;
 
   BFD_LOCK;
+  bfd_global.pickup_reload++;
   add_tail(&bfd_global.pickup_list, &req->n);
   ev_send(&global_event_list, &bfd_pickup_event);
+  DBG("New BFD request enlisted.\n");
   BFD_UNLOCK;
 
   return req;
@@ -842,15 +880,12 @@ static void
 bfd_request_free(resource *r)
 {
   struct bfd_request *req = (struct bfd_request *) r;
-  struct bfd_session *s = req->session;
 
+  BFD_LOCK;
   rem_node(&req->n);
+  BFD_UNLOCK;
 
-  /* Remove the session if there is no request for it. Skip that if
-     inside notify hooks, will be handled by bfd_notify_hook() itself */
-
-  if (s && EMPTY_LIST(s->request_list) && !s->notify_running)
-    bfd_remove_session(s->ifa->bfd, s);
+  ev_send(&global_event_list, &bfd_pickup_event);
 }
 
 static void
@@ -1007,10 +1042,8 @@ bfd_notify_hook(void *data)
     diag = s->loc_diag;
     bfd_unlock_sessions(p);
 
-    s->notify_running = 1;
     WALK_LIST_DELSAFE(n, nn, s->request_list)
       bfd_request_notify(SKIP_BACK(struct bfd_request, n, n), state, diag);
-    s->notify_running = 0;
 
     /* Remove the session if all requests were removed in notify hooks */
     if (EMPTY_LIST(s->request_list))

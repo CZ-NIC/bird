@@ -165,7 +165,6 @@ struct bfd_session
 
   list request_list;			/* List of client requests (struct bfd_request) */
   btime last_state_change;		/* Time of last state change */
-  u8 notify_running;			/* 1 if notify hooks are running */
 
   u8 rx_csn_known;			/* Received crypto sequence number is known */
   u32 rx_csn;				/* Last received crypto sequence number */
