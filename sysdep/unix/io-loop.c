@@ -67,8 +67,13 @@ _Thread_local struct birdloop *birdloop_current;
 static _Thread_local struct birdloop *birdloop_wakeup_masked;
 static _Thread_local uint birdloop_wakeup_masked_count;
 
-#define LOOP_TRACE(loop, fmt, args...)	do { if (config && config->latency_debug) log(L_TRACE "%s (%p): " fmt, domain_name((loop)->time.domain), (loop), ##args); } while (0)
+#define LOOP_NAME(loop)			domain_name((loop)->time.domain)
+
+#define LOOP_TRACE(loop, fmt, args...)	do { if (config && config->latency_debug) log(L_TRACE "%s (%p): " fmt, LOOP_NAME(loop), (loop), ##args); } while (0)
 #define THREAD_TRACE(...)		do { if (config && config->latency_debug) log(L_TRACE "Thread: " __VA_ARGS__); } while (0)
+
+#define LOOP_WARN(loop, fmt, args...)	log(L_TRACE "%s (%p): " fmt, LOOP_NAME(loop), (loop), ##args)
+
 
 event_list *
 birdloop_event_list(struct birdloop *loop)
@@ -436,7 +441,7 @@ sockets_fire(struct birdloop *loop)
   if (EMPTY_LIST(loop->sock_list))
     return 0;
 
-  int sch = 0;
+  int repeat = 0;
 
   times_update();
 
@@ -454,6 +459,7 @@ sockets_fire(struct birdloop *loop)
 
       if (rev & POLLOUT)
       {
+	/* Write everything. */
 	while ((s == loop->sock_active) && (e = sk_write(s)))
 	  ;
 
@@ -461,12 +467,14 @@ sockets_fire(struct birdloop *loop)
 	  continue;
 
 	if (!sk_tx_pending(s))
-	  sch++;
+	  loop->thread->sock_changed++;
       }
 
       if (rev & POLLIN)
-	while (e && (s == loop->sock_active) && s->rx_hook)
-	  e = sk_read(s, rev);
+	/* Read just one packet and request repeat. */
+	if ((s == loop->sock_active) && s->rx_hook)
+	  if (sk_read(s, rev))
+	    repeat++;
 
       if (s != loop->sock_active)
 	continue;
@@ -481,7 +489,7 @@ sockets_fire(struct birdloop *loop)
     loop->sock_active = sk_next(s);
   }
 
-  return sch;
+  return repeat;
 }
 
 /*
@@ -498,6 +506,9 @@ static _Thread_local struct bird_thread *this_thread;
 static void
 birdloop_set_thread(struct birdloop *loop, struct bird_thread *thr)
 {
+  struct bird_thread *old = loop->thread;
+  ASSERT_DIE(!thr != !old);
+
   /* Signal our moving effort */
   u32 ltt = atomic_fetch_or_explicit(&loop->thread_transition, LTT_MOVE, memory_order_acq_rel);
   ASSERT_DIE((ltt & LTT_MOVE) == 0);
@@ -511,9 +522,14 @@ birdloop_set_thread(struct birdloop *loop, struct bird_thread *thr)
   /* Now we are free of running pings */
 
   if (loop->thread = thr)
+  {
     add_tail(&thr->loops, &loop->n);
+    thr->loop_count++;
+  }
   else
   {
+    old->loop_count--;
+
     LOCK_DOMAIN(resource, birdloop_domain);
     add_tail(&birdloop_pickup, &loop->n);
     UNLOCK_DOMAIN(resource, birdloop_domain);
@@ -612,6 +628,7 @@ bird_thread_main(void *arg)
 
   while (1)
   {
+    u64 thr_loop_start = ns_now();
     int timeout;
 
     /* Pickup new loops */
@@ -626,6 +643,11 @@ bird_thread_main(void *arg)
 
     /* Schedule all loops with timed out timers */
     timers_fire(&thr->meta->time, 0);
+
+    /* Compute maximal time per loop */
+    u64 thr_before_run = ns_now();
+    if (thr->loop_count > 0)
+      thr->max_loop_time_ns = (thr->max_latency_ns / 2 - (thr_before_run - thr_loop_start)) / (u64) thr->loop_count;
 
     /* Run all scheduled loops */
     int more_events = ev_run_list(&thr->meta->event_list);
@@ -716,7 +738,7 @@ bird_thread_cleanup(void *_thr)
 }
 
 static struct bird_thread *
-bird_thread_start(void)
+bird_thread_start(btime max_latency)
 {
   ASSERT_DIE(birdloop_inside(&main_birdloop));
 
@@ -725,6 +747,7 @@ bird_thread_start(void)
   struct bird_thread *thr = mb_allocz(p, sizeof(*thr));
   thr->pool = p;
   thr->cleanup_event = (event) { .hook = bird_thread_cleanup, .data = thr, };
+  thr->max_latency_ns = max_latency TO_NS;
 
   wakeup_init(thr);
   ev_init_list(&thr->priority_events, NULL, "Thread direct event list");
@@ -839,7 +862,7 @@ bird_thread_commit(struct config *new, struct config *old UNUSED)
 
     if (dif < 0)
     {
-      bird_thread_start();
+      bird_thread_start(5 S);
       continue;
     }
 
@@ -1061,30 +1084,40 @@ birdloop_run(void *_loop)
   /* Run priority events before the loop is executed */
   ev_run_list(&this_thread->priority_events);
 
+  u64 start_time = ns_now();
+  u64 end_time = start_time + this_thread->max_loop_time_ns;
+
   struct birdloop *loop = _loop;
   birdloop_enter(loop);
 
-  LOOP_TRACE(loop, "Regular run");
+  u64 locked_time = ns_now(), task_done_time;
+  if (locked_time > end_time)
+    LOOP_WARN(loop, "locked %luns after its scheduled end time", locked_time - end_time);
 
-  if (loop->stopped)
-    /* Birdloop left inside the helper function */
-    return birdloop_stop_internal(loop);
+  uint repeat, loop_runs = 0;
+  do {
+    repeat = 0;
+    LOOP_TRACE(loop, "Regular run");
+    loop_runs++;
 
-  /* Process sockets */
-  this_thread->sock_changed += sockets_fire(loop);
+    if (loop->stopped)
+      /* Birdloop left inside the helper function */
+      return birdloop_stop_internal(loop);
 
-  /* Run timers */
-  timers_fire(&loop->time, 0);
+    /* Process sockets */
+    repeat += sockets_fire(loop);
 
-  /* Run flag handlers */
-  if (birdloop_process_flags(loop))
-  {
-    LOOP_TRACE(loop, "Flag processing needs another run");
-    ev_send_loop(this_thread->meta, &loop->event);
-  }
+    /* Run timers */
+    timers_fire(&loop->time, 0);
 
-  /* Run events */
-  ev_run_list(&loop->event_list);
+    /* Run flag handlers */
+    repeat += birdloop_process_flags(loop);
+
+    /* Run events */
+    repeat += ev_run_list(&loop->event_list);
+
+    /* Check end time */
+  } while (((task_done_time = ns_now()) < end_time) && repeat);
 
   /* Request meta timer */
   timer *t = timers_first(&loop->time);
@@ -1092,6 +1125,10 @@ birdloop_run(void *_loop)
     tm_start_in(&loop->timer, tm_remains(t), this_thread->meta);
   else
     tm_stop(&loop->timer);
+
+  /* Request re-run if needed */
+  if (repeat)
+    ev_send_loop(this_thread->meta, &loop->event);
 
   /* Collect socket change requests */
   this_thread->sock_changed += loop->sock_changed;

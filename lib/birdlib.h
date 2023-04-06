@@ -115,6 +115,7 @@ typedef s64 btime;
 #define TO_S	/1000000
 #define TO_MS	/1000
 #define TO_US	/1
+#define TO_NS	* (btime) 1000
 
 #ifndef PARSER
 #define S	S_

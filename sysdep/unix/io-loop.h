@@ -84,6 +84,10 @@ struct bird_thread
   event cleanup_event;
 
   int sock_changed;
+  uint loop_count;
+
+  u64 max_latency_ns;
+  u64 max_loop_time_ns;
 };
 
 #endif
