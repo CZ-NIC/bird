@@ -790,14 +790,22 @@ done:
  * @s: walk state
  * @t: trie
  * @net: optional subnet for walk
+ * @include_successors: optional flag for continue walking beyond subnet @net
  *
  * Initialize walk state for subsequent walk through nodes of the trie @t by
  * trie_walk_next(). The argument @net allows to restrict walk to given subnet,
  * otherwise full walk over all nodes is used. This is done by finding node at
- * or below @net and starting position in it.
+ * or below @net and starting position in it. The argument @include_successors
+ * removes the restriction for all subnets lexicographically succeeding the
+ * @net. In case of @net search fail the walk state starting position points to
+ * the nearest parent node availible. If you use @net and @include_successors,
+ * beware that the trie_walk_next() could return a net preceding the one
+ * specified in @net.
+ *
+ * If desired start position node was found in trie, 1 is returned, 0 otherwise.
  */
-void
-trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_addr *net)
+int
+trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_addr *net, u8 include_successors)
 {
   *s = (struct f_trie_walk_state) {
     .ipv4 = t->ipv4,
@@ -809,7 +817,7 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
   };
 
   if (!net)
-    return;
+    return 1;
 
   /* We want to find node of level at least plen */
   int plen = ROUND_DOWN_POW2(net->pxlen, TRIE_STEP);
@@ -840,16 +848,42 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
 	s->accept_length = net->pxlen;
       }
 
-      s->stack[0] = n;
-      return;
+      /* Set as root node the only searched subnet */
+      if (!include_successors)
+	s->stack[0] = n;
+      /* Save the last node on the stack otherwise */
+      else
+      {
+	/* Found prefect match, no advancing */
+	s->stack[s->stack_pos] = n;
+	/* Search whole trie except skipped parts */
+	s->start_pos = 1;
+      }
+
+      return 1;
     }
+
+    /* We store node in stack before moving on */
+    if (include_successors)
+      s->stack[s->stack_pos++] = n;
 
     /* Choose child */
     n = GET_CHILD(n, v4, GET_NET_BITS(net, v4, nlen, TRIE_STEP));
   }
 
-  s->stack[0] = NULL;
-  return;
+  /* We do not override the trie root in case of inclusive search */
+  if (!include_successors)
+    s->stack[0] = NULL;
+
+  /* Be careful about underflow */
+  else if (s->stack_pos > 0)
+    s->stack_pos--;
+
+  /* Search whole trie except skipped parts */
+  if (include_successors)
+    s->start_pos = 1;
+
+  return 0;
 }
 
 #define GET_ACCEPT_BIT(N,X,B) ((X) ? ip4_getbit((N)->v4.accept, (B)) : ip6_getbit((N)->v6.accept, (B)))

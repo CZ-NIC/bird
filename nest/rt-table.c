@@ -2057,7 +2057,7 @@ rt_table_export_start(struct rt_exporter *re, struct rt_export_request *req)
       {
 	hook->walk_state = mb_allocz(p, sizeof (struct f_trie_walk_state));
 	hook->walk_lock = rt_lock_trie(tab);
-	trie_walk_init(hook->walk_state, tab->trie, req->addr);
+	trie_walk_init(hook->walk_state, tab->trie, req->addr, 0);
 	hook->event = ev_new_init(p, rt_feed_by_trie, hook);
 	break;
       }

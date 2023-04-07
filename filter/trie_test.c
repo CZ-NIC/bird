@@ -880,6 +880,137 @@ t_trie_walk_to_root(void)
   return 1;
 }
 
+static int
+t_trie_walk_inclusive(void)
+{
+  bt_bird_init();
+  bt_config_parse(BT_CONFIG_SIMPLE);
+
+  for (int round = 0; round < TESTS_NUM*8; round++)
+  {
+    int level = round / TESTS_NUM;
+    int v6 = level % 2;
+    int num = PREFIXES_NUM * (int[]){1, 10, 100, 1000}[level / 2];
+    int pos = 0, end = 0;
+    list *prefixes = make_random_prefix_list(num, v6, 1);
+    struct f_trie *trie = make_trie_from_prefix_list(prefixes);
+    struct f_prefix *pxset = malloc((num + 1) * sizeof(struct f_prefix));
+
+    struct f_prefix_node *n;
+    WALK_LIST(n, *prefixes)
+      pxset[pos++] = n->prefix;
+    memset(&pxset[pos], 0, sizeof (struct f_prefix));
+
+    qsort(pxset, num, sizeof(struct f_prefix), compare_prefixes);
+
+    /* // print sorted prefixes
+    bt_debug("sorted prefixes\n");
+    for (struct f_prefix *px = pxset; px < pxset + num; px++)
+    {
+      char buf[64];
+      bt_format_net(buf, 64, &px->net);
+      bt_debug("%s{%d,%d}\n", buf, px->lo, px->hi);
+    }
+    */
+ 
+    /* Full walk */
+    bt_debug("Full walk inclusive (round %d, %d nets)\n", round, num);
+
+    pos = 0;
+    uint pxc = 0;
+    TRIE_WALK2(trie, net, NULL, 1)
+    {
+      log_networks(&net, &pxset[pos].net);
+      bt_assert(net_equal(&net, &pxset[pos].net));
+
+      /* Skip possible duplicates */
+      while (net_equal(&pxset[pos].net, &pxset[pos + 1].net))
+	pos++;
+
+      pos++;
+      pxc++;
+    }
+    TRIE_WALK2_END;
+
+    bt_assert(pos == num);
+    bt_assert(pxc == trie->prefix_count);
+    bt_debug("Full walk inclusive done\n");
+
+
+    /* Prepare net for subnet walk - start with random prefix */
+    pos = bt_random() % num;
+    end = pos + (int[]){2, 2, 3, 4}[level / 2];
+    end = MIN(end, num);
+
+    struct f_prefix from = pxset[pos];
+
+    /* Find a common superprefix to several subsequent prefixes */
+    for (; pos < end; pos++)
+    {
+      if (net_equal(&from.net, &pxset[pos].net))
+	continue;
+
+      int common = !v6 ?
+	ip4_pxlen(net4_prefix(&from.net), net4_prefix(&pxset[pos].net)) :
+	ip6_pxlen(net6_prefix(&from.net), net6_prefix(&pxset[pos].net));
+      from.net.pxlen = MIN(from.net.pxlen, common);
+
+      if (!v6)
+	((net_addr_ip4 *) &from.net)->prefix =
+	  ip4_and(net4_prefix(&from.net), net4_prefix(&pxset[pos].net));
+      else
+	((net_addr_ip6 *) &from.net)->prefix =
+	  ip6_and(net6_prefix(&from.net), net6_prefix(&pxset[pos].net));
+    }
+
+    /* Fix irrelevant bits */
+    if (!v6)
+      ((net_addr_ip4 *) &from.net)->prefix =
+	ip4_and(net4_prefix(&from.net), ip4_mkmask(net4_pxlen(&from.net)));
+    else
+      ((net_addr_ip6 *) &from.net)->prefix =
+	ip6_and(net6_prefix(&from.net), ip6_mkmask(net6_pxlen(&from.net)));
+
+
+    /* Find initial position for final prefix */
+    for (pos = 0; pos < num; pos++)
+      if (compare_prefixes(&pxset[pos], &from) >= 0)
+	break;
+
+      /* Account for subnets before searched net from */
+    for (; pos < num; pos++)
+      if (net_compare(&pxset[pos].net, &from.net) >= 0)
+	 break;
+
+    int p0 = pos;
+    char buf0[64];
+    bt_format_net(buf0, 64, &from.net);
+    bt_debug("Subnet walk inclusive for %s (round %d, %d nets)\n", buf0, round, num);
+
+    /* Subnet walk */
+    TRIE_WALK2(trie, net, &from.net, 1)
+    {
+      log_networks(&net, &pxset[pos].net);
+      bt_assert(net_compare(&net, &pxset[pos].net) >= 0);
+
+      /* Skip possible duplicates */
+      while (net_equal(&pxset[pos].net, &pxset[pos + 1].net))
+	pos++;
+
+      pos++;
+    }
+    TRIE_WALK2_END;
+
+    bt_assert(pos == num);
+    bt_debug("Subnet walk done inclusive for %s (found %d nets)\n", buf0, pos - p0);
+
+    tmp_flush();
+  }
+
+  bt_bird_cleanup();
+  return 1;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -891,6 +1022,7 @@ main(int argc, char *argv[])
   bt_test_suite(t_trie_same, "A trie filled forward should be same with a trie filled backward.");
   bt_test_suite(t_trie_walk, "Testing TRIE_WALK() on random tries");
   bt_test_suite(t_trie_walk_to_root, "Testing TRIE_WALK_TO_ROOT() on random tries");
+  bt_test_suite(t_trie_walk_inclusive, "Testing TRIE_WALK2() on random tries");
 
   // bt_test_suite(t_bench_trie_datasets_subset, "Benchmark tries from datasets by random subset of nets");
   // bt_test_suite(t_bench_trie_datasets_random, "Benchmark tries from datasets by generated addresses");
