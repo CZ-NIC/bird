@@ -306,7 +306,8 @@ if test "$enable_mpls_kernel" != no ; then
   fi
 fi
 
-all_protocols="bfd babel bgp mrt ospf perf pipe radv rip rpki static"
+# temporarily removed "mrt" from all_protocols to speed up 3.0-alpha1 release
+all_protocols="bfd babel bgp ospf perf pipe radv rip rpki static"
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
 
 if test "$with_protocols" = all ; then
