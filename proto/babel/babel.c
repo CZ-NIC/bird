@@ -50,6 +50,10 @@
 static inline int ge_mod64k(uint a, uint b)
 { return (u16)(a - b) < 0x8000; }
 
+/* Strict inequality version of the above */
+static inline int gt_mod64k(uint a, uint b)
+{ return ge_mod64k(a, b) && a != b; }
+
 static void babel_expire_requests(struct babel_proto *p, struct babel_entry *e);
 static void babel_select_route(struct babel_proto *p, struct babel_entry *e, struct babel_route *mod);
 static inline void babel_announce_retraction(struct babel_proto *p, struct babel_entry *e);
@@ -104,7 +108,8 @@ babel_find_source(struct babel_entry *e, u64 router_id)
 }
 
 static struct babel_source *
-babel_get_source(struct babel_proto *p, struct babel_entry *e, u64 router_id)
+babel_get_source(struct babel_proto *p, struct babel_entry *e, u64 router_id,
+                 u16 initial_seqno)
 {
   struct babel_source *s = babel_find_source(e, router_id);
 
@@ -114,7 +119,7 @@ babel_get_source(struct babel_proto *p, struct babel_entry *e, u64 router_id)
   s = sl_allocz(p->source_slab);
   s->router_id = router_id;
   s->expires = current_time() + BABEL_GARBAGE_INTERVAL;
-  s->seqno = 0;
+  s->seqno = initial_seqno;
   s->metric = BABEL_INFINITY;
   add_tail(&e->sources, NODE s);
 
@@ -562,7 +567,7 @@ babel_is_feasible(struct babel_source *s, u16 seqno, u16 metric)
 {
   return !s ||
     (metric == BABEL_INFINITY) ||
-    (seqno > s->seqno) ||
+    gt_mod64k(seqno, s->seqno) ||
     ((seqno == s->seqno) && (metric < s->metric));
 }
 
@@ -1006,13 +1011,13 @@ babel_send_update_(struct babel_iface *ifa, btime changed, struct fib *rtable)
 
     babel_enqueue(&msg, ifa);
 
-    /* Update feasibility distance for redistributed routes */
+    /* RFC 6126 3.7.3 - update feasibility distance for redistributed routes */
     if (e->router_id != p->router_id)
     {
-      struct babel_source *s = babel_get_source(p, e, e->router_id);
+      struct babel_source *s = babel_get_source(p, e, e->router_id, msg.update.seqno);
       s->expires = current_time() + BABEL_GARBAGE_INTERVAL;
 
-      if ((msg.update.seqno > s->seqno) ||
+      if (gt_mod64k(msg.update.seqno, s->seqno) ||
 	  ((msg.update.seqno == s->seqno) && (msg.update.metric < s->metric)))
       {
 	s->seqno = msg.update.seqno;
@@ -1303,9 +1308,10 @@ babel_handle_update(union babel_msg *m, struct babel_iface *ifa)
 
   /*
    * RFC section 3.8.2.2 - Dealing with unfeasible updates. Generate a one-off
-   * (not retransmitted) unicast seqno request to the originator of this update
+   * (not retransmitted) unicast seqno request to the originator of this update.
+   * Note: !feasible -> s exists, check for 's' is just for clarity / safety.
    */
-  if (!feasible && (metric != BABEL_INFINITY) &&
+  if (!feasible && s && (metric != BABEL_INFINITY) &&
       (!best || (r == best) || (metric < best->metric)))
     babel_generate_seqno_request(p, e, s->router_id, s->seqno + 1, nbr);
 
