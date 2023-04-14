@@ -854,9 +854,8 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
       /* Save the last node on the stack otherwise */
       else
       {
-	/* Found prefect match, no advancing */
+	/* Found perfect match, no advancing of stack position */
 	s->stack[s->stack_pos] = n;
-	/* Search whole trie except skipped parts */
 	s->start_pos = 1;
       }
 

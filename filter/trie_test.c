@@ -911,13 +911,13 @@ t_trie_walk_inclusive(void)
       bt_format_net(buf, 64, &px->net);
       bt_debug("%s{%d,%d}\n", buf, px->lo, px->hi);
     }
-    */
  
     /* Full walk */
     bt_debug("Full walk inclusive (round %d, %d nets)\n", round, num);
 
     pos = 0;
     uint pxc = 0;
+    /* Last argument should have no effect on the walk */
     TRIE_WALK2(trie, net, NULL, 1)
     {
       log_networks(&net, &pxset[pos].net);
@@ -978,9 +978,9 @@ t_trie_walk_inclusive(void)
 	break;
 
       /* Account for subnets before searched net from */
-    for (; pos < num; pos++)
-      if (net_compare(&pxset[pos].net, &from.net) >= 0)
-	 break;
+    //for (; pos < num; pos++)
+      //if (net_compare(&pxset[pos].net, &from.net) >= 0)
+	 //break;
 
     int p0 = pos;
     char buf0[64];
