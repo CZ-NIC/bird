@@ -900,7 +900,6 @@ main(int argc, char **argv)
   the_bird_lock();
 
   random_init();
-  net_init();
   resource_init();
   birdloop_init();
   olock_init();

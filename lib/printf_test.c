@@ -32,11 +32,14 @@ t_simple(void)
   BSPRINTF(1, "@", buf, "@", 64);
   BSPRINTF(1, "\xff", buf, "%c", 0xff);
 
-  errno = 5;
-  BSPRINTF(18, "Input/output error", buf, "%m");
+  const char *io_error_str = lp_strdup(tmp_linpool, strerror(EIO));
+  const int io_error_len = strlen(io_error_str);
+
+  errno = EIO;
+  BSPRINTF(io_error_len, io_error_str, buf, "%m");
   errno = 0;
 
-  BSPRINTF(18, "Input/output error", buf, "%M", 5);
+  BSPRINTF(io_error_len, io_error_str, buf, "%M", EIO);
 
   BSPRINTF(11, "TeSt%StRiNg", buf, "%s", "TeSt%StRiNg");
 

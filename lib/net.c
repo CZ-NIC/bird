@@ -57,6 +57,19 @@ const u16 net_max_text_length[] = {
   [NET_MPLS]	= 7,	/* "1048575" */
 };
 
+/* There should be no implicit padding in net_addr structures */
+STATIC_ASSERT(sizeof(net_addr)		== 24);
+STATIC_ASSERT(sizeof(net_addr_ip4)	==  8);
+STATIC_ASSERT(sizeof(net_addr_ip6)	== 20);
+STATIC_ASSERT(sizeof(net_addr_vpn4)	== 16);
+STATIC_ASSERT(sizeof(net_addr_vpn6)	== 32);
+STATIC_ASSERT(sizeof(net_addr_roa4)	== 16);
+STATIC_ASSERT(sizeof(net_addr_roa6)	== 28);
+STATIC_ASSERT(sizeof(net_addr_flow4)	==  8);
+STATIC_ASSERT(sizeof(net_addr_flow6)	== 20);
+STATIC_ASSERT(sizeof(net_addr_ip6_sadr)	== 40);
+STATIC_ASSERT(sizeof(net_addr_mpls)	==  8);
+
 
 int
 rd_format(const u64 rd, char *buf, int buflen)
@@ -309,23 +322,4 @@ net_in_netX(const net_addr *a, const net_addr *n)
     return 0;
 
   return (net_pxlen(n) <= net_pxlen(a)) && ipa_in_netX(net_prefix(a), n);
-}
-
-#define CHECK_NET(T,S) \
-  ({ if (sizeof(T) != S) die("sizeof %s is %d/%d", #T, (int) sizeof(T), S); })
-
-void
-net_init(void)
-{
-  CHECK_NET(net_addr,		24);
-  CHECK_NET(net_addr_ip4,	 8);
-  CHECK_NET(net_addr_ip6,	20);
-  CHECK_NET(net_addr_vpn4,	16);
-  CHECK_NET(net_addr_vpn6,	32);
-  CHECK_NET(net_addr_roa4,	16);
-  CHECK_NET(net_addr_roa6,	28);
-  CHECK_NET(net_addr_flow4,	 8);
-  CHECK_NET(net_addr_flow6,	20);
-  CHECK_NET(net_addr_ip6_sadr,	40);
-  CHECK_NET(net_addr_mpls,	 8);
 }

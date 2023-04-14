@@ -620,6 +620,4 @@ static inline int net_in_net_src_ip6_sadr(const net_addr_ip6_sadr *a, const net_
 int ipa_in_netX(const ip_addr A, const net_addr *N);
 int net_in_netX(const net_addr *A, const net_addr *N);
 
-void net_init(void);
-
 #endif
