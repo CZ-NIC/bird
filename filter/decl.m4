@@ -487,7 +487,7 @@ f_instruction_name_(enum f_instruction_code fi)
 static inline struct f_inst *
 fi_new(enum f_instruction_code fi_code)
 {
-  struct f_inst *what = cfg_allocz(sizeof(struct f_inst));
+  struct f_inst *what = tmp_allocz(sizeof(struct f_inst));
   what->lineno = ifs->lino;
   what->size = 1;
   what->fi_code = fi_code;
