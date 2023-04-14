@@ -108,6 +108,7 @@ struct bgp_config {
   int interpret_communities;		/* Hardwired handling of well-known communities */
   int allow_local_as;			/* Allow that number of local ASNs in incoming AS_PATHs */
   int allow_local_pref;			/* Allow LOCAL_PREF in EBGP sessions */
+  int allow_med;			/* Allow BGP_MED in EBGP sessions */
   int allow_as_sets;			/* Allow AS_SETs in incoming AS_PATHs */
   int enforce_first_as;			/* Enable check for neighbor AS as first AS in AS_PATH */
   int gr_mode;				/* Graceful restart mode (BGP_GR_*) */

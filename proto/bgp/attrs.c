@@ -2154,7 +2154,7 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
 
     /* MULTI_EXIT_DESC attribute - accept only if set in export filter */
     a = bgp_find_attr(attrs0, BA_MULTI_EXIT_DISC);
-    if (a && !(a->fresh))
+    if (a && !a->fresh && !p->cf->allow_med)
       bgp_unset_attr(&attrs, BA_MULTI_EXIT_DISC);
   }
 
