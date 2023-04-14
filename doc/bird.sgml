@@ -2625,12 +2625,19 @@ using the following configuration parameters:
 	keeps MED attribute). Default: disabled.
 
 	<tag><label id="bgp-allow-local-pref">allow bgp_local_pref <m/switch/</tag>
-	A standard BGP implementation do not send the Local Preference attribute
-	to eBGP neighbors and ignore this attribute if received from eBGP
+	Standard BGP implementations do not send the Local Preference attribute
+	to EBGP neighbors and ignore this attribute if received from EBGP
 	neighbors, as per <rfc id="4271">.  When this option is enabled on an
-	eBGP session, this attribute will be sent to and accepted from the peer,
+	EBGP session, this attribute will be sent to and accepted from the peer,
 	which is useful for example if you have a setup like in <rfc id="7938">.
-	The option does not affect iBGP sessions. Default: off.
+	The option does not affect IBGP sessions. Default: off.
+
+	<tag><label id="bgp-allow-med">allow bgp_med <m/switch/</tag>
+	Standard BGP implementations do not propagate the MULTI_EXIT_DESC
+	attribute unless it is configured locally. When this option is enabled
+	on an EBGP session, this attribute will be sent to the peer regardless,
+	which is useful for example if you have a setup like in <rfc id="7938">.
+	The option does not affect IBGP sessions. Default: off.
 
 	<tag><label id="bgp-allow-local-as">allow local as [<m/number/]</tag>
 	BGP prevents routing loops by rejecting received routes with the local
