@@ -110,6 +110,7 @@ enum babel_ae_type {
   BABEL_AE_IP4			= 1,
   BABEL_AE_IP6			= 2,
   BABEL_AE_IP6_LL		= 3,
+  BABEL_AE_IP4_VIA_IP6		= 4,
   BABEL_AE_MAX
 };
 
@@ -143,8 +144,9 @@ struct babel_iface_config {
 
   ip_addr next_hop_ip4;
   ip_addr next_hop_ip6;
+  u8 ext_next_hop;			/* Enable IPv4 via IPv6 */
 
-  u8 auth_type;			/* Authentication type (BABEL_AUTH_*) */
+  u8 auth_type;				/* Authentication type (BABEL_AUTH_*) */
   u8 auth_permissive;			/* Don't drop packets failing auth check */
   uint mac_num_keys;			/* Number of configured HMAC keys */
   uint mac_total_len;			/* Total digest length for all configured keys */
@@ -223,7 +225,8 @@ struct babel_neighbor {
   u16 next_hello_seqno;
   uint last_hello_int;
 
-  u32 auth_pc;
+  u32 auth_pc_unicast;
+  u32 auth_pc_multicast;
   u8 auth_passed;
   u8 auth_index_len;
   u8 auth_index[BABEL_AUTH_INDEX_LEN];
@@ -401,6 +404,7 @@ struct babel_msg_auth {
   u8 challenge_seen;
   u8 challenge_len;
   u8 challenge[BABEL_AUTH_MAX_NONCE_LEN];
+  u8 unicast;
 };
 
 static inline int babel_sadr_enabled(struct babel_proto *p)
