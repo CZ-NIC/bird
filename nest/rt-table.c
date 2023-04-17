@@ -2907,7 +2907,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   }
 
   /* Start the service thread */
-  t->loop = birdloop_new(p, DOMAIN_ORDER(service), mb_sprintf(p, "Routing table %s", t->name));
+  t->loop = birdloop_new(p, DOMAIN_ORDER(service), mb_sprintf(p, "Routing table %s", t->name), 0);
   birdloop_enter(t->loop);
   birdloop_flag_set_handler(t->loop, &t->fh);
   birdloop_leave(t->loop);

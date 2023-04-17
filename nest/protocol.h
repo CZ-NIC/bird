@@ -106,6 +106,7 @@ struct proto_config {
   u32 debug, mrtdump;			/* Debugging bitfields, both use D_* constants */
   u32 router_id;			/* Protocol specific router ID */
   uint loop_order;			/* Launch a birdloop on this locking level; use DOMAIN_ORDER(the_bird) for mainloop */
+  btime loop_max_latency;		/* Request this specific maximum latency of loop; zero to default */
 
   list channels;			/* List of channel configs (struct channel_config) */
   struct iface *vrf;			/* Related VRF instance, NULL if global */

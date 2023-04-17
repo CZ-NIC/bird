@@ -1220,7 +1220,7 @@ proto_start(struct proto *p)
     p->gr_recovery = 1;
 
   if (p->cf->loop_order != DOMAIN_ORDER(the_bird))
-    p->loop = birdloop_new(p->pool, p->cf->loop_order, p->pool->name);
+    p->loop = birdloop_new(p->pool, p->cf->loop_order, p->pool->name, p->cf->loop_max_latency);
 
   p->iface_sub.target = proto_event_list(p);
 

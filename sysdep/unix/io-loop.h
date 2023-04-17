@@ -78,6 +78,7 @@ struct bird_thread
   struct rcu_thread rcu;
 
   list loops;
+  struct birdloop_pickup_group *group;
   pool *pool;
   struct pfd *pfd;
 
