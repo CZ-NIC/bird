@@ -2407,6 +2407,9 @@ bgp_create_mp_unreach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
   return buf+11+len;
 }
 
+
+#ifdef CONFIG_BMP
+
 static byte *
 bgp_create_update_bmp(struct bgp_channel *c, byte *buf, struct bgp_bucket *buck, bool update)
 {
@@ -2488,6 +2491,9 @@ bgp_rte_update_in_notify(struct channel *C, const net_addr *n,
   bgp_bmp_prepare_bgp_hdr(buf, end - buf, PKT_UPDATE);
   bmp_route_monitor_put_update_in_pre_msg(buf, end - buf);
 }
+
+#endif /* CONFIG_BMP */
+
 
 static byte *
 bgp_create_update(struct bgp_channel *c, byte *buf)
