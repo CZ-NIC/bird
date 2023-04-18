@@ -1131,10 +1131,16 @@ bmp_shutdown(struct proto *P)
 }
 
 static int
-bmp_reconfigure(struct proto *P UNUSED, struct proto_config *CF UNUSED)
+bmp_reconfigure(struct proto *P, struct proto_config *CF)
 {
+  struct bmp_proto *p = (void *) P;
+  const struct bmp_config *cf = (void *) CF;
+
   log(L_WARN "Reconfiguring BMP is not supported");
-  return PS_UP;
+
+  p->cf = cf;
+
+  return 1;
 }
 
 struct protocol proto_bmp = {
