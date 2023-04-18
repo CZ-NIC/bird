@@ -1138,6 +1138,7 @@ bmp_reconfigure(struct proto *P UNUSED, struct proto_config *CF UNUSED)
 
 struct protocol proto_bmp = {
   .name = "BMP",
+  .template = "bmp%d",
   .class = PROTOCOL_BMP,
   .proto_size = sizeof(struct bmp_proto),
   .config_size = sizeof(struct bmp_config),
