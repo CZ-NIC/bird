@@ -1,3 +1,14 @@
+Version 3.0-alpha1 (2023-04-18)
+  o Worker threads for BGP, Pipe, RPKI and BFD
+  o Configurable number of threads
+  o Asynchronous route export
+  o Flat attribute structure
+  o Inline import tables
+  o Export tables merged with BGP prefix / attribute buckets
+  o Fixed ROA check locking inversion in route table dumps
+  o MRT switched off
+
+
 Version 2.0.12 (2023-01-23)
   o Filter: New 'onlink' route attribute
   o Compile-time option to use 4-way tries instead of 16-way ones
