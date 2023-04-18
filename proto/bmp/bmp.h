@@ -85,6 +85,9 @@ struct bmp_proto {
   bool started;                    // Flag that stores running status of BMP instance
 };
 
+
+#ifdef CONFIG_BMP
+
 /**
  * bmp_put_sent_bgp_open_msg - save sent BGP OPEN msg packet in BMP implementation.
  * NOTE: If there has been passed sent and received BGP OPEN MSGs to the BMP
@@ -135,4 +138,17 @@ void
 bmp_peer_down(const struct bgp_proto *bgp, const int err_class, const byte *pkt,
   size_t pkt_size);
 
-#endif	/* _BIRD_BMP_H_ */
+
+#else /* BMP build disabled */
+
+static inline void bmp_put_sent_bgp_open_msg(const struct bgp_proto *bgp UNUSED, const byte* pkt UNUSED, const size_t pkt_size UNUSED) { }
+static inline void bmp_put_recv_bgp_open_msg(const struct bgp_proto *bgp UNUSED, const byte* pkt UNUSED, const size_t pkt_size UNUSED) { }
+static inline void bmp_route_monitor_update_in_pre_begin(void) { }
+static inline void bmp_route_monitor_put_update_in_pre_msg(const byte *data UNUSED, const size_t data_size UNUSED) { }
+static inline void bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp UNUSED) { }
+static inline void bmp_route_monitor_update_in_pre_end(void) { }
+static inline void bmp_peer_down(const struct bgp_proto *bgp UNUSED, const int err_class UNUSED, const byte *pkt UNUSED, size_t pkt_size UNUSED) { }
+
+#endif /* CONFIG_BMP */
+
+#endif /* _BIRD_BMP_H_ */

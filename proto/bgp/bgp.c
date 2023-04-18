@@ -1694,7 +1694,6 @@ bgp_init(struct proto_config *CF)
   struct bgp_config *cf = (struct bgp_config *) CF;
 
   P->rt_notify = bgp_rt_notify;
-  P->rte_update_in_notify = bgp_rte_update_in_notify;
   P->preexport = bgp_preexport;
   P->neigh_notify = bgp_neigh_notify;
   P->reload_routes = bgp_reload_routes;
@@ -1705,6 +1704,10 @@ bgp_init(struct proto_config *CF)
   P->rte_recalculate = cf->deterministic_med ? bgp_rte_recalculate : NULL;
   P->rte_modify = bgp_rte_modify_stale;
   P->rte_igp_metric = bgp_rte_igp_metric;
+
+#ifdef CONFIG_BMP
+  P->rte_update_in_notify = bgp_rte_update_in_notify;
+#endif
 
   p->cf = cf;
   p->is_internal = (cf->local_as == cf->remote_as);
