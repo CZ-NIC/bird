@@ -498,23 +498,6 @@ bmp_open(const struct proto *P)
 {
   struct bmp_proto *p = (void *) P;
 
-  log(L_DEBUG "Init BMP");
-
-  p->buffer_mpool = rp_new(P->pool, "BMP Buffer");
-  p->map_mem_pool = rp_new(P->pool, "BMP Map");
-  p->tx_mem_pool = rp_new(P->pool, "BMP Tx");
-  p->update_msg_mem_pool = rp_new(P->pool, "BMP Update");
-  p->tx_ev = ev_new_init(p->tx_mem_pool, bmp_fire_tx, p);
-
-  bmp_peer_map_init(&p->peer_open_msg.tx_msg, p->map_mem_pool);
-  bmp_peer_map_init(&p->peer_open_msg.rx_msg, p->map_mem_pool);
-  bmp_peer_map_init(&p->bgp_peers, p->map_mem_pool);
-
-  init_list(&p->tx_queue);
-  init_list(&p->rt_table_in_pre_policy.update_msg_queue);
-  p->station_connected = false;
-  p->started = false;
-  p->connect_retry_timer = NULL;
   if (bmp_open_socket(p) < 0)
   {
     log(L_DEBUG "Failed to connect to BMP station");
@@ -1106,6 +1089,24 @@ static int
 bmp_start(struct proto *P)
 {
   struct bmp_proto *p = (void *) P;
+
+  log(L_DEBUG "Init BMP");
+
+  p->buffer_mpool = rp_new(P->pool, "BMP Buffer");
+  p->map_mem_pool = rp_new(P->pool, "BMP Map");
+  p->tx_mem_pool = rp_new(P->pool, "BMP Tx");
+  p->update_msg_mem_pool = rp_new(P->pool, "BMP Update");
+  p->tx_ev = ev_new_init(p->tx_mem_pool, bmp_fire_tx, p);
+
+  bmp_peer_map_init(&p->peer_open_msg.tx_msg, p->map_mem_pool);
+  bmp_peer_map_init(&p->peer_open_msg.rx_msg, p->map_mem_pool);
+  bmp_peer_map_init(&p->bgp_peers, p->map_mem_pool);
+
+  init_list(&p->tx_queue);
+  init_list(&p->rt_table_in_pre_policy.update_msg_queue);
+  p->station_connected = false;
+  p->started = false;
+  p->connect_retry_timer = NULL;
 
   bmp_setup_socket(p);
   bmp_open(P);
