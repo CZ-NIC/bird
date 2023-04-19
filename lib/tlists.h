@@ -89,7 +89,7 @@ static inline struct TLIST_NAME(node) * TLIST_NAME(node_get)(TLIST_TYPE *node)
 { return &(node->TLIST_ITEM); }
 #endif
 
-#ifdef TLIST_WANT_ADD_HEAD
+#if defined(TLIST_WANT_ADD_HEAD) || defined(TLIST_WANT_ADD_AFTER)
 static inline void TLIST_NAME(add_head)(TLIST_LIST_STRUCT *list, TLIST_TYPE *node)
 {
   ASSERT_DIE(!TLIST_NAME(enlisted)(node));
@@ -135,6 +135,32 @@ static inline void TLIST_NAME(update_node)(TLIST_LIST_STRUCT *list, TLIST_TYPE *
     list->last = node;
 }
 #endif
+
+#ifdef TLIST_WANT_ADD_AFTER
+static inline void TLIST_NAME(add_after)(TLIST_LIST_STRUCT *list, TLIST_TYPE *node, TLIST_TYPE *after)
+{
+  ASSERT_DIE(!TLIST_NAME(enlisted)(node));
+
+  /* Adding to beginning */
+  if (!(node->TLIST_ITEM.prev = after))
+    return TLIST_NAME(add_head)(list, node);
+
+  /* OK, Adding after a real node */
+  node->TLIST_ITEM.list = list;
+
+  /* There is another node after the anchor */
+  if (node->TLIST_ITEM.next = after->TLIST_ITEM.next)
+    /* Link back */
+    node->TLIST_ITEM.next->TLIST_ITEM.prev = node;
+  else
+    /* Or we are adding the last node */
+    list->last = node;
+
+  /* Link forward from "after" */
+  after->TLIST_ITEM.next = node;
+}
+#endif
+
 
 static inline void TLIST_NAME(rem_node)(TLIST_LIST_STRUCT *list, TLIST_TYPE *node)
 {
