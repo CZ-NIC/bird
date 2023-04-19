@@ -116,9 +116,16 @@ struct proto_config {
   /* Protocol-specific data follow... */
 };
 
+#define TLIST_PREFIX proto
+#define TLIST_TYPE struct proto
+#define TLIST_ITEM n
+#define TLIST_WANT_WALK
+#define TLIST_WANT_ADD_TAIL
+#define TLIST_WANT_ADD_AFTER
+
 /* Protocol statistics */
 struct proto {
-  node n;				/* Node in global proto_list */
+  TLIST_DEFAULT_NODE;			/* Node in global proto_list */
   struct protocol *proto;		/* Protocol */
   struct proto_config *cf;		/* Configuration data */
   struct proto_config *cf_new;		/* Configuration we want to switch to after shutdown (NULL=delete) */
@@ -197,6 +204,8 @@ struct proto {
 
   /* Hic sunt protocol-specific data */
 };
+
+#include "lib/tlists.h"
 
 struct proto_spec {
   const void *ptr;
@@ -284,7 +293,6 @@ proto_get_router_id(struct proto_config *pc)
 
 
 extern pool *proto_pool;
-extern list proto_list;
 
 /*
  *  Each protocol instance runs two different state machines:

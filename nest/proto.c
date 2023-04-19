@@ -23,7 +23,7 @@
 #include "filter/f-inst.h"
 
 pool *proto_pool;
-list STATIC_LIST_INIT(proto_list);
+static TLIST_LIST(proto) global_proto_list;
 
 static list STATIC_LIST_INIT(protocol_list);
 
@@ -1190,7 +1190,7 @@ proto_new(struct proto_config *cf)
 }
 
 static struct proto *
-proto_init(struct proto_config *c, node *n)
+proto_init(struct proto_config *c, struct proto *after)
 {
   struct protocol *pr = c->protocol;
   struct proto *p = pr->init(c);
@@ -1199,7 +1199,7 @@ proto_init(struct proto_config *c, node *n)
   p->proto_state = PS_DOWN;
   p->last_state_change = current_time();
   p->vrf = c->vrf;
-  insert_node(&p->n, n);
+  proto_add_after(&global_proto_list, p, after);
 
   p->event = ev_new_init(proto_pool, proto_event, p);
 
@@ -1430,8 +1430,6 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
   struct proto_config *oc, *nc;
   struct symbol *sym;
   struct proto *p;
-  node *n;
-
 
   DBG("protos_commit:\n");
   if (old)
@@ -1518,8 +1516,8 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
   }
 
   struct proto *first_dev_proto = NULL;
+  struct proto *after = NULL;
 
-  n = NODE &(proto_list.head);
   WALK_LIST(nc, new->protos)
     if (!nc->proto)
     {
@@ -1527,14 +1525,14 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
       if (old)
 	log(L_INFO "Adding protocol %s", nc->name);
 
-      p = proto_init(nc, n);
-      n = NODE p;
+      p = proto_init(nc, after);
+      after = p;
 
       if (p->proto == &proto_unix_iface)
 	first_dev_proto = p;
     }
     else
-      n = NODE nc->proto;
+      after = nc->proto;
 
   DBG("Protocol start\n");
 
@@ -1552,7 +1550,7 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
   }
 
   /* Start all new protocols */
-  WALK_LIST_DELSAFE(p, n, proto_list)
+  WALK_TLIST_DELSAFE(proto, p, &global_proto_list)
     proto_rethink_goal(p);
 }
 
@@ -1574,18 +1572,19 @@ proto_rethink_goal(struct proto *p)
   if (p->reconfiguring && !p->active)
   {
     struct proto_config *nc = p->cf_new;
-    node *n = p->n.prev;
+    struct proto *after = p->n.prev;
+
     DBG("%s has shut down for reconfiguration\n", p->name);
     p->cf->proto = NULL;
     config_del_obstacle(p->cf->global);
     proto_remove_channels(p);
-    rem_node(&p->n);
+    proto_rem_node(&global_proto_list, p);
     rfree(p->event);
     mb_free(p->message);
     mb_free(p);
     if (!nc)
       return;
-    p = proto_init(nc, n);
+    p = proto_init(nc, after);
   }
 
   /* Determine what state we want to reach */
@@ -1601,7 +1600,7 @@ proto_rethink_goal(struct proto *p)
 struct proto *
 proto_spawn(struct proto_config *cf, uint disabled)
 {
-  struct proto *p = proto_init(cf, TAIL(proto_list));
+  struct proto *p = proto_init(cf, global_proto_list.last);
   p->disabled = disabled;
   proto_rethink_goal(p);
   return p;
@@ -1697,8 +1696,7 @@ graceful_restart_done(timer *t UNUSED)
   log(L_INFO "Graceful restart done");
   graceful_restart_state = GRS_DONE;
 
-  struct proto *p;
-  WALK_LIST(p, proto_list)
+  WALK_TLIST(proto, p, &global_proto_list)
   {
     if (!p->gr_recovery)
       continue;
@@ -1794,8 +1792,7 @@ protos_dump_all(void)
 {
   debug("Protocols:\n");
 
-  struct proto *p;
-  WALK_LIST(p, proto_list) PROTO_LOCKED_FROM_MAIN(p)
+  WALK_TLIST(proto, p, &global_proto_list) PROTO_LOCKED_FROM_MAIN(p)
   {
 #define DPF(x)	(p->x ? " " #x : "")
     debug("  protocol %s (%p) state %s with %d active channels flags: %s%s%s%s\n",
@@ -2481,10 +2478,9 @@ proto_apply_cmd_symbol(const struct symbol *s, void (* cmd)(struct proto *, uint
 static void
 proto_apply_cmd_patt(const char *patt, void (* cmd)(struct proto *, uintptr_t, int), uintptr_t arg)
 {
-  struct proto *p;
   int cnt = 0;
 
-  WALK_LIST(p, proto_list)
+  WALK_TLIST(proto, p, &global_proto_list)
     if (!patt || patmatch(patt, p->name))
       PROTO_LOCKED_FROM_MAIN(p)
 	cmd(p, arg, cnt++);
@@ -2511,7 +2507,7 @@ proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uintptr_t, in
 struct proto *
 proto_get_named(struct symbol *sym, struct protocol *pr)
 {
-  struct proto *p, *q;
+  struct proto *p;
 
   if (sym)
   {
@@ -2525,7 +2521,7 @@ proto_get_named(struct symbol *sym, struct protocol *pr)
   else
   {
     p = NULL;
-    WALK_LIST(q, proto_list)
+    WALK_TLIST(proto, q, &global_proto_list)
       if ((q->proto == pr) && (q->proto_state != PS_DOWN))
       {
 	if (p)
@@ -2562,9 +2558,9 @@ proto_iterate_named(struct symbol *sym, struct protocol *proto, struct proto *ol
   }
   else
   {
-    for (struct proto *p = !old ? HEAD(proto_list) : NODE_NEXT(old);
-	 NODE_VALID(p);
-	 p = NODE_NEXT(p))
+    for (struct proto *p = old ? old->n.next : global_proto_list.first;
+	p;
+	p = p->n.next)
     {
       if ((p->proto == proto) && (p->proto_state != PS_DOWN))
       {
