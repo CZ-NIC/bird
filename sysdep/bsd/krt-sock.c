@@ -314,7 +314,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
       if (ipa_is_link_local(gw))
 	_I0(gw) = 0xfe800000 | (i->index & 0x0000ffff);
 
-      sockaddr_fill(&gate, af, gw, NULL, 0);
+      sockaddr_fill(&gate, (ipa_is_ip4(gw) ? AF_INET : AF_INET6), gw, NULL, 0);
       msg.rtm.rtm_flags |= RTF_GATEWAY;
       msg.rtm.rtm_addrs |= RTA_GATEWAY;
       break;
@@ -469,7 +469,7 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
 
   idst  = ipa_from_sa(&dst);
   imask = ipa_from_sa(&mask);
-  igate = (gate.sa.sa_family == dst.sa.sa_family) ? ipa_from_sa(&gate) : IPA_NONE;
+  igate = ipa_from_sa(&gate);
 
 #ifdef KRT_SHARED_SOCKET
   if (!scan)
