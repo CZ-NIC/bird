@@ -746,7 +746,7 @@ bird_thread_cleanup(void *_thr)
   pthread_attr_destroy(&thr->thread_attr);
 
   /* Free all remaining memory */
-  rfree(thr->pool);
+  rp_free(thr->pool);
 }
 
 static struct bird_thread *
@@ -839,7 +839,7 @@ bird_thread_shutdown(void * _ UNUSED)
   /* Stop the meta loop */
   birdloop_leave(thr->meta);
   domain_free(thr->meta->time.domain);
-  rfree(thr->meta->pool);
+  rp_free(thr->meta->pool);
 
   /* Local pages not needed anymore */
   flush_local_pages();
@@ -990,7 +990,7 @@ bird_thread_show(void *data)
 
     cli_write_trigger(tsd->cli);
     DOMAIN_FREE(control, tsd->lock);
-    rfree(tsd->pool);
+    rp_free(tsd->pool);
 
     the_bird_unlock();
   }
@@ -1258,7 +1258,7 @@ birdloop_free(struct birdloop *loop)
   ASSERT_DIE(loop->thread == NULL);
 
   domain_free(loop->time.domain);
-  rfree(loop->pool);
+  rp_free(loop->pool);
 }
 
 static void

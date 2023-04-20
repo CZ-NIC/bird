@@ -1867,7 +1867,7 @@ bgp_free_pending_tx(struct bgp_channel *c)
   ASSERT_DIE(c->ptx);
   ASSERT_DIE(c->ptx->pool);
 
-  rfree(c->ptx->pool);
+  rp_free(c->ptx->pool);
   c->ptx = NULL;
 }
 

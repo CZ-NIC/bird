@@ -421,7 +421,7 @@ cli_free(cli *c)
     c->sock = NULL;
   }
   else
-    rfree(c->pool);
+    rp_free(c->pool);
 }
 
 /**

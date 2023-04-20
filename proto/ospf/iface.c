@@ -311,7 +311,7 @@ ospf_iface_remove(struct ospf_iface *ifa)
 
   ospf_iface_sm(ifa, ISM_DOWN);
   rem_node(NODE ifa);
-  rfree(ifa->pool);
+  rp_free(ifa->pool);
 }
 
 void

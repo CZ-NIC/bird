@@ -323,7 +323,7 @@ radv_iface_remove(struct radv_iface *ifa)
 
   rem_node(NODE ifa);
 
-  rfree(ifa->pool);
+  rp_free(ifa->pool);
 }
 
 static void

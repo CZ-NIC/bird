@@ -58,6 +58,12 @@ void rmove(void *, pool *);		/* Move to a different pool */
 
 void *ralloc(pool *, struct resclass *);
 
+pool *rp_new(pool *, const char *);		/* Create a new pool */
+pool *rp_newf(pool *, const char *, ...);	/* Create a new pool with a formatted string as its name */
+void rp_init(pool *, const char *);		/* Init a new pool */
+void rp_initf(pool *, const char *, ...);	/* Init a new pool with a formatted string as its name */
+static inline void rp_free(pool *p) { rfree(&p->r); }	/* Free the whole pool */
+
 extern pool root_pool;
 
 /* Normal memory blocks */
@@ -111,6 +117,7 @@ slab *sl_new(pool *, unsigned size);
 void *sl_alloc(slab *);
 void *sl_allocz(slab *);
 void sl_free(void *);
+void sl_delete(slab *);
 
 /*
  * Low-level memory allocation functions, please don't use

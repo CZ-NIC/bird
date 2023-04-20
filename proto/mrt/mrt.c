@@ -590,7 +590,7 @@ mrt_table_dump_free(struct mrt_table_dump_state *s)
 
   config_del_obstacle(s->config);
 
-  rfree(s->pool);
+  rp_free(s->pool);
 }
 
 

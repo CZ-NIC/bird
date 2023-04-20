@@ -200,7 +200,7 @@ config_free(struct config *c)
 
   ASSERT(!c->obstacle_count);
 
-  rfree(c->pool);
+  rp_free(c->pool);
 }
 
 /**

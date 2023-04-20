@@ -2027,7 +2027,7 @@ rt_export_stopped(struct rt_export_hook *hook)
   rem_node(&hook->n);
 
   /* Free the hook itself together with its pool */
-  rfree(hook->pool);
+  rp_free(hook->pool);
 }
 
 static inline void

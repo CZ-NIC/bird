@@ -1116,7 +1116,7 @@ proto_cleanup(struct proto *p)
 {
   CALL(p->proto->cleanup, p);
 
-  rfree(p->pool);
+  rp_free(p->pool);
   p->pool = NULL;
 
   p->active = 0;

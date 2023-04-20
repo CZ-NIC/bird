@@ -227,7 +227,7 @@ rt_show_export_stopped_cleanup(struct rt_export_request *req)
   req->hook = NULL;
 
   /* And free the CLI (deferred) */
-  rfree(d->cli->pool);
+  rp_free(d->cli->pool);
 }
 
 static int

@@ -298,7 +298,7 @@ void
 tmp_flush(void)
 {
   lp_flush(tmp_linpool);
-  rfree(tmp_res.pool);
+  rp_free(tmp_res.pool);
   tmp_res.pool = rp_new(tmp_res.parent, "TMP");
 }
 
@@ -449,7 +449,7 @@ mb_free(void *m)
     return;
 
   struct mblock *b = SKIP_BACK(struct mblock, data, m);
-  rfree(b);
+  rfree(&b->r);
 }
 
 
