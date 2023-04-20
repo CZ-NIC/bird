@@ -294,10 +294,9 @@ bmp_fire_tx(void *p_)
     mb_free(tx_data->data);
     rem_node((node *) tx_data);
     mb_free(tx_data);
-    IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-      (sk_send(p->sk, data_size) <= 0),
-      "Failed to send BMP packet"
-    );
+
+    if (sk_send(p->sk, data_size) <= 0)
+      return;
 
     // BMP packets should be treat with lowest priority when scheduling sending
     // packets to target. That's why we want to send max. 32 packets per event
@@ -641,7 +640,7 @@ bmp_route_monitor_update_in_pre_begin()
 {
   struct bmp_proto *p = g_bmp;
 
-  if (!p)
+  if (!p || !p->started)
   {
     return;
   }
@@ -650,11 +649,6 @@ bmp_route_monitor_update_in_pre_begin()
   {
     return;
   }
-
-  IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    !p->started,
-    "BMP instance not started yet"
-  );
 
   IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
     !EMPTY_LIST(p->rt_table_in_pre_policy.update_msg_queue),
@@ -672,7 +666,7 @@ bmp_route_monitor_put_update_in_pre_msg(const byte *data, const size_t data_size
 {
   struct bmp_proto *p = g_bmp;
 
-  if (!p)
+  if (!p || !p->started)
   {
     return;
   }
@@ -681,11 +675,6 @@ bmp_route_monitor_put_update_in_pre_msg(const byte *data, const size_t data_size
   {
     return;
   }
-
-  IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    !p->started,
-    "BMP instance not started yet"
-  );
 
   IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
     !p->rt_table_in_pre_policy.update_in_progress,
@@ -706,7 +695,7 @@ bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp)
 {
   struct bmp_proto *p = g_bmp;
 
-  if (!p)
+  if (!p || !p->started)
   {
     return;
   }
@@ -715,11 +704,6 @@ bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp)
   {
     return;
   }
-
-  IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    (!p->started || EMPTY_LIST(p->rt_table_in_pre_policy.update_msg_queue)),
-    "BMP route monitoring update not started yet"
-  );
 
   const struct birdsock *sk = bmp_get_birdsock(bgp);
   IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
@@ -768,7 +752,7 @@ bmp_route_monitor_update_in_pre_end()
 {
   struct bmp_proto *p = g_bmp;
 
-  if (!p)
+  if (!p || !p->started)
   {
     return;
   }
@@ -778,11 +762,6 @@ bmp_route_monitor_update_in_pre_end()
     return;
   }
 
-  IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    (!p->started || EMPTY_LIST(p->rt_table_in_pre_policy.update_msg_queue)),
-    "BMP route monitoring update not started yet"
-  );
-
   struct bmp_data_node *upd_msg;
   struct bmp_data_node *upd_msg_next;
   WALK_LIST_DELSAFE(upd_msg, upd_msg_next, p->rt_table_in_pre_policy.update_msg_queue)
@@ -791,6 +770,8 @@ bmp_route_monitor_update_in_pre_end()
     rem_node((node *) upd_msg);
     mb_free(upd_msg);
   }
+
+  p->rt_table_in_pre_policy.update_in_progress = false;
 }
 
 static void
@@ -878,17 +859,13 @@ bmp_peer_down(const struct bgp_proto *bgp, const int err_class, const byte *pkt,
 {
   struct bmp_proto *p = g_bmp;
 
-  if (!p || !p->started)
+  if (!p)
   {
     return;
   }
 
   struct bmp_peer_map_key key
     = bmp_peer_map_key_create(bgp->remote_ip, bgp->remote_as);
-  if (!bmp_peer_map_get(&p->bgp_peers, key))
-  {
-    return;
-  }
 
   bmp_peer_map_remove(&p->peer_open_msg.tx_msg, key);
   bmp_peer_map_remove(&p->peer_open_msg.rx_msg, key);
@@ -896,6 +873,10 @@ bmp_peer_down(const struct bgp_proto *bgp, const int err_class, const byte *pkt,
   const size_t missing_bgp_hdr_size = BGP_MSG_HDR_MARKER_SIZE
                                         + BGP_MSG_HDR_LENGTH_SIZE
                                         + BGP_MSG_HDR_TYPE_SIZE;
+
+  if (!p->started)
+    return;
+
   buffer payload
     = bmp_buffer_alloc(p->buffer_mpool, pkt_size + missing_bgp_hdr_size + 1);
   if (pkt != NULL && pkt_size > 0)
