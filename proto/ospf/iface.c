@@ -173,7 +173,7 @@ ospf_sk_open(struct ospf_iface *ifa)
 
  err:
   sk_log_error(sk, p->p.name);
-  rfree(sk);
+  sk_close(sk);
   return 0;
 }
 
@@ -234,7 +234,7 @@ ospf_open_vlink_sk(struct ospf_proto *p)
  err:
   sk_log_error(sk, p->p.name);
   log(L_ERR "%s: Cannot open virtual link socket", p->p.name);
-  rfree(sk);
+  sk_close(sk);
 }
 
 static void

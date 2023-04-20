@@ -294,7 +294,7 @@ bgp_listen_create(void *_ UNUSED)
       {
 	sk_log_error(sk, p->p.name);
 	log(L_ERR "%s: Cannot open listening socket", p->p.name);
-	rfree(sk);
+	sk_close(sk);
 	UNLOCK_DOMAIN(rtable, bgp_listen_domain);
 
 	bgp_initiate_disable(p, BEM_NO_SOCKET);
@@ -335,7 +335,7 @@ bgp_listen_create(void *_ UNUSED)
   WALK_LIST_DELSAFE(bs, nxt, bgp_sockets)
     if (EMPTY_LIST(bs->requests))
     {
-      rfree(bs->sk);
+      sk_close(bs->sk);
       rem_node(&bs->n);
       mb_free(bs);
     }
@@ -465,7 +465,7 @@ bgp_close_conn(struct bgp_conn *conn)
   rfree(conn->tx_ev);
   conn->tx_ev = NULL;
 
-  rfree(conn->sk);
+  sk_close(conn->sk);
   conn->sk = NULL;
 
   mb_free(conn->local_caps);
@@ -1336,7 +1336,7 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
   {
     log(L_WARN "BGP: Unexpected connect from unknown address %I%J (port %d)",
 	sk->daddr, ipa_is_link_local(sk->daddr) ? sk->iface : NULL, sk->dport);
-    rfree(sk);
+    sk_close(sk);
     return 0;
   }
 
@@ -1370,7 +1370,7 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
 
   if (!acc)
   {
-    rfree(sk);
+    sk_close(sk);
     goto leave;
   }
 
@@ -1410,7 +1410,7 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
 err:
   sk_log_error(sk, p->p.name);
   log(L_ERR "%s: Incoming connection aborted", p->p.name);
-  rfree(sk);
+  sk_close(sk);
 
 leave:
   birdloop_leave(p->p.loop);

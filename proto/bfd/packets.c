@@ -439,7 +439,7 @@ bfd_open_rx_sk(struct bfd_proto *p, int multihop, int af)
 
  err:
   sk_log_error(sk, p->p.name);
-  rfree(sk);
+  sk_close(sk);
   return NULL;
 }
 
@@ -470,7 +470,7 @@ bfd_open_rx_sk_bound(struct bfd_proto *p, ip_addr local, struct iface *ifa)
 
  err:
   sk_log_error(sk, p->p.name);
-  rfree(sk);
+  sk_close(sk);
   return NULL;
 }
 
@@ -501,6 +501,6 @@ bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa)
 
  err:
   sk_log_error(sk, p->p.name);
-  rfree(sk);
+  sk_close(sk);
   return NULL;
 }

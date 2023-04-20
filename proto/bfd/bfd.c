@@ -604,10 +604,10 @@ bfd_free_iface(struct bfd_iface *ifa)
     return;
 
   if (ifa->sk)
-    rfree(ifa->sk);
+    sk_close(ifa->sk);
 
   if (ifa->rx)
-    rfree(ifa->rx);
+    sk_close(ifa->rx);
 
   rem_node(&ifa->n);
   mb_free(ifa);

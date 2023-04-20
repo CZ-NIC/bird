@@ -417,7 +417,7 @@ cli_free(cli *c)
 
   if (defer)
   {
-    rfree(c->sock);
+    sk_close(c->sock);
     c->sock = NULL;
   }
   else

@@ -511,7 +511,7 @@ radv_sk_open(struct radv_iface *ifa)
 
  err:
   sk_log_error(sk, ifa->ra->p.name);
-  rfree(sk);
+  sk_close(sk);
   return 0;
 }
 

@@ -1040,6 +1040,6 @@ rip_open_socket(struct rip_iface *ifa)
 
 err:
   sk_log_error(sk, p->p.name);
-  rfree(sk);
+  sk_close(sk);
   return 0;
 }
