@@ -20,6 +20,12 @@
  * - Support DE_CONFIGURED PEER DOWN REASON code in PEER DOWN NOTIFICATION message
  * - If connection with BMP collector will lost then we don't establish connection again
  * - Set Peer Type by its a global and local-scope IP address
+ *
+ * The BMP session is managed by a simple state machine with three states: Idle
+ * (!started, !sk), Connect (!started, sk active), and Established (started). It
+ * has three events: connect successfull (Connect -> Established), socket error
+ * (any -> Idle), and connect timeout (Idle/Connect -> Connect, resetting the
+ * TCP socket).
  */
 
 #include "proto/bmp/bmp.h"
@@ -166,8 +172,11 @@ enum bmp_term_reason {
 // Default chunk size request when memory allocation
 #define DEFAULT_MEM_BLOCK_SIZE 4096
 
+// Initial delay for connection to the BMP collector
+#define CONNECT_INIT_TIME (200 MS)
+
 // Timeout for connection to the BMP collector retry
-#define CONNECT_RETRY_SEC (10 S)
+#define CONNECT_RETRY_TIME (10 S)
 
 #define IP4_MAX_TTL 255
 
@@ -188,19 +197,14 @@ enum bmp_term_reason {
   } while (0)
 
 
-// Handle BIRD socket error event
-static void
-bmp_sock_err(sock *sk, int err);
+static void bmp_connected(struct birdsock *sk);
+static void bmp_sock_err(sock *sk, int err);
+static void bmp_close_socket(struct bmp_proto *p);
 
 static void
 bmp_send_peer_up_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
   const byte* tx_data, const size_t tx_data_size,
   const byte* rx_data, const size_t rx_data_size);
-
-static void
-bmp_peer_map_walk_tx_open_msg_and_send_peer_up_notif(
-  const struct bmp_peer_map_key key, const byte *tx_msg,
-  const size_t tx_msg_size, void *bmp_);
 
 // Stores necessary any data in list
 struct bmp_data_node {
@@ -250,7 +254,7 @@ bmp_init_msg_serialize(buffer *stream, const char *sys_descr, const char *sys_na
 static void
 bmp_schedule_tx_packet(struct bmp_proto *p, const byte *payload, const size_t size)
 {
-  ASSERT(p->station_connected);
+  ASSERT(p->started);
 
   struct bmp_data_node *tx_data = mb_alloc(p->tx_mem_pool, sizeof (struct bmp_data_node));
   tx_data->data = mb_alloc(p->tx_mem_pool, size);
@@ -263,23 +267,6 @@ bmp_schedule_tx_packet(struct bmp_proto *p, const byte *payload, const size_t si
   {
     ev_schedule(p->tx_ev);
   }
-}
-
-/**
- * bmp_startup - connect to the BMP collector.
- * NOTE: Send Initiation Message to the BMP collector.
- */
-static void
-bmp_startup(struct bmp_proto *p)
-{
-  ASSERT(p->station_connected && !p->started);
-
-  buffer payload = bmp_buffer_alloc(p->buffer_mpool, DEFAULT_MEM_BLOCK_SIZE);
-  bmp_init_msg_serialize(&payload, p->sys_descr, p->sys_name);
-  bmp_schedule_tx_packet(p, bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
-  bmp_buffer_free(&payload);
-
-  p->started = true;
 }
 
 static void
@@ -333,43 +320,13 @@ bmp_tx(struct birdsock *sk)
   bmp_fire_tx(sk->data);
 }
 
-static inline int
-bmp_open_socket(struct bmp_proto *p)
+/* We need RX hook just to accept socket close events */
+static int
+bmp_rx(struct birdsock *sk UNUSED, uint size UNUSED)
 {
-  sock *s = p->sk;
-  s->daddr = p->station_ip;
-  s->dport = p->station_port;
-  s->err_hook = bmp_sock_err;
-
-  int rc = sk_open(s);
-
-  if (rc < 0)
-    sk_log_error(s, p->p.name);
-
-  return rc;
+  return 0;
 }
 
-static void
-bmp_connection_retry(timer *t)
-{
-  struct bmp_proto *p = t->data;
-
-  if (bmp_open_socket(p) < 0)
-  {
-    log(L_DEBUG "Failed to connect to BMP station");
-    return;
-  }
-
-  log(L_DEBUG "Connected to BMP station after connection retry");
-  tm_stop(t);
-}
-
-void
-bmp_sock_err(sock *sk, int err)
-{
-  struct bmp_proto *p = sk->data;
-  log(L_WARN "[BMP:%s] Socket error: %M", p->p.name, err);
-}
 
 static inline void
 bmp_put_ipa(buffer *stream, const ip_addr addr)
@@ -489,36 +446,13 @@ bmp_peer_down_notif_msg_serialize(buffer *stream, const bool is_peer_global,
   bmp_put_data(stream, data, data_size);
 }
 
-/**
- * bmp_open - initialize internal resources of BMP implementation.
- * NOTE: It does not connect to BMP collector yet.
- */
-void
-bmp_open(const struct proto *P)
-{
-  struct bmp_proto *p = (void *) P;
-
-  if (bmp_open_socket(p) < 0)
-  {
-    log(L_DEBUG "Failed to connect to BMP station");
-    p->connect_retry_timer = tm_new_init(P->pool, bmp_connection_retry, p,
-					 CONNECT_RETRY_SEC, 0 /* not randomized */);
-    tm_start(p->connect_retry_timer, CONNECT_RETRY_SEC);
-    p->station_connected = false;
-  }
-  else
-  {
-    log(L_DEBUG "Connected to BMP station");
-  }
-}
-
-void
+static void
 bmp_peer_map_walk_tx_open_msg_and_send_peer_up_notif(
   const struct bmp_peer_map_key key, const byte *tx_msg,
   const size_t tx_msg_size, void *bmp_)
 {
   struct bmp_proto *p = bmp_;
-  ASSERT(p->station_connected);
+  ASSERT(p->started);
 
   const struct bmp_peer_map_entry *map_rx_msg = bmp_peer_map_get(&p->peer_open_msg.rx_msg, key);
   IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
@@ -630,7 +564,7 @@ bmp_send_peer_up_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
   const byte* tx_data, const size_t tx_data_size,
   const byte* rx_data, const size_t rx_data_size)
 {
-  ASSERT(p->station_connected);
+  ASSERT(p->started);
 
   const struct birdsock *sk = bmp_get_birdsock_ext(bgp);
   IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
@@ -661,24 +595,19 @@ bmp_put_sent_bgp_open_msg(const struct bgp_proto *bgp, const byte* pkt,
     return;
   }
 
-  struct bmp_peer_map_key key = bmp_peer_map_key_create(bgp->remote_ip,
-                                  bgp->remote_as);
-  const struct bmp_peer_map_entry *map_entry
+  struct bmp_peer_map_key key
+    = bmp_peer_map_key_create(bgp->remote_ip, bgp->remote_as);
+  const struct bmp_peer_map_entry *rx_msg
     = bmp_peer_map_get(&p->peer_open_msg.rx_msg, key);
-  if (!map_entry || !p->started)
-  {
-    bmp_peer_map_insert(&p->peer_open_msg.tx_msg, key, pkt, pkt_size);
 
-    if (!map_entry)
-    {
-      bmp_peer_map_insert(&p->bgp_peers, key, (const byte *) &bgp, sizeof (bgp));
-    }
+  bmp_peer_map_insert(&p->peer_open_msg.tx_msg, key, pkt, pkt_size);
 
-    return;
-  }
+  if (!rx_msg)
+    bmp_peer_map_insert(&p->bgp_peers, key, (const byte *) &bgp, sizeof (bgp));
 
-  bmp_send_peer_up_notif_msg(p, bgp, pkt, pkt_size, map_entry->data.buf,
-			     map_entry->data.buf_size);
+  if (rx_msg && p->started)
+    bmp_send_peer_up_notif_msg(p, bgp, pkt, pkt_size, rx_msg->data.buf,
+			       rx_msg->data.buf_size);
 }
 
 void
@@ -694,22 +623,17 @@ bmp_put_recv_bgp_open_msg(const struct bgp_proto *bgp, const byte* pkt,
 
   struct bmp_peer_map_key key
     = bmp_peer_map_key_create(bgp->remote_ip, bgp->remote_as);
-  const struct bmp_peer_map_entry *map_data
+  const struct bmp_peer_map_entry *tx_msg
     = bmp_peer_map_get(&p->peer_open_msg.tx_msg, key);
-  if (!map_data || !p->started)
-  {
-    bmp_peer_map_insert(&p->peer_open_msg.rx_msg, key, pkt, pkt_size);
 
-    if (!map_data)
-    {
-      bmp_peer_map_insert(&p->bgp_peers, key, (const byte *) &bgp, sizeof (bgp));
-    }
+  bmp_peer_map_insert(&p->peer_open_msg.rx_msg, key, pkt, pkt_size);
 
-    return;
-  }
+  if (!tx_msg)
+    bmp_peer_map_insert(&p->bgp_peers, key, (const byte *) &bgp, sizeof (bgp));
 
-  bmp_send_peer_up_notif_msg(p, bgp, map_data->data.buf, map_data->data.buf_size,
-			     pkt, pkt_size);
+  if (tx_msg && p->started)
+    bmp_send_peer_up_notif_msg(p, bgp, tx_msg->data.buf, tx_msg->data.buf_size,
+			       pkt, pkt_size);
 }
 
 void
@@ -933,7 +857,7 @@ static void
 bmp_send_peer_down_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
   const byte* data, const size_t data_size)
 {
-  ASSERT(p->station_connected);
+  ASSERT(p->started);
 
   const struct bgp_caps *remote_caps = bmp_get_bgp_remote_caps_ext(bgp);
   bool is_global_instance_peer = bmp_is_peer_global_instance(bgp);
@@ -1035,35 +959,135 @@ bmp_send_termination_msg(struct bmp_proto *p,
   bmp_buffer_free(&stream);
 }
 
+/**
+ * bmp_startup - enter established state
+ * @p: BMP instance
+ *
+ * The bgp_startup() function is called when the BMP session is established.
+ * It sends initiation and peer up messagages.
+ */
 static void
-bmp_station_connected(struct birdsock *sk)
+bmp_startup(struct bmp_proto *p)
 {
-  struct bmp_proto *p = (void *) sk->data;
+  ASSERT(!p->started);
+  p->started = true;
 
-  sk->tx_hook = bmp_tx;
-  p->station_connected = true;
+  TRACE(D_EVENTS, "BMP session established");
 
-  bmp_startup(p);
+  /* Send initiation message */
+  buffer payload = bmp_buffer_alloc(p->buffer_mpool, DEFAULT_MEM_BLOCK_SIZE);
+  bmp_init_msg_serialize(&payload, p->sys_descr, p->sys_name);
+  bmp_schedule_tx_packet(p, bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
+  bmp_buffer_free(&payload);
 
+  /* Send Peer Up messages */
   bmp_peer_map_walk(&p->peer_open_msg.tx_msg,
 		    bmp_peer_map_walk_tx_open_msg_and_send_peer_up_notif, p);
-  bmp_peer_map_flush(&p->peer_open_msg.tx_msg);
-  bmp_peer_map_flush(&p->peer_open_msg.rx_msg);
+
+  proto_notify_state(&p->p, PS_UP);
 }
 
-static inline void
-bmp_setup_socket(struct bmp_proto *p)
+/**
+ * bmp_down - leave established state
+ * @p: BMP instance
+ *
+ * The bgp_down() function is called when the BMP session fails.
+ */
+static void
+bmp_down(struct bmp_proto *p)
 {
-  sock *sk = sk_new(p->tx_mem_pool);
+  ASSERT(p->started);
+  p->started = false;
+
+  TRACE(D_EVENTS, "BMP session closed");
+
+  proto_notify_state(&p->p, PS_START);
+}
+
+/**
+ * bmp_connect - initiate an outgoing connection
+ * @p: BMP instance
+ *
+ * The bmp_connect() function creates the socket and initiates an outgoing TCP
+ * connection to the monitoring station. It is called to enter Connect state.
+ */
+static void
+bmp_connect(struct bmp_proto *p)
+{
+  ASSERT(!p->started);
+
+  sock *sk = sk_new(p->p.pool);
   sk->type = SK_TCP_ACTIVE;
+  sk->daddr = p->station_ip;
+  sk->dport = p->station_port;
   sk->ttl = IP4_MAX_TTL;
   sk->tos = IP_PREC_INTERNET_CONTROL;
   sk->tbsize = BGP_TX_BUFFER_EXT_SIZE;
-  sk->tx_hook = bmp_station_connected;
+  sk->tx_hook = bmp_connected;
+  sk->err_hook = bmp_sock_err;
 
   p->sk = sk;
   sk->data = p;
+
+  int rc = sk_open(sk);
+
+  if (rc < 0)
+    sk_log_error(sk, p->p.name);
+
+  tm_start(p->connect_retry_timer, CONNECT_RETRY_TIME);
 }
+
+/* BMP connect successfull event - switch from Connect to Established state */
+static void
+bmp_connected(struct birdsock *sk)
+{
+  struct bmp_proto *p = (void *) sk->data;
+
+  sk->rx_hook = bmp_rx;
+  sk->tx_hook = bmp_tx;
+  tm_stop(p->connect_retry_timer);
+
+  bmp_startup(p);
+}
+
+/* BMP socket error event - switch from any state to Idle state */
+static void
+bmp_sock_err(sock *sk, int err)
+{
+  struct bmp_proto *p = sk->data;
+
+  if (err)
+    TRACE(D_EVENTS, "Connection lost (%M)", err);
+  else
+    TRACE(D_EVENTS, "Connection closed");
+
+  if (p->started)
+    bmp_down(p);
+
+  bmp_close_socket(p);
+  tm_start(p->connect_retry_timer, CONNECT_RETRY_TIME);
+}
+
+/* BMP connect timeout event - switch from Idle/Connect state to Connect state */
+static void
+bmp_connection_retry(timer *t)
+{
+  struct bmp_proto *p = t->data;
+
+  if (p->started)
+    return;
+
+  bmp_close_socket(p);
+  bmp_connect(p);
+}
+
+static void
+bmp_close_socket(struct bmp_proto *p)
+{
+  rfree(p->sk);
+  p->sk = NULL;
+}
+
 
 /** Configuration handle section **/
 static struct proto *
@@ -1097,6 +1121,8 @@ bmp_start(struct proto *P)
   p->tx_mem_pool = rp_new(P->pool, "BMP Tx");
   p->update_msg_mem_pool = rp_new(P->pool, "BMP Update");
   p->tx_ev = ev_new_init(p->tx_mem_pool, bmp_fire_tx, p);
+  p->connect_retry_timer = tm_new_init(p->p.pool, bmp_connection_retry, p, 0, 0);
+  p->sk = NULL;
 
   bmp_peer_map_init(&p->peer_open_msg.tx_msg, p->map_mem_pool);
   bmp_peer_map_init(&p->peer_open_msg.rx_msg, p->map_mem_pool);
@@ -1104,26 +1130,25 @@ bmp_start(struct proto *P)
 
   init_list(&p->tx_queue);
   init_list(&p->rt_table_in_pre_policy.update_msg_queue);
-  p->station_connected = false;
   p->started = false;
-  p->connect_retry_timer = NULL;
 
-  bmp_setup_socket(p);
-  bmp_open(P);
+  tm_start(p->connect_retry_timer, CONNECT_INIT_TIME);
 
   g_bmp = p;
 
-  return PS_UP;
+  return PS_START;
 }
 
 static int
 bmp_shutdown(struct proto *P)
 {
   struct bmp_proto *p = (void *) P;
-  bmp_send_termination_msg(p, BMP_TERM_REASON_ADM);
 
-  p->station_connected = false;
-  p->started = false;
+  if (p->started)
+  {
+    bmp_send_termination_msg(p, BMP_TERM_REASON_ADM);
+    p->started = false;
+  }
 
   g_bmp = NULL;
 
