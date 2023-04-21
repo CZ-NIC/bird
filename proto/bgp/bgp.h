@@ -434,6 +434,7 @@ struct bgp_write_state {
   int as4_session;
   int add_path;
   int mpls;
+  int sham;
 
   eattr *mp_next_hop;
   const adata *mpls_labels;
@@ -496,6 +497,13 @@ struct bgp_parse_state {
 #define BGP_CF_WALK_CHANNELS(P,C) WALK_LIST(C, P->c.channels) if (C->c.channel == &channel_bgp)
 #define BGP_WALK_CHANNELS(P,C) WALK_LIST(C, P->p.channels) if (C->c.channel == &channel_bgp)
 
+#define BGP_MSG_HDR_MARKER_SIZE	16
+#define BGP_MSG_HDR_MARKER_POS	0
+#define BGP_MSG_HDR_LENGTH_SIZE	2
+#define BGP_MSG_HDR_LENGTH_POS	BGP_MSG_HDR_MARKER_SIZE
+#define BGP_MSG_HDR_TYPE_SIZE	1
+#define BGP_MSG_HDR_TYPE_POS	(BGP_MSG_HDR_MARKER_SIZE + BGP_MSG_HDR_LENGTH_SIZE)
+
 static inline int bgp_channel_is_ipv4(struct bgp_channel *c)
 { return BGP_AFI(c->afi) == BGP_AFI_IPV4; }
 
@@ -541,6 +549,8 @@ void bgp_refresh_end(struct bgp_channel *c);
 void bgp_store_error(struct bgp_proto *p, struct bgp_conn *c, u8 class, u32 code);
 void bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len);
 const char *bgp_format_role_name(u8 role);
+
+void bgp_fix_attr_flags(ea_list *attrs);
 
 static inline int
 rte_resolvable(rte *rt)
@@ -615,6 +625,7 @@ struct rte *bgp_rte_modify_stale(struct rte *r, struct linpool *pool);
 u32 bgp_rte_igp_metric(struct rte *);
 void bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old);
 int bgp_preexport(struct channel *, struct rte *);
+void bgp_rte_update_in_notify(struct channel *C, const net_addr *n, const struct rte *new, const struct rte_src *src);
 int bgp_get_attr(const struct eattr *e, byte *buf, int buflen);
 void bgp_get_route_info(struct rte *, byte *buf);
 int bgp_total_aigp_metric_(rte *e, u64 *metric, const struct adata **ad);
@@ -648,6 +659,7 @@ void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsi
 
 void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
 
+byte * bgp_create_end_mark(struct bgp_channel *c, byte *buf);
 
 /* Packet types */
 
