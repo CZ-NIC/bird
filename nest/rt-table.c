@@ -2131,7 +2131,7 @@ rt_table_export_start_locked(struct rtable_private *tab, struct rt_export_reques
   struct rt_exporter *re = &tab->exporter.e;
   rt_lock_table(tab);
 
-  req->hook = rt_alloc_export(re, sizeof(struct rt_table_export_hook));
+  req->hook = rt_alloc_export(re, req->pool, sizeof(struct rt_table_export_hook));
   req->hook->req = req;
 
   struct rt_table_export_hook *hook = SKIP_BACK(struct rt_table_export_hook, h, req->hook);
@@ -2212,9 +2212,9 @@ rt_request_export_other(struct rt_exporter *re, struct rt_export_request *req)
 }
 
 struct rt_export_hook *
-rt_alloc_export(struct rt_exporter *re, uint size)
+rt_alloc_export(struct rt_exporter *re, pool *pp, uint size)
 {
-  pool *p = rp_new(re->rp, "Export hook");
+  pool *p = rp_new(pp, pp->domain, "Export hook");
   struct rt_export_hook *hook = mb_allocz(p, size);
 
   hook->pool = p;
@@ -2709,13 +2709,14 @@ rt_flowspec_link(rtable *src_pub, rtable *dst_pub)
 
     if (!ln)
     {
-      pool *p = src->rp;
+      pool *p = birdloop_pool(dst_pub->loop);
       ln = mb_allocz(p, sizeof(struct rt_flowspec_link));
       ln->src = src_pub;
       ln->dst = dst_pub;
       ln->req = (struct rt_export_request) {
 	.name = mb_sprintf(p, "%s.flowspec.notifier", dst_pub->name),
 	.list = birdloop_event_list(dst_pub->loop),
+	.pool = p,
 	.trace_routes = src->config->debug,
 	.dump_req = rt_flowspec_dump_req,
 	.log_state_change = rt_flowspec_log_state_change,
@@ -2781,8 +2782,6 @@ rt_free(resource *_r)
 {
   struct rtable_private *r = SKIP_BACK(struct rtable_private, r, _r);
 
-  DOMAIN_FREE(rtable, r->lock);
-
   DBG("Deleting routing table %s\n", r->name);
   ASSERT_DIE(r->use_count == 0);
 
@@ -2847,13 +2846,20 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
   /* Start the service thread */
   struct birdloop *loop = birdloop_new(pp, DOMAIN_ORDER(service), 0, "Routing table service %s", cf->name);
+  birdloop_enter(loop);
   pool *sp = birdloop_pool(loop);
-  pool *p = rp_newf(sp, "Routing table data %s", cf->name);
+
+  /* Create the table domain and pool */
+  DOMAIN(rtable) dom = DOMAIN_NEW(rtable, cf->name);
+  LOCK_DOMAIN(rtable, dom);
+
+  pool *p = rp_newf(sp, dom.rtable, "Routing table data %s", cf->name);
 
   /* Create the actual table */
   struct rtable_private *t = ralloc(p, &rt_class);
   t->rp = p;
   t->loop = loop;
+  t->lock = dom;
 
   t->rte_slab = sl_new(p, sizeof(struct rte_storage));
 
@@ -2863,8 +2869,6 @@ rt_setup(pool *pp, struct rtable_config *cf)
   t->id = idm_alloc(&rtable_idm);
   if (t->id >= rtable_max_id)
     rtable_max_id = t->id + 1;
-
-  t->lock = DOMAIN_NEW(rtable, t->name);
 
   fib_init(&t->fib, p, t->addr_type, sizeof(net), OFFSETOF(net, n), 0, NULL);
 
@@ -2911,8 +2915,9 @@ rt_setup(pool *pp, struct rtable_config *cf)
     t->flowspec_trie->ipv4 = (t->addr_type == NET_FLOW4);
   }
 
+  UNLOCK_DOMAIN(rtable, dom);
+
   /* Setup the service thread flag handler */
-  birdloop_enter(t->loop);
   birdloop_flag_set_handler(t->loop, &t->fh);
   birdloop_leave(t->loop);
 
@@ -2929,7 +2934,7 @@ void
 rt_init(void)
 {
   rta_init();
-  rt_table_pool = rp_new(&root_pool, "Routing tables");
+  rt_table_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Routing tables");
   init_list(&routing_tables);
   init_list(&deleted_routing_tables);
   ev_init_list(&rt_cork.queue, &main_birdloop, "Route cork release");
@@ -4067,13 +4072,14 @@ rt_shutdown(void *tab_)
 static void
 rt_delete(void *tab_)
 {
-  birdloop_enter(&main_birdloop);
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
 
   /* We assume that nobody holds the table reference now as use_count is zero.
    * Anyway the last holder may still hold the lock. Therefore we lock and
    * unlock it the last time to be sure that nobody is there. */
   struct rtable_private *tab = RT_LOCK((rtable *) tab_);
   struct config *conf = tab->deleted;
+  DOMAIN(rtable) dom = tab->lock;
 
   RT_UNLOCK(RT_PUB(tab));
 
@@ -4081,7 +4087,8 @@ rt_delete(void *tab_)
   birdloop_free(tab->loop);
   config_del_obstacle(conf);
 
-  birdloop_leave(&main_birdloop);
+  /* Also drop the domain */
+  DOMAIN_FREE(rtable, dom);
 }
 
 
@@ -4636,18 +4643,9 @@ rt_init_hostcache(struct rtable_private *tab)
     .data = tab,
   };
 
-  hc->req = (struct rt_export_request) {
-    .name = mb_sprintf(tab->rp, "%s.hcu.notifier", tab->name),
-    .list = birdloop_event_list(tab->loop),
-    .trace_routes = tab->config->debug,
-    .dump_req = hc_notify_dump_req,
-    .log_state_change = hc_notify_log_state_change,
-    .export_one = hc_notify_export_one,
-  };
-
-  rt_table_export_start_locked(tab, &hc->req);
-
   tab->hostcache = hc;
+
+  ev_send_loop(tab->loop, &hc->update);
 }
 
 static void
@@ -4775,8 +4773,23 @@ rt_update_hostcache(void *data)
 
   RT_LOCKED((rtable *) data, tab)
   {
-
   struct hostcache *hc = tab->hostcache;
+
+  /* Finish initialization */
+  if (!hc->req.name)
+  {
+    hc->req = (struct rt_export_request) {
+      .name = mb_sprintf(tab->rp, "%s.hcu.notifier", tab->name),
+      .list = birdloop_event_list(tab->loop),
+      .pool = tab->rp,
+      .trace_routes = tab->config->debug,
+      .dump_req = hc_notify_dump_req,
+      .log_state_change = hc_notify_log_state_change,
+      .export_one = hc_notify_export_one,
+    };
+
+    rt_table_export_start_locked(tab, &hc->req);
+  }
 
   /* Shutdown shortcut */
   if (!hc->req.hook)

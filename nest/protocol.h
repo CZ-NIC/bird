@@ -280,6 +280,8 @@ struct proto *proto_iterate_named(struct symbol *sym, struct protocol *proto, st
 
 #define PROTO_LOCKED_FROM_MAIN(p)	for (struct birdloop *_proto_loop = PROTO_ENTER_FROM_MAIN(p); _proto_loop; PROTO_LEAVE_FROM_MAIN(_proto_loop), (_proto_loop = NULL))
 
+static inline struct domain_generic *proto_domain(struct proto *p)
+{ return birdloop_domain(p->loop); }
 
 #define CMD_RELOAD	0
 #define CMD_RELOAD_IN	1

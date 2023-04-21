@@ -90,7 +90,7 @@ int undo_available;			/* Undo was not requested from last reconfiguration */
 struct config *
 config_alloc(const char *name)
 {
-  pool *p = rp_new(config_pool, "Config");
+  pool *p = rp_new(config_pool, the_bird_domain.the_bird, "Config");
   linpool *l = lp_new_default(p);
   struct config *c = lp_allocz(l, sizeof(struct config));
 
@@ -515,7 +515,7 @@ config_timeout(timer *t UNUSED)
 void
 config_init(void)
 {
-  config_pool = rp_new(&root_pool, "Configurations");
+  config_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Configurations");
 
   config_event = ev_new(config_pool);
   config_event->hook = config_done;

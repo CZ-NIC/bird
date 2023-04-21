@@ -367,6 +367,7 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
       .name = mb_sprintf(c->proto->pool, "%s.%s.roa-%s.%s",
 	  c->proto->name, c->name, dir ? "in" : "out", tab->name),
       .list = proto_work_list(c->proto),
+      .pool = c->proto->pool,
       .trace_routes = c->debug | c->proto->debug,
       .dump_req = channel_dump_roa_req,
       .export_one = channel_export_one_roa,
@@ -495,6 +496,7 @@ channel_start_export(struct channel *c)
   c->out_req = (struct rt_export_request) {
     .name = mb_sprintf(c->proto->pool, "%s.%s", c->proto->name, c->name),
     .list = proto_work_list(c->proto),
+    .pool = c->proto->pool,
     .addr = c->out_subprefix,
     .addr_mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
     .trace_routes = c->debug | c->proto->debug,
@@ -685,6 +687,7 @@ channel_setup_in_table(struct channel *c)
   c->reload_req = (struct rt_export_request) {
     .name = mb_sprintf(c->proto->pool, "%s.%s.import", c->proto->name, c->name),
     .list = proto_work_list(c->proto),
+    .pool = c->proto->pool,
     .trace_routes = c->debug | c->proto->debug,
     .export_bulk = channel_reload_export_bulk,
     .dump_req = channel_reload_dump_req,
@@ -1132,15 +1135,14 @@ proto_loop_stopped(void *ptr)
 {
   struct proto *p = ptr;
 
-  birdloop_enter(&main_birdloop);
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+  ASSERT_DIE(p->loop != &main_birdloop);
 
   p->pool = NULL; /* is freed by birdloop_free() */
   birdloop_free(p->loop);
   p->loop = &main_birdloop;
 
   proto_cleanup(p);
-
-  birdloop_leave(&main_birdloop);
 }
 
 static void
@@ -1228,7 +1230,7 @@ proto_start(struct proto *p)
     p->pool = birdloop_pool(p->loop);
   }
   else
-    p->pool = rp_newf(proto_pool, "Protocol %s", p->cf->name);
+    p->pool = rp_newf(proto_pool, the_bird_domain.the_bird, "Protocol %s", p->cf->name);
 
   p->iface_sub.target = proto_event_list(p);
 
@@ -1859,7 +1861,7 @@ protos_build(void)
 {
   protos_build_gen();
 
-  proto_pool = rp_new(&root_pool, "Protocols");
+  proto_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Protocols");
 }
 
 

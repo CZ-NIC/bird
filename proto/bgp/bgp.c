@@ -922,7 +922,8 @@ bgp_graceful_restart_feed(struct bgp_channel *c)
 {
   c->stale_feed = (struct rt_export_request) {
     .name = "BGP-GR",
-    .list = &global_work_list,
+    .list = proto_event_list(c->c.proto),
+    .pool = c->c.proto->pool,
     .trace_routes = c->c.debug | c->c.proto->debug,
     .dump_req = bgp_graceful_restart_feed_dump_req,
     .log_state_change = bgp_graceful_restart_feed_log_state_change,

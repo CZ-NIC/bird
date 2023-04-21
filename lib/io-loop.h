@@ -31,6 +31,7 @@ event_list *birdloop_event_list(struct birdloop *loop);
 
 /* Get birdloop's time heap */
 struct timeloop *birdloop_time_loop(struct birdloop *loop);
+#define birdloop_domain(l)  (birdloop_time_loop((l))->domain)
 
 /* Get birdloop's pool */
 pool *birdloop_pool(struct birdloop *loop);

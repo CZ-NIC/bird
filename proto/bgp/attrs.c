@@ -1853,7 +1853,7 @@ bgp_init_pending_tx(struct bgp_channel *c)
 {
   ASSERT_DIE(!c->ptx);
 
-  pool *p = rp_new(c->pool, "BGP Pending TX");
+  pool *p = rp_new(c->pool, proto_domain(c->c.proto), "BGP Pending TX");
   c->ptx = ralloc(p, &bgp_pending_tx_class);
   c->ptx->pool = p;
 
@@ -1981,7 +1981,7 @@ bgp_out_table_feed(void *data)
 static void
 bgp_out_table_export_start(struct rt_exporter *re, struct rt_export_request *req)
 {
-  req->hook = rt_alloc_export(re, sizeof(struct bgp_out_export_hook));
+  req->hook = rt_alloc_export(re, req->pool, sizeof(struct bgp_out_export_hook));
   req->hook->req = req;
 
   struct bgp_out_export_hook *hook = SKIP_BACK(struct bgp_out_export_hook, h, req->hook);

@@ -1018,12 +1018,15 @@ if_choose_router_id(struct iface_patt *mask, u32 old_id)
 void
 if_init(void)
 {
-  if_pool = rp_new(&root_pool, "Interfaces");
+  iface_domain = DOMAIN_NEW(attrs, "Interfaces");
+
+  IFACE_LOCK;
+  if_pool = rp_new(&root_pool, iface_domain.attrs, "Interfaces");
   init_list(&global_iface_list);
   iface_sub_slab = sl_new(if_pool, sizeof(struct iface_notification));
   strcpy(default_vrf.name, "default");
   neigh_init(if_pool);
-  iface_domain = DOMAIN_NEW(attrs, "Interfaces");
+  IFACE_UNLOCK;
 }
 
 /*

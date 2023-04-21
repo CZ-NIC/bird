@@ -80,7 +80,7 @@ struct ospf_neighbor *
 ospf_neighbor_new(struct ospf_iface *ifa)
 {
   struct ospf_proto *p = ifa->oa->po;
-  struct pool *pool = rp_new(p->p.pool, "OSPF Neighbor");
+  struct pool *pool = rp_new(p->p.pool, proto_domain(&p->p), "OSPF Neighbor");
   struct ospf_neighbor *n = mb_allocz(pool, sizeof(struct ospf_neighbor));
 
   n->pool = pool;

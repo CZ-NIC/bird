@@ -10,7 +10,8 @@
 #ifndef _BIRD_RESOURCE_H_
 #define _BIRD_RESOURCE_H_
 
-#include "lib/lists.h"
+#include "lib/locking.h"
+#include "lib/tlists.h"
 
 #include <stdarg.h>
 
@@ -21,10 +22,19 @@ struct resmem {
 
 /* Resource */
 
+#define TLIST_PREFIX resource
+#define TLIST_TYPE struct resource
+#define TLIST_ITEM n
+#define TLIST_WANT_WALK
+#define TLIST_WANT_ADD_TAIL
+#define TLIST_WANT_UPDATE_NODE
+
 typedef struct resource {
-  node n;				/* Inside resource pool */
-  struct resclass *class;		/* Resource class */
+  TLIST_DEFAULT_NODE;			/* Inside resource pool */
+  const struct resclass *class;		/* Resource class */
 } resource;
+
+#include "lib/tlists.h"
 
 /* Resource class */
 
@@ -44,14 +54,13 @@ struct resclass {
 
 typedef struct pool {
   resource r;
-  list inside;
+  TLIST_LIST(resource) inside;
+  struct domain_generic *domain;
   const char *name;
 } pool;
 
 
 void resource_init(void);
-pool *rp_new(pool *, const char *);	/* Create new pool */
-pool *rp_newf(pool *, const char *, ...);	/* Create a new pool with a formatted string as its name */
 void rfree(void *);			/* Free single resource */
 void rdump(void *, unsigned indent);	/* Dump to debug output */
 struct resmem rmemsize(void *res);		/* Return size of memory used by the resource */
@@ -60,12 +69,10 @@ void rmove(void *, pool *);		/* Move to a different pool */
 
 void *ralloc(pool *, struct resclass *);
 
-pool *rp_new(pool *, const char *);		/* Create a new pool */
-pool *rp_newf(pool *, const char *, ...);	/* Create a new pool with a formatted string as its name */
-pool *rp_vnewf(pool *, const char *, va_list);	/* Create a new pool with a formatted string as its name */
-void rp_init(pool *, const char *);		/* Init a new pool */
-void rp_initf(pool *, const char *, ...);	/* Init a new pool with a formatted string as its name */
-static inline void rp_free(pool *p) { rfree(&p->r); }	/* Free the whole pool */
+pool *rp_new(pool *, struct domain_generic *, const char *);		/* Create a new pool */
+pool *rp_newf(pool *, struct domain_generic *, const char *, ...);	/* Create a new pool with a formatted string as its name */
+pool *rp_vnewf(pool *, struct domain_generic *, const char *, va_list);	/* Create a new pool with a formatted string as its name */
+void rp_free(pool *p);							/* Free the whole pool */
 
 extern pool root_pool;
 
@@ -97,6 +104,7 @@ void lp_restore(linpool *m, lp_state *p);	/* Restore state */
 struct tmp_resources {
   pool *pool, *parent;
   linpool *lp;
+  struct domain_generic *domain;
 };
 
 extern _Thread_local struct tmp_resources tmp_res;
@@ -106,7 +114,7 @@ extern _Thread_local struct tmp_resources tmp_res;
 #define tmp_allocu(sz)	lp_allocu(tmp_linpool, sz)
 #define tmp_allocz(sz)	lp_allocz(tmp_linpool, sz)
 
-void tmp_init(pool *p);
+void tmp_init(pool *p, struct domain_generic *dg);
 void tmp_flush(void);
 
 
