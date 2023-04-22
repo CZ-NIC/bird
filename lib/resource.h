@@ -12,6 +12,8 @@
 
 #include "lib/lists.h"
 
+#include <stdarg.h>
+
 struct resmem {
   size_t effective;			/* Memory actually used for data storage */
   size_t overhead;			/* Overhead memory imposed by allocator strategies */
@@ -60,6 +62,7 @@ void *ralloc(pool *, struct resclass *);
 
 pool *rp_new(pool *, const char *);		/* Create a new pool */
 pool *rp_newf(pool *, const char *, ...);	/* Create a new pool with a formatted string as its name */
+pool *rp_vnewf(pool *, const char *, va_list);	/* Create a new pool with a formatted string as its name */
 void rp_init(pool *, const char *);		/* Init a new pool */
 void rp_initf(pool *, const char *, ...);	/* Init a new pool with a formatted string as its name */
 static inline void rp_free(pool *p) { rfree(&p->r); }	/* Free the whole pool */

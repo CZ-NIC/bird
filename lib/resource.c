@@ -64,13 +64,19 @@ rp_new(pool *p, const char *name)
 }
 
 pool *
-rp_newf(pool *p, const char *fmt, ...)
+rp_vnewf(pool *p, const char *fmt, va_list args)
 {
   pool *z = rp_new(p, NULL);
+  z->name = mb_vsprintf(p, fmt, args);
+  return z;
+}
 
+pool *
+rp_newf(pool *p, const char *fmt, ...)
+{
   va_list args;
   va_start(args, fmt);
-  z->name = mb_vsprintf(p, fmt, args);
+  pool *z = rp_vnewf(p, fmt, args);
   va_end(args);
 
   return z;

@@ -1116,8 +1116,11 @@ proto_cleanup(struct proto *p)
 {
   CALL(p->proto->cleanup, p);
 
-  rp_free(p->pool);
-  p->pool = NULL;
+  if (p->pool)
+  {
+    rp_free(p->pool);
+    p->pool = NULL;
+  }
 
   p->active = 0;
   proto_log_state_change(p);
@@ -1131,8 +1134,10 @@ proto_loop_stopped(void *ptr)
 
   birdloop_enter(&main_birdloop);
 
+  p->pool = NULL; /* is freed by birdloop_free() */
   birdloop_free(p->loop);
   p->loop = &main_birdloop;
+
   proto_cleanup(p);
 
   birdloop_leave(&main_birdloop);
@@ -1214,13 +1219,16 @@ proto_start(struct proto *p)
   DBG("Kicking %s up\n", p->name);
   PD(p, "Starting");
 
-  p->pool = rp_newf(proto_pool, "Protocol %s", p->cf->name);
-
   if (graceful_restart_state == GRS_INIT)
     p->gr_recovery = 1;
 
   if (p->cf->loop_order != DOMAIN_ORDER(the_bird))
-    p->loop = birdloop_new(p->pool, p->cf->loop_order, p->pool->name, p->cf->loop_max_latency);
+  {
+    p->loop = birdloop_new(proto_pool, p->cf->loop_order, p->cf->loop_max_latency, "Protocol %s", p->cf->name);
+    p->pool = birdloop_pool(p->loop);
+  }
+  else
+    p->pool = rp_newf(proto_pool, "Protocol %s", p->cf->name);
 
   p->iface_sub.target = proto_event_list(p);
 

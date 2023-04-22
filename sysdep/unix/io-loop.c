@@ -31,7 +31,7 @@
 
 #define THREAD_STACK_SIZE	65536	/* To be lowered in near future */
 
-static struct birdloop *birdloop_new_internal(pool *pp, uint order, const char *name, int request_pickup, struct birdloop_pickup_group *group);
+static struct birdloop *birdloop_new_no_pickup(pool *pp, uint order, const char *name, ...);
 
 /*
  *	Nanosecond time for accounting purposes
@@ -85,6 +85,12 @@ struct timeloop *
 birdloop_time_loop(struct birdloop *loop)
 {
   return &loop->time;
+}
+
+pool *
+birdloop_pool(struct birdloop *loop)
+{
+  return loop->pool;
 }
 
 _Bool
@@ -627,7 +633,7 @@ bird_thread_main(void *arg)
   tmp_init(thr->pool);
   init_list(&thr->loops);
 
-  thr->meta = birdloop_new_internal(thr->pool, DOMAIN_ORDER(meta), "Thread Meta", 0, thr->group);
+  thr->meta = birdloop_new_no_pickup(thr->pool, DOMAIN_ORDER(meta), "Thread Meta");
   thr->meta->thread = thr;
   birdloop_enter(thr->meta);
 
@@ -885,7 +891,7 @@ bird_thread_commit(struct config *new, struct config *old UNUSED)
 
     if ((dif > 0) && !thread_dropper_running)
     {
-      struct birdloop *tdl = birdloop_new(&root_pool, DOMAIN_ORDER(control), "Thread dropper", group->max_latency);
+      struct birdloop *tdl = birdloop_new(&root_pool, DOMAIN_ORDER(control), group->max_latency, "Thread dropper");
       event *tde = ev_new_init(tdl->pool, bird_thread_shutdown, NULL);
 
       LOCK_DOMAIN(resource, group->domain);
@@ -1178,11 +1184,11 @@ birdloop_run_timer(timer *tm)
 }
 
 static struct birdloop *
-birdloop_new_internal(pool *pp, uint order, const char *name, int request_pickup, struct birdloop_pickup_group *group)
+birdloop_vnew_internal(pool *pp, uint order, struct birdloop_pickup_group *group, const char *name, va_list args)
 {
   struct domain_generic *dg = domain_new(name, order);
 
-  pool *p = rp_new(pp, name);
+  pool *p = rp_vnewf(pp, name, args);
   struct birdloop *loop = mb_allocz(p, sizeof(struct birdloop));
   loop->pool = p;
 
@@ -1200,7 +1206,7 @@ birdloop_new_internal(pool *pp, uint order, const char *name, int request_pickup
   loop->event = (event) { .hook = birdloop_run, .data = loop, };
   loop->timer = (timer) { .hook = birdloop_run_timer, .data = loop, };
 
-  if (request_pickup)
+  if (group)
   {
     LOCK_DOMAIN(resource, group->domain);
     add_tail(&group->loops, &loop->n);
@@ -1218,10 +1224,24 @@ birdloop_new_internal(pool *pp, uint order, const char *name, int request_pickup
   return loop;
 }
 
-struct birdloop *
-birdloop_new(pool *pp, uint order, const char *name, btime max_latency)
+static struct birdloop *
+birdloop_new_no_pickup(pool *pp, uint order, const char *name, ...)
 {
-  return birdloop_new_internal(pp, order, name, 1, max_latency ? &pickup_groups[1] : &pickup_groups[0]);
+  va_list args;
+  va_start(args, name);
+  struct birdloop *loop = birdloop_vnew_internal(pp, order, NULL, name, args);
+  va_end(args);
+  return loop;
+}
+
+struct birdloop *
+birdloop_new(pool *pp, uint order, btime max_latency, const char *name, ...)
+{
+  va_list args;
+  va_start(args, name);
+  struct birdloop *loop = birdloop_vnew_internal(pp, order, max_latency ? &pickup_groups[1] : &pickup_groups[0], name, args);
+  va_end(args);
+  return loop;
 }
 
 static void

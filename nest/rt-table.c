@@ -2845,10 +2845,15 @@ rt_setup(pool *pp, struct rtable_config *cf)
 {
   ASSERT_DIE(birdloop_inside(&main_birdloop));
 
-  pool *p = rp_newf(pp, "Routing table %s", cf->name);
+  /* Start the service thread */
+  struct birdloop *loop = birdloop_new(pp, DOMAIN_ORDER(service), 0, "Routing table service %s", cf->name);
+  pool *sp = birdloop_pool(loop);
+  pool *p = rp_newf(sp, "Routing table data %s", cf->name);
 
+  /* Create the actual table */
   struct rtable_private *t = ralloc(p, &rt_class);
   t->rp = p;
+  t->loop = loop;
 
   t->rte_slab = sl_new(p, sizeof(struct rte_storage));
 
@@ -2906,8 +2911,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
     t->flowspec_trie->ipv4 = (t->addr_type == NET_FLOW4);
   }
 
-  /* Start the service thread */
-  t->loop = birdloop_new(p, DOMAIN_ORDER(service), mb_sprintf(p, "Routing table %s", t->name), 0);
+  /* Setup the service thread flag handler */
   birdloop_enter(t->loop);
   birdloop_flag_set_handler(t->loop, &t->fh);
   birdloop_leave(t->loop);
@@ -4073,8 +4077,8 @@ rt_delete(void *tab_)
 
   RT_UNLOCK(RT_PUB(tab));
 
+  /* Everything is freed by freeing the loop */
   birdloop_free(tab->loop);
-  rfree(tab->rp);
   config_del_obstacle(conf);
 
   birdloop_leave(&main_birdloop);

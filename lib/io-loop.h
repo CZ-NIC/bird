@@ -17,7 +17,7 @@
 extern struct birdloop main_birdloop;
 
 /* Start a new birdloop owned by given pool and domain */
-struct birdloop *birdloop_new(pool *p, uint order, const char *name, btime max_latency);
+struct birdloop *birdloop_new(pool *p, uint order, btime max_latency, const char *fmt, ...);
 
 /* Stop the loop. At the end, the @stopped callback is called unlocked in tail
  * position to finish cleanup. Run birdloop_free() from that callback to free
@@ -31,6 +31,9 @@ event_list *birdloop_event_list(struct birdloop *loop);
 
 /* Get birdloop's time heap */
 struct timeloop *birdloop_time_loop(struct birdloop *loop);
+
+/* Get birdloop's pool */
+pool *birdloop_pool(struct birdloop *loop);
 
 /* Enter and exit the birdloop */
 void birdloop_enter(struct birdloop *loop);
