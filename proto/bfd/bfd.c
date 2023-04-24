@@ -1232,7 +1232,9 @@ bfd_build(void)
 {
   proto_build(&proto_bfd);
 
-  bfd_global.lock = DOMAIN_NEW(rtable, "BFD Global");
+  bfd_global.lock = DOMAIN_NEW(rtable);
+  DOMAIN_SETUP(rtable, bfd_global.lock, "BFD Global", NULL);
+
   init_list(&bfd_global.wait_list);
   init_list(&bfd_global.pickup_list);
   init_list(&bfd_global.proto_list);

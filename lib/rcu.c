@@ -73,7 +73,8 @@ rcu_thread_stop(struct rcu_thread *rc)
 void
 rcu_init(void)
 {
-  rcu_domain = DOMAIN_NEW(resource, "Read-Copy-Update");
+  rcu_domain = DOMAIN_NEW(resource);
+  DOMAIN_SETUP(resource, rcu_domain, "Read-Copy-Update", NULL);
   init_list(&rcu_thread_list);
   rcu_thread_start(&main_rcu_thread);
 }

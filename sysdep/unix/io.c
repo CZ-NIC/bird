@@ -1052,6 +1052,10 @@ sk_passive_connected(sock *s, int type)
     return 0;
   }
 
+  struct domain_generic *sock_lock = DG_IS_LOCKED(s->pool->domain) ? NULL : s->pool->domain;
+  if (sock_lock)
+    DG_LOCK(sock_lock);
+
   sock *t = sk_new(s->pool);
   t->type = type;
   t->data = s->data;
@@ -1082,13 +1086,20 @@ sk_passive_connected(sock *s, int type)
     close(t->fd);
     t->fd = -1;
     sk_close(t);
-    return 1;
+    t = NULL;
+  }
+  else
+  {
+    birdloop_add_socket(s->loop, t);
+    sk_alloc_bufs(t);
   }
 
-  birdloop_add_socket(s->loop, t);
+  if (sock_lock)
+    DG_UNLOCK(sock_lock);
 
-  sk_alloc_bufs(t);
-  s->rx_hook(t, 0);
+  if (t)
+    s->rx_hook(t, 0);
+
   return 1;
 }
 

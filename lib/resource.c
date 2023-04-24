@@ -51,6 +51,9 @@ rp_init(pool *z, struct domain_generic *dom, const char *name)
 {
   ASSERT_DIE(DG_IS_LOCKED(dom));
 
+  if (name && !domain_name(dom))
+    domain_setup(dom, name, z);
+
   z->name = name;
   z->domain = dom;
   z->inside = (TLIST_LIST(resource)) {};
@@ -87,7 +90,9 @@ pool *
 rp_vnewf(pool *p, struct domain_generic *dom, const char *fmt, va_list args)
 {
   pool *z = rp_new(p, dom, NULL);
-  z->name = mb_vsprintf(p, fmt, args);
+  z->name = mb_vsprintf(z, fmt, args);
+  if (!domain_name(dom))
+    domain_setup(dom, z->name, z);
   return z;
 }
 

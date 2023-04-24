@@ -1607,7 +1607,7 @@ ea_show_list(struct cli *c, ea_list *eal)
 void
 rta_init(void)
 {
-  attrs_domain = DOMAIN_NEW(attrs, "Attributes");
+  attrs_domain = DOMAIN_NEW(attrs);
 
   RTA_LOCK;
   rta_pool = rp_new(&root_pool, attrs_domain.attrs, "Attributes");

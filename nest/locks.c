@@ -197,5 +197,6 @@ olock_init(void)
 {
   DBG("olock: init\n");
   init_list(&olock_list);
-  olock_domain = DOMAIN_NEW(attrs, "Object lock");
+  olock_domain = DOMAIN_NEW(attrs);
+  DOMAIN_SETUP(attrs, olock_domain, "Object lock", NULL);
 }

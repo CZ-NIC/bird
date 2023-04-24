@@ -1029,7 +1029,7 @@ bird_thread_show_finish(void *data)
 void
 cmd_show_threads(int show_loops)
 {
-  DOMAIN(control) lock = DOMAIN_NEW(control, "Show Threads");
+  DOMAIN(control) lock = DOMAIN_NEW(control);
   LOCK_DOMAIN(control, lock);
   pool *p = rp_new(&root_pool, lock.control, "Show Threads");
 
@@ -1084,7 +1084,8 @@ birdloop_init(void)
   {
     struct birdloop_pickup_group *group = &pickup_groups[i];
 
-    group->domain = DOMAIN_NEW(resource, "Loop Pickup");
+    group->domain = DOMAIN_NEW(resource);
+    DOMAIN_SETUP(resource, group->domain, "Loop Pickup", NULL);
     init_list(&group->loops);
     init_list(&group->threads);
   }
@@ -1217,7 +1218,7 @@ birdloop_run_timer(timer *tm)
 static struct birdloop *
 birdloop_vnew_internal(pool *pp, uint order, struct birdloop_pickup_group *group, const char *name, va_list args)
 {
-  struct domain_generic *dg = domain_new(name, order);
+  struct domain_generic *dg = domain_new(order);
   DG_LOCK(dg);
 
   pool *p = rp_vnewf(pp, dg, name, args);

@@ -2850,7 +2850,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   pool *sp = birdloop_pool(loop);
 
   /* Create the table domain and pool */
-  DOMAIN(rtable) dom = DOMAIN_NEW(rtable, cf->name);
+  DOMAIN(rtable) dom = DOMAIN_NEW(rtable);
   LOCK_DOMAIN(rtable, dom);
 
   pool *p = rp_newf(sp, dom.rtable, "Routing table data %s", cf->name);

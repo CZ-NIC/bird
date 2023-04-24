@@ -132,7 +132,8 @@ static list STATIC_LIST_INIT(bgp_sockets);		/* Global list of listening sockets 
 static list STATIC_LIST_INIT(bgp_listen_pending);	/* Global list of listening socket open requests */
 static event bgp_listen_event = { .hook = bgp_listen_create };
 
-DOMAIN(rtable) bgp_listen_domain;
+static DOMAIN(rtable) bgp_listen_domain;
+static pool *bgp_listen_pool;
 
 static void bgp_connect(struct bgp_proto *p);
 static void bgp_active(struct bgp_proto *p);
@@ -276,7 +277,7 @@ bgp_listen_create(void *_ UNUSED)
     {
       /* Allocating new socket from global protocol pool.
        * We can do this in main_birdloop. */
-      sock *sk = sk_new(proto_pool);
+      sock *sk = sk_new(bgp_listen_pool);
       sk->type = SK_TCP_PASSIVE;
       sk->ttl = 255;
       sk->saddr = req->addr;
@@ -301,7 +302,7 @@ bgp_listen_create(void *_ UNUSED)
 	continue;
       }
 
-      bs = mb_allocz(proto_pool, sizeof(struct bgp_socket));
+      bs = mb_allocz(bgp_listen_pool, sizeof(struct bgp_socket));
       bs->sk = sk;
       sk->data = bs;
 
@@ -1337,7 +1338,9 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
   {
     log(L_WARN "BGP: Unexpected connect from unknown address %I%J (port %d)",
 	sk->daddr, ipa_is_link_local(sk->daddr) ? sk->iface : NULL, sk->dport);
+    LOCK_DOMAIN(rtable, bgp_listen_domain);
     sk_close(sk);
+    UNLOCK_DOMAIN(rtable, bgp_listen_domain);
     return 0;
   }
 
@@ -1364,6 +1367,8 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     if (p->incoming_conn.state > BS_ACTIVE)
       bgp_close_conn(&p->incoming_conn);
   }
+
+  LOCK_DOMAIN(rtable, bgp_listen_domain);
 
   BGP_TRACE(D_EVENTS, "Incoming connection from %I%J (port %d) %s",
 	    sk->daddr, ipa_is_link_local(sk->daddr) ? sk->iface : NULL,
@@ -1414,6 +1419,7 @@ err:
   sk_close(sk);
 
 leave:
+  UNLOCK_DOMAIN(rtable, bgp_listen_domain);
   birdloop_leave(p->p.loop);
   return 0;
 }
@@ -2843,5 +2849,8 @@ void bgp_build(void)
 {
   proto_build(&proto_bgp);
   bgp_register_attrs();
-  bgp_listen_domain = DOMAIN_NEW(rtable, "BGP Listen Sockets");
+  bgp_listen_domain = DOMAIN_NEW(rtable);
+  LOCK_DOMAIN(rtable, bgp_listen_domain);
+  bgp_listen_pool = rp_new(proto_pool, bgp_listen_domain.rtable, "BGP Listen Sockets");
+  UNLOCK_DOMAIN(rtable, bgp_listen_domain);
 }

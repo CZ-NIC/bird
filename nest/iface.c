@@ -1018,7 +1018,7 @@ if_choose_router_id(struct iface_patt *mask, u32 old_id)
 void
 if_init(void)
 {
-  iface_domain = DOMAIN_NEW(attrs, "Interfaces");
+  iface_domain = DOMAIN_NEW(attrs);
 
   IFACE_LOCK;
   if_pool = rp_new(&root_pool, iface_domain.attrs, "Interfaces");

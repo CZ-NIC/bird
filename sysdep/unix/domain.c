@@ -46,20 +46,21 @@ struct domain_generic {
   struct domain_generic **prev;
   struct lock_order *locked_by;
   const char *name;
+  pool *pool;
 };
 
-#define DOMAIN_INIT(_name, _order) { .mutex = PTHREAD_MUTEX_INITIALIZER, .name = _name, .order = _order }
+#define DOMAIN_INIT(_order) { .mutex = PTHREAD_MUTEX_INITIALIZER, .order = _order }
 
-static struct domain_generic the_bird_domain_gen = DOMAIN_INIT("The BIRD", OFFSETOF(struct lock_order, the_bird));
+static struct domain_generic the_bird_domain_gen = DOMAIN_INIT(OFFSETOF(struct lock_order, the_bird));
 
 DOMAIN(the_bird) the_bird_domain = { .the_bird = &the_bird_domain_gen };
 
 struct domain_generic *
-domain_new(const char *name, uint order)
+domain_new(uint order)
 {
   ASSERT_DIE(order < sizeof(struct lock_order));
   struct domain_generic *dg = xmalloc(sizeof(struct domain_generic));
-  *dg = (struct domain_generic) DOMAIN_INIT(name, order);
+  *dg = (struct domain_generic) DOMAIN_INIT(order);
   return dg;
 }
 
@@ -79,6 +80,14 @@ domain_name(struct domain_generic *dg)
 uint dg_order(struct domain_generic *dg)
 {
   return dg->order;
+}
+
+void
+domain_setup(struct domain_generic *dg, const char *name, pool *p)
+{
+  ASSERT_DIE(dg->pool == NULL);
+  dg->pool = p;
+  dg->name = name;
 }
 
 void do_lock(struct domain_generic *dg, struct domain_generic **lsp)

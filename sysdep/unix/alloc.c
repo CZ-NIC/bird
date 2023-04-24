@@ -318,7 +318,8 @@ resource_sys_init(void)
     /* We assume that page size has only one bit and is between 1K and 256K (incl.).
      * Otherwise, the assumptions in lib/slab.c (sl_head's num_full range) aren't met. */
 
-    empty_pages_domain = DOMAIN_NEW(resource, "Empty Pages");
+    empty_pages_domain = DOMAIN_NEW(resource);
+    DOMAIN_SETUP(resource, empty_pages_domain, "Empty Pages", NULL);
     initialized = 1;
     return;
   }

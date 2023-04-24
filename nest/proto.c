@@ -1859,9 +1859,9 @@ void protos_build_gen(void);
 void
 protos_build(void)
 {
-  protos_build_gen();
-
   proto_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Protocols");
+
+  protos_build_gen();
 }
 
 

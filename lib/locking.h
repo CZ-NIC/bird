@@ -10,6 +10,7 @@
 #define _BIRD_LOCKING_H_
 
 struct domain_generic;
+struct pool;
 
 /* Here define the global lock order; first to last. */
 struct lock_order {
@@ -30,14 +31,17 @@ extern _Thread_local struct domain_generic **last_locked;
 #define DEFINE_DOMAIN(type) DOMAIN(type) { struct domain_generic *type; }
 #define DOMAIN_ORDER(type)  OFFSETOF(struct lock_order, type)
 
-#define DOMAIN_NEW(type, name)  (DOMAIN(type)) { .type = domain_new(name, DOMAIN_ORDER(type)) }
-struct domain_generic *domain_new(const char *name, uint order);
+#define DOMAIN_NEW(type)  (DOMAIN(type)) { .type = domain_new(DOMAIN_ORDER(type)) }
+struct domain_generic *domain_new(uint order);
 
 #define DOMAIN_FREE(type, d)	domain_free((d).type)
 void domain_free(struct domain_generic *);
 
 #define DOMAIN_NAME(type, d)	domain_name((d).type)
 const char *domain_name(struct domain_generic *);
+
+#define DOMAIN_SETUP(type, d, n, p)	domain_setup((d).type, n, p)
+void domain_setup(struct domain_generic *, const char *name, struct pool *);
 
 #define DOMAIN_NULL(type)   (DOMAIN(type)) {}
 
