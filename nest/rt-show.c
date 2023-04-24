@@ -227,7 +227,7 @@ rt_show_export_stopped_cleanup(struct rt_export_request *req)
   req->hook = NULL;
 
   /* And free the CLI (deferred) */
-  rfree(d->cli->pool);
+  rp_free(d->cli->pool);
 }
 
 static int
@@ -288,6 +288,7 @@ rt_show_cont(struct rt_show_data *d)
     .addr = d->addr,
     .name = "CLI Show Route",
     .list = &global_work_list,
+    .pool = c->pool,
     .export_bulk = rt_show_net_export_bulk,
     .dump_req = rt_show_dump_req,
     .log_state_change = rt_show_log_state_change,

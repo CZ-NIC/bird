@@ -10,6 +10,7 @@
 #define _BIRD_LOCKS_H_
 
 #include "lib/resource.h"
+#include "lib/lists.h"
 #include "lib/event.h"
 
 /*

@@ -294,6 +294,7 @@ struct rt_export_request {
   u8 addr_mode;				/* Network prefilter mode (TE_ADDR_*) */
 
   event_list *list;			/* Where to schedule export events */
+  pool *pool;				/* Pool to use for allocations */
 
   /* There are two methods of export. You can either request feeding every single change
    * or feeding the whole route feed. In case of regular export, &export_one is preferred.
@@ -438,7 +439,7 @@ int rpe_get_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
  */
 
 void rt_init_export(struct rt_exporter *re, struct rt_export_hook *hook);
-struct rt_export_hook *rt_alloc_export(struct rt_exporter *re, uint size);
+struct rt_export_hook *rt_alloc_export(struct rt_exporter *re, pool *pool, uint size);
 void rt_stop_export_common(struct rt_export_hook *hook);
 void rt_export_stopped(struct rt_export_hook *hook);
 void rt_exporter_init(struct rt_exporter *re);

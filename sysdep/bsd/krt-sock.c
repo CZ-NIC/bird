@@ -1118,7 +1118,7 @@ krt_sock_close_shared(void)
 
   if (!krt_sock_count)
   {
-    rfree(krt_sock);
+    sk_close(krt_sock);
     krt_sock = NULL;
   }
 }
@@ -1181,7 +1181,7 @@ krt_sys_shutdown(struct krt_proto *p)
 {
   krt_table_cf[(KRT_CF->sys.table_id)/32][!!(p->af == AF_INET6)] &= ~(1 << ((KRT_CF->sys.table_id)%32));
 
-  rfree(p->sys.sk);
+  sk_close(p->sys.sk);
   p->sys.sk = NULL;
 
   krt_buffer_release(&p->p);

@@ -262,7 +262,7 @@ cli_command(struct cli *c)
     log(L_TRACE "CLI: %s", c->rx_buf);
   bzero(&f, sizeof(f));
   f.mem = c->parser_pool;
-  f.pool = rp_new(c->pool, "Config");
+  f.pool = rp_new(c->pool, the_bird_domain.the_bird, "Config");
   init_list(&f.symbols);
   cf_read_hook = cli_cmd_read_hook;
   cli_rh_pos = c->rx_buf;
@@ -309,7 +309,7 @@ cli_event(void *data)
 cli *
 cli_new(struct birdsock *sock)
 {
-  pool *p = rp_new(cli_pool, "CLI");
+  pool *p = rp_new(cli_pool, the_bird_domain.the_bird, "CLI");
   cli *c = mb_alloc(p, sizeof(cli));
 
   bzero(c, sizeof(cli));
@@ -417,11 +417,11 @@ cli_free(cli *c)
 
   if (defer)
   {
-    rfree(c->sock);
+    sk_close(c->sock);
     c->sock = NULL;
   }
   else
-    rfree(c->pool);
+    rp_free(c->pool);
 }
 
 /**
@@ -433,7 +433,7 @@ cli_free(cli *c)
 void
 cli_init(void)
 {
-  cli_pool = rp_new(&root_pool, "CLI");
+  cli_pool = rp_new(&root_pool, the_bird_domain.the_bird, "CLI");
   init_list(&cli_log_hooks);
   cli_log_inited = 1;
 }

@@ -750,7 +750,7 @@ rip_remove_iface(struct rip_proto *p, struct rip_iface *ifa)
 
   rem_node(NODE ifa);
 
-  rfree(ifa->sk);
+  sk_close(ifa->sk);
   rfree(ifa->lock);
   rfree(ifa->timer);
 

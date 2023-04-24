@@ -173,7 +173,7 @@ ospf_sk_open(struct ospf_iface *ifa)
 
  err:
   sk_log_error(sk, p->p.name);
-  rfree(sk);
+  sk_close(sk);
   return 0;
 }
 
@@ -234,7 +234,7 @@ ospf_open_vlink_sk(struct ospf_proto *p)
  err:
   sk_log_error(sk, p->p.name);
   log(L_ERR "%s: Cannot open virtual link socket", p->p.name);
-  rfree(sk);
+  sk_close(sk);
 }
 
 static void
@@ -311,7 +311,7 @@ ospf_iface_remove(struct ospf_iface *ifa)
 
   ospf_iface_sm(ifa, ISM_DOWN);
   rem_node(NODE ifa);
-  rfree(ifa->pool);
+  rp_free(ifa->pool);
 }
 
 void
@@ -567,7 +567,7 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
     OSPF_TRACE(D_EVENTS, "Adding interface %s (%N) to area %R",
 	       iface->name, &addr->prefix, oa->areaid);
 
-  pool = rp_new(p->p.pool, "OSPF Interface");
+  pool = rp_new(p->p.pool, proto_domain(&p->p), "OSPF Interface");
   ifa = mb_allocz(pool, sizeof(struct ospf_iface));
   ifa->iface = iface;
   ifa->addr = addr;
@@ -690,7 +690,7 @@ ospf_iface_new_vlink(struct ospf_proto *p, struct ospf_iface_patt *ip)
 
   /* Vlink ifname is stored just after the ospf_iface structure */
 
-  pool = rp_new(p->p.pool, "OSPF Vlink");
+  pool = rp_new(p->p.pool, proto_domain(&p->p), "OSPF Vlink");
   ifa = mb_allocz(pool, sizeof(struct ospf_iface) + 16);
   ifa->oa = p->backbone;
   ifa->cf = ip;

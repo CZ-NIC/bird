@@ -74,7 +74,7 @@ static list krt_proto_list;
 void
 krt_io_init(void)
 {
-  krt_pool = rp_new(&root_pool, "Kernel Syncer");
+  krt_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Kernel Syncer");
   krt_filter_lp = lp_new_default(krt_pool);
   init_list(&krt_proto_list);
   krt_sys_io_init();

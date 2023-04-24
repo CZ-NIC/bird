@@ -61,7 +61,7 @@ dump_nodes(void)
 static void
 init_hash_(uint order)
 {
-  my_pool = rp_new(&root_pool, "Test pool");
+  my_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Test pool");
 
   HASH_INIT(hash, my_pool, order);
 

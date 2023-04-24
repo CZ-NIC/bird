@@ -88,6 +88,7 @@ sock *sock_new(pool *);			/* Allocate new socket */
 
 int sk_open(sock *, struct birdloop *);		/* Open socket */
 void sk_reloop(sock *, struct birdloop *);	/* Move socket to another loop. Both loops must be locked. */
+static inline void sk_close(sock *s) { rfree(&s->r); }	/* Explicitly close socket */
 
 int sk_rx_ready(sock *s);
 _Bool sk_tx_pending(sock *s);

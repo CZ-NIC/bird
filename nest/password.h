@@ -10,6 +10,8 @@
 #ifndef PASSWORD_H
 #define PASSWORD_H
 
+#include "lib/lists.h"
+
 struct password_item {
   node n;
   const char *password;			/* Key data, null terminated */

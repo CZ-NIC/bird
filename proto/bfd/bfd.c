@@ -604,10 +604,10 @@ bfd_free_iface(struct bfd_iface *ifa)
     return;
 
   if (ifa->sk)
-    rfree(ifa->sk);
+    sk_close(ifa->sk);
 
   if (ifa->rx)
-    rfree(ifa->rx);
+    sk_close(ifa->rx);
 
   rem_node(&ifa->n);
   mb_free(ifa);
@@ -1073,7 +1073,7 @@ bfd_start(struct proto *P)
 
   pthread_spin_init(&p->lock, PTHREAD_PROCESS_PRIVATE);
 
-  p->tpool = rp_new(P->pool, "BFD loop pool");
+  p->tpool = birdloop_pool(P->loop);
 
   p->session_slab = sl_new(P->pool, sizeof(struct bfd_session));
   HASH_INIT(p->session_hash_id, P->pool, 8);

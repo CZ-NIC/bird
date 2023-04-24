@@ -10,6 +10,7 @@
 #define _BIRD_CLI_H_
 
 #include "lib/resource.h"
+#include "lib/lists.h"
 #include "lib/event.h"
 
 #define CLI_RX_BUF_SIZE 4096

@@ -605,9 +605,16 @@ ea_register(pool *p, struct ea_class *def)
 struct ea_class_ref *
 ea_register_alloc(pool *p, struct ea_class cl)
 {
+  struct ea_class_ref *ref;
+
+  RTA_LOCK;
   struct ea_class *clp = ea_class_find_by_name(cl.name);
   if (clp && clp->type == cl.type)
-    return ea_ref_class(p, clp);
+  {
+    ref = ea_ref_class(p, clp);
+    RTA_UNLOCK;
+    return ref;
+  }
 
   uint namelen = strlen(cl.name) + 1;
 
@@ -619,14 +626,18 @@ ea_register_alloc(pool *p, struct ea_class cl)
   memcpy(cla->name, cl.name, namelen);
   cla->cl.name = cla->name;
 
-  return ea_register(p, &cla->cl);
+  ref = ea_register(p, &cla->cl);
+  RTA_UNLOCK;
+  return ref;
 }
 
 void
 ea_register_init(struct ea_class *clp)
 {
+  RTA_LOCK;
   ASSERT_DIE(!ea_class_find_by_name(clp->name));
   ea_register(&root_pool, clp);
+  RTA_UNLOCK;
 }
 
 struct ea_class *
@@ -1598,7 +1609,8 @@ rta_init(void)
 {
   attrs_domain = DOMAIN_NEW(attrs, "Attributes");
 
-  rta_pool = rp_new(&root_pool, "Attributes");
+  RTA_LOCK;
+  rta_pool = rp_new(&root_pool, attrs_domain.attrs, "Attributes");
 
   for (uint i=0; i<ARRAY_SIZE(ea_slab_sizes); i++)
     ea_slab[i] = sl_new(rta_pool, ea_slab_sizes[i]);
@@ -1606,6 +1618,8 @@ rta_init(void)
   rta_alloc_hash();
   rte_src_init();
   ea_class_init();
+
+  RTA_UNLOCK;
 
   /* These attributes are required to be first for nice "show route" output */
   ea_register_init(&ea_gen_nexthop);

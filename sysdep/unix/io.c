@@ -1081,7 +1081,7 @@ sk_passive_connected(sock *s, int type)
     /* FIXME: handle it better in rfree() */
     close(t->fd);
     t->fd = -1;
-    rfree(t);
+    sk_close(t);
     return 1;
   }
 
