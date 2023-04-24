@@ -109,22 +109,6 @@ Version 2.0.9 (2022-02-09)
   filtering.
 
 
-Version 3.0-alpha0 (2022-02-07)
-  o Removal of fixed protocol-specific route attributes
-  o Asynchronous route export
-  o Explicit table import / export hooks
-  o Partially lockless route attribute cache
-  o Thread-safe resource management
-  o Thread-safe interface notifications
-  o Thread-safe protocol API
-  o Adoption of BFD IO loop for general use
-  o Parallel Pipe protocol
-  o Parallel RPKI protocol
-  o Parallel BGP protocol
-  o Lots of refactoring
-  o Bugfixes and improvements as they came along
-
-
 Version 2.0.8 (2021-03-18)
   o Automatic channel reloads based on RPKI changes
   o Multiple static routes with the same network
