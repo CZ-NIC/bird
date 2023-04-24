@@ -930,6 +930,7 @@ struct bird_thread_show_data {
   DOMAIN(control) lock;
   uint total;
   uint done;
+  event finish_event;
   u8 show_loops;
 };
 
@@ -977,11 +978,15 @@ bird_thread_show(void *data)
   else
     cli_printf(tsd->cli, (last ? 1 : -1) * 1026, "Thread %p time %t", this_thread, total_time_ns NS);
 
-  UNLOCK_DOMAIN(control, tsd->lock);
+  ev_send(&global_event_list, &tsd->finish_event);
 
-  if (last)
-  {
-    the_bird_lock();
+  UNLOCK_DOMAIN(control, tsd->lock);
+}
+
+static void
+bird_thread_show_finish(void *data)
+{
+  struct bird_thread_show_data *tsd = data;
 
     for (int i=0; i<2; i++)
     {
@@ -992,6 +997,8 @@ bird_thread_show(void *data)
 	if (tsd->show_loops)
 	{
 	  cli_printf(tsd->cli, -1026, "Unassigned loops");
+
+	  struct birdloop *loop;
 	  WALK_LIST(loop, group->loops)
 	    cli_printf(tsd->cli, -1026, "  Loop %s time: %t", domain_name(loop->time.domain), loop->total_time_spent_ns NS);
 	}
@@ -999,6 +1006,7 @@ bird_thread_show(void *data)
 	{
 	  uint count = 0;
 	  u64 total_time_ns = 0;
+	  struct birdloop *loop;
 	  WALK_LIST(loop, group->loops)
 	  {
 	    count++;
@@ -1010,18 +1018,19 @@ bird_thread_show(void *data)
     }
 
     cli_write_trigger(tsd->cli);
-    DOMAIN_FREE(control, tsd->lock);
+
+    DOMAIN(control) lock = tsd->lock;
+    LOCK_DOMAIN(control, lock);
     rp_free(tsd->pool);
-
-    the_bird_unlock();
-  }
+    UNLOCK_DOMAIN(control, lock);
+    DOMAIN_FREE(control, lock);
 }
-
 
 void
 cmd_show_threads(int show_loops)
 {
   DOMAIN(control) lock = DOMAIN_NEW(control, "Show Threads");
+  LOCK_DOMAIN(control, lock);
   pool *p = rp_new(&root_pool, lock.control, "Show Threads");
 
   struct bird_thread_show_data *tsd = mb_allocz(p, sizeof(struct bird_thread_show_data));
@@ -1029,6 +1038,10 @@ cmd_show_threads(int show_loops)
   tsd->pool = p;
   tsd->lock = lock;
   tsd->show_loops = show_loops;
+  tsd->finish_event = (event) {
+    .hook = bird_thread_show_finish,
+    .data = tsd,
+  };
 
   this_cli->cont = bird_thread_show_cli_cont;
   this_cli->cleanup = bird_thread_show_cli_cleanup;
@@ -1037,7 +1050,6 @@ cmd_show_threads(int show_loops)
   {
     struct birdloop_pickup_group *group = &pickup_groups[i];
 
-    LOCK_DOMAIN(control, tsd->lock);
     LOCK_DOMAIN(resource, group->domain);
 
     struct bird_thread *thr;
@@ -1049,8 +1061,9 @@ cmd_show_threads(int show_loops)
     }
 
     UNLOCK_DOMAIN(resource, group->domain);
-    UNLOCK_DOMAIN(control, tsd->lock);
   }
+
+  UNLOCK_DOMAIN(control, lock);
 }
 
 /*
