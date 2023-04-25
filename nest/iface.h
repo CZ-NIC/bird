@@ -9,6 +9,7 @@
 #ifndef _BIRD_IFACE_H_
 #define _BIRD_IFACE_H_
 
+#include "lib/hash.h"
 #include "lib/lists.h"
 #include "lib/ip.h"
 
@@ -19,6 +20,7 @@ struct pool;
 
 struct ifa {				/* Interface address */
   node n;
+  struct ifa *hnext;
   struct iface *iface;			/* Interface this address belongs to */
   net_addr prefix;			/* Network prefix */
   ip_addr ip;				/* IP address of this host */
@@ -37,6 +39,7 @@ struct iface {
   unsigned master_index;		/* Interface index of master iface */
   struct iface *master;			/* Master iface (e.g. for VRF) */
   list addrs;				/* Addresses assigned to this interface */
+  HASH(struct ifa) addrs_map;		/* Hash table for fast address lookup */
   struct ifa *addr4;			/* Primary address for IPv4 */
   struct ifa *addr6;			/* Primary address for IPv6 */
   struct ifa *llv6;			/* Primary link-local address for IPv6 */

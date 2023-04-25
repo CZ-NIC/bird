@@ -34,6 +34,16 @@
 #include "conf/conf.h"
 #include "sysdep/unix/krt.h"
 
+#define IFA_KEY(n)		n
+#define IFA_NEXT(n)		n->hnext
+#define IFA_FN(n)		(n->ip.addr[0] ^ n->ip.addr[1] ^ n->ip.addr[2] ^ n->ip.addr[3]) * n->prefix.length
+#define IFA_EQ(n1,n2)		ifa_same(n1, n2)
+#define IFA_ORDER		12
+#define IFA_PARAMS		/4, *2, 2, 2, IFA_ORDER, 20
+#define IFA_REHASH		ifa_rehash
+
+HASH_DEFINE_REHASH_FN(IFA, struct ifa);
+
 static pool *if_pool;
 
 list iface_list;
@@ -316,6 +326,8 @@ if_update(struct iface *new)
 	    new->llv6 = i->llv6;
 	    new->sysdep = i->sysdep;
 	    memcpy(&new->addrs, &i->addrs, sizeof(i->addrs));
+            memcpy(&new->addrs_map, &i->addrs_map, sizeof(i->addrs_map));
+            memset(&i->addrs_map, 0, sizeof(i->addrs_map));
 	    memcpy(i, new, sizeof(*i));
 	    i->flags &= ~IF_UP;		/* IF_TMP_DOWN will be added later */
 	    goto newif;
@@ -331,6 +343,7 @@ if_update(struct iface *new)
   i = mb_alloc(if_pool, sizeof(struct iface));
   memcpy(i, new, sizeof(*i));
   init_list(&i->addrs);
+  HASH_INIT(i->addrs_map, if_pool, IFA_ORDER);
 newif:
   init_list(&i->neighbors);
   i->flags |= IF_UPDATED | IF_TMP_DOWN;		/* Tmp down as we don't have addresses yet */
@@ -468,6 +481,7 @@ if_get_by_name(const char *name)
   strncpy(i->name, name, sizeof(i->name)-1);
   i->flags = IF_SHUTDOWN;
   init_list(&i->addrs);
+  HASH_INIT(i->addrs_map, if_pool, IFA_ORDER);
   init_list(&i->neighbors);
   add_tail(&iface_list, &i->n);
   return i;
@@ -570,6 +584,32 @@ ifa_same(struct ifa *a, struct ifa *b)
   return ipa_equal(a->ip, b->ip) && net_equal(&a->prefix, &b->prefix);
 }
 
+static inline void
+ifa_delete_item(struct iface *i, struct ifa *b)
+{
+  rem_node(&b->n);
+  HASH_REMOVE(i->addrs_map, IFA, b);
+
+  if (b->flags & IA_PRIMARY)
+  {
+    /*
+     * We unlink deleted preferred address and mark for recalculation.
+     * FIXME: This could break if we make iface scan non-atomic, as
+     * protocols still could use the freed address until they get
+     * if_notify from preferred route recalculation. We should fix and
+     * simplify this in the future by having struct ifa refcounted
+     */
+    if (b == i->addr4) { i->addr4 = NULL; i->flags |= IF_LOST_ADDR4; }
+    if (b == i->addr6) { i->addr6 = NULL; i->flags |= IF_LOST_ADDR6; }
+    if (b == i->llv6)  { i->llv6 = NULL;  i->flags |= IF_LOST_LLV6; }
+    i->flags |= IF_NEEDS_RECALC;
+  }
+
+  if (i->flags & IF_UP)
+    ifa_notify_change(IF_CHANGE_DOWN, b);
+
+  mb_free(b);
+}
 
 /**
  * ifa_update - update interface address
@@ -585,20 +625,19 @@ ifa_update(struct ifa *a)
   struct iface *i = a->iface;
   struct ifa *b;
 
-  WALK_LIST(b, i->addrs)
-    if (ifa_same(b, a))
-      {
-	if (ipa_equal(b->brd, a->brd) &&
-	    ipa_equal(b->opposite, a->opposite) &&
-	    b->scope == a->scope &&
-	    !((b->flags ^ a->flags) & (IA_SECONDARY | IA_PEER | IA_HOST)))
-	  {
-	    b->flags |= IA_UPDATED;
-	    return b;
-	  }
-	ifa_delete(b);
-	break;
-      }
+  b = HASH_FIND(i->addrs_map, IFA, a);
+  if (b != NULL)
+    {
+      if (ipa_equal(b->brd, a->brd) &&
+	  ipa_equal(b->opposite, a->opposite) &&
+	  b->scope == a->scope &&
+	  !((b->flags ^ a->flags) & (IA_SECONDARY | IA_PEER | IA_HOST)))
+	{
+	  b->flags |= IA_UPDATED;
+	  return b;
+	}
+      ifa_delete_item(i, b);
+    }
 
   if ((a->prefix.type == NET_IP4) && (i->flags & IF_BROADCAST) && ipa_zero(a->brd))
     log(L_WARN "Missing broadcast address for interface %s", i->name);
@@ -606,6 +645,7 @@ ifa_update(struct ifa *a)
   b = mb_alloc(if_pool, sizeof(struct ifa));
   memcpy(b, a, sizeof(struct ifa));
   add_tail(&i->addrs, &b->n);
+  HASH_INSERT2(i->addrs_map, IFA, if_pool, b);
   b->flags |= IA_UPDATED;
 
   i->flags |= IF_NEEDS_RECALC;
@@ -628,32 +668,12 @@ ifa_delete(struct ifa *a)
   struct iface *i = a->iface;
   struct ifa *b;
 
-  WALK_LIST(b, i->addrs)
-    if (ifa_same(b, a))
-      {
-	rem_node(&b->n);
-
-	if (b->flags & IA_PRIMARY)
-	  {
-	    /*
-	     * We unlink deleted preferred address and mark for recalculation.
-	     * FIXME: This could break if we make iface scan non-atomic, as
-	     * protocols still could use the freed address until they get
-	     * if_notify from preferred route recalculation. We should fix and
-	     * simplify this in the future by having struct ifa refcounted
-	     */
-	    if (b == i->addr4) { i->addr4 = NULL; i->flags |= IF_LOST_ADDR4; }
-	    if (b == i->addr6) { i->addr6 = NULL; i->flags |= IF_LOST_ADDR6; }
-	    if (b == i->llv6)  { i->llv6 = NULL;  i->flags |= IF_LOST_LLV6; }
-	    i->flags |= IF_NEEDS_RECALC;
-	  }
-
-	if (i->flags & IF_UP)
-	  ifa_notify_change(IF_CHANGE_DOWN, b);
-
-	mb_free(b);
-	return;
-      }
+  b = HASH_FIND(i->addrs_map, IFA, a);
+  if (b != NULL)
+    {
+      ifa_delete_item(i, b);
+      return;
+    }
 }
 
 u32
