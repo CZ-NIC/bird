@@ -63,6 +63,80 @@ static u64 ns_now(void)
 #define NSEC_TO_SEC(x)	((x) / NSEC_IN_SEC)
 #define CURRENT_SEC	NSEC_TO_SEC(ns_now())
 
+static _Thread_local struct spent_time *account_target_spent_time;
+static _Thread_local u64 *account_target_total;
+static _Thread_local u64 account_last;
+
+static u64 account_finish(void)
+{
+  /* Get current time */
+  u64 now = ns_now();
+  u64 dif = now - account_last;
+
+  /* Update second by second */
+  if (account_target_spent_time)
+  {
+    /* Drop old time information if difference is too large */
+    if (NSEC_TO_SEC(account_last) + TIME_BY_SEC_SIZE - 1 < NSEC_TO_SEC(now))
+      account_last = (NSEC_TO_SEC(now) - TIME_BY_SEC_SIZE + 1) * NSEC_IN_SEC;
+
+    /* Zero new records */
+    if (NSEC_TO_SEC(account_target_spent_time->last_written_ns) + TIME_BY_SEC_SIZE < NSEC_TO_SEC(account_last))
+      memset(account_target_spent_time->by_sec_ns, 0, sizeof(account_target_spent_time->by_sec_ns));
+    else
+      for (u64 fclr = NSEC_TO_SEC(account_target_spent_time->last_written_ns) + 1;
+	  fclr <= NSEC_TO_SEC(now);
+	  fclr++)
+	account_target_spent_time->by_sec_ns[fclr % TIME_BY_SEC_SIZE] = 0;
+
+    /* Add times second by second */
+    while (NSEC_TO_SEC(account_last) != NSEC_TO_SEC(now))
+    {
+      u64 part = (NSEC_TO_SEC(account_last) + 1) * NSEC_IN_SEC - account_last;
+      account_target_spent_time->by_sec_ns[NSEC_TO_SEC(account_last) % TIME_BY_SEC_SIZE] += part;
+      account_last += part;
+    }
+
+    /* Update the last second */
+    account_target_spent_time->by_sec_ns[NSEC_TO_SEC(account_last) % TIME_BY_SEC_SIZE] += now - account_last;
+
+    /* Store the current time */
+    account_target_spent_time->last_written_ns = now;
+  }
+
+  /* Update the total */
+  if (account_target_total)
+    *account_target_total += dif;
+
+  /* Store current time */
+  account_last = now;
+
+  return dif;
+}
+
+static u64 account_to_spent_time(struct spent_time *st)
+{
+  u64 elapsed = account_finish();
+
+  account_target_spent_time = st;
+  account_target_total = &st->total_ns;
+
+  return elapsed;
+}
+
+static u64 account_to_total(u64 *total)
+{
+  u64 elapsed = account_finish();
+
+  account_target_spent_time = NULL;
+  account_target_total = total;
+
+  return elapsed;
+}
+
+#define account_to(_arg)	_Generic((_arg), \
+    struct spent_time *: account_to_spent_time, \
+    u64 *: account_to_total)(_arg)
 
 /*
  *	Current thread context
@@ -639,6 +713,8 @@ bird_thread_main(void *arg)
   rcu_thread_start(&thr->rcu);
   synchronize_rcu();
 
+  account_to(&thr->overhead);
+
   birdloop_enter(thr->meta);
 
   tmp_init(thr->pool, birdloop_domain(thr->meta));
@@ -952,6 +1028,29 @@ bird_thread_show_cli_cleanup(struct cli *c UNUSED)
 }
 
 static void
+bird_thread_show_spent_time(struct cli *c, const char *name, struct spent_time *st)
+{
+  char b[TIME_BY_SEC_SIZE * sizeof("1234567890, ")], *bptr = b, *bend = b + sizeof(b);
+  uint cs = CURRENT_SEC;
+  uint fs = NSEC_TO_SEC(st->last_written_ns);
+
+  for (uint i = 0; i <= cs && i < TIME_BY_SEC_SIZE; i++)
+    bptr += bsnprintf(bptr, bend - bptr, "% 10lu ",
+	(cs - i > fs) ? 0 : st->by_sec_ns[(cs - i) % TIME_BY_SEC_SIZE]);
+  bptr[-1] = 0; /* Drop the trailing space */
+
+  cli_printf(c, -1026, "    %s total time: % 9t s; last %d secs [ns]: %s", name, st->total_ns NS, MIN(CURRENT_SEC+1, TIME_BY_SEC_SIZE), b);
+}
+
+static void
+bird_thread_show_loop(struct cli *c, struct birdloop *loop)
+{
+  cli_printf(c, -1026, "  Loop %s", domain_name(loop->time.domain));
+  bird_thread_show_spent_time(c, "    Working", &loop->working);
+  bird_thread_show_spent_time(c, "    Locking", &loop->locking);
+}
+
+static void
 bird_thread_show(void *data)
 {
   struct bird_thread_show_data *tsd = data;
@@ -965,39 +1064,28 @@ bird_thread_show(void *data)
   WALK_LIST(loop, this_thread->loops)
   {
     if (tsd->show_loops)
-    {
-      char b[TIME_BY_SEC_SIZE * sizeof("123456789, ")], *bptr = b, *bend = b + sizeof(b);
-      uint cs = CURRENT_SEC;
-      uint fs = NSEC_TO_SEC(loop->last_time_finished_ns);
-      for (uint i = 0; i <= cs && i < TIME_BY_SEC_SIZE; i++)
-	bptr += bsnprintf(bptr, bend - bptr, "% 9lu ",
-	    (cs - i > fs) ? 0 : loop->time_by_sec_ns[(cs - i) % TIME_BY_SEC_SIZE]);
-      bptr[-1] = 0; /* Drop the trailing space */
-
-      cli_printf(tsd->cli, -1026, "  Loop %s", domain_name(loop->time.domain));
-      cli_printf(tsd->cli, -1026, "    Total time: %t s", loop->total_time_spent_ns NS);
-      cli_printf(tsd->cli, -1026, "    Total locking time: %t s", loop->total_time_locking_ns NS);
-      cli_printf(tsd->cli, -1026, "    Last %d secs [ns]: %s", MIN(CURRENT_SEC+1, TIME_BY_SEC_SIZE), b);
-    }
-
-    total_time_ns += loop->total_time_spent_ns;
+      bird_thread_show_loop(tsd->cli, loop);
+    
+    total_time_ns += loop->working.total_ns + loop->locking.total_ns;
   }
 
-  tsd->done++;
-  int last = (tsd->done == tsd->total);
+  int last = (++tsd->done == tsd->total);
+
+  if (tsd->show_loops)
+  {
+    cli_printf(tsd->cli, (last ? 1 : -1) * 1026, "  Total working time: %t", total_time_ns NS);
+    bird_thread_show_spent_time(tsd->cli, "  Overhead", &this_thread->overhead);
+  }
+  else
+    cli_printf(tsd->cli, (last ? 1 : -1) * 1026, "Thread %p working %t s overhead %t s",
+	this_thread, total_time_ns NS, this_thread->overhead.total_ns NS);
 
   if (last)
   {
     tsd->cli->cont = NULL;
     tsd->cli->cleanup = NULL;
+    ev_send(&global_event_list, &tsd->finish_event);
   }
-
-  if (tsd->show_loops)
-    cli_printf(tsd->cli, (last ? 1 : -1) * 1026, "  Total time: %t", total_time_ns NS);
-  else
-    cli_printf(tsd->cli, (last ? 1 : -1) * 1026, "Thread %p time %t", this_thread, total_time_ns NS);
-
-  ev_send(&global_event_list, &tsd->finish_event);
 
   UNLOCK_DOMAIN(control, tsd->lock);
 }
@@ -1012,27 +1100,31 @@ bird_thread_show_finish(void *data)
       struct birdloop_pickup_group *group = &pickup_groups[i];
 
       LOCK_DOMAIN(resource, group->domain);
+      uint count = 0;
+      u64 total_time_ns = 0;
       if (!EMPTY_LIST(group->loops))
+      {
 	if (tsd->show_loops)
-	{
-	  cli_printf(tsd->cli, -1026, "Unassigned loops");
+	  cli_printf(tsd->cli, -1026, "Unassigned loops:");
 
-	  struct birdloop *loop;
-	  WALK_LIST(loop, group->loops)
-	    cli_printf(tsd->cli, -1026, "  Loop %s time: %t", domain_name(loop->time.domain), loop->total_time_spent_ns NS);
-	}
-	else
+	struct birdloop *loop;
+	WALK_LIST(loop, group->loops)
 	{
-	  uint count = 0;
-	  u64 total_time_ns = 0;
-	  struct birdloop *loop;
-	  WALK_LIST(loop, group->loops)
-	  {
-	    count++;
-	    total_time_ns += loop->total_time_spent_ns;
-	  }
-	  cli_printf(tsd->cli, -1026, "Unassigned loops: %d, total time %t", count, total_time_ns NS);
+	  if (tsd->show_loops)
+	    bird_thread_show_loop(tsd->cli, loop);
+
+	  total_time_ns += loop->working.total_ns + loop->locking.total_ns;
+	  count++;
 	}
+
+	if (tsd->show_loops)
+	  cli_printf(tsd->cli, 1026, "  Total working time: %t", total_time_ns NS);
+	else
+	  cli_printf(tsd->cli, 1026, "Unassigned %d loops, total time %t", count, total_time_ns NS);
+      }
+      else
+	cli_printf(tsd->cli, 1026, "All loops are assigned.");
+
       UNLOCK_DOMAIN(resource, group->domain);
     }
 
@@ -1156,6 +1248,7 @@ birdloop_stop_internal(struct birdloop *loop)
   /* Leave the loop context without causing any other fuss */
   ASSERT_DIE(!ev_active(&loop->event));
   loop->ping_pending = 0;
+  account_to(&this_thread->overhead);
   birdloop_leave(loop);
 
   /* Request local socket reload */
@@ -1173,17 +1266,13 @@ birdloop_run(void *_loop)
   /* Run priority events before the loop is executed */
   ev_run_list(&this_thread->priority_events);
 
-  u64 start_time = ns_now();
-  u64 end_time = start_time + this_thread->max_loop_time_ns;
-
   struct birdloop *loop = _loop;
+  account_to(&loop->locking);
   birdloop_enter(loop);
+  u64 dif = account_to(&loop->working);
 
-  u64 locked_time = ns_now(), task_done_time;
-  if (locked_time > end_time)
-    LOOP_WARN(loop, "locked %luns after its scheduled end time", locked_time - end_time);
-
-  loop->total_time_locking_ns += (locked_time - start_time);
+  if (dif > this_thread->max_loop_time_ns)
+    LOOP_WARN(loop, "locked %lu ns after its scheduled end time", dif);
 
   uint repeat, loop_runs = 0;
   do {
@@ -1208,7 +1297,7 @@ birdloop_run(void *_loop)
     repeat += ev_run_list(&loop->event_list);
 
     /* Check end time */
-  } while (((task_done_time = ns_now()) < end_time) && repeat);
+  } while (repeat && (ns_now() < account_last + this_thread->max_loop_time_ns));
 
   /* Request meta timer */
   timer *t = timers_first(&loop->time);
@@ -1225,37 +1314,7 @@ birdloop_run(void *_loop)
   this_thread->sock_changed += loop->sock_changed;
   loop->sock_changed = 0;
 
-  /* Get finish time */
-  u64 finish_time = ns_now();
-  loop->total_time_spent_ns += finish_time - locked_time;
-
-  log(L_INFO "%p: lock to finish time: %lu %lu", loop, locked_time, finish_time);
-
-  /* Zero records for seconds where we haven't run */
-  if (NSEC_TO_SEC(loop->last_time_finished_ns) + TIME_BY_SEC_SIZE < NSEC_TO_SEC(locked_time))
-    memset(loop->time_by_sec_ns, 0, sizeof(loop->time_by_sec_ns));
-  else
-    for (u64 fclr = NSEC_TO_SEC(loop->last_time_finished_ns) + 1;
-	fclr <= NSEC_TO_SEC(locked_time);
-	fclr++)
-    {
-      log(L_INFO "%p: fclr %lu", loop, fclr % TIME_BY_SEC_SIZE);
-      loop->time_by_sec_ns[fclr % TIME_BY_SEC_SIZE] = 0;
-    }
-
-  while (NSEC_TO_SEC(locked_time) != NSEC_TO_SEC(finish_time))
-  {
-    u64 part = (NSEC_TO_SEC(locked_time) + 1) * NSEC_IN_SEC - locked_time;
-    log(L_INFO "%p: part %lu to %lu", loop, part, NSEC_TO_SEC(locked_time) % TIME_BY_SEC_SIZE);
-    loop->time_by_sec_ns[NSEC_TO_SEC(locked_time) % TIME_BY_SEC_SIZE] += part;
-    locked_time += part;
-  }
-
-  log(L_INFO "%p: part %lu to %lu", loop, finish_time - locked_time, NSEC_TO_SEC(locked_time) % TIME_BY_SEC_SIZE);
-  loop->time_by_sec_ns[NSEC_TO_SEC(locked_time) % TIME_BY_SEC_SIZE] += finish_time - locked_time;
-
-  loop->last_time_finished_ns = finish_time;
-
+  account_to(&this_thread->overhead);
   birdloop_leave(loop);
 }
 

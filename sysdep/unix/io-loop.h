@@ -29,9 +29,12 @@ void pipe_pollin(struct pipe *, struct pfd *);
 void pipe_drain(struct pipe *);
 void pipe_kick(struct pipe *);
 
-struct total_time_since {
-  u64 total;
-  u64 since;
+#define TIME_BY_SEC_SIZE	16
+
+struct spent_time {
+  u64 total_ns;
+  u64 last_written_ns;
+  u64 by_sec_ns[TIME_BY_SEC_SIZE];
 };
 
 struct birdloop
@@ -66,10 +69,7 @@ struct birdloop
   struct bird_thread *thread;
 
 #define TIME_BY_SEC_SIZE	16
-  u64 time_by_sec_ns[TIME_BY_SEC_SIZE];
-  u64 last_time_finished_ns;
-  u64 total_time_spent_ns;
-  u64 total_time_locking_ns;
+  struct spent_time working, locking;
 };
 
 struct bird_thread
@@ -98,6 +98,8 @@ struct bird_thread
 
   u64 max_latency_ns;
   u64 max_loop_time_ns;
+
+  struct spent_time overhead;
 };
 
 #endif
