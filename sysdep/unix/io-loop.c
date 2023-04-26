@@ -49,14 +49,19 @@ static void ns_init(void)
     bug("clock_gettime: %m");
 }
 
+#define NSEC_IN_SEC	((u64) (1000 * 1000 * 1000))
+
 static u64 ns_now(void)
 {
   struct timespec ts;
   if (clock_gettime(CLOCK_MONOTONIC, &ts))
     bug("clock_gettime: %m");
 
-  return (u64) (ts.tv_sec - ns_begin.tv_sec) * 1000000000 + ts.tv_nsec - ns_begin.tv_nsec;
+  return (u64) (ts.tv_sec - ns_begin.tv_sec) * NSEC_IN_SEC + ts.tv_nsec - ns_begin.tv_nsec;
 }
+
+#define NSEC_TO_SEC(x)	((x) / NSEC_IN_SEC)
+#define CURRENT_SEC	NSEC_TO_SEC(ns_now())
 
 
 /*
@@ -960,7 +965,21 @@ bird_thread_show(void *data)
   WALK_LIST(loop, this_thread->loops)
   {
     if (tsd->show_loops)
-      cli_printf(tsd->cli, -1026, "  Loop %s time: %t", domain_name(loop->time.domain), loop->total_time_spent_ns NS);
+    {
+      char b[TIME_BY_SEC_SIZE * sizeof("123456789, ")], *bptr = b, *bend = b + sizeof(b);
+      uint cs = CURRENT_SEC;
+      uint fs = NSEC_TO_SEC(loop->last_time_finished_ns);
+      for (uint i = 0; i <= cs && i < TIME_BY_SEC_SIZE; i++)
+	bptr += bsnprintf(bptr, bend - bptr, "% 9lu ",
+	    (cs - i > fs) ? 0 : loop->time_by_sec_ns[(cs - i) % TIME_BY_SEC_SIZE]);
+      bptr[-1] = 0; /* Drop the trailing space */
+
+      cli_printf(tsd->cli, -1026, "  Loop %s total time: %t",
+	  domain_name(loop->time.domain), loop->total_time_spent_ns NS);
+      cli_printf(tsd->cli, -1026, "    last %d secs [ns]: %s",
+	  MIN(CURRENT_SEC+1, TIME_BY_SEC_SIZE), b);
+    }
+
     total_time_ns += loop->total_time_spent_ns;
   }
 
@@ -1203,6 +1222,37 @@ birdloop_run(void *_loop)
   /* Collect socket change requests */
   this_thread->sock_changed += loop->sock_changed;
   loop->sock_changed = 0;
+
+  /* Get finish time */
+  u64 finish_time = ns_now();
+  loop->total_time_spent_ns += finish_time - locked_time;
+
+  log(L_INFO "%p: lock to finish time: %lu %lu", loop, locked_time, finish_time);
+
+  /* Zero records for seconds where we haven't run */
+  if (NSEC_TO_SEC(loop->last_time_finished_ns) + TIME_BY_SEC_SIZE < NSEC_TO_SEC(locked_time))
+    memset(loop->time_by_sec_ns, 0, sizeof(loop->time_by_sec_ns));
+  else
+    for (u64 fclr = NSEC_TO_SEC(loop->last_time_finished_ns) + 1;
+	fclr <= NSEC_TO_SEC(locked_time);
+	fclr++)
+    {
+      log(L_INFO "%p: fclr %lu", loop, fclr % TIME_BY_SEC_SIZE);
+      loop->time_by_sec_ns[fclr % TIME_BY_SEC_SIZE] = 0;
+    }
+
+  while (NSEC_TO_SEC(locked_time) != NSEC_TO_SEC(finish_time))
+  {
+    u64 part = (NSEC_TO_SEC(locked_time) + 1) * NSEC_IN_SEC - locked_time;
+    log(L_INFO "%p: part %lu to %lu", loop, part, NSEC_TO_SEC(locked_time) % TIME_BY_SEC_SIZE);
+    loop->time_by_sec_ns[NSEC_TO_SEC(locked_time) % TIME_BY_SEC_SIZE] += part;
+    locked_time += part;
+  }
+
+  log(L_INFO "%p: part %lu to %lu", loop, finish_time - locked_time, NSEC_TO_SEC(locked_time) % TIME_BY_SEC_SIZE);
+  loop->time_by_sec_ns[NSEC_TO_SEC(locked_time) % TIME_BY_SEC_SIZE] += finish_time - locked_time;
+
+  loop->last_time_finished_ns = finish_time;
 
   birdloop_leave(loop);
 }
