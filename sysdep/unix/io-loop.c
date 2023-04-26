@@ -974,10 +974,10 @@ bird_thread_show(void *data)
 	    (cs - i > fs) ? 0 : loop->time_by_sec_ns[(cs - i) % TIME_BY_SEC_SIZE]);
       bptr[-1] = 0; /* Drop the trailing space */
 
-      cli_printf(tsd->cli, -1026, "  Loop %s total time: %t",
-	  domain_name(loop->time.domain), loop->total_time_spent_ns NS);
-      cli_printf(tsd->cli, -1026, "    last %d secs [ns]: %s",
-	  MIN(CURRENT_SEC+1, TIME_BY_SEC_SIZE), b);
+      cli_printf(tsd->cli, -1026, "  Loop %s", domain_name(loop->time.domain));
+      cli_printf(tsd->cli, -1026, "    Total time: %t s", loop->total_time_spent_ns NS);
+      cli_printf(tsd->cli, -1026, "    Total locking time: %t s", loop->total_time_locking_ns NS);
+      cli_printf(tsd->cli, -1026, "    Last %d secs [ns]: %s", MIN(CURRENT_SEC+1, TIME_BY_SEC_SIZE), b);
     }
 
     total_time_ns += loop->total_time_spent_ns;
@@ -1182,6 +1182,8 @@ birdloop_run(void *_loop)
   u64 locked_time = ns_now(), task_done_time;
   if (locked_time > end_time)
     LOOP_WARN(loop, "locked %luns after its scheduled end time", locked_time - end_time);
+
+  loop->total_time_locking_ns += (locked_time - start_time);
 
   uint repeat, loop_runs = 0;
   do {

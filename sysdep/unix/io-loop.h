@@ -69,6 +69,7 @@ struct birdloop
   u64 time_by_sec_ns[TIME_BY_SEC_SIZE];
   u64 last_time_finished_ns;
   u64 total_time_spent_ns;
+  u64 total_time_locking_ns;
 };
 
 struct bird_thread
