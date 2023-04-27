@@ -1014,12 +1014,21 @@ DEFINE_DOMAIN(control);
 struct bird_thread_show_data {
   cli *cli;
   pool *pool;
+  linpool *lp;
   DOMAIN(control) lock;
   uint total;
   uint done;
   event finish_event;
   u8 show_loops;
+  uint line_pos;
+  uint line_max;
+  const char *lines[];
 };
+
+#define tsd_append(...)		do { \
+  ASSERT_DIE(tsd->line_pos < tsd->line_max); \
+  tsd->lines[tsd->line_pos++] = lp_sprintf(tsd->lp, __VA_ARGS__); \
+} while (0)
 
 static void
 bird_thread_show_cli_cont(struct cli *c UNUSED)
@@ -1034,7 +1043,7 @@ bird_thread_show_cli_cleanup(struct cli *c UNUSED)
 }
 
 static void
-bird_thread_show_spent_time(struct cli *c, const char *name, struct spent_time *st)
+bird_thread_show_spent_time(struct bird_thread_show_data *tsd, const char *name, struct spent_time *st)
 {
   char b[TIME_BY_SEC_SIZE * sizeof("1234567890, ")], *bptr = b, *bend = b + sizeof(b);
   uint cs = CURRENT_SEC;
@@ -1045,15 +1054,15 @@ bird_thread_show_spent_time(struct cli *c, const char *name, struct spent_time *
 	(cs - i > fs) ? 0 : st->by_sec_ns[(cs - i) % TIME_BY_SEC_SIZE]);
   bptr[-1] = 0; /* Drop the trailing space */
 
-  cli_printf(c, -1026, "    %s total time: % 9t s; last %d secs [ns]: %s", name, st->total_ns NS, MIN(CURRENT_SEC+1, TIME_BY_SEC_SIZE), b);
+  tsd_append("    %s total time: % 9t s; last %d secs [ns]: %s", name, st->total_ns NS, MIN(CURRENT_SEC+1, TIME_BY_SEC_SIZE), b);
 }
 
 static void
-bird_thread_show_loop(struct cli *c, struct birdloop *loop)
+bird_thread_show_loop(struct bird_thread_show_data *tsd, struct birdloop *loop)
 {
-  cli_printf(c, -1026, "  Loop %s", domain_name(loop->time.domain));
-  bird_thread_show_spent_time(c, "    Working", &loop->working);
-  bird_thread_show_spent_time(c, "    Locking", &loop->locking);
+  tsd_append("  Loop %s", domain_name(loop->time.domain));
+  bird_thread_show_spent_time(tsd, "    Working", &loop->working);
+  bird_thread_show_spent_time(tsd, "    Locking", &loop->locking);
 }
 
 static void
@@ -1063,14 +1072,14 @@ bird_thread_show(void *data)
 
   LOCK_DOMAIN(control, tsd->lock);
   if (tsd->show_loops)
-    cli_printf(tsd->cli, -1026, "Thread %p", this_thread);
+    tsd_append("Thread %p", this_thread);
 
   u64 total_time_ns = 0;
   struct birdloop *loop;
   WALK_LIST(loop, this_thread->loops)
   {
     if (tsd->show_loops)
-      bird_thread_show_loop(tsd->cli, loop);
+      bird_thread_show_loop(tsd, loop);
     
     total_time_ns += loop->working.total_ns + loop->locking.total_ns;
   }
@@ -1079,11 +1088,11 @@ bird_thread_show(void *data)
 
   if (tsd->show_loops)
   {
-    cli_printf(tsd->cli, (last ? 1 : -1) * 1026, "  Total working time: %t", total_time_ns NS);
-    bird_thread_show_spent_time(tsd->cli, "  Overhead", &this_thread->overhead);
+    tsd_append("  Total working time: %t", total_time_ns NS);
+    bird_thread_show_spent_time(tsd, "  Overhead", &this_thread->overhead);
   }
   else
-    cli_printf(tsd->cli, (last ? 1 : -1) * 1026, "Thread %p working %t s overhead %t s",
+    tsd_append("Thread %p working %t s overhead %t s",
 	this_thread, total_time_ns NS, this_thread->overhead.total_ns NS);
 
   if (last)
@@ -1100,6 +1109,9 @@ static void
 bird_thread_show_finish(void *data)
 {
   struct bird_thread_show_data *tsd = data;
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+  DOMAIN(control) lock = tsd->lock;
+  LOCK_DOMAIN(control, lock);
 
     for (int i=0; i<2; i++)
     {
@@ -1111,33 +1123,35 @@ bird_thread_show_finish(void *data)
       if (!EMPTY_LIST(group->loops))
       {
 	if (tsd->show_loops)
-	  cli_printf(tsd->cli, -1026, "Unassigned loops:");
+	  tsd_append("Unassigned loops in group %d:", i);
 
 	struct birdloop *loop;
 	WALK_LIST(loop, group->loops)
 	{
 	  if (tsd->show_loops)
-	    bird_thread_show_loop(tsd->cli, loop);
+	    bird_thread_show_loop(tsd, loop);
 
 	  total_time_ns += loop->working.total_ns + loop->locking.total_ns;
 	  count++;
 	}
 
 	if (tsd->show_loops)
-	  cli_printf(tsd->cli, 1026, "  Total working time: %t", total_time_ns NS);
+	  tsd_append("  Total working time: %t", total_time_ns NS);
 	else
-	  cli_printf(tsd->cli, 1026, "Unassigned %d loops, total time %t", count, total_time_ns NS);
+	  tsd_append("Unassigned %d loops in group %d, total time %t", count, i, total_time_ns NS);
       }
       else
-	cli_printf(tsd->cli, 1026, "All loops are assigned.");
+	tsd_append("All loops in group %d are assigned.", i);
 
       UNLOCK_DOMAIN(resource, group->domain);
     }
 
+    for (uint i = 0; i < tsd->line_pos - 1; i++)
+      cli_printf(tsd->cli, -1026, "%s", tsd->lines[i]);
+
+    cli_printf(tsd->cli, 1026, "%s", tsd->lines[tsd->line_pos-1]);
     cli_write_trigger(tsd->cli);
 
-    DOMAIN(control) lock = tsd->lock;
-    LOCK_DOMAIN(control, lock);
     rp_free(tsd->pool);
     UNLOCK_DOMAIN(control, lock);
     DOMAIN_FREE(control, lock);
@@ -1150,15 +1164,31 @@ cmd_show_threads(int show_loops)
   LOCK_DOMAIN(control, lock);
   pool *p = rp_new(&root_pool, lock.control, "Show Threads");
 
-  struct bird_thread_show_data *tsd = mb_allocz(p, sizeof(struct bird_thread_show_data));
+  uint total_threads = 0, total_loops = 0;
+  for (int i=0; i<2; i++)
+  {
+    struct birdloop_pickup_group *group = &pickup_groups[i];
+    LOCK_DOMAIN(resource, group->domain);
+    total_threads += group->thread_count;
+    total_loops += group->loop_count;
+    UNLOCK_DOMAIN(resource, group->domain);
+  }
+
+  /* Total number of lines must be recalculated when changing the code! */
+  uint total_lines = total_threads * (show_loops + 1) + total_loops * 3 * show_loops + 10;
+
+  struct bird_thread_show_data *tsd = mb_allocz(p, sizeof(struct bird_thread_show_data) + total_lines * sizeof(const char *));
   tsd->cli = this_cli;
   tsd->pool = p;
+  tsd->lp = lp_new(p);
   tsd->lock = lock;
   tsd->show_loops = show_loops;
   tsd->finish_event = (event) {
     .hook = bird_thread_show_finish,
     .data = tsd,
   };
+  tsd->line_pos = 0;
+  tsd->line_max = total_lines;
 
   this_cli->cont = bird_thread_show_cli_cont;
   this_cli->cleanup = bird_thread_show_cli_cleanup;
