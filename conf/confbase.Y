@@ -62,6 +62,7 @@ CF_DECLS
   net_addr net;
   net_addr *net_ptr;
   struct symbol *s;
+  struct keyword *kw;
   const char *t;
   struct rtable_config *r;
   struct channel_config *cc;
@@ -120,6 +121,7 @@ CF_DECLS
 
 %type <t> text opttext
 %type <s> symbol
+%type <kw> kw_sym
 
 %nonassoc PREFIX_DUMMY
 %left AND OR
@@ -175,7 +177,7 @@ expr_us:
  | expr US { $$ = $1 US_; }
  ;
 
-symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN ;
+symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN | kw_sym { $$ = cf_symbol_from_keyword($1); } ;
 
 /* Switches */
 

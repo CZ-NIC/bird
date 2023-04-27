@@ -154,6 +154,8 @@ CF_ENUM_PX(T_ENUM_AF, AF_, AFI_, IPV4, IPV6)
 
 CF_GRAMMAR
 
+kw_sym: MIN MAX ;
+
 /* Setting of router ID */
 
 conf: rtrid ;
