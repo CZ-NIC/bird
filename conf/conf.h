@@ -191,6 +191,9 @@ struct symbol *cf_find_local_symbol(const struct config *cfg, const struct sym_s
 static inline struct symbol *cf_find_symbol(const struct config *cfg, const byte *c)
 { return cf_find_local_symbol(cfg, cfg->root_scope, c); }
 
+struct keyword;
+struct symbol *cf_symbol_from_keyword(const struct keyword *kw);
+
 struct symbol *cf_get_symbol(const byte *c);
 struct symbol *cf_default_name(char *template, int *counter);
 struct symbol *cf_localize_symbol(struct symbol *sym);
