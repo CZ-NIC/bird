@@ -46,7 +46,7 @@ CF_KEYWORDS(CEASE, PREFIX, LIMIT, HIT, ADMINISTRATIVE, SHUTDOWN, RESET, PEER,
 CF_GRAMMAR
 
 /* Workaround for collisions between keywords and symbols */
-symbol: ROLE | PEER | PROVIDER | CUSTOMER | RS_SERVER | RS_CLIENT ;
+kw_sym: ROLE | PEER | PROVIDER | CUSTOMER | RS_SERVER | RS_CLIENT ;
 
 proto: bgp_proto '}'  ;
 

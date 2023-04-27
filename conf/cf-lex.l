@@ -601,6 +601,10 @@ cf_new_symbol(const byte *c)
   return s;
 }
 
+struct symbol *
+cf_symbol_from_keyword(const struct keyword *kw)
+{ return cf_new_symbol(kw->name); }
+
 /**
  * cf_find_local_symbol - find a symbol by name
  * @cfg: specificed config
@@ -692,18 +696,23 @@ static enum yytokentype
 cf_lex_symbol(const char *data)
 {
   /* Have we defined such a symbol? */
-  struct symbol *sym = cf_get_symbol(data);
-  cf_lval.s = sym;
+  struct symbol *sym = cf_find_local_symbol(new_config, conf_this_scope, data);
 
-  if (sym->class != SYM_VOID)
+  if (sym && (sym->class != SYM_VOID))
+  {
+    cf_lval.s = sym;
     return CF_SYM_KNOWN;
+  }
 
   /* Is it a keyword? */
   struct keyword *k = HASH_FIND(kw_hash, KW, data);
   if (k)
   {
     if (k->value > 0)
+    {
+      cf_lval.kw = k;
       return k->value;
+    }
     else
     {
       cf_lval.i = -k->value;
@@ -712,7 +721,7 @@ cf_lex_symbol(const char *data)
   }
 
   /* OK, undefined symbol */
-  cf_lval.s = sym;
+  cf_lval.s = cf_new_symbol(data);
   return CF_SYM_UNDEFINED;
 }
 
