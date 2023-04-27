@@ -237,7 +237,7 @@ mem_hash(const void *p, uint s)
 }
 
 static inline uint
-ptr_hash(void *ptr)
+ptr_hash(const void *ptr)
 {
   uintptr_t p = (uintptr_t) ptr;
   return p ^ (p << 8) ^ (p >> 16);

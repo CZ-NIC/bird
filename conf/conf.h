@@ -187,7 +187,9 @@ int cf_lex(void);
 void cf_lex_init(int is_cli, struct config *c);
 void cf_lex_unwind(void);
 
-struct symbol *cf_find_symbol(const struct config *cfg, const byte *c);
+struct symbol *cf_find_local_symbol(const struct config *cfg, const struct sym_scope *scope, const byte *c);
+static inline struct symbol *cf_find_symbol(const struct config *cfg, const byte *c)
+{ return cf_find_local_symbol(cfg, cfg->root_scope, c); }
 
 struct symbol *cf_get_symbol(const byte *c);
 struct symbol *cf_default_name(char *template, int *counter);
