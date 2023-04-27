@@ -73,10 +73,10 @@ static uint cf_hash(const byte *c);
 #define KW_FN(k)		cf_hash(k)
 #define KW_ORDER		8 /* Fixed */
 
-#define SYM_KEY(n)		n->name, n->scope->active
+#define SYM_KEY(n)		n->name, n->scope
 #define SYM_NEXT(n)		n->next
 #define SYM_EQ(a,s1,b,s2)	!strcmp(a,b) && s1 == s2
-#define SYM_FN(k,s)		cf_hash(k)
+#define SYM_FN(k,s)		cf_hash(k) ^ ptr_hash(s)
 #define SYM_ORDER		6 /* Initial */
 
 #define SYM_REHASH		sym_rehash
@@ -602,29 +602,31 @@ cf_new_symbol(const byte *c)
 }
 
 /**
- * cf_find_symbol - find a symbol by name
+ * cf_find_local_symbol - find a symbol by name
  * @cfg: specificed config
+ * @scope: specified symbol scope
  * @c: symbol name
  *
  * This functions searches the symbol table in the config @cfg for a symbol of
- * given name. First it examines the current scope, then the second recent one
+ * given name. First it examines the scope @scope, then the parent scope
  * and so on until it either finds the symbol and returns a pointer to its
  * &symbol structure or reaches the end of the scope chain and returns %NULL to
  * signify no match.
  */
 struct symbol *
-cf_find_symbol(const struct config *cfg, const byte *c)
+cf_find_local_symbol(const struct config *cfg, const struct sym_scope *scope, const byte *c)
 {
   struct symbol *s;
 
-  if (cfg->sym_hash.data &&
-      (s = HASH_FIND(cfg->sym_hash, SYM, c, 1)))
-    return s;
+  if (cfg->sym_hash.data)
+    for (; scope; scope = scope->next)
+      if (s = HASH_FIND(cfg->sym_hash, SYM, c, scope))
+	return s;
 
   /* In CLI command parsing, fallback points to the current config, otherwise it is NULL. */
   if (cfg->fallback &&
       cfg->fallback->sym_hash.data &&
-      (s = HASH_FIND(cfg->fallback->sym_hash, SYM, c, 1)))
+      (s = HASH_FIND(cfg->fallback->sym_hash, SYM, c, cfg->fallback->root_scope)))
     return s;
 
   return NULL;
@@ -642,7 +644,7 @@ cf_find_symbol(const struct config *cfg, const byte *c)
 struct symbol *
 cf_get_symbol(const byte *c)
 {
-  return cf_find_symbol(new_config, c) ?: cf_new_symbol(c);
+  return cf_find_local_symbol(new_config, conf_this_scope, c) ?: cf_new_symbol(c);
 }
 
 /**
