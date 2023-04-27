@@ -4831,6 +4831,39 @@ rt_update_hostcache(void *data)
 	rt_schedule_nhu(dst);
 }
 
+struct hostentry_tmp_lock {
+  resource r;
+  rtable *tab;
+  struct hostentry *he;
+};
+
+static void
+hostentry_tmp_unlock(resource *r)
+{
+  struct hostentry_tmp_lock *l = SKIP_BACK(struct hostentry_tmp_lock, r, r);
+  RT_LOCKED(l->tab, tab)
+  {
+    l->he->uc--;
+    rt_unlock_table(tab);
+  }
+}
+
+static void
+hostentry_tmp_lock_dump(resource *r, unsigned indent UNUSED)
+{
+  struct hostentry_tmp_lock *l = SKIP_BACK(struct hostentry_tmp_lock, r, r);
+  debug("he=%p tab=%s\n", l->he, l->tab->name);
+}
+
+struct resclass hostentry_tmp_lock_class = {
+  .name = "Temporary hostentry lock",
+  .size = sizeof(struct hostentry_tmp_lock),
+  .free = hostentry_tmp_unlock,
+  .dump = hostentry_tmp_lock_dump,
+  .lookup = NULL,
+  .memsize = NULL,
+};
+
 static struct hostentry *
 rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep)
 {
@@ -4844,10 +4877,20 @@ rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep)
   struct hostcache *hc = tab->hostcache;
   for (he = hc->hash_table[k >> hc->hash_shift]; he != NULL; he = he->next)
     if (ipa_equal(he->addr, a) && ipa_equal(he->link, link) && (he->tab == dep))
-      return he;
+      break;
 
-  he = hc_new_hostentry(hc, tab->rp, a, link, dep, k);
-  rt_update_hostentry(tab, he);
+  if (!he)
+  {
+    he = hc_new_hostentry(hc, tab->rp, a, link, dep, k);
+    rt_update_hostentry(tab, he);
+  }
+
+  struct hostentry_tmp_lock *l = ralloc(tmp_res.pool, &hostentry_tmp_lock_class);
+  l->he = he;
+  l->tab = RT_PUB(tab);
+  l->he->uc++;
+  rt_lock_table(tab);
+
   return he;
 }
 
