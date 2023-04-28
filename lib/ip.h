@@ -145,9 +145,6 @@ static inline ip4_addr ip4_xor(ip4_addr a, ip4_addr b)
 static inline ip4_addr ip4_not(ip4_addr a)
 { return _MI4(~_I(a)); }
 
-static inline int ip4_less(ip4_addr a, ip4_addr b)
-{ return _I(a) < _I(b); }
-
 
 static inline int ip6_equal(ip6_addr a, ip6_addr b)
 { return _I0(a) == _I0(b) && _I1(a) == _I1(b) && _I2(a) == _I2(b) && _I3(a) == _I3(b); }

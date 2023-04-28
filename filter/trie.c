@@ -817,12 +817,13 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
   };
 
   if (!net)
-    return 1;
+  { log("return 0"); return 0; }
 
   /* We want to find node of level at least plen */
   int plen = ROUND_DOWN_POW2(net->pxlen, TRIE_STEP);
   const struct f_trie_node *n = &t->root;
   const int v4 = t->ipv4;
+  int step;
 
   while (n)
   {
@@ -838,7 +839,7 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
       if (nlen == plen)
       {
 	/* Find proper local_pos, while accept_length is not used */
-	int step = net->pxlen - plen;
+	step = net->pxlen - plen;
 	s->start_pos = s->local_pos = (1u << step) + GET_NET_BITS(net, v4, plen, step);
 	s->accept_length = plen;
       }
@@ -859,6 +860,7 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
 	s->start_pos = 1;
       }
 
+      log("return 1");
       return 1;
     }
 
@@ -873,15 +875,114 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
   /* We do not override the trie root in case of inclusive search */
   if (!include_successors)
     s->stack[0] = NULL;
+  /* We are out of path, find nearest successor */
+  else
+  {
+    int nlen;
+    char buf[64];
+    char buf2[64];
+    net_format(net, buf, 64);
+    net_addr curr;
+    if (n == NULL)
+      log("node is null");
+      //bug("node is null");
+    else {
+      nlen = v4 ? n->v4.plen : n->v6.plen;
+      if (v4)
+	net_fill_ip4(&curr, ip4_and(n->v4.addr, ip4_mkmask(n->v4.plen)), n->v4.plen);
+	//net_fill_ip4(&curr, n->v4.addr, n->v4.plen);
+      else
+	net_fill_ip6(&curr, ip6_and(n->v6.addr, ip6_mkmask(n->v6.plen)), n->v6.plen);
+	//net_fill_ip6(&curr, n->v6.addr, n->v6.plen);
+      net_format(&curr, buf2, 64);
 
-  /* Be careful about underflow */
-  else if (s->stack_pos > 0)
-    s->stack_pos--;
+      log(" !SAME_PREFIX: %s vs. %s\n", buf, buf2);
+    }
 
-  /* Search whole trie except skipped parts */
-  if (include_successors)
-    s->start_pos = 1;
+    if (s->stack_pos > 0)
+      n = s->stack[s->stack_pos - 1];
+    else
+    {
+      log("root fallback");
+      n = &t->root;
+    }
 
+    nlen = v4 ? n->v4.plen : n->v6.plen;
+
+    log("phase 2 after back step");
+    net_format(net, buf, 64);
+    if (v4)
+      net_fill_ip4(&curr, ip4_and(n->v4.addr, ip4_mkmask(n->v4.plen)), n->v4.plen);
+      //net_fill_ip4(&curr, n->v4.addr, n->v4.plen);
+    else
+      net_fill_ip6(&curr, ip6_and(n->v6.addr, ip6_mkmask(n->v6.plen)), n->v6.plen);
+      //net_fill_ip6(&curr, n->v6.addr, n->v6.plen);
+    net_format(&curr, buf2, 64);
+    log(" (%d) SAME_PREFIX: %s vs. %s\n", SAME_PREFIX(n, net, v4, MIN(net->pxlen, nlen)), buf, buf2);
+
+    step = net->pxlen - plen;
+    /* Stack position point one element ahead */
+    if (s->stack_pos == 1)
+    {
+      //bug("there");
+      log("there");
+      s->stack_pos--;
+      s->start_pos = s->local_pos = 1;
+    }
+    else if (s->stack_pos > 1)
+    {
+      //bug("over");
+      log("over");
+      s->stack_pos--;
+
+      nlen = (v4) ? n->v4.plen : n->v6.plen;
+      int next = (GET_NET_BITS(net, v4, nlen, step) + 1) % TRIE_STEP;
+      while (s->stack_pos != 0 && next == 0)
+      {
+	n = s->stack[s->start_pos];
+	step--;
+	s->stack_pos--;
+	next = (GET_NET_BITS(net, v4, nlen, step) + 1) % TRIE_STEP;
+      }
+
+      /* Fix the stack_pos, one decrement one than needed */
+      s->stack_pos++;
+
+      if ((n = GET_CHILD(n, v4, next)) != NULL)
+      {
+	log("settting the positions");
+	s->stack[s->stack_pos] = n;
+	//s->start_pos = (1u << step) + GET_NET_BITS(net, v4, plen, step);
+	s->start_pos = 2 * (1u << step) + GET_NET_BITS(net, v4, plen, step);
+	s->local_pos = 2 * (1u << step) + GET_NET_BITS(net, v4, plen, step);
+      }
+      //s->start_pos = s->local_pos = (1u << step) + GET_NET_BITS(net, v4, plen, step);
+      //s->accept_length = plen;
+      /* s->start_pos and s->local_pos is already initialized */
+    }
+    /* Be careful around underflow */
+    else /* stack_pos == 0 */
+    {
+      bug("here");
+
+      //return 0;
+      s->stack[0] = &t->root;
+      s->start_pos = s->local_pos = (1u << step);
+      s->accept_length = plen;
+    }
+
+    struct net_addr net_copy;
+    memcpy(&net_copy, net, sizeof(struct net_addr));
+/*
+    if (v4)
+      net_fill_ip4(net, ip4_and(), len);
+    else
+      net_fill_ip6(net, ip6_and(), len);
+*/
+    //trie_walk_next(s, &net_copy);
+  }
+
+  log("return 2");
   return 0;
 }
 

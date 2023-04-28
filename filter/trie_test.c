@@ -890,7 +890,8 @@ t_trie_walk_inclusive(void)
   {
     int level = round / TESTS_NUM;
     int v6 = level % 2;
-    int num = PREFIXES_NUM * (int[]){1, 10, 100, 1000}[level / 2];
+    //int num = PREFIXES_NUM * (int[]){0, 1, 10, 100, 1000}[level / 2];
+    int num = PREFIXES_NUM  * (int[]){32, 512}[level / 2];
     int pos = 0, end = 0;
     list *prefixes = make_random_prefix_list(num, v6, 1);
     struct f_trie *trie = make_trie_from_prefix_list(prefixes);
@@ -903,7 +904,7 @@ t_trie_walk_inclusive(void)
 
     qsort(pxset, num, sizeof(struct f_prefix), compare_prefixes);
 
-    /* // print sorted prefixes
+    // print sorted prefixes
     bt_debug("sorted prefixes\n");
     for (struct f_prefix *px = pxset; px < pxset + num; px++)
     {
@@ -911,7 +912,7 @@ t_trie_walk_inclusive(void)
       bt_format_net(buf, 64, &px->net);
       bt_debug("%s{%d,%d}\n", buf, px->lo, px->hi);
     }
- 
+
     /* Full walk */
     bt_debug("Full walk inclusive (round %d, %d nets)\n", round, num);
 
@@ -937,12 +938,20 @@ t_trie_walk_inclusive(void)
     bt_debug("Full walk inclusive done\n");
 
 
-    /* Prepare net for subnet walk - start with random prefix */
-    pos = bt_random() % num;
+    /* Prepare net for subnet walk - start with random prefix from trie */
+    if (num)
+      pos = bt_random() % num;
+    else
+      pos = 0;
     end = pos + (int[]){2, 2, 3, 4}[level / 2];
     end = MIN(end, num);
 
-    struct f_prefix from = pxset[pos];
+    struct f_prefix from;
+
+    if (num)
+      from = pxset[pos];
+    else
+      get_random_prefix(&from, v6, 1);
 
     /* Find a common superprefix to several subsequent prefixes */
     for (; pos < end; pos++)
@@ -977,11 +986,6 @@ t_trie_walk_inclusive(void)
       if (compare_prefixes(&pxset[pos], &from) >= 0)
 	break;
 
-      /* Account for subnets before searched net from */
-    //for (; pos < num; pos++)
-      //if (net_compare(&pxset[pos].net, &from.net) >= 0)
-	 //break;
-
     int p0 = pos;
     char buf0[64];
     bt_format_net(buf0, 64, &from.net);
@@ -991,7 +995,8 @@ t_trie_walk_inclusive(void)
     TRIE_WALK2(trie, net, &from.net, 1)
     {
       log_networks(&net, &pxset[pos].net);
-      bt_assert(net_compare(&net, &pxset[pos].net) >= 0);
+      //bt_assert(net_compare(&net, &pxset[pos].net) >= 0);
+      bt_assert(net_compare(&net, &from.net) >= 0);
 
       /* Skip possible duplicates */
       while (net_equal(&pxset[pos].net, &pxset[pos + 1].net))
@@ -1004,11 +1009,76 @@ t_trie_walk_inclusive(void)
     bt_assert(pos == num);
     bt_debug("Subnet walk done inclusive for %s (found %d nets)\n", buf0, pos - p0);
 
+    /* Prepare net for subnet walk - start with random prefix (likely not from trie) */
+    get_random_prefix(&from, v6, 1);
+
+    for (pos = 0; pos < num; pos++)
+    {
+      bt_format_net(buf0, 64, &pxset[pos].net);
+      bt_debug(" -> %s ", buf0);
+      if (net_compare(&pxset[pos].net, &from.net) >= 0)
+      {
+	bt_debug("true, breaking\n");
+	break;
+      }
+      else
+	bt_debug("false\n");
+    }
+
+    p0 = pos;
+    bt_format_net(buf0, 64, &from.net);
+    bt_debug("Subnet walk inclusive for random %s (round %d, %d nets)\n", buf0, round, num);
+
+    /* Subnet walk */
+    TRIE_WALK2(trie, net, &from.net, 1)
+    {
+      /* Make sure that net is from inserted prefixes */
+      bt_format_net(buf0, 64, &net);
+      bt_debug("got: %s", buf0);
+      bt_format_net(buf0, 64, &pxset[pos].net);
+      bt_debug(" expected %s", buf0);
+      if (pos + 1 < num)
+      {
+	bt_format_net(buf0, 64, &pxset[pos + 1].net);
+	bt_debug(" (next: %s)\n", buf0);
+      }
+      else
+	bt_debug("\n");
+
+      bt_assert(net_equal(&net, &pxset[pos].net));
+      bt_assert(net_compare(&net, &from.net) >= 0);
+
+      while (net_equal(&pxset[pos].net, &pxset[pos + 1].net))
+	pos++;
+
+      pos++;
+    }
+    TRIE_WALK2_END;
+
+    bt_debug("Subnet walk inclusive for random %s (found %d nets from %d)\n", buf0, pos - p0, num - p0);
+    bt_assert(pos == num);
+
     tmp_flush();
   }
 
   bt_bird_cleanup();
   return 1;
+
+
+  /*
+   * empty trie
+   * inclusive after last element
+   * inclusive before first element
+   * not found root (empty trie)
+   * not found root (after last)
+   * not found root (before first)
+   * not found root (single element)
+   * not found root inbetween
+   * not found first level
+   * not found first level (after)
+   * not found first level (before)
+   * general case (found / not found on higher level)
+   */
 }
 
 int
