@@ -86,6 +86,7 @@ linpool
 void *
 lp_alloc(linpool *m, uint size)
 {
+  ASSERT_DIE(DG_IS_LOCKED(resource_parent(&m->r)->domain));
   byte *a = (byte *) BIRD_ALIGN((unsigned long) m->ptr, CPU_STRUCT_ALIGN);
   byte *e = a + size;
 
@@ -145,6 +146,7 @@ lp_alloc(linpool *m, uint size)
 void *
 lp_allocu(linpool *m, uint size)
 {
+  ASSERT_DIE(DG_IS_LOCKED(resource_parent(&m->r)->domain));
   byte *a = m->ptr;
   byte *e = a + size;
 
@@ -183,6 +185,7 @@ lp_allocz(linpool *m, uint size)
 void
 lp_flush(linpool *m)
 {
+  ASSERT_DIE(DG_IS_LOCKED(resource_parent(&m->r)->domain));
   struct lp_chunk *c;
 
   /* Move ptr to the first chunk and free all other chunks */
@@ -216,6 +219,7 @@ lp_flush(linpool *m)
 void
 lp_save(linpool *m, lp_state *p)
 {
+  ASSERT_DIE(DG_IS_LOCKED(resource_parent(&m->r)->domain));
   p->current = m->current;
   p->large = m->first_large;
   p->total_large = m->total_large;
@@ -236,6 +240,7 @@ void
 lp_restore(linpool *m, lp_state *p)
 {
   struct lp_chunk *c;
+  ASSERT_DIE(DG_IS_LOCKED(resource_parent(&m->r)->domain));
 
   /* Move ptr to the saved pos and free all newer large chunks */
   m->current = c = p->current ?: m->first;

@@ -76,6 +76,9 @@ void rp_free(pool *p);							/* Free the whole pool */
 
 extern pool root_pool;
 
+static inline pool *resource_parent(resource *r)
+{ return SKIP_BACK(pool, inside, resource_enlisted(r)); }
+
 /* Normal memory blocks */
 
 void *mb_alloc(pool *, unsigned size);

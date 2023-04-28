@@ -256,6 +256,7 @@ void *
 sl_alloc(slab *s)
 {
   struct sl_head *h;
+  ASSERT_DIE(DG_IS_LOCKED(resource_parent(&s->r)->domain));
 
 redo:
   if (!(h = s->partial_heads.first))
@@ -331,6 +332,7 @@ sl_free(void *oo)
 {
   struct sl_head *h = SL_GET_HEAD(oo);
   struct slab *s = h->slab;
+  ASSERT_DIE(DG_IS_LOCKED(resource_parent(&s->r)->domain));
 
 #ifdef POISON
   memset(oo, 0xdb, s->data_size);

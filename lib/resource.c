@@ -189,13 +189,6 @@ pool_lookup(resource *P, unsigned long a)
   return q;
 }
 
-static pool *
-resource_parent(resource *r)
-{
-  return SKIP_BACK(pool, inside, resource_enlisted(r));
-}
-
-
 /**
  * rmove - move a resource
  * @res: resource
