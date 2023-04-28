@@ -773,6 +773,14 @@ err:
 }
 
 static byte *
+bgp_copy_open(struct bgp_proto *p, const byte *pkt, uint len)
+{
+  char *buf = mb_alloc(p->p.pool, len - BGP_HEADER_LENGTH);
+  memcpy(buf, pkt + BGP_HEADER_LENGTH, len - BGP_HEADER_LENGTH);
+  return buf;
+}
+
+static byte *
 bgp_create_open(struct bgp_conn *conn, byte *buf)
 {
   struct bgp_proto *p = conn->bgp;
@@ -845,6 +853,9 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   hold = get_u16(pkt+22);
   id = get_u32(pkt+24);
   BGP_TRACE(D_PACKETS, "Got OPEN(as=%d,hold=%d,id=%R)", asn, hold, id);
+
+  conn->remote_open_msg = bgp_copy_open(p, pkt, len);
+  conn->remote_open_length = len - BGP_HEADER_LENGTH;
 
   if (bgp_read_options(conn, pkt+29, pkt[28], len-29) < 0)
     return;
@@ -2984,7 +2995,7 @@ bgp_send(struct bgp_conn *conn, uint type, uint len)
   conn->bgp->stats.tx_messages++;
   conn->bgp->stats.tx_bytes += len;
 
-  memset(buf, 0xff, 16);		/* Marker */
+  memset(buf, 0xff, BGP_HDR_MARKER_LENGTH);
   put_u16(buf+16, len);
   buf[18] = type;
 
@@ -3032,6 +3043,10 @@ bgp_fire_tx(struct bgp_conn *conn)
   {
     conn->packets_to_send &= ~(1 << PKT_OPEN);
     end = bgp_create_open(conn, pkt);
+
+    conn->local_open_msg = bgp_copy_open(p, buf, end - buf);
+    conn->local_open_length = end - buf - BGP_HEADER_LENGTH;
+
     int rv = bgp_send(conn, PKT_OPEN, end - buf);
     if (rv >= 0)
     {

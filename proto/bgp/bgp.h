@@ -287,6 +287,11 @@ struct bgp_conn {
   u8 ext_messages;			/* Session uses extended message length */
   u32 received_as;			/* ASN received in OPEN message */
 
+  byte *local_open_msg;			/* Saved OPEN messages (no header) */
+  byte *remote_open_msg;
+  uint local_open_length;
+  uint remote_open_length;
+
   struct bgp_caps *local_caps;
   struct bgp_caps *remote_caps;
   timer *connect_timer;
@@ -487,6 +492,7 @@ struct bgp_parse_state {
 #define BGP_PORT		179
 #define BGP_VERSION		4
 #define BGP_HEADER_LENGTH	19
+#define BGP_HDR_MARKER_LENGTH	16
 #define BGP_MAX_MESSAGE_LENGTH	4096
 #define BGP_MAX_EXT_MSG_LENGTH	65535
 #define BGP_RX_BUFFER_SIZE	4096

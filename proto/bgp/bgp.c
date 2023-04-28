@@ -380,6 +380,13 @@ bgp_close_conn(struct bgp_conn *conn)
   rfree(conn->sk);
   conn->sk = NULL;
 
+  mb_free(conn->local_open_msg);
+  conn->local_open_msg = NULL;
+  mb_free(conn->remote_open_msg);
+  conn->remote_open_msg = NULL;
+  conn->local_open_length = 0;
+  conn->remote_open_length = 0;
+
   mb_free(conn->local_caps);
   conn->local_caps = NULL;
   mb_free(conn->remote_caps);
