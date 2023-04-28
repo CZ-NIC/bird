@@ -27,6 +27,7 @@
 
 struct lp_chunk {
   struct lp_chunk *next;
+  struct linpool *lp;
   uintptr_t data_align[0];
   byte data[0];
 };
@@ -100,30 +101,29 @@ lp_alloc(linpool *m, uint size)
 	{
 	  /* Too large => allocate large chunk */
 	  c = xmalloc(sizeof(struct lp_chunk) + size);
-	  m->total_large += size;
+	  c->lp = m;
 	  c->next = m->first_large;
+
+	  m->total_large += size;
 	  m->first_large = c;
 	}
       else
 	{
-	  if (m->current && m->current->next)
-	    {
-	      /* Still have free chunks from previous incarnation (before lp_flush()) */
-	      c = m->current->next;
-	    }
+	  if (m->current)
+	    ASSERT_DIE(!m->current->next);
+
+	  /* Need to allocate a new chunk */
+	  c = alloc_page();
+
+	  m->total += LP_DATA_SIZE;
+	  c->next = NULL;
+	  c->lp = m;
+
+	  if (m->current)
+	    m->current->next = c;
 	  else
-	    {
-	      /* Need to allocate a new chunk */
-	      c = alloc_page();
+	    m->first = c;
 
-	      m->total += LP_DATA_SIZE;
-	      c->next = NULL;
-
-	      if (m->current)
-		m->current->next = c;
-	      else
-		m->first = c;
-	    }
 	  m->current = c;
 	  m->ptr = c->data + size;
 	  m->end = c->data + LP_DATA_SIZE;
@@ -247,6 +247,12 @@ lp_restore(linpool *m, lp_state *p)
     {
       m->first_large = c->next;
       xfree(c);
+    }
+
+  while (m->current && (c = m->current->next))
+    {
+      m->current->next = c->next;
+      free_page(c);
     }
 }
 
