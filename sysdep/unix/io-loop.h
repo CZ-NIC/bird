@@ -51,7 +51,7 @@ struct birdloop
   list sock_list;
   struct birdsock *sock_active;
   int sock_num;
-  uint sock_changed;
+  uint sock_changed:1;
 
   uint ping_pending;
 
@@ -93,13 +93,15 @@ struct bird_thread
 
   event cleanup_event;
 
-  int sock_changed;
+  u8 sock_changed;
+  u8 busy_active;
+  u16 busy_counter;
   uint loop_count;
 
   u64 max_latency_ns;
   u64 max_loop_time_ns;
 
-  struct spent_time overhead;
+  struct spent_time overhead, idle;
 };
 
 #endif
