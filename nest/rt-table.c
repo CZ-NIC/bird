@@ -4592,34 +4592,28 @@ hc_notify_export_one(struct rt_export_request *req, const net_addr *net, struct 
 {
   struct hostcache *hc = SKIP_BACK(struct hostcache, req, req);
 
-  /* No interest in this update, mark seen only */
-  int interested = 1;
   RT_LOCKED((rtable *) hc->update.data, tab)
     if (ev_active(&hc->update) || !trie_match_net(hc->trie, net))
-    {
+      /* No interest in this update, mark seen only */
       rpe_mark_seen_all(req->hook, first, NULL, NULL);
-      interested = 0;
-    }
+    else
+    {
+      /* This net may affect some hostentries, check the actual change */
+      rte *o = RTE_VALID_OR_NULL(first->old_best);
+      struct rte_storage *new_best = first->new_best;
 
-  if (!interested)
-    return;
+      RPE_WALK(first, rpe, NULL)
+      {
+	rpe_mark_seen(req->hook, rpe);
+	new_best = rpe->new_best;
+      }
 
-  /* This net may affect some hostentries, check the actual change */
-  rte *o = RTE_VALID_OR_NULL(first->old_best);
-  struct rte_storage *new_best = first->new_best;
-
-  RPE_WALK(first, rpe, NULL)
-  {
-    rpe_mark_seen(req->hook, rpe);
-    new_best = rpe->new_best;
-  }
-
-  /* Yes, something has actually changed. Do the hostcache update. */
-  if (o != RTE_VALID_OR_NULL(new_best))
-    RT_LOCKED((rtable *) hc->update.data, tab)
-      if ((atomic_load_explicit(&req->hook->export_state, memory_order_acquire) == TES_READY)
+      /* Yes, something has actually changed. Do the hostcache update. */
+      if ((o != RTE_VALID_OR_NULL(new_best))
+	  && (atomic_load_explicit(&req->hook->export_state, memory_order_acquire) == TES_READY)
 	  && !ev_active(&hc->update))
 	ev_send_loop(tab->loop, &hc->update);
+    }
 }
 
 
