@@ -10,7 +10,6 @@
 #include "lib/resource.h"
 #include "lib/lists.h"
 #include "lib/event.h"
-#include "lib/rcu.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -41,7 +40,17 @@ long page_size = 0;
   static _Bool use_fake = 0;
   static _Bool initialized = 0;
 
+# define PROTECT_PAGE(pg)
+# define UNPROTECT_PAGE(pg)
+
 # if DEBUGGING
+#   ifdef ENABLE_EXPENSIVE_CHECKS
+#     undef PROTECT_PAGE
+#     undef UNPROTECT_PAGE
+#     define PROTECT_PAGE(pg)	mprotect((pg), page_size, PROT_READ)
+#     define UNPROTECT_PAGE(pg)	mprotect((pg), page_size, PROT_READ | PROT_WRITE)
+#   endif
+
     struct free_page {
       node unused[42];
       struct free_page * _Atomic next;
@@ -51,6 +60,8 @@ long page_size = 0;
       struct free_page * _Atomic next;
     };
 # endif
+
+# define WRITE_NEXT(pg, val)	do { UNPROTECT_PAGE((pg)); atomic_store_explicit(&(pg)->next, (val), memory_order_release); PROTECT_PAGE((pg)); } while (0)
 
 # define EP_POS_MAX	((page_size - OFFSETOF(struct empty_pages, pages)) / sizeof (void *))
 
@@ -115,32 +126,37 @@ alloc_page(void)
     local_page_stack = atomic_load_explicit(&fp->next, memory_order_acquire);
     atomic_fetch_sub_explicit(&pages_kept_locally, 1, memory_order_relaxed);
     pages_kept_here--;
+    UNPROTECT_PAGE(fp);
     return fp;
   }
 
   ASSERT_DIE(pages_kept_here == 0);
 
   /* If there is any free page kept hot in global storage, we use it. */
-  rcu_read_lock();
   fp = atomic_load_explicit(&page_stack, memory_order_acquire);
   while (fp && !atomic_compare_exchange_strong_explicit(
 	&page_stack, &fp, atomic_load_explicit(&fp->next, memory_order_acquire),
 	memory_order_acq_rel, memory_order_acquire))
     ;
-  rcu_read_unlock();
 
   if (fp)
   {
     atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
+    UNPROTECT_PAGE(fp);
     return fp;
   }
 
   /* If there is any free page kept cold, we use that. */
   LOCK_DOMAIN(resource, empty_pages_domain);
   if (empty_pages) {
+    UNPROTECT_PAGE(empty_pages);
     if (empty_pages->pos)
+    {
       /* Either the keeper page contains at least one cold page pointer, return that */
       fp = empty_pages->pages[--empty_pages->pos];
+      PROTECT_PAGE(empty_pages);
+      UNPROTECT_PAGE(fp);
+    }
     else
     {
       /* Or the keeper page has no more cold page pointer, return the keeper page */
@@ -178,6 +194,7 @@ free_page(void *ptr)
   if (shutting_down || (pages_kept_here < KEEP_PAGES_MAX_LOCAL))
   {
     atomic_store_explicit(&fp->next, local_page_stack, memory_order_relaxed);
+    PROTECT_PAGE(fp);
     local_page_stack = fp;
 
     atomic_fetch_add_explicit(&pages_kept_locally, 1, memory_order_relaxed);
@@ -186,14 +203,15 @@ free_page(void *ptr)
   }
 
   /* If there are too many local pages, we add the free page to the global hot-free-page list */
-  rcu_read_lock();
   struct free_page *next = atomic_load_explicit(&page_stack, memory_order_acquire);
 
-  do atomic_store_explicit(&fp->next, next, memory_order_release);
+  atomic_store_explicit(&fp->next, next, memory_order_release);
+  PROTECT_PAGE(fp);
+
   while (!atomic_compare_exchange_strong_explicit(
 	&page_stack, &next, fp,
-	memory_order_acq_rel, memory_order_acquire));
-  rcu_read_unlock();
+	memory_order_acq_rel, memory_order_acquire))
+    WRITE_NEXT(fp, next);
 
   /* And if there are too many global hot free pages, we ask for page cleanup */
   if (atomic_fetch_add_explicit(&pages_kept, 1, memory_order_relaxed) >= KEEP_PAGES_MAX)
@@ -223,16 +241,14 @@ flush_local_pages(void)
   ASSERT_DIE(check_count == pages_kept_here);
 
   /* Repeatedly trying to insert the whole page list into global page stack at once. */
-  rcu_read_lock();
   next = atomic_load_explicit(&page_stack, memory_order_acquire);
 
   /* First we set the outwards pointer (from our last),
    * then we try to set the inwards pointer to our first page. */
-  do atomic_store_explicit(&last->next, next, memory_order_release);
+  do WRITE_NEXT(last, next);
   while (!atomic_compare_exchange_strong_explicit(
 	&page_stack, &next, local_page_stack,
 	memory_order_acq_rel, memory_order_acquire));
-  rcu_read_unlock();
 
   /* Finished. Now the local stack is empty. */
   local_page_stack = NULL;
@@ -258,7 +274,6 @@ page_cleanup(void *_ UNUSED)
 
 
   do {
-    synchronize_rcu();
     struct free_page *fp = stack;
     stack = atomic_load_explicit(&fp->next, memory_order_acquire);
 
@@ -268,13 +283,19 @@ page_cleanup(void *_ UNUSED)
     {
       /* There is either no pointer block or the last block is full. We use this block as a pointer block. */
       empty_pages = (struct empty_pages *) fp;
+      UNPROTECT_PAGE(empty_pages);
       *empty_pages = (struct empty_pages) {};
+      PROTECT_PAGE(empty_pages);
     }
     else
     {
       /* We store this block as a pointer into the first free place
        * and tell the OS that the underlying memory is trash. */
+      UNPROTECT_PAGE(empty_pages);
       empty_pages->pages[empty_pages->pos++] = fp;
+      PROTECT_PAGE(empty_pages);
+
+      PROTECT_PAGE(fp);
       if (madvise(fp, page_size,
 #ifdef CONFIG_MADV_DONTNEED_TO_FREE
 	    MADV_DONTNEED
@@ -292,6 +313,7 @@ page_cleanup(void *_ UNUSED)
   {
     struct free_page *f = stack;
     stack = atomic_load_explicit(&f->next, memory_order_acquire);
+    UNPROTECT_PAGE(f);
     free_page(f);
 
     atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
