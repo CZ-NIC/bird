@@ -3946,10 +3946,8 @@ rt_next_hop_update(struct rtable_private *tab)
 	  birdloop_flag(tab->loop, RTF_NHU);
 	  return;
 	}
-      lp_state lps;
-      lp_save(tmp_linpool, &lps);
-      max_feed -= rt_next_hop_update_net(tab, n);
-      lp_restore(tmp_linpool, &lps);
+      TMP_SAVED
+	max_feed -= rt_next_hop_update_net(tab, n);
     }
   FIB_ITERATE_END;
 

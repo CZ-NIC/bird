@@ -2387,11 +2387,13 @@ bgp_create_update(struct bgp_channel *c, byte *buf)
   struct bgp_bucket *buck;
   byte *end = buf + (bgp_max_packet_length(p->conn) - BGP_HEADER_LENGTH);
   byte *res = NULL;
+  struct lp_state *tmpp = NULL;
 
-again: ;
+again:
+  if (tmpp)
+    lp_restore(tmp_linpool, tmpp);
 
-  struct lp_state tmpp;
-  lp_save(tmp_linpool, &tmpp);
+  tmpp = lp_save(tmp_linpool);
 
   /* Initialize write state */
   struct bgp_write_state s = {
@@ -2421,10 +2423,7 @@ again: ;
 
     /* Cleanup empty buckets */
     if (bgp_done_bucket(c, buck))
-    {
-      lp_restore(tmp_linpool, &tmpp);
       goto again;
-    }
 
     res = !s.mp_reach ?
       bgp_create_ip_reach(&s, buck, buf, end):
@@ -2433,21 +2432,19 @@ again: ;
     bgp_done_bucket(c, buck);
 
     if (!res)
-    {
-      lp_restore(tmp_linpool, &tmpp);
       goto again;
-    }
 
     goto done;
   }
 
   /* No more prefixes to send */
+  lp_restore(tmp_linpool, tmpp);
   return NULL;
 
 done:
   BGP_TRACE_RL(&rl_snd_update, D_PACKETS, "Sending UPDATE");
   p->stats.tx_updates++;
-  lp_restore(tmp_linpool, &tmpp);
+  lp_restore(tmp_linpool, tmpp);
 
   return res;
 }
@@ -2574,8 +2571,7 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 
   bgp_start_timer(p, conn->hold_timer, conn->hold_time);
 
-  struct lp_state tmpp;
-  lp_save(tmp_linpool, &tmpp);
+  struct lp_state *tmpp = lp_save(tmp_linpool);
 
   /* Initialize parse state */
   struct bgp_parse_state s = {
@@ -2593,7 +2589,10 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 
   /* Check minimal length */
   if (len < 23)
-  { bgp_error(conn, 1, 2, pkt+16, 2); return; }
+  {
+    bgp_error(conn, 1, 2, pkt+16, 2);
+    goto done;
+  }
 
   /* Skip fixed header */
   uint pos = 19;
@@ -2658,7 +2657,7 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 
 done:
   rta_free(s.cached_ea);
-  lp_restore(tmp_linpool, &tmpp);
+  lp_restore(tmp_linpool, tmpp);
   return;
 }
 

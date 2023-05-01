@@ -2691,8 +2691,7 @@ bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n,
       continue;
 
     /* Store the tmp_linpool state to aggresively save memory */
-    struct lp_state tmpp;
-    lp_save(tmp_linpool, &tmpp);
+    struct lp_state *tmpp = lp_save(tmp_linpool);
 
     /* Mark the route as LLGR */
     rte e0 = *r;
@@ -2705,7 +2704,7 @@ bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n,
     irh->stale_set++;
 
     /* Restore the memory state */
-    lp_restore(tmp_linpool, &tmpp);
+    lp_restore(tmp_linpool, tmpp);
   }
 
   rpe_mark_seen_all(req->hook, first, last, NULL);

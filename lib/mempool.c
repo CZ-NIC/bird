@@ -39,6 +39,7 @@ struct linpool {
   byte *ptr, *end;
   struct lp_chunk *first, *current;		/* Normal (reusable) chunks */
   struct lp_chunk *first_large;			/* Large chunks */
+  struct lp_state *initial;			/* Initial state to restore to */
   uint total, total_large;
 };
 
@@ -66,7 +67,9 @@ static struct resclass lp_class = {
 linpool
 *lp_new(pool *p)
 {
-  return ralloc(p, &lp_class);
+  linpool *m = ralloc(p, &lp_class);
+  m->initial = lp_save(m);
+  return m;
 }
 
 /**
@@ -185,27 +188,8 @@ lp_allocz(linpool *m, uint size)
 void
 lp_flush(linpool *m)
 {
-  ASSERT_DIE(DG_IS_LOCKED(resource_parent(&m->r)->domain));
-  struct lp_chunk *c;
-
-  /* Move ptr to the first chunk and free all other chunks */
-  m->current = c = m->first;
-  m->ptr = c ? c->data : NULL;
-  m->end = c ? c->data + LP_DATA_SIZE : NULL;
-
-  while (c && c->next)
-  {
-    struct lp_chunk *d = c->next;
-    c->next = d->next;
-    free_page(d);
-  }
-
-  while (c = m->first_large)
-    {
-      m->first_large = c->next;
-      xfree(c);
-    }
-  m->total_large = 0;
+  lp_restore(m, m->initial);
+  m->initial = lp_save(m);
 }
 
 /**
@@ -216,14 +200,19 @@ lp_flush(linpool *m)
  * This function saves the state of a linear memory pool. Saved state can be
  * used later to restore the pool (to free memory allocated since).
  */
-void
-lp_save(linpool *m, lp_state *p)
+struct lp_state *
+lp_save(linpool *m)
 {
   ASSERT_DIE(DG_IS_LOCKED(resource_parent(&m->r)->domain));
-  p->current = m->current;
-  p->large = m->first_large;
-  p->total_large = m->total_large;
-  p->ptr = m->ptr;
+  struct lp_state *p = lp_alloc(m, sizeof(struct lp_state));
+  ASSERT_DIE(m->current);
+  *p = (struct lp_state) {
+    .current = m->current,
+    .large = m->first_large,
+    .total_large = m->total_large,
+  };
+
+  return p;
 }
 
 /**
@@ -243,9 +232,10 @@ lp_restore(linpool *m, lp_state *p)
   ASSERT_DIE(DG_IS_LOCKED(resource_parent(&m->r)->domain));
 
   /* Move ptr to the saved pos and free all newer large chunks */
-  m->current = c = p->current ?: m->first;
-  m->ptr = p->ptr ?: (c ? c->data : NULL);
-  m->end = c ? (c->data + LP_DATA_SIZE) : NULL;
+  ASSERT_DIE(p->current);
+  m->current = c = p->current;
+  m->ptr = (byte *) p;
+  m->end = c->data + LP_DATA_SIZE;
   m->total_large = p->total_large;
 
   while ((c = m->first_large) && (c != p->large))
@@ -254,7 +244,7 @@ lp_restore(linpool *m, lp_state *p)
       xfree(c);
     }
 
-  while (m->current && (c = m->current->next))
+  while (c = m->current->next)
     {
       m->current->next = c->next;
       free_page(c);

@@ -182,8 +182,7 @@ t_balancing_random(void)
     uint i;
     for(i = 0; i < 10; i++)
     {
-      struct lp_state lps;
-      lp_save(tmp_linpool, &lps);
+      struct lp_state *lps = lp_save(tmp_linpool);
 
       struct f_tree *random_degenerated_tree = get_random_degenerated_left_tree(nodes_count);
       show_tree(random_degenerated_tree);
@@ -195,7 +194,7 @@ t_balancing_random(void)
 
       bt_assert(same_tree(balanced_tree_from_random, expected_balanced_tree));
 
-      lp_restore(tmp_linpool, &lps);
+      lp_restore(tmp_linpool, lps);
     }
 
     tmp_flush();

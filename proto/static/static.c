@@ -494,12 +494,8 @@ static_start(struct proto *P)
   proto_notify_state(P, PS_UP);
 
   WALK_LIST(r, cf->routes)
-  {
-    struct lp_state lps;
-    lp_save(tmp_linpool, &lps);
-    static_add_rte(p, r);
-    lp_restore(tmp_linpool, &lps);
-  }
+    TMP_SAVED
+      static_add_rte(p, r);
 
   return PS_UP;
 }

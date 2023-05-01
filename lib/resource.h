@@ -92,7 +92,6 @@ typedef struct linpool linpool;
 
 typedef struct lp_state {
   void *current, *large;
-  byte *ptr;
   uint total_large;
 } lp_state;
 
@@ -101,8 +100,11 @@ void *lp_alloc(linpool *, unsigned size);	/* Aligned */
 void *lp_allocu(linpool *, unsigned size);	/* Unaligned */
 void *lp_allocz(linpool *, unsigned size);	/* With clear */
 void lp_flush(linpool *);			/* Free everything, but leave linpool */
-void lp_save(linpool *m, lp_state *p);		/* Save state */
+lp_state *lp_save(linpool *m);			/* Save state */
 void lp_restore(linpool *m, lp_state *p);	/* Restore state */
+
+#define LP_SAVED(m)	for (struct lp_state *_lp_state = lp_save(m); _lp_state; lp_restore(m, _lp_state), _lp_state = NULL)
+#define TMP_SAVED	LP_SAVED(tmp_linpool)
 
 struct tmp_resources {
   pool *pool, *parent;
