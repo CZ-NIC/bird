@@ -167,7 +167,6 @@ bgp_create_notification(struct bgp_conn *conn, byte *buf)
   buf[0] = conn->notify_code;
   buf[1] = conn->notify_subcode;
   memcpy(buf+2, conn->notify_data, conn->notify_size);
-  bmp_peer_down(p, BE_NONE, buf, conn->notify_size + 2);
   return buf + 2 + conn->notify_size;
 }
 
@@ -988,7 +987,6 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   bgp_schedule_packet(conn, NULL, PKT_KEEPALIVE);
   bgp_start_timer(conn->hold_timer, conn->hold_time);
   bgp_conn_enter_openconfirm_state(conn);
-  bmp_put_recv_bgp_open_msg(p, pkt, len);
 }
 
 
@@ -3037,6 +3035,7 @@ bgp_fire_tx(struct bgp_conn *conn)
   {
     conn->packets_to_send = 1 << PKT_SCHEDULE_CLOSE;
     end = bgp_create_notification(conn, pkt);
+    bmp_peer_down(p, BE_BGP_TX, pkt, end - pkt);
     return bgp_send(conn, PKT_NOTIFICATION, end - buf);
   }
   else if (s & (1 << PKT_OPEN))
@@ -3047,12 +3046,7 @@ bgp_fire_tx(struct bgp_conn *conn)
     conn->local_open_msg = bgp_copy_open(p, buf, end - buf);
     conn->local_open_length = end - buf - BGP_HEADER_LENGTH;
 
-    int rv = bgp_send(conn, PKT_OPEN, end - buf);
-    if (rv >= 0)
-    {
-      bmp_put_sent_bgp_open_msg(p, pkt, end - buf);
-    }
-    return rv;
+    return bgp_send(conn, PKT_OPEN, end - buf);
   }
   else if (s & (1 << PKT_KEEPALIVE))
   {
@@ -3352,7 +3346,7 @@ bgp_rx_notification(struct bgp_conn *conn, byte *pkt, uint len)
     }
   }
 
-  bmp_peer_down(p, BE_NONE, pkt, len);
+  bmp_peer_down(p, BE_BGP_RX, pkt + BGP_HEADER_LENGTH, len - BGP_HEADER_LENGTH);
 }
 
 static void

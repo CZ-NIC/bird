@@ -46,12 +46,6 @@ struct bmp_config {
 struct bgp_proto;
 struct bmp_proto;
 
-// Stores sent and received BGP OPEN MSGs
-struct bmp_peer_open_msg {
-  struct bmp_peer_map tx_msg;
-  struct bmp_peer_map rx_msg;
-};
-
 // Keeps necessary information during composing BGP UPDATE MSG which is going
 // to be sent to the BMP collector
 struct rt_table_info {
@@ -72,8 +66,7 @@ struct bmp_proto {
   u16 station_port;                // Monitoring station TCP port
   struct monitoring_rib monitoring_rib;
   // Below fields are for internal use
-  struct bmp_peer_map bgp_peers;   // Stores 'bgp_proto' structure per BGP peer
-  struct bmp_peer_open_msg peer_open_msg; // Stores sent and received BGP OPEN MSG per BGP peer
+  // struct bmp_peer_map bgp_peers;   // Stores 'bgp_proto' structure per BGP peer
   pool *buffer_mpool;              // Memory pool used for BMP buffer allocations
   pool *map_mem_pool;              // Memory pool used for BMP map allocations
   pool *tx_mem_pool;               // Memory pool used for packet allocations designated to BMP collector
@@ -88,24 +81,12 @@ struct bmp_proto {
 #ifdef CONFIG_BMP
 
 /**
- * bmp_put_sent_bgp_open_msg - save sent BGP OPEN msg packet in BMP implementation.
- * NOTE: If there has been passed sent and received BGP OPEN MSGs to the BMP
- *       implementation, then there is going to be send BMP Peer Up Notification
- *       message to the BMP collector.
+ * bmp_peer_up - send notification that BGP peer connection is established
  */
 void
-bmp_put_sent_bgp_open_msg(const struct bgp_proto *bgp, const byte* pkt,
-  const size_t pkt_size);
-
-/**
- * bmp_put_recv_bgp_open_msg - save received BGP OPEN msg packet in BMP implementation.
- * NOTE: If there has been passed sent and received BGP OPEN MSGs to the BMP
- *       implementation, then there is going to be send BMP Peer Up Notification
- *       message to the BMP collector.
- */
-void
-bmp_put_recv_bgp_open_msg(const struct bgp_proto *bgp, const byte* pkt,
-  const size_t pkt_size);
+bmp_peer_up(const struct bgp_proto *bgp,
+	    const byte *tx_open_msg, uint tx_open_length,
+	    const byte *rx_open_msg, uint rx_open_length);
 
 /**
  * The following 4 functions create BMP Route Monitoring message based on
@@ -140,8 +121,7 @@ bmp_peer_down(const struct bgp_proto *bgp, const int err_class, const byte *pkt,
 
 #else /* BMP build disabled */
 
-static inline void bmp_put_sent_bgp_open_msg(const struct bgp_proto *bgp UNUSED, const byte* pkt UNUSED, const size_t pkt_size UNUSED) { }
-static inline void bmp_put_recv_bgp_open_msg(const struct bgp_proto *bgp UNUSED, const byte* pkt UNUSED, const size_t pkt_size UNUSED) { }
+static inline void bmp_peer_up(const struct bgp_proto *bgp, const byte *tx_open_msg, uint tx_open_length, const byte *rx_open_msg, uint rx_open_length) { }
 static inline void bmp_route_monitor_update_in_pre_begin(void) { }
 static inline void bmp_route_monitor_put_update_in_pre_msg(const byte *data UNUSED, const size_t data_size UNUSED) { }
 static inline void bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp UNUSED) { }

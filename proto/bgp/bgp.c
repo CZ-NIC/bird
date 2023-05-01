@@ -689,6 +689,8 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
 
   bgp_conn_set_state(conn, BS_ESTABLISHED);
   proto_notify_state(&p->p, PS_UP);
+  bmp_peer_up(p, conn->local_open_msg, conn->local_open_length,
+	      conn->remote_open_msg, conn->remote_open_length);
 }
 
 static void
