@@ -8,12 +8,12 @@ Build-Depends: bison,
                libncurses-dev,
                libreadline-dev | libreadline6-dev | libreadline5-dev,
                libssh-gcrypt-dev,
-               linuxdoc-tools-latex,
                m4,
-               opensp,
                quilt,
-               texlive-latex-extra,
                xsltproc
+Build-Depends-Indep: linuxdoc-tools-latex,
+               opensp,
+               texlive-latex-extra
 Maintainer: Jakub Ružička <jakub.ruzicka@nic.cz>
 Uploaders: Ondřej Surý <ondrej@debian.org>
 Standards-Version: 4.6.2
