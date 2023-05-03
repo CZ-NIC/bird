@@ -282,10 +282,13 @@ page_cleanup(void *_ UNUSED)
     if (!empty_pages || (empty_pages->pos == EP_POS_MAX))
     {
       /* There is either no pointer block or the last block is full. We use this block as a pointer block. */
-      empty_pages = (struct empty_pages *) fp;
-      UNPROTECT_PAGE(empty_pages);
-      *empty_pages = (struct empty_pages) {};
-      PROTECT_PAGE(empty_pages);
+      struct empty_pages *ep = (struct empty_pages *) fp;
+      UNPROTECT_PAGE(ep);
+      *ep = (struct empty_pages) {
+	.next = empty_pages,
+      };
+      PROTECT_PAGE(ep);
+      empty_pages = ep;
     }
     else
     {
