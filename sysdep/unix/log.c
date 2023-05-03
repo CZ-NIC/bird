@@ -38,7 +38,7 @@ static list *current_log_list;
 static char *current_syslog_name; /* NULL -> syslog closed */
 
 static _Atomic uint max_thread_id = ATOMIC_VAR_INIT(1);
-static _Thread_local uint this_thread_id;
+_Thread_local uint this_thread_id;
 
 #define THIS_THREAD_ID  (this_thread_id ?: (this_thread_id = atomic_fetch_add_explicit(&max_thread_id, 1, memory_order_acq_rel)))
 

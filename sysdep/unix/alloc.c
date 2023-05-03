@@ -51,14 +51,62 @@ long page_size = 0;
 #     define UNPROTECT_PAGE(pg)	mprotect((pg), page_size, PROT_READ | PROT_WRITE)
 #   endif
 
+#   define AJSIZE	16384
+
+    static struct alloc_journal {
+      void *fp;
+      void *next;
+      u16 pos;
+      u16 type;
+      uint thread_id;
+    } alloc_journal[AJSIZE];
+
+    _Thread_local int alloc_journal_local_pos = -1;
+    _Atomic int alloc_journal_pos = 0;
+
+#   define AJT_ALLOC_LOCAL_HOT		1
+#   define AJT_ALLOC_GLOBAL_HOT		2
+#   define AJT_ALLOC_COLD_STD		3
+#   define AJT_ALLOC_COLD_KEEPER	4
+#   define AJT_ALLOC_MMAP		5
+
+#   define AJT_FREE_LOCAL_HOT		0x11
+#   define AJT_FREE_GLOBAL_HOT		0x12
+
+#   define AJT_CLEANUP_NOTHING		0xc0
+#   define AJT_CLEANUP_COLD_STD		0xc3
+#   define AJT_CLEANUP_COLD_KEEPER	0xc4
+#   define AJT_CLEANUP_BEGIN		0xcb
+#   define AJT_CLEANUP_END		0xce
+
+#   define AJT_FLUSH_LOCAL_BEGIN	0xfb
+#   define AJT_FLUSH_LOCAL_END		0xfe
+#   define AJT_SCHEDULE_CLEANUP		0xff
+
+    static void
+    ajlog(void *fp, void *next, u16 pos, u16 type)
+    {
+      alloc_journal[(alloc_journal_local_pos = atomic_fetch_add_explicit(&alloc_journal_pos, 1, memory_order_relaxed)) % AJSIZE] = (struct alloc_journal) {
+	.fp = fp,
+	.next = next,
+	.pos = pos,
+	.type = type,
+	.thread_id = this_thread_id,
+      };
+    }
+
     struct free_page {
       node unused[42];
       struct free_page * _Atomic next;
     };
-# else
+# else /* ! DEBUGGING */
+
+#   define ajlog(...)
+
     struct free_page {
       struct free_page * _Atomic next;
     };
+
 # endif
 
 # define WRITE_NEXT(pg, val)	do { UNPROTECT_PAGE((pg)); atomic_store_explicit(&(pg)->next, (val), memory_order_release); PROTECT_PAGE((pg)); } while (0)
@@ -127,6 +175,7 @@ alloc_page(void)
     atomic_fetch_sub_explicit(&pages_kept_locally, 1, memory_order_relaxed);
     pages_kept_here--;
     UNPROTECT_PAGE(fp);
+    ajlog(fp, local_page_stack, pages_kept_here, AJT_ALLOC_LOCAL_HOT);
     return fp;
   }
 
@@ -141,8 +190,9 @@ alloc_page(void)
 
   if (fp)
   {
-    atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
+    uint pk = atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
     UNPROTECT_PAGE(fp);
+    ajlog(fp, atomic_load_explicit(&fp->next, memory_order_relaxed), pk, AJT_ALLOC_GLOBAL_HOT);
     return fp;
   }
 
@@ -156,12 +206,14 @@ alloc_page(void)
       fp = empty_pages->pages[--empty_pages->pos];
       PROTECT_PAGE(empty_pages);
       UNPROTECT_PAGE(fp);
+      ajlog(fp, empty_pages, empty_pages->pos, AJT_ALLOC_COLD_STD);
     }
     else
     {
       /* Or the keeper page has no more cold page pointer, return the keeper page */
       fp = (struct free_page *) empty_pages;
       empty_pages = empty_pages->next;
+      ajlog(fp, empty_pages, 0, AJT_ALLOC_COLD_KEEPER);
     }
   }
   UNLOCK_DOMAIN(resource, empty_pages_domain);
@@ -171,6 +223,8 @@ alloc_page(void)
 
   /* And in the worst case, allocate some new pages by mmap() */
   void *ptr = alloc_sys_page();
+  ajlog(ptr, NULL, 0, AJT_ALLOC_MMAP);
+
   for (int i=1; i<ALLOC_PAGES_AT_ONCE; i++)
     free_page(ptr + page_size * i);
 
@@ -193,12 +247,14 @@ free_page(void *ptr)
   struct free_page *fp = ptr;
   if (shutting_down || (pages_kept_here < KEEP_PAGES_MAX_LOCAL))
   {
-    atomic_store_explicit(&fp->next, local_page_stack, memory_order_relaxed);
+    struct free_page *next = local_page_stack;
+    atomic_store_explicit(&fp->next, next, memory_order_relaxed);
     PROTECT_PAGE(fp);
     local_page_stack = fp;
 
     atomic_fetch_add_explicit(&pages_kept_locally, 1, memory_order_relaxed);
     pages_kept_here++;
+    ajlog(fp, next, pages_kept_here, AJT_FREE_LOCAL_HOT);
     return;
   }
 
@@ -213,8 +269,11 @@ free_page(void *ptr)
 	memory_order_acq_rel, memory_order_acquire))
     WRITE_NEXT(fp, next);
 
+  uint pk = atomic_fetch_add_explicit(&pages_kept, 1, memory_order_relaxed);
+  ajlog(fp, next, pk, AJT_FREE_GLOBAL_HOT);
+
   /* And if there are too many global hot free pages, we ask for page cleanup */
-  if (atomic_fetch_add_explicit(&pages_kept, 1, memory_order_relaxed) >= KEEP_PAGES_MAX)
+  if (pk >= KEEP_PAGES_MAX)
     SCHEDULE_CLEANUP;
 #endif
 }
@@ -226,6 +285,8 @@ flush_local_pages(void)
 {
   if (use_fake || !local_page_stack || shutting_down)
     return;
+
+  ajlog(local_page_stack, NULL, pages_kept_here, AJT_FLUSH_LOCAL_BEGIN);
 
   /* We first count the pages to enable consistency checking.
    * Also, we need to know the last page. */
@@ -254,6 +315,8 @@ flush_local_pages(void)
   local_page_stack = NULL;
   pages_kept_here = 0;
 
+  ajlog(NULL, NULL, 0, AJT_FLUSH_LOCAL_END);
+
   /* Check the state of global page cache and maybe schedule its cleanup. */
   atomic_fetch_sub_explicit(&pages_kept_locally, check_count, memory_order_relaxed);
   if (atomic_fetch_add_explicit(&pages_kept, check_count, memory_order_relaxed) >= KEEP_PAGES_MAX)
@@ -268,10 +331,14 @@ page_cleanup(void *_ UNUSED)
   if (shutting_down)
     return;
 
+  ajlog(NULL, NULL, 0, AJT_CLEANUP_BEGIN);
+
   struct free_page *stack = atomic_exchange_explicit(&page_stack, NULL, memory_order_acq_rel);
   if (!stack)
+  {
+    ajlog(NULL, NULL, 0, AJT_CLEANUP_NOTHING);
     return;
-
+  }
 
   do {
     struct free_page *fp = stack;
@@ -289,6 +356,7 @@ page_cleanup(void *_ UNUSED)
       };
       PROTECT_PAGE(ep);
       empty_pages = ep;
+      ajlog(empty_pages, empty_pages->next, 0, AJT_CLEANUP_COLD_KEEPER);
     }
     else
     {
@@ -307,6 +375,7 @@ page_cleanup(void *_ UNUSED)
 #endif
 	    ) < 0)
 	bug("madvise(%p) failed: %m", fp);
+      ajlog(fp, empty_pages, empty_pages->pos, AJT_CLEANUP_COLD_STD);
     }
     UNLOCK_DOMAIN(resource, empty_pages_domain);
   }
@@ -321,6 +390,7 @@ page_cleanup(void *_ UNUSED)
 
     atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
   }
+  ajlog(NULL, NULL, 0, AJT_CLEANUP_END);
 }
 #endif
 

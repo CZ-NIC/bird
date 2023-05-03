@@ -183,6 +183,8 @@ void bug(const char *msg, ...) NORET;
 void debug(const char *msg, ...);	/* Printf to debug output */
 void debug_safe(const char *msg);	/* Printf to debug output, async-safe */
 
+extern _Thread_local uint this_thread_id;
+
 /* Debugging */
 
 #if defined(LOCAL_DEBUG) || defined(GLOBAL_DEBUG)
