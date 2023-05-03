@@ -17,79 +17,79 @@
 #include <unistd.h>
 
 #ifdef HAVE_MMAP
-#include <sys/mman.h>
+# include <sys/mman.h>
 #endif
 
 #ifdef CONFIG_DISABLE_THP
-#include <sys/prctl.h>
-#ifndef PR_SET_THP_DISABLE
-#define PR_SET_THP_DISABLE 41
-#endif
+# include <sys/prctl.h>
+# ifndef PR_SET_THP_DISABLE
+#   define PR_SET_THP_DISABLE 41
+# endif
 #endif
 
 long page_size = 0;
 
 #ifdef HAVE_MMAP
-#define KEEP_PAGES_MAX	512
-#define KEEP_PAGES_MIN	32
-#define KEEP_PAGES_MAX_LOCAL	16
-#define ALLOC_PAGES_AT_ONCE	8
+# define KEEP_PAGES_MAX	512
+# define KEEP_PAGES_MIN	32
+# define KEEP_PAGES_MAX_LOCAL	16
+# define ALLOC_PAGES_AT_ONCE	8
 
-STATIC_ASSERT(KEEP_PAGES_MIN * 4 < KEEP_PAGES_MAX);
-STATIC_ASSERT(ALLOC_PAGES_AT_ONCE < KEEP_PAGES_MAX_LOCAL);
+  STATIC_ASSERT(KEEP_PAGES_MIN * 4 < KEEP_PAGES_MAX);
+  STATIC_ASSERT(ALLOC_PAGES_AT_ONCE < KEEP_PAGES_MAX_LOCAL);
 
-static _Bool use_fake = 0;
-static _Bool initialized = 0;
+  static _Bool use_fake = 0;
+  static _Bool initialized = 0;
 
-#if DEBUGGING
-struct free_page {
-  node unused[42];
-  struct free_page * _Atomic next;
-};
-#else
-struct free_page {
-  struct free_page * _Atomic next;
-};
-#endif
+# if DEBUGGING
+    struct free_page {
+      node unused[42];
+      struct free_page * _Atomic next;
+    };
+# else
+    struct free_page {
+      struct free_page * _Atomic next;
+    };
+# endif
 
-#define EP_POS_MAX	((page_size - OFFSETOF(struct empty_pages, pages)) / sizeof (void *))
+# define EP_POS_MAX	((page_size - OFFSETOF(struct empty_pages, pages)) / sizeof (void *))
 
-struct empty_pages {
-  struct empty_pages *next;
-  uint pos;
-  void *pages[0];
-};
+  struct empty_pages {
+    struct empty_pages *next;
+    uint pos;
+    void *pages[0];
+  };
 
-DEFINE_DOMAIN(resource);
-static DOMAIN(resource) empty_pages_domain;
-static struct empty_pages *empty_pages = NULL;
+  DEFINE_DOMAIN(resource);
+  static DOMAIN(resource) empty_pages_domain;
+  static struct empty_pages *empty_pages = NULL;
 
-static struct free_page * _Atomic page_stack = NULL;
-static _Thread_local struct free_page * local_page_stack = NULL;
+  static struct free_page * _Atomic page_stack = NULL;
+  static _Thread_local struct free_page * local_page_stack = NULL;
 
-static void page_cleanup(void *);
-static event page_cleanup_event = { .hook = page_cleanup, };
-#define SCHEDULE_CLEANUP  do if (initialized && !shutting_down) ev_send(&global_event_list, &page_cleanup_event); while (0)
+  static void page_cleanup(void *);
+  static event page_cleanup_event = { .hook = page_cleanup, };
+# define SCHEDULE_CLEANUP  do if (initialized && !shutting_down) ev_send(&global_event_list, &page_cleanup_event); while (0)
 
-_Atomic int pages_kept = 0;
-_Atomic int pages_kept_locally = 0;
-static _Thread_local int pages_kept_here = 0;
+  _Atomic int pages_kept = 0;
+  _Atomic int pages_kept_locally = 0;
+  static _Thread_local int pages_kept_here = 0;
 
-static void *
-alloc_sys_page(void)
-{
-  void *ptr = mmap(NULL, page_size * ALLOC_PAGES_AT_ONCE, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  static void *
+  alloc_sys_page(void)
+  {
+    void *ptr = mmap(NULL, page_size * ALLOC_PAGES_AT_ONCE, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-  if (ptr == MAP_FAILED)
-    die("mmap(%ld) failed: %m", (s64) page_size);
+    if (ptr == MAP_FAILED)
+      die("mmap(%ld) failed: %m", (s64) page_size);
 
-  return ptr;
-}
+    return ptr;
+  }
 
-extern int shutting_down; /* Shutdown requested. */
+  extern int shutting_down; /* Shutdown requested. */
 
 #else // ! HAVE_MMAP
-#define use_fake  1
+# define use_fake  1
 #endif
 
 void *
