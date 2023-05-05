@@ -10,6 +10,7 @@
 #include "lib/resource.h"
 #include "lib/lists.h"
 #include "lib/event.h"
+#include "lib/io-loop.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -91,7 +92,7 @@ long page_size = 0;
 	.next = next,
 	.pos = pos,
 	.type = type,
-	.thread_id = this_thread_id,
+	.thread_id = THIS_THREAD_ID,
       };
     }
 
@@ -104,12 +105,12 @@ long page_size = 0;
 #   define ajlog(...)
 
     struct free_page {
-      struct free_page * _Atomic next;
+      struct free_page *next;
     };
 
 # endif
 
-# define WRITE_NEXT(pg, val)	do { UNPROTECT_PAGE((pg)); atomic_store_explicit(&(pg)->next, (val), memory_order_release); PROTECT_PAGE((pg)); } while (0)
+# define WRITE_NEXT(pg, val)	do { UNPROTECT_PAGE((pg)); (pg)->next = (val); PROTECT_PAGE((pg)); } while (0)
 
 # define EP_POS_MAX	((page_size - OFFSETOF(struct empty_pages, pages)) / sizeof (void *))
 
@@ -125,6 +126,15 @@ long page_size = 0;
 
   static struct free_page * _Atomic page_stack = NULL;
   static _Thread_local struct free_page * local_page_stack = NULL;
+  static struct free_page page_stack_blocked;
+
+  /* Try to replace the page stack head with a cork, until it succeeds. */
+# define PAGE_STACK_GET	({ \
+    struct free_page *fp; \
+    while ((fp = atomic_exchange_explicit(&page_stack, &page_stack_blocked, memory_order_acq_rel)) == &page_stack_blocked) birdloop_yield(); \
+    fp; })
+  /* Reinstate the stack with another value */
+# define PAGE_STACK_PUT(val)	ASSERT_DIE(atomic_exchange_explicit(&page_stack, (val), memory_order_acq_rel) == &page_stack_blocked)
 
   static void page_cleanup(void *);
   static event page_cleanup_event = { .hook = page_cleanup, };
@@ -171,7 +181,7 @@ alloc_page(void)
   struct free_page *fp = local_page_stack;
   if (fp)
   {
-    local_page_stack = atomic_load_explicit(&fp->next, memory_order_acquire);
+    local_page_stack = fp->next;
     atomic_fetch_sub_explicit(&pages_kept_locally, 1, memory_order_relaxed);
     pages_kept_here--;
     UNPROTECT_PAGE(fp);
@@ -182,19 +192,22 @@ alloc_page(void)
   ASSERT_DIE(pages_kept_here == 0);
 
   /* If there is any free page kept hot in global storage, we use it. */
-  fp = atomic_load_explicit(&page_stack, memory_order_acquire);
-  while (fp && !atomic_compare_exchange_strong_explicit(
-	&page_stack, &fp, atomic_load_explicit(&fp->next, memory_order_acquire),
-	memory_order_acq_rel, memory_order_acquire))
-    ;
-
-  if (fp)
+  if (fp = PAGE_STACK_GET)
   {
-    uint pk = atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
+    /* Reinstate the stack with the next page in list */
+    PAGE_STACK_PUT(fp->next);
+
+    /* Update the counters */
+    UNUSED uint pk = atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
+
+    /* Release the page */
     UNPROTECT_PAGE(fp);
-    ajlog(fp, atomic_load_explicit(&fp->next, memory_order_relaxed), pk, AJT_ALLOC_GLOBAL_HOT);
+    ajlog(fp, fp->next, pk, AJT_ALLOC_GLOBAL_HOT);
     return fp;
   }
+
+  /* Reinstate the stack with zero */
+  PAGE_STACK_PUT(NULL);
 
   /* If there is any free page kept cold, we use that. */
   LOCK_DOMAIN(resource, empty_pages_domain);
@@ -247,8 +260,7 @@ free_page(void *ptr)
   struct free_page *fp = ptr;
   if (shutting_down || (pages_kept_here < KEEP_PAGES_MAX_LOCAL))
   {
-    struct free_page *next = local_page_stack;
-    atomic_store_explicit(&fp->next, next, memory_order_relaxed);
+    UNUSED struct free_page *next = fp->next = local_page_stack;
     PROTECT_PAGE(fp);
     local_page_stack = fp;
 
@@ -259,16 +271,13 @@ free_page(void *ptr)
   }
 
   /* If there are too many local pages, we add the free page to the global hot-free-page list */
-  struct free_page *next = atomic_load_explicit(&page_stack, memory_order_acquire);
-
-  atomic_store_explicit(&fp->next, next, memory_order_release);
+  UNUSED struct free_page *next = fp->next = PAGE_STACK_GET;
   PROTECT_PAGE(fp);
 
-  while (!atomic_compare_exchange_strong_explicit(
-	&page_stack, &next, fp,
-	memory_order_acq_rel, memory_order_acquire))
-    WRITE_NEXT(fp, next);
+  /* Unblock the stack with the page being freed */
+  PAGE_STACK_PUT(fp);
 
+  /* Update counters */
   uint pk = atomic_fetch_add_explicit(&pages_kept, 1, memory_order_relaxed);
   ajlog(fp, next, pk, AJT_FREE_GLOBAL_HOT);
 
@@ -292,7 +301,7 @@ flush_local_pages(void)
    * Also, we need to know the last page. */
   struct free_page *last = local_page_stack, *next;
   int check_count = 1;
-  while (next = atomic_load_explicit(&last->next, memory_order_acquire))
+  while (next = last->next)
   {
     check_count++;
     last = next;
@@ -301,15 +310,13 @@ flush_local_pages(void)
   /* The actual number of pages must be equal to the counter value. */
   ASSERT_DIE(check_count == pages_kept_here);
 
-  /* Repeatedly trying to insert the whole page list into global page stack at once. */
-  next = atomic_load_explicit(&page_stack, memory_order_acquire);
+  /* Block the stack by a cork */
+  UNPROTECT_PAGE(last);
+  last->next = PAGE_STACK_GET;
+  PROTECT_PAGE(last);
 
-  /* First we set the outwards pointer (from our last),
-   * then we try to set the inwards pointer to our first page. */
-  do WRITE_NEXT(last, next);
-  while (!atomic_compare_exchange_strong_explicit(
-	&page_stack, &next, local_page_stack,
-	memory_order_acq_rel, memory_order_acquire));
+  /* Update the stack */
+  PAGE_STACK_PUT(last);
 
   /* Finished. Now the local stack is empty. */
   local_page_stack = NULL;
@@ -333,7 +340,12 @@ page_cleanup(void *_ UNUSED)
 
   ajlog(NULL, NULL, 0, AJT_CLEANUP_BEGIN);
 
-  struct free_page *stack = atomic_exchange_explicit(&page_stack, NULL, memory_order_acq_rel);
+  /* Prevent contention */
+  struct free_page *stack = PAGE_STACK_GET;
+
+  /* Always replace by zero */
+  PAGE_STACK_PUT(NULL);
+
   if (!stack)
   {
     ajlog(NULL, NULL, 0, AJT_CLEANUP_NOTHING);
@@ -342,7 +354,7 @@ page_cleanup(void *_ UNUSED)
 
   do {
     struct free_page *fp = stack;
-    stack = atomic_load_explicit(&fp->next, memory_order_acquire);
+    stack = fp->next;
 
     LOCK_DOMAIN(resource, empty_pages_domain);
     /* Empty pages are stored as pointers. To store them, we need a pointer block. */
@@ -384,7 +396,7 @@ page_cleanup(void *_ UNUSED)
   while (stack)
   {
     struct free_page *f = stack;
-    stack = atomic_load_explicit(&f->next, memory_order_acquire);
+    stack = f->next;
     UNPROTECT_PAGE(f);
     free_page(f);
 
