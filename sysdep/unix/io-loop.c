@@ -581,11 +581,11 @@ sockets_fire(struct birdloop *loop)
  *	Threads
  */
 
-DEFINE_DOMAIN(resource);
+DEFINE_DOMAIN(attrs);
 static void bird_thread_start_event(void *_data);
 
 struct birdloop_pickup_group {
-  DOMAIN(resource) domain;
+  DOMAIN(attrs) domain;
   list loops;
   list threads;
   uint thread_count;
@@ -652,9 +652,9 @@ birdloop_set_thread(struct birdloop *loop, struct bird_thread *thr, struct birdl
   else
   {
     /* Put into pickup list */
-    LOCK_DOMAIN(resource, group->domain);
+    LOCK_DOMAIN(attrs, group->domain);
     add_tail(&group->loops, &loop->n);
-    UNLOCK_DOMAIN(resource, group->domain);
+    UNLOCK_DOMAIN(attrs, group->domain);
   }
 }
 
@@ -662,14 +662,14 @@ static void
 bird_thread_pickup_next(struct birdloop_pickup_group *group)
 {
   /* This thread goes to the end of the pickup list */
-  LOCK_DOMAIN(resource, group->domain);
+  LOCK_DOMAIN(attrs, group->domain);
   rem_node(&this_thread->n);
   add_tail(&group->threads, &this_thread->n);
 
   /* If there are more loops to be picked up, wakeup the next thread in order */
   if (!EMPTY_LIST(group->loops))
     wakeup_do_kick(SKIP_BACK(struct bird_thread, n, HEAD(group->threads)));
-  UNLOCK_DOMAIN(resource, group->domain);
+  UNLOCK_DOMAIN(attrs, group->domain);
 }
 
 static struct birdloop *
@@ -677,7 +677,7 @@ birdloop_take(struct birdloop_pickup_group *group)
 {
   struct birdloop *loop = NULL;
 
-  LOCK_DOMAIN(resource, group->domain);
+  LOCK_DOMAIN(attrs, group->domain);
 
   int drop =
     this_thread->busy_active &&
@@ -687,7 +687,7 @@ birdloop_take(struct birdloop_pickup_group *group)
 
   if (drop)
   {
-    UNLOCK_DOMAIN(resource, group->domain);
+    UNLOCK_DOMAIN(attrs, group->domain);
 
     node *n;
     WALK_LIST2(loop, n, this_thread->loops, n)
@@ -717,7 +717,7 @@ birdloop_take(struct birdloop_pickup_group *group)
     /* Take the first loop from the pickup list and unlock */
     loop = SKIP_BACK(struct birdloop, n, HEAD(group->loops));
     rem_node(&loop->n);
-    UNLOCK_DOMAIN(resource, group->domain);
+    UNLOCK_DOMAIN(attrs, group->domain);
 
     birdloop_set_thread(loop, this_thread, group);
     bird_thread_pickup_next(group);
@@ -725,7 +725,7 @@ birdloop_take(struct birdloop_pickup_group *group)
   }
   else
   {
-    UNLOCK_DOMAIN(resource, group->domain);
+    UNLOCK_DOMAIN(attrs, group->domain);
     return NULL;
   }
 }
@@ -744,13 +744,13 @@ poll_timeout(struct birdloop *loop)
 static void
 bird_thread_busy_set(struct bird_thread *thr, int val)
 {
-  LOCK_DOMAIN(resource, thr->group->domain);
+  LOCK_DOMAIN(attrs, thr->group->domain);
   if (thr->busy_active = val)
     thr->group->thread_busy_count++;
   else
     thr->group->thread_busy_count--;
   ASSERT_DIE(thr->group->thread_busy_count <= thr->group->thread_count);
-  UNLOCK_DOMAIN(resource, thr->group->domain);
+  UNLOCK_DOMAIN(attrs, thr->group->domain);
 }
 
 static void
@@ -921,7 +921,7 @@ bird_thread_start(struct birdloop_pickup_group *group)
   pool *p = birdloop_pool(meta);
 
   birdloop_enter(meta);
-  LOCK_DOMAIN(resource, group->domain);
+  LOCK_DOMAIN(attrs, group->domain);
 
   struct bird_thread *thr = mb_allocz(p, sizeof(*thr));
   thr->pool = p;
@@ -954,7 +954,7 @@ bird_thread_start(struct birdloop_pickup_group *group)
 
   group->thread_count++;
 
-  UNLOCK_DOMAIN(resource, group->domain);
+  UNLOCK_DOMAIN(attrs, group->domain);
   birdloop_leave(meta);
   return thr;
 }
@@ -981,7 +981,7 @@ static void
 bird_thread_shutdown(void * _ UNUSED)
 {
   struct birdloop_pickup_group *group = this_thread->group;
-  LOCK_DOMAIN(resource, group->domain);
+  LOCK_DOMAIN(attrs, group->domain);
   int dif = group->thread_count - thread_dropper_goal;
   struct birdloop *tdl_stop = NULL;
 
@@ -993,7 +993,7 @@ bird_thread_shutdown(void * _ UNUSED)
     thread_dropper = NULL;
   }
 
-  UNLOCK_DOMAIN(resource, group->domain);
+  UNLOCK_DOMAIN(attrs, group->domain);
 
   DBG("Thread pickup size differs from dropper goal by %d%s\n", dif, tdl_stop ? ", stopping" : "");
 
@@ -1005,7 +1005,7 @@ bird_thread_shutdown(void * _ UNUSED)
 
   struct bird_thread *thr = this_thread;
 
-  LOCK_DOMAIN(resource, group->domain);
+  LOCK_DOMAIN(attrs, group->domain);
   /* Leave the thread-picker list to get no more loops */
   rem_node(&thr->n);
   group->thread_count--;
@@ -1014,7 +1014,7 @@ bird_thread_shutdown(void * _ UNUSED)
   if (thr->busy_active)
     group->thread_busy_count--;
 
-  UNLOCK_DOMAIN(resource, group->domain);
+  UNLOCK_DOMAIN(attrs, group->domain);
 
   /* Leave the thread-dropper loop as we aren't going to return. */
   birdloop_leave(thread_dropper);
@@ -1033,10 +1033,10 @@ bird_thread_shutdown(void * _ UNUSED)
   }
 
   /* Let others know about new loops */
-  LOCK_DOMAIN(resource, group->domain);
+  LOCK_DOMAIN(attrs, group->domain);
   if (!EMPTY_LIST(group->loops))
     wakeup_do_kick(SKIP_BACK(struct bird_thread, n, HEAD(group->threads)));
-  UNLOCK_DOMAIN(resource, group->domain);
+  UNLOCK_DOMAIN(attrs, group->domain);
 
   /* Stop the meta loop */
   birdloop_leave(thr->meta);
@@ -1068,12 +1068,12 @@ bird_thread_commit(struct config *new, struct config *old UNUSED)
   while (1)
   {
     struct birdloop_pickup_group *group = &pickup_groups[0];
-    LOCK_DOMAIN(resource, group->domain);
+    LOCK_DOMAIN(attrs, group->domain);
 
     int dif = group->thread_count - (thread_dropper_goal = new->thread_count);
     _Bool thread_dropper_running = !!thread_dropper;
 
-    UNLOCK_DOMAIN(resource, group->domain);
+    UNLOCK_DOMAIN(attrs, group->domain);
 
     if (dif < 0)
     {
@@ -1087,10 +1087,10 @@ bird_thread_commit(struct config *new, struct config *old UNUSED)
       birdloop_enter(tdl);
       event *tde = ev_new_init(tdl->pool, bird_thread_shutdown, NULL);
 
-      LOCK_DOMAIN(resource, group->domain);
+      LOCK_DOMAIN(attrs, group->domain);
       thread_dropper = tdl;
       thread_dropper_event = tde;
-      UNLOCK_DOMAIN(resource, group->domain);
+      UNLOCK_DOMAIN(attrs, group->domain);
 
       ev_send_loop(thread_dropper, thread_dropper_event);
       birdloop_leave(tdl);
@@ -1211,7 +1211,7 @@ bird_thread_show_finish(void *data)
     {
       struct birdloop_pickup_group *group = &pickup_groups[i];
 
-      LOCK_DOMAIN(resource, group->domain);
+      LOCK_DOMAIN(attrs, group->domain);
       uint count = 0;
       u64 total_time_ns = 0;
       if (!EMPTY_LIST(group->loops))
@@ -1237,7 +1237,7 @@ bird_thread_show_finish(void *data)
       else
 	tsd_append("All loops in group %d are assigned.", i);
 
-      UNLOCK_DOMAIN(resource, group->domain);
+      UNLOCK_DOMAIN(attrs, group->domain);
     }
 
     for (uint i = 0; i < tsd->line_pos - 1; i++)
@@ -1262,10 +1262,10 @@ cmd_show_threads(int show_loops)
   for (int i=0; i<2; i++)
   {
     struct birdloop_pickup_group *group = &pickup_groups[i];
-    LOCK_DOMAIN(resource, group->domain);
+    LOCK_DOMAIN(attrs, group->domain);
     total_threads += group->thread_count;
     total_loops += group->loop_count;
-    UNLOCK_DOMAIN(resource, group->domain);
+    UNLOCK_DOMAIN(attrs, group->domain);
   }
 
   /* Total number of lines must be recalculated when changing the code! */
@@ -1291,7 +1291,7 @@ cmd_show_threads(int show_loops)
   {
     struct birdloop_pickup_group *group = &pickup_groups[i];
 
-    LOCK_DOMAIN(resource, group->domain);
+    LOCK_DOMAIN(attrs, group->domain);
 
     struct bird_thread *thr;
     WALK_LIST(thr, group->threads)
@@ -1301,7 +1301,7 @@ cmd_show_threads(int show_loops)
       wakeup_do_kick(thr);
     }
 
-    UNLOCK_DOMAIN(resource, group->domain);
+    UNLOCK_DOMAIN(attrs, group->domain);
   }
 
   UNLOCK_DOMAIN(control, lock);
@@ -1325,8 +1325,8 @@ birdloop_init(void)
   {
     struct birdloop_pickup_group *group = &pickup_groups[i];
 
-    group->domain = DOMAIN_NEW(resource);
-    DOMAIN_SETUP(resource, group->domain, "Loop Pickup", NULL);
+    group->domain = DOMAIN_NEW(attrs);
+    DOMAIN_SETUP(attrs, group->domain, "Loop Pickup", NULL);
     init_list(&group->loops);
     init_list(&group->threads);
   }
@@ -1377,9 +1377,9 @@ birdloop_stop_internal(struct birdloop *loop)
   loop->thread = NULL;
 
   /* Uncount from thread group */
-  LOCK_DOMAIN(resource, this_thread->group->domain);
+  LOCK_DOMAIN(attrs, this_thread->group->domain);
   this_thread->group->loop_count--;
-  UNLOCK_DOMAIN(resource, this_thread->group->domain);
+  UNLOCK_DOMAIN(attrs, this_thread->group->domain);
 
   /* Leave the loop context without causing any other fuss */
   ASSERT_DIE(!ev_active(&loop->event));
@@ -1488,13 +1488,13 @@ birdloop_vnew_internal(pool *pp, uint order, struct birdloop_pickup_group *group
 
   if (group)
   {
-    LOCK_DOMAIN(resource, group->domain);
+    LOCK_DOMAIN(attrs, group->domain);
     group->loop_count++;
     add_tail(&group->loops, &loop->n);
     if (EMPTY_LIST(group->threads))
       ev_send(&global_event_list, &group->start_threads);
     wakeup_do_kick(SKIP_BACK(struct bird_thread, n, HEAD(group->threads)));
-    UNLOCK_DOMAIN(resource, group->domain);
+    UNLOCK_DOMAIN(attrs, group->domain);
   }
   else
     loop->n.next = loop->n.prev = &loop->n;
