@@ -355,7 +355,7 @@ birdloop_try_ping(struct birdloop *loop, u32 ltt)
     return 1;
   }
 
-  /* Do the real ping */
+  /* Do the real ping of Meta or Main */
   LOOP_TRACE(loop, "sending pipe ping");
   wakeup_do_kick(loop->thread);
   return 0;
@@ -617,6 +617,7 @@ birdloop_set_thread(struct birdloop *loop, struct bird_thread *thr, struct birdl
   u32 ltt = atomic_fetch_or_explicit(&loop->thread_transition, LTT_MOVE, memory_order_acq_rel);
   ASSERT_DIE((ltt & LTT_MOVE) == 0);
 
+  /* Wait until all previously started pings end */
   while (ltt & LTT_PING)
   {
     birdloop_yield();
@@ -625,8 +626,21 @@ birdloop_set_thread(struct birdloop *loop, struct bird_thread *thr, struct birdl
   }
   /* Now we are free of running pings */
 
+  if (!thr)
+  {
+    /* Unschedule from Meta */
+    ev_postpone(&loop->event);
+    tm_stop(&loop->timer);
+
+    /* Request local socket reload */
+    this_thread->sock_changed = 1;
+  }
+
   /* Update the thread value */
   loop->thread = thr;
+
+  /* Allow pings */
+  atomic_fetch_and_explicit(&loop->thread_transition, ~LTT_MOVE, memory_order_acq_rel);
 
   /* Put into appropriate lists */
   if (thr)
@@ -637,21 +651,11 @@ birdloop_set_thread(struct birdloop *loop, struct bird_thread *thr, struct birdl
   }
   else
   {
-    /* Unschedule from Meta */
-    ev_postpone(&loop->event);
-    tm_stop(&loop->timer);
-
-    /* Request local socket reload */
-    this_thread->sock_changed = 1;
-
     /* Put into pickup list */
     LOCK_DOMAIN(resource, group->domain);
     add_tail(&group->loops, &loop->n);
     UNLOCK_DOMAIN(resource, group->domain);
   }
-
-  /* Allow pings */
-  atomic_fetch_and_explicit(&loop->thread_transition, ~LTT_MOVE, memory_order_acq_rel);
 }
 
 static void
@@ -878,6 +882,7 @@ poll_retry:;
       wakeup_drain(thr);
     }
 
+    /* Unset ping information for Meta */
     atomic_fetch_and_explicit(&thr->meta->thread_transition, ~LTT_PING, memory_order_acq_rel);
 
     /* Schedule loops with active sockets */
