@@ -631,14 +631,12 @@ birdloop_set_thread(struct birdloop *loop, struct bird_thread *thr, struct birdl
   /* Put into appropriate lists */
   if (thr)
   {
-    add_tail(&thr->loops, &loop->n);
     thr->loop_count++;
+    add_tail(&thr->loops, &loop->n);
     ev_send_loop(loop->thread->meta, &loop->event);
   }
   else
   {
-    old->loop_count--;
-
     /* Unschedule from Meta */
     ev_postpone(&loop->event);
     tm_stop(&loop->timer);
@@ -686,18 +684,27 @@ birdloop_take(struct birdloop_pickup_group *group)
   if (drop)
   {
     UNLOCK_DOMAIN(resource, group->domain);
+
     node *n;
     WALK_LIST2(loop, n, this_thread->loops, n)
+    {
+      birdloop_enter(loop);
       if (ev_active(&loop->event))
       {
 	LOOP_TRACE(loop, "Moving to another thread");
-
 	/* Pass to another thread */
 	rem_node(&loop->n);
+	this_thread->loop_count--;
+
+	/* This also unschedules the loop from Meta */
 	birdloop_set_thread(loop, NULL, group);
+
+	birdloop_leave(loop);
 	bird_thread_pickup_next(group);
 	break;
       }
+      birdloop_leave(loop);
+    }
 
     return NULL;
   }
@@ -731,35 +738,34 @@ poll_timeout(struct birdloop *loop)
 }
 
 static void
-bird_thread_busy_update(struct bird_thread *thr, int val)
+bird_thread_busy_set(struct bird_thread *thr, int val)
 {
-  if (thr->busy_active == val)
-    return;
-
-  if (val)
-    thr->busy_counter++;
-  else
-    thr->busy_counter--;
-
-  switch (thr->busy_counter)
-  {
-    case 0:
-      thr->busy_active = 0;
-      break;
-    case 4:
-      thr->busy_active = 1;
-      break;
-
-    default:
-      return;
-  }
-
   LOCK_DOMAIN(resource, thr->group->domain);
-  if (val)
+  if (thr->busy_active = val)
     thr->group->thread_busy_count++;
   else
     thr->group->thread_busy_count--;
+  ASSERT_DIE(thr->group->thread_busy_count <= thr->group->thread_count);
   UNLOCK_DOMAIN(resource, thr->group->domain);
+}
+
+static void
+bird_thread_busy_update(struct bird_thread *thr, int timeout_ms)
+{
+  int idle_force = (timeout_ms < 0);
+  int val = (timeout_ms < 5) && !idle_force;
+
+  if (val == thr->busy_active)
+    return;
+
+  if (val && (++thr->busy_counter == 4))
+    return bird_thread_busy_set(thr, 1);
+
+  if (!val && (idle_force || (--thr->busy_counter == 0)))
+  {
+    thr->busy_counter = 0;
+    bird_thread_busy_set(thr, 0);
+  }
 }
 
 static void *
@@ -847,10 +853,10 @@ bird_thread_main(void *arg)
       ASSERT_DIE(pfd.loop.used == pfd.pfd.used);
     }
     /* Nothing to do in at least 5 seconds, flush local hot page cache */
-    else if (timeout > 5000)
+    else if ((timeout > 5000) && (timeout < 0))
       flush_local_pages();
 
-    bird_thread_busy_update(thr, (timeout == 0));
+    bird_thread_busy_update(thr, timeout);
 
     account_to(&this_thread->idle);
 poll_retry:;
@@ -893,11 +899,12 @@ bird_thread_cleanup(void *_thr)
   struct bird_thread *thr = _thr;
   ASSERT_DIE(birdloop_inside(&main_birdloop));
 
+  /* Free the meta loop */
+  thr->meta->thread = NULL;
+  birdloop_free(thr->meta);
+
   /* Thread attributes no longer needed */
   pthread_attr_destroy(&thr->thread_attr);
-
-  /* Free all remaining memory */
-  rp_free(thr->pool);
 }
 
 static struct bird_thread *
@@ -959,6 +966,13 @@ static event *thread_dropper_event;
 static uint thread_dropper_goal;
 
 static void
+bird_thread_dropper_free(void *data)
+{
+  struct birdloop *tdl_stop = data;
+  birdloop_free(tdl_stop);
+}
+
+static void
 bird_thread_shutdown(void * _ UNUSED)
 {
   struct birdloop_pickup_group *group = this_thread->group;
@@ -980,17 +994,25 @@ bird_thread_shutdown(void * _ UNUSED)
 
   if (tdl_stop)
   {
-    birdloop_stop_self(tdl_stop, NULL, NULL);
+    birdloop_stop_self(tdl_stop, bird_thread_dropper_free, tdl_stop);
     return;
   }
 
   struct bird_thread *thr = this_thread;
 
-  /* Leave the thread-picker list to get no more loops */
   LOCK_DOMAIN(resource, group->domain);
+  /* Leave the thread-picker list to get no more loops */
   rem_node(&thr->n);
   group->thread_count--;
+
+  /* Fix the busy count */
+  if (thr->busy_active)
+    group->thread_busy_count--;
+
   UNLOCK_DOMAIN(resource, group->domain);
+
+  /* Leave the thread-dropper loop as we aren't going to return. */
+  birdloop_leave(thread_dropper);
 
   /* Drop loops including the thread dropper itself */
   while (!EMPTY_LIST(thr->loops))
@@ -998,17 +1020,11 @@ bird_thread_shutdown(void * _ UNUSED)
     struct birdloop *loop = HEAD(thr->loops);
 
     /* Remove loop from this thread's list */
+    this_thread->loop_count--;
     rem_node(&loop->n);
 
     /* Unset loop's thread */
-    if (birdloop_inside(loop))
-      birdloop_set_thread(loop, NULL, group);
-    else
-    {
-      birdloop_enter(loop);
-      birdloop_set_thread(loop, NULL, group);
-      birdloop_leave(loop);
-    }
+    birdloop_set_thread(loop, NULL, group);
   }
 
   /* Let others know about new loops */
@@ -1017,13 +1033,8 @@ bird_thread_shutdown(void * _ UNUSED)
     wakeup_do_kick(SKIP_BACK(struct bird_thread, n, HEAD(group->threads)));
   UNLOCK_DOMAIN(resource, group->domain);
 
-  /* Leave the thread-dropper loop as we aren't going to return. */
-  birdloop_leave(thread_dropper);
-
   /* Stop the meta loop */
   birdloop_leave(thr->meta);
-  domain_free(thr->meta->time.domain);
-  rp_free(thr->meta->pool);
 
   /* Local pages not needed anymore */
   flush_local_pages();
@@ -1037,7 +1048,6 @@ bird_thread_shutdown(void * _ UNUSED)
   /* Exit! */
   pthread_exit(NULL);
 }
-
 
 void
 bird_thread_commit(struct config *new, struct config *old UNUSED)
@@ -1069,6 +1079,7 @@ bird_thread_commit(struct config *new, struct config *old UNUSED)
     if ((dif > 0) && !thread_dropper_running)
     {
       struct birdloop *tdl = birdloop_new(&root_pool, DOMAIN_ORDER(control), group->max_latency, "Thread dropper");
+      birdloop_enter(tdl);
       event *tde = ev_new_init(tdl->pool, bird_thread_shutdown, NULL);
 
       LOCK_DOMAIN(resource, group->domain);
@@ -1077,6 +1088,7 @@ bird_thread_commit(struct config *new, struct config *old UNUSED)
       UNLOCK_DOMAIN(resource, group->domain);
 
       ev_send_loop(thread_dropper, thread_dropper_event);
+      birdloop_leave(tdl);
     }
 
     return;
@@ -1148,7 +1160,7 @@ bird_thread_show(void *data)
 
   LOCK_DOMAIN(control, tsd->lock);
   if (tsd->show_loops)
-    tsd_append("Thread %p", this_thread);
+    tsd_append("Thread %p%s (busy counter %d)", this_thread, this_thread->busy_active ? " [busy]" : "", this_thread->busy_counter);
 
   u64 total_time_ns = 0;
   struct birdloop *loop;
