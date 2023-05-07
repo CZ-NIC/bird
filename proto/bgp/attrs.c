@@ -1677,7 +1677,7 @@ bgp_withdraw_bucket(struct bgp_channel *bc, struct bgp_bucket *b)
 #define PXH_FN(n,i,h)		h
 
 #define PXH_REHASH		bgp_pxh_rehash
-#define PXH_PARAMS		/8, *2, 2, 2, 12, 24
+#define PXH_PARAMS		/16, *1, 2, 2, 12, 24
 
 
 HASH_DEFINE_REHASH_FN(PXH, struct bgp_prefix)
