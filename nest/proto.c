@@ -1157,11 +1157,15 @@ proto_event(void *ptr)
     p->do_stop = 0;
   }
 
-  if (proto_is_done(p))
+  if (proto_is_done(p) && p->pool_fragile)  /* perusing pool_fragile to do this once only */
+  {
+    rp_free(p->pool_fragile);
+    p->pool_fragile = NULL;
     if (p->loop != &main_birdloop)
       birdloop_stop_self(p->loop, proto_loop_stopped, p);
     else
       proto_cleanup(p);
+  }
 }
 
 
@@ -1235,7 +1239,10 @@ proto_start(struct proto *p)
   p->iface_sub.target = proto_event_list(p);
 
   PROTO_LOCKED_FROM_MAIN(p)
+  {
+    p->pool_fragile = rp_newf(p->pool, birdloop_domain(p->loop), "Protocol %s fragile objects", p->cf->name);
     proto_notify_state(p, (p->proto->start ? p->proto->start(p) : PS_UP));
+  }
 }
 
 
