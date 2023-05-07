@@ -130,6 +130,8 @@ struct proto {
   struct proto_config *cf;		/* Configuration data */
   struct proto_config *cf_new;		/* Configuration we want to switch to after shutdown (NULL=delete) */
   pool *pool;				/* Pool containing local objects */
+  pool *pool_fragile;			/* Pool containing fragile local objects which need to be freed
+					   before the protocol's birdloop actually stops, like olocks */
   event *event;				/* Protocol event */
   timer *restart_timer;			/* Timer to restart the protocol from limits */
   event *restart_event;			/* Event to restart/shutdown the protocol from limits */
