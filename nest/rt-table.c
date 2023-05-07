@@ -4248,7 +4248,7 @@ typedef struct {
 static int
 rt_prepare_feed(struct rt_table_export_hook *c, net *n, rt_feed_block *b)
 {
-  uint bs = c->h.req->feed_block_size;
+  uint bs = c->h.req->feed_block_size ?: 16384;
 
   if (n->routes)
   {
