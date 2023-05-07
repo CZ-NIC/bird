@@ -589,8 +589,9 @@ struct birdloop_pickup_group {
   list loops;
   list threads;
   uint thread_count;
-  uint loop_count;
   uint thread_busy_count;
+  uint loop_count;
+  uint loop_unassigned_count;
   btime max_latency;
   event start_threads;
 } pickup_groups[2] = {
@@ -647,6 +648,9 @@ birdloop_set_thread(struct birdloop *loop, struct bird_thread *thr, struct birdl
   {
     thr->loop_count++;
     add_tail(&thr->loops, &loop->n);
+
+    if (!EMPTY_LIST(loop->sock_list))
+      thr->sock_changed = 1;
     ev_send_loop(loop->thread->meta, &loop->event);
   }
   else
@@ -654,6 +658,7 @@ birdloop_set_thread(struct birdloop *loop, struct bird_thread *thr, struct birdl
     /* Put into pickup list */
     LOCK_DOMAIN(attrs, group->domain);
     add_tail(&group->loops, &loop->n);
+    group->loop_unassigned_count++;
     UNLOCK_DOMAIN(attrs, group->domain);
   }
 }
@@ -662,17 +667,15 @@ static void
 bird_thread_pickup_next(struct birdloop_pickup_group *group)
 {
   /* This thread goes to the end of the pickup list */
-  LOCK_DOMAIN(attrs, group->domain);
   rem_node(&this_thread->n);
   add_tail(&group->threads, &this_thread->n);
 
   /* If there are more loops to be picked up, wakeup the next thread in order */
   if (!EMPTY_LIST(group->loops))
     wakeup_do_kick(SKIP_BACK(struct bird_thread, n, HEAD(group->threads)));
-  UNLOCK_DOMAIN(attrs, group->domain);
 }
 
-static struct birdloop *
+static void
 birdloop_take(struct birdloop_pickup_group *group)
 {
   struct birdloop *loop = NULL;
@@ -704,30 +707,49 @@ birdloop_take(struct birdloop_pickup_group *group)
 	birdloop_set_thread(loop, NULL, group);
 
 	birdloop_leave(loop);
+
+	LOCK_DOMAIN(attrs, group->domain);
 	bird_thread_pickup_next(group);
+	UNLOCK_DOMAIN(attrs, group->domain);
 	break;
       }
       birdloop_leave(loop);
     }
 
-    return NULL;
+    return;
   }
-  else if (take)
-  {
-    /* Take the first loop from the pickup list and unlock */
-    loop = SKIP_BACK(struct birdloop, n, HEAD(group->loops));
-    rem_node(&loop->n);
-    UNLOCK_DOMAIN(attrs, group->domain);
 
-    birdloop_set_thread(loop, this_thread, group);
-    bird_thread_pickup_next(group);
-    return loop;
-  }
-  else
+  if (take)
   {
-    UNLOCK_DOMAIN(attrs, group->domain);
-    return NULL;
+    /* Take a proportional amount of loops from the pickup list and unlock */
+    uint thread_count = group->thread_count + 1;
+    if (group->thread_busy_count < group->thread_count)
+      thread_count -= group->thread_busy_count;
+
+    uint assign = 1 + group->loop_unassigned_count / thread_count;
+    for (uint i=0; !EMPTY_LIST(group->loops) && i<assign; i++)
+    {
+      loop = SKIP_BACK(struct birdloop, n, HEAD(group->loops));
+      rem_node(&loop->n);
+      group->loop_unassigned_count--;
+      UNLOCK_DOMAIN(attrs, group->domain);
+
+      birdloop_enter(loop);
+      birdloop_set_thread(loop, this_thread, group);
+
+      node *n;
+      WALK_LIST(n, loop->sock_list)
+	SKIP_BACK(sock, n, n)->index = -1;
+
+      birdloop_leave(loop);
+
+      LOCK_DOMAIN(attrs, group->domain);
+    }
+
+    bird_thread_pickup_next(group);
   }
+
+  UNLOCK_DOMAIN(attrs, group->domain);
 }
 
 static int
@@ -800,14 +822,7 @@ bird_thread_main(void *arg)
     int timeout;
 
     /* Pickup new loops */
-    struct birdloop *loop = birdloop_take(thr->group);
-    if (loop)
-    {
-      birdloop_enter(loop);
-      if (!EMPTY_LIST(loop->sock_list))
-	thr->sock_changed = 1;
-      birdloop_leave(loop);
-    }
+    birdloop_take(thr->group);
 
     /* Schedule all loops with timed out timers */
     timers_fire(&thr->meta->time, 0);
@@ -847,6 +862,7 @@ bird_thread_main(void *arg)
       pipe_pollin(&thr->wakeup, &pfd);
 
       node *nn;
+      struct birdloop *loop;
       WALK_LIST2(loop, nn, thr->loops, n)
       {
 	birdloop_enter(loop);
@@ -1173,7 +1189,7 @@ bird_thread_show(void *data)
   {
     if (tsd->show_loops)
       bird_thread_show_loop(tsd, loop);
-    
+
     total_time_ns += loop->working.total_ns + loop->locking.total_ns;
   }
 
