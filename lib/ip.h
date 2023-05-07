@@ -199,9 +199,11 @@ static inline u32 ip4_hash(ip4_addr a)
 
 static inline u32 ip6_hash(ip6_addr a)
 {
-  /* Returns a 32-bit hash key, although low-order bits are not mixed */
-  u32 x = _I0(a) ^ _I1(a) ^ _I2(a) ^ _I3(a);
-  return x ^ (x << 16) ^ (x << 24);
+  return
+    u32_hash(_I0(a)) ^
+    u32_hash(_I1(a)) ^
+    u32_hash(_I2(a)) ^
+    u32_hash(_I3(a));
 }
 
 static inline int ip4_compare(ip4_addr a, ip4_addr b)
