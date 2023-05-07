@@ -320,6 +320,7 @@ channel_item_:
      this_channel->out_filter = $4;
    }
  | EXPORT imexport { this_channel->out_filter = $2; }
+ | EXPORT BLOCK expr { this_channel->feed_block_size = $3; }
  | RECEIVE LIMIT limit_spec { this_channel->rx_limit = $3; }
  | IMPORT LIMIT limit_spec { this_channel->in_limit = $3; }
  | EXPORT LIMIT limit_spec { this_channel->out_limit = $3; }
