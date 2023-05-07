@@ -1024,6 +1024,13 @@ inherited from templates can be updated by new definitions.
 	counter ignores route blocking and block action also blocks route
 	updates of already accepted routes -- and these details will probably
 	change in the future. Default: <cf/off/.
+
+	<tag><label id="proto-export-block">export block <m/number/</tag>
+        Set the minimum amount of routes exported at once when feeding or
+	if `merge paths` or `secondary` is selected. This affects overall latency.
+	Basically, when your export filters are very expensive, processing
+	the whole block of routes may take too much time. In such cases, you may need to
+        shrink this value to improve responsiveness. Default: <cf/16384/.
 </descrip>
 
 <p>This is a trivial example of RIP configured for IPv6 on all interfaces:

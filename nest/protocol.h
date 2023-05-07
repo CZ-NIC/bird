@@ -502,6 +502,8 @@ struct channel_config {
 
   struct settle_config roa_settle;	/* Settle times for ROA-induced reload */
 
+  uint feed_block_size;			/* How many routes to feed at once */
+
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
   u16 preference;			/* Default route preference */
@@ -559,6 +561,8 @@ struct channel {
   struct rt_export_request out_req;	/* Table export connection */
 
   u32 refeed_count;			/* Number of routes exported during refeed regardless of out_limit */
+
+  uint feed_block_size;			/* How many routes to feed at once */
 
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */

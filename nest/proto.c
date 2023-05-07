@@ -207,6 +207,8 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->out_filter = cf->out_filter;
   c->out_subprefix = cf->out_subprefix;
 
+  c->feed_block_size = cf->feed_block_size;
+
   channel_init_limit(c, &c->rx_limit, PLD_RX, &cf->rx_limit);
   channel_init_limit(c, &c->in_limit, PLD_IN, &cf->in_limit);
   channel_init_limit(c, &c->out_limit, PLD_OUT, &cf->out_limit);
@@ -497,6 +499,7 @@ channel_start_export(struct channel *c)
     .name = mb_sprintf(c->proto->pool, "%s.%s", c->proto->name, c->name),
     .list = proto_work_list(c->proto),
     .pool = c->proto->pool,
+    .feed_block_size = c->feed_block_size,
     .addr = c->out_subprefix,
     .addr_mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
     .trace_routes = c->debug | c->proto->debug,
@@ -688,6 +691,7 @@ channel_setup_in_table(struct channel *c)
     .name = mb_sprintf(c->proto->pool, "%s.%s.import", c->proto->name, c->name),
     .list = proto_work_list(c->proto),
     .pool = c->proto->pool,
+    .feed_block_size = c->feed_block_size,
     .trace_routes = c->debug | c->proto->debug,
     .export_bulk = channel_reload_export_bulk,
     .dump_req = channel_reload_dump_req,
@@ -912,6 +916,8 @@ channel_config_new(const struct channel_class *cc, const char *name, uint net_ty
   cf->parent = proto;
   cf->table = tab;
   cf->out_filter = FILTER_REJECT;
+
+  cf->feed_block_size = 16384;
 
   cf->net_type = net_type;
   cf->ra_mode = RA_OPTIMAL;

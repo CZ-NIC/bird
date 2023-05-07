@@ -925,6 +925,7 @@ bgp_graceful_restart_feed(struct bgp_channel *c)
     .name = "BGP-GR",
     .list = proto_event_list(c->c.proto),
     .pool = c->c.proto->pool,
+    .feed_block_size = c->c.feed_block_size,
     .trace_routes = c->c.debug | c->c.proto->debug,
     .dump_req = bgp_graceful_restart_feed_dump_req,
     .log_state_change = bgp_graceful_restart_feed_log_state_change,

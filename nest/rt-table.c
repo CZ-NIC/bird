@@ -4231,7 +4231,6 @@ rt_feed_done(struct rt_export_hook *c)
   rt_send_export_event(c);
 }
 
-#define MAX_FEED_BLOCK	1024
 typedef struct {
   uint cnt, pos;
   union {
@@ -4249,19 +4248,21 @@ typedef struct {
 static int
 rt_prepare_feed(struct rt_table_export_hook *c, net *n, rt_feed_block *b)
 {
+  uint bs = c->h.req->feed_block_size;
+
   if (n->routes)
   {
     if (c->h.req->export_bulk)
     {
       uint cnt = rte_feed_count(n);
-      if (b->cnt && (b->cnt + cnt > MAX_FEED_BLOCK))
+      if (b->cnt && (b->cnt + cnt > bs))
 	return 0;
 
       if (!b->cnt)
       {
-	b->feed = tmp_alloc(sizeof(rte *) * MAX(MAX_FEED_BLOCK, cnt));
+	b->feed = tmp_alloc(sizeof(rte *) * MAX(bs, cnt));
 
-	uint aux_block_size = (cnt >= MAX_FEED_BLOCK) ? 2 : (MAX_FEED_BLOCK + 2 - cnt);
+	uint aux_block_size = (cnt >= bs) ? 2 : (bs + 2 - cnt);
 	b->aux = tmp_alloc(sizeof(struct rt_feed_block_aux) * aux_block_size);
       }
 
@@ -4275,12 +4276,12 @@ rt_prepare_feed(struct rt_table_export_hook *c, net *n, rt_feed_block *b)
 
       b->cnt += cnt;
     }
-    else if (b->pos == MAX_FEED_BLOCK)
+    else if (b->pos == bs)
       return 0;
     else
     {
       if (!b->pos)
-	b->rpe = tmp_alloc(sizeof(struct rt_pending_export) * MAX_FEED_BLOCK);
+	b->rpe = tmp_alloc(sizeof(struct rt_pending_export) * bs);
 
       b->rpe[b->pos++] = (struct rt_pending_export) { .new = n->routes, .new_best = n->routes };
     }

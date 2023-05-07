@@ -292,6 +292,7 @@ struct rt_export_request {
   const net_addr *addr;			/* Network prefilter address */
   u8 trace_routes;
   u8 addr_mode;				/* Network prefilter mode (TE_ADDR_*) */
+  uint feed_block_size;			/* How many routes to feed at once */
 
   event_list *list;			/* Where to schedule export events */
   pool *pool;				/* Pool to use for allocations */
