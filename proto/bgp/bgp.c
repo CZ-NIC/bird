@@ -197,13 +197,20 @@ bgp_close(struct bgp_proto *p)
   struct bgp_listen_request *req = &p->listen;
   struct bgp_socket *bs = req->sock;
 
-  if (bs)
+  if (enlisted(&req->n))
   {
-    req->sock = NULL;
+    /* Remove listen request from listen socket or pending list */
     rem_node(&req->n);
 
-    if (bs && EMPTY_LIST(bs->requests))
-      ev_send(&global_event_list, &bgp_listen_event);
+    if (bs)
+    {
+      /* Already had a socket. */
+      req->sock = NULL;
+
+      /* Request listen socket cleanup */
+      if (bs && EMPTY_LIST(bs->requests))
+	ev_send(&global_event_list, &bgp_listen_event);
+    }
   }
 
   UNLOCK_DOMAIN(rtable, bgp_listen_domain);
