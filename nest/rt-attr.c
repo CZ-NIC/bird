@@ -201,14 +201,21 @@ static struct idm src_ids;
 #define RSH_REHASH		rte_src_rehash
 #define RSH_PARAMS		/2, *2, 1, 1, 8, 20
 #define RSH_INIT_ORDER		2
-static struct rte_src **rte_src_global;
-static uint rte_src_global_max = SRC_ID_INIT_SIZE;
+static struct rte_src * _Atomic * _Atomic rte_src_global;
+static _Atomic uint rte_src_global_max;
 
 static void
 rte_src_init(void)
 {
   rte_src_slab = sl_new(rta_pool, sizeof(struct rte_src));
-  rte_src_global = mb_allocz(rta_pool, sizeof(struct rte_src *) * rte_src_global_max);
+
+  uint gmax = SRC_ID_INIT_SIZE * 32;
+  struct rte_src * _Atomic *g = mb_alloc(rta_pool, sizeof(struct rte_src * _Atomic) * gmax);
+  for (uint i = 0; i < gmax; i++)
+    atomic_store_explicit(&g[i], NULL, memory_order_relaxed);
+
+  atomic_store_explicit(&rte_src_global, g, memory_order_release);
+  atomic_store_explicit(&rte_src_global_max, gmax, memory_order_release);
 
   idm_init(&src_ids, rta_pool, SRC_ID_INIT_SIZE);
 }
@@ -226,6 +233,8 @@ rt_get_source_o(struct rte_owner *p, u32 id)
 {
   if (p->stop)
     bug("Stopping route owner asked for another source.");
+
+  ASSERT_DIE(birdloop_inside(p->list->loop));
 
   struct rte_src *src = rt_find_source(p, id);
 
@@ -249,26 +258,60 @@ rt_get_source_o(struct rte_owner *p, u32 id)
     log(L_TRACE "Allocated new rte_src for %s, ID %uL %uG, have %u sources now",
 	p->name, src->private_id, src->global_id, p->uc);
 
-  if (src->global_id >= rte_src_global_max)
+  uint gm = atomic_load_explicit(&rte_src_global_max, memory_order_relaxed);
+  struct rte_src * _Atomic * g = atomic_load_explicit(&rte_src_global, memory_order_relaxed);
+
+  if (src->global_id >= gm)
   {
-    rte_src_global = mb_realloc(rte_src_global, sizeof(struct rte_src *) * (rte_src_global_max *= 2));
-    memset(&rte_src_global[rte_src_global_max / 2], 0,
-	sizeof(struct rte_src *) * (rte_src_global_max / 2));
+    /* Allocate new block */
+    size_t old_len = sizeof(struct rte_src * _Atomic) * gm;
+    struct rte_src * _Atomic * new_block = mb_alloc(rta_pool, old_len * 2);
+    memcpy(new_block, g, old_len);
+
+    for (uint i = 0; i < gm; i++)
+      atomic_store_explicit(&new_block[gm+i], NULL, memory_order_relaxed);
+
+    /* Update the pointer */
+    atomic_store_explicit(&rte_src_global, new_block, memory_order_release);
+    atomic_store_explicit(&rte_src_global_max, gm * 2, memory_order_release);
+
+    /* Wait for readers */
+    synchronize_rcu();
+
+    /* Free the old block */
+    mb_free(g);
+    g = new_block;
   }
 
-  rte_src_global[src->global_id] = src;
+  atomic_store_explicit(&g[src->global_id], src, memory_order_release);
   RTA_UNLOCK;
 
   return src;
 }
 
+/**
+ * Find a rte source by its global ID. Only available for existing and locked
+ * sources stored by their ID. Checking for non-existent or foreign source is unsafe.
+ *
+ * @id: requested global ID
+ *
+ * Returns the found source or dies. Result of this function is guaranteed to
+ * be a valid source as long as the caller owns it.
+ */
 struct rte_src *
 rt_find_source_global(u32 id)
 {
-  if (id >= rte_src_global_max)
-    return NULL;
-  else
-    return rte_src_global[id];
+  rcu_read_lock();
+  ASSERT_DIE(id < atomic_load_explicit(&rte_src_global_max, memory_order_acquire));
+
+  struct rte_src * _Atomic * g = atomic_load_explicit(&rte_src_global, memory_order_acquire);
+  struct rte_src *src = atomic_load_explicit(&g[id], memory_order_acquire);
+  ASSERT_DIE(src);
+  ASSERT_DIE(src->global_id == id);
+
+  rcu_read_unlock();
+
+  return src;
 }
 
 static inline void
@@ -295,7 +338,8 @@ rt_prune_sources(void *data)
       HASH_DO_REMOVE(o->hash, RSH, sp);
 
       RTA_LOCK;
-      rte_src_global[src->global_id] = NULL;
+      struct rte_src * _Atomic * g = atomic_load_explicit(&rte_src_global, memory_order_acquire);
+      atomic_store_explicit(&g[src->global_id], NULL, memory_order_release);
       idm_free(&src_ids, src->global_id);
       sl_free(src);
       RTA_UNLOCK;
