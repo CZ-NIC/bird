@@ -294,6 +294,13 @@ pipe_pollin(struct pipe *p, struct pfd *pfd)
   BUFFER_PUSH(pfd->loop) = NULL;
 }
 
+void
+pipe_free(struct pipe *p)
+{
+  close(p->fd[0]);
+  close(p->fd[1]);
+}
+
 static inline void
 wakeup_init(struct bird_thread *loop)
 {
@@ -310,6 +317,12 @@ static inline void
 wakeup_do_kick(struct bird_thread *loop)
 {
   pipe_kick(&loop->wakeup);
+}
+
+static inline void
+wakeup_free(struct bird_thread *loop)
+{
+  pipe_free(&loop->wakeup);
 }
 
 static inline _Bool
@@ -918,14 +931,24 @@ static void
 bird_thread_cleanup(void *_thr)
 {
   struct bird_thread *thr = _thr;
+  struct birdloop *meta = thr->meta;
   ASSERT_DIE(birdloop_inside(&main_birdloop));
 
-  /* Free the meta loop */
-  thr->meta->thread = NULL;
-  birdloop_free(thr->meta);
+  /* Wait until the thread actually finishes */
+  ASSERT_DIE(meta);
+  birdloop_enter(meta);
+  birdloop_leave(meta);
+
+  /* No more wakeup */
+  wakeup_free(thr);
 
   /* Thread attributes no longer needed */
   pthread_attr_destroy(&thr->thread_attr);
+
+  /* Free the meta loop */
+  thr->meta->thread = NULL;
+  thr->meta = NULL;
+  birdloop_free(meta);
 }
 
 static struct bird_thread *
@@ -1035,6 +1058,10 @@ bird_thread_shutdown(void * _ UNUSED)
   /* Leave the thread-dropper loop as we aren't going to return. */
   birdloop_leave(thread_dropper);
 
+  /* Last try to run the priority event list; ruin it then to be extra sure */
+  ev_run_list(&this_thread->priority_events);
+  memset(&this_thread->priority_events, 0xa5, sizeof(this_thread->priority_events));
+
   /* Drop loops including the thread dropper itself */
   while (!EMPTY_LIST(thr->loops))
   {
@@ -1054,8 +1081,8 @@ bird_thread_shutdown(void * _ UNUSED)
     wakeup_do_kick(SKIP_BACK(struct bird_thread, n, HEAD(group->threads)));
   UNLOCK_DOMAIN(attrs, group->domain);
 
-  /* Stop the meta loop */
-  birdloop_leave(thr->meta);
+  /* Request thread cleanup from main loop */
+  ev_send_loop(&main_birdloop, &thr->cleanup_event);
 
   /* Local pages not needed anymore */
   flush_local_pages();
@@ -1063,8 +1090,8 @@ bird_thread_shutdown(void * _ UNUSED)
   /* Unregister from RCU */
   rcu_thread_stop(&thr->rcu);
 
-  /* Request thread cleanup from main loop */
-  ev_send_loop(&main_birdloop, &thr->cleanup_event);
+  /* Now we can be cleaned up */
+  birdloop_leave(thr->meta);
 
   /* Exit! */
   pthread_exit(NULL);
