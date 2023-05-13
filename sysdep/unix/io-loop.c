@@ -1536,7 +1536,8 @@ birdloop_vnew_internal(pool *pp, uint order, struct birdloop_pickup_group *group
     add_tail(&group->loops, &loop->n);
     if (EMPTY_LIST(group->threads))
       ev_send(&global_event_list, &group->start_threads);
-    wakeup_do_kick(SKIP_BACK(struct bird_thread, n, HEAD(group->threads)));
+    else
+      wakeup_do_kick(SKIP_BACK(struct bird_thread, n, HEAD(group->threads)));
     UNLOCK_DOMAIN(attrs, group->domain);
   }
   else
