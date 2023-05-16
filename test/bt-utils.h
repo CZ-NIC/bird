@@ -26,6 +26,12 @@
 
 uint bt_naive_pow(uint base, uint power);
 void bt_bytes_to_hex(char *buf, const byte *in_data, size_t size);
+void bt_random_net(net_addr *net, int type);
+net_addr *bt_random_nets(int type, uint n);
+net_addr *bt_random_net_subset(net_addr *src, uint sn, uint dn);
+void bt_read_net(const char *str, net_addr *net, int type);
+net_addr *bt_read_nets(FILE *f, int type, uint *n);
+net_addr *bt_read_net_file(const char *filename, int type, uint *n);
 
 void bt_bird_init(void);
 void bt_bird_cleanup(void);

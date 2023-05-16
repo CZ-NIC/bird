@@ -9,6 +9,6 @@ $(o)proto-build.c: Makefile $(lastword $(MAKEFILE_LIST)) $(objdir)/.dir-stamp
 
 prepare: $(o)proto-build.c
 
-tests_src := a-set_test.c a-path_test.c
+tests_src := a-set_test.c a-path_test.c rt-fib_test.c
 tests_targets := $(tests_targets) $(tests-target-files)
 tests_objs := $(tests_objs) $(src-o-files)

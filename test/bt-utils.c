@@ -219,3 +219,135 @@ bt_bytes_to_hex(char *buf, const byte *in_data, size_t size)
     sprintf(buf + i*2, "%02x", in_data[i]);
 }
 
+void
+bt_random_net(net_addr *net, int type)
+{
+  ip4_addr ip4;
+  ip6_addr ip6;
+  uint pxlen;
+
+  switch (type)
+  {
+  case NET_IP4:
+    pxlen = bt_random_n(24)+8;
+    ip4 = ip4_from_u32((u32) bt_random());
+    net_fill_ip4(net, ip4_and(ip4, ip4_mkmask(pxlen)), pxlen);
+    break;
+
+  case NET_IP6:
+    pxlen = bt_random_n(120)+8;
+    ip6 = ip6_build(bt_random(), bt_random(), bt_random(), bt_random());
+    net_fill_ip6(net, ip6_and(ip6, ip6_mkmask(pxlen)), pxlen);
+    break;
+
+  default:
+    die("Net type %d not implemented", type);
+  }
+}
+
+net_addr *
+bt_random_nets(int type, uint n)
+{
+  net_addr *nets = tmp_alloc(n * sizeof(net_addr));
+
+  for (uint i = 0; i < n; i++)
+    bt_random_net(&nets[i], type);
+
+  return nets;
+}
+
+net_addr *
+bt_random_net_subset(net_addr *src, uint sn, uint dn)
+{
+  net_addr *nets = tmp_alloc(dn * sizeof(net_addr));
+
+  for (uint i = 0; i < dn; i++)
+    net_copy(&nets[i], &src[bt_random_n(sn)]);
+
+  return nets;
+}
+
+void
+bt_read_net(const char *str, net_addr *net, int type)
+{
+  ip4_addr ip4;
+  ip6_addr ip6;
+  uint pxlen;
+  char addr[64];
+
+  switch (type)
+  {
+  case NET_IP4:
+    if (sscanf(str, "%[0-9.]/%u", addr, &pxlen) != 2)
+      goto err;
+
+    if (!ip4_pton(addr, &ip4))
+      goto err;
+
+    if (!net_validate_px4(ip4, pxlen))
+      goto err;
+
+    net_fill_ip4(net, ip4, pxlen);
+    break;
+
+  case NET_IP6:
+    if (sscanf(str, "%[0-9a-fA-F:.]/%u", addr, &pxlen) != 2)
+      goto err;
+
+    if (!ip6_pton(addr, &ip6))
+      goto err;
+
+    if (!net_validate_px6(ip6, pxlen))
+      goto err;
+
+    net_fill_ip6(net, ip6, pxlen);
+    break;
+
+  default:
+    die("Net type %d not implemented", type);
+  }
+  return;
+
+err:
+  bt_abort_msg("Invalid network '%s'", str);
+}
+
+net_addr *
+bt_read_nets(FILE *f, int type, uint *n)
+{
+  char str[80];
+
+  net_addr *nets = tmp_alloc(*n * sizeof(net_addr));
+  uint i = 0;
+
+  errno = 0;
+  while (fgets(str, sizeof(str), f))
+  {
+    if (str[0] == '\n')
+      break;
+
+    if (i >= *n)
+      bt_abort_msg("Too many networks");
+
+    bt_read_net(str, &nets[i], type);
+    bt_debug("ADD %s\n", str);
+    i++;
+  }
+  bt_syscall(errno, "fgets()");
+
+  bt_debug("DONE reading %u nets\n", i);
+
+  *n = i;
+  return nets;
+}
+
+net_addr *
+bt_read_net_file(const char *filename, int type, uint *n)
+{
+  FILE *f = fopen(filename, "r");
+  bt_syscall(!f, "fopen(%s)", filename);
+  net_addr *nets = bt_read_nets(f, type, n);
+  fclose(f);
+
+  return nets;
+}
