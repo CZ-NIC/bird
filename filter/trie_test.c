@@ -28,12 +28,6 @@ struct f_prefix_node {
   struct f_prefix prefix;
 };
 
-static u32
-xrandom(u32 max)
-{
-  return (bt_random() % max);
-}
-
 static inline uint
 get_exp_random(void)
 {
@@ -96,26 +90,9 @@ is_prefix_included(list *prefixes, const net_addr *needle)
 }
 
 static void
-get_random_net(net_addr *net, int v6)
-{
-  if (!v6)
-  {
-    uint pxlen = xrandom(24)+8;
-    ip4_addr ip4 = ip4_from_u32((u32) bt_random());
-    net_fill_ip4(net, ip4_and(ip4, ip4_mkmask(pxlen)), pxlen);
-  }
-  else
-  {
-    uint pxlen = xrandom(120)+8;
-    ip6_addr ip6 = ip6_build(bt_random(), bt_random(), bt_random(), bt_random());
-    net_fill_ip6(net, ip6_and(ip6, ip6_mkmask(pxlen)), pxlen);
-  }
-}
-
-static void
 get_random_prefix(struct f_prefix *px, int v6, int tight)
 {
-  get_random_net(&px->net, v6);
+  bt_random_net(&px->net, !v6 ? NET_IP4 : NET_IP6);
 
   if (tight)
   {
@@ -379,7 +356,7 @@ select_random_prefix_subset(list *src[], net_addr dst[], int sn, int dn)
     struct f_prefix_node *px;
     WALK_LIST(px, *src[i])
     {
-      if (xrandom(rnd) != 0)
+      if (bt_random_n(rnd) != 0)
 	continue;
 
       net_copy(&dst[n], &px->prefix.net);
@@ -395,7 +372,7 @@ done:
   /* Shuffle networks */
   for (int i = 0; i < dn; i++)
   {
-    int j = xrandom(dn);
+    int j = bt_random_n(dn);
 
     if (i == j)
       continue;
@@ -444,7 +421,7 @@ t_match_random_net(void)
     for (int i = 0; i < PREFIX_TESTS_NUM; i++)
     {
       net_addr net;
-      get_random_net(&net, v6);
+      bt_random_net(&net, !v6 ? NET_IP4 : NET_IP6);
       test_match_net(prefixes, trie, &net);
     }
 
@@ -828,7 +805,7 @@ t_trie_walk_to_root(void)
     for (i = 0; i < (PREFIX_TESTS_NUM / 10); i++)
     {
       net_addr from;
-      get_random_net(&from, v6);
+      bt_random_net(&from, !v6 ? NET_IP4 : NET_IP6);
 
       net_addr found[129];
       int found_num = find_covering_nets(pxset, num, &from, found);
