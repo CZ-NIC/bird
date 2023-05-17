@@ -1,9 +1,85 @@
 import asyncio
 from pathlib import Path
+from datetime import datetime
 
 from BIRD.Basic import BIRDException
 from BIRD.Socket import Socket
 from BIRD.Status import Status, Version
+
+from BIRD.Config import Timestamp, ProtocolConfig, DeviceProtocolConfig
+
+class Config:
+    def __init__(self, auto_device=True):
+        self._items = []
+        self.symbols = {}
+        self.auto_device = auto_device
+
+        self.add(Timestamp("Config object created"))
+
+    class FinalizedConfig:
+        def __init__(self, config):
+            self.config = config
+            self.auto_device = None
+
+        def __enter__(self):
+            if self.config.auto_device:
+                self.auto_device = DeviceProtocolConfig()
+                self.config.add(self.auto_device)
+
+            self.begin = Timestamp("Config dump started")
+            self.config.add(self.begin)
+
+            return self
+
+        def dump(self, _file):
+            for i in self.config._items:
+                if i is not None:
+                    _file.write(str(i))
+
+            _file.write(str(Timestamp("Config dump finished")))
+
+        def __exit__(self, *args):
+            self.config.remove(self.begin)
+            if self.auto_device is not None:
+                self.config.remove(self.auto_device)
+
+    def finalized(self):
+        return self.FinalizedConfig(self)
+
+    def write(self, _file):
+        with self.finalized() as sf:
+            with open(_file, "w") as f:
+                sf.dump(f)
+
+    def add(self, item):
+        # Merge defined symbols
+        for s in item.symbols:
+            if s in self.symbols:
+                # Found: rollback and fail
+                for s in item.symbols:
+                    if s in self.symbols:
+                        del self.symbols[s]
+                raise BIRDException("Can't add item to config: symbol {s} already exists")
+            self.symbols[s] = item.symbols[s]
+
+        # Store backref (weak)
+        item.config[self] = len(self._items)
+
+        # Fwdref
+        self._items.append(item)
+
+    def remove(self, item):
+        # Check backref existence
+        if self not in item.config:
+            raise BIRDException("Can't remove item from config: isn't there")
+
+        # Remove fwdref and cleanup Nones
+        self._items[item.config[self]] = None
+        while self._items[-1] is None:
+            self._items.pop()
+
+        # Remove backref
+        del item.config[self]
 
 class CLI:
     def __init__(self, name):
