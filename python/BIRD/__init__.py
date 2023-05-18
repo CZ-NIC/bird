@@ -24,7 +24,6 @@ class Config:
         def __enter__(self):
             if self.config.auto_device:
                 self.auto_device = DeviceProtocolConfig()
-                self.config.add(self.auto_device)
 
             self.begin = Timestamp("Config dump started")
             self.config.add(self.begin)
@@ -33,15 +32,20 @@ class Config:
 
         def dump(self, _file):
             for i in self.config._items:
-                if i is not None:
-                    _file.write(str(i))
+                if i is None:
+                    continue
+                if isinstance(i, DeviceProtocolConfig):
+                    self.auto_device = None
+
+                _file.write(str(i))
+
+            if self.auto_device is not None:
+                _file.write(str(self.auto_device))
 
             _file.write(str(Timestamp("Config dump finished")))
 
         def __exit__(self, *args):
             self.config.remove(self.begin)
-            if self.auto_device is not None:
-                self.config.remove(self.auto_device)
 
     def finalized(self):
         return self.FinalizedConfig(self)
