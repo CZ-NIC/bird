@@ -215,6 +215,13 @@ bgp_af_caps_cmp(const void *X, const void *Y)
   return (x->afi < y->afi) ? -1 : (x->afi > y->afi) ? 1 : 0;
 }
 
+struct bgp_caps *
+bgp_alloc_capabilities(struct bgp_proto *p, int n)
+{
+  struct bgp_caps *caps = mb_allocz(p->p.pool, sizeof(struct bgp_caps) + n * sizeof(struct bgp_af_caps));
+  caps->role = BGP_ROLE_UNDEFINED;
+  return caps;
+}
 
 void
 bgp_prepare_capabilities(struct bgp_conn *conn)
@@ -227,13 +234,13 @@ bgp_prepare_capabilities(struct bgp_conn *conn)
   if (!p->cf->capabilities)
   {
     /* Just prepare empty local_caps */
-    conn->local_caps = mb_allocz(p->p.pool, sizeof(struct bgp_caps));
+    conn->local_caps = bgp_alloc_capabilities(p, 0);
     return;
   }
 
   /* Prepare bgp_caps structure */
   int n = list_length(&p->p.channels);
-  caps = mb_allocz(p->p.pool, sizeof(struct bgp_caps) + n * sizeof(struct bgp_af_caps));
+  caps = bgp_alloc_capabilities(p, n);
   conn->local_caps = caps;
 
   caps->as4_support = p->cf->enable_as4;
@@ -464,10 +471,7 @@ bgp_read_capabilities(struct bgp_conn *conn, byte *pos, int len)
   u32 af;
 
   if (!conn->remote_caps)
-  {
-    caps = mb_allocz(p->p.pool, sizeof(struct bgp_caps) + sizeof(struct bgp_af_caps));
-    caps->role = BGP_ROLE_UNDEFINED;
-  }
+    caps = bgp_alloc_capabilities(p, 1);
   else
   {
     caps = conn->remote_caps;
@@ -763,7 +767,7 @@ bgp_read_options(struct bgp_conn *conn, byte *pos, uint len, uint rest)
 
   /* Prepare empty caps if no capability option was announced */
   if (!conn->remote_caps)
-    conn->remote_caps = mb_allocz(p->p.pool, sizeof(struct bgp_caps));
+    conn->remote_caps = bgp_alloc_capabilities(p, 0);
 
   return 0;
 
