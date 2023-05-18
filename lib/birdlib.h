@@ -162,6 +162,7 @@ void bug(const char *msg, ...) NORET;
 void debug(const char *msg, ...);	/* Printf to debug output */
 void debug_safe(const char *msg);	/* Printf to debug output, async-safe */
 
+
 /* Debugging */
 
 #if defined(LOCAL_DEBUG) || defined(GLOBAL_DEBUG)
@@ -196,10 +197,36 @@ asm(
    );
 #endif
 
+
 /* Pseudorandom numbers */
 
 u32 random_u32(void);
 void random_init(void);
 void random_bytes(void *buf, size_t size);
+
+
+/* Hashing */
+
+/* Constant parameter for non-parametrized hashes */
+#define HASH_PARAM 2902958171u
+
+/* Precomputed powers of HASH_PARAM */
+#define HASH_PARAM1 ((u64) HASH_PARAM)
+#define HASH_PARAM2 (HASH_PARAM1 * HASH_PARAM)
+#define HASH_PARAM3 (HASH_PARAM2 * HASH_PARAM)
+#define HASH_PARAM4 (HASH_PARAM3 * HASH_PARAM)
+
+/* Reduce intermediate 64-bit value to final 32-bit value */
+static inline u32 hash_value(u64 a)
+{ return ((u32) a) ^ ((u32) (a >> 32)); }
+
+static inline u64 u32_hash0(u32 v, u32 p, u64 acc)
+{ return (acc + v) * p; }
+
+static inline u64 u64_hash0(u64 v, u32 p, u64 acc)
+{ return u32_hash0(v >> 32, p, u32_hash0(v, p, acc)); }
+
+static inline u32 u64_hash(u64 v)
+{ return hash_value(u64_hash0(v, HASH_PARAM, 0)); }
 
 #endif
