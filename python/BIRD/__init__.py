@@ -23,7 +23,7 @@ class Config:
 
         def __enter__(self):
             if self.config.auto_device:
-                self.auto_device = DeviceProtocolConfig()
+                self.auto_device = DeviceProtocolConfig(comment="Default device protocol; set Config(auto_device=False) to remove")
 
             self.begin = Timestamp("Config dump started")
             self.config.add(self.begin)
@@ -37,12 +37,12 @@ class Config:
                 if isinstance(i, DeviceProtocolConfig):
                     self.auto_device = None
 
-                _file.write(str(i))
+                i.writelines(_file)
 
             if self.auto_device is not None:
-                _file.write(str(self.auto_device))
+                self.auto_device.writelines(_file)
 
-            _file.write(str(Timestamp("Config dump finished")))
+            Timestamp("Config dump finished").writelines(_file)
 
         def __exit__(self, *args):
             self.config.remove(self.begin)
