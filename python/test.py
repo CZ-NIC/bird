@@ -9,4 +9,7 @@ async def main():
         await b.status.update()
         print(b.status)
 
+        await b.protocols.update()
+        print(b.protocols)
+
 asyncio.run(main())

@@ -29,3 +29,6 @@ class Code:
     Welcome = 1
     Status = 13
     Version = 1000
+    ProtocolInfo = 1002
+    ProtocolDetails = 1006
+    ProtocolListHeader = 2002
