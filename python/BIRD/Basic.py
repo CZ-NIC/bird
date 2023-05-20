@@ -23,3 +23,9 @@ class Basic:
     async def load(self):
         if self.data is None:
             await self.update()
+
+class Code:
+    OK = 0
+    Welcome = 1
+    Status = 13
+    Version = 1000
