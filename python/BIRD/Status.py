@@ -14,7 +14,7 @@ class Status(Basic):
 
         if data[0]["code"] != Code.Version:
             raise StatusException(f"BIRD version not on the first line, got {data[0]['code']}")
-        
+
         self.data["version"] = data[0]["data"]
 
         if data[-1]["code"] != Code.Status:
