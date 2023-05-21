@@ -6,6 +6,7 @@ from BIRD.Basic import BIRDException
 from BIRD.Socket import Socket
 from BIRD.Status import Status, Version
 from BIRD.Protocol import ProtocolList
+from BIRD.Actions import Actions
 
 from BIRD.Config import Timestamp, ProtocolConfig, DeviceProtocolConfig
 
@@ -115,6 +116,7 @@ class BIRD:
         self.version = Version(bird=self)
         self.status = Status(bird=self)
         self.protocols = ProtocolList(bird=self)
+        self.actions = Actions(bird=self)
 
         self.within = False
 

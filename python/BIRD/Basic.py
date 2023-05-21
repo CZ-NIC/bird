@@ -27,6 +27,8 @@ class Basic:
 class Code:
     OK = 0
     Welcome = 1
+    ReadingConfiguration = 2
+    Reconfigured = 3
     Status = 13
     Version = 1000
     ProtocolInfo = 1002
