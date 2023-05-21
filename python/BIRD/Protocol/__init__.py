@@ -242,3 +242,4 @@ class Channel(Basic):
 import BIRD.Protocol.Kernel
 import BIRD.Protocol.Babel
 import BIRD.Protocol.RAdv
+import BIRD.Protocol.Static
