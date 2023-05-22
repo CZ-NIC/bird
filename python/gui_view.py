@@ -1,9 +1,10 @@
 from PySide6.QtCore import (Qt, QEvent, QObject, QRunnable, QThreadPool, Signal, Slot)
-from PySide6.QtWidgets import (QApplication, QLabel, QMainWindow, QPushButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QLabel, QMainWindow, QPushButton, QHBoxLayout, QVBoxLayout, QWidget)
 
 from BIRD import BIRD
 
 import asyncio
+from datetime import datetime
 import signal
 import sys
 
@@ -67,8 +68,36 @@ class InitialLayout(QWidget):
 
         AsyncWorker.dispatch(f())
 
+class ProtocolView(QWidget):
+    def __init__(self, bp):
+        super().__init__()
+        self.bp = bp
+
+        self.layout = QHBoxLayout(self)
+        self.name_label = QLabel(self.bp.name)
+        self.name_label.setStyleSheet("font-weight: bold")
+        self.layout.addWidget(self.name_label)
+
+class ProtocolListView(QWidget):
+    def __init__(self, bird):
+        super().__init__()
+        self.bird = bird
+
+        self.layout = QVBoxLayout(self)
+        self.protocols = []
+
+    @Slot(object)
+    def redraw(self, protocols):
+        for p in self.protocols:
+            self.layout.removeWidget(p)
+
+        self.protocols = [ ProtocolView(p) for p in protocols.data.values() ]
+        for p in self.protocols:
+            self.layout.addWidget(p)
 
 class ConnectedLayout(QWidget):
+    redraw_signal = Signal()
+
     def __init__(self, bird):
         super().__init__()
         self.bird = bird
@@ -80,6 +109,36 @@ class ConnectedLayout(QWidget):
 
         self.status = QLabel(f"Status: {bird.status.status}")
         self.layout.addWidget(self.status)
+
+        self.protocols = ProtocolListView(self.bird)
+        self.layout.addWidget(self.protocols)
+
+        self.last_update = QLabel(f"Last update: {datetime.now()}")
+        self.layout.addWidget(self.last_update)
+
+        self.redraw_signal.connect(self.redraw_slot)
+        AsyncWorker.dispatch(self.updater())
+
+    async def updater(self):
+        async with self.bird as b:
+            await b.protocols.update()
+        self.redraw_signal.emit()
+
+        while True:
+            await asyncio.sleep(5)
+            async with self.bird as b:
+                await b.version.update()
+                await b.status.update()
+                await b.protocols.update()
+            self.redraw_signal.emit()
+
+    @Slot()
+    def redraw_slot(self):
+        self.status.setText(f"Status: {self.bird.status.status}")
+        self.main_info.setText(f"Connected to {self.bird.version.name} {self.bird.version.version}")
+        self.protocols.redraw(self.bird.protocols)
+        self.last_update.setText(f"Last update: {datetime.now()}")
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
