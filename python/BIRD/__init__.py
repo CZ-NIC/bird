@@ -92,6 +92,7 @@ class CLI:
         self.socket = Socket(name)
         self.connected = False
         self.hello = None
+        self.lock = asyncio.Lock()
 
     async def open(self):
         if self.hello is not None:
@@ -125,8 +126,10 @@ class BIRD:
             raise BIRDException("Tried to enter BIRD context (async with) more than once")
 
         self.within = True
+        await self.cli.lock.acquire()
         return self
 
     async def __aexit__(self, *args):
         await self.cli.close()
+        self.cli.lock.release()
         self.within = False
