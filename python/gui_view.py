@@ -1,5 +1,5 @@
 from PySide6.QtCore import (Qt, QEvent, QObject, QRunnable, QThreadPool, Signal, Slot)
-from PySide6.QtWidgets import (QApplication, QLabel, QMainWindow, QPushButton, QHBoxLayout, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QFrame, QLabel, QMainWindow, QPushButton, QHBoxLayout, QVBoxLayout, QWidget)
 
 from BIRD import BIRD
 
@@ -31,7 +31,7 @@ class AsyncWorker(QRunnable, QObject):
         try:
             await coro
         except Exception as e:
-            AsyncWorker.worker.exception_happened.emit(e)
+            AsyncWorker.worker.exception_signal.emit(e)
 
     def dispatch(coro):
         asyncio.run_coroutine_threadsafe(AsyncWorker.dispatch_and_check_exception(coro), AsyncWorker.worker.loop)
@@ -64,39 +64,87 @@ class InitialLayout(QWidget):
                 await b.version.update()
                 await b.status.update()
 
-                self.connected_signal.emit(b)
+            self.connected_signal.emit(self.bird)
 
         AsyncWorker.dispatch(f())
 
-class ProtocolView(QWidget):
+class ProtocolView(QFrame):
+    update_signal = Signal()
+
     def __init__(self, bp):
         super().__init__()
         self.bp = bp
+        self.setFrameShape(QFrame.Box)
 
         self.layout = QHBoxLayout(self)
+
         self.name_label = QLabel(self.bp.name)
-        self.name_label.setStyleSheet("font-weight: bold")
+        self.name_label.setStyleSheet("font-weight: bold;")
         self.layout.addWidget(self.name_label)
 
+        self.state_label = QLabel(self.bp.state)
+        self.layout.addWidget(self.state_label)
+
+        self.disable_button = QPushButton("■")
+        self.disable_button.clicked.connect(self.disable_slot)
+        self.layout.addWidget(self.disable_button)
+
+        self.enable_button = QPushButton("▶")
+        self.enable_button.clicked.connect(self.enable_slot)
+        self.layout.addWidget(self.enable_button)
+
+        self.update_signal.connect(self.update_slot)
+        self.update_signal.emit()
+
+    def state_color(self):
+        return {
+                "down": "#ff8888",
+                "up": "#88ff88",
+                "start": "#cccc88",
+                }[self.bp.state]
+
+    @Slot()
+    def update_slot(self):
+        self.disable_button.setEnabled(self.bp.state != "down")
+        self.enable_button.setEnabled(self.bp.state not in ( "up", "start"))
+        self.state_label.setText(self.bp.state)
+        self.state_label.setStyleSheet(f"background: {self.state_color()}; padding: 0.5em;")
+
+    @Slot()
+    def disable_slot(self):
+        AsyncWorker.dispatch(self.disable_async())
+
+    async def disable_async(self):
+        async with self.bp.bird:
+            await self.bp.disable()
+        self.update_signal.emit()
+
+    @Slot()
+    def enable_slot(self):
+        AsyncWorker.dispatch(self.enable_async())
+
+    async def enable_async(self):
+        async with self.bp.bird:
+            await self.bp.enable()
+        self.update_signal.emit()
+
 class ProtocolListView(QWidget):
-    def __init__(self, bird):
+    def __init__(self):
         super().__init__()
-        self.bird = bird
-
-        self.layout = QVBoxLayout(self)
         self.protocols = []
+        self.layout = QVBoxLayout(self)
 
-    @Slot(object)
-    def redraw(self, protocols):
+    def update_data(self, protocols):
         for p in self.protocols:
             self.layout.removeWidget(p)
+            p.deleteLater()
 
         self.protocols = [ ProtocolView(p) for p in protocols.data.values() ]
         for p in self.protocols:
             self.layout.addWidget(p)
 
 class ConnectedLayout(QWidget):
-    redraw_signal = Signal()
+    redraw_signal = Signal(dict)
 
     def __init__(self, bird):
         super().__init__()
@@ -110,7 +158,7 @@ class ConnectedLayout(QWidget):
         self.status = QLabel(f"Status: {bird.status.status}")
         self.layout.addWidget(self.status)
 
-        self.protocols = ProtocolListView(self.bird)
+        self.protocols = ProtocolListView()
         self.layout.addWidget(self.protocols)
 
         self.last_update = QLabel(f"Last update: {datetime.now()}")
@@ -119,24 +167,37 @@ class ConnectedLayout(QWidget):
         self.redraw_signal.connect(self.redraw_slot)
         AsyncWorker.dispatch(self.updater())
 
+    async def reload_state(self):
+        async with self.bird as b:
+            await b.version.update()
+            await b.status.update()
+            await b.protocols.update()
+
+            self.redraw_signal.emit({
+                "version": b.version,
+                "status": b.status,
+                "protocols": b.protocols,
+                })
+
     async def updater(self):
         async with self.bird as b:
             await b.protocols.update()
-        self.redraw_signal.emit()
+
+            self.redraw_signal.emit({
+                "version": b.version,
+                "status": b.status,
+                "protocols": b.protocols,
+                })
 
         while True:
-            await asyncio.sleep(5)
-            async with self.bird as b:
-                await b.version.update()
-                await b.status.update()
-                await b.protocols.update()
-            self.redraw_signal.emit()
+            await asyncio.sleep(0.3)
+            await self.reload_state()
 
-    @Slot()
-    def redraw_slot(self):
-        self.status.setText(f"Status: {self.bird.status.status}")
-        self.main_info.setText(f"Connected to {self.bird.version.name} {self.bird.version.version}")
-        self.protocols.redraw(self.bird.protocols)
+    @Slot(dict)
+    def redraw_slot(self, data):
+        self.status.setText(f"Status: {data['status'].status}")
+        self.main_info.setText(f"Connected to {data['version'].name} {data['version'].version}")
+        self.protocols.update_data(data['protocols'])
         self.last_update.setText(f"Last update: {datetime.now()}")
 
 
@@ -155,8 +216,8 @@ class MainWindow(QMainWindow):
 
     @Slot(Exception)
     def exception_slot(self, e):
-        print("got exception")
-        raise Exception() from e
+        print("Exception in async thread")
+        raise e
 
     @Slot(BIRD)
     def connected_slot(self, bird):
