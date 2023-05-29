@@ -230,6 +230,24 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 		if (field_width > size)
 			return -1;
 		switch (*fmt) {
+		case 'b': {
+			const char *digits="0123456789abcdef";
+			const byte *bs = va_arg(args, const byte *);
+			len = field_width;
+
+			if (3*len > size)
+				return -1;
+
+			for (i = 0; i < len; i++) {
+				const byte b = *bs++;
+				*str++ = digits[b >> 4];
+				*str++ = digits[b & 0xf];
+				*str++ = ':';
+			}
+
+			str -= !!i;
+			continue;
+		}
 		case 'c':
 			if (!(flags & LEFT))
 				while (--field_width > 0)
