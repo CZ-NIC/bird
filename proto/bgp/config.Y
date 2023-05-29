@@ -262,6 +262,7 @@ bgp_afi:
  | VPN6 MULTICAST	{ $$ = BGP_AF_VPN6_MC; }
  | FLOW4		{ $$ = BGP_AF_FLOW4; }
  | FLOW6		{ $$ = BGP_AF_FLOW6; }
+ | EVPN			{ $$ = BGP_AF_EVPN; }
  ;
 
 tcp_ao_key_start: KEY {
