@@ -43,6 +43,7 @@ enum f_type {
   T_ENUM_RA_PREFERENCE = 0x37,
   T_ENUM_AF = 0x38,
   T_ENUM_MPLS_POLICY = 0x39,
+  T_ENUM_NET_EVPN_TYPE = 0x3a,
 
 /* new enums go here */
   T_ENUM_EMPTY = 0x3f,	/* Special hack for atomic_aggr */
