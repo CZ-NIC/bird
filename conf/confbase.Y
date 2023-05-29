@@ -16,6 +16,7 @@ CF_HDR
 #include "lib/socket.h"
 #include "lib/timer.h"
 #include "lib/string.h"
+#include "lib/evpn.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "nest/route.h"
@@ -86,7 +87,9 @@ CF_DECLS
   ip_addr a;
   ip4_addr ip4;
   ip6_addr ip6;
+  mac_addr mac;
   net_addr net;
+  evpn_esi esi;
   net_addr *net_ptr;
   struct symbol *s;
   struct keyword *kw;
@@ -135,6 +138,7 @@ CF_DECLS
 %token <i> NUM ENUM_TOKEN
 %token <ip4> IP4
 %token <ip6> IP6
+%token <mac> MAC_
 %token <rd> VPN_RD
 %token <s> CF_SYM_KNOWN CF_SYM_UNDEFINED CF_SYM_METHOD_BARE CF_SYM_METHOD_ARGS
 %token <t> TEXT
@@ -147,7 +151,9 @@ CF_DECLS
 %type <a> ipa
 %type <net> net_ip4_ net_ip4 net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_ net_aspa_
+%type <net_ptr> net_evpn_ net_evpn_ead_ net_evpn_mac_ net_evpn_mac_ip_ net_evpn_imet_ net_evpn_es_
 %type <mls> label_stack_start label_stack
+%type <esi> evpn_esi
 
 %type <t> text opttext
 %type <bs> bytestring
@@ -169,6 +175,7 @@ CF_DECLS
 %expect 2
 
 CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS, FROM, MAX, AS)
+CF_KEYWORDS(EVPN, EAD, MAC, IMET, ES)
 
 CF_GRAMMAR
 
@@ -372,6 +379,46 @@ net_aspa_: ASPA expr
   net_fill_aspa($$, $2);
 }
 
+evpn_esi: bytestring
+{
+  if ($1->length != 10)
+    cf_error("Invalid ESI length %u", (uint) $1->length);
+
+  memcpy(&$$, $1->data, 10);
+}
+
+net_evpn_ead_: EVPN EAD VPN_RD NUM evpn_esi
+{
+  $$ = cfg_alloc(sizeof(net_addr_evpn_ead));
+  net_fill_evpn_ead($$, $3, $4, $5);
+}
+
+net_evpn_mac_: EVPN MAC VPN_RD NUM MAC_ '*'
+{
+  $$ = cfg_alloc(sizeof(net_addr_evpn_mac));
+  net_fill_evpn_mac($$, $3, $4, $5);
+}
+
+net_evpn_mac_ip_: EVPN MAC VPN_RD NUM MAC_ ipa
+{
+  $$ = cfg_alloc(sizeof(net_addr_evpn_mac_ip));
+  net_fill_evpn_mac_ip($$, $3, $4, $5, $6);
+}
+
+net_evpn_imet_: EVPN IMET VPN_RD NUM ipa
+{
+  $$ = cfg_alloc(sizeof(net_addr_evpn_imet));
+  net_fill_evpn_imet($$, $3, $4, $5);
+}
+
+net_evpn_es_: EVPN ES VPN_RD evpn_esi ipa
+{
+  $$ = cfg_alloc(sizeof(net_addr_evpn_es));
+  net_fill_evpn_es($$, $3, $4, $5);
+}
+
+net_evpn_: net_evpn_ead_ | net_evpn_mac_ | net_evpn_mac_ip_ | net_evpn_imet_ | net_evpn_es_ ;
+
 net_ip_: net_ip4_ | net_ip6_ ;
 net_vpn_: net_vpn4_ | net_vpn6_ ;
 net_roa_: net_roa4_ | net_roa6_ ;
@@ -384,6 +431,7 @@ net_:
  | net_ip6_sadr_
  | net_mpls_
  | net_aspa_
+ | net_evpn_
  ;
 
 
