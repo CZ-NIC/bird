@@ -1831,6 +1831,9 @@ bgp_channel_start(struct channel *C)
 
     if (bgp_channel_is_ipv6(c) && (ipa_is_ip6(src) || c->ext_next_hop))
       c->next_hop_addr = src;
+
+    if (bgp_channel_is_l2vpn(c))
+      c->next_hop_addr = src;
   }
 
   /* Use preferred addresses associated with interface / source address */
@@ -2137,10 +2140,10 @@ bgp_postconfig(struct proto_config *CF)
     /* Default values of IGP tables */
     if ((cc->gw_mode == GW_RECURSIVE) && !cc->desc->no_igp)
     {
-      if (!cc->igp_table_ip4 && (bgp_cc_is_ipv4(cc) || cc->ext_next_hop))
+      if (!cc->igp_table_ip4 && (bgp_cc_is_ipv4(cc) || bgp_cc_is_l2vpn(cc) || cc->ext_next_hop))
 	cc->igp_table_ip4 = bgp_default_igp_table(cf, cc, NET_IP4);
 
-      if (!cc->igp_table_ip6 && (bgp_cc_is_ipv6(cc) || cc->ext_next_hop))
+      if (!cc->igp_table_ip6 && (bgp_cc_is_ipv6(cc) || bgp_cc_is_l2vpn(cc) || cc->ext_next_hop))
 	cc->igp_table_ip6 = bgp_default_igp_table(cf, cc, NET_IP6);
 
       if (cc->igp_table_ip4 && bgp_cc_is_ipv6(cc) && !cc->ext_next_hop)
@@ -2724,7 +2727,7 @@ struct protocol proto_bgp = {
   .template = 		"bgp%d",
   .class =		PROTOCOL_BGP,
   .preference = 	DEF_PREF_BGP,
-  .channel_mask =	NB_IP | NB_VPN | NB_FLOW | NB_MPLS,
+  .channel_mask =	NB_IP | NB_VPN | NB_FLOW | NB_EVPN | NB_MPLS,
   .proto_size =		sizeof(struct bgp_proto),
   .config_size =	sizeof(struct bgp_config),
   .postconfig =		bgp_postconfig,
