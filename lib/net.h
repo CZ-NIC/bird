@@ -11,6 +11,8 @@
 #define _BIRD_NET_H_
 
 #include "lib/ip.h"
+#include "lib/evpn.h"
+#include "lib/hash.h"
 
 
 #define NET_IP4		1
@@ -23,7 +25,8 @@
 #define NET_FLOW6	8
 #define NET_IP6_SADR	9
 #define NET_MPLS	10
-#define NET_MAX		11
+#define NET_EVPN	11
+#define NET_MAX		12
 
 #define NB_IP4		(1 << NET_IP4)
 #define NB_IP6		(1 << NET_IP6)
@@ -35,12 +38,13 @@
 #define NB_FLOW6	(1 << NET_FLOW6)
 #define NB_IP6_SADR	(1 << NET_IP6_SADR)
 #define NB_MPLS		(1 << NET_MPLS)
+#define NB_EVPN		(1 << NET_EVPN)
 
 #define NB_IP		(NB_IP4 | NB_IP6)
 #define NB_VPN		(NB_VPN4 | NB_VPN6)
 #define NB_ROA		(NB_ROA4 | NB_ROA6)
 #define NB_FLOW		(NB_FLOW4 | NB_FLOW6)
-#define NB_DEST		(NB_IP | NB_IP6_SADR | NB_VPN | NB_MPLS)
+#define NB_DEST		(NB_IP | NB_IP6_SADR | NB_VPN | NB_MPLS | NB_EVPN)
 #define NB_ANY		0xffffffff
 
 
@@ -133,6 +137,78 @@ typedef struct net_addr_ip6_sadr {
   ip6_addr src_prefix;
 } net_addr_ip6_sadr;
 
+typedef struct net_addr_evpn_ead {
+  u8 type;
+  u8 subtype;
+  u16 length;
+  u32 tag;
+  u64 rd;
+
+  evpn_esi esi;
+  u8 padding[6];
+} net_addr_evpn_ead;
+
+typedef struct net_addr_evpn_mac {
+  u8 type;
+  u8 subtype;
+  u16 length;
+  u32 tag;
+  u64 rd;
+
+  mac_addr mac;
+  u16 padding;
+} net_addr_evpn_mac;
+
+typedef struct net_addr_evpn_mac_ip {
+  u8 type;
+  u8 subtype;
+  u16 length;
+  u32 tag;
+  u64 rd;
+
+  mac_addr mac;
+  u16 padding0;
+  ip_addr ip;
+} net_addr_evpn_mac_ip;
+
+typedef struct net_addr_evpn_imet {
+  u8 type;
+  u8 subtype;
+  u16 length;
+  u32 tag;
+  u64 rd;
+
+  ip_addr rtr;
+} net_addr_evpn_imet;
+
+typedef struct net_addr_evpn_es {
+  u8 type;
+  u8 subtype;
+  u16 length;
+  u32 tag;	/* unused */
+  u64 rd;
+
+  evpn_esi esi;
+  u8 padding[6];
+  ip_addr rtr;
+} net_addr_evpn_es;
+
+typedef union net_addr_evpn {
+  struct {
+    u8 type;
+    u8 subtype;
+    u16 length;
+    u32 tag;
+    u64 rd;
+    byte data[0];
+  };
+  net_addr_evpn_ead ead;
+  net_addr_evpn_mac mac;
+  net_addr_evpn_mac_ip mac_ip;
+  net_addr_evpn_imet imet;
+  net_addr_evpn_es es;
+} net_addr_evpn;
+
 typedef union net_addr_union {
   net_addr n;
   net_addr_ip4 ip4;
@@ -145,6 +221,7 @@ typedef union net_addr_union {
   net_addr_flow6 flow6;
   net_addr_ip6_sadr ip6_sadr;
   net_addr_mpls mpls;
+  net_addr_evpn evpn;
 } net_addr_union;
 
 
@@ -187,6 +264,22 @@ extern const u16 net_max_text_length[];
   ((net_addr_mpls) { NET_MPLS, 20, sizeof(net_addr_mpls), label })
 
 
+#define NET_ADDR_EVPN_EAD(rd, tag, esi) \
+  ((net_addr_evpn_ead) { NET_EVPN, NET_EVPN_EAD, sizeof(net_addr_evpn_ead), tag, rd, .esi = esi })
+
+#define NET_ADDR_EVPN_MAC(rd, tag, mac) \
+  ((net_addr_evpn_mac) { NET_EVPN, NET_EVPN_MAC, sizeof(net_addr_evpn_mac), tag, rd, .mac = mac })
+
+#define NET_ADDR_EVPN_MAC_IP(rd, tag, mac, ip) \
+  ((net_addr_evpn_mac_ip) { NET_EVPN, NET_EVPN_MAC, sizeof(net_addr_evpn_mac_ip), tag, rd, .mac = mac, .ip = ip })
+
+#define NET_ADDR_EVPN_IMET(rd, tag, rtr) \
+  ((net_addr_evpn_imet) { NET_EVPN, NET_EVPN_IMET, sizeof(net_addr_evpn_imet), tag, rd, .rtr = rtr })
+
+#define NET_ADDR_EVPN_ES(rd, esi, rtr) \
+  ((net_addr_evpn_es) { NET_EVPN, NET_EVPN_ES, sizeof(net_addr_evpn_es), 0, rd, .esi = esi, .rtr = rtr })
+
+
 static inline void net_fill_ip4(net_addr *a, ip4_addr prefix, uint pxlen)
 { *(net_addr_ip4 *)a = NET_ADDR_IP4(prefix, pxlen); }
 
@@ -210,6 +303,23 @@ static inline void net_fill_ip6_sadr(net_addr *a, ip6_addr dst_prefix, uint dst_
 
 static inline void net_fill_mpls(net_addr *a, u32 label)
 { *(net_addr_mpls *)a = NET_ADDR_MPLS(label); }
+
+
+static inline void net_fill_evpn_ead(net_addr *a, u64 rd, u32 tag, evpn_esi esi)
+{ *(net_addr_evpn_ead *)a = NET_ADDR_EVPN_EAD(rd, tag, esi); }
+
+static inline void net_fill_evpn_mac(net_addr *a, u64 rd, u32 tag, mac_addr mac)
+{ *(net_addr_evpn_mac *)a = NET_ADDR_EVPN_MAC(rd, tag, mac); }
+
+static inline void net_fill_evpn_mac_ip(net_addr *a, u64 rd, u32 tag, mac_addr mac, ip_addr ip)
+{ *(net_addr_evpn_mac_ip *)a = NET_ADDR_EVPN_MAC_IP(rd, tag, mac, ip); }
+
+static inline void net_fill_evpn_imet(net_addr *a, u64 rd, u32 tag, ip_addr rtr)
+{ *(net_addr_evpn_imet *)a = NET_ADDR_EVPN_IMET(rd, tag, rtr); }
+
+static inline void net_fill_evpn_es(net_addr *a, u64 rd, evpn_esi esi, ip_addr rtr)
+{ *(net_addr_evpn_es *)a = NET_ADDR_EVPN_ES(rd, esi, rtr); }
+
 
 static inline void net_fill_ipa(net_addr *a, ip_addr prefix, uint pxlen)
 {
@@ -296,6 +406,7 @@ static inline ip_addr net_prefix(const net_addr *a)
     return ipa_from_ip6(net6_prefix(a));
 
   case NET_MPLS:
+  case NET_EVPN:
   default:
     return IPA_NONE;
   }
@@ -328,6 +439,8 @@ static inline u64 net_rd(const net_addr *a)
     return ((net_addr_vpn4 *)a)->rd;
   case NET_VPN6:
     return ((net_addr_vpn6 *)a)->rd;
+  case NET_EVPN:
+    return ((net_addr_evpn *)a)->rd;
   }
   return 0;
 }
@@ -365,6 +478,9 @@ static inline int net_equal_ip6_sadr(const net_addr_ip6_sadr *a, const net_addr_
 
 static inline int net_equal_mpls(const net_addr_mpls *a, const net_addr_mpls *b)
 { return !memcmp(a, b, sizeof(net_addr_mpls)); }
+
+static inline int net_equal_evpn(const net_addr_evpn *a, const net_addr_evpn *b)
+{ return net_equal((const net_addr *) a, (const net_addr *) b); }
 
 
 static inline int net_equal_prefix_roa4(const net_addr_roa4 *a, const net_addr_roa4 *b)
@@ -442,6 +558,13 @@ static inline int net_compare_ip6_sadr(const net_addr_ip6_sadr *a, const net_add
 static inline int net_compare_mpls(const net_addr_mpls *a, const net_addr_mpls *b)
 { return uint_cmp(a->label, b->label); }
 
+static inline int net_compare_evpn(const net_addr_evpn *a, const net_addr_evpn *b)
+{
+  return
+    uint_cmp(a->subtype, b->subtype) ?: u64_cmp(a->rd, b->rd) ?: uint_cmp(a->tag, b->tag) ?:
+    uint_cmp(a->length, b->length) ?: memcmp(a->data, b->data, a->length - OFFSETOF(net_addr_evpn, data));
+}
+
 int net_compare(const net_addr *a, const net_addr *b);
 
 
@@ -477,6 +600,9 @@ static inline void net_copy_ip6_sadr(net_addr_ip6_sadr *dst, const net_addr_ip6_
 
 static inline void net_copy_mpls(net_addr_mpls *dst, const net_addr_mpls *src)
 { memcpy(dst, src, sizeof(net_addr_mpls)); }
+
+static inline void net_copy_evpn(net_addr_evpn *dst, const net_addr_evpn *src)
+{ memcpy(dst, src, src->length); }
 
 
 static inline u32 px4_hash(ip4_addr prefix, u32 pxlen)
@@ -520,6 +646,9 @@ static inline u32 net_hash_ip6_sadr(const net_addr_ip6_sadr *n)
 
 static inline u32 net_hash_mpls(const net_addr_mpls *n)
 { return u32_hash(n->label); }
+
+static inline u32 net_hash_evpn(const net_addr_evpn *n)
+{ return mem_hash(&n->tag, n->length - OFFSETOF(net_addr_evpn, tag)); }
 
 u32 net_hash(const net_addr *a);
 
@@ -569,6 +698,9 @@ static inline int net_validate_flow6(const net_addr_flow6 *n)
 
 static inline int net_validate_mpls(const net_addr_mpls *n)
 { return n->label < (1 << 20); }
+
+static inline int net_validate_evpn(const net_addr_evpn *n UNUSED)
+{ return 1; /* XXX */ }
 
 static inline int net_validate_ip6_sadr(const net_addr_ip6_sadr *n)
 { return net_validate_px6(n->dst_prefix, n->dst_pxlen) && net_validate_px6(n->src_prefix, n->src_pxlen); }
