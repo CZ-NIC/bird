@@ -528,7 +528,7 @@ bfd_reconfigure_session(struct bfd_proto *p, struct bfd_session *s)
   if (EMPTY_LIST(s->request_list))
     return;
 
-  birdloop_enter(p->p.loop);
+  ASSERT_DIE(birdloop_inside(p->p.loop));
 
   struct bfd_request *req = SKIP_BACK(struct bfd_request, n, HEAD(s->request_list));
   s->cf = bfd_merge_options(s->ifa->cf, &req->opts);
@@ -540,8 +540,6 @@ bfd_reconfigure_session(struct bfd_proto *p, struct bfd_session *s)
   s->passive = s->cf.passive;
 
   bfd_session_control_tx_timer(s, 0);
-
-  birdloop_leave(p->p.loop);
 
   TRACE(D_EVENTS, "Session to %I reconfigured", s->addr);
 }
@@ -614,7 +612,7 @@ bfd_free_iface(struct bfd_iface *ifa)
 }
 
 static void
-bfd_reconfigure_iface(struct bfd_proto *p, struct bfd_iface *ifa, struct bfd_config *nc)
+bfd_reconfigure_iface(struct bfd_proto *p UNUSED, struct bfd_iface *ifa, struct bfd_config *nc)
 {
   struct bfd_iface_config *new = bfd_find_iface_config(nc, ifa->iface);
   struct bfd_iface_config *old = ifa->cf;
@@ -628,9 +626,7 @@ bfd_reconfigure_iface(struct bfd_proto *p, struct bfd_iface *ifa, struct bfd_con
     (new->passive != old->passive);
 
   /* This should be probably changed to not access ifa->cf from the BFD thread */
-  birdloop_enter(p->p.loop);
   ifa->cf = new;
-  birdloop_leave(p->p.loop);
 }
 
 
@@ -873,7 +869,12 @@ bfd_update_request(struct bfd_request *req, const struct bfd_options *opts)
   req->opts = *opts;
 
   if (s)
-    bfd_reconfigure_session(s->ifa->bfd, s);
+  {
+    struct bfd_proto *p = s->ifa->bfd;
+    birdloop_enter(p->p.loop);
+    bfd_reconfigure_session(p, s);
+    birdloop_leave(p->p.loop);
+  }
 }
 
 static void
