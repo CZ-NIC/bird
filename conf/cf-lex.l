@@ -246,7 +246,19 @@ WHITE [ \t]
   return IP4;
 }
 
-({XIGIT}{2}){16,}|{XIGIT}{2}(:{XIGIT}{2}){15,}|hex:({XIGIT}{2}*|{XIGIT}{2}(:{XIGIT}{2})*) {
+{XIGIT}{2}(:{XIGIT}{2}){5} {
+  mac_addr mac;
+  char *s = yytext;
+
+  int len = bstrhextobin(s, mac.addr);
+  if (len != 6)
+    cf_error("Invalid MAC address");
+
+  cf_lval.mac = mac;
+  return MAC_;
+}
+
+({XIGIT}{2}){10,}|{XIGIT}{2}(:{XIGIT}{2}){9,}|hex:({XIGIT}{2}*|{XIGIT}{2}(:{XIGIT}{2})*) {
   char *s = yytext;
   struct adata *bs;
 
