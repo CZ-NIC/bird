@@ -964,6 +964,22 @@ bmp_close_socket(struct bmp_proto *p)
 }
 
 
+static void
+bmp_postconfig(struct proto_config *CF)
+{
+  struct bmp_config *cf = (void *) CF;
+
+  /* Do not check templates at all */
+  if (cf->c.class == SYM_TEMPLATE)
+    return;
+
+  if (ipa_zero(cf->station_ip))
+    cf_error("Station IP address not specified");
+
+  if (!cf->station_port)
+    cf_error("Station port number not specified");
+}
+
 /** Configuration handle section **/
 static struct proto *
 bmp_init(struct proto_config *CF)
@@ -1047,6 +1063,7 @@ struct protocol proto_bmp = {
   .class = PROTOCOL_BMP,
   .proto_size = sizeof(struct bmp_proto),
   .config_size = sizeof(struct bmp_config),
+  .postconfig = bmp_postconfig,
   .init = bmp_init,
   .start = bmp_start,
   .shutdown = bmp_shutdown,

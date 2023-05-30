@@ -25,9 +25,6 @@ proto: bmp_proto '}' ;
 
 bmp_proto_start: proto_start BMP {
      this_proto = proto_config_new(&proto_bmp, $1);
-     BMP_CFG->local_addr = IPA_NONE4;
-     BMP_CFG->station_ip = IPA_NONE4;
-     BMP_CFG->station_port = 0;
      BMP_CFG->sys_descr = "Not defined";
      BMP_CFG->sys_name = "Not defined";
      BMP_CFG->monitoring_rib_in_pre_policy = false;
