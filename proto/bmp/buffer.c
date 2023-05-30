@@ -15,7 +15,6 @@ bmp_buffer_alloc(pool *ppool, const size_t n)
   buf.start = mb_alloc(ppool, n);
   buf.pos = buf.start;
   buf.end = buf.start + n;
-
   return buf;
 }
 
@@ -48,9 +47,7 @@ void
 bmp_put_data(buffer *buf, const void *src, const size_t n)
 {
   if (!n)
-  {
     return;
-  }
 
   bmp_buffer_need(buf, n);
   memcpy(buf->pos, src, n);

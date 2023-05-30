@@ -121,7 +121,7 @@ bmp_peer_down(const struct bgp_proto *bgp, const int err_class, const byte *pkt,
 
 #else /* BMP build disabled */
 
-static inline void bmp_peer_up(const struct bgp_proto *bgp, const byte *tx_open_msg, uint tx_open_length, const byte *rx_open_msg, uint rx_open_length) { }
+static inline void bmp_peer_up(const struct bgp_proto *bgp UNUSED, const byte *tx_open_msg UNUSED, uint tx_open_length UNUSED, const byte *rx_open_msg UNUSED, uint rx_open_length UNUSED) { }
 static inline void bmp_route_monitor_update_in_pre_begin(void) { }
 static inline void bmp_route_monitor_put_update_in_pre_msg(const byte *data UNUSED, const size_t data_size UNUSED) { }
 static inline void bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp UNUSED) { }

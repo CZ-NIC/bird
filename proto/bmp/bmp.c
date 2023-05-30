@@ -23,7 +23,7 @@
  *
  * The BMP session is managed by a simple state machine with three states: Idle
  * (!started, !sk), Connect (!started, sk active), and Established (started). It
- * has three events: connect successfull (Connect -> Established), socket error
+ * has three events: connect successful (Connect -> Established), socket error
  * (any -> Idle), and connect timeout (Idle/Connect -> Connect, resetting the
  * TCP socket).
  */
@@ -203,8 +203,8 @@ static void bmp_close_socket(struct bmp_proto *p);
 
 static void
 bmp_send_peer_up_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
-  const byte* tx_data, const size_t tx_data_size,
-  const byte* rx_data, const size_t rx_data_size);
+  const byte *tx_data, const size_t tx_data_size,
+  const byte *rx_data, const size_t rx_data_size);
 
 // Stores necessary any data in list
 struct bmp_data_node {
@@ -229,7 +229,7 @@ bmp_info_tlv_hdr_serialize(buffer *stream, const enum bmp_info_tlv_type type,
   const char *str)
 {
   size_t str_len = strlen(str);
-  str_len = MIN(str_len, 65535);
+  str_len = MIN(str_len, MIB_II_STR_LEN);
 
   bmp_put_u16(stream, type);
   bmp_put_u16(stream, str_len);
@@ -412,12 +412,12 @@ static void
 bmp_peer_up_notif_msg_serialize(buffer *stream, const bool is_peer_global,
   const u32 peer_as, const u32 peer_bgp_id, const bool as4_support,
   const ip_addr local_addr, const ip_addr remote_addr, const u16 local_port,
-  const u16 remote_port, const byte *sent_msg, const size_t sent_msg_size,
-  const byte *recv_msg, const size_t recv_msg_size)
+  const u16 remote_port, const byte *sent_msg, const size_t sent_msg_length,
+  const byte *recv_msg, const size_t recv_msg_length)
 {
   const size_t data_size =
     BMP_PER_PEER_HDR_SIZE + BMP_PEER_UP_NOTIF_MSG_FIX_SIZE +
-    BGP_HEADER_LENGTH + sent_msg_size + BGP_HEADER_LENGTH + recv_msg_size;
+    BGP_HEADER_LENGTH + sent_msg_length + BGP_HEADER_LENGTH + recv_msg_length;
 
   bmp_buffer_need(stream, BMP_COMMON_HDR_SIZE + data_size);
   bmp_common_hdr_serialize(stream, BMP_PEER_UP_NOTIF, data_size);
@@ -427,10 +427,10 @@ bmp_peer_up_notif_msg_serialize(buffer *stream, const bool is_peer_global,
   bmp_put_ipa(stream, local_addr);
   bmp_put_u16(stream, local_port);
   bmp_put_u16(stream, remote_port);
-  bmp_put_bgp_hdr(stream, PKT_OPEN, BGP_HEADER_LENGTH + sent_msg_size);
-  bmp_put_data(stream, sent_msg, sent_msg_size);
-  bmp_put_bgp_hdr(stream, PKT_OPEN, BGP_HEADER_LENGTH + recv_msg_size);
-  bmp_put_data(stream, recv_msg, recv_msg_size);
+  bmp_put_bgp_hdr(stream, PKT_OPEN, BGP_HEADER_LENGTH + sent_msg_length);
+  bmp_put_data(stream, sent_msg, sent_msg_length);
+  bmp_put_bgp_hdr(stream, PKT_OPEN, BGP_HEADER_LENGTH + recv_msg_length);
+  bmp_put_data(stream, recv_msg, recv_msg_length);
 }
 
 static void
@@ -484,9 +484,7 @@ static const struct birdsock *
 bmp_get_birdsock(const struct bgp_proto *bgp)
 {
   if (bgp->conn && bgp->conn->sk)
-  {
     return bgp->conn->sk;
-  }
 
   return NULL;
 }
@@ -495,11 +493,8 @@ static const struct birdsock *
 bmp_get_birdsock_ext(const struct bgp_proto *bgp)
 {
   const struct birdsock *sk = bmp_get_birdsock(bgp);
-
   if (sk != NULL)
-  {
     return sk;
-  }
 
   if (bgp->incoming_conn.sk)
   {
@@ -517,9 +512,7 @@ static const struct bgp_caps *
 bmp_get_bgp_remote_caps(const struct bgp_proto *bgp)
 {
   if (bgp->conn && bgp->conn->remote_caps)
-  {
     return bgp->conn->remote_caps;
-  }
 
   return NULL;
 }
@@ -529,9 +522,7 @@ bmp_get_bgp_remote_caps_ext(const struct bgp_proto *bgp)
 {
   const struct bgp_caps *remote_caps = bmp_get_bgp_remote_caps(bgp);
   if (remote_caps != NULL)
-  {
     return remote_caps;
-  }
 
   if (bgp->incoming_conn.remote_caps)
   {
@@ -556,8 +547,8 @@ bmp_is_peer_global_instance(const struct bgp_proto *bgp)
 
 static void
 bmp_send_peer_up_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
-  const byte* tx_data, const size_t tx_data_size,
-  const byte* rx_data, const size_t rx_data_size)
+  const byte *tx_data, const size_t tx_data_size,
+  const byte *rx_data, const size_t rx_data_size)
 {
   ASSERT(p->started);
 
@@ -577,20 +568,17 @@ bmp_send_peer_up_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
   bmp_buffer_free(&payload);
 }
 
+
 void
-bmp_route_monitor_update_in_pre_begin()
+bmp_route_monitor_update_in_pre_begin(void)
 {
   struct bmp_proto *p = g_bmp;
 
   if (!p || !p->started)
-  {
     return;
-  }
 
   if (p->monitoring_rib.in_pre_policy == false)
-  {
     return;
-  }
 
   IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
     !EMPTY_LIST(p->rt_table_in_pre_policy.update_msg_queue),
@@ -609,14 +597,10 @@ bmp_route_monitor_put_update_in_pre_msg(const byte *data, const size_t data_size
   struct bmp_proto *p = g_bmp;
 
   if (!p || !p->started)
-  {
     return;
-  }
 
   if (p->monitoring_rib.in_pre_policy == false)
-  {
     return;
-  }
 
   IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
     !p->rt_table_in_pre_policy.update_in_progress,
@@ -638,14 +622,10 @@ bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp)
   struct bmp_proto *p = g_bmp;
 
   if (!p || !p->started)
-  {
     return;
-  }
 
   if (p->monitoring_rib.in_pre_policy == false)
-  {
     return;
-  }
 
   const struct birdsock *sk = bmp_get_birdsock(bgp);
   IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
@@ -690,19 +670,15 @@ bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp)
 }
 
 void
-bmp_route_monitor_update_in_pre_end()
+bmp_route_monitor_update_in_pre_end(void)
 {
   struct bmp_proto *p = g_bmp;
 
   if (!p || !p->started)
-  {
     return;
-  }
 
   if (p->monitoring_rib.in_pre_policy == false)
-  {
     return;
-  }
 
   struct bmp_data_node *upd_msg;
   struct bmp_data_node *upd_msg_next;
@@ -722,15 +698,11 @@ bmp_route_monitor_pre_policy_table_in_snapshot(struct bgp_channel *c)
   struct bmp_proto *p = g_bmp;
 
   if (p->monitoring_rib.in_pre_policy == false)
-  {
     return;
-  }
 
   struct rtable *tab = c->c.in_table;
   if (!tab)
-  {
     return;
-  }
 
   size_t cnt = 0;
   struct proto *P;
@@ -776,7 +748,7 @@ bmp_route_monitor_pre_policy_table_in_snapshot(struct bgp_channel *c)
 
 static void
 bmp_send_peer_down_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
-  const byte* data, const size_t data_size)
+  const byte *data, const size_t data_size)
 {
   ASSERT(p->started);
 
@@ -939,7 +911,7 @@ bmp_connect(struct bmp_proto *p)
   tm_start(p->connect_retry_timer, CONNECT_RETRY_TIME);
 }
 
-/* BMP connect successfull event - switch from Connect to Established state */
+/* BMP connect successful event - switch from Connect to Established state */
 static void
 bmp_connected(struct birdsock *sk)
 {
