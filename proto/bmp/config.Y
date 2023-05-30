@@ -25,13 +25,12 @@ proto: bmp_proto '}' ;
 
 bmp_proto_start: proto_start BMP {
      this_proto = proto_config_new(&proto_bmp, $1);
+     BMP_CFG->local_addr = IPA_NONE4;
      BMP_CFG->station_ip = IPA_NONE4;
      BMP_CFG->station_port = 0;
      BMP_CFG->sys_descr = "Not defined";
      BMP_CFG->sys_name = "Not defined";
      BMP_CFG->monitoring_rib_in_pre_policy = false;
-     BMP_CFG->monitoring_rib_in_post_policy = false;
-     BMP_CFG->monitoring_rib_local = false;
    }
  ;
 
@@ -52,6 +51,9 @@ bmp_station_address:
 bmp_proto:
    bmp_proto_start proto_name '{'
  | bmp_proto proto_item ';'
+ | bmp_proto LOCAL ADDRESS ipa ';' {
+     BMP_CFG->local_addr = $4;
+   }
  | bmp_proto STATION ADDRESS bmp_station_address ';'
  | bmp_proto SYSTEM DESCRIPTION text ';' {
      if (!$4 || (strlen($4) == 0))
@@ -69,12 +71,6 @@ bmp_proto:
    }
  | bmp_proto MONITORING RIB IN PRE_POLICY bool ';' {
      BMP_CFG->monitoring_rib_in_pre_policy = $6;
-   }
- | bmp_proto MONITORING RIB IN POST_POLICY bool ';' {
-     BMP_CFG->monitoring_rib_in_post_policy = $6;
-   }
- | bmp_proto MONITORING RIB LOCAL bool ';' {
-     BMP_CFG->monitoring_rib_local = $5;
    }
  ;
 

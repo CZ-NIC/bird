@@ -35,11 +35,10 @@ struct bmp_config {
   struct proto_config c;
   const char *sys_descr;              // sysDescr MIB-II [RFC1213] object
   const char *sys_name;               // sysName MIB-II [RFC1213] object
+  ip_addr local_addr;                 // Local IP address
   ip_addr station_ip;                 // Monitoring station address
   u16 station_port;                   // Monitoring station TCP port
   bool monitoring_rib_in_pre_policy;  // Route monitoring pre-policy Adj-Rib-In
-  bool monitoring_rib_in_post_policy; // Route monitoring post-policy Adj-Rib-In
-  bool monitoring_rib_local;          // Route monitoring Local Rib
 };
 
 /* Forward declarations */
@@ -59,9 +58,10 @@ struct bmp_proto {
   struct proto p;                  // Parent proto
   const struct bmp_config *cf;     // Shortcut to BMP configuration
   sock *sk;                        // TCP connection
-  event *tx_ev;			   // TX event
+  event *tx_ev;                    // TX event
   char sys_descr[MIB_II_STR_LEN];  // sysDescr MIB-II [RFC1213] object
   char sys_name[MIB_II_STR_LEN];   // sysName MIB-II [RFC1213] object
+  ip_addr local_addr;              // Source local IP address
   ip_addr station_ip;              // Monitoring station IP address
   u16 station_port;                // Monitoring station TCP port
   struct monitoring_rib monitoring_rib;

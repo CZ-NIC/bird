@@ -892,6 +892,7 @@ bmp_connect(struct bmp_proto *p)
 
   sock *sk = sk_new(p->p.pool);
   sk->type = SK_TCP_ACTIVE;
+  sk->saddr = p->local_addr;
   sk->daddr = p->station_ip;
   sk->dport = p->station_port;
   sk->ttl = IP4_MAX_TTL;
@@ -970,25 +971,25 @@ bmp_init(struct proto_config *CF)
   struct proto *P = proto_new(CF);
   struct bmp_proto *p = (void *) P;
   struct bmp_config *cf = (void *) CF;
-
   p->cf = cf;
+  p->local_addr = cf->local_addr;
   p->station_ip = cf->station_ip;
   p->station_port = cf->station_port;
   strcpy(p->sys_descr, cf->sys_descr);
   strcpy(p->sys_name, cf->sys_name);
   p->monitoring_rib.in_pre_policy = cf->monitoring_rib_in_pre_policy;
-  p->monitoring_rib.in_post_policy = cf->monitoring_rib_in_post_policy;
-  p->monitoring_rib.local = cf->monitoring_rib_local;
 
   return P;
 }
 
+/**
+ * bmp_start - initialize internal resources of BMP implementation.
+ * NOTE: It does not connect to BMP collector yet.
+ */
 static int
 bmp_start(struct proto *P)
 {
   struct bmp_proto *p = (void *) P;
-
-  log(L_DEBUG "Init BMP");
 
   p->buffer_mpool = rp_new(P->pool, "BMP Buffer");
   p->map_mem_pool = rp_new(P->pool, "BMP Map");
