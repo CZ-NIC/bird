@@ -2424,15 +2424,20 @@ bgp_create_update_bmp(struct bgp_channel *c, byte *buf, struct bgp_bucket *buck,
 {
   struct bgp_proto *p = (void *) c->c.proto;
   byte *end = buf + (BGP_MAX_EXT_MSG_LENGTH - BGP_HEADER_LENGTH);
+  byte *res = NULL;
   /* FIXME: must be a bit shorter */
+
+  struct lp_state tmpp;
+  lp_save(tmp_linpool, &tmpp);
 
   struct bgp_caps *peer = p->conn->remote_caps;
   const struct bgp_af_caps *rem = bgp_find_af_caps(peer, c->afi);
+
   struct bgp_write_state s = {
     .proto = p,
     .channel = c,
     .pool = tmp_linpool,
-    .mp_reach = (c->afi != BGP_AF_IPV4) || rem->ext_next_hop,
+    .mp_reach = (c->afi != BGP_AF_IPV4) || (rem && rem->ext_next_hop),
     .as4_session = 1,
     .add_path = c->add_path_rx,
     .mpls = c->desc->mpls,
@@ -2441,16 +2446,20 @@ bgp_create_update_bmp(struct bgp_channel *c, byte *buf, struct bgp_bucket *buck,
 
   if (!update)
   {
-    return !s.mp_reach ?
+    res = !s.mp_reach ?
       bgp_create_ip_unreach(&s, buck, buf, end):
       bgp_create_mp_unreach(&s, buck, buf, end);
   }
   else
   {
-    return !s.mp_reach ?
+    res = !s.mp_reach ?
       bgp_create_ip_reach(&s, buck, buf, end):
       bgp_create_mp_reach(&s, buck, buf, end);
   }
+
+  lp_restore(tmp_linpool, &tmpp);
+
+  return res;
 }
 
 static byte *
