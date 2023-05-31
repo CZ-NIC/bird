@@ -843,6 +843,7 @@ bmp_startup(struct bmp_proto *p)
 {
   ASSERT(!p->started);
   p->started = true;
+  p->sock_err = 0;
 
   TRACE(D_EVENTS, "BMP session established");
 
@@ -931,6 +932,8 @@ bmp_sock_err(sock *sk, int err)
 {
   struct bmp_proto *p = sk->data;
 
+  p->sock_err = err;
+
   if (err)
     TRACE(D_EVENTS, "Connection lost (%M)", err);
   else
@@ -987,6 +990,7 @@ bmp_init(struct proto_config *CF)
   struct proto *P = proto_new(CF);
   struct bmp_proto *p = (void *) P;
   struct bmp_config *cf = (void *) CF;
+
   p->cf = cf;
   p->local_addr = cf->local_addr;
   p->station_ip = cf->station_ip;
@@ -1020,6 +1024,7 @@ bmp_start(struct proto *P)
   init_list(&p->tx_queue);
   init_list(&p->rt_table_in_pre_policy.update_msg_queue);
   p->started = false;
+  p->sock_err = 0;
 
   tm_start(p->connect_retry_timer, CONNECT_INIT_TIME);
 
@@ -1039,6 +1044,7 @@ bmp_shutdown(struct proto *P)
     p->started = false;
   }
 
+  p->sock_err = 0;
   g_bmp = NULL;
 
   return PS_DOWN;
@@ -1048,13 +1054,60 @@ static int
 bmp_reconfigure(struct proto *P, struct proto_config *CF)
 {
   struct bmp_proto *p = (void *) P;
-  const struct bmp_config *cf = (void *) CF;
+  const struct bmp_config *new = (void *) CF;
+  const struct bmp_config *old = p->cf;
 
-  log(L_WARN "Reconfiguring BMP is not supported");
+  int needs_restart = bstrcmp(new->sys_descr, old->sys_descr)
+    || bstrcmp(new->sys_name, old->sys_name)
+    || !ipa_equal(new->local_addr, old->local_addr)
+    || !ipa_equal(new->station_ip, old->station_ip)
+    || (new->station_port != old->station_port)
+    || (new->monitoring_rib_in_pre_policy != old->monitoring_rib_in_pre_policy);
 
-  p->cf = cf;
+  /* If there is any change, restart the protocol */
+  if (needs_restart)
+    return 0;
+
+  /* We must update our copy of configuration ptr */
+  p->cf = new;
 
   return 1;
+}
+
+static void
+bmp_get_status(struct proto *P, byte *buf)
+{
+  struct bmp_proto *p = (void *) P;
+
+  if (P->proto_state == PS_DOWN)
+    bsprintf(buf, "Down");
+  else
+  {
+    const char *state = !p->started ? (!p->sk ? "Idle" : "Connect") : "Established";
+
+    if (!p->sock_err)
+      bsprintf(buf, "%s", state);
+    else
+      bsprintf(buf, "%-14s%s %M", state, "Error:", p->sock_err);
+  }
+}
+
+static void
+bmp_show_proto_info(struct proto *P)
+{
+  struct bmp_proto *p = (void *) P;
+
+  if (P->proto_state != PS_DOWN)
+  {
+    cli_msg(-1006, "  %-19s %I", "Station address:", p->station_ip);
+    cli_msg(-1006, "  %-19s %u", "Station port:", p->station_port);
+
+    if (!ipa_zero(p->local_addr))
+      cli_msg(-1006, "  %-19s %I", "Local address:", p->local_addr);
+
+    if (p->sock_err)
+      cli_msg(-1006, "  %-19s %M", "Last error:", p->sock_err);
+  }
 }
 
 struct protocol proto_bmp = {
@@ -1068,6 +1121,8 @@ struct protocol proto_bmp = {
   .start = bmp_start,
   .shutdown = bmp_shutdown,
   .reconfigure = bmp_reconfigure,
+  .get_status = bmp_get_status,
+  .show_proto_info = bmp_show_proto_info,
 };
 
 void

@@ -75,6 +75,7 @@ struct bmp_proto {
   timer *connect_retry_timer;      // Timer for retrying connection to the BMP collector
   struct rt_table_info rt_table_in_pre_policy; // Pre-policy route import table
   bool started;                    // Flag that stores running status of BMP instance
+  int sock_err;                    // Last socket error code
 };
 
 
