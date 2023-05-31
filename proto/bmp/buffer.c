@@ -25,22 +25,32 @@ bmp_buffer_free(buffer *buf)
   buf->start = buf->pos = buf->end = NULL;
 }
 
+/**
+ * @brief bmp_buffer_grow
+ * @param buf - buffer to grow
+ * @param n   - required amount of available space
+ * Resize buffer in a way that there is at least @n bytes of available space.
+ */
 static void
 bmp_buffer_grow(buffer *buf, const size_t n)
 {
-  const size_t pos = bmp_buffer_pos(buf);
-  buf->start = mb_realloc(buf->start, n);
+  size_t pos = bmp_buffer_pos(buf);
+  size_t size = bmp_buffer_size(buf);
+  size_t req = pos + n;
+
+  while (size < req)
+    size = size * 3 / 2;
+
+  buf->start = mb_realloc(buf->start, size);
   buf->pos = buf->start + pos;
-  buf->end = buf->start + n;
+  buf->end = buf->start + size;
 }
 
 void
 bmp_buffer_need(buffer *buf, const size_t n)
 {
   if (bmp_buffer_avail(buf) < n)
-  {
     bmp_buffer_grow(buf, n);
-  }
 }
 
 void
