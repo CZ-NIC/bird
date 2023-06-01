@@ -46,6 +46,9 @@ extern struct timeloop main_timeloop;
 btime current_time(void);
 btime current_real_time(void);
 
+/* In sysdep code */
+btime current_time_now(void);
+
 //#define now (current_time() TO_S)
 //#define now_real (current_real_time() TO_S)
 extern btime boot_time;
