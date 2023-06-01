@@ -58,6 +58,13 @@ struct babel_tlv_ihu {
   u8 addr[0];
 } PACKED;
 
+struct babel_subtlv_timestamp {
+  u8 type;
+  u8 length;
+  u32 tstamp;
+  u32 tstamp_rcvd; /* only used in IHU */
+} PACKED;
+
 struct babel_tlv_router_id {
   u8 type;
   u8 length;
@@ -161,6 +168,7 @@ struct babel_parse_state {
   const struct babel_tlv_data* (*get_subtlv_data)(u8 type);
   struct babel_proto *proto;
   struct babel_iface *ifa;
+  btime received_time;
   ip_addr saddr;
   ip_addr next_hop_ip4;
   ip_addr next_hop_ip6;
@@ -172,6 +180,7 @@ struct babel_parse_state {
   u8 def_ip6_prefix_seen;	/* def_ip6_prefix is valid */
   u8 def_ip4_prefix_seen;	/* def_ip4_prefix is valid */
   u8 def_ip4_via_ip6_prefix_seen; /* def_ip4_via_ip6_prefix is valid */
+  u8 hello_tstamp_seen;	/* pkt contains a hello timestamp */
   u8 current_tlv_endpos;	/* End of self-terminating TLVs (offset from start) */
   u8 sadr_enabled;
   u8 is_unicast;
@@ -336,6 +345,7 @@ static int babel_read_update(struct babel_tlv *hdr, union babel_msg *msg, struct
 static int babel_read_route_request(struct babel_tlv *hdr, union babel_msg *msg, struct babel_parse_state *state);
 static int babel_read_seqno_request(struct babel_tlv *hdr, union babel_msg *msg, struct babel_parse_state *state);
 static int babel_read_source_prefix(struct babel_tlv *hdr, union babel_msg *msg, struct babel_parse_state *state);
+static int babel_read_timestamp(struct babel_tlv *hdr, union babel_msg *msg, struct babel_parse_state *state);
 
 static uint babel_write_ack(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, uint max_len);
 static uint babel_write_hello(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, uint max_len);
@@ -344,6 +354,7 @@ static uint babel_write_update(struct babel_tlv *hdr, union babel_msg *msg, stru
 static uint babel_write_route_request(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, uint max_len);
 static uint babel_write_seqno_request(struct babel_tlv *hdr, union babel_msg *msg, struct babel_write_state *state, uint max_len);
 static int babel_write_source_prefix(struct babel_tlv *hdr, net_addr *net, uint max_len);
+static int babel_write_timestamp(struct babel_tlv *hdr, u32 tstamp, u32 tstamp_rcvd, uint max_len);
 
 static const struct babel_tlv_data tlv_data[BABEL_TLV_MAX] = {
   [BABEL_TLV_ACK_REQ] = {
@@ -419,6 +430,13 @@ static const struct babel_tlv_data *get_packet_tlv_data(u8 type)
   return type < sizeof(tlv_data) / sizeof(*tlv_data) ? &tlv_data[type] : NULL;
 }
 
+static const struct babel_tlv_data timestamp_tlv_data = {
+  sizeof(struct babel_subtlv_timestamp),
+  babel_read_timestamp,
+  NULL,
+  NULL
+};
+
 static const struct babel_tlv_data source_prefix_tlv_data = {
   sizeof(struct babel_subtlv_source_prefix),
   babel_read_source_prefix,
@@ -430,6 +448,8 @@ static const struct babel_tlv_data *get_packet_subtlv_data(u8 type)
 {
   switch (type)
   {
+  case BABEL_SUBTLV_TIMESTAMP:
+    return &timestamp_tlv_data;
   case BABEL_SUBTLV_SOURCE_PREFIX:
     return &source_prefix_tlv_data;
 
@@ -491,16 +511,34 @@ babel_read_hello(struct babel_tlv *hdr, union babel_msg *m,
 
 static uint
 babel_write_hello(struct babel_tlv *hdr, union babel_msg *m,
-                  struct babel_write_state *state UNUSED, uint max_len UNUSED)
+                  struct babel_write_state *state UNUSED, uint max_len)
 {
   struct babel_tlv_hello *tlv = (void *) hdr;
   struct babel_msg_hello *msg = &m->hello;
+  uint len = sizeof(struct babel_tlv_hello);
 
   TLV_HDR0(tlv, BABEL_TLV_HELLO);
   put_u16(&tlv->seqno, msg->seqno);
   put_time16(&tlv->interval, msg->interval);
 
-  return sizeof(struct babel_tlv_hello);
+  if (msg->tstamp)
+  {
+    /*
+     * There can be a substantial delay between when the babel_msg was created
+     * and when it is serialised. We don't want this included in the RTT
+     * measurement, so replace the timestamp with the current time to get as
+     * close as possible to on-wire time for the packet.
+     */
+    u32 tstamp = current_time_now() TO_US;
+
+    int l = babel_write_timestamp(hdr, tstamp, 0, max_len);
+    if (l < 0)
+      return 0;
+
+    len += l;
+  }
+
+  return len;
 }
 
 static int
@@ -565,6 +603,7 @@ babel_write_ihu(struct babel_tlv *hdr, union babel_msg *m,
 {
   struct babel_tlv_ihu *tlv = (void *) hdr;
   struct babel_msg_ihu *msg = &m->ihu;
+  uint len = sizeof(*tlv);
 
   if (ipa_is_link_local(msg->addr) && max_len < sizeof(struct babel_tlv_ihu) + 8)
     return 0;
@@ -576,12 +615,24 @@ babel_write_ihu(struct babel_tlv *hdr, union babel_msg *m,
   if (!ipa_is_link_local(msg->addr))
   {
     tlv->ae = BABEL_AE_WILDCARD;
-    return sizeof(struct babel_tlv_ihu);
+    goto out;
   }
   put_ip6_ll(&tlv->addr, msg->addr);
   tlv->ae = BABEL_AE_IP6_LL;
   hdr->length += 8;
-  return sizeof(struct babel_tlv_ihu) + 8;
+  len += 8;
+
+out:
+  if (msg->tstamp)
+  {
+    int l = babel_write_timestamp(hdr, msg->tstamp, msg->tstamp_rcvd, max_len);
+    if (l < 0)
+      return 0;
+
+    len += l;
+  }
+
+  return len;
 }
 
 static int
@@ -1249,6 +1300,66 @@ babel_write_source_prefix(struct babel_tlv *hdr, net_addr *n, uint max_len)
   return len;
 }
 
+static int
+babel_read_timestamp(struct babel_tlv *hdr, union babel_msg *msg,
+                     struct babel_parse_state *state)
+{
+  struct babel_subtlv_timestamp *tlv = (void *) hdr;
+
+  switch (msg->type)
+  {
+  case BABEL_TLV_HELLO:
+    if (tlv->length < 4)
+      return PARSE_ERROR;
+
+    msg->hello.tstamp = get_u32(&tlv->tstamp);
+    msg->hello.pkt_received = state->received_time;
+    state->hello_tstamp_seen = 1;
+    break;
+
+  case BABEL_TLV_IHU:
+    if (tlv->length < 8)
+      return PARSE_ERROR;
+
+    /* RTT calculation relies on a Hello always being present with an IHU */
+    if (!state->hello_tstamp_seen)
+      break;
+
+    msg->ihu.tstamp = get_u32(&tlv->tstamp);
+    msg->ihu.tstamp_rcvd = get_u32(&tlv->tstamp_rcvd);
+    msg->ihu.pkt_received = state->received_time;
+    break;
+
+  default:
+    return PARSE_ERROR;
+  }
+
+  return PARSE_SUCCESS;
+}
+
+static int
+babel_write_timestamp(struct babel_tlv *hdr, u32 tstamp, u32 tstamp_rcvd, uint max_len)
+{
+  struct babel_subtlv_timestamp *tlv = (void *) NEXT_TLV(hdr);
+  uint len = sizeof(*tlv);
+
+  if (hdr->type == BABEL_TLV_HELLO)
+    len -= 4;
+
+  if (len > max_len)
+    return -1;
+
+  TLV_HDR(tlv, BABEL_SUBTLV_TIMESTAMP, len);
+  hdr->length += len;
+
+  put_u32(&tlv->tstamp, tstamp);
+
+  if (hdr->type == BABEL_TLV_IHU)
+    put_u32(&tlv->tstamp_rcvd, tstamp_rcvd);
+
+  return len;
+}
+
 static inline int
 babel_read_subtlvs(struct babel_tlv *hdr,
 		   union babel_msg *msg,
@@ -1518,6 +1629,13 @@ babel_process_packet(struct babel_iface *ifa,
     .saddr           = saddr,
     .next_hop_ip6    = saddr,
     .sadr_enabled    = babel_sadr_enabled(p),
+
+    /*
+     * The core updates current_time() after returning from poll(), so this is
+     * actually the time the packet was received, even though there may have
+     * been a bit of delay before we got to process it
+     */
+    .received_time   = current_time(),
   };
 
   if ((pkt->magic != BABEL_MAGIC) || (pkt->version != BABEL_VERSION))

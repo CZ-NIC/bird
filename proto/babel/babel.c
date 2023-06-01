@@ -596,6 +596,7 @@ babel_update_cost(struct babel_neighbor *nbr)
   switch (cf->type)
   {
   case BABEL_IFACE_TYPE_WIRED:
+  case BABEL_IFACE_TYPE_TUNNEL:
     /* k-out-of-j selection - Appendix 2.1 in the RFC. */
 
     /* Link is bad if less than cf->limit/16 of expected hellos were received */
@@ -622,6 +623,24 @@ babel_update_cost(struct babel_neighbor *nbr)
     rxcost = MIN( cf->rxcost * max / rcv, BABEL_INFINITY);
     txcost = MIN(nbr->txcost * max / rcv, BABEL_INFINITY);
     break;
+  }
+
+  if (cf->rtt_cost && nbr->srtt > cf->rtt_min)
+  {
+    uint rtt_cost = cf->rtt_cost;
+
+    if (nbr->srtt < cf->rtt_max)
+    {
+      uint rtt_interval = cf->rtt_max TO_US - cf->rtt_min TO_US;
+      uint rtt_diff = (nbr->srtt TO_US - cf->rtt_min TO_US);
+
+      rtt_cost = (rtt_cost * rtt_diff) / rtt_interval;
+    }
+
+    txcost = MIN(txcost + rtt_cost, BABEL_INFINITY);
+
+    TRACE(D_EVENTS, "Added RTT cost %u to nbr %I on %s with srtt %u.%03u ms",
+	  rtt_cost, nbr->addr, nbr->ifa->iface->name, nbr->srtt/1000, nbr->srtt%1000);
   }
 
 done:
@@ -854,6 +873,12 @@ babel_build_ihu(union babel_msg *msg, struct babel_iface *ifa, struct babel_neig
   msg->ihu.rxcost = n->rxcost;
   msg->ihu.interval = ifa->cf->ihu_interval;
 
+  if (n->last_tstamp_rcvd && ifa->cf->rtt_send)
+  {
+    msg->ihu.tstamp = n->last_tstamp;
+    msg->ihu.tstamp_rcvd = n->last_tstamp_rcvd TO_US;
+  }
+
   TRACE(D_PACKETS, "Sending IHU for %I with rxcost %d interval %t",
         msg->ihu.addr, msg->ihu.rxcost, (btime) msg->ihu.interval);
 }
@@ -892,6 +917,9 @@ babel_send_hello(struct babel_iface *ifa, uint interval)
   msg.type = BABEL_TLV_HELLO;
   msg.hello.seqno = ifa->hello_seqno++;
   msg.hello.interval = interval ?: ifa->cf->hello_interval;
+
+  if (ifa->cf->rtt_send)
+    msg.hello.tstamp = 1; /* real timestamp will be set on TLV write */
 
   TRACE(D_PACKETS, "Sending hello on %s with seqno %d interval %t",
 	ifa->ifname, msg.hello.seqno, (btime) msg.hello.interval);
@@ -1199,14 +1227,26 @@ babel_handle_hello(union babel_msg *m, struct babel_iface *ifa)
 	msg->seqno, (btime) msg->interval);
 
   struct babel_neighbor *n = babel_get_neighbor(ifa, msg->sender);
+  struct babel_iface_config *cf = n->ifa->cf;
   int first_hello = !n->hello_cnt;
 
+  if (msg->tstamp)
+  {
+    n->last_tstamp = msg->tstamp;
+    n->last_tstamp_rcvd = msg->pkt_received;
+  }
   babel_update_hello_history(n, msg->seqno, msg->interval);
   babel_update_cost(n);
 
   /* Speed up session establishment by sending IHU immediately */
   if (first_hello)
-    babel_send_ihu(ifa, n);
+  {
+    /* if using RTT, all IHUs must be paired with hellos */
+    if(cf->rtt_send)
+      babel_send_hello(ifa, 0);
+    else
+      babel_send_ihu(ifa, n);
+  }
 }
 
 void
@@ -1225,6 +1265,39 @@ babel_handle_ihu(union babel_msg *m, struct babel_iface *ifa)
   struct babel_neighbor *n = babel_get_neighbor(ifa, msg->sender);
   n->txcost = msg->rxcost;
   n->ihu_expiry = current_time() + BABEL_IHU_EXPIRY_FACTOR(msg->interval);
+
+  if (msg->tstamp)
+  {
+    u32 rtt_sample = 0, pkt_received = msg->pkt_received TO_US;
+    int remote_time, full_time;
+
+    /* processing time reported by peer */
+    remote_time = (n->last_tstamp - msg->tstamp_rcvd);
+    /* time since we sent the last timestamp - RTT including remote time */
+    full_time = (pkt_received - msg->tstamp);
+
+    /* sanity checks */
+    if (remote_time < 0 || full_time < 0 ||
+        remote_time US_ > BABEL_RTT_MAX_VALUE || full_time US_ > BABEL_RTT_MAX_VALUE)
+      goto out;
+
+    if (remote_time < full_time)
+      rtt_sample = full_time - remote_time;
+
+    if (n->srtt)
+    {
+      uint decay = n->ifa->cf->rtt_decay;
+
+      n->srtt = (decay * rtt_sample + (256 - decay) * n->srtt) / 256;
+    }
+    else
+      n->srtt = rtt_sample;
+
+    TRACE(D_EVENTS, "RTT sample for neighbour %I on %s: %u us (srtt %u.%03u ms)",
+          n->addr, ifa->ifname, rtt_sample, n->srtt/1000, n->srtt%1000);
+  }
+
+out:
   babel_update_cost(n);
 }
 
@@ -2199,8 +2272,8 @@ babel_show_neighbors(struct proto *P, const char *iff)
   }
 
   cli_msg(-1024, "%s:", p->p.name);
-  cli_msg(-1024, "%-25s %-10s %6s %6s %6s %7s %4s",
-	  "IP address", "Interface", "Metric", "Routes", "Hellos", "Expires", "Auth");
+  cli_msg(-1024, "%-25s %-10s %6s %6s %6s %7s %4s %11s",
+	  "IP address", "Interface", "Metric", "Routes", "Hellos", "Expires", "Auth", "RTT");
 
   WALK_LIST(ifa, p->interfaces)
   {
@@ -2215,9 +2288,10 @@ babel_show_neighbors(struct proto *P, const char *iff)
 
       uint hellos = u32_popcount(n->hello_map);
       btime timer = (n->hello_expiry ?: n->init_expiry) - current_time();
-      cli_msg(-1024, "%-25I %-10s %6u %6u %6u %7t %-4s",
+      cli_msg(-1024, "%-25I %-10s %6u %6u %6u %7t %-4s %5u.%03ums",
 	      n->addr, ifa->iface->name, n->cost, rts, hellos, MAX(timer, 0),
-              n->auth_passed ? "Yes" : "No");
+              n->auth_passed ? "Yes" : "No",
+              n->srtt/1000, n->srtt%1000);
     }
   }
 }
