@@ -26,7 +26,7 @@ CF_KEYWORDS(BABEL, INTERFACE, METRIC, RXCOST, HELLO, UPDATE, INTERVAL, PORT,
 	TYPE, WIRED, WIRELESS, RX, TX, BUFFER, PRIORITY, LENGTH, CHECK, LINK,
 	NEXT, HOP, IPV4, IPV6, BABEL_METRIC, SHOW, INTERFACES, NEIGHBORS,
 	ENTRIES, RANDOMIZE, ROUTER, ID, AUTHENTICATION, NONE, MAC, PERMISSIVE,
-	EXTENDED)
+	EXTENDED, TUNNEL, RTT, MIN, MAX, DECAY, SEND, TIMESTAMPS)
 
 CF_GRAMMAR
 
@@ -67,6 +67,10 @@ babel_iface_start:
   BABEL_IFACE->limit = BABEL_HELLO_LIMIT;
   BABEL_IFACE->tx_tos = IP_PREC_INTERNET_CONTROL;
   BABEL_IFACE->tx_priority = sk_priority_control;
+  BABEL_IFACE->rtt_min = BABEL_RTT_MIN;
+  BABEL_IFACE->rtt_max = BABEL_RTT_MAX;
+  BABEL_IFACE->rtt_decay = BABEL_RTT_DECAY;
+  BABEL_IFACE->rtt_send = 1;
   BABEL_IFACE->check_link = 1;
   BABEL_IFACE->ext_next_hop = 1;
 };
@@ -87,7 +91,15 @@ babel_iface_finish:
       BABEL_IFACE->hello_interval = BABEL_HELLO_INTERVAL_WIRED;
     if (!BABEL_IFACE->rxcost)
       BABEL_IFACE->rxcost = BABEL_RXCOST_WIRED;
+    if (BABEL_IFACE->type == BABEL_IFACE_TYPE_TUNNEL && !BABEL_IFACE->rtt_cost)
+      BABEL_IFACE->rtt_cost = BABEL_RXCOST_RTT;
   }
+
+  if (BABEL_IFACE->rtt_cost && !BABEL_IFACE->rtt_send)
+    cf_error("Can't set RTT cost when sending timestamps is disabled");
+
+  if (BABEL_IFACE->rtt_min >= BABEL_IFACE->rtt_max)
+    cf_error("Min RTT must be smaller than max RTT");
 
   /* Make sure we do not overflow the 16-bit centisec fields */
   if (!BABEL_IFACE->update_interval)
@@ -136,6 +148,7 @@ babel_iface_item:
  | LIMIT expr { BABEL_IFACE->limit = $2; if (($2<1) || ($2>16)) cf_error("Limit must be in range 1-16"); }
  | TYPE WIRED { BABEL_IFACE->type = BABEL_IFACE_TYPE_WIRED; }
  | TYPE WIRELESS { BABEL_IFACE->type = BABEL_IFACE_TYPE_WIRELESS; }
+ | TYPE TUNNEL { BABEL_IFACE->type = BABEL_IFACE_TYPE_TUNNEL; }
  | HELLO INTERVAL expr_us { BABEL_IFACE->hello_interval = $3; if (($3<BABEL_MIN_INTERVAL) || ($3>BABEL_MAX_INTERVAL)) cf_error("Hello interval must be in range 10 ms - 655 s"); }
  | UPDATE INTERVAL expr_us { BABEL_IFACE->update_interval = $3; if (($3<BABEL_MIN_INTERVAL) || ($3>BABEL_MAX_INTERVAL)) cf_error("Update interval must be in range 10 ms - 655 s"); }
  | RX BUFFER expr { BABEL_IFACE->rx_buffer = $3; if (($3<256) || ($3>65535)) cf_error("RX buffer must be in range 256-65535"); }
@@ -149,6 +162,11 @@ babel_iface_item:
  | AUTHENTICATION NONE { BABEL_IFACE->auth_type = BABEL_AUTH_NONE; }
  | AUTHENTICATION MAC { BABEL_IFACE->auth_type = BABEL_AUTH_MAC; BABEL_IFACE->auth_permissive = 0; }
  | AUTHENTICATION MAC PERMISSIVE { BABEL_IFACE->auth_type = BABEL_AUTH_MAC; BABEL_IFACE->auth_permissive = 1; }
+ | RTT MIN expr_us { BABEL_IFACE->rtt_min = $3; }
+ | RTT MAX expr_us { BABEL_IFACE->rtt_max = $3; }
+ | RTT COST expr { BABEL_IFACE->rtt_cost = $3; if ($3 >= BABEL_INFINITY) cf_error("RTT cost must be < 65535"); }
+ | RTT DECAY expr { BABEL_IFACE->rtt_decay = $3; if (($3 < 1) || ($3 > 256)) cf_error("RTT decay must be between 1-256"); }
+ | SEND TIMESTAMPS bool { BABEL_IFACE->rtt_send = $3; }
  | password_list
  ;
 
