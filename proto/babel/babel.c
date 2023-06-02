@@ -639,8 +639,8 @@ babel_update_cost(struct babel_neighbor *nbr)
 
     txcost = MIN(txcost + rtt_cost, BABEL_INFINITY);
 
-    TRACE(D_EVENTS, "Added RTT cost %u to nbr %I on %s with srtt %u.%03u ms",
-	  rtt_cost, nbr->addr, nbr->ifa->iface->name, nbr->srtt/1000, nbr->srtt%1000);
+    TRACE(D_EVENTS, "Added RTT cost %u to nbr %I on %s with srtt %t ms",
+	  rtt_cost, nbr->addr, nbr->ifa->iface->name, nbr->srtt * 1000);
   }
 
 done:
@@ -1293,8 +1293,8 @@ babel_handle_ihu(union babel_msg *m, struct babel_iface *ifa)
     else
       n->srtt = rtt_sample;
 
-    TRACE(D_EVENTS, "RTT sample for neighbour %I on %s: %u us (srtt %u.%03u ms)",
-          n->addr, ifa->ifname, rtt_sample, n->srtt/1000, n->srtt%1000);
+    TRACE(D_EVENTS, "RTT sample for neighbour %I on %s: %u us (srtt %t ms)",
+          n->addr, ifa->ifname, rtt_sample, n->srtt * 1000);
   }
 
 out:
@@ -2272,8 +2272,8 @@ babel_show_neighbors(struct proto *P, const char *iff)
   }
 
   cli_msg(-1024, "%s:", p->p.name);
-  cli_msg(-1024, "%-25s %-10s %6s %6s %6s %7s %4s %11s",
-	  "IP address", "Interface", "Metric", "Routes", "Hellos", "Expires", "Auth", "RTT");
+  cli_msg(-1024, "%-25s %-10s %6s %6s %6s %7s %4s %9s",
+	  "IP address", "Interface", "Metric", "Routes", "Hellos", "Expires", "Auth", "RTT (ms)");
 
   WALK_LIST(ifa, p->interfaces)
   {
@@ -2288,10 +2288,10 @@ babel_show_neighbors(struct proto *P, const char *iff)
 
       uint hellos = u32_popcount(n->hello_map);
       btime timer = (n->hello_expiry ?: n->init_expiry) - current_time();
-      cli_msg(-1024, "%-25I %-10s %6u %6u %6u %7t %-4s %5u.%03ums",
+      cli_msg(-1024, "%-25I %-10s %6u %6u %6u %7t %-4s %9t",
 	      n->addr, ifa->iface->name, n->cost, rts, hellos, MAX(timer, 0),
               n->auth_passed ? "Yes" : "No",
-              n->srtt/1000, n->srtt%1000);
+              n->srtt * 1000);
     }
   }
 }
