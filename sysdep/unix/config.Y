@@ -25,6 +25,7 @@ CF_KEYWORDS(GRACEFUL, RESTART)
 %type <t> cfg_name
 %type <tf> timeformat_which
 %type <t> syslog_name
+%type <control_socket_config> control_socket_listen
 
 CF_GRAMMAR
 
@@ -100,6 +101,32 @@ mrtdump_base:
    }
  ;
 
+
+conf: control_socket ';' ;
+
+control_socket:
+   COMMANDS control_socket_listen {
+     control_socket_config_add_tail(&new_config->control_socket, $2);
+   }
+ | COMMANDS RESTRICT control_socket_listen {
+     $3->restricted = 1;
+     control_socket_config_add_tail(&new_config->control_socket, $3);
+   }
+;
+
+control_socket_listen:
+   ipa PORT expr {
+     $$ = cfg_allocz(sizeof(struct control_socket_config));
+     $$->config = new_config;
+     $$->addr = $1;
+     $$->port = $3;
+   }
+ | text {
+     $$ = cfg_allocz(sizeof(struct control_socket_config));
+     $$->config = new_config;
+     $$->unix = $1;
+   }
+ ;
 
 conf: debug_unix ;
 

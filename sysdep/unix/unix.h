@@ -107,11 +107,11 @@ extern volatile sig_atomic_t async_shutdown_flag;
 void io_init(void);
 void io_loop(void);
 void io_log_dump(void);
-int sk_open_unix(struct birdsock *s, char *name);
+int sk_open_unix(struct birdsock *s, const char *name);
 struct rfile *rf_open(struct pool *, const char *name, const char *mode);
 void *rf_file(struct rfile *f);
 int rf_fileno(struct rfile *f);
-void test_old_bird(char *path);
+void test_old_bird(const char *path);
 
 /* krt.c bits */
 
@@ -122,17 +122,5 @@ void krt_io_init(void);
 void main_thread_init(void);
 void log_init_debug(char *);		/* Initialize debug dump to given file (NULL=stderr, ""=off) */
 void log_switch(int initial, list *l, const char *);
-
-struct log_config {
-  node n;
-  uint mask;				/* Classes to log */
-  void *fh;				/* FILE to log to, NULL=syslog */
-  struct rfile *rf;			/* Resource for log file */
-  const char *filename;			/* Log filename */
-  const char *backup;			/* Secondary filename (for log rotation) */
-  off_t pos;				/* Position/size of current log */
-  off_t limit;				/* Log size limit */
-  int terminal_flag;
-};
 
 #endif

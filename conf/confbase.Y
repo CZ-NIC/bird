@@ -95,6 +95,7 @@ CF_DECLS
   struct timeformat *tf;
   mpls_label_stack *mls;
   struct bytestring *bs;
+  struct control_socket_config *control_socket_config;
 }
 
 %token END CLI_MARKER INVALID_TOKEN ELSECOL DDOT

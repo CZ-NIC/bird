@@ -14,6 +14,9 @@
 #include "lib/hash.h"
 #include "lib/resource.h"
 #include "lib/timer.h"
+#include "lib/tlists.h"
+
+#include "sysdep/unix/conf.h"
 
 /* Configuration structure */
 
@@ -30,6 +33,8 @@ struct config {
   const char *syslog_name;		/* Name used for syslog (NULL -> no syslog) */
   struct rtable_config *def_tables[NET_MAX]; /* Default routing tables for each network */
   struct iface_patt *router_id_from;	/* Configured list of router ID iface patterns */
+
+  TLIST_LIST(control_socket_config) control_socket;	/* Control socket definitions */
 
   u32 router_id;			/* Our Router ID */
   u32 proto_default_debug;		/* Default protocol debug mask */

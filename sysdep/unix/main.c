@@ -198,10 +198,22 @@ sysdep_preconfig(struct config *c)
 #endif
 }
 
+static int control_socket_open(struct control_socket_config *csc);
+static void control_socket_close(struct control_socket_config *csc);
+
 int
-sysdep_commit(struct config *new, struct config *old UNUSED)
+sysdep_commit(struct config *new, struct config *old)
 {
   log_switch(0, &new->logfiles, new->syslog_name);
+
+  WALK_TLIST(control_socket_config, csc, &new->control_socket)
+    control_socket_open(csc);
+
+  if (old)
+    WALK_TLIST(control_socket_config, csc, &old->control_socket)
+      if (csc->cs)
+	control_socket_close(csc);
+
   return 0;
 }
 
@@ -394,9 +406,24 @@ cmd_reconfig_status(void)
  *	Command-Line Interface
  */
 
-static sock *cli_sk;
-static char *path_control_socket = PATH_CONTROL_SOCKET;
+#define TLIST_PREFIX control_socket
+#define TLIST_TYPE struct control_socket
+#define TLIST_ITEM n
+#define TLIST_WANT_WALK
+#define TLIST_WANT_ADD_TAIL
 
+struct control_socket {
+  TLIST_DEFAULT_NODE;
+  struct control_socket_config *cf;
+  sock *s;
+};
+
+#include "lib/tlists.h"
+
+static TLIST_LIST(control_socket) control_sockets;
+static struct control_socket_config args_control_socket = {
+  .unix = PATH_CONTROL_SOCKET,
+};
 
 static void
 cli_write(cli *c)
@@ -503,6 +530,8 @@ cli_connect_err(sock *s UNUSED, int err)
 static int
 cli_connect(sock *s, uint size UNUSED)
 {
+  struct control_socket_config *csc = s->data;
+
   cli *c;
 
   if (config->cli_debug)
@@ -514,36 +543,135 @@ cli_connect(sock *s, uint size UNUSED)
   s->pool = c->pool;		/* We need to have all the socket buffers allocated in the cli pool */
   s->fast_rx = 1;
   c->rx_pos = c->rx_buf;
+  c->restricted = csc->restricted;
   rmove(s, c->pool);
   return 1;
+}
+
+static int
+control_socket_open(struct control_socket_config *csc)
+{
+  /* Find existing socket */
+  WALK_TLIST(control_socket, cs, &control_sockets)
+  {
+    if (ipa_equal(cs->cf->addr, csc->addr) &&
+	(cs->cf->port == csc->port) &&
+	(!cs->cf->unix && !csc->unix || !strcmp(cs->cf->unix, csc->unix)))
+    {
+      if (!cs->cf->config)
+      {
+	log(L_ERR "Can't configure the same control socket in config and args: %s", cs->cf->unix);
+	return 0;
+      }
+
+      if (cs->cf->config == csc->config)
+      {
+	if (csc->unix)
+	  log(L_ERR "Duplicate control socket config: %s", csc->unix);
+	else
+	  log(L_ERR "Duplicate control socket config: %I port %d", csc->addr, csc->port);
+	return 0;
+      }
+
+      cs->cf->cs = NULL;
+      cs->cf = csc;
+      csc->cs = cs;
+      return 1;
+    }
+  }
+
+  struct control_socket *cs = mb_allocz(cli_pool, sizeof(struct control_socket));
+  cs->s = sk_new(cli_pool);
+  cs->s->data = csc;
+
+  cs->s->rx_hook = cli_connect;
+  cs->s->err_hook = cli_connect_err;
+  cs->s->rbsize = 1024;
+  cs->s->fast_rx = 1;
+
+  if (csc->unix)
+  {
+    cs->s->type = SK_UNIX_PASSIVE;
+    int ok = 0;
+    do {
+      /* Just a cleanup, no need to check the return value */
+      unlink(csc->unix);
+
+      if (sk_open_unix(cs->s, csc->unix) < 0)
+      {
+	log(L_ERR "Cannot create control socket %s: %m", csc->unix);
+	break;
+      }
+
+      if (csc->uid || csc->gid)
+	if (chown(csc->unix, csc->uid, csc->gid) < 0)
+	{
+	  log(L_ERR "Cannot chown control socket %s: %m", csc->unix);
+	  break;
+	}
+
+      if (chmod(csc->unix, 0660) < 0)
+      {
+	log(L_ERR "Cannot chmod control socket %s: %m", csc->unix);
+	break;
+      }
+
+      ok = 1;
+    } while (0);
+
+    if (!ok)
+    {
+      rfree(cs->s);
+      mb_free(cs);
+      return 0;
+    }
+  }
+  else
+  {
+    cs->s->type = SK_TCP_PASSIVE;
+    cs->s->saddr = csc->addr;
+    cs->s->sport = csc->port;
+
+    if (sk_open(cs->s) < 0)
+    {
+      log(L_ERR "Cannot open control socket at %I port %d", csc->addr, csc->port);
+      rfree(cs->s);
+      mb_free(cs);
+      return 0;
+    }
+  }
+
+  cs->cf = csc;
+  csc->cs = cs;
+  return 1;
+}
+
+static void
+control_socket_close(struct control_socket_config *csc)
+{
+  ASSERT_DIE(csc->cs);
+  if (!csc->cs)
+    return;
+
+  if (csc->unix)
+    unlink(csc->unix);
+
+  rfree(csc->cs->s);
+  mb_free(csc->cs);
+  csc->cs = NULL;
 }
 
 static void
 cli_init_unix(uid_t use_uid, gid_t use_gid)
 {
-  sock *s;
-
   cli_init();
-  s = cli_sk = sk_new(cli_pool);
-  s->type = SK_UNIX_PASSIVE;
-  s->rx_hook = cli_connect;
-  s->err_hook = cli_connect_err;
-  s->rbsize = 1024;
-  s->fast_rx = 1;
+  args_control_socket.uid = use_uid;
+  args_control_socket.gid = use_gid;
 
-  /* Return value intentionally ignored */
-  unlink(path_control_socket);
-
-  if (sk_open_unix(s, path_control_socket) < 0)
-    die("Cannot create control socket %s: %m", path_control_socket);
-
-  if (use_uid || use_gid)
-    if (chown(path_control_socket, use_uid, use_gid) < 0)
-      die("chown: %m");
-
-  if (chmod(path_control_socket, 0660) < 0)
-    die("chmod: %m");
+  if (!control_socket_open(&args_control_socket))
+    die("Failed to create control socket: %s", args_control_socket.unix);
 }
+
 
 /*
  *	PID file
@@ -622,7 +750,7 @@ void
 sysdep_shutdown_done(void)
 {
   unlink_pid_file();
-  unlink(path_control_socket);
+  control_socket_close(&args_control_socket);
   log_msg(L_FATAL "Shutdown completed");
   exit(0);
 }
@@ -834,7 +962,7 @@ parse_args(int argc, char **argv)
 	parse_and_exit = 1;
 	break;
       case 's':
-	path_control_socket = optarg;
+	args_control_socket.unix = optarg;
 	socket_changed = 1;
 	break;
       case 'P':
@@ -853,7 +981,7 @@ parse_args(int argc, char **argv)
 	if (!config_changed)
 	  config_name = xbasename(config_name);
 	if (!socket_changed)
-	  path_control_socket = xbasename(path_control_socket);
+	  args_control_socket.unix = xbasename(args_control_socket.unix);
 	break;
       case 'R':
 	graceful_restart_recovery();
@@ -903,7 +1031,7 @@ main(int argc, char **argv)
 
   if (!parse_and_exit)
   {
-    test_old_bird(path_control_socket);
+    test_old_bird(args_control_socket.unix);
     cli_init_unix(use_uid, use_gid);
   }
 

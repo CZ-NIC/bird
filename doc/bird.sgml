@@ -179,7 +179,8 @@ BIRD executable by configuring out routing protocols you don't use, and
 
 	<tag><label id="argv-socket">-s <m/name of communication socket/</tag>
 	use given filename for a socket for communications with the client,
-	default is <it/prefix/<file>/var/run/bird.ctl</file>.
+	default is <it/prefix/<file>/var/run/bird.ctl</file>. See also
+	<ref id="opt-commands" name="commands config option">.
 
 	<tag><label id="argv-user">-u <m/user/</tag>
 	drop privileges and use that user ID, see the next section for details.
@@ -470,6 +471,11 @@ protocol rip {
 ipv6 table
 include "tablename.conf";;
 </code>
+
+	<tag><label id="opt-commands">commands [ restrict ] "<m/filename/" | <m/ip/ port <m/port/;</tag>
+	Open an additional UNIX or TCP control socket for client communication.
+	When <cf>restrict</cf> is specified, the socket is restricted as if <tt/-r/
+	was always given to <tt/birdc/.
 
 	<tag><label id="opt-log">log "<m/filename/" [<m/limit/ "<m/backup/"] | syslog [name <m/name/] | stderr all|{ <m/list of classes/ }</tag>
 	Set logging of messages having the given class (either <cf/all/ or <cf>{
