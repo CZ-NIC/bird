@@ -9,6 +9,8 @@
 #ifndef _BIRD_BIRD_H_
 #define _BIRD_BIRD_H_
 
+#undef unix /* An unneeded ancient C quirk */
+
 #include "sysdep/config.h"
 #include "lib/birdlib.h"
 #include "lib/ip.h"
