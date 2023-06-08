@@ -1715,7 +1715,7 @@ bgp_init(struct proto_config *CF)
   P->rte_igp_metric = bgp_rte_igp_metric;
 
 #ifdef CONFIG_BMP
-  P->rte_update_in_notify = bgp_rte_update_in_notify;
+  P->rte_update_in_notify = bmp_route_monitor_update_in_notify;
 #endif
 
   p->cf = cf;

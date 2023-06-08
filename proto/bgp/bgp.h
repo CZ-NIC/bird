@@ -631,10 +631,12 @@ struct rte *bgp_rte_modify_stale(struct rte *r, struct linpool *pool);
 u32 bgp_rte_igp_metric(struct rte *);
 void bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old);
 int bgp_preexport(struct channel *, struct rte *);
-void bgp_rte_update_in_notify(struct channel *C, const net_addr *n, const struct rte *new, const struct rte_src *src);
 int bgp_get_attr(const struct eattr *e, byte *buf, int buflen);
 void bgp_get_route_info(struct rte *, byte *buf);
 int bgp_total_aigp_metric_(rte *e, u64 *metric, const struct adata **ad);
+
+struct bmp_proto;
+void bgp_bmp_encode_rte(struct bgp_channel *c, struct bmp_proto *bmp, const net_addr *n, const struct rte *new, const struct rte_src *src);
 
 #define BGP_AIGP_METRIC		1
 #define BGP_AIGP_MAX		U64(0xffffffffffffffff)
@@ -664,8 +666,8 @@ const char * bgp_error_dsc(unsigned code, unsigned subcode);
 void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsigned subcode, byte *data, unsigned len);
 
 void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
+byte *bgp_create_end_mark_(struct bgp_channel *c, byte *buf);
 
-byte * bgp_create_end_mark(struct bgp_channel *c, byte *buf);
 
 /* Packet types */
 

@@ -2473,11 +2473,10 @@ bgp_bmp_prepare_bgp_hdr(byte *buf, const u16 msg_size, const u8 msg_type)
 }
 
 void
-bgp_rte_update_in_notify(struct channel *C, const net_addr *n,
-			 const struct rte *new, const struct rte_src *src)
+bgp_bmp_encode_rte(struct bgp_channel *c, struct bmp_proto *bmp, const net_addr *n,
+		   const struct rte *new, const struct rte_src *src)
 {
-//  struct bgp_proto *p = (void *) C->proto;
-  struct bgp_channel *c = (void *) C;
+//  struct bgp_proto *p = (void *) c->c.proto;
 
   byte buf[BGP_MAX_EXT_MSG_LENGTH];
   byte *pkt = buf + BGP_HEADER_LENGTH;
@@ -2507,7 +2506,7 @@ bgp_rte_update_in_notify(struct channel *C, const net_addr *n,
     return;
 
   bgp_bmp_prepare_bgp_hdr(buf, end - buf, PKT_UPDATE);
-  bmp_route_monitor_put_update_in_pre_msg(buf, end - buf);
+  bmp_route_monitor_put_update_in_pre_msg(bmp, buf, end - buf);
 }
 
 #endif /* CONFIG_BMP */
@@ -2614,6 +2613,14 @@ bgp_create_mp_end_mark(struct bgp_channel *c, byte *buf)
 }
 
 byte *
+bgp_create_end_mark_(struct bgp_channel *c, byte *buf)
+{
+  return (c->afi == BGP_AF_IPV4) ?
+    bgp_create_ip_end_mark(c, buf):
+    bgp_create_mp_end_mark(c, buf);
+}
+
+static byte *
 bgp_create_end_mark(struct bgp_channel *c, byte *buf)
 {
   struct bgp_proto *p = (void *) c->c.proto;
@@ -2621,9 +2628,7 @@ bgp_create_end_mark(struct bgp_channel *c, byte *buf)
   BGP_TRACE(D_PACKETS, "Sending END-OF-RIB");
   p->stats.tx_updates++;
 
-  return (c->afi == BGP_AF_IPV4) ?
-    bgp_create_ip_end_mark(c, buf):
-    bgp_create_mp_end_mark(c, buf);
+  return bgp_create_end_mark_(c, buf);
 }
 
 static inline void

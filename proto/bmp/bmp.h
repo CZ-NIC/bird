@@ -57,6 +57,7 @@ struct rt_table_info {
 struct bmp_proto {
   struct proto p;                  // Parent proto
   const struct bmp_config *cf;     // Shortcut to BMP configuration
+  node bmp_node;                   // Node in bmp_proto_list
   sock *sk;                        // TCP connection
   event *tx_ev;                    // TX event
   char sys_descr[MIB_II_STR_LEN];  // sysDescr MIB-II [RFC1213] object
@@ -90,26 +91,31 @@ bmp_peer_up(const struct bgp_proto *bgp,
 	    const byte *rx_open_msg, uint rx_open_length);
 
 /**
- * The following 4 functions create BMP Route Monitoring message based on
+ * The following 5 functions create BMP Route Monitoring message based on
  * pre-policy Adj-RIB-In. Composing Route Monitoring message consist of few
  * stages. First of all call bmp_route_monitor_update_in_pre_begin() in order
  * to start composing message. As a second step, call
- * bmp_route_monitor_put_update_in_pre_msg() in order to save BGP UPDATE msg.
- * As a third step call bmp_route_monitor_update_in_pre_commit() in order to
- * send BMP Route Monitoring message to the BMP collector. As a last step,
+ * bmp_route_monitor_update_in_notify() to announce each rte, which internally
+ * calls bmp_route_monitor_put_update_in_pre_msg() in order to save BGP UPDATE
+ * msg. As a third step call bmp_route_monitor_update_in_pre_commit() in order
+ * to send BMP Route Monitoring message to the BMP collector. As a last step,
  * call bmp_route_monitor_update_in_pre_end() in order to release resources.
  */
 void
 bmp_route_monitor_update_in_pre_begin(void);
 
 void
-bmp_route_monitor_put_update_in_pre_msg(const byte *data, const size_t data_size);
+bmp_route_monitor_update_in_notify(struct channel *C, const net_addr *n,
+				   const struct rte *new, const struct rte_src *src);
 
 void
 bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp);
 
 void
 bmp_route_monitor_update_in_pre_end(void);
+
+void
+bmp_route_monitor_put_update_in_pre_msg(struct bmp_proto *p, const byte *data, const size_t data_size);
 
 /**
  * bmp_peer_down - send notification that BGP peer connection is not in
@@ -124,7 +130,6 @@ bmp_peer_down(const struct bgp_proto *bgp, const int err_class, const byte *pkt,
 
 static inline void bmp_peer_up(const struct bgp_proto *bgp UNUSED, const byte *tx_open_msg UNUSED, uint tx_open_length UNUSED, const byte *rx_open_msg UNUSED, uint rx_open_length UNUSED) { }
 static inline void bmp_route_monitor_update_in_pre_begin(void) { }
-static inline void bmp_route_monitor_put_update_in_pre_msg(const byte *data UNUSED, const size_t data_size UNUSED) { }
 static inline void bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp UNUSED) { }
 static inline void bmp_route_monitor_update_in_pre_end(void) { }
 static inline void bmp_peer_down(const struct bgp_proto *bgp UNUSED, const int err_class UNUSED, const byte *pkt UNUSED, size_t pkt_size UNUSED) { }
