@@ -273,7 +273,10 @@ static void
 bmp_fire_tx(void *p_)
 {
   struct bmp_proto *p = p_;
-  byte *buf = p->sk->tbuf;
+
+  if (!p->started)
+    return;
+
   IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
     EMPTY_LIST(p->tx_queue),
     "Called BMP TX event handler when there is not any data to send"
@@ -290,7 +293,7 @@ bmp_fire_tx(void *p_)
     }
 
     size_t data_size = tx_data->data_size;
-    memcpy(buf, tx_data->data, tx_data->data_size);
+    memcpy(p->sk->tbuf, tx_data->data, data_size);
     mb_free(tx_data->data);
     rem_node((node *) tx_data);
     mb_free(tx_data);
