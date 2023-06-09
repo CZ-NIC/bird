@@ -19,7 +19,7 @@ CF_DECLS
 
 CF_KEYWORDS(LOG, SYSLOG, ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG, STDERR, SOFT)
 CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, STATUS)
-CF_KEYWORDS(GRACEFUL, RESTART)
+CF_KEYWORDS(GRACEFUL, RESTART, THREADS)
 
 %type <i> log_mask log_mask_list log_cat cfg_timeout
 %type <t> cfg_name
@@ -27,6 +27,9 @@ CF_KEYWORDS(GRACEFUL, RESTART)
 %type <t> syslog_name
 
 CF_GRAMMAR
+
+/* Dummy threads setting for forward compatibility */
+conf: THREADS expr ';' ;
 
 conf: log_config ;
 
