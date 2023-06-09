@@ -54,7 +54,6 @@
 struct keyword {
   byte *name;
   int value;
-  struct keyword *next;
 };
 
 #include "conf/keywords.h"
@@ -66,12 +65,6 @@ struct keyword {
 
 
 static uint cf_hash(const byte *c);
-
-#define KW_KEY(n)		n->name
-#define KW_NEXT(n)		n->next
-#define KW_EQ(a,b)		!strcmp(a,b)
-#define KW_FN(k)		cf_hash(k)
-#define KW_ORDER		8 /* Fixed */
 
 #define SYM_KEY(n)		n->name
 #define SYM_NEXT(n)		n->next
@@ -85,10 +78,9 @@ static uint cf_hash(const byte *c);
 
 HASH_DEFINE_REHASH_FN(SYM, struct symbol)
 
-HASH(struct keyword) kw_hash;
-
 struct sym_scope *conf_this_scope;
 struct sym_scope *global_root_scope;
+static pool *global_root_scope_pool;
 
 linpool *cfg_mem;
 
@@ -576,14 +568,19 @@ cf_new_symbol(const byte *c)
 
   cf_swap_soft_scope();
 
-  s = cfg_allocz(sizeof(struct symbol) + l + 1);
+  pool *p = new_config->pool;
+
+  if (conf_this_scope == global_root_scope)
+    s = mb_allocz(p = global_root_scope_pool, sizeof(struct symbol) + l + 1);
+  else
+    s = cfg_allocz(sizeof(struct symbol) + l + 1);
   *s = (struct symbol) { .scope = conf_this_scope, .class = SYM_VOID, };
   strcpy(s->name, c);
 
   if (!conf_this_scope->hash.data)
-    HASH_INIT(conf_this_scope->hash, new_config->pool, SYM_ORDER);
+    HASH_INIT(conf_this_scope->hash, p, SYM_ORDER);
 
-  HASH_INSERT2(conf_this_scope->hash, SYM, new_config->pool, s);
+  HASH_INSERT2(conf_this_scope->hash, SYM, p, s);
 
   if (conf_this_scope == new_config->root_scope)
     add_tail(&(new_config->symbols), &(s->n));
@@ -684,36 +681,20 @@ cf_lex_symbol(const char *data)
   struct symbol *sym = cf_get_symbol(data);
   cf_lval.s = sym;
 
-  /* Is it a keyword? Prefer the keyword. */
-  struct keyword *k = HASH_FIND(kw_hash, KW, data);
-  if (k)
+  switch (sym->class)
   {
-    if (k->value > 0)
-      return k->value;
-    else
+    case SYM_KEYWORD:
     {
-      cf_lval.i = -k->value;
+      int val = sym->keyword->value;
+      if (val > 0) return val;
+      cf_lval.i = -val;
       return ENUM;
     }
+    case SYM_VOID:
+      return CF_SYM_UNDEFINED;
+    default:
+      return CF_SYM_KNOWN;
   }
-
-  /* OK, only a symbol. */
-  if (sym->class == SYM_VOID)
-    return CF_SYM_UNDEFINED;
-  else
-    return CF_SYM_KNOWN;
-}
-
-static void
-cf_lex_init_kh(void)
-{
-  HASH_INIT(kw_hash, &root_pool, KW_ORDER);
-
-  struct keyword *k;
-  for (k=keyword_list; k->name; k++)
-    HASH_INSERT(kw_hash, KW, k);
-
-  global_root_scope = mb_allocz(&root_pool, sizeof(*global_root_scope));
 }
 
 /**
@@ -727,8 +708,14 @@ cf_lex_init_kh(void)
 void
 cf_lex_init(int is_cli, struct config *c)
 {
-  if (!kw_hash.data)
-    cf_lex_init_kh();
+  if (!global_root_scope_pool)
+  {
+    global_root_scope_pool = rp_new(&root_pool, "Keywords pool");
+    conf_this_scope = global_root_scope = mb_allocz(global_root_scope_pool, sizeof(*global_root_scope));
+
+    for (const struct keyword *k = keyword_list; k->name; k++)
+      cf_define_symbol(cf_get_symbol(k->name), SYM_KEYWORD, keyword, k);
+  }
 
   ifs_head = ifs = push_ifs(NULL);
   if (!is_cli)
