@@ -82,20 +82,7 @@ f_type_element_type(enum f_type t)
 }
 
 const struct f_trie f_const_empty_trie = { .ipv4 = -1, };
-
-const struct f_val f_const_empty_path = {
-  .type = T_PATH,
-  .val.ad = &null_adata,
-}, f_const_empty_clist = {
-  .type = T_CLIST,
-  .val.ad = &null_adata,
-}, f_const_empty_eclist = {
-  .type = T_ECLIST,
-  .val.ad = &null_adata,
-}, f_const_empty_lclist = {
-  .type = T_LCLIST,
-  .val.ad = &null_adata,
-}, f_const_empty_prefix_set = {
+const struct f_val f_const_empty_prefix_set = {
   .type = T_PREFIX_SET,
   .val.ti = &f_const_empty_trie,
 };
