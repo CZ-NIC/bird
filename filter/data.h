@@ -314,7 +314,7 @@ undef_value(struct f_val v)
     (v.val.ad == &null_adata);
 }
 
-extern const struct f_val f_const_empty_path, f_const_empty_clist, f_const_empty_eclist, f_const_empty_lclist, f_const_empty_prefix_set;
+extern const struct f_val f_const_empty_prefix_set;
 
 enum filter_return f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres);
 
