@@ -83,8 +83,12 @@ conf-lex-targets := $(addprefix $(objdir)/conf/,cf-lex.o)
 conf-y-targets := $(addprefix $(objdir)/conf/,cf-parse.y keywords.h commands.h)
 cf-local = $(conf-y-targets): $(s)config.Y
 
+# Generate %.o requests from source declarations
 src-o-files = $(patsubst %.c,$(o)%.o,$(src))
 tests-target-files = $(patsubst %.c,$(o)%,$(tests_src))
+
+# Request python generated files
+pygen = prepare: $(addprefix $(patsubst %.c,$(o)%,$(filter %-pygen.c,$(src))),.c .h)
 
 all-daemon = $(daemon): $(obj)
 all-client = $(client): $(obj)
@@ -133,6 +137,18 @@ $(objdir)/%.S: $(srcdir)/%.c | prepare
 $(objdir)/%.S: $(objdir)/%.c | prepare
 	$(E)echo CC -o $@ -S $<
 	$(Q)$(CC) $(CFLAGS) -MMD -MP -o $@ -S $<
+
+# Generic object generator rules
+$(objdir)/%-pygen.h: $(srcdir)/%.yaml tools/objectgenerator.py | $(objdir)/.dir-stamp
+	$(E)echo PYGEN -o $@ from $<
+	$(Q)$(srcdir)/tools/objectgenerator.py $< $@
+
+$(objdir)/%-pygen.c: $(objdir)/%-pygen.h Makefile | $(objdir)/.dir-stamp
+	$(E)echo PYGEN -o $@
+	$(Q)rm -f $@
+	$(Q)ln -s $(notdir $<) $@
+
+$(objdir)/%-pygen.o: CFLAGS += "-DOG_BUILD_BODY=1"
 
 # Finally include the computed dependencies:
 DEPS = $(shell find $(objdir) -name '*.d')

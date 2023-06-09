@@ -1,5 +1,7 @@
-src := filter.c data.c f-util.c tree.c trie.c inst-gen.c
+src := filter.c data.c f-util.c tree.c trie.c inst-gen.c types-pygen.c
 obj := $(src-o-files)
+$(info $(pygen))
+$(pygen)
 $(all-daemon)
 $(cf-local)
 

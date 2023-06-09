@@ -1,0 +1,94 @@
+_meta:
+  header_guard: _BIRD_FILTER_TYPES_H_
+  include:
+    - '"nest/bird.h"'
+
+_keys:
+  type:
+    prefix: f_type_
+    key: enum f_type
+    attributes:
+      name:
+        mandatory: true
+        switch:
+          return: const char *
+          format: '"{data}"'
+      element_type:
+        switch:
+          return: enum f_type
+          format: '{data}'
+          default: T_VOID
+
+type:
+  T_VOID:
+    name: void
+    _value: 0
+
+  T_INT:
+    name: int
+    _value: 0x50
+  T_BOOL:
+    name: bool
+  T_PAIR:
+    name: pair
+  T_QUAD:
+    name: quad
+  T_IP:
+    name: ip
+  T_NET:
+    name: prefix
+  T_STRING:
+    name: string
+  T_PATH_MASK:
+    name: bgpmask
+  T_PATH:
+    name: bgppath
+    element_type: T_INT
+  T_CLIST:
+    name: clist
+    element_type: T_PAIR
+  T_EC:
+    name: ec
+  T_ECLIST:
+    name: eclist
+    element_type: T_EC
+  T_LC:
+    name: lc
+  T_LCLIST:
+    name: lclist
+    element_type: T_LC
+  T_RD:
+    name: rd
+  T_PATH_MASK_ITEM:
+    name: path mask item
+  T_SET:
+    name: set
+  T_PREFIX_SET:
+    name: set
+
+  # Put enum types aside to allow for range switch
+  T_ENUM_LO:
+    name: enum low bound
+    _value: 0x2f
+  T_ENUM_RTS:
+    name: enum rts
+  T_ENUM_BGP_ORIGIN:
+    name: enum bgp_origin
+  T_ENUM_SCOPE:
+    name: enum scope
+  T_ENUM_RTC:
+    name: enum rtc
+  T_ENUM_RTD:
+    name: enum rtd
+  T_ENUM_ROA:
+    name: enum roa
+  T_ENUM_NETTYPE:
+    name: enum nettype
+  T_ENUM_RA_PREFERENCE:
+    name: enum ra_preference
+  T_ENUM_AF:
+    name: enum af
+  T_ENUM_EMPTY:
+    name: enum empty # Special hack for atomic_aggr
+  T_ENUM_HI:
+    name: enum high bound

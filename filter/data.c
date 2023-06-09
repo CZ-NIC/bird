@@ -25,61 +25,6 @@
 #include "filter/f-inst.h"
 #include "filter/data.h"
 
-static const char * const f_type_str[] = {
-  [T_VOID]	= "void",
-
-  [T_INT]	= "int",
-  [T_BOOL]	= "bool",
-  [T_PAIR]	= "pair",
-  [T_QUAD]	= "quad",
-
-  [T_ENUM_RTS]	= "enum rts",
-  [T_ENUM_BGP_ORIGIN] = "enum bgp_origin",
-  [T_ENUM_SCOPE] = "enum scope",
-  [T_ENUM_RTC]	= "enum rtc",
-  [T_ENUM_RTD]	= "enum rtd",
-  [T_ENUM_ROA]	= "enum roa",
-  [T_ENUM_NETTYPE] = "enum nettype",
-  [T_ENUM_RA_PREFERENCE] = "enum ra_preference",
-  [T_ENUM_AF]	= "enum af",
-
-  [T_IP]	= "ip",
-  [T_NET]	= "prefix",
-  [T_STRING]	= "string",
-  [T_PATH_MASK]	= "bgpmask",
-  [T_PATH]	= "bgppath",
-  [T_CLIST]	= "clist",
-  [T_EC]	= "ec",
-  [T_ECLIST]	= "eclist",
-  [T_LC]	= "lc",
-  [T_LCLIST]	= "lclist",
-  [T_RD]	= "rd",
-};
-
-const char *
-f_type_name(enum f_type t)
-{
-  if (t < ARRAY_SIZE(f_type_str))
-    return f_type_str[t] ?: "?";
-
-  if ((t == T_SET) || (t == T_PREFIX_SET))
-    return "set";
-
-  return "?";
-}
-
-enum f_type
-f_type_element_type(enum f_type t)
-{
-  switch(t) {
-    case T_PATH:   return T_INT;
-    case T_CLIST:  return T_PAIR;
-    case T_ECLIST: return T_EC;
-    case T_LCLIST: return T_LC;
-    default: return T_VOID;
-  };
-}
-
 const struct f_trie f_const_empty_trie = { .ipv4 = -1, };
 const struct f_val f_const_empty_prefix_set = {
   .type = T_PREFIX_SET,
@@ -611,4 +556,3 @@ val_dump(const struct f_val *v) {
   val_format(v, &b);
   return val_dump_buffer;
 }
-
