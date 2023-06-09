@@ -191,29 +191,33 @@ f_new_lc_item(u32 f1, u32 t1, u32 f2, u32 t2, u32 f3, u32 t3)
 }
 
 static inline struct f_inst *
-f_generate_empty(struct f_dynamic_attr dyn)
+f_const_empty(struct f_dynamic_attr dyn)
 {
   struct f_val empty;
 
-  switch (dyn.type & EAF_TYPE_MASK) {
+  switch (dyn.type) {
     case EAF_TYPE_AS_PATH:
-      empty = f_const_empty_path;
-      break;
     case EAF_TYPE_INT_SET:
-      empty = f_const_empty_clist;
-      break;
     case EAF_TYPE_EC_SET:
-      empty = f_const_empty_eclist;
-      break;
     case EAF_TYPE_LC_SET:
-      empty = f_const_empty_lclist;
+      empty = (struct f_val) {
+	.type = dyn.f_type,
+	.val.ad = &null_adata,
+      };
       break;
     default:
       cf_error("Can't empty that attribute");
   }
 
-  return f_new_inst(FI_EA_SET, f_new_inst(FI_CONSTANT, empty), dyn);
+  return f_new_inst(FI_CONSTANT, empty);
 }
+
+#define f_dummy_dynattr(_type, _f_type)	((struct f_dynamic_attr) { .type = _type, .f_type = _f_type, })
+
+#define f_const_empty_path		f_const_empty(f_dummy_dynattr(EAF_TYPE_AS_PATH, T_PATH))
+#define f_const_empty_clist		f_const_empty(f_dummy_dynattr(EAF_TYPE_INT_SET, T_CLIST))
+#define f_const_empty_eclist		f_const_empty(f_dummy_dynattr(EAF_TYPE_EC_SET, T_ECLIST))
+#define f_const_empty_lclist		f_const_empty(f_dummy_dynattr(EAF_TYPE_LC_SET, T_LCLIST))
 
 /*
  * Remove all new lines and doubled whitespaces
@@ -852,10 +856,10 @@ term:
  | dynamic_attr '.' RESET{ }
 */
 
- | '+' EMPTY '+' { $$ = f_new_inst(FI_CONSTANT, f_const_empty_path); }
- | '-' EMPTY '-' { $$ = f_new_inst(FI_CONSTANT, f_const_empty_clist); }
- | '-' '-' EMPTY '-' '-' { $$ = f_new_inst(FI_CONSTANT, f_const_empty_eclist); }
- | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_new_inst(FI_CONSTANT, f_const_empty_lclist); }
+ | '+' EMPTY '+' { $$ = f_const_empty_path; }
+ | '-' EMPTY '-' { $$ = f_const_empty_clist; }
+ | '-' '-' EMPTY '-' '-' { $$ = f_const_empty_eclist; }
+ | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_const_empty_lclist; }
  | PREPEND '(' term ',' term ')' { $$ = f_new_inst(FI_PATH_PREPEND, $3, $5); }
  | ADD '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_ADD, $3, $5); }
  | DELETE '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_DEL, $3, $5); }
@@ -975,7 +979,7 @@ cmd:
       $$ = f_new_inst(FI_SWITCH, $2, $4);
    }
 
- | dynamic_attr '.' EMPTY ';' { $$ = f_generate_empty($1); }
+ | dynamic_attr '.' EMPTY ';' { $$ = f_new_inst(FI_EA_SET, f_const_empty($1), $1); }
  | dynamic_attr '.' PREPEND '(' term ')' ';'   { $$ = f_generate_complex( FI_PATH_PREPEND, $1, $5 ); }
  | dynamic_attr '.' ADD '(' term ')' ';'       { $$ = f_generate_complex( FI_CLIST_ADD, $1, $5 ); }
  | dynamic_attr '.' DELETE '(' term ')' ';'    { $$ = f_generate_complex( FI_CLIST_DEL, $1, $5 ); }
