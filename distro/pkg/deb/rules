@@ -35,6 +35,12 @@ override_dh_installinit:
 override_dh_installsystemd:
 	dh_installsystemd --name=bird --restart-after-upgrade
 
+# Only run tests on selected archs (tests fail on ARM cross-build)
+override_dh_auto_test:
+ifneq (,$(filter $(DEB_BUILD_ARCH), amd64 i386))
+	dh_auto_test
+endif
+
 DB2MAN = /usr/share/sgml/docbook/stylesheet/xsl/nwalsh/manpages/docbook.xsl
 XP     = xsltproc -''-nonet -''-param man.charmap.use.subset "0"
 
