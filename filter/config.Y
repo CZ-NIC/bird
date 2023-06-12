@@ -293,27 +293,34 @@ assert_done(struct f_inst *expr, const char *start, const char *end)
 }
 
 static struct f_inst *
+f_lval_getter(struct f_lval *lval)
+{
+  switch (lval->type) {
+    case F_LVAL_VARIABLE:	return f_new_inst(FI_VAR_GET, lval->sym);
+    case F_LVAL_SA:		return f_new_inst(FI_RTA_GET, lval->sa);
+    case F_LVAL_EA:		return f_new_inst(FI_EA_GET, lval->da);
+    default:			bug("Unknown lval type");
+  }
+}
+
+static struct f_inst *
+f_lval_setter(struct f_lval *lval, struct f_inst *expr)
+{
+  switch (lval->type) {
+    case F_LVAL_VARIABLE:	return f_new_inst(FI_VAR_SET, expr, lval->sym);
+    case F_LVAL_SA:		return f_new_inst(FI_RTA_SET, expr, lval->sa);
+    case F_LVAL_EA:		return f_new_inst(FI_EA_SET, expr, lval->da);
+    default:			bug("Unknown lval type");
+  }
+}
+
+static struct f_inst *
 assert_assign(struct f_lval *lval, struct f_inst *expr, const char *start, const char *end)
 {
-  struct f_inst *setter, *getter, *checker;
-  switch (lval->type) {
-    case F_LVAL_VARIABLE:
-      setter = f_new_inst(FI_VAR_SET, expr, lval->sym);
-      getter = f_new_inst(FI_VAR_GET, lval->sym);
-      break;
-    case F_LVAL_SA:
-      setter = f_new_inst(FI_RTA_SET, expr, lval->sa);
-      getter = f_new_inst(FI_RTA_GET, lval->sa);
-      break;
-    case F_LVAL_EA:
-      setter = f_new_inst(FI_EA_SET, expr, lval->da);
-      getter = f_new_inst(FI_EA_GET, lval->da);
-      break;
-    default:
-      bug("Unknown lval type");
-  }
+  struct f_inst *setter = f_lval_setter(lval, expr),
+		*getter = f_lval_getter(lval);
 
-  checker = f_new_inst(FI_EQ, expr, getter);
+  struct f_inst *checker = f_new_inst(FI_EQ, expr, getter);
   setter->next = checker;
 
   return assert_done(setter, start, end);
@@ -1005,11 +1012,11 @@ cmd:
       $$ = f_new_inst(FI_SWITCH, $2, $4);
    }
 
- | dynamic_attr '.' {
-     f_push_method_scope(f_new_inst(FI_EA_GET, $1));
+ | lvalue '.' {
+     f_push_method_scope(f_lval_getter(&$1));
    } method_cmd ';' {
      f_pop_method_scope();
-     $$ = f_new_inst(FI_EA_SET, $4, $1);
+     $$ = f_lval_setter(&$1, $4);
    }
  | BT_ASSERT '(' get_cf_position term get_cf_position ')' ';' { $$ = assert_done($4, $3 + 1, $5 - 1); }
  | BT_CHECK_ASSIGN '(' get_cf_position lvalue get_cf_position ',' term ')' ';' { $$ = assert_assign(&$4, $7, $3 + 1, $5 - 1); }
@@ -1021,7 +1028,19 @@ get_cf_position:
 };
 
 lvalue:
-   CF_SYM_KNOWN { cf_assert_symbol($1, SYM_VARIABLE); $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1 }; }
+   CF_SYM_KNOWN {
+     switch ($1->class)
+     {
+       case SYM_VARIABLE_RANGE:
+	 $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1 };
+         break;
+       case SYM_ATTRIBUTE:
+         $$ = (struct f_lval) { .type = F_LVAL_EA, .da = *($1->attribute) };
+	 break;
+       default:
+	 cf_error("Variable name or custom attribute name required");
+     }
+   }
  | static_attr { $$ = (struct f_lval) { .type = F_LVAL_SA, .sa = $1 }; }
  | dynamic_attr { $$ = (struct f_lval) { .type = F_LVAL_EA, .da = $1 }; };
 
