@@ -140,17 +140,9 @@ build-fedora-34-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:fedora-33-amd64
 
-build-centos-7-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:centos-7-amd64
-
 build-centos-8-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:centos-8-amd64
-
-build-ubuntu-14_04-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-14.04-amd64
 
 build-ubuntu-16_04-amd64:
   <<: *build-linux
@@ -293,13 +285,6 @@ pkg-fedora-34-amd64:
   <<: *pkg-rpm
   needs: [build-fedora-34-amd64]
   image: registry.nic.cz/labs/bird:fedora-34-amd64
-
-pkg-centos-7-amd64:
-  <<: *pkg-rpm-wa
-  variables:
-    LC_ALL: en_US.UTF-8
-  needs: [build-centos-7-amd64]
-  image: registry.nic.cz/labs/bird:centos-7-amd64
 
 pkg-centos-8-amd64:
   <<: *pkg-rpm-wa
