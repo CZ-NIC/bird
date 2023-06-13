@@ -375,13 +375,13 @@ CF_GRAMMAR
 
 conf: filter_def ;
 filter_def:
-   FILTER symbol { $2 = cf_define_symbol($2, SYM_FILTER, filter, NULL); cf_push_scope( $2 ); }
+   FILTER symbol { $2 = cf_define_symbol(new_config, $2, SYM_FILTER, filter, NULL); cf_push_scope( new_config, $2 ); }
      filter_body {
      struct filter *f = cfg_alloc(sizeof(struct filter));
      *f = (struct filter) { .sym = $2, .root = $4 };
      $2->filter = f;
 
-     cf_pop_scope();
+     cf_pop_scope(new_config);
    }
  ;
 
@@ -392,7 +392,7 @@ filter_eval:
 
 conf: custom_attr ;
 custom_attr: ATTRIBUTE type symbol ';' {
-  cf_define_symbol($3, SYM_ATTRIBUTE, attribute, ca_lookup(new_config->pool, $3->name, $2)->fda);
+  cf_define_symbol(new_config, $3, SYM_ATTRIBUTE, attribute, ca_lookup(new_config->pool, $3->name, $2)->fda);
 };
 
 conf: bt_test_suite ;
@@ -466,7 +466,7 @@ function_argsn:
  | function_argsn type symbol ';' {
      if ($3->scope->slots >= 0xfe) cf_error("Too many declarations, at most 255 allowed");
      $$ = cfg_alloc(sizeof(struct f_arg));
-     $$->arg = cf_define_symbol($3, SYM_VARIABLE | $2, offset, sym_->scope->slots++);
+     $$->arg = cf_define_symbol(new_config, $3, SYM_VARIABLE | $2, offset, sym_->scope->slots++);
      $$->next = $1;
    }
  ;
@@ -475,7 +475,7 @@ function_args:
    '(' ')' { $$ = NULL; }
  | '(' function_argsn type symbol ')' {
      $$ = cfg_alloc(sizeof(struct f_arg));
-     $$->arg = cf_define_symbol($4, SYM_VARIABLE | $3, offset, sym_->scope->slots++);
+     $$->arg = cf_define_symbol(new_config, $4, SYM_VARIABLE | $3, offset, sym_->scope->slots++);
      $$->next = $2;
    }
  ;
@@ -483,7 +483,7 @@ function_args:
 function_vars:
    /* EMPTY */ { $$ = 0; }
  | function_vars type symbol ';' {
-     cf_define_symbol($3, SYM_VARIABLE | $2, offset, f_new_var(sym_->scope));
+     cf_define_symbol(new_config, $3, SYM_VARIABLE | $2, offset, f_new_var(sym_->scope));
      $$ = $1 + 1;
    }
  ;
@@ -495,12 +495,12 @@ filter:
      cf_assert_symbol($1, SYM_FILTER);
      $$ = $1->filter;
    }
- | { cf_push_scope(NULL); } filter_body {
+ | { cf_push_scope(new_config, NULL); } filter_body {
      struct filter *f = cfg_alloc(sizeof(struct filter));
      *f = (struct filter) { .root = $2 };
      $$ = f;
 
-     cf_pop_scope();
+     cf_pop_scope(new_config);
    }
  ;
 
@@ -522,8 +522,8 @@ conf: function_def ;
 function_def:
    FUNCTION symbol {
      DBG( "Beginning of function %s\n", $2->name );
-     $2 = cf_define_symbol($2, SYM_FUNCTION, function, NULL);
-     cf_push_scope($2);
+     $2 = cf_define_symbol(new_config, $2, SYM_FUNCTION, function, NULL);
+     cf_push_scope(new_config, $2);
    } function_args {
      /* Make dummy f_line for storing function prototype */
      struct f_line *dummy = cfg_allocz(sizeof(struct f_line));
@@ -542,7 +542,7 @@ function_def:
      $6->args = $2->function->args;
      $6->arg_list = $2->function->arg_list;
      $2->function = $6;
-     cf_pop_scope();
+     cf_pop_scope(new_config);
    }
  ;
 
@@ -552,7 +552,7 @@ cmds: /* EMPTY */ { $$ = NULL; }
  | cmds_int { $$ = $1.begin; }
  ;
 
-cmds_scoped: { cf_push_soft_scope(); } cmds { cf_pop_soft_scope(); $$ = $2; } ;
+cmds_scoped: { cf_push_soft_scope(new_config); } cmds { cf_pop_soft_scope(new_config); $$ = $2; } ;
 
 cmd_var: var | cmd ;
 
@@ -931,12 +931,12 @@ var_init:
 
 var:
    type symbol var_init ';' {
-     struct symbol *sym = cf_define_symbol($2, SYM_VARIABLE | $1, offset, f_new_var(sym_->scope));
+     struct symbol *sym = cf_define_symbol(new_config, $2, SYM_VARIABLE | $1, offset, f_new_var(sym_->scope));
      $$ = f_new_inst(FI_VAR_INIT, $3, sym);
    }
 
 for_var:
-   type symbol { $$ = cf_define_symbol($2, SYM_VARIABLE | $1, offset, f_new_var(sym_->scope)); }
+   type symbol { $$ = cf_define_symbol(new_config, $2, SYM_VARIABLE | $1, offset, f_new_var(sym_->scope)); }
  | CF_SYM_KNOWN { $$ = $1; cf_assert_symbol($1, SYM_VARIABLE); }
  ;
 
@@ -952,13 +952,13 @@ cmd:
    }
  | FOR {
      /* Reserve space for walk data on stack */
-     cf_push_block_scope();
-     conf_this_scope->slots += 2;
+     cf_push_block_scope(new_config);
+     new_config->current_scope->slots += 2;
    } for_var IN
    /* Parse term in the parent scope */
-   { conf_this_scope->active = 0; } term { conf_this_scope->active = 1; }
+   { new_config->current_scope->active = 0; } term { new_config->current_scope->active = 1; }
    DO cmd {
-     cf_pop_block_scope();
+     cf_pop_block_scope(new_config);
      $$ = f_new_inst(FI_FOR_INIT, $6, $3);
      $$->next = f_new_inst(FI_FOR_NEXT, $3, $9);
    }

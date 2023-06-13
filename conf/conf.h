@@ -54,6 +54,7 @@ struct config {
   int file_fd;				/* File descriptor of main configuration file */
 
   struct sym_scope *root_scope;		/* Scope for root symbols */
+  struct sym_scope *current_scope;	/* Current scope where we are actually in while parsing */
   int obstacle_count;			/* Number of items blocking freeing of this config */
   int shutdown;				/* This is a pseudo-config for daemon shutdown */
   int gr_down;				/* This is a pseudo-config for graceful restart */
@@ -186,8 +187,6 @@ struct include_file_stack {
 
 extern struct include_file_stack *ifs;
 
-extern struct sym_scope *conf_this_scope;
-
 int cf_lex(void);
 void cf_lex_init(int is_cli, struct config *c);
 void cf_lex_unwind(void);
@@ -201,12 +200,12 @@ static inline struct symbol *cf_find_symbol_cfg(const struct config *cfg, const 
     struct sym_scope: cf_find_symbol_scope \
     )((where), (what))
 
-struct symbol *cf_get_symbol(const byte *c);
-struct symbol *cf_default_name(char *template, int *counter);
-struct symbol *cf_localize_symbol(struct symbol *sym);
+struct symbol *cf_get_symbol(struct config *conf, const byte *c);
+struct symbol *cf_default_name(struct config *conf, char *template, int *counter);
+struct symbol *cf_localize_symbol(struct config *conf, struct symbol *sym);
 
-static inline int cf_symbol_is_local(struct symbol *sym)
-{ return (sym->scope == conf_this_scope) && !conf_this_scope->soft_scopes; }
+static inline int cf_symbol_is_local(struct config *conf, struct symbol *sym)
+{ return (sym->scope == conf->current_scope) && !conf->current_scope->soft_scopes; }
 
 /**
  * cf_define_symbol - define meaning of a symbol
@@ -223,22 +222,22 @@ static inline int cf_symbol_is_local(struct symbol *sym)
  * Result: Pointer to the newly defined symbol. If we are in the top-level
  * scope, it's the same @sym as passed to the function.
  */
-#define cf_define_symbol(osym_, type_, var_, def_) ({ \
-    struct symbol *sym_ = cf_localize_symbol(osym_); \
+#define cf_define_symbol(conf_, osym_, type_, var_, def_) ({ \
+    struct symbol *sym_ = cf_localize_symbol(conf_, osym_); \
     sym_->class = type_; \
     sym_->var_ = def_; \
     sym_; })
 
-void cf_push_scope(struct symbol *);
-void cf_pop_scope(void);
-void cf_push_soft_scope(void);
-void cf_pop_soft_scope(void);
+void cf_push_scope(struct config *, struct symbol *);
+void cf_pop_scope(struct config *);
+void cf_push_soft_scope(struct config *);
+void cf_pop_soft_scope(struct config *);
 
-static inline void cf_push_block_scope(void)
-{ cf_push_scope(NULL); conf_this_scope->block = 1; }
+static inline void cf_push_block_scope(struct config *conf)
+{ cf_push_scope(conf, NULL); conf->current_scope->block = 1; }
 
-static inline void cf_pop_block_scope(void)
-{ ASSERT(conf_this_scope->block); cf_pop_scope(); }
+static inline void cf_pop_block_scope(struct config *conf)
+{ ASSERT(conf->current_scope->block); cf_pop_scope(conf); }
 
 char *cf_symbol_class_name(struct symbol *sym);
 
