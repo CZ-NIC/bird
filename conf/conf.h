@@ -143,6 +143,12 @@ struct sym_scope {
   byte readonly:1;			/* Do not add new symbols */
 };
 
+enum keyword_scope {
+  CFK_KEYWORDS,
+  CFK_METHODS,
+  CFK__MAX
+};
+
 extern struct sym_scope *global_root_scope;
 
 struct bytestring {
