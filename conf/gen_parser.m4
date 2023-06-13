@@ -35,6 +35,8 @@ m4_define(CF_append, `m4_define([[$1]], m4_ifdef([[$1]], m4_defn([[$1]])[[$3]])[
 m4_define(CF_keywd, `m4_ifdef([[CF_tok_$1]],,[[m4_define([[CF_tok_$1]],1)CF_append([[CF_kw_rule]],$1,[[ | ]])m4_define([[CF_toks]],CF_toks $1)]])')
 m4_define(CF_KEYWORDS, `m4_define([[CF_toks]],[[]])CF_iterate([[CF_keywd]], [[$@]])m4_ifelse(CF_toks,,,%token<s>[[]]CF_toks
 )DNL')
+m4_define(CF_METHODS, `m4_define([[CF_toks]],[[]])CF_iterate([[CF_keywd]], [[$@]])m4_ifelse(CF_toks,,,%token<s>[[]]CF_toks
+)DNL')
 
 m4_define(CF_keywd2, `m4_ifdef([[CF_tok_$1]],,[[m4_define([[CF_tok_$1]],1)m4_define([[CF_toks]],CF_toks $1)]])')
 m4_define(CF_KEYWORDS_EXCLUSIVE, `m4_define([[CF_toks]],[[]])CF_iterate([[CF_keywd2]], [[$@]])m4_ifelse(CF_toks,,,%token<s>[[]]CF_toks

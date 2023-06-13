@@ -54,6 +54,7 @@
 struct keyword {
   byte *name;
   int value;
+  enum keyword_scope scope;
 };
 
 #include "conf/keywords.h"
@@ -707,16 +708,17 @@ cf_lex_init(int is_cli, struct config *c)
   {
     global_root_scope_pool = rp_new(&root_pool, "Keywords pool");
     linpool *kwlp = lp_new(global_root_scope_pool);
-    global_root_scope = lp_allocz(kwlp, sizeof(*global_root_scope));
+    global_root_scope = lp_allocz(kwlp, sizeof(*global_root_scope) * CFK__MAX);
 
     for (const struct keyword *k = keyword_list; k->name; k++)
     {
-      struct symbol *sym = cf_new_symbol(global_root_scope, global_root_scope_pool, kwlp, k->name);
+      struct symbol *sym = cf_new_symbol(&global_root_scope[k->scope], global_root_scope_pool, kwlp, k->name);
       sym->class = SYM_KEYWORD;
       sym->keyword = k;
     }
 
-    global_root_scope->readonly = 1;
+    for (int s = 0; s < CFK__MAX; s++)
+      global_root_scope[s].readonly = 1;
   }
 
   ifs_head = ifs = push_ifs(NULL);
@@ -740,7 +742,7 @@ cf_lex_init(int is_cli, struct config *c)
   if (is_cli)
     c->current_scope->next = config->root_scope;
   else
-    c->current_scope->next = global_root_scope;
+    c->current_scope->next = &global_root_scope[CFK_KEYWORDS];
 }
 
 /**
