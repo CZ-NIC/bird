@@ -507,8 +507,8 @@ bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip)
   /* This is hack, we would like to share config, but we need to copy it now */
   new_config = config;
   cfg_mem = config->mem;
-  conf_this_scope = config->root_scope;
-  sym = cf_default_name(fmt, &(pp->dynamic_name_counter));
+  config->current_scope = config->root_scope;
+  sym = cf_default_name(config, fmt, &(pp->dynamic_name_counter));
   proto_clone_config(sym, pp->p.cf);
   new_config = NULL;
   cfg_mem = NULL;
