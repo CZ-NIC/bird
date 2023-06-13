@@ -2409,8 +2409,8 @@ rt_preconfig(struct config *c)
 {
   init_list(&c->tables);
 
-  rt_new_table(cf_get_symbol("master4"), NET_IP4);
-  rt_new_table(cf_get_symbol("master6"), NET_IP6);
+  rt_new_table(cf_get_symbol(c, "master4"), NET_IP4);
+  rt_new_table(cf_get_symbol(c, "master6"), NET_IP6);
 }
 
 void
@@ -2838,7 +2838,7 @@ rt_new_table(struct symbol *s, uint addr_type)
 
   struct rtable_config *c = cfg_allocz(sizeof(struct rtable_config));
 
-  cf_define_symbol(s, SYM_TABLE, table, c);
+  cf_define_symbol(new_config, s, SYM_TABLE, table, c);
   c->name = s->name;
   c->addr_type = addr_type;
   c->gc_threshold = 1000;

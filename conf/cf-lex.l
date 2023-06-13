@@ -78,7 +78,6 @@ static uint cf_hash(const byte *c);
 
 HASH_DEFINE_REHASH_FN(SYM, struct symbol)
 
-struct sym_scope *conf_this_scope;
 struct sym_scope *global_root_scope;
 static pool *global_root_scope_pool;
 
@@ -566,10 +565,10 @@ check_eof(void)
   return 0;
 }
 
-static inline void cf_swap_soft_scope(void);
+static inline void cf_swap_soft_scope(struct config *conf);
 
 static struct symbol *
-cf_new_symbol(const byte *c)
+cf_new_symbol(struct sym_scope *scope, pool *p, struct linpool *lp, const byte *c)
 {
   struct symbol *s;
 
@@ -577,31 +576,20 @@ cf_new_symbol(const byte *c)
   if (l > SYM_MAX_LEN)
     cf_error("Symbol too long");
 
-  cf_swap_soft_scope();
-
-  pool *p = new_config->pool;
-
-  if (conf_this_scope == global_root_scope)
-    s = mb_allocz(p = global_root_scope_pool, sizeof(struct symbol) + l + 1);
-  else
-    s = cfg_allocz(sizeof(struct symbol) + l + 1);
-  *s = (struct symbol) { .scope = conf_this_scope, .class = SYM_VOID, };
+  s = lp_alloc(lp, sizeof(struct symbol) + l + 1);
+  *s = (struct symbol) { .scope = scope, .class = SYM_VOID, };
   strcpy(s->name, c);
 
-  if (!conf_this_scope->hash.data)
-    HASH_INIT(conf_this_scope->hash, p, SYM_ORDER);
+  if (!scope->hash.data)
+    HASH_INIT(scope->hash, p, SYM_ORDER);
 
-  HASH_INSERT2(conf_this_scope->hash, SYM, p, s);
+  HASH_INSERT2(scope->hash, SYM, p, s);
 
-  if (conf_this_scope == new_config->root_scope)
+  if (new_config && (scope == new_config->root_scope))
     add_tail(&(new_config->symbols), &(s->n));
 
   return s;
 }
-
-struct symbol *
-cf_symbol_from_keyword(const struct keyword *kw)
-{ return cf_new_symbol(kw->name); }
 
 /**
  * cf_find_symbol_scope - find a symbol by name
@@ -639,9 +627,12 @@ cf_find_symbol_scope(const struct sym_scope *scope, const byte *c)
  * existing symbol is found.
  */
 struct symbol *
-cf_get_symbol(const byte *c)
+cf_get_symbol(struct config *conf, const byte *c)
 {
-  return cf_find_symbol_scope(conf_this_scope, c) ?: cf_new_symbol(c);
+  return cf_find_symbol_scope(conf->current_scope, c) ?: (
+      cf_swap_soft_scope(conf),
+      cf_new_symbol(conf->current_scope, conf->pool, conf->mem, c)
+      );
 }
 
 /**
@@ -652,22 +643,23 @@ cf_get_symbol(const byte *c)
  * for purposes of cf_define_symbol().
  */
 struct symbol *
-cf_localize_symbol(struct symbol *sym)
+cf_localize_symbol(struct config *conf, struct symbol *sym)
 {
   /* If the symbol type is void, it has been recently allocated just in this scope. */
   if (!sym->class)
     return sym;
 
   /* If the scope is the current, it is already defined in this scope. */
-  if (cf_symbol_is_local(sym))
+  if (cf_symbol_is_local(conf, sym))
     cf_error("Symbol already defined");
 
   /* Not allocated here yet, doing it now. */
-  return cf_new_symbol(sym->name);
+  cf_swap_soft_scope(conf);
+  return cf_new_symbol(conf->current_scope, conf->pool, conf->mem, sym->name);
 }
 
 struct symbol *
-cf_default_name(char *template, int *counter)
+cf_default_name(struct config *conf, char *template, int *counter)
 {
   char buf[SYM_MAX_LEN];
   struct symbol *s;
@@ -676,7 +668,7 @@ cf_default_name(char *template, int *counter)
   for(;;)
     {
       bsprintf(buf, template, ++(*counter));
-      s = cf_get_symbol(buf);
+      s = cf_get_symbol(conf, buf);
       if (s->class == SYM_VOID)
 	return s;
       if (!perc)
@@ -689,7 +681,7 @@ static enum yytokentype
 cf_lex_symbol(const char *data)
 {
   /* Have we defined such a symbol? */
-  struct symbol *sym = cf_get_symbol(data);
+  struct symbol *sym = cf_get_symbol(new_config, data);
   cf_lval.s = sym;
 
   switch (sym->class)
@@ -722,10 +714,15 @@ cf_lex_init(int is_cli, struct config *c)
   if (!global_root_scope_pool)
   {
     global_root_scope_pool = rp_new(&root_pool, "Keywords pool");
-    conf_this_scope = global_root_scope = mb_allocz(global_root_scope_pool, sizeof(*global_root_scope));
+    linpool *kwlp = lp_new(global_root_scope_pool);
+    global_root_scope = lp_allocz(kwlp, sizeof(*global_root_scope));
 
     for (const struct keyword *k = keyword_list; k->name; k++)
-      cf_define_symbol(cf_get_symbol(k->name), SYM_KEYWORD, keyword, k);
+    {
+      struct symbol *sym = cf_new_symbol(global_root_scope, global_root_scope_pool, kwlp, k->name);
+      sym->class = SYM_KEYWORD;
+      sym->keyword = k;
+    }
   }
 
   ifs_head = ifs = push_ifs(NULL);
@@ -744,14 +741,12 @@ cf_lex_init(int is_cli, struct config *c)
   else
     BEGIN(INITIAL);
 
-  c->root_scope = cfg_allocz(sizeof(struct sym_scope));
-  conf_this_scope = c->root_scope;
-  conf_this_scope->active = 1;
+  c->root_scope = c->current_scope = cfg_allocz(sizeof(struct sym_scope));
 
   if (is_cli)
-    conf_this_scope->next = config->root_scope;
+    c->current_scope->next = config->root_scope;
   else
-    conf_this_scope->next = global_root_scope;
+    c->current_scope->next = global_root_scope;
 }
 
 /**
@@ -765,12 +760,12 @@ cf_lex_init(int is_cli, struct config *c)
  * in all scopes stored on the stack.
  */
 void
-cf_push_scope(struct symbol *sym)
+cf_push_scope(struct config *conf, struct symbol *sym)
 {
   struct sym_scope *s = cfg_allocz(sizeof(struct sym_scope));
 
-  s->next = conf_this_scope;
-  conf_this_scope = s;
+  s->next = conf->current_scope;
+  conf->current_scope = s;
   s->active = 1;
   s->name = sym;
   s->slots = 0;
@@ -784,14 +779,14 @@ cf_push_scope(struct symbol *sym)
  * invisible to the rest of the config.
  */
 void
-cf_pop_scope(void)
+cf_pop_scope(struct config *conf)
 {
-  ASSERT(!conf_this_scope->soft_scopes);
+  ASSERT(!conf->current_scope->soft_scopes);
 
-  conf_this_scope->active = 0;
-  conf_this_scope = conf_this_scope->next;
+  conf->current_scope->active = 0;
+  conf->current_scope = conf->current_scope->next;
 
-  ASSERT(conf_this_scope);
+  ASSERT(conf->current_scope);
 }
 
 /**
@@ -802,12 +797,12 @@ cf_pop_scope(void)
  * Such scope will be converted to a regular scope on first use.
  */
 void
-cf_push_soft_scope(void)
+cf_push_soft_scope(struct config *conf)
 {
-  if (conf_this_scope->soft_scopes < 0xfe)
-    conf_this_scope->soft_scopes++;
+  if (conf->current_scope->soft_scopes < 0xfe)
+    conf->current_scope->soft_scopes++;
   else
-    cf_push_block_scope();
+    cf_push_block_scope(conf);
 }
 
 /**
@@ -816,12 +811,12 @@ cf_push_soft_scope(void)
  * Leave a soft scope entered by cf_push_soft_scope().
  */
 void
-cf_pop_soft_scope(void)
+cf_pop_soft_scope(struct config *conf)
 {
-  if (conf_this_scope->soft_scopes)
-    conf_this_scope->soft_scopes--;
+  if (conf->current_scope->soft_scopes)
+    conf->current_scope->soft_scopes--;
   else
-    cf_pop_block_scope();
+    cf_pop_block_scope(conf);
 }
 
 /**
@@ -831,12 +826,12 @@ cf_pop_soft_scope(void)
  * on first use. It is done automatically by cf_new_symbol().
  */
 static inline void
-cf_swap_soft_scope(void)
+cf_swap_soft_scope(struct config *conf)
 {
-  if (conf_this_scope->soft_scopes)
+  if (conf->current_scope->soft_scopes)
   {
-    conf_this_scope->soft_scopes--;
-    cf_push_block_scope();
+    conf->current_scope->soft_scopes--;
+    cf_push_block_scope(conf);
   }
 }
 

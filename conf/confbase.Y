@@ -158,7 +158,7 @@ definition:
    DEFINE symbol '=' term ';' {
      struct f_val *val = cfg_allocz(sizeof(struct f_val));
      if (f_eval(f_linearize($4, 1), cfg_mem, val) > F_RETURN) cf_error("Runtime error");
-     cf_define_symbol($2, SYM_CONSTANT | val->type, val, val);
+     cf_define_symbol(new_config, $2, SYM_CONSTANT | val->type, val, val);
    }
  ;
 
