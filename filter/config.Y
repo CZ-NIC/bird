@@ -21,6 +21,7 @@ static inline u32 pair_b(u32 p) { return p & 0xFFFF; }
 
 static struct f_method_scope {
   struct f_inst *object;
+  struct sym_scope scope;
 } f_method_scope_stack[32];
 static int f_method_scope_pos = -1;
 
@@ -32,12 +33,24 @@ static inline void f_push_method_scope(struct f_inst *object)
     cf_error("Too many nested method calls");
   FM = (struct f_method_scope) {
     .object = object,
+    .scope = {
+      .next = new_config->current_scope,
+      .hash = global_root_scope[CFK_METHODS].hash,
+      .active = 1,
+      .block = 1,
+      .readonly = 1,
+    },
   };
+  new_config->current_scope = &FM.scope;
 }
 
 static inline void f_pop_method_scope(void)
 {
   ASSERT_DIE(f_method_scope_pos >= 0);
+
+  ASSERT_DIE(&FM.scope == new_config->current_scope);
+  new_config->current_scope = FM.scope.next;
+
   f_method_scope_pos--;
 }
 
@@ -330,24 +343,24 @@ CF_DECLS
 
 CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	ACCEPT, REJECT, ERROR,
-	INT, BOOL, IP, TYPE, PREFIX, RD, PAIR, QUAD, EC, LC,
+	INT, BOOL, IP, PREFIX, RD, PAIR, QUAD, EC, LC,
 	SET, STRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
 	IF, THEN, ELSE, CASE,
 	FOR, IN, DO,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
-	FROM, GW, NET, MASK, PROTO, SOURCE, SCOPE, DEST, IFNAME, IFINDEX, WEIGHT, GW_MPLS, ONLINK,
+	FROM, GW, NET, PROTO, SOURCE, SCOPE, DEST, IFNAME, IFINDEX, WEIGHT, GW_MPLS, ONLINK,
 	PREFERENCE,
-	ROA_CHECK, ASN, SRC, DST,
-	IS_V4, IS_V6,
-	LEN, MAXLEN,
-	DATA, DATA1, DATA2,
+	ROA_CHECK,
 	DEFINED,
 	ADD, DELETE, RESET,
-	PREPEND, FIRST, LAST, LAST_NONAGGREGATED,
-	MIN, MAX,
+	PREPEND,
 	EMPTY,
 	FILTER, WHERE, EVAL, ATTRIBUTE,
 	BT_ASSERT, BT_TEST_SUITE, BT_CHECK_ASSIGN, BT_TEST_SAME, FORMAT)
+
+CF_METHODS(IS_V4, TYPE, IP, RD, LEN, MAXLEN, ASN, SRC, DST, MASK,
+	FIRST, LAST, LAST_NONAGGREGATED, DATA, DATA1, DATA2, MIN, MAX,
+	EMPTY, PREPEND, ADD, DELETE, FILTER)
 
 %nonassoc THEN
 %nonassoc ELSE
