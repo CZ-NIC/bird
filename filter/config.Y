@@ -19,6 +19,8 @@ static inline u32 pair(u32 a, u32 b) { return (a << 16) | b; }
 static inline u32 pair_a(u32 p) { return p >> 16; }
 static inline u32 pair_b(u32 p) { return p & 0xFFFF; }
 
+static struct symbol *this_function;
+
 static struct f_method_scope {
   struct f_inst *object;
   struct sym_scope scope;
@@ -374,7 +376,7 @@ CF_METHODS(IS_V4, TYPE, IP, RD, LEN, MAXLEN, ASN, SRC, DST, MASK,
 %type <f> filter where_filter
 %type <fl> filter_body function_body
 %type <flv> lvalue
-%type <i> type function_vars
+%type <i> type maybe_type function_vars
 %type <fa> function_argsn function_args
 %type <ecs> ec_kind
 %type <fret> break_command
@@ -390,8 +392,11 @@ CF_GRAMMAR
 
 conf: filter_def ;
 filter_def:
-   FILTER symbol { $2 = cf_define_symbol(new_config, $2, SYM_FILTER, filter, NULL); cf_push_scope( new_config, $2 ); }
-     filter_body {
+   FILTER symbol {
+     $2 = cf_define_symbol(new_config, $2, SYM_FILTER, filter, NULL);
+     cf_push_scope( new_config, $2 );
+     this_function = NULL;
+   } filter_body {
      struct filter *f = cfg_alloc(sizeof(struct filter));
      *f = (struct filter) { .sym = $2, .root = $4 };
      $2->filter = f;
@@ -511,7 +516,10 @@ filter:
      cf_assert_symbol($1, SYM_FILTER);
      $$ = $1->filter;
    }
- | { cf_push_scope(new_config, NULL); } filter_body {
+ | {
+     cf_push_scope(new_config, NULL);
+     this_function = NULL;
+   } filter_body {
      struct filter *f = cfg_alloc(sizeof(struct filter));
      *f = (struct filter) { .root = $2 };
      $$ = f;
@@ -535,29 +543,38 @@ function_body:
  ;
 
 conf: function_def ;
+maybe_type:
+   /* EMPTY */ { $$ = T_VOID; }
+ | type { $$ = $1; }
+ ;
+
 function_def:
-   FUNCTION symbol {
-     DBG( "Beginning of function %s\n", $2->name );
-     $2 = cf_define_symbol(new_config, $2, SYM_FUNCTION, function, NULL);
-     cf_push_scope(new_config, $2);
+   FUNCTION maybe_type symbol {
+     DBG( "Beginning of function %s\n", $3->name );
+     this_function = cf_define_symbol(new_config, $3, SYM_FUNCTION, function, NULL);
+/*   if ($2 == T_VOID) log(L_WARN "Support for functions without explicit return type will be removed soon" ); */
+     cf_push_scope(new_config, this_function);
    } function_args {
      /* Make dummy f_line for storing function prototype */
      struct f_line *dummy = cfg_allocz(sizeof(struct f_line));
-     $2->function = dummy;
+     this_function->function = dummy;
+
+     dummy->return_type = $2;
 
      /* Revert the args */
-     while ($4) {
-       struct f_arg *tmp = $4;
-       $4 = $4->next;
+     while ($5) {
+       struct f_arg *tmp = $5;
+       $5 = $5->next;
 
        tmp->next = dummy->arg_list;
        dummy->arg_list = tmp;
        dummy->args++;
      }
    } function_body {
-     $6->args = $2->function->args;
-     $6->arg_list = $2->function->arg_list;
-     $2->function = $6;
+     $7->args = this_function->function->args;
+     $7->arg_list = this_function->function->arg_list;
+     $7->return_type = this_function->function->return_type;
+     $3->function = $7;
      cf_pop_scope(new_config);
    }
  ;
@@ -998,6 +1015,18 @@ cmd:
    }
  | RETURN term ';' {
      DBG( "Ook, we'll return the value\n" );
+     if (!this_function)
+       cf_error("Can't return from a non-function, use accept or reject instead.");
+     if (this_function->function->return_type == T_VOID)
+     {
+       if ($2->type != T_VOID)
+	 log(L_WARN "Inferring function %s return type from its return value: %s", this_function->name, f_type_name($2->type));
+       ((struct f_line *) this_function->function)->return_type = $2->type;
+     }
+     else if (this_function->function->return_type != $2->type)
+       cf_error("Can't return type %s from function %s, expected %s",
+		f_type_name($2->type), this_function->name, f_type_name(this_function->function->return_type));
+
      $$ = f_new_inst(FI_RETURN, $2);
    }
  | dynamic_attr '=' term ';' {

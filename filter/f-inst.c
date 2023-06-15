@@ -1242,7 +1242,7 @@
     SYMBOL;
 
     /* Fake result type declaration */
-    RESULT_TYPE(T_VOID);
+    RESULT_TYPE(sym->function->return_type);
 
     FID_NEW_BODY()
     ASSERT(sym->class == SYM_FUNCTION);

@@ -539,7 +539,7 @@ include "tablename.conf";;
 	Define a filter. You can learn more about filters in the following
 	chapter.
 
-	<tag><label id="opt-function">function <m/name/ (<m/parameters/) <m/local variables/ { <m/commands/ }</tag>
+	<tag><label id="opt-function">function <m/type/ <m/name/ (<m/parameters/) <m/local variables/ { <m/commands/ }</tag>
 	Define a function. You can learn more about functions in the following chapter.
 
 	<tag><label id="opt-protocol">protocol rip|ospf|bgp|<m/.../ [<m/name/ [from <m/name2/]] { <m>protocol options</m> }</tag>
@@ -1296,18 +1296,22 @@ block of code conditional.
 
 <p>BIRD supports functions, so that you don't have to repeat the same blocks of
 code over and over. Functions can have zero or more parameters and they can have
-local variables. Recursion is not allowed. Function definitions look like this:
+local variables. You should always specify the function return type and always
+return it. No-return functions and multiple-type returning functions are deprecated.
+Direct recursion is possible. Function definitions look like this:
 
 <code>
-function name ()
+function int name ()
 {
 	int local_variable;
 	int another_variable = 5;
+	return 42;
 }
 
-function with_parameters (int parameter)
+function pair with_parameters (int parameter)
 {
 	print parameter;
+	return (1, 2);
 }
 </code>
 
@@ -1321,7 +1325,7 @@ may return values using the <cf>return <m/[expr]/</cf> command. Returning a
 value exits from current function (this is similar to C).
 
 <p>Filters are defined in a way similar to functions except they cannot have
-explicit parameters. They get a route table entry as an implicit parameter, it
+explicit parameters and cannot return. They get a route table entry as an implicit parameter, it
 is also passed automatically to any functions called. The filter must terminate
 with either <cf/accept/ or <cf/reject/ statement. If there is a runtime error in
 filter, the route is rejected.
