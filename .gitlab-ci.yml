@@ -60,14 +60,6 @@ stages:
     - linux
     - amd64
 
-build-debian-8-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:debian-8-amd64
-
-build-debian-8-i386:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:debian-8-i386
-
 build-debian-9-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:debian-9-amd64
@@ -140,17 +132,13 @@ build-fedora-34-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:fedora-33-amd64
 
-build-centos-7-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:centos-7-amd64
+#build-centos-7-amd64:
+#  <<: *build-linux
+#  image: registry.nic.cz/labs/bird:centos-7-amd64
 
 build-centos-8-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:centos-8-amd64
-
-build-ubuntu-14_04-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-14.04-amd64
 
 build-ubuntu-16_04-amd64:
   <<: *build-linux
@@ -232,28 +220,6 @@ build-opensuse-15.3-amd64:
     paths:
       - pkg/pkgs/*
 
-# Dpkg error: PATH is not set
-#pkg-debian-8-amd64:
-#  <<: *pkg-deb
-#  needs: [build-debian-8-amd64]
-#  image: registry.nic.cz/labs/bird:debian-8-amd64
-
-# Dpkg error: PATH is not set
-#pkg-debian-8-i386:
-#  <<: *pkg-deb
-#  needs: [build-debian-8-i386]
-#  image: registry.nic.cz/labs/bird:debian-8-i386
-
-pkg-debian-9-amd64:
-  <<: *pkg-deb
-  needs: [build-debian-9-amd64]
-  image: registry.nic.cz/labs/bird:debian-9-amd64
-
-pkg-debian-9-i386:
-  <<: *pkg-deb
-  needs: [build-debian-9-i386]
-  image: registry.nic.cz/labs/bird:debian-9-i386
-
 pkg-debian-10-amd64:
   <<: *pkg-deb
   needs: [build-debian-10-amd64]
@@ -294,12 +260,12 @@ pkg-fedora-34-amd64:
   needs: [build-fedora-34-amd64]
   image: registry.nic.cz/labs/bird:fedora-34-amd64
 
-pkg-centos-7-amd64:
-  <<: *pkg-rpm-wa
-  variables:
-    LC_ALL: en_US.UTF-8
-  needs: [build-centos-7-amd64]
-  image: registry.nic.cz/labs/bird:centos-7-amd64
+#pkg-centos-7-amd64:
+#  <<: *pkg-rpm-wa
+#  variables:
+#    LC_ALL: en_US.UTF-8
+#  needs: [build-centos-7-amd64]
+#  image: registry.nic.cz/labs/bird:centos-7-amd64
 
 pkg-centos-8-amd64:
   <<: *pkg-rpm-wa
