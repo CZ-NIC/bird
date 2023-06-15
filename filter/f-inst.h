@@ -47,6 +47,7 @@ struct f_line {
   u8 args;				/* Function: Args required */
   u8 vars;
   u8 results;				/* Results left on stack: cmd -> 0, term -> 1 */
+  u8 return_type;			/* Type which the function returns */
   struct f_arg *arg_list;
   struct f_line_item items[0];		/* The items themselves */
 };
