@@ -485,7 +485,6 @@ static inline ip_addr rta_get_ipa(struct rtattr *a)
     return ipa_from_ip6(rta_get_ip6(a));
 }
 
-#ifdef HAVE_MPLS_KERNEL
 static inline ip_addr rta_get_via(struct rtattr *a)
 {
   struct rtvia *v = RTA_DATA(a);
@@ -496,6 +495,7 @@ static inline ip_addr rta_get_via(struct rtattr *a)
   return IPA_NONE;
 }
 
+#ifdef HAVE_MPLS_KERNEL
 static u32 rta_mpls_stack[MPLS_MAX_LABEL_STACK];
 static inline int rta_get_mpls(struct rtattr *a, u32 *stack)
 {
@@ -763,10 +763,8 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, const net_addr
       if (a[RTA_FLOW])
 	s->rta_flow = rta_get_u32(a[RTA_FLOW]);
 
-#ifdef HAVE_MPLS_KERNEL
       if (a[RTA_VIA])
 	rv->gw = rta_get_via(a[RTA_VIA]);
-#endif
 
       if (nh->rtnh_flags & RTNH_F_ONLINK)
 	rv->flags |= RNF_ONLINK;
@@ -1659,10 +1657,8 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       if (a[RTA_GATEWAY])
 	ra->nh.gw = rta_get_ipa(a[RTA_GATEWAY]);
 
-#ifdef HAVE_MPLS_KERNEL
       if (a[RTA_VIA])
 	ra->nh.gw = rta_get_via(a[RTA_VIA]);
-#endif
 
       if (i->rtm_flags & RTNH_F_ONLINK)
 	ra->nh.flags |= RNF_ONLINK;
