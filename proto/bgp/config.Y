@@ -177,7 +177,7 @@ bgp_proto:
  | bgp_proto DEFAULT BGP_MED expr ';' { BGP_CFG->default_med = $4; }
  | bgp_proto DEFAULT BGP_LOCAL_PREF expr ';' { BGP_CFG->default_local_pref = $4; }
  | bgp_proto SOURCE ADDRESS ipa ';' { BGP_CFG->local_ip = $4; }
- | bgp_proto START DELAY TIME expr ';' { BGP_CFG->connect_delay_time = $5; log(L_WARN "%s: Start delay time option is deprecated, use connect delay time", this_proto->name); }
+ | bgp_proto START DELAY TIME expr ';' { BGP_CFG->connect_delay_time = $5; cf_warn("%s: Start delay time option is deprecated, use connect delay time", this_proto->name); }
  | bgp_proto CONNECT DELAY TIME expr ';' { BGP_CFG->connect_delay_time = $5; }
  | bgp_proto CONNECT RETRY TIME expr ';' { BGP_CFG->connect_retry_time = $5; }
  | bgp_proto KEEPALIVE TIME expr ';' { BGP_CFG->keepalive_time = $4; if (($4<1) || ($4>65535)) cf_error("Keepalive time must be in range 1-65535"); }
@@ -270,7 +270,7 @@ bgp_channel_item:
  | NEXT HOP KEEP bgp_nh { BGP_CC->next_hop_keep = $4; }
  | NEXT HOP PREFER GLOBAL { BGP_CC->next_hop_prefer = NHP_GLOBAL; }
  | MANDATORY bool { BGP_CC->mandatory = $2; }
- | MISSING LLADDR bgp_lladdr { log(L_WARN "%s.%s: Missing lladdr option is deprecated and ignored, remove it", this_proto->name, this_channel->name); }
+ | MISSING LLADDR bgp_lladdr { cf_warn("%s.%s: Missing lladdr option is deprecated and ignored, remove it", this_proto->name, this_channel->name); }
  | GATEWAY DIRECT { BGP_CC->gw_mode = GW_DIRECT; }
  | GATEWAY RECURSIVE { BGP_CC->gw_mode = GW_RECURSIVE; }
  | SECONDARY bool { BGP_CC->secondary = $2; }

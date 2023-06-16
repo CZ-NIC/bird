@@ -95,7 +95,7 @@ bfd_iface_finish:
   BFD_IFACE->passwords = get_passwords();
 
   if (!BFD_IFACE->auth_type != !BFD_IFACE->passwords)
-    log(L_WARN "Authentication and password options should be used together");
+    cf_warn("Authentication and password options should be used together");
 
   if (BFD_IFACE->passwords)
   {
