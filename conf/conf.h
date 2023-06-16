@@ -77,6 +77,7 @@ int config_status(void);
 btime config_timer_status(void);
 void config_init(void);
 void cf_error(const char *msg, ...) NORET;
+#define cf_warn(msg, args...)  log(L_WARN "%s:%d:%d: " msg, ifs->file_name, ifs->lino, ifs->chno - ifs->toklen + 1, ##args)
 void config_add_obstacle(struct config *);
 void config_del_obstacle(struct config *);
 void order_shutdown(int gr);

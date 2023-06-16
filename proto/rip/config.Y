@@ -117,7 +117,7 @@ rip_iface_finish:
   RIP_IFACE->passwords = get_passwords();
 
   if (!RIP_IFACE->auth_type != !RIP_IFACE->passwords)
-    log(L_WARN "Authentication and password options should be used together");
+    cf_warn("Authentication and password options should be used together");
 
   if (RIP_IFACE->passwords)
   {
