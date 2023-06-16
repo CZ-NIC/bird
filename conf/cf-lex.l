@@ -54,7 +54,6 @@
 struct keyword {
   byte *name;
   int value;
-  enum keyword_scope scope;
 };
 
 #include "conf/keywords.h"
@@ -80,7 +79,8 @@ static uint cf_hash(const byte *c);
 HASH_DEFINE_REHASH_FN(SYM, struct symbol)
 
 struct sym_scope *global_root_scope;
-static pool *global_root_scope_pool;
+pool *global_root_scope_pool;
+linpool *global_root_scope_linpool;
 
 linpool *cfg_mem;
 
@@ -557,7 +557,7 @@ check_eof(void)
 
 static inline void cf_swap_soft_scope(struct config *conf);
 
-static struct symbol *
+struct symbol *
 cf_new_symbol(struct sym_scope *scope, pool *p, struct linpool *lp, const byte *c)
 {
   if (scope->readonly)
@@ -686,12 +686,16 @@ cf_lex_symbol(const char *data)
       cf_lval.i = -val;
       return ENUM;
     }
+    case SYM_METHOD:
+      return sym->method->arg_num ? CF_SYM_METHOD_ARGS : CF_SYM_METHOD_BARE;
     case SYM_VOID:
       return CF_SYM_UNDEFINED;
     default:
       return CF_SYM_KNOWN;
   }
 }
+
+void f_type_methods_register(void);
 
 /**
  * cf_lex_init - initialize the lexer
@@ -707,18 +711,19 @@ cf_lex_init(int is_cli, struct config *c)
   if (!global_root_scope_pool)
   {
     global_root_scope_pool = rp_new(&root_pool, "Keywords pool");
-    linpool *kwlp = lp_new(global_root_scope_pool);
-    global_root_scope = lp_allocz(kwlp, sizeof(*global_root_scope) * CFK__MAX);
+    global_root_scope_linpool = lp_new(global_root_scope_pool);
+    global_root_scope = lp_allocz(global_root_scope_linpool, sizeof(*global_root_scope));
 
     for (const struct keyword *k = keyword_list; k->name; k++)
     {
-      struct symbol *sym = cf_new_symbol(&global_root_scope[k->scope], global_root_scope_pool, kwlp, k->name);
+      struct symbol *sym = cf_new_symbol(global_root_scope, global_root_scope_pool, global_root_scope_linpool, k->name);
       sym->class = SYM_KEYWORD;
       sym->keyword = k;
     }
 
-    for (int s = 0; s < CFK__MAX; s++)
-      global_root_scope[s].readonly = 1;
+    global_root_scope->readonly = 1;
+
+    f_type_methods_register();
   }
 
   ifs_head = ifs = push_ifs(NULL);
@@ -742,7 +747,7 @@ cf_lex_init(int is_cli, struct config *c)
   if (is_cli)
     c->current_scope->next = config->root_scope;
   else
-    c->current_scope->next = &global_root_scope[CFK_KEYWORDS];
+    c->current_scope->next = global_root_scope;
 }
 
 /**

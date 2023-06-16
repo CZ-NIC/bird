@@ -64,6 +64,12 @@ enum f_type {
   T_PREFIX_SET = 0x81,
 } PACKED;
 
+struct f_method {
+  struct symbol *sym;
+  struct f_inst *(*new_inst)(struct f_inst *obj, struct f_inst *args);
+  uint arg_num;
+};
+
 /* Filter value; size of this affects filter memory consumption */
 struct f_val {
   enum f_type type;	/* T_*  */
@@ -277,8 +283,8 @@ trie_match_next_longest_ip6(net_addr_ip6 *n, ip6_addr *found)
 #define F_CMP_ERROR 999
 
 const char *f_type_name(enum f_type t);
-
 enum f_type f_type_element_type(enum f_type t);
+struct sym_scope *f_type_method_scope(enum f_type t);
 
 int val_same(const struct f_val *v1, const struct f_val *v2);
 int val_compare(const struct f_val *v1, const struct f_val *v2);

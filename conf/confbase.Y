@@ -104,7 +104,7 @@ CF_DECLS
 %token <ip4> IP4
 %token <ip6> IP6
 %token <i64> VPN_RD
-%token <s> CF_SYM_KNOWN CF_SYM_UNDEFINED
+%token <s> CF_SYM_KNOWN CF_SYM_UNDEFINED CF_SYM_METHOD_BARE CF_SYM_METHOD_ARGS
 %token <t> TEXT
 %token <bs> BYTETEXT
 %type <iface> ipa_scope
