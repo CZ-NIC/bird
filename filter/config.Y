@@ -24,21 +24,30 @@ static enum f_type this_var_type;
 
 static struct f_method_scope {
   struct f_inst *object;
+  struct sym_scope *main;
   struct sym_scope scope;
 } f_method_scope_stack[32];
 static int f_method_scope_pos = -1;
 
 #define FM  (f_method_scope_stack[f_method_scope_pos])
 
-static inline void f_push_method_scope(struct f_inst *object)
+static inline void f_method_call_start(struct f_inst *object)
 {
+  if (object->type == T_VOID)
+    cf_error("Can't infer type to properly call a method, please assign the value to a variable");
   if (++f_method_scope_pos >= (int) ARRAY_SIZE(f_method_scope_stack))
     cf_error("Too many nested method calls");
+
+  struct sym_scope *scope = f_type_method_scope(object->type);
+  if (!scope)
+    cf_error("No methods defined for type %s", f_type_name(object->type));
+
   FM = (struct f_method_scope) {
     .object = object,
+    .main = new_config->current_scope,
     .scope = {
-      .next = new_config->current_scope,
-      .hash = global_root_scope[CFK_METHODS].hash,
+      .next = NULL,
+      .hash = scope->hash,
       .active = 1,
       .block = 1,
       .readonly = 1,
@@ -47,12 +56,23 @@ static inline void f_push_method_scope(struct f_inst *object)
   new_config->current_scope = &FM.scope;
 }
 
-static inline void f_pop_method_scope(void)
+static inline void f_method_call_args(void)
+{
+  ASSERT_DIE(FM.scope.active);
+  FM.scope.active = 0;
+
+  new_config->current_scope = FM.main;
+}
+
+static inline void f_method_call_end(void)
 {
   ASSERT_DIE(f_method_scope_pos >= 0);
+  if (FM.scope.active) {
+    ASSERT_DIE(&FM.scope == new_config->current_scope);
+    new_config->current_scope = FM.main;
 
-  ASSERT_DIE(&FM.scope == new_config->current_scope);
-  new_config->current_scope = FM.scope.next;
+    FM.scope.active = 0;
+  }
 
   f_method_scope_pos--;
 }
@@ -357,7 +377,7 @@ CF_METHODS(IS_V4, TYPE, IP, RD, LEN, MAXLEN, ASN, SRC, DST, MASK,
 %nonassoc ELSE
 
 %type <xp> cmds_int cmd_prep
-%type <x> term cmd cmd_var cmds cmds_scoped constant constructor print_list var var_init var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail method_cmd method_term
+%type <x> term cmd cmd_var cmds cmds_scoped constant constructor print_list var var_init var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
 %type <fda> dynamic_attr
 %type <fsa> static_attr
 %type <f> filter where_filter
@@ -538,7 +558,7 @@ function_def:
    FUNCTION maybe_type symbol {
      DBG( "Beginning of function %s\n", $3->name );
      this_function = cf_define_symbol(new_config, $3, SYM_FUNCTION, function, NULL);
-/*   if ($2 == T_VOID) log(L_WARN "Support for functions without explicit return type will be removed soon" ); */
+/*   if ($2 == T_VOID) cf_warn("Support for functions without explicit return type will be removed soon" ); */
      cf_push_scope(new_config, this_function);
    } function_args {
      /* Make dummy f_line for storing function prototype */
@@ -847,33 +867,18 @@ static_attr:
  | ONLINK  { $$ = f_new_static_attr(T_BOOL,       SA_ONLINK,	0); }
  ;
 
-method_term:
-   IS_V4 { $$ = f_new_inst(FI_IS_V4, FM.object); }
- | TYPE { $$ = f_new_inst(FI_TYPE, FM.object); }
- | IP { $$ = f_new_inst(FI_IP, FM.object); }
- | RD { $$ = f_new_inst(FI_ROUTE_DISTINGUISHER, FM.object); }
- | LEN { $$ = f_new_inst(FI_LENGTH, FM.object); }
- | MAXLEN { $$ = f_new_inst(FI_ROA_MAXLEN, FM.object); }
- | ASN { $$ = f_new_inst(FI_ASN, FM.object); }
- | SRC { $$ = f_new_inst(FI_NET_SRC, FM.object); }
- | DST { $$ = f_new_inst(FI_NET_DST, FM.object); }
- | MASK '(' term ')' { $$ = f_new_inst(FI_IP_MASK, FM.object, $3); }
- | FIRST { $$ = f_new_inst(FI_AS_PATH_FIRST, FM.object); }
- | LAST  { $$ = f_new_inst(FI_AS_PATH_LAST, FM.object); }
- | LAST_NONAGGREGATED  { $$ = f_new_inst(FI_AS_PATH_LAST_NAG, FM.object); }
- | DATA { $$ = f_new_inst(FI_PAIR_DATA, FM.object); }
- | DATA1 { $$ = f_new_inst(FI_LC_DATA1, FM.object); }
- | DATA2 { $$ = f_new_inst(FI_LC_DATA2, FM.object); }
- | MIN  { $$ = f_new_inst(FI_MIN, FM.object); }
- | MAX  { $$ = f_new_inst(FI_MAX, FM.object); }
- ;
-
-method_cmd:
-   EMPTY		{ $$ = f_const_empty(FM.object->i_FI_EA_GET.da.f_type); }
- | PREPEND '(' term ')'	{ $$ = f_new_inst(FI_PATH_PREPEND, FM.object, $3 ); }
- | ADD '(' term ')'	{ $$ = f_new_inst(FI_CLIST_ADD, FM.object, $3 ); }
- | DELETE '(' term ')'	{ $$ = f_new_inst(FI_CLIST_DEL, FM.object, $3 ); }
- | FILTER '(' term ')'	{ $$ = f_new_inst(FI_CLIST_FILTER, FM.object, $3 ); }
+term_dot_method: term '.' { f_method_call_start($1); } method_name_cont { $$ = $4; };
+method_name_cont:
+   CF_SYM_METHOD_BARE {
+     $$ = $1->method->new_inst(FM.object, NULL);
+     f_method_call_end();
+   }
+ | CF_SYM_METHOD_ARGS {
+     f_method_call_args();
+   } '(' var_list ')' {
+     $$ = $1->method->new_inst(FM.object, $4);
+     f_method_call_end();
+   }
  ;
 
 term:
@@ -903,21 +908,42 @@ term:
 
  | dynamic_attr { $$ = f_new_inst(FI_EA_GET, $1); }
 
- | term '.' {
-     f_push_method_scope($1);
-   } method_term {
-     f_pop_method_scope();
-     $$ = $4;
-   }
+ | term_dot_method
 
  | '+' EMPTY '+' { $$ = f_const_empty(T_PATH); }
  | '-' EMPTY '-' { $$ = f_const_empty(T_CLIST); }
  | '-' '-' EMPTY '-' '-' { $$ = f_const_empty(T_ECLIST); }
  | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_const_empty(T_LCLIST); }
  | PREPEND '(' term ',' term ')' { $$ = f_new_inst(FI_PATH_PREPEND, $3, $5); }
- | ADD '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_ADD, $3, $5); }
- | DELETE '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_DEL, $3, $5); }
- | FILTER '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_FILTER, $3, $5); }
+ | ADD '(' term ',' term ')' {
+     switch ($3->type) {
+       case T_CLIST: $$ = f_new_inst(FI_CLIST_ADD, $3, $5); break;
+       case T_ECLIST: $$ = f_new_inst(FI_ECLIST_ADD, $3, $5); break;
+       case T_LCLIST: $$ = f_new_inst(FI_LCLIST_ADD, $3, $5); break;
+       default: cf_error("Can't add to type %s", f_type_name($3->type));
+     }
+     cf_warn("add(x,y) function is deprecated, please use x.add(y)");
+   }
+ | DELETE '(' term ',' term ')' {
+     switch ($3->type) {
+       case T_PATH: $$ = f_new_inst(FI_PATH_DEL, $3, $5); break;
+       case T_CLIST: $$ = f_new_inst(FI_CLIST_DEL, $3, $5); break;
+       case T_ECLIST: $$ = f_new_inst(FI_ECLIST_DEL, $3, $5); break;
+       case T_LCLIST: $$ = f_new_inst(FI_LCLIST_DEL, $3, $5); break;
+       default: cf_error("Can't delete from type %s", f_type_name($3->type));
+     }
+     cf_warn("delete(x,y) function is deprecated, please use x.delete(y)");
+   }
+ | FILTER '(' term ',' term ')' {
+     switch ($3->type) {
+       case T_PATH: $$ = f_new_inst(FI_PATH_FILTER, $3, $5); break;
+       case T_CLIST: $$ = f_new_inst(FI_CLIST_FILTER, $3, $5); break;
+       case T_ECLIST: $$ = f_new_inst(FI_ECLIST_FILTER, $3, $5); break;
+       case T_LCLIST: $$ = f_new_inst(FI_LCLIST_FILTER, $3, $5); break;
+       default: cf_error("Can't filter type %s", f_type_name($3->type));
+     }
+     cf_warn("filter(x,y) function is deprecated, please use x.filter(y)");
+   }
 
  | ROA_CHECK '(' rtable ')' { $$ = f_new_inst(FI_ROA_CHECK_IMPLICIT, $3); }
  | ROA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_new_inst(FI_ROA_CHECK_EXPLICIT, $5, $7, $3); }
@@ -1000,7 +1026,7 @@ cmd:
      if (this_function->function->return_type == T_VOID)
      {
        if ($2->type != T_VOID)
-	 log(L_WARN "Inferring function %s return type from its return value: %s", this_function->name, f_type_name($2->type));
+	 cf_warn("Inferring function %s return type from its return value: %s", this_function->name, f_type_name($2->type));
        ((struct f_line *) this_function->function)->return_type = $2->type;
      }
      else if (this_function->function->return_type != $2->type)
@@ -1044,9 +1070,8 @@ cmd:
    }
 
  | lvalue '.' {
-     f_push_method_scope(f_lval_getter(&$1));
-   } method_cmd ';' {
-     f_pop_method_scope();
+     f_method_call_start(f_lval_getter(&$1));
+   } method_name_cont ';' {
      $$ = f_lval_setter(&$1, $4);
    }
  | BT_ASSERT '(' get_cf_position term get_cf_position ')' ';' { $$ = assert_done($4, $3 + 1, $5 - 1); }
