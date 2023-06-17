@@ -20,6 +20,7 @@ static inline u32 pair_a(u32 p) { return p >> 16; }
 static inline u32 pair_b(u32 p) { return p & 0xFFFF; }
 
 static struct symbol *this_function;
+static enum f_type this_var_type;
 
 static struct f_method_scope {
   struct f_inst *object;
@@ -225,33 +226,21 @@ f_new_lc_item(u32 f1, u32 t1, u32 f2, u32 t2, u32 f3, u32 t3)
 }
 
 static inline struct f_inst *
-f_const_empty(struct f_dynamic_attr dyn)
+f_const_empty(enum f_type t)
 {
-  struct f_val empty;
-
-  switch (dyn.type) {
-    case EAF_TYPE_AS_PATH:
-    case EAF_TYPE_INT_SET:
-    case EAF_TYPE_EC_SET:
-    case EAF_TYPE_LC_SET:
-      empty = (struct f_val) {
-	.type = dyn.f_type,
+  switch (t) {
+    case T_PATH:
+    case T_CLIST:
+    case T_ECLIST:
+    case T_LCLIST:
+      return f_new_inst(FI_CONSTANT, (struct f_val) {
+	.type = t,
 	.val.ad = &null_adata,
-      };
-      break;
+      });
     default:
-      cf_error("Can't empty that attribute");
+      return f_new_inst(FI_CONSTANT, (struct f_val) {});
   }
-
-  return f_new_inst(FI_CONSTANT, empty);
 }
-
-#define f_dummy_dynattr(_type, _f_type)	((struct f_dynamic_attr) { .type = _type, .f_type = _f_type, })
-
-#define f_const_empty_path		f_const_empty(f_dummy_dynattr(EAF_TYPE_AS_PATH, T_PATH))
-#define f_const_empty_clist		f_const_empty(f_dummy_dynattr(EAF_TYPE_INT_SET, T_CLIST))
-#define f_const_empty_eclist		f_const_empty(f_dummy_dynattr(EAF_TYPE_EC_SET, T_ECLIST))
-#define f_const_empty_lclist		f_const_empty(f_dummy_dynattr(EAF_TYPE_LC_SET, T_LCLIST))
 
 /*
  * Remove all new lines and doubled whitespaces
@@ -880,7 +869,7 @@ method_term:
  ;
 
 method_cmd:
-   EMPTY		{ $$ = f_const_empty(FM.object->i_FI_EA_GET.da); }
+   EMPTY		{ $$ = f_const_empty(FM.object->i_FI_EA_GET.da.f_type); }
  | PREPEND '(' term ')'	{ $$ = f_new_inst(FI_PATH_PREPEND, FM.object, $3 ); }
  | ADD '(' term ')'	{ $$ = f_new_inst(FI_CLIST_ADD, FM.object, $3 ); }
  | DELETE '(' term ')'	{ $$ = f_new_inst(FI_CLIST_DEL, FM.object, $3 ); }
@@ -921,10 +910,10 @@ term:
      $$ = $4;
    }
 
- | '+' EMPTY '+' { $$ = f_const_empty_path; }
- | '-' EMPTY '-' { $$ = f_const_empty_clist; }
- | '-' '-' EMPTY '-' '-' { $$ = f_const_empty_eclist; }
- | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_const_empty_lclist; }
+ | '+' EMPTY '+' { $$ = f_const_empty(T_PATH); }
+ | '-' EMPTY '-' { $$ = f_const_empty(T_CLIST); }
+ | '-' '-' EMPTY '-' '-' { $$ = f_const_empty(T_ECLIST); }
+ | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_const_empty(T_LCLIST); }
  | PREPEND '(' term ',' term ')' { $$ = f_new_inst(FI_PATH_PREPEND, $3, $5); }
  | ADD '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_ADD, $3, $5); }
  | DELETE '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_DEL, $3, $5); }
@@ -955,14 +944,14 @@ print_list: /* EMPTY */ { $$ = NULL; }
  ;
 
 var_init:
-   /* empty */ { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { }); }
+   /* empty */ { $$ = f_const_empty(this_var_type); }
  | '=' term { $$ = $2; }
  ;
 
 var:
-   type symbol var_init ';' {
+   type symbol { this_var_type = $1; } var_init ';' {
      struct symbol *sym = cf_define_symbol(new_config, $2, SYM_VARIABLE | $1, offset, f_new_var(sym_->scope));
-     $$ = f_new_inst(FI_VAR_INIT, $3, sym);
+     $$ = f_new_inst(FI_VAR_INIT, $4, sym);
    }
 
 for_var:
