@@ -130,7 +130,7 @@ m4_ifelse($1,1,,[[FID_NEW_METHOD()m4_dnl
   struct f_inst *arg$1 = args;
   if (args == NULL) cf_error("Not enough arguments"); /* INST_NAME */
   args = args->next;
-  FID_METHOD_CALL()    , arg$1]])
+FID_METHOD_CALL()    , arg$1]])
 FID_LINEARIZE_BODY()m4_dnl
 pos = linearize(dest, whati->f$1, pos);
 FID_INTERPRET_BODY()')
@@ -230,6 +230,12 @@ FID_NEW_ARGS()m4_dnl
   , struct f_inst * f$1
 FID_NEW_BODY()m4_dnl
 whati->f$1 = f$1;
+m4_define([[INST_METHOD_NUM_ARGS]],m4_eval($1-1))m4_dnl
+FID_NEW_METHOD()m4_dnl
+  struct f_inst *arg$1 = args;
+  if (args == NULL) cf_error("Not enough arguments"); /* INST_NAME */
+  args = NULL; /* The rest is the line itself */
+FID_METHOD_CALL()    , arg$1
 FID_DUMP_BODY()m4_dnl
 f_dump_line(item->fl$1, indent + 1);
 FID_LINEARIZE_BODY()m4_dnl
