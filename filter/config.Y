@@ -1008,8 +1008,7 @@ cmd:
    { new_config->current_scope->active = 0; } term { new_config->current_scope->active = 1; }
    DO cmd {
      cf_pop_block_scope(new_config);
-     $$ = f_new_inst(FI_FOR_INIT, $6, $3);
-     $$->next = f_new_inst(FI_FOR_NEXT, $3, $9);
+     $$ = f_for_cycle($3, $6, $9);
    }
  | symbol_known '=' term ';' {
      switch ($1->class) {
