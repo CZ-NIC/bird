@@ -569,92 +569,63 @@
     RESULT(T_LCLIST, ad, &null_adata);
   }
 
-  INST(FI_FOR_INIT, 1, 0) {
+  /* Common loop begin instruction, always created by f_for_cycle() */
+  INST(FI_FOR_LOOP_START, 0, 3) {
     NEVER_CONSTANT;
-    ARG_ANY(1);
     SYMBOL;
 
-    FID_NEW_BODY()
-    ASSERT((sym->class & ~0xff) == SYM_VARIABLE);
+    /* Repeat the instruction which called us */
+    ASSERT_DIE(fstk->ecnt > 1);
+    prevline.pos--;
 
-    /* Static type check */
-    if (f1->type)
-    {
-      enum f_type t_var = (sym->class & 0xff);
-      enum f_type t_arg = f_type_element_type(f1->type);
-      if (!t_arg)
-        cf_error("Value of expression in FOR must be iterable, got %s",
-		 f_type_name(f1->type));
-      if (t_var != t_arg)
-	cf_error("Loop variable '%s' in FOR must be %s, is %s",
-		 sym->name, f_type_name(t_arg), f_type_name(t_var));
-    }
+    /* There should be exactly three items on the value stack to be taken care of */
+    fstk->vcnt += 3;
 
-    FID_INTERPRET_BODY()
+    /* And these should also stay there after we finish for the caller instruction */
+    curline.ventry += 3;
 
-    /* Dynamic type check */
-    if ((sym->class & 0xff) != f_type_element_type(v1.type))
-      runtime("Mismatched argument and variable type");
+    /* Assert the iterator variable positioning */
+    ASSERT_DIE(curline.vbase + sym->offset == fstk->vcnt - 1);
 
-    /* Setup the index */
-    v2 = (struct f_val) { .type = T_INT, .val.i = 0 };
-
-    /* Keep v1 and v2 on the stack */
-    fstk->vcnt += 2;
+    /* The result type declaration makes no sense here but is needed */
+    RESULT_TYPE(T_VOID);
   }
 
-  INST(FI_FOR_NEXT, 2, 0) {
+  /* Type-specific for_next iterators */
+  INST(FI_PATH_FOR_NEXT, 3, 0) {
     NEVER_CONSTANT;
-    SYMBOL;
+    ARG(1, T_PATH);
+    if (as_path_walk(v1.val.ad, &v2.val.i, &v3.val.i))
+      LINE(2,0);
 
-    /* Type checks are done in FI_FOR_INIT */
+    METHOD_CONSTRUCTOR("!for_next");
+  }
 
-    /* Loop variable */
-    struct f_val *var = &fstk->vstk[curline.vbase + sym->offset];
-    int step = 0;
+  INST(FI_CLIST_FOR_NEXT, 3, 0) {
+    NEVER_CONSTANT;
+    ARG(1, T_CLIST);
+    if (int_set_walk(v1.val.ad, &v2.val.i, &v3.val.i))
+      LINE(2,0);
 
-    switch(v1.type)
-    {
-    case T_PATH:
-      var->type = T_INT;
-      step = as_path_walk(v1.val.ad, &v2.val.i, &var->val.i);
-      break;
+    METHOD_CONSTRUCTOR("!for_next");
+  }
 
-    case T_CLIST:
-      var->type = T_PAIR;
-      step = int_set_walk(v1.val.ad, &v2.val.i, &var->val.i);
-      break;
+  INST(FI_ECLIST_FOR_NEXT, 3, 0) {
+    NEVER_CONSTANT;
+    ARG(1, T_ECLIST);
+    if (ec_set_walk(v1.val.ad, &v2.val.i, &v3.val.ec))
+      LINE(2,0);
 
-    case T_ECLIST:
-      var->type = T_EC;
-      step = ec_set_walk(v1.val.ad, &v2.val.i, &var->val.ec);
-      break;
+    METHOD_CONSTRUCTOR("!for_next");
+  }
 
-    case T_LCLIST:
-      var->type = T_LC;
-      step = lc_set_walk(v1.val.ad, &v2.val.i, &var->val.lc);
-      break;
+  INST(FI_LCLIST_FOR_NEXT, 3, 0) {
+    NEVER_CONSTANT;
+    ARG(1, T_LCLIST);
+    if (lc_set_walk(v1.val.ad, &v2.val.i, &v3.val.lc))
+      LINE(2,0);
 
-    default:
-      runtime( "Clist or lclist expected" );
-    }
-
-    if (step)
-    {
-      /* Keep v1 and v2 on the stack */
-      fstk->vcnt += 2;
-
-      /* Repeat this instruction */
-      curline.pos--;
-
-      /* Execute the loop body */
-      LINE(1, 0);
-
-      /* Space for loop variable, may be unused */
-      fstk->vcnt += 1;
-    }
-    else
-      var->type = T_VOID;
+    METHOD_CONSTRUCTOR("!for_next");
   }
 
   INST(FI_CONDITION, 1, 0) {
