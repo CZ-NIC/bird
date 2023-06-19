@@ -75,6 +75,31 @@ f_for_cycle(struct symbol *var, struct f_inst *term, struct f_inst *block)
   return ms->method->new_inst(term, loop_start);
 }
 
+struct f_inst *
+f_print(struct f_inst *vars, int flush, enum filter_return fret)
+{
+#define AX(...)  do { struct f_inst *_tmp = f_new_inst(__VA_ARGS__); _tmp->next = output; output = _tmp; } while (0)
+  struct f_inst *output = NULL;
+  if (fret != F_NOP)
+    AX(FI_DIE, fret);
+
+  if (flush)
+    AX(FI_FLUSH);
+
+  while (vars)
+  {
+    struct f_inst *tmp = vars;
+    vars = vars->next;
+    tmp->next = NULL;
+
+    AX(FI_PRINT, tmp);
+  }
+
+  return output;
+#undef AX
+}
+
+
 #define CA_KEY(n)	n->name, n->fda.type
 #define CA_NEXT(n)	n->next
 #define CA_EQ(na,ta,nb,tb)	(!strcmp(na,nb) && (ta == tb))
