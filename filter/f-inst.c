@@ -101,6 +101,11 @@
  *
  *	Other code is just copied into the interpreter part.
  *
+ *	It's also possible to declare type methods in a short way:
+ *
+ *	m4_dnl	METHOD(type, method name, argument count, code)
+ *	m4_dnl	METHOD_R(type, method name, argument count, result type, union-field, value)
+ *
  *	The filter language uses a simple type system, where values have types
  *	(constants T_*) and also terms (instructions) are statically typed. Our
  *	static typing is partial (some terms do not declare types of arguments
@@ -491,17 +496,8 @@
     RESULT(T_BOOL, i, (v1.type != T_VOID) && !undef_value(v1));
   }
 
-  INST(FI_NET_TYPE, 1, 1) {
-    ARG(1, T_NET);
-    METHOD_CONSTRUCTOR("type");
-    RESULT(T_ENUM_NETTYPE, i, v1.val.net->type);
-  }
-
-  INST(FI_IS_V4, 1, 1) {
-    ARG(1, T_IP);
-    METHOD_CONSTRUCTOR("is_v4");
-    RESULT(T_BOOL, i, ipa_is_ip4(v1.val.ip));
-  }
+  METHOD_R(T_NET, type, 0, T_ENUM_NETTYPE, i, v1.val.net->type);
+  METHOD_R(T_IP, is_v4, 0, T_BOOL, i, ipa_is_ip4(v1.val.ip));
 
   /* Add initialized variable */
   INST(FI_VAR_INIT, 1, 0) {
@@ -557,29 +553,10 @@
     RESULT_VAL(val);
   }
 
-  INST(FI_PATH_EMPTY, 1, 1) {
-    ARG(1, T_PATH);
-    METHOD_CONSTRUCTOR("empty");
-    RESULT(T_PATH, ad, &null_adata);
-  }
-
-  INST(FI_CLIST_EMPTY, 1, 1) {
-    ARG(1, T_CLIST);
-    METHOD_CONSTRUCTOR("empty");
-    RESULT(T_CLIST, ad, &null_adata);
-  }
-
-  INST(FI_ECLIST_EMPTY, 1, 1) {
-    ARG(1, T_ECLIST);
-    METHOD_CONSTRUCTOR("empty");
-    RESULT(T_ECLIST, ad, &null_adata);
-  }
-
-  INST(FI_LCLIST_EMPTY, 1, 1) {
-    ARG(1, T_LCLIST);
-    METHOD_CONSTRUCTOR("empty");
-    RESULT(T_LCLIST, ad, &null_adata);
-  }
+  METHOD_R(T_PATH, empty, 0, T_PATH, ad, &null_adata);
+  METHOD_R(T_CLIST, empty, 0, T_CLIST, ad, &null_adata);
+  METHOD_R(T_ECLIST, empty, 0, T_ECLIST, ad, &null_adata);
+  METHOD_R(T_LCLIST, empty, 0, T_LCLIST, ad, &null_adata);
 
   /* Common loop begin instruction, always created by f_for_cycle() */
   INST(FI_FOR_LOOP_START, 0, 3) {
@@ -969,35 +946,12 @@
     ea_unset_attr(fs->eattrs, fs->pool, 1, da.ea_code);
   }
 
-  INST(FI_NET_LENGTH, 1, 1) {	/* Get length of */
-    ARG(1, T_NET);
-    METHOD_CONSTRUCTOR("len");
-    RESULT(T_INT, i, net_pxlen(v1.val.net));
-  }
-
-  INST(FI_PATH_LENGTH, 1, 1) {	/* Get length of */
-    ARG(1, T_PATH);
-    METHOD_CONSTRUCTOR("len");
-    RESULT(T_INT, i, as_path_getlen(v1.val.ad));
-  }
-
-  INST(FI_CLIST_LENGTH, 1, 1) {	/* Get length of */
-    ARG(1, T_CLIST);
-    METHOD_CONSTRUCTOR("len");
-    RESULT(T_INT, i, int_set_get_size(v1.val.ad));
-  }
-
-  INST(FI_ECLIST_LENGTH, 1, 1) { /* Get length of */
-    ARG(1, T_ECLIST);
-    METHOD_CONSTRUCTOR("len");
-    RESULT(T_INT, i, ec_set_get_size(v1.val.ad));
-  }
-
-  INST(FI_LCLIST_LENGTH, 1, 1) {	/* Get length of */
-    ARG(1, T_LCLIST);
-    METHOD_CONSTRUCTOR("len");
-    RESULT(T_INT, i, lc_set_get_size(v1.val.ad));
-  }
+  /* Get length of */
+  METHOD_R(T_NET, len, 0, T_INT, i, net_pxlen(v1.val.net));
+  METHOD_R(T_PATH, len, 0, T_INT, i, as_path_getlen(v1.val.ad));
+  METHOD_R(T_CLIST, len, 0, T_INT, i, int_set_get_size(v1.val.ad));
+  METHOD_R(T_ECLIST, len, 0, T_INT, i, ec_set_get_size(v1.val.ad));
+  METHOD_R(T_LCLIST, len, 0, T_INT, i, lc_set_get_size(v1.val.ad));
 
   INST(FI_NET_SRC, 1, 1) { 	/* Get src prefix */
     ARG(1, T_NET);
@@ -1071,45 +1025,32 @@
     RESULT(T_NET, net, dst);
   }
 
-  INST(FI_ROA_MAXLEN, 1, 1) { 	/* Get ROA max prefix length */
-    ARG(1, T_NET);
-    METHOD_CONSTRUCTOR("maxlen")
+  /* Get ROA max prefix length */
+  METHOD(T_NET, maxlen, 0, [[
     if (!net_is_roa(v1.val.net))
       runtime( "ROA expected" );
 
     RESULT(T_INT, i, (v1.val.net->type == NET_ROA4) ?
       ((net_addr_roa4 *) v1.val.net)->max_pxlen :
       ((net_addr_roa6 *) v1.val.net)->max_pxlen);
-  }
+  ]]);
 
-  INST(FI_NET_ASN, 1, 1) { 	/* Get ROA ASN or community ASN part */
-    ARG(1, T_NET);
-    METHOD_CONSTRUCTOR("asn");
+  /* Get ROA ASN or community ASN part */
+  METHOD_R(T_PAIR, asn, 0, T_INT, i, v1.val.i >> 16);
+  METHOD_R(T_LC, asn, 0, T_INT, i, v1.val.lc.asn);
+
+  METHOD(T_NET, asn, 0, [[
         if (!net_is_roa(v1.val.net))
           runtime( "ROA expected" );
 
         RESULT(T_INT, i, (v1.val.net->type == NET_ROA4) ?
           ((net_addr_roa4 *) v1.val.net)->asn :
           ((net_addr_roa6 *) v1.val.net)->asn);
-  }
+  ]]);
 
-  INST(FI_PAIR_ASN, 1, 1) { 	/* Get ROA ASN or community ASN part */
-    ARG(1, T_PAIR);
-    METHOD_CONSTRUCTOR("asn");
-    RESULT(T_INT, i, v1.val.i >> 16);
-  }
 
-  INST(FI_LC_ASN, 1, 1) { 	/* Get ROA ASN or community ASN part */
-    ARG(1, T_LC);
-    METHOD_CONSTRUCTOR("asn");
-    RESULT(T_INT, i, v1.val.lc.asn);
-  }
-
-  INST(FI_NET_IP, 1, 1) {	/* Convert prefix to ... */
-    ARG(1, T_NET);
-    METHOD_CONSTRUCTOR("ip");
-    RESULT(T_IP, ip, net_prefix(v1.val.net));
-  }
+  /* Convert prefix to IP */
+  METHOD_R(T_NET, ip, 0, T_IP, ip, net_prefix(v1.val.net));
 
   INST(FI_ROUTE_DISTINGUISHER, 1, 1) {
     ARG(1, T_NET);
@@ -1135,29 +1076,17 @@
     RESULT(T_INT, i, as);
   }
 
-  INST(FI_AS_PATH_LAST_NAG, 1, 1) {	/* Get last ASN from non-aggregated part of AS PATH */
-    ARG(1, T_PATH);
-    METHOD_CONSTRUCTOR("last_nonaggregated");
-    RESULT(T_INT, i, as_path_get_last_nonaggregated(v1.val.ad));
-  }
+  /* Get last ASN from non-aggregated part of AS PATH */
+  METHOD_R(T_PATH, last_nonaggregated, 0, T_INT, i, as_path_get_last_nonaggregated(v1.val.ad));
 
-  INST(FI_PAIR_DATA, 1, 1) {	/* Get data part from the standard community */
-    ARG(1, T_PAIR);
-    METHOD_CONSTRUCTOR("data");
-    RESULT(T_INT, i, v1.val.i & 0xFFFF);
-  }
+  /* Get data part from the standard community */
+  METHOD_R(T_PAIR, data, 0, T_INT, i, v1.val.i & 0xFFFF);
 
-  INST(FI_LC_DATA1, 1, 1) {	/* Get data1 part from the large community */
-    ARG(1, T_LC);
-    METHOD_CONSTRUCTOR("data1");
-    RESULT(T_INT, i, v1.val.lc.ldp1);
-  }
+  /* Get data1 part from the large community */
+  METHOD_R(T_LC, data1, 0, T_INT, i, v1.val.lc.ldp1);
 
-  INST(FI_LC_DATA2, 1, 1) {	/* Get data2 part from the large community */
-    ARG(1, T_LC);
-    METHOD_CONSTRUCTOR("data2");
-    RESULT(T_INT, i, v1.val.lc.ldp2);
-  }
+  /* Get data2 part from the large community */
+  METHOD_R(T_LC, data2, 0, T_INT, i, v1.val.lc.ldp2);
 
   INST(FI_CLIST_MIN, 1, 1) {	/* Get minimum element from list */
     ARG(1, T_CLIST);
