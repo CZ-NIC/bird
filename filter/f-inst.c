@@ -625,13 +625,12 @@
       LINE(3,0);
   }
 
-  INST(FI_PRINT, 0, 0) {
+  INST(FI_PRINT, 1, 0) {
     NEVER_CONSTANT;
-    VARARG;
+    ARG_ANY(1);
 
-    if (whati->varcount && !(fs->flags & FF_SILENT))
-      for (uint i=0; i<whati->varcount; i++)
-	val_format(&(vv(i)), &fs->buf);
+    if (!(fs->flags & FF_SILENT))
+      val_format(&v1, &fs->buf);
   }
 
   INST(FI_FLUSH, 0, 0) {
