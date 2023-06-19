@@ -294,6 +294,21 @@ m4_define([[INST_IS_METHOD]])
 m4_define([[INST_METHOD_NAME]],$1)
 FID_INTERPRET_BODY()')
 
+#	Short method constructor
+#	$1 = type
+#	$2 = name
+#	$3 = method inputs
+#	method outputs are always 1
+#	$4 = code
+m4_define(METHOD, `m4_dnl
+INST([[FI_METHOD__]]$1[[__]]$2, m4_eval($3 + 1), 1) {
+  ARG(1, $1);
+  $4
+  METHOD_CONSTRUCTOR("$2");
+}')
+
+m4_define(METHOD_R, `METHOD($1, $2, $3, [[ RESULT($4, $5, $6) ]])')
+
 #	2) Code wrapping
 #	The code produced in 1xx temporary diversions is a raw code without
 #	any auxiliary commands and syntactical structures around. When the
