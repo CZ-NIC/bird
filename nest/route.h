@@ -342,6 +342,8 @@ void rt_prune_sync(rtable *t, int all);
 int rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int refeed);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 
+int rte_same(rte *x, rte *y);
+
 static inline int rt_is_ip(rtable *tab)
 { return (tab->addr_type == NET_IP4) || (tab->addr_type == NET_IP6); }
 
@@ -474,7 +476,8 @@ typedef struct rta {
 #define RTS_BABEL 13			/* Babel route */
 #define RTS_RPKI 14			/* Route Origin Authorization */
 #define RTS_PERF 15			/* Perf checker */
-#define RTS_MAX 16
+#define RTS_AGGREGATED 16		/* Aggregated route */
+#define RTS_MAX 17
 
 #define RTD_NONE 0			/* Undefined next hop */
 #define RTD_UNICAST 1			/* Next hop is neighbor router */

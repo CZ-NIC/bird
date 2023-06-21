@@ -52,7 +52,8 @@ struct filter {
 struct rte;
 
 enum filter_return f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags);
-enum filter_return f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool);
+enum filter_return f_run_args(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, uint argc, const struct f_val *argv, int flags);
+enum filter_return f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool, uint argc, const struct f_val *argv, struct f_val *pres);
 enum filter_return f_eval_buf(const struct f_line *expr, struct linpool *tmp_pool, buffer *buf);
 
 struct f_val cf_eval(const struct f_inst *inst, int type);

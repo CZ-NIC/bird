@@ -11,6 +11,7 @@
 #define _BIRD_FILTER_DATA_H_
 
 #include "nest/bird.h"
+#include "nest/route.h"
 
 /* Type numbers must be in 0..0xff range */
 #define T_MASK 0xff
@@ -62,6 +63,8 @@ enum f_type {
   T_PATH_MASK_ITEM = 0x2b,	/* Path mask item for path mask constructors */
   T_BYTESTRING = 0x2c,
 
+  T_ROUTE = 0x78,
+  T_ROUTES_BLOCK = 0x79,
   T_SET = 0x80,
   T_PREFIX_SET = 0x81,
 } PACKED;
@@ -90,6 +93,7 @@ struct f_val {
     const struct adata *ad;
     const struct f_path_mask *path_mask;
     struct f_path_mask_item pmi;
+    struct rte *rte;
   } val;
 };
 
@@ -136,6 +140,7 @@ enum f_lval_type {
 /* Filter l-value */
 struct f_lval {
   enum f_lval_type type;
+  struct f_inst *rte;
   union {
     struct symbol *sym;
     struct f_dynamic_attr da;

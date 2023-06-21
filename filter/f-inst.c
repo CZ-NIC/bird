@@ -617,6 +617,22 @@
     METHOD_CONSTRUCTOR("!for_next");
   }
 
+  INST(FI_ROUTES_BLOCK_FOR_NEXT, 3, 0) {
+    NEVER_CONSTANT;
+    ARG(1, T_ROUTES_BLOCK);
+    if (!v2.type)
+      v2 = v1;
+
+    if (v2.val.rte)
+    {
+      v3.val.rte = v2.val.rte;
+      v2.val.rte = v2.val.rte->next;
+      LINE(2,0);
+    }
+
+    METHOD_CONSTRUCTOR("!for_next");
+  }
+
   INST(FI_CONDITION, 1, 0) {
     ARG(1, T_BOOL);
     if (v1.val.i)
@@ -654,11 +670,13 @@
     }
   }
 
-  INST(FI_RTA_GET, 0, 1) {
+  INST(FI_RTA_GET, 1, 1) {
     {
-      STATIC_ATTR;
       ACCESS_RTE;
-      struct rta *rta = (*fs->rte)->attrs;
+      ARG(1, T_ROUTE);
+      STATIC_ATTR;
+
+      struct rta *rta = v1.val.rte ? v1.val.rte->attrs : (*fs->rte)->attrs;
 
       switch (sa.sa_code)
       {
@@ -797,13 +815,15 @@
     }
   }
 
-  INST(FI_EA_GET, 0, 1) {	/* Access to extended attributes */
-    DYNAMIC_ATTR;
+  INST(FI_EA_GET, 1, 1) {	/* Access to extended attributes */
     ACCESS_RTE;
     ACCESS_EATTRS;
+    ARG(1, T_ROUTE);
+    DYNAMIC_ATTR;
     RESULT_TYPE(da.f_type);
     {
-      eattr *e = ea_find(*fs->eattrs, da.ea_code);
+      struct ea_list *eal = v1.val.rte ? v1.val.rte->attrs->eattrs : *fs->eattrs;
+      eattr *e = ea_find(eal, da.ea_code);
 
       if (!e) {
 	RESULT_VAL(val_empty(da.f_type));

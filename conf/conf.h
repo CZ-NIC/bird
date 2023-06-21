@@ -238,6 +238,9 @@ struct symbol *cf_new_symbol(struct sym_scope *scope, pool *p, struct linpool *l
     sym_->var_ = def_; \
     sym_; })
 
+#define cf_create_symbol(conf_, name_, type_, var_, def_) \
+  cf_define_symbol(conf_, cf_get_symbol(conf_, name_), type_, var_, def_)
+
 void cf_push_scope(struct config *, struct symbol *);
 void cf_pop_scope(struct config *);
 void cf_push_soft_scope(struct config *);

@@ -45,7 +45,7 @@ static inline void f_method_call_start(struct f_inst *object)
     .object = object,
     .main = new_config->current_scope,
     .scope = {
-      .next = NULL,
+      .next = global_root_scope,
       .hash = scope->hash,
       .active = 1,
       .block = 1,
@@ -244,6 +244,25 @@ f_new_lc_item(u32 f1, u32 t1, u32 f2, u32 t2, u32 f3, u32 t3)
   return t;
 }
 
+static inline struct f_inst *
+f_const_empty(enum f_type t)
+{
+  switch (t) {
+    case T_PATH:
+    case T_CLIST:
+    case T_ECLIST:
+    case T_LCLIST:
+      return f_new_inst(FI_CONSTANT, (struct f_val) {
+	.type = t,
+	.val.ad = &null_adata,
+      });
+    case T_ROUTE:
+      return f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE });
+    default:
+      return f_new_inst(FI_CONSTANT, (struct f_val) {});
+  }
+}
+
 /*
  * Remove all new lines and doubled whitespaces
  * and convert all tabulators to spaces
@@ -303,8 +322,8 @@ f_lval_getter(struct f_lval *lval)
 {
   switch (lval->type) {
     case F_LVAL_VARIABLE:	return f_new_inst(FI_VAR_GET, lval->sym);
-    case F_LVAL_SA:		return f_new_inst(FI_RTA_GET, lval->sa);
-    case F_LVAL_EA:		return f_new_inst(FI_EA_GET, lval->da);
+    case F_LVAL_SA:		return f_new_inst(FI_RTA_GET, lval->rte, lval->sa);
+    case F_LVAL_EA:		return f_new_inst(FI_EA_GET, lval->rte, lval->da);
     default:			bug("Unknown lval type");
   }
 }
@@ -447,6 +466,7 @@ type:
  | CLIST { $$ = T_CLIST; }
  | ECLIST { $$ = T_ECLIST; }
  | LCLIST { $$ = T_LCLIST; }
+ | ROUTE { $$ = T_ROUTE; }
  | type SET {
 	switch ($1) {
 	  case T_INT:
@@ -832,7 +852,7 @@ symbol_value: symbol_known
 	$$ = f_new_inst(FI_VAR_GET, $1);
 	break;
       case SYM_ATTRIBUTE:
-	$$ = f_new_inst(FI_EA_GET, *$1->attribute);
+	$$ = f_new_inst(FI_EA_GET, f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL }), *$1->attribute);
 	break;
       default:
 	cf_error("Can't get value of symbol %s", $1->name);
@@ -866,6 +886,16 @@ method_name_cont:
    } '(' var_list ')' {
      $$ = f_dispatch_method($1, FM.object, $4, 1);
    }
+ | static_attr {
+     if (FM.object->type != T_ROUTE)
+       cf_error("Getting a route attribute from %s, need a route", f_type_name(FM.object->type));
+     $$ = f_new_inst(FI_RTA_GET, FM.object, $1);
+   }
+ | dynamic_attr {
+     if (FM.object->type != T_ROUTE)
+       cf_error("Getting a route attribute from %s, need a route", f_type_name(FM.object->type));
+     $$ = f_new_inst(FI_EA_GET, FM.object, $1);
+   }
  ;
 
 term:
@@ -891,9 +921,9 @@ term:
  | constant { $$ = $1; }
  | constructor { $$ = $1; }
 
- | static_attr { $$ = f_new_inst(FI_RTA_GET, $1); }
+ | static_attr { $$ = f_new_inst(FI_RTA_GET, f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL }), $1); }
 
- | dynamic_attr { $$ = f_new_inst(FI_EA_GET, $1); }
+ | dynamic_attr { $$ = f_new_inst(FI_EA_GET, f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL }), $1); }
 
  | term_dot_method
 
@@ -1044,16 +1074,17 @@ lvalue:
      switch ($1->class)
      {
        case SYM_VARIABLE_RANGE:
-	 $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1 };
+	 $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1, .rte = f_const_empty(T_ROUTE) };
          break;
        case SYM_ATTRIBUTE:
-         $$ = (struct f_lval) { .type = F_LVAL_EA, .da = *($1->attribute) };
+         $$ = (struct f_lval) { .type = F_LVAL_EA, .da = *($1->attribute), .rte = f_const_empty(T_ROUTE) };
 	 break;
        default:
 	 cf_error("Variable name or custom attribute name required");
      }
    }
- | static_attr { $$ = (struct f_lval) { .type = F_LVAL_SA, .sa = $1 }; }
- | dynamic_attr { $$ = (struct f_lval) { .type = F_LVAL_EA, .da = $1 }; };
+ | static_attr { $$ = (struct f_lval) { .type = F_LVAL_SA, .sa = $1, .rte = f_const_empty(T_ROUTE) }; }
+ | dynamic_attr { $$ = (struct f_lval) { .type = F_LVAL_EA, .da = $1, .rte = f_const_empty(T_ROUTE) }; }
+ ;
 
 CF_END

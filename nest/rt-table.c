@@ -117,7 +117,7 @@
 pool *rt_table_pool;
 
 static slab *rte_slab;
-static linpool *rte_update_pool;
+linpool *rte_update_pool;
 
 list routing_tables;
 
@@ -975,7 +975,6 @@ rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int 
   return best;
 }
 
-
 static void
 rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed,
 		 rte *new_best, rte *old_best, int refeed)
@@ -1206,7 +1205,7 @@ rte_free_quick(rte *e)
   sl_free(e);
 }
 
-static int
+int
 rte_same(rte *x, rte *y)
 {
   /* rte.flags / rte.pflags are not checked, as they are internal to rtable */
