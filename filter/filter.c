@@ -90,6 +90,9 @@ struct filter_state {
   /* Buffer for log output */
   struct buffer buf;
 
+  /* Pointers to routes we are aggregating */
+  const struct f_val *val;
+
   /* Filter execution flags */
   int flags;
 };
@@ -237,6 +240,29 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
   return F_ERROR;
 }
 
+/**
+ * Evaluation for attributes comparison
+ */
+enum filter_return
+f_aggr_eval_line(const struct f_line *line, struct rte **rte, struct linpool *pool, struct f_val *pres)
+{
+  /* Initialize the filter state */
+  filter_state = (struct filter_state) {
+    .stack = &filter_stack,
+    .rte = rte,
+    .pool = pool,
+  };
+
+  LOG_BUFFER_INIT(filter_state.buf);
+
+  /* Run the interpreter itself */
+  enum filter_return fret = interpret(&filter_state, line, pres);
+
+  if (filter_state.old_rta)
+    log("Warning: route changed during filter evaluation");
+
+  return fret;
+}
 
 /**
  * f_run - run a filter for a route
@@ -271,6 +297,12 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
   if (filter == FILTER_REJECT)
     return F_REJECT;
 
+  return f_run_val(filter, rte, tmp_pool, NULL, flags);
+}
+
+enum filter_return
+f_run_val(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, const struct f_val *val, int flags)
+{
   int rte_cow = ((*rte)->flags & REF_COW);
   DBG( "Running filter `%s'...", filter->name );
 
@@ -279,6 +311,7 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
     .stack = &filter_stack,
     .rte = rte,
     .pool = tmp_pool,
+    .val = val,
     .flags = flags,
   };
 

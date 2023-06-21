@@ -59,6 +59,8 @@ enum f_type {
   T_RD = 0x2a,		/* Route distinguisher for VPN addresses */
   T_PATH_MASK_ITEM = 0x2b,	/* Path mask item for path mask constructors */
 
+  T_ROUTE = 0x78,
+  T_ROUTES_BLOCK = 0x79,
   T_SET = 0x80,
   T_PREFIX_SET = 0x81,
 } PACKED;
@@ -67,6 +69,38 @@ struct f_method {
   struct symbol *sym;
   struct f_inst *(*new_inst)(struct f_inst *obj, struct f_inst *args);
   uint arg_num;
+};
+
+typedef struct adata {
+  uint length;				/* Length of data */
+  byte data[0];
+} adata;
+
+extern const adata null_adata;		/* adata of length 0 */
+
+/* Large community value */
+typedef struct lcomm {
+  u32 asn;
+  u32 ldp1;
+  u32 ldp2;
+} lcomm;
+
+struct f_path_mask_item {
+  union {
+    u32 asn; /* PM_ASN */
+    const struct f_line *expr; /* PM_ASN_EXPR */
+    const struct f_tree *set; /* PM_ASN_SET */
+    struct { /* PM_ASN_RANGE */
+      u32 from;
+      u32 to;
+    };
+  };
+  int kind;
+};
+
+struct f_path_mask {
+  uint len;
+  struct f_path_mask_item item[0];
 };
 
 /* Filter value; size of this affects filter memory consumption */
@@ -84,6 +118,7 @@ struct f_val {
     const struct adata *ad;
     const struct f_path_mask *path_mask;
     struct f_path_mask_item pmi;
+    struct rte *rte;
   } val;
 };
 
@@ -129,6 +164,7 @@ enum f_lval_type {
 /* Filter l-value */
 struct f_lval {
   enum f_lval_type type;
+  struct f_inst *rte;
   union {
     struct symbol *sym;
     struct f_dynamic_attr da;
@@ -200,6 +236,11 @@ struct f_trie_walk_state
   u8 local_pos;				/* Current intra-node prefix position */
   u8 stack_pos;				/* Current node in stack below */
   const struct f_trie_node *stack[TRIE_STACK_LENGTH];
+};
+
+struct rte_block {
+  struct adata ad;
+  struct rte *routes[];
 };
 
 struct f_tree *f_new_tree(void);

@@ -51,6 +51,7 @@ u32 as_path_get_last_nonaggregated(const struct adata *path);
 int as_path_contains(const struct adata *path, u32 as, int min);
 int as_path_match_set(const struct adata *path, const struct f_tree *set);
 const struct adata *as_path_filter(struct linpool *pool, const struct adata *path, const struct f_val *set, int pos);
+int as_path_compare(const struct adata *path1, const struct adata *path2);
 int as_path_walk(const struct adata *path, uint *pos, uint *val);
 
 static inline struct adata *as_path_prepend(struct linpool *pool, const struct adata *path, u32 as)
@@ -64,24 +65,6 @@ static inline struct adata *as_path_prepend(struct linpool *pool, const struct a
 #define PM_ASN_RANGE	4
 #define PM_ASN_SET	5
 #define PM_LOOP		6
-
-struct f_path_mask_item {
-  union {
-    u32 asn; /* PM_ASN */
-    const struct f_line *expr; /* PM_ASN_EXPR */
-    const struct f_tree *set; /* PM_ASN_SET */
-    struct { /* PM_ASN_RANGE */
-      u32 from;
-      u32 to;
-    };
-  };
-  int kind;
-};
-
-struct f_path_mask {
-  uint len;
-  struct f_path_mask_item item[0];
-};
 
 int as_path_match(const struct adata *path, const struct f_path_mask *mask);
 
@@ -157,8 +140,14 @@ static inline int ec_set_get_size(const struct adata *list)
 static inline int lc_set_get_size(const struct adata *list)
 { return list->length / 12; }
 
+static inline int rte_set_get_size(const struct adata *list)
+{ return list->length / sizeof(struct rte *); }
+
 static inline u32 *int_set_get_data(const struct adata *list)
 { return (u32 *) list->data; }
+
+static inline struct rte *rte_set_get_data(const struct adata *list, u32 idx)
+{ return ((struct rte_block *)list)->routes[idx]; }
 
 static inline u32 ec_hi(u64 ec) { return ec >> 32; }
 static inline u32 ec_lo(u64 ec) { return ec; }
@@ -183,13 +172,6 @@ static inline u64 ec_ip4(enum ec_subtype kind, u64 key, u64 val)
 
 static inline u64 ec_generic(u64 key, u64 val)
 { return (key << 32) | val; }
-
-/* Large community value */
-typedef struct lcomm {
-  u32 asn;
-  u32 ldp1;
-  u32 ldp2;
-} lcomm;
 
 #define LCOMM_LENGTH 12
 
@@ -238,6 +220,7 @@ int lc_set_max(const struct adata *list, lcomm *val);
 int int_set_walk(const struct adata *list, uint *pos, u32 *val);
 int ec_set_walk(const struct adata *list, uint *pos, u64 *val);
 int lc_set_walk(const struct adata *list, uint *pos, lcomm *val);
+int rte_set_walk(const struct adata *list, u32 *pos, struct rte **val);
 
 void ec_set_sort_x(struct adata *set); /* Sort in place */
 

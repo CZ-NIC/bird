@@ -670,6 +670,29 @@ as_path_filter(struct linpool *pool, const struct adata *path, const struct f_va
 }
 
 int
+as_path_compare(const struct adata *path1, const struct adata *path2)
+{
+  uint pos1 = 0;
+  uint pos2 = 0;
+  uint val1 = 0;
+  uint val2 = 0;
+
+  while (1)
+  {
+    int res1 = as_path_walk(path1, &pos1, &val1);
+    int res2 = as_path_walk(path2, &pos2, &val2);
+
+    if (res1 == 0 && res2 == 0)
+      return 0;
+
+    if (val1 == val2)
+      continue;
+
+    return val1 < val2 ? -1 : 1;
+  }
+}
+
+int
 as_path_walk(const struct adata *path, uint *pos, uint *val)
 {
   if (!path)

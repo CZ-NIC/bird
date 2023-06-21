@@ -487,6 +487,7 @@ struct channel_config {
   struct proto_config *parent;		/* Where channel is defined (proto or template) */
   struct rtable_config *table;		/* Table we're attached to */
   const struct filter *in_filter, *out_filter; /* Attached filters */
+  const struct aggr_item_linearized *ai_aggr;
   struct channel_limit rx_limit;	/* Limit for receiving routes from protocol
 					   (relevant when in_keep_filtered is active) */
   struct channel_limit in_limit;	/* Limit for importing routes from protocol */
@@ -513,6 +514,7 @@ struct channel {
   struct rtable *table;
   const struct filter *in_filter;	/* Input filter */
   const struct filter *out_filter;	/* Output filter */
+  const struct aggr_item_linearized *ai_aggr;
   struct bmap export_map;		/* Keeps track which routes passed export filter */
   struct channel_limit rx_limit;	/* Receive limit (for in_keep_filtered) */
   struct channel_limit in_limit;	/* Input limit */

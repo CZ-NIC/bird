@@ -741,3 +741,19 @@ lc_set_walk(const struct adata *list, uint *pos, lcomm *val)
 
   return 1;
 }
+
+int
+rte_set_walk(const struct adata *list, u32 *pos, struct rte **val)
+{
+  if (!list)
+    return 0;
+
+  if (*pos >= (u32)rte_set_get_size(list))
+    return 0;
+
+  struct rte *res = rte_set_get_data(list, *pos);
+  *val = res;
+  *pos += 1;
+
+  return 1;
+}
