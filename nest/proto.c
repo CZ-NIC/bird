@@ -90,6 +90,40 @@ proto_log_state_change(struct proto *p)
     p->last_state_name_announced = NULL;
 }
 
+static int
+aggr_item_same(const struct aggr_item_internal *fst, const struct aggr_item_internal *snd)
+{
+  if (fst->type != snd->type)
+    return 0;
+
+  switch (fst->type)
+  {
+    case AGGR_ITEM_TERM:
+      return f_same(fst->line, snd->line);
+    case AGGR_ITEM_STATIC_ATTR:
+      return memcmp(&fst->sa, &snd->sa, sizeof(struct f_static_attr)) == 0;
+    case AGGR_ITEM_DYNAMIC_ATTR:
+      return memcmp(&fst->da, &snd->da, sizeof(struct f_dynamic_attr)) == 0;
+    default:
+      bug("Broken aggregating data");
+  }
+}
+
+static int
+aggr_item_linearized_same(const struct aggr_item_linearized *fst, const struct aggr_item_linearized *snd)
+{
+  if (!fst || !snd)
+    return 0;
+
+  if (fst->count != snd->count)
+    return 0;
+
+  for (int i = 0; i < fst->count; i++)
+    if (!aggr_item_same(&fst->items[i], &snd->items[i]))
+      return 0;
+
+  return 1;
+}
 
 struct channel_config *
 proto_cf_find_channel(struct proto_config *pc, uint net_type)
@@ -168,6 +202,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
 
   c->in_filter = cf->in_filter;
   c->out_filter = cf->out_filter;
+  c->ai_aggr = cf->ai_aggr;
   c->rx_limit = cf->rx_limit;
   c->in_limit = cf->in_limit;
   c->out_limit = cf->out_limit;
@@ -842,6 +877,14 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   /* Note that filter_same() requires arguments in (new, old) order */
   int import_changed = !filter_same(cf->in_filter, c->in_filter);
   int export_changed = !filter_same(cf->out_filter, c->out_filter);
+
+  if (cf->ra_mode == RA_AGGREGATED)
+  {
+    export_changed |= !aggr_item_linearized_same(cf->ai_aggr, c->ai_aggr);
+    export_changed |= !filter_same(cf->ai_aggr->merge_filter, c->ai_aggr->merge_filter);
+    c->ai_aggr = cf->ai_aggr;
+  }
+
   int rpki_reload_changed = (cf->rpki_reload != c->rpki_reload);
 
   if (c->preference != cf->preference)
@@ -854,6 +897,7 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   c->in_filter = cf->in_filter;
   c->out_filter = cf->out_filter;
   c->rx_limit = cf->rx_limit;
+  c->ai_aggr = cf->ai_aggr;
   c->in_limit = cf->in_limit;
   c->out_limit = cf->out_limit;
 

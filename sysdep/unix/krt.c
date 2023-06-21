@@ -581,6 +581,9 @@ krt_export_net(struct krt_proto *p, net *net, rte **rt_free)
   if (c->ra_mode == RA_MERGED)
     return rt_export_merged(c, net, rt_free, krt_filter_lp, 1);
 
+  if (c->ra_mode == RA_AGGREGATED)
+    return rt_export_aggregated(c, net, rt_free, krt_filter_lp, 1);
+
   rt = net->routes;
   *rt_free = NULL;
 

@@ -14,6 +14,8 @@
 #include "lib/resource.h"
 #include "lib/net.h"
 
+#include "filter/data.h"
+
 struct ea_list;
 struct protocol;
 struct proto;
@@ -284,6 +286,7 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
 #define RA_ACCEPTED	2		/* Announcement of first accepted route */
 #define RA_ANY		3		/* Announcement of any route change */
 #define RA_MERGED	4		/* Announcement of optimal route merged with next ones */
+#define RA_AGGREGATED 5     /* Announcement of merged routes */
 
 /* Return value of preexport() callback */
 #define RIC_ACCEPT	1		/* Accepted by protocol */
@@ -322,6 +325,7 @@ void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src 
 /* rte_update() moved to protocol.h to avoid dependency conflicts */
 int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
 rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
+rte *rt_export_aggregated(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
 void rt_modify_stale(rtable *t, struct channel *c);
@@ -546,13 +550,6 @@ const char *ea_custom_name(uint ea);
 #define EAF_EMBEDDED 0x01		/* Data stored in eattr.u.data (part of type spec) */
 #define EAF_VAR_LENGTH 0x02		/* Attribute length is variable (part of type spec) */
 
-typedef struct adata {
-  uint length;				/* Length of data */
-  byte data[0];
-} adata;
-
-extern const adata null_adata;		/* adata of length 0 */
-
 static inline struct adata *
 lp_alloc_adata(struct linpool *pool, uint len)
 {
@@ -761,5 +758,51 @@ int rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *
 #define ROA_UNKNOWN	0
 #define ROA_VALID	1
 #define ROA_INVALID	2
+
+/*
+ * Aggregating routes
+ */
+
+enum aggr_item_type {
+  AGGR_ITEM_TERM,
+  AGGR_ITEM_STATIC_ATTR,
+  AGGR_ITEM_DYNAMIC_ATTR,
+};
+
+struct aggr_item_internal {
+  enum aggr_item_type type;
+  union {
+    struct f_static_attr sa;
+    struct f_dynamic_attr da;
+    const struct f_line *line;
+  };
+};
+
+struct aggr_item {
+  const struct aggr_item *next;
+  struct aggr_item_internal internal;
+};
+
+struct aggr_item_linearized {
+  int count;
+  const struct filter *merge_filter;
+  struct aggr_item_internal items[];
+};
+
+struct rte_val_list {
+  const struct rte *rte;
+  struct f_val values[];
+};
+
+void rt_notify_aggregated(struct channel *c, struct network *net, struct rte *new_changed, struct rte *old_changed,
+                          struct rte *new_best, struct rte *old_best, int refeed);
+
+rte *export_filter(struct channel *c, struct rte *rt0, struct rte **rt_free, int silent);
+
+/*
+ * This is an internal function of the nest. It is not supposed to be used
+ * directly. This is a temporary solution.
+ */
+void do_rt_notify(struct channel *c, struct network *net, struct rte *new, struct rte *old, int refeed);
 
 #endif
