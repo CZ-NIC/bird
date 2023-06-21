@@ -1,4 +1,4 @@
-/*
+    /*
  *	BIRD -- Table-to-Table Routing Protocol a.k.a Pipe
  *
  *	(c) 1999--2000 Martin Mares <mj@ucw.cz>
@@ -81,7 +81,7 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, net *n, rte *new, rte *o
     }
 
   src_ch->table->pipe_busy = 1;
-  rte_update2(dst, n->n.addr, e, src);
+  rte_update2(dst, n->n.addr, e, old ? old->src : new->src);
   src_ch->table->pipe_busy = 0;
 }
 
@@ -138,13 +138,16 @@ pipe_configure_channels(struct pipe_proto *p, struct pipe_config *cf)
 {
   struct channel_config *cc = proto_cf_main_channel(&cf->c);
 
+  log("pipe configure channels: ra_mode: %d", cc->ra_mode);
+  log("pipe configure channels: ai_aggr: %p", cc->ai_aggr);
   struct channel_config pri_cf = {
     .name = "pri",
     .channel = cc->channel,
     .table = cc->table,
     .out_filter = cc->out_filter,
     .in_limit = cc->in_limit,
-    .ra_mode = RA_ANY,
+    .ra_mode = cc->ra_mode,
+    .ai_aggr = cc->ai_aggr,
     .debug = cc->debug,
     .rpki_reload = cc->rpki_reload,
   };
@@ -159,6 +162,30 @@ pipe_configure_channels(struct pipe_proto *p, struct pipe_config *cf)
     .debug = cc->debug,
     .rpki_reload = cc->rpki_reload,
   };
+
+  log("ai_aggr = %p", cc->ai_aggr);
+  const struct aggr_item_linearized *ail = cc->ai_aggr;
+  int node = 1;
+
+  if (ail != NULL) {
+    for (int i = 0; i < ail->count; i++) {
+      switch (ail->items[i].type) {
+        case AGGR_ITEM_TERM:
+          log("node %d, type: term", node);
+          break;
+        case AGGR_ITEM_STATIC_ATTR:
+          log("node %d, type: static", node);
+          break;
+        case AGGR_ITEM_DYNAMIC_ATTR:
+          log("node %d, type: dynamic", node);
+          break;
+        default:
+          log("node %d, type: other", node);
+          break;
+      }
+      node++;
+    }
+  }
 
   return
     proto_configure_channel(&p->p, &p->pri, &pri_cf) &&

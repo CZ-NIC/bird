@@ -321,8 +321,8 @@ f_lval_getter(struct f_lval *lval)
 {
   switch (lval->type) {
     case F_LVAL_VARIABLE:	return f_new_inst(FI_VAR_GET, lval->sym);
-    case F_LVAL_SA:		return f_new_inst(FI_RTA_GET, lval->sa);
-    case F_LVAL_EA:		return f_new_inst(FI_EA_GET, lval->da);
+    case F_LVAL_SA:		return f_new_inst(FI_RTA_GET, lval->rte, lval->sa);
+    case F_LVAL_EA:		return f_new_inst(FI_EA_GET, lval->rte, lval->da);
     default:			bug("Unknown lval type");
   }
 }
@@ -356,6 +356,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	ACCEPT, REJECT, ERROR,
 	INT, BOOL, IP, PREFIX, RD, PAIR, QUAD, EC, LC,
 	SET, STRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
+    ROUTES,
 	IF, THEN, ELSE, CASE,
 	FOR, IN, DO,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
@@ -462,6 +463,7 @@ type:
  | CLIST { $$ = T_CLIST; }
  | ECLIST { $$ = T_ECLIST; }
  | LCLIST { $$ = T_LCLIST; }
+ | ROUTE { $$ = T_ROUTE; }
  | type SET {
 	switch ($1) {
 	  case T_INT:
@@ -839,7 +841,7 @@ symbol_value: symbol_known
 	$$ = f_new_inst(FI_VAR_GET, $1);
 	break;
       case SYM_ATTRIBUTE:
-	$$ = f_new_inst(FI_EA_GET, *$1->attribute);
+	$$ = f_new_inst(FI_EA_GET, f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL }), *$1->attribute);
 	break;
       default:
 	cf_error("Can't get value of symbol %s", $1->name);
@@ -900,9 +902,9 @@ term:
  | constant { $$ = $1; }
  | constructor { $$ = $1; }
 
- | static_attr { $$ = f_new_inst(FI_RTA_GET, $1); }
+ | static_attr { $$ = f_new_inst(FI_RTA_GET, f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL }), $1); }
 
- | dynamic_attr { $$ = f_new_inst(FI_EA_GET, $1); }
+ | dynamic_attr { $$ = f_new_inst(FI_EA_GET, f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL }), $1); }
 
  | term_dot_method
 
@@ -947,6 +949,16 @@ term:
  | FORMAT '(' term ')' {  $$ = f_new_inst(FI_FORMAT, $3); }
 
  | function_call
+
+ | ROUTES { $$ = f_new_inst(FI_ROUTES_GET); }
+ | CF_SYM_KNOWN '.' static_attr {
+     cf_assert_symbol($1, SYM_VARIABLE);
+     $$ = f_new_inst(FI_RTA_GET, f_new_inst(FI_VAR_GET, $1), $3);
+   }
+ | CF_SYM_KNOWN '.' dynamic_attr {
+     cf_assert_symbol($1, SYM_VARIABLE);
+     $$ = f_new_inst(FI_EA_GET, f_new_inst(FI_VAR_GET, $1), $3);
+   }
  ;
 
 break_command:

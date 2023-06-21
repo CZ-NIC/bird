@@ -143,19 +143,28 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
       else if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_MERGED))
 	{
 	  /* Special case for merged export */
-	  rte *rt_free;
-	  e = rt_export_merged(ec, n, &rt_free, c->show_pool, 1);
+	  rte *rte_free;
+	  e = rt_export_merged(ec, n, &rte_free, c->show_pool, 1);
 	  pass = 1;
 
 	  if (!e)
 	  { e = ee; goto skip; }
 	}
+      else if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_AGGREGATED))
+    {
+      rte *rte_free;
+      e = rt_export_aggregated(ec, n, &rte_free, c->show_pool, 1);
+      pass = 1;
+
+	  if (!e)
+	  { e = ee; goto skip; }
+    }
       else if (d->export_mode)
 	{
 	  struct proto *ep = ec->proto;
 	  int ic = ep->preexport ? ep->preexport(ec, e) : 0;
 
-	  if (ec->ra_mode == RA_OPTIMAL || ec->ra_mode == RA_MERGED)
+	  if (ec->ra_mode == RA_OPTIMAL || ec->ra_mode == RA_MERGED || ec->ra_mode == RA_AGGREGATED)
 	    pass = 1;
 
 	  if (ic < 0)
