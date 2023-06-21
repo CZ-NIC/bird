@@ -90,7 +90,6 @@ proto_log_state_change(struct proto *p)
     p->last_state_name_announced = NULL;
 }
 
-
 struct channel_config *
 proto_cf_find_channel(struct proto_config *pc, uint net_type)
 {

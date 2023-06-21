@@ -39,6 +39,7 @@ struct symbol;
 
 enum protocol_class {
   PROTOCOL_NONE,
+  PROTOCOL_AGGREGATOR,
   PROTOCOL_BABEL,
   PROTOCOL_BFD,
   PROTOCOL_BGP,
@@ -103,7 +104,7 @@ void protos_dump_all(void);
 
 extern struct protocol
   proto_device, proto_radv, proto_rip, proto_static, proto_mrt,
-  proto_ospf, proto_perf,
+  proto_ospf, proto_perf, proto_aggregator,
   proto_pipe, proto_bgp, proto_bmp, proto_bfd, proto_babel, proto_rpki;
 
 /*

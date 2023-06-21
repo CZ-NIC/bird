@@ -1905,6 +1905,70 @@ protocol sections.
 <chapt>Protocols
 <label id="protocols">
 
+<sect>Aggregator
+<label id="aggregator">
+
+<sect1>Introduction
+<label id="aggregator-intro">
+<p>The Aggregator protocol explicitly merges routes by the given rules. There
+   are four phases of aggregation. First routes are filtered, then sorted into buckets,
+   then buckets are merged and finally the results are filtered once again.
+   Aggregating an already aggregated route is forbidden.
+
+<p>This is an experimental protocol, use with caution.
+
+<sect1>Configuration
+<label id="aggregator-config">
+<p><descrip>
+	<tag><label id="aggregator-table">table <m/table/</tag>
+	The table from which routes are exported to get aggregated.
+
+	<tag><label id="aggregator-export">export <m/.../</tag>
+	A standard channel's <cf/export/ clause, defining which routes are accepted into aggregation.
+
+	<tag><label id="aggregator-rule">aggregate on <m/expr/ | <m/attribute/ [<m/, .../]</tag>
+	All the given filter expressions and route attributes are evaluated for each route. Then routes
+	are sorted into buckets where <em/all/ values are the same. Note: due to performance reasons,
+        all filter expressions must return a compact type, e.g. integer, a BGP
+        (standard, extended, large) community or an IP address. If you need to compare e.g. modified
+	AS Paths in the aggregation rule, you can define a custom route attribute and set this attribute
+	in the export filter. For now, it's mandatory to say <cf/net/ here, we can't merge prefixes yet.
+
+	<tag><label id="aggregation-merge">merge by { <m/filter code/ }</tag>
+	The given filter code has an extra symbol defined: <cf/routes/. By iterating over <cf/routes/,
+	you get all the routes in the bucket and you can construct your new route. All attributes
+	selected in <cf/aggregate on/ are already set to the common values. For now, it's not possible
+	to use a named filter here. You have to finalize the route by calling <cf/accept/.
+
+	<tag><label id="aggregator-import">import <m/.../</tag>
+	Filter applied to the route after <cf/merge by/. Here you can use a named filter.
+
+	<tag><label id="aggregator-peer-table">peer table <m/table/</tag>
+	The table to which aggregated routes are imported. It may be the same table
+	as <cf/table/.
+</descrip>
+
+<sect1>Example
+<label id="aggregator-example">
+
+<p><code>
+protocol aggregator {
+  table master6;
+  export where defined(bgp_path);
+  /* Merge all routes with the same AS Path length */
+  aggregate on net, bgp_path.len;
+  merge by {
+    for route r in routes do {
+      if ! defined(bgp_path) then { bgp_path = r.bgp_path }
+      bgp_community = bgp_community.add(r.bgp_community);
+    }
+    accept;
+  };
+  import all;
+  peer table agr_result;
+}
+</code>
+
 <sect>Babel
 <label id="babel">
 

@@ -975,7 +975,6 @@ rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int 
   return best;
 }
 
-
 static void
 rt_notify_merged(struct channel *c, net *net, rte *new_changed, rte *old_changed,
 		 rte *new_best, rte *old_best, int refeed)

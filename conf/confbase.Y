@@ -95,6 +95,7 @@ CF_DECLS
   struct timeformat *tf;
   mpls_label_stack *mls;
   const struct adata *bs;
+  struct aggr_item_node *ai;
 }
 
 %token END CLI_MARKER INVALID_TOKEN ELSECOL DDOT

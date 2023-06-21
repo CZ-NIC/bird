@@ -210,6 +210,8 @@ val_compare(const struct f_val *v1, const struct f_val *v2)
     return net_compare(v1->val.net, v2->val.net);
   case T_STRING:
     return strcmp(v1->val.s, v2->val.s);
+  case T_PATH:
+    return as_path_compare(v1->val.ad, v2->val.ad);
   case T_ROUTE:
   case T_ROUTES_BLOCK:
   default:
@@ -681,7 +683,6 @@ rte_block_format(const struct rte *rte, buffer *buf)
     rte_format(rte, buf);
   }
 }
-
 
 /*
  * val_format - format filter value
