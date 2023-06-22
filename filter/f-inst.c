@@ -1327,7 +1327,6 @@
 	FID_HIC(,break,return NULL);
       }
     }
-    /* It is actually possible to have t->data NULL */
 
     LINEX(t->data);
   }
