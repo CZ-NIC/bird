@@ -140,14 +140,8 @@ static inline int ec_set_get_size(const struct adata *list)
 static inline int lc_set_get_size(const struct adata *list)
 { return list->length / 12; }
 
-static inline int rte_set_get_size(const struct adata *list)
-{ return list->length / sizeof(struct rte *); }
-
 static inline u32 *int_set_get_data(const struct adata *list)
 { return (u32 *) list->data; }
-
-static inline struct rte *rte_set_get_data(const struct adata *list, u32 idx)
-{ return ((struct rte_block *)list)->routes[idx]; }
 
 static inline u32 ec_hi(u64 ec) { return ec >> 32; }
 static inline u32 ec_lo(u64 ec) { return ec; }

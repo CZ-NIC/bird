@@ -286,7 +286,6 @@ static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); 
 #define RA_ACCEPTED	2		/* Announcement of first accepted route */
 #define RA_ANY		3		/* Announcement of any route change */
 #define RA_MERGED	4		/* Announcement of optimal route merged with next ones */
-#define RA_AGGREGATED 5     /* Announcement of merged routes */
 
 /* Return value of preexport() callback */
 #define RIC_ACCEPT	1		/* Accepted by protocol */
@@ -325,7 +324,6 @@ void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src 
 /* rte_update() moved to protocol.h to avoid dependency conflicts */
 int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
 rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
-rte *rt_export_aggregated(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
 void rt_modify_stale(rtable *t, struct channel *c);
@@ -345,6 +343,8 @@ void rt_reload_channel_abort(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
 int rte_update_out(struct channel *c, const net_addr *n, rte *new, rte *old0, int refeed);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
+
+int rte_same(rte *x, rte *y);
 
 static inline int rt_is_ip(rtable *tab)
 { return (tab->addr_type == NET_IP4) || (tab->addr_type == NET_IP6); }
@@ -478,7 +478,8 @@ typedef struct rta {
 #define RTS_BABEL 13			/* Babel route */
 #define RTS_RPKI 14			/* Route Origin Authorization */
 #define RTS_PERF 15			/* Perf checker */
-#define RTS_MAX 16
+#define RTS_AGGREGATED 16		/* Aggregated route */
+#define RTS_MAX 17
 
 #define RTD_NONE 0			/* Undefined next hop */
 #define RTD_UNICAST 1			/* Next hop is neighbor router */
@@ -759,43 +760,10 @@ int rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *
 #define ROA_VALID	1
 #define ROA_INVALID	2
 
-/*
- * Aggregating routes
- */
-
-enum aggr_item_type {
-  AGGR_ITEM_TERM,
-  AGGR_ITEM_STATIC_ATTR,
-  AGGR_ITEM_DYNAMIC_ATTR,
-};
-
-struct aggr_item_internal {
-  enum aggr_item_type type;
-  union {
-    struct f_static_attr sa;
-    struct f_dynamic_attr da;
-    const struct f_line *line;
-  };
-};
-
-struct aggr_item {
-  const struct aggr_item *next;
-  struct aggr_item_internal internal;
-};
-
-struct aggr_item_linearized {
-  int count;
-  const struct f_line *merge_filter;
-  struct aggr_item_internal items[];
-};
-
 struct rte_val_list {
   const struct rte *rte;
   struct f_val values[];
 };
-
-void rt_notify_aggregated(struct channel *c, struct network *net, struct rte *new_changed, struct rte *old_changed,
-                          struct rte *new_best, struct rte *old_best, int refeed);
 
 rte *export_filter(struct channel *c, struct rte *rt0, struct rte **rt_free, int silent);
 

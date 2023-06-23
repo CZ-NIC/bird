@@ -9,7 +9,6 @@
 CF_HDR
 
 #include "proto/pipe/pipe.h"
-#include "nest/route.h"
 
 CF_DEFINES
 
@@ -17,7 +16,7 @@ CF_DEFINES
 
 CF_DECLS
 
-CF_KEYWORDS(PIPE, PEER, TABLE, AGGREGATED, IMPORT, EXPORT, AGGREGATE)
+CF_KEYWORDS(PIPE, PEER, TABLE)
 
 CF_GRAMMAR
 
@@ -42,8 +41,6 @@ pipe_proto:
  | pipe_proto proto_item ';'
  | pipe_proto channel_item_ ';'
  | pipe_proto PEER TABLE rtable ';' { PIPE_CFG->peer = $4; }
- | pipe_proto MERGE PATHS IMPORT bool kern_mp_limit { PIPE_CFG->config_import.limit = $5 ? $6 : 0; PIPE_CFG->config_import.use_aggregator = 0; }
- | pipe_proto MERGE PATHS EXPORT bool kern_mp_limit { PIPE_CFG->config_export.limit = $5 ? $6 : 0; PIPE_CFG->config_export.use_aggregator = 0; }
  ;
 
 CF_CODE

@@ -198,6 +198,7 @@ interpret(struct filter_state *fs, const struct f_line *line, uint argc, const s
 #define v3 vv(2)
 
 #define runtime(fmt, ...) do { \
+  if (what->lineno > 66666) bug("BAD"); \
   if (!(fs->flags & FF_SILENT)) \
     log_rl(&rl_runtime_err, L_ERR "filters, line %d: " fmt, what->lineno, ##__VA_ARGS__); \
   return F_ERROR; \
@@ -349,7 +350,6 @@ f_run_args(const struct filter *filter, struct rte **rte, struct linpool *tmp_po
 enum filter_return
 f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool, uint argc, const struct f_val *argv, struct f_val *pres)
 {
-  struct rte *old_rte = *rte;
   filter_state = (struct filter_state) {
     .stack = &filter_stack,
     .rte = rte,
@@ -358,17 +358,7 @@ f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool
 
   LOG_BUFFER_INIT(filter_state.buf);
 
-  enum filter_return fret = interpret(&filter_state, expr, argc, argv, pres);
-
-  if (filter_state.old_rta || (old_rte != *rte))
-  {
-    ASSERT_DIE(rta_is_cached(filter_state.old_rta) && !rta_is_cached((*rte)->attrs));
-    log(L_WARN "Attempted to change a read-only route, reverting");
-    (*rte)->attrs = filter_state.old_rta;
-    *rte = old_rte;
-  }
-
-  return fret;
+  return interpret(&filter_state, expr, argc, argv, pres);
 }
 
 /*

@@ -9,21 +9,9 @@
 #ifndef _BIRD_PIPE_H_
 #define _BIRD_PIPE_H_
 
-struct merging_import {
-  uint limit;
-  uint use_aggregator;
-};
-
-struct merging_export {
-  uint limit;
-  uint use_aggregator;
-};
-
 struct pipe_config {
   struct proto_config c;
-  struct rtable_config *peer;		    /* Table we're connected to */
-  struct merging_import config_import;  /* From peer table to primary table */
-  struct merging_export config_export;  /* From primary table to peer table */
+  struct rtable_config *peer;		/* Table we're connected to */
 };
 
 struct pipe_proto {

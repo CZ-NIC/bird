@@ -122,7 +122,7 @@
 pool *rt_table_pool;
 
 static slab *rte_slab;
-static linpool *rte_update_pool;
+linpool *rte_update_pool;
 
 list routing_tables;
 
@@ -1190,10 +1190,6 @@ rte_announce(rtable *tab, uint type, net *net, rte *new, rte *old,
     case RA_MERGED:
       rt_notify_merged(c, net, new, old, new_best, old_best, 0);
       break;
-
-    case RA_AGGREGATED:
-      rt_notify_aggregated(c, net, new, old, new_best, old_best, 0);
-      break;
     }
   }
 }
@@ -1265,7 +1261,7 @@ rte_free_quick(rte *e)
   sl_free(e);
 }
 
-static int
+int
 rte_same(rte *x, rte *y)
 {
   /* rte.flags / rte.pflags are not checked, as they are internal to rtable */
@@ -3028,8 +3024,6 @@ do_feed_channel(struct channel *c, net *n, rte *e)
     rt_notify_accepted(c, n, NULL, NULL, c->refeeding);
   else if (c->ra_mode == RA_MERGED)
     rt_notify_merged(c, n, NULL, NULL, e, e, c->refeeding);
-  else if (c->ra_mode == RA_AGGREGATED)
-    rt_notify_aggregated(c, n, NULL, NULL, e, e, c->refeeding);
   else /* RA_BASIC */
     rt_notify_basic(c, n, e, e, c->refeeding);
   rte_update_unlock();
@@ -3069,8 +3063,7 @@ rt_feed_channel(struct channel *c)
 
       if ((c->ra_mode == RA_OPTIMAL) ||
 	  (c->ra_mode == RA_ACCEPTED) ||
-	  (c->ra_mode == RA_MERGED)   ||
-      (c->ra_mode == RA_AGGREGATED))
+	  (c->ra_mode == RA_MERGED))
 	if (rte_is_valid(e))
 	  {
 	    /* In the meantime, the protocol may fell down */

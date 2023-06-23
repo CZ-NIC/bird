@@ -245,11 +245,6 @@ struct f_trie_walk_state
   const struct f_trie_node *stack[TRIE_STACK_LENGTH];
 };
 
-struct rte_block {
-  struct adata ad;
-  struct rte *routes[];
-};
-
 struct f_tree *f_new_tree(void);
 struct f_tree *build_tree(struct f_tree *);
 const struct f_tree *find_tree(const struct f_tree *t, const struct f_val *val);
