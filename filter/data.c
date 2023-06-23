@@ -588,17 +588,17 @@ rte_format(const struct rte *rte, buffer *buf)
 }
 
 static void
-rte_block_format(const struct adata *ad, buffer *buf)
+rte_block_format(const struct rte *rte, buffer *buf)
 {
-  struct rte **routes = ((struct rte_block *)ad)->routes;
-  const int count = (ad->length - sizeof(struct rte_block) + sizeof(struct adata)) / sizeof(struct rte *);
+  buffer_print(buf, "Block of routes:");
 
-  buffer_print(buf, "Block of %d routes:");
-
-  for (int i = 0; i < count; i++)
+  int i = 0;
+  while (rte)
   {
-    buffer_print(buf, "\t%d: ", i);
-    rte_format(routes[i], buf);
+    buffer_print(buf, "%s%d: ", i ? "; " : " ", i);
+    rte_format(rte, buf);
+    rte = rte->next;
+    i++;
   }
 }
 
@@ -631,7 +631,7 @@ val_format(const struct f_val *v, buffer *buf)
   case T_LCLIST: lc_set_format(v->val.ad, -1, buf2, 1000); buffer_print(buf, "(lclist %s)", buf2); return;
   case T_PATH_MASK: pm_format(v->val.path_mask, buf); return;
   case T_ROUTE: rte_format(v->val.rte, buf); return;
-  case T_ROUTES_BLOCK: rte_block_format(v->val.ad, buf); return;
+  case T_ROUTES_BLOCK: rte_block_format(v->val.rte, buf); return;
   default:	buffer_print(buf, "[unknown type %x]", v->type); return;
   }
 }

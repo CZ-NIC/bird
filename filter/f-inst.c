@@ -608,8 +608,15 @@
   INST(FI_ROUTES_BLOCK_FOR_NEXT, 3, 0) {
     NEVER_CONSTANT;
     ARG(1, T_ROUTES_BLOCK);
-    if (rte_set_walk(v1.val.ad, &v2.val.i, &v3.val.rte))
+    if (!v2.type)
+      v2 = v1;
+
+    if (v2.val.rte)
+    {
+      v3.val.rte = v2.val.rte;
+      v2.val.rte = v2.val.rte->next;
       LINE(2,0);
+    }
 
     METHOD_CONSTRUCTOR("!for_next");
   }

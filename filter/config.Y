@@ -46,7 +46,7 @@ static inline void f_method_call_start(struct f_inst *object)
     .object = object,
     .main = new_config->current_scope,
     .scope = {
-      .next = NULL,
+      .next = global_root_scope,
       .hash = scope->hash,
       .active = 1,
       .block = 1,
@@ -257,6 +257,8 @@ f_const_empty(enum f_type t)
 	.type = t,
 	.val.ad = &null_adata,
       });
+    case T_ROUTE:
+      return f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE });
     default:
       return f_new_inst(FI_CONSTANT, (struct f_val) {});
   }
@@ -876,6 +878,18 @@ method_name_cont:
      $$ = $1->method->new_inst(FM.object, $4);
      f_method_call_end();
    }
+ | static_attr {
+     if (FM.object->type != T_ROUTE)
+       cf_error("Getting a route attribute from %s, need a route", f_type_name(FM.object->type));
+     $$ = f_new_inst(FI_RTA_GET, FM.object, $1);
+     f_method_call_end();
+   }
+ | dynamic_attr {
+     if (FM.object->type != T_ROUTE)
+       cf_error("Getting a route attribute from %s, need a route", f_type_name(FM.object->type));
+     $$ = f_new_inst(FI_EA_GET, FM.object, $1);
+     f_method_call_end();
+   }
  ;
 
 term:
@@ -948,15 +962,6 @@ term:
  | FORMAT '(' term ')' {  $$ = f_new_inst(FI_FORMAT, $3); }
 
  | function_call
-
- | CF_SYM_KNOWN '.' static_attr {
-     cf_assert_symbol($1, SYM_VARIABLE);
-     $$ = f_new_inst(FI_RTA_GET, f_new_inst(FI_VAR_GET, $1), $3);
-   }
- | CF_SYM_KNOWN '.' dynamic_attr {
-     cf_assert_symbol($1, SYM_VARIABLE);
-     $$ = f_new_inst(FI_EA_GET, f_new_inst(FI_VAR_GET, $1), $3);
-   }
  ;
 
 break_command:
@@ -1074,16 +1079,17 @@ lvalue:
      switch ($1->class)
      {
        case SYM_VARIABLE_RANGE:
-	 $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1 };
+	 $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1, .rte = f_const_empty(T_ROUTE) };
          break;
        case SYM_ATTRIBUTE:
-         $$ = (struct f_lval) { .type = F_LVAL_EA, .da = *($1->attribute) };
+         $$ = (struct f_lval) { .type = F_LVAL_EA, .da = *($1->attribute), .rte = f_const_empty(T_ROUTE) };
 	 break;
        default:
 	 cf_error("Variable name or custom attribute name required");
      }
    }
- | static_attr { $$ = (struct f_lval) { .type = F_LVAL_SA, .sa = $1 }; }
- | dynamic_attr { $$ = (struct f_lval) { .type = F_LVAL_EA, .da = $1 }; };
+ | static_attr { $$ = (struct f_lval) { .type = F_LVAL_SA, .sa = $1, .rte = f_const_empty(T_ROUTE) }; }
+ | dynamic_attr { $$ = (struct f_lval) { .type = F_LVAL_EA, .da = $1, .rte = f_const_empty(T_ROUTE) }; }
+ ;
 
 CF_END
