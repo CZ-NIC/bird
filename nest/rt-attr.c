@@ -75,6 +75,8 @@ const char * const rta_src_names[RTS_MAX] = {
   [RTS_PIPE]		= "pipe",
   [RTS_BABEL]		= "Babel",
   [RTS_RPKI]		= "RPKI",
+  [RTS_PERF]		= "Perf",
+  [RTS_AGGREGATED]	= "aggregated",
 };
 
 const char * rta_dest_names[RTD_MAX] = {
@@ -1272,7 +1274,8 @@ rta_dump(rta *a)
   static char *rts[] = { "", "RTS_STATIC", "RTS_INHERIT", "RTS_DEVICE",
 			 "RTS_STAT_DEV", "RTS_REDIR", "RTS_RIP",
 			 "RTS_OSPF", "RTS_OSPF_IA", "RTS_OSPF_EXT1",
-			 "RTS_OSPF_EXT2", "RTS_BGP", "RTS_PIPE", "RTS_BABEL" };
+			 "RTS_OSPF_EXT2", "RTS_BGP", "RTS_PIPE", "RTS_BABEL",
+			 "RTS_RPKI", "RTS_PERF", "RTS_AGGREGATED", };
   static char *rtd[] = { "", " DEV", " HOLE", " UNREACH", " PROHIBIT" };
 
   debug("pref=%d uc=%d %s %s%s h=%04x",
