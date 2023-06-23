@@ -141,6 +141,7 @@ CF_ENUM_PX(T_ENUM_AF, AF_, AFI_, IPV4, IPV6)
 
 %type <i32> idval
 %type <f> imexport
+%type <fl> merge_filter
 %type <r> rtable
 %type <s> optproto
 %type <ra> r_args
@@ -346,8 +347,18 @@ aggr_item:
     }
   ;
 
+merge_filter: MERGE BY {
+  cf_push_block_scope(new_config);
+  cf_create_symbol(new_config, "routes", SYM_VARIABLE | T_ROUTES_BLOCK, offset, f_new_var(sym_->scope));
+} function_body {
+  cf_pop_block_scope(new_config);
+  $4->args++;
+  $$ = $4;
+  }
+ ;
+
 aggr_definition:
-    AGGREGATE ON aggr_list MERGE BY filter {
+    AGGREGATE ON aggr_list merge_filter {
       _Bool net_present = 0;
       int count = 0;
 
@@ -377,7 +388,7 @@ aggr_definition:
      }
 
      linear->count = pos;
-     linear->merge_filter = $6;
+     linear->merge_filter = $4;
 
      int node = 1;
 

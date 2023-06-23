@@ -356,7 +356,6 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	ACCEPT, REJECT, ERROR,
 	INT, BOOL, IP, PREFIX, RD, PAIR, QUAD, EC, LC,
 	SET, STRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
-    ROUTES,
 	IF, THEN, ELSE, CASE,
 	FOR, IN, DO,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
@@ -950,7 +949,6 @@ term:
 
  | function_call
 
- | ROUTES { $$ = f_new_inst(FI_ROUTES_GET); }
  | CF_SYM_KNOWN '.' static_attr {
      cf_assert_symbol($1, SYM_VARIABLE);
      $$ = f_new_inst(FI_RTA_GET, f_new_inst(FI_VAR_GET, $1), $3);

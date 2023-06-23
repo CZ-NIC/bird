@@ -320,12 +320,13 @@ create_merged_rte(struct channel *c, struct network *net, const struct rte_val_l
   for (int i = 0; i < length; i++)
     rb->routes[i] = (struct rte *)rte_val[i]->rte;
 
+  /* merge filter needs one argument called "routes" */
   struct f_val val = {
     .type = T_ROUTES_BLOCK,
     .val.ad = &rb->ad,
   };
 
-  f_run_val(ail->merge_filter, &new, rte_update_pool, &val, 0);
+  f_eval_rte(ail->merge_filter, &new, rte_update_pool, 1, &val, 0);
 }
 
 /*
@@ -617,7 +618,7 @@ rt_notify_aggregated(struct channel *c, struct network *net, struct rte *new_cha
         case AGGR_ITEM_TERM: {
           const struct f_line *line = ail->items[val_idx].line;
           struct rte *rt1 = rt0;
-          enum filter_return fret = f_aggr_eval_line(line, &rt1, rte_update_pool, &rte_val->values[val_idx]);
+          enum filter_return fret = f_eval_rte(line, &rt1, rte_update_pool, 0, NULL, &rte_val->values[val_idx]);
 
           if (rt1 != rt0)
           {
