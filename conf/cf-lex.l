@@ -255,12 +255,17 @@ WHITE [ \t]
   return IP4;
 }
 
-{XIGIT}{2}((:{XIGIT}{2}){15,}|({XIGIT}{2}){15,}) {
-  char *s = yytext;
+({XIGIT}{2}){16,}|{XIGIT}{2}(:{XIGIT}{2}){15,}|hex:({XIGIT}{2}(:?{XIGIT}{2})*)? {
+  char *s, *sb = yytext;
   size_t len = 0, i;
   struct bytestring *bytes;
   byte *b;
 
+  /* skip 'hex:' prefix */
+  if (sb[0] == 'h' && sb[1] == 'e' && sb[2] == 'x' && sb[3] == ':')
+    sb += 4;
+
+  s = sb;
   while (*s) {
     len++;
     s += 2;
@@ -271,7 +276,7 @@ WHITE [ \t]
 
   bytes->length = len;
   b = &bytes->data[0];
-  s = yytext;
+  s = sb;
   errno = 0;
   for (i = 0; i < len; i++) {
     *b = bstrtobyte16(s);
