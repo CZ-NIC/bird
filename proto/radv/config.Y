@@ -25,6 +25,15 @@ static struct radv_dnssl_config this_radv_dnssl;
 static list radv_dns_list;	/* Used by radv_rdnss and radv_dnssl */
 static u8 radv_mult_val;	/* Used by radv_mult for second return value */
 
+static inline void
+radv_add_to_custom_list(list *l, int type, struct bytestring *payload)
+{
+  if (type < 0 || type > 255) cf_error("RA cusom type must be in range 0-255");
+  struct radv_custom_config *cf = cfg_allocz(sizeof(struct radv_custom_config));
+  add_tail(l, NODE cf);
+  cf->type = type;
+  cf->payload = payload;
+}
 
 CF_DECLS
 
@@ -52,6 +61,7 @@ radv_proto_start: proto_start RADV
   init_list(&RADV_CFG->pref_list);
   init_list(&RADV_CFG->rdnss_list);
   init_list(&RADV_CFG->dnssl_list);
+  init_list(&RADV_CFG->custom_list);
 };
 
 radv_proto_item:
@@ -61,6 +71,7 @@ radv_proto_item:
  | PREFIX radv_prefix { add_tail(&RADV_CFG->pref_list, NODE this_radv_prefix); }
  | RDNSS { init_list(&radv_dns_list); } radv_rdnss { add_tail_list(&RADV_CFG->rdnss_list, &radv_dns_list); }
  | DNSSL { init_list(&radv_dns_list); } radv_dnssl { add_tail_list(&RADV_CFG->dnssl_list, &radv_dns_list); }
+ | OTHER TYPE expr BYTESTRING { radv_add_to_custom_list(&RADV_CFG->custom_list, $3, $4); }
  | TRIGGER net_ip6 { RADV_CFG->trigger = $2; }
  | PROPAGATE ROUTES bool { RADV_CFG->propagate_routes = $3; }
  ;
@@ -82,6 +93,7 @@ radv_iface_start:
   init_list(&RADV_IFACE->pref_list);
   init_list(&RADV_IFACE->rdnss_list);
   init_list(&RADV_IFACE->dnssl_list);
+  init_list(&RADV_IFACE->custom_list);
 
   RADV_IFACE->min_ra_int = (u32) -1; /* undefined */
   RADV_IFACE->max_ra_int = DEFAULT_MAX_RA_INT;
@@ -124,8 +136,10 @@ radv_iface_item:
  | PREFIX radv_prefix { add_tail(&RADV_IFACE->pref_list, NODE this_radv_prefix); }
  | RDNSS { init_list(&radv_dns_list); } radv_rdnss { add_tail_list(&RADV_IFACE->rdnss_list, &radv_dns_list); }
  | DNSSL { init_list(&radv_dns_list); } radv_dnssl { add_tail_list(&RADV_IFACE->dnssl_list, &radv_dns_list); }
+ | OTHER TYPE expr BYTESTRING { radv_add_to_custom_list(&RADV_IFACE->custom_list, $3, $4); }
  | RDNSS LOCAL bool { RADV_IFACE->rdnss_local = $3; }
  | DNSSL LOCAL bool { RADV_IFACE->dnssl_local = $3; }
+ | OTHER LOCAL bool { RADV_IFACE->custom_local = $3; }
  ;
 
 radv_preference:
