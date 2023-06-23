@@ -160,18 +160,20 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
  * TWOARGS macro to get both of them evaluated.
  */
 static enum filter_return
-interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
+interpret(struct filter_state *fs, const struct f_line *line, uint argc, const struct f_val *argv, struct f_val *val)
 {
   /* No arguments allowed */
-  ASSERT(line->args == 0);
+  ASSERT_DIE(line->args == argc);
 
   /* Initialize the filter stack */
   struct filter_stack *fstk = fs->stack;
 
-  fstk->vcnt = line->vars;
-  memset(fstk->vstk, 0, sizeof(struct f_val) * line->vars);
+  /* Set the arguments and top-level variables */
+  fstk->vcnt = line->vars + line->args;
+  memcpy(fstk->vstk, argv, sizeof(struct f_val) * line->args);
+  memset(fstk->vstk + line->args, 0, sizeof(struct f_val) * line->vars);
 
-  /* The same as with the value stack. Not resetting the stack for performance reasons. */
+  /* The same as with the value stack. Not resetting the stack completely for performance reasons. */
   fstk->ecnt = 1;
   fstk->estk[0].line = line;
   fstk->estk[0].pos = 0;
@@ -241,30 +243,6 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
 }
 
 /**
- * Evaluation for attributes comparison
- */
-enum filter_return
-f_aggr_eval_line(const struct f_line *line, struct rte **rte, struct linpool *pool, struct f_val *pres)
-{
-  /* Initialize the filter state */
-  filter_state = (struct filter_state) {
-    .stack = &filter_stack,
-    .rte = rte,
-    .pool = pool,
-  };
-
-  LOG_BUFFER_INIT(filter_state.buf);
-
-  /* Run the interpreter itself */
-  enum filter_return fret = interpret(&filter_state, line, pres);
-
-  if (filter_state.old_rta)
-    log("Warning: route changed during filter evaluation");
-
-  return fret;
-}
-
-/**
  * f_run - run a filter for a route
  * @filter: filter to run
  * @rte: route being filtered, may be modified
@@ -297,11 +275,11 @@ f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, i
   if (filter == FILTER_REJECT)
     return F_REJECT;
 
-  return f_run_val(filter, rte, tmp_pool, NULL, flags);
+  return f_run_args(filter, rte, tmp_pool, 0, NULL, flags);
 }
 
 enum filter_return
-f_run_val(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, const struct f_val *val, int flags)
+f_run_args(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, uint argc, const struct f_val *argv, int flags)
 {
   int rte_cow = ((*rte)->flags & REF_COW);
   DBG( "Running filter `%s'...", filter->name );
@@ -311,14 +289,13 @@ f_run_val(const struct filter *filter, struct rte **rte, struct linpool *tmp_poo
     .stack = &filter_stack,
     .rte = rte,
     .pool = tmp_pool,
-    .val = val,
     .flags = flags,
   };
 
   LOG_BUFFER_INIT(filter_state.buf);
 
   /* Run the interpreter itself */
-  enum filter_return fret = interpret(&filter_state, filter->root, NULL);
+  enum filter_return fret = interpret(&filter_state, filter->root, argc, argv, NULL);
 
   if (filter_state.old_rta) {
     /*
@@ -370,8 +347,9 @@ f_run_val(const struct filter *filter, struct rte **rte, struct linpool *tmp_poo
  */
 
 enum filter_return
-f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool)
+f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool, uint argc, const struct f_val *argv, struct f_val *pres)
 {
+  struct rte *old_rte = *rte;
   filter_state = (struct filter_state) {
     .stack = &filter_stack,
     .rte = rte,
@@ -380,10 +358,17 @@ f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool
 
   LOG_BUFFER_INIT(filter_state.buf);
 
-  ASSERT(!((*rte)->flags & REF_COW));
-  ASSERT(!rta_is_cached((*rte)->attrs));
+  enum filter_return fret = interpret(&filter_state, expr, argc, argv, pres);
 
-  return interpret(&filter_state, expr, NULL);
+  if (filter_state.old_rta || (old_rte != *rte))
+  {
+    ASSERT_DIE(rta_is_cached(filter_state.old_rta) && !rta_is_cached((*rte)->attrs));
+    log(L_WARN "Attempted to change a read-only route, reverting");
+    (*rte)->attrs = filter_state.old_rta;
+    *rte = old_rte;
+  }
+
+  return fret;
 }
 
 /*
@@ -402,7 +387,7 @@ f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
 
   LOG_BUFFER_INIT(filter_state.buf);
 
-  enum filter_return fret = interpret(&filter_state, expr, pres);
+  enum filter_return fret = interpret(&filter_state, expr, 0, NULL, pres);
   return fret;
 }
 

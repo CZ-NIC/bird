@@ -881,7 +881,7 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   if (cf->ra_mode == RA_AGGREGATED)
   {
     export_changed |= !aggr_item_linearized_same(cf->ai_aggr, c->ai_aggr);
-    export_changed |= !filter_same(cf->ai_aggr->merge_filter, c->ai_aggr->merge_filter);
+    export_changed |= !f_same(cf->ai_aggr->merge_filter, c->ai_aggr->merge_filter);
     c->ai_aggr = cf->ai_aggr;
   }
 

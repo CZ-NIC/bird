@@ -785,7 +785,7 @@ struct aggr_item {
 
 struct aggr_item_linearized {
   int count;
-  const struct filter *merge_filter;
+  const struct f_line *merge_filter;
   struct aggr_item_internal items[];
 };
 
