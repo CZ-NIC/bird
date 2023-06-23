@@ -541,12 +541,6 @@
     RESULT_VAL(val);
   }
 
-  INST(FI_ROUTES_GET, 0, 1) {
-    NEVER_CONSTANT;
-    FID_INTERPRET_BODY()
-    RESULT(T_ROUTES_BLOCK, ad, fs->val->val.ad);
-  }
-
   METHOD_R(T_PATH, empty, 0, T_PATH, ad, &null_adata);
   METHOD_R(T_CLIST, empty, 0, T_CLIST, ad, &null_adata);
   METHOD_R(T_ECLIST, empty, 0, T_ECLIST, ad, &null_adata);
@@ -613,7 +607,7 @@
 
   INST(FI_ROUTES_BLOCK_FOR_NEXT, 3, 0) {
     NEVER_CONSTANT;
-    ARG(1, T_ROUTE);
+    ARG(1, T_ROUTES_BLOCK);
     if (rte_set_walk(v1.val.ad, &v2.val.i, &v3.val.rte))
       LINE(2,0);
 
