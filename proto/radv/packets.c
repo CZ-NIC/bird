@@ -264,9 +264,8 @@ radv_prepare_dnssl(struct radv_iface *ifa, list *dnssl_list, char **buf, char *b
 static int
 radv_prepare_custom(struct radv_iface *ifa, list *custom_list, char **buf, char *bufend)
 {
-  struct radv_custom_config *ccf = HEAD(*custom_list);
-
-  while(NODE_VALID(ccf))
+  struct radv_custom_config *ccf;
+  WALK_LIST(ccf, *custom_list)
   {
     struct radv_opt_custom *op = (void *) *buf;
     /* Add 2 octets for type and size and 8 - 1 for ceiling the division up to 8 octets */
@@ -280,7 +279,6 @@ radv_prepare_custom(struct radv_iface *ifa, list *custom_list, char **buf, char 
     memcpy(op->payload, ccf->payload->data, ccf->payload->length);
 
     *buf += 8 * op->length;
-    ccf = NODE_NEXT(ccf);
   }
 
   return 0;
