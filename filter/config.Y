@@ -866,17 +866,15 @@ static_attr:
  | ONLINK  { $$ = f_new_static_attr(T_BOOL,       SA_ONLINK,	0); }
  ;
 
-term_dot_method: term '.' { f_method_call_start($1); } method_name_cont { $$ = $4; };
+term_dot_method: term '.' { f_method_call_start($1); } method_name_cont { f_method_call_end(); $$ = $4; };
 method_name_cont:
    CF_SYM_METHOD_BARE {
      $$ = $1->method->new_inst(FM.object, NULL);
-     f_method_call_end();
    }
  | CF_SYM_METHOD_ARGS {
      f_method_call_args();
    } '(' var_list ')' {
      $$ = $1->method->new_inst(FM.object, $4);
-     f_method_call_end();
    }
  ;
 
@@ -1052,10 +1050,10 @@ cmd:
  | CASE term '{' switch_body '}' {
       $$ = f_new_inst(FI_SWITCH, $2, $4);
    }
-
  | lvalue '.' {
      f_method_call_start(f_lval_getter(&$1));
    } method_name_cont ';' {
+     f_method_call_end();
      $$ = f_lval_setter(&$1, $4);
    }
  | BT_ASSERT '(' get_cf_position term get_cf_position ')' ';' { $$ = assert_done($4, $3 + 1, $5 - 1); }
