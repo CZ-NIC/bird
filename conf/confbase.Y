@@ -178,7 +178,7 @@ expr_us:
  ;
 
 symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN | KEYWORD ;
-symbol_known: CF_SYM_KNOWN | KEYWORD ;
+symbol_known: CF_SYM_KNOWN ;
 
 /* Switches */
 
