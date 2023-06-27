@@ -1034,10 +1034,7 @@
       ((net_addr_roa6 *) v1.val.net)->max_pxlen);
   ]]);
 
-  /* Get ROA ASN or community ASN part */
-  METHOD_R(T_PAIR, asn, T_INT, i, v1.val.i >> 16);
-  METHOD_R(T_LC, asn, T_INT, i, v1.val.lc.asn);
-
+  /* Get ROA ASN */
   METHOD(T_NET, asn, 0, [[
         if (!net_is_roa(v1.val.net))
           runtime( "ROA expected" );
@@ -1046,7 +1043,6 @@
           ((net_addr_roa4 *) v1.val.net)->asn :
           ((net_addr_roa6 *) v1.val.net)->asn);
   ]]);
-
 
   /* Convert prefix to IP */
   METHOD_R(T_NET, ip, T_IP, ip, net_prefix(v1.val.net));
@@ -1059,27 +1055,23 @@
     RESULT(T_RD, ec, net_rd(v1.val.net));
   }
 
-  INST(FI_AS_PATH_FIRST, 1, 1) {	/* Get first ASN from AS PATH */
-    ARG(1, T_PATH);
-    METHOD_CONSTRUCTOR("first");
-    u32 as = 0;
-    as_path_get_first(v1.val.ad, &as);
-    RESULT(T_INT, i, as);
-  }
+  /* Get first ASN from AS PATH */
+  METHOD_R(T_PATH, first, T_INT, i, ({ u32 as = 0; as_path_get_first(v1.val.ad, &as); as; }));
 
-  INST(FI_AS_PATH_LAST, 1, 1) {		/* Get last ASN from AS PATH */
-    ARG(1, T_PATH);
-    METHOD_CONSTRUCTOR("last");
-    u32 as = 0;
-    as_path_get_last(v1.val.ad, &as);
-    RESULT(T_INT, i, as);
-  }
+  /* Get last ASN from AS PATH */
+  METHOD_R(T_PATH, last, T_INT, i, ({ u32 as = 0; as_path_get_last(v1.val.ad, &as); as; }));
 
   /* Get last ASN from non-aggregated part of AS PATH */
   METHOD_R(T_PATH, last_nonaggregated, T_INT, i, as_path_get_last_nonaggregated(v1.val.ad));
 
+  /* Get ASN part from the standard community ASN */
+  METHOD_R(T_PAIR, asn, T_INT, i, v1.val.i >> 16);
+
   /* Get data part from the standard community */
   METHOD_R(T_PAIR, data, T_INT, i, v1.val.i & 0xFFFF);
+
+  /* Get ASN part from the large community */
+  METHOD_R(T_LC, asn, T_INT, i, v1.val.lc.asn);
 
   /* Get data1 part from the large community */
   METHOD_R(T_LC, data1, T_INT, i, v1.val.lc.ldp1);
@@ -1087,53 +1079,23 @@
   /* Get data2 part from the large community */
   METHOD_R(T_LC, data2, T_INT, i, v1.val.lc.ldp2);
 
-  INST(FI_CLIST_MIN, 1, 1) {	/* Get minimum element from list */
-    ARG(1, T_CLIST);
-    METHOD_CONSTRUCTOR("min");
-    u32 val = 0;
-    int_set_min(v1.val.ad, &val);
-    RESULT(T_PAIR, i, val);
-  }
+  /* Get minimum element from clist */
+  METHOD_R(T_CLIST, min, T_PAIR, i, ({ u32 val = 0; int_set_min(v1.val.ad, &val); val; }));
 
-  INST(FI_CLIST_MAX, 1, 1) {	/* Get minimum element from list */
-    ARG(1, T_CLIST);
-    METHOD_CONSTRUCTOR("max");
-    u32 val = 0;
-    int_set_max(v1.val.ad, &val);
-    RESULT(T_PAIR, i, val);
-  }
+  /* Get maximum element from clist */
+  METHOD_R(T_CLIST, max, T_PAIR, i, ({ u32 val = 0; int_set_max(v1.val.ad, &val); val; }));
 
-  INST(FI_ECLIST_MIN, 1, 1) {	/* Get minimum element from list */
-    ARG(1, T_ECLIST);
-    METHOD_CONSTRUCTOR("min");
-    u64 val = 0;
-    ec_set_min(v1.val.ad, &val);
-    RESULT(T_EC, ec, val);
-  }
+  /* Get minimum element from eclist */
+  METHOD_R(T_ECLIST, min, T_EC, ec, ({ u64 val = 0; ec_set_min(v1.val.ad, &val); val; }));
 
-  INST(FI_ECLIST_MAX, 1, 1) {	/* Get minimum element from list */
-    ARG(1, T_ECLIST);
-    METHOD_CONSTRUCTOR("max");
-    u64 val = 0;
-    ec_set_max(v1.val.ad, &val);
-    RESULT(T_EC, ec, val);
-  }
+  /* Get maximum element from eclist */
+  METHOD_R(T_ECLIST, max, T_EC, ec, ({ u64 val = 0; ec_set_max(v1.val.ad, &val); val; }));
 
-  INST(FI_LCLIST_MIN, 1, 1) {	/* Get minimum element from list */
-    ARG(1, T_LCLIST);
-    METHOD_CONSTRUCTOR("min");
-    lcomm val = {};
-    lc_set_min(v1.val.ad, &val);
-    RESULT(T_LC, lc, val);
-  }
+  /* Get minimum element from lclist */
+  METHOD_R(T_LCLIST, min, T_LC, lc, ({ lcomm val = {}; lc_set_min(v1.val.ad, &val); val; }));
 
-  INST(FI_LCLIST_MAX, 1, 1) {	/* Get minimum element from list */
-    ARG(1, T_LCLIST);
-    METHOD_CONSTRUCTOR("max");
-    lcomm val = {};
-    lc_set_max(v1.val.ad, &val);
-    RESULT(T_LC, lc, val);
-  }
+  /* Get maximum element from lclist */
+  METHOD_R(T_LCLIST, max, T_LC, lc, ({ lcomm val = {}; lc_set_max(v1.val.ad, &val); val; }));
 
   INST(FI_RETURN, 1, 0) {
     NEVER_CONSTANT;
