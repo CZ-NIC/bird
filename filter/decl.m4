@@ -305,7 +305,7 @@ INST([[FI_METHOD__]]$1[[__]]$2, m4_eval($3 + 1), 1) {
   METHOD_CONSTRUCTOR("$2");
 }')
 
-m4_define(METHOD_R, `METHOD($1, $2, $3, [[ RESULT($4, $5, $6) ]])')
+m4_define(METHOD_R, `METHOD($1, $2, 0, [[ RESULT($3, $4, $5) ]])')
 
 #	2) Code wrapping
 #	The code produced in 1xx temporary diversions is a raw code without

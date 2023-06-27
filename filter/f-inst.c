@@ -496,8 +496,8 @@
     RESULT(T_BOOL, i, (v1.type != T_VOID) && !undef_value(v1));
   }
 
-  METHOD_R(T_NET, type, 0, T_ENUM_NETTYPE, i, v1.val.net->type);
-  METHOD_R(T_IP, is_v4, 0, T_BOOL, i, ipa_is_ip4(v1.val.ip));
+  METHOD_R(T_NET, type, T_ENUM_NETTYPE, i, v1.val.net->type);
+  METHOD_R(T_IP, is_v4, T_BOOL, i, ipa_is_ip4(v1.val.ip));
 
   /* Add initialized variable */
   INST(FI_VAR_INIT, 1, 0) {
@@ -553,10 +553,10 @@
     RESULT_VAL(val);
   }
 
-  METHOD_R(T_PATH, empty, 0, T_PATH, ad, &null_adata);
-  METHOD_R(T_CLIST, empty, 0, T_CLIST, ad, &null_adata);
-  METHOD_R(T_ECLIST, empty, 0, T_ECLIST, ad, &null_adata);
-  METHOD_R(T_LCLIST, empty, 0, T_LCLIST, ad, &null_adata);
+  METHOD_R(T_PATH, empty, T_PATH, ad, &null_adata);
+  METHOD_R(T_CLIST, empty, T_CLIST, ad, &null_adata);
+  METHOD_R(T_ECLIST, empty, T_ECLIST, ad, &null_adata);
+  METHOD_R(T_LCLIST, empty, T_LCLIST, ad, &null_adata);
 
   /* Common loop begin instruction, always created by f_for_cycle() */
   INST(FI_FOR_LOOP_START, 0, 3) {
@@ -946,11 +946,11 @@
   }
 
   /* Get length of */
-  METHOD_R(T_NET, len, 0, T_INT, i, net_pxlen(v1.val.net));
-  METHOD_R(T_PATH, len, 0, T_INT, i, as_path_getlen(v1.val.ad));
-  METHOD_R(T_CLIST, len, 0, T_INT, i, int_set_get_size(v1.val.ad));
-  METHOD_R(T_ECLIST, len, 0, T_INT, i, ec_set_get_size(v1.val.ad));
-  METHOD_R(T_LCLIST, len, 0, T_INT, i, lc_set_get_size(v1.val.ad));
+  METHOD_R(T_NET, len, T_INT, i, net_pxlen(v1.val.net));
+  METHOD_R(T_PATH, len, T_INT, i, as_path_getlen(v1.val.ad));
+  METHOD_R(T_CLIST, len, T_INT, i, int_set_get_size(v1.val.ad));
+  METHOD_R(T_ECLIST, len, T_INT, i, ec_set_get_size(v1.val.ad));
+  METHOD_R(T_LCLIST, len, T_INT, i, lc_set_get_size(v1.val.ad));
 
   INST(FI_NET_SRC, 1, 1) { 	/* Get src prefix */
     ARG(1, T_NET);
@@ -1035,8 +1035,8 @@
   ]]);
 
   /* Get ROA ASN or community ASN part */
-  METHOD_R(T_PAIR, asn, 0, T_INT, i, v1.val.i >> 16);
-  METHOD_R(T_LC, asn, 0, T_INT, i, v1.val.lc.asn);
+  METHOD_R(T_PAIR, asn, T_INT, i, v1.val.i >> 16);
+  METHOD_R(T_LC, asn, T_INT, i, v1.val.lc.asn);
 
   METHOD(T_NET, asn, 0, [[
         if (!net_is_roa(v1.val.net))
@@ -1049,7 +1049,7 @@
 
 
   /* Convert prefix to IP */
-  METHOD_R(T_NET, ip, 0, T_IP, ip, net_prefix(v1.val.net));
+  METHOD_R(T_NET, ip, T_IP, ip, net_prefix(v1.val.net));
 
   INST(FI_ROUTE_DISTINGUISHER, 1, 1) {
     ARG(1, T_NET);
@@ -1076,16 +1076,16 @@
   }
 
   /* Get last ASN from non-aggregated part of AS PATH */
-  METHOD_R(T_PATH, last_nonaggregated, 0, T_INT, i, as_path_get_last_nonaggregated(v1.val.ad));
+  METHOD_R(T_PATH, last_nonaggregated, T_INT, i, as_path_get_last_nonaggregated(v1.val.ad));
 
   /* Get data part from the standard community */
-  METHOD_R(T_PAIR, data, 0, T_INT, i, v1.val.i & 0xFFFF);
+  METHOD_R(T_PAIR, data, T_INT, i, v1.val.i & 0xFFFF);
 
   /* Get data1 part from the large community */
-  METHOD_R(T_LC, data1, 0, T_INT, i, v1.val.lc.ldp1);
+  METHOD_R(T_LC, data1, T_INT, i, v1.val.lc.ldp1);
 
   /* Get data2 part from the large community */
-  METHOD_R(T_LC, data2, 0, T_INT, i, v1.val.lc.ldp2);
+  METHOD_R(T_LC, data2, T_INT, i, v1.val.lc.ldp2);
 
   INST(FI_CLIST_MIN, 1, 1) {	/* Get minimum element from list */
     ARG(1, T_CLIST);
