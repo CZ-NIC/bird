@@ -5370,8 +5370,8 @@ as the destination becomes adjacent again.
 (i.e., they can be used multiple times for a route, one time for each nexthop).
 Syntactically, they are not separate options but just parts of <cf/route/
 statement after each <cf/via/ statement, not separated by semicolons. E.g.,
-statement <cf/route 10.0.0.0/8 via 192.0.2.1 bfd weight 1 via 192.0.2.2 weight
-2;/ describes a route with two nexthops, the first nexthop has two per-nexthop
+statement <cf>route 10.0.0.0/8 via 192.0.2.1 bfd weight 1 via 192.0.2.2 weight
+2;</cf> describes a route with two nexthops, the first nexthop has two per-nexthop
 options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 
 <descrip>
