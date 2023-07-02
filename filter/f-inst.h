@@ -67,10 +67,10 @@ struct filter_iterator {
 
 void f_add_lines(const struct f_line_item *what, struct filter_iterator *fit);
 
-#define FILTER_ITERATE_INIT(fit, filter, pool)			\
+#define FILTER_ITERATE_INIT(fit, line, pool)			\
   ({								\
     BUFFER_INIT((fit)->lines, (pool), 32);			\
-    BUFFER_PUSH((fit)->lines) = (filter)->root;			\
+    BUFFER_PUSH((fit)->lines) = (line);				\
   })
 
 #define FILTER_ITERATE(fit, fi) ({				\

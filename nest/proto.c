@@ -420,7 +420,7 @@ channel_roa_subscribe_filter(struct channel *c, int dir)
 #endif
 
   struct filter_iterator fit;
-  FILTER_ITERATE_INIT(&fit, f, c->proto->pool);
+  FILTER_ITERATE_INIT(&fit, f->root, c->proto->pool);
 
   FILTER_ITERATE(&fit, fi)
   {
