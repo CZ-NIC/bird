@@ -29,6 +29,15 @@ enum f_instruction_flags {
 #include "filter/inst-gen.h"
 
 #define f_new_inst(...) MACRO_CONCAT_AFTER(f_new_inst_, MACRO_FIRST(__VA_ARGS__))(__VA_ARGS__)
+static inline struct f_inst *
+f_copy_inst(struct f_inst *i)
+{
+  ASSERT_DIE(i->next == NULL);
+  struct f_inst *ii = tmp_allocz(sizeof *ii);
+  memcpy(ii, i, sizeof *ii);
+  ii->lineno = ifs->lino;
+  return ii;
+}
 
 /* Convert the instruction back to the enum name */
 const char *f_instruction_name_(enum f_instruction_code fi);
@@ -94,6 +103,8 @@ void f_add_lines(const struct f_line_item *what, struct filter_iterator *fit);
 
 
 struct filter *f_new_where(struct f_inst *);
+struct volatile_config *f_volatile_term(const struct f_line *);
+
 static inline struct f_static_attr f_new_static_attr(btype type, int code, int readonly)
 { return (struct f_static_attr) { .type = type, .sa_code = code, .readonly = readonly }; }
 struct f_inst *f_generate_roa_check(struct rtable_config *table, struct f_inst *prefix, struct f_inst *asn);

@@ -666,6 +666,8 @@ void rt_show(struct rt_show_data *);
 struct rt_show_data_rtable * rt_show_add_exporter(struct rt_show_data *d, struct rt_exporter *t, const char *name);
 struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t);
 
+struct volatile_config *rt_volatile_route_counter(struct rt_show_data *);
+
 /* Value of table definition mode in struct rt_show_data */
 #define RSD_TDB_DEFAULT	  0		/* no table specified */
 #define RSD_TDB_INDIRECT  0		/* show route ... protocol P ... */

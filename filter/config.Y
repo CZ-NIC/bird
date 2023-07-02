@@ -12,6 +12,7 @@ CF_HDR
 
 #include "filter/f-inst.h"
 #include "filter/data.h"
+#include "nest/volatile.h"
 
 CF_DEFINES
 
@@ -366,16 +367,35 @@ conf: definition ;
 definition:
    DEFINE symbol '=' term ';' {
      struct f_line *line = f_linearize($4, 1);
+     int volat = 0;
      struct filter_iterator fit;
-     FILTER_ITERATE_INIT(&fit, 
-     if 
+     FILTER_ITERATE_INIT(&fit, line, new_config->pool);
+     FILTER_ITERATE(&fit, fi)
+     {
+       switch (fi->fi_code)
+       {
+	 case FI_VOLATILE_ROUTE_COUNTER:
+	 case FI_VOLATILE_TERM:
+	   volat = 1;
+	   break;
+	 default:
+	   break;
+       }
+     }
+     FILTER_ITERATE_END;
+     FILTER_ITERATE_CLEANUP(&fit);
 
-     struct f_val val;
-     if (f_eval(, &val) > F_RETURN) cf_error("Runtime error");
-     cf_define_symbol($2, SYM_CONSTANT | val.type, val, lp_val_copy(cfg_mem, &val));
+     if (volat)
+       cf_define_symbol($2, SYM_VOLATILE, volat, f_volatile_term(line));
+     else
+     {
+       struct f_val val;
+       if (f_eval(line, &val) > F_RETURN) cf_error("Runtime error");
+       cf_define_symbol($2, SYM_CONSTANT | val.type, val, lp_val_copy(cfg_mem, &val));
+     }
    }
  | DEFINE symbol '=' COUNT ROUTE r_args ';' {
-     cf_define_symbol($2, SYM_VOLATILE, volat, f_volatile_counter($6));
+     cf_define_symbol($2, SYM_VOLATILE, volat, rt_volatile_route_counter($6));
    }
  ;
 
@@ -820,12 +840,9 @@ symbol_value: symbol_known
       case SYM_ATTRIBUTE:
 	$$ = f_new_inst(FI_EA_GET, $1->attribute);
 	break;
-      case SYM_COUNTER:
-	$$ = f_new_inst(FI_COUNTER, $1);
-	break;
-      case SYM_COUNTER_TERM:
-	$$ = f_new_inst(FI_COUNTER_TERM, $1);
-	break;
+      case SYM_VOLATILE:
+        $$ = f_copy_inst($1->volat->inst);
+        break;
       default:
 	cf_error("Can't get value of symbol %s", $1->name);
     }

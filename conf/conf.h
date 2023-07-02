@@ -163,6 +163,7 @@ struct bytestring {
 #define SYM_FILTER 4
 #define SYM_TABLE 5
 #define SYM_ATTRIBUTE 6
+#define SYM_VOLATILE 7
 
 #define SYM_VARIABLE 0x100	/* 0x100-0x1ff are variable types */
 #define SYM_VARIABLE_RANGE SYM_VARIABLE ... (SYM_VARIABLE | 0xff)

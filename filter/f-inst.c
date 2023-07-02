@@ -542,13 +542,14 @@
     RESULT_VAL(fstk->vstk[curline.vbase + sym->offset]);
   }
 
-  INST(FI_COUNTER, 0, 1) {
-    SYMBOL;
+  INST(FI_VOLATILE_ROUTE_COUNTER, 0, 1) {
+    FID_MEMBER(struct volatile_route_counter_config *, vrcc, vrcc->vc.sym->flags & SYM_FLAG_SAME, "count route %p", item->vrcc);
+
     NEVER_CONSTANT;
-    RESULT(T_INT, i, stats_get_counter(sym));
+    RESULT(T_INT, i, vrcc->counter_pub);
   }
 
-  INST(FI_COUNTER_TERM, 0, 1) {
+  INST(FI_VOLATILE_TERM, 0, 1) {
     SYMBOL;
     NEVER_CONSTANT;
 
