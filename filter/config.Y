@@ -361,6 +361,25 @@ conf: FILTER STACKS expr expr ';' {
  }
  ;
 
+
+conf: definition ;
+definition:
+   DEFINE symbol '=' term ';' {
+     struct f_line *line = f_linearize($4, 1);
+     struct filter_iterator fit;
+     FILTER_ITERATE_INIT(&fit, 
+     if 
+
+     struct f_val val;
+     if (f_eval(, &val) > F_RETURN) cf_error("Runtime error");
+     cf_define_symbol($2, SYM_CONSTANT | val.type, val, lp_val_copy(cfg_mem, &val));
+   }
+ | DEFINE symbol '=' COUNT ROUTE r_args ';' {
+     cf_define_symbol($2, SYM_VOLATILE, volat, f_volatile_counter($6));
+   }
+ ;
+
+
 conf: filter_def ;
 filter_def:
    FILTER symbol { $2 = cf_define_symbol($2, SYM_FILTER, filter, NULL); cf_push_scope( $2 ); }

@@ -153,16 +153,6 @@ conf: ';' ;
 
 /* Constant expressions */
 
-conf: definition ;
-
-definition:
-   DEFINE symbol '=' term ';' {
-     struct f_val val;
-     if (f_eval(f_linearize($4, 1), &val) > F_RETURN) cf_error("Runtime error");
-     cf_define_symbol($2, SYM_CONSTANT | val.type, val, lp_val_copy(cfg_mem, &val));
-   }
- ;
-
 expr:
    NUM
  | '(' term ')' { $$ = f_eval_int(f_linearize($2, 1)); }
