@@ -67,7 +67,9 @@ enum f_type {
 struct f_method {
   struct symbol *sym;
   struct f_inst *(*new_inst)(struct f_inst *obj, struct f_inst *args);
+  const struct f_method *next;
   uint arg_num;
+  enum f_type args_type[];
 };
 
 /* Filter value; size of this affects filter memory consumption */

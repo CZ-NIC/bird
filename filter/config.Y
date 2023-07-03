@@ -869,12 +869,12 @@ static_attr:
 term_dot_method: term '.' { f_method_call_start($1); } method_name_cont { f_method_call_end(); $$ = $4; };
 method_name_cont:
    CF_SYM_METHOD_BARE {
-     $$ = $1->method->new_inst(FM.object, NULL);
+     $$ = f_dispatch_method($1, FM.object, NULL);
    }
  | CF_SYM_METHOD_ARGS {
      f_method_call_args();
    } '(' var_list ')' {
-     $$ = $1->method->new_inst(FM.object, $4);
+     $$ = f_dispatch_method($1, FM.object, $4);
    }
  ;
 
@@ -913,32 +913,15 @@ term:
  | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_const_empty(T_LCLIST); }
  | PREPEND '(' term ',' term ')' { $$ = f_new_inst(FI_PATH_PREPEND, $3, $5); }
  | ADD '(' term ',' term ')' {
-     switch ($3->type) {
-       case T_CLIST: $$ = f_new_inst(FI_CLIST_ADD, $3, $5); break;
-       case T_ECLIST: $$ = f_new_inst(FI_ECLIST_ADD, $3, $5); break;
-       case T_LCLIST: $$ = f_new_inst(FI_LCLIST_ADD, $3, $5); break;
-       default: cf_error("Can't add to type %s", f_type_name($3->type));
-     }
+     $$ = f_dispatch_method_x("add", $3->type, $3, $5);
      cf_warn("add(x,y) function is deprecated, please use x.add(y)");
    }
  | DELETE '(' term ',' term ')' {
-     switch ($3->type) {
-       case T_PATH: $$ = f_new_inst(FI_PATH_DEL, $3, $5); break;
-       case T_CLIST: $$ = f_new_inst(FI_CLIST_DEL, $3, $5); break;
-       case T_ECLIST: $$ = f_new_inst(FI_ECLIST_DEL, $3, $5); break;
-       case T_LCLIST: $$ = f_new_inst(FI_LCLIST_DEL, $3, $5); break;
-       default: cf_error("Can't delete from type %s", f_type_name($3->type));
-     }
+     $$ = f_dispatch_method_x("delete", $3->type, $3, $5);
      cf_warn("delete(x,y) function is deprecated, please use x.delete(y)");
    }
  | FILTER '(' term ',' term ')' {
-     switch ($3->type) {
-       case T_PATH: $$ = f_new_inst(FI_PATH_FILTER, $3, $5); break;
-       case T_CLIST: $$ = f_new_inst(FI_CLIST_FILTER, $3, $5); break;
-       case T_ECLIST: $$ = f_new_inst(FI_ECLIST_FILTER, $3, $5); break;
-       case T_LCLIST: $$ = f_new_inst(FI_LCLIST_FILTER, $3, $5); break;
-       default: cf_error("Can't filter type %s", f_type_name($3->type));
-     }
+     $$ = f_dispatch_method_x("filter", $3->type, $3, $5);
      cf_warn("filter(x,y) function is deprecated, please use x.filter(y)");
    }
 

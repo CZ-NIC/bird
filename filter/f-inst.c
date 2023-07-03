@@ -1246,7 +1246,8 @@
     RESULT(T_PATH, ad, [[ as_path_prepend(fpool, v1.val.ad, v2.val.i) ]]);
   }
 
-  INST(FI_CLIST_ADD, 2, 1) {	/* (Extended) Community list add */
+  /* Community list add */
+  INST(FI_CLIST_ADD, 2, 1) {
     ARG(1, T_CLIST);
     ARG_ANY(2);
     METHOD_CONSTRUCTOR("add");
@@ -1264,47 +1265,54 @@
 	runtime("Can't add non-pair");
   }
 
-  INST(FI_ECLIST_ADD, 2, 1) {
+  INST(FI_ECLIST_ADD_EC, 2, 1) {
     ARG(1, T_ECLIST);
-    ARG_ANY(2);
+    ARG(2, T_EC);
     METHOD_CONSTRUCTOR("add");
-      /* v2.val is either EC or EC-set */
-      if ((v2.type == T_SET) && eclist_set_type(v2.val.t))
-	runtime("Can't add set");
-      else if (v2.type == T_ECLIST)
-	RESULT(T_ECLIST, ad, [[ ec_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
-      else if (v2.type != T_EC)
-	runtime("Can't add non-ec");
-      else
-	RESULT(T_ECLIST, ad, [[ ec_set_add(fpool, v1.val.ad, v2.val.ec) ]]);
+    RESULT(T_ECLIST, ad, [[ ec_set_add(fpool, v1.val.ad, v2.val.ec) ]]);
   }
 
-  INST(FI_LCLIST_ADD, 2, 1) {
+  INST(FI_ECLIST_ADD_ECLIST, 2, 1) {
+    ARG(1, T_ECLIST);
+    ARG(2, T_ECLIST);
+    METHOD_CONSTRUCTOR("add");
+    RESULT(T_ECLIST, ad, [[ ec_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
+  }
+
+  INST(FI_LCLIST_ADD_LC, 2, 1) {
     ARG(1, T_LCLIST);
-    ARG_ANY(2);
+    ARG(2, T_LC);
     METHOD_CONSTRUCTOR("add");
-      /* v2.val is either LC or LC-set */
-      if ((v2.type == T_SET) && lclist_set_type(v2.val.t))
-	runtime("Can't add set");
-      else if (v2.type == T_LCLIST)
-	RESULT(T_LCLIST, ad, [[ lc_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
-      else if (v2.type != T_LC)
-	runtime("Can't add non-lc");
-      else
-	RESULT(T_LCLIST, ad, [[ lc_set_add(fpool, v1.val.ad, v2.val.lc) ]]);
+    RESULT(T_LCLIST, ad, [[ lc_set_add(fpool, v1.val.ad, v2.val.lc) ]]);
   }
 
-  INST(FI_PATH_DEL, 2, 1) {	/* Path delete */
+  INST(FI_LCLIST_ADD_LCLIST, 2, 1) {
+    ARG(1, T_LCLIST);
+    ARG(2, T_LCLIST);
+    METHOD_CONSTRUCTOR("add");
+    RESULT(T_LCLIST, ad, [[ lc_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
+  }
+
+  INST(FI_PATH_DELETE_INT, 2, 1) {
     ARG(1, T_PATH);
-    ARG_ANY(2);
+    ARG(2, T_INT);
     METHOD_CONSTRUCTOR("delete");
-      if ((v2.type == T_SET) && path_set_type(v2.val.t) || (v2.type == T_INT))
-	RESULT(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, &v2, 0) ]]);
-      else
-	runtime("Can't delete non-integer (set)");
+    RESULT(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, &v2, 0) ]]);
   }
 
-  INST(FI_CLIST_DEL, 2, 1) {	/* (Extended) Community list add or delete */
+  INST(FI_PATH_DELETE_SET, 2, 1) {
+    ARG(1, T_PATH);
+    ARG(2, T_SET);
+    METHOD_CONSTRUCTOR("delete");
+
+    if (!path_set_type(v2.val.t))
+      runtime("Mismatched set type");
+
+    RESULT(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, &v2, 0) ]]);
+  }
+
+  /* Community list delete */
+  INST(FI_CLIST_DELETE, 2, 1) {
     ARG(1, T_CLIST);
     ARG_ANY(2);
     METHOD_CONSTRUCTOR("delete");
@@ -1322,76 +1330,119 @@
 	runtime("Can't delete non-pair");
   }
 
-  INST(FI_ECLIST_DEL, 2, 1) {	/* (Extended) Community list add or delete */
+  INST(FI_ECLIST_DELETE_EC, 2, 1) {
     ARG(1, T_ECLIST);
-    ARG_ANY(2);
+    ARG(2, T_EC);
     METHOD_CONSTRUCTOR("delete");
-      /* v2.val is either EC or EC-set */
-      if ((v2.type == T_SET) && eclist_set_type(v2.val.t) || (v2.type == T_ECLIST))
-	RESULT(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
-      else if (v2.type != T_EC)
-	runtime("Can't delete non-ec");
-      else
-	RESULT(T_ECLIST, ad, [[ ec_set_del(fpool, v1.val.ad, v2.val.ec) ]]);
+    RESULT(T_ECLIST, ad, [[ ec_set_del(fpool, v1.val.ad, v2.val.ec) ]]);
   }
 
-  INST(FI_LCLIST_DEL, 2, 1) {	/* (Extended) Community list add or delete */
+  INST(FI_ECLIST_DELETE_ECLIST, 2, 1) {
+    ARG(1, T_ECLIST);
+    ARG(2, T_ECLIST);
+    METHOD_CONSTRUCTOR("delete");
+    RESULT(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
+  }
+
+  INST(FI_ECLIST_DELETE_SET, 2, 1) {
+    ARG(1, T_ECLIST);
+    ARG(2, T_SET);
+    METHOD_CONSTRUCTOR("delete");
+
+    if (!eclist_set_type(v2.val.t))
+      runtime("Mismatched set type");
+
+    RESULT(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
+  }
+
+  INST(FI_LCLIST_DELETE_LC, 2, 1) {
     ARG(1, T_LCLIST);
-    ARG_ANY(2);
+    ARG(2, T_LC);
     METHOD_CONSTRUCTOR("delete");
-      /* v2.val is either LC or LC-set */
-      if ((v2.type == T_SET) && lclist_set_type(v2.val.t) || (v2.type == T_LCLIST))
-	RESULT(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
-      else if (v2.type != T_LC)
-	runtime("Can't delete non-lc");
-      else
-	RESULT(T_LCLIST, ad, [[ lc_set_del(fpool, v1.val.ad, v2.val.lc) ]]);
+    RESULT(T_LCLIST, ad, [[ lc_set_del(fpool, v1.val.ad, v2.val.lc) ]]);
   }
 
-  INST(FI_PATH_FILTER, 2, 1) {	/* (Extended) Community list add or delete */
+  INST(FI_LCLIST_DELETE_LCLIST, 2, 1) {
+    ARG(1, T_LCLIST);
+    ARG(2, T_LCLIST);
+    METHOD_CONSTRUCTOR("delete");
+    RESULT(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
+  }
+
+  INST(FI_LCLIST_DELETE_SET, 2, 1) {
+    ARG(1, T_LCLIST);
+    ARG(2, T_SET);
+    METHOD_CONSTRUCTOR("delete");
+
+    if (!lclist_set_type(v2.val.t))
+      runtime("Mismatched set type");
+
+    RESULT(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
+  }
+
+  INST(FI_PATH_FILTER_SET, 2, 1) {
     ARG(1, T_PATH);
-    ARG_ANY(2);
+    ARG(2, T_SET);
     METHOD_CONSTRUCTOR("filter");
 
-      if ((v2.type == T_SET) && path_set_type(v2.val.t))
-	RESULT(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, &v2, 1) ]]);
-      else
-	runtime("Can't filter integer");
-    }
+    if (!path_set_type(v2.val.t))
+      runtime("Mismatched set type");
 
-  INST(FI_CLIST_FILTER, 2, 1) {
+    RESULT(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, &v2, 1) ]]);
+  }
+
+  INST(FI_CLIST_FILTER_CLIST, 2, 1) {
     ARG(1, T_CLIST);
-    ARG_ANY(2);
+    ARG(2, T_CLIST);
     METHOD_CONSTRUCTOR("filter");
-      /* Community (or cluster) list */
-      struct f_val dummy;
-
-      if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy) || (v2.type == T_CLIST))
-	RESULT(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 1) ]]);
-      else
-	runtime("Can't filter pair");
+    RESULT(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 1) ]]);
   }
 
-  INST(FI_ECLIST_FILTER, 2, 1) {
+  INST(FI_CLIST_FILTER_SET, 2, 1) {
+    ARG(1, T_CLIST);
+    ARG(2, T_SET);
+    METHOD_CONSTRUCTOR("filter");
+
+    if (!clist_set_type(v2.val.t, &(struct f_val){}))
+      runtime("Mismatched set type");
+
+    RESULT(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 1) ]]);
+  }
+
+  INST(FI_ECLIST_FILTER_ECLIST, 2, 1) {
     ARG(1, T_ECLIST);
-    ARG_ANY(2);
+    ARG(2, T_ECLIST);
     METHOD_CONSTRUCTOR("filter");
-      /* v2.val is either EC or EC-set */
-      if ((v2.type == T_SET) && eclist_set_type(v2.val.t) || (v2.type == T_ECLIST))
-	RESULT(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
-      else
-	runtime("Can't filter ec");
+    RESULT(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
   }
 
-  INST(FI_LCLIST_FILTER, 2, 1) {
-    ARG(1, T_LCLIST);
-    ARG_ANY(2);
+  INST(FI_ECLIST_FILTER_SET, 2, 1) {
+    ARG(1, T_ECLIST);
+    ARG(2, T_SET);
     METHOD_CONSTRUCTOR("filter");
-      /* v2.val is either LC or LC-set */
-      if ((v2.type == T_SET) && lclist_set_type(v2.val.t) || (v2.type == T_LCLIST))
-	RESULT(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
-      else
-	runtime("Can't filter lc");
+
+    if (!eclist_set_type(v2.val.t))
+      runtime("Mismatched set type");
+
+    RESULT(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
+  }
+
+  INST(FI_LCLIST_FILTER_LCLIST, 2, 1) {
+    ARG(1, T_LCLIST);
+    ARG(2, T_LCLIST);
+    METHOD_CONSTRUCTOR("filter");
+    RESULT(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
+  }
+
+  INST(FI_LCLIST_FILTER_SET, 2, 1) {
+    ARG(1, T_LCLIST);
+    ARG(2, T_SET);
+    METHOD_CONSTRUCTOR("filter");
+
+    if (!lclist_set_type(v2.val.t))
+      runtime("Mismatched set type");
+
+    RESULT(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
   }
 
   INST(FI_ROA_CHECK_IMPLICIT, 0, 1) {	/* ROA Check */
