@@ -21,20 +21,24 @@ struct network;
 struct proto;
 struct cli;
 struct rtable_private;
+struct rte_storage;
+
+#define RTE_IN_TABLE_WRITABLE \
+  byte pflags;				/* Protocol-specific flags; may change in-table (!) */ \
+  u8 stale_cycle;			/* Auxiliary value for route refresh; may change in-table (!) */ \
 
 typedef struct rte {
+  RTE_IN_TABLE_WRITABLE;
+  byte flags;				/* Table-specific flags */
+  u8 generation;			/* If this route import is based on other previously exported route,
+					   this value should be 1 + MAX(generation of the parent routes).
+					   Otherwise the route is independent and this value is zero. */
+  u32 id;				/* Table specific route id */
   struct ea_list *attrs;		/* Attributes of this route */
   const net_addr *net;			/* Network this RTE belongs to */
   struct rte_src *src;			/* Route source that created the route */
   struct rt_import_hook *sender;	/* Import hook used to send the route to the routing table */
   btime lastmod;			/* Last modified (set by table) */
-  u32 id;				/* Table specific route id */
-  byte flags;				/* Table-specific flags */
-  byte pflags;				/* Protocol-specific flags */
-  u8 generation;			/* If this route import is based on other previously exported route,
-					   this value should be 1 + MAX(generation of the parent routes).
-					   Otherwise the route is independent and this value is zero. */
-  u8 stale_cycle;			/* Auxiliary value for route refresh */
 } rte;
 
 #define REF_FILTERED	2		/* Route is rejected by import filter */
@@ -73,7 +77,7 @@ struct rte_owner_class {
 
 struct rte_owner {
   struct rte_owner_class *class;
-  int (*rte_recalculate)(struct rtable_private *, struct network *, struct rte *, struct rte *, struct rte *);
+  int (*rte_recalculate)(struct rtable_private *, struct network *, struct rte_storage *new, struct rte_storage *, struct rte_storage *);
   HASH(struct rte_src) hash;
   const char *name;
   u32 hash_key;
@@ -461,7 +465,7 @@ static inline const char *flowspec_valid_name(enum flowspec_valid v)
 { return (v < FLOWSPEC__MAX) ? flowspec_valid_names[v] : "???"; }
 
 extern struct ea_class ea_gen_flowspec_valid;
-static inline enum flowspec_valid rt_get_flowspec_valid(rte *rt)
+static inline enum flowspec_valid rt_get_flowspec_valid(const rte *rt)
 { return ea_get_int(rt->attrs, &ea_gen_flowspec_valid, FLOWSPEC_UNKNOWN); }
 
 /* Next hop: For now, stored as adata */

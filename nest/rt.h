@@ -229,13 +229,20 @@ typedef struct network {
 
 struct rte_storage {
   struct rte_storage *next;		/* Next in chain */
-  struct rte rte;			/* Route data */
+  union {
+    struct {
+      RTE_IN_TABLE_WRITABLE;
+    };
+    const struct rte rte;			/* Route data */
+  };
 };
 
 #define RTE_COPY(r)		((r) ? (r)->rte : (rte) {})
 #define RTE_COPY_VALID(r)	(((r) && (rte_is_valid(&(r)->rte))) ? (r)->rte : (rte) {})
 #define RTE_OR_NULL(r)		((r) ? &((r)->rte) : NULL)
 #define RTE_VALID_OR_NULL(r)	(((r) && (rte_is_valid(&(r)->rte))) ? &((r)->rte) : NULL)
+
+#define RTES_WRITE(r)		(((r) != ((struct rte_storage *) 0)) ? ((struct rte *) &(r)->rte) : NULL)
 
 /* Table-channel connections */
 
@@ -250,7 +257,7 @@ struct rt_import_request {
   void (*log_state_change)(struct rt_import_request *req, u8 state);
   /* Preimport is called when the @new route is just-to-be inserted, replacing @old.
    * Return a route (may be different or modified in-place) to continue or NULL to withdraw. */
-  int (*preimport)(struct rt_import_request *req, struct rte *new, struct rte *old);
+  int (*preimport)(struct rt_import_request *req, struct rte *new, const struct rte *old);
 };
 
 struct rt_import_hook {
@@ -449,7 +456,7 @@ void rt_exporter_init(struct rt_exporter *re);
  * Channel export hooks. To be refactored out.
  */
 
-int channel_preimport(struct rt_import_request *req, rte *new, rte *old);
+int channel_preimport(struct rt_import_request *req, rte *new, const rte *old);
 
 void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first, struct rt_pending_export *last, const rte **feed, uint count);
 

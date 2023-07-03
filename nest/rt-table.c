@@ -154,7 +154,7 @@ static void rt_delete(void *);
 static void rt_export_used(struct rt_table_exporter *, const char *, const char *);
 static void rt_export_cleanup(struct rtable_private *tab);
 
-static int rte_same(rte *x, rte *y);
+static int rte_same(const rte *x, const rte *y);
 
 const char *rt_import_state_name_array[TIS_MAX] = {
   [TIS_DOWN] = "DOWN",
@@ -639,19 +639,20 @@ rte_find(net *net, struct rte_src *src)
 struct rte_storage *
 rte_store(const rte *r, net *net, struct rtable_private *tab)
 {
-  struct rte_storage *e = sl_alloc(tab->rte_slab);
+  struct rte_storage *s = sl_alloc(tab->rte_slab);
+  struct rte *e = RTES_WRITE(s);
 
-  e->rte = *r;
-  e->rte.net = net->n.addr;
+  *e = *r;
+  e->net = net->n.addr;
 
-  rt_lock_source(e->rte.src);
+  rt_lock_source(e->src);
 
-  if (ea_is_cached(e->rte.attrs))
-    e->rte.attrs = rta_clone(e->rte.attrs);
+  if (ea_is_cached(e->attrs))
+    e->attrs = rta_clone(e->attrs);
   else
-    e->rte.attrs = rta_lookup(e->rte.attrs, 1);
+    e->attrs = rta_lookup(e->attrs, 1);
 
-  return e;
+  return s;
 }
 
 /**
@@ -886,7 +887,7 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
 }
 
 static void
-rt_notify_basic(struct channel *c, const net_addr *net, rte *new, rte *old)
+rt_notify_basic(struct channel *c, const net_addr *net, rte *new, const rte *old)
 {
   if (new && old && rte_same(new, old))
   {
@@ -1104,7 +1105,7 @@ void
 rt_notify_optimal(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
-  rte *o = RTE_VALID_OR_NULL(first->old_best);
+  const rte *o = RTE_VALID_OR_NULL(first->old_best);
   struct rte_storage *new_best = first->new_best;
 
   RPE_WALK(first, rpe, NULL)
@@ -1123,8 +1124,8 @@ rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pend
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
 
-  rte *n = RTE_VALID_OR_NULL(first->new);
-  rte *o = RTE_VALID_OR_NULL(first->old);
+  const rte *n = RTE_VALID_OR_NULL(first->new);
+  const rte *o = RTE_VALID_OR_NULL(first->old);
 
   if (!n && !o)
   {
@@ -1613,7 +1614,7 @@ rte_validate(struct channel *ch, rte *e)
 }
 
 static int
-rte_same(rte *x, rte *y)
+rte_same(const rte *x, const rte *y)
 {
   /* rte.flags / rte.pflags are not checked, as they are internal to rtable */
   return
@@ -1622,7 +1623,7 @@ rte_same(rte *x, rte *y)
     rte_is_filtered(x) == rte_is_filtered(y);
 }
 
-static inline int rte_is_ok(rte *e) { return e && !rte_is_filtered(e); }
+static inline int rte_is_ok(const rte *e) { return e && !rte_is_filtered(e); }
 
 static int
 rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, net *net, rte *new, struct rte_src *src)
@@ -1630,8 +1631,8 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, net *net
   struct rt_import_request *req = c->req;
   struct rt_import_stats *stats = &c->stats;
   struct rte_storage *old_best_stored = net->routes, *old_stored = NULL;
-  rte *old_best = old_best_stored ? &old_best_stored->rte : NULL;
-  rte *old = NULL;
+  const rte *old_best = old_best_stored ? &old_best_stored->rte : NULL;
+  const rte *old = NULL;
 
   /* If the new route is identical to the old one, we find the attributes in
    * cache and clone these with no performance drop. OTOH, if we were to lookup
@@ -1639,7 +1640,10 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, net *net
    * therefore it's definitely worth the time. */
   struct rte_storage *new_stored = NULL;
   if (new)
-    new = &(new_stored = rte_store(new, net, table))->rte;
+  {
+    new_stored = rte_store(new, net, table);
+    new = RTES_WRITE(new_stored);
+  }
 
   /* Find and remove original route from the same protocol */
   struct rte_storage **before_old = rte_find(net, src);
@@ -1666,7 +1670,7 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, net *net
 	  if (new && rte_same(old, &new_stored->rte))
 	    {
 	      /* No changes, ignore the new route and refresh the old one */
-	      old->stale_cycle = new->stale_cycle;
+	      old_stored->stale_cycle = new->stale_cycle;
 
 	      if (!rte_is_filtered(new))
 		{
@@ -1737,7 +1741,7 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, net *net
 	 the first position. There are several optimized cases. */
 
       if (src->owner->rte_recalculate &&
-	  src->owner->rte_recalculate(table, net, new_stored ? &new_stored->rte : NULL, old, old_best))
+	  src->owner->rte_recalculate(table, net, new_stored, old_stored, old_best_stored))
 	goto do_recalculate;
 
       if (new_stored && rte_better(&new_stored->rte, old_best))
@@ -1800,9 +1804,9 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, net *net
 
   if (new_stored)
     {
-      new_stored->rte.lastmod = current_time();
-      new_stored->rte.id = hmap_first_zero(&table->id_map);
-      hmap_set(&table->id_map, new_stored->rte.id);
+      new->lastmod = current_time();
+      new->id = hmap_first_zero(&table->id_map);
+      hmap_set(&table->id_map, new->id);
     }
 
   /* Log the route change */
@@ -1829,7 +1833,7 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, net *net
 }
 
 int
-channel_preimport(struct rt_import_request *req, rte *new, rte *old)
+channel_preimport(struct rt_import_request *req, rte *new, const rte *old)
 {
   struct channel *c = SKIP_BACK(struct channel, in_req, req);
 
@@ -2360,7 +2364,7 @@ rt_refresh_begin(struct rt_import_request *req)
       {
        for (struct rte_storage *e = n->routes; e; e = e->next)
          if (e->rte.sender == req->hook)
-           e->rte.stale_cycle = 0;
+           e->stale_cycle = 0;
       }
     FIB_WALK_END;
 
@@ -2654,7 +2658,7 @@ rt_flowspec_export_one(struct rt_export_request *req, const net_addr *net, struc
   }
 
   /* This net may affect some flowspecs, check the actual change */
-  rte *o = RTE_VALID_OR_NULL(first->old_best);
+  const rte *o = RTE_VALID_OR_NULL(first->old_best);
   struct rte_storage *new_best = first->new_best;
 
   RPE_WALK(first, rpe, NULL)
@@ -3546,7 +3550,7 @@ rta_next_hop_outdated(ea_list *a)
 }
 
 static inline int
-rt_next_hop_update_rte(rte *old, rte *new)
+rt_next_hop_update_rte(const rte *old, rte *new)
 {
   struct hostentry_adata *head = rta_next_hop_outdated(old->attrs);
   if (!head)
@@ -3704,7 +3708,7 @@ rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, ea_list *
 #endif /* CONFIG_BGP */
 
 static int
-rt_flowspec_update_rte(rtable *tab, rte *r, rte *new)
+rt_flowspec_update_rte(rtable *tab, const rte *r, rte *new)
 {
 #ifdef CONFIG_BGP
   if (r->generation || (rt_get_source_attr(r) != RTS_BGP))
@@ -3836,14 +3840,15 @@ rt_next_hop_update_net(struct rtable_private *tab, net *n)
     if (updates[i].new_stored)
       {
 	/* Get a new ID for the route */
-	updates[i].new_stored->rte.lastmod = current_time();
-	updates[i].new_stored->rte.id = hmap_first_zero(&tab->id_map);
-	hmap_set(&tab->id_map, updates[i].new_stored->rte.id);
+	rte *new = RTES_WRITE(updates[i].new_stored);
+	new->lastmod = current_time();
+	new->id = hmap_first_zero(&tab->id_map);
+	hmap_set(&tab->id_map, new->id);
 
 	/* Call a pre-comparison hook */
 	/* Not really an efficient way to compute this */
 	if (updates[i].old->rte.src->owner->rte_recalculate)
-	  updates[i].old->rte.src->owner->rte_recalculate(tab, n, &updates[i].new_stored->rte, &updates[i].old->rte, &old_best->rte);
+	  updates[i].old->rte.src->owner->rte_recalculate(tab, n, updates[i].new_stored, updates[i].old, old_best);
       }
 
 #if DEBUGGING
@@ -4611,7 +4616,7 @@ hc_notify_export_one(struct rt_export_request *req, const net_addr *net, struct 
     else
     {
       /* This net may affect some hostentries, check the actual change */
-      rte *o = RTE_VALID_OR_NULL(first->old_best);
+      const rte *o = RTE_VALID_OR_NULL(first->old_best);
       struct rte_storage *new_best = first->new_best;
 
       RPE_WALK(first, rpe, NULL)
