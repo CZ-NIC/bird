@@ -1127,8 +1127,6 @@
     NEVER_CONSTANT;
     VARARG;
     SYMBOL;
-
-    /* Fake result type declaration */
     RESULT_TYPE(sym->function->return_type);
 
     FID_NEW_BODY()

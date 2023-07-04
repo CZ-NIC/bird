@@ -539,7 +539,7 @@ include "tablename.conf";;
 	Define a filter. You can learn more about filters in the following
 	chapter.
 
-	<tag><label id="opt-function">function <m/type/ <m/name/ (<m/parameters/) <m/local variables/ { <m/commands/ }</tag>
+	<tag><label id="opt-function">function <m/name/ (<m/parameters/) [ -&gt; <m/return type/ ] <m/local variables/ { <m/commands/ }</tag>
 	Define a function. You can learn more about functions in the following chapter.
 
 	<tag><label id="opt-protocol">protocol rip|ospf|bgp|<m/.../ [<m/name/ [from <m/name2/]] { <m>protocol options</m> }</tag>
@@ -1294,21 +1294,21 @@ can group several statements to a single compound statement by using braces
 (<cf>{ <M>statements</M> }</cf>) which is useful if you want to make a bigger
 block of code conditional.
 
-<p>BIRD supports functions, so that you don't have to repeat the same blocks of
-code over and over. Functions can have zero or more parameters and they can have
-local variables. You should always specify the function return type and always
-return it. No-return functions and multiple-type returning functions are deprecated.
-Direct recursion is possible. Function definitions look like this:
+<p>BIRD supports functions, so that you don not have to repeat the same blocks
+of code over and over. Functions can have zero or more parameters and they can
+have local variables. If the function returns value, then you should always
+specify its return type. Direct recursion is possible. Function definitions look
+like this:
 
 <code>
-function int name ()
+function name() -> int
 {
 	int local_variable;
 	int another_variable = 5;
 	return 42;
 }
 
-function pair with_parameters (int parameter)
+function with_parameters(int parameter) -> pair
 {
 	print parameter;
 	return (1, 2);

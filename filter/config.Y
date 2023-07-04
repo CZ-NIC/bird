@@ -380,7 +380,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %type <f> filter where_filter
 %type <fl> filter_body function_body
 %type <flv> lvalue
-%type <i> type maybe_type function_vars
+%type <i> type function_vars function_type
 %type <fa> function_argsn function_args
 %type <ecs> ec_kind
 %type <fret> break_command
@@ -513,6 +513,11 @@ function_vars:
    }
  ;
 
+function_type:
+   /* EMPTY */ { $$ = T_VOID; }
+ | IMP type { $$ = $2; }
+ ;
+
 filter_body: function_body ;
 
 filter:
@@ -547,28 +552,23 @@ function_body:
  ;
 
 conf: function_def ;
-maybe_type:
-   /* EMPTY */ { $$ = T_VOID; }
- | type { $$ = $1; }
- ;
 
 function_def:
-   FUNCTION maybe_type symbol {
-     DBG( "Beginning of function %s\n", $3->name );
-     this_function = cf_define_symbol(new_config, $3, SYM_FUNCTION, function, NULL);
-/*   if ($2 == T_VOID) cf_warn("Support for functions without explicit return type will be removed soon" ); */
+   FUNCTION symbol {
+     DBG( "Beginning of function %s\n", $2->name );
+     this_function = cf_define_symbol(new_config, $2, SYM_FUNCTION, function, NULL);
      cf_push_scope(new_config, this_function);
-   } function_args {
+   } function_args function_type {
      /* Make dummy f_line for storing function prototype */
      struct f_line *dummy = cfg_allocz(sizeof(struct f_line));
      this_function->function = dummy;
 
-     dummy->return_type = $2;
+     dummy->return_type = $5;
 
      /* Revert the args */
-     while ($5) {
-       struct f_arg *tmp = $5;
-       $5 = $5->next;
+     while ($4) {
+       struct f_arg *tmp = $4;
+       $4 = $4->next;
 
        tmp->next = dummy->arg_list;
        dummy->arg_list = tmp;
@@ -578,7 +578,7 @@ function_def:
      $7->args = this_function->function->args;
      $7->arg_list = this_function->function->arg_list;
      $7->return_type = this_function->function->return_type;
-     $3->function = $7;
+     $2->function = $7;
      cf_pop_scope(new_config);
    }
  ;
