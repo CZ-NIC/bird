@@ -115,7 +115,6 @@
 #include "filter/filter.h"
 #include "filter/data.h"
 
-
 /*
  * In the trie_add_prefix(), we use ip_addr (assuming that it is the same as
  * ip6_addr) to handle both IPv4 and IPv6 prefixes. In contrast to rest of the
@@ -784,6 +783,42 @@ done:
 
 #define SAME_PREFIX(A,B,X,L) ((X) ? ip4_prefix_equal((A)->v4.addr, net4_prefix(B), (L)) : ip6_prefix_equal((A)->v6.addr, net6_prefix(B), (L)))
 #define GET_NET_BITS(N,X,A,B) ((X) ? ip4_getbits(net4_prefix(N), (A), (B)) : ip6_getbits(net6_prefix(N), (A), (B)))
+#define GET_NODE_BITS(N,X,A,B) ((X) ? ip4_getbits((N)->v4.addr, (A), (B)) : ip6_getbits((N)->v6.addr, (A), (B)))
+//#define GET_ACCEPT_BITS(N,X,B) ((X) ? ip4_getbits((N)->v4.accept, (B), TRIE_STEP) : ip6_getbits((N)->v6.accept, (B), TRIE_STEP))
+#define NEXT_PREFIX(A,B,X) ((X) ? ip4_compare((A)->v4.addr, net4_prefix(B)) < 0 : ip6_compare((A)->v6.addr, net6_prefix(B)) < 0)
+#define MATCH_LOCAL_MASK(A,B,L,X) \
+  ((X) ? (A)->v4.local >= trie_local_mask4(net4_prefix(B), (B)->pxlen, (L)) : (A)->v6.local >= trie_local_mask6(net6_prefix(B), (B)->pxlen, (L)))
+
+void
+_print_net(const net_addr *net, int v4)
+{
+  char buf[64];
+  net_format(net, buf, 64);
+  log("net: %s", buf);
+}
+
+void
+_print_node(const struct f_trie_node *n, int v4)
+{
+  if (n == NULL)
+  {
+    log("node: (null)");
+    return;
+  }
+
+  int nlen = v4 ? n->v4.plen : n->v6.plen;
+
+  char buf[64];
+  net_addr curr;
+  if (v4)
+    net_fill_ip4(&curr, ip4_and(n->v4.addr, ip4_mkmask(nlen)), nlen);
+  else
+    net_fill_ip6(&curr, ip6_and(n->v6.addr, ip6_mkmask(nlen)), nlen);
+
+  net_format(&curr, buf, 64);
+
+  log("node: %s", buf);
+}
 
 /**
  * trie_walk_init
@@ -816,14 +851,14 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
     .stack[0] = &t->root
   };
 
+  /* Local work copy of @net */
   if (!net)
-  { log("return 0"); return 0; }
+    return 0;
 
   /* We want to find node of level at least plen */
   int plen = ROUND_DOWN_POW2(net->pxlen, TRIE_STEP);
   const struct f_trie_node *n = &t->root;
   const int v4 = t->ipv4;
-  int step;
 
   while (n)
   {
@@ -836,31 +871,104 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
     /* We found final node */
     if (nlen >= plen)
     {
+      if (!include_successors)
+	s->stack[0] = n;
+      else
+      {
+	s->stack[s->stack_pos] = n;
+      }
+
+      s->start_pos = 1;
       if (nlen == plen)
       {
 	/* Find proper local_pos, while accept_length is not used */
-	step = net->pxlen - plen;
-	s->start_pos = s->local_pos = (1u << step) + GET_NET_BITS(net, v4, plen, step);
+	s->local_pos = 1;
 	s->accept_length = plen;
+
+	//if (include_successors && (GET_LOCAL(n, v4) < TRIE_LOCAL_MASK(net, nlen, v4)))
+	  //goto find_successor;
+
+	if (include_successors)
+	{
+	  if (GET_LOCAL(n, v4) != 0 && !MATCH_LOCAL_MASK(n, net, nlen, v4))
+	    goto find_successor;
+
+	  int pos = 1;
+	  u32 bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
+
+	  for (int i = 0; i < net->pxlen - plen; i++)
+	  {
+	    if (bits & (1u << (TRIE_STEP - i - 1)))
+	      pos = 2 * pos + 1;
+	    else
+	      pos = 2 * pos;
+	  }
+
+	  //if (GET_CHILD(n, v4, bits) != NULL)
+	  //{
+	    s->local_pos = pos;
+	    return 0;
+	  //}
+	}
+
+//	if (v4)
+//	{
+//	  struct net_addr_ip4 *net4 = &((net_addr_union *) net)->ip4;
+//	  /* succesor is not in current node */
+//	  if (include_successors && (GET_LOCAL(n, v4) < trie_local_mask4(net4->prefix, net4->pxlen, nlen)))
+//	    goto find_successor;
+//
+//	  /* successor could be in current node */
+//	  if (include_successors)
+//	  {
+//	    int pos = 1;
+//	    u32 bits = ip4_getbits(net4->prefix, nlen, TRIE_STEP);
+//
+//	    /* calculate pos for local bitmap */
+//	    for (int i = 0; i < net4->pxlen - plen; i++)
+//	    {
+//	      if (bits & (1u << (TRIE_STEP - i - 1)))
+//		pos = 2 * pos + 1;
+//	      else
+//		pos = 2 * pos;
+//	    }
+//
+//	    if (n->v4.c[bits] != NULL)
+//	    {
+//	      s->local_pos = pos;
+//	      return 1;
+//	    }
+//
+//	    /* if the prefix on position pos is present, go one step back */
+//	    if (GET_LOCAL(n, v4) & (1u << pos))
+//	      if (pos == 1)		      
+//		{}
+//	      else
+//		s->local_pos = pos / 2;
+//	    else
+//	      s->local_pos = pos;
+//
+//	    return 1;
+//	  }
+//	}
+//	else
+//	{
+//	  struct net_addr_ip6 *net6 = &((net_addr_union *) net)->ip6;
+//	  if (include_successors && (GET_LOCAL(n, v4) < trie_local_mask6(net6->prefix, net6->pxlen, nlen)))
+//	    goto find_successor;
+//
+//	  if (include_successors)
+//	  {
+//	    return 1;
+//	  }
+//	}
       }
       else
       {
-	/* Start from pos 1 in local node, but first try accept mask */
+	/* Start from pos 1 in current node, but first try accept mask */
 	s->accept_length = net->pxlen;
       }
 
-      /* Set as root node the only searched subnet */
-      if (!include_successors)
-	s->stack[0] = n;
-      /* Save the last node on the stack otherwise */
-      else
-      {
-	/* Found perfect match, no advancing of stack position */
-	s->stack[s->stack_pos] = n;
-	s->start_pos = 1;
-      }
-
-      log("return 1");
       return 1;
     }
 
@@ -878,111 +986,191 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
   /* We are out of path, find nearest successor */
   else
   {
-    int nlen;
-    char buf[64];
-    char buf2[64];
-    net_format(net, buf, 64);
-    net_addr curr;
-    if (n == NULL)
-      log("node is null");
-      //bug("node is null");
-    else {
-      nlen = v4 ? n->v4.plen : n->v6.plen;
-      if (v4)
-	net_fill_ip4(&curr, ip4_and(n->v4.addr, ip4_mkmask(n->v4.plen)), n->v4.plen);
-	//net_fill_ip4(&curr, n->v4.addr, n->v4.plen);
+    if (s->stack_pos == 0)
+      return 0;
+//    if (s->stack_pos == 0)
+//    {
+//      if (s->stack[0] == NULL)
+//      {	/* no elements, -> invalid state */ log(" return 4 invalid"); return 0; }
+//
+//      /* empty trie with only root node !? */
+//      bug("couldn't happen");
+//    }
+
+    /*
+     * If we end up on node that has compressed path, we need to step up node
+     * for better decision making
+     */
+//    if (n == NULL || (v4 ? n->v4.plen < s->stack[s->stack_pos - 1]->v4.plen :
+//		      n->v6.plen < s->stack[s->stack_pos - 1]->v6.plen && NEXT_PREFIX(n, net, v4)))
+//    {
+//      s->stack_pos--;
+//      n = s->stack[s->stack_pos];
+//    }
+
+    s->stack_pos--;
+    n = s->stack[s->stack_pos];
+
+    ASSERT(n != NULL);
+    //u32 nlen = v4 ? n->v4.plen : n->v6.plen;
+    //s->accept_length = nlen;
+    //u32 bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
+
+    //uint nlen = v4 ? n->v4.plen : n->v6.plen;
+    //u32 bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
+    //const struct f_trie_node *child = GET_CHILD(n, v4, bits);
+    //if (child != NULL)
+    //{
+    //  u32 clen; /* child prefix length */
+    //  do
+    //  {
+    //    clen = v4 ? child->v4.plen : child->v6.plen;
+
+    //    s->stack_pos++;
+    //    s->stack[s->stack_pos] = child;
+    //    s->local_pos = 0x1f;
+
+    //    n = child;
+    //    nlen = clen;
+    //    bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
+    //    child = GET_CHILD(n, v4, bits);
+    //  }
+    //  while (child != NULL && clen > nlen && NEXT_PREFIX(child, net, v4));
+    //}
+
+    //s->accept_length = nlen;
+    ///* the while cycle above wasn't entered */
+    //if (s->local_pos != 0x1f)
+    //  s->local_pos = 0x10 | bits;
+
+
+     /* We find the nearest successor in subsequent trie_walk_next()  */
+    int nlen = v4 ? n->v4.plen : n->v6.plen;
+    u32 bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
+    const struct f_trie_node *child = GET_CHILD(n, v4, bits);
+    if (child != NULL)
+    {
+      int clen = v4 ? child->v4.plen : child->v6.plen;   /* child prefix length */
+
+      /* We are dealing with a compressed child */
+      if (clen > nlen + TRIE_STEP)
+      {
+	int len = nlen;
+	while (GET_NODE_BITS(child, v4, len, TRIE_STEP) == bits && len < MIN(clen, plen))
+	{
+	  len += TRIE_STEP;
+	  bits = GET_NET_BITS(net, v4, len, TRIE_STEP);
+	}
+
+	if (len > nlen)
+	{
+	  s->stack_pos++;
+	  s->stack[s->stack_pos] = child;
+	}
+
+	/* successive siblings walk */
+	const struct f_trie_node *ns = NULL;
+	for (u32 i = bits + 1; i < (1u << TRIE_STEP); i++)
+	{
+	  /* n is parent and ns is older sibling of child */
+	  if ((ns = v4 ? (struct f_trie_node *) n->v4.c[i] : (struct f_trie_node *) n->v6.c[i]) == NULL)
+	    continue;
+
+	  //if (GET_NODE_BITS(ns, v4, len, TRIE_STEP) < bits)
+	  //  break;
+	  if (GET_NET_BITS(net, v4, len, TRIE_STEP) < bits)
+	    break;
+	}
+
+	if (ns == NULL)
+	  ns = child;
+
+	//if (GET_NODE_BITS(ns, v4, len, TRIE_STEP) < bits)
+	// s->local_pos = 0x1f;
+	if (GET_NET_BITS(net, v4, len, TRIE_STEP) < bits)
+	  s->local_pos = 0x1f;
+	else
+	  s->local_pos = 1;
+
+	s->accept_length = len;
+
+	return 0;
+      }
+
+//      if (clen > nlen && NEXT_PREFIX(child, net, v4))
+//      {
+//	//clen = v4 ? child->v4.plen : child->v6.plen;
+//
+//	s->stack_pos++;
+//	s->stack[s->stack_pos] = child;
+//	s->local_pos = 0x1f;
+//
+//	n = child;
+//	nlen = clen;
+//
+//	bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
+//	child = GET_CHILD(n, v4, bits);
+//      }
       else
-	net_fill_ip6(&curr, ip6_and(n->v6.addr, ip6_mkmask(n->v6.plen)), n->v6.plen);
-	//net_fill_ip6(&curr, n->v6.addr, n->v6.plen);
-      net_format(&curr, buf2, 64);
+	s->local_pos = 0x10 + bits;
+//      if (plen > nlen && NEXT_PREFIX(child, net, v4))
+//      {
+//	s->stack_pos++;
+//	s->stack[s->stack_pos] = child;
+//	s->local_pos = 0x1f;
+//      }
 
-      log(" !SAME_PREFIX: %s vs. %s\n", buf, buf2);
+//      if (s->local_pos != 0x1f)
+//      {
+//	s->local_pos = 0x10 + bits;
+//      }
     }
-
-    if (s->stack_pos > 0)
-      n = s->stack[s->stack_pos - 1];
     else
     {
-      log("root fallback");
-      n = &t->root;
+      s->local_pos = 0x10 + bits;
     }
 
     nlen = v4 ? n->v4.plen : n->v6.plen;
+    s->accept_length = nlen;
 
-    log("phase 2 after back step");
-    net_format(net, buf, 64);
-    if (v4)
-      net_fill_ip4(&curr, ip4_and(n->v4.addr, ip4_mkmask(n->v4.plen)), n->v4.plen);
-      //net_fill_ip4(&curr, n->v4.addr, n->v4.plen);
-    else
-      net_fill_ip6(&curr, ip6_and(n->v6.addr, ip6_mkmask(n->v6.plen)), n->v6.plen);
-      //net_fill_ip6(&curr, n->v6.addr, n->v6.plen);
-    net_format(&curr, buf2, 64);
-    log(" (%d) SAME_PREFIX: %s vs. %s\n", SAME_PREFIX(n, net, v4, MIN(net->pxlen, nlen)), buf, buf2);
+//    if (k4)
+//      /* compressed child */
+//      if (n->v4.c[bits] != NULL && n->v4.c[bits]->plen > nlen + TRIE_STEP && 
+//          ip4_getbits((n->v4.c[bits]->addr), nlen + TRIE_STEP, TRIE_STEP) < ip4_getbits(((net_addr_ip4 *)net)->prefix, nlen + TRIE_STEP, TRIE_STEP))
+//      {
+//	s->stack_pos++;
+//	s->stack[s->stack_pos] = (const struct f_trie_node *) n->v4.c[bits];
+//	s->local_pos = 0x1f;
+//      }
+//      else
+//	s->local_pos = 0x10 + bits;
+//    else
+//      {}
+  }
+  return 0;
 
-    step = net->pxlen - plen;
-    /* Stack position point one element ahead */
-    if (s->stack_pos == 1)
-    {
-      //bug("there");
-      log("there");
-      s->stack_pos--;
-      s->start_pos = s->local_pos = 1;
-    }
-    else if (s->stack_pos > 1)
-    {
-      //bug("over");
-      log("over");
-      s->stack_pos--;
-
-      nlen = (v4) ? n->v4.plen : n->v6.plen;
-      int next = (GET_NET_BITS(net, v4, nlen, step) + 1) % TRIE_STEP;
-      while (s->stack_pos != 0 && next == 0)
-      {
-	n = s->stack[s->start_pos];
-	step--;
-	s->stack_pos--;
-	next = (GET_NET_BITS(net, v4, nlen, step) + 1) % TRIE_STEP;
-      }
-
-      /* Fix the stack_pos, one decrement one than needed */
-      s->stack_pos++;
-
-      if ((n = GET_CHILD(n, v4, next)) != NULL)
-      {
-	log("settting the positions");
-	s->stack[s->stack_pos] = n;
-	//s->start_pos = (1u << step) + GET_NET_BITS(net, v4, plen, step);
-	s->start_pos = 2 * (1u << step) + GET_NET_BITS(net, v4, plen, step);
-	s->local_pos = 2 * (1u << step) + GET_NET_BITS(net, v4, plen, step);
-      }
-      //s->start_pos = s->local_pos = (1u << step) + GET_NET_BITS(net, v4, plen, step);
-      //s->accept_length = plen;
-      /* s->start_pos and s->local_pos is already initialized */
-    }
-    /* Be careful around underflow */
-    else /* stack_pos == 0 */
-    {
-      bug("here");
-
-      //return 0;
-      s->stack[0] = &t->root;
-      s->start_pos = s->local_pos = (1u << step);
-      s->accept_length = plen;
-    }
-
-    struct net_addr net_copy;
-    memcpy(&net_copy, net, sizeof(struct net_addr));
-/*
-    if (v4)
-      net_fill_ip4(net, ip4_and(), len);
-    else
-      net_fill_ip6(net, ip6_and(), len);
-*/
-    //trie_walk_next(s, &net_copy);
+find_successor:;
+  log("find_successor");
+  ASSERT(n != NULL);
+  u32 nlen = v4 ? n->v4.plen : n->v6.plen;
+  {
+    _print_node(n, v4);
   }
 
-  log("return 2");
+  u32 bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
+  s->local_pos = 0x10 + bits;
+
+//  //const struct f_trie_node *old = n;
+//  if (v4)
+//  {
+//    struct net_addr_ip4 *addr = &((union net_addr_union *) &local)->ip4;
+//    u32 bits = ip4_getbits(addr->prefix, nlen, TRIE_STEP);
+//    /* what about compress nodes ?!? TODO */
+//    s->local_pos = 0x10 + bits;
+//  }
+//  else
+//  {
+//  }
   return 0;
 }
 
@@ -1020,7 +1208,7 @@ trie_walk_next(struct f_trie_walk_state *s, net_addr *net)
    *          1
    *      2       3
    *    4   5   6   7
-   *   8 9 A B C D E F
+   *   8 9 A B C D E e
    *
    * We walk them depth-first, including virtual positions 10-1F that are
    * equivalent of position 1 in child nodes 0-F.
