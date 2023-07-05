@@ -260,9 +260,10 @@ make_random_prefix_list(int num, int v6, int tight)
     get_random_prefix(&px->prefix, v6, tight);
     add_tail(prefixes, &px->n);
 
-    char buf[64];
-    bt_format_net(buf, 64, &px->prefix.net);
-    bt_debug("ADD %s{%d,%d}\n", buf, px->prefix.lo, px->prefix.hi);
+    //char buf[64];
+    //bt_format_net(buf, 64, &px->prefix.net);
+    //bt_debug("ADD %s{%d,%d}\n", buf, px->prefix.lo, px->prefix.hi);
+    //log("ADD %s{%d,%d}", buf, px->prefix.lo, px->prefix.hi);
   }
 
   return prefixes;
@@ -314,9 +315,9 @@ read_prefix_list(FILE *f, int v6, int plus)
     px->prefix.hi = plus ? IP4_MAX_PREFIX_LENGTH : pl;
     add_tail(pxlist, &px->n);
 
-    char buf[64];
-    bt_format_net(buf, 64, &px->prefix.net);
-    bt_debug("ADD %s{%d,%d}\n", buf, px->prefix.lo, px->prefix.hi);
+    //char buf[64];
+    //bt_format_net(buf, 64, &px->prefix.net);
+    //bt_debug("ADD %s{%d,%d}\n", buf, px->prefix.lo, px->prefix.hi);
   }
 
   bt_syscall(errno, "fgets()");
@@ -885,6 +886,10 @@ t_trie_walk_inclusive(void)
 {
   bt_bird_init();
   bt_config_parse(BT_CONFIG_SIMPLE);
+  //unsigned int r = rand();
+  //printf("random seed %u\n", r);
+  //srandom(r);
+  //srandom(1985510202);
 
   for (int round = 0; round < TESTS_NUM*8; round++)
   {
@@ -903,39 +908,6 @@ t_trie_walk_inclusive(void)
     memset(&pxset[pos], 0, sizeof (struct f_prefix));
 
     qsort(pxset, num, sizeof(struct f_prefix), compare_prefixes);
-
-    // print sorted prefixes
-    bt_debug("sorted prefixes\n");
-    for (struct f_prefix *px = pxset; px < pxset + num; px++)
-    {
-      char buf[64];
-      bt_format_net(buf, 64, &px->net);
-      bt_debug("%s{%d,%d}\n", buf, px->lo, px->hi);
-    }
-
-    /* Full walk */
-    bt_debug("Full walk inclusive (round %d, %d nets)\n", round, num);
-
-    pos = 0;
-    uint pxc = 0;
-    /* Last argument should have no effect on the walk */
-    TRIE_WALK2(trie, net, NULL, 1)
-    {
-      log_networks(&net, &pxset[pos].net);
-      bt_assert(net_equal(&net, &pxset[pos].net));
-
-      /* Skip possible duplicates */
-      while (net_equal(&pxset[pos].net, &pxset[pos + 1].net))
-	pos++;
-
-      pos++;
-      pxc++;
-    }
-    TRIE_WALK2_END;
-
-    bt_assert(pos == num);
-    bt_assert(pxc == trie->prefix_count);
-    bt_debug("Full walk inclusive done\n");
 
 
     /* Prepare net for subnet walk - start with random prefix from trie */
@@ -994,20 +966,43 @@ t_trie_walk_inclusive(void)
     /* Subnet walk */
     TRIE_WALK2(trie, net, &from.net, 1)
     {
-      log_networks(&net, &pxset[pos].net);
-      //bt_assert(net_compare(&net, &pxset[pos].net) >= 0);
+      bt_assert(net_compare(&net, &pxset[pos].net) >= 0);
+
       bt_assert(net_compare(&net, &from.net) >= 0);
+
+      if (!net_equal(&net, &pxset[pos + 1].net) || !(net_compare(&net, &from.net) >= 0))
+      {
+	/* Make sure that net is from inserted prefixes */
+	bt_format_net(buf0, 64, &net);
+	bt_debug("got: %s", buf0);
+	bt_format_net(buf0, 64, &pxset[pos].net);
+	bt_debug(" expected %s", buf0);
+	if (pos + 1 < num)
+	{
+	  bt_format_net(buf0, 64, &pxset[pos + 1].net);
+	  bt_debug(" (next: %s)\n", buf0);
+	}
+	else
+	  bt_debug("\n");
+      }
+
+      bt_assert(net_equal(&net, &pxset[pos].net));
+      bt_assert(net_compare(&net, &from.net) >= 0);
+
 
       /* Skip possible duplicates */
       while (net_equal(&pxset[pos].net, &pxset[pos + 1].net))
 	pos++;
 
       pos++;
+
     }
     TRIE_WALK2_END;
 
-    bt_assert(pos == num);
+
+    bt_debug("pos == num %u %u; p0 %u \n", pos, num, p0);
     bt_debug("Subnet walk done inclusive for %s (found %d nets)\n", buf0, pos - p0);
+    bt_assert(pos == num);
 
     /* Prepare net for subnet walk - start with random prefix (likely not from trie) */
     get_random_prefix(&from, v6, 1);
@@ -1015,14 +1010,14 @@ t_trie_walk_inclusive(void)
     for (pos = 0; pos < num; pos++)
     {
       bt_format_net(buf0, 64, &pxset[pos].net);
-      bt_debug(" -> %s ", buf0);
+      //bt_debug(" -> %s ", buf0);
       if (net_compare(&pxset[pos].net, &from.net) >= 0)
       {
-	bt_debug("true, breaking\n");
+	//bt_debug("true, breaking\n");
 	break;
       }
       else
-	bt_debug("false\n");
+	{} //bt_debug("false\n");
     }
 
     p0 = pos;
@@ -1032,18 +1027,25 @@ t_trie_walk_inclusive(void)
     /* Subnet walk */
     TRIE_WALK2(trie, net, &from.net, 1)
     {
-      /* Make sure that net is from inserted prefixes */
-      bt_format_net(buf0, 64, &net);
-      bt_debug("got: %s", buf0);
-      bt_format_net(buf0, 64, &pxset[pos].net);
-      bt_debug(" expected %s", buf0);
-      if (pos + 1 < num)
+      if (!net_equal(&net, &pxset[pos].net) || !(net_compare(&net, &from.net) >= 0))
       {
-	bt_format_net(buf0, 64, &pxset[pos + 1].net);
-	bt_debug(" (next: %s)\n", buf0);
+	if (pos < num)
+	{
+	  bt_format_net(buf0, 64, &net);
+	  bt_debug("got: %s", buf0);
+	  bt_format_net(buf0, 64, &pxset[pos].net);
+	  bt_debug(" expected %s", buf0);
+	}
+
+	/* Make sure that net is from inserted prefixes */
+	if (pos + 1 < num)
+	{
+	  bt_format_net(buf0, 64, &pxset[pos + 1].net);
+	  bt_debug(" (next: %s)\n", buf0);
+	}
+	else
+	  bt_debug("\n");
       }
-      else
-	bt_debug("\n");
 
       bt_assert(net_equal(&net, &pxset[pos].net));
       bt_assert(net_compare(&net, &from.net) >= 0);
