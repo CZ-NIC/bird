@@ -655,6 +655,11 @@ t_trie_walk(void)
 {
   bt_bird_init();
   bt_config_parse(BT_CONFIG_SIMPLE);
+  unsigned int r = rand();
+  printf("random seed t_trie_walk %u\n", r);
+  srandom(r);
+  //srandom(732437807);
+  //srandom(1182332329);
 
   for (int round = 0; round < TESTS_NUM*8; round++)
   {
@@ -886,10 +891,12 @@ t_trie_walk_inclusive(void)
 {
   bt_bird_init();
   bt_config_parse(BT_CONFIG_SIMPLE);
-  //unsigned int r = rand();
-  //printf("random seed %u\n", r);
-  //srandom(r);
-  //srandom(1985510202);
+  //srandom(25273275);
+  //srandom(1959294931);
+  //srandom(1182332329);
+  unsigned int r = rand();
+  printf("random seed t_trie_walk_inclusive %u\n", r);
+  srandom(r);
 
   for (int round = 0; round < TESTS_NUM*8; round++)
   {
@@ -908,7 +915,6 @@ t_trie_walk_inclusive(void)
     memset(&pxset[pos], 0, sizeof (struct f_prefix));
 
     qsort(pxset, num, sizeof(struct f_prefix), compare_prefixes);
-
 
     /* Prepare net for subnet walk - start with random prefix from trie */
     if (num)

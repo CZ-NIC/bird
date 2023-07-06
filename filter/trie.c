@@ -787,6 +787,20 @@ done:
 #define NEXT_PREFIX(A,B,X) ((X) ? ip4_compare((A)->v4.addr, net4_prefix(B)) < 0 : ip6_compare((A)->v6.addr, net6_prefix(B)) < 0)
 #define MATCH_LOCAL_MASK(A,B,L,X) \
   ((X) ? (A)->v4.local >= trie_local_mask4(net4_prefix(B), (B)->pxlen, (L)) : (A)->v6.local >= trie_local_mask6(net6_prefix(B), (B)->pxlen, (L)))
+#define SELECT_CHILD(pos,step) ((1u << (step)) + (pos))
+/*
+ * We want to select a specific subtrie base on it's index in child array c.
+ *
+ *                           1
+ *               2                       3
+ *         4           5           6           7
+ *      8     9     A     B     C     D     E     F
+ * -----------------------------------------------------
+ *    10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F
+ *
+ */
+
+
 
 /**
  * trie_walk_init
@@ -798,14 +812,13 @@ done:
  * Initialize walk state for subsequent walk through nodes of the trie @t by
  * trie_walk_next(). The argument @net allows to restrict walk to given subnet,
  * otherwise full walk over all nodes is used. This is done by finding node at
- * or below @net and starting position in it. The argument @include_successors
- * removes the restriction for all subnets lexicographically succeeding the
- * @net. In case of @net search fail the walk state starting position points to
- * the nearest parent node availible. If you use @net and @include_successors,
- * beware that the trie_walk_next() could return a net preceding the one
- * specified in @net.
+ * or below @net and starting position in it. The argument @include_successors,
+ * which requeries specifing the @net argument, removes the restriction for all
+ * nets lexicographically succeeding the @net. This is done by storing the walken
+ * nodes on the state's stack.
  *
- * If desired start position node was found in trie, 1 is returned, 0 otherwise.
+ * For set @include_successors the return value is 1 if the @net is present in
+ * the trie @t, in all other cases 0.
  */
 int
 trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_addr *net, u8 include_successors)
@@ -819,7 +832,6 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
     .stack[0] = &t->root
   };
 
-  /* Local work copy of @net */
   if (!net)
     return 0;
 
@@ -842,37 +854,39 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
       if (!include_successors)
 	s->stack[0] = n;
       else
-      {
 	s->stack[s->stack_pos] = n;
-      }
 
-      s->start_pos = 1;
       if (nlen == plen)
       {
 	/* Find proper local_pos, while accept_length is not used */
-	s->local_pos = 1;
+	int step = net->pxlen - plen;
+	s->local_pos = (1u << step) + GET_NET_BITS(net, v4, plen, step);
 	s->accept_length = plen;
 
-	if (include_successors)
+	if (!include_successors)
 	{
-	  if (GET_LOCAL(n, v4) != 0 && !MATCH_LOCAL_MASK(n, net, nlen, v4))
-	    goto find_successor;
-
-	  int pos = 1;
-	  u32 bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
-
-	  for (int i = 0; i < net->pxlen - plen; i++)
-	  {
-	    if (bits & (1u << (TRIE_STEP - i - 1)))
-	      pos = 2 * pos + 1;
-	    else
-	      pos = 2 * pos;
-	  }
-
-	  s->local_pos = pos;
+	  s->start_pos = s->local_pos;
 	  return 0;
 	}
 
+	if (GET_LOCAL(n, v4) != 0 && !MATCH_LOCAL_MASK(n, net, nlen, v4))
+	{
+	  s->local_pos = (1u << TRIE_STEP) + GET_NET_BITS(net, v4, nlen, TRIE_STEP);
+	  return 0;
+	}
+
+	int pos = 1;
+	int bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
+	for (int i = 0; i < net->pxlen - plen; i++)
+	{
+	  if (bits & (1u << (TRIE_STEP - i - 1)))
+	    pos = 2 * pos + 1;
+	  else
+	    pos = 2 * pos;
+	}
+
+	s->local_pos = pos;
+	return 0;
       }
       else
       {
@@ -893,150 +907,164 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
 
   /* We do not override the trie root in case of inclusive search */
   if (!include_successors)
-    s->stack[0] = NULL;
-  /* We are out of path, find nearest successor */
-  else
   {
-    if (s->stack_pos == 0)
-      return 0;
-    /*
-     * If we end up on node that has compressed path, we need to step up node
-     * for better decision making
-     */
+    s->stack[0] = NULL;
+    return 0;
+  }
 
-    s->stack_pos--;
-    n = s->stack[s->stack_pos];
+  /* We are out of path, find nearest successor */
+  if (s->stack_pos == 0)
+    return 0;
 
-    ASSERT(n != NULL);
+  /*
+   * If we end up on node that has compressed path, we need to step up node
+   * for better decision making
+   */
+  s->stack_pos--;
+  n = s->stack[s->stack_pos];
+  ASSERT(n != NULL);
+  int nlen = v4 ? n->v4.plen : n->v6.plen;
+  s->accept_length = nlen;
 
-     /* We find the nearest successor in subsequent trie_walk_next()  */
-    int nlen = v4 ? n->v4.plen : n->v6.plen;
-    u32 bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
-    const struct f_trie_node *child = GET_CHILD(n, v4, bits);
-    if (child != NULL)
+  struct net_addr_ip4 *net4 = NULL;
+  struct net_addr_ip6 *net6 = NULL;
+
+  if (v4)   net4 = (net_addr_ip4 *) net;
+  else	    net6 = (net_addr_ip6 *) net;
+
+  /* We known for sure that the searched prefix is not in the trie */
+  int cmp;
+  int bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
+  const struct f_trie_node *child = GET_CHILD(n, v4, bits);
+  while (child)
+  {
+    cmp = v4 ? ip4_compare(child->v4.addr, net4->prefix)
+	     : ip6_compare(child->v6.addr, net6->prefix);
+
+    if (cmp == 0)
     {
-      s->accept_length = nlen;
-
-      /* Performs basically more granular net_comapre_ip{4,6}() */
-      struct net_addr_ip4 *net4 = NULL;
-      struct net_addr_ip6 *net6 = NULL;
-
-      if (v4) net4 = (struct net_addr_ip4 *) net;
-      else    net6 = (struct net_addr_ip6 *) net;
-
-      int cmp = v4 ? ip4_compare(child->v4.addr, net4->prefix)
-		   : ip6_compare(child->v6.addr, net6->prefix);
-      if (cmp < 0)
-      {
-	s->stack_pos++;
-	s->stack[s->stack_pos] = child;
-	s->local_pos = 0x1f;
-      }
-      else if (cmp > 0)
-      {
-	/* We continue in child node */
-	if (bits % 2 == 0)
-	  s->local_pos = 0x08 + (bits >> 1);
-	else
-	  s->local_pos = MIN(0x10 + bits, 0x1f);
-      }
+      if (v4 ? child->v4.plen <= net4->pxlen : child->v6.plen <= net6->pxlen)
+	bits = 0;
       else
-      {
-	if (v4 ? child->v4.plen <= net4->pxlen : child->v6.plen < net6->pxlen)
-	{
-	  /* We continue in child node */
-	  if (bits % 2 == 0)
-	    s->local_pos = 0x08 + (bits >> 1);
-	  else
-	    s->local_pos = MIN(0x10 + bits, 0x1f);
-	}
-	else
-	{
-	  s->stack_pos++;
-	  s->stack[s->stack_pos] = child;
-	  s->local_pos = 0x01;
-	}
-      }
-      return 0;
-
-
-    // TODO handle properly search with short prefix length
-      int clen  =0;
-      /* We are dealing with a compressed child */
-      if (clen > nlen + TRIE_STEP)
-      {
-	int len = nlen;
-	while (GET_NODE_BITS(child, v4, len, TRIE_STEP) == bits && len < MIN(clen, plen))
-	{
-	  len += TRIE_STEP;
-	  bits = GET_NET_BITS(net, v4, len, TRIE_STEP);
-	}
-
-	if (len > nlen)
-	{
-	  s->stack_pos++;
-	  s->stack[s->stack_pos] = child;
-	}
-	else
-	  die("hidden");
-
-	/* successive siblings walk */
-	const struct f_trie_node *ns = NULL;
-	for (u32 i = bits + 1; i < (1u << TRIE_STEP); i++)
-	{
-	  /* The node n is parent and the node ns is older sibling of the node child */
-	  if ((ns = v4 ? (struct f_trie_node *) n->v4.c[i] : (struct f_trie_node *) n->v6.c[i]) == NULL)
-	    continue;
-
-	  // TODO
-	  if (!SAME_PREFIX(ns, net, v4, len - TRIE_STEP))
-	    break;
-
-	  if (bits < GET_NODE_BITS(ns, v4, len, TRIE_STEP))
-	  //if (GET_NET_BITS(net, v4, len, TRIE_STEP) < bits)
-	    break;
-
-	  s->stack[s->stack_pos] = ns;
-	}
-
-	s->accept_length = len + TRIE_STEP;
-
-//	if (ns && !SAME_PREFIX(ns, net, v4, len))
-//	{
-//	  //s->local_pos = 0x10 + (bits - 1);
-//	  s->local_pos = 0x1f;
-//	  return 0;
-//	}
-
-	if (GET_NET_BITS(net, v4, len, TRIE_STEP) > GET_NODE_BITS(child, v4, len, TRIE_STEP))
-	  s->local_pos = 0x1f; // + GET_NET_BITS(net, v4, nlen, TRIE_STEP); 
-	else
-	  s->local_pos = 0x01; //0x10 + GET_NET_BITS(net, v4, nlen, TRIE_STEP);
-
-	return 0;
-      }
-      else
-	s->local_pos = 0x10 + bits;
-
+	bits = 15;
     }
-    else
+    else if (cmp < 0)
     {
-      s->local_pos = 0x10 + bits;
+      for (int i = bits; i < (1 << TRIE_STEP); i++)
+      {
+	const struct f_trie_node *tmp = GET_CHILD(n, v4, i);
+	if (!tmp) continue;
+	if (v4 ? ip4_compare(tmp->v4.addr, net4->prefix) > 0
+	       : ip6_compare(tmp->v6.addr, net6->prefix) > 0)
+	  break;
+
+	child = tmp;
+      }
+      bits = 15;
+    }
+    else /* cmp > 0 */
+      bits = 0;
+
+    s->stack_pos++;
+    s->stack[s->stack_pos] = n = child;
+    child = GET_CHILD(child, v4, bits);
+  }
+
+  nlen = (v4) ? n->v4.plen : n->v6.plen;
+  cmp = v4 ? ip4_compare(n->v4.addr, net4->prefix)
+	   : ip6_compare(n->v6.addr, net6->prefix);
+
+  if (cmp == 0)
+  {
+    bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
+    if (plen - nlen >= TRIE_STEP)
+    {
+      s->local_pos = SELECT_CHILD(bits, TRIE_STEP);
+      return 0;
     }
 
-    nlen = v4 ? n->v4.plen : n->v6.plen;
+    int pos = 1;
+    for (int i = 0; i < net->pxlen - plen; i++)
+    {
+      if (bits & (1u << (TRIE_STEP - i - 1)))
+	pos = 2 * pos + 1;
+      else
+	pos = 2 * pos;
+    }
+    s->local_pos = pos;
+  }
+  else if (cmp < 0)
+  {
+    s->local_pos = SELECT_CHILD(bits, TRIE_STEP);
     s->accept_length = nlen;
   }
-  return 0;
-
-find_successor:;
-  ASSERT(n != NULL);
-  u32 nlen = v4 ? n->v4.plen : n->v6.plen;
-
-  u32 bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
-  s->local_pos = 0x10 + bits;
+  else /* cmp > 0 */
+  {
+  }
 
   return 0;
+
+//  if (child)
+//
+//  {
+//    /* Performs basically more granular net_comapre_ip{4,6}() */
+//    if (v4) net4 = (struct net_addr_ip4 *) net;
+//    else    net6 = (struct net_addr_ip6 *) net;
+//
+//    int cmp = v4 ? ip4_compare(child->v4.addr, net4->prefix)
+//		 : ip6_compare(child->v6.addr, net6->prefix);
+//    if (cmp < 0)
+//    {
+//      while ()
+//      {
+//      }
+//      /* We continue as we've just finished walk in a child node */
+//      s->local_pos = before_pos(bits + 1, TRIE_STEP);
+//      s->stack_pos++;
+//      s->stack[s->stack_pos] = child;
+//      s->local_pos = last_pos(TRIE_STEP);
+//    }
+//    else if (cmp > 0)
+//    {
+//      /* We continue in child node */  
+//      if (bits % 2 == 0)
+//      {
+//	s->stack_pos++;
+//	s->stack[s->stack_pos] = child; 
+//	s->local_pos = 1; //last_pos(TRIE_STEP);
+//      }
+//	//s->local_pos = 0x08 + (bits >> 1);
+//	//s->local_pos = before_pos(bits, TRIE_STEP);
+//	//s->local_pos = MAX(0, after_pos(bits - 1, TRIE_STEP)); //s->local_pos = before_pos(bits >> 1, TRIE_STEP);
+//      else
+//	//s->local_pos = MIN((1u << TRIE_STEP) + bits, (1u << TRIE_STEP) + 15);
+//	s->local_pos = after_pos(bits, TRIE_STEP);
+//    }
+//    else
+//    {
+//      if (v4 ? child->v4.plen <= net4->pxlen : child->v6.plen < net6->pxlen)
+//      {
+//	/* We continue in child node */
+//	if (bits % 2 == 0)
+//	  s->local_pos = before_pos(bits >> 1, TRIE_STEP);
+//	  //s->local_pos = 0x08 + (bits >> 1);
+//	else
+//	  //s->local_pos = MIN((1u << TRIE_STEP) + bits, (1u << TRIE_STEP) + 15);
+//	  s->local_pos = after_pos(bits, TRIE_STEP);
+//      }
+//      else
+//      {
+//	/* We continue in current node from first position */
+//	s->stack_pos++;
+//	s->stack[s->stack_pos] = child;
+//	s->local_pos = 1;
+//      }
+//    }
+//    return 0;
+//  }
+//
+//  s->local_pos = 0x10 + bits;
+//  return 0;
 }
 
 #define GET_ACCEPT_BIT(N,X,B) ((X) ? ip4_getbit((N)->v4.accept, (B)) : ip6_getbit((N)->v6.accept, (B)))
