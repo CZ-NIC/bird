@@ -650,13 +650,80 @@ log_networks(const net_addr *a, const net_addr *b)
   }
 }
 
+static void
+test_walk_return_val(struct f_trie *trie, struct f_prefix pxset[], uint count, int include)
+{
+  if (count == 0)
+  {
+    net_addr net;
+    get_random_net(&net, !trie->ipv4);
+    struct f_trie_walk_state tws;
+    bt_assert(!trie_walk_init(&tws, trie, &net, include));
+
+    net_addr res;
+    bt_assert(!trie_walk_next(&tws, &res));
+    return;
+  }
+
+  u32 index = xrandom(count);
+  net_addr *tested = &pxset[index].net;
+
+  net_addr res;
+  struct f_trie_walk_state tws;
+  bt_assert(trie_walk_init(&tws, trie, tested, include)); /* return true */
+  bt_assert(trie_walk_next(&tws, &res));
+  bt_assert(net_equal(tested, &res));
+
+  net_addr rand_net;
+  get_random_net(&rand_net, !trie->ipv4);
+
+  for (u32 i = 0; i < count; i++)
+  {
+    if (net_equal(&pxset[i].net, &rand_net))
+      return;
+  }
+
+  memset(&res, 0, sizeof(res));
+  memset(&tws, 0, sizeof(tws));
+  bt_assert(!trie_walk_init(&tws, trie, &rand_net, include)); /* return false */
+
+  if (include)
+  {
+    if (net_compare(&pxset[count - 1].net, &rand_net) < 0)
+      bt_assert(!trie_walk_next(&tws, &res));
+    else
+    {
+      bt_assert(trie_walk_next(&tws, &res));
+      bt_assert(net_compare(&rand_net, &res) < 0);
+    }
+  }
+  else
+  {
+    u32 pos;
+    for (pos = 0; pos < count; pos++)
+      if (net_compare(&pxset[pos].net, &rand_net) > 0)
+	break;
+
+    if (pos < count && net_in_netX(&pxset[pos].net, &rand_net))
+    {
+      bt_assert(trie_walk_next(&tws, &res));
+      bt_assert(net_equal(&pxset[pos].net, &res));
+    }
+    else
+    {
+      bt_assert(!trie_walk_next(&tws, &res));
+    }
+  }
+}
+
 static int
 t_trie_walk(void)
 {
   bt_bird_init();
   bt_config_parse(BT_CONFIG_SIMPLE);
-  unsigned int r = rand();
-  printf("random seed t_trie_walk %u\n", r);
+
+  unsigned long r = rand();
+  log("random seed for t_trie_walk is %lu", r);
   srandom(r);
   //srandom(732437807);
   //srandom(1182332329);
@@ -665,7 +732,7 @@ t_trie_walk(void)
   {
     int level = round / TESTS_NUM;
     int v6 = level % 2;
-    int num = PREFIXES_NUM * (int[]){1, 10, 100, 1000}[level / 2];
+    int num = PREFIXES_NUM * (int[]){0, 1, 10, 100, 1000}[level / 2];
     int pos = 0, end = 0;
     list *prefixes = make_random_prefix_list(num, v6, 1);
     struct f_trie *trie = make_trie_from_prefix_list(prefixes);
@@ -678,6 +745,8 @@ t_trie_walk(void)
 
     qsort(pxset, num, sizeof(struct f_prefix), compare_prefixes);
 
+    /* Test trie_walk_init() return value */
+    test_walk_return_val(trie, pxset, num, 0);
 
     /* Full walk */
     bt_debug("Full walk (round %d, %d nets)\n", round, num);
@@ -702,13 +771,19 @@ t_trie_walk(void)
     bt_assert(pxc == trie->prefix_count);
     bt_debug("Full walk done\n");
 
-
     /* Prepare net for subnet walk - start with random prefix */
-    pos = bt_random() % num;
+    if (num)
+      pos = xrandom(num);
+    else
+      pos = 0;
     end = pos + (int[]){2, 2, 3, 4}[level / 2];
     end = MIN(end, num);
 
-    struct f_prefix from = pxset[pos];
+    struct f_prefix from;
+    if (num)
+      from = pxset[pos];
+    else
+      get_random_prefix(&from, v6, 1);
 
     /* Find a common superprefix to several subsequent prefixes */
     for (; pos < end; pos++)
@@ -886,24 +961,259 @@ t_trie_walk_to_root(void)
   return 1;
 }
 
+static inline void
+test_walk_init(struct f_trie *trie, u32 in_px, u32 in_plen, u32 res_px, u32 res_plen, int has_next)
+{
+      net_addr_ip4 net = NET_ADDR_IP4(ip4_from_u32(in_px), in_plen);
+      struct f_trie_walk_state tws;
+      /* return value of trie_walk_init() is tested elsewhere */
+      trie_walk_init(&tws, trie, (struct net_addr *) &net, 1);
+      net_addr res;
+      int b = trie_walk_next(&tws, &res);
+      bt_assert(b == has_next);
+      if (has_next)
+      {
+	net_addr_ip4 expected = NET_ADDR_IP4(ip4_from_u32(res_px), res_plen);
+	bt_assert(net_equal_ip4((struct net_addr_ip4 *) &res, &expected));
+      }
+}
+
+/*
+ * a very simplistic and deterministic test suite to test all reasoable code paths in
+ * trie_walk_init()
+ */
+static int
+t_trie_walk_determ(void)
+{
+  bt_bird_init();
+  bt_config_parse(BT_CONFIG_SIMPLE);
+
+  #define EDGE_CASE_COUNT 7
+  list *prefixes[EDGE_CASE_COUNT] = { 0 };
+  struct f_trie *tries[EDGE_CASE_COUNT] = { 0 };
+
+  bt_debug("Reading data from 'filter/trie-data-edge'\n");
+  int n = read_prefix_file("filter/trie-data-edge", 0, prefixes, tries);
+  bt_debug("Read data from 'trie-data-edge' %d lists\n", n);
+
+  if (n < EDGE_CASE_COUNT)
+  {
+    bt_debug("Loaded less lists than expected!\n");
+    return 0;
+  }
+
+  test_walk_init(tries[0], 100663296,  7 /* 6.0.0.0/7       */, 297795584, 12 /* 17.192.0.0/12   */, 1);
+  test_walk_init(tries[0], 201326592, 12 /* 12.0.0.0/12     */, 297795584, 12 /* 17.192.0.0/12   */, 1);
+  test_walk_init(tries[0], 297795584, 14 /* 17.192.0.0/14   */, 297811968, 18 /* 17.192.64.00/18 */, 1);
+  test_walk_init(tries[0], 297795584, 18 /* 17.192.0.0/24   */, 297811968, 18 /* 17.192.64.00/18 */, 1);
+  test_walk_init(tries[0], 297798400, 24 /* 17.192.11.0/24  */, 297811968, 18 /* 17.192.64.0/18  */, 1);
+  test_walk_init(tries[0], 297811968, 28 /* 17.192.64.0/28  */, 297811984, 28 /* 17.192.64.16/28 */, 1);
+  test_walk_init(tries[0], 297811980, 31 /* 17.192.64.12/31 */, 297811984, 28 /* 17.192.64.16/28 */, 1);
+
+  /*
+   * ==============================
+   *  Tests on left leaning trie
+   */
+  struct f_trie *left = tries[1];
+  test_walk_init(left,         0,  4 /* 0.0.0.0/4       */,  16777216, 12 /* 1.0.0.0/12 */, 1);
+  test_walk_init(left,         0, 12 /* 0.0.0.0/12      */,  16777216, 12 /* 1.0.0.0/12 */, 1);
+  test_walk_init(left,         0, 24 /* 0.0.0.0/24      */,  16777216, 12 /* 1.0.0.0/12 */, 1);
+  test_walk_init(left,         0, 32 /* 0.0.0.0/32      */,  16777216, 12 /* 1.0.0.0/12 */, 1);
+  test_walk_init(left,  16777216, 12 /* 1.0.0.0/12      */,  16777216, 12 /* 1.0.0.0/12 */, 1);
+  test_walk_init(left,  16777216, 14 /* 1.0.0.0/14      */,  16842752, 18 /* 1.1.0.0/18 */, 1);
+  test_walk_init(left,  16777216, 16 /* 1.0.0.0/16      */,  16842752, 18 /* 1.1.0.0/18 */, 1);
+  test_walk_init(left,  16777216, 18 /* 1.0.0.0/18      */,  16842752, 18 /* 1.1.0.0/18 */, 1);
+  test_walk_init(left,  16842753, 18 /* 1.1.0.0/18      */,  16842752, 18 /* 1.1.0.0/18 */, 1);
+  test_walk_init(left,  16842753, 20 /* 1.1.0.0/20      */,  16843008, 28 /* 1.1.1.0/28 */, 1);
+  test_walk_init(left,  16842753, 24 /* 1.1.0.0/24      */,  16843008, 28 /* 1.1.1.0/28 */, 1);
+  test_walk_init(left,  16842753, 28 /* 1.1.0.0/28      */,  16843008, 28 /* 1.1.1.0/28 */, 1);
+  test_walk_init(left,  16842753, 30 /* 1.1.0.0/30      */,  16843008, 28 /* 1.1.1.0/28 */, 1);
+  test_walk_init(left,  16842753, 32 /* 1.1.0.0/32      */,  16843008, 28 /* 1.1.1.0/28 */, 1);
+
+  /* longest path or it's extension */
+  test_walk_init(left,  16843009, 28 /* 1.1.1.0/28      */,  16843008, 28 /* 1.1.1.0/28 */, 1);
+  test_walk_init(left,  16843009, 30 /* 1.1.1.0/30      */,  16843520, 28 /* 1.1.3.0/28 */, 1);
+  test_walk_init(left,  16843009, 32 /* 1.1.1.0/32      */,  16843520, 28 /* 1.1.3.0/28 */, 1);
+
+  /* prefixes `after' longest path */
+  test_walk_init(left,  16843264, 23 /* 1.1.2.0/23      */,  16843520, 28 /* 1.1.3.0/28 */, 1);
+  test_walk_init(left,  16843264, 24 /* 1.1.2.0/24      */,  16843520, 28 /* 1.1.3.0/28 */, 1);
+  test_walk_init(left,  16843264, 26 /* 1.1.2.0/26      */,  16843520, 28 /* 1.1.3.0/28 */, 1);
+  test_walk_init(left,  16843264, 28 /* 1.1.2.0/28      */,  16843520, 28 /* 1.1.3.0/28 */, 1);
+  test_walk_init(left,  16843264, 32 /* 1.1.2.0/32      */,  16843520, 28 /* 1.1.3.0/28 */, 1);
+  test_walk_init(left,  16843521, 28 /* 1.1.3.0/28      */,  16843520, 28 /* 1.1.3.0/28 */, 1);
+
+  /* extension of longest path */
+  test_walk_init(left,  16843521, 30 /* 1.1.3.0/30      */,  16844032, 28 /* 1.1.5.0/28 */, 1);
+  test_walk_init(left,  16843521, 32 /* 1.1.3.0/32      */,  16844032, 28 /* 1.1.5.0/28 */, 1);
+
+  test_walk_init(left,  16844544, 28 /* 1.1.7.0/28      */,  16844544, 28 /* 1.1.7.0/28 */, 1);
+  test_walk_init(left,  16844544, 30 /* 1.1.7.0/30      */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16844544, 32 /* 1.1.7.0/32      */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+
+  test_walk_init(left,  16844801, 24 /* 1.1.8.0/24      */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16844801, 28 /* 1.1.8.0/28      */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16844801, 32 /* 1.1.8.0/32      */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+
+  test_walk_init(left,  16908290, 16 /* 1.2.0.0/16      */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16908290, 18 /* 1.2.0.0/18      */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16908290, 22 /* 1.2.0.0/22      */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16908290, 24 /* 1.2.0.0/24      */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16908290, 28 /* 1.2.0.0/28      */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16908290, 30 /* 1.2.0.0/30      */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16908290, 32 /* 1.2.0.0/32      */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+
+  test_walk_init(left,  16973827, 18 /* 1.3.0.0/18      */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16973827, 20 /* 1.3.0.0/20      */,  17104896, 18 /* 1.5.0.0/18 */, 1);
+  test_walk_init(left,  16973827, 22 /* 1.3.0.0/22      */,  17104896, 18 /* 1.5.0.0/18 */, 1);
+  test_walk_init(left,  16973827, 24 /* 1.3.0.0/24      */,  17104896, 18 /* 1.5.0.0/18 */, 1);
+  test_walk_init(left,  16973827, 28 /* 1.3.0.0/28      */,  17104896, 18 /* 1.5.0.0/18 */, 1);
+  test_walk_init(left,  16973827, 30 /* 1.3.0.0/30      */,  17104896, 18 /* 1.5.0.0/18 */, 1);
+  test_walk_init(left,  16973827, 32 /* 1.3.0.0/32      */,  17104896, 18 /* 1.5.0.0/18 */, 1);
+
+  test_walk_init(left,  33554432,  9 /* 2.0.0.0/9       */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  33554432, 12 /* 2.0.0.0/12      */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  33554432, 14 /* 2.0.0.0/14      */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  33554432, 18 /* 2.0.0.0/18      */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  33554432, 22 /* 2.0.0.0/22      */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  33554432, 28 /* 2.0.0.0/28      */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  33554432, 30 /* 2.0.0.0/30      */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  33554432, 32 /* 2.0.0.0/32      */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+
+  test_walk_init(left,  50659333, 18 /* 3.5.0.0/18      */,  50659328, 18 /* 3.5.0.0/18 */, 1);
+  test_walk_init(left,  50659333, 19 /* 3.5.0.0/19      */,  83886080, 12 /* 5.0.0.0/12 */, 1);
+  test_walk_init(left,  50659333, 32 /* 3.5.0.0/32      */,  83886080, 12 /* 5.0.0.0/12 */, 1);
+  test_walk_init(left,  50659589, 30 /* 3.5.1.0/30      */,  83886080, 12 /* 5.0.0.0/12 */, 1);
+  test_walk_init(left,  50659845, 32 /* 3.5.2.0/32      */,  83886080, 12 /* 5.0.0.0/12 */, 1);
+  test_walk_init(left,  50724870, 16 /* 3.6.0.0/16      */,  83886080, 12 /* 5.0.0.0/12 */, 1);
+  test_walk_init(left,  50724870, 18 /* 3.6.0.0/18      */,  83886080, 12 /* 5.0.0.0/12 */, 1);
+
+  test_walk_init(left,  67108864,  6 /* 4.0.0.0/6       */,  83886080, 12 /* 5.0.0.0/12 */, 1);
+  test_walk_init(left,  67108864, 12 /* 4.0.0.0/12      */,  83886080, 12 /* 5.0.0.0/12 */, 1);
+  test_walk_init(left,  67108864, 14 /* 4.0.0.0/14      */,  83886080, 12 /* 5.0.0.0/12 */, 1);
+  test_walk_init(left,  67108864, 18 /* 4.0.0.0/18      */,  83886080, 12 /* 5.0.0.0/12 */, 1);
+  test_walk_init(left,  67108864, 20 /* 4.0.0.0/20      */,  83886080, 12 /* 5.0.0.0/12 */, 1);
+  test_walk_init(left,  67108864, 28 /* 4.0.0.0/28      */,  83886080, 12 /* 5.0.0.0/12 */, 1);
+  test_walk_init(left,  67108864, 30 /* 4.0.0.0/30      */,  83886080, 12 /* 5.0.0.0/12 */, 1);
+  test_walk_init(left,  67108864, 32 /* 4.0.0.0/32      */,  83886080, 12 /* 5.0.0.0/12 */, 1);
+  test_walk_init(left,  83886080, 10 /* 5.0.0.0/10      */,  83886080, 12 /* 5.0.0.0/12 */, 1);
+
+  test_walk_init(left,  83886080, 14 /* 5.0.0.0/14      */,  83951616, 28 /* 5.1.0.0/28 */, 1);
+  test_walk_init(left,  83886080, 28 /* 5.0.0.0/28      */,  83951616, 28 /* 5.1.0.0/28 */, 1);
+  test_walk_init(left,  83886080, 30 /* 5.0.0.0/30      */,  83951616, 28 /* 5.1.0.0/28 */, 1);
+  test_walk_init(left,  83886080, 32 /* 5.0.0.0/32      */,  83951616, 28 /* 5.1.0.0/28 */, 1);
+
+  test_walk_init(left,  83951617, 30 /* 5.1.0.0/30      */, 117440512, 12 /* 7.0.0.0/12 */, 1);
+  test_walk_init(left,  83951617, 32 /* 5.1.0.0/32      */, 117440512, 12 /* 7.0.0.0/12 */, 1);
+  test_walk_init(left,  84017154, 32 /* 5.2.0.0/32      */, 117440512, 12 /* 7.0.0.0/12 */, 1);
+  test_walk_init(left, 100663296,  8 /* 6.0.0.0/8       */, 117440512, 12 /* 7.0.0.0/12 */, 1);
+  test_walk_init(left, 100663296, 12 /* 6.0.0.0/12      */, 117440512, 12 /* 7.0.0.0/12 */, 1);
+  test_walk_init(left, 100663296, 16 /* 6.0.0.0/16      */, 117440512, 12 /* 7.0.0.0/12 */, 1);
+  test_walk_init(left, 100663296, 18 /* 6.0.0.0/18      */, 117440512, 12 /* 7.0.0.0/12 */, 1);
+  test_walk_init(left, 100663296, 22 /* 6.0.0.0/22      */, 117440512, 12 /* 7.0.0.0/12 */, 1);
+  test_walk_init(left, 100663296, 32 /* 6.0.0.0/32      */, 117440512, 12 /* 7.0.0.0/12 */, 1);
+  test_walk_init(left, 117440512,  9 /* 7.0.0.0/9       */, 117440512, 12 /* 7.0.0.0/12 */, 1);
+  test_walk_init(left, 117440512, 12 /* 7.0.0.0/12      */, 117440512, 12 /* 7.0.0.0/12 */, 1);
+
+  test_walk_init(left, 117440512, 13 /* 7.0.0.0/13      */,         0,  0 /* N/A        */, 0);
+  test_walk_init(left, 117440512, 23 /* 7.0.0.0/23      */,         0,  0 /* N/A        */, 0);
+  test_walk_init(left, 117440512, 32 /* 7.0.0.0/32      */,         0,  0 /* N/A        */, 0);
+  test_walk_init(left, 117506049, 20 /* 7.1.0.0/20      */,         0,  0 /* N/A        */, 0);
+  test_walk_init(left, 117506049, 32 /* 7.1.0.0/32      */,         0,  0 /* N/A        */, 0);
+  test_walk_init(left, 134217728,  9 /* 8.0.0.0/9       */,         0,  0 /* N/A        */, 0);
+  test_walk_init(left, 134217728, 14 /* 8.0.0.0/14      */,         0,  0 /* N/A        */, 0);
+  test_walk_init(left, 134283265, 32 /* 8.1.0.0/32      */,         0,  0 /* N/A        */, 0);
+
+  test_walk_init(left,   4194368, 24 /* 0.64.0.0/24     */,  16777216, 12 /* 1.0.0.0/12 */, 1);
+  test_walk_init(left,   4196160, 24 /* 0.64.7.0/24     */,  16777216, 12 /* 1.0.0.0/12 */, 1);
+  test_walk_init(left,   4229952, 25 /* 0.64.139.0/25   */,  16777216, 12 /* 1.0.0.0/12 */, 1);
+  test_walk_init(left,   4259648, 26 /* 0.64.255.0/26   */,  16777216, 12 /* 1.0.0.0/12 */, 1);
+  test_walk_init(left,   8388736, 24 /* 0.128.0.0/24    */,  16777216, 12 /* 1.0.0.0/12 */, 1);
+  test_walk_init(left,   8390528, 25 /* 0.128.7.0/25    */,  16777216, 12 /* 1.0.0.0/12 */, 1);
+  test_walk_init(left,   8450176, 22 /* 0.128.240.0/22  */,  16777216, 12 /* 1.0.0.0/12 */, 1);
+  test_walk_init(left,   8453760, 23 /* 0.128.254.0/23  */,  16777216, 12 /* 1.0.0.0/12 */, 1);
+  test_walk_init(left,2147483648,  3 /* 128.0.0.0/3     */,         0,  0 /* N/A        */, 0);
+  test_walk_init(left,2147483648,  9 /* 128.0.0.0/9     */,         0,  0 /* N/A        */, 0);
+  test_walk_init(left,2148597777, 25 /* 128.17.0.0/25   */,         0,  0 /* N/A        */, 0);
+  test_walk_init(left,  20971584, 23 /* 1.64.0.0/23     */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  20973376, 24 /* 1.64.7.0/24     */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  21007168, 24 /* 1.64.139.0/24   */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  25230976, 23 /* 1.128.254.0/23  */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  16859137, 30 /* 1.1.64.0/30     */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16859137, 32 /* 1.1.64.7/32     */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16859137, 32 /* 1.1.64.138/32   */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16859137, 31 /* 1.1.64.240/31   */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16875521, 29 /* 1.1.128.0/29    */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16875521, 32 /* 1.1.128.7/32    */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16875521, 29 /* 1.1.128.240/29  */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16875521, 31 /* 1.1.128.254/31  */,  16973824, 18 /* 1.5.0.0/18 */, 1);
+  test_walk_init(left,  16990211, 25 /* 1.3.64.0/25     */,  17104896, 18 /* 1.5.0.0/18 */, 1);
+  test_walk_init(left,  16990211, 32 /* 1.3.64.7/32     */,  17104896, 18 /* 1.5.0.0/18 */, 1);
+  test_walk_init(left,  16990211, 29 /* 1.3.64.240/29   */,  17104896, 18 /* 1.5.0.0/18 */, 1);
+  test_walk_init(left,  16990211, 31 /* 1.3.64.254/31   */,  17104896, 18 /* 1.5.0.0/18 */, 1);
+  test_walk_init(left,  17006595, 26 /* 1.3.128.0/26    */,  17104896, 18 /* 1.5.0.0/18 */, 1);
+  test_walk_init(left,  17006595, 32 /* 1.3.128.7/32    */,  17104896, 18 /* 1.5.0.0/18 */, 1);
+  test_walk_init(left,  17006595, 29 /* 1.3.128.240/29  */,  17104896, 18 /* 1.5.0.0/18 */, 1);
+  test_walk_init(left,  17006595, 31 /* 1.3.128.254/31  */,  17104896, 18 /* 1.5.0.0/18 */, 1);
+  test_walk_init(left,  17252359, 26 /* 1.7.64.0/26     */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  17252359, 32 /* 1.7.64.7/32     */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  17252359, 28 /* 1.7.64.240/28   */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  17252359, 31 /* 1.7.64.254/31   */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  17268743, 25 /* 1.7.128.0/25    */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  17268743, 32 /* 1.7.128.7/32    */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  17268743, 29 /* 1.7.128.240/29  */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  17268743, 31 /* 1.7.128.254/31  */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left, 125829120,  9 /* 7.128.0.0/9     */,         0,  0 /* N/A        */, 0);
+  test_walk_init(left, 125829120, 12 /* 7.128.0.0/12    */,         0,  0 /* N/A        */, 0);
+
+  /* corner cases */
+  test_walk_init(left,  17825792, 16 /* 1.16.0.0/16     */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  17825792, 24 /* 1.16.0.0/24     */,  50331648, 12 /* 3.0.0.0/12 */, 1);
+  test_walk_init(left,  16846848, 24 /* 1.1.16.0/24     */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16846848, 32 /* 1.1.16.0/32     */,  16973824, 18 /* 1.3.0.0/18 */, 1);
+  test_walk_init(left,  16777472, 24 /* 1.0.1.0/24      */,  16842752, 18 /* 1.1.0.0/18 */, 1);
+  test_walk_init(left,  16781312, 19 /* 1.0.16.0/19     */,  16842752, 18 /* 1.1.0.0/18 */, 1);
+
+  struct f_trie *corner = tries[3];
+  test_walk_init(corner,16777216, 12 /* 1.0.0.0/12      */,  16842752, 16 /* 1.1.0.0/16  */, 1);
+  test_walk_init(corner,16908288, 32 /* 1.2.0.0/32      */,  18874368, 12 /* 1.32.0.0/12 */, 1);
+
+  struct f_trie *with_zero = tries[4];
+  test_walk_init(with_zero, 50529027, 32 /* 3.3.3.3/32 */, 4294967295, 32 /* 255.255.255.255/32 */, 1);
+
+  struct f_trie *two_px = tries[5];
+  test_walk_init(two_px,          0,  0 /* 0.0.0.0/0   */,          0,  0 /* 0.0.0.0/0     */, 1);
+  test_walk_init(two_px,          1, 32 /* 0.0.0.1/32  */, 2066546688, 16 /* 123.45.0.0/16 */, 1);
+  test_walk_init(two_px, 3355443200,  8 /* 200.0.0.0/8 */,          0,  0 /* N/A           */, 0);
+  test_walk_init(two_px,   50529027, 32 /* 3.3.3.3/32  */, 2066546688, 16 /* 123.45.0.0/16 */, 1);
+
+  struct f_trie *root_only = tries[6];
+  test_walk_init(root_only,   50529027, 32 /* 3.3.3.3/32  */,          0, 0 /* N/A            */, 0);
+
+  bt_bird_cleanup();
+  return 1;
+}
+
+
 static int
 t_trie_walk_inclusive(void)
 {
   bt_bird_init();
   bt_config_parse(BT_CONFIG_SIMPLE);
+
+  unsigned long r = rand();
+  log("random seed for t_trie_walk_inclusive is %lu", r);
+  srandom(r);
+  //srandom(1325299055);
   //srandom(25273275);
   //srandom(1959294931);
   //srandom(1182332329);
-  unsigned int r = rand();
-  printf("random seed t_trie_walk_inclusive %u\n", r);
-  srandom(r);
 
   for (int round = 0; round < TESTS_NUM*8; round++)
   {
     int level = round / TESTS_NUM;
     int v6 = level % 2;
-    //int num = PREFIXES_NUM * (int[]){0, 1, 10, 100, 1000}[level / 2];
-    int num = PREFIXES_NUM  * (int[]){32, 512}[level / 2];
+    int num = PREFIXES_NUM * (int[]){0, 1, 10, 100, 1000}[level / 2];
     int pos = 0, end = 0;
     list *prefixes = make_random_prefix_list(num, v6, 1);
     struct f_trie *trie = make_trie_from_prefix_list(prefixes);
@@ -916,16 +1226,42 @@ t_trie_walk_inclusive(void)
 
     qsort(pxset, num, sizeof(struct f_prefix), compare_prefixes);
 
+    /* Test trie_walk_init() return value */
+    test_walk_return_val(trie, pxset, num, 1);
+
+    /* Full walk */
+    bt_debug("Full walk inclusive (round %d, %d nets)\n", round, num);
+
+    pos = 0;
+    uint pxc = 0;
+    /* Last argument should have no effect on the walk */
+    TRIE_WALK2(trie, net, NULL, 1)
+    {
+      log_networks(&net, &pxset[pos].net);
+      bt_assert(net_equal(&net, &pxset[pos].net));
+
+      /* Skip possible duplicates */
+      while (net_equal(&pxset[pos].net, &pxset[pos + 1].net))
+       pos++;
+
+      pos++;
+      pxc++;
+    }
+    TRIE_WALK2_END;
+
+    bt_assert(pos == num);
+    bt_assert(pxc == trie->prefix_count);
+    bt_debug("Full walk inclusive done\n");
+
     /* Prepare net for subnet walk - start with random prefix from trie */
     if (num)
-      pos = bt_random() % num;
+      pos = xrandom(num);
     else
       pos = 0;
     end = pos + (int[]){2, 2, 3, 4}[level / 2];
     end = MIN(end, num);
 
     struct f_prefix from;
-
     if (num)
       from = pxset[pos];
     else
@@ -1014,17 +1350,8 @@ t_trie_walk_inclusive(void)
     get_random_prefix(&from, v6, 1);
 
     for (pos = 0; pos < num; pos++)
-    {
-      bt_format_net(buf0, 64, &pxset[pos].net);
-      //bt_debug(" -> %s ", buf0);
-      if (net_compare(&pxset[pos].net, &from.net) >= 0)
-      {
-	//bt_debug("true, breaking\n");
+      if (compare_prefixes(&pxset[pos], &from) >= 0)
 	break;
-      }
-      else
-	{} //bt_debug("false\n");
-    }
 
     p0 = pos;
     bt_format_net(buf0, 64, &from.net);
@@ -1033,26 +1360,6 @@ t_trie_walk_inclusive(void)
     /* Subnet walk */
     TRIE_WALK2(trie, net, &from.net, 1)
     {
-      if (!net_equal(&net, &pxset[pos].net) || !(net_compare(&net, &from.net) >= 0))
-      {
-	if (pos < num)
-	{
-	  bt_format_net(buf0, 64, &net);
-	  bt_debug("got: %s", buf0);
-	  bt_format_net(buf0, 64, &pxset[pos].net);
-	  bt_debug(" expected %s", buf0);
-	}
-
-	/* Make sure that net is from inserted prefixes */
-	if (pos + 1 < num)
-	{
-	  bt_format_net(buf0, 64, &pxset[pos + 1].net);
-	  bt_debug(" (next: %s)\n", buf0);
-	}
-	else
-	  bt_debug("\n");
-      }
-
       bt_assert(net_equal(&net, &pxset[pos].net));
       bt_assert(net_compare(&net, &from.net) >= 0);
 
@@ -1072,21 +1379,6 @@ t_trie_walk_inclusive(void)
   bt_bird_cleanup();
   return 1;
 
-
-  /*
-   * empty trie
-   * inclusive after last element
-   * inclusive before first element
-   * not found root (empty trie)
-   * not found root (after last)
-   * not found root (before first)
-   * not found root (single element)
-   * not found root inbetween
-   * not found first level
-   * not found first level (after)
-   * not found first level (before)
-   * general case (found / not found on higher level)
-   */
 }
 
 int
@@ -1101,6 +1393,7 @@ main(int argc, char *argv[])
   bt_test_suite(t_trie_walk, "Testing TRIE_WALK() on random tries");
   bt_test_suite(t_trie_walk_to_root, "Testing TRIE_WALK_TO_ROOT() on random tries");
   bt_test_suite(t_trie_walk_inclusive, "Testing TRIE_WALK2() on random tries");
+  bt_test_suite(t_trie_walk_determ, "Testing trie_walk_init() on edge case tries deterministically");
 
   // bt_test_suite(t_bench_trie_datasets_subset, "Benchmark tries from datasets by random subset of nets");
   // bt_test_suite(t_bench_trie_datasets_random, "Benchmark tries from datasets by generated addresses");

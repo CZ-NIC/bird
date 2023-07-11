@@ -785,9 +785,11 @@ done:
 #define GET_NET_BITS(N,X,A,B) ((X) ? ip4_getbits(net4_prefix(N), (A), (B)) : ip6_getbits(net6_prefix(N), (A), (B)))
 #define GET_NODE_BITS(N,X,A,B) ((X) ? ip4_getbits((N)->v4.addr, (A), (B)) : ip6_getbits((N)->v6.addr, (A), (B)))
 #define NEXT_PREFIX(A,B,X) ((X) ? ip4_compare((A)->v4.addr, net4_prefix(B)) < 0 : ip6_compare((A)->v6.addr, net6_prefix(B)) < 0)
-#define MATCH_LOCAL_MASK(A,B,L,X) \
+#define CHECK_LOCAL_MASK(A,B,L,X) \
   ((X) ? (A)->v4.local >= trie_local_mask4(net4_prefix(B), (B)->pxlen, (L)) : (A)->v6.local >= trie_local_mask6(net6_prefix(B), (B)->pxlen, (L)))
 #define SELECT_CHILD(pos,step) ((1u << (step)) + (pos))
+#define MATCH_LOCAL_MASK(A,B,L,X) \
+  (!!((X) ? (A)->v4.local & trie_local_mask4(net4_prefix(B), (B)->pxlen, (L)) : (A)->v6.local & trie_local_mask6(net6_prefix(B), (B)->pxlen, (L))))
 /*
  * We want to select a specific subtrie base on it's index in child array c.
  *
@@ -866,10 +868,10 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
 	if (!include_successors)
 	{
 	  s->start_pos = s->local_pos;
-	  return 0;
+	  return MATCH_LOCAL_MASK(n, net, nlen, v4);
 	}
 
-	if (GET_LOCAL(n, v4) != 0 && !MATCH_LOCAL_MASK(n, net, nlen, v4))
+	if (GET_LOCAL(n, v4) != 0 && !CHECK_LOCAL_MASK(n, net, nlen, v4))
 	{
 	  s->local_pos = (1u << TRIE_STEP) + GET_NET_BITS(net, v4, nlen, TRIE_STEP);
 	  return 0;
@@ -886,15 +888,14 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
 	}
 
 	s->local_pos = pos;
-	return 0;
+	return MATCH_LOCAL_MASK(n, net, nlen, v4);
       }
       else
       {
 	/* Start from pos 1 in current node, but first try accept mask */
 	s->accept_length = net->pxlen;
+	return 0;
       }
-
-      return 1;
     }
 
     /* We store node in stack before moving on */
@@ -924,7 +925,6 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
   n = s->stack[s->stack_pos];
   ASSERT(n != NULL);
   int nlen = v4 ? n->v4.plen : n->v6.plen;
-  s->accept_length = nlen;
 
   struct net_addr_ip4 *net4 = NULL;
   struct net_addr_ip6 *net6 = NULL;
@@ -974,6 +974,7 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
   cmp = v4 ? ip4_compare(n->v4.addr, net4->prefix)
 	   : ip6_compare(n->v6.addr, net6->prefix);
 
+  s->accept_length = nlen;
   if (cmp == 0)
   {
     bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
@@ -996,10 +997,10 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
   else if (cmp < 0)
   {
     s->local_pos = SELECT_CHILD(bits, TRIE_STEP);
-    s->accept_length = nlen;
   }
   else /* cmp > 0 */
   {
+    /* Everything already set */
   }
 
   return 0;
