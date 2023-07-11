@@ -259,11 +259,6 @@ make_random_prefix_list(int num, int v6, int tight)
     struct f_prefix_node *px = lp_allocz(tmp_linpool, sizeof(struct f_prefix_node));
     get_random_prefix(&px->prefix, v6, tight);
     add_tail(prefixes, &px->n);
-
-    //char buf[64];
-    //bt_format_net(buf, 64, &px->prefix.net);
-    //bt_debug("ADD %s{%d,%d}\n", buf, px->prefix.lo, px->prefix.hi);
-    //log("ADD %s{%d,%d}", buf, px->prefix.lo, px->prefix.hi);
   }
 
   return prefixes;
@@ -314,10 +309,6 @@ read_prefix_list(FILE *f, int v6, int plus)
     px->prefix.lo = pl;
     px->prefix.hi = plus ? IP4_MAX_PREFIX_LENGTH : pl;
     add_tail(pxlist, &px->n);
-
-    //char buf[64];
-    //bt_format_net(buf, 64, &px->prefix.net);
-    //bt_debug("ADD %s{%d,%d}\n", buf, px->prefix.lo, px->prefix.hi);
   }
 
   bt_syscall(errno, "fgets()");

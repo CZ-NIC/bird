@@ -1004,68 +1004,6 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
   }
 
   return 0;
-
-//  if (child)
-//
-//  {
-//    /* Performs basically more granular net_comapre_ip{4,6}() */
-//    if (v4) net4 = (struct net_addr_ip4 *) net;
-//    else    net6 = (struct net_addr_ip6 *) net;
-//
-//    int cmp = v4 ? ip4_compare(child->v4.addr, net4->prefix)
-//		 : ip6_compare(child->v6.addr, net6->prefix);
-//    if (cmp < 0)
-//    {
-//      while ()
-//      {
-//      }
-//      /* We continue as we've just finished walk in a child node */
-//      s->local_pos = before_pos(bits + 1, TRIE_STEP);
-//      s->stack_pos++;
-//      s->stack[s->stack_pos] = child;
-//      s->local_pos = last_pos(TRIE_STEP);
-//    }
-//    else if (cmp > 0)
-//    {
-//      /* We continue in child node */  
-//      if (bits % 2 == 0)
-//      {
-//	s->stack_pos++;
-//	s->stack[s->stack_pos] = child; 
-//	s->local_pos = 1; //last_pos(TRIE_STEP);
-//      }
-//	//s->local_pos = 0x08 + (bits >> 1);
-//	//s->local_pos = before_pos(bits, TRIE_STEP);
-//	//s->local_pos = MAX(0, after_pos(bits - 1, TRIE_STEP)); //s->local_pos = before_pos(bits >> 1, TRIE_STEP);
-//      else
-//	//s->local_pos = MIN((1u << TRIE_STEP) + bits, (1u << TRIE_STEP) + 15);
-//	s->local_pos = after_pos(bits, TRIE_STEP);
-//    }
-//    else
-//    {
-//      if (v4 ? child->v4.plen <= net4->pxlen : child->v6.plen < net6->pxlen)
-//      {
-//	/* We continue in child node */
-//	if (bits % 2 == 0)
-//	  s->local_pos = before_pos(bits >> 1, TRIE_STEP);
-//	  //s->local_pos = 0x08 + (bits >> 1);
-//	else
-//	  //s->local_pos = MIN((1u << TRIE_STEP) + bits, (1u << TRIE_STEP) + 15);
-//	  s->local_pos = after_pos(bits, TRIE_STEP);
-//      }
-//      else
-//      {
-//	/* We continue in current node from first position */
-//	s->stack_pos++;
-//	s->stack[s->stack_pos] = child;
-//	s->local_pos = 1;
-//      }
-//    }
-//    return 0;
-//  }
-//
-//  s->local_pos = 0x10 + bits;
-//  return 0;
 }
 
 #define GET_ACCEPT_BIT(N,X,B) ((X) ? ip4_getbit((N)->v4.accept, (B)) : ip6_getbit((N)->v6.accept, (B)))
