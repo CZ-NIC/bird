@@ -374,7 +374,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc ELSE
 
 %type <xp> cmds_int cmd_prep
-%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor var var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
+%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor var var_list var_list_r function_call symbol_value bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
 %type <fda> dynamic_attr
 %type <fsa> static_attr
 %type <f> filter where_filter
@@ -807,10 +807,27 @@ constructor:
  ;
 
 
-/* This generates the function_call variable list backwards. */
-var_list: /* EMPTY */ { $$ = NULL; }
+/* This generates the function_call variable list backwards */
+var_list_r:
+   /* EMPTY */ { $$ = NULL; }
  | term { $$ = $1; }
- | var_list ',' term { $$ = $3; $$->next = $1; }
+ | var_list_r ',' term { $$ = $3; $$->next = $1; }
+ ;
+
+var_list: var_list_r
+   {
+     $$ = NULL;
+
+     /* Revert the var_list_r */
+     while ($1) {
+       struct f_inst *tmp = $1;
+       $1 = $1->next;
+
+       tmp->next = $$;
+       $$ = tmp;
+     }
+   }
+ ;
 
 function_call:
    symbol_known '(' var_list ')'
@@ -818,17 +835,7 @@ function_call:
      if ($1->class != SYM_FUNCTION)
        cf_error("You can't call something which is not a function. Really.");
 
-     /* Revert the var_list */
-     struct f_inst *args = NULL;
-     while ($3) {
-       struct f_inst *tmp = $3;
-       $3 = $3->next;
-
-       tmp->next = args;
-       args = tmp;
-     }
-
-     $$ = f_new_inst(FI_CALL, args, $1);
+     $$ = f_new_inst(FI_CALL, $3, $1);
    }
  ;
 
@@ -1020,13 +1027,13 @@ cmd:
  | UNSET '(' dynamic_attr ')' ';' {
      $$ = f_new_inst(FI_EA_UNSET, $3);
    }
- | break_command var_list ';' {
+ | break_command var_list_r ';' {
     $$ = f_print($2, !!$2, $1);
    }
- | PRINT var_list ';' {
+ | PRINT var_list_r ';' {
     $$ = f_print($2, 1, F_NOP);
    }
- | PRINTN var_list ';' {
+ | PRINTN var_list_r ';' {
     $$ = f_print($2, 0, F_NOP);
    }
  | function_call ';' { $$ = f_new_inst(FI_DROP_RESULT, $1); }
