@@ -62,14 +62,6 @@
 #include "lib/flowspec.h"
 */
 
-/* Context of &f_val comparison. */
-struct cmp_ctx {
-  const struct aggregator_proto *p;
-  const struct network *net;
-  const int val_count;
-  u32 failed:1;
-};
-
 extern linpool *rte_update_pool;
 
 /*
@@ -258,7 +250,10 @@ aggregator_reload_buckets(void *data)
 
   HASH_WALK(p->buckets, next_hash, b)
     if (b->rte)
+    {
       aggregator_bucket_update(p, b, b->rte->net);
+      lp_flush(rte_update_pool);
+    }
   HASH_WALK_END;
 }
 
@@ -497,7 +492,67 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     }
 
     /* Compute the hash */
-    tmp_bucket->hash = mem_hash(tmp_bucket->aggr_data, AGGR_DATA_MEMSIZE);
+    u64 haux;
+    mem_hash_init(&haux);
+    for (uint i = 0; i < p->aggr_on_count; i++)
+    {
+      mem_hash_mix_num(&haux, tmp_bucket->aggr_data[i].type);
+
+#define MX(k) mem_hash_mix(&haux, &IT(k), sizeof IT(k));
+#define IT(k) tmp_bucket->aggr_data[i].val.k
+
+      switch (tmp_bucket->aggr_data[i].type)
+      {
+	case T_VOID:
+	  break;
+	case T_INT:
+	case T_BOOL:
+	case T_PAIR:
+	case T_QUAD:
+	case T_ENUM:
+	  MX(i);
+	  break;
+	case T_EC:
+	case T_RD:
+	  MX(ec);
+	  break;
+	case T_LC:
+	  MX(lc);
+	  break;
+	case T_IP:
+	  MX(ip);
+	  break;
+	case T_NET:
+	  mem_hash_mix_num(&haux, net_hash(IT(net)));
+	  break;
+	case T_STRING:
+	  mem_hash_mix_str(&haux, IT(s));
+	  break;
+	case T_PATH_MASK:
+	  mem_hash_mix(&haux, IT(path_mask), sizeof(*IT(path_mask)) + IT(path_mask)->len * sizeof (IT(path_mask)->item));
+	  break;
+	case T_PATH:
+	case T_CLIST:
+	case T_ECLIST:
+	case T_LCLIST:
+	case T_BYTESTRING:
+	  mem_hash_mix(&haux, IT(ad)->data, IT(ad)->length);
+	  break;
+	case T_NONE:
+	case T_PATH_MASK_ITEM:
+	case T_ROUTE:
+	case T_ROUTES_BLOCK:
+	  bug("Invalid type %s in hashing", f_type_name(tmp_bucket->aggr_data[i].type));
+	case T_SET:
+	  MX(t);
+	  break;
+	case T_PREFIX_SET:
+	  MX(ti);
+	  break;
+      }
+    }
+
+    tmp_bucket->hash = mem_hash_value(&haux);
 
     /* Find the existing bucket */
     if (new_bucket = HASH_FIND(p->buckets, AGGR_BUCK, tmp_bucket))
