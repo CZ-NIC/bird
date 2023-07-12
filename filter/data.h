@@ -20,6 +20,8 @@ enum f_type {
 /* Nothing. Simply nothing. */
   T_VOID = 0,
 
+  T_NONE = 1,		/* Special hack to represent missing arguments */
+
 /* User visible types, which fit in int */
   T_INT = 0x10,
   T_BOOL = 0x11,

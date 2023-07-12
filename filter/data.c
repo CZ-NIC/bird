@@ -27,6 +27,7 @@
 
 static const char * const f_type_str[] = {
   [T_VOID]	= "void",
+  [T_NONE]	= "none",
 
   [T_INT]	= "int",
   [T_BOOL]	= "bool",
