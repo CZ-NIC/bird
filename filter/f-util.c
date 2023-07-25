@@ -48,7 +48,8 @@ f_match_signature(const struct f_method *dsc, struct f_inst *args)
   int i, arg_num = (int) dsc->arg_num;
 
   for (i = 1; args && (i < arg_num); args = args->next, i++)
-    if (dsc->args_type[i] && (args->type != dsc->args_type[i]))
+    if (dsc->args_type[i] && (args->type != dsc->args_type[i]) &&
+	!f_try_const_promotion(args, dsc->args_type[i]))
       return 0;
 
   return !args && !(i < arg_num);
@@ -61,7 +62,8 @@ f_match_signature_err(const struct f_method *dsc, struct f_inst *args, int *pos,
   int i, arg_num = (int) dsc->arg_num;
 
   for (i = 1; args && (i < arg_num); args = args->next, i++)
-    if (dsc->args_type[i] && (args->type != dsc->args_type[i]))
+    if (dsc->args_type[i] && (args->type != dsc->args_type[i]) &&
+	!f_try_const_promotion(args, dsc->args_type[i]))
       break;
 
   *pos = i;

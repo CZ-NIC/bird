@@ -36,6 +36,16 @@ const char *f_instruction_name_(enum f_instruction_code fi);
 static inline const char *f_instruction_name(enum f_instruction_code fi)
 { return f_instruction_name_(fi) + 3; }
 
+
+int f_const_promotion_(struct f_inst *arg, enum f_type want, int update);
+
+static inline int f_const_promotion(struct f_inst *arg, enum f_type want)
+{ return f_const_promotion_(arg, want, 1); }
+
+static inline int f_try_const_promotion(struct f_inst *arg, enum f_type want)
+{ return f_const_promotion_(arg, want, 0); }
+
+
 struct f_arg {
   struct symbol *arg;
   struct f_arg *next;

@@ -379,7 +379,8 @@ m4_undivert(102)m4_dnl
 [[m4_dnl				 The one case in The Big Switch inside interpreter
   case INST_NAME():
   #define whati (&(what->i_]]INST_NAME()[[))
-  m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (fstk->vcnt < INST_INVAL()) runtime("Stack underflow"); fstk->vcnt -= INST_INVAL(); ]])
+  m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (fstk->vcnt < INST_INVAL()) runtime("Stack underflow");
+  fstk->vcnt -= INST_INVAL();]])
   m4_undivert(108)m4_dnl
   #undef whati
   break;
@@ -572,8 +573,8 @@ fi_constant(struct f_inst *what, struct f_val val)
   return what;
 }
 
-static int
-f_const_promotion(struct f_inst *arg, enum f_type want)
+int
+f_const_promotion_(struct f_inst *arg, enum f_type want, int update)
 {
   if (arg->fi_code != FI_CONSTANT)
     return 0;
@@ -581,15 +582,17 @@ f_const_promotion(struct f_inst *arg, enum f_type want)
   struct f_val *c = &arg->i_FI_CONSTANT.val;
 
   if ((c->type == T_IP) && ipa_is_ip4(c->val.ip) && (want == T_QUAD)) {
-    *c = (struct f_val) {
-      .type = T_QUAD,
-      .val.i = ipa_to_u32(c->val.ip),
-    };
+    if (update)
+      *c = (struct f_val) {
+        .type = T_QUAD,
+        .val.i = ipa_to_u32(c->val.ip),
+      };
     return 1;
   }
 
   else if ((c->type == T_SET) && (!c->val.t) && (want == T_PREFIX_SET)) {
-    *c = f_const_empty_prefix_set;
+    if (update)
+      *c = f_const_empty_prefix_set;
     return 1;
   }
 
