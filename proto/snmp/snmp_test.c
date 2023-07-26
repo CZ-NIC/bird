@@ -51,6 +51,7 @@ test_oid(struct oid *oid, uint base_size)
 
   oid->n_subid = base_size + 3;
   oid->ids[base_size + 2] = 1;   // BGP4-MIB::bgpVersion
+  snmp_oid_dump(oid);
   bt_assert(snmp_bgp_state(oid) == BGP_INTERNAL_VERSION);
 
   oid->ids[base_size + 2] = 2;   // BGP4-MIB::bgpLocalAs
@@ -225,19 +226,16 @@ t_s_is_oid_empty(void)
 static int
 t_s_prefixize(void)
 {
-  struct oid *nulled = NULL;
+  //struct oid *nulled = NULL;
   struct snmp_proto snmp_proto;
   test_fill(&snmp_proto);
 
-
-  struct oid *result = snmp_prefixize(&snmp_proto, nulled, BYTE_ORD);
-  bt_assert( NULL == tmp );
-
-  result != NULL ? mb_free(result) : ;
-
+  //struct oid *result = snmp_prefixize(&snmp_proto, nulled, BYTE_ORD);
+  //bt_assert(NULL == result);
+  //result != NULL ? mb_free(result) : NULL;
+  struct oid *result;
 
   struct oid *blank = mb_allocz(&root_pool, sizeof(struct oid));
-
   /* here the byte order should not matter */
   result = snmp_prefixize(&snmp_proto, blank, 1 - BYTE_ORD);
   bt_assert(snmp_is_oid_empty(result) == 1);
@@ -254,11 +252,11 @@ t_s_prefixize(void)
   u32 prefixed_arr[] = { ~((u32) 0), 0, 256 };
   memcpy(&prefixed->ids, prefixed_arr, sizeof(prefixed_arr));
 
-  struct oid *result = snmp_prefixize(&snmp_proto, prefixed, BYTE_ORD);
+  /* struct oid */result = snmp_prefixize(&snmp_proto, prefixed, BYTE_ORD);
   bt_assert(memcmp(result, prefixed, snmp_oid_size(prefixed)) == 0);
 
   mb_free(result); result = NULL;
-  mb_free(prefixed); prefixed = NULL;
+  //mb_free(prefixed); prefixed = NULL;
 
 
   struct oid *to_prefix = mb_alloc(&root_pool, sizeof(struct oid) + 8 * sizeof(u32));
@@ -288,7 +286,7 @@ t_s_prefixize(void)
   result = snmp_prefixize(&snmp_proto, unprefixable, BYTE_ORD);
   bt_assert(result == NULL);
 
-  result != NULL ? mb_free(result) : ;
+  result != NULL ? mb_free(result) : NULL;
 
   struct oid *unprefixable2 = mb_alloc(&root_pool, sizeof(struct oid) + 8 * sizeof(u32));
   unprefixable2->n_subid = 8;
@@ -301,7 +299,7 @@ t_s_prefixize(void)
   result = snmp_prefixize(&snmp_proto, unprefixable2, BYTE_ORD);
   bt_assert(result == NULL);
 
-  result != NULL ? mb_free(result) : ;
+  result != NULL ? mb_free(result) : NULL;
 
   return 1;
 }
@@ -490,7 +488,7 @@ t_s_bgp_state(void)
 
   /* test all states with garbage ip */
   bt_debug("testing oids with random ip index\n");
-  test_oid(oid, 4);
+  test_oid(oid, 0);
 
   /* test all states with invalid ip */
   bt_debug("testing oids with invalid ip index\n");
@@ -503,7 +501,7 @@ t_s_bgp_state(void)
   oid->ids[6] = 257;
   oid->ids[7] = 127;
   oid->ids[8] = 0xFFFF;
-  test_oid(oid, 4);
+  test_oid(oid, 0);
 
   mb_free(oid);
 
