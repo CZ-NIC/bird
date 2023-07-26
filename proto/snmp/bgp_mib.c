@@ -16,38 +16,38 @@
 #include "bgp_mib.h"
 
 static const char * const debug_bgp_states[] UNUSED = {
-  [BGP_INTERNAL_INVALID] = "BGP_INTERNAL_INVALID",
-  [BGP_INTERNAL_BGP] = "BGP_INTERNAL_BGP",
-  [BGP_INTERNAL_VERSION] = "BGP_INTERNAL_VERSION",
-  [BGP_INTERNAL_LOCAL_AS] = "BGP_INTERNAL_LOCAL_AS",
-  [BGP_INTERNAL_PEER_TABLE] = "BGP_INTERNAL_PEER_TABLE",
-  [BGP_INTERNAL_PEER_ENTRY] = "BGP_INTERNAL_PEER_ENTRY",
-  [BGP_INTERNAL_IDENTIFIER] = "BGP_INTERNAL_IDENTIFIER",
-  [BGP_INTERNAL_STATE] = "BGP_INTERNAL_STATE",
-  [BGP_INTERNAL_ADMIN_STATUS] = "BGP_INTERNAL_ADMIN_STATUS",
-  [BGP_INTERNAL_NEGOTIATED_VERSION] = "BGP_INTERNAL_NEGOTIATED_VERSION",
-  [BGP_INTERNAL_LOCAL_ADDR] = "BGP_INTERNAL_LOCAL_ADDR",
-  [BGP_INTERNAL_LOCAL_PORT] = "BGP_INTERNAL_LOCAL_PORT",
-  [BGP_INTERNAL_REMOTE_ADDR] = "BGP_INTERNAL_REMOTE_ADDR",
-  [BGP_INTERNAL_REMOTE_PORT] = "BGP_INTERNAL_REMOTE_PORT",
-  [BGP_INTERNAL_REMOTE_AS] = "BGP_INTERNAL_REMOTE_AS",
-  [BGP_INTERNAL_RX_UPDATES] = "BGP_INTERNAL_RX_UPDATES",
-  [BGP_INTERNAL_TX_UPDATES] = "BGP_INTERNAL_TX_UPDATES",
-  [BGP_INTERNAL_RX_MESSAGES] = "BGP_INTERNAL_RX_MESSAGES",
-  [BGP_INTERNAL_TX_MESSAGES] = "BGP_INTERNAL_TX_MESSAGES",
-  [BGP_INTERNAL_LAST_ERROR] = "BGP_INTERNAL_LAST_ERROR",
-  [BGP_INTERNAL_FSM_TRANSITIONS] = "BGP_INTERNAL_FSM_TRANSITIONS",
-  [BGP_INTERNAL_FSM_ESTABLISHED_TIME] = "BGP_INTERNAL_FSM_ESTABLISHED_TIME",
-  [BGP_INTERNAL_RETRY_INTERVAL] = "BGP_INTERNAL_RETRY_INTERVAL",
-  [BGP_INTERNAL_HOLD_TIME] = "BGP_INTERNAL_HOLD_TIME",
-  [BGP_INTERNAL_KEEPALIVE] = "BGP_INTERNAL_KEEPALIVE",
-  [BGP_INTERNAL_HOLD_TIME_CONFIGURED] = "BGP_INTERNAL_HOLD_TIME_CONFIGURED",
-  [BGP_INTERNAL_KEEPALIVE_CONFIGURED] = "BGP_INTERNAL_KEEPALIVE_CONFIGURED",
-  [BGP_INTERNAL_ORIGINATION_INTERVAL] = "BGP_INTERNAL_ORIGINATION_INTERVAL",
+  [BGP_INTERNAL_INVALID]		 = "BGP_INTERNAL_INVALID",
+  [BGP_INTERNAL_BGP]			 = "BGP_INTERNAL_BGP",
+  [BGP_INTERNAL_VERSION]		 = "BGP_INTERNAL_VERSION",
+  [BGP_INTERNAL_LOCAL_AS]		 = "BGP_INTERNAL_LOCAL_AS",
+  [BGP_INTERNAL_PEER_TABLE]		 = "BGP_INTERNAL_PEER_TABLE",
+  [BGP_INTERNAL_PEER_ENTRY]		 = "BGP_INTERNAL_PEER_ENTRY",
+  [BGP_INTERNAL_IDENTIFIER]		 = "BGP_INTERNAL_IDENTIFIER",
+  [BGP_INTERNAL_STATE]			 = "BGP_INTERNAL_STATE",
+  [BGP_INTERNAL_ADMIN_STATUS]		 = "BGP_INTERNAL_ADMIN_STATUS",
+  [BGP_INTERNAL_NEGOTIATED_VERSION]	 = "BGP_INTERNAL_NEGOTIATED_VERSION",
+  [BGP_INTERNAL_LOCAL_ADDR]		 = "BGP_INTERNAL_LOCAL_ADDR",
+  [BGP_INTERNAL_LOCAL_PORT]		 = "BGP_INTERNAL_LOCAL_PORT",
+  [BGP_INTERNAL_REMOTE_ADDR]		 = "BGP_INTERNAL_REMOTE_ADDR",
+  [BGP_INTERNAL_REMOTE_PORT]		 = "BGP_INTERNAL_REMOTE_PORT",
+  [BGP_INTERNAL_REMOTE_AS]		 = "BGP_INTERNAL_REMOTE_AS",
+  [BGP_INTERNAL_RX_UPDATES]		 = "BGP_INTERNAL_RX_UPDATES",
+  [BGP_INTERNAL_TX_UPDATES]		 = "BGP_INTERNAL_TX_UPDATES",
+  [BGP_INTERNAL_RX_MESSAGES]		 = "BGP_INTERNAL_RX_MESSAGES",
+  [BGP_INTERNAL_TX_MESSAGES]		 = "BGP_INTERNAL_TX_MESSAGES",
+  [BGP_INTERNAL_LAST_ERROR]		 = "BGP_INTERNAL_LAST_ERROR",
+  [BGP_INTERNAL_FSM_TRANSITIONS]	 = "BGP_INTERNAL_FSM_TRANSITIONS",
+  [BGP_INTERNAL_FSM_ESTABLISHED_TIME]	 = "BGP_INTERNAL_FSM_ESTABLISHED_TIME",
+  [BGP_INTERNAL_RETRY_INTERVAL]		 = "BGP_INTERNAL_RETRY_INTERVAL",
+  [BGP_INTERNAL_HOLD_TIME]		 = "BGP_INTERNAL_HOLD_TIME",
+  [BGP_INTERNAL_KEEPALIVE]		 = "BGP_INTERNAL_KEEPALIVE",
+  [BGP_INTERNAL_HOLD_TIME_CONFIGURED]	 = "BGP_INTERNAL_HOLD_TIME_CONFIGURED",
+  [BGP_INTERNAL_KEEPALIVE_CONFIGURED]	 = "BGP_INTERNAL_KEEPALIVE_CONFIGURED",
+  [BGP_INTERNAL_ORIGINATION_INTERVAL]	 = "BGP_INTERNAL_ORIGINATION_INTERVAL",
   [BGP_INTERNAL_MIN_ROUTE_ADVERTISEMENT] = "BGP_INTERNAL_MIN_ROUTE_ADVERTISEMENT",
-  [BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME] = "BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME",
-  [BGP_INTERNAL_END] = "BGP_INTERNAL_END",
-  [BGP_INTERNAL_NO_VALUE] = "BGP_INTERNAL_NO_VALUE",
+  [BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME]	 = "BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME",
+  [BGP_INTERNAL_END]			 = "BGP_INTERNAL_END",
+  [BGP_INTERNAL_NO_VALUE]		 = "BGP_INTERNAL_NO_VALUE",
 };
 
 void
@@ -222,7 +222,7 @@ print_bgp_record(struct bgp_config *config)
   struct bgp_conn *conn = bgp_proto->conn;
 
   snmp_log("    name: %s", cf->name);
-  snmp_log("");
+  snmp_log(".");
   snmp_log("    rem. identifier: %u", bgp_proto->remote_id);
   snmp_log("    local ip: %I", config->local_ip);
   snmp_log("    remote ip: %I", config->remote_ip);
@@ -280,11 +280,11 @@ print_bgp_record_all(struct snmp_proto *p)
  *
  * Returns linearized state for Get-PDU, GetNext-PDU and GetBulk-PDU packets.
  */
-u8
-snmp_bgp_state(struct oid *oid)
+static u8
+snmp_bgp_state(const struct oid *oid)
 {
   /* already checked:
-            xxxxxxxx p
+   *          xxxxxxxx p
    *  (*oid): .1.3.6.1.2.1.15
    *   -> BGP4-MIB::bgp (root)
    */
@@ -352,7 +352,6 @@ snmp_bgp_state(struct oid *oid)
 	    state = BGP_INTERNAL_NO_VALUE;
 	    candidate = BGP_INTERNAL_NO_VALUE;
 	  }
-
 	  else /* oid->ids[2] > SNMP_BGP_PEER_TABLE */
 	    state = BGP_INTERNAL_END;
       }
@@ -446,7 +445,7 @@ snmp_bgp_is_supported(struct oid *o)
         o->ids[1] == BGP4_MIB_LOCAL_AS))
       return 1;
     else if (o->n_subid > 2 && o->ids[1] == BGP4_PEER_TABLE &&
-             o->ids[2] == BGP4_PEER_ENTRY)
+	     o->ids[2] == BGP4_PEER_ENTRY)
     {
 	if (o->n_subid == 3)
 	  return 1;
@@ -724,7 +723,8 @@ UNUSED, u8 current_state)
   /* TODO can be remove after implementing all BGP4-MIB::bgpPeerTable columns */
   u8 next_state = current_state;
   struct oid *o_copy = o_start;
-  do {
+  do
+  {
     snmp_log("do-while state %u", next_state);
     snmp_oid_dump(o_start);
     o_start = o_copy = update_bgp_oid(o_copy, next_state);
@@ -996,7 +996,7 @@ snmp_bgp_search(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, ui
 //    o_start = update_bgp_oid(o_start, next_state);
 //    snmp_oid_dump(o_start);
 //
-//    snmp_log("search_bgp_mib() is NOT next_state dynamic %s",
+//    snmp_log("snmp_bgp_search() is NOT next_state dynamic %s",
 //      !is_dynamic(next_state) ? "true" : "false");
 //
 //    if (!is_dynamic(next_state))

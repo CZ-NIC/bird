@@ -15,6 +15,7 @@
 
 #include "snmp.h"
 #include "subagent.h"
+#include "snmp_utils.h"
 
 static void snmp_connected(sock *sk);
 static void snmp_sock_err(sock *sk, int err);
@@ -22,7 +23,7 @@ static void snmp_ping_timer(struct timer *tm);
 static void snmp_startup(struct snmp_proto *p);
 static void snmp_startup_timeout(timer *t);
 static void snmp_start_locked(struct object_lock *lock);
-
+static int snmp_shutdown(struct proto *P);
 
 static const char * const snmp_state[] = {
   [SNMP_ERR]	      = "SNMP ERROR",
@@ -49,7 +50,7 @@ snmp_init(struct proto_config *CF)
   p->local_port = cf->local_port;
   p->remote_port = cf->remote_port;
   p->local_as = cf->local_as;
-  snmp_log("chaning proto_snmp state to INIT");
+  snmp_log("changing proto_snmp state to INIT");
   p->state = SNMP_INIT;
 
   // p->timeout = cf->timeout;
@@ -64,14 +65,25 @@ snmp_init(struct proto_config *CF)
 static inline void
 snmp_cleanup(struct snmp_proto *p)
 {
+  struct additional_buffer *b;
+  WALK_LIST(b, p->additional_buffers)
+  {
+    mb_free(b->buf);
+    rem_node(&b->n);
+    mb_free(b);
+  }
+  init_list(&p->additional_buffers);
+
   rfree(p->startup_timer);
   rfree(p->ping_timer);
 
   if (p->sock != NULL)
     rfree(p->sock);
+  p->sock = NULL;
 
   if (p->lock != NULL)
     rfree(p->lock);
+  p->lock = NULL;
 
   p->state = SNMP_DOWN;
 }
@@ -178,17 +190,13 @@ snmp_start_locked(struct object_lock *lock)
 }
 
 static void
-snmp_tx(sock *sk UNUSED)
-{
-  snmp_log("snmp_tx() something, yay!");
-}
-
-static void
 snmp_connected(sock *sk)
 {
   struct snmp_proto *p = sk->data;
   snmp_log("snmp_connected() connection created");
-  byte *buf UNUSED = sk->rbuf;
+  byte *buf UNUSED = sk->rpos;
+  uint size = sk->rbuf + sk->rbsize - sk->rpos;
+  snmp_dump_packet(buf, size);
 
   sk->rx_hook = snmp_rx;
   sk->tx_hook = snmp_tx;
@@ -203,8 +211,9 @@ static void
 snmp_sock_err(sock *sk, int err)
 {
   snmp_log("snmp_sock_err() %s - err no: %d",  strerror(err), err);
-
   struct snmp_proto *p = sk->data;
+  p->errs++;
+
   tm_stop(p->ping_timer);
 
   rfree(p->sock);
@@ -214,10 +223,16 @@ snmp_sock_err(sock *sk, int err)
   p->lock = NULL;
 
   snmp_log("changing proto_snmp state to ERR[OR]");
-  p->state = SNMP_ERR;
+  if (err)
+    p->state = SNMP_ERR;
+  else
+  {
+    snmp_shutdown((struct proto *) p);
+    return;
+  }
 
   // TODO ping interval
-  tm_start(p->startup_timer, 15 S);
+  tm_start(p->startup_timer, 4 S);
 }
 
 static int
@@ -274,14 +289,16 @@ snmp_start(struct proto *P)
       peer->config = (struct bgp_config *) b->proto;
       peer->peer_ip = bc->remote_ip;
 
-      struct net_addr *net = mb_allocz(p->p.pool, sizeof(struct net_addr));
-      net_fill_ip4(net, ipa_to_ip4(peer->peer_ip), IP4_MAX_PREFIX_LENGTH);
+      struct net_addr net;
+      net_fill_ip4(&net, ipa_to_ip4(peer->peer_ip), IP4_MAX_PREFIX_LENGTH);
 
-      trie_add_prefix(p->bgp_trie, net, IP4_MAX_PREFIX_LENGTH, IP4_MAX_PREFIX_LENGTH);
+      trie_add_prefix(p->bgp_trie, &net, IP4_MAX_PREFIX_LENGTH, IP4_MAX_PREFIX_LENGTH);
 
       HASH_INSERT(p->bgp_hash, SNMP_HASH, peer);
     }
   }
+
+  init_list(&p->additional_buffers);
 
   snmp_startup(p);
   return PS_START;
@@ -311,7 +328,8 @@ snmp_reconfigure(struct proto *P, struct proto_config *CF)
   return 1;
 }
 
-static void snmp_show_proto_info(struct proto *P)
+static void
+snmp_show_proto_info(struct proto *P)
 {
   struct snmp_proto *sp = (void *) P;
   struct snmp_config *c = (void *) P->cf;
@@ -384,6 +402,7 @@ bp->stats.fsm_established_transitions);
 static void
 snmp_postconfig(struct proto_config *CF)
 {
+  // walk the bgp protocols and cache their references
   if (((struct snmp_config *) CF)->local_as == 0)
     cf_error("local as not specified");
 }

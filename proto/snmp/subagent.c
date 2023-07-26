@@ -221,6 +221,7 @@ de_allocate_pdu(struct snmp_proto *p, struct oid *oid, u8 type)
   buf = pkt = sk->tbuf;
   uint size = sk->tbsize;
 
+
   if (size > AGENTX_HEADER_SIZE + )
   {
     snmp_log("de_allocate_pdu()");
@@ -447,21 +448,34 @@ removeagentcaps_pdu(struct snmp_proto *p, struct oid *cap, struct agentx_context
     return;
   }
 
-    snmp_log("preparing to sk_send()");
-    int ret = sk_send(sk, pkt - buf);
   struct agentx_header *h;
   SNMP_CREATE(buf, struct agentx_header, h);
   SNMP_SESSION(h, p);
   ADVANCE(buf, size, AGENTX_HEADER_SIZE);
 
-    if (ret == 0)
-      snmp_log("sk_send sleep");
-    else if (ret < 0)
-      snmp_log("sk_send err");
-    else
-      log(L_INFO, "sk_send ok !!");
+  uint in_pkt;
+  if (c && c->length)
+  {
+    SNMP_HAS_CONTEXT(h);
+    in_pkt = snmp_put_nstr(buf, c->context, c->length) - buf;
+    ADVANCE(buf, size, in_pkt);
   }
+
+  memcpy(buf, cap, snmp_oid_size(cap));
+  ADVANCE(buf, size, snmp_oid_size(cap));
+
+  // update state in snmp_proto structure
+
+  //int ret = sk_send(sk, buf - sk->tbuf);
+  int ret = sk_send(sk, buf - sk->tpos);
+  if (ret == 0)
+    snmp_log("sk_send sleep");
+  else if (ret < 0)
+    snmp_log("sk_send err");
+  else
+    log(L_INFO, "sk_send ok !!");
 }
+#endif
 
 static inline void
 refresh_ids(struct snmp_proto *p, struct agentx_header *h)
@@ -594,7 +608,8 @@ snmp_registered_all(struct snmp_proto *p)
 }
 
 static void
-snmp_register_mibs(struct snmp_proto *p) {
+snmp_register_mibs(struct snmp_proto *p)
+{
   snmp_log("snmp_register_mibs()");
 
   snmp_bgp_register(p);

@@ -113,8 +113,7 @@ struct snmp_proto {
   uint register_to_ack;		    /* counter of pending responses to register-pdu */
   list register_queue;		    /* list containing snmp_register records */
   list bgp_registered;		    /* list of currently registered bgp oids
-				      (struct snmp_registered_oid) */
-  //struct iface *iface;
+				     * (struct snmp_registered_oid) */
 
   // map
   struct f_trie *bgp_trie;
@@ -129,16 +128,11 @@ struct snmp_proto {
 
   uint to_send;
   uint errs;
+
+  list additional_buffers;	    /* buffers of data to send that does not fit
+				     * into socket's TX buffer */
 };
 
-/*
-struct snmp_pdu {
-  node n;
-
-  //u32 session_id;
-  u32 transaction_id;
-  u32 packet_id; // in future need support for ranges of packet_id-s
-};
-*/
+void snmp_tx(sock *sk);
 
 #endif

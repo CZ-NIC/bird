@@ -184,7 +184,7 @@ snmp_valid_ip4_index(const struct oid *o, uint start)
   if (start + 3 < o->n_subid)
     return snmp_valid_ip4_index_unsafe(o, start);
   else
-    return 0; // false
+    return 0;
 }
 
 /**
@@ -200,9 +200,9 @@ snmp_valid_ip4_index_unsafe(const struct oid *o, uint start)
 {
   for (int i = 0; i < 4; i++)
     if (o->ids[start + i] >= 256)
-      return 0;	// false
+      return 0;
 
-  return 1; // true
+  return 1;
 }
 
 byte *
@@ -267,7 +267,7 @@ snmp_put_oid(byte *buf, struct oid *oid)
   put_u8(buf, oid->n_subid);
   put_u8(++buf, oid->prefix);
   put_u8(++buf, oid->include);
-  put_u8(++buf, 0);  // PADDING
+  put_u8(++buf, 0);  // padding
 
   /* last increment */
   ++buf;
@@ -357,16 +357,6 @@ snmp_oid_compare(const struct oid *left, const struct oid *right)
 {
   const u32 INTERNET_PREFIX[] = {1, 3, 6, 1};
 
-  /*
-  if (snmp_is_oid_empty(left) && snmp_is_oid_empty(right))
-    return 0;
-
-  if (snmp_is_oid_empty(right))
-    return -1;
-
-  if (snmp_is_oid_empty(left))
-    return 1;
-  */
 
   if (left->prefix == 0 && right->prefix == 0)
     goto test_ids;

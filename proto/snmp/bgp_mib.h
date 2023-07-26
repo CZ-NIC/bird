@@ -45,7 +45,7 @@ void snmp_bgp_register(struct snmp_proto *p);
 // - int snmp_bgp_is_supported(struct oid *o);
 
 //int snmp_bgp_valid_ip4(struct oid *o);
-u8 snmp_bgp_state(struct oid *o);
+//u8 snmp_bgp_state(const struct oid *o);
 u8 snmp_bgp_get_valid(u8 state);
 u8 snmp_bgp_getnext_valid(u8 state);
 
