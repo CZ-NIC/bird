@@ -10,6 +10,8 @@
 
 #include "snmp_utils.h"
 
+int agentx_type_size(enum agentx_type t);
+
 /**
  * snmp_is_oid_empty - check if oid is null-valued
  * @oid: object identifier to check
@@ -17,7 +19,7 @@
  * Test if the oid header is full of zeroes. For @oid NULL returns 0.
  */
 int
-snmp_is_oid_empty(struct oid *oid)
+snmp_is_oid_empty(const struct oid *oid)
 {
   if (oid != NULL)
     return oid->n_subid == 0 && oid->prefix == 0 && oid->include == 0;
@@ -30,10 +32,38 @@ snmp_is_oid_empty(struct oid *oid)
  * @buf: packet first byte
  * @pkt: first byte past packet end
  */
-size_t
-snmp_pkt_len(byte *buf, byte *pkt)
+uint
+snmp_pkt_len(byte *start, byte *end)
 {
-  return (pkt - buf) - AGENTX_HEADER_SIZE;
+  snmp_log("snmp_pkt_len start 0x%p end 0x%p  res %u", start, end, (end - start)
+- AGENTX_HEADER_SIZE);
+  return (end - start) - AGENTX_HEADER_SIZE;
+}
+
+/**
+ *
+ * used for copying oid to in buffer oid @dest
+ */
+void snmp_oid_copy(struct oid *dest, const struct oid *src)
+{
+  STORE_U8(dest->n_subid, src->n_subid);
+  STORE_U8(dest->prefix,  src->prefix);
+  STORE_U8(dest->include, src->include);
+  STORE_U8(dest->pad,	  0);
+
+  for (int i = 0; i < src->n_subid; i++)
+    STORE_U32(dest->ids[i], src->ids[i]);
+}
+
+/**
+ *
+ */
+struct oid *
+snmp_oid_duplicate(pool *pool, const struct oid *oid)
+{
+  struct oid *res = mb_alloc(pool, snmp_oid_size(oid));
+  memcpy(res, oid, snmp_oid_size(oid));
+  return res;
 }
 
 /**
@@ -46,6 +76,12 @@ snmp_oid_blank(struct snmp_proto *p)
   return mb_allocz(p->p.pool, sizeof(struct oid));
 }
 
+size_t
+snmp_str_size_from_len(uint len)
+{
+  return 4 + BIRD_ALIGN(len, 4);
+}
+
 /**
  * snmp_str_size - return in packet size of supplied string
  * @str: measured string
@@ -53,10 +89,10 @@ snmp_oid_blank(struct snmp_proto *p)
  * Returned value is string length aligned to 4 byte with 32bit length
  * annotation included.
  */
-size_t
+inline size_t
 snmp_str_size(const char *str)
 {
-  return 4 + BIRD_ALIGN(strlen(str), 4);
+  return snmp_str_size_from_len(strlen(str));
 }
 
 /**
@@ -64,7 +100,7 @@ snmp_str_size(const char *str)
  * @o: object identifier to use
  */
 uint
-snmp_oid_size(struct oid *o)
+snmp_oid_size(const struct oid *o)
 {
   return 4 + (o->n_subid * 4);
 }
@@ -79,28 +115,62 @@ snmp_oid_sizeof(uint n_subid)
   return sizeof(struct oid) + n_subid * sizeof(u32);
 }
 
+uint snmp_varbind_hdr_size_from_oid(struct oid *oid)
+{
+  return snmp_oid_size(oid) + 4;
+}
+
 /**
  * snmp_vb_size - measure size of varbind in bytes
  * @vb: variable binding to use
  */
 uint
-snmp_varbind_size(struct agentx_varbind *vb)
+snmp_varbind_header_size(struct agentx_varbind *vb)
 {
-  return snmp_oid_size(&vb->name) + 4;
+  return snmp_varbind_hdr_size_from_oid(&vb->name);
+}
+
+uint
+snmp_varbind_size(struct agentx_varbind *vb, int byte_ord)
+{
+  uint hdr_size = snmp_varbind_header_size(vb);
+  int s = agentx_type_size(vb->type);
+
+  if (s >= 0)
+    return hdr_size + (uint) s;
+
+  void *data = ((void *) vb) + hdr_size;
+
+  if (vb->type == AGENTX_OBJECT_ID)
+    return hdr_size + snmp_oid_size((struct oid *) data);
+
+  /*
+   * Load length of octet string
+   * (AGENTX_OCTET_STRING, AGENTX_IP_ADDRESS, AGENTX_OPAQUE)
+   */
+  return hdr_size + snmp_str_size_from_len(LOAD_PTR(data, byte_ord));
+}
+
+inline uint
+snmp_context_size(struct agentx_context *c)
+{
+  return (c && c->length) ? snmp_str_size_from_len(c->length) : 0;
 }
 
 struct agentx_varbind *
 snmp_create_varbind(byte *buf, struct oid *oid)
 {
   struct agentx_varbind *vb = (void*) buf;
+  vb->pad = 0;
   memcpy(&vb->name, oid, snmp_oid_size(oid));
   return vb;
 }
 
-byte *snmp_fix_varbind(struct agentx_varbind *vb, struct oid *new)
+byte *
+snmp_fix_varbind(struct agentx_varbind *vb, struct oid *new)
 {
   memcpy(&vb->name, new, snmp_oid_size(new));
-  return (void *) vb + snmp_varbind_size(vb);
+  return (void *) vb + snmp_varbind_header_size(vb);
 }
 
 /**
@@ -109,7 +179,7 @@ byte *snmp_fix_varbind(struct agentx_varbind *vb, struct oid *new)
  * @start: index of first address id
  */
 int
-snmp_valid_ip4_index(struct oid *o, uint start)
+snmp_valid_ip4_index(const struct oid *o, uint start)
 {
   if (start + 3 < o->n_subid)
     return snmp_valid_ip4_index_unsafe(o, start);
@@ -126,13 +196,30 @@ snmp_valid_ip4_index(struct oid *o, uint start)
  * length sufficiency is done.
  */
 int
-snmp_valid_ip4_index_unsafe(struct oid *o, uint start)
+snmp_valid_ip4_index_unsafe(const struct oid *o, uint start)
 {
   for (int i = 0; i < 4; i++)
     if (o->ids[start + i] >= 256)
       return 0;	// false
 
   return 1; // true
+}
+
+byte *
+snmp_put_nstr(byte *buf, const char *str, uint len)
+{
+  uint alen = BIRD_ALIGN(len, 4);
+
+  // TODO check for '\0' in the str bytes?
+  STORE_PTR(buf, len);
+  buf += 4;
+  memcpy(buf, str, len);
+
+  /* Insert zero padding in the gap at the end */
+  for (uint i = 0; i < alen - len; i++)
+    buf[len + i] = 0x00;
+
+  return buf + alen;
 }
 
 /**
@@ -148,28 +235,16 @@ byte *
 snmp_put_str(byte *buf, const char *str)
 {
   uint len = strlen(str);
-  uint slen = BIRD_ALIGN(len, 4);
-
-  if (len > MAX_STR)
-    return NULL;
-
-  STORE_PTR(buf, len);
-
-  memcpy(buf + 4, str, len);
-
-  for (uint i = 0; i < slen - len; i++)
-    buf[len + i] = 0x00;  // PADDING
-
-  return buf + snmp_str_size(str);
+  return snmp_put_nstr(buf, str, len);
 }
 
 byte *
-snmp_put_ip4(byte *buf, ip_addr addr)
+snmp_put_ip4(byte *buf, ip4_addr addr)
 {
   /* octet string has size 4 bytes */
   STORE_PTR(buf, 4);
 
-  put_u32(buf+4, ipa_to_u32(addr));
+  put_u32(buf+4, ip4_to_u32(addr));
 
   return buf + 8;
 }
@@ -231,10 +306,10 @@ void
 snmp_oid_ip4_index(struct oid *o, uint start, ip4_addr addr)
 {
   u32 temp = ip4_to_u32(addr);
-  STORE(o->ids[start], temp >> 24);
-  STORE(o->ids[start + 1], (temp >> 16) & 0xFF);
-  STORE(o->ids[start + 2], (temp >>  8) & 0xFF);
-  STORE(o->ids[start + 3], temp & 0xFF);
+  STORE_U32(o->ids[start], temp >> 24);
+  STORE_U32(o->ids[start + 1], (temp >> 16) & 0xFF);
+  STORE_U32(o->ids[start + 2], (temp >>  8) & 0xFF);
+  STORE_U32(o->ids[start + 3], temp & 0xFF);
 }
 
 void snmp_oid_dump(struct oid *oid)
@@ -278,7 +353,7 @@ void snmp_oid_dump(struct oid *oid)
  *   and 1 otherwise
  */
 int
-snmp_oid_compare(struct oid *left, struct oid *right)
+snmp_oid_compare(const struct oid *left, const struct oid *right)
 {
   const u32 INTERNET_PREFIX[] = {1, 3, 6, 1};
 
@@ -403,4 +478,114 @@ snmp_dump_packet(byte *pkt, uint size)
   for (uint i = 0; i < size; i += 4)
     snmp_log("pkt [%d]  0x%02x%02x%02x%02x", i, pkt[i],pkt[i+1],pkt[i+2],pkt[i+3]);
   snmp_log("end dump");
+}
+
+/*
+ * Returns length of agentx_type @type in bytes.
+ * Variable length types result in -1.
+ */
+int
+agentx_type_size(enum agentx_type type)
+{
+  /*
+   * AGENTX_NULL, AGENTX_NO_SUCH_OBJECT, AGENTX_NO_SUCH_INSTANCE,
+   * AGENTX_END_OF_MIB_VIEW
+   */
+  if (type >= AGENTX_NO_SUCH_OBJECT || type == AGENTX_NULL)
+    return 0;
+
+  /* AGENTX_INTEGER, AGENTX_COUNTER_32, AGENTX_GAUGE_32, AGENTX_TIME_TICKS */
+  if (type >= AGENTX_COUNTER_32 && type <= AGENTX_TIME_TICKS ||
+      type == AGENTX_INTEGER)
+    return 4;
+
+  /* AGENTX_COUNTER_64 */
+  if (type == AGENTX_COUNTER_64)
+    return 8;
+
+  /* AGENTX_OBJECT_ID, AGENTX_OCTET_STRING, AGENTX_IP_ADDRESS, AGENTX_OPAQUE */
+  else
+    return -1;
+}
+
+static inline byte *
+snmp_varbind_type32(struct agentx_varbind *vb, uint size, enum agentx_type type, u32 val)
+{
+  ASSUME(agentx_type_size(type) == 4); /* type has 4B representation */
+
+  if (size < (uint) agentx_type_size(type))
+  {
+    snmp_log("varbind type32 returned NULL");
+    return NULL;
+  }
+
+  vb->type = type;
+  u32 *data = SNMP_VB_DATA(vb);
+  snmp_log("varbind type32 vb data 0x%p (from vb 0x%p)", data, (void *) vb);
+  *data = val;
+  return (byte *)(data + 1);
+}
+
+inline byte *
+snmp_varbind_int(struct agentx_varbind *vb, uint size, u32 val)
+{
+  return snmp_varbind_type32(vb, size, AGENTX_INTEGER, val);
+}
+
+
+inline byte *
+snmp_varbind_counter32(struct agentx_varbind *vb, uint size, u32 val)
+{
+  return snmp_varbind_type32(vb, size, AGENTX_COUNTER_32, val);
+}
+
+inline byte *
+snmp_varbind_gauge32(struct agentx_varbind *vb, uint size, s64 val)
+{
+  return snmp_varbind_type32(vb, size, AGENTX_GAUGE_32,
+			     MAX(0, MIN(val, UINT32_MAX)));
+}
+
+inline byte *
+snmp_varbind_ip4(struct agentx_varbind *vb, uint size, ip4_addr addr)
+{
+  if (size < snmp_str_size_from_len(4))
+  {
+    snmp_log("varbind ip4 NULL");
+    return NULL;
+  }
+
+  vb->type = AGENTX_IP_ADDRESS;
+  snmp_log("snmp_varbind_ip4 vb data 0x%p (from vb 0x%p)", SNMP_VB_DATA(vb), (void
+*) vb);
+  return snmp_put_ip4(SNMP_VB_DATA(vb), addr);
+}
+
+inline byte *
+snmp_varbind_nstr(struct agentx_varbind *vb, uint size, const char *str, uint len)
+{
+  if (size < snmp_str_size_from_len(len))
+  {
+    snmp_log("varbind nstr NULL");
+    return NULL;
+  }
+
+  vb->type = AGENTX_OCTET_STRING;
+  //die("snmp_varbind_nstr() %p.data = %p", vb, SNMP_VB_DATA(vb));
+  snmp_log("snmp_varbind_nstr vb data 0x%p (from vb 0x%p)", SNMP_VB_DATA(vb), (void *) vb);
+  //snmp_log("snmp_varbind_nstr() %p.data = %p", vb, SNMP_VB_DATA(vb));
+  return snmp_put_nstr(SNMP_VB_DATA(vb), str, len);
+}
+
+inline enum agentx_type
+snmp_search_res_to_type(enum snmp_search_res r)
+{
+  ASSUME(r != SNMP_SEARCH_OK);
+  static enum agentx_type type_arr[] = {
+    [SNMP_SEARCH_NO_OBJECT]   = AGENTX_NO_SUCH_OBJECT,
+    [SNMP_SEARCH_NO_INSTANCE] = AGENTX_NO_SUCH_INSTANCE,
+    [SNMP_SEARCH_END_OF_VIEW] = AGENTX_END_OF_MIB_VIEW,
+  };
+
+  return type_arr[r];
 }

@@ -26,7 +26,7 @@ enum SNMP_CLASSES {
   SNMP_CLASS_END,
 };
 
-#define BGP4_VERSIONS 0x10
+#define BGP4_VERSIONS ((char[]) { 0x10 })
 
 enum agentx_type {
   AGENTX_INTEGER	    =   2,
@@ -44,6 +44,13 @@ enum agentx_type {
   AGENTX_END_OF_MIB_VIEW    = 130,
 } PACKED;
 
+enum snmp_search_res {
+  SNMP_SEARCH_OK	  = 0,
+  SNMP_SEARCH_NO_OBJECT	  = 1,
+  SNMP_SEARCH_NO_INSTANCE = 2,
+  SNMP_SEARCH_END_OF_VIEW = 3,
+};
+
 #define AGENTX_ADMIN_STOP   1
 #define AGENTX_ADMIN_START  2
 
@@ -53,18 +60,15 @@ enum agentx_type {
 #define SNMP_NATIVE
 
 #ifdef SNMP_NATIVE
-#define STORE(v,c) (v) = (u32) (c)
-#define STORE_16(v,c) (v) = (u16) (c)
-#define STORE_PTR(v,c) *((u32 *) (v)) = (u32) (c)
-#define SNMP_UPDATE(h,l) \
-  STORE((h)->payload, l)
-
+#define STORE_U32(dest, val)  ((dest) = (u32) (val))
+#define STORE_U16(dest, val)  ((dest) = (u16) (val))
+#define STORE_U8(dest, val)   ((dest) = (u8) (val))
+#define STORE_PTR(ptr, val)   (*((u32 *) (ptr)) = (u32) (val))
 #else
-#define STORE(v, c) put_u32(&v, c)
-#define STORE_16(v,c) put_u32(&v, c)
-#define STORE_PTR(v,c) put_u32(v, c)
-#define SNMP_UPDATE(h,l) \
-  STORE(h->payload, l)
+#define STORE_U32(dest, val)  put_u32(&(dest), (val))
+#define STORE_U16(dest, val)  put_u16(&(dest), (val))
+#define STORE_U8(dest, val)   put_u8(&(dest), (val))
+#define STORE_PTR(ptr, val)   put_u32(ptr, val)
 #endif
 
 /* storing byte (u8) is always the same */
@@ -82,17 +86,17 @@ enum agentx_type {
 #endif
 
 #define SNMP_B_HEADER(h, t) SNMP_HEADER(h, t, AGENTX_FLAG_BLANK)
-
-#define SNMP_SESSION(h, p)			\
-  STORE(h->session_id, p->session_id);		\
-  STORE(h->transaction_id, p->transaction_id);	\
-  p->transaction_id++;				\
-  STORE(h->packet_id, p->packet_id);
+#define SNMP_BLANK_HEADER(h, t) SNMP_HEADER(h, t, AGENTX_FLAG_BLANK)
 
 #define SNMP_CREATE(b, t, n)  \
   n = (void *) (b);	      \
   memset(n, 0, sizeof(t));    \
   (b) += sizeof(t);
+
+#define SNMP_SESSION(h, p)						      \
+  STORE_U32(h->session_id, p->session_id);				      \
+  STORE_U32(h->transaction_id, p->transaction_id);			      \
+  STORE_U32(h->packet_id, p->packet_id)
 
 #define LOAD(v, bo) ((bo) ? get_u32(&v) : (u32) (v))
 #define LOAD_16(v, bo) ((bo) ? get_u16(&v) : (u16) (v))
@@ -125,7 +129,17 @@ enum agentx_type {
   (varbind)->type = type_;		  \
   packet += offset;
 
-#define BGP_DATA(varbind, type_, packet) BGP_DATA_(varbind, type_, packet, 4)
+#define SNMP_PUT_OID(buf, size, oid, byte_ord)				    \
+  ({									    \
+    struct agentx_varbind *vb = (void *) buf;				    \
+    SNMP_FILL_VARBIND(vb, oid, byte_ord);				    \
+  })
+
+#define SNMP_FILL_VARBIND(vb, oid, byte_ord)				    \
+  snmp_oid_copy(&(vb)->name, (oid), (byte_ord)), snmp_oid_size((oid))
+ 
+#define SNMP_VB_DATA(varbind)						    \
+  (((void *)(varbind)) + snmp_varbind_header_size(varbind))
 
 struct agentx_header {
   u8 version;
@@ -273,11 +287,44 @@ enum agentx_response_err {
   AGENTX_RES_PROCESSING_ERR	    = 268,
 } PACKED;
 
+struct agentx_context {
+  char *context;  /* string name of this context */
+  uint length;	  /* normal strlen() size */
+  /* add buffered context hash? */
+};
+
+struct snmp_pdu_context {
+  byte *buffer;			    /* pointer to buffer */
+  uint size;			    /* unused space in buffer */
+  uint context;			    /* context hash */
+  int byte_ord;			    /* flag signaling NETWORK_BYTE_ORDER */
+  enum agentx_response_err error;   /* storage for result of current action */
+};
+
+struct agentx_alloc_context {
+  u8 is_instance; /* flag INSTANCE_REGISTRATION */
+  u8 new_index;   /* flag NEW_INDEX */
+  u8 any_index;	  /* flag ANY_INDEX */
+  char *context;  /* context to allocate in */
+  uint clen;	  /* length of context string */
+};
+
+struct additional_buffer {
+  node n;
+  byte *buf;	  /* pointer to buffer data */
+  byte *pos;	  /* position of first unused byte */
+};
+
 int snmp_rx(sock *sk, uint size);
 int snmp_rx_stop(sock *sk, uint size);
 void snmp_down(struct snmp_proto *p);
 void snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len);
 void snmp_unregister(struct snmp_proto *p, struct oid *oid, uint index, uint len);
+
+void snmp_manage_tbuf(struct snmp_proto *p, struct snmp_pdu_context *c);
+
+struct oid *snmp_prefixize(struct snmp_proto *p, const struct oid *o, int byte_ord);
+u8 snmp_get_mib_class(const struct oid *oid);
 
 // debug wrapper
 #define snmp_log(...) log(L_INFO "snmp " __VA_ARGS__)

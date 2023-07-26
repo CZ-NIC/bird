@@ -32,6 +32,10 @@ enum BGP4_MIB {
   SNMP_BGP_IN_UPDATE_ELAPSED_TIME   = 24,   /* UNSUPPORTED */
 } PACKED;
 
+/* version of BGP, here BGP-4 */
+#define SNMP_BGP_NEGOTIATED_VER_VALUE 4
+#define SNMP_BGP_NEGOTIATED_VER_NO_VALUE 0
+
 //void snmp_init_bgp_table(void);
 //void snmp_del_bgp_table(void);
 
@@ -45,8 +49,10 @@ u8 snmp_bgp_state(struct oid *o);
 u8 snmp_bgp_get_valid(u8 state);
 u8 snmp_bgp_getnext_valid(u8 state);
 
-struct oid *search_bgp_mib(struct snmp_proto *p , struct oid *o_start, struct oid *o_end, uint contid);
-byte * snmp_bgp_fill(struct snmp_proto *p, struct agentx_varbind *vb, byte *buf, uint size, uint contid UNUSED, int byte_ord);
+struct oid *snmp_bgp_search(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, uint contid);
+enum snmp_search_res snmp_bgp_search2(struct snmp_proto *p, struct oid **searched, const struct oid *o_end, uint contid);
+//byte * snmp_bgp_fill(struct snmp_proto *p, struct agentx_varbind *vb, byte *buf, uint size, uint contid UNUSED, int byte_ord);
+void snmp_bgp_fill(struct snmp_proto *p, struct agentx_varbind *vb, struct snmp_pdu_context *c);
 
 #define BGP4_MIB_VERSION 1
 #define BGP4_MIB_LOCAL_AS 2
