@@ -76,7 +76,7 @@ enum snmp_search_res {
   put_u8(&h->version, v);	  \
   put_u8(&h->type, t);		  \
   put_u8(&h->flags, f);		  \
-  put_u8(&h->pad, 0);
+  put_u8(&h->pad, 0)
 
 #ifdef SNMP_NATIVE
 #define SNMP_HEADER(h,t,f)    SNMP_HEADER_(h, AGENTX_VERSION, t, f)
@@ -85,13 +85,7 @@ enum snmp_search_res {
   SNMP_HEADER_(h, AGENTX_VERSION, t, f | SNMP_NETWORK_BYTE_ORDER)
 #endif
 
-#define SNMP_B_HEADER(h, t) SNMP_HEADER(h, t, AGENTX_FLAG_BLANK)
 #define SNMP_BLANK_HEADER(h, t) SNMP_HEADER(h, t, AGENTX_FLAG_BLANK)
-
-#define SNMP_CREATE(b, t, n)  \
-  n = (void *) (b);	      \
-  memset(n, 0, sizeof(t));    \
-  (b) += sizeof(t);
 
 #define SNMP_SESSION(h, p)						      \
   STORE_U32(h->session_id, p->session_id);				      \
@@ -100,34 +94,30 @@ enum snmp_search_res {
 
 #define LOAD(v, bo) ((bo) ? get_u32(&v) : (u32) (v))
 #define LOAD_16(v, bo) ((bo) ? get_u16(&v) : (u16) (v))
-#define LOAD_PTR(v, bo) ((bo) ? get_u32(v) : (u32) *(v))
+#define LOAD_PTR(v, bo) ((bo) ? get_u32(v) : *((u32 *) v))
 
-#define LOAD_STR(p, b, s, l, bo)    \
-  l = LOAD(*((u32 *) b), bo);	    \
-  log(L_INFO "LOAD_STR(), %p %u", p->p.pool, l + 1); \
-  s = mb_alloc(p->p.pool, l + 1);  \
-  memcpy(s, b, l);		    \
-  s[l] = '\0'; /* set term. char */ \
-  b += snmp_str_size(s);
+#define LOAD_STR(proto, buf, str, length, byte_order) ({		      \
+  length = LOAD_PTR(buf, byte_order);					      \
+  log(L_INFO "LOAD_STR(), %p %u", proto->p.pool, length + 1);		      \
+  str = mb_alloc(proto->p.pool, length + 1);				      \
+  memcpy(str, buf, length);						      \
+  str[length] = '\0'; /* set term. char */				      \
+  buf += snmp_str_size_from_len(length); })
 
-#define SNMP_LOAD_CONTEXT(p, h, b, s, l)      \
+#define SNMP_LOAD_CONTEXT(proto, hdr, buf, cont, cont_len)		      \
+  cont = NULL; cont_len = 0;						      \
+  if (hdr->flags & AGENTX_NON_DEFAULT_CONTEXT)				      \
+    LOAD_STR(proto, buf, cont, cont_len,				      \
+	hdr->flags & AGENTX_NETWORK_BYTE_ORDER)
+
+#define SNMP_HAS_CONTEXT(hdr)						      \
+  hdr->flags |= AGENTX_NON_DEFAULT_CONTEXT
+
+#if 0
   if (h->flags & AGENTX_NON_DEFAULT_CONTEXT)  \
     { log(L_INFO "encountered non-default context"); \
     LOAD_STR(p, b, s, l, h->flags & AGENTX_NETWORK_BYTE_ORDER); }
-
-#define SNMP_COPY_OID(b, o) \
-  memcpy(b, o, snmp_oid_size(o));   \
-  b += snmp_oid_size(o);
-
-#define SNMP_COPY_VB(b, s, e)	\
-  memcpy(b, s, 4);		\
-  b += 4;			\
-  SNMP_COPY_OID(b, &s->name)	\
-  SNMP_COPY_OID(b, e)
-
-#define BGP_DATA_(varbind, type_, packet, offset) \
-  (varbind)->type = type_;		  \
-  packet += offset;
+#endif
 
 #define SNMP_PUT_OID(buf, size, oid, byte_ord)				    \
   ({									    \
@@ -146,10 +136,10 @@ struct agentx_header {
   u8 type;
   u8 flags;
   u8 pad;
-  u32 session_id;
-  u32 transaction_id;
-  u32 packet_id;
-  u32 payload;   /* length of the packet without header */
+  u32 session_id;	/* AgentX sessionID established by Open-PDU */
+  u32 transaction_id;	/* last transactionID seen/used */
+  u32 packet_id;	/* last packetID seen/used */
+  u32 payload;		/* length of the packet without header */
 };
 
 #define AGENTX_HEADER_SIZE sizeof(struct agentx_header)
@@ -183,7 +173,7 @@ struct agentx_getbulk {
 struct agentx_response {
   struct agentx_header h;
   u32 uptime;
-  u16 err;
+  u16 error;
   u16 index;
 };
 
@@ -204,14 +194,12 @@ struct agentx_bulk_state {
   struct agentx_getbulk getbulk;
   u16 index;
   u16 repetition;
-  byte* packet;
-  u16 failed;
 };
 
-struct snmp_error {
-  struct oid *oid;
-  uint type;
-};
+//struct snmp_error {
+//  struct oid *oid;
+//  uint type;
+//};
 
 enum agentx_pdu {
   AGENTX_OPEN_PDU		=  1,
@@ -258,8 +246,9 @@ enum agentx_close_reasons {
 
 /* RESPONSE_PDU - result error */
 enum agentx_response_err {
+  /* response OK master <-> subagent */
   AGENTX_RES_NO_ERROR		    =   0,
-  /* TEST_SET_PDU response errors */
+  /* TEST_SET_PDU response errors (subagent -> master) */
   AGENTX_RES_GEN_ERROR		    =   5,
   AGENTX_RES_NO_ACCESS		    =   6,
   AGENTX_RES_WRONG_TYPE		    =   7,
@@ -271,7 +260,7 @@ enum agentx_response_err {
   AGENTX_RES_RESOURCE_UNAVAILABLE   =  13,
   AGENTX_RES_NOT_WRITEABLE	    =  17,
   AGENTX_RES_INCONSISTENT_NAME	    =  18,
-  /* end of TEST_SET_PDU resonse errs */
+  /* end of TEST_SET_PDU resonse errs (master -> subagent) */
   AGENTX_RES_OPEN_FAILED	    = 256,
   AGENTX_RES_NOT_OPEN		    = 257,
   AGENTX_RES_INDEX_WRONG_TYPE	    = 258,
