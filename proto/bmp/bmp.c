@@ -654,23 +654,18 @@ bmp_route_monitor_commit(void *p_)
   buffer payload
     = bmp_buffer_alloc(p->buffer_mpool, DEFAULT_MEM_BLOCK_SIZE);
 
-  buffer update_msgs
-    = bmp_buffer_alloc(p->buffer_mpool, BGP_MAX_EXT_MSG_LENGTH);
-
   struct bmp_data_node *data, *data_next;
   WALK_LIST_DELSAFE(data, data_next, p->update_msg_queue)
   {
-    bmp_put_data(&update_msgs, data->data, data->data_size);
     bmp_route_monitor_msg_serialize(&payload,
       data->global_peer, true /* TODO: Hardcoded pre-policy Adj-Rib-In */,
       data->remote_as, data->remote_id, true,
-      data->remote_ip, bmp_buffer_data(&update_msgs), bmp_buffer_pos(&update_msgs),
+      data->remote_ip, data->data, data->data_size,
       data->timestamp);
 
     bmp_schedule_tx_packet(p, bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
 
     bmp_buffer_flush(&payload);
-    bmp_buffer_flush(&update_msgs);
 
     mb_free(data->data);
     rem_node(&data->n);
@@ -678,7 +673,6 @@ bmp_route_monitor_commit(void *p_)
   }
 
   bmp_buffer_free(&payload);
-  bmp_buffer_free(&update_msgs);
 }
 
 static void
