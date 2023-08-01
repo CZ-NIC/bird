@@ -2472,13 +2472,11 @@ bgp_bmp_prepare_bgp_hdr(byte *buf, const u16 msg_size, const u8 msg_type)
   return buf + BGP_MSG_HDR_TYPE_POS + BGP_MSG_HDR_TYPE_SIZE;
 }
 
-void
-bgp_bmp_encode_rte(struct bgp_channel *c, struct bmp_proto *bmp, const net_addr *n,
+byte *
+bgp_bmp_encode_rte(struct bgp_channel *c, byte *buf, const net_addr *n,
 		   const struct rte *new, const struct rte_src *src)
 {
 //  struct bgp_proto *p = (void *) c->c.proto;
-
-  byte buf[BGP_MAX_EXT_MSG_LENGTH];
   byte *pkt = buf + BGP_HEADER_LENGTH;
 
   ea_list *attrs = new ? new->attrs->eattrs : NULL;
@@ -2502,11 +2500,11 @@ bgp_bmp_encode_rte(struct bgp_channel *c, struct bmp_proto *bmp, const net_addr 
   add_tail(&b->prefixes, &px->buck_node);
 
   byte *end = bgp_create_update_bmp(c, pkt, b, !!new);
-  if (!end)
-    return;
 
-  bgp_bmp_prepare_bgp_hdr(buf, end - buf, PKT_UPDATE);
-  bmp_route_monitor_put_update_in_pre_msg(bmp, buf, end - buf);
+  if (end)
+    bgp_bmp_prepare_bgp_hdr(buf, end - buf, PKT_UPDATE);
+
+  return end;
 }
 
 #endif /* CONFIG_BMP */
@@ -2769,8 +2767,6 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
   s.ip_reach_len = len - pos;
   s.ip_reach_nlri = pkt + pos;
 
-  bmp_route_monitor_update_in_pre_begin();
-
   if (s.attr_len)
     ea = bgp_decode_attrs(&s, s.attrs, s.attr_len);
   else
@@ -2800,9 +2796,6 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
   if (s.mp_reach_len)
     bgp_decode_nlri(&s, s.mp_reach_af, s.mp_reach_nlri, s.mp_reach_len,
 		    ea, s.mp_next_hop_data, s.mp_next_hop_len);
-
-  bmp_route_monitor_update_in_pre_commit(p);
-  bmp_route_monitor_update_in_pre_end();
 
 done:
   rta_free(s.cached_rta);

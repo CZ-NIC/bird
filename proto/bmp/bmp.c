@@ -211,6 +211,12 @@ struct bmp_data_node {
   node n;
   byte *data;
   size_t data_size;
+
+  u32 remote_as;
+  u32 remote_id;
+  ip_addr remote_ip;
+  btime timestamp;
+  bool global_peer;
 };
 
 static void
@@ -401,9 +407,12 @@ static void
 bmp_route_monitor_msg_serialize(buffer *stream, const bool is_peer_global,
   const bool table_in_pre_policy, const u32 peer_as, const u32 peer_bgp_id,
   const bool as4_support, const ip_addr remote_addr, const byte *update_msg,
-  const size_t update_msg_size, u32 ts_sec, u32 ts_usec)
+  const size_t update_msg_size, btime timestamp)
 {
   const size_t data_size = BMP_PER_PEER_HDR_SIZE + update_msg_size;
+  u32 ts_sec = timestamp TO_S;
+  u32 ts_usec = timestamp - (ts_sec S);
+
   bmp_buffer_need(stream, BMP_COMMON_HDR_SIZE + data_size);
   bmp_common_hdr_serialize(stream, BMP_ROUTE_MONITOR, data_size);
   bmp_per_peer_hdr_serialize(stream, is_peer_global, table_in_pre_policy,
@@ -581,56 +590,43 @@ bmp_send_peer_up_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
   bmp_buffer_free(&payload);
 }
 
-
 static void
-bmp_route_monitor_update_in_pre_begin_(struct bmp_proto *p)
+bmp_route_monitor_put_update(struct bmp_proto *p, const byte *data, size_t length, struct bgp_proto *bgp)
 {
-  if (!p->started)
-    return;
-
-  if (p->monitoring_rib.in_pre_policy == false)
-    return;
-
-  IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    !EMPTY_LIST(p->rt_table_in_pre_policy.update_msg_queue),
-    "Previous BMP route monitoring update not finished yet"
-  );
-
-  gettimeofday(&p->rt_table_in_pre_policy.update_begin_time,NULL);
-  init_list(&p->rt_table_in_pre_policy.update_msg_queue);
-  p->rt_table_in_pre_policy.update_msg_size = 0;
-  p->rt_table_in_pre_policy.update_in_progress = true;
-}
-
-void
-bmp_route_monitor_update_in_pre_begin(void)
-{
-  struct bmp_proto *p; node *n;
-  WALK_LIST2(p, n, bmp_proto_list, bmp_node)
-    bmp_route_monitor_update_in_pre_begin_(p);
-}
-
-void
-bmp_route_monitor_put_update_in_pre_msg(struct bmp_proto *p, const byte *data, const size_t data_size)
-{
-  if (!p->started)
-    return;
-
-  if (p->monitoring_rib.in_pre_policy == false)
-    return;
-
-  IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    !p->rt_table_in_pre_policy.update_in_progress,
-    "BMP route monitoring update not started yet"
-  );
-
   struct bmp_data_node *upd_msg = mb_alloc(p->update_msg_mem_pool,
                                sizeof (struct bmp_data_node));
-  upd_msg->data = mb_alloc(p->update_msg_mem_pool, data_size);
-  memcpy(upd_msg->data, data, data_size);
-  upd_msg->data_size = data_size;
-  p->rt_table_in_pre_policy.update_msg_size += data_size;
-  add_tail(&p->rt_table_in_pre_policy.update_msg_queue, &upd_msg->n);
+  upd_msg->data = mb_alloc(p->update_msg_mem_pool, length);
+  memcpy(upd_msg->data, data, length);
+  upd_msg->data_size = length;
+  add_tail(&p->update_msg_queue, &upd_msg->n);
+
+  /* Save some metadata */
+  upd_msg->remote_as = bgp->remote_as;
+  upd_msg->remote_id = bgp->remote_id;
+  upd_msg->remote_ip = bgp->remote_ip;
+  upd_msg->timestamp = current_time();
+  upd_msg->global_peer = bmp_is_peer_global_instance(bgp);
+
+  /* Kick the commit */
+  if (!ev_active(p->update_ev))
+    ev_schedule(p->update_ev);
+}
+
+static void
+bmp_route_monitor_update_in_notify_(struct bmp_proto *p, struct bgp_channel *c,
+					const net_addr *n, const struct rte *new, const struct rte_src *src)
+{
+  struct bgp_proto *bgp = (void *) c->c.proto;
+
+  if (!p->started)
+    return;
+
+  if (p->monitoring_rib.in_pre_policy == false)
+    return;
+
+  byte buf[BGP_MAX_EXT_MSG_LENGTH];
+  byte *end = bgp_bmp_encode_rte(c, buf, n, new, src);
+  bmp_route_monitor_put_update(p, buf, end - buf, bgp);
 }
 
 void
@@ -641,95 +637,48 @@ bmp_route_monitor_update_in_notify(struct channel *C, const net_addr *n,
 
   struct bmp_proto *p; node *nx;
   WALK_LIST2(p, nx, bmp_proto_list, bmp_node)
-    bgp_bmp_encode_rte(c, p, n, new, src);
+    bmp_route_monitor_update_in_notify_(p, c, n, new, src);
 }
 
 static void
-bmp_route_monitor_update_in_pre_commit_(struct bmp_proto *p, const struct bgp_proto *bgp)
+bmp_route_monitor_commit(void *p_)
 {
+  struct bmp_proto *p = p_;
+
   if (!p->started)
     return;
 
   if (p->monitoring_rib.in_pre_policy == false)
     return;
 
-  const struct birdsock *sk = bmp_get_birdsock(bgp);
-  IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    sk,
-    "Failed to get bird socket from BGP proto"
-  );
-
-  const struct bgp_caps *remote_caps = bmp_get_bgp_remote_caps(bgp);
-  IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    remote_caps,
-    "Failed to get remote capabilities from BGP proto"
-  );
-
-  bool is_global_instance_peer = bmp_is_peer_global_instance(bgp);
   buffer payload
-    = bmp_buffer_alloc(p->buffer_mpool,
-        p->rt_table_in_pre_policy.update_msg_size + DEFAULT_MEM_BLOCK_SIZE);
+    = bmp_buffer_alloc(p->buffer_mpool, DEFAULT_MEM_BLOCK_SIZE);
 
   buffer update_msgs
-    = bmp_buffer_alloc(p->buffer_mpool,
-        p->rt_table_in_pre_policy.update_msg_size);
+    = bmp_buffer_alloc(p->buffer_mpool, BGP_MAX_EXT_MSG_LENGTH);
 
-  struct bmp_data_node *data;
-  WALK_LIST(data, p->rt_table_in_pre_policy.update_msg_queue)
+  struct bmp_data_node *data, *data_next;
+  WALK_LIST_DELSAFE(data, data_next, p->update_msg_queue)
   {
     bmp_put_data(&update_msgs, data->data, data->data_size);
     bmp_route_monitor_msg_serialize(&payload,
-      is_global_instance_peer, true /* TODO: Hardcoded pre-policy Adj-Rib-In */,
-      bgp->conn->received_as, bgp->remote_id, remote_caps->as4_support,
-      sk->daddr, bmp_buffer_data(&update_msgs), bmp_buffer_pos(&update_msgs),
-      p->rt_table_in_pre_policy.update_begin_time.tv_sec,
-      p->rt_table_in_pre_policy.update_begin_time.tv_usec);
+      data->global_peer, true /* TODO: Hardcoded pre-policy Adj-Rib-In */,
+      data->remote_as, data->remote_id, true,
+      data->remote_ip, bmp_buffer_data(&update_msgs), bmp_buffer_pos(&update_msgs),
+      data->timestamp);
 
     bmp_schedule_tx_packet(p, bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
 
     bmp_buffer_flush(&payload);
     bmp_buffer_flush(&update_msgs);
+
+    mb_free(data->data);
+    rem_node(&data->n);
+    mb_free(data);
   }
 
   bmp_buffer_free(&payload);
   bmp_buffer_free(&update_msgs);
-}
-
-void
-bmp_route_monitor_update_in_pre_commit(const struct bgp_proto *bgp)
-{
-  struct bmp_proto *p; node *n;
-  WALK_LIST2(p, n, bmp_proto_list, bmp_node)
-    bmp_route_monitor_update_in_pre_commit_(p, bgp);
-}
-
-static void
-bmp_route_monitor_update_in_pre_end_(struct bmp_proto *p)
-{
-  if (!p->started)
-    return;
-
-  if (p->monitoring_rib.in_pre_policy == false)
-    return;
-
-  struct bmp_data_node *upd_msg;
-  struct bmp_data_node *upd_msg_next;
-  WALK_LIST_DELSAFE(upd_msg, upd_msg_next, p->rt_table_in_pre_policy.update_msg_queue)
-  {
-    mb_free(upd_msg->data);
-    rem_node((node *) upd_msg);
-    mb_free(upd_msg);
-  }
-
-  p->rt_table_in_pre_policy.update_in_progress = false;
-}
-
-void
-bmp_route_monitor_update_in_pre_end(void)
-{
-  struct bmp_proto *p; node *n;
-  WALK_LIST2(p, n, bmp_proto_list, bmp_node)
-    bmp_route_monitor_update_in_pre_end_(p);
 }
 
 static void
@@ -746,10 +695,7 @@ bmp_route_monitor_end_of_rib_msg(struct bmp_proto *p, struct bgp_channel *c)
   put_u16(rx_end_payload + BGP_MSG_HDR_LENGTH_POS, pos - rx_end_payload);
   put_u8(rx_end_payload + BGP_MSG_HDR_TYPE_POS, PKT_UPDATE);
 
-  bmp_route_monitor_update_in_pre_begin_(p);
-  bmp_route_monitor_put_update_in_pre_msg(p, rx_end_payload, pos - rx_end_payload);
-  bmp_route_monitor_update_in_pre_commit_(p, bgp);
-  bmp_route_monitor_update_in_pre_end_(p);
+  bmp_route_monitor_put_update(p, rx_end_payload, pos - rx_end_payload, bgp);
 }
 
 static void
@@ -773,14 +719,10 @@ bmp_route_monitor_pre_policy_table_in_snapshot(struct bmp_proto *p, struct bgp_c
     if (P->proto->class != PROTOCOL_BGP)
       continue;
 
-    bmp_route_monitor_update_in_pre_begin_(p);
-
     rte *e;
     for (e = n->routes; e; e = e->next)
-      bgp_bmp_encode_rte(c, p, n->n.addr, e, e->src);
+      bmp_route_monitor_update_in_notify_(p, c, n->n.addr, e, e->src);
 
-    bmp_route_monitor_update_in_pre_commit_(p, (struct bgp_proto *) P);
-    bmp_route_monitor_update_in_pre_end_(p);
     ++cnt;
   }
   FIB_ITERATE_END;
@@ -1071,14 +1013,15 @@ bmp_start(struct proto *P)
   p->map_mem_pool = rp_new(P->pool, "BMP Map");
   p->tx_mem_pool = rp_new(P->pool, "BMP Tx");
   p->update_msg_mem_pool = rp_new(P->pool, "BMP Update");
-  p->tx_ev = ev_new_init(p->tx_mem_pool, bmp_fire_tx, p);
+  p->tx_ev = ev_new_init(p->p.pool, bmp_fire_tx, p);
+  p->update_ev = ev_new_init(p->p.pool, bmp_route_monitor_commit, p);
   p->connect_retry_timer = tm_new_init(p->p.pool, bmp_connection_retry, p, 0, 0);
   p->sk = NULL;
 
   // bmp_peer_map_init(&p->bgp_peers, p->map_mem_pool);
 
   init_list(&p->tx_queue);
-  init_list(&p->rt_table_in_pre_policy.update_msg_queue);
+  init_list(&p->update_msg_queue);
   p->started = false;
   p->sock_err = 0;
   add_tail(&bmp_proto_list, &p->bmp_node);

@@ -635,8 +635,7 @@ int bgp_get_attr(const struct eattr *e, byte *buf, int buflen);
 void bgp_get_route_info(struct rte *, byte *buf);
 int bgp_total_aigp_metric_(rte *e, u64 *metric, const struct adata **ad);
 
-struct bmp_proto;
-void bgp_bmp_encode_rte(struct bgp_channel *c, struct bmp_proto *bmp, const net_addr *n, const struct rte *new, const struct rte_src *src);
+byte * bgp_bmp_encode_rte(struct bgp_channel *c, byte *buf, const net_addr *n, const struct rte *new, const struct rte_src *src);
 
 #define BGP_AIGP_METRIC		1
 #define BGP_AIGP_MAX		U64(0xffffffffffffffff)
