@@ -293,13 +293,6 @@ un_register_pdu(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 
     ADVANCE(c.buffer, c.size, 4);
   }
 
-  /* buf - start, pkt - end */
-  update_packet_size(p, buf, c.buffer);
-
-  /*
-  for (uint i = 0; i < pkt - buf; i++)
-    snmp_log("%p:  %02X", buf+i, *(buf + i));
-  */
   uint s = update_packet_size(p, buf, c.buffer);
 
   snmp_log("sending (un)register %s", snmp_pkt_type[type]);
@@ -740,16 +733,63 @@ snmp_get_next2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
   struct oid *o_copy = search_mib(p, o_start, o_end, NULL, c, &r);
   snmp_log("next2()2 o_end %p", o_end);
 
-  if (o_copy)
-    snmp_mib_fill2(p, o_copy, c);
-  else
+  struct agentx_varbind *vb = NULL;
+  switch (r)
   {
-    // FIXME check that we have enough space
-    struct agentx_varbind *vb = snmp_create_varbind(c->buffer, o_start);
-    vb->type = AGENTX_NO_SUCH_OBJECT;
-    /* snmp_varbind_size depends on vb->type */
-    ADVANCE(c->buffer, c->size, snmp_varbind_size(vb, c->byte_ord));
+    case SNMP_SEARCH_NO_OBJECT:
+    case SNMP_SEARCH_NO_INSTANCE:
+    case SNMP_SEARCH_END_OF_VIEW:;
+      uint sz = snmp_varbind_hdr_size_from_oid(o_start);
+
+      if (c->size < sz)
+      {
+	/* TODO manage insufficient buffer properly */
+	c->error = AGENTX_RES_GEN_ERROR;
+	return;
+      }
+
+      vb = snmp_create_varbind(c->buffer, o_start);
+      vb->type = AGENTX_END_OF_MIB_VIEW;
+      ADVANCE(c->buffer, c->size, snmp_varbind_header_size(vb));
+      return;
+
+    case SNMP_SEARCH_OK:
+    default:	/* intentionaly left blank */
+      break;
   }
+
+  if (o_copy)
+  {
+    /* basicaly snmp_create_varbind(c->buffer, o_copy),
+     * but without any copying */
+    vb = (void *) c->buffer;
+    snmp_mib_fill2(p, o_copy, c);
+
+    /* override the error value for GetNext-PDU when object is not found */
+    switch (vb->type)
+    {
+      case AGENTX_NO_SUCH_OBJECT:
+      case AGENTX_NO_SUCH_INSTANCE:
+      case AGENTX_END_OF_MIB_VIEW:
+	vb->type = AGENTX_END_OF_MIB_VIEW;
+	break;
+
+      default:	/* intentionally left blank */
+	break;
+    }
+
+    return;
+  }
+
+  if (c->size < snmp_varbind_hdr_size_from_oid(o_start))
+  {
+    // TODO FIXME this is a bit tricky as we need to renew all TX buffer pointers
+    snmp_manage_tbuf(p, c);
+  }
+
+  vb = snmp_create_varbind(c->buffer, o_start);
+  vb->type = AGENTX_END_OF_MIB_VIEW;
+  ADVANCE(c->buffer, c->size, snmp_varbind_header_size(vb));
 }
 
 #if 0
@@ -884,6 +924,7 @@ parse_close_pdu(struct snmp_proto UNUSED *p, byte UNUSED *req, uint UNUSED size)
 static inline uint
 update_packet_size(struct snmp_proto *p, byte *start, byte *end)
 {
+  /* work even for partial packets */
   struct agentx_header *h = (void *) p->sock->tpos;
 
   size_t s = snmp_pkt_len(start, end);
@@ -1031,6 +1072,8 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
 
     ADVANCE(pkt, pkt_size, sz);
     size -= sz;
+
+    // TODO check for oversized oids before any allocation (in prefixize())
 
     /* We create copy of OIDs outside of rx-buffer and also prefixize them */
     o_start = snmp_prefixize(p, o_start_b, c.byte_ord);
@@ -1435,12 +1478,17 @@ snmp_rx(sock *sk, uint size)
   }
   snmp_log("snmp_rx loop finished");
 
-  if (pkt_start != end)
+  /* Incomplete packets */
+  if (skip != 0 || pkt_start != end)
   {
-    snmp_log("snmp_rx memmove sk->rbuf + skip 0x%p (0x%p, %u), pkt_start 0x%p, length %u", sk->rbuf + skip, sk->rbuf, skip, pkt_start, end - pkt_start);
-    memmove(sk->rbuf + skip, pkt_start, end - pkt_start);
-    //snmp_dump_packet(sk->tbuf, 64);
-    snmp_log("snmp_rx returning 0");
+    snmp_log("snmp_rx memmove");
+    snmp_dump_packet(sk->rbuf, SNMP_RX_BUFFER_SIZE);
+    memmove(sk->rbuf + skip, pkt_start, size);
+    snmp_log("after change; sk->rbuf 0x%p  sk->rpos 0x%p", sk->rbuf, sk->rpos);
+    snmp_dump_packet(sk->rbuf, size + skip);
+    snmp_log("tweaking rpos 0x%p  (size %u skip %u)", sk->rpos, size, skip);
+    sk->rpos = sk->rbuf + size + skip;
+    snmp_log("snmp_rx returing 0");
     return 0;
   }
 
@@ -1702,7 +1750,7 @@ oid->ids[5], &oid->ids[5], &(oid->ids[5]));
   new->n_subid = oid->n_subid - 5;
 
   /* validity check before allocation => ids[4] < 256
-     and can be copied to one byte new->prefix */
+   * and can be copied to one byte new->prefix */
   new->prefix = oid->ids[4];
 
   memcpy(&new->ids, &oid->ids[5], new->n_subid * sizeof(u32));
@@ -1796,29 +1844,12 @@ snmp_manage_tbuf(struct snmp_proto *p, struct snmp_pdu_context *c)
 }
 
 void
-snmp_tx(sock *sk)
+snmp_tx(sock UNUSED *sk)
 {
   snmp_log("snmp_tx() hook");
   //struct snmp_proto *p = sk->data;
 
   return;
-
-#if 0
-  while (!EMPTY_LIST(p->additional_buffers))
-  {
-    struct additional_buffer *b = HEAD(p->additional_buffers);
-    rem_node(&b->n);
-    memcpy(sk->tbuf, b->buf, b->pos - b->buf);
-    uint used = b->pos - b->buf;
-    mb_free(b->buf);
-    mb_free(b);
-
-    int ret = sk_send(sk, used);
-    /* we exit if and error occured or the data will be send in the future */
-    if (ret <= 0)
-      return;
-  }
-#endif
 }
 
 
@@ -1826,6 +1857,9 @@ static struct agentx_response *
 prepare_response(struct snmp_proto *p, struct snmp_pdu_context *c)
 {
   snmp_log("prepare_response()");
+
+  if (p->partial_response)
+    return p->partial_response;
 
   struct agentx_response *r = (void *) c->buffer;
   struct agentx_header *h = &r->h;
