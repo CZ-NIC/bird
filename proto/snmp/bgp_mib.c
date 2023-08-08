@@ -71,7 +71,7 @@ snmp_bgp_register(struct snmp_proto *p)
     add_tail(&p->register_queue, &registering->n);
     p->register_to_ack++;
 
-    snmp_register(p, oid, 0, 1);
+    snmp_register(p, oid, 0, 1, 0);
   }
 
   /*

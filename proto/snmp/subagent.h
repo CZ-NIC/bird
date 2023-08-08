@@ -55,7 +55,6 @@ enum snmp_search_res {
 #define AGENTX_ADMIN_START  2
 
 #define AGENTX_PRIORITY		127
-#define MAX_STR 0xFFFFFFFF
 
 #define SNMP_NATIVE
 
@@ -76,7 +75,8 @@ enum snmp_search_res {
   put_u8(&h->version, v);	  \
   put_u8(&h->type, t);		  \
   put_u8(&h->flags, f);		  \
-  put_u8(&h->pad, 0)
+  put_u8(&h->pad, 0);		  \
+  STORE_U32(h->payload, 0)
 
 #ifdef SNMP_NATIVE
 #define SNMP_HEADER(h,t,f)    SNMP_HEADER_(h, AGENTX_VERSION, t, f)
@@ -92,8 +92,8 @@ enum snmp_search_res {
   STORE_U32(h->transaction_id, p->transaction_id);			      \
   STORE_U32(h->packet_id, p->packet_id)
 
-#define LOAD(v, bo) ((bo) ? get_u32(&v) : (u32) (v))
-#define LOAD_16(v, bo) ((bo) ? get_u16(&v) : (u16) (v))
+#define LOAD_U32(v, bo) ((bo) ? get_u32(&v) : (u32) (v))
+#define LOAD_U16(v, bo) ((bo) ? get_u16(&v) : (u16) (v))
 #define LOAD_PTR(v, bo) ((bo) ? get_u32(v) : *((u32 *) v))
 
 #define LOAD_STR(proto, buf, str, length, byte_order) ({		      \
@@ -113,22 +113,16 @@ enum snmp_search_res {
 #define SNMP_HAS_CONTEXT(hdr)						      \
   hdr->flags |= AGENTX_NON_DEFAULT_CONTEXT
 
-#if 0
-  if (h->flags & AGENTX_NON_DEFAULT_CONTEXT)  \
-    { log(L_INFO "encountered non-default context"); \
-    LOAD_STR(p, b, s, l, h->flags & AGENTX_NETWORK_BYTE_ORDER); }
-#endif
-
-#define SNMP_PUT_OID(buf, size, oid, byte_ord)				    \
-  ({									    \
-    struct agentx_varbind *vb = (void *) buf;				    \
-    SNMP_FILL_VARBIND(vb, oid, byte_ord);				    \
+#define SNMP_PUT_OID(buf, size, oid, byte_ord)				      \
+  ({									      \
+    struct agentx_varbind *vb = (void *) buf;				      \
+    SNMP_FILL_VARBIND(vb, oid, byte_ord);				      \
   })
 
-#define SNMP_FILL_VARBIND(vb, oid, byte_ord)				    \
+#define SNMP_FILL_VARBIND(vb, oid, byte_ord)				      \
   snmp_oid_copy(&(vb)->name, (oid), (byte_ord)), snmp_oid_size((oid))
- 
-#define SNMP_VB_DATA(varbind)						    \
+
+#define SNMP_VB_DATA(varbind)						      \
   (((void *)(varbind)) + snmp_varbind_header_size(varbind))
 
 struct agentx_header {
@@ -195,11 +189,6 @@ struct agentx_bulk_state {
   u16 index;
   u16 repetition;
 };
-
-//struct snmp_error {
-//  struct oid *oid;
-//  uint type;
-//};
 
 enum agentx_pdu {
   AGENTX_OPEN_PDU		=  1,
@@ -279,7 +268,7 @@ enum agentx_response_err {
 struct agentx_context {
   char *context;  /* string name of this context */
   uint length;	  /* normal strlen() size */
-  /* add buffered context hash? */
+  /* XXX add buffered context hash? */
 };
 
 struct snmp_pdu_context {
@@ -298,16 +287,19 @@ struct agentx_alloc_context {
   uint clen;	  /* length of context string */
 };
 
+#if 0
 struct additional_buffer {
   node n;
   byte *buf;	  /* pointer to buffer data */
   byte *pos;	  /* position of first unused byte */
 };
+#endif
 
 int snmp_rx(sock *sk, uint size);
 int snmp_rx_stop(sock *sk, uint size);
+//int snmp_is_active(int snmp_state);
 void snmp_down(struct snmp_proto *p);
-void snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len);
+void snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 is_instance);
 void snmp_unregister(struct snmp_proto *p, struct oid *oid, uint index, uint len);
 
 void snmp_manage_tbuf(struct snmp_proto *p, struct snmp_pdu_context *c);

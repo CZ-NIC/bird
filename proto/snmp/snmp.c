@@ -65,24 +65,16 @@ snmp_init(struct proto_config *CF)
 static inline void
 snmp_cleanup(struct snmp_proto *p)
 {
-  struct additional_buffer *b;
-  WALK_LIST(b, p->additional_buffers)
-  {
-    mb_free(b->buf);
-    rem_node(&b->n);
-    mb_free(b);
-  }
-  init_list(&p->additional_buffers);
-
   rfree(p->startup_timer);
-  rfree(p->ping_timer);
+  p->startup_timer = NULL;
 
-  if (p->sock != NULL)
-    rfree(p->sock);
+  rfree(p->ping_timer);
+  p->ping_timer = NULL;
+
+  rfree(p->sock);
   p->sock = NULL;
 
-  if (p->lock != NULL)
-    rfree(p->lock);
+  rfree(p->lock);
   p->lock = NULL;
 
   p->state = SNMP_DOWN;
@@ -172,13 +164,12 @@ snmp_start_locked(struct object_lock *lock)
   s->tx_hook = snmp_connected;
   s->err_hook = snmp_sock_err;
 
+  //mb_free(p->sock);
   p->sock = s;
   s->data = p;
 
   p->to_send = 0;
   p->errs = 0;
-
-  // snmp_startup(p);
 
   if (sk_open(s) < 0)
   {
@@ -195,8 +186,6 @@ snmp_connected(sock *sk)
   struct snmp_proto *p = sk->data;
   snmp_log("snmp_connected() connection created");
   byte *buf UNUSED = sk->rpos;
-  uint size = sk->rbuf + sk->rbsize - sk->rpos;
-  snmp_dump_packet(buf, size);
 
   sk->rx_hook = snmp_rx;
   sk->tx_hook = snmp_tx;
@@ -223,13 +212,8 @@ snmp_sock_err(sock *sk, int err)
   p->lock = NULL;
 
   snmp_log("changing proto_snmp state to ERR[OR]");
-  if (err)
-    p->state = SNMP_ERR;
-  else
-  {
-    snmp_shutdown((struct proto *) p);
-    return;
-  }
+  p->state = SNMP_ERR;
+  //  snmp_shutdown((struct proto *) p);
 
   // TODO ping interval
   tm_start(p->startup_timer, 4 S);
@@ -252,28 +236,10 @@ snmp_start(struct proto *P)
 
   init_list(&p->register_queue);
   init_list(&p->bgp_registered);
+  p->partial_response = NULL;
 
   p->ping_timer = tm_new_init(p->p.pool, snmp_ping_timer, p, 0, 0);
   // tm_set(p->ping_timer, current_time() + 2 S);
-
-/* remove duplicate lock acquiring code */
-#if 0
-  /* starting agentX communicaiton channel */
-  snmp_log("preparing lock");
-  struct object_lock *lock;
-  lock = p->lock = olock_new(p->p.pool);
-
-  lock->type = OBJLOCK_TCP;
-  lock->hook = snmp_start_locked;
-  lock->data = p;
-
-  olock_acquire(lock);
-  snmp_log("lock acquired");
-
-  snmp_log("local ip: %I:%u, remote ip: %I:%u",
-    p->local_ip, p->local_port, p->remote_ip, p->remote_port);
-
-#endif
 
   /* create copy of bonds to bgp */
   HASH_INIT(p->bgp_hash, p->p.pool, 10);
@@ -297,8 +263,6 @@ snmp_start(struct proto *P)
       HASH_INSERT(p->bgp_hash, SNMP_HASH, peer);
     }
   }
-
-  init_list(&p->additional_buffers);
 
   snmp_startup(p);
   return PS_START;

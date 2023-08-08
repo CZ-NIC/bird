@@ -26,8 +26,8 @@
 
 #define SNMP_PORT 705
 
-#define SNMP_RX_BUFFER_SIZE 2048
-#define SNMP_TX_BUFFER_SIZE 2048
+#define SNMP_RX_BUFFER_SIZE 8192
+#define SNMP_TX_BUFFER_SIZE 8192
 
 enum snmp_proto_state {
   SNMP_ERR = 0,
@@ -129,8 +129,11 @@ struct snmp_proto {
   uint to_send;
   uint errs;
 
-  list additional_buffers;	    /* buffers of data to send that does not fit
-				     * into socket's TX buffer */
+  /*
+   * if the packet hasn't been fully recieved, partial_reponse points
+   * into the TX buffer to the Response-PDU header (needed for packet payload)
+   */
+  struct agentx_response *partial_response;
 };
 
 void snmp_tx(sock *sk);
