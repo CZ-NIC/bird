@@ -27,28 +27,16 @@
  *
  */
 
-//static byte *snmp_mib_fill(struct snmp_proto *p, struct oid *oid, u8 mib_class, struct snmp_pdu_context *c);
 
 static void snmp_mib_fill2(struct snmp_proto *p, struct oid *oid, struct snmp_pdu_context *c);
 static uint parse_response(struct snmp_proto *p, byte *buf, uint size);
-//static uint parse_response(struct snmp_proto *p, byte *buf, uint size);
-// static int snmp_stop_ack(sock *sk, uint size);
 static void do_response(struct snmp_proto *p, byte *buf, uint size);
-//static uint parse_gets_pdu(struct snmp_proto *p, byte *buf, uint size, uint *skip);
 static uint parse_gets2_pdu(struct snmp_proto *p, byte *buf, uint size, uint *skip);
-//static uint parse_gets_pdu(struct snmp_proto *p, struct snmp_pdu_context *c);
-// static uint parse_close_pdu(struct snmp_proto *p, struct snmp_pdu_context *c);
 static uint parse_close_pdu(struct snmp_proto *p, byte *buf, uint size);
 static struct agentx_response *prepare_response(struct snmp_proto *p, struct snmp_pdu_context *c);
-//static byte *prepare_response(struct snmp_proto *p, struct snmp_pdu_context *c);
-//static struct agentx_response *prepare_response(struct snmp_proto *p, byte *buf, uint size);
 static void response_err_ind(struct agentx_response *res, uint err, uint ind);
 static uint update_packet_size(struct snmp_proto *p, byte *start, byte *end);
-//static void response_err_ind(byte *buf, uint err, uint ind);
-//static struct oid *search_mib(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, struct oid *o_curr, u8 mib_class, struct snmp_pdu_context *c);
 static struct oid *search_mib(struct snmp_proto *p, const struct oid *o_start, const struct oid *o_end, struct oid *o_curr, struct snmp_pdu_context *c, enum snmp_search_res *result);
-//static struct oid *search_mib(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, struct oid *o_curr, u8 mib_class, uint contid);
-// static inline byte *find_n_fill(struct snmp_proto *p, struct oid *o, byte *buf, uint size, uint contid, int byte_ord);
 
 static const char * const snmp_errs[] = {
   #define SNMP_ERR_SHIFT 256
@@ -215,36 +203,7 @@ agentx_alloc_context *ac)
 }
 #endif
 
-/* index allocate / deallocate pdu * /
-static void
-de_allocate_pdu(struct snmp_proto *p, struct oid *oid, u8 type)
-{
-  sock *sk = p->sock;
-  byte *buf, *pkt;
-  buf = pkt = sk->tbuf;
-  uint size = sk->tbsize;
-
-
-  if (size > AGENTX_HEADER_SIZE + )
-  {
-    snmp_log("de_allocate_pdu()");
-
-    struct agentx_header *h;
-    SNMP_CREATE(pkt, struct agentx_header, h);
-    SNMP_BLANK_HEADER(h, type);
-    SNMP_SESSION(h,p);
-
-    struct agentx_varbind *vb = (struct agentx_varbind *) pkt;
-    STORE_16(vb->type, AGENTX_OBJECT_ID);
-    STORE(vb->oid,
-  }
-
-  else
-    snmp_log("de_allocate_pdu(): insufficient size");
-}
-*/
-
-/* Register-PDU / Unregister-PDU */
+/* Register-PDU / Unregister-PDU common code */
 static inline void
 un_register_pdu(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 type, u8 is_instance)
 {
@@ -270,23 +229,21 @@ un_register_pdu(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 
   ADVANCE(c.buffer, c.size, sizeof(struct agentx_un_register_pdu));
   struct agentx_header *h = &ur->h;
 
-  // FIXME correctly set INSTANCE REGISTRATION bit
   SNMP_HEADER(h, type, is_instance ? AGENTX_FLAG_INSTANCE_REGISTRATION : 0);
-  /* use new transactionID, reset packetID */
+  /* use new packetID */
   p->packet_id++;
   SNMP_SESSION(h, p);
 
   /* do not override timeout */
   STORE_U32(ur->timeout, 15);
-  /* default priority */
-  STORE_U32(ur->priority, AGENTX_PRIORITY);
+  /* We use default priority */
+  STORE_U32(ur->priority, AGENTX_PRIORITY); // TODO configurable priority
   STORE_U32(ur->range_subid, (len > 1) ? index : 0);
 
   snmp_put_oid(c.buffer, oid);
   ADVANCE(c.buffer, c.size, snmp_oid_size(oid));
-  // snmp_log("pkt - buf : %lu sizeof %u", pkt -buf, AGENTX_HEADER_SIZE);
 
-  /* place upper-bound if needed */
+  /* We place upper-bound if needed. */
   if (len > 1)
   {
     STORE_PTR(c.buffer, len);
@@ -305,7 +262,7 @@ un_register_pdu(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 
     snmp_log("sk_send error");
 }
 
-/* register pdu */
+/* Register-PDU */
 void
 snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 is_instance)
 {
@@ -313,7 +270,7 @@ snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 is
 }
 
 
-/* unregister pdu */
+/* Unregister-PDU */
 void UNUSED
 snmp_unregister(struct snmp_proto *p, struct oid *oid, uint index, uint len)
 {
@@ -508,7 +465,6 @@ static uint
 parse_pkt(struct snmp_proto *p, byte *pkt, uint size, uint *skip)
 {
   snmp_log("parse_ptk() pkt start: %p", pkt);
-  //snmp_dump_packet(p->sock->tbuf, 64);
 
   if (size < AGENTX_HEADER_SIZE)
     return 0;
@@ -518,7 +474,6 @@ parse_pkt(struct snmp_proto *p, byte *pkt, uint size, uint *skip)
 
   snmp_log("parse_pkt got type %s", snmp_pkt_type[h->type]);
   snmp_dump_packet((void *)h, MIN(h->payload, 256));
-  //snmp_dump_packet((void *)h, LOAD(h->payload, h->flags & AGENTX_NETWORK_BYTE_ORDER));
   switch (h->type)
   {
     case AGENTX_RESPONSE_PDU:
@@ -526,18 +481,10 @@ parse_pkt(struct snmp_proto *p, byte *pkt, uint size, uint *skip)
       parsed_len = parse_response(p, pkt, size);
       break;
 
-    /*
-    case AGENTX_GET_PDU:
-      refresh_ids(p, h);
-      return parse_get_pdu(p, pkt, size);
-    */
-
     case AGENTX_GET_PDU:
     case AGENTX_GET_NEXT_PDU:
     case AGENTX_GET_BULK_PDU:
       refresh_ids(p, h);
-      //parsed_len = parse_gets_pdu(p, &c);
-      //parsed_len = parse_gets_pdu(p, pkt, size, skip);
       parsed_len = parse_gets2_pdu(p, pkt, size, skip);
       break;
 
@@ -557,16 +504,7 @@ parse_pkt(struct snmp_proto *p, byte *pkt, uint size, uint *skip)
       //die("unknown packet type %u", h->type);
   }
 
-  /* We will process the same header again later * /
-  if (*skip || parsed_len < size)
-  {
-    / * We split our answer to multiple packet, we should differentiate them * /
-    h->packet_id++;
-  }
-  */
-
   snmp_log("parse_pkt returning parsed length");
-  //snmp_dump_packet(p->sock->tbuf, 64);
   return parsed_len;
 }
 
@@ -574,8 +512,6 @@ static uint
 parse_response(struct snmp_proto *p, byte *res, uint size)
 {
   snmp_log("parse_response() g%u h%u", size, sizeof(struct agentx_header));
-
-  //snmp_dump_packet(res, size);
 
   if (size < sizeof(struct agentx_response))
     return 0;
@@ -603,7 +539,7 @@ parse_response(struct snmp_proto *p, byte *res, uint size)
   if (r->error == AGENTX_RES_NO_ERROR)
     do_response(p, res, size);
   else
-    /* erronous packet should be dropped quietly */
+    /* Erronous packet should be dropped quietly. */
     snmp_log("an error occured '%s'", snmp_errs[get_u16(&r->error) - SNMP_ERR_SHIFT]);
 
   return pkt_size + AGENTX_HEADER_SIZE;
@@ -634,15 +570,16 @@ do_response(struct snmp_proto *p, byte *buf, uint size UNUSED)
   struct agentx_header *h = &r->h;
   int byte_ord = h->flags & AGENTX_NETWORK_BYTE_ORDER;
 
-  /* TO DO make it asynchronous for better speed */
+  /* TODO make it asynchronous for better speed */
   switch (p->state)
   {
     case SNMP_INIT:
-      /* copy session info from recieved packet */
+      /* We copy session info from recieved packet */
       p->session_id = LOAD_U32(h->session_id, byte_ord);
       refresh_ids(p, h);
 
-      /* the state needs to be changed before sending registering PDUs to
+      /*
+       * The state needs to be changed before sending registering PDUs to
        * use correct do_response action on them
        */
       snmp_log("changing state to REGISTER");
@@ -678,7 +615,7 @@ do_response(struct snmp_proto *p, byte *buf, uint size UNUSED)
 u8
 snmp_get_mib_class(const struct oid *oid)
 {
-  // TODO check code paths for oid->n_subid < 3
+  ASSUME(oid->n_subid > 2);
   if (oid->prefix != 2 && oid->ids[0] != SNMP_MIB_2)
     return SNMP_CLASS_INVALID;
 
@@ -691,37 +628,6 @@ snmp_get_mib_class(const struct oid *oid)
       return SNMP_CLASS_END;
   }
 }
-
-#if 0
-static byte *
-snmp_get_next(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
-	      u8 mib_class, struct snmp_pdu_context *c)
-{
-  snmp_log("type GetNext-PDU");
-  enum snmp_search_res r;
-  struct oid *o_copy = search_mib(p, o_start, o_end, NULL, c, &r);
-
-  snmp_log("search result");
-  snmp_oid_dump(o_copy);
-
-  byte *read;
-  if (o_copy)
-  {
-    read = snmp_mib_fill(p, o_copy, mib_class, c);
-    mb_free(o_copy);
-  }
-  else
-  {
-    struct agentx_varbind *vb = snmp_create_varbind(c->buffer, o_start);
-    c->buffer += snmp_varbind_header_size(vb);
-    vb->type = snmp_search_res_to_type(r);
-    //vb->type = AGENTX_NO_SUCH_OBJECT;
-  }
-
-  snmp_log("over HERE ");
-  return read;
-}
-#endif
 
 static void
 snmp_get_next2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
@@ -743,9 +649,8 @@ snmp_get_next2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
 
       if (c->size < sz)
       {
-	/* TODO manage insufficient buffer properly */
-	c->error = AGENTX_RES_GEN_ERROR;
-	return;
+	/* This is a bit tricky as we invalidate all in TX buffer pointers */
+	snmp_manage_tbuf(p, c);
       }
 
       vb = snmp_create_varbind(c->buffer, o_start);
@@ -760,12 +665,12 @@ snmp_get_next2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
 
   if (o_copy)
   {
-    /* basicaly snmp_create_varbind(c->buffer, o_copy),
+    /* Basicaly snmp_create_varbind(c->buffer, o_copy),
      * but without any copying */
     vb = (void *) c->buffer;
     snmp_mib_fill2(p, o_copy, c);
 
-    /* override the error value for GetNext-PDU when object is not found */
+    /* Override the error value for GetNext-PDU when object is not found. */
     switch (vb->type)
     {
       case AGENTX_NO_SUCH_OBJECT:
@@ -791,63 +696,6 @@ snmp_get_next2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
   vb->type = AGENTX_END_OF_MIB_VIEW;
   ADVANCE(c->buffer, c->size, snmp_varbind_header_size(vb));
 }
-
-#if 0
-static byte *
-snmp_get_bulk(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
-	      struct agentx_bulk_state *state, struct snmp_pdu_context *c)
-{
-  snmp_log("type GetBulk-PDU");
-  // TODO add state cache (to prevent O(n^2) complexity)
-
-  if (state->index <= state->getbulk.non_repeaters)
-  {
-    (void)0;
-    //return snmp_get_next(p, o_start, o_end, mib_class, c);
-    //return snmp_get_next(p, o_start, o_end, pkt, size, contid, mib_class, byte_ord);
-    return NULL;
-  }
-  else
-  {
-    u8 mib_class;
-    struct oid *o_curr = NULL;
-    struct oid *o_predecessor = NULL;
-    enum snmp_search_res r;
-
-    uint i = 0;
-    do
-    {
-      o_predecessor = o_curr;
-      o_curr = search_mib(p, o_start, o_end, o_curr, c, &r);
-      //o_curr = search_mib(p, o_start, o_end, o_curr, mib_class, contid);
-      mib_class = snmp_get_mib_class(o_curr);
-      i++;
-    } while (o_curr != NULL && i < state->repetition);
-
-    log("bulk search result - repeating");
-    snmp_oid_dump(o_curr);
-
-    if (!o_curr && i == 0)
-    {
-      //vb->name = o_start;
-      //vb->type = AGENTX_RES_END_OF_MIB_VIEW;
-      return NULL;
-    }
-
-    if (!o_curr)
-    {
-      ASSUME(o_predecessor != NULL);
-      //vb->name = o_predecessor;
-      //vb->type = AGENTX_RES_END_OF_MIB_VIEW;
-      return NULL;
-    }
-
-    (void)mib_class;
-    //return snmp_mib_fill(p, o_curr, mib_class, c);
-    return NULL;
-  }
-}
-#endif
 
 static void
 snmp_get_bulk2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
@@ -924,7 +772,7 @@ parse_close_pdu(struct snmp_proto UNUSED *p, byte UNUSED *req, uint UNUSED size)
 static inline uint
 update_packet_size(struct snmp_proto *p, byte *start, byte *end)
 {
-  /* work even for partial packets */
+  /* Work even for partial packets */
   struct agentx_header *h = (void *) p->sock->tpos;
 
   size_t s = snmp_pkt_len(start, end);
@@ -956,20 +804,19 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
 
   sock *sk = p->sock;
   struct snmp_pdu_context c = {
-    //.buffer = sk->tbuf,
-    //.size = sk->tbsize,
     .buffer = sk->tpos,
     .size = sk->tbuf + sk->tbsize - sk->tpos,
     .byte_ord = h->flags & AGENTX_NETWORK_BYTE_ORDER,
     .error = AGENTX_RES_NO_ERROR,
     .context = 0,
   };
-  //snmp_dump_packet(sk->tbuf, 64);
 
-  uint clen;	  /* count of characters in context (without last '\0') */
-  char *context;  /* newly allocated string of character */
+  uint clen;	  /* Count of characters in context (without last '\0') */
+  char *context;  /* Newly allocated string of character */
+
   /* alters pkt; assign context, clen */
   SNMP_LOAD_CONTEXT(p, h, pkt, context, clen);
+
   /*
    * We need more data; for valid response we need to know full
    * header picture, including the context octet string
@@ -986,7 +833,7 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
    */
   if (pkt_size < clen)
   {
-    /* for malformed packets consume full pkt_size [or size] */
+    /* For malformed packets consume full pkt_size */
     c.error = AGENTX_RES_PARSE_ERROR;
     goto send;
   }
@@ -1022,7 +869,7 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
     uint sz;
     if ((sz = snmp_oid_size(o_start_b)) > pkt_size)
     {
-      /* for malformed packets consume full pkt_size [or size] */
+      /* For malformed packets consume full pkt_size */
       c.error = AGENTX_RES_PARSE_ERROR;  /* Packet error, inconsistent values */
       goto send;
     }
@@ -1035,7 +882,8 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
     if (sz > size && ind > 1)
     {
       snmp_log("sz %u > %u size && ind %u > 1", sz, size, ind);
-      goto partial;  /* send already processed part */
+      /* Wait until the rest of the packet arrives, mark the proccess bytes */
+      goto partial;
     }
     else if (sz > size)
     {
@@ -1047,9 +895,10 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
     ADVANCE(pkt, pkt_size, sz);
     size -= sz;
 
-    /* We load search range end OID
+    /*
+     * We load search range end OID.
      * The exactly same process of sanity checking is preformed while loading
-     * the SearchRange's end OID
+     * the SearchRange's end OID.
      */
     const struct oid *o_end_b = (void *) pkt;
     if ((sz = snmp_oid_size(o_end_b)) > pkt_size)
@@ -1086,7 +935,6 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
       goto send;
     }
 
-    /* TODO find mib_class, check if type is GET of GET_NEXT, act acordingly */
     switch (h->type)
     {
       case AGENTX_GET_PDU:
@@ -1115,27 +963,10 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
 
 send:
   snmp_log("gets2: sending response ...");
-  //response_err_ind(response_header, c.error, ind);
-  // update_packet_size(&response_header->h, sk->tbuf, c.buffer);
-  //update_packet_size(p, &response_header->h, (byte *) response_header, c.buffer);
-  //snmp_dump_packet((byte *) response_header, AGENTX_HEADER_SIZE + LOAD(response_header->h.payload, c.byte_ord));
-
-  //snmp_dump_packet((byte *) response_header, AGENTX_HEADER_SIZE + 16 + 8);
-  //snmp_dump_packet(32 + ((byte *) response_header), 32);
-  //snmp_dump_packet((byte *) response_header, c.buffer - ((byte *) response_header));
-  /*
-
-  byte b,d;
-  b = *((byte *) response_header);
-  d = *(c.buffer - 1);
-  snmp_log("diff %d start byte %u end byte %u", c.buffer - ((byte *)
-	    response_header), b, d);
-  */
   response_err_ind(response_header, c.error, ind);
-  uint s = update_packet_size(p, (byte *) response_header, c.buffer);
 
-  /* number of bytes put into the tx-buffer */
-  //int ret = sk_send(sk, c.buffer - sk->tbuf);
+  /* Number of bytes put into the TX buffer */
+  uint s = update_packet_size(p, (byte *) response_header, c.buffer);
   snmp_log("sending response to Get-PDU, GetNext-PDU or GetBulk-PDU request ...");
   int ret = sk_send(sk, s);
   if (ret == 0)
@@ -1151,20 +982,22 @@ send:
   mb_free(o_start);
   mb_free(o_end);
 
-  /* number of bytes parsed form rx-buffer */
+  /* Number of bytes consumed from RX buffer */
   return pkt - pkt_start;
 
 partial:
   snmp_log("partial packet");
   /* The context octet is not added into response pdu */
 
-  /* need to tweak RX buffer packet size */
+  /* We need to tweak RX buffer packet size. */
   snmp_log("old rx-buffer size %u", h->payload);
   (c.byte_ord) ? put_u32(&h->payload, pkt_size) : (h->payload = pkt_size);
   snmp_log("new rx-buffer size %u", h->payload);
 
   *skip = AGENTX_HEADER_SIZE;
   p->partial_response = response_header;
+
+  /* Number of bytes consumed from RX buffer */
   return pkt - pkt_start;
 
 wait:
@@ -1174,231 +1007,14 @@ wait:
   return 0;
 }
 
-#if 0
-// TODO FIXME retval
-/* req is request */
-/**
- * parse_gets_pdu - handle Get-PDU, GetNext-PDU and GetBulk-PDU
- * @p:
- * @req: request packet buffer
- * @size: request length
- *
- * Returns lenght of created response packet.
- */
-static uint UNUSED
-parse_gets_pdu(struct snmp_proto *p, byte *pkt_start, uint size, uint UNUSED *skip)
-{
-  snmp_log("parse_gets_pdu");
-
-  sock *sk = p->sock;
-  //byte  *res = sk->tbuf; /* res_pkt */
-  // uint rsize = sk->tbsize;
-  byte *res = sk->tpos;
-
-  /* req (request) points at the beginning of packet list */
-  // TODO is the pkt_start really needed ?!
-  struct agentx_header *h = (void *) pkt_start;
-  ADVANCE(pkt_start, size, AGENTX_HEADER_SIZE);
-  snmp_log("advancing %p cause header", pkt_start);
-
-  byte *pkt = pkt_start;
-
-  uint clen;
-  char *context;
-  SNMP_LOAD_CONTEXT(p, h, pkt, context, clen);
-
-  struct snmp_pdu_context c = {
-    //.buffer = sk->tbuf,
-    //.size = sk->tbsize,
-    .buffer = sk->tpos,
-    .size = sk->tbuf + sk->tbsize - sk->tpos,
-    .byte_ord = h->flags & AGENTX_NETWORK_BYTE_ORDER,
-    .context = 0, // FIXME add context support
-    .error = AGENTX_RES_NO_ERROR,
-  };
-
-  uint pkt_size = LOAD(h->payload, c.byte_ord);
-
-  // NO! CHECKs: pkt_size + HEADER_SIZE == size
-
-
-  if (c.size < sizeof(struct agentx_response))
-  {
-    // FIXME alloc more mem
-    die("buffer too small");
-  }
-
-  struct agentx_response *response_header = prepare_response(p, &c);
-
-  /* used only for state AGENTX_GET_BULK_PDU */
-  struct agentx_bulk_state bulk_state;
-  if (h->type == AGENTX_GET_BULK_PDU)
-  {
-    snmp_log("gets creating get bulk context BEWARE");
-    struct agentx_getbulk *bulk = (void *) pkt;
-    ADVANCE(pkt, pkt_size, sizeof(struct agentx_getbulk));
-    bulk_state = (struct agentx_bulk_state) {
-      .getbulk.non_repeaters = LOAD(bulk->non_repeaters, c.byte_ord),
-      .getbulk.max_repetitions = LOAD(bulk->max_repetitions, c.byte_ord),
-      .index = 1,
-      .repetition = 1,
-    };
-  }
-/*
-  if (size < sizeof(struct agentx_getbulk))
-    return 0;
-
-  if (pkt_size < sizeof(struct agentx_getbulk))
-  {
-    c.error = AGENTX_RES_PARSE_ERROR;
-    goto send;
-  }
-
-  struct agentx_bulk_state bulk_state;
-  if (h->type == AGENTX_GET_BULK_PDU)
-  {
-    struct agentx_getbulk *bulk = pkt;
-    ADVANCE(pkt, pkt_size, sizeof(struct agentx_getbulk));
-    size -= sizeof(struct agentx_getbulk);
-
-    bulk_state = (struct agentx_bulk_state) {
-      .getbulk.non_repeaters = LOAD16(bulk->non_repeaters, c.byte_ord);
-      .getbulk.max_repetitions = LOAD16(bulk->max_repetitions, c.byte_ord);
-      .index = 1,
-      .repetition = 1,
-    };
-  }
-*/
-
-  byte *tmp;
-
-  uint ind = 1;
-  while (c.error == AGENTX_RES_NO_ERROR && size > 0)
-  {
-    /* pkt_size is bigger that OID header */
-    if (size < snmp_oid_sizeof(0))
-    {
-    }
-
-    /* oids from message buffer */
-    struct oid *o_start_b, *o_end_b;
-    o_start_b = (struct oid *) pkt;
-    pkt += snmp_oid_size(o_start_b);
-    o_end_b = (struct oid *) pkt;
-    pkt += snmp_oid_size(o_end_b);
-    snmp_log("HERE pkt after oids %p (end %p)", pkt, pkt + size);
-
-    /* advertised size of oid is greater then size of message */
-    if (snmp_oid_size(o_start_b) > size || snmp_oid_size(o_end_b) > size)
-    {
-      snmp_log("too big o_start or o_end");
-      snmp_log("o_start_b packet: %u  o_end_b packet: %u   packet size: %u",
-      snmp_oid_size(o_start_b), snmp_oid_size(o_end_b), size);
-      //err = -1;  /* parse error too big n_subid (greater than message) */
-      continue;
-    }
-
-    snmp_oid_dump(o_start_b);
-    snmp_oid_dump(o_end_b);
-
-    /* object identifier (oid) normalization */
-    struct oid *o_start = snmp_prefixize(p, o_start_b, c.byte_ord);
-    struct oid *o_end = snmp_prefixize(p, o_end_b, c.byte_ord);
-
-    snmp_oid_dump(o_start);
-    snmp_oid_dump(o_end);
-
-    snmp_log("gets buffer start size %u, buffer end size %u, program start size %u, "
-	     "program end size %u", snmp_oid_size(o_start_b), snmp_oid_size(o_end_b),
-	      snmp_oid_size(o_start), snmp_oid_size(o_end));
-
-    // TODO handle NULL o_start and o_end
-
-    u8 mib_class = snmp_get_mib_class(o_start);
-
-    snmp_log("get mib_class () %d -> next pdu parsing ...", mib_class);
-
-    switch (h->type)
-    {
-      case AGENTX_GET_PDU:
-	snmp_log("type Get-PDU");
-
-      /*
-	struct snmp_error error = (struct snmp_error) {
-	  .oid = o_start,
-	  .type = AGENTX_NO_SUCH_OBJECT,
-	};
-      */
-
-	//snmp_dump_packet(pkt, size);
-	// TODO o_start NULL check
-	//res_pkt = snmp_mib_fill(p, o_start, mib_class, res_pkt, rsize, &error, 0, byte_ord);
-	tmp = snmp_mib_fill(p, o_start, mib_class, &c);
-	//res_pkt = find_n_fill(p, o_start, res_pkt, rsize, 0, byte_ord);
-	if (tmp)
-	  c.buffer = tmp;
-	else
-	  {} // TODO
-
-	break;
-
-      case AGENTX_GET_NEXT_PDU:
-	tmp = snmp_get_next(p, o_start, o_end, mib_class, &c);
-	//res_pkt = snmp_get_next(p, o_start, o_end, res_pkt, rsize, 0, mib_class, byte_ord);
-	if (tmp)
-	  c.buffer = tmp;
-	else
-	  {} // TODO
-
-	break;
-
-      case AGENTX_GET_BULK_PDU:
-	tmp = snmp_get_bulk(p, o_start, o_end, &bulk_state, &c);
-	if (tmp)
-	  c.buffer = tmp;
-	else
-	  {} // TODO
-
-	break;
-    }
-
-    mb_free(o_start);
-    mb_free(o_end);
-
-    ind++;
-  }
-
-  snmp_log(" pasting size");
-  response_err_ind(response_header, c.error, ind);
-  update_packet_size(p, res, c.buffer);
-
-  snmp_log("ttx %p  c.buffer - res %lu", p->sock->ttx, c.buffer - res);
-  snmp_log("c.buffer %p res %p", c.buffer, res);
-  snmp_log("dumping response packet (gets)");
-
-  //snmp_dump_packet(res, c.buffer - res);
-
-  // TODO need to send prepared packet here
-  int ret = sk_send(sk, c.buffer - res);
-
-  if (ret == 0)
-    snmp_log("sk_send sleep (gets)");
-  else if (ret < 0)
-    snmp_log("sk_send err %d (gets)", ret);
-  else
-    snmp_log("sk_send ok ! (gets)");
-
-  return pkt - pkt_start - AGENTX_HEADER_SIZE;
-}
-#endif
-
 void
 snmp_start_subagent(struct snmp_proto *p)
 {
   snmp_log("snmp_start_subagent() starting subagent");
   snmp_log("DEBUG p->local_as %u", p->local_as);
 
-  /* blank oid means unsupported */
+  /* Blank oid means unsupported */
+  // TODO optional subagent identification
   struct oid *blank = snmp_oid_blank(p);
   open_pdu(p, blank);
   mb_free(blank);
@@ -1408,7 +1024,6 @@ void
 snmp_stop_subagent(struct snmp_proto *p)
 {
   snmp_log("snmp_stop_subagent() state %s", p->state);
-  // sock *sk = p->sock;
 
   if (p->state == SNMP_STOP)
     close_pdu(p, AGENTX_CLOSE_SHUTDOWN);
@@ -1419,36 +1034,15 @@ oid_prefix(struct oid *o, u32 *prefix, uint len)
 {
   for (uint i = 0; i < len; i++)
     if (o->ids[i] != prefix[i])
-      return 0; // false
+      return 0;
 
-  return 1; // true
+  return 1;
 }
-
-#if 0
-int
-snmp_rx(sock *sk, uint size)
-{
-  snmp_log("snmp_rx()");
-  struct snmp_proto *p = sk->data;
-  byte *pkt = sk->rpos;
-
-  // 1 means all done; 0 means to be continued
-  return parse_pkt(p, pkt, size);
-  /*
-  while (end >= pkt + AGENTX_HEADER_SIZE)
-  {
-    parse_header(p);
-    parse_pkt(p, );
-  }
-  */
-}
-#endif
 
 int
 snmp_rx(sock *sk, uint size)
 {
   snmp_log("snmp_rx() size %u", size);
-  //snmp_dump_packet(sk->tbuf, 64);
   struct snmp_proto *p = sk->data;
   byte *pkt_start = sk->rbuf;
   byte *end = pkt_start + size;
@@ -1459,8 +1053,6 @@ snmp_rx(sock *sk, uint size)
    * of bytes that should not be overriden by memmove()
    */
   uint skip = 0;
-
-  //snmp_dump_packet(pkt_start, size);
 
   snmp_log("snmp_rx before loop");
   while (end >= pkt_start + AGENTX_HEADER_SIZE)
@@ -1500,7 +1092,7 @@ snmp_rx(sock *sk, uint size)
 void
 snmp_ping(struct snmp_proto *p)
 {
-  /* this does not support non-default context */
+  /* this code does not support non-default context */
   sock *sk = p->sock;
   struct snmp_pdu_context c = {
     .buffer = sk->tpos,
@@ -1517,7 +1109,7 @@ snmp_ping(struct snmp_proto *p)
   p->packet_id++;
   SNMP_SESSION(h, p);
 
-  /* sending only header => pkt - buf */
+  /* We send only the header */
   snmp_log("sending ping packet ...");
   uint s = update_packet_size(p, sk->tpos, c.buffer);
   int ret = sk_send(sk, s);
@@ -1535,61 +1127,6 @@ snmp_agent_reconfigure(void)
 {
 
 }
-
-static int
-compare(struct oid *left, struct oid *right)
-{
-  const u32 INTERNET_PREFIX[] = {1, 3, 6, 1};
-
-  if (left->prefix == 0 && right->prefix == 0)
-    goto test_ids;
-
-  if (right->prefix == 0)
-  {
-    struct oid *temp = left;
-    left = right;
-    right = temp;
-  }
-
-  if (left->prefix == 0)
-  {
-    for (int i = 0; i < 4; i++)
-      if (left->ids[i] < INTERNET_PREFIX[i])
-	return -1;
-      else if (left->ids[i] > INTERNET_PREFIX[i])
-	return 1;
-
-    for (int i = 0; i < MIN(left->n_subid - 4, right->n_subid); i++)
-      if (left->ids[i + 4] < right->ids[i])
-	return -1;
-      else if (left->ids[i + 4] > right->ids[i])
-	return 1;
-
-    goto all_same;
-  }
-
-  if (left->prefix < right->prefix)
-    return -1;
-  else if (left->prefix > right->prefix)
-    return 1;
-
-test_ids:
-  for (int i = 0; i < MIN(left->n_subid, right->n_subid); i++)
-    if (left->ids[i] < right->ids[i])
-      return -1;
-    else if (left->ids[i] > right->ids[i])
-      return 1;
-
-all_same:
-  / * shorter sequence is before longer in lexicografical order * /
-  if (left->n_subid < right->n_subid)
-    return -1;
-  else if (left->n_subid > right->n_subid)
-    return 1;
-  else
-    return 0;
-}
-
 */
 
 static inline int
@@ -1683,7 +1220,8 @@ search_mib(struct snmp_proto *p, const struct oid *o_start, const struct oid *o_
       break;
   }
 
-  //mb_free(blank);
+  if (o_end == blank)
+    mb_free((void *) o_end);
   return o_curr;
 }
 
@@ -1715,12 +1253,12 @@ snmp_prefixize(struct snmp_proto *proto, const struct oid *oid, int byte_ord)
 
   if (snmp_is_oid_empty(oid))
   {
-    /* allocate new zeroed oid */
+    /* Allocate new zeroed oid */
     snmp_log("blank");
     return snmp_oid_blank(proto);
   }
 
-  /* already in prefixed form */
+  /* The oid is already in prefixed form */
   else if (oid->prefix != 0) {
     struct oid *new = snmp_oid_duplicate(proto->p.pool, oid);
     snmp_log("already prefixed");
@@ -1728,29 +1266,23 @@ snmp_prefixize(struct snmp_proto *proto, const struct oid *oid, int byte_ord)
   }
 
   if (oid->n_subid < 5)
-  {  snmp_log("too small"); return NULL; }
+    return NULL;
 
   for (int i = 0; i < 4; i++)
     if (LOAD_U32(oid->ids[i], byte_ord) != prefix[i])
       { snmp_log("different prefix"); return NULL; }
 
-  /* validity check here */
+  /* Interval validity check */
   if (oid->ids[4] >= 256)
     { snmp_log("outside byte first id"); return NULL; }
 
   struct oid *new = mb_alloc(proto->p.pool,
           sizeof(struct oid) + MAX((oid->n_subid - 5) * sizeof(u32), 0));
-/*
-  snmp_log(" new %p new->ids %p &new->ids %p   oid %p oid->ids %p oid->ids[5] %p"
-"&oid->ids[5] %p &(oid->ids[5]) %p", new, new->ids, &new->ids, oid, oid->ids,
-oid->ids[5], &oid->ids[5], &(oid->ids[5]));
-*/
 
   memcpy(new, oid, sizeof(struct oid));
   new->n_subid = oid->n_subid - 5;
 
-  /* validity check before allocation => ids[4] < 256
-   * and can be copied to one byte new->prefix */
+  /* We validated the fifth identifier, we can safely use it as prefix */
   new->prefix = oid->ids[4];
 
   memcpy(&new->ids, &oid->ids[5], new->n_subid * sizeof(u32));
@@ -1765,10 +1297,7 @@ snmp_mib_fill2(struct snmp_proto *p, struct oid *oid,
 
   if (c->size < snmp_varbind_hdr_size_from_oid(oid))
   {
-    // FIXME need more mem
-    snmp_log("snmp_mib_fill2() need more memory in TX buffer, returning with GEN_ERROR");
-    c->error = AGENTX_RES_GEN_ERROR;
-    return;
+    snmp_manage_tbuf(p, c);
   }
 
   struct agentx_varbind *vb = snmp_create_varbind(c->buffer, oid);
@@ -1795,39 +1324,6 @@ snmp_mib_fill2(struct snmp_proto *p, struct oid *oid,
   }
 }
 
-#if 0
-/**
- * snmp_mib_fill -
- */
-static byte *
-snmp_mib_fill(struct snmp_proto UNUSED *p, struct oid *oid, u8 mib_class,
-	      struct snmp_pdu_context *c)
-{
-  ASSERT(oid != NULL);
-  snmp_log("snmp_mib_fill()");
-
-  struct agentx_varbind *vb = snmp_create_varbind(c->buffer, oid);
-                       /* SNMPv2      mgmt		  mib-2 */
-  if (oid->n_subid < 2 || (oid->prefix != 2 && oid->ids[0] != 1))
-  {
-    vb->type = AGENTX_NO_SUCH_OBJECT;
-    return c->buffer + snmp_varbind_header_size(vb);
-  }
-
-  //byte *last = c->buffer;
-  switch (mib_class)
-  {
-    case SNMP_CLASS_BGP:
-      //return snmp_bgp_fill(p, vb, c);
-      return NULL;
-
-    default:
-      return NULL;
-  }
-  return NULL;
-}
-#endif
-
 /**
  *
  * Important note: After managing insufficient buffer size all in buffer pointers
@@ -1847,7 +1343,6 @@ void
 snmp_tx(sock UNUSED *sk)
 {
   snmp_log("snmp_tx() hook");
-  //struct snmp_proto *p = sk->data;
 
   return;
 }
@@ -1867,7 +1362,7 @@ prepare_response(struct snmp_proto *p, struct snmp_pdu_context *c)
   SNMP_BLANK_HEADER(h, AGENTX_RESPONSE_PDU);
   SNMP_SESSION(h, p);
 
-  /* protocol doesn't care about subagent upTime */
+  /* AgentX protocol does not care about subagent upTime */
   STORE_U32(r->uptime, 0);
   STORE_U16(r->error, AGENTX_RES_NO_ERROR);
   STORE_U16(r->index, 0);
