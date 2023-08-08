@@ -313,16 +313,15 @@ snmp_show_proto_info(struct proto *P)
 
     cli_msg(-1006, "    name: %s", cf->name);
     cli_msg(-1006, "");
-    cli_msg(-1006, "    rem. identifier: %u", bp->remote_id);
-    // learn more !!
+    cli_msg(-1006, "	loc. identifier: %I4", bp->local_id);
+    cli_msg(-1006, "    rem. identifier: %I4", bp->remote_id);
     cli_msg(-1006, "    admin status: %s", (p->disabled) ? "stop" :
 	      "start");
-    // version ?
     cli_msg(-1006, "    version: 4");
-    cli_msg(-1006, "    local ip: %u", bcf->local_ip);
-    cli_msg(-1006, "    remote ip: %u", bcf->remote_ip);
-    cli_msg(-1006, "    local port: %u", bcf->local_port);
-    cli_msg(-1006, "    remote port: %u", bcf->remote_port);
+    cli_msg(-1006, "    local ip: %I4", bcf->local_ip);
+    cli_msg(-1006, "    remote ip: %I4", bcf->remote_ip);
+    cli_msg(-1006, "    local port: %I4", bcf->local_port);
+    cli_msg(-1006, "    remote port: %I4", bcf->remote_port);
     /*
     if (conn) {
       cli_msg(-1006, "    state: %u", conn->state);
@@ -336,8 +335,7 @@ snmp_show_proto_info(struct proto *P)
     cli_msg(-1006, "    fsm transitions: %u",
 bp->stats.fsm_established_transitions);
 
-    // not supported yet
-    cli_msg(-1006, "    fsm total time: --");
+    cli_msg(-1006, "    fsm total time: -- (0)");
     cli_msg(-1006, "    retry interval: %u", bcf->connect_retry_time);
 
     /*
@@ -350,8 +348,7 @@ bp->stats.fsm_established_transitions);
     cli_msg(-1006, "    hold configurated: %u", bcf->hold_time );
     cli_msg(-1006, "    keep alive config: %u", bcf->keepalive_time );
 
-    // unknown
-    cli_msg(-1006, "    min AS origin. int.: --");
+    cli_msg(-1006, "    min AS origin. int.: -- (0)");
     cli_msg(-1006, "    min route advertisement: %u", 0 );
     cli_msg(-1006, "    in update elapsed time: %u", 0 );
 
@@ -394,15 +391,16 @@ snmp_shutdown(struct proto *P)
 
   tm_stop(p->ping_timer);
 
-  /* connection established => close the connection */
-  if (p->state == SNMP_CONN)
+  /* connection established -> close the connection */
+  if (p->state == SNMP_CONN ||
+      p->state == SNMP_REGISTER)
   {
     p->state = SNMP_STOP;
 
     /* startup time is reused for connection closing */
     p->startup_timer->hook = snmp_stop_timeout;
 
-    // TODO timeout duration ??
+    // TODO timeout option
     tm_set(p->startup_timer, 15 S);
 
     snmp_stop_subagent(p);

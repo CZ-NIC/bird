@@ -59,6 +59,7 @@ snmp_bgp_register(struct snmp_proto *p)
 
   { /* registering whole BGP4-MIB subtree */
     //snmp_log("snmp_proto %p (%p)", p, p->p.pool);
+
     struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
 
     struct oid *oid = mb_alloc(p->p.pool, snmp_oid_sizeof(2));
@@ -71,6 +72,7 @@ snmp_bgp_register(struct snmp_proto *p)
     add_tail(&p->register_queue, &registering->n);
     p->register_to_ack++;
 
+    /* snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 is_instance) */
     snmp_register(p, oid, 0, 1, 0);
   }
 
@@ -229,7 +231,6 @@ print_bgp_record(struct bgp_config *config)
   snmp_log("    local port: %u", config->local_port);
   snmp_log("    remote port: %u", config->remote_port);
 
-  // crashes ?
   if (conn) {
     snmp_log("    state: %u", conn->state);
     snmp_log("    remote as: %u", conn->remote_caps->as4_number);
@@ -243,15 +244,13 @@ print_bgp_record(struct bgp_config *config)
   snmp_log("    fsm transitions: %u",
 bgp_proto->stats.fsm_established_transitions);
 
-  // not supported yet
-  snmp_log("    fsm total time: --");
+  snmp_log("    fsm total time: -- (0)");   // not supported by bird
   snmp_log("    retry interval: %u", config->connect_retry_time);
 
   snmp_log("    hold configurated: %u", config->hold_time );
   snmp_log("    keep alive config: %u", config->keepalive_time );
 
-  // unknown
-  snmp_log("    min AS origin. int.: --");
+  snmp_log("    min AS origin. int.: -- (0)");	// not supported by bird
   snmp_log("    min route advertisement: %u", 0 );
   snmp_log("    in update elapsed time: %u", 0 );
 
@@ -320,7 +319,7 @@ snmp_bgp_state(const struct oid *oid)
       /* fall through */
 
     case 4:
-      if (oid->ids[3] == BGP4_PEER_ENTRY)
+      if (oid->ids[3] == SNMP_BGP_PEER_ENTRY)
 	state = (state == BGP_INTERNAL_NO_VALUE) ?
 	  BGP_INTERNAL_PEER_ENTRY : state;
       else
@@ -441,11 +440,11 @@ snmp_bgp_is_supported(struct oid *o)
   /* most likely not functioning */
   if (o->prefix == 2 && o->n_subid > 0 && o->ids[0] == 1)
   {
-    if (o->n_subid == 2 && (o->ids[1] == BGP4_MIB_VERSION ||
-        o->ids[1] == BGP4_MIB_LOCAL_AS))
+    if (o->n_subid == 2 && (o->ids[1] == SNMP_BGP4_MIB ||
+        o->ids[1] == SNMP_BGP_LOCAL_AS))
       return 1;
-    else if (o->n_subid > 2 && o->ids[1] == BGP4_PEER_TABLE &&
-	     o->ids[2] == BGP4_PEER_ENTRY)
+    else if (o->n_subid > 2 && o->ids[1] == SNMP_BGP_PEER_TABLE &&
+	     o->ids[2] == SNMP_BGP_PEER_ENTRY)
     {
 	if (o->n_subid == 3)
 	  return 1;
@@ -774,7 +773,7 @@ snmp_bgp_find_next_oid(struct snmp_proto *p, struct oid *oid, uint UNUSED contid
   /* We skip the first match as we should not include ip address in oid */
   if (match)
   {
-  snmp_log("continue");
+    snmp_log("continue");
     trie_walk_next(&ws, &net);
   }
 
@@ -1084,7 +1083,7 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
   {
     case BGP_INTERNAL_IDENTIFIER:
       if (bgp_state == BS_OPENCONFIRM || bgp_state == BS_ESTABLISHED)
-	pkt = snmp_varbind_ip4(vb, size, ipa_to_ip4(bgp_proto->remote_ip));
+	pkt = snmp_varbind_ip4(vb, size, ip4_from_u32(bgp_proto->remote_id));
       else
 	pkt = snmp_varbind_ip4(vb, size, IP4_NONE);
       break;
@@ -1155,7 +1154,6 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
       pkt = snmp_varbind_nstr(vb, size, last_error, 2);
       break;
 
-    // TODO finish me here
     case BGP_INTERNAL_FSM_TRANSITIONS:
       pkt = snmp_varbind_counter32(vb, size,
 	  bgp_stats->fsm_established_transitions);
@@ -1173,11 +1171,15 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
 
     case BGP_INTERNAL_HOLD_TIME:
       // (0, 3..65535)
-      pkt = snmp_varbind_int(vb, size, bgp_conn->hold_time);
+      pkt = snmp_varbind_int(vb, size, (bgp_conn) ?  bgp_conn->hold_time : 0);
       break;
 
     case BGP_INTERNAL_KEEPALIVE:
-      pkt = snmp_varbind_int(vb, size, bgp_conn->keepalive_time);
+      if (!bgp_conf->hold_time)
+	pkt = snmp_varbind_int(vb, size, 0);
+      else
+	pkt = snmp_varbind_int(vb, size,
+	  (bgp_conn) ? bgp_conn->keepalive_time : 0);
       break;
 
     case BGP_INTERNAL_HOLD_TIME_CONFIGURED:
@@ -1185,7 +1187,11 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
       break;
 
     case BGP_INTERNAL_KEEPALIVE_CONFIGURED:
-      pkt = snmp_varbind_int(vb, size, bgp_conf->keepalive_time);
+      if (!bgp_conf->keepalive_time)
+	pkt = snmp_varbind_int(vb, size, 0);
+      else
+	pkt = snmp_varbind_int(vb, size,
+	  (bgp_conn) ? bgp_conn->keepalive_time : 0);
       break;
 
     case BGP_INTERNAL_ORIGINATION_INTERVAL:
@@ -1199,8 +1205,9 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
       break;
 
     case BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME:
-      pkt = snmp_varbind_gauge32(vb, size, (current_time()
-			      - bgp_proto->last_rx_update) TO_S);
+      pkt = snmp_varbind_gauge32(vb, size,
+	(current_time() - bgp_proto->last_rx_update) TO_S
+      );
       break;
 
     case BGP_INTERNAL_END:
