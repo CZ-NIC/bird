@@ -51,10 +51,13 @@ void snmp_register_ack(struct snmp_proto *p, struct agentx_header *h);
 byte *snmp_varbind_int(struct agentx_varbind *vb, uint size, u32 val);
 byte *snmp_varbind_counter32(struct agentx_varbind *vb, uint size, u32 val);
 byte *snmp_varbind_gauge32(struct agentx_varbind *vb, uint size, s64 val);
+byte *snmp_varbind_ticks(struct agentx_varbind *vb, uint size, u32 val);
 byte *snmp_varbind_ip4(struct agentx_varbind *vb, uint size, ip4_addr addr);
 byte *snmp_varbind_nstr(struct agentx_varbind *vb, uint size, const char *str, uint len);
 
 void snmp_dump_packet(byte *pkt, uint size);
 
 enum agentx_type snmp_search_res_to_type(enum snmp_search_res res);
+
+int agentx_type_size(enum agentx_type t);
 #endif

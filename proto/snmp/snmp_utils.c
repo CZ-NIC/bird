@@ -10,8 +10,6 @@
 
 #include "snmp_utils.h"
 
-int agentx_type_size(enum agentx_type t);
-
 /**
  * snmp_is_oid_empty - check if oid is null-valued
  * @oid: object identifier to check
@@ -162,7 +160,7 @@ snmp_create_varbind(byte *buf, struct oid *oid)
 {
   struct agentx_varbind *vb = (void*) buf;
   vb->pad = 0;
-  memcpy(&vb->name, oid, snmp_oid_size(oid));
+  snmp_oid_copy(&vb->name, oid);
   return vb;
 }
 
@@ -411,8 +409,9 @@ snmp_register_create(struct snmp_proto *p, u8 mib_class)
   r->n.prev = r->n.next = NULL;
 
   r->session_id = p->session_id;
+  /* will be incremented by SNMP_SESSION() macro during packet assembly */
   r->transaction_id = p->transaction_id;
-  r->packet_id = p->packet_id;
+  r->packet_id = p->packet_id + 1;
 
   r->mib_class = mib_class;
 
@@ -434,10 +433,15 @@ snmp_register_ack(struct snmp_proto *p, struct agentx_header *h)
 {
   snmp_log("snmp_register_ack()");
 
+  snmp_log("got sid: %u  tid: %u  pid: %u", h->session_id, h->transaction_id,
+h->packet_id);
+
   struct snmp_register *reg;
   WALK_LIST(reg, p->register_queue)
   {
     // TODO add support for more mib trees (other than BGP)
+    snmp_log("checking registration request sid: %u tid: %u pid: %u",
+      reg->session_id, reg->transaction_id, reg->packet_id);
     if (snmp_register_same(reg, h, SNMP_BGP4_MIB))
     {
       struct snmp_registered_oid *ro = \
@@ -527,6 +531,12 @@ inline byte *
 snmp_varbind_counter32(struct agentx_varbind *vb, uint size, u32 val)
 {
   return snmp_varbind_type32(vb, size, AGENTX_COUNTER_32, val);
+}
+
+inline byte *
+snmp_varbind_ticks(struct agentx_varbind *vb, uint size, u32 val)
+{
+  return snmp_varbind_type32(vb, size, AGENTX_TIME_TICKS, val);
 }
 
 inline byte *
