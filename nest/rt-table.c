@@ -2044,14 +2044,22 @@ rt_set_import_state(struct rt_import_hook *hook, u8 state)
   CALL(hook->req->log_state_change, hook->req, state);
 }
 
-void
-rt_set_export_state(struct rt_export_hook *hook, u8 state)
+u8
+rt_set_export_state(struct rt_export_hook *hook, u32 expected_mask, u8 state)
 {
   hook->last_state_change = current_time();
   u8 old = atomic_exchange_explicit(&hook->export_state, state, memory_order_release);
+  if (!((1 << old) & expected_mask))
+    bug("Unexpected export state change from %s to %s, expected mask %02x",
+      rt_export_state_name(old),
+      rt_export_state_name(state),
+      expected_mask
+      );
 
   if (old != state)
     CALL(hook->req->log_state_change, hook->req, state);
+
+  return old;
 }
 
 void
@@ -2148,7 +2156,7 @@ rt_table_export_start_locked(struct rtable_private *tab, struct rt_export_reques
   };
 
   if (rt_cork_check(&hook->h.event))
-    rt_set_export_state(&hook->h, TES_HUNGRY);
+    rt_set_export_state(&hook->h, BIT32_ALL(TES_DOWN), TES_HUNGRY);
   else
     rt_table_export_start_feed(tab, hook);
 }
@@ -2226,6 +2234,7 @@ rt_alloc_export(struct rt_exporter *re, pool *pp, uint size)
 
   hook->pool = p;
   hook->table = re;
+  atomic_store_explicit(&hook->export_state, TES_DOWN, memory_order_release);
 
   hook->n = (node) {};
   add_tail(&re->hooks, &hook->n);
@@ -2241,7 +2250,7 @@ rt_init_export(struct rt_exporter *re UNUSED, struct rt_export_hook *hook)
   bmap_init(&hook->seq_map, hook->pool, 16);
 
   /* Regular export */
-  rt_set_export_state(hook, TES_FEEDING);
+  rt_set_export_state(hook, BIT32_ALL(TES_DOWN, TES_HUNGRY), TES_FEEDING);
   rt_send_export_event(hook);
 }
 
@@ -2251,7 +2260,8 @@ rt_table_export_stop_locked(struct rt_export_hook *hh)
   struct rt_table_export_hook *hook = SKIP_BACK(struct rt_table_export_hook, h, hh);
   struct rtable_private *tab = SKIP_BACK(struct rtable_private, exporter, hook->table);
 
-  switch (atomic_load_explicit(&hh->export_state, memory_order_relaxed))
+  /* Update export state, get old */
+  switch (rt_set_export_state(hh, BIT32_ALL(TES_HUNGRY, TES_FEEDING, TES_READY), TES_STOP))
   {
     case TES_HUNGRY:
       rt_trace(tab, D_EVENTS, "Stopping export hook %s must wait for uncorking", hook->h.req->name);
@@ -2288,17 +2298,12 @@ rt_table_export_stop(struct rt_export_hook *hh)
 {
   struct rt_table_export_hook *hook = SKIP_BACK(struct rt_table_export_hook, h, hh);
   int ok = 0;
-  rtable *t = SKIP_BACK(rtable, priv.exporter, hook->table);
-  if (RT_IS_LOCKED(t))
+
+  RT_LOCKED_IF_NEEDED(SKIP_BACK(rtable, priv.exporter, hook->table), tab)
     ok = rt_table_export_stop_locked(hh);
-  else
-    RT_LOCKED(t, tab)
-      ok = rt_table_export_stop_locked(hh);
 
   if (ok)
     rt_stop_export_common(hh);
-  else
-    rt_set_export_state(&hook->h, TES_STOP);
 }
 
 void
@@ -2311,19 +2316,16 @@ rt_stop_export(struct rt_export_request *req, void (*stopped)(struct rt_export_r
   /* Set the stopped callback */
   hook->stopped = stopped;
 
-  /* Run the stop code */
-  if (hook->table->class->stop)
-    hook->table->class->stop(hook);
-  else
-    rt_stop_export_common(hook);
+  /* Run the stop code. Must:
+   * _locked_ update export state to TES_STOP
+   * and _unlocked_ call rt_stop_export_common() */
+  hook->table->class->stop(hook);
 }
 
+/* Call this common code from the stop code in table export class */
 void
 rt_stop_export_common(struct rt_export_hook *hook)
 {
-  /* Update export state */
-  rt_set_export_state(hook, TES_STOP);
-
   /* Reset the event as the stopped event */
   hook->event.hook = hook->table->class->done;
 
@@ -4242,7 +4244,7 @@ rt_feed_done(struct rt_export_hook *c)
 {
   c->event.hook = rt_export_hook;
 
-  rt_set_export_state(c, TES_READY);
+  rt_set_export_state(c, BIT32_ALL(TES_FEEDING), TES_READY);
 
   rt_send_export_event(c);
 }

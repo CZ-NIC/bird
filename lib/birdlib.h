@@ -13,6 +13,7 @@
 
 #include "sysdep/config.h"
 #include "lib/alloca.h"
+#include "lib/macro.h"
 
 /* Ugly structure offset handling macros */
 
@@ -88,6 +89,10 @@ static inline int u64_cmp(u64 i1, u64 i2)
 #define BIT32R_SET(b,p)		((b)[(p)/32] |= BIT32R_VAL(p))
 #define BIT32R_CLR(b,p)		((b)[(p)/32] &= ~BIT32R_VAL(p))
 #define BIT32R_ZERO(b,l)	memset((b), 0, (l)/8)
+
+/* Short Bitmask Constructor */
+#define BIT32_ALL_HELPER(x)	(1 << (x)) |
+#define BIT32_ALL(...)		(MACRO_FOREACH(BIT32_ALL_HELPER, __VA_ARGS__) 0)
 
 #ifndef NULL
 #define NULL ((void *) 0)

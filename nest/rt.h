@@ -177,6 +177,11 @@ typedef union rtable {
 #define RT_PUB(tab)	SKIP_BACK(rtable, priv, tab)
 
 #define RT_LOCKED(tpub, tpriv) for (struct rtable_private *tpriv = RT_LOCK(tpub); tpriv; RT_UNLOCK(tpriv), (tpriv = NULL))
+#define RT_LOCKED_IF_NEEDED(_tpub, _tpriv) for ( \
+    struct rtable_private *_al = RT_IS_LOCKED(_tpub) ? &(_tpub)->priv : NULL, *_tpriv = _al ?: RT_LOCK(_tpub); \
+    _tpriv; \
+    _al ?: RT_UNLOCK(_tpriv), (_tpriv = NULL))
+
 #define RT_RETURN(tpriv, ...) do { RT_UNLOCK(tpriv); return __VA_ARGS__; } while (0)
 
 #define RT_PRIV_SAME(tpriv, tpub)	(&(tpub)->priv == (tpriv))
@@ -415,7 +420,7 @@ const char *rt_export_state_name(u8 state);
 static inline u8 rt_import_get_state(struct rt_import_hook *ih) { return ih ? ih->import_state : TIS_DOWN; }
 static inline u8 rt_export_get_state(struct rt_export_hook *eh) { return eh ? eh->export_state : TES_DOWN; }
 
-void rt_set_export_state(struct rt_export_hook *hook, u8 state);
+u8 rt_set_export_state(struct rt_export_hook *hook, u32 expected_mask, u8 state);
 
 void rte_import(struct rt_import_request *req, const net_addr *net, rte *new, struct rte_src *src);
 

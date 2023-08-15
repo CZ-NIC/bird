@@ -1981,7 +1981,7 @@ bgp_out_table_feed(void *data)
   if (hook->hash_iter)
     ev_schedule_work(&hook->h.event);
   else
-    rt_set_export_state(&hook->h, TES_READY);
+    rt_set_export_state(&hook->h, BIT32_ALL(TES_FEEDING), TES_READY);
 }
 
 static void
@@ -1997,6 +1997,13 @@ bgp_out_table_export_start(struct rt_exporter *re, struct rt_export_request *req
 }
 
 static void
+bgp_out_table_export_stop(struct rt_export_hook *hook)
+{
+  rt_set_export_state(hook, BIT32_ALL(TES_HUNGRY, TES_FEEDING, TES_READY), TES_STOP);
+  rt_stop_export_common(hook);
+}
+
+static void
 bgp_out_table_export_done(void *data)
 {
   struct bgp_out_export_hook *hook = data;
@@ -2009,6 +2016,7 @@ bgp_out_table_export_done(void *data)
 
 static const struct rt_exporter_class bgp_out_table_export_class = {
   .start = bgp_out_table_export_start,
+  .stop = bgp_out_table_export_stop,
   .done = bgp_out_table_export_done,
 };
 
