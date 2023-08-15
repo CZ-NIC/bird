@@ -125,7 +125,6 @@ void krt_io_init(void);
 
 /* log.c */
 
-void main_thread_init(void);
 void log_init_debug(char *);		/* Initialize debug dump to given file (NULL=stderr, ""=off) */
 void log_switch(int initial, list *l, const char *);
 

@@ -40,9 +40,6 @@ typedef struct cli {
   int last_reply;
   int restricted;			/* CLI is restricted to read-only commands */
   struct linpool *parser_pool;		/* Pool used during parsing */
-  byte *ring_buf;			/* Ring buffer for asynchronous messages */
-  byte *ring_end, *ring_read, *ring_write;	/* Pointers to the ring buffer */
-  uint ring_overflow;			/* Counter of ring overflows */
   uint log_mask;			/* Mask of allowed message levels */
   uint log_threshold;			/* When free < log_threshold, store only important messages */
   uint async_msg_size;			/* Total size of async messages queued in tx_buf */
@@ -57,7 +54,6 @@ extern struct cli *this_cli;		/* Used during parsing */
 
 void cli_printf(cli *, int, char *, ...);
 #define cli_msg(x...) cli_printf(this_cli, x)
-void cli_set_log_echo(cli *, uint mask, uint size);
 
 static inline void cli_separator(cli *c)
 { if (c->last_reply) cli_printf(c, -c->last_reply, ""); };
@@ -69,7 +65,6 @@ void cli_init(void);
 void cli_free(cli *);
 void cli_kick(cli *);
 void cli_written(cli *);
-void cli_echo(uint class, byte *msg);
 
 static inline int cli_access_restricted(void)
 {
