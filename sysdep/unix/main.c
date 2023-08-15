@@ -951,9 +951,6 @@ main(int argc, char **argv)
       dup2(0, 2);
     }
 
-
-  main_thread_init();
-
   write_pid_file();
 
   signal_init();

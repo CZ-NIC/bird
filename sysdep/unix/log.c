@@ -46,11 +46,6 @@ static pthread_mutex_t log_mutex;
 static inline void log_lock(void) { pthread_mutex_lock(&log_mutex); }
 static inline void log_unlock(void) { pthread_mutex_unlock(&log_mutex); }
 
-static pthread_t main_thread;
-void main_thread_init(void) { main_thread = pthread_self(); }
-static int main_thread_self(void) { return pthread_equal(pthread_self(), main_thread); }
-
-
 #ifdef HAVE_SYSLOG_H
 #include <sys/syslog.h>
 
@@ -194,10 +189,6 @@ log_commit(int class, buffer *buf)
 #endif
     }
   log_unlock();
-
-  /* cli_echo is not thread-safe, so call it just from the main thread */
-  if (main_thread_self())
-    cli_echo(class, buf->start);
 
   buf->pos = buf->start;
 }
