@@ -32,8 +32,7 @@
 #include "lib/lists.h"
 #include "sysdep/unix/unix.h"
 
-static int dbg_fd = -1;
-static FILE *dbgf;
+static struct rfile *dbg_rf;
 static list *current_log_list;
 static char *current_syslog_name; /* NULL -> syslog closed */
 
@@ -45,6 +44,12 @@ _Thread_local uint this_thread_id;
 static pthread_mutex_t log_mutex;
 static inline void log_lock(void) { pthread_mutex_lock(&log_mutex); }
 static inline void log_unlock(void) { pthread_mutex_unlock(&log_mutex); }
+
+/* Logging flags to validly prepare logging messages */
+#define LOGGING_TO_TERMINAL   0x1
+#define LOGGING_TO_FILE	      0x2
+
+static _Atomic uint logging_flags;
 
 #ifdef HAVE_SYSLOG_H
 #include <sys/syslog.h>
@@ -86,15 +91,16 @@ log_size(struct log_config *l)
 static void
 log_close(struct log_config *l)
 {
-  rfree(l->rf);
+  if (l->rf != &rf_stderr)
+    rfree(l->rf);
+
   l->rf = NULL;
-  l->fh = NULL;
 }
 
 static int
 log_open(struct log_config *l)
 {
-  l->rf = rf_open(config->pool, l->filename, "a");
+  l->rf = rf_open(config->pool, l->filename, RF_APPEND);
   if (!l->rf)
   {
     /* Well, we cannot do much in case of error as log is closed */
@@ -102,7 +108,6 @@ log_open(struct log_config *l)
     return -1;
   }
 
-  l->fh = rf_file(l->rf);
   l->pos = log_size(l);
 
   return 0;
@@ -125,6 +130,8 @@ log_rotate(struct log_config *l)
   return log_open(l);
 }
 
+#define LOG_MSG_OFFSET	(TM_DATETIME_BUFFER_SIZE + 64)
+
 /**
  * log_commit - commit a log message
  * @class: message class information (%L_DEBUG to %L_BUG, see |lib/birdlib.h|)
@@ -139,69 +146,83 @@ log_rotate(struct log_config *l)
  * in log(), so it should be written like *L_INFO.
  */
 void
-log_commit(int class, buffer *buf)
+log_commit(log_buffer *buf)
 {
   struct log_config *l;
 
-  if (buf->pos == buf->end)
-    strcpy(buf->end - 100, " ... <too long>");
+  if (buf->buf.pos == buf->buf.end)
+#define TOO_LONG " ... <too long>"
+    memcpy(buf->buf.end - sizeof TOO_LONG, TOO_LONG, sizeof TOO_LONG);
+#undef TOO_LONG
 
   log_lock();
   WALK_LIST(l, *current_log_list)
     {
-      if (!(l->mask & (1 << class)))
+      if (!(l->mask & (1 << buf->class)))
 	continue;
-      if (l->fh)
+      if (l->rf && buf->tm_pos)
 	{
-	  if (l->terminal_flag)
-	    fputs("bird: ", l->fh);
-	  else
-	    {
-	      byte tbuf[TM_DATETIME_BUFFER_SIZE];
-	      const char *fmt = config ? config->tf_log.fmt1 : "%F %T.%3f";
-	      if (!tm_format_real_time(tbuf, sizeof(tbuf), fmt, current_real_time()))
-		strcpy(tbuf, "<error>");
+	  *buf->buf.pos = '\n';
+	  byte *begin = l->terminal_flag ? buf->buf.start : buf->tm_pos;
+	  off_t msg_len = buf->buf.pos - begin + 1;
+	  if (l->limit && (l->pos + msg_len > l->limit) && (log_rotate(l) < 0))
+	    continue;
 
-	      if (l->limit)
-	      {
-		off_t msg_len = strlen(tbuf) + strlen(class_names[class]) +
-		  (buf->pos - buf->start) + 5;
-
-		if (l->pos < 0)
-		  l->pos = log_size(l);
-
-		if (l->pos + msg_len > l->limit)
-		  if (log_rotate(l) < 0)
-		    continue;
-
-		l->pos += msg_len;
-	      }
-
-	      fprintf(l->fh, "%s [%04x] <%s> ", tbuf, THIS_THREAD_ID, class_names[class]);
-	    }
-	  fputs(buf->start, l->fh);
-	  fputc('\n', l->fh);
-	  fflush(l->fh);
+	  l->pos += msg_len;
+	  while ((write(rf_fileno(l->rf), buf->tm_pos, msg_len) < 0) && (errno == EINTR))
+	    ;
 	}
 #ifdef HAVE_SYSLOG_H
       else
-	syslog(syslog_priorities[class], "%s", buf->start);
+      {
+	*buf->buf.pos = '\0';
+	syslog(syslog_priorities[buf->class], "%s", buf->msg_pos);
+      }
 #endif
     }
   log_unlock();
 
-  buf->pos = buf->start;
+  buf->msg_pos = buf->tm_pos = NULL;
 }
 
 int buffer_vprint(buffer *buf, const char *fmt, va_list args);
 
+void
+log_prepare(log_buffer *buf, int class)
+{
+  buf->buf.start = buf->buf.pos = buf->block;
+  buf->buf.end = buf->block + sizeof buf->block;
+
+  int lf = atomic_load_explicit(&logging_flags, memory_order_acquire);
+  if (lf & LOGGING_TO_TERMINAL)
+    buffer_puts(&buf->buf, "bird: ");
+
+  if (lf & LOGGING_TO_FILE)
+  {
+    const char *fmt = config ? config->tf_log.fmt1 : "%F %T.%3f";
+
+    buf->tm_pos = buf->buf.pos;
+    int t = tm_format_real_time(buf->buf.pos, buf->buf.end - buf->buf.pos, fmt, current_real_time());
+    if (t)
+      buf->buf.pos += t;
+    else
+      buffer_puts(&buf->buf, "<time format error>");
+
+    buffer_print(&buf->buf, " [%04x] <%s> ", THIS_THREAD_ID, class_names[class]);
+  }
+
+  buf->msg_pos = buf->buf.pos;
+  buf->class = class;
+}
+
 static void
 vlog(int class, const char *msg, va_list args)
 {
-  buffer buf;
-  LOG_BUFFER_INIT(buf);
-  buffer_vprint(&buf, msg, args);
-  log_commit(class, &buf);
+  static _Thread_local log_buffer buf;
+
+  log_prepare(&buf, class);
+  buffer_vprint(&buf.buf, msg, args);
+  log_commit(&buf);
 }
 
 
@@ -301,33 +322,13 @@ debug(const char *msg, ...)
   int max = MAX_DEBUG_BUFSIZE;
 
   va_start(args, msg);
-  if (dbgf)
+  if (dbg_rf)
     {
-#if 0
-      struct timespec dbg_time;
-      clock_gettime(CLOCK_MONOTONIC, &dbg_time);
-      uint nsec;
-      uint sec;
-
-      if (dbg_time.tv_nsec > dbg_time_start.tv_nsec)
-      {
-	nsec = dbg_time.tv_nsec - dbg_time_start.tv_nsec;
-	sec = dbg_time.tv_sec - dbg_time_start.tv_sec;
-      }
-      else
-      {
-	nsec = 1000000000 + dbg_time.tv_nsec - dbg_time_start.tv_nsec;
-	sec = dbg_time.tv_sec - dbg_time_start.tv_sec - 1;
-      }
-
-      int n = bsnprintf(pos, max, "%u.%09u: [%04x] ", sec, nsec, THIS_THREAD_ID);
-      pos += n;
-      max -= n;
-#endif
-      if (bvsnprintf(pos, max, msg, args) < 0)
+      int s = bvsnprintf(pos, max, msg, args);
+      if (s < 0)
 	bug("Extremely long debug output, split it.");
 
-      fputs(buf, dbgf);
+      write(rf_fileno(dbg_rf), buf, s);
     }
   va_end(args);
 }
@@ -343,8 +344,8 @@ debug(const char *msg, ...)
 void
 debug_safe(const char *msg)
 {
-  if (dbg_fd >= 0)
-    write(dbg_fd, msg, strlen(msg));
+  if (dbg_rf)
+    write(rf_fileno(dbg_rf), msg, strlen(msg));
 }
 
 static list *
@@ -355,7 +356,7 @@ default_log_list(int initial, const char **syslog_name)
   *syslog_name = NULL;
 
 #ifdef HAVE_SYSLOG_H
-  if (!dbgf)
+  if (!dbg_rf)
     {
       static struct log_config lc_syslog;
       lc_syslog = (struct log_config){
@@ -367,24 +368,24 @@ default_log_list(int initial, const char **syslog_name)
     }
 #endif
 
-  if (dbgf && (dbgf != stderr))
+  if (dbg_rf && (dbg_rf != &rf_stderr))
     {
       static struct log_config lc_debug;
       lc_debug = (struct log_config){
 	.mask = ~0,
-	.fh = dbgf
+	.rf = dbg_rf,
       };
 
       add_tail(&log_list, &lc_debug.n);
     }
 
-  if (initial || (dbgf == stderr))
+  if (initial || (dbg_rf == &rf_stderr))
     {
       static struct log_config lc_stderr;
       lc_stderr = (struct log_config){
 	.mask = ~0,
 	.terminal_flag = 1,
-	.fh = stderr
+	.rf = &rf_stderr,
       };
 
       add_tail(&log_list, &lc_stderr.n);
@@ -411,10 +412,19 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
 	log_close(l);
 
   /* Reopen the logs, needed for 'configure undo' */
+  uint flags = 0;
   if (logs)
     WALK_LIST(l, *logs)
+    {
+      if (l->terminal_flag)
+	flags |= LOGGING_TO_TERMINAL;
       if (l->filename && !l->rf)
 	log_open(l);
+      if (l->rf)
+	flags |= LOGGING_TO_FILE;
+    }
+
+  atomic_store_explicit(&logging_flags, flags, memory_order_release);
 
   current_log_list = logs;
 
@@ -447,24 +457,17 @@ log_init_debug(char *f)
 {
   clock_gettime(CLOCK_MONOTONIC, &dbg_time_start);
 
-  dbg_fd = -1;
-  if (dbgf && dbgf != stderr)
-    fclose(dbgf);
+  if (dbg_rf && dbg_rf != &rf_stderr)
+    close(rf_fileno(dbg_rf));
 
   if (!f)
-    dbgf = NULL;
+    dbg_rf = NULL;
   else if (!*f)
-    dbgf = stderr;
-  else if (!(dbgf = fopen(f, "a")))
+    dbg_rf = &rf_stderr;
+  else if (!(dbg_rf = rf_open(&root_pool, f, RF_APPEND)))
   {
     /* Cannot use die() nor log() here, logging is not yet initialized */
     fprintf(stderr, "bird: Unable to open debug file %s: %s\n", f, strerror(errno));
     exit(1);
-  }
-
-  if (dbgf)
-  {
-    setvbuf(dbgf, NULL, _IONBF, 0);
-    dbg_fd = fileno(dbgf);
   }
 }

@@ -202,9 +202,10 @@ sysdep_preconfig(struct config *c)
 int
 sysdep_commit(struct config *new, struct config *old)
 {
-  log_switch(0, &new->logfiles, new->syslog_name);
-  bird_thread_commit(new, old);
+  if (!new->shutdown)
+    log_switch(0, &new->logfiles, new->syslog_name);
 
+  bird_thread_commit(new, old);
   return 0;
 }
 
@@ -893,14 +894,12 @@ main(int argc, char **argv)
     dmalloc_debug(0x2f03d00);
 #endif
 
-  times_update();
-  parse_args(argc, argv);
-  log_switch(1, NULL, NULL);
-
+  /* Prepare necessary infrastructure */
   the_bird_lock();
-
-  random_init();
+  times_update();
   resource_init();
+  random_init();
+
   birdloop_init();
   olock_init();
   rt_init();
@@ -908,6 +907,10 @@ main(int argc, char **argv)
   if_init();
 //  roa_init();
   config_init();
+
+  /* Arguments and logs */
+  parse_args(argc, argv);
+  log_switch(1, NULL, NULL);
 
   uid_t use_uid = get_uid(use_user);
   gid_t use_gid = get_gid(use_group);

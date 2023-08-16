@@ -77,7 +77,7 @@ struct filter_state {
   struct rte *rte;
 
   /* Buffer for log output */
-  struct buffer buf;
+  log_buffer buf;
 
   /* Filter execution flags */
   int flags;
@@ -219,8 +219,6 @@ f_run(const struct filter *filter, struct rte *rte, int flags)
 
   f_stack_init(filter_state);
 
-  LOG_BUFFER_INIT(filter_state.buf);
-
   /* Run the interpreter itself */
   enum filter_return fret = interpret(&filter_state, filter->root, NULL);
 
@@ -256,8 +254,6 @@ f_eval_rte(const struct f_line *expr, struct rte *rte)
 
   f_stack_init(filter_state);
 
-  LOG_BUFFER_INIT(filter_state.buf);
-
   ASSERT(!rta_is_cached(rte->attrs));
 
   return interpret(&filter_state, expr, NULL);
@@ -275,8 +271,6 @@ f_eval(const struct f_line *expr, struct f_val *pres)
   filter_state = (struct filter_state) {};
 
   f_stack_init(filter_state);
-
-  LOG_BUFFER_INIT(filter_state.buf);
 
   enum filter_return fret = interpret(&filter_state, expr, pres);
   return fret;
@@ -296,8 +290,6 @@ f_eval_int(const struct f_line *expr)
   f_stack_init(filter_state);
 
   struct f_val val;
-
-  LOG_BUFFER_INIT(filter_state.buf);
 
   if (interpret(&filter_state, expr, &val) > F_RETURN)
     cf_error("Runtime error while evaluating expression; see log for details");

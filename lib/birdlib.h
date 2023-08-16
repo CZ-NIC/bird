@@ -151,6 +151,16 @@ typedef struct buffer {
   byte *end;
 } buffer;
 
+#define LOG_BUFFER_SIZE 2560
+
+typedef struct log_buffer {
+  struct buffer buf;
+  byte *tm_pos;
+  byte *msg_pos;
+  int class;
+  char block[LOG_BUFFER_SIZE];
+} log_buffer;
+
 #define STACK_BUFFER_INIT(buf,size)		\
   do {						\
     buf.start = alloca(size);			\
@@ -158,13 +168,9 @@ typedef struct buffer {
     buf.end = buf.start + size;			\
   } while(0)
 
-#define LOG_BUFFER_INIT(buf)			\
-  STACK_BUFFER_INIT(buf, LOG_BUFFER_SIZE)
-
-#define LOG_BUFFER_SIZE 1024
-
 #define log log_msg
-void log_commit(int class, buffer *buf);
+void log_prepare(log_buffer *buf, int class);
+void log_commit(log_buffer *buf);
 void log_msg(const char *msg, ...);
 void log_rl(struct tbf *rl, const char *msg, ...);
 void die(const char *msg, ...) NORET;

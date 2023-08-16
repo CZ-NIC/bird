@@ -323,8 +323,5 @@ tm_format_real_time(char *x, size_t max, const char *fmt, btime t)
   if (!strfusec(tbuf, tbuf_size, fmt, t2))
     return 0;
 
-  if (!strftime(x, max, tbuf, &tm))
-    return 0;
-
-  return 1;
+  return strftime(x, max, tbuf, &tm);
 }
