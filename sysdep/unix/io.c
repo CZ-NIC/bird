@@ -64,7 +64,11 @@
 
 struct rfile {
   resource r;
-  FILE *f;
+  int fd;
+};
+
+struct rfile rf_stderr = {
+  .fd = 2,
 };
 
 static void
@@ -72,7 +76,7 @@ rf_free(resource *r)
 {
   struct rfile *a = (struct rfile *) r;
 
-  fclose(a->f);
+  close(a->fd);
 }
 
 static void
@@ -80,7 +84,7 @@ rf_dump(resource *r, unsigned indent UNUSED)
 {
   struct rfile *a = (struct rfile *) r;
 
-  debug("(FILE *%p)\n", a->f);
+  debug("(fd %d)\n", a->fd);
 }
 
 static struct resclass rf_class = {
@@ -93,28 +97,34 @@ static struct resclass rf_class = {
 };
 
 struct rfile *
-rf_open(pool *p, const char *name, const char *mode)
+rf_open(pool *p, const char *name, enum rf_mode mode)
 {
-  FILE *f = fopen(name, mode);
+  int omode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
+  int flags;
 
-  if (!f)
-    return NULL;
+  switch (mode)
+  {
+    case RF_APPEND:
+      flags = O_WRONLY | O_CREAT | O_APPEND;
+      break;
+
+    default:
+      bug("rf_open() must have the mode set");
+  }
+
+  int fd = open(name, flags, omode);
+  if (fd < 0)
+    return NULL; /* The caller takes care of printing %m. */
 
   struct rfile *r = ralloc(p, &rf_class);
-  r->f = f;
+  r->fd = fd;
   return r;
-}
-
-void *
-rf_file(struct rfile *f)
-{
-  return f->f;
 }
 
 int
 rf_fileno(struct rfile *f)
 {
-  return fileno(f->f);
+  return f->fd;
 }
 
 

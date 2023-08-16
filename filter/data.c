@@ -598,7 +598,7 @@ val_format(const struct f_val *v, buffer *buf)
 char *
 val_format_str(struct linpool *lp, const struct f_val *v) {
   buffer b;
-  LOG_BUFFER_INIT(b);
+  STACK_BUFFER_INIT(b, 1024);
   val_format(v, &b);
   return lp_strdup(lp, b.start);
 }

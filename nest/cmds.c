@@ -134,7 +134,7 @@ void
 cmd_eval(const struct f_line *expr)
 {
   buffer buf;
-  LOG_BUFFER_INIT(buf);
+  STACK_BUFFER_INIT(buf, CLI_MSG_SIZE);
 
   if (f_eval_buf(expr, &buf) > F_RETURN)
     {

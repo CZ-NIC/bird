@@ -2532,7 +2532,7 @@ static void
 bgp_show_afis(int code, char *s, u32 *afis, uint count)
 {
   buffer b;
-  LOG_BUFFER_INIT(b);
+  STACK_BUFFER_INIT(b, CLI_MSG_SIZE);
 
   buffer_puts(&b, s);
 

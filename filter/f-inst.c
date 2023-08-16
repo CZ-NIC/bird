@@ -656,15 +656,20 @@
     VARARG;
 
     if (whati->varcount && !(fs->flags & FF_SILENT))
+    {
+      if (!fs->buf.class)
+	log_prepare(&fs->buf, *L_INFO);
+
       for (uint i=0; i<whati->varcount; i++)
-	val_format(&(vv(i)), &fs->buf);
+	val_format(&(vv(i)), &fs->buf.buf);
+    }
   }
 
   INST(FI_FLUSH, 0, 0) {
     NEVER_CONSTANT;
     if (!(fs->flags & FF_SILENT))
       /* After log_commit, the buffer is reset */
-      log_commit(*L_INFO, &fs->buf);
+      log_commit(&fs->buf);
   }
 
   INST(FI_DIE, 0, 0) {
