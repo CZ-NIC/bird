@@ -27,7 +27,6 @@ bmp_proto_start: proto_start BMP {
      this_proto = proto_config_new(&proto_bmp, $1);
      BMP_CFG->sys_descr = "Not defined";
      BMP_CFG->sys_name = "Not defined";
-     BMP_CFG->monitoring_rib_in_pre_policy = false;
    }
  ;
 
@@ -68,6 +67,9 @@ bmp_proto:
    }
  | bmp_proto MONITORING RIB IN PRE_POLICY bool ';' {
      BMP_CFG->monitoring_rib_in_pre_policy = $6;
+   }
+ | bmp_proto MONITORING RIB IN POST_POLICY bool ';' {
+     BMP_CFG->monitoring_rib_in_post_policy = $6;
    }
  ;
 

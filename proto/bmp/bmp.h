@@ -39,6 +39,7 @@ struct bmp_config {
   ip_addr station_ip;                 // Monitoring station address
   u16 station_port;                   // Monitoring station TCP port
   bool monitoring_rib_in_pre_policy;  // Route monitoring pre-policy Adj-Rib-In
+  bool monitoring_rib_in_post_policy;  // Route monitoring post-policy Adj-Rib-In
 };
 
 /* Forward declarations */
@@ -49,6 +50,11 @@ struct bmp_proto {
   struct proto p;                  // Parent proto
   const struct bmp_config *cf;     // Shortcut to BMP configuration
   node bmp_node;                   // Node in bmp_proto_list
+
+  HASH(struct bmp_peer) peer_map;
+  HASH(struct bmp_stream) stream_map;
+  HASH(struct bmp_table) table_map;
+
   sock *sk;                        // TCP connection
   event *tx_ev;                    // TX event
   event *update_ev;                // Update event
@@ -71,6 +77,28 @@ struct bmp_proto {
   int sock_err;                    // Last socket error code
 };
 
+struct bmp_peer {
+  struct bgp_proto *bgp;
+  struct bmp_peer *next;
+  list streams;
+};
+
+struct bmp_stream {
+  node n;
+  struct bgp_proto *bgp;
+  u32 key;
+  struct bmp_stream *next;
+  struct bmp_table *table;
+  struct bgp_channel *sender;
+};
+
+struct bmp_table {
+  struct rtable *table;
+  struct bmp_table *next;
+  struct channel *channel;
+  u32 uc;
+};
+
 
 #ifdef CONFIG_BMP
 
@@ -78,16 +106,9 @@ struct bmp_proto {
  * bmp_peer_up - send notification that BGP peer connection is established
  */
 void
-bmp_peer_up(const struct bgp_proto *bgp,
+bmp_peer_up(struct bgp_proto *bgp,
 	    const byte *tx_open_msg, uint tx_open_length,
 	    const byte *rx_open_msg, uint rx_open_length);
-
-/**
- * bmp_route_monitor_update_in_notify - send notification that rte vas received
- */
-void
-bmp_route_monitor_update_in_notify(struct channel *C, const net_addr *n,
-				   const struct rte *new, const struct rte_src *src);
 
 /**
  * bmp_peer_down - send notification that BGP peer connection is not in

@@ -1714,10 +1714,6 @@ bgp_init(struct proto_config *CF)
   P->rte_modify = bgp_rte_modify_stale;
   P->rte_igp_metric = bgp_rte_igp_metric;
 
-#ifdef CONFIG_BMP
-  P->rte_update_in_notify = bmp_route_monitor_update_in_notify;
-#endif
-
   p->cf = cf;
   p->is_internal = (cf->local_as == cf->remote_as);
   p->is_interior = p->is_internal || cf->confederation_member;
@@ -2643,7 +2639,7 @@ bgp_show_proto_info(struct proto *P)
   }
 }
 
-struct channel_class channel_bgp = {
+const struct channel_class channel_bgp = {
   .channel_size =	sizeof(struct bgp_channel),
   .config_size =	sizeof(struct bgp_channel_config),
   .init =		bgp_channel_init,

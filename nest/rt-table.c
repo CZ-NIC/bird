@@ -3063,6 +3063,23 @@ rt_feed_channel_abort(struct channel *c)
  *	Import table
  */
 
+static void
+rte_announce_in(struct rtable *tab, struct network *net, struct rte *new, struct rte *old)
+{
+  struct channel *c; node *n;
+  WALK_LIST2(c, n, tab->channels, table_node)
+  {
+    if (c->export_state == ES_DOWN)
+      continue;
+
+    if (c->ra_mode != RA_ANY)
+      continue;
+
+    struct proto *p = c->proto;
+    p->rt_notify(p, c, net, new, old);
+  }
+}
+
 int
 rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
@@ -3096,9 +3113,6 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
 	{
 	  old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
 
-	  if (c->proto->rte_update_in_notify)
-	    c->proto->rte_update_in_notify(c, n, old, src);
-
 	  return 1;
 	}
 
@@ -3111,28 +3125,15 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
 
       /* Remove the old rte */
       *pos = old->next;
-      rte_free_quick(old);
       tab->rt_count--;
-
       break;
     }
 
-  if (!new)
-  {
-    if (!old)
-      goto drop_withdraw;
-
-    if (!net->routes)
-      fib_delete(&tab->fib, net);
-
-    if (c->proto->rte_update_in_notify)
-      c->proto->rte_update_in_notify(c, n, NULL, src);
-
-    return 1;
-  }
+  if (!old && !new)
+    goto drop_withdraw;
 
   struct channel_limit *l = &c->rx_limit;
-  if (l->action && !old)
+  if (l->action && !old && new)
   {
     if (tab->rt_count >= l->limit)
       channel_notify_limit(c, l, PLD_RX, tab->rt_count);
@@ -3147,18 +3148,26 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
     }
   }
 
-  /* Insert the new rte */
-  rte *e = rte_do_cow(new);
-  e->flags |= REF_COW;
-  e->net = net;
-  e->sender = c;
-  e->lastmod = current_time();
-  e->next = *pos;
-  *pos = e;
-  tab->rt_count++;
+  if (new)
+  {
+    /* Insert the new rte */
+    rte *e = rte_do_cow(new);
+    e->flags |= REF_COW;
+    e->net = net;
+    e->sender = c;
+    e->lastmod = current_time();
+    e->next = *pos;
+    *pos = new = e;
+    tab->rt_count++;
+  }
 
-  if (c->proto->rte_update_in_notify)
-    c->proto->rte_update_in_notify(c, n, e, src);
+  rte_announce_in(tab, net, new, old);
+
+  if (old)
+    rte_free_quick(old);
+
+  if (!net->routes)
+    fib_delete(&tab->fib, net);
 
   return 1;
 
