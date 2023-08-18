@@ -770,7 +770,7 @@ bmp_send_peer_up_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
 }
 
 static void
-bmp_route_monitor_put_update(struct bmp_proto *p, struct bmp_stream *bs, const byte *data, size_t length)
+bmp_route_monitor_put_update(struct bmp_proto *p, struct bmp_stream *bs, const byte *data, size_t length, btime timestamp)
 {
   struct bmp_data_node *upd_msg = mb_alloc(p->update_msg_mem_pool,
                                sizeof (struct bmp_data_node));
@@ -784,7 +784,7 @@ bmp_route_monitor_put_update(struct bmp_proto *p, struct bmp_stream *bs, const b
   upd_msg->remote_as = bgp->remote_as;
   upd_msg->remote_id = bgp->remote_id;
   upd_msg->remote_ip = bgp->remote_ip;
-  upd_msg->timestamp = current_time();
+  upd_msg->timestamp = timestamp;
   upd_msg->global_peer = bmp_is_peer_global_instance(bgp);
   upd_msg->policy = bmp_stream_policy(bs);
 
@@ -800,8 +800,11 @@ bmp_route_monitor_notify(struct bmp_proto *p, struct bmp_stream *bs,
   byte buf[BGP_MAX_EXT_MSG_LENGTH];
   byte *end = bgp_bmp_encode_rte(bs->sender, buf, n, new, src);
 
+  btime delta_t = new ? current_time() - new->lastmod : 0;
+  btime timestamp = current_real_time() - delta_t;
+
   if (end)
-    bmp_route_monitor_put_update(p, bs, buf, end - buf);
+    bmp_route_monitor_put_update(p, bs, buf, end - buf, timestamp);
   else
     log(L_WARN "%s: Cannot encode update for %N", p->p.name, n);
 }
@@ -850,7 +853,7 @@ bmp_route_monitor_end_of_rib(struct bmp_proto *p, struct bmp_stream *bs)
   put_u16(rx_end_payload + BGP_MSG_HDR_LENGTH_POS, pos - rx_end_payload);
   put_u8(rx_end_payload + BGP_MSG_HDR_TYPE_POS, PKT_UPDATE);
 
-  bmp_route_monitor_put_update(p, bs, rx_end_payload, pos - rx_end_payload);
+  bmp_route_monitor_put_update(p, bs, rx_end_payload, pos - rx_end_payload, current_real_time());
 }
 
 static void
