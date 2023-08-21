@@ -2148,11 +2148,11 @@ rt_setup(pool *pp, struct rtable_config *cf)
   init_list(&t->flowspec_links);
   init_list(&t->subscribers);
 
+  hmap_init(&t->id_map, p, 1024);
+  hmap_set(&t->id_map, 0);
+
   if (!(t->internal = cf->internal))
   {
-    hmap_init(&t->id_map, p, 1024);
-    hmap_set(&t->id_map, 0);
-
     t->rt_event = ev_new_init(p, rt_event, t);
     t->prune_timer = tm_new_init(p, rt_prune_timer, t, 0, 0);
     t->last_rt_change = t->gc_time = current_time();
@@ -3063,23 +3063,6 @@ rt_feed_channel_abort(struct channel *c)
  *	Import table
  */
 
-static void
-rte_announce_in(struct rtable *tab, struct network *net, struct rte *new, struct rte *old)
-{
-  struct channel *c; node *n;
-  WALK_LIST2(c, n, tab->channels, table_node)
-  {
-    if (c->export_state == ES_DOWN)
-      continue;
-
-    if (c->ra_mode != RA_ANY)
-      continue;
-
-    struct proto *p = c->proto;
-    p->rt_notify(p, c, net, new, old);
-  }
-}
-
 int
 rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
@@ -3159,12 +3142,25 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
     e->next = *pos;
     *pos = new = e;
     tab->rt_count++;
+
+    if (!old)
+    {
+      new->id = hmap_first_zero(&tab->id_map);
+      hmap_set(&tab->id_map, new->id);
+    }
+    else
+      new->id = old->id;
   }
 
-  rte_announce_in(tab, net, new, old);
+  rte_announce(tab, RA_ANY, net, new, old, NULL, NULL);
 
   if (old)
+  {
+    if (!new)
+      hmap_clear(&tab->id_map, old->id);
+
     rte_free_quick(old);
+  }
 
   if (!net->routes)
     fib_delete(&tab->fib, net);
