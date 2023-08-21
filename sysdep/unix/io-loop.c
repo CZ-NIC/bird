@@ -1184,7 +1184,6 @@ bird_thread_sync_all(struct bird_thread_syncer *sync,
     void (*done)(struct bird_thread_syncer *), const char *name)
 {
   sync->lock = DOMAIN_NEW(control);
-  DOMAIN_SETUP(control, sync->lock, name, NULL);
   LOCK_DOMAIN(control, sync->lock);
 
   sync->pool = rp_new(&root_pool, sync->lock.control, name);
@@ -1350,18 +1349,6 @@ cmd_show_threads_done(struct bird_thread_syncer *sync)
 void
 cmd_show_threads(int show_loops)
 {
-  uint total_threads = 0, total_loops = 0;
-  for (int i=0; i<2; i++)
-  {
-    struct birdloop_pickup_group *group = &pickup_groups[i];
-    LOCK_DOMAIN(attrs, group->domain);
-    total_threads += group->thread_count;
-    total_loops += group->loop_count;
-    UNLOCK_DOMAIN(attrs, group->domain);
-  }
-
-  /* Total number of lines must be recalculated when changing the code! */
-
   struct bird_thread_show_data *tsd = mb_allocz(&root_pool, sizeof(struct bird_thread_show_data));
   tsd->cli = this_cli;
   tsd->show_loops = show_loops;

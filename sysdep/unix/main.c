@@ -896,12 +896,12 @@ main(int argc, char **argv)
 
   times_update();
   parse_args(argc, argv);
-  log_switch(1, NULL, NULL);
 
   the_bird_lock();
 
   random_init();
   resource_init();
+  log_switch(1, NULL, NULL);
   birdloop_init();
   olock_init();
   rt_init();

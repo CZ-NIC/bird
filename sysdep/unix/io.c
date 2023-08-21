@@ -18,6 +18,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
 #include <sys/un.h>
@@ -64,7 +65,9 @@
 
 struct rfile {
   resource r;
+  struct stat stat;
   int fd;
+  _Atomic off_t pos;
 };
 
 struct rfile rf_stderr = {
@@ -96,8 +99,8 @@ static struct resclass rf_class = {
   NULL
 };
 
-struct rfile *
-rf_open(pool *p, const char *name, enum rf_mode mode)
+static int
+rf_open_get_fd(const char *name, enum rf_mode mode)
 {
   int omode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
   int flags;
@@ -112,19 +115,65 @@ rf_open(pool *p, const char *name, enum rf_mode mode)
       bug("rf_open() must have the mode set");
   }
 
-  int fd = open(name, flags, omode);
+  return open(name, flags, omode);
+}
+
+static void
+rf_stat(struct rfile *r)
+{
+  if (fstat(r->fd, &r->stat) < 0)
+    die("fstat() failed: %m");
+}
+
+struct rfile *
+rf_open(pool *p, const char *name, enum rf_mode mode)
+{
+  int fd = rf_open_get_fd(name, mode);
+
   if (fd < 0)
     return NULL; /* The caller takes care of printing %m. */
 
   struct rfile *r = ralloc(p, &rf_class);
   r->fd = fd;
+
+  switch (mode)
+  {
+    case RF_APPEND:
+      rf_stat(r);
+      r->pos = S_ISREG(r->stat.st_mode) ? r->stat.st_size : 0;
+      break;
+
+    default:
+      bug("rf_open() must have the mode set");
+  }
+
   return r;
 }
 
-int
-rf_fileno(struct rfile *f)
+off_t
+rf_size(struct rfile *r)
 {
-  return f->fd;
+  return atomic_load_explicit(&r->pos, memory_order_relaxed);
+}
+
+int
+rf_same(struct rfile *a, struct rfile *b)
+{
+  rf_stat(a);
+  rf_stat(b);
+
+  return
+    (a->stat.st_mode == b->stat.st_mode) &&
+    (a->stat.st_dev == b->stat.st_dev) &&
+    (a->stat.st_ino == b->stat.st_ino);
+}
+
+void
+rf_write(struct rfile *r, const void *buf, size_t count)
+{
+  while ((write(r->fd, buf, count) < 0) && (errno == EINTR))
+    ;
+  atomic_fetch_add_explicit(&r->pos, count, memory_order_relaxed);
 }
 
 

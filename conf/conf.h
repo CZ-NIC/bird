@@ -25,7 +25,7 @@ struct config {
   list tests;				/* Configured unit tests (f_bt_test_suite) */
   list symbols;				/* Configured symbols in config order */
 
-  int mrtdump_file;			/* Configured MRTDump file (sysdep, fd in unix) */
+  struct rfile *mrtdump_file;		/* Configured MRTDump file */
   const char *syslog_name;		/* Name used for syslog (NULL -> no syslog) */
   struct symbol *def_tables[NET_MAX];	/* Default routing tables for each network */
   struct iface_patt *router_id_from;	/* Configured list of router ID iface patterns */

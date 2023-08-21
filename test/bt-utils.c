@@ -60,10 +60,10 @@ bt_bird_init(void)
 {
   if(bt_verbose)
     log_init_debug("");
-  log_switch(bt_verbose != 0, NULL, NULL);
 
   olock_init();
   rt_init();
+  log_switch(1, NULL, NULL);
   io_init();
   if_init();
   config_init();

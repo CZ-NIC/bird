@@ -21,6 +21,7 @@ struct lock_order {
   struct domain_generic *service;
   struct domain_generic *rtable;
   struct domain_generic *attrs;
+  struct domain_generic *logging;
   struct domain_generic *resource;
 };
 

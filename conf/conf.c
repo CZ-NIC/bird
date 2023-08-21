@@ -101,7 +101,6 @@ config_alloc(const char *name)
 
   init_list(&c->tests);
   init_list(&c->symbols);
-  c->mrtdump_file = -1; /* Hack, this should be sysdep-specific */
   c->pool = p;
   c->mem = l;
   c->file_name = ndup;
