@@ -116,14 +116,13 @@ bmp_peer_up(struct bgp_proto *bgp,
  * established state
  */
 void
-bmp_peer_down(const struct bgp_proto *bgp, const int err_class, const byte *pkt,
-  size_t pkt_size);
+bmp_peer_down(const struct bgp_proto *bgp, int err_class, int code, int subcode, const byte *data, int length);
 
 
 #else /* BMP build disabled */
 
-static inline void bmp_peer_up(const struct bgp_proto *bgp UNUSED, const byte *tx_open_msg UNUSED, uint tx_open_length UNUSED, const byte *rx_open_msg UNUSED, uint rx_open_length UNUSED) { }
-static inline void bmp_peer_down(const struct bgp_proto *bgp UNUSED, const int err_class UNUSED, const byte *pkt UNUSED, size_t pkt_size UNUSED) { }
+static inline void bmp_peer_up(struct bgp_proto *bgp UNUSED, const byte *tx_open_msg UNUSED, uint tx_open_length UNUSED, const byte *rx_open_msg UNUSED, uint rx_open_length UNUSED) { }
+static inline void bmp_peer_down(const struct bgp_proto *bgp UNUSED, const int err_class UNUSED, int code UNUSED, int subcode UNUSED, const byte *data UNUSED, int length UNUSED) { }
 
 #endif /* CONFIG_BMP */
 

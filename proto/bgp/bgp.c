@@ -391,6 +391,9 @@ bgp_close_conn(struct bgp_conn *conn)
   conn->local_caps = NULL;
   mb_free(conn->remote_caps);
   conn->remote_caps = NULL;
+
+  conn->notify_data = NULL;
+  conn->notify_size = 0;
 }
 
 
@@ -694,7 +697,7 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
 }
 
 static void
-bgp_conn_leave_established_state(struct bgp_proto *p)
+bgp_conn_leave_established_state(struct bgp_conn *conn, struct bgp_proto *p)
 {
   BGP_TRACE(D_EVENTS, "BGP session closed");
   p->last_established = current_time();
@@ -702,6 +705,10 @@ bgp_conn_leave_established_state(struct bgp_proto *p)
 
   if (p->p.proto_state == PS_UP)
     bgp_stop(p, 0, NULL, 0);
+
+  bmp_peer_down(p, p->last_error_class,
+		conn->notify_code, conn->notify_subcode,
+		conn->notify_data, conn->notify_size);
 }
 
 void
@@ -718,7 +725,7 @@ bgp_conn_enter_close_state(struct bgp_conn *conn)
   bgp_start_timer(conn->hold_timer, 10);
 
   if (os == BS_ESTABLISHED)
-    bgp_conn_leave_established_state(p);
+    bgp_conn_leave_established_state(conn, p);
 }
 
 void
@@ -732,7 +739,7 @@ bgp_conn_enter_idle_state(struct bgp_conn *conn)
   ev_schedule(p->event);
 
   if (os == BS_ESTABLISHED)
-    bgp_conn_leave_established_state(p);
+    bgp_conn_leave_established_state(conn, p);
 }
 
 /**
@@ -876,10 +883,7 @@ bgp_graceful_restart_timeout(timer *t)
     }
   }
   else
-  {
     bgp_stop(p, 0, NULL, 0);
-    bmp_peer_down(p, BE_NONE, NULL, 0);
-  }
 }
 
 static void
@@ -1003,10 +1007,7 @@ bgp_sock_err(sock *sk, int err)
   if (err)
     BGP_TRACE(D_EVENTS, "Connection lost (%M)", err);
   else
-  {
     BGP_TRACE(D_EVENTS, "Connection closed");
-    bmp_peer_down(p, BE_SOCKET, NULL, 0);
-  }
 
   if ((conn->state == BS_ESTABLISHED) && p->gr_ready)
     bgp_handle_graceful_restart(p);
@@ -1331,7 +1332,6 @@ bgp_neigh_notify(neighbor *n)
       bgp_store_error(p, NULL, BE_MISC, BEM_NEIGHBOR_LOST);
       /* Perhaps also run bgp_update_startup_delay(p)? */
       bgp_stop(p, 0, NULL, 0);
-      bmp_peer_down(p, BE_MISC, NULL, 0);
     }
   }
   else if (p->cf->check_link && !(n->iface->flags & IF_LINK_UP))
@@ -1343,7 +1343,6 @@ bgp_neigh_notify(neighbor *n)
       if (ps == PS_UP)
 	bgp_update_startup_delay(p);
       bgp_stop(p, 0, NULL, 0);
-      bmp_peer_down(p, BE_MISC, NULL, 0);
     }
   }
   else
@@ -1385,7 +1384,6 @@ bgp_bfd_notify(struct bfd_request *req)
       if (ps == PS_UP)
 	bgp_update_startup_delay(p);
       bgp_stop(p, 0, NULL, 0);
-      bmp_peer_down(p, BE_MISC, NULL, 0);
     }
   }
 }
@@ -2266,12 +2264,13 @@ bgp_error(struct bgp_conn *c, uint code, uint subcode, byte *data, int len)
 
   bgp_log_error(p, BE_BGP_TX, "Error", code, subcode, data, ABS(len));
   bgp_store_error(p, c, BE_BGP_TX, (code << 16) | subcode);
-  bgp_conn_enter_close_state(c);
 
   c->notify_code = code;
   c->notify_subcode = subcode;
   c->notify_data = data;
   c->notify_size = (len > 0) ? len : 0;
+
+  bgp_conn_enter_close_state(c);
   bgp_schedule_packet(c, NULL, PKT_NOTIFICATION);
 
   if (code != 6)

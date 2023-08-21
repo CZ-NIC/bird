@@ -888,7 +888,7 @@ bmp_send_peer_down_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
 
 static void
 bmp_peer_down_(struct bmp_proto *p, const struct bgp_proto *bgp,
-	       const int err_class, const byte *msg, size_t msg_length)
+	       int err_class, int err_code, int err_subcode, const byte *data, int length)
 {
   if (!p->started)
     return;
@@ -899,31 +899,43 @@ bmp_peer_down_(struct bmp_proto *p, const struct bgp_proto *bgp,
 
   TRACE(D_STATES, "Peer down for %s", bgp->p.name);
 
-  buffer payload = bmp_buffer_alloc(p->buffer_mpool, 1 + BGP_HEADER_LENGTH + msg_length);
+  uint bmp_code = 0;
+  uint fsm_code = 0;
 
-  if (msg)
+  switch (err_class)
   {
-    if (err_class == BE_BGP_TX)
-      bmp_put_u8(&payload, BMP_PEER_DOWN_REASON_LOCAL_BGP_NOTIFICATION);
-    else
-      bmp_put_u8(&payload, BMP_PEER_DOWN_REASON_REMOTE_BGP_NOTIFICATION);
+  case BE_BGP_RX:
+    bmp_code = BMP_PEER_DOWN_REASON_REMOTE_BGP_NOTIFICATION;
+    break;
 
-    bmp_put_bgp_hdr(&payload, BGP_HEADER_LENGTH + msg_length, PKT_NOTIFICATION);
-    bmp_put_data(&payload, msg, msg_length);
+  case BE_BGP_TX:
+  case BE_AUTO_DOWN:
+  case BE_MAN_DOWN:
+    bmp_code = BMP_PEER_DOWN_REASON_LOCAL_BGP_NOTIFICATION;
+    break;
+
+  default:
+    bmp_code = BMP_PEER_DOWN_REASON_REMOTE_NO_NOTIFICATION;
+    length = 0;
+    break;
   }
-  else
+
+  buffer payload = bmp_buffer_alloc(p->buffer_mpool, 1 + BGP_HEADER_LENGTH + 2 + length);
+  bmp_put_u8(&payload, bmp_code);
+
+  switch (bmp_code)
   {
-    // TODO: Handle De-configured Peer Down Reason Code
-    if (err_class == BE_SOCKET || err_class == BE_MISC)
-    {
-      bmp_put_u8(&payload, BMP_PEER_DOWN_REASON_REMOTE_NO_NOTIFICATION);
-    }
-    else
-    {
-      bmp_put_u8(&payload, BMP_PEER_DOWN_REASON_LOCAL_NO_NOTIFICATION);
-      // TODO: Fill in with appropriate FSM event code
-      bmp_put_u16(&payload, 0x00); // no relevant Event code is defined
-    }
+  case BMP_PEER_DOWN_REASON_LOCAL_BGP_NOTIFICATION:
+  case BMP_PEER_DOWN_REASON_REMOTE_BGP_NOTIFICATION:
+    bmp_put_bgp_hdr(&payload, BGP_HEADER_LENGTH + 2 + length, PKT_NOTIFICATION);
+    bmp_put_u8(&payload, err_code);
+    bmp_put_u8(&payload, err_subcode);
+    bmp_put_data(&payload, data, length);
+    break;
+
+  case BMP_PEER_DOWN_REASON_LOCAL_NO_NOTIFICATION:
+    bmp_put_u16(&payload, fsm_code);
+    break;
   }
 
   bmp_send_peer_down_notif_msg(p, bgp, bmp_buffer_data(&payload), bmp_buffer_pos(&payload));
@@ -934,12 +946,12 @@ bmp_peer_down_(struct bmp_proto *p, const struct bgp_proto *bgp,
 }
 
 void
-bmp_peer_down(const struct bgp_proto *bgp, const int err_class,
-	      const byte *msg, size_t msg_length)
+bmp_peer_down(const struct bgp_proto *bgp,
+	      int err_class, int code, int subcode, const byte *data, int length)
 {
   struct bmp_proto *p; node *n;
   WALK_LIST2(p, n, bmp_proto_list, bmp_node)
-    bmp_peer_down_(p, bgp, err_class, msg, msg_length);
+    bmp_peer_down_(p, bgp, err_class, code, subcode, data, length);
 }
 
 static void
@@ -987,6 +999,13 @@ bmp_rt_notify(struct proto *P, struct channel *c, struct network *net,
   struct bgp_channel *src = (void *) (new ?: old)->sender;
   struct bgp_proto *bgp = (void *) src->c.proto;
   bool policy = (c->table == src->c.table);
+
+  /*
+   * We assume that we receive peer_up before the first route and peer_down
+   * synchronously with BGP session close. So if bmp_stream exists, the related
+   * BGP session is up and could be accessed. That may not be true in
+   * multithreaded setup.
+   */
 
   struct bmp_stream *bs = bmp_find_stream(p, bgp, src->afi, policy);
   if (!bs)
