@@ -120,7 +120,9 @@ enum rf_mode {
 };
 
 struct rfile *rf_open(struct pool *, const char *name, enum rf_mode mode);
-int rf_fileno(struct rfile *f);
+off_t rf_size(struct rfile *);
+int rf_same(struct rfile *, struct rfile *);
+void rf_write(struct rfile *, const void *, size_t);
 
 extern struct rfile rf_stderr;
 
@@ -138,10 +140,9 @@ void log_switch(int initial, list *l, const char *);
 struct log_config {
   node n;
   uint mask;				/* Classes to log */
-  struct rfile *rf;			/* Resource for log file; NULL=syslog */
+  struct rfile *rf;			/* File handle */
   const char *filename;			/* Log filename */
   const char *backup;			/* Secondary filename (for log rotation) */
-  off_t pos;				/* Position/size of current log */
   off_t limit;				/* Log size limit */
   int terminal_flag;
 };

@@ -20,8 +20,6 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <time.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #include <errno.h>
 
@@ -31,25 +29,31 @@
 #include "lib/string.h"
 #include "lib/lists.h"
 #include "sysdep/unix/unix.h"
+#include "sysdep/unix/io-loop.h"
+
+static pool *log_pool;
 
 static struct rfile *dbg_rf;
-static list *current_log_list;
-static char *current_syslog_name; /* NULL -> syslog closed */
+static char *current_syslog_name = NULL; /* NULL -> syslog closed */
 
 _Atomic uint max_thread_id = ATOMIC_VAR_INIT(1);
 _Thread_local uint this_thread_id;
 
 #include <pthread.h>
 
-static pthread_mutex_t log_mutex;
-static inline void log_lock(void) { pthread_mutex_lock(&log_mutex); }
-static inline void log_unlock(void) { pthread_mutex_unlock(&log_mutex); }
+DEFINE_DOMAIN(logging);
+static DOMAIN(logging) log_domain;
+#define log_lock()  LOCK_DOMAIN(logging, log_domain);
+#define log_unlock()  UNLOCK_DOMAIN(logging, log_domain);
+
+static struct log_channel * _Atomic global_logs;
 
 /* Logging flags to validly prepare logging messages */
 #define LOGGING_TO_TERMINAL   0x1
 #define LOGGING_TO_FILE	      0x2
 
 static _Atomic uint logging_flags;
+static _Atomic uint logging_mask;
 
 #ifdef HAVE_SYSLOG_H
 #include <sys/syslog.h>
@@ -81,53 +85,76 @@ static char *class_names[] = {
   "BUG"
 };
 
-static inline off_t
-log_size(struct log_config *l)
+struct log_channel {
+  struct log_channel * _Atomic next;
+  const char *filename;			/* Log filename */
+  const char *backup;			/* Secondary filename (for log rotation) */
+  struct rfile * _Atomic rf;		/* File handle */
+  off_t limit;				/* Log size limit */
+  _Atomic uint mask;			/* Classes to log */
+  uint new_mask;			/* Pending new mask */
+  uint terminal:1;			/* Is terminal */
+};
+
+struct log_thread_syncer {
+  struct bird_thread_syncer sync;
+  struct log_channel *lc_close;
+  struct rfile *rf_close;
+  const char *name;
+  event lts_event;
+};
+
+static void
+lts_done(struct bird_thread_syncer *sync)
 {
-  struct stat st;
-  return (!fstat(rf_fileno(l->rf), &st) && S_ISREG(st.st_mode)) ? st.st_size : 0;
+  struct log_thread_syncer *lts = SKIP_BACK(struct log_thread_syncer, sync, sync);
+
+  log_lock();
+  if (lts->lc_close)
+  {
+    lts->rf_close = atomic_load_explicit(&lts->lc_close->rf, memory_order_relaxed);
+    mb_free(lts->lc_close);
+  }
+
+  if (lts->rf_close && lts->rf_close != &rf_stderr)
+    rfree(lts->rf_close);
+
+  mb_free(lts);
+  log_unlock();
 }
 
 static void
-log_close(struct log_config *l)
+lts_event(void *_lts)
 {
-  if (l->rf != &rf_stderr)
-    rfree(l->rf);
-
-  l->rf = NULL;
+  struct log_thread_syncer *lts = _lts;
+  bird_thread_sync_all(&lts->sync, NULL, lts_done, lts->name);
 }
 
-static int
-log_open(struct log_config *l)
+static void
+lts_request(struct log_channel *lc_close, struct rfile *rf_close, const char *name)
 {
-  l->rf = rf_open(config->pool, l->filename, RF_APPEND);
-  if (!l->rf)
-  {
-    /* Well, we cannot do much in case of error as log is closed */
-    l->mask = 0;
-    return -1;
-  }
-
-  l->pos = log_size(l);
-
-  return 0;
+  struct log_thread_syncer *lts = mb_allocz(log_pool, sizeof *lts);
+  lts->lc_close = lc_close;
+  lts->rf_close = rf_close;
+  lts->name = name;
+  lts->lts_event = (event) { .hook = lts_event, .data = lts, };
+  ev_send_loop(&main_birdloop, &lts->lts_event);
 }
 
-static int
-log_rotate(struct log_config *l)
+static void
+log_rotate(struct log_channel *lc)
 {
-  log_close(l);
+  struct log_thread_syncer *lts = mb_allocz(log_pool, sizeof *lts);
 
-  /* If we cannot rename the logfile, we at least try to delete it
-     in order to continue logging and not exceeding logfile size */
-  if ((rename(l->filename, l->backup) < 0) &&
-      (unlink(l->filename) < 0))
-  {
-    l->mask = 0;
-    return -1;
-  }
+  if ((rename(lc->filename, lc->backup) < 0) && (unlink(lc->filename) < 0))
+    return lts_request(lc, NULL, "Log Rotate Failed");
 
-  return log_open(l);
+  struct rfile *rf = rf_open(log_pool, lc->filename, RF_APPEND);
+  if (!rf)
+    return lts_request(lc, NULL, "Log Rotate Failed");
+
+  lts_request(NULL, atomic_load_explicit(&lc->rf, memory_order_relaxed), "Log Rotate Close Old File");
+  atomic_store_explicit(&lc->rf, rf, memory_order_release);
 }
 
 #define LOG_MSG_OFFSET	(TM_DATETIME_BUFFER_SIZE + 64)
@@ -148,29 +175,40 @@ log_rotate(struct log_config *l)
 void
 log_commit(log_buffer *buf)
 {
-  struct log_config *l;
-
   if (buf->buf.pos == buf->buf.end)
 #define TOO_LONG " ... <too long>"
     memcpy(buf->buf.end - sizeof TOO_LONG, TOO_LONG, sizeof TOO_LONG);
 #undef TOO_LONG
 
-  log_lock();
-  WALK_LIST(l, *current_log_list)
+  for (
+      struct log_channel *l = atomic_load_explicit(&global_logs, memory_order_acquire);
+      l;
+      l = atomic_load_explicit(&l->next, memory_order_acquire)
+      )
     {
-      if (!(l->mask & (1 << buf->class)))
+      uint mask = atomic_load_explicit(&l->mask, memory_order_acquire);
+      if (!(mask & (1 << buf->class)))
 	continue;
-      if (l->rf && buf->tm_pos)
+
+      struct rfile *rf = atomic_load_explicit(&l->rf, memory_order_acquire);
+      if (rf && buf->tm_pos)
 	{
 	  *buf->buf.pos = '\n';
-	  byte *begin = l->terminal_flag ? buf->buf.start : buf->tm_pos;
+	  byte *begin = l->terminal ? buf->buf.start : buf->tm_pos;
 	  off_t msg_len = buf->buf.pos - begin + 1;
-	  if (l->limit && (l->pos + msg_len > l->limit) && (log_rotate(l) < 0))
-	    continue;
+	  if (l->limit && (rf_size(rf) + msg_len > l->limit))
+	    {
+	      log_lock();
+              rf = atomic_load_explicit(&l->rf, memory_order_acquire);
+	      if (rf_size(rf) + msg_len > l->limit)
+	      {
+		log_rotate(l);
+		rf = atomic_load_explicit(&l->rf, memory_order_relaxed);
+	      }
+	      log_unlock();
+	    }
 
-	  l->pos += msg_len;
-	  while ((write(rf_fileno(l->rf), buf->tm_pos, msg_len) < 0) && (errno == EINTR))
-	    ;
+	  rf_write(l->rf, buf->tm_pos, msg_len);
 	}
 #ifdef HAVE_SYSLOG_H
       else
@@ -180,7 +218,6 @@ log_commit(log_buffer *buf)
       }
 #endif
     }
-  log_unlock();
 
   buf->msg_pos = buf->tm_pos = NULL;
 }
@@ -219,6 +256,10 @@ static void
 vlog(int class, const char *msg, va_list args)
 {
   static _Thread_local log_buffer buf;
+
+  /* No logging at all if nobody would receive the message either */
+  if (!(atomic_load_explicit(&logging_mask, memory_order_acquire) & (1 << class)))
+    return;
 
   log_prepare(&buf, class);
   buffer_vprint(&buf.buf, msg, args);
@@ -328,7 +369,7 @@ debug(const char *msg, ...)
       if (s < 0)
 	bug("Extremely long debug output, split it.");
 
-      write(rf_fileno(dbg_rf), buf, s);
+      rf_write(dbg_rf, buf, s);
     }
   va_end(args);
 }
@@ -345,7 +386,7 @@ void
 debug_safe(const char *msg)
 {
   if (dbg_rf)
-    write(rf_fileno(dbg_rf), msg, strlen(msg));
+    rf_write(dbg_rf, msg, strlen(msg));
 }
 
 static list *
@@ -397,59 +438,217 @@ default_log_list(int initial, const char **syslog_name)
 void
 log_switch(int initial, list *logs, const char *new_syslog_name)
 {
-  struct log_config *l;
+  if (initial)
+  {
+    log_domain = DOMAIN_NEW(logging);
+    log_lock();
+    log_pool = rp_new(&root_pool, log_domain.logging, "Log files");
 
-  /* We should not manipulate with log list when other threads may use it */
-  log_lock();
+#if HAVE_SYSLOG_H
+    /* Create syslog channel */
+    struct log_channel *lc = mb_alloc(log_pool, sizeof *lc);
+
+    *lc = (struct log_channel) {};
+    ASSERT_DIE(NULL == atomic_exchange_explicit(&global_logs, lc, memory_order_release));
+#endif
+
+    log_unlock();
+  }
 
   if (!logs || EMPTY_LIST(*logs))
     logs = default_log_list(initial, &new_syslog_name);
 
-  /* Close the logs to avoid pinning them on disk when deleted */
-  if (current_log_list)
-    WALK_LIST(l, *current_log_list)
-      if (l->rf)
-	log_close(l);
+  ASSERT_DIE(logs);
 
-  /* Reopen the logs, needed for 'configure undo' */
-  uint flags = 0;
-  if (logs)
-    WALK_LIST(l, *logs)
+  /* Prepare the new log configuration */
+  struct log_config *l;
+  WALK_LIST(l, *logs)
+  {
+    int erf = 0;
+    log_lock();
+    if (l->rf && (l->rf != &rf_stderr))
+      rmove(l->rf, log_pool);
+    else if (l->filename)
     {
-      if (l->terminal_flag)
-	flags |= LOGGING_TO_TERMINAL;
-      if (l->filename && !l->rf)
-	log_open(l);
-      if (l->rf)
-	flags |= LOGGING_TO_FILE;
+      l->rf = rf_open(log_pool, l->filename, RF_APPEND);
+      erf = l->rf ? 0 : errno;
+    }
+    log_unlock();
+    if (erf)
+      log(L_ERR "Failed to open log file '%s': %M", l->filename, erf);
+  }
+
+  uint total_mask = 0;
+  uint flags = 0;
+
+  /* Update pre-existing log channels */
+  for (
+      struct log_channel * _Atomic *pprev = &global_logs, *ol;
+      ol = atomic_load_explicit(pprev, memory_order_acquire);
+      pprev = &ol->next)
+  {
+    ol->new_mask = 0;
+    if (ol->rf)
+    {
+      WALK_LIST(l, *logs)
+	if (l->rf && rf_same(l->rf, ol->rf))
+	{
+	  /* Merge the mask */
+	  ol->new_mask |= l->mask;
+	  total_mask |= l->mask;
+
+	  /* Merge flags */
+	  flags |= LOGGING_TO_FILE;
+	  if (l->terminal_flag)
+	  {
+	    flags |= LOGGING_TO_TERMINAL;
+	    ol->terminal = 1;
+	  }
+
+	  /* The filehandle is no longer needed */
+	  if (l->rf != &rf_stderr)
+	  {
+	    log_lock();
+	    rfree(l->rf);
+	    log_unlock();
+	  }
+
+	  l->rf = NULL;
+	}
+    }
+    else
+      WALK_LIST(l, *logs)
+	if (!l->filename && !l->rf)
+	{
+	  ol->new_mask |= l->mask;
+	  total_mask |= l->mask;
+	}
+
+    /* First only extend masks */
+    atomic_fetch_or_explicit(&ol->mask, ol->new_mask, memory_order_acq_rel);
+  }
+
+  atomic_fetch_or_explicit(&logging_mask, total_mask, memory_order_acq_rel);
+
+  /* Open new log channels */
+  WALK_LIST(l, *logs)
+  {
+    if (!l->rf)
+      continue;
+
+    /* Truly new log channel */
+    log_lock();
+    struct log_channel *lc = mb_alloc(log_pool, sizeof *lc);
+    log_unlock();
+
+    *lc = (struct log_channel) {
+      .filename = l->filename,
+      .backup = l->backup,
+      .rf = l->rf,
+      .limit = l->limit,
+      .new_mask = l->mask,
+      .terminal = l->terminal_flag,
+    };
+
+    total_mask |= l->mask;
+
+    /* Message preparation flags */
+    flags |= LOGGING_TO_FILE;
+    if (l->terminal_flag)
+    {
+      flags |= LOGGING_TO_TERMINAL;
+      lc->terminal = 1;
     }
 
-  atomic_store_explicit(&logging_flags, flags, memory_order_release);
+    /* Now the file handle ownership is transferred to the log channel */
+    l->rf = NULL;
 
-  current_log_list = logs;
+    /* Find more */
+    for (struct log_config *ll = NODE_NEXT(l); NODE_VALID(ll); ll = NODE_NEXT(ll))
+      if (ll->filename && ll->rf && rf_same(lc->rf, ll->rf))
+      {
+	/* Merged with this channel */
+	lc->new_mask |= ll->mask;
+	total_mask |= ll->mask;
+
+	if (l->rf != &rf_stderr)
+	{
+	  log_lock();
+	  rfree(ll->rf);
+	  log_unlock();
+	}
+	ll->rf = NULL;
+      }
+
+    atomic_store_explicit(&lc->mask, lc->new_mask, memory_order_release);
+
+    /* Insert into the main log list */
+    struct log_channel *head = atomic_load_explicit(&global_logs, memory_order_acquire);
+    do atomic_store_explicit(&lc->next, head, memory_order_release);
+    while (!atomic_compare_exchange_strong_explicit(
+	  &global_logs, &head, lc,
+	  memory_order_acq_rel, memory_order_acquire));
+  }
+
+  /* Merge overall flags */
+  atomic_fetch_or_explicit(&logging_flags, flags, memory_order_acq_rel);
+  atomic_fetch_or_explicit(&logging_mask, total_mask, memory_order_acq_rel);
+
+  /* Close end-of-life log channels */
+  for (struct log_channel * _Atomic *pprev = &global_logs,
+			  *ol = atomic_load_explicit(pprev, memory_order_acquire);
+      ol; )
+  {
+    /* Store new mask after opening new files to minimize missing log message race conditions */
+    atomic_store_explicit(&ol->mask, ol->new_mask, memory_order_release);
+
+    /* Never close syslog channel */
+    if (ol->new_mask || !ol->rf)
+    {
+      pprev = &ol->next;
+      ol = atomic_load_explicit(pprev, memory_order_acquire);
+    }
+    else
+    {
+      /* This file has no logging set up, remove from list */
+      struct log_channel *next = atomic_load_explicit(&ol->next, memory_order_acquire);
+      atomic_store_explicit(pprev, next, memory_order_release);
+
+      /* Free the channel after all worker threads leave the critical section */
+      log_lock();
+      lts_request(ol, NULL, "Log Reconfigure Close Old File");
+      log_unlock();
+
+      /* Continue to next */
+      ol = next;
+    }
+  }
+
+  /* Set overall flags after files are closed */
+  atomic_store_explicit(&logging_flags, flags, memory_order_release);
+  atomic_store_explicit(&logging_mask, total_mask, memory_order_release);
 
 #ifdef HAVE_SYSLOG_H
-  if (!bstrcmp(current_syslog_name, new_syslog_name))
-    goto done;
-
-  if (current_syslog_name)
+  if ((!current_syslog_name != !new_syslog_name)
+      || bstrcmp(current_syslog_name, new_syslog_name))
   {
-    closelog();
-    xfree(current_syslog_name);
-    current_syslog_name = NULL;
-  }
+    char *old_syslog_name = current_syslog_name;
 
-  if (new_syslog_name)
-  {
-    current_syslog_name = xstrdup(new_syslog_name);
-    openlog(current_syslog_name, LOG_CONS | LOG_NDELAY, LOG_DAEMON);
-  }
+    if (new_syslog_name)
+    {
+      current_syslog_name = xstrdup(new_syslog_name);
+      openlog(current_syslog_name, LOG_CONS | LOG_NDELAY, LOG_DAEMON);
+    }
+    else
+    {
+      current_syslog_name = NULL;
+      closelog();
+    }
 
+    if (old_syslog_name)
+      xfree(old_syslog_name);
+  }
 #endif
-
-done:
-  /* Logs exchange done, let the threads log as before */
-  log_unlock();
 }
 
 void
@@ -458,7 +657,7 @@ log_init_debug(char *f)
   clock_gettime(CLOCK_MONOTONIC, &dbg_time_start);
 
   if (dbg_rf && dbg_rf != &rf_stderr)
-    close(rf_fileno(dbg_rf));
+    rfree(dbg_rf);
 
   if (!f)
     dbg_rf = NULL;

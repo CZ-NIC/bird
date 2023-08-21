@@ -55,7 +55,6 @@ log_file:
        this_log->rf = rf_open(new_config->pool, $1, RF_APPEND);
        if (!this_log->rf) cf_error("Unable to open log file '%s': %m", $1);
      }
-     this_log->pos = -1;
      this_log->filename = $1;
    }
  | SYSLOG syslog_name { this_log->rf = NULL; new_config->syslog_name = $2; }
@@ -94,7 +93,7 @@ mrtdump_base:
      {
        struct rfile *f = rf_open(new_config->pool, $2, RF_APPEND);
        if (!f) cf_error("Unable to open MRTDump file '%s': %m", $2);
-       new_config->mrtdump_file = rf_fileno(f);
+       new_config->mrtdump_file = f;
      }
    }
  ;
