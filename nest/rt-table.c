@@ -2148,11 +2148,11 @@ rt_setup(pool *pp, struct rtable_config *cf)
   init_list(&t->flowspec_links);
   init_list(&t->subscribers);
 
+  hmap_init(&t->id_map, p, 1024);
+  hmap_set(&t->id_map, 0);
+
   if (!(t->internal = cf->internal))
   {
-    hmap_init(&t->id_map, p, 1024);
-    hmap_set(&t->id_map, 0);
-
     t->rt_event = ev_new_init(p, rt_event, t);
     t->prune_timer = tm_new_init(p, rt_prune_timer, t, 0, 0);
     t->last_rt_change = t->gc_time = current_time();
@@ -3107,25 +3107,15 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
 
       /* Remove the old rte */
       *pos = old->next;
-      rte_free_quick(old);
       tab->rt_count--;
-
       break;
     }
 
-  if (!new)
-  {
-    if (!old)
-      goto drop_withdraw;
-
-    if (!net->routes)
-      fib_delete(&tab->fib, net);
-
-    return 1;
-  }
+  if (!old && !new)
+    goto drop_withdraw;
 
   struct channel_limit *l = &c->rx_limit;
-  if (l->action && !old)
+  if (l->action && !old && new)
   {
     if (tab->rt_count >= l->limit)
       channel_notify_limit(c, l, PLD_RX, tab->rt_count);
@@ -3140,15 +3130,40 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
     }
   }
 
-  /* Insert the new rte */
-  rte *e = rte_do_cow(new);
-  e->flags |= REF_COW;
-  e->net = net;
-  e->sender = c;
-  e->lastmod = current_time();
-  e->next = *pos;
-  *pos = e;
-  tab->rt_count++;
+  if (new)
+  {
+    /* Insert the new rte */
+    rte *e = rte_do_cow(new);
+    e->flags |= REF_COW;
+    e->net = net;
+    e->sender = c;
+    e->lastmod = current_time();
+    e->next = *pos;
+    *pos = new = e;
+    tab->rt_count++;
+
+    if (!old)
+    {
+      new->id = hmap_first_zero(&tab->id_map);
+      hmap_set(&tab->id_map, new->id);
+    }
+    else
+      new->id = old->id;
+  }
+
+  rte_announce(tab, RA_ANY, net, new, old, NULL, NULL);
+
+  if (old)
+  {
+    if (!new)
+      hmap_clear(&tab->id_map, old->id);
+
+    rte_free_quick(old);
+  }
+
+  if (!net->routes)
+    fib_delete(&tab->fib, net);
+
   return 1;
 
 drop_update:
