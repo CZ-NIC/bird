@@ -104,4 +104,20 @@ struct bird_thread
   struct spent_time overhead, idle;
 };
 
+
+DEFINE_DOMAIN(control);
+
+struct bird_thread_syncer {
+  pool *pool;
+  DOMAIN(control) lock;
+  uint total;
+  uint done;
+  void (*hook)(struct bird_thread_syncer *);	/* Runs in worker threads */
+  void (*finish)(struct bird_thread_syncer *);	/* Runs in main thread last */
+};
+
+void bird_thread_sync_all(struct bird_thread_syncer *sync,
+    void (*hook)(struct bird_thread_syncer *),
+    void (*done)(struct bird_thread_syncer *), const char *name);
+
 #endif
