@@ -451,10 +451,7 @@ channel_start_export(struct channel *c)
   ASSERT(c->channel_state == CS_UP);
   ASSERT(c->export_state == ES_DOWN);
 
-  if (!c->bmp_hack)
-    channel_schedule_feed(c, 1);	/* Sets ES_FEEDING */
-  else
-    c->export_state = ES_READY;
+  channel_schedule_feed(c, 1);	/* Sets ES_FEEDING */
 }
 
 static void

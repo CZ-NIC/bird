@@ -87,6 +87,7 @@ struct bmp_stream {
   node n;
   struct bgp_proto *bgp;
   u32 key;
+  bool sync;
   struct bmp_stream *next;
   struct bmp_table *table;
   struct bgp_channel *sender;

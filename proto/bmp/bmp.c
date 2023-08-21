@@ -223,6 +223,8 @@ bmp_send_peer_up_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
   const byte *tx_data, const size_t tx_data_size,
   const byte *rx_data, const size_t rx_data_size);
 
+static void bmp_route_monitor_end_of_rib(struct bmp_proto *p, struct bmp_stream *bs);
+
 // Stores necessary any data in list
 struct bmp_data_node {
   node n;
@@ -236,9 +238,6 @@ struct bmp_data_node {
   bool global_peer;
   bool policy;
 };
-
-static void
-bmp_route_monitor_snapshot(struct bmp_proto *p, struct bmp_stream *bs);
 
 static void
 bmp_common_hdr_serialize(buffer *stream, const enum bmp_message_type type, const u32 data_size)
@@ -571,6 +570,7 @@ bmp_add_stream(struct bmp_proto *p, struct bmp_peer *bp, u32 afi, bool policy, s
   bmp_lock_table(p, bs->table);
 
   bs->sender = sender;
+  bs->sync = false;
 
   return bs;
 }
@@ -634,7 +634,7 @@ bmp_remove_peer(struct bmp_proto *p, struct bmp_peer *bp)
 }
 
 static void
-bmp_peer_up_(struct bmp_proto *p, struct bgp_proto *bgp,
+bmp_peer_up_(struct bmp_proto *p, struct bgp_proto *bgp, bool sync,
 	    const byte *tx_open_msg, uint tx_open_length,
 	    const byte *rx_open_msg, uint rx_open_length)
 {
@@ -651,9 +651,20 @@ bmp_peer_up_(struct bmp_proto *p, struct bgp_proto *bgp,
 
   bmp_send_peer_up_notif_msg(p, bgp, tx_open_msg, tx_open_length, rx_open_msg, rx_open_length);
 
-  struct bmp_stream *bs;
-  WALK_LIST(bs, bp->streams)
-    bmp_route_monitor_snapshot(p, bs);
+  /*
+   * We asssume peer_up() notifications are received before any route
+   * notifications from that peer. Therefore, peers established after BMP
+   * session coould be considered synced with empty RIB.
+   */
+  if (sync)
+  {
+    struct bmp_stream *bs;
+    WALK_LIST(bs, bp->streams)
+    {
+      bmp_route_monitor_end_of_rib(p, bs);
+      bs->sync = true;
+    }
+  }
 }
 
 void
@@ -663,7 +674,7 @@ bmp_peer_up(struct bgp_proto *bgp,
 {
   struct bmp_proto *p; node *n;
   WALK_LIST2(p, n, bmp_proto_list, bmp_node)
-      bmp_peer_up_(p, bgp, tx_open_msg, tx_open_length, rx_open_msg, rx_open_length);
+    bmp_peer_up_(p, bgp, true, tx_open_msg, tx_open_length, rx_open_msg, rx_open_length);
 }
 
 static void
@@ -675,7 +686,7 @@ bmp_peer_init(struct bmp_proto *p, struct bgp_proto *bgp)
       !conn->local_open_msg || !conn->remote_open_msg)
     return;
 
-  bmp_peer_up_(p, bgp, conn->local_open_msg, conn->local_open_length,
+  bmp_peer_up_(p, bgp, false, conn->local_open_msg, conn->local_open_length,
 	       conn->remote_open_msg, conn->remote_open_length);
 }
 
@@ -857,25 +868,6 @@ bmp_route_monitor_end_of_rib(struct bmp_proto *p, struct bmp_stream *bs)
 }
 
 static void
-bmp_route_monitor_snapshot(struct bmp_proto *p, struct bmp_stream *bs)
-{
-  struct rtable *tab = bs->table->table;
-
-  struct fib_iterator fit = {};
-  FIB_ITERATE_INIT(&fit, &tab->fib);
-  FIB_ITERATE_START(&tab->fib, &fit, net, n)
-  {
-    rte *e;
-    for (e = n->routes; e; e = e->next)
-      if (e->sender == &bs->sender->c)
-	bmp_route_monitor_notify(p, bs, n->n.addr, e, e->src);
-  }
-  FIB_ITERATE_END;
-
-  bmp_route_monitor_end_of_rib(p, bs);
-}
-
-static void
 bmp_send_peer_down_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
   const byte *data, const size_t data_size)
 {
@@ -1001,6 +993,34 @@ bmp_rt_notify(struct proto *P, struct channel *c, struct network *net,
     return;
 
   bmp_route_monitor_notify(p, bs, net->n.addr, new, (new ?: old)->src);
+}
+
+static void
+bmp_feed_end(struct channel *c)
+{
+  struct bmp_proto *p = (void *) c->proto;
+
+  struct bmp_table *bt = bmp_find_table(p, c->table);
+  if (!bt)
+    return;
+
+  /*
+   * Unsynced streams are added in one moment during BMP session establishment,
+   * therefore we can assume that all unsynced streams (for given channel)
+   * already received full feed now and are synced.
+   *
+   * TODO: Use more efficent way to find bmp_stream from bmp_table
+   */
+
+  HASH_WALK(p->stream_map, next, bs)
+  {
+    if ((bs->table == bt) && !bs->sync)
+    {
+      bmp_route_monitor_end_of_rib(p, bs);
+      bs->sync = true;
+    }
+  }
+  HASH_WALK_END;
 }
 
 
@@ -1181,6 +1201,7 @@ bmp_init(struct proto_config *CF)
 
   P->rt_notify = bmp_rt_notify;
   P->preexport = bmp_preexport;
+  P->feed_end = bmp_feed_end;
 
   p->cf = cf;
   p->local_addr = cf->local_addr;
