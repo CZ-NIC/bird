@@ -57,7 +57,8 @@ struct config {
   int thread_count;			/* How many worker threads to prefork */
 
   struct sym_scope *root_scope;		/* Scope for root symbols */
-  int obstacle_count;			/* Number of items blocking freeing of this config */
+  _Atomic int obstacle_count;		/* Number of items blocking freeing of this config */
+  event done_event;			/* Called when obstacle_count reaches zero */
   int shutdown;				/* This is a pseudo-config for daemon shutdown */
   int gr_down;				/* This is a pseudo-config for graceful restart */
   btime load_time;			/* When we've got this configuration */
