@@ -2425,7 +2425,6 @@ avoid routing loops.
 <item> <rfc id="5065"> - AS confederations for BGP
 <item> <rfc id="5082"> - Generalized TTL Security Mechanism
 <item> <rfc id="5492"> - Capabilities Advertisement with BGP
-<item> <rfc id="5549"> - Advertising IPv4 NLRI with an IPv6 Next Hop
 <item> <rfc id="5575"> - Dissemination of Flow Specification Rules
 <item> <rfc id="5668"> - 4-Octet AS Specific BGP Extended Community
 <item> <rfc id="6286"> - AS-Wide Unique BGP Identifier
@@ -2440,6 +2439,7 @@ avoid routing loops.
 <item> <rfc id="8203"> - BGP Administrative Shutdown Communication
 <item> <rfc id="8212"> - Default EBGP Route Propagation Behavior without Policies
 <item> <rfc id="8654"> - Extended Message Support for BGP
+<item> <rfc id="8950"> - Advertising IPv4 NLRI with an IPv6 Next Hop
 <item> <rfc id="9072"> - Extended Optional Parameters Length for BGP OPEN Message
 <item> <rfc id="9117"> - Revised Validation Procedure for BGP Flow Specifications
 <item> <rfc id="9234"> - Route Leak Prevention and Detection Using Roles
@@ -3100,7 +3100,7 @@ be used in explicit configuration.
 	associated network prefixes. This option provides an extension to use
 	IPv4 next hops with IPv6 prefixes and vice versa. For IPv4 / VPNv4
 	channels, the behavior is controlled by the Extended Next Hop Encoding
-	capability, as described in <rfc id="5549">. For IPv6 / VPNv6 channels,
+	capability, as described in <rfc id="8950">. For IPv6 / VPNv6 channels,
 	just IPv4-mapped IPv6 addresses are used, as described in
 	<rfc id="4798"> and <rfc id="4659">. Default: off.
 

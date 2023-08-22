@@ -507,7 +507,7 @@ bgp_read_capabilities(struct bgp_conn *conn, byte *pos, int len)
       caps->route_refresh = 1;
       break;
 
-    case  5: /* Extended next hop encoding capability, RFC 5549 */
+    case  5: /* Extended next hop encoding capability, RFC 8950 */
       if (cl % 6)
 	goto err;
 
@@ -1257,7 +1257,7 @@ bgp_encode_next_hop_ip(struct bgp_write_state *s, eattr *a, byte *buf, uint size
 
   /*
    * Both IPv4 and IPv6 next hops can be used (with ext_next_hop enabled). This
-   * is specified in RFC 5549 for IPv4 and in RFC 4798 for IPv6. The difference
+   * is specified in RFC 8950 for IPv4 and in RFC 4798 for IPv6. The difference
    * is that IPv4 address is directly encoded with IPv4 NLRI, but as IPv4-mapped
    * IPv6 address with IPv6 NLRI.
    */
@@ -1332,7 +1332,7 @@ bgp_encode_next_hop_vpn(struct bgp_write_state *s, eattr *a, byte *buf, uint siz
 
   /*
    * Both IPv4 and IPv6 next hops can be used (with ext_next_hop enabled). This
-   * is specified in RFC 5549 for VPNv4 and in RFC 4659 for VPNv6. The difference
+   * is specified in RFC 8950 for VPNv4 and in RFC 4659 for VPNv6. The difference
    * is that IPv4 address is directly encoded with VPNv4 NLRI, but as IPv4-mapped
    * IPv6 address with VPNv6 NLRI.
    */

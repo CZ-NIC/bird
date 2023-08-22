@@ -232,7 +232,7 @@ struct bgp_af_caps {
   u8 llgr_able;				/* Long-lived GR, RFC draft */
   u32 llgr_time;			/* Long-lived GR stale time */
   u8 llgr_flags;			/* Long-lived GR per-AF flags */
-  u8 ext_next_hop;			/* Extended IPv6 next hop,   RFC 5549 */
+  u8 ext_next_hop;			/* Extended IPv6 next hop,   RFC 8950 */
   u8 add_path;				/* Multiple paths support,   RFC 7911 */
 };
 
