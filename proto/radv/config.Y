@@ -26,7 +26,7 @@ static list radv_dns_list;	/* Used by radv_rdnss and radv_dnssl */
 static u8 radv_mult_val;	/* Used by radv_mult for second return value */
 
 static inline void
-radv_add_to_custom_list(list *l, int type, struct bytestring *payload)
+radv_add_to_custom_list(list *l, int type, const struct bytestring *payload)
 {
   if (type < 0 || type > 255) cf_error("RA cusom type must be in range 0-255");
   struct radv_custom_config *cf = cfg_allocz(sizeof(struct radv_custom_config));

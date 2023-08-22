@@ -129,7 +129,7 @@ struct radv_custom_config
 {
   node n;
   u8 type;			/* Identifier of the type of option */
-  struct bytestring *payload;	/* Payload of the option */
+  const struct bytestring *payload;	/* Payload of the option */
 };
 
 /*
