@@ -797,7 +797,7 @@ rip_reconfigure_ifaces(struct rip_proto *p, struct rip_config *cf)
 
   WALK_LIST(iface, iface_list)
   {
-    if (p->p.vrf_set && p->p.vrf != iface->master)
+    if (p->p.vrf_set && !if_in_vrf(iface, p->p.vrf))
       continue;
 
     if (!(iface->flags & IF_UP))

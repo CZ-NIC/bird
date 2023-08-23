@@ -53,6 +53,7 @@ struct iface {
 #define IF_IGNORE 0x40			/* Not to be used by routing protocols (loopbacks etc.) */
 #define IF_ADMIN_UP 0x80		/* Administrative up (e.g. IFF_UP in Linux) */
 #define IF_LINK_UP 0x100		/* Link available (e.g. IFF_LOWER_UP in Linux) */
+#define IF_VRF 0x200			/* Iface is VRF master */
 
 #define IA_PRIMARY 0x10000		/* This address is primary */
 #define IA_SECONDARY 0x20000		/* This address has been reported as secondary by the kernel */
@@ -118,6 +119,9 @@ struct iface *if_find_by_index(unsigned);
 struct iface *if_find_by_name(const char *);
 struct iface *if_get_by_name(const char *);
 void if_recalc_all_preferred_addresses(void);
+
+static inline int if_in_vrf(struct iface *i, struct iface *vrf)
+{ return (i->flags & IF_VRF) ? (i == vrf) : (i->master == vrf); }
 
 
 /* The Neighbor Cache */

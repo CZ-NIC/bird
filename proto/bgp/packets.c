@@ -1179,7 +1179,7 @@ bgp_use_gateway(struct bgp_export_state *s)
     return 0;
 
   /* Do not use gateway from different VRF */
-  if (p->p.vrf_set && ra->nh.iface && (p->p.vrf != ra->nh.iface->master))
+  if (p->p.vrf_set && ra->nh.iface && !if_in_vrf(ra->nh.iface, p->p.vrf))
     return 0;
 
   /* Use it when exported to internal peers */

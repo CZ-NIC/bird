@@ -153,7 +153,7 @@ if_connected_any(ip_addr a, struct iface *vrf, uint vrf_set, struct iface **ifac
 
   /* Prefer SCOPE_HOST or longer prefix */
   WALK_LIST(i, iface_list)
-    if ((!vrf_set || vrf == i->master) && ((s = if_connected(a, i, &b, flags)) >= 0))
+    if ((!vrf_set || if_in_vrf(i, vrf)) && ((s = if_connected(a, i, &b, flags)) >= 0))
       if (scope_better(s, scope) || (scope_remote(s, scope) && ifa_better(b, *addr)))
       {
 	*iface = i;
@@ -369,7 +369,7 @@ neigh_update(neighbor *n, struct iface *iface)
     return;
 
   /* VRF-bound neighbors ignore changes in other VRFs */
-  if (p->vrf_set && (p->vrf != iface->master))
+  if (p->vrf_set && !if_in_vrf(iface, p->vrf))
     return;
 
   scope = if_connected(n->addr, iface, &ifa, n->flags);

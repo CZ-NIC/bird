@@ -333,13 +333,21 @@ struct nl_want_attrs {
 };
 
 
-#define BIRD_IFLA_MAX (IFLA_WIRELESS+1)
+#define BIRD_IFLA_MAX (IFLA_LINKINFO+1)
 
 static struct nl_want_attrs ifla_attr_want[BIRD_IFLA_MAX] = {
   [IFLA_IFNAME]	  = { 1, 0, 0 },
   [IFLA_MTU]	  = { 1, 1, sizeof(u32) },
   [IFLA_MASTER]	  = { 1, 1, sizeof(u32) },
   [IFLA_WIRELESS] = { 1, 0, 0 },
+  [IFLA_LINKINFO] = { 1, 0, 0 },
+};
+
+#define BIRD_INFO_MAX (IFLA_INFO_DATA+1)
+
+static struct nl_want_attrs ifinfo_attr_want[BIRD_INFO_MAX] = {
+  [IFLA_INFO_KIND]= { 1, 0, 0 },
+  [IFLA_INFO_DATA]= { 1, 0, 0 },
 };
 
 
@@ -868,7 +876,7 @@ nl_parse_link(struct nlmsghdr *h, int scan)
   int new = h->nlmsg_type == RTM_NEWLINK;
   struct iface f = {};
   struct iface *ifi;
-  char *name;
+  const char *name, *kind = NULL;
   u32 mtu, master = 0;
   uint fl;
 
@@ -894,6 +902,15 @@ nl_parse_link(struct nlmsghdr *h, int scan)
 
   if (a[IFLA_MASTER])
     master = rta_get_u32(a[IFLA_MASTER]);
+
+  if (a[IFLA_LINKINFO])
+  {
+    struct rtattr *li[BIRD_INFO_MAX];
+    nl_attr_len = RTA_PAYLOAD(a[IFLA_LINKINFO]);
+    nl_parse_attrs(RTA_DATA(a[IFLA_LINKINFO]), ifinfo_attr_want, li, sizeof(li));
+    if (li[IFLA_INFO_KIND])
+      kind = RTA_DATA(li[IFLA_INFO_KIND]);
+  }
 
   ifi = if_find_by_index(i->ifi_index);
   if (!new)
@@ -933,6 +950,9 @@ nl_parse_link(struct nlmsghdr *h, int scan)
 
       if (fl & IFF_MULTICAST)
 	f.flags |= IF_MULTICAST;
+
+      if (kind && !strcmp(kind, "vrf"))
+	f.flags |= IF_VRF;
 
       ifi = if_update(&f);
 
