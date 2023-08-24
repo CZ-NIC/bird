@@ -19,7 +19,7 @@ CF_DECLS
 
 CF_KEYWORDS(LOG, SYSLOG, ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG, STDERR, SOFT)
 CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, STATUS)
-CF_KEYWORDS(GRACEFUL, RESTART)
+CF_KEYWORDS(GRACEFUL, RESTART, FIXED)
 
 %type <i> log_mask log_mask_list log_cat cfg_timeout
 %type <t> cfg_name
@@ -56,6 +56,14 @@ log_file:
        if (!this_log->rf) cf_error("Unable to open log file '%s': %m", $1);
      }
      this_log->filename = $1;
+   }
+ | FIXED text expr {
+     if (!parse_and_exit)
+     {
+       this_log->rf = rf_open(new_config->pool, $2, RF_FIXED, this_log->limit = $3);
+       if (!this_log->rf) cf_error("Unable to open log file '%s': %m", $2);
+     }
+     this_log->filename = $2;
    }
  | SYSLOG syslog_name { this_log->rf = NULL; new_config->syslog_name = $2; }
  | STDERR { this_log->rf = &rf_stderr; }
