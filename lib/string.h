@@ -33,6 +33,9 @@ u64 bstrtoul10(const char *str, char **end);
 u64 bstrtoul16(const char *str, char **end);
 byte bstrtobyte16(const char *str);
 
+int bstrhextobin(const char *s, byte *b);
+int bstrbintohex(const byte *b, size_t len, char *buf, size_t size, char delim);
+
 int patmatch(const byte *pat, const byte *str);
 
 static inline char *xbasename(const char *str)
