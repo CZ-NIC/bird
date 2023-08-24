@@ -52,7 +52,7 @@ log_file:
    text log_limit {
      if (!parse_and_exit)
      {
-       this_log->rf = rf_open(new_config->pool, $1, RF_APPEND);
+       this_log->rf = rf_open(new_config->pool, $1, RF_APPEND, this_log->limit);
        if (!this_log->rf) cf_error("Unable to open log file '%s': %m", $1);
      }
      this_log->filename = $1;
@@ -91,7 +91,7 @@ mrtdump_base:
  | MRTDUMP text ';' {
      if (!parse_and_exit)
      {
-       struct rfile *f = rf_open(new_config->pool, $2, RF_APPEND);
+       struct rfile *f = rf_open(new_config->pool, $2, RF_APPEND, 0);
        if (!f) cf_error("Unable to open MRTDump file '%s': %m", $2);
        new_config->mrtdump_file = f;
      }
