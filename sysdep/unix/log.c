@@ -149,7 +149,7 @@ log_rotate(struct log_channel *lc)
   if ((rename(lc->filename, lc->backup) < 0) && (unlink(lc->filename) < 0))
     return lts_request(lc, NULL, "Log Rotate Failed");
 
-  struct rfile *rf = rf_open(log_pool, lc->filename, RF_APPEND);
+  struct rfile *rf = rf_open(log_pool, lc->filename, RF_APPEND, lc->limit);
   if (!rf)
     return lts_request(lc, NULL, "Log Rotate Failed");
 
@@ -196,19 +196,23 @@ log_commit(log_buffer *buf)
 	  *buf->buf.pos = '\n';
 	  byte *begin = l->terminal ? buf->buf.start : buf->tm_pos;
 	  off_t msg_len = buf->buf.pos - begin + 1;
-	  if (l->limit && (rf_size(rf) + msg_len > l->limit))
+	  do {
+	    if (rf_write(rf, buf->tm_pos, msg_len))
+	      break;
+
+	    log_lock();
+	    rf = atomic_load_explicit(&l->rf, memory_order_acquire);
+	    if (rf_write(rf, buf->tm_pos, msg_len))
 	    {
-	      log_lock();
-              rf = atomic_load_explicit(&l->rf, memory_order_acquire);
-	      if (rf_size(rf) + msg_len > l->limit)
-	      {
-		log_rotate(l);
-		rf = atomic_load_explicit(&l->rf, memory_order_relaxed);
-	      }
 	      log_unlock();
+	      break;
 	    }
 
-	  rf_write(l->rf, buf->tm_pos, msg_len);
+	    log_rotate(l);
+	    log_unlock();
+
+	    rf = atomic_load_explicit(&l->rf, memory_order_relaxed);
+	  } while (!rf_write(rf, buf->tm_pos, msg_len));
 	}
 #ifdef HAVE_SYSLOG_H
       else
@@ -470,7 +474,7 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
       rmove(l->rf, log_pool);
     else if (l->filename)
     {
-      l->rf = rf_open(log_pool, l->filename, RF_APPEND);
+      l->rf = rf_open(log_pool, l->filename, RF_APPEND, l->limit);
       erf = l->rf ? 0 : errno;
     }
     log_unlock();
@@ -661,7 +665,7 @@ log_init_debug(char *f)
     dbg_rf = NULL;
   else if (!*f)
     dbg_rf = &rf_stderr;
-  else if (!(dbg_rf = rf_open(&root_pool, f, RF_APPEND)))
+  else if (!(dbg_rf = rf_open(&root_pool, f, RF_APPEND, 0)))
   {
     /* Cannot use die() nor log() here, logging is not yet initialized */
     fprintf(stderr, "bird: Unable to open debug file %s: %s\n", f, strerror(errno));

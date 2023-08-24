@@ -67,6 +67,7 @@ struct rfile {
   resource r;
   struct stat stat;
   int fd;
+  off_t limit;
   _Atomic off_t pos;
 };
 
@@ -126,7 +127,7 @@ rf_stat(struct rfile *r)
 }
 
 struct rfile *
-rf_open(pool *p, const char *name, enum rf_mode mode)
+rf_open(pool *p, const char *name, enum rf_mode mode, off_t limit)
 {
   int fd = rf_open_get_fd(name, mode);
 
@@ -135,6 +136,7 @@ rf_open(pool *p, const char *name, enum rf_mode mode)
 
   struct rfile *r = ralloc(p, &rf_class);
   r->fd = fd;
+  r->limit = limit;
 
   switch (mode)
   {
@@ -168,12 +170,20 @@ rf_same(struct rfile *a, struct rfile *b)
     (a->stat.st_ino == b->stat.st_ino);
 }
 
-void
+int
 rf_write(struct rfile *r, const void *buf, size_t count)
 {
-  while ((write(r->fd, buf, count) < 0) && (errno == EINTR))
-    ;
-  atomic_fetch_add_explicit(&r->pos, count, memory_order_relaxed);
+  if (r->limit && (atomic_fetch_add_explicit(&r->pos, count, memory_order_relaxed) + (off_t) count > r->limit))
+  {
+    atomic_fetch_sub_explicit(&r->pos, count, memory_order_relaxed);
+    return 0;
+  }
+  else
+  {
+    while ((write(r->fd, buf, count) < 0) && (errno == EINTR))
+      ;
+    return 1;
+  }
 }
 
 

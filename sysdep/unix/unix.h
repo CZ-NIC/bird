@@ -119,10 +119,10 @@ enum rf_mode {
   RF_APPEND,
 };
 
-struct rfile *rf_open(struct pool *, const char *name, enum rf_mode mode);
+struct rfile *rf_open(struct pool *, const char *name, enum rf_mode mode, off_t limit);
 off_t rf_size(struct rfile *);
 int rf_same(struct rfile *, struct rfile *);
-void rf_write(struct rfile *, const void *, size_t);
+int rf_write(struct rfile *, const void *, size_t);
 
 extern struct rfile rf_stderr;
 
