@@ -4549,6 +4549,21 @@ definitions, prefix definitions and DNS definitions:
 	options and there is a short variant <cf>dnssl <m/domain/</cf> that just
 	specifies one DNS search domain.
 
+	<tag><label id="radv-custom-option">custom option type <m/number/ value <m/binary/</tag>
+	Custom option definitions allow to define an arbitrary option to
+	advertise. You need to specify the option type number and the binary
+	payload of the option. The length field is calculated automatically.
+	Like <cf/rdnss/ above, multiple definitions are cumulative, they can
+	be used also as interface-specific options.
+
+	The following example advertises PREF64 option (<rfc id="8781">) with
+	prefix <cf>2001:db8:a:b::/96</cf> and the lifetime of <cf/1 hour/:
+
+	<label id="radv-custom-option-exam">
+<p><code>
+custom option type 38 value hex:0e10:2001:0db8:000a:000b:0000:0000;
+</code>
+
 	<tag><label id="radv-trigger">trigger <m/prefix/</tag>
 	RAdv protocol could be configured to change its behavior based on
 	availability of routes. When this option is used, the protocol waits in
@@ -4677,6 +4692,10 @@ definitions, prefix definitions and DNS definitions:
 
 	<tag><label id="radv-iface-dnssl-local">dnssl local <m/switch/</tag>
 	Use only local DNSSL definitions for this interface. See <cf/rdnss local/
+	option above. Default: no.
+
+	<tag><label id="radv-iface-custom-local">custom option local <m/switch/</tag>
+	Use only local custom option definitions for this interface. See <cf/rdnss local/
 	option above. Default: no.
 </descrip>
 
