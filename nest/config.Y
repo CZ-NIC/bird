@@ -546,10 +546,15 @@ password_item:
 
 pass_key: PASSWORD | KEY;
 
-password_item_begin:
-    pass_key text { init_password_list(); init_password($2, strlen($2), password_id++); }
-  | pass_key BYTETEXT { init_password_list(); init_password($2->data, $2->length, password_id++); }
-;
+password_item_begin: pass_key bytestring_text
+{
+  init_password_list();
+  if ($2.type == T_BYTESTRING)
+    init_password($2.val.bs->data, $2.val.bs->length, password_id++);
+  else if ($2.type == T_STRING)
+    init_password($2.val.s, strlen($2.val.s), password_id++);
+  else bug("Bad bytestring_text");
+};
 
 password_item_params:
    /* empty */ { }

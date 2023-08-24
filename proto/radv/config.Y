@@ -73,7 +73,7 @@ radv_proto_item:
  | PREFIX radv_prefix { add_tail(&RADV_CFG->pref_list, NODE this_radv_prefix); }
  | RDNSS { init_list(&radv_dns_list); } radv_rdnss { add_tail_list(&RADV_CFG->rdnss_list, &radv_dns_list); }
  | DNSSL { init_list(&radv_dns_list); } radv_dnssl { add_tail_list(&RADV_CFG->dnssl_list, &radv_dns_list); }
- | CUSTOM OPTION TYPE expr VALUE BYTETEXT { radv_add_to_custom_list(&RADV_CFG->custom_list, $4, $6); }
+ | CUSTOM OPTION TYPE expr VALUE bytestring { radv_add_to_custom_list(&RADV_CFG->custom_list, $4, $6); }
  | TRIGGER net_ip6 { RADV_CFG->trigger = $2; }
  | PROPAGATE ROUTES bool { RADV_CFG->propagate_routes = $3; }
  ;
@@ -138,7 +138,7 @@ radv_iface_item:
  | PREFIX radv_prefix { add_tail(&RADV_IFACE->pref_list, NODE this_radv_prefix); }
  | RDNSS { init_list(&radv_dns_list); } radv_rdnss { add_tail_list(&RADV_IFACE->rdnss_list, &radv_dns_list); }
  | DNSSL { init_list(&radv_dns_list); } radv_dnssl { add_tail_list(&RADV_IFACE->dnssl_list, &radv_dns_list); }
- | CUSTOM OPTION TYPE expr VALUE BYTETEXT { radv_add_to_custom_list(&RADV_IFACE->custom_list, $4, $6); }
+ | CUSTOM OPTION TYPE expr VALUE bytestring { radv_add_to_custom_list(&RADV_IFACE->custom_list, $4, $6); }
  | RDNSS LOCAL bool { RADV_IFACE->rdnss_local = $3; }
  | DNSSL LOCAL bool { RADV_IFACE->dnssl_local = $3; }
  | CUSTOM OPTION LOCAL bool { RADV_IFACE->custom_local = $4; }
