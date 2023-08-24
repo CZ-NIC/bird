@@ -471,7 +471,7 @@ ipv6 table
 include "tablename.conf";;
 </code>
 
-	<tag><label id="opt-log">log "<m/filename/" [<m/limit/ "<m/backup/"] | syslog [name <m/name/] | stderr all|{ <m/list of classes/ }</tag>
+	<tag><label id="opt-log">log "<m/filename/" [<m/limit/ "<m/backup/"] | fixed "<m/filename/" <m/size/ | syslog [name <m/name/] | stderr all|{ <m/list of classes/ }</tag>
 	Set logging of messages having the given class (either <cf/all/ or <cf>{
 	error|trace [, <m/.../] }</cf> etc.) into selected destination - a file
 	specified as a filename string (with optional log rotation information),
@@ -488,7 +488,8 @@ include "tablename.conf";;
 	Logging directly to file supports basic log rotation -- there is an
 	optional log file limit and a backup filename, when log file reaches the
 	limit, the current log file is renamed to the backup filename and a new
-	log file is created.
+	log file is created. It's also possible to log to a single file behaving
+	as a ring buffer with a fixed size.
 
 	You may specify more than one <cf/log/ line to establish logging to
 	multiple destinations. Default: log everything to the system log, or

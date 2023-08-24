@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/mman.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -69,6 +70,7 @@ struct rfile {
   int fd;
   off_t limit;
   _Atomic off_t pos;
+  void *mapping;
 };
 
 struct rfile rf_stderr = {
@@ -79,6 +81,9 @@ static void
 rf_free(resource *r)
 {
   struct rfile *a = (struct rfile *) r;
+
+  if (a->mapping)
+    munmap(a->mapping, a->limit);
 
   close(a->fd);
 }
@@ -110,6 +115,10 @@ rf_open_get_fd(const char *name, enum rf_mode mode)
   {
     case RF_APPEND:
       flags = O_WRONLY | O_CREAT | O_APPEND;
+      break;
+
+    case RF_FIXED:
+      flags = O_RDWR | O_CREAT;
       break;
 
     default:
@@ -145,6 +154,18 @@ rf_open(pool *p, const char *name, enum rf_mode mode, off_t limit)
       r->pos = S_ISREG(r->stat.st_mode) ? r->stat.st_size : 0;
       break;
 
+    case RF_FIXED:
+      if ((ftruncate(fd, limit) < 0)
+	  || ((r->mapping = mmap(NULL, limit, PROT_WRITE, MAP_SHARED, fd, 0)) == MAP_FAILED))
+      {
+	int erf = errno;
+	r->mapping = NULL;
+	rfree(r);
+	errno = erf;
+	return NULL;
+      }
+      break;
+
     default:
       bug("rf_open() must have the mode set");
   }
@@ -165,15 +186,34 @@ rf_same(struct rfile *a, struct rfile *b)
   rf_stat(b);
 
   return
+    (a->limit == b->limit) &&
     (a->stat.st_mode == b->stat.st_mode) &&
     (a->stat.st_dev == b->stat.st_dev) &&
     (a->stat.st_ino == b->stat.st_ino);
 }
 
 int
-rf_write(struct rfile *r, const void *buf, size_t count)
+rf_write(struct rfile *r, const void *buf, size_t _count)
 {
-  if (r->limit && (atomic_fetch_add_explicit(&r->pos, count, memory_order_relaxed) + (off_t) count > r->limit))
+  off_t count = _count;
+
+  if (r->mapping)
+  {
+    /* Update the pointer */
+    off_t target = atomic_fetch_add_explicit(&r->pos, count, memory_order_relaxed) % r->limit;
+
+    /* Take care of wrapping */
+    if (target + count > r->limit)
+    {
+      memcpy(r->mapping, buf + (r->limit - target), target + count - r->limit);
+      count = r->limit - target;
+    }
+
+    /* Write the line */
+    memcpy(r->mapping + target, buf, count);
+    return 1;
+  }
+  else if (r->limit && (atomic_fetch_add_explicit(&r->pos, count, memory_order_relaxed) + count > r->limit))
   {
     atomic_fetch_sub_explicit(&r->pos, count, memory_order_relaxed);
     return 0;
