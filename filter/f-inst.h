@@ -19,6 +19,7 @@
 #include "filter/data.h"
 #include "lib/buffer.h"
 #include "lib/flowspec.h"
+#include "lib/string.h"
 
 /* Flags for instructions */
 enum f_instruction_flags {

@@ -1555,6 +1555,21 @@
 
   }
 
+  INST(FI_FROM_HEX, 1, 1) {	/* Convert hex text to bytestring */
+    ARG(1, T_STRING);
+
+    int len = bstrhextobin(v1.val.s, NULL);
+    if (len < 0)
+      runtime("Invalid hex string");
+
+    struct bytestring *bs;
+    bs = falloc(sizeof(struct bytestring) + len);
+    bs->length = bstrhextobin(v1.val.s, bs->data);
+    ASSERT(bs->length == (size_t) len);
+
+    RESULT(T_BYTESTRING, bs, bs);
+  }
+
   INST(FI_FORMAT, 1, 1) {	/* Format */
     ARG_ANY(1);
     RESULT(T_STRING, s, val_format_str(fpool, &v1));

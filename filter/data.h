@@ -58,6 +58,7 @@ enum f_type {
   T_LCLIST = 0x29,		/* Large community list */
   T_RD = 0x2a,		/* Route distinguisher for VPN addresses */
   T_PATH_MASK_ITEM = 0x2b,	/* Path mask item for path mask constructors */
+  T_BYTESTRING = 0x2c,
 
   T_SET = 0x80,
   T_PREFIX_SET = 0x81,
@@ -73,6 +74,7 @@ struct f_val {
     ip_addr ip;
     const net_addr *net;
     const char *s;
+    const struct bytestring *bs;
     const struct f_tree *t;
     const struct f_trie *ti;
     const struct adata *ad;

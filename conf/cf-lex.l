@@ -272,7 +272,7 @@ WHITE [ \t]
   ASSERT(bs->length == len);
 
   cf_lval.bs = bs;
-  return BYTESTRING;
+  return BYTETEXT;
 }
 
 ({XIGIT}*::|({XIGIT}*:){3,})({XIGIT}*|{DIGIT}+\.{DIGIT}+\.{DIGIT}+\.{DIGIT}+) {
