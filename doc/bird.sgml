@@ -838,7 +838,7 @@ agreement").
 	protocol packets are processed in the local TX queues. This option is
 	Linux specific. Default value is 7 (highest priority, privileged traffic).
 
-	<tag><label id="proto-pass">password "<m/password/" | <m/hex_key/ [ { <m>password options</m> } ] </tag>
+	<tag><label id="proto-pass">password "<m/password/" | <m/bytestring/ [ { <m>password options</m> } ] </tag>
 	Specifies a password that can be used by the protocol as a shared secret
 	key. Password option can be used more times to specify more passwords.
 	If more passwords are specified, it is a protocol-dependent decision
@@ -846,10 +846,8 @@ agreement").
 	authentication is enabled, authentication can be enabled by separate,
 	protocol-dependent <cf/authentication/ option.
 
-        A password can also be specified as a hexadecimal key. <m/hex_key/ is a
-        sequence of hexadecimal digit pairs, optionally colon-separated. A key
-        specified this way must be at least 16 bytes (32 digits) long (although
-        specific algorithms can impose other restrictions).
+	A password can be specified as a string or as a sequence of hexadecimal
+	digit pairs (<ref id="type-bytestring" name="bytestring">).
 
 	This option is allowed in BFD, OSPF, RIP, and Babel protocols. BGP has
 	also <cf/password/ option, but it is slightly different and described
@@ -1386,6 +1384,27 @@ in the foot).
 	<cf/"This is a string constant"/. Additionally matching (<cf/&tilde;,
 	!&tilde;/) operators could be used to match a string value against
 	a shell pattern (represented also as a string).
+
+	<tag><label id="type-bytestring">bytestring</tag>
+	This is a sequences of arbitrary bytes. There are no ways to modify
+	bytestrings in filters. You can pass them between function, assign
+	them to variables of type <cf/bytestring/, print such values,
+	compare bytestings (<cf/=, !=/). Bytestring literals are written
+	in several ways:
+
+	A sequence of hexadecimal digit pairs, optionally colon-separated.
+	A bytestring specified this way must be at least 16 bytes (32 digits)
+	long: <cf/01:23:45:67:89:ab:cd:ef:01:23:45:67:89:ab:cd:ef/ or
+	<cf/0123456789abcdef0123456789abcdef/.
+
+	A sequence of hexadecimal digit pairs of any lengh (including zero)
+	with the <cf/hex:/ prefix. Colon separators can be inserted
+	arbitrarily between any bytes: <cf/hex:/, <cf/hex:1234/,
+	<cf/hex:1234:56:78/.
+
+	A bytestring can be made from a hex string using <cf/from_hex()/
+	function. Source strings can use any number of colons, hyphens and
+	spaces as byte separators: <cf/from_hex(" 1234 56:78 ab-cd-ef ")/.
 
 	<tag><label id="type-ip">ip</tag>
 	This type can hold a single IP address. The IPv4 addresses are stored as
@@ -4549,7 +4568,7 @@ definitions, prefix definitions and DNS definitions:
 	options and there is a short variant <cf>dnssl <m/domain/</cf> that just
 	specifies one DNS search domain.
 
-	<tag><label id="radv-custom-option">custom option type <m/number/ value <m/binary/</tag>
+	<tag><label id="radv-custom-option">custom option type <m/number/ value <m/bytestring/</tag>
 	Custom option definitions allow to define an arbitrary option to
 	advertise. You need to specify the option type number and the binary
 	payload of the option. The length field is calculated automatically.
