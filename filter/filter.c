@@ -373,30 +373,22 @@ f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
 }
 
 /*
- * f_eval_int - get an integer value of a term
+ * cf_eval - evaluate a value of a term and check its type
  * Called internally from the config parser, uses its internal memory pool
  * for allocations. Do not call in other cases.
  */
-uint
-f_eval_int(const struct f_line *expr)
+struct f_val
+cf_eval(const struct f_inst *inst, int type)
 {
-  /* Called independently in parse-time to eval expressions */
-  filter_state = (struct filter_state) {
-    .stack = &filter_stack,
-    .pool = cfg_mem,
-  };
-
   struct f_val val;
 
-  LOG_BUFFER_INIT(filter_state.buf);
-
-  if (interpret(&filter_state, expr, &val) > F_RETURN)
+  if (f_eval(f_linearize(inst, 1), cfg_mem, &val) > F_RETURN)
     cf_error("Runtime error while evaluating expression; see log for details");
 
-  if (val.type != T_INT)
-    cf_error("Integer expression expected");
+  if (type != T_VOID && val.type != type)
+    cf_error("Expression of type %s expected", f_type_name(type));
 
-  return val.val.i;
+  return val;
 }
 
 /*

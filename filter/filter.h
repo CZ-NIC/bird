@@ -15,6 +15,7 @@
 #include "lib/macro.h"
 #include "nest/route.h"
 #include "nest/attrs.h"
+#include "filter/data.h"
 
 /* Possible return values of filter execution */
 enum filter_return {
@@ -40,9 +41,8 @@ static inline const char *filter_return_str(const enum filter_return fret) {
   }
 }
 
-struct f_val;
-
 /* The filter encapsulating structure to be pointed-to from outside */
+struct f_inst;
 struct f_line;
 struct filter {
   struct symbol *sym;
@@ -53,8 +53,10 @@ struct rte;
 
 enum filter_return f_run(const struct filter *filter, struct rte **rte, struct linpool *tmp_pool, int flags);
 enum filter_return f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool);
-uint f_eval_int(const struct f_line *expr);
 enum filter_return f_eval_buf(const struct f_line *expr, struct linpool *tmp_pool, buffer *buf);
+
+struct f_val cf_eval(const struct f_inst *inst, int type);
+static inline uint cf_eval_int(const struct f_inst *inst) { return cf_eval(inst, T_INT).val.i; };
 
 const char *filter_name(const struct filter *filter);
 int filter_same(const struct filter *new, const struct filter *old);
