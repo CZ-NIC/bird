@@ -324,7 +324,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc ELSE
 
 %type <xp> cmds_int cmd_prep
-%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor print_list var var_init var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
+%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor print_list var var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
 %type <fda> dynamic_attr
 %type <fsa> static_attr
 %type <f> filter where_filter
@@ -895,16 +895,16 @@ print_list: /* EMPTY */ { $$ = NULL; }
    }
  ;
 
-var_init:
-   /* empty */ { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { }); }
- | '=' term { $$ = $2; }
- ;
-
 var:
-   type symbol var_init ';' {
+   type symbol '=' term ';' {
      struct symbol *sym = cf_define_symbol($2, SYM_VARIABLE | $1, offset, f_new_var(sym_->scope));
-     $$ = f_new_inst(FI_VAR_INIT, $3, sym);
+     $$ = f_new_inst(FI_VAR_INIT, $4, sym);
    }
+ | type symbol ';' {
+     struct symbol *sym = cf_define_symbol($2, SYM_VARIABLE | $1, offset, f_new_var(sym_->scope));
+     $$ = f_new_inst(FI_VAR_INIT0, sym);
+   }
+ ;
 
 for_var:
    type symbol { $$ = cf_define_symbol($2, SYM_VARIABLE | $1, offset, f_new_var(sym_->scope)); }

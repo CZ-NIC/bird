@@ -506,6 +506,7 @@
     RESULT(T_BOOL, i, ipa_is_ip4(v1.val.ip));
   }
 
+  /* Add initialized variable */
   INST(FI_VAR_INIT, 1, 0) {
     NEVER_CONSTANT;
     ARG_ANY(1);
@@ -515,6 +516,17 @@
     /* New variable is always the last on stack */
     uint pos = curline.vbase + sym->offset;
     fstk->vstk[pos] = v1;
+    fstk->vcnt = pos + 1;
+  }
+
+  /* Add uninitialized variable */
+  INST(FI_VAR_INIT0, 0, 0) {
+    NEVER_CONSTANT;
+    SYMBOL;
+
+    /* New variable is always the last on stack */
+    uint pos = curline.vbase + sym->offset;
+    fstk->vstk[pos] = (struct f_val) { };
     fstk->vcnt = pos + 1;
   }
 
