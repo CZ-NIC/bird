@@ -121,7 +121,7 @@ CF_DECLS
 %type <s> symbol
 %type <kw> kw_sym
 
-%type <v> bytestring_text
+%type <v> bytestring_text text_or_ipa
 %type <x> bytestring_expr
 
 %nonassoc PREFIX_DUMMY
@@ -397,6 +397,24 @@ text:
 opttext:
     TEXT
  | /* empty */ { $$ = NULL; }
+ ;
+
+text_or_ipa:
+   TEXT { $$.type = T_STRING; $$.val.s = $1; }
+ | IP4 { $$.type = T_IP; $$.val.ip = ipa_from_ip4($1); }
+ | IP6 { $$.type = T_IP; $$.val.ip = ipa_from_ip6($1); }
+ | CF_SYM_KNOWN {
+     if (($1->class == (SYM_CONSTANT | T_STRING)) ||
+	 ($1->class == (SYM_CONSTANT | T_IP)))
+       $$ = *($1->val);
+     else
+       cf_error("String or IP constant expected");
+   }
+ | '(' term ')' {
+     $$ = cf_eval($2, T_VOID);
+     if (($$.type != T_BYTESTRING) && ($$.type != T_STRING))
+       cf_error("Bytestring or string value expected");
+   }
  ;
 
 bytestring:

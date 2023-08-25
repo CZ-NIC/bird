@@ -89,20 +89,22 @@ rpki_keep_interval:
 
 rpki_proto_item_port: PORT expr { check_u16($2); RPKI_CFG->port = $2; };
 
-rpki_cache_addr:
-   text {
-     rpki_check_unused_hostname();
-     RPKI_CFG->hostname = $1;
-   }
- | ipa {
-     rpki_check_unused_hostname();
-     RPKI_CFG->ip = $1;
-     /* Ensure hostname is filled */
-     char *hostname = cfg_allocz(INET6_ADDRSTRLEN + 1);
-     bsnprintf(hostname, INET6_ADDRSTRLEN+1, "%I", RPKI_CFG->ip);
-     RPKI_CFG->hostname = hostname;
-   }
- ;
+rpki_cache_addr: text_or_ipa
+{
+  rpki_check_unused_hostname();
+  if ($1.type == T_STRING)
+    RPKI_CFG->hostname = $1.val.s;
+  else if ($1.type == T_IP)
+  {
+    RPKI_CFG->ip = $1.val.ip;
+
+    /* Ensure hostname is filled */
+    char *hostname = cfg_allocz(INET6_ADDRSTRLEN + 1);
+    bsnprintf(hostname, INET6_ADDRSTRLEN+1, "%I", RPKI_CFG->ip);
+    RPKI_CFG->hostname = hostname;
+  }
+  else bug("Bad text_or_ipa");
+};
 
 rpki_transport:
    TCP rpki_transport_tcp_init
