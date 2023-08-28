@@ -3416,7 +3416,7 @@ ea_set_hostentry(ea_list **to, rtable *dep, rtable *src, ip_addr gw, ip_addr ll,
 
 
 static void
-rta_apply_hostentry(ea_list **to, struct hostentry_adata *head)
+rta_apply_hostentry(struct rtable_private *tab UNUSED, ea_list **to, struct hostentry_adata *head)
 {
   struct hostentry *he = head->he;
   u32 *labels = head->labels;
@@ -3544,7 +3544,8 @@ rt_next_hop_update_rte(rte *old, rte *new)
     return 0;
 
   *new = *old;
-  rta_apply_hostentry(&new->attrs, head);
+  RT_LOCKED(head->he->owner, tab)
+    rta_apply_hostentry(tab, &new->attrs, head);
   return 1;
 }
 
@@ -3557,7 +3558,8 @@ rt_next_hop_resolve_rte(rte *r)
 
   struct hostentry_adata *head = (struct hostentry_adata *) heea->u.ptr;
 
-  rta_apply_hostentry(&r->attrs, head);
+  RT_LOCKED(head->he->owner, tab)
+    rta_apply_hostentry(tab, &r->attrs, head);
 }
 
 #ifdef CONFIG_BGP
@@ -4875,6 +4877,7 @@ rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep)
   if (!he)
   {
     he = hc_new_hostentry(hc, tab->rp, a, link, dep, k);
+    he->owner = RT_PUB(tab);
     rt_update_hostentry(tab, he);
   }
 
