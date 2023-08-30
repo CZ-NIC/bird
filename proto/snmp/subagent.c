@@ -615,10 +615,10 @@ do_response(struct snmp_proto *p, byte *buf, uint size UNUSED)
 u8
 snmp_get_mib_class(const struct oid *oid)
 {
-  ASSUME(oid->n_subid > 2);
   if (oid->prefix != 2 && oid->ids[0] != SNMP_MIB_2)
     return SNMP_CLASS_INVALID;
 
+  ASSUME(oid->n_subid > 1);
   switch (oid->ids[1])
   {
     case SNMP_BGP4_MIB:
