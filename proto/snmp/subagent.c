@@ -38,6 +38,8 @@ static uint update_packet_size(struct snmp_proto *p, byte *start, byte *end);
 static struct oid *search_mib(struct snmp_proto *p, const struct oid *o_start, const struct oid *o_end, struct oid *o_curr, struct snmp_pdu_context *c, enum snmp_search_res *result);
 static void notify_pdu(struct snmp_proto *p, struct oid *oid, void *opaque, uint size, int include_uptime);
 
+u32 snmp_internet[] = { SNMP_ISO, SNMP_ORG, SNMP_DOD, SNMP_INTERNET };
+
 static const char * const snmp_errs[] = {
   #define SNMP_ERR_SHIFT 256
   [AGENTX_RES_OPEN_FAILED	  - SNMP_ERR_SHIFT] = "Open failed",
@@ -152,7 +154,7 @@ notify_pdu(struct snmp_proto *p, struct oid *oid, void *opaque, uint size, int i
     /* sysUpTime.0 oid */
     struct oid uptime = {
       .n_subid = 4,
-      .prefix = 2,
+      .prefix = SNMP_MGMT,
       .include = 0,
       .pad = 0,
     };
@@ -662,7 +664,7 @@ u8
 snmp_get_mib_class(const struct oid *oid)
 {
   // TODO check code paths for oid->n_subid < 3
-  if (oid->prefix != 2 && oid->ids[0] != SNMP_MIB_2)
+  if (oid->prefix != SNMP_MGMT && oid->ids[0] != SNMP_MIB_2)
     return SNMP_CLASS_INVALID;
 
   switch (oid->ids[1])
@@ -1433,7 +1435,6 @@ snmp_prefixize(struct snmp_proto *proto, const struct oid *oid, int byte_ord)
 {
   ASSERT(oid != NULL);
   snmp_log("snmp_prefixize()");
-  const u32 prefix[] = {1, 3, 6, 1};
 
   if (snmp_is_oid_empty(oid))
   {
@@ -1453,7 +1454,7 @@ snmp_prefixize(struct snmp_proto *proto, const struct oid *oid, int byte_ord)
   {  snmp_log("too small"); return NULL; }
 
   for (int i = 0; i < 4; i++)
-    if (LOAD_U32(oid->ids[i], byte_ord) != prefix[i])
+    if (LOAD_U32(oid->ids[i], byte_ord) != snmp_internet[i])
       { snmp_log("different prefix"); return NULL; }
 
   /* validity check here */
@@ -1482,20 +1483,13 @@ snmp_mib_fill2(struct snmp_proto *p, struct oid *oid,
 
   snmp_log("critical part");
   if (c->size < snmp_varbind_hdr_size_from_oid(oid))
-  {
     snmp_manage_tbuf(p, c);
-  }
-  else
-  {
-    u32 *ptr = mb_alloc(p->p.pool, sizeof(u32) * 4);
-    *ptr = 0xbeef;
-    mb_free(ptr);
-  }
+
   snmp_log("critical part done");
 
   struct agentx_varbind *vb = snmp_create_varbind(c->buffer, oid);
 
-  if (oid->n_subid < 2 || (oid->prefix != 2 && oid->ids[0] != 1))
+  if (oid->n_subid < 2 || (oid->prefix != SNMP_MGMT && oid->ids[0] != SNMP_MIB_2))
   {
     vb->type = AGENTX_NO_SUCH_OBJECT;
     ADVANCE(c->buffer, c->size, snmp_varbind_header_size(vb));

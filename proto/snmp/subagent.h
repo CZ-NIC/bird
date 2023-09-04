@@ -14,10 +14,18 @@ void snmp_ping(struct snmp_proto *p);
 #define SNMP_STATE_BGP 1
 #define SNMP_STATE_INVALID 2
 
-#define SNMP_MIB_2        1           /* last of oid .1.3.6.1.2.1     */
-#define SNMP_OSPF_MIB    14	      /* part of oid .1.3.6.1.2.1.14  */
-#define SNMP_BGP4_MIB    15	      /* part of oid .1.3.6.1.2.1.15  */
-#define SNMP_OSPFv3_MIB 192	      /* part of oid .1.3.6.1.2.1.192 */
+#define SNMP_ISO	  1	      /* last of oid .1		      */
+#define SNMP_ORG	  3	      /* last of oid .1.3	      */
+#define SNMP_DOD	  6	      /* last of oid .1.3.6	      */
+#define SNMP_INTERNET	  1	      /* last of oid .1.3.6.1	      */
+
+#define SNMP_MGMT	  2	      /* last of oid .1.3.6.1.2	      */
+#define SNMP_MIB_2	  1	      /* last of oid .1.3.6.1.2.1     */
+#define SNMP_OSPF_MIB	 14	      /* part of oid .1.3.6.1.2.1.14  */
+#define SNMP_BGP4_MIB	 15	      /* part of oid .1.3.6.1.2.1.15  */
+#define SNMP_OSPFv3_MIB	192	      /* part of oid .1.3.6.1.2.1.192 */
+
+extern u32 snmp_internet[4];
 
 enum SNMP_CLASSES {
   SNMP_CLASS_INVALID = 0,
