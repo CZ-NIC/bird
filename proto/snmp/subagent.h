@@ -125,6 +125,13 @@ enum snmp_search_res {
 #define SNMP_VB_DATA(varbind)						      \
   (((void *)(varbind)) + snmp_varbind_header_size(varbind))
 
+#define SNMP_PDU_CONTEXT(sk) {						      \
+    .buffer = sk->tpos,							      \
+    .size = sk->tbuf + sk->tbsize - sk->tpos,				      \
+    .error = AGENTX_RES_NO_ERROR,					      \
+    .context = 0,							      \
+  }
+
 struct agentx_header {
   u8 version;
   u8 type;

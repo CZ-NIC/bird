@@ -149,6 +149,6 @@ struct snmp_proto {
   struct agentx_response *partial_response;
 };
 
-void snmp_tx(sock *sk);
+//void snmp_tx(sock *sk);
 
 #endif

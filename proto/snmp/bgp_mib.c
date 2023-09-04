@@ -49,6 +49,26 @@ static const char * const debug_bgp_states[] UNUSED = {
   [BGP_INTERNAL_NO_VALUE]		 = "BGP_INTERNAL_NO_VALUE",
 };
 
+static inline uint
+snmp_bgp_fsm_state(struct bgp_proto *bgp_proto)
+{
+  const struct bgp_conn *bgp_conn = bgp_proto->conn;
+  const struct bgp_conn *bgp_in = &bgp_proto->incoming_conn;
+  const struct bgp_conn *bgp_out = &bgp_proto->outgoing_conn;
+
+  if (bgp_conn)
+    return bgp_conn->state;
+
+  if (MAX(bgp_in->state, bgp_out->state) == BS_CLOSE &&
+      MIN(bgp_in->state, bgp_out->state) != BS_CLOSE)
+    return MIN(bgp_in->state, bgp_out->state);
+  if (MIN(bgp_in->state, bgp_out->state) == BS_CLOSE)
+    return BS_IDLE;
+
+  return MAX(bgp_in->state, bgp_out->state);
+}
+
+
 void
 snmp_bgp_register(struct snmp_proto *p)
 {
@@ -881,20 +901,9 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
   struct bgp_stats *bgp_stats = &bgp_proto->stats;
   const struct bgp_config *bgp_conf = bgp_proto->cf;
 
-  uint bgp_state;
+  uint bgp_state = snmp_bgp_fsm_state(bgp_proto);
 
-  if (bgp_conn)
-    bgp_state = bgp_conn->state;
-  else if (MAX(bgp_in->state, bgp_out->state) == BS_CLOSE &&
-	   MIN(bgp_in->state, bgp_out->state) != BS_CLOSE)
-    bgp_state = MIN(bgp_in->state, bgp_out->state);
-  else if (MIN(bgp_in->state, bgp_out->state) == BS_CLOSE)
-    bgp_state = BS_IDLE;
-  else
-    bgp_state = MAX(bgp_in->state, bgp_out->state);
-
-  char last_error[2] = { bgp_proto->last_error_code & 0x00FF0000 >> 16,
-			 bgp_proto->last_error_code & 0x000000FF };
+  char last_error[2] = SNMP_BGP_LAST_ERROR(bgp_proto);
   switch (state)
   {
     case BGP_INTERNAL_IDENTIFIER:

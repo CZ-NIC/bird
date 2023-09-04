@@ -90,4 +90,8 @@ enum BGP_INTERNAL_STATES {
   BGP_INTERNAL_NO_VALUE = 255,
 } PACKED;
 
+#define SNMP_BGP_LAST_ERROR(bgp_proto)					      \
+  { bgp_proto->last_error_code & 0x00FF0000 >> 16,			      \
+    bgp_proto->last_error_code & 0x000000FF };
+
 #endif

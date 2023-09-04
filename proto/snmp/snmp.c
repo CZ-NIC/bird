@@ -267,7 +267,8 @@ snmp_connected(sock *sk)
   byte *buf UNUSED = sk->rpos;
 
   sk->rx_hook = snmp_rx;
-  sk->tx_hook = snmp_tx;
+  sk->tx_hook = NULL;
+  //sk->tx_hook = snmp_tx;
 
   snmp_start_subagent(p);
 
