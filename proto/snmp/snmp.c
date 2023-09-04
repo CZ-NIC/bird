@@ -79,14 +79,6 @@
 #include "subagent.h"
 #include "snmp_utils.h"
 
-static void snmp_connected(sock *sk);
-static void snmp_sock_err(sock *sk, int err);
-static void snmp_ping_timer(struct timer *tm);
-static void snmp_startup(struct snmp_proto *p);
-static void snmp_startup_timeout(timer *t);
-static void snmp_start_locked(struct object_lock *lock);
-static int snmp_shutdown(struct proto *P);
-
 static const char * const snmp_state[] = {
   [SNMP_ERR]	    = "SNMP ERROR",
   [SNMP_INIT]	    = "SNMP INIT",
@@ -94,18 +86,8 @@ static const char * const snmp_state[] = {
   [SNMP_OPEN]	    = "SNMP CONNECTION OPENED",
   [SNMP_REGISTER]   = "SNMP REGISTERING MIBS",
   [SNMP_CONN]	    = "SNMP CONNECTED",
-  [SNMP_STOP]	    = "SNMP STOPING",
+  [SNMP_STOP]	    = "SNMP STOPPING",
   [SNMP_DOWN]	    = "SNMP DOWN",
-/*
-  [SNMP_ERR]	      = "SNMP ERROR",
-  [SNMP_DELAY]	      = "SNMP DELAY",
-  [SNMP_INIT]	      = "SNMP INIT",
-  [SNMP_REGISTER]     = "SNMP REGISTERING",
-  [SNMP_CONN]	      = "SNMP CONNECTED",
-  [SNMP_STOP]	      = "SNMP STOP",
-  [SNMP_DOWN]	      = "SNMP DOWN",
-  [SNMP_LISTEN]	      = "SNMP LISTEN",
-*/
 };
 
 static struct proto *
@@ -161,20 +143,83 @@ snmp_down(struct snmp_proto *p)
 }
 
 static void
-snmp_startup_timeout(timer *t)
+snmp_sock_err(sock *sk, int err)
 {
-  snmp_log("startup timer triggered");
-  snmp_startup(t->data);
+  snmp_log("snmp_sock_err() %s - err no: %d",  strerror(err), err);
+  struct snmp_proto *p = sk->data;
+  p->errs++;
+
+  tm_stop(p->ping_timer);
+
+  rfree(p->sock);
+  p->sock = NULL;
+
+  rfree(p->lock);
+  p->lock = NULL;
+
+  snmp_log("changing proto_snmp state to ERR[OR]");
+  p->state = SNMP_ERR;
+  //  snmp_shutdown((struct proto *) p);
+
+  // TODO ping interval
+  tm_start(p->startup_timer, 4 S);
 }
 
 static void
-snmp_stop_timeout(timer *t)
+snmp_connected(sock *sk)
 {
-  snmp_log("stop timer triggered");
+  struct snmp_proto *p = sk->data;
+  snmp_log("snmp_connected() connection created");
 
-  struct snmp_proto *p = t->data;
+  p->state = SNMP_OPEN;
 
-  snmp_down(p);
+  byte *buf UNUSED = sk->rpos;
+
+  sk->rx_hook = snmp_rx;
+  sk->tx_hook = NULL;
+  //sk->tx_hook = snmp_tx;
+
+  snmp_start_subagent(p);
+
+  // TODO ping interval
+  tm_set(p->ping_timer, 15 S);
+}
+
+static void
+snmp_start_locked(struct object_lock *lock)
+{
+  snmp_log("snmp_start_locked() - lock acquired; preparing socket");
+  struct snmp_proto *p = lock->data;
+
+  p->state = SNMP_LOCKED;
+
+  sock *s = sk_new(p->p.pool);
+  s->type = SK_TCP_ACTIVE;
+  s->saddr = p->local_ip;
+  s->daddr = p->remote_ip;
+  s->dport = p->remote_port;
+  s->rbsize = SNMP_RX_BUFFER_SIZE;
+  s->tbsize = SNMP_TX_BUFFER_SIZE;
+
+  //s->tos = IP_PREC_INTERNET_CONTROL
+  //s->rx_hook = snmp_connected;
+  s->tx_hook = snmp_connected;
+  s->err_hook = snmp_sock_err;
+
+  //mb_free(p->sock);
+  p->sock = s;
+  s->data = p;
+
+  p->to_send = 0;
+  p->errs = 0;
+
+  if (sk_open(s) < 0)
+  {
+    log(L_ERR "Cannot open listening socket");
+    snmp_down(p);
+  }
+
+  snmp_log("socket ready!, trying to connect");
 }
 
 static void
@@ -220,83 +265,35 @@ snmp_startup(struct snmp_proto *p)
 }
 
 static void
-snmp_start_locked(struct object_lock *lock)
+snmp_startup_timeout(timer *t)
 {
-  snmp_log("snmp_start_locked() - lock acquired; preparing socket");
-  struct snmp_proto *p = lock->data;
+  snmp_log("startup timer triggered");
+  snmp_startup(t->data);
+}
 
-  p->state = SNMP_LOCKED;
+static void
+snmp_stop_timeout(timer *t)
+{
+  snmp_log("stop timer triggered");
 
-  sock *s = sk_new(p->p.pool);
-  s->type = SK_TCP_ACTIVE;
-  s->saddr = p->local_ip;
-  s->daddr = p->remote_ip;
-  s->dport = p->remote_port;
-  s->rbsize = SNMP_RX_BUFFER_SIZE;
-  s->tbsize = SNMP_TX_BUFFER_SIZE;
+  struct snmp_proto *p = t->data;
 
-  //s->tos = IP_PREC_INTERNET_CONTROL
-  //s->rx_hook = snmp_connected;
-  s->tx_hook = snmp_connected;
-  s->err_hook = snmp_sock_err;
+  snmp_down(p);
+}
 
-  //mb_free(p->sock);
-  p->sock = s;
-  s->data = p;
+static void
+snmp_ping_timer(struct timer *tm)
+{
+  // snmp_log("snmp_ping_timer() ");
+  struct snmp_proto *p = tm->data;
 
-  p->to_send = 0;
-  p->errs = 0;
-
-  if (sk_open(s) < 0)
+  if (p->state == SNMP_CONN)
   {
-    log(L_ERR "Cannot open listening socket");
-    snmp_down(p);
+    snmp_ping(p);
   }
 
-  snmp_log("socket ready!, trying to connect");
-}
-
-static void
-snmp_connected(sock *sk)
-{
-  struct snmp_proto *p = sk->data;
-  snmp_log("snmp_connected() connection created");
-
-  p->state = SNMP_OPEN;
-
-  byte *buf UNUSED = sk->rpos;
-
-  sk->rx_hook = snmp_rx;
-  sk->tx_hook = NULL;
-  //sk->tx_hook = snmp_tx;
-
-  snmp_start_subagent(p);
-
-  // TODO ping interval
-  tm_set(p->ping_timer, 15 S);
-}
-
-static void
-snmp_sock_err(sock *sk, int err)
-{
-  snmp_log("snmp_sock_err() %s - err no: %d",  strerror(err), err);
-  struct snmp_proto *p = sk->data;
-  p->errs++;
-
-  tm_stop(p->ping_timer);
-
-  rfree(p->sock);
-  p->sock = NULL;
-
-  rfree(p->lock);
-  p->lock = NULL;
-
-  snmp_log("changing proto_snmp state to ERR[OR]");
-  p->state = SNMP_ERR;
-  //  snmp_shutdown((struct proto *) p);
-
-  // TODO ping interval
-  tm_start(p->startup_timer, 4 S);
+  //tm_set(tm, current_time() + (15 S));
+  tm_set(tm, current_time() + 15 S);
 }
 
 static int
@@ -446,21 +443,6 @@ snmp_postconfig(struct proto_config *CF)
   // walk the bgp protocols and cache their references
   if (((struct snmp_config *) CF)->local_as == 0)
     cf_error("local as not specified");
-}
-
-static void
-snmp_ping_timer(struct timer *tm)
-{
-  // snmp_log("snmp_ping_timer() ");
-  struct snmp_proto *p = tm->data;
-
-  if (p->state == SNMP_CONN)
-  {
-    snmp_ping(p);
-  }
-
-  //tm_set(tm, current_time() + (15 S));
-  tm_set(tm, current_time() + 15 S);
 }
 
 static int
