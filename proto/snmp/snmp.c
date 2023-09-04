@@ -7,6 +7,68 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+/**
+ * Simple Network Management Protocol State Machine
+ *
+ *  States with main transitions
+ *
+ *
+ *    +-----------------+
+ *    | SNMP_INIT	|     entry state after call snmp_start()
+ *    +-----------------+
+ *	  |
+ *	  |   acquiring object lock for communication socket
+ *	  V
+ *    +-----------------+
+ *    | SNMP_LOCKED	|     object lock aquired
+ *    +-----------------+
+ *	  |
+ *	  |   opening communaiton socket
+ *	  V
+ *    +-----------------+
+ *    | SNMP_OPEN	|     socket created, starting subagent
+ *    +-----------------+
+ *	  |
+ *	  |   BIRD recieve response for Open-PDU
+ *	  V
+ *    +-----------------+
+ *    | SNMP_REGISTER   |     session was established, subagent registers MIBs
+ *    +-----------------+
+ *	  |
+ *	  |   subagent recieved responses for all registration requests
+ *	  V
+ *    +-----------------+
+ *    | SNMP_CONN	|     everything is set
+ *    +-----------------+
+ *	  |
+ * 	  |   function snmp_shutdown() is called, BIRD sends Close-PDU
+ *	  V
+ *    +-----------------+
+ *    | SNMP_STOP	|     waiting for response
+ *    +-----------------+
+ *	  |
+ *	  |   cleaning old state information
+ *	  V
+ *    +-----------------+
+ *    | SNMP_DOWN	|     session is closed
+ *    +-----------------+
+ *
+ *
+ *  Erroneous transitions:
+ *    SNMP is UP in states SNMP_CONN and also in SNMP_REGISTER because the
+ *    session is establised and the GetNext request should be responsed
+ *    without regard to MIB registration.
+ *
+ *    When the session has been closed for some reason (socket error, reciept of
+ *    Close-PDU) SNMP cleans the session information and message queue and goes
+ *    back to the SNMP_LOCKED state.
+ *
+ *    Reconfiguration is done in similar fashion to BGP, the reconfiguration
+ *    request is declined, the protocols is stoped and started with new
+ *    configuration.
+ *
+ */
+
 #include "nest/bird.h"
 #include "nest/cli.h"
 #include "nest/locks.h"
@@ -26,6 +88,15 @@ static void snmp_start_locked(struct object_lock *lock);
 static int snmp_shutdown(struct proto *P);
 
 static const char * const snmp_state[] = {
+  [SNMP_ERR]	    = "SNMP ERROR",
+  [SNMP_INIT]	    = "SNMP INIT",
+  [SNMP_LOCKED]	    = "SNMP LOCKED",
+  [SNMP_OPEN]	    = "SNMP CONNECTION OPENED",
+  [SNMP_REGISTER]   = "SNMP REGISTERING MIBS",
+  [SNMP_CONN]	    = "SNMP CONNECTED",
+  [SNMP_STOP]	    = "SNMP STOPING",
+  [SNMP_DOWN]	    = "SNMP DOWN",
+/*
   [SNMP_ERR]	      = "SNMP ERROR",
   [SNMP_DELAY]	      = "SNMP DELAY",
   [SNMP_INIT]	      = "SNMP INIT",
@@ -34,6 +105,7 @@ static const char * const snmp_state[] = {
   [SNMP_STOP]	      = "SNMP STOP",
   [SNMP_DOWN]	      = "SNMP DOWN",
   [SNMP_LISTEN]	      = "SNMP LISTEN",
+*/
 };
 
 static struct proto *
@@ -110,10 +182,12 @@ snmp_startup(struct snmp_proto *p)
 {
   //snmp_log("changing proto_snmp state to INIT");
 
-  if (p->state == SNMP_CONN ||
-      p->state == SNMP_REGISTER)
+  if (p->state == SNMP_LOCKED ||
+      p->state == SNMP_OPEN ||
+      p->state == SNMP_REGISTER ||
+      p->state == SNMP_CONN)
   {
-    snmp_log("startup() with invalid state %u", p->state);
+    snmp_log("startup() already in connected state %u", p->state);
     return;
   }
 
@@ -151,6 +225,8 @@ snmp_start_locked(struct object_lock *lock)
   snmp_log("snmp_start_locked() - lock acquired; preparing socket");
   struct snmp_proto *p = lock->data;
 
+  p->state = SNMP_LOCKED;
+
   sock *s = sk_new(p->p.pool);
   s->type = SK_TCP_ACTIVE;
   s->saddr = p->local_ip;
@@ -185,6 +261,9 @@ snmp_connected(sock *sk)
 {
   struct snmp_proto *p = sk->data;
   snmp_log("snmp_connected() connection created");
+
+  p->state = SNMP_OPEN;
+
   byte *buf UNUSED = sk->rpos;
 
   sk->rx_hook = snmp_rx;
@@ -392,8 +471,8 @@ snmp_shutdown(struct proto *P)
   tm_stop(p->ping_timer);
 
   /* connection established -> close the connection */
-  if (p->state == SNMP_CONN ||
-      p->state == SNMP_REGISTER)
+  if (p->state == SNMP_REGISTER ||
+      p->state == SNMP_CONN)
   {
     p->state = SNMP_STOP;
 
@@ -407,7 +486,6 @@ snmp_shutdown(struct proto *P)
 
     return PS_STOP;
   }
-
   /* no connection to close */
   else
   {
@@ -435,3 +513,4 @@ snmp_build(void)
 {
   proto_build(&proto_snmp);
 }
+

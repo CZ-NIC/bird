@@ -31,6 +31,17 @@
 
 enum snmp_proto_state {
   SNMP_ERR = 0,
+
+  SNMP_INIT = 1,
+  SNMP_LOCKED,
+  SNMP_OPEN,
+  SNMP_REGISTER,
+  SNMP_CONN,
+  SNMP_STOP,
+  SNMP_DOWN,
+
+/*
+  SNMP_ERR = 0,
   SNMP_DELAY,
   SNMP_INIT,
   SNMP_REGISTER,
@@ -38,6 +49,8 @@ enum snmp_proto_state {
   SNMP_STOP,
   SNMP_DOWN,
   SNMP_LISTEN,
+  SNMP_RESET,
+*/
 };
 
 /* hash table macros */
