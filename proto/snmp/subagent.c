@@ -36,7 +36,6 @@ static struct agentx_response *prepare_response(struct snmp_proto *p, struct snm
 static void response_err_ind(struct agentx_response *res, uint err, uint ind);
 static uint update_packet_size(struct snmp_proto *p, byte *start, byte *end);
 static struct oid *search_mib(struct snmp_proto *p, const struct oid *o_start, const struct oid *o_end, struct oid *o_curr, struct snmp_pdu_context *c, enum snmp_search_res *result);
-static void notify_pdu(struct snmp_proto *p, struct oid *oid, void *opaque, uint size, int include_uptime);
 
 u32 snmp_internet[] = { SNMP_ISO, SNMP_ORG, SNMP_DOD, SNMP_INTERNET };
 
@@ -122,8 +121,8 @@ open_pdu(struct snmp_proto *p, struct oid *oid)
     snmp_log("sk_send error");
 }
 
-static void
-notify_pdu(struct snmp_proto *p, struct oid *oid, void *opaque, uint size, int include_uptime)
+void
+snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *opaque, uint size, int include_uptime)
 {
   sock *sk = p->sock;
 
@@ -1227,64 +1226,6 @@ snmp_rx(sock *sk, uint size)
 void
 snmp_ping(struct snmp_proto *p)
 {
-  {
-#define SNMP_OID_SIZE_FROM_LEN(x) (sizeof(struct oid) + (x) * sizeof(u32))
-    /* trap OID bgpEstablishedNotification (.1.3.6.1.2.1.0.1) */
-    struct oid *head = mb_alloc(p->p.pool, SNMP_OID_SIZE_FROM_LEN(3));
-    head->n_subid = 3;
-    head->prefix = 2;
-    head->include = head->pad = 0;
-    
-    u32 trap_ids[] = { 1, 0, 1 };
-    for (uint i = 0; i < head->n_subid; i++)
-      head->ids[i] = trap_ids[i];    
-     
-    /* paylaod oids */
-    uint sz = 3 * SNMP_OID_SIZE_FROM_LEN(9) + 3 * 4 + 2 * 8 + 4 - 20;
-    void *data = mb_alloc(p->p.pool, sz);
-    struct agentx_varbind *addr_vb = data;
-    /* +4 for varbind header, +8 for octet string */
-    struct agentx_varbind *error_vb = data + SNMP_OID_SIZE_FROM_LEN(9)  + 4 + 8;
-    struct agentx_varbind *state_vb = (void *) error_vb + SNMP_OID_SIZE_FROM_LEN(9) + 4 + 8;
-#undef SNMP_OID_SIZE_FROM_LEN
-
-    addr_vb->pad = error_vb->pad = state_vb->pad = 0;
-
-    struct oid *addr = &addr_vb->name;
-    struct oid *error = &error_vb->name;
-    struct oid *state = &state_vb->name;
-
-    addr->n_subid = error->n_subid  = state->n_subid	= 9;
-    addr->prefix  = error->prefix   = state->prefix	= 2;
-    addr->include = error->include  = state->include	= 0;
-    addr->pad	  = error->pad	    = state->pad	= 0;
-
-    u32 oid_ids[] = {
-      SNMP_MIB_2, SNMP_BGP4_MIB, SNMP_BGP_PEER_TABLE, SNMP_BGP_PEER_ENTRY, 0,
-      10, 1, 2, 1
-    };
-    for (uint i = 0; i < addr->n_subid; i++)
-      addr->ids[i] = error->ids[i] = state->ids[i] = oid_ids[i];
-
-    addr->ids[4]  = SNMP_BGP_REMOTE_ADDR;
-    error->ids[4] = SNMP_BGP_LAST_ERROR;
-    state->ids[4] = SNMP_BGP_STATE;
-    
-    ip4_addr ip4 = ip4_build(10,1,2,1);
-    snmp_varbind_ip4(addr_vb, 100, ip4);  
-
-    char error_str[] = { 0, 0 };
-    snmp_varbind_nstr(error_vb, 100, error_str, 2);
-
-    snmp_varbind_int(state_vb, 100, 6);
-
-    u32 now = current_time() TO_S;
-    if (now % 4 == 0)
-      notify_pdu(p, head, data, sz, 1);
-    else if (now % 2 == 0)
-      notify_pdu(p, head, data, sz, 0);
-  }
-
   sock *sk = p->sock;
   snmp_dump_packet(sk->tpos, AGENTX_HEADER_SIZE + 4);
   snmp_log("snmp_ping sk->tpos 0x%p", sk->tpos);

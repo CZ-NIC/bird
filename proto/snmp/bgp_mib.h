@@ -47,6 +47,9 @@ struct oid *snmp_bgp_search(struct snmp_proto *p, struct oid *o_start, struct oi
 enum snmp_search_res snmp_bgp_search2(struct snmp_proto *p, struct oid **searched, const struct oid *o_end, uint contid);
 void snmp_bgp_fill(struct snmp_proto *p, struct agentx_varbind *vb, struct snmp_pdu_context *c);
 
+void snmp_bgp_notify_established(struct snmp_proto *p, struct bgp_proto *bgp);
+void snmp_bgp_notify_backward_trans(struct snmp_proto *p, struct bgp_proto *bgp);
+
 #define SNMP_BGP_VERSION    1
 #define SNMP_BGP_LOCAL_AS   2
 #define SNMP_BGP_PEER_TABLE 3

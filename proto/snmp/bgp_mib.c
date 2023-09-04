@@ -49,6 +49,73 @@ static const char * const debug_bgp_states[] UNUSED = {
   [BGP_INTERNAL_NO_VALUE]		 = "BGP_INTERNAL_NO_VALUE",
 };
 
+static void
+snmp_bgp_notify_common(struct snmp_proto *p, uint type, ip4_addr ip4, char last_error[], uint state_val)
+{
+  // TODO remove heap allocation, put the data on stack
+
+#define SNMP_OID_SIZE_FROM_LEN(x) (sizeof(struct oid) + (x) * sizeof(u32))
+
+  /* trap OID bgpEstablishedNotification (.1.3.6.1.2.1.0.1) */
+  struct oid *head = mb_alloc(p->p.pool, SNMP_OID_SIZE_FROM_LEN(3));
+  head->n_subid = 3;
+  head->prefix = 2;
+  head->include = head->pad = 0;
+
+  u32 trap_ids[] = { 1, 0, type };
+  for (uint i = 0; i < head->n_subid; i++)
+    head->ids[i] = trap_ids[i];
+
+  /* OIDs, VB type headers, octet string, ip4 address, integer */
+  uint sz = 3 * SNMP_OID_SIZE_FROM_LEN(9) + 3 * 4 + 8 + 8 + 4;
+
+  /* Paylaod OIDs */
+
+  void *data = mb_alloc(p->p.pool, sz);
+  struct agentx_varbind *addr_vb = data;
+  /* +4 for varbind header, +8 for octet string */
+  struct agentx_varbind *error_vb = data + SNMP_OID_SIZE_FROM_LEN(9)  + 4 + 8;
+  struct agentx_varbind *state_vb = (void *) error_vb + SNMP_OID_SIZE_FROM_LEN(9) + 4 + 8;
+
+  addr_vb->pad = error_vb->pad = state_vb->pad = 0;
+
+  struct oid *addr = &addr_vb->name;
+  struct oid *error = &error_vb->name;
+  struct oid *state = &state_vb->name;
+
+  addr->n_subid = error->n_subid  = state->n_subid     = 9;
+  addr->prefix  = error->prefix   = state->prefix      = 2;
+  addr->include = error->include  = state->include     = 0;
+  addr->pad      = error->pad      = state->pad        = 0;
+
+  u32 oid_ids[] = {
+    SNMP_MIB_2, SNMP_BGP4_MIB, SNMP_BGP_PEER_TABLE, SNMP_BGP_PEER_ENTRY
+  };
+
+  for (uint i = 0; i < sizeof(oid_ids) / sizeof(oid_ids[0]); i++)
+    addr->ids[i] = error->ids[i] = state->ids[i] = oid_ids[i];
+
+  addr->ids[4]  = SNMP_BGP_REMOTE_ADDR;
+  error->ids[4] = SNMP_BGP_LAST_ERROR;
+  state->ids[4] = SNMP_BGP_STATE;
+
+  for (uint i = 0; i < 4; i++)
+    addr->ids[5 + i] = error->ids[5 + i] = state->ids[5 + i] \
+      = (ip4_to_u32(ip4) >> (8 * (3-i))) & 0xFF;
+
+  snmp_varbind_ip4(addr_vb, 100, ip4);
+
+  snmp_varbind_nstr(error_vb, 100, last_error, 2);
+
+  snmp_varbind_int(state_vb, 100, state_val);
+
+  snmp_notify_pdu(p, head, data, sz, 0);
+  mb_free(head);
+  mb_free(data);
+
+#undef SNMP_OID_SIZE_FROM_LEN
+}
+
 static inline uint
 snmp_bgp_fsm_state(struct bgp_proto *bgp_proto)
 {
@@ -68,6 +135,29 @@ snmp_bgp_fsm_state(struct bgp_proto *bgp_proto)
   return MAX(bgp_in->state, bgp_out->state);
 }
 
+static void
+snmp_bgp_notify_wrapper(struct snmp_proto *p, struct bgp_proto *bgp, uint type)
+{
+  // possibly dangerous
+  ip4_addr ip4 = ipa_to_ip4(bgp->remote_ip);
+  char last_error[2] = SNMP_BGP_LAST_ERROR(bgp);
+  uint state_val = snmp_bgp_fsm_state(bgp);
+  snmp_bgp_notify_common(p, type, ip4, last_error, state_val);
+}
+
+void
+snmp_bgp_notify_established(struct snmp_proto *p, struct bgp_proto *bgp)
+{
+  /* .1.3.6.1.2.15.0.>1<  i.e. BGP4-MIB::bgpEstablishedNotification */
+  snmp_bgp_notify_wrapper(p, bgp, 1);
+}
+
+void
+snmp_bgp_notify_backward_trans(struct snmp_proto *p, struct bgp_proto *bgp)
+{
+  /* .1.3.6.1.2.15.0.>2<  i.e. BGP4-MIB::bgpBackwardTransNotification */
+  snmp_bgp_notify_wrapper(p, bgp, 2);
+}
 
 void
 snmp_bgp_register(struct snmp_proto *p)
@@ -894,11 +984,8 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
     return ((byte *) vb) + snmp_varbind_header_size(vb);
   }
 
-  struct bgp_conn *bgp_conn = bgp_proto->conn;
-  struct bgp_conn *bgp_in = &bgp_proto->incoming_conn;
-  struct bgp_conn *bgp_out = &bgp_proto->outgoing_conn;
-
-  struct bgp_stats *bgp_stats = &bgp_proto->stats;
+  const struct bgp_conn *bgp_conn = bgp_proto->conn;
+  const struct bgp_stats *bgp_stats = &bgp_proto->stats;
   const struct bgp_config *bgp_conf = bgp_proto->cf;
 
   uint bgp_state = snmp_bgp_fsm_state(bgp_proto);

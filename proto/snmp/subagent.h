@@ -322,6 +322,8 @@ void snmp_manage_tbuf(struct snmp_proto *p, struct snmp_pdu_context *c);
 struct oid *snmp_prefixize(struct snmp_proto *p, const struct oid *o, int byte_ord);
 u8 snmp_get_mib_class(const struct oid *oid);
 
+void snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *opaque, uint size, int include_uptime);
+
 // debug wrapper
 #define snmp_log(...) log(L_INFO "snmp " __VA_ARGS__)
 
