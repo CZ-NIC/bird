@@ -302,27 +302,18 @@ struct agentx_alloc_context {
   uint clen;	  /* length of context string */
 };
 
-#if 0
-struct additional_buffer {
-  node n;
-  byte *buf;	  /* pointer to buffer data */
-  byte *pos;	  /* position of first unused byte */
-};
-#endif
-
 int snmp_rx(sock *sk, uint size);
 int snmp_rx_stop(sock *sk, uint size);
-//int snmp_is_active(int snmp_state);
 void snmp_down(struct snmp_proto *p);
 void snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 is_instance);
 void snmp_unregister(struct snmp_proto *p, struct oid *oid, uint index, uint len);
+void snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, int include_uptime);
 
 void snmp_manage_tbuf(struct snmp_proto *p, struct snmp_pdu_context *c);
 
 struct oid *snmp_prefixize(struct snmp_proto *p, const struct oid *o, int byte_ord);
 u8 snmp_get_mib_class(const struct oid *oid);
 
-void snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *opaque, uint size, int include_uptime);
 
 // debug wrapper
 #define snmp_log(...) log(L_INFO "snmp " __VA_ARGS__)

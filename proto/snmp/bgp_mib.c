@@ -857,7 +857,6 @@ snmp_bgp_search2(struct snmp_proto *p, struct oid **searched, const struct oid *
   {
     snmp_log("returning oid with dynamic state");
     return snmp_bgp_search_dynamic(p, searched, o_end, contid, bgp_state);
-    //return snmp_bgp_search_dynamic(p, searched, contid, result, bgp_state);
   }
 
   /* TODO snmp_bgp_has_value is false only for state which are not dynamic */
@@ -886,7 +885,6 @@ snmp_bgp_search2(struct snmp_proto *p, struct oid **searched, const struct oid *
   oid = *searched = update_bgp_oid(*searched, bgp_state);
   if (oid->n_subid == 3 && oid->ids[2] >= SNMP_BGP_VERSION &&
       oid->ids[2] <= SNMP_BGP_LOCAL_AS && bgp_state != BGP_INTERNAL_END)
-      //oid->ids[2] <= SNMP_BGP_LOCAL_AS && bgp_state != BGP_INTERNAL_END)
   {
     snmp_log("oid matches static state");
     oid->include = 0;

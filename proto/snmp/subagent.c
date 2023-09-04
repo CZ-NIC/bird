@@ -159,7 +159,6 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
     struct agentx_varbind *vb = snmp_create_varbind(c.buffer, &uptime);
     for (uint i = 0; i < uptime.n_subid; i++)
       STORE_U32(vb->name.ids[i], uptime_ids[i]);
-    ADVANCE(c.buffer, c.size, snmp_varbind_header_size(vb));
     snmp_varbind_ticks(vb, c.size, (current_time() TO_S) / 100);
     ADVANCE(c.buffer, c.size, snmp_varbind_size(vb, c.byte_ord));
   }
@@ -230,6 +229,7 @@ de_allocate_pdu(struct snmp_proto *p, struct oid *oid, u8 type)
 static void
 un_register_pdu(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 type, u8 is_instance)
 {
+  const struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, p->p.cf);
   sock *sk = p->sock;
   struct snmp_pdu_context c = SNMP_PDU_CONTEXT(sk);
   byte *buf = c.buffer;
@@ -247,7 +247,6 @@ un_register_pdu(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 
   ADVANCE(c.buffer, c.size, sizeof(struct agentx_un_register_pdu));
   struct agentx_header *h = &ur->h;
 
-  // FIXME correctly set INSTANCE REGISTRATION bit
   SNMP_HEADER(h, type, is_instance ? AGENTX_FLAG_INSTANCE_REGISTRATION : 0);
   /* use new transactionID, reset packetID */
   p->packet_id++;
@@ -257,7 +256,7 @@ un_register_pdu(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 
   /* do not override timeout */
   STORE_U8(ur->timeout, p->timeout);
   /* default priority */
-  STORE_U8(ur->priority, AGENTX_PRIORITY);
+  STORE_U8(ur->priority, cf->priority);
   STORE_U8(ur->range_subid, (len > 1) ? index : 0);
   STORE_U8(ur->pad, 0);
 
@@ -500,18 +499,10 @@ parse_pkt(struct snmp_proto *p, byte *pkt, uint size, uint *skip)
       parsed_len = parse_response(p, pkt, size);
       break;
 
-    /*
-    case AGENTX_GET_PDU:
-      refresh_ids(p, h);
-      return parse_get_pdu(p, pkt, size);
-    */
-
     case AGENTX_GET_PDU:
     case AGENTX_GET_NEXT_PDU:
     case AGENTX_GET_BULK_PDU:
       refresh_ids(p, h);
-      //parsed_len = parse_gets_pdu(p, &c);
-      //parsed_len = parse_gets_pdu(p, pkt, size, skip);
       parsed_len = parse_gets2_pdu(p, pkt, size, skip);
       break;
 
@@ -528,19 +519,9 @@ parse_pkt(struct snmp_proto *p, byte *pkt, uint size, uint *skip)
     default:
       snmp_log("unknown packet type %u", h->type);
       return 0;
-      //die("unknown packet type %u", h->type);
   }
-
-  /* We will process the same header again later * /
-  if (*skip || parsed_len < size)
-  {
-    / * We split our answer to multiple packet, we should differentiate them * /
-    h->packet_id++;
-  }
-  */
 
   snmp_log("parse_pkt returning parsed length");
-  //snmp_dump_packet(p->sock->tbuf, 64);
   return parsed_len;
 }
 
@@ -548,8 +529,6 @@ static uint
 parse_response(struct snmp_proto *p, byte *res, uint size)
 {
   snmp_log("parse_response() g%u h%u", size, sizeof(struct agentx_header));
-
-  //snmp_dump_packet(res, size);
 
   if (size < sizeof(struct agentx_response))
     return 0;
@@ -826,7 +805,7 @@ parse_close_pdu(struct snmp_proto UNUSED *p, byte UNUSED *req, uint UNUSED size)
 
   p->state = SNMP_ERR;
 
-  proto_state_notify(&p->p, PS_DOWN);
+  proto_notify_state(&p->p, PS_DOWN);
   */
   return 0;
 }
@@ -840,37 +819,6 @@ update_packet_size(struct snmp_proto *p, byte *start, byte *end)
   size_t s = snmp_pkt_len(start, end);
   STORE_U32(h->payload, s);
   return AGENTX_HEADER_SIZE + s;
-
-#if 0
-  if (EMPTY_LIST(p->additional_buffers))
-  {
-    return AGENTX_HEADER_SIZE + STORE_U32(h->payload, snmp_pkt_len(start, end));
-  }
-
-  uint size = p->to_send;   /* to_send contain also the AGENTX_HEADER_SIZE */
-  struct additional_buffer *b = TAIL(p->additional_buffers);
-  snmp_log("update_packet_size additional buf 0x%p  pos 0x%p  new pos 0x%p", b->buf, b->pos, end);
-  b->pos = end;
-
-  snmp_log("update_packet_size to_send %u", p->to_send);
-
-  /* TODO add packet size limiting
-   * we couldn't overflow the size because we limit the maximum packet size
-   */
-  WALK_LIST(b, p->additional_buffers)
-  {
-    size += b->pos - b->buf;
-    snmp_log("update_packet_size add %u => %u", b->pos - b->buf, size);
-  }
-
-  STORE_U32(h->payload, size - AGENTX_HEADER_SIZE);
-
-  return size;
-//  if (p->additional_bufferson
-//    STORE_U32(h->payload, p->to_send + (end - start));
-//  else {}
-////    STORE_U32(h->payload, snmp_pkt_len(start, end));
-#endif
 }
 
 static inline void
@@ -971,12 +919,6 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
   while (c.error == AGENTX_RES_NO_ERROR && size > 0 && pkt_size > 0)
   {
     snmp_log("iter %u  size %u remaining %u/%u", ind, c.buffer - sk->tpos, size, pkt_size);
-#if 0
-    if (EMPTY_LIST(p->additional_buffers))
-      snmp_log("iter  %u size %u remaining %u/%u", ind, c.buffer - sk->tpos, size, pkt_size);
-    else
-      snmp_log("iter+ %u size %u remaining %u/%u", ind, c.buffer - ((struct additional_buffer *) TAIL(p->additional_buffers))->buf, size, pkt_size);
-#endif
 
     if (size < snmp_oid_sizeof(0))
       goto partial;
@@ -1081,12 +1023,12 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
 send:
   snmp_log("gets2: sending response ...");
   struct agentx_response *res = (void *) sk->tbuf;
-  /* update the error, index pair on the beginning of the packet */
+  /* We update the error, index pair on the beginning of the packet. */
   response_err_ind(res, c.error, ind);
   uint s = update_packet_size(p, (byte *) response_header, c.buffer);
 
   snmp_log("sending response to Get-PDU, GetNext-PDU or GetBulk-PDU request (size %u)...", s);
-  /* send the message in TX buffer */
+  /* We send the message in TX-buffer. */
   int ret = sk_send(sk, s);
   if (ret > 0)
     snmp_log("sk_send OK!");
@@ -1097,26 +1039,18 @@ send:
   // TODO think through the error state
 
   p->partial_response = NULL;
-  /*
-  int ret = sk_send(sk, c.buffer - sk->tpos);
-  if (ret == 0)
-    snmp_log("sk_send sleep (gets2");
-  else if (ret < 0)
-    snmp_log("sk_send err %d (gets2)", ret);
-  else
-    snmp_log("sk_send was successful (gets2) !");
-  */
 
   mb_free(context);
   mb_free(o_start);
   mb_free(o_end);
 
-  /* number of bytes parsed form RX-buffer */
+  /* number of bytes parsed from RX-buffer */
   return pkt - pkt_start;
+
 
 partial:
   snmp_log("partial packet");
-  /* The context octet is not added into response pdu */
+  /* The context octet is not added into response pdu. */
 
   /* need to tweak RX buffer packet size */
   snmp_log("old rx-buffer size %u", h->payload);
@@ -1128,10 +1062,12 @@ partial:
   /* number of bytes parsed from RX-buffer */
   return pkt - pkt_start;
 
+
 wait:
   mb_free(context);
   mb_free(o_start);
   mb_free(o_end);
+
   return 0;
 }
 
@@ -1253,19 +1189,11 @@ snmp_ping(struct snmp_proto *p)
     snmp_log("sk_send error");
 }
 
-/*
-void
-snmp_agent_reconfigure(void)
-{
-
-}
-
-*/
-
 static inline int
 is_bgp4_mib_prefix(struct oid *o)
 {
-  if (o->prefix == 2 && o->ids[0] == 15)
+  if (o->prefix == SNMP_MGMT && o->ids[0] == SNMP_MIB_2 &&
+      o->ids[1] == SNMP_BGP4_MIB)
     return 1;
   else
     return 0;
@@ -1460,69 +1388,10 @@ snmp_manage_tbuf(struct snmp_proto UNUSED *p, struct snmp_pdu_context *c)
 {
   snmp_log("snmp_manage_tbuf()");
   sock *sk = p->sock;
- 
+
   sk_set_tbsize(sk, sk->tbsize + 2048);
   c->size += 2048;
-  //sk_set_tbsize(sk, sk->tbsize + SNMP_TX_BUFFER_SIZE);
-  //c->size += SNMP_TX_BUFFER_SIZE;
-
-  return;
-
-#if 0
-  if (!EMPTY_LIST(p->additional_buffers))
-  {
-    struct additional_buffer *t = TAIL(p->additional_buffers);
-    t->pos = c->buffer;
-  }
-  else
-    p->to_send = c->buffer - p->sock->tpos;
-
-  struct additional_buffer *b = mb_allocz(p->p.pool, sizeof(struct additional_buffer));
-  b->buf = b->pos = mb_alloc(p->p.pool, SNMP_TX_BUFFER_SIZE);
-  add_tail(&p->additional_buffers, &b->n);
-
-  c->buffer = b->buf;
-  c->size = SNMP_TX_BUFFER_SIZE;
-#endif
 }
-
-#if 0
-static int
-send_remaining_buffers(sock *sk)
-{
-  struct snmp_proto *p = sk->data;
-
-  while (!EMPTY_LIST(p->additional_buffers))
-  {
-    struct additional_buffer *b = HEAD(p->additional_buffers);
-    p->to_send = b->pos - b->buf;
-    snmp_log("send_remaining_buffers sending next %u bytes", p->to_send);
-
-    ASSUME(sk->tbuf == sk->tpos);
-    memcpy(sk->tbuf, b->buf, p->to_send);
-    sk->tpos = sk->tbuf + p->to_send;
-
-    rem_node(&b->n);
-    snmp_log("state of additional b at 0x%p  .buf = 0x%p .pos = 0x%p", b, b->buf, b->pos);
-    mb_free(b->buf);
-    snmp_log("b->buf fried, cause is b");
-    mb_free(b);
-
-    snmp_log("packet byte stream part next");
-    snmp_dump_packet(sk->tpos, p->to_send);
-
-    int ret;
-    if ((ret = sk_send(sk, p->to_send)) <= 0)
-    {
-      snmp_log("sending_remaining - error or sleep;returning");
-      return ret;
-    }
-  }
-
-  snmp_log("sending_remaining all done returning 1");
-  return 1;
-}
-#endif
 
 /*
 void

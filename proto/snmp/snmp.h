@@ -105,7 +105,9 @@ struct snmp_proto {
   u32 local_as;
 
   sock *sock;
-  u8 timeout;
+  u8 timeout;			  /* timeout is part of MIB registration. It
+				    specifies how long should the master
+				    agent wait for request responses. */
 
   u32 session_id;
   u32 transaction_id;

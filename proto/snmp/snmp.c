@@ -151,6 +151,7 @@ snmp_sock_err(sock *sk, int err)
 
   tm_stop(p->ping_timer);
 
+  proto_notify_state(&p->p, PS_START);
   rfree(p->sock);
   p->sock = NULL;
 
@@ -168,8 +169,6 @@ snmp_connected(sock *sk)
   snmp_log("snmp_connected() connection created");
 
   p->state = SNMP_OPEN;
-
-  byte *buf UNUSED = sk->rpos;
 
   sk->rx_hook = snmp_rx;
   sk->tx_hook = NULL;
@@ -202,7 +201,6 @@ snmp_start_locked(struct object_lock *lock)
   s->tx_hook = snmp_connected;
   s->err_hook = snmp_sock_err;
 
-  //mb_free(p->sock);
   p->sock = s;
   s->data = p;
 
@@ -211,13 +209,11 @@ snmp_start_locked(struct object_lock *lock)
 
   if (sk_open(s) < 0)
   {
-    // TODO rather set the startup time, then reset whole SNMP proto
+    // TODO rather set the startup timer, then reset whole SNMP proto
     log(L_ERR "Cannot open listening socket");
     snmp_down(p);
     // TODO go back to SNMP_INIT and try reconnecting after timeout
   }
-
-  snmp_log("socket ready!, trying to connect");
 }
 
 static void
@@ -237,7 +233,7 @@ snmp_startup(struct snmp_proto *p)
     return;
   }
 
-  snmp_log("snmp_startup(), preprating lock");
+  snmp_log("snmp_startup(), praparing lock");
   p->state = SNMP_INIT;
 
   /* Starting AgentX communicaiton channel. */
@@ -281,9 +277,8 @@ snmp_stop_timeout(timer *t)
 }
 
 static void
-snmp_ping_timer(struct timer *tm)
+snmp_ping_timeout(struct timer *tm)
 {
-  // snmp_log("snmp_ping_timer() ");
   struct snmp_proto *p = tm->data;
 
   if (p->state == SNMP_REGISTER ||
@@ -302,22 +297,20 @@ snmp_start(struct proto *P)
   struct snmp_proto *p = (void *) P;
   struct snmp_config *cf = (struct snmp_config *) P->cf;
 
-  p->startup_timer = tm_new_init(p->p.pool, snmp_startup_timeout, p, 0, 0);
-
   p->to_send = 0;
   p->errs = 0;
+  p->partial_response = NULL;
+
+  p->startup_timer = tm_new_init(p->p.pool, snmp_startup_timeout, p, 0, 0);
+  p->ping_timer = tm_new_init(p->p.pool, snmp_ping_timeout, p, 0, 0);
 
   p->pool = lp_new(p->p.pool);
   p->bgp_trie = f_new_trie(p->pool, cf->bonds);
 
   init_list(&p->register_queue);
   init_list(&p->bgp_registered);
-  p->partial_response = NULL;
 
-  p->ping_timer = tm_new_init(p->p.pool, snmp_ping_timer, p, 0, 0);
-  // tm_set(p->ping_timer, current_time() + 2 S);
-
-  /* create copy of bonds to bgp */
+  /* We create copy of bonds to BGP protocols. */
   HASH_INIT(p->bgp_hash, p->p.pool, 10);
 
   struct snmp_bond *b;
@@ -326,7 +319,7 @@ snmp_start(struct proto *P)
     struct bgp_config *bc = (struct bgp_config *) b->proto;
     if (bc && !ipa_zero(bc->remote_ip))
     {
-      struct snmp_bgp_peer *peer =
+      struct snmp_bgp_peer *peer = \
 	mb_allocz(p->p.pool, sizeof(struct snmp_bgp_peer));
       peer->config = (struct bgp_config *) b->proto;
       peer->peer_ip = bc->remote_ip;
@@ -351,7 +344,7 @@ snmp_reconfigure(struct proto *P, struct proto_config *CF)
   const struct snmp_config *new = SKIP_BACK(struct snmp_config, cf, CF);
   const struct snmp_config *old = SKIP_BACK(struct snmp_config, cf, p->p.cf);
 
-  return !memcpy((byte *) old + sizeof(struct proto_config),
+  return !memcmp(((byte *) old) + sizeof(struct proto_config),
       ((byte *) new) + sizeof(struct proto_config),
       OFFSETOF(struct snmp_config, description) - sizeof(struct proto_config))
     && ! strncmp(old->description, new->description, UINT32_MAX);
@@ -429,7 +422,7 @@ bp->stats.fsm_established_transitions);
 static void
 snmp_postconfig(struct proto_config *CF)
 {
-  // walk the bgp protocols and cache their references
+  /* Walk the BGP protocols and cache their references. */
   if (((struct snmp_config *) CF)->local_as == 0)
     cf_error("local as not specified");
 }
@@ -446,7 +439,7 @@ snmp_shutdown(struct proto *P)
       p->state == SNMP_REGISTER ||
       p->state == SNMP_CONN)
   {
-    /* We have connection established (at leased send out Open-PDU). */
+    /* We have a connection established (at leased send out Open-PDU). */
     p->state = SNMP_STOP;
 
     p->startup_timer->hook = snmp_stop_timeout;
