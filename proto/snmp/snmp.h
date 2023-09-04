@@ -30,8 +30,6 @@
 #define SNMP_TX_BUFFER_SIZE 8192
 
 enum snmp_proto_state {
-  SNMP_ERR = 0,
-
   SNMP_INIT = 1,
   SNMP_LOCKED,
   SNMP_OPEN,
@@ -39,18 +37,6 @@ enum snmp_proto_state {
   SNMP_CONN,
   SNMP_STOP,
   SNMP_DOWN,
-
-/*
-  SNMP_ERR = 0,
-  SNMP_DELAY,
-  SNMP_INIT,
-  SNMP_REGISTER,
-  SNMP_CONN,
-  SNMP_STOP,
-  SNMP_DOWN,
-  SNMP_LISTEN,
-  SNMP_RESET,
-*/
 };
 
 /* hash table macros */
@@ -79,9 +65,12 @@ struct snmp_config {
   u16 remote_port;
   u32 local_as;
   u8 timeout;
+  u8 priority;
   //struct iface *iface;
+  const char *description;
   list bgp_entries;
   u32 bonds;
+  // TODO add support for subagent oid identification
 };
 
 struct snmp_bgp_peer {
@@ -116,7 +105,6 @@ struct snmp_proto {
   u32 local_as;
 
   sock *sock;
-  // timeout for what ??
   u8 timeout;
 
   u32 session_id;

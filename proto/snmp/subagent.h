@@ -196,7 +196,7 @@ struct agentx_un_register_pdu {
   u8 timeout;
   u8 priority;
   u8 range_subid;
-  u8 padd;
+  u8 pad;
 };
 
 struct agentx_bulk_state {

@@ -80,7 +80,6 @@
 #include "snmp_utils.h"
 
 static const char * const snmp_state[] = {
-  [SNMP_ERR]	    = "SNMP ERROR",
   [SNMP_INIT]	    = "SNMP INIT",
   [SNMP_LOCKED]	    = "SNMP LOCKED",
   [SNMP_OPEN]	    = "SNMP CONNECTION OPENED",
@@ -107,8 +106,7 @@ snmp_init(struct proto_config *CF)
   snmp_log("changing proto_snmp state to INIT");
   p->state = SNMP_INIT;
 
-  // p->timeout = cf->timeout;
-  p->timeout = 15;
+  p->timeout = cf->timeout;
 
   snmp_log("snmp_reconfigure() lip: %I:%u rip: %I:%u",
     cf->local_ip, cf->local_port, cf->remote_ip, cf->remote_port);
@@ -116,9 +114,10 @@ snmp_init(struct proto_config *CF)
   return P;
 }
 
-static inline void
+static inline int
 snmp_cleanup(struct snmp_proto *p)
 {
+  /* Function tm_stop() is called inside rfree() */
   rfree(p->startup_timer);
   p->startup_timer = NULL;
 
@@ -131,14 +130,15 @@ snmp_cleanup(struct snmp_proto *p)
   rfree(p->lock);
   p->lock = NULL;
 
-  p->state = SNMP_DOWN;
+  // TODO cleanup lists, hash table, trie, ...
+
+  return (p->state = SNMP_DOWN);
 }
 
 void
 snmp_down(struct snmp_proto *p)
 {
   snmp_cleanup(p);
-
   proto_notify_state(&p->p, PS_DOWN);
 }
 
@@ -154,12 +154,8 @@ snmp_sock_err(sock *sk, int err)
   rfree(p->sock);
   p->sock = NULL;
 
-  rfree(p->lock);
-  p->lock = NULL;
-
-  snmp_log("changing proto_snmp state to ERR[OR]");
-  p->state = SNMP_ERR;
-  //  snmp_shutdown((struct proto *) p);
+  snmp_log("changing proto_snmp state to LOCKED");
+  p->state = SNMP_LOCKED;
 
   // TODO ping interval
   tm_start(p->startup_timer, 4 S);
@@ -181,8 +177,8 @@ snmp_connected(sock *sk)
 
   snmp_start_subagent(p);
 
-  // TODO ping interval
-  tm_set(p->ping_timer, 15 S);
+  // TODO ping interval <move to do_response()>
+  tm_set(p->ping_timer, p->timeout S);
 }
 
 static void
@@ -215,8 +211,10 @@ snmp_start_locked(struct object_lock *lock)
 
   if (sk_open(s) < 0)
   {
+    // TODO rather set the startup time, then reset whole SNMP proto
     log(L_ERR "Cannot open listening socket");
     snmp_down(p);
+    // TODO go back to SNMP_INIT and try reconnecting after timeout
   }
 
   snmp_log("socket ready!, trying to connect");
@@ -225,26 +223,27 @@ snmp_start_locked(struct object_lock *lock)
 static void
 snmp_startup(struct snmp_proto *p)
 {
-  //snmp_log("changing proto_snmp state to INIT");
-
-  if (p->state == SNMP_LOCKED ||
-      p->state == SNMP_OPEN ||
-      p->state == SNMP_REGISTER ||
-      p->state == SNMP_CONN)
+  if (p->state != SNMP_INIT &&
+      p->state != SNMP_LOCKED &&
+      p->state != SNMP_DOWN)
   {
     snmp_log("startup() already in connected state %u", p->state);
     return;
   }
 
-  snmp_log("snmp_startup()");
+  if (p->lock)
+  {
+    snmp_start_locked(p->lock);
+    return;
+  }
+
+  snmp_log("snmp_startup(), preprating lock");
   p->state = SNMP_INIT;
 
-  /* starting agentX communicaiton channel */
+  /* Starting AgentX communicaiton channel. */
 
-  snmp_log("preparing lock");
   struct object_lock *lock;
 
-  /* we could have the lock already acquired but be in ERROR state */
   lock = p->lock = olock_new(p->p.pool);
 
   // lock->addr
@@ -287,13 +286,13 @@ snmp_ping_timer(struct timer *tm)
   // snmp_log("snmp_ping_timer() ");
   struct snmp_proto *p = tm->data;
 
-  if (p->state == SNMP_CONN)
+  if (p->state == SNMP_REGISTER ||
+      p->state == SNMP_CONN)
   {
     snmp_ping(p);
   }
 
-  //tm_set(tm, current_time() + (15 S));
-  tm_set(tm, current_time() + 15 S);
+  tm_set(tm, current_time() + p->timeout S);
 }
 
 static int
@@ -349,24 +348,13 @@ static int
 snmp_reconfigure(struct proto *P, struct proto_config *CF)
 {
   struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
-  const struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, CF);
+  const struct snmp_config *new = SKIP_BACK(struct snmp_config, cf, CF);
+  const struct snmp_config *old = SKIP_BACK(struct snmp_config, cf, p->p.cf);
 
-  p->local_ip = cf->local_ip;
-  p->remote_ip = cf->remote_ip;
-  p->local_port = cf->local_port;
-  p->remote_port = cf->remote_port;
-  p->local_as = cf->local_as;
-  p->timeout = 15;
-
-  /* workaround to make the registration happen */
-  p->register_to_ack = 1;
-
-  /* TODO walk all bind protocols and find their (new) IP
-    to update HASH table */
-  snmp_log("snmp_reconfigure() lip: %I:%u rip: %I:%u",
-    p->local_ip, p->local_port, p->remote_ip, p->remote_port);
-
-  return 1;
+  return !memcpy((byte *) old + sizeof(struct proto_config),
+      ((byte *) new) + sizeof(struct proto_config),
+      OFFSETOF(struct snmp_config, description) - sizeof(struct proto_config))
+    && ! strncmp(old->description, new->description, UINT32_MAX);
 }
 
 static void
@@ -434,6 +422,7 @@ bp->stats.fsm_established_transitions);
 
     cli_msg(-1006, "  outgoinin_conn state %u", bp->outgoing_conn.state + 1);
     cli_msg(-1006, "  incoming_conn state: %u", bp->incoming_conn.state + 1);
+    cli_msg(-1006, "");
   }
 }
 
@@ -453,27 +442,25 @@ snmp_shutdown(struct proto *P)
 
   tm_stop(p->ping_timer);
 
-  /* connection established -> close the connection */
-  if (p->state == SNMP_REGISTER ||
+  if (p->state == SNMP_OPEN ||
+      p->state == SNMP_REGISTER ||
       p->state == SNMP_CONN)
   {
+    /* We have connection established (at leased send out Open-PDU). */
     p->state = SNMP_STOP;
 
-    /* startup time is reused for connection closing */
     p->startup_timer->hook = snmp_stop_timeout;
 
-    // TODO timeout option
-    tm_set(p->startup_timer, 15 S);
+    tm_set(p->startup_timer, p->timeout S);
 
     snmp_stop_subagent(p);
 
     return PS_STOP;
   }
-  /* no connection to close */
   else
   {
-    snmp_cleanup(p);
-    return PS_DOWN;
+    /* We did not create a connection, we clean the lock and other stuff. */
+    return snmp_cleanup(p);
   }
 }
 

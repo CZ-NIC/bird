@@ -46,7 +46,7 @@ void snmp_oid_copy(struct oid *dest, const struct oid *src)
 {
   STORE_U8(dest->n_subid, src->n_subid);
   STORE_U8(dest->prefix,  src->prefix);
-  STORE_U8(dest->include, src->include);
+  STORE_U8(dest->include, src->include ? 1 : 0);
   STORE_U8(dest->pad,	  0);
 
   for (int i = 0; i < src->n_subid; i++)
@@ -262,23 +262,9 @@ snmp_put_blank(byte *buf)
 byte *
 snmp_put_oid(byte *buf, struct oid *oid)
 {
-  put_u8(buf, oid->n_subid);
-  put_u8(++buf, oid->prefix);
-  put_u8(++buf, oid->include);
-  put_u8(++buf, 0);  // padding
-
-  /* last increment */
-  ++buf;
-
-  /* copy OID data */
-#ifdef SNMP_NATIVE
-  for (uint i = 0; i < oid->n_subid; i++)
-    *(((u32 *) buf) + i) = oid->ids[i];
-#else
-  put_u32s(buf, oid->ids, oid->n_subid * 4);
-#endif
-
-  return buf + oid->n_subid * 4;
+  struct oid *oid_buf = (void *) buf;
+  snmp_oid_copy(oid_buf, oid);
+  return buf + snmp_oid_size(oid);
 }
 
 /**

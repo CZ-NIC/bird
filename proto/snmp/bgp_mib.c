@@ -699,6 +699,8 @@ bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, const struct oid
     if (cmp < 0 || (cmp == 0 && snmp_is_oid_empty(o_end)))
     {
       snmp_log("ip4_less() returned true");
+
+      // TODO repair
       struct oid *o = snmp_oid_duplicate(p->p.pool, o_start);
       snmp_oid_ip4_index(o, 5, net4_prefix(&net));
 

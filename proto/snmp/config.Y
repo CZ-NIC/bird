@@ -10,6 +10,7 @@
 CF_HDR
 
 #include "proto/snmp/snmp.h"
+#include "proto/snmp/subagent.h"
 
 CF_DEFINES
 
@@ -17,7 +18,8 @@ CF_DEFINES
 
 CF_DECLS
 
-CF_KEYWORDS(SNMP, PROTOCOL, BPG, LOCAL, AS, REMOTE, PORT)
+CF_KEYWORDS(SNMP, PROTOCOL, BPG, LOCAL, AS, REMOTE, ADDRESS, PORT, DESCRIPTION,
+	    TIMEOUT, PRIORITY)
 
 CF_GRAMMAR
 
@@ -27,15 +29,35 @@ snmp_proto:
    snmp_proto_start '{'
  | snmp_proto proto_item ';'
  | snmp_proto snmp_bgp_bond ';'
- | snmp_proto LOCAL PORT expr ';' { SNMP_CFG->local_port = $4; if (($4<1) ||
-($4>65535)) cf_error("Invalid port number"); }
- | snmp_proto REMOTE PORT expr ';' { SNMP_CFG->remote_port = $4; if (($4<1) ||
-($4>65545)) cf_error("Invalid port number"); }
- | snmp_proto LOCAL ipa ';' { SNMP_CFG->local_ip = $3; }
- | snmp_proto REMOTE ipa ';' { SNMP_CFG->remote_ip = $3; if(ipa_zero($3))
-cf_error("Invalid remote ip address"); }
- | snmp_proto LOCAL AS expr ';' { if ($4<1 || $4>65535) cf_error("invalid local as");
-				  SNMP_CFG->local_as = $4; }
+ | snmp_proto LOCAL PORT expr ';' {
+    if (($4 < 1) || ($4 > 65535)) cf_error("Invalid port number");
+    SNMP_CFG->local_port = $4;
+  }
+ | snmp_proto REMOTE PORT expr ';' {
+    if (($4 < 1) || ($4 > 65535)) cf_error("Invalid port number");
+    SNMP_CFG->remote_port = $4;
+  }
+ | snmp_proto LOCAL ADDRESS ipa ';' { SNMP_CFG->local_ip = $4; }
+ | snmp_proto REMOTE ADDRESS ipa ';' {
+    if (ipa_zero($4)) cf_error("Invalid remote ip address");
+    SNMP_CFG->remote_ip = $4;
+  }
+ | snmp_proto LOCAL AS expr ';' {
+    if ($4 < 1 || $4 > 65535) cf_error("Invalid local AS");
+    SNMP_CFG->local_as = $4;
+  }
+ | snmp_proto DESCRIPTION text ';' {
+    if (strlen($3) > UINT32_MAX) cf_error("Description is too long");
+    SNMP_CFG->description = $3;
+  }
+ | snmp_proto TIMEOUT expr ';' {
+    if ($3 < 1 || $3 > 255) cf_error("Timeout must be in range 1-255");
+    SNMP_CFG->timeout = $3;
+  }
+ | snmp_proto PRIORITY expr ';' {
+    if ($3 > 255) cf_error("Registration priority must be in range 0-255");
+    SNMP_CFG->priority = $3;
+  }
  ;
 
 snmp_proto_start: proto_start SNMP
@@ -51,7 +73,9 @@ snmp_proto_start: proto_start SNMP
   SNMP_CFG->remote_port = 705;
   SNMP_CFG->local_as = 0;
 
+  SNMP_CFG->description = "bird";
   SNMP_CFG->timeout = 15;
+  SNMP_CFG->priority = AGENTX_PRIORITY;
 }
 
 proto_name ;
