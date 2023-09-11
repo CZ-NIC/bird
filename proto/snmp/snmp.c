@@ -108,8 +108,12 @@ snmp_init(struct proto_config *CF)
 
   p->timeout = cf->timeout;
 
-  snmp_log("snmp_reconfigure() lip: %I:%u rip: %I:%u",
+  snmp_log("snmp_init() lip: %I:%u rip: %I:%u",
     cf->local_ip, cf->local_port, cf->remote_ip, cf->remote_port);
+
+  /* used when assigning the context ids in s_cont_create() */
+  p->context_max = 1;
+  p->context_id_map = NULL;
 
   return P;
 }
@@ -130,7 +134,30 @@ snmp_cleanup(struct snmp_proto *p)
   rfree(p->lock);
   p->lock = NULL;
 
-  // TODO cleanup lists, hash table, trie, ...
+  p->partial_response = NULL;
+
+  struct snmp_register *r, *r2;
+  WALK_LIST_DELSAFE(r, r2, p->register_queue)
+  {
+    rem_node(&r->n);
+    mb_free(r);
+    r = NULL;
+  }
+
+  struct snmp_registered_oid *ro, *ro2;
+  WALK_LIST_DELSAFE(ro, ro2, p->bgp_registered)
+  {
+    rem_node(&r->n);
+    mb_free(ro);
+    ro = NULL;
+  }
+
+  HASH_FREE(p->bgp_hash);
+  HASH_FREE(p->context_hash);
+  mb_free(p->context_id_map);
+  p->context_id_map = NULL;
+
+  // TODO cleanup trie
 
   return (p->state = SNMP_DOWN);
 }
@@ -312,16 +339,29 @@ snmp_start(struct proto *P)
 
   /* We create copy of bonds to BGP protocols. */
   HASH_INIT(p->bgp_hash, p->p.pool, 10);
+  HASH_INIT(p->context_hash, p->p.pool, 10);
+
+  /* We always have at least the default context */
+  p->context_id_map = mb_allocz(p->p.pool, cf->contexts * sizeof(struct snmp_context *));
+  log(L_INFO "number of context allocated %d", cf->contexts);
+
+  struct snmp_context *defaultc = mb_alloc(p->p.pool, sizeof(struct snmp_context));
+  defaultc->context = "";
+  defaultc->context_id = 0;
+  defaultc->flags = 0; /* TODO Default context fl. */
+  HASH_INSERT(p->context_hash, SNMP_H_CONTEXT, defaultc);
+
+  p->context_id_map[0] = defaultc;
 
   struct snmp_bond *b;
   WALK_LIST(b, cf->bgp_entries)
   {
-    struct bgp_config *bc = (struct bgp_config *) b->proto;
+    const struct bgp_config *bc = (struct bgp_config *) b->proto;
     if (bc && !ipa_zero(bc->remote_ip))
     {
       struct snmp_bgp_peer *peer = \
 	mb_allocz(p->p.pool, sizeof(struct snmp_bgp_peer));
-      peer->config = (struct bgp_config *) b->proto;
+      peer->config = bc;
       peer->peer_ip = bc->remote_ip;
 
       struct net_addr net;
@@ -330,8 +370,29 @@ snmp_start(struct proto *P)
       trie_add_prefix(p->bgp_trie, &net, IP4_MAX_PREFIX_LENGTH, IP4_MAX_PREFIX_LENGTH);
 
       HASH_INSERT(p->bgp_hash, SNMP_HASH, peer);
+
+      /* Handle non-default context */
+      if (b->context)
+      {
+	const struct snmp_context *c = snmp_cont_create(p, b->context);
+	snmp_log("creating snmp context %s with id %u, writing", b->context, c->context_id);
+	p->context_id_map[c->context_id] = c;
+	peer->context_id = c->context_id;
+      }
     }
   }
+
+  {
+    u32 *ptr = mb_alloc(p->p.pool, 4 * sizeof(u32));
+    *ptr = 1;
+    ptr[2] = 4;
+    (void)ptr[1]; (void)ptr[0]; (void)ptr[2];
+    mb_free(ptr);
+    log(L_INFO "testing alloc 3");
+  }
+
+  snmp_log("values of context cf %u  proto %u", cf->contexts, p->context_max);
+  ASSUME(cf->contexts == p->context_max);
 
   snmp_startup(p);
   return PS_START;
@@ -343,6 +404,27 @@ snmp_reconfigure(struct proto *P, struct proto_config *CF)
   struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
   const struct snmp_config *new = SKIP_BACK(struct snmp_config, cf, CF);
   const struct snmp_config *old = SKIP_BACK(struct snmp_config, cf, p->p.cf);
+
+  struct snmp_bond *b1, *b2;
+  WALK_LIST(b1, new->bgp_entries)
+  {
+    WALK_LIST(b2, old->bgp_entries)
+    {
+      if (!strcmp(b1->proto->name, b2->proto->name))
+	goto skip;
+
+      /* Both bonds use default context */
+      if (!b1->context && !b2->context)
+	goto skip;
+
+      /* Both bonds use same non-default context */
+      if (b1->context && b2->context && !strcmp(b1->context, b2->context))
+	goto skip;
+    }
+
+    return 0;
+skip:;
+  }
 
   return !memcmp(((byte *) old) + sizeof(struct proto_config),
       ((byte *) new) + sizeof(struct proto_config),
@@ -391,7 +473,7 @@ snmp_show_proto_info(struct proto *P)
     cli_msg(-1006, "    in total: %u", bp->stats.rx_messages);
     cli_msg(-1006, "    out total: %u", bp->stats.tx_messages);
     cli_msg(-1006, "    fsm transitions: %u",
-bp->stats.fsm_established_transitions);
+      bp->stats.fsm_established_transitions);
 
     cli_msg(-1006, "    fsm total time: -- (0)");
     cli_msg(-1006, "    retry interval: %u", bcf->connect_retry_time);

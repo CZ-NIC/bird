@@ -149,11 +149,13 @@ snmp_varbind_size(struct agentx_varbind *vb, int byte_ord)
   return hdr_size + snmp_str_size_from_len(LOAD_PTR(data, byte_ord));
 }
 
+/*
 inline uint
 snmp_context_size(struct agentx_context *c)
 {
   return (c && c->length) ? snmp_str_size_from_len(c->length) : 0;
 }
+*/
 
 struct agentx_varbind *
 snmp_create_varbind(byte *buf, struct oid *oid)
@@ -208,14 +210,13 @@ snmp_put_nstr(byte *buf, const char *str, uint len)
 {
   uint alen = BIRD_ALIGN(len, 4);
 
-  // TODO check for '\0' in the str bytes?
   STORE_PTR(buf, len);
   buf += 4;
   memcpy(buf, str, len);
 
   /* Insert zero padding in the gap at the end */
   for (uint i = 0; i < alen - len; i++)
-    buf[len + i] = 0x00;
+    buf[len + i] = '\0';
 
   return buf + alen;
 }
@@ -415,7 +416,7 @@ snmp_register_same(struct snmp_register *r, struct agentx_header *h, u8 class)
 }
 
 void
-snmp_register_ack(struct snmp_proto *p, struct agentx_header *h)
+snmp_register_ack(struct snmp_proto *p, struct agentx_header *h, u8 class)
 {
   snmp_log("snmp_register_ack()");
 
@@ -428,7 +429,7 @@ h->packet_id);
     // TODO add support for more mib trees (other than BGP)
     snmp_log("checking registration request sid: %u tid: %u pid: %u",
       reg->session_id, reg->transaction_id, reg->packet_id);
-    if (snmp_register_same(reg, h, SNMP_BGP4_MIB))
+    if (snmp_register_same(reg, h, class))
     {
       struct snmp_registered_oid *ro = \
 	 mb_alloc(p->p.pool, sizeof(struct snmp_registered_oid));
@@ -574,4 +575,49 @@ snmp_search_res_to_type(enum snmp_search_res r)
   };
 
   return type_arr[r];
+}
+
+inline const struct snmp_context *
+snmp_cont_find(struct snmp_proto *p, const char *name)
+{
+  u32 *ptr = mb_alloc(p->p.pool, 4 * sizeof(u32));
+  *ptr = 1;
+  ptr[2] = 4;
+  (void)ptr[1]; (void)ptr[0]; (void)ptr[2];
+  mb_free(ptr);
+  return HASH_FIND(p->context_hash, SNMP_H_CONTEXT, name);
+}
+
+inline const struct snmp_context *
+snmp_cont_get(struct snmp_proto *p, uint id)
+{
+  if (id >= p->context_max)
+    return NULL;
+
+  return p->context_id_map[id];
+}
+
+inline const struct snmp_context *
+snmp_cont_create(struct snmp_proto *p, const char *name)
+{
+  const struct snmp_context *c = snmp_cont_find(p, name);
+
+  if (c)
+    return c;
+
+  struct snmp_context *c2;
+  c2 = mb_alloc(p->p.pool, sizeof(struct snmp_context));
+  c2->context = name;
+  c2->context_id = p->context_max++;
+  c2->flags = 0;
+
+  u32 *ptr = mb_alloc(p->p.pool, 4 * sizeof(u32));
+  *ptr = 1;
+  ptr[2] = 4;
+  (void)ptr[1]; (void)ptr[0]; (void)ptr[2];
+  mb_free(ptr);
+
+  HASH_INSERT(p->context_hash, SNMP_H_CONTEXT, c2);
+
+  return c2;
 }

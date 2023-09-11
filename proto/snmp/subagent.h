@@ -27,6 +27,8 @@ void snmp_ping(struct snmp_proto *p);
 
 extern u32 snmp_internet[4];
 
+#define SNMP_DEFAULT_CONTEXT 0
+
 enum SNMP_CLASSES {
   SNMP_CLASS_INVALID = 0,
   SNMP_CLASS_BGP = 1,
@@ -64,6 +66,9 @@ enum snmp_search_res {
 
 #define AGENTX_PRIORITY		127
 
+#define SNMP_REGISTER_TREE 0
+#define SNMP_REGISTER_INSTANCE 1
+
 #define SNMP_NATIVE
 
 #ifdef SNMP_NATIVE
@@ -95,7 +100,7 @@ enum snmp_search_res {
 
 #define SNMP_BLANK_HEADER(h, t) SNMP_HEADER(h, t, AGENTX_FLAG_BLANK)
 
-#define SNMP_SESSION(h, p)						      \
+#define SNMP_SESSION(h, p) 		  				      \
   STORE_U32(h->session_id, p->session_id);				      \
   STORE_U32(h->transaction_id, p->transaction_id);			      \
   STORE_U32(h->packet_id, p->packet_id)
@@ -104,22 +109,38 @@ enum snmp_search_res {
 #define LOAD_U16(v, bo) ((bo) ? get_u16(&v) : (u16) (v))
 #define LOAD_PTR(v, bo) ((bo) ? get_u32(v) : *((u32 *) v))
 
-#define LOAD_STR(proto, buf, str, length, byte_order) ({		      \
+#define LOAD_STR(/* byte * */buf, str, length, byte_ord)  ({		      \
+  length = LOAD_PTR(buf, byte_ord);					      \
+  length > 0 ? (str = buf + 4) : (str = NULL); })
+
+#define COPY_STR(proto, buf, str, length, byte_order) ({		      \
   length = LOAD_PTR(buf, byte_order);					      \
   log(L_INFO "LOAD_STR(), %p %u", proto->p.pool, length + 1);		      \
   str = mb_alloc(proto->p.pool, length + 1);				      \
-  memcpy(str, buf, length);						      \
+  memcpy(str, buf+4, length);						      \
   str[length] = '\0'; /* set term. char */				      \
-  buf += snmp_str_size_from_len(length); })
+  buf += 4 + snmp_str_size_from_len(length); })
 
-#define SNMP_LOAD_CONTEXT(proto, hdr, buf, cont, cont_len)		      \
+#define SNMP_LOAD_CONTEXT(hdr, buf, cont, cont_len) ({			      \
+  if ((hdr)->flags & AGENTX_NON_DEFAULT_CONTEXT)			      \
+    LOAD_STR((buf), (cont), (cont_len),					      \
+      (hdr)->flags & AGENTX_NETWORK_BYTE_ORDER); })
+
+#define SNMP_COPY_CONTEXT(proto, hdr, buf, cont, cont_len) ({		      \
   cont = NULL; cont_len = 0;						      \
   if (hdr->flags & AGENTX_NON_DEFAULT_CONTEXT)				      \
-    LOAD_STR(proto, buf, cont, cont_len,				      \
-	hdr->flags & AGENTX_NETWORK_BYTE_ORDER)
+    COPY_STR(proto, buf, cont, cont_len,				      \
+	(hdr)->flags & AGENTX_NETWORK_BYTE_ORDER) })
 
 #define SNMP_HAS_CONTEXT(hdr)						      \
   hdr->flags |= AGENTX_NON_DEFAULT_CONTEXT
+
+#define SNMP_NON_DEFAULT_CONTEXT(hdr,pdu,contid) ({			      \
+  if (contid) {								      \
+    SNMP_HAS_CONTEXT(hdr);						      \
+    snmp_put_str((c).buffer, (sc)->context);				      \
+    ADVANCE((c).buffer, (c).size, snmp_str_size((sc)->context));	      \
+  } })
 
 #define SNMP_PUT_OID(buf, size, oid, byte_ord)				      \
   ({									      \
@@ -191,8 +212,7 @@ struct agentx_close_pdu {
   u8 reason;
 };
 
-struct agentx_un_register_pdu {
-  struct agentx_header h;
+struct agentx_un_register_hdr {
   u8 timeout;
   u8 priority;
   u8 range_subid;
@@ -280,13 +300,8 @@ enum agentx_response_err {
   AGENTX_RES_PROCESSING_ERR	    = 268,
 } PACKED;
 
-struct agentx_context {
-  char *context;  /* string name of this context */
-  uint length;	  /* normal strlen() size */
-  /* XXX add buffered context hash? */
-};
-
-struct snmp_pdu_context {
+/* SNMP PDU buffer info */
+struct snmp_pdu {
   byte *buffer;			    /* pointer to buffer */
   uint size;			    /* unused space in buffer */
   uint context;			    /* context hash */
@@ -305,11 +320,11 @@ struct agentx_alloc_context {
 int snmp_rx(sock *sk, uint size);
 int snmp_rx_stop(sock *sk, uint size);
 void snmp_down(struct snmp_proto *p);
-void snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 is_instance);
-void snmp_unregister(struct snmp_proto *p, struct oid *oid, uint index, uint len);
+void snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 is_instance, uint contid);
+void snmp_unregister(struct snmp_proto *p, struct oid *oid, uint index, uint len, uint contid);
 void snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, int include_uptime);
 
-void snmp_manage_tbuf(struct snmp_proto *p, struct snmp_pdu_context *c);
+void snmp_manage_tbuf(struct snmp_proto *p, struct snmp_pdu *c);
 
 struct oid *snmp_prefixize(struct snmp_proto *p, const struct oid *o, int byte_ord);
 u8 snmp_get_mib_class(const struct oid *oid);

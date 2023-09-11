@@ -51,10 +51,17 @@ enum snmp_proto_state {
 /* hash table only store ip4 addresses */
 #define SNMP_HASH_LESS(ip1, ip2) SNMP_HASH_LESS4(ip1,ip2)
 
+/* context hash table macros */
+#define SNMP_H_CONTEXT_KEY(c)		c->context
+#define SNMP_H_CONTEXT_NEXT(c)		c->next
+#define SNMP_H_CONTEXT_EQ(s1,s2)	strcmp(s1,s2)
+#define SNMP_H_CONTEXT_FN(s)		mem_hash(s, strlen(s))
+
 struct snmp_bond {
   node n;
   struct proto_config *proto;
   u8 type;
+  const char *context;
 };
 
 struct snmp_config {
@@ -67,15 +74,21 @@ struct snmp_config {
   u8 timeout;
   u8 priority;
   //struct iface *iface;
+  u32 bonds;
+  uint contexts; /* Number of all conetexts including the default */
   const char *description;
   list bgp_entries;
-  u32 bonds;
   // TODO add support for subagent oid identification
 };
 
+#define SNMP_BGP_P_REGISTERING	0x01
+#define SNMP_BGP_P_REGISTERED	0x02
+
 struct snmp_bgp_peer {
-  struct bgp_config *config;
+  const struct bgp_config *config;
   ip_addr peer_ip;
+  uint context_id;
+  u8 flags;
   struct snmp_bgp_peer *next;
 };
 
@@ -91,6 +104,14 @@ struct snmp_register {
 struct snmp_registered_oid {
   node n;
   struct oid *oid;
+};
+
+struct snmp_context {
+  const char *context; /* string name */
+  //uint length; /* strlen() of name */
+  uint context_id;
+  u8 flags;
+  struct snmp_context *next;
 };
 
 struct snmp_proto {
@@ -121,6 +142,9 @@ struct snmp_proto {
   // map
   struct f_trie *bgp_trie;
   HASH(struct snmp_bgp_peer) bgp_hash;
+  HASH(struct snmp_context) context_hash;
+  const struct snmp_context **context_id_map;
+  uint context_max;
   struct tbf rl_gen;
 
   timer *ping_timer;

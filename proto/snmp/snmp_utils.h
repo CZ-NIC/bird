@@ -14,7 +14,7 @@ size_t snmp_oid_sizeof(uint n_subid);
 uint snmp_varbind_hdr_size_from_oid(struct oid *oid);
 uint snmp_varbind_header_size(struct agentx_varbind *vb);
 uint snmp_varbind_size(struct agentx_varbind *vb, int byte_ord);
-uint snmp_context_size(struct agentx_context *c);
+//uint snmp_context_size(struct agentx_context *c);
 
 void snmp_oid_copy(struct oid *dest, const struct oid *src);
 
@@ -46,7 +46,7 @@ void snmp_oid_dump(struct oid *oid);
 
 struct snmp_register *snmp_register_create(struct snmp_proto *p, u8 mib_class);
 
-void snmp_register_ack(struct snmp_proto *p, struct agentx_header *h);
+void snmp_register_ack(struct snmp_proto *p, struct agentx_header *h, u8 class);
 
 byte *snmp_varbind_int(struct agentx_varbind *vb, uint size, u32 val);
 byte *snmp_varbind_counter32(struct agentx_varbind *vb, uint size, u32 val);
@@ -57,7 +57,13 @@ byte *snmp_varbind_nstr(struct agentx_varbind *vb, uint size, const char *str, u
 
 void snmp_dump_packet(byte *pkt, uint size);
 
+const struct snmp_context *snmp_cont_find(struct snmp_proto *p, const char *name);
+const struct snmp_context *snmp_cont_get(struct snmp_proto *p, uint context_id);
+const struct snmp_context *snmp_cont_create(struct snmp_proto *p, const char *name);
+
 enum agentx_type snmp_search_res_to_type(enum snmp_search_res res);
 
 int agentx_type_size(enum agentx_type t);
+
+
 #endif
