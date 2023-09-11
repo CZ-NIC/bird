@@ -1,4 +1,4 @@
-src := aggregator.c
+src := aggregator.c trie.c
 obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)

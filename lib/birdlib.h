@@ -16,8 +16,11 @@
 
 /* Ugly structure offset handling macros */
 
+#define SAME_TYPE(a, b)	({ int _ = ((a) != (b)); !_; })
+#define TYPE_CAST(from, to, what) ( SAME_TYPE(((from) NULL), (what)), ((to) (what)))
+
 #define OFFSETOF(s, i) ((size_t) &((s *)0)->i)
-#define SKIP_BACK(s, i, p) ((s *)((char *)p - OFFSETOF(s, i)))
+#define SKIP_BACK(s, i, p) ({ s *_ptr = ((s *)((char *)p - OFFSETOF(s, i))); SAME_TYPE(&_ptr->i, p); _ptr; })
 #define BIRD_ALIGN(s, a) (((s)+a-1)&~(a-1))
 #define CPU_STRUCT_ALIGN (alignof(max_align_t))
 
