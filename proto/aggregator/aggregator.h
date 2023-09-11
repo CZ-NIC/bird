@@ -17,6 +17,8 @@
 #include "nest/protocol.h"
 #include "lib/hash.h"
 
+#define MAX_POTENTIAL_NEXTHOP_COUNT 16
+
 struct aggregator_config {
   struct proto_config c;
   struct channel_config *src, *dst;
@@ -61,6 +63,10 @@ struct aggregator_proto {
   /* Merge filter */
   const struct f_line *merge_by;
   event reload_buckets;
+
+  /* Aggregation trie */
+  slab *trie_slab;
+  struct trie_node *root;
 };
 
 enum aggr_item_type {
@@ -81,6 +87,25 @@ struct aggr_item {
 struct aggr_item_node {
   const struct aggr_item_node *next;
   struct aggr_item i;
+};
+
+struct trie_node {
+  struct trie_node *parent;
+  struct trie_node *child[2];
+  struct aggregator_bucket *bucket;
+  struct aggregator_bucket *potential_buckets[MAX_POTENTIAL_NEXTHOP_COUNT];
+  int potential_buckets_count;
+};
+
+struct prefix_bucket {
+  net_addr_ip4 trie_prefix;
+  struct aggregator_bucket *bucket;
+};
+
+struct aggregated_prefixes {
+  int count;
+  int capacity;
+  struct prefix_bucket prefix_buckets[];
 };
 
 #endif
