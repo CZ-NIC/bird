@@ -20,7 +20,7 @@ CF_DEFINES
 
 CF_DECLS
 
-CF_KEYWORDS(AGGREGATOR, PEER, AGGREGATE, ON, MERGE, BY)
+CF_KEYWORDS(AGGREGATOR, PEER, AGGREGATE, ON, MERGE, BY, RELOAD, AFTER, LOG, ALL)
 
 %type <ai> aggr_item aggr_list
 
@@ -34,7 +34,14 @@ aggregator_proto_start: proto_start AGGREGATOR
   this_channel = AGGREGATOR_CFG->src = channel_config_new(NULL, "source", 0, this_proto);
   AGGREGATOR_CFG->dst = channel_config_new(NULL, "destination", 0, this_proto);
 
-  AGGREGATOR_CFG->src->ra_mode = AGGREGATOR_CFG->dst->ra_mode = RA_ANY;
+  /*
+   * Aggregation mode is set to prefix aggregation by default, in which case we want to receive
+   * updates with the best routes.
+   */
+  AGGREGATOR_CFG->aggr_mode = PREFIX_AGGR;
+  AGGREGATOR_CFG->src->ra_mode = RA_OPTIMAL;
+  AGGREGATOR_CFG->dst->ra_mode = RA_ANY;
+  AGGREGATOR_CFG->logging = 0;
 };
 
 aggregator_proto_item:
@@ -45,23 +52,25 @@ aggregator_proto_item:
     if (AGGREGATOR_CFG->aggr_on)
       cf_error("Only one aggregate on clause allowed");
 
-    bool net_present = 0;
     int count = 0;
 
     for (const struct aggr_item_node *item = $3; item; item = item->next) {
-//      log(L_WARN "type %d sacode %d", item->i.type, item->i.sa.sa_code);
-      if (item->i.type == AGGR_ITEM_STATIC_ATTR && item->i.sa.sa_code == SA_NET)
-	net_present = 1;
+      /*
+       * If NET attribute is present, aggregate routes within the same net
+       * and receive updates with any routes.
+       */
+      if (item->i.type == AGGR_ITEM_STATIC_ATTR && item->i.sa.sa_code == SA_NET) {
+        AGGREGATOR_CFG->aggr_mode = NET_AGGR;
+        AGGREGATOR_CFG->src->ra_mode = RA_ANY;
+      }
 
       count++;
     }
 
-   if (!net_present)
-     cf_error("'NET' must be present");
-
    AGGREGATOR_CFG->aggr_on = cfg_alloc(sizeof(struct aggr_item) * count);
 
    int pos = 0;
+
    for (const struct aggr_item_node *item = $3; item; item = item->next) {
      if (item->i.type == AGGR_ITEM_DYNAMIC_ATTR)
        AGGREGATOR_CFG->aggr_on_da_count++;
@@ -79,11 +88,18 @@ aggregator_proto_item:
    $4->args++;
    AGGREGATOR_CFG->merge_by = $4;
  }
+ | LOG ALL { AGGREGATOR_CFG->logging = 1; }
 ;
 
 aggregator_proto_opts: /* empty */ | aggregator_proto_opts aggregator_proto_item ';' ;
-aggregator_proto: aggregator_proto_start proto_name '{' aggregator_proto_opts '}' ;
+aggregator_proto: aggregator_proto_start proto_name '{' aggregator_proto_opts '}' {
+  if (AGGREGATOR_CFG->src->table->addr_type != AGGREGATOR_CFG->dst->table->addr_type)
+    cf_error("Both rtables in aggregator must have the same network type");
 
+  if (PREFIX_AGGR == AGGREGATOR_CFG->aggr_mode)
+    if (AGGREGATOR_CFG->src->table->addr_type != NET_IP4 && AGGREGATOR_CFG->src->table->addr_type != NET_IP6)
+      cf_error("Trie aggregation is available only for IP4 or IPv6 networks");
+};
 
 aggr_list:
    aggr_item
