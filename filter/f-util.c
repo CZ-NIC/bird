@@ -72,7 +72,7 @@ f_match_signature_err(const struct f_method *dsc, struct f_inst *args, int *pos,
 }
 
 struct f_inst *
-f_dispatch_method(struct symbol *sym, struct f_inst *obj, struct f_inst *args)
+f_dispatch_method(struct symbol *sym, struct f_inst *obj, struct f_inst *args, int skip)
 {
   /* Find match */
   for (const struct f_method *dsc = sym->method; dsc; dsc = dsc->next)
@@ -123,7 +123,8 @@ f_dispatch_method(struct symbol *sym, struct f_inst *obj, struct f_inst *args)
   /* There is at least one method */
   ASSERT(best_pos >= 0 && best_count > 0);
 
-  /* TODO: Here fix best_pos */
+  /* Update best_pos for printing */
+  best_pos = best_pos - skip + 1;
 
   if (!best_got)
     cf_error("Cannot infer type of argument %d of '%s', please assign it to a variable", best_pos, sym->name);
@@ -149,7 +150,7 @@ f_dispatch_method_x(const char *name, enum f_type t, struct f_inst *obj, struct 
   if (!sym)
     cf_error("Cannot dispatch method '%s'", name);
 
-  return f_dispatch_method(sym, obj, args);
+  return f_dispatch_method(sym, obj, args, 0);
 }
 
 

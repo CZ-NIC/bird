@@ -876,12 +876,12 @@ static_attr:
 term_dot_method: term '.' { f_method_call_start($1); } method_name_cont { f_method_call_end(); $$ = $4; };
 method_name_cont:
    CF_SYM_METHOD_BARE {
-     $$ = f_dispatch_method($1, FM.object, NULL);
+     $$ = f_dispatch_method($1, FM.object, NULL, 1);
    }
  | CF_SYM_METHOD_ARGS {
      f_method_call_args();
    } '(' var_list ')' {
-     $$ = f_dispatch_method($1, FM.object, $4);
+     $$ = f_dispatch_method($1, FM.object, $4, 1);
    }
  ;
 
@@ -918,19 +918,10 @@ term:
  | '-' EMPTY '-' { $$ = f_const_empty(T_CLIST); }
  | '-' '-' EMPTY '-' '-' { $$ = f_const_empty(T_ECLIST); }
  | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_const_empty(T_LCLIST); }
- | PREPEND '(' term ',' term ')' { $$ = f_new_inst(FI_PATH_PREPEND, $3, $5); }
- | ADD '(' term ',' term ')' {
-     $$ = f_dispatch_method_x("add", $3->type, $3, $5);
-     cf_warn("add(x,y) function is deprecated, please use x.add(y)");
-   }
- | DELETE '(' term ',' term ')' {
-     $$ = f_dispatch_method_x("delete", $3->type, $3, $5);
-     cf_warn("delete(x,y) function is deprecated, please use x.delete(y)");
-   }
- | FILTER '(' term ',' term ')' {
-     $$ = f_dispatch_method_x("filter", $3->type, $3, $5);
-     cf_warn("filter(x,y) function is deprecated, please use x.filter(y)");
-   }
+ | PREPEND '(' term ',' term ')' { $$ = f_dispatch_method_x("prepend", $3->type, $3, $5); }
+ | ADD '(' term ',' term ')' { $$ = f_dispatch_method_x("add", $3->type, $3, $5); }
+ | DELETE '(' term ',' term ')' { $$ = f_dispatch_method_x("delete", $3->type, $3, $5); }
+ | FILTER '(' term ',' term ')' { $$ = f_dispatch_method_x("filter", $3->type, $3, $5); }
 
  | ROA_CHECK '(' rtable ')' { $$ = f_new_inst(FI_ROA_CHECK_IMPLICIT, $3); }
  | ROA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_new_inst(FI_ROA_CHECK_EXPLICIT, $5, $7, $3); }
