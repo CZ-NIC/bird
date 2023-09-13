@@ -318,13 +318,31 @@ const struct adata *lclist_filter(struct linpool *pool, const struct adata *list
 
 
 /* Special undef value for paths and clists */
+
 static inline int
-undef_value(struct f_val v)
+val_is_undefined(struct f_val v)
 {
   return ((v.type == T_PATH) || (v.type == T_CLIST) ||
 	  (v.type == T_ECLIST) || (v.type == T_LCLIST)) &&
     (v.val.ad == &null_adata);
 }
+
+static inline struct f_val
+val_empty(enum f_type t)
+{
+  switch (t)
+  {
+  case T_PATH:
+  case T_CLIST:
+  case T_ECLIST:
+  case T_LCLIST:
+    return (struct f_val) { .type = t, .val.ad = &null_adata };
+
+  default:
+    return (struct f_val) { };
+  }
+}
+
 
 extern const struct f_val f_const_empty_prefix_set;
 

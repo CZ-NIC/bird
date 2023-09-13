@@ -244,23 +244,6 @@ f_new_lc_item(u32 f1, u32 t1, u32 f2, u32 t2, u32 f3, u32 t3)
   return t;
 }
 
-static inline struct f_inst *
-f_const_empty(enum f_type t)
-{
-  switch (t) {
-    case T_PATH:
-    case T_CLIST:
-    case T_ECLIST:
-    case T_LCLIST:
-      return f_new_inst(FI_CONSTANT, (struct f_val) {
-	.type = t,
-	.val.ad = &null_adata,
-      });
-    default:
-      return f_new_inst(FI_CONSTANT, (struct f_val) {});
-  }
-}
-
 /*
  * Remove all new lines and doubled whitespaces
  * and convert all tabulators to spaces
@@ -914,11 +897,12 @@ term:
 
  | term_dot_method
 
- | '+' EMPTY '+' { $$ = f_const_empty(T_PATH); }
- | '-' EMPTY '-' { $$ = f_const_empty(T_CLIST); }
- | '-' '-' EMPTY '-' '-' { $$ = f_const_empty(T_ECLIST); }
- | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_const_empty(T_LCLIST); }
- | PREPEND '(' term ',' term ')' { $$ = f_dispatch_method_x("prepend", $3->type, $3, $5); }
+ | '+' EMPTY '+' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_PATH)); }
+ | '-' EMPTY '-' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_CLIST)); }
+ | '-' '-' EMPTY '-' '-' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_ECLIST)); }
+ | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_LCLIST)); }
+
+| PREPEND '(' term ',' term ')' { $$ = f_dispatch_method_x("prepend", $3->type, $3, $5); }
  | ADD '(' term ',' term ')' { $$ = f_dispatch_method_x("add", $3->type, $3, $5); }
  | DELETE '(' term ',' term ')' { $$ = f_dispatch_method_x("delete", $3->type, $3, $5); }
  | FILTER '(' term ',' term ')' { $$ = f_dispatch_method_x("filter", $3->type, $3, $5); }

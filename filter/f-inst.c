@@ -493,7 +493,7 @@
 
   INST(FI_DEFINED, 1, 1) {
     ARG_ANY(1);
-    RESULT(T_BOOL, i, (v1.type != T_VOID) && !undef_value(v1));
+    RESULT(T_BOOL, i, (v1.type != T_VOID) && !val_is_undefined(v1));
   }
 
   METHOD_R(T_NET, type, T_ENUM_NETTYPE, i, v1.val.net->type);
@@ -519,7 +519,7 @@
 
     /* New variable is always the last on stack */
     uint pos = curline.vbase + sym->offset;
-    fstk->vstk[pos] = (struct f_val) { };
+    fstk->vstk[pos] = val_empty(sym->class & 0xff);
     fstk->vcnt = pos + 1;
   }
 
@@ -806,32 +806,7 @@
       eattr *e = ea_find(*fs->eattrs, da.ea_code);
 
       if (!e) {
-	/* A special case: undefined as_path looks like empty as_path */
-	if (da.type == EAF_TYPE_AS_PATH) {
-	  RESULT_(T_PATH, ad, &null_adata);
-	  break;
-	}
-
-	/* The same special case for int_set */
-	if (da.type == EAF_TYPE_INT_SET) {
-	  RESULT_(T_CLIST, ad, &null_adata);
-	  break;
-	}
-
-	/* The same special case for ec_set */
-	if (da.type == EAF_TYPE_EC_SET) {
-	  RESULT_(T_ECLIST, ad, &null_adata);
-	  break;
-	}
-
-	/* The same special case for lc_set */
-	if (da.type == EAF_TYPE_LC_SET) {
-	  RESULT_(T_LCLIST, ad, &null_adata);
-	  break;
-	}
-
-	/* Undefined value */
-	RESULT_VOID;
+	RESULT_VAL(val_empty(da.f_type));
 	break;
       }
 
