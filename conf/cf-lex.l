@@ -51,11 +51,6 @@
 #include "lib/string.h"
 #include "lib/hash.h"
 
-struct keyword {
-  byte *name;
-  int value;
-};
-
 #include "conf/keywords.h"
 
 /* Could be defined by Bison in cf-parse.tab.h, inteferes with SYM hash */
