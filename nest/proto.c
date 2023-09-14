@@ -195,10 +195,10 @@ proto_find_channel_by_name(struct proto *p, const char *n)
 struct channel *
 proto_add_channel(struct proto *p, struct channel_config *cf)
 {
-  struct channel *c = mb_allocz(proto_pool, cf->channel->channel_size);
+  struct channel *c = mb_allocz(proto_pool, cf->class->channel_size);
 
   c->name = cf->name;
-  c->channel = cf->channel;
+  c->class = cf->class;
   c->proto = p;
   c->table = cf->table->table;
   rt_lock_table(c->table);
@@ -227,7 +227,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
 
   init_list(&c->roa_subscriptions);
 
-  CALL(c->channel->init, c, cf);
+  CALL(c->class->init, c, cf);
 
   add_tail(&p->channels, &c->n);
 
@@ -415,7 +415,7 @@ channel_roa_subscribe_filter(struct channel *c, int dir)
 
 #ifdef CONFIG_BGP
   /* No automatic reload for BGP channels without in_table / out_table */
-  if (c->channel == &channel_bgp)
+  if (c->class == &channel_bgp)
     valid = dir ? ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER) : !!c->out_table;
 #endif
 
@@ -708,7 +708,7 @@ channel_do_start(struct channel *c)
   if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
     channel_setup_in_table(c);
 
-  CALL(c->channel->start, c);
+  CALL(c->class->start, c);
 
   channel_start_import(c);
 }
@@ -752,7 +752,7 @@ channel_do_stop(struct channel *c)
   if (c->gr_lock)
     channel_graceful_restart_unlock(c);
 
-  CALL(c->channel->shutdown, c);
+  CALL(c->class->shutdown, c);
 
 }
 
@@ -770,7 +770,7 @@ channel_do_down(struct channel *c)
 
   /* The in_table and out_table are going to be freed by freeing their resource pools. */
 
-  CALL(c->channel->cleanup, c);
+  CALL(c->class->cleanup, c);
 
   /* Schedule protocol shutddown */
   if (proto_is_done(c->proto))
@@ -912,7 +912,7 @@ channel_config_new(const struct channel_class *cc, const char *name, uint net_ty
 
   cf = cfg_allocz(cc->config_size);
   cf->name = name;
-  cf->channel = cc;
+  cf->class = cc;
   cf->parent = proto;
   cf->table = tab;
   cf->out_filter = FILTER_REJECT;
@@ -959,12 +959,12 @@ channel_config_get(const struct channel_class *cc, const char *name, uint net_ty
 struct channel_config *
 channel_copy_config(struct channel_config *src, struct proto_config *proto)
 {
-  struct channel_config *dst = cfg_alloc(src->channel->config_size);
+  struct channel_config *dst = cfg_alloc(src->class->config_size);
 
-  memcpy(dst, src, src->channel->config_size);
+  memcpy(dst, src, src->class->config_size);
   memset(&dst->n, 0, sizeof(node));
   add_tail(&proto->channels, &dst->n);
-  CALL(src->channel->copy_config, dst, src);
+  CALL(src->class->copy_config, dst, src);
 
   return dst;
 }
@@ -1031,7 +1031,7 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   }
 
   /* Execute channel-specific reconfigure hook */
-  if (c->channel->reconfigure && !c->channel->reconfigure(c, cf, &import_changed, &export_changed))
+  if (c->class->reconfigure && !c->class->reconfigure(c, cf, &import_changed, &export_changed))
     return 0;
 
   /* If the channel is not open, it has no routes and we cannot reload it anyways */

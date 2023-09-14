@@ -2041,7 +2041,7 @@ bgp_preexport(struct channel *C, rte *e)
   struct bgp_channel *c = (struct bgp_channel *) C;
 
   /* Ignore non-BGP channels */
-  if (C->channel != &channel_bgp)
+  if (C->class != &channel_bgp)
     return -1;
 
   /* Reject our routes */
@@ -2252,7 +2252,7 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
   struct rte_src *path;
 
   /* Ignore non-BGP channels */
-  if (C->channel != &channel_bgp)
+  if (C->class != &channel_bgp)
     return;
 
   if (new)

@@ -1567,7 +1567,7 @@ bgp_reload_routes(struct channel *C)
   struct bgp_channel *c = (void *) C;
 
   /* Ignore non-BGP channels */
-  if (C->channel != &channel_bgp)
+  if (C->class != &channel_bgp)
     return;
 
   ASSERT(p->conn && p->route_refresh);
@@ -1581,7 +1581,7 @@ bgp_feed_begin(struct channel *C, int initial)
   struct bgp_channel *c = (void *) C;
 
   /* Ignore non-BGP channels */
-  if (C->channel != &channel_bgp)
+  if (C->class != &channel_bgp)
     return;
 
   /* This should not happen */
@@ -1616,7 +1616,7 @@ bgp_feed_end(struct channel *C)
   struct bgp_channel *c = (void *) C;
 
   /* Ignore non-BGP channels */
-  if (C->channel != &channel_bgp)
+  if (C->class != &channel_bgp)
     return;
 
   if (c->feed_out_table)
@@ -2781,7 +2781,7 @@ bgp_show_proto_info(struct proto *P)
     {
       channel_show_info(&c->c);
 
-      if (c->c.channel != &channel_bgp)
+      if (c->c.class != &channel_bgp)
 	continue;
 
       if (p->gr_active_num)

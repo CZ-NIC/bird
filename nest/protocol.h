@@ -488,7 +488,7 @@ extern struct channel_class channel_bgp;
 struct channel_config {
   node n;
   const char *name;
-  const struct channel_class *channel;
+  const struct channel_class *class;
 
   struct proto_config *parent;		/* Where channel is defined (proto or template) */
   struct rtable_config *table;		/* Table we're attached to */
@@ -518,7 +518,7 @@ struct channel {
   node n;				/* Node in proto->channels */
 
   const char *name;			/* Channel name (may be NULL) */
-  const struct channel_class *channel;
+  const struct channel_class *class;
   struct proto *proto;
 
   rtable *table;
