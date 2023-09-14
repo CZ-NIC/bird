@@ -81,6 +81,7 @@ new_node(slab *trie_slab)
   *new = (struct trie_node) {
     .parent = NULL,
     .child = { NULL, NULL },
+    .bucket = NULL,
     .potential_buckets_count = 0,
   };
 
@@ -121,15 +122,21 @@ trie_init(struct aggregator_proto *p)
  * Insert prefix in @addr to prefix trie with root at @node
  */
 static void
-trie_insert_prefix(const union net_addr_union *addr, struct aggregator_bucket *bucket, struct trie_node *node, slab *trie_slab)
+trie_insert_prefix(const union net_addr_union *addr, const struct aggregator_bucket *bucket, struct trie_node * const root, slab *trie_slab)
 {
   assert(addr != NULL);
-  assert(node != NULL);
+  assert(bucket != NULL);
+  assert(root != NULL);
+  assert(trie_slab != NULL);
 
   if (addr->n.type != NET_IP4)
     return;
 
   const struct net_addr_ip4 * const ip4 = &addr->ip4;
+  struct trie_node *node = root;
+
+  if (root->bucket == NULL)     // default bucket (nexthop)?
+    root->bucket = bucket;
 
   for (u32 i = 0; i < ip4->pxlen; i++)
   {
@@ -139,13 +146,34 @@ trie_insert_prefix(const union net_addr_union *addr, struct aggregator_bucket *b
     {
       struct trie_node *new = new_node(trie_slab);
       new->parent = node;
+      new->bucket = bucket;
       node->child[bit] = new;
     }
 
     node = node->child[bit];
+    //node->bucket = bucket;
 
-    if ((int)i == ip4->pxlen - 1)
-      node->bucket = bucket;
+    //if ((int)i == ip4->pxlen - 1)
+      //node->bucket = bucket;
+      // node->potential_buckets[node->potential_buckets_count++] = bucket;
+  }
+}
+
+static struct aggregator_bucket *
+get_ancestor_bucket(const struct trie_node *node)
+{
+  /* Defined for other than root nodes */
+  assert(node->parent != NULL);
+
+  while (1)
+  {
+    if (node->parent == NULL)
+      return NULL;
+
+    if (node->parent->bucket != NULL)
+      return node->parent->bucket;
+
+    node = node->parent;
   }
 }
 
@@ -153,28 +181,52 @@ static void
 first_pass(struct trie_node *node, slab *trie_slab)
 {
   assert(node != NULL);
+  assert(trie_slab != NULL);
+  //assert(node->bucket != NULL);
 
   if (is_leaf(node))
+  {
+    //assert(node->bucket != NULL);
+
+    //if (node->bucket != NULL)
+      //node->potential_buckets[node->potential_buckets_count++] = node->bucket;
+
+    node->potential_buckets[node->potential_buckets_count++] = get_ancestor_bucket(node);
     return;
+  }
 
   for (int i = 0; i < 2; i++)
   {
     if (!node->child[i])
     {
+      /*
       node->child[i] = new_node(trie_slab);
 
       *node->child[i] = (struct trie_node) {
         .parent = node,
-        .child[0] = NULL,
-        .child[1] = NULL,
+        .child = { NULL, NULL },
         .bucket = node->parent ? node->parent->bucket : NULL,
         .potential_buckets_count = 0,
       };
+      */
+
+      struct trie_node *new = new_node(trie_slab);
+
+      *new = (struct trie_node) {
+        .parent = node,
+      };
+
+      //new->potential_buckets[new->potential_buckets_count++] = get_ancestor_bucket(new);
+      node->child[i] = new;
     }
   }
 
+  /* Preorder traversal */
   first_pass(node->child[0], trie_slab);
   first_pass(node->child[1], trie_slab);
+
+  /* Discard bucket in interior nodes */
+  node->bucket = NULL;
 }
 
 static int
@@ -315,12 +367,20 @@ second_pass(struct trie_node *node)
 {
   assert(node != NULL);
 
-  /* Potential nexthop is assigned to nexthop assigned during first pass */
+  if (is_leaf(node))
+  {
+    assert(node->potential_buckets_count > 0);
+    return;
+  }
+
+  /*
+  // Potential nexthop is assigned to nexthop which was assigned during first pass
   if (is_leaf(node))
   {
     node->potential_buckets[node->potential_buckets_count++] = node->bucket;
     return;
   }
+  */
 
   struct trie_node * const left = node->child[0];
   struct trie_node * const right = node->child[1];
@@ -340,6 +400,10 @@ second_pass(struct trie_node *node)
     aggregator_bucket_union(node, left, right);
   else
     aggregator_bucket_intersection(node, left, right);
+
+  log("node: %p, potential buckets count: %d", node, node->potential_buckets_count);
+
+  assert(node->potential_buckets_count > 0);
 }
 
 /*
@@ -355,11 +419,15 @@ bucket_is_present(const struct aggregator_bucket *bucket, const struct trie_node
   return 0;
 }
 
+/*
 static void
 third_pass_helper(struct trie_node *node)
 {
   if (!node)
     return;
+
+  //third_pass_helper(node->child[0]);
+  //third_pass_helper(node->child[1]);
 
   assert(node->parent != NULL);
 
@@ -371,10 +439,10 @@ third_pass_helper(struct trie_node *node)
     node->bucket = node->potential_buckets[0];
   }
 
-  third_pass_helper(node->child[0]);
-  third_pass_helper(node->child[1]);
+  //third_pass_helper(node->child[0]);
+  //third_pass_helper(node->child[1]);
 
-  /* Leaf node with unassigned nexthop is deleted */
+  // Leaf node with unassigned nexthop is deleted
   if (is_leaf(node) && node->bucket == NULL)
     remove_node(node);
 }
@@ -387,7 +455,7 @@ third_pass(struct trie_node *node)
   if (!node)
     return;
 
-  /* Node is a root */
+  // Node is a root
   if (!node->parent)
   {
     assert(node->child[0] != NULL);
@@ -402,6 +470,80 @@ third_pass(struct trie_node *node)
     }
   }
 }
+*/
+
+static void
+remove_potential_buckets(struct trie_node *node)
+{
+  for (int i = 0; i < node->potential_buckets_count; i++)
+    node->potential_buckets[i] = NULL;
+
+  node->potential_buckets_count = 0;
+}
+
+static void
+third_pass(struct trie_node *node)
+{
+  if (node == NULL)
+    return;
+
+  if (node->parent == NULL)
+    return;
+
+  const struct aggregator_bucket *inherited_bucket = get_ancestor_bucket(node);
+
+  if (bucket_is_present(inherited_bucket, node))
+  {
+    node->bucket = NULL;
+  }
+  else
+  {
+    assert(node->potential_buckets_count > 0);
+    node->bucket = node->potential_buckets[0];
+  }
+
+  third_pass(node->child[0]);
+  third_pass(node->child[1]);
+}
+
+/*
+static void
+third_pass(struct trie_node *node)
+{
+  //  End of recursion
+  if (is_leaf(node))
+  {
+    assert(node->potential_buckets_count > 0);
+    node->bucket = node->potential_buckets[0];
+    return;
+  }
+
+  // Root
+  if (node->parent == NULL)
+  {
+    assert(node->potential_buckets_count > 0);
+    node->bucket = node->potential_buckets[0];
+  }
+
+  for (int i = 0; i < 2; i++)
+  {
+    const struct aggregator_bucket *inherited = get_ancestor_bucket(node);
+
+    if (bucket_is_present(inherited, node->child[i]))
+    {
+      remove_potential_buckets(node->child[i]);
+      node->bucket = NULL;
+    }
+    else
+    {
+      assert(node->potential_buckets_count > 0);
+      node->bucket = node->potential_buckets[i];
+    }
+
+    third_pass(node->child[i]);
+  }
+}
+*/
 
 static void
 get_trie_prefix_count_helper(const struct trie_node *node, int *count)
@@ -414,7 +556,7 @@ get_trie_prefix_count_helper(const struct trie_node *node, int *count)
 
   if (node->child[0])
     get_trie_prefix_count_helper(node->child[0], count);
-  
+ 
   if (node->child[1])
     get_trie_prefix_count_helper(node->child[1], count);
 }
@@ -1049,7 +1191,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     log("WARNING: root is leaf!");
 
   const int prefix_count = get_trie_prefix_count(p->root);
-  
+ 
   struct aggregated_prefixes *prefixes = allocz(sizeof(struct aggregated_prefixes) + sizeof(struct prefix_bucket) * prefix_count);
   prefixes->capacity = prefix_count;
   prefixes->count = 0;
@@ -1071,7 +1213,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   }
 
   log("%s", buf.start);
-  
+ 
   /* Announce changes */
   if (old_bucket)
     aggregator_bucket_update(p, old_bucket, net);
