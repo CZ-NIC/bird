@@ -135,6 +135,10 @@ bgp_unset_attr(ea_list **to, uint code)
 #define REPORT(msg, args...) \
   ({ log(L_REMOTE "%s: " msg, s->proto->p.name, ## args); })
 
+#define RTRACE(msg, args...) \
+  ({ if (s->proto->p.debug & D_ROUTES) \
+   log(L_TRACE "%s: " msg, s->proto->p.name, ## args); })
+
 #define DISCARD(msg, args...) \
   ({ REPORT(msg, ## args); return; })
 
@@ -1473,21 +1477,23 @@ bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len)
   if (!p->as4_session)
     bgp_process_as4_attrs(&attrs, s->pool);
 
+#define IS_LOOP(msg, args...)  { RTRACE("update is loop (" msg "), treating as withdraw", ##args); goto loop; }
+
   /* Reject routes with our ASN in AS_PATH attribute */
   if (bgp_as_path_loopy(p, attrs, p->local_as))
-    goto loop;
+    IS_LOOP("Our ASN %d in AS_PATH", p->local_as);
 
   /* Reject routes with our Confederation ID in AS_PATH attribute; RFC 5065 4.0 */
   if ((p->public_as != p->local_as) && bgp_as_path_loopy(p, attrs, p->public_as))
-    goto loop;
+    IS_LOOP("Our Confederation ID %d in AS_PATH", p->public_as);
 
   /* Reject routes with our Router ID in ORIGINATOR_ID attribute; RFC 4456 8 */
   if (p->is_internal && bgp_originator_id_loopy(p, attrs))
-    goto loop;
+    IS_LOOP("Our Router ID is Originator ID");
 
   /* Reject routes with our Cluster ID in CLUSTER_LIST attribute; RFC 4456 8 */
   if (p->rr_client && bgp_cluster_list_loopy(p, attrs))
-    goto loop;
+    IS_LOOP("Our Cluster ID is in Cluster List");
 
   /* If there is no local preference, define one */
   if (!BIT32_TEST(s->attrs_seen, BA_LOCAL_PREF))
