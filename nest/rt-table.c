@@ -138,6 +138,7 @@ static void rt_next_hop_update(struct rtable_private *tab);
 static void rt_nhu_uncork(void *_tab);
 static inline void rt_next_hop_resolve_rte(rte *r);
 static inline void rt_flowspec_resolve_rte(rte *r, struct channel *c);
+static void rt_refresh_trace(struct rtable_private *tab, struct rt_import_hook *ih, const char *msg);
 static inline void rt_prune_table(struct rtable_private *tab);
 static void rt_kick_prune_timer(struct rtable_private *tab);
 static void rt_feed_by_fib(void *);
@@ -2082,6 +2083,8 @@ rt_stop_import(struct rt_import_request *req, void (*stopped)(struct rt_import_r
     rt_set_import_state(hook, TIS_STOP);
     hook->stopped = stopped;
 
+    rt_refresh_trace(tab, hook, "stop import");
+
     /* Cancel table rr_counter */
     if (hook->stale_set != hook->stale_pruned)
       tab->rr_counter -= (hook->stale_set - hook->stale_pruned);
@@ -2372,9 +2375,7 @@ rt_refresh_begin(struct rt_import_request *req)
   /* The table must know that we're route-refreshing */
   tab->rr_counter++;
 
-  if (req->trace_routes & D_STATES)
-    log(L_TRACE "%s: route refresh begin [%u]", req->name, hook->stale_set);
-
+  rt_refresh_trace(tab, hook, "route refresh begin");
   }
 }
 
@@ -2395,18 +2396,30 @@ rt_refresh_end(struct rt_import_request *req)
   RT_LOCKED(hook->table, tab)
   {
     /* Now valid routes are only those one with the latest stale_set value */
-    uint cnt = hook->stale_set - hook->stale_valid;
+    UNUSED uint cnt = hook->stale_set - hook->stale_valid;
     hook->stale_valid = hook->stale_set;
 
     /* Here we can't kick the timer as we aren't in the table service loop */
     rt_schedule_prune(tab);
 
-    if (req->trace_routes & D_STATES)
-      if (cnt > 1)
-	log(L_TRACE "%s: route refresh end (x%u) [%u]", req->name, cnt, hook->stale_valid);
-      else
-	log(L_TRACE "%s: route refresh end [%u]", req->name, hook->stale_valid);
+    rt_refresh_trace(tab, hook, "route refresh end");
   }
+}
+
+/**
+ * rt_refresh_trace - log information about route refresh
+ * @tab: table
+ * @ih: import hook doing the route refresh
+ * @msg: what is happening
+ *
+ * This function consistently logs route refresh messages.
+ */
+static void
+rt_refresh_trace(struct rtable_private *tab, struct rt_import_hook *ih, const char *msg)
+{
+  if (ih->req->trace_routes & D_STATES)
+    log(L_TRACE "%s: %s: rr %u set %u valid %u pruning %u pruned %u", ih->req->name, msg,
+	tab->rr_counter, ih->stale_set, ih->stale_valid, ih->stale_pruning, ih->stale_pruned);
 }
 
 /**
@@ -2983,9 +2996,7 @@ rt_prune_table(struct rtable_private *tab)
       else if ((ih->stale_valid != ih->stale_pruning) && (ih->stale_pruning == ih->stale_pruned))
       {
 	ih->stale_pruning = ih->stale_valid;
-
-	if (ih->req->trace_routes & D_STATES)
-	  log(L_TRACE "%s: table prune after refresh begin [%u]", ih->req->name, ih->stale_pruning);
+	rt_refresh_trace(tab, ih, "table prune after refresh begin");
       }
 
     FIB_ITERATE_INIT(fit, &tab->fib);
@@ -3096,11 +3107,9 @@ again:
     }
     else if (ih->stale_pruning != ih->stale_pruned)
     {
-      DBG("pruning %s %s rr %u set %u valid %u pruning %u pruned %u", ih->req->name, tab->name, tab->rr_counter, ih->stale_set, ih->stale_valid, ih->stale_pruning, ih->stale_pruned);
       tab->rr_counter -= (ih->stale_pruning - ih->stale_pruned);
       ih->stale_pruned = ih->stale_pruning;
-      if (ih->req->trace_routes & D_STATES)
-	log(L_TRACE "%s: table prune after refresh end [%u]", ih->req->name, ih->stale_pruned);
+      rt_refresh_trace(tab, ih, "table prune after refresh end");
     }
 
   /* In some cases, we may want to directly proceed to export cleanup */
