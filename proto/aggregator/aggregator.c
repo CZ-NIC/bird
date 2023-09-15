@@ -109,13 +109,7 @@ remove_node(struct trie_node *node)
 }
 
 static void
-trie_init(struct aggregator_proto *p)
 {
-  static int inits = 0;
-  p->trie_slab = sl_new(p->p.pool, sizeof(struct trie_node));
-  p->root = new_node(p->trie_slab);
-  inits++;
-  log("Trie inits: %d", inits);
 }
 
 /*
@@ -1161,8 +1155,6 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     sl_free(old_route);
   }
 
-  trie_init(p);
-
   HASH_WALK(p->buckets, next_hash, bucket)
   {
     for (const struct rte *rte = bucket->rte; rte; rte = rte->next)
@@ -1306,6 +1298,9 @@ aggregator_start(struct proto *P)
     .hook = aggregator_reload_buckets,
     .data = p,
   };
+
+  p->trie_slab = sl_new(p->p.pool, sizeof(struct trie_node));
+  p->root = new_node(p->trie_slab);
 
   return PS_UP;
 }
