@@ -129,7 +129,7 @@ trie_insert_prefix(const union net_addr_union *addr, const struct aggregator_buc
   const struct net_addr_ip4 * const ip4 = &addr->ip4;
   struct trie_node *node = root;
 
-  if (root->bucket == NULL)     // default bucket (nexthop)?
+  if (root->bucket == NULL)
     root->bucket = bucket;
 
   for (u32 i = 0; i < ip4->pxlen; i++)
@@ -145,11 +145,6 @@ trie_insert_prefix(const union net_addr_union *addr, const struct aggregator_buc
     }
 
     node = node->child[bit];
-    //node->bucket = bucket;
-
-    //if ((int)i == ip4->pxlen - 1)
-      //node->bucket = bucket;
-      // node->potential_buckets[node->potential_buckets_count++] = bucket;
   }
 }
 
@@ -157,8 +152,6 @@ static struct aggregator_bucket *
 get_ancestor_bucket(const struct trie_node *node)
 {
   /* Defined for other than root nodes */
-  assert(node->parent != NULL);
-
   while (1)
   {
     if (node->parent == NULL)
@@ -180,11 +173,6 @@ first_pass(struct trie_node *node, slab *trie_slab)
 
   if (is_leaf(node))
   {
-    //assert(node->bucket != NULL);
-
-    //if (node->bucket != NULL)
-      //node->potential_buckets[node->potential_buckets_count++] = node->bucket;
-
     node->potential_buckets[node->potential_buckets_count++] = get_ancestor_bucket(node);
     return;
   }
@@ -193,24 +181,8 @@ first_pass(struct trie_node *node, slab *trie_slab)
   {
     if (!node->child[i])
     {
-      /*
-      node->child[i] = new_node(trie_slab);
-
-      *node->child[i] = (struct trie_node) {
-        .parent = node,
-        .child = { NULL, NULL },
-        .bucket = node->parent ? node->parent->bucket : NULL,
-        .potential_buckets_count = 0,
-      };
-      */
-
       struct trie_node *new = new_node(trie_slab);
-
-      *new = (struct trie_node) {
-        .parent = node,
-      };
-
-      //new->potential_buckets[new->potential_buckets_count++] = get_ancestor_bucket(new);
+      new->parent = node;
       node->child[i] = new;
     }
   }
@@ -367,23 +339,13 @@ second_pass(struct trie_node *node)
     return;
   }
 
-  /*
-  // Potential nexthop is assigned to nexthop which was assigned during first pass
-  if (is_leaf(node))
-  {
-    node->potential_buckets[node->potential_buckets_count++] = node->bucket;
-    return;
-  }
-  */
-
   struct trie_node * const left = node->child[0];
   struct trie_node * const right = node->child[1];
 
   assert(left != NULL);
   assert(right != NULL);
-  //assert(left->potential_buckets_count > 0);
-  //assert(right->potential_buckets_count > 0);
 
+  /* Postorder traversal */
   second_pass(left);
   second_pass(right);
 
@@ -513,13 +475,14 @@ get_trie_depth(const struct trie_node *node)
   return result;
 }
 
+/*
+ * Traverse trie and extract prefixes together with assigned bucket
+ */
 static void
 extract_prefixes_helper(const struct trie_node *node, struct aggregated_prefixes * const prefixes, ip4_addr prefix, int depth)
 {
   assert(node != NULL);
   assert(prefixes != NULL);
-
-  log("extracting: %I4", _I(prefix));
 
   if (is_leaf(node))
   {
