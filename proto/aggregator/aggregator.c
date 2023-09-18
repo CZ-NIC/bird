@@ -413,59 +413,6 @@ bucket_is_present(const struct aggregator_bucket *bucket, const struct trie_node
   return 0;
 }
 
-/*
-static void
-third_pass_helper(struct trie_node *node)
-{
-  if (!node)
-    return;
-
-  //third_pass_helper(node->child[0]);
-  //third_pass_helper(node->child[1]);
-
-  assert(node->parent != NULL);
-
-  if (node->parent->bucket == NULL || bucket_is_present(node->parent->bucket, node))
-    node->bucket = NULL;
-  else
-  {
-    assert(node->potential_buckets_count > 0);
-    node->bucket = node->potential_buckets[0];
-  }
-
-  //third_pass_helper(node->child[0]);
-  //third_pass_helper(node->child[1]);
-
-  // Leaf node with unassigned nexthop is deleted
-  if (is_leaf(node) && node->bucket == NULL)
-    remove_node(node);
-}
-
-static void
-third_pass(struct trie_node *node)
-{
-  assert(node != NULL);
-
-  if (!node)
-    return;
-
-  // Node is a root
-  if (!node->parent)
-  {
-    assert(node->child[0] != NULL);
-    assert(node->child[1] != NULL);
-    assert(node->potential_buckets_count > 0);
-
-    if (node->potential_buckets_count > 0)
-    {
-      node->bucket = node->potential_buckets[0];
-      third_pass_helper(node->child[0]);
-      third_pass_helper(node->child[1]);
-    }
-  }
-}
-*/
-
 static void
 remove_potential_buckets(struct trie_node *node)
 {
@@ -481,14 +428,23 @@ third_pass(struct trie_node *node)
   if (node == NULL)
     return;
 
+  /* Root is assigned any of its potential buckets */
   if (node->parent == NULL)
-    return;
+  {
+    assert(node->potential_buckets_count > 0);
+    node->bucket = node->potential_buckets[0];
+  }
 
   const struct aggregator_bucket *inherited_bucket = get_ancestor_bucket(node);
 
-  if (bucket_is_present(inherited_bucket, node))
+  /*
+   * If bucket inherited from ancestor is among potential bucket for this node,
+   * this node doesn't need bucket because it inherits one
+   */
+  if (is_bucket_potential(inherited_bucket, node))
   {
     node->bucket = NULL;
+    remove_potential_buckets(node);
   }
   else
   {
@@ -496,48 +452,14 @@ third_pass(struct trie_node *node)
     node->bucket = node->potential_buckets[0];
   }
 
+  /* Postorder traversal */
   third_pass(node->child[0]);
   third_pass(node->child[1]);
+
+  /* Leaves with no assigned bucket are removed */
+  if (node->bucket == NULL && is_leaf(node))
+    remove_node(node);
 }
-
-/*
-static void
-third_pass(struct trie_node *node)
-{
-  //  End of recursion
-  if (is_leaf(node))
-  {
-    assert(node->potential_buckets_count > 0);
-    node->bucket = node->potential_buckets[0];
-    return;
-  }
-
-  // Root
-  if (node->parent == NULL)
-  {
-    assert(node->potential_buckets_count > 0);
-    node->bucket = node->potential_buckets[0];
-  }
-
-  for (int i = 0; i < 2; i++)
-  {
-    const struct aggregator_bucket *inherited = get_ancestor_bucket(node);
-
-    if (bucket_is_present(inherited, node->child[i]))
-    {
-      remove_potential_buckets(node->child[i]);
-      node->bucket = NULL;
-    }
-    else
-    {
-      assert(node->potential_buckets_count > 0);
-      node->bucket = node->potential_buckets[i];
-    }
-
-    third_pass(node->child[i]);
-  }
-}
-*/
 
 static void
 get_trie_prefix_count_helper(const struct trie_node *node, int *count)
