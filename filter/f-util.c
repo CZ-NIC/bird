@@ -294,6 +294,9 @@ ca_lookup(pool *p, const char *name, int f_type)
     case T_LCLIST:
       ea_type = EAF_TYPE_LC_SET;
       break;
+    case T_BYTESTRING:
+      ea_type = EAF_TYPE_OPAQUE;
+      break;
     default:
       cf_error("Custom route attribute of unsupported type");
   }
