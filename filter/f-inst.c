@@ -1522,8 +1522,8 @@
     if (len < 0)
       runtime("Invalid hex string");
 
-    struct bytestring *bs;
-    bs = falloc(sizeof(struct bytestring) + len);
+    struct adata *bs;
+    bs = falloc(sizeof(struct adata) + len);
     bs->length = bstrhextobin(v1.val.s, bs->data);
     ASSERT(bs->length == (size_t) len);
 
