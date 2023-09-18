@@ -869,10 +869,6 @@
 	l->attrs[0].u.data = v1.val.i;
 	break;
 
-      case EAF_TYPE_OPAQUE:
-	runtime( "Setting opaque attribute is not allowed" );
-	break;
-
       case EAF_TYPE_IP_ADDRESS:;
 	int len = sizeof(ip_addr);
 	struct adata *ad = lp_alloc(fs->pool, sizeof(struct adata) + len);
@@ -881,6 +877,7 @@
 	l->attrs[0].u.ptr = ad;
 	break;
 
+      case EAF_TYPE_OPAQUE:
       case EAF_TYPE_AS_PATH:
       case EAF_TYPE_INT_SET:
       case EAF_TYPE_EC_SET:
