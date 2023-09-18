@@ -77,8 +77,7 @@
  *
  * TODO:
  *  - label range non-intersection check
- *  - better range reconfigurations (allow reduce ranges over unused labels)
- *  - protocols should do route refresh instead of resetart when reconfiguration
+ *  - protocols should do route refresh instead of restart when reconfiguration
  *    requires changing labels (e.g. different label range)
  *  - registering static allocations
  *  - checking range in static allocations
@@ -349,9 +348,12 @@ mpls_find_range_(list *l, const char *name)
 }
 
 static int
-mpls_reconfigure_range(struct mpls_domain *m UNUSED, struct mpls_range *r, struct mpls_range_config *cf)
+mpls_reconfigure_range(struct mpls_domain *m, struct mpls_range *r, struct mpls_range_config *cf)
 {
-  if ((cf->start > r->lo) || (cf->start + cf->length < r->hi))
+  uint last = lmap_last_one_in_range(&m->labels, r->lo, r->hi);
+  if (last == r->hi) last = 0;
+
+  if ((cf->start > r->lo) || (cf->start + cf->length <= last))
     return 0;
 
   cf->range = r;
