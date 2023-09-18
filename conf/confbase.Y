@@ -88,6 +88,7 @@ CF_DECLS
   struct sym_show_data *sd;
   struct lsadb_show_data *ld;
   struct mrt_dump_data *md;
+  struct mpls_show_ranges_cmd *msrc;
   struct iface *iface;
   void *g;
   btime time;
