@@ -216,6 +216,18 @@ t_lmap_set_clear_fill(void)
       lmap_clear(&b, n);
       expected[n] = 0;
     }
+
+    {
+      n = lmap_last_one_in_range(&b, lo, hi);
+      bt_assert(n >= lo);
+      bt_assert(n <= hi);
+
+      for (last = n + 1; last < hi; last++)
+	bt_assert(!expected[last]);
+
+      if (n < hi)
+	bt_assert(expected[n]);
+    }
   }
 
   uint cnt = 0;

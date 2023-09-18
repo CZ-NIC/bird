@@ -79,6 +79,7 @@ void lmap_set(struct lmap *b, uint n);
 void lmap_clear(struct lmap *b, uint n);
 uint lmap_first_zero(struct lmap *b);
 uint lmap_first_zero_in_range(struct lmap *b, uint lo, uint hi);
+uint lmap_last_one_in_range(struct lmap *b, uint lo, uint hi);
 void lmap_check(struct lmap *b);
 
 #endif
