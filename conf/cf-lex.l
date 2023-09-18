@@ -244,7 +244,7 @@ WHITE [ \t]
 
 ({XIGIT}{2}){16,}|{XIGIT}{2}(:{XIGIT}{2}){15,}|hex:({XIGIT}{2}(:?{XIGIT}{2})*)? {
   char *s = yytext;
-  struct bytestring *bs;
+  struct adata *bs;
 
   /* Skip 'hex:' prefix */
   if (s[0] == 'h' && s[1] == 'e' && s[2] == 'x' && s[3] == ':')
@@ -254,7 +254,7 @@ WHITE [ \t]
   if (len < 0)
     cf_error("Invalid hex string");
 
-  bs = cfg_allocz(sizeof(struct bytestring) + len);
+  bs = cfg_allocz(sizeof(struct adata) + len);
   bs->length = bstrhextobin(s, bs->data);
   ASSERT(bs->length == len);
 

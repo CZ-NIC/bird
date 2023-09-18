@@ -84,7 +84,7 @@ struct f_val {
     ip_addr ip;
     const net_addr *net;
     const char *s;
-    const struct bytestring *bs;
+    const struct adata *bs;
     const struct f_tree *t;
     const struct f_trie *ti;
     const struct adata *ad;

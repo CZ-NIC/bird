@@ -154,10 +154,6 @@ extern struct sym_scope *global_root_scope;
 extern pool *global_root_scope_pool;
 extern linpool *global_root_scope_linpool;
 
-struct bytestring {
-  size_t length;
-  byte data[];
-};
 
 #define SYM_MAX_LEN 64
 

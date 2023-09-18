@@ -94,7 +94,7 @@ CF_DECLS
   struct channel_limit cl;
   struct timeformat *tf;
   mpls_label_stack *mls;
-  const struct bytestring *bs;
+  const struct adata *bs;
 }
 
 %token END CLI_MARKER INVALID_TOKEN ELSECOL DDOT
