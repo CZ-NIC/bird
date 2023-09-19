@@ -857,7 +857,7 @@
       l->flags = EALF_SORTED;
       l->count = 1;
       l->attrs[0].id = da.ea_code;
-      l->attrs[0].flags = 0;
+      l->attrs[0].flags = da.flags;
       l->attrs[0].type = da.type;
       l->attrs[0].originated = 1;
       l->attrs[0].fresh = 1;
