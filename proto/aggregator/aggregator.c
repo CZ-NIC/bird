@@ -222,8 +222,11 @@ aggregator_bucket_compare(const void *a, const void *b)
   return 0;
 }
 
+/*
+ * Compute intersection of two sets of potential buckets in @left and @right and put result in @node
+ */
 static void
-aggregator_bucket_intersection(struct trie_node *node, const struct trie_node *left, const struct trie_node *right)
+aggregator_bucket_intersect(struct trie_node *node, const struct trie_node *left, const struct trie_node *right)
 {
   assert(node != NULL);
   assert(left != NULL);
@@ -246,14 +249,17 @@ aggregator_bucket_intersection(struct trie_node *node, const struct trie_node *l
       j++;
     }
     else if (res == -1)
-      node->potential_buckets[node->potential_buckets_count++] = left->potential_buckets[i++];
+      i++;
     else if (res == 1)
-      node->potential_buckets[node->potential_buckets_count++] = right->potential_buckets[j++];
+      j++;
   }
 }
 
+/*
+ * Compute union of two sets of potential buckets in @left and @right and put result in @node
+ */
 static void
-aggregator_bucket_union(struct trie_node *node, const struct trie_node *left, const struct trie_node *right)
+aggregator_bucket_unionize(struct trie_node *node, const struct trie_node *left, const struct trie_node *right)
 {
   assert(node != NULL);
   assert(left != NULL);
@@ -353,9 +359,9 @@ second_pass(struct trie_node *node)
   qsort(right->potential_buckets, right->potential_buckets_count, sizeof(struct aggregator_bucket *), aggregator_bucket_compare);
 
   if (bucket_sets_are_disjoint(left, right))
-    aggregator_bucket_union(node, left, right);
+    aggregator_bucket_unionize(node, left, right);
   else
-    aggregator_bucket_intersection(node, left, right);
+    aggregator_bucket_intersect(node, left, right);
 
   log("node: %p, potential buckets count: %d", node, node->potential_buckets_count);
 
