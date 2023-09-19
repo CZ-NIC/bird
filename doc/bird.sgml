@@ -3287,6 +3287,13 @@ some of them (marked with `<tt/O/') are optional.
 	name="local Role"> is configured it set automatically.
 </descrip>
 
+<p>For attributes unknown by BIRD, the user can assign a name (on top level)
+to an attribute by its number. This defined name can be used then to both set
+(by a bytestring literal, transitive) or unset the given attribute even though
+BIRD knows nothing about it:
+
+<tt><label id="bgp-attribute-custom">attribute bgp <m/number/ bytestring <m/name/;</tt>
+
 <sect1>Example
 <label id="bgp-exam">
 

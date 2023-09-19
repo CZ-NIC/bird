@@ -99,6 +99,7 @@ struct f_dynamic_attr {
   u8 bit;		/* For bitfield accessors */
   enum f_type f_type;	/* Filter type */
   uint ea_code;		/* EA code */
+  uint flags;
 };
 
 enum f_sa_code {
