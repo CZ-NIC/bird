@@ -275,32 +275,55 @@ aggregator_bucket_unionize(struct trie_node *node, const struct trie_node *left,
 
     int res = aggregator_bucket_compare(left->potential_buckets[i], right->potential_buckets[j]);
 
-    if (res == 0)
+    switch (res)
     {
-      node->potential_buckets[node->potential_buckets_count++] = left->potential_buckets[i];
+      case 0:
+        if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != left->potential_buckets[i])
+          node->potential_buckets[node->potential_buckets_count++] = left->potential_buckets[i];
+
+        i++;
+        j++;
+        break;
+
+      case -1:
+        if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != left->potential_buckets[i])
+          node->potential_buckets[node->potential_buckets_count++] = left->potential_buckets[i];
+
+        i++;
+        break;
+
+      case 1:
+        if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != right->potential_buckets[j])
+          node->potential_buckets[node->potential_buckets_count++] = right->potential_buckets[j];
+
+        j++;
+        break;
+
+      default:
+        bug("Impossible");
+    }
+
+    while (i < left->potential_buckets_count)
+    {
+      if (node->potential_buckets_count >= MAX_POTENTIAL_NEXTHOP_COUNT)
+        return;
+
+      if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != left->potential_buckets[i])
+        node->potential_buckets[node->potential_buckets_count++] = left->potential_buckets[i];
+
       i++;
+    }
+
+    while (j < right->potential_buckets_count)
+    {
+      if (node->potential_buckets_count >= MAX_POTENTIAL_NEXTHOP_COUNT)
+        return;
+
+      if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != right->potential_buckets[j])
+        node->potential_buckets[node->potential_buckets_count++] = right->potential_buckets[j];
+
       j++;
     }
-    else if (res == -1)
-      node->potential_buckets[node->potential_buckets_count++] = left->potential_buckets[i++];
-    else if (res == 1)
-      node->potential_buckets[node->potential_buckets_count++] = right->potential_buckets[j++];
-  }
-
-  while (i < left->potential_buckets_count)
-  {
-    if (node->potential_buckets_count >= MAX_POTENTIAL_NEXTHOP_COUNT)
-      return;
-
-    node->potential_buckets[node->potential_buckets_count++] = left->potential_buckets[i++];
-  }
-
-  while (j < right->potential_buckets_count)
-  {
-    if (node->potential_buckets_count >= MAX_POTENTIAL_NEXTHOP_COUNT)
-      return;
-
-    node->potential_buckets[node->potential_buckets_count++] = right->potential_buckets[j++];
   }
 }
 
