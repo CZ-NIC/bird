@@ -109,7 +109,24 @@ remove_node(struct trie_node *node)
 }
 
 static void
+delete_trie(struct trie_node *node)
 {
+  assert(node != NULL);
+
+  if (is_leaf(node))
+  {
+    remove_node(node);
+    return;
+  }
+
+  if (node->child[0])
+    delete_trie(node->child[0]);
+
+  if (node->child[1])
+    delete_trie(node->child[1]);
+
+  assert(is_leaf(node));
+  delete_trie(node);
 }
 
 /*
@@ -1241,6 +1258,9 @@ aggregator_shutdown(struct proto *P)
     sl_free(b);
   }
   HASH_WALK_END;
+
+  delete_trie(p->root);
+  p->root = NULL;
 
   return PS_DOWN;
 }
