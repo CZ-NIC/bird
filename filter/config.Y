@@ -1002,6 +1002,17 @@ cmd:
  | UNSET '(' dynamic_attr ')' ';' {
      $$ = f_new_inst(FI_EA_UNSET, $3);
    }
+   
+ | UNSET '(' symbol_known ')' ';' {
+     switch ($3->class) {
+       case SYM_ATTRIBUTE:
+	 $$ = f_new_inst(FI_EA_UNSET, *$3->attribute);
+	 break;
+       default:
+	 cf_error("Can't unset symbol %s", $3->name);
+     }
+ }
+  
  | break_command var_list_r ';' {
     $$ = f_print($2, !!$2, $1);
    }
