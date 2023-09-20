@@ -133,7 +133,7 @@ delete_trie(struct trie_node *node)
  * Insert prefix in @addr to prefix trie with root at @node
  */
 static void
-trie_insert_prefix(const union net_addr_union *addr, const struct aggregator_bucket *bucket, struct trie_node * const root, slab *trie_slab)
+trie_insert_prefix(const union net_addr_union *addr, struct aggregator_bucket *bucket, struct trie_node * const root, slab *trie_slab)
 {
   assert(addr != NULL);
   assert(bucket != NULL);
@@ -194,6 +194,7 @@ first_pass(struct trie_node *node, slab *trie_slab)
     return;
   }
 
+  /* Add leaves so that each node has either two or no children */
   for (int i = 0; i < 2; i++)
   {
     if (!node->child[i])
@@ -212,6 +213,9 @@ first_pass(struct trie_node *node, slab *trie_slab)
   node->bucket = NULL;
 }
 
+/*
+ * Compare two bucket pointers
+ */
 static int
 aggregator_bucket_compare(const void *a, const void *b)
 {
@@ -412,7 +416,7 @@ second_pass(struct trie_node *node)
  * Check if @bucket is one of potential nexthop buckets in @node
  */
 static int
-bucket_is_present(const struct aggregator_bucket *bucket, const struct trie_node *node)
+is_bucket_potential(const struct aggregator_bucket *bucket, const struct trie_node *node)
 {
   for (int i = 0; i < node->potential_buckets_count; i++)
     if (node->potential_buckets[i] == bucket)
