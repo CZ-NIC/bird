@@ -323,28 +323,28 @@ aggregator_bucket_unionize(struct trie_node *node, const struct trie_node *left,
       default:
         bug("Impossible");
     }
+  }
 
-    while (i < left->potential_buckets_count)
-    {
-      if (node->potential_buckets_count >= MAX_POTENTIAL_NEXTHOP_COUNT)
-        return;
+  while (i < left->potential_buckets_count)
+  {
+    if (node->potential_buckets_count >= MAX_POTENTIAL_NEXTHOP_COUNT)
+      return;
 
-      if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != left->potential_buckets[i])
-        node->potential_buckets[node->potential_buckets_count++] = left->potential_buckets[i];
+    if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != left->potential_buckets[i])
+      node->potential_buckets[node->potential_buckets_count++] = left->potential_buckets[i];
 
-      i++;
-    }
+    i++;
+  }
 
-    while (j < right->potential_buckets_count)
-    {
-      if (node->potential_buckets_count >= MAX_POTENTIAL_NEXTHOP_COUNT)
-        return;
+  while (j < right->potential_buckets_count)
+  {
+    if (node->potential_buckets_count >= MAX_POTENTIAL_NEXTHOP_COUNT)
+      return;
 
-      if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != right->potential_buckets[j])
-        node->potential_buckets[node->potential_buckets_count++] = right->potential_buckets[j];
+    if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != right->potential_buckets[j])
+      node->potential_buckets[node->potential_buckets_count++] = right->potential_buckets[j];
 
-      j++;
-    }
+    j++;
   }
 }
 
