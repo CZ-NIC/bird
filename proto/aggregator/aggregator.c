@@ -95,8 +95,10 @@ static void
 remove_node(struct trie_node *node)
 {
   assert(node != NULL);
-  assert(node->parent != NULL);
   assert(node->child[0] == NULL && node->child[1] == NULL);
+
+  if (node->parent == NULL)
+    goto free_node;
 
   if (node->parent->child[0] == node)
     node->parent->child[0] = NULL;
@@ -105,7 +107,8 @@ remove_node(struct trie_node *node)
   else
     bug("Invalid child pointer");
 
-  sl_free(node);
+  free_node:
+    sl_free(node);
 }
 
 static void
