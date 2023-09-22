@@ -189,10 +189,11 @@ aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *b
   struct rte *new = rte_get_temp(rta, bucket->rte->src);
   new->net = net;
 
+  /*
   log("=============== CREATE MERGED ROUTE ===============");
   log("New route created: id = %d, protocol: %s", new->src->global_id, new->src->proto->name);
   log("===================================================");
-
+  */
 
   /* merge filter needs one argument called "routes" */
   struct f_val val = {

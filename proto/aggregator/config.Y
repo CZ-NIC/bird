@@ -49,7 +49,7 @@ aggregator_proto_item:
     int count = 0;
 
     for (const struct aggr_item_node *item = $3; item; item = item->next) {
-      log(L_WARN "type %d sacode %d", item->i.type, item->i.sa.sa_code);
+//      log(L_WARN "type %d sacode %d", item->i.type, item->i.sa.sa_code);
       if (item->i.type == AGGR_ITEM_STATIC_ATTR && item->i.sa.sa_code == SA_NET)
 	net_present = 1;
 
