@@ -76,13 +76,14 @@
  * and withdrawal of MPLS routes.
  *
  * TODO:
- *  - label range non-intersection check
  *  - protocols should do route refresh instead of restart when reconfiguration
  *    requires changing labels (e.g. different label range)
  *  - registering static allocations
  *  - checking range in static allocations
  *  - special handling of reserved labels
  */
+
+#include <stdlib.h>
 
 #include "nest/bird.h"
 #include "nest/route.h"
@@ -122,6 +123,7 @@ mpls_domain_config_new(struct symbol *s)
   rc->name = "static";
   rc->start = 16;
   rc->length = 984;
+  rc->implicit = 1;
   mc->static_range = rc;
 
   /* Predefined dynamic range */
@@ -129,6 +131,7 @@ mpls_domain_config_new(struct symbol *s)
   rc->name = "dynamic";
   rc->start = 1000;
   rc->length = 9000;
+  rc->implicit = 1;
   mc->dynamic_range = rc;
 
   add_tail(&new_config->mpls_domains, &mc->n);
@@ -136,10 +139,52 @@ mpls_domain_config_new(struct symbol *s)
   return mc;
 }
 
+static int
+mpls_compare_range_configs(const void *r1_, const void *r2_)
+{
+  const struct mpls_range_config * const *r1 = r1_;
+  const struct mpls_range_config * const *r2 = r2_;
+
+  return uint_cmp((*r1)->start, (*r2)->start);
+}
+
 void
 mpls_domain_postconfig(struct mpls_domain_config *cf UNUSED)
 {
-  /* Add label range non-intersection check */
+  /* Label range non-intersection check */
+
+  int num_ranges = list_length(&cf->ranges);
+  struct mpls_range_config **ranges = tmp_alloc(num_ranges * sizeof(struct mpls_range_config *));
+
+  {
+    int i = 0;
+    struct mpls_range_config *r;
+    WALK_LIST(r, cf->ranges)
+      ranges[i++] = r;
+  }
+
+  qsort(ranges, num_ranges, sizeof(struct mpls_range_config *), mpls_compare_range_configs);
+
+  struct mpls_range_config *max_range = NULL;
+  uint max_hi = 0;
+
+  for (int i = 0; i < num_ranges; i++)
+  {
+    struct mpls_range_config *r = ranges[i];
+    uint hi = r->start + r->length;
+
+    if (r->implicit)
+      continue;
+
+    if (r->start < max_hi)
+      cf_warn("MPLS label ranges %s and %s intersect", max_range->name, r->name);
+
+    if (hi > max_hi)
+    {
+      max_range = r;
+      max_hi = hi;
+    }
+  }
 }
 
 static struct mpls_domain *
