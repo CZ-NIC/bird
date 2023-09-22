@@ -454,13 +454,14 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     for (uint val_idx = 0; val_idx < p->aggr_on_count; val_idx++)
     {
       int type = p->aggr_on[val_idx].type;
+      struct f_val *pos = &tmp_bucket->aggr_data[val_idx];
 
       switch (type)
       {
         case AGGR_ITEM_TERM: {
           const struct f_line *line = p->aggr_on[val_idx].line;
           struct rte *rt1 = new;
-          enum filter_return fret = f_eval_rte(line, &new, rte_update_pool, 0, NULL, &tmp_bucket->aggr_data[val_idx]);
+          enum filter_return fret = f_eval_rte(line, &new, rte_update_pool, 0, NULL, pos);
 
           if (rt1 != new)
           {
@@ -469,19 +470,36 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
           }
 
           if (fret > F_RETURN)
-            log(L_WARN "%s.%s: Wrong number of items left on stack after evaluation of aggregation list", rt1->src->proto->name, rt1->sender);
+            log(L_WARN "%s.%s: Wrong number of items left on stack after evaluation of aggregation list", rt1->src->proto->name, rt1->sender->name);
+
+	  switch (pos->type) {
+	    case T_VOID:
+	    case T_INT:
+	    case T_BOOL:
+	    case T_PAIR:
+	    case T_QUAD:
+	    case T_ENUM:
+	    case T_IP:
+	    case T_EC:
+	    case T_LC:
+	    case T_RD:
+	      /* Fits, OK */
+	      break;
+
+	    default:
+	      log(L_WARN "%s.%s: Expression evaluated to type %s unsupported by aggregator. Store this value as a custom attribute instead", new->src->proto->name, new->sender->name, f_type_name(pos->type));
+	      *pos = (struct f_val) { .type = T_INT, .val.i = 0 };
+	  }
 
           break;
         }
 
         case AGGR_ITEM_STATIC_ATTR: {
-          struct f_val *pos = &tmp_bucket->aggr_data[val_idx];
           eval_static_attr(new, p->aggr_on[val_idx].sa, pos);
           break;
         }
 
         case AGGR_ITEM_DYNAMIC_ATTR: {
-          struct f_val *pos = &tmp_bucket->aggr_data[val_idx];
           eval_dynamic_attr(new, p->aggr_on[val_idx].da, pos);
           break;
         }
