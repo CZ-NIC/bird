@@ -825,7 +825,9 @@ mpls_free_fec(struct mpls_fec_map *m, struct mpls_fec *fec)
 
   DBG("Free FEC %u\n", fec->label);
 
-  mpls_free_label(m->domain, m->handle, fec->label);
+  if (fec->policy != MPLS_POLICY_STATIC)
+    mpls_free_label(m->domain, m->handle, fec->label);
+
   HASH_REMOVE2(m->label_hash, LABEL, m->pool, fec);
 
   switch (fec->policy)
