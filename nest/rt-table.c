@@ -201,6 +201,16 @@ static inline rtable *rt_pub_to_pub(rtable *tab) { return tab; }
     log(L_TRACE "%s: " fmt, t->name, ##args);	\
 } while (0)
 
+#define req_trace(r, level, fmt, args...) do {	\
+  if (r->trace_routes & (level))		\
+    log(L_TRACE "%s: " fmt, r->name, ##args);	\
+} while (0)
+
+#define channel_trace(c, level, fmt, args...)  do {\
+  if ((c->debug & (level)) || (c->proto->debug & (level)))	\
+    log(L_TRACE "%s.%s: " fmt, c->proto->name, c->name, ##args);\
+} while (0)
+
 static void
 net_init_with_trie(struct fib *f, void *N)
 {
@@ -891,6 +901,8 @@ rt_notify_basic(struct channel *c, const net_addr *net, rte *new, const rte *old
 {
   if (new && old && rte_same(new, old))
   {
+    channel_rte_trace_out(D_ROUTES, c, new, "already exported");
+
     if ((new->id != old->id) && bmap_test(&c->export_map, old->id))
     {
       bmap_set(&c->export_map, new->id);
@@ -915,6 +927,8 @@ void
 channel_rpe_mark_seen(struct rt_export_request *req, struct rt_pending_export *rpe)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
+
+  channel_trace(c, D_ROUTES, "Marking seen %p (%lu)", rpe, rpe->seq);
 
   rpe_mark_seen(req->hook, rpe);
   if (rpe->old)
@@ -1127,6 +1141,10 @@ rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pend
   const rte *n = RTE_VALID_OR_NULL(first->new);
   const rte *o = RTE_VALID_OR_NULL(first->old);
 
+  channel_trace(c, D_ROUTES,
+      "Notifying any, net %N, first %p (%lu), new %p, old %p",
+      net, first, first->seq, n, o);
+
   if (!n && !o)
   {
     channel_rpe_mark_seen(req, first);
@@ -1145,6 +1163,8 @@ rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pend
   rte n0 = RTE_COPY_VALID(new_latest);
   if (n0.src || o)
     rt_notify_basic(c, net, n0.src ? &n0 : NULL, o);
+
+  channel_trace(c, D_ROUTES, "Notified net %N", net);
 }
 
 void
@@ -1153,6 +1173,9 @@ rt_feed_any(struct rt_export_request *req, const net_addr *net,
     const rte **feed, uint count)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
+
+  channel_trace(c, D_ROUTES, "Feeding any, net %N, first %p (%lu), %p (%lu), count %u",
+      net, first, first ? first->seq : 0, last ? last->seq : 0, count);
 
   for (uint i=0; i<count; i++)
     if (rte_is_valid(feed[i]))
@@ -1167,6 +1190,8 @@ rt_feed_any(struct rt_export_request *req, const net_addr *net,
     if (rpe == last)
       break;
   }
+
+  channel_trace(c, D_ROUTES, "Fed %N", net);
 }
 
 void
@@ -1359,11 +1384,17 @@ rte_announce(struct rtable_private *tab, net *net, struct rte_storage *new, stru
     .seq = tab->exporter.next_seq++,
   };
 
-  DBGL("rte_announce: table=%s net=%N new=%p id %u from %s old=%p id %u from %s new_best=%p id %u old_best=%p id %u seq=%lu",
-      tab->name, net->n.addr,
+  rt_trace(tab, D_ROUTES, "Announcing %N, "
+      "new=%p id %u from %s, "
+      "old=%p id %u from %s, "
+      "new_best=%p id %u, "
+      "old_best=%p id %u seq=%lu",
+      net->n.addr,
       new, new ? new->rte.id : 0, new ? new->rte.sender->req->name : NULL,
       old, old ? old->rte.id : 0, old ? old->rte.sender->req->name : NULL,
-      new_best, old_best, rpe->seq);
+      new_best, new_best ? new_best->rte.id : 0,
+      old_best, old_best ? old_best->rte.id : 0,
+      rpe->seq);
 
   ASSERT_DIE(atomic_fetch_add_explicit(&rpeb->end, 1, memory_order_release) == end);
 
@@ -2201,7 +2232,7 @@ rt_table_export_start_feed(struct rtable_private *tab, struct rt_table_export_ho
   DBG("New export hook %p req %p in table %s uc=%u\n", hook, req, tab->name, tab->use_count);
 
   struct rt_pending_export *rpe = rt_last_export(hook->table);
-  DBG("store hook=%p last_export=%p seq=%lu\n", hook, rpe, rpe ? rpe->seq : 0);
+  req_trace(req, D_STATES, "Export initialized, last export %p (%lu)", rpe, rpe ? rpe->seq : 0);
   atomic_store_explicit(&hook->last_export, rpe, memory_order_relaxed);
 
   rt_init_export(re, req->hook);
