@@ -346,7 +346,7 @@ krt_is_installed(struct krt_proto *p, net *n)
 }
 
 static uint
-rte_feed_count(net *n)
+rte_feed_count_valid(net *n)
 {
   uint count = 0;
   for (struct rte_storage *e = n->routes; e; e = e->next)
@@ -356,7 +356,7 @@ rte_feed_count(net *n)
 }
 
 static void
-rte_feed_obtain(net *n, const rte **feed, uint count)
+rte_feed_obtain_valid(net *n, const rte **feed, uint count)
 {
   uint i = 0;
   for (struct rte_storage *e = n->routes; e; e = e->next)
@@ -383,12 +383,12 @@ krt_export_net(struct krt_proto *p, net *net)
 
   if (c->ra_mode == RA_MERGED)
   {
-    uint count = rte_feed_count(net);
+    uint count = rte_feed_count_valid(net);
     if (!count)
       return NULL;
 
     const rte **feed = alloca(count * sizeof(rte *));
-    rte_feed_obtain(net, feed, count);
+    rte_feed_obtain_valid(net, feed, count);
     return rt_export_merged(c, feed, count, krt_filter_lp, 1);
   }
 
@@ -436,6 +436,10 @@ krt_same_dest(rte *k, rte *e)
 void
 krt_got_route(struct krt_proto *p, rte *e, s8 src)
 {
+  /* Ignore when flushing from table */
+  if (p->flush_routes == 1)
+    return;
+
   rte *new = NULL;
   e->pflags = 0;
 
@@ -465,8 +469,8 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
   RT_LOCKED(p->p.main_channel->table, tab)
   {
 
-  /* Deleting all routes if flush is requested */
-  if (p->flush_routes)
+  /* Deleting all routes if final flush is requested */
+  if (p->flush_routes == 2)
     goto delete;
 
   /* We wait for the initial feed to have correct installed state */
@@ -558,17 +562,6 @@ krt_prune(struct krt_proto *p)
     p->initialized = 1;
 
   }
-}
-
-static void
-krt_flush_routes(struct krt_proto *p)
-{
-  KRT_TRACE(p, D_EVENTS, "Flushing kernel routes");
-  p->flush_routes = 1;
-  krt_init_scan(p);
-  krt_do_scan(p);
-  /* No prune! */
-  p->flush_routes = 0;
 }
 
 void
@@ -740,8 +733,11 @@ krt_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net,
 {
   struct krt_proto *p = (struct krt_proto *) P;
 
-  if (config->shutdown)
+  if (p->flush_routes)
+  {
+    krt_replace_rte(p, net, NULL, old ?: new);
     return;
+  }
 
 #ifdef CONFIG_SINGLE_ROUTE
   /* Got the same route as we imported. Keep it, do nothing. */
@@ -784,10 +780,22 @@ krt_reload_routes(struct channel *C)
   }
 }
 
+static void krt_cleanup(struct krt_proto *p);
+
 static void
 krt_feed_end(struct channel *C)
 {
   struct krt_proto *p = (void *) C->proto;
+
+  if (p->flush_routes)
+  {
+    p->flush_routes = 2;
+    krt_init_scan(p);
+    krt_do_scan(p);
+    krt_cleanup(p);
+    proto_notify_state(&p->p, PS_DOWN);
+    return;
+  }
 
   p->ready = 1;
   krt_scan_timer_kick(p);
@@ -907,21 +915,32 @@ krt_shutdown(struct proto *P)
 
   krt_scan_timer_stop(p);
 
-  /* FIXME we should flush routes even when persist during reconfiguration */
-  if (p->initialized && !KRT_CF->persist && (P->down_code != PDC_CMD_GR_DOWN))
-    krt_flush_routes(p);
-
-  p->ready = 0;
-  p->initialized = 0;
-
   if (p->p.proto_state == PS_START)
     return PS_DOWN;
+
+  /* FIXME we should flush routes even when persist during reconfiguration */
+  if (p->initialized && !KRT_CF->persist && (P->down_code != PDC_CMD_GR_DOWN))
+  {
+    p->flush_routes = 1;
+    channel_request_feeding(p->p.main_channel);
+    return PS_UP;
+  }
+  else
+  {
+    krt_cleanup(p);
+    return PS_DOWN;
+  }
+}
+
+static void
+krt_cleanup(struct krt_proto *p)
+{
+  p->ready = 0;
+  p->initialized = 0;
 
   krt_sys_shutdown(p);
   rem_node(&p->krt_node);
   bmap_free(&p->sync_map);
-
-  return PS_DOWN;
 }
 
 static int
