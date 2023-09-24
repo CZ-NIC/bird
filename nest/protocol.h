@@ -40,12 +40,20 @@ struct symbol;
  */
 
 
+enum protocol_startup {
+  PROTOCOL_STARTUP_REGULAR = 0,		/* Regular network routing protocol, start last */
+  PROTOCOL_STARTUP_GENERATOR = 1,	/* Static route generator, start ahead of regulars */
+  PROTOCOL_STARTUP_CONNECTOR = 2,	/* Data connector, start first */
+  PROTOCOL_STARTUP_NECESSARY = 3,	/* Vital auxiliary data, start zeroth */
+};
+
 struct protocol {
   node n;
   char *name;
   char *template;			/* Template for automatic generation of names */
   int name_counter;			/* Counter for automatic name generation */
   uint preference;			/* Default protocol preference */
+  enum protocol_startup startup;	/* When to start / stop this protocol */
   uint channel_mask;			/* Mask of accepted channel types (NB_*) */
   uint proto_size;			/* Size of protocol data structure */
   uint config_size;			/* Size of protocol config data structure */

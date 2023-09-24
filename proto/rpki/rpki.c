@@ -994,6 +994,7 @@ struct protocol proto_rpki = {
   .preference = 	DEF_PREF_RPKI,
   .proto_size = 	sizeof(struct rpki_proto),
   .config_size =	sizeof(struct rpki_config),
+  .startup =		PROTOCOL_STARTUP_GENERATOR,
   .init = 		rpki_init,
   .start = 		rpki_start,
   .postconfig = 	rpki_postconfig,

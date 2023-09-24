@@ -334,6 +334,7 @@ struct protocol proto_pipe = {
   .template =		"pipe%d",
   .proto_size =		sizeof(struct pipe_proto),
   .config_size =	sizeof(struct pipe_config),
+  .startup =		PROTOCOL_STARTUP_CONNECTOR,
   .postconfig =		pipe_postconfig,
   .init =		pipe_init,
   .reconfigure =	pipe_reconfigure,

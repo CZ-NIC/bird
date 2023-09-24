@@ -775,6 +775,7 @@ struct protocol proto_static = {
   .channel_mask =	NB_ANY,
   .proto_size =		sizeof(struct static_proto),
   .config_size =	sizeof(struct static_config),
+  .startup =		PROTOCOL_STARTUP_GENERATOR,
   .postconfig =		static_postconfig,
   .init =		static_init,
   .dump =		static_dump,

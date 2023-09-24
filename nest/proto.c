@@ -1134,6 +1134,7 @@ proto_cleanup(struct proto *p)
 
   p->active = 0;
   proto_log_state_change(p);
+
   proto_rethink_goal(p);
 }
 
@@ -1422,6 +1423,18 @@ proto_reconfigure(struct proto *p, struct proto_config *oc, struct proto_config 
   return 1;
 }
 
+static struct protos_commit_request {
+  struct config *new;
+  struct config *old;
+  enum protocol_startup phase;
+  int force_reconfig;
+  int type;
+} protos_commit_request;
+
+static int proto_rethink_goal_pending = 0;
+
+static void protos_do_commit(struct config *new, struct config *old, int force_reconfig, int type);
+
 /**
  * protos_commit - commit new protocol configuration
  * @new: new configuration
@@ -1453,15 +1466,39 @@ proto_reconfigure(struct proto *p, struct proto_config *oc, struct proto_config 
 void
 protos_commit(struct config *new, struct config *old, int force_reconfig, int type)
 {
+  protos_commit_request = (struct protos_commit_request) {
+    .new = new,
+    .old = old,
+    .phase = (new->shutdown && !new->gr_down) ? PROTOCOL_STARTUP_REGULAR : PROTOCOL_STARTUP_NECESSARY,
+    .force_reconfig = force_reconfig,
+    .type = type,
+  };
+
+  protos_do_commit(new, old, force_reconfig, type);
+}
+
+static void
+protos_do_commit(struct config *new, struct config *old, int force_reconfig, int type)
+{
+  enum protocol_startup phase = protos_commit_request.phase;
   struct proto_config *oc, *nc;
   struct symbol *sym;
   struct proto *p;
+
+  if ((phase < PROTOCOL_STARTUP_REGULAR) || (phase > PROTOCOL_STARTUP_NECESSARY))
+  {
+    protos_commit_request = (struct protos_commit_request) {};
+    return;
+  }
 
   DBG("protos_commit:\n");
   if (old)
   {
     WALK_LIST(oc, old->protos)
     {
+      if (oc->protocol->startup != phase)
+	continue;
+
       p = oc->proto;
       sym = cf_find_symbol(new, oc->name);
 
@@ -1541,11 +1578,10 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
     }
   }
 
-  struct proto *first_dev_proto = NULL;
   struct proto *after = NULL;
 
   WALK_LIST(nc, new->protos)
-    if (!nc->proto)
+    if ((nc->protocol->startup == phase) && !nc->proto)
     {
       /* Not a first-time configuration */
       if (old)
@@ -1554,17 +1590,12 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
       p = proto_init(nc, after);
       after = p;
 
-      if (p->proto == &proto_unix_iface)
-	first_dev_proto = p;
+      proto_rethink_goal(p);
     }
     else
       after = nc->proto;
 
   DBG("Protocol start\n");
-
-  /* Start device protocol first */
-  if (first_dev_proto)
-    proto_rethink_goal(first_dev_proto);
 
   /* Determine router ID for the first time - it has to be here and not in
      global_commit() because it is postponed after start of device protocol */
@@ -1575,9 +1606,15 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
       die("Cannot determine router ID, please configure it manually");
   }
 
-  /* Start all new protocols */
-  WALK_TLIST_DELSAFE(proto, p, &global_proto_list)
-    proto_rethink_goal(p);
+  /* Commit next round of protocols */
+  if (new->shutdown && !new->gr_down)
+    protos_commit_request.phase++;
+  else
+    protos_commit_request.phase--;
+
+  /* If something is pending, the next round will be called asynchronously from proto_rethink_goal(). */
+  if (!proto_rethink_goal_pending)
+    protos_do_commit(new, old, force_reconfig, type);
 }
 
 static void
@@ -1589,12 +1626,19 @@ proto_shutdown(struct proto *p)
     DBG("Kicking %s down\n", p->name);
     PD(p, "Shutting down");
     proto_notify_state(p, (p->proto->shutdown ? p->proto->shutdown(p) : PS_DOWN));
+    if (p->reconfiguring)
+    {
+      proto_rethink_goal_pending++;
+      p->reconfiguring = 2;
+    }
   }
 }
 
 static void
 proto_rethink_goal(struct proto *p)
 {
+  int goal_pending = (p->reconfiguring == 2);
+
   if (p->reconfiguring && !p->active)
   {
     struct proto_config *nc = p->cf_new;
@@ -1609,7 +1653,8 @@ proto_rethink_goal(struct proto *p)
     mb_free(p->message);
     mb_free(p);
     if (!nc)
-      return;
+      goto done;
+
     p = proto_init(nc, after);
   }
 
@@ -1621,6 +1666,15 @@ proto_rethink_goal(struct proto *p)
   }
   else if (!p->active)
     proto_start(p);
+
+done:
+  if (goal_pending && !--proto_rethink_goal_pending)
+    protos_do_commit(
+	protos_commit_request.new,
+	protos_commit_request.old,
+	protos_commit_request.force_reconfig,
+	protos_commit_request.type
+	);
 }
 
 struct proto *
