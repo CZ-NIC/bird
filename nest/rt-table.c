@@ -911,7 +911,7 @@ rt_notify_basic(struct channel *c, const net_addr *net, rte *new, const rte *old
   do_rt_notify(c, net, new, old);
 }
 
-static void
+void
 channel_rpe_mark_seen(struct rt_export_request *req, struct rt_pending_export *rpe)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
@@ -4266,11 +4266,12 @@ typedef struct {
 static int
 rt_prepare_feed(struct rt_table_export_hook *c, net *n, rt_feed_block *b)
 {
-  uint bs = c->h.req->feed_block_size ?: 16384;
+  struct rt_export_request *req = c->h.req;
+  uint bs = req->feed_block_size ?: 16384;
 
   if (n->routes)
   {
-    if (c->h.req->export_bulk)
+    if (req->export_bulk)
     {
       uint cnt = rte_feed_count(n);
       if (b->cnt && (b->cnt + cnt > bs))
@@ -4304,6 +4305,13 @@ rt_prepare_feed(struct rt_table_export_hook *c, net *n, rt_feed_block *b)
       b->rpe[b->pos++] = (struct rt_pending_export) { .new = n->routes, .new_best = n->routes };
     }
   }
+  else
+    if (req->mark_seen)
+      RPE_WALK(n->first, rpe, NULL)
+	req->mark_seen(req, rpe);
+    else
+      RPE_WALK(n->first, rpe, NULL)
+	rpe_mark_seen(&c->h, rpe);
 
   return 1;
 }

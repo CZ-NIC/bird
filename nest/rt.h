@@ -321,6 +321,8 @@ struct rt_export_request {
       struct rt_pending_export *rpe, struct rt_pending_export *last,
       const rte **feed, uint count);
 
+  void (*mark_seen)(struct rt_export_request *req, struct rt_pending_export *rpe);
+
   void (*dump_req)(struct rt_export_request *req);
   void (*log_state_change)(struct rt_export_request *req, u8);
 };
@@ -471,7 +473,7 @@ void rt_feed_any(struct rt_export_request *req, const net_addr *net, struct rt_p
 void rt_notify_accepted(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first, struct rt_pending_export *last, const rte **feed, uint count);
 void rt_notify_merged(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first, struct rt_pending_export *last, const rte **feed, uint count);
 
-
+void channel_rpe_mark_seen(struct rt_export_request *req, struct rt_pending_export *rpe);
 
 /* Types of route announcement, also used as flags */
 #define RA_UNDEF	0		/* Undefined RA type */

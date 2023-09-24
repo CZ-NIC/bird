@@ -505,6 +505,7 @@ channel_start_export(struct channel *c)
     .trace_routes = c->debug | c->proto->debug,
     .dump_req = channel_dump_export_req,
     .log_state_change = channel_export_log_state_change,
+    .mark_seen = channel_rpe_mark_seen,
   };
 
   bmap_init(&c->export_map, c->proto->pool, 16);
