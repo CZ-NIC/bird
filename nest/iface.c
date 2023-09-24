@@ -190,7 +190,7 @@ void ifa_link(struct ifa *a)
 
   if (a)
   {
-    debug("ifa_link: %p %d\n", a, a->uc);
+//    debug("ifa_link: %p %d\n", a, a->uc);
     a->uc++;
   }
 }
@@ -202,7 +202,7 @@ void ifa_unlink(struct ifa *a)
   if (!a)
     return;
 
-  debug("ifa_unlink: %p %d\n", a, a->uc);
+//  debug("ifa_unlink: %p %d\n", a, a->uc);
   if (--a->uc)
     return;
 
@@ -267,8 +267,7 @@ if_enqueue_notify_to(struct iface_notification x, struct iface_subscription *s)
   struct iface_notification *in = sl_alloc(iface_sub_slab);
   *in = x;
 
-  debug("Enqueue notify %d/%p (%p) to %p\n", x.type, x.a, in, s);
-
+  iface_trace(s, "Enqueueing interface notification (%d, %p, %p)", x.type, x.a, in);
   ifnot_add_tail(&s->queue, in);
   ev_send(s->target, &s->event);
 }
@@ -558,11 +557,11 @@ iface_notify_hook(void *_s)
   struct iface_subscription *s = _s;
 
   IFACE_LOCK;
+  iface_trace(s, "Processing interface notifications");
 
   while (!EMPTY_TLIST(ifnot, &s->queue))
   {
     struct iface_notification *n = THEAD(ifnot, &s->queue);
-    debug("Process notify %d/%p (%p) to %p\n", n->type, n->a, n, s);
     IFACE_UNLOCK;
 
     switch (n->type) {
@@ -663,7 +662,7 @@ iface_unsubscribe(struct iface_subscription *s)
 
   WALK_TLIST_DELSAFE(ifnot, n, &s->queue)
   {
-    debug("Drop notify %d/%p (%p) to %p\n", n->type, n->a, n, s);
+    iface_trace(s, "Dropping interface notification (%d, %p, %p) on unsubscribe", n->type, n->a, n);
     switch (n->type)
     {
       case IFNOT_ADDRESS:

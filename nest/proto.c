@@ -1244,6 +1244,8 @@ proto_start(struct proto *p)
     p->pool = rp_newf(proto_pool, the_bird_domain.the_bird, "Protocol %s", p->cf->name);
 
   p->iface_sub.target = proto_event_list(p);
+  p->iface_sub.name = p->name;
+  p->iface_sub.debug = !!(p->debug & D_IFACES);
 
   PROTO_LOCKED_FROM_MAIN(p)
   {

@@ -218,6 +218,9 @@ struct iface_subscription {
   void (*if_notify)(struct proto *, unsigned flags, struct iface *i);
   void (*ifa_notify)(struct proto *, unsigned flags, struct ifa *a);
   void (*neigh_notify)(struct neighbor *neigh);
+
+  const char *name;
+  int debug;
 };
 
 #include "lib/tlists.h"
@@ -228,6 +231,11 @@ void if_enqueue_notify_to(struct iface_notification x, struct iface_subscription
 void iface_flush_notifications(struct iface_subscription *);
 void iface_subscribe(struct iface_subscription *);
 void iface_unsubscribe(struct iface_subscription *);
+
+#define iface_trace(s, fmt, args...)  do {	\
+  if (s->debug)					\
+    log(L_TRACE "%s: " fmt, s->name, ##args);	\
+} while (0)
 
 /*
  *	Interface Pattern Lists
