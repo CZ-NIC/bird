@@ -42,7 +42,7 @@ CF_KEYWORDS(RADV, PREFIX, INTERFACE, MIN, MAX, RA, DELAY, INTERVAL, SOLICITED,
 	RETRANS, TIMER, CURRENT, HOP, LIMIT, DEFAULT, VALID, PREFERRED, MULT,
 	LIFETIME, SKIP, ONLINK, AUTONOMOUS, RDNSS, DNSSL, NS, DOMAIN, LOCAL,
 	TRIGGER, SENSITIVE, PREFERENCE, LOW, MEDIUM, HIGH, PROPAGATE, ROUTE,
-	ROUTES, RA_PREFERENCE, RA_LIFETIME, CUSTOM, OPTION, TYPE, VALUE)
+	ROUTES, RA_PREFERENCE, RA_LIFETIME, CUSTOM, OPTION, TYPE, VALUE, PREF64)
 
 CF_ENUM(T_ENUM_RA_PREFERENCE, RA_PREF_, LOW, MEDIUM, HIGH)
 
@@ -74,6 +74,8 @@ radv_proto_item:
  | CUSTOM OPTION TYPE expr VALUE bytestring { radv_add_to_custom_list(&RADV_CFG->custom_list, $4, $6); }
  | TRIGGER net_ip6 { RADV_CFG->trigger = $2; }
  | PROPAGATE ROUTES bool { RADV_CFG->propagate_routes = $3; }
+ | PREF64 bytestring { radv_add_to_custom_list(&RADV_CFG->custom_list, 38, $2); }
+ | PREF64 NUM { radv_add_to_custom_list(&RADV_CFG->custom_list, 38, "\x0064ff9b1");}
  ;
 
 radv_proto_opts:
@@ -140,6 +142,8 @@ radv_iface_item:
  | RDNSS LOCAL bool { RADV_IFACE->rdnss_local = $3; }
  | DNSSL LOCAL bool { RADV_IFACE->dnssl_local = $3; }
  | CUSTOM OPTION LOCAL bool { RADV_IFACE->custom_local = $4; }
+ | PREF64 bytestring { radv_add_to_custom_list(&RADV_CFG->custom_list, 38, $2); }
+ | PREF64 NUM { radv_add_to_custom_list(&RADV_CFG->custom_list, 38, "\x0064ff9b1");}
  ;
 
 radv_preference:
