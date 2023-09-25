@@ -2550,8 +2550,11 @@ babel_shutdown(struct proto *P)
 
   TRACE(D_EVENTS, "Shutdown requested");
 
-  WALK_LIST(ifa, p->interfaces)
+  WALK_LIST_FIRST(ifa, p->interfaces)
+  {
     babel_iface_shutdown(ifa);
+    babel_remove_iface(p, ifa);
+  }
 
   return PS_DOWN;
 }
