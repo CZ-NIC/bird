@@ -75,7 +75,17 @@ radv_proto_item:
  | TRIGGER net_ip6 { RADV_CFG->trigger = $2; }
  | PROPAGATE ROUTES bool { RADV_CFG->propagate_routes = $3; }
  | PREF64 bytestring { radv_add_to_custom_list(&RADV_CFG->custom_list, 38, $2); }
- | PREF64 NUM { radv_add_to_custom_list(&RADV_CFG->custom_list, 38, "\x0064ff9b1");}
+ | PREF64{
+     static struct{
+         adata ad;
+         byte data[4];
+     }pref64_default_prefix;
+     pref64_default_prefix.ad.length = 4;
+     pref64_default_prefix.data[0] = 0x64;
+     pref64_default_prefix.data[0] = 0xff;
+     pref64_default_prefix.data[0] = 0x9b;
+     pref64_default_prefix.data[0] = 0x1;
+     radv_add_to_custom_list(&RADV_CFG->custom_list, 38, &pref64_default_prefix.ad);}
  ;
 
 radv_proto_opts:
@@ -143,7 +153,17 @@ radv_iface_item:
  | DNSSL LOCAL bool { RADV_IFACE->dnssl_local = $3; }
  | CUSTOM OPTION LOCAL bool { RADV_IFACE->custom_local = $4; }
  | PREF64 bytestring { radv_add_to_custom_list(&RADV_CFG->custom_list, 38, $2); }
- | PREF64 NUM { radv_add_to_custom_list(&RADV_CFG->custom_list, 38, "\x0064ff9b1");}
+ | PREF64{
+     static struct{
+         adata ad;
+         byte data[4];
+     }pref64_default_prefix;
+     pref64_default_prefix.ad.length = 4;
+     pref64_default_prefix.data[0] = 0x64;
+     pref64_default_prefix.data[0] = 0xff;
+     pref64_default_prefix.data[0] = 0x9b;
+     pref64_default_prefix.data[0] = 0x1;
+     radv_add_to_custom_list(&RADV_CFG->custom_list, 38, &pref64_default_prefix.ad);}
  ;
 
 radv_preference:
