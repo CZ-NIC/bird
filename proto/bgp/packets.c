@@ -237,7 +237,7 @@ bgp_prepare_capabilities(struct bgp_conn *conn)
   caps->as4_support = p->cf->enable_as4;
   caps->ext_messages = p->cf->enable_extended_messages;
   caps->route_refresh = p->cf->enable_refresh;
-  caps->enhanced_refresh = p->cf->enable_refresh;
+  caps->enhanced_refresh = p->cf->enable_enhanced_refresh;
   caps->role = p->cf->local_role;
 
   if (caps->as4_support)

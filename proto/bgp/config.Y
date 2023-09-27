@@ -23,7 +23,7 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	BGP_LOCAL_PREF, BGP_MED, 
 	SOURCE, ADDRESS, PASSWORD, RR, RS, CLIENT, CLUSTER, ID, AS4, ADVERTISE,
 	IPV4, CAPABILITIES, LIMIT, PASSIVE, PREFER, OLDER, MISSING, LLADDR,
-	DROP, IGNORE, ROUTE, REFRESH, INTERPRET, COMMUNITIES,
+	DROP, IGNORE, ENHANCED, ROUTE, REFRESH, INTERPRET, COMMUNITIES,
 	IGP, TABLE, GATEWAY, DIRECT, RECURSIVE, MED, TTL,
 	SECURITY, DETERMINISTIC, SECONDARY, ALLOW, BFD, ADD, PATHS, RX, TX,
 	GRACEFUL, RESTART, AWARE, CHECK, LINK, PORT, EXTENDED, MESSAGES, SETKEY,
@@ -66,6 +66,7 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->error_delay_time_min = 60;
      BGP_CFG->error_delay_time_max = 300;
      BGP_CFG->enable_refresh = 1;
+     BGP_CFG->enable_enhanced_refresh = 1;
      BGP_CFG->enable_as4 = 1;
      BGP_CFG->enable_hostname = 0;
      BGP_CFG->capabilities = 2;
@@ -189,6 +190,7 @@ bgp_proto:
  | bgp_proto DISABLE AFTER ERROR bool ';' { BGP_CFG->disable_after_error = $5; }
  | bgp_proto DISABLE AFTER CEASE bgp_cease_mask ';' { BGP_CFG->disable_after_cease = $5; }
  | bgp_proto ENABLE ROUTE REFRESH bool ';' { BGP_CFG->enable_refresh = $5; }
+ | bgp_proto ENABLE ENHANCED ROUTE REFRESH bool ';' { BGP_CFG->enable_enhanced_refresh = $6; }
  | bgp_proto ENABLE AS4 bool ';' { BGP_CFG->enable_as4 = $4; }
  | bgp_proto ENABLE EXTENDED MESSAGES bool ';' { BGP_CFG->enable_extended_messages = $5; }
  | bgp_proto ADVERTISE HOSTNAME bool ';' { BGP_CFG->enable_hostname = $4; }
