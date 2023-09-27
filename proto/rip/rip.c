@@ -328,6 +328,17 @@ rip_withdraw_rte(struct rip_proto *p, net_addr *n, struct rip_neighbor *from)
     rip_announce_rte(p, en);
 }
 
+static void
+rip_withdraw_entry(struct rip_proto *p, struct rip_entry *en)
+{
+  en->valid = RIP_ENTRY_STALE;
+  en->metric = p->infinity;
+  en->tag = 0;
+  en->from = NULL;
+  en->iface = NULL;
+  en->next_hop = IPA_NONE;
+}
+
 /*
  * rip_rt_notify - core tells us about new route, so store
  * it into our data structures.
@@ -392,17 +403,11 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net, s
     /* Withdraw */
     en = fib_find(&p->rtable, net);
 
-    if (!en || en->valid != RIP_ENTRY_VALID)
+    if (!en || !(en->valid & RIP_ENTRY_VALID))
       return;
 
     old_metric = en->metric;
-
-    en->valid = RIP_ENTRY_STALE;
-    en->metric = p->infinity;
-    en->tag = 0;
-    en->from = NULL;
-    en->iface = NULL;
-    en->next_hop = IPA_NONE;
+    rip_withdraw_entry(p, en);
   }
 
   /* Activate triggered updates */
@@ -412,6 +417,43 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net, s
     rip_trigger_update(p);
   }
 }
+
+void
+rip_feed_begin(struct channel *C, int initial)
+{
+  if (initial)
+    return;
+
+  struct rip_proto *p = (struct rip_proto *) C->proto;
+
+  FIB_WALK(&p->rtable, struct rip_entry, en)
+  {
+    if (en->valid == RIP_ENTRY_VALID)
+      en->valid = RIP_ENTRY_REFEEDING;
+  }
+  FIB_WALK_END;
+}
+
+void
+rip_feed_end(struct channel *C)
+{
+  struct rip_proto *p = (struct rip_proto *) C->proto;
+  int changed = 0;
+
+  FIB_WALK(&p->rtable, struct rip_entry, en)
+  {
+    if (en->valid == RIP_ENTRY_REFEEDING)
+    {
+      rip_withdraw_entry(p, en);
+      changed++;
+    }
+  }
+  FIB_WALK_END;
+
+  if (changed)
+    rip_trigger_update(p);
+}
+
 
 void
 rip_flush_table(struct rip_proto *p, struct rip_neighbor *n)
@@ -1159,6 +1201,8 @@ rip_init(struct proto_config *CF)
   P->iface_sub.neigh_notify = rip_neigh_notify;
   P->reload_routes = rip_reload_routes;
   P->sources.class = &rip_rte_owner_class;
+  P->feed_begin = rip_feed_begin;
+  P->feed_end = rip_feed_end;
 
   return P;
 }

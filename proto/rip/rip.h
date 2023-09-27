@@ -194,6 +194,7 @@ struct rip_rte
 #define RIP_ENTRY_DUMMY		0	/* Only used to store list of incoming routes */
 #define RIP_ENTRY_VALID		1	/* Valid outgoing route */
 #define RIP_ENTRY_STALE		2	/* Stale outgoing route, waiting for GC */
+#define RIP_ENTRY_REFEEDING	3	/* Route valid until feed ends */
 
 static inline int rip_is_v2(struct rip_proto *p)
 { return p->rip2; }
