@@ -311,27 +311,23 @@ channel_roa_out_changed(struct settle *se)
   
   CD(c, "Feeding triggered by RPKI change");
 
-  struct f_trie_node4 n4  = (struct f_trie_node4) s->trie->root.v4;
-  
-  
-  
-  
-    int pos = 0, end = 0;
+    int pos = 0;
     pos = 0;
     uint pxc = 0;
     TRIE_WALK(s->trie, net, NULL)
     {
-    log_msg(L_DEBUG "channel changed %i", net);
+    log_msg(L_DEBUG "trie walk %N", &net);
 
 
       pos++;
       pxc++;
     }
     TRIE_WALK_END;
+    
+  /* TODO: use the information about what roa has changed */
   
-  
-  
-  log_msg(L_DEBUG "channel changed %i %i %i %i %i", s->trie->ipv4, s->trie->root, n4.mask, n4.plen, n4.accept);
+  struct f_trie_node4 n4  = (struct f_trie_node4) s->trie->root.v4;
+  log_msg(L_DEBUG "channel changed %i", n4.accept);
   c->refeed_pending = 1;
   channel_stop_export(c);
 }
@@ -345,11 +341,11 @@ channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struc
   struct f_trie * trie = f_new_trie(s->linpool, 0);
   log_msg(L_DEBUG "min len %i", net_pxlen(net));
   if (net->type == NET_IP4 || net->type == NET_VPN4 || net->type == NET_ROA4){
-    trie_add_prefix(trie, net, net_pxlen(net), 2);
+    trie_add_prefix(trie, net, net_pxlen(net), net_pxlen(net)+5);
   }
   else trie_add_prefix(trie, net, net_pxlen(net), 128);
   s->trie = trie;
-  /* TODO: use the information about what roa has changed */
+ 
   settle_kick(&s->settle, s->c->proto->loop);
 
   rpe_mark_seen_all(req->hook, first, NULL, NULL);
