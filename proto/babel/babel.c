@@ -2361,6 +2361,15 @@ babel_preexport(struct channel *C, struct rte *new)
   return 0;
 }
 
+static void
+babel_entry_invalidate(struct babel_entry *e)
+{
+  e->valid = BABEL_ENTRY_STALE;
+  e->metric = BABEL_INFINITY;
+  e->updated = current_time();
+}
+
+
 /*
  * babel_rt_notify - core tells us about new route (possibly our own),
  * so store it into our data structures.
@@ -2402,7 +2411,7 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *net,
     e = babel_get_entry(p, net);
 
     /* Activate triggered updates */
-    if ((e->valid != BABEL_ENTRY_VALID) ||
+    if (!(e->valid & BABEL_ENTRY_VALID) ||
 	(e->router_id != rt_router_id))
     {
       babel_trigger_update(p);
@@ -2422,13 +2431,45 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *net,
     if (!e || e->valid != BABEL_ENTRY_VALID)
       return;
 
-    e->valid = BABEL_ENTRY_STALE;
-    e->metric = BABEL_INFINITY;
-
+    babel_entry_invalidate(e);
     babel_trigger_update(p);
-    e->updated = current_time();
   }
 }
+
+static void
+babel_feed_begin(struct channel *C, int initial)
+{
+  if (initial)
+    return;
+
+  struct babel_proto *p = (struct babel_proto *) C->proto;
+  struct fib *rtable = (C->net_type == NET_IP4) ? &p->ip4_rtable : &p->ip6_rtable;
+
+  FIB_WALK(rtable, struct babel_entry, e)
+    if (e->valid == BABEL_ENTRY_VALID)
+      e->valid = BABEL_ENTRY_REFEEDING;
+  FIB_WALK_END;
+}
+
+static void
+babel_feed_end(struct channel *C)
+{
+  struct babel_proto *p = (struct babel_proto *) C->proto;
+  struct fib *rtable = (C->net_type == NET_IP4) ? &p->ip4_rtable : &p->ip6_rtable;
+  int changed = 0;
+
+  FIB_WALK(rtable, struct babel_entry, e)
+    if (e->valid == BABEL_ENTRY_REFEEDING)
+    {
+      babel_entry_invalidate(e);
+      changed++;
+    }
+  FIB_WALK_END;
+
+  if (changed)
+    babel_trigger_update(p);
+}
+
 
 static int
 babel_rte_better(const rte *new, const rte *old)
@@ -2482,6 +2523,8 @@ babel_init(struct proto_config *CF)
   P->iface_sub.if_notify = babel_if_notify;
   P->rt_notify = babel_rt_notify;
   P->preexport = babel_preexport;
+  P->feed_begin = babel_feed_begin;
+  P->feed_end = babel_feed_end;
 
   P->sources.class = &babel_rte_owner_class;
 

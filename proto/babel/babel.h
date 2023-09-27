@@ -299,6 +299,7 @@ struct babel_entry {
 #define BABEL_ENTRY_DUMMY	0	/* No outgoing route */
 #define BABEL_ENTRY_VALID	1	/* Valid outgoing route */
 #define BABEL_ENTRY_STALE	2	/* Stale outgoing route, waiting for GC */
+#define BABEL_ENTRY_REFEEDING	3	/* Route valid until feed ends */
 
 
 /*
