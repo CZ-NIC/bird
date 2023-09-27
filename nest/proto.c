@@ -289,6 +289,8 @@ struct roa_subscription {
   struct settle settle;
   struct channel *c;
   struct rt_export_request req;
+  struct f_trie* trie;
+  struct linpool* linpool;
 };
 
 static void
@@ -306,18 +308,47 @@ channel_roa_out_changed(struct settle *se)
 {
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, settle, se);
   struct channel *c = s->c;
-
+  
   CD(c, "Feeding triggered by RPKI change");
 
+  struct f_trie_node4 n4  = (struct f_trie_node4) s->trie->root.v4;
+  
+  
+  
+  
+    int pos = 0, end = 0;
+    pos = 0;
+    uint pxc = 0;
+    TRIE_WALK(s->trie, net, NULL)
+    {
+    log_msg(L_DEBUG "channel changed %i", net);
+
+
+      pos++;
+      pxc++;
+    }
+    TRIE_WALK_END;
+  
+  
+  
+  log_msg(L_DEBUG "channel changed %i %i %i %i %i", s->trie->ipv4, s->trie->root, n4.mask, n4.plen, n4.accept);
   c->refeed_pending = 1;
   channel_stop_export(c);
 }
 
 static void
-channel_export_one_roa(struct rt_export_request *req, const net_addr *net UNUSED, struct rt_pending_export *first)
+channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
-
+  net_addr* copy = lp_alloc(s->linpool, sizeof(net_addr));
+  net_copy(copy, net);
+  struct f_trie * trie = f_new_trie(s->linpool, 0);
+  log_msg(L_DEBUG "min len %i", net_pxlen(net));
+  if (net->type == NET_IP4 || net->type == NET_VPN4 || net->type == NET_ROA4){
+    trie_add_prefix(trie, net, net_pxlen(net), 2);
+  }
+  else trie_add_prefix(trie, net, net_pxlen(net), 128);
+  s->trie = trie;
   /* TODO: use the information about what roa has changed */
   settle_kick(&s->settle, s->c->proto->loop);
 
@@ -365,6 +396,7 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
   *s = (struct roa_subscription) {
     .settle = SETTLE_INIT(&c->roa_settle, dir ? channel_roa_in_changed : channel_roa_out_changed, NULL),
     .c = c,
+    .linpool = lp_new(c->proto->pool),
     .req = {
       .name = mb_sprintf(c->proto->pool, "%s.%s.roa-%s.%s",
 	  c->proto->name, c->name, dir ? "in" : "out", tab->name),
@@ -395,6 +427,7 @@ channel_roa_unsubscribed(struct rt_export_request *req)
 static void
 channel_roa_unsubscribe(struct roa_subscription *s)
 {
+  lp_flush(s->linpool);
   rt_stop_export(&s->req, channel_roa_unsubscribed);
   settle_cancel(&s->settle);
 }
