@@ -389,7 +389,7 @@ krt_export_net(struct krt_proto *p, net *net)
 
     const rte **feed = alloca(count * sizeof(rte *));
     rte_feed_obtain_valid(net, feed, count);
-    return rt_export_merged(c, feed, count, krt_filter_lp, 1);
+    return rt_export_merged(c, net->n.addr, feed, count, krt_filter_lp, 1);
   }
 
   static _Thread_local rte rt;
@@ -787,6 +787,9 @@ krt_feed_end(struct channel *C)
 {
   struct krt_proto *p = (void *) C->proto;
 
+  if (C->refeeding && C->refeed_req.hook)
+    return;
+
   if (p->flush_routes)
   {
     p->flush_routes = 2;
@@ -922,7 +925,7 @@ krt_shutdown(struct proto *P)
   if (p->initialized && !KRT_CF->persist && (P->down_code != PDC_CMD_GR_DOWN))
   {
     p->flush_routes = 1;
-    channel_request_feeding(p->p.main_channel);
+    channel_request_feeding_dynamic(p->p.main_channel, CFRT_AUXILIARY);
     return PS_UP;
   }
   else

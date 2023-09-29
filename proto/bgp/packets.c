@@ -2801,7 +2801,12 @@ bgp_rx_route_refresh(struct bgp_conn *conn, byte *pkt, uint len)
   {
   case BGP_RR_REQUEST:
     BGP_TRACE(D_PACKETS, "Got ROUTE-REFRESH");
-    channel_request_feeding(&c->c);
+    if (c->c.out_table)
+    {
+      /* FIXME: REQUEST REFRESH FROM OUT TABLE */
+    }
+    else
+      channel_request_feeding_dynamic(&c->c, p->enhanced_refresh ? CFRT_DIRECT : CFRT_AUXILIARY);
     break;
 
   case BGP_RR_BEGIN:

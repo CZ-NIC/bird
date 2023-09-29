@@ -217,7 +217,7 @@ perf_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *net UN
 }
 
 static void
-perf_feed_begin(struct channel *c, int initial UNUSED)
+perf_feed_begin(struct channel *c)
 {
   struct perf_proto *p = (struct perf_proto *) c->proto;
 
@@ -232,6 +232,7 @@ static void
 perf_feed_end(struct channel *c)
 {
   struct perf_proto *p = (struct perf_proto *) c->proto;
+
   struct timespec ts_end;
   clock_gettime(CLOCK_MONOTONIC, &ts_end);
 
@@ -243,7 +244,7 @@ perf_feed_end(struct channel *c)
   p->feed_begin = NULL;
 
   if (p->run < p->repeat)
-    channel_request_feeding(c);
+    channel_request_feeding_dynamic(c, CFRT_DIRECT);
   else
     PLOG("feed done");
 }

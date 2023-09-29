@@ -142,7 +142,7 @@ rt_show_net(struct rt_show_data *d, const net_addr *n, const rte **feed, uint co
 	{
 	  /* Special case for merged export */
 	  pass = 1;
-	  rte *em = rt_export_merged(ec, feed, count, tmp_linpool, 1);
+	  rte *em = rt_export_merged(ec, n, feed, count, tmp_linpool, 1);
 
 	  if (em)
 	    e = *em;

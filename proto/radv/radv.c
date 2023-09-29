@@ -664,7 +664,7 @@ radv_reconfigure(struct proto *P, struct proto_config *CF)
 
   /* We started to accept routes so we need to refeed them */
   if (!old->propagate_routes && new->propagate_routes)
-    channel_request_feeding(p->p.main_channel);
+    channel_request_feeding_dynamic(p->p.main_channel, CFRT_DIRECT);
 
   IFACE_WALK(iface)
   {

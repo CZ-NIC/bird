@@ -858,9 +858,6 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
   struct proto *p = c->proto;
   struct channel_export_stats *stats = &c->export_stats;
 
-  if (c->refeeding && new)
-    c->refeed_count++;
-
   if (!old && new)
     if (CHANNEL_LIMIT_PUSH(c, OUT))
     {
@@ -897,9 +894,9 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
 }
 
 static void
-rt_notify_basic(struct channel *c, const net_addr *net, rte *new, const rte *old)
+rt_notify_basic(struct channel *c, const net_addr *net, rte *new, const rte *old, int force)
 {
-  if (new && old && rte_same(new, old))
+  if (new && old && rte_same(new, old) && !force)
   {
     channel_rte_trace_out(D_ROUTES, c, new, "already exported");
 
@@ -910,6 +907,10 @@ rt_notify_basic(struct channel *c, const net_addr *net, rte *new, const rte *old
     }
     return;
   }
+
+  /* Refeeding and old is new */
+  if (force && !old && bmap_test(&c->export_map, new->id))
+    old = new;
 
   if (new)
     new = export_filter(c, new, 0);
@@ -924,13 +925,16 @@ rt_notify_basic(struct channel *c, const net_addr *net, rte *new, const rte *old
 }
 
 void
-channel_rpe_mark_seen(struct rt_export_request *req, struct rt_pending_export *rpe)
+channel_rpe_mark_seen(struct channel *c, struct rt_pending_export *rpe)
 {
-  struct channel *c = SKIP_BACK(struct channel, out_req, req);
-
   channel_trace(c, D_ROUTES, "Marking seen %p (%lu)", rpe, rpe->seq);
 
-  rpe_mark_seen(req->hook, rpe);
+  ASSERT_DIE(c->out_req.hook);
+  rpe_mark_seen(c->out_req.hook, rpe);
+
+  if (c->refeed_req.hook && (c->refeed_req.hook->export_state == TES_FEEDING))
+    rpe_mark_seen(c->refeed_req.hook, rpe);
+
   if (rpe->old)
     bmap_clear(&c->export_reject_map, rpe->old->rte.id);
 }
@@ -940,7 +944,8 @@ rt_notify_accepted(struct rt_export_request *req, const net_addr *n,
     struct rt_pending_export *first, struct rt_pending_export *last,
     const rte **feed, uint count)
 {
-  struct channel *c = SKIP_BACK(struct channel, out_req, req);
+  struct channel *c = channel_from_export_request(req);
+  int refeeding = channel_net_is_refeeding(c, n);
 
   rte nb0, *new_best = NULL;
   const rte *old_best = NULL;
@@ -951,22 +956,27 @@ rt_notify_accepted(struct rt_export_request *req, const net_addr *n,
       continue;
 
     /* Has been already rejected, won't bother with it */
-    if (!c->refeeding && bmap_test(&c->export_reject_map, feed[i]->id))
+    if (!refeeding && bmap_test(&c->export_reject_map, feed[i]->id))
       continue;
 
     /* Previously exported */
     if (!old_best && bmap_test(&c->export_map, feed[i]->id))
     {
-      /* is still best */
-      if (!new_best)
+      if (new_best)
       {
+	/* is superseded */
+	old_best = feed[i];
+	break;
+      }
+      else if (refeeding)
+	/* is superseeded but maybe by a new version of itself */
+	old_best = feed[i];
+      else
+      {
+	/* is still best */
 	DBG("rt_notify_accepted: idempotent\n");
 	goto done;
       }
-
-      /* is superseded */
-      old_best = feed[i];
-      break;
     }
 
     /* Have no new best route yet */
@@ -983,7 +993,7 @@ done:
   /* Check obsolete routes for previously exported */
   RPE_WALK(first, rpe, NULL)
   {
-    channel_rpe_mark_seen(req, rpe);
+    channel_rpe_mark_seen(c, rpe);
     if (rpe->old)
     {
       if (bmap_test(&c->export_map, rpe->old->rte.id))
@@ -1001,12 +1011,20 @@ done:
     do_rt_notify(c, n, new_best, old_best);
   else
     DBG("rt_notify_accepted: nothing to export\n");
+
+  if (refeeding)
+    channel_net_mark_refed(c, n);
 }
 
 rte *
-rt_export_merged(struct channel *c, const rte **feed, uint count, linpool *pool, int silent)
+rt_export_merged(struct channel *c, const net_addr *n, const rte **feed, uint count, linpool *pool, int silent)
 {
   _Thread_local static rte rloc;
+
+  int refeeding = !silent && channel_net_is_refeeding(c, n);
+
+  if (refeeding)
+    channel_net_mark_refed(c, n);
 
   // struct proto *p = c->proto;
   struct nexthop_adata *nhs = NULL;
@@ -1017,7 +1035,7 @@ rt_export_merged(struct channel *c, const rte **feed, uint count, linpool *pool,
     return NULL;
 
   /* Already rejected, no need to re-run the filter */
-  if (!c->refeeding && bmap_test(&c->export_reject_map, best0->id))
+  if (!refeeding && bmap_test(&c->export_reject_map, best0->id))
     return NULL;
 
   rloc = *best0;
@@ -1037,7 +1055,7 @@ rt_export_merged(struct channel *c, const rte **feed, uint count, linpool *pool,
       continue;
 
     rte tmp0 = *feed[i];
-    rte *tmp = export_filter(c, &tmp0, 1);
+    rte *tmp = export_filter(c, &tmp0, !refeeding);
 
     if (!tmp || !rte_is_reachable(tmp))
       continue;
@@ -1070,7 +1088,7 @@ rt_notify_merged(struct rt_export_request *req, const net_addr *n,
     struct rt_pending_export *first, struct rt_pending_export *last,
     const rte **feed, uint count)
 {
-  struct channel *c = SKIP_BACK(struct channel, out_req, req);
+  struct channel *c = channel_from_export_request(req);
 
   // struct proto *p = c->proto;
 
@@ -1095,7 +1113,7 @@ rt_notify_merged(struct rt_export_request *req, const net_addr *n,
   /* Check obsolete routes for previously exported */
   RPE_WALK(first, rpe, NULL)
   {
-    channel_rpe_mark_seen(req, rpe);
+    channel_rpe_mark_seen(c, rpe);
     if (rpe->old)
     {
       if (bmap_test(&c->export_map, rpe->old->rte.id))
@@ -1109,7 +1127,7 @@ rt_notify_merged(struct rt_export_request *req, const net_addr *n,
   }
 
   /* Prepare new merged route */
-  rte *new_merged = count ? rt_export_merged(c, feed, count, tmp_linpool, 0) : NULL;
+  rte *new_merged = count ? rt_export_merged(c, n, feed, count, tmp_linpool, 0) : NULL;
 
   if (new_merged || old_best)
     do_rt_notify(c, n, new_merged, old_best);
@@ -1118,25 +1136,30 @@ rt_notify_merged(struct rt_export_request *req, const net_addr *n,
 void
 rt_notify_optimal(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
-  struct channel *c = SKIP_BACK(struct channel, out_req, req);
+  struct channel *c = channel_from_export_request(req);
   const rte *o = RTE_VALID_OR_NULL(first->old_best);
   struct rte_storage *new_best = first->new_best;
 
+  int refeeding = channel_net_is_refeeding(c, net);
+
   RPE_WALK(first, rpe, NULL)
   {
-    channel_rpe_mark_seen(req, rpe);
+    channel_rpe_mark_seen(c, rpe);
     new_best = rpe->new_best;
   }
 
   rte n0 = RTE_COPY_VALID(new_best);
   if (n0.src || o)
-    rt_notify_basic(c, net, n0.src ? &n0 : NULL, o);
+    rt_notify_basic(c, net, n0.src ? &n0 : NULL, o, refeeding);
+
+  if (refeeding)
+    channel_net_mark_refed(c, net);
 }
 
 void
 rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
-  struct channel *c = SKIP_BACK(struct channel, out_req, req);
+  struct channel *c = channel_from_export_request(req);
 
   const rte *n = RTE_VALID_OR_NULL(first->new);
   const rte *o = RTE_VALID_OR_NULL(first->old);
@@ -1145,9 +1168,13 @@ rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pend
       "Notifying any, net %N, first %p (%lu), new %p, old %p",
       net, first, first->seq, n, o);
 
-  if (!n && !o)
+  if (!n && !o || channel_net_is_refeeding(c, net))
   {
-    channel_rpe_mark_seen(req, first);
+    /* We want to skip this notification because:
+     * - there is nothing to notify, or
+     * - this net is going to get a full refeed soon
+     */
+    channel_rpe_mark_seen(c, first);
     return;
   }
 
@@ -1156,13 +1183,13 @@ rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pend
 
   RPE_WALK(first, rpe, src)
   {
-    channel_rpe_mark_seen(req, rpe);
+    channel_rpe_mark_seen(c, rpe);
     new_latest = rpe->new;
   }
 
   rte n0 = RTE_COPY_VALID(new_latest);
   if (n0.src || o)
-    rt_notify_basic(c, net, n0.src ? &n0 : NULL, o);
+    rt_notify_basic(c, net, n0.src ? &n0 : NULL, o, 0);
 
   channel_trace(c, D_ROUTES, "Notified net %N", net);
 }
@@ -1172,7 +1199,8 @@ rt_feed_any(struct rt_export_request *req, const net_addr *net,
     struct rt_pending_export *first, struct rt_pending_export *last,
     const rte **feed, uint count)
 {
-  struct channel *c = SKIP_BACK(struct channel, out_req, req);
+  struct channel *c = channel_from_export_request(req);
+  int refeeding = channel_net_is_refeeding(c, net);
 
   channel_trace(c, D_ROUTES, "Feeding any, net %N, first %p (%lu), %p (%lu), count %u",
       net, first, first ? first->seq : 0, last ? last->seq : 0, count);
@@ -1181,17 +1209,19 @@ rt_feed_any(struct rt_export_request *req, const net_addr *net,
     if (rte_is_valid(feed[i]))
     {
       rte n0 = *feed[i];
-      rt_notify_basic(c, net, &n0, NULL);
+      rt_notify_basic(c, net, &n0, NULL, refeeding);
     }
 
   RPE_WALK(first, rpe, NULL)
   {
-    channel_rpe_mark_seen(req, rpe);
+    channel_rpe_mark_seen(c, rpe);
     if (rpe == last)
       break;
   }
 
   channel_trace(c, D_ROUTES, "Fed %N", net);
+  if (refeeding)
+    channel_net_mark_refed(c, net);
 }
 
 void

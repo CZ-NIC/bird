@@ -36,6 +36,8 @@ bmap_reset(struct bmap *b, uint size)
 void
 bmap_grow(struct bmap *b, uint need)
 {
+  ASSERT_DIE(b->size);
+
   uint size = b->size * 2;
   while (size < need)
     size *= 2;

@@ -551,8 +551,11 @@ ospf_update_lsadb(struct ospf_proto *p)
 }
 
 void
-ospf_feed_begin(struct channel *C, int initial UNUSED)
+ospf_feed_begin(struct channel *C)
 {
+  if (!C->refeeding || C->refeed_req.hook)
+    return;
+
   struct ospf_proto *p = (struct ospf_proto *) C->proto;
   struct top_hash_entry *en;
 
@@ -565,6 +568,9 @@ ospf_feed_begin(struct channel *C, int initial UNUSED)
 void
 ospf_feed_end(struct channel *C)
 {
+  if (!C->refeeding || C->refeed_req.hook)
+    return;
+
   struct ospf_proto *p = (struct ospf_proto *) C->proto;
   struct top_hash_entry *en;
 

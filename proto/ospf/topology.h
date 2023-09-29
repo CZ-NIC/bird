@@ -187,7 +187,7 @@ struct top_hash_entry * ospf_originate_lsa(struct ospf_proto *p, struct ospf_new
 void ospf_advance_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_lsa_header *lsa, u32 type, u32 domain, void *body);
 void ospf_flush_lsa(struct ospf_proto *p, struct top_hash_entry *en);
 void ospf_update_lsadb(struct ospf_proto *p);
-void ospf_feed_begin(struct channel *C, int initial);
+void ospf_feed_begin(struct channel *C);
 void ospf_feed_end(struct channel *C);
 
 static inline void ospf_flush2_lsa(struct ospf_proto *p, struct top_hash_entry **en)

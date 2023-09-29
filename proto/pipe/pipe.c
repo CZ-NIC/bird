@@ -102,12 +102,15 @@ pipe_reload_routes(struct channel *C)
   struct pipe_proto *p = (void *) C->proto;
 
   /* Route reload on one channel is just refeed on the other */
-  channel_request_feeding((C == p->pri) ? p->sec : p->pri);
+  channel_request_feeding_dynamic((C == p->pri) ? p->sec : p->pri, CFRT_DIRECT);
 }
 
 static void
-pipe_feed_begin(struct channel *C, int initial UNUSED)
+pipe_feed_begin(struct channel *C)
 {
+  if (!C->refeeding || C->refeed_req.hook)
+    return;
+
   struct pipe_proto *p = (void *) C->proto;
   uint *flags = (C == p->pri) ? &p->sec_flags : &p->pri_flags;
 
@@ -117,6 +120,9 @@ pipe_feed_begin(struct channel *C, int initial UNUSED)
 static void
 pipe_feed_end(struct channel *C)
 {
+  if (!C->refeeding || C->refeed_req.hook)
+    return;
+
   struct pipe_proto *p = (void *) C->proto;
   struct channel *dst = (C == p->pri) ? p->sec : p->pri;
   uint *flags = (C == p->pri) ? &p->sec_flags : &p->pri_flags;

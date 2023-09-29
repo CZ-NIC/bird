@@ -17,6 +17,7 @@
 #include "nest/rt.h"
 #include "nest/limit.h"
 #include "conf/conf.h"
+#include "filter/data.h"
 
 struct iface;
 struct ifa;
@@ -194,7 +195,7 @@ struct proto {
   void (*rt_notify)(struct proto *, struct channel *, const net_addr *net, struct rte *new, const struct rte *old);
   int (*preexport)(struct channel *, struct rte *rt);
   void (*reload_routes)(struct channel *);
-  void (*feed_begin)(struct channel *, int initial);
+  void (*feed_begin)(struct channel *);
   void (*feed_end)(struct channel *);
 
   /*
@@ -568,7 +569,10 @@ struct channel {
   struct rt_import_request in_req;	/* Table import connection */
   struct rt_export_request out_req;	/* Table export connection */
 
-  u32 refeed_count;			/* Number of routes exported during refeed regardless of out_limit */
+  struct rt_export_request refeed_req;	/* Auxiliary refeed request */
+  struct f_trie *refeed_trie;		/* Auxiliary refeed trie */
+  struct channel_feeding_request *refeeding;	/* Refeeding the channel */
+  struct channel_feeding_request *refeed_pending;	/* Scheduled refeeds */
 
   uint feed_block_size;			/* How many routes to feed at once */
 
@@ -582,7 +586,6 @@ struct channel {
   u8 stale;				/* Used in reconfiguration */
 
   u8 channel_state;
-  u8 refeeding;				/* Refeeding the channel. */
   u8 reloadable;			/* Hook reload_routes() is allowed on the channel */
   u8 gr_lock;				/* Graceful restart mechanism should wait for this channel */
   u8 gr_wait;				/* Route export to channel is postponed until graceful restart */
@@ -592,7 +595,6 @@ struct channel {
   struct rt_export_request reload_req;	/* Feeder for import reload */
 
   u8 reload_pending;			/* Reloading and another reload is scheduled */
-  u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
   u8 rpki_reload;			/* RPKI changes trigger channel reload */
 
   struct rt_exporter *out_table;	/* Internal table for exported routes */
@@ -673,7 +675,33 @@ static inline void channel_init(struct channel *c) { channel_set_state(c, CS_STA
 static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP); }
 static inline void channel_close(struct channel *c) { channel_set_state(c, CS_STOP); }
 
-void channel_request_feeding(struct channel *c);
+struct channel_feeding_request {
+  struct channel_feeding_request *next;
+  PACKED enum channel_feeding_request_type {
+    CFRT_DIRECT = 1,
+    CFRT_AUXILIARY,
+  } type;
+  PACKED enum {
+    CFRS_INACTIVE = 0,
+    CFRS_PENDING,
+    CFRS_RUNNING,
+  } state;
+  PACKED enum {
+    CFRF_DYNAMIC = 1,
+  } flags;
+};
+
+struct channel *channel_from_export_request(struct rt_export_request *req);
+void channel_request_feeding(struct channel *c, struct channel_feeding_request *);
+void channel_request_feeding_dynamic(struct channel *c, enum channel_feeding_request_type);
+
+static inline int channel_net_is_refeeding(struct channel *c, const net_addr *n)
+{ return (c->refeeding && c->refeed_trie && !trie_match_net(c->refeed_trie, n)); }
+static inline void channel_net_mark_refed(struct channel *c, const net_addr *n)
+{
+  ASSERT_DIE(c->refeeding && c->refeed_trie);
+  trie_add_prefix(c->refeed_trie, n, n->pxlen, n->pxlen);
+}
 void *channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 void *channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 int channel_reconfigure(struct channel *c, struct channel_config *cf);

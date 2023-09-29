@@ -1575,7 +1575,7 @@ bgp_reload_routes(struct channel *C)
 }
 
 static void
-bgp_feed_begin(struct channel *C, int initial)
+bgp_feed_begin(struct channel *C)
 {
   struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
@@ -1588,21 +1588,28 @@ bgp_feed_begin(struct channel *C, int initial)
   if (!p->conn)
     return;
 
-  if (initial && p->cf->gr_mode)
-    c->feed_state = BFS_LOADING;
-
-  if (!initial && C->out_table)
+  if (!C->refeeding)
   {
-    c->feed_out_table = 1;
+    if (p->cf->gr_mode)
+      c->feed_state = BFS_LOADING;
     return;
   }
 
-  /* It is refeed and both sides support enhanced route refresh */
-  if (!initial && p->enhanced_refresh)
+  if (!C->refeed_req.hook)
   {
-    /* BoRR must not be sent before End-of-RIB */
-    if (c->feed_state == BFS_LOADING || c->feed_state == BFS_LOADED)
+    /* Direct refeed */
+    if (C->out_table)
+    {
+      /* FIXME: THIS IS BROKEN, IT DOESN'T PRUNE THE OUT TABLE */
+      c->feed_out_table = 1;
       return;
+    }
+
+    ASSERT_DIE(p->enhanced_refresh);
+
+    /* It is refeed and both sides support enhanced route refresh */
+    /* BoRR must not be sent before End-of-RIB */
+    ASSERT_DIE((c->feed_state != BFS_LOADING) && (c->feed_state != BFS_LOADED));
 
     c->feed_state = BFS_REFRESHING;
     bgp_schedule_packet(p->conn, c, PKT_BEGIN_REFRESH);

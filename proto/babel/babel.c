@@ -2437,9 +2437,9 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *net,
 }
 
 static void
-babel_feed_begin(struct channel *C, int initial)
+babel_feed_begin(struct channel *C)
 {
-  if (initial)
+  if (!C->refeeding || C->refeed_req.hook)
     return;
 
   struct babel_proto *p = (struct babel_proto *) C->proto;
@@ -2454,6 +2454,9 @@ babel_feed_begin(struct channel *C, int initial)
 static void
 babel_feed_end(struct channel *C)
 {
+  if (!C->refeeding || C->refeed_req.hook)
+    return;
+
   struct babel_proto *p = (struct babel_proto *) C->proto;
   struct fib *rtable = (C->net_type == NET_IP4) ? &p->ip4_rtable : &p->ip6_rtable;
   int changed = 0;

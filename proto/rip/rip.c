@@ -419,9 +419,9 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net, s
 }
 
 void
-rip_feed_begin(struct channel *C, int initial)
+rip_feed_begin(struct channel *C)
 {
-  if (initial)
+  if (!C->refeeding || C->refeed_req.hook)
     return;
 
   struct rip_proto *p = (struct rip_proto *) C->proto;
@@ -437,6 +437,9 @@ rip_feed_begin(struct channel *C, int initial)
 void
 rip_feed_end(struct channel *C)
 {
+  if (!C->refeeding || C->refeed_req.hook)
+    return;
+
   struct rip_proto *p = (struct rip_proto *) C->proto;
   int changed = 0;
 
