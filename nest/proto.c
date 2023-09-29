@@ -339,9 +339,8 @@ channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struc
   net_addr* copy = lp_alloc(s->linpool, sizeof(net_addr));
   net_copy(copy, net);
   struct f_trie * trie = f_new_trie(s->linpool, 0);
-  log_msg(L_DEBUG "min len %i", net_pxlen(net));
   if (net->type == NET_IP4 || net->type == NET_VPN4 || net->type == NET_ROA4){
-    trie_add_prefix(trie, net, net_pxlen(net), net_pxlen(net)+5);
+    trie_add_prefix(trie, net, net_pxlen(net), 48);
   }
   else trie_add_prefix(trie, net, net_pxlen(net), 128);
   s->trie = trie;
@@ -523,14 +522,18 @@ channel_start_export(struct channel *c)
   }
 
   ASSERT(c->channel_state == CS_UP);
+  
+  c->reqv_trie_lp = lp_new(c->proto->pool);
+  struct f_trie * trie = f_new_trie(c->reqv_trie_lp, 0);
+  trie_add_prefix(trie, c->out_subprefix, net_pxlen(c->out_subprefix), net_pxlen(c->out_subprefix));
 
   c->out_req = (struct rt_export_request) {
     .name = mb_sprintf(c->proto->pool, "%s.%s", c->proto->name, c->name),
     .list = proto_work_list(c->proto),
     .pool = c->proto->pool,
     .feed_block_size = c->feed_block_size,
-    .addr = c->out_subprefix,
-    .addr_mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
+    .prefilter.net_filter_trie = trie,
+    .prefilter.addr_mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
     .trace_routes = c->debug | c->proto->debug,
     .dump_req = channel_dump_export_req,
     .log_state_change = channel_export_log_state_change,
@@ -1038,7 +1041,11 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   // c->ra_mode = cf->ra_mode;
   c->merge_limit = cf->merge_limit;
   c->preference = cf->preference;
-  c->out_req.addr = c->out_subprefix = cf->out_subprefix;
+  c->out_subprefix = cf->out_subprefix;
+  c->reqv_trie_lp = lp_new(c->proto->pool);
+  struct f_trie *trie = f_new_trie(c->reqv_trie_lp, 0);
+  trie_add_prefix(trie, c->out_subprefix, net_pxlen(c->out_subprefix), net_pxlen(c->out_subprefix));
+  c->out_req.prefilter.net_filter_trie = trie;
   c->debug = cf->debug;
   c->in_req.trace_routes = c->out_req.trace_routes = c->debug | c->proto->debug;
   c->rpki_reload = cf->rpki_reload;

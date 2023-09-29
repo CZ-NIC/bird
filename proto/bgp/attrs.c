@@ -1896,13 +1896,13 @@ bgp_out_table_feed(void *data)
 
   int max = 512;
 
-  const net_addr *neq = (hook->h.req->addr_mode == TE_ADDR_EQUAL) ? hook->h.req->addr : NULL;
+  const net_addr *neq = (hook->h.req->prefilter.addr_mode == TE_ADDR_EQUAL) ? hook->h.req->addr : NULL;
   const net_addr *cand = NULL;
 
   do {
     HASH_WALK_ITER(c->prefix_hash, PXH, n, hook->hash_iter)
     {
-      switch (hook->h.req->addr_mode)
+      switch (hook->h.req->prefilter.addr_mode)
       {
 	case TE_ADDR_IN:
 	  if (!net_in_netX(n->net, hook->h.req->addr))

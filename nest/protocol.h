@@ -559,6 +559,8 @@ struct channel {
 
   struct rt_import_request in_req;	/* Table import connection */
   struct rt_export_request out_req;	/* Table export connection */
+  
+  linpool * reqv_trie_lp;
 
   u32 refeed_count;			/* Number of routes exported during refeed regardless of out_limit */
 
