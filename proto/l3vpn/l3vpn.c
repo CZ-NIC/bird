@@ -296,7 +296,8 @@ l3vpn_reload_routes(struct channel *C)
     break;
 
   case NET_MPLS:
-    /* FIXME */
+    channel_request_feeding(p->ip4_channel);
+    channel_request_feeding(p->ip6_channel);
     break;
   }
 }
