@@ -93,6 +93,7 @@ void mpls_preconfig(struct config *c);
 void mpls_commit(struct config *new, struct config *old);
 uint mpls_new_label(struct mpls_domain *m, struct mpls_handle *h, uint n);
 void mpls_free_label(struct mpls_domain *m, struct mpls_handle *h, uint n);
+void mpls_move_label(struct mpls_domain *m, struct mpls_handle *fh, struct mpls_handle *th, uint n);
 
 static inline struct mpls_domain_config *cf_default_mpls_domain(struct config *cfg)
 { return EMPTY_LIST(cfg->mpls_domains) ? NULL : HEAD(cfg->mpls_domains); }
@@ -133,6 +134,8 @@ struct mpls_fec {
   u8 state;				/* FEC state (MPLS_FEC_*) */
   u8 policy;				/* Label policy (MPLS_POLICY_*) */
 
+  struct mpls_handle *handle;		/* Handle holding the label */
+
   struct mpls_fec *next_k;		/* Next in mpls_fec.net_hash/rta_hash */
   struct mpls_fec *next_l;		/* Next in mpls_fec.label_hash */
   union {				/* Primary key */
@@ -152,7 +155,7 @@ struct mpls_fec_map {
 
   struct channel *channel;		/* MPLS channel for FEC announcement */
   struct mpls_domain *domain;		/* MPLS domain, keeping reference */
-  struct mpls_handle *handle;		/* Handle for allocation of labels */
+  struct mpls_handle *handle;		/* Handle for dynamic allocation of labels */
   struct mpls_handle *static_handle;	/* Handle for static label allocations, optional */
   struct iface *vrf_iface;
 
@@ -162,6 +165,7 @@ struct mpls_fec_map {
 
 
 struct mpls_fec_map *mpls_fec_map_new(pool *p, struct channel *c, uint rts);
+void mpls_fec_map_reconfigure(struct mpls_fec_map *m, struct channel *C);
 void mpls_fec_map_free(struct mpls_fec_map *m);
 struct mpls_fec *mpls_find_fec_by_label(struct mpls_fec_map *x, u32 label);
 struct mpls_fec *mpls_get_fec_by_label(struct mpls_fec_map *m, u32 label);

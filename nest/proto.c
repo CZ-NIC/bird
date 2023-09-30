@@ -997,7 +997,7 @@ proto_setup_mpls_map(struct proto *p, uint rts, int hooks)
   }
   else if (m && c)
   {
-    // mpls_fec_map_reconfigure(m, c);
+    mpls_fec_map_reconfigure(m, c);
   }
 
   if (hooks)
