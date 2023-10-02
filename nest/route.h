@@ -439,7 +439,7 @@ struct nexthop {
 struct rte_src {
   struct rte_src *next;			/* Hash chain */
   struct proto *proto;			/* Protocol the source is based on */
-  u32 private_id;			/* Private ID, assigned by the protocol */
+  u64 private_id;			/* Private ID, assigned by the protocol */
   u32 global_id;			/* Globally unique ID of the source */
   unsigned uc;				/* Use count */
 };

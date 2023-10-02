@@ -2499,7 +2499,7 @@ bgp_bmp_encode_rte(struct bgp_channel *c, byte *buf, const net_addr *n,
   /* Sham prefix */
   struct bgp_prefix *px = alloca(prefix_size);
   *px = (struct bgp_prefix) { };
-  px->path_id = src->private_id;
+  px->path_id = (u32) src->private_id;
   net_copy(px->net, n);
   add_tail(&b->prefixes, &px->buck_node);
 

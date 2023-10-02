@@ -675,7 +675,7 @@ rte_mergable(rte *pri, rte *sec)
 static void
 rte_trace(struct channel *c, rte *e, int dir, char *msg)
 {
-  log(L_TRACE "%s.%s %c %s %N %uL %uG %s",
+  log(L_TRACE "%s.%s %c %s %N %luL %uG %s",
       c->proto->name, c->name ?: "?", dir, msg, e->net->n.addr, e->src->private_id, e->src->global_id,
       rta_dest_name(e->attrs->dest));
 }
