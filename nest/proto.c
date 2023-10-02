@@ -324,7 +324,6 @@ channel_roa_out_changed(struct settle *se)
     TRIE_WALK_END;
 
   struct f_trie_node4 n4  = (struct f_trie_node4) s->trie->root.v4;
-  log_msg(L_DEBUG "channel changed %i", n4.accept);
   c->refeed_pending = 1;
   channel_stop_export(c);
 }
