@@ -318,14 +318,11 @@ channel_roa_out_changed(struct settle *se)
     {
     log_msg(L_DEBUG "trie walk %N", &net);
 
-
       pos++;
       pxc++;
     }
     TRIE_WALK_END;
-    
-  /* TODO: use the information about what roa has changed */
-  
+
   struct f_trie_node4 n4  = (struct f_trie_node4) s->trie->root.v4;
   log_msg(L_DEBUG "channel changed %i", n4.accept);
   c->refeed_pending = 1;
@@ -339,12 +336,12 @@ channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struc
   net_addr* copy = lp_alloc(s->linpool, sizeof(net_addr));
   net_copy(copy, net);
   struct f_trie * trie = f_new_trie(s->linpool, 0);
-  if (net->type == NET_IP4 || net->type == NET_VPN4 || net->type == NET_ROA4){
+  if ( net->type == NET_IP4 || net->type == NET_VPN4 || net->type == NET_ROA4 ){
     trie_add_prefix(trie, net, net_pxlen(net), 48);
   }
   else trie_add_prefix(trie, net, net_pxlen(net), 128);
   s->trie = trie;
- 
+
   settle_kick(&s->settle, s->c->proto->loop);
 
   rpe_mark_seen_all(req->hook, first, NULL, NULL);

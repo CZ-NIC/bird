@@ -4345,7 +4345,7 @@ rt_feed_by_fib(void *data)
 
   FIB_ITERATE_START(&tab->fib, fit, net, n)
     {
-      if ((c->h.req->prefilter.addr_mode == TE_ADDR_NONE) || trie_match_net( c->h.req->prefilter.net_filter_trie,  n->n.addr)  )/*net_in_netX(n->n.addr, c->h.req->addr))    net n     trie_match_net(const struct f_trie *t, const net_addr *n)*/
+      if ( (c->h.req->prefilter.addr_mode == TE_ADDR_NONE) || trie_match_net( c->h.req->prefilter.net_filter_trie,  n->n.addr)  )
       {
 	if (!rt_prepare_feed(c, n, &block))
 	{
