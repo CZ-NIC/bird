@@ -289,7 +289,7 @@ struct rt_pending_export {
 struct rt_prefilter_address{
   union{
     const struct f_trie *net_filter_trie;
-    const net_addr *addr;		/* Network prefilter address */
+    const net_addr *addr;	/* Network prefilter address */
   };
 				/* Network prefilter mode (TE_ADDR_*) */
   enum {
@@ -327,7 +327,7 @@ struct rt_export_request {
 };
 
 static inline int net_in_netX_from_export_request(const net_addr *a, const net_addr *n){
-  if (a->type != n->type)
+  if ( a->type != n->type )
     return 0;
 
   return (net_pxlen(n) <= net_pxlen(a)) && ipa_in_netX(net_prefix(a), n);
