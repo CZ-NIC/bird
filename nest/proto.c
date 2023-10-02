@@ -335,9 +335,8 @@ channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struc
   net_addr* copy = lp_alloc(s->linpool, sizeof(net_addr));
   net_copy(copy, net);
   struct f_trie * trie = f_new_trie(s->linpool, 0);
-  if ( net->type == NET_IP4 || net->type == NET_VPN4 || net->type == NET_ROA4 ){
-    trie_add_prefix(trie, net, net_pxlen(net), 48);
-  }
+  if ( net->type == NET_IP4 || net->type == NET_VPN4 || net->type == NET_ROA4 )
+    trie_add_prefix(trie, net, net_pxlen(net), 32);
   else trie_add_prefix(trie, net, net_pxlen(net), 128);
   s->trie = trie;
 
@@ -533,10 +532,10 @@ channel_start_export(struct channel *c)
   if(c->out_subprefix!=0){
     c->reqv_trie_lp = lp_new(c->proto->pool);
     struct f_trie * trie = f_new_trie(c->reqv_trie_lp, 0);
-    if (c->out_subprefix->type == NET_IP4 || c->out_subprefix->type == NET_VPN4 || c->out_subprefix->type == NET_ROA4){
-      trie_add_prefix(trie, c->out_subprefix, net_pxlen(c->out_subprefix), 48);
-    }
+    if ( c->out_subprefix->type == NET_IP4 || c->out_subprefix->type == NET_VPN4 || c->out_subprefix->type == NET_ROA4 )
+      trie_add_prefix(trie, c->out_subprefix, net_pxlen(c->out_subprefix), 32);
     else trie_add_prefix(trie, c->out_subprefix, net_pxlen(c->out_subprefix), 128);
+
     c->out_req.prefilter.net_filter_trie = trie;
   }
   bmap_init(&c->export_map, c->proto->pool, 16);
