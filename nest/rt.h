@@ -291,13 +291,18 @@ struct rt_prefilter_address{
     const struct f_trie *net_filter_trie;
     const net_addr *addr;		/* Network prefilter address */
   };
-  u8 addr_mode;				/* Network prefilter mode (TE_ADDR_*) */
+				/* Network prefilter mode (TE_ADDR_*) */
+  enum {
+    TE_ADDR_NONE=0,		/* No address matching */
+    TE_ADDR_EQUAL,		/* Exact query - show route <addr> */
+    TE_ADDR_FOR,		/* Longest prefix match - show route for <addr> */
+    TE_ADDR_IN			/* Interval query - show route in <addr> */
+  } addr_mode;
 }PACKED;
 
 struct rt_export_request {
   struct rt_export_hook *hook;		/* Table part of the export */
-  char *name;
-  const net_addr *addr;			/* Network prefilter address */
+  char *name;		/* Network prefilter address */
   u8 trace_routes;
   uint feed_block_size;			/* How many routes to feed at once */
   struct rt_prefilter_address prefilter;
@@ -320,6 +325,16 @@ struct rt_export_request {
   void (*dump_req)(struct rt_export_request *req);
   void (*log_state_change)(struct rt_export_request *req, u8);
 };
+
+static inline int net_in_netX_from_export_request(const net_addr *a, const net_addr *n){
+  if (a->type != n->type)
+    return 0;
+
+  return (net_pxlen(n) <= net_pxlen(a)) && ipa_in_netX(net_prefix(a), n);
+}
+
+static inline int net_equal_from_export_request(const net_addr *a, const net_addr *b)
+{ return (a->length == b->length) && !memcmp(a, b, a->length); }
 
 struct rt_export_hook {
   node n;
@@ -389,12 +404,6 @@ struct rt_table_export_hook {
 #define TES_READY	3
 #define TES_STOP	4
 #define TES_MAX		5
-
-/* Value of addr_mode */
-#define TE_ADDR_NONE	0		/* No address matching */
-#define TE_ADDR_EQUAL	1		/* Exact query - show route <addr> */
-#define TE_ADDR_FOR	2		/* Longest prefix match - show route for <addr> */
-#define TE_ADDR_IN	3		/* Interval query - show route in <addr> */
 
 
 #define TFT_FIB		1

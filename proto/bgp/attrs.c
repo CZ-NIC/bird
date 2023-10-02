@@ -1896,7 +1896,7 @@ bgp_out_table_feed(void *data)
 
   int max = 512;
 
-  const net_addr *neq = (hook->h.req->prefilter.addr_mode == TE_ADDR_EQUAL) ? hook->h.req->addr : NULL;
+  const net_addr *neq = (hook->h.req->prefilter.addr_mode == TE_ADDR_EQUAL) ? hook->h.req->prefilter.addr : NULL;
   const net_addr *cand = NULL;
 
   do {
@@ -1905,7 +1905,7 @@ bgp_out_table_feed(void *data)
       switch (hook->h.req->prefilter.addr_mode)
       {
 	case TE_ADDR_IN:
-	  if (!net_in_netX(n->net, hook->h.req->addr))
+	  if (!net_in_netX_from_export_request(n->net, hook->h.req->prefilter.addr))
 	    continue;
 	  /* fall through */
 	case TE_ADDR_NONE:
@@ -1917,13 +1917,13 @@ bgp_out_table_feed(void *data)
 	case TE_ADDR_FOR:
 	  if (!neq)
 	  {
-	    if (net_in_netX(hook->h.req->addr, n->net) && (!cand || (n->net->length > cand->length)))
+	    if (net_in_netX_from_export_request(hook->h.req->prefilter.addr, n->net) && (!cand || (n->net->length > cand->length)))
 	      cand = n->net;
 	    continue;
 	  }
 	  /* fall through */
 	case TE_ADDR_EQUAL:
-	  if (!net_equal(n->net, neq))
+	  if (!net_equal_from_export_request(n->net, neq))
 	    continue;
 	  break;
       }

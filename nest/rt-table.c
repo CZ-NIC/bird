@@ -1204,19 +1204,18 @@ rte_export(struct rt_table_export_hook *th, struct rt_pending_export *rpe)
     goto ignore;	/* Seen already */
 
   const net_addr *n = rpe->new_best ? rpe->new_best->rte.net : rpe->old_best->rte.net;
-  ASSERT_DIE(1);
   switch (hook->req->prefilter.addr_mode)
     {
       case TE_ADDR_NONE:
 	break;
 
       case TE_ADDR_IN:
-	if (!net_in_netX(n, hook->req->prefilter.addr))
+	if (!net_in_netX_from_export_request(n, hook->req->prefilter.addr))
 	  goto ignore;
 	break;
 
       case TE_ADDR_EQUAL:
-	if (!net_equal(n, hook->req->prefilter.addr))
+	if (!net_equal_from_export_request(n, hook->req->prefilter.addr))
 	  goto ignore;
 	break;
 
@@ -2163,7 +2162,7 @@ rt_table_export_start_feed(struct rtable_private *tab, struct rt_table_export_ho
       {
 	hook->walk_state = mb_allocz(hook->h.pool, sizeof (struct f_trie_walk_state));
 	hook->walk_lock = rt_lock_trie(tab);
-	trie_walk_init(hook->walk_state, tab->trie, req->addr);
+	trie_walk_init(hook->walk_state, tab->trie, req->prefilter.addr);
 	hook->h.event.hook = rt_feed_by_trie;
 	hook->walk_last.type = 0;
 	break;
@@ -4423,7 +4422,7 @@ rt_feed_equal(void *data)
     ASSERT_DIE(atomic_load_explicit(&c->h.export_state, memory_order_relaxed) == TES_FEEDING);
     ASSERT_DIE(c->h.req->prefilter.addr_mode == TE_ADDR_EQUAL);
 
-    if (n = net_find(tab, c->h.req->addr))
+    if (n = net_find(tab, c->h.req->prefilter.addr))
       ASSERT_DIE(rt_prepare_feed(c, n, &block));
   }
 
@@ -4445,7 +4444,7 @@ rt_feed_for(void *data)
     ASSERT_DIE(atomic_load_explicit(&c->h.export_state, memory_order_relaxed) == TES_FEEDING);
     ASSERT_DIE(c->h.req->prefilter.addr_mode == TE_ADDR_FOR);
 
-    if (n = net_route(tab, c->h.req->addr))
+    if (n = net_route(tab, c->h.req->prefilter.addr))
       ASSERT_DIE(rt_prepare_feed(c, n, &block));
   }
 
