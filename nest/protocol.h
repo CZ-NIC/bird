@@ -280,6 +280,14 @@ struct proto *proto_iterate_named(struct symbol *sym, struct protocol *proto, st
 
 #define PROTO_WALK_CMD(sym,pr,p) for(struct proto *p = NULL; p = proto_iterate_named(sym, pr, p); )
 
+/* Request from CLI to reload multiple protocols */
+struct proto_reload_request {
+  const struct f_trie *trie;	/* Trie to apply */
+  _Atomic uint counter;		/* How many channels remaining */
+  uint dir;			/* Direction of reload */
+  event ev;			/* Event to run when finished */
+};
+
 #define PROTO_ENTER_FROM_MAIN(p)    ({ \
     ASSERT_DIE(birdloop_inside(&main_birdloop)); \
     struct birdloop *_loop = (p)->loop; \
@@ -678,7 +686,7 @@ static inline void channel_close(struct channel *c) { channel_set_state(c, CS_ST
 struct channel_feeding_request {
   struct channel_feeding_request *next;			/* Next in request chain */
   void (*done)(struct channel_feeding_request *);	/* Called when refeed finishes */
-  struct f_trie *trie;					/* Reload only matching nets */
+  const struct f_trie *trie;				/* Reload only matching nets */
   PACKED enum channel_feeding_request_type {
     CFRT_DIRECT = 1,					/* Refeed by export restart */
     CFRT_AUXILIARY,					/* Refeed by auxiliary request */

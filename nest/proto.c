@@ -344,8 +344,7 @@ struct roa_subscription {
   struct settle settle;
   struct channel *c;
   struct rt_export_request req;
-  struct f_trie* trie;
-  struct channel_feeding_request cfr[2];
+  struct f_trie *trie;
 };
 
 static void
@@ -371,6 +370,8 @@ channel_roa_out_changed(struct settle *se)
   struct channel *c = s->c;
 
   CD(c, "Feeding triggered by RPKI change");
+  
+  /* Get config.Y global var */
 
   struct channel_feeding_request *cfr = lp_alloc(s->trie->lp, sizeof *cfr);
   *cfr = (struct channel_feeding_request) {
@@ -380,7 +381,6 @@ channel_roa_out_changed(struct settle *se)
   };
   channel_request_feeding(c, cfr);
 
-  s->trie = f_new_trie(lp_new(c->proto->pool), 0);
 }
 
 static void
@@ -623,7 +623,6 @@ channel_start_export(struct channel *c)
   c->refeed_req.dump_req = channel_dump_refeed_req;
   c->refeed_req.log_state_change = channel_refeed_log_state_change;
   c->refeed_req.mark_seen = channel_rpe_mark_seen_refeed;
-  c->refeed_req.prefilter.hook = channel_refeed_prefilter;
 
   DBG("%s.%s: Channel start export req=%p\n", c->proto->name, c->name, &c->out_req);
   rt_request_export(c->table, &c->out_req);
@@ -709,6 +708,8 @@ channel_refeed_stopped(struct rt_export_request *req)
 static void
 channel_init_feeding(struct channel *c)
 {
+  int no_trie = 0;
+
   for (struct channel_feeding_request *cfrp = c->refeed_pending; cfrp; cfrp = cfrp->next)
     if (cfrp->type == CFRT_DIRECT)
     {
@@ -716,11 +717,24 @@ channel_init_feeding(struct channel *c)
       channel_stop_export(c);
       return;
     }
+    else if (!cfrp->trie)
+      no_trie = 1;
 
   /* No direct feeding, running auxiliary refeed. */
   c->refeeding = c->refeed_pending;
   c->refeed_pending = NULL;
   c->refeed_trie = f_new_trie(lp_new(c->proto->pool), 0);
+
+  if (no_trie)
+  {
+    c->refeed_req.prefilter.mode = TE_ADDR_NONE;
+    c->refeed_req.prefilter.hook = NULL;
+  }
+  else
+  {
+    c->refeed_req.prefilter.mode = TE_ADDR_HOOK;
+    c->refeed_req.prefilter.hook = channel_refeed_prefilter;
+  }
 
   rt_request_export(c->table, &c->refeed_req);
 }
@@ -1013,7 +1027,11 @@ channel_set_state(struct channel *c, uint state)
 void
 channel_request_feeding(struct channel *c, struct channel_feeding_request *cfr)
 {
-  ASSERT(c->out_req.hook);
+  ASSERT_DIE(c->out_req.hook);
+
+  CD(c, "Feeding requested (%s)",
+      cfr->type == CFRT_DIRECT ? "direct" :
+      (cfr->trie ? "partial" : "auxiliary"));
 
   /* Enqueue the request */
   cfr->next = c->refeed_pending;
@@ -2655,9 +2673,32 @@ proto_cmd_restart(struct proto *p, uintptr_t arg, int cnt UNUSED)
   cli_msg(-12, "%s: restarted", p->name);
 }
 
-void
-proto_cmd_reload(struct proto *p, uintptr_t dir, int cnt UNUSED)
+struct channel_cmd_reload_feeding_request {
+  struct channel_feeding_request cfr;
+  struct proto_reload_request *prr;
+};
+
+static void
+channel_reload_out_done_main(void *_prr)
 {
+  struct proto_reload_request *prr = _prr;
+  ASSERT_THE_BIRD_LOCKED;
+
+  rfree(prr->trie->lp);
+}
+
+static void
+channel_reload_out_done(struct channel_feeding_request *cfr)
+{
+  struct channel_cmd_reload_feeding_request *ccrfr = SKIP_BACK(struct channel_cmd_reload_feeding_request, cfr, cfr);
+  if (atomic_fetch_sub_explicit(&ccrfr->prr->counter, 1, memory_order_acq_rel) == 1)
+    ev_send_loop(&main_birdloop, &ccrfr->prr->ev);
+}
+
+void
+proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
+{
+  struct proto_reload_request *prr = (void *) _prr;
   struct channel *c;
 
   if (p->disabled)
@@ -2671,7 +2712,7 @@ proto_cmd_reload(struct proto *p, uintptr_t dir, int cnt UNUSED)
     return;
 
   /* All channels must support reload */
-  if (dir != CMD_RELOAD_OUT)
+  if (prr->dir != CMD_RELOAD_OUT)
     WALK_LIST(c, p->channels)
       if ((c->channel_state == CS_UP) && !channel_reloadable(c))
       {
@@ -2682,16 +2723,48 @@ proto_cmd_reload(struct proto *p, uintptr_t dir, int cnt UNUSED)
   log(L_INFO "Reloading protocol %s", p->name);
 
   /* re-importing routes */
-  if (dir != CMD_RELOAD_OUT)
+  if (prr->dir != CMD_RELOAD_OUT)
     WALK_LIST(c, p->channels)
       if (c->channel_state == CS_UP)
 	channel_request_reload(c);
 
   /* re-exporting routes */
-  if (dir != CMD_RELOAD_IN)
+  if (prr->dir != CMD_RELOAD_IN)
     WALK_LIST(c, p->channels)
       if (c->channel_state == CS_UP)
-	channel_request_feeding_dynamic(c, CFRT_AUXILIARY);
+        if (prr->trie)
+	{
+	  /* Increase the refeed counter */
+	  if (atomic_fetch_add_explicit(&prr->counter, 1, memory_order_relaxed) == 0)
+	  {
+	    /* First occurence */
+	    ASSERT_DIE(this_cli->parser_pool == prr->trie->lp);
+	    rmove(this_cli->parser_pool, &root_pool);
+	    this_cli->parser_pool = lp_new(this_cli->pool);
+	    prr->ev = (event) {
+	      .hook = channel_reload_out_done_main,
+	      .data = prr,
+	    };
+	  }
+	  else
+	    ASSERT_DIE(this_cli->parser_pool != prr->trie->lp);
+
+	  /* Request actually the feeding */
+
+	  struct channel_cmd_reload_feeding_request *req = lp_alloc(prr->trie->lp, sizeof *req);
+	  *req = (struct channel_cmd_reload_feeding_request) {
+	    .cfr = {
+	      .type = CFRT_AUXILIARY,
+	      .done = channel_reload_out_done,
+	      .trie = prr->trie,
+	    },
+	    .prr = prr,
+	  };
+
+	  channel_request_feeding(c, &req->cfr);
+	}
+	else
+	  channel_request_feeding_dynamic(c, CFRT_AUXILIARY);
 
   cli_msg(-15, "%s: reloading", p->name);
 }
