@@ -289,6 +289,7 @@ struct roa_subscription {
   struct settle settle;
   struct channel *c;
   struct rt_export_request req;
+  struct f_trie* trie;
 };
 
 static void
@@ -309,16 +310,29 @@ channel_roa_out_changed(struct settle *se)
 
   CD(c, "Feeding triggered by RPKI change");
 
+  /* TODO feed by trie */
+
   c->refeed_pending = 1;
   channel_stop_export(c);
 }
 
 static void
-channel_export_one_roa(struct rt_export_request *req, const net_addr *net UNUSED, struct rt_pending_export *first)
+channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
 
-  /* TODO: use the information about what roa has changed */
+  switch (net->type)
+  {
+    case NET_ROA4:
+      trie_add_prefix(s->trie, net, net_pxlen(net), 32);
+      break;
+    case NET_ROA6:
+      trie_add_prefix(s->trie, net, net_pxlen(net), 128);
+      break;
+    default:
+      bug("ROA table sent us a non-roa export");
+  }
+
   settle_kick(&s->settle, s->c->proto->loop);
 
   rpe_mark_seen_all(req->hook, first, NULL, NULL);
@@ -365,6 +379,7 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
   *s = (struct roa_subscription) {
     .settle = SETTLE_INIT(&c->roa_settle, dir ? channel_roa_in_changed : channel_roa_out_changed, NULL),
     .c = c,
+    .trie = f_new_trie(lp_new(c->proto->pool), 0),
     .req = {
       .name = mb_sprintf(c->proto->pool, "%s.%s.roa-%s.%s",
 	  c->proto->name, c->name, dir ? "in" : "out", tab->name),
@@ -395,6 +410,7 @@ channel_roa_unsubscribed(struct rt_export_request *req)
 static void
 channel_roa_unsubscribe(struct roa_subscription *s)
 {
+  rfree(s->trie->lp);
   rt_stop_export(&s->req, channel_roa_unsubscribed);
   settle_cancel(&s->settle);
 }
