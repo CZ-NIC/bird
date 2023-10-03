@@ -22,6 +22,8 @@
 #include "lib/io-loop.h"
 #include "lib/settle.h"
 
+#include "filter/data.h"
+
 #include <stdatomic.h>
 
 struct ea_list;
@@ -298,13 +300,27 @@ struct rt_pending_export {
   u64 seq;				/* Sequential ID (table-local) of the pending export */
 };
 
+struct rt_prefilter {
+  union {
+    const struct f_trie *trie;
+    const net_addr *addr;	/* Network prefilter address */
+  };
+				/* Network prefilter mode (TE_ADDR_*) */
+  enum {
+    TE_ADDR_NONE = 0,		/* No address matching */
+    TE_ADDR_EQUAL,		/* Exact query - show route <addr> */
+    TE_ADDR_FOR,		/* Longest prefix match - show route for <addr> */
+    TE_ADDR_IN,			/* Interval query - show route in <addr> */
+    TE_ADDR_TRIE,		/* Query defined by trie */
+  } mode;
+} PACKED;
+
 struct rt_export_request {
   struct rt_export_hook *hook;		/* Table part of the export */
-  char *name;
-  const net_addr *addr;			/* Network prefilter address */
+  char *name;		/* Network prefilter address */
   u8 trace_routes;
-  u8 addr_mode;				/* Network prefilter mode (TE_ADDR_*) */
   uint feed_block_size;			/* How many routes to feed at once */
+  struct rt_prefilter prefilter;
 
   event_list *list;			/* Where to schedule export events */
   pool *pool;				/* Pool to use for allocations */
@@ -326,6 +342,20 @@ struct rt_export_request {
   void (*dump_req)(struct rt_export_request *req);
   void (*log_state_change)(struct rt_export_request *req, u8);
 };
+
+static inline int rt_prefilter_net(const struct rt_prefilter *p, const net_addr *n)
+{
+  switch (p->mode)
+  {
+    case TE_ADDR_NONE:	return 1;
+    case TE_ADDR_IN:	return net_in_netX(n, p->addr);
+    case TE_ADDR_EQUAL:	return net_equal(n, p->addr);
+    case TE_ADDR_FOR:	return net_in_netX(p->addr, n);
+    case TE_ADDR_TRIE:	return trie_match_net(p->trie, n);
+  }
+
+  bug("Crazy prefilter application attempt failed wildly.");
+}
 
 struct rt_export_hook {
   node n;
@@ -395,12 +425,6 @@ struct rt_table_export_hook {
 #define TES_READY	3
 #define TES_STOP	4
 #define TES_MAX		5
-
-/* Value of addr_mode */
-#define TE_ADDR_NONE	0		/* No address matching */
-#define TE_ADDR_EQUAL	1		/* Exact query - show route <addr> */
-#define TE_ADDR_FOR	2		/* Longest prefix match - show route for <addr> */
-#define TE_ADDR_IN	3		/* Interval query - show route in <addr> */
 
 
 #define TFT_FIB		1

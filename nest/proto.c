@@ -343,6 +343,7 @@ struct roa_subscription {
   struct settle settle;
   struct channel *c;
   struct rt_export_request req;
+  struct f_trie* trie;
   struct channel_feeding_request cfr[2];
 };
 
@@ -364,6 +365,8 @@ channel_roa_out_changed(struct settle *se)
 
   CD(c, "Feeding triggered by RPKI change");
 
+  /* TODO feed by trie */
+
   /* Refeed already pending */
   if ((s->cfr[0].state == CFRS_PENDING) || (s->cfr[1].state == CFRS_PENDING))
     return;
@@ -384,11 +387,22 @@ channel_roa_out_changed(struct settle *se)
 }
 
 static void
-channel_export_one_roa(struct rt_export_request *req, const net_addr *net UNUSED, struct rt_pending_export *first)
+channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
 
-  /* TODO: use the information about what roa has changed */
+  switch (net->type)
+  {
+    case NET_ROA4:
+      trie_add_prefix(s->trie, net, net_pxlen(net), 32);
+      break;
+    case NET_ROA6:
+      trie_add_prefix(s->trie, net, net_pxlen(net), 128);
+      break;
+    default:
+      bug("ROA table sent us a non-roa export");
+  }
+
   settle_kick(&s->settle, s->c->proto->loop);
 
   rpe_mark_seen_all(req->hook, first, NULL, NULL);
@@ -435,6 +449,7 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
   *s = (struct roa_subscription) {
     .settle = SETTLE_INIT(&c->roa_settle, dir ? channel_roa_in_changed : channel_roa_out_changed, NULL),
     .c = c,
+    .trie = f_new_trie(lp_new(c->proto->pool), 0),
     .req = {
       .name = mb_sprintf(c->proto->pool, "%s.%s.roa-%s.%s",
 	  c->proto->name, c->name, dir ? "in" : "out", tab->name),
@@ -465,6 +480,7 @@ channel_roa_unsubscribed(struct rt_export_request *req)
 static void
 channel_roa_unsubscribe(struct roa_subscription *s)
 {
+  rfree(s->trie->lp);
   rt_stop_export(&s->req, channel_roa_unsubscribed);
   settle_cancel(&s->settle);
 }
@@ -570,8 +586,10 @@ channel_start_export(struct channel *c)
     .list = proto_work_list(c->proto),
     .pool = c->proto->pool,
     .feed_block_size = c->feed_block_size,
-    .addr = c->out_subprefix,
-    .addr_mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
+    .prefilter = {
+      .mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
+      .addr = c->out_subprefix,
+    },
     .trace_routes = c->debug | c->proto->debug,
     .dump_req = channel_dump_export_req,
     .log_state_change = channel_export_log_state_change,
@@ -1149,7 +1167,7 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   // c->ra_mode = cf->ra_mode;
   c->merge_limit = cf->merge_limit;
   c->preference = cf->preference;
-  c->out_req.addr = c->out_subprefix = cf->out_subprefix;
+  c->out_req.prefilter.addr = c->out_subprefix = cf->out_subprefix;
   c->debug = cf->debug;
   c->in_req.trace_routes = c->out_req.trace_routes = c->debug | c->proto->debug;
   c->rpki_reload = cf->rpki_reload;
