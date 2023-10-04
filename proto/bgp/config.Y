@@ -369,8 +369,8 @@ custom_attr: ATTRIBUTE BGP NUM type symbol ';' {
   if($3 > 255 || $3 < 1)
     cf_error("Invalid attribute number. (Given %i, must be 1-255.)", $3);
   if($4 != T_BYTESTRING)
-    cf_error("Attribute type must be bytestring, not %s.", f_type_name($4));
-  struct f_dynamic_attr* a = (struct f_dynamic_attr*) malloc(sizeof(struct f_dynamic_attr));
+    cf_error("Attribute type must be bytestring, not %s", f_type_name($4));
+  struct f_dynamic_attr *a = cfg_alloc(sizeof(struct f_dynamic_attr));
   *a = f_new_dynamic_attr(f_type_attr($4), T_BYTESTRING, EA_CODE(PROTOCOL_BGP, $3));
   a->flags = BAF_TRANSITIVE | BAF_OPTIONAL;
   cf_define_symbol(new_config, $5, SYM_ATTRIBUTE, attribute, a);
