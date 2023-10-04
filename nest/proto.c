@@ -759,8 +759,7 @@ channel_feed_end(struct channel *c)
   for (struct channel_feeding_request *cfr = c->refeeding, *next = cfr ? cfr->next : NULL;
       cfr;
       (cfr = next), (next = next ? next->next : NULL))
-    if (cfr->flags & CFRF_DYNAMIC)
-      mb_free(cfr);
+    CALL(cfr->done, cfr);
 
   /* Drop the refeed batch */
   c->refeeding = NULL;
@@ -1010,12 +1009,21 @@ channel_request_feeding(struct channel *c, struct channel_feeding_request *cfr)
     channel_init_feeding(c);
 }
 
+static void
+channel_feeding_request_done_dynamic(struct channel_feeding_request *req)
+{
+  mb_free(req);
+}
+
 void
 channel_request_feeding_dynamic(struct channel *c, enum channel_feeding_request_type type)
 {
-  struct channel_feeding_request *req = mb_allocz(c->proto->pool, sizeof *req);
-  req->type = type;
-  req->flags |= CFRF_DYNAMIC;
+  struct channel_feeding_request *req = mb_alloc(c->proto->pool, sizeof *req);
+  *req = (struct channel_feeding_request) {
+    .type = type,
+    .done = channel_feeding_request_done_dynamic,
+  };
+
   channel_request_feeding(c, req);
 }
 
