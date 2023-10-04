@@ -431,7 +431,7 @@ mixed together, or particular paths for specific flows could be defined. Another
 advantage is that MPLS forwarding by internal routers can be much simpler than
 IP forwarding, as instead of the longest prefix match algorithm it uses simpler
 exact match for MPLS route selection. The disadvantage is additional complexity
-in signalling. For further details, see <rfc id="3031">.
+in signaling. For further details, see <rfc id="3031">.
 
 MPLS-aware routing protocols not only distribute IP routing information, but
 they also distribute labels. Therefore, they produce labeled routes - routes
@@ -1008,7 +1008,7 @@ inherited from templates can be updated by new definitions.
 	<tag><label id="proto-export">export <m/filter/</tag>
 	This is similar to the <cf>import</cf> keyword, except that it works in
 	the direction from the routing table to the protocol. Default: <cf/none/
-	(except for EBGP).
+	(except for EBGP and L3VPN).
 
 	<tag><label id="proto-import-keep-filtered">import keep filtered <m/switch/</tag>
 	Usually, if an import filter rejects a route, the route is forgotten.
@@ -3906,7 +3906,7 @@ protocol kernel {
 <p><code>
 protocol kernel {		# Primary routing table
 	learn;			# Learn alien routes from the kernel
-	persist;		# Don't remove routes on bird shutdown
+	persist;		# Do not remove routes on bird shutdown
 	scan time 10;		# Scan kernel routing table every 10 seconds
 	ipv4 {
 		import all;
@@ -3920,6 +3920,138 @@ protocol kernel {		# Secondary routing table
 		table auxtable;
 		export all;
 	};
+}
+</code>
+
+
+<sect>L3VPN
+<label id="l3vpn">
+
+<sect1>Introduction
+<label id="l3vpn-intro">
+
+<p>The L3VPN protocol serves as a translator between IP routes and VPN
+routes. It is a component for BGP/MPLS IP VPNs (<rfc id="4364">) and implements
+policies defined there. In import direction (VPN -&gt; IP), VPN routes matching
+import target specification are stripped of route distinguisher and MPLS labels
+and announced as IP routes, In export direction (IP -&gt; VPN), IP routes are
+expanded with specific route distinguisher, export target communities and MPLS
+label and announced as labeled VPN routes. Unlike the Pipe protocol, the L3VPN
+protocol propagates just the best route for each network.
+
+<p>In BGP/MPLS IP VPNs, route distribution is controlled by Route Targets (RT).
+VRFs are associated with one or more RTs. Routes are also associated with one or
+more RTs, which are encoded as route target extended communities
+in <ref id="rta-bgp-ext-community" name="bgp_ext_community">. A route is then
+imported into each VRF that shares an associated Route Target. The L3VPN
+protocol implements this mechanism through mandatory <cf/import target/ and
+<cf/export target/ protocol options.
+
+<sect1>Configuration
+<label id="l3vpn-config">
+
+<p>L3VPN configuration consists of a few mandatory options and multiple channel
+definitions. For convenience, the default export filter in L3VPN channels is
+<cf/all/, as the primary way to control import and export of routes is through
+protocol options <cf/import target/ and <cf/export target/. If custom filters
+are used, note that the export filter of the input channel is applied before
+the route translation, while the import filter of the output channel is applied
+after that.
+
+<p>In contrast to the Pipe protocol, the L3VPN protocol can handle both IPv4 and
+IPv6 routes in one instance, also both IP side and VPN side are represented as
+separate channels, although that may change in the future. The L3VPN is always
+MPLS-aware protocol, therefore a MPLS channel is mandatory. Altogether, L3VPN
+could have up to 5 channels: <cf/ipv4/, <cf/ipv6/, <cf/vpn4/, <cf/vpn6/, and
+<cf/mpls/.
+
+<p><descrip>
+	<tag><label id="l3vpn-route-distinguisher">route distinguisher <m/vpn-rd/</tag>
+	<tag><label id="l3vpn-rd">rd <m/vpn-rd/</tag>
+	The route distinguisher that is attached to routes in the export
+	direction. Mandatory.
+
+	<tag><label id="l3vpn-import-target">import target <m/ec/|<m/ec-set/</tag>
+	Route target extended communities specifying which routes should be
+	imported. Either one community or a set. A route is imported if there is
+	non-empty intersection between extended communities of the route and the
+	import target of the L3VPN protocol. Mandatory.
+
+	<tag><label id="l3vpn-export-target">export target <m/ec/|<m/ec-set/</tag>
+	Route target extended communities that are attached to the route in the
+	export direction. Either one community or a set. Other route target
+	extended communities are removed. Mandatory.
+
+	<tag><label id="l3vpn-route-target">route target <m/ec/|<m/ec-set/</tag>
+	A shorthand for both <cf/import target/ and <cf/export target/.
+</descrip>
+
+<sect1>Attributes
+<label id="l3vpn-attr">
+
+<p>The L3VPN protocol does not define any route attributes.
+
+<sect1>Example
+<label id="l3vpn-exam">
+
+<p>Here is an example of L3VPN setup with one VPN and BGP uplink. IP routes
+learned from a customer in the VPN are stored in <cf/vrf0vX/ tables, which are
+mapped to kernel VRF vrf0. Routes can also be exchanged through BGP with
+different sites hosting that VPN. Forwarding of VPN traffic through the network
+is handled by MPLS.
+
+<p>Omitted from the example are some routing protocol to exchange routes with
+the customer and some sort of MPLS-aware IGP to resolve next hops for BGP VPN
+routes.
+
+<code>
+# MPLS basics
+mpls domain mdom;
+mpls table  mtab;
+
+protocol kernel krt_mpls {
+	mpls { table mtab; export all; };
+}
+
+vpn4 table vpntab4;
+vpn6 table vpntab6;
+
+# Exchange VPN routes through BGP
+protocol bgp {
+	vpn4 { table vpntab4; import all; export all; };
+	vpn6 { table vpntab6; import all; export all; };
+	mpls { label policy aggregate; };
+	local 10.0.0.1 as 10;
+	neighbor 10.0.0.2 as 10;
+}
+
+# VRF 0
+ipv4 table vrf0v4;
+ipv6 table vrf0v6;
+
+protocol kernel kernel0v4 {
+        vrf "vrf0";
+        ipv4 { table vrf0v4; export all; };
+        kernel table 100;
+}
+
+protocol kernel kernel0v6 {
+        vrf "vrf0";
+        ipv6 { table vrf0v6; export all; };
+        kernel table 100;
+}
+
+protocol l3vpn l3vpn0 {
+        vrf "vrf0";
+        ipv4 { table vrf0v4; };
+        ipv6 { table vrf0v6; };
+        vpn4 { table vpntab4; };
+        vpn6 { table vpntab6; };
+        mpls { label policy vrf; };
+
+        rd 10:12;
+        import target [(rt, 10, 32..40)];
+        export target [(rt, 10, 30), (rt, 10, 31)];
 }
 </code>
 
