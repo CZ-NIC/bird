@@ -2229,6 +2229,7 @@ rt_table_export_start_feed(struct rtable_private *tab, struct rt_table_export_ho
       /* fall through */
     case TE_ADDR_NONE:
     case TE_ADDR_TRIE:
+    case TE_ADDR_HOOK:
       FIB_ITERATE_INIT(&hook->feed_fit, &tab->fib);
       hook->h.event.hook = rt_feed_by_fib;
       break;
@@ -2327,6 +2328,7 @@ rt_table_export_stop_locked(struct rt_export_hook *hh)
 	  }
 	  /* fall through */
 	case TE_ADDR_NONE:
+	case TE_ADDR_HOOK:
 	case TE_ADDR_TRIE:
 	  fit_get(&tab->fib, &hook->feed_fit);
 	  break;
@@ -4423,6 +4425,8 @@ rt_feed_by_fib(void *data)
 	  return;
 	}
       }
+      else
+	req_trace(c->h.req, D_ROUTES, "Feeding %N rejected by prefilter", n->n.addr);
     }
   FIB_ITERATE_END;
   }

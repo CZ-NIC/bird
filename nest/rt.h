@@ -304,6 +304,7 @@ struct rt_prefilter {
   union {
     const struct f_trie *trie;
     const net_addr *addr;	/* Network prefilter address */
+    int (*hook)(const struct rt_prefilter *, const net_addr *);
   };
 				/* Network prefilter mode (TE_ADDR_*) */
   enum {
@@ -312,6 +313,7 @@ struct rt_prefilter {
     TE_ADDR_FOR,		/* Longest prefix match - show route for <addr> */
     TE_ADDR_IN,			/* Interval query - show route in <addr> */
     TE_ADDR_TRIE,		/* Query defined by trie */
+    TE_ADDR_HOOK,		/* Query processed by supplied custom hook */
   } mode;
 } PACKED;
 
@@ -352,6 +354,7 @@ static inline int rt_prefilter_net(const struct rt_prefilter *p, const net_addr 
     case TE_ADDR_EQUAL:	return net_equal(n, p->addr);
     case TE_ADDR_FOR:	return net_in_netX(p->addr, n);
     case TE_ADDR_TRIE:	return trie_match_net(p->trie, n);
+    case TE_ADDR_HOOK:	return p->hook(p, n);
   }
 
   bug("Crazy prefilter application attempt failed wildly.");
