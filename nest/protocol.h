@@ -678,6 +678,7 @@ static inline void channel_close(struct channel *c) { channel_set_state(c, CS_ST
 struct channel_feeding_request {
   struct channel_feeding_request *next;			/* Next in request chain */
   void (*done)(struct channel_feeding_request *);	/* Called when refeed finishes */
+  struct f_trie *trie;					/* Reload only matching nets */
   PACKED enum channel_feeding_request_type {
     CFRT_DIRECT = 1,					/* Refeed by export restart */
     CFRT_AUXILIARY,					/* Refeed by auxiliary request */
@@ -694,12 +695,29 @@ void channel_request_feeding(struct channel *c, struct channel_feeding_request *
 void channel_request_feeding_dynamic(struct channel *c, enum channel_feeding_request_type);
 
 static inline int channel_net_is_refeeding(struct channel *c, const net_addr *n)
-{ return (c->refeeding && c->refeed_trie && !trie_match_net(c->refeed_trie, n)); }
+{
+  /* Not refeeding if not refeeding at all */
+  if (!c->refeeding || !c->refeed_trie)
+    return 0;
+
+  /* Not refeeding if already refed */
+  if (trie_match_net(c->refeed_trie, n))
+    return 0;
+
+  /* Refeeding if matching any request */
+  for (struct channel_feeding_request *cfr = c->refeeding; cfr; cfr = cfr->next)
+    if (!cfr->trie || trie_match_net(cfr->trie, n))
+      return 1;
+
+  /* Not matching any request */
+  return 0;
+}
 static inline void channel_net_mark_refed(struct channel *c, const net_addr *n)
 {
   ASSERT_DIE(c->refeeding && c->refeed_trie);
   trie_add_prefix(c->refeed_trie, n, n->pxlen, n->pxlen);
 }
+
 void *channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 void *channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 int channel_reconfigure(struct channel *c, struct channel_config *cf);
