@@ -51,6 +51,7 @@ static char *proto_state_name(struct proto *p);
 static void channel_init_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf);
 static void channel_update_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf);
 static void channel_reset_limit(struct channel *c, struct limit *l, int dir);
+static int channel_refeed_prefilter(const struct rt_prefilter *p, const net_addr *n);
 static void channel_feed_end(struct channel *c);
 static void channel_stop_export(struct channel *c);
 static void channel_export_stopped(struct rt_export_request *req);
@@ -622,6 +623,7 @@ channel_start_export(struct channel *c)
   c->refeed_req.dump_req = channel_dump_refeed_req;
   c->refeed_req.log_state_change = channel_refeed_log_state_change;
   c->refeed_req.mark_seen = channel_rpe_mark_seen_refeed;
+  c->refeed_req.prefilter.hook = channel_refeed_prefilter;
 
   DBG("%s.%s: Channel start export req=%p\n", c->proto->name, c->name, &c->out_req);
   rt_request_export(c->table, &c->out_req);
@@ -719,8 +721,25 @@ channel_init_feeding(struct channel *c)
   c->refeeding = c->refeed_pending;
   c->refeed_pending = NULL;
   c->refeed_trie = f_new_trie(lp_new(c->proto->pool), 0);
+
   rt_request_export(c->table, &c->refeed_req);
 }
+
+static int
+channel_refeed_prefilter(const struct rt_prefilter *p, const net_addr *n)
+{
+  const struct channel *c =
+    SKIP_BACK(struct channel, refeed_req,
+	SKIP_BACK(struct rt_export_request, prefilter, p)
+	);
+
+  for (struct channel_feeding_request *cfr = c->refeeding; cfr; cfr = cfr->next)
+    if (!cfr->trie || trie_match_net(cfr->trie, n))
+      return 1;
+
+  return 0;
+}
+
 
 static void
 channel_feed_end(struct channel *c)
