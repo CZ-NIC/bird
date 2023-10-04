@@ -676,19 +676,17 @@ static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP)
 static inline void channel_close(struct channel *c) { channel_set_state(c, CS_STOP); }
 
 struct channel_feeding_request {
-  struct channel_feeding_request *next;
+  struct channel_feeding_request *next;			/* Next in request chain */
+  void (*done)(struct channel_feeding_request *);	/* Called when refeed finishes */
   PACKED enum channel_feeding_request_type {
-    CFRT_DIRECT = 1,
-    CFRT_AUXILIARY,
+    CFRT_DIRECT = 1,					/* Refeed by export restart */
+    CFRT_AUXILIARY,					/* Refeed by auxiliary request */
   } type;
   PACKED enum {
-    CFRS_INACTIVE = 0,
-    CFRS_PENDING,
-    CFRS_RUNNING,
+    CFRS_INACTIVE = 0,					/* Inactive request */
+    CFRS_PENDING,					/* Request enqueued, do not touch */
+    CFRS_RUNNING,					/* Request active, do not touch */
   } state;
-  PACKED enum {
-    CFRF_DYNAMIC = 1,
-  } flags;
 };
 
 struct channel *channel_from_export_request(struct rt_export_request *req);
