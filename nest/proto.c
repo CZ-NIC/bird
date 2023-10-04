@@ -358,6 +358,12 @@ channel_roa_in_changed(struct settle *se)
 }
 
 static void
+channel_roa_out_reload_done(struct channel_feeding_request *req)
+{
+  rfree(req->trie->lp);
+}
+
+static void
 channel_roa_out_changed(struct settle *se)
 {
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, settle, se);
@@ -365,25 +371,15 @@ channel_roa_out_changed(struct settle *se)
 
   CD(c, "Feeding triggered by RPKI change");
 
-  /* TODO feed by trie */
+  struct channel_feeding_request *cfr = lp_alloc(s->trie->lp, sizeof *cfr);
+  *cfr = (struct channel_feeding_request) {
+    .type = CFRT_AUXILIARY,
+    .trie = s->trie,
+    .done = channel_roa_out_reload_done,
+  };
+  channel_request_feeding(c, cfr);
 
-  /* Refeed already pending */
-  if ((s->cfr[0].state == CFRS_PENDING) || (s->cfr[1].state == CFRS_PENDING))
-    return;
-
-  /* First refeed inactive */
-  if (s->cfr[0].state == CFRS_INACTIVE)
-  {
-    s->cfr[0].type = CFRT_AUXILIARY;
-    channel_request_feeding(c, &s->cfr[0]);
-  }
-  else
-  {
-    /* Second refeed MUST be inactive */
-    ASSERT_DIE(s->cfr[1].state == CFRS_INACTIVE);
-    s->cfr[1].type = CFRT_AUXILIARY;
-    channel_request_feeding(c, &s->cfr[1]);
-  }
+  s->trie = f_new_trie(lp_new(c->proto->pool), 0);
 }
 
 static void
