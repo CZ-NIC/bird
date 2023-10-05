@@ -371,16 +371,19 @@ channel_roa_out_changed(struct settle *se)
 
   CD(c, "Feeding triggered by RPKI change");
   
-  /* Get config.Y global var */
-
+  /* Setup feeding request */
   struct channel_feeding_request *cfr = lp_alloc(s->trie->lp, sizeof *cfr);
   *cfr = (struct channel_feeding_request) {
     .type = CFRT_AUXILIARY,
     .trie = s->trie,
     .done = channel_roa_out_reload_done,
   };
-  channel_request_feeding(c, cfr);
 
+  /* Prepare new trie */
+  s->trie = f_new_trie(lp_new(c->proto->pool), 0);
+
+  /* Actually request the feed */
+  channel_request_feeding(c, cfr);
 }
 
 static void
