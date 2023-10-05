@@ -2731,7 +2731,7 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
   /* re-exporting routes */
   if (prr->dir != CMD_RELOAD_IN)
     WALK_LIST(c, p->channels)
-      if (c->channel_state == CS_UP)
+      if ((c->channel_state == CS_UP) && (c->out_req.hook))
         if (prr->trie)
 	{
 	  /* Increase the refeed counter */
