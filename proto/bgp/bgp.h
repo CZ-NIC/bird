@@ -611,6 +611,7 @@ bgp_unset_attr(ea_list **to, struct linpool *pool, uint code)
 
 int bgp_encode_mp_reach_mrt(struct bgp_write_state *s, eattr *a, byte *buf, uint size);
 
+const char * bgp_attr_name(uint code);
 int bgp_encode_attrs(struct bgp_write_state *s, ea_list *attrs, byte *buf, byte *end);
 ea_list * bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len);
 void bgp_finish_attrs(struct bgp_parse_state *s, rta *a);
