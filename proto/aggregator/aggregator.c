@@ -470,6 +470,7 @@ third_pass(struct trie_node *node)
   {
     assert(node->potential_buckets_count > 0);
     node->bucket = node->potential_buckets[0];
+    goto descent;
   }
 
   const struct aggregator_bucket *inherited_bucket = get_ancestor_bucket(node);
@@ -490,8 +491,9 @@ third_pass(struct trie_node *node)
   }
 
   /* Postorder traversal */
-  third_pass(node->child[0]);
-  third_pass(node->child[1]);
+  descent:
+    third_pass(node->child[0]);
+    third_pass(node->child[1]);
 
   /* Leaves with no assigned bucket are removed */
   if (node->bucket == NULL && is_leaf(node))
