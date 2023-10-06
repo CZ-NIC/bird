@@ -142,7 +142,7 @@ delete_trie(struct trie_node *node)
  * Insert prefix in @addr to prefix trie with root at @node
  */
 static void
-trie_insert_prefix(const union net_addr_union *addr, struct aggregator_bucket *bucket, struct trie_node * const root, slab *trie_slab)
+trie_insert_prefix(const union net_addr_union *addr, struct trie_node * const root, struct aggregator_bucket *bucket, slab *trie_slab)
 {
   assert(addr != NULL);
   assert(bucket != NULL);
@@ -437,7 +437,7 @@ second_pass(struct trie_node *node)
  * Check if @bucket is one of potential nexthop buckets in @node
  */
 static int
-is_bucket_potential(const struct aggregator_bucket *bucket, const struct trie_node *node)
+is_bucket_potential(const struct trie_node *node, const struct aggregator_bucket *bucket)
 {
   for (int i = 0; i < node->potential_buckets_count; i++)
     if (node->potential_buckets[i] == bucket)
@@ -477,7 +477,7 @@ third_pass(struct trie_node *node)
    * If bucket inherited from ancestor is among potential bucket for this node,
    * this node doesn't need bucket because it inherits one
    */
-  if (is_bucket_potential(inherited_bucket, node))
+  if (is_bucket_potential(node, inherited_bucket))
   {
     node->bucket = NULL;
     remove_potential_buckets(node);
@@ -1144,7 +1144,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     for (const struct rte *rte = bucket->rte; rte; rte = rte->next)
     {
       union net_addr_union *uptr = (net_addr_union *)rte->net->n.addr;
-      trie_insert_prefix(uptr, bucket, p->root, p->trie_slab);
+      trie_insert_prefix(uptr, p->root, bucket, p->trie_slab);
     }
   }
   HASH_WALK_END;
