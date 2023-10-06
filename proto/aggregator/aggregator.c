@@ -72,6 +72,9 @@ is_leaf(const struct trie_node *node)
   return !node->child[0] && !node->child[1];
 }
 
+/*
+ * Allocate new node in protocol slab
+ */
 static struct trie_node *
 new_node(slab *trie_slab)
 {
@@ -111,6 +114,9 @@ remove_node(struct trie_node *node)
     sl_free(node);
 }
 
+/*
+ * Recursively free all trie nodes
+ */
 static void
 delete_trie(struct trie_node *node)
 {
@@ -184,6 +190,9 @@ get_ancestor_bucket(const struct trie_node *node)
   }
 }
 
+/*
+ * First pass of Optimal Route Table Construction (ORTC) algorithm
+ */
 static void
 first_pass(struct trie_node *node, slab *trie_slab)
 {
@@ -217,7 +226,7 @@ first_pass(struct trie_node *node, slab *trie_slab)
 }
 
 /*
- * Compare two bucket pointers
+ * Compare two bucket pointers.
  */
 static int
 aggregator_bucket_compare(const void *a, const void *b)
@@ -302,6 +311,10 @@ aggregator_bucket_unionize(struct trie_node *node, const struct trie_node *left,
     switch (res)
     {
       case 0:
+        /*
+         * If there is no element yet or if the last and new element are not equal
+         * (that means elements do not repeat), insert new element to the set.
+         */
         if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != left->potential_buckets[i])
           node->potential_buckets[node->potential_buckets_count++] = left->potential_buckets[i];
 
@@ -376,11 +389,16 @@ bucket_sets_are_disjoint(const struct trie_node *left, const struct trie_node *r
       i++;
     else if (res == 1)
       j++;
+    else
+      bug("Impossible");
   }
 
   return 1;
 }
 
+/*
+ * Second pass of Optimal Route Table Construction (ORTC) algorithm
+ */
 static void
 second_pass(struct trie_node *node)
 {
@@ -437,6 +455,9 @@ remove_potential_buckets(struct trie_node *node)
   node->potential_buckets_count = 0;
 }
 
+/*
+ * Third pass of Optimal Route Table Construction (ORTC) algorithm
+ */
 static void
 third_pass(struct trie_node *node)
 {
@@ -561,6 +582,31 @@ static void
 extract_prefixes(const struct trie_node *node, struct aggregated_prefixes *prefixes)
 {
   extract_prefixes_helper(node, prefixes, _MI4(0), 0);
+}
+
+static void
+print_prefixes_helper(const struct trie_node *node, ip4_addr prefix, int depth)
+{
+  assert(node != NULL);
+
+  if (is_leaf(node))
+  {
+    log("%I4", prefix);
+    return;
+  }
+
+  if (node->child[0])
+    print_prefixes_helper(node->child[0], _MI4(_I(prefix) | (0 << (31 - depth))), depth + 1);
+
+  if (node->child[1])
+    print_prefixes_helper(node->child[1], _MI4(_I(prefix) | (1 << (31 - depth))), depth + 1);
+}
+
+static void
+print_prefixes(const struct trie_node *node)
+{
+  print_prefixes_helper(node, _MI4(0), 0);
+  log("==== END PREFIXES ====");
 }
 
 /*
@@ -1109,13 +1155,15 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   log("protocol: %p, root: %p, slab: %p", p, p->root, p->trie_slab);
   log("Number of prefixes before aggregation: %d", get_trie_prefix_count(p->root));
   log("Trie depth before aggregation: %d", get_trie_depth(p->root));
+  log("==== PREFIXES BEFORE ====");
+  print_prefixes(p->root);
 
   first_pass(p->root, p->trie_slab);
-  log("Trie depth after first pass: %d", get_trie_depth(p->root));
+  //log("Trie depth after first pass: %d", get_trie_depth(p->root));
   second_pass(p->root);
-  log("Trie depth after second pass: %d", get_trie_depth(p->root));
+  //log("Trie depth after second pass: %d", get_trie_depth(p->root));
   third_pass(p->root);
-  log("Trie depth after third pass: %d", get_trie_depth(p->root));
+  //log("Trie depth after third pass: %d", get_trie_depth(p->root));
 
   if (is_leaf(p->root))
     log("WARNING: root is leaf!");
@@ -1128,11 +1176,15 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
 
   log("Number of prefixes after aggregation: %d", prefix_count);
   extract_prefixes(p->root, prefixes);
+
+  log("==== PREFIXES AFTER ====");
+  print_prefixes(p->root);
   log("Aggregated prefixes count: %d", prefixes->count);
   log("Trie depth: %d", get_trie_depth(p->root));
 
   assert(prefixes->count == prefix_count);
 
+  /*
   struct buffer buf;
   LOG_BUFFER_INIT(buf);
 
@@ -1143,7 +1195,8 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   }
 
   log("%s", buf.start);
- 
+  */
+
   /* Announce changes */
   if (old_bucket)
     aggregator_bucket_update(p, old_bucket, net);
