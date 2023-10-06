@@ -182,7 +182,7 @@ get_ancestor_bucket(const struct trie_node *node)
   while (1)
   {
     if (node->parent == NULL)
-      return NULL;
+      return node->bucket;
 
     if (node->parent->bucket != NULL)
       return node->parent->bucket;
@@ -204,6 +204,7 @@ first_pass(struct trie_node *node, slab *trie_slab)
   if (is_leaf(node))
   {
     node->potential_buckets[node->potential_buckets_count++] = get_ancestor_bucket(node);
+    //node->potential_buckets[node->potential_buckets_count++] = node->bucket;
     return;
   }
 
