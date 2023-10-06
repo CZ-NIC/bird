@@ -166,12 +166,13 @@ trie_insert_prefix(const union net_addr_union *addr, struct trie_node * const ro
     {
       struct trie_node *new = new_node(trie_slab);
       new->parent = node;
-      new->bucket = bucket;
       node->child[bit] = new;
     }
 
     node = node->child[bit];
   }
+
+  node->bucket = bucket;
 }
 
 static struct aggregator_bucket *
