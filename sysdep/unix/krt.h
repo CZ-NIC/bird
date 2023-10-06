@@ -27,6 +27,10 @@ struct kif_proto;
 #define KRT_REF_SEEN	0x1	/* Seen in table */
 #define KRT_REF_BEST	0x2	/* Best in table */
 
+#define KRT_LEARN_NONE	0	/* Do not learn */
+#define KRT_LEARN_ALIEN	1	/* Learn KRT_SRC_ALIEN routes */
+#define KRT_LEARN_ALL	2	/* Learn both KRT_SRC_ALIEN and KRT_SRC_KERNEL routes */
+
 /* Whenever we recognize our own routes, we allow learing of foreign routes */
 
 #ifdef CONFIG_SELF_CONSCIOUS
