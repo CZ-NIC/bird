@@ -42,6 +42,7 @@ enum protocol_class {
   PROTOCOL_BABEL,
   PROTOCOL_BFD,
   PROTOCOL_BGP,
+  PROTOCOL_BMP,
   PROTOCOL_DEVICE,
   PROTOCOL_DIRECT,
   PROTOCOL_KERNEL,
@@ -103,7 +104,7 @@ void protos_dump_all(void);
 extern struct protocol
   proto_device, proto_radv, proto_rip, proto_static, proto_mrt,
   proto_ospf, proto_perf,
-  proto_pipe, proto_bgp, proto_bfd, proto_babel, proto_rpki;
+  proto_pipe, proto_bgp, proto_bmp, proto_bfd, proto_babel, proto_rpki;
 
 /*
  *	Routing Protocol Instance
@@ -475,7 +476,8 @@ struct channel_class {
 #endif
 };
 
-extern struct channel_class channel_bgp;
+extern const struct channel_class channel_basic;
+extern const struct channel_class channel_bgp;
 
 struct channel_config {
   node n;
@@ -498,6 +500,7 @@ struct channel_config {
   u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */
   u8 in_keep_filtered;			/* Routes rejected in import filter are kept */
   u8 rpki_reload;			/* RPKI changes trigger channel reload */
+  u8 bmp_hack;				/* No flush */
 };
 
 struct channel {
@@ -550,6 +553,7 @@ struct channel {
   u8 reload_pending;			/* Reloading and another reload is scheduled */
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
   u8 rpki_reload;			/* RPKI changes trigger channel reload */
+  u8 bmp_hack;				/* No flush */
 
   struct rtable *out_table;		/* Internal table for exported routes */
 
@@ -618,6 +622,7 @@ static inline struct channel_config *proto_cf_main_channel(struct proto_config *
 struct channel *proto_find_channel_by_table(struct proto *p, struct rtable *t);
 struct channel *proto_find_channel_by_name(struct proto *p, const char *n);
 struct channel *proto_add_channel(struct proto *p, struct channel_config *cf);
+void proto_remove_channel(struct proto *p, struct channel *c);
 int proto_configure_channel(struct proto *p, struct channel **c, struct channel_config *cf);
 
 void channel_set_state(struct channel *c, uint state);

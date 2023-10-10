@@ -3095,6 +3095,7 @@ rte_update_in(struct channel *c, const net_addr *n, rte *new, struct rte_src *sr
 	if (old->flags & (REF_STALE | REF_DISCARD | REF_MODIFY))
 	{
 	  old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
+
 	  return 1;
 	}
 

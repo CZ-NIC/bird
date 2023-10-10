@@ -179,6 +179,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->merge_limit = cf->merge_limit;
   c->in_keep_filtered = cf->in_keep_filtered;
   c->rpki_reload = cf->rpki_reload;
+  c->bmp_hack = cf->bmp_hack;
 
   c->channel_state = CS_DOWN;
   c->export_state = ES_DOWN;
@@ -523,7 +524,7 @@ channel_setup_in_table(struct channel *c)
   cf->addr_type = c->net_type;
   cf->internal = 1;
 
-  c->in_table = rt_setup(c->proto->pool, cf);
+  c->in_table = cf->table = rt_setup(c->proto->pool, cf);
 
   c->reload_event = ev_new_init(c->proto->pool, channel_reload_loop, c);
 }
@@ -574,7 +575,8 @@ channel_do_up(struct channel *c)
 static void
 channel_do_flush(struct channel *c)
 {
-  rt_schedule_prune(c->table);
+  if (!c->bmp_hack)
+    rt_schedule_prune(c->table);
 
   c->gr_wait = 0;
   if (c->gr_lock)

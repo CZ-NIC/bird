@@ -125,6 +125,7 @@
 #include "lib/string.h"
 
 #include "bgp.h"
+#include "proto/bmp/bmp.h"
 
 
 static list STATIC_LIST_INIT(bgp_sockets);		/* Global list of listening sockets */
@@ -379,10 +380,20 @@ bgp_close_conn(struct bgp_conn *conn)
   rfree(conn->sk);
   conn->sk = NULL;
 
+  mb_free(conn->local_open_msg);
+  conn->local_open_msg = NULL;
+  mb_free(conn->remote_open_msg);
+  conn->remote_open_msg = NULL;
+  conn->local_open_length = 0;
+  conn->remote_open_length = 0;
+
   mb_free(conn->local_caps);
   conn->local_caps = NULL;
   mb_free(conn->remote_caps);
   conn->remote_caps = NULL;
+
+  conn->notify_data = NULL;
+  conn->notify_size = 0;
 }
 
 
@@ -681,10 +692,12 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
 
   bgp_conn_set_state(conn, BS_ESTABLISHED);
   proto_notify_state(&p->p, PS_UP);
+  bmp_peer_up(p, conn->local_open_msg, conn->local_open_length,
+	      conn->remote_open_msg, conn->remote_open_length);
 }
 
 static void
-bgp_conn_leave_established_state(struct bgp_proto *p)
+bgp_conn_leave_established_state(struct bgp_conn *conn, struct bgp_proto *p)
 {
   BGP_TRACE(D_EVENTS, "BGP session closed");
   p->last_established = current_time();
@@ -692,6 +705,10 @@ bgp_conn_leave_established_state(struct bgp_proto *p)
 
   if (p->p.proto_state == PS_UP)
     bgp_stop(p, 0, NULL, 0);
+
+  bmp_peer_down(p, p->last_error_class,
+		conn->notify_code, conn->notify_subcode,
+		conn->notify_data, conn->notify_size);
 }
 
 void
@@ -708,7 +725,7 @@ bgp_conn_enter_close_state(struct bgp_conn *conn)
   bgp_start_timer(conn->hold_timer, 10);
 
   if (os == BS_ESTABLISHED)
-    bgp_conn_leave_established_state(p);
+    bgp_conn_leave_established_state(conn, p);
 }
 
 void
@@ -722,7 +739,7 @@ bgp_conn_enter_idle_state(struct bgp_conn *conn)
   ev_schedule(p->event);
 
   if (os == BS_ESTABLISHED)
-    bgp_conn_leave_established_state(p);
+    bgp_conn_leave_established_state(conn, p);
 }
 
 /**
@@ -2247,12 +2264,13 @@ bgp_error(struct bgp_conn *c, uint code, uint subcode, byte *data, int len)
 
   bgp_log_error(p, BE_BGP_TX, "Error", code, subcode, data, ABS(len));
   bgp_store_error(p, c, BE_BGP_TX, (code << 16) | subcode);
-  bgp_conn_enter_close_state(c);
 
   c->notify_code = code;
   c->notify_subcode = subcode;
   c->notify_data = data;
   c->notify_size = (len > 0) ? len : 0;
+
+  bgp_conn_enter_close_state(c);
   bgp_schedule_packet(c, NULL, PKT_NOTIFICATION);
 
   if (code != 6)
@@ -2620,7 +2638,7 @@ bgp_show_proto_info(struct proto *P)
   }
 }
 
-struct channel_class channel_bgp = {
+const struct channel_class channel_bgp = {
   .channel_size =	sizeof(struct bgp_channel),
   .config_size =	sizeof(struct bgp_channel_config),
   .init =		bgp_channel_init,
