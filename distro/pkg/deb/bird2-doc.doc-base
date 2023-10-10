@@ -1,0 +1,10 @@
+Document: bird2
+Title: Documentation for BIRD 2
+Author: BIRD authors
+Abstract: BIRD 2.0 User's Guide and
+ BIRD Programmer's Documentation
+Section: Network/Communication
+
+Format: HTML
+Index: /usr/share/doc/bird2/bird.html
+Files: /usr/share/doc/bird2/*.html
