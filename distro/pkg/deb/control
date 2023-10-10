@@ -20,6 +20,7 @@ Standards-Version: 4.6.2
 Vcs-Browser: https://salsa.debian.org/debian/bird2
 Vcs-Git: https://salsa.debian.org/debian/bird2.git
 Homepage: https://bird.network.cz/
+Rules-Requires-Root: no
 
 Package: bird2
 Architecture: kfreebsd-any linux-any
