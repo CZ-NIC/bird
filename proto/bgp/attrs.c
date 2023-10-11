@@ -1667,6 +1667,9 @@ bgp_defer_bucket(struct bgp_channel *bc, struct bgp_bucket *b)
 void
 bgp_withdraw_bucket(struct bgp_channel *bc, struct bgp_bucket *b)
 {
+  if (b->bmp)
+    return;
+
   struct bgp_proto *p = (void *) bc->c.proto;
   struct bgp_pending_tx *c = bc->ptx;
   struct bgp_bucket *wb = bgp_get_withdraw_bucket(c);
@@ -1817,6 +1820,10 @@ bgp_free_prefix(struct bgp_pending_tx *c, struct bgp_prefix *px)
 void
 bgp_done_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucket *buck)
 {
+  /* BMP hack */
+  if (buck->bmp)
+    return;
+
   /* Cleanup: We're called from bucket senders. */
   ASSERT_DIE(px->cur == buck);
   rem_node(&px->buck_node_xx);

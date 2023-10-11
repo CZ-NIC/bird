@@ -424,7 +424,8 @@ struct bgp_bucket {
   struct bgp_bucket *next;		/* Node in bucket hash table */
   list prefixes;			/* Prefixes to send in this bucket (struct bgp_prefix) */
   u32 hash;				/* Hash over extended attributes */
-  u32 px_uc;				/* How many prefixes are linking this bucket */
+  u32 px_uc:31;				/* How many prefixes are linking this bucket */
+  u32 bmp:1;				/* Temporary bucket for BMP encoding */
   ea_list eattrs[0];			/* Per-bucket extended attributes */
 };
 
@@ -463,7 +464,6 @@ struct bgp_write_state {
   int as4_session;
   int add_path;
   int mpls;
-  int sham;
 
   eattr *mp_next_hop;
   const adata *mpls_labels;
