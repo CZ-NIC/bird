@@ -1097,7 +1097,7 @@ void
 snmp_start_subagent(struct snmp_proto *p)
 {
   snmp_log("snmp_start_subagent() starting subagent");
-  snmp_log("DEBUG p->local_as %u", p->local_as);
+  snmp_log("DEBUG p->bgp_local_as %u", p->bgp_local_as);
 
   /* blank oid means unsupported */
   struct oid *blank = snmp_oid_blank(p);

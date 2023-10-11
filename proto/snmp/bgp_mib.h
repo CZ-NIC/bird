@@ -6,7 +6,7 @@
 
 /* peers attributes */
 enum BGP4_MIB_PEER_TABLE {
-  SNMP_BGP_IDENTIFIER		    =  1,
+  SNMP_BGP_PEER_IDENTIFIER	    =  1,
   SNMP_BGP_STATE		    =  2,
   SNMP_BGP_ADMIN_STATUS		    =  3,   /* in read-only mode */
   SNMP_BGP_NEGOTIATED_VERSION	    =  4,
@@ -54,6 +54,8 @@ void snmp_bgp_notify_backward_trans(struct snmp_proto *p, struct bgp_proto *bgp)
 #define SNMP_BGP_LOCAL_AS   2
 #define SNMP_BGP_PEER_TABLE 3
 #define SNMP_BGP_PEER_ENTRY   1
+/* BGP4-MIB::bgpIdentifier for local identification */
+#define SNMP_BGP_IDENTIFIER 4
 
 /* BGP linearized state */
 enum BGP_INTERNAL_STATES {
@@ -64,7 +66,7 @@ enum BGP_INTERNAL_STATES {
   BGP_INTERNAL_LOCAL_AS,
   BGP_INTERNAL_PEER_TABLE,
   BGP_INTERNAL_PEER_ENTRY,
-  BGP_INTERNAL_IDENTIFIER,
+  BGP_INTERNAL_PEER_IDENTIFIER,
   BGP_INTERNAL_STATE,
   BGP_INTERNAL_ADMIN_STATUS,
   BGP_INTERNAL_NEGOTIATED_VERSION,
@@ -89,6 +91,7 @@ enum BGP_INTERNAL_STATES {
   BGP_INTERNAL_MIN_ROUTE_ADVERTISEMENT,
   BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME,
   BGP_INTERNAL_PEER_TABLE_END,
+  BGP_INTERNAL_IDENTIFIER,	/* local identification */
   BGP_INTERNAL_END,
   BGP_INTERNAL_NO_VALUE = 255,
 } PACKED;

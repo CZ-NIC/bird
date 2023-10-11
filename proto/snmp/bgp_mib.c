@@ -23,7 +23,7 @@ static const char * const debug_bgp_states[] UNUSED = {
   [BGP_INTERNAL_LOCAL_AS]		 = "BGP_INTERNAL_LOCAL_AS",
   [BGP_INTERNAL_PEER_TABLE]		 = "BGP_INTERNAL_PEER_TABLE",
   [BGP_INTERNAL_PEER_ENTRY]		 = "BGP_INTERNAL_PEER_ENTRY",
-  [BGP_INTERNAL_IDENTIFIER]		 = "BGP_INTERNAL_IDENTIFIER",
+  [BGP_INTERNAL_PEER_IDENTIFIER]	 = "BGP_INTERNAL_PEER_IDENTIFIER",
   [BGP_INTERNAL_STATE]			 = "BGP_INTERNAL_STATE",
   [BGP_INTERNAL_ADMIN_STATUS]		 = "BGP_INTERNAL_ADMIN_STATUS",
   [BGP_INTERNAL_NEGOTIATED_VERSION]	 = "BGP_INTERNAL_NEGOTIATED_VERSION",
@@ -47,6 +47,8 @@ static const char * const debug_bgp_states[] UNUSED = {
   [BGP_INTERNAL_ORIGINATION_INTERVAL]	 = "BGP_INTERNAL_ORIGINATION_INTERVAL",
   [BGP_INTERNAL_MIN_ROUTE_ADVERTISEMENT] = "BGP_INTERNAL_MIN_ROUTE_ADVERTISEMENT",
   [BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME]	 = "BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME",
+  [BGP_INTERNAL_PEER_TABLE_END]		 = "BGP_INTERNAL_PEER_TABLE_END",
+  [BGP_INTERNAL_IDENTIFIER]		 = "BGP_INTERNAL_IDENTIFIER",
   [BGP_INTERNAL_END]			 = "BGP_INTERNAL_END",
   [BGP_INTERNAL_NO_VALUE]		 = "BGP_INTERNAL_NO_VALUE",
 };
@@ -187,6 +189,7 @@ snmp_bgp_register(struct snmp_proto *p)
     snmp_register(p, oid, 1, 0, SNMP_REGISTER_TREE, SNMP_DEFAULT_CONTEXT);
   }
 
+#if 0
   u32 bgp_peer_entry[] = { 1, 15, 3, 1, 1 };
   u32 bound = 24;
   HASH_WALK(p->bgp_hash, next, peer)
@@ -202,7 +205,7 @@ snmp_bgp_register(struct snmp_proto *p)
     STORE_U8(oid->n_subid, 9);
     STORE_U8(oid->prefix, SNMP_MGMT);
 
-    for (uint i = 0; i < sizeof(bgp_peer_entry)/sizeof(bgp_peer_entry[0]); i++)
+    for (uint i = 0; i < ARRAY_SIZE(bgp_peer_entry); i++)
       STORE_U32(oid->ids[i], bgp_peer_entry[i]);
     ip4_to_oid(oid, ipa_to_ip4(bgp->remote_ip));
 
@@ -214,6 +217,7 @@ snmp_bgp_register(struct snmp_proto *p)
     p->register_to_ack++;
   }
   HASH_WALK_END;
+#endif
 }
 
 static int
@@ -226,7 +230,7 @@ static u8
 bgp_get_candidate(u32 field)
 {
   const u8 translation_table[] = {
-    [SNMP_BGP_IDENTIFIER]		= BGP_INTERNAL_IDENTIFIER,
+    [SNMP_BGP_PEER_IDENTIFIER]		= BGP_INTERNAL_PEER_IDENTIFIER,
     [SNMP_BGP_STATE]			= BGP_INTERNAL_STATE,
     [SNMP_BGP_ADMIN_STATUS]		= BGP_INTERNAL_ADMIN_STATUS,
     [SNMP_BGP_NEGOTIATED_VERSION]	= BGP_INTERNAL_NEGOTIATED_VERSION,
@@ -259,9 +263,9 @@ bgp_get_candidate(u32 field)
   if (field > 0 && field <= sizeof(translation_table) / sizeof(translation_table[0]) - 1)
     return translation_table[field];
   if (field == 0)
-    return BGP_INTERNAL_INVALID;
+    return BGP_INTERNAL_PEER_ENTRY;
   else
-    return BGP_INTERNAL_END;
+    return BGP_INTERNAL_PEER_TABLE_END;
 }
 
 static inline struct ip4_addr
@@ -415,7 +419,9 @@ snmp_bgp_state(const struct oid *oid)
 	  /* We use candidate to avoid overriding more specific state */
 	  candidate = BGP_INTERNAL_PEER_TABLE;
 	  break;
-
+	case SNMP_BGP_IDENTIFIER:
+	  state = BGP_INTERNAL_IDENTIFIER;
+	  break;
 
 	default:  /* test fails */
 	  /* We force state invalidation */
@@ -444,8 +450,16 @@ snmp_bgp_state(const struct oid *oid)
 static inline int
 is_dynamic(u8 state)
 {
-  return (state >= BGP_INTERNAL_IDENTIFIER &&
+  return (state >= BGP_INTERNAL_PEER_IDENTIFIER &&
 	  state <= BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME);
+}
+
+static inline int
+is_static(u8 state)
+{
+  return (state == BGP_INTERNAL_VERSION ||
+	  state == BGP_INTERNAL_LOCAL_AS ||
+	  state == BGP_INTERNAL_IDENTIFIER);
 }
 
 static inline int
@@ -454,6 +468,7 @@ snmp_bgp_has_value(u8 state)
   if (state <= BGP_INTERNAL_BGP ||
       state == BGP_INTERNAL_PEER_TABLE ||
       state == BGP_INTERNAL_PEER_ENTRY ||
+      state == BGP_INTERNAL_PEER_TABLE_END ||
       state >= BGP_INTERNAL_END)
     return 0;
   else
@@ -474,6 +489,7 @@ snmp_bgp_get_valid(u8 state)
       state == BGP_INTERNAL_BGP ||
       state == BGP_INTERNAL_PEER_TABLE ||
       state == BGP_INTERNAL_PEER_ENTRY ||
+      state == BGP_INTERNAL_PEER_TABLE_END ||
       state >= BGP_INTERNAL_END)
     return 0;
   else
@@ -495,9 +511,13 @@ snmp_bgp_next_state(u8 state)
     case BGP_INTERNAL_LOCAL_AS:
     case BGP_INTERNAL_PEER_TABLE:
     case BGP_INTERNAL_PEER_ENTRY:
-      return BGP_INTERNAL_IDENTIFIER;
+      return BGP_INTERNAL_PEER_IDENTIFIER;
 
     case BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME:
+    case BGP_INTERNAL_PEER_TABLE_END:
+      return BGP_INTERNAL_IDENTIFIER;
+
+    case BGP_INTERNAL_IDENTIFIER:
     case BGP_INTERNAL_END:
       return BGP_INTERNAL_END;
 
@@ -531,10 +551,11 @@ static int
 oid_state_compare(const struct oid *oid, u8 state)
 {
   ASSUME(oid != NULL);
-  if (state >= BGP_INTERNAL_IDENTIFIER &&
+  if (state >= BGP_INTERNAL_PEER_IDENTIFIER &&
       state <= BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME)
     return (oid->n_subid > 9) - (oid->n_subid < 9);
-  if (state >= BGP_INTERNAL_VERSION && state <= BGP_INTERNAL_PEER_TABLE)
+  if ((state >= BGP_INTERNAL_VERSION && state <= BGP_INTERNAL_PEER_TABLE) ||
+      (state == BGP_INTERNAL_IDENTIFIER))
     return (oid->n_subid > 3) - (oid->n_subid < 3);
   if (state == BGP_INTERNAL_PEER_ENTRY)
     return (oid->n_subid > 4) - (oid->n_subid < 4);
@@ -555,7 +576,7 @@ update_bgp_oid(struct oid *oid, u8 state)
   /* No need to reallocate anything if the OID has same lin. state */
   if (snmp_bgp_state(oid) == state)
   {
-    if (state >= BGP_INTERNAL_IDENTIFIER &&
+    if (state >= BGP_INTERNAL_PEER_IDENTIFIER &&
 	state <= BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME &&
 	oid->n_subid == 9)
       return oid;
@@ -597,7 +618,7 @@ update_bgp_oid(struct oid *oid, u8 state)
       oid->ids[2] = SNMP_BGP_LOCAL_AS;
       break;
 
-    case BGP_INTERNAL_IDENTIFIER:
+    case BGP_INTERNAL_PEER_IDENTIFIER:
       if (oid->n_subid != 9)
       {
 	oid = mb_realloc(oid, snmp_oid_sizeof(9));
@@ -615,7 +636,7 @@ update_bgp_oid(struct oid *oid, u8 state)
       oid->ids[2] = SNMP_BGP_PEER_TABLE;
       oid->ids[3] = SNMP_BGP_PEER_ENTRY;
 
-      oid->ids[4] = SNMP_BGP_IDENTIFIER;
+      oid->ids[4] = SNMP_BGP_PEER_IDENTIFIER;
       oid->n_subid = 9;
       break;
 
@@ -683,6 +704,14 @@ update_bgp_oid(struct oid *oid, u8 state)
     SNMP_UPDATE_CASE(BGP_INTERNAL_MIN_ROUTE_ADVERTISEMENT, SNMP_BGP_MIN_ROUTE_ADVERTISEMENT)
 
     SNMP_UPDATE_CASE(BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME, SNMP_BGP_IN_UPDATE_ELAPSED_TIME)
+
+    case BGP_INTERNAL_IDENTIFIER:
+      if (oid->n_subid != 3)
+	oid = mb_realloc(oid, snmp_oid_sizeof(3));
+
+      oid->n_subid = 3;
+      oid->ids[2] = 4;
+      break;
 
     default:
       /* intentionally left blank */
@@ -845,7 +874,7 @@ snmp_bgp_search_dynamic(struct snmp_proto *p, struct oid **searched, const struc
   snmp_log(" **searched = 0x%p  *oid = 0x%p", searched, oid);
   snmp_oid_dump(*searched);
   snmp_oid_dump(oid);
-  u8 end_state = snmp_bgp_state(o_end);
+  u8 end_state = MIN(snmp_bgp_state(o_end), BGP_INTERNAL_PEER_TABLE_END);
 
   snmp_log("before assumption %s [%u] < %u INTERNAL_END", debug_bgp_states[end_state], end_state, BGP_INTERNAL_END);
   ASSUME(end_state <= BGP_INTERNAL_END);
@@ -864,29 +893,28 @@ snmp_bgp_search_dynamic(struct snmp_proto *p, struct oid **searched, const struc
     snmp_log("loop");
 
     next_state = snmp_bgp_next_state(next_state);
-    if (next_state == BGP_INTERNAL_END)
+    if (next_state == BGP_INTERNAL_IDENTIFIER)
       break;
     oid = update_bgp_oid(oid, next_state);
     /* In case of search for next bgp state, we want to start from beginning. */
     oid->ids[5] = oid->ids[6] = oid->ids[7] = oid->ids[8] = 0;
   }
 
-  if (next_state < BGP_INTERNAL_END && next_state <= end_state)
+  if (next_state < BGP_INTERNAL_PEER_TABLE_END && next_state <= end_state)
   {
     *searched = oid;
     return SNMP_SEARCH_OK;
   }
 
-  mb_free(oid);
-  *searched = NULL;
   return SNMP_SEARCH_END_OF_VIEW;
 }
 
 enum snmp_search_res
 snmp_bgp_search2(struct snmp_proto *p, struct oid **searched, const struct oid *o_end, uint contid)
 {
+  enum snmp_search_res r = SNMP_SEARCH_END_OF_VIEW;
   u8 bgp_state = snmp_bgp_state(*searched);
-  struct oid *oid = *searched;
+  u8 state;
   snmp_log("snmp_bgp_search2() with state %s [%d]", debug_bgp_states[bgp_state], bgp_state);
 
   if (bgp_state == BGP_INTERNAL_END)
@@ -894,47 +922,49 @@ snmp_bgp_search2(struct snmp_proto *p, struct oid **searched, const struct oid *
     return SNMP_SEARCH_NO_OBJECT;
   }
 
-  /* TODO remove todo below, then remove this code */
-  if (is_dynamic(bgp_state))
+  if (is_static(bgp_state) && (*searched)->include)
   {
-    snmp_log("returning oid with dynamic state");
-    return snmp_bgp_search_dynamic(p, searched, o_end, contid, bgp_state);
-  }
-
-  /* TODO snmp_bgp_has_value is false only for state which are not dynamic */
-  if (!snmp_bgp_has_value(bgp_state) || !oid->include)
-  {
-    bgp_state = snmp_bgp_next_state(bgp_state);
-    snmp_log("altering searched oid with next state %s [%d]", debug_bgp_states[bgp_state], bgp_state);
-    snmp_oid_dump(*searched);
-    snmp_log("after oid update:");
-    snmp_oid_dump(*searched);
-
-    /*
-     * We zero the ip address section of the oid if we go from non-dynamic state
-     * to dynamic one.
-     */
-    for (int i = 5; i < MIN(9, oid->n_subid); i++)
-      oid->ids[i] = 0;
-  }
-
-  if (is_dynamic(bgp_state))
-  {
-    snmp_log("returning oid with dynamic state 2");
-    return snmp_bgp_search_dynamic(p, searched, o_end, contid, bgp_state);
-  }
-
-  oid = *searched = update_bgp_oid(*searched, bgp_state);
-  if (oid->n_subid == 3 && oid->ids[2] >= SNMP_BGP_VERSION &&
-      oid->ids[2] <= SNMP_BGP_LOCAL_AS && bgp_state != BGP_INTERNAL_END)
-  {
-    snmp_log("oid matches static state");
-    oid->include = 0;
     return SNMP_SEARCH_OK;
   }
 
-  snmp_log("reached unguarded code, returning END_OF_VIEW");
+  state = snmp_bgp_next_state(bgp_state);
+  if (is_static(state) && !is_dynamic(bgp_state))
+  {
+    *searched = update_bgp_oid(*searched, state);
+    return SNMP_SEARCH_OK;
+  }
 
+  if (is_dynamic(state) && !is_dynamic(bgp_state))
+  {
+    snmp_log("searching a dynamic successor of static state");
+    for (uint i = 5; i < MIN(9, (*searched)->n_subid); i++)
+      (*searched)->ids[i] = 0;
+    r = snmp_bgp_search_dynamic(p, searched, o_end, contid, state);
+    if (r != SNMP_SEARCH_END_OF_VIEW)
+      return r;
+  }
+
+  if (is_dynamic(bgp_state))
+  {
+    snmp_log("searching the dynamic states (peers)");
+    r = snmp_bgp_search_dynamic(p, searched, o_end, contid, bgp_state);
+
+    if (r != SNMP_SEARCH_END_OF_VIEW)
+      return r;
+  }
+
+  state = snmp_bgp_next_state(bgp_state);
+  if (state <= BGP_INTERNAL_IDENTIFIER)
+  {
+    snmp_log("returning the local identifier");
+    *searched = update_bgp_oid(*searched, state);
+    return SNMP_SEARCH_OK;
+  }
+
+  // TODO add route table
+
+  /* end not found */
+  snmp_log("reached unguarded code, returning END_OF_VIEW");
   return SNMP_SEARCH_END_OF_VIEW;
 }
 
@@ -1035,7 +1065,7 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
   char last_error[2] = SNMP_BGP_LAST_ERROR(bgp_proto);
   switch (state)
   {
-    case BGP_INTERNAL_IDENTIFIER:
+    case BGP_INTERNAL_PEER_IDENTIFIER:
       if (bgp_state == BS_OPENCONFIRM || bgp_state == BS_ESTABLISHED)
 	pkt = snmp_varbind_ip4(vb, size, ip4_from_u32(bgp_proto->remote_id));
       else
@@ -1194,7 +1224,6 @@ bgp_fill_static(struct snmp_proto *p, struct agentx_varbind *vb, byte *pkt, uint
 UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
 {
   snmp_log("snmp bgp_fill_static ()\n");
-  byte *temp = pkt;
   snmp_log("bgp_fill_static: vb->type %u, ptk %02x", vb->type, *((u32 *) pkt));
 
   struct oid *oid = &vb->name;
@@ -1223,22 +1252,28 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
       break;
 
     case BGP_INTERNAL_LOCAL_AS:
-      pkt = snmp_varbind_int(vb, size, p->local_as);
+      pkt = snmp_varbind_int(vb, size, p->bgp_local_as);
       break;
 
-    case BGP_INTERNAL_BGP:
+    case BGP_INTERNAL_IDENTIFIER:
+      // TODO make a check
+      pkt = snmp_varbind_ip4(vb, size, ipa_to_ip4(p->bgp_local_id));
+      break;
+
     default:
       vb->type = AGENTX_NO_SUCH_OBJECT;
       pkt = ((byte *) vb) + snmp_varbind_header_size(vb);
       break;
   }
 
+#if 0
   snmp_log("bgp_fill_static: type %u  packet %p", vb->type, pkt);
   snmp_oid_dump(oid);
 
   snmp_log("snmp ended with non empty pkt %u starting from %p to %p\n", pkt -
 temp, temp, pkt);
   snmp_dump_packet(temp, pkt - temp);
+#endif
   return pkt;
 }
 
@@ -1249,24 +1284,21 @@ snmp_bgp_fill(struct snmp_proto *p, struct agentx_varbind *vb,
   u8 state = snmp_bgp_state(&vb->name);
 
   byte *pkt;
-  if (!is_dynamic(state))
+  if (is_static(state))
   {
     pkt = bgp_fill_static(p, vb, c->buffer, c->size, c->context, c->byte_ord, state);
     ADVANCE(c->buffer, c->size, pkt - c->buffer);
     return;
   }
 
-  if (is_dynamic(state) && snmp_bgp_has_value(state))
+  if (is_dynamic(state))
   {
     pkt = bgp_fill_dynamic(p, vb, c, state);
     ADVANCE(c->buffer, c->size, pkt - c->buffer);
     return;
   }
-  else
-  {
-    die("snmp_bgp_fill unreachable");
-    ((void) c->buffer);
-    return;
-  }
+
+  vb->type = AGENTX_NO_SUCH_OBJECT;  // TODO
+  ADVANCE(c->buffer, c->size, snmp_varbind_header_size(vb));
 }
 

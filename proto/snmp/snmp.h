@@ -70,7 +70,10 @@ struct snmp_config {
   ip_addr remote_ip;
   u16 local_port;
   u16 remote_port;
-  u32 local_as;
+
+  ip_addr bgp_local_id;	  /* BGP4-MIB related fields */
+  u32 bgp_local_as;
+
   u8 timeout;
   u8 priority;
   //struct iface *iface;
@@ -123,7 +126,9 @@ struct snmp_proto {
   ip_addr remote_ip;
   u16 local_port;
   u16 remote_port;
-  u32 local_as;
+
+  ip_addr bgp_local_id;	  /* BGP4-MIB related fields */
+  u32 bgp_local_as;
 
   sock *sock;
   u8 timeout;			  /* timeout is part of MIB registration. It

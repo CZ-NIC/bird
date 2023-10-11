@@ -102,7 +102,10 @@ snmp_init(struct proto_config *CF)
   p->remote_ip = cf->remote_ip;
   p->local_port = cf->local_port;
   p->remote_port = cf->remote_port;
-  p->local_as = cf->local_as;
+
+  p->bgp_local_as = cf->bgp_local_as;
+  p->bgp_local_id = cf->bgp_local_id;
+
   snmp_log("changing proto_snmp state to INIT");
   p->state = SNMP_INIT;
 
@@ -440,8 +443,11 @@ snmp_show_proto_info(struct proto *P)
 
   cli_msg(-1006, "");
   cli_msg(-1006, " snmp status %s", snmp_state[sp->state]);
+  cli_msg(-1006, " default local as %u",  sp->bgp_local_as);
+  cli_msg(-1006, " default local id %I4", sp->bgp_local_id);
   cli_msg(-1006, "");
   cli_msg(-1006, "  BGP peers");
+
   struct snmp_bond *bond;
   WALK_LIST(bond, c->bgp_entries)
   {
@@ -505,7 +511,7 @@ static void
 snmp_postconfig(struct proto_config *CF)
 {
   /* Walk the BGP protocols and cache their references. */
-  if (((struct snmp_config *) CF)->local_as == 0)
+  if (((struct snmp_config *) CF)->bgp_local_as == 0)
     cf_error("local as not specified");
 }
 

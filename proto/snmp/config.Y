@@ -39,6 +39,7 @@ snmp_proto:
     if (($4 < 1) || ($4 > 65535)) cf_error("Invalid port number");
     SNMP_CFG->remote_port = $4;
   }
+ | snmp_proto LOCAL ID ipa ';' { SNMP_CFG->bgp_local_id = $4; }
  | snmp_proto LOCAL ADDRESS ipa ';' { SNMP_CFG->local_ip = $4; }
  | snmp_proto REMOTE ADDRESS ipa ';' {
     if (ipa_zero($4)) cf_error("Invalid remote ip address");
@@ -46,7 +47,7 @@ snmp_proto:
   }
  | snmp_proto LOCAL AS expr ';' {
     if ($4 < 1 || $4 > 65535) cf_error("Invalid local AS");
-    SNMP_CFG->local_as = $4;
+    SNMP_CFG->bgp_local_as = $4;
   }
  | snmp_proto DESCRIPTION text ';' {
     if (strlen($3) > UINT32_MAX) cf_error("Description is too long");
@@ -73,9 +74,10 @@ snmp_proto_start: proto_start SNMP
 
   SNMP_CFG->local_ip = IPA_NONE;
   SNMP_CFG->remote_ip = ipa_build4(127,0,0,1);
+  SNMP_CFG->bgp_local_id = IPA_NONE;
   SNMP_CFG->local_port = 0;
   SNMP_CFG->remote_port = 705;
-  SNMP_CFG->local_as = 0;
+  SNMP_CFG->bgp_local_as = 0;
 
   SNMP_CFG->description = "bird";
   SNMP_CFG->timeout = 15;
