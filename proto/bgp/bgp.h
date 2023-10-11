@@ -285,6 +285,11 @@ struct bgp_conn {
   u8 ext_messages;			/* Session uses extended message length */
   u32 received_as;			/* ASN received in OPEN message */
 
+  byte *local_open_msg;			/* Saved OPEN messages (no header) */
+  byte *remote_open_msg;
+  uint local_open_length;
+  uint remote_open_length;
+
   struct bgp_caps *local_caps;
   struct bgp_caps *remote_caps;
   timer *connect_timer;
@@ -458,6 +463,7 @@ struct bgp_write_state {
   int as4_session;
   int add_path;
   int mpls;
+  int sham;
 
   eattr *mp_next_hop;
   const adata *mpls_labels;
@@ -509,6 +515,7 @@ struct bgp_parse_state {
 #define BGP_PORT		179
 #define BGP_VERSION		4
 #define BGP_HEADER_LENGTH	19
+#define BGP_HDR_MARKER_LENGTH	16
 #define BGP_MAX_MESSAGE_LENGTH	4096
 #define BGP_MAX_EXT_MSG_LENGTH	65535
 #define BGP_RX_BUFFER_SIZE	4096
@@ -518,6 +525,13 @@ struct bgp_parse_state {
 
 #define BGP_CF_WALK_CHANNELS(P,C) WALK_LIST(C, P->c.channels) if (C->c.class == &channel_bgp)
 #define BGP_WALK_CHANNELS(P,C) WALK_LIST(C, P->p.channels) if (C->c.class == &channel_bgp)
+
+#define BGP_MSG_HDR_MARKER_SIZE	16
+#define BGP_MSG_HDR_MARKER_POS	0
+#define BGP_MSG_HDR_LENGTH_SIZE	2
+#define BGP_MSG_HDR_LENGTH_POS	BGP_MSG_HDR_MARKER_SIZE
+#define BGP_MSG_HDR_TYPE_SIZE	1
+#define BGP_MSG_HDR_TYPE_POS	(BGP_MSG_HDR_MARKER_SIZE + BGP_MSG_HDR_LENGTH_SIZE)
 
 static inline int bgp_channel_is_ipv4(struct bgp_channel *c)
 { return BGP_AFI(c->afi) == BGP_AFI_IPV4; }
@@ -564,6 +578,8 @@ void bgp_refresh_end(struct bgp_channel *c);
 void bgp_store_error(struct bgp_proto *p, struct bgp_conn *c, u8 class, u32 code);
 void bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len);
 const char *bgp_format_role_name(u8 role);
+
+void bgp_fix_attr_flags(ea_list *attrs);
 
 static inline int
 rte_resolvable(const rte *rt)
@@ -632,6 +648,8 @@ static inline struct bgp_proto *bgp_rte_proto(const rte *rte)
     SKIP_BACK(struct bgp_proto, p.sources, rte->src->owner) : NULL;
 }
 
+byte * bgp_bmp_encode_rte(struct bgp_channel *c, byte *buf, const net_addr *n, const struct rte *new, const struct rte_src *src);
+
 #define BGP_AIGP_METRIC		1
 #define BGP_AIGP_MAX		U64(0xffffffffffffffff)
 
@@ -663,6 +681,7 @@ const char * bgp_error_dsc(unsigned code, unsigned subcode);
 void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsigned subcode, byte *data, unsigned len);
 
 void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
+byte *bgp_create_end_mark_(struct bgp_channel *c, byte *buf);
 
 
 /* Packet types */

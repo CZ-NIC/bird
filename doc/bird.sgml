@@ -3294,6 +3294,35 @@ protocol bgp {
 </code>
 
 
+<sect>BMP
+<label id="bmp">
+
+<p>The BGP Monitoring Protocol is used for monitoring BGP sessions and obtaining
+routing table data. The current implementation in BIRD is a preliminary release
+with a limited feature set, it will be subject to significant changes in the
+future. It is not ready for production usage and therefore it is not compiled
+by default and have to be enabled during installation by the configure option
+<tt/--with-protocols=/.
+
+<p>The implementation is limited to monitor protocol state changes and routes
+in <ref id="bgp-import-table" name="BGP import tables"> (not regular routing
+tables), therefore import table must be enabled in BGP protocols. All BGP
+protocols are monitored automatically.
+
+<sect1>Example
+<label id="bmp-exam">
+
+<p><code>
+protocol bmp {
+	# The monitoring station to connect to
+	station address ip 198.51.100.10 port 1790;
+
+	# required option
+	monitoring rib in pre_policy;
+}
+</code>
+
+
 <sect>Device
 <label id="device">
 
