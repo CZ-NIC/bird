@@ -579,8 +579,6 @@ void bgp_store_error(struct bgp_proto *p, struct bgp_conn *c, u8 class, u32 code
 void bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len);
 const char *bgp_format_role_name(u8 role);
 
-void bgp_fix_attr_flags(ea_list *attrs);
-
 static inline int
 rte_resolvable(const rte *rt)
 {

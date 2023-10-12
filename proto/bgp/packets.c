@@ -2449,13 +2449,12 @@ bgp_bmp_encode_rte(struct bgp_channel *c, byte *buf, const net_addr *n,
 //  struct bgp_proto *p = (void *) c->c.proto;
   byte *pkt = buf + BGP_HEADER_LENGTH;
 
-  ea_list *attrs = new ? new->attrs->eattrs : NULL;
+  ea_list *attrs = new ? new->attrs : NULL;
   uint ea_size = new ? (sizeof(ea_list) + attrs->count * sizeof(eattr)) : 0;
   uint bucket_size = sizeof(struct bgp_bucket) + ea_size;
   uint prefix_size = sizeof(struct bgp_prefix) + n->length;
 
-  struct lp_state tmpp;
-  lp_save(tmp_linpool, &tmpp);
+  struct lp_state *tmpp = lp_save(tmp_linpool);
 
   /* Temporary bucket */
   struct bgp_bucket *b = tmp_allocz(bucket_size);
@@ -2469,14 +2468,14 @@ bgp_bmp_encode_rte(struct bgp_channel *c, byte *buf, const net_addr *n,
   struct bgp_prefix *px = tmp_allocz(prefix_size);
   px->path_id = src->private_id;
   net_copy(px->net, n);
-  add_tail(&b->prefixes, &px->buck_node);
+  add_tail(&b->prefixes, &px->buck_node_xx);
 
   byte *end = bgp_create_update_bmp(c, pkt, b, !!new);
 
   if (end)
     bgp_bmp_prepare_bgp_hdr(buf, end - buf, PKT_UPDATE);
 
-  lp_restore(tmp_linpool, &tmpp);
+  lp_restore(tmp_linpool, tmpp);
 
   return end;
 }

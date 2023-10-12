@@ -274,7 +274,6 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->merge_limit = cf->merge_limit;
   c->in_keep = cf->in_keep;
   c->rpki_reload = cf->rpki_reload;
-  c->bmp_hack = cf->bmp_hack;
 
   c->channel_state = CS_DOWN;
   c->last_state_change = current_time();

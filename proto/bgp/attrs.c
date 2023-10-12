@@ -1236,15 +1236,6 @@ bgp_register_attrs(void)
   }
 }
 
-void
-bgp_fix_attr_flags(ea_list *attrs)
-{
-  for (u8 i = 0; i < attrs->count; i++)
-  {
-    attrs->attrs[i].flags = bgp_attr_table[EA_ID(attrs->attrs[i].id)].flags;
-  }
-}
-
 
 /*
  *	Attribute export
