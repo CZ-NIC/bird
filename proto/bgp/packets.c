@@ -26,7 +26,9 @@
 #include "nest/cli.h"
 
 #include "bgp.h"
+#ifdef CONFIG_BMP
 #include "proto/bmp/bmp.h"
+#endif
 
 
 #define BGP_RR_REQUEST		0
