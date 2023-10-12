@@ -125,7 +125,9 @@
 #include "lib/string.h"
 
 #include "bgp.h"
+#ifdef CONFIG_BMP
 #include "proto/bmp/bmp.h"
+#endif
 
 
 static list STATIC_LIST_INIT(bgp_sockets);		/* Global list of listening sockets */
@@ -694,8 +696,11 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
 
   bgp_conn_set_state(conn, BS_ESTABLISHED);
   proto_notify_state(&p->p, PS_UP);
+
+#ifdef CONFIG_BMP
   bmp_peer_up(p, conn->local_open_msg, conn->local_open_length,
 	      conn->remote_open_msg, conn->remote_open_length);
+#endif
 }
 
 static void
@@ -708,9 +713,11 @@ bgp_conn_leave_established_state(struct bgp_conn *conn, struct bgp_proto *p)
   if (p->p.proto_state == PS_UP)
     bgp_stop(p, 0, NULL, 0);
 
+#ifdef CONFIG_BMP
   bmp_peer_down(p, p->last_error_class,
 		conn->notify_code, conn->notify_subcode,
 		conn->notify_data, conn->notify_size);
+#endif
 }
 
 void

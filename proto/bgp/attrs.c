@@ -1158,14 +1158,6 @@ bgp_attr_name(uint code)
   return (code < ARRAY_SIZE(bgp_attr_table)) ? bgp_attr_table[code].name : NULL;
 }
 
-void bgp_fix_attr_flags(ea_list *attrs)
-{
-  for (u8 i = 0; i < attrs->count; i++)
-  {
-    attrs->attrs[i].flags = bgp_attr_table[EA_ID(attrs->attrs[i].id)].flags;
-  }
-}
-
 /*
  *	Attribute export
  */
@@ -1645,6 +1637,9 @@ bgp_defer_bucket(struct bgp_channel *c, struct bgp_bucket *b)
 void
 bgp_withdraw_bucket(struct bgp_channel *c, struct bgp_bucket *b)
 {
+  if (b->bmp)
+    return;
+
   struct bgp_proto *p = (void *) c->c.proto;
   struct bgp_bucket *wb = bgp_get_withdraw_bucket(c);
 
@@ -1724,6 +1719,14 @@ bgp_get_prefix(struct bgp_channel *c, net_addr *net, u32 path_id)
 void
 bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
 {
+  /* BMP hack */
+  if (
+      !NODE_VALID(px->buck_node.prev) &&
+      !NODE_VALID(px->buck_node.next) &&
+      !SKIP_BACK(struct bgp_bucket, prefixes.head, px->buck_node.prev)->bmp
+      )
+    return;
+
   rem_node(&px->buck_node);
   HASH_REMOVE2(c->prefix_hash, PXH, c->pool, px);
 
