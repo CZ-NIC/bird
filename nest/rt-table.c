@@ -2212,7 +2212,7 @@ rt_table_export_start_feed(struct rtable_private *tab, struct rt_table_export_ho
 {
   struct rt_exporter *re = &tab->exporter.e;
   struct rt_export_request *req = hook->h.req;
-
+  log("Hook is %x", hook);
   /* stats zeroed by mb_allocz */
   switch (req->prefilter.mode)
   {
@@ -2230,6 +2230,7 @@ rt_table_export_start_feed(struct rtable_private *tab, struct rt_table_export_ho
     case TE_ADDR_NONE:
     case TE_ADDR_TRIE:
     case TE_ADDR_HOOK:
+      log(L_TRACE "hook - we will feed by fib, not trie?");
       FIB_ITERATE_INIT(&hook->feed_fit, &tab->fib);
       hook->h.event.hook = rt_feed_by_fib;
       break;
@@ -4403,6 +4404,7 @@ rt_process_feed(struct rt_table_export_hook *c, rt_feed_block *b)
 static void
 rt_feed_by_fib(void *data)
 {
+  log(L_TRACE "rt_feed_by_fib_function - here filtering starts");
   struct rt_table_export_hook *c = data;
   struct fib_iterator *fit = &c->feed_fit;
   rt_feed_block block = {};
@@ -4546,6 +4548,7 @@ void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *n
       while (new.attrs->next)
 	new.attrs = new.attrs->next;
 
+      log(L_TRACE "chanel_reload_export_bulk %N", net);
       /* And reload the route */
       rte_update(c, net, &new, new.src);
     }

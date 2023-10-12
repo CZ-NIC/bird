@@ -52,6 +52,7 @@ static void channel_init_limit(struct channel *c, struct limit *l, int dir, stru
 static void channel_update_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf);
 static void channel_reset_limit(struct channel *c, struct limit *l, int dir);
 static int channel_refeed_prefilter(const struct rt_prefilter *p, const net_addr *n);
+static int channel_import_prefilter(const struct rt_prefilter *p, const net_addr *n);
 static void channel_feed_end(struct channel *c);
 static void channel_stop_export(struct channel *c);
 static void channel_export_stopped(struct rt_export_request *req);
@@ -557,6 +558,10 @@ channel_start_import(struct channel *c)
     .dump_req = channel_dump_import_req,
     .log_state_change = channel_import_log_state_change,
     .preimport = channel_preimport,
+    .prefilter = {
+      .mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
+      .addr = c->out_subprefix,
+    },
   };
 
   ASSERT(c->channel_state == CS_UP);
@@ -752,11 +757,30 @@ channel_refeed_prefilter(const struct rt_prefilter *p, const net_addr *n)
 
   for (struct channel_feeding_request *cfr = c->refeeding; cfr; cfr = cfr->next)
     if (!cfr->trie || trie_match_net(cfr->trie, n))
+    {
+      log(L_TRACE "Export this one");
       return 1;
-
+    }
+  log(L_TRACE "%N filtered out of export", n);
   return 0;
 }
 
+static int
+channel_import_prefilter(const struct rt_prefilter *p, const net_addr *n)
+{
+  const struct channel *c =
+    SKIP_BACK(struct channel, reload_req,
+	SKIP_BACK(struct rt_export_request, prefilter, p)
+	);
+  for (struct channel_import_request *cir = c->importing; cir; cir = cir->next)
+    if (!cir->trie || trie_match_net(cir->trie, n))
+     {
+      log(L_TRACE "Export this one");
+      return 1;
+     }
+  log(L_TRACE "%N filtered out of import", n);
+  return 0;
+}
 
 static void
 channel_feed_end(struct channel *c)
@@ -808,18 +832,44 @@ channel_feed_end(struct channel *c)
 
 /* Called by protocol for reload from in_table */
 void
-channel_schedule_reload(struct channel *c)
+channel_schedule_reload(struct channel *c, struct channel_import_request *cir)
 {
+  log(L_TRACE "channel_schedule_reload %i %i",cir, (cir && cir->trie));
   ASSERT(c->in_req.hook);
-
-  if (c->reload_req.hook)
+  int no_trie = 0;
+  if (cir)
+  {
+    struct channel_import_request* last = c->import_pending;
+    while (last)
+    {
+      if (!last->trie)
+        no_trie = 1;
+      last = last->next;
+    }
+    last = cir;
+    no_trie = !last->trie;
+  }
+  if (c->reload_req.hook) 
   {
     CD(c, "Reload triggered before the previous one has finished");
     c->reload_pending = 1;
     return;
   }
+  c->importing = c->import_pending;
+  c->import_pending = NULL;
 
-  rt_refresh_begin(&c->in_req);
+  if (no_trie)
+  {
+    c->reload_req.prefilter.mode = TE_ADDR_NONE;
+    c->reload_req.prefilter.hook = NULL;
+  }
+  else
+  {
+    CD(c, "Import with trie");
+    c->reload_req.prefilter.mode = TE_ADDR_HOOK;
+    c->reload_req.prefilter.hook = channel_import_prefilter;
+  }
+
   rt_request_export(c->table, &c->reload_req);
 }
 
@@ -1081,10 +1131,30 @@ channel_request_reload(struct channel *c)
 
   CD(c, "Reload requested");
 
-  if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
-    channel_schedule_reload(c);
+  if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER) {
+    struct channel_import_request* cir = mb_alloc(c->proto->pool, sizeof *cir);;
+    cir->trie = NULL;
+    channel_schedule_reload(c, cir);
+  }
   else
     c->proto->reload_routes(c);
+}
+
+static void
+channel_request_partial_reload(struct channel *c, struct channel_import_request *cir)
+{
+  ASSERT(c->in_req.hook);
+  ASSERT(channel_reloadable(c));
+
+  CD(c, "Partial import reload requested");
+  
+  if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
+    channel_schedule_reload(c, cir);
+    /* TODO*/
+  else
+    CD(c, "Partial import reload requested, but with ric cosi");
+    /*c->proto->reload_routes(c);
+  */
 }
 
 const struct channel_class channel_basic = {
@@ -2681,6 +2751,11 @@ struct channel_cmd_reload_feeding_request {
   struct proto_reload_request *prr;
 };
 
+struct channel_cmd_reload_import_request {
+  struct channel_import_request cir;
+  struct proto_reload_request *prr;
+};
+
 static void
 channel_reload_out_done_main(void *_prr)
 {
@@ -2696,6 +2771,14 @@ channel_reload_out_done(struct channel_feeding_request *cfr)
   struct channel_cmd_reload_feeding_request *ccrfr = SKIP_BACK(struct channel_cmd_reload_feeding_request, cfr, cfr);
   if (atomic_fetch_sub_explicit(&ccrfr->prr->counter, 1, memory_order_acq_rel) == 1)
     ev_send_loop(&main_birdloop, &ccrfr->prr->ev);
+}
+
+static void
+channel_reload_in_done(struct channel_import_request *cir)
+{
+  struct channel_cmd_reload_import_request *ccrir = SKIP_BACK(struct channel_cmd_reload_import_request, cir, cir);
+  if (atomic_fetch_sub_explicit(&ccrir->prr->counter, 1, memory_order_acq_rel) == 1)
+    ev_send_loop(&main_birdloop, &ccrir->prr->ev);
 }
 
 void
@@ -2729,7 +2812,37 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
   if (prr->dir != CMD_RELOAD_OUT)
     WALK_LIST(c, p->channels)
       if (c->channel_state == CS_UP)
-	channel_request_reload(c);
+      {
+        if (prr->trie)
+	{
+	  /* Increase the refeed counter */
+	  if (atomic_fetch_add_explicit(&prr->counter, 1, memory_order_relaxed) == 0)
+	  {
+	    /* First occurence */
+	    ASSERT_DIE(this_cli->parser_pool == prr->trie->lp);
+	    rmove(this_cli->parser_pool, &root_pool);
+	    this_cli->parser_pool = lp_new(this_cli->pool);
+	    prr->ev = (event) {
+	      .hook = channel_reload_out_done_main,
+	      .data = prr,
+	    };
+	  }
+	  else
+	    ASSERT_DIE(this_cli->parser_pool != prr->trie->lp);
+
+	  struct channel_cmd_reload_import_request *req = lp_alloc(prr->trie->lp, sizeof *req);
+	  *req = (struct channel_cmd_reload_import_request) {
+	    .cir = {
+	      .done = channel_reload_in_done,
+	      .trie = prr->trie,
+	    },
+	    .prr = prr,
+	  };
+	  channel_request_partial_reload(c, &req->cir);
+        }
+        else
+	  channel_request_reload(c);
+      }
 
   /* re-exporting routes */
   if (prr->dir != CMD_RELOAD_IN)

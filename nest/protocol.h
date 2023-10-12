@@ -581,6 +581,8 @@ struct channel {
   struct f_trie *refeed_trie;		/* Auxiliary refeed trie */
   struct channel_feeding_request *refeeding;	/* Refeeding the channel */
   struct channel_feeding_request *refeed_pending;	/* Scheduled refeeds */
+  struct channel_import_request *importing;	/* Importing the channel */
+  struct channel_import_request *import_pending;	/* Scheduled imports */
 
   uint feed_block_size;			/* How many routes to feed at once */
 
@@ -677,7 +679,7 @@ struct channel *proto_add_channel(struct proto *p, struct channel_config *cf);
 int proto_configure_channel(struct proto *p, struct channel **c, struct channel_config *cf);
 
 void channel_set_state(struct channel *c, uint state);
-void channel_schedule_reload(struct channel *c);
+void channel_schedule_reload(struct channel *c, struct channel_import_request *cir);
 
 static inline void channel_init(struct channel *c) { channel_set_state(c, CS_START); }
 static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP); }
@@ -696,6 +698,12 @@ struct channel_feeding_request {
     CFRS_PENDING,					/* Request enqueued, do not touch */
     CFRS_RUNNING,					/* Request active, do not touch */
   } state;
+};
+
+struct channel_import_request {
+  struct channel_import_request *next;			/* Next in request chain */
+  void (*done)(struct channel_import_request *);	/* Called when import finishes */
+  const struct f_trie *trie;				/* Reload only matching nets */
 };
 
 struct channel *channel_from_export_request(struct rt_export_request *req);
