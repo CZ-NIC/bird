@@ -565,10 +565,12 @@ channel_start_export(struct channel *c)
 
   ASSERT(c->channel_state == CS_UP);
 
+  pool *p = rp_newf(c->proto->pool, c->proto->pool->domain, "Channel %s.%s export", c->proto->name, c->name);
+
   c->out_req = (struct rt_export_request) {
-    .name = mb_sprintf(c->proto->pool, "%s.%s", c->proto->name, c->name),
+    .name = mb_sprintf(p, "%s.%s", c->proto->name, c->name),
     .list = proto_work_list(c->proto),
-    .pool = c->proto->pool,
+    .pool = p,
     .feed_block_size = c->feed_block_size,
     .addr = c->out_subprefix,
     .addr_mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
@@ -578,8 +580,8 @@ channel_start_export(struct channel *c)
     .mark_seen = channel_rpe_mark_seen_export,
   };
 
-  bmap_init(&c->export_map, c->proto->pool, 16);
-  bmap_init(&c->export_reject_map, c->proto->pool, 16);
+  bmap_init(&c->export_map, p, 16);
+  bmap_init(&c->export_reject_map, p, 16);
 
   channel_reset_limit(c, &c->out_limit, PLD_OUT);
 
@@ -604,7 +606,7 @@ channel_start_export(struct channel *c)
   }
 
   c->refeed_req = c->out_req;
-  c->refeed_req.name = mb_sprintf(c->proto->pool, "%s.%s.refeed", c->proto->name, c->name);
+  c->refeed_req.name = mb_sprintf(p, "%s.%s.refeed", c->proto->name, c->name);
   c->refeed_req.dump_req = channel_dump_refeed_req;
   c->refeed_req.log_state_change = channel_refeed_log_state_change;
   c->refeed_req.mark_seen = channel_rpe_mark_seen_refeed;
@@ -671,11 +673,11 @@ channel_export_stopped(struct rt_export_request *req)
     return;
   }
 
-  mb_free(c->out_req.name);
-  c->out_req.name = NULL;
-
   bmap_free(&c->export_map);
   bmap_free(&c->export_reject_map);
+
+  c->out_req.name = NULL;
+  rfree(c->out_req.pool);
 
   channel_check_stopped(c);
 }

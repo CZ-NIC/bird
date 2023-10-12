@@ -300,7 +300,7 @@ struct rt_pending_export {
 
 struct rt_export_request {
   struct rt_export_hook *hook;		/* Table part of the export */
-  char *name;
+  const char *name;
   const net_addr *addr;			/* Network prefilter address */
   u8 trace_routes;
   u8 addr_mode;				/* Network prefilter mode (TE_ADDR_*) */
