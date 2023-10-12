@@ -754,7 +754,7 @@ channel_refeed_prefilter(const struct rt_prefilter *p, const net_addr *n)
     SKIP_BACK(struct channel, refeed_req,
 	SKIP_BACK(struct rt_export_request, prefilter, p)
 	);
-
+  ASSERT_DIE(c->refeeding);
   for (struct channel_feeding_request *cfr = c->refeeding; cfr; cfr = cfr->next)
     if (!cfr->trie || trie_match_net(cfr->trie, n))
     {
@@ -772,12 +772,16 @@ channel_import_prefilter(const struct rt_prefilter *p, const net_addr *n)
     SKIP_BACK(struct channel, reload_req,
 	SKIP_BACK(struct rt_export_request, prefilter, p)
 	);
+  ASSERT_DIE(c->importing);
   for (struct channel_import_request *cir = c->importing; cir; cir = cir->next)
+  {
+    log(L_DEBUG "in for cycle %x %x", cir->trie, cir->trie->root);
     if (!cir->trie || trie_match_net(cir->trie, n))
      {
       log(L_TRACE "Export this one");
       return 1;
      }
+  }
   log(L_TRACE "%N filtered out of import", n);
   return 0;
 }
@@ -839,22 +843,24 @@ channel_schedule_reload(struct channel *c, struct channel_import_request *cir)
   int no_trie = 0;
   if (cir)
   {
-    struct channel_import_request* last = c->import_pending;
-    while (last)
-    {
-      if (!last->trie)
-        no_trie = 1;
-      last = last->next;
-    }
-    last = cir;
-    no_trie = !last->trie;
+    cir->next = c->import_pending;
+    c->import_pending = cir;
   }
+  
   if (c->reload_req.hook) 
   {
     CD(c, "Reload triggered before the previous one has finished");
     c->reload_pending = 1;
     return;
   }
+  struct channel_import_request *last = cir;
+  while (last)
+  {
+    if (!last->trie)
+      no_trie = 1;
+    last = last->next;
+  }
+  
   c->importing = c->import_pending;
   c->import_pending = NULL;
 

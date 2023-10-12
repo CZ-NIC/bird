@@ -2212,7 +2212,6 @@ rt_table_export_start_feed(struct rtable_private *tab, struct rt_table_export_ho
 {
   struct rt_exporter *re = &tab->exporter.e;
   struct rt_export_request *req = hook->h.req;
-  log("Hook is %x", hook);
   /* stats zeroed by mb_allocz */
   switch (req->prefilter.mode)
   {
@@ -2230,7 +2229,6 @@ rt_table_export_start_feed(struct rtable_private *tab, struct rt_table_export_ho
     case TE_ADDR_NONE:
     case TE_ADDR_TRIE:
     case TE_ADDR_HOOK:
-      log(L_TRACE "hook - we will feed by fib, not trie?");
       FIB_ITERATE_INIT(&hook->feed_fit, &tab->fib);
       hook->h.event.hook = rt_feed_by_fib;
       break;
@@ -4418,8 +4416,10 @@ rt_feed_by_fib(void *data)
     {
       if (rt_prefilter_net(&c->h.req->prefilter, n->n.addr))
       {
+        log("route passed");
 	if (!rt_prepare_feed(c, n, &block))
 	{
+	  log("inside ifs");
 	  FIB_ITERATE_PUT(fit);
 	  RT_UNLOCK(tab);
 	  rt_process_feed(c, &block);
