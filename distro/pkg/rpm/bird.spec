@@ -1,17 +1,21 @@
 %global _hardened_build 1
 %global _without_doc 1
+%{!?_rundir:%global _rundir %%{_localstatedir}/run}
 
 Name:             bird
 Version:          {{ version }}
 Release:          cznic.{{ release }}%{?dist}
 Summary:          BIRD Internet Routing Daemon
 
+Group:            System Environment/Daemons
 License:          GPL-2.0-or-later
 URL:              https://bird.network.cz/
 Source0:          https://bird.network.cz/download/bird-%{version}.tar.gz
 Source1:          bird.service
 Source2:          bird.tmpfilesd
+Source3:          bird.sysusersd
 
+BuildRequires:    autoconf
 BuildRequires:    flex
 BuildRequires:    bison
 BuildRequires:    ncurses-devel
@@ -20,14 +24,13 @@ BuildRequires:    sed
 BuildRequires:    gcc
 BuildRequires:    make
 BuildRequires:    libssh-devel
-%if 0%{?fedora} || (0%{?rhel} && 0%{?rhel} > 7)
-BuildRequires:    systemd-rpm-macros
-%else
-BuildRequires:    systemd
+%if 0%{?rhel} && 0%{?rhel} < 8
+# http://trubka.network.cz/pipermail/bird-users/2019-August/013631.html
+BuildRequires:    devtoolset-8-toolchain
 %endif
-
-Obsoletes:        bird6 < 2.0.2-1
-Provides:         bird6 = %{version}-%{release}
+BuildRequires:    systemd-rpm-macros
+%{?systemd_requires}
+%{?sysusers_requires_compat}
 
 %description
 BIRD is a dynamic IP routing daemon supporting both, IPv4 and IPv6, Border
@@ -41,6 +44,7 @@ powerful language for route filtering.
 %if 0%{!?_without_doc:1}
 %package doc
 Summary:          Documentation for BIRD Internet Routing Daemon
+Group:            Documentation
 BuildRequires:    linuxdoc-tools sgml-common perl(FindBin)
 BuildArch:        noarch
 
@@ -57,9 +61,13 @@ powerful language for route filtering.
 %endif
 
 %prep
-%setup -q
+%setup -q -n bird-%{version}
 
 %build
+%if 0%{?rhel} && 0%{?rhel} < 8
+. /opt/rh/devtoolset-8/enable
+%endif
+
 %configure --runstatedir=%{_rundir}/bird
 %make_build all %{!?_without_doc:docs}
 
@@ -70,17 +78,18 @@ powerful language for route filtering.
 install -d %{buildroot}{%{_localstatedir}/lib/bird,%{_rundir}/bird}
 install -D -p -m 0644 %{SOURCE1} %{buildroot}%{_unitdir}/bird.service
 install -D -p -m 0644 %{SOURCE2} %{buildroot}%{_tmpfilesdir}/bird.conf
+install -D -p -m 0644 %{SOURCE3} %{buildroot}%{_sysusersdir}/bird.conf
 {% endraw %}
 
 %check
+%if 0%{?rhel} && 0%{?rhel} < 8
+. /opt/rh/devtoolset-8/enable
+%endif
+
 make test
 
 %pre
-getent group bird >/dev/null || groupadd -r bird
-getent passwd bird >/dev/null || \
-  useradd -r -g bird -d %{_localstatedir}/lib/bird -s /sbin/nologin \
-  -c "BIRD daemon user" bird
-exit 0
+%sysusers_create_compat %{SOURCE3}
 
 %post
 %systemd_post bird.service
@@ -95,12 +104,13 @@ exit 0
 %doc NEWS README
 %attr(0640,root,bird) %config(noreplace) %{_sysconfdir}/bird.conf
 %{_unitdir}/bird.service
+%{_sysusersdir}/bird.conf
 %{_tmpfilesdir}/bird.conf
 %{_sbindir}/bird
 %{_sbindir}/birdc
 %{_sbindir}/birdcl
 %dir %attr(0750,bird,bird) %{_localstatedir}/lib/bird
-%dir %attr(0750,bird,bird) %ghost %{_rundir}/bird
+%dir %attr(0750,bird,bird) %{_rundir}/bird
 
 %if 0%{!?_without_doc:1}
 %files doc

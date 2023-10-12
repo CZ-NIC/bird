@@ -278,6 +278,19 @@ times_update(void)
     DBG("Time update collision: real_time");
 }
 
+btime
+current_time_now(void)
+{
+  struct timespec ts;
+  int rv;
+
+  rv = clock_gettime(CLOCK_MONOTONIC, &ts);
+  if (rv < 0)
+    die("clock_gettime: %m");
+
+  return ts.tv_sec S + ts.tv_nsec NS;
+}
+
 /**
  * DOC: Sockets
  *

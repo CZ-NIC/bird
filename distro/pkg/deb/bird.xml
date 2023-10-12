@@ -65,10 +65,22 @@ man(1), man(7), http://www.tldp.org/HOWTO/Man-Page/
           <email>&dhemail;</email>
         </address>
       </author>
+      <author>
+        <firstname>Jakub</firstname>
+        <surname>Ružička</surname>
+        <contrib>Updated this manpage for birdcl.</contrib>
+        <address>
+          <email>jakub.ruzicka@nic.cz</email>
+        </address>
+      </author>
     </authorgroup>
     <copyright>
       <year>2010</year>
       <holder>&dhusername;</holder>
+    </copyright>
+    <copyright>
+      <year>2022</year>
+      <holder>Jakub Ružička</holder>
     </copyright>
     <legalnotice>
       <para>This manual page was written for the Debian system
@@ -95,6 +107,10 @@ man(1), man(7), http://www.tldp.org/HOWTO/Man-Page/
     <refname>birdc</refname>
     <refpurpose>BIRD Internet Routing Daemon remote control</refpurpose>
   </refnamediv>
+  <refnamediv>
+    <refname>birdcl</refname>
+    <refpurpose>BIRD Internet Routing Daemon remote control light</refpurpose>
+  </refnamediv>
 
   <refsynopsisdiv>
     <cmdsynopsis>
@@ -118,6 +134,13 @@ man(1), man(7), http://www.tldp.org/HOWTO/Man-Page/
       <arg choice="opt"><option>-s <replaceable>control-socket</replaceable></option></arg>
       <arg choice="opt"><option>-v</option></arg>
     </cmdsynopsis>
+    <cmdsynopsis>
+      <command>birdcl</command>
+      <arg choice="opt"><option>-l</option></arg>
+      <arg choice="opt"><option>-r</option></arg>
+      <arg choice="opt"><option>-s <replaceable>control-socket</replaceable></option></arg>
+      <arg choice="opt"><option>-v</option></arg>
+    </cmdsynopsis>
   </refsynopsisdiv>
 
   <refsect1 id="description">
@@ -136,7 +159,10 @@ man(1), man(7), http://www.tldp.org/HOWTO/Man-Page/
       communicate. Once started, <command>bird</command> will give access
       to an interactive shell: commands can be completed with TAB and help
       can be requested by pressing the key `?'. More documentation on
-      the available commands can be foung on the website, see below.</para>
+      the available commands can be found on the website, see below.</para>
+    <para><command>birdcl</command> is a light version of <command>birdc</command>
+      remote control for <command>bird</command> without readline/ncurses support.
+      TAB completion isn't available.</para>
   </refsect1>
 
   <refsect1 id="options">
@@ -230,7 +256,7 @@ man(1), man(7), http://www.tldp.org/HOWTO/Man-Page/
       </varlistentry>
     </variablelist>
 
-    <para>The <command>birdc</command> accepts these options:</para>
+    <para><command>birdc</command> and <command>birdcl</command> accept these options:</para>
     <variablelist>
       <varlistentry>
         <term><option>-l</option></term>
@@ -279,8 +305,7 @@ man(1), man(7), http://www.tldp.org/HOWTO/Man-Page/
 
   <refsect1 id="see_also">
     <title>SEE ALSO</title>
-    <para>More documentation con be found on the website:
+    <para>More documentation can be found on the website:
       https://bird.network.cz/.</para>
   </refsect1>
 </refentry>
-

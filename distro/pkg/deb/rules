@@ -23,8 +23,7 @@ LDFLAGS += -g -O2 -fno-strict-aliasing -fno-strict-overflow -fPIC -Wl,-z,defs -W
 override_dh_auto_configure:
 	CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)" dh_auto_configure -- $(COMMON_FLAGS) --with-protocols=all
 
-override_dh_auto_build:
-	dh_auto_build
+override_dh_auto_build-indep:
 	dh_auto_build -- docs
 
 override_dh_auto_install:
@@ -47,10 +46,10 @@ override_dh_installman: bird.8
 
 override_dh_clean:
 	dh_clean
-	-rm -f bird.8 birdc.8
+	-rm -f bird.8 birdc.8 birdcl.8
 
 override_dh_missing:
-	dh_missing  --fail-missing
+	dh_missing
 
 override_dh_compress:
 	dh_compress -X.conf

@@ -29,6 +29,12 @@ Version 3.0-alpha0 (2022-02-07)
   o Lots of refactoring
   o Bugfixes and improvements as they came along
 
+Version 2.13.1 (2023-06-23)
+  o BGP: Fix role check when no capability option is present
+  o Filter: Fixed segfault when a case option had an empty block
+
+  This is a bugfix version.
+
 Version 2.13 (2023-04-21)
   o Babel: IPv4 via IPv6 extension (RFC 9229)
   o Babel: Improve authentication on lossy networks

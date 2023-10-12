@@ -200,7 +200,7 @@ FID_INTERPRET_BODY()')
 #	Executing another filter line. This replaces the recursion
 #	that was needed in the former implementation.
 m4_define(LINEX, `FID_INTERPRET_EXEC()LINEX_($1)FID_INTERPRET_NEW()return $1 FID_INTERPRET_BODY()')
-m4_define(LINEX_, `do {
+m4_define(LINEX_, `do if ($1) {
   if (fstk->ecnt + 1 >= fstk->elen) runtime("Filter execution stack overflow");
   fstk->estk[fstk->ecnt].pos = 0;
   fstk->estk[fstk->ecnt].line = $1;
@@ -228,9 +228,7 @@ if (!f_same(f1->fl$1, f2->fl$1)) return 0;
 FID_ITERATE_BODY()m4_dnl
 if (whati->fl$1) BUFFER_PUSH(fit->lines) = whati->fl$1;
 FID_INTERPRET_EXEC()m4_dnl
-do { if (whati->fl$1) {
-  LINEX_(whati->fl$1);
-} } while(0)
+LINEX_(whati->fl$1)
 FID_INTERPRET_NEW()m4_dnl
 return whati->f$1
 FID_INTERPRET_BODY()')

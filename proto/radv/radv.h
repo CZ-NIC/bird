@@ -51,6 +51,7 @@ struct radv_config
   list pref_list;		/* Global list of prefix configs (struct radv_prefix_config) */
   list rdnss_list;		/* Global list of RDNSS configs (struct radv_rdnss_config) */
   list dnssl_list;		/* Global list of DNSSL configs (struct radv_dnssl_config) */
+  list custom_list;		/* Global list of custom configs (struct radv_custom_config) */
 
   net_addr trigger;		/* Prefix of a trigger route, if defined */
   u8 propagate_routes;		/* Do we propagate more specific routes (RFC 4191)? */
@@ -63,6 +64,7 @@ struct radv_iface_config
   list pref_list;		/* Local list of prefix configs (struct radv_prefix_config) */
   list rdnss_list;		/* Local list of RDNSS configs (struct radv_rdnss_config) */
   list dnssl_list;		/* Local list of DNSSL configs (struct radv_dnssl_config) */
+  list custom_list;		/* Local list of custom configs (struct radv_custom_config) */
 
   u32 min_ra_int;		/* Standard options from RFC 4861 */
   u32 max_ra_int;
@@ -75,6 +77,7 @@ struct radv_iface_config
 
   u8 rdnss_local;		/* Global list is not used for RDNSS */
   u8 dnssl_local;		/* Global list is not used for DNSSL */
+  u8 custom_local;		/* Global list is not used for custom */
 
   u8 managed;			/* Standard options from RFC 4861 */
   u8 other_config;
@@ -120,6 +123,13 @@ struct radv_dnssl_config
   u8 dlen_first;		/* Length of first label in domain */
   u8 dlen_all;			/* Both dlen_ filled in radv_process_domain() */
   const char *domain;		/* Domain for DNS search list, in processed form */
+};
+
+struct radv_custom_config
+{
+  node n;
+  u8 type;			/* Identifier of the type of option */
+  const struct bytestring *payload;	/* Payload of the option */
 };
 
 /*

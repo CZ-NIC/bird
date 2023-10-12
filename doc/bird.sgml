@@ -1951,7 +1951,7 @@ protocol babel [<name>] {
 	ipv6 [sadr] { <channel config> };
         randomize router id <switch>;
 	interface <interface pattern> {
-		type <wired|wireless>;
+		type <wired|wireless|tunnel>;
 		rxcost <number>;
 		limit <number>;
 		hello interval <time>;
@@ -1965,6 +1965,11 @@ protocol babel [<name>] {
 		next hop ipv4 <address>;
 		next hop ipv6 <address>;
 		extended next hop <switch>;
+		rtt cost <number>;
+		rtt min <time>;
+		rtt max <time>;
+		rtt decay <number>;
+		send timestamps <switch>;
 		authentication none|mac [permissive];
 		password "&lt;text&gt;";
 		password "&lt;text&gt;" {
@@ -1995,15 +2000,16 @@ protocol babel [<name>] {
       router ID every time it starts up, which avoids this problem at the cost
       of not having stable router IDs in the network. Default: no.
 
-      <tag><label id="babel-type">type wired|wireless </tag>
-      This option specifies the interface type: Wired or wireless. On wired
-      interfaces a neighbor is considered unreachable after a small number of
-      Hello packets are lost, as described by <cf/limit/ option. On wireless
+      <tag><label id="babel-type">type wired|wireless|tunnel </tag>
+      This option specifies the interface type: Wired, wireless or tunnel. On
+      wired interfaces a neighbor is considered unreachable after a small number
+      of Hello packets are lost, as described by <cf/limit/ option. On wireless
       interfaces the ETX link quality estimation technique is used to compute
       the metrics of routes discovered over this interface. This technique will
       gradually degrade the metric of routes when packets are lost rather than
-      the more binary up/down mechanism of wired type links. Default:
-      <cf/wired/.
+      the more binary up/down mechanism of wired type links. A tunnel is like a
+      wired interface, but turns on RTT-based metrics with a default cost of 96.
+      Default: <cf/wired/.
 
       <tag><label id="babel-rxcost">rxcost <m/num/</tag>
       This option specifies the nominal RX cost of the interface. The effective
@@ -2073,6 +2079,37 @@ protocol babel [<name>] {
       If enabled, BIRD will accept and emit IPv4 routes with an IPv6 next
       hop when IPv4 addresses are absent from the interface as described in
       <rfc id="9229">. Default: yes.
+
+      <tag><label id="babel-rtt-cost">rtt cost <m/number/</tag>
+      The RTT-based cost that will be applied to all routes from each neighbour
+      based on the measured RTT to that neighbour. If this value is set,
+      timestamps will be included in generated Babel Hello and IHU messages, and
+      (if the neighbours also have timestamps enabled), the RTT to each
+      neighbour will be computed. An additional cost is added to a neighbour if
+      its RTT is above the <ref id="babel-rtt-min" name="rtt min"> value
+      configured on the interface. The added cost scales linearly from 0 up to
+      the RTT cost configured in this option; the full cost is applied if the
+      neighbour RTT reaches the RTT configured in the <ref id="babel-rtt-max"
+      name="rtt max"> option (and for all RTTs above this value). Default: 0
+      (disabled), except for tunnel interfaces, where it is 96.
+
+      <tag><label id="babel-rtt-min">rtt min <m/time/ s|ms</tag>
+      The minimum RTT above which the RTT cost will start to be applied (scaling
+      linearly from zero up to the full cost). Default: 10 ms
+
+      <tag><label id="babel-rtt-max">rtt max <m/time/ s|ms</tag>
+      The maximum RTT above which the full RTT cost will start be applied.
+      Default: 120 ms
+
+      <tag><label id="babel-rtt-decay">rtt decay <m/number/</tag>
+      The decay factor used for the exponentional moving average of the RTT
+      samples from each neighbour, in units of 1/256. Higher values discards old
+      RTT samples faster. Must be between 1 and 256. Default: 42
+
+      <tag><label id="babel-send-timestamps">send timestamps <m/switch/</tag>
+      Whether to send the timestamps used for RTT calculation on this interface.
+      Sending the timestamps enables peers to calculate an RTT to this node,
+      even if no RTT cost is applied to the route metrics. Default: yes.
 
       <tag><label id="babel-authentication">authentication none|mac [permissive]</tag>
       Selects authentication method to be used. <cf/none/ means that packets
@@ -2421,7 +2458,6 @@ avoid routing loops.
 <item> <rfc id="5065"> - AS confederations for BGP
 <item> <rfc id="5082"> - Generalized TTL Security Mechanism
 <item> <rfc id="5492"> - Capabilities Advertisement with BGP
-<item> <rfc id="5549"> - Advertising IPv4 NLRI with an IPv6 Next Hop
 <item> <rfc id="5575"> - Dissemination of Flow Specification Rules
 <item> <rfc id="5668"> - 4-Octet AS Specific BGP Extended Community
 <item> <rfc id="6286"> - AS-Wide Unique BGP Identifier
@@ -2436,6 +2472,7 @@ avoid routing loops.
 <item> <rfc id="8203"> - BGP Administrative Shutdown Communication
 <item> <rfc id="8212"> - Default EBGP Route Propagation Behavior without Policies
 <item> <rfc id="8654"> - Extended Message Support for BGP
+<item> <rfc id="8950"> - Advertising IPv4 NLRI with an IPv6 Next Hop
 <item> <rfc id="9072"> - Extended Optional Parameters Length for BGP OPEN Message
 <item> <rfc id="9117"> - Revised Validation Procedure for BGP Flow Specifications
 <item> <rfc id="9234"> - Route Leak Prevention and Detection Using Roles
@@ -3089,7 +3126,7 @@ be used in explicit configuration.
 	associated network prefixes. This option provides an extension to use
 	IPv4 next hops with IPv6 prefixes and vice versa. For IPv4 / VPNv4
 	channels, the behavior is controlled by the Extended Next Hop Encoding
-	capability, as described in <rfc id="5549">. For IPv6 / VPNv6 channels,
+	capability, as described in <rfc id="8950">. For IPv6 / VPNv6 channels,
 	just IPv4-mapped IPv6 addresses are used, as described in
 	<rfc id="4798"> and <rfc id="4659">. Default: off.
 
@@ -5367,8 +5404,8 @@ as the destination becomes adjacent again.
 (i.e., they can be used multiple times for a route, one time for each nexthop).
 Syntactically, they are not separate options but just parts of <cf/route/
 statement after each <cf/via/ statement, not separated by semicolons. E.g.,
-statement <cf/route 10.0.0.0/8 via 192.0.2.1 bfd weight 1 via 192.0.2.2 weight
-2;/ describes a route with two nexthops, the first nexthop has two per-nexthop
+statement <cf>route 10.0.0.0/8 via 192.0.2.1 bfd weight 1 via 192.0.2.2 weight
+2;</cf> describes a route with two nexthops, the first nexthop has two per-nexthop
 options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 
 <descrip>

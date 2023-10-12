@@ -1,0 +1,3 @@
+Tests: test-bird.sh
+Restrictions: needs-root
+Depends: bird2, iproute2
