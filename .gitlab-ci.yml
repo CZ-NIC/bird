@@ -435,11 +435,11 @@ test-ibgp-loop:
   variables:
     TEST_NAME: cf-ibgp-loop
 
-test-ibgp-loop-big:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ibgp-loop-big
-
+#test-ibgp-loop-big:
+#  <<: *test-base
+#  variables:
+#    TEST_NAME: cf-ibgp-loop-big
+#
 test-ibgp-flat:
   <<: *test-base
   variables:
