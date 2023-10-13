@@ -376,7 +376,7 @@ filter_def:
 
 conf: filter_eval ;
 filter_eval:
-   EVAL term { f_eval_int(f_linearize($2, 1)); }
+   EVAL term { cf_eval_int($2); }
  ;
 
 conf: custom_attr ;
@@ -598,7 +598,7 @@ set_atom:
  | VPN_RD { $$.type = T_RD; $$.val.ec = $1; }
  | ENUM   { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  | '(' term ')' {
-     if (f_eval(f_linearize($2, 1), &($$)) > F_RETURN) cf_error("Runtime error");
+     $$ = cf_eval_tmp($2, T_VOID);
      if (!f_valid_set_type($$.type)) cf_error("Set-incompatible type");
    }
  | symbol_known {
@@ -610,13 +610,13 @@ set_atom:
 
 switch_atom:
    NUM   { $$.type = T_INT; $$.val.i = $1; }
- | '(' term ')' { $$.type = T_INT; $$.val.i = f_eval_int(f_linearize($2, 1)); }
+ | '(' term ')' { $$ = cf_eval_tmp($2, T_INT); }
  | fipa  { $$ = $1; }
  | ENUM  { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  ;
 
 cnum:
-   term { $$ = f_eval_int(f_linearize($1, 1)); }
+   term { $$ = cf_eval_int($1); }
 
 pair_item:
    '(' cnum ',' cnum ')'		{ $$ = f_new_pair_item($2, $2, $4, $4); }

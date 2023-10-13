@@ -157,15 +157,14 @@ conf: definition ;
 
 definition:
    DEFINE symbol '=' term ';' {
-     struct f_val val;
-     if (f_eval(f_linearize($4, 1), &val) > F_RETURN) cf_error("Runtime error");
-     cf_define_symbol($2, SYM_CONSTANT | val.type, val, lp_val_copy(cfg_mem, &val));
+     struct f_val *val = cf_eval($4, T_VOID);
+     cf_define_symbol($2, SYM_CONSTANT | val->type, val, val);
    }
  ;
 
 expr:
    NUM
- | '(' term ')' { $$ = f_eval_int(f_linearize($2, 1)); }
+ | '(' term ')' { $$ = cf_eval_int($2); }
  | symbol_known {
      if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number constant expected");
      $$ = SYM_VAL($1).i; }
