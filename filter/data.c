@@ -47,6 +47,7 @@ static const char * const f_type_str[] = {
   [T_IP]	= "ip",
   [T_NET]	= "prefix",
   [T_STRING]	= "string",
+  [T_BYTESTRING]	= "bytestring",
   [T_PATH_MASK]	= "bgpmask",
   [T_PATH_MASK_ITEM] = "bgpmask item",
   [T_PATH]	= "bgppath",
@@ -214,6 +215,12 @@ val_compare(const struct f_val *v1, const struct f_val *v2)
 }
 
 static inline int
+bs_same(const struct bytestring *bs1, const struct bytestring *bs2)
+{
+  return (bs1->length == bs2->length) && !memcmp(bs1->data, bs2->data, bs1->length);
+}
+
+static inline int
 pmi_same(const struct f_path_mask_item *mi1, const struct f_path_mask_item *mi2)
 {
   if (mi1->kind != mi2->kind)
@@ -277,6 +284,8 @@ val_same(const struct f_val *v1, const struct f_val *v2)
     return 0;
 
   switch (v1->type) {
+  case T_BYTESTRING:
+    return bs_same(v1->val.bs, v2->val.bs);
   case T_PATH_MASK:
     return pm_same(v1->val.path_mask, v2->val.path_mask);
   case T_PATH_MASK_ITEM:
@@ -576,6 +585,7 @@ val_format(const struct f_val *v, buffer *buf)
   case T_BOOL:	buffer_puts(buf, v->val.i ? "TRUE" : "FALSE"); return;
   case T_INT:	buffer_print(buf, "%u", v->val.i); return;
   case T_STRING: buffer_print(buf, "%s", v->val.s); return;
+  case T_BYTESTRING: bstrbintohex(v->val.bs->data, v->val.bs->length, buf2, 1000, ':'); buffer_print(buf, "%s", buf2); return;
   case T_IP:	buffer_print(buf, "%I", v->val.ip); return;
   case T_NET:   buffer_print(buf, "%N", v->val.net); return;
   case T_PAIR:	buffer_print(buf, "(%u,%u)", v->val.i >> 16, v->val.i & 0xffff); return;

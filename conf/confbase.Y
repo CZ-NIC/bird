@@ -108,7 +108,7 @@ CF_DECLS
 %token <i64> VPN_RD
 %token <s> CF_SYM_KNOWN CF_SYM_UNDEFINED
 %token <t> TEXT
-%token <bs> BYTESTRING
+%token <bs> BYTETEXT
 %type <iface> ipa_scope
 
 %type <i> expr bool pxlen4

@@ -37,6 +37,7 @@ union bval_long {
   ip_addr ip;
   const net_addr *net;
   const char *s;
+  const struct bytestring *bs;
   const struct f_tree *t;
   const struct f_trie *ti;
   const struct f_path_mask *path_mask;
@@ -99,6 +100,7 @@ enum btype {
   T_LC = 0xc0,		/* Large community value, lcomm */
   T_RD = 0xc4,		/* Route distinguisher for VPN addresses */
   T_PATH_MASK_ITEM = 0xc8,	/* Path mask item for path mask constructors */
+  T_BYTESTRING = 0xcc,
 
   T_SET = 0x80,
   T_PREFIX_SET = 0x84,

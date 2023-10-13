@@ -34,6 +34,7 @@ class BIRDFValPrinter(BIRDPrinter):
             "T_IP": "ip",
             "T_NET": "net",
             "T_STRING": "s",
+            "T_BYTESTRING": "bs",
             "T_PATH_MASK": "path_mask",
             "T_PATH": "ad",
             "T_CLIST": "ad",

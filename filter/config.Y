@@ -315,7 +315,7 @@ CF_DECLS
 CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	ACCEPT, REJECT, ERROR,
 	INT, BOOL, IP, TYPE, PREFIX, RD, PAIR, QUAD, EC, LC,
-	SET, STRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
+	SET, STRING, BYTESTRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
 	IF, THEN, ELSE, CASE,
 	FOR, IN, DO,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
@@ -330,13 +330,14 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	MIN, MAX,
 	EMPTY,
 	FILTER, WHERE, EVAL, ATTRIBUTE,
+	FROM_HEX,
 	BT_ASSERT, BT_TEST_SUITE, BT_CHECK_ASSIGN, BT_TEST_SAME, FORMAT, STACKS)
 
 %nonassoc THEN
 %nonassoc ELSE
 
 %type <xp> cmds_int cmd_prep
-%type <x> term cmd cmd_var cmds cmds_scoped constant constructor print_list var var_init var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
+%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor print_list var var_init var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail
 %type <fsa> static_attr
 %type <f> filter where_filter
 %type <fl> filter_body function_body
@@ -429,6 +430,7 @@ type:
  | EC { $$ = T_EC; }
  | LC { $$ = T_LC; }
  | STRING { $$ = T_STRING; }
+ | BYTESTRING { $$ = T_BYTESTRING; }
  | BGPMASK { $$ = T_PATH_MASK; }
  | BGPPATH { $$ = T_PATH; }
  | CLIST { $$ = T_CLIST; }
@@ -739,13 +741,14 @@ bgp_path_tail:
  ;
 
 constant:
-   NUM    { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = $1, }); }
- | TRUE   { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 1, }); }
- | FALSE  { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 0, }); }
- | TEXT   { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_STRING, .val.s = $1, }); }
- | fipa	  { $$ = f_new_inst(FI_CONSTANT, $1); }
- | VPN_RD { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_RD, .val.ec = $1, }); }
- | net_   { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_NET, .val.net = $1, }); }
+   NUM      { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = $1, }); }
+ | TRUE     { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 1, }); }
+ | FALSE    { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 0, }); }
+ | TEXT     { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_STRING, .val.s = $1, }); }
+ | BYTETEXT { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BYTESTRING, .val.bs = $1, }); }
+ | fipa     { $$ = f_new_inst(FI_CONSTANT, $1); }
+ | VPN_RD   { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_RD, .val.ec = $1, }); }
+ | net_     { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_NET, .val.net = $1, }); }
  | '[' ']' { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_SET, .val.t = NULL, }); }
  | '[' set_items ']' {
      DBG( "We've got a set here..." );
@@ -886,7 +889,12 @@ term:
 
  | FORMAT '(' term ')' {  $$ = f_new_inst(FI_FORMAT, $3); }
 
+ | term_bs
  | function_call
+ ;
+
+term_bs:
+   FROM_HEX '(' term ')' { $$ = f_new_inst(FI_FROM_HEX, $3); }
  ;
 
 break_command:

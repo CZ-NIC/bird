@@ -571,7 +571,7 @@ pass_key: PASSWORD | KEY;
 
 password_item_begin:
     pass_key text { init_password_list(); init_password($2, strlen($2), password_id++); }
-  | pass_key BYTESTRING { init_password_list(); init_password($2->data, $2->length, password_id++); }
+  | pass_key BYTETEXT { init_password_list(); init_password($2->data, $2->length, password_id++); }
 ;
 
 password_item_params:

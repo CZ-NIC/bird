@@ -259,39 +259,23 @@ WHITE [ \t]
 }
 
 ({XIGIT}{2}){16,}|{XIGIT}{2}(:{XIGIT}{2}){15,}|hex:({XIGIT}{2}(:?{XIGIT}{2})*)? {
-  char *s, *sb = yytext;
-  size_t len = 0, i;
-  struct bytestring *bytes;
-  byte *b;
+  char *s = yytext;
+  struct bytestring *bs;
 
-  /* skip 'hex:' prefix */
-  if (sb[0] == 'h' && sb[1] == 'e' && sb[2] == 'x' && sb[3] == ':')
-    sb += 4;
+  /* Skip 'hex:' prefix */
+  if (s[0] == 'h' && s[1] == 'e' && s[2] == 'x' && s[3] == ':')
+    s += 4;
 
-  s = sb;
-  while (*s) {
-    len++;
-    s += 2;
-    if (*s == ':')
-      s++;
-  }
-  bytes = cfg_allocz(sizeof(*bytes) + len);
+  int len = bstrhextobin(s, NULL);
+  if (len < 0)
+    cf_error("Invalid hex string");
 
-  bytes->length = len;
-  b = &bytes->data[0];
-  s = sb;
-  errno = 0;
-  for (i = 0; i < len; i++) {
-    *b = bstrtobyte16(s);
-    if (errno == ERANGE)
-      cf_error("Invalid hex string");
-    b++;
-    s += 2;
-    if (*s == ':')
-      s++;
-  }
-  cf_lval.bs = bytes;
-  return BYTESTRING;
+  bs = cfg_allocz(sizeof(struct bytestring) + len);
+  bs->length = bstrhextobin(s, bs->data);
+  ASSERT(bs->length == len);
+
+  cf_lval.bs = bs;
+  return BYTETEXT;
 }
 
 ({XIGIT}*::|({XIGIT}*:){3,})({XIGIT}*|{DIGIT}+\.{DIGIT}+\.{DIGIT}+\.{DIGIT}+) {
