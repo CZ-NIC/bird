@@ -1243,8 +1243,8 @@ rip_shutdown(struct proto *P)
   TRACE(D_EVENTS, "Shutdown requested");
 
   struct rip_iface *ifa;
-  WALK_LIST(ifa, p->iface_list)
-    rip_iface_stop(ifa);
+  WALK_LIST_FIRST(ifa, p->iface_list)
+    rip_remove_iface(p, ifa);
 
   return PS_DOWN;
 }
