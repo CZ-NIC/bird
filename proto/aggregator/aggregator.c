@@ -122,12 +122,6 @@ delete_trie(struct trie_node *node)
 {
   assert(node != NULL);
 
-  if (is_leaf(node))
-  {
-    remove_node(node);
-    return;
-  }
-
   if (node->child[0])
     delete_trie(node->child[0]);
 
@@ -135,7 +129,7 @@ delete_trie(struct trie_node *node)
     delete_trie(node->child[1]);
 
   assert(is_leaf(node));
-  delete_trie(node);
+  remove_node(node);
 }
 
 /*
