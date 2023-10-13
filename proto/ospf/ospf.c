@@ -295,7 +295,7 @@ ospf_start(struct proto *P)
   p->gr_mode = c->gr_mode;
   p->gr_time = c->gr_time;
   p->tick = c->tick;
-  p->disp_timer = tm_new_init(P->pool, ospf_disp, p, p->tick S, 0);
+  p->disp_timer = tm_new_init(P->pool_up, ospf_disp, p, p->tick S, 0);
   tm_start(p->disp_timer, 100 MS);
   p->lsab_size = 256;
   p->lsab_used = 0;
@@ -538,9 +538,6 @@ ospf_shutdown(struct proto *P)
     ea_free(nf->old_ea);
   }
   FIB_WALK_END;
-
-  if (tm_active(p->disp_timer))
-    tm_stop(p->disp_timer);
 
   return PS_DOWN;
 }

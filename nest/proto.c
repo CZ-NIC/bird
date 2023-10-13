@@ -1306,10 +1306,10 @@ proto_event(void *ptr)
     p->do_stop = 0;
   }
 
-  if (proto_is_done(p) && p->pool_fragile)  /* perusing pool_fragile to do this once only */
+  if (proto_is_done(p) && p->pool_inloop)  /* perusing pool_inloop to do this once only */
   {
-    rp_free(p->pool_fragile);
-    p->pool_fragile = NULL;
+    rp_free(p->pool_inloop);
+    p->pool_inloop = NULL;
     if (p->loop != &main_birdloop)
       birdloop_stop_self(p->loop, proto_loop_stopped, p);
     else
@@ -1391,7 +1391,8 @@ proto_start(struct proto *p)
 
   PROTO_LOCKED_FROM_MAIN(p)
   {
-    p->pool_fragile = rp_newf(p->pool, birdloop_domain(p->loop), "Protocol %s fragile objects", p->cf->name);
+    p->pool_inloop = rp_newf(p->pool, birdloop_domain(p->loop), "Protocol %s early cleanup objects", p->cf->name);
+    p->pool_up = rp_newf(p->pool, birdloop_domain(p->loop), "Protocol %s stop-free objects", p->cf->name);
     proto_notify_state(p, (p->proto->start ? p->proto->start(p) : PS_UP));
   }
 }
@@ -2323,6 +2324,9 @@ proto_do_stop(struct proto *p)
     rt_unlock_source(p->main_source);
     p->main_source = NULL;
   }
+
+  rp_free(p->pool_up);
+  p->pool_up = NULL;
 
   proto_stop_channels(p);
   rt_destroy_sources(&p->sources, p->event);
