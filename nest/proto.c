@@ -58,6 +58,8 @@ static void channel_stop_export(struct channel *c);
 static void channel_export_stopped(struct rt_export_request *req);
 static void channel_refeed_stopped(struct rt_export_request *req);
 static void channel_check_stopped(struct channel *c);
+static void channel_reload_in_done(struct channel_import_request *cir);
+static void channel_request_partial_reload(struct channel *c, struct channel_import_request *cir);
 
 static inline int proto_is_done(struct proto *p)
 { return (p->proto_state == PS_DOWN) && proto_is_inactive(p); }
@@ -355,7 +357,15 @@ channel_roa_in_changed(struct settle *se)
   struct channel *c = s->c;
 
   CD(c, "Reload triggered by RPKI change");
-  channel_request_reload(c);
+
+  struct channel_import_request *cir = lp_alloc(s->trie->lp, sizeof *cir);
+  *cir = (struct channel_import_request) {
+    .trie = s->trie,
+  };
+  if (s->trie)
+    cir->done = channel_reload_in_done;
+
+  channel_request_partial_reload(c, cir);
 }
 
 static void
@@ -371,7 +381,7 @@ channel_roa_out_changed(struct settle *se)
   struct channel *c = s->c;
 
   CD(c, "Feeding triggered by RPKI change");
-  
+
   /* Setup feeding request */
   struct channel_feeding_request *cfr = lp_alloc(s->trie->lp, sizeof *cfr);
   *cfr = (struct channel_feeding_request) {
@@ -558,10 +568,6 @@ channel_start_import(struct channel *c)
     .dump_req = channel_dump_import_req,
     .log_state_change = channel_import_log_state_change,
     .preimport = channel_preimport,
-    .prefilter = {
-      .mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
-      .addr = c->out_subprefix,
-    },
   };
 
   ASSERT(c->channel_state == CS_UP);
@@ -775,12 +781,8 @@ channel_import_prefilter(const struct rt_prefilter *p, const net_addr *n)
   ASSERT_DIE(c->importing);
   for (struct channel_import_request *cir = c->importing; cir; cir = cir->next)
   {
-    log(L_DEBUG "in for cycle %x %x", cir->trie, cir->trie->root);
     if (!cir->trie || trie_match_net(cir->trie, n))
-     {
-      log(L_TRACE "Export this one");
       return 1;
-     }
   }
   log(L_TRACE "%N filtered out of import", n);
   return 0;
@@ -838,7 +840,6 @@ channel_feed_end(struct channel *c)
 void
 channel_schedule_reload(struct channel *c, struct channel_import_request *cir)
 {
-  log(L_TRACE "channel_schedule_reload %i %i",cir, (cir && cir->trie));
   ASSERT(c->in_req.hook);
   int no_trie = 0;
   if (cir)
@@ -846,8 +847,8 @@ channel_schedule_reload(struct channel *c, struct channel_import_request *cir)
     cir->next = c->import_pending;
     c->import_pending = cir;
   }
-  
-  if (c->reload_req.hook) 
+
+  if (c->reload_req.hook)
   {
     CD(c, "Reload triggered before the previous one has finished");
     c->reload_pending = 1;
@@ -860,7 +861,7 @@ channel_schedule_reload(struct channel *c, struct channel_import_request *cir)
       no_trie = 1;
     last = last->next;
   }
-  
+
   c->importing = c->import_pending;
   c->import_pending = NULL;
 
@@ -1130,6 +1131,12 @@ channel_stop_export(struct channel *c)
 }
 
 static void
+channel_import_request_done_dynamic(struct channel_import_request *req)
+{
+  mb_free(req);
+}
+
+static void
 channel_request_reload(struct channel *c)
 {
   ASSERT(c->in_req.hook);
@@ -1140,6 +1147,7 @@ channel_request_reload(struct channel *c)
   if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER) {
     struct channel_import_request* cir = mb_alloc(c->proto->pool, sizeof *cir);;
     cir->trie = NULL;
+    cir->done = channel_import_request_done_dynamic;
     channel_schedule_reload(c, cir);
   }
   else
@@ -1153,10 +1161,10 @@ channel_request_partial_reload(struct channel *c, struct channel_import_request 
   ASSERT(channel_reloadable(c));
 
   CD(c, "Partial import reload requested");
-  
+
   if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
     channel_schedule_reload(c, cir);
-    /* TODO*/
+    /* TODO */
   else
     CD(c, "Partial import reload requested, but with ric cosi");
     /*c->proto->reload_routes(c);

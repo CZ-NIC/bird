@@ -274,7 +274,6 @@ struct rt_import_request {
   struct rt_import_hook *hook;		/* The table part of importer */
   char *name;
   u8 trace_routes;
-  struct rt_prefilter prefilter;
 
   event_list *list;			/* Where to schedule announce events */
 

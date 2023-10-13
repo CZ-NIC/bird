@@ -4402,7 +4402,6 @@ rt_process_feed(struct rt_table_export_hook *c, rt_feed_block *b)
 static void
 rt_feed_by_fib(void *data)
 {
-  log(L_TRACE "rt_feed_by_fib_function - here filtering starts");
   struct rt_table_export_hook *c = data;
   struct fib_iterator *fit = &c->feed_fit;
   rt_feed_block block = {};
@@ -4416,10 +4415,8 @@ rt_feed_by_fib(void *data)
     {
       if (rt_prefilter_net(&c->h.req->prefilter, n->n.addr))
       {
-        log("route passed");
 	if (!rt_prepare_feed(c, n, &block))
 	{
-	  log("inside ifs");
 	  FIB_ITERATE_PUT(fit);
 	  RT_UNLOCK(tab);
 	  rt_process_feed(c, &block);

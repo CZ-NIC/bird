@@ -496,7 +496,6 @@ trie_add_prefix(struct f_trie *t, const net_addr *net, uint l, uint h)
 static int
 trie_match_net4(const struct f_trie *t, ip4_addr px, uint plen)
 {
-  log("net4 compare");
   if (plen == 0)
     return t->zero;
 
@@ -533,7 +532,6 @@ trie_match_net4(const struct f_trie *t, ip4_addr px, uint plen)
 static int
 trie_match_net6(const struct f_trie *t, ip6_addr px, uint plen)
 {
-  log("net6 compare");
   if (plen == 0)
     return t->zero;
 
@@ -579,7 +577,6 @@ trie_match_net6(const struct f_trie *t, ip6_addr px, uint plen)
 int
 trie_match_net(const struct f_trie *t, const net_addr *n)
 {
-  log(L_DEBUG "trie match net - types %i %i", t->ipv4, n->type);
   switch (n->type)
   {
   case NET_IP4:
