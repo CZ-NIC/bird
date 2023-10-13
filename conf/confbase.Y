@@ -120,7 +120,11 @@ CF_DECLS
 %type <ad> label_stack_start label_stack
 
 %type <t> text opttext
+%type <bs> bytestring
 %type <s> symbol symbol_known toksym 
+
+%type <v> bytestring_text
+%type <x> bytestring_expr
 
 %nonassoc PREFIX_DUMMY
 %left AND OR
@@ -406,6 +410,27 @@ text:
 opttext:
     TEXT
  | /* empty */ { $$ = NULL; }
+ ;
+
+bytestring:
+   BYTETEXT
+ | bytestring_expr { $$ = cf_eval($1, T_BYTESTRING)->val.bs; }
+ ;
+
+bytestring_text:
+   BYTETEXT { $$.type = T_BYTESTRING; $$.val.bs = $1; }
+ | TEXT { $$.type = T_STRING; $$.val.s = $1; }
+ | bytestring_expr {
+     $$ = *cf_eval($1, T_VOID);
+     if (($$.type != T_BYTESTRING) && ($$.type != T_STRING))
+       cf_error("Bytestring or string value expected");
+   }
+ ;
+
+bytestring_expr:
+   symbol_value
+ | term_bs
+ | '(' term ')' { $$ = $2; }
  ;
 
 
