@@ -347,6 +347,95 @@ net_roa_check(rtable *tab, const net_addr *n, u32 asn)
 }
 
 /**
+ * aspa_check - check validity of AS Path in an ASPA table
+ * @tab: ASPA table
+ * @path: AS Path to check
+ *
+ * Implements draft-ietf-sidrops-aspa-verification-16.
+ */
+int aspa_check(rtable *tab, const adata *path)
+{
+  struct lp_state lps;
+  lp_save(tmp_linpool, &lps);
+
+  /* No support for confed paths */
+  if (as_path_contains_confed(path))
+    return ASPA_CONTAINS_CONFED;
+
+  /* Normalize the AS Path: drop stuffings */
+  uint len = as_path_getlen(path);
+  u32 *asns = alloca(sizeof(u32) * len);
+  uint ppos = 0;
+  int nsz = 0;
+  while (as_path_walk(path, &ppos, &asns[nsz]))
+    if ((nsz == 0) || (asns[nsz] != asns[nsz-1]))
+      nsz++;
+
+  /* Find the provider blocks for every AS on the path
+   * and check allowed directions */
+  bool *up = alloca(sizeof(bool) * nsz);
+  bool *down = alloca(sizeof(bool) * nsz);
+  bool unknown_flag = false;
+
+  for (int ap=0; ap<nsz; ap++)
+  {
+    net_addr_union nau = { .aspa = NET_ADDR_ASPA(asns[ap]), };
+    net *n = net_find(tab, &nau.n);
+    if (!n || !n->routes)
+    {
+      /* No ASPA for this ASN, therefore UNKNOWN */
+      unknown_flag = up[ap] = down[ap] = true;
+      continue;
+    }
+
+    up[ap] = down[ap] = false;
+
+    for (rte *e = n->routes; e; e = e->next)
+    {
+      if (!rte_is_valid(e))
+	continue;
+
+      eattr *ea = ea_find(e->attrs->eattrs, EA_ASPA_PROVIDERS);
+      if (!ea)
+	continue;
+
+      for (uint i=0; i * sizeof(u32) < ea->u.ptr->length; i++)
+      {
+	if ((ap > 0) && ((u32 *) ea->u.ptr->data)[i] == asns[ap-1])
+	  down[ap] = true;
+	if ((ap + 1 < nsz) && ((u32 *) ea->u.ptr->data)[i] == asns[ap+1])
+	  up[ap] = true;
+
+	if (down[ap] || up[ap])
+	  goto peering_found;
+      }
+    }
+peering_found:;
+  }
+
+  /* Check whether the topology is first ramp up and then ramp down. */
+  int up_end = 0;
+  while (up_end < nsz && up[up_end])
+    up_end++;
+
+  int down_end = nsz - 1;
+  while (down_end > 0 && down[down_end])
+    down_end--;
+
+  /* A significant overlap of obvious unknowns or misconfigured ASPAs. */
+  if (up_end - down_end >= 2)
+    return ASPA_UNKNOWN;
+
+  /* The path has either a single transit provider, or a peering pair on top */
+  else if (up_end - down_end >= 0)
+    return unknown_flag ? ASPA_UNKNOWN : ASPA_VALID;
+
+  /* There is a gap between valid ramp up and valid ramp down */
+  else
+    return ASPA_INVALID;
+}
+
+/**
  * rte_find - find a route
  * @net: network node
  * @src: route source

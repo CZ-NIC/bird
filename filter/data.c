@@ -40,6 +40,7 @@ static const char * const f_type_str[] = {
   [T_ENUM_RTC]	= "enum rtc",
   [T_ENUM_RTD]	= "enum rtd",
   [T_ENUM_ROA]	= "enum roa",
+  [T_ENUM_ASPA] = "enum aspa",
   [T_ENUM_NETTYPE] = "enum nettype",
   [T_ENUM_RA_PREFERENCE] = "enum ra_preference",
   [T_ENUM_AF]	= "enum af",

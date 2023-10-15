@@ -1606,6 +1606,21 @@
 
   }
 
+  INST(FI_ASPA_CHECK_EXPLICIT, 1, 1) {	/* ASPA Check */
+    NEVER_CONSTANT;
+    ARG(1, T_PATH);
+    RTC(2);
+    struct rtable *table = rtc->table;
+
+    if (!table)
+      runtime("Missing ASPA table");
+
+    if (table->addr_type != NET_ASPA)
+      runtime("Table type must be ASPA");
+
+    RESULT(T_ENUM_ASPA, i, [[ aspa_check(table, v1.val.ad) ]]);
+  }
+
   INST(FI_FROM_HEX, 1, 1) {	/* Convert hex text to bytestring */
     ARG(1, T_STRING);
 
