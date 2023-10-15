@@ -690,7 +690,7 @@ static void
 bgp_format_cluster_list(const eattr *a, byte *buf, uint size)
 {
   /* Truncates cluster lists larger than buflen, probably not a problem */
-  int_set_format(a->u.ptr, 0, -1, buf, size);
+  int_set_format(a->u.ptr, ISF_ROUTER_ID, -1, buf, size);
 }
 
 

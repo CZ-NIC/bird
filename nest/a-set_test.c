@@ -92,11 +92,11 @@ t_set_int_union(void)
   const struct adata *set_union;
   set_union = int_set_union(tmp_linpool, set_sequence, set_sequence_same);
   bt_assert(int_set_get_size(set_union) == SET_SIZE);
-  bt_assert(int_set_format(set_union, 0, 2, buf, BUFFER_SIZE) == 0);
+  bt_assert(int_set_format(set_union, ISF_ROUTER_ID, 2, buf, BUFFER_SIZE) == 0);
 
   set_union = int_set_union(tmp_linpool, set_sequence, set_sequence_higher);
   bt_assert_msg(int_set_get_size(set_union) == SET_SIZE*2, "int_set_get_size(set_union) %d, SET_SIZE*2 %d", int_set_get_size(set_union), SET_SIZE*2);
-  bt_assert(int_set_format(set_union, 0, 2, buf, BUFFER_SIZE) == 0);
+  bt_assert(int_set_format(set_union, ISF_ROUTER_ID, 2, buf, BUFFER_SIZE) == 0);
 
   return 1;
 }
@@ -106,16 +106,20 @@ t_set_int_format(void)
 {
   generate_set_sequence(SET_TYPE_INT, SET_SIZE_FOR_FORMAT_OUTPUT);
 
-  bt_assert(int_set_format(set_sequence, 0, 0, buf, BUFFER_SIZE) == 0);
+  bt_assert(int_set_format(set_sequence, ISF_ROUTER_ID, 0, buf, BUFFER_SIZE) == 0);
   bt_assert(strcmp(buf, "0.0.0.0 0.0.0.1 0.0.0.2 0.0.0.3 0.0.0.4 0.0.0.5 0.0.0.6 0.0.0.7 0.0.0.8 0.0.0.9") == 0);
 
   bzero(buf, BUFFER_SIZE);
-  bt_assert(int_set_format(set_sequence, 0, 2, buf, BUFFER_SIZE) == 0);
+  bt_assert(int_set_format(set_sequence, ISF_ROUTER_ID, 2, buf, BUFFER_SIZE) == 0);
   bt_assert(strcmp(buf, "0.0.0.2 0.0.0.3 0.0.0.4 0.0.0.5 0.0.0.6 0.0.0.7 0.0.0.8 0.0.0.9") == 0);
 
   bzero(buf, BUFFER_SIZE);
-  bt_assert(int_set_format(set_sequence, 1, 0, buf, BUFFER_SIZE) == 0);
+  bt_assert(int_set_format(set_sequence, ISF_COMMUNITY_LIST, 0, buf, BUFFER_SIZE) == 0);
   bt_assert(strcmp(buf, "(0,0) (0,1) (0,2) (0,3) (0,4) (0,5) (0,6) (0,7) (0,8) (0,9)") == 0);
+
+  bzero(buf, BUFFER_SIZE);
+  bt_assert(int_set_format(set_sequence, ISF_NUMBERS, 0, buf, BUFFER_SIZE) == 0);
+  bt_assert(strcmp(buf, "0 1 2 3 4 5 6 7 8 9") == 0);
 
   return 1;
 }

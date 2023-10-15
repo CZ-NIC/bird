@@ -823,8 +823,10 @@ ea_free(ea_list *o)
 }
 
 static int
-get_generic_attr(const eattr *a, byte **buf, int buflen UNUSED)
+get_generic_attr(const eattr *a, byte **buf, int buflen)
 {
+  byte *end = (*buf) + buflen;
+
   switch (a->id)
   {
   case EA_GEN_IGP_METRIC:
@@ -842,6 +844,13 @@ get_generic_attr(const eattr *a, byte **buf, int buflen UNUSED)
   case EA_MPLS_CLASS:
     *buf += bsprintf(*buf, "mpls_class");
     return GA_NAME;
+
+  case EA_ASPA_PROVIDERS:
+    *buf += bsprintf(*buf, "aspa_providers");
+    *(*buf)++ = ':';
+    *(*buf)++ = ' ';
+    *buf += int_set_format(a->u.ptr, ISF_NUMBERS, -1, *buf, end - *buf);
+    return GA_FULL;
 
   default:
     return GA_UNKNOWN;
@@ -1007,7 +1016,7 @@ ea_show(struct cli *c, const eattr *e)
 	  bsprintf(pos, "%08x", e->u.data);
 	  break;
 	case EAF_TYPE_INT_SET:
-	  ea_show_int_set(c, ad, 1, pos, buf, end);
+	  ea_show_int_set(c, ad, ISF_COMMUNITY_LIST, pos, buf, end);
 	  return;
 	case EAF_TYPE_EC_SET:
 	  ea_show_ec_set(c, ad, pos, buf, end);

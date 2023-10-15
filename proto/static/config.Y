@@ -15,6 +15,7 @@ CF_DEFINES
 #define STATIC_CFG ((struct static_config *) this_proto)
 static struct static_route *this_srt, *this_snh;
 static struct f_inst *this_srt_cmds, *this_srt_last_cmd;
+static uint this_srt_aspa_max;
 
 static struct static_route *
 static_nexthop_new(void)
@@ -47,6 +48,7 @@ CF_DECLS
 
 CF_KEYWORDS(STATIC, ROUTE, VIA, DROP, REJECT, PROHIBIT, PREFERENCE, CHECK, LINK, DEV)
 CF_KEYWORDS(ONLINK, WEIGHT, RECURSIVE, IGP, TABLE, BLACKHOLE, UNREACHABLE, BFD, MPLS)
+CF_KEYWORDS(TRANSIT, PROVIDERS)
 
 
 CF_GRAMMAR
@@ -148,7 +150,34 @@ stat_route:
  | stat_route0 BLACKHOLE	{ this_srt->dest = RTD_BLACKHOLE; }
  | stat_route0 UNREACHABLE	{ this_srt->dest = RTD_UNREACHABLE; }
  | stat_route0 PROHIBIT		{ this_srt->dest = RTD_PROHIBIT; }
+ | stat_route0 PROVIDER {
+    if (this_srt->net->type != NET_ASPA) cf_error("Provider settings available only for ASPA");
+    this_srt->aspa = cfg_alloc(sizeof (adata) + (this_srt_aspa_max = 8) * sizeof (u32));
+    this_srt->aspa->length = 0;
+   } stat_aspa_providers
+ | stat_route0 TRANSIT {
+    if (this_srt->net->type != NET_ASPA) cf_error("Transit settings available only for ASPA");
+    /* Allocate an explicit zero */
+    this_srt->aspa = cfg_alloc(sizeof (adata) + sizeof (u32));
+    this_srt->aspa->length = sizeof(u32);
+    ((u32 *) this_srt->aspa->data)[0] = 0;
+   }
  ;
+
+stat_aspa_provider: NUM {
+  if (this_srt->aspa->length == this_srt_aspa_max * sizeof(u32))
+  {
+    adata *new = cfg_alloc(sizeof (adata) + (this_srt_aspa_max * 2) * sizeof (u32));
+    memcpy(new, this_srt->aspa, this_srt->aspa->length + sizeof(adata));
+    this_srt->aspa = new;
+    this_srt_aspa_max *= 2;
+  }
+
+  ((u32 *) this_srt->aspa->data)[this_srt->aspa->length / sizeof(u32)] = $1;
+  this_srt->aspa->length += sizeof(u32);
+}
+
+stat_aspa_providers: stat_aspa_provider | stat_aspa_providers ',' stat_aspa_provider ;
 
 stat_route_item:
    cmd {

@@ -50,7 +50,10 @@ struct static_route {
   byte use_bfd;				/* Configured to use BFD */
   uint mpls_label;			/* Local MPLS label, -1 if unused */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
-  mpls_label_stack *mls;		/* MPLS label stack; may be NULL */
+  union {
+    mpls_label_stack *mls;		/* MPLS label stack; may be NULL */
+    adata *aspa;			/* ASPA provider list; may be NULL */
+  };
 };
 
 /*

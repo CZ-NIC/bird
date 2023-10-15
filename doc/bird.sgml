@@ -5972,6 +5972,13 @@ options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 
 <p>The ROA config is just <cf>route <m/prefix/ max <m/int/ as <m/int/</cf> with no nexthop.
 
+<sect1>Autonomous System Provider Authorization
+
+<p>The ASPA config is <cf>route aspa <m/int/ providers <m/int/ [, <m/int/ ...]</cf> with no nexthop.
+  The first ASN is client and the following are a list of providers.
+  For a transit, you can also write <cf>route aspa <m/int/ transit</cf> to get
+  the no-provider ASPA.
+
 <sect1>Flowspec
 <label id="flowspec-network-type">
 

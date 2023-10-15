@@ -536,6 +536,7 @@ const char *ea_custom_name(uint ea);
 #define EA_MPLS_LABEL		EA_CODE(PROTOCOL_NONE, 1)
 #define EA_MPLS_POLICY		EA_CODE(PROTOCOL_NONE, 2)
 #define EA_MPLS_CLASS		EA_CODE(PROTOCOL_NONE, 3)
+#define EA_ASPA_PROVIDERS	EA_CODE(PROTOCOL_NONE, 4)
 
 #define EA_CODE_MASK 0xffff
 #define EA_CUSTOM_BIT 0x8000

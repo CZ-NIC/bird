@@ -206,8 +206,13 @@ static inline int lc_match(const u32 *l, int i, lcomm v)
 static inline u32 *lc_copy(u32 *dst, const u32 *src)
 { memcpy(dst, src, LCOMM_LENGTH); return dst + 3; }
 
+enum isf_way {
+  ISF_NUMBERS,
+  ISF_COMMUNITY_LIST,
+  ISF_ROUTER_ID,
+};
 
-int int_set_format(const struct adata *set, int way, int from, byte *buf, uint size);
+int int_set_format(const struct adata *set, enum isf_way way, int from, byte *buf, uint size);
 int ec_format(byte *buf, u64 ec);
 int ec_set_format(const struct adata *set, int from, byte *buf, uint size);
 int lc_format(byte *buf, lcomm lc);

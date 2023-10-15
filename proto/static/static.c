@@ -99,6 +99,32 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
     rta_set_recursive_next_hop(p->p.main_channel->table, a, tab, r->via, IPA_NONE, r->mls);
   }
 
+  if (r->net->type == NET_ASPA)
+  {
+    if (r->dest != RTD_NONE)
+    {
+      log(L_WARN "%s: ASPA %u configured with nexthop, ignoring the nexthop",
+	p->p.name, ((struct net_addr_aspa *) r->net)->asn);
+      r->dest = RTD_NONE;
+    }
+
+    if (!r->aspa)
+    {
+      log(L_WARN "%s: ASPA %u configured with no provider list, ignoring the whole rule",
+	p->p.name, ((struct net_addr_aspa *) r->net)->asn);
+      goto withdraw;
+    }
+
+    ea_list *ea = alloca(sizeof(ea_list) + sizeof(eattr));
+    *ea = (ea_list) { .flags = EALF_SORTED, .count = 1, .next = a->eattrs, };
+    ea->attrs[0] = (eattr) {
+      .id = EA_ASPA_PROVIDERS,
+      .type = EAF_TYPE_INT_SET,
+      .u.ptr = r->aspa,
+    };
+    a->eattrs = ea;
+  }
+
   if (p->p.mpls_channel)
   {
     struct mpls_channel *mc = (void *) p->p.mpls_channel;

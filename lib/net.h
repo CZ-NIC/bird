@@ -23,7 +23,8 @@
 #define NET_FLOW6	8
 #define NET_IP6_SADR	9
 #define NET_MPLS	10
-#define NET_MAX		11
+#define NET_ASPA	11
+#define NET_MAX		12
 
 #define NB_IP4		(1 << NET_IP4)
 #define NB_IP6		(1 << NET_IP6)
@@ -35,6 +36,7 @@
 #define NB_FLOW6	(1 << NET_FLOW6)
 #define NB_IP6_SADR	(1 << NET_IP6_SADR)
 #define NB_MPLS		(1 << NET_MPLS)
+#define NB_ASPA		(1 << NET_ASPA)
 
 #define NB_IP		(NB_IP4 | NB_IP6)
 #define NB_VPN		(NB_VPN4 | NB_VPN6)
@@ -124,6 +126,13 @@ typedef struct net_addr_mpls {
   u32 label;
 } net_addr_mpls;
 
+typedef struct net_addr_aspa {
+  u8 type;
+  u8 pxlen;
+  u16 length;
+  u32 asn;
+} net_addr_aspa;
+
 typedef struct net_addr_ip6_sadr {
   u8 type;
   u8 dst_pxlen;
@@ -145,6 +154,7 @@ typedef union net_addr_union {
   net_addr_flow6 flow6;
   net_addr_ip6_sadr ip6_sadr;
   net_addr_mpls mpls;
+  net_addr_aspa aspa;
 } net_addr_union;
 
 
@@ -183,6 +193,12 @@ extern const u16 net_max_text_length[];
 #define NET_ADDR_IP6_SADR(dst_prefix,dst_pxlen,src_prefix,src_pxlen) \
   ((net_addr_ip6_sadr) { NET_IP6_SADR, dst_pxlen, sizeof(net_addr_ip6_sadr), dst_prefix, src_pxlen, src_prefix })
 
+#define NET_ADDR_ASPA(asn) \
+  ((net_addr_aspa) { NET_ASPA, 32, sizeof(net_addr_aspa), asn })
+
+#define NET_ADDR_ASPA_EXISTS(asn) NET_ADDR_ASPA(asn, asn)
+#define NET_ADDR_ASPA_TRANSIT(asn) NET_ADDR_ASPA(asn, 0)
+
 #define NET_ADDR_MPLS(label) \
   ((net_addr_mpls) { NET_MPLS, 20, sizeof(net_addr_mpls), label })
 
@@ -210,6 +226,9 @@ static inline void net_fill_ip6_sadr(net_addr *a, ip6_addr dst_prefix, uint dst_
 
 static inline void net_fill_mpls(net_addr *a, u32 label)
 { *(net_addr_mpls *)a = NET_ADDR_MPLS(label); }
+
+static inline void net_fill_aspa(net_addr *a, u32 asn)
+{ *(net_addr_aspa *)a = NET_ADDR_ASPA(asn); }
 
 static inline void net_fill_ipa(net_addr *a, ip_addr prefix, uint pxlen)
 {
@@ -269,6 +288,9 @@ static inline int net_is_roa(const net_addr *a)
 static inline int net_is_flow(const net_addr *a)
 { return (a->type == NET_FLOW4) || (a->type == NET_FLOW6); }
 
+static inline int net_is_aspa(const net_addr *a)
+{ return (a->type == NET_ASPA); }
+
 static inline int net_is_sadr(const net_addr *a)
 { return (a->type == NET_IP6_SADR); }
 
@@ -296,6 +318,7 @@ static inline ip_addr net_prefix(const net_addr *a)
     return ipa_from_ip6(net6_prefix(a));
 
   case NET_MPLS:
+  case NET_ASPA:
   default:
     return IPA_NONE;
   }
@@ -366,6 +389,9 @@ static inline int net_equal_ip6_sadr(const net_addr_ip6_sadr *a, const net_addr_
 static inline int net_equal_mpls(const net_addr_mpls *a, const net_addr_mpls *b)
 { return !memcmp(a, b, sizeof(net_addr_mpls)); }
 
+static inline int net_equal_aspa(const net_addr_aspa *a, const net_addr_aspa *b)
+{ return !memcmp(a, b, sizeof(net_addr_aspa)); }
+
 
 static inline int net_equal_prefix_roa4(const net_addr_roa4 *a, const net_addr_roa4 *b)
 { return ip4_equal(a->prefix, b->prefix) && (a->pxlen == b->pxlen); }
@@ -407,6 +433,9 @@ static inline int net_zero_flow6(const net_addr_flow6 *a)
 static inline int net_zero_mpls(const net_addr_mpls *a)
 { return !a->label; }
 
+static inline int net_zero_aspa(const net_addr_aspa *a)
+{ return !a->asn; }
+
 
 static inline int net_compare_ip4(const net_addr_ip4 *a, const net_addr_ip4 *b)
 { return ip4_compare(a->prefix, b->prefix) ?: uint_cmp(a->pxlen, b->pxlen); }
@@ -441,6 +470,9 @@ static inline int net_compare_ip6_sadr(const net_addr_ip6_sadr *a, const net_add
 
 static inline int net_compare_mpls(const net_addr_mpls *a, const net_addr_mpls *b)
 { return uint_cmp(a->label, b->label); }
+
+static inline int net_compare_aspa(const net_addr_aspa *a, const net_addr_aspa *b)
+{ return uint_cmp(a->asn, b->asn); }
 
 int net_compare(const net_addr *a, const net_addr *b);
 
@@ -477,6 +509,9 @@ static inline void net_copy_ip6_sadr(net_addr_ip6_sadr *dst, const net_addr_ip6_
 
 static inline void net_copy_mpls(net_addr_mpls *dst, const net_addr_mpls *src)
 { memcpy(dst, src, sizeof(net_addr_mpls)); }
+
+static inline void net_copy_aspa(net_addr_aspa *dst, const net_addr_aspa *src)
+{ memcpy(dst, src, sizeof(net_addr_aspa)); }
 
 
 static inline u32 px4_hash(ip4_addr prefix, u32 pxlen)
@@ -520,6 +555,9 @@ static inline u32 net_hash_ip6_sadr(const net_addr_ip6_sadr *n)
 
 static inline u32 net_hash_mpls(const net_addr_mpls *n)
 { return u32_hash(n->label); }
+
+static inline u32 net_hash_aspa(const net_addr_aspa *n)
+{ return u32_hash(n->asn); }
 
 u32 net_hash(const net_addr *a);
 
@@ -569,6 +607,9 @@ static inline int net_validate_flow6(const net_addr_flow6 *n)
 
 static inline int net_validate_mpls(const net_addr_mpls *n)
 { return n->label < (1 << 20); }
+
+static inline int net_validate_aspa(const net_addr_aspa *n)
+{ return n->asn > 0; }
 
 static inline int net_validate_ip6_sadr(const net_addr_ip6_sadr *n)
 { return net_validate_px6(n->dst_prefix, n->dst_pxlen) && net_validate_px6(n->src_prefix, n->src_pxlen); }

@@ -118,7 +118,7 @@ CF_DECLS
 %type <time> expr_us time
 %type <a> ipa
 %type <net> net_ip4_ net_ip4 net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
-%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_
+%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_ net_aspa_
 %type <mls> label_stack_start label_stack
 
 %type <t> text opttext
@@ -299,6 +299,12 @@ net_mpls_: MPLS NUM
   net_fill_mpls($$, $2);
 }
 
+net_aspa_: ASPA NUM
+{
+  $$ = cfg_alloc(sizeof(net_addr_aspa));
+  net_fill_aspa($$, $2);
+}
+
 net_ip_: net_ip4_ | net_ip6_ ;
 net_vpn_: net_vpn4_ | net_vpn6_ ;
 net_roa_: net_roa4_ | net_roa6_ ;
@@ -310,6 +316,7 @@ net_:
  | net_flow_
  | net_ip6_sadr_
  | net_mpls_
+ | net_aspa_
  ;
 
 
