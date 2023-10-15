@@ -35,7 +35,7 @@ long page_size = 0;
 
 STATIC_ASSERT(KEEP_PAGES_MAIN_MIN * 4 < KEEP_PAGES_MAIN_MAX);
 
-static _Bool use_fake = 0;
+static bool use_fake = 0;
 
 #if DEBUGGING
 struct free_page {

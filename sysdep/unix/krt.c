@@ -805,7 +805,7 @@ krt_got_route_async(struct krt_proto *p, rte *e, int new, s8 src)
 
 static timer *krt_scan_all_timer;
 static int krt_scan_all_count;
-static _Bool krt_scan_all_tables;
+static bool krt_scan_all_tables;
 
 static void
 krt_scan_all(timer *t UNUSED)

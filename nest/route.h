@@ -655,7 +655,7 @@ ea_set_attr(ea_list **to, struct linpool *pool, uint id, uint flags, uint type, 
 }
 
 static inline void
-ea_unset_attr(ea_list **to, struct linpool *pool, _Bool local, uint code)
+ea_unset_attr(ea_list **to, struct linpool *pool, bool local, uint code)
 {
   struct ea_one_attr_list *ea = lp_alloc(pool, sizeof(*ea));
   *ea = (struct ea_one_attr_list) {

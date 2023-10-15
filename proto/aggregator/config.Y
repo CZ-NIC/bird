@@ -45,7 +45,7 @@ aggregator_proto_item:
     if (AGGREGATOR_CFG->aggr_on)
       cf_error("Only one aggregate on clause allowed");
 
-    _Bool net_present = 0;
+    bool net_present = 0;
     int count = 0;
 
     for (const struct aggr_item_node *item = $3; item; item = item->next) {
