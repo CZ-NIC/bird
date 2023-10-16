@@ -1059,10 +1059,13 @@ mpls_announce_fec(struct mpls_fec_map *m, struct mpls_fec *fec, const rta *src)
     const u32 *labels = &src->nh.label[src->nh.labels - src->nh.labels_orig];
     mpls_label_stack ms;
 
-    /* Apply the hostentry with the original labelstack */
+    /* Reconstruct the original labelstack */
     ms.len = src->nh.labels_orig;
     memcpy(ms.stack, labels, src->nh.labels_orig * sizeof(u32));
-    rta_apply_hostentry(a, src->hostentry, &ms);
+
+    /* The same hostentry, but different dependent table */
+    struct hostentry *s = src->hostentry;
+    rta_set_recursive_next_hop(m->channel->table, a, s->owner, s->addr, s->link, &ms);
   }
 
   net_addr_mpls n = NET_ADDR_MPLS(fec->label);
