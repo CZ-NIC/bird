@@ -244,7 +244,8 @@ struct hostentry {
   ip_addr addr;				/* IP address of host, part of key */
   ip_addr link;				/* (link-local) IP address of host, used as gw
 					   if host is directly attached */
-  struct rtable *tab;			/* Dependent table, part of key */
+  rtable *tab;				/* Dependent table, part of key */
+  rtable *owner;			/* Nexthop owner table */
   struct hostentry *next;		/* Next in hash chain */
   unsigned hash_key;			/* Hash key */
   unsigned uc;				/* Use count */

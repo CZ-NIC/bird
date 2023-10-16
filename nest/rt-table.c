@@ -3659,6 +3659,7 @@ rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
       return he;
 
   he = hc_new_hostentry(hc, tab->rp, a, link, dep, k);
+  he->owner = tab;
   rt_update_hostentry(tab, he);
   return he;
 }
