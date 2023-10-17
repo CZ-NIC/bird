@@ -60,6 +60,8 @@ static void channel_refeed_stopped(struct rt_export_request *req);
 static void channel_check_stopped(struct channel *c);
 static void channel_reload_in_done(struct channel_import_request *cir);
 static void channel_request_partial_reload(struct channel *c, struct channel_import_request *cir);
+void print_trie_node(const struct f_trie_node4 *t, int i);
+
 
 static inline int proto_is_done(struct proto *p)
 { return (p->proto_state == PS_DOWN) && proto_is_inactive(p); }
@@ -351,19 +353,26 @@ struct roa_subscription {
 };
 
 static void
+channel_roa_in_reload_done(struct channel_import_request *req)
+{
+  rfree(req->trie->lp);
+}
+
+static void
 channel_roa_in_changed(struct settle *se)
 {
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, settle, se);
   struct channel *c = s->c;
 
   CD(c, "Reload triggered by RPKI change");
-
   struct channel_import_request *cir = lp_alloc(s->trie->lp, sizeof *cir);
   *cir = (struct channel_import_request) {
     .trie = s->trie,
+    .done = channel_roa_in_reload_done,
   };
-  if (s->trie)
-    cir->done = channel_reload_in_done;
+  
+  s->trie = f_new_trie(lp_new(c->proto->pool), 0);
+
 
   channel_request_partial_reload(c, cir);
 }
@@ -401,7 +410,8 @@ static void
 channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
-
+  print_trie_node(&s->trie->root.v4, 10);
+  log("adding %N to %x",net, s->trie );
   switch (net->type)
   {
     case NET_ROA4:
@@ -413,7 +423,6 @@ channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struc
     default:
       bug("ROA table sent us a non-roa export");
   }
-
   settle_kick(&s->settle, s->c->proto->loop);
 
   rpe_mark_seen_all(req->hook, first, NULL, NULL);
@@ -425,7 +434,6 @@ channel_dump_roa_req(struct rt_export_request *req)
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
   struct channel *c = s->c;
   struct rtable_private *tab = SKIP_BACK(struct rtable_private, exporter.e, req->hook->table);
-
   debug("  Channel %s.%s ROA %s change notifier from table %s request %p\n",
       c->proto->name, c->name,
       (s->settle.hook == channel_roa_in_changed) ? "import" : "export",
@@ -437,7 +445,6 @@ channel_roa_is_subscribed(struct channel *c, rtable *tab, int dir)
 {
   void (*hook)(struct settle *) =
     dir ? channel_roa_in_changed : channel_roa_out_changed;
-
   struct roa_subscription *s;
   node *n;
 
@@ -456,7 +463,6 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
     return;
 
   struct roa_subscription *s = mb_allocz(c->proto->pool, sizeof(struct roa_subscription));
-
   *s = (struct roa_subscription) {
     .settle = SETTLE_INIT(&c->roa_settle, dir ? channel_roa_in_changed : channel_roa_out_changed, NULL),
     .c = c,
@@ -471,7 +477,6 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
       .export_one = channel_export_one_roa,
     },
   };
-
   add_tail(&c->roa_subscriptions, &s->roa_node);
   rt_request_export(tab, &s->req);
 }
@@ -764,11 +769,18 @@ channel_refeed_prefilter(const struct rt_prefilter *p, const net_addr *n)
   for (struct channel_feeding_request *cfr = c->refeeding; cfr; cfr = cfr->next)
     if (!cfr->trie || trie_match_net(cfr->trie, n))
     {
-      log(L_TRACE "Export this one");
       return 1;
     }
   log(L_TRACE "%N filtered out of export", n);
   return 0;
+}
+
+void print_trie_node(const struct f_trie_node4 *t, int i){
+  log("%i:addr %x, acc %x, mask %x",i, t->addr, t->accept, t->mask);
+  i++;
+  for (int j = 0; j < 1 << TRIE_STEP; j++)
+    if (t->c[j])
+      print_trie_node(t->c[j], i);
 }
 
 static int
@@ -782,9 +794,13 @@ channel_import_prefilter(const struct rt_prefilter *p, const net_addr *n)
   for (struct channel_import_request *cir = c->importing; cir; cir = cir->next)
   {
     if (!cir->trie || trie_match_net(cir->trie, n))
+    {
+      /*print_trie_node(&cir->trie->root.v4, 0);*/
+      log(L_TRACE "%N passed to import", n);
       return 1;
+    }
   }
-  log(L_TRACE "%N filtered out of import", n);
+  log(L_TRACE "%N filtered out of import trie", n);
   return 0;
 }
 

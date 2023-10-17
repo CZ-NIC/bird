@@ -506,6 +506,7 @@ trie_match_net4(const struct f_trie *t, ip4_addr px, uint plen)
 
   while (n)
   {
+    log("ip4 filtering %x %x net %x", n->addr, n->accept, px);
     /* We are out of path */
     if (!ip4_prefix_equal(px, n->addr, MIN(plen, n->plen)))
       return 0;

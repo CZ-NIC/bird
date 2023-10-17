@@ -1251,6 +1251,7 @@ rpe_next(struct rt_pending_export *rpe, struct rte_src *src)
 }
 
 static struct rt_pending_export * rt_next_export_fast(struct rt_pending_export *last);
+
 static int
 rte_export(struct rt_table_export_hook *th, struct rt_pending_export *rpe)
 {
