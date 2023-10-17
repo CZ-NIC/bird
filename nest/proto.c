@@ -370,9 +370,8 @@ channel_roa_in_changed(struct settle *se)
     .trie = s->trie,
     .done = channel_roa_in_reload_done,
   };
-  
-  s->trie = f_new_trie(lp_new(c->proto->pool), 0);
 
+  s->trie = f_new_trie(lp_new(c->proto->pool), 0);
 
   channel_request_partial_reload(c, cir);
 }
@@ -410,8 +409,6 @@ static void
 channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
-  print_trie_node(&s->trie->root.v4, 10);
-  log("adding %N to %x",net, s->trie );
   switch (net->type)
   {
     case NET_ROA4:
@@ -775,14 +772,6 @@ channel_refeed_prefilter(const struct rt_prefilter *p, const net_addr *n)
   return 0;
 }
 
-void print_trie_node(const struct f_trie_node4 *t, int i){
-  log("%i:addr %x, acc %x, mask %x",i, t->addr, t->accept, t->mask);
-  i++;
-  for (int j = 0; j < 1 << TRIE_STEP; j++)
-    if (t->c[j])
-      print_trie_node(t->c[j], i);
-}
-
 static int
 channel_import_prefilter(const struct rt_prefilter *p, const net_addr *n)
 {
@@ -795,7 +784,6 @@ channel_import_prefilter(const struct rt_prefilter *p, const net_addr *n)
   {
     if (!cir->trie || trie_match_net(cir->trie, n))
     {
-      /*print_trie_node(&cir->trie->root.v4, 0);*/
       log(L_TRACE "%N passed to import", n);
       return 1;
     }
