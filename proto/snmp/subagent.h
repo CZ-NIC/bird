@@ -115,7 +115,7 @@ enum snmp_search_res {
 
 #define COPY_STR(proto, buf, str, length, byte_order) ({		      \
   length = LOAD_PTR(buf, byte_order);					      \
-  log(L_INFO "LOAD_STR(), %p %u", proto->pool, length + 1);		      \
+  /*log(L_INFO "LOAD_STR(), %p %u", proto->pool, length + 1); */	      \
   str = mb_alloc(proto->pool, length + 1);				      \
   memcpy(str, buf+4, length);						      \
   str[length] = '\0'; /* set term. char */				      \
@@ -338,6 +338,10 @@ u8 snmp_get_mib_class(const struct oid *oid);
 
 
 // debug wrapper
+#if 0
 #define snmp_log(...) log(L_INFO "snmp " __VA_ARGS__)
+#else
+#define snmp_log(...) do { } while(0)
+#endif
 
 #endif
