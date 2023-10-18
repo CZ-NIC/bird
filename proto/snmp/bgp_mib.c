@@ -1237,12 +1237,12 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
   if (oid_state_compare(oid, state) < 0 || state == BGP_INTERNAL_END)
   {
     vb->type = AGENTX_NO_SUCH_OBJECT;
-    return ((byte *) vb) + snmp_varbind_header_size(vb);
+    return pkt + snmp_varbind_header_size(vb);
   }
   else if (oid_state_compare(oid, state) > 0)
   {
     vb->type = AGENTX_NO_SUCH_INSTANCE;
-    return ((byte *) vb) + snmp_varbind_header_size(vb);
+    return pkt + snmp_varbind_header_size(vb);
   }
 
   switch (state)
@@ -1262,7 +1262,7 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
 
     default:
       vb->type = AGENTX_NO_SUCH_OBJECT;
-      pkt = ((byte *) vb) + snmp_varbind_header_size(vb);
+      pkt += snmp_varbind_header_size(vb);
       break;
   }
 

@@ -169,7 +169,7 @@ struct agentx_header {
   u32 session_id;	/* AgentX sessionID established by Open-PDU */
   u32 transaction_id;	/* last transactionID seen/used */
   u32 packet_id;	/* last packetID seen/used */
-  u32 payload;		/* length of the packet without header */
+  u32 payload;		/* payload_length of the packet without header */
 };
 
 #define AGENTX_HEADER_SIZE sizeof(struct agentx_header)
@@ -223,6 +223,7 @@ struct agentx_bulk_state {
   struct agentx_getbulk getbulk;
   u16 index;
   u16 repetition;
+  u32 repeaters;
 };
 
 enum agentx_pdu {
@@ -256,6 +257,12 @@ enum agentx_flags {
   AGENTX_NON_DEFAULT_CONTEXT	    = 0x08,
   AGENTX_NETWORK_BYTE_ORDER	    = 0x10,
 } PACKED;
+
+#define AGENTX_FLAGS (AGENTX_FLAG_INSTANCE_REGISTRATION			      \
+  | AGENTX_FLAG_NEW_INDEX						      \
+  | AGENTX_FLAG_ANY_INDEX						      \
+  | AGENTX_NON_DEFAULT_CONTEXT						      \
+  | AGENTX_NETWORK_BYTE_ORDER)
 
 /* CLOSE_PDU close reasons */
 enum agentx_close_reasons {

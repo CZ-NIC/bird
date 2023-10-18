@@ -169,5 +169,10 @@ struct snmp_proto {
 };
 
 //void snmp_tx(sock *sk);
+void snmp_startup(struct snmp_proto *p);
+void snmp_connected(sock *sk);
+void snmp_startup_timeout(timer *tm);
+void snmp_reconnect(timer *tm);
+
 
 #endif

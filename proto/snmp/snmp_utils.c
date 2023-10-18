@@ -31,7 +31,7 @@ snmp_is_oid_empty(const struct oid *oid)
  * @pkt: first byte past packet end
  */
 uint
-snmp_pkt_len(byte *start, byte *end)
+snmp_pkt_len(const byte *start, const byte *end)
 {
   snmp_log("snmp_pkt_len start 0x%p end 0x%p  res %u", start, end, (end - start)
 - AGENTX_HEADER_SIZE);
@@ -42,7 +42,8 @@ snmp_pkt_len(byte *start, byte *end)
  *
  * used for copying oid to in buffer oid @dest
  */
-void snmp_oid_copy(struct oid *dest, const struct oid *src)
+void
+snmp_oid_copy(struct oid *dest, const struct oid *src)
 {
   STORE_U8(dest->n_subid, src->n_subid);
   STORE_U8(dest->prefix,  src->prefix);
@@ -147,6 +148,28 @@ snmp_varbind_size(struct agentx_varbind *vb, int byte_ord)
    * (AGENTX_OCTET_STRING, AGENTX_IP_ADDRESS, AGENTX_OPAQUE)
    */
   return hdr_size + snmp_str_size_from_len(LOAD_PTR(data, byte_ord));
+}
+
+/* test if the varbind has valid type */
+int
+snmp_test_varbind(const struct agentx_varbind *vb)
+{
+  if (vb->type == AGENTX_INTEGER  ||
+      vb->type == AGENTX_OCTET_STRING  ||
+      vb->type == AGENTX_NULL  ||
+      vb->type == AGENTX_OBJECT_ID  ||
+      vb->type == AGENTX_IP_ADDRESS  ||
+      vb->type == AGENTX_COUNTER_32  ||
+      vb->type == AGENTX_GAUGE_32  ||
+      vb->type == AGENTX_TIME_TICKS  ||
+      vb->type == AGENTX_OPAQUE  ||
+      vb->type == AGENTX_COUNTER_64  ||
+      vb->type == AGENTX_NO_SUCH_OBJECT  ||
+      vb->type == AGENTX_NO_SUCH_INSTANCE  ||
+      vb->type == AGENTX_END_OF_MIB_VIEW)
+    return 1;
+  else
+    return 0;
 }
 
 /*
@@ -297,7 +320,7 @@ snmp_oid_ip4_index(struct oid *o, uint start, ip4_addr addr)
   STORE_U32(o->ids[start + 3], temp & 0xFF);
 }
 
-void snmp_oid_dump(struct oid *oid)
+void snmp_oid_dump(const struct oid *oid)
 {
   log(L_WARN "OID DUMP ========");
 

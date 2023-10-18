@@ -3,7 +3,7 @@
 
 #include "subagent.h"
 
-uint snmp_pkt_len(byte *start, byte *end);
+uint snmp_pkt_len(const byte *start, const byte *end);
 size_t snmp_str_size_from_len(uint len);
 size_t snmp_str_size(const char *str);
 int snmp_is_oid_empty(const struct oid *oid);
@@ -14,6 +14,7 @@ size_t snmp_oid_sizeof(uint n_subid);
 uint snmp_varbind_hdr_size_from_oid(struct oid *oid);
 uint snmp_varbind_header_size(struct agentx_varbind *vb);
 uint snmp_varbind_size(struct agentx_varbind *vb, int byte_ord);
+int snmp_test_varbind(const struct agentx_varbind *vb);
 //uint snmp_context_size(struct agentx_context *c);
 
 void snmp_oid_copy(struct oid *dest, const struct oid *src);
@@ -40,7 +41,7 @@ byte *snmp_put_fbyte(byte *buf, u8 data);
 
 void snmp_oid_ip4_index(struct oid *o, uint start, ip4_addr addr);
 
-void snmp_oid_dump(struct oid *oid);
+void snmp_oid_dump(const struct oid *oid);
 
 //struct oid *snmp_prefixize(struct snmp_proto *p, struct oid *o, int byte_ord);
 

@@ -34,7 +34,7 @@ static uint parse_gets2_pdu(struct snmp_proto *p, byte *buf, uint size, uint *sk
 static uint parse_close_pdu(struct snmp_proto *p, byte *buf, uint size);
 static struct agentx_response *prepare_response(struct snmp_proto *p, struct snmp_pdu *c);
 static void response_err_ind(struct agentx_response *res, uint err, uint ind);
-static uint update_packet_size(struct snmp_proto *p, byte *start, byte *end);
+static uint update_packet_size(struct snmp_proto *p, const byte *start, byte *end);
 static struct oid *search_mib(struct snmp_proto *p, const struct oid *o_start, const struct oid *o_end, struct oid *o_curr, struct snmp_pdu *c, enum snmp_search_res *result);
 
 u32 snmp_internet[] = { SNMP_ISO, SNMP_ORG, SNMP_DOD, SNMP_INTERNET };
@@ -353,34 +353,6 @@ close_pdu(struct snmp_proto *p, u8 reason)
 
 #if 0
 static void UNUSED
-parse_testset_pdu(struct snmp_proto *p)
-{
-  sock *sk = p->sock;
-  sk_send(sk, 0);
-}
-
-static void UNUSED
-parse_commitset_pdu(struct snmp_proto *p)
-{
-  sock *sk = p->sock;
-  sk_send(sk, 0);
-}
-
-static void UNUSED
-parse_undoset_pdu(struct snmp_proto *p)
-{
-  sock *sk = p->sock;
-  sk_send(sk, 0);
-}
-
-static void UNUSED
-parse_cleanupset_pdu(struct snmp_proto *p)
-{
-  sock *sk = p->sock;
-  sk_send(sk, 0);
-}
-
-static void UNUSED
 addagentcaps_pdu(struct snmp_proto *p, struct oid *cap, char *descr,
 		 uint descr_len, struct agentx_context *c)
 {
@@ -673,7 +645,8 @@ snmp_get_mib_class(const struct oid *oid)
   }
 }
 
-static void
+/* return 0 if the created varbind type is END_OF_MIB_VIEW, 1 otherwise */
+static int
 snmp_get_next2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
 	       struct snmp_pdu *c)
 {
@@ -695,13 +668,13 @@ snmp_get_next2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
       {
 	/* TODO create NULL varbind */
 	c->error = AGENTX_RES_GEN_ERROR;
-	return;
+	return 0;
       }
 
       vb = snmp_create_varbind(c->buffer, o_start);
       vb->type = AGENTX_END_OF_MIB_VIEW;
       ADVANCE(c->buffer, c->size, snmp_varbind_header_size(vb));
-      return;
+      return 0;
 
     case SNMP_SEARCH_OK:
     default:
@@ -721,13 +694,11 @@ snmp_get_next2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
       case AGENTX_NO_SUCH_INSTANCE:
       case AGENTX_END_OF_MIB_VIEW:
 	vb->type = AGENTX_END_OF_MIB_VIEW;
-	break;
+	return 0;
 
-      default:	/* intentionally left blank */
-	break;
+      default:
+	return 1;
     }
-
-    return;
   }
 
   if (c->size < snmp_varbind_hdr_size_from_oid(o_start))
@@ -739,22 +710,14 @@ snmp_get_next2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
   vb = snmp_create_varbind(c->buffer, o_start);
   vb->type = AGENTX_END_OF_MIB_VIEW;
   ADVANCE(c->buffer, c->size, snmp_varbind_header_size(vb));
+  return 0;
 }
 
-static void
+/* returns 0 if the created varbind has type EndOfMibView, 1 otherwise */
+static int
 snmp_get_bulk2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
 	       struct agentx_bulk_state *state, struct snmp_pdu *c)
 {
-  if (state->index <= state->getbulk.non_repeaters)
-  {
-    return snmp_get_next2(p, o_start, o_end, c);
-    /*
-     * Here we don't need to do any overriding, not even in case no object was
-     * found, as the GetNext-PDU override is same as GetBulk-PDU override
-     * (to AGENTX_RES_END_OF_MIB_VIEW)
-     */
-  }
-
   struct oid *o_curr = NULL;
   struct oid *o_predecessor = NULL;
   enum snmp_search_res r;
@@ -765,8 +728,10 @@ snmp_get_bulk2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
     o_predecessor = o_curr;
     o_curr = search_mib(p, o_start, o_end, o_curr, c, &r);
     i++;
-  } while (o_curr && i <= state->repetition);
-  
+  } while (o_curr && i < state->repetition);
+
+  // TODO check if the approach below works
+  // it need to generate varbinds that will be only of type EndOfMibView
   /* Object Identifier fall-backs */
   if (!o_curr)
     o_curr = o_predecessor;
@@ -779,7 +744,7 @@ snmp_get_bulk2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
   if (c->size < sz)
   {
     c->error = AGENTX_RES_GEN_ERROR;
-    return;
+    return 0;
   }
 
   /* we need the varbind handle to be able to override it's type */
@@ -799,41 +764,15 @@ snmp_get_bulk2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
     case AGENTX_NO_SUCH_INSTANCE:
     case AGENTX_END_OF_MIB_VIEW:
       vb->type = AGENTX_END_OF_MIB_VIEW;
-      break;
+      return 0;
 
-    default:  /* intentionally left blank */
-      break;
+    default:
+      return 1;
   }
-}
-
-static uint UNUSED
-parse_close_pdu(struct snmp_proto UNUSED *p, byte UNUSED *req, uint UNUSED size)
-{
-  /*
-  snmp_log("parse_close_pdu()");
-
-  // byte *pkt = req;
-  // sock *sk = p->sock;
-
-  if (size < sizeof(struct agentx_header))
-  {
-    snmp_log("p_close early return");
-    return 0;
-  }
-
-  // struct agentx_header *h = (void *) req;
-  ADVANCE(req, size, AGENTX_HEADER_SIZE);
-  //snmp_log("after header %p", req);
-
-  p->state = SNMP_ERR;
-
-  proto_notify_state(&p->p, PS_DOWN);
-  */
-  return 0;
 }
 
 static inline uint
-update_packet_size(struct snmp_proto *p, byte *start, byte *end)
+update_packet_size(struct snmp_proto *p, const byte *start, byte *end)
 {
   /* work even for partial messages */
   struct agentx_header *h = (void *) p->sock->tpos;
@@ -906,6 +845,11 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
    c.context = ...
    */
 
+  /*
+   * Get-Bulk processing stops if all the varbind have type END_OF_MIB_VIEW
+   * has_any is true if some varbind has type other than END_OF_MIB_VIEW
+   */
+  int has_any = 0;
   struct agentx_bulk_state bulk_state = { };
   if (h->type == AGENTX_GET_BULK_PDU)
   {
@@ -926,22 +870,24 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
 	.non_repeaters = LOAD_U32(bulk_info->non_repeaters, c.byte_ord),
 	.max_repetitions = LOAD_U32(bulk_info->max_repetitions, c.byte_ord),
       },
-      .index = 1,
-      .repetition = 1,
+      /* In contrast to the RFC, we use 0-based indices. */
+      .index = 0,
+      .repetition = 0,
     };
   }
 
   if (!p->partial_response && c.size < sizeof(struct agentx_response))
   {
     snmp_manage_tbuf(p, &c);
+    // TODO renew pkt, pkt_start pointers context clen
   }
 
   struct agentx_response *response_header = prepare_response(p, &c);
 
-  uint ind = 1;
+  uint ind = 0;
   while (c.error == AGENTX_RES_NO_ERROR && size > 0 && pkt_size > 0)
   {
-    snmp_log("iter %u  size %u remaining %u/%u", ind, c.buffer - sk->tpos, size, pkt_size);
+    snmp_log("iter %u  size %u remaining %u/%u", ind + 1, c.buffer - sk->tpos, size, pkt_size);
 
     if (size < snmp_oid_sizeof(0))
       goto partial;
@@ -961,9 +907,9 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
      * we send processed part, otherwise we don't have anything to send and
      * need to wait for more data to be recieved.
      */
-    if (sz > size && ind > 1)
+    if (sz > size && ind > 0)
     {
-      snmp_log("sz %u > %u size && ind %u > 1", sz, size, ind);
+      snmp_log("sz %u > %u size && ind %u > 1", sz, size, ind + 1);
       goto partial;  /* send already processed part */
     }
     else if (sz > size)
@@ -988,9 +934,9 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
       goto send;
     }
 
-    if (sz > size && ind > 1)
+    if (sz > size && ind > 0)
     {
-      snmp_log("sz2 %u > %u size && ind %u > 1", sz, size, ind);
+      snmp_log("sz2 %u > %u size && ind %u > 1", sz, size, ind + 1);
       size += snmp_oid_size(o_start_b);
       goto partial;
     }
@@ -1028,7 +974,14 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
 	break;
 
       case AGENTX_GET_BULK_PDU:
-	snmp_get_bulk2(p, o_start, o_end, &bulk_state, &c);
+	if (ind >= bulk_state.getbulk.non_repeaters)
+	  bulk_state.repeaters++;
+
+	// store the o_start, o_end
+
+	/* The behavior of GetBulk pdu in the first iteration is
+	 * identical to GetNext pdu. */
+	has_any = has_any || snmp_get_next2(p, o_start, o_end, &c);
 	break;
 
       default:
@@ -1043,11 +996,27 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
     ind++;
   } /* while (c.error == AGENTX_RES_NO_ERROR && size > 0) */
 
+  if (h->type == AGENTX_GET_BULK_PDU)
+  {
+    for (bulk_state.repetition++;
+	 has_any && bulk_state.repetition < bulk_state.getbulk.max_repetitions;
+	 bulk_state.repetition++)
+    {
+      // TODO find propper start and end
+      struct oid *start = NULL;
+      struct oid *end = NULL;
+      has_any = 0;
+      for (bulk_state.index = 0; bulk_state.index < bulk_state.repeaters;
+	   bulk_state.repeaters++)
+	has_any = has_any || snmp_get_bulk2(p, start, end, &bulk_state, &c);
+    }
+  }
+
 send:
   snmp_log("gets2: sending response ...");
   struct agentx_response *res = (void *) sk->tbuf;
   /* We update the error, index pair on the beginning of the packet. */
-  response_err_ind(res, c.error, ind);
+  response_err_ind(res, c.error, ind + 1);
   uint s = update_packet_size(p, (byte *) response_header, c.buffer);
 
   snmp_log("sending response to Get-PDU, GetNext-PDU or GetBulk-PDU request (size %u)...", s);

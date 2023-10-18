@@ -172,6 +172,34 @@ snmp_down(struct snmp_proto *p)
   proto_notify_state(&p->p, PS_DOWN);
 }
 
+/* this function is internal and shouldn't be used outside the snmp module */
+void
+snmp_connected(sock *sk)
+{
+  struct snmp_proto *p = sk->data;
+  snmp_log("snmp_connected() connection created");
+
+  p->state = SNMP_OPEN;
+
+  sk->rx_hook = snmp_rx;
+  sk->tx_hook = NULL;
+  //sk->tx_hook = snmp_tx;
+
+  snmp_start_subagent(p);
+
+  // TODO ping interval <move to do_response()>
+  tm_set(p->ping_timer, current_time() + p->timeout S);
+}
+
+/* this function is internal and shouldn't be used outside the snmp module */
+void
+snmp_reconnect(timer *tm)
+{
+  struct snmp_proto *p = tm->data;
+  ASSUME(p->sock);
+  snmp_connected(p->sock);
+}
+
 static void
 snmp_sock_err(sock *sk, int err)
 {
@@ -188,27 +216,10 @@ snmp_sock_err(sock *sk, int err)
   snmp_log("changing proto_snmp state to LOCKED");
   p->state = SNMP_LOCKED;
 
-  // TODO ping interval
-  tm_start(p->startup_timer, 4 S);
+  p->startup_timer->hook = snmp_startup_timeout;
+  tm_start(p->startup_timer,  4 S); // TODO make me configurable
 }
 
-static void
-snmp_connected(sock *sk)
-{
-  struct snmp_proto *p = sk->data;
-  snmp_log("snmp_connected() connection created");
-
-  p->state = SNMP_OPEN;
-
-  sk->rx_hook = snmp_rx;
-  sk->tx_hook = NULL;
-  //sk->tx_hook = snmp_tx;
-
-  snmp_start_subagent(p);
-
-  // TODO ping interval <move to do_response()>
-  tm_set(p->ping_timer, p->timeout S);
-}
 
 static void
 snmp_start_locked(struct object_lock *lock)
@@ -217,25 +228,28 @@ snmp_start_locked(struct object_lock *lock)
   struct snmp_proto *p = lock->data;
 
   p->state = SNMP_LOCKED;
+  sock *s = p->sock;
 
-  sock *s = sk_new(p->p.pool);
-  s->type = SK_TCP_ACTIVE;
-  s->saddr = p->local_ip;
-  s->daddr = p->remote_ip;
-  s->dport = p->remote_port;
-  s->rbsize = SNMP_RX_BUFFER_SIZE;
-  s->tbsize = SNMP_TX_BUFFER_SIZE;
+  if (!s)
+  {
+    s = sk_new(p->p.pool);
+    s->type = SK_TCP_ACTIVE;
+    s->saddr = p->local_ip;
+    s->daddr = p->remote_ip;
+    s->dport = p->remote_port;
+    s->rbsize = SNMP_RX_BUFFER_SIZE;
+    s->tbsize = SNMP_TX_BUFFER_SIZE;
 
-  //s->tos = IP_PREC_INTERNET_CONTROL
-  //s->rx_hook = snmp_connected;
-  s->tx_hook = snmp_connected;
-  s->err_hook = snmp_sock_err;
+    //s->tos = IP_PREC_INTERNET_CONTROL
+    s->tx_hook = snmp_connected;
+    s->err_hook = snmp_sock_err;
 
-  p->sock = s;
-  s->data = p;
+    p->sock = s;
+    s->data = p;
 
-  p->to_send = 0;
-  p->errs = 0;
+    p->to_send = 0;
+    p->errs = 0;
+  }
 
   if (sk_open(s) < 0)
   {
@@ -246,7 +260,8 @@ snmp_start_locked(struct object_lock *lock)
   }
 }
 
-static void
+/* this function is internal and shouldn't be used outside the snmp module */
+void
 snmp_startup(struct snmp_proto *p)
 {
   if (p->state != SNMP_INIT &&
@@ -289,7 +304,8 @@ snmp_startup(struct snmp_proto *p)
   */
 }
 
-static void
+/* this function is internal and shouldn't be used outside the snmp module */
+void
 snmp_startup_timeout(timer *t)
 {
   snmp_log("startup timer triggered");
@@ -307,7 +323,7 @@ snmp_stop_timeout(timer *t)
 }
 
 static void
-snmp_ping_timeout(struct timer *tm)
+snmp_ping_timeout(timer *tm)
 {
   struct snmp_proto *p = tm->data;
 
@@ -383,15 +399,6 @@ snmp_start(struct proto *P)
 	peer->context_id = c->context_id;
       }
     }
-  }
-
-  {
-    u32 *ptr = mb_alloc(p->p.pool, 4 * sizeof(u32));
-    *ptr = 1;
-    ptr[2] = 4;
-    (void)ptr[1]; (void)ptr[0]; (void)ptr[2];
-    mb_free(ptr);
-    log(L_INFO "testing alloc 3");
   }
 
   snmp_log("values of context cf %u  proto %u", cf->contexts, p->context_max);
@@ -532,7 +539,7 @@ snmp_shutdown(struct proto *P)
 
     p->startup_timer->hook = snmp_stop_timeout;
 
-    tm_set(p->startup_timer, p->timeout S);
+    tm_set(p->startup_timer, current_time() + p->timeout S);
 
     snmp_stop_subagent(p);
 
