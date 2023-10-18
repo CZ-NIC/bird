@@ -61,7 +61,7 @@ snmp_bgp_notify_common(struct snmp_proto *p, uint type, ip4_addr ip4, char last_
 #define SNMP_OID_SIZE_FROM_LEN(x) (sizeof(struct oid) + (x) * sizeof(u32))
 
   /* trap OID bgpEstablishedNotification (.1.3.6.1.2.1.0.1) */
-  struct oid *head = mb_alloc(p->p.pool, SNMP_OID_SIZE_FROM_LEN(3));
+  struct oid *head = mb_alloc(p->pool, SNMP_OID_SIZE_FROM_LEN(3));
   head->n_subid = 3;
   head->prefix = 2;
   head->include = head->pad = 0;
@@ -75,7 +75,7 @@ snmp_bgp_notify_common(struct snmp_proto *p, uint type, ip4_addr ip4, char last_
 
   /* Paylaod OIDs */
 
-  void *data = mb_alloc(p->p.pool, sz);
+  void *data = mb_alloc(p->pool, sz);
   struct agentx_varbind *addr_vb = data;
   /* +4 for varbind header, +8 for octet string */
   struct agentx_varbind *error_vb = data + SNMP_OID_SIZE_FROM_LEN(9)  + 4 + 8;
@@ -175,7 +175,7 @@ snmp_bgp_register(struct snmp_proto *p)
     /* Register the whole BGP4-MIB::bgp root tree node */
     struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
 
-    struct oid *oid = mb_alloc(p->p.pool, snmp_oid_sizeof(2));
+    struct oid *oid = mb_alloc(p->pool, snmp_oid_sizeof(2));
     STORE_U8(oid->n_subid, 2);
     STORE_U8(oid->prefix, SNMP_MGMT);
 
@@ -201,7 +201,7 @@ snmp_bgp_register(struct snmp_proto *p)
 
     struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
 
-    struct oid *oid = mb_alloc(p->p.pool, snmp_oid_sizeof(9));
+    struct oid *oid = mb_alloc(p->pool, snmp_oid_sizeof(9));
     STORE_U8(oid->n_subid, 9);
     STORE_U8(oid->prefix, SNMP_MGMT);
 
@@ -772,7 +772,7 @@ bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, const struct oid
       snmp_log("ip4_less() returned true");
 
       // TODO repair
-      struct oid *o = snmp_oid_duplicate(p->p.pool, o_start);
+      struct oid *o = snmp_oid_duplicate(p->pool, o_start);
       snmp_oid_ip4_index(o, 5, net4_prefix(&net));
 
       return o;

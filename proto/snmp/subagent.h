@@ -115,8 +115,8 @@ enum snmp_search_res {
 
 #define COPY_STR(proto, buf, str, length, byte_order) ({		      \
   length = LOAD_PTR(buf, byte_order);					      \
-  log(L_INFO "LOAD_STR(), %p %u", proto->p.pool, length + 1);		      \
-  str = mb_alloc(proto->p.pool, length + 1);				      \
+  log(L_INFO "LOAD_STR(), %p %u", proto->pool, length + 1);		      \
+  str = mb_alloc(proto->pool, length + 1);				      \
   memcpy(str, buf+4, length);						      \
   str[length] = '\0'; /* set term. char */				      \
   buf += 4 + snmp_str_size_from_len(length); })

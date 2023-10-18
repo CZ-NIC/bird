@@ -1236,7 +1236,7 @@ search_mib(struct snmp_proto *p, const struct oid *o_start, const struct oid *o_
 
   if (!o_curr)
   {
-    o_curr = snmp_oid_duplicate(p->p.pool, o_start);
+    o_curr = snmp_oid_duplicate(p->pool, o_start);
     // XXX is it right time to free o_start right now (here) ?
 	// not for use in snmp_get_next2() the o_start comes and ends in _gets2_()
   }
@@ -1268,7 +1268,7 @@ search_mib(struct snmp_proto *p, const struct oid *o_start, const struct oid *o_
 
     default:
       if (o_curr) mb_free(o_curr);
-      o_curr = snmp_oid_duplicate(p->p.pool, o_start);
+      o_curr = snmp_oid_duplicate(p->pool, o_start);
       *result = SNMP_SEARCH_END_OF_VIEW;
       break;
   }
@@ -1304,7 +1304,7 @@ snmp_prefixize(struct snmp_proto *proto, const struct oid *oid, int byte_ord)
 
   /* already in prefixed form */
   else if (oid->prefix != 0) {
-    struct oid *new = snmp_oid_duplicate(proto->p.pool, oid);
+    struct oid *new = snmp_oid_duplicate(proto->pool, oid);
     snmp_log("already prefixed");
     return new;
   }
@@ -1320,7 +1320,7 @@ snmp_prefixize(struct snmp_proto *proto, const struct oid *oid, int byte_ord)
   if (oid->ids[4] >= 256)
     { snmp_log("outside byte first id"); return NULL; }
 
-  struct oid *new = mb_alloc(proto->p.pool,
+  struct oid *new = mb_alloc(proto->pool,
           sizeof(struct oid) + MAX((oid->n_subid - 5) * sizeof(u32), 0));
 
   memcpy(new, oid, sizeof(struct oid));

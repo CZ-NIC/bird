@@ -160,9 +160,11 @@ snmp_cleanup(struct snmp_proto *p)
   mb_free(p->context_id_map);
   p->context_id_map = NULL;
 
-  // TODO cleanup trie
+  rfree(p->lp);
+  p->bgp_trie = NULL;
 
-  return (p->state = SNMP_DOWN);
+  p->state = SNMP_DOWN;
+  return PS_DOWN;
 }
 
 void
@@ -230,9 +232,12 @@ snmp_start_locked(struct object_lock *lock)
   p->state = SNMP_LOCKED;
   sock *s = p->sock;
 
+  if (!p->bgp_trie)
+    p->bgp_trie = f_new_trie(p->lp, 0);  // TODO user-data attachment size
+
   if (!s)
   {
-    s = sk_new(p->p.pool);
+    s = sk_new(p->pool);
     s->type = SK_TCP_ACTIVE;
     s->saddr = p->local_ip;
     s->daddr = p->remote_ip;
@@ -284,8 +289,7 @@ snmp_startup(struct snmp_proto *p)
   /* Starting AgentX communicaiton channel. */
 
   struct object_lock *lock;
-
-  lock = p->lock = olock_new(p->p.pool);
+  lock = p->lock = olock_new(p->pool);
 
   // lock->addr
   // lock->port
@@ -347,30 +351,33 @@ snmp_start(struct proto *P)
   p->errs = 0;
   p->partial_response = NULL;
 
-  p->startup_timer = tm_new_init(p->p.pool, snmp_startup_timeout, p, 0, 0);
-  p->ping_timer = tm_new_init(p->p.pool, snmp_ping_timeout, p, 0, 0);
+  p->startup_timer = tm_new_init(p->pool, snmp_startup_timeout, p, 0, 0);
+  p->ping_timer = tm_new_init(p->pool, snmp_ping_timeout, p, 0, 0);
 
-  p->pool = lp_new(p->p.pool);
-  p->bgp_trie = f_new_trie(p->pool, cf->bonds);
+  p->pool = p->p.pool;
+  p->lp = lp_new(p->pool);
+  p->bgp_trie = f_new_trie(p->lp, 0);
+  //p->bgp_trie = f_new_trie(lp, cf->bonds);  // TODO user-data attachment size
 
   init_list(&p->register_queue);
   init_list(&p->bgp_registered);
 
   /* We create copy of bonds to BGP protocols. */
-  HASH_INIT(p->bgp_hash, p->p.pool, 10);
-  HASH_INIT(p->context_hash, p->p.pool, 10);
+  HASH_INIT(p->bgp_hash, p->pool, 10);
+  HASH_INIT(p->context_hash, p->pool, 10);
 
   /* We always have at least the default context */
-  p->context_id_map = mb_allocz(p->p.pool, cf->contexts * sizeof(struct snmp_context *));
+  p->context_id_map = mb_allocz(p->pool, cf->contexts * sizeof(struct snmp_context *));
   log(L_INFO "number of context allocated %d", cf->contexts);
 
-  struct snmp_context *defaultc = mb_alloc(p->p.pool, sizeof(struct snmp_context));
+  struct snmp_context *defaultc = mb_alloc(p->pool, sizeof(struct snmp_context));
   defaultc->context = "";
   defaultc->context_id = 0;
   defaultc->flags = 0; /* TODO Default context fl. */
   HASH_INSERT(p->context_hash, SNMP_H_CONTEXT, defaultc);
 
   p->context_id_map[0] = defaultc;
+  p->bgp_trie = NULL;
 
   struct snmp_bond *b;
   WALK_LIST(b, cf->bgp_entries)
@@ -379,7 +386,7 @@ snmp_start(struct proto *P)
     if (bc && !ipa_zero(bc->remote_ip))
     {
       struct snmp_bgp_peer *peer = \
-	mb_allocz(p->p.pool, sizeof(struct snmp_bgp_peer));
+	mb_allocz(p->pool, sizeof(struct snmp_bgp_peer));
       peer->config = bc;
       peer->peer_ip = bc->remote_ip;
 

@@ -120,7 +120,8 @@ struct snmp_context {
 struct snmp_proto {
   struct proto p;
   struct object_lock *lock;
-  struct linpool *pool;
+  pool *pool;	    /* a shortcut to the procotol mem. pool */
+  linpool *lp;
 
   ip_addr local_ip;
   ip_addr remote_ip;
