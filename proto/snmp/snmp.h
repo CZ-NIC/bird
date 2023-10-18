@@ -120,15 +120,15 @@ struct snmp_context {
 struct snmp_proto {
   struct proto p;
   struct object_lock *lock;
-  pool *pool;	    /* a shortcut to the procotol mem. pool */
-  linpool *lp;
+  pool *pool;			  /* a shortcut to the procotol mem. pool */
+  linpool *lp;			  /* linpool for bgp_trie nodes */
 
   ip_addr local_ip;
   ip_addr remote_ip;
   u16 local_port;
   u16 remote_port;
 
-  ip_addr bgp_local_id;	  /* BGP4-MIB related fields */
+  ip_addr bgp_local_id;		  /* BGP4-MIB related fields */
   u32 bgp_local_as;
 
   sock *sock;

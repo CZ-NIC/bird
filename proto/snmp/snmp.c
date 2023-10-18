@@ -106,13 +106,10 @@ snmp_init(struct proto_config *CF)
   p->bgp_local_as = cf->bgp_local_as;
   p->bgp_local_id = cf->bgp_local_id;
 
-  snmp_log("changing proto_snmp state to INIT");
+  snmp_log("changing state to INIT");
   p->state = SNMP_INIT;
 
   p->timeout = cf->timeout;
-
-  snmp_log("snmp_init() lip: %I:%u rip: %I:%u",
-    cf->local_ip, cf->local_port, cf->remote_ip, cf->remote_port);
 
   /* used when assigning the context ids in s_cont_create() */
   p->context_max = 1;
@@ -179,7 +176,7 @@ void
 snmp_connected(sock *sk)
 {
   struct snmp_proto *p = sk->data;
-  snmp_log("snmp_connected() connection created");
+  snmp_log("connection created");
 
   p->state = SNMP_OPEN;
 
@@ -203,9 +200,9 @@ snmp_reconnect(timer *tm)
 }
 
 static void
-snmp_sock_err(sock *sk, int err)
+snmp_sock_err(sock *sk, int UNUSED err)
 {
-  snmp_log("snmp_sock_err() %s - err no: %d",  strerror(err), err);
+  snmp_log("socket error '%s' (errno: %d)", strerror(err), err);
   struct snmp_proto *p = sk->data;
   p->errs++;
 
@@ -215,7 +212,7 @@ snmp_sock_err(sock *sk, int err)
   rfree(p->sock);
   p->sock = NULL;
 
-  snmp_log("changing proto_snmp state to LOCKED");
+  snmp_log("changing state to LOCKED");
   p->state = SNMP_LOCKED;
 
   p->startup_timer->hook = snmp_startup_timeout;
@@ -226,7 +223,7 @@ snmp_sock_err(sock *sk, int err)
 static void
 snmp_start_locked(struct object_lock *lock)
 {
-  snmp_log("snmp_start_locked() - lock acquired; preparing socket");
+  //snmp_log("snmp_start_locked() - lock acquired; preparing socket");
   struct snmp_proto *p = lock->data;
 
   p->state = SNMP_LOCKED;
@@ -256,6 +253,7 @@ snmp_start_locked(struct object_lock *lock)
     p->errs = 0;
   }
 
+  snmp_log("opening socket");
   if (sk_open(s) < 0)
   {
     // TODO rather set the startup timer, then reset whole SNMP proto
@@ -273,7 +271,6 @@ snmp_startup(struct snmp_proto *p)
       p->state != SNMP_LOCKED &&
       p->state != SNMP_DOWN)
   {
-    snmp_log("startup() already in connected state %u", p->state);
     return;
   }
 
@@ -283,10 +280,8 @@ snmp_startup(struct snmp_proto *p)
     return;
   }
 
-  snmp_log("snmp_startup(), praparing lock");
+  snmp_log("preparing object lock");
   p->state = SNMP_INIT;
-
-  /* Starting AgentX communicaiton channel. */
 
   struct object_lock *lock;
   lock = p->lock = olock_new(p->pool);
@@ -299,13 +294,7 @@ snmp_startup(struct snmp_proto *p)
   lock->hook = snmp_start_locked;
   lock->data = p;
 
-  snmp_log("lock acquiring");
   olock_acquire(lock);
-
-  /*
-  snmp_log("local ip: %I:%u, remote ip: %I:%u",
-    p->local_ip, p->local_port, p->remote_ip, p->remote_port);
-  */
 }
 
 /* this function is internal and shouldn't be used outside the snmp module */
@@ -343,7 +332,7 @@ snmp_ping_timeout(timer *tm)
 static int
 snmp_start(struct proto *P)
 {
-  snmp_log("snmp_start() - starting timer (almost)");
+  //snmp_log("snmp_start() - starting timer (almost)");
   struct snmp_proto *p = (void *) P;
   struct snmp_config *cf = (struct snmp_config *) P->cf;
 
@@ -368,7 +357,7 @@ snmp_start(struct proto *P)
 
   /* We always have at least the default context */
   p->context_id_map = mb_allocz(p->pool, cf->contexts * sizeof(struct snmp_context *));
-  log(L_INFO "number of context allocated %d", cf->contexts);
+  //log(L_INFO "number of context allocated %d", cf->contexts);
 
   struct snmp_context *defaultc = mb_alloc(p->pool, sizeof(struct snmp_context));
   defaultc->context = "";
@@ -401,14 +390,14 @@ snmp_start(struct proto *P)
       if (b->context)
       {
 	const struct snmp_context *c = snmp_cont_create(p, b->context);
-	snmp_log("creating snmp context %s with id %u, writing", b->context, c->context_id);
+	//snmp_log("creating snmp context %s with id %u, writing", b->context, c->context_id);
 	p->context_id_map[c->context_id] = c;
 	peer->context_id = c->context_id;
       }
     }
   }
 
-  snmp_log("values of context cf %u  proto %u", cf->contexts, p->context_max);
+  //snmp_log("values of context cf %u  proto %u", cf->contexts, p->context_max);
   ASSUME(cf->contexts == p->context_max);
 
   snmp_startup(p);
@@ -482,12 +471,14 @@ snmp_show_proto_info(struct proto *P)
     cli_msg(-1006, "    remote ip: %I4", bcf->remote_ip);
     cli_msg(-1006, "    local port: %I4", bcf->local_port);
     cli_msg(-1006, "    remote port: %I4", bcf->remote_port);
+
     /*
     if (conn) {
       cli_msg(-1006, "    state: %u", conn->state);
       cli_msg(-1006, "    remote as: %u", conn->remote_caps->as4_number);
     }
     */
+
     cli_msg(-1006, "    in updates: %u", bp->stats.rx_updates);
     cli_msg(-1006, "    out updates: %u", bp->stats.tx_updates);
     cli_msg(-1006, "    in total: %u", bp->stats.rx_messages);
@@ -532,7 +523,6 @@ snmp_postconfig(struct proto_config *CF)
 static int
 snmp_shutdown(struct proto *P)
 {
-  snmp_log("snmp_shutdown()");
   struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
 
   tm_stop(p->ping_timer);
@@ -542,12 +532,10 @@ snmp_shutdown(struct proto *P)
       p->state == SNMP_CONN)
   {
     /* We have a connection established (at leased send out Open-PDU). */
+    snmp_log("changing state to STOP");
     p->state = SNMP_STOP;
-
     p->startup_timer->hook = snmp_stop_timeout;
-
     tm_set(p->startup_timer, current_time() + p->timeout S);
-
     snmp_stop_subagent(p);
 
     return PS_STOP;

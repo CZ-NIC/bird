@@ -166,7 +166,7 @@ snmp_bgp_notify_backward_trans(struct snmp_proto *p, struct bgp_proto *bgp)
 void
 snmp_bgp_register(struct snmp_proto *p)
 {
-  snmp_log("snmp_bgp_register()");
+  //snmp_log("snmp_bgp_register()");
 
   //u32 bgp_mib_prefix[] = {1, 15, 1};
   u32 bgp_mib_prefix[] = { 1, 15 };
@@ -568,7 +568,7 @@ oid_state_compare(const struct oid *oid, u8 state)
 static struct oid *
 update_bgp_oid(struct oid *oid, u8 state)
 {
-  snmp_log("update_bgp_oid()");
+  //snmp_log("update_bgp_oid()");
   if (state == BGP_INTERNAL_END || state == BGP_INTERNAL_INVALID ||
       state == BGP_INTERNAL_NO_VALUE)
     return oid;
@@ -589,7 +589,7 @@ update_bgp_oid(struct oid *oid, u8 state)
       return oid;
   }
 
-  snmp_log("update work");
+  //snmp_log("update work");
   switch (state)
   {
     case BGP_INTERNAL_BGP:
@@ -730,7 +730,7 @@ bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, const struct oid
   ASSUME(o_start != NULL);
   ASSUME(o_end != NULL);
 
-  snmp_log("bgp_find_dynamic_oid()");
+  //snmp_log("bgp_find_dynamic_oid()");
   ip4_addr ip4 = ip4_from_oid(o_start);
   ip4_addr dest;
 
@@ -746,22 +746,22 @@ bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, const struct oid
       ip4_from_u32(UINT32_MAX);
   }
 
-  snmp_log("ip addresses build (ip4) %I (dest) %I", ipa_from_ip4(ip4), ipa_from_ip4(dest));
+  //snmp_log("ip addresses build (ip4) %I (dest) %I", ipa_from_ip4(ip4), ipa_from_ip4(dest));
 
   net_addr net;
   net_fill_ip4(&net, ip4, IP4_MAX_PREFIX_LENGTH);
 
-  snmp_log("dynamic part of BGP mib");
+  //snmp_log("dynamic part of BGP mib");
 
   struct f_trie_walk_state ws;
 
   trie_walk_init(&ws, p->bgp_trie, NULL, 0);
 
-  snmp_log("walk init");
+  //snmp_log("walk init");
 
   if (trie_walk_next(&ws, &net))
   {
-    snmp_log("trie_walk_next() returned true");
+    //snmp_log("trie_walk_next() returned true");
 
     /*
      * If the o_end is empty, then there are no conditions on the ip4 address.
@@ -769,7 +769,7 @@ bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, const struct oid
     int cmp = ip4_compare(net4_prefix(&net), dest);
     if (cmp < 0 || (cmp == 0 && snmp_is_oid_empty(o_end)))
     {
-      snmp_log("ip4_less() returned true");
+      //snmp_log("ip4_less() returned true");
 
       // TODO repair
       struct oid *o = snmp_oid_duplicate(p->pool, o_start);
@@ -778,39 +778,37 @@ bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, const struct oid
       return o;
     }
     else
-      snmp_log("ip4_less() returned false for %I >= %I", net4_prefix(&net), dest);
+      {}//snmp_log("ip4_less() returned false for %I >= %I", net4_prefix(&net), dest);
   }
   else
-    snmp_log("trie_walk_next() returned false, cleaning");
+    {}//snmp_log("trie_walk_next() returned false, cleaning");
 
   return NULL;
 }
 
 static struct oid *
 search_bgp_dynamic(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, uint contid
-UNUSED, u8 current_state)
+UNUSED, u8 next_state)
 {
-  snmp_log("search_bgp_dynamic() dynamic part Yaaay!");
+  //snmp_log("search_bgp_dynamic() dynamic part Yaaay!");
 
-  /* TODO can be remove after implementing all BGP4-MIB::bgpPeerTable columns */
-  u8 next_state = current_state;
   struct oid *o_copy = o_start;
   do
   {
-    snmp_log("do-while state %u", next_state);
-    snmp_oid_dump(o_start);
+    //snmp_log("do-while state %u", next_state);
+    //snmp_oid_dump(o_start);
     o_start = o_copy = update_bgp_oid(o_copy, next_state);
 
     o_start = bgp_find_dynamic_oid(p, o_start, o_end, next_state);
-    snmp_log("found");
-    snmp_oid_dump(o_start);
+    //snmp_log("found");
+    //snmp_oid_dump(o_start);
 
     next_state = snmp_bgp_next_state(next_state);
     /* The search in next state is done from beginning. */
     o_start->ids[5] = o_start->ids[6] = o_start->ids[7] = o_start->ids[8] = 0;
     o_start->include = 1;
 
-    snmp_log("looping");
+    //snmp_log("looping");
   } while (o_start == NULL && next_state < BGP_INTERNAL_END);
 
   return o_start;
@@ -835,7 +833,7 @@ snmp_bgp_find_next_oid(struct snmp_proto *p, struct oid *oid, uint UNUSED contid
 
   int match = trie_walk_init(&ws, p->bgp_trie, &net, 1);
 
-  snmp_log("match %d include %u", match, oid->include);
+  //snmp_log("match %d include %u", match, oid->include);
   if (match && oid->include)
   {
     oid->include = 0;
@@ -845,14 +843,14 @@ snmp_bgp_find_next_oid(struct snmp_proto *p, struct oid *oid, uint UNUSED contid
   /* We skip the first match as we should not include ip address in oid */
   if (match)
   {
-    snmp_log("continue");
+    //snmp_log("continue");
     trie_walk_next(&ws, &net);
   }
 
   if (trie_walk_next(&ws, &net))
   {
-    snmp_oid_dump(oid);
-    snmp_log("setting up");
+    //snmp_oid_dump(oid);
+    //snmp_log("setting up");
     u32 res = ipa_to_u32(net_prefix(&net));
 
     ASSUME(oid->n_subid == 9);
@@ -863,7 +861,7 @@ snmp_bgp_find_next_oid(struct snmp_proto *p, struct oid *oid, uint UNUSED contid
     return 1;
   }
 
-  snmp_log("bad");
+  //snmp_log("bad");
   return 0;
 }
 
@@ -871,26 +869,26 @@ static enum snmp_search_res
 snmp_bgp_search_dynamic(struct snmp_proto *p, struct oid **searched, const struct oid *o_end, uint UNUSED contid, u8 next_state)
 {
   struct oid *oid = *searched;
-  snmp_log(" **searched = 0x%p  *oid = 0x%p", searched, oid);
-  snmp_oid_dump(*searched);
-  snmp_oid_dump(oid);
+  //snmp_log(" **searched = 0x%p  *oid = 0x%p", searched, oid);
+  //snmp_oid_dump(*searched);
+  //snmp_oid_dump(oid);
   u8 end_state = MIN(snmp_bgp_state(o_end), BGP_INTERNAL_PEER_TABLE_END);
 
-  snmp_log("before assumption %s [%u] < %u INTERNAL_END", debug_bgp_states[end_state], end_state, BGP_INTERNAL_END);
+  //snmp_log("before assumption %s [%u] < %u INTERNAL_END", debug_bgp_states[end_state], end_state, BGP_INTERNAL_END);
   ASSUME(end_state <= BGP_INTERNAL_END);
-  snmp_log("before assupmtion oid 0x%p != NULL (0x0)", oid);
+  //snmp_log("before assupmtion oid 0x%p != NULL (0x0)", oid);
   ASSUME(oid != NULL);
 
   oid = update_bgp_oid(oid, next_state);
 
-  snmp_log("update bgp oid to state %s [%d]", debug_bgp_states[next_state], next_state);
-  snmp_oid_dump(*searched);
-  snmp_oid_dump(oid);
+  //snmp_log("update bgp oid to state %s [%d]", debug_bgp_states[next_state], next_state);
+  //snmp_oid_dump(*searched);
+  //snmp_oid_dump(oid);
 
   int found;
   while (!(found = snmp_bgp_find_next_oid(p, oid, contid)) && next_state <= end_state)
   {
-    snmp_log("loop");
+    //snmp_log("loop");
 
     next_state = snmp_bgp_next_state(next_state);
     if (next_state == BGP_INTERNAL_IDENTIFIER)
@@ -915,7 +913,7 @@ snmp_bgp_search2(struct snmp_proto *p, struct oid **searched, const struct oid *
   enum snmp_search_res r = SNMP_SEARCH_END_OF_VIEW;
   u8 bgp_state = snmp_bgp_state(*searched);
   u8 state;
-  snmp_log("snmp_bgp_search2() with state %s [%d]", debug_bgp_states[bgp_state], bgp_state);
+  //snmp_log("snmp_bgp_search2() with state %s [%d]", debug_bgp_states[bgp_state], bgp_state);
 
   if (bgp_state == BGP_INTERNAL_END)
   {
@@ -936,7 +934,7 @@ snmp_bgp_search2(struct snmp_proto *p, struct oid **searched, const struct oid *
 
   if (is_dynamic(state) && !is_dynamic(bgp_state))
   {
-    snmp_log("searching a dynamic successor of static state");
+    //snmp_log("searching a dynamic successor of static state");
     for (uint i = 5; i < MIN(9, (*searched)->n_subid); i++)
       (*searched)->ids[i] = 0;
     r = snmp_bgp_search_dynamic(p, searched, o_end, contid, state);
@@ -946,7 +944,7 @@ snmp_bgp_search2(struct snmp_proto *p, struct oid **searched, const struct oid *
 
   if (is_dynamic(bgp_state))
   {
-    snmp_log("searching the dynamic states (peers)");
+    //snmp_log("searching the dynamic states (peers)");
     r = snmp_bgp_search_dynamic(p, searched, o_end, contid, bgp_state);
 
     if (r != SNMP_SEARCH_END_OF_VIEW)
@@ -956,7 +954,7 @@ snmp_bgp_search2(struct snmp_proto *p, struct oid **searched, const struct oid *
   state = snmp_bgp_next_state(bgp_state);
   if (state <= BGP_INTERNAL_IDENTIFIER)
   {
-    snmp_log("returning the local identifier");
+    //snmp_log("returning the local identifier");
     *searched = update_bgp_oid(*searched, state);
     return SNMP_SEARCH_OK;
   }
@@ -964,7 +962,7 @@ snmp_bgp_search2(struct snmp_proto *p, struct oid **searched, const struct oid *
   // TODO add route table
 
   /* end not found */
-  snmp_log("reached unguarded code, returning END_OF_VIEW");
+  //snmp_log("reached unguarded code, returning END_OF_VIEW");
   return SNMP_SEARCH_END_OF_VIEW;
 }
 
@@ -979,7 +977,7 @@ snmp_bgp_search(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, ui
   if (o_start->include && snmp_bgp_has_value(start_state) &&
       !is_dynamic(start_state) && o_start->n_subid == 3)
   {
-    snmp_log("snmp_bgp_search() first search element (due to include field) returned");
+    //snmp_log("snmp_bgp_search() first search element (due to include field) returned");
     /* We disable including for next time searching. */
     o_start->include = 0;
     return o_start;
@@ -987,7 +985,7 @@ snmp_bgp_search(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, ui
   else if (o_start->include && snmp_bgp_has_value(start_state) &&
 	   is_dynamic(start_state))
   {
-    snmp_log("snmp_bgp_search() first search element matched dynamic entry!");
+    //snmp_log("snmp_bgp_search() first search element matched dynamic entry!");
     return search_bgp_dynamic(p, o_start, o_end, contid, start_state);
   }
 
@@ -998,7 +996,7 @@ snmp_bgp_search(struct snmp_proto *p, struct oid *o_start, struct oid *o_end, ui
   if (!is_dynamic(next_state))
   {
     o_start = update_bgp_oid(o_start, next_state);
-    snmp_log("next state is also not dynamic");
+    //snmp_log("next state is also not dynamic");
     return o_start;
   }
 
@@ -1026,7 +1024,7 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
     return pkt;
   }
 
-  snmp_log(" -> ip addr %I", addr);
+  //snmp_log(" -> ip addr %I", addr);
   // TODO XXX deal with possible change of (remote) ip; BGP should restart and
   // disappear
   struct snmp_bgp_peer *pe = HASH_FIND(p->bgp_hash, SNMP_HASH, addr);
@@ -1040,7 +1038,7 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
         ipa_equal(addr, ((struct bgp_proto *) proto)->remote_ip))
     {
       bgp_proto = (struct bgp_proto *) proto;
-      snmp_log("bgp_dynamic_fill() using bgp_proto %p", bgp_proto);
+      //snmp_log("bgp_dynamic_fill() using bgp_proto %p", bgp_proto);
     }
     /* We did not found binded BGP protocol. */
     else
@@ -1223,12 +1221,13 @@ static byte *
 bgp_fill_static(struct snmp_proto *p, struct agentx_varbind *vb, byte *pkt, uint size
 UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
 {
-  snmp_log("snmp bgp_fill_static ()\n");
-  snmp_log("bgp_fill_static: vb->type %u, ptk %02x", vb->type, *((u32 *) pkt));
+  ASSUME((void *) pkt == (void *) vb);
+  //snmp_log("snmp bgp_fill_static ()\n");
+  //snmp_log("bgp_fill_static: vb->type %u, ptk %02x", vb->type, *((u32 *) pkt));
 
   struct oid *oid = &vb->name;
-  snmp_oid_dump(oid);
-  snmp_log("bgp_fill_static");
+  //snmp_oid_dump(oid);
+  //snmp_log("bgp_fill_static");
 
   /*
    * snmp_bgp_state() check only prefix. To be sure on OID equivalence we need to
@@ -1268,11 +1267,12 @@ UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
 
 #if 0
   snmp_log("bgp_fill_static: type %u  packet %p", vb->type, pkt);
-  snmp_oid_dump(oid);
+  //snmp_oid_dump(oid);
 
-  snmp_log("snmp ended with non empty pkt %u starting from %p to %p\n", pkt -
+  /*snmp_log("snmp ended with non empty pkt %u starting from %p to %p\n", pkt -
 temp, temp, pkt);
-  snmp_dump_packet(temp, pkt - temp);
+*/
+  //snmp_dump_packet(temp, pkt - temp);
 #endif
   return pkt;
 }

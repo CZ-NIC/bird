@@ -90,7 +90,7 @@ snmp_context:
    /* empty */	  {
     if (!this_bond)
     {
-      log(L_INFO "snmp_context no string alloc");
+      //log(L_INFO "snmp_context no string alloc");
       this_bond = cfg_alloc(sizeof(struct snmp_bond));
     }
 
@@ -99,7 +99,7 @@ snmp_context:
  | CONTEXT DEFAULT {
     if (!this_bond)
     {
-      log(L_INFO "snmp_context CONTEXT DEFAULT alloc");
+      //log(L_INFO "snmp_context CONTEXT DEFAULT alloc");
       this_bond = cfg_alloc(sizeof(struct snmp_bond));
     }
     this_bond->context = NULL;
@@ -107,29 +107,30 @@ snmp_context:
  | CONTEXT text {
     if(!this_bond)
     {
-      log(L_INFO "snmp_context CONTEXT text alloc");
+      //log(L_INFO "snmp_context CONTEXT text alloc");
       this_bond = cfg_alloc(sizeof(struct snmp_bond));
     }
     this_bond->context = $2;
     SNMP_CFG->contexts++;
-    log(L_INFO "storing context %s to bond at 0x%p", $2, this_bond);
+    //log(L_INFO "storing context %s to bond at 0x%p", $2, this_bond);
   }
  ;
 
 snmp_bgp_bond: BGP symbol snmp_context
 {
   /* the snmp_context rule sets the correct value of this_bond */
-  log(L_INFO "this_bond (at 0x%p) has value %s", this_bond,
+  /*log(L_INFO "this_bond (at 0x%p) has value %s", this_bond,
     (this_bond->context) ? this_bond->context : "<no_val>");
+*/
   if (!this_bond)
   {
-    log(L_INFO "snmp_bgp_bond BGP symbol ... alloc");
+    //log(L_INFO "snmp_bgp_bond BGP symbol ... alloc");
     this_bond = cfg_alloc(sizeof(struct snmp_bond));
-    log(L_INFO "Unexpedted alloc in snmp_bgp_bond rule");
+    //log(L_INFO "Unexpedted alloc in snmp_bgp_bond rule");
   }
   else
   {
-    log(L_INFO, "working with this_bond (at 0x%p)", this_bond);
+    //log(L_INFO, "working with this_bond (at 0x%p)", this_bond);
   }
   this_bond->type = SNMP_BGP;
 
