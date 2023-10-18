@@ -133,7 +133,7 @@ delete_trie(struct trie_node *node)
 }
 
 /*
- * Insert prefix in @addr to prefix trie with root at @node
+ * Insert prefix in @addr to prefix trie with beginning at @root and assign @bucket to this prefix
  */
 static void
 trie_insert_prefix(const union net_addr_union *addr, struct trie_node * const root, struct aggregator_bucket *bucket, slab *trie_slab)
@@ -166,9 +166,13 @@ trie_insert_prefix(const union net_addr_union *addr, struct trie_node * const ro
     node = node->child[bit];
   }
 
+  /* Assign bucket to the last node */
   node->bucket = bucket;
 }
 
+/*
+ * Return first non-null bucket of the closest ancestor of @node
+ */
 static struct aggregator_bucket *
 get_ancestor_bucket(const struct trie_node *node)
 {
@@ -191,7 +195,6 @@ get_ancestor_bucket(const struct trie_node *node)
 static void
 first_pass(struct trie_node *node, slab *trie_slab)
 {
-  bug("first pass");
   assert(node != NULL);
   assert(trie_slab != NULL);
 
@@ -202,7 +205,7 @@ first_pass(struct trie_node *node, slab *trie_slab)
     return;
   }
 
-  /* Add leaves so that each node has either two or no children */
+  /* Add leave nodes so that each node has either two or no children */
   for (int i = 0; i < 2; i++)
   {
     if (!node->child[i])
@@ -243,6 +246,7 @@ aggregator_bucket_compare(const void *a, const void *b)
   const struct aggregator_bucket *fst = *(struct aggregator_bucket **)a;
   const struct aggregator_bucket *snd = *(struct aggregator_bucket **)b;
 
+  /* There is linear ordering on pointers */
   if (fst < snd)
     return -1;
 
@@ -309,8 +313,8 @@ aggregator_bucket_unionize(const struct trie_node *left, const struct trie_node 
     {
       case 0:
         /*
-         * If there is no element yet or if the last and new element are not equal
-         * (that means elements do not repeat), insert new element to the set.
+         * If there is no element yet or if the last and new elements are not equal
+         * (which means elements do not repeat), insert new element to the set.
          */
         if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != left->potential_buckets[i])
           node->potential_buckets[node->potential_buckets_count++] = left->potential_buckets[i];
@@ -427,7 +431,7 @@ second_pass(struct trie_node *node)
 }
 
 /*
- * Check if @bucket is one of potential nexthop buckets in @node
+ * Check if @bucket is one of potential buckets in @node
  */
 static int
 is_bucket_potential(const struct trie_node *node, const struct aggregator_bucket *bucket)
@@ -468,8 +472,8 @@ third_pass(struct trie_node *node)
   const struct aggregator_bucket *inherited_bucket = get_ancestor_bucket(node);
 
   /*
-   * If bucket inherited from ancestor is among potential bucket for this node,
-   * this node doesn't need bucket because it inherits one
+   * If bucket inherited from ancestor is one of potential buckets for this node,
+   * then this node doesn't need bucket because it inherits one.
    */
   if (is_bucket_potential(node, inherited_bucket))
   {
