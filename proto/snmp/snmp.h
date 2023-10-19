@@ -161,12 +161,6 @@ struct snmp_proto {
 
   uint to_send;
   uint errs;
-
-  /*
-   * if the packet hasn't been fully recieved, partial_reponse points
-   * into the TX buffer to the Response-PDU header (needed for packet payload)
-   */
-  struct agentx_response *partial_response;
 };
 
 //void snmp_tx(sock *sk);

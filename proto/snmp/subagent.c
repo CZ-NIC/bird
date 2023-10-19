@@ -878,7 +878,7 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
     };
   }
 
-  if (!p->partial_response && c.size < sizeof(struct agentx_response))
+  if (c.size < sizeof(struct agentx_response))
   {
     snmp_manage_tbuf(p, &c);
     // TODO renew pkt, pkt_start pointers context clen
@@ -1033,8 +1033,6 @@ send:;
     snmp_log("sk_send error");
   // TODO think through the error state
 
-  p->partial_response = NULL;
-
   mb_free(o_start);
   mb_free(o_end);
 
@@ -1051,7 +1049,6 @@ partial:
   (c.byte_ord) ? put_u32(&h->payload, pkt_size) : (h->payload = pkt_size);
   //snmp_log("new rx-buffer size %u", h->payload);
   *skip = AGENTX_HEADER_SIZE;
-  p->partial_response = response_header;
 
   /* number of bytes parsed from RX-buffer */
   return pkt - pkt_start;
@@ -1396,24 +1393,19 @@ prepare_response(struct snmp_proto *p, struct snmp_pdu *c)
 {
   //snmp_log("prepare_response()");
 
-  if (!p->partial_response)
-  {
-    struct agentx_response *r = (void *) c->buffer;
-    struct agentx_header *h = &r->h;
+  struct agentx_response *r = (void *) c->buffer;
+  struct agentx_header *h = &r->h;
 
-    SNMP_BLANK_HEADER(h, AGENTX_RESPONSE_PDU);
-    SNMP_SESSION(h, p);
+  SNMP_BLANK_HEADER(h, AGENTX_RESPONSE_PDU);
+  SNMP_SESSION(h, p);
 
-    /* protocol doesn't care about subagent upTime */
-    STORE_U32(r->uptime, 0);
-    STORE_U16(r->error, AGENTX_RES_NO_ERROR);
-    STORE_U16(r->index, 0);
+  /* protocol doesn't care about subagent upTime */
+  STORE_U32(r->uptime, 0);
+  STORE_U16(r->error, AGENTX_RES_NO_ERROR);
+  STORE_U16(r->index, 0);
 
-    ADVANCE(c->buffer, c->size, sizeof(struct agentx_response));
-    return r;
-  }
-
-  return p->partial_response;
+  ADVANCE(c->buffer, c->size, sizeof(struct agentx_response));
+  return r;
 }
 
 

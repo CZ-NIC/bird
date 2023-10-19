@@ -134,8 +134,6 @@ snmp_cleanup(struct snmp_proto *p)
   rfree(p->lock);
   p->lock = NULL;
 
-  p->partial_response = NULL;
-
   struct snmp_register *r, *r2;
   WALK_LIST_DELSAFE(r, r2, p->register_queue)
   {
@@ -338,7 +336,6 @@ snmp_start(struct proto *P)
 
   p->to_send = 0;
   p->errs = 0;
-  p->partial_response = NULL;
 
   p->startup_timer = tm_new_init(p->pool, snmp_startup_timeout, p, 0, 0);
   p->ping_timer = tm_new_init(p->pool, snmp_ping_timeout, p, 0, 0);
