@@ -33,9 +33,6 @@ snmp_is_oid_empty(const struct oid *oid)
 uint
 snmp_pkt_len(const byte *start, const byte *end)
 {
-  /*snmp_log("snmp_pkt_len start 0x%p end 0x%p  res %u", start, end, (end - start)
-- AGENTX_HEADER_SIZE);
-*/
   return (end - start) - AGENTX_HEADER_SIZE;
 }
 
@@ -443,19 +440,10 @@ snmp_register_same(struct snmp_register *r, struct agentx_header *h, u8 class)
 void
 snmp_register_ack(struct snmp_proto *p, struct agentx_header *h, u8 class)
 {
-  //snmp_log("snmp_register_ack()");
-
-  /*snmp_log("got sid: %u  tid: %u  pid: %u", h->session_id, h->transaction_id,
-h->packet_id);
-*/
-
   struct snmp_register *reg;
   WALK_LIST(reg, p->register_queue)
   {
     // TODO add support for more mib trees (other than BGP)
-    /*snmp_log("checking registration request sid: %u tid: %u pid: %u",
-      reg->session_id, reg->transaction_id, reg->packet_id);
-*/
     if (snmp_register_same(reg, h, class))
     {
       struct snmp_registered_oid *ro = \
@@ -471,12 +459,9 @@ h->packet_id);
 
       add_tail(&p->bgp_registered, &ro->n);
 
-      //snmp_log("  register note find %u", list_length(&p->bgp_registered));
       return;
     }
   }
-
-  //snmp_log("unknown registration");
 }
 
 void UNUSED
@@ -522,14 +507,10 @@ snmp_varbind_type32(struct agentx_varbind *vb, uint size, enum agentx_type type,
   ASSUME(agentx_type_size(type) == 4); /* type has 4B representation */
 
   if (size < (uint) agentx_type_size(type))
-  {
-    //snmp_log("varbind type32 returned NULL");
     return NULL;
-  }
 
   vb->type = type;
   u32 *data = SNMP_VB_DATA(vb);
-  //snmp_log("varbind type32 vb data 0x%p (from vb 0x%p)", data, (void *) vb);
   *data = val;
   return (byte *)(data + 1);
 }
@@ -564,15 +545,9 @@ inline byte *
 snmp_varbind_ip4(struct agentx_varbind *vb, uint size, ip4_addr addr)
 {
   if (size < snmp_str_size_from_len(4))
-  {
-    //snmp_log("varbind ip4 NULL");
     return NULL;
-  }
 
   vb->type = AGENTX_IP_ADDRESS;
-  /*snmp_log("snmp_varbind_ip4 vb data 0x%p (from vb 0x%p)", SNMP_VB_DATA(vb), (void
-*) vb);
-*/
   return snmp_put_ip4(SNMP_VB_DATA(vb), addr);
 }
 
@@ -580,15 +555,10 @@ inline byte *
 snmp_varbind_nstr(struct agentx_varbind *vb, uint size, const char *str, uint len)
 {
   if (size < snmp_str_size_from_len(len))
-  {
-    //snmp_log("varbind nstr NULL");
     return NULL;
-  }
 
   vb->type = AGENTX_OCTET_STRING;
   //die("snmp_varbind_nstr() %p.data = %p", vb, SNMP_VB_DATA(vb));
-  snmp_log("snmp_varbind_nstr vb data 0x%p (from vb 0x%p)", SNMP_VB_DATA(vb), (void *) vb);
-  //snmp_log("snmp_varbind_nstr() %p.data = %p", vb, SNMP_VB_DATA(vb));
   return snmp_put_nstr(SNMP_VB_DATA(vb), str, len);
 }
 

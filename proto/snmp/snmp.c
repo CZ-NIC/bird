@@ -221,7 +221,6 @@ snmp_sock_err(sock *sk, int UNUSED err)
 static void
 snmp_start_locked(struct object_lock *lock)
 {
-  //snmp_log("snmp_start_locked() - lock acquired; preparing socket");
   struct snmp_proto *p = lock->data;
 
   p->state = SNMP_LOCKED;
@@ -323,7 +322,6 @@ snmp_ping_timeout(timer *tm)
 static int
 snmp_start(struct proto *P)
 {
-  //snmp_log("snmp_start() - starting timer (almost)");
   struct snmp_proto *p = (void *) P;
   struct snmp_config *cf = (struct snmp_config *) P->cf;
 
@@ -379,14 +377,12 @@ snmp_start(struct proto *P)
       if (b->context)
       {
 	const struct snmp_context *c = snmp_cont_create(p, b->context);
-	//snmp_log("creating snmp context %s with id %u, writing", b->context, c->context_id);
 	p->context_id_map[c->context_id] = c;
 	peer->context_id = c->context_id;
       }
     }
   }
 
-  //snmp_log("values of context cf %u  proto %u", cf->contexts, p->context_max);
   ASSUME(cf->contexts == p->context_max);
 
   snmp_startup(p);
