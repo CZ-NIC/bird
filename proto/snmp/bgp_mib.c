@@ -1302,3 +1302,12 @@ snmp_bgp_fill(struct snmp_proto *p, struct agentx_varbind *vb,
   ADVANCE(c->buffer, c->size, snmp_varbind_header_size(vb));
 }
 
+#if 0
+int
+snmp_bgp_testset(struct snmp_proto *p, const struct agentx_varbind *vb, void *tr, struct oid *oid, uint pkt_size)
+{
+  // TODO: check the type of varbind vb and it's value correctness, don't overflow the pkt_size
+  return 0;
+}
+#endif
+
