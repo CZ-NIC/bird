@@ -366,7 +366,6 @@ snmp_start(struct proto *P)
   HASH_INSERT(p->context_hash, SNMP_H_CONTEXT, defaultc);
 
   p->context_id_map[0] = defaultc;
-  p->bgp_trie = NULL;
 
   struct snmp_bond *b;
   WALK_LIST(b, cf->bgp_entries)
