@@ -252,13 +252,9 @@ snmp_start_locked(struct object_lock *lock)
   }
 
   snmp_log("opening socket");
+  /* Try opening the socket, schedule a retry on fail */
   if (sk_open(s) < 0)
-  {
-    // TODO rather set the startup timer, then reset whole SNMP proto
-    log(L_ERR "Cannot open listening socket");
-    snmp_down(p);
-    // TODO go back to SNMP_INIT and try reconnecting after timeout
-  }
+    tm_set(p->startup_timer, current_time() + p->timeout S);
 }
 
 /* this function is internal and shouldn't be used outside the snmp module */
@@ -307,10 +303,7 @@ static void
 snmp_stop_timeout(timer *t)
 {
   snmp_log("stop timer triggered");
-
-  struct snmp_proto *p = t->data;
-
-  snmp_down(p);
+  snmp_down(t->data);
 }
 
 static void

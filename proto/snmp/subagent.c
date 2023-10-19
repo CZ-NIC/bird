@@ -38,7 +38,7 @@ static struct oid *search_mib(struct snmp_proto *p, const struct oid *o_start, c
 
 u32 snmp_internet[] = { SNMP_ISO, SNMP_ORG, SNMP_DOD, SNMP_INTERNET };
 
-static const char * const snmp_errs[] = {
+static const char * const snmp_errs[] UNUSED = {
   #define SNMP_ERR_SHIFT 256
   [AGENTX_RES_OPEN_FAILED	  - SNMP_ERR_SHIFT] = "Open failed",
   [AGENTX_RES_NOT_OPEN		  - SNMP_ERR_SHIFT] = "Not open",
@@ -55,7 +55,7 @@ static const char * const snmp_errs[] = {
   [AGENTX_RES_PROCESSING_ERR	  - SNMP_ERR_SHIFT] = "Processing error",
 };
 
-static const char * const snmp_pkt_type[] = {
+static const char * const snmp_pkt_type[] UNUSED = {
   [AGENTX_OPEN_PDU]		  =  "Open-PDU",
   [AGENTX_CLOSE_PDU]		  =  "Close-PDU",
   [AGENTX_REGISTER_PDU]		  =  "Register-PDU",
@@ -108,13 +108,7 @@ open_pdu(struct snmp_proto *p, struct oid *oid)
   c.buffer = snmp_put_str(c.buffer, cf->description);
 
   uint s = update_packet_size(p, buf, c.buffer);
-  int ret = sk_send(sk, s);
-  if (ret > 0)
-    snmp_log("sk_send OK!");
-  else if (ret == 0)
-    snmp_log("sk_send sleep");
-  else
-    snmp_log("sk_send error");
+  sk_send(sk, s);
 #undef TIMEOUT_SIZE
 }
 
@@ -184,13 +178,7 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
   ADVANCE(c.buffer, c.size, size);
 
   uint s = update_packet_size(p, sk->tbuf, c.buffer);
-  int ret = sk_send(sk, s);
-  if (ret > 0)
-    snmp_log("sk_send OK!");
-  else if (ret == 0)
-    snmp_log("sk_send sleep");
-  else
-    snmp_log("sk_send error");
+  sk_send(sk, s);
 
 #undef TRAP0_HEADER_SIZE
 #undef UPTIME_SIZE
@@ -289,13 +277,7 @@ un_register_pdu(struct snmp_proto *p, struct oid *oid, uint len, uint index, u8 
   uint s = update_packet_size(p, buf, c.buffer);
 
   //snmp_log("sending (un)register %s", snmp_pkt_type[type]);
-  int ret = sk_send(sk, s);
-  if (ret > 0)
-    snmp_log("sk_send OK!");
-  else if (ret == 0)
-    snmp_log("sk_send sleep");
-  else
-    snmp_log("sk_send error");
+  sk_send(sk, s);
 }
 
 /* Register-PDU */
@@ -343,13 +325,7 @@ close_pdu(struct snmp_proto *p, u8 reason)
   uint s = update_packet_size(p, buf, c.buffer);
 
   //snmp_log("preparing to sk_send() (close)");
-  int ret = sk_send(sk, s);
-  if (ret > 0)
-    snmp_log("sk_send OK!");
-  else if (ret == 0)
-    snmp_log("sk_send sleep");
-  else
-    snmp_log("sk_send error");
+  sk_send(sk, s);
 }
 
 #if 0
@@ -394,13 +370,7 @@ addagentcaps_pdu(struct snmp_proto *p, struct oid *cap, char *descr,
   // make a note in the snmp_proto structure
 
   //int ret = sk_send(sk, buf - sk->tbuf);
-  int ret = sk_send(sk, buf - sk->tpos);
-  if (ret == 0)
-    snmp_log("sk_send sleep");
-  else if (ret < 0)
-    snmp_log("sk_send err");
-  else
-    log(L_INFO, "sk_send ok !!");
+  sk_send(sk, buf - sk->tpos);
 }
 
 static void UNUSED
@@ -438,14 +408,7 @@ removeagentcaps_pdu(struct snmp_proto *p, struct oid *cap, struct agentx_context
 
   // update state in snmp_proto structure
 
-  //int ret = sk_send(sk, buf - sk->tbuf);
-  int ret = sk_send(sk, buf - sk->tpos);
-  if (ret == 0)
-    snmp_log("sk_send sleep");
-  else if (ret < 0)
-    snmp_log("sk_send err");
-  else
-    log(L_INFO, "sk_send ok !!");
+  sk_send(sk, buf - sk->tpos);
 }
 #endif
 
@@ -1024,13 +987,7 @@ send:;
   //snmp_log("sending response to Get-PDU, GetNext-PDU or GetBulk-PDU request (size %u)...", s);
 
   /* We send the message in TX-buffer. */
-  int ret = sk_send(sk, s);
-  if (ret > 0)
-    snmp_log("sk_send OK!");
-  else if (ret == 0)
-    snmp_log("sk_send sleep");
-  else
-    snmp_log("sk_send error");
+  sk_send(sk, s);
   // TODO think through the error state
 
   mb_free(o_start);
@@ -1173,13 +1130,7 @@ snmp_ping(struct snmp_proto *p)
   /* sending only header -> pkt - buf */
   uint s = update_packet_size(p, sk->tpos, c.buffer);
 
-  int ret = sk_send(sk, s);
-  if (ret > 0)
-    snmp_log("sk_send OK!");
-  else if (ret == 0)
-    snmp_log("sk_send sleep");
-  else
-    snmp_log("sk_send error");
+  sk_send(sk, s);
 }
 
 static inline int

@@ -122,7 +122,7 @@ enum snmp_search_res {
   buf += 4 + snmp_str_size_from_len(length); })
 
 #define SNMP_LOAD_CONTEXT(hdr, buf, cont, cont_len) ({			      \
-  if ((hdr)->flags & AGENTX_NON_DEFAULT_CONTEXT)			      \
+  if (cont = NULL, cont_len = 0, (hdr)->flags & AGENTX_NON_DEFAULT_CONTEXT)   \
     LOAD_STR((buf), (cont), (cont_len),					      \
       (hdr)->flags & AGENTX_NETWORK_BYTE_ORDER); })
 
