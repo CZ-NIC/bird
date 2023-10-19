@@ -122,7 +122,7 @@ enum snmp_search_res {
   buf += 4 + snmp_str_size_from_len(length); })
 
 #define SNMP_LOAD_CONTEXT(hdr, buf, cont, cont_len) ({			      \
-  if ((hdr)->flags & AGENTX_NON_DEFAULT_CONTEXT)			      \
+  if (cont = NULL, cont_len = 0, (hdr)->flags & AGENTX_NON_DEFAULT_CONTEXT)   \
     LOAD_STR((buf), (cont), (cont_len),					      \
       (hdr)->flags & AGENTX_NETWORK_BYTE_ORDER); })
 
@@ -289,7 +289,9 @@ enum agentx_response_err {
   AGENTX_RES_NO_CREATION	    =  11,
   AGENTX_RES_INCONSISTENT_VALUE	    =  12,
   AGENTX_RES_RESOURCE_UNAVAILABLE   =  13,
-  AGENTX_RES_NOT_WRITEABLE	    =  17,
+  AGENTX_RES_COMMIT_FAILED	    =  14,
+  AGENTX_RES_UNDO_FAILED	    =  15,
+  AGENTX_RES_NOT_WRITABLE	    =  17,
   AGENTX_RES_INCONSISTENT_NAME	    =  18,
   /* end of TEST_SET_PDU resonse errs (master -> subagent) */
   AGENTX_RES_OPEN_FAILED	    = 256,

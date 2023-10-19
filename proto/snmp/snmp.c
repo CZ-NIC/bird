@@ -134,8 +134,6 @@ snmp_cleanup(struct snmp_proto *p)
   rfree(p->lock);
   p->lock = NULL;
 
-  p->partial_response = NULL;
-
   struct snmp_register *r, *r2;
   WALK_LIST_DELSAFE(r, r2, p->register_queue)
   {
@@ -254,13 +252,9 @@ snmp_start_locked(struct object_lock *lock)
   }
 
   snmp_log("opening socket");
+  /* Try opening the socket, schedule a retry on fail */
   if (sk_open(s) < 0)
-  {
-    // TODO rather set the startup timer, then reset whole SNMP proto
-    log(L_ERR "Cannot open listening socket");
-    snmp_down(p);
-    // TODO go back to SNMP_INIT and try reconnecting after timeout
-  }
+    tm_set(p->startup_timer, current_time() + p->timeout S);
 }
 
 /* this function is internal and shouldn't be used outside the snmp module */
@@ -309,10 +303,7 @@ static void
 snmp_stop_timeout(timer *t)
 {
   snmp_log("stop timer triggered");
-
-  struct snmp_proto *p = t->data;
-
-  snmp_down(p);
+  snmp_down(t->data);
 }
 
 static void
@@ -338,7 +329,6 @@ snmp_start(struct proto *P)
 
   p->to_send = 0;
   p->errs = 0;
-  p->partial_response = NULL;
 
   p->startup_timer = tm_new_init(p->pool, snmp_startup_timeout, p, 0, 0);
   p->ping_timer = tm_new_init(p->pool, snmp_ping_timeout, p, 0, 0);
@@ -366,7 +356,6 @@ snmp_start(struct proto *P)
   HASH_INSERT(p->context_hash, SNMP_H_CONTEXT, defaultc);
 
   p->context_id_map[0] = defaultc;
-  p->bgp_trie = NULL;
 
   struct snmp_bond *b;
   WALK_LIST(b, cf->bgp_entries)
