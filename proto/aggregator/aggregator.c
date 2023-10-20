@@ -271,7 +271,7 @@ aggregator_bucket_intersect(const struct trie_node *left, const struct trie_node
 
   while (i < left->potential_buckets_count && j < right->potential_buckets_count)
   {
-    if (node->potential_buckets_count >= MAX_POTENTIAL_NEXTHOP_COUNT)
+    if (node->potential_buckets_count >= MAX_POTENTIAL_BUCKETS_COUNT)
       return;
 
     int res = aggregator_bucket_compare(left->potential_buckets[i], right->potential_buckets[j]);
@@ -304,7 +304,7 @@ aggregator_bucket_unionize(const struct trie_node *left, const struct trie_node 
 
   while (i < left->potential_buckets_count && j < right->potential_buckets_count)
   {
-    if (node->potential_buckets_count >= MAX_POTENTIAL_NEXTHOP_COUNT)
+    if (node->potential_buckets_count >= MAX_POTENTIAL_BUCKETS_COUNT)
       return;
 
     int res = aggregator_bucket_compare(left->potential_buckets[i], right->potential_buckets[j]);
@@ -344,7 +344,7 @@ aggregator_bucket_unionize(const struct trie_node *left, const struct trie_node 
 
   while (i < left->potential_buckets_count)
   {
-    if (node->potential_buckets_count >= MAX_POTENTIAL_NEXTHOP_COUNT)
+    if (node->potential_buckets_count >= MAX_POTENTIAL_BUCKETS_COUNT)
       return;
 
     if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != left->potential_buckets[i])
@@ -355,7 +355,7 @@ aggregator_bucket_unionize(const struct trie_node *left, const struct trie_node 
 
   while (j < right->potential_buckets_count)
   {
-    if (node->potential_buckets_count >= MAX_POTENTIAL_NEXTHOP_COUNT)
+    if (node->potential_buckets_count >= MAX_POTENTIAL_BUCKETS_COUNT)
       return;
 
     if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != right->potential_buckets[j])
