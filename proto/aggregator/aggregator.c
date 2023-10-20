@@ -548,41 +548,6 @@ get_trie_depth(const struct trie_node *node)
   return result;
 }
 
-/*
- * Traverse trie and extract prefixes together with assigned bucket
- */
-static void
-extract_prefixes_helper(const struct trie_node *node, struct aggregated_prefixes * const prefixes, ip4_addr prefix, int depth)
-{
-  assert(node != NULL);
-  assert(prefixes != NULL);
-
-  if (is_leaf(node))
-  {
-    // assert(node->bucket != NULL);
-    assert(prefixes->count < prefixes->capacity);
-
-    prefixes->prefix_buckets[prefixes->count++] = (struct prefix_bucket) {
-      .trie_prefix = NET_ADDR_IP4(_I(prefix), depth),
-      .bucket = node->bucket ? node->bucket : NULL,
-    };
-
-    return;
-  }
-
-  if (node->child[0])
-    extract_prefixes_helper(node->child[0], prefixes, _MI4(_I(prefix) | (0 << (31 - depth))), depth + 1);
-
-  if (node->child[1])
-    extract_prefixes_helper(node->child[1], prefixes, _MI4(_I(prefix) | (1 << (31 - depth))), depth + 1);
-}
-
-static void
-extract_prefixes(const struct trie_node *node, struct aggregated_prefixes *prefixes)
-{
-  extract_prefixes_helper(node, prefixes, _MI4(0), 0);
-}
-
 static void
 print_prefixes_helper(const struct trie_node *node, ip4_addr prefix, int depth)
 {
@@ -1153,48 +1118,18 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
 
   log("protocol: %p, root: %p, slab: %p", p, p->root, p->trie_slab);
   log("Number of prefixes before aggregation: %d", get_trie_prefix_count(p->root));
-  log("Trie depth before aggregation: %d", get_trie_depth(p->root));
   log("==== PREFIXES BEFORE ====");
   print_prefixes(p->root);
 
   first_pass(p->root, p->trie_slab);
-  //log("Trie depth after first pass: %d", get_trie_depth(p->root));
   second_pass(p->root);
-  //log("Trie depth after second pass: %d", get_trie_depth(p->root));
   third_pass(p->root);
-  //log("Trie depth after third pass: %d", get_trie_depth(p->root));
 
   if (is_leaf(p->root))
     log("WARNING: root is leaf!");
 
-  const int prefix_count = get_trie_prefix_count(p->root);
- 
-  struct aggregated_prefixes *prefixes = allocz(sizeof(struct aggregated_prefixes) + sizeof(struct prefix_bucket) * prefix_count);
-  prefixes->capacity = prefix_count;
-  prefixes->count = 0;
-
-  log("Number of prefixes after aggregation: %d", prefix_count);
-  extract_prefixes(p->root, prefixes);
-
   log("==== PREFIXES AFTER ====");
   print_prefixes(p->root);
-  log("Aggregated prefixes count: %d", prefixes->count);
-  log("Trie depth: %d", get_trie_depth(p->root));
-
-  assert(prefixes->count == prefix_count);
-
-  /*
-  struct buffer buf;
-  LOG_BUFFER_INIT(buf);
-
-  for (int i = 0; i < prefixes->count; i++)
-  {
-    int res = buffer_print(&buf, "%I4", prefixes->prefix_buckets[i].trie_prefix.prefix);
-    assert(res != -1);
-  }
-
-  log("%s", buf.start);
-  */
 
   /* Announce changes */
   if (old_bucket)
