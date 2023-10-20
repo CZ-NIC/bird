@@ -200,8 +200,8 @@ first_pass(struct trie_node *node, slab *trie_slab)
 
   if (is_leaf(node))
   {
-    node->potential_buckets[node->potential_buckets_count++] = get_ancestor_bucket(node);
-    //node->potential_buckets[node->potential_buckets_count++] = node->bucket;
+    //node->potential_buckets[node->potential_buckets_count++] = get_ancestor_bucket(node);
+    node->potential_buckets[node->potential_buckets_count++] = node->bucket;
     return;
   }
 
