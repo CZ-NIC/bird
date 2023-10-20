@@ -549,27 +549,48 @@ get_trie_depth(const struct trie_node *node)
 }
 
 static void
-print_prefixes_helper(const struct trie_node *node, ip4_addr prefix, int depth)
+print_prefixes_helper(const struct trie_node *node, struct net_addr_ip4 address, int depth)
 {
   assert(node != NULL);
 
   if (is_leaf(node))
   {
-    log("%I4", prefix);
+    log("%I4/%d\t-> %p", address.prefix, address.pxlen, node->bucket);
     return;
   }
 
+  if (node->bucket != NULL)
+    log("%I4/%d\t-> %p", address.prefix, address.pxlen, node->bucket);
+
   if (node->child[0])
-    print_prefixes_helper(node->child[0], _MI4(_I(prefix) | (0 << (31 - depth))), depth + 1);
+  {
+    //print_prefixes_helper(node->child[0], _MI4(_I(prefix) | (0 << (31 - depth))), depth + 1);
+    struct net_addr_ip4 new = {
+      .prefix = (_I(address.prefix) | (0 << (31 - depth))),
+      .pxlen = address.pxlen + 1,
+    };
+
+    print_prefixes_helper(node->child[0], new, depth + 1);
+  }
 
   if (node->child[1])
-    print_prefixes_helper(node->child[1], _MI4(_I(prefix) | (1 << (31 - depth))), depth + 1);
+  {
+    //print_prefixes_helper(node->child[1], _MI4(_I(prefix) | (1 << (31 - depth))), depth + 1);
+    struct net_addr_ip4 new = {
+      .prefix = (_I(address.prefix) | (1 << (31 - depth))),
+      .pxlen = address.pxlen + 1,
+    };
+
+    print_prefixes_helper(node->child[1], new, depth + 1);
+  }
 }
 
 static void
 print_prefixes(const struct trie_node *node)
 {
-  print_prefixes_helper(node, _MI4(0), 0);
+  //print_prefixes_helper(node, _MI4(0), 0);
+  struct net_addr_ip4 addr = { 0 };
+  print_prefixes_helper(node, addr, 0);
   log("==== END PREFIXES ====");
 }
 
@@ -1109,6 +1130,8 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     {
       union net_addr_union *uptr = (net_addr_union *)rte->net->n.addr;
       trie_insert_prefix(uptr, p->root, bucket, p->trie_slab);
+      const struct net_addr_ip4 * const ip4 = &uptr->ip4;
+      log("insert %I4/%d", ip4->prefix.addr, ip4->pxlen);
     }
   }
   HASH_WALK_END;
