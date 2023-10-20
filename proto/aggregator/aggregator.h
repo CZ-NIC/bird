@@ -102,10 +102,4 @@ struct prefix_bucket {
   struct aggregator_bucket *bucket;
 };
 
-struct aggregated_prefixes {
-  int count;
-  int capacity;
-  struct prefix_bucket prefix_buckets[];
-};
-
 #endif
