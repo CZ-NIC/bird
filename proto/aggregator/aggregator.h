@@ -17,7 +17,7 @@
 #include "nest/protocol.h"
 #include "lib/hash.h"
 
-#define MAX_POTENTIAL_NEXTHOP_COUNT 16
+#define MAX_POTENTIAL_BUCKETS_COUNT 16
 
 struct aggregator_config {
   struct proto_config c;
@@ -93,7 +93,7 @@ struct trie_node {
   struct trie_node *parent;
   struct trie_node *child[2];
   struct aggregator_bucket *bucket;
-  struct aggregator_bucket *potential_buckets[MAX_POTENTIAL_NEXTHOP_COUNT];
+  struct aggregator_bucket *potential_buckets[MAX_POTENTIAL_BUCKETS_COUNT];
   int potential_buckets_count;
 };
 
