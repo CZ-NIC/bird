@@ -361,6 +361,7 @@ channel_roa_in_reload_done(struct channel_import_request *req)
 static void
 channel_roa_in_changed(struct settle *se)
 {
+  log("channel_roa in changed");
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, settle, se);
   struct channel *c = s->c;
 
@@ -2807,6 +2808,9 @@ void
 proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
 {
   struct proto_reload_request *prr = (void *) _prr;
+  
+  if (prr->trie)
+    prr->ev.hook = channel_reload_out_done_main;
   struct channel *c;
   log("channel proto_cmd_reload_called");
 
@@ -2830,15 +2834,6 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
       }
 
   log(L_INFO "Reloading protocol %s", p->name);
-  
-  ASSERT_DIE(this_cli->parser_pool == prr->trie->lp);
-  rmove(this_cli->parser_pool, &root_pool);
-  this_cli->parser_pool = lp_new(this_cli->pool);
-  prr->ev = (event) {
-      .hook = channel_reload_out_done_main,
-      .data = prr,
-  };
-  prr->counter = 1;
 
   /* re-importing routes */
   if (prr->dir != CMD_RELOAD_OUT)
@@ -2893,8 +2888,6 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
 	  channel_request_feeding_dynamic(c, CFRT_AUXILIARY);
 
   cli_msg(-15, "%s: reloading", p->name);
-  if (atomic_fetch_sub_explicit(&prr->counter, 1, memory_order_acq_rel) == 1)
-    ev_send_loop(&main_birdloop, &prr->ev);
 }
 
 extern void pipe_update_debug(struct proto *P);

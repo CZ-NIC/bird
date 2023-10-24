@@ -766,8 +766,8 @@ krt_if_notify(struct proto *P, uint flags, struct iface *iface UNUSED)
     krt_scan_timer_kick(p);
 }
 
-static void
-krt_reload_routes(struct channel *C)
+static int
+krt_reload_routes(struct channel *C, struct channel_import_request *UNUSED)
 {
   struct krt_proto *p = (void *) C->proto;
 
@@ -778,6 +778,7 @@ krt_reload_routes(struct channel *C)
     p->reload = 1;
     krt_scan_timer_kick(p);
   }
+  return 1;
 }
 
 static void krt_cleanup(struct krt_proto *p);

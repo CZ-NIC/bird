@@ -110,13 +110,28 @@ proto_postconfig(void)
 static inline void
 proto_call_cmd_reload(struct proto_spec ps, int dir, const struct f_trie *trie)
 {
+  log("Start of cmd reload");
   struct proto_reload_request *prr = cfg_alloc(sizeof *prr);
   *prr = (struct proto_reload_request) {
     .trie = trie,
     .dir = dir,
+    .counter =1,
   };
+ 
+  if (trie)
+  {
+    ASSERT_DIE(this_cli->parser_pool == prr->trie->lp);
+    rmove(this_cli->parser_pool, &root_pool);
+    this_cli->parser_pool = lp_new(this_cli->pool);
+    prr->ev = (event) {
+      .data = prr,
+    };
+  }
 
   proto_apply_cmd(ps, proto_cmd_reload, 1, (uintptr_t) prr);
+  if (trie)
+    if (atomic_fetch_sub_explicit(&prr->counter, 1, memory_order_acq_rel) == 1)
+      ev_send_loop(&main_birdloop, &prr->ev);
 }
 
 #define DIRECT_CFG ((struct rt_dev_config *) this_proto)
