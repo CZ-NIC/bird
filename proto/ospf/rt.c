@@ -2019,10 +2019,10 @@ rt_sync(struct ospf_proto *p)
 
   OSPF_TRACE(D_EVENTS, "Starting routing table synchronization");
 
-  pthread_mutex_lock(&p->mutex);
+  DG_LOCK(attr, p->lock);
   struct channel_import_request *cir = p->cir;
   p->cir = NULL;
-  pthread_mutex_unlock(&p->mutex);
+  DG_UNLOCK(attr, p->lock);
   
   DBG("Now syncing my rt table with nest's\n");
   FIB_ITERATE_INIT(&fit, fib);

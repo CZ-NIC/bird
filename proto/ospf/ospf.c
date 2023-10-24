@@ -438,10 +438,15 @@ ospf_reload_routes(struct channel *C, struct channel_import_request *cir)
   struct ospf_proto *p = (struct ospf_proto *) C->proto;
 
   if (cir) {
-    pthread_mutex_lock(&p->mutex);
+    if (p->lock == NULL)
+      {
+        p->lock = DOMAIN_NEW(attrs);
+        DOMAIN_SETUP(attrs, p->lock, "Partial request lock ospf", NULL);
+      }
+    DG_LOCK(p->lock);
     cir->next = p->cir;
     p->cir = cir;
-    pthread_mutex_unlock(&p->mutex);
+    DG_UNLOCK(p->lock);
   }
   if (p->calcrt == 2)
     return 1;

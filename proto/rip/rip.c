@@ -968,10 +968,10 @@ rip_timer(timer *t)
 
   FIB_ITERATE_INIT(&fit, &p->rtable);
   
-  pthread_mutex_lock(&p->mutex);
+  DG_LOCK(attrs, p->lock);
   struct channel_import_request *cir = p->cir;
   p->cir = NULL;
-  pthread_mutex_unlock(&p->mutex);
+  DG_UNLOCK(attrs, p->lock);
 
   loop:
   FIB_ITERATE_START(&p->rtable, &fit, struct rip_entry, en)
@@ -1163,10 +1163,15 @@ rip_reload_routes(struct channel *C, struct channel_import_request *cir)
   struct rip_proto *p = (struct rip_proto *) C->proto;
   
   if (cir) {
-    pthread_mutex_lock(&p->mutex);
+    if (p->lock==NULL)
+      {
+        p->lock = DOMAIN_NEW(attrs);
+        DOMAIN_SETUP(attrs, p->lock, "Partial request lock rip", NULL);
+      }
+    DG_LOCK(p->lock);
     cir->next = p->cir;
     p->cir = cir;
-    pthread_mutex_lock(&p->mutex);
+    DG_UNLOCK(p->lock);
   }
   if (p->rt_reload)
     return 1;
