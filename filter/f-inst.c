@@ -873,7 +873,7 @@
     ACCESS_RTE;
     RESULT_TYPE(da->type);
     {
-      const struct f_val *empty;
+      struct f_val empty;
       const eattr *e = ea_find(fs->rte->attrs, da->id);
 
       if (e)
@@ -891,8 +891,8 @@
 		}]]);
 	}
       }
-      else if (empty = f_get_empty(da->type))
-	RESULT_VAL(*empty);
+      else if ((empty = f_get_empty(da->type)).type != T_VOID)
+	RESULT_VAL(empty);
       else
 	RESULT_VOID;
     }

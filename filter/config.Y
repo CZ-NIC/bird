@@ -207,11 +207,11 @@ f_generate_empty(const struct symbol *sym)
     cf_error("Can't empty %s: not an attribute", sym->name);
 
   const struct ea_class *def = sym->attribute;
-  const struct f_val *empty = f_get_empty(def->type);
-  if (!empty)
+  const struct f_val empty = f_get_empty(def->type);
+  if (empty.type == T_VOID)
     cf_error("Can't empty attribute %s", def->name);
 
-  return f_new_inst(FI_EA_SET, f_new_inst(FI_CONSTANT, *empty), def);
+  return f_new_inst(FI_EA_SET, f_new_inst(FI_CONSTANT, empty), def);
 }
 
 static inline struct f_inst *
@@ -875,10 +875,10 @@ term:
  | dynamic_attr '.' RESET{ }
 */
 
- | '+' EMPTY '+' { $$ = f_new_inst(FI_CONSTANT, f_const_empty_path); }
- | '-' EMPTY '-' { $$ = f_new_inst(FI_CONSTANT, f_const_empty_clist); }
- | '-' '-' EMPTY '-' '-' { $$ = f_new_inst(FI_CONSTANT, f_const_empty_eclist); }
- | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_new_inst(FI_CONSTANT, f_const_empty_lclist); }
+ | '+' EMPTY '+' { $$ = f_new_inst(FI_CONSTANT, f_get_empty(T_PATH)); }
+ | '-' EMPTY '-' { $$ = f_new_inst(FI_CONSTANT, f_get_empty(T_CLIST)); }
+ | '-' '-' EMPTY '-' '-' { $$ = f_new_inst(FI_CONSTANT, f_get_empty(T_ECLIST)); }
+ | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_new_inst(FI_CONSTANT, f_get_empty(T_LCLIST)); }
  | PREPEND '(' term ',' term ')' { $$ = f_new_inst(FI_PATH_PREPEND, $3, $5); }
  | ADD '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_ADD, $3, $5); }
  | DELETE '(' term ',' term ')' { $$ = f_new_inst(FI_CLIST_DEL, $3, $5); }

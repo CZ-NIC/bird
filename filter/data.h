@@ -242,15 +242,20 @@ undef_value(struct f_val v)
     (v.val.ad == &null_adata);
 }
 
-extern const struct f_val f_const_empty_path, f_const_empty_clist, f_const_empty_eclist, f_const_empty_lclist, f_const_empty_prefix_set;
-static inline const struct f_val *f_get_empty(btype t)
+extern const struct f_val f_const_empty_prefix_set;
+static inline struct f_val f_get_empty(btype t)
 {
   switch (t) {
-    case T_PATH:	return &f_const_empty_path;
-    case T_CLIST:	return &f_const_empty_clist;
-    case T_ECLIST:	return &f_const_empty_eclist;
-    case T_LCLIST:	return &f_const_empty_lclist;
-    default:		return NULL;
+    case T_PATH:
+    case T_CLIST:
+    case T_ECLIST:
+    case T_LCLIST:
+      return (struct f_val) {
+	.type = t,
+	.val.ad = &null_adata,
+      };
+    default:
+      return (struct f_val) { .type = T_VOID };
   }
 }
 
