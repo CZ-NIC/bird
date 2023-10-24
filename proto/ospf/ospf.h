@@ -11,6 +11,7 @@
 #ifndef _BIRD_OSPF_H_
 #define _BIRD_OSPF_H_
 
+#include <pthread.h>
 #include "nest/bird.h"
 
 #include "lib/checksum.h"
@@ -219,6 +220,8 @@ struct ospf_proto
   slist lsal;			/* List of all LSA's */
   int calcrt;			/* Routing table calculation scheduled?
 				   0=no, 1=normal, 2=forced reload */
+  struct channel_import_request *cir; /* Struct with trie for partial reload */
+  pthread_mutex_t mutex;	/* Mutex for partial reload */
   list iface_list;		/* List of OSPF interfaces (struct ospf_iface) */
   list area_list;		/* List of OSPF areas (struct ospf_area) */
   int areano;			/* Number of area I belong to */

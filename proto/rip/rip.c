@@ -967,6 +967,11 @@ rip_timer(timer *t)
   TRACE(D_EVENTS, "Main timer fired");
 
   FIB_ITERATE_INIT(&fit, &p->rtable);
+  
+  pthread_mutex_lock(&p->mutex);
+  struct channel_import_request *cir = p->cir;
+  p->cir = NULL;
+  pthread_mutex_unlock(&p->mutex);
 
   loop:
   FIB_ITERATE_START(&p->rtable, &fit, struct rip_entry, en)
@@ -991,15 +996,17 @@ rip_timer(timer *t)
     /* Propagating eventual change */
     if (changed || p->rt_reload)
     {
-      /*
-       * We have to restart the iteration because there may be a cascade of
-       * synchronous events rip_announce_rte() -> nest table change ->
-       * rip_rt_notify() -> p->rtable change, invalidating hidden variables.
-       */
-
-      FIB_ITERATE_PUT_NEXT(&fit, &p->rtable);
-      rip_announce_rte(p, en);
-      goto loop;
+      if (cir == NULL || import_prefilter_for_protocols(cir, en->n.addr))
+      {
+        /*
+         * We have to restart the iteration because there may be a cascade of
+         * synchronous events rip_announce_rte() -> nest table change ->
+         * rip_rt_notify() -> p->rtable change, invalidating hidden variables.
+         */
+        FIB_ITERATE_PUT_NEXT(&fit, &p->rtable);
+        rip_announce_rte(p, en);
+        goto loop;
+      }
     }
 
     /* Checking stale entries for garbage collection timeout */
@@ -1047,6 +1054,8 @@ rip_timer(timer *t)
       }
   }
 
+  if (cir)
+    cir->done(cir);
   tm_start(p->timer, MAX(next - now_, 100 MS));
 }
 
@@ -1148,17 +1157,24 @@ rip_trigger_update(struct rip_proto *p)
  *	RIP protocol glue
  */
 
-static void
-rip_reload_routes(struct channel *C)
+static int
+rip_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct rip_proto *p = (struct rip_proto *) C->proto;
-
+  
+  if (cir) {
+    pthread_mutex_lock(&p->mutex);
+    cir->next = p->cir;
+    p->cir = cir;
+    pthread_mutex_lock(&p->mutex);
+  }
   if (p->rt_reload)
-    return;
+    return 1;
 
   TRACE(D_EVENTS, "Scheduling route reload");
   p->rt_reload = 1;
   rip_kick_timer(p);
+  return 1;
 }
 
 static struct rte_owner_class rip_rte_owner_class;

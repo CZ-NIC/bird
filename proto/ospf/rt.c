@@ -608,6 +608,7 @@ spfa_process_prefixes(struct ospf_proto *p, struct ospf_area *oa)
   }
 }
 
+
 /* RFC 2328 16.1. calculating shortest paths for an area */
 static void
 ospf_rt_spfa(struct ospf_area *oa)
@@ -615,12 +616,10 @@ ospf_rt_spfa(struct ospf_area *oa)
   struct ospf_proto *p = oa->po;
   struct top_hash_entry *act;
   node *n;
-
   if (oa->rt == NULL)
     return;
   if (oa->rt->lsa.age == LSA_MAXAGE)
     return;
-
   OSPF_TRACE(D_EVENTS, "Starting routing table calculation for area %R", oa->areaid);
 
   /* 16.1. (1) */
@@ -634,6 +633,7 @@ ospf_rt_spfa(struct ospf_area *oa)
   add_head(&oa->cand, &oa->rt->cn);
   DBG("RT LSA: rt: %R, id: %R, type: %u\n",
       oa->rt->lsa.rt, oa->rt->lsa.id, oa->rt->lsa_type);
+  
 
   while (!EMPTY_LIST(oa->cand))
   {
@@ -643,7 +643,6 @@ ospf_rt_spfa(struct ospf_area *oa)
 
     DBG("Working on LSA: rt: %R, id: %R, type: %u\n",
 	act->lsa.rt, act->lsa.id, act->lsa_type);
-
     act->color = INSPF;
     switch (act->lsa_type)
     {
@@ -2020,6 +2019,11 @@ rt_sync(struct ospf_proto *p)
 
   OSPF_TRACE(D_EVENTS, "Starting routing table synchronization");
 
+  pthread_mutex_lock(&p->mutex);
+  struct channel_import_request *cir = p->cir;
+  p->cir = NULL;
+  pthread_mutex_unlock(&p->mutex);
+  
   DBG("Now syncing my rt table with nest's\n");
   FIB_ITERATE_INIT(&fit, fib);
 again1:
@@ -2065,42 +2069,44 @@ again1:
 
       if (reload || ort_changed(nf, &eattrs.l))
       {
-	nf->old_metric1 = nf->n.metric1;
-	nf->old_metric2 = nf->n.metric2;
-	nf->old_tag = nf->n.tag;
-	nf->old_rid = nf->n.rid;
+        if (cir == NULL || import_prefilter_for_protocols(cir, nf->fn.addr))
+        {
+	  nf->old_metric1 = nf->n.metric1;
+	  nf->old_metric2 = nf->n.metric2;
+	  nf->old_tag = nf->n.tag;
+	  nf->old_rid = nf->n.rid;
 
-	eattrs.a[eattrs.l.count++] =
-	  EA_LITERAL_EMBEDDED(&ea_ospf_metric1, 0, nf->n.metric1);
-
-	if (nf->n.type == RTS_OSPF_EXT2)
 	  eattrs.a[eattrs.l.count++] =
-	    EA_LITERAL_EMBEDDED(&ea_ospf_metric2, 0, nf->n.metric2);
+	    EA_LITERAL_EMBEDDED(&ea_ospf_metric1, 0, nf->n.metric1);
 
-	if ((nf->n.type == RTS_OSPF_EXT1) || (nf->n.type == RTS_OSPF_EXT2))
+	  if (nf->n.type == RTS_OSPF_EXT2)
+	    eattrs.a[eattrs.l.count++] =
+	      EA_LITERAL_EMBEDDED(&ea_ospf_metric2, 0, nf->n.metric2);
+
+	  if ((nf->n.type == RTS_OSPF_EXT1) || (nf->n.type == RTS_OSPF_EXT2))
+	    eattrs.a[eattrs.l.count++] =
+	      EA_LITERAL_EMBEDDED(&ea_ospf_tag, 0, nf->n.tag);
+
 	  eattrs.a[eattrs.l.count++] =
-	    EA_LITERAL_EMBEDDED(&ea_ospf_tag, 0, nf->n.tag);
+	    EA_LITERAL_EMBEDDED(&ea_ospf_router_id, 0, nf->n.rid);
 
-	eattrs.a[eattrs.l.count++] =
-	  EA_LITERAL_EMBEDDED(&ea_ospf_router_id, 0, nf->n.rid);
+	  ASSERT_DIE(ARRAY_SIZE(eattrs.a) >= eattrs.l.count);
 
-	ASSERT_DIE(ARRAY_SIZE(eattrs.a) >= eattrs.l.count);
+	  ea_list *eal = ea_lookup(&eattrs.l, 0);
+	  ea_free(nf->old_ea);
+	  nf->old_ea = eal;
 
-	ea_list *eal = ea_lookup(&eattrs.l, 0);
-	ea_free(nf->old_ea);
-	nf->old_ea = eal;
+	  rte e0 = {
+	    .attrs = eal,
+	    .src = p->p.main_source,
+	  };
 
-	rte e0 = {
-	  .attrs = eal,
-	  .src = p->p.main_source,
-	};
-
-	/*
-	DBG("Mod rte type %d - %N via %I on iface %s, met %d\n",
-	    a0.source, nf->fn.addr, a0.gw, a0.iface ? a0.iface->name : "(none)", nf->n.metric1);
-	    */
-
-	rte_update(p->p.main_channel, nf->fn.addr, &e0, p->p.main_source);
+	  /*
+	  DBG("Mod rte type %d - %N via %I on iface %s, met %d\n",
+	      a0.source, nf->fn.addr, a0.gw, a0.iface ? a0.iface->name : "(none)", nf->n.metric1);
+	      */
+	  rte_update(p->p.main_channel, nf->fn.addr, &e0, p->p.main_source);
+	}
       }
     }
     else if (nf->old_ea)
@@ -2124,6 +2130,9 @@ again1:
     }
   }
   FIB_ITERATE_END;
+  
+  if(cir)
+    cir->done(cir);
 
   WALK_LIST(oa, p->area_list)
   {

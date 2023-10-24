@@ -1611,7 +1611,6 @@ bgp_decode_nlri_ip4(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
     net_normalize_ip4(&net);
 
     // XXXX validate prefix
-
     bgp_rte_update(s, (net_addr *) &net, path_id, a);
   }
 }
@@ -1696,7 +1695,6 @@ bgp_decode_nlri_ip6(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
     net_normalize_ip6(&net);
 
     // XXXX validate prefix
-
     bgp_rte_update(s, (net_addr *) &net, path_id, a);
   }
 }

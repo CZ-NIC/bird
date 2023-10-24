@@ -96,13 +96,38 @@ pipe_preexport(struct channel *C, rte *e)
   return 0;
 }
 
-static void
-pipe_reload_routes(struct channel *C)
+void
+pipe_import_by_refeed_free(struct channel_feeding_request *cfr)
+{
+  struct import_to_export_reload *reload = SKIP_BACK(struct import_to_export_reload, cfr, cfr);
+  reload->cir->done(reload->cir);
+  log("free is done");
+}
+
+static int
+pipe_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct pipe_proto *p = (void *) C->proto;
-
-  /* Route reload on one channel is just refeed on the other */
-  channel_request_feeding_dynamic((C == p->pri) ? p->sec : p->pri, CFRT_DIRECT);
+  if (cir && cir->trie)
+  {
+    struct import_to_export_reload *reload = lp_alloc(cir->trie->lp, sizeof *reload);
+    *reload = (struct import_to_export_reload) {
+      .cir = cir,
+      .cfr = {
+	      .type = CFRT_AUXILIARY,
+	      .done = pipe_import_by_refeed_free,
+	      .trie = cir->trie,
+	    },
+    };
+    channel_request_feeding((C == p->pri) ? p->sec : p->pri, &reload->cfr);
+  }
+  else{
+    if(cir)
+      cir->done(cir);
+    /* Route reload on one channel is just refeed on the other */
+    channel_request_feeding_dynamic((C == p->pri) ? p->sec : p->pri, CFRT_DIRECT);
+  }
+  return 1;
 }
 
 static void

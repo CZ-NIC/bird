@@ -2251,7 +2251,7 @@ rt_table_export_start_feed(struct rtable_private *tab, struct rt_table_export_ho
   struct rt_pending_export *rpe = rt_last_export(hook->table);
   req_trace(req, D_STATES, "Export initialized, last export %p (%lu)", rpe, rpe ? rpe->seq : 0);
   atomic_store_explicit(&hook->last_export, rpe, memory_order_relaxed);
-
+  
   rt_init_export(re, req->hook);
 }
 
@@ -4546,7 +4546,6 @@ void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *n
       while (new.attrs->next)
 	new.attrs = new.attrs->next;
 
-      log(L_TRACE "chanel_reload_export_bulk %N", net);
       /* And reload the route */
       rte_update(c, net, &new, new.src);
     }

@@ -28,3 +28,8 @@ struct pipe_proto {
 #define PIPE_FL_RR_BEGIN_PENDING	1	/* Route refresh should start with the first route notified */
 
 #endif
+
+struct import_to_export_reload {
+  struct channel_import_request *cir;	/* We can not free this struct before reload finishes. */
+  struct channel_feeding_request cfr;	/* New request we actually need - import was changed to feed the other side. */
+};

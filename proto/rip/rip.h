@@ -12,6 +12,7 @@
 #ifndef _BIRD_RIP_H_
 #define _BIRD_RIP_H_
 
+#include <pthread.h>
 #include "nest/bird.h"
 #include "nest/cli.h"
 #include "nest/iface.h"
@@ -103,6 +104,8 @@ struct rip_proto
 
   struct tbf log_pkt_tbf;		/* TBF for packet messages */
   struct tbf log_rte_tbf;		/* TBF for RTE messages */
+  struct channel_import_request *cir;	/* Trie for partial reload */
+  pthread_mutex_t mutex;		/* Mutex for partial reload */
 };
 
 struct rip_iface

@@ -772,6 +772,17 @@ channel_refeed_prefilter(const struct rt_prefilter *p, const net_addr *n)
   return 0;
 }
 
+int
+import_prefilter_for_protocols(struct channel_import_request *cir_head, const net_addr *n)
+{
+  for (struct channel_import_request *cir = cir_head; cir; cir = cir->next)
+  {
+    if (!cir->trie || trie_match_net(cir->trie, n))
+      return 1;
+  }
+  return 0;
+}
+
 static int
 channel_import_prefilter(const struct rt_prefilter *p, const net_addr *n)
 {
@@ -783,12 +794,8 @@ channel_import_prefilter(const struct rt_prefilter *p, const net_addr *n)
   for (struct channel_import_request *cir = c->importing; cir; cir = cir->next)
   {
     if (!cir->trie || trie_match_net(cir->trie, n))
-    {
-      log(L_TRACE "%N passed to import", n);
       return 1;
-    }
   }
-  log(L_TRACE "%N filtered out of import trie", n);
   return 0;
 }
 
@@ -1148,14 +1155,14 @@ channel_request_reload(struct channel *c)
 
   CD(c, "Reload requested");
 
-  if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER) {
-    struct channel_import_request* cir = mb_alloc(c->proto->pool, sizeof *cir);;
-    cir->trie = NULL;
-    cir->done = channel_import_request_done_dynamic;
+  struct channel_import_request* cir = mb_alloc(c->proto->pool, sizeof *cir);
+  cir->trie = NULL;
+  cir->done = channel_import_request_done_dynamic;
+
+  if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
     channel_schedule_reload(c, cir);
-  }
   else
-    c->proto->reload_routes(c);
+    c->proto->reload_routes(c, cir);
 }
 
 static void
@@ -1168,11 +1175,8 @@ channel_request_partial_reload(struct channel *c, struct channel_import_request 
 
   if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
     channel_schedule_reload(c, cir);
-    /* TODO */
-  else
-    CD(c, "Partial import reload requested, but with ric cosi");
-    /*c->proto->reload_routes(c);
-  */
+  else if (! c->proto->reload_routes(c, cir))
+    cli_msg(-15, "Partial reload was refused. Maybe you tried partial reload on bgp?");
 }
 
 const struct channel_class channel_basic = {
@@ -2804,6 +2808,7 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
 {
   struct proto_reload_request *prr = (void *) _prr;
   struct channel *c;
+  log("channel proto_cmd_reload_called");
 
   if (p->disabled)
   {
@@ -2825,6 +2830,15 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
       }
 
   log(L_INFO "Reloading protocol %s", p->name);
+  
+  ASSERT_DIE(this_cli->parser_pool == prr->trie->lp);
+  rmove(this_cli->parser_pool, &root_pool);
+  this_cli->parser_pool = lp_new(this_cli->pool);
+  prr->ev = (event) {
+      .hook = channel_reload_out_done_main,
+      .data = prr,
+  };
+  prr->counter = 1;
 
   /* re-importing routes */
   if (prr->dir != CMD_RELOAD_OUT)
@@ -2834,19 +2848,8 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
         if (prr->trie)
 	{
 	  /* Increase the refeed counter */
-	  if (atomic_fetch_add_explicit(&prr->counter, 1, memory_order_relaxed) == 0)
-	  {
-	    /* First occurence */
-	    ASSERT_DIE(this_cli->parser_pool == prr->trie->lp);
-	    rmove(this_cli->parser_pool, &root_pool);
-	    this_cli->parser_pool = lp_new(this_cli->pool);
-	    prr->ev = (event) {
-	      .hook = channel_reload_out_done_main,
-	      .data = prr,
-	    };
-	  }
-	  else
-	    ASSERT_DIE(this_cli->parser_pool != prr->trie->lp);
+	  atomic_fetch_add_explicit(&prr->counter, 1, memory_order_relaxed);
+	  ASSERT_DIE(this_cli->parser_pool != prr->trie->lp);
 
 	  struct channel_cmd_reload_import_request *req = lp_alloc(prr->trie->lp, sizeof *req);
 	  *req = (struct channel_cmd_reload_import_request) {
@@ -2869,19 +2872,8 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
         if (prr->trie)
 	{
 	  /* Increase the refeed counter */
-	  if (atomic_fetch_add_explicit(&prr->counter, 1, memory_order_relaxed) == 0)
-	  {
-	    /* First occurence */
-	    ASSERT_DIE(this_cli->parser_pool == prr->trie->lp);
-	    rmove(this_cli->parser_pool, &root_pool);
-	    this_cli->parser_pool = lp_new(this_cli->pool);
-	    prr->ev = (event) {
-	      .hook = channel_reload_out_done_main,
-	      .data = prr,
-	    };
-	  }
-	  else
-	    ASSERT_DIE(this_cli->parser_pool != prr->trie->lp);
+	  atomic_fetch_add_explicit(&prr->counter, 1, memory_order_relaxed);
+	  ASSERT_DIE(this_cli->parser_pool != prr->trie->lp);
 
 	  /* Request actually the feeding */
 
@@ -2901,6 +2893,8 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
 	  channel_request_feeding_dynamic(c, CFRT_AUXILIARY);
 
   cli_msg(-15, "%s: reloading", p->name);
+  if (atomic_fetch_sub_explicit(&prr->counter, 1, memory_order_acq_rel) == 1)
+    ev_send_loop(&main_birdloop, &prr->ev);
 }
 
 extern void pipe_update_debug(struct proto *P);
