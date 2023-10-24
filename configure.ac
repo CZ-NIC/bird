@@ -393,8 +393,7 @@ if test "$enable_debug" = yes ; then
   LDFLAGS="$LDFLAGS -rdynamic"
   CFLAGS="$CFLAGS -O0 -ggdb -g3"
 
-  BIRD_CHECK_GCC_OPTION([bird_cv_c_option_dwarf4], [-gdwarf-4], [])
-  BIRD_ADD_GCC_OPTION([bird_cv_c_option_dwarf4], [-gdwarf-4])
+  BIRD_CHECK_AND_ADD_GCC_OPTION([bird_cv_c_option_dwarf4], [-gdwarf-4], [])
 
   AC_CHECK_HEADER([execinfo.h],
     [
