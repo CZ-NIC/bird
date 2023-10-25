@@ -195,6 +195,23 @@ snmp_bgp_state(const struct oid *oid)
   return state;
 }
 
+void
+snmp_bgp_reg_ok(struct snmp_proto *p, struct agentx_response *r, struct oid *oid)
+{
+  const struct oid *in_buf = ((void *) r) + sizeof(r);
+  int byte_ord = r->h.flags & AGENTX_NETWORK_BYTE_ORDER;
+  struct oid *dup = snmp_prefixize(p, in_buf, byte_ord);
+
+  ASSUME(snmp_bgp_state(oid) == snmp_bgp_state(dup));
+  mb_free(dup);
+}
+
+void
+snmp_bgp_reg_failed(struct snmp_proto *p, struct agentx_response UNUSED *r, struct oid UNUSED *oid)
+{
+  snmp_stop_subagent(p);
+}
+
 static void
 snmp_bgp_notify_common(struct snmp_proto *p, uint type, ip4_addr ip4, char last_error[], uint state_val)
 {
@@ -315,15 +332,13 @@ snmp_bgp_register(struct snmp_proto *p)
     /* Register the whole BGP4-MIB::bgp root tree node */
     struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
 
-    struct oid *oid = mb_alloc(p->pool, snmp_oid_sizeof(2));
-    STORE_U8(oid->n_subid, 2);
+    struct oid *oid = mb_alloc(p->pool,
+      snmp_oid_sizeof(ARRAY_SIZE(bgp_mib_prefix)));
+    STORE_U8(oid->n_subid, ARRAY_SIZE(bgp_mib_prefix));
     STORE_U8(oid->prefix, SNMP_MGMT);
 
-    memcpy(oid->ids, bgp_mib_prefix, 2 * sizeof(u32));
-
+    memcpy(oid->ids, bgp_mib_prefix, sizeof(bgp_mib_prefix));
     registering->oid = oid;
-    add_tail(&p->register_queue, &registering->n);
-    p->register_to_ack++;
 
     /* snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 is_instance, uint contid) */
     snmp_register(p, oid, 1, 0, SNMP_REGISTER_TREE, SNMP_DEFAULT_CONTEXT);

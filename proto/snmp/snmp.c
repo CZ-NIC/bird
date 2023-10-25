@@ -225,8 +225,13 @@ snmp_start_locked(struct object_lock *lock)
 {
   struct snmp_proto *p = lock->data;
 
+  snmp_log("changing state to LOCKED");
   p->state = SNMP_LOCKED;
   sock *s = p->sock;
+
+  p->to_send = 0;
+  p->errs = 0;
+
 
   if (!p->bgp_trie)
     p->bgp_trie = f_new_trie(p->lp, 0);  // TODO user-data attachment size
@@ -347,9 +352,6 @@ snmp_start(struct proto *P)
 {
   struct snmp_proto *p = (void *) P;
   struct snmp_config *cf = (struct snmp_config *) P->cf;
-
-  p->to_send = 0;
-  p->errs = 0;
 
   p->startup_timer = tm_new_init(p->pool, snmp_startup_timeout, p, 0, 0);
   p->ping_timer = tm_new_init(p->pool, snmp_ping_timeout, p, 0, 0);

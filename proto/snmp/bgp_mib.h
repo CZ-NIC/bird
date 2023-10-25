@@ -39,6 +39,8 @@ enum BGP4_MIB_PEER_TABLE {
 struct oid;
 
 void snmp_bgp_register(struct snmp_proto *p);
+void snmp_bgp_reg_ok(struct snmp_proto *p, struct agentx_response *r, struct oid *oid);
+void snmp_bgp_reg_failed(struct snmp_proto *p, struct agentx_response *r, struct oid *oid);
 
 u8 snmp_bgp_get_valid(u8 state);
 u8 snmp_bgp_getnext_valid(u8 state);

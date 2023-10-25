@@ -77,14 +77,29 @@ static const char * const snmp_pkt_type[] UNUSED = {
   [AGENTX_RESPONSE_PDU]		  =  "Response-PDU",
 };
 
+
+static void
+snmp_register_ok(struct snmp_proto *p, struct agentx_response *res, struct oid *oid, u8 UNUSED class)
+{
+  // TODO switch based on oid type
+  snmp_bgp_reg_ok(p, res, oid);
+}
+
+static void
+snmp_register_failed(struct snmp_proto *p, struct agentx_response *res, struct oid *oid, u8 UNUSED class)
+{
+  // TODO switch based on oid type
+  snmp_bgp_reg_failed(p, res, oid);
+}
+
 void
-snmp_register_ack(struct snmp_proto *p, struct agentx_header *h, u8 class)
+snmp_register_ack(struct snmp_proto *p, struct agentx_response *res, u8 class)
 {
   struct snmp_register *reg;
   WALK_LIST(reg, p->register_queue)
   {
     // TODO add support for more mib trees (other than BGP)
-    if (snmp_register_same(reg, h, class))
+    if (snmp_register_same(reg, &res->h, class))
     {
       struct snmp_registered_oid *ro = \
 	 mb_alloc(p->p.pool, sizeof(struct snmp_registered_oid));
@@ -98,6 +113,11 @@ snmp_register_ack(struct snmp_proto *p, struct agentx_header *h, u8 class)
       p->register_to_ack--;
 
       add_tail(&p->bgp_registered, &ro->n);
+
+      if (res->error == AGENTX_RES_NO_ERROR)
+	snmp_register_ok(p, res, ro->oid, class);
+      else
+	snmp_register_failed(p, res, ro->oid, class);
       return;
     }
   }
@@ -373,7 +393,7 @@ parse_close_pdu(struct snmp_proto *p, byte * const pkt_start, uint size)
     static int snmp_testset(struct snmp_proto *p, const struct agentx_varbind *vb, uint pkt_size);
  */
 /* return 1 if the value could be set */
-static int
+static int UNUSED
 snmp_testset(struct snmp_proto *p, const struct agentx_varbind *vb, struct oid *oid, uint pkt_size)
 {
   /* Hard-coded no support for writing */
@@ -495,6 +515,9 @@ parse_test_set_pdu(struct snmp_proto *p, byte * const pkt_start, uint size)
   struct agentx_header *h = (void *) pkt;
   ADVANCE(pkt, size, AGENTX_HEADER_SIZE);
   uint pkt_size = LOAD_U32(h->payload, h->flags & AGENTX_NETWORK_BYTE_ORDER);
+
+  if (pkt_size < size)
+    return 0;
 
   sock *sk = p->sock;
   struct snmp_pdu c = SNMP_PDU_CONTEXT(sk);
@@ -747,24 +770,6 @@ parse_pkt(struct snmp_proto *p, byte *pkt, uint size, uint *skip)
   }
 }
 
-static void
-snmp_register_ok(struct snmp_proto *p, struct agentx_response *r, uint size, u8 type)
-{
-  (void)p;(void)r;(void)size;(void)type;
-}
-
-static void
-snmp_register_failed(struct snmp_proto *p, struct agentx_response *r, uint size, u8 type)
-{
-  (void)p;(void)r;(void)size;(void)type;
-}
-
-static void
-unsupported_context(struct snmp_proto *p, struct agentx_response *r, uint size)
-{
-  (void)p;(void)r;(void)size;
-  // TODO unsupported_context
-}
 
 static uint
 parse_response(struct snmp_proto *p, byte *res, uint size)
@@ -814,17 +819,15 @@ parse_response(struct snmp_proto *p, byte *res, uint size)
     /* Registration errors */
     case AGENTX_RES_DUPLICATE_REGISTER:
     case AGENTX_RES_REQUEST_DENIED:
-      snmp_register_failed(p, r, size, h->type);
-      break;
-
-    case AGENTX_RES_UNSUPPORTED_CONTEXT:
-      unsupported_context(p, r, size);
+      // TODO: more direct path to mib-specifiec code
+      snmp_register_ack(p, r, size);
       break;
 
     /* We are trying to unregister a MIB, the unknownRegistration has same
      * effect as success */
     case AGENTX_RES_UNKNOWN_REGISTER:
     case AGENTX_RES_UNKNOWN_AGENT_CAPS:
+    case AGENTX_RES_UNSUPPORTED_CONTEXT:
     case AGENTX_RES_PARSE_ERROR:
     case AGENTX_RES_PROCESSING_ERR:
     default:
@@ -878,7 +881,7 @@ do_response(struct snmp_proto *p, byte *buf, uint size)
 
       const struct oid *oid = (void *) pkt;
 
-      snmp_register_ack(p, h, snmp_get_mib_class(oid));
+      snmp_register_ack(p, r, snmp_get_mib_class(oid));
 
       if (p->register_to_ack == 0)
       {

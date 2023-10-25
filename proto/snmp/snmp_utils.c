@@ -416,6 +416,8 @@ snmp_register_create(struct snmp_proto *p, u8 mib_class)
 
   r->mib_class = mib_class;
 
+  add_tail(&p->register_queue, &r->n);
+
   return r;
 }
 
