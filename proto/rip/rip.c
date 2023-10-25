@@ -967,7 +967,7 @@ rip_timer(timer *t)
   TRACE(D_EVENTS, "Main timer fired");
 
   FIB_ITERATE_INIT(&fit, &p->rtable);
-  
+
   struct channel_import_request *cir = p->cir;
   p->cir = NULL;
 
@@ -1169,7 +1169,6 @@ static int
 rip_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct rip_proto *p = (struct rip_proto *) C->proto;
-  bug("you got here! why not to log?");
   if (cir) {
     cir->next = p->cir;
     p->cir = cir;

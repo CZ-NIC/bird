@@ -90,7 +90,6 @@ channel_export_log_state_change(struct rt_export_request *req, u8 state)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
   CD(c, "Channel export state changed to %s", rt_export_state_name(state));
-log("you are here! why not to log? channel_export_log_state_change");
   switch (state)
   {
     case TES_FEEDING:
@@ -108,7 +107,6 @@ channel_refeed_log_state_change(struct rt_export_request *req, u8 state)
 {
   struct channel *c = SKIP_BACK(struct channel, refeed_req, req);
   CD(c, "Channel export state changed to %s", rt_export_state_name(state));
- log("you are here! why not to log? channel_refeed_log_state");
   switch (state)
   {
     case TES_FEEDING:
@@ -255,7 +253,6 @@ proto_find_channel_by_name(struct proto *p, const char *n)
 struct channel *
 proto_add_channel(struct proto *p, struct channel_config *cf)
 {
- log("you got here! why not to log? protoadd channel");
   struct channel *c = mb_allocz(proto_pool, cf->class->channel_size);
 
   c->name = cf->name;
@@ -293,7 +290,6 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   add_tail(&p->channels, &c->n);
 
   CD(c, "Connected to table %s", c->table->name);
-  log("you got here! why not to log? protoadd channel end");
   return c;
 }
 
@@ -313,12 +309,10 @@ proto_remove_channel(struct proto *p UNUSED, struct channel *c)
 static void
 proto_start_channels(struct proto *p)
 {
-  log("you are here! why not to log? proto_start_channels");
   struct channel *c;
   WALK_LIST(c, p->channels)
     if (!c->disabled)
       channel_set_state(c, CS_UP);
-  log("you are here! why not to log? proto_start_channels end");
 }
 
 static void
@@ -369,7 +363,6 @@ channel_roa_in_changed(struct settle *se)
   struct channel *c = s->c;
 
   CD(c, "Reload triggered by RPKI change");
-  bug("you got here! why not to log?");
   struct channel_import_request *cir = lp_alloc(s->trie->lp, sizeof *cir);
   *cir = (struct channel_import_request) {
     .trie = s->trie,
@@ -394,7 +387,6 @@ channel_roa_out_changed(struct settle *se)
   struct channel *c = s->c;
 
   CD(c, "Feeding triggered by RPKI change");
-  bug("you got here! why not to log?");
 
   /* Setup feeding request */
   struct channel_feeding_request *cfr = lp_alloc(s->trie->lp, sizeof *cfr);
@@ -414,7 +406,6 @@ channel_roa_out_changed(struct settle *se)
 static void
 channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
-log("you got here! why not to log? channel_export_one_roa");
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
   switch (net->type)
   {
@@ -483,7 +474,6 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
   };
   add_tail(&c->roa_subscriptions, &s->roa_node);
   rt_request_export(tab, &s->req);
-  bug("you got here! why not to log?");
 }
 
 static void
@@ -589,7 +579,6 @@ channel_start_import(struct channel *c)
 
   DBG("%s.%s: Channel start import req=%p\n", c->proto->name, c->name, &c->in_req);
   rt_request_import(c->table, &c->in_req);
-  log("you got here! why not to log? channel_start_import");
 }
 
 static void
@@ -651,7 +640,6 @@ channel_start_export(struct channel *c)
 
   DBG("%s.%s: Channel start export req=%p\n", c->proto->name, c->name, &c->out_req);
   rt_request_export(c->table, &c->out_req);
-  log("you got here! why not to log? channel_start_export");
 }
 
 static void
@@ -727,7 +715,6 @@ channel_refeed_stopped(struct rt_export_request *req)
   struct channel *c = SKIP_BACK(struct channel, refeed_req, req);
 
   req->hook = NULL;
-log("you got here! why not to log? protoadd channel_refeed_stopped");
   channel_feed_end(c);
 }
 
@@ -735,7 +722,6 @@ static void
 channel_init_feeding(struct channel *c)
 {
   int no_trie = 0;
-log("you got here! why not to log? channel_init_feeding");
   for (struct channel_feeding_request *cfrp = c->refeed_pending; cfrp; cfrp = cfrp->next)
     if (cfrp->type == CFRT_DIRECT)
     {
@@ -763,7 +749,6 @@ log("you got here! why not to log? channel_init_feeding");
   }
 
   rt_request_export(c->table, &c->refeed_req);
-  log("you got here! why not to log? channel_init_feeding done");
 }
 
 static int
@@ -813,7 +798,6 @@ channel_import_prefilter(const struct rt_prefilter *p, const net_addr *n)
 static void
 channel_feed_end(struct channel *c)
 {
-  log("you got here! why not to log? channel_feed_end start");
   /* Reset export limit if the feed ended with acceptable number of exported routes */
   struct limit *l = &c->out_limit;
   if (c->refeeding &&
@@ -857,14 +841,12 @@ channel_feed_end(struct channel *c)
   /* Run the pending batch */
   if (c->refeed_pending)
     channel_init_feeding(c);
-  log("you got here! why not to log? channel_feed_end");
 }
 
 /* Called by protocol for reload from in_table */
 void
 channel_schedule_reload(struct channel *c, struct channel_import_request *cir)
 {
-log("you got here! why not to log? protoadd channel_schedule_reload");
   ASSERT(c->in_req.hook);
   int no_trie = 0;
   if (cir)
@@ -903,7 +885,6 @@ log("you got here! why not to log? protoadd channel_schedule_reload");
   }
 
   rt_request_export(c->table, &c->reload_req);
-  log("you got here! why not to log? protoadd channel_schedule_reload end");
 }
 
 static void
@@ -1114,7 +1095,6 @@ void
 channel_request_feeding(struct channel *c, struct channel_feeding_request *cfr)
 {
   ASSERT_DIE(c->out_req.hook);
-bug("you got here! why not to log?");
   CD(c, "Feeding requested (%s)",
       cfr->type == CFRT_DIRECT ? "direct" :
       (cfr->trie ? "partial" : "auxiliary"));
@@ -1169,15 +1149,14 @@ channel_request_reload(struct channel *c)
   ASSERT(channel_reloadable(c));
 
   CD(c, "Reload requested");
-bug("you got here! why not to log?");
   struct channel_import_request* cir = mb_alloc(c->proto->pool, sizeof *cir);
   cir->trie = NULL;
   cir->done = channel_import_request_done_dynamic;
 
   if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
     channel_schedule_reload(c, cir);
-  else
-    c->proto->reload_routes(c, cir);
+  else if (! c->proto->reload_routes(c, cir))
+    bug( "Partial reload was refused. Maybe you tried partial reload on bgp?");
 }
 
 static void
@@ -1187,7 +1166,6 @@ channel_request_partial_reload(struct channel *c, struct channel_import_request 
   ASSERT(channel_reloadable(c));
 
   CD(c, "Partial import reload requested");
-  bug("you got here! why not to log?");
 
   if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
     channel_schedule_reload(c, cir);
@@ -1784,7 +1762,6 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
   };
 
   protos_do_commit(new, old, force_reconfig, type);
-  log("you are here! why not to log? protos_commit ......................");
 }
 
 static void
@@ -2473,7 +2450,6 @@ proto_do_up(struct proto *p)
 
   if (p->cf->late_if_feed)
     iface_subscribe(&p->iface_sub);
-  log("you are here! why not to log? proto_do up end");
 }
 
 static inline void
@@ -2828,8 +2804,6 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
   if (prr->trie)
     prr->ev.hook = channel_reload_out_done_main;
   struct channel *c;
-  log("channel proto_cmd_reload_called");
-bug("you got here! why not to log?");
   if (p->disabled)
   {
     cli_msg(-8, "%s: already disabled", p->name);

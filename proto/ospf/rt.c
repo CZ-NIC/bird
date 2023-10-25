@@ -633,7 +633,6 @@ ospf_rt_spfa(struct ospf_area *oa)
   add_head(&oa->cand, &oa->rt->cn);
   DBG("RT LSA: rt: %R, id: %R, type: %u\n",
       oa->rt->lsa.rt, oa->rt->lsa.id, oa->rt->lsa_type);
-  
 
   while (!EMPTY_LIST(oa->cand))
   {
@@ -2022,7 +2021,7 @@ rt_sync(struct ospf_proto *p)
 
   struct channel_import_request *cir = p->cir;
   p->cir = NULL;
-  
+
   DBG("Now syncing my rt table with nest's\n");
   FIB_ITERATE_INIT(&fit, fib);
 again1:
@@ -2129,7 +2128,7 @@ again1:
     }
   }
   FIB_ITERATE_END;
-  
+
   while(cir)
   {
     struct channel_import_request *next = cir->next;

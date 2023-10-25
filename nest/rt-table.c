@@ -2211,7 +2211,6 @@ rt_table_export_start_locked(struct rtable_private *tab, struct rt_export_reques
 static void
 rt_table_export_start_feed(struct rtable_private *tab, struct rt_table_export_hook *hook)
 {
-log("you are here! why not to log? rt_table_export_start_feed");
   struct rt_exporter *re = &tab->exporter.e;
   struct rt_export_request *req = hook->h.req;
   /* stats zeroed by mb_allocz */
@@ -2252,9 +2251,8 @@ log("you are here! why not to log? rt_table_export_start_feed");
   struct rt_pending_export *rpe = rt_last_export(hook->table);
   req_trace(req, D_STATES, "Export initialized, last export %p (%lu)", rpe, rpe ? rpe->seq : 0);
   atomic_store_explicit(&hook->last_export, rpe, memory_order_relaxed);
-  
+
   rt_init_export(re, req->hook);
-  log("you are here! why not to log? ..rt_table_export_start_feed");
 }
 
 static void
@@ -4435,7 +4433,6 @@ rt_feed_by_fib(void *data)
 
   rt_process_feed(c, &block);
   rt_feed_done(&c->h);
-  log("you are here! why not to log? rt_feed_by_fib");
 }
 
 static void

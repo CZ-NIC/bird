@@ -1565,12 +1565,11 @@ bgp_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
-  bug("you got here! why not to log?");
 
   /* Ignore non-BGP channels */
   if (C->class != &channel_bgp)
     return 1;
-  if (cir) 
+  if (cir)
   {
     if (cir->trie)
     {

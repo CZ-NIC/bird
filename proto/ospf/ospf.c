@@ -436,7 +436,6 @@ static int
 ospf_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct ospf_proto *p = (struct ospf_proto *) C->proto;
-bug("you got here! why not to log?");
   if (cir) {
     cir->next = p->cir;
     p->cir = cir;
