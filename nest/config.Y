@@ -921,7 +921,7 @@ partial_opt:
   PARTIAL term {
     struct f_val val;
     if (f_eval(f_linearize($2, 1), &val) > F_RETURN) cf_error("Runtime error");
-    if (val.type != T_PREFIX_SET) cf_error("Partial spec must be trie");
+    if (val.type != T_PREFIX_SET) cf_error("Partial spec must be prefix set");
     $$ = val.val.ti;
   }
   | /* empty */ { $$ = NULL; }
@@ -933,7 +933,7 @@ CF_CLI(ENABLE, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message],
 { proto_apply_cmd($2, proto_cmd_enable, 1, (uintptr_t) $3); } ;
 CF_CLI(RESTART, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message], [[Restart protocol]])
 { proto_apply_cmd($2, proto_cmd_restart, 1, (uintptr_t) $3); } ;
-CF_CLI(RELOAD, proto_patt partial_opt, <protocol> | \"<pattern>\" | all, [[Reload protocol]])
+CF_CLI(RELOAD, proto_patt partial_opt, (<protocol> | \"<pattern>\" | all) [partial <prefix set>], [[Reload protocol]])
 { proto_call_cmd_reload($2, CMD_RELOAD, $3); } ;
 CF_CLI(RELOAD IN, proto_patt partial_opt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just imported routes)]])
 { proto_call_cmd_reload($3, CMD_RELOAD_IN, $4); } ;

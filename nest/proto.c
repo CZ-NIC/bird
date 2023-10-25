@@ -1151,7 +1151,7 @@ channel_request_reload(struct channel *c)
   if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
     channel_schedule_reload(c, cir);
   else if (! c->proto->reload_routes(c, cir))
-    bug( "Partial reload was refused. Maybe you tried partial reload on bgp?");
+    bug( "Partial reload was refused. Maybe you tried partial reload on BGP with unlocked table?");
 }
 
 static void
@@ -1165,7 +1165,7 @@ channel_request_partial_reload(struct channel *c, struct channel_import_request 
   if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
     channel_schedule_reload(c, cir);
   else if (! c->proto->reload_routes(c, cir))
-    cli_msg(-15, "Partial reload was refused. Maybe you tried partial reload on bgp?");
+    cli_msg(-15, "Partial reload was refused. Maybe you tried partial reload on BGP with unlocked table?");
 }
 
 const struct channel_class channel_basic = {

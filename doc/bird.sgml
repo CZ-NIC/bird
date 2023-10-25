@@ -1263,7 +1263,7 @@ This argument can be omitted if there exists only a single instance.
 	Enable, disable or restart a given protocol instance, instances matching
 	the <cf><m/pattern/</cf> or <cf/all/ instances.
 
-	<tag><label id="cli-reload">reload [in|out] <m/name/|"<m/pattern/"|all</tag>
+	<tag><label id="cli-reload">reload [in|out] (<m/name/|"<m/pattern/"|all) [partial <prefix>] </tag>
 	Reload a given protocol instance, that means re-import routes from the
 	protocol instance and re-export preferred routes to the instance. If
 	<cf/in/ or <cf/out/ options are used, the command is restricted to one
@@ -1273,6 +1273,9 @@ This argument can be omitted if there exists only a single instance.
 	protocol instance was not restarted (or reloaded), therefore it still
 	propagates the old set of routes. For example when <cf/configure soft/
 	command was used to change filters.
+
+	If partial <prefix> option is used, only corresponding routes are reloaded.
+	Protocol BGP does partial reload only if it has locked table, otherwise partial reload for BGP is refused.
 
 	Re-export always succeeds, but re-import is protocol-dependent and might
 	fail (for example, if BGP neighbor does not support route-refresh
