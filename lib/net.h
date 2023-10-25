@@ -24,10 +24,11 @@
 #define NET_FLOW4	7
 #define NET_FLOW6	8
 #define NET_IP6_SADR	9
-#define NET_MPLS	10
-#define NET_ASPA	11
-#define NET_EVPN	12
-#define NET_MAX		13
+#define NET_ETH		10
+#define NET_MPLS	11
+#define NET_ASPA	12
+#define NET_EVPN	13
+#define NET_MAX		14
 
 #define NB_IP4		(1 << NET_IP4)
 #define NB_IP6		(1 << NET_IP6)
@@ -38,6 +39,7 @@
 #define NB_FLOW4	(1 << NET_FLOW4)
 #define NB_FLOW6	(1 << NET_FLOW6)
 #define NB_IP6_SADR	(1 << NET_IP6_SADR)
+#define NB_ETH		(1 << NET_ETH)
 #define NB_MPLS		(1 << NET_MPLS)
 #define NB_ASPA		(1 << NET_ASPA)
 #define NB_EVPN		(1 << NET_EVPN)
@@ -46,7 +48,7 @@
 #define NB_VPN		(NB_VPN4 | NB_VPN6)
 #define NB_ROA		(NB_ROA4 | NB_ROA6)
 #define NB_FLOW		(NB_FLOW4 | NB_FLOW6)
-#define NB_DEST		(NB_IP | NB_IP6_SADR | NB_VPN | NB_MPLS | NB_EVPN)
+#define NB_DEST		(NB_IP | NB_IP6_SADR | NB_VPN | NB_ETH | NB_MPLS | NB_EVPN)
 #define NB_ANY		0xffffffff
 
 
@@ -122,6 +124,15 @@ typedef struct net_addr_flow6 {
   ip6_addr prefix;
   byte data[0];
 } net_addr_flow6;
+
+typedef struct net_addr_eth {
+  u8 type;
+  u8 pxlen;
+  u16 length;
+  mac_addr mac;
+  u16 vid;
+  u32 align[0];
+} net_addr_eth;
 
 typedef struct net_addr_mpls {
   u8 type;
@@ -229,6 +240,7 @@ typedef union net_addr_union {
   net_addr_flow4 flow4;
   net_addr_flow6 flow6;
   net_addr_ip6_sadr ip6_sadr;
+  net_addr_eth eth;
   net_addr_mpls mpls;
   net_addr_aspa aspa;
   net_addr_evpn evpn;
@@ -269,6 +281,9 @@ extern const u16 net_max_text_length[];
 
 #define NET_ADDR_IP6_SADR(dst_prefix,dst_pxlen,src_prefix,src_pxlen) \
   ((net_addr_ip6_sadr) { NET_IP6_SADR, dst_pxlen, sizeof(net_addr_ip6_sadr), dst_prefix, src_pxlen, src_prefix })
+
+#define NET_ADDR_ETH(mac, vid) \
+  ((net_addr_eth) { NET_ETH, 48, sizeof(net_addr_eth), mac, vid })
 
 #define NET_ADDR_MPLS(label) \
   ((net_addr_mpls) { NET_MPLS, 20, sizeof(net_addr_mpls), label })
@@ -312,6 +327,9 @@ static inline void net_fill_roa6(net_addr *a, ip6_addr prefix, uint pxlen, uint 
 
 static inline void net_fill_ip6_sadr(net_addr *a, ip6_addr dst_prefix, uint dst_pxlen, ip6_addr src_prefix, uint src_pxlen)
 { *(net_addr_ip6_sadr *)a = NET_ADDR_IP6_SADR(dst_prefix, dst_pxlen, src_prefix, src_pxlen); }
+
+static inline void net_fill_eth(net_addr *a, mac_addr mac, u16 vid)
+{ *(net_addr_eth *)a = NET_ADDR_ETH(mac, vid); }
 
 static inline void net_fill_mpls(net_addr *a, u32 label)
 { *(net_addr_mpls *)a = NET_ADDR_MPLS(label); }
@@ -421,6 +439,7 @@ static inline ip_addr net_prefix(const net_addr *a)
   case NET_IP6_SADR:
     return ipa_from_ip6(net6_prefix(a));
 
+  case NET_ETH:
   case NET_MPLS:
   case NET_ASPA:
   case NET_EVPN:
@@ -429,12 +448,22 @@ static inline ip_addr net_prefix(const net_addr *a)
   }
 }
 
+static inline uint net_vlan_id(const net_addr *a)
+{
+  ASSERT_DIE(a->type == NET_ETH);
+  return ((net_addr_eth *) a)->vid;
+}
+
+static inline mac_addr net_mac_addr(const net_addr *a)
+{
+  ASSERT_DIE(a->type == NET_ETH);
+  return ((net_addr_eth *) a)->mac;
+}
+
 static inline u32 net_mpls(const net_addr *a)
 {
-  if (a->type == NET_MPLS)
-    return ((net_addr_mpls *) a)->label;
-
-  bug("Can't call net_mpls on non-mpls net_addr");
+  ASSERT_DIE(a->type == NET_MPLS);
+  return ((net_addr_mpls *) a)->label;
 }
 
 static inline uint net4_pxlen(const net_addr *a)
@@ -493,6 +522,9 @@ static inline int net_equal_flow6(const net_addr_flow6 *a, const net_addr_flow6 
 static inline int net_equal_ip6_sadr(const net_addr_ip6_sadr *a, const net_addr_ip6_sadr *b)
 { return !memcmp(a, b, sizeof(net_addr_ip6_sadr)); }
 
+static inline int net_equal_eth(const net_addr_eth *a, const net_addr_eth *b)
+{ return !memcmp(a, b, sizeof(net_addr_eth)); }
+
 static inline int net_equal_mpls(const net_addr_mpls *a, const net_addr_mpls *b)
 { return !memcmp(a, b, sizeof(net_addr_mpls)); }
 
@@ -540,6 +572,9 @@ static inline int net_zero_flow4(const net_addr_flow4 *a)
 static inline int net_zero_flow6(const net_addr_flow6 *a)
 { return !a->pxlen && ip6_zero(a->prefix) && (a->length == sizeof(net_addr_flow6)); }
 
+static inline int net_zero_eth(const net_addr_eth *a)
+{ return mac_zero(a->mac) && !a->vid; }
+
 static inline int net_zero_mpls(const net_addr_mpls *a)
 { return !a->label; }
 
@@ -577,6 +612,9 @@ static inline int net_compare_ip6_sadr(const net_addr_ip6_sadr *a, const net_add
     ip6_compare(a->dst_prefix, b->dst_prefix) ?: uint_cmp(a->dst_pxlen, b->dst_pxlen) ?:
     ip6_compare(a->src_prefix, b->src_prefix) ?: uint_cmp(a->src_pxlen, b->src_pxlen);
 }
+
+static inline int net_compare_eth(const net_addr_eth *a, const net_addr_eth *b)
+{ return uint_cmp(a->vid, b->vid) ?: mac_compare(a->mac, b->mac); }
 
 static inline int net_compare_mpls(const net_addr_mpls *a, const net_addr_mpls *b)
 { return uint_cmp(a->label, b->label); }
@@ -623,6 +661,9 @@ static inline void net_copy_flow6(net_addr_flow6 *dst, const net_addr_flow6 *src
 
 static inline void net_copy_ip6_sadr(net_addr_ip6_sadr *dst, const net_addr_ip6_sadr *src)
 { memcpy(dst, src, sizeof(net_addr_ip6_sadr)); }
+
+static inline void net_copy_eth(net_addr_eth *dst, const net_addr_eth *src)
+{ memcpy(dst, src, sizeof(net_addr_eth)); }
 
 static inline void net_copy_mpls(net_addr_mpls *dst, const net_addr_mpls *src)
 { memcpy(dst, src, sizeof(net_addr_mpls)); }
@@ -672,6 +713,9 @@ static inline u32 net_hash_flow6(const net_addr_flow6 *n)
 
 static inline u32 net_hash_ip6_sadr(const net_addr_ip6_sadr *n)
 { return px6_hash(n->dst_prefix, n->dst_pxlen); }
+
+static inline u32 net_hash_eth(const net_addr_eth *n)
+{ u64 x = 0; memcpy(&x, (char *) n + OFFSETOF(net_addr_eth, mac), 8); return u64_hash(x); }
 
 static inline u32 net_hash_mpls(const net_addr_mpls *n)
 { return u32_hash(n->label); }
@@ -727,6 +771,9 @@ static inline int net_validate_flow4(const net_addr_flow4 *n)
 
 static inline int net_validate_flow6(const net_addr_flow6 *n)
 { return net_validate_px6(n->prefix, n->pxlen); }
+
+static inline int net_validate_eth(const net_addr_eth *n)
+{ return n->vid < (1 << 12); }
 
 static inline int net_validate_mpls(const net_addr_mpls *n)
 { return n->label < (1 << 20); }

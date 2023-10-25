@@ -150,7 +150,7 @@ CF_DECLS
 %type <time> expr_us time
 %type <a> ipa
 %type <net> net_ip4_ net_ip4 net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
-%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_ net_aspa_
+%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_eth_ net_mpls_ net_aspa_
 %type <net_ptr> net_evpn_ net_evpn_ead_ net_evpn_mac_ net_evpn_mac_ip_ net_evpn_imet_ net_evpn_es_
 %type <mls> label_stack_start label_stack
 %type <esi> evpn_esi
@@ -174,7 +174,7 @@ CF_DECLS
 /* See r_args */
 %expect 2
 
-CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS, FROM, MAX, AS)
+CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, ETH, VLAN, MPLS, FROM, MAX, AS)
 CF_KEYWORDS(EVPN, EAD, MAC, IMET, ES)
 
 CF_GRAMMAR
@@ -367,6 +367,18 @@ net_roa6_: net_ip6_ MAX expr AS expr
     cf_error("Invalid max prefix length %u", $3);
 };
 
+net_eth_: ETH MAC_
+{
+  $$ = cfg_alloc(sizeof(net_addr_eth));
+  net_fill_eth($$, $2, 0);
+}
+
+net_eth_: ETH MAC_ VLAN NUM
+{
+  $$ = cfg_alloc(sizeof(net_addr_eth));
+  net_fill_eth($$, $2, $4);
+}
+
 net_mpls_: MPLS expr
 {
   $$ = cfg_alloc(sizeof(net_addr_mpls));
@@ -429,6 +441,7 @@ net_:
  | net_roa_
  | net_flow_
  | net_ip6_sadr_
+ | net_eth_
  | net_mpls_
  | net_aspa_
  | net_evpn_
