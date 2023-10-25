@@ -587,12 +587,12 @@ snmp_cont_find(struct snmp_proto *p, const char *name)
 }
 
 inline const struct snmp_context *
-snmp_cont_get(struct snmp_proto *p, uint id)
+snmp_cont_get(struct snmp_proto *p, uint cont_id)
 {
-  if (id >= p->context_max)
+  if (cont_id >= p->context_max)
     return NULL;
 
-  return p->context_id_map[id];
+  return p->context_id_map[cont_id];
 }
 
 inline const struct snmp_context *
@@ -616,6 +616,15 @@ snmp_cont_create(struct snmp_proto *p, const char *name)
   mb_free(ptr);
 
   HASH_INSERT(p->context_hash, SNMP_H_CONTEXT, c2);
+
+  if (c2->context_id >= p->context_id_map_size)
+  {
+    // TODO: allocate more than needed for better speed
+    p->context_id_map_size = c2->context_id + 1;
+    p->context_id_map = mb_realloc(p->context_id_map, p->context_id_map_size * sizeof(struct snmp_context *));
+  }
+
+  p->context_id_map[c2->context_id] = c2;
 
   return c2;
 }

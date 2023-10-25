@@ -149,7 +149,8 @@ struct snmp_proto {
   struct f_trie *bgp_trie;
   HASH(struct snmp_bgp_peer) bgp_hash;
   HASH(struct snmp_context) context_hash;
-  const struct snmp_context **context_id_map;
+  struct snmp_context **context_id_map;
+  uint context_id_map_size;
   uint context_max;
   struct tbf rl_gen;
 

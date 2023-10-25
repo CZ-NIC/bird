@@ -159,6 +159,7 @@ enum snmp_search_res {
     .size = sk->tbuf + sk->tbsize - sk->tpos,				      \
     .error = AGENTX_RES_NO_ERROR,					      \
     .context = 0,							      \
+    .index = 0,								      \
   }
 
 struct agentx_header {
@@ -316,6 +317,7 @@ struct snmp_pdu {
   uint context;			    /* context hash */
   int byte_ord;			    /* flag signaling NETWORK_BYTE_ORDER */
   enum agentx_response_err error;   /* storage for result of current action */
+  uint index;			    /* index on which the error was found */
 };
 
 struct agentx_alloc_context {

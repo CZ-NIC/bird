@@ -23,7 +23,7 @@
  *    | SNMP_LOCKED	|     object lock aquired
  *    +-----------------+
  *	  |
- *	  |   opening communaiton socket
+ *	  |   opening communication socket
  *	  V
  *    +-----------------+
  *    | SNMP_OPEN	|     socket created, starting subagent
@@ -118,7 +118,7 @@ snmp_init(struct proto_config *CF)
   return P;
 }
 
-static inline int
+static inline void
 snmp_cleanup(struct snmp_proto *p)
 {
   /* Function tm_stop() is called inside rfree() */
@@ -159,7 +159,6 @@ snmp_cleanup(struct snmp_proto *p)
   p->bgp_trie = NULL;
 
   p->state = SNMP_DOWN;
-  return PS_DOWN;
 }
 
 void
@@ -260,9 +259,9 @@ snmp_start_locked(struct object_lock *lock)
 void
 snmp_startup(struct snmp_proto *p)
 {
-  if (p->state != SNMP_INIT &&
-      p->state != SNMP_LOCKED &&
-      p->state != SNMP_DOWN)
+  if (p->state == SNMP_OPEN ||
+      p->state == SNMP_REGISTER ||
+      p->state == SNMP_CONN)
   {
     return;
   }
@@ -344,6 +343,7 @@ snmp_start(struct proto *P)
   HASH_INIT(p->context_hash, p->pool, 10);
 
   /* We always have at least the default context */
+  p->context_id_map_size = cf->contexts;
   p->context_id_map = mb_allocz(p->pool, cf->contexts * sizeof(struct snmp_context *));
   //log(L_INFO "number of context allocated %d", cf->contexts);
 
@@ -377,7 +377,6 @@ snmp_start(struct proto *P)
       if (b->context)
       {
 	const struct snmp_context *c = snmp_cont_create(p, b->context);
-	p->context_id_map[c->context_id] = c;
 	peer->context_id = c->context_id;
       }
     }
@@ -528,7 +527,8 @@ snmp_shutdown(struct proto *P)
   else
   {
     /* We did not create a connection, we clean the lock and other stuff. */
-    return snmp_cleanup(p);
+    snmp_cleanup(p);
+    return PS_DOWN;
   }
 }
 
