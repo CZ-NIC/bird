@@ -53,6 +53,148 @@ static const char * const debug_bgp_states[] UNUSED = {
   [BGP_INTERNAL_NO_VALUE]		 = "BGP_INTERNAL_NO_VALUE",
 };
 
+static u8
+bgp_get_candidate(u32 field)
+{
+  const u8 translation_table[] = {
+    [SNMP_BGP_PEER_IDENTIFIER]		= BGP_INTERNAL_PEER_IDENTIFIER,
+    [SNMP_BGP_STATE]			= BGP_INTERNAL_STATE,
+    [SNMP_BGP_ADMIN_STATUS]		= BGP_INTERNAL_ADMIN_STATUS,
+    [SNMP_BGP_NEGOTIATED_VERSION]	= BGP_INTERNAL_NEGOTIATED_VERSION,
+    [SNMP_BGP_LOCAL_ADDR]		= BGP_INTERNAL_LOCAL_ADDR,
+    [SNMP_BGP_LOCAL_PORT]		= BGP_INTERNAL_LOCAL_PORT,
+    [SNMP_BGP_REMOTE_ADDR]		= BGP_INTERNAL_REMOTE_ADDR,
+    [SNMP_BGP_REMOTE_PORT]		= BGP_INTERNAL_REMOTE_PORT,
+    [SNMP_BGP_REMOTE_AS]		= BGP_INTERNAL_REMOTE_AS,
+    [SNMP_BGP_RX_UPDATES]		= BGP_INTERNAL_RX_UPDATES,
+    [SNMP_BGP_TX_UPDATES]		= BGP_INTERNAL_TX_UPDATES,
+    [SNMP_BGP_RX_MESSAGES]		= BGP_INTERNAL_RX_MESSAGES,
+    [SNMP_BGP_TX_MESSAGES]		= BGP_INTERNAL_TX_MESSAGES,
+    [SNMP_BGP_LAST_ERROR]		= BGP_INTERNAL_LAST_ERROR,
+    [SNMP_BGP_FSM_TRANSITIONS]		= BGP_INTERNAL_FSM_TRANSITIONS,
+    [SNMP_BGP_FSM_ESTABLISHED_TIME]	= BGP_INTERNAL_FSM_ESTABLISHED_TIME,
+    [SNMP_BGP_RETRY_INTERVAL]		= BGP_INTERNAL_RETRY_INTERVAL,
+    [SNMP_BGP_HOLD_TIME]		= BGP_INTERNAL_HOLD_TIME,
+    [SNMP_BGP_KEEPALIVE]		= BGP_INTERNAL_KEEPALIVE,
+    [SNMP_BGP_HOLD_TIME_CONFIGURED]	= BGP_INTERNAL_HOLD_TIME_CONFIGURED,
+    [SNMP_BGP_KEEPALIVE_CONFIGURED]     = BGP_INTERNAL_KEEPALIVE_CONFIGURED,
+    [SNMP_BGP_ORIGINATION_INTERVAL]     = BGP_INTERNAL_ORIGINATION_INTERVAL,
+    [SNMP_BGP_MIN_ROUTE_ADVERTISEMENT]  = BGP_INTERNAL_MIN_ROUTE_ADVERTISEMENT,
+    [SNMP_BGP_IN_UPDATE_ELAPSED_TIME]   = BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME,
+  };
+
+  /*
+   * First value is in secord cell of array translation_table, as the
+   * SNMP_BPG_IDENTIFIER == 1
+   */
+  if (field > 0 && field <= ARRAY_SIZE(translation_table)- 1)
+    return translation_table[field];
+  if (field == 0)
+    return BGP_INTERNAL_PEER_ENTRY;
+  else
+    return BGP_INTERNAL_PEER_TABLE_END;
+}
+
+/**
+ * snmp_bgp_state - linearize oid from BGP4-MIB
+ * @oid: prefixed object identifier from BGP4-MIB::bgp subtree
+ *
+ * Returns linearized state for Get-PDU, GetNext-PDU and GetBulk-PDU packets.
+ */
+static u8
+snmp_bgp_state(const struct oid *oid)
+{
+  /*
+   * Ids of Object Identifier that are already checked:
+   *	    internet  oid.prefix
+   *           v...... v
+   *  (*oid): .1.3.6.1.2.1.15
+   *   -> BGP4-MIB::bgp (root)
+   */
+
+  if (snmp_is_oid_empty(oid))
+    return BGP_INTERNAL_END;
+
+  u8 state = BGP_INTERNAL_NO_VALUE;
+
+  u8 candidate;
+  switch (oid->n_subid)
+  {
+    default:
+      if (oid->n_subid < 2)
+      {
+	state = BGP_INTERNAL_INVALID;
+	break;
+      }
+
+      /* fall through */
+
+   /*
+    * Between ids[5] and ids[8] (n_subid == 9) should be IP address.
+    * Validity is checked later in execution because
+    *  this field also could mean a query boundry (upper or lower).
+    */
+    case 9:
+    case 8:
+    case 7:
+    case 6:
+    case 5:
+      state = bgp_get_candidate(oid->ids[4]);
+
+      /* fall through */
+
+    case 4:
+      if (oid->ids[3] == SNMP_BGP_PEER_ENTRY)
+	state = (state == BGP_INTERNAL_NO_VALUE) ?
+	  BGP_INTERNAL_PEER_ENTRY : state;
+      else
+	state = BGP_INTERNAL_NO_VALUE;
+
+      /* fall through */
+
+    case 3:
+      /* u8 candidate; */
+      switch (oid->ids[2])
+      {
+
+	case SNMP_BGP_VERSION:
+	  state = BGP_INTERNAL_VERSION;
+	  break;
+	case SNMP_BGP_LOCAL_AS:
+	  state = BGP_INTERNAL_LOCAL_AS;
+	  break;
+	case SNMP_BGP_PEER_TABLE:
+	  /* We use candidate to avoid overriding more specific state */
+	  candidate = BGP_INTERNAL_PEER_TABLE;
+	  break;
+	case SNMP_BGP_IDENTIFIER:
+	  state = BGP_INTERNAL_IDENTIFIER;
+	  break;
+
+	default:  /* test fails */
+	  /* We force state invalidation */
+	  if (oid->ids[2] < SNMP_BGP_VERSION)
+	  {
+	    state = BGP_INTERNAL_NO_VALUE;
+	    candidate = BGP_INTERNAL_NO_VALUE;
+	  }
+	  else /* oid->ids[2] > SNMP_BGP_PEER_TABLE */
+	    state = BGP_INTERNAL_END;
+      }
+      state = (state == BGP_INTERNAL_NO_VALUE) ?
+	candidate : state;
+
+      /* fall through */
+
+    case 2: /* We found bare BGP4-MIB::bgp ObjectId */
+      if (state == BGP_INTERNAL_NO_VALUE ||
+	  state == BGP_INTERNAL_INVALID)
+	state = BGP_INTERNAL_BGP;
+  }
+
+  return state;
+}
+
 static void
 snmp_bgp_notify_common(struct snmp_proto *p, uint type, ip4_addr ip4, char last_error[], uint state_val)
 {
@@ -194,47 +336,6 @@ snmp_bgp_valid_ip4(struct oid *o)
   return snmp_valid_ip4_index(o, 5);
 }
 
-static u8
-bgp_get_candidate(u32 field)
-{
-  const u8 translation_table[] = {
-    [SNMP_BGP_PEER_IDENTIFIER]		= BGP_INTERNAL_PEER_IDENTIFIER,
-    [SNMP_BGP_STATE]			= BGP_INTERNAL_STATE,
-    [SNMP_BGP_ADMIN_STATUS]		= BGP_INTERNAL_ADMIN_STATUS,
-    [SNMP_BGP_NEGOTIATED_VERSION]	= BGP_INTERNAL_NEGOTIATED_VERSION,
-    [SNMP_BGP_LOCAL_ADDR]		= BGP_INTERNAL_LOCAL_ADDR,
-    [SNMP_BGP_LOCAL_PORT]		= BGP_INTERNAL_LOCAL_PORT,
-    [SNMP_BGP_REMOTE_ADDR]		= BGP_INTERNAL_REMOTE_ADDR,
-    [SNMP_BGP_REMOTE_PORT]		= BGP_INTERNAL_REMOTE_PORT,
-    [SNMP_BGP_REMOTE_AS]		= BGP_INTERNAL_REMOTE_AS,
-    [SNMP_BGP_RX_UPDATES]		= BGP_INTERNAL_RX_UPDATES,
-    [SNMP_BGP_TX_UPDATES]		= BGP_INTERNAL_TX_UPDATES,
-    [SNMP_BGP_RX_MESSAGES]		= BGP_INTERNAL_RX_MESSAGES,
-    [SNMP_BGP_TX_MESSAGES]		= BGP_INTERNAL_TX_MESSAGES,
-    [SNMP_BGP_LAST_ERROR]		= BGP_INTERNAL_LAST_ERROR,
-    [SNMP_BGP_FSM_TRANSITIONS]		= BGP_INTERNAL_FSM_TRANSITIONS,
-    [SNMP_BGP_FSM_ESTABLISHED_TIME]	= BGP_INTERNAL_FSM_ESTABLISHED_TIME,
-    [SNMP_BGP_RETRY_INTERVAL]		= BGP_INTERNAL_RETRY_INTERVAL,
-    [SNMP_BGP_HOLD_TIME]		= BGP_INTERNAL_HOLD_TIME,
-    [SNMP_BGP_KEEPALIVE]		= BGP_INTERNAL_KEEPALIVE,
-    [SNMP_BGP_HOLD_TIME_CONFIGURED]	= BGP_INTERNAL_HOLD_TIME_CONFIGURED,
-    [SNMP_BGP_KEEPALIVE_CONFIGURED]     = BGP_INTERNAL_KEEPALIVE_CONFIGURED,
-    [SNMP_BGP_ORIGINATION_INTERVAL]     = BGP_INTERNAL_ORIGINATION_INTERVAL,
-    [SNMP_BGP_MIN_ROUTE_ADVERTISEMENT]  = BGP_INTERNAL_MIN_ROUTE_ADVERTISEMENT,
-    [SNMP_BGP_IN_UPDATE_ELAPSED_TIME]   = BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME,
-  };
-
-  /*
-   * First value is in secord cell of array translation_table, as the
-   * SNMP_BPG_IDENTIFIER == 1
-   */
-  if (field > 0 && field <= sizeof(translation_table) / sizeof(translation_table[0]) - 1)
-    return translation_table[field];
-  if (field == 0)
-    return BGP_INTERNAL_PEER_ENTRY;
-  else
-    return BGP_INTERNAL_PEER_TABLE_END;
-}
 
 static inline struct ip4_addr
 ip4_from_oid(const struct oid *o)
@@ -315,105 +416,6 @@ print_bgp_record_all(struct snmp_proto *p)
 }
 
 
-/**
- * snmp_bgp_state - linearize oid from BGP4-MIB
- * @oid: prefixed object identifier from BGP4-MIB::bgp subtree
- *
- * Returns linearized state for Get-PDU, GetNext-PDU and GetBulk-PDU packets.
- */
-static u8
-snmp_bgp_state(const struct oid *oid)
-{
-  /*
-   * Ids of Object Identifier that are already checked:
-   *	    internet  oid.prefix
-   *           v...... v
-   *  (*oid): .1.3.6.1.2.1.15
-   *   -> BGP4-MIB::bgp (root)
-   */
-
-  if (snmp_is_oid_empty(oid))
-    return BGP_INTERNAL_END;
-
-  u8 state = BGP_INTERNAL_NO_VALUE;
-
-  u8 candidate;
-  switch (oid->n_subid)
-  {
-    default:
-      if (oid->n_subid < 2)
-      {
-	state = BGP_INTERNAL_INVALID;
-	break;
-      }
-
-      /* fall through */
-
-   /*
-    * Between ids[5] and ids[8] (n_subid == 9) should be IP address.
-    * Validity is checked later in execution because
-    *  this field also could mean a query boundry (upper or lower).
-    */
-    case 9:
-    case 8:
-    case 7:
-    case 6:
-    case 5:
-      state = bgp_get_candidate(oid->ids[4]);
-
-      /* fall through */
-
-    case 4:
-      if (oid->ids[3] == SNMP_BGP_PEER_ENTRY)
-	state = (state == BGP_INTERNAL_NO_VALUE) ?
-	  BGP_INTERNAL_PEER_ENTRY : state;
-      else
-	state = BGP_INTERNAL_NO_VALUE;
-
-      /* fall through */
-
-    case 3:
-      /* u8 candidate; */
-      switch (oid->ids[2])
-      {
-
-	case SNMP_BGP_VERSION:
-	  state = BGP_INTERNAL_VERSION;
-	  break;
-	case SNMP_BGP_LOCAL_AS:
-	  state = BGP_INTERNAL_LOCAL_AS;
-	  break;
-	case SNMP_BGP_PEER_TABLE:
-	  /* We use candidate to avoid overriding more specific state */
-	  candidate = BGP_INTERNAL_PEER_TABLE;
-	  break;
-	case SNMP_BGP_IDENTIFIER:
-	  state = BGP_INTERNAL_IDENTIFIER;
-	  break;
-
-	default:  /* test fails */
-	  /* We force state invalidation */
-	  if (oid->ids[2] < SNMP_BGP_VERSION)
-	  {
-	    state = BGP_INTERNAL_NO_VALUE;
-	    candidate = BGP_INTERNAL_NO_VALUE;
-	  }
-	  else /* oid->ids[2] > SNMP_BGP_PEER_TABLE */
-	    state = BGP_INTERNAL_END;
-      }
-      state = (state == BGP_INTERNAL_NO_VALUE) ?
-	candidate : state;
-
-      /* fall through */
-
-    case 2: /* We found bare BGP4-MIB::bgp ObjectId */
-      if (state == BGP_INTERNAL_NO_VALUE ||
-	  state == BGP_INTERNAL_INVALID)
-	state = BGP_INTERNAL_BGP;
-  }
-
-  return state;
-}
 
 static inline int
 is_dynamic(u8 state)

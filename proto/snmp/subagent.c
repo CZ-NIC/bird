@@ -77,6 +77,32 @@ static const char * const snmp_pkt_type[] UNUSED = {
   [AGENTX_RESPONSE_PDU]		  =  "Response-PDU",
 };
 
+void
+snmp_register_ack(struct snmp_proto *p, struct agentx_header *h, u8 class)
+{
+  struct snmp_register *reg;
+  WALK_LIST(reg, p->register_queue)
+  {
+    // TODO add support for more mib trees (other than BGP)
+    if (snmp_register_same(reg, h, class))
+    {
+      struct snmp_registered_oid *ro = \
+	 mb_alloc(p->p.pool, sizeof(struct snmp_registered_oid));
+
+      ro->n.prev = ro->n.next = NULL;
+
+      ro->oid = reg->oid;
+
+      rem_node(&reg->n);
+      mb_free(reg);
+      p->register_to_ack--;
+
+      add_tail(&p->bgp_registered, &ro->n);
+      return;
+    }
+  }
+}
+
 static int
 snmp_rx_skip(sock UNUSED *sk, uint UNUSED size)
 {

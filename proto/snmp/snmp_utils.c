@@ -429,32 +429,6 @@ snmp_register_same(struct snmp_register *r, struct agentx_header *h, u8 class)
     (r->packet_id == h->packet_id);
 }
 
-void
-snmp_register_ack(struct snmp_proto *p, struct agentx_header *h, u8 class)
-{
-  struct snmp_register *reg;
-  WALK_LIST(reg, p->register_queue)
-  {
-    // TODO add support for more mib trees (other than BGP)
-    if (snmp_register_same(reg, h, class))
-    {
-      struct snmp_registered_oid *ro = \
-	 mb_alloc(p->p.pool, sizeof(struct snmp_registered_oid));
-
-      ro->n.prev = ro->n.next = NULL;
-
-      ro->oid = reg->oid;
-
-      rem_node(&reg->n);
-      mb_free(reg);
-      p->register_to_ack--;
-
-      add_tail(&p->bgp_registered, &ro->n);
-
-      return;
-    }
-  }
-}
 
 void UNUSED
 snmp_dump_packet(byte UNUSED *pkt, uint size)
