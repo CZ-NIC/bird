@@ -418,6 +418,7 @@ static int
 static_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct static_proto *p = (void *) C->proto;
+  bug("you got here! why not to log?");
   TRACE(D_EVENTS, "Scheduling route reload");
   if (cir && cir->trie)
     static_mark_partial(p, cir);

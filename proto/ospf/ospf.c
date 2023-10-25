@@ -436,20 +436,16 @@ static int
 ospf_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct ospf_proto *p = (struct ospf_proto *) C->proto;
-
+bug("you got here! why not to log?");
   if (cir) {
-    if (p->lock == NULL)
-      {
-        p->lock = DOMAIN_NEW(attrs);
-        DOMAIN_SETUP(attrs, p->lock, "Partial request lock ospf", NULL);
-      }
-    DG_LOCK(p->lock);
     cir->next = p->cir;
     p->cir = cir;
-    DG_UNLOCK(p->lock);
   }
   if (p->calcrt == 2)
+  {
+    /*todo*/
     return 1;
+  }
 
   OSPF_TRACE(D_EVENTS, "Scheduling routing table calculation with route reload");
   p->calcrt = 2;

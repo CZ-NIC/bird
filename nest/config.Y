@@ -117,7 +117,7 @@ proto_call_cmd_reload(struct proto_spec ps, int dir, const struct f_trie *trie)
     .dir = dir,
     .counter =1,
   };
- 
+ bug("you got here! why not to log?");
   if (trie)
   {
     ASSERT_DIE(this_cli->parser_pool == prr->trie->lp);

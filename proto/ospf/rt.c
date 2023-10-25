@@ -1699,7 +1699,8 @@ ospf_rt_spf(struct ospf_proto *p)
   rt_sync(p);
   lp_flush(p->nhpool);
 
-  p->calcrt = 0;
+  if (p->cir == NULL)
+    p->calcrt = 0;
 }
 
 
@@ -2019,10 +2020,8 @@ rt_sync(struct ospf_proto *p)
 
   OSPF_TRACE(D_EVENTS, "Starting routing table synchronization");
 
-  DG_LOCK(attr, p->lock);
   struct channel_import_request *cir = p->cir;
   p->cir = NULL;
-  DG_UNLOCK(attr, p->lock);
   
   DBG("Now syncing my rt table with nest's\n");
   FIB_ITERATE_INIT(&fit, fib);
@@ -2131,8 +2130,12 @@ again1:
   }
   FIB_ITERATE_END;
   
-  if(cir)
+  while(cir)
+  {
+    struct channel_import_request *next = cir->next;
     cir->done(cir);
+    cir = next;
+  }
 
   WALK_LIST(oa, p->area_list)
   {

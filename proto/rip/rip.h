@@ -104,7 +104,6 @@ struct rip_proto
   struct tbf log_pkt_tbf;		/* TBF for packet messages */
   struct tbf log_rte_tbf;		/* TBF for RTE messages */
   struct channel_import_request *cir;	/* Trie for partial reload */
-  DOMAIN(attrs) lock;		/* Lock for partial reload */
 };
 
 struct rip_iface

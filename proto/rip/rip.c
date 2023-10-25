@@ -968,10 +968,8 @@ rip_timer(timer *t)
 
   FIB_ITERATE_INIT(&fit, &p->rtable);
   
-  DG_LOCK(attrs, p->lock);
   struct channel_import_request *cir = p->cir;
   p->cir = NULL;
-  DG_UNLOCK(attrs, p->lock);
 
   loop:
   FIB_ITERATE_START(&p->rtable, &fit, struct rip_entry, en)
@@ -1054,9 +1052,19 @@ rip_timer(timer *t)
       }
   }
 
-  if (cir)
+  while(cir)
+  {
+    struct channel_import_request *next_cir = cir->next;
     cir->done(cir);
-  tm_start(p->timer, MAX(next - now_, 100 MS));
+    cir = next_cir;
+  }
+  if (p->cir)
+  {
+    p->rt_reload = 1;
+    rip_kick_timer(p);
+  }
+  else
+    tm_start(p->timer, MAX(next - now_, 100 MS));
 }
 
 static inline void
@@ -1161,17 +1169,10 @@ static int
 rip_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct rip_proto *p = (struct rip_proto *) C->proto;
-  
+  bug("you got here! why not to log?");
   if (cir) {
-    if (p->lock==NULL)
-      {
-        p->lock = DOMAIN_NEW(attrs);
-        DOMAIN_SETUP(attrs, p->lock, "Partial request lock rip", NULL);
-      }
-    DG_LOCK(p->lock);
     cir->next = p->cir;
     p->cir = cir;
-    DG_UNLOCK(p->lock);
   }
   if (p->rt_reload)
     return 1;

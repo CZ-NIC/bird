@@ -107,6 +107,7 @@ pipe_import_by_refeed_free(struct channel_feeding_request *cfr)
 static int
 pipe_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
+bug("you got here! why not to log?");
   struct pipe_proto *p = (void *) C->proto;
   if (cir && cir->trie)
   {

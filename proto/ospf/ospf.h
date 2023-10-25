@@ -220,7 +220,6 @@ struct ospf_proto
   int calcrt;			/* Routing table calculation scheduled?
 				   0=no, 1=normal, 2=forced reload */
   struct channel_import_request *cir; /* Struct with trie for partial reload */
-  DOMAIN(attrs) lock;	/*nebo struct domain_generic *? *//* Lock for partial reload */
   list iface_list;		/* List of OSPF interfaces (struct ospf_iface) */
   list area_list;		/* List of OSPF areas (struct ospf_area) */
   int areano;			/* Number of area I belong to */
