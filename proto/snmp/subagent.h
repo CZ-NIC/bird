@@ -121,26 +121,8 @@ enum snmp_search_res {
   str[length] = '\0'; /* set term. char */				      \
   buf += 4 + snmp_str_size_from_len(length); })
 
-#define SNMP_LOAD_CONTEXT(hdr, buf, cont, cont_len) ({			      \
-  if (cont = NULL, cont_len = 0, (hdr)->flags & AGENTX_NON_DEFAULT_CONTEXT)   \
-    LOAD_STR((buf), (cont), (cont_len),					      \
-      (hdr)->flags & AGENTX_NETWORK_BYTE_ORDER); })
-
-#define SNMP_COPY_CONTEXT(proto, hdr, buf, cont, cont_len) ({		      \
-  cont = NULL; cont_len = 0;						      \
-  if (hdr->flags & AGENTX_NON_DEFAULT_CONTEXT)				      \
-    COPY_STR(proto, buf, cont, cont_len,				      \
-	(hdr)->flags & AGENTX_NETWORK_BYTE_ORDER) })
-
 #define SNMP_HAS_CONTEXT(hdr)						      \
   hdr->flags |= AGENTX_NON_DEFAULT_CONTEXT
-
-#define SNMP_NON_DEFAULT_CONTEXT(hdr,pdu,contid) ({			      \
-  if (contid) {								      \
-    SNMP_HAS_CONTEXT(hdr);						      \
-    snmp_put_str((c).buffer, (sc)->context);				      \
-    ADVANCE((c).buffer, (c).size, snmp_str_size((sc)->context));	      \
-  } })
 
 #define SNMP_PUT_OID(buf, size, oid, byte_ord)				      \
   ({									      \
@@ -158,7 +140,6 @@ enum snmp_search_res {
     .buffer = sk->tpos,							      \
     .size = sk->tbuf + sk->tbsize - sk->tpos,				      \
     .error = AGENTX_RES_NO_ERROR,					      \
-    .context = 0,							      \
     .index = 0,								      \
   }
 
@@ -314,7 +295,6 @@ enum agentx_response_err {
 struct snmp_pdu {
   byte *buffer;			    /* pointer to buffer */
   uint size;			    /* unused space in buffer */
-  uint context;			    /* context hash */
   int byte_ord;			    /* flag signaling NETWORK_BYTE_ORDER */
   enum agentx_response_err error;   /* storage for result of current action */
   uint index;			    /* index on which the error was found */

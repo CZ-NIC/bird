@@ -186,36 +186,6 @@ snmp_bgp_register(struct snmp_proto *p)
     /* snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 is_instance, uint contid) */
     snmp_register(p, oid, 1, 0, SNMP_REGISTER_TREE, SNMP_DEFAULT_CONTEXT);
   }
-
-#if 0
-  u32 bgp_peer_entry[] = { 1, 15, 3, 1, 1 };
-  u32 bound = 24;
-  HASH_WALK(p->bgp_hash, next, peer)
-  {
-    if (peer->flags & SNMP_BGP_P_REGISTERED)
-      continue;
-
-    struct bgp_proto *bgp = (struct bgp_proto *) peer->config->c.proto;
-
-    struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
-
-    struct oid *oid = mb_alloc(p->pool, snmp_oid_sizeof(9));
-    STORE_U8(oid->n_subid, 9);
-    STORE_U8(oid->prefix, SNMP_MGMT);
-
-    for (uint i = 0; i < ARRAY_SIZE(bgp_peer_entry); i++)
-      STORE_U32(oid->ids[i], bgp_peer_entry[i]);
-    ip4_to_oid(oid, ipa_to_ip4(bgp->remote_ip));
-
-    /* index is position of x in .1.3.6.1.2.15.3.1.x (1-based) */
-    snmp_register(p, oid, bound, 9, SNMP_REGISTER_INSTANCE, peer->context_id);
-
-    registering->oid = oid;
-    add_tail(&p->register_queue, &registering->n);
-    p->register_to_ack++;
-  }
-  HASH_WALK_END;
-#endif
 }
 
 static int
@@ -959,7 +929,6 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
 {
   struct oid *oid = &vb->name;
   uint size = c->size - snmp_varbind_header_size(vb);
-  uint UNUSED contid = c->context;
   byte *pkt;
 
   ip_addr addr;
@@ -1219,7 +1188,7 @@ snmp_bgp_fill(struct snmp_proto *p, struct agentx_varbind *vb,
   byte *pkt;
   if (is_static(state))
   {
-    pkt = bgp_fill_static(p, vb, c->buffer, c->size, c->context, c->byte_ord, state);
+    pkt = bgp_fill_static(p, vb, c->buffer, c->size, 0, c->byte_ord, state);
     ADVANCE(c->buffer, c->size, pkt - c->buffer);
     return;
   }

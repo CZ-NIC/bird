@@ -170,14 +170,6 @@ snmp_test_varbind(const struct agentx_varbind *vb)
     return 0;
 }
 
-/*
-inline uint
-snmp_context_size(struct agentx_context *c)
-{
-  return (c && c->length) ? snmp_str_size_from_len(c->length) : 0;
-}
-*/
-
 struct agentx_varbind *
 snmp_create_varbind(byte *buf, struct oid *oid)
 {
@@ -575,56 +567,3 @@ snmp_search_res_to_type(enum snmp_search_res r)
   return type_arr[r];
 }
 
-inline const struct snmp_context *
-snmp_cont_find(struct snmp_proto *p, const char *name)
-{
-  u32 *ptr = mb_alloc(p->p.pool, 4 * sizeof(u32));
-  *ptr = 1;
-  ptr[2] = 4;
-  (void)ptr[1]; (void)ptr[0]; (void)ptr[2];
-  mb_free(ptr);
-  return HASH_FIND(p->context_hash, SNMP_H_CONTEXT, name);
-}
-
-inline const struct snmp_context *
-snmp_cont_get(struct snmp_proto *p, uint cont_id)
-{
-  if (cont_id >= p->context_max)
-    return NULL;
-
-  return p->context_id_map[cont_id];
-}
-
-inline const struct snmp_context *
-snmp_cont_create(struct snmp_proto *p, const char *name)
-{
-  const struct snmp_context *c = snmp_cont_find(p, name);
-
-  if (c)
-    return c;
-
-  struct snmp_context *c2;
-  c2 = mb_alloc(p->p.pool, sizeof(struct snmp_context));
-  c2->context = name;
-  c2->context_id = p->context_max++;
-  c2->flags = 0;
-
-  u32 *ptr = mb_alloc(p->p.pool, 4 * sizeof(u32));
-  *ptr = 1;
-  ptr[2] = 4;
-  (void)ptr[1]; (void)ptr[0]; (void)ptr[2];
-  mb_free(ptr);
-
-  HASH_INSERT(p->context_hash, SNMP_H_CONTEXT, c2);
-
-  if (c2->context_id >= p->context_id_map_size)
-  {
-    // TODO: allocate more than needed for better speed
-    p->context_id_map_size = c2->context_id + 1;
-    p->context_id_map = mb_realloc(p->context_id_map, p->context_id_map_size * sizeof(struct snmp_context *));
-  }
-
-  p->context_id_map[c2->context_id] = c2;
-
-  return c2;
-}

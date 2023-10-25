@@ -16,8 +16,6 @@ CF_DEFINES
 
 #define SNMP_CFG ((struct snmp_config *) this_proto)
 
-struct snmp_bond *this_bond = NULL;
-
 CF_DECLS
 
 CF_KEYWORDS(SNMP, PROTOCOL, BPG, LOCAL, AS, REMOTE, ADDRESS, PORT, DESCRIPTION,
@@ -69,8 +67,6 @@ snmp_proto_start: proto_start SNMP
 
   init_list(&SNMP_CFG->bgp_entries);
   SNMP_CFG->bonds = 0;
-  /* We always have the default context */
-  SNMP_CFG->contexts = 1;
 
   SNMP_CFG->local_ip = IPA_NONE;
   SNMP_CFG->remote_ip = ipa_build4(127,0,0,1);
@@ -86,34 +82,10 @@ snmp_proto_start: proto_start SNMP
 
 proto_name ;
 
-snmp_context:
-   /* empty */	  {
-    if (!this_bond)
-      this_bond = cfg_alloc(sizeof(struct snmp_bond));
-
-    this_bond->context = NULL;
-  }
- | CONTEXT DEFAULT {
-    if (!this_bond)
-      this_bond = cfg_alloc(sizeof(struct snmp_bond));
-
-    this_bond->context = NULL;
-  }
- | CONTEXT text {
-    if(!this_bond)
-      this_bond = cfg_alloc(sizeof(struct snmp_bond));
-
-    this_bond->context = $2;
-    SNMP_CFG->contexts++;
-  }
- ;
-
-snmp_bgp_bond: BGP symbol snmp_context
+snmp_bgp_bond: BGP symbol
 {
   /* the snmp_context rule sets the correct value of this_bond */
-  if (!this_bond)
-    this_bond = cfg_alloc(sizeof(struct snmp_bond));
-
+  struct snmp_bond *this_bond = cfg_alloc(sizeof(struct snmp_bond));
   this_bond->type = SNMP_BGP;
 
   cf_assert_symbol($2, SYM_PROTO);
@@ -122,8 +94,6 @@ snmp_bgp_bond: BGP symbol snmp_context
   if (!this_bond->proto) cf_error("BGP protocol %s not found", $2->name);
   add_tail(&SNMP_CFG->bgp_entries, &this_bond->n);
   SNMP_CFG->bonds++;
-
-  this_bond = NULL;
 }
 
 CF_CODE

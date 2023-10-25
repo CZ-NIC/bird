@@ -120,10 +120,6 @@ snmp_init(struct proto_config *CF)
 
   p->timeout = cf->timeout;
 
-  /* used when assigning the context ids in s_cont_create() */
-  p->context_max = 1;
-  p->context_id_map = NULL;
-
   return P;
 }
 
@@ -160,9 +156,6 @@ snmp_cleanup(struct snmp_proto *p)
   }
 
   HASH_FREE(p->bgp_hash);
-  HASH_FREE(p->context_hash);
-  mb_free(p->context_id_map);
-  p->context_id_map = NULL;
 
   rfree(p->lp);
   p->bgp_trie = NULL;
@@ -194,15 +187,6 @@ snmp_connected(sock *sk)
 
   // TODO ping interval <move to do_response()>
   tm_set(p->ping_timer, current_time() + p->timeout S);
-}
-
-/* this function is internal and shouldn't be used outside the snmp module */
-void
-snmp_reconnect(timer *tm)
-{
-  struct snmp_proto *p = tm->data;
-  ASSUME(p->sock);
-  snmp_connected(p->sock);
 }
 
 /* this function is internal and shouldn't be used outside the snmp module */
@@ -273,6 +257,27 @@ snmp_start_locked(struct object_lock *lock)
   if (sk_open(s) < 0)
     tm_set(p->startup_timer, current_time() + p->timeout S);
 }
+
+/* this function is internal and shouldn't be used outside the snmp module */
+void
+snmp_reconnect(timer *tm)
+{
+  struct snmp_proto *p = tm->data;
+  if (p->state == SNMP_STOP ||
+      p->state == SNMP_DOWN)
+    return;
+
+  // TODO is SNMP_RESET really needed ?
+  if (p->state == SNMP_INIT ||
+      p->state == SNMP_RESET)
+    snmp_startup(p);
+
+  if (!p->sock)
+    snmp_start_locked(p->lock);
+  else
+    snmp_connected(p->sock);
+}
+
 
 /* this function is internal and shouldn't be used outside the snmp module */
 void
@@ -359,20 +364,6 @@ snmp_start(struct proto *P)
 
   /* We create copy of bonds to BGP protocols. */
   HASH_INIT(p->bgp_hash, p->pool, 10);
-  HASH_INIT(p->context_hash, p->pool, 10);
-
-  /* We always have at least the default context */
-  p->context_id_map_size = cf->contexts;
-  p->context_id_map = mb_allocz(p->pool, cf->contexts * sizeof(struct snmp_context *));
-  //log(L_INFO "number of context allocated %d", cf->contexts);
-
-  struct snmp_context *defaultc = mb_alloc(p->pool, sizeof(struct snmp_context));
-  defaultc->context = "";
-  defaultc->context_id = 0;
-  defaultc->flags = 0; /* TODO Default context fl. */
-  HASH_INSERT(p->context_hash, SNMP_H_CONTEXT, defaultc);
-
-  p->context_id_map[0] = defaultc;
 
   struct snmp_bond *b;
   WALK_LIST(b, cf->bgp_entries)
@@ -391,17 +382,8 @@ snmp_start(struct proto *P)
       trie_add_prefix(p->bgp_trie, &net, IP4_MAX_PREFIX_LENGTH, IP4_MAX_PREFIX_LENGTH);
 
       HASH_INSERT(p->bgp_hash, SNMP_HASH, peer);
-
-      /* Handle non-default context */
-      if (b->context)
-      {
-	const struct snmp_context *c = snmp_cont_create(p, b->context);
-	peer->context_id = c->context_id;
-      }
     }
   }
-
-  ASSUME(cf->contexts == p->context_max);
 
   snmp_startup(p);
   return PS_START;
@@ -420,14 +402,6 @@ snmp_reconfigure(struct proto *P, struct proto_config *CF)
     WALK_LIST(b2, old->bgp_entries)
     {
       if (!strcmp(b1->proto->name, b2->proto->name))
-	goto skip;
-
-      /* Both bonds use default context */
-      if (!b1->context && !b2->context)
-	goto skip;
-
-      /* Both bonds use same non-default context */
-      if (b1->context && b2->context && !strcmp(b1->context, b2->context))
 	goto skip;
     }
 

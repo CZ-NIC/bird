@@ -15,7 +15,6 @@ uint snmp_varbind_hdr_size_from_oid(struct oid *oid);
 uint snmp_varbind_header_size(struct agentx_varbind *vb);
 uint snmp_varbind_size(struct agentx_varbind *vb, int byte_ord);
 int snmp_test_varbind(const struct agentx_varbind *vb);
-//uint snmp_context_size(struct agentx_context *c);
 
 void snmp_oid_copy(struct oid *dest, const struct oid *src);
 
@@ -57,10 +56,6 @@ byte *snmp_varbind_ip4(struct agentx_varbind *vb, uint size, ip4_addr addr);
 byte *snmp_varbind_nstr(struct agentx_varbind *vb, uint size, const char *str, uint len);
 
 void snmp_dump_packet(byte *pkt, uint size);
-
-const struct snmp_context *snmp_cont_find(struct snmp_proto *p, const char *name);
-const struct snmp_context *snmp_cont_get(struct snmp_proto *p, uint context_id);
-const struct snmp_context *snmp_cont_create(struct snmp_proto *p, const char *name);
 
 enum agentx_type snmp_search_res_to_type(enum snmp_search_res res);
 
