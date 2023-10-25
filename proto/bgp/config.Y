@@ -44,10 +44,6 @@ CF_KEYWORDS(CEASE, PREFIX, LIMIT, HIT, ADMINISTRATIVE, SHUTDOWN, RESET, PEER,
 
 CF_GRAMMAR
 
-/* Workaround for collisions between keywords and symbols */
-toksym: ROLE | PEER | PROVIDER | CUSTOMER | RS_SERVER | RS_CLIENT ;
-toksym: BGP_MED | BGP_LOCAL_PREF | SOURCE ;
-
 proto: bgp_proto '}'  ;
 
 bgp_proto_start: proto_start BGP {

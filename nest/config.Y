@@ -154,8 +154,6 @@ CF_ENUM_PX(T_ENUM_AF, AF_, AFI_, IPV4, IPV6)
 
 CF_GRAMMAR
 
-toksym: MIN | MAX ;
-
 /* Setting of router ID */
 
 conf: rtrid ;
@@ -694,7 +692,7 @@ r_args:
      $$->addr = $3;
      $$->addr_mode = TE_ADDR_IN;
    }
-| r_args TABLE symbol_known {
+| r_args TABLE CF_SYM_KNOWN {
      cf_assert_symbol($3, SYM_TABLE);
      if (!$3->table) cf_error("Table %s not configured", $3->name);
      $$ = $1;
@@ -741,7 +739,7 @@ r_args:
      $$ = $1;
      $$->filtered = 1;
    }
- | r_args export_mode symbol_known {
+ | r_args export_mode CF_SYM_KNOWN {
      cf_assert_symbol($3, SYM_PROTO);
      struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
@@ -758,7 +756,7 @@ r_args:
      $$->export_channel = $3;
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
- | r_args PROTOCOL symbol_known {
+ | r_args PROTOCOL CF_SYM_KNOWN {
      cf_assert_symbol($3, SYM_PROTO);
      struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
@@ -870,7 +868,7 @@ sym_args:
  | sym_args FILTER { $$ = $1; $$->type = SYM_FILTER; }
  | sym_args PROTOCOL { $$ = $1; $$->type = SYM_PROTO; }
  | sym_args TEMPLATE { $$ = $1; $$->type = SYM_TEMPLATE; }
- | sym_args symbol { $$ = $1; $$->sym = $2; }
+ | sym_args CF_SYM_KNOWN { $$ = $1; $$->sym = $2; }
  ;
 
 

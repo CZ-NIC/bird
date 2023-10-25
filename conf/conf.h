@@ -127,6 +127,7 @@ struct symbol {
     struct ea_class *attribute;		/* For SYM_ATTRIBUTE */
     struct f_val *val;			/* For SYM_CONSTANT */
     uint offset;			/* For SYM_VARIABLE */
+    const struct keyword *keyword;	/* For SYM_KEYWORD */
   };
 
   char name[0];
@@ -144,7 +145,8 @@ struct sym_scope {
   byte soft_scopes;			/* Number of soft scopes above */
 };
 
-extern struct sym_scope *global_root_scope;
+void cf_enter_filters(void);
+void cf_exit_filters(void);
 
 struct bytestring {
   size_t length;
@@ -161,6 +163,7 @@ struct bytestring {
 #define SYM_FILTER 4
 #define SYM_TABLE 5
 #define SYM_ATTRIBUTE 6
+#define SYM_KEYWORD 7
 
 #define SYM_VARIABLE 0x100	/* 0x100-0x1ff are variable types */
 #define SYM_VARIABLE_RANGE SYM_VARIABLE ... (SYM_VARIABLE | 0xff)

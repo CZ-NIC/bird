@@ -54,7 +54,6 @@
 struct keyword {
   byte *name;
   int value;
-  struct keyword *next;
 };
 
 #include "conf/keywords.h"
@@ -67,16 +66,10 @@ struct keyword {
 
 static uint cf_hash(const byte *c);
 
-#define KW_KEY(n)		n->name
-#define KW_NEXT(n)		n->next
-#define KW_EQ(a,b)		!strcmp(a,b)
-#define KW_FN(k)		cf_hash(k)
-#define KW_ORDER		8 /* Fixed */
-
-#define SYM_KEY(n)		n->name, n->scope->active
+#define SYM_KEY(n)		n->name
 #define SYM_NEXT(n)		n->next
-#define SYM_EQ(a,s1,b,s2)	!strcmp(a,b) && s1 == s2
-#define SYM_FN(k,s)		cf_hash(k)
+#define SYM_EQ(a,b)		!strcmp(a,b)
+#define SYM_FN(k)		cf_hash(k)
 #define SYM_ORDER		4 /* Initial */
 
 #define SYM_REHASH		sym_rehash
@@ -85,13 +78,19 @@ static uint cf_hash(const byte *c);
 
 HASH_DEFINE_REHASH_FN(SYM, struct symbol)
 
-HASH(struct keyword) kw_hash;
-HASH(struct ea_class) ea_name_hash;
+/* Global symbol scopes */
+static pool *global_root_scope_pool;
+static struct sym_scope
+  global_root_scope = {
+    .active = 1,
+  },
+  global_filter_scope = {
+    .active = 0,
+    .next = &global_root_scope,
+  };
 
+/* Local symbol scope: TODO this isn't thread-safe */
 struct sym_scope *conf_this_scope;
-
-static struct sym_scope global_root_scope__init = { .active = 1, };
-struct sym_scope *global_root_scope = &global_root_scope__init;
 
 linpool *cfg_mem;
 
@@ -581,7 +580,7 @@ cf_new_symbol(const byte *c)
 
   s = cfg_allocz(sizeof(struct symbol) + l + 1);
   *s = (struct symbol) { .scope = conf_this_scope, .class = SYM_VOID, };
-  strcpy(s->name, c);
+  memcpy(s->name, c, l+1);
 
   if (!conf_this_scope->hash.data)
     HASH_INIT(conf_this_scope->hash, new_config->pool, SYM_ORDER);
@@ -595,20 +594,20 @@ cf_new_symbol(const byte *c)
 }
 
 static struct symbol *
-cf_root_symbol(const byte *c)
+cf_root_symbol(const byte *c, struct sym_scope *ss)
 {
   uint l = strlen(c);
   if (l > SYM_MAX_LEN)
     bug("Root symbol %s too long", c);
 
   struct symbol *s = mb_alloc(&root_pool, sizeof(struct symbol) + l + 1);
-  *s = (struct symbol) { .scope = global_root_scope, .class = SYM_VOID, };
+  *s = (struct symbol) { .scope = ss, .class = SYM_VOID, };
   memcpy(s->name, c, l+1);
 
-  if (!global_root_scope->hash.data)
-    HASH_INIT(global_root_scope->hash, &root_pool, SYM_ORDER);
+  if (!ss->hash.data)
+    HASH_INIT(ss->hash, &root_pool, SYM_ORDER);
 
-  HASH_INSERT2(global_root_scope->hash, SYM, &root_pool, s);
+  HASH_INSERT2(ss->hash, SYM, &root_pool, s);
   return s;
 }
 
@@ -631,7 +630,7 @@ cf_find_symbol_scope(const struct sym_scope *scope, const byte *c)
 
   /* Find the symbol here or anywhere below */
   while (scope)
-    if (scope->hash.data && (s = HASH_FIND(scope->hash, SYM, c, 1)))
+    if (scope->active && scope->hash.data && (s = HASH_FIND(scope->hash, SYM, c)))
       return s;
     else
       scope = scope->next;
@@ -702,50 +701,34 @@ cf_lex_symbol(const char *data)
   struct symbol *sym = cf_get_symbol(data);
   cf_lval.s = sym;
 
-  /* Is it a keyword? Prefer the keyword. */
-  struct keyword *k = HASH_FIND(kw_hash, KW, data);
-  if (k)
+  switch (sym->class)
   {
-    if (k->value > 0)
-      return k->value;
-    else
-    {
-      cf_lval.i = -k->value;
-      return ENUM;
-    }
+    case SYM_KEYWORD:
+      if (sym->keyword->value > 0)
+	return sym->keyword->value;
+      else
+      {
+	cf_lval.i = -sym->keyword->value;
+	return ENUM;
+      }
+    case SYM_VOID:
+      return CF_SYM_UNDEFINED;
+    default:
+      return CF_SYM_KNOWN;
   }
-
-  /* OK, only a symbol. */
-  if (sym->class == SYM_VOID)
-    return CF_SYM_UNDEFINED;
-  else
-    return CF_SYM_KNOWN;
-}
-
-static void
-cf_lex_init_kh(void)
-{
-  HASH_INIT(kw_hash, config_pool, KW_ORDER);
-
-  struct keyword *k;
-  for (k=keyword_list; k->name; k++)
-    HASH_INSERT(kw_hash, KW, k);
 }
 
 void
 ea_lex_register(struct ea_class *def)
 {
-  struct symbol *sym = cf_root_symbol(def->name);
-  sym->class = SYM_ATTRIBUTE;
-  sym->attribute = def;
-  def->sym = sym;
+  def->sym = cf_define_symbol(cf_root_symbol(def->name, &global_filter_scope), SYM_ATTRIBUTE, attribute, def);
 }
 
 void
 ea_lex_unregister(struct ea_class *def)
 {
   struct symbol *sym = def->sym;
-  HASH_REMOVE2(global_root_scope->hash, SYM, &root_pool, sym);
+  HASH_REMOVE2(global_filter_scope.hash, SYM, &root_pool, sym);
   mb_free(sym);
   def->sym = NULL;
 }
@@ -753,7 +736,11 @@ ea_lex_unregister(struct ea_class *def)
 struct ea_class *
 ea_class_find_by_name(const char *name)
 {
-  struct symbol *sym = cf_find_symbol(global_root_scope, name);
+  if (!global_filter_scope.hash.data)
+    return NULL;
+
+  struct symbol *sym = HASH_FIND(global_filter_scope.hash, SYM, name);
+
   if (!sym || (sym->class != SYM_ATTRIBUTE))
     return NULL;
   else
@@ -771,8 +758,13 @@ ea_class_find_by_name(const char *name)
 void
 cf_lex_init(int is_cli, struct config *c)
 {
-  if (!kw_hash.data)
-    cf_lex_init_kh();
+  if (!global_root_scope_pool)
+  {
+    global_root_scope_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Keywords pool");
+
+    for (const struct keyword *k = keyword_list; k->name; k++)
+      cf_define_symbol(cf_root_symbol(k->name, &global_root_scope), SYM_KEYWORD, keyword, k);
+  }
 
   ifs_head = ifs = push_ifs(NULL);
   if (!is_cli)
@@ -797,7 +789,7 @@ cf_lex_init(int is_cli, struct config *c)
   if (is_cli)
     conf_this_scope->next = config->root_scope;
   else
-    conf_this_scope->next = global_root_scope;
+    conf_this_scope->next = &global_filter_scope;
 }
 
 /**
@@ -887,6 +879,27 @@ cf_swap_soft_scope(void)
 }
 
 /**
+ * cf_enter_filters - enable filter / route attributes namespace
+ */
+void
+cf_enter_filters(void)
+{
+  ASSERT_DIE(!global_filter_scope.active);
+  global_filter_scope.active = 1;
+}
+
+/**
+ * cf_exit_filters - disable filter / route attributes namespace
+ */
+void
+cf_exit_filters(void)
+{
+  ASSERT_DIE(global_filter_scope.active);
+  global_filter_scope.active = 0;
+}
+
+
+/**
  * cf_symbol_class_name - get name of a symbol class
  * @sym: symbol
  *
@@ -912,6 +925,8 @@ cf_symbol_class_name(struct symbol *sym)
       return "routing table";
     case SYM_ATTRIBUTE:
       return "custom attribute";
+    case SYM_KEYWORD:
+      return "symbol";
     case SYM_CONSTANT_RANGE:
       return "constant";
     case SYM_VARIABLE_RANGE:
