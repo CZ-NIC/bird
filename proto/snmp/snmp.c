@@ -54,6 +54,15 @@
  *    +-----------------+
  *
  *
+ *    +-----------------+
+ *    | SNMP_RESET      |     waiting to transmit response to malformed packet
+ *    +-----------------+
+ *	 |
+ *       |    response was send, reseting the session (with socket)
+ *       |
+ *	 \--> SNMP_LOCKED
+ *
+ *
  *  Erroneous transitions:
  *    SNMP is UP in states SNMP_CONN and also in SNMP_REGISTER because the
  *    session is establised and the GetNext request should be responsed
@@ -196,14 +205,14 @@ snmp_reconnect(timer *tm)
   snmp_connected(p->sock);
 }
 
-static void
-snmp_sock_err(sock *sk, int UNUSED err)
+/* this function is internal and shouldn't be used outside the snmp module */
+void
+snmp_sock_disconnect(struct snmp_proto *p, int reconnect)
 {
-  snmp_log("socket error '%s' (errno: %d)", strerror(err), err);
-  struct snmp_proto *p = sk->data;
-  p->errs++;
-
   tm_stop(p->ping_timer);
+
+  if (!reconnect)
+    return snmp_down(p);
 
   proto_notify_state(&p->p, PS_START);
   rfree(p->sock);
@@ -212,10 +221,20 @@ snmp_sock_err(sock *sk, int UNUSED err)
   snmp_log("changing state to LOCKED");
   p->state = SNMP_LOCKED;
 
+  /* We try to reconnect after a short delay */
   p->startup_timer->hook = snmp_startup_timeout;
-  tm_start(p->startup_timer,  4 S); // TODO make me configurable
+  tm_start(p->startup_timer, 4 S);  // TODO make me configurable
 }
 
+static void
+snmp_sock_err(sock *sk, int UNUSED err)
+{
+  snmp_log("socket error '%s' (errno: %d)", strerror(err), err);
+  struct snmp_proto *p = sk->data;
+  p->errs++;
+
+  snmp_sock_disconnect(p, 1);
+}
 
 static void
 snmp_start_locked(struct object_lock *lock)

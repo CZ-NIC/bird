@@ -35,6 +35,7 @@ static struct agentx_response *prepare_response(struct snmp_proto *p, struct snm
 static void response_err_ind(struct agentx_response *res, uint err, uint ind);
 static uint update_packet_size(struct snmp_proto *p, const byte *start, byte *end);
 static struct oid *search_mib(struct snmp_proto *p, const struct oid *o_start, const struct oid *o_end, struct oid *o_curr, struct snmp_pdu *c, enum snmp_search_res *result);
+static void snmp_tx(sock *sk);
 
 u32 snmp_internet[] = { SNMP_ISO, SNMP_ORG, SNMP_DOD, SNMP_INTERNET };
 
@@ -75,6 +76,22 @@ static const char * const snmp_pkt_type[] UNUSED = {
   [AGENTX_REMOVE_AGENT_CAPS_PDU]  =  "RemoveAgentCaps-PDU",
   [AGENTX_RESPONSE_PDU]		  =  "Response-PDU",
 };
+
+static int
+snmp_rx_skip(sock UNUSED *sk, uint UNUSED size)
+{
+  return 1;
+}
+
+static inline void
+snmp_error(struct snmp_proto *p)
+{
+  snmp_log("changing state to RESET");
+  p->state = SNMP_RESET;
+
+  p->sock->rx_hook = snmp_rx_skip;
+  p->sock->tx_hook = snmp_tx;
+}
 
 static void
 snmp_simple_response(struct snmp_proto *p, enum agentx_response_err error, u16 index)
@@ -313,27 +330,28 @@ close_pdu(struct snmp_proto *p, u8 reason)
 #undef REASON_SIZE
 }
 
-static uint UNUSED
-parse_close_pdu(struct snmp_proto UNUSED *p, byte UNUSED *req, uint UNUSED size)
+static uint
+parse_close_pdu(struct snmp_proto *p, byte * const pkt_start, uint size)
 {
-#if 0
-  //byte *pkt = req;
-  //sock *sk = p->sock;
+  byte *pkt = pkt_start;
+  struct agentx_header *h = (void *) pkt;
+  ADVANCE(pkt, size, AGENTX_HEADER_SIZE);
+  int byte_ord = h->flags & AGENTX_NETWORK_BYTE_ORDER;
+  uint pkt_size = LOAD_U32(h->payload, byte_ord);
 
-  if (size < sizeof(struct agentx_header))
+  if (pkt_size != 0)
   {
-    return 0;
+    snmp_simple_response(p, AGENTX_RES_GEN_ERROR, 0);
+    // TODO: best solution for possibly malicious pkt_size
+    //return AGENTX_HEADER_SIZE + MIN(size, pkt_size);
+    return AGENTX_HEADER_SIZE;
   }
 
-  //struct agentx_header *h = (void *) req;
-  ADVANCE(req, size, AGENTX_HEADER_SIZE);
+  /* The agentx-Close-PDU must not have non-default context */
 
-  p->state = SNMP_ERR;
-
-  /* or snmp_cleanup(); // ??! */
-  proto_notify_state(&p->p, PS_DOWN);
-#endif
-  return 0;
+  snmp_simple_response(p, AGENTX_RES_NO_ERROR, 0);
+  snmp_sock_disconnect(p, 1); // TODO: should we try to reconnect (2nd arg) ??
+  return AGENTX_HEADER_SIZE;
 }
 
 /* MUCH better signature would be
@@ -541,7 +559,10 @@ error:
   s = update_packet_size(p, sk->tpos, c.buffer);
 
   if (c.error != AGENTX_RES_NO_ERROR)
+  {
     response_err_ind(res, c.error, c.index + 1);
+    snmp_error(p);
+  }
   else if (all_possible)
     response_err_ind(res, AGENTX_RES_NO_ERROR, 0);
   else
@@ -604,6 +625,11 @@ parse_set_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint err)
 error:;
   response_err_ind(r, c.error, 0);
   sk_send(p->sock, AGENTX_HEADER_SIZE);
+
+  /* Reset the connection on unrecoverable error */
+  if (c.error != AGENTX_RES_NO_ERROR && c.error != err)
+    snmp_error(p);
+
   return pkt - pkt_start;
 }
 
@@ -1372,6 +1398,16 @@ snmp_rx(sock *sk, uint size)
   }
 
   return 1;
+}
+
+/* snmp_tx - used to reset the connection when the
+ *   agentx-Response-PDU was sent
+ */
+static void
+snmp_tx(sock *sk)
+{
+  struct snmp_proto *p = sk->data;
+  snmp_sock_disconnect(p, 1);
 }
 
 /* Ping-PDU */

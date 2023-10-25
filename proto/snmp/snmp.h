@@ -37,6 +37,7 @@ enum snmp_proto_state {
   SNMP_CONN,
   SNMP_STOP,
   SNMP_DOWN,
+  SNMP_RESET,
 };
 
 /* hash table macros */
@@ -169,6 +170,7 @@ void snmp_startup(struct snmp_proto *p);
 void snmp_connected(sock *sk);
 void snmp_startup_timeout(timer *tm);
 void snmp_reconnect(timer *tm);
+void snmp_sock_disconnect(struct snmp_proto *p, int reconnect);
 
 
 #endif
