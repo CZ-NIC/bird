@@ -358,7 +358,6 @@ channel_roa_in_reload_done(struct channel_import_request *req)
 static void
 channel_roa_in_changed(struct settle *se)
 {
-  log("channel_roa in changed");
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, settle, se);
   struct channel *c = s->c;
 
@@ -761,10 +760,7 @@ channel_refeed_prefilter(const struct rt_prefilter *p, const net_addr *n)
   ASSERT_DIE(c->refeeding);
   for (struct channel_feeding_request *cfr = c->refeeding; cfr; cfr = cfr->next)
     if (!cfr->trie || trie_match_net(cfr->trie, n))
-    {
       return 1;
-    }
-  log(L_TRACE "%N filtered out of export", n);
   return 0;
 }
 
@@ -879,7 +875,6 @@ channel_schedule_reload(struct channel *c, struct channel_import_request *cir)
   }
   else
   {
-    CD(c, "Import with trie");
     c->reload_req.prefilter.mode = TE_ADDR_HOOK;
     c->reload_req.prefilter.hook = channel_import_prefilter;
   }

@@ -101,7 +101,6 @@ pipe_import_by_refeed_free(struct channel_feeding_request *cfr)
 {
   struct import_to_export_reload *reload = SKIP_BACK(struct import_to_export_reload, cfr, cfr);
   reload->cir->done(reload->cir);
-  log("free is done");
 }
 
 static int
