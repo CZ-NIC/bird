@@ -767,7 +767,7 @@ krt_if_notify(struct proto *P, uint flags, struct iface *iface UNUSED)
 }
 
 static int
-krt_reload_routes(struct channel *C, struct channel_import_request *UNUSED)
+krt_reload_routes(struct channel *C, struct channel_import_request *cir UNUSED)
 {
   struct krt_proto *p = (void *) C->proto;
 
