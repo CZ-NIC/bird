@@ -141,9 +141,10 @@ struct sym_scope {
   HASH(struct symbol) hash;		/* Local symbol hash */
 
   uint slots;				/* Variable slots */
-  byte active;				/* Currently entered */
-  byte block;				/* No independent stack frame */
   byte soft_scopes;			/* Number of soft scopes above */
+  byte active:1;			/* Currently entered */
+  byte block:1;				/* No independent stack frame */
+  byte readonly:1;			/* Do not add new symbols */
 };
 
 void cf_enter_filters(void);

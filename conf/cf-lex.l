@@ -570,6 +570,9 @@ static inline void cf_swap_soft_scope(struct config *conf);
 static struct symbol *
 cf_new_symbol(struct sym_scope *scope, pool *p, struct linpool *lp, const byte *c)
 {
+  if (scope->readonly)
+    cf_error("Unknown symbol %s", c);
+
   struct symbol *s;
 
   uint l = strlen(c);
@@ -771,6 +774,9 @@ cf_lex_init(int is_cli, struct config *c)
       s->class = SYM_KEYWORD;
       s->keyword = k;
     }
+
+    global_root_scope.readonly = 1;
+    global_filter_scope.readonly = 1;
   }
 
   ifs_head = ifs = push_ifs(NULL);
