@@ -44,25 +44,8 @@ attr_bit: KRT_LOCK_RTO_MIN { $$ = f_new_dynamic_attr_bit(13, "krt_lock"); } ;
 attr_bit: KRT_FEATURE_ECN	{ $$ = f_new_dynamic_attr_bit(0, "krt_features"); } ;
 attr_bit: KRT_FEATURE_ALLFRAG { $$ = f_new_dynamic_attr_bit(3, "krt_features"); } ;
 
-/* Getting attribute bits (moved here to not confuse Bison on *BSD) */
-term:
-   attr_bit {
-    struct f_inst *c = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = (1U << $1.bit)});
-    $$ = f_new_inst(FI_EQ, c, f_new_inst(FI_BITAND, f_new_inst(FI_EA_GET, $1.class), c));
-  }
- ;
-
-/* Setting attribute bits (moved here to not confuse Bison on *BSD) */
-cmd:
-   attr_bit '=' term ';' {
-     $$ = f_new_inst(FI_CONDITION, $3,
-	f_generate_complex_default(FI_BITOR, $1.class,
-	      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = (1U << $1.bit)}), 0),
-	f_generate_complex_default(FI_BITAND, $1.class,
-	      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = ~(1U << $1.bit)}), 0)
-     );
-   }
- ;
+/* Using attribute bits in filters (moved here to not confuse Bison on *BSD) */
+lvalue: attr_bit { $$ = (struct f_lval) { .type = F_LVAL_ATTR_BIT, .fab = $1 }; };
 
 CF_CODE
 

@@ -39,11 +39,19 @@ struct f_static_attr {
   int readonly:1;		/* Don't allow writing */
 };
 
+struct f_attr_bit {
+  const struct ea_class *class;
+  uint bit;
+};
+
+#define f_new_dynamic_attr_bit(_bit, _name)  ((struct f_attr_bit) { .bit = _bit, .class = ea_class_find(_name) })
+
 /* Filter l-value type */
 enum f_lval_type {
   F_LVAL_VARIABLE,
   F_LVAL_SA,
   F_LVAL_EA,
+  F_LVAL_ATTR_BIT,
 };
 
 /* Filter l-value */
@@ -53,6 +61,7 @@ struct f_lval {
     struct symbol *sym;
     const struct ea_class *da;
     struct f_static_attr sa;
+    struct f_attr_bit fab;
   };
 };
 
