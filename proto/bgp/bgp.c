@@ -375,6 +375,8 @@ bgp_close_conn(struct bgp_conn *conn)
   conn->keepalive_timer = NULL;
   rfree(conn->hold_timer);
   conn->hold_timer = NULL;
+  rfree(conn->send_hold_timer);
+  conn->send_hold_timer = NULL;
   rfree(conn->tx_ev);
   conn->tx_ev = NULL;
   rfree(conn->sk);
@@ -671,6 +673,13 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
 
     p->afi_map[c->index] = c->afi;
     p->channel_map[c->index] = c;
+  }
+
+  /* Breaking rx_hook for simulating receive problem */
+  if (p->cf->disable_rx)
+  {
+    conn->sk->rx_hook = NULL;
+    tm_stop(conn->hold_timer);
   }
 
   /* proto_notify_state() will likely call bgp_feed_begin(), setting c->feed_state */
@@ -1044,6 +1053,27 @@ bgp_keepalive_timeout(timer *t)
     ev_run(conn->tx_ev);
 }
 
+void
+bgp_send_hold_timeout(timer *t)
+{
+  struct bgp_conn *conn = t->data;
+  struct bgp_proto *p = conn->bgp;
+
+  if (conn->state == BS_CLOSE)
+    return;
+
+  /* Error codes not yet assigned by IANA */
+  uint code = 4;
+  uint subcode = 1;
+
+  /* Like bgp_error() but without NOTIFICATION */
+  bgp_log_error(p, BE_BGP_TX, "Error", code, subcode, NULL, 0);
+  bgp_store_error(p, conn, BE_BGP_TX, (code << 16) | subcode);
+  bgp_conn_enter_idle_state(conn);
+  bgp_update_startup_delay(p);
+  bgp_stop(p, 0, NULL, 0);
+}
+
 static void
 bgp_setup_conn(struct bgp_proto *p, struct bgp_conn *conn)
 {
@@ -1058,6 +1088,7 @@ bgp_setup_conn(struct bgp_proto *p, struct bgp_conn *conn)
   conn->connect_timer	= tm_new_init(p->p.pool, bgp_connect_timeout,	 conn, 0, 0);
   conn->hold_timer 	= tm_new_init(p->p.pool, bgp_hold_timeout,	 conn, 0, 0);
   conn->keepalive_timer	= tm_new_init(p->p.pool, bgp_keepalive_timeout, conn, 0, 0);
+  conn->send_hold_timer = tm_new_init(p->p.pool, bgp_send_hold_timeout, conn, 0, 0);
 
   conn->tx_ev = ev_new_init(p->p.pool, bgp_kick_tx, conn);
 }
@@ -2619,7 +2650,9 @@ bgp_show_proto_info(struct proto *P)
 	    tm_remains(p->conn->hold_timer), p->conn->hold_time);
     cli_msg(-1006, "    Keepalive timer:  %t/%u",
 	    tm_remains(p->conn->keepalive_timer), p->conn->keepalive_time);
-  }
+    cli_msg(-1006, "    Send hold timer:  %t/%u",
+	    tm_remains(p->conn->send_hold_timer), p->conn->send_hold_time);
+}
 
 #if 0
   struct bgp_stats *s = &p->stats;
