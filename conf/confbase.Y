@@ -162,7 +162,7 @@ conf: definition ;
 definition:
    DEFINE symbol '=' term ';' {
      struct f_val *val = cf_eval($4, T_VOID);
-     cf_define_symbol($2, SYM_CONSTANT | val->type, val, val);
+     cf_define_symbol(new_config, $2, SYM_CONSTANT | val->type, val, val);
    }
  ;
 

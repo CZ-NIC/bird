@@ -3442,8 +3442,8 @@ rt_preconfig(struct config *c)
 {
   init_list(&c->tables);
 
-  c->def_tables[NET_IP4] = cf_define_symbol(cf_get_symbol("master4"), SYM_TABLE, table, NULL);
-  c->def_tables[NET_IP6] = cf_define_symbol(cf_get_symbol("master6"), SYM_TABLE, table, NULL);
+  c->def_tables[NET_IP4] = cf_define_symbol(c, cf_get_symbol(c, "master4"), SYM_TABLE, table, NULL);
+  c->def_tables[NET_IP6] = cf_define_symbol(c, cf_get_symbol(c, "master6"), SYM_TABLE, table, NULL);
 }
 
 void
@@ -4080,7 +4080,7 @@ rt_new_table(struct symbol *s, uint addr_type)
   if (s == new_config->def_tables[addr_type])
     s->table = c;
   else
-    cf_define_symbol(s, SYM_TABLE, table, c);
+    cf_define_symbol(new_config, s, SYM_TABLE, table, c);
 
   c->name = s->name;
   c->addr_type = addr_type;

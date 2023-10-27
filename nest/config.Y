@@ -260,19 +260,19 @@ proto_start:
 
 proto_name:
    /* EMPTY */ {
-     struct symbol *s = cf_default_name(this_proto->protocol->template, &this_proto->protocol->name_counter);
+     struct symbol *s = cf_default_name(new_config, this_proto->protocol->template, &this_proto->protocol->name_counter);
      s->class = this_proto->class;
      s->proto = this_proto;
      this_proto->name = s->name;
      }
  | symbol {
-     cf_define_symbol($1, this_proto->class, proto, this_proto);
+     cf_define_symbol(new_config, $1, this_proto->class, proto, this_proto);
      this_proto->name = $1->name;
    }
  | FROM CF_SYM_KNOWN {
      if (($2->class != SYM_TEMPLATE) && ($2->class != SYM_PROTO)) cf_error("Template or protocol name expected");
 
-     struct symbol *s = cf_default_name(this_proto->protocol->template, &this_proto->protocol->name_counter);
+     struct symbol *s = cf_default_name(new_config, this_proto->protocol->template, &this_proto->protocol->name_counter);
      s->class = this_proto->class;
      s->proto = this_proto;
      this_proto->name = s->name;
@@ -282,7 +282,7 @@ proto_name:
  | symbol FROM CF_SYM_KNOWN {
      if (($3->class != SYM_TEMPLATE) && ($3->class != SYM_PROTO)) cf_error("Template or protocol name expected");
 
-     cf_define_symbol($1, this_proto->class, proto, this_proto);
+     cf_define_symbol(new_config, $1, this_proto->class, proto, this_proto);
      this_proto->name = $1->name;
 
      proto_copy_config(this_proto, $3->proto);

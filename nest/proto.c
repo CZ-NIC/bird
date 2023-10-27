@@ -1655,8 +1655,8 @@ protos_do_commit(struct config *new, struct config *old, int force_reconfig, int
 	  /* This is hack, we would like to share config, but we need to copy it now */
 	  new_config = new;
 	  cfg_mem = new->mem;
-	  conf_this_scope = new->root_scope;
-	  sym = cf_get_symbol(oc->name);
+	  new->current_scope = new->root_scope;
+	  sym = cf_get_symbol(new, oc->name);
 	  proto_clone_config(sym, parsym->proto);
 	  new_config = NULL;
 	  cfg_mem = NULL;
