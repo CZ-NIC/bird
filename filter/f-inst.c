@@ -100,6 +100,11 @@
  *
  *	Other code is just copied into the interpreter part.
  *
+ *	It's also possible to declare type methods in a short way:
+ *
+ *	m4_dnl	METHOD(type, method name, argument count, code)
+ *	m4_dnl	METHOD_R(type, method name, argument count, result type, union-field, value)
+ *
  *	The filter language uses a simple type system, where values have types
  *	(constants T_*) and also terms (instructions) are statically typed. Our
  *	static typing is partial (some terms do not declare types of arguments
@@ -498,17 +503,8 @@
     RESULT(T_BOOL, i, (v1.type != T_VOID) && !undef_value(v1));
   }
 
-  INST(FI_NET_TYPE, 1, 1) {
-    ARG(1, T_NET);
-    METHOD_CONSTRUCTOR("type");
-    RESULT(T_ENUM_NETTYPE, i, v1.val.net->type);
-  }
-
-  INST(FI_IS_V4, 1, 1) {
-    ARG(1, T_IP);
-    METHOD_CONSTRUCTOR("is_v4");
-    RESULT(T_BOOL, i, ipa_is_ip4(v1.val.ip));
-  }
+  METHOD_R(T_NET, type, 0, T_ENUM_NETTYPE, i, v1.val.net->type);
+  METHOD_R(T_IP, is_v4, 0, T_BOOL, i, ipa_is_ip4(v1.val.ip));
 
   /* Add initialized variable */
   INST(FI_VAR_INIT, 1, 0) {
@@ -564,116 +560,68 @@
     RESULT_VAL(val);
   }
 
-  INST(FI_PATH_EMPTY, 1, 1) {
+  METHOD_R(T_PATH, empty, 0, T_PATH, ad, &null_adata);
+  METHOD_R(T_CLIST, empty, 0, T_CLIST, ad, &null_adata);
+  METHOD_R(T_ECLIST, empty, 0, T_ECLIST, ad, &null_adata);
+  METHOD_R(T_LCLIST, empty, 0, T_LCLIST, ad, &null_adata);
+
+  /* Common loop begin instruction, always created by f_for_cycle() */
+  INST(FI_FOR_LOOP_START, 0, 3) {
+    NEVER_CONSTANT;
+    SYMBOL;
+
+    /* Repeat the instruction which called us */
+    ASSERT_DIE(fstk->ecnt > 1);
+    prevline.pos--;
+
+    /* There should be exactly three items on the value stack to be taken care of */
+    fstk->vcnt += 3;
+
+    /* And these should also stay there after we finish for the caller instruction */
+    curline.ventry += 3;
+
+    /* Assert the iterator variable positioning */
+    ASSERT_DIE(curline.vbase + sym->offset == fstk->vcnt - 1);
+
+    /* The result type declaration makes no sense here but is needed */
+    RESULT_TYPE(T_VOID);
+  }
+
+  /* Type-specific for_next iterators */
+  INST(FI_PATH_FOR_NEXT, 3, 0) {
+    NEVER_CONSTANT;
     ARG(1, T_PATH);
-    METHOD_CONSTRUCTOR("empty");
-    RESULT(T_PATH, ad, &null_adata);
+    if (as_path_walk(v1.val.ad, &v2.val.i, &v3.val.i))
+      LINE(2,0);
+
+    METHOD_CONSTRUCTOR("!for_next");
   }
 
-  INST(FI_CLIST_EMPTY, 1, 1) {
+  INST(FI_CLIST_FOR_NEXT, 3, 0) {
+    NEVER_CONSTANT;
     ARG(1, T_CLIST);
-    METHOD_CONSTRUCTOR("empty");
-    RESULT(T_CLIST, ad, &null_adata);
+    if (int_set_walk(v1.val.ad, &v2.val.i, &v3.val.i))
+      LINE(2,0);
+
+    METHOD_CONSTRUCTOR("!for_next");
   }
 
-  INST(FI_ECLIST_EMPTY, 1, 1) {
+  INST(FI_ECLIST_FOR_NEXT, 3, 0) {
+    NEVER_CONSTANT;
     ARG(1, T_ECLIST);
-    METHOD_CONSTRUCTOR("empty");
-    RESULT(T_ECLIST, ad, &null_adata);
+    if (ec_set_walk(v1.val.ad, &v2.val.i, &v3.val.ec))
+      LINE(2,0);
+
+    METHOD_CONSTRUCTOR("!for_next");
   }
 
-  INST(FI_LCLIST_EMPTY, 1, 1) {
+  INST(FI_LCLIST_FOR_NEXT, 3, 0) {
+    NEVER_CONSTANT;
     ARG(1, T_LCLIST);
-    METHOD_CONSTRUCTOR("empty");
-    RESULT(T_LCLIST, ad, &null_adata);
-  }
+    if (lc_set_walk(v1.val.ad, &v2.val.i, &v3.val.lc))
+      LINE(2,0);
 
-  INST(FI_FOR_INIT, 1, 0) {
-    NEVER_CONSTANT;
-    ARG_ANY(1);
-    SYMBOL;
-
-    FID_NEW_BODY()
-    ASSERT((sym->class & ~0xff) == SYM_VARIABLE);
-
-    /* Static type check */
-    if (f1->type)
-    {
-      enum btype t_var = (sym->class & 0xff);
-      enum btype t_arg = f_type_element_type(f1->type);
-      if (!t_arg)
-        cf_error("Value of expression in FOR must be iterable, got %s",
-		 f_type_name(f1->type));
-      if (t_var != t_arg)
-	cf_error("Loop variable '%s' in FOR must be %s, is %s",
-		 sym->name, f_type_name(t_arg), f_type_name(t_var));
-    }
-
-    FID_INTERPRET_BODY()
-
-    /* Dynamic type check */
-    if ((sym->class & 0xff) != f_type_element_type(v1.type))
-      runtime("Mismatched argument and variable type");
-
-    /* Setup the index */
-    v2 = (struct f_val) { .type = T_INT, .val.i = 0 };
-
-    /* Keep v1 and v2 on the stack */
-    fstk->vcnt += 2;
-  }
-
-  INST(FI_FOR_NEXT, 2, 0) {
-    NEVER_CONSTANT;
-    SYMBOL;
-
-    /* Type checks are done in FI_FOR_INIT */
-
-    /* Loop variable */
-    struct f_val *var = &fstk->vstk[curline.vbase + sym->offset];
-    int step = 0;
-
-    switch(v1.type)
-    {
-    case T_PATH:
-      var->type = T_INT;
-      step = as_path_walk(v1.val.ad, &v2.val.i, &var->val.i);
-      break;
-
-    case T_CLIST:
-      var->type = T_PAIR;
-      step = int_set_walk(v1.val.ad, &v2.val.i, &var->val.i);
-      break;
-
-    case T_ECLIST:
-      var->type = T_EC;
-      step = ec_set_walk(v1.val.ad, &v2.val.i, &var->val.ec);
-      break;
-
-    case T_LCLIST:
-      var->type = T_LC;
-      step = lc_set_walk(v1.val.ad, &v2.val.i, &var->val.lc);
-      break;
-
-    default:
-      runtime( "Clist or lclist expected" );
-    }
-
-    if (step)
-    {
-      /* Keep v1 and v2 on the stack */
-      fstk->vcnt += 2;
-
-      /* Repeat this instruction */
-      curline.pos--;
-
-      /* Execute the loop body */
-      LINE(1, 0);
-
-      /* Space for loop variable, may be unused */
-      fstk->vcnt += 1;
-    }
-    else
-      var->type = T_VOID;
+    METHOD_CONSTRUCTOR("!for_next");
   }
 
   INST(FI_CONDITION, 1, 0) {
@@ -684,17 +632,16 @@
       LINE(3,0);
   }
 
-  INST(FI_PRINT, 0, 0) {
+  INST(FI_PRINT, 1, 0) {
     NEVER_CONSTANT;
-    VARARG;
+    ARG_ANY(1);
 
-    if (whati->varcount && !(fs->flags & FF_SILENT))
+    if (!(fs->flags & FF_SILENT))
     {
       if (!fs->buf.class)
 	log_prepare(&fs->buf, *L_INFO);
 
-      for (uint i=0; i<whati->varcount; i++)
-	val_format(&(vv(i)), &fs->buf.buf);
+      val_format(&v1, &fs->buf.buf);
     }
   }
 
@@ -972,35 +919,12 @@
       RESULT_VAL(v1);
   }
 
-  INST(FI_NET_LENGTH, 1, 1) {	/* Get length of */
-    ARG(1, T_NET);
-    METHOD_CONSTRUCTOR("len");
-    RESULT(T_INT, i, net_pxlen(v1.val.net));
-  }
-
-  INST(FI_PATH_LENGTH, 1, 1) {	/* Get length of */
-    ARG(1, T_PATH);
-    METHOD_CONSTRUCTOR("len");
-    RESULT(T_INT, i, as_path_getlen(v1.val.ad));
-  }
-
-  INST(FI_CLIST_LENGTH, 1, 1) {	/* Get length of */
-    ARG(1, T_CLIST);
-    METHOD_CONSTRUCTOR("len");
-    RESULT(T_INT, i, int_set_get_size(v1.val.ad));
-  }
-
-  INST(FI_ECLIST_LENGTH, 1, 1) { /* Get length of */
-    ARG(1, T_ECLIST);
-    METHOD_CONSTRUCTOR("len");
-    RESULT(T_INT, i, ec_set_get_size(v1.val.ad));
-  }
-
-  INST(FI_LCLIST_LENGTH, 1, 1) {	/* Get length of */
-    ARG(1, T_LCLIST);
-    METHOD_CONSTRUCTOR("len");
-    RESULT(T_INT, i, lc_set_get_size(v1.val.ad));
-  }
+  /* Get length of */
+  METHOD_R(T_NET, len, 0, T_INT, i, net_pxlen(v1.val.net));
+  METHOD_R(T_PATH, len, 0, T_INT, i, as_path_getlen(v1.val.ad));
+  METHOD_R(T_CLIST, len, 0, T_INT, i, int_set_get_size(v1.val.ad));
+  METHOD_R(T_ECLIST, len, 0, T_INT, i, ec_set_get_size(v1.val.ad));
+  METHOD_R(T_LCLIST, len, 0, T_INT, i, lc_set_get_size(v1.val.ad));
 
   INST(FI_NET_SRC, 1, 1) { 	/* Get src prefix */
     ARG(1, T_NET);
@@ -1074,45 +998,32 @@
     RESULT(T_NET, net, dst);
   }
 
-  INST(FI_ROA_MAXLEN, 1, 1) { 	/* Get ROA max prefix length */
-    ARG(1, T_NET);
-    METHOD_CONSTRUCTOR("maxlen")
+  /* Get ROA max prefix length */
+  METHOD(T_NET, maxlen, 0, [[
     if (!net_is_roa(v1.val.net))
       runtime( "ROA expected" );
 
     RESULT(T_INT, i, (v1.val.net->type == NET_ROA4) ?
       ((net_addr_roa4 *) v1.val.net)->max_pxlen :
       ((net_addr_roa6 *) v1.val.net)->max_pxlen);
-  }
+  ]]);
 
-  INST(FI_NET_ASN, 1, 1) { 	/* Get ROA ASN or community ASN part */
-    ARG(1, T_NET);
-    METHOD_CONSTRUCTOR("asn");
+  /* Get ROA ASN or community ASN part */
+  METHOD_R(T_PAIR, asn, 0, T_INT, i, v1.val.i >> 16);
+  METHOD_R(T_LC, asn, 0, T_INT, i, v1.val.lc.asn);
+
+  METHOD(T_NET, asn, 0, [[
         if (!net_is_roa(v1.val.net))
           runtime( "ROA expected" );
 
         RESULT(T_INT, i, (v1.val.net->type == NET_ROA4) ?
           ((net_addr_roa4 *) v1.val.net)->asn :
           ((net_addr_roa6 *) v1.val.net)->asn);
-  }
+  ]]);
 
-  INST(FI_PAIR_ASN, 1, 1) { 	/* Get ROA ASN or community ASN part */
-    ARG(1, T_PAIR);
-    METHOD_CONSTRUCTOR("asn");
-    RESULT(T_INT, i, v1.val.i >> 16);
-  }
 
-  INST(FI_LC_ASN, 1, 1) { 	/* Get ROA ASN or community ASN part */
-    ARG(1, T_LC);
-    METHOD_CONSTRUCTOR("asn");
-    RESULT(T_INT, i, v1.val.lc.asn);
-  }
-
-  INST(FI_NET_IP, 1, 1) {	/* Convert prefix to ... */
-    ARG(1, T_NET);
-    METHOD_CONSTRUCTOR("ip");
-    RESULT(T_IP, ip, net_prefix(v1.val.net));
-  }
+  /* Convert prefix to IP */
+  METHOD_R(T_NET, ip, 0, T_IP, ip, net_prefix(v1.val.net));
 
   INST(FI_ROUTE_DISTINGUISHER, 1, 1) {
     ARG(1, T_NET);
@@ -1138,29 +1049,17 @@
     RESULT(T_INT, i, as);
   }
 
-  INST(FI_AS_PATH_LAST_NAG, 1, 1) {	/* Get last ASN from non-aggregated part of AS PATH */
-    ARG(1, T_PATH);
-    METHOD_CONSTRUCTOR("last_nonaggregated");
-    RESULT(T_INT, i, as_path_get_last_nonaggregated(v1.val.ad));
-  }
+  /* Get last ASN from non-aggregated part of AS PATH */
+  METHOD_R(T_PATH, last_nonaggregated, 0, T_INT, i, as_path_get_last_nonaggregated(v1.val.ad));
 
-  INST(FI_PAIR_DATA, 1, 1) {	/* Get data part from the standard community */
-    ARG(1, T_PAIR);
-    METHOD_CONSTRUCTOR("data");
-    RESULT(T_INT, i, v1.val.i & 0xFFFF);
-  }
+  /* Get data part from the standard community */
+  METHOD_R(T_PAIR, data, 0, T_INT, i, v1.val.i & 0xFFFF);
 
-  INST(FI_LC_DATA1, 1, 1) {	/* Get data1 part from the large community */
-    ARG(1, T_LC);
-    METHOD_CONSTRUCTOR("data1");
-    RESULT(T_INT, i, v1.val.lc.ldp1);
-  }
+  /* Get data1 part from the large community */
+  METHOD_R(T_LC, data1, 0, T_INT, i, v1.val.lc.ldp1);
 
-  INST(FI_LC_DATA2, 1, 1) {	/* Get data2 part from the large community */
-    ARG(1, T_LC);
-    METHOD_CONSTRUCTOR("data2");
-    RESULT(T_INT, i, v1.val.lc.ldp2);
-  }
+  /* Get data2 part from the large community */
+  METHOD_R(T_LC, data2, 0, T_INT, i, v1.val.lc.ldp2);
 
   INST(FI_CLIST_MIN, 1, 1) {	/* Get minimum element from list */
     ARG(1, T_CLIST);

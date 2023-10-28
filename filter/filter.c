@@ -128,6 +128,7 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
   };
 
 #define curline fstk->estk[fstk->ecnt-1]
+#define prevline fstk->estk[fstk->ecnt-2]
 
 #ifdef LOCAL_DEBUG
   debug("Interpreting line.");

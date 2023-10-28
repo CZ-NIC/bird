@@ -96,6 +96,9 @@ void f_add_lines(const struct f_line_item *what, struct filter_iterator *fit);
 
 
 struct filter *f_new_where(struct f_inst *);
+struct f_inst *f_for_cycle(struct symbol *var, struct f_inst *term, struct f_inst *block);
+struct f_inst *f_print(struct f_inst *vars, int flush, enum filter_return fret);
+
 static inline struct f_static_attr f_new_static_attr(btype type, int code, int readonly)
 { return (struct f_static_attr) { .type = type, .sa_code = code, .readonly = readonly }; }
 struct f_inst *f_generate_roa_check(struct rtable_config *table, struct f_inst *prefix, struct f_inst *asn);

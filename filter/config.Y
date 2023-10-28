@@ -385,15 +385,11 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	FROM_HEX,
 	BT_ASSERT, BT_TEST_SUITE, BT_CHECK_ASSIGN, BT_TEST_SAME, FORMAT, STACKS)
 
-CF_METHODS(IS_V4, TYPE, IP, RD, LEN, MAXLEN, ASN, SRC, DST, MASK,
-	FIRST, LAST, LAST_NONAGGREGATED, DATA, DATA1, DATA2, MIN, MAX,
-	EMPTY, PREPEND, ADD, DELETE, FILTER)
-
 %nonassoc THEN
 %nonassoc ELSE
 
 %type <xp> cmds_int cmd_prep
-%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor print_list var var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
+%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor var var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
 %type <fsa> static_attr
 %type <f> filter where_filter
 %type <fl> filter_body function_body
@@ -998,16 +994,6 @@ break_command:
  | ERROR { $$ = F_ERROR; }
  ;
 
-print_list: /* EMPTY */ { $$ = NULL; }
- | term { $$ = $1; }
- | term ',' print_list {
-     ASSERT($1);
-     ASSERT($1->next == NULL);
-     $1->next = $3;
-     $$ = $1;
-   }
- ;
-
 var:
    type symbol '=' term ';' {
      struct symbol *sym = cf_define_symbol(new_config, $2, SYM_VARIABLE | $1, offset, f_new_var(sym_->scope));
@@ -1043,8 +1029,7 @@ cmd:
    { new_config->current_scope->active = 0; } term { new_config->current_scope->active = 1; }
    DO cmd {
      cf_pop_block_scope(new_config);
-     $$ = f_new_inst(FI_FOR_INIT, $6, $3);
-     $$->next = f_new_inst(FI_FOR_NEXT, $3, $9);
+     $$ = f_for_cycle($3, $6, $9);
    }
  | CF_SYM_KNOWN '=' term ';' {
      switch ($1->class) {
@@ -1088,23 +1073,14 @@ cmd:
        cf_error("Attribute %s is read-only", $3->attribute->name);
      $$ = f_new_inst(FI_EA_UNSET, $3->attribute);
    }
- | break_command print_list ';' {
-    struct f_inst *breaker = f_new_inst(FI_DIE, $1);
-    if ($2) {
-      struct f_inst *printer = f_new_inst(FI_PRINT, $2);
-      struct f_inst *flusher = f_new_inst(FI_FLUSH);
-      printer->next = flusher;
-      flusher->next = breaker;
-      $$ = printer;
-    } else
-      $$ = breaker;
+ | break_command var_list ';' {
+    $$ = f_print($2, !!$2, $1);
    }
- | PRINT print_list ';' {
-    $$ = f_new_inst(FI_PRINT, $2);
-    $$->next = f_new_inst(FI_FLUSH);
+ | PRINT var_list ';' {
+    $$ = f_print($2, 1, F_NOP);
    }
- | PRINTN print_list ';' {
-    $$ = f_new_inst(FI_PRINT, $2);
+ | PRINTN var_list ';' {
+    $$ = f_print($2, 0, F_NOP);
    }
  | function_call ';' { $$ = f_new_inst(FI_DROP_RESULT, $1); }
  | CASE term '{' switch_body '}' {

@@ -130,7 +130,7 @@ m4_ifelse($1,1,,[[FID_NEW_METHOD()m4_dnl
   struct f_inst *arg$1 = args;
   if (args == NULL) cf_error("Not enough arguments"); /* INST_NAME */
   args = args->next;
-  FID_METHOD_CALL()    , arg$1]])
+FID_METHOD_CALL()    , arg$1]])
 FID_LINEARIZE_BODY()m4_dnl
 pos = linearize(dest, whati->f$1, pos);
 FID_INTERPRET_BODY()')
@@ -231,6 +231,12 @@ FID_NEW_ARGS()m4_dnl
   , struct f_inst * f$1
 FID_NEW_BODY()m4_dnl
 whati->f$1 = f$1;
+m4_define([[INST_METHOD_NUM_ARGS]],m4_eval($1-1))m4_dnl
+FID_NEW_METHOD()m4_dnl
+  struct f_inst *arg$1 = args;
+  if (args == NULL) cf_error("Not enough arguments"); /* INST_NAME */
+  args = NULL; /* The rest is the line itself */
+FID_METHOD_CALL()    , arg$1
 FID_DUMP_BODY()m4_dnl
 f_dump_line(item->fl$1, indent + 1);
 FID_LINEARIZE_BODY()m4_dnl
@@ -286,6 +292,21 @@ FID_NEW_METHOD()m4_dnl
 m4_define([[INST_IS_METHOD]])
 m4_define([[INST_METHOD_NAME]],$1)
 FID_INTERPRET_BODY()')
+
+#	Short method constructor
+#	$1 = type
+#	$2 = name
+#	$3 = method inputs
+#	method outputs are always 1
+#	$4 = code
+m4_define(METHOD, `m4_dnl
+INST([[FI_METHOD__]]$1[[__]]$2, m4_eval($3 + 1), 1) {
+  ARG(1, $1);
+  $4
+  METHOD_CONSTRUCTOR("$2");
+}')
+
+m4_define(METHOD_R, `METHOD($1, $2, $3, [[ RESULT($4, $5, $6) ]])')
 
 #	2) Code wrapping
 #	The code produced in 1xx temporary diversions is a raw code without
@@ -399,7 +420,7 @@ m4_undivert(112)
   }
 
 FID_METHOD_SCOPE_INIT()m4_dnl
-  [INST_METHOD_OBJECT_TYPE] = {},
+  [INST_METHOD_OBJECT_TYPE] = { .active = 1, },
 FID_METHOD_REGISTER()m4_dnl
   sym = cf_root_symbol(INST_METHOD_NAME, &f_type_method_scopes[INST_METHOD_OBJECT_TYPE]);
   sym->class = SYM_METHOD;

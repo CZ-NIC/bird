@@ -40,3 +40,61 @@ struct filter *f_new_where(struct f_inst *where)
   f->root = f_linearize(cond, 0);
   return f;
 }
+
+struct f_inst *
+f_for_cycle(struct symbol *var, struct f_inst *term, struct f_inst *block)
+{
+  ASSERT((var->class & ~0xff) == SYM_VARIABLE);
+  ASSERT(term->next == NULL);
+
+  /* Static type check */
+  if (term->type == T_VOID)
+    cf_error("Couldn't infer the type of FOR expression, please assign it to a variable.");
+
+  enum btype el_type = f_type_element_type(term->type);
+  struct sym_scope *scope = el_type ? f_type_method_scope(term->type) : NULL;
+  struct symbol *ms = scope ? cf_find_symbol_scope(scope, "!for_next") : NULL;
+
+  if (!ms)
+    cf_error("Type %s is not iterable, can't be used in FOR", f_type_name(term->type));
+
+  if (var->class != (SYM_VARIABLE | el_type))
+    cf_error("Loop variable '%s' in FOR must be of type %s, got %s",
+	var->name, f_type_name(el_type), f_type_name(var->class & 0xff));
+
+  /* Push the iterator auxiliary value onto stack */
+  struct f_inst *iter = term->next = f_new_inst(FI_CONSTANT, (struct f_val) {});
+
+  /* Initialize the iterator variable */
+  iter->next = f_new_inst(FI_CONSTANT, (struct f_val) { .type = el_type });
+
+  /* Prepend the loop block with loop beginning instruction */
+  struct f_inst *loop_start = f_new_inst(FI_FOR_LOOP_START, var);
+  loop_start->next = block;
+
+  return ms->method->new_inst(term, loop_start);
+}
+
+struct f_inst *
+f_print(struct f_inst *vars, int flush, enum filter_return fret)
+{
+#define AX(...)  do { struct f_inst *_tmp = f_new_inst(__VA_ARGS__); _tmp->next = output; output = _tmp; } while (0)
+  struct f_inst *output = NULL;
+  if (fret != F_NOP)
+    AX(FI_DIE, fret);
+
+  if (flush)
+    AX(FI_FLUSH);
+
+  while (vars)
+  {
+    struct f_inst *tmp = vars;
+    vars = vars->next;
+    tmp->next = NULL;
+
+    AX(FI_PRINT, tmp);
+  }
+
+  return output;
+#undef AX
+}
