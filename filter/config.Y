@@ -374,12 +374,12 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc ELSE
 
 %type <xp> cmds_int cmd_prep
-%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor var var_list function_call symbol_value bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
+%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor var var_list var_list_r function_call symbol_value bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
 %type <fsa> static_attr
 %type <f> filter where_filter
 %type <fl> filter_body function_body
 %type <flv> lvalue
-%type <i> type maybe_type function_vars
+%type <i> type function_vars function_type
 %type <fa> function_argsn function_args
 %type <ecs> ec_kind
 %type <fret> break_command
@@ -527,6 +527,11 @@ function_vars:
    }
  ;
 
+function_type:
+   /* EMPTY */ { $$ = T_VOID; }
+ | IMP type { $$ = $2; }
+ ;
+
 filter_body: function_body ;
 
 filter:
@@ -566,29 +571,24 @@ function_body:
  ;
 
 conf: function_def ;
-maybe_type:
-   /* EMPTY */ { $$ = T_VOID; }
- | type { $$ = $1; }
- ;
 
 function_def:
-   FUNCTION maybe_type symbol {
-     DBG( "Beginning of function %s\n", $3->name );
-     this_function = cf_define_symbol(new_config, $3, SYM_FUNCTION, function, NULL);
-/*   if ($2 == T_VOID) cf_warn("Support for functions without explicit return type will be removed soon" ); */
+   FUNCTION symbol {
+     DBG( "Beginning of function %s\n", $2->name );
+     this_function = cf_define_symbol(new_config, $2, SYM_FUNCTION, function, NULL);
      cf_enter_filters();
      cf_push_scope(new_config, this_function);
-   } function_args {
+   } function_args function_type {
      /* Make dummy f_line for storing function prototype */
      struct f_line *dummy = cfg_allocz(sizeof(struct f_line));
      this_function->function = dummy;
 
-     dummy->return_type = $2;
+     dummy->return_type = $5;
 
      /* Revert the args */
-     while ($5) {
-       struct f_arg *tmp = $5;
-       $5 = $5->next;
+     while ($4) {
+       struct f_arg *tmp = $4;
+       $4 = $4->next;
 
        tmp->next = dummy->arg_list;
        dummy->arg_list = tmp;
@@ -598,7 +598,7 @@ function_def:
      $7->args = this_function->function->args;
      $7->arg_list = this_function->function->arg_list;
      $7->return_type = this_function->function->return_type;
-     $3->function = $7;
+     $2->function = $7;
      cf_pop_scope(new_config);
      cf_exit_filters();
    }
@@ -828,10 +828,27 @@ constructor:
  ;
 
 
-/* This generates the function_call variable list backwards. */
-var_list: /* EMPTY */ { $$ = NULL; }
+/* This generates the function_call variable list backwards */
+var_list_r:
+   /* EMPTY */ { $$ = NULL; }
  | term { $$ = $1; }
- | var_list ',' term { $$ = $3; $$->next = $1; }
+ | var_list_r ',' term { $$ = $3; $$->next = $1; }
+ ;
+
+var_list: var_list_r
+   {
+     $$ = NULL;
+
+     /* Revert the var_list_r */
+     while ($1) {
+       struct f_inst *tmp = $1;
+       $1 = $1->next;
+
+       tmp->next = $$;
+       $$ = tmp;
+     }
+   }
+ ;
 
 function_call:
    CF_SYM_KNOWN '(' var_list ')'
@@ -839,17 +856,7 @@ function_call:
      if ($1->class != SYM_FUNCTION)
        cf_error("You can't call something which is not a function. Really.");
 
-     /* Revert the var_list */
-     struct f_inst *args = NULL;
-     while ($3) {
-       struct f_inst *tmp = $3;
-       $3 = $3->next;
-
-       tmp->next = args;
-       args = tmp;
-     }
-
-     $$ = f_new_inst(FI_CALL, args, $1);
+     $$ = f_new_inst(FI_CALL, $3, $1);
    }
  ;
 
@@ -885,12 +892,12 @@ static_attr:
 term_dot_method: term '.' { f_method_call_start($1); } method_name_cont { f_method_call_end(); $$ = $4; };
 method_name_cont:
    CF_SYM_METHOD_BARE {
-     $$ = f_dispatch_method($1, FM.object, NULL);
+     $$ = f_dispatch_method($1, FM.object, NULL, 1);
    }
  | CF_SYM_METHOD_ARGS {
      f_method_call_args();
    } '(' var_list ')' {
-     $$ = f_dispatch_method($1, FM.object, $4);
+     $$ = f_dispatch_method($1, FM.object, $4, 1);
    }
  ;
 
@@ -927,7 +934,11 @@ term:
  | '-' EMPTY '-' { $$ = f_new_inst(FI_CONSTANT, f_get_empty(T_CLIST)); }
  | '-' '-' EMPTY '-' '-' { $$ = f_new_inst(FI_CONSTANT, f_get_empty(T_ECLIST)); }
  | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_new_inst(FI_CONSTANT, f_get_empty(T_LCLIST)); }
- | PREPEND '(' term ',' term ')' { $$ = f_new_inst(FI_PATH_PREPEND, $3, $5); }
+
+ | PREPEND '(' term ',' term ')' {
+     $$ = f_dispatch_method_x("prepend", $3->type, $3, $5);
+     cf_warn("prepend(x,y) function is deprecated, please use x.prepend(y)");
+   }
  | ADD '(' term ',' term ')' {
      $$ = f_dispatch_method_x("add", $3->type, $3, $5);
      cf_warn("add(x,y) function is deprecated, please use x.add(y)");
@@ -1039,13 +1050,13 @@ cmd:
        cf_error("Attribute %s is read-only", $3->attribute->name);
      $$ = f_new_inst(FI_EA_UNSET, $3->attribute);
    }
- | break_command var_list ';' {
+ | break_command var_list_r ';' {
     $$ = f_print($2, !!$2, $1);
    }
- | PRINT var_list ';' {
+ | PRINT var_list_r ';' {
     $$ = f_print($2, 1, F_NOP);
    }
- | PRINTN var_list ';' {
+ | PRINTN var_list_r ';' {
     $$ = f_print($2, 0, F_NOP);
    }
  | function_call ';' { $$ = f_new_inst(FI_DROP_RESULT, $1); }

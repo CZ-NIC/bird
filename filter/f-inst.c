@@ -500,7 +500,7 @@
 
   INST(FI_DEFINED, 1, 1) {
     ARG_ANY(1);
-    RESULT(T_BOOL, i, (v1.type != T_VOID) && !undef_value(v1));
+    RESULT(T_BOOL, i, (v1.type != T_VOID) && !val_is_undefined(v1));
   }
 
   METHOD_R(T_NET, type, T_ENUM_NETTYPE, i, v1.val.net->type);
@@ -1101,8 +1101,6 @@
     NEVER_CONSTANT;
     VARARG;
     SYMBOL;
-
-    /* Fake result type declaration */
     RESULT_TYPE(sym->function->return_type);
 
     FID_NEW_BODY()
@@ -1222,22 +1220,39 @@
   }
 
   /* Community list add */
-  INST(FI_CLIST_ADD, 2, 1) {
+  INST(FI_CLIST_ADD_PAIR, 2, 1) {
     ARG(1, T_CLIST);
-    ARG_ANY(2);
+    ARG(2, T_PAIR);
     METHOD_CONSTRUCTOR("add");
-      struct f_val dummy;
-      if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
-	RESULT(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, v2.val.i) ]]);
-      /* IP->Quad implicit conversion */
-      else if (val_is_ip4(&v2))
-	RESULT(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
-      else if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy))
-	runtime("Can't add set");
-      else if (v2.type == T_CLIST)
-	RESULT(T_CLIST, ad, [[ int_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
-      else
-	runtime("Can't add non-pair");
+    RESULT(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, v2.val.i) ]]);
+  }
+
+  INST(FI_CLIST_ADD_IP, 2, 1) {
+    ARG(1, T_CLIST);
+    ARG(2, T_IP);
+    METHOD_CONSTRUCTOR("add");
+
+    FID_NEW_BODY();
+    /* IP->Quad implicit conversion, must be before FI_CLIST_ADD_QUAD */
+    cf_warn("Method add(clist, ip) is deprecated, please use add(clist, quad)");
+
+    FID_INTERPRET_BODY();
+    if (!val_is_ip4(&v2)) runtime("Mismatched IP type");
+    RESULT(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
+  }
+
+  INST(FI_CLIST_ADD_QUAD, 2, 1) {
+    ARG(1, T_CLIST);
+    ARG(2, T_QUAD);
+    METHOD_CONSTRUCTOR("add");
+    RESULT(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, v2.val.i) ]]);
+  }
+
+  INST(FI_CLIST_ADD_CLIST, 2, 1) {
+    ARG(1, T_CLIST);
+    ARG(2, T_CLIST);
+    METHOD_CONSTRUCTOR("add");
+    RESULT(T_CLIST, ad, [[ int_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
   }
 
   INST(FI_ECLIST_ADD_EC, 2, 1) {
@@ -1287,22 +1302,50 @@
   }
 
   /* Community list delete */
-  INST(FI_CLIST_DELETE, 2, 1) {
+  INST(FI_CLIST_DELETE_PAIR, 2, 1) {
     ARG(1, T_CLIST);
-    ARG_ANY(2);
+    ARG(2, T_PAIR);
     METHOD_CONSTRUCTOR("delete");
-      /* Community (or cluster) list */
-      struct f_val dummy;
+    RESULT(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, v2.val.i) ]]);
+  }
 
-      if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
-	RESULT(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, v2.val.i) ]]);
-      /* IP->Quad implicit conversion */
-      else if (val_is_ip4(&v2))
-	RESULT(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
-      else if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy) || (v2.type == T_CLIST))
-	RESULT(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 0) ]]);
-      else
-	runtime("Can't delete non-pair");
+  INST(FI_CLIST_DELETE_IP, 2, 1) {
+    ARG(1, T_CLIST);
+    ARG(2, T_IP);
+    METHOD_CONSTRUCTOR("delete");
+
+    FID_NEW_BODY();
+    /* IP->Quad implicit conversion, must be before FI_CLIST_DELETE_QUAD */
+    cf_warn("Method delete(clist, ip) is deprecated, please use delete(clist, quad)");
+
+    FID_INTERPRET_BODY();
+    if (!val_is_ip4(&v2)) runtime("Mismatched IP type");
+    RESULT(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
+  }
+
+  INST(FI_CLIST_DELETE_QUAD, 2, 1) {
+    ARG(1, T_CLIST);
+    ARG(2, T_QUAD);
+    METHOD_CONSTRUCTOR("delete");
+    RESULT(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, v2.val.i) ]]);
+  }
+
+  INST(FI_CLIST_DELETE_CLIST, 2, 1) {
+    ARG(1, T_CLIST);
+    ARG(2, T_CLIST);
+    METHOD_CONSTRUCTOR("delete");
+    RESULT(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 0) ]]);
+  }
+
+  INST(FI_CLIST_DELETE_SET, 2, 1) {
+    ARG(1, T_CLIST);
+    ARG(2, T_SET);
+    METHOD_CONSTRUCTOR("delete");
+
+    if (!clist_set_type(v2.val.t, &(struct f_val){}))
+      runtime("Mismatched set type");
+
+    RESULT(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 0) ]]);
   }
 
   INST(FI_ECLIST_DELETE_EC, 2, 1) {

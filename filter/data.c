@@ -27,6 +27,8 @@
 
 static const char * const f_type_str[] = {
   [T_VOID]	= "void",
+  [T_NONE]	= "none",
+
   [T_OPAQUE]	= "opaque byte string",
   [T_IFACE]	= "interface",
 
@@ -62,10 +64,12 @@ static const char * const f_type_str[] = {
   [T_PREFIX_SET] = "prefix set",
 };
 
+STATIC_ASSERT((1 << (8 * sizeof(btype))) == ARRAY_SIZE(f_type_str));
+
 const char *
 f_type_name(btype t)
 {
-  return (t < ARRAY_SIZE(f_type_str)) ? (f_type_str[t] ?: "?") : "?";
+  return f_type_str[t] ?: "?";
 }
 
 btype

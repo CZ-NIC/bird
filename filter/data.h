@@ -251,8 +251,9 @@ const struct adata *lclist_filter(struct linpool *pool, const struct adata *list
 
 
 /* Special undef value for paths and clists */
+
 static inline int
-undef_value(struct f_val v)
+val_is_undefined(struct f_val v)
 {
   return ((v.type == T_PATH) || (v.type == T_CLIST) ||
 	  (v.type == T_ECLIST) || (v.type == T_LCLIST)) &&

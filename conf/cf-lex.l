@@ -391,6 +391,7 @@ else: {
 \>\= return GEQ;
 \&\& return AND;
 \|\| return OR;
+\-\> return IMP;
 
 \[\= return PO;
 \=\] return PC;

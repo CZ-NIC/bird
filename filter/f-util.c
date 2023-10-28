@@ -45,25 +45,100 @@ f_new_where(struct f_inst *where)
 static inline int
 f_match_signature(const struct f_method *dsc, struct f_inst *args)
 {
-  uint i;
+  int i, arg_num = (int) dsc->arg_num;
 
-  for (i = 1; args && (i < dsc->arg_num); args = args->next, i++)
-    if (dsc->args_type[i] && (args->type != dsc->args_type[i]))
+  for (i = 1; args && (i < arg_num); args = args->next, i++)
+    if (dsc->args_type[i] && (args->type != dsc->args_type[i]) &&
+	!f_try_const_promotion(args, dsc->args_type[i]))
       return 0;
 
-  return !args && !(i < dsc->arg_num);
+  return !args && !(i < arg_num);
+}
+
+/* Variant of f_match_signature(), optimized for error reporting */
+static inline void
+f_match_signature_err(const struct f_method *dsc, struct f_inst *args, int *pos, int *want, int *got)
+{
+  int i, arg_num = (int) dsc->arg_num;
+
+  for (i = 1; args && (i < arg_num); args = args->next, i++)
+    if (dsc->args_type[i] && (args->type != dsc->args_type[i]) &&
+	!f_try_const_promotion(args, dsc->args_type[i]))
+      break;
+
+  *pos = i;
+  *want = (i < arg_num) ? dsc->args_type[i] : T_NONE;
+  *got = args ? args->type : T_NONE;
 }
 
 struct f_inst *
-f_dispatch_method(struct symbol *sym, struct f_inst *obj, struct f_inst *args)
+f_dispatch_method(struct symbol *sym, struct f_inst *obj, struct f_inst *args, int skip)
 {
-  /* Note! We should revert args */
-
+  /* Find match */
   for (const struct f_method *dsc = sym->method; dsc; dsc = dsc->next)
     if (f_match_signature(dsc, args))
       return dsc->new_inst(obj, args);
 
-  cf_error("Cannot dispatch method '%s'", sym->name);
+
+  /* No valid match - format error message */
+
+  int best_pos = -1;	/* Longest argument position with partial match */
+  int best_got = 0;	/* Received type at best partial match position */
+  int best_count = 0;	/* Number of partial matches at best position */
+  const int best_max = 8;	/* Max number of reported types */
+  int best_want[best_max];	/* Expected types at best position */
+
+  for (const struct f_method *dsc = sym->method; dsc; dsc = dsc->next)
+  {
+    int pos, want, got;
+    f_match_signature_err(dsc, args, &pos, &want, &got);
+
+    /* Ignore shorter match */
+    if (pos < best_pos)
+      continue;
+
+    /* Found longer match, reset existing results */
+    if (pos > best_pos)
+    {
+      best_pos = pos;
+      best_got = got;
+      best_count = 0;
+    }
+
+    /* Skip duplicates */
+    for (int i = 0; i < best_count; i++)
+      if (best_want[i] == want)
+	goto next;
+
+    /* Skip if we have enough types */
+    if (best_count >= best_max)
+      continue;
+
+    /* Add new expected type */
+    best_want[best_count] = want;
+    best_count++;
+  next:;
+  }
+
+  /* There is at least one method */
+  ASSERT(best_pos >= 0 && best_count > 0);
+
+  /* Update best_pos for printing */
+  best_pos = best_pos - skip + 1;
+
+  if (!best_got)
+    cf_error("Cannot infer type of argument %d of '%s', please assign it to a variable", best_pos, sym->name);
+
+  /* Format list of expected types */
+  buffer tbuf;
+  STACK_BUFFER_INIT(tbuf, 128);
+  for (int i = 0; i < best_count; i++)
+    buffer_print(&tbuf, " / %s", best_want[i] ? f_type_name(best_want[i]) : "any");
+  char *types = tbuf.start + 3;
+  char *dots = (best_count >= best_max) || (tbuf.pos == tbuf.end) ? " / ..." : "";
+
+  cf_error("Argument %d of '%s' expected %s%s, got %s",
+	   best_pos, sym->name, types, dots, f_type_name(best_got));
 }
 
 struct f_inst *
@@ -75,7 +150,7 @@ f_dispatch_method_x(const char *name, enum btype t, struct f_inst *obj, struct f
   if (!sym)
     cf_error("Cannot dispatch method '%s'", name);
 
-  return f_dispatch_method(sym, obj, args);
+  return f_dispatch_method(sym, obj, args, 0);
 }
 
 
@@ -87,7 +162,7 @@ f_for_cycle(struct symbol *var, struct f_inst *term, struct f_inst *block)
 
   /* Static type check */
   if (term->type == T_VOID)
-    cf_error("Couldn't infer the type of FOR expression, please assign it to a variable.");
+    cf_error("Cannot infer type of FOR expression, please assign it to a variable");
 
   enum btype el_type = f_type_element_type(term->type);
   struct sym_scope *scope = el_type ? f_type_method_scope(term->type) : NULL;
@@ -131,7 +206,7 @@ f_implicit_roa_check(struct rtable_config *tab)
 
   return f_new_inst(FI_ROA_CHECK,
 	    f_new_inst(FI_RTA_GET, fsa),
-	    f_dispatch_method(ms, path_getter, NULL),
+	    ms->method->new_inst(path_getter, NULL),
 	    tab);
 }
 

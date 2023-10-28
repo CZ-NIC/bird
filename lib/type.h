@@ -49,6 +49,7 @@ union bval_long {
 enum btype {
 /* Nothing. Simply nothing. */
   T_VOID = 0,
+  T_NONE = 0xff,
 
 /* Something but inaccessible. */
   T_OPAQUE = 0x02,		/* Opaque byte string (not filterable) */

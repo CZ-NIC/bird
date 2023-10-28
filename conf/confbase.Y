@@ -100,7 +100,7 @@ CF_DECLS
 }
 
 %token END CLI_MARKER INVALID_TOKEN ELSECOL DDOT
-%token GEQ LEQ NEQ AND OR
+%token GEQ LEQ NEQ AND OR IMP
 %token PO PC
 %token <i> NUM ENUM
 %token <ip4> IP4
@@ -128,7 +128,7 @@ CF_DECLS
 
 %nonassoc PREFIX_DUMMY
 %left AND OR
-%nonassoc '=' '<' '>' '~' GEQ LEQ NEQ NMA PO PC
+%nonassoc '=' '<' '>' '~' GEQ LEQ NEQ NMA IMP PO PC
 %left '|' '&'
 %left '+' '-'
 %left '*' '/' '%'
