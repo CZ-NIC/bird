@@ -160,10 +160,6 @@ void cf_exit_filters(void);
 extern pool *global_root_scope_pool;
 extern linpool *global_root_scope_linpool;
 
-struct bytestring {
-  size_t length;
-  byte data[];
-};
 
 #define SYM_MAX_LEN 64
 

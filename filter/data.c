@@ -206,7 +206,7 @@ val_compare(const struct f_val *v1, const struct f_val *v2)
 }
 
 static inline int
-bs_same(const struct bytestring *bs1, const struct bytestring *bs2)
+bs_same(const struct adata *bs1, const struct adata *bs2)
 {
   return (bs1->length == bs2->length) && !memcmp(bs1->data, bs2->data, bs1->length);
 }

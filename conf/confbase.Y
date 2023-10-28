@@ -96,7 +96,7 @@ CF_DECLS
   struct timeformat *tf;
   struct settle_config settle;
   struct adata *ad;
-  const struct bytestring *bs;
+  const struct adata *bs;
 }
 
 %token END CLI_MARKER INVALID_TOKEN ELSECOL DDOT
