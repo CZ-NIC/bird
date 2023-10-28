@@ -30,7 +30,8 @@ filter_name(const struct filter *filter)
     return filter->sym->name;
 }
 
-struct filter *f_new_where(struct f_inst *where)
+struct filter *
+f_new_where(struct f_inst *where)
 {
   struct f_inst *cond = f_new_inst(FI_CONDITION, where,
 				   f_new_inst(FI_DIE, F_ACCEPT),
@@ -40,6 +41,43 @@ struct filter *f_new_where(struct f_inst *where)
   f->root = f_linearize(cond, 0);
   return f;
 }
+
+static inline int
+f_match_signature(const struct f_method *dsc, struct f_inst *args)
+{
+  uint i;
+
+  for (i = 1; args && (i < dsc->arg_num); args = args->next, i++)
+    if (dsc->args_type[i] && (args->type != dsc->args_type[i]))
+      return 0;
+
+  return !args && !(i < dsc->arg_num);
+}
+
+struct f_inst *
+f_dispatch_method(struct symbol *sym, struct f_inst *obj, struct f_inst *args)
+{
+  /* Note! We should revert args */
+
+  for (const struct f_method *dsc = sym->method; dsc; dsc = dsc->next)
+    if (f_match_signature(dsc, args))
+      return dsc->new_inst(obj, args);
+
+  cf_error("Cannot dispatch method '%s'", sym->name);
+}
+
+struct f_inst *
+f_dispatch_method_x(const char *name, enum btype t, struct f_inst *obj, struct f_inst *args)
+{
+  struct sym_scope *scope = f_type_method_scope(t);
+  struct symbol *sym = cf_find_symbol_scope(scope, name);
+
+  if (!sym)
+    cf_error("Cannot dispatch method '%s'", name);
+
+  return f_dispatch_method(sym, obj, args);
+}
+
 
 struct f_inst *
 f_for_cycle(struct symbol *var, struct f_inst *term, struct f_inst *block)
@@ -73,6 +111,28 @@ f_for_cycle(struct symbol *var, struct f_inst *term, struct f_inst *block)
   loop_start->next = block;
 
   return ms->method->new_inst(term, loop_start);
+}
+
+struct f_inst *
+f_implicit_roa_check(struct rtable_config *tab)
+{
+  const struct ea_class *def = ea_class_find("bgp_path");
+  if (!def)
+    bug("Couldn't find BGP AS Path attribute definition.");
+
+  struct f_inst *path_getter = f_new_inst(FI_EA_GET, def);
+  struct sym_scope *scope = f_type_method_scope(path_getter->type);
+  struct symbol *ms = scope ? cf_find_symbol_scope(scope, "last") : NULL;
+
+  if (!ms)
+    bug("Couldn't find the \"last\" method for AS Path.");
+
+  struct f_static_attr fsa = f_new_static_attr(T_NET, SA_NET, 1);
+
+  return f_new_inst(FI_ROA_CHECK,
+	    f_new_inst(FI_RTA_GET, fsa),
+	    f_dispatch_method(ms, path_getter, NULL),
+	    tab);
 }
 
 struct f_inst *

@@ -96,7 +96,10 @@ void f_add_lines(const struct f_line_item *what, struct filter_iterator *fit);
 
 
 struct filter *f_new_where(struct f_inst *);
+struct f_inst *f_dispatch_method(struct symbol *sym, struct f_inst *obj, struct f_inst *args);
+struct f_inst *f_dispatch_method_x(const char *name, enum btype t, struct f_inst *obj, struct f_inst *args);
 struct f_inst *f_for_cycle(struct symbol *var, struct f_inst *term, struct f_inst *block);
+struct f_inst *f_implicit_roa_check(struct rtable_config *tab);
 struct f_inst *f_print(struct f_inst *vars, int flush, enum filter_return fret);
 
 static inline struct f_static_attr f_new_static_attr(btype type, int code, int readonly)

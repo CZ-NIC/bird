@@ -723,7 +723,7 @@ cf_lex_symbol(const char *data)
       return ENUM;
     }
     case SYM_METHOD:
-      return sym->method->arg_num ? CF_SYM_METHOD_ARGS : CF_SYM_METHOD_BARE;
+      return (sym->method->arg_num > 1) ? CF_SYM_METHOD_ARGS : CF_SYM_METHOD_BARE;
     case SYM_VOID:
       return CF_SYM_UNDEFINED;
     default:

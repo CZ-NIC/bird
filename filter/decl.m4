@@ -53,6 +53,7 @@ m4_define(FID_NEW_ATTRIBUTES, `m4_divert(110)')
 m4_define(FID_NEW_BODY, `m4_divert(103)')
 m4_define(FID_NEW_METHOD, `m4_divert(111)')
 m4_define(FID_METHOD_CALL, `m4_divert(112)')
+m4_define(FID_TYPE_SIGNATURE, `m4_divert(113)')
 m4_define(FID_DUMP_BODY, `m4_divert(104)m4_define([[FID_DUMP_BODY_EXISTS]])')
 m4_define(FID_LINEARIZE_BODY, `m4_divert(105)')
 m4_define(FID_SAME_BODY, `m4_divert(106)')
@@ -125,7 +126,7 @@ FID_IFCONST([[
     constargs = 0;
 ]])
 } while (child$1 = child$1->next);
-m4_define([[INST_METHOD_NUM_ARGS]],m4_eval($1-1))m4_dnl
+m4_define([[INST_METHOD_NUM_ARGS]],$1)m4_dnl
 m4_ifelse($1,1,,[[FID_NEW_METHOD()m4_dnl
   struct f_inst *arg$1 = args;
   if (args == NULL) cf_error("Not enough arguments"); /* INST_NAME */
@@ -183,6 +184,8 @@ m4_define(ARG_TYPE, `ARG_TYPE_STATIC($1,$2) ARG_TYPE_DYNAMIC($1,$2)')
 
 m4_define(ARG_TYPE_STATIC, `m4_dnl
 m4_ifelse($1,1,[[m4_define([[INST_METHOD_OBJECT_TYPE]],$2)]],)m4_dnl
+FID_TYPE_SIGNATURE()m4_dnl
+  method->args_type[m4_eval($1-1)] = $2;
 FID_NEW_BODY()m4_dnl
 if (f$1->type && (f$1->type != ($2)) && !f_const_promotion(f$1, ($2)))
   cf_error("Argument $1 of %s must be of type %s, got type %s",
@@ -231,7 +234,7 @@ FID_NEW_ARGS()m4_dnl
   , struct f_inst * f$1
 FID_NEW_BODY()m4_dnl
 whati->f$1 = f$1;
-m4_define([[INST_METHOD_NUM_ARGS]],m4_eval($1-1))m4_dnl
+m4_define([[INST_METHOD_NUM_ARGS]],$1)m4_dnl
 FID_NEW_METHOD()m4_dnl
   struct f_inst *arg$1 = args;
   if (args == NULL) cf_error("Not enough arguments"); /* INST_NAME */
@@ -306,7 +309,7 @@ INST([[FI_METHOD__]]$1[[__]]$2, m4_eval($3 + 1), 1) {
   METHOD_CONSTRUCTOR("$2");
 }')
 
-m4_define(METHOD_R, `METHOD($1, $2, $3, [[ RESULT($4, $5, $6) ]])')
+m4_define(METHOD_R, `METHOD($1, $2, 0, [[ RESULT($3, $4, $5) ]])')
 
 #	2) Code wrapping
 #	The code produced in 1xx temporary diversions is a raw code without
@@ -422,15 +425,11 @@ m4_undivert(112)
 FID_METHOD_SCOPE_INIT()m4_dnl
   [INST_METHOD_OBJECT_TYPE] = { .active = 1, },
 FID_METHOD_REGISTER()m4_dnl
-  sym = cf_root_symbol(INST_METHOD_NAME, &f_type_method_scopes[INST_METHOD_OBJECT_TYPE]);
-  sym->class = SYM_METHOD;
-  sym->method = method = lp_allocz(global_root_scope_linpool, sizeof(struct f_method));
-
-  *method = (struct f_method) {
-    .sym = sym,
-    .new_inst = f_new_method_]]INST_NAME()[[,
-    .arg_num = INST_METHOD_NUM_ARGS,
-  };
+  method = lp_allocz(global_root_scope_linpool, sizeof(struct f_method) + INST_METHOD_NUM_ARGS * sizeof(enum btype));
+  method->new_inst = f_new_method_]]INST_NAME()[[;
+  method->arg_num = INST_METHOD_NUM_ARGS;
+m4_undivert(113)
+  f_register_method(INST_METHOD_OBJECT_TYPE, INST_METHOD_NAME, method);
 
 ]])m4_dnl
 
@@ -633,10 +632,27 @@ struct sym_scope *f_type_method_scope(enum btype t)
   return (t < ARRAY_SIZE(f_type_method_scopes)) ? &f_type_method_scopes[t] : NULL;
 }
 
+static void
+f_register_method(enum btype t, const byte *name, struct f_method *dsc)
+{
+  struct sym_scope *scope = &f_type_method_scopes[t];
+  struct symbol *sym = cf_find_symbol_scope(scope, name);
+
+  if (!sym)
+  {
+    sym = cf_root_symbol(name, scope);
+    sym->class = SYM_METHOD;
+  }
+
+  dsc->sym = sym;
+  dsc->next = sym->method;
+  sym->method = dsc;
+}
+
 void f_type_methods_register(void)
 {
-  struct symbol *sym;
   struct f_method *method;
+
 FID_WR_PUT(13)
 
   for (uint i = 0; i < ARRAY_SIZE(f_type_method_scopes); i++)
