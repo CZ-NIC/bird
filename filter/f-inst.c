@@ -71,6 +71,8 @@
  *	m4_dnl	  RTC;					route table config
  *	m4_dnl	  ACCESS_RTE;				this instruction needs route
  *
+ *	m4_dnl	  METHOD_CONSTRUCTOR(name);		this instruction is in fact a method of the first argument's type; register it with the given name for that type
+ *
  *	m4_dnl	  FID_MEMBER(				custom instruction member
  *	m4_dnl	    C type,				for storage in structs
  *	m4_dnl	    name,				how the member is named
@@ -496,20 +498,15 @@
     RESULT(T_BOOL, i, (v1.type != T_VOID) && !undef_value(v1));
   }
 
-  INST(FI_TYPE, 1, 1) {
-    ARG_ANY(1); /* There may be more types supporting this operation */
-    switch (v1.type)
-    {
-      case T_NET:
-	RESULT(T_ENUM_NETTYPE, i, v1.val.net->type);
-	break;
-      default:
-	runtime( "Can't determine type of this item" );
-    }
+  INST(FI_NET_TYPE, 1, 1) {
+    ARG(1, T_NET);
+    METHOD_CONSTRUCTOR("type");
+    RESULT(T_ENUM_NETTYPE, i, v1.val.net->type);
   }
 
   INST(FI_IS_V4, 1, 1) {
     ARG(1, T_IP);
+    METHOD_CONSTRUCTOR("is_v4");
     RESULT(T_BOOL, i, ipa_is_ip4(v1.val.ip));
   }
 
@@ -533,7 +530,7 @@
 
     /* New variable is always the last on stack */
     uint pos = curline.vbase + sym->offset;
-    fstk->vstk[pos] = (struct f_val) { };
+    fstk->vstk[pos] = f_get_empty(sym->class & 0xff);
     fstk->vcnt = pos + 1;
   }
 
@@ -565,6 +562,30 @@
 
     RESULT_TYPE(val.type);
     RESULT_VAL(val);
+  }
+
+  INST(FI_PATH_EMPTY, 1, 1) {
+    ARG(1, T_PATH);
+    METHOD_CONSTRUCTOR("empty");
+    RESULT(T_PATH, ad, &null_adata);
+  }
+
+  INST(FI_CLIST_EMPTY, 1, 1) {
+    ARG(1, T_CLIST);
+    METHOD_CONSTRUCTOR("empty");
+    RESULT(T_CLIST, ad, &null_adata);
+  }
+
+  INST(FI_ECLIST_EMPTY, 1, 1) {
+    ARG(1, T_ECLIST);
+    METHOD_CONSTRUCTOR("empty");
+    RESULT(T_ECLIST, ad, &null_adata);
+  }
+
+  INST(FI_LCLIST_EMPTY, 1, 1) {
+    ARG(1, T_LCLIST);
+    METHOD_CONSTRUCTOR("empty");
+    RESULT(T_LCLIST, ad, &null_adata);
   }
 
   INST(FI_FOR_INIT, 1, 0) {
@@ -951,20 +972,39 @@
       RESULT_VAL(v1);
   }
 
-  INST(FI_LENGTH, 1, 1) {	/* Get length of */
-    ARG_ANY(1);
-    switch(v1.type) {
-    case T_NET:    RESULT(T_INT, i, net_pxlen(v1.val.net)); break;
-    case T_PATH:   RESULT(T_INT, i, as_path_getlen(v1.val.ad)); break;
-    case T_CLIST:  RESULT(T_INT, i, int_set_get_size(v1.val.ad)); break;
-    case T_ECLIST: RESULT(T_INT, i, ec_set_get_size(v1.val.ad)); break;
-    case T_LCLIST: RESULT(T_INT, i, lc_set_get_size(v1.val.ad)); break;
-    default: runtime( "Prefix, path, clist or eclist expected" );
-    }
+  INST(FI_NET_LENGTH, 1, 1) {	/* Get length of */
+    ARG(1, T_NET);
+    METHOD_CONSTRUCTOR("len");
+    RESULT(T_INT, i, net_pxlen(v1.val.net));
+  }
+
+  INST(FI_PATH_LENGTH, 1, 1) {	/* Get length of */
+    ARG(1, T_PATH);
+    METHOD_CONSTRUCTOR("len");
+    RESULT(T_INT, i, as_path_getlen(v1.val.ad));
+  }
+
+  INST(FI_CLIST_LENGTH, 1, 1) {	/* Get length of */
+    ARG(1, T_CLIST);
+    METHOD_CONSTRUCTOR("len");
+    RESULT(T_INT, i, int_set_get_size(v1.val.ad));
+  }
+
+  INST(FI_ECLIST_LENGTH, 1, 1) { /* Get length of */
+    ARG(1, T_ECLIST);
+    METHOD_CONSTRUCTOR("len");
+    RESULT(T_INT, i, ec_set_get_size(v1.val.ad));
+  }
+
+  INST(FI_LCLIST_LENGTH, 1, 1) {	/* Get length of */
+    ARG(1, T_LCLIST);
+    METHOD_CONSTRUCTOR("len");
+    RESULT(T_INT, i, lc_set_get_size(v1.val.ad));
   }
 
   INST(FI_NET_SRC, 1, 1) { 	/* Get src prefix */
     ARG(1, T_NET);
+    METHOD_CONSTRUCTOR("src");
 
     net_addr_union *net = (void *) v1.val.net;
     net_addr *src = falloc(sizeof(net_addr_ip6));
@@ -1000,6 +1040,7 @@
 
   INST(FI_NET_DST, 1, 1) { 	/* Get dst prefix */
     ARG(1, T_NET);
+    METHOD_CONSTRUCTOR("dst");
 
     net_addr_union *net = (void *) v1.val.net;
     net_addr *dst = falloc(sizeof(net_addr_ip6));
@@ -1035,6 +1076,7 @@
 
   INST(FI_ROA_MAXLEN, 1, 1) { 	/* Get ROA max prefix length */
     ARG(1, T_NET);
+    METHOD_CONSTRUCTOR("maxlen")
     if (!net_is_roa(v1.val.net))
       runtime( "ROA expected" );
 
@@ -1043,40 +1085,38 @@
       ((net_addr_roa6 *) v1.val.net)->max_pxlen);
   }
 
-  INST(FI_ASN, 1, 1) { 	/* Get ROA ASN or community ASN part */
-    ARG_ANY(1);
-    RESULT_TYPE(T_INT);
-    switch(v1.type)
-    {
-      case T_NET:
+  INST(FI_NET_ASN, 1, 1) { 	/* Get ROA ASN or community ASN part */
+    ARG(1, T_NET);
+    METHOD_CONSTRUCTOR("asn");
         if (!net_is_roa(v1.val.net))
           runtime( "ROA expected" );
 
-        RESULT_(T_INT, i, (v1.val.net->type == NET_ROA4) ?
+        RESULT(T_INT, i, (v1.val.net->type == NET_ROA4) ?
           ((net_addr_roa4 *) v1.val.net)->asn :
           ((net_addr_roa6 *) v1.val.net)->asn);
-        break;
-
-      case T_PAIR:
-        RESULT_(T_INT, i, v1.val.i >> 16);
-        break;
-
-      case T_LC:
-        RESULT_(T_INT, i, v1.val.lc.asn);
-        break;
-
-      default:
-        runtime( "Net, pair or lc expected" );
-    }
   }
 
-  INST(FI_IP, 1, 1) {	/* Convert prefix to ... */
+  INST(FI_PAIR_ASN, 1, 1) { 	/* Get ROA ASN or community ASN part */
+    ARG(1, T_PAIR);
+    METHOD_CONSTRUCTOR("asn");
+    RESULT(T_INT, i, v1.val.i >> 16);
+  }
+
+  INST(FI_LC_ASN, 1, 1) { 	/* Get ROA ASN or community ASN part */
+    ARG(1, T_LC);
+    METHOD_CONSTRUCTOR("asn");
+    RESULT(T_INT, i, v1.val.lc.asn);
+  }
+
+  INST(FI_NET_IP, 1, 1) {	/* Convert prefix to ... */
     ARG(1, T_NET);
+    METHOD_CONSTRUCTOR("ip");
     RESULT(T_IP, ip, net_prefix(v1.val.net));
   }
 
   INST(FI_ROUTE_DISTINGUISHER, 1, 1) {
     ARG(1, T_NET);
+    METHOD_CONSTRUCTOR("rd");
     if (!net_is_vpn(v1.val.net))
       runtime( "VPN address expected" );
     RESULT(T_RD, ec, net_rd(v1.val.net));
@@ -1084,6 +1124,7 @@
 
   INST(FI_AS_PATH_FIRST, 1, 1) {	/* Get first ASN from AS PATH */
     ARG(1, T_PATH);
+    METHOD_CONSTRUCTOR("first");
     u32 as = 0;
     as_path_get_first(v1.val.ad, &as);
     RESULT(T_INT, i, as);
@@ -1091,6 +1132,7 @@
 
   INST(FI_AS_PATH_LAST, 1, 1) {		/* Get last ASN from AS PATH */
     ARG(1, T_PATH);
+    METHOD_CONSTRUCTOR("last");
     u32 as = 0;
     as_path_get_last(v1.val.ad, &as);
     RESULT(T_INT, i, as);
@@ -1098,90 +1140,74 @@
 
   INST(FI_AS_PATH_LAST_NAG, 1, 1) {	/* Get last ASN from non-aggregated part of AS PATH */
     ARG(1, T_PATH);
+    METHOD_CONSTRUCTOR("last_nonaggregated");
     RESULT(T_INT, i, as_path_get_last_nonaggregated(v1.val.ad));
   }
 
   INST(FI_PAIR_DATA, 1, 1) {	/* Get data part from the standard community */
     ARG(1, T_PAIR);
+    METHOD_CONSTRUCTOR("data");
     RESULT(T_INT, i, v1.val.i & 0xFFFF);
   }
 
   INST(FI_LC_DATA1, 1, 1) {	/* Get data1 part from the large community */
     ARG(1, T_LC);
+    METHOD_CONSTRUCTOR("data1");
     RESULT(T_INT, i, v1.val.lc.ldp1);
   }
 
   INST(FI_LC_DATA2, 1, 1) {	/* Get data2 part from the large community */
     ARG(1, T_LC);
+    METHOD_CONSTRUCTOR("data2");
     RESULT(T_INT, i, v1.val.lc.ldp2);
   }
 
-  INST(FI_MIN, 1, 1) {	/* Get minimum element from list */
-    ARG_ANY(1);
-    RESULT_TYPE(f_type_element_type(v1.type));
-    switch(v1.type)
-    {
-      case T_CLIST:
-        {
-          u32 val = 0;
-          int_set_min(v1.val.ad, &val);
-          RESULT_(T_PAIR, i, val);
-        }
-        break;
-
-      case T_ECLIST:
-        {
-          u64 val = 0;
-          ec_set_min(v1.val.ad, &val);
-          RESULT_(T_EC, ec, val);
-        }
-        break;
-
-      case T_LCLIST:
-        {
-          lcomm val = { 0, 0, 0 };
-          lc_set_min(v1.val.ad, &val);
-          RESULT_(T_LC, lc, val);
-        }
-        break;
-
-      default:
-        runtime( "Clist or lclist expected" );
-    }
+  INST(FI_CLIST_MIN, 1, 1) {	/* Get minimum element from list */
+    ARG(1, T_CLIST);
+    METHOD_CONSTRUCTOR("min");
+    u32 val = 0;
+    int_set_min(v1.val.ad, &val);
+    RESULT(T_PAIR, i, val);
   }
 
-  INST(FI_MAX, 1, 1) {	/* Get maximum element from list */
-    ARG_ANY(1);
-    RESULT_TYPE(f_type_element_type(v1.type));
-    switch(v1.type)
-    {
-      case T_CLIST:
-        {
-          u32 val = 0;
-          int_set_max(v1.val.ad, &val);
-          RESULT_(T_PAIR, i, val);
-        }
-        break;
+  INST(FI_CLIST_MAX, 1, 1) {	/* Get minimum element from list */
+    ARG(1, T_CLIST);
+    METHOD_CONSTRUCTOR("max");
+    u32 val = 0;
+    int_set_max(v1.val.ad, &val);
+    RESULT(T_PAIR, i, val);
+  }
 
-      case T_ECLIST:
-        {
-          u64 val = 0;
-          ec_set_max(v1.val.ad, &val);
-          RESULT_(T_EC, ec, val);
-        }
-        break;
+  INST(FI_ECLIST_MIN, 1, 1) {	/* Get minimum element from list */
+    ARG(1, T_ECLIST);
+    METHOD_CONSTRUCTOR("min");
+    u64 val = 0;
+    ec_set_min(v1.val.ad, &val);
+    RESULT(T_EC, ec, val);
+  }
 
-      case T_LCLIST:
-        {
-          lcomm val = { 0, 0, 0 };
-          lc_set_max(v1.val.ad, &val);
-          RESULT_(T_LC, lc, val);
-        }
-        break;
+  INST(FI_ECLIST_MAX, 1, 1) {	/* Get minimum element from list */
+    ARG(1, T_ECLIST);
+    METHOD_CONSTRUCTOR("max");
+    u64 val = 0;
+    ec_set_max(v1.val.ad, &val);
+    RESULT(T_EC, ec, val);
+  }
 
-      default:
-        runtime( "Clist or lclist expected" );
-    }
+  INST(FI_LCLIST_MIN, 1, 1) {	/* Get minimum element from list */
+    ARG(1, T_LCLIST);
+    METHOD_CONSTRUCTOR("min");
+    lcomm val = {};
+    lc_set_min(v1.val.ad, &val);
+    RESULT(T_LC, lc, val);
+  }
+
+  INST(FI_LCLIST_MAX, 1, 1) {	/* Get minimum element from list */
+    ARG(1, T_LCLIST);
+    METHOD_CONSTRUCTOR("max");
+    lcomm val = {};
+    lc_set_max(v1.val.ad, &val);
+    RESULT(T_LC, lc, val);
   }
 
   INST(FI_RETURN, 1, 0) {
@@ -1216,7 +1242,7 @@
     SYMBOL;
 
     /* Fake result type declaration */
-    RESULT_TYPE(T_VOID);
+    RESULT_TYPE(sym->function->return_type);
 
     FID_NEW_BODY()
     ASSERT(sym->class == SYM_FUNCTION);
@@ -1321,6 +1347,7 @@
   INST(FI_IP_MASK, 2, 1) { /* IP.MASK(val) */
     ARG(1, T_IP);
     ARG(2, T_INT);
+    METHOD_CONSTRUCTOR("mask");
     RESULT(T_IP, ip, [[ ipa_is_ip4(v1.val.ip) ?
       ipa_from_ip4(ip4_and(ipa_to_ip4(v1.val.ip), ip4_mkmask(v2.val.i))) :
       ipa_from_ip6(ip6_and(ipa_to_ip6(v1.val.ip), ip6_mkmask(v2.val.i))) ]]);
@@ -1329,165 +1356,156 @@
   INST(FI_PATH_PREPEND, 2, 1) {	/* Path prepend */
     ARG(1, T_PATH);
     ARG(2, T_INT);
+    METHOD_CONSTRUCTOR("prepend");
     RESULT(T_PATH, ad, [[ as_path_prepend(fpool, v1.val.ad, v2.val.i) ]]);
   }
 
   INST(FI_CLIST_ADD, 2, 1) {	/* (Extended) Community list add */
-    ARG_ANY(1);
+    ARG(1, T_CLIST);
     ARG_ANY(2);
-    RESULT_TYPE(f1->type);
-
-    if (v1.type == T_PATH)
-      runtime("Can't add to path");
-
-    else if (v1.type == T_CLIST)
-    {
-      /* Community (or cluster) list */
+    METHOD_CONSTRUCTOR("add");
       struct f_val dummy;
-
       if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
-	RESULT_(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, v2.val.i) ]]);
+	RESULT(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, v2.val.i) ]]);
       /* IP->Quad implicit conversion */
       else if (val_is_ip4(&v2))
-	RESULT_(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
+	RESULT(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
       else if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy))
 	runtime("Can't add set");
       else if (v2.type == T_CLIST)
-	RESULT_(T_CLIST, ad, [[ int_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
+	RESULT(T_CLIST, ad, [[ int_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
       else
 	runtime("Can't add non-pair");
-    }
+  }
 
-    else if (v1.type == T_ECLIST)
-    {
+  INST(FI_ECLIST_ADD, 2, 1) {
+    ARG(1, T_ECLIST);
+    ARG_ANY(2);
+    METHOD_CONSTRUCTOR("add");
       /* v2.val is either EC or EC-set */
       if ((v2.type == T_SET) && eclist_set_type(v2.val.t))
 	runtime("Can't add set");
       else if (v2.type == T_ECLIST)
-	RESULT_(T_ECLIST, ad, [[ ec_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
+	RESULT(T_ECLIST, ad, [[ ec_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
       else if (v2.type != T_EC)
 	runtime("Can't add non-ec");
       else
-	RESULT_(T_ECLIST, ad, [[ ec_set_add(fpool, v1.val.ad, v2.val.ec) ]]);
-    }
+	RESULT(T_ECLIST, ad, [[ ec_set_add(fpool, v1.val.ad, v2.val.ec) ]]);
+  }
 
-    else if (v1.type == T_LCLIST)
-    {
+  INST(FI_LCLIST_ADD, 2, 1) {
+    ARG(1, T_LCLIST);
+    ARG_ANY(2);
+    METHOD_CONSTRUCTOR("add");
       /* v2.val is either LC or LC-set */
       if ((v2.type == T_SET) && lclist_set_type(v2.val.t))
 	runtime("Can't add set");
       else if (v2.type == T_LCLIST)
-	RESULT_(T_LCLIST, ad, [[ lc_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
+	RESULT(T_LCLIST, ad, [[ lc_set_union(fpool, v1.val.ad, v2.val.ad) ]]);
       else if (v2.type != T_LC)
 	runtime("Can't add non-lc");
       else
-	RESULT_(T_LCLIST, ad, [[ lc_set_add(fpool, v1.val.ad, v2.val.lc) ]]);
+	RESULT(T_LCLIST, ad, [[ lc_set_add(fpool, v1.val.ad, v2.val.lc) ]]);
+  }
 
-    }
-
-    else
-      runtime("Can't add to non-[e|l]clist");
+  INST(FI_PATH_DEL, 2, 1) {	/* Path delete */
+    ARG(1, T_PATH);
+    ARG_ANY(2);
+    METHOD_CONSTRUCTOR("delete");
+      if ((v2.type == T_SET) && path_set_type(v2.val.t) || (v2.type == T_INT))
+	RESULT(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, &v2, 0) ]]);
+      else
+	runtime("Can't delete non-integer (set)");
   }
 
   INST(FI_CLIST_DEL, 2, 1) {	/* (Extended) Community list add or delete */
-    ARG_ANY(1);
+    ARG(1, T_CLIST);
     ARG_ANY(2);
-    RESULT_TYPE(f1->type);
-
-    if (v1.type == T_PATH)
-    {
-      if ((v2.type == T_SET) && path_set_type(v2.val.t) || (v2.type == T_INT))
-	RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, &v2, 0) ]]);
-      else
-	runtime("Can't delete non-integer (set)");
-    }
-
-    else if (v1.type == T_CLIST)
-    {
+    METHOD_CONSTRUCTOR("delete");
       /* Community (or cluster) list */
       struct f_val dummy;
 
       if ((v2.type == T_PAIR) || (v2.type == T_QUAD))
-	RESULT_(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, v2.val.i) ]]);
+	RESULT(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, v2.val.i) ]]);
       /* IP->Quad implicit conversion */
       else if (val_is_ip4(&v2))
-	RESULT_(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
+	RESULT(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
       else if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy) || (v2.type == T_CLIST))
-	RESULT_(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 0) ]]);
+	RESULT(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 0) ]]);
       else
 	runtime("Can't delete non-pair");
-    }
+  }
 
-    else if (v1.type == T_ECLIST)
-    {
+  INST(FI_ECLIST_DEL, 2, 1) {	/* (Extended) Community list add or delete */
+    ARG(1, T_ECLIST);
+    ARG_ANY(2);
+    METHOD_CONSTRUCTOR("delete");
       /* v2.val is either EC or EC-set */
       if ((v2.type == T_SET) && eclist_set_type(v2.val.t) || (v2.type == T_ECLIST))
-	RESULT_(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
+	RESULT(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
       else if (v2.type != T_EC)
 	runtime("Can't delete non-ec");
       else
-	RESULT_(T_ECLIST, ad, [[ ec_set_del(fpool, v1.val.ad, v2.val.ec) ]]);
-    }
+	RESULT(T_ECLIST, ad, [[ ec_set_del(fpool, v1.val.ad, v2.val.ec) ]]);
+  }
 
-    else if (v1.type == T_LCLIST)
-    {
+  INST(FI_LCLIST_DEL, 2, 1) {	/* (Extended) Community list add or delete */
+    ARG(1, T_LCLIST);
+    ARG_ANY(2);
+    METHOD_CONSTRUCTOR("delete");
       /* v2.val is either LC or LC-set */
       if ((v2.type == T_SET) && lclist_set_type(v2.val.t) || (v2.type == T_LCLIST))
-	RESULT_(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
+	RESULT(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 0) ]]);
       else if (v2.type != T_LC)
 	runtime("Can't delete non-lc");
       else
-	RESULT_(T_LCLIST, ad, [[ lc_set_del(fpool, v1.val.ad, v2.val.lc) ]]);
-    }
-
-    else
-      runtime("Can't delete in non-[e|l]clist");
+	RESULT(T_LCLIST, ad, [[ lc_set_del(fpool, v1.val.ad, v2.val.lc) ]]);
   }
 
-  INST(FI_CLIST_FILTER, 2, 1) {	/* (Extended) Community list add or delete */
-    ARG_ANY(1);
+  INST(FI_PATH_FILTER, 2, 1) {	/* (Extended) Community list add or delete */
+    ARG(1, T_PATH);
     ARG_ANY(2);
-    RESULT_TYPE(f1->type);
+    METHOD_CONSTRUCTOR("filter");
 
-    if (v1.type == T_PATH)
-    {
       if ((v2.type == T_SET) && path_set_type(v2.val.t))
-	RESULT_(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, &v2, 1) ]]);
+	RESULT(T_PATH, ad, [[ as_path_filter(fpool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter integer");
     }
 
-    else if (v1.type == T_CLIST)
-    {
+  INST(FI_CLIST_FILTER, 2, 1) {
+    ARG(1, T_CLIST);
+    ARG_ANY(2);
+    METHOD_CONSTRUCTOR("filter");
       /* Community (or cluster) list */
       struct f_val dummy;
 
       if ((v2.type == T_SET) && clist_set_type(v2.val.t, &dummy) || (v2.type == T_CLIST))
-	RESULT_(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 1) ]]);
+	RESULT(T_CLIST, ad, [[ clist_filter(fpool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter pair");
-    }
+  }
 
-    else if (v1.type == T_ECLIST)
-    {
+  INST(FI_ECLIST_FILTER, 2, 1) {
+    ARG(1, T_ECLIST);
+    ARG_ANY(2);
+    METHOD_CONSTRUCTOR("filter");
       /* v2.val is either EC or EC-set */
       if ((v2.type == T_SET) && eclist_set_type(v2.val.t) || (v2.type == T_ECLIST))
-	RESULT_(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
+	RESULT(T_ECLIST, ad, [[ eclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter ec");
-    }
+  }
 
-    else if (v1.type == T_LCLIST)
-    {
+  INST(FI_LCLIST_FILTER, 2, 1) {
+    ARG(1, T_LCLIST);
+    ARG_ANY(2);
+    METHOD_CONSTRUCTOR("filter");
       /* v2.val is either LC or LC-set */
       if ((v2.type == T_SET) && lclist_set_type(v2.val.t) || (v2.type == T_LCLIST))
-	RESULT_(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
+	RESULT(T_LCLIST, ad, [[ lclist_filter(fpool, v1.val.ad, &v2, 1) ]]);
       else
 	runtime("Can't filter lc");
-    }
-
-    else
-      runtime("Can't filter non-[e|l]clist");
   }
 
   INST(FI_ROA_CHECK, 2, 1) {	/* ROA Check */

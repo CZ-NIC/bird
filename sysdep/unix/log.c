@@ -197,12 +197,12 @@ log_commit(log_buffer *buf)
 	  byte *begin = l->terminal ? buf->buf.start : buf->tm_pos;
 	  off_t msg_len = buf->buf.pos - begin + 1;
 	  do {
-	    if (rf_write(rf, buf->tm_pos, msg_len))
+	    if (rf_write(rf, begin, msg_len))
 	      break;
 
 	    log_lock();
 	    rf = atomic_load_explicit(&l->rf, memory_order_acquire);
-	    if (rf_write(rf, buf->tm_pos, msg_len))
+	    if (rf_write(rf, begin, msg_len))
 	    {
 	      log_unlock();
 	      break;
@@ -212,7 +212,7 @@ log_commit(log_buffer *buf)
 	    log_unlock();
 
 	    rf = atomic_load_explicit(&l->rf, memory_order_relaxed);
-	  } while (!rf_write(rf, buf->tm_pos, msg_len));
+	  } while (!rf_write(rf, begin, msg_len));
 	}
 #ifdef HAVE_SYSLOG_H
       else
@@ -251,6 +251,8 @@ log_prepare(log_buffer *buf, int class)
 
     buffer_print(&buf->buf, " [%04x] <%s> ", THIS_THREAD_ID, class_names[class]);
   }
+  else
+    buf->tm_pos = NULL;
 
   buf->msg_pos = buf->buf.pos;
   buf->class = class;

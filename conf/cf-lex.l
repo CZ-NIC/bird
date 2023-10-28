@@ -79,7 +79,8 @@ static uint cf_hash(const byte *c);
 HASH_DEFINE_REHASH_FN(SYM, struct symbol)
 
 /* Global symbol scopes */
-static pool *global_root_scope_pool;
+pool *global_root_scope_pool;
+linpool *global_root_scope_linpool;
 static struct sym_scope
   global_root_scope = {
     .active = 1,
@@ -567,7 +568,7 @@ check_eof(void)
 
 static inline void cf_swap_soft_scope(struct config *conf);
 
-static struct symbol *
+struct symbol *
 cf_new_symbol(struct sym_scope *scope, pool *p, struct linpool *lp, const byte *c)
 {
   if (scope->readonly)
@@ -594,14 +595,20 @@ cf_new_symbol(struct sym_scope *scope, pool *p, struct linpool *lp, const byte *
   return s;
 }
 
-static struct symbol *
+struct symbol *
 cf_root_symbol(const byte *c, struct sym_scope *ss)
 {
   uint l = strlen(c);
   if (l > SYM_MAX_LEN)
     bug("Root symbol %s too long", c);
 
-  struct symbol *s = mb_alloc(&root_pool, sizeof(struct symbol) + l + 1);
+  if (!global_root_scope_pool)
+  {
+    global_root_scope_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Keywords pool");
+    global_root_scope_linpool = lp_new(global_root_scope_pool);
+  }
+
+  struct symbol *s = lp_alloc(global_root_scope_linpool, sizeof(struct symbol) + l + 1);
   *s = (struct symbol) { .scope = ss, .class = SYM_VOID, };
   memcpy(s->name, c, l+1);
 
@@ -715,6 +722,8 @@ cf_lex_symbol(const char *data)
       cf_lval.i = -val;
       return ENUM;
     }
+    case SYM_METHOD:
+      return sym->method->arg_num ? CF_SYM_METHOD_ARGS : CF_SYM_METHOD_BARE;
     case SYM_VOID:
       return CF_SYM_UNDEFINED;
     default:
@@ -753,6 +762,8 @@ ea_class_find_by_name(const char *name)
     return sym->attribute;
 }
 
+void f_type_methods_register(void);
+
 /**
  * cf_lex_init - initialize the lexer
  * @is_cli: true if we're going to parse CLI command, false for configuration
@@ -764,10 +775,8 @@ ea_class_find_by_name(const char *name)
 void
 cf_lex_init(int is_cli, struct config *c)
 {
-  if (!global_root_scope_pool)
+  if (!global_root_scope.readonly)
   {
-    global_root_scope_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Keywords pool");
-
     for (const struct keyword *k = keyword_list; k->name; k++)
     {
       struct symbol *s = cf_root_symbol(k->name, &global_root_scope);
@@ -777,6 +786,8 @@ cf_lex_init(int is_cli, struct config *c)
 
     global_root_scope.readonly = 1;
     global_filter_scope.readonly = 1;
+
+    f_type_methods_register();
   }
 
   ifs_head = ifs = push_ifs(NULL);

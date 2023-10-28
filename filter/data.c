@@ -613,7 +613,6 @@ val_dump(const struct f_val *v) {
   return val_dump_buffer;
 }
 
-
 struct f_val *
 lp_val_copy(struct linpool *lp, const struct f_val *v)
 {

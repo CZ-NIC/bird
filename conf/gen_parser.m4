@@ -33,6 +33,8 @@ m4_define(CF_iterate, `m4_define([[CF_iter]], m4_defn([[$1]]))CF_itera($2)')
 m4_define(CF_keywd, `m4_ifdef([[CF_tok_$1]],,[[m4_define([[CF_tok_$1]],1)m4_define([[CF_toks]],CF_toks $1)]])')
 m4_define(CF_KEYWORDS, `m4_define([[CF_toks]],[[]])CF_iterate([[CF_keywd]], [[$@]])m4_ifelse(CF_toks,,,%token<s>[[]]CF_toks
 )DNL')
+m4_define(CF_METHODS, `m4_define([[CF_toks]],[[]])CF_iterate([[CF_keywd]], [[$@]])m4_ifelse(CF_toks,,,%token<s>[[]]CF_toks
+)DNL')
 
 # CLI commands
 m4_define(CF_CLI, `m4_define([[CF_cmd]], cmd_[[]]m4_translit($1, [[ ]], _))DNL

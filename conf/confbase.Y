@@ -106,7 +106,7 @@ CF_DECLS
 %token <ip4> IP4
 %token <ip6> IP6
 %token <i64> VPN_RD
-%token <s> CF_SYM_KNOWN CF_SYM_UNDEFINED
+%token <s> CF_SYM_KNOWN CF_SYM_UNDEFINED CF_SYM_METHOD_BARE CF_SYM_METHOD_ARGS
 %token <t> TEXT
 %token <bs> BYTETEXT
 %type <iface> ipa_scope
@@ -137,7 +137,7 @@ CF_DECLS
 
 %start config
 
-CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS, FROM)
+CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS, FROM, MAX, AS)
 
 CF_GRAMMAR
 

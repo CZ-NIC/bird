@@ -81,6 +81,7 @@ int config_status(void);
 btime config_timer_status(void);
 void config_init(void);
 void cf_error(const char *msg, ...) NORET;
+#define cf_warn(msg, args...)  log(L_WARN "%s:%d:%d: " msg, ifs->file_name, ifs->lino, ifs->chno - ifs->toklen + 1, ##args)
 void config_add_obstacle(struct config *);
 void config_del_obstacle(struct config *);
 void order_shutdown(int gr);
@@ -129,6 +130,7 @@ struct symbol {
     struct f_val *val;			/* For SYM_CONSTANT */
     uint offset;			/* For SYM_VARIABLE */
     const struct keyword *keyword;	/* For SYM_KEYWORD */
+    const struct f_method *method;	/* For SYM_METHOD */
   };
 
   char name[0];
@@ -150,6 +152,9 @@ struct sym_scope {
 void cf_enter_filters(void);
 void cf_exit_filters(void);
 
+extern pool *global_root_scope_pool;
+extern linpool *global_root_scope_linpool;
+
 struct bytestring {
   size_t length;
   byte data[];
@@ -166,6 +171,7 @@ struct bytestring {
 #define SYM_TABLE 5
 #define SYM_ATTRIBUTE 6
 #define SYM_KEYWORD 7
+#define SYM_METHOD 8
 
 #define SYM_VARIABLE 0x100	/* 0x100-0x1ff are variable types */
 #define SYM_VARIABLE_RANGE SYM_VARIABLE ... (SYM_VARIABLE | 0xff)
@@ -212,6 +218,10 @@ struct symbol *cf_localize_symbol(struct config *conf, struct symbol *sym);
 
 static inline int cf_symbol_is_local(struct config *conf, struct symbol *sym)
 { return (sym->scope == conf->current_scope) && !conf->current_scope->soft_scopes; }
+
+/* internal */
+struct symbol *cf_new_symbol(struct sym_scope *scope, pool *p, struct linpool *lp, const byte *c);
+struct symbol *cf_root_symbol(const byte *, struct sym_scope *);
 
 /**
  * cf_define_symbol - define meaning of a symbol

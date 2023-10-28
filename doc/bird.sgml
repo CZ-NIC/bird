@@ -551,7 +551,7 @@ include "tablename.conf";;
 	Define a filter. You can learn more about filters in the following
 	chapter.
 
-	<tag><label id="opt-function">function <m/name/ (<m/parameters/) <m/local variables/ { <m/commands/ }</tag>
+	<tag><label id="opt-function">function <m/type/ <m/name/ (<m/parameters/) <m/local variables/ { <m/commands/ }</tag>
 	Define a function. You can learn more about functions in the following chapter.
 
 	<tag><label id="opt-protocol">protocol rip|ospf|bgp|<m/.../ [<m/name/ [from <m/name2/]] { <m>protocol options</m> }</tag>
@@ -1346,18 +1346,22 @@ block of code conditional.
 
 <p>BIRD supports functions, so that you don't have to repeat the same blocks of
 code over and over. Functions can have zero or more parameters and they can have
-local variables. Recursion is not allowed. Function definitions look like this:
+local variables. You should always specify the function return type and always
+return it. No-return functions and multiple-type returning functions are deprecated.
+Direct recursion is possible. Function definitions look like this:
 
 <code>
-function name ()
+function int name ()
 {
 	int local_variable;
 	int another_variable = 5;
+	return 42;
 }
 
-function with_parameters (int parameter)
+function pair with_parameters (int parameter)
 {
 	print parameter;
+	return (1, 2);
 }
 </code>
 
@@ -1371,7 +1375,7 @@ may return values using the <cf>return <m/[expr]/</cf> command. Returning a
 value exits from current function (this is similar to C).
 
 <p>Filters are defined in a way similar to functions except they cannot have
-explicit parameters. They get a route table entry as an implicit parameter, it
+explicit parameters and cannot return. They get a route table entry as an implicit parameter, it
 is also passed automatically to any functions called. The filter must terminate
 with either <cf/accept/ or <cf/reject/ statement. If there is a runtime error in
 filter, the route is rejected.
@@ -1638,24 +1642,24 @@ in the foot).
 
 	<cf><m/P/.len</cf> returns the length of path <m/P/.
 
-	<cf><m/P/.empty</cf> makes the path <m/P/ empty.
+	<cf><m/P/.empty</cf> makes the path <m/P/ empty. Can't be used as a value, always modifies the object.
 
-	<cf>prepend(<m/P/,<m/A/)</cf> prepends ASN <m/A/ to path <m/P/ and
+	<cf><m/P/.prepend(<m/A/)</cf> prepends ASN <m/A/ to path <m/P/ and
 	returns the result.
 
-	<cf>delete(<m/P/,<m/A/)</cf> deletes all instances of ASN <m/A/ from
+	<cf><m/P/.delete(<m/A/)</cf> deletes all instances of ASN <m/A/ from
 	from path <m/P/ and returns the result. <m/A/ may also be an integer
 	set, in that case the operator deletes all ASNs from path <m/P/ that are
 	also members of set <m/A/.
 
-	<cf>filter(<m/P/,<m/A/)</cf> deletes all ASNs from path <m/P/ that are
-	not members of integer set <m/A/. I.e., <cf/filter/ do the same as
-	<cf/delete/ with inverted set <m/A/.
+	<cf><m/P/.filter(<m/A/)</cf> deletes all ASNs from path <m/P/ that are
+	not members of integer set <m/A/, and returns the result.
+	I.e., <cf/filter/ do the same as <cf/delete/ with inverted set <m/A/.
 
-	Statement <cf><m/P/ = prepend(<m/P/, <m/A/);</cf> can be shortened to
-	<cf><m/P/.prepend(<m/A/);</cf> if <m/P/ is appropriate route attribute
-	(for example <cf/bgp_path/) or a local variable.
-	Similarly for <cf/delete/ and <cf/filter/.
+	Methods <cf>prepend</cf>, <cf>delete</cf> and <cf>filter</cf> keep the
+	original object intact as long as you use the result in any way. You can
+	also write e.g. <cf><m/P/.prepend(<m/A/);</cf> as a standalone statement.
+	This variant does modify the original object with the result of the operation.
 
 	<tag><label id="type-bgpmask">bgpmask</tag>
 	BGP masks are patterns used for BGP path matching (using <cf>path
@@ -1683,29 +1687,29 @@ in the foot).
 
 	<cf><m/C/.len</cf> returns the length of clist <m/C/.
 
-	<cf><m/C/.empty</cf> makes the list <m/C/ empty.
+	<cf><m/C/.empty</cf> makes the list <m/C/ empty. Can't be used as a value, always modifies the object.
 
-	<cf>add(<m/C/,<m/P/)</cf> adds pair (or quad) <m/P/ to clist <m/C/ and
+	<cf><m/C/.add(<m/P/)</cf> adds pair (or quad) <m/P/ to clist <m/C/ and
 	returns the result. If item <m/P/ is already in clist <m/C/, it does
 	nothing. <m/P/ may also be a clist, in that case all its members are
 	added; i.e., it works as clist union.
 
-	<cf>delete(<m/C/,<m/P/)</cf> deletes pair (or quad) <m/P/ from clist
+	<cf><m/C/.delete(<m/P/)</cf> deletes pair (or quad) <m/P/ from clist
 	<m/C/ and returns the result. If clist <m/C/ does not contain item
 	<m/P/, it does nothing. <m/P/ may also be a pair (or quad) set, in that
 	case the operator deletes all items from clist <m/C/ that are also
 	members of set <m/P/. Moreover, <m/P/ may also be a clist, which works
 	analogously; i.e., it works as clist difference.
 
-	<cf>filter(<m/C/,<m/P/)</cf> deletes all items from clist <m/C/ that are
-	not members of pair (or quad) set <m/P/. I.e., <cf/filter/ do the same
+	<cf><m/C/.filter(<m/P/)</cf> deletes all items from clist <m/C/ that are
+	not members of pair (or quad) set <m/P/, and returns the result. I.e., <cf/filter/ do the same
 	as <cf/delete/ with inverted set <m/P/. <m/P/ may also be a clist, which
 	works analogously; i.e., it works as clist intersection.
 
-	Statement <cf><m/C/ = add(<m/C/, <m/P/);</cf> can be shortened to
-	<cf><m/C/.add(<m/P/);</cf> if <m/C/ is appropriate route attribute (for
-	example <cf/bgp_community/) or a local variable.
-	Similarly for <cf/delete/ and <cf/filter/.
+	Methods <cf>add</cf>, <cf>delete</cf> and <cf>filter</cf> keep the
+	original object intact as long as you use the result in any way. You can
+	also write e.g. <cf><m/P/.add(<m/A/);</cf> as a standalone statement.
+	This variant does modify the original object with the result of the operation.
 
 	<cf><m/C/.min</cf> returns the minimum element of clist <m/C/.
 
