@@ -10,7 +10,7 @@
 #include <stdlib.h>
 
 #include "nest/bird.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "lib/attrs.h"
 #include "lib/resource.h"
 #include "lib/string.h"

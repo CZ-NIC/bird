@@ -42,7 +42,7 @@
 #define PARSER 1
 
 #include "nest/bird.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "nest/protocol.h"
 #include "filter/filter.h"
 #include "filter/f-inst.h"

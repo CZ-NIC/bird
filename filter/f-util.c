@@ -13,7 +13,7 @@
 #include "filter/f-inst.h"
 #include "lib/idm.h"
 #include "nest/protocol.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 
 #define P(a,b) ((a<<8) | b)
 

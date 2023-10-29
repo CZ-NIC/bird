@@ -14,7 +14,7 @@
 #include "test/bt-utils.h"
 
 #include "nest/bird.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "nest/protocol.h"
 
 #include "sysdep/unix/unix.h"

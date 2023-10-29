@@ -10,7 +10,7 @@
 #undef LOCAL_DEBUG
 
 #include "nest/bird.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/cli.h"
 #include "nest/iface.h"
