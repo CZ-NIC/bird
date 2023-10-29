@@ -116,6 +116,7 @@ static inline struct f_static_attr f_new_static_attr(btype type, int code, int r
 { return (struct f_static_attr) { .type = type, .sa_code = code, .readonly = readonly }; }
 struct f_inst *f_generate_roa_check(struct rtable_config *table, struct f_inst *prefix, struct f_inst *asn);
 
+
 /* Hook for call bt_assert() function in configuration */
 extern void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 

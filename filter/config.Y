@@ -28,6 +28,8 @@ static struct f_method_scope {
 } f_method_scope_stack[32];
 static int f_method_scope_pos = -1;
 
+static struct sym_scope *f_for_stored_scope;
+
 #define FM  (f_method_scope_stack[f_method_scope_pos])
 
 static inline void f_method_call_start(struct f_inst *object)
@@ -41,13 +43,14 @@ static inline void f_method_call_start(struct f_inst *object)
   if (!scope)
     cf_error("No methods defined for type %s", f_type_name(object->type));
 
+  /* Replacing the current symbol scope with the appropriate method scope
+     for the given type. */
   FM = (struct f_method_scope) {
     .object = object,
     .main = new_config->current_scope,
     .scope = {
       .next = NULL,
       .hash = scope->hash,
-      .active = 1,
       .block = 1,
       .readonly = 1,
     },
@@ -57,21 +60,15 @@ static inline void f_method_call_start(struct f_inst *object)
 
 static inline void f_method_call_args(void)
 {
-  ASSERT_DIE(FM.scope.active);
-  FM.scope.active = 0;
-
+  /* For argument parsing, we need to revert back to the standard symbol scope. */
   new_config->current_scope = FM.main;
 }
 
 static inline void f_method_call_end(void)
 {
   ASSERT_DIE(f_method_scope_pos >= 0);
-  if (FM.scope.active) {
-    ASSERT_DIE(&FM.scope == new_config->current_scope);
+  if (&FM.scope == new_config->current_scope)
     new_config->current_scope = FM.main;
-
-    FM.scope.active = 0;
-  }
 
   f_method_scope_pos--;
 }
@@ -423,14 +420,18 @@ filter_eval:
 
 conf: custom_attr ;
 custom_attr: ATTRIBUTE type symbol ';' {
-  if (($3->class == SYM_ATTRIBUTE) && ($3->scope == new_config->root_scope))
-    cf_error("Duplicate attribute %s definition", $3->name);
-
-  cf_define_symbol(new_config, $3, SYM_ATTRIBUTE, attribute,
-      ea_register_alloc(new_config->pool, (struct ea_class) {
+  cf_enter_filters();
+  struct ea_class *ac = ea_class_find_by_name($3->name);
+  cf_exit_filters();
+  if (ac && (ac->type == $2))
+    ea_ref_class(new_config->pool, ac);
+  else
+    ac = ea_register_alloc(new_config->pool, (struct ea_class) {
 	.name = $3->name,
 	.type = $2,
-	})->class);
+    })->class;
+
+  cf_define_symbol(new_config, $3, SYM_ATTRIBUTE, attribute, ac);
 };
 
 conf: bt_test_suite ;
@@ -1003,7 +1004,15 @@ cmd:
      new_config->current_scope->slots += 2;
    } for_var IN
    /* Parse term in the parent scope */
-   { new_config->current_scope->active = 0; } term { new_config->current_scope->active = 1; }
+   {
+     ASSERT_DIE(f_for_stored_scope == NULL);
+     f_for_stored_scope = new_config->current_scope;
+     new_config->current_scope = new_config->current_scope->next;
+   } term {
+     ASSERT_DIE(f_for_stored_scope);
+     new_config->current_scope = f_for_stored_scope;
+     f_for_stored_scope = NULL;
+   }
    DO cmd {
      cf_pop_block_scope(new_config);
      $$ = f_for_cycle($3, $6, $9);

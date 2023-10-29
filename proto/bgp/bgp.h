@@ -662,6 +662,7 @@ bgp_total_aigp_metric(const rte *e)
 }
 
 void bgp_register_attrs(void);
+struct ea_class *bgp_find_ea_class_by_id(uint id);
 
 
 /* packets.c */

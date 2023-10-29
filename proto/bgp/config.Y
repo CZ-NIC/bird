@@ -335,6 +335,19 @@ bgp_channel_end:
 
 bgp_proto_channel: bgp_channel_start bgp_channel_opt_list bgp_channel_end;
 
+custom_attr: ATTRIBUTE BGP NUM type symbol ';' {
+  if ($3 > 255 || $3 < 1)
+    cf_error("Invalid attribute number. (Given %i, must be 1-255.)", $3);
+
+  struct ea_class *ac = bgp_find_ea_class_by_id($3);
+  ASSERT_DIE(ac);
+  if ($4 != ac->type)
+    cf_error("Attribute %d type must be %s, not %s.", $3, f_type_name(ac->type), f_type_name($4));
+
+  ea_ref_class(new_config->pool, ac);
+  cf_define_symbol(new_config, $5, SYM_ATTRIBUTE, attribute, ac);
+};
+
 CF_ENUM(T_ENUM_BGP_ORIGIN, ORIGIN_, IGP, EGP, INCOMPLETE)
 
 CF_CODE

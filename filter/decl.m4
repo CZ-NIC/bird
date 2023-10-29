@@ -424,7 +424,7 @@ m4_undivert(112)
   }
 
 FID_METHOD_SCOPE_INIT()m4_dnl
-  [INST_METHOD_OBJECT_TYPE] = { .active = 1, },
+  [INST_METHOD_OBJECT_TYPE] = {},
 FID_METHOD_REGISTER()m4_dnl
   method = lp_allocz(global_root_scope_linpool, sizeof(struct f_method) + INST_METHOD_NUM_ARGS * sizeof(enum btype));
   method->new_inst = f_new_method_]]INST_NAME()[[;

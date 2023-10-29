@@ -78,10 +78,8 @@ pool *global_root_scope_pool;
 linpool *global_root_scope_linpool;
 static struct sym_scope
   global_root_scope = {
-    .active = 1,
   },
   global_filter_scope = {
-    .active = 0,
     .next = &global_root_scope,
   };
 
@@ -634,7 +632,8 @@ cf_find_symbol_scope(const struct sym_scope *scope, const byte *c)
 
   /* Find the symbol here or anywhere below */
   while (scope)
-    if (scope->active && scope->hash.data && (s = HASH_FIND(scope->hash, SYM, c)))
+    if (((scope != &global_filter_scope) || !new_config || new_config->allow_attributes) &&
+	scope->hash.data && (s = HASH_FIND(scope->hash, SYM, c)))
       return s;
     else
       scope = scope->next;
@@ -735,6 +734,8 @@ ea_lex_register(struct ea_class *def)
   def->sym->attribute = def;
 }
 
+#if 0
+/* When we start to support complete protocol removal, we may need this function */
 void
 ea_lex_unregister(struct ea_class *def)
 {
@@ -743,19 +744,13 @@ ea_lex_unregister(struct ea_class *def)
   mb_free(sym);
   def->sym = NULL;
 }
+#endif
 
 struct ea_class *
 ea_class_find_by_name(const char *name)
 {
-  if (!global_filter_scope.hash.data)
-    return NULL;
-
-  struct symbol *sym = HASH_FIND(global_filter_scope.hash, SYM, name);
-
-  if (!sym || (sym->class != SYM_ATTRIBUTE))
-    return NULL;
-  else
-    return sym->attribute;
+  struct symbol *sym = cf_find_symbol_scope(config ? config->root_scope : &global_filter_scope, name);
+  return sym && (sym->class == SYM_ATTRIBUTE) ? sym->attribute : NULL;
 }
 
 void f_type_methods_register(void);
@@ -803,7 +798,6 @@ cf_lex_init(int is_cli, struct config *c)
     BEGIN(INITIAL);
 
   c->root_scope = c->current_scope = cfg_allocz(sizeof(struct sym_scope));
-  c->root_scope->active = 1;
 
   if (is_cli)
     c->current_scope->next = config->root_scope;
@@ -828,7 +822,6 @@ cf_push_scope(struct config *conf, struct symbol *sym)
 
   s->next = conf->current_scope;
   conf->current_scope = s;
-  s->active = 1;
   s->name = sym;
   s->slots = 0;
 }
@@ -844,10 +837,7 @@ void
 cf_pop_scope(struct config *conf)
 {
   ASSERT(!conf->current_scope->soft_scopes);
-
-  conf->current_scope->active = 0;
   conf->current_scope = conf->current_scope->next;
-
   ASSERT(conf->current_scope);
 }
 
@@ -903,8 +893,8 @@ cf_swap_soft_scope(struct config *conf)
 void
 cf_enter_filters(void)
 {
-  ASSERT_DIE(!global_filter_scope.active);
-  global_filter_scope.active = 1;
+  ASSERT_DIE(!new_config->allow_attributes);
+  new_config->allow_attributes = 1;
 }
 
 /**
@@ -913,8 +903,8 @@ cf_enter_filters(void)
 void
 cf_exit_filters(void)
 {
-  ASSERT_DIE(global_filter_scope.active);
-  global_filter_scope.active = 0;
+  ASSERT_DIE(new_config->allow_attributes);
+  new_config->allow_attributes = 0;
 }
 
 

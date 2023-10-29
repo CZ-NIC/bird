@@ -54,9 +54,6 @@ cmd_show_symbols(struct sym_show_data *sd)
     for (const struct sym_scope *scope = config->root_scope; scope; scope = scope->next)
       HASH_WALK(scope->hash, next, sym)
       {
-	if (!sym->scope->active)
-	  continue;
-
 	if (sd->type && (sym->class != sd->type))
 	  continue;
 

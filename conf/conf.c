@@ -60,7 +60,8 @@
 
 static jmp_buf conf_jmpbuf;
 
-struct config *config, *new_config;
+struct config *config;
+_Thread_local struct config *new_config;
 pool *config_pool;
 
 static struct config *old_config;	/* Old configuration */

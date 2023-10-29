@@ -573,16 +573,20 @@ static struct idm ea_class_idm;
 
 /* Config parser lex register function */
 void ea_lex_register(struct ea_class *def);
-void ea_lex_unregister(struct ea_class *def);
 
 static void
 ea_class_free(struct ea_class *cl)
 {
+  RTA_LOCK;
+
   /* No more ea class references. Unregister the attribute. */
   idm_free(&ea_class_idm, cl->id);
   ea_class_global[cl->id] = NULL;
-  if (!cl->hidden)
-    ea_lex_unregister(cl);
+
+  /* When we start supporting full protocol removal, we may need to call
+   * ea_lex_unregister(cl), see where ea_lex_register() is called. */
+
+  RTA_UNLOCK;
 }
 
 static void
@@ -619,7 +623,7 @@ ea_class_init(void)
       sizeof(*ea_class_global) * (ea_class_max = EA_CLASS_INITIAL_MAX));
 }
 
-static struct ea_class_ref *
+struct ea_class_ref *
 ea_ref_class(pool *p, struct ea_class *def)
 {
   def->uc++;
@@ -639,9 +643,6 @@ ea_register(pool *p, struct ea_class *def)
 
   ASSERT_DIE(def->id < ea_class_max);
   ea_class_global[def->id] = def;
-
-  if (!def->hidden)
-    ea_lex_register(def);
 
   return ea_ref_class(p, def);
 }
@@ -680,7 +681,12 @@ ea_register_init(struct ea_class *clp)
 {
   RTA_LOCK;
   ASSERT_DIE(!ea_class_find_by_name(clp->name));
-  ea_register(&root_pool, clp);
+
+  struct ea_class *def = ea_register(&root_pool, clp)->class;
+
+  if (!clp->hidden)
+    ea_lex_register(def);
+
   RTA_UNLOCK;
 }
 

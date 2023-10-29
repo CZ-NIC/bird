@@ -305,6 +305,7 @@ struct ea_class_ref {
 
 void ea_register_init(struct ea_class *);
 struct ea_class_ref *ea_register_alloc(pool *, struct ea_class);
+struct ea_class_ref *ea_ref_class(pool *, struct ea_class *);	/* Reference for an attribute alias */
 
 #define EA_REGISTER_ALL_HELPER(x)	ea_register_init(x);
 #define EA_REGISTER_ALL(...)		MACRO_FOREACH(EA_REGISTER_ALL_HELPER, __VA_ARGS__)

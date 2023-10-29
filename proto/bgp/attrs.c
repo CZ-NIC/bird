@@ -1223,8 +1223,8 @@ bgp_register_attrs(void)
     if (!bgp_attr_table[i].name)
       bgp_attr_table[i] = (union bgp_attr_desc) {
 	.name = mb_sprintf(&root_pool, "bgp_unknown_0x%02x", i),
-	.type = T_OPAQUE,
-	.flags = BAF_OPTIONAL,
+	.type = T_BYTESTRING,
+	.flags = BAF_OPTIONAL | BAF_TRANSITIVE,
 	.readonly = 1,
 	.export = bgp_export_unknown,
 	.encode = bgp_encode_raw,
@@ -1234,6 +1234,12 @@ bgp_register_attrs(void)
 
     ea_register_init(&bgp_attr_table[i].class);
   }
+}
+
+struct ea_class *
+bgp_find_ea_class_by_id(uint id)
+{
+  return (id < ARRAY_SIZE(bgp_attr_table)) ? &bgp_attr_table[id].class : NULL;
 }
 
 

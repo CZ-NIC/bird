@@ -58,6 +58,7 @@ struct config {
 
   struct sym_scope *root_scope;		/* Scope for root symbols */
   struct sym_scope *current_scope;	/* Current scope where we are actually in while parsing */
+  int allow_attributes;			/* Allow attributes in the current state of configuration parsing */
   _Atomic int obstacle_count;		/* Number of items blocking freeing of this config */
   event done_event;			/* Called when obstacle_count reaches zero */
   int shutdown;				/* This is a pseudo-config for daemon shutdown */
@@ -67,7 +68,7 @@ struct config {
 
 /* Please don't use these variables in protocols. Use proto_config->global instead. */
 extern struct config *config;		/* Currently active configuration */
-extern struct config *new_config;	/* Configuration being parsed */
+extern _Thread_local struct config *new_config;	/* Configuration being parsed */
 
 struct config *config_alloc(const char *name);
 int config_parse(struct config *);
@@ -149,7 +150,6 @@ struct sym_scope {
 
   uint slots;				/* Variable slots */
   byte soft_scopes;			/* Number of soft scopes above */
-  byte active:1;			/* Currently entered */
   byte block:1;				/* No independent stack frame */
   byte readonly:1;			/* Do not add new symbols */
 };

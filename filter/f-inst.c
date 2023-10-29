@@ -878,8 +878,8 @@
 	bug("Unsupported attribute type");
 
       switch (da->type) {
-      case T_OPAQUE:
       case T_IFACE:
+      case T_OPAQUE:
 	runtime( "Setting opaque attribute is not allowed" );
 	break;
 
