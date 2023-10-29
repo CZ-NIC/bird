@@ -433,7 +433,7 @@ bytestring_text:
  ;
 
 bytestring_expr:
-   symbol_value
+   lvalue { $$ = f_lval_getter(&$1); }
  | term_bs
  | '(' term ')' { $$ = $2; }
  ;

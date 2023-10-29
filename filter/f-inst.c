@@ -654,11 +654,20 @@
     }
   }
 
-  INST(FI_RTA_GET, 0, 1) {
+  INST(FI_CURRENT_ROUTE, 0, 1) {
+    NEVER_CONSTANT;
+    ACCESS_EATTRS;
+    RESULT_TYPE(T_ROUTE);
+    RESULT_VAL([[(struct f_val) { .type = T_ROUTE, .val.rte = *fs->rte, .val.eattrs = *fs->eattrs, }]]);
+  }
+
+  INST(FI_RTA_GET, 1, 1) {
     {
-      STATIC_ATTR;
       ACCESS_RTE;
-      struct rta *rta = (*fs->rte)->attrs;
+      ARG(1, T_ROUTE);
+      STATIC_ATTR;
+
+      struct rta *rta = v1.val.rte->attrs;
 
       switch (sa.sa_code)
       {
@@ -797,13 +806,15 @@
     }
   }
 
-  INST(FI_EA_GET, 0, 1) {	/* Access to extended attributes */
-    DYNAMIC_ATTR;
+  INST(FI_EA_GET, 1, 1) {	/* Access to extended attributes */
     ACCESS_RTE;
     ACCESS_EATTRS;
+    ARG(1, T_ROUTE);
+    DYNAMIC_ATTR;
     RESULT_TYPE(da.f_type);
     {
-      eattr *e = ea_find(*fs->eattrs, da.ea_code);
+      struct ea_list *eal = v1.val.eattrs;
+      eattr *e = ea_find(eal, da.ea_code);
 
       if (!e) {
 	RESULT_VAL(val_empty(da.f_type));

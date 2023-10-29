@@ -326,6 +326,8 @@ void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
 void rt_modify_stale(rtable *t, struct channel *c);
 void rt_schedule_prune(rtable *t);
+int rte_same(rte *, rte *);
+int rta_same(struct rta *, struct rta *);
 void rte_dump(rte *);
 void rte_free(rte *);
 rte *rte_do_cow(rte *);

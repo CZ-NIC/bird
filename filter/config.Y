@@ -38,15 +38,15 @@ static inline void f_method_call_start(struct f_inst *object)
     cf_error("Too many nested method calls");
 
   struct sym_scope *scope = f_type_method_scope(object->type);
-  if (!scope)
+  if (!scope && object->type != T_ROUTE)
     cf_error("No methods defined for type %s", f_type_name(object->type));
 
   FM = (struct f_method_scope) {
     .object = object,
     .main = new_config->current_scope,
     .scope = {
-      .next = NULL,
-      .hash = scope->hash,
+      .next = scope ? global_root_scope : NULL,
+      .hash = scope ? scope->hash : global_root_scope->hash,
       .active = 1,
       .block = 1,
       .readonly = 1,
@@ -244,6 +244,7 @@ f_new_lc_item(u32 f1, u32 t1, u32 f2, u32 t2, u32 f3, u32 t3)
   return t;
 }
 
+
 /*
  * Remove all new lines and doubled whitespaces
  * and convert all tabulators to spaces
@@ -302,9 +303,10 @@ static struct f_inst *
 f_lval_getter(struct f_lval *lval)
 {
   switch (lval->type) {
+    case F_LVAL_CONSTANT:	return f_new_inst(FI_CONSTANT, *(lval->sym->val));
     case F_LVAL_VARIABLE:	return f_new_inst(FI_VAR_GET, lval->sym);
-    case F_LVAL_SA:		return f_new_inst(FI_RTA_GET, lval->sa);
-    case F_LVAL_EA:		return f_new_inst(FI_EA_GET, lval->da);
+    case F_LVAL_SA:		return f_new_inst(FI_RTA_GET, lval->rte, lval->sa);
+    case F_LVAL_EA:		return f_new_inst(FI_EA_GET, lval->rte, lval->da);
     default:			bug("Unknown lval type");
   }
 }
@@ -313,8 +315,13 @@ static struct f_inst *
 f_lval_setter(struct f_lval *lval, struct f_inst *expr)
 {
   switch (lval->type) {
+    case F_LVAL_CONSTANT:	cf_error("Constant %s is read-only", lval->sym->name);
     case F_LVAL_VARIABLE:	return f_new_inst(FI_VAR_SET, expr, lval->sym);
-    case F_LVAL_SA:		return f_new_inst(FI_RTA_SET, expr, lval->sa);
+    case F_LVAL_SA:
+      if (lval->sa.readonly)
+	cf_error( "This static attribute is read-only.");
+      return f_new_inst(FI_RTA_SET, expr, lval->sa);
+
     case F_LVAL_EA:		return f_new_inst(FI_EA_SET, expr, lval->da);
     default:			bug("Unknown lval type");
   }
@@ -357,7 +364,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc ELSE
 
 %type <xp> cmds_int cmd_prep
-%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor var var_list var_list_r function_call symbol_value bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
+%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor var var_list var_list_r function_call bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
 %type <fda> dynamic_attr
 %type <fsa> static_attr
 %type <f> filter where_filter
@@ -447,6 +454,7 @@ type:
  | CLIST { $$ = T_CLIST; }
  | ECLIST { $$ = T_ECLIST; }
  | LCLIST { $$ = T_LCLIST; }
+ | ROUTE { $$ = T_ROUTE; }
  | type SET {
 	switch ($1) {
 	  case T_INT:
@@ -740,7 +748,7 @@ switch_body: /* EMPTY */ { $$ = NULL; }
  ;
 
 bgp_path_expr:
-   symbol_value { $$ = $1; }
+   lvalue { $$ = f_lval_getter(&$1); }
  | '(' term ')' { $$ = $2; }
  ;
 
@@ -822,23 +830,6 @@ function_call:
    }
  ;
 
-symbol_value: symbol_known
-  {
-    switch ($1->class) {
-      case SYM_CONSTANT_RANGE:
-	$$ = f_new_inst(FI_CONSTANT, *($1->val));
-	break;
-      case SYM_VARIABLE_RANGE:
-	$$ = f_new_inst(FI_VAR_GET, $1);
-	break;
-      case SYM_ATTRIBUTE:
-	$$ = f_new_inst(FI_EA_GET, *$1->attribute);
-	break;
-      default:
-	cf_error("Can't get value of symbol %s", $1->name);
-    }
-  }
- ;
 
 static_attr:
    FROM    { $$ = f_new_static_attr(T_IP,         SA_FROM,	0); }
@@ -866,6 +857,16 @@ method_name_cont:
    } '(' var_list ')' {
      $$ = f_dispatch_method($1, FM.object, $4, 1);
    }
+ | static_attr {
+     if (FM.object->type != T_ROUTE)
+       cf_error("Getting a route attribute from %s, need a route", f_type_name(FM.object->type));
+     $$ = f_new_inst(FI_RTA_GET, FM.object, $1);
+   }
+ | dynamic_attr {
+     if (FM.object->type != T_ROUTE)
+       cf_error("Getting a route attribute from %s, need a route", f_type_name(FM.object->type));
+     $$ = f_new_inst(FI_EA_GET, FM.object, $1);
+   }
  ;
 
 term:
@@ -887,13 +888,10 @@ term:
  | '!' term		{ $$ = f_new_inst(FI_NOT, $2); }
  | DEFINED '(' term ')' { $$ = f_new_inst(FI_DEFINED, $3); }
 
- | symbol_value   { $$ = $1; }
  | constant { $$ = $1; }
  | constructor { $$ = $1; }
 
- | static_attr { $$ = f_new_inst(FI_RTA_GET, $1); }
-
- | dynamic_attr { $$ = f_new_inst(FI_EA_GET, $1); }
+ | lvalue { $$ = f_lval_getter(&$1); }
 
  | term_dot_method
 
@@ -902,7 +900,7 @@ term:
  | '-' '-' EMPTY '-' '-' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_ECLIST)); }
  | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_LCLIST)); }
 
-| PREPEND '(' term ',' term ')' { $$ = f_dispatch_method_x("prepend", $3->type, $3, $5); }
+ | PREPEND '(' term ',' term ')' { $$ = f_dispatch_method_x("prepend", $3->type, $3, $5); }
  | ADD '(' term ',' term ')' { $$ = f_dispatch_method_x("add", $3->type, $3, $5); }
  | DELETE '(' term ',' term ')' { $$ = f_dispatch_method_x("delete", $3->type, $3, $5); }
  | FILTER '(' term ',' term ')' { $$ = f_dispatch_method_x("filter", $3->type, $3, $5); }
@@ -963,17 +961,8 @@ cmd:
      cf_pop_block_scope(new_config);
      $$ = f_for_cycle($3, $6, $9);
    }
- | symbol_known '=' term ';' {
-     switch ($1->class) {
-       case SYM_VARIABLE_RANGE:
-	 $$ = f_new_inst(FI_VAR_SET, $3, $1);
-	 break;
-       case SYM_ATTRIBUTE:
-	 $$ = f_new_inst(FI_EA_SET, $3, *$1->attribute);
-	 break;
-       default:
-	 cf_error("Can't assign to symbol %s", $1->name);
-     }
+ | lvalue '=' term ';' {
+     $$ = f_lval_setter(&$1, $3);
    }
  | RETURN term ';' {
      DBG( "Ook, we'll return the value\n" );
@@ -990,14 +979,6 @@ cmd:
 		f_type_name($2->type), this_function->name, f_type_name(this_function->function->return_type));
 
      $$ = f_new_inst(FI_RETURN, $2);
-   }
- | dynamic_attr '=' term ';' {
-     $$ = f_new_inst(FI_EA_SET, $3, $1);
-   }
- | static_attr '=' term ';' {
-     if ($1.readonly)
-       cf_error( "This static attribute is read-only.");
-     $$ = f_new_inst(FI_RTA_SET, $3, $1);
    }
  | UNSET '(' dynamic_attr ')' ';' {
      $$ = f_new_inst(FI_EA_UNSET, $3);
@@ -1043,17 +1024,21 @@ lvalue:
    CF_SYM_KNOWN {
      switch ($1->class)
      {
+       case SYM_CONSTANT_RANGE:
+	 $$ = (struct f_lval) { .type = F_LVAL_CONSTANT, .sym = $1, };
+	 break;
        case SYM_VARIABLE_RANGE:
-	 $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1 };
+	 $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1, };
          break;
        case SYM_ATTRIBUTE:
-         $$ = (struct f_lval) { .type = F_LVAL_EA, .da = *($1->attribute) };
+         $$ = (struct f_lval) { .type = F_LVAL_EA, .da = *($1->attribute), .rte = f_new_inst(FI_CURRENT_ROUTE), };
 	 break;
        default:
 	 cf_error("Variable name or custom attribute name required");
      }
    }
- | static_attr { $$ = (struct f_lval) { .type = F_LVAL_SA, .sa = $1 }; }
- | dynamic_attr { $$ = (struct f_lval) { .type = F_LVAL_EA, .da = $1 }; };
+ | static_attr { $$ = (struct f_lval) { .type = F_LVAL_SA, .sa = $1, .rte = f_new_inst(FI_CURRENT_ROUTE), }; }
+ | dynamic_attr { $$ = (struct f_lval) { .type = F_LVAL_EA, .da = $1, .rte = f_new_inst(FI_CURRENT_ROUTE), }; }
+ ;
 
 CF_END

@@ -1206,12 +1206,15 @@ rte_free_quick(rte *e)
   sl_free(e);
 }
 
-static int
+int
 rte_same(rte *x, rte *y)
 {
   /* rte.flags / rte.pflags are not checked, as they are internal to rtable */
   return
-    x->attrs == y->attrs &&
+    (
+     (x->attrs == y->attrs) ||
+     ((!x->attrs->cached || !y->attrs->cached) && rta_same(x->attrs, y->attrs))
+    ) &&
     x->src == y->src &&
     rte_is_filtered(x) == rte_is_filtered(y);
 }

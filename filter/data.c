@@ -56,6 +56,8 @@ static const char * const f_type_str[] = {
   [T_LC]	= "lc",
   [T_LCLIST]	= "lclist",
   [T_RD]	= "rd",
+
+  [T_ROUTE]	= "route",
 };
 
 const char *
@@ -206,6 +208,7 @@ val_compare(const struct f_val *v1, const struct f_val *v2)
     return net_compare(v1->val.net, v2->val.net);
   case T_STRING:
     return strcmp(v1->val.s, v2->val.s);
+  case T_ROUTE:
   default:
     return F_CMP_ERROR;
   }
@@ -296,6 +299,8 @@ val_same(const struct f_val *v1, const struct f_val *v2)
     return same_tree(v1->val.t, v2->val.t);
   case T_PREFIX_SET:
     return trie_same(v1->val.ti, v2->val.ti);
+  case T_ROUTE:
+    return rte_same(v1->val.rte, v2->val.rte);
   default:
     bug("Invalid type in val_same(): %x", v1->type);
   }
@@ -570,6 +575,21 @@ val_in_range(const struct f_val *v1, const struct f_val *v2)
 }
 
 /*
+ * rte_format - format route information
+ */
+static void
+rte_format(const struct rte *rte, buffer *buf)
+{
+  if (rte)
+    buffer_print(buf, "Route [%d] to %N from %s.%s via %s",
+                 rte->src->global_id, rte->net->n.addr,
+                 rte->sender->proto->name, rte->sender->name,
+                 rte->src->proto->name);
+  else
+    buffer_puts(buf, "[No route]");
+}
+
+/*
  * val_format - format filter value
  */
 void
@@ -598,6 +618,7 @@ val_format(const struct f_val *v, buffer *buf)
   case T_ECLIST: ec_set_format(v->val.ad, -1, buf2, 1000); buffer_print(buf, "(eclist %s)", buf2); return;
   case T_LCLIST: lc_set_format(v->val.ad, -1, buf2, 1000); buffer_print(buf, "(lclist %s)", buf2); return;
   case T_PATH_MASK: pm_format(v->val.path_mask, buf); return;
+  case T_ROUTE: rte_format(v->val.rte, buf); return;
   default:	buffer_print(buf, "[unknown type %x]", v->type); return;
   }
 }
