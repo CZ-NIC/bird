@@ -113,7 +113,7 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
     net_copy(e->net->n.addr, r->net);
 
     /* Evaluate the filter */
-    f_eval_rte(r->cmds, &e, static_lp);
+    f_eval_rte(r->cmds, &e, static_lp, 0, NULL, NULL);
 
     /* Remove the temporary node */
     e->net = NULL;
