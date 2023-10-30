@@ -326,6 +326,7 @@ rte *rte_find(net *net, struct rte_src *src);
 rte *rte_get_temp(struct rta *, struct rte_src *src);
 void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
 /* rte_update() moved to protocol.h to avoid dependency conflicts */
+rte *rte_find_old_best(net *net, rte *new, rte *old);
 int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
 rte *rt_export_merged(struct channel *c, net *net, rte **rt_free, linpool *pool, int silent);
 void rt_refresh_begin(rtable *t, struct channel *c);
@@ -485,7 +486,8 @@ typedef struct rta {
 #define RTS_L3VPN 16			/* MPLS L3VPN */
 #define RTS_AGGREGATED 17		/* Aggregated route */
 #define RTS_RADV 18			/* Router Advertisement */
-#define RTS_MAX 19
+#define RTS_BRIDGE 19
+#define RTS_MAX 20
 
 #define RTD_NONE 0			/* Undefined next hop */
 #define RTD_UNICAST 1			/* Next hop is neighbor router */
