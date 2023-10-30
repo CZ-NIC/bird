@@ -235,6 +235,7 @@ else
     linux*)
       sysdesc=linux
       default_iproutedir="/etc/iproute2"
+      proto_bridge=bridge
       ;;
     freebsd*)
       sysdesc=bsd
@@ -319,7 +320,7 @@ if test "$enable_mpls_kernel" != no ; then
   fi
 fi
 
-all_protocols="aggregator $proto_bfd babel bgp bmp l3vpn mrt ospf perf pipe radv rip rpki static"
+all_protocols="aggregator $proto_bfd babel bgp bmp $proto_bridge l3vpn mrt ospf perf pipe radv rip rpki static"
 
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
 
@@ -332,6 +333,7 @@ AH_TEMPLATE([CONFIG_BABEL], 	[Babel protocol])
 AH_TEMPLATE([CONFIG_BFD],	[BFD protocol])
 AH_TEMPLATE([CONFIG_BGP],	[BGP protocol])
 AH_TEMPLATE([CONFIG_BMP],	[BMP protocol])
+AH_TEMPLATE([CONFIG_BRIDGE],	[Bridge protocol])
 AH_TEMPLATE([CONFIG_L3VPN],	[L3VPN protocol])
 AH_TEMPLATE([CONFIG_MRT],	[MRT protocol])
 AH_TEMPLATE([CONFIG_OSPF],	[OSPF protocol])
