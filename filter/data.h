@@ -63,6 +63,7 @@ enum f_type {
   T_BYTESTRING = 0x2c,
 
   T_ROUTE = 0x78,
+  T_ROUTES_BLOCK = 0x79,
   T_SET = 0x80,
   T_PREFIX_SET = 0x81,
 } PACKED;

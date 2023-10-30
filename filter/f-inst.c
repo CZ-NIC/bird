@@ -617,6 +617,34 @@
     METHOD_CONSTRUCTOR("!for_next");
   }
 
+  INST(FI_ROUTES_BLOCK_FOR_NEXT, 3, 0) {
+    NEVER_CONSTANT;
+    ARG(1, T_ROUTES_BLOCK);
+
+    /* Loop auxiliary variable is initialized to T_VOID.
+     * In the first run, we initialize the auxiliary variable
+     * to the routes block supplied. It changes its type
+     * to T_ROUTES_BLOCK and therefore won't be run again. */
+    if (v2.type == T_VOID)
+      v2 = v1;
+
+    if (v2.val.rte)
+    {
+      /* There is some route to process, set it into the iterator variable.
+       * Its type has been already initialized by f_for_cycle(). */
+      v3.val.rte = v2.val.rte;
+      v3.val.eattrs = v3.val.rte->attrs->eattrs;
+
+      /* Prepare next route in the loop auxiliary variable */
+      v2.val.rte = v2.val.rte->next;
+
+      /* And execute the line */
+      LINE(2,0);
+    }
+
+    METHOD_CONSTRUCTOR("!for_next");
+  }
+
   INST(FI_CONDITION, 1, 0) {
     ARG(1, T_BOOL);
     if (v1.val.i)
