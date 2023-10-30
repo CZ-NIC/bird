@@ -484,7 +484,8 @@ typedef struct rta {
 #define RTS_PERF 15			/* Perf checker */
 #define RTS_L3VPN 16			/* MPLS L3VPN */
 #define RTS_AGGREGATED 17		/* Aggregated route */
-#define RTS_MAX 18
+#define RTS_BRIDGE 18
+#define RTS_MAX 19
 
 #define RTD_NONE 0			/* Undefined next hop */
 #define RTD_UNICAST 1			/* Next hop is neighbor router */
