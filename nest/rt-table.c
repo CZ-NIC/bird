@@ -1580,6 +1580,19 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
     }
 }
 
+rte *
+rte_find_old_best(net *net, rte *new, rte *old)
+{
+  u32 new_id = new ? new->id : 0;
+  rte *old_best = old;
+
+  for (rte *r = net->routes; r; r=r->next)
+    if ((r->id != new_id) && rte_better(r, old_best))
+      old_best = r;
+
+  return rte_is_valid(old_best) ? old_best: NULL;
+}
+
 static int rte_update_nest_cnt;		/* Nesting counter to allow recursive updates */
 
 static inline void
