@@ -122,7 +122,7 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
 
   /* Evaluate the filter */
   if (r->cmds)
-    f_eval_rte(r->cmds, e, 0, NULL, NULL);
+    f_eval_rte(r->cmds, e, 0, NULL, 0, NULL);
 
   rte_update(p->p.main_channel, r->net, e, src);
   static_free_source(src, r->index);
