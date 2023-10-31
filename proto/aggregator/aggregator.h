@@ -20,10 +20,11 @@
 struct aggregator_config {
   struct proto_config c;
   struct channel_config *src, *dst;
-  uint aggr_on_count;
-  uint aggr_on_da_count;
-  struct aggr_item *aggr_on;
+  const struct f_line *aggr_on;
+  const struct f_line *premerge;
   const struct f_line *merge_by;
+  uint aggr_on_count;
+  u8 aggr_on_net;
 };
 
 struct aggregator_route {
@@ -54,33 +55,14 @@ struct aggregator_proto {
   slab *route_slab;
 
   /* Aggregator rule */
+  const struct f_line *aggr_on;
   uint aggr_on_count;
-  uint aggr_on_da_count;
-  struct aggr_item *aggr_on;
+  u8 aggr_on_net;
 
   /* Merge filter */
+  const struct f_line *premerge;
   const struct f_line *merge_by;
   event reload_buckets;
-};
-
-enum aggr_item_type {
-  AGGR_ITEM_TERM,
-  AGGR_ITEM_STATIC_ATTR,
-  AGGR_ITEM_DYNAMIC_ATTR,
-};
-
-struct aggr_item {
-  enum aggr_item_type type;
-  union {
-    struct f_static_attr sa;
-    struct f_dynamic_attr da;
-    const struct f_line *line;
-  };
-};
-
-struct aggr_item_node {
-  const struct aggr_item_node *next;
-  struct aggr_item i;
 };
 
 #endif
