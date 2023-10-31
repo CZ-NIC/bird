@@ -160,7 +160,7 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
  * TWOARGS macro to get both of them evaluated.
  */
 static enum filter_return
-interpret(struct filter_state *fs, const struct f_line *line, uint argc, const struct f_val *argv, struct f_val *val)
+interpret(struct filter_state *fs, const struct f_line *line, uint argc, const struct f_val *argv, uint resc, struct f_val *resv)
 {
   /* Check of appropriate number of arguments */
   ASSERT(line->args == argc);
@@ -225,21 +225,14 @@ interpret(struct filter_state *fs, const struct f_line *line, uint argc, const s
     fstk->ecnt--;
   }
 
-  if (fstk->vcnt == 0) {
-    if (val) {
-      log_rl(&rl_runtime_err, L_ERR "filters: No value left on stack");
-      return F_ERROR;
-    }
-    return F_NOP;
+  if (fstk->vcnt != resc)
+  {
+    log_rl(&rl_runtime_err, L_ERR "Filter expected to leave %d values on stack but %d left instead", resc, fstk->vcnt);
+    return F_ERROR;
   }
 
-  if (val && (fstk->vcnt == 1)) {
-    *val = fstk->vstk[0];
-    return F_NOP;
-  }
-
-  log_rl(&rl_runtime_err, L_ERR "Too many items left on stack: %u", fstk->vcnt);
-  return F_ERROR;
+  memcpy(resv, fstk->vstk, sizeof(struct f_val) * resc);
+  return F_NOP;
 }
 
 
@@ -296,7 +289,7 @@ f_run_args(const struct filter *filter, struct rte **rte, struct linpool *tmp_po
   LOG_BUFFER_INIT(filter_state.buf);
 
   /* Run the interpreter itself */
-  enum filter_return fret = interpret(&filter_state, filter->root, argc, argv, NULL);
+  enum filter_return fret = interpret(&filter_state, filter->root, argc, argv, 0, NULL);
 
   if (filter_state.old_rta) {
     /*
@@ -348,7 +341,7 @@ f_run_args(const struct filter *filter, struct rte **rte, struct linpool *tmp_po
  */
 
 enum filter_return
-f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool, uint argc, const struct f_val *argv, struct f_val *pres)
+f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool, uint argc, const struct f_val *argv, uint resc, struct f_val *resv)
 {
   filter_state = (struct filter_state) {
     .stack = &filter_stack,
@@ -358,14 +351,14 @@ f_eval_rte(const struct f_line *expr, struct rte **rte, struct linpool *tmp_pool
 
   LOG_BUFFER_INIT(filter_state.buf);
 
-  return interpret(&filter_state, expr, argc, argv, pres);
+  return interpret(&filter_state, expr, argc, argv, resc, resv);
 }
 
 /*
  * f_eval - get a value of a term
  * @expr: filter line containing the term
  * @tmp_pool: long data may get allocated from this pool
- * @pres: here the output will be stored
+ * @pres: here the output will be stored if requested
  */
 enum filter_return
 f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
@@ -377,7 +370,7 @@ f_eval(const struct f_line *expr, struct linpool *tmp_pool, struct f_val *pres)
 
   LOG_BUFFER_INIT(filter_state.buf);
 
-  enum filter_return fret = interpret(&filter_state, expr, 0, NULL, pres);
+  enum filter_return fret = interpret(&filter_state, expr, 0, NULL, !!pres, pres);
   return fret;
 }
 
