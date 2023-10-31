@@ -60,6 +60,8 @@ static inline rte rte_init_from(const rte *r)
   };
 }
 
+int rte_same(const rte *, const rte *);
+
 struct rte_src {
   struct rte_src *next;			/* Hash chain */
   struct rte_owner *owner;		/* Route source owner */

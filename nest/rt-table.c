@@ -154,7 +154,7 @@ static void rt_delete(void *);
 static void rt_export_used(struct rt_table_exporter *, const char *, const char *);
 static void rt_export_cleanup(struct rtable_private *tab);
 
-static int rte_same(const rte *x, const rte *y);
+int rte_same(const rte *x, const rte *y);
 
 const char *rt_import_state_name_array[TIS_MAX] = {
   [TIS_DOWN] = "DOWN",
@@ -1674,12 +1674,15 @@ rte_validate(struct channel *ch, rte *e)
   return 1;
 }
 
-static int
+int
 rte_same(const rte *x, const rte *y)
 {
   /* rte.flags / rte.pflags are not checked, as they are internal to rtable */
   return
-    x->attrs == y->attrs &&
+    (
+     (x->attrs == y->attrs) ||
+     ((!(x->attrs->flags & EALF_CACHED) || !(y->attrs->flags & EALF_CACHED)) && ea_same(x->attrs, y->attrs))
+    ) &&
     x->src == y->src &&
     rte_is_filtered(x) == rte_is_filtered(y);
 }

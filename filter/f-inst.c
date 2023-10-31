@@ -666,18 +666,27 @@
     }
   }
 
-  INST(FI_RTA_GET, 0, 1) {
+  INST(FI_CURRENT_ROUTE, 0, 1) {
+    NEVER_CONSTANT;
+    ACCESS_RTE;
+    RESULT_TYPE(T_ROUTE);
+    RESULT_VAL([[(struct f_val) { .type = T_ROUTE, .val.rte = fs->rte, }]]);
+  }
+
+  INST(FI_RTA_GET, 1, 1) {
     {
+      ARG(1, T_ROUTE);
       STATIC_ATTR;
-      ACCESS_RTE;
+
+      struct rte *rte = v1.val.rte;
 
       switch (sa.sa_code)
       {
-      case SA_NET:	RESULT(sa.type, net, fs->rte->net); break;
-      case SA_PROTO:	RESULT(sa.type, s, fs->rte->src->owner->name); break;
+      case SA_NET:	RESULT(sa.type, net, rte->net); break;
+      case SA_PROTO:	RESULT(sa.type, s, rte->src->owner->name); break;
       default:
 	{
-	  struct eattr *nhea = ea_find(fs->rte->attrs, &ea_gen_nexthop);
+	  struct eattr *nhea = ea_find(rte->attrs, &ea_gen_nexthop);
 	  struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
 	  struct nexthop *nh = nhad ? &nhad->nh : NULL;
 
@@ -836,13 +845,13 @@
     }
   }
 
-  INST(FI_EA_GET, 0, 1) {	/* Access to extended attributes */
+  INST(FI_EA_GET, 1, 1) {	/* Access to extended attributes */
+    ARG(1, T_ROUTE);
     DYNAMIC_ATTR;
-    ACCESS_RTE;
     RESULT_TYPE(da->type);
     {
       struct f_val empty;
-      const eattr *e = ea_find(fs->rte->attrs, da->id);
+      const eattr *e = ea_find(v1.val.rte->attrs, da->id);
 
       if (e)
       {

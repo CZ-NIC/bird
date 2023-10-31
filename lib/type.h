@@ -42,6 +42,7 @@ union bval_long {
   const struct f_trie *ti;
   const struct f_path_mask *path_mask;
   struct f_path_mask_item pmi;
+  struct rte *rte;
 };
 
 
@@ -54,8 +55,9 @@ enum btype {
 /* Something but inaccessible. */
   T_OPAQUE = 0x02,		/* Opaque byte string (not filterable) */
   T_IFACE = 0x0c,		/* Pointer to an interface (inside adata) */
-  T_NEXTHOP_LIST = 0x2c,	/* The whole nexthop block */
-  T_HOSTENTRY = 0x2e,		/* Hostentry with possible MPLS labels */
+  T_ROUTE = 0x6a,		/* One route pointer */
+  T_NEXTHOP_LIST = 0x6c,	/* The whole nexthop block */
+  T_HOSTENTRY = 0x6e,		/* Hostentry with possible MPLS labels */
 
 /* Types shared with eattrs */
   T_INT = 0x01,			/* 32-bit unsigned integer number */

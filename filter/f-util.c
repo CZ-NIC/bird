@@ -195,7 +195,7 @@ f_implicit_roa_check(struct rtable_config *tab)
   if (!def)
     bug("Couldn't find BGP AS Path attribute definition.");
 
-  struct f_inst *path_getter = f_new_inst(FI_EA_GET, def);
+  struct f_inst *path_getter = f_new_inst(FI_EA_GET, f_new_inst(FI_CURRENT_ROUTE), def);
   struct sym_scope *scope = f_type_method_scope(path_getter->type);
   struct symbol *ms = scope ? cf_find_symbol_scope(scope, "last") : NULL;
 
@@ -205,7 +205,7 @@ f_implicit_roa_check(struct rtable_config *tab)
   struct f_static_attr fsa = f_new_static_attr(T_NET, SA_NET, 1);
 
   return f_new_inst(FI_ROA_CHECK,
-	    f_new_inst(FI_RTA_GET, fsa),
+	    f_new_inst(FI_RTA_GET, f_new_inst(FI_CURRENT_ROUTE), fsa),
 	    ms->method->new_inst(path_getter, NULL),
 	    tab);
 }

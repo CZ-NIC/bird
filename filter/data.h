@@ -12,6 +12,7 @@
 
 #include "nest/bird.h"
 #include "lib/type.h"
+#include "nest/iface.h"
 
 struct f_method {
   struct symbol *sym;
@@ -56,6 +57,7 @@ struct f_attr_bit {
 
 /* Filter l-value type */
 enum f_lval_type {
+  F_LVAL_CONSTANT,
   F_LVAL_VARIABLE,
   F_LVAL_SA,
   F_LVAL_EA,
@@ -65,6 +67,7 @@ enum f_lval_type {
 /* Filter l-value */
 struct f_lval {
   enum f_lval_type type;
+  struct f_inst *rte;
   union {
     struct symbol *sym;
     const struct ea_class *da;
