@@ -305,6 +305,9 @@ void val_format(const struct f_val *v, buffer *buf);
 char *val_format_str(struct linpool *lp, const struct f_val *v);
 const char *val_dump(const struct f_val *v);
 
+uint val_hash(struct f_val *);
+void mem_hash_mix_f_val(u64 *, struct f_val *);
+
 static inline int val_is_ip4(const struct f_val *v)
 { return (v->type == T_IP) && ipa_is_ip4(v->val.ip); }
 int val_in_range(const struct f_val *v1, const struct f_val *v2);
