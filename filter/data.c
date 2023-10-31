@@ -16,6 +16,7 @@
 #include "lib/unaligned.h"
 #include "lib/net.h"
 #include "lib/ip.h"
+#include "lib/hash.h"
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
@@ -576,6 +577,79 @@ val_in_range(const struct f_val *v1, const struct f_val *v2)
     return as_path_match_set(v1->val.ad, v2->val.t);
 
   return F_CMP_ERROR;
+}
+
+uint
+val_hash(struct f_val *v)
+{
+  u64 haux;
+  mem_hash_init(&haux);
+  mem_hash_mix_f_val(&haux, v);
+  return mem_hash_value(&haux);
+}
+
+void
+mem_hash_mix_f_val(u64 *h, struct f_val *v)
+{
+  mem_hash_mix_num(h, v->type);
+
+#define MX(k) mem_hash_mix(h, &IT(k), sizeof IT(k));
+#define IT(k) v->val.k
+
+  switch (v->type)
+  {
+    case T_VOID:
+      break;
+    case T_INT:
+    case T_BOOL:
+    case T_PAIR:
+    case T_QUAD:
+    case T_ENUM:
+      MX(i);
+      break;
+    case T_EC:
+    case T_RD:
+      MX(ec);
+      break;
+    case T_LC:
+      MX(lc);
+      break;
+    case T_IP:
+      MX(ip);
+      break;
+    case T_NET:
+      mem_hash_mix_num(h, net_hash(IT(net)));
+      break;
+    case T_STRING:
+      mem_hash_mix_str(h, IT(s));
+      break;
+    case T_PATH_MASK:
+      mem_hash_mix(h, IT(path_mask), sizeof(*IT(path_mask)) + IT(path_mask)->len * sizeof (IT(path_mask)->item));
+      break;
+    case T_PATH:
+    case T_CLIST:
+    case T_ECLIST:
+    case T_LCLIST:
+    case T_BYTESTRING:
+      mem_hash_mix(h, IT(ad)->data, IT(ad)->length);
+      break;
+    case T_SET:
+      MX(t);
+      break;
+    case T_PREFIX_SET:
+      MX(ti);
+      break;
+
+    case T_NONE:
+    case T_PATH_MASK_ITEM:
+    case T_ROUTE:
+    case T_ROUTES_BLOCK:
+    case T_OPAQUE:
+    case T_NEXTHOP_LIST:
+    case T_HOSTENTRY:
+    case T_IFACE:
+      bug("Invalid type %s in f_val hashing", f_type_name(v->type));
+  }
 }
 
 /*
