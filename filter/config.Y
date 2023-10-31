@@ -106,6 +106,10 @@ f_new_var(struct sym_scope *s)
   return offset;
 }
 
+/* Macro for top-level pre-defined variables. */
+#define f_predefined_variable(conf_, name_, type_) \
+    cf_define_symbol(conf_, cf_get_symbol(conf_, name_), SYM_VARIABLE | type_, offset, f_new_var(conf_->current_scope))
+
 /*
  * Sets and their items are during parsing handled as lists, linked
  * through left ptr. The first item in a list also contains a pointer

@@ -76,6 +76,9 @@ struct filter_state {
   /* The route we are processing. This may be NULL to indicate no route available. */
   struct rte *rte;
 
+  /* Additional external values provided to the filter */
+  const struct f_val *val;
+
   /* Buffer for log output */
   log_buffer buf;
 
@@ -109,18 +112,20 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
  * TWOARGS macro to get both of them evaluated.
  */
 static enum filter_return
-interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
+interpret(struct filter_state *fs, const struct f_line *line, uint argc, const struct f_val *argv, struct f_val *val)
 {
-  /* No arguments allowed */
-  ASSERT(line->args == 0);
+  /* Check of appropriate number of arguments */
+  ASSERT(line->args == argc);
 
   /* Initialize the filter stack */
   struct filter_stack *fstk = &fs->stack;
 
-  fstk->vcnt = line->vars;
-  memset(fstk->vstk, 0, sizeof(struct f_val) * line->vars);
+  /* Set the arguments and top-level variables */
+  fstk->vcnt = line->vars + line->args;
+  memcpy(fstk->vstk, argv, sizeof(struct f_val) * line->args);
+  memset(fstk->vstk + argc, 0, sizeof(struct f_val) * line->vars);
 
-  /* The same as with the value stack. Not resetting the stack for performance reasons. */
+  /* The same as with the value stack. Not resetting the stack completely for performance reasons. */
   fstk->ecnt = 1;
   fstk->estk[0] = (struct filter_exec_stack) {
     .line = line,
@@ -210,6 +215,12 @@ f_run(const struct filter *filter, struct rte *rte, int flags)
   if (filter == FILTER_REJECT)
     return F_REJECT;
 
+  return f_run_args(filter, rte, 0, NULL, flags);
+}
+
+enum filter_return
+f_run_args(const struct filter *filter, struct rte *rte, uint argc, const struct f_val *argv, int flags)
+{
   DBG( "Running filter `%s'...", filter->name );
 
   /* Initialize the filter state */
@@ -221,7 +232,7 @@ f_run(const struct filter *filter, struct rte *rte, int flags)
   f_stack_init(filter_state);
 
   /* Run the interpreter itself */
-  enum filter_return fret = interpret(&filter_state, filter->root, NULL);
+  enum filter_return fret = interpret(&filter_state, filter->root, argc, argv, NULL);
 
   /* Process the filter output, log it and return */
   if (fret < F_ACCEPT) {
@@ -247,7 +258,7 @@ f_run(const struct filter *filter, struct rte *rte, int flags)
  */
 
 enum filter_return
-f_eval_rte(const struct f_line *expr, struct rte *rte)
+f_eval_rte(const struct f_line *expr, struct rte *rte, uint argc, const struct f_val *argv, struct f_val *pres)
 {
   filter_state = (struct filter_state) {
     .rte = rte,
@@ -255,9 +266,7 @@ f_eval_rte(const struct f_line *expr, struct rte *rte)
 
   f_stack_init(filter_state);
 
-  ASSERT(!rta_is_cached(rte->attrs));
-
-  return interpret(&filter_state, expr, NULL);
+  return interpret(&filter_state, expr, argc, argv, pres);
 }
 
 /*
@@ -273,7 +282,7 @@ f_eval(const struct f_line *expr, struct f_val *pres)
 
   f_stack_init(filter_state);
 
-  enum filter_return fret = interpret(&filter_state, expr, pres);
+  enum filter_return fret = interpret(&filter_state, expr, 0, NULL, pres);
   return fret;
 }
 

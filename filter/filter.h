@@ -53,7 +53,8 @@ struct filter {
 struct rte;
 
 enum filter_return f_run(const struct filter *filter, struct rte *rte, int flags);
-enum filter_return f_eval_rte(const struct f_line *expr, struct rte *rte);
+enum filter_return f_run_args(const struct filter *filter, struct rte *rte, uint argc, const struct f_val *argv, int flags);
+enum filter_return f_eval_rte(const struct f_line *expr, struct rte *rte, uint argc, const struct f_val *argv, struct f_val *pres);
 enum filter_return f_eval_buf(const struct f_line *expr, buffer *buf);
 
 struct f_val cf_eval_tmp(const struct f_inst *inst, int type);
