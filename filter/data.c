@@ -61,6 +61,7 @@ static const char * const f_type_str[] = {
   [T_RD]	= "rd",
 
   [T_ROUTE]	= "route",
+  [T_ROUTES_BLOCK] = "block of routes",
 
   [T_SET]	= "set",
   [T_PREFIX_SET] = "prefix set",
@@ -82,6 +83,7 @@ f_type_element_type(btype t)
     case T_CLIST:  return T_PAIR;
     case T_ECLIST: return T_EC;
     case T_LCLIST: return T_LC;
+    case T_ROUTES_BLOCK: return T_ROUTE;
     default: return T_VOID;
   };
 }
@@ -203,6 +205,7 @@ val_compare(const struct f_val *v1, const struct f_val *v2)
   case T_STRING:
     return strcmp(v1->val.s, v2->val.s);
   case T_ROUTE:
+  case T_ROUTES_BLOCK:
   default:
     return F_CMP_ERROR;
   }
@@ -295,6 +298,13 @@ val_same(const struct f_val *v1, const struct f_val *v2)
     return trie_same(v1->val.ti, v2->val.ti);
   case T_ROUTE:
     return rte_same(v1->val.rte, v2->val.rte);
+  case T_ROUTES_BLOCK:
+    if (v1->val.rte_block.len != v2->val.rte_block.len)
+      return 0;
+    for (uint i=0; i < v1->val.rte_block.len; i++)
+      if (!rte_same(v1->val.rte_block.rte[i], v2->val.rte_block.rte[i]))
+	return 0;
+    return 1;
   default:
     bug("Invalid type in val_same(): %x", v1->type);
   }
@@ -583,6 +593,19 @@ rte_format(const struct rte *rte, buffer *buf)
     buffer_puts(buf, "[No route]");
 }
 
+static void
+rte_block_format(const struct rte_block *block, buffer *buf)
+{
+  buffer_print(buf, "Block of routes:");
+
+  for (uint i = 0; i < block->len; i++)
+  {
+    buffer_print(buf, "%s%d: ", i ? "; " : " ", i);
+    rte_format(block->rte[i], buf);
+  }
+}
+
+
 /*
  * val_format - format filter value
  */
@@ -613,6 +636,7 @@ val_format(const struct f_val *v, buffer *buf)
   case T_LCLIST: lc_set_format(v->val.ad, -1, buf2, 1000); buffer_print(buf, "(lclist %s)", buf2); return;
   case T_PATH_MASK: pm_format(v->val.path_mask, buf); return;
   case T_ROUTE: rte_format(v->val.rte, buf); return;
+  case T_ROUTES_BLOCK: rte_block_format(&v->val.rte_block, buf); return;
   default:	buffer_print(buf, "[unknown type %x]", v->type); return;
   }
 }

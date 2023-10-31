@@ -624,6 +624,19 @@
     METHOD_CONSTRUCTOR("!for_next");
   }
 
+  INST(FI_ROUTES_BLOCK_FOR_NEXT, 3, 0) {
+    NEVER_CONSTANT;
+    ARG(1, T_ROUTES_BLOCK);
+
+    if (v2.val.i < v1.val.rte_block.len)
+    {
+      v3.val.rte = v1.val.rte_block.rte[v2.val.i++];
+      LINE(2,0);
+    }
+
+    METHOD_CONSTRUCTOR("!for_next");
+  }
+
   INST(FI_CONDITION, 1, 0) {
     ARG(1, T_BOOL);
     if (v1.val.i)
