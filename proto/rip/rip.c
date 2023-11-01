@@ -992,19 +992,16 @@ rip_timer(timer *t)
     }
 
     /* Propagating eventual change */
-    if (changed || p->rt_reload)
+    if ((changed || p->rt_reload) && (cir == NULL || channel_import_request_prefilter(cir, en->n.addr)))
     {
-      if (cir == NULL || import_prefilter_for_protocols(cir, en->n.addr))
-      {
-        /*
-         * We have to restart the iteration because there may be a cascade of
-         * synchronous events rip_announce_rte() -> nest table change ->
-         * rip_rt_notify() -> p->rtable change, invalidating hidden variables.
-         */
-        FIB_ITERATE_PUT_NEXT(&fit, &p->rtable);
-        rip_announce_rte(p, en);
-        goto loop;
-      }
+      /*
+       * We have to restart the iteration because there may be a cascade of
+       * synchronous events rip_announce_rte() -> nest table change ->
+       * rip_rt_notify() -> p->rtable change, invalidating hidden variables.
+       */
+      FIB_ITERATE_PUT_NEXT(&fit, &p->rtable);
+      rip_announce_rte(p, en);
+      goto loop;
     }
 
     /* Checking stale entries for garbage collection timeout */

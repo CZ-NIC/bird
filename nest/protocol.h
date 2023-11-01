@@ -686,7 +686,7 @@ int proto_configure_channel(struct proto *p, struct channel **c, struct channel_
 
 void channel_set_state(struct channel *c, uint state);
 void channel_schedule_reload(struct channel *c, struct channel_import_request *cir);
-int import_prefilter_for_protocols(struct channel_import_request *cir_head, const net_addr *n);
+int channel_import_request_prefilter(struct channel_import_request *cir_head, const net_addr *n);
 
 static inline void channel_init(struct channel *c) { channel_set_state(c, CS_START); }
 static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP); }

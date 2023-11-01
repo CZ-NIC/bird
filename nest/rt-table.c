@@ -1251,7 +1251,6 @@ rpe_next(struct rt_pending_export *rpe, struct rte_src *src)
 }
 
 static struct rt_pending_export * rt_next_export_fast(struct rt_pending_export *last);
-
 static int
 rte_export(struct rt_table_export_hook *th, struct rt_pending_export *rpe)
 {
@@ -2213,6 +2212,7 @@ rt_table_export_start_feed(struct rtable_private *tab, struct rt_table_export_ho
 {
   struct rt_exporter *re = &tab->exporter.e;
   struct rt_export_request *req = hook->h.req;
+
   /* stats zeroed by mb_allocz */
   switch (req->prefilter.mode)
   {

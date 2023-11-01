@@ -1275,7 +1275,7 @@ This argument can be omitted if there exists only a single instance.
 	command was used to change filters.
 
 	If partial <prefix> option is used, only corresponding routes are reloaded.
-	Protocol BGP does partial reload only if it has locked table, otherwise partial reload for BGP is refused.
+	Protocol BGP does partial reload only if it has _import_ table enabled, otherwise partial reload for BGP is refused.
 
 	Re-export always succeeds, but re-import is protocol-dependent and might
 	fail (for example, if BGP neighbor does not support route-refresh

@@ -1568,7 +1568,12 @@ bgp_reload_routes(struct channel *C, struct channel_import_request *cir)
 
   /* Ignore non-BGP channels */
   if (C->class != &channel_bgp)
+  {
+    if (cir)
+      cir->done(cir);
     return 1;
+  }
+
   if (cir)
   {
     if (cir->trie)
@@ -1576,6 +1581,7 @@ bgp_reload_routes(struct channel *C, struct channel_import_request *cir)
       cir->done(cir);
       return 0;
     }
+    /* We do not need cir anymore and later we will not be able to detect when to free it. */
     cir->done(cir);
   }
 

@@ -441,10 +441,7 @@ ospf_reload_routes(struct channel *C, struct channel_import_request *cir)
     p->cir = cir;
   }
   if (p->calcrt == 2)
-  {
-    /*todo*/
     return 1;
-  }
 
   OSPF_TRACE(D_EVENTS, "Scheduling routing table calculation with route reload");
   p->calcrt = 2;
@@ -474,9 +471,7 @@ ospf_disp(timer * timer)
 
   /* Calculate routing table */
   if (p->calcrt)
-  {
     ospf_rt_spf(p);
-    }
 
   /* Cleanup after graceful restart */
   if (p->gr_cleanup)

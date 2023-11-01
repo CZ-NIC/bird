@@ -767,9 +767,17 @@ krt_if_notify(struct proto *P, uint flags, struct iface *iface UNUSED)
 }
 
 static int
-krt_reload_routes(struct channel *C, struct channel_import_request *cir UNUSED)
+krt_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct krt_proto *p = (void *) C->proto;
+
+  if (cir && cir->trie)
+  {
+    cir->done(cir);
+    return 0;
+  }
+  if (cir)
+    cir->done(cir);
 
   /* Although we keep learned routes in krt_table, we rather schedule a scan */
 
@@ -1037,5 +1045,3 @@ krt_build(void)
       &ea_krt_metric,
       );
 }
-
-

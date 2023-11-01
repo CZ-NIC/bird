@@ -107,6 +107,15 @@ proto_postconfig(void)
   this_proto = NULL;
 }
 
+static void
+channel_reload_out_done_main(void *_prr)
+{
+  struct proto_reload_request *prr = _prr;
+  ASSERT_THE_BIRD_LOCKED;
+
+  rfree(prr->trie->lp);
+}
+
 static inline void
 proto_call_cmd_reload(struct proto_spec ps, int dir, const struct f_trie *trie)
 {
@@ -114,19 +123,23 @@ proto_call_cmd_reload(struct proto_spec ps, int dir, const struct f_trie *trie)
   *prr = (struct proto_reload_request) {
     .trie = trie,
     .dir = dir,
-    .counter =1,
+    .counter = 1,
   };
   if (trie)
   {
+    /* CLI linpool is moved to trie, because trie is need for longer time
+    than the linpool would exist in CLI. The linpool is freed in channel_reload_out_done_main */
     ASSERT_DIE(this_cli->parser_pool == prr->trie->lp);
     rmove(this_cli->parser_pool, &root_pool);
     this_cli->parser_pool = lp_new(this_cli->pool);
     prr->ev = (event) {
       .data = prr,
+      .hook = channel_reload_out_done_main,
     };
   }
 
   proto_apply_cmd(ps, proto_cmd_reload, 1, (uintptr_t) prr);
+  /* This function used reference to this trie, so it is freed here as well as in protocols*/
   if (trie)
     if (atomic_fetch_sub_explicit(&prr->counter, 1, memory_order_acq_rel) == 1)
       ev_send_loop(&main_birdloop, &prr->ev);

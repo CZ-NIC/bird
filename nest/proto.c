@@ -60,8 +60,6 @@ static void channel_refeed_stopped(struct rt_export_request *req);
 static void channel_check_stopped(struct channel *c);
 static void channel_reload_in_done(struct channel_import_request *cir);
 static void channel_request_partial_reload(struct channel *c, struct channel_import_request *cir);
-void print_trie_node(const struct f_trie_node4 *t, int i);
-
 
 static inline int proto_is_done(struct proto *p)
 { return (p->proto_state == PS_DOWN) && proto_is_inactive(p); }
@@ -90,6 +88,7 @@ channel_export_log_state_change(struct rt_export_request *req, u8 state)
 {
   struct channel *c = SKIP_BACK(struct channel, out_req, req);
   CD(c, "Channel export state changed to %s", rt_export_state_name(state));
+
   switch (state)
   {
     case TES_FEEDING:
@@ -107,6 +106,7 @@ channel_refeed_log_state_change(struct rt_export_request *req, u8 state)
 {
   struct channel *c = SKIP_BACK(struct channel, refeed_req, req);
   CD(c, "Channel export state changed to %s", rt_export_state_name(state));
+
   switch (state)
   {
     case TES_FEEDING:
@@ -290,6 +290,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   add_tail(&p->channels, &c->n);
 
   CD(c, "Connected to table %s", c->table->name);
+
   return c;
 }
 
@@ -340,6 +341,7 @@ proto_remove_channels(struct proto *p)
   WALK_LIST_FIRST(c, p->channels)
     proto_remove_channel(p, c);
 }
+
 
 struct roa_subscription {
   node roa_node;
@@ -406,6 +408,7 @@ static void
 channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
+
   switch (net->type)
   {
     case NET_ROA4:
@@ -417,6 +420,7 @@ channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struc
     default:
       bug("ROA table sent us a non-roa export");
   }
+
   settle_kick(&s->settle, s->c->proto->loop);
 
   rpe_mark_seen_all(req->hook, first, NULL, NULL);
@@ -428,6 +432,7 @@ channel_dump_roa_req(struct rt_export_request *req)
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
   struct channel *c = s->c;
   struct rtable_private *tab = SKIP_BACK(struct rtable_private, exporter.e, req->hook->table);
+
   debug("  Channel %s.%s ROA %s change notifier from table %s request %p\n",
       c->proto->name, c->name,
       (s->settle.hook == channel_roa_in_changed) ? "import" : "export",
@@ -439,6 +444,7 @@ channel_roa_is_subscribed(struct channel *c, rtable *tab, int dir)
 {
   void (*hook)(struct settle *) =
     dir ? channel_roa_in_changed : channel_roa_out_changed;
+
   struct roa_subscription *s;
   node *n;
 
@@ -457,6 +463,7 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
     return;
 
   struct roa_subscription *s = mb_allocz(c->proto->pool, sizeof(struct roa_subscription));
+
   *s = (struct roa_subscription) {
     .settle = SETTLE_INIT(&c->roa_settle, dir ? channel_roa_in_changed : channel_roa_out_changed, NULL),
     .c = c,
@@ -471,6 +478,7 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
       .export_one = channel_export_one_roa,
     },
   };
+
   add_tail(&c->roa_subscriptions, &s->roa_node);
   rt_request_export(tab, &s->req);
 }
@@ -714,6 +722,7 @@ channel_refeed_stopped(struct rt_export_request *req)
   struct channel *c = SKIP_BACK(struct channel, refeed_req, req);
 
   req->hook = NULL;
+
   channel_feed_end(c);
 }
 
@@ -721,6 +730,7 @@ static void
 channel_init_feeding(struct channel *c)
 {
   int no_trie = 0;
+
   for (struct channel_feeding_request *cfrp = c->refeed_pending; cfrp; cfrp = cfrp->next)
     if (cfrp->type == CFRT_DIRECT)
     {
@@ -757,6 +767,7 @@ channel_refeed_prefilter(const struct rt_prefilter *p, const net_addr *n)
     SKIP_BACK(struct channel, refeed_req,
 	SKIP_BACK(struct rt_export_request, prefilter, p)
 	);
+
   ASSERT_DIE(c->refeeding);
   for (struct channel_feeding_request *cfr = c->refeeding; cfr; cfr = cfr->next)
     if (!cfr->trie || trie_match_net(cfr->trie, n))
@@ -765,7 +776,7 @@ channel_refeed_prefilter(const struct rt_prefilter *p, const net_addr *n)
 }
 
 int
-import_prefilter_for_protocols(struct channel_import_request *cir_head, const net_addr *n)
+channel_import_request_prefilter(struct channel_import_request *cir_head, const net_addr *n)
 {
   for (struct channel_import_request *cir = cir_head; cir; cir = cir->next)
   {
@@ -783,12 +794,8 @@ channel_import_prefilter(const struct rt_prefilter *p, const net_addr *n)
 	SKIP_BACK(struct rt_export_request, prefilter, p)
 	);
   ASSERT_DIE(c->importing);
-  for (struct channel_import_request *cir = c->importing; cir; cir = cir->next)
-  {
-    if (!cir->trie || trie_match_net(cir->trie, n))
-      return 1;
-  }
-  return 0;
+
+  return channel_import_request_prefilter(c->importing, n);
 }
 
 static void
@@ -857,14 +864,16 @@ channel_schedule_reload(struct channel *c, struct channel_import_request *cir)
     c->reload_pending = 1;
     return;
   }
-  struct channel_import_request *last = cir;
-  while (last)
+
+  /* If there is any full-reload request, we can disregard all partials */
+  for (struct channel_import_request *last = cir; last && no_trie==0;)
   {
     if (!last->trie)
       no_trie = 1;
-    last = last->next;
+     last = last->next;
   }
 
+  /* activating pending imports */
   c->importing = c->import_pending;
   c->import_pending = NULL;
 
@@ -1090,6 +1099,7 @@ void
 channel_request_feeding(struct channel *c, struct channel_feeding_request *cfr)
 {
   ASSERT_DIE(c->out_req.hook);
+
   CD(c, "Feeding requested (%s)",
       cfr->type == CFRT_DIRECT ? "direct" :
       (cfr->trie ? "partial" : "auxiliary"));
@@ -1151,7 +1161,7 @@ channel_request_reload(struct channel *c)
   if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
     channel_schedule_reload(c, cir);
   else if (! c->proto->reload_routes(c, cir))
-    bug( "Partial reload was refused. Maybe you tried partial reload on BGP with unlocked table?");
+    bug("Channel %s.%s refused full import reload.", c->proto->name, c->name);
 }
 
 static void
@@ -1165,7 +1175,7 @@ channel_request_partial_reload(struct channel *c, struct channel_import_request 
   if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
     channel_schedule_reload(c, cir);
   else if (! c->proto->reload_routes(c, cir))
-    cli_msg(-15, "Partial reload was refused. Maybe you tried partial reload on BGP with unlocked table?");
+    cli_msg(-15, "%s.%s: partial reload refused, please run full reload instead", c->proto->name, c->name);
 }
 
 const struct channel_class channel_basic = {
@@ -2768,15 +2778,6 @@ struct channel_cmd_reload_import_request {
 };
 
 static void
-channel_reload_out_done_main(void *_prr)
-{
-  struct proto_reload_request *prr = _prr;
-  ASSERT_THE_BIRD_LOCKED;
-
-  rfree(prr->trie->lp);
-}
-
-static void
 channel_reload_out_done(struct channel_feeding_request *cfr)
 {
   struct channel_cmd_reload_feeding_request *ccrfr = SKIP_BACK(struct channel_cmd_reload_feeding_request, cfr, cfr);
@@ -2796,8 +2797,6 @@ void
 proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
 {
   struct proto_reload_request *prr = (void *) _prr;
-  if (prr->trie)
-    prr->ev.hook = channel_reload_out_done_main;
   struct channel *c;
   if (p->disabled)
   {
