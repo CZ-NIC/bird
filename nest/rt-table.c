@@ -1210,7 +1210,7 @@ rte_same(rte *x, rte *y)
 {
   /* rte.flags / rte.pflags are not checked, as they are internal to rtable */
   return
-    (
+    (x == y) || (
      (x->attrs == y->attrs) ||
      ((!x->attrs->cached || !y->attrs->cached) && rta_same(x->attrs, y->attrs))
     ) &&
