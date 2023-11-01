@@ -223,7 +223,8 @@ struct nexthop_adata {
 #define RTS_BABEL 13			/* Babel route */
 #define RTS_RPKI 14			/* Route Origin Authorization */
 #define RTS_PERF 15			/* Perf checker */
-#define RTS_MAX 16
+#define RTS_AGGREGATED 16		/* Aggregated route */
+#define RTS_MAX 17
 
 #define RTD_NONE 0			/* Undefined next hop */
 #define RTD_UNICAST 1			/* A standard next hop */

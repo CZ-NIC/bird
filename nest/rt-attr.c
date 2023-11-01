@@ -91,6 +91,8 @@ const char * const rta_src_names[RTS_MAX] = {
   [RTS_PIPE]		= "pipe",
   [RTS_BABEL]		= "Babel",
   [RTS_RPKI]		= "RPKI",
+  [RTS_PERF]		= "Perf",
+  [RTS_AGGREGATED]	= "aggregated",
 };
 
 static void

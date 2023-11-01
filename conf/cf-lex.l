@@ -76,7 +76,7 @@ HASH_DEFINE_REHASH_FN(SYM, struct symbol)
 /* Global symbol scopes */
 pool *global_root_scope_pool;
 linpool *global_root_scope_linpool;
-static struct sym_scope
+struct sym_scope
   global_root_scope = {
   },
   global_filter_scope = {

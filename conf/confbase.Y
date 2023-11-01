@@ -97,6 +97,7 @@ CF_DECLS
   struct settle_config settle;
   struct adata *ad;
   const struct adata *bs;
+  struct aggr_item_node *ai;
 }
 
 %token END CLI_MARKER INVALID_TOKEN ELSECOL DDOT

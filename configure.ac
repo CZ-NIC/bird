@@ -307,13 +307,14 @@ if test "$enable_mpls_kernel" != no ; then
 fi
 
 # temporarily removed "mrt" from all_protocols to speed up 3.0-alpha1 release
-all_protocols="bfd babel bgp ospf perf pipe radv rip rpki static"
+all_protocols="aggregator bfd babel bgp ospf perf pipe radv rip rpki static"
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
 
 if test "$with_protocols" = all ; then
   with_protocols="$all_protocols"
 fi
 
+AH_TEMPLATE([CONFIG_AGGREGATOR],[Aggregator protocol])
 AH_TEMPLATE([CONFIG_BABEL], 	[Babel protocol])
 AH_TEMPLATE([CONFIG_BFD],	[BFD protocol])
 AH_TEMPLATE([CONFIG_BGP],	[BGP protocol])

@@ -652,6 +652,8 @@ f_register_method(enum btype t, const byte *name, struct f_method *dsc)
   sym->method = dsc;
 }
 
+extern struct sym_scope global_filter_scope;
+
 void f_type_methods_register(void)
 {
   struct f_method *method;
@@ -660,6 +662,8 @@ FID_WR_PUT(13)
 
   for (uint i = 0; i < ARRAY_SIZE(f_type_method_scopes); i++)
     f_type_method_scopes[i].readonly = 1;
+
+  f_type_method_scopes[T_ROUTE].next = &global_filter_scope;
 }
 
 /* Line dumpers */

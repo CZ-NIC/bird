@@ -1089,7 +1089,6 @@ rt_notify_merged(struct rt_export_request *req, const net_addr *n,
     const rte **feed, uint count)
 {
   struct channel *c = channel_from_export_request(req);
-
   // struct proto *p = c->proto;
 
 #if 0 /* TODO: Find whether this check is possible when processing multiple changes at once. */

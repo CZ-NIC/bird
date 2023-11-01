@@ -40,11 +40,8 @@ static inline void f_method_call_start(struct f_inst *object)
     cf_error("Too many nested method calls");
 
   struct sym_scope *scope = f_type_method_scope(object->type);
-  if (!scope && object->type != T_ROUTE)
+  if (!scope->hash.count && !scope->next)
     cf_error("No methods defined for type %s", f_type_name(object->type));
-
-  if (!scope)
-    scope = config->root_scope->next;
 
   /* Replacing the current symbol scope with the appropriate method scope
      for the given type. */

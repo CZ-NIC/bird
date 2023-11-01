@@ -83,6 +83,7 @@ u32 as_path_get_last_nonaggregated(const struct adata *path);
 int as_path_contains(const struct adata *path, u32 as, int min);
 int as_path_match_set(const struct adata *path, const struct f_tree *set);
 const struct adata *as_path_filter(struct linpool *pool, const struct adata *path, const struct f_val *set, int pos);
+int as_path_compare(const struct adata *path1, const struct adata *path2);
 int as_path_walk(const struct adata *path, uint *pos, uint *val);
 
 static inline struct adata *as_path_prepend(struct linpool *pool, const struct adata *path, u32 as)

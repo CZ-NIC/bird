@@ -93,7 +93,7 @@ void protos_dump_all(void);
 
 extern struct protocol
   proto_device, proto_radv, proto_rip, proto_static, proto_mrt,
-  proto_ospf, proto_perf,
+  proto_ospf, proto_perf, proto_aggregator,
   proto_pipe, proto_bgp, proto_bmp, proto_bfd, proto_babel, proto_rpki;
 
 /*
