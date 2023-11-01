@@ -75,6 +75,7 @@ aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *b
   if (!bucket->rte)
   {
     rte_update(p->dst, net, NULL, bucket->last_src);
+    rt_unlock_source(bucket->last_src);
     bucket->last_src = NULL;
     return;
   }
@@ -410,6 +411,9 @@ aggregator_shutdown(struct proto *P)
       rta_free(arte->rte.attrs);
       sl_free(arte);
     }
+
+    if (b->last_src)
+      rt_unlock_source(b->last_src);
 
     ASSERT_DIE(b->count == 0);
     HASH_REMOVE(p->buckets, AGGR_BUCK, b);
