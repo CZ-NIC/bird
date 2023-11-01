@@ -512,7 +512,7 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
 	  }
 
 	  /* The filehandle is no longer needed */
-	  if (l->rf != &rf_stderr)
+	  if ((l->rf != &rf_stderr ) && (l->rf != dbg_rf))
 	  {
 	    log_lock();
 	    rfree(l->rf);
@@ -608,8 +608,8 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
     /* Store new mask after opening new files to minimize missing log message race conditions */
     atomic_store_explicit(&ol->mask, ol->new_mask, memory_order_release);
 
-    /* Never close syslog channel */
-    if (ol->new_mask || !ol->rf)
+    /* Never close syslog channel or debug */
+    if (ol->new_mask || !ol->rf || (ol->rf == dbg_rf))
     {
       pprev = &ol->next;
       ol = atomic_load_explicit(pprev, memory_order_acquire);
