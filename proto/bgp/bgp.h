@@ -96,6 +96,7 @@ struct bgp_config {
   u32 default_med;			/* Default value for MULTI_EXIT_DISC attribute */
   int capabilities;			/* Enable capability handshake [RFC 5492] */
   int enable_refresh;			/* Enable local support for route refresh [RFC 2918] */
+  int enable_enhanced_refresh;		/* Enable local support for enhanced route refresh [RFC 7313] */
   int enable_as4;			/* Enable local support for 4B AS numbers [RFC 6793] */
   int enable_extended_messages;		/* Enable local support for extended messages [RFC 8654] */
   int enable_hostname;			/* Enable local support for hostname [draft] */
