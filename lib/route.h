@@ -65,7 +65,7 @@ int rte_same(const rte *, const rte *);
 struct rte_src {
   struct rte_src *next;			/* Hash chain */
   struct rte_owner *owner;		/* Route source owner */
-  u32 private_id;			/* Private ID, assigned by the protocol */
+  u64 private_id;			/* Private ID, assigned by the protocol */
   u32 global_id;			/* Globally unique ID of the source */
   _Atomic u64 uc;			/* Use count */
 };

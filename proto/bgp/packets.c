@@ -2472,7 +2472,7 @@ bgp_bmp_encode_rte(struct bgp_channel *c, byte *buf, const net_addr *n,
 
   /* Temporary prefix */
   struct bgp_prefix *px = tmp_allocz(prefix_size);
-  px->path_id = src->private_id;
+  px->path_id = (u32) src->private_id;
   net_copy(px->net, n);
   add_tail(&b->prefixes, &px->buck_node_xx);
 

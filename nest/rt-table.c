@@ -735,7 +735,7 @@ rte_mergable(const rte *pri, const rte *sec)
 static void
 rte_trace(const char *name, const rte *e, int dir, const char *msg)
 {
-  log(L_TRACE "%s %c %s %N src %uL %uG %uS id %u %s",
+  log(L_TRACE "%s %c %s %N src %luL %uG %uS id %u %s",
       name, dir, msg, e->net,
       e->src->private_id, e->src->global_id, e->stale_cycle, e->id,
       rta_dest_name(rte_dest(e)));

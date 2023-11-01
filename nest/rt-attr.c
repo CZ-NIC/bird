@@ -198,7 +198,7 @@ static struct idm src_ids;
 #define RSH_KEY(n)		n->private_id
 #define RSH_NEXT(n)		n->next
 #define RSH_EQ(n1,n2)		n1 == n2
-#define RSH_FN(n)		u32_hash(n)
+#define RSH_FN(n)		u64_hash(n)
 
 #define RSH_REHASH		rte_src_rehash
 #define RSH_PARAMS		/2, *2, 1, 1, 8, 20
@@ -257,7 +257,7 @@ rt_get_source_o(struct rte_owner *p, u32 id)
 
   HASH_INSERT2(p->hash, RSH, rta_pool, src);
   if (config->table_debug)
-    log(L_TRACE "Allocated new rte_src for %s, ID %uL %uG, have %u sources now",
+    log(L_TRACE "Allocated new rte_src for %s, ID %luL %uG, have %u sources now",
 	p->name, src->private_id, src->global_id, p->uc);
 
   uint gm = atomic_load_explicit(&rte_src_global_max, memory_order_relaxed);
