@@ -2034,6 +2034,9 @@ protos_dump_all(void)
 	  c->out_req.hook ? rt_export_state_name(rt_export_get_state(c->out_req.hook)) : "-");
     }
 
+    debug("\tSOURCES\n");
+    rt_dump_sources(&p->sources);
+
     if (p->proto->dump && (p->proto_state != PS_DOWN))
       p->proto->dump(p);
   }

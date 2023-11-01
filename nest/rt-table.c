@@ -2502,6 +2502,7 @@ rte_dump(struct rte_storage *e)
 {
   debug("%-1N ", e->rte.net);
   debug("PF=%02x ", e->rte.pflags);
+  debug("SRC=%uG ", e->rte.src->global_id);
   ea_dump(e->rte.attrs);
   debug("\n");
 }

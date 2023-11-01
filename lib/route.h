@@ -173,6 +173,8 @@ static inline void rt_unlock_source(struct rte_src *src)
 void rt_init_sources(struct rte_owner *, const char *name, event_list *list);
 void rt_destroy_sources(struct rte_owner *, event *);
 
+void rt_dump_sources(struct rte_owner *);
+
 /*
  *	Route Attributes
  *

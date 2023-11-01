@@ -367,6 +367,30 @@ rt_prune_sources(void *data)
 }
 
 void
+rt_dump_sources(struct rte_owner *o)
+{
+  debug("\t%s: hord=%u, uc=%u, cnt=%u prune=%p, stop=%p\n",
+      o->name, o->hash.order, o->uc, o->hash.count, o->prune, o->stop);
+  debug("\tget_route_info=%p, better=%p, mergable=%p, igp_metric=%p, recalculate=%p",
+      o->class->get_route_info, o->class->rte_better, o->class->rte_mergable,
+      o->class->rte_igp_metric, o->rte_recalculate);
+
+  int splitting = 0;
+  HASH_WALK(o->hash, next, src)
+  {
+    debug("%c%c%uL %uG %luU",
+	(splitting % 8) ? ',' : '\n',
+	(splitting % 8) ? ' ' : '\t',
+	src->private_id, src->global_id,
+	atomic_load_explicit(&src->uc, memory_order_relaxed));
+
+    splitting++;
+  }
+  HASH_WALK_END;
+  debug("\n");
+}
+
+void
 rt_init_sources(struct rte_owner *o, const char *name, event_list *list)
 {
   RTA_LOCK;
