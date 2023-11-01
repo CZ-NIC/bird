@@ -54,8 +54,17 @@ aggregator_proto_item:
     if (!AGGREGATOR_CFG->aggr_on_net)
       cf_error("aggregate on must be always include 'net'.");
 
+   struct f_inst *rot = NULL;
+   while ($4.begin)
+   {
+     struct f_inst *tmp = $4.begin->next;
+     $4.begin->next = rot;
+     rot = $4.begin;
+     $4.begin = tmp;
+   }
+
    AGGREGATOR_CFG->aggr_on_count = count;
-   AGGREGATOR_CFG->aggr_on = f_linearize($4.begin, count);
+   AGGREGATOR_CFG->aggr_on = f_linearize(rot, count);
 
    struct f_line *premerge = f_linearize($4.end, 0);
    premerge->args = count;

@@ -1678,7 +1678,7 @@ rte_same(const rte *x, const rte *y)
 {
   /* rte.flags / rte.pflags are not checked, as they are internal to rtable */
   return
-    (
+    (x == y) || (
      (x->attrs == y->attrs) ||
      ((!(x->attrs->flags & EALF_CACHED) || !(y->attrs->flags & EALF_CACHED)) && ea_same(x->attrs, y->attrs))
     ) &&
