@@ -1348,7 +1348,15 @@ nexthop_dump(const struct adata *ad)
 
   debug(":");
 
-  NEXTHOP_WALK(nh, nhad)
+  if (!NEXTHOP_IS_REACHABLE(nhad))
+  {
+    const char *name = rta_dest_name(nhad->dest);
+    if (name)
+      debug(" %s", name);
+    else
+      debug(" D%d", nhad->dest);
+  }
+  else NEXTHOP_WALK(nh, nhad)
     {
       if (ipa_nonzero(nh->gw)) debug(" ->%I", nh->gw);
       if (nh->labels) debug(" L %d", nh->label[0]);
