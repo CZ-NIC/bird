@@ -2799,13 +2799,20 @@ using the following configuration parameters:
 	changes its import filter, or if there is suspicion of inconsistency) it
 	is necessary to do a new complete route exchange. BGP protocol extension
 	Route Refresh (<rfc id="2918">) allows BGP speaker to request
-	re-advertisement of all routes from its neighbor. BGP protocol
-	extension Enhanced Route Refresh (<rfc id="7313">) specifies explicit
-	begin and end for such exchanges, therefore the receiver can remove
-	stale routes that were not advertised during the exchange. This option
-	specifies whether BIRD advertises these capabilities and supports
+	re-advertisement of all routes from its neighbor. This option
+	specifies whether BIRD advertises this capability and supports
 	related procedures. Note that even when disabled, BIRD can send route
-	refresh requests.  Default: on.
+	refresh requests. Disabling Route Refresh also disables Enhanced Route Refresh.
+	Default: on.
+
+	<tag><label id="bgp-enable-enhanced-route-refresh">enable enhanced route refresh <m/switch/</tag>
+	BGP protocol extension Enhanced Route Refresh (<rfc id="7313">) specifies explicit
+	begin and end for Route Refresh (see previous option),
+	therefore the receiver can remove
+	stale routes that were not advertised during the exchange. This option
+	specifies whether BIRD advertises this capability and supports
+	related procedures.
+	Default: on.
 
 	<tag><label id="bgp-graceful-restart">graceful restart <m/switch/|aware</tag>
 	When a BGP speaker restarts or crashes, neighbors will discard all
