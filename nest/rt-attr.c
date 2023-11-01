@@ -101,7 +101,7 @@ static struct idm src_ids;
 #define RSH_KEY(n)		n->proto, n->private_id
 #define RSH_NEXT(n)		n->next
 #define RSH_EQ(p1,n1,p2,n2)	p1 == p2 && n1 == n2
-#define RSH_FN(p,n)		p->hash_key ^ u32_hash(n)
+#define RSH_FN(p,n)		p->hash_key ^ u64_hash(n)
 
 #define RSH_REHASH		rte_src_rehash
 #define RSH_PARAMS		/2, *2, 1, 1, 8, 20

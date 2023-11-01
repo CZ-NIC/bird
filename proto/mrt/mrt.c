@@ -488,7 +488,7 @@ mrt_rib_table_entry(struct mrt_table_dump_state *s, rte *r)
 
   /* Path Identifier */
   if (s->add_path)
-    mrt_put_u32(b, r->src->private_id);
+    mrt_put_u32(b, (u32) r->src->private_id);
 
   /* Route Attributes */
   mrt_put_u16(b, 0);
