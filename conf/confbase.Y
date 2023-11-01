@@ -43,6 +43,8 @@ static inline void cf_assert_symbol(const struct symbol *sym, uint class) {
     case SYM_FILTER: cf_assert(sym->class == SYM_FILTER, "Filter name required"); break;
     case SYM_TABLE: cf_assert(sym->class == SYM_TABLE, "Table name required"); break;
     case SYM_ATTRIBUTE: cf_assert(sym->class == SYM_ATTRIBUTE, "Custom attribute name required"); break;
+    case SYM_MPLS_DOMAIN: cf_assert(sym->class == SYM_MPLS_DOMAIN, "MPLS domain name required"); break;
+    case SYM_MPLS_RANGE: cf_assert(sym->class == SYM_MPLS_RANGE, "MPLS range name required"); break;
     case SYM_VARIABLE: cf_assert((sym->class & ~0xff) == SYM_VARIABLE, "Variable name required"); break;
     case SYM_CONSTANT: cf_assert((sym->class & ~0xff) == SYM_CONSTANT, "Constant name required"); break;
     default: bug("This shall not happen");

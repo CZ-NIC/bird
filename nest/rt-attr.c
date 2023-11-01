@@ -803,13 +803,27 @@ ea_free(ea_list *o)
 static int
 get_generic_attr(const eattr *a, byte **buf, int buflen UNUSED)
 {
-  if (a->id == EA_GEN_IGP_METRIC)
-    {
-      *buf += bsprintf(*buf, "igp_metric");
-      return GA_NAME;
-    }
+  switch (a->id)
+  {
+  case EA_GEN_IGP_METRIC:
+    *buf += bsprintf(*buf, "igp_metric");
+    return GA_NAME;
 
-  return GA_UNKNOWN;
+  case EA_MPLS_LABEL:
+    *buf += bsprintf(*buf, "mpls_label");
+    return GA_NAME;
+
+  case EA_MPLS_POLICY:
+    *buf += bsprintf(*buf, "mpls_policy");
+    return GA_NAME;
+
+  case EA_MPLS_CLASS:
+    *buf += bsprintf(*buf, "mpls_class");
+    return GA_NAME;
+
+  default:
+    return GA_UNKNOWN;
+  }
 }
 
 void

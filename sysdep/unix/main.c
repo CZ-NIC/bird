@@ -33,6 +33,7 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
+#include "nest/mpls.h"
 #include "nest/cli.h"
 #include "nest/locks.h"
 #include "conf/conf.h"
@@ -895,6 +896,7 @@ main(int argc, char **argv)
   io_init();
   rt_init();
   if_init();
+  mpls_init();
 //  roa_init();
   config_init();
 
