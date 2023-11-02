@@ -342,6 +342,94 @@ proto_remove_channels(struct proto *p)
     proto_remove_channel(p, c);
 }
 
+/**
+ * # Automatic ROA reloads
+ *
+ * Route origin authorizations may (and do) change over time by updates via
+ * our RPKI protocols. This then manifests in ROA tables. As the roa_check()
+ * is always executed on a specific contents of ROA table in a specific moment
+ * of time, its value may switch after updates in the ROA table and therefore
+ * must be re-evaluated any time the result may have changed.
+ *
+ * To enable this mechanism, there are auxiliary tools integrated in BIRD
+ * to automatically re-evaluate all filters that may get a different outcome
+ * after ROA change.
+ *
+ * ROA Subscription Data Structure (struct roa_subscription) is the connector
+ * between the channel and the ROA table, keeping track about unprocessed
+ * changes and initiating the reloads. The modus operandi is as follows:
+ *
+ * Init 1. Check whether the filter uses ROA at all.
+ * Init 2. Request exports from the ROA table
+ * Init 3. Allocate a trie
+ *
+ * Export from ROA: This may affect all routes for prefixes matching the ROA
+ * prefix, disregarding its maxlen. Thus we mark these routes in the request's
+ * auxiliary trie. Then we ping the settle timer to wait a reasonable amount of
+ * time before actually requesting channel reload.
+ *
+ * Settle timer fires when nothing has pinged it for the 'min' time or 'max'
+ * time has elapsed since the first ping. It then:
+ *
+ * - requests partial channel import / export reload based on the trie
+ * - allocates a new trie
+ *
+ * As the import/export reload uses the auxiliary trie to prefilter prefixes,
+ * the trie must be freed after the reload is done, which is ensured in the
+ * .done() hook of the reimport/reexport request.
+ *
+ * # Channel export refeed
+ *
+ * The request, either by ROA or from CLI, is enqueued to the channel and an
+ * auxiliary export hook is requested from the table. This way, the ordinary
+ * updates can flow uninterrupted while refeed gets prefiltered by the given
+ * trie (if given). When the auxiliary export hook finishes, the .done() hook
+ * is then called for the requestor to do their cleanup.
+ *
+ * While refeeding, special care must be taken about route changes inside the
+ * table. For this, an auxiliary trie is allocated to keep track about already
+ * refed net, to avoid unnecessary multiple re-evaluation of filters.
+ *
+ * # Channel import reload from import table
+ *
+ * When the import table is on, the channel keeps the original version of the route
+ * in the table together with the actual version after filters, in a form of
+ * an additional layer of route attributes underneath the actual version. This makes
+ * it exceptionally simple to get the original version of the route directly
+ * from the table by an ordinary export which strips all the newer layers.
+ *
+ * Then, by processing all these auxiliary exports, the channel basically re-imports
+ * all the routes into the table back again, re-evaluating the filters and ROA checks.
+ *
+ * # Channel import reload from protocols
+ *
+ * When the import table is off, the protocol gets the reimport request directly
+ * via the .reload_routes() hook and must do its internal route reload instead.
+ * The protocol may not support it and in such case, this function returns 0
+ * indicating that no partial reload is going to happen. It's then on the
+ * developer's or user's discretion to run a full reload instead.
+ *
+ * # Caveats, FIXME's, TODO's and other kinds of hell
+ *
+ * The partial reexport uses a trie to track state for single prefixes. This
+ * may do crazy things if a partial reload was to be performed on any other
+ * table than plain IPv6 or IPv4. Network types like VPNv6 or Flowspec may
+ * cause some crashes. This is currently not checked anywhere.
+ *
+ * Anyway, we decided to split the table FIB structure to carry only a mapping
+ * between a prefix and a locally-unique ID, and after this update is done
+ * (probably also in v2), the tracking tries may be easily replaced by
+ * bitfields, therefore fixing this bug.
+ *
+ * We also probably didn't do a proper analysis of the implemented algorithm
+ * for reexports, so if there is somebody willing to formally prove that we
+ * both won't miss any update and won't reexport more than needed, you're welcome
+ * to submit such a proof.
+ *
+ * We wish you a pleasant reading, analyzing and bugfixing experience.
+ *
+ *					  Kata, Maria and the BIRD Team
+ */
 
 struct roa_subscription {
   node roa_node;
