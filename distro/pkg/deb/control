@@ -5,18 +5,18 @@ Build-Depends: bison,
                debhelper,
                docbook-xsl,
                flex,
-               libncurses5-dev,
+               libncurses-dev,
                libreadline-dev | libreadline6-dev | libreadline5-dev,
                libssh-gcrypt-dev,
-               linuxdoc-tools-latex,
                m4,
-               opensp,
                quilt,
-               texlive-latex-extra,
                xsltproc
+Build-Depends-Indep: linuxdoc-tools-latex,
+               opensp,
+               texlive-latex-extra
 Maintainer: Jakub Ružička <jakub.ruzicka@nic.cz>
 Uploaders: Ondřej Surý <ondrej@debian.org>
-Standards-Version: 4.3.0
+Standards-Version: 4.6.2
 Vcs-Browser: https://salsa.debian.org/debian/bird2
 Vcs-Git: https://salsa.debian.org/debian/bird2.git
 Homepage: https://bird.network.cz/
@@ -26,7 +26,6 @@ Architecture: kfreebsd-any linux-any
 Pre-Depends: init-system-helpers,
              ${misc:Pre-Depends}
 Depends: adduser,
-         lsb-base,
          ucf,
          ${misc:Depends},
          ${shlibs:Depends}

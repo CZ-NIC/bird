@@ -57,6 +57,8 @@ struct config {
   int thread_count;			/* How many worker threads to prefork */
 
   struct sym_scope *root_scope;		/* Scope for root symbols */
+  struct sym_scope *current_scope;	/* Current scope where we are actually in while parsing */
+  int allow_attributes;			/* Allow attributes in the current state of configuration parsing */
   _Atomic int obstacle_count;		/* Number of items blocking freeing of this config */
   event done_event;			/* Called when obstacle_count reaches zero */
   int shutdown;				/* This is a pseudo-config for daemon shutdown */
@@ -66,7 +68,7 @@ struct config {
 
 /* Please don't use these variables in protocols. Use proto_config->global instead. */
 extern struct config *config;		/* Currently active configuration */
-extern struct config *new_config;	/* Configuration being parsed */
+extern _Thread_local struct config *new_config;	/* Configuration being parsed */
 
 struct config *config_alloc(const char *name);
 int config_parse(struct config *);
@@ -80,6 +82,7 @@ int config_status(void);
 btime config_timer_status(void);
 void config_init(void);
 void cf_error(const char *msg, ...) NORET;
+#define cf_warn(msg, args...)  log(L_WARN "%s:%d:%d: " msg, ifs->file_name, ifs->lino, ifs->chno - ifs->toklen + 1, ##args)
 void config_add_obstacle(struct config *);
 void config_del_obstacle(struct config *);
 void order_shutdown(int gr);
@@ -112,6 +115,11 @@ void cfg_copy_list(list *dest, list *src, unsigned node_size);
 
 extern int (*cf_read_hook)(byte *buf, uint max, int fd);
 
+struct keyword {
+  byte *name;
+  int value;
+};
+
 struct symbol {
   node n;				/* In list of symbols in config */
   struct symbol *next;
@@ -127,6 +135,8 @@ struct symbol {
     struct ea_class *attribute;		/* For SYM_ATTRIBUTE */
     struct f_val *val;			/* For SYM_CONSTANT */
     uint offset;			/* For SYM_VARIABLE */
+    const struct keyword *keyword;	/* For SYM_KEYWORD */
+    const struct f_method *method;	/* For SYM_METHOD */
   };
 
   char name[0];
@@ -139,17 +149,17 @@ struct sym_scope {
   HASH(struct symbol) hash;		/* Local symbol hash */
 
   uint slots;				/* Variable slots */
-  byte active;				/* Currently entered */
-  byte block;				/* No independent stack frame */
   byte soft_scopes;			/* Number of soft scopes above */
+  byte block:1;				/* No independent stack frame */
+  byte readonly:1;			/* Do not add new symbols */
 };
 
-extern struct sym_scope *global_root_scope;
+void cf_enter_filters(void);
+void cf_exit_filters(void);
 
-struct bytestring {
-  size_t length;
-  byte data[];
-};
+extern pool *global_root_scope_pool;
+extern linpool *global_root_scope_linpool;
+
 
 #define SYM_MAX_LEN 64
 
@@ -161,6 +171,8 @@ struct bytestring {
 #define SYM_FILTER 4
 #define SYM_TABLE 5
 #define SYM_ATTRIBUTE 6
+#define SYM_KEYWORD 7
+#define SYM_METHOD 8
 
 #define SYM_VARIABLE 0x100	/* 0x100-0x1ff are variable types */
 #define SYM_VARIABLE_RANGE SYM_VARIABLE ... (SYM_VARIABLE | 0xff)
@@ -188,8 +200,6 @@ struct include_file_stack {
 
 extern struct include_file_stack *ifs;
 
-extern struct sym_scope *conf_this_scope;
-
 int cf_lex(void);
 void cf_lex_init(int is_cli, struct config *c);
 void cf_lex_unwind(void);
@@ -203,12 +213,16 @@ static inline struct symbol *cf_find_symbol_cfg(const struct config *cfg, const 
     struct sym_scope: cf_find_symbol_scope \
     )((where), (what))
 
-struct symbol *cf_get_symbol(const byte *c);
-struct symbol *cf_default_name(char *template, int *counter);
-struct symbol *cf_localize_symbol(struct symbol *sym);
+struct symbol *cf_get_symbol(struct config *conf, const byte *c);
+struct symbol *cf_default_name(struct config *conf, char *template, int *counter);
+struct symbol *cf_localize_symbol(struct config *conf, struct symbol *sym);
 
-static inline int cf_symbol_is_local(struct symbol *sym)
-{ return (sym->scope == conf_this_scope) && !conf_this_scope->soft_scopes; }
+static inline int cf_symbol_is_local(struct config *conf, struct symbol *sym)
+{ return (sym->scope == conf->current_scope) && !conf->current_scope->soft_scopes; }
+
+/* internal */
+struct symbol *cf_new_symbol(struct sym_scope *scope, pool *p, struct linpool *lp, const byte *c);
+struct symbol *cf_root_symbol(const byte *, struct sym_scope *);
 
 /**
  * cf_define_symbol - define meaning of a symbol
@@ -225,22 +239,22 @@ static inline int cf_symbol_is_local(struct symbol *sym)
  * Result: Pointer to the newly defined symbol. If we are in the top-level
  * scope, it's the same @sym as passed to the function.
  */
-#define cf_define_symbol(osym_, type_, var_, def_) ({ \
-    struct symbol *sym_ = cf_localize_symbol(osym_); \
+#define cf_define_symbol(conf_, osym_, type_, var_, def_) ({ \
+    struct symbol *sym_ = cf_localize_symbol(conf_, osym_); \
     sym_->class = type_; \
     sym_->var_ = def_; \
     sym_; })
 
-void cf_push_scope(struct symbol *);
-void cf_pop_scope(void);
-void cf_push_soft_scope(void);
-void cf_pop_soft_scope(void);
+void cf_push_scope(struct config *, struct symbol *);
+void cf_pop_scope(struct config *);
+void cf_push_soft_scope(struct config *);
+void cf_pop_soft_scope(struct config *);
 
-static inline void cf_push_block_scope(void)
-{ cf_push_scope(NULL); conf_this_scope->block = 1; }
+static inline void cf_push_block_scope(struct config *conf)
+{ cf_push_scope(conf, NULL); conf->current_scope->block = 1; }
 
-static inline void cf_pop_block_scope(void)
-{ ASSERT(conf_this_scope->block); cf_pop_scope(); }
+static inline void cf_pop_block_scope(struct config *conf)
+{ ASSERT(conf->current_scope->block); cf_pop_scope(conf); }
 
 char *cf_symbol_class_name(struct symbol *sym);
 

@@ -1229,7 +1229,7 @@ ospf_reconfigure_ifaces2(struct ospf_proto *p)
 
   IFACE_WALK(iface)
   {
-    if (p->p.vrf && p->p.vrf != iface->master)
+    if (p->p.vrf && !if_in_vrf(iface, p->p.vrf))
       continue;
 
     if (! (iface->flags & IF_UP))
@@ -1277,7 +1277,7 @@ ospf_reconfigure_ifaces3(struct ospf_proto *p)
 
   IFACE_WALK(iface)
   {
-    if (p->p.vrf && p->p.vrf != iface->master)
+    if (p->p.vrf && !if_in_vrf(iface, p->p.vrf))
       continue;
 
     if (! (iface->flags & IF_UP))

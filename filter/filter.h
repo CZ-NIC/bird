@@ -13,8 +13,10 @@
 #include "lib/resource.h"
 #include "lib/ip.h"
 #include "lib/macro.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "lib/attrs.h"
+#include "filter/data.h"
+#include "conf/conf.h"
 
 /* Possible return values of filter execution */
 enum filter_return {
@@ -40,9 +42,8 @@ static inline const char *filter_return_str(const enum filter_return fret) {
   }
 }
 
-struct f_val;
-
 /* The filter encapsulating structure to be pointed-to from outside */
+struct f_inst;
 struct f_line;
 struct filter {
   struct symbol *sym;
@@ -52,9 +53,18 @@ struct filter {
 struct rte;
 
 enum filter_return f_run(const struct filter *filter, struct rte *rte, int flags);
-enum filter_return f_eval_rte(const struct f_line *expr, struct rte *rte);
-uint f_eval_int(const struct f_line *expr);
+enum filter_return f_run_args(const struct filter *filter, struct rte *rte, uint argc, const struct f_val *argv, int flags);
+enum filter_return f_eval_rte(const struct f_line *expr, struct rte *rte, uint argc, const struct f_val *argv, uint resc, struct f_val *resv);
 enum filter_return f_eval_buf(const struct f_line *expr, buffer *buf);
+
+struct f_val cf_eval_tmp(const struct f_inst *inst, int type);
+static inline struct f_val *cf_eval(const struct f_inst *inst, int type)
+{
+  struct f_val val = cf_eval_tmp(inst, type);
+  return lp_val_copy(cfg_mem, &val);
+}
+
+static inline uint cf_eval_int(const struct f_inst *inst) { return cf_eval_tmp(inst, T_INT).val.i; };
 
 const char *filter_name(const struct filter *filter);
 int filter_same(const struct filter *new, const struct filter *old);

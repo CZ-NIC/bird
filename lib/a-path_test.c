@@ -9,7 +9,7 @@
 #include "test/birdtest.h"
 #include "test/bt-utils.h"
 
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "lib/attrs.h"
 #include "lib/resource.h"
 #include "filter/data.h"

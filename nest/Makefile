@@ -13,6 +13,6 @@ $(o)proto-build.c: Makefile $(lastword $(MAKEFILE_LIST)) $(objdir)/.dir-stamp
 
 prepare: $(o)proto-build.c
 
-tests_src :=
+tests_src := rt-fib_test.c
 tests_targets := $(tests_targets) $(tests-target-files)
 tests_objs := $(tests_objs) $(src-o-files)

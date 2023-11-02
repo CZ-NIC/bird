@@ -82,6 +82,13 @@ struct radv_opt_dnssl
   char domain[];
 };
 
+struct radv_opt_custom
+{
+  u8 type;
+  u8 length;
+  u8 payload[];
+};
+
 static int
 radv_prepare_route(struct radv_iface *ifa, struct radv_route *rt,
 		   char **buf, char *bufend)
@@ -255,6 +262,34 @@ radv_prepare_dnssl(struct radv_iface *ifa, list *dnssl_list, char **buf, char *b
 }
 
 static int
+radv_prepare_custom(struct radv_iface *ifa, list *custom_list, char **buf, char *bufend)
+{
+  struct radv_custom_config *ccf;
+  WALK_LIST(ccf, *custom_list)
+  {
+    struct radv_opt_custom *op = (void *) *buf;
+    /* Add 2 octets for type and size and 8 - 1 for ceiling the division up to 8 octets */
+    int size = (ccf->payload->length + 2 + 8 - 1) / 8;
+    if (bufend - *buf < size * 8)
+      goto too_much;
+
+    memset(op, 0, size * 8); /* Clear buffer so there is no tail garbage */
+    op->type = ccf->type;
+    op->length = size;
+    memcpy(op->payload, ccf->payload->data, ccf->payload->length);
+
+    *buf += 8 * op->length;
+  }
+
+  return 0;
+
+ too_much:
+  log(L_WARN "%s: Too many RA options on interface %s",
+      ifa->ra->p.name, ifa->iface->name);
+  return -1;
+}
+
+static int
 radv_prepare_prefix(struct radv_iface *ifa, struct radv_prefix *px,
 		    char **buf, char *bufend)
 {
@@ -351,6 +386,14 @@ radv_prepare_ra(struct radv_iface *ifa)
 
   if (radv_prepare_dnssl(ifa, &ic->dnssl_list, &buf, bufend) < 0)
     goto done;
+
+  if (! ic->custom_local)
+    if (radv_prepare_custom(ifa, &cf->custom_list, &buf, bufend) < 0)
+      goto done;
+
+  if (radv_prepare_custom(ifa, &ic->custom_list, &buf, bufend) < 0)
+    goto done;
+
 
   if (p->fib_up)
   {

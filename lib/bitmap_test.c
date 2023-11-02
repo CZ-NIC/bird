@@ -170,6 +170,70 @@ t_hmap_set_clear_fill(void)
   return 1;
 }
 
+static int
+t_lmap_set_clear_fill(void)
+{
+  struct lmap b;
+
+  lmap_init(&b, &root_pool);
+
+  char expected[MAX_NUM] = {};
+  uint i, j, n;
+
+  for (i = 0; i < STEP_NUM; i++)
+  {
+    uint last = 0;
+    uint lo = bt_random() % (1 << 19);
+    uint hi = lo + 2 * STEP_SET;
+    uint step_set = bt_random() % STEP_SET;
+    uint step_clr = bt_random() % STEP_CLR;
+
+    for (j = 0; j < step_set; j++)
+    {
+      n = lmap_first_zero_in_range(&b, lo, hi);
+      bt_assert(n >= lo);
+      bt_assert(n <= hi);
+
+      for (last = lo; last < n; last++)
+	bt_assert(expected[last]);
+
+      if (n >= hi)
+	break;
+
+      bt_assert(!expected[n]);
+
+      lmap_set(&b, n);
+      expected[n] = 1;
+    }
+
+    for (j = 0; j < step_clr; j++)
+    {
+      n = lo + bt_random() % (step_set + 1);
+
+      if (!expected[n])
+	continue;
+
+      lmap_clear(&b, n);
+      expected[n] = 0;
+    }
+  }
+
+  uint cnt = 0;
+  for (i = 0; i < MAX_NUM; i++)
+  {
+    if (lmap_test(&b, i) != expected[i])
+      bt_abort_msg("Bitmap mismatch on %d (should be %d %d)", i, lmap_test(&b, i), expected[i]);
+
+    if (expected[i])
+      cnt++;
+  }
+  // bt_log("Total %u", cnt);
+
+  lmap_check(&b);
+
+  return 1;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -178,6 +242,7 @@ main(int argc, char *argv[])
   bt_test_suite(t_bmap_set_clear_random, "BMap - random sequence of sets / clears");
   bt_test_suite(t_hmap_set_clear_random, "HMap - random sequence of sets / clears");
   bt_test_suite(t_hmap_set_clear_fill, "HMap - linear sets and random clears");
+  bt_test_suite(t_lmap_set_clear_fill, "LMap - linear sets and random clears");
 
   return bt_exit_value();
 }

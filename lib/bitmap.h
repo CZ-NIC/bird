@@ -60,4 +60,25 @@ void hmap_clear(struct hmap *b, uint n);
 u32 hmap_first_zero(struct hmap *b);
 void hmap_check(struct hmap *b);
 
+
+struct lmap
+{
+  slab *slab;
+  uint size;
+  u32 **data;
+  u32 *root;
+};
+
+static inline uint lmap_max(struct lmap *b)
+{ return b->size << 10; }
+
+void lmap_init(struct lmap *b, pool *p);
+void lmap_free(struct lmap *b);
+int lmap_test(struct lmap *b, uint n);
+void lmap_set(struct lmap *b, uint n);
+void lmap_clear(struct lmap *b, uint n);
+uint lmap_first_zero(struct lmap *b);
+uint lmap_first_zero_in_range(struct lmap *b, uint lo, uint hi);
+void lmap_check(struct lmap *b);
+
 #endif

@@ -204,7 +204,7 @@ rtrid:
 
 idval:
    NUM { $$ = $1; }
- | '(' term ')' { $$ = f_eval_int(f_linearize($2, 1)); }
+ | '(' term ')' { $$ = cf_eval_int($2); }
  | IP4 { $$ = ip4_to_u32($1); }
  | CF_SYM_KNOWN {
      if ($1->class == (SYM_CONSTANT | T_INT) || $1->class == (SYM_CONSTANT | T_QUAD))
@@ -299,19 +299,19 @@ proto_start:
 
 proto_name:
    /* EMPTY */ {
-     struct symbol *s = cf_default_name(this_proto->protocol->template, &this_proto->protocol->name_counter);
+     struct symbol *s = cf_default_name(new_config, this_proto->protocol->template, &this_proto->protocol->name_counter);
      s->class = this_proto->class;
      s->proto = this_proto;
      this_proto->name = s->name;
      }
  | symbol {
-     cf_define_symbol($1, this_proto->class, proto, this_proto);
+     cf_define_symbol(new_config, $1, this_proto->class, proto, this_proto);
      this_proto->name = $1->name;
    }
  | FROM CF_SYM_KNOWN {
      if (($2->class != SYM_TEMPLATE) && ($2->class != SYM_PROTO)) cf_error("Template or protocol name expected");
 
-     struct symbol *s = cf_default_name(this_proto->protocol->template, &this_proto->protocol->name_counter);
+     struct symbol *s = cf_default_name(new_config, this_proto->protocol->template, &this_proto->protocol->name_counter);
      s->class = this_proto->class;
      s->proto = this_proto;
      this_proto->name = s->name;
@@ -321,7 +321,7 @@ proto_name:
  | symbol FROM CF_SYM_KNOWN {
      if (($3->class != SYM_TEMPLATE) && ($3->class != SYM_PROTO)) cf_error("Template or protocol name expected");
 
-     cf_define_symbol($1, this_proto->class, proto, this_proto);
+     cf_define_symbol(new_config, $1, this_proto->class, proto, this_proto);
      this_proto->name = $1->name;
 
      proto_copy_config(this_proto, $3->proto);
@@ -608,10 +608,15 @@ password_item:
 
 pass_key: PASSWORD | KEY;
 
-password_item_begin:
-    pass_key text { init_password_list(); init_password($2, strlen($2), password_id++); }
-  | pass_key BYTESTRING { init_password_list(); init_password($2->data, $2->length, password_id++); }
-;
+password_item_begin: pass_key bytestring_text
+{
+  init_password_list();
+  if ($2.type == T_BYTESTRING)
+    init_password($2.val.bs->data, $2.val.bs->length, password_id++);
+  else if ($2.type == T_STRING)
+    init_password($2.val.s, strlen($2.val.s), password_id++);
+  else bug("Bad bytestring_text");
+};
 
 password_item_params:
    /* empty */ { }
@@ -726,7 +731,7 @@ r_args:
      $$->addr = $3;
      $$->addr_mode = TE_ADDR_IN;
    }
-| r_args TABLE symbol_known {
+| r_args TABLE CF_SYM_KNOWN {
      cf_assert_symbol($3, SYM_TABLE);
      if (!$3->table) cf_error("Table %s not configured", $3->name);
      $$ = $1;
@@ -773,7 +778,7 @@ r_args:
      $$ = $1;
      $$->filtered = 1;
    }
- | r_args export_mode symbol_known {
+ | r_args export_mode CF_SYM_KNOWN {
      cf_assert_symbol($3, SYM_PROTO);
      struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
@@ -790,7 +795,7 @@ r_args:
      $$->export_channel = $3;
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
- | r_args PROTOCOL symbol_known {
+ | r_args PROTOCOL CF_SYM_KNOWN {
      cf_assert_symbol($3, SYM_PROTO);
      struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
@@ -902,7 +907,7 @@ sym_args:
  | sym_args FILTER { $$ = $1; $$->type = SYM_FILTER; }
  | sym_args PROTOCOL { $$ = $1; $$->type = SYM_PROTO; }
  | sym_args TEMPLATE { $$ = $1; $$->type = SYM_TEMPLATE; }
- | sym_args symbol { $$ = $1; $$->sym = $2; }
+ | sym_args CF_SYM_KNOWN { $$ = $1; $$->sym = $2; }
  ;
 
 

@@ -93,7 +93,7 @@
 #undef LOCAL_DEBUG
 
 #include "nest/bird.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "lib/resource.h"
@@ -154,7 +154,7 @@ static void rt_delete(void *);
 static void rt_export_used(struct rt_table_exporter *, const char *, const char *);
 static void rt_export_cleanup(struct rtable_private *tab);
 
-static int rte_same(const rte *x, const rte *y);
+int rte_same(const rte *x, const rte *y);
 
 const char *rt_import_state_name_array[TIS_MAX] = {
   [TIS_DOWN] = "DOWN",
@@ -735,7 +735,7 @@ rte_mergable(const rte *pri, const rte *sec)
 static void
 rte_trace(const char *name, const rte *e, int dir, const char *msg)
 {
-  log(L_TRACE "%s %c %s %N src %uL %uG %uS id %u %s",
+  log(L_TRACE "%s %c %s %N src %luL %uG %uS id %u %s",
       name, dir, msg, e->net,
       e->src->private_id, e->src->global_id, e->stale_cycle, e->id,
       rta_dest_name(rte_dest(e)));
@@ -1089,7 +1089,6 @@ rt_notify_merged(struct rt_export_request *req, const net_addr *n,
     const rte **feed, uint count)
 {
   struct channel *c = channel_from_export_request(req);
-
   // struct proto *p = c->proto;
 
 #if 0 /* TODO: Find whether this check is possible when processing multiple changes at once. */
@@ -1659,12 +1658,15 @@ rte_validate(struct channel *ch, rte *e)
   return 1;
 }
 
-static int
+int
 rte_same(const rte *x, const rte *y)
 {
   /* rte.flags / rte.pflags are not checked, as they are internal to rtable */
   return
-    x->attrs == y->attrs &&
+    (x == y) || (
+     (x->attrs == y->attrs) ||
+     ((!(x->attrs->flags & EALF_CACHED) || !(y->attrs->flags & EALF_CACHED)) && ea_same(x->attrs, y->attrs))
+    ) &&
     x->src == y->src &&
     rte_is_filtered(x) == rte_is_filtered(y);
 }
@@ -2492,6 +2494,7 @@ rte_dump(struct rte_storage *e)
 {
   debug("%-1N ", e->rte.net);
   debug("PF=%02x ", e->rte.pflags);
+  debug("SRC=%uG ", e->rte.src->global_id);
   ea_dump(e->rte.attrs);
   debug("\n");
 }
@@ -3434,8 +3437,8 @@ rt_preconfig(struct config *c)
 {
   init_list(&c->tables);
 
-  c->def_tables[NET_IP4] = cf_define_symbol(cf_get_symbol("master4"), SYM_TABLE, table, NULL);
-  c->def_tables[NET_IP6] = cf_define_symbol(cf_get_symbol("master6"), SYM_TABLE, table, NULL);
+  c->def_tables[NET_IP4] = cf_define_symbol(c, cf_get_symbol(c, "master4"), SYM_TABLE, table, NULL);
+  c->def_tables[NET_IP6] = cf_define_symbol(c, cf_get_symbol(c, "master6"), SYM_TABLE, table, NULL);
 }
 
 void
@@ -4072,7 +4075,7 @@ rt_new_table(struct symbol *s, uint addr_type)
   if (s == new_config->def_tables[addr_type])
     s->table = c;
   else
-    cf_define_symbol(s, SYM_TABLE, table, c);
+    cf_define_symbol(new_config, s, SYM_TABLE, table, c);
 
   c->name = s->name;
   c->addr_type = addr_type;

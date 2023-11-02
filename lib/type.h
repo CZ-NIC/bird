@@ -37,10 +37,16 @@ union bval_long {
   ip_addr ip;
   const net_addr *net;
   const char *s;
+  const struct adata *bs;
   const struct f_tree *t;
   const struct f_trie *ti;
   const struct f_path_mask *path_mask;
   struct f_path_mask_item pmi;
+  struct rte *rte;
+  struct rte_block {
+    struct rte **rte;
+    uint len;
+  } rte_block;
 };
 
 
@@ -48,12 +54,15 @@ union bval_long {
 enum btype {
 /* Nothing. Simply nothing. */
   T_VOID = 0,
+  T_NONE = 0xff,
 
 /* Something but inaccessible. */
   T_OPAQUE = 0x02,		/* Opaque byte string (not filterable) */
   T_IFACE = 0x0c,		/* Pointer to an interface (inside adata) */
-  T_NEXTHOP_LIST = 0x2c,	/* The whole nexthop block */
-  T_HOSTENTRY = 0x2e,		/* Hostentry with possible MPLS labels */
+  T_ROUTES_BLOCK = 0x68,	/* Block of route pointers */
+  T_ROUTE = 0x6a,		/* One route pointer */
+  T_NEXTHOP_LIST = 0x6c,	/* The whole nexthop block */
+  T_HOSTENTRY = 0x6e,		/* Hostentry with possible MPLS labels */
 
 /* Types shared with eattrs */
   T_INT = 0x01,			/* 32-bit unsigned integer number */
@@ -99,6 +108,7 @@ enum btype {
   T_LC = 0xc0,		/* Large community value, lcomm */
   T_RD = 0xc4,		/* Route distinguisher for VPN addresses */
   T_PATH_MASK_ITEM = 0xc8,	/* Path mask item for path mask constructors */
+  T_BYTESTRING = 0xcc,
 
   T_SET = 0x80,
   T_PREFIX_SET = 0x84,

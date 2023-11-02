@@ -14,7 +14,7 @@
 #include <stdint.h>
 #include <setjmp.h>
 #include "nest/bird.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "nest/bfd.h"
 //#include "lib/lists.h"
 #include "lib/hash.h"
@@ -96,6 +96,7 @@ struct bgp_config {
   u32 default_med;			/* Default value for MULTI_EXIT_DISC attribute */
   int capabilities;			/* Enable capability handshake [RFC 5492] */
   int enable_refresh;			/* Enable local support for route refresh [RFC 2918] */
+  int enable_enhanced_refresh;		/* Enable local support for enhanced route refresh [RFC 7313] */
   int enable_as4;			/* Enable local support for 4B AS numbers [RFC 6793] */
   int enable_extended_messages;		/* Enable local support for extended messages [RFC 8654] */
   int enable_hostname;			/* Enable local support for hostname [draft] */
@@ -230,7 +231,7 @@ struct bgp_af_caps {
   u8 llgr_able;				/* Long-lived GR, RFC draft */
   u32 llgr_time;			/* Long-lived GR stale time */
   u8 llgr_flags;			/* Long-lived GR per-AF flags */
-  u8 ext_next_hop;			/* Extended IPv6 next hop,   RFC 5549 */
+  u8 ext_next_hop;			/* Extended IPv6 next hop,   RFC 8950 */
   u8 add_path;				/* Multiple paths support,   RFC 7911 */
 };
 
@@ -284,6 +285,11 @@ struct bgp_conn {
   u8 as4_session;			/* Session uses 4B AS numbers in AS_PATH (both sides support it) */
   u8 ext_messages;			/* Session uses extended message length */
   u32 received_as;			/* ASN received in OPEN message */
+
+  byte *local_open_msg;			/* Saved OPEN messages (no header) */
+  byte *remote_open_msg;
+  uint local_open_length;
+  uint remote_open_length;
 
   struct bgp_caps *local_caps;
   struct bgp_caps *remote_caps;
@@ -419,7 +425,8 @@ struct bgp_bucket {
   struct bgp_bucket *next;		/* Node in bucket hash table */
   list prefixes;			/* Prefixes to send in this bucket (struct bgp_prefix) */
   u32 hash;				/* Hash over extended attributes */
-  u32 px_uc;				/* How many prefixes are linking this bucket */
+  u32 px_uc:31;				/* How many prefixes are linking this bucket */
+  u32 bmp:1;				/* Temporary bucket for BMP encoding */
   ea_list eattrs[0];			/* Per-bucket extended attributes */
 };
 
@@ -509,6 +516,7 @@ struct bgp_parse_state {
 #define BGP_PORT		179
 #define BGP_VERSION		4
 #define BGP_HEADER_LENGTH	19
+#define BGP_HDR_MARKER_LENGTH	16
 #define BGP_MAX_MESSAGE_LENGTH	4096
 #define BGP_MAX_EXT_MSG_LENGTH	65535
 #define BGP_RX_BUFFER_SIZE	4096
@@ -518,6 +526,13 @@ struct bgp_parse_state {
 
 #define BGP_CF_WALK_CHANNELS(P,C) WALK_LIST(C, P->c.channels) if (C->c.class == &channel_bgp)
 #define BGP_WALK_CHANNELS(P,C) WALK_LIST(C, P->p.channels) if (C->c.class == &channel_bgp)
+
+#define BGP_MSG_HDR_MARKER_SIZE	16
+#define BGP_MSG_HDR_MARKER_POS	0
+#define BGP_MSG_HDR_LENGTH_SIZE	2
+#define BGP_MSG_HDR_LENGTH_POS	BGP_MSG_HDR_MARKER_SIZE
+#define BGP_MSG_HDR_TYPE_SIZE	1
+#define BGP_MSG_HDR_TYPE_POS	(BGP_MSG_HDR_MARKER_SIZE + BGP_MSG_HDR_LENGTH_SIZE)
 
 static inline int bgp_channel_is_ipv4(struct bgp_channel *c)
 { return BGP_AFI(c->afi) == BGP_AFI_IPV4; }
@@ -632,6 +647,8 @@ static inline struct bgp_proto *bgp_rte_proto(const rte *rte)
     SKIP_BACK(struct bgp_proto, p.sources, rte->src->owner) : NULL;
 }
 
+byte * bgp_bmp_encode_rte(struct bgp_channel *c, byte *buf, const net_addr *n, const struct rte *new, const struct rte_src *src);
+
 #define BGP_AIGP_METRIC		1
 #define BGP_AIGP_MAX		U64(0xffffffffffffffff)
 
@@ -646,6 +663,7 @@ bgp_total_aigp_metric(const rte *e)
 }
 
 void bgp_register_attrs(void);
+struct ea_class *bgp_find_ea_class_by_id(uint id);
 
 
 /* packets.c */
@@ -663,6 +681,7 @@ const char * bgp_error_dsc(unsigned code, unsigned subcode);
 void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsigned subcode, byte *data, unsigned len);
 
 void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
+byte *bgp_create_end_mark_(struct bgp_channel *c, byte *buf);
 
 
 /* Packet types */

@@ -19,7 +19,7 @@ CF_HDR
 #include "lib/string.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "nest/bfd.h"
 #include "nest/cli.h"
 #include "filter/filter.h"
@@ -97,19 +97,20 @@ CF_DECLS
   struct timeformat *tf;
   struct settle_config settle;
   struct adata *ad;
-  struct bytestring *bs;
+  const struct adata *bs;
+  struct aggr_item_node *ai;
 }
 
 %token END CLI_MARKER INVALID_TOKEN ELSECOL DDOT
-%token GEQ LEQ NEQ AND OR
+%token GEQ LEQ NEQ AND OR IMP
 %token PO PC
 %token <i> NUM ENUM
 %token <ip4> IP4
 %token <ip6> IP6
 %token <i64> VPN_RD
-%token <s> CF_SYM_KNOWN CF_SYM_UNDEFINED
+%token <s> CF_SYM_KNOWN CF_SYM_UNDEFINED CF_SYM_METHOD_BARE CF_SYM_METHOD_ARGS
 %token <t> TEXT
-%token <bs> BYTESTRING
+%token <bs> BYTETEXT
 %type <iface> ipa_scope
 
 %type <i> expr bool pxlen4
@@ -121,11 +122,15 @@ CF_DECLS
 %type <ad> label_stack_start label_stack
 
 %type <t> text opttext
-%type <s> symbol symbol_known toksym 
+%type <bs> bytestring
+%type <s> symbol
+
+%type <v> bytestring_text text_or_ipa
+%type <x> bytestring_expr
 
 %nonassoc PREFIX_DUMMY
 %left AND OR
-%nonassoc '=' '<' '>' '~' GEQ LEQ NEQ NMA PO PC
+%nonassoc '=' '<' '>' '~' GEQ LEQ NEQ NMA IMP PO PC
 %left '|' '&'
 %left '+' '-'
 %left '*' '/' '%'
@@ -134,7 +139,7 @@ CF_DECLS
 
 %start config
 
-CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS, FROM)
+CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS, FROM, MAX, AS)
 
 CF_GRAMMAR
 
@@ -158,16 +163,15 @@ conf: definition ;
 
 definition:
    DEFINE symbol '=' term ';' {
-     struct f_val val;
-     if (f_eval(f_linearize($4, 1), &val) > F_RETURN) cf_error("Runtime error");
-     cf_define_symbol($2, SYM_CONSTANT | val.type, val, lp_val_copy(cfg_mem, &val));
+     struct f_val *val = cf_eval($4, T_VOID);
+     cf_define_symbol(new_config, $2, SYM_CONSTANT | val->type, val, val);
    }
  ;
 
 expr:
    NUM
- | '(' term ')' { $$ = f_eval_int(f_linearize($2, 1)); }
- | symbol_known {
+ | '(' term ')' { $$ = cf_eval_int($2); }
+ | CF_SYM_KNOWN {
      if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number constant expected");
      $$ = SYM_VAL($1).i; }
  ;
@@ -178,9 +182,7 @@ expr_us:
  | expr US { $$ = $1 US_; }
  ;
 
-toksym: FROM | PREFERENCE ;
-symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN | toksym ;
-symbol_known: CF_SYM_KNOWN | toksym ;
+symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN ;
 
 /* Switches */
 
@@ -408,6 +410,45 @@ text:
 opttext:
     TEXT
  | /* empty */ { $$ = NULL; }
+ ;
+
+text_or_ipa:
+   TEXT { $$.type = T_STRING; $$.val.s = $1; }
+ | IP4 { $$.type = T_IP; $$.val.ip = ipa_from_ip4($1); }
+ | IP6 { $$.type = T_IP; $$.val.ip = ipa_from_ip6($1); }
+ | CF_SYM_KNOWN {
+     if (($1->class == (SYM_CONSTANT | T_STRING)) ||
+	 ($1->class == (SYM_CONSTANT | T_IP)))
+       $$ = *($1->val);
+     else
+       cf_error("String or IP constant expected");
+   }
+ | '(' term ')' {
+     $$ = *cf_eval($2, T_VOID);
+     if (($$.type != T_BYTESTRING) && ($$.type != T_STRING))
+       cf_error("Bytestring or string value expected");
+   }
+ ;
+
+bytestring:
+   BYTETEXT
+ | bytestring_expr { $$ = cf_eval($1, T_BYTESTRING)->val.bs; }
+ ;
+
+bytestring_text:
+   BYTETEXT { $$.type = T_BYTESTRING; $$.val.bs = $1; }
+ | TEXT { $$.type = T_STRING; $$.val.s = $1; }
+ | bytestring_expr {
+     $$ = *cf_eval($1, T_VOID);
+     if (($$.type != T_BYTESTRING) && ($$.type != T_STRING))
+       cf_error("Bytestring or string value expected");
+   }
+ ;
+
+bytestring_expr:
+   lvalue { $$ = f_lval_getter(&$1); }
+ | term_bs
+ | '(' term ')' { $$ = $2; }
  ;
 
 

@@ -12,6 +12,15 @@
 
 #include "nest/bird.h"
 #include "lib/type.h"
+#include "nest/iface.h"
+
+struct f_method {
+  struct symbol *sym;
+  struct f_inst *(*new_inst)(struct f_inst *obj, struct f_inst *args);
+  const struct f_method *next;
+  uint arg_num;
+  enum btype args_type[];
+};
 
 /* Filter value; size of this affects filter memory consumption */
 struct f_val {
@@ -39,20 +48,31 @@ struct f_static_attr {
   int readonly:1;		/* Don't allow writing */
 };
 
+struct f_attr_bit {
+  const struct ea_class *class;
+  uint bit;
+};
+
+#define f_new_dynamic_attr_bit(_bit, _name)  ((struct f_attr_bit) { .bit = _bit, .class = ea_class_find(_name) })
+
 /* Filter l-value type */
 enum f_lval_type {
+  F_LVAL_CONSTANT,
   F_LVAL_VARIABLE,
   F_LVAL_SA,
   F_LVAL_EA,
+  F_LVAL_ATTR_BIT,
 };
 
 /* Filter l-value */
 struct f_lval {
   enum f_lval_type type;
+  struct f_inst *rte;
   union {
     struct symbol *sym;
     const struct ea_class *da;
     struct f_static_attr sa;
+    struct f_attr_bit fab;
   };
 };
 
@@ -201,14 +221,17 @@ trie_match_next_longest_ip6(net_addr_ip6 *n, ip6_addr *found)
 #define F_CMP_ERROR 999
 
 const char *f_type_name(btype t);
-
 enum btype f_type_element_type(btype t);
+struct sym_scope *f_type_method_scope(btype t);
 
 int val_same(const struct f_val *v1, const struct f_val *v2);
 int val_compare(const struct f_val *v1, const struct f_val *v2);
 void val_format(const struct f_val *v, buffer *buf);
 char *val_format_str(struct linpool *lp, const struct f_val *v);
 const char *val_dump(const struct f_val *v);
+
+uint val_hash(struct f_val *);
+void mem_hash_mix_f_val(u64 *, struct f_val *);
 
 struct f_val *lp_val_copy(struct linpool *lp, const struct f_val *v);
 
@@ -234,23 +257,29 @@ const struct adata *lclist_filter(struct linpool *pool, const struct adata *list
 
 
 /* Special undef value for paths and clists */
+
 static inline int
-undef_value(struct f_val v)
+val_is_undefined(struct f_val v)
 {
   return ((v.type == T_PATH) || (v.type == T_CLIST) ||
 	  (v.type == T_ECLIST) || (v.type == T_LCLIST)) &&
     (v.val.ad == &null_adata);
 }
 
-extern const struct f_val f_const_empty_path, f_const_empty_clist, f_const_empty_eclist, f_const_empty_lclist, f_const_empty_prefix_set;
-static inline const struct f_val *f_get_empty(btype t)
+extern const struct f_val f_const_empty_prefix_set;
+static inline struct f_val f_get_empty(btype t)
 {
   switch (t) {
-    case T_PATH:	return &f_const_empty_path;
-    case T_CLIST:	return &f_const_empty_clist;
-    case T_ECLIST:	return &f_const_empty_eclist;
-    case T_LCLIST:	return &f_const_empty_lclist;
-    default:		return NULL;
+    case T_PATH:
+    case T_CLIST:
+    case T_ECLIST:
+    case T_LCLIST:
+      return (struct f_val) {
+	.type = t,
+	.val.ad = &null_adata,
+      };
+    default:
+      return (struct f_val) { .type = T_VOID };
   }
 }
 

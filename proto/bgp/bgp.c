@@ -86,7 +86,6 @@
  * RFC 5065 - AS confederations for BGP
  * RFC 5082 - Generalized TTL Security Mechanism
  * RFC 5492 - Capabilities Advertisement with BGP
- * RFC 5549 - Advertising IPv4 NLRI with an IPv6 Next Hop
  * RFC 5575 - Dissemination of Flow Specification Rules
  * RFC 5668 - 4-Octet AS Specific BGP Extended Community
  * RFC 6286 - AS-Wide Unique BGP Identifier
@@ -101,6 +100,7 @@
  * RFC 8203 - BGP Administrative Shutdown Communication
  * RFC 8212 - Default EBGP Route Propagation Behavior without Policies
  * RFC 8654 - Extended Message Support for BGP
+ * RFC 8950 - Advertising IPv4 NLRI with an IPv6 Next Hop
  * RFC 9072 - Extended Optional Parameters Length for BGP OPEN Message
  * RFC 9117 - Revised Validation Procedure for BGP Flow Specifications
  * RFC 9234 - Route Leak Prevention and Detection Using Roles
@@ -115,7 +115,7 @@
 #include "nest/bird.h"
 #include "nest/iface.h"
 #include "nest/protocol.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "nest/cli.h"
 #include "nest/locks.h"
 #include "conf/conf.h"
@@ -125,6 +125,9 @@
 #include "lib/string.h"
 
 #include "bgp.h"
+#ifdef CONFIG_BMP
+#include "proto/bmp/bmp.h"
+#endif
 
 static void bgp_listen_create(void *);
 
@@ -476,10 +479,20 @@ bgp_close_conn(struct bgp_conn *conn)
   sk_close(conn->sk);
   conn->sk = NULL;
 
+  mb_free(conn->local_open_msg);
+  conn->local_open_msg = NULL;
+  mb_free(conn->remote_open_msg);
+  conn->remote_open_msg = NULL;
+  conn->local_open_length = 0;
+  conn->remote_open_length = 0;
+
   mb_free(conn->local_caps);
   conn->local_caps = NULL;
   mb_free(conn->remote_caps);
   conn->remote_caps = NULL;
+
+  conn->notify_data = NULL;
+  conn->notify_size = 0;
 }
 
 
@@ -593,8 +606,8 @@ bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip)
   /* This is hack, we would like to share config, but we need to copy it now */
   new_config = config;
   cfg_mem = config->mem;
-  conf_this_scope = config->root_scope;
-  sym = cf_default_name(fmt, &(pp->dynamic_name_counter));
+  config->current_scope = config->root_scope;
+  sym = cf_default_name(config, fmt, &(pp->dynamic_name_counter));
   proto_clone_config(sym, pp->p.cf);
   new_config = NULL;
   cfg_mem = NULL;
@@ -785,10 +798,15 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
 
   bgp_conn_set_state(conn, BS_ESTABLISHED);
   proto_notify_state(&p->p, PS_UP);
+
+#ifdef CONFIG_BMP
+  bmp_peer_up(p, conn->local_open_msg, conn->local_open_length,
+	      conn->remote_open_msg, conn->remote_open_length);
+#endif
 }
 
 static void
-bgp_conn_leave_established_state(struct bgp_proto *p)
+bgp_conn_leave_established_state(struct bgp_conn *conn, struct bgp_proto *p)
 {
   BGP_TRACE(D_EVENTS, "BGP session closed");
   p->last_established = current_time();
@@ -796,6 +814,12 @@ bgp_conn_leave_established_state(struct bgp_proto *p)
 
   if (p->p.proto_state == PS_UP)
     bgp_stop(p, 0, NULL, 0);
+
+#ifdef CONFIG_BMP
+  bmp_peer_down(p, p->last_error_class,
+		conn->notify_code, conn->notify_subcode,
+		conn->notify_data, conn->notify_size);
+#endif
 }
 
 void
@@ -812,7 +836,7 @@ bgp_conn_enter_close_state(struct bgp_conn *conn)
   bgp_start_timer(p, conn->hold_timer, 10);
 
   if (os == BS_ESTABLISHED)
-    bgp_conn_leave_established_state(p);
+    bgp_conn_leave_established_state(conn, p);
 }
 
 void
@@ -826,7 +850,7 @@ bgp_conn_enter_idle_state(struct bgp_conn *conn)
   proto_send_event(&p->p, p->event);
 
   if (os == BS_ESTABLISHED)
-    bgp_conn_leave_established_state(p);
+    bgp_conn_leave_established_state(conn, p);
 }
 
 /**
@@ -1769,7 +1793,7 @@ bgp_start(struct proto *P)
    * so that we are the only instance attempting to talk with that neighbor.
    */
   struct object_lock *lock;
-  lock = p->lock = olock_new(P->pool_fragile);
+  lock = p->lock = olock_new(P->pool_inloop);
   lock->addr = p->remote_ip;
   lock->port = p->cf->remote_port;
   lock->iface = p->cf->iface;
@@ -2453,12 +2477,13 @@ bgp_error(struct bgp_conn *c, uint code, uint subcode, byte *data, int len)
 
   bgp_log_error(p, BE_BGP_TX, "Error", code, subcode, data, ABS(len));
   bgp_store_error(p, c, BE_BGP_TX, (code << 16) | subcode);
-  bgp_conn_enter_close_state(c);
 
   c->notify_code = code;
   c->notify_subcode = subcode;
   c->notify_data = data;
   c->notify_size = (len > 0) ? len : 0;
+
+  bgp_conn_enter_close_state(c);
   bgp_schedule_packet(c, NULL, PKT_NOTIFICATION);
 
   if (code != 6)
@@ -2845,7 +2870,7 @@ bgp_show_proto_info(struct proto *P)
   }
 }
 
-struct channel_class channel_bgp = {
+const struct channel_class channel_bgp = {
   .channel_size =	sizeof(struct bgp_channel),
   .config_size =	sizeof(struct bgp_channel_config),
   .init =		bgp_channel_init,

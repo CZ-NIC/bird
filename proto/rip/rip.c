@@ -769,8 +769,8 @@ rip_add_iface(struct rip_proto *p, struct iface *iface, struct rip_iface_config 
 
   add_tail(&p->iface_list, NODE ifa);
 
-  ifa->timer = tm_new_init(p->p.pool, rip_iface_timer, ifa, 0, 0);
-  ifa->rxmt_timer = tm_new_init(p->p.pool, rip_rxmt_timeout, ifa, 0, 0);
+  ifa->timer = tm_new_init(p->p.pool_up, rip_iface_timer, ifa, 0, 0);
+  ifa->rxmt_timer = tm_new_init(p->p.pool_up, rip_rxmt_timeout, ifa, 0, 0);
 
   struct object_lock *lock = olock_new(p->p.pool);
   lock->type = OBJLOCK_UDP;
@@ -854,7 +854,7 @@ rip_reconfigure_ifaces(struct rip_proto *p, struct rip_config *cf)
 {
   IFACE_WALK(iface)
   {
-    if (p->p.vrf && p->p.vrf != iface->master)
+    if (p->p.vrf && !if_in_vrf(iface, p->p.vrf))
       continue;
 
     if (!(iface->flags & IF_UP))
@@ -1238,7 +1238,7 @@ rip_start(struct proto *P)
   fib_init(&p->rtable, P->pool, cf->rip2 ? NET_IP4 : NET_IP6,
 	   sizeof(struct rip_entry), OFFSETOF(struct rip_entry, n), 0, NULL);
   p->rte_slab = sl_new(P->pool, sizeof(struct rip_rte));
-  p->timer = tm_new_init(P->pool, rip_timer, p, 0, 0);
+  p->timer = tm_new_init(P->pool_up, rip_timer, p, 0, 0);
 
   p->rip2 = cf->rip2;
   p->ecmp = cf->ecmp;
@@ -1261,8 +1261,8 @@ rip_shutdown(struct proto *P)
   TRACE(D_EVENTS, "Shutdown requested");
 
   struct rip_iface *ifa;
-  WALK_LIST(ifa, p->iface_list)
-    rip_iface_stop(ifa);
+  WALK_LIST_FIRST(ifa, p->iface_list)
+    rip_remove_iface(p, ifa);
 
   return PS_DOWN;
 }

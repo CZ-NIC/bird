@@ -319,7 +319,7 @@ struct rt_pending_export {
 
 struct rt_export_request {
   struct rt_export_hook *hook;		/* Table part of the export */
-  char *name;		/* Network prefilter address */
+  char *name;
   u8 trace_routes;
   uint feed_block_size;			/* How many routes to feed at once */
   struct rt_prefilter prefilter;

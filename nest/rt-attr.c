@@ -45,7 +45,7 @@
  */
 
 #include "nest/bird.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "nest/cli.h"
@@ -91,6 +91,8 @@ const char * const rta_src_names[RTS_MAX] = {
   [RTS_PIPE]		= "pipe",
   [RTS_BABEL]		= "Babel",
   [RTS_RPKI]		= "RPKI",
+  [RTS_PERF]		= "Perf",
+  [RTS_AGGREGATED]	= "aggregated",
 };
 
 static void
@@ -196,7 +198,7 @@ static struct idm src_ids;
 #define RSH_KEY(n)		n->private_id
 #define RSH_NEXT(n)		n->next
 #define RSH_EQ(n1,n2)		n1 == n2
-#define RSH_FN(n)		u32_hash(n)
+#define RSH_FN(n)		u64_hash(n)
 
 #define RSH_REHASH		rte_src_rehash
 #define RSH_PARAMS		/2, *2, 1, 1, 8, 20
@@ -255,7 +257,7 @@ rt_get_source_o(struct rte_owner *p, u32 id)
 
   HASH_INSERT2(p->hash, RSH, rta_pool, src);
   if (config->table_debug)
-    log(L_TRACE "Allocated new rte_src for %s, ID %uL %uG, have %u sources now",
+    log(L_TRACE "Allocated new rte_src for %s, ID %luL %uG, have %u sources now",
 	p->name, src->private_id, src->global_id, p->uc);
 
   uint gm = atomic_load_explicit(&rte_src_global_max, memory_order_relaxed);
@@ -362,6 +364,30 @@ rt_prune_sources(void *data)
   }
   else
     RTA_UNLOCK;
+}
+
+void
+rt_dump_sources(struct rte_owner *o)
+{
+  debug("\t%s: hord=%u, uc=%u, cnt=%u prune=%p, stop=%p\n",
+      o->name, o->hash.order, o->uc, o->hash.count, o->prune, o->stop);
+  debug("\tget_route_info=%p, better=%p, mergable=%p, igp_metric=%p, recalculate=%p",
+      o->class->get_route_info, o->class->rte_better, o->class->rte_mergable,
+      o->class->rte_igp_metric, o->rte_recalculate);
+
+  int splitting = 0;
+  HASH_WALK(o->hash, next, src)
+  {
+    debug("%c%c%uL %uG %luU",
+	(splitting % 8) ? ',' : '\n',
+	(splitting % 8) ? ' ' : '\t',
+	src->private_id, src->global_id,
+	atomic_load_explicit(&src->uc, memory_order_relaxed));
+
+    splitting++;
+  }
+  HASH_WALK_END;
+  debug("\n");
 }
 
 void
@@ -573,16 +599,20 @@ static struct idm ea_class_idm;
 
 /* Config parser lex register function */
 void ea_lex_register(struct ea_class *def);
-void ea_lex_unregister(struct ea_class *def);
 
 static void
 ea_class_free(struct ea_class *cl)
 {
+  RTA_LOCK;
+
   /* No more ea class references. Unregister the attribute. */
   idm_free(&ea_class_idm, cl->id);
   ea_class_global[cl->id] = NULL;
-  if (!cl->hidden)
-    ea_lex_unregister(cl);
+
+  /* When we start supporting full protocol removal, we may need to call
+   * ea_lex_unregister(cl), see where ea_lex_register() is called. */
+
+  RTA_UNLOCK;
 }
 
 static void
@@ -619,7 +649,7 @@ ea_class_init(void)
       sizeof(*ea_class_global) * (ea_class_max = EA_CLASS_INITIAL_MAX));
 }
 
-static struct ea_class_ref *
+struct ea_class_ref *
 ea_ref_class(pool *p, struct ea_class *def)
 {
   def->uc++;
@@ -639,9 +669,6 @@ ea_register(pool *p, struct ea_class *def)
 
   ASSERT_DIE(def->id < ea_class_max);
   ea_class_global[def->id] = def;
-
-  if (!def->hidden)
-    ea_lex_register(def);
 
   return ea_ref_class(p, def);
 }
@@ -680,7 +707,12 @@ ea_register_init(struct ea_class *clp)
 {
   RTA_LOCK;
   ASSERT_DIE(!ea_class_find_by_name(clp->name));
-  ea_register(&root_pool, clp);
+
+  struct ea_class *def = ea_register(&root_pool, clp)->class;
+
+  if (!clp->hidden)
+    ea_lex_register(def);
+
   RTA_UNLOCK;
 }
 
@@ -1340,7 +1372,15 @@ nexthop_dump(const struct adata *ad)
 
   debug(":");
 
-  NEXTHOP_WALK(nh, nhad)
+  if (!NEXTHOP_IS_REACHABLE(nhad))
+  {
+    const char *name = rta_dest_name(nhad->dest);
+    if (name)
+      debug(" %s", name);
+    else
+      debug(" D%d", nhad->dest);
+  }
+  else NEXTHOP_WALK(nh, nhad)
     {
       if (ipa_nonzero(nh->gw)) debug(" ->%I", nh->gw);
       if (nh->labels) debug(" L %d", nh->label[0]);

@@ -35,7 +35,7 @@
 #include "lib/ip.h"
 #include "lib/net.h"
 #include "lib/flowspec.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "lib/attrs.h"
@@ -76,6 +76,9 @@ struct filter_state {
   /* The route we are processing. This may be NULL to indicate no route available. */
   struct rte *rte;
 
+  /* Additional external values provided to the filter */
+  const struct f_val *val;
+
   /* Buffer for log output */
   log_buffer buf;
 
@@ -109,18 +112,20 @@ static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
  * TWOARGS macro to get both of them evaluated.
  */
 static enum filter_return
-interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
+interpret(struct filter_state *fs, const struct f_line *line, uint argc, const struct f_val *argv, uint resc, struct f_val *resv)
 {
-  /* No arguments allowed */
-  ASSERT(line->args == 0);
+  /* Check of appropriate number of arguments */
+  ASSERT(line->args == argc);
 
   /* Initialize the filter stack */
   struct filter_stack *fstk = &fs->stack;
 
-  fstk->vcnt = line->vars;
-  memset(fstk->vstk, 0, sizeof(struct f_val) * line->vars);
+  /* Set the arguments and top-level variables */
+  fstk->vcnt = line->vars + line->args;
+  memcpy(fstk->vstk, argv, sizeof(struct f_val) * line->args);
+  memset(fstk->vstk + argc, 0, sizeof(struct f_val) * line->vars);
 
-  /* The same as with the value stack. Not resetting the stack for performance reasons. */
+  /* The same as with the value stack. Not resetting the stack completely for performance reasons. */
   fstk->ecnt = 1;
   fstk->estk[0] = (struct filter_exec_stack) {
     .line = line,
@@ -128,6 +133,7 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
   };
 
 #define curline fstk->estk[fstk->ecnt-1]
+#define prevline fstk->estk[fstk->ecnt-2]
 
 #ifdef LOCAL_DEBUG
   debug("Interpreting line.");
@@ -172,21 +178,14 @@ interpret(struct filter_state *fs, const struct f_line *line, struct f_val *val)
     fstk->ecnt--;
   }
 
-  if (fstk->vcnt == 0) {
-    if (val) {
-      log_rl(&rl_runtime_err, L_ERR "filters: No value left on stack");
-      return F_ERROR;
-    }
-    return F_NOP;
+  if (fstk->vcnt != resc)
+  {
+    log_rl(&rl_runtime_err, L_ERR "Filter expected to leave %d values on stack but %d left instead", resc, fstk->vcnt);
+    return F_ERROR;
   }
 
-  if (val && (fstk->vcnt == 1)) {
-    *val = fstk->vstk[0];
-    return F_NOP;
-  }
-
-  log_rl(&rl_runtime_err, L_ERR "Too many items left on stack: %u", fstk->vcnt);
-  return F_ERROR;
+  memcpy(resv, fstk->vstk, sizeof(struct f_val) * resc);
+  return F_NOP;
 }
 
 
@@ -209,6 +208,12 @@ f_run(const struct filter *filter, struct rte *rte, int flags)
   if (filter == FILTER_REJECT)
     return F_REJECT;
 
+  return f_run_args(filter, rte, 0, NULL, flags);
+}
+
+enum filter_return
+f_run_args(const struct filter *filter, struct rte *rte, uint argc, const struct f_val *argv, int flags)
+{
   DBG( "Running filter `%s'...", filter->name );
 
   /* Initialize the filter state */
@@ -220,7 +225,7 @@ f_run(const struct filter *filter, struct rte *rte, int flags)
   f_stack_init(filter_state);
 
   /* Run the interpreter itself */
-  enum filter_return fret = interpret(&filter_state, filter->root, NULL);
+  enum filter_return fret = interpret(&filter_state, filter->root, argc, argv, 0, NULL);
 
   /* Process the filter output, log it and return */
   if (fret < F_ACCEPT) {
@@ -246,7 +251,7 @@ f_run(const struct filter *filter, struct rte *rte, int flags)
  */
 
 enum filter_return
-f_eval_rte(const struct f_line *expr, struct rte *rte)
+f_eval_rte(const struct f_line *expr, struct rte *rte, uint argc, const struct f_val *argv, uint resc, struct f_val *resv)
 {
   filter_state = (struct filter_state) {
     .rte = rte,
@@ -254,16 +259,14 @@ f_eval_rte(const struct f_line *expr, struct rte *rte)
 
   f_stack_init(filter_state);
 
-  ASSERT(!rta_is_cached(rte->attrs));
-
-  return interpret(&filter_state, expr, NULL);
+  return interpret(&filter_state, expr, argc, argv, resc, resv);
 }
 
 /*
  * f_eval - get a value of a term
  * @expr: filter line containing the term
  * @tmp_pool: long data may get allocated from this pool
- * @pres: here the output will be stored
+ * @pres: here the output will be stored if requested
  */
 enum filter_return
 f_eval(const struct f_line *expr, struct f_val *pres)
@@ -272,33 +275,27 @@ f_eval(const struct f_line *expr, struct f_val *pres)
 
   f_stack_init(filter_state);
 
-  enum filter_return fret = interpret(&filter_state, expr, pres);
+  enum filter_return fret = interpret(&filter_state, expr, 0, NULL, !!pres, pres);
   return fret;
 }
 
 /*
- * f_eval_int - get an integer value of a term
- * Called internally from the config parser, uses its internal memory pool
- * for allocations. Do not call in other cases.
+ * cf_eval_tmp - evaluate a value of a term and check its type
  */
-uint
-f_eval_int(const struct f_line *expr)
+struct f_val
+cf_eval_tmp(const struct f_inst *inst, int type)
 {
-  /* Called independently in parse-time to eval expressions */
-  filter_state = (struct filter_state) {};
-
-  f_stack_init(filter_state);
-
   struct f_val val;
 
-  if (interpret(&filter_state, expr, &val) > F_RETURN)
+  if (f_eval(f_linearize(inst, 1), &val) > F_RETURN)
     cf_error("Runtime error while evaluating expression; see log for details");
 
-  if (val.type != T_INT)
-    cf_error("Integer expression expected");
+  if (type != T_VOID && val.type != type)
+    cf_error("Expression of type %s expected", f_type_name(type));
 
-  return val.val.i;
+  return val;
 }
+
 
 /*
  * f_eval_buf - get a value of a term and print it to the supplied buffer

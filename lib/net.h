@@ -479,39 +479,47 @@ static inline void net_copy_mpls(net_addr_mpls *dst, const net_addr_mpls *src)
 { memcpy(dst, src, sizeof(net_addr_mpls)); }
 
 
-/* XXXX */
-static inline u32 u64_hash(u64 a)
-{ return u32_hash(a); }
+static inline u32 px4_hash(ip4_addr prefix, u32 pxlen)
+{ return ip4_hash(prefix) ^ (pxlen << 26); }
+
+static inline u32 px6_hash(ip6_addr prefix, u32 pxlen)
+{ return ip6_hash(prefix) ^ (pxlen << 26); }
 
 static inline u32 net_hash_ip4(const net_addr_ip4 *n)
-{ return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
+{ return px4_hash(n->prefix, n->pxlen); }
 
 static inline u32 net_hash_ip6(const net_addr_ip6 *n)
-{ return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
+{ return px6_hash(n->prefix, n->pxlen); }
 
 static inline u32 net_hash_vpn4(const net_addr_vpn4 *n)
-{ return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26) ^ u64_hash(n->rd); }
+{
+  u64 acc = ip4_hash0(n->prefix, HASH_PARAM, 0) ^ (n->pxlen << 26);
+  return hash_value(u64_hash0(n->rd, HASH_PARAM, acc));
+}
 
 static inline u32 net_hash_vpn6(const net_addr_vpn6 *n)
-{ return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26) ^ u64_hash(n->rd); }
+{
+  u64 acc = ip6_hash0(n->prefix, HASH_PARAM, 0) ^ (n->pxlen << 26);
+  return hash_value(u64_hash0(n->rd, HASH_PARAM, acc));
+}
 
 static inline u32 net_hash_roa4(const net_addr_roa4 *n)
-{ return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
+{ return px4_hash(n->prefix, n->pxlen); }
 
 static inline u32 net_hash_roa6(const net_addr_roa6 *n)
-{ return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
+{ return px6_hash(n->prefix, n->pxlen); }
 
 static inline u32 net_hash_flow4(const net_addr_flow4 *n)
-{ return ip4_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
+{ return px4_hash(n->prefix, n->pxlen); }
 
 static inline u32 net_hash_flow6(const net_addr_flow6 *n)
-{ return ip6_hash(n->prefix) ^ ((u32) n->pxlen << 26); }
+{ return px6_hash(n->prefix, n->pxlen); }
 
 static inline u32 net_hash_ip6_sadr(const net_addr_ip6_sadr *n)
-{ return net_hash_ip6((net_addr_ip6 *) n); }
+{ return px6_hash(n->dst_prefix, n->dst_pxlen); }
 
 static inline u32 net_hash_mpls(const net_addr_mpls *n)
-{ return n->label; }
+{ return u32_hash(n->label); }
 
 u32 net_hash(const net_addr *a);
 

@@ -38,7 +38,7 @@
 #include "nest/bird.h"
 #include "nest/iface.h"
 #include "nest/protocol.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "nest/cli.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
@@ -122,7 +122,7 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
 
   /* Evaluate the filter */
   if (r->cmds)
-    f_eval_rte(r->cmds, e);
+    f_eval_rte(r->cmds, e, 0, NULL, 0, NULL);
 
   rte_update(p->p.main_channel, r->net, e, src);
   static_free_source(src, r->index);

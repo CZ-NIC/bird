@@ -16,7 +16,7 @@
 #undef LOCAL_DEBUG
 
 #include "nest/bird.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "lib/alloca.h"
@@ -429,13 +429,21 @@ struct nl_want_attrs {
 };
 
 
-#define BIRD_IFLA_MAX (IFLA_WIRELESS+1)
+#define BIRD_IFLA_MAX (IFLA_LINKINFO+1)
 
 static struct nl_want_attrs ifla_attr_want[BIRD_IFLA_MAX] = {
   [IFLA_IFNAME]	  = { 1, 0, 0 },
   [IFLA_MTU]	  = { 1, 1, sizeof(u32) },
   [IFLA_MASTER]	  = { 1, 1, sizeof(u32) },
   [IFLA_WIRELESS] = { 1, 0, 0 },
+  [IFLA_LINKINFO] = { 1, 0, 0 },
+};
+
+#define BIRD_INFO_MAX (IFLA_INFO_DATA+1)
+
+static struct nl_want_attrs ifinfo_attr_want[BIRD_INFO_MAX] = {
+  [IFLA_INFO_KIND]= { 1, 0, 0 },
+  [IFLA_INFO_DATA]= { 1, 0, 0 },
 };
 
 
@@ -581,7 +589,6 @@ static inline ip_addr rta_get_ipa(struct rtattr *a)
     return ipa_from_ip6(rta_get_ip6(a));
 }
 
-#ifdef HAVE_MPLS_KERNEL
 static inline ip_addr rta_get_via(struct rtattr *a)
 {
   struct rtvia *v = RTA_DATA(a);
@@ -592,6 +599,7 @@ static inline ip_addr rta_get_via(struct rtattr *a)
   return IPA_NONE;
 }
 
+#ifdef HAVE_MPLS_KERNEL
 static u32 rta_mpls_stack[MPLS_MAX_LABEL_STACK];
 static inline int rta_get_mpls(struct rtattr *a, u32 *stack)
 {
@@ -872,10 +880,8 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, const net_addr
       if (a[RTA_FLOW])
 	s->rta_flow = rta_get_u32(a[RTA_FLOW]);
 
-#ifdef HAVE_MPLS_KERNEL
       if (a[RTA_VIA])
 	rv->gw = rta_get_via(a[RTA_VIA]);
-#endif
 
       if (nh->rtnh_flags & RTNH_F_ONLINK)
 	rv->flags |= RNF_ONLINK;
@@ -977,7 +983,7 @@ nl_parse_link(struct nlmsghdr *h, int scan)
   int new = h->nlmsg_type == RTM_NEWLINK;
   struct iface f = {};
   struct iface *ifi;
-  char *name;
+  const char *name, *kind = NULL;
   u32 mtu, master = 0;
   uint fl;
 
@@ -1003,6 +1009,15 @@ nl_parse_link(struct nlmsghdr *h, int scan)
 
   if (a[IFLA_MASTER])
     master = rta_get_u32(a[IFLA_MASTER]);
+
+  if (a[IFLA_LINKINFO])
+  {
+    struct rtattr *li[BIRD_INFO_MAX];
+    nl_attr_len = RTA_PAYLOAD(a[IFLA_LINKINFO]);
+    nl_parse_attrs(RTA_DATA(a[IFLA_LINKINFO]), ifinfo_attr_want, li, sizeof(li));
+    if (li[IFLA_INFO_KIND])
+      kind = RTA_DATA(li[IFLA_INFO_KIND]);
+  }
 
   ifi = if_find_by_index(i->ifi_index);
   if (!new)
@@ -1042,6 +1057,9 @@ nl_parse_link(struct nlmsghdr *h, int scan)
 
       if (fl & IFF_MULTICAST)
 	f.flags |= IF_MULTICAST;
+
+      if (kind && !strcmp(kind, "vrf"))
+	f.flags |= IF_VRF;
 
       ifi = if_update(&f);
 
@@ -1762,10 +1780,8 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       if (a[RTA_GATEWAY])
 	nhad.nh.gw = rta_get_ipa(a[RTA_GATEWAY]);
 
-#ifdef HAVE_MPLS_KERNEL
       if (a[RTA_VIA])
 	nhad.nh.gw = rta_get_via(a[RTA_VIA]);
-#endif
 
       if (i->rtm_flags & RTNH_F_ONLINK)
 	nhad.nh.flags |= RNF_ONLINK;

@@ -336,6 +336,7 @@ resource_init(void)
   rcu_init();
   resource_sys_init();
 
+  root_pool.r.class = &pool_class;
   rp_init(&root_pool, the_bird_domain.the_bird, "Root");
   tmp_init(&root_pool, the_bird_domain.the_bird);
 }

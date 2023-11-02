@@ -55,7 +55,7 @@
 #undef LOCAL_DEBUG
 
 #include "nest/bird.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "lib/string.h"
 
 /*

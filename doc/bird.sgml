@@ -551,7 +551,7 @@ include "tablename.conf";;
 	Define a filter. You can learn more about filters in the following
 	chapter.
 
-	<tag><label id="opt-function">function <m/name/ (<m/parameters/) <m/local variables/ { <m/commands/ }</tag>
+	<tag><label id="opt-function">function <m/name/ (<m/parameters/) [ -&gt; <m/return type/ ] <m/local variables/ { <m/commands/ }</tag>
 	Define a function. You can learn more about functions in the following chapter.
 
 	<tag><label id="opt-protocol">protocol rip|ospf|bgp|<m/.../ [<m/name/ [from <m/name2/]] { <m>protocol options</m> }</tag>
@@ -869,7 +869,7 @@ agreement").
 	protocol packets are processed in the local TX queues. This option is
 	Linux specific. Default value is 7 (highest priority, privileged traffic).
 
-	<tag><label id="proto-pass">password "<m/password/" | <m/hex_key/ [ { <m>password options</m> } ] </tag>
+	<tag><label id="proto-pass">password "<m/password/" | <m/bytestring/ [ { <m>password options</m> } ] </tag>
 	Specifies a password that can be used by the protocol as a shared secret
 	key. Password option can be used more times to specify more passwords.
 	If more passwords are specified, it is a protocol-dependent decision
@@ -877,10 +877,8 @@ agreement").
 	authentication is enabled, authentication can be enabled by separate,
 	protocol-dependent <cf/authentication/ option.
 
-        A password can also be specified as a hexadecimal key. <m/hex_key/ is a
-        sequence of hexadecimal digit pairs, optionally colon-separated. A key
-        specified this way must be at least 16 bytes (32 digits) long (although
-        specific algorithms can impose other restrictions).
+	A password can be specified as a string or as a sequence of hexadecimal
+	digit pairs (<ref id="type-bytestring" name="bytestring">).
 
 	This option is allowed in BFD, OSPF, RIP, and Babel protocols. BGP has
 	also <cf/password/ option, but it is slightly different and described
@@ -1350,20 +1348,24 @@ can group several statements to a single compound statement by using braces
 (<cf>{ <M>statements</M> }</cf>) which is useful if you want to make a bigger
 block of code conditional.
 
-<p>BIRD supports functions, so that you don't have to repeat the same blocks of
-code over and over. Functions can have zero or more parameters and they can have
-local variables. Recursion is not allowed. Function definitions look like this:
+<p>BIRD supports functions, so that you don not have to repeat the same blocks
+of code over and over. Functions can have zero or more parameters and they can
+have local variables. If the function returns value, then you should always
+specify its return type. Direct recursion is possible. Function definitions look
+like this:
 
 <code>
-function name ()
+function name() -> int
 {
 	int local_variable;
 	int another_variable = 5;
+	return 42;
 }
 
-function with_parameters (int parameter)
+function with_parameters(int parameter) -> pair
 {
 	print parameter;
+	return (1, 2);
 }
 </code>
 
@@ -1377,7 +1379,7 @@ may return values using the <cf>return <m/[expr]/</cf> command. Returning a
 value exits from current function (this is similar to C).
 
 <p>Filters are defined in a way similar to functions except they cannot have
-explicit parameters. They get a route table entry as an implicit parameter, it
+explicit parameters and cannot return. They get a route table entry as an implicit parameter, it
 is also passed automatically to any functions called. The filter must terminate
 with either <cf/accept/ or <cf/reject/ statement. If there is a runtime error in
 filter, the route is rejected.
@@ -1440,6 +1442,27 @@ in the foot).
 	<cf/"This is a string constant"/. Additionally matching (<cf/&tilde;,
 	!&tilde;/) operators could be used to match a string value against
 	a shell pattern (represented also as a string).
+
+	<tag><label id="type-bytestring">bytestring</tag>
+	This is a sequences of arbitrary bytes. There are no ways to modify
+	bytestrings in filters. You can pass them between function, assign
+	them to variables of type <cf/bytestring/, print such values,
+	compare bytestings (<cf/=, !=/). Bytestring literals are written
+	in several ways:
+
+	A sequence of hexadecimal digit pairs, optionally colon-separated.
+	A bytestring specified this way must be at least 16 bytes (32 digits)
+	long: <cf/01:23:45:67:89:ab:cd:ef:01:23:45:67:89:ab:cd:ef/ or
+	<cf/0123456789abcdef0123456789abcdef/.
+
+	A sequence of hexadecimal digit pairs of any lengh (including zero)
+	with the <cf/hex:/ prefix. Colon separators can be inserted
+	arbitrarily between any bytes: <cf/hex:/, <cf/hex:1234/,
+	<cf/hex:1234:56:78/.
+
+	A bytestring can be made from a hex string using <cf/from_hex()/
+	function. Source strings can use any number of colons, hyphens and
+	spaces as byte separators: <cf/from_hex(" 1234 56:78 ab-cd-ef ")/.
 
 	<tag><label id="type-ip">ip</tag>
 	This type can hold a single IP address. The IPv4 addresses are stored as
@@ -1623,23 +1646,24 @@ in the foot).
 
 	<cf><m/P/.len</cf> returns the length of path <m/P/.
 
-	<cf><m/P/.empty</cf> makes the path <m/P/ empty.
+	<cf><m/P/.empty</cf> makes the path <m/P/ empty. Can't be used as a value, always modifies the object.
 
-	<cf>prepend(<m/P/,<m/A/)</cf> prepends ASN <m/A/ to path <m/P/ and
+	<cf><m/P/.prepend(<m/A/)</cf> prepends ASN <m/A/ to path <m/P/ and
 	returns the result.
 
-	<cf>delete(<m/P/,<m/A/)</cf> deletes all instances of ASN <m/A/ from
+	<cf><m/P/.delete(<m/A/)</cf> deletes all instances of ASN <m/A/ from
 	from path <m/P/ and returns the result. <m/A/ may also be an integer
 	set, in that case the operator deletes all ASNs from path <m/P/ that are
 	also members of set <m/A/.
 
-	<cf>filter(<m/P/,<m/A/)</cf> deletes all ASNs from path <m/P/ that are
-	not members of integer set <m/A/. I.e., <cf/filter/ do the same as
-	<cf/delete/ with inverted set <m/A/.
+	<cf><m/P/.filter(<m/A/)</cf> deletes all ASNs from path <m/P/ that are
+	not members of integer set <m/A/, and returns the result.
+	I.e., <cf/filter/ do the same as <cf/delete/ with inverted set <m/A/.
 
-	Statement <cf><m/P/ = prepend(<m/P/, <m/A/);</cf> can be shortened to
-	<cf><m/P/.prepend(<m/A/);</cf> if <m/P/ is appropriate route attribute
-	(for example <cf/bgp_path/). Similarly for <cf/delete/ and <cf/filter/.
+	Methods <cf>prepend</cf>, <cf>delete</cf> and <cf>filter</cf> keep the
+	original object intact as long as you use the result in any way. You can
+	also write e.g. <cf><m/P/.prepend(<m/A/);</cf> as a standalone statement.
+	This variant does modify the original object with the result of the operation.
 
 	<tag><label id="type-bgpmask">bgpmask</tag>
 	BGP masks are patterns used for BGP path matching (using <cf>path
@@ -1667,28 +1691,29 @@ in the foot).
 
 	<cf><m/C/.len</cf> returns the length of clist <m/C/.
 
-	<cf><m/C/.empty</cf> makes the list <m/C/ empty.
+	<cf><m/C/.empty</cf> makes the list <m/C/ empty. Can't be used as a value, always modifies the object.
 
-	<cf>add(<m/C/,<m/P/)</cf> adds pair (or quad) <m/P/ to clist <m/C/ and
+	<cf><m/C/.add(<m/P/)</cf> adds pair (or quad) <m/P/ to clist <m/C/ and
 	returns the result. If item <m/P/ is already in clist <m/C/, it does
 	nothing. <m/P/ may also be a clist, in that case all its members are
 	added; i.e., it works as clist union.
 
-	<cf>delete(<m/C/,<m/P/)</cf> deletes pair (or quad) <m/P/ from clist
+	<cf><m/C/.delete(<m/P/)</cf> deletes pair (or quad) <m/P/ from clist
 	<m/C/ and returns the result. If clist <m/C/ does not contain item
 	<m/P/, it does nothing. <m/P/ may also be a pair (or quad) set, in that
 	case the operator deletes all items from clist <m/C/ that are also
 	members of set <m/P/. Moreover, <m/P/ may also be a clist, which works
 	analogously; i.e., it works as clist difference.
 
-	<cf>filter(<m/C/,<m/P/)</cf> deletes all items from clist <m/C/ that are
-	not members of pair (or quad) set <m/P/. I.e., <cf/filter/ do the same
+	<cf><m/C/.filter(<m/P/)</cf> deletes all items from clist <m/C/ that are
+	not members of pair (or quad) set <m/P/, and returns the result. I.e., <cf/filter/ do the same
 	as <cf/delete/ with inverted set <m/P/. <m/P/ may also be a clist, which
 	works analogously; i.e., it works as clist intersection.
 
-	Statement <cf><m/C/ = add(<m/C/, <m/P/);</cf> can be shortened to
-	<cf><m/C/.add(<m/P/);</cf> if <m/C/ is appropriate route attribute (for
-	example <cf/bgp_community/). Similarly for <cf/delete/ and <cf/filter/.
+	Methods <cf>add</cf>, <cf>delete</cf> and <cf>filter</cf> keep the
+	original object intact as long as you use the result in any way. You can
+	also write e.g. <cf><m/P/.add(<m/A/);</cf> as a standalone statement.
+	This variant does modify the original object with the result of the operation.
 
 	<cf><m/C/.min</cf> returns the minimum element of clist <m/C/.
 
@@ -1917,6 +1942,70 @@ protocol sections.
 <chapt>Protocols
 <label id="protocols">
 
+<sect>Aggregator
+<label id="aggregator">
+
+<sect1>Introduction
+<label id="aggregator-intro">
+<p>The Aggregator protocol explicitly merges routes by the given rules. There
+   are four phases of aggregation. First routes are filtered, then sorted into buckets,
+   then buckets are merged and finally the results are filtered once again.
+   Aggregating an already aggregated route is forbidden.
+
+<p>This is an experimental protocol, use with caution.
+
+<sect1>Configuration
+<label id="aggregator-config">
+<p><descrip>
+	<tag><label id="aggregator-table">table <m/table/</tag>
+	The table from which routes are exported to get aggregated.
+
+	<tag><label id="aggregator-export">export <m/.../</tag>
+	A standard channel's <cf/export/ clause, defining which routes are accepted into aggregation.
+
+	<tag><label id="aggregator-rule">aggregate on <m/expr/ | <m/attribute/ [<m/, .../]</tag>
+	All the given filter expressions and route attributes are evaluated for each route. Then routes
+	are sorted into buckets where <em/all/ values are the same. Note: due to performance reasons,
+        all filter expressions must return a compact type, e.g. integer, a BGP
+        (standard, extended, large) community or an IP address. If you need to compare e.g. modified
+	AS Paths in the aggregation rule, you can define a custom route attribute and set this attribute
+	in the export filter. For now, it's mandatory to say <cf/net/ here, we can't merge prefixes yet.
+
+	<tag><label id="aggregation-merge">merge by { <m/filter code/ }</tag>
+	The given filter code has an extra symbol defined: <cf/routes/. By iterating over <cf/routes/,
+	you get all the routes in the bucket and you can construct your new route. All attributes
+	selected in <cf/aggregate on/ are already set to the common values. For now, it's not possible
+	to use a named filter here. You have to finalize the route by calling <cf/accept/.
+
+	<tag><label id="aggregator-import">import <m/.../</tag>
+	Filter applied to the route after <cf/merge by/. Here you can use a named filter.
+
+	<tag><label id="aggregator-peer-table">peer table <m/table/</tag>
+	The table to which aggregated routes are imported. It may be the same table
+	as <cf/table/.
+</descrip>
+
+<sect1>Example
+<label id="aggregator-example">
+
+<p><code>
+protocol aggregator {
+  table master6;
+  export where defined(bgp_path);
+  /* Merge all routes with the same AS Path length */
+  aggregate on net, bgp_path.len;
+  merge by {
+    for route r in routes do {
+      if ! defined(bgp_path) then { bgp_path = r.bgp_path }
+      bgp_community = bgp_community.add(r.bgp_community);
+    }
+    accept;
+  };
+  import all;
+  peer table agr_result;
+}
+</code>
+
 <sect>Babel
 <label id="babel">
 
@@ -1955,7 +2044,7 @@ protocol babel [<name>] {
 	ipv6 [sadr] { <channel config> };
         randomize router id <switch>;
 	interface <interface pattern> {
-		type <wired|wireless>;
+		type <wired|wireless|tunnel>;
 		rxcost <number>;
 		limit <number>;
 		hello interval <time>;
@@ -1969,6 +2058,11 @@ protocol babel [<name>] {
 		next hop ipv4 <address>;
 		next hop ipv6 <address>;
 		extended next hop <switch>;
+		rtt cost <number>;
+		rtt min <time>;
+		rtt max <time>;
+		rtt decay <number>;
+		send timestamps <switch>;
 		authentication none|mac [permissive];
 		password "&lt;text&gt;";
 		password "&lt;text&gt;" {
@@ -1999,15 +2093,16 @@ protocol babel [<name>] {
       router ID every time it starts up, which avoids this problem at the cost
       of not having stable router IDs in the network. Default: no.
 
-      <tag><label id="babel-type">type wired|wireless </tag>
-      This option specifies the interface type: Wired or wireless. On wired
-      interfaces a neighbor is considered unreachable after a small number of
-      Hello packets are lost, as described by <cf/limit/ option. On wireless
+      <tag><label id="babel-type">type wired|wireless|tunnel </tag>
+      This option specifies the interface type: Wired, wireless or tunnel. On
+      wired interfaces a neighbor is considered unreachable after a small number
+      of Hello packets are lost, as described by <cf/limit/ option. On wireless
       interfaces the ETX link quality estimation technique is used to compute
       the metrics of routes discovered over this interface. This technique will
       gradually degrade the metric of routes when packets are lost rather than
-      the more binary up/down mechanism of wired type links. Default:
-      <cf/wired/.
+      the more binary up/down mechanism of wired type links. A tunnel is like a
+      wired interface, but turns on RTT-based metrics with a default cost of 96.
+      Default: <cf/wired/.
 
       <tag><label id="babel-rxcost">rxcost <m/num/</tag>
       This option specifies the nominal RX cost of the interface. The effective
@@ -2077,6 +2172,37 @@ protocol babel [<name>] {
       If enabled, BIRD will accept and emit IPv4 routes with an IPv6 next
       hop when IPv4 addresses are absent from the interface as described in
       <rfc id="9229">. Default: yes.
+
+      <tag><label id="babel-rtt-cost">rtt cost <m/number/</tag>
+      The RTT-based cost that will be applied to all routes from each neighbour
+      based on the measured RTT to that neighbour. If this value is set,
+      timestamps will be included in generated Babel Hello and IHU messages, and
+      (if the neighbours also have timestamps enabled), the RTT to each
+      neighbour will be computed. An additional cost is added to a neighbour if
+      its RTT is above the <ref id="babel-rtt-min" name="rtt min"> value
+      configured on the interface. The added cost scales linearly from 0 up to
+      the RTT cost configured in this option; the full cost is applied if the
+      neighbour RTT reaches the RTT configured in the <ref id="babel-rtt-max"
+      name="rtt max"> option (and for all RTTs above this value). Default: 0
+      (disabled), except for tunnel interfaces, where it is 96.
+
+      <tag><label id="babel-rtt-min">rtt min <m/time/ s|ms</tag>
+      The minimum RTT above which the RTT cost will start to be applied (scaling
+      linearly from zero up to the full cost). Default: 10 ms
+
+      <tag><label id="babel-rtt-max">rtt max <m/time/ s|ms</tag>
+      The maximum RTT above which the full RTT cost will start be applied.
+      Default: 120 ms
+
+      <tag><label id="babel-rtt-decay">rtt decay <m/number/</tag>
+      The decay factor used for the exponentional moving average of the RTT
+      samples from each neighbour, in units of 1/256. Higher values discards old
+      RTT samples faster. Must be between 1 and 256. Default: 42
+
+      <tag><label id="babel-send-timestamps">send timestamps <m/switch/</tag>
+      Whether to send the timestamps used for RTT calculation on this interface.
+      Sending the timestamps enables peers to calculate an RTT to this node,
+      even if no RTT cost is applied to the route metrics. Default: yes.
 
       <tag><label id="babel-authentication">authentication none|mac [permissive]</tag>
       Selects authentication method to be used. <cf/none/ means that packets
@@ -2425,7 +2551,6 @@ avoid routing loops.
 <item> <rfc id="5065"> - AS confederations for BGP
 <item> <rfc id="5082"> - Generalized TTL Security Mechanism
 <item> <rfc id="5492"> - Capabilities Advertisement with BGP
-<item> <rfc id="5549"> - Advertising IPv4 NLRI with an IPv6 Next Hop
 <item> <rfc id="5575"> - Dissemination of Flow Specification Rules
 <item> <rfc id="5668"> - 4-Octet AS Specific BGP Extended Community
 <item> <rfc id="6286"> - AS-Wide Unique BGP Identifier
@@ -2440,6 +2565,7 @@ avoid routing loops.
 <item> <rfc id="8203"> - BGP Administrative Shutdown Communication
 <item> <rfc id="8212"> - Default EBGP Route Propagation Behavior without Policies
 <item> <rfc id="8654"> - Extended Message Support for BGP
+<item> <rfc id="8950"> - Advertising IPv4 NLRI with an IPv6 Next Hop
 <item> <rfc id="9072"> - Extended Optional Parameters Length for BGP OPEN Message
 <item> <rfc id="9117"> - Revised Validation Procedure for BGP Flow Specifications
 <item> <rfc id="9234"> - Route Leak Prevention and Detection Using Roles
@@ -2710,13 +2836,20 @@ using the following configuration parameters:
 	changes its import filter, or if there is suspicion of inconsistency) it
 	is necessary to do a new complete route exchange. BGP protocol extension
 	Route Refresh (<rfc id="2918">) allows BGP speaker to request
-	re-advertisement of all routes from its neighbor. BGP protocol
-	extension Enhanced Route Refresh (<rfc id="7313">) specifies explicit
-	begin and end for such exchanges, therefore the receiver can remove
-	stale routes that were not advertised during the exchange. This option
-	specifies whether BIRD advertises these capabilities and supports
+	re-advertisement of all routes from its neighbor. This option
+	specifies whether BIRD advertises this capability and supports
 	related procedures. Note that even when disabled, BIRD can send route
-	refresh requests.  Default: on.
+	refresh requests. Disabling Route Refresh also disables Enhanced Route Refresh.
+	Default: on.
+
+	<tag><label id="bgp-enable-enhanced-route-refresh">enable enhanced route refresh <m/switch/</tag>
+	BGP protocol extension Enhanced Route Refresh (<rfc id="7313">) specifies explicit
+	begin and end for Route Refresh (see previous option),
+	therefore the receiver can remove
+	stale routes that were not advertised during the exchange. This option
+	specifies whether BIRD advertises this capability and supports
+	related procedures.
+	Default: on.
 
 	<tag><label id="bgp-graceful-restart">graceful restart <m/switch/|aware</tag>
 	When a BGP speaker restarts or crashes, neighbors will discard all
@@ -3093,7 +3226,7 @@ be used in explicit configuration.
 	associated network prefixes. This option provides an extension to use
 	IPv4 next hops with IPv6 prefixes and vice versa. For IPv4 / VPNv4
 	channels, the behavior is controlled by the Extended Next Hop Encoding
-	capability, as described in <rfc id="5549">. For IPv6 / VPNv6 channels,
+	capability, as described in <rfc id="8950">. For IPv6 / VPNv6 channels,
 	just IPv4-mapped IPv6 addresses are used, as described in
 	<rfc id="4798"> and <rfc id="4659">. Default: off.
 
@@ -3255,6 +3388,13 @@ some of them (marked with `<tt/O/') are optional.
 	name="local Role"> is configured it set automatically.
 </descrip>
 
+<p>For attributes unknown by BIRD, the user can assign a name (on top level)
+to an attribute by its number. This defined name can be used then to both set
+(by a bytestring literal, transitive) or unset the given attribute even though
+BIRD knows nothing about it:
+
+<tt><label id="bgp-attribute-custom">attribute bgp <m/number/ bytestring <m/name/;</tt>
+
 <sect1>Example
 <label id="bgp-exam">
 
@@ -3294,6 +3434,35 @@ protocol bgp {
 		table mymulticasttable4; # Another IPv4 table, dedicated for multicast
 		igp table myigptable4;
 	};
+}
+</code>
+
+
+<sect>BMP
+<label id="bmp">
+
+<p>The BGP Monitoring Protocol is used for monitoring BGP sessions and obtaining
+routing table data. The current implementation in BIRD is a preliminary release
+with a limited feature set, it will be subject to significant changes in the
+future. It is not ready for production usage and therefore it is not compiled
+by default and have to be enabled during installation by the configure option
+<tt/--with-protocols=/.
+
+<p>The implementation is limited to monitor protocol state changes and routes
+in <ref id="bgp-import-table" name="BGP import tables"> (not regular routing
+tables), therefore import table must be enabled in BGP protocols. All BGP
+protocols are monitored automatically.
+
+<sect1>Example
+<label id="bmp-exam">
+
+<p><code>
+protocol bmp {
+	# The monitoring station to connect to
+	station address ip 198.51.100.10 port 1790;
+
+	# required option
+	monitoring rib in pre_policy;
 }
 </code>
 
@@ -4521,6 +4690,21 @@ definitions, prefix definitions and DNS definitions:
 	options and there is a short variant <cf>dnssl <m/domain/</cf> that just
 	specifies one DNS search domain.
 
+	<tag><label id="radv-custom-option">custom option type <m/number/ value <m/bytestring/</tag>
+	Custom option definitions allow to define an arbitrary option to
+	advertise. You need to specify the option type number and the binary
+	payload of the option. The length field is calculated automatically.
+	Like <cf/rdnss/ above, multiple definitions are cumulative, they can
+	be used also as interface-specific options.
+
+	The following example advertises PREF64 option (<rfc id="8781">) with
+	prefix <cf>2001:db8:a:b::/96</cf> and the lifetime of <cf/1 hour/:
+
+	<label id="radv-custom-option-exam">
+<p><code>
+custom option type 38 value hex:0e10:2001:0db8:000a:000b:0000:0000;
+</code>
+
 	<tag><label id="radv-trigger">trigger <m/prefix/</tag>
 	RAdv protocol could be configured to change its behavior based on
 	availability of routes. When this option is used, the protocol waits in
@@ -4649,6 +4833,10 @@ definitions, prefix definitions and DNS definitions:
 
 	<tag><label id="radv-iface-dnssl-local">dnssl local <m/switch/</tag>
 	Use only local DNSSL definitions for this interface. See <cf/rdnss local/
+	option above. Default: no.
+
+	<tag><label id="radv-iface-custom-local">custom option local <m/switch/</tag>
+	Use only local custom option definitions for this interface. See <cf/rdnss local/
 	option above. Default: no.
 </descrip>
 
@@ -5342,8 +5530,8 @@ as the destination becomes adjacent again.
 (i.e., they can be used multiple times for a route, one time for each nexthop).
 Syntactically, they are not separate options but just parts of <cf/route/
 statement after each <cf/via/ statement, not separated by semicolons. E.g.,
-statement <cf/route 10.0.0.0/8 via 192.0.2.1 bfd weight 1 via 192.0.2.2 weight
-2;/ describes a route with two nexthops, the first nexthop has two per-nexthop
+statement <cf>route 10.0.0.0/8 via 192.0.2.1 bfd weight 1 via 192.0.2.2 weight
+2;</cf> describes a route with two nexthops, the first nexthop has two per-nexthop
 options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 
 <descrip>

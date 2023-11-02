@@ -23,7 +23,7 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	BGP_LOCAL_PREF, BGP_MED, 
 	SOURCE, ADDRESS, PASSWORD, RR, RS, CLIENT, CLUSTER, ID, AS4, ADVERTISE,
 	IPV4, CAPABILITIES, LIMIT, PASSIVE, PREFER, OLDER, MISSING, LLADDR,
-	DROP, IGNORE, ROUTE, REFRESH, INTERPRET, COMMUNITIES,
+	DROP, IGNORE, ENHANCED, ROUTE, REFRESH, INTERPRET, COMMUNITIES,
 	IGP, TABLE, GATEWAY, DIRECT, RECURSIVE, MED, TTL,
 	SECURITY, DETERMINISTIC, SECONDARY, ALLOW, BFD, ADD, PATHS, RX, TX,
 	GRACEFUL, RESTART, AWARE, CHECK, LINK, PORT, EXTENDED, MESSAGES, SETKEY,
@@ -44,10 +44,6 @@ CF_KEYWORDS(CEASE, PREFIX, LIMIT, HIT, ADMINISTRATIVE, SHUTDOWN, RESET, PEER,
 
 CF_GRAMMAR
 
-/* Workaround for collisions between keywords and symbols */
-toksym: ROLE | PEER | PROVIDER | CUSTOMER | RS_SERVER | RS_CLIENT ;
-toksym: BGP_MED | BGP_LOCAL_PREF | SOURCE ;
-
 proto: bgp_proto '}'  ;
 
 bgp_proto_start: proto_start BGP {
@@ -66,6 +62,7 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->error_delay_time_min = 60;
      BGP_CFG->error_delay_time_max = 300;
      BGP_CFG->enable_refresh = 1;
+     BGP_CFG->enable_enhanced_refresh = 1;
      BGP_CFG->enable_as4 = 1;
      BGP_CFG->enable_hostname = 0;
      BGP_CFG->capabilities = 2;
@@ -179,7 +176,7 @@ bgp_proto:
  | bgp_proto DEFAULT BGP_MED expr ';' { BGP_CFG->default_med = $4; }
  | bgp_proto DEFAULT BGP_LOCAL_PREF expr ';' { BGP_CFG->default_local_pref = $4; }
  | bgp_proto SOURCE ADDRESS ipa ';' { BGP_CFG->local_ip = $4; }
- | bgp_proto START DELAY TIME expr ';' { BGP_CFG->connect_delay_time = $5; log(L_WARN "%s: Start delay time option is deprecated, use connect delay time", this_proto->name); }
+ | bgp_proto START DELAY TIME expr ';' { BGP_CFG->connect_delay_time = $5; cf_warn("%s: Start delay time option is deprecated, use connect delay time", this_proto->name); }
  | bgp_proto CONNECT DELAY TIME expr ';' { BGP_CFG->connect_delay_time = $5; }
  | bgp_proto CONNECT RETRY TIME expr ';' { BGP_CFG->connect_retry_time = $5; }
  | bgp_proto KEEPALIVE TIME expr ';' { BGP_CFG->keepalive_time = $4; if (($4<1) || ($4>65535)) cf_error("Keepalive time must be in range 1-65535"); }
@@ -189,6 +186,7 @@ bgp_proto:
  | bgp_proto DISABLE AFTER ERROR bool ';' { BGP_CFG->disable_after_error = $5; }
  | bgp_proto DISABLE AFTER CEASE bgp_cease_mask ';' { BGP_CFG->disable_after_cease = $5; }
  | bgp_proto ENABLE ROUTE REFRESH bool ';' { BGP_CFG->enable_refresh = $5; }
+ | bgp_proto ENABLE ENHANCED ROUTE REFRESH bool ';' { BGP_CFG->enable_enhanced_refresh = $6; }
  | bgp_proto ENABLE AS4 bool ';' { BGP_CFG->enable_as4 = $4; }
  | bgp_proto ENABLE EXTENDED MESSAGES bool ';' { BGP_CFG->enable_extended_messages = $5; }
  | bgp_proto ADVERTISE HOSTNAME bool ';' { BGP_CFG->enable_hostname = $4; }
@@ -272,7 +270,7 @@ bgp_channel_item:
  | NEXT HOP KEEP bgp_nh { BGP_CC->next_hop_keep = $4; }
  | NEXT HOP PREFER GLOBAL { BGP_CC->next_hop_prefer = NHP_GLOBAL; }
  | MANDATORY bool { BGP_CC->mandatory = $2; }
- | MISSING LLADDR bgp_lladdr { log(L_WARN "%s.%s: Missing lladdr option is deprecated and ignored, remove it", this_proto->name, this_channel->name); }
+ | MISSING LLADDR bgp_lladdr { cf_warn("%s.%s: Missing lladdr option is deprecated and ignored, remove it", this_proto->name, this_channel->name); }
  | GATEWAY DIRECT { BGP_CC->gw_mode = GW_DIRECT; }
  | GATEWAY RECURSIVE { BGP_CC->gw_mode = GW_RECURSIVE; }
  | SECONDARY bool { BGP_CC->secondary = $2; }
@@ -338,6 +336,19 @@ bgp_channel_end:
 };
 
 bgp_proto_channel: bgp_channel_start bgp_channel_opt_list bgp_channel_end;
+
+custom_attr: ATTRIBUTE BGP NUM type symbol ';' {
+  if ($3 > 255 || $3 < 1)
+    cf_error("Invalid attribute number. (Given %i, must be 1-255.)", $3);
+
+  struct ea_class *ac = bgp_find_ea_class_by_id($3);
+  ASSERT_DIE(ac);
+  if ($4 != ac->type)
+    cf_error("Attribute %d type must be %s, not %s.", $3, f_type_name(ac->type), f_type_name($4));
+
+  ea_ref_class(new_config->pool, ac);
+  cf_define_symbol(new_config, $5, SYM_ATTRIBUTE, attribute, ac);
+};
 
 CF_ENUM(T_ENUM_BGP_ORIGIN, ORIGIN_, IGP, EGP, INCOMPLETE)
 

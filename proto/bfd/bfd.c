@@ -635,7 +635,7 @@ bfd_reconfigure_iface(struct bfd_proto *p UNUSED, struct bfd_iface *ifa, struct 
  */
 
 static void
-bfd_request_notify(struct bfd_request *req, u8 state, u8 diag)
+bfd_request_notify(struct bfd_request *req, u8 state, u8 remote, u8 diag)
 {
   u8 old_state = req->state;
 
@@ -645,7 +645,7 @@ bfd_request_notify(struct bfd_request *req, u8 state, u8 diag)
   req->state = state;
   req->diag = diag;
   req->old_state = old_state;
-  req->down = (old_state == BFD_STATE_UP) && (state == BFD_STATE_DOWN);
+  req->down = (old_state == BFD_STATE_UP) && (state == BFD_STATE_DOWN) && (remote != BFD_STATE_ADMIN_DOWN);
 
   if (req->hook)
   {
@@ -780,7 +780,7 @@ bfd_pickup_requests(void *_data UNUSED)
 
   node *n;
   WALK_LIST(n, tmp_list)
-    bfd_request_notify(SKIP_BACK(struct bfd_request, n, n), BFD_STATE_ADMIN_DOWN, 0);
+    bfd_request_notify(SKIP_BACK(struct bfd_request, n, n), BFD_STATE_ADMIN_DOWN, BFD_STATE_ADMIN_DOWN, 0);
 
   BFD_LOCK;
   add_tail_list(&bfd_global.wait_list, &tmp_list);
@@ -1026,7 +1026,7 @@ bfd_notify_hook(void *data)
   struct bfd_proto *p = data;
   struct bfd_session *s;
   list tmp_list;
-  u8 state, diag;
+  u8 loc_state, rem_state, diag;
   node *n, *nn;
 
   bfd_lock_sessions(p);
@@ -1039,12 +1039,13 @@ bfd_notify_hook(void *data)
   {
     bfd_lock_sessions(p);
     rem_node(&s->n);
-    state = s->loc_state;
+    loc_state = s->loc_state;
+    rem_state = s->rem_state;
     diag = s->loc_diag;
     bfd_unlock_sessions(p);
 
     WALK_LIST_DELSAFE(n, nn, s->request_list)
-      bfd_request_notify(SKIP_BACK(struct bfd_request, n, n), state, diag);
+      bfd_request_notify(SKIP_BACK(struct bfd_request, n, n), loc_state, rem_state, diag);
 
     /* Remove the session if all requests were removed in notify hooks */
     if (EMPTY_LIST(s->request_list))

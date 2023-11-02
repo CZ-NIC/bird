@@ -19,6 +19,7 @@
 #include "filter/data.h"
 #include "lib/buffer.h"
 #include "lib/flowspec.h"
+#include "lib/string.h"
 
 /* Flags for instructions */
 enum f_instruction_flags {
@@ -35,6 +36,16 @@ const char *f_instruction_name_(enum f_instruction_code fi);
 static inline const char *f_instruction_name(enum f_instruction_code fi)
 { return f_instruction_name_(fi) + 3; }
 
+
+int f_const_promotion_(struct f_inst *arg, enum btype want, int update);
+
+static inline int f_const_promotion(struct f_inst *arg, enum btype want)
+{ return f_const_promotion_(arg, want, 1); }
+
+static inline int f_try_const_promotion(struct f_inst *arg, enum btype want)
+{ return f_const_promotion_(arg, want, 0); }
+
+
 struct f_arg {
   struct symbol *arg;
   struct f_arg *next;
@@ -47,6 +58,7 @@ struct f_line {
   u8 args;				/* Function: Args required */
   u8 vars;
   u8 results;				/* Results left on stack: cmd -> 0, term -> 1 */
+  u8 return_type;			/* Type which the function returns */
   struct f_arg *arg_list;
   struct f_line_item items[0];		/* The items themselves */
 };
@@ -94,16 +106,16 @@ void f_add_lines(const struct f_line_item *what, struct filter_iterator *fit);
 
 
 struct filter *f_new_where(struct f_inst *);
+struct f_inst *f_dispatch_method(struct symbol *sym, struct f_inst *obj, struct f_inst *args, int skip);
+struct f_inst *f_dispatch_method_x(const char *name, enum btype t, struct f_inst *obj, struct f_inst *args);
+struct f_inst *f_for_cycle(struct symbol *var, struct f_inst *term, struct f_inst *block);
+struct f_inst *f_implicit_roa_check(struct rtable_config *tab);
+struct f_inst *f_print(struct f_inst *vars, int flush, enum filter_return fret);
+
 static inline struct f_static_attr f_new_static_attr(btype type, int code, int readonly)
 { return (struct f_static_attr) { .type = type, .sa_code = code, .readonly = readonly }; }
 struct f_inst *f_generate_roa_check(struct rtable_config *table, struct f_inst *prefix, struct f_inst *asn);
 
-struct f_attr_bit {
-  const struct ea_class *class;
-  uint bit;
-};
-
-#define f_new_dynamic_attr_bit(_bit, _name)  ((struct f_attr_bit) { .bit = _bit, .class = ea_class_find(_name) })
 
 /* Hook for call bt_assert() function in configuration */
 extern void (*bt_assert_hook)(int result, const struct f_line_item *assert);

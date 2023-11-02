@@ -31,7 +31,7 @@
 #include "lib/locking.h"
 #include "lib/timer.h"
 #include "lib/string.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "nest/cli.h"
@@ -112,21 +112,21 @@ get_hostname(linpool *lp)
 #ifdef PATH_IPROUTE_DIR
 
 static inline void
-add_num_const(char *name, int val, const char *file, const uint line)
+add_num_const(struct config *conf, char *name, int val, const char *file, const uint line)
 {
   struct f_val *v = cfg_alloc(sizeof(struct f_val));
   *v = (struct f_val) { .type = T_INT, .val.i = val };
-  struct symbol *sym = cf_get_symbol(name);
-  if (sym->class && cf_symbol_is_local(sym))
+  struct symbol *sym = cf_get_symbol(conf, name);
+  if (sym->class && cf_symbol_is_local(conf, sym))
     cf_error("Error reading value for %s from %s:%d: already defined", name, file, line);
 
-  cf_define_symbol(sym, SYM_CONSTANT | T_INT, val, v);
+  cf_define_symbol(conf, sym, SYM_CONSTANT | T_INT, val, v);
 }
 
 /* the code of read_iproute_table() is based on
    rtnl_tab_initialize() from iproute2 package */
 static void
-read_iproute_table(char *file, char *prefix, uint max)
+read_iproute_table(struct config *conf, char *file, char *prefix, uint max)
 {
   char buf[512], namebuf[512];
   char *name;
@@ -163,7 +163,7 @@ read_iproute_table(char *file, char *prefix, uint max)
       if ((*p < 'a' || *p > 'z') && (*p < 'A' || *p > 'Z') && (*p < '0' || *p > '9') && (*p != '_'))
 	*p = '_';
 
-    add_num_const(namebuf, val, file, line);
+    add_num_const(conf, namebuf, val, file, line);
   }
 
   fclose(fp);
@@ -192,10 +192,10 @@ sysdep_preconfig(struct config *c)
   c->watchdog_warning = UNIX_DEFAULT_WATCHDOG_WARNING;
 
 #ifdef PATH_IPROUTE_DIR
-  read_iproute_table(PATH_IPROUTE_DIR "/rt_protos", "ipp_", 255);
-  read_iproute_table(PATH_IPROUTE_DIR "/rt_realms", "ipr_", 0xffffffff);
-  read_iproute_table(PATH_IPROUTE_DIR "/rt_scopes", "ips_", 255);
-  read_iproute_table(PATH_IPROUTE_DIR "/rt_tables", "ipt_", 0xffffffff);
+  read_iproute_table(c, PATH_IPROUTE_DIR "/rt_protos", "ipp_", 255);
+  read_iproute_table(c, PATH_IPROUTE_DIR "/rt_realms", "ipr_", 0xffffffff);
+  read_iproute_table(c, PATH_IPROUTE_DIR "/rt_scopes", "ips_", 255);
+  read_iproute_table(c, PATH_IPROUTE_DIR "/rt_tables", "ipt_", 0xffffffff);
 #endif
 }
 

@@ -197,12 +197,12 @@ log_commit(log_buffer *buf)
 	  byte *begin = l->terminal ? buf->buf.start : buf->tm_pos;
 	  off_t msg_len = buf->buf.pos - begin + 1;
 	  do {
-	    if (rf_write(rf, buf->tm_pos, msg_len))
+	    if (rf_write(rf, begin, msg_len))
 	      break;
 
 	    log_lock();
 	    rf = atomic_load_explicit(&l->rf, memory_order_acquire);
-	    if (rf_write(rf, buf->tm_pos, msg_len))
+	    if (rf_write(rf, begin, msg_len))
 	    {
 	      log_unlock();
 	      break;
@@ -212,7 +212,7 @@ log_commit(log_buffer *buf)
 	    log_unlock();
 
 	    rf = atomic_load_explicit(&l->rf, memory_order_relaxed);
-	  } while (!rf_write(rf, buf->tm_pos, msg_len));
+	  } while (!rf_write(rf, begin, msg_len));
 	}
 #ifdef HAVE_SYSLOG_H
       else
@@ -251,6 +251,8 @@ log_prepare(log_buffer *buf, int class)
 
     buffer_print(&buf->buf, " [%04x] <%s> ", THIS_THREAD_ID, class_names[class]);
   }
+  else
+    buf->tm_pos = NULL;
 
   buf->msg_pos = buf->buf.pos;
   buf->class = class;
@@ -510,7 +512,7 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
 	  }
 
 	  /* The filehandle is no longer needed */
-	  if (l->rf != &rf_stderr)
+	  if ((l->rf != &rf_stderr ) && (l->rf != dbg_rf))
 	  {
 	    log_lock();
 	    rfree(l->rf);
@@ -606,8 +608,8 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
     /* Store new mask after opening new files to minimize missing log message race conditions */
     atomic_store_explicit(&ol->mask, ol->new_mask, memory_order_release);
 
-    /* Never close syslog channel */
-    if (ol->new_mask || !ol->rf)
+    /* Never close syslog channel or debug */
+    if (ol->new_mask || !ol->rf || (ol->rf == dbg_rf))
     {
       pprev = &ol->next;
       ol = atomic_load_explicit(pprev, memory_order_acquire);

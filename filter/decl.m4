@@ -34,6 +34,9 @@ m4_divert(-1)m4_dnl
 #	102	constructor arguments
 #	110	constructor attributes
 #	103	constructor body
+#	111	method constructor body
+#	112	instruction constructor call from method constructor
+#	113	method constructor symbol registrator
 #	104	dump line item content
 #		(there may be nothing in dump-line content and
 #		 it must be handled specially in phase 2)
@@ -48,6 +51,9 @@ m4_define(FID_STRUCT_IN, `m4_divert(101)')
 m4_define(FID_NEW_ARGS, `m4_divert(102)')
 m4_define(FID_NEW_ATTRIBUTES, `m4_divert(110)')
 m4_define(FID_NEW_BODY, `m4_divert(103)')
+m4_define(FID_NEW_METHOD, `m4_divert(111)')
+m4_define(FID_METHOD_CALL, `m4_divert(112)')
+m4_define(FID_TYPE_SIGNATURE, `m4_divert(113)')
 m4_define(FID_DUMP_BODY, `m4_divert(104)m4_define([[FID_DUMP_BODY_EXISTS]])')
 m4_define(FID_LINEARIZE_BODY, `m4_divert(105)')
 m4_define(FID_SAME_BODY, `m4_divert(106)')
@@ -120,7 +126,13 @@ FID_IFCONST([[
     constargs = 0;
 ]])
 } while (child$1 = child$1->next);
-FID_LINEARIZE_BODY
+m4_define([[INST_METHOD_NUM_ARGS]],$1)m4_dnl
+m4_ifelse($1,1,,[[FID_NEW_METHOD()m4_dnl
+  struct f_inst *arg$1 = args;
+  if (args == NULL) cf_error("Not enough arguments"); /* INST_NAME */
+  args = args->next;
+FID_METHOD_CALL()    , arg$1]])
+FID_LINEARIZE_BODY()m4_dnl
 pos = linearize(dest, whati->f$1, pos);
 FID_INTERPRET_BODY()')
 
@@ -170,28 +182,31 @@ FID_HIC(,[[
 m4_define(ARG, `ARG_ANY($1) ARG_TYPE($1,$2)')
 m4_define(ARG_TYPE, `ARG_TYPE_STATIC($1,$2) ARG_TYPE_DYNAMIC($1,$2)')
 
-m4_define(ARG_TYPE_STATIC, `
+m4_define(ARG_TYPE_STATIC, `m4_dnl
+m4_ifelse($1,1,[[m4_define([[INST_METHOD_OBJECT_TYPE]],$2)]],)m4_dnl
+FID_TYPE_SIGNATURE()m4_dnl
+  method->args_type[m4_eval($1-1)] = $2;
 FID_NEW_BODY()m4_dnl
 if (f$1->type && (f$1->type != ($2)) && !f_const_promotion(f$1, ($2)))
   cf_error("Argument $1 of %s must be of type %s, got type %s",
 	   f_instruction_name(what->fi_code), f_type_name($2), f_type_name(f$1->type));
 FID_INTERPRET_BODY()')
 
-m4_define(ARG_TYPE_DYNAMIC, `
+m4_define(ARG_TYPE_DYNAMIC, `m4_dnl
 FID_INTERPRET_EXEC()m4_dnl
 if (v$1.type != ($2))
   runtime("Argument $1 of %s must be of type %s, got type %s",
 	   f_instruction_name(what->fi_code), f_type_name($2), f_type_name(v$1.type));
 FID_INTERPRET_BODY()')
 
-m4_define(ARG_SAME_TYPE, `
+m4_define(ARG_SAME_TYPE, `m4_dnl
 FID_NEW_BODY()m4_dnl
 if (f$1->type && f$2->type && (f$1->type != f$2->type) &&
    !f_const_promotion(f$2, f$1->type) && !f_const_promotion(f$1, f$2->type))
   cf_error("Arguments $1 and $2 of %s must be of the same type", f_instruction_name(what->fi_code));
 FID_INTERPRET_BODY()')
 
-m4_define(ARG_PREFER_SAME_TYPE, `
+m4_define(ARG_PREFER_SAME_TYPE, `m4_dnl
 FID_NEW_BODY()m4_dnl
 if (f$1->type && f$2->type && (f$1->type != f$2->type))
    (void) (f_const_promotion(f$2, f$1->type) || f_const_promotion(f$1, f$2->type));
@@ -200,7 +215,7 @@ FID_INTERPRET_BODY()')
 #	Executing another filter line. This replaces the recursion
 #	that was needed in the former implementation.
 m4_define(LINEX, `FID_INTERPRET_EXEC()LINEX_($1)FID_INTERPRET_NEW()return $1 FID_INTERPRET_BODY()')
-m4_define(LINEX_, `do {
+m4_define(LINEX_, `do if ($1) {
   if (fstk->ecnt + 1 >= fstk->elen) runtime("Filter execution stack overflow");
   fstk->estk[fstk->ecnt].pos = 0;
   fstk->estk[fstk->ecnt].line = $1;
@@ -219,6 +234,12 @@ FID_NEW_ARGS()m4_dnl
   , struct f_inst * f$1
 FID_NEW_BODY()m4_dnl
 whati->f$1 = f$1;
+m4_define([[INST_METHOD_NUM_ARGS]],$1)m4_dnl
+FID_NEW_METHOD()m4_dnl
+  struct f_inst *arg$1 = args;
+  if (args == NULL) cf_error("Not enough arguments"); /* INST_NAME */
+  args = NULL; /* The rest is the line itself */
+FID_METHOD_CALL()    , arg$1
 FID_DUMP_BODY()m4_dnl
 f_dump_line(item->fl$1, indent + 1);
 FID_LINEARIZE_BODY()m4_dnl
@@ -228,9 +249,7 @@ if (!f_same(f1->fl$1, f2->fl$1)) return 0;
 FID_ITERATE_BODY()m4_dnl
 if (whati->fl$1) BUFFER_PUSH(fit->lines) = whati->fl$1;
 FID_INTERPRET_EXEC()m4_dnl
-do { if (whati->fl$1) {
-  LINEX_(whati->fl$1);
-} } while(0)
+LINEX_(whati->fl$1)
 FID_INTERPRET_NEW()m4_dnl
 return whati->f$1
 FID_INTERPRET_BODY()')
@@ -269,6 +288,29 @@ m4_define(STATIC_ATTR, `FID_MEMBER(struct f_static_attr, sa, f1->sa.sa_code != f
 m4_define(DYNAMIC_ATTR, `FID_MEMBER(const struct ea_class *, da, f1->da != f2->da,,)')
 m4_define(ACCESS_RTE, `FID_HIC(,[[do { if (!fs->rte) runtime("No route to access"); } while (0)]],NEVER_CONSTANT())')
 
+#	Method constructor block
+m4_define(METHOD_CONSTRUCTOR, `m4_dnl
+FID_NEW_METHOD()m4_dnl
+    if (args) cf_error("Too many arguments");
+m4_define([[INST_IS_METHOD]])
+m4_define([[INST_METHOD_NAME]],$1)
+FID_INTERPRET_BODY()')
+
+#	Short method constructor
+#	$1 = type
+#	$2 = name
+#	$3 = method inputs
+#	method outputs are always 1
+#	$4 = code
+m4_define(METHOD, `m4_dnl
+INST([[FI_METHOD__]]$1[[__]]$2, m4_eval($3 + 1), 1) {
+  ARG(1, $1);
+  $4
+  METHOD_CONSTRUCTOR("$2");
+}')
+
+m4_define(METHOD_R, `METHOD($1, $2, 0, [[ RESULT($3, $4, $5) ]])')
+
 #	2) Code wrapping
 #	The code produced in 1xx temporary diversions is a raw code without
 #	any auxiliary commands and syntactical structures around. When the
@@ -288,6 +330,7 @@ m4_define(ACCESS_RTE, `FID_HIC(,[[do { if (!fs->rte) runtime("No route to access
 #	10	iterate
 #	1	union in struct f_inst
 #	3	constructors + interpreter
+#	11	method constructors
 #
 #	These global diversions contain blocks of code that can be directly
 #	put into the final file, yet it still can't be written out now as
@@ -307,6 +350,9 @@ m4_define(FID_DUMP_CALLER, `FID_ZONE(7, Dump line caller)')
 m4_define(FID_LINEARIZE, `FID_ZONE(8, Linearize)')
 m4_define(FID_SAME, `FID_ZONE(9, Comparison)')
 m4_define(FID_ITERATE, `FID_ZONE(10, Iteration)')
+m4_define(FID_METHOD, `FID_ZONE(11, Method constructor)')
+m4_define(FID_METHOD_SCOPE_INIT, `FID_ZONE(12, Method scope initializator)')
+m4_define(FID_METHOD_REGISTER, `FID_ZONE(13, Method registrator)')
 
 #	This macro does all the code wrapping. See inline comments.
 m4_define(INST_FLUSH, `m4_ifdef([[INST_NAME]], [[
@@ -334,7 +380,8 @@ m4_undivert(102)m4_dnl
 [[m4_dnl				 The one case in The Big Switch inside interpreter
   case INST_NAME():
   #define whati (&(what->i_]]INST_NAME()[[))
-  m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (fstk->vcnt < INST_INVAL()) runtime("Stack underflow"); fstk->vcnt -= INST_INVAL(); ]])
+  m4_ifelse(m4_eval(INST_INVAL() > 0), 1, [[if (fstk->vcnt < INST_INVAL()) runtime("Stack underflow");
+  fstk->vcnt -= INST_INVAL();]])
   m4_undivert(108)m4_dnl
   #undef whati
   break;
@@ -363,6 +410,29 @@ m4_undivert(102)m4_dnl
   #undef whati
   }
 ]])
+
+m4_ifdef([[INST_IS_METHOD]],m4_dnl
+FID_METHOD()m4_dnl
+[[struct f_inst * NONNULL(1)
+f_new_method_]]INST_NAME()[[(struct f_inst *obj, struct f_inst *args)
+  {
+    /* Unwind the arguments (INST_METHOD_NUM_ARGS) */
+    m4_undivert(111)m4_dnl
+    return f_new_inst(INST_NAME, obj
+m4_undivert(112)
+    );
+  }
+
+FID_METHOD_SCOPE_INIT()m4_dnl
+  [INST_METHOD_OBJECT_TYPE] = {},
+FID_METHOD_REGISTER()m4_dnl
+  method = lp_allocz(global_root_scope_linpool, sizeof(struct f_method) + INST_METHOD_NUM_ARGS * sizeof(enum btype));
+  method->new_inst = f_new_method_]]INST_NAME()[[;
+  method->arg_num = INST_METHOD_NUM_ARGS;
+m4_undivert(113)
+  f_register_method(INST_METHOD_OBJECT_TYPE, INST_METHOD_NAME, method);
+
+]])m4_dnl
 
 FID_DUMP_CALLER()m4_dnl			 Case in another big switch used in instruction dumping (debug)
 case INST_NAME(): f_dump_line_item_]]INST_NAME()[[(item, indent + 1); break;
@@ -417,6 +487,8 @@ m4_define([[INST_INVAL]], [[$2]])m4_dnl		instruction input value count,
 m4_define([[INST_OUTVAL]], [[$3]])m4_dnl	instruction output value count,
 m4_undefine([[INST_NEVER_CONSTANT]])m4_dnl	reset NEVER_CONSTANT trigger,
 m4_undefine([[INST_RESULT_TYPE]])m4_dnl		and reset RESULT_TYPE value.
+m4_undefine([[INST_IS_METHOD]])m4_dnl		and reset method constructor request.
+m4_undefine([[INST_METHOD_OBJECT_TYPE]],)m4_dnl	reset method object type,
 FID_INTERPRET_BODY()m4_dnl 			By default, every code is interpreter code.
 ')
 
@@ -502,8 +574,8 @@ fi_constant(struct f_inst *what, struct f_val val)
   return what;
 }
 
-static int
-f_const_promotion(struct f_inst *arg, btype want)
+int
+f_const_promotion_(struct f_inst *arg, btype want, int update)
 {
   if (arg->fi_code != FI_CONSTANT)
     return 0;
@@ -511,15 +583,17 @@ f_const_promotion(struct f_inst *arg, btype want)
   struct f_val *c = &arg->i_FI_CONSTANT.val;
 
   if ((c->type == T_IP) && ipa_is_ip4(c->val.ip) && (want == T_QUAD)) {
-    *c = (struct f_val) {
-      .type = T_QUAD,
-      .val.i = ipa_to_u32(c->val.ip),
-    };
+    if (update)
+      *c = (struct f_val) {
+        .type = T_QUAD,
+        .val.i = ipa_to_u32(c->val.ip),
+      };
     return 1;
   }
 
   else if ((c->type == T_SET) && (!c->val.t) && (want == T_PREFIX_SET)) {
-    *c = f_const_empty_prefix_set;
+    if (update)
+      *c = f_const_empty_prefix_set;
     return 1;
   }
 
@@ -539,6 +613,58 @@ FID_WR_PUT(3)
 #undef v2
 #undef v3
 #undef vv
+
+/* Method constructor wrappers */
+FID_WR_PUT(11)
+
+#if defined(__GNUC__) && __GNUC__ >= 6
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Woverride-init"
+#endif
+
+static struct sym_scope f_type_method_scopes[] = {
+FID_WR_PUT(12)
+};
+
+#if defined(__GNUC__) && __GNUC__ >= 6
+#pragma GCC diagnostic pop
+#endif
+
+struct sym_scope *f_type_method_scope(enum btype t)
+{
+  return (t < ARRAY_SIZE(f_type_method_scopes)) ? &f_type_method_scopes[t] : NULL;
+}
+
+static void
+f_register_method(enum btype t, const byte *name, struct f_method *dsc)
+{
+  struct sym_scope *scope = &f_type_method_scopes[t];
+  struct symbol *sym = cf_find_symbol_scope(scope, name);
+
+  if (!sym)
+  {
+    sym = cf_root_symbol(name, scope);
+    sym->class = SYM_METHOD;
+  }
+
+  dsc->sym = sym;
+  dsc->next = sym->method;
+  sym->method = dsc;
+}
+
+extern struct sym_scope global_filter_scope;
+
+void f_type_methods_register(void)
+{
+  struct f_method *method;
+
+FID_WR_PUT(13)
+
+  for (uint i = 0; i < ARRAY_SIZE(f_type_method_scopes); i++)
+    f_type_method_scopes[i].readonly = 1;
+
+  f_type_method_scopes[T_ROUTE].next = &global_filter_scope;
+}
 
 /* Line dumpers */
 #define INDENT (((const char *) f_dump_line_indent_str) + sizeof(f_dump_line_indent_str) - (indent) - 1)

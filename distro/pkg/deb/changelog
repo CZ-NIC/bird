@@ -2,4 +2,4 @@ bird2 ({{ version }}-cznic.{{ release }}) unstable; urgency=medium
 
   * upstream package
 
- -- Jakub Ružička <jakub.ruzicka@nic.cz>  Mon, 29 Mar 2021 14:15:50 +0000
+ -- Jakub Ružička <jakub.ruzicka@nic.cz>  {{ now }}

@@ -153,7 +153,7 @@ stat_route_opts:
 
 stat_route_opt_list:
    /* empty */
- | '{' stat_route_opts '}'
+ | '{' { cf_enter_filters(); } stat_route_opts '}' { cf_exit_filters(); }
  ;
 
 

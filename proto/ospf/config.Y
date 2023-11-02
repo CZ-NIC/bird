@@ -38,10 +38,10 @@ ospf_iface_finish(void)
   ip->passwords = get_passwords();
 
   if (ospf_cfg_is_v2() && (ip->autype == OSPF_AUTH_CRYPT) && (ip->helloint < 5))
-    log(L_WARN "Hello or poll interval less that 5 makes cryptographic authenication prone to replay attacks");
+    cf_warn("Hello or poll interval less that 5 makes cryptographic authenication prone to replay attacks");
 
   if ((ip->autype == OSPF_AUTH_NONE) && (ip->passwords != NULL))
-    log(L_WARN "Password option without authentication option does not make sense");
+    cf_warn("Password option without authentication option does not make sense");
 
   if (ip->passwords)
   {
@@ -119,7 +119,7 @@ ospf_proto_finish(void)
 	  if (!ic->instance_id_set)
 	    ic->instance_id = base;
 	  else if (ic->instance_id >= 128)
-	    log(L_WARN "Instance ID %d from unassigned/private range", ic->instance_id);
+	    cf_warn("Instance ID %d from unassigned/private range", ic->instance_id);
 	  else if ((ic->instance_id < base) || (ic->instance_id >= (base + 32)))
 	    cf_error("Instance ID %d invalid for given channel type", ic->instance_id);
 	}

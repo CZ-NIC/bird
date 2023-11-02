@@ -14,7 +14,7 @@
 #include "lib/event.h"
 #include "nest/iface.h"
 #include "lib/settle.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "nest/limit.h"
 #include "conf/conf.h"
 #include "filter/data.h"
@@ -93,8 +93,8 @@ void protos_dump_all(void);
 
 extern struct protocol
   proto_device, proto_radv, proto_rip, proto_static, proto_mrt,
-  proto_ospf, proto_perf,
-  proto_pipe, proto_bgp, proto_bfd, proto_babel, proto_rpki;
+  proto_ospf, proto_perf, proto_aggregator,
+  proto_pipe, proto_bgp, proto_bmp, proto_bfd, proto_babel, proto_rpki;
 
 /*
  *	Routing Protocol Instance
@@ -145,7 +145,9 @@ struct proto {
   struct proto_config *cf;		/* Configuration data */
   struct proto_config *cf_new;		/* Configuration we want to switch to after shutdown (NULL=delete) */
   pool *pool;				/* Pool containing local objects */
-  pool *pool_fragile;			/* Pool containing fragile local objects which need to be freed
+  pool *pool_up;			/* Pool containing local objects which should be dropped as soon
+					   as the protocol enters the STOP / DOWN state */
+  pool *pool_inloop;			/* Pool containing local objects which need to be freed
 					   before the protocol's birdloop actually stops, like olocks */
   event *event;				/* Protocol event */
   timer *restart_timer;			/* Timer to restart the protocol from limits */
@@ -209,14 +211,10 @@ struct proto {
    *
    *	   rte_recalculate Called at the beginning of the best route selection
    *       rte_mergable	Compare two rte's and decide whether they could be merged (1=yes, 0=no).
-   *	   rte_insert	Called whenever a rte is inserted to a routing table.
-   *	   rte_remove	Called whenever a rte is removed from the routing table.
    */
 
   int (*rte_recalculate)(struct rtable_private *, struct network *, struct rte *, struct rte *, struct rte *);
   int (*rte_mergable)(struct rte *, struct rte *);
-  void (*rte_insert)(struct network *, struct rte *);
-  void (*rte_remove)(struct network *, struct rte *);
   u32 (*rte_igp_metric)(const struct rte *);
 
   /* Hic sunt protocol-specific data */
@@ -506,7 +504,8 @@ struct channel_class {
 #endif
 };
 
-extern struct channel_class channel_bgp;
+extern const struct channel_class channel_basic;
+extern const struct channel_class channel_bgp;
 
 struct channel_config {
   node n;
@@ -682,6 +681,7 @@ static inline struct channel_config *proto_cf_main_channel(struct proto_config *
 struct channel *proto_find_channel_by_table(struct proto *p, rtable *t);
 struct channel *proto_find_channel_by_name(struct proto *p, const char *n);
 struct channel *proto_add_channel(struct proto *p, struct channel_config *cf);
+void proto_remove_channel(struct proto *p, struct channel *c);
 int proto_configure_channel(struct proto *p, struct channel **c, struct channel_config *cf);
 
 void channel_set_state(struct channel *c, uint state);

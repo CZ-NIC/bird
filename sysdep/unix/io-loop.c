@@ -892,6 +892,7 @@ bird_thread_main(void *arg)
     bird_thread_busy_update(thr, timeout);
 
     account_to(&this_thread->idle);
+    birdloop_leave(thr->meta);
 poll_retry:;
     int rv = poll(pfd.pfd.data, pfd.pfd.used, timeout);
     if (rv < 0)
@@ -902,6 +903,7 @@ poll_retry:;
     }
 
     account_to(&this_thread->overhead);
+    birdloop_enter(thr->meta);
 
     /* Drain wakeup fd */
     if (pfd.pfd.data[0].revents & POLLIN)

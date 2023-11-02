@@ -46,7 +46,7 @@
 #undef LOCAL_DEBUG
 
 #include "nest/bird.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
 #include "lib/resource.h"
@@ -60,7 +60,8 @@
 
 static jmp_buf conf_jmpbuf;
 
-struct config *config, *new_config;
+struct config *config;
+_Thread_local struct config *new_config;
 pool *config_pool;
 
 static struct config *old_config;	/* Old configuration */

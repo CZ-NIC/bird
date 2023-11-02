@@ -15,7 +15,7 @@
 #include "nest/bird.h"
 #include "nest/iface.h"
 #include "nest/protocol.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "lib/attrs.h"
 #include "conf/conf.h"
 #include "lib/resource.h"
@@ -1223,8 +1223,8 @@ bgp_register_attrs(void)
     if (!bgp_attr_table[i].name)
       bgp_attr_table[i] = (union bgp_attr_desc) {
 	.name = mb_sprintf(&root_pool, "bgp_unknown_0x%02x", i),
-	.type = T_OPAQUE,
-	.flags = BAF_OPTIONAL,
+	.type = T_BYTESTRING,
+	.flags = BAF_OPTIONAL | BAF_TRANSITIVE,
 	.readonly = 1,
 	.export = bgp_export_unknown,
 	.encode = bgp_encode_raw,
@@ -1235,6 +1235,13 @@ bgp_register_attrs(void)
     ea_register_init(&bgp_attr_table[i].class);
   }
 }
+
+struct ea_class *
+bgp_find_ea_class_by_id(uint id)
+{
+  return (id < ARRAY_SIZE(bgp_attr_table)) ? &bgp_attr_table[id].class : NULL;
+}
+
 
 /*
  *	Attribute export
@@ -1657,6 +1664,9 @@ bgp_defer_bucket(struct bgp_channel *bc, struct bgp_bucket *b)
 void
 bgp_withdraw_bucket(struct bgp_channel *bc, struct bgp_bucket *b)
 {
+  if (b->bmp)
+    return;
+
   struct bgp_proto *p = (void *) bc->c.proto;
   struct bgp_pending_tx *c = bc->ptx;
   struct bgp_bucket *wb = bgp_get_withdraw_bucket(c);
@@ -1807,6 +1817,10 @@ bgp_free_prefix(struct bgp_pending_tx *c, struct bgp_prefix *px)
 void
 bgp_done_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucket *buck)
 {
+  /* BMP hack */
+  if (buck->bmp)
+    return;
+
   /* Cleanup: We're called from bucket senders. */
   ASSERT_DIE(px->cur == buck);
   rem_node(&px->buck_node_xx);

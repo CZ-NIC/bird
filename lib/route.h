@@ -60,10 +60,12 @@ static inline rte rte_init_from(const rte *r)
   };
 }
 
+int rte_same(const rte *, const rte *);
+
 struct rte_src {
   struct rte_src *next;			/* Hash chain */
   struct rte_owner *owner;		/* Route source owner */
-  u32 private_id;			/* Private ID, assigned by the protocol */
+  u64 private_id;			/* Private ID, assigned by the protocol */
   u32 global_id;			/* Globally unique ID of the source */
   _Atomic u64 uc;			/* Use count */
 };
@@ -171,6 +173,8 @@ static inline void rt_unlock_source(struct rte_src *src)
 void rt_init_sources(struct rte_owner *, const char *name, event_list *list);
 void rt_destroy_sources(struct rte_owner *, event *);
 
+void rt_dump_sources(struct rte_owner *);
+
 /*
  *	Route Attributes
  *
@@ -221,7 +225,8 @@ struct nexthop_adata {
 #define RTS_BABEL 13			/* Babel route */
 #define RTS_RPKI 14			/* Route Origin Authorization */
 #define RTS_PERF 15			/* Perf checker */
-#define RTS_MAX 16
+#define RTS_AGGREGATED 16		/* Aggregated route */
+#define RTS_MAX 17
 
 #define RTD_NONE 0			/* Undefined next hop */
 #define RTD_UNICAST 1			/* A standard next hop */
@@ -305,6 +310,7 @@ struct ea_class_ref {
 
 void ea_register_init(struct ea_class *);
 struct ea_class_ref *ea_register_alloc(pool *, struct ea_class);
+struct ea_class_ref *ea_ref_class(pool *, struct ea_class *);	/* Reference for an attribute alias */
 
 #define EA_REGISTER_ALL_HELPER(x)	ea_register_init(x);
 #define EA_REGISTER_ALL(...)		MACRO_FOREACH(EA_REGISTER_ALL_HELPER, __VA_ARGS__)

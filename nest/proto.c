@@ -16,7 +16,7 @@
 #include "lib/timer.h"
 #include "lib/string.h"
 #include "conf/conf.h"
-#include "nest/rt.h"
+#include "nest/route.h"
 #include "nest/iface.h"
 #include "nest/cli.h"
 #include "filter/filter.h"
@@ -183,7 +183,6 @@ proto_log_state_change(struct proto *p)
   else
     p->last_state_name_announced = NULL;
 }
-
 
 struct channel_config *
 proto_cf_find_channel(struct proto_config *pc, uint net_type)
@@ -687,10 +686,12 @@ channel_start_export(struct channel *c)
 
   ASSERT(c->channel_state == CS_UP);
 
+  pool *p = rp_newf(c->proto->pool, c->proto->pool->domain, "Channel %s.%s export", c->proto->name, c->name);
+
   c->out_req = (struct rt_export_request) {
-    .name = mb_sprintf(c->proto->pool, "%s.%s", c->proto->name, c->name),
+    .name = mb_sprintf(p, "%s.%s", c->proto->name, c->name),
     .list = proto_work_list(c->proto),
-    .pool = c->proto->pool,
+    .pool = p,
     .feed_block_size = c->feed_block_size,
     .prefilter = {
       .mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
@@ -702,8 +703,8 @@ channel_start_export(struct channel *c)
     .mark_seen = channel_rpe_mark_seen_export,
   };
 
-  bmap_init(&c->export_map, c->proto->pool, 16);
-  bmap_init(&c->export_reject_map, c->proto->pool, 16);
+  bmap_init(&c->export_map, p, 16);
+  bmap_init(&c->export_reject_map, p, 16);
 
   channel_reset_limit(c, &c->out_limit, PLD_OUT);
 
@@ -728,7 +729,7 @@ channel_start_export(struct channel *c)
   }
 
   c->refeed_req = c->out_req;
-  c->refeed_req.name = mb_sprintf(c->proto->pool, "%s.%s.refeed", c->proto->name, c->name);
+  c->refeed_req.name = mb_sprintf(p, "%s.%s.refeed", c->proto->name, c->name);
   c->refeed_req.dump_req = channel_dump_refeed_req;
   c->refeed_req.log_state_change = channel_refeed_log_state_change;
   c->refeed_req.mark_seen = channel_rpe_mark_seen_refeed;
@@ -795,11 +796,11 @@ channel_export_stopped(struct rt_export_request *req)
     return;
   }
 
-  mb_free(c->out_req.name);
-  c->out_req.name = NULL;
-
   bmap_free(&c->export_map);
   bmap_free(&c->export_reject_map);
+
+  c->out_req.name = NULL;
+  rfree(c->out_req.pool);
 
   channel_check_stopped(c);
 }
@@ -1545,10 +1546,10 @@ proto_event(void *ptr)
     p->do_stop = 0;
   }
 
-  if (proto_is_done(p) && p->pool_fragile)  /* perusing pool_fragile to do this once only */
+  if (proto_is_done(p) && p->pool_inloop)  /* perusing pool_inloop to do this once only */
   {
-    rp_free(p->pool_fragile);
-    p->pool_fragile = NULL;
+    rp_free(p->pool_inloop);
+    p->pool_inloop = NULL;
     if (p->loop != &main_birdloop)
       birdloop_stop_self(p->loop, proto_loop_stopped, p);
     else
@@ -1630,7 +1631,8 @@ proto_start(struct proto *p)
 
   PROTO_LOCKED_FROM_MAIN(p)
   {
-    p->pool_fragile = rp_newf(p->pool, birdloop_domain(p->loop), "Protocol %s fragile objects", p->cf->name);
+    p->pool_inloop = rp_newf(p->pool, birdloop_domain(p->loop), "Protocol %s early cleanup objects", p->cf->name);
+    p->pool_up = rp_newf(p->pool, birdloop_domain(p->loop), "Protocol %s stop-free objects", p->cf->name);
     proto_notify_state(p, (p->proto->start ? p->proto->start(p) : PS_UP));
   }
 }
@@ -1893,8 +1895,8 @@ protos_do_commit(struct config *new, struct config *old, int force_reconfig, int
 	  /* This is hack, we would like to share config, but we need to copy it now */
 	  new_config = new;
 	  cfg_mem = new->mem;
-	  conf_this_scope = new->root_scope;
-	  sym = cf_get_symbol(oc->name);
+	  new->current_scope = new->root_scope;
+	  sym = cf_get_symbol(new, oc->name);
 	  proto_clone_config(sym, parsym->proto);
 	  new_config = NULL;
 	  cfg_mem = NULL;
@@ -2273,6 +2275,9 @@ protos_dump_all(void)
 	  c->out_req.hook ? rt_export_state_name(rt_export_get_state(c->out_req.hook)) : "-");
     }
 
+    debug("\tSOURCES\n");
+    rt_dump_sources(&p->sources);
+
     if (p->proto->dump && (p->proto_state != PS_DOWN))
       p->proto->dump(p);
   }
@@ -2562,6 +2567,9 @@ proto_do_stop(struct proto *p)
     rt_unlock_source(p->main_source);
     p->main_source = NULL;
   }
+
+  rp_free(p->pool_up);
+  p->pool_up = NULL;
 
   proto_stop_channels(p);
   rt_destroy_sources(&p->sources, p->event);
