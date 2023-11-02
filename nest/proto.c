@@ -368,7 +368,7 @@ proto_remove_channels(struct proto *p)
  * auxiliary trie. Then we ping the settle timer to wait a reasonable amount of
  * time before actually requesting channel reload.
  *
- * Settle timer fires when nothing has pinged it for the 'min' time or 'max'
+ * Settle timer fires when nothing has pinged it for the 'min' time, or 'max'
  * time has elapsed since the first ping. It then:
  *
  * - requests partial channel import / export reload based on the trie
