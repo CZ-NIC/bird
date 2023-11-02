@@ -94,17 +94,16 @@ void fit_copy(struct fib *f, struct fib_iterator *dst, struct fib_iterator *src)
 	uint count_ = (fib)->hash_size;				\
 	uint hpos_ = (it)->hash;				\
 	type *z;						\
-	for(;;) {						\
-	  if (!fn_)						\
+	for(;;fn_ = fn_->next) {				\
+	  while (!fn_ && ++hpos_ < count_)			\
 	    {							\
-	       if (++hpos_ >= count_)				\
-		 break;						\
 	       fn_ = (fib)->hash_table[hpos_];			\
-	       continue;					\
 	    }							\
+	  if (hpos_ >= count_)					\
+	    break;						\
 	  z = fib_node_to_user(fib, fn_);
 
-#define FIB_ITERATE_END fn_ = fn_->next; } } while(0)
+#define FIB_ITERATE_END } } while(0)
 
 #define FIB_ITERATE_PUT(it) fit_put(it, fn_)
 
