@@ -979,7 +979,8 @@ inherited from templates can be updated by new definitions.
 	<cf/roa_check()/ operator). In contrast to to other filter operators,
 	this status for the same route may change as the content of ROA tables
 	changes. When this option is active, BIRD activates automatic reload of
-	affected channels whenever ROA tables are updated (after a short settle
+	the appropriate subset of prefixes imported or exported by the channels
+	whenever ROA tables are updated (after a short settle
 	time). When disabled, route reloads have to be requested manually. The
 	option is ignored if <cf/roa_check()/ is not used in channel filters.
 	Note that for BGP channels, automatic reload requires
