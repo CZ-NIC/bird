@@ -128,7 +128,8 @@ proto_call_cmd_reload(struct proto_spec ps, int dir, const struct f_trie *trie)
   if (trie)
   {
     /* CLI linpool is moved to trie, because trie is need for longer time
-    than the linpool would exist in CLI. The linpool is freed in channel_reload_out_done_main */
+     * than the linpool would exist in CLI. The linpool is freed in channel_reload_out_done_main.
+     */
     ASSERT_DIE(this_cli->parser_pool == prr->trie->lp);
     rmove(this_cli->parser_pool, &root_pool);
     this_cli->parser_pool = lp_new(this_cli->pool);

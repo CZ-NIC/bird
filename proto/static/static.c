@@ -421,14 +421,11 @@ static_reload_routes(struct channel *C, struct channel_import_request *cir)
 
   TRACE(D_EVENTS, "Scheduling route reload");
 
-  if (cir && cir->trie)
+  if (cir->trie)
     static_mark_partial(p, cir);
   else
-  {
-    if (cir)
-      cir->done(cir);
     static_mark_all(p);
-  }
+
   return 1;
 }
 

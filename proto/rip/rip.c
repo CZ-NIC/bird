@@ -1166,10 +1166,10 @@ static int
 rip_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct rip_proto *p = (struct rip_proto *) C->proto;
-  if (cir) {
-    cir->next = p->cir;
-    p->cir = cir;
-  }
+
+  cir->next = p->cir;
+  p->cir = cir;
+
   if (p->rt_reload)
     return 1;
 

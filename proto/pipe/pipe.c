@@ -121,8 +121,7 @@ pipe_reload_routes(struct channel *C, struct channel_import_request *cir)
     channel_request_feeding((C == p->pri) ? p->sec : p->pri, &reload->cfr);
   }
   else{
-    if(cir)
-      cir->done(cir);
+    cir->done(cir);
     /* Route reload on one channel is just refeed on the other */
     channel_request_feeding_dynamic((C == p->pri) ? p->sec : p->pri, CFRT_DIRECT);
   }
