@@ -125,6 +125,12 @@ struct proto_config {
   /* Protocol-specific data follow... */
 };
 
+struct channel_import_request {
+  struct channel_import_request *next;			/* Next in request chain */
+  void (*done)(struct channel_import_request *);	/* Called when import finishes */
+  const struct f_trie *trie;				/* Reload only matching nets */
+};
+
 #define TLIST_PREFIX proto
 #define TLIST_TYPE struct proto
 #define TLIST_ITEM n
@@ -194,7 +200,7 @@ struct proto {
 
   void (*rt_notify)(struct proto *, struct channel *, const net_addr *net, struct rte *new, const struct rte *old);
   int (*preexport)(struct channel *, struct rte *rt);
-  void (*reload_routes)(struct channel *);
+  int (*reload_routes)(struct channel *, struct channel_import_request *cir);
   void (*feed_begin)(struct channel *);
   void (*feed_end)(struct channel *);
 
@@ -279,6 +285,14 @@ struct proto *proto_get_named(struct symbol *, struct protocol *);
 struct proto *proto_iterate_named(struct symbol *sym, struct protocol *proto, struct proto *old);
 
 #define PROTO_WALK_CMD(sym,pr,p) for(struct proto *p = NULL; p = proto_iterate_named(sym, pr, p); )
+
+/* Request from CLI to reload multiple protocols */
+struct proto_reload_request {
+  const struct f_trie *trie;	/* Trie to apply */
+  _Atomic uint counter;		/* How many channels remaining */
+  uint dir;			/* Direction of reload */
+  event ev;			/* Event to run when finished */
+};
 
 #define PROTO_ENTER_FROM_MAIN(p)    ({ \
     ASSERT_DIE(birdloop_inside(&main_birdloop)); \
@@ -573,6 +587,8 @@ struct channel {
   struct f_trie *refeed_trie;		/* Auxiliary refeed trie */
   struct channel_feeding_request *refeeding;	/* Refeeding the channel */
   struct channel_feeding_request *refeed_pending;	/* Scheduled refeeds */
+  struct channel_import_request *importing;	/* Importing the channel */
+  struct channel_import_request *import_pending;	/* Scheduled imports */
 
   uint feed_block_size;			/* How many routes to feed at once */
 
@@ -669,7 +685,8 @@ struct channel *proto_add_channel(struct proto *p, struct channel_config *cf);
 int proto_configure_channel(struct proto *p, struct channel **c, struct channel_config *cf);
 
 void channel_set_state(struct channel *c, uint state);
-void channel_schedule_reload(struct channel *c);
+void channel_schedule_reload(struct channel *c, struct channel_import_request *cir);
+int channel_import_request_prefilter(struct channel_import_request *cir_head, const net_addr *n);
 
 static inline void channel_init(struct channel *c) { channel_set_state(c, CS_START); }
 static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP); }
@@ -678,7 +695,7 @@ static inline void channel_close(struct channel *c) { channel_set_state(c, CS_ST
 struct channel_feeding_request {
   struct channel_feeding_request *next;			/* Next in request chain */
   void (*done)(struct channel_feeding_request *);	/* Called when refeed finishes */
-  struct f_trie *trie;					/* Reload only matching nets */
+  const struct f_trie *trie;				/* Reload only matching nets */
   PACKED enum channel_feeding_request_type {
     CFRT_DIRECT = 1,					/* Refeed by export restart */
     CFRT_AUXILIARY,					/* Refeed by auxiliary request */

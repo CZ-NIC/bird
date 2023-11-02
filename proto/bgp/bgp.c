@@ -1560,18 +1560,30 @@ bgp_update_bfd(struct bgp_proto *p, const struct bfd_options *bfd)
   }
 }
 
-static void
-bgp_reload_routes(struct channel *C)
+static int
+bgp_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
 
   /* Ignore non-BGP channels */
   if (C->class != &channel_bgp)
-    return;
+  {
+    cir->done(cir);
+    return 1;
+  }
+
+  if (cir->trie)
+  {
+    cir->done(cir);
+    return 0;
+  }
+  /* We do not need cir anymore and later we will not be able to detect when to free it. */
+  cir->done(cir);
 
   ASSERT(p->conn && p->route_refresh);
   bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
+  return 1;
 }
 
 static void

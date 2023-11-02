@@ -107,6 +107,44 @@ proto_postconfig(void)
   this_proto = NULL;
 }
 
+static void
+channel_reload_out_done_main(void *_prr)
+{
+  struct proto_reload_request *prr = _prr;
+  ASSERT_THE_BIRD_LOCKED;
+
+  rfree(prr->trie->lp);
+}
+
+static inline void
+proto_call_cmd_reload(struct proto_spec ps, int dir, const struct f_trie *trie)
+{
+  struct proto_reload_request *prr = cfg_alloc(sizeof *prr);
+  *prr = (struct proto_reload_request) {
+    .trie = trie,
+    .dir = dir,
+    .counter = 1,
+  };
+  if (trie)
+  {
+    /* CLI linpool is moved to trie, because trie is need for longer time
+     * than the linpool would exist in CLI. The linpool is freed in channel_reload_out_done_main.
+     */
+    ASSERT_DIE(this_cli->parser_pool == prr->trie->lp);
+    rmove(this_cli->parser_pool, &root_pool);
+    this_cli->parser_pool = lp_new(this_cli->pool);
+    prr->ev = (event) {
+      .data = prr,
+      .hook = channel_reload_out_done_main,
+    };
+  }
+
+  proto_apply_cmd(ps, proto_cmd_reload, 1, (uintptr_t) prr);
+  /* This function used reference to this trie, so it is freed here as well as in protocols*/
+  if (trie)
+    if (atomic_fetch_sub_explicit(&prr->counter, 1, memory_order_acq_rel) == 1)
+      ev_send_loop(&main_birdloop, &prr->ev);
+}
 
 #define DIRECT_CFG ((struct rt_dev_config *) this_proto)
 
@@ -120,7 +158,7 @@ CF_KEYWORDS(PASSWORD, KEY, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, CH
 CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512, BLAKE2S128, BLAKE2S256, BLAKE2B256, BLAKE2B512)
 CF_KEYWORDS(PRIMARY, STATS, COUNT, FOR, IN, COMMANDS, PREEXPORT, NOEXPORT, EXPORTED, GENERATE)
 CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION)
-CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, CLASS, DSCP)
+CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, CLASS, DSCP, PARTIAL)
 CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, AS)
 CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
@@ -151,6 +189,7 @@ CF_ENUM_PX(T_ENUM_AF, AF_, AFI_, IPV4, IPV6)
 %type <net_ptr> r_args_for
 %type <t> channel_sym
 %type <c> channel_arg
+%type <const_trie> partial_opt
 
 CF_GRAMMAR
 
@@ -892,18 +931,28 @@ CF_CLI(DUMP FILTER ALL,,, [[Dump all filters in linearized form]])
 CF_CLI(EVAL, term, <expr>, [[Evaluate an expression]])
 { cmd_eval(f_linearize($2, 1)); } ;
 
+partial_opt:
+  PARTIAL term {
+    struct f_val val;
+    if (f_eval(f_linearize($2, 1), &val) > F_RETURN) cf_error("Runtime error");
+    if (val.type != T_PREFIX_SET) cf_error("Partial spec must be prefix set");
+    $$ = val.val.ti;
+  }
+  | /* empty */ { $$ = NULL; }
+  ;
+
 CF_CLI(DISABLE, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message], [[Disable protocol]])
 { proto_apply_cmd($2, proto_cmd_disable, 1, (uintptr_t) $3); } ;
 CF_CLI(ENABLE, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message], [[Enable protocol]])
 { proto_apply_cmd($2, proto_cmd_enable, 1, (uintptr_t) $3); } ;
 CF_CLI(RESTART, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message], [[Restart protocol]])
 { proto_apply_cmd($2, proto_cmd_restart, 1, (uintptr_t) $3); } ;
-CF_CLI(RELOAD, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol]])
-{ proto_apply_cmd($2, proto_cmd_reload, 1, CMD_RELOAD); } ;
-CF_CLI(RELOAD IN, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just imported routes)]])
-{ proto_apply_cmd($3, proto_cmd_reload, 1, CMD_RELOAD_IN); } ;
-CF_CLI(RELOAD OUT, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just exported routes)]])
-{ proto_apply_cmd($3, proto_cmd_reload, 1, CMD_RELOAD_OUT); } ;
+CF_CLI(RELOAD, proto_patt partial_opt, (<protocol> | \"<pattern>\" | all) [partial <prefix set>], [[Reload protocol]])
+{ proto_call_cmd_reload($2, CMD_RELOAD, $3); } ;
+CF_CLI(RELOAD IN, proto_patt partial_opt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just imported routes)]])
+{ proto_call_cmd_reload($3, CMD_RELOAD_IN, $4); } ;
+CF_CLI(RELOAD OUT, proto_patt partial_opt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just exported routes)]])
+{ proto_call_cmd_reload($3, CMD_RELOAD_OUT, $4); } ;
 
 CF_CLI_HELP(DEBUG, ..., [[Control protocol debugging via BIRD logs]])
 CF_CLI(DEBUG, debug_args, (<protocol> | <channel> | \"<pattern>\" | all) (all | off | { states|routes|filters|interfaces|events|packets [, ...] }), [[Control protocol debugging via BIRD logs]])

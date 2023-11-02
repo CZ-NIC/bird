@@ -968,6 +968,9 @@ rip_timer(timer *t)
 
   FIB_ITERATE_INIT(&fit, &p->rtable);
 
+  struct channel_import_request *cir = p->cir;
+  p->cir = NULL;
+
   loop:
   FIB_ITERATE_START(&p->rtable, &fit, struct rip_entry, en)
   {
@@ -989,14 +992,13 @@ rip_timer(timer *t)
     }
 
     /* Propagating eventual change */
-    if (changed || p->rt_reload)
+    if ((changed || p->rt_reload) && (cir == NULL || channel_import_request_prefilter(cir, en->n.addr)))
     {
       /*
        * We have to restart the iteration because there may be a cascade of
        * synchronous events rip_announce_rte() -> nest table change ->
        * rip_rt_notify() -> p->rtable change, invalidating hidden variables.
        */
-
       FIB_ITERATE_PUT_NEXT(&fit, &p->rtable);
       rip_announce_rte(p, en);
       goto loop;
@@ -1047,7 +1049,19 @@ rip_timer(timer *t)
       }
   }
 
-  tm_start(p->timer, MAX(next - now_, 100 MS));
+  while(cir)
+  {
+    struct channel_import_request *next_cir = cir->next;
+    cir->done(cir);
+    cir = next_cir;
+  }
+  if (p->cir)
+  {
+    p->rt_reload = 1;
+    rip_kick_timer(p);
+  }
+  else
+    tm_start(p->timer, MAX(next - now_, 100 MS));
 }
 
 static inline void
@@ -1148,17 +1162,21 @@ rip_trigger_update(struct rip_proto *p)
  *	RIP protocol glue
  */
 
-static void
-rip_reload_routes(struct channel *C)
+static int
+rip_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct rip_proto *p = (struct rip_proto *) C->proto;
 
+  cir->next = p->cir;
+  p->cir = cir;
+
   if (p->rt_reload)
-    return;
+    return 1;
 
   TRACE(D_EVENTS, "Scheduling route reload");
   p->rt_reload = 1;
   rip_kick_timer(p);
+  return 1;
 }
 
 static struct rte_owner_class rip_rte_owner_class;

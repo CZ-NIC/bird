@@ -253,6 +253,23 @@ struct rte_storage {
 
 /* Table-channel connections */
 
+struct rt_prefilter {
+  union {
+    const struct f_trie *trie;
+    const net_addr *addr;	/* Network prefilter address */
+    int (*hook)(const struct rt_prefilter *, const net_addr *);
+  };
+				/* Network prefilter mode (TE_ADDR_*) */
+  enum {
+    TE_ADDR_NONE = 0,		/* No address matching */
+    TE_ADDR_EQUAL,		/* Exact query - show route <addr> */
+    TE_ADDR_FOR,		/* Longest prefix match - show route for <addr> */
+    TE_ADDR_IN,			/* Interval query - show route in <addr> */
+    TE_ADDR_TRIE,		/* Query defined by trie */
+    TE_ADDR_HOOK,		/* Query processed by supplied custom hook */
+  } mode;
+} PACKED;
+
 struct rt_import_request {
   struct rt_import_hook *hook;		/* The table part of importer */
   char *name;
@@ -299,23 +316,6 @@ struct rt_pending_export {
   struct rte_storage *new, *new_best, *old, *old_best;
   u64 seq;				/* Sequential ID (table-local) of the pending export */
 };
-
-struct rt_prefilter {
-  union {
-    const struct f_trie *trie;
-    const net_addr *addr;	/* Network prefilter address */
-    int (*hook)(const struct rt_prefilter *, const net_addr *);
-  };
-				/* Network prefilter mode (TE_ADDR_*) */
-  enum {
-    TE_ADDR_NONE = 0,		/* No address matching */
-    TE_ADDR_EQUAL,		/* Exact query - show route <addr> */
-    TE_ADDR_FOR,		/* Longest prefix match - show route for <addr> */
-    TE_ADDR_IN,			/* Interval query - show route in <addr> */
-    TE_ADDR_TRIE,		/* Query defined by trie */
-    TE_ADDR_HOOK,		/* Query processed by supplied custom hook */
-  } mode;
-} PACKED;
 
 struct rt_export_request {
   struct rt_export_hook *hook;		/* Table part of the export */

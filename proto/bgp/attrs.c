@@ -1904,6 +1904,7 @@ bgp_out_table_feed(void *data)
     {
       switch (hook->h.req->prefilter.mode)
       {
+	case TE_ADDR_HOOK:
 	case TE_ADDR_TRIE:
 	case TE_ADDR_IN:
 	  if (!rt_prefilter_net(&hook->h.req->prefilter, n->net))
