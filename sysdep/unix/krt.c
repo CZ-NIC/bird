@@ -531,6 +531,7 @@ done:;
 static void
 krt_init_scan(struct krt_proto *p)
 {
+  rt_refresh_begin(&p->p.main_channel->in_req);
   bmap_reset(&p->seen_map, 1024);
 }
 
@@ -562,6 +563,7 @@ krt_prune(struct krt_proto *p)
     p->initialized = 1;
 
   }
+  rt_refresh_end(&p->p.main_channel->in_req);
 }
 
 void
