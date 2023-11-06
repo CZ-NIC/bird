@@ -79,6 +79,7 @@ const char * const rta_src_names[RTS_MAX] = {
   [RTS_L3VPN]		= "L3VPN",
   [RTS_AGGREGATED]	= "aggregated",
   [RTS_BRIDGE]		= "bridge",
+  [RTS_EVPN]		= "EVPN",
 };
 
 const char * rta_dest_names[RTD_MAX] = {
@@ -1325,7 +1326,7 @@ rta_dump(struct dump_request *dreq, rta *a)
 			 "RTS_STAT_DEV", "RTS_REDIR", "RTS_RIP",
 			 "RTS_OSPF", "RTS_OSPF_IA", "RTS_OSPF_EXT1",
 			 "RTS_OSPF_EXT2", "RTS_BGP", "RTS_PIPE", "RTS_BABEL",
-			 "RTS_RPKI", "RTS_PERF", "RTS_AGGREGATED", "RTS_BRIDGE" };
+			 "RTS_RPKI", "RTS_PERF", "RTS_AGGREGATED", "RTS_BRIDGE", "RTS_EVPN" };
   static char *rtd[] = { "", " DEV", " HOLE", " UNREACH", " PROHIBIT" };
 
   RDUMP("pref=%d uc=%d %s %s%s h=%04x",
