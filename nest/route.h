@@ -487,7 +487,8 @@ typedef struct rta {
 #define RTS_AGGREGATED 17		/* Aggregated route */
 #define RTS_RADV 18			/* Router Advertisement */
 #define RTS_BRIDGE 19
-#define RTS_MAX 20
+#define RTS_EVPN 20
+#define RTS_MAX 21
 
 #define RTD_NONE 0			/* Undefined next hop */
 #define RTD_UNICAST 1			/* Next hop is neighbor router */
