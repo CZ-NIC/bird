@@ -1103,6 +1103,10 @@ rte_validate(rte *e)
     if (net_is_flow(n->n.addr) && (e->attrs->dest == RTD_UNREACHABLE))
       return 1;
 
+    /* XXX hack */
+    if (n->n.addr->type == NET_EVPN)
+      return 1;
+
     log(L_WARN "Ignoring route %N with invalid dest %d received via %s",
 	n->n.addr, e->attrs->dest, e->sender->proto->name);
     return 0;
