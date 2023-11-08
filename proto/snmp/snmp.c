@@ -257,7 +257,6 @@ snmp_sock_err(sock *sk, int UNUSED err)
 {
   snmp_log("socket error '%s' (errno: %d)", strerror(err), err);
   struct snmp_proto *p = sk->data;
-  p->errs++;
 
   snmp_sock_disconnect(p, 1);
 }
@@ -280,10 +279,6 @@ snmp_start_locked(struct object_lock *lock)
   p->state = SNMP_LOCKED;
   sock *s = p->sock;
 
-  p->to_send = 0;
-  p->errs = 0;
-
-
   if (!p->bgp_trie)
     p->bgp_trie = f_new_trie(p->lp, 0);  // TODO user-data attachment size
 
@@ -303,9 +298,6 @@ snmp_start_locked(struct object_lock *lock)
 
     p->sock = s;
     s->data = p;
-
-    p->to_send = 0;
-    p->errs = 0;
   }
 
   /* Try opening the socket, schedule a retry on fail */
@@ -478,6 +470,7 @@ snmp_start(struct proto *P)
     }
   }
 
+  p->last_header = NULL;
   snmp_startup(p);
   return PS_START;
 }
@@ -651,9 +644,9 @@ snmp_shutdown(struct proto *P)
  */
 
 struct protocol proto_snmp = {
-  .name =		"Snmp",
+  .name =		"SNMP",
   .template =		"snmp%d",
-  .channel_mask =	NB_ANY,
+  .channel_mask =	0,
   .proto_size =		sizeof(struct snmp_proto),
   .config_size =	sizeof(struct snmp_config),
   .postconfig =		snmp_postconfig,

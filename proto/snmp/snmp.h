@@ -116,6 +116,7 @@ struct snmp_proto {
   u32 bgp_local_as;
 
   sock *sock;
+  void *last_header;		  /* points to partial PDU header */
   u8 timeout;			  /* timeout is part of MIB registration. It
 				    specifies how long should the master
 				    agent wait for request responses. */
@@ -139,9 +140,6 @@ struct snmp_proto {
   uint startup_delay;
   timer *startup_timer;
   u8 state;
-
-  uint to_send;
-  uint errs;
 };
 
 //void snmp_tx(sock *sk);

@@ -339,7 +339,7 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
   memcpy(c.buffer, data, size);
   ADVANCE(c.buffer, c.size, size);
 
-  uint s = update_packet_size(p, sk->tbuf, c.buffer);
+  uint s = update_packet_size(p, sk->tpos, c.buffer);
   sk_send(sk, s);
 
 #undef TRAP0_HEADER_SIZE
@@ -1522,15 +1522,23 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
       has_any = 0;
       for (bulk_state.index = 0; bulk_state.index < bulk_state.repeaters;
 	   bulk_state.repeaters++)
-	has_any = has_any || snmp_get_bulk2(p, start, end, &bulk_state, &c);
+	has_any = snmp_get_bulk2(p, start, end, &bulk_state, &c) || has_any;
     }
   }
 
   /* send the constructed packet */
-  struct agentx_response *res = (void *) sk->tbuf;
+  struct agentx_response *res;
+  if (p->last_header)
+  {
+    res = p->last_header;
+    p->last_header = NULL;
+  }
+  else
+    res = response_header;
+
   /* We update the error, index pair on the beginning of the packet. */
   response_err_ind(res, c.error, c.index + 1);
-  uint s = update_packet_size(p, (byte *) response_header, c.buffer);
+  uint s = update_packet_size(p, (byte *) res, c.buffer);
 
   /* We send the message in TX-buffer. */
   sk_send(sk, s);
@@ -1542,8 +1550,9 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
 
 partial:
   /* need to tweak RX buffer packet size */
-  (c.byte_ord) ? put_u32(&h->payload, pkt_size) : (h->payload = pkt_size);
+  STORE_U32(h->payload, pkt_size);
   *skip = AGENTX_HEADER_SIZE;
+  p->last_header = h;
 
   /* number of bytes parsed from RX-buffer */
   ret = pkt - pkt_start;
@@ -1897,6 +1906,9 @@ snmp_manage_tbuf(struct snmp_proto UNUSED *p, struct snmp_pdu *c)
 static struct agentx_response *
 prepare_response(struct snmp_proto *p, struct snmp_pdu *c)
 {
+  if (p->last_header)
+    return p->last_header;
+
   struct agentx_response *r = (void *) c->buffer;
   struct agentx_header *h = &r->h;
 
