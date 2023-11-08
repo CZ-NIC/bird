@@ -169,6 +169,7 @@ struct agentx_varbind {
   u16 pad;
   /* oid part */
   struct oid name;
+  byte data[];
 };
 
 /* this does not work */
@@ -208,28 +209,26 @@ struct agentx_bulk_state {
   u32 repeaters;
 };
 
-enum agentx_pdu {
-  AGENTX_OPEN_PDU		=  1,
-  AGENTX_CLOSE_PDU		=  2,
-  AGENTX_REGISTER_PDU		=  3,
-  AGENTX_UNREGISTER_PDU		=  4,
-  AGENTX_GET_PDU		=  5,
-  AGENTX_GET_NEXT_PDU		=  6,
-  AGENTX_GET_BULK_PDU		=  7,
-  AGENTX_TEST_SET_PDU		=  8,
-  AGENTX_COMMIT_SET_PDU		=  9,
-  AGENTX_UNDO_SET_PDU		= 10,
-  AGENTX_CLEANUP_SET_PDU	= 11,
-  AGENTX_NOTIFY_PDU		= 12,
-  AGENTX_PING_PDU		= 13,
-  AGENTX_INDEX_ALLOCATE_PDU     = 14,
-  AGENTX_INDEX_DEALLOCATE_PDU   = 15,
-  AGENTX_ADD_AGENT_CAPS_PDU     = 16,
-  AGENTX_REMOVE_AGENT_CAPS_PDU  = 17,
-  AGENTX_RESPONSE_PDU		= 18,
+enum agentx_pdu_types {
+  AGENTX_OPEN_PDU		=  1,	  /* agentx-Open-PDU */
+  AGENTX_CLOSE_PDU		=  2,	  /* agentx-Close-PDU */
+  AGENTX_REGISTER_PDU		=  3,	  /* agentx-Regiter-PDU */
+  AGENTX_UNREGISTER_PDU		=  4,	  /* agentx-Unregister-PDU */
+  AGENTX_GET_PDU		=  5,	  /* agentx-Get-PDU */
+  AGENTX_GET_NEXT_PDU		=  6,	  /* agentx-GetNext-PDU */
+  AGENTX_GET_BULK_PDU		=  7,	  /* agentx-GetBulk-PDU */
+  AGENTX_TEST_SET_PDU		=  8,	  /* agentx-TestSet-PDU */
+  AGENTX_COMMIT_SET_PDU		=  9,	  /* agentx-CommitSet-PDU */
+  AGENTX_UNDO_SET_PDU		= 10,	  /* agentx-UndoSet-PDU */
+  AGENTX_CLEANUP_SET_PDU	= 11,	  /* agentx-CleanupSet-PDU */
+  AGENTX_NOTIFY_PDU		= 12,	  /* agentx-Notify-PDU */
+  AGENTX_PING_PDU		= 13,	  /* agentx-Ping-PDU */
+  AGENTX_INDEX_ALLOCATE_PDU     = 14,	  /* agentx-IndexAllocate-PDU */
+  AGENTX_INDEX_DEALLOCATE_PDU   = 15,	  /* agentx-IndexDeallocate-PDU */
+  AGENTX_ADD_AGENT_CAPS_PDU     = 16,	  /* agentx-AddAgentCaps-PDU */
+  AGENTX_REMOVE_AGENT_CAPS_PDU  = 17,	  /* agentx-RemoveAgentCaps-PDU */
+  AGENTX_RESPONSE_PDU		= 18,	  /* agentx-Response-PDU */
 } PACKED;
-
-#define AGENTX_FLAGS_MASK          0x1F
 
 enum agentx_flags {
   AGENTX_FLAG_BLANK		    = 0x00,
@@ -240,13 +239,13 @@ enum agentx_flags {
   AGENTX_NETWORK_BYTE_ORDER	    = 0x10,
 } PACKED;
 
-#define AGENTX_FLAGS (AGENTX_FLAG_INSTANCE_REGISTRATION			      \
+#define AGENTX_FLAGS_MASK (AGENTX_FLAG_INSTANCE_REGISTRATION		      \
   | AGENTX_FLAG_NEW_INDEX						      \
   | AGENTX_FLAG_ANY_INDEX						      \
   | AGENTX_NON_DEFAULT_CONTEXT						      \
   | AGENTX_NETWORK_BYTE_ORDER)
 
-/* CLOSE_PDU close reasons */
+/* agentx-Close-PDU close reasons */
 enum agentx_close_reasons {
   AGENTX_CLOSE_OTHER	      = 1,
   AGENTX_CLOSE_PARSE_ERROR    = 2,
@@ -257,38 +256,38 @@ enum agentx_close_reasons {
 } PACKED;
 
 
-/* RESPONSE_PDU - result error */
-enum agentx_response_err {
-  /* response OK master <-> subagent */
-  AGENTX_RES_NO_ERROR		    =   0,
-  /* TEST_SET_PDU response errors (subagent -> master) */
-  AGENTX_RES_GEN_ERROR		    =   5,
-  AGENTX_RES_NO_ACCESS		    =   6,
-  AGENTX_RES_WRONG_TYPE		    =   7,
-  AGENTX_RES_WRONG_LENGTH	    =   8,
-  AGENTX_RES_WRONG_ENCODING	    =   9,
-  AGENTX_RES_WRONG_VALUE	    =  10,
-  AGENTX_RES_NO_CREATION	    =  11,
-  AGENTX_RES_INCONSISTENT_VALUE	    =  12,
-  AGENTX_RES_RESOURCE_UNAVAILABLE   =  13,
-  AGENTX_RES_COMMIT_FAILED	    =  14,
-  AGENTX_RES_UNDO_FAILED	    =  15,
-  AGENTX_RES_NOT_WRITABLE	    =  17,
-  AGENTX_RES_INCONSISTENT_NAME	    =  18,
-  /* end of TEST_SET_PDU resonse errs (master -> subagent) */
-  AGENTX_RES_OPEN_FAILED	    = 256,
-  AGENTX_RES_NOT_OPEN		    = 257,
-  AGENTX_RES_INDEX_WRONG_TYPE	    = 258,
-  AGENTX_RES_INDEX_ALREADY_ALLOC    = 259,
-  AGENTX_RES_INDEX_NONE_AVAIL	    = 260,
-  AGENTX_RES_NOT_ALLOCATED	    = 261,
-  AGENTX_RES_UNSUPPORTED_CONTEXT    = 262,
-  AGENTX_RES_DUPLICATE_REGISTER	    = 263,
-  AGENTX_RES_UNKNOWN_REGISTER	    = 264,
-  AGENTX_RES_UNKNOWN_AGENT_CAPS	    = 265,
-  AGENTX_RES_PARSE_ERROR	    = 266,
-  AGENTX_RES_REQUEST_DENIED	    = 267,
-  AGENTX_RES_PROCESSING_ERR	    = 268,
+/* agentx-Response-PDU - result errors */
+enum agentx_response_errs {
+  /* response error to both Administrative and SNMP messages */
+  AGENTX_RES_NO_ERROR		    =   0,	/* noAgentXError */
+  /* response errors to SNMP messages */
+  AGENTX_RES_GEN_ERROR		    =   5,	/* genError */
+  AGENTX_RES_NO_ACCESS		    =   6,	/* noAccess */
+  AGENTX_RES_WRONG_TYPE		    =   7,	/* wrongType */
+  AGENTX_RES_WRONG_LENGTH	    =   8,	/* wrongLength */
+  AGENTX_RES_WRONG_ENCODING	    =   9,	/* wrongEncoding */
+  AGENTX_RES_WRONG_VALUE	    =  10,	/* wrongValue*/
+  AGENTX_RES_NO_CREATION	    =  11,	/* noCreation */
+  AGENTX_RES_INCONSISTENT_VALUE	    =  12,	/* inconsistentValue */
+  AGENTX_RES_RESOURCE_UNAVAILABLE   =  13,	/* resourceUnavailable */
+  AGENTX_RES_COMMIT_FAILED	    =  14,	/* commitFailed */
+  AGENTX_RES_UNDO_FAILED	    =  15,	/* undoFailed */
+  AGENTX_RES_NOT_WRITABLE	    =  17,	/* notWritable */
+  AGENTX_RES_INCONSISTENT_NAME	    =  18,	/* inconsistentName */
+  /* response error to Administrative messages */
+  AGENTX_RES_OPEN_FAILED	    = 256,	/* openFailed */
+  AGENTX_RES_NOT_OPEN		    = 257,	/* notOpen */
+  AGENTX_RES_INDEX_WRONG_TYPE	    = 258,	/* indexWrongType */
+  AGENTX_RES_INDEX_ALREADY_ALLOC    = 259,	/* indexAlreadyAlloc */
+  AGENTX_RES_INDEX_NONE_AVAIL	    = 260,	/* indexNoneAvail */
+  AGENTX_RES_NOT_ALLOCATED	    = 261,	/* notAllocated */
+  AGENTX_RES_UNSUPPORTED_CONTEXT    = 262,	/* unsupportedContext */
+  AGENTX_RES_DUPLICATE_REGISTER	    = 263,	/* duplicateRegister */
+  AGENTX_RES_UNKNOWN_REGISTER	    = 264,	/* unknownRegister */
+  AGENTX_RES_UNKNOWN_AGENT_CAPS	    = 265,	/* unknownAgentCaps */
+  AGENTX_RES_PARSE_ERROR	    = 266,	/* parseError */
+  AGENTX_RES_REQUEST_DENIED	    = 267,	/* requestDenied */
+  AGENTX_RES_PROCESSING_ERR	    = 268,	/* processingError */
 } PACKED;
 
 /* SNMP PDU buffer info */
@@ -296,10 +295,11 @@ struct snmp_pdu {
   byte *buffer;			    /* pointer to buffer */
   uint size;			    /* unused space in buffer */
   int byte_ord;			    /* flag signaling NETWORK_BYTE_ORDER */
-  enum agentx_response_err error;   /* storage for result of current action */
-  uint index;			    /* index on which the error was found */
+  enum agentx_response_errs error;  /* storage for result of current action */
+  u32 index;			    /* index on which the error was found */
 };
 
+#if 0
 struct agentx_alloc_context {
   u8 is_instance; /* flag INSTANCE_REGISTRATION */
   u8 new_index;   /* flag NEW_INDEX */
@@ -307,6 +307,7 @@ struct agentx_alloc_context {
   char *context;  /* context to allocate in */
   uint clen;	  /* length of context string */
 };
+#endif
 
 int snmp_rx(sock *sk, uint size);
 int snmp_rx_stop(sock *sk, uint size);

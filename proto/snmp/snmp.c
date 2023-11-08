@@ -29,13 +29,13 @@
  *    | SNMP_OPEN	|     socket created, starting subagent
  *    +-----------------+
  *	  |
- *	  |   BIRD recieve response for Open-PDU
+ *	  |   BIRD receive response for Open-PDU
  *	  V
  *    +-----------------+
  *    | SNMP_REGISTER   |     session was established, subagent registers MIBs
  *    +-----------------+
  *	  |
- *	  |   subagent recieved responses for all registration requests
+ *	  |   subagent received responses for all registration requests
  *	  V
  *    +-----------------+
  *    | SNMP_CONN	|     everything is set
@@ -68,7 +68,7 @@
  *    session is establised and the GetNext request should be responsed
  *    without regard to MIB registration.
  *
- *    When the session has been closed for some reason (socket error, reciept of
+ *    When the session has been closed for some reason (socket error, receipt of
  *    Close-PDU) SNMP cleans the session information and message queue and goes
  *    back to the SNMP_LOCKED state.
  *
@@ -98,6 +98,13 @@ static const char * const snmp_state[] = {
   [SNMP_DOWN]	    = "SNMP DOWN",
 };
 
+/*
+ * snmp_init - preinitialize SNMP instance
+ * @CF - SNMP configuration generic handle
+ *
+ * Return value is generic handle pointing to preinitialized SNMP procotol
+ * instance.
+ */
 static struct proto *
 snmp_init(struct proto_config *CF)
 {
@@ -123,6 +130,15 @@ snmp_init(struct proto_config *CF)
   return P;
 }
 
+/*
+ * snmp_cleanup - free all resources allocated by SNMP protocol
+ * @p - SNMP protocol instance
+ *
+ * This function forcefully stops and cleans all resources and memory acqiured
+ * by given SNMP protocol instance, such as timers, lists, hash tables etc.
+ * Function snmp_cleanup() does not change the protocol state to PS_DOWN for
+ * practical reasons, it should be done by the caller.
+ */
 static inline void
 snmp_cleanup(struct snmp_proto *p)
 {
@@ -163,6 +179,13 @@ snmp_cleanup(struct snmp_proto *p)
   p->state = SNMP_DOWN;
 }
 
+/*
+ * snmp_down - stop the SNMP protocol and free resources
+ * @p - SNMP protocol instance
+ *
+ * AgentX session is destroyed by closing underlying socket and all resources
+ * are freed. Afterwards, the PS_DOWN protocol state is announced.
+ */
 void
 snmp_down(struct snmp_proto *p)
 {
@@ -170,12 +193,17 @@ snmp_down(struct snmp_proto *p)
   proto_notify_state(&p->p, PS_DOWN);
 }
 
-/* this function is internal and shouldn't be used outside the snmp module */
+/*
+ * snmp_connected - start AgentX session on established channel
+ * @sk - socket owned by SNMP protocol instance
+ *
+ * Starts the AgentX communication by sending an agentx-Open-PDU.
+ * This function is internal and shouldn't be used outside the SNMP module.
+ */
 void
 snmp_connected(sock *sk)
 {
   struct snmp_proto *p = sk->data;
-  snmp_log("connection created");
 
   p->state = SNMP_OPEN;
 
@@ -189,7 +217,16 @@ snmp_connected(sock *sk)
   tm_set(p->ping_timer, current_time() + p->timeout S);
 }
 
-/* this function is internal and shouldn't be used outside the snmp module */
+/*
+ * snmp_sock_disconnect - end or reset socket connection
+ * @p - SNMP protocol instance
+ *
+ * If the @reconnect flags is set, we close the socket and then reestablish
+ * the AgentX session by reentering the start procedure as from the
+ * snmp_start_locked() function.
+ * Otherwise we simply shutdown the SNMP protocol if the flag is clear.
+ * This function is internal and shouldn't be used outside the SNMP module.
+ */
 void
 snmp_sock_disconnect(struct snmp_proto *p, int reconnect)
 {
@@ -210,6 +247,11 @@ snmp_sock_disconnect(struct snmp_proto *p, int reconnect)
   tm_start(p->startup_timer, 4 S);  // TODO make me configurable
 }
 
+/*
+ * snmp_sock_err - handle errors on socket by reopenning the socket
+ * @sk - socket owned by SNMP protocol instance
+ * @err - socket error errno
+ */
 static void
 snmp_sock_err(sock *sk, int UNUSED err)
 {
@@ -220,6 +262,15 @@ snmp_sock_err(sock *sk, int UNUSED err)
   snmp_sock_disconnect(p, 1);
 }
 
+/*
+ * snmp_start_locked - open the socket on locked address
+ * @lock - object lock guarding the communication mean (address, ...)
+ *
+ * This function is called when the object lock is acquired. Main goal is to set
+ * socket parameters and try to open configured socket. Function
+ * snmp_connected() handles next stage of SNMP protocol start. When the socket
+ * coundn't be opened, a new try is scheduled after a small delay.
+ */
 static void
 snmp_start_locked(struct object_lock *lock)
 {
@@ -257,13 +308,19 @@ snmp_start_locked(struct object_lock *lock)
     p->errs = 0;
   }
 
-  snmp_log("opening socket");
   /* Try opening the socket, schedule a retry on fail */
   if (sk_open(s) < 0)
     tm_set(p->startup_timer, current_time() + p->timeout S);
 }
 
-/* this function is internal and shouldn't be used outside the snmp module */
+/*
+ * snmp_reconnect - helper restarting the AgentX session on packet errors
+ * @tm - the startup_timer holding the SNMP protocol instance
+ *
+ * Rerun the SNMP module start procedure. Used in situations when the master
+ * agent returns an agentx-Response-PDU with 'Not Opened' error. We do not close
+ * the socket if have one.
+ */
 void
 snmp_reconnect(timer *tm)
 {
@@ -283,8 +340,15 @@ snmp_reconnect(timer *tm)
     snmp_connected(p->sock);
 }
 
-
-/* this function is internal and shouldn't be used outside the snmp module */
+/*
+ * snmp_startup - start initialized SNMP protocol
+ * @p - SNMP protocol to start
+ *
+ * Starting of SNMP protocols begins with address acqusition through object
+ * lock. Next step is handled by snmp_start_locked() function.
+ * This function is internal and shouldn't be used outside the SNMP
+ * module.
+ */
 void
 snmp_startup(struct snmp_proto *p)
 {
@@ -301,7 +365,6 @@ snmp_startup(struct snmp_proto *p)
     return;
   }
 
-  snmp_log("preparing object lock");
   p->state = SNMP_INIT;
 
   struct object_lock *lock;
@@ -318,21 +381,42 @@ snmp_startup(struct snmp_proto *p)
   olock_acquire(lock);
 }
 
-/* this function is internal and shouldn't be used outside the snmp module */
+/*
+ * snmp_startup_timeout - start the initiliazed SNMP protocol
+ * @tm - the startup_timer holding the SNMP protocol instance.
+ *
+ * When the timer rings, the function snmp_startup() is invoked.
+ * This function is internal and shoudln't be used outside the SNMP module.
+ * Used when we delaying the start procedure, or we want to resend
+ * an agentx-Open-PDU for non-responding master agent.
+ */
 void
-snmp_startup_timeout(timer *t)
+snmp_startup_timeout(timer *tm)
 {
-  snmp_log("startup timer triggered");
-  snmp_startup(t->data);
+  snmp_startup(tm->data);
 }
 
+/*
+ * snmp_stop_timeout - a timeout for nonresponding master agent
+ * @tm - the startup_timer holding the SNMP protocol instance.
+ *
+ * We are shutting down the SNMP protocol instance and we sent the
+ * agentx-Close-PDU. This function forcefully closes the AgentX session and
+ * stops the SNMP protocol instance. Used only when we did not receive any
+ * agentx-Response-PDU for the sent closed packet (before timeout).
+ */
 static void
-snmp_stop_timeout(timer *t)
+snmp_stop_timeout(timer *tm)
 {
-  snmp_log("stop timer triggered");
-  snmp_down(t->data);
+  snmp_down(tm->data);
 }
 
+/*
+ * snmp_ping_timeout - send a agentx-Ping-PDU
+ * @tm - the ping_timer holding the SNMP protocol instance.
+ *
+ * Send an agentx-Ping-PDU and reset the timer for next ping.
+ */
 static void
 snmp_ping_timeout(timer *tm)
 {
@@ -342,11 +426,18 @@ snmp_ping_timeout(timer *tm)
       p->state == SNMP_CONN)
   {
     snmp_ping(p);
+    tm_set(tm, current_time() + p->timeout S);
   }
-
-  tm_set(tm, current_time() + p->timeout S);
 }
 
+/*
+ * snmp_start - Initialize the SNMP protocol instance
+ * @P - SNMP protocol generic handle
+ *
+ * The first step in AgentX subagent startup is protocol initialition.
+ * We must prepare lists, find BGP peers and finally asynchornously open
+ * a AgentX subagent session through snmp_startup() function call.
+ */
 static int
 snmp_start(struct proto *P)
 {
@@ -391,6 +482,15 @@ snmp_start(struct proto *P)
   return PS_START;
 }
 
+/*
+ * snmp_reconfigure - Test if SNMP instance is reconfigurable
+ * @P - SNMP protocol generic handle, current state
+ * @CF - SNMP protocol configuration generic handle carring new values
+ *
+ * We accept the reconfiguration if the new configuration @CF is identical with
+ * the currently deployed. Otherwise we deny reconfiguration because
+ * the implementation would be cumbersome.
+ */
 static int
 snmp_reconfigure(struct proto *P, struct proto_config *CF)
 {
@@ -417,6 +517,10 @@ skip:;
     && ! strncmp(old->description, new->description, UINT32_MAX);
 }
 
+/*
+ * snmp_show_proto_info - Print basic information about SNMP protocol instance
+ * @P - SNMP protocol generic handle
+ */
 static void
 snmp_show_proto_info(struct proto *P)
 {
@@ -491,6 +595,10 @@ snmp_show_proto_info(struct proto *P)
   }
 }
 
+/*
+ * snmp_postconfig - Check configuration correctness
+ * @CF - SNMP procotol configuration generic handle
+ */
 static void
 snmp_postconfig(struct proto_config *CF)
 {
@@ -499,6 +607,16 @@ snmp_postconfig(struct proto_config *CF)
     cf_error("local as not specified");
 }
 
+/*
+ * snmp_shutdown - Forcefully stop the SNMP protocol instance
+ * @P - SNMP protocol generic handle
+ *
+ * If we have established connection, we firstly stop the subagent and then
+ * later cleanup the protocol. The subagent stopping consist of sending the
+ * agentx-Close-PDU and changing the current protocol state to PS_STOP.
+ * If we have no connection created, we simple do the cleanup.
+ * The cleanup is transition straight to PS_DOWN state with snmp_cleanup() call.
+ */
 static int
 snmp_shutdown(struct proto *P)
 {
@@ -526,6 +644,11 @@ snmp_shutdown(struct proto *P)
     return PS_DOWN;
   }
 }
+
+
+/*
+ * Protocol infrastructure
+ */
 
 struct protocol proto_snmp = {
   .name =		"Snmp",

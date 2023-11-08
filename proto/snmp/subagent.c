@@ -27,12 +27,25 @@
  *
  */
 
+/**
+ * Handling of malformed packet:
+ *  When we find an error in PDU data, we create and send a response with error
+ *  defined by the RFC. We await until the packet is send and then we close the
+ *  communication socket. This also closes the established session. We chose
+ *  this approach because we cannot easily mark the boundary between packets.
+ *  When we are reseting the connection, we change the snmp_state to SNMP_RESET.
+ *  In SNMP_RESET state we skip all received bytes and wait for snmp_tx()
+ *  to be called. The socket's tx_hook is called when the TX-buffer is empty,
+ *  meaning our response (agentx-Response-PDU) was send.
+ *
+ */
+
 static void snmp_mib_fill2(struct snmp_proto *p, struct oid *oid, struct snmp_pdu *c);
 static uint parse_response(struct snmp_proto *p, byte *buf, uint size);
 static void do_response(struct snmp_proto *p, byte *buf, uint size);
 static uint parse_gets2_pdu(struct snmp_proto *p, byte *buf, uint size, uint *skip);
 static struct agentx_response *prepare_response(struct snmp_proto *p, struct snmp_pdu *c);
-static void response_err_ind(struct agentx_response *res, uint err, uint ind);
+static void response_err_ind(struct agentx_response *res, enum agentx_response_errs err, u16 ind);
 static uint update_packet_size(struct snmp_proto *p, const byte *start, byte *end);
 static struct oid *search_mib(struct snmp_proto *p, const struct oid *o_start, const struct oid *o_end, struct oid *o_curr, struct snmp_pdu *c, enum snmp_search_res *result);
 static void snmp_tx(sock *sk);
@@ -40,20 +53,33 @@ static void snmp_tx(sock *sk);
 u32 snmp_internet[] = { SNMP_ISO, SNMP_ORG, SNMP_DOD, SNMP_INTERNET };
 
 static const char * const snmp_errs[] UNUSED = {
-  #define SNMP_ERR_SHIFT 256
-  [AGENTX_RES_OPEN_FAILED	  - SNMP_ERR_SHIFT] = "Open failed",
-  [AGENTX_RES_NOT_OPEN		  - SNMP_ERR_SHIFT] = "Not open",
-  [AGENTX_RES_INDEX_WRONG_TYPE	  - SNMP_ERR_SHIFT] = "Index wrong type",
-  [AGENTX_RES_INDEX_ALREADY_ALLOC - SNMP_ERR_SHIFT] = "Index already allocated",
-  [AGENTX_RES_INDEX_NONE_AVAIL	  - SNMP_ERR_SHIFT] = "Index none availlable",
-  [AGENTX_RES_NOT_ALLOCATED	  - SNMP_ERR_SHIFT] = "Not allocated",
-  [AGENTX_RES_UNSUPPORTED_CONTEXT - SNMP_ERR_SHIFT] = "Unsupported contex",
-  [AGENTX_RES_DUPLICATE_REGISTER  - SNMP_ERR_SHIFT] = "Duplicate registration",
-  [AGENTX_RES_UNKNOWN_REGISTER	  - SNMP_ERR_SHIFT] = "Unknown registration",
-  [AGENTX_RES_UNKNOWN_AGENT_CAPS  - SNMP_ERR_SHIFT] = "Unknown agent caps",
-  [AGENTX_RES_PARSE_ERROR	  - SNMP_ERR_SHIFT] = "Parse error",
-  [AGENTX_RES_REQUEST_DENIED	  - SNMP_ERR_SHIFT] = "Request denied",
-  [AGENTX_RES_PROCESSING_ERR	  - SNMP_ERR_SHIFT] = "Processing error",
+  [AGENTX_RES_NO_ERROR		    ] = "No error",
+  [AGENTX_RES_GEN_ERROR		    ] = "General error",
+  [AGENTX_RES_NO_ACCESS		    ] = "No access",
+  [AGENTX_RES_WRONG_TYPE	    ] = "Wrong type",
+  [AGENTX_RES_WRONG_LENGTH	    ] = "Wrong length",
+  [AGENTX_RES_WRONG_ENCODING	    ] = "Wrong encoding",
+  [AGENTX_RES_WRONG_VALUE	    ] = "Wrong value",
+  [AGENTX_RES_NO_CREATION	    ] = "No creation",
+  [AGENTX_RES_INCONSISTENT_VALUE    ] = "Inconsistent value",
+  [AGENTX_RES_RESOURCE_UNAVAILABLE  ] = "Resource unavailable",
+  [AGENTX_RES_COMMIT_FAILED	    ] = "Commit failed",
+  [AGENTX_RES_UNDO_FAILED	    ] = "Undo failed",
+  [AGENTX_RES_NOT_WRITABLE	    ] = "Not writable",
+  [AGENTX_RES_INCONSISTENT_NAME	    ] = "Inconsistent name",
+  [AGENTX_RES_OPEN_FAILED	    ] = "Open failed",
+  [AGENTX_RES_NOT_OPEN		    ] = "Not open",
+  [AGENTX_RES_INDEX_WRONG_TYPE	    ] = "Index wrong type",
+  [AGENTX_RES_INDEX_ALREADY_ALLOC   ] = "Index already allocated",
+  [AGENTX_RES_INDEX_NONE_AVAIL	    ] = "Index none availlable",
+  [AGENTX_RES_NOT_ALLOCATED	    ] = "Not allocated",
+  [AGENTX_RES_UNSUPPORTED_CONTEXT   ] = "Unsupported contex",
+  [AGENTX_RES_DUPLICATE_REGISTER    ] = "Duplicate registration",
+  [AGENTX_RES_UNKNOWN_REGISTER	    ] = "Unknown registration",
+  [AGENTX_RES_UNKNOWN_AGENT_CAPS    ] = "Unknown agent caps",
+  [AGENTX_RES_PARSE_ERROR	    ] = "Parse error",
+  [AGENTX_RES_REQUEST_DENIED	    ] = "Request denied",
+  [AGENTX_RES_PROCESSING_ERR	    ] = "Processing error",
 };
 
 static const char * const snmp_pkt_type[] UNUSED = {
@@ -78,6 +104,16 @@ static const char * const snmp_pkt_type[] UNUSED = {
 };
 
 
+/*
+ * snmp_register_ok - registration of OID was successful
+ * @p: SNMP protocol instance
+ * @res: header of agentx-Response-PDU
+ * @oid: OID that was successfully registered
+ * @class: MIB subtree of @oid
+ *
+ * Send a notification to MIB (selected by @class) about successful registration
+ * of @oid.
+ */
 static void
 snmp_register_ok(struct snmp_proto *p, struct agentx_response *res, struct oid *oid, u8 UNUSED class)
 {
@@ -85,6 +121,16 @@ snmp_register_ok(struct snmp_proto *p, struct agentx_response *res, struct oid *
   snmp_bgp_reg_ok(p, res, oid);
 }
 
+/*
+ * snmp_regsiter_failed - registration of OID failed
+ * @p: SNMP protocol instance
+ * @res: header of agentx-Response-PDU
+ * @oid: OID whose registration failed
+ * @class: MIB subtree of @oid
+ *
+ * Send a notification to MIB (selected by @class) about @oid registraion
+ * failure.
+ */
 static void
 snmp_register_failed(struct snmp_proto *p, struct agentx_response *res, struct oid *oid, u8 UNUSED class)
 {
@@ -92,6 +138,12 @@ snmp_register_failed(struct snmp_proto *p, struct agentx_response *res, struct o
   snmp_bgp_reg_failed(p, res, oid);
 }
 
+/*
+ * snmp_register_ack - handle response to agentx-Register-PDU
+ * @p: SNMP protocol instance
+ * @res: header of agentx-Response-PDU
+ * @class: MIB subtree associated with agentx-Register-PDU
+ */
 void
 snmp_register_ack(struct snmp_proto *p, struct agentx_response *res, u8 class)
 {
@@ -123,12 +175,27 @@ snmp_register_ack(struct snmp_proto *p, struct agentx_response *res, u8 class)
   }
 }
 
+/*
+ * snmp_rx_skip - skip all received data
+ * @sk: communication socket
+ * @size: size of received PDUs
+ *
+ * Socket rx_hook used when we are reseting the connection due to malformed PDU.
+ */
 static int
 snmp_rx_skip(sock UNUSED *sk, uint UNUSED size)
 {
   return 1;
 }
 
+/*
+ * snmp_error - handle a malformed packet
+ * @p: SNMP protocol instance
+ *
+ * We wait until all packets are send. Then we close the socket which also
+ * closes the established session on given socket. Finally we try to start a new
+ * session.
+ */
 static inline void
 snmp_error(struct snmp_proto *p)
 {
@@ -139,8 +206,14 @@ snmp_error(struct snmp_proto *p)
   p->sock->tx_hook = snmp_tx;
 }
 
+/*
+ * snmp_simple_response - send an agentx-Response-PDU with no data payload
+ * @p: SNMP protocol instance
+ * @error: PDU error fields value
+ * @index: PDU error index field value
+ */
 static void
-snmp_simple_response(struct snmp_proto *p, enum agentx_response_err error, u16 index)
+snmp_simple_response(struct snmp_proto *p, enum agentx_response_errs error, u16 index)
 {
   sock *sk = p->sock;
   struct snmp_pdu c = SNMP_PDU_CONTEXT(sk);
@@ -153,6 +226,14 @@ snmp_simple_response(struct snmp_proto *p, enum agentx_response_err error, u16 i
   sk_send(sk, sizeof(struct agentx_response));
 }
 
+/*
+ * open_pdu - send an agentx-Open-PDU
+ * @p: SNMP protocol instance
+ * @oid: PDU OID description field value
+ *
+ * Other fields are filled based on @p configuratin (timeout, subagent string
+ * description)
+ */
 static void
 open_pdu(struct snmp_proto *p, struct oid *oid)
 {
@@ -185,6 +266,14 @@ open_pdu(struct snmp_proto *p, struct oid *oid)
 #undef TIMEOUT_SIZE
 }
 
+/*
+ * send_notify_pdu - send an agentx-Notify-PDU
+ * @p: SNMP protocol instance
+ * @oid: PDU notification Varbind name (OID)
+ * @data: PDU Varbind payload
+ * @size - PDU Varbind payload size
+ * @include_uptime: flag enabling inclusion of sysUpTime.0 OID
+ */
 void
 snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, int include_uptime)
 {
@@ -257,17 +346,27 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
 #undef UPTIME_SIZE
 }
 
-/* index allocate / deallocate pdu * /
+#if 0
+/*
+ * de_allocate_pdu - common functionality for allocation PDUs
+ * @p: SNMP protocol instance
+ * @oid: OID to allocate/deallocate
+ * @type: allocate/deacollcate PDU type
+ * @flags: type of allocation (NEW_INDEX, ANY_INDEX)
+ *
+ * This function is internal and shouldn't be used outside the SNMP module.
+ */
 static void
-de_allocate_pdu(struct snmp_proto *p, struct oid *oid, u8 type)
+de_allocate_pdu(struct snmp_proto *p, struct oid *oid, enum agentx_pdu_types type, u8 flags)
 {
   sock *sk = p->sock;
   byte *buf, *pkt;
   buf = pkt = sk->tbuf;
   uint size = sk->tbsize;
+  struct snmp_pdu = SNMP_PDU_CONTEXT(p->sock);
 
 
-  if (size > AGENTX_HEADER_SIZE + )
+  if (size > AGENTX_HEADER_SIZE + 0)  // TODO additional size
   {
     struct agentx_header *h;
     SNMP_CREATE(pkt, struct agentx_header, h);
@@ -275,22 +374,57 @@ de_allocate_pdu(struct snmp_proto *p, struct oid *oid, u8 type)
     SNMP_SESSION(h,p);
 
     struct agentx_varbind *vb = (struct agentx_varbind *) pkt;
+
+    // TODO
     STORE_16(vb->type, AGENTX_OBJECT_ID);
-    STORE(vb->oid,
+    STORE(vb->oid, 0);
   }
 }
-*/
 
-/* Register-PDU / Unregister-PDU */
+void
+snmp_allocate(struct snmp_proto *p, struct oid *oid, u8 flags)
+{
+  /* TODO - call the de_allocate_pdu() */
+}
+
+void
+snmp_deallocate(struct snmp_proto *p, struct oid *oid, u8 flags)
+{
+  /* TODO - call the de_allocate_pdu() */
+}
+#endif
+
+/*
+ * un_register_pdu - common functionality for registration PDUs
+ * @p: SNMP protocol instance
+ * @oid: OID to register/unregister
+ * @bound: OIDs registration upper bound
+ * @index: OIDs registration n_subid index
+ * @type: register/unregister PDU type
+ * @is_instance: flag enabling instance registration (used only for register)
+ * @contid: context ID to register in (currently unsupported)
+ *
+ * Both register and unregister PDUs are capable of specifing a number of OIDs
+ * by using pair of index and upper bound. The index (r.range_subid) points into
+ * the OID's n_subid array to ID being threated as variable. The upper bound
+ * (r.upper_bound) determins maximal value for n_subid selected by index.
+ * The index and upper bound are passed as @index, and @bound respectively.
+ *
+ * Zero value for @is_instance means we want to register/unregister OID as a MIB
+ * subtree, for nonzero value we are registering MIB tree an instance (leaf).
+ *
+ * This function in internal and shoulnd't be used outside the SNMP module,
+ * see snmp_register() and snmp_unregister() functions.
+ */
 static void
-un_register_pdu(struct snmp_proto *p, struct oid *oid, uint len, uint index, u8 type, u8 is_instance, uint UNUSED contid)
+un_register_pdu(struct snmp_proto *p, struct oid *oid, uint bound, uint index, enum agentx_pdu_types type, u8 is_instance, uint UNUSED contid)
 {
   const struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, p->p.cf);
   sock *sk = p->sock;
   struct snmp_pdu c = SNMP_PDU_CONTEXT(sk);
 
   /* conditional +4 for upper-bound (optinal field) */
-  uint sz = AGENTX_HEADER_SIZE + snmp_oid_size(oid) + ((len > 1) ? 4 : 0);
+  uint sz = AGENTX_HEADER_SIZE + snmp_oid_size(oid) + ((bound > 1) ? 4 : 0);
 
   if (c.size < sz)
     snmp_manage_tbuf(p, &c);
@@ -298,7 +432,7 @@ un_register_pdu(struct snmp_proto *p, struct oid *oid, uint len, uint index, u8 
   struct agentx_header *h = (struct agentx_header *) c.buffer;
   ADVANCE(c.buffer, c.size, AGENTX_HEADER_SIZE);
 
-  SNMP_HEADER(h, type, is_instance ? AGENTX_FLAG_INSTANCE_REGISTRATION : 0);
+  SNMP_HEADER(h, (u8) type, is_instance ? AGENTX_FLAG_INSTANCE_REGISTRATION : 0);
   p->packet_id++;
   SNMP_SESSION(h, p);
   c.byte_ord = h->flags & AGENTX_NETWORK_BYTE_ORDER;
@@ -309,7 +443,7 @@ un_register_pdu(struct snmp_proto *p, struct oid *oid, uint len, uint index, u8 
   STORE_U8(ur->timeout, p->timeout);
   /* default priority */
   STORE_U8(ur->priority, cf->priority);
-  STORE_U8(ur->range_subid, (len > 1) ? index : 0);
+  STORE_U8(ur->range_subid, (bound > 1) ? index : 0);
   STORE_U8(ur->pad, 0);
   ADVANCE(c.buffer, c.size, sizeof(struct agentx_un_register_hdr));
 
@@ -317,9 +451,9 @@ un_register_pdu(struct snmp_proto *p, struct oid *oid, uint len, uint index, u8 
   ADVANCE(c.buffer, c.size, snmp_oid_size(oid));
 
   /* place upper-bound if needed */
-  if (len > 1)
+  if (bound > 1)
   {
-    STORE_PTR(c.buffer, len);
+    STORE_PTR(c.buffer, bound);
     ADVANCE(c.buffer, c.size, 4);
   }
 
@@ -328,22 +462,46 @@ un_register_pdu(struct snmp_proto *p, struct oid *oid, uint len, uint index, u8 
   sk_send(sk, s);
 }
 
-/* Register-PDU */
+/*
+ * snmp_register - send an agentx-Register-PDU
+ * @p: SNMP protocol instance
+ * @oid: OID to register
+ * @bound: OIDs registration upper bound
+ * @index: OIDs registration n_subid index
+ * @is_instance: flag enabling instance registration
+ * @contid: context ID to register in (currently unsupported)
+ *
+ * For more detailed description see un_register_pdu() function.
+ */
 void
-snmp_register(struct snmp_proto *p, struct oid *oid, uint len, uint index, u8 is_instance, uint contid)
+snmp_register(struct snmp_proto *p, struct oid *oid, uint bound, uint index, u8 is_instance, uint contid)
 {
-  un_register_pdu(p, oid, len, index, AGENTX_REGISTER_PDU, is_instance, contid);
+  un_register_pdu(p, oid, bound, index, AGENTX_REGISTER_PDU, is_instance, contid);
 }
 
-/* Unregister-PDU */
+/*
+ * snmp_unregister - send an agentx-Unregister-PDU
+ * @p: SNMP protocol instance
+ * @oid: OID to uregister
+ * @bound: OIDs unregistration upper bound
+ * @index: OIDs unregistration n_subid index
+ * @contid: context ID to unregister from (currently unsupported)
+ *
+ * For more detailed description see un_register_pdu() function.
+ */
 void UNUSED
 snmp_unregister(struct snmp_proto *p, struct oid *oid, uint len, uint index, uint contid)
 {
   un_register_pdu(p, oid, len, index, AGENTX_UNREGISTER_PDU, 0, contid);
 }
 
+/*
+ * close_pdu - send an agentx-Close-PDU
+ * @p: SNMP protocol instance
+ * @reason: reason for closure
+ */
 static void
-close_pdu(struct snmp_proto *p, u8 reason)
+close_pdu(struct snmp_proto *p, enum agentx_close_reasons reason)
 {
   sock *sk = p->sock;
   struct snmp_pdu c = SNMP_PDU_CONTEXT(sk);
@@ -359,7 +517,7 @@ close_pdu(struct snmp_proto *p, u8 reason)
   SNMP_SESSION(h, p);
   c.byte_ord = h->flags & AGENTX_NETWORK_BYTE_ORDER;
 
-  snmp_put_fbyte(c.buffer, reason);
+  snmp_put_fbyte(c.buffer, (u8) reason);
   ADVANCE(c.buffer, c.size, 4);
 
   uint s = update_packet_size(p, sk->tpos, c.buffer);
@@ -367,6 +525,14 @@ close_pdu(struct snmp_proto *p, u8 reason)
 #undef REASON_SIZE
 }
 
+/*
+ * parse_close_pdu - parse an agentx-Close-PDU
+ * @p: SNMP protocol instance
+ * @pkt_start: pointer to first byte of PDU
+ * @size: number of bytes received from a socket
+ *
+ * Return number of bytes parsed from RX-buffer.
+ */
 static uint
 parse_close_pdu(struct snmp_proto *p, byte * const pkt_start, uint size)
 {
@@ -389,10 +555,23 @@ parse_close_pdu(struct snmp_proto *p, byte * const pkt_start, uint size)
   return AGENTX_HEADER_SIZE;
 }
 
+
+/*
+ * snmp_testset - check possibility of VarBind name and data setting
+ * @p: SNMP protocol instance
+ * @vb: checked VarBind
+ * @oid: pool-allocated prefixed copy of VarBind name
+ * @pkt_size: number of not parsed bytes in processed PDU
+ *
+ * Check done by specialized function for specific MIB subtree whether
+ * the VarBind is valid for set action (changing to current value to value
+ * in VarBind).
+ *
+ * Return 1 if the VarBind setting is possible, 0 otherwise.
+ */
 /* MUCH better signature would be
     static int snmp_testset(struct snmp_proto *p, const struct agentx_varbind *vb, uint pkt_size);
  */
-/* return 1 if the value could be set */
 static int UNUSED
 snmp_testset(struct snmp_proto *p, const struct agentx_varbind *vb, struct oid *oid, uint pkt_size)
 {
@@ -497,6 +676,11 @@ removeagentcaps_pdu(struct snmp_proto *p, struct oid *cap)
 }
 #endif
 
+/*
+ * refresh_ids - Copy current ids from packet to protocol
+ * @p: SNMP protocol instance
+ * @h: PDU header with new transaction_id and packet_id ids.
+ */
 static inline void
 refresh_ids(struct snmp_proto *p, struct agentx_header *h)
 {
@@ -505,6 +689,14 @@ refresh_ids(struct snmp_proto *p, struct agentx_header *h)
   p->packet_id = LOAD_U32(h->packet_id, byte_ord);
 }
 
+/*
+ * parse_test_set_pdu - parse an agentx-TestSet-PDU in buffer
+ * @p: SNMP protocol instance
+ * @pkt_start: first byte of test set PDU
+ * @size: number of bytes received from a socket
+ *
+ * Return number of bytes parsed from RX-buffer.
+ */
 static uint
 parse_test_set_pdu(struct snmp_proto *p, byte * const pkt_start, uint size)
 {
@@ -553,14 +745,16 @@ parse_test_set_pdu(struct snmp_proto *p, byte * const pkt_start, uint size)
     if (sz > pkt_size)
     {
       c.error = AGENTX_RES_PARSE_ERROR;
-      goto error;
+      all_possible = 0;
+      break;
     }
 
     /* Unknown VarBind type check */
     if (!snmp_test_varbind(vb))
     {
       c.error = AGENTX_RES_PARSE_ERROR;
-      goto error;
+      all_possible = 0;
+      break;
     }
     ADVANCE(pkt, size, snmp_varbind_size(vb, 0));
 
@@ -572,8 +766,6 @@ parse_test_set_pdu(struct snmp_proto *p, byte * const pkt_start, uint size)
   }
   mb_free(tr);
 #endif
-  goto error;
-error:
   s = update_packet_size(p, sk->tpos, c.buffer);
 
   if (c.error != AGENTX_RES_NO_ERROR)
@@ -593,12 +785,16 @@ error:
 }
 
 /*
- * Common code for packets:
- *    agentx-CommitSet-PDU
- *    agentx-UndoSet-PDU
+ * parse_set_pdu - common functionality for commit set and undo set PDUs
+ * @p: SNMP protocol instance
+ * @pkt_start: pointer to first byte of on of set related PDU
+ * @size: number of bytes received from a socket
+ * @error: error status to use
+ *
+ * Return number of bytes parsed from RX-buffer.
  */
 static uint
-parse_set_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint err)
+parse_set_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, enum agentx_response_errs err)
 {
   byte *pkt = pkt_start;
   struct agentx_header *h = (void *) pkt;
@@ -622,15 +818,15 @@ parse_set_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint err)
   if (size < pkt_size)
   {
     c.error = AGENTX_RES_PARSE_ERROR;
-    goto error;
+  }
+  else
+  {
+    // TODO: free resource allocated by parse_test_set_pdu()
+    // TODO: do something meaningful
+    //mb_free(tr);
+    c.error = err;
   }
 
-  // TODO: free resource allocated by parse_test_set_pdu()
-  // TODO: do something meaningful
-  //mb_free(tr);
-  c.error = err;
-
-error:;
   response_err_ind(r, c.error, 0);
   sk_send(p->sock, AGENTX_HEADER_SIZE);
 
@@ -641,7 +837,14 @@ error:;
   return pkt - pkt_start;
 }
 
-/* agentx-CommitSet-PDU */
+/*
+ * parse_commit_set_pdu - parse an agentx-CommitSet-PDU
+ * @p: SNMP protocol instance
+ * @pkt: pointer to first byte of PDU inside RX-buffer
+ * @size: number of bytes received from a socket
+ *
+ * Return number of bytes parsed from RX-buffer.
+ */
 static uint
 parse_commit_set_pdu(struct snmp_proto *p, byte *pkt, uint size)
 {
@@ -650,7 +853,14 @@ parse_commit_set_pdu(struct snmp_proto *p, byte *pkt, uint size)
   return parse_set_pdu(p, pkt, size, AGENTX_RES_COMMIT_FAILED);
 }
 
-/* agentx-UndoSet-PDU */
+/*
+ * parse_undo_set_pdu - parse an agentx-UndoSet-PDU
+ * @p: SNMP protocol instance
+ * @pkt: pointer to first byte of PDU inside RX-buffer
+ * @size: number of bytes received from a socket
+ *
+ * Return number of bytes parsed from buffer.
+ */
 static uint
 parse_undo_set_pdu(struct snmp_proto *p, byte *pkt, uint size)
 {
@@ -659,7 +869,14 @@ parse_undo_set_pdu(struct snmp_proto *p, byte *pkt, uint size)
   return parse_set_pdu(p, pkt, size, AGENTX_RES_UNDO_FAILED);
 }
 
-/* agentx-CleanupSet-PDU */
+/*
+ * parse_cleanup_set_pdu - parse an agentx-CleanupSet-PDU
+ * @p: SNMP protocol instance
+ * @pkt_start: pointer to first byte of PDU inside RX-buffer
+ * @size: number of bytes received from a socket
+ *
+ * Return number of bytes parsed from RX-buffer.
+ */
 static uint
 parse_cleanup_set_pdu(struct snmp_proto *p, byte * const pkt_start, uint size)
 {
@@ -684,13 +901,13 @@ parse_cleanup_set_pdu(struct snmp_proto *p, byte * const pkt_start, uint size)
 }
 
 /**
- * parse_pkt - parse recieved AgentX packet
- * @p:
- * @pkt: packet buffer
- * @size: number of packet bytes in buffer
- * retval number of byte parsed
+ * parse_pkt - parse received AgentX packet
+ * @p: SNMP protocol instance
+ * @pkt: first byte of PDU inside RX-buffer
+ * @size: number of bytes received from a socket
+ * @skip: length of header that stays still in partial processing
  *
- * Returns number of bytes parsed from RX-buffer.
+ * Return number of bytes parsed from RX-buffer.
  */
 static uint
 parse_pkt(struct snmp_proto *p, byte *pkt, uint size, uint *skip)
@@ -771,6 +988,14 @@ parse_pkt(struct snmp_proto *p, byte *pkt, uint size, uint *skip)
 }
 
 
+/*
+ * parse_response - parse an agentx-Response-PDU
+ * @p: SNMP protocol instance
+ * @res: pointer of agentx-Response-PDU header in RX-buffer
+ * @size: number of bytes received from a socket
+ *
+ * Return number of bytes parsed from RX-buffer.
+ */
 static uint
 parse_response(struct snmp_proto *p, byte *res, uint size)
 {
@@ -833,13 +1058,17 @@ parse_response(struct snmp_proto *p, byte *res, uint size)
     default:
       /* erronous packet should be dropped quietly */
       // TODO correct error?
-      snmp_log("recieved response with error '%s'", snmp_errs[get_u16(&r->error) - SNMP_ERR_SHIFT]);
+      snmp_log("received response with error '%s'", snmp_errs[get_u16(&r->error)]);
       break;
   }
 
   return pkt_size + AGENTX_HEADER_SIZE;
 }
 
+/*
+ * snmp_register_mibs - register all MIB subtrees
+ * @p: SNMP protocol instance
+ */
 static void
 snmp_register_mibs(struct snmp_proto *p)
 {
@@ -847,6 +1076,14 @@ snmp_register_mibs(struct snmp_proto *p)
   /* snmp_ospf_regsiter(p); ... */
 }
 
+/*
+ * do_response - act on agentx-Response-PDU and protocol state
+ * @p: SNMP protocol instance
+ * @buf: RX-buffer with PDU bytes
+ * @size: number of bytes received from a socket
+ *
+ * Return number of bytes parsed from RX-buffer.
+ */
 static void
 do_response(struct snmp_proto *p, byte *buf, uint size)
 {
@@ -859,11 +1096,11 @@ do_response(struct snmp_proto *p, byte *buf, uint size)
   {
     case SNMP_INIT:
     case SNMP_LOCKED:
-      /* silent drop of recieved packet */
+      /* silent drop of received packet */
       break;
 
     case SNMP_OPEN:
-      /* copy session info from recieved packet */
+      /* copy session info from received packet */
       p->session_id = LOAD_U32(h->session_id, byte_ord);
       refresh_ids(p, h);
 
@@ -902,6 +1139,10 @@ do_response(struct snmp_proto *p, byte *buf, uint size)
   }
 }
 
+/*
+ * snmp_get_mib_class - classify MIB tree belongings of OID
+ * @oid: OID to be classified based on prefix
+ */
 u8
 snmp_get_mib_class(const struct oid *oid)
 {
@@ -919,7 +1160,15 @@ snmp_get_mib_class(const struct oid *oid)
   }
 }
 
-/* return 0 if the created varbind type is END_OF_MIB_VIEW, 1 otherwise */
+/*
+ * snmp_get_next - process single agentx-GetNext-PDU search range
+ * @p: SNMP protocol instance
+ * @o_start: SearchRange start OID
+ * @o_end: SearchRange end OID
+ * @c: transmit PDU context to use
+ *
+ * Return 0 if the created VarBind type is endOfMibView, 1 otherwise.
+ */
 static int
 snmp_get_next2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
 	       struct snmp_pdu *c)
@@ -984,7 +1233,16 @@ snmp_get_next2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
   return 0;
 }
 
-/* returns 0 if the created varbind has type EndOfMibView, 1 otherwise */
+/*
+ * snmp_get_bulk - process one iteration of get bulk PDU
+ * @p: SNMP protocol instance
+ * @o_start: SearchRange start OID
+ * @o_end: SearchRange end OID
+ * @state: state of get bulk PDU processing
+ * @c: transmit PDU context to use
+ *
+ * Return 0 if the created VarBind has type endOfMibView, 1 otherwise.
+ */
 static int
 snmp_get_bulk2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
 	       struct agentx_bulk_state *state, struct snmp_pdu *c)
@@ -1002,7 +1260,7 @@ snmp_get_bulk2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
   } while (o_curr && i < state->repetition);
 
   // TODO check if the approach below works
-  // it need to generate varbinds that will be only of type EndOfMibView
+  // it need to generate varbinds that will be only of type endOfMibView
   /* Object Identifier fall-backs */
   if (!o_curr)
     o_curr = o_predecessor;
@@ -1042,6 +1300,14 @@ snmp_get_bulk2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
   }
 }
 
+/*
+ * update_packet_size - set PDU size
+ * @p - SNMP protocol instance
+ * @start - pointer to PDU data start (excluding header size)
+ * @end - pointer after the last PDU byte
+ *
+ * Return number of bytes in TX-buffer (including header size).
+ */
 static inline uint
 update_packet_size(struct snmp_proto *p, const byte *start, byte *end)
 {
@@ -1051,16 +1317,35 @@ update_packet_size(struct snmp_proto *p, const byte *start, byte *end)
   return AGENTX_HEADER_SIZE + s;
 }
 
+/*
+ * response_err_ind - update response error and index
+ * @res: response PDU header
+ * @err: error status
+ * @ind: index of error, ignored for noAgentXError
+ *
+ * Update agentx-Response-PDU header fields res.error and it's res.index.
+ */
 static inline void
-response_err_ind(struct agentx_response *res, uint err, uint ind)
+response_err_ind(struct agentx_response *res, enum agentx_response_errs err, u16 ind)
 {
-  STORE_U32(res->error, err);
+  STORE_U32(res->error, (u16) err);
   if (err != AGENTX_RES_NO_ERROR && err != AGENTX_RES_PARSE_ERROR)
     STORE_U32(res->index, ind);
   else
     STORE_U32(res->index, 0);
 }
 
+/*
+ * parse_gets_pdu - parse received gets PDUs
+ * @p: SNMP protocol instance
+ * @pkt_start: pointer to first byte of received PDU
+ * @size: number of bytes received from a socket
+ * @skip: length of header that stays still in partial processing
+ *
+ * Gets PDUs are agentx-Get-PDU, agentx-GetNext-PDU, agentx-GetBulk-PDU.
+ *
+ * Return number of bytes parsed from RX-buffer
+ */
 static uint
 parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *skip)
 {
@@ -1137,7 +1422,7 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
     /*
      * If we already have written same relevant data to the TX buffer, then
      * we send processed part, otherwise we don't have anything to send and
-     * need to wait for more data to be recieved.
+     * need to wait for more data to be received.
      */
     if (sz > size && c.index > 0)
     {
@@ -1281,6 +1566,12 @@ free:
   return ret;
 }
 
+/*
+ * snmp_start_subagent - send session open request
+ * @p: SNMP protocol instance
+ *
+ * Send agentx-Open-PDU with configured OID and string description.
+ */
 void
 snmp_start_subagent(struct snmp_proto *p)
 {
@@ -1293,23 +1584,26 @@ snmp_start_subagent(struct snmp_proto *p)
   mb_free(blank);
 }
 
+/*
+ * snmp_stop_subagent - close established session
+ * @p: SNMP protocol instance
+ *
+ * Send agentx-Close-PDU on established session.
+ */
 void
 snmp_stop_subagent(struct snmp_proto *p)
 {
-  if (p->state == SNMP_STOP)
+  if (p->state == SNMP_OPEN ||
+      p->state == SNMP_REGISTER ||
+      p->state == SNMP_CONN)
     close_pdu(p, AGENTX_CLOSE_SHUTDOWN);
 }
 
-static inline int
-oid_prefix(struct oid *o, u32 *prefix, uint len)
-{
-  for (uint i = 0; i < len; i++)
-    if (o->ids[i] != prefix[i])
-      return 0;
-
-  return 1;
-}
-
+/*
+ * snmp_rx - handle received PDUs in RX-buffer in normal operation
+ * @sk: communication socket
+ * @size: number of bytes received
+ */
 int
 snmp_rx(sock *sk, uint size)
 {
@@ -1345,8 +1639,13 @@ snmp_rx(sock *sk, uint size)
   return 1;
 }
 
-/* snmp_tx - used to reset the connection when the
- *   agentx-Response-PDU was sent
+/*
+ * snmp_tx - handle empty TX-buffer during session reset
+ * @sk: communication socket
+ *
+ * The socket tx_hook is called when the TX-buffer is empty, i.e. all data was
+ * send. This function is used only when we found malformed PDU and we are
+ * resetting the established session. If called we direcly reset the session.
  */
 static void
 snmp_tx(sock *sk)
@@ -1355,7 +1654,10 @@ snmp_tx(sock *sk)
   snmp_sock_disconnect(p, 1);
 }
 
-/* Ping-PDU */
+/*
+ * snmp_ping - send an agentx-Ping-PDU
+ * @p: SNMP protocol instance
+ */
 void
 snmp_ping(struct snmp_proto *p)
 {
@@ -1378,24 +1680,6 @@ snmp_ping(struct snmp_proto *p)
   sk_send(sk, s);
 }
 
-static inline int
-is_bgp4_mib_prefix(struct oid *o)
-{
-  if (o->prefix == SNMP_MGMT && o->ids[0] == SNMP_MIB_2 &&
-      o->ids[1] == SNMP_BGP4_MIB)
-    return 1;
-  else
-    return 0;
-}
-
-static inline int
-has_inet_prefix(struct oid *o)
-{
-  return (o->n_subid > 4 && o->ids[0] == 1 &&
-	  o->ids[1] == 3 && o->ids[2] == 6 &&
-	  o->ids[3] == 1);
-}
-
 /**
  * snmp_search_check_end_oid - check if oid is before SearchRange end
  *
@@ -1405,7 +1689,8 @@ has_inet_prefix(struct oid *o)
  * check if found oid meet the SearchRange upper bound condition in
  * lexicographical order, returns boolean value
  */
-int snmp_search_check_end_oid(const struct oid *found, const struct oid *bound)
+int
+snmp_search_check_end_oid(const struct oid *found, const struct oid *bound)
 {
   if (snmp_is_oid_empty(bound))
     return 1;
@@ -1413,6 +1698,24 @@ int snmp_search_check_end_oid(const struct oid *found, const struct oid *bound)
   return (snmp_oid_compare(found, bound) < 0);
 }
 
+/*
+ * search_mib - search for successor of given OID
+ * @p: SNMP protocol instance
+ * @o_start: search starting OID
+ * @o_end: search ending OID
+ * @o_curr: current OID inside @o_start, @o_end interval
+ * @c: transmit PDU context to use
+ * @result: search result state
+ *
+ * Perform a search in MIB tree in SearchRange from @o_start to @o_end.
+ * If the @o_start has set include the search is inclusive, the @o_end has
+ * always the include flag cleared. For agentx-GetNext-PDU, the o_curr is always
+ * NULL, for agentx-GetBulk-PDU it could have non-NULL value. In such case the
+ * @o_curr effectively replaces the role of @o_start. It is mandatory to pass
+ * @o_start and @o_end only allocated from @p protocol's memory pool.
+ *
+ * Return found OID or NULL.
+ */
 /* tree is tree with "internet" prefix .1.3.6.1
    working only with o_start, o_end allocated in heap (not from buffer)*/
 static struct oid *
@@ -1466,20 +1769,21 @@ search_mib(struct snmp_proto *p, const struct oid *o_start, const struct oid *o_
   }
 
   if (o_end == blank)
-    mb_free((void *) blank);
+    /* cast drops const qualifier */
+    mb_free((struct oid *)blank);
 
   return o_curr;
 }
 
 /**
- * snmp_prefixize - return prefixed oid copy if possible
+ * snmp_prefixize - return prefixed OID copy if possible
  * @proto: allocation pool holder
  * @oid: from packet loaded object identifier
  * @byte_ord: byte order of @oid
  *
- * Returns prefixed (meaning with nonzero prefix field) oid copy of @oid if
+ * Return prefixed (meaning with nonzero prefix field) oid copy of @oid if
  * possible, NULL otherwise. Returned pointer is always allocated from @proto's
- * pool not a pointer to recieve buffer (from which is most likely @oid).
+ * pool not a pointer to RX-buffer (from which is most likely @oid).
  */
 struct oid *
 snmp_prefixize(struct snmp_proto *proto, const struct oid *oid, int byte_ord)
@@ -1523,9 +1827,18 @@ snmp_prefixize(struct snmp_proto *proto, const struct oid *oid, int byte_ord)
   return new;
 }
 
+/*
+ * snmp_mib_fill - append a AgentX VarBind to PDU
+ * @p: SNMP protocol instance
+ * @oid: OID to use as VarBind v.name
+ * @c: transmit PDU context to use
+ *
+ * Append new AgentX VarBind at the end of created PDU. The content (v.data)
+ * is handled in function specialized for given MIB subtree. The binding is
+ * created only if the v.name matches some variable name precisely.
+ */
 static void
-snmp_mib_fill2(struct snmp_proto *p, struct oid *oid,
-	       struct snmp_pdu *c)
+snmp_mib_fill2(struct snmp_proto *p, struct oid *oid, struct snmp_pdu *c)
 {
   ASSUME(oid != NULL);
 
@@ -1557,7 +1870,10 @@ snmp_mib_fill2(struct snmp_proto *p, struct oid *oid,
   }
 }
 
-/**
+/*
+ * snmp_manage_tbuf - handle situation with too short transmit buffer
+ * @p: SNMP protocol instance
+ * @c: transmit packet context to use
  *
  * Important note: After managing insufficient buffer size all in buffer pointers
  *  are invalidated!
@@ -1571,6 +1887,13 @@ snmp_manage_tbuf(struct snmp_proto UNUSED *p, struct snmp_pdu *c)
   c->size += 2048;
 }
 
+/*
+ * prepare_response - fill buffer with AgentX PDU header
+ * @p: SNMP protocol instance
+ * @c: transmit PDU context to use
+ *
+ * Prepare known parts of AgentX packet header into the TX-buffer held by @c.
+ */
 static struct agentx_response *
 prepare_response(struct snmp_proto *p, struct snmp_pdu *c)
 {
@@ -1588,6 +1911,3 @@ prepare_response(struct snmp_proto *p, struct snmp_pdu *c)
   ADVANCE(c->buffer, c->size, sizeof(struct agentx_response));
   return r;
 }
-
-
-#undef SNMP_ERR_SHIFT
