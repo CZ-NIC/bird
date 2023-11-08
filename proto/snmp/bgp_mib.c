@@ -352,7 +352,7 @@ snmp_bgp_valid_ip4(struct oid *o)
 }
 
 
-static inline struct ip4_addr
+static inline ip4_addr
 ip4_from_oid(const struct oid *o)
 {
   return ip4_build(
