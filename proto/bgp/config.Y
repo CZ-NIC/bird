@@ -129,6 +129,7 @@ bgp_proto:
    bgp_proto_start proto_name '{'
  | bgp_proto proto_item ';'
  | bgp_proto bgp_proto_channel ';'
+ | bgp_proto mpls_channel ';'
  | bgp_proto LOCAL bgp_loc_opts ';'
  | bgp_proto LOCAL ipa ipa_scope bgp_loc_opts ';' {
      BGP_CFG->local_ip = $3;

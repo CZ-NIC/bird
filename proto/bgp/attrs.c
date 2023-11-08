@@ -17,6 +17,7 @@
 #include "nest/protocol.h"
 #include "nest/route.h"
 #include "nest/attrs.h"
+#include "nest/mpls.h"
 #include "conf/conf.h"
 #include "lib/resource.h"
 #include "lib/string.h"
@@ -1500,6 +1501,13 @@ bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
 	       p->cf->local_role == BGP_ROLE_PEER ||
 	       p->cf->local_role == BGP_ROLE_RS_CLIENT))
       bgp_set_attr_u32(&a->eattrs, s->pool, BA_ONLY_TO_CUSTOMER, 0, p->cf->remote_as);
+  }
+
+  /* Apply MPLS policy for labeled SAFIs */
+  if (s->mpls && s->proto->p.mpls_channel)
+  {
+    struct mpls_channel *mc = (void *) s->proto->p.mpls_channel;
+    ea_set_attr_u32(&a->eattrs, s->pool, EA_MPLS_POLICY, 0, EAF_TYPE_INT, mc->label_policy);
   }
 }
 
