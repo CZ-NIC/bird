@@ -1230,11 +1230,10 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
       bgp_set_attr_data(to, BA_NEXT_HOP, 0, nh, ipa_nonzero(nh[1]) ? 32 : 16);
       s->local_next_hop = 1;
 
-      /* TODO: Use local MPLS assigned label */
       if (s->mpls)
       {
-	u32 implicit_null = BGP_MPLS_NULL;
-	bgp_set_attr_data(to, BA_MPLS_LABEL_STACK, 0, &implicit_null, 4);
+	u32 label = ea_get_int(s->route->attrs, &ea_gen_mpls_label, BGP_MPLS_NULL);
+	bgp_set_attr_data(to, BA_MPLS_LABEL_STACK, 0, &label, 4);
       }
       else
 	bgp_unset_attr(to, BA_MPLS_LABEL_STACK);
