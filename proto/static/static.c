@@ -39,6 +39,7 @@
 #include "nest/iface.h"
 #include "nest/protocol.h"
 #include "nest/route.h"
+#include "nest/mpls.h"
 #include "nest/cli.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
@@ -96,6 +97,22 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   {
     rtable *tab = ipa_is_ip4(r->via) ? p->igp_table_ip4 : p->igp_table_ip6;
     rta_set_recursive_next_hop(p->p.main_channel->table, a, tab, r->via, IPA_NONE, r->mls);
+  }
+
+  if (p->p.mpls_channel)
+  {
+    struct mpls_channel *mc = (void *) p->p.mpls_channel;
+
+    ea_list *ea = alloca(sizeof(ea_list) + sizeof(eattr));
+    *ea = (ea_list) { .flags = EALF_SORTED, .count = 1 };
+    ea->next = a->eattrs;
+    a->eattrs = ea;
+
+    ea->attrs[0] = (eattr) {
+      .id = EA_MPLS_POLICY,
+      .type = EAF_TYPE_INT,
+      .u.data = mc->label_policy,
+    };
   }
 
   /* Already announced */
@@ -463,6 +480,8 @@ static_init(struct proto_config *CF)
 
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
 
+  proto_configure_channel(P, &P->mpls_channel, proto_cf_mpls_channel(CF));
+
   P->neigh_notify = static_neigh_notify;
   P->reload_routes = static_reload_routes;
   P->rte_better = static_rte_better;
@@ -497,6 +516,8 @@ static_start(struct proto *P)
 
   BUFFER_INIT(p->marked, p->p.pool, 4);
 
+  proto_setup_mpls_map(P, RTS_STATIC, 1);
+
   /* We have to go UP before routes could be installed */
   proto_notify_state(P, PS_UP);
 
@@ -512,6 +533,8 @@ static_shutdown(struct proto *P)
   struct static_proto *p = (void *) P;
   struct static_config *cf = (void *) P->cf;
   struct static_route *r;
+
+  proto_shutdown_mpls_map(P, 1);
 
   /* Just reset the flag, the routes will be flushed by the nest */
   WALK_LIST(r, cf->routes)
@@ -615,8 +638,11 @@ static_reconfigure(struct proto *P, struct proto_config *CF)
       (IGP_TABLE(o, ip6) != IGP_TABLE(n, ip6)))
     return 0;
 
-  if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)))
+  if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)) ||
+      !proto_configure_channel(P, &P->mpls_channel, proto_cf_mpls_channel(CF)))
     return 0;
+
+  proto_setup_mpls_map(P, RTS_STATIC, 1);
 
   p->p.cf = CF;
 
