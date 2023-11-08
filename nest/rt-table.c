@@ -1260,27 +1260,12 @@ rte_export(struct rt_table_export_hook *th, struct rt_pending_export *rpe)
 
   const net_addr *n = rpe->new_best ? rpe->new_best->rte.net : rpe->old_best->rte.net;
 
-  switch (hook->req->addr_mode)
-    {
-      case TE_ADDR_NONE:
-	break;
+  /* Check export eligibility of this net */
+  if (!rt_prefilter_net(&hook->req->prefilter, n))
+    goto ignore;
 
-      case TE_ADDR_IN:
-	if (!net_in_netX(n, hook->req->addr))
-	  goto ignore;
-	break;
-
-      case TE_ADDR_EQUAL:
-	if (!net_equal(n, hook->req->addr))
-	  goto ignore;
-	break;
-
-      case TE_ADDR_FOR:
-	bug("Continuos export of best prefix match not implemented yet.");
-
-      default:
-	bug("Strange table export address mode: %d", hook->req->addr_mode);
-    }
+  if (hook->req->prefilter.mode == TE_ADDR_FOR)
+    bug("Continuos export of best prefix match not implemented yet.");
 
   if (rpe->new)
     hook->stats.updates_received++;
@@ -2231,20 +2216,22 @@ rt_table_export_start_feed(struct rtable_private *tab, struct rt_table_export_ho
   struct rt_export_request *req = hook->h.req;
 
   /* stats zeroed by mb_allocz */
-  switch (req->addr_mode)
+  switch (req->prefilter.mode)
   {
     case TE_ADDR_IN:
       if (tab->trie && net_val_match(tab->addr_type, NB_IP))
       {
 	hook->walk_state = mb_allocz(hook->h.pool, sizeof (struct f_trie_walk_state));
 	hook->walk_lock = rt_lock_trie(tab);
-	trie_walk_init(hook->walk_state, tab->trie, req->addr);
+	trie_walk_init(hook->walk_state, tab->trie, req->prefilter.addr);
 	hook->h.event.hook = rt_feed_by_trie;
 	hook->walk_last.type = 0;
 	break;
       }
       /* fall through */
     case TE_ADDR_NONE:
+    case TE_ADDR_TRIE:
+    case TE_ADDR_HOOK:
       FIB_ITERATE_INIT(&hook->feed_fit, &tab->fib);
       hook->h.event.hook = rt_feed_by_fib;
       break;
@@ -2330,7 +2317,7 @@ rt_table_export_stop_locked(struct rt_export_hook *hh)
       rt_trace(tab, D_EVENTS, "Stopping export hook %s must wait for uncorking", hook->h.req->name);
       return 0;
     case TES_FEEDING:
-      switch (hh->req->addr_mode)
+      switch (hh->req->prefilter.mode)
       {
 	case TE_ADDR_IN:
 	  if (hook->walk_lock)
@@ -2343,7 +2330,12 @@ rt_table_export_stop_locked(struct rt_export_hook *hh)
 	  }
 	  /* fall through */
 	case TE_ADDR_NONE:
+	case TE_ADDR_HOOK:
+	case TE_ADDR_TRIE:
 	  fit_get(&tab->fib, &hook->feed_fit);
+	  break;
+	case TE_ADDR_EQUAL:
+	case TE_ADDR_FOR:
 	  break;
       }
       break;
@@ -4425,7 +4417,7 @@ rt_feed_by_fib(void *data)
 
   FIB_ITERATE_START(&tab->fib, fit, net, n)
     {
-      if ((c->h.req->addr_mode == TE_ADDR_NONE) || net_in_netX(n->n.addr, c->h.req->addr))
+      if (rt_prefilter_net(&c->h.req->prefilter, n->n.addr))
       {
 	if (!rt_prepare_feed(c, n, &block))
 	{
@@ -4436,6 +4428,8 @@ rt_feed_by_fib(void *data)
 	  return;
 	}
       }
+      else
+	req_trace(c->h.req, D_ROUTES, "Feeding %N rejected by prefilter", n->n.addr);
     }
   FIB_ITERATE_END;
   }
@@ -4500,9 +4494,9 @@ rt_feed_equal(void *data)
   RT_LOCKED(RT_PUB(SKIP_BACK(struct rtable_private, exporter, c->table)), tab)
   {
     ASSERT_DIE(atomic_load_explicit(&c->h.export_state, memory_order_relaxed) == TES_FEEDING);
-    ASSERT_DIE(c->h.req->addr_mode == TE_ADDR_EQUAL);
+    ASSERT_DIE(c->h.req->prefilter.mode == TE_ADDR_EQUAL);
 
-    if (n = net_find(tab, c->h.req->addr))
+    if (n = net_find(tab, c->h.req->prefilter.addr))
       ASSERT_DIE(rt_prepare_feed(c, n, &block));
   }
 
@@ -4522,9 +4516,9 @@ rt_feed_for(void *data)
   RT_LOCKED(RT_PUB(SKIP_BACK(struct rtable_private, exporter, c->table)), tab)
   {
     ASSERT_DIE(atomic_load_explicit(&c->h.export_state, memory_order_relaxed) == TES_FEEDING);
-    ASSERT_DIE(c->h.req->addr_mode == TE_ADDR_FOR);
+    ASSERT_DIE(c->h.req->prefilter.mode == TE_ADDR_FOR);
 
-    if (n = net_route(tab, c->h.req->addr))
+    if (n = net_route(tab, c->h.req->prefilter.addr))
       ASSERT_DIE(rt_prepare_feed(c, n, &block));
   }
 

@@ -977,7 +977,8 @@ inherited from templates can be updated by new definitions.
 	<cf/roa_check()/ operator). In contrast to to other filter operators,
 	this status for the same route may change as the content of ROA tables
 	changes. When this option is active, BIRD activates automatic reload of
-	affected channels whenever ROA tables are updated (after a short settle
+	the appropriate subset of prefixes imported or exported by the channels
+	whenever ROA tables are updated (after a short settle
 	time). When disabled, route reloads have to be requested manually. The
 	option is ignored if <cf/roa_check()/ is not used in channel filters.
 	Note that for BGP channels, automatic reload requires
@@ -1261,7 +1262,7 @@ This argument can be omitted if there exists only a single instance.
 	Enable, disable or restart a given protocol instance, instances matching
 	the <cf><m/pattern/</cf> or <cf/all/ instances.
 
-	<tag><label id="cli-reload">reload [in|out] <m/name/|"<m/pattern/"|all</tag>
+	<tag><label id="cli-reload">reload [in|out] (<m/name/|"<m/pattern/"|all) [partial prefix] </tag>
 	Reload a given protocol instance, that means re-import routes from the
 	protocol instance and re-export preferred routes to the instance. If
 	<cf/in/ or <cf/out/ options are used, the command is restricted to one
@@ -1271,6 +1272,9 @@ This argument can be omitted if there exists only a single instance.
 	protocol instance was not restarted (or reloaded), therefore it still
 	propagates the old set of routes. For example when <cf/configure soft/
 	command was used to change filters.
+
+	If <cf/partial prefix/ option is used, only corresponding routes are reloaded.
+	Protocol BGP does partial reload only if it has import table enabled, otherwise partial reload for BGP is refused.
 
 	Re-export always succeeds, but re-import is protocol-dependent and might
 	fail (for example, if BGP neighbor does not support route-refresh

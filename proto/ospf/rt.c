@@ -1700,7 +1700,8 @@ ospf_rt_spf(struct ospf_proto *p)
   rt_sync(p);
   lp_flush(p->nhpool);
 
-  p->calcrt = 0;
+  if (p->cir == NULL)	/* If there is no more cir waiting for reload */
+    p->calcrt = 0;
 }
 
 
@@ -2020,11 +2021,16 @@ rt_sync(struct ospf_proto *p)
 
   OSPF_TRACE(D_EVENTS, "Starting routing table synchronization");
 
+  struct channel_import_request *cir = p->cir;
+  p->cir = NULL;
+
   DBG("Now syncing my rt table with nest's\n");
   FIB_ITERATE_INIT(&fit, fib);
 again1:
   FIB_ITERATE_START(fib, &fit, ort, nf)
   {
+    if (cir && !channel_import_request_prefilter(cir, nf->fn.addr))
+      continue;
     /* Sanity check of next-hop addresses, failure should not happen */
     if (nf->n.type && nf->n.nhs)
     {
@@ -2099,7 +2105,6 @@ again1:
 	DBG("Mod rte type %d - %N via %I on iface %s, met %d\n",
 	    a0.source, nf->fn.addr, a0.gw, a0.iface ? a0.iface->name : "(none)", nf->n.metric1);
 	    */
-
 	rte_update(p->p.main_channel, nf->fn.addr, &e0, p->p.main_source);
       }
     }
@@ -2124,6 +2129,13 @@ again1:
     }
   }
   FIB_ITERATE_END;
+
+  while(cir)
+  {
+    struct channel_import_request *next = cir->next;
+    cir->done(cir);
+    cir = next;
+  }
 
   WALK_LIST(oa, p->area_list)
   {

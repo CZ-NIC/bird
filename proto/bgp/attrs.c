@@ -1910,16 +1910,18 @@ bgp_out_table_feed(void *data)
 
   int max = 512;
 
-  const net_addr *neq = (hook->h.req->addr_mode == TE_ADDR_EQUAL) ? hook->h.req->addr : NULL;
+  const net_addr *neq = (hook->h.req->prefilter.mode == TE_ADDR_EQUAL) ? hook->h.req->prefilter.addr : NULL;
   const net_addr *cand = NULL;
 
   do {
     HASH_WALK_ITER(c->prefix_hash, PXH, n, hook->hash_iter)
     {
-      switch (hook->h.req->addr_mode)
+      switch (hook->h.req->prefilter.mode)
       {
+	case TE_ADDR_HOOK:
+	case TE_ADDR_TRIE:
 	case TE_ADDR_IN:
-	  if (!net_in_netX(n->net, hook->h.req->addr))
+	  if (!rt_prefilter_net(&hook->h.req->prefilter, n->net))
 	    continue;
 	  /* fall through */
 	case TE_ADDR_NONE:
@@ -1931,7 +1933,7 @@ bgp_out_table_feed(void *data)
 	case TE_ADDR_FOR:
 	  if (!neq)
 	  {
-	    if (net_in_netX(hook->h.req->addr, n->net) && (!cand || (n->net->length > cand->length)))
+	    if (net_in_netX(hook->h.req->prefilter.addr, n->net) && (!cand || (n->net->length > cand->length)))
 	      cand = n->net;
 	    continue;
 	  }

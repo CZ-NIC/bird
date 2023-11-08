@@ -81,6 +81,7 @@ CF_DECLS
   const struct filter *f;
   struct f_tree *e;
   struct f_trie *trie;
+  const struct f_trie *const_trie;
   struct f_val v;
   struct password_item *p;
   struct rt_show_data *ra;

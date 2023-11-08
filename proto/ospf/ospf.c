@@ -109,7 +109,7 @@
 #include "lib/macro.h"
 
 static int ospf_preexport(struct channel *C, rte *new);
-static void ospf_reload_routes(struct channel *C);
+static int ospf_reload_routes(struct channel *C, struct channel_import_request *cir);
 static int ospf_rte_better(const rte *new, const rte *old);
 static u32 ospf_rte_igp_metric(const rte *rt);
 static void ospf_disp(timer *timer);
@@ -432,16 +432,19 @@ ospf_schedule_rtcalc(struct ospf_proto *p)
   p->calcrt = 1;
 }
 
-static void
-ospf_reload_routes(struct channel *C)
+static int
+ospf_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct ospf_proto *p = (struct ospf_proto *) C->proto;
+  cir->next = p->cir;
+  p->cir = cir;
 
   if (p->calcrt == 2)
-    return;
+    return 1;
 
   OSPF_TRACE(D_EVENTS, "Scheduling routing table calculation with route reload");
   p->calcrt = 2;
+  return 1;
 }
 
 
