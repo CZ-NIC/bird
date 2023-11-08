@@ -33,6 +33,7 @@ CF_KEYWORDS(KERNEL, PERSIST, SCAN, TIME, LEARN, DEVICE, ROUTES, GRACEFUL, RESTAR
 CF_KEYWORDS(INTERFACE, PREFERRED)
 
 %type <i> kern_mp_limit
+%type <cc> kern_channel
 
 CF_GRAMMAR
 
@@ -53,9 +54,15 @@ kern_mp_limit:
  | LIMIT expr  { $$ = $2; if (($2 <= 0) || ($2 > 255)) cf_error("Merge paths limit must be in range 1-255"); }
  ;
 
+
+kern_channel:
+   proto_channel
+ | mpls_channel
+ ;
+
 kern_item:
    proto_item
- | proto_channel { this_proto->net_type = $1->net_type; }
+ | kern_channel { this_proto->net_type = $1->net_type; }
  | PERSIST bool { THIS_KRT->persist = $2; }
  | SCAN TIME expr {
       /* Scan time of 0 means scan on startup only */

@@ -934,6 +934,10 @@ cf_symbol_class_name(struct symbol *sym)
       return "routing table";
     case SYM_ATTRIBUTE:
       return "custom attribute";
+    case SYM_MPLS_DOMAIN:
+      return "MPLS domain";
+    case SYM_MPLS_RANGE:
+      return "MPLS label range";
     case SYM_KEYWORD:
       return "symbol";
     case SYM_CONSTANT_RANGE:

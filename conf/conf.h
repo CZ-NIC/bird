@@ -21,6 +21,7 @@ struct config {
   linpool *mem;				/* Linear pool containing configuration data */
   list protos;				/* Configured protocol instances (struct proto_config) */
   list tables;				/* Configured routing tables (struct rtable_config) */
+  list mpls_domains;			/* Configured MPLS domains (struct mpls_domain_config) */
   list logfiles;			/* Configured log files (sysdep) */
   list tests;				/* Configured unit tests (f_bt_test_suite) */
   list symbols;				/* Configured symbols in config order */
@@ -133,6 +134,8 @@ struct symbol {
     const struct filter *filter;	/* For SYM_FILTER */
     struct rtable_config *table;	/* For SYM_TABLE */
     struct ea_class *attribute;		/* For SYM_ATTRIBUTE */
+    struct mpls_domain_config *mpls_domain;	/* For SYM_MPLS_DOMAIN */
+    struct mpls_range_config *mpls_range;	/* For SYM_MPLS_RANGE */
     struct f_val *val;			/* For SYM_CONSTANT */
     uint offset;			/* For SYM_VARIABLE */
     const struct keyword *keyword;	/* For SYM_KEYWORD */
@@ -173,6 +176,8 @@ extern linpool *global_root_scope_linpool;
 #define SYM_ATTRIBUTE 6
 #define SYM_KEYWORD 7
 #define SYM_METHOD 8
+#define SYM_MPLS_DOMAIN 9
+#define SYM_MPLS_RANGE 10
 
 #define SYM_VARIABLE 0x100	/* 0x100-0x1ff are variable types */
 #define SYM_VARIABLE_RANGE SYM_VARIABLE ... (SYM_VARIABLE | 0xff)

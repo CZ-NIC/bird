@@ -7,8 +7,8 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-#ifndef _BIRD_NEST_RT_H_
-#define _BIRD_NEST_RT_H_
+#ifndef _BIRD_ROUTE_H_
+#define _BIRD_ROUTE_H_
 
 #include "lib/lists.h"
 #include "lib/bitmap.h"
@@ -161,6 +161,7 @@ struct rtable_private {
   struct tbf rl_pipe;			/* Rate limiting token buffer for pipe collisions */
 
   struct f_trie *flowspec_trie;		/* Trie for evaluation of flowspec notifications */
+  // struct mpls_domain *mpls_domain;	/* Label allocator for MPLS */
 };
 
 /* The final union private-public rtable structure */
@@ -716,6 +717,8 @@ struct hostentry_adata {
   struct hostentry *he;
   u32 labels[0];
 };
+
+#define HOSTENTRY_LABEL_COUNT(head)	(head->ad.length + sizeof(struct adata) - sizeof(struct hostentry_adata)) / sizeof(u32)
 
 void
 ea_set_hostentry(ea_list **to, rtable *dep, rtable *tab, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum]);

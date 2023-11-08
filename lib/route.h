@@ -452,6 +452,12 @@ u32 rt_get_igp_metric(const rte *rt);
 /* From: Advertising router */
 extern struct ea_class ea_gen_from;
 
+
+/* MPLS Label, Policy and Class */
+extern struct ea_class ea_gen_mpls_label,
+       ea_gen_mpls_policy, ea_gen_mpls_class;
+
+
 /* Source: An old method to devise the route source protocol and kind.
  * To be superseded in a near future by something more informative. */
 extern struct ea_class ea_gen_source;

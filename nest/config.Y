@@ -12,6 +12,7 @@ CF_HDR
 #include "nest/rt-dev.h"
 #include "nest/password.h"
 #include "nest/cmds.h"
+#include "nest/mpls.h"
 #include "lib/lists.h"
 #include "lib/mac.h"
 
@@ -164,6 +165,7 @@ CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, AS)
 CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
 CF_KEYWORDS(CHECK, LINK)
 CF_KEYWORDS(CORK, SORTED, TRIE, MIN, MAX, ROA, ROUTE, REFRESH, SETTLE, TIME, GC, THRESHOLD, PERIOD)
+CF_KEYWORDS(MPLS_LABEL, MPLS_POLICY, MPLS_CLASS)
 
 /* For r_args_channel */
 CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC)
@@ -174,6 +176,7 @@ CF_ENUM(T_ENUM_SCOPE, SCOPE_, HOST, LINK, SITE, ORGANIZATION, UNIVERSE, UNDEFINE
 CF_ENUM(T_ENUM_RTD, RTD_, BLACKHOLE, UNREACHABLE, PROHIBIT)
 CF_ENUM(T_ENUM_ROA, ROA_, UNKNOWN, VALID, INVALID)
 CF_ENUM_PX(T_ENUM_AF, AF_, AFI_, IPV4, IPV6)
+CF_ENUM(T_ENUM_MPLS_POLICY, MPLS_POLICY_, NONE, STATIC, PREFIX, AGGREGATE)
 
 %type <i32> idval
 %type <f> imexport
@@ -181,7 +184,7 @@ CF_ENUM_PX(T_ENUM_AF, AF_, AFI_, IPV4, IPV6)
 %type <s> optproto
 %type <ra> r_args
 %type <sd> sym_args
-%type <i> proto_start debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type tos password_algorithm
+%type <i> proto_start debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type net_type_base tos password_algorithm
 %type <ps> proto_patt proto_patt2
 %type <cc> channel_start proto_channel
 %type <cl> limit_spec
@@ -227,7 +230,7 @@ gr_opts: GRACEFUL RESTART WAIT expr ';' { new_config->gr_wait = $4; } ;
 
 /* Network types (for tables, channels) */
 
-net_type:
+net_type_base:
    IPV4 { $$ = NET_IP4; }
  | IPV6 { $$ = NET_IP6; }
  | IPV6 SADR { $$ = NET_IP6_SADR; }
@@ -237,6 +240,10 @@ net_type:
  | ROA6 { $$ = NET_ROA6; }
  | FLOW4{ $$ = NET_FLOW4; }
  | FLOW6{ $$ = NET_FLOW6; }
+ ;
+
+net_type:
+   net_type_base
  | MPLS { $$ = NET_MPLS; }
  ;
 
@@ -340,7 +347,7 @@ proto_item:
  ;
 
 
-channel_start: net_type
+channel_start: net_type_base
 {
   $$ = this_channel = channel_config_get(NULL, net_label[$1], $1, this_proto);
 };

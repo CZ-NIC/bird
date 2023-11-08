@@ -41,7 +41,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   ea_list *a = e->attrs;
   int sync_error = d->tab->kernel ? krt_get_sync_error(d->tab->kernel, e) : 0;
   void (*get_route_info)(const rte *, byte *buf);
-  eattr *nhea = net_type_match(e->net, NB_DEST) ?
+  const eattr *nhea = net_type_match(e->net, NB_DEST) ?
     ea_find(a, &ea_gen_nexthop) : NULL;
   struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
   int dest = nhad ? (NEXTHOP_IS_REACHABLE(nhad) ? RTD_UNICAST : nhad->dest) : RTD_NONE;
@@ -67,7 +67,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   if (d->last_table != d->tab)
     rt_show_table(d);
 
-  eattr *heea;
+  const eattr *heea;
   struct hostentry_adata *had = NULL;
   if (!net_is_flow(e->net) && (dest == RTD_NONE) && (heea = ea_find(a, &ea_gen_hostentry)))
     had = (struct hostentry_adata *) heea->u.ptr;
@@ -96,7 +96,7 @@ static void
 rt_show_net(struct rt_show_data *d, const net_addr *n, const rte **feed, uint count)
 {
   struct cli *c = d->cli;
-  byte ia[NET_MAX_TEXT_LENGTH+1];
+  byte ia[NET_MAX_TEXT_LENGTH+16+1];
   struct channel *ec = d->tab->export_channel;
 
   /* The Clang static analyzer complains that ec may be NULL.
@@ -105,6 +105,7 @@ rt_show_net(struct rt_show_data *d, const net_addr *n, const rte **feed, uint co
 
   int first = 1;
   int first_show = 1;
+  uint last_label = 0;
   int pass = 0;
 
   for (uint i = 0; i < count; i++)
@@ -186,13 +187,21 @@ rt_show_net(struct rt_show_data *d, const net_addr *n, const rte **feed, uint co
 
       if (d->stats < 2)
       {
-	if (first_show)
-	  net_format(n, ia, sizeof(ia));
+	uint label = ea_get_int(e.attrs, &ea_gen_mpls_label, ~0U);
+
+	if (first_show || (last_label != label))
+	{
+	  if (!~label)
+	    net_format(n, ia, sizeof(ia));
+	  else
+	    bsnprintf(ia, sizeof(ia), "%N mpls %d", n, label);
+	}
 	else
 	  ia[0] = 0;
 
 	rt_show_rte(c, ia, &e, d, !d->tab->prefilter && !i);
 	first_show = 0;
+	last_label = label;
       }
 
       d->show_counter++;

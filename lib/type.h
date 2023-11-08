@@ -91,6 +91,7 @@ enum btype {
 
   T_ENUM_RTS = 0x31,
   T_ENUM_SCOPE = 0x33,
+  T_ENUM_MPLS_POLICY = 0x35,
   T_ENUM_RTD = 0x37,
   T_ENUM_ROA = 0x39,
   T_ENUM_NETTYPE = 0x3b,

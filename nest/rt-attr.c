@@ -1715,6 +1715,11 @@ rta_init(void)
   ea_register_init(&ea_gen_from);
   ea_register_init(&ea_gen_source);
   ea_register_init(&ea_gen_flowspec_valid);
+
+  /* MPLS route attributes */
+  ea_register_init(&ea_gen_mpls_policy);
+  ea_register_init(&ea_gen_mpls_class);
+  ea_register_init(&ea_gen_mpls_label);
 }
 
 /*

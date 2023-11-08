@@ -96,6 +96,7 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
+#include "nest/mpls.h"
 #include "lib/resource.h"
 #include "lib/event.h"
 #include "lib/timer.h"
@@ -1894,21 +1895,22 @@ channel_preimport(struct rt_import_request *req, rte *new, const rte *old)
 
   int new_in = new && !rte_is_filtered(new);
   int old_in = old && !rte_is_filtered(old);
+  
+  int verdict = 1;
 
   if (new_in && !old_in)
     if (CHANNEL_LIMIT_PUSH(c, IN))
       if (c->in_keep & RIK_REJECTED)
-      {
 	new->flags |= REF_FILTERED;
-	return 1;
-      }
       else
-	return 0;
+	verdict = 0;
 
   if (!new_in && old_in)
     CHANNEL_LIMIT_POP(c, IN);
 
-  return 1;
+  mpls_rte_preimport(new_in ? new : NULL, old_in ? old : NULL);
+
+  return verdict;
 }
 
 void
@@ -1951,6 +1953,9 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 	    new = NULL;
 	}
 
+      if (new && c->proto->mpls_map)
+	mpls_handle_rte(c->proto->mpls_map, n, new);
+
       if (new)
 	if (net_is_flow(n))
 	  rt_flowspec_resolve_rte(new, c);
@@ -1963,7 +1968,6 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 	  stats->updates_invalid++;
 	  new = NULL;
 	}
-
     }
   else
     stats->withdraws_received++;
@@ -3471,11 +3475,8 @@ rt_postconfig(struct config *c)
 void
 ea_set_hostentry(ea_list **to, rtable *dep, rtable *src, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum])
 {
-  struct {
-    struct adata ad;
-    struct hostentry *he;
-    u32 labels[0];
-  } *head = (void *) tmp_alloc_adata(sizeof *head + sizeof(u32) * lnum - sizeof(struct adata));
+  struct hostentry_adata *head = (struct hostentry_adata *) tmp_alloc_adata(
+      sizeof *head + sizeof(u32) * lnum - sizeof(struct adata));
 
   RT_LOCKED(src, tab)
     head->he = rt_get_hostentry(tab, gw, ll, dep);
