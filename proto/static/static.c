@@ -39,6 +39,7 @@
 #include "nest/iface.h"
 #include "nest/protocol.h"
 #include "nest/route.h"
+#include "nest/mpls.h"
 #include "nest/cli.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
@@ -484,6 +485,8 @@ static_init(struct proto_config *CF)
 
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
 
+  proto_configure_channel(P, &P->mpls_channel, proto_cf_mpls_channel(CF));
+
   P->iface_sub.neigh_notify = static_neigh_notify;
   P->reload_routes = static_reload_routes;
   P->sources.class = &static_rte_owner_class;
@@ -514,6 +517,8 @@ static_start(struct proto *P)
 
   BUFFER_INIT(p->marked, p->p.pool, 4);
 
+  proto_setup_mpls_map(P, RTS_STATIC);
+
   /* We have to go UP before routes could be installed */
   proto_notify_state(P, PS_UP);
 
@@ -530,6 +535,8 @@ static_shutdown(struct proto *P)
   struct static_proto *p = (void *) P;
   struct static_config *cf = (void *) P->cf;
   struct static_route *r;
+
+  proto_shutdown_mpls_map(P);
 
   /* Just reset the flag, the routes will be flushed by the nest */
   WALK_LIST(r, cf->routes)
@@ -627,8 +634,11 @@ static_reconfigure(struct proto *P, struct proto_config *CF)
       (IGP_TABLE(o, ip6) != IGP_TABLE(n, ip6)))
     return 0;
 
-  if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)))
+  if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)) ||
+      !proto_configure_channel(P, &P->mpls_channel, proto_cf_mpls_channel(CF)))
     return 0;
+
+  proto_setup_mpls_map(P, RTS_STATIC);
 
   p->p.cf = CF;
 

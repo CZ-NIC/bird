@@ -63,6 +63,7 @@ static_proto:
    static_proto_start proto_name '{'
  | static_proto proto_item ';'
  | static_proto proto_channel ';' { this_proto->net_type = $2->net_type; }
+ | static_proto mpls_channel ';'
  | static_proto CHECK LINK bool ';' { STATIC_CFG->check_link = $4; }
  | static_proto IGP TABLE rtable ';' {
     if ($4->addr_type == NET_IP4)
