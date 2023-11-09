@@ -21,6 +21,7 @@
 #define MPLS_POLICY_STATIC	1
 #define MPLS_POLICY_PREFIX	2
 #define MPLS_POLICY_AGGREGATE	3
+#define MPLS_POLICY_VRF		4
 
 #define MPLS_FEC_DOWN		0
 #define MPLS_FEC_CLEAN		1
@@ -134,6 +135,7 @@ struct mpls_fec {
   struct mpls_fec *next_l;		/* Next in mpls_fec.label_hash */
   union {				/* Primary key */
     struct ea_storage *rta;
+    struct iface *iface;
     net_addr net[0];
   };
 };
@@ -144,10 +146,12 @@ struct mpls_fec_map {
   HASH(struct mpls_fec) net_hash;	/* Hash table for MPLS_POLICY_PREFIX FECs */
   HASH(struct mpls_fec) attrs_hash;	/* Hash table for MPLS_POLICY_AGGREGATE FECs */
   HASH(struct mpls_fec) label_hash;	/* Hash table for FEC lookup by label */
+  struct mpls_fec *vrf_fec;		/* Single FEC for MPLS_POLICY_VRF */
 
   struct channel *channel;		/* MPLS channel for FEC announcement */
   struct mpls_domain *domain;		/* MPLS domain, keeping reference */
   struct mpls_handle *handle;		/* Handle for allocation of labels */
+  struct iface *vrf_iface;
 
   u8 mpls_rts;				/* Source value used for MPLS routes (RTS_*) */
 };
