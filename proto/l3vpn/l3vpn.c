@@ -458,6 +458,10 @@ l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
   }
   */
 
+  /* Update pointers to config structures */
+  p->import_target = cf->import_target;
+  p->export_target = cf->export_target;
+
   proto_setup_mpls_map(P, RTS_L3VPN);
 
   return 1;
