@@ -108,10 +108,26 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
 
     ea_set_hostentry(&ea, p->p.main_channel->table, tab,
 	r->via, IPA_NONE, lnum, labels);
+
   }
 
   else if (r->dest)
     ea_set_dest(&ea, 0, r->dest);
+
+  if (p->p.mpls_channel)
+  {
+    struct mpls_channel *mc = (void *) p->p.mpls_channel;
+
+    if (r->mpls_label != (uint) -1)
+    {
+      ea_set_attr_u32(&ea, &ea_gen_mpls_label, 0, r->mpls_label);
+      ea_set_attr_u32(&ea, &ea_gen_mpls_policy, 0, MPLS_POLICY_STATIC);
+    }
+    else
+    {
+      ea_set_attr_u32(&ea, &ea_gen_mpls_policy, 0, mc->label_policy);
+    }
+  }
 
   /* Already announced */
   if (r->state == SRS_CLEAN)
@@ -371,7 +387,7 @@ static inline int
 static_same_rte(struct static_route *or, struct static_route *nr)
 {
   /* Note that i_same() requires arguments in (new, old) order */
-  return static_same_dest(or, nr) && f_same(nr->cmds, or->cmds);
+  return (or->mpls_label == nr->mpls_label) && static_same_dest(or, nr) && f_same(nr->cmds, or->cmds);
 }
 
 static void
@@ -458,6 +474,7 @@ static_postconfig(struct proto_config *CF)
     cf_error("Channel not specified");
 
   struct channel_config *cc = proto_cf_main_channel(CF);
+  struct channel_config *mc = proto_cf_mpls_channel(CF);
 
   if (!cf->igp_table_ip4)
     cf->igp_table_ip4 = (cc->table->addr_type == NET_IP4) ?
@@ -468,8 +485,13 @@ static_postconfig(struct proto_config *CF)
       cc->table : rt_get_default_table(cf->c.global, NET_IP6);
 
   WALK_LIST(r, cf->routes)
+  {
     if (r->net && (r->net->type != CF->net_type))
       cf_error("Route %N incompatible with channel type", r->net);
+
+    if ((r->mpls_label != (uint) -1) && !mc)
+      cf_error("Route %N has MPLS label, but MPLS channel not specified", r->net);
+  }
 
   static_index_routes(cf);
 }
