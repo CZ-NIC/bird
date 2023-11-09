@@ -91,7 +91,7 @@ void mpls_domain_postconfig(struct mpls_domain_config *cf);
 struct mpls_range_config * mpls_range_config_new(struct mpls_domain_config *m, struct symbol *s);
 void mpls_preconfig(struct config *c);
 void mpls_commit(struct config *new, struct config *old);
-uint mpls_new_label(struct mpls_domain *m, struct mpls_handle *h);
+uint mpls_new_label(struct mpls_domain *m, struct mpls_handle *h, uint n);
 void mpls_free_label(struct mpls_domain *m, struct mpls_handle *h, uint n);
 
 static inline struct mpls_domain_config *cf_default_mpls_domain(struct config *cfg)
@@ -152,6 +152,7 @@ struct mpls_fec_map {
   struct channel *channel;		/* MPLS channel for FEC announcement */
   struct mpls_domain *domain;		/* MPLS domain, keeping reference */
   struct mpls_handle *handle;		/* Handle for allocation of labels */
+  struct mpls_handle *static_handle;	/* Handle for static label allocations, optional */
   struct iface *vrf_iface;
 
   u8 mpls_rts;				/* Source value used for MPLS routes (RTS_*) */
