@@ -73,14 +73,14 @@ rp_new(pool *p, struct domain_generic *dom, const char *name)
   pool *z = ralloc(p, &pool_class);
 
   if (dg_order(p->domain) > dg_order(dom))
-    bug("Requested reverse order pool creation: %s (%d) can't be a parent of %s (%d)",
-	domain_name(p->domain), dg_order(p->domain),
-	domain_name(dom), dg_order(dom));
+    bug("Requested reverse order pool creation: %s (%s, order %d) can't be a parent of %s (%s, order %d)",
+	p->name, domain_name(p->domain), dg_order(p->domain),
+	name, domain_name(dom), dg_order(dom));
 
   if ((dg_order(p->domain) == dg_order(dom)) && (p->domain != dom))
-    bug("Requested incomparable order pool creation: %s (%d) can't be a parent of %s (%d)",
-	domain_name(p->domain), dg_order(p->domain),
-	domain_name(dom), dg_order(dom));
+    bug("Requested incomparable order pool creation: %s (%s, order %d) can't be a parent of %s (%s, order %d)",
+	p->name, domain_name(p->domain), dg_order(p->domain),
+	name, domain_name(dom), dg_order(dom));
 
   rp_init(z, dom, name);
   return z;
