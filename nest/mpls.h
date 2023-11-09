@@ -166,7 +166,7 @@ struct mpls_fec *mpls_get_fec_by_label(struct mpls_fec_map *m, u32 label);
 struct mpls_fec *mpls_get_fec_by_net(struct mpls_fec_map *m, const net_addr *net, u32 path_id);
 struct mpls_fec *mpls_get_fec_by_destination(struct mpls_fec_map *m, ea_list *dest);
 void mpls_free_fec(struct mpls_fec_map *x, struct mpls_fec *fec);
-void mpls_handle_rte(struct mpls_fec_map *m, const net_addr *n, rte *r);
+int mpls_handle_rte(struct mpls_fec_map *m, const net_addr *n, rte *r);
 void mpls_rte_preimport(rte *new, const rte *old);
 
 

@@ -1954,7 +1954,12 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 	}
 
       if (new && c->proto->mpls_map)
-	mpls_handle_rte(c->proto->mpls_map, n, new);
+	if (mpls_handle_rte(c->proto->mpls_map, n, new) < 0)
+	  {
+	    channel_rte_trace_in(D_FILTERS, c, new, "invalid");
+	    stats->updates_invalid++;
+	    new = NULL;
+	  }
 
       if (new)
 	if (net_is_flow(n))
