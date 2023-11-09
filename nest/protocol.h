@@ -742,6 +742,8 @@ static inline void channel_net_mark_refed(struct channel *c, const net_addr *n)
   trie_add_prefix(c->refeed_trie, n, n->pxlen, n->pxlen);
 }
 
+void channel_request_reload(struct channel *c);
+
 void *channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 void *channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 int channel_reconfigure(struct channel *c, struct channel_config *cf);

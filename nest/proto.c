@@ -46,7 +46,6 @@ static char *c_states[] = { "DOWN", "START", "UP", "STOP", "RESTART" };
 
 extern struct protocol proto_unix_iface;
 
-static void channel_request_reload(struct channel *c);
 static void proto_rethink_goal(struct proto *p);
 static char *proto_state_name(struct proto *p);
 static void channel_init_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf);
@@ -1237,7 +1236,7 @@ channel_import_request_done_dynamic(struct channel_import_request *req)
   mb_free(req);
 }
 
-static void
+void
 channel_request_reload(struct channel *c)
 {
   ASSERT(c->in_req.hook);

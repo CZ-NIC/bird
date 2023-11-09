@@ -1592,6 +1592,18 @@ bgp_reload_routes(struct channel *C, struct channel_import_request *cir)
   struct bgp_proto *p = (void *) C->proto;
   struct bgp_channel *c = (void *) C;
 
+  /* For MPLS channel, reload all MPLS-aware channels */
+  if (C == p->p.mpls_channel)
+  {
+    BGP_WALK_CHANNELS(p, c)
+      if ((c->desc->mpls) && (p->route_refresh || c->cf->import_table))
+	channel_request_reload(&c->c);
+
+    /* Ignoring CIR, reloading always everything */
+    cir->done(cir);
+    return 1;
+  }
+
   /* Ignore non-BGP channels */
   if (C->class != &channel_bgp)
   {

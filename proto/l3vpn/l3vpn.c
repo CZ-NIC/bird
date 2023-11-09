@@ -298,7 +298,10 @@ l3vpn_reload_routes(struct channel *C, struct channel_import_request *cir)
     break;
 
   case NET_MPLS:
-    /* FIXME */
+    /* MPLS doesn't support partial refeed, always do a full one. */
+    channel_request_feeding_dynamic(p->ip4_channel, CFRT_DIRECT);
+    channel_request_feeding_dynamic(p->ip6_channel, CFRT_DIRECT);
+    cir->done(cir);
     return 1;
   }
 
