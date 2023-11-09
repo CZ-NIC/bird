@@ -171,4 +171,15 @@ void mpls_handle_rte_cleanup(struct mpls_fec_map *m, struct mpls_fec **locked_fe
 void mpls_rte_insert(net *n UNUSED, rte *r);
 void mpls_rte_remove(net *n UNUSED, rte *r);
 
+
+struct mpls_show_ranges_cmd {
+  struct mpls_domain_config *domain;
+  struct mpls_range_config *range;
+
+  /* Runtime */
+  struct mpls_domain *dom;
+};
+
+void mpls_show_ranges(struct mpls_show_ranges_cmd *cmd);
+
 #endif

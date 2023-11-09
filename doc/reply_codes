@@ -61,6 +61,7 @@ Reply codes of BIRD command-line interface
 1023	Show Babel interfaces
 1024	Show Babel neighbors
 1025	Show Babel entries
+1026	Show MPLS ranges
 
 8000	Reply too long
 8001	Route not found
