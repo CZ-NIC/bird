@@ -400,6 +400,81 @@ lmap_first_zero_in_range(struct lmap *b, uint lo, uint hi)
   return hi;
 }
 
+static inline int
+b1024_last_one(u32 *p)
+{
+  for (int i = 31; i >= 0; i--)
+    if (p[i])
+      return 32*i + (31 - u32_clz(p[i]));
+
+  return 1024;
+}
+
+static uint
+b1024_last_one_in_range(u32 *p, uint lo, uint hi)
+{
+  uint lo0 = lo >> 5;
+  uint lo1 = lo & 0x1f;
+  uint hi0 = hi >> 5;
+  uint hi1 = hi & 0x1f;
+  u32 mask = (1u << hi1) - 1;
+  u32 val;
+
+  for (int i = hi0; i > (int) lo0; i--)
+  {
+    val = p[i] & mask;
+    mask = ~0;
+
+    if (val)
+      return 32*i + (31 - u32_clz(val));
+  }
+
+  {
+    mask &= ~((1u << lo1) - 1);
+    val = p[lo0] & mask;
+
+    if (val)
+      return 32*lo0 + (31 - u32_clz(val));
+  }
+
+  return hi;
+}
+
+uint
+lmap_last_one_in_range(struct lmap *b, uint lo, uint hi)
+{
+  uint lo0 = lo >> 10;
+  uint lo1 = lo & 0x3ff;
+  uint hi0 = hi >> 10;
+  uint hi1 = hi & 0x3ff;
+
+  if (hi1 && (hi0 < b->size) && b->data[hi0])
+  {
+    uint min = (lo0 == hi0) ? lo1 : 0;
+    uint n0 = hi0;
+    uint n1 = b1024_last_one_in_range(b->data[n0], min, hi1);
+
+    if (n1 < hi1)
+      return (n0 << 10) + n1;
+  }
+
+  for (int i = (int)MIN(hi0, b->size) - 1; i >= (int) lo0; i--)
+  {
+    if (! b->data[i])
+      continue;
+
+    uint n0 = i;
+    uint n1 = b1024_last_one(b->data[n0]);
+
+    if ((n0 == lo0) && (n1 < lo1))
+      return hi;
+
+    return (n0 << 10) + n1;
+  }
+
+  return hi;
+}
+
 void
 lmap_check(struct lmap *b)
 {
