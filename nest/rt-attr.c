@@ -76,6 +76,7 @@ const char * const rta_src_names[RTS_MAX] = {
   [RTS_BABEL]		= "Babel",
   [RTS_RPKI]		= "RPKI",
   [RTS_PERF]		= "Perf",
+  [RTS_L3VPN]		= "L3VPN",
   [RTS_AGGREGATED]	= "aggregated",
 };
 
