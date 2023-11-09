@@ -274,12 +274,6 @@ rlookup(unsigned long a)
     debug("Not found.\n");
 }
 
-static void
-my_check(int *whatever UNUSED)
-{
-  printf("Everything works well.\n");
-}
-
 /**
  * resource_init - initialize the resource manager
  *
@@ -290,7 +284,6 @@ my_check(int *whatever UNUSED)
 void
 resource_init(void)
 {
-  __attribute__((cleanup(my_check))) int test = 42;
   resource_sys_init();
 
   root_pool.r.class = &pool_class;
