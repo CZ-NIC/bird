@@ -78,7 +78,6 @@
  * TODO:
  *  - protocols should do route refresh instead of restart when reconfiguration
  *    requires changing labels (e.g. different label range)
- *  - handle label allocation failures
  *  - special handling of reserved labels
  */
 
@@ -720,17 +719,21 @@ struct mpls_fec *
 mpls_get_fec_by_label(struct mpls_fec_map *m, u32 label)
 {
   struct mpls_fec *fec = HASH_FIND(m->label_hash, LABEL, label);
-  /* FIXME: check if (fec->policy == MPLS_POLICY_STATIC) */
-
-  if (fec)
-    return fec;
-
-  fec = sl_allocz(mpls_slab(m, 0));
 
   if (!m->static_handle)
     m->static_handle = mpls_new_handle(m->domain, m->domain->cf->static_range->range);
 
-  fec->label = mpls_new_label(m->domain, m->static_handle, label);
+  if (fec)
+    return (fec->policy == MPLS_POLICY_STATIC) ? fec : NULL;
+
+  label = mpls_new_label(m->domain, m->static_handle, label);
+
+  if (!label)
+    return NULL;
+
+  fec = sl_allocz(mpls_slab(m, 0));
+
+  fec->label = label;
   fec->policy = MPLS_POLICY_STATIC;
 
   DBG("New FEC lab %u\n", fec->label);
@@ -752,13 +755,18 @@ mpls_get_fec_by_net(struct mpls_fec_map *m, const net_addr *net, u32 path_id)
   if (fec)
     return fec;
 
+  u32 label = mpls_new_label(m->domain, m->handle, 0);
+
+  if (!label)
+    return NULL;
+
   fec = sl_allocz(mpls_slab(m, net->type));
 
   fec->hash = hash;
   fec->path_id = path_id;
   net_copy(fec->net, net);
 
-  fec->label = mpls_new_label(m->domain, m->handle, 0);
+  fec->label = label;
   fec->policy = MPLS_POLICY_PREFIX;
 
   DBG("New FEC net %u\n", fec->label);
@@ -785,13 +793,21 @@ mpls_get_fec_by_rta(struct mpls_fec_map *m, const rta *src, u32 class_id)
     return fec;
   }
 
+  u32 label = mpls_new_label(m->domain, m->handle, 0);
+
+  if (!label)
+  {
+    rta_free(rta);
+    return NULL;
+  }
+
   fec = sl_allocz(mpls_slab(m, 0));
 
   fec->hash = hash;
   fec->class_id = class_id;
   fec->rta = rta;
 
-  fec->label = mpls_new_label(m->domain, m->handle, 0);
+  fec->label = label;
   fec->policy = MPLS_POLICY_AGGREGATE;
 
   DBG("New FEC rta %u\n", fec->label);
@@ -810,9 +826,14 @@ mpls_get_fec_for_vrf(struct mpls_fec_map *m)
   if (fec)
     return fec;
 
+  u32 label = mpls_new_label(m->domain, m->handle, 0);
+
+  if (!label)
+    return NULL;
+
   fec = sl_allocz(mpls_slab(m, 0));
 
-  fec->label = mpls_new_label(m->domain, m->handle, 0);
+  fec->label = label;
   fec->policy = MPLS_POLICY_VRF;
   fec->iface = m->vrf_iface;
 
@@ -872,7 +893,7 @@ static inline void mpls_unlock_fec(struct mpls_fec_map *x, struct mpls_fec *fec)
 static inline void
 mpls_damage_fec(struct mpls_fec_map *m UNUSED, struct mpls_fec *fec)
 {
-  if (fec->state == MPLS_FEC_CLEAN)
+  if (fec && (fec->state == MPLS_FEC_CLEAN))
     fec->state = MPLS_FEC_DIRTY;
 }
 
@@ -995,7 +1016,7 @@ mpls_apply_fec(rte *r, struct mpls_fec *fec, linpool *lp)
 }
 
 
-void
+int
 mpls_handle_rte(struct mpls_fec_map *m, const net_addr *n, rte *r, linpool *lp, struct mpls_fec **locked_fec)
 {
   ASSERT(!(r->flags & REF_COW));
@@ -1007,15 +1028,22 @@ mpls_handle_rte(struct mpls_fec_map *m, const net_addr *n, rte *r, linpool *lp, 
   switch (policy)
   {
   case MPLS_POLICY_NONE:
-    return;
+    return 0;
 
   case MPLS_POLICY_STATIC:;
     uint label = ea_get_int(r->attrs->eattrs, EA_MPLS_LABEL, 0);
 
     if (label < 16)
-      return;
+      return 0;
 
     fec = mpls_get_fec_by_label(m, label);
+    if (!fec)
+    {
+      log(L_WARN "Static label %u failed for %N from %s",
+	  label, n, r->sender->proto->name);
+      return -1;
+    }
+
     mpls_damage_fec(m, fec);
     break;
 
@@ -1031,14 +1059,22 @@ mpls_handle_rte(struct mpls_fec_map *m, const net_addr *n, rte *r, linpool *lp, 
 
   case MPLS_POLICY_VRF:
     if (!m->vrf_iface)
-      return;
+      return 0;
 
     fec = mpls_get_fec_for_vrf(m);
     break;
 
   default:
     log(L_WARN "Route %N has invalid MPLS policy %u", n, policy);
-    return;
+    return -1;
+  }
+
+  /* Label allocation failure */
+  if (!fec)
+  {
+    log(L_WARN "Label allocation in range %s failed for %N from %s",
+	m->handle->range->name, n, r->sender->proto->name);
+    return -1;
   }
 
   /* Temporarily lock FEC */
@@ -1051,6 +1087,8 @@ mpls_handle_rte(struct mpls_fec_map *m, const net_addr *n, rte *r, linpool *lp, 
   /* Announce MPLS rule for new/updated FEC */
   if (fec->state != MPLS_FEC_CLEAN)
     mpls_announce_fec(m, fec, r->attrs);
+
+  return 0;
 }
 
 void

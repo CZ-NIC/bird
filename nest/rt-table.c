@@ -1617,7 +1617,14 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 	}
 
       if (p->mpls_map)
-	mpls_handle_rte(p->mpls_map, n, new, rte_update_pool, &fec);
+        {
+	  if (mpls_handle_rte(p->mpls_map, n, new, rte_update_pool, &fec) < 0)
+	    {
+	      rte_trace_in(D_FILTERS, c, new, "invalid");
+	      stats->imp_updates_invalid++;
+	      goto drop;
+	    }
+	}
 
       if (!rta_is_cached(new->attrs)) /* Need to copy attributes */
 	new->attrs = rta_lookup(new->attrs);
