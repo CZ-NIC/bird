@@ -225,8 +225,9 @@ struct nexthop_adata {
 #define RTS_BABEL 13			/* Babel route */
 #define RTS_RPKI 14			/* Route Origin Authorization */
 #define RTS_PERF 15			/* Perf checker */
-#define RTS_AGGREGATED 16		/* Aggregated route */
-#define RTS_MAX 17
+#define RTS_L3VPN 16			/* MPLS L3VPN */
+#define RTS_AGGREGATED 17		/* Aggregated route */
+#define RTS_MAX 18
 
 #define RTD_NONE 0			/* Undefined next hop */
 #define RTD_UNICAST 1			/* A standard next hop */
@@ -353,6 +354,13 @@ static inline eattr *ea_find_by_name(ea_list *l, const char *name)
     ASSERT_DIE(cls->type == T_IP); \
     const eattr *ea = ea_find((_l), cls->id); \
     (ea ? *((const ip_addr *) ea->u.ptr->data) : (_def)); \
+    })
+
+#define ea_get_adata(_l, _ident)	({ \
+    struct ea_class *cls = ea_class_find((_ident)); \
+    ASSERT_DIE(!(cls->type & EAF_EMBEDDED)); \
+    const eattr *ea = ea_find((_l), cls->id); \
+    (ea ? ea->u.ptr : &null_adata); \
     })
 
 eattr *ea_walk(struct ea_walk_state *s, uint id, uint max);
@@ -516,15 +524,18 @@ int nexthop_is_sorted(struct nexthop_adata *x);
 
 #define NEXTHOP_IS_REACHABLE(nhad)	((nhad)->ad.length > NEXTHOP_DEST_SIZE)
 
+static inline struct nexthop_adata *
+rte_get_nexthops(rte *r)
+{
+  eattr *nhea = ea_find(r->attrs, &ea_gen_nexthop);
+  return nhea ? SKIP_BACK(struct nexthop_adata, ad, nhea->u.ptr) : NULL;
+}
+
 /* Route has regular, reachable nexthop (i.e. not RTD_UNREACHABLE and like) */
 static inline int rte_is_reachable(rte *r)
 {
-  eattr *nhea = ea_find(r->attrs, &ea_gen_nexthop);
-  if (!nhea)
-    return 0;
-
-  struct nexthop_adata *nhad = (void *) nhea->u.ptr;
-  return NEXTHOP_IS_REACHABLE(nhad);
+  struct nexthop_adata *nhad = rte_get_nexthops(r);
+  return nhad && NEXTHOP_IS_REACHABLE(nhad);
 }
 
 static inline int nhea_dest(eattr *nhea)

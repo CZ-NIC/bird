@@ -737,6 +737,8 @@ void ea_show_nexthop_list(struct cli *c, struct nexthop_adata *nhad);
 #define DEF_PREF_RIP		120	/* RIP */
 #define DEF_PREF_BGP		100	/* BGP */
 #define DEF_PREF_RPKI		100	/* RPKI */
+#define DEF_PREF_L3VPN_IMPORT	 80	/* L3VPN import -> lower than BGP */
+#define DEF_PREF_L3VPN_EXPORT	120	/* L3VPN export -> higher than BGP */
 #define DEF_PREF_INHERITED	10	/* Routes inherited from other routing daemons */
 #define DEF_PREF_UNKNOWN	0	/* Routes with no preference set */
 

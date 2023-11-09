@@ -307,7 +307,7 @@ if test "$enable_mpls_kernel" != no ; then
 fi
 
 # temporarily removed "mrt" from all_protocols to speed up 3.0-alpha1 release
-all_protocols="aggregator bfd babel bgp ospf perf pipe radv rip rpki static"
+all_protocols="aggregator bfd babel bgp l3vpn ospf perf pipe radv rip rpki static"
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
 
 if test "$with_protocols" = all ; then
@@ -319,6 +319,7 @@ AH_TEMPLATE([CONFIG_BABEL], 	[Babel protocol])
 AH_TEMPLATE([CONFIG_BFD],	[BFD protocol])
 AH_TEMPLATE([CONFIG_BGP],	[BGP protocol])
 AH_TEMPLATE([CONFIG_BMP],	[BMP protocol])
+AH_TEMPLATE([CONFIG_L3VPN],	[L3VPN protocol])
 AH_TEMPLATE([CONFIG_MRT],	[MRT protocol])
 AH_TEMPLATE([CONFIG_OSPF],	[OSPF protocol])
 AH_TEMPLATE([CONFIG_PIPE],	[Pipe protocol])
