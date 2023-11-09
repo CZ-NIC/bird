@@ -50,7 +50,6 @@
 
 /*
  * TODO:
- * - import/export target reconfiguration
  * - check for simple nodes in export route
  * - replace pair of channels with shared channel for one address family
  * - improve route comparisons in VRFs
@@ -121,6 +120,13 @@ l3vpn_export_targets(struct l3vpn_proto *p, const struct adata *src)
   return dst;
 }
 
+static inline void
+l3vpn_prepare_import_targets(struct l3vpn_proto *p)
+{
+  const struct f_tree *t = p->import_target;
+  p->import_target_one = !t->left && !t->right && (t->from.val.ec == t->to.val.ec);
+}
+
 static void
 l3vpn_add_ec(const struct f_tree *t, void *P)
 {
@@ -130,10 +136,10 @@ l3vpn_add_ec(const struct f_tree *t, void *P)
 }
 
 static void
-l3vpn_prepare_targets(struct l3vpn_proto *p)
+l3vpn_prepare_export_targets(struct l3vpn_proto *p)
 {
-  const struct f_tree *t = p->import_target;
-  p->import_target_one = !t->left && !t->right && (t->from.val.ec == t->to.val.ec);
+  if (p->export_target_data)
+    mb_free(p->export_target_data);
 
   uint len = 2 * tree_node_count(p->export_target);
   p->export_target_data = mb_alloc(p->p.pool, len * sizeof(u32));
@@ -373,8 +379,10 @@ l3vpn_start(struct proto *P)
   p->rd = cf->rd;
   p->import_target = cf->import_target;
   p->export_target = cf->export_target;
+  p->export_target_data = NULL;
 
-  l3vpn_prepare_targets(p);
+  l3vpn_prepare_import_targets(p);
+  l3vpn_prepare_export_targets(p);
 
   proto_setup_mpls_map(P, RTS_L3VPN, 1);
 
@@ -407,14 +415,24 @@ l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
       !proto_configure_channel(P, &P->mpls_channel, proto_cf_find_channel(CF, NET_MPLS)))
     return 0;
 
-  if ((p->rd != cf->rd) ||
-      !same_tree(p->import_target, cf->import_target) ||
-      !same_tree(p->export_target, cf->export_target))
+  if (p->rd != cf->rd)
     return 0;
 
-  /*
-  if (!same_tree(p->import_target, cf->import_target))
+  int import_changed = !same_tree(p->import_target, cf->import_target);
+  int export_changed = !same_tree(p->export_target, cf->export_target);
+
+  /* Update pointers to config structures */
+  p->import_target = cf->import_target;
+  p->export_target = cf->export_target;
+
+  proto_setup_mpls_map(P, RTS_L3VPN, 1);
+
+  if (import_changed)
   {
+    TRACE(D_EVENTS, "Import target changed");
+
+    l3vpn_prepare_import_targets(p);
+
     if (p->vpn4_channel && (p->vpn4_channel->channel_state == CS_UP))
       channel_request_feeding(p->vpn4_channel);
 
@@ -422,21 +440,18 @@ l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
       channel_request_feeding(p->vpn6_channel);
   }
 
-  if (!same_tree(p->export_target, cf->export_target))
+  if (export_changed)
   {
+    TRACE(D_EVENTS, "Export target changed");
+
+    l3vpn_prepare_export_targets(p);
+
     if (p->ip4_channel && (p->ip4_channel->channel_state == CS_UP))
       channel_request_feeding(p->ip4_channel);
 
     if (p->ip6_channel && (p->ip6_channel->channel_state == CS_UP))
       channel_request_feeding(p->ip6_channel);
   }
-  */
-
-  /* Update pointers to config structures */
-  p->import_target = cf->import_target;
-  p->export_target = cf->export_target;
-
-  proto_setup_mpls_map(P, RTS_L3VPN, 1);
 
   return 1;
 }
