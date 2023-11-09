@@ -167,4 +167,15 @@ void mpls_free_fec(struct mpls_fec_map *x, struct mpls_fec *fec);
 void mpls_handle_rte(struct mpls_fec_map *m, const net_addr *n, rte *r);
 void mpls_rte_preimport(rte *new, const rte *old);
 
+
+struct mpls_show_ranges_cmd {
+  struct mpls_domain_config *domain;
+  struct mpls_range_config *range;
+
+  /* Runtime */
+  struct mpls_domain *dom;
+};
+
+void mpls_show_ranges(struct mpls_show_ranges_cmd *cmd);
+
 #endif

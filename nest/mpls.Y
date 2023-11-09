@@ -24,6 +24,7 @@ CF_KEYWORDS(MPLS, DOMAIN, LABEL, RANGE, STATIC, DYNAMIC, START, LENGTH, POLICY, 
 
 %type <i> mpls_label_policy
 %type <cc> mpls_channel_start mpls_channel
+%type <msrc> show_mpls_ranges_args
 
 CF_GRAMMAR
 
@@ -135,6 +136,59 @@ mpls_channel_opt_list:
  ;
 
 mpls_channel_end: { mpls_channel_postconfig(this_channel); } channel_end;
+
+
+show_mpls_ranges_args:
+   /* empty */
+   {
+     if (EMPTY_LIST(config->mpls_domains))
+       cf_error("No MPLS domain defined");
+
+     $$ = cfg_allocz(sizeof(struct mpls_show_ranges_cmd));
+   }
+ | show_mpls_ranges_args CF_SYM_KNOWN
+   {
+     if ($2->class == SYM_MPLS_DOMAIN)
+     {
+       if ($$->domain)
+	cf_error("Only one MPLS domain expected");
+
+       $$->domain = $2->mpls_domain;
+     }
+     else if ($2->class == SYM_MPLS_RANGE)
+     {
+       if ($$->range)
+	cf_error("Only one MPLS label range expected");
+
+       if ($$->domain != $2->mpls_range->domain)
+	cf_error("MPLS label range from different MPLS domain");
+
+       $$->domain = $2->mpls_range->domain;
+       $$->range = $2->mpls_range;
+     }
+     else
+       cf_error("MPLS domain or label range expected");
+   }
+ | show_mpls_ranges_args STATIC
+   {
+     if ($$->range)
+       cf_error("Only one MPLS label range expected");
+
+     $$->domain = $$->domain ?: cf_default_mpls_domain(config);
+     $$->range = $$->domain->static_range;
+   }
+ | show_mpls_ranges_args DYNAMIC
+   {
+     if ($$->range)
+       cf_error("Only one MPLS label range expected");
+
+     $$->domain = $$->domain ?: cf_default_mpls_domain(config);
+     $$->range = $$->domain->dynamic_range;
+   }
+ ;
+
+CF_CLI(SHOW MPLS RANGES, show_mpls_ranges_args, [<MPLS domain> | <MPLS range>], [[Show MPLS ranges]])
+{ mpls_show_ranges($4); } ;
 
 
 CF_CODE

@@ -76,7 +76,6 @@
  * and withdrawal of MPLS routes.
  *
  * TODO:
- *  - show mpls labels CLI command
  *  - label range non-intersection check
  *  - better range reconfigurations (allow reduce ranges over unused labels)
  *  - protocols should do route refresh instead of resetart when reconfiguration
@@ -89,6 +88,7 @@
 #include "nest/bird.h"
 #include "nest/route.h"
 #include "nest/mpls.h"
+#include "nest/cli.h"
 
 static struct mpls_range *mpls_new_range(struct mpls_domain *m, struct mpls_range_config *cf);
 static struct mpls_range *mpls_find_range_(list *l, const char *name);
@@ -1024,6 +1024,53 @@ mpls_rte_preimport(rte *new, const rte *old)
 
   if (old_mt.fec)
     mpls_unlock_fec(old_mt.m, old_mt.fec);
+}
+
+static void
+mpls_show_ranges_rng(struct mpls_show_ranges_cmd *cmd, struct mpls_range *r)
+{
+  uint last = lmap_last_one_in_range(&cmd->dom->labels, r->lo, r->hi);
+  if (last == r->hi) last = 0;
+
+  cli_msg(-1026, "%-11s %7u %7u %7u %7u %7u",
+	  r->name, r->lo, r->hi - r->lo, r->hi, r->label_count, last);
+}
+
+void
+mpls_show_ranges_dom(struct mpls_show_ranges_cmd *cmd, struct mpls_domain *m)
+{
+  if (cmd->dom)
+    cli_msg(-1026, "");
+
+  cmd->dom = m;
+  cli_msg(-1026, "MPLS domain %s:", m->name);
+  cli_msg(-1026, "%-11s %7s %7s %7s %7s %7s",
+	  "Range", "Start", "Length", "End", "Labels", "Last");
+
+  if (cmd->range)
+    mpls_show_ranges_rng(cmd, cmd->range->range);
+  else
+  {
+    struct mpls_range *r;
+    WALK_LIST(r, m->ranges)
+      if (!r->removed)
+	mpls_show_ranges_rng(cmd, r);
+  }
+}
+
+void
+mpls_show_ranges(struct mpls_show_ranges_cmd *cmd)
+{
+  if (cmd->domain)
+    mpls_show_ranges_dom(cmd, cmd->domain->domain);
+  else
+  {
+    struct mpls_domain *m;
+    WALK_LIST(m, mpls_domains)
+      mpls_show_ranges_dom(cmd, m);
+  }
+
+  cli_msg(0, "");
 }
 
 struct ea_class ea_gen_mpls_policy = {

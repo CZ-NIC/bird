@@ -1341,9 +1341,9 @@ cmd_show_threads_done(struct bird_thread_syncer *sync)
   }
 
   for (uint i = 0; i < tsd->line_pos - 1; i++)
-    cli_printf(tsd->cli, -1026, "%s", tsd->lines[i]);
+    cli_printf(tsd->cli, -1027, "%s", tsd->lines[i]);
 
-  cli_printf(tsd->cli, 1026, "%s", tsd->lines[tsd->line_pos-1]);
+  cli_printf(tsd->cli, 1027, "%s", tsd->lines[tsd->line_pos-1]);
   cli_write_trigger(tsd->cli);
   mb_free(tsd);
 }
