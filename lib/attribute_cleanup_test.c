@@ -24,19 +24,19 @@ tacd_aux(int pos)
 {
   CHECK(pos + 0);
 
-  __attribute__((cleanup(tacd_cleanup))) int upmost = pos + 18;
+  UNUSED __attribute__((cleanup(tacd_cleanup))) int upmost = pos + 18;
 
   if (order_pos > 0)
   {
     CHECK(pos + 1);
-    __attribute__((cleanup(tacd_cleanup))) int inner_if = pos + 3;
+    UNUSED __attribute__((cleanup(tacd_cleanup))) int inner_if = pos + 3;
     CHECK(pos + 2);
   }
 
   for (int i=0; i<3; i++)
   {
     CHECK(pos + 4 + 3*i);
-    __attribute__((cleanup(tacd_cleanup))) int inner_for = pos + 6 + 3*i;
+    UNUSED __attribute__((cleanup(tacd_cleanup))) int inner_for = pos + 6 + 3*i;
     CHECK(pos + 5 + 3*i);
   }
 
@@ -45,7 +45,7 @@ tacd_aux(int pos)
       i < pos + 16; i++)
   {
     CHECK(pos + 13);
-    __attribute__((cleanup(tacd_cleanup))) int inner_for = pos + 15;
+    UNUSED __attribute__((cleanup(tacd_cleanup))) int inner_for = pos + 15;
     CHECK(pos + 14);
   }
 
@@ -63,7 +63,7 @@ t_attribute_cleanup_direct(void)
   for (int i=0; i<3; i++)
   {
     CHECK(i*(CHECKCNT+3) + 1);
-    __attribute__((cleanup(tacd_cleanup))) int inner_for = (i+1) * (CHECKCNT+3);
+    UNUSED __attribute__((cleanup(tacd_cleanup))) int inner_for = (i+1) * (CHECKCNT+3);
     tacd_aux(i*(CHECKCNT+3) + 2);
     CHECK((i+1) * (CHECKCNT+3) - 1);
   }
