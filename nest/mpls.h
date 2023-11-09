@@ -63,6 +63,7 @@ struct mpls_range_config {
 
   uint start;				/* Label range start, (uint) -1 for undefined */
   uint length;				/* Label range length, (uint) -1 for undefined */
+  u8 implicit;				/* Implicitly defined range */
 };
 
 struct mpls_range {
