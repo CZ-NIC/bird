@@ -76,8 +76,6 @@
  * and withdrawal of MPLS routes.
  *
  * TODO:
- *  - protocols should do route refresh instead of restart when reconfiguration
- *    requires changing labels (e.g. different label range)
  *  - special handling of reserved labels
  */
 
@@ -254,7 +252,8 @@ mpls_reconfigure_domain(struct mpls_domain *m, struct mpls_domain_config *cf)
 
   struct mpls_range *r, *r2;
   WALK_LIST_DELSAFE(r, r2, old_ranges)
-    mpls_remove_range(r);
+    if (!r->removed)
+      mpls_remove_range(r);
 
   add_tail_list(&m->ranges, &old_ranges);
 
@@ -384,7 +383,7 @@ mpls_find_range_(list *l, const char *name)
   struct mpls_range *r;
 
   WALK_LIST(r, *l)
-    if (!strcmp(r->name, name))
+    if (!strcmp(r->name, name) && !r->removed)
       return r;
 
   return NULL;
@@ -415,7 +414,6 @@ mpls_free_range(struct mpls_range *r)
   ASSERT(r->use_count == 0);
   ASSERT(r->label_count == 0);
 
-  r->cf->range = NULL;
   rem_node(&r->n);
   mb_free(r);
 }
@@ -423,7 +421,11 @@ mpls_free_range(struct mpls_range *r)
 static void
 mpls_remove_range(struct mpls_range *r)
 {
+  ASSERT(!r->removed);
+
   r->removed = 1;
+  r->cf->range = NULL;
+  r->cf = NULL;
 
   if (!r->use_count)
     mpls_free_range(r);
@@ -515,6 +517,26 @@ mpls_free_label(struct mpls_domain *m, struct mpls_handle *h, uint n)
   h->label_count--;
 }
 
+void
+mpls_move_label(struct mpls_domain *m, struct mpls_handle *fh, struct mpls_handle *th, uint n)
+{
+  struct mpls_range *fr = fh->range;
+  struct mpls_range *tr = th->range;
+
+  ASSERT(lmap_test(&m->labels, n));
+  ASSERT((n >= fr->lo) && (n < fr->hi));
+  ASSERT((n >= tr->lo) && (n < tr->hi));
+
+  ASSERT(fr->label_count);
+  fr->label_count--;
+
+  ASSERT(fh->label_count);
+  fh->label_count--;
+
+  tr->label_count++;
+  th->label_count++;
+}
+
 
 /*
  *	MPLS channel
@@ -561,15 +583,31 @@ mpls_channel_cleanup(struct channel *C)
 }
 
 static int
-mpls_channel_reconfigure(struct channel *C, struct channel_config *CC, int *import_changed UNUSED, int *export_changed UNUSED)
+mpls_channel_reconfigure(struct channel *C, struct channel_config *CC, int *import_changed, int *export_changed UNUSED)
 {
   struct mpls_channel *c = (void *) C;
   struct mpls_channel_config *new = (void *) CC;
 
-  if ((new->domain->domain != c->domain) ||
-      (new->range->range != c->range) ||
-      (new->label_policy != c->label_policy))
+  if (new->domain->domain != c->domain)
     return 0;
+
+  if (new->range->range != c->range)
+  {
+    if (c->c.channel_state != CS_DOWN)
+      mpls_unlock_range(c->range);
+
+    c->range = new->range->range;
+    *import_changed = 1;
+
+    if (c->c.channel_state != CS_DOWN)
+      mpls_lock_range(c->range);
+  }
+
+  if (new->label_policy != c->label_policy)
+  {
+    c->label_policy = new->label_policy;
+    *import_changed = 1;
+  }
 
   return 1;
 }
@@ -639,6 +677,7 @@ HASH_DEFINE_REHASH_FN(RTA, struct mpls_fec)
 HASH_DEFINE_REHASH_FN(LABEL, struct mpls_fec)
 
 
+static void mpls_unlink_fec(struct mpls_fec_map *m, struct mpls_fec *fec);
 static void mpls_withdraw_fec(struct mpls_fec_map *m, struct mpls_fec *fec);
 static rta * mpls_get_key_rta(struct mpls_fec_map *m, const rta *src);
 
@@ -667,6 +706,67 @@ mpls_fec_map_new(pool *pp, struct channel *C, uint rts)
 }
 
 void
+mpls_fec_map_reconfigure(struct mpls_fec_map *m, struct channel *C)
+{
+  struct mpls_channel *c = (void *) C;
+
+  struct mpls_handle *old_d = NULL;
+  struct mpls_handle *old_s = NULL;
+
+  /* Reallocate dynamic handle */
+  if (m->handle->range != c->range)
+  {
+    old_d = m->handle;
+    m->handle = mpls_new_handle(m->domain, c->range);
+  }
+
+  /* Reallocate static handle */
+  if (m->static_handle && (m->static_handle->range != m->domain->cf->static_range->range))
+  {
+    old_s = m->static_handle;
+    m->static_handle = mpls_new_handle(m->domain, m->domain->cf->static_range->range);
+  }
+
+  /* Skip rest if there is no change */
+  if (!old_d && !old_s)
+    return;
+
+  /* Process existing FECs */
+  HASH_WALK(m->label_hash, next_l, fec)
+  {
+    /* Skip already dead FECs */
+    if (fec->policy == MPLS_POLICY_NONE)
+      continue;
+
+    /* Skip FECs with valid handle */
+    if ((fec->handle == m->handle) || (fec->handle == m->static_handle))
+      continue;
+
+    /* Try new handle for the FEC */
+    struct mpls_handle *new = (fec->policy != MPLS_POLICY_STATIC) ? m->handle : m->static_handle;
+    if ((fec->label >= new->range->lo) && (fec->label < new->range->hi))
+    {
+      mpls_move_label(m->domain, fec->handle, new, fec->label);
+      fec->handle = new;
+      continue;
+    }
+
+    /* Unlink the FEC while keep it in the label hash */
+    mpls_unlink_fec(m, fec);
+    fec->policy = MPLS_POLICY_NONE;
+  }
+  HASH_WALK_END;
+
+  /* Remove old unused handles */
+
+  if (old_d && !old_d->label_count)
+    mpls_free_handle(m->domain, old_d);
+
+  if (old_s && !old_s->label_count)
+    mpls_free_handle(m->domain, old_s);
+}
+
+void
 mpls_fec_map_free(struct mpls_fec_map *m)
 {
   /* Free stored rtas */
@@ -683,8 +783,10 @@ mpls_fec_map_free(struct mpls_fec_map *m)
   /* Free allocated labels */
   HASH_WALK(m->label_hash, next_l, fec)
   {
-    struct mpls_handle *h = (fec->policy != MPLS_POLICY_STATIC) ? m->handle : m->static_handle;
-    mpls_free_label(m->domain, h, fec->label);
+    mpls_free_label(m->domain, fec->handle, fec->label);
+
+    if (!fec->policy && !fec->handle->label_count)
+      mpls_free_handle(m->domain, fec->handle);
   }
   HASH_WALK_END;
 
@@ -720,11 +822,11 @@ mpls_get_fec_by_label(struct mpls_fec_map *m, u32 label)
 {
   struct mpls_fec *fec = HASH_FIND(m->label_hash, LABEL, label);
 
-  if (!m->static_handle)
-    m->static_handle = mpls_new_handle(m->domain, m->domain->cf->static_range->range);
-
   if (fec)
     return (fec->policy == MPLS_POLICY_STATIC) ? fec : NULL;
+
+  if (!m->static_handle)
+    m->static_handle = mpls_new_handle(m->domain, m->domain->cf->static_range->range);
 
   label = mpls_new_label(m->domain, m->static_handle, label);
 
@@ -735,6 +837,7 @@ mpls_get_fec_by_label(struct mpls_fec_map *m, u32 label)
 
   fec->label = label;
   fec->policy = MPLS_POLICY_STATIC;
+  fec->handle = m->static_handle;
 
   DBG("New FEC lab %u\n", fec->label);
 
@@ -768,6 +871,7 @@ mpls_get_fec_by_net(struct mpls_fec_map *m, const net_addr *net, u32 path_id)
 
   fec->label = label;
   fec->policy = MPLS_POLICY_PREFIX;
+  fec->handle = m->handle;
 
   DBG("New FEC net %u\n", fec->label);
 
@@ -809,6 +913,7 @@ mpls_get_fec_by_rta(struct mpls_fec_map *m, const rta *src, u32 class_id)
 
   fec->label = label;
   fec->policy = MPLS_POLICY_AGGREGATE;
+  fec->handle = m->handle;
 
   DBG("New FEC rta %u\n", fec->label);
 
@@ -835,6 +940,7 @@ mpls_get_fec_for_vrf(struct mpls_fec_map *m)
 
   fec->label = label;
   fec->policy = MPLS_POLICY_VRF;
+  fec->handle = m->handle;
   fec->iface = m->vrf_iface;
 
   DBG("New FEC vrf %u\n", fec->label);
@@ -845,21 +951,12 @@ mpls_get_fec_for_vrf(struct mpls_fec_map *m)
   return fec;
 }
 
-void
-mpls_free_fec(struct mpls_fec_map *m, struct mpls_fec *fec)
+static void
+mpls_unlink_fec(struct mpls_fec_map *m, struct mpls_fec *fec)
 {
-  if (fec->state != MPLS_FEC_DOWN)
-    mpls_withdraw_fec(m, fec);
-
-  DBG("Free FEC %u\n", fec->label);
-
-  struct mpls_handle *h = (fec->policy != MPLS_POLICY_STATIC) ? m->handle : m->static_handle;
-  mpls_free_label(m->domain, h, fec->label);
-
-  HASH_REMOVE2(m->label_hash, LABEL, m->pool, fec);
-
   switch (fec->policy)
   {
+  case MPLS_POLICY_NONE:
   case MPLS_POLICY_STATIC:
     break;
 
@@ -880,6 +977,24 @@ mpls_free_fec(struct mpls_fec_map *m, struct mpls_fec *fec)
   default:
     bug("Unknown fec type");
   }
+}
+
+void
+mpls_free_fec(struct mpls_fec_map *m, struct mpls_fec *fec)
+{
+  if (fec->state != MPLS_FEC_DOWN)
+    mpls_withdraw_fec(m, fec);
+
+  DBG("Free FEC %u\n", fec->label);
+
+  mpls_free_label(m->domain, fec->handle, fec->label);
+
+  if (!fec->policy && !fec->handle->label_count)
+      mpls_free_handle(m->domain, fec->handle);
+
+  HASH_REMOVE2(m->label_hash, LABEL, m->pool, fec);
+
+  mpls_unlink_fec(m, fec);
 
   sl_free(fec);
 }
