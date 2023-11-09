@@ -103,16 +103,37 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   {
     struct mpls_channel *mc = (void *) p->p.mpls_channel;
 
-    ea_list *ea = alloca(sizeof(ea_list) + sizeof(eattr));
-    *ea = (ea_list) { .flags = EALF_SORTED, .count = 1 };
+    ea_list *ea = alloca(sizeof(ea_list) + 2 * sizeof(eattr));
+    *ea = (ea_list) { .flags = EALF_SORTED };
     ea->next = a->eattrs;
     a->eattrs = ea;
 
-    ea->attrs[0] = (eattr) {
-      .id = EA_MPLS_POLICY,
-      .type = EAF_TYPE_INT,
-      .u.data = mc->label_policy,
-    };
+    if (r->mpls_label != (uint) -1)
+    {
+      ea->attrs[0] = (eattr) {
+	.id = EA_MPLS_LABEL,
+	.type = EAF_TYPE_INT,
+	.u.data = r->mpls_label,
+      };
+
+      ea->attrs[1] = (eattr) {
+	.id = EA_MPLS_POLICY,
+	.type = EAF_TYPE_INT,
+	.u.data = MPLS_POLICY_STATIC,
+      };
+
+      ea->count = 2;
+    }
+    else
+    {
+      ea->attrs[0] = (eattr) {
+	.id = EA_MPLS_POLICY,
+	.type = EAF_TYPE_INT,
+	.u.data = mc->label_policy,
+      };
+
+      ea->count = 1;
+    }
   }
 
   /* Already announced */
@@ -373,7 +394,7 @@ static inline int
 static_same_rte(struct static_route *or, struct static_route *nr)
 {
   /* Note that i_same() requires arguments in (new, old) order */
-  return static_same_dest(or, nr) && f_same(nr->cmds, or->cmds);
+  return (or->mpls_label == nr->mpls_label) && static_same_dest(or, nr) && f_same(nr->cmds, or->cmds);
 }
 
 static void
@@ -455,6 +476,7 @@ static_postconfig(struct proto_config *CF)
     cf_error("Channel not specified");
 
   struct channel_config *cc = proto_cf_main_channel(CF);
+  struct channel_config *mc = proto_cf_mpls_channel(CF);
 
   if (!cf->igp_table_ip4)
     cf->igp_table_ip4 = (cc->table->addr_type == NET_IP4) ?
@@ -465,8 +487,13 @@ static_postconfig(struct proto_config *CF)
       cc->table : cf->c.global->def_tables[NET_IP6];
 
   WALK_LIST(r, cf->routes)
+  {
     if (r->net && (r->net->type != CF->net_type))
       cf_error("Route %N incompatible with channel type", r->net);
+
+    if ((r->mpls_label != (uint) -1) && !mc)
+      cf_error("Route %N has MPLS label, but MPLS channel not specified", r->net);
+  }
 
   static_index_routes(cf);
 }
