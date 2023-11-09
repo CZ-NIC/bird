@@ -1076,22 +1076,23 @@ mpls_get_key_attrs(struct mpls_fec_map *m, ea_list *src)
 static void
 mpls_announce_fec(struct mpls_fec_map *m, struct mpls_fec *fec, ea_list *src)
 {
+  rte e = {
+    .src = m->channel->proto->main_source,
+  };
+
+  ea_set_attr_u32(&e.attrs, &ea_gen_source, 0, m->mpls_rts);
+
   /* Check existence of hostentry */
   const struct eattr *heea = ea_find_by_class(src, &ea_gen_hostentry);
   if (heea) {
     /* The same hostentry, but different dependent table */
     struct hostentry_adata *head = SKIP_BACK(struct hostentry_adata, ad, heea->u.ad);
     struct hostentry *he = head->he;
-    ea_set_hostentry(&src, m->channel->table, he->owner, he->addr, he->link,
+    ea_set_hostentry(&e.attrs, m->channel->table, he->owner, he->addr, he->link,
 	HOSTENTRY_LABEL_COUNT(head), head->labels);
   }
 
   net_addr_mpls n = NET_ADDR_MPLS(fec->label);
-
-  rte e = {
-    .src = m->channel->proto->main_source,
-    .attrs = src,
-  };
 
   fec->state = MPLS_FEC_CLEAN;
   rte_update(m->channel, (net_addr *) &n, &e, m->channel->proto->main_source);
