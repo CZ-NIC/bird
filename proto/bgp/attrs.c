@@ -204,6 +204,30 @@ bgp_encode_raw(struct bgp_write_state *s UNUSED, eattr *a, byte *buf, uint size)
 
 
 /*
+ *	PMSI tunnel handling
+ */
+
+adata *
+bgp_pmsi_new_ingress_replication(linpool *pool, ip_addr addr, u32 label)
+{
+  int v4 = ipa_is_ip4(addr);
+  uint dlen = 5 + (v4 ? sizeof(ip4_addr) : sizeof(ip6_addr));
+  adata *ad = lp_alloc_adata(pool, dlen);
+
+  ad->data[0] = 0;
+  ad->data[1] = BGP_PMSI_TYPE_INGRESS_REPLICATION;
+  put_u24(ad->data + 2, label);
+
+  if (v4)
+    put_ip4(ad->data + 5, ipa_to_ip4(addr));
+  else
+    put_ip6(ad->data + 5, ipa_to_ip6(addr));
+
+  return ad;
+}
+
+
+/*
  *	AIGP handling
  */
 
@@ -850,6 +874,64 @@ bgp_decode_as4_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byt
 
 
 static void
+bgp_decode_pmsi_tunnel(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
+{
+  if (len < 5)
+    WITHDRAW(BAD_LENGTH, "PMSI_TUNNEL", len);
+
+  uint dlen = len - 5;
+
+  switch (data[1])
+  {
+  case BGP_PMSI_TYPE_NO_INFO:
+    if (dlen != 0)
+      WITHDRAW(BAD_LENGTH, "PMSI_TUNNEL", len);
+    break;
+
+  case BGP_PMSI_TYPE_INGRESS_REPLICATION:
+    if ((dlen != sizeof(ip4_addr)) && (dlen != sizeof(ip6_addr)))
+      WITHDRAW(BAD_LENGTH, "PMSI_TUNNEL", len);
+    break;
+
+  default:
+    flags |= BAF_PARTIAL;
+  }
+
+  bgp_set_attr_data(to, s->pool, BA_PMSI_TUNNEL, flags, data, len);
+}
+
+static void
+bgp_format_pmsi_tunnel(const eattr *a, byte *buf, uint size)
+{
+  const adata *ad = a->u.ptr;
+  uint type = bgp_pmsi_get_type(ad);
+  uint label = bgp_pmsi_get_label(ad);
+
+  char mpls[16] = {};
+  if (label)
+    bsprintf(mpls, " mpls %u", label);
+
+  switch (type)
+  {
+  case BGP_PMSI_TYPE_NO_INFO:
+    bsnprintf(buf, size, "no-info%s", mpls);
+    break;
+
+  case BGP_PMSI_TYPE_INGRESS_REPLICATION:;
+    ip_addr a = bgp_pmsi_ir_get_endpoint(ad);
+    bsnprintf(buf, size, "ingress-replication %I%s", a, mpls);
+    break;
+
+  default:;
+    int n = bsnprintf(buf, size, "type %u%s ", type, mpls);
+    ADVANCE(buf, size, n);
+    bstrbintohex(ad->data + 5, ad->length - 5, buf, size, ':');
+    break;
+  }
+}
+
+
+static void
 bgp_export_aigp(struct bgp_export_state *s, eattr *a)
 {
   if (!s->channel->cf->aigp)
@@ -1111,6 +1193,14 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
     .encode = bgp_encode_raw,
     .decode = bgp_decode_as4_aggregator,
     .format = bgp_format_aggregator,
+  },
+  [BA_PMSI_TUNNEL] = {
+    .name = "pmsi_tunnel",
+    .type = EAF_TYPE_OPAQUE,
+    .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
+    .encode = bgp_encode_raw,
+    .decode = bgp_decode_pmsi_tunnel,
+    .format = bgp_format_pmsi_tunnel,
   },
   [BA_AIGP] = {
     .name = "aigp",

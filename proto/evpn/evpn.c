@@ -56,6 +56,7 @@
 
 #define EA_BGP_NEXT_HOP		EA_CODE(PROTOCOL_BGP, BA_NEXT_HOP)
 #define EA_BGP_EXT_COMMUNITY	EA_CODE(PROTOCOL_BGP, BA_EXT_COMMUNITY)
+#define EA_BGP_PMSI_TUNNEL	EA_CODE(PROTOCOL_BGP, BA_PMSI_TUNNEL)
 #define EA_BGP_MPLS_LABEL_STACK	EA_CODE(PROTOCOL_BGP, BA_MPLS_LABEL_STACK)
 
 static inline const struct adata * ea_get_adata(ea_list *e, uint id)
@@ -194,6 +195,9 @@ evpn_announce_imet(struct evpn_proto *p, int new)
     struct adata *ad = evpn_export_targets(p, &null_adata);
     ea_set_attr_ptr(&a->eattrs, tmp_linpool, EA_BGP_EXT_COMMUNITY, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_EC_SET, ad);
 
+    ad = bgp_pmsi_new_ingress_replication(tmp_linpool, p->router_addr, p->vni);
+    ea_set_attr_ptr(&a->eattrs, tmp_linpool, EA_BGP_PMSI_TUNNEL, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_OPAQUE, ad);
+
     rte *e = rte_get_temp(a, p->p.main_source);
     rte_update2(c, n, e, p->p.main_source);
   }
@@ -259,7 +263,13 @@ evpn_receive_imet(struct evpn_proto *p, const net_addr_evpn_imet *n0, rte *new)
 
   if (new && rte_resolvable(new))
   {
-    eattr *nh = ea_find(new->attrs->eattrs, EA_BGP_NEXT_HOP);
+    eattr *pt = ea_find(new->attrs->eattrs, EA_BGP_PMSI_TUNNEL);
+    if (!pt)
+      BAD("Missing PMSI_TUNNEL attribute in %N", n0);
+
+    uint pmsi_type = bgp_pmsi_get_type(pt->u.ptr);
+    if (pmsi_type != BGP_PMSI_TYPE_INGRESS_REPLICATION)
+      BAD("Unsupported PMSI_TUNNEL type %u in %N", pmsi_type, n0);
 
     rta *a = alloca(RTA_MAX_SIZE);
     *a = (rta) {
@@ -267,15 +277,19 @@ evpn_receive_imet(struct evpn_proto *p, const net_addr_evpn_imet *n0, rte *new)
       .scope = SCOPE_UNIVERSE,
       .dest = RTD_UNICAST,
       .pref = c->preference,
-      .nh.gw = nh ? *((ip_addr *) nh->u.ptr->data) : IPA_NONE,
+      .nh.gw = bgp_pmsi_ir_get_endpoint(pt->u.ptr),
       .nh.iface = p->tunnel_dev,
     };
+
+    a->nh.labels = 1;
+    a->nh.label[0] = bgp_pmsi_get_label(pt->u.ptr);
 
     rte *e = rte_get_temp(a, s);
     rte_update2(c, n, e, s);
   }
   else
   {
+  withdraw:
     rte_update2(c, n, NULL, s);
   }
 }
