@@ -146,6 +146,9 @@ CFLAGS="$CFLAGS -fno-strict-aliasing -fno-strict-overflow"
 if test "$bird_cflags_default" = yes ; then
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_pointer_sign], [-Wno-pointer-sign], [-Wall])
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_missing_init], [-Wno-missing-field-initializers], [-Wall -Wextra])
+  BIRD_CHECK_GCC_OPTION([bird_cv_c_option_fms_extensions], [-fms-extensions], [-Wall -Wextra])
+  BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_microsoft_anon_tag], [-Wno-microsoft-anon-tag], [-Wall -Wextra])
+
 
   if test "$enable_debug" = no; then
     BIRD_CHECK_LTO
@@ -161,6 +164,8 @@ if test "$bird_cflags_default" = yes ; then
   CFLAGS="$CFLAGS -Wall -Wextra -Wstrict-prototypes -Wno-parentheses"
   BIRD_ADD_GCC_OPTION([bird_cv_c_option_wno_pointer_sign], [-Wno-pointer-sign])
   BIRD_ADD_GCC_OPTION([bird_cv_c_option_wno_missing_init], [-Wno-missing-field-initializers])
+  BIRD_ADD_GCC_OPTION([bird_cv_c_option_fms_extensions], [-fms-extensions])
+  BIRD_ADD_GCC_OPTION([bird_cv_c_option_wno_microsoft_anon_tag], [-Wno-microsoft-anon-tag])
 fi
 
 
