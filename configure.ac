@@ -147,6 +147,7 @@ if test "$bird_cflags_default" = yes ; then
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_pointer_sign], [-Wno-pointer-sign], [-Wall])
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_missing_init], [-Wno-missing-field-initializers], [-Wall -Wextra])
 
+
   if test "$enable_debug" = no; then
     BIRD_CHECK_LTO
   fi
