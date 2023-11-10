@@ -108,14 +108,14 @@ extern DOMAIN(the_bird) the_bird_domain;
 #define LOBJ_LOCK_SIMPLE(_obj, _level) \
   ({ LOCK_DOMAIN(_level, (_obj)->lock); &(_obj)->priv; })
 
-#define LOBJ_UNLOCK(_obj, _level) \
-  UNLOCK_DOMAIN(_level, (_obj)->lock)
+#define LOBJ_UNLOCK_SIMPLE(_obj, _level) \
+  UNLOCK_DOMAIN_SIMPLE(_level, (_obj)->lock)
 
 /*
  *  These macros can be used to define specific macros for given class.
  *
  *  #define FOO_LOCK_SIMPLE(foo)	LOBJ_LOCK_SIMPLE(foo, bar)
- *  #define FOO_UNLOCK(foo)		LOBJ_UNLOCK(foo, bar)
+ *  #define FOO_UNLOCK_SIMPLE(foo)	LOBJ_UNLOCK_SIMPLE(foo, bar)
  *
  *  Then these can be used like this:
  *
@@ -123,10 +123,10 @@ extern DOMAIN(the_bird) the_bird_domain;
  *  {
  *    // Unlocked context
  *    ...
- *    struct foo_private *fp = FOO_LOCK(f);
+ *    struct foo_private *fp = FOO_LOCK_SIMPLE(f);
  *    // Locked context
  *    ...
- *    FOO_UNLOCK(f);
+ *    FOO_UNLOCK_SIMPLE(f);
  *    // Unlocked context
  *    ...
  *  }
@@ -147,13 +147,14 @@ extern DOMAIN(the_bird) the_bird_domain;
 
 #define LOBJ_UNLOCK_CLEANUP(_stem, _level) \
   static inline void LOBJ_UNLOCK_CLEANUP_NAME(_stem)(struct _stem##_private **obj) { \
-    if (!*obj || ((*obj)->locked_at != obj)) return; \
+    if (!*obj) return; \
+    ASSERT_DIE((*obj)->locked_at == obj); \
     (*obj)->locked_at = NULL; \
     UNLOCK_DOMAIN(_level, (*obj)->lock); \
   }
 
 #define LOBJ_LOCK(_obj, _pobj, _stem, _level) \
-  CLEANUP(LOBJ_UNLOCK_CLEANUP_NAME(_stem)) struct _stem##_private *_pobj = LOBJ_LOCK_SIMPLE(_obj, _level)
+  CLEANUP(LOBJ_UNLOCK_CLEANUP_NAME(_stem)) struct _stem##_private *_pobj = LOBJ_LOCK_SIMPLE(_obj, _level); _pobj->locked_at = &_pobj;
 
 /*
  *  And now the usage of these macros. You first need to declare the auxiliary
@@ -185,10 +186,78 @@ extern DOMAIN(the_bird) the_bird_domain;
  *    ...
  *  }
  *
+ *  There is no explicit unlock statement. To unlock, simply leave the block
+ *  with locked context.
+ *
+ *  This may be made even nicer to use by employing a for-cycle.
  */
 
+#define LOBJ_LOCKED(_obj, _pobj, _stem, _level) \
+  for (CLEANUP(LOBJ_UNLOCK_CLEANUP_NAME(_stem)) struct _stem##_private *_pobj = LOBJ_LOCK_SIMPLE(_obj, _level); \
+      _pobj ? (_pobj->locked_at = &_pobj) : NULL; \
+      LOBJ_UNLOCK_CLEANUP_NAME(_stem)(&_pobj), _pobj = NULL)
 
+/*
+ *  This for-cycle employs heavy magic to hide as much of the boilerplate
+ *  from the user as possibly needed. Here is how it works.
+ *
+ *  First, the for-1 clause is executed, setting up _pobj, to the private
+ *  object pointer. It has a cleanup hook set.
+ *
+ *  Then, the for-2 clause is checked. As _pobj is non-NULL, _pobj->locked_at
+ *  is initialized to the _pobj address to ensure that the cleanup hook unlocks
+ *  the right object.
+ *
+ *  Now the user block is executed. If it ends by break or return, the cleanup
+ *  hook fires for _pobj, triggering object unlock.
+ *
+ *  If the user block executed completely, the for-3 clause is run, executing
+ *  the cleanup hook directly and then deactivating it by setting _pobj to NULL.
+ *
+ *  Finally, the for-2 clause is checked again but now with _pobj being NULL,
+ *  causing the loop to end. As the object has already been unlocked, nothing
+ *  happens after leaving the context.
+ *
+ *  #define FOO_LOCKED(foo, fpp)	LOBJ_LOCKED(foo, fpp, foo, bar)
+ *
+ *  Then the previous code can be modified like this:
+ *
+ *  void foo_frobnicate_safer(foo *f)
+ *  {
+ *    // Unlocked context
+ *    ...
+ *    FOO_LOCKED(foo, fpp)
+ *    {
+ *	// Locked context, fpp is valid here
+ *
+ *	if (something) return;	// This implicitly unlocks
+ *	if (whatever) break;	// This unlocks too
+ *
+ *      // Finishing context with no unlock at all
+ *    }
+ *
+ *    // Unlocked context
+ *    ...
+ *
+ *    // Locking once again without an explicit block
+ *    FOO_LOCKED(foo, fpp)
+ *	do_something(fpp);
+ *
+ *    // Here is fpp invalid and the object is back unlocked.
+ *    ...
+ *  }
+ *
+ *
+ *  For many reasons, a lock-check macro is handy.
+ *
+ *  #define FOO_IS_LOCKED(foo)	LOBJ_IS_LOCKED(foo, bar)
+ */
 
+#define LOBJ_IS_LOCKED(_obj, _level)	DOMAIN_IS_LOCKED(_level, (_obj)->lock)
+
+/*
+ *  An example implementation is available in lib/locking_test.c
+ */
 
 
 #endif
