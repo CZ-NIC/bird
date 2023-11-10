@@ -72,4 +72,123 @@ extern DOMAIN(the_bird) the_bird_domain;
 
 #define ASSERT_THE_BIRD_LOCKED	({ if (!the_bird_locked()) bug("The BIRD lock must be locked here: %s:%d", __FILE__, __LINE__); })
 
+/**
+ *  Objects bound with domains
+ *
+ *  First, we need some object to have its locked and unlocked part.
+ *  This is accomplished typically by the following pattern:
+ *
+ *    struct foo_public {
+ *      ...			// Public fields
+ *      DOMAIN(bar) lock;	// The assigned domain
+ *    };
+ *
+ *    struct foo_private {
+ *      struct foo_public;	// Importing public fields
+ *      struct foo_private **locked_at;	// Auxiliary field for locking routines
+ *      ...			// Private fields
+ *    };
+ *
+ *    typedef union foo {
+ *      struct foo_public;
+ *      struct foo_private priv;
+ *    } foo;
+ *
+ *  All persistently stored object pointers MUST point to the public parts.
+ *  If accessing the locked object from embedded objects, great care must
+ *  be applied to always SKIP_BACK to the public object version, not the
+ *  private one.
+ *
+ *  To access the private object parts, either the private object pointer
+ *  is explicitly given to us, therefore assuming somewhere else the domain
+ *  has been locked, or we have to lock the domain ourselves. To do that,
+ *  there are some handy macros.
+ */
+
+#define LOBJ_LOCK_SIMPLE(_obj, _level) \
+  ({ LOCK_DOMAIN(_level, (_obj)->lock); &(_obj)->priv; })
+
+#define LOBJ_UNLOCK(_obj, _level) \
+  UNLOCK_DOMAIN(_level, (_obj)->lock)
+
+/*
+ *  These macros can be used to define specific macros for given class.
+ *
+ *  #define FOO_LOCK_SIMPLE(foo)	LOBJ_LOCK_SIMPLE(foo, bar)
+ *  #define FOO_UNLOCK(foo)		LOBJ_UNLOCK(foo, bar)
+ *
+ *  Then these can be used like this:
+ *
+ *  void foo_frobnicate(foo *f)
+ *  {
+ *    // Unlocked context
+ *    ...
+ *    struct foo_private *fp = FOO_LOCK(f);
+ *    // Locked context
+ *    ...
+ *    FOO_UNLOCK(f);
+ *    // Unlocked context
+ *    ...
+ *  }
+ *
+ *  These simple calls have two major drawbacks. First, if you return
+ *  from locked context, you don't unlock, which may lock you dead.
+ *  And second, the foo_private pointer is still syntactically valid
+ *  even after unlocking.
+ *
+ *  To fight this, we need more magic and the switch should stay in that
+ *  position.
+ *
+ *  First, we need an auxiliary _function_ for unlocking. This function
+ *  is intended to be called in a local variable cleanup context.
+ */
+
+#define LOBJ_UNLOCK_CLEANUP_NAME(_stem) _lobj__##_stem##_unlock_cleanup
+
+#define LOBJ_UNLOCK_CLEANUP(_stem, _level) \
+  static inline void LOBJ_UNLOCK_CLEANUP_NAME(_stem)(struct _stem##_private **obj) { \
+    if (!*obj || ((*obj)->locked_at != obj)) return; \
+    (*obj)->locked_at = NULL; \
+    UNLOCK_DOMAIN(_level, (*obj)->lock); \
+  }
+
+#define LOBJ_LOCK(_obj, _pobj, _stem, _level) \
+  CLEANUP(LOBJ_UNLOCK_CLEANUP_NAME(_stem)) struct _stem##_private *_pobj = LOBJ_LOCK_SIMPLE(_obj, _level)
+
+/*
+ *  And now the usage of these macros. You first need to declare the auxiliary
+ *  cleanup function.
+ *
+ *  LOBJ_UNLOCK_CLEANUP(foo, bar);
+ *
+ *  And then declare the lock-local macro:
+ *
+ *  #define FOO_LOCK(foo, fpp)	LOBJ_LOCK(foo, fpp, foo, bar)
+ *
+ *  This construction then allows you to lock much more safely:
+ *
+ *  void foo_frobnicate_safer(foo *f)
+ *  {
+ *    // Unlocked context
+ *    ...
+ *    do {
+ *      FOO_LOCK(foo, fpp);
+ *	// Locked context, fpp is valid here
+ *
+ *	if (something) return;	// This implicitly unlocks
+ *	if (whatever) break;	// This unlocks too
+ *
+ *      // Finishing context with no unlock at all
+ *    } while (0);
+ *
+ *    // Here is fpp invalid and the object is back unlocked.
+ *    ...
+ *  }
+ *
+ */
+
+
+
+
+
 #endif
