@@ -14,8 +14,8 @@ COMMON_FLAGS= --prefix=/usr --sysconfdir=/etc/bird --mandir=\$${prefix}/share/ma
 	--docdir=\$${prefix}/share/bird2 \
 	--enable-client
 
-CFLAGS += -g -O2 -fno-strict-aliasing -fno-strict-overflow -fPIC
-LDFLAGS += -g -O2 -fno-strict-aliasing -fno-strict-overflow -fPIC -Wl,-z,defs -Wl,--as-needed
+CFLAGS += -g -O2 -fno-strict-aliasing -fno-strict-overflow -fms-extensions -fPIC
+LDFLAGS += -g -O2 -fno-strict-aliasing -fno-strict-overflow -fms-extensions -fPIC -Wl,-z,defs -Wl,--as-needed
 
 %:
 	dh $@
