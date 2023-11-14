@@ -1277,17 +1277,22 @@ rte_export(struct rt_table_export_hook *th, struct rt_pending_export *rpe)
     hook->req->export_one(hook->req, n, rpe);
   else if (hook->req->export_bulk)
   {
-    net *net = SKIP_BACK(struct network, n.addr, (net_addr (*)[0]) n);
-    RT_LOCK(tab);
-    struct rt_pending_export *last = net->last;
-    uint count = rte_feed_count(net);
+    struct rt_pending_export *last = NULL;
+    uint count = 0;
     const rte **feed = NULL;
-    if (count)
+
+    net *net = SKIP_BACK(struct network, n.addr, (net_addr (*)[0]) n);
+
+    RT_LOCKED(tab, tp)
     {
-      feed = alloca(count * sizeof(rte *));
-      rte_feed_obtain(net, feed, count);
+      last = net->last;
+      if (count = rte_feed_count(net))
+      {
+	feed = alloca(count * sizeof(rte *));
+	rte_feed_obtain(net, feed, count);
+      }
     }
-    RT_UNLOCK(tab);
+
     hook->req->export_bulk(hook->req, n, rpe, last, feed, count);
   }
   else
@@ -1568,19 +1573,16 @@ rt_export_hook(void *_data)
   ASSERT_DIE(atomic_load_explicit(&c->h.export_state, memory_order_relaxed) == TES_READY);
 
   if (!c->rpe_next)
-  {
-    RT_LOCK(tab);
-    c->rpe_next = rt_next_export(c, c->table);
-
-    if (!c->rpe_next)
+    RT_LOCKED(tab, tp)
     {
-      rt_export_used(c->table, c->h.req->name, "done exporting");
-      RT_UNLOCK(tab);
-      return;
-    }
+      c->rpe_next = rt_next_export(c, c->table);
 
-    RT_UNLOCK(tab);
-  }
+      if (!c->rpe_next)
+      {
+	rt_export_used(c->table, c->h.req->name, "done exporting");
+	return;
+      }
+    }
 
   int used = 0;
   int no_next = 0;
@@ -2021,7 +2023,7 @@ rte_import(struct rt_import_request *req, const net_addr *n, rte *new, struct rt
       req->hook->stats.withdraws_ignored++;
       if (req->trace_routes & D_ROUTES)
 	log(L_TRACE "%s > ignored %N withdraw", req->name, n);
-      RT_RETURN(tab);
+      return;
     }
 
     /* Recalculate the best route */
@@ -2363,8 +2365,12 @@ rt_table_export_stop(struct rt_export_hook *hh)
   struct rt_table_export_hook *hook = SKIP_BACK(struct rt_table_export_hook, h, hh);
   int ok = 0;
 
-  RT_LOCKED_IF_NEEDED(SKIP_BACK(rtable, priv.exporter, hook->table), tab)
+  rtable *t = SKIP_BACK(rtable, priv.exporter, hook->table);
+  if (RT_IS_LOCKED(t))
     ok = rt_table_export_stop_locked(hh);
+  else
+    RT_LOCKED(t, tab)
+      ok = rt_table_export_stop_locked(hh);
 
   if (ok)
     rt_stop_export_common(hh);
@@ -2713,13 +2719,14 @@ rt_flowspec_export_one(struct rt_export_request *req, const net_addr *net, struc
   struct rt_flowspec_link *ln = SKIP_BACK(struct rt_flowspec_link, req, req);
   rtable *dst_pub = ln->dst;
   ASSUME(rt_is_flow(dst_pub));
-  struct rtable_private *dst = RT_LOCK(dst_pub);
+
+  RT_LOCKED(dst_pub, dst)
+  {
 
   /* No need to inspect it further if recalculation is already scheduled */
   if ((dst->nhu_state == NHU_SCHEDULED) || (dst->nhu_state == NHU_DIRTY)
       || !trie_match_net(dst->flowspec_trie, net))
   {
-    RT_UNLOCK(dst_pub);
     rpe_mark_seen_all(req->hook, first, NULL, NULL);
     return;
   }
@@ -2738,7 +2745,7 @@ rt_flowspec_export_one(struct rt_export_request *req, const net_addr *net, struc
   if (o != RTE_VALID_OR_NULL(new_best))
     rt_schedule_nhu(dst);
 
-  RT_UNLOCK(dst_pub);
+  }
 }
 
 static void
@@ -3758,10 +3765,10 @@ rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, ea_list *
 
       const rte *rc = &nc->routes->rte;
       if (rt_get_source_attr(rc) != RTS_BGP)
-	RT_RETURN(tip, FLOWSPEC_INVALID);
+	return FLOWSPEC_INVALID;
 
       if (rta_get_first_asn(rc->attrs) != asn_b)
-	RT_RETURN(tip, FLOWSPEC_INVALID);
+	return FLOWSPEC_INVALID;
     }
     TRIE_WALK_END;
   }
@@ -3862,18 +3869,21 @@ rt_next_hop_update_net(struct rtable_private *tab, net *n)
    * is being computed. Statistically, this should almost never happen. In such
    * case, we just drop all the computed changes and do it once again.
    * */
-  RT_UNLOCK(tab);
 
   uint mod = 0;
+  RT_UNLOCKED_TEMPORARILY(tpub, tab)
+  {
+    /* DO NOT RETURN OR BREAK OUT OF THIS BLOCK */
+
   if (is_flow)
     for (uint i = 0; i < pos; i++)
-      mod += rt_flowspec_update_rte(RT_PUB(tab), &updates[i].old->rte, &updates[i].new);
+      mod += rt_flowspec_update_rte(tpub, &updates[i].old->rte, &updates[i].new);
 
   else
     for (uint i = 0; i < pos; i++)
       mod += rt_next_hop_update_rte(&updates[i].old->rte, &updates[i].new);
 
-  RT_LOCK(RT_PUB(tab));
+  }
 
   if (!mod)
     return 0;
@@ -4155,11 +4165,11 @@ rt_delete(void *tab_)
   /* We assume that nobody holds the table reference now as use_count is zero.
    * Anyway the last holder may still hold the lock. Therefore we lock and
    * unlock it the last time to be sure that nobody is there. */
-  struct rtable_private *tab = RT_LOCK((rtable *) tab_);
+  struct rtable_private *tab = RT_LOCK_SIMPLE((rtable *) tab_);
   struct config *conf = tab->deleted;
   DOMAIN(rtable) dom = tab->lock;
 
-  RT_UNLOCK(RT_PUB(tab));
+  RT_UNLOCK_SIMPLE(RT_PUB(tab));
 
   /* Everything is freed by freeing the loop */
   birdloop_free(tab->loop);
@@ -4259,21 +4269,14 @@ rt_commit(struct config *new, struct config *old)
   if (old)
     {
       WALK_LIST(o, old->tables)
+	RT_LOCKED(o->table, tab)
 	{
-	  struct rtable_private *tab = RT_LOCK(o->table);
-
 	  if (tab->deleted)
-	  {
-	    RT_UNLOCK(tab);
 	    continue;
-	  }
 
 	  r = rt_find_table_config(new, o->name);
 	  if (r && !new->shutdown && rt_reconfigure(tab, r, o))
-	  {
-	    RT_UNLOCK(tab);
 	    continue;
-	  }
 
 	  DBG("\t%s: deleted\n", o->name);
 	  tab->deleted = old;
@@ -4287,7 +4290,6 @@ rt_commit(struct config *new, struct config *old)
 
 	  /* Force one more loop run */
 	  birdloop_flag(tab->loop, RTF_DELETE);
-	  RT_UNLOCK(tab);
 	}
     }
 
@@ -4416,6 +4418,8 @@ rt_feed_by_fib(void *data)
   struct fib_iterator *fit = &c->feed_fit;
   rt_feed_block block = {};
 
+  _Bool done = 1;
+
   ASSERT(atomic_load_explicit(&c->h.export_state, memory_order_relaxed) == TES_FEEDING);
 
   RT_LOCKED(RT_PUB(SKIP_BACK(struct rtable_private, exporter, c->table)), tab)
@@ -4428,10 +4432,8 @@ rt_feed_by_fib(void *data)
 	if (!rt_prepare_feed(c, n, &block))
 	{
 	  FIB_ITERATE_PUT(fit);
-	  RT_UNLOCK(tab);
-	  rt_process_feed(c, &block);
-	  rt_send_export_event(&c->h);
-	  return;
+	  done = 0;
+	  break;
 	}
       }
       else
@@ -4441,7 +4443,11 @@ rt_feed_by_fib(void *data)
   }
 
   rt_process_feed(c, &block);
-  rt_feed_done(&c->h);
+
+  if (done)
+    rt_feed_done(&c->h);
+  else
+    rt_send_export_event(&c->h);
 }
 
 static void
@@ -4467,12 +4473,9 @@ rt_feed_by_trie(void *data)
       continue;
 
     if (!rt_prepare_feed(c, n, &block))
-    {
-      RT_UNLOCK(tab);
-      rt_process_feed(c, &block);
-      rt_send_export_event(&c->h);
-      return;
-    }
+      return
+	rt_process_feed(c, &block),
+	rt_send_export_event(&c->h);
   }
   while (trie_walk_next(ws, &c->walk_last));
 
@@ -4876,12 +4879,12 @@ rt_update_hostcache(void *data)
 
   /* Shutdown shortcut */
   if (!hc->req.hook)
-    RT_RETURN(tab);
+    return;
 
   if (rt_cork_check(&hc->update))
   {
     rt_trace(tab, D_STATES, "Hostcache update corked");
-    RT_RETURN(tab);
+    return;
   }
 
   /* Destination schedule map */

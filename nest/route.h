@@ -101,20 +101,22 @@ extern uint rtable_max_id;
 DEFINE_DOMAIN(rtable);
 
 /* The public part of rtable structure */
-#define RTABLE_PUBLIC \
-    resource r;											\
-    node n;				/* Node in list of all tables */			\
-    char *name;				/* Name of this table */				\
-    uint addr_type;			/* Type of address data stored in table (NET_*) */	\
-    uint id;				/* Integer table ID for fast lookup */			\
-    DOMAIN(rtable) lock;		/* Lock to take to access the private parts */		\
-    struct rtable_config *config;	/* Configuration of this table */			\
-    struct birdloop *loop;		/* Service thread */					\
+struct rtable_public {
+  resource r;
+  node n;				/* Node in list of all tables */
+  char *name;				/* Name of this table */
+  uint addr_type;			/* Type of address data stored in table (NET_*) */
+  uint id;				/* Integer table ID for fast lookup */
+  DOMAIN(rtable) lock;			/* Lock to take to access the private parts */
+  struct rtable_config *config;		/* Configuration of this table */
+  struct birdloop *loop;		/* Service thread */
+};
 
 /* The complete rtable structure */
 struct rtable_private {
   /* Once more the public part */
-  RTABLE_PUBLIC;
+  struct rtable_public;
+  struct rtable_private **locked_at;
 
   /* Here the private items not to be accessed without locking */
   pool *rp;				/* Resource pool to allocate everything from, including itself */
@@ -166,28 +168,22 @@ struct rtable_private {
 
 /* The final union private-public rtable structure */
 typedef union rtable {
-  struct {
-    RTABLE_PUBLIC;
-  };
+  struct rtable_public;
   struct rtable_private priv;
 } rtable;
 
-#define RT_IS_LOCKED(tab)	DOMAIN_IS_LOCKED(rtable, (tab)->lock)
+/* Define the lock cleanup function */
+LOBJ_UNLOCK_CLEANUP(rtable, rtable);
 
-#define RT_LOCK(tab)	({ LOCK_DOMAIN(rtable, (tab)->lock); &(tab)->priv; })
-#define RT_UNLOCK(tab)	UNLOCK_DOMAIN(rtable, (tab)->lock)
-#define RT_PRIV(tab)	({ ASSERT_DIE(RT_IS_LOCKED((tab))); &(tab)->priv; })
+#define RT_IS_LOCKED(tab)	LOBJ_IS_LOCKED((tab), rtable)
+#define RT_LOCKED(tab, tp)	LOBJ_LOCKED((tab), tp, rtable, rtable)
+
+#define RT_LOCK_SIMPLE(tab)	LOBJ_LOCK_SIMPLE((tab), rtable)
+#define RT_UNLOCK_SIMPLE(tab)	LOBJ_UNLOCK_SIMPLE((tab), rtable)
+
+#define RT_UNLOCKED_TEMPORARILY(tab, tp)	LOBJ_UNLOCKED_TEMPORARILY((tab), tp, rtable, rtable)
+
 #define RT_PUB(tab)	SKIP_BACK(rtable, priv, tab)
-
-#define RT_LOCKED(tpub, tpriv) for (struct rtable_private *tpriv = RT_LOCK(tpub); tpriv; RT_UNLOCK(tpriv), (tpriv = NULL))
-#define RT_LOCKED_IF_NEEDED(_tpub, _tpriv) for ( \
-    struct rtable_private *_al = RT_IS_LOCKED(_tpub) ? &(_tpub)->priv : NULL, *_tpriv = _al ?: RT_LOCK(_tpub); \
-    _tpriv; \
-    _al ?: RT_UNLOCK(_tpriv), (_tpriv = NULL))
-
-#define RT_RETURN(tpriv, ...) do { RT_UNLOCK(tpriv); return __VA_ARGS__; } while (0)
-
-#define RT_PRIV_SAME(tpriv, tpub)	(&(tpub)->priv == (tpriv))
 
 /* Flags for birdloop_flag() */
 #define RTF_CLEANUP	1
