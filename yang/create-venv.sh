@@ -1,2 +1,2 @@
 python3 -m venv venv
-pip3 install pyang cbor
+pip3 install yangson cbor

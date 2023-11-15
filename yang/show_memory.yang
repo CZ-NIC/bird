@@ -1,6 +1,6 @@
 module show_memory {
 
-  namespace ".";
+  namespace "https://bird.nic.cz/yang/v2.15/cli-debug";
   
   prefix "memory";
 
