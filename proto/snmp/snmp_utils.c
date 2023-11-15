@@ -168,7 +168,7 @@ snmp_varbind_header_size(struct agentx_varbind *vb)
 }
 
 uint
-snmp_varbind_size(struct agentx_varbind *vb, int byte_ord)
+snmp_varbind_size(struct agentx_varbind *vb)
 {
   uint hdr_size = snmp_varbind_header_size(vb);
   int s = agentx_type_size(vb->type);
@@ -185,7 +185,7 @@ snmp_varbind_size(struct agentx_varbind *vb, int byte_ord)
    * Load length of octet string
    * (AGENTX_OCTET_STRING, AGENTX_IP_ADDRESS, AGENTX_OPAQUE)
    */
-  return hdr_size + snmp_str_size_from_len(LOAD_PTR(data, byte_ord));
+  return hdr_size + snmp_str_size_from_len(LOAD_PTR(data));
 }
 
 /* test if the varbind has valid type */
@@ -450,7 +450,7 @@ snmp_register_create(struct snmp_proto *p, u8 mib_class)
   r->n.prev = r->n.next = NULL;
 
   r->session_id = p->session_id;
-  /* will be incremented by SNMP_SESSION() macro during packet assembly */
+  /* will be incremented by snmp_session() macro during packet assembly */
   r->transaction_id = p->transaction_id;
   r->packet_id = p->packet_id + 1;
 

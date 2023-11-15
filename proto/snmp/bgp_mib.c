@@ -199,8 +199,7 @@ void
 snmp_bgp_reg_ok(struct snmp_proto *p, struct agentx_response *r, struct oid *oid)
 {
   const struct oid *in_buf = ((void *) r) + sizeof(r);
-  int byte_ord = r->h.flags & AGENTX_NETWORK_BYTE_ORDER;
-  struct oid *dup = snmp_prefixize(p, in_buf, byte_ord);
+  struct oid *dup = snmp_prefixize(p, in_buf);
 
   ASSUME(snmp_bgp_state(oid) == snmp_bgp_state(dup));
   mb_free(dup);
@@ -1151,7 +1150,7 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
 
 static byte *
 bgp_fill_static(struct snmp_proto *p, struct agentx_varbind *vb, byte *pkt, uint size
-UNUSED, uint contid UNUSED, int byte_ord UNUSED, u8 state)
+UNUSED, uint contid UNUSED, u8 state)
 {
   ASSUME((void *) pkt == (void *) vb);
 
@@ -1205,7 +1204,7 @@ snmp_bgp_fill(struct snmp_proto *p, struct agentx_varbind *vb,
   byte *pkt;
   if (is_static(state))
   {
-    pkt = bgp_fill_static(p, vb, c->buffer, c->size, 0, c->byte_ord, state);
+    pkt = bgp_fill_static(p, vb, c->buffer, c->size, 0, state);
     ADVANCE(c->buffer, c->size, pkt - c->buffer);
     return;
   }

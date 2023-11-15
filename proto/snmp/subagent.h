@@ -69,66 +69,83 @@ enum snmp_search_res {
 #define SNMP_REGISTER_TREE 0
 #define SNMP_REGISTER_INSTANCE 1
 
+enum agentx_flags {
+  AGENTX_FLAG_BLANK		    = 0x00,
+  AGENTX_FLAG_INSTANCE_REGISTRATION = 0x01,
+  AGENTX_FLAG_NEW_INDEX		    = 0x02,
+  AGENTX_FLAG_ANY_INDEX		    = 0x04,
+  AGENTX_NON_DEFAULT_CONTEXT	    = 0x08,
+  AGENTX_NETWORK_BYTE_ORDER	    = 0x10,
+} PACKED;
+
+#define AGENTX_FLAGS_MASK (AGENTX_FLAG_INSTANCE_REGISTRATION		      \
+  | AGENTX_FLAG_NEW_INDEX						      \
+  | AGENTX_FLAG_ANY_INDEX						      \
+  | AGENTX_NON_DEFAULT_CONTEXT						      \
+  | AGENTX_NETWORK_BYTE_ORDER)
+
+// TODO - make me compile time option
 #define SNMP_NATIVE
+
+#if !(defined(SNMP_NATIVE) || defined(SNMP_NETWORK_BYTE_ORDER))
+# error "SNMP: currently support only native byte order or network byte order."
+#endif
+
+#if defined(SNMP_NATIVE) && defined(SNMP_NETWORK_BYTE_ORDER) && !defined(CPU_BIG_ENDIAN)
+# error "SNMP: couldn't use both native byte order and network byte order " \
+  "(big endian) on little endian machine."
+#endif
+
+#if (defined(SNMP_NATIVE) && defined(CPU_BIG_ENDIAN)) || defined(SNMP_NETWORK_BYTE_ORDER)
+#define SNMP_ORDER AGENTX_NETWORK_BYTE_ORDER
+#else
+#define SNMP_ORDER 0
+#endif
 
 #ifdef SNMP_NATIVE
 #define STORE_U32(dest, val)  ((dest) = (u32) (val))
 #define STORE_U16(dest, val)  ((dest) = (u16) (val))
 #define STORE_U8(dest, val)   ((dest) = (u8) (val))
 #define STORE_PTR(ptr, val)   (*((u32 *) (ptr)) = (u32) (val))
-#else
+
+#define LOAD_U32(src)	      *((u32 *) &(src))
+#define LOAD_U16(src)	      *((u16 *) &(src))
+#define LOAD_U8(src)	      *((u8 *) &(src))
+#define LOAD_PTR(ptr)	      *((u32 *) (ptr))
+#endif
+
+#if  defined(SNMP_NETWORK_BYTE_ORDER) && (!defined(SNMP_NATIVE) || defined(CPU_BIG_ENDIAN))
 #define STORE_U32(dest, val)  put_u32(&(dest), (val))
 #define STORE_U16(dest, val)  put_u16(&(dest), (val))
 #define STORE_U8(dest, val)   put_u8(&(dest), (val))
 #define STORE_PTR(ptr, val)   put_u32(ptr, val)
+
+#define LOAD_U32(src)	      get_u32(&(src))
+#define LOAD_U16(src)	      get_u16(&(src))
+#define LOAD_U8(src)	      get_u8(&(src))
+#define LOAD_PTR(src)	      get_u32(ptr)
 #endif
 
-/* storing byte (u8) is always the same */
-#define SNMP_HEADER_(h, v, t, f)  \
-  put_u8(&h->version, v);	  \
-  put_u8(&h->type, t);		  \
-  put_u8(&h->flags, f);		  \
-  put_u8(&h->pad, 0);		  \
-  STORE_U32(h->payload, 0)
-
-#ifdef SNMP_NATIVE
-#define SNMP_HEADER(h,t,f)    SNMP_HEADER_(h, AGENTX_VERSION, t, f)
-#else
-#define SNMP_HEADER(h,t,f) \
-  SNMP_HEADER_(h, AGENTX_VERSION, t, f | SNMP_NETWORK_BYTE_ORDER)
-#endif
-
-#define SNMP_BLANK_HEADER(h, t) SNMP_HEADER(h, t, AGENTX_FLAG_BLANK)
-
-#define SNMP_SESSION(h, p) 		  				      \
-  STORE_U32(h->session_id, p->session_id);				      \
-  STORE_U32(h->transaction_id, p->transaction_id);			      \
-  STORE_U32(h->packet_id, p->packet_id)
-
-#define LOAD_U32(v, bo) ((bo) ? get_u32(&v) : (u32) (v))
-#define LOAD_U16(v, bo) ((bo) ? get_u16(&v) : (u16) (v))
-#define LOAD_PTR(v, bo) ((bo) ? get_u32(v) : *((u32 *) v))
-
-#define LOAD_STR(/* byte * */buf, str, length, byte_ord)  ({		      \
-  length = LOAD_PTR(buf, byte_ord);					      \
+#define LOAD_STR(/* byte * */buf, str, length)  ({			      \
+  length = LOAD_PTR(buf);	  					      \
   length > 0 ? (str = buf + 4) : (str = NULL); })
 
-#define COPY_STR(proto, buf, str, length, byte_order) ({		      \
-  length = LOAD_PTR(buf, byte_order);					      \
+#define COPY_STR(proto, buf, str, length) ({				      \
+  length = LOAD_PTR(buf);						      \
   /*log(L_INFO "LOAD_STR(), %p %u", proto->pool, length + 1); */	      \
   str = mb_alloc(proto->pool, length + 1);				      \
   memcpy(str, buf+4, length);						      \
   str[length] = '\0'; /* set term. char */				      \
   buf += 4 + snmp_str_size_from_len(length); })
 
-#define SNMP_PUT_OID(buf, size, oid, byte_ord)				      \
+#define SNMP_PUT_OID(buf, size, oid)					      \
   ({									      \
     struct agentx_varbind *vb = (void *) buf;				      \
-    SNMP_FILL_VARBIND(vb, oid, byte_ord);				      \
+    SNMP_FILL_VARBIND(vb, oid);						      \
   })
 
-#define SNMP_FILL_VARBIND(vb, oid, byte_ord)				      \
-  snmp_oid_copy(&(vb)->name, (oid), (byte_ord)), snmp_oid_size((oid))
+#define SNMP_FILL_VARBIND(vb, oid)					      \
+  snmp_oid_copy(&(vb)->name, (oid)), snmp_oid_size((oid))
 
 struct agentx_header {
   u8 version;
@@ -217,21 +234,6 @@ enum agentx_pdu_types {
   AGENTX_RESPONSE_PDU		= 18,	  /* agentx-Response-PDU */
 } PACKED;
 
-enum agentx_flags {
-  AGENTX_FLAG_BLANK		    = 0x00,
-  AGENTX_FLAG_INSTANCE_REGISTRATION = 0x01,
-  AGENTX_FLAG_NEW_INDEX		    = 0x02,
-  AGENTX_FLAG_ANY_INDEX		    = 0x04,
-  AGENTX_NON_DEFAULT_CONTEXT	    = 0x08,
-  AGENTX_NETWORK_BYTE_ORDER	    = 0x10,
-} PACKED;
-
-#define AGENTX_FLAGS_MASK (AGENTX_FLAG_INSTANCE_REGISTRATION		      \
-  | AGENTX_FLAG_NEW_INDEX						      \
-  | AGENTX_FLAG_ANY_INDEX						      \
-  | AGENTX_NON_DEFAULT_CONTEXT						      \
-  | AGENTX_NETWORK_BYTE_ORDER)
-
 /* agentx-Close-PDU close reasons */
 enum agentx_close_reasons {
   AGENTX_CLOSE_OTHER	      = 1,
@@ -281,7 +283,6 @@ enum agentx_response_errs {
 struct snmp_pdu {
   byte *buffer;			    /* pointer to buffer */
   uint size;			    /* unused space in buffer */
-  int byte_ord;			    /* flag signaling NETWORK_BYTE_ORDER */
   enum agentx_response_errs error;  /* storage for result of current action */
   u32 index;			    /* index on which the error was found */
 };
@@ -305,7 +306,7 @@ void snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint siz
 
 void snmp_manage_tbuf(struct snmp_proto *p, struct snmp_pdu *c);
 
-struct oid *snmp_prefixize(struct snmp_proto *p, const struct oid *o, int byte_ord);
+struct oid *snmp_prefixize(struct snmp_proto *p, const struct oid *o);
 u8 snmp_get_mib_class(const struct oid *oid);
 
 

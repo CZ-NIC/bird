@@ -36,8 +36,6 @@ enum BGP4_MIB_PEER_TABLE {
 #define SNMP_BGP_NEGOTIATED_VER_VALUE 4
 #define SNMP_BGP_NEGOTIATED_VER_NO_VALUE 0
 
-struct oid;
-
 void snmp_bgp_register(struct snmp_proto *p);
 void snmp_bgp_reg_ok(struct snmp_proto *p, struct agentx_response *r, struct oid *oid);
 void snmp_bgp_reg_failed(struct snmp_proto *p, struct agentx_response *r, struct oid *oid);

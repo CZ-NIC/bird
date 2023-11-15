@@ -13,7 +13,7 @@ uint snmp_oid_size(const struct oid *o);
 size_t snmp_oid_sizeof(uint n_subid);
 uint snmp_varbind_hdr_size_from_oid(struct oid *oid);
 uint snmp_varbind_header_size(struct agentx_varbind *vb);
-uint snmp_varbind_size(struct agentx_varbind *vb, int byte_ord);
+uint snmp_varbind_size(struct agentx_varbind *vb);
 int snmp_test_varbind(const struct agentx_varbind *vb);
 void snmp_session(const struct snmp_proto *p, struct agentx_header *h);
 int snmp_has_context(const struct agentx_header *h);
@@ -46,7 +46,7 @@ void snmp_oid_ip4_index(struct oid *o, uint start, ip4_addr addr);
 
 void snmp_oid_dump(const struct oid *oid);
 
-//struct oid *snmp_prefixize(struct snmp_proto *p, struct oid *o, int byte_ord);
+//struct oid *snmp_prefixize(struct snmp_proto *p, struct oid *o);
 
 struct snmp_register *snmp_register_create(struct snmp_proto *p, u8 mib_class);
 int snmp_register_same(struct snmp_register *r, struct agentx_header *h, u8 class);
