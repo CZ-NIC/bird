@@ -30,31 +30,19 @@
 #define SNMP_TX_BUFFER_SIZE 8192
 
 enum snmp_proto_state {
+  SNMP_DOWN = 0,
   SNMP_INIT = 1,
   SNMP_LOCKED,
   SNMP_OPEN,
   SNMP_REGISTER,
   SNMP_CONN,
   SNMP_STOP,
-  SNMP_DOWN,
   SNMP_RESET,
 };
 
-/* hash table macros */
-#define SNMP_HASH_KEY(n)  n->peer_ip
-#define SNMP_HASH_NEXT(n) n->next
-#define SNMP_HASH_EQ(ip1, ip2) ipa_equal(ip1, ip2)
-#define SNMP_HASH_FN(ip)  ipa_hash(ip)
-
-#define SNMP_HASH_LESS4(ip1, ip2) ip4_less(ip1, ip2)
-#define SNMP_HASH_LESS6(ip1, ip2) ip6_less(ip1, ip2)
-
-/* hash table only store ip4 addresses */
-#define SNMP_HASH_LESS(ip1, ip2) SNMP_HASH_LESS4(ip1,ip2)
-
 struct snmp_bond {
   node n;
-  struct proto_config *proto;
+  struct proto_config *config;
   u8 type;
 };
 
@@ -68,7 +56,8 @@ struct snmp_config {
   ip_addr bgp_local_id;	  /* BGP4-MIB related fields */
   u32 bgp_local_as;
 
-  u8 timeout;
+  btime timeout;
+  btime startup_delay;
   u8 priority;
   //struct iface *iface;
   u32 bonds;
@@ -81,13 +70,12 @@ struct snmp_config {
 #define SNMP_BGP_P_REGISTERED	0x02
 
 struct snmp_bgp_peer {
-  const struct bgp_config *config;
-  ip_addr peer_ip;
-  u8 flags;
+  const struct bgp_proto *bgp_proto;
+  ip4_addr peer_ip;		      /* used as hash key */
   struct snmp_bgp_peer *next;
 };
 
-struct snmp_register {
+struct snmp_registration {
   node n;
   u8 mib_class;
   u32 session_id;
@@ -117,7 +105,7 @@ struct snmp_proto {
 
   sock *sock;
   void *last_header;		  /* points to partial PDU header */
-  u8 timeout;			  /* timeout is part of MIB registration. It
+  btime timeout;		  /* timeout is part of MIB registration. It
 				    specifies how long should the master
 				    agent wait for request responses. */
 
@@ -125,8 +113,8 @@ struct snmp_proto {
   u32 transaction_id;
   u32 packet_id;
 
-  uint register_to_ack;		    /* counter of pending responses to register-pdu */
-  list register_queue;		    /* list containing snmp_register records */
+  uint registrations_to_ack;		    /* counter of pending responses to register-pdu */
+  list registration_queue;		    /* list containing snmp_register records */
   list bgp_registered;		    /* list of currently registered bgp oids
 				     * (struct snmp_registered_oid) */
 
@@ -136,8 +124,7 @@ struct snmp_proto {
   struct tbf rl_gen;
 
   timer *ping_timer;
-
-  uint startup_delay;
+  btime startup_delay;
   timer *startup_timer;
   u8 state;
 };
@@ -148,6 +135,7 @@ void snmp_connected(sock *sk);
 void snmp_startup_timeout(timer *tm);
 void snmp_reconnect(timer *tm);
 void snmp_sock_disconnect(struct snmp_proto *p, int reconnect);
+void snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state);
 
 
 #endif

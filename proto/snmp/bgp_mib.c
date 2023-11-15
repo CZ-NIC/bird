@@ -13,6 +13,18 @@
 #include "subagent.h"
 #include "bgp_mib.h"
 
+/* hash table macros */
+#define SNMP_HASH_KEY(n)  n->peer_ip
+#define SNMP_HASH_NEXT(n) n->next
+#define SNMP_HASH_EQ(ip1, ip2) ip4_equal(ip1, ip2)
+#define SNMP_HASH_FN(ip)  ip4_hash(ip)
+
+#define SNMP_HASH_LESS4(ip1, ip2) ip4_less(ip1, ip2)
+#define SNMP_HASH_LESS6(ip1, ip2) ip6_less(ip1, ip2)
+
+/* hash table only store ip4 addresses */
+#define SNMP_HASH_LESS(ip1, ip2) SNMP_HASH_LESS4(ip1,ip2)
+
 static inline void ip4_to_oid(struct oid *oid, ip4_addr addr);
 
 /* BGP_MIB states see enum BGP_INTERNAL_STATES */
@@ -93,6 +105,25 @@ bgp_get_candidate(u32 field)
     return BGP_INTERNAL_PEER_ENTRY;
   else
     return BGP_INTERNAL_PEER_TABLE_END;
+}
+
+static inline void
+snmp_hash_add_peer(struct snmp_proto *p, struct snmp_bgp_peer *peer)
+{
+  HASH_INSERT(p->bgp_hash, SNMP_HASH, peer);
+}
+
+static inline struct snmp_bgp_peer *
+snmp_hash_find(struct snmp_proto *p, ip4_addr key)
+{
+  return HASH_FIND(p->bgp_hash, SNMP_HASH, key);
+}
+
+static inline void
+snmp_bgp_last_error(const struct bgp_proto *bgp, char err[2])
+{
+  err[0] = bgp->last_error_code & 0x00FF0000 >> 16;
+  err[1] = bgp->last_error_code & 0x000000FF;
 }
 
 /**
@@ -208,9 +239,16 @@ snmp_bgp_reg_ok(struct snmp_proto *p, struct agentx_response *r, struct oid *oid
 void
 snmp_bgp_reg_failed(struct snmp_proto *p, struct agentx_response UNUSED *r, struct oid UNUSED *oid)
 {
+  // TODO add more sensible action
   snmp_stop_subagent(p);
 }
 
+/*
+ * snmp_bgp_notify_common - common functionaly for BGP4-MIB notifications
+ * @p: SNMP protocol instance
+ * @type
+ *
+ */
 static void
 snmp_bgp_notify_common(struct snmp_proto *p, uint type, ip4_addr ip4, char last_error[], uint state_val)
 {
@@ -278,8 +316,14 @@ snmp_bgp_notify_common(struct snmp_proto *p, uint type, ip4_addr ip4, char last_
 #undef SNMP_OID_SIZE_FROM_LEN
 }
 
+/*
+ * snmp_bgp_fsm_state - extract BGP FSM state for SNMP BGP4-MIB
+ * @bgp_proto: BGP instance
+ *
+ * Return FSM state in BGP4-MIB encoding
+ */
 static inline uint
-snmp_bgp_fsm_state(struct bgp_proto *bgp_proto)
+snmp_bgp_fsm_state(const struct bgp_proto *bgp_proto)
 {
   const struct bgp_conn *bgp_conn = bgp_proto->conn;
   const struct bgp_conn *bgp_in = &bgp_proto->incoming_conn;
@@ -302,7 +346,8 @@ snmp_bgp_notify_wrapper(struct snmp_proto *p, struct bgp_proto *bgp, uint type)
 {
   // possibly dangerous
   ip4_addr ip4 = ipa_to_ip4(bgp->remote_ip);
-  char last_error[2] = SNMP_BGP_LAST_ERROR(bgp);
+  char last_error[2];
+  snmp_bgp_last_error(bgp, last_error);
   uint state_val = snmp_bgp_fsm_state(bgp);
   snmp_bgp_notify_common(p, type, ip4, last_error, state_val);
 }
@@ -329,7 +374,8 @@ snmp_bgp_register(struct snmp_proto *p)
 
   {
     /* Register the whole BGP4-MIB::bgp root tree node */
-    struct snmp_register *registering = snmp_register_create(p, SNMP_BGP4_MIB);
+    struct snmp_registration *reg;
+    reg = snmp_registration_create(p, SNMP_BGP4_MIB);
 
     struct oid *oid = mb_alloc(p->pool,
       snmp_oid_sizeof(ARRAY_SIZE(bgp_mib_prefix)));
@@ -337,10 +383,13 @@ snmp_bgp_register(struct snmp_proto *p)
     STORE_U8(oid->prefix, SNMP_MGMT);
 
     memcpy(oid->ids, bgp_mib_prefix, sizeof(bgp_mib_prefix));
-    registering->oid = oid;
+    reg->oid = oid;
 
-    /* snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 is_instance, uint contid) */
-    snmp_register(p, oid, 1, 0, SNMP_REGISTER_TREE, SNMP_DEFAULT_CONTEXT);
+    /*
+     * We set both upper bound and index to zero, therefore only single OID
+     * is being registered.
+     */
+    snmp_register(p, oid, 0, 0, SNMP_REGISTER_TREE, SNMP_DEFAULT_CONTEXT);
   }
 }
 
@@ -374,59 +423,58 @@ ip4_to_oid(struct oid *o, ip4_addr addr)
 }
 
 static void
-print_bgp_record(const struct bgp_config *config)
+print_bgp_record(const struct bgp_proto *bgp_proto)
 {
-  struct proto_config *cf = (struct proto_config *) config;
-  struct bgp_proto *bgp_proto = (struct bgp_proto *) cf->proto;
+  //struct proto_config *cf = bgp_proto->p.cf;
   struct bgp_conn *conn = bgp_proto->conn;
 
-  snmp_log("    name: %s", cf->name);
-  snmp_log(".");
-  snmp_log("    rem. identifier: %u", bgp_proto->remote_id);
-  snmp_log("    local ip: %I", config->local_ip);
-  snmp_log("    remote ip: %I", config->remote_ip);
-  snmp_log("    local port: %u", config->local_port);
-  snmp_log("    remote port: %u", config->remote_port);
+  DBG("    name: %s", cf->name);
+  DBG(".");
+  DBG("    rem. identifier: %u", bgp_proto->remote_id);
+  DBG("    local ip: %I", config->local_ip);
+  DBG("    remote ip: %I", config->remote_ip);
+  DBG("    local port: %u", config->local_port);
+  DBG("    remote port: %u", config->remote_port);
 
   if (conn) {
-    snmp_log("    state: %u", conn->state);
-    snmp_log("    remote as: %u", conn->remote_caps->as4_number);
+    DBG("    state: %u", conn->state);
+    DBG("    remote as: %u", conn->remote_caps->as4_number);
   }
 
-  snmp_log("    in updates: %u", bgp_proto->stats.rx_updates);
-  snmp_log("    out updates: %u", bgp_proto->stats.tx_updates);
-  snmp_log("    in total: %u", bgp_proto->stats.rx_messages);
-  snmp_log("    out total: %u", bgp_proto->stats.tx_messages);
-  snmp_log("    fsm transitions: %u",
+  DBG("    in updates: %u", bgp_proto->stats.rx_updates);
+  DBG("    out updates: %u", bgp_proto->stats.tx_updates);
+  DBG("    in total: %u", bgp_proto->stats.rx_messages);
+  DBG("    out total: %u", bgp_proto->stats.tx_messages);
+  DBG("    fsm transitions: %u",
       bgp_proto->stats.fsm_established_transitions);
 
-  snmp_log("    fsm total time: -- (0)");   // not supported by bird
-  snmp_log("    retry interval: %u", config->connect_retry_time);
+  DBG("    fsm total time: -- (0)");   // not supported by bird
+  DBG("    retry interval: %u", config->connect_retry_time);
 
-  snmp_log("    hold configurated: %u", config->hold_time );
-  snmp_log("    keep alive config: %u", config->keepalive_time );
+  DBG("    hold configurated: %u", config->hold_time );
+  DBG("    keep alive config: %u", config->keepalive_time );
 
-  snmp_log("    min AS origin. int.: -- (0)");	// not supported by bird
-  snmp_log("    min route advertisement: %u", 0 );
-  snmp_log("    in update elapsed time: %u", 0 );
+  DBG("    min AS origin. int.: -- (0)");	// not supported by bird
+  DBG("    min route advertisement: %u", 0 );
+  DBG("    in update elapsed time: %u", 0 );
 
   if (!conn)
-    snmp_log("  no connection established");
+    DBG("  no connection established");
 
-  snmp_log("  outgoinin_conn state %u", bgp_proto->outgoing_conn.state + 1);
-  snmp_log("  incoming_conn state: %u", bgp_proto->incoming_conn.state + 1);
+  DBG("  outgoinin_conn state %u", bgp_proto->outgoing_conn.state + 1);
+  DBG("  incoming_conn state: %u", bgp_proto->incoming_conn.state + 1);
 }
 
 static void
 print_bgp_record_all(struct snmp_proto *p)
 {
-  snmp_log("dumping watched bgp status");
+  DBG("dumping watched bgp status");
   HASH_WALK(p->bgp_hash, next, peer)
   {
-    print_bgp_record(peer->config);
+    print_bgp_record(peer->bgp_proto);
   }
   HASH_WALK_END;
-  snmp_log("dumping watched end");
+  DBG("dumping watched end");
 }
 
 
@@ -947,9 +995,9 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
   uint size = c->size - snmp_varbind_header_size(vb);
   byte *pkt;
 
-  ip_addr addr;
+  ip4_addr addr;
   if (oid_state_compare(oid, state) == 0 && snmp_bgp_valid_ip4(oid))
-    addr = ipa_from_ip4(ip4_from_oid(oid));
+    addr = ip4_from_oid(oid);
   else
   {
     vb->type = AGENTX_NO_SUCH_INSTANCE;
@@ -959,29 +1007,33 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
 
   // TODO XXX deal with possible change of (remote) ip; BGP should restart and
   // disappear
-  struct snmp_bgp_peer *pe = HASH_FIND(p->bgp_hash, SNMP_HASH, addr);
+  struct snmp_bgp_peer *pe = snmp_hash_find(p, addr);
 
-  struct bgp_proto *bgp_proto = NULL;
-  struct proto *proto = NULL;
-  if (pe)
-  {
-    proto = ((struct proto_config *) pe->config)->proto;
-    if (proto->proto == &proto_bgp &&
-        ipa_equal(addr, ((struct bgp_proto *) proto)->remote_ip))
-    {
-      bgp_proto = (struct bgp_proto *) proto;
-    }
-    /* We did not found binded BGP protocol. */
-    else
-    {
-      die("Binded bgp protocol not found!");
-      vb->type = AGENTX_NO_SUCH_INSTANCE;
-      return ((byte *) vb) + snmp_varbind_header_size(vb);
-    }
-  }
-  else
+  if (!pe)
   {
     vb->type = AGENTX_NO_SUCH_INSTANCE;
+    return ((byte *) vb) + snmp_varbind_header_size(vb);
+  }
+
+  const struct bgp_proto *bgp_proto = pe->bgp_proto;
+  if (!ipa_is_ip4(bgp_proto->remote_ip))
+  {
+    // TODO XXX: serious issue here
+    log(L_ERR, "%s: Found BGP protocol instance with IPv6 address", bgp_proto->p.name);
+    vb->type = AGENTX_NO_SUCH_INSTANCE;
+    c->error = AGENTX_RES_GEN_ERROR;
+    return ((byte *) vb) + snmp_varbind_header_size(vb);
+  }
+
+  ip4_addr proto_ip = ipa_to_ip4(bgp_proto->remote_ip);
+  if (!ip4_equal(proto_ip, pe->peer_ip))
+  {
+    // TODO XXX:
+    /* Here, we could be in problem as the bgp_proto IP address could be changed */
+    log(L_ERR, "%s: Stored hash key IP address and peer remote address differ.",
+      bgp_proto->p.name);
+    vb->type = AGENTX_NO_SUCH_INSTANCE;
+    c->error = AGENTX_RES_GEN_ERROR;
     return ((byte *) vb) + snmp_varbind_header_size(vb);
   }
 
@@ -991,7 +1043,8 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
 
   uint bgp_state = snmp_bgp_fsm_state(bgp_proto);
 
-  char last_error[2] = SNMP_BGP_LAST_ERROR(bgp_proto);
+  char last_error[2];
+  snmp_bgp_last_error(bgp_proto, last_error);
   switch (state)
   {
     case BGP_INTERNAL_PEER_IDENTIFIER:
@@ -1006,7 +1059,7 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
       break;
 
     case BGP_INTERNAL_ADMIN_STATUS:
-      if (proto->disabled)
+      if (bgp_proto->p.disabled)
 	pkt = snmp_varbind_int(vb, size, AGENTX_ADMIN_STOP);
       else
 	pkt = snmp_varbind_int(vb, size, AGENTX_ADMIN_START);
@@ -1229,3 +1282,40 @@ snmp_bgp_testset(struct snmp_proto *p, const struct agentx_varbind *vb, void *tr
 }
 #endif
 
+/*
+ * snmp_bgp_start - prepare BGP4-MIB
+ * @p - SNMP protocol instance holding memory pool
+ *
+ * This function create all runtime bindings to BGP procotol structures.
+ * It is gruaranteed that the BGP protocols exist.
+ */
+void
+snmp_bgp_start(struct snmp_proto *p)
+{
+  struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, p->p.cf);
+  /* Create binding to BGP protocols */
+
+  struct snmp_bond *b;
+  WALK_LIST(b, cf->bgp_entries)
+  {
+    const struct bgp_config *bgp_config = (struct bgp_config *) b->config;
+    if (ipa_zero(bgp_config->remote_ip))
+      die("unsupported dynamic BGP");
+
+    const struct bgp_proto *bgp = SKIP_BACK(struct bgp_proto, p,
+      bgp_config->c.proto);
+
+    struct snmp_bgp_peer *peer = \
+      mb_alloc(p->pool, sizeof(struct snmp_bgp_peer));
+
+    peer->bgp_proto = bgp;
+    peer->peer_ip = ipa_to_ip4(bgp->remote_ip);
+
+    struct net_addr net;
+    net_fill_ip4(&net, ipa_to_ip4(bgp->remote_ip), IP4_MAX_PREFIX_LENGTH);
+    trie_add_prefix(p->bgp_trie, &net, IP4_MAX_PREFIX_LENGTH,
+      IP4_MAX_PREFIX_LENGTH);
+
+    snmp_hash_add_peer(p, peer);
+  }
+}

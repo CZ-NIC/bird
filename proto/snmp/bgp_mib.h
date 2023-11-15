@@ -55,8 +55,7 @@ void snmp_bgp_notify_backward_trans(struct snmp_proto *p, struct bgp_proto *bgp)
 #define SNMP_BGP_LOCAL_AS   2
 #define SNMP_BGP_PEER_TABLE 3
 #define SNMP_BGP_PEER_ENTRY   1
-/* BGP4-MIB::bgpIdentifier for local identification */
-#define SNMP_BGP_IDENTIFIER 4
+#define SNMP_BGP_IDENTIFIER 4	  /* BGP4-MIB::bgpIdentifier local router id */
 
 /* BGP linearized state */
 enum BGP_INTERNAL_STATES {
@@ -96,9 +95,5 @@ enum BGP_INTERNAL_STATES {
   BGP_INTERNAL_END,
   BGP_INTERNAL_NO_VALUE = 255,
 } PACKED;
-
-#define SNMP_BGP_LAST_ERROR(bgp_proto)					      \
-  { bgp_proto->last_error_code & 0x00FF0000 >> 16,			      \
-    bgp_proto->last_error_code & 0x000000FF };
 
 #endif

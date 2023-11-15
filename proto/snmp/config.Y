@@ -19,46 +19,64 @@ CF_DEFINES
 CF_DECLS
 
 CF_KEYWORDS(SNMP, PROTOCOL, BPG, LOCAL, AS, REMOTE, ADDRESS, PORT, DESCRIPTION,
-	    TIMEOUT, PRIORITY, CONTEXT, DEFAULT)
+	    TIMEOUT, PRIORITY, CONTEXT, DEFAULT, MESSAGE)
 
 CF_GRAMMAR
 
-proto: snmp_proto '}' { this_channel = NULL; }  ;
+proto: snmp_proto ;
 
 snmp_proto:
-   snmp_proto_start '{'
- | snmp_proto proto_item ';'
- | snmp_proto snmp_bgp_bond ';'
- | snmp_proto LOCAL PORT expr ';' {
-    if (($4 < 1) || ($4 > 65535)) cf_error("Invalid port number");
-    SNMP_CFG->local_port = $4;
+   snmp_proto_start proto_name '{' snmp_proto_opts '}' ;
+
+snmp_proto_item:
+   proto_item
+ | snmp_bgp_bond
+ /* | INTERFACE snmp_interface TODO */
+ | LOCAL PORT expr {
+    if (($3 < 1) || ($3 > 65535)) cf_error("Invalid port number");
+    SNMP_CFG->local_port = $3;
   }
- | snmp_proto REMOTE PORT expr ';' {
-    if (($4 < 1) || ($4 > 65535)) cf_error("Invalid port number");
-    SNMP_CFG->remote_port = $4;
+ | REMOTE PORT expr {
+    if (($3 < 1) || ($3 > 65535)) cf_error("Invalid port number");
+    SNMP_CFG->remote_port = $3;
   }
- | snmp_proto LOCAL ID ipa ';' { SNMP_CFG->bgp_local_id = $4; }
- | snmp_proto LOCAL ADDRESS ipa ';' { SNMP_CFG->local_ip = $4; }
- | snmp_proto REMOTE ADDRESS ipa ';' {
-    if (ipa_zero($4)) cf_error("Invalid remote ip address");
-    SNMP_CFG->remote_ip = $4;
+ | LOCAL ID ipa { SNMP_CFG->bgp_local_id = $3; }
+ | LOCAL ADDRESS ipa { SNMP_CFG->local_ip = $3; }
+ | REMOTE ADDRESS ipa {
+    if (ipa_zero($3)) cf_error("Invalid remote ip address");
+    SNMP_CFG->remote_ip = $3;
   }
- | snmp_proto LOCAL AS expr ';' {
-    if ($4 < 1 || $4 > 65535) cf_error("Invalid local AS");
-    SNMP_CFG->bgp_local_as = $4;
+ | LOCAL AS expr {
+    if ($3 < 1 || $3 > 65535) cf_error("Invalid local AS");
+    SNMP_CFG->bgp_local_as = $3;
   }
- | snmp_proto DESCRIPTION text ';' {
+ | SNMP DESCRIPTION text {
     if (strlen($3) > UINT32_MAX) cf_error("Description is too long");
     SNMP_CFG->description = $3;
   }
- | snmp_proto TIMEOUT expr ';' {
-    if ($3 < 1 || $3 > 255) cf_error("Timeout must be in range 1-255");
+ | PRIORITY expr {
+    if ($2 > 255) cf_error("Registration priority must be in range 0-255");
+    SNMP_CFG->priority = $2;
+  }
+ | MESSAGE TIMEOUT expr_us {
+    /* TODO */
+    if ($3 TO_S > 255) log(L_WARN, "%s: msg", this_proto->name);
+    if ($3 TO_S < 1) log(L_WARN, "%s: msg", this_proto->name);
+    if (($3 TO_S) - (int)($3 TO_S) > 0) log(L_WARN, "%s: ", this_proto->name);
     SNMP_CFG->timeout = $3;
   }
- | snmp_proto PRIORITY expr ';' {
-    if ($3 > 255) cf_error("Registration priority must be in range 0-255");
-    SNMP_CFG->priority = $3;
+/*
+ | ERROR TIMEOUT expr_us {
+    / * TODO * /
+    SNMP_CFG->error_timeout = $3;
   }
+*/
+ | START DELAY TIME expr_us { SNMP_CFG->startup_delay = $4; }
+ ;
+
+snmp_proto_opts:
+   /* empty */
+ | snmp_proto_opts snmp_proto_item ';'
  ;
 
 snmp_proto_start: proto_start SNMP
@@ -80,18 +98,25 @@ snmp_proto_start: proto_start SNMP
   SNMP_CFG->priority = AGENTX_PRIORITY;
 }
 
-proto_name ;
-
 snmp_bgp_bond: BGP symbol
 {
   /* the snmp_context rule sets the correct value of this_bond */
+  cf_assert_symbol($2, SYM_PROTO);
+
+  if (!$2->proto) cf_error("BGP protocol %s not found", $2->name);
+
+  cf_assert($2->proto->protocol == &proto_bgp,
+    "SNMP BGP bond accepts only BGP protocols");
+
+  struct bgp_config *bgp_config = SKIP_BACK(struct bgp_config, c, $2->proto);
+
+  if (!ipa_is_ip4(bgp_config->remote_ip))
+    cf_error("BGP4-MIB does not support IPv6 addresses.");
+
   struct snmp_bond *this_bond = cfg_alloc(sizeof(struct snmp_bond));
   this_bond->type = SNMP_BGP;
+  this_bond->config = $2->proto;
 
-  cf_assert_symbol($2, SYM_PROTO);
-  this_bond->proto = $2->proto;
-
-  if (!this_bond->proto) cf_error("BGP protocol %s not found", $2->name);
   add_tail(&SNMP_CFG->bgp_entries, &this_bond->n);
   SNMP_CFG->bonds++;
 }

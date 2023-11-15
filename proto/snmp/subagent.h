@@ -309,6 +309,9 @@ void snmp_manage_tbuf(struct snmp_proto *p, struct snmp_pdu *c);
 struct oid *snmp_prefixize(struct snmp_proto *p, const struct oid *o);
 u8 snmp_get_mib_class(const struct oid *oid);
 
+void snmp_register_mibs(struct snmp_proto *p);
+void snmp_bgp_start(struct snmp_proto *p);
+
 
 // debug wrapper
 #if 0

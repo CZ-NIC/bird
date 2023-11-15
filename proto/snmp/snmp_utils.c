@@ -442,10 +442,11 @@ all_same:
     return 0;
 }
 
-struct snmp_register *
-snmp_register_create(struct snmp_proto *p, u8 mib_class)
+struct snmp_registration *
+snmp_registration_create(struct snmp_proto *p, u8 mib_class)
 {
-  struct snmp_register *r = mb_alloc(p->p.pool, sizeof(struct snmp_register));
+  struct snmp_registration *r;
+  r = mb_alloc(p->p.pool, sizeof(struct snmp_registration));
 
   r->n.prev = r->n.next = NULL;
 
@@ -456,13 +457,13 @@ snmp_register_create(struct snmp_proto *p, u8 mib_class)
 
   r->mib_class = mib_class;
 
-  add_tail(&p->register_queue, &r->n);
+  add_tail(&p->registration_queue, &r->n);
 
   return r;
 }
 
 int
-snmp_register_same(struct snmp_register *r, struct agentx_header *h, u8 class)
+snmp_registration_match(struct snmp_registration *r, struct agentx_header *h, u8 class)
 {
   return
     (r->mib_class == class) &&
@@ -475,10 +476,10 @@ snmp_register_same(struct snmp_register *r, struct agentx_header *h, u8 class)
 void UNUSED
 snmp_dump_packet(byte UNUSED *pkt, uint size)
 {
-  snmp_log("dump");
+  DBG("dump");
   for (uint i = 0; i < size; i += 4)
-    snmp_log("pkt [%d]  0x%02x%02x%02x%02x", i, pkt[i],pkt[i+1],pkt[i+2],pkt[i+3]);
-  snmp_log("end dump");
+    DBG("pkt [%d]  0x%02x%02x%02x%02x", i, pkt[i],pkt[i+1],pkt[i+2],pkt[i+3]);
+  DBG("end dump");
 }
 
 /*

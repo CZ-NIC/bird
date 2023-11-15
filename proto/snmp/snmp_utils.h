@@ -48,8 +48,8 @@ void snmp_oid_dump(const struct oid *oid);
 
 //struct oid *snmp_prefixize(struct snmp_proto *p, struct oid *o);
 
-struct snmp_register *snmp_register_create(struct snmp_proto *p, u8 mib_class);
-int snmp_register_same(struct snmp_register *r, struct agentx_header *h, u8 class);
+struct snmp_registration *snmp_registration_create(struct snmp_proto *p, u8 mib_class);
+int snmp_registration_match(struct snmp_registration *r, struct agentx_header *h, u8 class);
 
 byte *snmp_varbind_int(struct agentx_varbind *vb, uint size, u32 val);
 byte *snmp_varbind_counter32(struct agentx_varbind *vb, uint size, u32 val);
