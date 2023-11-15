@@ -1,31 +1,31 @@
 {
   "show_memory:message": {
-     "header": "BIRD memory usage",
-     "body": {
-       "routing_tables": {
-         "effective": 324,
-         "overhead": 48
-       },
-       "route_attributes": {
-         "effective": 324,
-         "overhead": 48
-       },
-       "protocols": {
-         "effective": 324,
-         "overhead": 48
-       },
-       "current_config": {
-         "effective": 324,
-         "overhead": 48
-       },
-       "standby_memory": {
-         "effective": 324,
-         "overhead": 48
-       },
-       "total": {
-           "effective": 324,
-           "overhead": 48
-       }
-     }
+    "header": "BIRD memory usage",
+    "body": {
+      "routing_tables": {
+        "effective": 324,
+        "overhead": 48
+      },
+      "route_attributes": {
+        "effective": 324,
+        "overhead": 48
+      },
+      "protocols": {
+        "effective": 324,
+        "overhead": 48
+      },
+      "current_config": {
+        "effective": 324,
+        "overhead": 48
+      },
+      "standby_memory": {
+        "effective": 324,
+        "overhead": 48
+      },
+      "total": {
+        "effective": 324,
+        "overhead": 48
+      }
+    }
   }
 }
