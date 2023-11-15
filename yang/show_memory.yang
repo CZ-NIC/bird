@@ -1,0 +1,66 @@
+module show_memory {
+
+  namespace ".";
+  
+  prefix "memory";
+
+  description "cli show memory format";
+
+
+  container message {
+    leaf header {
+        type string;
+    }
+    container body {
+      container routing_tables {
+        leaf effective {
+          type int32;
+        }
+        leaf overhead {
+          type int32;
+        }
+      }
+      container route_attributes {
+        leaf effective {
+          type int32;
+        }
+        leaf overhead {
+          type int32;
+        }
+      }
+      container protocols {
+        leaf effective {
+          type int32;
+        }
+        leaf overhead {
+          type int32;
+        }
+      }
+      container current_config {
+        leaf effective {
+          type int32;
+        }
+        leaf overhead {
+          type int32;
+        }
+      }
+      container standby_memory {
+        leaf effective {
+          type int32;
+        }
+        leaf overhead {
+          type int32;
+        }
+      }
+      container total {
+        leaf effective {
+          type int32;
+        }
+        leaf overhead {
+          type int32;
+        }
+      }
+    }
+  }
+}
+
