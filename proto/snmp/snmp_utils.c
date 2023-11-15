@@ -10,6 +10,46 @@
 
 #include "snmp_utils.h"
 
+inline void
+snmp_pdu_context(struct snmp_pdu *pdu, sock *sk)
+{
+  pdu->buffer = sk->tpos;
+  pdu->size = sk->tbuf + sk->tbsize - sk->tpos;
+  pdu->error = AGENTX_RES_NO_ERROR;
+  pdu->index = 0;
+}
+
+inline void
+snmp_session(const struct snmp_proto *p, struct agentx_header *h)
+{
+  h->session_id = p->session_id;
+  h->transaction_id = p->transaction_id;
+  h->packet_id = p->packet_id;
+}
+
+inline int
+snmp_has_context(const struct agentx_header *h)
+{
+  return h->flags & AGENTX_NON_DEFAULT_CONTEXT;
+}
+
+inline byte *
+snmp_add_context(struct snmp_proto *p, struct agentx_header *h, uint contid)
+{
+  h->flags = h->flags | AGENTX_NON_DEFAULT_CONTEXT;
+  // TODO append the context after the header
+  (void)p;
+  (void)contid;
+  return (void *)h + AGENTX_HEADER_SIZE;
+}
+
+inline void *
+snmp_varbind_data(const struct agentx_varbind *vb)
+{
+  uint name_size = snmp_oid_size(&vb->name);
+  return (void *)&vb->name + name_size;
+}
+
 /**
  * snmp_is_oid_empty - check if oid is null-valued
  * @oid: object identifier to check
@@ -136,7 +176,7 @@ snmp_varbind_size(struct agentx_varbind *vb, int byte_ord)
   if (s >= 0)
     return hdr_size + (uint) s;
 
-  void *data = ((void *) vb) + hdr_size;
+  void *data = snmp_varbind_data(vb);
 
   if (vb->type == AGENTX_OBJECT_ID)
     return hdr_size + snmp_oid_size((struct oid *) data);
@@ -478,7 +518,7 @@ snmp_varbind_type32(struct agentx_varbind *vb, uint size, enum agentx_type type,
     return NULL;
 
   vb->type = type;
-  u32 *data = SNMP_VB_DATA(vb);
+  u32 *data = snmp_varbind_data(vb);
   *data = val;
   return (byte *)(data + 1);
 }
@@ -516,7 +556,7 @@ snmp_varbind_ip4(struct agentx_varbind *vb, uint size, ip4_addr addr)
     return NULL;
 
   vb->type = AGENTX_IP_ADDRESS;
-  return snmp_put_ip4(SNMP_VB_DATA(vb), addr);
+  return snmp_put_ip4(snmp_varbind_data(vb), addr);
 }
 
 inline byte *
@@ -526,8 +566,7 @@ snmp_varbind_nstr(struct agentx_varbind *vb, uint size, const char *str, uint le
     return NULL;
 
   vb->type = AGENTX_OCTET_STRING;
-  //die("snmp_varbind_nstr() %p.data = %p", vb, SNMP_VB_DATA(vb));
-  return snmp_put_nstr(SNMP_VB_DATA(vb), str, len);
+  return snmp_put_nstr(snmp_varbind_data(vb), str, len);
 }
 
 inline enum agentx_type

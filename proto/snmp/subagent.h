@@ -121,9 +121,6 @@ enum snmp_search_res {
   str[length] = '\0'; /* set term. char */				      \
   buf += 4 + snmp_str_size_from_len(length); })
 
-#define SNMP_HAS_CONTEXT(hdr)						      \
-  hdr->flags |= AGENTX_NON_DEFAULT_CONTEXT
-
 #define SNMP_PUT_OID(buf, size, oid, byte_ord)				      \
   ({									      \
     struct agentx_varbind *vb = (void *) buf;				      \
@@ -132,16 +129,6 @@ enum snmp_search_res {
 
 #define SNMP_FILL_VARBIND(vb, oid, byte_ord)				      \
   snmp_oid_copy(&(vb)->name, (oid), (byte_ord)), snmp_oid_size((oid))
-
-#define SNMP_VB_DATA(varbind)						      \
-  (((void *)(varbind)) + snmp_varbind_header_size(varbind))
-
-#define SNMP_PDU_CONTEXT(sk) {						      \
-    .buffer = sk->tpos,							      \
-    .size = sk->tbuf + sk->tbsize - sk->tpos,				      \
-    .error = AGENTX_RES_NO_ERROR,					      \
-    .index = 0,								      \
-  }
 
 struct agentx_header {
   u8 version;
@@ -169,7 +156,7 @@ struct agentx_varbind {
   u16 pad;
   /* oid part */
   struct oid name;
-  byte data[];
+  /* AgentX variable binding data optionaly here */
 };
 
 /* this does not work */

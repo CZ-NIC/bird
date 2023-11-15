@@ -15,12 +15,16 @@ uint snmp_varbind_hdr_size_from_oid(struct oid *oid);
 uint snmp_varbind_header_size(struct agentx_varbind *vb);
 uint snmp_varbind_size(struct agentx_varbind *vb, int byte_ord);
 int snmp_test_varbind(const struct agentx_varbind *vb);
+void snmp_session(const struct snmp_proto *p, struct agentx_header *h);
+int snmp_has_context(const struct agentx_header *h);
+void snmp_pdu_context(struct snmp_pdu *pdu, sock *sk);
 
 void snmp_oid_copy(struct oid *dest, const struct oid *src);
 
 struct oid *snmp_oid_duplicate(pool *pool, const struct oid *oid);
 struct oid *snmp_oid_blank(struct snmp_proto *p);
 
+void *snmp_varbind_data(const struct agentx_varbind *vb);
 struct agentx_varbind *snmp_create_varbind(byte* buf, struct oid *oid);
 byte *snmp_fix_varbind(struct agentx_varbind *vb, struct oid *new);
 

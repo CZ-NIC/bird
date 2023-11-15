@@ -216,7 +216,8 @@ static void
 snmp_simple_response(struct snmp_proto *p, enum agentx_response_errs error, u16 index)
 {
   sock *sk = p->sock;
-  struct snmp_pdu c = SNMP_PDU_CONTEXT(sk);
+  struct snmp_pdu c;
+  snmp_pdu_context(&c, sk);
 
   if (c.size < sizeof(struct agentx_response))
     snmp_manage_tbuf(p, &c);
@@ -240,7 +241,8 @@ open_pdu(struct snmp_proto *p, struct oid *oid)
   const struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, p->p.cf);
   sock *sk = p->sock;
 
-  struct snmp_pdu c = SNMP_PDU_CONTEXT(sk);
+  struct snmp_pdu c;
+  snmp_pdu_context(&c, sk);
 
 #define TIMEOUT_SIZE 4 /* 1B timeout, 3B zero padding */
   if (c.size < AGENTX_HEADER_SIZE + TIMEOUT_SIZE + snmp_oid_size(oid) +
@@ -279,7 +281,8 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
 {
   sock *sk = p->sock;
 
-  struct snmp_pdu c = SNMP_PDU_CONTEXT(sk);
+  struct snmp_pdu c;
+  snmp_pdu_context(&c, sk);
 
 #define UPTIME_SIZE \
   (6 * sizeof(u32)) /* sizeof( { u32 vb_type, u32 oid_hdr, u32 ids[4] } )*/
@@ -333,7 +336,7 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
   for (uint i = 0; i < trap0.n_subid; i++)
     STORE_U32(trap_vb->name.ids[i], trap0_ids[i]);
   trap_vb->type = AGENTX_OBJECT_ID;
-  snmp_put_oid(SNMP_VB_DATA(trap_vb), oid);
+  snmp_put_oid(snmp_varbind_data(trap_vb), oid);
   ADVANCE(c.buffer, c.size, snmp_varbind_size(trap_vb, c.byte_ord));
 
   memcpy(c.buffer, data, size);
@@ -363,7 +366,8 @@ de_allocate_pdu(struct snmp_proto *p, struct oid *oid, enum agentx_pdu_types typ
   byte *buf, *pkt;
   buf = pkt = sk->tbuf;
   uint size = sk->tbsize;
-  struct snmp_pdu = SNMP_PDU_CONTEXT(p->sock);
+  struct snmp_pdu c;
+  snmp_pdu_context(&c, p->sock);
 
 
   if (size > AGENTX_HEADER_SIZE + 0)  // TODO additional size
@@ -419,9 +423,11 @@ snmp_deallocate(struct snmp_proto *p, struct oid *oid, u8 flags)
 static void
 un_register_pdu(struct snmp_proto *p, struct oid *oid, uint bound, uint index, enum agentx_pdu_types type, u8 is_instance, uint UNUSED contid)
 {
+  /* used for agentx-Register-PDU and agentx-Unregister-PDU */
   const struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, p->p.cf);
   sock *sk = p->sock;
-  struct snmp_pdu c = SNMP_PDU_CONTEXT(sk);
+  struct snmp_pdu c;
+  snmp_pdu_context(&c, sk);
 
   /* conditional +4 for upper-bound (optinal field) */
   uint sz = AGENTX_HEADER_SIZE + snmp_oid_size(oid) + ((bound > 1) ? 4 : 0);
@@ -504,7 +510,8 @@ static void
 close_pdu(struct snmp_proto *p, enum agentx_close_reasons reason)
 {
   sock *sk = p->sock;
-  struct snmp_pdu c = SNMP_PDU_CONTEXT(sk);
+  struct snmp_pdu c;
+  snmp_pdu_context(&c, sk);
 
 #define REASON_SIZE 4
   if (c.size < AGENTX_HEADER_SIZE + REASON_SIZE)
@@ -700,20 +707,21 @@ refresh_ids(struct snmp_proto *p, struct agentx_header *h)
 static uint
 parse_test_set_pdu(struct snmp_proto *p, byte * const pkt_start, uint size)
 {
+  TRACE(D_PACKETS, "SNMP received agentx-TestSet-PDU");
   byte *pkt = pkt_start;  /* pointer to agentx-TestSet-PDU in RX-buffer */
   uint s; /* final packat size */
   struct agentx_response *res; /* pointer to reponse in TX-buffer */
 
   struct agentx_header *h = (void *) pkt;
   ADVANCE(pkt, size, AGENTX_HEADER_SIZE);
-  uint pkt_size = LOAD_U32(h->payload, h->flags & AGENTX_NETWORK_BYTE_ORDER);
+  uint pkt_size = LOAD_U32(h->payload);
 
   if (pkt_size < size)
     return 0;
 
   sock *sk = p->sock;
-  struct snmp_pdu c = SNMP_PDU_CONTEXT(sk);
-  c.byte_ord = 0; /* use little-endian */
+  struct snmp_pdu c;
+  snmp_pdu_context(&c, sk);
 
   if (c.size < AGENTX_HEADER_SIZE)
     snmp_manage_tbuf(p, &c);
@@ -809,7 +817,8 @@ parse_set_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, enum agen
     // use varbind_list_size()??
   }
 
-  struct snmp_pdu c = SNMP_PDU_CONTEXT(p->sock);
+  struct snmp_pdu c;
+  snmp_pdu_context(&c, p->sock);
   if (c.size < sizeof(struct agentx_response))
     snmp_manage_tbuf(p, &c);
 
@@ -1359,7 +1368,8 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
   uint pkt_size = LOAD_U32(h->payload, h->flags & AGENTX_NETWORK_BYTE_ORDER);
 
   sock *sk = p->sock;
-  struct snmp_pdu c = SNMP_PDU_CONTEXT(sk);
+  struct snmp_pdu c;
+  snmp_pdu_context(&c, sk);
   // TODO better handling of endianness
   c.byte_ord = 0; /* use little-endian */
 
@@ -1671,7 +1681,8 @@ void
 snmp_ping(struct snmp_proto *p)
 {
   sock *sk = p->sock;
-  struct snmp_pdu c = SNMP_PDU_CONTEXT(sk);
+  struct snmp_pdu c;
+  snmp_pdu_context(&c, sk);
 
   if (c.size < AGENTX_HEADER_SIZE)
     snmp_manage_tbuf(p, &c);
