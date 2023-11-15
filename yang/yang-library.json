@@ -1,0 +1,13 @@
+{
+  "ietf-yang-library:modules-state": {
+    "module-set-id": "12345678abcdef1cefd14622032c432fa598540e",
+    "module": [
+      {
+        "name": "show_memory",
+	"namespace": "https://bird.nic.cz/yang/v2.15/cli-debug",
+        "revision": "",
+        "conformance-type": "implement"
+      }
+    ]
+  }
+}
