@@ -2,4 +2,4 @@ python3 -m venv venv
 . venv/bin/activate
 pip3 install yangson cbor
 
-python3 json-cbor-yang.py "$@"
+python3 cbor-json-yang.py "$@"
