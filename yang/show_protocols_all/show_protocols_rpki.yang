@@ -1,0 +1,53 @@
+submodule show_protocols_rpki {
+
+  belongs-to show_protocols_all {
+    prefix "show_protocols_all";
+  }
+
+  description "cli show rpki";
+
+  grouping rpki_details {
+    leaf cache_server {
+      type string;
+    }
+    leaf cache_port {
+      type uint32;
+    }
+    leaf status {
+      type status;
+    }
+    leaf transport {
+      type string;
+    }
+    leaf protocol_version {
+      type uint32;
+    }
+    leaf session_id {
+      type uint32;
+    }
+    leaf serial_num {
+      type uint32;
+    }
+    leaf last_update {
+      type decimal64 {
+        fraction-digits 3;
+      }
+    }
+    container refresh_timer {
+      uses timer;
+    }
+    container retry_timer {
+      uses timer;
+    }
+    container expire_timer {
+      uses timer;
+    }
+    leaf no_roa4_channel {
+      type empty;
+    }
+    leaf no_roa6_channel {
+      type empty;
+    }
+  }
+
+}

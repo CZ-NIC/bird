@@ -6,6 +6,14 @@ module show_memory {
 
   description "cli show memory format";
 
+  grouping memory {
+    leaf effective {
+      type int32;
+    }
+    leaf overhead {
+      type int32;
+    }
+  } 
 
   container message {
     leaf header {
@@ -13,52 +21,22 @@ module show_memory {
     }
     container body {
       container routing_tables {
-        leaf effective {
-          type int32;
-        }
-        leaf overhead {
-          type int32;
-        }
+        uses memory;
       }
       container route_attributes {
-        leaf effective {
-          type int32;
-        }
-        leaf overhead {
-          type int32;
-        }
+        uses memory;
       }
       container protocols {
-        leaf effective {
-          type int32;
-        }
-        leaf overhead {
-          type int32;
-        }
+        uses memory;
       }
       container current_config {
-        leaf effective {
-          type int32;
-        }
-        leaf overhead {
-          type int32;
-        }
+        uses memory;
       }
       container standby_memory {
-        leaf effective {
-          type int32;
-        }
-        leaf overhead {
-          type int32;
-        }
+        uses memory;
       }
       container total {
-        leaf effective {
-          type int32;
-        }
-        leaf overhead {
-          type int32;
-        }
+        uses memory;
       }
     }
   }

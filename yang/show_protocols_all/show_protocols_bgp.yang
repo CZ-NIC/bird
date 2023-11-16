@@ -1,0 +1,231 @@
+submodule show_protocols_bgp {
+
+  belongs-to show_protocols_all {
+    prefix "show_protocols_all";
+  }
+
+  description "cli show bgp";
+
+  grouping afis {
+    leaf afl1 {
+      type string;
+    }
+    leaf afn1 {
+      type string;
+    }
+  }
+
+  grouping bgp_capabilities {
+    container any_mp_bgp {
+      leaf multiprotocol {
+        type empty;
+      }
+      container af_announced {
+        uses afis;
+      }
+    }
+    leaf route_refresh {
+      type empty;
+    }
+    container any_ext_nexthop {
+      leaf extended_nexthop {
+        type empty;
+      }
+      container nexthop {
+        uses afis;
+      }
+    }
+    leaf extended_message {
+      type empty;
+    }
+    leaf graceful_restart {
+      type empty;
+    }
+    container is_gr_able {
+      leaf restart_time {
+        type uint32;
+      }
+      leaf restart_recovery {
+        type empty;
+      }
+      container af_supported {
+        uses afis;
+      }
+      container af_preserved {
+        uses afis;
+      }
+    }
+    leaf as4_support {
+      type empty;
+    }
+    container is_add_path {
+      leaf add_path {
+        type empty;
+      }
+      container af_rx {
+        uses afis;
+      }
+      container af_tx {
+        uses afis;
+      }
+    }
+    leaf enhanced_refresh {
+      type empty;
+    }
+    leaf long_lived_gr_restart {
+      type empty;
+    }
+    container is_llgr_able {
+      leaf stale_time {
+        type uint32;
+      }
+      container af_supported {
+        uses afis;
+      }
+      container af_preserved {
+        uses afis;
+      }
+    }
+    leaf hostname {
+      type string;
+    }
+    leaf role {
+      type string;
+    }
+  }
+
+  
+  grouping bgp_details {
+    leaf bgp_status {
+      type status;
+    }
+    choice is_dynamic {
+      case dynamic {
+        leaf neighbor_range {
+          type ip-address;
+        }
+      }
+      case nondinamic {
+        leaf neighbor_address {
+          type ip-address;
+        }
+      }
+    }
+    leaf port_num {
+      type int16;
+    }
+    leaf neighbor_as {
+      type int32;
+    }
+    leaf local_as {
+      type int32;
+    }
+    leaf neighbor_gr_restarting {
+      type empty;
+    }
+    choice proto_state {
+      mandatory false;
+      case start_state {
+        container error_wait {
+          leaf remains {
+            type date-and-time;
+          }
+          leaf delay {
+            type uint32;
+          }
+        }
+        container bs_active {
+          leaf remains {
+            type date-and-time;
+          }
+          leaf delay {
+            type uint32;
+          }
+        }
+        container restart {
+          leaf restart_timer{
+            type date-and-time;
+          }
+        }
+      }
+      case up {
+        leaf neighbour_id {
+          type string;
+        }
+        container local_capabilities {
+          uses bgp_capabilities;
+        }
+        container neighbour_capabilities {
+          uses bgp_capabilities;
+        }
+        container session {
+          leaf in_ex_ternal {
+            type enumeration {
+        enum internal;
+        enum external;
+            }
+          }
+          leaf multihop {
+            type empty;
+          }
+          leaf route_reflector {
+            type empty;
+          }
+          leaf route_server {
+            type empty;
+          }
+          leaf as4 {
+            type empty;
+          }
+        }
+        leaf source_address {
+          type ip-address;
+        }
+        container hold_timer {
+          uses timer;
+        }
+        container keepalive_timer {
+          uses timer;
+        }
+        container last_error {
+          leaf err1 {
+            type string;
+          }
+          leaf err2 {
+            type string;
+          }
+        }
+        list bgp_channels {
+          key neighbor_gr;
+          leaf neighbor_gr {
+            type string;
+          }
+          leaf ll_stale_timer {
+            type date-and-time;
+          }
+          container ipa_zero {
+            leaf next_hop_addr {
+        type ip-address;
+            }
+            leaf link_addr {
+        type ip-address;
+            }
+          }
+          leaf ipv4_table {
+            type string;
+          }
+          leaf ipv6_table {
+            type string;
+          }
+          leaf base_table {
+            type string;
+          }
+        }
+      }
+    }
+    leaf bgp_next_hop {
+      type ip-address;
+    }
+  }
+}
+
