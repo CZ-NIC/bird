@@ -1136,23 +1136,6 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   }
   HASH_WALK_END;
 
-  assert(p->root != NULL);
-  assert(p->trie_slab != NULL);
-
-  log("protocol: %p, root: %p, slab: %p", p, p->root, p->trie_slab);
-  log("Number of prefixes before aggregation: %d", get_trie_prefix_count(p->root));
-  log("==== PREFIXES BEFORE ====");
-  print_prefixes(p->root);
-
-  first_pass(p->root, p->trie_slab);
-  second_pass(p->root);
-  third_pass(p->root);
-
-  if (is_leaf(p->root))
-    log("WARNING: root is leaf!");
-
-  log("==== PREFIXES AFTER ====");
-  print_prefixes(p->root);
 
   /* Announce changes */
   if (old_bucket)
