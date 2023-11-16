@@ -8,7 +8,39 @@
  */
 
 /**
- * Simple Network Management Protocol State Machine
+ * DOC: Simple Network Management Protocol
+ *
+ * The SNMP protocol is divided into several parts: |snmp.c| which implements
+ * the BIRD intergration, |subagent.c| contains functions for creating and
+ * parsing packets, |bgp_mib.c| takes care of the bgp MIB subtree of standard
+ * BGP4-MIB and |snmp_utils.c| which is collections of helper functions for
+ * working with OIDs, VarBinds.
+ *
+ * Althrough called SNMP the BIRD does not implement SNMP directly but acts as
+ * an AgentX subagent. AgentX subagent connects to AgentX master agent that
+ * processes incomming SNMP requests and passes them down to the correct
+ * subagent. Therefore you need also a running master agent somewhere.
+ * Advantages of this design are that you are capable of doing aggregation of
+ * statuses of multiple BIRDs at the master agent level and much simpler
+ * implementation.
+ *
+ * Before any of the SNMP request could be processed, the SNMP need to
+ * established AgentX session with the master agent and need to register all
+ * subtrees to make them accessible from the master agent. The establishement of
+ * the of session is handled by snmp_start(), snmp_start_locked() and
+ * snmp_start_subagent(). Then we register all MIBs from configuration in
+ * snmp_register_mibs().
+ *
+ * The AgentX request are handled only during MIB subtree registrations and
+ * after then on established session (in states SNMP_REGISTER and SNMP_CONN, see
+ * below). It is also guaranteed that no request is received before MIB subtree
+ * registration because the specific subagent is not authoratitave and also the
+ * master agent has no info about MIB subtree supported by subagent. The AgentX
+ * requests are handled by function snmp_rx() in |subagent.c|.
+ *
+ *
+ *
+ * SNMP State Machine
  *
  *  States with main transitions
  *

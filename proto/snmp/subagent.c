@@ -28,23 +28,34 @@
  */
 
 /**
+ *
+ *
+ *
+ *
  * Handling of malformed packet:
- *  When we find an error in PDU data, we create and send a response with error
- *  defined by the RFC. We await until the packet is send and then we close the
- *  communication socket. This also closes the established session. We chose
- *  this approach because we cannot easily mark the boundary between packets.
- *  When we are reseting the connection, we change the snmp_state to SNMP_RESET.
- *  In SNMP_RESET state we skip all received bytes and wait for snmp_tx()
- *  to be called. The socket's tx_hook is called when the TX-buffer is empty,
- *  meaning our response (agentx-Response-PDU) was send.
+ *
+ * When we find an error in PDU data, we create and send a response with error
+ * defined by the RFC. We await until the packet is send and then we close the
+ * communication socket. This implicitly closes the established session. We
+ * chose this approach because we cannot easily mark the boundary between packets.
+ * When we are reseting the connection, we change the snmp_state to SNMP_RESET.
+ * In SNMP_RESET state we skip all received bytes and wait for snmp_tx()
+ * to be called. The socket's tx_hook is called when the TX-buffer is empty,
+ * meaning our response (agentx-Response-PDU) was send.
  *
  *
- * Partial parsing
- *  It may happen that we received only staring part of some PDU from the
- *  communication socket. In most cases if we recognize this situation we
- *  immediately return, waiting for rest of the PDU to arrive. But for packets
- *  like agentx-Get-PDU, agentx-GetNext-PDU and agentx-GetBulk-PDU it could be
- *  costly as they could hold many VarBinds. In these cases we process.
+ * Partial parsing:
+ *
+ * It may happen that we received only staring part of some PDU from the
+ * communication socket. In most cases, if we recognize this situation we
+ * immediately return, waiting for rest of the PDU to arrive. But for packets
+ * like agentx-Get-PDU, agentx-GetNext-PDU and agentx-GetBulk-PDU it could be
+ * costly as they could hold many VarBinds. We don't want to process these
+ * packet twice because it is a lot work. We parse all VarBinds until we hit the
+ * first incomplete one. The logic behind this is to release as much as
+ * possible space from receive buffer. When we hit the first incomplete VarBind,
+ * we store information about the parsing state and move the header inside the
+ * receive buffer.
  *
  * Transmit packet context
  *
@@ -1498,6 +1509,7 @@ parse_gets2_pdu(struct snmp_proto *p, byte * const pkt_start, uint size, uint *s
   {
     res = p->last_header;
     p->last_header = NULL;
+    p->last_size = 0;
   }
   else
     res = response_header;
@@ -1520,6 +1532,7 @@ partial:
   STORE_U32(h->payload, pkt_size);
   *skip = AGENTX_HEADER_SIZE;
   p->last_header = h;
+  p->last_size = c.buffer - sk->tpos;
 
   /* number of bytes parsed from RX-buffer */
   ret = pkt - pkt_start;
@@ -1632,7 +1645,16 @@ snmp_ping(struct snmp_proto *p)
   snmp_pdu_context(&c, sk);
 
   if (c.size < AGENTX_HEADER_SIZE)
-    snmp_manage_tbuf(p, &c);
+    return;
+
+  int unused = (sk->tbsize - (sk->tpos - sk->tbuf)) - (p->last_size + AGENTX_HEADER_SIZE);
+  if (p->last_header && unused >= 0)
+  {
+    
+  }
+  else if (p->last_header)
+  {
+  }
 
   struct agentx_header *h = (struct agentx_header *) c.buffer;
   ADVANCE(c.buffer, c.size, AGENTX_HEADER_SIZE);
