@@ -13,6 +13,13 @@ module show_protocols {
     }
   }
 
+    typedef state {
+    type enumeration {
+      enum up;
+      enum down;
+    }
+  }
+
   container message {
     list table {
       key "name";
@@ -26,7 +33,7 @@ module show_protocols {
         type string;
       }
       leaf state {
-        type int8;
+        type state;
       }
       leaf since {
         type date-and-time;

@@ -1,10 +1,10 @@
 {
-  "show_protocols:message": {
+  "show_protocols_all:message": {
       "table": [
-         {"name": "device1", "proto": "Device", "table": "---", "state": 1, "since": "2020-10-10T10:10:10+00:00", "info": "" },
-         {"name": "kernel4", "proto": "Kernel", "table": "master4", "state": 1, "since": "2020-10-10T10:10:10+00:00", "info": "" },
-         {"name": "ospf4", "proto": "OSPF", "table": "master4", "state": 1, "since": "2020-10-10T10:10:10+00:00", "info": "Running" },
-         {"name": "ebgp4_1", "proto": "BGP", "table": "---", "state": 1, "since": "2020-10-10T10:10:10+00:00", "info": "Established" }
+         {"name": "device1", "proto": "Device", "table": "---", "state": "up", "since": "2020-10-10T10:10:10+00:00", "info": "" },
+         {"name": "kernel4", "proto": "Kernel", "table": "master4", "state": "up", "since": "2020-10-10T10:10:10+00:00", "info": "" },
+         {"name": "ospf4", "proto": "OSPF", "table": "master4", "state": "up", "since": "2020-10-10T10:10:10+00:00", "info": "Running" },
+         {"name": "ebgp4_1", "proto": "BGP", "table": "---", "state": "up", "since": "2020-10-10T10:10:10+00:00", "info": "Established" }
     ]
   }
 }

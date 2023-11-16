@@ -7,6 +7,24 @@
 	"namespace": "https://bird.nic.cz/yang/v2.15/cli-debug",
         "revision": "",
         "conformance-type": "implement"
+      },
+      {
+        "name": "show_status",
+	"namespace": "https://bird.nic.cz/yang/v2.15/cli-debug",
+        "revision": "",
+        "conformance-type": "implement"
+      },
+      {
+        "name": "show_protocols",
+	"namespace": "https://bird.nic.cz/yang/v2.15/cli-debug",
+        "revision": "",
+        "conformance-type": "implement"
+      },
+      {
+        "name": "show_protocols_all",
+	"namespace": "https://bird.nic.cz/yang/v2.15/cli-debug",
+        "revision": "",
+        "conformance-type": "implement"
       }
     ]
   }
