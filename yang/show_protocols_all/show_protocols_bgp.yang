@@ -3,6 +3,12 @@ submodule show_protocols_bgp {
   belongs-to show_protocols_all {
     prefix "show_protocols_all";
   }
+  import ietf-yang-types {
+     prefix yang;
+  }
+  import ietf-inet-types {
+    prefix inet;
+  }
 
   description "cli show bgp";
 
@@ -102,12 +108,12 @@ submodule show_protocols_bgp {
     choice is_dynamic {
       case dynamic {
         leaf neighbor_range {
-          type ip-address;
+          type inet:ip-address;
         }
       }
       case nondinamic {
         leaf neighbor_address {
-          type ip-address;
+          type inet:ip-address;
         }
       }
     }
@@ -128,7 +134,7 @@ submodule show_protocols_bgp {
       case start_state {
         container error_wait {
           leaf remains {
-            type date-and-time;
+            type yang:date-and-time;
           }
           leaf delay {
             type uint32;
@@ -136,7 +142,7 @@ submodule show_protocols_bgp {
         }
         container bs_active {
           leaf remains {
-            type date-and-time;
+            type yang:date-and-time;
           }
           leaf delay {
             type uint32;
@@ -144,7 +150,7 @@ submodule show_protocols_bgp {
         }
         container restart {
           leaf restart_timer{
-            type date-and-time;
+            type yang:date-and-time;
           }
         }
       }
@@ -179,7 +185,7 @@ submodule show_protocols_bgp {
           }
         }
         leaf source_address {
-          type ip-address;
+          type inet:ip-address;
         }
         container hold_timer {
           uses timer;
@@ -201,14 +207,14 @@ submodule show_protocols_bgp {
             type string;
           }
           leaf ll_stale_timer {
-            type date-and-time;
+            type yang:date-and-time;
           }
           container ipa_zero {
             leaf next_hop_addr {
-        type ip-address;
+        type inet:ip-address;
             }
             leaf link_addr {
-        type ip-address;
+        type inet:ip-address;
             }
           }
           leaf ipv4_table {
@@ -224,7 +230,7 @@ submodule show_protocols_bgp {
       }
     }
     leaf bgp_next_hop {
-      type ip-address;
+      type inet:ip-address;
     }
   }
 }
