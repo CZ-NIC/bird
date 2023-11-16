@@ -1,0 +1,165 @@
+{
+  "show_protocols_all:message": {
+    "table": [
+      {"name": "device1", "proto": "Device", "table": "---", "state": "up", "since": "2020-10-10T10:10:10+00:00"},
+      {"name": "kernel4", "proto": "Kernel", "table": "master4", "state": "up", "since": "2020-10-10T10:10:10+00:00", 
+        "channels": [
+          {
+            "name": "ipv4",
+            "state": "up",
+            "table": "master4",
+            "preference": 10,
+            "input_filter": "ACCEPT",
+            "output_filter": "(unnamed)",
+            "channel_show_stats": {
+              "routes": {
+                "imported": 0,
+                "exported": 12,
+                "preferred": 0
+              },
+              "route_stats": {
+                "import_updates": {"received": 0, "rejected": 0, "filtered": 0, "ignored": 0, "accepted": 0},
+                "import_withdraws": {"received": 0, "rejected": 0, "ignored": 0, "accepted": 0},
+                "export_updates": {"received": 828, "rejected": 816, "filtered": 0, "accepted": 12},
+                "export_withdraws": {"received": 197, "accepted": 0}
+              }
+            }
+          }
+        ]
+      },
+      {"name": "ebgp4_1", "proto": "BGP", "table": "---", "state": "up", "since": "2020-10-10T10:10:10+00:00", "info": "Established",
+        "bgp": {
+          "bgp_status":"established",
+          "neighbor_range": "10.255.253.250",
+          "neighbor_as": 8496,
+          "local_as": 92449,
+          "neighbour_id": "10.255.255.5",
+          "local_capabilities": {
+            "any_mp_bgp": {
+                "multiprotocol": [null],
+                "af_announced": {"afl1": "ipv4", "afn1": ""}
+             },
+             "route_refresh": [null],
+             "graceful_restart": [null],
+             "as4_support": [null],
+             "enhanced_refresh": [null],
+             "long_lived_gr_restart": [null]
+          },
+          "neighbour_capabilities": {
+            "any_mp_bgp": {
+                "multiprotocol": [null],
+                "af_announced": {"afl1": "ipv4", "afn1": ""}
+            },
+            "route_refresh": [null],
+            "graceful_restart": [null],
+            "as4_support": [null],
+            "enhanced_refresh": [null],
+            "long_lived_gr_restart": [null]
+          },
+          "session": {
+            "in_ex_ternal": "external",
+            "route_server": [null],
+            "as4": [null]
+          },
+          "source_address": "10.255.253.250",
+          "hold_timer": {
+            "remains": "132.432",
+            "count_time": 240
+          },
+          "keepalive_timer": {
+            "remains": "39.890",
+            "count_time": 80
+          },
+          "bgp_next_hop": "10.255.253.250" 
+        },
+        "channels": [
+          {
+            "name": "ipv4",
+            "state": "up",
+            "table": "master4",
+            "preference": 100,
+            "input_filter": "bgp_import",
+            "output_filter": "(unnamed)",
+            "channel_show_stats": {
+              "routes": {
+                "imported": 68,
+                "exported": 203,
+                "preferred": 16
+              },
+              "route_stats": {
+                "import_updates": {"received": 249, "rejected": 0, "filtered": 56, "ignored": 68, "accepted": 124},
+                "import_withdraws": {"received": 0, "rejected": 0, "ignored": 0, "accepted": 54},
+                "export_updates": {"received": 828, "rejected": 122, "filtered": 12, "accepted": 704},
+                "export_withdraws": {"received": 179, "accepted": 201}
+              }
+            }
+          }
+        ]
+      },
+      {"name": "rpki_66", "proto": "RPKI", "table": "---", "state": "up", "since": "2020-10-10T10:10:10+00:00", "info": "Established",
+        "rpki": {
+          "cache_server": "10.255.66.2",
+          "cache_port": 8282,
+          "status": "established",
+          "transport": "unprotected over TCP",
+          "protocol_version": 2,
+          "session_id": 64442,
+          "serial_num": 6,
+          "last_update": "99.230",
+          "refresh_timer": {
+            "remains": "3500.789",
+            "count_time": 3600
+          },
+          "expire_timer": {
+            "remains": "7100.783",
+            "count_time": 7200
+          }
+        },
+        "channels": [
+          {
+            "name": "ro4",
+            "state": "up",
+            "table": "rt4",
+            "preference": 100,
+            "input_filter": "ACCEPT",
+            "output_filter": "REJECT",
+            "channel_show_stats": {
+              "routes": {
+                "imported": 10,
+                "exported": 0,
+                "preferred": 10
+              },
+              "route_stats": {
+                "import_updates": {"received": 10, "rejected": 0, "filtered": 0, "ignored": 0, "accepted": 10},
+                "import_withdraws": {"received": 0, "rejected": 0, "ignored": 0, "accepted": 0},
+                "export_updates": {"received": 0, "rejected": 0, "filtered": 0, "accepted": 0},
+                "export_withdraws": {"received": 0, "accepted": 0}
+              }
+            }
+          },
+          {
+            "name": "ro6",
+            "state": "up",
+            "table": "rt6",
+            "preference": 100,
+            "input_filter": "ACCEPT",
+            "output_filter": "REJECT",
+            "channel_show_stats": {
+              "routes": {
+                "imported": 0,
+                "exported": 0,
+                "preferred": 0
+              },
+              "route_stats": {
+                "import_updates": {"received": 0, "rejected": 0, "filtered": 0, "ignored": 0, "accepted": 10},
+                "import_withdraws": {"received": 0, "rejected": 0, "ignored": 0, "accepted": 0},
+                "export_updates": {"received": 0, "rejected": 0, "filtered": 0, "accepted": 0},
+                "export_withdraws": {"received": 0, "accepted": 0}
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
