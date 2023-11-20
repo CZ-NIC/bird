@@ -89,7 +89,6 @@ struct rte_owner {
   event *stop;
 };
 
-DEFINE_DOMAIN(attrs);
 extern DOMAIN(attrs) attrs_domain;
 
 #define RTA_LOCK       LOCK_DOMAIN(attrs, attrs_domain)

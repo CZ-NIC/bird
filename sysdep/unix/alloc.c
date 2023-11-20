@@ -120,7 +120,6 @@ long page_size = 0;
     void *pages[0];
   };
 
-  DEFINE_DOMAIN(resource);
   static DOMAIN(resource) empty_pages_domain;
   static struct empty_pages *empty_pages = NULL;
 

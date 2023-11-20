@@ -23,7 +23,6 @@ static list rcu_thread_list;
 
 static struct rcu_thread main_rcu_thread;
 
-DEFINE_DOMAIN(resource);
 static DOMAIN(resource) rcu_domain;
 
 static int

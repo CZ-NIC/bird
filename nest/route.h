@@ -98,18 +98,16 @@ struct rt_table_exporter {
 
 extern uint rtable_max_id;
 
-DEFINE_DOMAIN(rtable);
-
 /* The public part of rtable structure */
-#define RTABLE_PUBLIC										\
-  resource r;											\
-  node n;				/* Node in list of all tables */			\
-  char *name;				/* Name of this table */				\
-  uint addr_type;			/* Type of address data stored in table (NET_*) */	\
-  uint id;				/* Integer table ID for fast lookup */			\
-  DOMAIN(rtable) lock;			/* Lock to take to access the private parts */		\
-  struct rtable_config *config;		/* Configuration of this table */			\
-  struct birdloop *loop;		/* Service thread */					\
+#define RTABLE_PUBLIC \
+    resource r;											\
+    node n;				/* Node in list of all tables */			\
+    char *name;				/* Name of this table */				\
+    uint addr_type;			/* Type of address data stored in table (NET_*) */	\
+    uint id;				/* Integer table ID for fast lookup */			\
+    DOMAIN(rtable) lock;		/* Lock to take to access the private parts */		\
+    struct rtable_config *config;	/* Configuration of this table */			\
+    struct birdloop *loop;		/* Service thread */					\
 
 /* The complete rtable structure */
 struct rtable_private {
@@ -167,7 +165,9 @@ struct rtable_private {
 
 /* The final union private-public rtable structure */
 typedef union rtable {
-  struct { RTABLE_PUBLIC; };
+  struct {
+    RTABLE_PUBLIC;
+  };
   struct rtable_private priv;
 } rtable;
 

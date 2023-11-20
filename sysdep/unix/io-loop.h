@@ -105,8 +105,6 @@ struct bird_thread
 };
 
 
-DEFINE_DOMAIN(control);
-
 struct bird_thread_syncer {
   pool *pool;
   DOMAIN(control) lock;

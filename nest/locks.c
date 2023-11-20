@@ -38,7 +38,6 @@
 
 static list olock_list;
 
-DEFINE_DOMAIN(attrs);
 static DOMAIN(attrs) olock_domain;
 #define OBJ_LOCK	LOCK_DOMAIN(attrs, olock_domain)
 #define OBJ_UNLOCK	UNLOCK_DOMAIN(attrs, olock_domain)

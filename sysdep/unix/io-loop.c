@@ -594,7 +594,6 @@ sockets_fire(struct birdloop *loop)
  *	Threads
  */
 
-DEFINE_DOMAIN(attrs);
 static void bird_thread_start_event(void *_data);
 
 struct birdloop_pickup_group {

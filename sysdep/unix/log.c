@@ -41,7 +41,6 @@ _Thread_local uint this_thread_id;
 
 #include <pthread.h>
 
-DEFINE_DOMAIN(logging);
 static DOMAIN(logging) log_domain;
 #define log_lock()  LOCK_DOMAIN(logging, log_domain);
 #define log_unlock()  UNLOCK_DOMAIN(logging, log_domain);

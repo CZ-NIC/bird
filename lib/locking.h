@@ -9,27 +9,37 @@
 #ifndef _BIRD_LOCKING_H_
 #define _BIRD_LOCKING_H_
 
+#include "lib/macro.h"
+
 struct domain_generic;
 struct pool;
 
+#define LOCK_ORDER \
+  the_bird, \
+  meta, \
+  control, \
+  proto, \
+  service, \
+  rtable, \
+  attrs, \
+  logging, \
+  resource, \
+
 /* Here define the global lock order; first to last. */
 struct lock_order {
-  struct domain_generic *the_bird;
-  struct domain_generic *meta;
-  struct domain_generic *control;
-  struct domain_generic *proto;
-  struct domain_generic *service;
-  struct domain_generic *rtable;
-  struct domain_generic *attrs;
-  struct domain_generic *logging;
-  struct domain_generic *resource;
+#define LOCK_ORDER_EXPAND(p)	struct domain_generic *p;
+  MACRO_FOREACH(LOCK_ORDER_EXPAND, LOCK_ORDER)
+#undef LOCK_ORDER_EXPAND
 };
+
+#define LOCK_ORDER_EXPAND(p)	struct domain__##p { struct domain_generic *p; };
+  MACRO_FOREACH(LOCK_ORDER_EXPAND, LOCK_ORDER)
+#undef LOCK_ORDER_EXPAND
 
 extern _Thread_local struct lock_order locking_stack;
 extern _Thread_local struct domain_generic **last_locked;
 
 #define DOMAIN(type) struct domain__##type
-#define DEFINE_DOMAIN(type) DOMAIN(type) { struct domain_generic *type; }
 #define DOMAIN_ORDER(type)  OFFSETOF(struct lock_order, type)
 
 #define DOMAIN_NEW(type)  (DOMAIN(type)) { .type = domain_new(DOMAIN_ORDER(type)) }
@@ -63,7 +73,6 @@ uint dg_order(struct domain_generic *dg);
 #define DG_UNLOCK(d)	do_unlock(d, DG_LSP(d))
 
 /* Use with care. To be removed in near future. */
-DEFINE_DOMAIN(the_bird);
 extern DOMAIN(the_bird) the_bird_domain;
 
 #define the_bird_lock()		LOCK_DOMAIN(the_bird, the_bird_domain)
@@ -272,5 +281,12 @@ extern DOMAIN(the_bird) the_bird_domain;
   for (union _stem *_obj = SKIP_BACK(union _stem, priv, _pobj), **_lataux = (union _stem **) _pobj->locked_at; \
       _obj ? (_pobj->locked_at = NULL, LOBJ_UNLOCK_SIMPLE(_obj, _level), _obj) : NULL; \
       LOBJ_LOCK_SIMPLE(_obj, _level), _pobj->locked_at = (struct _stem##_private **) _lataux, _obj = NULL)
+
+/*
+ *  Get the locked object when the lock is already taken
+ */
+
+#define LOBJ_PRIV(_obj, _level) \
+  ({ ASSERT_DIE(DOMAIN_IS_LOCKED(_level, (_obj)->lock)); &(_obj)->priv; })
 
 #endif

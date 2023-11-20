@@ -5,8 +5,6 @@
 #include <stdatomic.h>
 #include <pthread.h>
 
-DEFINE_DOMAIN(proto);
-
 #define FOO_PUBLIC \
   const char *name;	\
   _Atomic uint counter;	\
