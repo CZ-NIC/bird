@@ -613,6 +613,30 @@ print_prefixes(const struct trie_node *node)
 }
 
 /*
+ * Run Optimal Routing Table Constructor (ORTC) algorithm
+ */
+static void
+calculate_trie(void *p)
+{
+  struct aggregator_proto *proto = (struct aggregator_proto *)p;
+
+  log("====PREFIXES BEFORE ====");
+  print_prefixes(proto->root);
+
+  first_pass(proto->root, proto->trie_slab);
+  log("====FIRST PASS====");
+  print_prefixes(proto->root);
+
+  second_pass(proto->root);
+  log("====SECOND PASS====");
+  print_prefixes(proto->root);
+
+  third_pass(proto->root);
+  log("====THIRD PASS====");
+  print_prefixes(proto->root);
+}
+
+/*
  * Set static attribute in @rta from static attribute in @old according to @sa.
  */
 static void
