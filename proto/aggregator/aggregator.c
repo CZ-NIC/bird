@@ -1178,6 +1178,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   }
   HASH_WALK_END;
 
+  ev_schedule(&p->reload_trie);
 
   /* Announce changes */
   if (old_bucket)
@@ -1275,6 +1276,11 @@ aggregator_start(struct proto *P)
   p->trie_slab = sl_new(p->p.pool, sizeof(struct trie_node));
   p->root = new_node(p->trie_slab);
 
+  p->reload_trie = (event) {
+    .hook = calculate_trie,
+    .data = p,
+  };
+
   return PS_UP;
 }
 
@@ -1301,6 +1307,7 @@ aggregator_shutdown(struct proto *P)
   }
   HASH_WALK_END;
 
+  ev_postpone(&p->reload_trie);
   delete_trie(p->root);
   p->root = NULL;
 
