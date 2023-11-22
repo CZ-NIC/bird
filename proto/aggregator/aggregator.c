@@ -143,9 +143,6 @@ trie_insert_prefix(const union net_addr_union *addr, struct trie_node * const ro
   const struct net_addr_ip4 * const ip4 = &addr->ip4;
   struct trie_node *node = root;
 
-  if (root->bucket == NULL)
-    root->bucket = bucket;
-
   for (u32 i = 0; i < ip4->pxlen; i++)
   {
     u32 bit = (ip4->prefix.addr >> (31 - i)) & 1;
