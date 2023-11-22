@@ -211,9 +211,6 @@ first_pass(struct trie_node *node, slab *trie_slab)
   /* Preorder traversal */
   first_pass(node->child[0], trie_slab);
   first_pass(node->child[1], trie_slab);
-
-  /* Discard bucket in interior nodes */
-  node->bucket = NULL;
 }
 
 /*
