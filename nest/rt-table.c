@@ -1614,22 +1614,19 @@ rte_validate(struct channel *ch, rte *e)
   int c;
   const net_addr *n = e->net;
 
+#define IGNORING(pre, post) do { \
+    log(L_WARN "%s.%s: Ignoring " pre " %N " post, ch->proto->name, ch->name, n); \
+    return 0; \
+  } while (0)
+
   if (!net_validate(n))
-  {
-    log(L_WARN "Ignoring bogus prefix %N received via %s",
-	n, ch->proto->name);
-    return 0;
-  }
+    IGNORING("bogus prefix", "");
 
   /* FIXME: better handling different nettypes */
   c = !net_is_flow(n) ?
     net_classify(n): (IADDR_HOST | SCOPE_UNIVERSE);
   if ((c < 0) || !(c & IADDR_HOST) || ((c & IADDR_SCOPE_MASK) <= SCOPE_LINK))
-  {
-    log(L_WARN "Ignoring bogus route %N received via %s",
-	n, ch->proto->name);
-    return 0;
-  }
+    IGNORING("bogus route", "");
 
   if (net_type_match(n, NB_DEST))
   {
@@ -1637,26 +1634,14 @@ rte_validate(struct channel *ch, rte *e)
     int dest = nhea_dest(nhea);
 
     if (dest == RTD_NONE)
-    {
-      log(L_WARN "Ignoring route %N with no destination received via %s",
-	  n, ch->proto->name);
-      return 0;
-    }
+      IGNORING("route", "with no destination");
 
     if ((dest == RTD_UNICAST) &&
 	!nexthop_is_sorted((struct nexthop_adata *) nhea->u.ptr))
-    {
-      log(L_WARN "Ignoring unsorted multipath route %N received via %s",
-	  n, ch->proto->name);
-      return 0;
-    }
+      IGNORING("unsorted multipath route", "");
   }
   else if (ea_find(e->attrs, &ea_gen_nexthop))
-  {
-    log(L_WARN "Ignoring route %N having a nexthop attribute received via %s",
-	n, ch->proto->name);
-    return 0;
-  }
+    IGNORING("route", "having a superfluous nexthop attribute");
 
   return 1;
 }
