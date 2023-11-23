@@ -55,7 +55,7 @@ module show_status {
           type int32;
         }
         container wait_timer {
-          uses timer
+          uses timer;
         }
       }
     }
