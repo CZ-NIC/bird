@@ -2996,14 +2996,22 @@ using the following configuration parameters:
 	refresh requests. Disabling Route Refresh also disables Enhanced Route Refresh.
 	Default: on.
 
+	<tag><label id="bgp-require-route-refresh">require route refresh <m/switch/</tag>
+	If enabled, the BGP Route Refresh capability (<rfc id="2918">) must be
+	announced by the BGP neighbor, otherwise the BGP session will not be
+	established. Default: off.
+
 	<tag><label id="bgp-enable-enhanced-route-refresh">enable enhanced route refresh <m/switch/</tag>
-	BGP protocol extension Enhanced Route Refresh (<rfc id="7313">) specifies explicit
-	begin and end for Route Refresh (see previous option),
-	therefore the receiver can remove
-	stale routes that were not advertised during the exchange. This option
-	specifies whether BIRD advertises this capability and supports
-	related procedures.
-	Default: on.
+	BGP protocol extension Enhanced Route Refresh (<rfc id="7313">)
+	specifies explicit begin and end for Route Refresh (see previous
+	option), therefore the receiver can remove stale routes that were not
+	advertised during the exchange. This option specifies whether BIRD
+	advertises this capability and supports related procedures. Default: on.
+
+	<tag><label id="bgp-require-enhanced-route-refresh">require enhanced route refresh <m/switch/</tag>
+	If enabled, the BGP Enhanced Route Refresh capability (<rfc id="7313">)
+	must be announced by the BGP neighbor, otherwise the BGP session
+	will not be established. Default: off.
 
 	<tag><label id="bgp-graceful-restart">graceful restart <m/switch/|aware</tag>
 	When a BGP speaker restarts or crashes, neighbors will discard all
@@ -3020,10 +3028,15 @@ using the following configuration parameters:
 	restart requires also configuration of other protocols. Default: aware.
 
 	<tag><label id="bgp-graceful-restart-time">graceful restart time <m/number/</tag>
-	The restart time is announced in the BGP graceful restart capability
+	The restart time is announced in the BGP Graceful Restart capability
 	and specifies how long the neighbor would wait for the BGP session to
 	re-establish after a restart before deleting stale routes. Default:
 	120 seconds.
+
+	<tag><label id="bgp-require-graceful-restart">require graceful restart <m/switch/</tag>
+	If enabled, the BGP Graceful Restart capability (<rfc id="4724">)
+	must be announced by the BGP neighbor, otherwise the BGP session
+	will not be established. Default: off.
 
 	<tag><label id="bgp-long-lived-graceful-restart">long lived graceful restart <m/switch/|aware</tag>
 	The long-lived graceful restart is an extension of the traditional
@@ -3038,11 +3051,16 @@ using the following configuration parameters:
 	graceful restart is disabled.
 
 	<tag><label id="bgp-long-lived-stale-time">long lived stale time <m/number/</tag>
-	The long-lived stale time is announced in the BGP long-lived graceful
-	restart capability and specifies how long the neighbor would keep stale
+	The long-lived stale time is announced in the BGP Long-lived Graceful
+	Restart capability and specifies how long the neighbor would keep stale
 	routes depreferenced during long-lived graceful restart until either the
 	session is re-stablished and synchronized or the stale time expires and
 	routes are removed. Default: 3600 seconds.
+
+	<tag><label id="bgp-require-long-lived-graceful-restart">require long lived graceful restart <m/switch/</tag>
+	If enabled, the BGP Long-lived Graceful Restart capability (draft)
+	must be announced by the BGP neighbor, otherwise the BGP session
+	will not be established. Default: off.
 
 	<tag><label id="bgp-interpret-communities">interpret communities <m/switch/</tag>
 	<rfc id="1997"> demands that BGP speaker should process well-known
@@ -3063,10 +3081,20 @@ using the following configuration parameters:
 	in neighbor's implementation of 4B AS extension. Even when disabled
 	(off), BIRD behaves internally as AS4-aware BGP router. Default: on.
 
+	<tag><label id="bgp-require-as4">require as4 <m/switch/</tag>
+	If enabled, the BGP 4B AS number capability (<rfc id="6793">) must be
+	announced by the BGP neighbor, otherwise the BGP session will not be
+	established. Default: off.
+
 	<tag><label id="bgp-enable-extended-messages">enable extended messages <m/switch/</tag>
 	The BGP protocol uses maximum message length of 4096 bytes. This option
 	provides an extension (<rfc id="8654">) to allow extended messages with
 	length up to 65535 bytes. Default: off.
+
+	<tag><label id="bgp-require-extended-messages">require extended messages <m/switch/</tag>
+	If enabled, the BGP Extended Message capability (<rfc id="8654">) must
+	be announced by the BGP neighbor, otherwise the BGP session will not be
+	established. Default: off.
 
 	<tag><label id="bgp-capabilities">capabilities <m/switch/</tag>
 	Use capability advertisement to advertise optional capabilities. This is
@@ -3077,7 +3105,11 @@ using the following configuration parameters:
 	capability-related error.
 
 	<tag><label id="bgp-advertise-hostname">advertise hostname <m/switch/</tag>
-	Advertise hostname capability along with the hostname. Default: off.
+	Advertise the hostname capability along with the hostname. Default: off.
+
+	<tag><label id="bgp-require-hostname">require hostname <m/switch/</tag>
+	If enabled, the hostname capability must be announced by the BGP
+	neighbor, otherwise the BGP session negotiation fails. Default: off.
 
 	<tag><label id="bgp-disable-after-error">disable after error <m/switch/</tag>
 	When an error is encountered (either locally or by the other side),
@@ -3403,14 +3435,29 @@ be used in explicit configuration.
 	just IPv4-mapped IPv6 addresses are used, as described in
 	<rfc id="4798"> and <rfc id="4659">. Default: off.
 
+	<tag><label id="bgp-require-extended-next-hop">require extended next hop <m/switch/</tag>
+	If enabled, the BGP Extended Next Hop Encoding capability (<rfc id="8950">)
+	must be announced by the BGP neighbor, otherwise the BGP session will
+	not be established. Note that this option is relevant just for IPv4 /
+	VPNv4 channels, as IPv6 / VPNv6 channels use a different mechanism not
+	signalled by a capability. Default: off.
+
 	<tag><label id="bgp-add-paths">add paths <m/switch/|rx|tx</tag>
 	Standard BGP can propagate only one path (route) per destination network
-	(usually the selected one). This option controls the add-path protocol
+	(usually the selected one). This option controls the ADD-PATH protocol
 	extension, which allows to advertise any number of paths to a
-	destination. Note that to be active, add-path has to be enabled on both
+	destination. Note that to be active, ADD-PATH has to be enabled on both
 	sides of the BGP session, but it could be enabled separately for RX and
 	TX direction. When active, all available routes accepted by the export
 	filter are advertised to the neighbor. Default: off.
+
+	<tag><label id="bgp-require-add-paths">require add paths <m/switch/</tag>
+	If enabled, the BGP ADD-PATH capability (<rfc id="7911">) must be
+	announced by the BGP neighbor, otherwise the BGP session will not be
+	established. Announced directions in the capability must be compatible
+	with locally configured directions. E.g., If <cf/add path tx/ is
+	configured locally, then the neighbor capability must announce RX.
+	Default: off.
 
 	<tag><label id="bgp-aigp">aigp <m/switch/|originate</tag>
 	The BGP protocol does not use a common metric like other routing
