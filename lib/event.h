@@ -71,5 +71,8 @@ ev_new_init(pool *p, void (*hook)(void *), void *data)
   return e;
 }
 
+#define ev_new_send(loop, pool, hook, data) \
+  ev_send_loop((loop), ev_new_init((pool), (hook), (data)))
+
 
 #endif
