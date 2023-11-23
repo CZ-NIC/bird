@@ -116,6 +116,7 @@
 #include "nest/iface.h"
 #include "nest/protocol.h"
 #include "nest/route.h"
+#include "nest/mpls.h"
 #include "nest/cli.h"
 #include "nest/locks.h"
 #include "conf/conf.h"
@@ -621,8 +622,6 @@ bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip)
 void
 bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len)
 {
-  proto_shutdown_mpls_map(&p->p);
-
   proto_notify_state(&p->p, PS_STOP);
   p->uncork_ev->data = NULL;
   bgp_graceful_close_conn(&p->outgoing_conn, subcode, data, len);
@@ -1794,8 +1793,6 @@ bgp_start(struct proto *P)
   p->remote_id = 0;
   p->link_addr = IPA_NONE;
 
-  proto_setup_mpls_map(P, RTS_BGP);
-
   /* Lock all channels when in GR recovery mode */
   if (p->p.gr_recovery && p->cf->gr_mode)
   {
@@ -1966,7 +1963,7 @@ bgp_init(struct proto_config *CF)
     proto_add_channel(P, &cc->c);
 
   /* Add MPLS channel */
-  proto_configure_channel(P, &P->mpls_channel, proto_cf_mpls_channel(CF));
+  proto_configure_mpls_channel(P, CF, RTS_BGP);
 
   return P;
 }
@@ -2392,14 +2389,11 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   }
 
   /* Reconfigure MPLS channel */
-  same = proto_configure_channel(P, &P->mpls_channel, proto_cf_mpls_channel(CF)) && same;
+  same = proto_configure_mpls_channel(P, CF, RTS_BGP) && same;
 
   WALK_LIST_DELSAFE(C, C2, p->p.channels)
     if (C->stale)
       same = proto_configure_channel(P, &C, NULL) && same;
-
-  if (same)
-    proto_setup_mpls_map(P, RTS_BGP);
 
   if (same && (p->start_state > BSS_PREPARE))
     bgp_update_bfd(p, new->bfd);

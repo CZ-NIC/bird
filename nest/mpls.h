@@ -70,6 +70,7 @@ struct mpls_channel_config {
   struct mpls_range_config *range;
 
   uint label_policy;
+  uint rts;
 };
 
 struct mpls_channel {
@@ -79,11 +80,24 @@ struct mpls_channel {
   struct mpls_range *range;
 
   uint label_policy;
+  uint rts;
+
+  struct mpls_fec_map *mpls_map;	/* Maps protocol routes to FECs / labels */
 };
 
 
 void mpls_channel_postconfig(struct channel_config *CF);
 extern struct channel_class channel_mpls;
+
+static inline int
+proto_configure_mpls_channel(struct proto *p, struct proto_config *pc, uint rts)
+{
+  struct channel_config *cf = proto_cf_mpls_channel(pc);
+  if (cf)
+    SKIP_BACK(struct mpls_channel_config, c, cf)->rts = rts;
+
+  return proto_configure_channel(p, &p->mpls_channel, cf);
+}
 
 
 struct mpls_fec {
@@ -134,7 +148,7 @@ struct mpls_fec *mpls_get_fec_by_label(struct mpls_fec_map *m, u32 label);
 struct mpls_fec *mpls_get_fec_by_net(struct mpls_fec_map *m, const net_addr *net, u32 path_id);
 struct mpls_fec *mpls_get_fec_by_destination(struct mpls_fec_map *m, ea_list *dest);
 void mpls_free_fec(struct mpls_fec_map *x, struct mpls_fec *fec);
-int mpls_handle_rte(struct mpls_fec_map *m, const net_addr *n, rte *r);
+int mpls_handle_rte(struct channel *c, const net_addr *n, rte *r);
 void mpls_rte_preimport(rte *new, const rte *old);
 
 

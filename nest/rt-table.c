@@ -1789,8 +1789,8 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 	    new = NULL;
 	}
 
-      if (new && c->proto->mpls_map)
-	if (mpls_handle_rte(c->proto->mpls_map, n, new) < 0)
+      if (new && c->proto->mpls_channel)
+	if (mpls_handle_rte(c->proto->mpls_channel, n, new) < 0)
 	  {
 	    channel_rte_trace_in(D_FILTERS, c, new, "invalid");
 	    stats->updates_invalid++;

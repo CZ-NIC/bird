@@ -565,6 +565,7 @@ mpls_channel_init(struct channel *C, struct channel_config *CC)
   c->domain = cc->domain->domain;
   c->range = cc->range->range;
   c->label_policy = cc->label_policy;
+  c->rts = cc->rts;
 }
 
 static int
@@ -574,6 +575,9 @@ mpls_channel_start(struct channel *C)
 
   mpls_lock_domain(c->domain);
   mpls_lock_range(c->range);
+
+  ASSERT_DIE(c->rts);
+  c->mpls_map = mpls_fec_map_new(C->proto->pool, C, c->rts);
 
   return 0;
 }
@@ -591,6 +595,9 @@ static void
 mpls_channel_cleanup(struct channel *C)
 {
   struct mpls_channel *c = (void *) C;
+
+  mpls_fec_map_free(c->mpls_map);
+  c->mpls_map = NULL;
 
   mpls_unlock_range(c->range);
   mpls_unlock_domain(c->domain);
@@ -622,6 +629,8 @@ mpls_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impo
     c->label_policy = new->label_policy;
     *import_changed = 1;
   }
+
+  mpls_fec_map_reconfigure(c->mpls_map, C);
 
   return 1;
 }
@@ -1141,8 +1150,10 @@ mpls_apply_fec(rte *r, struct mpls_fec *fec)
 
 
 int
-mpls_handle_rte(struct mpls_fec_map *m, const net_addr *n, rte *r)
+mpls_handle_rte(struct channel *c, const net_addr *n, rte *r)
 {
+  struct mpls_channel *mc = SKIP_BACK(struct mpls_channel, c, c->proto->mpls_channel);
+  struct mpls_fec_map *m = mc->mpls_map;
   struct mpls_fec *fec = NULL;
 
   /* Select FEC for route */
@@ -1214,13 +1225,13 @@ mpls_handle_rte(struct mpls_fec_map *m, const net_addr *n, rte *r)
 static inline struct mpls_fec_tmp_lock
 mpls_rte_get_fec_lock(const rte *r)
 {
-  struct mpls_fec_tmp_lock mt = {
-    .m = SKIP_BACK(struct proto, sources, r->src->owner)->mpls_map,
-  };
+  struct mpls_fec_tmp_lock mt = {};
 
-  if (!mt.m)
+  struct channel *c = SKIP_BACK(struct proto, sources, r->src->owner)->mpls_channel;
+  if (!c)
     return mt;
 
+  mt.m = SKIP_BACK(struct mpls_channel, c, c)->mpls_map;
   uint label = ea_get_int(r->attrs, &ea_gen_mpls_label, 0);
   if (label < 16)
     return mt;

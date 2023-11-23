@@ -507,7 +507,7 @@ static_init(struct proto_config *CF)
 
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
 
-  proto_configure_channel(P, &P->mpls_channel, proto_cf_mpls_channel(CF));
+  proto_configure_mpls_channel(P, CF, RTS_STATIC);
 
   P->iface_sub.neigh_notify = static_neigh_notify;
   P->reload_routes = static_reload_routes;
@@ -539,8 +539,6 @@ static_start(struct proto *P)
 
   BUFFER_INIT(p->marked, p->p.pool, 4);
 
-  proto_setup_mpls_map(P, RTS_STATIC);
-
   /* We have to go UP before routes could be installed */
   proto_notify_state(P, PS_UP);
 
@@ -557,8 +555,6 @@ static_shutdown(struct proto *P)
   struct static_proto *p = (void *) P;
   struct static_config *cf = (void *) P->cf;
   struct static_route *r;
-
-  proto_shutdown_mpls_map(P);
 
   /* Just reset the flag, the routes will be flushed by the nest */
   WALK_LIST(r, cf->routes)
@@ -657,10 +653,8 @@ static_reconfigure(struct proto *P, struct proto_config *CF)
     return 0;
 
   if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)) ||
-      !proto_configure_channel(P, &P->mpls_channel, proto_cf_mpls_channel(CF)))
+      !proto_configure_mpls_channel(P, CF, RTS_STATIC))
     return 0;
-
-  proto_setup_mpls_map(P, RTS_STATIC);
 
   p->p.cf = CF;
 

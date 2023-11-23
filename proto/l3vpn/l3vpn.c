@@ -391,7 +391,8 @@ l3vpn_init(struct proto_config *CF)
   proto_configure_channel(P, &p->ip6_channel, proto_cf_find_channel(CF, NET_IP6));
   proto_configure_channel(P, &p->vpn4_channel, proto_cf_find_channel(CF, NET_VPN4));
   proto_configure_channel(P, &p->vpn6_channel, proto_cf_find_channel(CF, NET_VPN6));
-  proto_configure_channel(P, &P->mpls_channel, proto_cf_find_channel(CF, NET_MPLS));
+
+  proto_configure_mpls_channel(P, CF, RTS_L3VPN);
 
   P->rt_notify = l3vpn_rt_notify;
   P->preexport = l3vpn_preexport;
@@ -414,22 +415,20 @@ l3vpn_start(struct proto *P)
   l3vpn_prepare_import_targets(p);
   l3vpn_prepare_export_targets(p);
 
-  proto_setup_mpls_map(P, RTS_L3VPN);
-
-  P->mpls_map->vrf_iface = P->vrf;
+  SKIP_BACK(struct mpls_channel, c, P->mpls_channel)->mpls_map->vrf_iface = P->vrf;
 
   return PS_UP;
 }
 
+#if 0
 static int
-l3vpn_shutdown(struct proto *P)
+l3vpn_shutdown(struct proto *P UNUSED)
 {
   // struct l3vpn_proto *p = (void *) P;
 
-  proto_shutdown_mpls_map(P);
-
   return PS_DOWN;
 }
+#endif
 
 static int
 l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
@@ -441,7 +440,7 @@ l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
       !proto_configure_channel(P, &p->ip6_channel, proto_cf_find_channel(CF, NET_IP6)) ||
       !proto_configure_channel(P, &p->vpn4_channel, proto_cf_find_channel(CF, NET_VPN4)) ||
       !proto_configure_channel(P, &p->vpn6_channel, proto_cf_find_channel(CF, NET_VPN6)) ||
-      !proto_configure_channel(P, &P->mpls_channel, proto_cf_find_channel(CF, NET_MPLS)))
+      !proto_configure_mpls_channel(P, CF, RTS_L3VPN))
     return 0;
 
   if (p->rd != cf->rd)
@@ -453,8 +452,6 @@ l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
   /* Update pointers to config structures */
   p->import_target = cf->import_target;
   p->export_target = cf->export_target;
-
-  proto_setup_mpls_map(P, RTS_L3VPN);
 
   if (import_changed)
   {
@@ -518,7 +515,7 @@ struct protocol proto_l3vpn = {
   .postconfig =		l3vpn_postconfig,
   .init =		l3vpn_init,
   .start =		l3vpn_start,
-  .shutdown =		l3vpn_shutdown,
+//  .shutdown =		l3vpn_shutdown,
   .reconfigure =	l3vpn_reconfigure,
   .copy_config = 	l3vpn_copy_config,
 };
