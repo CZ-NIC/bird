@@ -628,7 +628,7 @@ bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len)
   bgp_graceful_close_conn(&p->incoming_conn, subcode, data, len);
 
   struct bgp_channel *c;
-  WALK_LIST(c, p->p.channels)
+  BGP_WALK_CHANNELS(p, c)
     if (c->ptx)
       bgp_free_pending_tx(c);
 

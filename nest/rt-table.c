@@ -1769,6 +1769,7 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
   const struct filter *filter = c->in_filter;
   struct channel_import_stats *stats = &c->import_stats;
+  struct mpls_fec *fec = NULL;
 
   if (new)
     {
@@ -1790,7 +1791,7 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 	}
 
       if (new && c->proto->mpls_channel)
-	if (mpls_handle_rte(c->proto->mpls_channel, n, new) < 0)
+	if (mpls_handle_rte(c->proto->mpls_channel, n, new, &fec) < 0)
 	  {
 	    channel_rte_trace_in(D_FILTERS, c, new, "invalid");
 	    stats->updates_invalid++;
@@ -1814,6 +1815,12 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
     stats->withdraws_received++;
 
   rte_import(&c->in_req, n, new, src);
+
+  if (fec)
+  {
+    mpls_unlock_fec(fec);
+    DBGL( "Unlock FEC %p (rte_update %N)", fec, n);
+  }
 
   /* Now the route attributes are kept by the in-table cached version
    * and we may drop the local handle */
