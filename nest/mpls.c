@@ -96,12 +96,26 @@ static void mpls_remove_range(struct mpls_range *r);
  *	MPLS domain
  */
 
-list mpls_domains;
+
+#define MPLS_GLOBAL_PUBLIC \
+  DOMAIN(the_bird) lock; \
+
+struct mpls_global_private {
+  struct { MPLS_GLOBAL_PUBLIC; };
+  list domains;
+};
+
+union mpls_global_public {
+  struct { MPLS_GLOBAL_PUBLIC; };
+  struct mpls_global_private priv;
+} mpls_global;
+
+#define MPLS_GLOBAL	LOBJ_PRIV(&mpls_global, the_bird)
 
 void
 mpls_init(void)
 {
-  init_list(&mpls_domains);
+  init_list(&MPLS_GLOBAL->domains);
 }
 
 struct mpls_domain_config *
@@ -203,7 +217,7 @@ mpls_new_domain(struct mpls_domain_config *cf)
   WALK_LIST(rc, cf->ranges)
     mpls_new_range(m, rc);
 
-  add_tail(&mpls_domains, &m->n);
+  add_tail(&MPLS_GLOBAL->domains, &m->n);
   cf->domain = m;
 
   return m;
@@ -313,8 +327,8 @@ mpls_commit(struct config *new, struct config *old)
 {
   list old_domains;
   init_list(&old_domains);
-  add_tail_list(&old_domains, &mpls_domains);
-  init_list(&mpls_domains);
+  add_tail_list(&old_domains, &MPLS_GLOBAL->domains);
+  init_list(&MPLS_GLOBAL->domains);
 
   struct mpls_domain_config *mc;
   WALK_LIST(mc, new->mpls_domains)
@@ -324,7 +338,7 @@ mpls_commit(struct config *new, struct config *old)
     if (m && mpls_reconfigure_domain(m, mc))
     {
       rem_node(&m->n);
-      add_tail(&mpls_domains, &m->n);
+      add_tail(&MPLS_GLOBAL->domains, &m->n);
       continue;
     }
 
@@ -335,7 +349,7 @@ mpls_commit(struct config *new, struct config *old)
   WALK_LIST_DELSAFE(m, m2, old_domains)
     mpls_remove_domain(m, old);
 
-  add_tail_list(&mpls_domains, &old_domains);
+  add_tail_list(&MPLS_GLOBAL->domains, &old_domains);
 }
 
 
@@ -1276,7 +1290,7 @@ mpls_show_ranges(struct mpls_show_ranges_cmd *cmd)
   else
   {
     struct mpls_domain *m;
-    WALK_LIST(m, mpls_domains)
+    WALK_LIST(m, MPLS_GLOBAL->domains)
       mpls_show_ranges_dom(cmd, m);
   }
 
