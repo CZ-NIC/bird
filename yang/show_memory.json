@@ -3,28 +3,28 @@
     "header": "BIRD memory usage",
     "body": {
       "routing_tables": {
-        "effective": 324,
-        "overhead": 48
+        "effective": 34604,
+        "overhead": 2848
       },
       "route_attributes": {
-        "effective": 324,
-        "overhead": 48
+        "effective": 26826,
+        "overhead": 13448
       },
       "protocols": {
-        "effective": 324,
-        "overhead": 48
+        "effective": 70412,
+        "overhead": 18256
       },
       "current_config": {
-        "effective": 324,
-        "overhead": 48
+        "effective": 299744,
+        "overhead": 2152
       },
       "standby_memory": {
-        "effective": 324,
-        "overhead": 48
+        "effective": 0,
+        "overhead": 348160
       },
       "total": {
-        "effective": 324,
-        "overhead": 48
+        "effective": 513602,
+        "overhead": 391904
       }
     }
   }
