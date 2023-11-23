@@ -204,7 +204,7 @@ cmd_show_memory(void)
 
   cbor_close_block_or_list(w); // we do not know for sure, that standby memory will be printed, so we do not know number of block items. If we know that, we open the block for 6 (or 5) items and we do not close anything
 
-  cbor_write_to_file(w, "/home/kkubecova/Dokumenty/bird/yang/show_memory.cbor");
+  cbor_write_to_file(w, "bird/yang/show_memory.cbor");
 
 }
 
