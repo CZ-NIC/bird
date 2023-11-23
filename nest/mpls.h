@@ -38,23 +38,6 @@ struct mpls_domain_config {
   struct mpls_range_config *dynamic_range; /* Default dynamic label range */
 };
 
-struct mpls_domain {
-  node n;				/* Node in global list of MPLS domains (mpls_domains) */
-  struct mpls_domain_config *cf;	/* Our config */
-  const char *name;
-  pool *pool;				/* Pool for the domain and associated objects */
-
-  struct lmap labels;			/* Bitmap of allocated labels */
-  uint label_count;			/* Number of allocated labels */
-  uint use_count;			/* Reference counter */
-
-  struct config *removed;		/* Deconfigured, waiting for zero use_count,
-					   while keeping config obstacle */
-
-  list ranges;				/* List of label ranges (struct mpls_range) */
-  list handles;				/* List of label handles (struct mpls_handle) */
-};
-
 struct mpls_range_config {
   node n;				/* Node in mpls_domain_config.ranges */
   struct mpls_range *range;		/* Our instance */
@@ -66,23 +49,7 @@ struct mpls_range_config {
   u8 implicit;				/* Implicitly defined range */
 };
 
-struct mpls_range {
-  node n;				/* Node in mpls_domain.ranges */
-  struct mpls_range_config *cf;		/* Our config */
-  const char *name;
-
-  uint lo, hi;				/* Label range interval */
-  uint label_count;			/* Number of allocated labels */
-  uint use_count;			/* Reference counter */
-  u8 removed;				/* Deconfigured, waiting for zero use_count */
-};
-
-struct mpls_handle {
-  node n;				/* Node in mpls_domain.handles */
-
-  struct mpls_range *range;		/* Associated range, keeping reference */
-  uint label_count;			/* Number of allocated labels */
-};
+struct mpls_handle;
 
 
 void mpls_init(void);
@@ -91,9 +58,6 @@ void mpls_domain_postconfig(struct mpls_domain_config *cf);
 struct mpls_range_config * mpls_range_config_new(struct mpls_domain_config *m, struct symbol *s);
 void mpls_preconfig(struct config *c);
 void mpls_commit(struct config *new, struct config *old);
-uint mpls_new_label(struct mpls_domain *m, struct mpls_handle *h, uint n);
-void mpls_free_label(struct mpls_domain *m, struct mpls_handle *h, uint n);
-void mpls_move_label(struct mpls_domain *m, struct mpls_handle *fh, struct mpls_handle *th, uint n);
 
 static inline struct mpls_domain_config *cf_default_mpls_domain(struct config *cfg)
 { return EMPTY_LIST(cfg->mpls_domains) ? NULL : HEAD(cfg->mpls_domains); }

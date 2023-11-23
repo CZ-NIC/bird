@@ -83,7 +83,7 @@
 
 #include "nest/bird.h"
 #include "nest/route.h"
-#include "nest/mpls.h"
+#include "nest/mpls-internal.h"
 #include "nest/cli.h"
 
 static struct mpls_range *mpls_new_range(struct mpls_domain *m, struct mpls_range_config *cf);
