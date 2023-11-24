@@ -396,7 +396,9 @@ cmd_reconfig_status(void)
  */
 
 static sock *cli_sk;
+static sock *yi_sk;
 static char *path_control_socket = PATH_CONTROL_SOCKET;
+static char *path_control_socket_yi = NULL;
 
 
 static void
@@ -476,8 +478,21 @@ cli_get_command(cli *c)
 static int
 cli_rx(sock *s, uint size UNUSED)
 {
+  log("rcli_rx");
   cli_kick(s->data);
   return 0;
+}
+
+
+static int
+yi_rx(sock *s, uint size)
+{
+  /* zpracuj data délky len začínající na s->rbuf */
+  /* zapiš výsledek do s->tbuf */
+  log("size tbuf %ui", s->tbsize);
+  uint tx_len = yi_process(size, s->rbuf, s->tbuf, s->tbsize);
+  sk_send(s, tx_len);
+  return 1;
 }
 
 static void
@@ -501,12 +516,20 @@ cli_connect_err(sock *s UNUSED, int err)
     log(L_INFO "Failed to accept CLI connection: %s", strerror(err));
 }
 
+static void
+yi_connect_err(sock *s UNUSED, int err)
+{
+  ASSERT_DIE(err);
+  if (config->cli_debug)
+    log(L_INFO "Failed to accept YI connection: %s", strerror(err));
+}
+
 static int
 cli_connect(sock *s, uint size UNUSED)
 {
   cli *c;
 
-  if (config->cli_debug)
+  //if (config->cli_debug)
     log(L_INFO "CLI connect");
   s->rx_hook = cli_rx;
   s->tx_hook = cli_tx;
@@ -518,6 +541,56 @@ cli_connect(sock *s, uint size UNUSED)
   rmove(s, c->pool);
   return 1;
 }
+
+static int
+yi_connect(sock *s, uint size UNUSED)
+{
+  cli *c;
+  log("YI connect");
+  //if (config->cli_debug)
+    log(L_INFO "YANG connect");
+  s->rx_hook = yi_rx;
+  s->tx_hook = cli_tx;
+  s->err_hook = cli_err;
+  s->data = c = cli_new(s);
+  s->pool = c->pool;
+  s->fast_rx = 1;
+  c->rx_pos = c->rx_buf;
+  rmove(s, c->pool);
+  log("connect ok");
+  return 1;
+}
+
+
+static void
+yi_init_unix(uid_t use_uid, gid_t use_gid)
+{
+  sock *s;
+  log("yi_init_unix before");
+  yi_init();
+  s = yi_sk = sk_new(yi_pool);
+  s->type = SK_UNIX_PASSIVE;
+  s->rx_hook = yi_connect;
+  s->err_hook = yi_connect_err;
+  s->rbsize = 1024;
+  s->tbsize = 16384;
+  s->fast_rx = 1;
+  log("yi_init_unix after set");
+  /* Return value intentionally ignored */
+  unlink(path_control_socket_yi);
+
+  if (sk_open_unix(s, path_control_socket_yi) < 0)
+    die("Cannot create control socket %s: %m", path_control_socket_yi);
+
+  if (use_uid || use_gid)
+    if (chown(path_control_socket_yi, use_uid, use_gid) < 0)
+      die("chown: %m");
+
+  if (chmod(path_control_socket_yi, 0660) < 0)
+    die("chmod: %m");
+  log("yi_init_unix after fc");
+}
+
 
 static void
 cli_init_unix(uid_t use_uid, gid_t use_gid)
@@ -545,6 +618,7 @@ cli_init_unix(uid_t use_uid, gid_t use_gid)
   if (chmod(path_control_socket, 0660) < 0)
     die("chmod: %m");
 }
+
 
 /*
  *	PID file
@@ -695,7 +769,7 @@ signal_init(void)
  *	Parsing of command-line arguments
  */
 
-static char *opt_list = "bc:dD:ps:P:u:g:flRh";
+static char *opt_list = "bc:dD:ps:Y:P:u:g:flRh";
 int parse_and_exit;
 char *bird_name;
 static char *use_user;
@@ -838,6 +912,9 @@ parse_args(int argc, char **argv)
 	path_control_socket = optarg;
 	socket_changed = 1;
 	break;
+      case 'Y':
+        path_control_socket_yi = optarg;
+        break;
       case 'P':
 	pid_file = optarg;
 	break;
@@ -907,6 +984,15 @@ main(int argc, char **argv)
   {
     test_old_bird(path_control_socket);
     cli_init_unix(use_uid, use_gid);
+    if (path_control_socket_yi)
+    {
+      yi_init_unix(use_uid, use_gid);
+    }
+    else { //todo delete
+      path_control_socket_yi = "bird-yang.ctl";
+      log(L_INFO "before function");
+      yi_init_unix(use_uid, use_gid);
+    }
   }
 
   if (use_gid)
@@ -939,7 +1025,7 @@ main(int argc, char **argv)
       dup2(0, 1);
       dup2(0, 2);
     }
-
+  log("before main thread init");
   main_thread_init();
 
   write_pid_file();

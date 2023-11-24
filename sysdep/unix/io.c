@@ -1810,6 +1810,7 @@ sk_send_full(sock *s, unsigned len, struct iface *ifa,
 static void
 call_rx_hook(sock *s, int size)
 {
+  log(L_WARN "soc rx_hook");
   if (s->rx_hook(s, size))
   {
     /* We need to be careful since the socket could have been deleted by the hook */

@@ -5,8 +5,8 @@
 struct cbor_writer {
   int pt; // where will next byte go
   int capacity;
-  struct linpool *lp;
   int8_t *cbor;
+  struct linpool *lp;
 };
 
 void write_item(struct cbor_writer *writer, int8_t major, int num);
@@ -14,12 +14,12 @@ void check_memory(struct cbor_writer *writer, int add_size);
 
 
 
-struct cbor_writer *cbor_init(struct linpool *lp, int size_guess) {
-  struct cbor_writer *writer = (struct cbor_writer *) lp_alloc(lp, sizeof(struct cbor_writer));
-  writer->cbor = lp_alloc(lp, size_guess * sizeof(int8_t));
-  writer->capacity = size_guess;
-  writer->lp = lp;
+struct cbor_writer *cbor_init(byte *buff, uint capacity, struct linpool *lp) {
+  struct cbor_writer *writer = (struct cbor_writer*)lp_alloc(lp, sizeof(struct cbor_writer));
+  writer->cbor = buff;
+  writer->capacity = capacity;
   writer->pt =0;
+  writer->lp = lp;
   return writer;
 }
   
@@ -107,8 +107,6 @@ void write_item(struct cbor_writer *writer, int8_t major, int num) {
 
 void check_memory(struct cbor_writer *writer, int add_size) {
   if (writer->capacity - writer->pt-add_size < 0) {
-    int8_t *a = writer->cbor;
-    writer->cbor = lp_alloc(writer->lp, writer->capacity*2);
-    memcpy(writer->cbor, a, writer->pt);
+    bug("There is not enough space for cbor response in given buffer");
   }
 }

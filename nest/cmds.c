@@ -45,9 +45,12 @@ cmd_show_status(void)
     cli_msg(13, "Daemon is up and running");
 
 
-  byte time[TM_DATETIME_BUFFER_SIZE];
+  /*byte time[TM_DATETIME_BUFFER_SIZE];
   tm_format_time(time, &config->tf_base, current_time());
   struct cbor_writer *w = cbor_init(lp_new(proto_pool), 1000);
+  cbor_open_block_with_length(w, 1);
+  cbor_add_string(w, "show_status:message");
+
   cbor_open_block_with_length(w, 3);
   cbor_string_string(w, "BIRD", BIRD_VERSION);
   cbor_add_string(w, "body");
@@ -70,7 +73,7 @@ cmd_show_status(void)
     cbor_add_string(w, "Reconfiguration in progress");
   else
     cbor_add_string(w, "Daemon is up and running");
-  cbor_write_to_file(w, "test.cbor");
+  cbor_write_to_file(w, "test.cbor");*/
 }
 
 void
@@ -156,9 +159,12 @@ cmd_show_memory(void)
 #endif
   print_size("Total:", total);
   cli_msg(0, "");
-  
-  
-  struct cbor_writer *w = cbor_init(lp_new(proto_pool), 1000);
+}
+
+uint
+cmd_show_memory_cbor(byte *tbuf, uint capacity) {
+  bug("in cmd_show_memory_cbor");
+  struct cbor_writer *w = cbor_init(tbuf, capacity, lp_new(proto_pool));
   cbor_open_block_with_length(w, 1);
   
   cbor_add_string(w, "show_memory:message");
@@ -191,7 +197,7 @@ cmd_show_memory(void)
   cbor_close_block_or_list(w); // we do not know for sure, that standby memory will be printed, so we do not know number of block items. If we know that, we open the block for 6 (or 5) items and we do not close anything
 
   cbor_write_to_file(w, "show_memory.cbor");
-
+  return w->pt;
 }
 
 void

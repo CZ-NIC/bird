@@ -1,16 +1,31 @@
 {
-  "show_status:message": {
-     "header": {
-       "bird": "BIRD ",
-       "version": "2.14"
-     },
-     "body": {
-         "router_id": "35496",
-          "hostname": "bird",
-          "server_time": "2020-10-10T10:10:10+00:00" ,
-          "last_reboot": "2020-10-10T10:10:10+00:00" ,
-          "last_reconfiguration": "2020-10-10T10:10:10+00:00"
-     },
-     "state": "Daemon is up and running"
+  "show_memory:message": {
+    "header": "BIRD memory usage",
+    "body": {
+      "routing_tables": {
+        "effective": 34604,
+        "overhead": 2848
+      },
+      "route_attributes": {
+        "effective": 26826,
+        "overhead": 13448
+      },
+      "protocols": {
+        "effective": 63564,
+        "overhead": 15312
+      },
+      "current_config": {
+        "effective": 299744,
+        "overhead": 2152
+      },
+      "standby_memory": {
+        "effective": 0,
+        "overhead": 348160
+      },
+      "total": {
+        "effective": 506754,
+        "overhead": 388960
+      }
+    }
   }
 }
