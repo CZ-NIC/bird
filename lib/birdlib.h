@@ -26,7 +26,11 @@
 #define OFFSETOF(s, i) ((size_t) &((s *)0)->i)
 #endif
 
-#define SKIP_BACK(s, i, p) ({ s *_ptr = ((s *)((char *)p - OFFSETOF(s, i))); SAME_TYPE(&_ptr->i, p); _ptr; })
+#define SKIP_BACK(s, i, p) ({ \
+    typeof(p) _orig = p; \
+    s *_ptr = ((s *)((char *)_orig - OFFSETOF(s, i))); \
+    SAME_TYPE(&_ptr->i, _orig); \
+    _ptr; })
 #define BIRD_ALIGN(s, a) (((s)+a-1)&~(a-1))
 #define CPU_STRUCT_ALIGN  (MAX_(_Alignof(void*), _Alignof(u64)))
 #define BIRD_CPU_ALIGN(s) BIRD_ALIGN((s), CPU_STRUCT_ALIGN)
