@@ -243,7 +243,7 @@ rt_get_source_o(struct rte_owner *p, u32 id)
 
   if (src)
   {
-    UNUSED u64 uc = atomic_fetch_add_explicit(&src->uc, 1, memory_order_acq_rel);
+    lfuc_lock_revive(&src->uc);
     return src;
   }
 
@@ -253,7 +253,7 @@ rt_get_source_o(struct rte_owner *p, u32 id)
   src->private_id = id;
   src->global_id = idm_alloc(&src_ids);
 
-  atomic_store_explicit(&src->uc, 1, memory_order_release);
+  lfuc_init(&src->uc);
   p->uc++;
 
   HASH_INSERT2(p->hash, RSH, rta_pool, src);
@@ -330,11 +330,7 @@ rt_prune_sources(void *data)
 
   HASH_WALK_FILTER(o->hash, next, src, sp)
   {
-    u64 uc;
-    while ((uc = atomic_load_explicit(&src->uc, memory_order_acquire)) >> RTE_SRC_PU_SHIFT)
-      synchronize_rcu();
-
-    if (uc == 0)
+    if (lfuc_finished(&src->uc))
     {
       o->uc--;
 
