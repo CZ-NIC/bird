@@ -605,6 +605,8 @@ struct channel {
   u8 gr_lock;				/* Graceful restart mechanism should wait for this channel */
   u8 gr_wait;				/* Route export to channel is postponed until graceful restart */
 
+  u32 obstacles;			/* External obstacles remaining before cleanup */
+
   btime last_state_change;		/* Time of last state transition */
 
   struct rt_export_request reload_req;	/* Feeder for import reload */
@@ -691,6 +693,9 @@ void proto_shutdown_mpls_map(struct proto *p);
 void channel_set_state(struct channel *c, uint state);
 void channel_schedule_reload(struct channel *c, struct channel_import_request *cir);
 int channel_import_request_prefilter(struct channel_import_request *cir_head, const net_addr *n);
+
+void channel_add_obstacle(struct channel *c);
+void channel_del_obstacle(struct channel *c);
 
 static inline void channel_init(struct channel *c) { channel_set_state(c, CS_START); }
 static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP); }

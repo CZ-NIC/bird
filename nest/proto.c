@@ -745,7 +745,7 @@ channel_check_stopped(struct channel *c)
   switch (c->channel_state)
   {
     case CS_STOP:
-      if (!EMPTY_LIST(c->roa_subscriptions) || c->out_req.hook || c->refeed_req.hook || c->in_req.hook || c->reload_req.hook)
+      if (c->obstacles || !EMPTY_LIST(c->roa_subscriptions) || c->out_req.hook || c->refeed_req.hook || c->in_req.hook || c->reload_req.hook)
 	return;
 
       channel_set_state(c, CS_DOWN);
@@ -753,7 +753,7 @@ channel_check_stopped(struct channel *c)
 
       break;
     case CS_PAUSE:
-      if (!EMPTY_LIST(c->roa_subscriptions) || c->out_req.hook || c->refeed_req.hook || c->reload_req.hook)
+      if (c->obstacles || !EMPTY_LIST(c->roa_subscriptions) || c->out_req.hook || c->refeed_req.hook || c->reload_req.hook)
 	return;
 
       channel_set_state(c, CS_START);
@@ -761,6 +761,19 @@ channel_check_stopped(struct channel *c)
   }
 
   DBG("%s.%s: Channel requests/hooks stopped (in state %s)\n", c->proto->name, c->name, c_states[c->channel_state]);
+}
+
+void
+channel_add_obstacle(struct channel *c)
+{
+  c->obstacles++;
+}
+
+void
+channel_del_obstacle(struct channel *c)
+{
+  if (!--c->obstacles)
+    channel_check_stopped(c);
 }
 
 void
