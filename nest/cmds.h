@@ -16,6 +16,7 @@ struct f_inst;
 void cmd_show_status(void);
 void cmd_show_symbols(struct sym_show_data *sym);
 void cmd_show_memory(void);
+uint cmd_show_memory_cbor(byte *tbuf, uint capacity);
 
 struct f_line;
 void cmd_eval(const struct f_line *expr);

@@ -424,20 +424,31 @@ static struct cli_config initial_control_socket_config = {
   .name = PATH_CONTROL_SOCKET,
   .mode = 0660,
 };
+
+static struct cli_config initial_yi_control_socket_config = {
+  .name = NULL,
+  .mode = 0600,
+};
+
 #define path_control_socket initial_control_socket_config.name
+#define path_control_socket_yi initial_yi_control_socket_config.name
 
 static struct cli_config *main_control_socket_config = NULL;
+static struct cli_config *yi_control_socket_config = NULL;
 
 #define TLIST_PREFIX cli_listener
 #define TLIST_TYPE struct cli_listener
 #define TLIST_ITEM n
 #define TLIST_WANT_ADD_TAIL
 #define TLIST_WANT_WALK
-static struct cli_listener {
+struct cli_listener {
   TLIST_DEFAULT_NODE;
   sock *s;
   struct cli_config *config;
-} *main_control_socket = NULL;
+};
+
+static struct cli_listener *main_control_socket = NULL;
+static struct cli_listener *yi_control_socket = NULL;
 
 #include "lib/tlists.h"
 
@@ -520,8 +531,21 @@ cli_get_command(cli *c)
 static int
 cli_rx(sock *s, uint size UNUSED)
 {
+  log("rcli_rx");
   cli_kick(s->data);
   return 0;
+}
+
+
+static int
+yi_rx(sock *s, uint size)
+{
+  /* zpracuj data délky len začínající na s->rbuf */
+  /* zapiš výsledek do s->tbuf */
+  log("size tbuf %ui", s->tbsize);
+  uint tx_len = yi_process(size, s->rbuf, s->tbuf, s->tbsize);
+  sk_send(s, tx_len);
+  return 1;
 }
 
 static void
@@ -545,12 +569,20 @@ cli_connect_err(sock *s UNUSED, int err)
     log(L_INFO "Failed to accept CLI connection: %s", strerror(err));
 }
 
+static void
+yi_connect_err(sock *s UNUSED, int err)
+{
+  ASSERT_DIE(err);
+  if (config->cli_debug)
+    log(L_INFO "Failed to accept YI connection: %s", strerror(err));
+}
+
 static int
 cli_connect(sock *s, uint size UNUSED)
 {
   cli *c;
 
-  if (config->cli_debug)
+  //if (config->cli_debug)
     log(L_INFO "CLI connect");
   s->rx_hook = cli_rx;
   s->tx_hook = cli_tx;
@@ -561,6 +593,92 @@ cli_connect(sock *s, uint size UNUSED)
   c->rx_pos = c->rx_buf;
   rmove(s, c->pool);
   return 1;
+}
+
+static int
+yi_connect(sock *s, uint size UNUSED)
+{
+  cli *c;
+  log("YI connect");
+  //if (config->cli_debug)
+    log(L_INFO "YANG connect");
+  s->rx_hook = yi_rx;
+  s->tx_hook = cli_tx;
+  s->err_hook = cli_err;
+  s->data = c = cli_new(s, ((struct cli_listener *) s->data)->config);
+  s->pool = c->pool;
+  s->fast_rx = 1;
+  c->rx_pos = c->rx_buf;
+  rmove(s, c->pool);
+  log("connect ok");
+  return 1;
+}
+
+/**
+ * yi_cli_listen - Initialize the yi cli UNIX socket, the cli_listener is not
+ * stored in cli_listeners list. It is however properly clean in the shutdown
+ * routine.
+ */
+static struct cli_listener *
+yi_cli_listen(struct cli_config *cf)
+{
+  struct cli_listener *l = mb_allocz(cli_pool, sizeof *l);
+  l->config = cf;
+  log("yi_init_unix before");
+  yi_init();
+  sock *s = l->s = sk_new(cli_pool);
+  s->type = SK_UNIX_PASSIVE;
+  s->rx_hook = yi_connect;
+  s->err_hook = yi_connect_err;
+  s->data = l;
+  s->rbsize = 1024;
+  s->tbsize = 16384;
+  s->fast_rx = 1;
+  log("yi_init_unix after set");
+
+  /* Return value intentionally ignored */
+  unlink(cf->name);
+
+  if (sk_open_unix(s, cf->name) < 0)
+  {
+    log(L_ERR "Cannot create yi control socket %s: %m", path_control_socket_yi);
+    return NULL;
+  }
+
+
+  if (cf->uid || cf->gid)
+    if (chown(cf->name, cf->uid, cf->gid) < 0)
+    {
+      log(L_ERR "Cannot chown yi control socket %s: %m", cf->name);
+      return NULL;
+    }
+
+  if (chmod(cf->name, 0660) < 0)
+  {
+    log(L_ERR "Cannot chmod yi control socket %s: %m", cf->name);
+    return NULL;
+  }
+
+  log("yi_init_unix after fc");
+
+  // The listener is NOT added in the cli_listeners list
+
+  return l;
+}
+
+static void
+yi_init_unix(uid_t use_uid, gid_t use_gid)
+{
+  ASSERT_DIE(yi_control_socket_config == NULL);
+
+  yi_control_socket_config = &initial_yi_control_socket_config;
+  yi_control_socket_config->uid = use_uid;
+  yi_control_socket_config->gid = use_gid;
+
+  ASSERT_DIE(yi_control_socket == NULL);
+  yi_control_socket = yi_cli_listen(yi_control_socket_config);
+  if (!yi_control_socket)
+    die("Won't run without control socket");
 }
 
 static struct cli_listener *
@@ -672,7 +790,6 @@ cli_commit(struct config *new, struct config *old)
       cli_deafen(l);
 }
 
-
 /*
  *	PID file
  */
@@ -751,6 +868,7 @@ sysdep_shutdown_done(void)
 {
   unlink_pid_file();
   cli_deafen(main_control_socket);
+  cli_deafen(yi_control_socket);
   log_msg(L_FATAL "Shutdown completed");
   exit(0);
 }
@@ -822,7 +940,7 @@ signal_init(void)
  *	Parsing of command-line arguments
  */
 
-static char *opt_list = "bc:dD:ps:P:u:g:flRh";
+static char *opt_list = "bc:dD:ps:Y:P:u:g:flRh";
 int parse_and_exit;
 char *bird_name;
 static char *use_user;
@@ -965,6 +1083,9 @@ parse_args(int argc, char **argv)
 	path_control_socket = optarg;
 	socket_changed = 1;
 	break;
+      case 'Y':
+        path_control_socket_yi = optarg;
+        break;
       case 'P':
 	pid_file = optarg;
 	break;
@@ -1036,6 +1157,15 @@ main(int argc, char **argv)
   {
     test_old_bird(path_control_socket);
     cli_init_unix(use_uid, use_gid);
+    if (path_control_socket_yi)
+    {
+      yi_init_unix(use_uid, use_gid);
+    }
+    else { //todo delete
+      path_control_socket_yi = "bird-yang.ctl";
+      log(L_INFO "before function");
+      yi_init_unix(use_uid, use_gid);
+    }
   }
 
   if (use_gid)
@@ -1068,7 +1198,7 @@ main(int argc, char **argv)
       dup2(0, 1);
       dup2(0, 2);
     }
-
+  log("before main thread init");
   main_thread_init();
 
   write_pid_file();

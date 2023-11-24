@@ -70,6 +70,7 @@ void cli_config_listen(struct cli_config *, const char *);
 
 extern pool *cli_pool;
 extern struct cli *this_cli;		/* Used during parsing */
+extern pool *yi_pool;
 
 #define CLI_ASYNC_CODE 10000
 
@@ -95,8 +96,10 @@ static inline void cli_separator(cli *c)
 
 cli *cli_new(void *, struct cli_config *);
 void cli_init(void);
+void yi_init(void);
 void cli_free(cli *);
 void cli_kick(cli *);
+uint yi_process(uint size, byte *rbuf, byte *tbuf, uint tbsize);
 void cli_written(cli *);
 void cli_echo(uint class, byte *msg);
 

@@ -62,6 +62,8 @@
  * first one) and schedules cli.event .
  *
  */
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "nest/bird.h"
 #include "nest/cli.h"
@@ -69,6 +71,7 @@
 #include "lib/string.h"
 
 pool *cli_pool;
+pool *yi_pool;
 
 static byte *
 cli_alloc_out(cli *c, int size)
@@ -333,8 +336,16 @@ cli_kick(cli *c)
     ev_schedule(c->event);
 }
 
+uint
+yi_process(uint size, byte *rbuf, byte *tbuf, uint tbsize) {
+  return cmd_show_memory_cbor(tbuf, tbsize);
+}
+
 static list cli_log_hooks;
 static int cli_log_inited;
+
+static list yi_log_hooks;
+static int yi_log_inited;
 
 void
 cli_set_log_echo(cli *c, uint mask, uint size)
@@ -459,4 +470,12 @@ cli_init(void)
   cli_pool = rp_new(&root_pool, "CLI");
   init_list(&cli_log_hooks);
   cli_log_inited = 1;
+}
+
+void
+yi_init(void)
+{
+  yi_pool = rp_new(&root_pool, "YI");
+  init_list(&yi_log_hooks);  /*we may be do not need this*/
+  yi_log_inited = 1;
 }
