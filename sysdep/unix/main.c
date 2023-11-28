@@ -566,7 +566,6 @@ static void
 yi_init_unix(uid_t use_uid, gid_t use_gid)
 {
   sock *s;
-  log("yi_init_unix before");
   yi_init();
   s = yi_sk = sk_new(yi_pool);
   s->type = SK_UNIX_PASSIVE;
@@ -575,7 +574,6 @@ yi_init_unix(uid_t use_uid, gid_t use_gid)
   s->rbsize = 1024;
   s->tbsize = 16384;
   s->fast_rx = 1;
-  log("yi_init_unix after set");
   /* Return value intentionally ignored */
   unlink(path_control_socket_yi);
 
@@ -588,7 +586,14 @@ yi_init_unix(uid_t use_uid, gid_t use_gid)
 
   if (chmod(path_control_socket_yi, 0660) < 0)
     die("chmod: %m");
-  log("yi_init_unix after fc");
+
+  FILE *write_ptr;  // this block is for testing purposes and should be deleted
+  write_ptr = fopen("in.cbor", "wb");
+  fwrite("mem", 3, 1, write_ptr);
+  fclose(write_ptr);
+  write_ptr = fopen("out.cbor", "wb");
+  fwrite("", 0, 1, write_ptr);
+  fclose(write_ptr);
 }
 
 

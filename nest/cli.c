@@ -69,6 +69,7 @@
 #include "nest/cli.h"
 #include "conf/conf.h"
 #include "lib/string.h"
+#include "nest/cbor_parse.c"
 
 pool *cli_pool;
 pool *yi_pool;
@@ -337,7 +338,7 @@ cli_kick(cli *c)
 
 uint
 yi_process(uint size, byte *rbuf, byte *tbuf, uint tbsize) {
-  return cmd_show_memory_cbor(tbuf, tbsize);
+  return parse_cbor(size, rbuf, tbuf, tbsize);
 }
 
 static list cli_log_hooks;
