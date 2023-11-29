@@ -277,6 +277,10 @@ void proto_set_message(struct proto *p, char *msg, int len);
 void graceful_restart_recovery(void);
 void graceful_restart_init(void);
 void graceful_restart_show_status(void);
+int is_gr_active(void);
+int get_graceful_restart_locks_num(void);
+int get_tm_remains_gr_wait_timer(void);
+int get_config_gr_wait(void);
 void channel_graceful_restart_lock(struct channel *c);
 void channel_graceful_restart_unlock(struct channel *c);
 

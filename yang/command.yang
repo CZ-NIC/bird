@@ -1,12 +1,11 @@
 module command {
 
-  namespace ".";
+  namespace "command";
   
   prefix "command";
 
   container do {
     leaf command {
-      mandatory true;
       type uint32;
     }
     list args {

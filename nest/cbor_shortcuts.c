@@ -4,7 +4,7 @@
 #include "nest/cbor.c"
 
 
-void cbor_string_string(struct cbor_writer *writer, char *key, char *value) {
+void cbor_string_string(struct cbor_writer *writer, char *key, const char *value) {
   cbor_add_string(writer, key);
   cbor_add_string(writer, value);
 }
