@@ -43,34 +43,6 @@ cmd_show_status(void)
     cli_msg(13, "Reconfiguration in progress");
   else
     cli_msg(13, "Daemon is up and running");
-
-
-  /*struct cbor_writer *w = cbor_init(lp_new(proto_pool), 1000);
-  cbor_open_block_with_length(w, 1);
-  cbor_add_string(w, "show_status:message");
-
-  cbor_open_block_with_length(w, 3);
-  cbor_string_string(w, "BIRD", BIRD_VERSION);
-  cbor_add_string(w, "body");
-  cbor_open_block(w);
-  cbor_string_int(w, "router_id", config->router_id);
-  cbor_string_string(w, "hostname", config->hostname);
-  cbor_string_string(w, "server_time", current_time());
-  tm_format_time(time, &config->tf_base, boot_time);
-  cbor_string_string(w, "last_reboot", time);
-  tm_format_time(time, &config->tf_base, config->load_time);
-  cbor_string_string(w, "last_reconfiguration", time);
-
-  // TODO graceful restart
-  cbor_close_block_or_list(w);
-  cbor_add_string(w, "state");
-  if (shutting_down)
-    cbor_add_string(w, "Shutdown in progress");
-  else if (configuring)
-    cbor_add_string(w, "Reconfiguration in progress");
-  else
-    cbor_add_string(w, "Daemon is up and running");
-  cbor_write_to_file(w, "test.cbor");*/
 }
 
 void

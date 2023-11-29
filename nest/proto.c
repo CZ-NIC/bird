@@ -1638,6 +1638,30 @@ graceful_restart_show_status(void)
   cli_msg(-24, "  Wait timer is %t/%u", tm_remains(gr_wait_timer), config->gr_wait);
 }
 
+int
+is_gr_active(void)
+{
+  return graceful_restart_state == GRS_ACTIVE;
+}
+
+int
+get_graceful_restart_locks_num(void)
+{
+  return graceful_restart_locks;
+}
+
+int
+get_tm_remains_gr_wait_timer(void)
+{
+  return tm_remains(gr_wait_timer);
+}
+
+int
+get_config_gr_wait(void)
+{
+  return config->gr_wait;
+}
+
 /**
  * channel_graceful_restart_lock - lock graceful restart by channel
  * @p: channel instance

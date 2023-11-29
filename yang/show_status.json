@@ -1,31 +1,13 @@
 {
-  "show_memory:message": {
-    "header": "BIRD memory usage",
+  "show_status:message": {
+    "version": "v2.14-23-gd91390e2-x",
     "body": {
-      "routing_tables": {
-        "effective": 34604,
-        "overhead": 2848
-      },
-      "route_attributes": {
-        "effective": 26826,
-        "overhead": 13448
-      },
-      "protocols": {
-        "effective": 63564,
-        "overhead": 15312
-      },
-      "current_config": {
-        "effective": 299744,
-        "overhead": 2152
-      },
-      "standby_memory": {
-        "effective": 0,
-        "overhead": 348160
-      },
-      "total": {
-        "effective": 506754,
-        "overhead": 388960
-      }
-    }
+      "router_id": 167772417,
+      "hostname": "kkubecova-ntb",
+      "server_time": 208154921,
+      "last_reboot": 197746045,
+      "last_reconfiguration": 197746045
+    },
+    "state": "Daemon is up and running"
   }
 }

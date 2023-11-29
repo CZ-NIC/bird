@@ -2,7 +2,7 @@ module show_status {
 
   namespace ".";
   
-  prefix "status";
+  prefix "show_status";
 
   description "cli show status format";
 
@@ -15,40 +15,33 @@ module show_status {
 
   grouping timer {
     leaf remains {
-      type decimal64 {
-        fraction-digits 3;
-      }
+      type uint64;
     }
     leaf count_time {
-      type uint32;
+      type uint64;
     }
   }
 
 
   container message {
-    container header {
-      leaf bird {
-        type string;
-      }
-      leaf version {
-        type string;
-      }
+    leaf version {
+      type string;
     }
     container body {
       leaf router_id {
-        type string;
+        type int32;
       }
       leaf hostname {
         type string;
       }
       leaf server_time {
-        type date-and-time;
+        type int32;
       }
       leaf last_reboot {
-        type date-and-time;
+        type int32;
       }
       leaf last_reconfiguration {
-        type date-and-time;
+        type int32;
       }
       container gr_restart {
         leaf waiting_for_n_channels_to_recover {
