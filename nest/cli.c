@@ -339,7 +339,7 @@ cli_kick(cli *c)
 
 uint
 yi_process(uint size, byte *rbuf, byte *tbuf, uint tbsize) {
-  return parse_cbor(size, rbuf, tbuf, tbsize);
+  return parse_cbor(size, rbuf, tbuf, tbsize, lp_new(yi_pool));
 }
 
 static list cli_log_hooks;

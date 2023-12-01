@@ -1,2 +1,2 @@
-{"command:do":{"command": 2, "args":[{"arg":"protocol"}]}}
+{"command:do":{"command": 3, "args":[{"arg":"topology"}, {"arg":"ospf6"}]}}
 
