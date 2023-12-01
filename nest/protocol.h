@@ -300,6 +300,7 @@ void proto_cmd_mrtdump(struct proto *, uintptr_t, int);
 
 void proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uintptr_t, int), int restricted, uintptr_t arg);
 struct proto *proto_get_named(struct symbol *, struct protocol *);
+list get_protolist_for_cbor(void);
 struct proto *proto_iterate_named(struct symbol *sym, struct protocol *proto, struct proto *old);
 
 #define PROTO_WALK_CMD(sym,pr,p) for(struct proto *p = NULL; p = proto_iterate_named(sym, pr, p); )

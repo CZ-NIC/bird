@@ -4,6 +4,7 @@ enum functions {
   SHOW_STATUS = 0,
   SHOW_MEMORY = 1,
   SHOW_SYMBOLS = 2,
+  SHOW_OSPF = 3,
 };
 
 enum cbor_majors {
@@ -29,6 +30,7 @@ struct buff_reader {
   uint size;
 };
 
+
 uint compare_buff_str(struct buff_reader *buf_read, uint length, char *string) {
   if (length != strlen(string)) {
     return 0;
@@ -39,7 +41,7 @@ uint compare_buff_str(struct buff_reader *buf_read, uint length, char *string) {
     }
   }
   return 1;
-}
+};
 
 struct value
 get_value(struct buff_reader *reader)
@@ -105,16 +107,15 @@ void skip_optional_args(struct buff_reader *rbuf_read, int items_in_block)
   }
 }
 
-void parse_show_symbols_args(struct buff_reader *rbuf_read, int items_in_block, struct cbor_show_data *arg)
+struct arg_list *parse_args(struct buff_reader *rbuf_read, int items_in_block, struct linpool *lp)
 {
-  log("parse symbols args");
-  char *params[] = {"table", "filter", "function", "protocol", "template"};
-  int param_vals[] = {SYM_TABLE, SYM_FILTER, SYM_FUNCTION, SYM_PROTO, SYM_TEMPLATE};  // defined in conf.h
-  arg->type = SYM_VOID; // default option
-  arg->name = NULL;
+  // We are in opened block, which could be empty or contain arguments <"args":[{"arg":"string"}]>
+  struct arg_list *arguments = (struct arg_list*)lp_alloc(lp, sizeof(struct arg_list));
+  arguments->capacity = 0;
+  arguments->pt = 0;
   if (items_in_block == 0)
   { // there should not be arg array
-    return;
+    return arguments;
   }
   struct value val = get_value(rbuf_read);
   if (val.major == TEXT)
@@ -127,13 +128,24 @@ void parse_show_symbols_args(struct buff_reader *rbuf_read, int items_in_block, 
     ASSERT(val.major == ARRAY);
     int num_array_items = val.val;
     log("num arr items %i", num_array_items);
-    for (int i = 0; i<num_array_items || (num_array_items == -1 && !val_is_break(val)); i++)
+    if (num_array_items > 0)
+    {
+      arguments->args = (struct argument*)lp_alloc(lp, sizeof(struct argument) * num_array_items);
+      arguments->capacity = num_array_items;
+    }
+    else if (num_array_items == -1)
+    {
+      arguments->args = (struct argument*)lp_alloc(lp, sizeof(struct argument) * 4);
+      arguments->capacity = 4;
+    }
+    for (int i = 0; i < num_array_items || num_array_items == -1; i++)
     {
       // There will be only one argument in struct cbor_show_data arg after parsing the array of args. Current bird cli is behaving this way too.
       val = get_value(rbuf_read);
       if (val_is_break(val))
       {
         rbuf_read->pt--;
+        return arguments;
       }
       else if (val.major == BLOCK)
       {
@@ -145,24 +157,20 @@ void parse_show_symbols_args(struct buff_reader *rbuf_read, int items_in_block, 
         val = get_value(rbuf_read);
         ASSERT(compare_buff_str(rbuf_read, val.val, "arg"));
         rbuf_read->pt+=val.val;
+
         val = get_value(rbuf_read);
-        ASSERT(val.major == TEXT);
-        int found = 0;
-        for (size_t j = 0; j < sizeof(params)/sizeof(char*) && found == 0; j++)
+        ASSERT(val.major == TEXT); // Now we have an argument in val
+        if (num_array_items == -1 && arguments->capacity == arguments->pt)
         {
-          if (compare_buff_str(rbuf_read, val.val, params[j]))
-          {
-            arg->type = param_vals[j];
-            found = 1;
-            log("found %s, on %i val %i", params[j], j, param_vals[j]);
-          }
+          struct argument *a = arguments->args;
+          arguments->args = (struct argument*)lp_alloc(lp, sizeof(struct argument) * 2 * arguments->capacity);
+          arguments->capacity = 2 * arguments->capacity;
+          memcpy(arguments->args, a, sizeof(struct argument) * arguments->pt);
         }
-        if (found == 0)
-        {
-          arg->type = -1;
-          arg->name = rbuf_read->buff + rbuf_read->pt;
-          arg->name_length = val.val;
-        }
+        arguments->args[arguments->pt].arg = rbuf_read->buff + rbuf_read->pt;  // pointer to actual position in rbuf_read buffer
+        arguments->args[arguments->pt].len = val.val;
+        arguments->pt++;
+
         rbuf_read->pt+=val.val;
         if (wait_close)
         {
@@ -177,28 +185,34 @@ void parse_show_symbols_args(struct buff_reader *rbuf_read, int items_in_block, 
     }
   } else
   {
-    ASSERT(items_in_block == -1); // assert the  block was not open to exact num of items, because it cant be just for command (we would returned) and we did not find more items.
+    ASSERT(items_in_block == -1); // assert the  block was not open to exact num of items, because it cant be just for command (we would returned) and we did not found more items.
     rbuf_read->pt--; // we read one byte from future, we need to shift pointer back
   }
+  return arguments;
 }
 
 uint
-do_command(struct buff_reader *rbuf_read, struct buff_reader *tbuf_read, int items_in_block)
+do_command(struct buff_reader *rbuf_read, struct buff_reader *tbuf_read, int items_in_block, struct linpool *lp)
 {
   struct value val = get_value(rbuf_read);
   ASSERT(val.major == UINT);
+  struct arg_list * args;
   switch (val.val)
   {
     case SHOW_MEMORY:
       skip_optional_args(rbuf_read, items_in_block);
-      return cmd_show_memory_cbor(tbuf_read->buff, tbuf_read->size);
+      return cmd_show_memory_cbor(tbuf_read->buff, tbuf_read->size, lp);
     case SHOW_STATUS:
       skip_optional_args(rbuf_read, items_in_block);
-      return cmd_show_status_cbor(tbuf_read->buff, tbuf_read->size);
+      return cmd_show_status_cbor(tbuf_read->buff, tbuf_read->size, lp);
     case SHOW_SYMBOLS:
-      struct cbor_show_data arg;
-      parse_show_symbols_args(rbuf_read, items_in_block, &arg);
-      return cmd_show_symbols_cbor(tbuf_read->buff, tbuf_read->size, arg);
+      args = parse_args(rbuf_read, items_in_block, lp);
+      return cmd_show_symbols_cbor(tbuf_read->buff, tbuf_read->size, args, lp);
+    case SHOW_OSPF:
+      args = parse_args(rbuf_read, items_in_block, lp);
+      log("args %i, pt %i", args, args->pt);
+      return cmd_show_ospf_cbor(tbuf_read->buff, tbuf_read->size, args, lp);
+      return 0;
     default:
       return 0;
   }
@@ -206,7 +220,7 @@ do_command(struct buff_reader *rbuf_read, struct buff_reader *tbuf_read, int ite
 
 
 uint
-parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize)
+parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize, struct linpool* lp)
 {
   log("cbor parse");
   struct buff_reader rbuf_read;
@@ -246,7 +260,7 @@ parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize)
       ASSERT(compare_buff_str(&rbuf_read, val.val, "command"));
       rbuf_read.pt+=val.val;
 
-      tbuf_read.pt = do_command(&rbuf_read, &tbuf_read, items_in_block);
+      tbuf_read.pt = do_command(&rbuf_read, &tbuf_read, items_in_block, lp);
       if (items_in_block == -1)
       {
         val = get_value(&rbuf_read);

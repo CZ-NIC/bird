@@ -2382,6 +2382,12 @@ proto_get_named(struct symbol *sym, struct protocol *pr)
   return p;
 }
 
+list
+get_protolist_for_cbor(void)
+{
+  return proto_list;
+}
+
 struct proto *
 proto_iterate_named(struct symbol *sym, struct protocol *proto, struct proto *old)
 {

@@ -1,4 +1,4 @@
-#include "nest/cbor_shortcuts.c"
+
 #include "nest/bird.h"
 #include "nest/protocol.h"
 #include "nest/route.h"
@@ -6,15 +6,11 @@
 #include "conf/conf.h"
 #include "lib/string.h"
 #include "filter/filter.h"
+#include "nest/cbor_cmds.h"
+#include "proto/ospf/ospf_for_cbor.c"
 
 
-struct cbor_show_data {
-  int type;	/* Symbols type to show */
-  int name_length;
-  char *name;
-};
-
-uint compare_str(byte *str1, uint length, char *str2) {
+uint compare_str(byte *str1, uint length, const char *str2) {
   if (length != strlen(str2)) {
     return 0;
   }
@@ -32,10 +28,10 @@ extern pool *rta_pool;
 extern uint *pages_kept;
 
 uint
-cmd_show_memory_cbor(byte *tbuf, uint capacity)
+cmd_show_memory_cbor(byte *tbuf, uint capacity, struct linpool *lp)
 {
   log("in cmd_show_memory_cbor");
-  struct cbor_writer *w = cbor_init(tbuf, capacity, lp_new(proto_pool));
+  struct cbor_writer *w = cbor_init(tbuf, capacity, lp);
   cbor_open_block_with_length(w, 1);
   
   cbor_add_string(w, "show_memory:message");
@@ -75,9 +71,9 @@ extern int shutting_down;
 extern int configuring;
 
 uint
-cmd_show_status_cbor(byte *tbuf, uint capacity)
+cmd_show_status_cbor(byte *tbuf, uint capacity, struct linpool *lp)
 {
-  struct cbor_writer *w = cbor_init(tbuf, capacity, lp_new(proto_pool));
+  struct cbor_writer *w = cbor_init(tbuf, capacity, lp);
   cbor_open_block_with_length(w, 1);
   cbor_add_string(w, "show_status:message");
 
@@ -112,15 +108,35 @@ cmd_show_status_cbor(byte *tbuf, uint capacity)
   return w->pt;
 }
 
-int
-cmd_show_symbols_cbor(byte *tbuf, uint capacity, struct cbor_show_data show)
+int parse_show_symbols_arg(struct argument *argument)
 {
-  struct cbor_writer *w = cbor_init(tbuf, capacity, lp_new(proto_pool));
+  char *params[] = {"table", "filter", "function", "protocol", "template"};
+  int param_vals[] = {SYM_TABLE, SYM_FILTER, SYM_FUNCTION, SYM_PROTO, SYM_TEMPLATE};  // defined in conf.h
+  for (size_t j = 0; j < sizeof(params)/sizeof(char*); j++)
+  {
+    if (compare_str(argument->arg, argument->len, params[j]))
+    {
+      return param_vals[j];
+    }
+  }
+  return -1;
+}
+
+uint
+cmd_show_symbols_cbor(byte *tbuf, uint capacity, struct arg_list *args, struct linpool *lp)
+{
+  struct cbor_writer *w = cbor_init(tbuf, capacity, lp);
   cbor_open_block_with_length(w, 1);
   cbor_add_string(w, "show_symbols:message");
   cbor_open_block_with_length(w, 1);
 
-  if (show.type == -1)
+  int show_type = SYM_VOID;
+  if (args->pt > 0)
+  {
+    show_type = parse_show_symbols_arg(&args->args[args->pt - 1]); // Takes just the last one argument. Current bird cli answers only last argument too, but can fail on previous.
+  }
+
+  if (show_type == -1)
   {
     cbor_add_string(w, "table");
     cbor_open_list_with_length(w, 1);
@@ -130,16 +146,16 @@ cmd_show_symbols_cbor(byte *tbuf, uint capacity, struct cbor_show_data show)
     {
       HASH_WALK(scope->hash, next, sym)
       {
-	if (compare_str(show.name, show.name_length, sym->name))
+	if (compare_str(args->args[args->pt - 1].arg, args->args[args->pt - 1].len, sym->name))
 	{
-	  cbor_string_string(w, "name", show.name);
+	  cbor_string_string(w, "name", args->args[args->pt - 1].arg);
 	  cbor_string_string(w, "type", cf_symbol_class_name(sym));
 	  return w->pt;
         }
       }
       HASH_WALK_END;
     }
-    cbor_string_string(w, "name", show.name);
+    cbor_string_string(w, "name", args->args[args->pt - 1].arg);
     cbor_string_string(w, "type", "symbol not known");
     return w->pt;
   }
@@ -154,7 +170,7 @@ cmd_show_symbols_cbor(byte *tbuf, uint capacity, struct cbor_show_data show)
         if (!sym->scope->active)
           continue;
 
-        if (show.type != SYM_VOID && (sym->class != show.type))
+        if (show_type != SYM_VOID && (sym->class != show_type))
           continue;
 
         cbor_open_block_with_length(w, 2);
@@ -169,5 +185,91 @@ cmd_show_symbols_cbor(byte *tbuf, uint capacity, struct cbor_show_data show)
 }
 
 
+struct proto *
+cbor_get_proto_type(enum protocol_class proto_type, struct cbor_writer *w)
+{
+  log("in type");
+  struct proto *p, *q;
+  p = NULL;
+  WALK_LIST(q, proto_list)
+    if ((q->proto->class == proto_type) && (q->proto_state != PS_DOWN))
+    {
+      if (p)
+      {
+        cbor_string_string(w, "error", "multiple protocols running");
+        return NULL;
+      }
+      p = q;
+    }
+  if (!p)
+  {
+    cbor_string_string(w, "error", "no such protocols running");
+    return NULL;
+  }
+  return p;
+}
 
+struct proto *
+cbor_get_proto_name(struct argument *arg, enum protocol_class proto_type, struct cbor_writer *w)
+{
+  log("in name");
+  struct proto *q;
+  WALK_LIST(q, proto_list)
+  {
+    log("%s %s %i %i %i", arg->arg, q->name, compare_str(arg->arg, arg->len, q->name) , (q->proto_state != PS_DOWN) , (q->proto->class == proto_type));
+    if (compare_str(arg->arg, arg->len, q->name) && (q->proto_state != PS_DOWN) && (q->proto->class == proto_type))
+    {
+      return q;
+    }
+  }
+  cbor_add_string(w, "not found");
+  cbor_nonterminated_string(w, arg->arg, arg->len);
+  return NULL;
+}
+
+
+uint
+cmd_show_ospf_cbor(byte *tbuf, uint capacity, struct arg_list *args, struct linpool *lp)
+{
+  log("in ospf args %i, pt %i", args, args->pt);
+  struct cbor_writer *w = cbor_init(tbuf, capacity, lp);
+  cbor_open_block_with_length(w, 1);
+  cbor_add_string(w, "show_ospf:message");
+
+  if (args->pt == 0)
+  {
+    cbor_open_block_with_length(w, 1);
+    cbor_string_string(w, "not implemented", "show everything about ospf");
+    return w->pt;
+  }
+
+  if (compare_str(args->args[0].arg, args->args[0].len, "topology"))
+  {
+    cbor_open_block(w);
+    struct proto *proto;
+    int all_ospf = (args->pt > 1) && compare_str(args->args[1].arg, args->args[1].len, "all");
+    if (args->pt - all_ospf > 1) // if there is protocol name
+    {
+      proto = cbor_get_proto_name(&args->args[args->pt -1], PROTOCOL_OSPF, w);
+    }
+    else {
+      proto = cbor_get_proto_type(PROTOCOL_OSPF, w);
+    }
+
+    if (proto == NULL)
+    {
+      cbor_close_block_or_list(w);
+      return w->pt;
+    }
+
+    ospf_sh_state_cbor(w, proto, 0, all_ospf);
+    cbor_close_block_or_list(w);
+    return w->pt;
+  } else {
+    cbor_open_block_with_length(w, 1);
+    cbor_add_string(w, "not implemented");
+    cbor_nonterminated_string(w, args->args[0].arg, args->args[0].len);
+    return w->pt;
+  }
+}
 

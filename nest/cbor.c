@@ -81,6 +81,15 @@ void cbor_add_string(struct cbor_writer *writer, const char *string)
   writer->pt+=length;
 }
 
+void cbor_nonterminated_string(struct cbor_writer *writer, const char *string, uint length)
+{
+  int length = strlen(string);
+  write_item(writer, 3, length);  // 3 is major, then goes length of string and string
+  check_memory(writer, length);
+  memcpy(writer->cbor+writer->pt, string, length);
+  writer->pt+=length;
+}
+
 void write_item(struct cbor_writer *writer, int8_t major, int num)
 {
   major = major<<5;
