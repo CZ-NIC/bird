@@ -87,9 +87,9 @@ show_lsa_router_cbor(struct cbor_writer *w, struct ospf_proto *p, struct top_has
       else
       {
         cbor_open_block_with_length(w, 3);
-          cbor_string_int(w, "network", rtl.id);
-          cbor_string_int(w, "nif", rtl.nif);
-          cbor_string_int(w, "metric", rtl.metric);
+        cbor_string_int(w, "network", rtl.id);
+        cbor_string_int(w, "nif", rtl.nif);
+        cbor_string_int(w, "metric", rtl.metric);
       }
     }
   }

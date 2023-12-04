@@ -1,0 +1,227 @@
+module show_ospf {
+
+  namespace ".";
+  
+  prefix "show_ospf";
+
+  description "cli show ospf topology format";
+  
+  grouping distance {
+    leaf distance {
+      type union {
+        type string;
+        type int32;
+      }
+    }
+  }
+
+  grouping metric {
+    leaf metric {
+      type int32;
+    }
+  }
+
+  grouping router {
+    leaf router {
+      type int32;
+    }
+  }
+
+  grouping lsa_router {
+    container lsa_router {
+      uses router;
+      uses distance;
+
+      list vlink {
+        key "vlink";
+        leaf vlink {
+          type int32;
+        }
+        leaf metric {
+          type int32;
+        }
+      }
+
+      list router_metric {
+        key "router";
+        uses router;
+        uses metric;
+      }
+
+      list network {
+        key "network";
+        leaf network {
+          type int32;
+        }
+        choice len_nif {
+          case len {
+            leaf len {
+              type int32;
+            }
+          }
+          case nif {
+            leaf nif {
+              type int32;
+            }
+          }
+        }
+        leaf metric {
+          mandatory false;
+          type int32;
+        }
+        list stubnet {
+          key "stubnet";
+          leaf stubnet {
+            type int32;
+          }
+          leaf len {
+            type int32;
+          }
+          uses metric;
+        }
+      }
+    }
+  }
+
+  grouping lsa_network {
+    container lsa_network {
+      choice ospf {
+        case ospf2 {
+          container ospf2 {
+            leaf network {
+              type int32;
+            }
+            leaf optx {
+              type int32;
+            }
+            leaf dr {
+              type int32;
+            }
+          }
+        }
+        case ospf {
+          container ospf {
+            leaf network {
+              type int32;
+            }
+            leaf lsa_id {
+              type int32;
+            }
+          }
+        }
+      }
+      uses distance;
+      list routers {
+        key "router";
+        uses router;
+      }
+    } 
+  }
+
+  grouping lsa_sum_net {
+    container lsa_sum_net {
+      leaf net {
+        type string;
+      }
+      uses metric;
+    }
+  }
+
+  grouping lsa_sum_rt {
+    container lsa_sum_rt {
+      uses router;
+      uses metric;
+    }
+  }
+
+  grouping lsa_external {
+    container lsa_external {
+      leaf via {
+        type string;
+      }
+      leaf tag {
+        type int32;
+      }
+      leaf lsa_type {
+        type string;
+      }
+      leaf rt_net {
+        type string;
+      }
+      leaf lsa_type {
+        type int32;
+      }
+      uses metric;
+    }
+  }
+
+  grouping lsa_prefix {
+    container lsa_prefix {
+      list prefixes {
+        leaf stubnet {
+          type string;
+        }
+        uses metric;
+      }
+    }
+  }
+
+  container ospf {
+    leaf error {
+      mandatory false;
+      type string;
+    }
+    list areas {
+      leaf area {
+        type int32;
+      }
+      choice lsa_type {
+        case rt {
+          uses lsa_router;
+        }
+        case net {
+          uses lsa_network;
+        }
+        case sum_net {
+          uses lsa_sum_net;
+        }
+        case sum_rt {
+          uses lsa_sum_rt;
+        }
+        case ext_nssa {
+          uses lsa_external;
+        }
+        case prefix {
+          uses lsa_prefix;
+        }
+      }
+    }
+    list asbrs {
+      container asbr {
+        leaf other_ABSRs {
+          type none;
+        }
+        uses router;
+        uses lsa_external;
+      }
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
