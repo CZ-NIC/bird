@@ -31,10 +31,15 @@
     (v) = (typeof(v)){ };						\
   })
 
-#define HASH_FIND(v,id,key...)						\
+#define HASH_FIND_CHAIN(v,id,key...)					\
   ({									\
     u32 _h = HASH_FN(v, id, key);					\
-    HASH_TYPE(v) *_n = (v).data[_h];					\
+    (v).data[_h];							\
+  })
+
+#define HASH_FIND(v,id,key...)						\
+  ({									\
+    HASH_TYPE(v) *_n = HASH_FIND_CHAIN(v, id, key);			\
     while (_n && !HASH_EQ(v, id, id##_KEY(_n), key))			\
       _n = id##_NEXT(_n);						\
     _n;									\
