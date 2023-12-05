@@ -164,7 +164,7 @@ trie_insert_prefix(const union net_addr_union *addr, struct trie_node * const ro
 /*
  * Return first non-null bucket of the closest ancestor of @node
  */
-static struct aggregator_bucket *
+static const struct aggregator_bucket *
 get_ancestor_bucket(const struct trie_node *node)
 {
   /* Defined for other than root nodes */
