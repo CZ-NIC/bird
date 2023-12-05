@@ -1284,6 +1284,30 @@ aggregator_start(struct proto *P)
     .data = p,
   };
 
+  /* Create route attributes with zero nexthop */
+  struct rta rta = { 0 };
+
+  /* Allocate bucket for root node */
+  struct aggregator_bucket *new_bucket = sl_allocz(p->bucket_slab);
+  u64 haux = 0;
+  mem_hash_init(&haux);
+  new_bucket->hash = mem_hash_value(&haux);
+
+  struct aggregator_route *arte = sl_alloc(p->route_slab);
+
+  *arte = (struct aggregator_route) {
+    .bucket = new_bucket,
+    .rte = { .attrs = rta_lookup(&rta) },
+  };
+
+  arte->rte.next = new_bucket->rte;
+  new_bucket->rte = &arte->rte;
+  new_bucket->count++;
+  HASH_INSERT2(p->routes, AGGR_RTE, p->p.pool, arte);
+
+  /* Assign default route to the root */
+  p->root->bucket = new_bucket;
+
   return PS_UP;
 }
 
