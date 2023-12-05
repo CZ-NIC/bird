@@ -81,6 +81,7 @@ new_node(slab *trie_slab)
   struct trie_node *new = sl_alloc(trie_slab);
   assert(new != NULL);
   *new = (struct trie_node) { 0 };
+  assert(new->bucket == NULL);
 
   return new;
 }
@@ -188,6 +189,9 @@ first_pass(struct trie_node *node, slab *trie_slab)
 {
   assert(node != NULL);
   assert(trie_slab != NULL);
+
+  if (node->parent == NULL)
+    assert(node->bucket != NULL);
 
   if (is_leaf(node))
   {
@@ -402,6 +406,9 @@ second_pass(struct trie_node *node)
   assert(node != NULL);
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
+  if (node->parent == NULL)
+    assert(node->bucket != NULL);
+
   if (is_leaf(node))
   {
     assert(node->potential_buckets_count > 0);
@@ -467,6 +474,9 @@ third_pass(struct trie_node *node)
 {
   if (node == NULL)
     return;
+
+  if (node->parent == NULL)
+    assert(node->bucket != NULL);
 
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
@@ -603,7 +613,6 @@ print_prefixes(const struct trie_node *node)
   //print_prefixes_helper(node, _MI4(0), 0);
   struct net_addr_ip4 addr = { 0 };
   print_prefixes_helper(node, addr, 0);
-  log("==== END PREFIXES ====");
 }
 
 /*
