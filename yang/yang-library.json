@@ -21,6 +21,12 @@
         "conformance-type": "implement"
       },
       {
+        "name": "show_ospf",
+	"namespace": "https://bird.nic.cz/yang/v2.15/cli-debug",
+        "revision": "",
+        "conformance-type": "implement"
+      },
+      {
         "name": "show_protocols",
 	"namespace": "https://bird.nic.cz/yang/v2.15/cli-debug",
         "revision": "",

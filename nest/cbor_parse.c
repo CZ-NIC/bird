@@ -21,7 +21,7 @@ enum cbor_majors {
 
 struct value {
  int major;
- int val;
+ int64_t val;
 };
 
 struct buff_reader {
@@ -49,7 +49,8 @@ get_value(struct buff_reader *reader)
   struct value val;
   byte *buff = reader->buff;
   val.major = buff[reader->pt]>>5;
-  log("in get value");
+  log("in get value are zou here?");
+  log("major is %x", val.major);
   int first_byte_val = buff[reader->pt] - (val.major<<5);
   if (first_byte_val <=23) {
     val.val = first_byte_val;
@@ -66,6 +67,12 @@ get_value(struct buff_reader *reader)
   {
     val.val = buff[reader->pt+1]>>24 + buff[reader->pt+2]>>16 + buff[reader->pt+3]>>8 + buff[reader->pt+4];
     reader->pt+=5;
+  } else if (first_byte_val == 0x1b)
+  {
+    for(int i = 1; i<=8; i++) {
+      val.val += buff[reader->pt+i]>>(64-(i*8));
+    }
+    reader->pt+=9;
   } else if (first_byte_val == 0xff)
   {
     val.val = -1;

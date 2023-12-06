@@ -37,9 +37,7 @@ module show_ospf {
         leaf vlink {
           type int32;
         }
-        leaf metric {
-          type int32;
-        }
+        uses metric;
       }
 
       list router_metric {
@@ -49,7 +47,10 @@ module show_ospf {
       }
 
       list network {
-        key "network";
+        key "dummy_yang_id";
+        leaf dummy_yang_id {
+          type int32;
+        }
         leaf network {
           type int32;
         }
@@ -148,7 +149,7 @@ module show_ospf {
       leaf rt_net {
         type string;
       }
-      leaf lsa_type {
+      leaf lsa_type_num {
         type int32;
       }
       uses metric;
@@ -158,20 +159,25 @@ module show_ospf {
   grouping lsa_prefix {
     container lsa_prefix {
       list prefixes {
+        key "stubnet";
         leaf stubnet {
-          type string;
+          type int32;
         }
         uses metric;
       }
     }
   }
 
-  container ospf {
+  container message {
     leaf error {
       mandatory false;
       type string;
     }
     list areas {
+      key "dummy_yang_id";
+      leaf dummy_yang_id {
+        type int32;
+      }
       leaf area {
         type int32;
       }
@@ -197,31 +203,15 @@ module show_ospf {
       }
     }
     list asbrs {
-      container asbr {
-        leaf other_ABSRs {
-          type none;
-        }
-        uses router;
-        uses lsa_external;
+      key "router";
+
+      leaf other_ABSRs {
+        type empty;
       }
+      uses router;
+      uses lsa_external;
+      
     }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

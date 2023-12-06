@@ -310,6 +310,14 @@ tm_format_time(char *x, struct timeformat *fmt, btime t)
     strcpy(x, "<error>");
 }
 
+btime
+tm_get_real_time(btime t)
+{
+  btime dt = current_time() - t;
+  btime rt = current_real_time() - dt;
+  return rt;
+}
+
 /* Replace %f in format string with usec scaled to requested precision */
 static int
 strfusec(char *buf, int size, const char *fmt, uint usec)

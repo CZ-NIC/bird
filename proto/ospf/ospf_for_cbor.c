@@ -58,6 +58,7 @@ show_lsa_router_cbor(struct cbor_writer *w, struct ospf_proto *p, struct top_has
   cbor_add_string(w, "network");
   cbor_open_list(w);
   lsa_walk_rt_init(p, he, &rtl);
+  int dummy_id = 0;
   while (lsa_walk_rt(&rtl))
   {
     if (rtl.type == LSART_NET)
@@ -72,26 +73,30 @@ show_lsa_router_cbor(struct cbor_writer *w, struct ospf_proto *p, struct top_has
 	  struct ospf_lsa_header *net_lsa = &(net_he->lsa);
 	  struct ospf_lsa_net *net_ln = net_he->lsa_body;
 
-          cbor_open_block_with_length(w, 3);
+          cbor_open_block_with_length(w, 4);
+          cbor_string_int(w, "dummy_yang_id", dummy_id);
           cbor_string_int(w, "network", net_lsa->id & net_ln->optx);
           cbor_string_int(w, "len", u32_masklen(net_ln->optx));
           cbor_string_int(w, "metric", rtl.metric);
 	}
 	else
 	{
-	  cbor_open_block_with_length(w, 2);
+	  cbor_open_block_with_length(w, 3);
+	  cbor_string_int(w, "dummy_yang_id", dummy_id);
           cbor_string_int(w, "network", rtl.id);
           cbor_string_int(w, "metric", rtl.metric);
         }
       }
       else
       {
-        cbor_open_block_with_length(w, 3);
+        cbor_open_block_with_length(w, 4);
+        cbor_string_int(w, "dummy_yang_id", dummy_id);
         cbor_string_int(w, "network", rtl.id);
         cbor_string_int(w, "nif", rtl.nif);
         cbor_string_int(w, "metric", rtl.metric);
       }
     }
+    dummy_id++;
   }
   cbor_close_block_or_list(w);
 
@@ -145,7 +150,10 @@ show_lsa_network_cbor(struct cbor_writer *w, struct top_hash_entry *he, int ospf
   cbor_add_string(w, "routers");
   cbor_open_list(w);
   for (i = 0; i < lsa_net_count(lsa); i++)
+  {
+    cbor_open_block_with_length(w, 1);
     cbor_string_int(w, "router", ln->routers[i]);
+  }
 
   cbor_close_block_or_list(w);
 }
@@ -215,7 +223,7 @@ show_lsa_external_cbor(struct cbor_writer *w, struct top_hash_entry *he, int osp
 
   if(rt.ebit)
   {
-    cbor_string_int(w, "lsa_type", 2);
+    cbor_string_int(w, "lsa_type_num", 2);
   }
   cbor_string_int(w, "metric", rt.metric);
   cbor_close_block_or_list(w);
@@ -252,7 +260,7 @@ show_lsa_prefix_cbor(struct cbor_writer *w, struct top_hash_entry *he, struct to
 
   buf = px->rest;
 
-  cbor_add_string(w, "prexixes");
+  cbor_add_string(w, "prefixes");
   cbor_open_list(w);
   char str[IPA_MAX_TEXT_LENGTH + 8] = "";
   for (i = 0; i < px->pxcount; i++)
@@ -500,6 +508,7 @@ ospf_sh_state_cbor(struct cbor_writer *w, struct proto *P, int verbose, int reac
   for (i = 0; i < j1; i++)
   {
     cbor_open_block(w);
+    cbor_string_int(w, "dummy_yang_id", i);
     he = hea[i];
 
     /* If there is no opened node, we open the LSA (if appropriate) or skip to the next one */
@@ -580,7 +589,6 @@ ospf_sh_state_cbor(struct cbor_writer *w, struct proto *P, int verbose, int reac
     /* If it is still marked, we show it now. */
     if (he->domain)
     {
-      cbor_add_string(w, "asbr");
       cbor_open_block(w);
 
       he->domain = 0;
