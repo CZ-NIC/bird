@@ -195,7 +195,6 @@ first_pass(struct trie_node *node, slab *trie_slab)
 
   if (is_leaf(node))
   {
-    //node->potential_buckets[node->potential_buckets_count++] = get_ancestor_bucket(node);
     node->potential_buckets[node->potential_buckets_count++] = node->bucket;
     return;
   }
@@ -586,7 +585,6 @@ print_prefixes_helper(const struct trie_node *node, struct net_addr_ip4 addr, in
 
   if (node->child[0])
   {
-    //print_prefixes_helper(node->child[0], _MI4(_I(prefix) | (0 << (31 - depth))), depth + 1);
     struct net_addr_ip4 new = {
       .prefix = (_I(addr.prefix) | (0 << (31 - depth))),
       .pxlen = depth + 1,
@@ -597,7 +595,6 @@ print_prefixes_helper(const struct trie_node *node, struct net_addr_ip4 addr, in
 
   if (node->child[1])
   {
-    //print_prefixes_helper(node->child[1], _MI4(_I(prefix) | (1 << (31 - depth))), depth + 1);
     struct net_addr_ip4 new = {
       .prefix = (_I(addr.prefix) | (1 << (31 - depth))),
       .pxlen = depth + 1,
@@ -610,7 +607,6 @@ print_prefixes_helper(const struct trie_node *node, struct net_addr_ip4 addr, in
 static void
 print_prefixes(const struct trie_node *node)
 {
-  //print_prefixes_helper(node, _MI4(0), 0);
   struct net_addr_ip4 addr = { 0 };
   print_prefixes_helper(node, addr, 0);
 }
