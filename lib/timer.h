@@ -125,6 +125,7 @@ struct timeformat {
 
 btime tm_parse_time(const char *x);
 void tm_format_time(char *x, struct timeformat *fmt, btime t);
+btime tm_get_real_time(btime t);
 int tm_format_real_time(char *x, size_t max, const char *fmt, btime t);
 
 #endif

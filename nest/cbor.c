@@ -9,7 +9,7 @@ struct cbor_writer {
   struct linpool *lp;
 };
 
-void write_item(struct cbor_writer *writer, int8_t major, int num);
+void write_item(struct cbor_writer *writer, int8_t major, u64 num);
 void check_memory(struct cbor_writer *writer, int add_size);
 
 
@@ -55,7 +55,7 @@ void cbor_open_list_with_length(struct cbor_writer *writer, int length)
 }
 
 
-void cbor_add_int(struct cbor_writer *writer, int item)
+void cbor_add_int(struct cbor_writer *writer, int64_t item)
 {
   if (item >= 0)
   {
@@ -63,8 +63,13 @@ void cbor_add_int(struct cbor_writer *writer, int item)
   }
   else
   {
-    write_item(writer, 1, item);
+    write_item(writer, 1, -item);
   }
+}
+
+void cbor_add_uint(struct cbor_writer *writer, u64 item)
+{
+  write_item(writer, 0, item);
 }
 
 void cbor_add_tag(struct cbor_writer *writer, int item)
@@ -89,10 +94,26 @@ void cbor_nonterminated_string(struct cbor_writer *writer, const char *string, u
   writer->pt+=length;
 }
 
-void write_item(struct cbor_writer *writer, int8_t major, int num)
+void write_item(struct cbor_writer *writer, int8_t major, u64 num)
 {
   major = major<<5;
   check_memory(writer, 10);
+  log("writing %li %lx max for lower %lx ", num, num, ((u64)1<<(4*8))-1);
+  if (num > ((u64)1<<(4*8))-1)
+  { // We need 8 bytes to encode the num
+    log("loong num");
+    major += 0x1b; // reserving those bytes
+    writer->cbor[writer->pt] = major;
+    writer->pt++;
+    for (int i = 7; i>=0; i--)
+    { // write n-th byte of num
+      uint8_t to_write = (num>>(i*8)) & 0xff;
+      log("%x", to_write);
+      writer->cbor[writer->pt] = to_write;
+      writer->pt++;
+    }
+    return;
+  }
   if (num > (1<<(2*8))-1)
   { // We need 4 bytes to encode the num
     major += 0x1a; // reserving those bytes
@@ -101,6 +122,7 @@ void write_item(struct cbor_writer *writer, int8_t major, int num)
     for (int i = 3; i>=0; i--)
     { // write n-th byte of num
       uint8_t to_write = (num>>(i*8)) & 0xff;
+      log("%x", to_write);
       writer->cbor[writer->pt] = to_write;
       writer->pt++;
     }

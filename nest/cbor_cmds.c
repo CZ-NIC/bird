@@ -22,6 +22,9 @@ uint compare_str(byte *str1, uint length, const char *str2) {
   return 1;
 }
 
+int64_t preprocess_time(btime t) {
+  return tm_get_real_time(t) TO_S ;
+}
 
 extern pool *rt_table_pool;
 extern pool *rta_pool;
@@ -73,6 +76,7 @@ extern int configuring;
 uint
 cmd_show_status_cbor(byte *tbuf, uint capacity, struct linpool *lp)
 {
+  log("show status");
   struct cbor_writer *w = cbor_init(tbuf, capacity, lp);
   cbor_open_block_with_length(w, 1);
   cbor_add_string(w, "show_status:message");
@@ -83,11 +87,12 @@ cmd_show_status_cbor(byte *tbuf, uint capacity, struct linpool *lp)
   cbor_open_block(w);
   cbor_string_int(w, "router_id", config->router_id);
   cbor_string_string(w, "hostname", config->hostname);
-  cbor_string_int(w, "server_time", current_time());
-  cbor_string_int(w, "last_reboot", boot_time);
-  cbor_string_int(w, "last_reconfiguration", config->load_time);
+  cbor_string_int(w, "server_time", preprocess_time(current_time()));
+  cbor_string_int(w, "last_reboot", preprocess_time(boot_time));
+  cbor_string_int(w, "last_reconfiguration", preprocess_time(config->load_time));
   if (is_gr_active())
   {
+    log("graceful restart");
     cbor_add_string(w, "gr_restart");
     cbor_open_block_with_length(w, 2);
     cbor_string_int(w, "waiting_for_n_channels_to_recover", get_graceful_restart_locks_num());
@@ -105,6 +110,7 @@ cmd_show_status_cbor(byte *tbuf, uint capacity, struct linpool *lp)
   else
     cbor_add_string(w, "Daemon is up and running");
   cbor_write_to_file(w, "test.cbor");
+  log("leaving show status");
   return w->pt;
 }
 
@@ -148,14 +154,16 @@ cmd_show_symbols_cbor(byte *tbuf, uint capacity, struct arg_list *args, struct l
       {
 	if (compare_str(args->args[args->pt - 1].arg, args->args[args->pt - 1].len, sym->name))
 	{
-	  cbor_string_string(w, "name", args->args[args->pt - 1].arg);
+	  cbor_add_string(w, "name");
+	  cbor_nonterminated_string(w, args->args[args->pt - 1].arg, args->args[args->pt - 1].len);
 	  cbor_string_string(w, "type", cf_symbol_class_name(sym));
 	  return w->pt;
         }
       }
       HASH_WALK_END;
     }
-    cbor_string_string(w, "name", args->args[args->pt - 1].arg);
+    cbor_add_string(w, "name");
+    cbor_nonterminated_string(w,  args->args[args->pt - 1].arg, args->args[args->pt - 1].len);
     cbor_string_string(w, "type", "symbol not known");
     return w->pt;
   }
