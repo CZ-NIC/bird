@@ -85,7 +85,7 @@ cmd_show_status_cbor(byte *tbuf, uint capacity, struct linpool *lp)
   cbor_string_string(w, "version", BIRD_VERSION);
   cbor_add_string(w, "body");
   cbor_open_block(w);
-  cbor_string_int(w, "router_id", config->router_id);
+  cbor_string_ipv4(w, "router_id", config->router_id);
   cbor_string_string(w, "hostname", config->hostname);
   cbor_string_int(w, "server_time", preprocess_time(current_time()));
   cbor_string_int(w, "last_reboot", preprocess_time(boot_time));

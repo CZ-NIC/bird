@@ -67,6 +67,59 @@ void cbor_add_int(struct cbor_writer *writer, int64_t item)
   }
 }
 
+void cbor_add_ipv4(struct cbor_writer *writer, u32 addr)
+{
+  write_item(writer, 6, 52); // 6 is TAG, 52 is tag number for ipv4
+  write_item(writer, 2, 4); // bytestring of length 4
+  for (int i = 3; i>=0; i--)
+  {
+    writer->cbor[writer->pt] = (addr>>(i*8)) & 0xff;
+    writer->pt++;
+  }
+}
+
+void cbor_add_ipv6(struct cbor_writer *writer, u64 addr)
+{
+  write_item(writer, 6, 54); // 6 is TAG, 54 is tag number for ipv6
+  write_item(writer, 2, 8); // bytestring of length 8
+  for (int i = 7; i>=0; i--)
+  {
+    writer->cbor[writer->pt] = (addr>>(i*8)) & 0xff;
+    writer->pt++;
+  }
+}
+
+void cbor_add_ipv4_prefix(struct cbor_writer *writer, u32 addr, int prefix)
+{
+  write_item(writer, 6, 52); // 6 is TAG, 52 is tag number for ipv4
+  cbor_open_block_with_length(writer, 2);
+  cbor_add_int(writer, prefix);
+  write_item(writer, 2, 4); // bytestring of length 4
+  for (int i = 3; i>=0; i--)
+  {
+    writer->cbor[writer->pt] = (addr>>(i*8)) & 0xff;
+    writer->pt++;
+  }
+}
+
+
+void cbor_add_ipv6_prefix(struct cbor_writer *writer, struct ip6_addr addr, int prefix)
+{
+  write_item(writer, 6, 54); // 6 is TAG, 54 is tag number for ipv6
+  cbor_open_block_with_length(writer, 2);
+  cbor_add_int(writer, prefix);
+  write_item(writer, 2, 8); // bytestring of length 4
+  for (int j = 0; j < 4; j++)
+  {
+    for (int i = 3; i>=0; i--)
+    {
+      writer->cbor[writer->pt] = (addr.addr[j]>>(i*8)) & 0xff;
+      writer->pt++;
+    }
+  }
+}
+
+
 void cbor_add_uint(struct cbor_writer *writer, u64 item)
 {
   write_item(writer, 0, item);

@@ -24,7 +24,7 @@ show_lsa_router_cbor(struct cbor_writer *w, struct ospf_proto *p, struct top_has
 
   cbor_add_string(w, "lsa_router");
   cbor_open_block(w);
-  cbor_string_int(w, "router", he->lsa.rt);
+  cbor_string_ipv4(w, "router", he->lsa.rt);
   show_lsa_distance_cbor(w, he);
 
   cbor_add_string(w, "vlink");
@@ -35,7 +35,7 @@ show_lsa_router_cbor(struct cbor_writer *w, struct ospf_proto *p, struct top_has
     if (rtl.type == LSART_VLNK)
     {
       cbor_open_block_with_length(w, 2);
-      cbor_string_int(w, "vlink", rtl.id);
+      cbor_string_ipv4(w, "vlink", rtl.id);
       cbor_string_int(w, "metric", rtl.metric);
     }
   }
@@ -49,7 +49,7 @@ show_lsa_router_cbor(struct cbor_writer *w, struct ospf_proto *p, struct top_has
     if (rtl.type == LSART_PTP)
     {
       cbor_open_block_with_length(w, 2);
-      cbor_string_int(w, "router", rtl.id);
+      cbor_string_ipv4(w, "router", rtl.id);
       cbor_string_int(w, "metric", rtl.metric);
     }
   }
@@ -75,7 +75,7 @@ show_lsa_router_cbor(struct cbor_writer *w, struct ospf_proto *p, struct top_has
 
           cbor_open_block_with_length(w, 4);
           cbor_string_int(w, "dummy_yang_id", dummy_id);
-          cbor_string_int(w, "network", net_lsa->id & net_ln->optx);
+          cbor_string_ipv4(w, "network", net_lsa->id & net_ln->optx);
           cbor_string_int(w, "len", u32_masklen(net_ln->optx));
           cbor_string_int(w, "metric", rtl.metric);
 	}
@@ -83,7 +83,7 @@ show_lsa_router_cbor(struct cbor_writer *w, struct ospf_proto *p, struct top_has
 	{
 	  cbor_open_block_with_length(w, 3);
 	  cbor_string_int(w, "dummy_yang_id", dummy_id);
-          cbor_string_int(w, "network", rtl.id);
+          cbor_string_ipv4(w, "network", rtl.id);
           cbor_string_int(w, "metric", rtl.metric);
         }
       }
@@ -91,7 +91,7 @@ show_lsa_router_cbor(struct cbor_writer *w, struct ospf_proto *p, struct top_has
       {
         cbor_open_block_with_length(w, 4);
         cbor_string_int(w, "dummy_yang_id", dummy_id);
-        cbor_string_int(w, "network", rtl.id);
+        cbor_string_ipv4(w, "network", rtl.id);
         cbor_string_int(w, "nif", rtl.nif);
         cbor_string_int(w, "metric", rtl.metric);
       }
@@ -110,7 +110,7 @@ show_lsa_router_cbor(struct cbor_writer *w, struct ospf_proto *p, struct top_has
       if (rtl.type == LSART_STUB)
       {
         cbor_open_block_with_length(w, 3);
-        cbor_string_int(w, "stubnet", rtl.id);
+        cbor_string_ipv4(w, "stubnet", rtl.id);
         cbor_string_int(w, "len", u32_masklen(rtl.data));
         cbor_string_int(w, "metric", rtl.metric);
       }
@@ -133,15 +133,15 @@ show_lsa_network_cbor(struct cbor_writer *w, struct top_hash_entry *he, int ospf
   {
     cbor_add_string(w, "ospf2");
     cbor_open_block_with_length(w, 3);
-    cbor_string_int(w, "network", lsa->id & ln->optx);
+    cbor_string_ipv4(w, "network", lsa->id & ln->optx);
     cbor_string_int(w, "optx", u32_masklen(ln->optx));
-    cbor_string_int(w, "dr", lsa->rt);
+    cbor_string_ipv4(w, "dr", lsa->rt);
   }
   else
   {
     cbor_add_string(w, "ospf");
     cbor_open_block_with_length(w, 2);
-    cbor_string_int(w, "network", lsa->rt);
+    cbor_string_ipv4(w, "network", lsa->rt);
     cbor_string_int(w, "lsa_id", lsa->id);
   }
 
@@ -152,7 +152,7 @@ show_lsa_network_cbor(struct cbor_writer *w, struct top_hash_entry *he, int ospf
   for (i = 0; i < lsa_net_count(lsa); i++)
   {
     cbor_open_block_with_length(w, 1);
-    cbor_string_int(w, "router", ln->routers[i]);
+    cbor_string_ipv4(w, "router", ln->routers[i]);
   }
 
   cbor_close_block_or_list(w);
@@ -161,7 +161,6 @@ show_lsa_network_cbor(struct cbor_writer *w, struct top_hash_entry *he, int ospf
 static inline void
 show_lsa_sum_net_cbor(struct cbor_writer *w, struct top_hash_entry *he, int ospf2, int af)
 {
-  char str[IPA_MAX_TEXT_LENGTH + 8] = "";
   net_addr net;
   u8 pxopts;
   u32 metric;
@@ -169,8 +168,8 @@ show_lsa_sum_net_cbor(struct cbor_writer *w, struct top_hash_entry *he, int ospf
   lsa_parse_sum_net(he, ospf2, af, &net, &pxopts, &metric);
   cbor_add_string(w, "lsa_sum_net");
   cbor_open_block_with_length(w, 2);
-  bsprintf(str, "%N", &net);
-  cbor_string_string(w, "net", str);
+  cbor_add_string(w, "net");
+  cbor_add_net(w, &net);
   cbor_string_int(w, "metric", metric);
 }
 
@@ -185,7 +184,7 @@ show_lsa_sum_rt_cbor(struct cbor_writer *w, struct top_hash_entry *he, int ospf2
 
   cbor_add_string(w, "lsa_sum_rt");
   cbor_open_block_with_length(w, 2);
-  cbor_string_int(w, "router", dst_rid);
+  cbor_string_ipv4(w, "router", dst_rid);
   cbor_string_int(w, "metric", metric);
 }
 
@@ -193,7 +192,6 @@ static inline void
 show_lsa_external_cbor(struct cbor_writer *w, struct top_hash_entry *he, int ospf2, int af)
 {
   struct ospf_lsa_ext_local rt;
-  char str[IPA_MAX_TEXT_LENGTH + 8] = "";
 
   cbor_add_string(w, "lsa_external");
   cbor_open_block(w);
@@ -204,8 +202,7 @@ show_lsa_external_cbor(struct cbor_writer *w, struct top_hash_entry *he, int osp
 
   if (rt.fbit)
   {
-    bsprintf(str, "%N", rt.fwaddr);
-    cbor_string_string(w, "via", str);
+    cbor_string_ipv4(w, "via", rt.fwaddr.addr[0]);
   }
 
   if (rt.tag)
@@ -217,9 +214,8 @@ show_lsa_external_cbor(struct cbor_writer *w, struct top_hash_entry *he, int osp
   } else {
     cbor_string_string(w, "lsa_type", "external");
   }
-
-  bsprintf(str, "%N", rt.net);
-  cbor_string_string(w, "rt_net", str);
+  cbor_add_string(w, "rt_net");
+  cbor_add_net(w, &rt.net);
 
   if(rt.ebit)
   {
@@ -262,7 +258,6 @@ show_lsa_prefix_cbor(struct cbor_writer *w, struct top_hash_entry *he, struct to
 
   cbor_add_string(w, "prefixes");
   cbor_open_list(w);
-  char str[IPA_MAX_TEXT_LENGTH + 8] = "";
   for (i = 0; i < px->pxcount; i++)
   {
     net_addr net;
@@ -275,13 +270,13 @@ show_lsa_prefix_cbor(struct cbor_writer *w, struct top_hash_entry *he, struct to
 
     if (px->ref_type == LSA_T_RT)
     {
-      bsprintf(str, "%N", &net);
-      cbor_string_string(w, "stubnet", str);
+      cbor_add_string(w, "stubnet");
+      cbor_add_net(w, &net);
       cbor_string_int(w, "metric", metric);
     }
     else{
-      bsprintf(str, "%N", &net);
-      cbor_string_string(w, "stubnet", str);
+      cbor_add_string(w, "stubnet");
+      cbor_add_net(w, &net);
     }
     cbor_close_block_or_list(w);
   }
@@ -521,7 +516,7 @@ ospf_sh_state_cbor(struct cbor_writer *w, struct proto *P, int verbose, int reac
 
 	if (he->domain != last_area)
 	{
-	  cbor_string_int(w, "area", he->domain);
+	  cbor_string_ipv4(w, "area", he->domain);
 	  last_area = he->domain;
 	  ix = 0;
 	}
@@ -605,7 +600,7 @@ ospf_sh_state_cbor(struct cbor_writer *w, struct proto *P, int verbose, int reac
 
       if (he->lsa.rt != last_rt)
       {
-	cbor_string_int(w, "router", he->lsa.rt);
+	cbor_string_ipv4(w, "router", he->lsa.rt);
 	last_rt = he->lsa.rt;
       }
 

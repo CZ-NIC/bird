@@ -9,8 +9,13 @@ import datetime
 class Command:
     num = -1
     def addr_to_str(self, addr):
-        return socket.inet_ntoa(struct.pack('!L', addr))
-    
+        return '.'.join(str(c) for c in addr.value)
+
+    def prefix_to_str(self, addr):
+        str_addr = '.'.join(str(c) for c in addr.value[1])
+        str_addr = str_addr + "/" +addr.value[0]
+        return str_addr
+
     def print_answer(self, answer):
         print(answer)
 
@@ -103,21 +108,21 @@ class Ospf(Command):
             print(f"\t\trouter {self.addr_to_str(router['router'])}")
 
     def print_lsa_sum_net(self, area):
-        print(f"\t\txnetwork {area['net']} metric {area['metric']}")
+        print(f"\t\txnetwork {self.prefix_to_str(area['net'])} metric {area['metric']}")
 
     def print_lsa_sum_rt(self, area):
         print(f"\t\txrouter {self.addr_to_str(area['router'])} metric {area['metric']}")
 
     def print_lsa_external(self, area):
         if('lsa_type_num' in area.keys()):
-            print(f"\t\t{area['lsa_type']} {self.addr_to_str(area['rt_net'])} metric{area[lsa_type_num]} {area['metric']}%s%s")
+            print(f"\t\t{area['lsa_type']} {self.prefix_to_str(area['rt_net'])} metric{area[lsa_type_num]} {area['metric']}%s%s")
         else:
-            print(f"\t\t{area['lsa_type']} {self.addr_to_str(area['rt_net'])} metric {area['metric']}{area['via']}{area['tag']}")
+            print(f"\t\t{area['lsa_type']} {self.prefix_to_str(area['rt_net'])} metric {area['metric']}{area['via']}{area['tag']}")
 
     def print_lsa_prefix(self, area):
         for prefix in area['prefixes']:
             if 'metric' in prefix.keys():
-                print(f"\t\tstubnet {self.addr_to_str(prefix['stubnet'])} metric {prefix['metric']}")
+                print(f"\t\tstubnet {self.prefix_to_str(prefix['stubnet'])} metric {prefix['metric']}")
 
     def print_answer(self, answer):
         print()
