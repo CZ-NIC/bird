@@ -2040,6 +2040,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   t->name = cf->name;
   t->config = cf;
   t->addr_type = cf->addr_type;
+  t->debug = cf->debug;
 
   fib_init(&t->fib, p, t->addr_type, sizeof(net), OFFSETOF(net, n), 0, NULL);
 
@@ -2752,6 +2753,7 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->gc_period = (uint) -1;	/* set in rt_postconfig() */
   c->min_settle_time = 1 S;
   c->max_settle_time = 20 S;
+  c->debug = new_config->table_default_debug;
 
   add_tail(&new_config->tables, &c->n);
 
@@ -2809,6 +2811,7 @@ rt_reconfigure(rtable *tab, struct rtable_config *new, struct rtable_config *old
   new->table = tab;
   tab->name = new->name;
   tab->config = new;
+  tab->debug = new->debug;
 
   return 1;
 }

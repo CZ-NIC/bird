@@ -505,6 +505,11 @@ include "tablename.conf";;
 	See <ref id="channel-debug" name="debug"> in the channel section.
 	Default: off.
 
+	<tag><label id="opt-debug-tables">debug tables all|off|{ states|routes|filters|events [, <m/.../] }</tag>
+	Set global defaults of table debugging options.
+	See <ref id="table-debug" name="debug"> in the table section.
+	Default: off.
+
 	<tag><label id="opt-debug-commands">debug commands <m/number/</tag>
 	Control logging of client connections (0 for no logging, 1 for logging
 	of connects and disconnects, 2 and higher for logging of all client
@@ -640,6 +645,12 @@ that implicit tables (<cf/master4/ and <cf/master6/) can be redefined in order
 to set options.
 
 <descrip>
+	<tag><label id="table-debug">debug all|off|{ states|routes|filters [, <m/.../] }</tag>
+	Set table debugging options. Like in <ref id="proto-debug"
+	name="protocol debugging">, tables are capable of writing trace
+	messages about its work to the log (with category <cf/trace/).
+	For now, this does nothing, but in version 3, it is used. Default: off.
+
 	<tag><label id="rtable-sorted">sorted <m/switch/</tag>
 	Usually, a routing table just chooses the selected (best) route from a
 	list of routes for each network, while keeping remaining routes unsorted.
