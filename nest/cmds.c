@@ -48,6 +48,7 @@ cmd_show_status(void)
 void
 cmd_show_symbols(struct sym_show_data *sd)
 {
+  cli_msg(-1010, "%i %x", sd->type, sd->type);
   if (sd->sym)
     cli_msg(1010, "%-8s\t%s", sd->sym->name, cf_symbol_class_name(sd->sym));
   else
@@ -58,10 +59,15 @@ cmd_show_symbols(struct sym_show_data *sd)
 	if (!sym->scope->active)
 	  continue;
 
-	if (sd->type && (sym->class != sd->type))
+	if (sd->type == SYM_VARIABLE || sd->type == SYM_CONSTANT)
+        {
+          if (!(sd->type  == (int)(sym->class & 0xffffff00)))
+            continue;
+        }
+        else if (sd->type && (sym->class != sd->type))
 	  continue;
 
-	cli_msg(-1010, "%-8s\t%s", sym->name, cf_symbol_class_name(sym));
+	cli_msg(-1010, "%-8s\t%s  %x %i", sym->name, cf_symbol_class_name(sym), sym->class, sym->class);
       }
       HASH_WALK_END;
 

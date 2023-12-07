@@ -115,7 +115,7 @@ CF_DECLS
 
 CF_KEYWORDS(ROUTER, ID, HOSTNAME, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT)
 CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, VRF, DEFAULT, TABLE, TABLES, STATES, ROUTES, FILTERS)
-CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS, ASPA)
+CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS, ASPA, CONSTANT, VARIABLE)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED, RPKI)
 CF_KEYWORDS(PASSWORD, KEY, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, CHANNELS, INTERFACES)
 CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512, BLAKE2S128, BLAKE2S256, BLAKE2B256, BLAKE2B512)
@@ -855,7 +855,7 @@ channel_arg:
  ;
 
 CF_CLI_HELP(SHOW SYMBOLS, ..., [[Show all known symbolic names]])
-CF_CLI(SHOW SYMBOLS, sym_args, [table|filter|function|protocol|template|<symbol>], [[Show all known symbolic names]])
+CF_CLI(SHOW SYMBOLS, sym_args, [table|filter|function|protocol|template|constant|variable|<symbol>], [[Show all known symbolic names]])
 { cmd_show_symbols($3); } ;
 
 CF_CLI_OPT(SHOW SYMBOLS TABLE)
@@ -873,6 +873,8 @@ sym_args:
  | sym_args FUNCTION { $$ = $1; $$->type = SYM_FUNCTION; }
  | sym_args PROTOCOL { $$ = $1; $$->type = SYM_PROTO; }
  | sym_args TEMPLATE { $$ = $1; $$->type = SYM_TEMPLATE; }
+ | sym_args CONSTANT { $$ = $1; $$->type = SYM_CONSTANT; }
+ | sym_args VARIABLE { $$ = $1; $$->type = SYM_VARIABLE; }
  | sym_args CF_SYM_KNOWN { $$ = $1; $$->sym = $2; }
  ;
 
