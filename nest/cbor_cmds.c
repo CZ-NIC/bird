@@ -116,8 +116,8 @@ cmd_show_status_cbor(byte *tbuf, uint capacity, struct linpool *lp)
 
 int parse_show_symbols_arg(struct argument *argument)
 {
-  char *params[] = {"table", "filter", "function", "protocol", "template"};
-  int param_vals[] = {SYM_TABLE, SYM_FILTER, SYM_FUNCTION, SYM_PROTO, SYM_TEMPLATE};  // defined in conf.h
+  char *params[] = {"table", "filter", "function", "protocol", "template", "constant", "variable"};
+  int param_vals[] = {SYM_TABLE, SYM_FILTER, SYM_FUNCTION, SYM_PROTO, SYM_TEMPLATE, SYM_CONSTANT, SYM_VARIABLE};  // defined in conf.h
   for (size_t j = 0; j < sizeof(params)/sizeof(char*); j++)
   {
     if (compare_str(argument->arg, argument->len, params[j]))
@@ -167,7 +167,6 @@ cmd_show_symbols_cbor(byte *tbuf, uint capacity, struct arg_list *args, struct l
     cbor_string_string(w, "type", "symbol not known");
     return w->pt;
   }
-
   else
   {
     cbor_add_string(w, "table");
@@ -177,8 +176,12 @@ cmd_show_symbols_cbor(byte *tbuf, uint capacity, struct arg_list *args, struct l
       {
         if (!sym->scope->active)
           continue;
-
-        if (show_type != SYM_VOID && (sym->class != show_type))
+        if (show_type == SYM_VARIABLE || show_type == SYM_CONSTANT)
+        {
+          if (!(show_type  == (int)(sym->class & 0xffffff00)))
+            continue;
+        }
+        else if (show_type != SYM_VOID && (sym->class != show_type))
           continue;
 
         cbor_open_block_with_length(w, 2);
