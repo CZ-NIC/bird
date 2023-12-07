@@ -1748,6 +1748,9 @@ rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filte
 void
 rt_refresh_begin(rtable *t, struct channel *c)
 {
+  if (c->debug & D_EVENTS)
+    log(L_TRACE "%s.%s: Route refresh begin", c->proto->name, c->name);
+
   FIB_WALK(&t->fib, net, n)
     {
       rte *e;
@@ -1769,6 +1772,9 @@ rt_refresh_begin(rtable *t, struct channel *c)
 void
 rt_refresh_end(rtable *t, struct channel *c)
 {
+  if (c->debug & D_EVENTS)
+    log(L_TRACE "%s.%s: Route refresh end", c->proto->name, c->name);
+
   int prune = 0;
 
   FIB_WALK(&t->fib, net, n)
