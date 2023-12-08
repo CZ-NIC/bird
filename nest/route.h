@@ -14,6 +14,7 @@
 #include "lib/bitmap.h"
 #include "lib/resource.h"
 #include "lib/net.h"
+#include "lib/netindex.h"
 #include "lib/type.h"
 #include "lib/fib.h"
 #include "lib/route.h"
@@ -108,6 +109,7 @@ extern uint rtable_max_id;
     DOMAIN(rtable) lock;		/* Lock to take to access the private parts */		\
     struct rtable_config *config;	/* Configuration of this table */			\
     struct birdloop *loop;		/* Service thread */					\
+    netindex_hash *netindex;		/* Prefix index for this table */			\
 
 /* The complete rtable structure */
 struct rtable_private {
@@ -118,10 +120,12 @@ struct rtable_private {
   /* Here the private items not to be accessed without locking */
   pool *rp;				/* Resource pool to allocate everything from, including itself */
   struct slab *rte_slab;		/* Slab to allocate route objects */
-  struct fib fib;
+  struct network *routes;		/* Actual route objects in the table */
+  u32 routes_block_size;		/* Size of the route object pointer block */
   struct f_trie *trie;			/* Trie of prefixes defined in fib */
   int use_count;			/* Number of protocols using this table */
   u32 rt_count;				/* Number of routes in the table */
+  u32 net_count;			/* Number of nets in the table */
   u32 debug;				/* Debugging flags (D_*) */
 
   list imports;				/* Registered route importers */
@@ -152,8 +156,8 @@ struct rtable_private {
   byte export_used;			/* Pending Export pruning is scheduled */
   byte cork_active;			/* Cork has been activated */
   struct rt_cork_threshold cork_threshold;	/* Threshold for table cork */
-  struct fib_iterator prune_fit;	/* Rtable prune FIB iterator */
-  struct fib_iterator nhu_fit;		/* Next Hop Update FIB iterator */
+  u32 prune_index;			/* Rtable prune FIB iterator */
+  u32 nhu_index;			/* Next Hop Update FIB iterator */
   struct f_trie *trie_new;		/* New prefix trie defined during pruning */
   struct f_trie *trie_old;		/* Old prefix trie waiting to be freed */
   u32 trie_lock_count;			/* Prefix trie locked by walks */
@@ -228,7 +232,6 @@ static inline int rt_cork_check(event *e)
 typedef struct network {
   struct rte_storage *routes;		/* Available routes for this network */
   struct rt_pending_export *first, *last;
-  struct fib_node n;			/* FIB flags reserved for kernel syncer */
 } net;
 
 struct rte_storage {
@@ -247,6 +250,8 @@ struct rte_storage {
 #define RTE_VALID_OR_NULL(r)	(((r) && (rte_is_valid(&(r)->rte))) ? &((r)->rte) : NULL)
 
 #define RTES_WRITE(r)		(((r) != ((struct rte_storage *) 0)) ? ((struct rte *) &(r)->rte) : NULL)
+
+#define RTE_GET_NETINDEX(e) NET_TO_INDEX((e)->net)
 
 /* Table-channel connections */
 
@@ -391,7 +396,7 @@ struct rt_table_export_hook {
   };
   
   union {
-    struct fib_iterator feed_fit;		/* Routing table iterator used during feeding */
+    u32 feed_index;				/* Routing table iterator used during feeding */
     struct {
       struct f_trie_walk_state *walk_state;	/* Iterator over networks in trie */
       struct f_trie *walk_lock;			/* Locked trie for walking */
@@ -614,11 +619,9 @@ void rt_flowspec_link(rtable *src, rtable *dst);
 void rt_flowspec_unlink(rtable *src, rtable *dst);
 rtable *rt_setup(pool *, struct rtable_config *);
 
-static inline net *net_find(struct rtable_private *tab, const net_addr *addr) { return (net *) fib_find(&tab->fib, addr); }
-static inline net *net_find_valid(struct rtable_private *tab, const net_addr *addr)
-{ net *n = net_find(tab, addr); return (n && n->routes && rte_is_valid(&n->routes->rte)) ? n : NULL; }
-static inline net *net_get(struct rtable_private *tab, const net_addr *addr) { return (net *) fib_get(&tab->fib, addr); }
-net *net_route(struct rtable_private *tab, const net_addr *n);
+static inline net *net_find(struct rtable_private *tab, const struct netindex *i)
+{ return (i->index < tab->routes_block_size) ? &(tab->routes[i->index]) : NULL; }
+
 int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
 rte *rt_export_merged(struct channel *c, const net_addr *n, const rte ** feed, uint count, linpool *pool, int silent);
 void rt_refresh_begin(struct rt_import_request *);

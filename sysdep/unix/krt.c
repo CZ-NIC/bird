@@ -369,7 +369,7 @@ rte_feed_obtain_valid(net *n, const rte **feed, uint count)
 }
 
 static struct rte *
-krt_export_net(struct krt_proto *p, net *net)
+krt_export_net(struct krt_proto *p, struct netindex *i, net *net)
 {
   /* FIXME: Here we are calling filters in table-locked context when exporting
    * to kernel. Here BIRD can crash if the user requested ROA check in kernel
@@ -389,7 +389,7 @@ krt_export_net(struct krt_proto *p, net *net)
 
     const rte **feed = alloca(count * sizeof(rte *));
     rte_feed_obtain_valid(net, feed, count);
-    return rt_export_merged(c, net->n.addr, feed, count, krt_filter_lp, 1);
+    return rt_export_merged(c, i->addr, feed, count, krt_filter_lp, 1);
   }
 
   static _Thread_local rte rt;
@@ -477,11 +477,12 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
   if (!p->ready)
     goto ignore;
 
-  net *net = net_find(tab, e->net);
+  struct netindex *i = net_find_index(tab->netindex, e->net);
+  net *net = i ? net_find(tab, i) : NULL;
   if (!net || !krt_is_installed(p, net))
     goto delete;
 
-  new = krt_export_net(p, net);
+  new = krt_export_net(p, i, net);
 
   /* Rejected by filters */
   if (!new)
@@ -542,22 +543,26 @@ krt_prune(struct krt_proto *p)
   {
 
   KRT_TRACE(p, D_EVENTS, "Pruning table %s", t->name);
-  FIB_WALK(&t->fib, net, n)
+  for (u32 i = 0; i < t->routes_block_size; i++)
   {
+    net *n = &t->routes[i];
+    if (!n->routes)
+      continue;
+
     if (p->ready && krt_is_installed(p, n) && !bmap_test(&p->seen_map, n->routes->rte.id))
     {
-      rte *new = krt_export_net(p, n);
+      struct netindex *ni = RTE_GET_NETINDEX(&n->routes->rte);
+      rte *new = krt_export_net(p, ni, n);
 
       if (new)
       {
 	krt_trace_in(p, new, "installing");
-	krt_replace_rte(p, n->n.addr, new, NULL);
+	krt_replace_rte(p, new->net, new, NULL);
       }
 
       lp_flush(krt_filter_lp);
     }
   }
-  FIB_WALK_END;
 
   if (p->ready)
     p->initialized = 1;
