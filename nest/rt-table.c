@@ -268,128 +268,13 @@ net_route(rtable *tab, const net_addr *n)
       default:
 	return NULL;
     }
+
+#undef TW
+#undef FW
+#undef FVR_IP
+#undef FVR_VPN
 }
 
-
-static int
-net_roa_check_ip4_trie(rtable *tab, const net_addr_ip4 *px, u32 asn)
-{
-  int anything = 0;
-
-  TRIE_WALK_TO_ROOT_IP4(tab->trie, px, px0)
-  {
-    net_addr_roa4 roa0 = NET_ADDR_ROA4(px0.prefix, px0.pxlen, 0, 0);
-
-    struct fib_node *fn;
-    for (fn = fib_get_chain(&tab->fib, (net_addr *) &roa0); fn; fn = fn->next)
-    {
-      net_addr_roa4 *roa = (void *) fn->addr;
-      net *r = fib_node_to_user(&tab->fib, fn);
-
-      if (net_equal_prefix_roa4(roa, &roa0) && rte_is_valid(r->routes))
-      {
-	anything = 1;
-	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
-	  return ROA_VALID;
-      }
-    }
-  }
-  TRIE_WALK_TO_ROOT_END;
-
-  return anything ? ROA_INVALID : ROA_UNKNOWN;
-}
-
-static int
-net_roa_check_ip4_fib(rtable *tab, const net_addr_ip4 *px, u32 asn)
-{
-  struct net_addr_roa4 n = NET_ADDR_ROA4(px->prefix, px->pxlen, 0, 0);
-  struct fib_node *fn;
-  int anything = 0;
-
-  while (1)
-  {
-    for (fn = fib_get_chain(&tab->fib, (net_addr *) &n); fn; fn = fn->next)
-    {
-      net_addr_roa4 *roa = (void *) fn->addr;
-      net *r = fib_node_to_user(&tab->fib, fn);
-
-      if (net_equal_prefix_roa4(roa, &n) && rte_is_valid(r->routes))
-      {
-	anything = 1;
-	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
-	  return ROA_VALID;
-      }
-    }
-
-    if (n.pxlen == 0)
-      break;
-
-    n.pxlen--;
-    ip4_clrbit(&n.prefix, n.pxlen);
-  }
-
-  return anything ? ROA_INVALID : ROA_UNKNOWN;
-}
-
-static int
-net_roa_check_ip6_trie(rtable *tab, const net_addr_ip6 *px, u32 asn)
-{
-  int anything = 0;
-
-  TRIE_WALK_TO_ROOT_IP6(tab->trie, px, px0)
-  {
-    net_addr_roa6 roa0 = NET_ADDR_ROA6(px0.prefix, px0.pxlen, 0, 0);
-
-    struct fib_node *fn;
-    for (fn = fib_get_chain(&tab->fib, (net_addr *) &roa0); fn; fn = fn->next)
-    {
-      net_addr_roa6 *roa = (void *) fn->addr;
-      net *r = fib_node_to_user(&tab->fib, fn);
-
-      if (net_equal_prefix_roa6(roa, &roa0) && rte_is_valid(r->routes))
-      {
-	anything = 1;
-	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
-	  return ROA_VALID;
-      }
-    }
-  }
-  TRIE_WALK_TO_ROOT_END;
-
-  return anything ? ROA_INVALID : ROA_UNKNOWN;
-}
-
-static int
-net_roa_check_ip6_fib(rtable *tab, const net_addr_ip6 *px, u32 asn)
-{
-  struct net_addr_roa6 n = NET_ADDR_ROA6(px->prefix, px->pxlen, 0, 0);
-  struct fib_node *fn;
-  int anything = 0;
-
-  while (1)
-  {
-    for (fn = fib_get_chain(&tab->fib, (net_addr *) &n); fn; fn = fn->next)
-    {
-      net_addr_roa6 *roa = (void *) fn->addr;
-      net *r = fib_node_to_user(&tab->fib, fn);
-
-      if (net_equal_prefix_roa6(roa, &n) && rte_is_valid(r->routes))
-      {
-	anything = 1;
-	if (asn && (roa->asn == asn) && (roa->max_pxlen >= px->pxlen))
-	  return ROA_VALID;
-      }
-    }
-
-    if (n.pxlen == 0)
-      break;
-
-    n.pxlen--;
-    ip6_clrbit(&n.prefix, n.pxlen);
-  }
-
-  return anything ? ROA_INVALID : ROA_UNKNOWN;
-}
 
 /**
  * roa_check - check validity of route origination in a ROA table
@@ -409,22 +294,56 @@ net_roa_check_ip6_fib(rtable *tab, const net_addr_ip6 *px, u32 asn)
 int
 net_roa_check(rtable *tab, const net_addr *n, u32 asn)
 {
+  net_addr_union *nu = SKIP_BACK(net_addr_union, n, n);
+  int anything = 0;
+  struct fib_node *fn;
+
+#define TW(ipv) do {								\
+  TRIE_WALK_TO_ROOT_IP##ipv(tab->trie, &(nu->ip##ipv), var) {			\
+    net_addr_roa##ipv roa0 = NET_ADDR_ROA##ipv(var.prefix, var.pxlen, 0, 0);	\
+    ROA_PARTIAL_CHECK(ipv);							\
+  } TRIE_WALK_TO_ROOT_END;							\
+  return anything ? ROA_INVALID : ROA_UNKNOWN;					\
+} while (0)
+
+#define FW(ipv) do {								\
+  net_addr_roa##ipv roa0 = NET_ADDR_ROA##ipv(nu->ip##ipv.prefix, nu->ip##ipv.pxlen, 0, 0);\
+  while (1) {									\
+    ROA_PARTIAL_CHECK(ipv);							\
+    if (roa0.pxlen == 0) break;							\
+    roa0.pxlen--; ip##ipv##_clrbit(&roa0.prefix, roa0.pxlen);			\
+  }										\
+} while (0)
+
+#define ROA_PARTIAL_CHECK(ipv) do {						\
+  for (fn = fib_get_chain(&tab->fib, (net_addr *) &roa0); fn; fn = fn->next)	\
+  {										\
+    net_addr_roa##ipv *roa = (void *) fn->addr;				\
+    net *r = fib_node_to_user(&tab->fib, fn);					\
+    if (net_equal_prefix_roa##ipv(roa, &roa0) && rte_is_valid(r->routes))	\
+    {										\
+      anything = 1;								\
+      if (asn && (roa->asn == asn) && (roa->max_pxlen >= nu->ip##ipv.pxlen))	\
+      return ROA_VALID;							\
+    }										\
+  }										\
+} while (0)
+
   if ((tab->addr_type == NET_ROA4) && (n->type == NET_IP4))
   {
-    if (tab->trie)
-      return net_roa_check_ip4_trie(tab, (const net_addr_ip4 *) n, asn);
-    else
-      return net_roa_check_ip4_fib (tab, (const net_addr_ip4 *) n, asn);
+    if (tab->trie)  TW(4);
+    else	    FW(4);
   }
   else if ((tab->addr_type == NET_ROA6) && (n->type == NET_IP6))
   {
-    if (tab->trie)
-      return net_roa_check_ip6_trie(tab, (const net_addr_ip6 *) n, asn);
-    else
-      return net_roa_check_ip6_fib (tab, (const net_addr_ip6 *) n, asn);
+    if (tab->trie)  TW(6);
+    else	    FW(6);
   }
-  else
-    return ROA_UNKNOWN;	/* Should not happen */
+
+  return anything ? ROA_INVALID : ROA_UNKNOWN;
+#undef ROA_PARTIAL_CHECK
+#undef TW
+#undef FW
 }
 
 /**
