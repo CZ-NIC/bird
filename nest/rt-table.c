@@ -225,66 +225,6 @@ net_init_with_trie(struct fib *f, void *N)
     trie_add_prefix(tab->trie_new, n->n.addr, n->n.addr->pxlen, n->n.addr->pxlen);
 }
 
-static inline net *
-net_route_ip4_trie(struct rtable_private *t, const net_addr_ip4 *n0)
-{
-  TRIE_WALK_TO_ROOT_IP4(t->trie, n0, n)
-  {
-    net *r;
-    if (r = net_find_valid(t, (net_addr *) &n))
-      return r;
-  }
-  TRIE_WALK_TO_ROOT_END;
-
-  return NULL;
-}
-
-static inline net *
-net_route_vpn4_trie(struct rtable_private *t, const net_addr_vpn4 *n0)
-{
-  TRIE_WALK_TO_ROOT_IP4(t->trie, (const net_addr_ip4 *) n0, px)
-  {
-    net_addr_vpn4 n = NET_ADDR_VPN4(px.prefix, px.pxlen, n0->rd);
-
-    net *r;
-    if (r = net_find_valid(t, (net_addr *) &n))
-      return r;
-  }
-  TRIE_WALK_TO_ROOT_END;
-
-  return NULL;
-}
-
-static inline net *
-net_route_ip6_trie(struct rtable_private *t, const net_addr_ip6 *n0)
-{
-  TRIE_WALK_TO_ROOT_IP6(t->trie, n0, n)
-  {
-    net *r;
-    if (r = net_find_valid(t, (net_addr *) &n))
-      return r;
-  }
-  TRIE_WALK_TO_ROOT_END;
-
-  return NULL;
-}
-
-static inline net *
-net_route_vpn6_trie(struct rtable_private *t, const net_addr_vpn6 *n0)
-{
-  TRIE_WALK_TO_ROOT_IP6(t->trie, (const net_addr_ip6 *) n0, px)
-  {
-    net_addr_vpn6 n = NET_ADDR_VPN6(px.prefix, px.pxlen, n0->rd);
-
-    net *r;
-    if (r = net_find_valid(t, (net_addr *) &n))
-      return r;
-  }
-  TRIE_WALK_TO_ROOT_END;
-
-  return NULL;
-}
-
 static inline void *
 net_route_ip6_sadr_trie(struct rtable_private *t, const net_addr_ip6_sadr *n0)
 {
@@ -318,69 +258,6 @@ net_route_ip6_sadr_trie(struct rtable_private *t, const net_addr_ip6_sadr *n0)
   return NULL;
 }
 
-static inline net *
-net_route_ip4_fib(struct rtable_private *t, const net_addr_ip4 *n0)
-{
-  net_addr_ip4 n;
-  net_copy_ip4(&n, n0);
-
-  net *r;
-  while (r = net_find_valid(t, (net_addr *) &n), (!r) && (n.pxlen > 0))
-  {
-    n.pxlen--;
-    ip4_clrbit(&n.prefix, n.pxlen);
-  }
-
-  return r;
-}
-
-static inline net *
-net_route_vpn4_fib(struct rtable_private *t, const net_addr_vpn4 *n0)
-{
-  net_addr_vpn4 n;
-  net_copy_vpn4(&n, n0);
-
-  net *r;
-  while (r = net_find_valid(t, (net_addr *) &n), (!r) && (n.pxlen > 0))
-  {
-    n.pxlen--;
-    ip4_clrbit(&n.prefix, n.pxlen);
-  }
-
-  return r;
-}
-
-static inline net *
-net_route_ip6_fib(struct rtable_private *t, const net_addr_ip6 *n0)
-{
-  net_addr_ip6 n;
-  net_copy_ip6(&n, n0);
-
-  net *r;
-  while (r = net_find_valid(t, (net_addr *) &n), (!r) && (n.pxlen > 0))
-  {
-    n.pxlen--;
-    ip6_clrbit(&n.prefix, n.pxlen);
-  }
-
-  return r;
-}
-
-static inline net *
-net_route_vpn6_fib(struct rtable_private *t, const net_addr_vpn6 *n0)
-{
-  net_addr_vpn6 n;
-  net_copy_vpn6(&n, n0);
-
-  net *r;
-  while (r = net_find_valid(t, (net_addr *) &n), (!r) && (n.pxlen > 0))
-  {
-    n.pxlen--;
-    ip6_clrbit(&n.prefix, n.pxlen);
-  }
-
-  return r;
-}
 
 static inline void *
 net_route_ip6_sadr_fib(struct rtable_private *t, const net_addr_ip6_sadr *n0)
@@ -426,42 +303,51 @@ net *
 net_route(struct rtable_private *tab, const net_addr *n)
 {
   ASSERT(tab->addr_type == n->type);
+  net_addr_union *nu = SKIP_BACK(net_addr_union, n, n);
 
-  switch (n->type)
-  {
-  case NET_IP4:
-    if (tab->trie)
-      return net_route_ip4_trie(tab, (net_addr_ip4 *) n);
-    else
-      return net_route_ip4_fib (tab, (net_addr_ip4 *) n);
+#define TW(ipv, what) \
+  TRIE_WALK_TO_ROOT_IP##ipv(tab->trie, &(nu->ip##ipv), var) \
+  { what(ipv, var); } \
+  TRIE_WALK_TO_ROOT_END; return NULL;
 
-  case NET_VPN4:
-    if (tab->trie)
-      return net_route_vpn4_trie(tab, (net_addr_vpn4 *) n);
-    else
-      return net_route_vpn4_fib (tab, (net_addr_vpn4 *) n);
+#define FW(ipv, what) do { \
+  net_addr_union nuc; net_copy(&nuc.n, n); \
+  while (1) { \
+    what(ipv, nuc.ip##ipv); if (!nuc.n.pxlen) return NULL; \
+    nuc.n.pxlen--; ip##ipv##_clrbit(&nuc.ip##ipv.prefix, nuc.ip##ipv.pxlen); \
+  } \
+} while(0); return NULL;
 
-  case NET_IP6:
-    if (tab->trie)
-      return net_route_ip6_trie(tab, (net_addr_ip6 *) n);
-    else
-      return net_route_ip6_fib (tab, (net_addr_ip6 *) n);
+#define FVR_IP(ipv, var) \
+    net *r; if (r = net_find_valid(tab, (net_addr *) &var)) return r;
 
-  case NET_VPN6:
-    if (tab->trie)
-      return net_route_vpn6_trie(tab, (net_addr_vpn6 *) n);
-    else
-      return net_route_vpn6_fib (tab, (net_addr_vpn6 *) n);
+#define FVR_VPN(ipv, var) \
+    net_addr_vpn##ipv _var0 = NET_ADDR_VPN##ipv(var.prefix, var.pxlen, nu->vpn##ipv.rd); FVR_IP(ipv, _var0);
 
-  case NET_IP6_SADR:
-    if (tab->trie)
-      return net_route_ip6_sadr_trie(tab, (net_addr_ip6_sadr *) n);
-    else
-      return net_route_ip6_sadr_fib (tab, (net_addr_ip6_sadr *) n);
+  if (tab->trie)
+    switch (n->type) {
+      case NET_IP4:   TW(4, FVR_IP);
+      case NET_VPN4:  TW(4, FVR_VPN);
+      case NET_IP6:   TW(6, FVR_IP);
+      case NET_VPN6:  TW(6, FVR_VPN);
 
-  default:
-    return NULL;
-  }
+      case NET_IP6_SADR:
+	return net_route_ip6_sadr_trie(tab, (net_addr_ip6_sadr *) n);
+      default:
+	return NULL;
+    }
+  else
+    switch (n->type) {
+      case NET_IP4:   FW(4, FVR_IP);
+      case NET_VPN4:  FW(4, FVR_VPN);
+      case NET_IP6:   FW(6, FVR_IP);
+      case NET_VPN6:  FW(6, FVR_VPN);
+
+      case NET_IP6_SADR:
+	return net_route_ip6_sadr_fib (tab, (net_addr_ip6_sadr *) n);
+      default:
+	return NULL;
+    }
 }
 
 
@@ -2942,6 +2828,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   t->name = cf->name;
   t->config = cf;
   t->addr_type = cf->addr_type;
+  t->debug = cf->debug;
   t->id = idm_alloc(&rtable_idm);
   if (t->id >= rtable_max_id)
     rtable_max_id = t->id + 1;
@@ -4092,7 +3979,7 @@ rt_new_table(struct symbol *s, uint addr_type)
     .min = 100 MS,
     .max = 3 S,
   };
-  c->debug = new_config->table_debug;
+  c->debug = new_config->table_default_debug;
 
   add_tail(&new_config->tables, &c->n);
 
@@ -4206,6 +4093,7 @@ rt_reconfigure(struct rtable_private *tab, struct rtable_config *new, struct rta
   new->table = RT_PUB(tab);
   tab->name = new->name;
   tab->config = new;
+  tab->debug = new->debug;
 
   if (tab->hostcache)
     tab->hostcache->req.trace_routes = new->debug;

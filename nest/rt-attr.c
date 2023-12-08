@@ -257,8 +257,8 @@ rt_get_source_o(struct rte_owner *p, u32 id)
   p->uc++;
 
   HASH_INSERT2(p->hash, RSH, rta_pool, src);
-  if (config->table_debug)
-    log(L_TRACE "Allocated new rte_src for %s, ID %luL %uG, have %u sources now",
+  if (p->debug & D_ROUTES)
+    log(L_TRACE "%s: new rte_src ID %luL %uG, have %u sources now",
 	p->name, src->private_id, src->global_id, p->uc);
 
   uint gm = atomic_load_explicit(&rte_src_global_max, memory_order_relaxed);
@@ -334,6 +334,10 @@ rt_prune_sources(void *data)
     {
       o->uc--;
 
+      if (o->debug & D_ROUTES)
+	log(L_TRACE "%s: freed rte_src ID %luL %uG, have %u sources now",
+	    o->name, src->private_id, src->global_id, o->uc);
+
       HASH_DO_REMOVE(o->hash, RSH, sp);
 
       RTA_LOCK;
@@ -354,8 +358,8 @@ rt_prune_sources(void *data)
     rfree(o->prune);
     RTA_UNLOCK;
 
-    if (config->table_debug)
-      log(L_TRACE "All rte_src's for %s pruned, scheduling stop event", o->name);
+    if (o->debug & D_EVENTS)
+      log(L_TRACE "%s: all rte_src's pruned, scheduling stop event", o->name);
 
     rt_done_sources(o);
   }
@@ -399,6 +403,8 @@ rt_init_sources(struct rte_owner *o, const char *name, event_list *list)
   o->stop = NULL;
   o->list = list;
   RTA_UNLOCK;
+  if (o->debug & D_EVENTS)
+    log(L_TRACE "%s: initialized rte_src owner", o->name);
 }
 
 void
@@ -408,8 +414,8 @@ rt_destroy_sources(struct rte_owner *o, event *done)
 
   if (!o->uc)
   {
-    if (config->table_debug)
-      log(L_TRACE "Source owner %s destroy requested. All rte_src's already pruned, scheduling stop event", o->name);
+    if (o->debug & D_EVENTS)
+      log(L_TRACE "%s: rte_src owner destroy requested, already clean, scheduling stop event", o->name);
 
     RTA_LOCK;
     rfree(o->prune);
@@ -418,8 +424,8 @@ rt_destroy_sources(struct rte_owner *o, event *done)
     rt_done_sources(o);
   }
   else
-    if (config->table_debug)
-      log(L_TRACE "Source owner %s destroy requested. Remaining %u rte_src's to prune.", o->name, o->uc);
+    if (o->debug & D_EVENTS)
+      log(L_TRACE "%s: rte_src owner destroy requested, remaining %u rte_src's to prune.", o->name, o->uc);
 }
 
 /*

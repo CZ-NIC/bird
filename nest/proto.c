@@ -1856,7 +1856,7 @@ proto_reconfigure(struct proto *p, struct proto_config *oc, struct proto_config 
     return 0;
 
   p->sources.name = p->name = nc->name;
-  p->debug = nc->debug;
+  p->sources.debug = p->debug = nc->debug;
   p->mrtdump = nc->mrtdump;
   reconfigure_type = type;
 
@@ -2598,6 +2598,8 @@ proto_do_start(struct proto *p)
   rt_init_sources(&p->sources, p->name, proto_event_list(p));
   if (!p->sources.class)
     p->sources.class = &default_rte_owner_class;
+
+  p->sources.debug = p->debug;
 
   if (!p->cf->late_if_feed)
     iface_subscribe(&p->iface_sub);

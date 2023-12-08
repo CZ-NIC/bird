@@ -35,6 +35,7 @@ struct config {
   u32 proto_default_debug;		/* Default protocol debug mask */
   u32 proto_default_mrtdump;		/* Default protocol mrtdump mask */
   u32 channel_default_debug;		/* Default channel debug mask */
+  u32 table_default_debug;		/* Default table debug mask */
   u16 filter_vstk, filter_estk;		/* Filter stack depth */
   struct timeformat tf_route;		/* Time format for 'show route' */
   struct timeformat tf_proto;		/* Time format for 'show protocol' */
@@ -45,7 +46,6 @@ struct config {
 
   int cli_debug;			/* Tracing of CLI connections and commands */
   int latency_debug;			/* I/O loop tracks duration of each event */
-  int table_debug;			/* Track route propagation through tables */
   u32 latency_limit;			/* Events with longer duration are logged (us) */
   u32 watchdog_warning;			/* I/O loop watchdog limit for warning (us) */
   u32 watchdog_timeout;			/* Watchdog timeout (in seconds, 0 = disabled) */

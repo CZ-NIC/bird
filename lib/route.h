@@ -85,6 +85,7 @@ struct rte_owner {
   const char *name;
   u32 hash_key;
   u32 uc;
+  u32 debug;
   event_list *list;
   event *prune;
   event *stop;

@@ -152,7 +152,7 @@ proto_call_cmd_reload(struct proto_spec ps, int dir, const struct f_trie *trie)
 CF_DECLS
 
 CF_KEYWORDS(ROUTER, ID, HOSTNAME, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT, PIPE)
-CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, VRF, DEFAULT, TABLE, STATES, ROUTES, FILTERS)
+CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, VRF, DEFAULT, TABLE, TABLES, STATES, ROUTES, FILTERS)
 CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED, RPKI)
 CF_KEYWORDS(PASSWORD, KEY, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, CHANNELS, INTERFACES)
@@ -269,6 +269,7 @@ table_sorted:
 
 table_opt:
    SORTED bool { this_table->sorted = $2; }
+ | DEBUG debug_mask { this_table->debug = $2; }
  | TRIE bool {
      if (!net_val_match(this_table->addr_type, NB_IP | NB_VPN | NB_ROA | NB_IP6_SADR))
        cf_error("Trie option not supported for %s table", net_label[this_table->addr_type]);
@@ -282,7 +283,6 @@ table_opt:
      this_table->cork_threshold.high = $4; }
  | EXPORT SETTLE TIME settle { this_table->export_settle = $4; }
  | ROUTE REFRESH EXPORT SETTLE TIME settle { this_table->export_rr_settle = $6; }
- | DEBUG bool { this_table->debug = $2; }
  ;
 
 table_opts:
@@ -443,8 +443,8 @@ conf: debug_default ;
 debug_default:
    DEBUG PROTOCOLS debug_mask { new_config->proto_default_debug = $3; }
  | DEBUG CHANNELS debug_mask { new_config->channel_default_debug = $3; }
+ | DEBUG TABLES debug_mask { new_config->table_default_debug = $3; }
  | DEBUG COMMANDS expr { new_config->cli_debug = $3; }
- | DEBUG TABLES debug_mask { new_config->table_debug = $3; }
  ;
 
 /* MRTDUMP PROTOCOLS is in systep/unix/config.Y */

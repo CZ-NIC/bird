@@ -62,9 +62,9 @@ struct rtable_config {
   uint addr_type;			/* Type of address data stored in table (NET_*) */
   uint gc_threshold;			/* Maximum number of operations before GC is run */
   uint gc_period;			/* Approximate time between two consecutive GC runs */
+  u32 debug;				/* Debugging flags (D_*) */
   byte sorted;				/* Routes of network are sorted according to rte_better() */
   byte trie_used;			/* Rtable has attached trie */
-  byte debug;				/* Whether to log */
   struct rt_cork_threshold cork_threshold;	/* Cork threshold values */
   struct settle_config export_settle;	/* Export announcement settler */
   struct settle_config export_rr_settle;/* Export announcement settler config valid when any
@@ -122,6 +122,7 @@ struct rtable_private {
   struct f_trie *trie;			/* Trie of prefixes defined in fib */
   int use_count;			/* Number of protocols using this table */
   u32 rt_count;				/* Number of routes in the table */
+  u32 debug;				/* Debugging flags (D_*) */
 
   list imports;				/* Registered route importers */
   struct rt_table_exporter exporter;	/* Exporter API structure */
