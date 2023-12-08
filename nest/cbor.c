@@ -151,17 +151,14 @@ void write_item(struct cbor_writer *writer, int8_t major, u64 num)
 {
   major = major<<5;
   check_memory(writer, 10);
-  log("writing %li %lx max for lower %lx ", num, num, ((u64)1<<(4*8))-1);
   if (num > ((u64)1<<(4*8))-1)
   { // We need 8 bytes to encode the num
-    log("loong num");
     major += 0x1b; // reserving those bytes
     writer->cbor[writer->pt] = major;
     writer->pt++;
     for (int i = 7; i>=0; i--)
     { // write n-th byte of num
       uint8_t to_write = (num>>(i*8)) & 0xff;
-      log("%x", to_write);
       writer->cbor[writer->pt] = to_write;
       writer->pt++;
     }
@@ -175,7 +172,6 @@ void write_item(struct cbor_writer *writer, int8_t major, u64 num)
     for (int i = 3; i>=0; i--)
     { // write n-th byte of num
       uint8_t to_write = (num>>(i*8)) & 0xff;
-      log("%x", to_write);
       writer->cbor[writer->pt] = to_write;
       writer->pt++;
     }

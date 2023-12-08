@@ -38,11 +38,13 @@
 
 #define SERVER_READ_BUF_LEN 4096
 
-static char *opt_list = "s:vrl";
+
+static char *opt_list = "s:vrlY";
 static int verbose, restricted, once;
 static char *init_cmd;
 
 static char *server_path = PATH_CONTROL_SOCKET;
+static char *server_path_yi = "bird-yang.ctl";
 static int server_fd;
 static byte server_read_buf[SERVER_READ_BUF_LEN];
 static byte *server_read_pos = server_read_buf;
@@ -51,6 +53,7 @@ int init = 1;		/* During intial sequence */
 int busy = 1;		/* Executing BIRD command */
 int interactive;	/* Whether stdin is terminal */
 int last_code;		/* Last return code */
+int yi_mode;		/* Convert to cbor and push to yi socket (and convert answer back) */
 
 static int num_lines, skip_input;
 int term_lns, term_cls;
@@ -61,7 +64,7 @@ int term_lns, term_cls;
 static void
 usage(char *name)
 {
-  fprintf(stderr, "Usage: %s [-s <control-socket>] [-v] [-r] [-l]\n", name);
+  fprintf(stderr, "Usage: %s [-s <control-socket>] [-v] [-r] [-l] [-Y]\n", name);
   exit(1);
 }
 
@@ -70,6 +73,7 @@ parse_args(int argc, char **argv)
 {
   int server_changed = 0;
   int c;
+  yi_mode = 0;
 
   while ((c = getopt(argc, argv, opt_list)) >= 0)
     switch (c)
@@ -88,9 +92,17 @@ parse_args(int argc, char **argv)
 	if (!server_changed)
 	  server_path = xbasename(server_path);
 	break;
+      case 'Y':
+        yi_mode = 1;
+        if (!server_changed)
+	  server_path = xbasename(server_path_yi);
+	break;
       default:
 	usage(argv[0]);
       }
+      yi_mode = 1;
+      server_path = server_path_yi;  //TODO delete - only for testing purposes
+      fprintf(stderr, "Socket: %s \n", server_path_yi);
 
   /* If some arguments are not options, we take it as commands */
   if (optind < argc)
@@ -142,6 +154,8 @@ submit_server_command(char *cmd)
 {
   busy = 1;
   num_lines = 2;
+  fprintf(stderr, "Socket: %s \n", server_path_yi);
+  fprintf(stderr, "cmd: %s \n", cmd);
   server_send(cmd);
 }
 
@@ -262,6 +276,7 @@ server_connect(void)
     DIE("Unable to connect to server control socket (%s)", server_path);
   if (fcntl(server_fd, F_SETFL, O_NONBLOCK) < 0)
     DIE("fcntl");
+  fprintf(stdout, "Socket: %s connected ok\n", server_path_yi);
 }
 
 
