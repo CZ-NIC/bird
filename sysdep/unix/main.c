@@ -542,6 +542,7 @@ yi_rx(sock *s, uint size)
 {
   /* zpracuj data délky len začínající na s->rbuf */
   /* zapiš výsledek do s->tbuf */
+  log("in yi rx!");
   log("size tbuf %ui", s->tbsize);
   uint tx_len = yi_process(size, s->rbuf, s->tbuf, s->tbsize);
   sk_send(s, tx_len);

@@ -66,6 +66,6 @@ void cbor_add_net(struct cbor_writer *writer, const net_addr *N) {
     cbor_add_ipv6_prefix(writer, n->vpn6.prefix, n->vpn6.pxlen);
     return;
   default:
-    bug("net type unsupported by cbor (yet)."); 
+    bug("net type unsupported by cbor (yet).");
   }
 }
