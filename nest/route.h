@@ -150,6 +150,7 @@ struct rtable_config {
   uint addr_type;			/* Type of address data stored in table (NET_*) */
   uint gc_threshold;			/* Maximum number of operations before GC is run */
   uint gc_period;			/* Approximate time between two consecutive GC runs */
+  u32 debug;				/* Debugging flags (D_*) */
   byte sorted;				/* Routes of network are sorted according to rte_better() */
   byte internal;			/* Internal table of a protocol */
   byte trie_used;			/* Rtable has attached trie */
@@ -166,6 +167,7 @@ typedef struct rtable {
   char *name;				/* Name of this table */
   list channels;			/* List of attached channels (struct channel) */
   uint addr_type;			/* Type of address data stored in table (NET_*) */
+  u32 debug;				/* Debugging flags (D_*) */
   int pipe_busy;			/* Pipe loop detection */
   int use_count;			/* Number of protocols using this table */
   u32 rt_count;				/* Number of routes in the table */
