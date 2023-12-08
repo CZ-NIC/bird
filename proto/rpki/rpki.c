@@ -295,6 +295,7 @@ rpki_cache_change_state(struct rpki_cache *cache, const enum rpki_cache_state ne
     rpki_close_connection(cache);
     rpki_schedule_next_retry(cache);
     rpki_stop_refresh_timer_event(cache);
+    cache->request_session_id = 1;
     break;
 
   case RPKI_CS_FAST_RECONNECT:
@@ -365,12 +366,11 @@ rpki_stop_expire_timer_event(struct rpki_cache *cache)
 }
 
 static int
-rpki_do_we_recv_prefix_pdu_in_last_seconds(struct rpki_cache *cache)
+rpki_sync_is_stuck(struct rpki_cache *cache)
 {
-  if (!cache->last_rx_prefix)
-    return 0;
-
-  return ((current_time() - cache->last_rx_prefix) <= 2 S);
+  return !sk_rx_ready(cache->tr_sock->sk) && (
+      !cache->last_rx_prefix || (current_time() - cache->last_rx_prefix > 10 S)
+      );
 }
 
 /**
@@ -402,7 +402,7 @@ rpki_refresh_hook(timer *tm)
     /* We sent Serial/Reset Query in last refresh hook call
      * and we got Cache Response but didn't get End-Of-Data yet.
      * It could be a trouble with network or only too long synchronization. */
-    if (!rpki_do_we_recv_prefix_pdu_in_last_seconds(cache))
+    if (rpki_sync_is_stuck(cache))
     {
       CACHE_TRACE(D_EVENTS, cache, "Sync takes more time than refresh interval %us, resetting connection", cache->refresh_interval);
       rpki_cache_change_state(cache, RPKI_CS_ERROR_TRANSPORT);
@@ -443,7 +443,7 @@ rpki_retry_hook(timer *tm)
   case RPKI_CS_CONNECTING:
   case RPKI_CS_SYNC_START:
   case RPKI_CS_SYNC_RUNNING:
-    if (!rpki_do_we_recv_prefix_pdu_in_last_seconds(cache))
+    if (rpki_sync_is_stuck(cache))
     {
       /* We tried to establish a connection in last retry hook call and haven't done
        * yet. It looks like troubles with network. We are aggressive here. */
