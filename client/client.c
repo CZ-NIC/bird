@@ -152,6 +152,11 @@ handle_internal_command(char *cmd)
 static void
 submit_server_command(char *cmd)
 {
+  /*
+  if (cbor_mode)
+    TODO: make the server command actually cbor;
+    */
+
   busy = 1;
   num_lines = 2;
   fprintf(stderr, "Socket: %s \n", server_path_yi);
@@ -336,6 +341,9 @@ server_read(void)
       else
 	DIE("Server read error");
     }
+
+  if ((init && (*server_read_buf == 0x87)) || cbor_mode)
+    return server_got_binary(c);
 
   start = server_read_buf;
   p = server_read_pos;
