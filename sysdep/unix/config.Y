@@ -17,9 +17,9 @@ static struct log_config *this_log;
 
 CF_DECLS
 
-CF_KEYWORDS(LOG, SYSLOG, ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG, STDERR, SOFT)
-CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, STATUS)
-CF_KEYWORDS(GRACEFUL, RESTART, THREADS)
+CF_KEYWORDS(LOG, SYSLOG, NAME, STDERR, UDP, PORT)
+CF_KEYWORDS(ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG)
+CF_KEYWORDS(DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, TIMEOUT, THREADS)
 
 %type <i> log_mask log_mask_list log_cat cfg_timeout
 %type <t> cfg_name
@@ -64,7 +64,27 @@ log_file:
    }
  | SYSLOG syslog_name { this_log->fh = NULL; new_config->syslog_name = $2; }
  | STDERR { this_log->fh = stderr; }
+ | UDP log_udp_host log_udp_port {
+     this_log->udp_flag = 1;
+
+     if (!parse_and_exit)
+       log_open_udp(this_log, new_config->pool);
+   }
  ;
+
+log_udp_host: text_or_ipa
+{
+  if ($1.type == T_STRING)
+    this_log->host = $1.val.s;
+  else if ($1.type == T_IP)
+    this_log->ip = $1.val.ip;
+  else bug("Bad text_or_ipa");
+};
+
+log_udp_port:
+    /* empty */ { this_log->port = 514; }
+  | PORT NUM { check_u16($2); this_log->port = $2; }
+  ;
 
 log_mask:
    ALL { $$ = ~0; }

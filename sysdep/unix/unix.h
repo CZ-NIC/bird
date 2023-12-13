@@ -109,9 +109,11 @@ void io_loop(void);
 void io_log_dump(void);
 int sk_open_unix(struct birdsock *s, char *name);
 struct rfile *rf_open(struct pool *, const char *name, const char *mode);
+struct rfile *rf_fdopen(pool *p, int fd, const char *mode);
 void *rf_file(struct rfile *f);
 int rf_fileno(struct rfile *f);
 void test_old_bird(char *path);
+ip_addr resolve_hostname(const char *host, int type, const char **err_msg);
 
 /* krt.c bits */
 
@@ -133,6 +135,12 @@ struct log_config {
   off_t pos;				/* Position/size of current log */
   off_t limit;				/* Log size limit */
   int terminal_flag;
+  int udp_flag;
+  const char *host;			/* UDP log dst host name */
+  ip_addr ip;				/* UDP log dst IP address */
+  uint port;				/* UDP log dst port */
 };
+
+int log_open_udp(struct log_config *l, pool *p);
 
 #endif

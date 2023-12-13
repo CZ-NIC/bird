@@ -124,6 +124,7 @@ extern int sk_priority_control;		/* Suggested priority for control traffic, shou
 #define SKF_BIND	0x10	/* Bind datagram socket to given source address */
 #define SKF_HIGH_PORT	0x20	/* Choose port from high range if possible */
 #define SKF_FREEBIND	0x40	/* Allow socket to bind to a nonlocal address */
+#define SKF_CONNECT	0x80	/* Connect datagram socket to given dst address/port */
 
 #define SKF_THREAD	0x100	/* Socked used in thread, Do not add to main loop */
 #define SKF_TRUNCATED	0x200	/* Received packet was truncated, set by IO layer */

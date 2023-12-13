@@ -29,6 +29,7 @@
 #include "conf/conf.h"
 #include "lib/string.h"
 #include "lib/lists.h"
+#include "lib/socket.h"
 #include "sysdep/unix/unix.h"
 
 static int dbg_fd = -1;
@@ -138,6 +139,55 @@ log_rotate(struct log_config *l)
   return log_open(l);
 }
 
+/* Expected to be called during config parsing */
+int
+log_open_udp(struct log_config *l, pool *p)
+{
+  ASSERT(l->host || ipa_nonzero(l->ip));
+
+  if (l->host && ipa_zero(l->ip))
+  {
+    const char *err_msg;
+    l->ip = resolve_hostname(l->host, SK_UDP, &err_msg);
+
+    if (ipa_zero(l->ip))
+    {
+      cf_warn("Cannot resolve hostname '%s': %s", l->host, err_msg);
+      goto err0;
+    }
+  }
+
+  sock *sk = sk_new(p);
+  sk->type = SK_UDP;
+  sk->daddr = l->ip;
+  sk->dport = l->port;
+  sk->flags = SKF_CONNECT | SKF_THREAD;
+
+  if (sk_open(sk) < 0)
+  {
+    cf_warn("Cannot open UDP log socket: %s%#m", sk->err);
+    goto err1;
+  }
+
+  /* Move fd from sk resource to rf resource */
+  l->rf = rf_fdopen(p, sk->fd, "a");
+  if (!l->rf)
+    goto err1;
+
+  l->fh = rf_file(l->rf);
+
+  sk->fd = -1;
+  rfree(sk);
+
+  return 0;
+
+err1:
+  rfree(sk);
+err0:
+  l->mask = 0;
+  return -1;
+}
+
 /**
  * log_commit - commit a log message
  * @class: message class information (%L_DEBUG to %L_BUG, see |lib/birdlib.h|)
@@ -168,6 +218,18 @@ log_commit(int class, buffer *buf)
 	{
 	  if (l->terminal_flag)
 	    fputs("bird: ", l->fh);
+	  else if (l->udp_flag)
+	    {
+	      int pri = LOG_DAEMON | syslog_priorities[class];
+	      char tbuf[TM_DATETIME_BUFFER_SIZE];
+	      const char *hostname = (config && config->hostname) ? config->hostname : "<none>";
+	      const char *fmt = "%b %d %T.%6f";
+	      if (!tm_format_real_time(tbuf, sizeof(tbuf), fmt, current_real_time()))
+		strcpy(tbuf, "<error>");
+
+	      /* Legacy RFC 3164 format, but with us precision */
+	      fprintf(l->fh, "<%d>%s %s %s: ", pri, tbuf, hostname, bird_name);
+	    }
 	  else
 	    {
 	      byte tbuf[TM_DATETIME_BUFFER_SIZE];
@@ -400,7 +462,7 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
   /* Close the logs to avoid pinning them on disk when deleted */
   if (current_log_list)
     WALK_LIST(l, *current_log_list)
-      if (l->rf)
+      if (l->filename && l->rf)
 	log_close(l);
 
   /* Reopen the logs, needed for 'configure undo' */
