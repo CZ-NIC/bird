@@ -542,6 +542,7 @@ const char *ea_custom_name(uint ea);
 #define EA_ALLOW_UNDEF 0x10000		/* ea_find: allow EAF_TYPE_UNDEF */
 #define EA_BIT(n) ((n) << 24)		/* Used in bitfield accessors */
 #define EA_BIT_GET(ea) ((ea) >> 24)
+#define EA_DATA_ALIGN 4			/* Alignment of adata in attribute cache */
 
 #define EAF_TYPE_MASK 0x1f		/* Mask with this to get type */
 #define EAF_TYPE_INT 0x01		/* 32-bit unsigned integer number */

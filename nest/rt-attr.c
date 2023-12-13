@@ -766,7 +766,7 @@ ea_list_copy(ea_list *o)
     {
       eattr *a = &o->attrs[i];
       if (!(a->type & EAF_EMBEDDED))
-	elen += sizeof(struct adata) + a->u.ptr->length;
+	elen += BIRD_ALIGN(sizeof(struct adata) + a->u.ptr->length, EA_DATA_ALIGN);
     }
 
   n = mb_alloc(rta_pool, elen);
@@ -777,11 +777,12 @@ ea_list_copy(ea_list *o)
       eattr *a = &n->attrs[i];
       if (!(a->type & EAF_EMBEDDED))
 	{
-	  unsigned size = sizeof(struct adata) + a->u.ptr->length;
+	  uint size_u = sizeof(struct adata) + a->u.ptr->length;
+	  uint size = BIRD_ALIGN(size_u, EA_DATA_ALIGN);
 	  ASSERT_DIE(adpos + size <= elen);
 
 	  struct adata *d = ((void *) n) + adpos;
-	  memcpy(d, a->u.ptr, size);
+	  memcpy(d, a->u.ptr, size_u);
 	  a->u.ptr = d;
 
 	  adpos += size;
