@@ -234,8 +234,8 @@ aggregator_bucket_compare(const void *a, const void *b)
   if (b == NULL)
     return 1;
 
-  const struct aggregator_bucket *fst = *(struct aggregator_bucket **)a;
-  const struct aggregator_bucket *snd = *(struct aggregator_bucket **)b;
+  const struct aggregator_bucket *fst = (struct aggregator_bucket *)a;
+  const struct aggregator_bucket *snd = (struct aggregator_bucket *)b;
 
   /* There is linear ordering on pointers */
   if (fst < snd)
