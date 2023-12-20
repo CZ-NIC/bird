@@ -232,7 +232,6 @@ struct iface_subscription {
 void if_enqueue_notify(struct iface_notification);
 void if_enqueue_notify_to(struct iface_notification x, struct iface_subscription *s);
 
-void iface_flush_notifications(struct iface_subscription *);
 void iface_subscribe(struct iface_subscription *);
 void iface_unsubscribe(struct iface_subscription *);
 

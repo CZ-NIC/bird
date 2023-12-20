@@ -60,9 +60,6 @@ struct protocol {
   uint proto_size;			/* Size of protocol data structure */
   uint config_size;			/* Size of protocol config data structure */
 
-  uint eattr_begin;			/* First ID of registered eattrs */
-  uint eattr_end;			/* End of eattr id zone */
-
   void (*preconfig)(struct protocol *, struct config *);	/* Just before configuring */
   void (*postconfig)(struct proto_config *);			/* After configuring each instance */
   struct proto * (*init)(struct proto_config *);		/* Create new instance */

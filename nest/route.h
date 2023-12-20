@@ -435,8 +435,6 @@ void rt_request_import(rtable *tab, struct rt_import_request *req);
 void rt_request_export(rtable *tab, struct rt_export_request *req);
 void rt_request_export_other(struct rt_exporter *tab, struct rt_export_request *req);
 
-void rt_export_once(struct rt_exporter *tab, struct rt_export_request *req);
-
 void rt_stop_import(struct rt_import_request *, void (*stopped)(struct rt_import_request *));
 void rt_stop_export(struct rt_export_request *, void (*stopped)(struct rt_export_request *));
 
@@ -625,7 +623,6 @@ int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *f
 rte *rt_export_merged(struct channel *c, const net_addr *n, const rte ** feed, uint count, linpool *pool, int silent);
 void rt_refresh_begin(struct rt_import_request *);
 void rt_refresh_end(struct rt_import_request *);
-void rt_modify_stale(rtable *t, struct rt_import_request *);
 void rt_schedule_prune(struct rtable_private *t);
 void rte_dump(struct rte_storage *);
 void rt_dump(rtable *);
