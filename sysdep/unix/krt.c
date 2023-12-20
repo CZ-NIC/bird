@@ -726,6 +726,10 @@ krt_preexport(struct channel *C, rte *e)
   if (!krt_capable(e))
     return -1;
 
+  /* Before first scan we don't touch the routes */
+  if (!SKIP_BACK(struct krt_proto, p, C->proto)->ready)
+    return -1;
+
   return 0;
 }
 
@@ -747,8 +751,7 @@ krt_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net,
     return;
 #endif
 
-  if (p->initialized)		/* Before first scan we don't touch the routes */
-    krt_replace_rte(p, net, new, old);
+  krt_replace_rte(p, net, new, old);
 }
 
 static void
@@ -813,6 +816,7 @@ krt_feed_end(struct channel *C)
   }
 
   p->ready = 1;
+  bmap_reset(&C->export_reject_map, 16);
   krt_scan_timer_kick(p);
 }
 
