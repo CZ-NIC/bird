@@ -34,17 +34,17 @@
 #include "lib/resource.h"
 #include "lib/string.h"
 #include "client/client.h"
+#include "client/print_cbor.h"
 #include "sysdep/unix/unix.h"
 
 #define SERVER_READ_BUF_LEN 4096
 
 
-static char *opt_list = "s:vrlY";
+static char *opt_list = "s:vrl";
 static int verbose, restricted, once;
 static char *init_cmd;
 
 static char *server_path = PATH_CONTROL_SOCKET;
-static char *server_path_yi = "bird-yang.ctl";
 static int server_fd;
 static byte server_read_buf[SERVER_READ_BUF_LEN];
 static byte *server_read_pos = server_read_buf;
@@ -53,7 +53,7 @@ int init = 1;		/* During intial sequence */
 int busy = 1;		/* Executing BIRD command */
 int interactive;	/* Whether stdin is terminal */
 int last_code;		/* Last return code */
-int yi_mode;		/* Convert to cbor and push to yi socket (and convert answer back) */
+int cbor_mode;		/* Convert to cbor and push to yi socket (and convert answer back) */
 
 static int num_lines, skip_input;
 int term_lns, term_cls;
@@ -64,7 +64,7 @@ int term_lns, term_cls;
 static void
 usage(char *name)
 {
-  fprintf(stderr, "Usage: %s [-s <control-socket>] [-v] [-r] [-l] [-Y]\n", name);
+  fprintf(stderr, "Usage: %s [-s <control-socket>] [-v] [-r] [-l]\n", name);
   exit(1);
 }
 
@@ -73,7 +73,6 @@ parse_args(int argc, char **argv)
 {
   int server_changed = 0;
   int c;
-  yi_mode = 0;
 
   while ((c = getopt(argc, argv, opt_list)) >= 0)
     switch (c)
@@ -92,17 +91,9 @@ parse_args(int argc, char **argv)
 	if (!server_changed)
 	  server_path = xbasename(server_path);
 	break;
-      case 'Y':
-        yi_mode = 1;
-        if (!server_changed)
-	  server_path = xbasename(server_path_yi);
-	break;
       default:
 	usage(argv[0]);
       }
-      yi_mode = 1;
-      server_path = server_path_yi;  //TODO delete - only for testing purposes
-      fprintf(stderr, "Socket: %s \n", server_path_yi);
 
   /* If some arguments are not options, we take it as commands */
   if (optind < argc)
@@ -149,17 +140,90 @@ handle_internal_command(char *cmd)
   return 0;
 }
 
+uint compare_string(byte *str1, uint length, const char *str2) {
+  if (length < strlen(str2)) {
+    return 0;
+  }
+  for (size_t i = 0; i < strlen(str2); i++) {
+    if (str1[i]!=str2[i]) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+
+void
+make_cmd_cbor(char *cmd_buffer)
+{
+  printf("input got line yi\n%s\n", cmd_buffer);
+  size_t l = strlen(cmd_buffer);
+  char cbor_buf[l*10];
+  struct linpool *lp = lp_new(&root_pool);
+
+  struct cbor_writer *w = cbor_init(cbor_buf, l*10, lp);
+  cbor_open_block_with_length(w, 1);
+  printf("main block opened");
+  cbor_add_string(w, "command:do");
+  cbor_open_block(w);
+
+  char *show = "show ";
+  int buf_pt = 0;
+  if (compare_string(cmd_buffer, l, show))
+  {
+    printf("show recognised\n");
+    buf_pt += strlen(show);
+    l -= strlen(show);
+    if (compare_string(&cmd_buffer[buf_pt], l, "memory"))
+    {
+      printf("show memory...\n");
+      cbor_string_int(w, "command", SHOW_MEMORY);
+      cbor_close_block_or_list(w);
+      lp_flush(lp);
+      server_send(cbor_buf);
+      return;
+    }
+    else if (compare_string(&cmd_buffer[buf_pt], l, "status"))
+    {
+      cbor_string_int(w, "command", SHOW_STATUS);
+      cbor_close_block_or_list(w);
+      lp_flush(lp);
+      server_send(cbor_buf);
+      return;
+    }
+    else if (compare_string(&cmd_buffer[buf_pt], l, "symbols"))
+    {
+      cbor_string_int(w, "command", SHOW_SYMBOLS);
+      cbor_close_block_or_list(w);
+      lp_flush(lp);
+      server_send(cbor_buf);
+    }
+    else if (compare_string(&cmd_buffer[buf_pt], l, "ospf"))
+    {
+      cbor_string_int(w, "command", SHOW_OSPF);
+    }
+    else
+    {
+      printf("this command is not implemented yet");
+    }
+    
+  }
+  lp_flush(lp);
+  printf("this command is not implemented yet");
+}
+
 static void
 submit_server_command(char *cmd)
 {
-  /*
+  printf("command %s\n", cmd);
   if (cbor_mode)
-    TODO: make the server command actually cbor;
-    */
+  {
+    make_cmd_cbor(cmd);
+    return;
+  }
 
   busy = 1;
   num_lines = 2;
-  fprintf(stderr, "Socket: %s \n", server_path_yi);
   fprintf(stderr, "cmd: %s \n", cmd);
   server_send(cmd);
 }
@@ -192,6 +256,7 @@ submit_command(char *cmd_raw)
 
   free(cmd);
 }
+
 
 static void
 init_commands(void)
@@ -281,7 +346,7 @@ server_connect(void)
     DIE("Unable to connect to server control socket (%s)", server_path);
   if (fcntl(server_fd, F_SETFL, O_NONBLOCK) < 0)
     DIE("fcntl");
-  fprintf(stdout, "Socket: %s connected ok\n", server_path_yi);
+  fprintf(stdout, "Socket: %s connected ok\n", server_path);
 }
 
 
@@ -292,6 +357,7 @@ server_got_reply(char *x)
 {
   int code;
   int len = 0;
+  fprintf(stdout, "got reply<%s>", x);
 
   if (*x == '+')                        /* Async reply */
     PRINTF(len, ">>> %s\n", x+1);
@@ -324,9 +390,35 @@ server_got_reply(char *x)
     }
 }
 
+void
+server_got_binary(int c)
+{
+  // TODO check cbor hello
+  if (cbor_mode == 0)
+  {
+    byte expected[] = {0x87, 0x42, 0x49, 0x52, 0x44, 0x0D, 0x0A, 0x1A, 0x0A, 0x01};
+    if (c < 10)
+      die("too short header");
+    for (int i = 0; i < 9; i++)
+    {
+      if (server_read_buf[i] != expected[i])
+        die("wrong header");
+    }
+    if (server_read_buf[9] != expected[9])
+      die("unknown version of binary communication");
+    cbor_mode = 1;
+  }
+  else {
+    print_cbor_response(server_read_buf, c);
+  }
+  busy = 0;
+  skip_input = 0;
+}
+
 static void
 server_read(void)
 {
+  printf("server read\n");
   int c;
   byte *start, *p;
 
@@ -469,6 +561,7 @@ main(int argc, char **argv)
   interactive = isatty(0);
   parse_args(argc, argv);
   cmd_build_tree();
+  resource_init();
   server_connect();
   select_loop();
   return 0;

@@ -22,6 +22,7 @@
 #include "client/client.h"
 #include "sysdep/unix/unix.h"
 
+
 #define INPUT_BUF_LEN 2048
 
 struct termios tty_save;
@@ -63,6 +64,7 @@ lastnb(char *str, int i)
 void
 input_read(void)
 {
+  printf("input read ok");
   char buf[INPUT_BUF_LEN];
 
   if ((fgets(buf, INPUT_BUF_LEN, stdin) == NULL) || (buf[0] == 0))
@@ -96,6 +98,7 @@ input_read(void)
 
   submit_command(buf);
 }
+
 
 static struct termios stored_tty;
 static int more_active = 0;

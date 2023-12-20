@@ -32,3 +32,7 @@ prepare: $(o)keywords.h $(o)commands.h $(o)cf-parse.tab.h
 $(addprefix $(o), cf-parse.y keywords.h commands.h cf-parse.tab.h cf-parse.tab.c cf-lex.c): $(objdir)/.dir-stamp
 
 $(call clean,cf-parse.tab.h cf-parse.tab.c cf-parse.y keywords.h commands.h cf-lex.c cf-parse.output)
+
+$(exedir)/birdc: $(obj)
+$(exedir)/birdcl: $(obj)
+

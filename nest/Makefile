@@ -1,4 +1,5 @@
-src := a-path.c a-set.c cli.c cmds.c iface.c locks.c mpls.c neighbor.c password.c proto.c proto-build.c rt-attr.c rt-dev.c rt-fib.c rt-show.c rt-table.c
+src := a-path.c a-set.c cli.c cmds.c iface.c locks.c mpls.c neighbor.c password.c proto.c proto-build.c rt-attr.c rt-dev.c rt-fib.c rt-show.c rt-table.c \
+  cbor.c cbor_parse.c cbor_cmds.c
 obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
@@ -10,6 +11,16 @@ $(o)proto-build.c: Makefile $(lastword $(MAKEFILE_LIST)) $(objdir)/.dir-stamp
 
 prepare: $(o)proto-build.c
 
+$(exedir)/birdc: $(obj)
+$(exedir)/birdcl: $(obj)
+#$(exedir)/birdc: $(o)cbor.o $(o)cbor_parse.o $(o)cbor_cmds.o $(o)rt-fib.o \
+#  $(o)rt-attr.o $(o)rt-table.o $(o)cli.o $(o)locks.o $(o)iface.o $(o)mpls.o \
+#  $(o)proto.o $(o)neighbor.o
+#$(exedir)/birdcl: $(o)cbor.o $(o)cbor_parse.o $(o)cbor_cmds.o $(o)rt-fib.o \
+#  $(o)rt-attr.o $(o)rt-table.o $(o)cli.o $(o)locks.o $(o)iface.o $(o)mpls.o \
+#  $(o)proto.o $(o)neighbor.o
+
 tests_src := a-set_test.c a-path_test.c rt-fib_test.c
 tests_targets := $(tests_targets) $(tests-target-files)
 tests_objs := $(tests_objs) $(src-o-files)
+

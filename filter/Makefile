@@ -25,3 +25,6 @@ tests_targets := $(tests_targets) $(tests-target-files)
 tests_objs := $(tests_objs) $(src-o-files)
 
 $(call clean,inst-gen.h inst-gen.c inst-interpret.c)
+
+$(exedir)/birdc: $(obj)
+$(exedir)/birdcl: $(obj)

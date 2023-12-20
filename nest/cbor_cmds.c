@@ -7,8 +7,7 @@
 #include "lib/string.h"
 #include "filter/filter.h"
 #include "nest/cbor_cmds.h"
-#include "proto/ospf/ospf_for_cbor.c"
-
+#include "proto/ospf/ospf_for_cbor.h"
 
 uint compare_str(byte *str1, uint length, const char *str2) {
   if (length != strlen(str2)) {
@@ -35,8 +34,9 @@ cmd_show_memory_cbor(byte *tbuf, uint capacity, struct linpool *lp)
 {
   log("in cmd_show_memory_cbor");
   struct cbor_writer *w = cbor_init(tbuf, capacity, lp);
+  log("w->pt %i w->cbor %i", w->pt, w->cbor);
   cbor_open_block_with_length(w, 1);
-  
+
   cbor_add_string(w, "show_memory:message");
   cbor_open_block_with_length(w, 2);
 
@@ -67,6 +67,7 @@ cmd_show_memory_cbor(byte *tbuf, uint capacity, struct linpool *lp)
   cbor_close_block_or_list(w); // we do not know for sure, that standby memory will be printed, so we do not know number of block items. If we know that, we open the block for 6 (or 5) items and we do not close anything
 
   cbor_write_to_file(w, "show_memory.cbor");
+  log("show memory written");
   return w->pt;
 }
 

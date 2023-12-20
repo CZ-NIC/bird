@@ -1,18 +1,7 @@
 #include <stdint.h>
+#include <stdio.h>
 
-
-
-struct cbor_writer {
-  int pt; // where will next byte go
-  int capacity;
-  int8_t *cbor;
-  struct linpool *lp;
-};
-
-void write_item(struct cbor_writer *writer, int8_t major, u64 num);
-void check_memory(struct cbor_writer *writer, int add_size);
-
-
+#include "cbor.h"
 
 struct cbor_writer *cbor_init(byte *buff, uint capacity, struct linpool *lp)
 {
@@ -23,7 +12,7 @@ struct cbor_writer *cbor_init(byte *buff, uint capacity, struct linpool *lp)
   writer->lp = lp;
   return writer;
 }
-  
+
 void cbor_open_block(struct cbor_writer *writer) { // We will need to close the block later manualy
   check_memory(writer, 2);
   writer->cbor[writer->pt] = 0xbf;
@@ -147,8 +136,9 @@ void cbor_nonterminated_string(struct cbor_writer *writer, const char *string, u
   writer->pt+=length;
 }
 
-void write_item(struct cbor_writer *writer, int8_t major, u64 num)
+void write_item(struct cbor_writer *writer, uint8_t major, u64 num)
 {
+  //log("write major %i %li", major, num);
   major = major<<5;
   check_memory(writer, 10);
   if (num > ((u64)1<<(4*8))-1)
@@ -200,7 +190,8 @@ void write_item(struct cbor_writer *writer, int8_t major, u64 num)
     writer->pt++;
     return;
   }
-  major += num;  // we can store the num as additional value 
+  //log("write item major %i num %i writer->pt %i writer->capacity %i writer %i", major, num, writer->pt, writer->capacity, writer);
+  major += num;  // we can store the num as additional value
   writer->cbor[writer->pt] = major;
   writer->pt++;
 }
@@ -210,5 +201,76 @@ void check_memory(struct cbor_writer *writer, int add_size)
   if (writer->capacity - writer->pt-add_size < 0)
   {
     bug("There is not enough space for cbor response in given buffer");
+  }
+}
+
+/*
+ *	Shortcuts
+ */
+
+void cbor_string_string(struct cbor_writer *writer, char *key, const char *value) {
+  cbor_add_string(writer, key);
+  cbor_add_string(writer, value);
+}
+
+void cbor_string_int(struct cbor_writer *writer, char *key, int64_t value) {
+  cbor_add_string(writer, key);
+  cbor_add_int(writer, value);
+}
+
+void cbor_string_uint(struct cbor_writer *writer, char *key, u64 value) {
+  cbor_add_string(writer, key);
+  cbor_add_uint(writer, value);
+}
+
+void cbor_string_ipv4(struct cbor_writer *writer, char *key, u32 value) {
+  cbor_add_string(writer, key);
+  cbor_add_ipv4(writer, value);
+}
+
+// XXX the ipv6 address does not fit into u64
+void cbor_string_ipv6(struct cbor_writer *writer, char *key, u64 value) {
+  cbor_add_string(writer, key);
+  cbor_add_ipv6(writer, value);
+}
+
+void cbor_named_block_two_ints(struct cbor_writer *writer, char *key, char *name1, int val1, char *name2, int val2) {
+  cbor_add_string(writer, key);
+  cbor_open_block_with_length(writer, 2);
+  cbor_add_string(writer, name1);
+  cbor_add_int(writer, val1);
+  cbor_add_string(writer, name2);
+  cbor_add_int(writer, val2);
+}
+
+void cbor_write_to_file(struct cbor_writer *writer, char *filename) {
+  FILE *write_ptr;
+
+  write_ptr = fopen(filename, "wb");
+
+  fwrite(writer->cbor, writer->pt, 1, write_ptr);
+  fclose(write_ptr);
+}
+
+void cbor_add_net(struct cbor_writer *writer, const net_addr *N) {
+  // Original switch comes from lib/net.c and contains more cases.
+  net_addr_union *n = (void *) N;
+
+  switch (n->n.type)
+  {
+  case NET_IP4:
+    cbor_add_ipv4_prefix(writer, ip4_to_u32(n->ip4.prefix), n->ip4.pxlen);
+    return;
+  case NET_IP6:
+    cbor_add_ipv6_prefix(writer, n->ip6.prefix, n->ip6.pxlen);
+    return;
+  case NET_VPN4:
+    cbor_add_ipv4_prefix(writer, ip4_to_u32(n->vpn4.prefix), n->vpn4.pxlen);
+    return;
+  case NET_VPN6:
+    cbor_add_ipv6_prefix(writer, n->vpn6.prefix, n->vpn6.pxlen);
+    return;
+  default:
+    bug("net type unsupported by cbor (yet).");
   }
 }

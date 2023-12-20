@@ -16,6 +16,7 @@
 
 /* Client versions of logging functions */
 
+#if 0
 static void
 vlog_cli(const char *msg, va_list args)
 {
@@ -55,3 +56,4 @@ die(const char *msg, ...)
   va_end(args);
   exit(1);
 }
+#endif

@@ -95,6 +95,7 @@ static inline void cli_separator(cli *c)
 /* Functions provided to sysdep layer */
 
 cli *cli_new(void *, struct cli_config *);
+cli *yi_cli_new(void *, struct cli_config *);
 void cli_init(void);
 void yi_init(void);
 void cli_free(cli *);

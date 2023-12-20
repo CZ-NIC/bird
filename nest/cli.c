@@ -69,7 +69,8 @@
 #include "nest/cli.h"
 #include "conf/conf.h"
 #include "lib/string.h"
-#include "nest/cbor_parse.c"
+#include "lib/socket.h"
+#include "nest/cbor_parse.h"
 
 pool *cli_pool;
 pool *yi_pool;
@@ -230,6 +231,37 @@ cli_written(cli *c)
   ev_schedule(c->event);
 }
 
+int
+yi_hello_message(byte *buff)
+{
+  // 0x87: the high bit set to detect 8-bit faults
+  // BIRD: signature
+  // 0x0D0A1A0A: detect line ending conversions (see PNG)
+  // 0x01: version of the protocol (1 = CBOR based on YANG)
+  byte b[] = {0x87, 0x42, 0x49, 0x52, 0x44, 0x0D, 0x0A, 0x1A, 0x0A, 0x01};
+  memcpy(buff, b, 10);
+  return 10;
+}
+
+static void
+yi_hello(cli *c)
+{
+  log("yi hello");
+  sock *s = c->priv;
+  int len = yi_hello_message(s->tbuf); 
+
+  if (sk_send(s, len) <= 0)
+  {
+    log("yi send hello failed");
+    return;
+  }
+  
+  c->cont = NULL;
+  cli_free_out(c);
+  log("yi hello ok");
+}
+
+
 
 static byte *cli_rh_pos;
 static uint cli_rh_len;
@@ -306,6 +338,14 @@ cli_event(void *data)
   cli_write_trigger(c);
 }
 
+static void
+yi_event(void *data)
+{
+  cli *c = data;
+  if (c->cont)
+    c->cont(c);
+}
+
 cli *
 cli_new(void *priv, struct cli_config *cf)
 {
@@ -330,6 +370,30 @@ cli_new(void *priv, struct cli_config *cf)
   return c;
 }
 
+cli *
+yi_cli_new(void *priv, struct cli_config *cf)
+{
+  pool *p = rp_new(cli_pool, "YI");
+  cli *c = mb_alloc(p, sizeof(cli));
+
+  bzero(c, sizeof(cli));
+  c->pool = p;
+  c->priv = priv;
+  c->event = ev_new(p);
+  c->event->hook = yi_event;
+  c->event->data = c;
+  c->cont = yi_hello;
+  c->parser_pool = lp_new_default(c->pool);
+  c->show_pool = lp_new_default(c->pool);
+  c->rx_buf = mb_alloc(c->pool, CLI_RX_BUF_SIZE);
+
+  if (cf->restricted)
+    c->restricted = 1;
+
+  ev_schedule(c->event);
+  return c;
+}
+
 void
 cli_kick(cli *c)
 {
@@ -339,6 +403,7 @@ cli_kick(cli *c)
 
 uint
 yi_process(uint size, byte *rbuf, byte *tbuf, uint tbsize) {
+  log("capacity %i buffer %i", tbsize, tbuf);
   return parse_cbor(size, rbuf, tbuf, tbsize, lp_new(yi_pool));
 }
 
