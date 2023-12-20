@@ -568,47 +568,87 @@ get_trie_depth(const struct trie_node *node)
 }
 
 static void
-print_prefixes_helper(const struct trie_node *node, struct net_addr_ip4 addr, int depth)
+print_prefixes_ip4_helper(const struct trie_node *node, struct net_addr_ip4 *addr, int depth)
 {
   assert(node != NULL);
 
   if (is_leaf(node))
   {
-    log("%I4/%d\t-> %p", addr.prefix, addr.pxlen, node->bucket);
+    log("%I4/%d\t-> %p", addr->prefix, addr->pxlen, node->bucket);
     return;
   }
 
   if (node->bucket != NULL)
   {
-    log("%I4/%d\t-> %p", addr.prefix, addr.pxlen, node->bucket);
+    log("%I4/%d\t-> %p", addr->prefix, addr->pxlen, node->bucket);
   }
 
   if (node->child[0])
   {
-    struct net_addr_ip4 new = {
-      .prefix = (_I(addr.prefix) | (0 << (31 - depth))),
-      .pxlen = depth + 1,
-    };
-
-    print_prefixes_helper(node->child[0], new, depth + 1);
+    ip4_clrbit(&addr->prefix, depth);
+    addr->pxlen = depth + 1;
+    print_prefixes_ip4_helper(node->child[0], addr, depth + 1);
   }
 
   if (node->child[1])
   {
-    struct net_addr_ip4 new = {
-      .prefix = (_I(addr.prefix) | (1 << (31 - depth))),
-      .pxlen = depth + 1,
-    };
-
-    print_prefixes_helper(node->child[1], new, depth + 1);
+    ip4_setbit(&addr->prefix, depth);
+    addr->pxlen = depth + 1;
+    print_prefixes_ip4_helper(node->child[1], addr, depth + 1);
   }
 }
 
 static void
-print_prefixes(const struct trie_node *node)
+print_prefixes_ip6_helper(const struct trie_node *node, struct net_addr_ip6 *addr, int depth)
 {
-  struct net_addr_ip4 addr = { 0 };
-  print_prefixes_helper(node, addr, 0);
+  assert(node != NULL);
+
+  if (is_leaf(node))
+  {
+    log("%I6/%d\t-> %p", addr->prefix, addr->pxlen, node->bucket);
+    return;
+  }
+
+  if (node->bucket != NULL)
+  {
+    log("%I6/%d\n-> %p", addr->prefix, addr->pxlen, node->bucket);
+  }
+
+  if (node->child[0])
+  {
+    ip6_clrbit(&addr->prefix, depth);
+    addr->pxlen = depth + 1;
+    print_prefixes_ip6_helper(node->child[0], addr, depth + 1);
+  }
+
+  if (node->child[1])
+  {
+    ip6_setbit(&addr->prefix, depth);
+    addr->pxlen = depth + 1;
+    print_prefixes_ip6_helper(node->child[1], addr, depth + 1);
+  }
+}
+
+static void
+print_prefixes(const struct trie_node *node, int type)
+{
+  if (type == NET_IP4)
+  {
+    struct net_addr_ip4 *addr = allocz(sizeof(struct net_addr_ip4));
+    print_prefixes_ip4_helper(node, addr, 0);
+  }
+  else if (type == NET_IP6)
+  {
+    struct net_addr_ip6 *addr = allocz(sizeof(struct net_addr_ip6));
+    print_prefixes_ip6_helper(node, addr, 0);
+  }
+}
+
+  }
+}
+
+static void
+{
 }
 
 /*
@@ -620,19 +660,19 @@ calculate_trie(void *p)
   struct aggregator_proto *proto = (struct aggregator_proto *)p;
 
   log("====PREFIXES BEFORE ====");
-  print_prefixes(proto->root);
+  print_prefixes(proto->root, NET_IP4);
 
   first_pass(proto->root, proto->trie_slab);
   log("====FIRST PASS====");
-  print_prefixes(proto->root);
+  print_prefixes(proto->root, NET_IP4);
 
   second_pass(proto->root);
   log("====SECOND PASS====");
-  print_prefixes(proto->root);
+  print_prefixes(proto->root, NET_IP4);
 
   third_pass(proto->root);
   log("====THIRD PASS====");
-  print_prefixes(proto->root);
+  print_prefixes(proto->root, NET_IP4);
 }
 
 /*
