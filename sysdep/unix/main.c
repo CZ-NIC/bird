@@ -490,9 +490,10 @@ yi_rx(sock *s, uint size)
   /* zpracuj data délky len začínající na s->rbuf */
   /* zapiš výsledek do s->tbuf */
   log("in yi rx!");
-  log("size tbuf %ui", s->tbsize);
+  log("size tbuf %ui %i", s->tbsize, s->tbuf);
   uint tx_len = yi_process(size, s->rbuf, s->tbuf, s->tbsize);
   sk_send(s, tx_len);
+  log("sended");
   return 1;
 }
 
@@ -553,12 +554,12 @@ yi_connect(sock *s, uint size UNUSED)
   s->rx_hook = yi_rx;
   s->tx_hook = cli_tx;
   s->err_hook = cli_err;
-  s->data = c = cli_new(s);
+  s->data = c = new_cli_yi(s);
   s->pool = c->pool;
   s->fast_rx = 1;
   c->rx_pos = c->rx_buf;
   rmove(s, c->pool);
-  log("connect ok");
+  log("connect ok, tb %i", s->tbuf);
   return 1;
 }
 
@@ -595,6 +596,7 @@ yi_init_unix(uid_t use_uid, gid_t use_gid)
   write_ptr = fopen("out.cbor", "wb");
   fwrite("", 0, 1, write_ptr);
   fclose(write_ptr);
+  log("yi inited, tbuf %i", s->tbuf);
 }
 
 
@@ -989,13 +991,13 @@ main(int argc, char **argv)
   if (!parse_and_exit)
   {
     test_old_bird(path_control_socket);
-    cli_init_unix(use_uid, use_gid);
+    //cli_init_unix(use_uid, use_gid);
     if (path_control_socket_yi)
     {
       yi_init_unix(use_uid, use_gid);
     }
     else { //todo delete
-      path_control_socket_yi = "bird-yang.ctl";
+      path_control_socket_yi = "bird.ctl";
       log(L_INFO "before function");
       yi_init_unix(use_uid, use_gid);
     }

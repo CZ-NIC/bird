@@ -20,6 +20,7 @@
 #include "lib/string.h"
 #include "client/client.h"
 
+
 static int input_hidden_end;
 static int prompt_active;
 

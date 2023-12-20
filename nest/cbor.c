@@ -9,7 +9,7 @@ struct cbor_writer {
   struct linpool *lp;
 };
 
-void write_item(struct cbor_writer *writer, int8_t major, u64 num);
+void write_item(struct cbor_writer *writer, uint8_t major, u64 num);
 void check_memory(struct cbor_writer *writer, int add_size);
 
 
@@ -147,8 +147,9 @@ void cbor_nonterminated_string(struct cbor_writer *writer, const char *string, u
   writer->pt+=length;
 }
 
-void write_item(struct cbor_writer *writer, int8_t major, u64 num)
+void write_item(struct cbor_writer *writer, uint8_t major, u64 num)
 {
+  //log("write major %i %li", major, num);
   major = major<<5;
   check_memory(writer, 10);
   if (num > ((u64)1<<(4*8))-1)
@@ -200,6 +201,7 @@ void write_item(struct cbor_writer *writer, int8_t major, u64 num)
     writer->pt++;
     return;
   }
+  //log("write item major %i num %i writer->pt %i writer->capacity %i writer %i", major, num, writer->pt, writer->capacity, writer);
   major += num;  // we can store the num as additional value 
   writer->cbor[writer->pt] = major;
   writer->pt++;

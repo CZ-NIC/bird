@@ -49,8 +49,6 @@ get_value(struct buff_reader *reader)
   struct value val;
   byte *buff = reader->buff;
   val.major = buff[reader->pt]>>5;
-  log("in get value are zou here?");
-  log("major is %x", val.major);
   int first_byte_val = buff[reader->pt] - (val.major<<5);
   if (first_byte_val <=23) {
     val.val = first_byte_val;
@@ -61,19 +59,29 @@ get_value(struct buff_reader *reader)
     reader->pt+=2;
   } else if (first_byte_val == 0x19)
   {
-    val.val = buff[reader->pt+1]>>8 + buff[reader->pt+2];
-    reader->pt+=3;
+    val.val = buff[reader->pt+1];
+    val.val = val.val << 8;
+    val.val += buff[reader->pt+2];
+    reader->pt += 3;
   } else if (first_byte_val == 0x1a)
   {
-    val.val = buff[reader->pt+1]>>24 + buff[reader->pt+2]>>16 + buff[reader->pt+3]>>8 + buff[reader->pt+4];
+    val.val = 0;
+    for (int i = 1; i < 4; i++)
+    {
+      val.val += buff[reader->pt+i];
+      val.val = val.val << 8;
+    }
+    val.val += buff[reader->pt+4];
     reader->pt+=5;
   } else if (first_byte_val == 0x1b)
   {
-    for(int i = 1; i<=8; i++) {
-      val.val += buff[reader->pt+i]>>(64-(i*8));
+    for(int i = 1; i < 8; i++) {
+      val.val += buff[reader->pt+i];
+      val.val = val.val << 8;
     }
+    val.val += buff[reader->pt+8];
     reader->pt+=9;
-  } else if (first_byte_val == 0xff)
+  } else if (first_byte_val == 0x1f)
   {
     val.val = -1;
     reader->pt++;
@@ -109,12 +117,13 @@ void skip_optional_args(struct buff_reader *rbuf_read, int items_in_block)
     }
   } else
   {
+    log("items in block %i", items_in_block);
     ASSERT(items_in_block == -1); // assert the  block was not open to exact num of items, because it cant be just for command (we would returned) and we did not find more items.
     rbuf_read->pt--; // we read one byte from future, we need to shift pointer back. The val should be break, but we are not going to close the block, because it was not opened here.
   }
 }
 
-struct arg_list *parse_args(struct buff_reader *rbuf_read, int items_in_block, struct linpool *lp)
+struct arg_list *parse_arguments(struct buff_reader *rbuf_read, int items_in_block, struct linpool *lp)
 {
   // We are in opened block, which could be empty or contain arguments <"args":[{"arg":"string"}]>
   struct arg_list *arguments = (struct arg_list*)lp_alloc(lp, sizeof(struct arg_list));
@@ -213,10 +222,10 @@ do_command(struct buff_reader *rbuf_read, struct buff_reader *tbuf_read, int ite
       skip_optional_args(rbuf_read, items_in_block);
       return cmd_show_status_cbor(tbuf_read->buff, tbuf_read->size, lp);
     case SHOW_SYMBOLS:
-      args = parse_args(rbuf_read, items_in_block, lp);
+      args = parse_arguments(rbuf_read, items_in_block, lp);
       return cmd_show_symbols_cbor(tbuf_read->buff, tbuf_read->size, args, lp);
     case SHOW_OSPF:
-      args = parse_args(rbuf_read, items_in_block, lp);
+      args = parse_arguments(rbuf_read, items_in_block, lp);
       log("args %i, pt %i", args, args->pt);
       return cmd_show_ospf_cbor(tbuf_read->buff, tbuf_read->size, args, lp);
       return 0;
@@ -229,7 +238,7 @@ do_command(struct buff_reader *rbuf_read, struct buff_reader *tbuf_read, int ite
 uint
 parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize, struct linpool* lp)
 {
-  log("cbor parse");
+  log("cbor parse, tb size %i tb %i", tbsize, tbuf);
   struct buff_reader rbuf_read;
   struct buff_reader tbuf_read;
   rbuf_read.buff = rbuf;
@@ -263,7 +272,8 @@ parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize, struct linpool* lp)
 
       val = get_value(&rbuf_read);
       ASSERT(val.major == TEXT);
-      items_in_block--;
+      if (items_in_block!=-1)
+        items_in_block--;
       ASSERT(compare_buff_str(&rbuf_read, val.val, "command"));
       rbuf_read.pt+=val.val;
 
@@ -275,6 +285,8 @@ parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize, struct linpool* lp)
       }
     }
   }
+  lp_flush(lp);
+  log("parsed");
   return tbuf_read.pt;
 }
 
