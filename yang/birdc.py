@@ -123,14 +123,16 @@ class Ospf(Command):
         for prefix in area['prefixes']:
             if 'metric' in prefix.keys():
                 print(f"\t\tstubnet {self.prefix_to_str(prefix['stubnet'])} metric {prefix['metric']}")
+            else:
+                print(f"\t\taddress {self.prefix_to_str(prefix['address'])}")
 
     def print_answer(self, answer):
         print()
         if ("error" in answer["show_ospf:message"].keys()):
             print("error: ", answer["show_ospf:message"]["error"])
             return
-        if ("not implemented" in answer["show_ospf:message"].keys()):
-            print("not implemented: ", answer["show_ospf:message"]["not implemented"])
+        if ("not_implemented" in answer["show_ospf:message"].keys()):
+            print("not implemented: ", answer["show_ospf:message"]["not_implemented"])
             return
         for area in answer["show_ospf:message"]["areas"]:
             if 'area' in area.keys():
@@ -152,7 +154,6 @@ class Ospf(Command):
             for asbr in area['asbrs']:
                 if('other_ABSRs' in asbr.keys()):
                     print("other ASBRs")
-                print("other ASBRs")
                 print(f"\trouter {self.addr_to_str(asbr['router'])}")
 
 command_dictionary = {"status":0, "memory":1, "symbols":2, "ospf":3}

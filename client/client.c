@@ -123,6 +123,8 @@ parse_args(int argc, char **argv)
 /*** Input ***/
 
 static void server_send(char *cmd);
+static void
+server_send_byte(byte *cmd, int l);
 
 static int
 handle_internal_command(char *cmd)
@@ -152,70 +154,105 @@ uint compare_string(byte *str1, uint length, const char *str2) {
   return 1;
 }
 
+void write_args_cbor(char *cmd_buffer, struct cbor_writer *w)
+{
+  size_t l = strlen(cmd_buffer);
+  size_t pt = 0;
+  while (cmd_buffer[pt] == ' ')
+    pt++;
+  if (pt+1 >= l)
+  {
+    return;
+  }
+  cbor_add_string(w, "args");
+  cbor_open_list(w);
+  while (l>pt)
+  {
+    size_t next_space = 0;
+    while (next_space + pt < l && cmd_buffer[next_space + pt] != ' ')
+      next_space++;
+    cbor_open_block_with_length(w, 1);
+    cbor_add_string(w, "arg");
+    cbor_nonterminated_string(w, &cmd_buffer[pt], next_space);
+    pt += next_space;
+    while (cmd_buffer[pt] == ' ')
+      pt++;
+  }
+  cbor_close_block_or_list(w);
+}
 
 void
 make_cmd_cbor(char *cmd_buffer)
 {
-  printf("input got line yi\n%s\n", cmd_buffer);
   size_t l = strlen(cmd_buffer);
   char cbor_buf[l*10];
   struct linpool *lp = lp_new(&root_pool);
 
   struct cbor_writer *w = cbor_init(cbor_buf, l*10, lp);
   cbor_open_block_with_length(w, 1);
-  printf("main block opened");
   cbor_add_string(w, "command:do");
-  cbor_open_block(w);
 
   char *show = "show ";
   int buf_pt = 0;
   if (compare_string(cmd_buffer, l, show))
   {
-    printf("show recognised\n");
+    cbor_open_block(w);
     buf_pt += strlen(show);
     l -= strlen(show);
     if (compare_string(&cmd_buffer[buf_pt], l, "memory"))
     {
-      printf("show memory...\n");
       cbor_string_int(w, "command", SHOW_MEMORY);
       cbor_close_block_or_list(w);
+      server_send_byte(cbor_buf, w->pt);
       lp_flush(lp);
-      server_send(cbor_buf);
       return;
     }
     else if (compare_string(&cmd_buffer[buf_pt], l, "status"))
     {
       cbor_string_int(w, "command", SHOW_STATUS);
       cbor_close_block_or_list(w);
+      cbor_write_to_file(w, "status_command.cbor");
+      server_send_byte(cbor_buf, w->pt);
       lp_flush(lp);
-      server_send(cbor_buf);
       return;
     }
     else if (compare_string(&cmd_buffer[buf_pt], l, "symbols"))
     {
       cbor_string_int(w, "command", SHOW_SYMBOLS);
+      write_args_cbor(&cmd_buffer[buf_pt + strlen("symbols ")], w);
       cbor_close_block_or_list(w);
+      server_send_byte(cbor_buf, w->pt);
       lp_flush(lp);
-      server_send(cbor_buf);
+      return;
     }
     else if (compare_string(&cmd_buffer[buf_pt], l, "ospf"))
     {
       cbor_string_int(w, "command", SHOW_OSPF);
+      write_args_cbor(&cmd_buffer[buf_pt + strlen("ospf")], w);
+      cbor_close_block_or_list(w);
+      server_send_byte(cbor_buf, w->pt);
+      lp_flush(lp);
+      return;
     }
     else
     {
-      printf("this command is not implemented yet");
+      printf("this command is not implemented yet\n");
     }
     
   }
+  else if (compare_string(cmd_buffer, l, "down"))
+  {
+    cbor_add_string(w, "down");
+    server_send_byte(cbor_buf, w->pt);
+    return;
+  }
   lp_flush(lp);
-  printf("this command is not implemented yet");
+  printf("this command is not implemented yet\n");
 }
 
 static void
 submit_server_command(char *cmd)
 {
-  printf("command %s\n", cmd);
   if (cbor_mode)
   {
     make_cmd_cbor(cmd);
@@ -418,7 +455,6 @@ server_got_binary(int c)
 static void
 server_read(void)
 {
-  printf("server read\n");
   int c;
   byte *start, *p;
 
@@ -534,6 +570,33 @@ server_send(char *cmd)
 
   memcpy(z, cmd, l);
   z[l++] = '\n';
+  while (l)
+    {
+      int cnt = write(server_fd, z, l);
+
+      if (cnt < 0)
+	{
+	  if (errno == EAGAIN)
+	    wait_for_write(server_fd);
+	  else if (errno == EINTR)
+	    continue;
+	  else
+	    DIE("Server write error");
+	}
+      else
+	{
+	  l -= cnt;
+	  z += cnt;
+	}
+    }
+}
+
+static void
+server_send_byte(byte *cmd, int l)
+{
+  byte *z = alloca(l);
+
+  memcpy(z, cmd, l);
   while (l)
     {
       int cnt = write(server_fd, z, l);

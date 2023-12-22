@@ -74,6 +74,7 @@
 
 pool *cli_pool;
 pool *yi_pool;
+struct linpool *yi_lnpool;
 
 static byte *
 cli_alloc_out(cli *c, int size)
@@ -404,7 +405,12 @@ cli_kick(cli *c)
 uint
 yi_process(uint size, byte *rbuf, byte *tbuf, uint tbsize) {
   log("capacity %i buffer %i", tbsize, tbuf);
-  return parse_cbor(size, rbuf, tbuf, tbsize, lp_new(yi_pool));
+  if (detect_down(size, rbuf))
+  {
+    order_shutdown(0);
+    return 0;
+  }
+  return parse_cbor(size, rbuf, tbuf, tbsize, yi_lnpool);
 }
 
 static list cli_log_hooks;
@@ -542,6 +548,7 @@ void
 yi_init(void)
 {
   yi_pool = rp_new(&root_pool, "YI");
+  yi_lnpool = lp_new(yi_pool);
   init_list(&yi_log_hooks);  /*we may be do not need this*/
   yi_log_inited = 1;
 }

@@ -289,6 +289,7 @@ show_lsa_prefix_cbor (struct cbor_writer *w, struct top_hash_entry *he,
 	}
       cbor_close_block_or_list (w);
     }
+
   cbor_close_block_or_list (w);
   cbor_close_block_or_list (w);
 }
