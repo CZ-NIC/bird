@@ -275,7 +275,7 @@ show_lsa_prefix_cbor(struct cbor_writer *w, struct top_hash_entry *he, struct to
       cbor_string_int(w, "metric", metric);
     }
     else{
-      cbor_add_string(w, "stubnet");
+      cbor_add_string(w, "address");
       cbor_add_net(w, &net);
     }
     cbor_close_block_or_list(w);
