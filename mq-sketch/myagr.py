@@ -140,22 +140,33 @@ t = IPTrie()
 p = input()
 data = p.split(" ")
 
+nexthops = set()
+
 try:
     t.add(AgrPointv6(data[0], data[1]))
+    nexthops.add(data[1])
     try:
         while p := input():
             data = p.split(" ")
             t.add(AgrPointv6(data[0], data[1]))
+            nexthops.add(data[1])
     except EOFError:
-        pass
+        if t.local is None:
+            t.add(AgrPointv6("::/0", "__auto_unreachable"))
+            nexthops.add("__auto_unreachable")
 except ipaddress.AddressValueError:
     t.add(AgrPointv4(data[0], data[1]))
+    nexthops.add(data[1])
     try:
         while p := input():
             data = p.split(" ")
             t.add(AgrPointv4(data[0], data[1]))
+            nexthops.add(data[1])
     except EOFError:
-        pass
+        if t.local is None:
+            t.add(AgrPointv4("0.0.0.0/0", "__auto_unreachable"))
+            nexthops.add("__auto_unreachable")
+
 
 # Dump
 print("Dump After Load")
@@ -168,3 +179,7 @@ tt = t.aggregate()
 ttt = tt.prune()
 print("Dump After Prune")
 print(ttt.dump())
+
+print("Nexthops known")
+for n in nexthops:
+    print(n)
