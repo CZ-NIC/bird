@@ -68,7 +68,7 @@ class IPTrie:
         if len(intersection) > 0:
             nap.local = self.agrclass(net, sorted(intersection)[0])
             nap.buckets = intersection
-        else if net == self.rootnet:
+        elif net == self.rootnet:
             nap.buckets = ac[0].buckets | ac[1].buckets
             nap.local = self.local
         else:
