@@ -68,6 +68,9 @@ class IPTrie:
         if len(intersection) > 0:
             nap.local = self.agrclass(net, sorted(intersection)[0])
             nap.buckets = intersection
+        else if net == self.rootnet:
+            nap.buckets = ac[0].buckets | ac[1].buckets
+            nap.local = self.local
         else:
             nap.buckets = ac[0].buckets | ac[1].buckets
             nap.local = None
@@ -88,14 +91,19 @@ class IPTrie:
         else:
             return self
 
-    def prune(self, up=None, net=ipaddress.IPv6Network("::/0"), covered=None):
+    def prune(self, up=None, net=None, covered=None):
         if self.children[0] is None and self.children[1] is None:
             r = self.reduce(covered)
 #            print(f"Prune NR at {net}, C {covered}, L {self.local} -> {r}")
             return r
 
+        if net is None:
+            net = self.rootnet
+
         loc = covered if self.local is None else self.local
-        assert(loc)
+        if loc is None:
+            raise Exception(f"Loc is None at {net}, covered {covered}")
+
         sn = list(net.subnets())
         nap = IPTrie(up)
         nap.children = [ None if self.children[b] is None else self.children[b].prune(nap, sn[b], loc) for b in (0,1) ]
@@ -155,6 +163,7 @@ try:
             t.add(AgrPointv6("::/0", "__auto_unreachable"))
             nexthops.add("__auto_unreachable")
 except ipaddress.AddressValueError:
+    print("IPv6 failed, trying IPv4")
     t.add(AgrPointv4(data[0], data[1]))
     nexthops.add(data[1])
     try:
@@ -164,6 +173,7 @@ except ipaddress.AddressValueError:
             nexthops.add(data[1])
     except EOFError:
         if t.local is None:
+            print("Adding default")
             t.add(AgrPointv4("0.0.0.0/0", "__auto_unreachable"))
             nexthops.add("__auto_unreachable")
 
@@ -173,8 +183,8 @@ print("Dump After Load")
 print(t.dump())
 
 tt = t.aggregate()
-#print("Dump After Aggr")
-#print(tt.dump())
+print("Dump After Aggr")
+print(tt.dump())
 
 ttt = tt.prune()
 print("Dump After Prune")
