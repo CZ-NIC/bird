@@ -87,17 +87,14 @@ void cbor_add_ipv6(struct cbor_writer *writer, uint32_t addr[4])
   }
 }
 
-void cbor_add_ipv4_prefix(struct cbor_writer *writer, uint32_t addr, uint32_t prefix)
+void cbor_add_ipv4_prefix(struct cbor_writer *writer, net_addr_ip4 *n)
 {
   write_item(writer, 6, 52); // 6 is TAG, 52 is tag number for ipv4
   cbor_open_block_with_length(writer, 2);
-  cbor_add_int(writer, prefix);
+  cbor_add_int(writer, n->pxlen);
   write_item(writer, 2, 4); // bytestring of length 4
-  for (int i = 3; i>=0; i--)
-  {
-    writer->cbor[writer->pt] = (addr>>(i*8)) & 0xff;
-    writer->pt++;
-  }
+  put_ip4(&writer->cbor[writer->pt], n->prefix);
+  writer->pt += 4;
 }
 
 

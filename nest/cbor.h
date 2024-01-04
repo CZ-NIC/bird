@@ -2,6 +2,7 @@
 #define CBOR_H
 
 #include "nest/bird.h"
+#include "lib/ip.h"
 
 
 struct cbor_writer {
@@ -31,10 +32,10 @@ void cbor_add_ipv4(struct cbor_writer *writer, uint32_t addr);
 
 void cbor_add_ipv6(struct cbor_writer *writer, uint32_t addr[4]);
 
-void cbor_add_ipv4_prefix(struct cbor_writer *writer, uint32_t addr, uint32_t prefix);
+void cbor_add_ipv4_prefix(struct cbor_writer *writer, net_addr_ip4 *n);
 
 
-void cbor_add_ipv6_prefix(struct cbor_writer *writer, uint32_t addr[4], uint32_t prefix);
+void cbor_add_ipv6_prefix(struct cbor_writer *writer, net_addr_ip6 *n);
 
 
 void cbor_add_uint(struct cbor_writer *writer, uint64_t item);
