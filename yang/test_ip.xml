@@ -1,0 +1,1 @@
+<content-data xmlns="urn:ietf:params:xml:ns:yang:ietf-yang-instance-data"><message xmlns="https://bird.nic.cz/yang/v2.15/cli-debug"><address>2001:db8::dead:beef</address><foo>42</foo></message></content-data>

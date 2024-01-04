@@ -1,0 +1,21 @@
+module test_ip {
+
+  namespace "https://bird.nic.cz/yang/v2.15/cli-debug";
+  
+  prefix "test_ip";
+
+  description "testing IP address formatting";
+
+  import ietf-inet-types {
+    prefix "inet";
+  }
+
+  container message {
+    leaf address {
+      type inet:ip-address;
+    }
+    leaf foo {
+      type int8;
+    }
+  }
+}

@@ -3,6 +3,18 @@
     "module-set-id": "12345678abcdef1cefd14622032c432fa598540e",
     "module": [
       {
+	"name": "cbor",
+	"revision": "",
+	"namespace": "tmp",
+        "conformance-type": "import"
+      },
+      {
+        "name": "ietf-inet-types",
+        "revision": "2024-01-04",
+        "namespace": "urn:ietf:params:xml:ns:yang:ietf-inet-types",
+        "conformance-type": "import"
+      },
+      {
         "name": "show_memory",
 	"namespace": "https://bird.nic.cz/yang/v2.15/cli-debug",
         "revision": "",
@@ -10,12 +22,6 @@
       },
       {
         "name": "show_status",
-	"namespace": "https://bird.nic.cz/yang/v2.15/cli-debug",
-        "revision": "",
-        "conformance-type": "implement"
-      },
-      {
-        "name": "show_symbols",
 	"namespace": "https://bird.nic.cz/yang/v2.15/cli-debug",
         "revision": "",
         "conformance-type": "implement"
@@ -37,6 +43,12 @@
 	"namespace": "https://bird.nic.cz/yang/v2.15/cli-debug",
         "revision": "",
         "conformance-type": "implement"
+      },
+      {
+	"name": "test_ip",
+	"namespace": "https://bird.nic.cz/yang/v2.15/cli-debug",
+	"revision": "",
+	"conformance-type": "implement"
       }
     ]
   }

@@ -1,4 +1,4 @@
 YDIR=$(dirname $0)
 . "$YDIR"/JSON_CBOR.env
 
-python3 $YDIR/cbor-json-yang.py "$@"
+python3 $YDIR/cbor-xml-yang.py "$@"

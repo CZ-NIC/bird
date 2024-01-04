@@ -1,0 +1,7 @@
+module cbor {
+  prefix "cbor";
+  extension tag {
+    description "Use this tag while encoding to cbor";
+    argument "number";
+  }
+}

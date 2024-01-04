@@ -1,0 +1,6 @@
+{
+  "test_ip:message": {
+    "address": "2001:db8::dead:beef",
+    "foo": 42
+  }
+}
