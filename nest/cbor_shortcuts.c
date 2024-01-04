@@ -58,16 +58,10 @@ void cbor_add_net(struct cbor_writer *writer, const net_addr *N) {
   switch (n->n.type)
   {
   case NET_IP4:
-    cbor_add_ipv4_prefix(writer, n->ip4.prefix, n->ip4.pxlen);
+    cbor_add_ipv4_prefix(writer, &n->ip4);
     return;
   case NET_IP6:
-    cbor_add_ipv6_prefix(writer, n->ip6.prefix.addr, n->ip6.pxlen);
-    return;
-  case NET_VPN4:
-    cbor_add_ipv4_prefix(writer, n->vpn4.prefix, n->vpn4.pxlen);
-    return;
-  case NET_VPN6:
-    cbor_add_ipv6_prefix(writer, n->vpn6.prefix.addr, n->vpn6.pxlen);
+    cbor_add_ipv6_prefix(writer, &n->ip6);
     return;
   default:
     bug("net type unsupported by cbor (yet)."); 
