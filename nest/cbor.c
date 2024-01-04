@@ -100,20 +100,15 @@ void cbor_add_ipv4_prefix(struct cbor_writer *writer, uint32_t addr, uint32_t pr
 }
 
 
-void cbor_add_ipv6_prefix(struct cbor_writer *writer, uint32_t addr[4], uint32_t prefix)
+void cbor_add_ipv6_prefix(struct cbor_writer *writer, net_addr_ip6 *n)
 {
   write_item(writer, 6, 54); // 6 is TAG, 54 is tag number for ipv6
   cbor_open_block_with_length(writer, 2);
-  cbor_add_int(writer, prefix);
-  write_item(writer, 2, 8); // bytestring of length 4
-  for (int j = 0; j < 4; j++)
-  {
-    for (int i = 3; i>=0; i--)
-    {
-      writer->cbor[writer->pt] = (addr[j]>>(i*8)) & 0xff;
-      writer->pt++;
-    }
-  }
+  cbor_add_int(writer, n->pxlen);
+
+  write_item(writer, 2, 16);
+  put_ip6(&writer->cbor[writer->pt], n->prefix);
+  writer->pt += 16;
 }
 
 

@@ -1,6 +1,7 @@
 #ifndef CBOR_H
 #define CBOR_H
-#include <stdint.h>
+
+#include "nest/bird.h"
 
 
 struct cbor_writer {
