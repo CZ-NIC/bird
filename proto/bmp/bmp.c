@@ -1345,6 +1345,36 @@ bmp_show_proto_info(struct proto *P)
   }
 }
 
+static void
+bmp_show_proto_info_cbor(struct cbor_writer *w, struct proto *P)
+{
+  struct bmp_proto *p = (void *) P;
+
+  cbor_add_string(w, "bmp");
+  cbor_open_block(w);
+
+  if (P->proto_state != PS_DOWN)
+  {
+    if (p->station_ip > 1<<(8*4))
+      cbor_string_ipv6(w, "station_address", p->station_ip);
+    else
+      cbor_string_ipv4(w, "station_address", p->station_ip);
+    cbor_string_int(w, "station_port", p->station_port);
+
+    if (!ipa_zero(p->local_addr))
+    {
+      if (p->local_addr > 1<<(8*4))
+        cbor_string_ipv6(w, "local_address", p->local_addr);
+      else
+        cbor_string_ipv4(w, "local_address", p->local_addr);
+    }
+
+    if (p->sock_err)
+      cbor_string_int(w, "last_error", p->sock_err);
+  }
+  cbor_close_block_or_string(w);
+}
+
 struct protocol proto_bmp = {
   .name = "BMP",
   .template = "bmp%d",
@@ -1358,6 +1388,7 @@ struct protocol proto_bmp = {
   .reconfigure = bmp_reconfigure,
   .get_status = bmp_get_status,
   .show_proto_info = bmp_show_proto_info,
+  .show_proto_info_cbor = bmp_show_proto_info_cbor,
 };
 
 void

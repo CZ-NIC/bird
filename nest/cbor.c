@@ -1,20 +1,13 @@
 #include <stdint.h>
+#include <string.h>
+
+#include "nest/cbor.h"
 
 
-
-struct cbor_writer {
-  int pt; // where will next byte go
-  int capacity;
-  int8_t *cbor;
-  struct linpool *lp;
-};
-
-void write_item(struct cbor_writer *writer, uint8_t major, u64 num);
+void write_item(struct cbor_writer *writer, uint8_t major, uint64_t num);
 void check_memory(struct cbor_writer *writer, int add_size);
 
-
-
-struct cbor_writer *cbor_init(byte *buff, uint capacity, struct linpool *lp)
+struct cbor_writer *cbor_init(uint8_t *buff, uint32_t capacity, struct linpool *lp)
 {
   struct cbor_writer *writer = (struct cbor_writer*)lp_alloc(lp, sizeof(struct cbor_writer));
   writer->cbor = buff;
@@ -44,12 +37,12 @@ void cbor_close_block_or_list(struct cbor_writer *writer)
   writer->pt++;
 }
 
-void cbor_open_block_with_length(struct cbor_writer *writer, int length)
+void cbor_open_block_with_length(struct cbor_writer *writer, uint32_t length)
 {
   write_item(writer, 5, length);
 }
 
-void cbor_open_list_with_length(struct cbor_writer *writer, int length)
+void cbor_open_list_with_length(struct cbor_writer *writer, uint32_t length)
 {
   write_item(writer, 4, length);
 }
@@ -67,7 +60,7 @@ void cbor_add_int(struct cbor_writer *writer, int64_t item)
   }
 }
 
-void cbor_add_ipv4(struct cbor_writer *writer, u32 addr)
+void cbor_add_ipv4(struct cbor_writer *writer, uint32_t addr)
 {
   write_item(writer, 6, 52); // 6 is TAG, 52 is tag number for ipv4
   write_item(writer, 2, 4); // bytestring of length 4
@@ -78,18 +71,22 @@ void cbor_add_ipv4(struct cbor_writer *writer, u32 addr)
   }
 }
 
-void cbor_add_ipv6(struct cbor_writer *writer, u64 addr)
+void cbor_add_ipv6(struct cbor_writer *writer, uint32_t addr[4])
 {
   write_item(writer, 6, 54); // 6 is TAG, 54 is tag number for ipv6
-  write_item(writer, 2, 8); // bytestring of length 8
-  for (int i = 7; i>=0; i--)
+  write_item(writer, 2, 16); // bytestring of length 8
+  for (int j = 0; j < 4; j++)
   {
-    writer->cbor[writer->pt] = (addr>>(i*8)) & 0xff;
-    writer->pt++;
+    for (int i = 3; i>=0; i--)
+    {
+      writer->cbor[writer->pt] = (addr[j]>>(i*8)) & 0xff;
+      writer->pt++;
+    }
   }
 }
 
-void cbor_add_ipv4_prefix(struct cbor_writer *writer, u32 addr, int prefix)
+
+void cbor_add_ipv4_prefix(struct cbor_writer *writer, uint32_t addr, uint32_t prefix)
 {
   write_item(writer, 6, 52); // 6 is TAG, 52 is tag number for ipv4
   cbor_open_block_with_length(writer, 2);
@@ -103,7 +100,7 @@ void cbor_add_ipv4_prefix(struct cbor_writer *writer, u32 addr, int prefix)
 }
 
 
-void cbor_add_ipv6_prefix(struct cbor_writer *writer, struct ip6_addr addr, int prefix)
+void cbor_add_ipv6_prefix(struct cbor_writer *writer, uint32_t addr[4], uint32_t prefix)
 {
   write_item(writer, 6, 54); // 6 is TAG, 54 is tag number for ipv6
   cbor_open_block_with_length(writer, 2);
@@ -113,14 +110,14 @@ void cbor_add_ipv6_prefix(struct cbor_writer *writer, struct ip6_addr addr, int 
   {
     for (int i = 3; i>=0; i--)
     {
-      writer->cbor[writer->pt] = (addr.addr[j]>>(i*8)) & 0xff;
+      writer->cbor[writer->pt] = (addr[j]>>(i*8)) & 0xff;
       writer->pt++;
     }
   }
 }
 
 
-void cbor_add_uint(struct cbor_writer *writer, u64 item)
+void cbor_add_uint(struct cbor_writer *writer, uint64_t item)
 {
   write_item(writer, 0, item);
 }
@@ -139,7 +136,7 @@ void cbor_add_string(struct cbor_writer *writer, const char *string)
   writer->pt+=length;
 }
 
-void cbor_nonterminated_string(struct cbor_writer *writer, const char *string, uint length)
+void cbor_nonterminated_string(struct cbor_writer *writer, const char *string, uint32_t length)
 {
   write_item(writer, 3, length);  // 3 is major, then goes length of string and string
   check_memory(writer, length);
@@ -147,12 +144,12 @@ void cbor_nonterminated_string(struct cbor_writer *writer, const char *string, u
   writer->pt+=length;
 }
 
-void write_item(struct cbor_writer *writer, uint8_t major, u64 num)
+void write_item(struct cbor_writer *writer, uint8_t major, uint64_t num)
 {
   //log("write major %i %li", major, num);
   major = major<<5;
   check_memory(writer, 10);
-  if (num > ((u64)1<<(4*8))-1)
+  if (num > ((uint64_t)1<<(4*8))-1)
   { // We need 8 bytes to encode the num
     major += 0x1b; // reserving those bytes
     writer->cbor[writer->pt] = major;

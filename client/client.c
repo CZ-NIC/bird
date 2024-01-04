@@ -169,7 +169,7 @@ void write_args_cbor(char *cmd_buffer, struct cbor_writer *w)
   while (l>pt)
   {
     size_t next_space = 0;
-    while (next_space + pt < l && cmd_buffer[next_space + pt] != ' ')
+    while (next_space + pt < l && cmd_buffer[next_space + pt] != ' ' && l>pt)
       next_space++;
     cbor_open_block_with_length(w, 1);
     cbor_add_string(w, "arg");
@@ -244,6 +244,7 @@ make_cmd_cbor(char *cmd_buffer)
   {
     cbor_add_string(w, "down");
     server_send_byte(cbor_buf, w->pt);
+    die("Shutdown from client");
     return;
   }
   lp_flush(lp);
@@ -394,7 +395,6 @@ server_got_reply(char *x)
 {
   int code;
   int len = 0;
-  fprintf(stdout, "got reply<%s>", x);
 
   if (*x == '+')                        /* Async reply */
     PRINTF(len, ">>> %s\n", x+1);

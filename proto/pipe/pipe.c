@@ -40,6 +40,7 @@
 #include "conf/conf.h"
 #include "filter/filter.h"
 #include "lib/string.h"
+#include "nest/cbor_shortcuts.h"
 
 #include "pipe.h"
 
@@ -248,6 +249,52 @@ pipe_show_stats(struct pipe_proto *p)
 	  s2->imp_withdraws_ignored, s2->imp_withdraws_accepted);
 }
 
+static void
+pipe_show_stats_cbor(struct cbor_writer *w, struct pipe_proto *p)
+{
+  struct proto_stats *s1 = &p->pri->stats;
+  struct proto_stats *s2 = &p->sec->stats;
+
+  cbor_add_string(w, "stats");
+  cbor_open_block(w);
+  cbor_string_int(w, "imported_routes", s1->imp_routes);
+  cbor_string_int(w, "exported_routes", s2->imp_routes);
+
+  cbor_add_string(w, "import_updates");
+  cbor_open_list_with_length(w, 5);
+  cbor_add_int(w, s2->exp_updates_received);
+  cbor_add_int(w, s2->exp_updates_rejected + s1->imp_updates_invalid);
+  cbor_add_int(w, s2->exp_updates_filtered);
+  cbor_add_int(w, s1->imp_updates_ignored);
+  cbor_add_int(w, s1->imp_updates_accepted);
+
+  cbor_add_string(w, "import_withdraws");
+  cbor_open_block_with_length(w, 5);
+  cbor_add_int(w, s2->exp_withdraws_received);
+  cbor_add_int(w, s1->imp_withdraws_invalid);
+  cbor_add_int(w, -1);
+  cbor_add_int(w, s1->imp_withdraws_ignored);
+  cbor_add_int(w, s1->imp_withdraws_accepted);
+
+  cbor_add_string(w, "export_updates");
+  cbor_open_block_with_length(w, 5);
+  cbor_add_int(w, s1->exp_updates_received);
+  cbor_add_int(w, s1->exp_updates_rejected + s2->imp_updates_invalid);
+  cbor_add_int(w, s1->exp_updates_filtered);
+  cbor_add_int(w, s2->imp_updates_ignored);
+  cbor_add_int(w, s2->imp_updates_accepted);
+  
+  cbor_add_string(w, "export_withdraws");
+  cbor_open_block_with_length(w, 5);
+  cbor_add_int(w, s1->exp_withdraws_received);
+  cbor_add_int(w, s2->imp_withdraws_invalid);
+  cbor_add_int(w, -1);
+  cbor_add_int(w, s2->imp_withdraws_ignored);
+  cbor_add_int(w, s2->imp_withdraws_accepted);
+
+  cbor_close_block_or_list(w);
+}
+
 static const char *pipe_feed_state[] = { [ES_DOWN] = "down", [ES_FEEDING] = "feed", [ES_READY] = "up" };
 
 static void
@@ -270,6 +317,30 @@ pipe_show_proto_info(struct proto *P)
     pipe_show_stats(p);
 }
 
+
+static void
+pipe_show_proto_info_cbor(struct cbor_writer *w, struct proto *P)
+{
+  struct pipe_proto *p = (void *) P;
+  cbor_add_string(w, "pipe");
+  cbor_open_block(w);
+  
+  cbor_string_string(w, "table", p->pri->table->name);
+  cbor_string_string(w, "peer_table", p->sec->table->name);
+  cbor_string_string(w, "import_state", pipe_feed_state[p->sec->export_state]);
+  cbor_string_string(w, "export_state", pipe_feed_state[p->pri->export_state]);
+  cbor_string_string(w, "import_filter", filter_name(p->sec->out_filter));
+  cbor_string_string(w, "export_filter", filter_name(p->pri->out_filter));
+
+  channel_show_limit_cbor(w, &p->pri->in_limit, "import_limit");
+  channel_show_limit_cbor(w, &p->sec->in_limit, "export_limit");
+
+  if (P->proto_state != PS_DOWN)
+    pipe_show_stats_cbor(w, p);
+
+  cbor_close_block_or_list(w);
+}
+
 void
 pipe_update_debug(struct proto *P)
 {
@@ -290,7 +361,8 @@ struct protocol proto_pipe = {
   .reconfigure =	pipe_reconfigure,
   .copy_config = 	pipe_copy_config,
   .get_status = 	pipe_get_status,
-  .show_proto_info = 	pipe_show_proto_info
+  .show_proto_info = 	pipe_show_proto_info,
+  .show_proto_info_cbor = pipe_show_proto_info_cbor
 };
 
 void

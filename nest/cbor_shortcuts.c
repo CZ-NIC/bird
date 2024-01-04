@@ -1,8 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "nest/cbor.c"
+#include "nest/cbor_shortcuts.h"
 
+
+int64_t preprocess_time(btime t) {
+  return tm_get_real_time(t) TO_S ;
+}
 
 void cbor_string_string(struct cbor_writer *writer, char *key, const char *value) {
   cbor_add_string(writer, key);
@@ -24,7 +28,7 @@ void cbor_string_ipv4(struct cbor_writer *writer, char *key, u32 value) {
   cbor_add_ipv4(writer, value);
 }
 
-void cbor_string_ipv6(struct cbor_writer *writer, char *key, u64 value) {
+void cbor_string_ipv6(struct cbor_writer *writer, char *key, u32 value[4]) {
   cbor_add_string(writer, key);
   cbor_add_ipv6(writer, value);
 }
@@ -57,15 +61,18 @@ void cbor_add_net(struct cbor_writer *writer, const net_addr *N) {
     cbor_add_ipv4_prefix(writer, n->ip4.prefix, n->ip4.pxlen);
     return;
   case NET_IP6:
-    cbor_add_ipv6_prefix(writer, n->ip6.prefix, n->ip6.pxlen);
+    cbor_add_ipv6_prefix(writer, n->ip6.prefix.addr, n->ip6.pxlen);
     return;
   case NET_VPN4:
     cbor_add_ipv4_prefix(writer, n->vpn4.prefix, n->vpn4.pxlen);
     return;
   case NET_VPN6:
-    cbor_add_ipv6_prefix(writer, n->vpn6.prefix, n->vpn6.pxlen);
+    cbor_add_ipv6_prefix(writer, n->vpn6.prefix.addr, n->vpn6.pxlen);
     return;
   default:
     bug("net type unsupported by cbor (yet)."); 
   }
 }
+
+
+

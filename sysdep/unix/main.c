@@ -991,8 +991,8 @@ main(int argc, char **argv)
   if (!parse_and_exit)
   {
     test_old_bird(path_control_socket);
-    //cli_init_unix(use_uid, use_gid);
-    if (path_control_socket_yi)
+    cli_init_unix(use_uid, use_gid);
+    /*if (path_control_socket_yi)
     {
       yi_init_unix(use_uid, use_gid);
     }
@@ -1000,7 +1000,7 @@ main(int argc, char **argv)
       path_control_socket_yi = "bird.ctl";
       log(L_INFO "before function");
       yi_init_unix(use_uid, use_gid);
-    }
+    }*/
   }
 
   if (use_gid)

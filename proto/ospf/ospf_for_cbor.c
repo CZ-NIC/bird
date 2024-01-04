@@ -5,7 +5,7 @@
 
 #include <stdlib.h>
 #include "ospf.h"
-#include "nest/cbor_shortcuts.c"
+#include "nest/cbor_shortcuts.h"
 
 
 static inline void

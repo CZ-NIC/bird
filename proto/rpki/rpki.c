@@ -96,6 +96,7 @@
 #include "rpki.h"
 #include "lib/string.h"
 #include "nest/cli.h"
+#include "nest/cbor_shortcuts.h"
 
 /* Return values for reconfiguration functions */
 #define NEED_RESTART 		0
@@ -890,6 +891,95 @@ rpki_show_proto_info(struct proto *P)
 }
 
 
+static void
+rpki_show_proto_info_timer_cbor(struct cbor_writer *w, const char *name, uint num, timer *t)
+{
+  cbor_add_string(w, name);
+  cbor_open_block(w);
+  if (tm_active(t))
+  {
+    cbor_string_int(w, "time", preprocess_time(tm_remains(t)));
+    cbor_string_int(w, "num", num);
+  }
+  cbor_close_block_or_list(w);
+}
+
+static void
+rpki_show_proto_info_cbor(struct cbor_writer *w, struct proto *P)
+{
+  struct rpki_proto *p = (struct rpki_proto *) P;
+  struct rpki_config *cf = (void *) p->p.cf;
+  struct rpki_cache *cache = p->cache;
+
+  if (P->proto_state == PS_DOWN)
+    return;
+  
+  cbor_add_string(w, "rpki");
+  cbor_open_block(w);
+
+  if (cache)
+  {
+    const char *transport_name = "---";
+    uint default_port = 0;
+
+    switch (cf->tr_config.type)
+    {
+#if HAVE_LIBSSH
+    case RPKI_TR_SSH:
+      transport_name = "SSHv2";
+      default_port = RPKI_SSH_PORT;
+      break;
+#endif
+    case RPKI_TR_TCP:
+      transport_name = "Unprotected over TCP";
+      default_port = RPKI_TCP_PORT;
+      break;
+    };
+
+    cbor_string_string(w, "cache_server", cf->hostname);
+
+    if (cf->port != default_port)
+      cbor_string_int(w, "cache_port", cf->port);
+
+    cbor_string_string(w, "status", rpki_cache_state_to_str(cache->state));
+    cbor_string_string(w, "transport", transport_name);
+    cbor_string_int(w, "cache_version", cache->version);
+
+    if (cache->request_session_id)
+      cbor_string_string(w, "session_id", "-");
+    else
+      cbor_string_int(w, "session_id", cache->session_id);
+
+    if (cache->last_update)
+    {
+      cbor_string_int(w, "serial_num", cache->serial_num);
+      cbor_string_int(w, "last_update", preprocess_time(current_time() - cache->last_update));
+    }
+
+    rpki_show_proto_info_timer_cbor(w, "Refresh timer", cache->refresh_interval, cache->refresh_timer);
+    rpki_show_proto_info_timer_cbor(w, "Retry timer", cache->retry_interval, cache->retry_timer);
+    rpki_show_proto_info_timer_cbor(w, "Expire timer", cache->expire_interval, cache->expire_timer);
+
+    if (p->roa4_channel)
+      channel_show_info_cbor(w, p->roa4_channel);
+    else
+    {
+      cbor_add_string(w, "no_roa4");
+      cbor_open_list_with_length(w, 0);
+    }
+
+    if (p->roa6_channel)
+      channel_show_info_cbor(w, p->roa6_channel);
+    else
+    {
+      cbor_add_string(w, "no_roa6");
+      cbor_open_list_with_length(w, 0);
+    }
+  }
+  cbor_close_block_or_list(w);
+}
+
+
 /*
  * 	RPKI Protocol Configuration
  */
@@ -959,6 +1049,7 @@ struct protocol proto_rpki = {
   .postconfig = 	rpki_postconfig,
   .channel_mask =	(NB_ROA4 | NB_ROA6),
   .show_proto_info =	rpki_show_proto_info,
+  .show_proto_info_cbor = rpki_show_proto_info_cbor,
   .shutdown = 		rpki_shutdown,
   .copy_config = 	rpki_copy_config,
   .reconfigure = 	rpki_reconfigure,
