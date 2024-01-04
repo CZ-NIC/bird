@@ -3019,6 +3019,28 @@ bgp_show_afis(int code, char *s, u32 *afis, uint count)
   cli_msg(code, b.start);
 }
 
+static void
+bgp_show_afis_cbor(struct cbor_writer *w, char *s, u32 *afis, uint count)
+{
+  cbor_add_string(w, s);
+  cbor_open_list(w);
+  for (u32 *af = afis; af < (afis + count); af++)
+  {
+    cbor_open_block(w);
+    const struct bgp_af_desc *desc = bgp_get_af_desc(*af);
+    if (desc)
+      cbor_string_string(w, "name", desc->name);
+    else
+    {
+      cbor_string_int(w, "afi", BGP_AFI(*af));
+      cbor_string_int(w, "safi", BGP_SAFI(*af));
+    }
+    cbor_close_block_or_list(w);
+  }
+
+  cbor_close_block_or_list(w);
+}
+
 const char *
 bgp_format_role_name(u8 role)
 {
@@ -3162,6 +3184,163 @@ bgp_show_capabilities(struct bgp_proto *p UNUSED, struct bgp_caps *caps)
 }
 
 static void
+bgp_show_capabilities_cbor(struct cbor_writer *w, struct bgp_proto *p UNUSED, struct bgp_caps *caps)
+{
+  cbor_add_string(w, "capabilities");
+  cbor_open_block(w);
+  struct bgp_af_caps *ac;
+  uint any_mp_bgp = 0;
+  uint any_gr_able = 0;
+  uint any_add_path = 0;
+  uint any_ext_next_hop = 0;
+  uint any_llgr_able = 0;
+  u32 *afl1 = alloca(caps->af_count * sizeof(u32));
+  u32 *afl2 = alloca(caps->af_count * sizeof(u32));
+  uint afn1, afn2;
+
+  WALK_AF_CAPS(caps, ac)
+  {
+    any_mp_bgp |= ac->ready;
+    any_gr_able |= ac->gr_able;
+    any_add_path |= ac->add_path;
+    any_ext_next_hop |= ac->ext_next_hop;
+    any_llgr_able |= ac->llgr_able;
+  }
+
+  if (any_mp_bgp)
+  {
+    cbor_add_string(w, "multiprotocol");
+    cbor_open_block(w);
+
+    afn1 = 0;
+    WALK_AF_CAPS(caps, ac)
+      if (ac->ready)
+	afl1[afn1++] = ac->afi;
+
+    bgp_show_afis_cbor(w, "AF_announced:", afl1, afn1);
+    cbor_close_block_or_list(w);
+  }
+
+  if (caps->route_refresh)
+  {
+    cbor_add_string(w, "route_refresh");
+    cbor_open_list_with_length(w, 0);
+  }
+
+  if (any_ext_next_hop)
+  {
+    afn1 = 0;
+    WALK_AF_CAPS(caps, ac)
+      if (ac->ext_next_hop)
+	afl1[afn1++] = ac->afi;
+
+    bgp_show_afis_cbor(w, "IPv6_nexthop:", afl1, afn1);
+  }
+
+  if (caps->ext_messages)
+  {
+    cbor_add_string(w, "extended_message");
+    cbor_open_list_with_length(w, 0);
+  }
+
+  if (caps->gr_aware)
+  {
+    cbor_add_string(w, "graceful_restart");
+    cbor_open_list_with_length(w, 0);
+  }
+
+  if (any_gr_able)
+  {
+    /* Continues from gr_aware */
+    cbor_string_int(w, "restart_time", caps->gr_time);
+    if (caps->gr_flags & BGP_GRF_RESTART)
+    {
+      cbor_add_string(w, "restart_recovery");
+      cbor_open_list_with_length(w, 0);
+    }
+
+    afn1 = afn2 = 0;
+    WALK_AF_CAPS(caps, ac)
+    {
+      if (ac->gr_able)
+	afl1[afn1++] = ac->afi;
+
+      if (ac->gr_af_flags & BGP_GRF_FORWARDING)
+	afl2[afn2++] = ac->afi;
+    }
+
+    bgp_show_afis_cbor(w, "AF_supported", afl1, afn1);
+    bgp_show_afis_cbor(w, "AF_preserved", afl2, afn2);
+  }
+
+  if (caps->as4_support)
+     {
+    cbor_add_string(w, "4-octet_AS_numbers");
+    cbor_open_list_with_length(w, 0);
+  }
+
+  if (any_add_path)
+  {
+    cli_msg(-1006, "      ADD-PATH");
+
+    afn1 = afn2 = 0;
+    WALK_AF_CAPS(caps, ac)
+    {
+      if (ac->add_path & BGP_ADD_PATH_RX)
+	afl1[afn1++] = ac->afi;
+
+      if (ac->add_path & BGP_ADD_PATH_TX)
+	afl2[afn2++] = ac->afi;
+    }
+
+    bgp_show_afis_cbor(w, "add_path_RX", afl1, afn1);
+    bgp_show_afis_cbor(w, "add_path_TX", afl2, afn2);
+  }
+
+  if (caps->enhanced_refresh)
+  {
+    cbor_add_string(w, "enhanced_refresh");
+    cbor_open_list_with_length(w, 0);
+  }
+
+  if (caps->llgr_aware)
+  {
+    cbor_add_string(w, "long_lived_gr");
+    cbor_open_list_with_length(w, 0);
+  }
+
+  if (any_llgr_able)
+  {
+    u32 stale_time = 0;
+
+    afn1 = afn2 = 0;
+    WALK_AF_CAPS(caps, ac)
+    {
+      stale_time = MAX(stale_time, ac->llgr_time);
+
+      if (ac->llgr_able && ac->llgr_time)
+	afl1[afn1++] = ac->afi;
+
+      if (ac->llgr_flags & BGP_GRF_FORWARDING)
+	afl2[afn2++] = ac->afi;
+    }
+
+    /* Continues from llgr_aware */
+    cbor_string_int(w, "ll_stale_time", stale_time);
+
+    bgp_show_afis_cbor(w, "AF_supported", afl1, afn1);
+    bgp_show_afis_cbor(w, "AF_preserved", afl2, afn2);
+  }
+
+  if (caps->hostname)
+    cbor_string_string(w, "hostname", caps->hostname);
+
+  if (caps->role != BGP_ROLE_UNDEFINED)
+    cbor_string_string(w, "role", bgp_format_role_name(caps->role));
+  cbor_close_block_or_list(w);
+}
+
+static void
 bgp_show_proto_info(struct proto *P)
 {
   struct bgp_proto *p = (struct bgp_proto *) P;
@@ -3293,6 +3472,155 @@ bgp_show_proto_info(struct proto *P)
   }
 }
 
+static void
+bgp_show_proto_info_cbor(struct cbor_writer *w, struct proto *P)
+{
+  struct bgp_proto *p = (struct bgp_proto *) P;
+
+  cbor_add_string(w, "bgp");
+  cbor_open_block(w);
+
+  cbor_string_string(w, "state", bgp_state_dsc(p));
+
+  if (bgp_is_dynamic(p) && p->cf->remote_range)
+  {
+    cbor_add_string(w, "neighbor_range");
+    cbor_add_net(w, p->cf->remote_range);
+  }
+  else
+  {
+    cbor_string_ipv4(w, "neighbor_addr", *p->remote_ip.addr);
+    cbor_string_string(w, "iface", p->cf->iface->name);
+  }
+
+  if ((p->conn == &p->outgoing_conn) && (p->cf->remote_port != BGP_PORT))
+    cbor_string_int(w, "neighbor_port", p->cf->remote_port);
+
+  cbor_string_int(w, "neighbor_as", p->remote_as);
+  cbor_string_int(w, "local_as", p->cf->local_as);
+
+  if (p->gr_active_num)
+  {
+    cbor_add_string(w, "gr_active");
+    cbor_open_list_with_length(w, 0);
+  }
+
+  if (P->proto_state == PS_START)
+  {
+    struct bgp_conn *oc = &p->outgoing_conn;
+
+    if ((p->start_state < BSS_CONNECT) &&
+	(tm_active(p->startup_timer)))
+    {
+      cbor_string_int(w, "error_wait_remains", tm_remains(p->startup_timer));
+      cbor_string_int(w, "error_delay", p->startup_delay);
+    }
+
+    if ((oc->state == BS_ACTIVE) &&
+	(tm_active(oc->connect_timer)))
+    {
+      cbor_string_int(w, "connect_remains", tm_remains(oc->connect_timer));
+      cbor_string_int(w, "connect_delay", p->cf->connect_delay_time);
+    }
+
+    if (p->gr_active_num && tm_active(p->gr_timer))
+      cbor_string_int(w, "restart_time", tm_remains(p->gr_timer));
+  }
+  else if (P->proto_state == PS_UP)
+  {
+    cbor_add_string(w, "neighbor_id");
+    cbor_add_ipv4(w, p->remote_id);
+    cli_msg(-1006, "    Local capabilities");
+    cbor_add_string(w, "local_cap");
+    cbor_open_block_with_length(w, 1);
+    bgp_show_capabilities_cbor(w, p, p->conn->local_caps);
+    cbor_add_string(w, "neighbor_cap");
+    cbor_open_block_with_length(w, 1);
+    bgp_show_capabilities(p, p->conn->remote_caps);
+
+    cbor_add_string(w, "session");
+    cbor_open_list(w);
+    if (p->is_internal)
+      cbor_add_string(w, "internal");
+    else
+      cbor_add_string(w, "external");
+    if (p->cf->multihop)
+      cbor_add_string(w, "multihop");
+    if (p->rr_client)
+      cbor_add_string(w, "route-reflector");
+    if (p->rs_client)
+      cbor_add_string(w, "route-server");
+    if (p->as4_session)
+      cbor_add_string(w, "AS4");
+    cbor_close_block_or_list(w);
+
+    cbor_add_string(w, "source_address");
+    cbor_add_ipv6(w, p->local_ip.addr);
+
+    cbor_string_int(w, "hold_timer", tm_remains(p->conn->hold_timer));
+    cbor_string_int(w, "hold_t_base", p->conn->hold_time);
+
+    cbor_string_int(w, "keepalive_timer", tm_remains(p->conn->keepalive_timer));
+    cbor_string_int(w, "keepalive_t_base", p->conn->keepalive_time);
+  }
+
+  if ((p->last_error_class != BE_NONE) &&
+      (p->last_error_class != BE_MAN_DOWN))
+  {
+    const char *err1 = bgp_err_classes[p->last_error_class];
+    const char *err2 = bgp_last_errmsg(p);
+    cli_msg(-1006, "    Last error:       %s%s", err1, err2);
+  }
+
+  {
+    struct bgp_channel *c;
+    cbor_add_string(w, "channels");
+    cbor_open_block(w);
+    WALK_LIST(c, p->p.channels)
+    {
+      channel_show_info_cbor(w, &c->c);
+
+      if (c->c.channel != &channel_bgp)
+	continue;
+
+      if (p->gr_active_num)
+        cbor_string_string(w, "neighbor_gr", bgp_gr_states[c->gr_active]);
+
+      if (c->stale_timer && tm_active(c->stale_timer))
+        cbor_string_int(w, "llstale_timer", tm_remains(c->stale_timer));
+
+      if (c->c.channel_state == CS_UP)
+      {
+	if (ipa_zero(c->link_addr))
+	{
+	  cbor_add_string(w, "next_hop");
+	  cbor_add_ipv6(w, c->next_hop_addr.addr);
+	}
+	else
+	{
+	  cbor_add_string(w, "next_hop1");
+	  cbor_add_ipv6(w, c->next_hop_addr.addr);
+	  cbor_add_string(w, "next_hop2");
+	  cbor_add_ipv6(w,  c->link_addr.addr);
+	}
+      }
+
+      if (c->igp_table_ip4)
+        cbor_string_string(w, "igp_ipv4_table", c->igp_table_ip4->name);
+
+      if (c->igp_table_ip6)
+        cbor_string_string(w, "igp_ipv6_table", c->igp_table_ip6->name);
+
+      if (c->base_table)
+        cbor_string_string(w, "base_table", c->base_table->name);
+    }
+    cbor_close_block_or_list(w);
+  }
+  cbor_close_block_or_list(w);
+}
+
+
+
 const struct channel_class channel_bgp = {
   .channel_size =	sizeof(struct bgp_channel),
   .config_size =	sizeof(struct bgp_channel_config),
@@ -3320,7 +3648,8 @@ struct protocol proto_bgp = {
   .get_status = 	bgp_get_status,
   .get_attr = 		bgp_get_attr,
   .get_route_info = 	bgp_get_route_info,
-  .show_proto_info = 	bgp_show_proto_info
+  .show_proto_info = 	bgp_show_proto_info,
+  .show_proto_info_cbor = bgp_show_proto_info_cbor
 };
 
 void bgp_build(void)

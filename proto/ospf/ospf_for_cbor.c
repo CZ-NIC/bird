@@ -5,7 +5,7 @@
 
 #include <stdlib.h>
 #include "ospf.h"
-#include "nest/cbor.h"
+#include "nest/cbor_shortcuts.h"
 
 void
 show_lsa_distance_cbor (struct cbor_writer *w, struct top_hash_entry *he)

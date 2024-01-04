@@ -14,6 +14,7 @@
 #include "lib/event.h"
 #include "nest/route.h"
 #include "conf/conf.h"
+#include "nest/cbor_shortcuts.h"
 
 struct iface;
 struct ifa;
@@ -85,6 +86,7 @@ struct protocol {
   void (*get_route_info)(struct rte *, byte *buf); /* Get route information (for `show route' command) */
   int (*get_attr)(const struct eattr *, byte *buf, int buflen);	/* ASCIIfy dynamic attribute (returns GA_*) */
   void (*show_proto_info)(struct proto *);	/* Show protocol info (for `show protocols all' command) */
+  void (*show_proto_info_cbor)(struct cbor_writer *w, struct proto *);	/* Show protocol info (for `show protocols all' command) for cbor */
   void (*copy_config)(struct proto_config *, struct proto_config *);	/* Copy config from given protocol instance */
 };
 
@@ -288,7 +290,10 @@ void channel_graceful_restart_unlock(struct channel *c);
 #define DEFAULT_GR_WAIT	240
 
 void channel_show_limit(struct channel_limit *l, const char *dsc);
+void channel_show_limit_cbor(struct cbor_writer *w, struct channel_limit *l,  const char *dsc);
 void channel_show_info(struct channel *c);
+void channel_show_info_cbor(struct cbor_writer *w, struct channel *c);
+void channel_show_stats_cbor(struct cbor_writer *w, struct channel *c);
 void channel_cmd_debug(struct channel *c, uint mask);
 
 void proto_cmd_show(struct proto *, uintptr_t, int);

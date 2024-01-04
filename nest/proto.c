@@ -2145,6 +2145,106 @@ channel_show_info(struct channel *c)
 }
 
 void
+channel_show_info_cbor(struct cbor_writer *w, struct channel *c)
+{
+  static char *c_states[] = { "DOWN", "START", "UP", "FLUSHING" };
+  cbor_add_string(w, "channel");
+  cbor_open_block(w);
+  cbor_string_string(w, "name", c->name);
+  cbor_string_string(w, "state", c_states[c->channel_state]);
+  cbor_string_int(w, "preference", c->preference);
+  cbor_string_string(w, "input_filter", filter_name(c->in_filter));
+  cbor_string_string(w, "output_filter", filter_name(c->out_filter));
+
+  if (graceful_restart_state == GRS_ACTIVE)
+  {
+    cbor_string_int(w, "gr_pending", c->gr_lock);
+    cbor_string_int(w, "gr_waiting", c->gr_wait);
+  }
+
+  channel_show_limit_cbor(w, &c->rx_limit, "recieve_limit");
+  channel_show_limit_cbor(w, &c->in_limit, "import_limit");
+  channel_show_limit_cbor(w, &c->out_limit, "export_limit");
+
+  if (c->channel_state != CS_DOWN)
+    channel_show_stats_cbor(w, c);
+}
+
+void
+channel_show_stats_cbor(struct cbor_writer *w, struct channel *c)
+{
+  struct proto_stats *s = &c->stats;
+  cbor_add_string(w, "channel_stats");
+  cbor_open_block(w);
+  
+
+  if (c->in_keep_filtered)
+  {
+    cbor_string_int(w, "imported", s->imp_routes);
+    cbor_string_int(w, "filtered", s->filt_routes);
+    cbor_string_int(w, "exported", s->exp_routes);
+    cbor_string_int(w, "preffered", s->pref_routes);
+  }
+  else
+  {
+    cbor_string_int(w, "imported", s->imp_routes);
+    cbor_string_int(w, "exported", s->exp_routes);
+    cbor_string_int(w, "preffered", s->pref_routes);
+  }
+
+  cbor_add_string(w, "import_updates");
+  cbor_open_list_with_length(w, 5);
+  cbor_add_int(w, s->imp_updates_received);
+  cbor_add_int(w, s->imp_updates_invalid);
+  cbor_add_int(w, s->imp_updates_filtered);
+  cbor_add_int(w, s->imp_updates_ignored);
+  cbor_add_int(w, s->imp_updates_accepted);
+
+  cbor_add_string(w, "import_withdraws");
+  cbor_open_list_with_length(w, 5);
+  cbor_add_int(w, s->imp_withdraws_received);
+  cbor_add_int(w, s->imp_withdraws_invalid);
+  cbor_add_int(w, -1);
+  cbor_add_int(w, s->imp_withdraws_ignored);
+  cbor_add_int(w, s->imp_withdraws_accepted);
+  
+  cbor_add_string(w, "export_updates");
+  cbor_open_list_with_length(w, 5);
+  cbor_add_int(w, s->exp_updates_received);
+  cbor_add_int(w, s->exp_updates_rejected);
+  cbor_add_int(w, s->exp_updates_filtered);
+  cbor_add_int(w, -1);
+  cbor_add_int(w, s->exp_updates_accepted);
+
+  cbor_add_string(w, "import_withdraws");
+  cbor_open_list_with_length(w, 5);
+  cbor_add_int(w, s->exp_withdraws_received);
+  cbor_add_int(w, -1);
+  cbor_add_int(w, -1);
+  cbor_add_int(w, -1);
+  cbor_add_int(w, s->exp_withdraws_accepted);
+
+  cbor_close_block_or_list(w);
+}
+
+void channel_show_limit_cbor(struct cbor_writer *w, struct channel_limit *l,  const char *dsc)
+{
+  cbor_add_string(w, dsc);
+  cbor_open_block(w);
+  if (!l->action)
+  {
+    cbor_close_block_or_list(w);
+    return;
+  }
+
+  cbor_string_int(w, "limit", l->limit);
+  cbor_string_int(w, "hit", l->state);
+  cbor_string_string(w, "action", channel_limit_name(l));
+
+  cbor_close_block_or_list(w);
+}
+
+void
 channel_cmd_debug(struct channel *c, uint mask)
 {
   if (cli_access_restricted())

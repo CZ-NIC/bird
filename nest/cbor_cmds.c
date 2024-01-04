@@ -9,7 +9,7 @@
 #include "nest/cbor_cmds.h"
 #include "proto/ospf/ospf_for_cbor.h"
 
-uint compare_str(byte *str1, uint length, const char *str2) {
+uint compare_byte_str(byte *str1, uint length, const char *str2) {
   if (length != strlen(str2)) {
     return 0;
   }
@@ -21,8 +21,85 @@ uint compare_str(byte *str1, uint length, const char *str2) {
   return 1;
 }
 
-int64_t preprocess_time(btime t) {
-  return tm_get_real_time(t) TO_S ;
+
+static char *
+proto_state_name_stolen_for_cbor(struct proto *p)
+{
+  switch (p->proto_state)
+  {
+  case PS_DOWN:		return p->active ? "flush" : "down";
+  case PS_START:	return "start";
+  case PS_UP:		return "up";
+  case PS_STOP:		return "stop";
+  default:		return "???";
+  }
+}
+
+void
+cmd_show_protocols_cbor(byte *tbuf, uint capacity, struct arg_list *args, struct linpool *lp)
+{
+  log("in cmd_show_protocols_cbor");
+  struct cbor_writer *w = cbor_init(tbuf, capacity, lp);
+  cbor_open_block_with_length(w, 1);
+  
+  cbor_add_string(w, "show_protocols:message");
+  cbor_open_block_with_length(w, 2);
+  cbor_add_string(w, "table");
+  cbor_open_list(w);
+  int all = 0;
+  int protocol = -1;
+  if (args->pt > 0 && compare_byte_str(args->args[0].arg, args->args[0].len, "all"))
+  {
+    all = 1;
+  }
+  
+  if (args->pt - all > 0)
+  {
+    protocol = all;
+  }
+
+  struct proto *p;
+  
+  WALK_LIST(p, proto_list)
+  {
+    if (protocol == -1 || compare_byte_str(args->args[protocol].arg, args->args[protocol].len, p->name))
+    {
+      cbor_open_block(w);
+      cbor_string_string(w, "name", p->name);
+      cbor_string_string(w, "proto", p->proto->name);
+      cbor_string_string(w, "table", p->main_channel ? p->main_channel->table->name : "---");
+      cbor_string_string(w, "state", proto_state_name_stolen_for_cbor(p));
+      cbor_string_int(w, "since", preprocess_time(p->last_state_change));
+      byte buf[256];
+      buf[0] = 0;
+      if (p->proto->get_status)
+        p->proto->get_status(p, buf);
+      cbor_string_string(w, "info", buf);
+      
+      if (all)
+      {
+        if (p->cf->dsc)
+          cbor_string_string(w, "description", p->cf->dsc);
+        if (p->message)
+          cbor_string_string(w, "message", p->message);
+        if (p->cf->router_id)
+          cbor_string_int(w, "router_id", p->cf->router_id);
+        if (p->vrf_set)
+          cbor_string_string(w, "vrf", p->vrf ? p->vrf->name : "default");
+
+        if (p->proto->show_proto_info_cbor)
+          p->proto->show_proto_info_cbor(w, p);
+        else
+        {
+          struct channel *c;
+          WALK_LIST(c, p->channels)
+	    channel_show_info(c);
+        }
+      }
+      cbor_close_block_or_list(w);
+    }
+  }
+  cbor_close_block_or_list(w);
 }
 
 extern pool *rt_table_pool;
@@ -121,7 +198,7 @@ int parse_show_symbols_arg(struct argument *argument)
   int param_vals[] = {SYM_TABLE, SYM_FILTER, SYM_FUNCTION, SYM_PROTO, SYM_TEMPLATE, SYM_CONSTANT, SYM_VARIABLE};  // defined in conf.h
   for (size_t j = 0; j < sizeof(params)/sizeof(char*); j++)
   {
-    if (compare_str(argument->arg, argument->len, params[j]))
+    if (compare_byte_str(argument->arg, argument->len, params[j]))
     {
       return param_vals[j];
     }
@@ -153,7 +230,7 @@ cmd_show_symbols_cbor(byte *tbuf, uint capacity, struct arg_list *args, struct l
     {
       HASH_WALK(scope->hash, next, sym)
       {
-	if (compare_str(args->args[args->pt - 1].arg, args->args[args->pt - 1].len, sym->name))
+	if (compare_byte_str(args->args[args->pt - 1].arg, args->args[args->pt - 1].len, sym->name))
 	{
 	  cbor_add_string(w, "name");
 	  cbor_nonterminated_string(w, args->args[args->pt - 1].arg, args->args[args->pt - 1].len);
@@ -228,8 +305,8 @@ cbor_get_proto_name(struct argument *arg, enum protocol_class proto_type, struct
   struct proto *q;
   WALK_LIST(q, proto_list)
   {
-    log("%s %s %i %i %i", arg->arg, q->name, compare_str(arg->arg, arg->len, q->name) , (q->proto_state != PS_DOWN) , (q->proto->class == proto_type));
-    if (compare_str(arg->arg, arg->len, q->name) && (q->proto_state != PS_DOWN) && (q->proto->class == proto_type))
+    log("%s %s %i %i %i", arg->arg, q->name, compare_byte_str(arg->arg, arg->len, q->name) , (q->proto_state != PS_DOWN) , (q->proto->class == proto_type));
+    if (compare_byte_str(arg->arg, arg->len, q->name) && (q->proto_state != PS_DOWN) && (q->proto->class == proto_type))
     {
       return q;
     }
@@ -251,15 +328,15 @@ cmd_show_ospf_cbor(byte *tbuf, uint capacity, struct arg_list *args, struct linp
   if (args->pt == 0)
   {
     cbor_open_block_with_length(w, 1);
-    cbor_string_string(w, "not implemented", "show everything about ospf");
+    cbor_string_string(w, "not_implemented", "show everything about ospf");
     return w->pt;
   }
 
-  if (compare_str(args->args[0].arg, args->args[0].len, "topology"))
+  if (compare_byte_str(args->args[0].arg, args->args[0].len, "topology"))
   {
     cbor_open_block(w);
     struct proto *proto;
-    int all_ospf = (args->pt > 1) && compare_str(args->args[1].arg, args->args[1].len, "all");
+    int all_ospf = (args->pt > 1) && compare_byte_str(args->args[1].arg, args->args[1].len, "all");
     if (args->pt - all_ospf > 1) // if there is protocol name
     {
       proto = cbor_get_proto_name(&args->args[args->pt -1], PROTOCOL_OSPF, w);
@@ -279,7 +356,7 @@ cmd_show_ospf_cbor(byte *tbuf, uint capacity, struct arg_list *args, struct linp
     return w->pt;
   } else {
     cbor_open_block_with_length(w, 1);
-    cbor_add_string(w, "not implemented");
+    cbor_add_string(w, "not_implemented");
     cbor_nonterminated_string(w, args->args[0].arg, args->args[0].len);
     return w->pt;
   }
