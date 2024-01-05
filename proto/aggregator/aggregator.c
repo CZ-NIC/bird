@@ -644,11 +644,124 @@ print_prefixes(const struct trie_node *node, int type)
   }
 }
 
+static void
+create_route_ip4(struct aggregator_proto *proto, const struct net_addr_ip4 *addr, struct aggregator_bucket *bucket)
+{
+  struct {
+    struct network net;
+    union net_addr_union u;
+  } net_placeholder;
+
+  assert(addr->type == NET_IP4);
+  net_copy_ip4((struct net_addr_ip4 *)&net_placeholder.net.n.addr, addr);
+  bucket->rte->src = proto->p.main_source;
+  aggregator_bucket_update(proto, bucket, &net_placeholder.net);
+}
+
+static void
+create_route_ip6(struct aggregator_proto *proto, struct net_addr_ip6 *addr, struct aggregator_bucket *bucket)
+{
+  struct {
+    struct network n;
+    union net_addr_union u;
+  } net_placeholder;
+
+  assert(addr->type == NET_IP6);
+  net_copy_ip6((struct net_addr_ip6 *)&net_placeholder.n.n.addr, addr);
+  bucket->rte->src = proto->p.main_source;
+  aggregator_bucket_update(proto, bucket, &net_placeholder.n);
+}
+
+static void
+collect_prefixes_helper_ip4(const struct trie_node *node, struct net_addr_ip4 *addr, struct aggregator_proto *proto, int depth, int *count)
+{
+  assert(node != NULL);
+
+  if (is_leaf(node))
+  {
+    assert(node->bucket != NULL);
+    create_route_ip4(proto, addr, node->bucket);
+    *count += 1;
+    return;
+  }
+
+  if (node->bucket != NULL)
+  {
+    create_route_ip4(proto, addr, node->bucket);
+    *count += 1;
+  }
+
+  if (node->child[0])
+  {
+    ip4_clrbit(&addr->prefix, depth);
+    addr->pxlen = depth + 1;
+    collect_prefixes_helper_ip4(node->child[0], addr, proto, depth + 1, count);
+  }
+
+  if (node->child[1])
+  {
+    ip4_setbit(&addr->prefix, depth);
+    addr->pxlen = depth + 1;
+    collect_prefixes_helper_ip4(node->child[1], addr, proto, depth + 1, count);
   }
 }
 
 static void
+collect_prefixes_helper_ip6(const struct trie_node *node, struct net_addr_ip6 *addr, struct aggregator_proto *proto, int depth, int *count)
 {
+  assert(node != NULL);
+
+  if (is_leaf(node))
+  {
+    assert(node->bucket != NULL);
+    create_route_ip6(proto, addr, node->bucket);
+    *count += 1;
+    return;
+  }
+
+  if (node->bucket != NULL)
+  {
+    create_route_ip6(proto, addr, node->bucket);
+    *count += 1;
+  }
+
+  if (node->child[0])
+  {
+    ip6_clrbit(&addr->prefix, depth);
+    addr->pxlen = depth + 1;
+    collect_prefixes_helper_ip6(node->child[0], addr, proto, depth + 1, count);
+  }
+
+  if (node->child[1])
+  {
+    ip6_setbit(&addr->prefix, depth);
+    addr->pxlen = depth + 1;
+    collect_prefixes_helper_ip6(node->child[1], addr, proto, depth + 1, count);
+  }
+}
+
+static void
+collect_prefixes(struct aggregator_proto *proto)
+{
+  int count = 0;
+  int type = NET_IP4;
+
+  if (type == NET_IP4)
+  {
+    struct net_addr_ip4 *addr = allocz(sizeof(struct net_addr_ip4));
+    addr->type = NET_IP4;
+    addr->length = sizeof(struct net_addr_ip4);
+    collect_prefixes_helper_ip4(proto->root, addr, proto, 0, &count);
+  }
+  else if (type == NET_IP6)
+  {
+    struct net_addr_ip6 *addr = allocz(sizeof(struct net_addr_ip6));
+    addr->type = NET_IP6;
+    addr->length = sizeof(struct net_addr_ip6);
+    collect_prefixes_helper_ip6(proto->root, addr, proto, 0, &count);
+  }
+
+  log("%d prefixes collected", count);
 }
 
 /*
@@ -673,6 +786,8 @@ calculate_trie(void *p)
   third_pass(proto->root);
   log("====THIRD PASS====");
   print_prefixes(proto->root, NET_IP4);
+
+  collect_prefixes(proto);
 }
 
 /*
