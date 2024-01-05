@@ -65,6 +65,8 @@
 
 extern linpool *rte_update_pool;
 
+static void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net);
+
 static inline int
 is_leaf(const struct trie_node *node)
 {
@@ -1332,14 +1334,17 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   }
   HASH_WALK_END;
 
-  ev_schedule(&p->reload_trie);
+  if (p->net_present == 0)
+    ev_schedule(&p->reload_trie);
+  else
+  {
+    /* Announce changes */
+    if (old_bucket)
+      aggregator_bucket_update(p, old_bucket, net);
 
-  /* Announce changes */
-  if (old_bucket)
-    aggregator_bucket_update(p, old_bucket, net);
-
-  if (new_bucket && (new_bucket != old_bucket))
-    aggregator_bucket_update(p, new_bucket, net);
+    if (new_bucket && (new_bucket != old_bucket))
+      aggregator_bucket_update(p, new_bucket, net);
+  }
 
   /* Cleanup the old bucket if empty */
   if (old_bucket && (!old_bucket->rte || !old_bucket->count))
@@ -1403,6 +1408,7 @@ aggregator_init(struct proto_config *CF)
   p->aggr_on_count = cf->aggr_on_count;
   p->aggr_on_da_count = cf->aggr_on_da_count;
   p->aggr_on = cf->aggr_on;
+  p->net_present = cf->net_present;
   p->merge_by = cf->merge_by;
 
   P->rt_notify = aggregator_rt_notify;
