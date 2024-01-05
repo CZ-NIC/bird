@@ -25,6 +25,7 @@ struct aggregator_config {
   uint aggr_on_count;
   uint aggr_on_da_count;
   struct aggr_item *aggr_on;
+  int net_present;
   const struct f_line *merge_by;
 };
 
@@ -59,6 +60,7 @@ struct aggregator_proto {
   uint aggr_on_count;
   uint aggr_on_da_count;
   struct aggr_item *aggr_on;
+  int net_present;
 
   /* Merge filter */
   const struct f_line *merge_by;
