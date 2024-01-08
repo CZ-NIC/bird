@@ -705,6 +705,7 @@ channel_start_export(struct channel *c)
 
   bmap_init(&c->export_map, p, 16);
   bmap_init(&c->export_reject_map, p, 16);
+  bmap_init(&c->refeed_map, p, 16);
 
   channel_reset_limit(c, &c->out_limit, PLD_OUT);
 
@@ -791,6 +792,7 @@ channel_export_stopped(struct rt_export_request *req)
 
     bmap_reset(&c->export_map, 16);
     bmap_reset(&c->export_reject_map, 16);
+    bmap_reset(&c->refeed_map, 16);
 
     rt_request_export(c->table, req);
     return;
@@ -833,7 +835,7 @@ channel_init_feeding(struct channel *c)
   /* No direct feeding, running auxiliary refeed. */
   c->refeeding = c->refeed_pending;
   c->refeed_pending = NULL;
-  c->refeed_trie = f_new_trie(lp_new(c->proto->pool), 0);
+  bmap_reset(&c->refeed_map, 16);
 
   if (no_trie)
   {
@@ -924,11 +926,6 @@ channel_feed_end(struct channel *c)
 
   /* Drop the refeed batch */
   c->refeeding = NULL;
-  if (c->refeed_trie)
-  {
-    rfree(c->refeed_trie->lp);
-    c->refeed_trie = NULL;
-  }
 
   /* Run the pending batch */
   if (c->refeed_pending)

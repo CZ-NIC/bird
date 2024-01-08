@@ -583,7 +583,7 @@ struct channel {
   struct rt_export_request out_req;	/* Table export connection */
 
   struct rt_export_request refeed_req;	/* Auxiliary refeed request */
-  struct f_trie *refeed_trie;		/* Auxiliary refeed trie */
+  struct bmap refeed_map;		/* Auxiliary refeed netindex bitmap */
   struct channel_feeding_request *refeeding;	/* Refeeding the channel */
   struct channel_feeding_request *refeed_pending;	/* Scheduled refeeds */
   struct channel_import_request *importing;	/* Importing the channel */
@@ -718,11 +718,12 @@ void channel_request_feeding_dynamic(struct channel *c, enum channel_feeding_req
 static inline int channel_net_is_refeeding(struct channel *c, const net_addr *n)
 {
   /* Not refeeding if not refeeding at all */
-  if (!c->refeeding || !c->refeed_trie)
+  if (!c->refeeding)
     return 0;
 
   /* Not refeeding if already refed */
-  if (trie_match_net(c->refeed_trie, n))
+  struct netindex *ni = NET_TO_INDEX(n);
+  if (bmap_test(&c->refeed_map, ni->index))
     return 0;
 
   /* Refeeding if matching any request */
@@ -735,8 +736,10 @@ static inline int channel_net_is_refeeding(struct channel *c, const net_addr *n)
 }
 static inline void channel_net_mark_refed(struct channel *c, const net_addr *n)
 {
-  ASSERT_DIE(c->refeeding && c->refeed_trie);
-  trie_add_prefix(c->refeed_trie, n, n->pxlen, n->pxlen);
+  ASSERT_DIE(c->refeeding);
+
+  struct netindex *ni = NET_TO_INDEX(n);
+  bmap_set(&c->refeed_map, ni->index);
 }
 
 void channel_request_reload(struct channel *c);
