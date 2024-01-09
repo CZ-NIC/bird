@@ -976,7 +976,7 @@ rpki_show_proto_info_timer_cbor(struct cbor_writer *w, const char *name, uint nu
   cbor_open_block(w);
   if (tm_active(t))
   {
-    cbor_string_int(w, "time", preprocess_time(tm_remains(t)));
+    cbor_string_int(w, "time", tm_get_real_time(tm_remains(t)) TO_S);
     cbor_string_int(w, "num", num);
   }
   cbor_close_block_or_list(w);
@@ -1021,7 +1021,7 @@ rpki_show_proto_info_cbor(struct cbor_writer *w, struct proto *P)
 
     cbor_string_string(w, "status", rpki_cache_state_to_str(cache->state));
     cbor_string_string(w, "transport", transport_name);
-    cbor_string_int(w, "cache_version", cache->version);
+    cbor_string_int(w, "protocol_version", cache->version);
 
     if (cache->request_session_id)
       cbor_string_string(w, "session_id", "-");
@@ -1031,7 +1031,7 @@ rpki_show_proto_info_cbor(struct cbor_writer *w, struct proto *P)
     if (cache->last_update)
     {
       cbor_string_int(w, "serial_num", cache->serial_num);
-      cbor_string_int(w, "last_update", preprocess_time(current_time() - cache->last_update));
+      cbor_string_int(w, "last_update", tm_get_real_time(current_time() - cache->last_update) TO_S);
     }
 
     rpki_show_proto_info_timer_cbor(w, "Refresh timer", cache->refresh_interval, cache->refresh_timer);

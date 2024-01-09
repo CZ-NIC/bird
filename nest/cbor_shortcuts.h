@@ -7,13 +7,13 @@
 #include "nest/protocol.h"
 #include "lib/ip.h"
 
-int64_t preprocess_time(btime t);
 
 void cbor_string_string(struct cbor_writer *writer, char *key, const char *value);
 
 void cbor_string_int(struct cbor_writer *writer, char *key, int64_t value);
 
 void cbor_string_uint(struct cbor_writer *writer, char *key, u64 value);
+void cbor_string_ip(struct cbor_writer *writer, char *key, ip_addr addr);
 void cbor_string_ipv4(struct cbor_writer *writer, char *key, u32 value);
 void cbor_string_ipv6(struct cbor_writer *writer, char *key, u32 value[4]);
 void cbor_named_block_two_ints(struct cbor_writer *writer, char *key, char *name1, int val1, char *name2, int val2);

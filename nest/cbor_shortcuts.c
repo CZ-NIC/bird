@@ -3,10 +3,6 @@
 
 #include "nest/cbor_shortcuts.h"
 
-int64_t preprocess_time(btime t) {
-  return tm_get_real_time(t) TO_S ;
-}
-
 void cbor_string_string(struct cbor_writer *writer, char *key, const char *value) {
   cbor_add_string(writer, key);
   cbor_add_string(writer, value);
@@ -20,6 +16,18 @@ void cbor_string_int(struct cbor_writer *writer, char *key, int64_t value) {
 void cbor_string_uint(struct cbor_writer *writer, char *key, u64 value) {
   cbor_add_string(writer, key);
   cbor_add_uint(writer, value);
+}
+
+void cbor_string_ip(struct cbor_writer *writer, char *key, ip_addr addr) {
+  cbor_add_string(writer, key);
+  if (ipa_is_ip4(addr))
+  {
+    cbor_add_ipv4(writer, ipa_to_ip4(addr).addr);
+  }
+  else
+  {
+    cbor_add_ipv6(writer, addr.addr);
+  }
 }
 
 void cbor_string_ipv4(struct cbor_writer *writer, char *key, u32 value) {

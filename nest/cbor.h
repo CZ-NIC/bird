@@ -4,7 +4,6 @@
 #include "nest/bird.h"
 #include "lib/ip.h"
 
-
 struct cbor_writer {
   int pt; // where will next byte go
   int capacity;

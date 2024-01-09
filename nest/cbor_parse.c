@@ -202,6 +202,10 @@ do_command(struct buff_reader *rbuf_read, struct buff_reader *tbuf_read, int ite
       args = parse_arguments(rbuf_read, items_in_block, lp);
       log("args %i, pt %i", args, args->pt);
       return cmd_show_ospf_cbor(tbuf_read->buff, tbuf_read->size, args, lp);
+    case SHOW_PROTOCOLS:
+      args = parse_arguments(rbuf_read, items_in_block, lp);
+      log("args %i, pt %i", args, args->pt);
+      return cmd_show_protocols_cbor(tbuf_read->buff, tbuf_read->size, args, lp);
     default:
       bug("command %li not found", val.val);
       return 0;
@@ -243,7 +247,7 @@ parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize, struct linpool* lp)
   }
   struct value val = get_value(&rbuf_read);
   ASSERT(val.major == BLOCK);
-  ASSERT(val.val <=1); 
+  ASSERT(val.val <=1);
   int wait_for_end_main_block = val.val == -1;
   if (val.val != 0)
   {

@@ -3186,7 +3186,6 @@ bgp_show_capabilities(struct bgp_proto *p UNUSED, struct bgp_caps *caps)
 static void
 bgp_show_capabilities_cbor(struct cbor_writer *w, struct bgp_proto *p UNUSED, struct bgp_caps *caps)
 {
-  cbor_add_string(w, "capabilities");
   cbor_open_block(w);
   struct bgp_af_caps *ac;
   uint any_mp_bgp = 0;
@@ -3209,16 +3208,12 @@ bgp_show_capabilities_cbor(struct cbor_writer *w, struct bgp_proto *p UNUSED, st
 
   if (any_mp_bgp)
   {
-    cbor_add_string(w, "multiprotocol");
-    cbor_open_block(w);
-
     afn1 = 0;
     WALK_AF_CAPS(caps, ac)
       if (ac->ready)
 	afl1[afn1++] = ac->afi;
 
-    bgp_show_afis_cbor(w, "AF_announced:", afl1, afn1);
-    cbor_close_block_or_list(w);
+    bgp_show_afis_cbor(w, "AF_announced", afl1, afn1);
   }
 
   if (caps->route_refresh)
@@ -3234,7 +3229,7 @@ bgp_show_capabilities_cbor(struct cbor_writer *w, struct bgp_proto *p UNUSED, st
       if (ac->ext_next_hop)
 	afl1[afn1++] = ac->afi;
 
-    bgp_show_afis_cbor(w, "IPv6_nexthop:", afl1, afn1);
+    bgp_show_afis_cbor(w, "IPv6_nexthop", afl1, afn1);
   }
 
   if (caps->ext_messages)
@@ -3274,15 +3269,13 @@ bgp_show_capabilities_cbor(struct cbor_writer *w, struct bgp_proto *p UNUSED, st
   }
 
   if (caps->as4_support)
-     {
+  {
     cbor_add_string(w, "4-octet_AS_numbers");
     cbor_open_list_with_length(w, 0);
   }
 
   if (any_add_path)
   {
-    cli_msg(-1006, "      ADD-PATH");
-
     afn1 = afn2 = 0;
     WALK_AF_CAPS(caps, ac)
     {
@@ -3489,8 +3482,11 @@ bgp_show_proto_info_cbor(struct cbor_writer *w, struct proto *P)
   }
   else
   {
-    cbor_string_ipv4(w, "neighbor_addr", *p->remote_ip.addr);
-    cbor_string_string(w, "iface", p->cf->iface->name);
+    cbor_string_ip(w, "neighbor_addr", p->remote_ip);
+    if (p->cf->iface)
+      cbor_string_string(w, "iface", p->cf->iface->name);
+    else
+      cbor_string_string(w, "iface", "");
   }
 
   if ((p->conn == &p->outgoing_conn) && (p->cf->remote_port != BGP_PORT))
@@ -3530,13 +3526,10 @@ bgp_show_proto_info_cbor(struct cbor_writer *w, struct proto *P)
   {
     cbor_add_string(w, "neighbor_id");
     cbor_add_ipv4(w, p->remote_id);
-    cli_msg(-1006, "    Local capabilities");
     cbor_add_string(w, "local_cap");
-    cbor_open_block_with_length(w, 1);
     bgp_show_capabilities_cbor(w, p, p->conn->local_caps);
     cbor_add_string(w, "neighbor_cap");
-    cbor_open_block_with_length(w, 1);
-    bgp_show_capabilities(p, p->conn->remote_caps);
+    bgp_show_capabilities_cbor(w, p, p->conn->remote_caps);
 
     cbor_add_string(w, "session");
     cbor_open_list(w);
@@ -3554,8 +3547,7 @@ bgp_show_proto_info_cbor(struct cbor_writer *w, struct proto *P)
       cbor_add_string(w, "AS4");
     cbor_close_block_or_list(w);
 
-    cbor_add_string(w, "source_address");
-    cbor_add_ipv6(w, p->local_ip.addr);
+    cbor_string_ip(w, "source_address", p->local_ip);
 
     cbor_string_int(w, "hold_timer", tm_remains(p->conn->hold_timer));
     cbor_string_int(w, "hold_t_base", p->conn->hold_time);
@@ -3569,19 +3561,24 @@ bgp_show_proto_info_cbor(struct cbor_writer *w, struct proto *P)
   {
     const char *err1 = bgp_err_classes[p->last_error_class];
     const char *err2 = bgp_last_errmsg(p);
-    cli_msg(-1006, "    Last error:       %s%s", err1, err2);
+    cbor_string_string(w, "last_err1", err1);
+    cbor_string_string(w, "last_err2", err2);
   }
 
   {
     struct bgp_channel *c;
     cbor_add_string(w, "channels");
-    cbor_open_block(w);
+    cbor_open_list(w);
     WALK_LIST(c, p->p.channels)
     {
+      cbor_open_block(w);
       channel_show_info_cbor(w, &c->c);
 
       if (c->c.channel != &channel_bgp)
+      {
+        cbor_close_block_or_list(w);
 	continue;
+      }
 
       if (p->gr_active_num)
         cbor_string_string(w, "neighbor_gr", bgp_gr_states[c->gr_active]);
@@ -3593,15 +3590,12 @@ bgp_show_proto_info_cbor(struct cbor_writer *w, struct proto *P)
       {
 	if (ipa_zero(c->link_addr))
 	{
-	  cbor_add_string(w, "next_hop");
-	  cbor_add_ipv6(w, c->next_hop_addr.addr);
+	  cbor_string_ip(w, "next_hop", c->next_hop_addr);
 	}
 	else
 	{
-	  cbor_add_string(w, "next_hop1");
-	  cbor_add_ipv6(w, c->next_hop_addr.addr);
-	  cbor_add_string(w, "next_hop2");
-	  cbor_add_ipv6(w,  c->link_addr.addr);
+	  cbor_string_ip(w, "next_hop1", c->next_hop_addr);
+	  cbor_string_ip(w, "next_hop2", c->link_addr);
 	}
       }
 
@@ -3613,6 +3607,7 @@ bgp_show_proto_info_cbor(struct cbor_writer *w, struct proto *P)
 
       if (c->base_table)
         cbor_string_string(w, "base_table", c->base_table->name);
+      cbor_close_block_or_list(w);
     }
     cbor_close_block_or_list(w);
   }

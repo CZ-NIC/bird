@@ -12,12 +12,6 @@ struct buff_reader {
 // TODO incude linpool declaration
 uint parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize, struct linpool *lp);
 
-enum functions {
-  SHOW_STATUS = 0,
-  SHOW_MEMORY = 1,
-  SHOW_SYMBOLS = 2,
-  SHOW_OSPF = 3,
-};
 
 enum cbor_majors {
   UINT = 0,
