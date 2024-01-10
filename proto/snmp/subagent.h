@@ -36,8 +36,6 @@ enum SNMP_CLASSES {
   SNMP_CLASS_END,
 };
 
-#define BGP4_VERSIONS ((char[]) { 0x10 })
-
 enum agentx_type {
   AGENTX_INTEGER	    =   2,
   AGENTX_OCTET_STRING	    =   4,
@@ -52,6 +50,8 @@ enum agentx_type {
   AGENTX_NO_SUCH_OBJECT	    = 128,
   AGENTX_NO_SUCH_INSTANCE   = 129,
   AGENTX_END_OF_MIB_VIEW    = 130,
+
+  AGENTX_INVALID	    =  -1,
 } PACKED;
 
 enum snmp_search_res {
@@ -158,7 +158,8 @@ struct agentx_header {
   u32 payload;		/* payload_length of the packet without header */
 };
 
-#define AGENTX_HEADER_SIZE sizeof(struct agentx_header)
+#define AGENTX_HEADER_SIZE 20
+STATIC_ASSERT(AGENTX_HEADER_SIZE == sizeof(struct agentx_header));
 
 struct oid {
   u8 n_subid;
@@ -176,10 +177,15 @@ struct agentx_varbind {
   /* AgentX variable binding data optionaly here */
 };
 
-/* this does not work */
 struct agentx_search_range {
-  struct oid start;
-  struct oid end;
+  struct oid *start;
+  struct oid *end;
+};
+
+/* AgentX Octet String */
+struct agentx_octet_str {
+  u32 length;
+  byte data[0];
 };
 
 struct agentx_getbulk {
@@ -194,9 +200,13 @@ struct agentx_response {
   u16 index;
 };
 
+STATIC_ASSERT(4 + 2 + 2 + AGENTX_HEADER_SIZE == sizeof(struct agentx_response));
+
 struct agentx_close_pdu {
   struct agentx_header h;
   u8 reason;
+  u8 pad1;
+  u16 pad2;
 };
 
 struct agentx_un_register_hdr {
@@ -279,12 +289,21 @@ enum agentx_response_errs {
   AGENTX_RES_PROCESSING_ERR	    = 268,	/* processingError */
 } PACKED;
 
-/* SNMP PDU buffer info */
+/* SNMP PDU TX-buffer info */
 struct snmp_pdu {
   byte *buffer;			    /* pointer to buffer */
   uint size;			    /* unused space in buffer */
   enum agentx_response_errs error;  /* storage for result of current action */
   u32 index;			    /* index on which the error was found */
+};
+
+struct snmp_packet_info {
+  node n;
+  u8 type; // enum type
+  u32 session_id;
+  u32 transaction_id;
+  u32 packet_id;
+  void *data;
 };
 
 #if 0

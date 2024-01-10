@@ -40,10 +40,10 @@ snmp_proto_item:
     if (($3 < 1) || ($3 > 65535)) cf_error("Invalid port number");
     SNMP_CFG->remote_port = $3;
   }
- | LOCAL ID ipa { SNMP_CFG->bgp_local_id = $3; }
- | LOCAL ADDRESS ipa { SNMP_CFG->local_ip = $3; }
- | REMOTE ADDRESS ipa {
-    if (ipa_zero($3)) cf_error("Invalid remote ip address");
+ | LOCAL ID IP4 { SNMP_CFG->bgp_local_id = $3; }
+ | LOCAL ADDRESS IP4 { SNMP_CFG->local_ip = $3; }
+ | REMOTE ADDRESS IP4 {
+    if (ip4_zero($3)) cf_error("Invalid remote ip address");
     SNMP_CFG->remote_ip = $3;
   }
  | LOCAL AS expr {
@@ -86,9 +86,9 @@ snmp_proto_start: proto_start SNMP
   init_list(&SNMP_CFG->bgp_entries);
   SNMP_CFG->bonds = 0;
 
-  SNMP_CFG->local_ip = IPA_NONE;
-  SNMP_CFG->remote_ip = ipa_build4(127,0,0,1);
-  SNMP_CFG->bgp_local_id = IPA_NONE;
+  SNMP_CFG->local_ip = IP4_NONE;
+  SNMP_CFG->remote_ip = ip4_build(127,0,0,1);
+  SNMP_CFG->bgp_local_id = IP4_NONE;
   SNMP_CFG->local_port = 0;
   SNMP_CFG->remote_port = 705;
   SNMP_CFG->bgp_local_as = 0;

@@ -33,8 +33,11 @@ enum BGP4_MIB_PEER_TABLE {
 } PACKED;
 
 /* version of BGP, here BGP-4 */
+#define BGP4_VERSIONS ((char[]) { 0x10 }) /* OID bgp.bgpVersion */
+/* for OID bgp.bgpPeerTable.bgpPeerEntry.bgpPeerNegotiatedVersion */
 #define SNMP_BGP_NEGOTIATED_VER_VALUE 4
 #define SNMP_BGP_NEGOTIATED_VER_NO_VALUE 0
+
 
 void snmp_bgp_register(struct snmp_proto *p);
 void snmp_bgp_reg_ok(struct snmp_proto *p, struct agentx_response *r, struct oid *oid);
@@ -95,5 +98,14 @@ enum BGP_INTERNAL_STATES {
   BGP_INTERNAL_END,
   BGP_INTERNAL_NO_VALUE = 255,
 } PACKED;
+
+enum bgp4_mib_bgp_states {
+  BGP_MIB_IDLE = 1,
+  BGP_MIB_CONNECT = 2,
+  BGP_MIB_ACTIVE = 3,
+  BGP_MIB_OPENSENT = 4,
+  BGP_MIB_OPENCONFIRM = 5,
+  BGP_MIB_ESTABLISHED = 6,
+};
 
 #endif

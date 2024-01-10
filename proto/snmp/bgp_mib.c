@@ -13,6 +13,13 @@
 #include "subagent.h"
 #include "bgp_mib.h"
 
+STATIC_ASSERT(BGP_MIB_IDLE == BS_IDLE + 1);
+STATIC_ASSERT(BGP_MIB_CONNECT == BS_CONNECT + 1);
+STATIC_ASSERT(BGP_MIB_ACTIVE == BS_ACTIVE + 1);
+STATIC_ASSERT(BGP_MIB_OPENSENT == BS_OPENSENT + 1);
+STATIC_ASSERT(BGP_MIB_OPENCONFIRM == BS_OPENCONFIRM + 1);
+STATIC_ASSERT(BGP_MIB_ESTABLISHED == BS_ESTABLISHED + 1);
+
 /* hash table macros */
 #define SNMP_HASH_KEY(n)  n->peer_ip
 #define SNMP_HASH_NEXT(n) n->next
@@ -27,43 +34,25 @@
 
 static inline void ip4_to_oid(struct oid *oid, ip4_addr addr);
 
-/* BGP_MIB states see enum BGP_INTERNAL_STATES */
-static const char * const debug_bgp_states[] UNUSED = {
-  [BGP_INTERNAL_INVALID]		 = "BGP_INTERNAL_INVALID",
-  [BGP_INTERNAL_BGP]			 = "BGP_INTERNAL_BGP",
-  [BGP_INTERNAL_VERSION]		 = "BGP_INTERNAL_VERSION",
-  [BGP_INTERNAL_LOCAL_AS]		 = "BGP_INTERNAL_LOCAL_AS",
-  [BGP_INTERNAL_PEER_TABLE]		 = "BGP_INTERNAL_PEER_TABLE",
-  [BGP_INTERNAL_PEER_ENTRY]		 = "BGP_INTERNAL_PEER_ENTRY",
-  [BGP_INTERNAL_PEER_IDENTIFIER]	 = "BGP_INTERNAL_PEER_IDENTIFIER",
-  [BGP_INTERNAL_STATE]			 = "BGP_INTERNAL_STATE",
-  [BGP_INTERNAL_ADMIN_STATUS]		 = "BGP_INTERNAL_ADMIN_STATUS",
-  [BGP_INTERNAL_NEGOTIATED_VERSION]	 = "BGP_INTERNAL_NEGOTIATED_VERSION",
-  [BGP_INTERNAL_LOCAL_ADDR]		 = "BGP_INTERNAL_LOCAL_ADDR",
-  [BGP_INTERNAL_LOCAL_PORT]		 = "BGP_INTERNAL_LOCAL_PORT",
-  [BGP_INTERNAL_REMOTE_ADDR]		 = "BGP_INTERNAL_REMOTE_ADDR",
-  [BGP_INTERNAL_REMOTE_PORT]		 = "BGP_INTERNAL_REMOTE_PORT",
-  [BGP_INTERNAL_REMOTE_AS]		 = "BGP_INTERNAL_REMOTE_AS",
-  [BGP_INTERNAL_RX_UPDATES]		 = "BGP_INTERNAL_RX_UPDATES",
-  [BGP_INTERNAL_TX_UPDATES]		 = "BGP_INTERNAL_TX_UPDATES",
-  [BGP_INTERNAL_RX_MESSAGES]		 = "BGP_INTERNAL_RX_MESSAGES",
-  [BGP_INTERNAL_TX_MESSAGES]		 = "BGP_INTERNAL_TX_MESSAGES",
-  [BGP_INTERNAL_LAST_ERROR]		 = "BGP_INTERNAL_LAST_ERROR",
-  [BGP_INTERNAL_FSM_TRANSITIONS]	 = "BGP_INTERNAL_FSM_TRANSITIONS",
-  [BGP_INTERNAL_FSM_ESTABLISHED_TIME]	 = "BGP_INTERNAL_FSM_ESTABLISHED_TIME",
-  [BGP_INTERNAL_RETRY_INTERVAL]		 = "BGP_INTERNAL_RETRY_INTERVAL",
-  [BGP_INTERNAL_HOLD_TIME]		 = "BGP_INTERNAL_HOLD_TIME",
-  [BGP_INTERNAL_KEEPALIVE]		 = "BGP_INTERNAL_KEEPALIVE",
-  [BGP_INTERNAL_HOLD_TIME_CONFIGURED]	 = "BGP_INTERNAL_HOLD_TIME_CONFIGURED",
-  [BGP_INTERNAL_KEEPALIVE_CONFIGURED]	 = "BGP_INTERNAL_KEEPALIVE_CONFIGURED",
-  [BGP_INTERNAL_ORIGINATION_INTERVAL]	 = "BGP_INTERNAL_ORIGINATION_INTERVAL",
-  [BGP_INTERNAL_MIN_ROUTE_ADVERTISEMENT] = "BGP_INTERNAL_MIN_ROUTE_ADVERTISEMENT",
-  [BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME]	 = "BGP_INTERNAL_IN_UPDATE_ELAPSED_TIME",
-  [BGP_INTERNAL_PEER_TABLE_END]		 = "BGP_INTERNAL_PEER_TABLE_END",
-  [BGP_INTERNAL_IDENTIFIER]		 = "BGP_INTERNAL_IDENTIFIER",
-  [BGP_INTERNAL_END]			 = "BGP_INTERNAL_END",
-  [BGP_INTERNAL_NO_VALUE]		 = "BGP_INTERNAL_NO_VALUE",
-};
+
+static inline void
+snmp_hash_add_peer(struct snmp_proto *p, struct snmp_bgp_peer *peer)
+{
+  HASH_INSERT(p->bgp_hash, SNMP_HASH, peer);
+}
+
+static inline struct snmp_bgp_peer *
+snmp_hash_find(struct snmp_proto *p, ip4_addr key)
+{
+  return HASH_FIND(p->bgp_hash, SNMP_HASH, key);
+}
+
+static inline void
+snmp_bgp_last_error(const struct bgp_proto *bgp, char err[2])
+{
+  err[0] = bgp->last_error_code & 0x00FF0000 >> 16;
+  err[1] = bgp->last_error_code & 0x000000FF;
+}
 
 static u8
 bgp_get_candidate(u32 field)
@@ -105,25 +94,6 @@ bgp_get_candidate(u32 field)
     return BGP_INTERNAL_PEER_ENTRY;
   else
     return BGP_INTERNAL_PEER_TABLE_END;
-}
-
-static inline void
-snmp_hash_add_peer(struct snmp_proto *p, struct snmp_bgp_peer *peer)
-{
-  HASH_INSERT(p->bgp_hash, SNMP_HASH, peer);
-}
-
-static inline struct snmp_bgp_peer *
-snmp_hash_find(struct snmp_proto *p, ip4_addr key)
-{
-  return HASH_FIND(p->bgp_hash, SNMP_HASH, key);
-}
-
-static inline void
-snmp_bgp_last_error(const struct bgp_proto *bgp, char err[2])
-{
-  err[0] = bgp->last_error_code & 0x00FF0000 >> 16;
-  err[1] = bgp->last_error_code & 0x000000FF;
 }
 
 /**
@@ -252,12 +222,13 @@ snmp_bgp_reg_failed(struct snmp_proto *p, struct agentx_response UNUSED *r, stru
 static void
 snmp_bgp_notify_common(struct snmp_proto *p, uint type, ip4_addr ip4, char last_error[], uint state_val)
 {
-  // TODO remove heap allocation, put the data on stack
-
 #define SNMP_OID_SIZE_FROM_LEN(x) (sizeof(struct oid) + (x) * sizeof(u32))
 
+  /* OIDs, VB type headers, octet string, ip4 address, integer */
+  uint sz = 3 * SNMP_OID_SIZE_FROM_LEN(9) + 3 * 4 + 8 + 8 + 4;
+
   /* trap OID bgpEstablishedNotification (.1.3.6.1.2.1.0.1) */
-  struct oid *head = mb_alloc(p->pool, SNMP_OID_SIZE_FROM_LEN(3));
+  struct oid *head = mb_alloc(p->pool, SNMP_OID_SIZE_FROM_LEN(3)) + sz;
   head->n_subid = 3;
   head->prefix = 2;
   head->include = head->pad = 0;
@@ -266,15 +237,13 @@ snmp_bgp_notify_common(struct snmp_proto *p, uint type, ip4_addr ip4, char last_
   for (uint i = 0; i < head->n_subid; i++)
     head->ids[i] = trap_ids[i];
 
-  /* OIDs, VB type headers, octet string, ip4 address, integer */
-  uint sz = 3 * SNMP_OID_SIZE_FROM_LEN(9) + 3 * 4 + 8 + 8 + 4;
 
-  /* Paylaod OIDs */
+  void *data = (void *) head + sz;
 
-  void *data = mb_alloc(p->pool, sz);
   struct agentx_varbind *addr_vb = data;
+  // TODO remove magic constants; use measuring functions instead
   /* +4 for varbind header, +8 for octet string */
-  struct agentx_varbind *error_vb = data + SNMP_OID_SIZE_FROM_LEN(9)  + 4 + 8;
+  struct agentx_varbind *error_vb = data + SNMP_OID_SIZE_FROM_LEN(9) + 4 + 8;
   struct agentx_varbind *state_vb = (void *) error_vb + SNMP_OID_SIZE_FROM_LEN(9) + 4 + 8;
 
   addr_vb->pad = error_vb->pad = state_vb->pad = 0;
@@ -330,7 +299,7 @@ snmp_bgp_fsm_state(const struct bgp_proto *bgp_proto)
   const struct bgp_conn *bgp_out = &bgp_proto->outgoing_conn;
 
   if (bgp_conn)
-    return bgp_conn->state;
+    return bgp_conn->state + 1;
 
   if (MAX(bgp_in->state, bgp_out->state) == BS_CLOSE &&
       MIN(bgp_in->state, bgp_out->state) != BS_CLOSE)
@@ -512,7 +481,7 @@ snmp_bgp_has_value(u8 state)
  * @state: BGP linearized state
  *
  * Returns @state if has value in BGP4-MIB, zero otherwise. Used for Get-PDU
- * ackets.
+ * packets.
  */
 u8
 snmp_bgp_get_valid(u8 state)
@@ -753,7 +722,6 @@ update_bgp_oid(struct oid *oid, u8 state)
 #undef SNMP_UPDATE_CASE
 }
 
-// TODO test bgp_find_dynamic_oid
 static struct oid *
 bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, const struct oid *o_end, u8 start_state)
 {
@@ -782,20 +750,20 @@ bgp_find_dynamic_oid(struct snmp_proto *p, struct oid *o_start, const struct oid
 
   trie_walk_init(&ws, p->bgp_trie, NULL, 0);
 
-  if (trie_walk_next(&ws, &net))
-  {
-    /*
-     * If the o_end is empty, then there are no conditions on the ip4 address.
-     */
-    int cmp = ip4_compare(net4_prefix(&net), dest);
-    if (cmp < 0 || (cmp == 0 && snmp_is_oid_empty(o_end)))
-    {
-      // TODO repair
-      struct oid *o = snmp_oid_duplicate(p->pool, o_start);
-      snmp_oid_ip4_index(o, 5, net4_prefix(&net));
+  if (!trie_walk_next(&ws, &net))
+    return NULL;
 
-      return o;
-    }
+  /*
+   * If the o_end is empty, then there are no conditions on the ip4 address.
+   */
+  int cmp = ip4_compare(net4_prefix(&net), dest);
+  if (cmp < 0 || (cmp == 0 && snmp_is_oid_empty(o_end)))
+  {
+    // TODO repair
+    struct oid *o = snmp_oid_duplicate(p->pool, o_start);
+    snmp_oid_ip4_index(o, 5, net4_prefix(&net));
+
+    return o;
   }
 
   return NULL;
@@ -1005,8 +973,6 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
     return pkt;
   }
 
-  // TODO XXX deal with possible change of (remote) ip; BGP should restart and
-  // disappear
   struct snmp_bgp_peer *pe = snmp_hash_find(p, addr);
 
   if (!pe)
@@ -1018,7 +984,6 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
   const struct bgp_proto *bgp_proto = pe->bgp_proto;
   if (!ipa_is_ip4(bgp_proto->remote_ip))
   {
-    // TODO XXX: serious issue here
     log(L_ERR, "%s: Found BGP protocol instance with IPv6 address", bgp_proto->p.name);
     vb->type = AGENTX_NO_SUCH_INSTANCE;
     c->error = AGENTX_RES_GEN_ERROR;
@@ -1028,7 +993,6 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
   ip4_addr proto_ip = ipa_to_ip4(bgp_proto->remote_ip);
   if (!ip4_equal(proto_ip, pe->peer_ip))
   {
-    // TODO XXX:
     /* Here, we could be in problem as the bgp_proto IP address could be changed */
     log(L_ERR, "%s: Stored hash key IP address and peer remote address differ.",
       bgp_proto->p.name);
@@ -1041,21 +1005,21 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
   const struct bgp_stats *bgp_stats = &bgp_proto->stats;
   const struct bgp_config *bgp_conf = bgp_proto->cf;
 
-  uint bgp_state = snmp_bgp_fsm_state(bgp_proto);
+  uint fsm_state = snmp_bgp_fsm_state(bgp_proto);
 
   char last_error[2];
   snmp_bgp_last_error(bgp_proto, last_error);
   switch (state)
   {
     case BGP_INTERNAL_PEER_IDENTIFIER:
-      if (bgp_state == BS_OPENCONFIRM || bgp_state == BS_ESTABLISHED)
+      if (fsm_state == BGP_MIB_OPENCONFIRM || fsm_state == BGP_MIB_ESTABLISHED)
 	pkt = snmp_varbind_ip4(vb, size, ip4_from_u32(bgp_proto->remote_id));
       else
 	pkt = snmp_varbind_ip4(vb, size, IP4_NONE);
       break;
 
     case BGP_INTERNAL_STATE:
-      pkt = snmp_varbind_int(vb, size, bgp_state);
+      pkt = snmp_varbind_int(vb, size, fsm_state);
       break;
 
     case BGP_INTERNAL_ADMIN_STATUS:
@@ -1067,7 +1031,7 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
       break;
 
     case BGP_INTERNAL_NEGOTIATED_VERSION:
-      if (bgp_state == BS_OPENCONFIRM || bgp_state == BS_ESTABLISHED)
+      if (fsm_state == BGP_MIB_ESTABLISHED || fsm_state == BGP_MIB_ESTABLISHED)
 	pkt = snmp_varbind_int(vb, size, SNMP_BGP_NEGOTIATED_VER_VALUE);
       else
 	pkt = snmp_varbind_int(vb, size, SNMP_BGP_NEGOTIATED_VER_NO_VALUE);
@@ -1075,7 +1039,6 @@ bgp_fill_dynamic(struct snmp_proto UNUSED *p, struct agentx_varbind *vb,
       break;
 
     case BGP_INTERNAL_LOCAL_ADDR:
-      // TODO XXX bgp_proto->link_addr & zero local_ip
       pkt = snmp_varbind_ip4(vb, size, ipa_to_ip4(bgp_proto->local_ip));
       break;
 
@@ -1235,8 +1198,7 @@ UNUSED, uint contid UNUSED, u8 state)
       break;
 
     case BGP_INTERNAL_IDENTIFIER:
-      // TODO make a check
-      pkt = snmp_varbind_ip4(vb, size, ipa_to_ip4(p->bgp_local_id));
+      pkt = snmp_varbind_ip4(vb, size, p->bgp_local_id);
       break;
 
     default:

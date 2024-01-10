@@ -12,6 +12,7 @@
 
 #include "lib/ip.h"
 #include "lib/socket.h"
+#include "lib/resource.h"
 #include "lib/timer.h"
 #include "nest/bird.h"
 #include "nest/protocol.h"
@@ -48,12 +49,12 @@ struct snmp_bond {
 
 struct snmp_config {
   struct proto_config cf;
-  ip_addr local_ip;
-  ip_addr remote_ip;
+  ip4_addr local_ip;
+  ip4_addr remote_ip;
   u16 local_port;
   u16 remote_port;
 
-  ip_addr bgp_local_id;	  /* BGP4-MIB related fields */
+  ip4_addr bgp_local_id;	  /* BGP4-MIB related fields */
   u32 bgp_local_as;
 
   btime timeout;
@@ -94,17 +95,28 @@ struct snmp_proto {
   struct object_lock *lock;
   pool *pool;			  /* a shortcut to the procotol mem. pool */
   linpool *lp;			  /* linpool for bgp_trie nodes */
+  slab *request_storage;		  /* manages storages storage for incomming requests */
 
-  ip_addr local_ip;
-  ip_addr remote_ip;
+  enum snmp_proto_state state;
+
+  ip4_addr local_ip;
+  ip4_addr remote_ip;
   u16 local_port;
   u16 remote_port;
 
-  ip_addr bgp_local_id;		  /* BGP4-MIB related fields */
+  ip4_addr bgp_local_id;		  /* BGP4-MIB related fields */
   u32 bgp_local_as;
 
   sock *sock;
-  void *last_header;		  /* points to partial PDU header */
+
+  /* Partial packet processing */
+  uint header_offset;		  /* offset of PDU header in TX-buffer during
+				   * partial parsing */
+  uint last_index;		  /* stores last index during partial parsing */
+  uint last_size;		  /* number of bytes used inside TX-buffer */
+  uint last_pkt_id;		  /* stores packetId to use for partial packet */
+
+
   btime timeout;		  /* timeout is part of MIB registration. It
 				    specifies how long should the master
 				    agent wait for request responses. */
@@ -123,10 +135,11 @@ struct snmp_proto {
   HASH(struct snmp_bgp_peer) bgp_hash;
   struct tbf rl_gen;
 
+  list pending_pdus;
+
   timer *ping_timer;
   btime startup_delay;
   timer *startup_timer;
-  u8 state;
 };
 
 //void snmp_tx(sock *sk);

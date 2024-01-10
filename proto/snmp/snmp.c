@@ -1,6 +1,5 @@
 /*
- *	BIRD -- Simple Network Management Protocol (SNMP)
- *
+ *	BIRD -- Simple Network Management Protocol (SNMP) *
  *      (c) 2022 Vojtech Vilimek <vojtech.vilimek@nic.cz>
  *      (c) 2022 CZ.NIC z.s.p.o.
  *
@@ -135,11 +134,12 @@ static void snmp_cleanup(struct snmp_proto *p);
 static int
 snmp_rx_skip(sock UNUSED *sk, uint UNUSED size)
 {
+  log(L_INFO "snmp_rx_skip with size %u", size);
   return 1;
 }
 
 /*
- * snmp_tx - handle empty TX-buffer during session reset
+ * snmp_tx_skip - handle empty TX-buffer during session reset
  * @sk: communication socket
  *
  * The socket tx_hook is called when the TX-buffer is empty, i.e. all data was
@@ -147,10 +147,11 @@ snmp_rx_skip(sock UNUSED *sk, uint UNUSED size)
  * resetting the established session. If called we direcly reset the session.
  */
 static void
-snmp_tx(sock *sk)
+snmp_tx_skip(sock *sk)
 {
+  log(L_INFO "snmp_tx_skip()");
   struct snmp_proto *p = sk->data;
-  snmp_sock_disconnect(p, 1);
+  snmp_set_state(p, SNMP_DOWN);
 }
 
 /*
@@ -168,11 +169,15 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
   p->state = state;
 
   if (last == SNMP_RESET)
+  {
     rfree(p->sock);
+    p->sock = NULL;
+  }
 
   switch (state)
   {
   case SNMP_INIT:
+    debug("snmp -> SNMP_INIT\n");
     ASSERT(last == SNMP_DOWN);
     struct object_lock *lock;
     lock = p->lock = olock_new(p->pool);
@@ -190,11 +195,13 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     break;
 
   case SNMP_LOCKED:
+    debug("snmp -> SNMP_LOCKED\n");
     ASSERT(last == SNMP_INIT || SNMP_RESET);
+    snmp_unset_header(p);
     sock *s = sk_new(p->pool);
     s->type = SK_TCP_ACTIVE;
-    s->saddr = p->local_ip;
-    s->daddr = p->remote_ip;
+    s->saddr = ipa_from_ip4(p->local_ip);
+    s->daddr = ipa_from_ip4(p->remote_ip);
     s->dport = p->remote_port;
     s->rbsize = SNMP_RX_BUFFER_SIZE;
     s->tbsize = SNMP_TX_BUFFER_SIZE;
@@ -216,32 +223,40 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     break;
 
   case SNMP_OPEN:
+    debug("snmp -> SNMP_OPEN\n");
     ASSERT(last == SNMP_LOCKED);
     p->sock->rx_hook = snmp_rx;
     p->sock->tx_hook = NULL;
+    log(L_WARN " Staring subagent %u %u %u %u", p->header_offset, p->last_index, p->last_size, p->last_pkt_id);
     snmp_start_subagent(p);
     // handle no response (for long time)
     break;
 
   case SNMP_REGISTER:
+    debug("snmp -> SNMP_REGISTER\n");
     ASSERT(last == SNMP_OPEN);
     snmp_register_mibs(p);
     break;
 
   case SNMP_CONN:
+    debug("snmp -> SNMP_CONN\n");
     ASSERT(last == SNMP_REGISTER);
     proto_notify_state(&p->p, PS_UP);
     break;
 
   case SNMP_STOP:
+    debug("snmp -> SNMP_STOP\n");
     ASSUME(last == SNMP_REGISTER || last == SNMP_CONN);
     snmp_stop_subagent(p);
+    p->sock->rx_hook = snmp_rx_skip;
+    p->sock->tx_hook = snmp_tx_skip;
     p->startup_timer->hook = snmp_stop_timeout;
     tm_start(p->startup_timer, p->timeout);
     proto_notify_state(&p->p, PS_STOP);
     break;
 
   case SNMP_DOWN:
+    debug("snmp -> SNMP_DOWN\n");
     //ASSUME(last == SNMP_STOP || SNMP_INIT || SNMP_LOCKED || SNMP_OPEN);
     snmp_cleanup(p);
     // FIXME: handle the state in which we call proto_notify_state and
@@ -250,10 +265,11 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     break;
 
   case SNMP_RESET:
+    debug("snmp -> SNMP_RESET\n");
     ASSUME(last == SNMP_REGISTER || last == SNMP_CONN);
-    ASSERT(p->sock);
+    ASSUME(p->sock);
     p->sock->rx_hook = snmp_rx_skip;
-    p->sock->tx_hook = snmp_tx;
+    p->sock->tx_hook = snmp_tx_skip;
     break;
 
   default:
@@ -276,8 +292,7 @@ snmp_init(struct proto_config *CF)
 
   p->rl_gen = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
 
-  /* default starting state */
-  //p->state = SNMP_DOWN; // (0)
+  p->state = SNMP_DOWN;
 
   return P;
 }
@@ -380,10 +395,6 @@ snmp_sock_disconnect(struct snmp_proto *p, int reconnect)
     return;
   }
 
-  //proto_notify_state(&p->p, PS_START);
-  rfree(p->sock);
-  p->sock = NULL;
-
   // TODO - wouldn't be better to use inter jump state RESET (soft reset) ?
   snmp_set_state(p, SNMP_DOWN);
 
@@ -419,7 +430,6 @@ static void
 snmp_start_locked(struct object_lock *lock)
 {
   struct snmp_proto *p = lock->data;
-log(L_INFO "SNMP startup timer or btime %t ? %ld", p->startup_delay,	p->startup_timer);
   if (p->startup_delay)
   {
     ASSERT(p->startup_timer);
@@ -445,6 +455,9 @@ snmp_reconnect(timer *tm)
   // TODO
   snmp_set_state(p, SNMP_DOWN);
   return;
+  /* reset the connection */
+  snmp_sock_disconnect(p, 1);
+  // TODO better snmp_set_state(SNMP_DOWM); ??
   if (p->state == SNMP_STOP ||
       p->state == SNMP_DOWN)
     return;
@@ -589,11 +602,43 @@ snmp_start(struct proto *P)
 
   snmp_bgp_start(p);
 
-  p->last_header = NULL;
+  snmp_unset_header(p);
 
   snmp_set_state(p, SNMP_INIT);
 
   return PS_START;
+}
+
+static inline int
+snmp_reconfigure_logic(struct snmp_proto *p, const struct snmp_config *new)
+{
+  const struct snmp_config *old = SKIP_BACK(struct snmp_config, cf, p->p.cf);
+
+  if (old->bonds != new->bonds)
+    return 0;
+
+  uint bonds = old->bonds;
+  struct snmp_bond *b1, *b2;
+  WALK_LIST(b1, new->bgp_entries)
+  {
+    WALK_LIST(b2, old->bgp_entries)
+    {
+      if (!strcmp(b1->config->name, b2->config->name))
+	goto skip;
+    }
+
+    return 0;
+skip:
+    bonds--;
+  }
+
+  if (bonds != 0)
+    return 0;
+
+  return !memcmp(((byte *) old) + sizeof(struct proto_config),
+      ((byte *) new) + sizeof(struct proto_config),
+      OFFSETOF(struct snmp_config, description) - sizeof(struct proto_config))
+    && ! strncmp(old->description, new->description, UINT32_MAX);
 }
 
 /*
@@ -611,30 +656,22 @@ snmp_reconfigure(struct proto *P, struct proto_config *CF)
   // remove lost bonds, add newly created
   struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
   const struct snmp_config *new = SKIP_BACK(struct snmp_config, cf, CF);
-  const struct snmp_config *old = SKIP_BACK(struct snmp_config, cf, p->p.cf);
 
-  struct snmp_bond *b1, *b2;
-  WALK_LIST(b1, new->bgp_entries)
-  {
-    WALK_LIST(b2, old->bgp_entries)
-    {
-      if (!strcmp(b1->config->name, b2->config->name))
-	goto skip;
-    }
+  int retval = snmp_reconfigure_logic(p, new);
 
-    return 0;
-skip:;
+  if (retval) {
+    /* Reinitialize the hash after snmp_shutdown() */
+    HASH_INIT(p->bgp_hash, p->pool, 10);
+    snmp_bgp_start(p);
+    snmp_unset_header(p);
   }
 
-  return !memcmp(((byte *) old) + sizeof(struct proto_config),
-      ((byte *) new) + sizeof(struct proto_config),
-      OFFSETOF(struct snmp_config, description) - sizeof(struct proto_config))
-    && ! strncmp(old->description, new->description, UINT32_MAX);
+  return retval;
 }
 
 /*
- * snmp_show_proto_info - Print basic information about SNMP protocol instance
- * @P - SNMP protocol generic handle
+ * snmp_show_proto_info - print basic information about SNMP protocol instance
+ * @P: SNMP protocol generic handle
  */
 static void
 snmp_show_proto_info(struct proto *P)
@@ -646,22 +683,26 @@ snmp_show_proto_info(struct proto *P)
 
   // TODO move me into the bgp_mib.c
   cli_msg(-1006, "    BGP4-MIB");
-  cli_msg(-1006, "      enabled true");	  // TODO
+  // TODO enabled
   cli_msg(-1006, "      Local AS %u", p->bgp_local_as);
   cli_msg(-1006, "      Local router id %R", p->bgp_local_id);
   cli_msg(-1006, "      BGP peers");
 
+  if (p->state == SNMP_DOWN || p->state == SNMP_RESET)
+    return;
+
   HASH_WALK(p->bgp_hash, next, peer)
   {
     cli_msg(-1006, "    protocol name: %s", peer->bgp_proto->p.name);
-    cli_msg(-1006, "    remote IPv4 address: %I4", peer->peer_ip);
+    cli_msg(-1006, "    Remote IPv4 address: %I4", peer->peer_ip);
+    cli_msg(-1006, "    Remote router id %R", peer->bgp_proto->remote_id);
   }
   HASH_WALK_END;
 }
 
 /*
  * snmp_postconfig - Check configuration correctness
- * @CF - SNMP procotol configuration generic handle
+ * @CF: SNMP procotol configuration generic handle
  */
 static void
 snmp_postconfig(struct proto_config *CF)

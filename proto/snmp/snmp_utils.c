@@ -11,20 +11,29 @@
 #include "snmp_utils.h"
 
 inline void
-snmp_pdu_context(struct snmp_pdu *pdu, sock *sk)
+snmp_pdu_context(const struct snmp_proto *p, struct snmp_pdu *pdu, sock *sk)
 {
-  pdu->buffer = sk->tpos;
-  pdu->size = sk->tbuf + sk->tbsize - sk->tpos;
   pdu->error = AGENTX_RES_NO_ERROR;
-  pdu->index = 0;
+  if (!snmp_is_partial(p))
+  {
+    pdu->buffer = sk->tpos;
+    pdu->size = sk->tbuf + sk->tbsize - sk->tpos;
+    pdu->index = 0;
+    return;
+  }
+
+  pdu->buffer = sk->tbuf + p->header_offset + p->last_size;
+  pdu->size = sk->tbuf + sk->tbsize - pdu->buffer;
+  pdu->index = p->last_index;
 }
 
 inline void
 snmp_session(const struct snmp_proto *p, struct agentx_header *h)
 {
-  h->session_id = p->session_id;
-  h->transaction_id = p->transaction_id;
-  h->packet_id = p->packet_id;
+  STORE_U32(h->session_id, p->session_id);
+  STORE_U32(h->transaction_id, p->transaction_id);
+  STORE_U32(h->packet_id, p->packet_id);
+  //log(L_INFO "storing packet id %u into the header %p", p->packet_id, h);
 }
 
 inline int
@@ -36,7 +45,8 @@ snmp_has_context(const struct agentx_header *h)
 inline byte *
 snmp_add_context(struct snmp_proto *p, struct agentx_header *h, uint contid)
 {
-  h->flags = h->flags | AGENTX_NON_DEFAULT_CONTEXT;
+  u8 flags = LOAD_U8(h->flags);
+  STORE_U8(h->flags, flags | AGENTX_NON_DEFAULT_CONTEXT);
   // TODO append the context after the header
   (void)p;
   (void)contid;
@@ -60,7 +70,8 @@ int
 snmp_is_oid_empty(const struct oid *oid)
 {
   if (oid != NULL)
-    return oid->n_subid == 0 && oid->prefix == 0 && oid->include == 0;
+    return LOAD_U8(oid->n_subid) == 0 && LOAD_U8(oid->prefix) == 0 &&
+	LOAD_U8(oid->include) == 0;
   else
     return 0;
 }
@@ -76,9 +87,10 @@ snmp_pkt_len(const byte *start, const byte *end)
   return (end - start) - AGENTX_HEADER_SIZE;
 }
 
-/**
- *
- * used for copying oid to in buffer oid @dest
+/*
+ * snmp_oid_copy - copy OID from one place to another
+ * @dest: destination to use
+ * @src: OID to be copied from
  */
 void
 snmp_oid_copy(struct oid *dest, const struct oid *src)
@@ -88,12 +100,14 @@ snmp_oid_copy(struct oid *dest, const struct oid *src)
   STORE_U8(dest->include, src->include ? 1 : 0);
   STORE_U8(dest->pad,	  0);
 
-  for (int i = 0; i < src->n_subid; i++)
+  for (int i = 0; i < LOAD_U8(src->n_subid); i++)
     STORE_U32(dest->ids[i], src->ids[i]);
 }
 
-/**
- *
+/*
+ * snmp_oid_duplicate - duplicate an OID from memory pool
+ * @pool: pool to use
+ * @oid: OID to be duplicated
  */
 struct oid *
 snmp_oid_duplicate(pool *pool, const struct oid *oid)
@@ -113,6 +127,10 @@ snmp_oid_blank(struct snmp_proto *p)
   return mb_allocz(p->p.pool, sizeof(struct oid));
 }
 
+/**
+ * snmp_str_size_from_len - return in-buffer octet-string size
+ * @len: length of C-string, returned from strlen()
+ */
 size_t
 snmp_str_size_from_len(uint len)
 {
@@ -152,79 +170,218 @@ snmp_oid_sizeof(uint n_subid)
   return sizeof(struct oid) + n_subid * sizeof(u32);
 }
 
-uint snmp_varbind_hdr_size_from_oid(struct oid *oid)
+/*
+ * snmp_varbind_hdr_size_from_oid - return in-buffer size of VarBind
+ * @oid: OID used as VarBind's name
+ *
+ * This function assume @oid to be not NULL.
+ */
+uint
+snmp_varbind_hdr_size_from_oid(const struct oid *oid)
 {
-  return snmp_oid_size(oid) + 4;
+  ASSUME(oid);
+  return snmp_oid_size(oid) + OFFSETOF(struct agentx_varbind, name);
+}
+
+/*
+ * snmp_set_varbind_type - set VarBind's type field
+ * @vb: Varbind inside TX-buffer
+ * @t: a valid type to be set
+ *
+ * This function assumes valid @t.
+ */
+inline void
+snmp_set_varbind_type(struct agentx_varbind *vb, enum agentx_type t)
+{
+  ASSUME(t != AGENTX_INVALID);
+  STORE_U16(vb->type, t);
+}
+
+/* Internal wrapper */
+static inline u16
+snmp_load_varbind_type(const struct agentx_varbind *vb)
+{
+  return LOAD_U16(vb->type);
+}
+
+/*
+ * snmp_get_varbind_type - loads a VarBind type
+ * @vb: VarBind pointer to TX-buffer
+ *
+ * This function assumes VarBind with valid type, always call snmp_test_varbind
+ * for in TX-buffer VarBinds!
+ */
+inline enum agentx_type
+snmp_get_varbind_type(const struct agentx_varbind *vb)
+{
+  ASSUME(snmp_test_varbind(vb));
+  return (enum agentx_type) snmp_load_varbind_type(vb);
+}
+
+static inline uint
+snmp_get_octet_size(const struct agentx_octet_str *str)
+{
+  return LOAD_U32(str->length);
 }
 
 /**
- * snmp_vb_size - measure size of varbind in bytes
- * @vb: variable binding to use
+ * snmp_varbind_header_size - measure size of VarBind without data in bytes
+ * @vb: VarBind to use
+ *
+ * Return size including whole OID as well as the VarBind header.
  */
 uint
-snmp_varbind_header_size(struct agentx_varbind *vb)
+snmp_varbind_header_size(const struct agentx_varbind *vb)
 {
   return snmp_varbind_hdr_size_from_oid(&vb->name);
 }
 
 uint
-snmp_varbind_size(struct agentx_varbind *vb)
+snmp_varbind_size_unsafe(const struct agentx_varbind *vb)
 {
-  uint hdr_size = snmp_varbind_header_size(vb);
-  int s = agentx_type_size(vb->type);
+  ASSUME(snmp_test_varbind(vb));
 
-  if (s >= 0)
-    return hdr_size + (uint) s;
+  enum agentx_type type = snmp_get_varbind_type(vb);
+  int value_size = agentx_type_size(type);
 
-  void *data = snmp_varbind_data(vb);
+  uint vb_header = snmp_varbind_header_size(vb);
 
-  if (vb->type == AGENTX_OBJECT_ID)
-    return hdr_size + snmp_oid_size((struct oid *) data);
+  if (value_size == 0)
+    return vb_header;
 
-  /*
-   * Load length of octet string
-   * (AGENTX_OCTET_STRING, AGENTX_IP_ADDRESS, AGENTX_OPAQUE)
-   */
-  return hdr_size + snmp_str_size_from_len(LOAD_PTR(data));
+  if (value_size > 0)
+    return vb_header + value_size;
+
+  switch (type)
+  {
+    case AGENTX_OBJECT_ID:;
+      struct oid *oid = snmp_varbind_data(vb);
+      return vb_header + snmp_oid_size(oid);
+
+    case AGENTX_OCTET_STRING:
+    case AGENTX_IP_ADDRESS:
+    case AGENTX_OPAQUE:;
+      struct agentx_octet_str *string = snmp_varbind_data(vb);
+      return vb_header + snmp_get_octet_size(string);
+
+    default:
+      /* Shouldn't happen */
+      return 0;
+  }
 }
 
-/* test if the varbind has valid type */
+/**
+ * snmp_varbind_size - get size of in-buffer VarBind
+ * @vb: VarBind to measure
+ * @limit: upper limit of bytes that can be used
+ *
+ * This functions assumes valid VarBind type.
+ * Return 0 for Varbinds longer than limit, Varbind's size otherwise.
+ */
+uint
+snmp_varbind_size(const struct agentx_varbind *vb, uint limit)
+{
+  ASSUME(snmp_test_varbind(vb));
+
+  if (limit < sizeof(struct agentx_varbind))
+    return 0;
+
+  enum agentx_type type = agentx_type_size(snmp_get_varbind_type(vb));
+  int s = agentx_type_size(type);
+  uint vb_header = snmp_varbind_header_size(vb);
+
+  if (limit < vb_header)
+    return 0;
+
+  if (s == 0)
+    return vb_header;
+
+  if (s > 0 && vb_header + s <= limit)
+    return vb_header + s;
+  else if (s > 0)
+    return 0;
+
+  switch (type)
+  {
+    case AGENTX_OBJECT_ID:;
+      struct oid *oid = snmp_varbind_data(vb);
+      return vb_header + snmp_oid_size(oid);
+
+    case AGENTX_OCTET_STRING:
+    case AGENTX_IP_ADDRESS:
+    case AGENTX_OPAQUE:;
+      struct agentx_octet_str *os = snmp_varbind_data(vb);
+      return vb_header + snmp_get_octet_size(os);
+
+    default:
+      /* This should not happen */
+      return 0;
+  }
+}
+
+/*
+ * snmp_test_varbind - test validity of VarBind's type
+ * @vb: VarBind to test
+ */
 int
 snmp_test_varbind(const struct agentx_varbind *vb)
 {
-  if (vb->type == AGENTX_INTEGER  ||
-      vb->type == AGENTX_OCTET_STRING  ||
-      vb->type == AGENTX_NULL  ||
-      vb->type == AGENTX_OBJECT_ID  ||
-      vb->type == AGENTX_IP_ADDRESS  ||
-      vb->type == AGENTX_COUNTER_32  ||
-      vb->type == AGENTX_GAUGE_32  ||
-      vb->type == AGENTX_TIME_TICKS  ||
-      vb->type == AGENTX_OPAQUE  ||
-      vb->type == AGENTX_COUNTER_64  ||
-      vb->type == AGENTX_NO_SUCH_OBJECT  ||
-      vb->type == AGENTX_NO_SUCH_INSTANCE  ||
-      vb->type == AGENTX_END_OF_MIB_VIEW)
+  ASSUME(vb);
+
+  u16 type = snmp_load_varbind_type(vb);
+  if (type == AGENTX_INTEGER  ||
+      type == AGENTX_OCTET_STRING  ||
+      type == AGENTX_NULL  ||
+      type == AGENTX_OBJECT_ID  ||
+      type == AGENTX_IP_ADDRESS  ||
+      type == AGENTX_COUNTER_32  ||
+      type == AGENTX_GAUGE_32  ||
+      type == AGENTX_TIME_TICKS  ||
+      type == AGENTX_OPAQUE  ||
+      type == AGENTX_COUNTER_64  ||
+      type == AGENTX_NO_SUCH_OBJECT  ||
+      type == AGENTX_NO_SUCH_INSTANCE  ||
+      type == AGENTX_END_OF_MIB_VIEW)
     return 1;
   else
     return 0;
 }
 
+/*
+ * snmp_create_varbind - create a null-typed VarBind in buffer
+ * @buf: buffer to use
+ */
+struct agentx_varbind *
+snmp_create_varbind_null(byte *buf)
+{
+  struct oid o = { 0 };
+  struct agentx_varbind *vb = snmp_create_varbind(buf, &o);
+  snmp_set_varbind_type(vb, AGENTX_NULL);
+  return vb;
+}
+
+/*
+ * snmp_create_varbind - initialize in-buffer non-typed VarBind
+ * @buf: pointer to first unused buffer byte
+ * @oid: OID to use as VarBind name
+ */
 struct agentx_varbind *
 snmp_create_varbind(byte *buf, struct oid *oid)
 {
-  struct agentx_varbind *vb = (void*) buf;
-  vb->pad = 0;
+  struct agentx_varbind *vb = (void *) buf;
+  STORE_U16(vb->pad, 0);
   snmp_oid_copy(&vb->name, oid);
   return vb;
 }
 
+#if 0
 byte *
 snmp_fix_varbind(struct agentx_varbind *vb, struct oid *new)
 {
   memcpy(&vb->name, new, snmp_oid_size(new));
   return (void *) vb + snmp_varbind_header_size(vb);
 }
+#endif
 
 /**
  * snmp_oid_ip4_index - check IPv4 address validity in oid
@@ -258,20 +415,27 @@ snmp_valid_ip4_index_unsafe(const struct oid *o, uint start)
   return 1;
 }
 
+/*
+ * snmp_put_nstr - copy c-string into buffer with limit
+ * @buf: destination buffer
+ * @str: string to use
+ * @len: number of characters to use from string
+ */
 byte *
 snmp_put_nstr(byte *buf, const char *str, uint len)
 {
   uint alen = BIRD_ALIGN(len, 4);
 
-  STORE_PTR(buf, len);
-  buf += 4;
-  memcpy(buf, str, len);
+  struct agentx_octet_str *octet = (void *) buf;
+  STORE_U32(octet->length, len);
+  memcpy(&octet->data, str, len);
+  buf += len + sizeof(octet->length);
 
   /* Insert zero padding in the gap at the end */
   for (uint i = 0; i < alen - len; i++)
-    buf[len + i] = '\0';
+    STORE_U8(buf[i], '\0');
 
-  return buf + alen;
+  return buf + (alen - len);
 }
 
 /**
@@ -296,6 +460,7 @@ snmp_put_ip4(byte *buf, ip4_addr addr)
   /* octet string has size 4 bytes */
   STORE_PTR(buf, 4);
 
+  /* Always use Network byte order */
   put_u32(buf+4, ip4_to_u32(addr));
 
   return buf + 8;
@@ -328,15 +493,11 @@ snmp_put_oid(byte *buf, struct oid *oid)
  *
  * Put @data into buffer @buf with 3B zeroed padding.
  */
-/* paste data at first byte in message
- *   with 3B of padding
- */
 byte *
 snmp_put_fbyte(byte *buf, u8 data)
 {
-  //log(L_INFO "paste_fbyte()");
-  put_u8(buf, data);
-  put_u24(++buf, 0);  // PADDING
+  STORE_U8(*buf++, data);
+  memset(buf, 0, 3); /* we fill the 24bit padding with zeros */
   return buf + 3;
 }
 
@@ -394,9 +555,6 @@ snmp_oid_dump(const struct oid *oid)
 int
 snmp_oid_compare(const struct oid *left, const struct oid *right)
 {
-  const u32 INTERNET_PREFIX[] = {1, 3, 6, 1};
-
-
   if (left->prefix == 0 && right->prefix == 0)
     goto test_ids;
 
@@ -406,9 +564,9 @@ snmp_oid_compare(const struct oid *left, const struct oid *right)
   if (left->prefix == 0)
   {
     for (int i = 0; i < 4; i++)
-      if (left->ids[i] < INTERNET_PREFIX[i])
+      if (left->ids[i] < snmp_internet[i])
 	return -1;
-      else if (left->ids[i] > INTERNET_PREFIX[i])
+      else if (left->ids[i] > snmp_internet[i])
 	return 1;
 
     for (int i = 0; i < MIN(left->n_subid - 4, right->n_subid); i++)
@@ -453,7 +611,9 @@ snmp_registration_create(struct snmp_proto *p, u8 mib_class)
   r->session_id = p->session_id;
   /* will be incremented by snmp_session() macro during packet assembly */
   r->transaction_id = p->transaction_id;
+  // TODO where is incremented? is this valid?
   r->packet_id = p->packet_id + 1;
+  log(L_INFO "using registration packet_id %u", r->packet_id);
 
   r->mib_class = mib_class;
 
@@ -465,6 +625,7 @@ snmp_registration_create(struct snmp_proto *p, u8 mib_class)
 int
 snmp_registration_match(struct snmp_registration *r, struct agentx_header *h, u8 class)
 {
+  log(L_INFO "snmp_reg_same() r->packet_id %u p->packet_id %u", r->packet_id, h->packet_id);
   return
     (r->mib_class == class) &&
     (r->session_id == h->session_id) &&
@@ -483,8 +644,11 @@ snmp_dump_packet(byte UNUSED *pkt, uint size)
 }
 
 /*
- * Returns length of agentx_type @type in bytes.
- * Variable length types result in -1.
+ * agentx_type_size - get in packet VarBind type size
+ * @type: VarBind type
+ *
+ * Returns length of agentx_type @type in bytes, Variable length types result in
+ * -1.
  */
 int
 agentx_type_size(enum agentx_type type)
@@ -518,10 +682,11 @@ snmp_varbind_type32(struct agentx_varbind *vb, uint size, enum agentx_type type,
   if (size < (uint) agentx_type_size(type))
     return NULL;
 
-  vb->type = type;
+  snmp_set_varbind_type(vb, type);
   u32 *data = snmp_varbind_data(vb);
-  *data = val;
-  return (byte *)(data + 1);
+  STORE_PTR(data, val); /* note that the data has u32 type */
+  data++;
+  return (byte *) data;
 }
 
 inline byte *
@@ -556,17 +721,18 @@ snmp_varbind_ip4(struct agentx_varbind *vb, uint size, ip4_addr addr)
   if (size < snmp_str_size_from_len(4))
     return NULL;
 
-  vb->type = AGENTX_IP_ADDRESS;
+  snmp_set_varbind_type(vb, AGENTX_IP_ADDRESS);
   return snmp_put_ip4(snmp_varbind_data(vb), addr);
 }
 
+// TODO doc string, we have already the varbind prepared
 inline byte *
 snmp_varbind_nstr(struct agentx_varbind *vb, uint size, const char *str, uint len)
 {
   if (size < snmp_str_size_from_len(len))
     return NULL;
 
-  vb->type = AGENTX_OCTET_STRING;
+  snmp_set_varbind_type(vb, AGENTX_OCTET_STRING);
   return snmp_put_nstr(snmp_varbind_data(vb), str, len);
 }
 
@@ -574,12 +740,97 @@ inline enum agentx_type
 snmp_search_res_to_type(enum snmp_search_res r)
 {
   ASSUME(r != SNMP_SEARCH_OK);
-  static enum agentx_type type_arr[] = {
+  enum agentx_type type_arr[] = {
     [SNMP_SEARCH_NO_OBJECT]   = AGENTX_NO_SUCH_OBJECT,
     [SNMP_SEARCH_NO_INSTANCE] = AGENTX_NO_SUCH_INSTANCE,
     [SNMP_SEARCH_END_OF_VIEW] = AGENTX_END_OF_MIB_VIEW,
   };
 
   return type_arr[r];
+}
+
+inline int
+snmp_test_close_reason(byte value)
+{
+  if (value >= (byte) AGENTX_CLOSE_OTHER &&
+      value <= (byte) AGENTX_CLOSE_BY_MANAGER)
+    return 1;
+  else
+    return 0;
+}
+
+inline struct agentx_header *
+snmp_create_tx_header(struct snmp_proto *p, byte *tbuf)
+{
+  /* the response is created always in TX-buffer */
+  p->header_offset = tbuf - p->sock->tbuf;
+  ASSERT(p->header_offset < p->sock->tbsize);
+  return (struct agentx_header *) tbuf;
+}
+
+/*
+ * Partial header manipulation functions
+ */
+
+/*
+ * snmp_is_partial - check if we have a partially parted packet in TX-buffer
+ * @p: SNMP protocol instance
+ */
+inline int
+snmp_is_partial(const struct snmp_proto *p)
+{
+  return p->last_size > 0;
+}
+
+/*
+ * snmp_get_header - restore partial packet's header from TX-buffer
+ * @p: SNMP protocol instance
+ */
+inline struct agentx_header *
+snmp_get_header(const struct snmp_proto *p)
+{
+  /* Nonzero last size indicates existence of partial packet */
+  ASSERT(p->last_size && p->header_offset < p->sock->tbsize);
+  return (struct agentx_header *) (p->sock->tbuf + p->header_offset);
+}
+
+/*
+ * snmp_set_header - store partial packet's header into protocol
+ * @p: SNMP protocol instance
+ * @h: header of the currently parsed PDU
+ * @c: SNMP PDU context
+ *
+ * Store the needed values regarding later partial PDU processing.
+ */
+inline void
+snmp_set_header(struct snmp_proto *p, struct agentx_header *h, struct snmp_pdu *c)
+{
+  sock *sk = p->sock;
+  // TODO agentx_headier in last_size or not?
+  ASSERT(c->buffer - sk->tpos >= AGENTX_HEADER_SIZE);
+  p->last_size = c->buffer - sk->tpos + p->last_size;
+  p->header_offset = (((byte *) h) - sk->tbuf);
+  p->last_index = c->index;
+  log(L_INFO "using p->packet_id %u as a p->last_pkt_id %u", p->packet_id, p->last_pkt_id);
+  p->last_pkt_id = p->packet_id;
+  log(L_INFO "snmp_set_header() tbuf %p tpos %p buffer %p header %p header2 %p offset %u last_size %u last_index %u last_pkt_id %u",
+      sk->tbuf, sk->tpos, c->buffer,h,(byte*)h, p->header_offset, p->last_size,
+      p->last_index, p->last_pkt_id);
+}
+
+/*
+ * snmp_unset_header - clean partial packet's header
+ * @p: SNMP protocol instance
+ *
+ * Clean the partial packet processing fields of protocol when the packet is
+ * fully processed.
+ */
+inline void
+snmp_unset_header(struct snmp_proto *p)
+{
+  p->last_size = 0;
+  p->header_offset = 0;
+  p->last_index = 0;
+  p->last_pkt_id = 0;
 }
 
