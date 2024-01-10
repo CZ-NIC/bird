@@ -30,12 +30,13 @@ struct lfuc {
  * lfuc_lock - increase an atomic usecount
  * @c: the usecount structure
  */
-static inline void lfuc_lock(struct lfuc *c)
+static inline u64 lfuc_lock(struct lfuc *c)
 {
   /* Locking is trivial; somebody already holds the underlying data structure
    * so we just increase the use count. Nothing can be freed underneath our hands. */
   u64 uc = atomic_fetch_add_explicit(&c->uc, 1, memory_order_acq_rel);
   ASSERT_DIE(uc > 0);
+  return uc & (LFUC_IN_PROGRESS - 1);
 }
 
 /**
@@ -47,9 +48,10 @@ static inline void lfuc_lock(struct lfuc *c)
  * Handy for situations with flapping routes. Use only from the same
  * loop as which runs the prune routine.
  */
-static inline void lfuc_lock_revive(struct lfuc *c)
+static inline u64 lfuc_lock_revive(struct lfuc *c)
 {
-  UNUSED u64 uc = atomic_fetch_add_explicit(&c->uc, 1, memory_order_acq_rel);
+  u64 uc = atomic_fetch_add_explicit(&c->uc, 1, memory_order_acq_rel);
+  return uc & (LFUC_IN_PROGRESS - 1);
 }
 
 /**
@@ -61,7 +63,7 @@ static inline void lfuc_lock_revive(struct lfuc *c)
  * If the usecount reaches zero, a prune event is run to possibly free the object.
  * The prune event MUST use lfuc_finished() to check the object state.
  */
-static inline void lfuc_unlock(struct lfuc *c, event_list *el, event *ev)
+static inline u64 lfuc_unlock(struct lfuc *c, event_list *el, event *ev)
 {
   /* Unlocking is tricky. We do it lockless so at the same time, the prune
    * event may be running, therefore if the unlock gets us to zero, it must be
@@ -102,11 +104,13 @@ static inline void lfuc_unlock(struct lfuc *c, event_list *el, event *ev)
 
   /* And now, finally, simultaneously pop the in-progress indicator and the
    * usecount, possibly allowing the pruning routine to free this structure */
-  atomic_fetch_sub_explicit(&c->uc, LFUC_IN_PROGRESS + 1, memory_order_acq_rel);
+  uc = atomic_fetch_sub_explicit(&c->uc, LFUC_IN_PROGRESS + 1, memory_order_acq_rel);
 
   /* ... and to reduce the load a bit, the pruning routine will better wait for
    * RCU synchronization instead of a busy loop. */
   rcu_read_unlock();
+
+  return uc - LFUC_IN_PROGRESS - 1;
 }
 
 /**

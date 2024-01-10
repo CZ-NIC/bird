@@ -189,13 +189,13 @@ net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n, pool *
 void net_lock_index(netindex_hash *h UNUSED, struct netindex *i)
 {
 //  log(L_TRACE "Lock index %p", i);
-  return lfuc_lock(&i->uc);
+  lfuc_lock(&i->uc);
 }
 
 void net_unlock_index(netindex_hash *h, struct netindex *i)
 {
 //  log(L_TRACE "Unlock index %p", i);
-  return lfuc_unlock(&i->uc, h->cleanup_list, &h->cleanup_event);
+  lfuc_unlock(&i->uc, h->cleanup_list, &h->cleanup_event);
 }
 
 struct netindex *
