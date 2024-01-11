@@ -58,7 +58,7 @@ void cbor_add_int(struct cbor_writer *writer, int64_t item)
   }
   else
   {
-    write_item(writer, 1, -item);
+    write_item(writer, 1, -item - 1);
   }
 }
 

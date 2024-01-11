@@ -1,3 +1,4 @@
+#include "nest/cbor.h"
 #include "nest/cbor_parse.h"
 #include "nest/cbor_cmds.h"
 

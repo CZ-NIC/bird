@@ -105,7 +105,6 @@ cmd_show_protocols_cbor(byte *tbuf, uint capacity, struct arg_list *args, struct
     }
   }
   cbor_close_block_or_list(w);
-  cbor_write_to_file(w, "show_protocol_first_try.cbor");
   return w->pt;
 }
 

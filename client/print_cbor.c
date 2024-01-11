@@ -1510,7 +1510,7 @@ void print_show_protocols(struct buff_reader *buf_read)
 
 void print_cbor_response(byte *cbor, int len)
 {
-  //
+  // This is only for debug purposes
   FILE *write_ptr;
 
   write_ptr = fopen("arrived.cbor", "wb");

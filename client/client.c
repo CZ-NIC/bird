@@ -476,7 +476,7 @@ server_got_binary(int c)
       length = length << 8;
       length += server_read_buf[3 + i];
     }
-    printf("length of message is %i\n", length);
+
     if (length > c - 7)
     {
       byte bigger_buf[length];
@@ -488,15 +488,10 @@ server_got_binary(int c)
       {
         DIE("Server read error");
       }
-      print_cbor_response(&bigger_buf[13], length);
+      print_cbor_response(&bigger_buf[13], length - 6);
     }
     else
     {
-      printf("no need to load more\n");
-      for (int i = 0; i < 15; i++)
-      {
-        printf("%i    %x\n",i, server_read_buf[i] );
-      }
       print_cbor_response(&server_read_buf[13], c);
     }
   }
