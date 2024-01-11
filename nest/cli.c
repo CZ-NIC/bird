@@ -405,6 +405,7 @@ cli_kick(cli *c)
 uint
 yi_process(uint size, byte *rbuf, byte *tbuf, uint tbsize) {
   log("capacity %i buffer %i", tbsize, tbuf);
+  //TODO
   if (detect_down(size, rbuf))
   {
     order_shutdown(0);

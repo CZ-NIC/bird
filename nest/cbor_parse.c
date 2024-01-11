@@ -190,26 +190,50 @@ do_command(struct buff_reader *rbuf_read, struct buff_reader *tbuf_read, int ite
   {
     case SHOW_MEMORY:
       skip_optional_args(rbuf_read, items_in_block);
-      return cmd_show_memory_cbor(tbuf_read->buff, tbuf_read->size, lp);
+      return cmd_show_memory_cbor(&tbuf_read->buff[tbuf_read->pt], tbuf_read->size, lp);
     case SHOW_STATUS:
       log("show status");
       skip_optional_args(rbuf_read, items_in_block);
-      return cmd_show_status_cbor(tbuf_read->buff, tbuf_read->size, lp);
+      return cmd_show_status_cbor(&tbuf_read->buff[tbuf_read->pt], tbuf_read->size, lp);
     case SHOW_SYMBOLS:
       args = parse_arguments(rbuf_read, items_in_block, lp);
-      return cmd_show_symbols_cbor(tbuf_read->buff, tbuf_read->size, args, lp);
+      return cmd_show_symbols_cbor(&tbuf_read->buff[tbuf_read->pt], tbuf_read->size, args, lp);
     case SHOW_OSPF:
       args = parse_arguments(rbuf_read, items_in_block, lp);
       log("args %i, pt %i", args, args->pt);
-      return cmd_show_ospf_cbor(tbuf_read->buff, tbuf_read->size, args, lp);
+      return cmd_show_ospf_cbor(&tbuf_read->buff[tbuf_read->pt], tbuf_read->size, args, lp);
     case SHOW_PROTOCOLS:
       args = parse_arguments(rbuf_read, items_in_block, lp);
       log("args %i, pt %i", args, args->pt);
-      return cmd_show_protocols_cbor(tbuf_read->buff, tbuf_read->size, args, lp);
+      return cmd_show_protocols_cbor(&tbuf_read->buff[tbuf_read->pt], tbuf_read->size, args, lp);
     default:
       bug("command %li not found", val.val);
       return 0;
   }
+}
+
+uint
+add_header(struct buff_reader *tbuf_read, struct linpool *lp, int serial_num)
+{
+  struct cbor_writer *w = cbor_init(tbuf_read->buff, tbuf_read->size, lp);
+  write_item(w, 6, 24);  // tag 24 - cbor binary
+  int length_pt = w->pt + 1;  // place where we will put final size
+  cbor_write_item_with_constant_val_length_4(w, 2, 0);
+  cbor_open_list_with_length(w, 2);
+  cbor_write_item_with_constant_val_length_4(w, 0, serial_num);
+  tbuf_read->pt+=w->pt;
+  return length_pt;
+}
+
+uint
+read_head(struct buff_reader *rbuf_read)
+{
+  struct value val = get_value(rbuf_read); //tag
+  val = get_value(rbuf_read); //bytestring
+  val = get_value(rbuf_read); //list
+  val = get_value(rbuf_read); //serial_num
+  int ret = val.val;
+  return ret;
 }
 
 uint
@@ -219,6 +243,7 @@ detect_down(uint size, byte *rbuf)
   rbuf_read.buff = rbuf;
   rbuf_read.size = size;
   rbuf_read.pt = 0;
+  read_head(&rbuf_read);
   struct value val = get_value(&rbuf_read);
   ASSERT(val.major == BLOCK);
   val = get_value(&rbuf_read);
@@ -227,7 +252,6 @@ detect_down(uint size, byte *rbuf)
   val = get_value(&rbuf_read);
   return (val.major = TEXT && compare_buff_str(&rbuf_read, val.val, "down"));
 }
-
 
 uint
 parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize, struct linpool* lp)
@@ -241,10 +265,19 @@ parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize, struct linpool* lp)
   rbuf_read.pt = 0;
   tbuf_read.pt = 0;
 
-  if (size == 0)
+  if (size <=7)
   {
     return 0;
   }
+
+  int serial_num = read_head(&rbuf_read);
+  int length_pt = add_header(&tbuf_read, lp, serial_num);
+  for (int i = 0; i < 15; i++)
+  {
+    log("%i    %x",i, tbuf[i] );
+  }
+  tbuf_read.size = tbsize - tbuf_read.pt;
+
   struct value val = get_value(&rbuf_read);
   ASSERT(val.major == BLOCK);
   ASSERT(val.val <=1);
@@ -270,7 +303,7 @@ parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize, struct linpool* lp)
       ASSERT(compare_buff_str(&rbuf_read, val.val, "command"));
       rbuf_read.pt+=val.val;
 
-      tbuf_read.pt = do_command(&rbuf_read, &tbuf_read, items_in_block, lp);
+      tbuf_read.pt += do_command(&rbuf_read, &tbuf_read, items_in_block, lp);
       if (items_in_block == -1)
       {
         val = get_value(&rbuf_read);
@@ -278,6 +311,12 @@ parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize, struct linpool* lp)
         ASSERT(val.major == FLOAT && val.val == -1);
       }
     }
+  }
+  struct cbor_writer *w = cbor_init(tbuf_read.buff, tbuf_read.size, lp);
+  rewrite_4bytes_int(w, length_pt, tbuf_read.pt - 7); // add final length to header
+  for (int i = 0; i < 15; i++)
+  {
+    log("%i    %x",i, tbuf[i] );
   }
   lp_flush(lp);
   log("parsed");

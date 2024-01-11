@@ -14,7 +14,7 @@ struct cbor_writer *cbor_init(uint8_t *buff, uint32_t capacity, struct linpool *
   struct cbor_writer *writer = (struct cbor_writer*) lp_alloc(lp, sizeof(struct cbor_writer));
   writer->cbor = buff;
   writer->capacity = capacity;
-  writer->pt =0;
+  writer->pt = 0;
   writer->lp = lp;
   return writer;
 }
@@ -195,6 +195,33 @@ void write_item(struct cbor_writer *writer, uint8_t major, uint64_t num)
   major += num;  // we can store the num as additional value
   writer->cbor[writer->pt] = major;
   writer->pt++;
+}
+
+void cbor_write_item_with_constant_val_length_4(struct cbor_writer *writer, uint8_t major, uint64_t num)
+{
+// this is only for headers which should be constantly long. 
+  major = major<<5;
+  check_memory(writer, 10);
+  major += 0x1a; // reserving those bytes
+  writer->cbor[writer->pt] = major;
+  writer->pt++;
+  for (int i = 3; i>=0; i--)
+  { // write n-th byte of num
+    uint8_t to_write = (num>>(i*8)) & 0xff;
+    writer->cbor[writer->pt] = to_write;
+    writer->pt++;
+  }
+}
+
+
+void rewrite_4bytes_int(struct cbor_writer *writer, int pt, int num)
+{
+  for (int i = 3; i>=0; i--)
+  {
+    uint8_t to_write = (num>>(i*8)) & 0xff;
+    writer->cbor[pt] = to_write;
+    pt++;
+  }
 }
 
 void check_memory(struct cbor_writer *writer, int add_size)

@@ -45,4 +45,10 @@ void cbor_add_string(struct cbor_writer *writer, const char *string);
 
 void cbor_nonterminated_string(struct cbor_writer *writer, const char *string, uint32_t length);
 
+void write_item(struct cbor_writer *writer, uint8_t major, uint64_t num);
+
+void cbor_write_item_with_constant_val_length_4(struct cbor_writer *writer, uint8_t major, uint64_t num);
+
+void rewrite_4bytes_int(struct cbor_writer *writer, int pt, int num);
+
 #endif

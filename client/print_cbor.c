@@ -118,7 +118,7 @@ void discard_key(struct buff_reader *buf_read)
   struct value val = get_value(buf_read);
   if(!(val.major == TEXT))
   {
-    bug("key is not text but %i", val.major);
+    bug("key is not text but %i, pt is %i", val.major, buf_read->pt);
   }
   buf_read->pt+=val.val;
 }
@@ -680,30 +680,6 @@ void print_show_symbols(struct buff_reader *buf_read)
   }
 }
 
-void print_channel_show_limit(struct buff_reader *buf_read)
-{
-  struct value val = get_value(buf_read);
-  int siz = val.val;
-  buf_read->pt += val.val;
-  val = get_value(buf_read); //block
-  val = get_value(buf_read);
-  if (val_is_break(val))
-    return;
-  buf_read->pt += val.val;
-  printf("    ");
-  print_with_size(&buf_read->buff[buf_read->pt], siz);
-  for(int i = 0; i < 16 - siz; i++)
-    putc(' ', stdout);
-  val = get_value(buf_read);
-  printf("%ld ", val.val);
-  val = get_value(buf_read);
-  print_with_size(&buf_read->buff[buf_read->pt], val.val);
-  buf_read->pt += val.val;
-  printf("\n      Action:       ");
-  val = get_value(buf_read);
-  print_with_size(&buf_read->buff[buf_read->pt], val.val);
-  val = get_value(buf_read);
-}
 
 void print_route_change_line(struct buff_reader *buf_read)
 {
@@ -716,88 +692,6 @@ void print_route_change_line(struct buff_reader *buf_read)
       printf("        ---");
   }
   printf("\n");
-}
-
-void print_pipe_show_stats(struct buff_reader *buf_read)
-{
-  struct value val = get_value(buf_read); //open block
-  discard_key(buf_read);
-  val = get_value(buf_read);
-  printf("  Routes:         %lu imported, ", val.val);
-  discard_key(buf_read);
-  val = get_value(buf_read);
-  printf("%lu exported\n", val.val);
-  printf("  Route change stats:     received   rejected   filtered    ignored   accepted\n");
-  discard_key(buf_read); //import_updates
-  val = get_value(buf_read); //open list
-  printf("    Import updates:    ");
-  print_route_change_line(buf_read);
-  discard_key(buf_read);
-  val = get_value(buf_read); //open list
-  printf("    Import withdraws:  ");
-  print_route_change_line(buf_read);
-  discard_key(buf_read);
-  val = get_value(buf_read); //open list
-  printf("    Export updates:    ");
-  print_route_change_line(buf_read);
-  discard_key(buf_read);
-  val = get_value(buf_read); //open list
-  printf("    Export withdraws:  ");
-  print_route_change_line(buf_read);
-  val = get_value(buf_read); //close block
-}
-
-void print_show_protocols_rpki(struct buff_reader *buf_read)
-{
-  struct value val = get_value(buf_read); //open block
-  discard_key(buf_read);
-  val = get_value(buf_read);
-  printf("  Cache server:     ");
-  print_with_size_(&buf_read->buff[buf_read->pt], val.val);
-  printf("\n");
-  buf_read->pt += val.val;
-  if (compare_buff_str(buf_read, val.val, "cache_port"))
-  {
-    buf_read->pt += val.val;
-    val = get_value(buf_read);
-    printf("  Cache port:       %lu\n", val.val);
-    val = get_value(buf_read);
-  }
-
-  print_string_string(buf_read, "  Status:           ");
-  print_string_string(buf_read, "  Transport:        ");
-
-  discard_key(buf_read);
-  val = get_value(buf_read);
-  printf("  Protocol version: %lu\n", val.val);
-
-  discard_key(buf_read);
-  printf("  Session ID:       ");
-  val = get_value(buf_read);
-  if (val.major == TEXT)
-  {
-    printf("---\n");
-    buf_read->pt += val.val;
-  }
-  else
-    printf("%lu\n", val.val);
-
-  val = get_value(buf_read);
-  if (compare_buff_str(buf_read, val.val, "serial_num"))
-  {
-    buf_read->pt += val.val;
-    val = get_value(buf_read);
-    printf("  Serial number:    %lu\n", val.val);
-    discard_key(buf_read);
-    val = get_value(buf_read);
-    printf("  Last update:      before %lu s\n", val.val);
-  }
-  else
-  {
-    printf("  Serial number:    ---\n");
-    printf("  Last update:      ---\n");
-  }
-  val = get_value(buf_read);
 }
 
 void print_channel_show_stats(struct buff_reader *buf_read)
@@ -845,8 +739,35 @@ void print_channel_show_stats(struct buff_reader *buf_read)
   val = get_value(buf_read); //close block
 }
 
+
+void print_channel_show_limit(struct buff_reader *buf_read)
+{
+  struct value val = get_value(buf_read);
+  int siz = val.val;
+  buf_read->pt += val.val;
+  val = get_value(buf_read); //block
+  val = get_value(buf_read);
+  if (val_is_break(val))
+    return;
+  buf_read->pt += val.val;
+  printf("    ");
+  print_with_size(&buf_read->buff[buf_read->pt], siz);
+  for(int i = 0; i < 16 - siz; i++)
+    putc(' ', stdout);
+  val = get_value(buf_read);
+  printf("%ld ", val.val);
+  val = get_value(buf_read);
+  print_with_size(&buf_read->buff[buf_read->pt], val.val);
+  buf_read->pt += val.val;
+  printf("\n      Action:       ");
+  val = get_value(buf_read);
+  print_with_size(&buf_read->buff[buf_read->pt], val.val);
+  val = get_value(buf_read);
+}
+
 void print_channel_show_info(struct buff_reader *buf_read)
 {
+// This function expect removed key channels and removed block opening. The reason is bgp channel list.
   print_string_string(buf_read, "  Channel ");
 
   print_string_string(buf_read, "    State:          ");
@@ -894,6 +815,158 @@ void print_channel_show_info(struct buff_reader *buf_read)
   }
 }
 
+
+void print_pipe_show_stats(struct buff_reader *buf_read)
+{
+  struct value val = get_value(buf_read); //open block
+  discard_key(buf_read);
+  val = get_value(buf_read);
+  printf("  Routes:         %lu imported, ", val.val);
+  discard_key(buf_read);
+  val = get_value(buf_read);
+  printf("%lu exported\n", val.val);
+  printf("  Route change stats:     received   rejected   filtered    ignored   accepted\n");
+  discard_key(buf_read); //import_updates
+  val = get_value(buf_read); //open list
+  printf("    Import updates:    ");
+  print_route_change_line(buf_read);
+  discard_key(buf_read);
+  val = get_value(buf_read); //open list
+  printf("    Import withdraws:  ");
+  print_route_change_line(buf_read);
+  discard_key(buf_read);
+  val = get_value(buf_read); //open list
+  printf("    Export updates:    ");
+  print_route_change_line(buf_read);
+  discard_key(buf_read);
+  val = get_value(buf_read); //open list
+  printf("    Export withdraws:  ");
+  print_route_change_line(buf_read);
+  val = get_value(buf_read); //close block
+}
+
+void print_rpki_show_proto_info_timer(struct buff_reader *buf_read)
+{
+  struct value val = get_value(buf_read); // name
+  printf("  ");
+  print_with_size_add_space(&buf_read->buff[buf_read->pt], val.val, 16);
+  buf_read->pt += val.val;
+  val = get_value(buf_read); //open block
+  val = get_value(buf_read);
+  if (!val_is_break(val))
+  {
+    buf_read->pt += val.val;
+    val = get_value(buf_read);
+    printf(": ");
+    print_as_time(val.val);
+    printf("/");
+    discard_key(buf_read);
+    val = get_value(buf_read);
+    printf("%lu\n", val.val);
+    val = get_value(buf_read); //close block
+  }
+  else
+  {
+    printf(": ---\n");
+  }
+}
+
+void print_show_protocols_rpki(struct buff_reader *buf_read)
+{
+  struct value val = get_value(buf_read); //open block
+  discard_key(buf_read);
+  val = get_value(buf_read);
+  printf("  Cache server:     ");
+  print_with_size_(&buf_read->buff[buf_read->pt], val.val);
+  printf("\n");
+  buf_read->pt += val.val;
+  val = get_value(buf_read);
+  if (compare_buff_str(buf_read, val.val, "cache_port"))
+  {
+    buf_read->pt += val.val;
+    val = get_value(buf_read);
+    printf("  Cache port:       %lu\n", val.val);
+    val = get_value(buf_read);
+  }
+
+  buf_read->pt += val.val;
+  val = get_value(buf_read);
+  printf("  Status:           ");
+  print_with_size_(&buf_read->buff[buf_read->pt], val.val);
+  printf("\n");
+  buf_read->pt += val.val;
+  print_string_string(buf_read, "  Transport:        ");
+
+  discard_key(buf_read);
+  val = get_value(buf_read);
+  printf("  Protocol version: %lu\n", val.val);
+
+  discard_key(buf_read);
+  printf("  Session ID:       ");
+  val = get_value(buf_read);
+  if (val.major == TEXT)
+  {
+    printf("---\n");
+    buf_read->pt += val.val;
+  }
+  else
+    printf("%lu\n", val.val);
+
+  int pt = buf_read->pt;
+  val = get_value(buf_read);
+  if (compare_buff_str(buf_read, val.val, "serial_num"))
+  {
+    buf_read->pt += val.val;
+    val = get_value(buf_read);
+    printf("  Serial number:    %lu\n", val.val);
+    discard_key(buf_read);
+    val = get_value(buf_read);
+    printf("  Last update:      before ");
+    print_as_time(val.val);
+    printf(" s\n");
+  }
+  else
+  {
+    printf("  Serial number:    ---\n");
+    printf("  Last update:      ---\n");
+    buf_read->pt = pt;
+  }
+  print_rpki_show_proto_info_timer(buf_read);
+  print_rpki_show_proto_info_timer(buf_read);
+  print_rpki_show_proto_info_timer(buf_read);
+
+  val = get_value(buf_read);
+
+  if (compare_buff_str(buf_read, val.val, "no_roa4"))
+  {
+    printf("  No roa4 channel\n");
+    buf_read->pt += val.val;
+  }
+  else
+  {
+    buf_read->pt += val.val;
+    val = get_value(buf_read);
+    print_channel_show_info(buf_read);
+  }
+  val = get_value(buf_read);
+
+  if (compare_buff_str(buf_read, val.val, "no_roa6"))
+  {
+    printf("  No roa6 channel\n");
+    buf_read->pt += val.val;
+  }
+  else
+  {
+    buf_read->pt += val.val;
+    val = get_value(buf_read);
+    print_channel_show_info(buf_read);
+  }
+
+  val = get_value(buf_read);
+  val = get_value(buf_read);
+}
+
+
 void print_bgp_show_afis(struct buff_reader *buf_read)
 {
   struct value val = get_value(buf_read); //open list
@@ -928,10 +1001,8 @@ void print_bgp_show_afis(struct buff_reader *buf_read)
 
 void print_bgp_capabilities(struct buff_reader *buf_read)
 {
-  printf("<debug capabilities <%s>, %x %x>\n", &buf_read->buff[buf_read->pt], buf_read->buff[buf_read->pt], buf_read->buff[buf_read->pt+1]);
   discard_key(buf_read);
   struct value val = get_value(buf_read); //open block
-  printf("<debug: val major %i, val val %li>\n", val.major, val.val);
   val = get_value(buf_read);
   if (compare_buff_str(buf_read, val.val, "AF_announced"))
   {
@@ -1042,6 +1113,7 @@ void print_bgp_capabilities(struct buff_reader *buf_read)
     val = get_value(buf_read);
     printf("      Hostname: ");
     print_with_size(&buf_read->buff[buf_read->pt], val.val);
+    buf_read->pt += val.val;
     printf("\n");
     val = get_value(buf_read);
   }
@@ -1051,6 +1123,7 @@ void print_bgp_capabilities(struct buff_reader *buf_read)
     val = get_value(buf_read);
     printf("      Role: ");
     print_with_size(&buf_read->buff[buf_read->pt], val.val);
+    buf_read->pt += val.val;
     printf("\n");
     val = get_value(buf_read);
   }
@@ -1094,32 +1167,16 @@ void print_show_protocols_bgp(struct buff_reader *buf_read)
   }
   else
   {
-    printf("<debug ");
-    print_with_size(&buf_read->buff[buf_read->pt], val.val);
-    printf("debug >");
     buf_read->pt += val.val;
   }
   val = get_value(buf_read);
-  printf("<debug maj %i val %li>\n", val.major, val.val);
-  for (int i = 0; i< 30; i++)
-    {
-    printf("<debug capabilities %x>\n", buf_read->buff[buf_read->pt+i]);
-    }
 
   printf("    Neighbor AS:      %lu\n", val.val);
-  //discard_key(buf_read);
-  printf("<debug");
+  discard_key(buf_read);
   val = get_value(buf_read);
-  printf("  maj %i val %li>\n  ", val.major, val.val);
-  print_with_size(&buf_read->buff[buf_read->pt], val.val);
-  buf_read->pt += val.val;
-  printf("  debug>\n");
-  val = get_value(buf_read);
-  printf("<debug maj %i val %li>\n", val.major, val.val);
   printf("    Local AS:         %lu\n", val.val);
 
   val = get_value(buf_read);
-  printf("<debug maj %i val %li>\n", val.major, val.val);
   if (compare_buff_str(buf_read, val.val, "gr_active"))
   {
     printf("    Neighbor graceful restart active\n");
@@ -1131,7 +1188,9 @@ void print_show_protocols_bgp(struct buff_reader *buf_read)
   {
     buf_read->pt += val.val;
     val = get_value(buf_read);
-    printf("    Error wait:       %lu/", val.val);
+    printf("    Error wait:       ");
+    print_as_time(val.val);
+    printf("/");
     discard_key(buf_read);
     val = get_value(buf_read);
     printf("%lu\n", val.val);
@@ -1141,7 +1200,9 @@ void print_show_protocols_bgp(struct buff_reader *buf_read)
   {
     buf_read->pt += val.val;
     val = get_value(buf_read);
-    printf("    Connect delay:    %lu/", val.val);
+    printf("    Connect delay:    ");
+    print_as_time(val.val);
+    printf("/");
     discard_key(buf_read);
     val = get_value(buf_read);
     printf("%lu\n", val.val);
@@ -1151,18 +1212,15 @@ void print_show_protocols_bgp(struct buff_reader *buf_read)
   {
     buf_read->pt += val.val;
     val = get_value(buf_read);
-    printf("    Connect delay:    %lu/-\n", val.val);
+    printf("    Connect delay:    ");
+    print_as_time(val.val);
+    printf("/-\n");
     val = get_value(buf_read);
   }
   if (compare_buff_str(buf_read, val.val, "neighbor_id"))
   {
     buf_read->pt += val.val;
     printf("    Neighbor ID:      ");
-    printf("<debug capabilities <%s>, %x %x>\n", &buf_read->buff[buf_read->pt], buf_read->buff[buf_read->pt], buf_read->buff[buf_read->pt+1]);
-    for (int i = 0; i< 30; i++)
-    {
-    printf("<debug capabilities %x>\n", buf_read->buff[buf_read->pt+i]);
-    }
     print_ip_addr(buf_read);
     printf("\n");
     printf("    Local capabilities\n");
@@ -1203,35 +1261,43 @@ void print_show_protocols_bgp(struct buff_reader *buf_read)
     discard_key(buf_read);
     val = get_value(buf_read);
     printf("%lu\n", val.val);
+    val = get_value(buf_read);
   }
   if (compare_buff_str(buf_read, val.val, "last_err1"))
   {
     buf_read->pt += val.val;
     printf("    Last error:       ");
-    discard_key(buf_read);
+    val = get_value(buf_read);
     print_with_size(&buf_read->buff[buf_read->pt], val.val);
+    buf_read->pt += val.val;
     printf(" ");
     discard_key(buf_read);
+    val = get_value(buf_read);
     print_with_size(&buf_read->buff[buf_read->pt], val.val);
+    buf_read->pt += val.val;
     printf("\n");
     val = get_value(buf_read);
   }
 
-  discard_key(buf_read); //channels
+  buf_read->pt += val.val; //channels
   val = get_value(buf_read); //open list
   val = get_value(buf_read); //open block
+  val = get_value(buf_read); //channel
   while (!val_is_break(val))
   {
-    discard_key(buf_read); //channel
+    buf_read->pt += val.val;
     val = get_value(buf_read); //open block
+    ASSERT(val.major == BLOCK);
 
     print_channel_show_info(buf_read);
     val = get_value(buf_read);
+
     if (compare_buff_str(buf_read, val.val, "neighbor_gr"))
     {
       buf_read->pt += val.val;
       printf("    Neighbor GR:    ");
       print_with_size(&buf_read->buff[buf_read->pt], val.val);
+      buf_read->pt += val.val;
       printf("\n");
       val = get_value(buf_read);
     }
@@ -1269,14 +1335,17 @@ void print_show_protocols_bgp(struct buff_reader *buf_read)
       val = get_value(buf_read);
       printf("    IGP IPv4 table: ");
       print_with_size(&buf_read->buff[buf_read->pt], val.val);
+      buf_read->pt += val.val;
       printf("\n");
       val = get_value(buf_read);
     }
-    if (compare_buff_str(buf_read, val.val, "igp_ipv4_table"))
+    if (compare_buff_str(buf_read, val.val, "igp_ipv6_table"))
     {
       buf_read->pt += val.val;
       printf("    IGP IPv6 table: ");
+      val = get_value(buf_read);
       print_with_size(&buf_read->buff[buf_read->pt], val.val);
+      buf_read->pt += val.val;
       printf("\n");
       val = get_value(buf_read);
     }
@@ -1284,14 +1353,15 @@ void print_show_protocols_bgp(struct buff_reader *buf_read)
     {
       buf_read->pt += val.val;
       printf("    Base table:     ");
+      val = get_value(buf_read);
       print_with_size(&buf_read->buff[buf_read->pt], val.val);
+      buf_read->pt += val.val;
       printf("\n");
       val = get_value(buf_read);
     }
     val = get_value(buf_read);
   }
   val = get_value(buf_read);
-  printf("<debug: val major %i, val val %li>\n", val.major, val.val);
 }
 
 void print_show_protocols(struct buff_reader *buf_read)
@@ -1400,12 +1470,14 @@ void print_show_protocols(struct buff_reader *buf_read)
         print_channel_show_limit(buf_read);
         print_channel_show_limit(buf_read);
         val = get_value(buf_read);
+
         if (!val_is_break(val))
         {
           buf_read->pt += val.val; // discarding key "stats"
           print_pipe_show_stats(buf_read);
           val = get_value(buf_read);
         }
+        val = get_value(buf_read);
         printf("\n");
       }
       else if (compare_buff_str(buf_read, val.val, "bgp"))
@@ -1413,7 +1485,6 @@ void print_show_protocols(struct buff_reader *buf_read)
         buf_read->pt += val.val;
         print_show_protocols_bgp(buf_read);
         val = get_value(buf_read);
-        printf("<debug: val major %i, val val %li>\n", val.major, val.val);
         printf("\n");
       }
       else
@@ -1434,7 +1505,6 @@ void print_show_protocols(struct buff_reader *buf_read)
       }
     }
     val = get_value(buf_read);
-    printf("<debug: val major %i, val val %li>\n", val.major, val.val);
   }
 }
 

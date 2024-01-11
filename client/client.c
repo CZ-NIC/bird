@@ -182,6 +182,8 @@ void write_args_cbor(char *cmd_buffer, struct cbor_writer *w)
   cbor_close_block_or_list(w);
 }
 
+int serial_num = 0;
+
 void
 make_cmd_cbor(char *cmd_buffer)
 {
@@ -190,6 +192,13 @@ make_cmd_cbor(char *cmd_buffer)
   struct linpool *lp = lp_new(&root_pool);
 
   struct cbor_writer *w = cbor_init(cbor_buf, l*10, lp);
+
+  write_item(w, 6, 24);  // tag 24 - cbor binary
+  int length_pt = w->pt + 1;
+  cbor_write_item_with_constant_val_length_4(w, 2, 0);
+  cbor_open_list_with_length(w, 2);
+  cbor_write_item_with_constant_val_length_4(w, 0, serial_num);
+  
   cbor_open_block_with_length(w, 1);
   cbor_add_string(w, "command:do");
 
@@ -204,6 +213,7 @@ make_cmd_cbor(char *cmd_buffer)
     {
       cbor_string_int(w, "command", SHOW_MEMORY);
       cbor_close_block_or_list(w);
+      rewrite_4bytes_int(w, length_pt, w->pt);
       server_send_byte(cbor_buf, w->pt);
       lp_flush(lp);
       return;
@@ -212,7 +222,7 @@ make_cmd_cbor(char *cmd_buffer)
     {
       cbor_string_int(w, "command", SHOW_STATUS);
       cbor_close_block_or_list(w);
-      cbor_write_to_file(w, "status_command.cbor");
+      rewrite_4bytes_int(w, length_pt, w->pt);
       server_send_byte(cbor_buf, w->pt);
       lp_flush(lp);
       return;
@@ -222,6 +232,7 @@ make_cmd_cbor(char *cmd_buffer)
       cbor_string_int(w, "command", SHOW_SYMBOLS);
       write_args_cbor(&cmd_buffer[buf_pt + strlen("symbols ")], w);
       cbor_close_block_or_list(w);
+      rewrite_4bytes_int(w, length_pt, w->pt);
       server_send_byte(cbor_buf, w->pt);
       lp_flush(lp);
       return;
@@ -231,6 +242,7 @@ make_cmd_cbor(char *cmd_buffer)
       cbor_string_int(w, "command", SHOW_OSPF);
       write_args_cbor(&cmd_buffer[buf_pt + strlen("ospf")], w);
       cbor_close_block_or_list(w);
+      rewrite_4bytes_int(w, length_pt, w->pt);
       server_send_byte(cbor_buf, w->pt);
       lp_flush(lp);
       return;
@@ -241,6 +253,7 @@ make_cmd_cbor(char *cmd_buffer)
       cbor_string_int(w, "command", SHOW_PROTOCOLS);
       write_args_cbor(&cmd_buffer[buf_pt + strlen("protocols")], w);
       cbor_close_block_or_list(w);
+      rewrite_4bytes_int(w, length_pt, w->pt);
       server_send_byte(cbor_buf, w->pt);
       lp_flush(lp);
       return;
@@ -254,6 +267,7 @@ make_cmd_cbor(char *cmd_buffer)
   else if (compare_string(cmd_buffer, l, "down"))
   {
     cbor_add_string(w, "down");
+    rewrite_4bytes_int(w, length_pt, w->pt);
     server_send_byte(cbor_buf, w->pt);
     die("Shutdown from client");
     return;
@@ -441,7 +455,6 @@ server_got_reply(char *x)
 void
 server_got_binary(int c)
 {
-  // TODO check cbor hello
   if (cbor_mode == 0)
   {
     byte expected[] = {0x87, 0x42, 0x49, 0x52, 0x44, 0x0D, 0x0A, 0x1A, 0x0A, 0x01};
@@ -457,7 +470,35 @@ server_got_binary(int c)
     cbor_mode = 1;
   }
   else {
-    print_cbor_response(server_read_buf, c);
+    int length = 0;
+    for (int i = 0; i < 4; i++)
+    {
+      length = length << 8;
+      length += server_read_buf[3 + i];
+    }
+    printf("length of message is %i\n", length);
+    if (length > c - 7)
+    {
+      byte bigger_buf[length];
+      memcpy(bigger_buf, server_read_buf, c);
+      int cc = read(server_fd, &bigger_buf[c], length - c + 7);
+      if (!cc)
+        die("Connection closed by server");
+      if (cc < 0)
+      {
+        DIE("Server read error");
+      }
+      print_cbor_response(&bigger_buf[13], length);
+    }
+    else
+    {
+      printf("no need to load more\n");
+      for (int i = 0; i < 15; i++)
+      {
+        printf("%i    %x\n",i, server_read_buf[i] );
+      }
+      print_cbor_response(&server_read_buf[13], c);
+    }
   }
   busy = 0;
   skip_input = 0;

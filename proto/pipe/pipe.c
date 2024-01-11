@@ -269,7 +269,7 @@ pipe_show_stats_cbor(struct cbor_writer *w, struct pipe_proto *p)
   cbor_add_int(w, s1->imp_updates_accepted);
 
   cbor_add_string(w, "import_withdraws");
-  cbor_open_block_with_length(w, 5);
+  cbor_open_list_with_length(w, 5);
   cbor_add_int(w, s2->exp_withdraws_received);
   cbor_add_int(w, s1->imp_withdraws_invalid);
   cbor_add_int(w, -1);
@@ -277,7 +277,7 @@ pipe_show_stats_cbor(struct cbor_writer *w, struct pipe_proto *p)
   cbor_add_int(w, s1->imp_withdraws_accepted);
 
   cbor_add_string(w, "export_updates");
-  cbor_open_block_with_length(w, 5);
+  cbor_open_list_with_length(w, 5);
   cbor_add_int(w, s1->exp_updates_received);
   cbor_add_int(w, s1->exp_updates_rejected + s2->imp_updates_invalid);
   cbor_add_int(w, s1->exp_updates_filtered);
@@ -285,7 +285,7 @@ pipe_show_stats_cbor(struct cbor_writer *w, struct pipe_proto *p)
   cbor_add_int(w, s2->imp_updates_accepted);
   
   cbor_add_string(w, "export_withdraws");
-  cbor_open_block_with_length(w, 5);
+  cbor_open_list_with_length(w, 5);
   cbor_add_int(w, s1->exp_withdraws_received);
   cbor_add_int(w, s2->imp_withdraws_invalid);
   cbor_add_int(w, -1);
