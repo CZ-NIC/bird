@@ -15,14 +15,62 @@ void print_with_size(byte *string, int len)
   }
 }
 
-void print_as_time(long int t)
+
+void print_time(int64_t time)
 {
-  int t1 = t TO_S;
-  int t2 = t - t1 S;
-  while (t2 > 999)
-    t2 = t2/10;
-  printf("%i.%i", t1, t2);
+  struct tm tm = *localtime(&time);
+  printf("%d-%02d-%02d %02d:%02d:%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 }
+
+void print_epoch_time(struct buff_reader *buf_read)
+{
+  struct value val = get_value(buf_read); // tag time
+  ASSERT(val.val == 1);
+  val = get_value(buf_read); // tag decimal
+  val = get_value(buf_read); // array
+  val = get_value(buf_read);
+  int shift = val.val;
+  val = get_value(buf_read);
+  while (shift > 0)
+  {
+    shift --;
+    val.val *= 10;
+  }
+  int milisec = 0;
+  while (shift < 0)
+  {
+    shift ++;
+    milisec *= 10;
+    milisec += val.val % 10;
+    val.val /= 10;
+  }
+  print_time(val.val);
+  printf(":%i", milisec);
+}
+
+void print_relativ_time(struct buff_reader *buf_read)
+{
+  struct value val = get_value(buf_read); // tag decimal
+  val = get_value(buf_read); // array
+  val = get_value(buf_read);
+  int shift = val.val;
+  val = get_value(buf_read);
+  while (shift > 0)
+  {
+    shift --;
+    val.val *= 10;
+  }
+  int milisec = 0;
+  while (shift < 0)
+  {
+    shift ++;
+    milisec *= 10;
+    milisec += val.val % 10;
+    val.val /= 10;
+  }
+  printf("%li.%i s", val.val, milisec);
+}
+
 
 void print_with_size_(byte *string, int len)
 {
@@ -123,12 +171,6 @@ void discard_key(struct buff_reader *buf_read)
   buf_read->pt+=val.val;
 }
 
-void print_time(int64_t time)
-{
-  struct tm tm = *localtime(&time);
-  printf("%d-%02d-%02d %02d:%02d:%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-
-}
 
 void print_string_string(struct buff_reader *buf_read, char *str)
 {
@@ -567,18 +609,6 @@ void print_show_memory(struct buff_reader *buf_read)
 
 void print_show_status(struct buff_reader *buf_read)
 {
-  /*
-    print("BIRD", answer["show_status:message"]["version"])
-        for key in answer["show_status:message"]["body"].keys():
-            name = key.replace("_", " ")
-            if key == "router_id":
-                print(name, self.addr_to_str( answer["show_status:message"]["body"][key]))
-            elif key in "server_time last_reboot last_reconfiguration":
-                print(name, datetime.datetime.fromtimestamp(answer["show_status:message"]["body"][key]))
-            else:
-                print(name, answer["show_status:message"]["body"][key])
-        print(answer["show_status:message"]["state"])
-  */
   struct value val = get_value(buf_read);
   ASSERT(val.major == BLOCK);
   val = get_value(buf_read);
@@ -619,14 +649,28 @@ void print_show_status(struct buff_reader *buf_read)
     print_with_size(&buf_read->buff[buf_read->pt], val.val);
     buf_read->pt+=val.val;
     printf(":  ");
-    val = get_value(buf_read);
-    ASSERT(val.major == UINT);
-    print_time(val.val);
+    print_epoch_time(buf_read);
     printf("\n");
   }
   val = get_value(buf_read);
-  if (val.major != TEXT)
+  if (val.major == TEXT)
+  {
+    buf_read->pt+=val.val;
+    printf("Graceful restart recovery in progress\n");
+    val = get_value(buf_read); // open 2 block
+    discard_key(buf_read);
     val = get_value(buf_read);
+    printf("  Waiting for %ld channels to recover\n", val.val);
+    discard_key(buf_read);
+    val = get_value(buf_read); // open 2 block
+    discard_key(buf_read);
+    printf("  Wait timer is ");
+    print_relativ_time(buf_read);
+    discard_key(buf_read);
+    val = get_value(buf_read);
+    printf("/%lu", val.val);
+  }
+  val = get_value(buf_read);
   ASSERT(val.major == TEXT); // state
   printf("state: ");
   buf_read->pt+=val.val;
@@ -856,9 +900,8 @@ void print_rpki_show_proto_info_timer(struct buff_reader *buf_read)
   if (!val_is_break(val))
   {
     buf_read->pt += val.val;
-    val = get_value(buf_read);
     printf(": ");
-    print_as_time(val.val);
+    print_relativ_time(buf_read);
     printf("/");
     discard_key(buf_read);
     val = get_value(buf_read);
@@ -920,9 +963,8 @@ void print_show_protocols_rpki(struct buff_reader *buf_read)
     val = get_value(buf_read);
     printf("  Serial number:    %lu\n", val.val);
     discard_key(buf_read);
-    val = get_value(buf_read);
     printf("  Last update:      before ");
-    print_as_time(val.val);
+    print_relativ_time(buf_read);
     printf(" s\n");
   }
   else
@@ -1045,8 +1087,9 @@ void print_bgp_capabilities(struct buff_reader *buf_read)
   {
     buf_read->pt += val.val;
     discard_key(buf_read);
-    val = get_value(buf_read);
-    printf("        Restart time: %lu", val.val);
+    printf("        Restart time: ");
+    print_epoch_time(buf_read);
+    printf("\n");
     val = get_value(buf_read);
     if (compare_buff_str(buf_read, val.val, "restart_recovery"))
     {
@@ -1097,8 +1140,9 @@ void print_bgp_capabilities(struct buff_reader *buf_read)
   if (compare_buff_str(buf_read, val.val, "ll_stale_time"))
   {
     buf_read->pt += val.val;
-    val = get_value(buf_read);
-    printf("        LL stale time: %lu\n", val.val);
+    printf("        LL stale time: ");
+    print_epoch_time(buf_read);
+    printf("\n");
     discard_key(buf_read);
     printf("        AF supported:\n");
     print_bgp_show_afis(buf_read);
@@ -1187,9 +1231,8 @@ void print_show_protocols_bgp(struct buff_reader *buf_read)
   if (compare_buff_str(buf_read, val.val, "error_wait_remains"))
   {
     buf_read->pt += val.val;
-    val = get_value(buf_read);
     printf("    Error wait:       ");
-    print_as_time(val.val);
+    print_relativ_time(buf_read);
     printf("/");
     discard_key(buf_read);
     val = get_value(buf_read);
@@ -1199,21 +1242,19 @@ void print_show_protocols_bgp(struct buff_reader *buf_read)
   if (compare_buff_str(buf_read, val.val, "connect_remains"))
   {
     buf_read->pt += val.val;
-    val = get_value(buf_read);
     printf("    Connect delay:    ");
-    print_as_time(val.val);
+    print_relativ_time(buf_read);
     printf("/");
     discard_key(buf_read);
     val = get_value(buf_read);
     printf("%lu\n", val.val);
     val = get_value(buf_read);
   }
-  if (compare_buff_str(buf_read, val.val, "connect_remains"))
+  if (compare_buff_str(buf_read, val.val, "restart_time"))
   {
     buf_read->pt += val.val;
-    val = get_value(buf_read);
-    printf("    Connect delay:    ");
-    print_as_time(val.val);
+    printf("    Restart timer:    ");
+    print_relativ_time(buf_read);
     printf("/-\n");
     val = get_value(buf_read);
   }
@@ -1245,18 +1286,16 @@ void print_show_protocols_bgp(struct buff_reader *buf_read)
     printf("\n");
 
     discard_key(buf_read);
-    val = get_value(buf_read);
     printf("    Hold timer:       ");
-    print_as_time(val.val);
+    print_relativ_time(buf_read);
     printf("/");
     discard_key(buf_read);
     val = get_value(buf_read);
     printf("%lu\n", val.val);
 
     discard_key(buf_read);
-    val = get_value(buf_read);
     printf("    Keepalive timer:  ");
-    print_as_time(val.val);
+    print_relativ_time(buf_read);
     printf("/");
     discard_key(buf_read);
     val = get_value(buf_read);
@@ -1304,9 +1343,8 @@ void print_show_protocols_bgp(struct buff_reader *buf_read)
     if (compare_buff_str(buf_read, val.val, "llstale_timer"))
     {
       buf_read->pt += val.val;
-      val = get_value(buf_read);
       printf("    LL stale timer: ");
-      print_as_time(val.val);
+      print_relativ_time(buf_read);
       printf("/-");
       val = get_value(buf_read);
     }
@@ -1394,8 +1432,7 @@ void print_show_protocols(struct buff_reader *buf_read)
     print_with_size_add_space(&buf_read->buff[buf_read->pt], val.val, 7);
     buf_read->pt += val.val;
     discard_key(buf_read); // since
-    val = get_value(buf_read);
-    print_time(val.val);
+    print_epoch_time(buf_read);
     printf(" ");
     discard_key(buf_read); //info
     val = get_value(buf_read);

@@ -74,7 +74,7 @@ cmd_show_protocols_cbor(byte *tbuf, uint capacity, struct arg_list *args, struct
       cbor_string_string(w, "proto", p->proto->name);
       cbor_string_string(w, "table", p->main_channel ? p->main_channel->table->name : "---");
       cbor_string_string(w, "state", proto_state_name_stolen_for_cbor(p));
-      cbor_string_int(w, "since", preprocess_time(p->last_state_change));
+      cbor_string_epoch_time(w, "since", tm_get_real_time(p->last_state_change), -6);
       byte buf[256];
       buf[0] = 0;
       if (p->proto->get_status)
@@ -171,19 +171,18 @@ cmd_show_status_cbor(byte *tbuf, uint capacity, struct linpool *lp)
   cbor_open_block(w);
   cbor_string_ipv4(w, "router_id", config->router_id);
   cbor_string_string(w, "hostname", config->hostname);
-  cbor_string_int(w, "server_time", preprocess_time(current_time()));
-  cbor_string_int(w, "last_reboot", preprocess_time(boot_time));
-  cbor_string_int(w, "last_reconfiguration", preprocess_time(config->load_time));
+  cbor_string_epoch_time(w, "server_time", tm_get_real_time(current_time()), -6);
+  cbor_string_epoch_time(w, "last_reboot", tm_get_real_time(boot_time), -6);
+  cbor_string_epoch_time(w, "last_reconfiguration", tm_get_real_time(config->load_time), -6);
   if (is_gr_active())
   {
-    log("graceful restart");
     cbor_add_string(w, "gr_restart");
     cbor_open_block_with_length(w, 2);
     cbor_string_int(w, "waiting_for_n_channels_to_recover", get_graceful_restart_locks_num());
     cbor_add_string(w, "wait_timer");
     cbor_open_block_with_length(w, 2);
-    cbor_string_int(w, "remains", get_tm_remains_gr_wait_timer());
-    cbor_string_int(w, "count_time", get_config_gr_wait());
+    cbor_string_relativ_time(w, "remains", get_tm_remains_gr_wait_timer(), -6);
+    cbor_string_relativ_time(w, "count_time", get_config_gr_wait(), -6);
   }
   cbor_close_block_or_list(w);
   cbor_add_string(w, "state");
@@ -194,7 +193,6 @@ cmd_show_status_cbor(byte *tbuf, uint capacity, struct linpool *lp)
   else
     cbor_add_string(w, "Daemon is up and running");
   cbor_write_to_file(w, "test.cbor");
-  log("leaving show status");
   return w->pt;
 }
 

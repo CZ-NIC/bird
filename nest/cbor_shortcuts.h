@@ -12,6 +12,8 @@ void cbor_string_string(struct cbor_writer *writer, char *key, const char *value
 
 void cbor_string_int(struct cbor_writer *writer, char *key, int64_t value);
 
+void cbor_string_epoch_time(struct cbor_writer *writer, char *key, int64_t time, int shift);
+void cbor_string_relativ_time(struct cbor_writer *writer, char *key, int64_t time, int shift);
 void cbor_string_uint(struct cbor_writer *writer, char *key, u64 value);
 void cbor_string_ip(struct cbor_writer *writer, char *key, ip_addr addr);
 void cbor_string_ipv4(struct cbor_writer *writer, char *key, u32 value);

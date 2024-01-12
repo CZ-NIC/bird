@@ -3247,7 +3247,7 @@ bgp_show_capabilities_cbor(struct cbor_writer *w, struct bgp_proto *p UNUSED, st
   if (any_gr_able)
   {
     /* Continues from gr_aware */
-    cbor_string_int(w, "restart_time", caps->gr_time);
+    cbor_string_epoch_time(w, "restart_time", caps->gr_time, -6);
     if (caps->gr_flags & BGP_GRF_RESTART)
     {
       cbor_add_string(w, "restart_recovery");
@@ -3319,7 +3319,7 @@ bgp_show_capabilities_cbor(struct cbor_writer *w, struct bgp_proto *p UNUSED, st
     }
 
     /* Continues from llgr_aware */
-    cbor_string_int(w, "ll_stale_time", stale_time);
+    cbor_string_epoch_time(w, "ll_stale_time", stale_time, -6);
 
     bgp_show_afis_cbor(w, "AF_supported", afl1, afn1);
     bgp_show_afis_cbor(w, "AF_preserved", afl2, afn2);
@@ -3508,19 +3508,19 @@ bgp_show_proto_info_cbor(struct cbor_writer *w, struct proto *P)
     if ((p->start_state < BSS_CONNECT) &&
 	(tm_active(p->startup_timer)))
     {
-      cbor_string_int(w, "error_wait_remains", tm_remains(p->startup_timer));
+      cbor_string_relativ_time(w, "error_wait_remains", tm_remains(p->startup_timer), -6);
       cbor_string_int(w, "error_delay", p->startup_delay);
     }
 
     if ((oc->state == BS_ACTIVE) &&
 	(tm_active(oc->connect_timer)))
     {
-      cbor_string_int(w, "connect_remains", tm_remains(oc->connect_timer));
+      cbor_string_relativ_time(w, "connect_remains", tm_remains(oc->connect_timer), -6);
       cbor_string_int(w, "connect_delay", p->cf->connect_delay_time);
     }
 
     if (p->gr_active_num && tm_active(p->gr_timer))
-      cbor_string_int(w, "restart_time", tm_remains(p->gr_timer));
+      cbor_string_relativ_time(w, "restart_time", tm_remains(p->gr_timer), -6);
   }
   else if (P->proto_state == PS_UP)
   {
@@ -3549,10 +3549,10 @@ bgp_show_proto_info_cbor(struct cbor_writer *w, struct proto *P)
 
     cbor_string_ip(w, "source_address", p->local_ip);
 
-    cbor_string_int(w, "hold_timer", tm_remains(p->conn->hold_timer));
+    cbor_string_relativ_time(w, "hold_timer", tm_remains(p->conn->hold_timer), -6);
     cbor_string_int(w, "hold_t_base", p->conn->hold_time);
 
-    cbor_string_int(w, "keepalive_timer", tm_remains(p->conn->keepalive_timer));
+    cbor_string_relativ_time(w, "keepalive_timer", tm_remains(p->conn->keepalive_timer), -6);
     cbor_string_int(w, "keepalive_t_base", p->conn->keepalive_time);
   }
 
@@ -3584,7 +3584,7 @@ bgp_show_proto_info_cbor(struct cbor_writer *w, struct proto *P)
         cbor_string_string(w, "neighbor_gr", bgp_gr_states[c->gr_active]);
 
       if (c->stale_timer && tm_active(c->stale_timer))
-        cbor_string_int(w, "llstale_timer", tm_remains(c->stale_timer));
+        cbor_string_relativ_time(w, "llstale_timer", tm_remains(c->stale_timer), -6);
 
       if (c->c.channel_state == CS_UP)
       {

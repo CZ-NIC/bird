@@ -62,6 +62,20 @@ void cbor_add_int(struct cbor_writer *writer, int64_t item)
   }
 }
 
+void cbor_epoch_time(struct cbor_writer *writer, int64_t time, int shift)
+{
+  write_item(writer, 6, 1); // 6 is TAG, 1 is tag number for epoch time
+  cbor_relativ_time(writer, time, shift);
+}
+
+void cbor_relativ_time(struct cbor_writer *writer, int64_t time, int shift)
+{
+  write_item(writer, 6, 4); // 6 is TAG, 4 is tag number for decimal fraction
+  cbor_open_list_with_length(writer, 2);
+  cbor_add_int(writer, shift);
+  cbor_add_int(writer, time);
+}
+
 void cbor_add_ipv4(struct cbor_writer *writer, uint32_t addr)
 {
   write_item(writer, 6, 52); // 6 is TAG, 52 is tag number for ipv4

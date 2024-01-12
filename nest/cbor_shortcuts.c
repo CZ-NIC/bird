@@ -18,6 +18,16 @@ void cbor_string_uint(struct cbor_writer *writer, char *key, u64 value) {
   cbor_add_uint(writer, value);
 }
 
+void cbor_string_epoch_time(struct cbor_writer *writer, char *key, int64_t time, int shift) {
+  cbor_add_string(writer, key);
+  cbor_epoch_time(writer, time, shift);
+}
+
+void cbor_string_relativ_time(struct cbor_writer *writer, char *key, int64_t time, int shift) {
+  cbor_add_string(writer, key);
+  cbor_relativ_time(writer, time, shift);
+}
+
 void cbor_string_ip(struct cbor_writer *writer, char *key, ip_addr addr) {
   cbor_add_string(writer, key);
   if (ipa_is_ip4(addr))

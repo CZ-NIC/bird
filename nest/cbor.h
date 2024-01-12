@@ -31,6 +31,10 @@ void cbor_add_ipv4(struct cbor_writer *writer, uint32_t addr);
 
 void cbor_add_ipv6(struct cbor_writer *writer, uint32_t addr[4]);
 
+void cbor_epoch_time(struct cbor_writer *writer, int64_t time, int shift);
+
+void cbor_relativ_time(struct cbor_writer *writer, int64_t time, int shift);
+
 void cbor_add_ipv4_prefix(struct cbor_writer *writer, net_addr_ip4 *n);
 
 
