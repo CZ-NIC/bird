@@ -184,7 +184,10 @@ bfd_neighbor: ipa bfd_neigh_iface bfd_neigh_local bfd_neigh_multihop
 
 CF_CLI_HELP(SHOW BFD, ..., [[Show information about BFD protocol]]);
 CF_CLI(SHOW BFD SESSIONS, optproto, [<name>], [[Show information about BFD sessions]])
-{ PROTO_WALK_CMD($4, &proto_bfd, p) bfd_show_sessions(p); };
+{ PROTO_WALK_CMD($4, &proto_bfd, p) bfd_show_sessions(p, 0); };
+
+CF_CLI(SHOW BFD SESSIONS ALL, optproto, [<name>], [[Show information about BFD sessions]])
+{ PROTO_WALK_CMD($5, &proto_bfd, p) bfd_show_sessions(p, 1); };
 
 CF_CODE
 
