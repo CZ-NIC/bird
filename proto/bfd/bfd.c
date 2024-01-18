@@ -1192,7 +1192,7 @@ void bfd_show_details(struct bfd_session *s)
 }
 
 void
-bfd_show_sessions(struct proto *P, int details)
+bfd_show_sessions(struct proto *P, int details, net_addr addr)
 {
   byte tbuf[TM_DATETIME_BUFFER_SIZE];
   struct bfd_proto *p = (struct bfd_proto *) P;
@@ -1215,6 +1215,9 @@ bfd_show_sessions(struct proto *P, int details)
   HASH_WALK(p->session_hash_id, next_id, s)
   {
     /* FIXME: this is thread-unsafe, but perhaps harmless */
+
+    if (addr.type != 0 && !ipa_in_netX(s->addr, &addr))
+      continue;
     if (!details)
     {
       state = s->loc_state;

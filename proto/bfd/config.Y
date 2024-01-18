@@ -29,6 +29,7 @@ CF_KEYWORDS(BFD, MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE,
 %type <iface> bfd_neigh_iface
 %type <a> bfd_neigh_local
 %type <i> bfd_neigh_multihop bfd_auth_type
+%type <net> opt_addr
 
 CF_GRAMMAR
 
@@ -181,13 +182,24 @@ bfd_neighbor: ipa bfd_neigh_iface bfd_neigh_local bfd_neigh_multihop
     cf_error("Multihop neighbor requires specified local address");
 };
 
+opt_addr:
+  /* empty */ {
+    net_addr addr;
+    addr.type = 0;
+    $$ = addr; }
+ | net_ip4_
+ | net_ip6_
+ | IP4 { net_fill_ip4(&($$), $1, IP4_MAX_PREFIX_LENGTH); }
+ | IP6 { net_fill_ip6(&($$), $1, IP6_MAX_PREFIX_LENGTH); }
+
+
 
 CF_CLI_HELP(SHOW BFD, ..., [[Show information about BFD protocol]]);
-CF_CLI(SHOW BFD SESSIONS, optproto, [<name>], [[Show information about BFD sessions]])
-{ PROTO_WALK_CMD($4, &proto_bfd, p) bfd_show_sessions(p, 0); };
+CF_CLI(SHOW BFD SESSIONS, optproto opt_addr, [<name>] [<addr>], [[Show information about BFD sessions]])
+{ PROTO_WALK_CMD($4, &proto_bfd, p) bfd_show_sessions(p, 0, $5); };
 
-CF_CLI(SHOW BFD SESSIONS ALL, optproto, [<name>], [[Show information about BFD sessions]])
-{ PROTO_WALK_CMD($5, &proto_bfd, p) bfd_show_sessions(p, 1); };
+CF_CLI(SHOW BFD SESSIONS ALL, optproto opt_addr, [<name>] [<addr>], [[Show information about BFD sessions]])
+{ PROTO_WALK_CMD($5, &proto_bfd, p) bfd_show_sessions(p, 1, $6); };
 
 CF_CODE
 
