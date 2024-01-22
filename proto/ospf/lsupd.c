@@ -172,7 +172,7 @@ ospf_add_flushed_to_lsrt(struct ospf_proto *p, struct ospf_neighbor *n)
   WALK_SLIST(en, p->lsal)
     if ((en->lsa.age == LSA_MAXAGE) && (en->lsa_body != NULL) &&
 	lsa_flooding_allowed(en->lsa_type, en->domain, n->ifa) &&
-        lsa_is_acceptable(en->lsa_type, n, p))
+	lsa_is_acceptable(en->lsa_type, n, p))
       ospf_lsa_lsrt_up(en, n);
 
   /* If we found any flushed LSA, we send them ASAP */

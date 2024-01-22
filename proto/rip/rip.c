@@ -77,6 +77,7 @@
  */
 
 #include <stdlib.h>
+
 #include "rip.h"
 
 
@@ -1358,7 +1359,7 @@ struct protocol proto_rip = {
   .shutdown =		rip_shutdown,
   .reconfigure =	rip_reconfigure,
   .get_route_info =	rip_get_route_info,
-  .get_attr =		rip_get_attr
+  .get_attr =		rip_get_attr,
 };
 
 void

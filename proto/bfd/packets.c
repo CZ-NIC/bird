@@ -96,12 +96,12 @@ bfd_format_flags(u8 flags, char *buf)
 }
 
 const u8 bfd_auth_type_to_hash_alg[] = {
-    [BFD_AUTH_NONE] = 			ALG_UNDEFINED,
-    [BFD_AUTH_SIMPLE] = 		ALG_UNDEFINED,
-    [BFD_AUTH_KEYED_MD5] = 		ALG_MD5,
-    [BFD_AUTH_METICULOUS_KEYED_MD5] = 	ALG_MD5,
-    [BFD_AUTH_KEYED_SHA1] = 		ALG_SHA1,
-    [BFD_AUTH_METICULOUS_KEYED_SHA1] = 	ALG_SHA1,
+  [BFD_AUTH_NONE] = 			ALG_UNDEFINED,
+  [BFD_AUTH_SIMPLE] = 			ALG_UNDEFINED,
+  [BFD_AUTH_KEYED_MD5] = 		ALG_MD5,
+  [BFD_AUTH_METICULOUS_KEYED_MD5] = 	ALG_MD5,
+  [BFD_AUTH_KEYED_SHA1] = 		ALG_SHA1,
+  [BFD_AUTH_METICULOUS_KEYED_SHA1] = 	ALG_SHA1,
 };
 
 
@@ -151,7 +151,7 @@ bfd_fill_authentication(struct bfd_proto *p, struct bfd_session *s, struct bfd_c
     uint hash_len = mac_type_length(pass->alg);
 
     /* Increase CSN about one time per second */
-    u32  new_time = (u64) current_time() >> 20;
+    u32 new_time = (u64) current_time() >> 20;
     if ((new_time != s->tx_csn_time) || meticulous)
     {
       s->tx_csn++;
@@ -321,7 +321,7 @@ bfd_send_ctl(struct bfd_proto *p, struct bfd_session *s, int final)
 static int
 bfd_rx_hook(sock *sk, uint len)
 {
-  struct bfd_proto *p =  sk->data;
+  struct bfd_proto *p = sk->data;
   struct bfd_ctl_packet *pkt = (struct bfd_ctl_packet *) sk->rbuf;
   const char *err_dsc = NULL;
   uint err_val = 0;
@@ -387,7 +387,7 @@ bfd_rx_hook(sock *sk, uint len)
   u32 old_tx_int = s->des_min_tx_int;
   u32 old_rx_int = s->rem_min_rx_int;
 
-  s->rem_id= ntohl(pkt->snd_id);
+  s->rem_id = ntohl(pkt->snd_id);
   s->rem_state = bfd_pkt_get_state(pkt);
   s->rem_diag = bfd_pkt_get_diag(pkt);
   s->rem_demand_mode = pkt->flags & BFD_FLAG_DEMAND;
@@ -438,7 +438,7 @@ bfd_open_rx_sk(struct bfd_proto *p, int multihop, int af)
   sk_start(sk);
   return sk;
 
- err:
+err:
   sk_log_error(sk, p->p.name);
   rfree(sk);
   return NULL;
@@ -470,7 +470,7 @@ bfd_open_rx_sk_bound(struct bfd_proto *p, ip_addr local, struct iface *ifa)
   sk_start(sk);
   return sk;
 
- err:
+err:
   sk_log_error(sk, p->p.name);
   rfree(sk);
   return NULL;
@@ -502,7 +502,7 @@ bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa)
   sk_start(sk);
   return sk;
 
- err:
+err:
   sk_log_error(sk, p->p.name);
   rfree(sk);
   return NULL;
