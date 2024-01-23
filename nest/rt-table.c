@@ -596,7 +596,10 @@ static inline void
 channel_rte_trace_in(uint flag, struct channel *c, const rte *e, const char *msg)
 {
   if ((c->debug & flag) || (c->proto->debug & flag))
-    rte_trace(c->in_req.name, e, '>', msg);
+    log(L_TRACE "%s > %s %N (-) src %luL %uG %uS id %u %s",
+	c->in_req.name, msg, e->net,
+	e->src->private_id, e->src->global_id, e->stale_cycle, e->id,
+	rta_dest_name(rte_dest(e)));
 }
 
 static inline void
@@ -1789,6 +1792,7 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   if (new)
     {
       new->net = n;
+      new->sender = c->in_req.hook;
 
       int fr;
 

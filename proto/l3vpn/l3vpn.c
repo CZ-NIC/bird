@@ -161,14 +161,14 @@ l3vpn_rt_notify(struct proto *P, struct channel *c0, const net_addr *n0, rte *ne
   {
   case NET_IP4:
     net_fill_vpn4(n, net4_prefix(n0), net4_pxlen(n0), p->rd);
-    src = p->p.main_source;
+    rt_lock_source(src = p->p.main_source);
     dst = p->vpn4_channel;
     export = 1;
     break;
 
   case NET_IP6:
     net_fill_vpn6(n, net6_prefix(n0), net6_pxlen(n0), p->rd);
-    src = p->p.main_source;
+    rt_lock_source(src = p->p.main_source);
     dst = p->vpn6_channel;
     export = 1;
     break;
@@ -191,11 +191,11 @@ l3vpn_rt_notify(struct proto *P, struct channel *c0, const net_addr *n0, rte *ne
     return;
   }
 
-  const struct adata *ecad = ea_get_adata(new->attrs, ea_bgp_ext_community);
-  struct nexthop_adata *nhad_orig = rte_get_nexthops(new);
-
   if (new)
   {
+    const struct adata *ecad = ea_get_adata(new->attrs, ea_bgp_ext_community);
+    struct nexthop_adata *nhad_orig = rte_get_nexthops(new);
+
     new->src = src;
 
     ea_set_attr_u32(&new->attrs, &ea_gen_source, 0, RTS_L3VPN);
@@ -241,6 +241,8 @@ l3vpn_rt_notify(struct proto *P, struct channel *c0, const net_addr *n0, rte *ne
   {
     rte_update(dst, n, NULL, src);
   }
+
+  rt_unlock_source(src);
 }
 
 
@@ -409,8 +411,6 @@ l3vpn_start(struct proto *P)
 
   l3vpn_prepare_import_targets(p);
   l3vpn_prepare_export_targets(p);
-
-  SKIP_BACK(struct mpls_channel, c, P->mpls_channel)->mpls_map->vrf_iface = P->vrf;
 
   return PS_UP;
 }

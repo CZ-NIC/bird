@@ -649,20 +649,21 @@ mpls_channel_start(struct channel *C)
     return 0;
 
   c->mpls_map = mpls_fec_map_new(C->proto->pool, C->proto->loop, C, c->rts);
+  c->mpls_map->vrf_iface = C->proto->vrf;
 
   return 0;
 }
 
-/*
 static void
 mpls_channel_shutdown(struct channel *C)
 {
   struct mpls_channel *c = (void *) C;
+
   if (!c->rts)
     return;
 
+  ev_send_loop(c->mpls_map->loop, c->mpls_map->cleanup_event);
 }
-*/
 
 static void
 mpls_channel_cleanup(struct channel *C)
@@ -738,7 +739,7 @@ struct channel_class channel_mpls = {
   .config_size =	sizeof(struct mpls_channel_config),
   .init =		mpls_channel_init,
   .start =		mpls_channel_start,
-//  .shutdown =		mpls_channel_shutdown,
+  .shutdown =		mpls_channel_shutdown,
   .cleanup =		mpls_channel_cleanup,
   .reconfigure =	mpls_channel_reconfigure,
 };
@@ -798,7 +799,6 @@ mpls_fec_map_new(pool *pp, struct birdloop *loop, struct channel *C, uint rts)
   m->cleanup_event = ev_new_init(p, mpls_fec_map_cleanup, m);
   m->channel = C;
   channel_add_obstacle(C);
-  ev_send_loop(loop, m->cleanup_event);
 
   m->domain = c->domain;
   MPLS_RANGE_LOCKED(c->range, r)
@@ -895,6 +895,8 @@ mpls_fec_map_cleanup(void *_m)
       finished = 0;
   HASH_WALK_DELSAFE_END;
 
+  DBGL("FEC Map %p Cleanup: %sfinished", m, finished ? "" : "not ");
+
   if (finished)
   {
     ev_postpone(m->cleanup_event);
@@ -981,7 +983,8 @@ mpls_get_fec_by_label(struct mpls_fec_map *m, u32 label)
 
   if (fec)
   {
-    if (fec->policy == MPLS_POLICY_STATIC)
+    DBGL("FEC %p found for lab %u in %p, policy %u", fec, label, m, fec->policy);
+    if (fec->policy != MPLS_POLICY_STATIC)
       return NULL;
 
     mpls_revive_fec(fec);
@@ -1008,7 +1011,7 @@ mpls_get_fec_by_label(struct mpls_fec_map *m, u32 label)
   fec->policy = MPLS_POLICY_STATIC;
   fec->handle = m->static_handle;
 
-  DBGL("New FEC lab %u", fec->label);
+  DBGL("New FEC lab %u map %p", fec->label, m);
 
   return fec;
 }
@@ -1044,7 +1047,7 @@ mpls_get_fec_by_net(struct mpls_fec_map *m, const net_addr *net, u64 path_id)
   fec->policy = MPLS_POLICY_PREFIX;
   fec->handle = m->handle;
 
-  DBGL("New FEC net %u", fec->label);
+  DBGL("New FEC net %u map %p", fec->label, m);
 
   HASH_INSERT2(m->net_hash, NET, m->pool, fec);
 
@@ -1086,7 +1089,7 @@ mpls_get_fec_by_destination(struct mpls_fec_map *m, ea_list *dest)
   fec->policy = MPLS_POLICY_AGGREGATE;
   fec->handle = m->handle;
 
-  DBGL("New FEC rta %u", fec->label);
+  DBGL("New FEC rta %u map %p", fec->label, m);
 
   HASH_INSERT2(m->attrs_hash, RTA, m->pool, fec);
 
@@ -1117,7 +1120,7 @@ mpls_get_fec_for_vrf(struct mpls_fec_map *m)
   fec->handle = m->handle;
   fec->iface = m->vrf_iface;
 
-  DBGL("New FEC vrf %u", fec->label);
+  DBGL("New FEC vrf %u map %p", fec->label, m);
 
   m->vrf_fec = fec;
 
@@ -1134,12 +1137,14 @@ mpls_unlink_fec(struct mpls_fec_map *m, struct mpls_fec *fec)
     break;
 
   case MPLS_POLICY_PREFIX:
+    DBGL("Unlink FEC %p %u from net_hash");
     HASH_REMOVE2(m->net_hash, NET, m->pool, fec);
     break;
 
   case MPLS_POLICY_AGGREGATE:
-    ea_free(fec->rta->l);
+    DBGL("Unlink FEC %p %u from attrs_hash (%d) at %p", fec, fec->label, m->attrs_hash.count, m);
     HASH_REMOVE2(m->attrs_hash, RTA, m->pool, fec);
+    ea_free(fec->rta->l);
     break;
 
   case MPLS_POLICY_VRF:
@@ -1205,9 +1210,7 @@ mpls_damage_fec(struct mpls_fec_map *m UNUSED, struct mpls_fec *fec)
 static struct ea_storage *
 mpls_get_key_attrs(struct mpls_fec_map *m, ea_list *src)
 {
-  EA_LOCAL_LIST(4) ea = {
-    .l.flags = EALF_SORTED,
-  };
+  EA_LOCAL_LIST(4) ea = {};
 
   uint last_id = 0;
   #define PUT_ATTR(cls)	do { \
