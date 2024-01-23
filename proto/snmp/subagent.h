@@ -151,7 +151,7 @@ struct agentx_header {
   u8 version;
   u8 type;
   u8 flags;
-  u8 pad;
+  u8 reserved;		/* always zero filled */
   u32 session_id;	/* AgentX sessionID established by Open-PDU */
   u32 transaction_id;	/* last transactionID seen/used */
   u32 packet_id;	/* last packetID seen/used */
@@ -165,13 +165,13 @@ struct oid {
   u8 n_subid;
   u8 prefix;
   u8 include;
-  u8 pad;
+  u8 reserved;	/* always zero filled */
   u32 ids[];
 };
 
 struct agentx_varbind {
   u16 type;
-  u16 pad;
+  u16 reserved; /* always zero filled */
   /* oid part */
   struct oid name;
   /* AgentX variable binding data optionaly here */
@@ -205,15 +205,15 @@ STATIC_ASSERT(4 + 2 + 2 + AGENTX_HEADER_SIZE == sizeof(struct agentx_response));
 struct agentx_close_pdu {
   struct agentx_header h;
   u8 reason;
-  u8 pad1;
-  u16 pad2;
+  u8 reserved1; /* reserved u24 */
+  u16 reserved2; /* whole u24 is always zero filled */
 };
 
 struct agentx_un_register_hdr {
   u8 timeout;
   u8 priority;
   u8 range_subid;
-  u8 pad;
+  u8 reserved;	/* always zero filled */
 };
 
 struct agentx_bulk_state {

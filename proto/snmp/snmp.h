@@ -29,6 +29,7 @@
 
 #define SNMP_RX_BUFFER_SIZE 8192
 #define SNMP_TX_BUFFER_SIZE 8192
+#define SNMP_PKT_SIZE_MAX 8192
 
 enum snmp_proto_state {
   SNMP_DOWN = 0,
@@ -60,11 +61,15 @@ struct snmp_config {
   btime timeout;
   btime startup_delay;
   u8 priority;
-  //struct iface *iface;
+  //struct iface *iface;  TODO
   u32 bonds;
-  const char *description;
-  list bgp_entries;
-  // TODO add support for subagent oid identification
+  const char *description;	  /* The order of fields is not arbitrary */
+  list bgp_entries;		  /* We want dynamically allocated fields to be
+				   * at the end of the config struct.
+				   * We use this fact to check differences of
+				   * nonallocated parts of configs with memcpy
+				   */
+  //const struct oid *oid_identifier;	TODO 
 };
 
 #define SNMP_BGP_P_REGISTERING	0x01
@@ -109,13 +114,6 @@ struct snmp_proto {
 
   sock *sock;
 
-  /* Partial packet processing */
-  uint header_offset;		  /* offset of PDU header in TX-buffer during
-				   * partial parsing */
-  uint last_index;		  /* stores last index during partial parsing */
-  uint last_size;		  /* number of bytes used inside TX-buffer */
-  uint last_pkt_id;		  /* stores packetId to use for partial packet */
-
 
   btime timeout;		  /* timeout is part of MIB registration. It
 				    specifies how long should the master
@@ -147,8 +145,8 @@ void snmp_startup(struct snmp_proto *p);
 void snmp_connected(sock *sk);
 void snmp_startup_timeout(timer *tm);
 void snmp_reconnect(timer *tm);
-void snmp_sock_disconnect(struct snmp_proto *p, int reconnect);
-void snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state);
+int snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state);
 
+void snmp_reset(struct snmp_proto *p);
 
 #endif
