@@ -1049,7 +1049,7 @@ sk_setup(sock *s)
   }
 #endif
 
-  if (s->vrf && !s->iface)
+  if (s->vrf && (s->vrf != &default_vrf) && !s->iface)
   {
     /* Bind socket to associated VRF interface.
        This is Linux-specific, but so is SO_BINDTODEVICE. */
