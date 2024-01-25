@@ -1095,15 +1095,116 @@
   ]]);
 
   /* Convert prefix to IP */
-  METHOD_R(T_NET, ip, T_IP, ip, net_prefix(v1.val.net));
+  METHOD(T_NET, ip, 0, [[
+    const net_addr_union *net = (void *) v1.val.net;
 
-  INST(FI_ROUTE_DISTINGUISHER, 1, 1) {
-    ARG(1, T_NET);
-    METHOD_CONSTRUCTOR("rd");
-    if (!net_is_vpn(v1.val.net))
-      runtime( "VPN address expected" );
+    if ((net->n.type == NET_EVPN) && (net->evpn.subtype == NET_EVPN_MAC))
+      RESULT(T_IP, ip, (net->n.length == sizeof(net_addr_evpn_mac_ip)) ? net->evpn.mac_ip.ip : IPA_NONE);
+    else
+      RESULT(T_IP, ip, net_prefix(v1.val.net));
+  ]]);
+
+  /* Get route distinguisher */
+  METHOD(T_NET, rd, 0, [[
+    if (!net_type_match(v1.val.net, NB_VPN | NB_EVPN))
+      runtime( "VPN or EVPN address expected" );
+
     RESULT(T_RD, rd, net_rd(v1.val.net));
-  }
+  ]]);
+
+  /* Get MAC address */
+  METHOD(T_NET, mac, 0, [[
+    const net_addr_union *net = (void *) v1.val.net;
+
+    if (net->n.type == NET_ETH)
+      RESULT(T_MAC, mac, net->eth.mac);
+    else if ((net->n.type == NET_EVPN) && (net->evpn.subtype == NET_EVPN_MAC))
+      RESULT(T_MAC, mac, net->evpn.mac.mac);
+    else
+      runtime( "Ethernet or EVPN MAC expected" );
+  ]]);
+
+  /* Get VLAN ID */
+  METHOD(T_NET, vlan_id, 0, [[
+    if (v1.val.net->type != NET_ETH)
+      runtime( "Ethernet address expected" );
+
+    const net_addr_eth *eth = (void *) v1.val.net;
+    RESULT(T_INT, i, eth->vid);
+  ]]);
+
+  /* Get EVPN type */
+  METHOD(T_NET, evpn_type, 0, [[
+    if (v1.val.net->type != NET_EVPN)
+      runtime( "EVPN address expected" );
+
+    const net_addr_evpn *evpn = (void *) v1.val.net;
+    RESULT(T_ENUM_NET_EVPN_TYPE, i, evpn->subtype);
+  ]]);
+
+  /* Get EVPN tag */
+  METHOD(T_NET, evpn_tag, 0, [[
+    if (v1.val.net->type != NET_EVPN)
+      runtime( "EVPN address expected" );
+
+    const net_addr_evpn *evpn = (void *) v1.val.net;
+    if (evpn->subtype > NET_EVPN_IMET)
+      runtime( "EVPN EAD/MAC/IMET address expected" );
+
+    RESULT(T_INT, i, evpn->tag);
+  ]]);
+
+  /* Get EVPN ESI */
+  METHOD(T_NET, evpn_esi, 0, [[
+    if (v1.val.net->type != NET_EVPN)
+      runtime( "EVPN address expected" );
+
+    const net_addr_evpn *evpn = (void *) v1.val.net;
+    const evpn_esi *esi;
+
+    switch (evpn->subtype)
+    {
+    case NET_EVPN_EAD:
+      esi = &evpn->ead.esi;
+      break;
+
+    case NET_EVPN_ES:
+      esi = &evpn->es.esi;
+      break;
+
+    default:
+      runtime( "EVPN EAD/ES address expected" );
+    }
+
+    struct adata *bs;
+    bs = falloc(sizeof(struct adata) + sizeof(evpn_esi));
+    bs->length = sizeof(evpn_esi);
+    memcpy(bs->data, esi, sizeof(evpn_esi));
+
+    RESULT(T_BYTESTRING, bs, bs);
+  ]]);
+
+  /* Get EVPN outer IP */
+  METHOD(T_NET, router_ip, 0, [[
+    if (v1.val.net->type != NET_EVPN)
+      runtime( "EVPN address expected" );
+
+    const net_addr_evpn *evpn = (void *) v1.val.net;
+
+    switch (evpn->subtype)
+    {
+    case NET_EVPN_IMET:
+      RESULT(T_IP, ip, evpn->imet.rtr);
+      break;
+
+    case NET_EVPN_ES:
+      RESULT(T_IP, ip, evpn->es.rtr);
+      break;
+
+    default:
+      runtime( "EVPN IMET/ES address expected" );
+    }
+  ]]);
 
   /* Get first ASN from AS PATH */
   METHOD_R(T_PATH, first, T_INT, i, ({ u32 as = 0; as_path_get_first(v1.val.ad, &as); as; }));
