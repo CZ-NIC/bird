@@ -58,6 +58,7 @@ static const char * const f_type_str[] = {
   [T_LC]	= "lc",
   [T_LCLIST]	= "lclist",
   [T_RD]	= "rd",
+  [T_MAC]	= "mac",
 
   [T_ROUTE] = "route",
   [T_ROUTES_BLOCK] = "block of routes",
@@ -208,6 +209,8 @@ val_compare(const struct f_val *v1, const struct f_val *v2)
     return lcomm_cmp(v1->val.lc, v2->val.lc);
   case T_IP:
     return ipa_compare(v1->val.ip, v2->val.ip);
+  case T_MAC:
+    return mac_compare(v1->val.mac, v2->val.mac);
   case T_NET:
     return net_compare(v1->val.net, v2->val.net);
   case T_STRING:
@@ -635,6 +638,7 @@ val_format(const struct f_val *v, buffer *buf)
   case T_EC:	ec_format(buf2, v->val.ec); buffer_print(buf, "%s", buf2); return;
   case T_LC:	lc_format(buf2, v->val.lc); buffer_print(buf, "%s", buf2); return;
   case T_RD:	rd_format(v->val.rd, buf2, 1024); buffer_print(buf, "%s", buf2); return;
+  case T_MAC:	buffer_print(buf, "%6b", v->val.mac.addr); return;
   case T_PREFIX_SET: trie_format(v->val.ti, buf); return;
   case T_SET:	tree_format(v->val.t, buf); return;
   case T_ENUM:	buffer_print(buf, "(enum %x)%u", v->type, v->val.i); return;
