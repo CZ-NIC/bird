@@ -126,6 +126,7 @@ f_valid_set_type(int type)
   case T_EC:
   case T_LC:
   case T_RD:
+  case T_MAC:
     return 1;
 
   default:
@@ -357,7 +358,7 @@ CF_DECLS
 CF_KEYWORDS_EXCLUSIVE(IN)
 CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	ACCEPT, REJECT, ERROR,
-	INT, BOOL, IP, PREFIX, RD, PAIR, QUAD, EC, LC, ENUM,
+	INT, BOOL, IP, PREFIX, RD, MAC, PAIR, QUAD, EC, LC, ENUM,
 	SET, STRING, BYTESTRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
 	IF, THEN, ELSE, CASE,
 	FOR, DO,
@@ -456,6 +457,7 @@ type:
  | BOOL { $$ = T_BOOL; }
  | IP { $$ = T_IP; }
  | RD { $$ = T_RD; }
+ | MAC { $$ = T_MAC; }
  | PREFIX { $$ = T_NET; }
  | PAIR { $$ = T_PAIR; }
  | QUAD { $$ = T_QUAD; }
@@ -477,8 +479,9 @@ type:
 	  case T_ENUM:
 	  case T_EC:
 	  case T_LC:
-	  case T_RD:
 	  case T_IP:
+	  case T_RD:
+	  case T_MAC:
 	       $$ = T_SET;
 	       break;
 
@@ -648,6 +651,7 @@ set_atom0:
    NUM    { $$.type = T_INT; $$.val.i = $1; }
  | fipa   { $$ = $1; }
  | VPN_RD { $$.type = T_RD; $$.val.rd = $1; }
+ | MAC_   { $$.type = T_MAC; $$.val.mac = $1; }
  | ENUM_TOKEN { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  | '(' term ')' {
      $$ = cf_eval($2, T_VOID);
@@ -808,6 +812,7 @@ constant:
  | BYTETEXT { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BYTESTRING, .val.bs = $1, }); }
  | fipa     { $$ = f_new_inst(FI_CONSTANT, $1); }
  | VPN_RD   { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_RD, .val.rd = $1, }); }
+ | MAC_     { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_MAC, .val.mac = $1, }); }
  | net_     { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_NET, .val.net = $1, }); }
  | '[' ']' { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_SET, .val.t = NULL, }); }
  | '[' set_items ']' {
