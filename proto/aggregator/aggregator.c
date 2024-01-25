@@ -540,6 +540,9 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
 	case T_IP:
 	  MX(ip);
 	  break;
+	case T_MAC:
+	  MX(mac);
+	  break;
 	case T_NET:
 	  mem_hash_mix_num(&haux, net_hash(IT(net)));
 	  break;
