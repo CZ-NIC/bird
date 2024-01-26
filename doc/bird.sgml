@@ -341,10 +341,9 @@ Configuration keywords are <cf/flow4/ and <cf/flow6/.
 <sect1>MPLS switching rules
 <label id="mpls-routes">
 
-<p>This nettype is currently a stub before implementing more support of <rfc id="3031">.
-BIRD currently does not support any label distribution protocol nor any label assignment method.
-Only the Kernel, Pipe and Static protocols can use MPLS tables.
-Configuration keyword is <cf/mpls/.
+<p>MPLS routes control MPLS forwarding in the same way as IP routes control IP
+forwarding. MPLS-aware routing protocols produce both labeled IP routes and
+corresponding MPLS routes. Configuration keyword is <cf/mpls/.
 
 <itemize>
 	<item>(PK) MPLS label
@@ -402,6 +401,79 @@ only. For planned graceful restart, BIRD must be shut down by
 regular <ref id="cli-down" name="down"> command. In this way routing neighbors
 are notified about planned graceful restart and routes are kept in kernel table
 after shutdown.
+
+<sect>MPLS
+<label id="mpls">
+
+<p>Multiprotocol Label Switching (MPLS) is a networking technology which works
+below IP routing but above the link (e.g. ethernet) layer. It is described in
+<rfc id="3031">.
+
+In regular IP forwarding, the destination address of a packet is independently
+examined in each hop, a route with longest prefix match is selected from the
+routing table, and packet is processed accordingly. In general, there is no
+difference between border routers and internal routers w.r.t. IP forwarding.
+
+In MPLS forwarding, when a packet enters the network, it is classified (based on
+destination address, ingress interface and other factors) into one of forwarding
+equivalence classes (FECs), then a header with a MPLS label identifying the FEC
+is attached to it, and the packet is forwarded. In internal routers, only the
+MPLS label is examined, the matching MPLS route is selected from the MPLS
+routing table, and the packet is processed accordingly. The specific value of
+MPLS label has local meaning only and may change between hops (that is why it is
+called label switching). When the packet leaves the network, the MPLS header is
+removed.
+
+The advantage of the MPLS approach is that other factors than the destination
+address can be considered and used consistently in the whole network, for
+example IP traffic with multiple overlapping private address ranges could be
+mixed together, or particular paths for specific flows could be defined. Another
+advantage is that MPLS forwarding by internal routers can be much simpler than
+IP forwarding, as instead of the longest prefix match algorithm it uses simpler
+exact match for MPLS route selection. The disadvantage is additional complexity
+in signalling. For further details, see <rfc id="3031">.
+
+MPLS-aware routing protocols not only distribute IP routing information, but
+they also distribute labels. Therefore, they produce labeled routes - routes
+representing label switched paths (LSPs) through the MPLS domain. Such routes
+have IP prefix and next hop address like regular (non-labeled) routes, but they
+also have local MPLS label (in route attribute <ref id="rta-mpls-label"
+name="mpls_label">) and outgoing MPLS label (as a part of the next hop). They
+are stored in regular IP routing tables.
+
+Labeled routes are used for exchange of routing information between routing
+protocols and for ingress (IP -&gt; MPLS) forwarding, but they are not directly
+used for MPLS forwarding. For that purpose <ref id="mpls-routes" name="MPLS
+routes"> are used. These are routes that have local MPLS label as a primary key
+and they are stored in the MPLS routing table.
+
+In BIRD, the whole process generally works this way: A MPLS-aware routing
+protocol (say BGP) receives routing information including remote label. It
+produces a route with attribute <ref id="rta-mpls-policy" name="mpls_policy">
+specifying desired <ref id="mpls-channel-label-policy" name="MPLS label policy">.
+Such route then passes the import filter (which could modify the MPLS label
+policy or perhaps assign a static label) and when it is accepted, a local MPLS
+label is selected (according to the label policy) and attached to the route,
+producing labeled route. When a new MPLS label is allocated, the MPLS-aware
+protocol automatically produces corresponding MPLS route. When all labeled
+routes that use specific local MPLS label are retracted, the corresponding MPLS
+route is retracted too.
+
+There are three important concepts for MPLS in BIRD: MPLS domains, MPLS tables
+and MPLS channels. MPLS domain represents an independent label space, all
+MPLS-aware protocols are associated with some MPLS domain. It is responsible for
+label management, handling label allocation requests from MPLS-aware protocols.
+MPLS table is just a routing table for MPLS routes. Routers usually have one
+MPLS domain and one MPLS table, with Kernel protocol to export MPLS routes into
+kernel FIB.
+
+MPLS channels make protocols MPLS-aware, they are responsible for keeping track
+of active FECs (and corresponding allocated labels), selecting FECs / local
+labels for labeled routes, and maintaining correspondence between labeled routes
+and MPLS routes.
+
+Note that local labels are allocated to individual MPLS-aware protocols and
+therefore it is not possible to share local labels between different protocols.
 
 
 <chapt>Configuration
@@ -630,6 +702,12 @@ include "tablename.conf";;
 	<cf/master6/ are defined implicitly, other routing tables have to be
 	defined by this option. See the <ref id="rtable-opts"
 	name="routing table configuration section"> for routing table options.
+
+	<tag><label id="opt-mpls-domain">mpls domain <m/name/ [ { <m/option/; [<m/.../] } ]</tag>
+	Define a new MPLS domain. MPLS domains represent independent label
+	spaces and are responsible for MPLS label management. All MPLS-aware
+	protocols are associated with some MPLS domain. See the <ref id="mpls-opts"
+	name="MPLS configuration section"> for MPLS domain options.
 
 	<tag><label id="opt-eval">eval <m/expr/</tag>
 	Evaluates given filter expression. It is used by the developers for testing of filters.
@@ -1039,6 +1117,96 @@ protocol bgp from  {
 	ipv6 {
 		export filter { ... };
 	};
+}
+</code>
+
+
+<sect>MPLS options
+<label id="mpls-opts">
+
+<p>The MPLS domain definition is mandatory for a MPLS router. All MPLS channels
+and MPLS-aware protocols are associated with some MPLS domain (although usually
+implicitly with the sole one). In the MPLS domain definition you can configure
+details of MPLS label allocation. Currently, there is just one option:
+
+<descrip>
+	<tag><label id="mpls-domain-label-range">label range <m/name/ { start <m/number/; length <m/number/; [<m/.../] }</tag>
+	Define a new label range, or redefine implicit label ranges <cf/static/
+	and <cf/dynamic/. MPLS channels use configured label ranges for dynamic
+	label allocation, while <cf/static/ label range is used for static label
+	allocation. The label range definition must specify the extent of the
+	range. By default, the range <cf/static/ is 16-1000, while the range
+	<cf/dynamic/ is 1000-10000.
+</descrip>
+
+<p>MPLS channel should be defined in each MPLS-aware protocol in addition to its
+regular channels. It is responsible for label allocation and for announcing MPLS
+routes to the MPLS routing table. Besides common <ref id="channel-opts"
+name="channel options">, MPLS channels have some specific options:
+
+<descrip>
+	<tag><label id="mpls-channel-domain">domain <m/name/</tag>
+	Specify a MPLS domain to which this channel and protocol belongs.
+	Default: The first defined MPLS domain.
+
+	<tag><label id="mpls-channel-label-range">label range <m/name/</tag>
+	Use specific label range for dynamic label allocation. Note that static
+	labels always use the range <cf/static/. Default: the range <cf/dynamic/.
+
+	<tag><label id="mpls-channel-label-policy">label policy static|prefix|aggregate|vrf</tag>
+	Label policy specifies how routes are grouped to forwarding equivalence
+	classes (FECs) and how labels are assigned to them.
+
+	The policy <cf/static/ means no dynamic label allocation is done, and
+	static labels must be set in import filters using the route attribute
+	<ref id="rta-mpls-label" name="mpls_label">.
+
+	The policy <cf/prefix/ means each prefix uses separate label associated
+	with that prefix. When a labeled route is updated, it keeps the label.
+	This policy is appropriate for IGPs.
+
+	The policy <cf/aggregate/ means routes are grouped to FECs according to
+	their next hops (including next hop labels), and one label is used for
+	all routes in the same FEC. When a labeled route is updated, it may
+	change next hop, change FEC and therefore change label. This policy is
+	appropriate for BGP.
+
+	The policy <cf/vrf/ is only valid in L3VPN protocols. It uses one label
+	for all routes from a VRF, while replacing the original next hop with
+	lookup in the VRF.
+
+	Default: <cf/prefix/.
+</descrip>
+
+<p>This is a trivial example of MPLS setup:
+<code>
+mpls domain mdom {
+	label range bgprange { start 2000; length 1000;	};
+}
+
+mpls table mtab;
+
+protocol static {
+	ipv6;
+	mpls;
+
+	route 2001:db8:1:1/64 mpls 100 via 2001:db8:1:2::1/64 mpls 200;
+}
+
+protocol bgp {
+	# regular channels
+	ipv6 mpls { ...	};
+	vpn6 mpls { ... };
+
+	# MPLS channel
+	mpls {
+		# domain mdom;
+		# table mtab;
+		label range bgprange;
+		label policy aggregate;
+	};
+
+	...
 }
 </code>
 
@@ -1885,6 +2053,29 @@ Common route attributes are:
 	network for routes that do not have a native protocol metric attribute
 	(like <cf/ospf_metric1/ for OSPF routes). It is used mainly by BGP to
 	compare internal distances to boundary routers (see below).
+
+	<tag><label id="rta-mpls-label"><m/int/ mpls_label</tag>
+	Local MPLS label attached to the route. This attribute is produced by
+	MPLS-aware protocols for labeled routes. It can also be set in import
+	filters to assign static labels, but that also requires static MPLS
+	label policy.
+
+	<tag><label id="rta-mpls-policy"><m/enum/ mpls_policy</tag>
+	For MPLS-aware protocols, this attribute defines which
+	<ref id="mpls-channel-label-policy" name="MPLS label policy"> will be
+	used for the route. It can be set in import filters to change it on
+	per-route basis. Valid values are <cf/MPLS_POLICY_NONE/ (no label),
+	<cf/MPLS_POLICY_STATIC/ (static label), <cf/MPLS_POLICY_PREFIX/
+	(per-prefix label), <cf/MPLS_POLICY_AGGREGATE/ (aggregated label),
+	and <cf/MPLS_POLICY_VRF/ (per-VRF label). See <ref
+	id="mpls-channel-label-policy" name="MPLS label policy"> for details.
+
+	<tag><label id="rta-mpls-class"><m/int/ mpls_class</tag>
+	When <ref id="mpls-channel-label-policy" name="MPLS label policy"> is
+	set to <cf/aggregate/, it may be useful to apply more fine-grained
+	aggregation than just one based on next hops. When routes have different
+	value of this attribute, they will not be aggregated under one local
+	label even if they have the same next hops.
 </descrip>
 
 <p>Protocol-specific route attributes are described in the corresponding
@@ -3061,6 +3252,18 @@ together with their appropriate channels follows.
 @ <cf/flow6/          | <cf/flow6/         | ---                     | 2        | 133
 </tabular>
 </table>
+
+<p>The BGP protocol can be configured as MPLS-aware (by defining both AFI/SAFI
+channels and the MPLS channel). In such case the BGP protocol assigns labels to
+routes imported from MPLS-aware SAFIs (i.e. <cf/ipvX mpls/ and <cf/vpnX mpls/)
+and automatically announces corresponding MPLS route for each labeled route. As
+BGP generally processes a large amount of routes, it is suggested to set MPLS
+label policy to <cf/aggregate/.
+
+<p>Note that even BGP instances without MPLS channel and without local MPLS
+configuration can still propagate third-party MPLS labels, e.g. as route
+reflectors, they just will not assign local labels to imported routes and will
+not announce MPLS routes for local MPLS forwarding.
 
 <p>Due to <rfc id="8212">, external BGP protocol requires explicit configuration
 of import and export policies (in contrast to other protocols, where default
@@ -5454,6 +5657,11 @@ but only routes of the same network type are allowed, as the static protocol
 has just one channel. E.g., to have both IPv4 and IPv6 static routes, define two
 static protocols, each with appropriate routes and channel.
 
+<p>The Static protocol can be configured as MPLS-aware (by defining both the
+primary channel and MPLS channel). In that case the Static protocol assigns
+labels to IP routes and automatically announces corresponding MPLS route for
+each labeled route.
+
 <p>Global options:
 
 <descrip>
@@ -5477,16 +5685,20 @@ static protocols, each with appropriate routes and channel.
 <ref id="type-prefix" name="dependent on network type">.
 
 <descrip>
-	<tag>route <m/prefix/ via <m/ip/|<m/"interface"/ [<m/per-nexthop options/] [via ...]</tag>
-	Regular routes may bear one or more <ref id="route-next-hop" name="next hops">.
-	Every next hop is preceded by <cf/via/ and configured as shown.
+	<tag>route <m/prefix/ [mpls <m/number>] via <m/ip/|<m/"interface"/ [<m/per-nexthop options/] [via ...]</tag>
+	Regular routes may bear one or more <ref id="route-next-hop" name="next
+	hops">. Every next hop is preceded by <cf/via/ and configured as shown.
 
-	<tag>route <m/prefix/ recursive <m/ip/ [mpls <m/num/[/<m/num/[/<m/num/[...]]]]</tag>
+	When the Static protocol is MPLS-aware, the optional <cf/mpls/ statement
+	after <m/prefix/ specifies a static label for the labeled route, instead
+	of using dynamically allocated label.
+
+	<tag>route <m/prefix/ [mpls <m/number>] recursive <m/ip/ [mpls <m/num/[/<m/num/[/<m/num/[...]]]]</tag>
 	Recursive nexthop resolves the given IP in the configured IGP table and
 	uses that route's next hop. The MPLS stacks are concatenated; on top is
 	the IGP's nexthop stack and on bottom is this route's stack.
 
-	<tag>route <m/prefix/ blackhole|unreachable|prohibit</tag>
+	<tag>route <m/prefix/ [mpls <m/number>] blackhole|unreachable|prohibit</tag>
 	Special routes specifying to silently drop the packet, return it as
 	unreachable or return it as administratively prohibited. First two
 	targets are also known as <cf/drop/ and <cf/reject/.
