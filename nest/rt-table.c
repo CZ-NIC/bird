@@ -1760,12 +1760,14 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
   ASSERT(c->channel_state == CS_UP);
 
+  ea_list *ea_tmp[2] = {};
+
   /* The import reloader requires prefilter routes to be the first layer */
   if (new && (c->in_keep & RIK_PREFILTER))
-    if (ea_is_cached(new->attrs) && !new->attrs->next)
-      new->attrs = ea_clone(new->attrs);
-    else
-      new->attrs = ea_lookup(new->attrs, 0);
+    ea_tmp[0] = new->attrs =
+      (ea_is_cached(new->attrs) && !new->attrs->next) ?
+      ea_clone(new->attrs) :
+      ea_lookup(new->attrs, 0);
 
   const struct filter *filter = c->in_filter;
   struct channel_import_stats *stats = &c->import_stats;
@@ -1799,10 +1801,15 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 	  }
 
       if (new)
+      {
+	ea_tmp[1] = new->attrs =
+	  ea_is_cached(new->attrs) ? ea_clone(new->attrs) : ea_lookup(new->attrs, !!ea_tmp[0]);
+
 	if (net_is_flow(n))
 	  rt_flowspec_resolve_rte(new, c);
 	else
 	  rt_next_hop_resolve_rte(new);
+      }
 
       if (new && !rte_validate(c, new))
 	{
@@ -1823,17 +1830,10 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   }
 
   /* Now the route attributes are kept by the in-table cached version
-   * and we may drop the local handle */
-  if (new && (c->in_keep & RIK_PREFILTER))
-  {
-    /* There may be some updates on top of the original attribute block */
-    ea_list *a = new->attrs;
-    while (a->next)
-      a = a->next;
-
-    ea_free(a);
-  }
-
+   * and we may drop the local handles */
+  for (uint k = 0; k < ARRAY_SIZE(ea_tmp); k++)
+    if (ea_tmp[k])
+      ea_free(ea_tmp[k]);
 }
 
 void
