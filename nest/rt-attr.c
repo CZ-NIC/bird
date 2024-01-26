@@ -383,7 +383,7 @@ rt_dump_sources(struct rte_owner *o)
 	(splitting % 8) ? ',' : '\n',
 	(splitting % 8) ? ' ' : '\t',
 	src->private_id, src->global_id,
-	atomic_load_explicit(&src->uc, memory_order_relaxed));
+	atomic_load_explicit(&src->uc.uc, memory_order_relaxed));
 
     splitting++;
   }

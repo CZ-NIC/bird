@@ -105,7 +105,7 @@ long page_size = 0;
 #   define ajlog(...)
 
     struct free_page {
-      struct free_page *next;
+      struct free_page * _Atomic next;
     };
 
 # endif
@@ -259,7 +259,8 @@ free_page(void *ptr)
   struct free_page *fp = ptr;
   if (shutting_down || (pages_kept_here < KEEP_PAGES_MAX_LOCAL))
   {
-    UNUSED struct free_page *next = fp->next = local_page_stack;
+    struct free_page *next = local_page_stack;
+    atomic_store_explicit(&fp->next, next, memory_order_relaxed);
     PROTECT_PAGE(fp);
     local_page_stack = fp;
 
@@ -270,7 +271,8 @@ free_page(void *ptr)
   }
 
   /* If there are too many local pages, we add the free page to the global hot-free-page list */
-  UNUSED struct free_page *next = fp->next = PAGE_STACK_GET;
+  struct free_page *next = PAGE_STACK_GET;
+  atomic_store_explicit(&fp->next, next, memory_order_relaxed);
   PROTECT_PAGE(fp);
 
   /* Unblock the stack with the page being freed */

@@ -622,6 +622,8 @@ FID_WR_PUT(11)
 #pragma GCC diagnostic ignored "-Woverride-init"
 #endif
 
+#pragma clang diagnostic ignored "-Winitializer-overrides"
+
 static struct sym_scope f_type_method_scopes[] = {
 FID_WR_PUT(12)
 };

@@ -36,7 +36,7 @@ static pool *log_pool;
 static struct rfile *dbg_rf;
 static char *current_syslog_name = NULL; /* NULL -> syslog closed */
 
-_Atomic uint max_thread_id = ATOMIC_VAR_INIT(1);
+_Atomic uint max_thread_id = 1;
 _Thread_local uint this_thread_id;
 
 #include <pthread.h>
