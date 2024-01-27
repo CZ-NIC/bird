@@ -50,6 +50,8 @@ struct iface default_vrf;
 
 static void if_recalc_preferred(struct iface *i);
 
+static void ifa_delete_locked(struct ifa *a);
+
 static void ifa_dump_locked(struct ifa *);
 static void if_dump_locked(struct iface *);
 
@@ -545,7 +547,7 @@ if_end_update(void)
 	{
 	  WALK_LIST_DELSAFE(a, b, i->addrs)
 	    if (!(a->flags & IA_UPDATED))
-	      ifa_delete(a);
+	      ifa_delete_locked(a);
 	  if_end_partial_update_locked(i);
 	}
     }
@@ -891,7 +893,7 @@ ifa_update(struct ifa *a)
 	    IFACE_UNLOCK;
 	    return b;
 	  }
-	ifa_delete(b);
+	ifa_delete_locked(b);
 	break;
       }
 
@@ -924,10 +926,18 @@ ifa_update(struct ifa *a)
 void
 ifa_delete(struct ifa *a)
 {
+  IFACE_LOCK;
+  ifa_delete_locked(a);
+  IFACE_UNLOCK;
+}
+
+static void
+ifa_delete_locked(struct ifa *a)
+{
+  IFACE_ASSERT_LOCKED;
+
   struct iface *i = a->iface;
   struct ifa *b;
-
-  IFACE_LOCK;
 
   WALK_LIST(b, i->addrs)
     if (ifa_same(b, a))
@@ -953,11 +963,8 @@ ifa_delete(struct ifa *a)
 	  ifa_notify_change(IF_CHANGE_DOWN, b);
 
 	ifa_unlink(b);
-	IFACE_UNLOCK;
 	return;
       }
-
-  IFACE_UNLOCK;
 }
 
 u32
