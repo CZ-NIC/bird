@@ -185,20 +185,40 @@ nexthop_hash(struct nexthop *x)
   return h;
 }
 
+static inline int
+nexthop_equal_1(struct nexthop *x, struct nexthop *y)
+{
+  if (!ipa_equal(x->gw, y->gw) || (x->iface != y->iface) ||
+      (x->flags != y->flags) || (x->weight != y->weight) ||
+      (x->labels != y->labels))
+    return 0;
+
+  for (int i = 0; i < x->labels; i++)
+    if (x->label[i] != y->label[i])
+      return 0;
+
+  return 1;
+}
+
+int
+nexthop_equal_(struct nexthop *x, struct nexthop *y)
+{
+  /* Like nexthop_same(), but ignores difference between local labels and labels from hostentry */
+
+  for (; x && y; x = x->next, y = y->next)
+    if (!nexthop_equal_1(x, y))
+      return 0;
+
+  return x == y;
+}
+
 int
 nexthop__same(struct nexthop *x, struct nexthop *y)
 {
   for (; x && y; x = x->next, y = y->next)
-  {
-    if (!ipa_equal(x->gw, y->gw) || (x->iface != y->iface) ||
-	(x->flags != y->flags) || (x->weight != y->weight) ||
-	(x->labels_orig != y->labels_orig) || (x->labels != y->labels))
+    if (!nexthop_equal_1(x, y) ||
+	(x->labels_orig != y->labels_orig))
       return 0;
-
-    for (int i = 0; i < x->labels; i++)
-      if (x->label[i] != y->label[i])
-	return 0;
-  }
 
   return x == y;
 }

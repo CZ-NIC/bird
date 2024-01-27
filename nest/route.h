@@ -694,6 +694,9 @@ static inline size_t nexthop_size(const struct nexthop *nh)
 int nexthop__same(struct nexthop *x, struct nexthop *y); /* Compare multipath nexthops */
 static inline int nexthop_same(struct nexthop *x, struct nexthop *y)
 { return (x == y) || nexthop__same(x, y); }
+int nexthop_equal_(struct nexthop *x, struct nexthop *y); /* Compare multipath nexthops, ignore labels_orig */
+static inline int nexthop_equal(struct nexthop *x, struct nexthop *y)
+{ return (x == y) || nexthop_equal_(x, y); }
 struct nexthop *nexthop_merge(struct nexthop *x, struct nexthop *y, int rx, int ry, int max, linpool *lp);
 struct nexthop *nexthop_sort(struct nexthop *x);
 static inline void nexthop_link(struct rta *a, const struct nexthop *from)

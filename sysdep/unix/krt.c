@@ -619,7 +619,7 @@ krt_same_dest(rte *k, rte *e)
     return 0;
 
   if (ka->dest == RTD_UNICAST)
-    return nexthop_same(&(ka->nh), &(ea->nh));
+    return nexthop_equal(&(ka->nh), &(ea->nh));
 
   return 1;
 }
