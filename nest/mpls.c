@@ -1014,12 +1014,12 @@ mpls_get_fec_by_label(struct mpls_fec_map *m, u32 label)
 }
 
 struct mpls_fec *
-mpls_get_fec_by_net(struct mpls_fec_map *m, const net_addr *net, u32 path_id)
+mpls_get_fec_by_net(struct mpls_fec_map *m, const net_addr *net, u64 path_id)
 {
   if (!m->net_hash.data)
     HASH_INIT(m->net_hash, m->pool, 4);
 
-  u32 hash = net_hash(net) ^ u32_hash(path_id);
+  u32 hash = net_hash(net) ^ u64_hash(path_id);
   struct mpls_fec *fec = HASH_FIND(m->net_hash, NET, net, path_id, hash);
 
   if (fec)

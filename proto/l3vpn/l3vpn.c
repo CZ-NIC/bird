@@ -147,11 +147,6 @@ l3vpn_prepare_export_targets(struct l3vpn_proto *p)
   ASSERT(p->export_target_length == len);
 }
 
-/* Convert 64-bit RD to 32bit source ID, unfortunately it has collisions */
-static inline struct rte_src * l3vpn_get_source(struct l3vpn_proto *p, u64 rd)
-{ return rt_get_source(&p->p, (u32)(rd >> 32) ^ u32_hash(rd)); }
-//{ return p->p.main_source; }
-
 static void
 l3vpn_rt_notify(struct proto *P, struct channel *c0, const net_addr *n0, rte *new, const rte *old UNUSED)
 {
@@ -180,14 +175,14 @@ l3vpn_rt_notify(struct proto *P, struct channel *c0, const net_addr *n0, rte *ne
 
   case NET_VPN4:
     net_fill_ip4(n, net4_prefix(n0), net4_pxlen(n0));
-    src = l3vpn_get_source(p, ((const net_addr_vpn4 *) n0)->rd);
+    src = rt_get_source(&p->p, ((const net_addr_vpn4 *) n0)->rd);
     dst = p->ip4_channel;
     export = 0;
     break;
 
   case NET_VPN6:
     net_fill_ip6(n, net6_prefix(n0), net6_pxlen(n0));
-    src = l3vpn_get_source(p, ((const net_addr_vpn6 *) n0)->rd);
+    src = rt_get_source(&p->p, ((const net_addr_vpn6 *) n0)->rd);
     dst = p->ip6_channel;
     export = 0;
     break;

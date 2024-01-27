@@ -100,10 +100,6 @@ proto_configure_mpls_channel(struct proto *p, struct proto_config *pc, uint rts)
 struct mpls_fec {
   u32 label;				/* Label for FEC */
   u32 hash;				/* Hash for primary key (net / rta) */
-  union {				/* Extension part of key */
-    u32 path_id;			/* Source path_id */
-  };
-
   u8 state;				/* FEC state (MPLS_FEC_*) */
   u8 policy;				/* Label policy (MPLS_POLICY_*) */
 
@@ -114,6 +110,11 @@ struct mpls_fec {
 
   struct mpls_fec *next_k;		/* Next in mpls_fec.net_hash/rta_hash */
   struct mpls_fec *next_l;		/* Next in mpls_fec.label_hash */
+
+  union {				/* Extension part of key */
+    u64 path_id;			/* Source path_id */
+    u32 class_id;			/* Aaggregation class */
+  };
   union {				/* Primary key */
     struct ea_storage *rta;
     struct iface *iface;
@@ -146,7 +147,7 @@ void mpls_fec_map_reconfigure(struct mpls_fec_map *m, struct channel *C);
 void mpls_fec_map_free(struct mpls_fec_map *m);
 struct mpls_fec *mpls_find_fec_by_label(struct mpls_fec_map *x, u32 label);
 struct mpls_fec *mpls_get_fec_by_label(struct mpls_fec_map *m, u32 label);
-struct mpls_fec *mpls_get_fec_by_net(struct mpls_fec_map *m, const net_addr *net, u32 path_id);
+struct mpls_fec *mpls_get_fec_by_net(struct mpls_fec_map *m, const net_addr *net, u64 path_id);
 struct mpls_fec *mpls_get_fec_by_destination(struct mpls_fec_map *m, ea_list *dest);
 
 void mpls_lock_fec(struct mpls_fec *fec);
