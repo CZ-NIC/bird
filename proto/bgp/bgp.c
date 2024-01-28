@@ -1274,7 +1274,7 @@ static void
 bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing connection */
 {
   struct bgp_conn *conn = &p->outgoing_conn;
-  int hops = p->cf->multihop ? : 1;
+  int hops = p->cf->multihop ?: 1;
 
   DBG("BGP: Connecting\n");
   sock *s = sk_new(p->p.pool);
@@ -1426,7 +1426,7 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     goto leave;
   }
 
-  hops = p->cf->multihop ? : 1;
+  hops = p->cf->multihop ?: 1;
 
   if (sk_set_ttl(sk, p->cf->ttl_security ? 255 : hops) < 0)
     goto err;
@@ -2453,7 +2453,7 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   return 1;
 }
 
-#define TABLE(cf, NAME) ((cf)->NAME ? (cf)->NAME->table : NULL )
+#define TABLE(cf, NAME) ((cf)->NAME ? (cf)->NAME->table : NULL)
 
 static int
 bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *import_changed, int *export_changed)
@@ -2586,10 +2586,10 @@ bgp_store_error(struct bgp_proto *p, struct bgp_conn *c, u8 class, u32 code)
 }
 
 static char *bgp_state_names[] = { "Idle", "Connect", "Active", "OpenSent", "OpenConfirm", "Established", "Close" };
-static char *bgp_err_classes[] = { "", "Error: ", "Socket: ", "Received: ", "BGP Error: ", "Automatic shutdown: ", ""};
-static char *bgp_misc_errors[] = { "", "Neighbor lost", "Invalid next hop", "Kernel MD5 auth failed", "No listening socket", "Link down", "BFD session down", "Graceful restart"};
-static char *bgp_auto_errors[] = { "", "Route limit exceeded"};
-static char *bgp_gr_states[] = { "None", "Regular", "Long-lived"};
+static char *bgp_err_classes[] = { "", "Error: ", "Socket: ", "Received: ", "BGP Error: ", "Automatic shutdown: ", "" };
+static char *bgp_misc_errors[] = { "", "Neighbor lost", "Invalid next hop", "Kernel MD5 auth failed", "No listening socket", "Link down", "BFD session down", "Graceful restart" };
+static char *bgp_auto_errors[] = { "", "Route limit exceeded" };
+static char *bgp_gr_states[] = { "None", "Regular", "Long-lived" };
 
 static const char *
 bgp_last_errmsg(struct bgp_proto *p)

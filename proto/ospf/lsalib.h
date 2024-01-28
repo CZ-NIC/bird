@@ -16,8 +16,8 @@ static inline void lsa_hton_hdr(struct ospf_lsa_header *h, struct ospf_lsa_heade
 static inline void lsa_ntoh_hdr(struct ospf_lsa_header *n, struct ospf_lsa_header *h) { *h = *n; };
 static inline void lsa_hton_body(void *h, void *n, u16 len) { ASSERT(h != n); memcpy(n, h, len); };
 static inline void lsa_ntoh_body(void *n, void *h, u16 len) { ASSERT(n != h); memcpy(h, n, len); };
-static inline void lsa_hton_body1(void *h, u16 len) { };
-static inline void lsa_ntoh_body1(void *n, u16 len) { };
+static inline void lsa_hton_body1(void *h UNUSED, u16 len UNUSED) { };
+static inline void lsa_ntoh_body1(void *n UNUSED, u16 len UNUSED) { };
 #else
 void lsa_hton_hdr(struct ospf_lsa_header *h, struct ospf_lsa_header *n);
 void lsa_ntoh_hdr(struct ospf_lsa_header *n, struct ospf_lsa_header *h);

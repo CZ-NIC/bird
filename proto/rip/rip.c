@@ -77,6 +77,7 @@
  */
 
 #include <stdlib.h>
+
 #include "rip.h"
 #include "lib/macro.h"
 

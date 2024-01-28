@@ -143,7 +143,7 @@ bfd_merge_options(const struct bfd_iface_config *cf, const struct bfd_options *o
     .min_tx_int = opts->min_tx_int ?: cf->min_tx_int,
     .idle_tx_int = opts->idle_tx_int ?: cf->idle_tx_int,
     .multiplier = opts->multiplier ?: cf->multiplier,
-    .passive = opts->passive_set ? opts->passive : cf->passive
+    .passive = opts->passive_set ? opts->passive : cf->passive,
   };
 }
 
@@ -238,7 +238,7 @@ bfd_session_control_tx_timer(struct bfd_session *s, int reset)
 
   return;
 
- stop:
+stop:
   tm_stop(s->tx_timer);
   s->last_tx = 0;
 }
@@ -553,7 +553,7 @@ static struct bfd_iface_config bfd_default_iface = {
   .min_rx_int = BFD_DEFAULT_MIN_RX_INT,
   .min_tx_int = BFD_DEFAULT_MIN_TX_INT,
   .idle_tx_int = BFD_DEFAULT_IDLE_TX_INT,
-  .multiplier = BFD_DEFAULT_MULTIPLIER
+  .multiplier = BFD_DEFAULT_MULTIPLIER,
 };
 
 static inline struct bfd_iface_config *
@@ -903,7 +903,7 @@ static struct resclass bfd_request_class = {
   bfd_request_free,
   bfd_request_dump,
   NULL,
-  NULL
+  NULL,
 };
 
 
