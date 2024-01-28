@@ -2226,12 +2226,12 @@ io_loop(void)
   for(;;)
     {
       times_update(&main_timeloop);
-      events = ev_run_list(&global_event_list);
-      events = ev_run_list_limited(&global_work_list, WORK_EVENTS_MAX) || events;
+      ev_run_list(&global_event_list);
+      ev_run_list_limited(&global_work_list, WORK_EVENTS_MAX);
       timers_fire(&main_timeloop);
       io_close_event();
 
-      // FIXME
+      events = !EMPTY_LIST(global_event_list) || !EMPTY_LIST(global_work_list);
       poll_tout = (events ? 0 : 3000); /* Time in milliseconds */
       if (t = timers_first(&main_timeloop))
       {
