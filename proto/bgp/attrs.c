@@ -1152,6 +1152,12 @@ bgp_attr_known(uint code)
   return (code < ARRAY_SIZE(bgp_attr_table)) && bgp_attr_table[code].name;
 }
 
+const char *
+bgp_attr_name(uint code)
+{
+  return (code < ARRAY_SIZE(bgp_attr_table)) ? bgp_attr_table[code].name : NULL;
+}
+
 void bgp_fix_attr_flags(ea_list *attrs)
 {
   for (u8 i = 0; i < attrs->count; i++)
