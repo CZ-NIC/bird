@@ -138,6 +138,13 @@ struct bgp_config {
   const char *dynamic_name;		/* Name pattern for dynamic BGP */
   int dynamic_name_digits;		/* Minimum number of digits for dynamic names */
   int check_link;			/* Use iface link state for liveness detection */
+  int require_refresh;			/* Require remote support for route refresh [RFC 2918] */
+  int require_enhanced_refresh;		/* Require remote support for enhanced route refresh [RFC 7313] */
+  int require_as4;			/* Require remote support for 4B AS numbers [RFC 6793] */
+  int require_extended_messages;	/* Require remote support for extended messages [RFC 8654] */
+  int require_hostname;			/* Require remote support for hostname [draft] */
+  int require_gr;			/* Require remote support for graceful restart [RFC 4724] */
+  int require_llgr;			/* Require remote support for long-lived graceful restart [draft] */
   struct bfd_options *bfd;		/* Use BFD for liveness detection */
 };
 
@@ -159,7 +166,9 @@ struct bgp_channel_config {
   u8 llgr_able;				/* Allow full long-lived GR for the channel */
   uint llgr_time;			/* Long-lived graceful restart stale time */
   u8 ext_next_hop;			/* Allow both IPv4 and IPv6 next hops */
+  u8 require_ext_next_hop;		/* Require remote support of IPv4 NLRI with IPv6 next hops [RFC 8950] */
   u8 add_path;				/* Use ADD-PATH extension [RFC 7911] */
+  u8 require_add_path;			/* Require remote support of ADD-PATH extension [RFC 7911] */
   u8 aigp;				/* AIGP is allowed on this session */
   u8 aigp_originate;			/* AIGP is originated automatically */
   u32 cost;				/* IGP cost for direct next hops */
@@ -657,6 +666,7 @@ bgp_total_aigp_metric(rte *r)
 
 void bgp_dump_state_change(struct bgp_conn *conn, uint old, uint new);
 void bgp_prepare_capabilities(struct bgp_conn *conn);
+int bgp_check_capabilities(struct bgp_conn *conn);
 const struct bgp_af_desc *bgp_get_af_desc(u32 afi);
 const struct bgp_af_caps *bgp_find_af_caps(struct bgp_caps *caps, u32 afi);
 void bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type);
