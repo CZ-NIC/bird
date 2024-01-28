@@ -251,7 +251,7 @@ WHITE [ \t]
   return IP4;
 }
 
-({XIGIT}{2}){16,}|{XIGIT}{2}(:{XIGIT}{2}){15,}|hex:({XIGIT}{2}(:?{XIGIT}{2})*)? {
+({XIGIT}{2}){16,}|{XIGIT}{2}(:{XIGIT}{2}){15,}|hex:({XIGIT}{2}*|{XIGIT}{2}(:{XIGIT}{2})*) {
   char *s = yytext;
   struct adata *bs;
 
