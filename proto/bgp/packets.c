@@ -928,6 +928,10 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
     (p->cf->keepalive_time * hold_time / p->cf->hold_time) :
     hold_time / 3;
 
+  uint send_hold_time = (p->cf->send_hold_time >= 0) ?
+    (p->cf->send_hold_time * hold_time / p->cf->hold_time) :
+    2 * hold_time;
+
   /* Keepalive time might be rounded down to zero */
   if (hold_time && !keepalive_time)
     keepalive_time = 1;
@@ -1036,6 +1040,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   /* Update our local variables */
   conn->hold_time = hold_time;
   conn->keepalive_time = keepalive_time;
+  conn->send_hold_time = send_hold_time;
   conn->as4_session = conn->local_caps->as4_support && caps->as4_support;
   conn->ext_messages = conn->local_caps->ext_messages && caps->ext_messages;
   p->remote_id = id;
@@ -1045,6 +1050,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 
   bgp_schedule_packet(conn, NULL, PKT_KEEPALIVE);
   bgp_start_timer(p, conn->hold_timer, conn->hold_time);
+  bgp_start_timer(p, conn->send_hold_timer, conn->send_hold_time);
   bgp_conn_enter_openconfirm_state(conn);
 }
 
@@ -3035,7 +3041,11 @@ bgp_send(struct bgp_conn *conn, uint type, uint len)
   put_u16(buf+16, len);
   buf[18] = type;
 
-  return sk_send(sk, len);
+  int success = sk_send(sk, len);
+  if (success && ((conn->state == BS_ESTABLISHED) || (conn->state == BS_OPENCONFIRM)))
+    bgp_start_timer(conn->bgp, conn->send_hold_timer, conn->send_hold_time);
+
+  return success;
 }
 
 /**
@@ -3200,6 +3210,11 @@ bgp_tx(sock *sk)
   struct bgp_conn *conn = sk->data;
 
   ASSERT_DIE(birdloop_inside(conn->bgp->p.loop));
+
+  /* Pending message was passed to kernel */
+  if ((conn->state == BS_ESTABLISHED) || (conn->state == BS_OPENCONFIRM))
+    bgp_start_timer(conn->bgp, conn->send_hold_timer, conn->send_hold_time);
+
   DBG("BGP: TX hook\n");
   uint max = 1024;
   while (--max && (bgp_fire_tx(conn) > 0))
@@ -3241,6 +3256,7 @@ static struct {
   { 3, 10, "Invalid network field" },
   { 3, 11, "Malformed AS_PATH" },
   { 4, 0, "Hold timer expired" },
+  { 4, 1, "Send hold timer expired" }, /* Provisional [draft-ietf-idr-bgp-sendholdtimer] */
   { 5, 0, "Finite state machine error" }, /* Subcodes are according to [RFC6608] */
   { 5, 1, "Unexpected message in OpenSent state" },
   { 5, 2, "Unexpected message in OpenConfirm state" },
