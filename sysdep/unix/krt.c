@@ -639,11 +639,13 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
 #ifdef KRT_ALLOW_LEARN
   switch (src)
     {
-    case KRT_SRC_KERNEL:
-      goto ignore;
-
     case KRT_SRC_REDIRECT:
       goto delete;
+
+    case KRT_SRC_KERNEL:
+      if (KRT_CF->learn != KRT_LEARN_ALL)
+        goto ignore;
+      /* fallthrough */
 
     case  KRT_SRC_ALIEN:
       if (KRT_CF->learn)
@@ -780,6 +782,11 @@ krt_got_route_async(struct krt_proto *p, rte *e, int new, s8 src)
       break;
 
 #ifdef KRT_ALLOW_LEARN
+    case KRT_SRC_KERNEL:
+      if (KRT_CF->learn != KRT_LEARN_ALL)
+        break;
+      /* fallthrough */
+
     case KRT_SRC_ALIEN:
       if (KRT_CF->learn)
 	{

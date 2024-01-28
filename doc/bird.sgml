@@ -3775,9 +3775,8 @@ on the <cf/learn/ switch, such routes are either ignored or accepted to our
 table).
 
 <p>Note that routes created by OS kernel itself, namely direct routes
-representing IP subnets of associated interfaces, are not imported even with
-<cf/learn/ enabled. You can use <ref id="direct" name="Direct protocol"> to
-generate these direct routes.
+representing IP subnets of associated interfaces, are imported only with
+<cf/learn all/ enabled.
 
 <p>If your OS supports only a single routing table, you can configure only one
 instance of the Kernel protocol. If it supports multiple tables (in order to
@@ -3808,10 +3807,12 @@ channels.
 	Time in seconds between two consecutive scans of the kernel routing
 	table.
 
-	<tag><label id="krt-learn">learn <m/switch/</tag>
+	<tag><label id="krt-learn">learn <m/switch/|all</tag>
 	Enable learning of routes added to the kernel routing tables by other
 	routing daemons or by the system administrator. This is possible only on
-	systems which support identification of route authorship.
+	systems which support identification of route authorship. By default,
+	routes created by kernel (marked as "proto kernel") are not imported.
+	Use <cf/learn all/ option to import even these routes.
 
 	<tag><label id="krt-kernel-table">kernel table <m/number/</tag>
 	Select which kernel table should this particular instance of the Kernel
