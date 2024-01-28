@@ -472,6 +472,10 @@ static_postconfig(struct proto_config *CF)
   struct static_config *cf = (void *) CF;
   struct static_route *r;
 
+  /* If there is just a MPLS channel, use it as a main channel */
+  if (!CF->net_type && proto_cf_mpls_channel(CF))
+    CF->net_type = NET_MPLS;
+
   if (! proto_cf_main_channel(CF))
     cf_error("Channel not specified");
 
