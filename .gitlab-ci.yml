@@ -4,8 +4,8 @@ variables:
   GIT_STRATEGY: fetch
   DOCKER_CMD: docker --config="$HOME/.docker/$CI_JOB_ID/"
   IMG_BASE: registry.nic.cz/labs/bird
-  TOOLS_DIR: /var/lib/gitlab-runner/bird-tools
-  STAYRTR_BINARY: /var/lib/gitlab-runner/stayrtr-0.1-108-g8d18a41-linux-x86_64
+  TOOLS_DIR: /home/gitlab-runner/bird-tools
+  STAYRTR_BINARY: /usr/bin/stayrtr
 
 stages:
 #  - image
@@ -298,10 +298,10 @@ pkg-opensuse-15.3-amd64:
   image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
 
 
-build-birdlab:
+build-netlab:
   stage: build
   tags:
-    - birdlab
+    - netlab
     - amd64
   script:
     - DIR=$(pwd)
@@ -316,9 +316,9 @@ build-birdlab:
 
 .test: &test-base
   stage: test
-  needs: [build-birdlab]
+  needs: [build-netlab]
   tags:
-    - birdlab
+    - netlab
     - amd64
   script:
     - cd $TOOLS_DIR/netlab
