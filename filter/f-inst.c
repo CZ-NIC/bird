@@ -893,6 +893,12 @@
     ARG_ANY(1);
     DYNAMIC_ATTR;
     ARG_TYPE(1, da->type);
+
+    FID_NEW_BODY;
+      if (da->type == T_OPAQUE)
+	cf_error("Setting opaque attribute is not allowed");
+
+    FID_INTERPRET_BODY;
     {
       struct eattr *a;
 
