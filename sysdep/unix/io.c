@@ -32,6 +32,7 @@
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
 #include <netinet/icmp6.h>
+#include <netdb.h>
 
 #include "nest/bird.h"
 #include "lib/lists.h"
@@ -139,7 +140,6 @@ struct rfile *
 rf_open(pool *p, const char *name, enum rf_mode mode, off_t limit)
 {
   int fd = rf_open_get_fd(name, mode);
-
   if (fd < 0)
     return NULL; /* The caller takes care of printing %m. */
 
@@ -169,6 +169,7 @@ rf_open(pool *p, const char *name, enum rf_mode mode, off_t limit)
     default:
       bug("rf_open() must have the mode set");
   }
+
 
   return r;
 }
@@ -1186,6 +1187,14 @@ sk_setup(sock *s)
   return 0;
 }
 
+static int
+sk_connect(sock *s)
+{
+  sockaddr sa;
+  sockaddr_fill(&sa, s->af, s->daddr, s->iface, s->dport);
+  return connect(s->fd, &sa.sa, SA_LEN(sa));
+}
+
 static void
 sk_tcp_connected(sock *s)
 {
@@ -1627,8 +1636,7 @@ sk_open(sock *s, struct birdloop *loop)
   switch (s->type)
   {
   case SK_TCP_ACTIVE:
-    sockaddr_fill(&sa, s->af, s->daddr, s->iface, s->dport);
-    if (connect(fd, &sa.sa, SA_LEN(sa)) >= 0)
+    if (sk_connect(s) >= 0)
       sk_tcp_connected(s);
     else if (errno != EINTR && errno != EAGAIN && errno != EINPROGRESS &&
 	     errno != ECONNREFUSED && errno != EHOSTUNREACH && errno != ENETUNREACH)
@@ -1638,6 +1646,14 @@ sk_open(sock *s, struct birdloop *loop)
   case SK_TCP_PASSIVE:
     if (listen(fd, 8) < 0)
       ERR2("listen");
+    break;
+
+  case SK_UDP:
+    if (s->flags & SKF_CONNECT)
+      if (sk_connect(s) < 0)
+	ERR2("connect");
+
+    sk_alloc_bufs(s);
     break;
 
   case SK_SSH_ACTIVE:
@@ -2117,10 +2133,7 @@ sk_write_noflush(sock *s)
   {
   case SK_TCP_ACTIVE:
     {
-      sockaddr sa;
-      sockaddr_fill(&sa, s->af, s->daddr, s->iface, s->dport);
-
-      if (connect(s->fd, &sa.sa, SA_LEN(sa)) >= 0 || errno == EISCONN)
+      if (sk_connect(s) >= 0 || errno == EISCONN)
 	sk_tcp_connected(s);
       else if (errno != EINTR && errno != EAGAIN && errno != EINPROGRESS)
 	s->err_hook(s, errno);
@@ -2564,4 +2577,37 @@ test_old_bird(char *path)
   if (connect(fd, (struct sockaddr *) &sa, SUN_LEN(&sa)) == 0)
     die("I found another BIRD running.");
   close(fd);
+}
+
+
+/*
+ *	DNS resolver
+ */
+
+ip_addr
+resolve_hostname(const char *host, int type, const char **err_msg)
+{
+  struct addrinfo *res;
+  struct addrinfo hints = {
+    .ai_family = AF_UNSPEC,
+    .ai_socktype = (type == SK_UDP) ? SOCK_DGRAM : SOCK_STREAM,
+    .ai_flags = AI_ADDRCONFIG,
+  };
+
+  *err_msg = NULL;
+
+  int err_code = getaddrinfo(host, NULL, &hints, &res);
+  if (err_code != 0)
+  {
+    *err_msg = gai_strerror(err_code);
+    return IPA_NONE;
+  }
+
+  ip_addr addr = IPA_NONE;
+  uint unused;
+
+  sockaddr_read((sockaddr *) res->ai_addr, res->ai_family, &addr, NULL, &unused);
+  freeaddrinfo(res);
+
+  return addr;
 }

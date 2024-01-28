@@ -28,6 +28,7 @@
 #include "conf/conf.h"
 #include "lib/string.h"
 #include "lib/lists.h"
+#include "lib/socket.h"
 #include "sysdep/unix/unix.h"
 #include "sysdep/unix/io-loop.h"
 
@@ -91,12 +92,17 @@ struct log_channel {
   _Atomic uint mask;			/* Classes to log */
   uint new_mask;			/* Pending new mask */
   uint prepare;				/* Which message parts to prepare */
+  const char *udp_host;			/* UDP log dst host name */
+  ip_addr udp_ip;			/* UDP log dst IP address */
+  uint udp_port;			/* UDP log dst port */
+  sock * _Atomic udp_sk;		/* UDP socket */
 };
 
 struct log_thread_syncer {
   struct bird_thread_syncer sync;
   struct log_channel *lc_close;
   struct rfile *rf_close;
+  sock *sk_close;
   const char *name;
   event lts_event;
 };
@@ -110,11 +116,15 @@ lts_done(struct bird_thread_syncer *sync)
   if (lts->lc_close)
   {
     lts->rf_close = atomic_load_explicit(&lts->lc_close->rf, memory_order_relaxed);
+    lts->sk_close = atomic_load_explicit(&lts->lc_close->udp_sk, memory_order_relaxed);
     mb_free(lts->lc_close);
   }
 
   if (lts->rf_close && lts->rf_close != &rf_stderr)
     rfree(lts->rf_close);
+
+  if (lts->sk_close)
+    rfree(lts->sk_close);
 
   mb_free(lts);
   log_unlock();
@@ -154,8 +164,6 @@ log_rotate(struct log_channel *lc)
   atomic_store_explicit(&lc->rf, rf, memory_order_release);
 }
 
-#define LOG_MSG_OFFSET	(TM_DATETIME_BUFFER_SIZE + 64)
-
 /**
  * log_commit - commit a log message
  * @class: message class information (%L_DEBUG to %L_BUG, see |lib/birdlib.h|)
@@ -192,7 +200,9 @@ log_commit(log_buffer *buf)
 	continue;
 
       struct rfile *rf = atomic_load_explicit(&l->rf, memory_order_acquire);
-      if (rf)
+      sock *sk = atomic_load_explicit(&l->udp_sk, memory_order_acquire);
+
+      if (rf || sk)
 	{
 	  /* Construct the iovec */
 	  static char terminal_prefix[] = "bird: ",
@@ -218,28 +228,37 @@ log_commit(log_buffer *buf)
 		};
 	    }
 
-	  iov[iov_count++] = (struct iovec) {
-	    .iov_base = newline,
-	    .iov_len = sizeof newline - 1,
-	  };
+	  if (rf)
+	  {
+	    iov[iov_count++] = (struct iovec) {
+	      .iov_base = newline,
+	      .iov_len = sizeof newline - 1,
+	    };
 
-	  do {
-	    if (rf_writev(rf, iov, iov_count))
-	      break;
+	    do {
+	      if (rf_writev(rf, iov, iov_count))
+		break;
 
-	    log_lock();
-	    rf = atomic_load_explicit(&l->rf, memory_order_acquire);
-	    if (rf_writev(rf, iov, iov_count))
-	    {
+	      log_lock();
+	      rf = atomic_load_explicit(&l->rf, memory_order_acquire);
+	      if (rf_writev(rf, iov, iov_count))
+	      {
+		log_unlock();
+		break;
+	      }
+
+	      log_rotate(l);
 	      log_unlock();
-	      break;
-	    }
 
-	    log_rotate(l);
-	    log_unlock();
-
-	    rf = atomic_load_explicit(&l->rf, memory_order_relaxed);
-	  } while (!rf_writev(rf, iov, iov_count));
+	      rf = atomic_load_explicit(&l->rf, memory_order_relaxed);
+	    } while (!rf_writev(rf, iov, iov_count));
+	  }
+	  else if (sk)
+	  {
+	    while ((writev(sk->fd, iov, iov_count) < 0) && (errno == EINTR))
+	      ;
+	    /* FIXME: Silently ignoring write errors */
+	  }
 	}
 #ifdef HAVE_SYSLOG_H
       else
@@ -273,6 +292,23 @@ log_prepare(log_buffer *buf, int class)
       buffer_puts(&buf->buf, "<time format error>");
 
     *(buf->buf.pos++) = ' ';
+  }
+
+  buf->pos[LBP_UDP_HEADER] = buf->buf.pos;
+  if (BIT32_TEST(&lf, LBP_UDP_HEADER))
+  {
+    /* Legacy RFC 3164 format, but with us precision */
+    buffer_print(&buf->buf, "<%d>", LOG_DAEMON | syslog_priorities[class]);
+
+    const char *fmt = "%b %d %T.%6f";
+    int t = tm_format_real_time(buf->buf.pos, buf->buf.end - buf->buf.pos, fmt, current_real_time());
+    if (t)
+      buf->buf.pos += t;
+    else
+      buffer_puts(&buf->buf, "<time format error>");
+
+    const char *hostname = (config && config->hostname) ? config->hostname : "<none>";
+    buffer_print(&buf->buf, " %s %s: ", hostname, bird_name);
   }
 
   buf->pos[LBP_THREAD_ID] = buf->buf.pos;
@@ -473,6 +509,7 @@ default_log_list(int initial, const char **syslog_name)
   return &log_list;
 }
 
+
 void
 log_switch(int initial, list *logs, const char *new_syslog_name)
 {
@@ -549,15 +586,39 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
 	  }
 
 	  l->rf = NULL;
+	  l->found_old = 1;
+	}
+    }
+    else if (ol->udp_port)
+    {
+      WALK_LIST(l, *logs)
+	if (
+	    (l->udp_port == ol->udp_port) && (
+	      (l->udp_host && !strcmp(l->udp_host, ol->udp_host)) ||
+	      (ipa_nonzero(l->udp_ip) && (ipa_equal(l->udp_ip, ol->udp_ip)))
+	      ))
+	{
+	  /* Merge the mask */
+	  ol->new_mask |= l->mask;
+	  total_mask |= l->mask;
+
+	  /* Merge flags */
+	  flags |= ol->prepare;
+
+	  /* The socket just stays open */
+	  l->found_old = 1;
 	}
     }
     else
+    {
       WALK_LIST(l, *logs)
-	if (!l->filename && !l->rf)
+	if (!l->filename && !l->rf && !l->udp_port)
 	{
 	  ol->new_mask |= l->mask;
 	  total_mask |= l->mask;
+	  l->found_old = 1;
 	}
+    }
 
     /* First only extend masks */
     atomic_fetch_or_explicit(&ol->mask, ol->new_mask, memory_order_acq_rel);
@@ -568,7 +629,10 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
   /* Open new log channels */
   WALK_LIST(l, *logs)
   {
-    if (!l->rf)
+    if (l->found_old)
+      continue;
+
+    if (!l->rf && !l->udp_port)
       continue;
 
     /* Truly new log channel */
@@ -576,43 +640,109 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
     struct log_channel *lc = mb_alloc(log_pool, sizeof *lc);
     log_unlock();
 
-    *lc = (struct log_channel) {
-      .filename = l->filename,
-      .backup = l->backup,
-      .rf = l->rf,
-      .limit = l->limit,
-      .new_mask = l->mask,
-      .prepare = BIT32_ALL(LBP_TIMESTAMP, LBP_THREAD_ID, LBP_CLASS, LBP_MSG) |
-	(l->terminal_flag ? BIT32_VAL(LBPP_TERMINAL) : 0),
-    };
+    if (l->rf)
+    {
+      *lc = (struct log_channel) {
+	.filename = l->filename,
+	.backup = l->backup,
+	.rf = l->rf,
+	.limit = l->limit,
+	.new_mask = l->mask,
+	.prepare = BIT32_ALL(LBP_TIMESTAMP, LBP_THREAD_ID, LBP_CLASS, LBP_MSG) |
+	  (l->terminal_flag ? BIT32_VAL(LBPP_TERMINAL) : 0),
+      };
+
+      /* Now the file handle ownership is transferred to the log channel */
+      l->rf = NULL;
+
+      /* Find more */
+      for (struct log_config *ll = NODE_NEXT(l); NODE_VALID(ll); ll = NODE_NEXT(ll))
+	if (ll->filename && ll->rf && rf_same(lc->rf, ll->rf))
+	{
+	  /* Merged with this channel */
+	  lc->new_mask |= ll->mask;
+	  total_mask |= ll->mask;
+
+	  if (l->rf != &rf_stderr)
+	  {
+	    log_lock();
+	    rfree(ll->rf);
+	    log_unlock();
+	  }
+	  ll->rf = NULL;
+	}
+    }
+    else if (l->udp_port)
+    {
+      sock *sk;
+
+      ASSERT(l->udp_host || ipa_nonzero(l->udp_ip));
+
+      *lc = (struct log_channel) {
+	.new_mask = l->mask,
+	.prepare = BIT32_ALL(LBP_UDP_HEADER, LBP_MSG),
+	.udp_host = l->udp_host,
+	.udp_port = l->udp_port,
+	.udp_ip = l->udp_ip,
+      };
+
+      if (lc->udp_host && ipa_zero(lc->udp_ip))
+      {
+	const char *err_msg;
+	lc->udp_ip = resolve_hostname(lc->udp_host, SK_UDP, &err_msg);
+
+	if (ipa_zero(lc->udp_ip))
+	{
+	  cf_warn("Cannot resolve hostname '%s': %s", l->udp_host, err_msg);
+	  goto resolve_fail;
+	}
+      }
+
+      log_lock();
+      sk = sk_new(log_pool);
+      log_unlock();
+      sk->type = SK_UDP;
+      sk->daddr = lc->udp_ip;
+      sk->dport = lc->udp_port;
+      sk->flags = SKF_CONNECT;
+
+      if (sk_open(sk, &main_birdloop) < 0)
+      {
+	cf_warn("Cannot open UDP log socket: %s%#m", sk->err);
+	rfree(sk);
+resolve_fail:
+	log_lock();
+	mb_free(lc);
+	log_unlock();
+	continue;
+      }
+
+      atomic_store_explicit(&lc->udp_sk, sk, memory_order_relaxed);
+
+      /* Find more */
+      for (struct log_config *ll = NODE_NEXT(l); NODE_VALID(ll); ll = NODE_NEXT(ll))
+	if (
+	    (l->udp_port == ll->udp_port) && (
+	      (l->udp_host && !strcmp(l->udp_host, ll->udp_host)) ||
+	      (ipa_nonzero(l->udp_ip) && (ipa_equal(l->udp_ip, ll->udp_ip)))
+	      ))
+	{
+	  /* Merged with this channel */
+	  lc->new_mask |= ll->mask;
+	  total_mask |= ll->mask;
+
+	  ll->found_old = 1;
+	}
+    }
 
     /* Mask union */
     total_mask |= l->mask;
 
+    /* Store the new final local mask */
+    atomic_store_explicit(&lc->mask, lc->new_mask, memory_order_release);
+
     /* Message preparation flags */
     flags |= lc->prepare;
-
-    /* Now the file handle ownership is transferred to the log channel */
-    l->rf = NULL;
-
-    /* Find more */
-    for (struct log_config *ll = NODE_NEXT(l); NODE_VALID(ll); ll = NODE_NEXT(ll))
-      if (ll->filename && ll->rf && rf_same(lc->rf, ll->rf))
-      {
-	/* Merged with this channel */
-	lc->new_mask |= ll->mask;
-	total_mask |= ll->mask;
-
-	if (l->rf != &rf_stderr)
-	{
-	  log_lock();
-	  rfree(ll->rf);
-	  log_unlock();
-	}
-	ll->rf = NULL;
-      }
-
-    atomic_store_explicit(&lc->mask, lc->new_mask, memory_order_release);
 
     /* Insert into the main log list */
     struct log_channel *head = atomic_load_explicit(&global_logs, memory_order_acquire);
@@ -635,7 +765,7 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
     atomic_store_explicit(&ol->mask, ol->new_mask, memory_order_release);
 
     /* Never close syslog channel or debug */
-    if (ol->new_mask || !ol->rf || (ol->rf == dbg_rf))
+    if (ol->new_mask || (!ol->rf && !ol->udp_sk) || (ol->rf == dbg_rf))
     {
       pprev = &ol->next;
       ol = atomic_load_explicit(pprev, memory_order_acquire);

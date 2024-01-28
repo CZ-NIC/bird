@@ -130,6 +130,7 @@ void rf_write_crude(struct rfile *, const char *, int);
 extern struct rfile rf_stderr;
 
 void test_old_bird(char *path);
+ip_addr resolve_hostname(const char *host, int type, const char **err_msg);
 
 /* krt.c bits */
 
@@ -148,6 +149,10 @@ struct log_config {
   const char *backup;			/* Secondary filename (for log rotation) */
   off_t limit;				/* Log size limit */
   int terminal_flag;
+  int found_old;
+  const char *udp_host;			/* UDP log dst host name */
+  ip_addr udp_ip;			/* UDP log dst IP address */
+  uint udp_port;			/* UDP log dst port */
 };
 
 #endif

@@ -17,7 +17,7 @@ static struct log_config *this_log;
 
 CF_DECLS
 
-CF_KEYWORDS(LOG, SYSLOG, ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG, STDERR, SOFT)
+CF_KEYWORDS(LOG, SYSLOG, ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG, STDERR, SOFT, UDP, PORT)
 CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, STATUS)
 CF_KEYWORDS(GRACEFUL, RESTART, FIXED)
 
@@ -67,7 +67,22 @@ log_file:
    }
  | SYSLOG syslog_name { this_log->rf = NULL; new_config->syslog_name = $2; }
  | STDERR { this_log->rf = &rf_stderr; this_log->terminal_flag = 1; }
+ | UDP log_udp_host log_udp_port { this_log->rf = NULL; }
  ;
+
+log_udp_host: text_or_ipa
+{
+  if ($1.type == T_STRING)
+    this_log->udp_host = $1.val.s;
+  else if ($1.type == T_IP)
+    this_log->udp_ip = $1.val.ip;
+  else bug("Bad text_or_ipa");
+};
+
+log_udp_port:
+    /* empty */ { this_log->udp_port = 514; }
+  | PORT NUM { check_u16($2); this_log->udp_port = $2; }
+  ;
 
 log_mask:
    ALL { $$ = ~0; }

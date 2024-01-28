@@ -165,6 +165,7 @@ typedef struct buffer {
 
 enum log_buffer_pos {
   LBP_TIMESTAMP = 0,
+  LBP_UDP_HEADER,
   LBP_THREAD_ID,
   LBP_CLASS,
   LBP_MSG,

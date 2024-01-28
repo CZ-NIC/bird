@@ -543,11 +543,12 @@ ipv6 table
 include "tablename.conf";;
 </code>
 
-	<tag><label id="opt-log">log "<m/filename/" [<m/limit/ "<m/backup/"] | fixed "<m/filename/" <m/size/ | syslog [name <m/name/] | stderr all|{ <m/list of classes/ }</tag>
+	<tag><label id="opt-log">log "<m/filename/" [<m/limit/ "<m/backup/"] | fixed "<m/filename/" <m/size/ | syslog [name <m/name/] | stderr | udp <m/address/ [port <m/port/] all|{ <m/list of classes/ }</tag>
 	Set logging of messages having the given class (either <cf/all/ or <cf>{
 	error|trace [, <m/.../] }</cf> etc.) into selected destination - a file
 	specified as a filename string (with optional log rotation information),
-	syslog (with optional name argument), or the stderr output.
+	syslog (with optional name argument), the stderr output, or as a UDP
+	message (in <rfc id="3164"> syslog format).
 
 	Classes are:
 	<cf/info/, <cf/warning/, <cf/error/ and <cf/fatal/ for messages about local problems,
