@@ -1572,22 +1572,18 @@ in the foot).
 	This is a sequences of arbitrary bytes. There are no ways to modify
 	bytestrings in filters. You can pass them between function, assign
 	them to variables of type <cf/bytestring/, print such values,
-	compare bytestings (<cf/=, !=/). Bytestring literals are written
-	in several ways:
+	compare bytestings (<cf/=, !=/).
 
-	A sequence of hexadecimal digit pairs, optionally colon-separated.
-	A bytestring specified this way must be at least 16 bytes (32 digits)
-	long: <cf/01:23:45:67:89:ab:cd:ef:01:23:45:67:89:ab:cd:ef/ or
-	<cf/0123456789abcdef0123456789abcdef/.
-
-	A sequence of hexadecimal digit pairs of any lengh (including zero)
-	with the <cf/hex:/ prefix. Colon separators can be inserted
-	arbitrarily between any bytes: <cf/hex:/, <cf/hex:1234/,
-	<cf/hex:1234:56:78/.
+	Bytestring literals are written as a sequence of hexadecimal digit
+	pairs, optionally colon-separated. A bytestring specified this way
+	must be either at least 16 bytes (32 digits) long, or prefixed by the
+	<cf/hex:/ prefix: <cf/01:23:45:67:89:ab:cd:ef:01:23:45:67:89:ab:cd:ef/,
+	<cf/0123456789abcdef0123456789abcdef/, <cf/hex:/, <cf/hex:12:34:56/,
+	<cf/hex:12345678/.
 
 	A bytestring can be made from a hex string using <cf/from_hex()/
-	function. Source strings can use any number of colons, hyphens and
-	spaces as byte separators: <cf/from_hex(" 1234 56:78 ab-cd-ef ")/.
+	function. Source strings can use any number of dots, colons, hyphens
+	and spaces as byte separators: <cf/from_hex(" 12.34 56:78 ab-cd-ef ")/.
 
 	<tag><label id="type-ip">ip</tag>
 	This type can hold a single IP address. The IPv4 addresses are stored as
@@ -5017,7 +5013,7 @@ definitions, prefix definitions and DNS definitions:
 
 	<label id="radv-custom-option-exam">
 <p><code>
-custom option type 38 value hex:0e10:2001:0db8:000a:000b:0000:0000;
+custom option type 38 value hex:0e:10:20:01:0d:b8:00:0a:00:0b:00:00:00:00;
 </code>
 
 	<tag><label id="radv-trigger">trigger <m/prefix/</tag>

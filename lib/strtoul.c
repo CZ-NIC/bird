@@ -87,7 +87,7 @@ bstrhextobin(const char *s, byte *b)
     int v = fromxdigit(*s);
     if (v < 0)
     {
-      if (strchr(" :-", *s) && !hi)
+      if (strchr(" -.:", *s) && !hi)
 	continue;
       else
 	return -1;
