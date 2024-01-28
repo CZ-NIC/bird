@@ -3568,8 +3568,8 @@ some of them (marked with `<tt/O/') are optional.
 
 	<tag><label id="bgp-otc">int bgp_otc [O]</tag>
 	This attribute is defined in <rfc id="9234">. OTC is a flag that marks
-	routes that should be sent only to customers. If <ref id="bgp-role"
-	name="local Role"> is configured it set automatically.
+	routes that should be sent only to customers. If <ref id="bgp-local-role"
+	name="local role"> is configured it set automatically.
 </descrip>
 
 <p>For attributes unknown by BIRD, the user can assign a name (on top level)
@@ -3977,10 +3977,12 @@ could have up to 5 channels: <cf/ipv4/, <cf/ipv6/, <cf/vpn4/, <cf/vpn6/, and
 <cf/mpls/.
 
 <p><descrip>
-	<tag><label id="l3vpn-route-distinguisher">route distinguisher <m/vpn-rd/</tag>
-	<tag><label id="l3vpn-rd">rd <m/vpn-rd/</tag>
+	<tag><label id="l3vpn-route-distinguisher">route distinguisher <m/vpnrd/</tag>
 	The route distinguisher that is attached to routes in the export
 	direction. Mandatory.
+
+	<tag><label id="l3vpn-rd">rd <m/vpnrd/</tag>
+	A shorthand for the option <cf/route distinguisher/.
 
 	<tag><label id="l3vpn-import-target">import target <m/ec/|<m/ec-set/</tag>
 	Route target extended communities specifying which routes should be
@@ -5817,7 +5819,7 @@ each labeled route.
 <ref id="type-prefix" name="dependent on network type">.
 
 <descrip>
-	<tag>route <m/prefix/ [mpls <m/number>] via <m/ip/|<m/"interface"/ [<m/per-nexthop options/] [via ...]</tag>
+	<tag>route <m/prefix/ [mpls <m/number/] via <m/ip/|<m/"interface"/ [<m/per-nexthop options/] [via ...]</tag>
 	Regular routes may bear one or more <ref id="route-next-hop" name="next
 	hops">. Every next hop is preceded by <cf/via/ and configured as shown.
 
@@ -5825,12 +5827,12 @@ each labeled route.
 	after <m/prefix/ specifies a static label for the labeled route, instead
 	of using dynamically allocated label.
 
-	<tag>route <m/prefix/ [mpls <m/number>] recursive <m/ip/ [mpls <m/num/[/<m/num/[/<m/num/[...]]]]</tag>
+	<tag>route <m/prefix/ [mpls <m/number/] recursive <m/ip/ [mpls <m/num/[/<m/num/[/<m/num/[...]]]]</tag>
 	Recursive nexthop resolves the given IP in the configured IGP table and
 	uses that route's next hop. The MPLS stacks are concatenated; on top is
 	the IGP's nexthop stack and on bottom is this route's stack.
 
-	<tag>route <m/prefix/ [mpls <m/number>] blackhole|unreachable|prohibit</tag>
+	<tag>route <m/prefix/ [mpls <m/number/] blackhole|unreachable|prohibit</tag>
 	Special routes specifying to silently drop the packet, return it as
 	unreachable or return it as administratively prohibited. First two
 	targets are also known as <cf/drop/ and <cf/reject/.
