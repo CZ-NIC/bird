@@ -32,7 +32,7 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY, INTERNAL, EXTERNAL, SETS,
 	DYNAMIC, RANGE, NAME, DIGITS, BGP_AIGP, AIGP, ORIGINATE, COST, ENFORCE,
 	FIRST, FREE, VALIDATE, BASE, ROLE, ROLES, PEER, PROVIDER, CUSTOMER,
-	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL)
+	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL, SEND)
 
 %type <i> bgp_nh
 %type <i32> bgp_afi
@@ -77,6 +77,7 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->local_role = BGP_ROLE_UNDEFINED;
      BGP_CFG->dynamic_name = "dynbgp";
      BGP_CFG->check_link = -1;
+     BGP_CFG->send_hold_time = -1;
    }
  ;
 
@@ -182,6 +183,7 @@ bgp_proto:
  | bgp_proto CONNECT RETRY TIME expr ';' { BGP_CFG->connect_retry_time = $5; }
  | bgp_proto KEEPALIVE TIME expr ';' { BGP_CFG->keepalive_time = $4; if (($4<1) || ($4>65535)) cf_error("Keepalive time must be in range 1-65535"); }
  | bgp_proto MIN KEEPALIVE TIME expr ';' { BGP_CFG->min_keepalive_time = $5; }
+ | bgp_proto SEND HOLD TIME expr';' { BGP_CFG->send_hold_time = $5; }
  | bgp_proto ERROR FORGET TIME expr ';' { BGP_CFG->error_amnesia_time = $5; }
  | bgp_proto ERROR WAIT TIME expr ',' expr ';' { BGP_CFG->error_delay_time_min = $5; BGP_CFG->error_delay_time_max = $7; }
  | bgp_proto DISABLE AFTER ERROR bool ';' { BGP_CFG->disable_after_error = $5; }
@@ -222,6 +224,7 @@ bgp_proto:
  | bgp_proto ENFORCE FIRST AS bool ';' { BGP_CFG->enforce_first_as = $5; }
  | bgp_proto LOCAL ROLE bgp_role_name ';' { BGP_CFG->local_role = $4; }
  | bgp_proto REQUIRE ROLES bool ';' { BGP_CFG->require_roles = $4; }
+ | bgp_proto DISABLE RX bool ';' { BGP_CFG->disable_rx = $4; }
  ;
 
 bgp_afi:

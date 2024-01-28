@@ -117,6 +117,8 @@ struct bgp_config {
   int setkey;				/* Set MD5 password to system SA/SP database */
   u8  local_role;			/* Set peering role with neighbor [RFC 9234] */
   int require_roles;			/* Require configured roles on both sides */
+  int send_hold_time;
+  int disable_rx;			/* Stop reading messages after handshake (for simulating error) */
   /* Times below are in seconds */
   unsigned gr_time;			/* Graceful restart timeout */
   unsigned llgr_time;			/* Long-lived graceful restart stale time */
@@ -307,6 +309,7 @@ struct bgp_conn {
   timer *connect_timer;
   timer *hold_timer;
   timer *keepalive_timer;
+  timer *send_hold_timer;
   event *tx_ev;
   u32 packets_to_send;			/* Bitmap of packet types to be sent */
   u32 channels_to_send;			/* Bitmap of channels with packets to be sent */
@@ -315,7 +318,7 @@ struct bgp_conn {
   int notify_code, notify_subcode, notify_size;
   byte *notify_data;
 
-  uint hold_time, keepalive_time;	/* Times calculated from my and neighbor's requirements */
+  uint hold_time, keepalive_time, send_hold_time;	/* Times calculated from my and neighbor's requirements */
 };
 
 struct bgp_proto {
@@ -558,6 +561,7 @@ void bgp_conn_enter_openconfirm_state(struct bgp_conn *conn);
 void bgp_conn_enter_established_state(struct bgp_conn *conn);
 void bgp_conn_enter_close_state(struct bgp_conn *conn);
 void bgp_conn_enter_idle_state(struct bgp_conn *conn);
+void broke_bgp_listening(struct channel *C);
 void bgp_handle_graceful_restart(struct bgp_proto *p);
 void bgp_graceful_restart_done(struct bgp_channel *c);
 void bgp_refresh_begin(struct bgp_channel *c);
