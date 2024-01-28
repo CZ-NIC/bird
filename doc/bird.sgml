@@ -1715,7 +1715,7 @@ in the foot).
 	Prefix <cf><m>ip1</m>/<m>len1</m></cf> matches prefix
 	pattern <cf><m>ip2</m>/<m>len2</m>{<m>l</m>,<m>h</m>}</cf> if the
 	first <cf>min(len1, len2)</cf> bits of <cf/ip1/ and <cf/ip2/ are
-	identical and <cf>len1 &lt;= ip1 &lt;= len2</cf>. A valid prefix pattern
+	identical and <cf>l &lt;= len1 &lt;= h</cf>. A valid prefix pattern
 	has to satisfy <cf>low &lt;= high</cf>, but <cf/pxlen/ is not
 	constrained by <cf/low/ or <cf/high/. Obviously, a prefix matches a
 	prefix set literal if it matches any prefix pattern in the prefix set
