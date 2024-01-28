@@ -294,7 +294,7 @@ net_roa6_: net_ip6_ MAX NUM AS NUM
 
 net_mpls_: MPLS NUM
 {
-  $$ = cfg_alloc(sizeof(net_addr_roa6));
+  $$ = cfg_alloc(sizeof(net_addr_mpls));
   net_fill_mpls($$, $2);
 }
 
