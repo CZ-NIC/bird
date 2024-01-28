@@ -1167,7 +1167,11 @@ protocol bgp from  {
 <p>The MPLS domain definition is mandatory for a MPLS router. All MPLS channels
 and MPLS-aware protocols are associated with some MPLS domain (although usually
 implicitly with the sole one). In the MPLS domain definition you can configure
-details of MPLS label allocation. Currently, there is just one option:
+details of MPLS label allocation. Currently, there is just one option,
+<cf/label range/.
+
+<p>Note that the MPLS subsystem is experimental, it is likely that there will be
+some backward-incompatible changes in the future.
 
 <descrip>
 	<tag><label id="mpls-domain-label-range">label range <m/name/ { start <m/number/; length <m/number/; [<m/.../] }</tag>
@@ -3651,10 +3655,9 @@ future. It is not ready for production usage and therefore it is not compiled
 by default and have to be enabled during installation by the configure option
 <tt/--with-protocols=/.
 
-<p>The implementation is limited to monitor protocol state changes and routes
-in <ref id="bgp-import-table" name="BGP import tables"> (not regular routing
-tables), therefore import table must be enabled in BGP protocols. All BGP
-protocols are monitored automatically.
+<p>The implementation supports monitoring protocol state changes, pre-policy
+routes (in <ref id="bgp-import-table" name="BGP import tables">) and post-policy
+routes (in regular routing tables). All BGP protocols are monitored automatically.
 
 <sect1>Example
 <label id="bmp-exam">
@@ -3664,8 +3667,11 @@ protocol bmp {
 	# The monitoring station to connect to
 	station address ip 198.51.100.10 port 1790;
 
-	# required option
+	# Monitor received routes (in import table)
 	monitoring rib in pre_policy;
+
+	# Monitor accepted routes (passed import filters)
+	monitoring rib in post_policy;
 }
 </code>
 

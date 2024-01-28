@@ -29,6 +29,37 @@ Version 3.0-alpha0 (2022-02-07)
   o Lots of refactoring
   o Bugfixes and improvements as they came along
 
+
+Version 2.14 (2023-10-06)
+  o MPLS subsystem
+  o L3VPN: BGP/MPLS VPNs (RFC 4364)
+  o BGP: Access to unknown route attributes
+  o RAdv: Custom options
+  o Babel: RTT metric extension
+  o BMP: Refactored route monitoring
+  o BMP: Multiple instances of BMP protocol
+  o BMP: Both pre-policy and post-policy monitoring
+  o Experimental route aggregation
+  o Filter: Method framework
+  o Filter: Functions have return type statements
+  o Filter: New bytestring data type
+  o Kernel: Option to learn kernel routes
+  o Many bugfixes and improvements
+
+  Notes:
+
+  User-defined filter functions that return values now should have return type
+  statements. We still accept functions without such statement, if they could be
+  properly typed.
+
+  For loops allowed to use both existing iterator variables or ones defined in
+  the for statement. We no longer support the first case, all iterator variables
+  must be defined in the for statement (e.g. 'for int i in bgp_path ...').
+
+  Due to oversight, VRF interfaces were not included in respective VRFs, this is
+  fixed now.
+
+
 Version 2.13.1 (2023-06-23)
   o BGP: Fix role check when no capability option is present
   o Filter: Fixed segfault when a case option had an empty block
