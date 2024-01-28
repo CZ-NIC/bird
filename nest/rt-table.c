@@ -503,6 +503,12 @@ rte_store(const rte *r, struct netindex *i, struct rtable_private *tab)
   else
     e->attrs = rta_lookup(e->attrs, 1);
 
+#if 0
+  debug("(store) %N ", i->addr);
+  ea_dump(e->attrs);
+  debug("\n");
+#endif
+
   return s;
 }
 
@@ -1769,6 +1775,13 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
       ea_clone(new->attrs) :
       ea_lookup(new->attrs, 0);
 
+#if 0
+  debug("%s.%s -(prefilter)-> %s: %N ", c->proto->name, c->name, c->table->name, n);
+  if (new) ea_dump(new->attrs);
+  else debug("withdraw");
+  debug("\n");
+#endif
+
   const struct filter *filter = c->in_filter;
   struct channel_import_stats *stats = &c->import_stats;
   struct mpls_fec *fec = NULL;
@@ -2351,7 +2364,9 @@ rt_refresh_trace(struct rtable_private *tab, struct rt_import_hook *ih, const ch
 void
 rte_dump(struct rte_storage *e)
 {
-  debug("%-1N ", e->rte.net);
+  debug("(%u) %-1N", NET_TO_INDEX(e->rte.net)->index, e->rte.net);
+  debug("ID=%d ", e->rte.id);
+  debug("SENDER=%s ", e->rte.sender->req->name);
   debug("PF=%02x ", e->rte.pflags);
   debug("SRC=%uG ", e->rte.src->global_id);
   ea_dump(e->rte.attrs);

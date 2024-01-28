@@ -899,6 +899,8 @@ ea_do_sort(ea_list *e)
   while (ss);
 }
 
+static _Bool eattr_same_value(const eattr *a, const eattr *b);
+
 /**
  * In place discard duplicates and undefs in sorted ea_list. We use stable sort
  * for this reason.
@@ -908,6 +910,30 @@ ea_do_prune(ea_list *e)
 {
   eattr *s, *d, *l, *s0;
   int i = 0;
+
+#if 0
+  debug("[[prune]] ");
+  ea_dump(e);
+  debug(" ----> ");
+#endif
+
+  /* Prepare underlay stepper */
+  uint ulc = 0;
+  for (ea_list *u = e->next; u; u = u->next)
+    ulc++;
+
+  struct { eattr *cur, *end; } uls[ulc];
+  {
+    ea_list *u = e->next;
+    for (uint i = 0; i < ulc; i++)
+    {
+      ASSERT_DIE(u->flags & EALF_SORTED);
+      uls[i].cur = u->attrs;
+      uls[i].end = u->attrs + u->count;
+      u = u->next;
+      /* debug(" [[prev %d: %p to %p]] ", i, uls[i].cur, uls[i].end); */
+    }
+  }
 
   s = d = e->attrs;	    /* Beginning of the list. @s is source, @d is destination. */
   l = e->attrs + e->count;  /* End of the list */
@@ -919,11 +945,38 @@ ea_do_prune(ea_list *e)
       /* Find a consecutive block of the same attribute */
       while (s < l && s->id == s[-1].id)
 	s++;
-
       /* Now s0 is the most recent version, s[-1] the oldest one */
-      /* Drop undefs unless this is a true overlay */
-      if (s0->undef && (s[-1].undef || !e->next))
+
+      /* Find the attribute's underlay version */
+      eattr *prev = NULL;
+      for (uint i = 0; i < ulc; i++)
+      {
+	while ((uls[i].cur < uls[i].end) && (uls[i].cur->id < s0->id))
+	{
+	  uls[i].cur++;
+	  /* debug(" [[prev %d: %p (%s/%d)]] ", i, uls[i].cur, ea_class_global[uls[i].cur->id]->name, uls[i].cur->id); */
+	}
+
+	if ((uls[i].cur >= uls[i].end) || (uls[i].cur->id > s0->id))
+	  continue;
+
+	prev = uls[i].cur;
+	break;
+      }
+
+      /* Drop identicals */
+      if (prev && eattr_same_value(s0, prev))
+      {
+	/* debug(" [[drop identical %s]] ", ea_class_global[s0->id]->name); */
 	continue;
+      }
+
+      /* Drop undefs (identical undefs already dropped before) */
+      if (!prev && s0->undef)
+      {
+	/* debug(" [[drop undef %s]] ", ea_class_global[s0->id]->name); */
+	continue;
+      }
 
       /* Copy the newest version to destination */
       *d = *s0;
@@ -1027,12 +1080,51 @@ ea_merge(ea_list *e, ea_list *t, int overlay)
 ea_list *
 ea_normalize(ea_list *e, int overlay)
 {
+#if 0
+  debug("(normalize)");
+  ea_dump(e);
+  debug(" ----> ");
+#endif
   ea_list *t = tmp_alloc(ea_scan(e, overlay));
   ea_merge(e, t, overlay);
   ea_sort(t);
+#if 0
+  ea_dump(t);
+  debug("\n");
+#endif
 
   return t->count ? t : t->next;
 }
+
+static _Bool
+eattr_same_value(const eattr *a, const eattr *b)
+{
+  if (
+      a->id != b->id ||
+      a->flags != b->flags ||
+      a->type != b->type ||
+      a->undef != b->undef
+    )
+    return 0;
+
+  if (a->undef)
+    return 1;
+
+  if (a->type & EAF_EMBEDDED)
+    return a->u.data == b->u.data;
+  else
+    return adata_same(a->u.ptr, b->u.ptr);
+}
+
+static _Bool
+eattr_same(const eattr *a, const eattr *b)
+{
+  return
+    eattr_same_value(a, b) &&
+    a->originated == b->originated &&
+    a->fresh == b->fresh;
+}
+
 
 /**
  * ea_same - compare two &ea_list's
@@ -1054,19 +1146,8 @@ ea_same(ea_list *x, ea_list *y)
   if (x->count != y->count)
     return 0;
   for(c=0; c<x->count; c++)
-    {
-      eattr *a = &x->attrs[c];
-      eattr *b = &y->attrs[c];
-
-      if (a->id != b->id ||
-	  a->flags != b->flags ||
-	  a->type != b->type ||
-	  a->originated != b->originated ||
-	  a->fresh != b->fresh ||
-	  a->undef != b->undef ||
-	  ((a->type & EAF_EMBEDDED) ? a->u.data != b->u.data : !adata_same(a->u.ptr, b->u.ptr)))
-	return 0;
-    }
+    if (!eattr_same(&x->attrs[c], &y->attrs[c]))
+      return 0;
   return 1;
 }
 
@@ -1421,14 +1502,22 @@ ea_dump(ea_list *e)
       for(i=0; i<e->count; i++)
 	{
 	  eattr *a = &e->attrs[i];
-	  debug(" %04x.%02x", a->id, a->flags);
+	  struct ea_class *clp = (a->id < ea_class_max) ? ea_class_global[a->id] : NULL;
+	  if (clp)
+	    debug(" %s", clp->name);
+	  else
+	    debug(" 0x%x", a->id);
+
+	  debug(".%02x", a->flags);
 	  debug("=%c",
 	      "?iO?IRP???S??pE?"
 	      "??L???N?????????"
 	      "?o???r??????????" [a->type]);
 	  if (a->originated)
 	    debug("o");
-	  if (a->type & EAF_EMBEDDED)
+	  if (a->undef)
+	    debug(":undef");
+	  else if (a->type & EAF_EMBEDDED)
 	    debug(":%08x", a->u.data);
 	  else if (a->id == ea_gen_nexthop.id)
 	    nexthop_dump(a->u.ptr);
@@ -1439,6 +1528,7 @@ ea_dump(ea_list *e)
 	      for(j=0; j<len; j++)
 		debug("%02x", a->u.ptr->data[j]);
 	    }
+	  debug(" ");
 	}
       if (e = e->next)
 	debug(" | ");
