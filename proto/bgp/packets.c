@@ -175,8 +175,11 @@ bgp_create_notification(struct bgp_conn *conn, byte *buf)
 
 /* Capability negotiation as per RFC 5492 */
 
-const struct bgp_af_caps *
-bgp_find_af_caps(struct bgp_caps *caps, u32 afi)
+static const struct bgp_af_caps dummy_af_caps = { };
+static const struct bgp_af_caps basic_af_caps = { .ready = 1 };
+
+static const struct bgp_af_caps *
+bgp_find_af_caps_(struct bgp_caps *caps, u32 afi)
 {
   struct bgp_af_caps *ac;
 
@@ -185,6 +188,23 @@ bgp_find_af_caps(struct bgp_caps *caps, u32 afi)
       return ac;
 
   return NULL;
+}
+
+const struct bgp_af_caps *
+bgp_find_af_caps(struct bgp_caps *caps, u32 afi)
+{
+  const struct bgp_af_caps *ac = bgp_find_af_caps_(caps, afi);
+
+  /* Return proper capability if found */
+  if (ac)
+    return ac;
+
+  /* Use default if capabilities were not announced */
+  if (!caps->length && (afi == BGP_AF_IPV4))
+    return &basic_af_caps;
+
+  /* Ignore AFIs that were not announced in multiprotocol capability */
+  return &dummy_af_caps;
 }
 
 static struct bgp_af_caps *
@@ -694,8 +714,7 @@ bgp_check_capabilities(struct bgp_conn *conn)
     const struct bgp_af_caps *rem = bgp_find_af_caps(remote, c->afi);
 
     /* Find out whether this channel will be active */
-    int active = loc && loc->ready &&
-      ((rem && rem->ready) || (!remote->length && (c->afi == BGP_AF_IPV4)));
+    int active = loc->ready && rem->ready;
 
     /* Mandatory must be active */
     if (c->cf->mandatory && !active)
@@ -2417,7 +2436,7 @@ bgp_create_update_bmp(struct bgp_channel *c, byte *buf, struct bgp_bucket *buck,
     .proto = p,
     .channel = c,
     .pool = tmp_linpool,
-    .mp_reach = (c->afi != BGP_AF_IPV4) || (rem && rem->ext_next_hop),
+    .mp_reach = (c->afi != BGP_AF_IPV4) || rem->ext_next_hop,
     .as4_session = 1,
     .add_path = c->add_path_rx,
     .mpls = c->desc->mpls,
