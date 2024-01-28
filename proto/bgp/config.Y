@@ -191,6 +191,13 @@ bgp_proto:
  | bgp_proto ENABLE AS4 bool ';' { BGP_CFG->enable_as4 = $4; }
  | bgp_proto ENABLE EXTENDED MESSAGES bool ';' { BGP_CFG->enable_extended_messages = $5; }
  | bgp_proto ADVERTISE HOSTNAME bool ';' { BGP_CFG->enable_hostname = $4; }
+ | bgp_proto REQUIRE ROUTE REFRESH bool ';' { BGP_CFG->require_refresh = $5; }
+ | bgp_proto REQUIRE ENHANCED ROUTE REFRESH bool ';' { BGP_CFG->require_enhanced_refresh = $6; }
+ | bgp_proto REQUIRE AS4 bool ';' { BGP_CFG->require_as4 = $4; }
+ | bgp_proto REQUIRE EXTENDED MESSAGES bool ';' { BGP_CFG->require_extended_messages = $5; }
+ | bgp_proto REQUIRE HOSTNAME bool ';' { BGP_CFG->require_hostname = $4; }
+ | bgp_proto REQUIRE GRACEFUL RESTART bool ';' { BGP_CFG->require_gr = $5; }
+ | bgp_proto REQUIRE LONG LIVED GRACEFUL RESTART bool ';' { BGP_CFG->require_llgr = $7; }
  | bgp_proto CAPABILITIES bool ';' { BGP_CFG->capabilities = $3; }
  | bgp_proto PASSWORD text ';' { BGP_CFG->password = $3; }
  | bgp_proto SETKEY bool ';' { BGP_CFG->setkey = $3; }
@@ -284,9 +291,11 @@ bgp_channel_item:
  | LONG LIVED GRACEFUL RESTART bool { BGP_CC->llgr_able = $5; }
  | LONG LIVED STALE TIME expr { BGP_CC->llgr_time = $5; }
  | EXTENDED NEXT HOP bool { BGP_CC->ext_next_hop = $4; }
+ | REQUIRE EXTENDED NEXT HOP bool { BGP_CC->require_ext_next_hop = $5;  if (BGP_AFI(BGP_CC->afi) != BGP_AFI_IPV4) cf_warn("Require extended next hop option ignored for non-IPv4 channels"); }
  | ADD PATHS RX { BGP_CC->add_path = BGP_ADD_PATH_RX; }
  | ADD PATHS TX { BGP_CC->add_path = BGP_ADD_PATH_TX; }
  | ADD PATHS bool { BGP_CC->add_path = $3 ? BGP_ADD_PATH_FULL : 0; }
+ | REQUIRE ADD PATHS bool { BGP_CC->require_add_path = $4; }
  | IMPORT TABLE bool { BGP_CC->import_table = $3; }
  | EXPORT TABLE bool { BGP_CC->export_table = $3; }
  | AIGP bool { BGP_CC->aigp = $2; BGP_CC->aigp_originate = 0; }

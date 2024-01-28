@@ -2211,6 +2211,21 @@ bgp_postconfig(struct proto_config *CF)
   if (interior && (cf->local_role != BGP_ROLE_UNDEFINED))
     log(L_WARN "BGP roles are not recommended to be used within AS confederations");
 
+  if (cf->require_enhanced_refresh && !(cf->enable_refresh && cf->enable_enhanced_refresh))
+    cf_warn("Enhanced refresh required but disabled");
+
+  if (cf->require_as4 && !cf->enable_as4)
+    cf_warn("AS4 support required but disabled");
+
+  if (cf->require_extended_messages && !cf->enable_extended_messages)
+    cf_warn("Extended messages required but not enabled");
+
+  if (cf->require_gr && !cf->gr_mode)
+    cf_warn("Graceful restart required but not enabled");
+
+  if (cf->require_llgr && !cf->llgr_mode)
+    cf_warn("Long-lived graceful restart required but not enabled");
+
   if (cf->require_roles && (cf->local_role == BGP_ROLE_UNDEFINED))
     cf_error("Local role must be set if roles are required");
 
@@ -2334,6 +2349,12 @@ bgp_postconfig(struct proto_config *CF)
 
     if (cc->secondary && !cc->c.table->sorted)
       cf_error("BGP with secondary option requires sorted table");
+
+    if (cc->require_ext_next_hop && !cc->ext_next_hop)
+      cf_warn("Extended next hop required but not enabled");
+
+    if (cc->require_add_path && !cc->add_path)
+      cf_warn("ADD-PATH required but not enabled");
   }
 }
 
@@ -2378,17 +2399,28 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
     if (C->stale)
       same = proto_configure_channel(P, &C, NULL) && same;
 
-  if (same && (p->start_state > BSS_PREPARE))
-    bgp_update_bfd(p, new->bfd);
-
-  /* We should update our copy of configuration ptr as old configuration will be freed */
-  if (same)
-    p->cf = new;
-
   /* Reset name counter */
   p->dynamic_name_counter = 0;
 
-  return same;
+  if (!same)
+    return 0;
+
+  /* We should update our copy of configuration ptr as old configuration will be freed */
+  p->cf = new;
+
+  /* Check whether existing connections are compatible with required capabilities */
+  struct bgp_conn *ci = &p->incoming_conn;
+  if (((ci->state == BS_OPENCONFIRM) || (ci->state == BS_ESTABLISHED)) && !bgp_check_capabilities(ci))
+    return 0;
+
+  struct bgp_conn *co = &p->outgoing_conn;
+  if (((co->state == BS_OPENCONFIRM) || (co->state == BS_ESTABLISHED)) && !bgp_check_capabilities(co))
+    return 0;
+
+  if (p->start_state > BSS_PREPARE)
+    bgp_update_bfd(p, new->bfd);
+
+  return 1;
 }
 
 #define TABLE(cf, NAME) ((cf)->NAME ? (cf)->NAME->table : NULL )

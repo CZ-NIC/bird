@@ -696,7 +696,7 @@ err:
   return -1;
 }
 
-static int
+int
 bgp_check_capabilities(struct bgp_conn *conn)
 {
   struct bgp_proto *p = conn->bgp;
@@ -707,6 +707,29 @@ bgp_check_capabilities(struct bgp_conn *conn)
 
   /* This is partially overlapping with bgp_conn_enter_established_state(),
      but we need to run this just after we receive OPEN message */
+
+  if (p->cf->require_refresh && !remote->route_refresh)
+    return 0;
+
+  if (p->cf->require_enhanced_refresh && !remote->enhanced_refresh)
+    return 0;
+
+  if (p->cf->require_as4 && !remote->as4_support)
+    return 0;
+
+  if (p->cf->require_extended_messages && !remote->ext_messages)
+    return 0;
+
+  if (p->cf->require_hostname && !remote->hostname)
+    return 0;
+
+  if (p->cf->require_gr && !remote->gr_aware)
+    return 0;
+
+  if (p->cf->require_llgr && !remote->llgr_aware)
+    return 0;
+
+  /* No check for require_roles, as it uses error code 2.11 instead of 2.7 */
 
   BGP_WALK_CHANNELS(p, c)
   {
@@ -721,7 +744,18 @@ bgp_check_capabilities(struct bgp_conn *conn)
       return 0;
 
     if (active)
+    {
+      if (c->cf->require_ext_next_hop && !rem->ext_next_hop)
+	return 0;
+
+      if (c->cf->require_add_path && (loc->add_path & BGP_ADD_PATH_RX) && !(rem->add_path & BGP_ADD_PATH_TX))
+	return 0;
+
+      if (c->cf->require_add_path && (loc->add_path & BGP_ADD_PATH_TX) && !(rem->add_path & BGP_ADD_PATH_RX))
+	return 0;
+
       count++;
+    }
   }
 
   /* We need at least one channel active */
@@ -907,7 +941,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   if (!id || (p->is_internal && id == p->local_id))
   { bgp_error(conn, 2, 3, pkt+24, -4); return; }
 
-  /* RFC 5492 4 - check for required capabilities */
+  /* RFC 5492 5 - check for required capabilities */
   if (p->cf->capabilities && !bgp_check_capabilities(conn))
   { bgp_error(conn, 2, 7, NULL, 0); return; }
 
