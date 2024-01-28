@@ -739,6 +739,7 @@ cf_lex_init(int is_cli, struct config *c)
     BEGIN(INITIAL);
 
   c->root_scope = c->current_scope = cfg_allocz(sizeof(struct sym_scope));
+  c->root_scope->active = 1;
 
   if (is_cli)
     c->current_scope->next = config->root_scope;
