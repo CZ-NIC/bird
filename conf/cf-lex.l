@@ -893,8 +893,15 @@ cf_swap_soft_scope(struct config *conf)
 void
 cf_enter_filters(void)
 {
-  ASSERT_DIE(!new_config->allow_attributes);
+  ASSERT_DIE(!cf_maybe_enter_filters());
+}
+
+int
+cf_maybe_enter_filters(void)
+{
+  int o = new_config->allow_attributes;
   new_config->allow_attributes = 1;
+  return o;
 }
 
 /**
@@ -903,8 +910,15 @@ cf_enter_filters(void)
 void
 cf_exit_filters(void)
 {
-  ASSERT_DIE(new_config->allow_attributes);
+  ASSERT_DIE(cf_maybe_exit_filters());
+}
+
+int
+cf_maybe_exit_filters(void)
+{
+  int o = new_config->allow_attributes;
   new_config->allow_attributes = 0;
+  return o;
 }
 
 

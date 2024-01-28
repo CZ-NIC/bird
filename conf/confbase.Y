@@ -28,6 +28,8 @@ CF_HDR
 
 CF_DEFINES
 
+static _Bool this_sadr_from_hack_active;
+
 static void
 check_u16(uint val)
 {
@@ -119,7 +121,7 @@ CF_DECLS
 %type <i> expr bool pxlen4
 %type <time> expr_us time
 %type <settle> settle
-%type <a> ipa
+%type <a> ipa net_ip6_slash
 %type <net> net_ip4_ net_ip4 net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_
 %type <ad> label_stack_start label_stack
@@ -235,12 +237,24 @@ net_ip4_: IP4 pxlen4
 	     n->prefix, n->pxlen, ip4_and(n->prefix, ip4_mkmask(n->pxlen)), n->pxlen);
 };
 
-net_ip6_: IP6 '/' NUM
+net_ip6_slash: IP6 '/'
 {
-  if ($3 > IP6_MAX_PREFIX_LENGTH)
-    cf_error("Invalid prefix length %u", $3);
+  this_sadr_from_hack_active = cf_maybe_exit_filters();
+  $$ = $1;
+}
 
-  net_fill_ip6(&($$), $1, $3);
+net_ip6_: net_ip6_slash NUM
+{
+  if (this_sadr_from_hack_active)
+  {
+    cf_enter_filters();
+    this_sadr_from_hack_active = 0;
+  }
+
+  if ($2 > IP6_MAX_PREFIX_LENGTH)
+    cf_error("Invalid prefix length %u", $2);
+
+  net_fill_ip6(&($$), $1, $2);
 
   net_addr_ip6 *n = (void *) &($$);
   if (!net_validate_ip6(n))
@@ -248,16 +262,25 @@ net_ip6_: IP6 '/' NUM
 	     n->prefix, n->pxlen, ip6_and(n->prefix, ip6_mkmask(n->pxlen)), n->pxlen);
 };
 
-net_ip6_sadr_: IP6 '/' NUM FROM IP6 '/' NUM
+net_ip6_sadr_: net_ip6_slash NUM FROM IP6 '/' NUM
 {
-  if ($3 > IP6_MAX_PREFIX_LENGTH)
-    cf_error("Invalid prefix length %u", $3);
+  if (this_sadr_from_hack_active)
+  {
+    cf_enter_filters();
+    this_sadr_from_hack_active = 0;
+  }
 
-  if ($7 > IP6_MAX_PREFIX_LENGTH)
-    cf_error("Invalid prefix length %u", $7);
+  if (($3->class != SYM_KEYWORD) || ($3->keyword->value != FROM))
+    cf_error("Expected FROM after %I6/%d", $1, $2);
+
+  if ($2 > IP6_MAX_PREFIX_LENGTH)
+    cf_error("Invalid prefix length %u", $2);
+
+  if ($6 > IP6_MAX_PREFIX_LENGTH)
+    cf_error("Invalid prefix length %u", $6);
 
   $$ = cfg_alloc(sizeof(net_addr_ip6_sadr));
-  net_fill_ip6_sadr($$, $1, $3, $5, $7);
+  net_fill_ip6_sadr($$, $1, $2, $4, $6);
 
   net_addr_ip6_sadr *n = (void *) $$;
   if (!net_validate_ip6_sadr(n))

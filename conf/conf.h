@@ -159,6 +159,8 @@ struct sym_scope {
 
 void cf_enter_filters(void);
 void cf_exit_filters(void);
+int cf_maybe_enter_filters(void);
+int cf_maybe_exit_filters(void);
 
 extern pool *global_root_scope_pool;
 extern linpool *global_root_scope_linpool;
