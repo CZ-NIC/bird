@@ -101,7 +101,11 @@ mpls_channel_start: MPLS
   $$ = this_channel = channel_config_get(&channel_mpls, net_label[NET_MPLS], NET_MPLS, this_proto);
 
   if (EMPTY_LIST(new_config->mpls_domains))
-    cf_error("No MPLS domain defined");
+  {
+    int counter = 0;
+    mpls_domain_config_new(cf_default_name(new_config, "mpls%d", &counter));
+    cf_warn("No MPLS domain defined");
+  }
 
   /* Default values for new channel */
   if (!MPLS_CC->domain)

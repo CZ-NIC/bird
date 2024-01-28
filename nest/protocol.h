@@ -678,7 +678,7 @@ struct channel_config *proto_cf_find_channel(struct proto_config *p, uint net_ty
 static inline struct channel_config *proto_cf_main_channel(struct proto_config *pc)
 { return proto_cf_find_channel(pc, pc->net_type); }
 static inline struct channel_config *proto_cf_mpls_channel(struct proto_config *pc)
-{ return proto_cf_find_channel(pc, NET_MPLS); }
+{ return (pc->net_type != NET_MPLS) ? proto_cf_find_channel(pc, NET_MPLS) : NULL; }
 
 struct channel *proto_find_channel_by_table(struct proto *p, rtable *t);
 struct channel *proto_find_channel_by_name(struct proto *p, const char *n);
