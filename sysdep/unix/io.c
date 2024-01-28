@@ -2335,13 +2335,17 @@ io_loop(void)
   for(;;)
     {
       times_update();
-      events = ev_run_list(&global_event_list);
-      events = ev_run_list_limited(&global_work_list, WORK_EVENTS_MAX) || events;
-      events = ev_run_list(&main_birdloop.event_list) || events;
+      ev_run_list(&global_event_list);
+      ev_run_list_limited(&global_work_list, WORK_EVENTS_MAX);
+      ev_run_list(&main_birdloop.event_list);
       timers_fire(&main_birdloop.time, 1);
       io_close_event();
 
-      // FIXME
+      events =
+	!ev_list_empty(&global_event_list) ||
+	!ev_list_empty(&global_work_list) ||
+	!ev_list_empty(&main_birdloop.event_list);
+
       poll_tout = (events ? 0 : 3000); /* Time in milliseconds */
       if (t = timers_first(&main_birdloop.time))
       {

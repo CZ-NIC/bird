@@ -47,6 +47,7 @@ void ev_enqueue(event_list *, event *);
 void ev_postpone(event *);
 int ev_run_list_limited(event_list *, uint);
 #define ev_run_list(l)	ev_run_list_limited((l), ~0)
+#define ev_list_empty(l)  !ev_run_list_limited((l), 0)
 
 #define LEGACY_EVENT_LIST(l)  (((l) == &global_event_list) || ((l) == &global_work_list))
 
