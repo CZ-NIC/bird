@@ -246,14 +246,6 @@ config_del_obstacle(struct config *c)
 static int
 global_commit(struct config *new, struct config *old)
 {
-  if (!new->hostname)
-    {
-      new->hostname = get_hostname(new->mem);
-
-      if (!new->hostname)
-        log(L_WARN "Cannot determine hostname");
-    }
-
   if (!old)
     return 0;
 
@@ -288,6 +280,14 @@ config_do_commit(struct config *c, int type)
   old_config = config;
   old_cftype = type;
   config = c;
+
+  if (!c->hostname)
+    {
+      c->hostname = get_hostname(c->mem);
+
+      if (!c->hostname)
+        log(L_WARN "Cannot determine hostname");
+    }
 
   configuring = 1;
   if (old_config && !config->shutdown)
