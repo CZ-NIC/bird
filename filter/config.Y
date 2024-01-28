@@ -20,6 +20,7 @@ static inline u32 pair_a(u32 p) { return p >> 16; }
 static inline u32 pair_b(u32 p) { return p & 0xFFFF; }
 
 static struct symbol *this_function;
+static struct sym_scope *this_for_scope;
 
 static struct f_method_scope {
   struct f_inst *object;
@@ -965,7 +966,9 @@ cmd:
      new_config->current_scope->slots += 2;
    } for_var IN
    /* Parse term in the parent scope */
-   { new_config->current_scope->active = 0; } term { new_config->current_scope->active = 1; }
+   { this_for_scope = new_config->current_scope; new_config->current_scope = this_for_scope->next; }
+   term
+   { new_config->current_scope = this_for_scope; this_for_scope = NULL; }
    DO cmd {
      cf_pop_block_scope(new_config);
      $$ = f_for_cycle($3, $6, $9);
