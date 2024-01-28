@@ -1077,6 +1077,8 @@ bgp_apply_next_hop(struct bgp_parse_state *s, ea_list **to, ip_addr gw, ip_addr 
 static void
 bgp_apply_mpls_labels(struct bgp_parse_state *s, ea_list **to, u32 lnum, u32 labels[lnum])
 {
+  bgp_set_attr_data(to, BA_MPLS_LABEL_STACK, 0, labels, lnum * sizeof labels[0]);
+
   if (lnum > MPLS_MAX_LABEL_STACK)
   {
     REPORT("Too many MPLS labels ($u)", lnum);
@@ -1087,7 +1089,7 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, ea_list **to, u32 lnum, u32 lab
 
   /* Handle implicit NULL as empty MPLS stack */
   if ((lnum == 1) && (labels[0] == BGP_MPLS_NULL))
-    lnum = s->mpls_labels->length = 0;
+    lnum = 0;
 
   if (s->channel->cf->gw_mode == GW_DIRECT)
   {

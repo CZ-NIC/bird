@@ -505,8 +505,6 @@ struct bgp_parse_state {
   uint err_subcode;
   jmp_buf err_jmpbuf;
 
-  adata *mpls_labels;
-
   /* Cached state for bgp_rte_update() */
   u32 last_id;
   struct rte_src *last_src;
