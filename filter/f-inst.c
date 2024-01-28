@@ -838,7 +838,10 @@
 	RESULT_(T_QUAD, i, e->u.data);
 	break;
       case EAF_TYPE_OPAQUE:
-	RESULT_(T_ENUM_EMPTY, i, 0);
+	if (da.f_type == T_ENUM_EMPTY)
+	  RESULT_(T_ENUM_EMPTY, i, 0);
+	else
+	  RESULT_(T_BYTESTRING, ad, e->u.ptr);
 	break;
       case EAF_TYPE_IP_ADDRESS:
 	RESULT_(T_IP, ip, *((ip_addr *) e->u.ptr->data));
@@ -870,6 +873,12 @@
     ARG_ANY(1);
     DYNAMIC_ATTR;
     ARG_TYPE(1, da.f_type);
+
+    FID_NEW_BODY;
+      if (da.f_type == T_ENUM_EMPTY)
+	cf_error("Setting opaque attribute is not allowed");
+
+    FID_INTERPRET_BODY;
     {
       struct ea_list *l = lp_alloc(fs->pool, sizeof(struct ea_list) + sizeof(eattr));
 

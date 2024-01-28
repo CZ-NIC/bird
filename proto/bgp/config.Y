@@ -365,11 +365,14 @@ dynamic_attr: BGP_LARGE_COMMUNITY
 dynamic_attr: BGP_OTC
 	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_ONLY_TO_CUSTOMER)); } ;
 
-custom_attr: ATTRIBUTE BGP NUM type symbol ';' {
-  if($3 > 255 || $3 < 1)
-    cf_error("Invalid attribute number. (Given %i, must be 1-255.)", $3);
-  if($4 != T_BYTESTRING)
+custom_attr: ATTRIBUTE BGP expr type symbol ';' {
+  if ($3 > 255 || $3 < 1)
+    cf_error("Invalid attribute number (Given %i, must be 1-255)", $3);
+  if ($4 != T_BYTESTRING)
     cf_error("Attribute type must be bytestring, not %s", f_type_name($4));
+  if (bgp_attr_name($3))
+    cf_error("Attribute BGP.%d already known as %s", $3, bgp_attr_name($3));
+
   struct f_dynamic_attr *a = cfg_alloc(sizeof(struct f_dynamic_attr));
   *a = f_new_dynamic_attr(f_type_attr($4), T_BYTESTRING, EA_CODE(PROTOCOL_BGP, $3));
   a->flags = BAF_TRANSITIVE | BAF_OPTIONAL;
