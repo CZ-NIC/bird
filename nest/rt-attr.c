@@ -1264,7 +1264,7 @@ rta__free(rta *a)
 rta *
 rta_do_cow(rta *o, linpool *lp)
 {
-  rta *r = lp_alloc(lp, rta_size(o));
+  rta *r = lp_alloc(lp, RTA_MAX_SIZE);
   memcpy(r, o, rta_size(o));
   for (struct nexthop **nhn = &(r->nh.next), *nho = o->nh.next; nho; nho = nho->next)
     {
