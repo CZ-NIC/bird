@@ -996,7 +996,7 @@ var:
 
 for_var:
    type symbol { $$ = cf_define_symbol(new_config, $2, SYM_VARIABLE | $1, offset, f_new_var(sym_->scope)); }
- | CF_SYM_KNOWN { $$ = $1; cf_assert_symbol($1, SYM_VARIABLE); }
+ | CF_SYM_KNOWN { cf_error("Use of a pre-defined variable in for loop is not allowed"); }
  ;
 
 cmd:
