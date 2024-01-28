@@ -20,6 +20,7 @@ static inline u32 pair_a(u32 p) { return p >> 16; }
 static inline u32 pair_b(u32 p) { return p & 0xFFFF; }
 
 static struct symbol *this_function;
+static struct sym_scope *this_for_scope;
 
 static struct f_method_scope {
   struct f_inst *object;
@@ -27,8 +28,6 @@ static struct f_method_scope {
   struct sym_scope scope;
 } f_method_scope_stack[32];
 static int f_method_scope_pos = -1;
-
-static struct sym_scope *f_for_stored_scope;
 
 #define FM  (f_method_scope_stack[f_method_scope_pos])
 
@@ -1015,15 +1014,9 @@ cmd:
      new_config->current_scope->slots += 2;
    } for_var IN
    /* Parse term in the parent scope */
-   {
-     ASSERT_DIE(f_for_stored_scope == NULL);
-     f_for_stored_scope = new_config->current_scope;
-     new_config->current_scope = new_config->current_scope->next;
-   } term {
-     ASSERT_DIE(f_for_stored_scope);
-     new_config->current_scope = f_for_stored_scope;
-     f_for_stored_scope = NULL;
-   }
+   { this_for_scope = new_config->current_scope; new_config->current_scope = this_for_scope->next; }
+   term
+   { new_config->current_scope = this_for_scope; this_for_scope = NULL; }
    DO cmd {
      cf_pop_block_scope(new_config);
      $$ = f_for_cycle($3, $6, $9);
