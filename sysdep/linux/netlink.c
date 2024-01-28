@@ -1713,7 +1713,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 
     case RTPROT_KERNEL:
       krt_src = KRT_SRC_KERNEL;
-      return;
+      break;
 
     case RTPROT_BIRD:
       if (!s->scan)

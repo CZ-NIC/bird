@@ -446,14 +446,18 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
 #ifdef KRT_ALLOW_LEARN
   switch (src)
     {
-    case KRT_SRC_KERNEL:
-      krt_trace_in(p, e, "ignored");
-      return;
-
     case KRT_SRC_REDIRECT:
       krt_trace_in(p, e, "deleting");
       krt_replace_rte(p, e->net, NULL, e);
       return;
+
+    case KRT_SRC_KERNEL:
+      if (KRT_CF->learn != KRT_LEARN_ALL)
+      {
+	krt_trace_in(p, e, "ignored");
+	return;
+      }
+      /* fallthrough */
 
     case  KRT_SRC_ALIEN:
       if (KRT_CF->learn)
@@ -592,6 +596,11 @@ krt_got_route_async(struct krt_proto *p, rte *e, int new, s8 src)
       break;
 
 #ifdef KRT_ALLOW_LEARN
+    case KRT_SRC_KERNEL:
+      if (KRT_CF->learn != KRT_LEARN_ALL)
+        break;
+      /* fallthrough */
+
     case KRT_SRC_ALIEN:
       if (KRT_CF->learn)
 	{
