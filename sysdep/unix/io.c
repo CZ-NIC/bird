@@ -192,36 +192,88 @@ rf_same(struct rfile *a, struct rfile *b)
     (a->stat.st_ino == b->stat.st_ino);
 }
 
-int
-rf_write(struct rfile *r, const void *buf, size_t _count)
+void
+rf_write_crude(struct rfile *r, const char *buf, int sz)
 {
-  off_t count = _count;
+  if (r->mapping)
+    memcpy(r->mapping, buf, sz);
+  else
+    write(r->fd, buf, sz);
+}
+
+
+int
+rf_writev(struct rfile *r, struct iovec *iov, int iov_count)
+{
+  off_t size = 0;
+  for (int i = 0; i < iov_count; i++)
+    size += iov[i].iov_len;
 
   if (r->mapping)
   {
     /* Update the pointer */
-    off_t target = atomic_fetch_add_explicit(&r->pos, count, memory_order_relaxed) % r->limit;
-
-    /* Take care of wrapping */
-    if (target + count > r->limit)
-    {
-      memcpy(r->mapping, buf + (r->limit - target), target + count - r->limit);
-      count = r->limit - target;
-    }
+    off_t target = atomic_fetch_add_explicit(&r->pos, size, memory_order_relaxed) % r->limit;
 
     /* Write the line */
-    memcpy(r->mapping + target, buf, count);
+    for (int i = 0; i < iov_count; i++)
+    {
+      /* Take care of wrapping; this should really happen only once */
+      off_t rsz;
+      while ((rsz = r->limit - target) < (off_t) iov[i].iov_len)
+      {
+	memcpy(r->mapping + target, iov[i].iov_base, rsz);
+	iov[i].iov_base += rsz;
+	iov[i].iov_len -= rsz;
+	target = 0;
+      }
+
+      memcpy(r->mapping + target, iov[i].iov_base, iov[i].iov_len);
+      target += iov[i].iov_len;
+    }
     return 1;
   }
-  else if (r->limit && (atomic_fetch_add_explicit(&r->pos, count, memory_order_relaxed) + count > r->limit))
+  else if (r->limit && (atomic_fetch_add_explicit(&r->pos, size, memory_order_relaxed) + size > r->limit))
   {
-    atomic_fetch_sub_explicit(&r->pos, count, memory_order_relaxed);
+    atomic_fetch_sub_explicit(&r->pos, size, memory_order_relaxed);
     return 0;
   }
   else
   {
-    while ((write(r->fd, buf, count) < 0) && (errno == EINTR))
-      ;
+    while (size > 0)
+    {
+      /* Try to write */
+      ssize_t e = writev(r->fd, iov, iov_count);
+      if (e < 0)
+	if (errno == EINTR)
+	  continue;
+	else
+	  return 1; /* FIXME: What should we do when we suddenly can't write? */
+
+      /* It is expected that we always write the whole bunch at once */
+      if (e == size)
+	return 1;
+
+      /* Block split should not happen (we write small enough messages)
+       * but if it happens, let's try to write the rest of the log */
+      size -= e;
+      while (e > 0)
+      {
+	if ((ssize_t) iov[0].iov_len > e)
+	{
+	  /* Some bytes are remaining in the first chunk */
+	  iov[0].iov_len -= e;
+	  iov[0].iov_base += e;
+	  break;
+	}
+
+	/* First chunk written completely, get rid of it */
+	e -= iov[0].iov_len;
+	iov++;
+	iov_count--;
+	ASSERT_DIE(iov_count > 0);
+      }
+    }
+
     return 1;
   }
 }

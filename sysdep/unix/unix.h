@@ -13,6 +13,7 @@
 #include "lib/io-loop.h"
 
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <signal.h>
 
 struct pool;
@@ -123,7 +124,8 @@ enum rf_mode {
 struct rfile *rf_open(struct pool *, const char *name, enum rf_mode mode, off_t limit);
 off_t rf_size(struct rfile *);
 int rf_same(struct rfile *, struct rfile *);
-int rf_write(struct rfile *, const void *, size_t);
+int rf_writev(struct rfile *, struct iovec *, int);
+void rf_write_crude(struct rfile *, const char *, int);
 
 extern struct rfile rf_stderr;
 

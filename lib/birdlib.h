@@ -163,10 +163,18 @@ typedef struct buffer {
 
 #define LOG_BUFFER_SIZE 2560
 
+enum log_buffer_pos {
+  LBP_TIMESTAMP = 0,
+  LBP_THREAD_ID,
+  LBP_CLASS,
+  LBP_MSG,
+  LBP__MAX,
+  LBPP_TERMINAL,
+};
+
 typedef struct log_buffer {
   struct buffer buf;
-  byte *tm_pos;
-  byte *msg_pos;
+  byte *pos[LBP__MAX+1];
   int class;
   char block[LOG_BUFFER_SIZE];
 } log_buffer;

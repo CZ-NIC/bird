@@ -66,7 +66,7 @@ log_file:
      this_log->filename = $2;
    }
  | SYSLOG syslog_name { this_log->rf = NULL; new_config->syslog_name = $2; }
- | STDERR { this_log->rf = &rf_stderr; }
+ | STDERR { this_log->rf = &rf_stderr; this_log->terminal_flag = 1; }
  ;
 
 log_mask:

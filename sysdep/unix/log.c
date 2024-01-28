@@ -48,8 +48,6 @@ static DOMAIN(logging) log_domain;
 static struct log_channel * _Atomic global_logs;
 
 /* Logging flags to validly prepare logging messages */
-#define LOGGING_TO_TERMINAL   0x1
-#define LOGGING_TO_FILE	      0x2
 
 static _Atomic uint logging_flags;
 static _Atomic uint logging_mask;
@@ -92,7 +90,7 @@ struct log_channel {
   off_t limit;				/* Log size limit */
   _Atomic uint mask;			/* Classes to log */
   uint new_mask;			/* Pending new mask */
-  uint terminal:1;			/* Is terminal */
+  uint prepare;				/* Which message parts to prepare */
 };
 
 struct log_thread_syncer {
@@ -174,6 +172,10 @@ log_rotate(struct log_channel *lc)
 void
 log_commit(log_buffer *buf)
 {
+  /* Store the last pointer */
+  buf->pos[LBP__MAX] = buf->buf.pos;
+
+  /* Append the too-long message if too long */
   if (buf->buf.pos == buf->buf.end)
 #define TOO_LONG " ... <too long>"
     memcpy(buf->buf.end - sizeof TOO_LONG, TOO_LONG, sizeof TOO_LONG);
@@ -190,18 +192,44 @@ log_commit(log_buffer *buf)
 	continue;
 
       struct rfile *rf = atomic_load_explicit(&l->rf, memory_order_acquire);
-      if (rf && buf->tm_pos)
+      if (rf)
 	{
-	  *buf->buf.pos = '\n';
-	  byte *begin = l->terminal ? buf->buf.start : buf->tm_pos;
-	  off_t msg_len = buf->buf.pos - begin + 1;
+	  /* Construct the iovec */
+	  static char terminal_prefix[] = "bird: ",
+		      newline[] = "\n";
+	  STATIC_ASSERT(sizeof newline == 2);
+
+	  struct iovec iov[LBP__MAX+2];
+	  uint iov_count = 0;
+	  if (BIT32_TEST(&l->prepare, LBPP_TERMINAL))
+	    iov[iov_count++] = (struct iovec) {
+	      .iov_base = terminal_prefix,
+	      .iov_len = sizeof terminal_prefix - 1,
+	    };
+
+	  for (uint p = 0; p < LBP__MAX; p++)
+	    if (BIT32_TEST(&l->prepare, p))
+	    {
+	      off_t sz = buf->pos[p+1] - buf->pos[p];
+	      if (sz > 0)
+		iov[iov_count++] = (struct iovec) {
+		  .iov_base = buf->pos[p],
+		  .iov_len = sz,
+		};
+	    }
+
+	  iov[iov_count++] = (struct iovec) {
+	    .iov_base = newline,
+	    .iov_len = sizeof newline - 1,
+	  };
+
 	  do {
-	    if (rf_write(rf, begin, msg_len))
+	    if (rf_writev(rf, iov, iov_count))
 	      break;
 
 	    log_lock();
 	    rf = atomic_load_explicit(&l->rf, memory_order_acquire);
-	    if (rf_write(rf, begin, msg_len))
+	    if (rf_writev(rf, iov, iov_count))
 	    {
 	      log_unlock();
 	      break;
@@ -211,18 +239,15 @@ log_commit(log_buffer *buf)
 	    log_unlock();
 
 	    rf = atomic_load_explicit(&l->rf, memory_order_relaxed);
-	  } while (!rf_write(rf, begin, msg_len));
+	  } while (!rf_writev(rf, iov, iov_count));
 	}
 #ifdef HAVE_SYSLOG_H
       else
       {
-	*buf->buf.pos = '\0';
-	syslog(syslog_priorities[buf->class], "%s", buf->msg_pos);
+	syslog(syslog_priorities[buf->class], "%s", buf->pos[LBP_MSG]);
       }
 #endif
     }
-
-  buf->msg_pos = buf->tm_pos = NULL;
 }
 
 int buffer_vprint(buffer *buf, const char *fmt, va_list args);
@@ -230,31 +255,35 @@ int buffer_vprint(buffer *buf, const char *fmt, va_list args);
 void
 log_prepare(log_buffer *buf, int class)
 {
+  buf->class = class;
+
   buf->buf.start = buf->buf.pos = buf->block;
   buf->buf.end = buf->block + sizeof buf->block;
 
   int lf = atomic_load_explicit(&logging_flags, memory_order_acquire);
-  if (lf & LOGGING_TO_TERMINAL)
-    buffer_puts(&buf->buf, "bird: ");
 
-  if (lf & LOGGING_TO_FILE)
+  buf->pos[LBP_TIMESTAMP] = buf->buf.pos;
+  if (BIT32_TEST(&lf, LBP_TIMESTAMP))
   {
     const char *fmt = config ? config->tf_log.fmt1 : "%F %T.%3f";
-
-    buf->tm_pos = buf->buf.pos;
     int t = tm_format_real_time(buf->buf.pos, buf->buf.end - buf->buf.pos, fmt, current_real_time());
     if (t)
       buf->buf.pos += t;
     else
       buffer_puts(&buf->buf, "<time format error>");
 
-    buffer_print(&buf->buf, " [%04x] <%s> ", THIS_THREAD_ID, class_names[class]);
+    *(buf->buf.pos++) = ' ';
   }
-  else
-    buf->tm_pos = NULL;
 
-  buf->msg_pos = buf->buf.pos;
-  buf->class = class;
+  buf->pos[LBP_THREAD_ID] = buf->buf.pos;
+  if (BIT32_TEST(&lf, LBP_THREAD_ID))
+    buffer_print(&buf->buf, "[%04x] ", THIS_THREAD_ID);
+
+  buf->pos[LBP_CLASS] = buf->buf.pos;
+  if (BIT32_TEST(&lf, LBP_CLASS))
+    buffer_print(&buf->buf, "<%s> ", class_names[class]);
+
+  buf->pos[LBP_MSG] = buf->buf.pos;
 }
 
 static void
@@ -374,7 +403,11 @@ debug(const char *msg, ...)
       if (s < 0)
 	bug("Extremely long debug output, split it.");
 
-      rf_write(dbg_rf, buf, s);
+      struct iovec i = {
+	.iov_base = buf,
+	.iov_len = s,
+      };
+      rf_writev(dbg_rf, &i, 1);
     }
   va_end(args);
 }
@@ -391,7 +424,7 @@ void
 debug_safe(const char *msg)
 {
   if (dbg_rf)
-    rf_write(dbg_rf, msg, strlen(msg));
+    rf_write_crude(dbg_rf, msg, strlen(msg));
 }
 
 static list *
@@ -406,7 +439,7 @@ default_log_list(int initial, const char **syslog_name)
     {
       static struct log_config lc_syslog;
       lc_syslog = (struct log_config){
-	.mask = ~0
+	.mask = ~0,
       };
 
       add_tail(&log_list, &lc_syslog.n);
@@ -453,7 +486,9 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
     /* Create syslog channel */
     struct log_channel *lc = mb_alloc(log_pool, sizeof *lc);
 
-    *lc = (struct log_channel) {};
+    *lc = (struct log_channel) {
+      .prepare = BIT32_ALL(LBP_MSG),
+    };
     ASSERT_DIE(NULL == atomic_exchange_explicit(&global_logs, lc, memory_order_release));
 #endif
 
@@ -503,12 +538,7 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
 	  total_mask |= l->mask;
 
 	  /* Merge flags */
-	  flags |= LOGGING_TO_FILE;
-	  if (l->terminal_flag)
-	  {
-	    flags |= LOGGING_TO_TERMINAL;
-	    ol->terminal = 1;
-	  }
+	  flags |= ol->prepare;
 
 	  /* The filehandle is no longer needed */
 	  if ((l->rf != &rf_stderr ) && (l->rf != dbg_rf))
@@ -552,18 +582,15 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
       .rf = l->rf,
       .limit = l->limit,
       .new_mask = l->mask,
-      .terminal = l->terminal_flag,
+      .prepare = BIT32_ALL(LBP_TIMESTAMP, LBP_THREAD_ID, LBP_CLASS, LBP_MSG) |
+	(l->terminal_flag ? BIT32_VAL(LBPP_TERMINAL) : 0),
     };
 
+    /* Mask union */
     total_mask |= l->mask;
 
     /* Message preparation flags */
-    flags |= LOGGING_TO_FILE;
-    if (l->terminal_flag)
-    {
-      flags |= LOGGING_TO_TERMINAL;
-      lc->terminal = 1;
-    }
+    flags |= lc->prepare;
 
     /* Now the file handle ownership is transferred to the log channel */
     l->rf = NULL;
