@@ -6,20 +6,19 @@
                 (c) 1998--2008  Martin Mares <mj@ucw.cz>
                 (c) 1998--2000  Pavel Machek <pavel@ucw.cz>
                 (c) 1998--2008  Ondrej Filip <feela@network.cz>
-                (c) 2009--2019  CZ.NIC z.s.p.o.
+                (c) since 2009  CZ.NIC z.s.p.o.
 
 ================================================================================
 
-The BIRD project aims to develop a dynamic IP routing daemon with full support
-of all modern routing protocols, easy to use configuration interface and
-powerful route filtering language, primarily targeted on (but not limited to)
-Linux and other UNIX-like systems and distributed under the GNU General
-Public License.
+BIRD is a dynamic IP routing daemon with full support of many modern routing
+protocols, easy to use configuration interface and
+powerful route filtering language, supporting Linux, FreeBSD, OpenBSD and NetBSD.
+BIRD is distributed under the GNU General Public License.
 
 What do we support
 ==================
 
-	o  Both IPv4 and IPv6
+	o  Both IPv6 and IPv4
 	o  Multiple routing tables
 	o  Border Gateway Protocol (BGPv4)
 	o  Routing Information Protocol (RIPv2, RIPng)
@@ -27,8 +26,12 @@ What do we support
 	o  Babel Routing Protocol (Babel)
 	o  Bidirectional Forwarding Detection (BFD)
 	o  IPv6 router advertisements
+	o  MRT dumping and BGP Monitoring Protocol (BMP)
+	o  Route Origin Authorization (ROA) and RTR protocol (RPKI)
+	o  MPLS and basic L3VPN route transformations
+	o  Route aggregation
 	o  Static routes
-	o  Inter-table protocol
+	o  Inter-table protocol (Pipe)
 	o  Command-line interface allowing on-line control and inspection of
 	   status of the daemon
 	o  Soft reconfiguration, no need to use complex online commands to
@@ -36,20 +39,26 @@ What do we support
 	   BIRD to re-read it and it will smoothly switch itself to the new
 	   configuration, not disturbing routing protocols unless they are
 	   affected by the configuration changes
-	o  Powerful language for route filtering, see doc/bird.conf.example
+	o  Powerful language for route filtering, see filter/test.conf
+	   for exhaustive demonstration
 	o  Linux, FreeBSD, NetBSD and OpenBSD ports
 
 How to install BIRD
 ===================
 
 	o  From standard distribution package of your OS (recommended)
-	o  From official binary packages for Debian and Red Hat Linux
-	   ftp://bird.network.cz/pub/bird/debian/
-	   ftp://bird.network.cz/pub/bird/redhat/
+	o  From official binary packages for Debian and Ubuntu
+	   https://pkg.labs.nic.cz/doc/?project=bird
+	   and also CentOS
+	   ftp://bird.network.cz/pub/bird/centos
+	   or Fedora
+	   ftp://bird.network.cz/pub/bird/fedora
 	o  From source code of the latest stable release version
 	   ftp://bird.network.cz/pub/bird/
-	o  From current development code in Git repository
-	   https://gitlab.labs.nic.cz/labs/bird/
+	o  From current development code in our Git repository
+	   https://gitlab.nic.cz/labs/bird/
+	   (there are also autobuilds, look for the Downloads button
+	    nearby the Clone button)
 
 See the file INSTALL for information about installation from source code.
 
@@ -73,6 +82,30 @@ code are welcome! We don't use gitlab issues for reporting, sorry.
 
 Subscribe:	http://bird.network.cz/mailman/listinfo/bird-users/
 Archive:	http://bird.network.cz/pipermail/bird-users/
+
+For commercial support options, see https://bird.nic.cz/en/commercial-services/
+
+Contributing
+============
+
+Simple patches can be sent directly to the users mailing list. With more
+elaborate contributions, please create your own fork and send just a link
+to your public repository, including the appropriate branch name(s)
+and Git commit hash(es)
+
+Please note that we are keeping mergability of the stable version 2 with
+the multithreaded version 3. Every contribution must be mergable to both
+branches master and thread-next. In case of collisions, the contributor
+shall provide two branches / patches, one mergable to master, another
+to thread-next.
+
+Alternatively, the contributor may omit the version 2 implementation and
+contribute to version 3 only. We are planning to declare the version 3
+stable as soon as possible. Don't worry, your contribution won't be lost.
+
+If you need any help of guidance, feel free to ask. The maintainers are
+quite busy though (as of Jan 2024). You are expected to ping the maintainers
+relentlessly until they react and review your contributions.
 
 Licence
 =======
@@ -99,6 +132,8 @@ and Physics, Charles University, Prague, Czech Republic under supervision
 of RNDr. Libor Forst <forst@cuni.cz>. BIRD has been developed and supported
 by CZ.NIC z.s.p.o. http://www.nic.cz/ since 2009.
 
+At the end of the year 2023, support for versions 1.x has been discontinued.
+If you are still running BIRD 1, please upgrade to BIRD 2.
 
 Good Luck and enjoy the BIRD :)
 						The BIRD Team
