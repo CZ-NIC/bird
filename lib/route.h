@@ -162,6 +162,12 @@ struct nexthop_adata {
   };
 };
 
+/* For MPLS label stack generation */
+struct nexthop_adata_mpls {
+  struct nexthop_adata nhad;
+  u32 label_space[MPLS_MAX_LABEL_STACK];
+};
+
 #define NEXTHOP_DEST_SIZE	(OFFSETOF(struct nexthop_adata, dest) + sizeof(uint) - OFFSETOF(struct adata, data))
 #define NEXTHOP_DEST_LITERAL(x)	((struct nexthop_adata) { \
       .ad.length = NEXTHOP_DEST_SIZE, .dest = (x), })

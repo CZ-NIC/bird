@@ -1104,16 +1104,18 @@ bgp_apply_next_hop(struct bgp_parse_state *s, ea_list **to, ip_addr gw, ip_addr 
 
     ea_set_attr_u32(to, &ea_gen_igp_metric, 0, c->cf->cost);
 
-    struct nexthop_adata nhad = {
-      .nh = {
-	.gw = nbr->addr,
-	.iface = nbr->iface,
-      },
-      .ad = {
-	.length = sizeof nhad - sizeof nhad.ad,
+    struct nexthop_adata_mpls nam = {
+      .nhad = {
+	.nh = {
+	  .gw = nbr->addr,
+	  .iface = nbr->iface,
+	},
+	.ad = {
+	  .length = NEXTHOP_NEXT(&nam.nhad.nh) - (void *) nam.nhad.ad.data,
+	},
       },
     };
-    ea_set_attr_data(to, &ea_gen_nexthop, 0, nhad.ad.data, nhad.ad.length);
+    ea_set_attr_data(to, &ea_gen_nexthop, 0, nam.nhad.ad.data, nam.nhad.ad.length);
   }
   else /* GW_RECURSIVE */
   {
@@ -1153,23 +1155,20 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, ea_list **to, u32 lnum, u32 lab
   if (s->channel->cf->gw_mode == GW_DIRECT)
   {
     eattr *e = ea_find(*to, &ea_gen_nexthop);
-    struct {
-      struct nexthop_adata nhad;
-      u32 labels[MPLS_MAX_LABEL_STACK];
-    } nh;
-    
-    memcpy(&nh.nhad, e->u.ptr, sizeof(struct adata) + e->u.ptr->length);
-    nh.nhad.nh.labels = lnum;
-    memcpy(nh.labels, labels, lnum * sizeof(u32));
-    nh.nhad.ad.length = sizeof nh.nhad + lnum * sizeof(u32);
+    struct nexthop_adata_mpls *namp = SKIP_BACK(struct nexthop_adata_mpls, nhad.ad, e->u.ptr);
+
+    namp->nhad.nh.labels = lnum;
+    memcpy(namp->nhad.nh.label, labels, lnum * sizeof(u32));
+    namp->nhad.ad.length = NEXTHOP_NEXT(&namp->nhad.nh) - (void *) namp->nhad.ad.data;
   }
   else /* GW_RECURSIVE */
   {
     eattr *e = ea_find(*to, &ea_gen_hostentry);
     ASSERT_DIE(e);
     struct hostentry_adata *head = (void *) e->u.ptr;
-    memcpy(&head->labels, labels, lnum * sizeof(u32));
+    memcpy(head->labels, labels, lnum * sizeof(u32));
     head->ad.length = (void *)(&head->labels[lnum]) - (void *) head->ad.data;
+    debug("he %p apply mpls labels (%u): %u\n", head->he, lnum, labels[0]);
   }
 }
 
@@ -1527,9 +1526,6 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, ea_lis
 
     s->last_src = rt_get_source(&s->proto->p, path_id);
     s->last_id = path_id;
-
-    ea_free(s->cached_ea);
-    s->cached_ea = NULL;
   }
 
   if (!a0)
@@ -1544,11 +1540,11 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, ea_lis
   }
 
   /* Prepare cached route attributes */
-  if (s->cached_ea == NULL)
-    s->cached_ea = ea_lookup(a0, 0);
+  if (!s->mpls && (s->cached_ea == NULL))
+    a0 = s->cached_ea = ea_lookup(a0, 0);
 
   rte e0 = {
-    .attrs = s->cached_ea,
+    .attrs = a0,
     .src = s->last_src,
   };
 
