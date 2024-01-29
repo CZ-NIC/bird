@@ -1373,10 +1373,20 @@ ea_show_hostentry(const struct adata *ad, byte *buf, uint size)
 {
   const struct hostentry_adata *had = (const struct hostentry_adata *) ad;
 
+  uint s = 0;
+
   if (ipa_nonzero(had->he->link) && !ipa_equal(had->he->link, had->he->addr))
-    bsnprintf(buf, size, "via %I %I table %s", had->he->addr, had->he->link, had->he->tab->name);
+    s = bsnprintf(buf, size, "via %I %I table %s", had->he->addr, had->he->link, had->he->tab->name);
   else
-    bsnprintf(buf, size, "via %I table %s", had->he->addr, had->he->tab->name);
+    s = bsnprintf(buf, size, "via %I table %s", had->he->addr, had->he->tab->name);
+
+  uint lc = HOSTENTRY_LABEL_COUNT(had);
+  if (!lc)
+    return;
+
+  s = bsnprintf((buf += s), (size -= s), " labels");
+  for (uint i=0; i < lc; i++)
+    s = bsnprintf((buf += s), (size -= s), " %u", had->labels[i]);
 }
 
 /**
