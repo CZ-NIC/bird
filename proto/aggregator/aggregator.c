@@ -218,60 +218,121 @@ first_pass(struct trie_node *node, slab *trie_slab)
   first_pass(node->child[1], trie_slab);
 }
 
-/*
- * Compare two bucket pointers.
- */
 static int
-aggregator_bucket_compare(const void *a, const void *b)
+aggregator_bucket_compare(const struct aggregator_bucket *a, const struct aggregator_bucket *b)
 {
   assert(a != NULL);
   assert(b != NULL);
 
-  if (a == NULL && b == NULL)
-    return 0;
-
-  if (a == NULL)
+  if ((uintptr_t)a < (uintptr_t)b)
     return -1;
 
-  if (b == NULL)
-    return 1;
-
-  const struct aggregator_bucket *fst = (struct aggregator_bucket *)a;
-  const struct aggregator_bucket *snd = (struct aggregator_bucket *)b;
-
-  /* There is linear ordering on pointers */
-  if (fst < snd)
-    return -1;
-
-  if (fst > snd)
+  if ((uintptr_t)a > (uintptr_t)b)
     return 1;
 
   return 0;
+}
+
+static int
+aggregator_bucket_compare_wrapper(const void *a, const void *b)
+{
+  assert(a != NULL);
+  assert(b != NULL);
+
+  const struct aggregator_bucket *fst = *(struct aggregator_bucket **)a;
+  const struct aggregator_bucket *snd = *(struct aggregator_bucket **)b;
+
+  return aggregator_bucket_compare(fst, snd);
+}
+
+/*
+ * Compute union of two sets of potential buckets in @left and @right and put result in @node
+ */
+static void unionize_buckets(const struct trie_node *left, const struct trie_node *right, struct trie_node *node)
+{
+  assert(left  != NULL);
+  assert(right != NULL);
+  assert(node  != NULL);
+
+  struct aggregator_bucket *input_buckets[64] = { 0 };
+  int input_count = 0;
+
+  for (int i = 0; i < left->potential_buckets_count; i++)
+    input_buckets[input_count++] = left->potential_buckets[i];
+
+  for (int i = 0; i < right->potential_buckets_count; i++)
+    input_buckets[input_count++] = right->potential_buckets[i];
+
+  qsort(input_buckets, input_count, sizeof(struct aggregator_bucket *), aggregator_bucket_compare_wrapper);
+
+  struct aggregator_bucket *output_buckets[64] = { 0 };
+  int output_count = 0;
+
+  for (int i = 0; i < input_count; i++)
+  {
+
+    if (output_count != 0 && output_buckets[output_count - 1] == input_buckets[i])
+      continue;
+
+    output_buckets[output_count++] = input_buckets[i];
+  }
+
+  // strictly greater
+  for (int i = 1; i < output_count; i++)
+    assert(output_buckets[i - 1] < output_buckets[i]);
+
+  // duplicates
+  for (int i = 0; i < output_count; i++)
+    for (int j = i + 1; j < output_count; j++)
+      assert(output_buckets[i] != output_buckets[j]);
+
+  for (int i = 0; i < output_count; i++)
+  {
+    if (node->potential_buckets_count >= MAX_POTENTIAL_BUCKETS_COUNT)
+      break;
+
+    node->potential_buckets[node->potential_buckets_count++] = output_buckets[i];
+  }
 }
 
 /*
  * Compute intersection of two sets of potential buckets in @left and @right and put result in @node
  */
 static void
-aggregator_bucket_intersect(const struct trie_node *left, const struct trie_node *right, struct trie_node *node)
+intersect_buckets(const struct trie_node *left, const struct trie_node *right, struct trie_node *node)
 {
-  assert(node != NULL);
-  assert(left != NULL);
+  assert(left  != NULL);
   assert(right != NULL);
+  assert(node  != NULL);
+
+  struct aggregator_bucket *fst[64] = { 0 };
+  struct aggregator_bucket *snd[64] = { 0 };
+
+  int fst_count = 0;
+  int snd_count = 0;
+
+  for (int i = 0; i < left->potential_buckets_count; i++)
+    fst[fst_count++] = left->potential_buckets[i];
+
+  for (int i = 0; i < right->potential_buckets_count; i++)
+    snd[snd_count++] = right->potential_buckets[i];
+
+  qsort(fst, fst_count, sizeof(struct aggregator_bucket *), aggregator_bucket_compare_wrapper);
+  qsort(snd, snd_count, sizeof(struct aggregator_bucket *), aggregator_bucket_compare_wrapper);
+
+  struct aggregator_bucket *output[64] = { 0 };
+  int output_count = 0;
 
   int i = 0;
   int j = 0;
 
   while (i < left->potential_buckets_count && j < right->potential_buckets_count)
   {
-    if (node->potential_buckets_count >= MAX_POTENTIAL_BUCKETS_COUNT)
-      return;
-
     int res = aggregator_bucket_compare(left->potential_buckets[i], right->potential_buckets[j]);
 
     if (res == 0)
     {
-      node->potential_buckets[node->potential_buckets_count++] = left->potential_buckets[i];
+      output[output_count++] = left->potential_buckets[i];
       i++;
       j++;
     }
@@ -281,88 +342,23 @@ aggregator_bucket_intersect(const struct trie_node *left, const struct trie_node
       j++;
     else
       bug("Impossible");
-
-    assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
-  }
-}
-
-/*
- * Compute union of two sets of potential buckets in @left and @right and put result in @node
- */
-static void
-aggregator_bucket_unionize(const struct trie_node *left, const struct trie_node *right, struct trie_node *node)
-{
-  assert(node != NULL);
-  assert(left != NULL);
-  assert(right != NULL);
-
-  int i = 0;
-  int j = 0;
-
-  while (i < left->potential_buckets_count && j < right->potential_buckets_count)
-  {
-    if (node->potential_buckets_count >= MAX_POTENTIAL_BUCKETS_COUNT)
-      return;
-
-    int res = aggregator_bucket_compare(left->potential_buckets[i], right->potential_buckets[j]);
-
-    switch (res)
-    {
-      case 0:
-        /*
-         * If there is no element yet or if the last and new elements are not equal
-         * (which means elements do not repeat), insert new element to the set.
-         */
-        if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != left->potential_buckets[i])
-          node->potential_buckets[node->potential_buckets_count++] = left->potential_buckets[i];
-
-        i++;
-        j++;
-        break;
-
-      case -1:
-        if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != left->potential_buckets[i])
-          node->potential_buckets[node->potential_buckets_count++] = left->potential_buckets[i];
-
-        i++;
-        break;
-
-      case 1:
-        if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != right->potential_buckets[j])
-          node->potential_buckets[node->potential_buckets_count++] = right->potential_buckets[j];
-
-        j++;
-        break;
-
-      default:
-        bug("Impossible");
-    }
-
-    assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
   }
 
-  while (i < left->potential_buckets_count)
+  // strictly greater
+  for (int k = 1; k < output_count; k++)
+    assert(output[k - 1] < output[k]);
+
+  // duplicates
+  for (int k = 0; k < output_count; k++)
+    for (int l = k + 1; l < output_count; l++)
+      assert(output[k] != output[l]);
+
+  for (int k = 0; k < output_count; k++)
   {
     if (node->potential_buckets_count >= MAX_POTENTIAL_BUCKETS_COUNT)
-      return;
+      break;
 
-    if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != left->potential_buckets[i])
-      node->potential_buckets[node->potential_buckets_count++] = left->potential_buckets[i];
-
-    i++;
-    assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
-  }
-
-  while (j < right->potential_buckets_count)
-  {
-    if (node->potential_buckets_count >= MAX_POTENTIAL_BUCKETS_COUNT)
-      return;
-
-    if (node->potential_buckets_count == 0 || node->potential_buckets[node->potential_buckets_count - 1] != right->potential_buckets[j])
-      node->potential_buckets[node->potential_buckets_count++] = right->potential_buckets[j];
-
-    j++;
-    assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
+    node->potential_buckets[node->potential_buckets_count++] = output[k];
   }
 }
 
@@ -376,7 +372,10 @@ bucket_sets_are_disjoint(const struct trie_node *left, const struct trie_node *r
   assert(right != NULL);
 
   if (left->potential_buckets_count == 0 || right->potential_buckets_count == 0)
+  {
+    log("Buckets are disjoint");
     return 1;
+  }
 
   int i = 0;
   int j = 0;
@@ -426,8 +425,17 @@ second_pass(struct trie_node *node)
   second_pass(left);
   second_pass(right);
 
-  qsort(left->potential_buckets, left->potential_buckets_count, sizeof(struct aggregator_bucket *), aggregator_bucket_compare);
-  qsort(right->potential_buckets, right->potential_buckets_count, sizeof(struct aggregator_bucket *), aggregator_bucket_compare);
+  // duplicates
+  for (int i = 0; i < left->potential_buckets_count; i++)
+    for (int j = i + 1; j < left->potential_buckets_count; j++)
+      assert(left->potential_buckets[i] != left->potential_buckets[j]);
+
+  for (int i = 0; i < right->potential_buckets_count; i++)
+    for (int j = i + 1; j < right->potential_buckets_count; j++)
+      assert(right->potential_buckets[i] != right->potential_buckets[j]);
+
+  qsort(left->potential_buckets, left->potential_buckets_count, sizeof(struct aggregator_bucket *), aggregator_bucket_compare_wrapper);
+  qsort(right->potential_buckets, right->potential_buckets_count, sizeof(struct aggregator_bucket *), aggregator_bucket_compare_wrapper);
 
   for (int i = 1; i < left->potential_buckets_count; i++)
   {
@@ -440,9 +448,9 @@ second_pass(struct trie_node *node)
   }
 
   if (bucket_sets_are_disjoint(left, right))
-    aggregator_bucket_unionize(left, right, node);
+    unionize_buckets(left, right, node);
   else
-    aggregator_bucket_intersect(left, right, node);
+    intersect_buckets(left, right, node);
 }
 
 /*
