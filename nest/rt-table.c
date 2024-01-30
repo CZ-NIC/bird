@@ -4280,10 +4280,16 @@ rt_feed_by_fib(void *data)
     for (; c->feed_index < tab->routes_block_size; c->feed_index++)
     {
       net *n = &tab->routes[c->feed_index];
-      if (!n->routes)
+      const net_addr *a;
+      if (n->routes)
+	a = n->routes->rte.net;
+      else if (!n->first)
 	continue;
+      else if (n->first->old)
+	a = n->first->old->rte.net;
+      else
+	a = n->first->new->rte.net;
 
-      const net_addr *a = n->routes->rte.net;
       if (rt_prefilter_net(&c->h.req->prefilter, a))
       {
 	if (!rt_prepare_feed(c, n, &block))
