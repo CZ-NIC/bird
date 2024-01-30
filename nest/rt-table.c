@@ -3336,15 +3336,19 @@ rt_postconfig(struct config *c)
 void
 ea_set_hostentry(ea_list **to, rtable *dep, rtable *src, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum])
 {
-  struct hostentry_adata *head = (struct hostentry_adata *) tmp_alloc_adata(
-      sizeof *head + sizeof(u32) * lnum - sizeof(struct adata));
+  struct {
+    struct hostentry_adata head;
+    u32 label_space[lnum];
+  } h;
+
+  memset(&h, 0, sizeof h);
 
   RT_LOCKED(src, tab)
-    head->he = rt_get_hostentry(tab, gw, ll, dep);
-  memcpy(head->labels, labels, lnum * sizeof(u32));
+    h.head.he = rt_get_hostentry(tab, gw, ll, dep);
 
-  ea_set_attr(to, EA_LITERAL_DIRECT_ADATA(
-	&ea_gen_hostentry, 0, &head->ad));
+  memcpy(h.head.labels, labels, lnum * sizeof(u32));
+
+  ea_set_attr_data(to, &ea_gen_hostentry, 0, h.head.ad.data, (byte *) &h.head.labels[lnum] - h.head.ad.data);
 }
 
 
