@@ -6,6 +6,8 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#include "sysdep/linux/tcp-ao.h"
+
 #ifndef IPV6_MINHOPCOUNT
 #define IPV6_MINHOPCOUNT 73
 #endif
@@ -20,6 +22,15 @@
 
 #ifndef TCP_MD5SIG_FLAG_PREFIX
 #define TCP_MD5SIG_FLAG_PREFIX 1
+#endif
+
+#ifndef TCP_AO_ADD_KEY
+#define TCP_AO_ADD_KEY		38	/* Add/Set MKT */
+#define TCP_AO_DEL_KEY		39	/* Delete MKT */
+#define TCP_AO_INFO		40	/* Set/list TCP-AO per-socket options */
+#define TCP_AO_GET_KEYS		41	/* List MKT(s) */
+#define TCP_AO_REPAIR		42	/* Get/Set SNEs and ISNs */
+
 #endif
 
 /* We redefine the tcp_md5sig structure with different name to avoid collision with older headers */
@@ -166,11 +177,74 @@ sk_prepare_cmsgs4(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
  */
 
 int
-sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int setkey UNUSED)
+sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int setkey UNUSED) // local UNUSED
 {
   struct tcp_md5sig_ext md5;
 
   memset(&md5, 0, sizeof(md5));
+  sockaddr_fill((sockaddr *) &md5.tcpm_addr, s->af, remote, ifa, 0);
+
+  if (passwd)
+  {
+    int len = strlen(passwd);
+
+    if (len > TCP_MD5SIG_MAXKEYLEN)
+      ERR_MSG("The password for TCP MD5 Signature is too long");
+
+    md5.tcpm_keylen = len;
+    memcpy(&md5.tcpm_key, passwd, len);
+  }
+
+  if (pxlen < 0)
+  {
+    struct tcp_ao_add_ext ao;
+    memset(&ao, 0, sizeof(struct tcp_ao_add_ext));
+    sockaddr_fill((sockaddr *) &ao.addr, s->af, remote, ifa, 0);
+    ao.set_current	= 0;
+    ao.set_rnext	= 0;
+    ao.prefix	= -1;
+    ao.sndid	= 100;
+    ao.rcvid	= 100;
+    ao.maclen	= 0;
+    ao.keyflags	= 0;
+    ao.keylen	= strlen(passwd);
+    ao.ifindex	= 0;
+
+    memcpy(ao.key, passwd, (strlen(passwd) > TCP_AO_MAXKEYLEN_) ? TCP_AO_MAXKEYLEN_ : strlen(passwd));
+
+    int IPPROTO_TCP_ = 6;
+    if (setsockopt(s->fd, SOL_TCP, TCP_AO_ADD_KEY, &md5, sizeof(md5)) < 0)
+      bug("tcp ao err %i", errno);
+    log("ok");
+    /*if (setsockopt(s->fd, SOL_TCP, TCP_MD5SIG_EXT, &md5, sizeof(md5)) < 0)
+      if (errno == ENOPROTOOPT)
+	ERR_MSG("Kernel does not support TCP MD5 signatures");
+      else
+	ERR("TCP_MD5SIG");*/
+  }
+  else
+  {
+    md5.tcpm_flags = TCP_MD5SIG_FLAG_PREFIX;
+    md5.tcpm_prefixlen = pxlen;
+
+    if (setsockopt(s->fd, SOL_TCP, TCP_MD5SIG_EXT, &md5, sizeof(md5)) < 0)
+    {
+      if (errno == ENOPROTOOPT)
+	ERR_MSG("Kernel does not support extended TCP MD5 signatures");
+      else
+	ERR("TCP_MD5SIG_EXT");
+    }
+  }
+
+  return 0;
+}
+
+/**int
+sk_set_tcpao_auth(sock *s, ip_addr local UNUSED, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int setkey UNUSED)
+{
+  struct tcp_ao_add *ao;
+
+  memset(&ao, 0, sizeof(struct tcp_ao_add));
   sockaddr_fill((sockaddr *) &md5.tcpm_addr, s->af, remote, ifa, 0);
 
   if (passwd)
@@ -207,7 +281,7 @@ sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote, int pxlen, struct
   }
 
   return 0;
-}
+}**/
 
 static inline int
 sk_set_min_ttl4(sock *s, int ttl)
