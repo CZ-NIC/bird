@@ -3377,8 +3377,8 @@ bgp_log_error(struct bgp_proto *p, u8 class, char *msg, uint code, uint subcode,
 
       *t++ = ':';
       *t++ = ' ';
-      if (len > 16)
-	len = 16;
+      if (len > 128)
+	len = 128;
       for (i=0; i<len; i++)
 	t += bsprintf(t, "%02x", data[i]);
     }
