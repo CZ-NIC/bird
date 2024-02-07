@@ -1971,15 +1971,13 @@ bgp_out_table_feed(void *data)
 	ea_set_attr(&ea, EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, tmp_copy_adata(&nhad.ad)));
       }
 
-      struct rte_storage es = {
-	.rte = {
+      struct rte es = {
 	  .attrs = ea,
 	  .net = n->net,
 	  .src = rt_find_source_global(n->path_id),
 	  .sender = NULL,
 	  .lastmod = n->lastmod,
 	  .flags = n->cur ? REF_PENDING : 0,
-	},
       };
 
       struct rt_pending_export rpe = {
@@ -1988,7 +1986,7 @@ bgp_out_table_feed(void *data)
 
       if (hook->h.req->export_bulk)
       {
-	const rte *feed = &es.rte;
+	const rte *feed = &es;
 	hook->h.req->export_bulk(hook->h.req, n->net, &rpe, &rpe, &feed, 1);
       }
       else if (hook->h.req->export_one)

@@ -790,7 +790,7 @@ channel_rpe_mark_seen(struct channel *c, struct rt_pending_export *rpe)
     rpe_mark_seen(c->refeed_req.hook, rpe);
 
   if (rpe->old)
-    bmap_clear(&c->export_reject_map, rpe->old->rte.id);
+    bmap_clear(&c->export_reject_map, rpe->old->id);
 }
 
 void
@@ -850,10 +850,10 @@ done:
     channel_rpe_mark_seen(c, rpe);
     if (rpe->old)
     {
-      if (bmap_test(&c->export_map, rpe->old->rte.id))
+      if (bmap_test(&c->export_map, rpe->old->id))
       {
 	ASSERT_DIE(old_best == NULL);
-	old_best = &rpe->old->rte;
+	old_best = rpe->old;
       }
     }
     if (rpe == last)
@@ -969,10 +969,10 @@ rt_notify_merged(struct rt_export_request *req, const net_addr *n,
     channel_rpe_mark_seen(c, rpe);
     if (rpe->old)
     {
-      if (bmap_test(&c->export_map, rpe->old->rte.id))
+      if (bmap_test(&c->export_map, rpe->old->id))
       {
 	ASSERT_DIE(old_best == NULL);
-	old_best = &rpe->old->rte;
+	old_best = rpe->old;
       }
     }
     if (rpe == last)
@@ -991,7 +991,7 @@ rt_notify_optimal(struct rt_export_request *req, const net_addr *net, struct rt_
 {
   struct channel *c = channel_from_export_request(req);
   const rte *o = RTE_VALID_OR_NULL(first->old_best);
-  struct rte_storage *new_best = first->new_best;
+  const rte *new_best = first->new_best;
 
   int refeeding = channel_net_is_refeeding(c, net);
 
@@ -1032,7 +1032,7 @@ rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pend
   }
 
   struct rte_src *src = n ? n->src : o->src;
-  struct rte_storage *new_latest = first->new;
+  const rte *new_latest = first->new;
 
   RPE_WALK(first, rpe, src)
   {
@@ -1095,7 +1095,7 @@ rpe_next(struct rt_pending_export *rpe, struct rte_src *src)
     return next;
 
   while (rpe = next)
-    if (src == (rpe->new ? rpe->new->rte.src : rpe->old->rte.src))
+    if (src == (rpe->new ? rpe->new->src : rpe->old->src))
       return rpe;
     else
       next = atomic_load_explicit(&rpe->next, memory_order_acquire);
@@ -1112,7 +1112,7 @@ rte_export(struct rt_table_export_hook *th, struct rt_pending_export *rpe)
   if (bmap_test(&hook->seq_map, rpe->seq))
     goto ignore;	/* Seen already */
 
-  const net_addr *n = rpe->new_best ? rpe->new_best->rte.net : rpe->old_best->rte.net;
+  const net_addr *n = rpe->new_best ? rpe->new_best->net : rpe->old_best->net;
 
   /* Check export eligibility of this net */
   if (!rt_prefilter_net(&hook->req->prefilter, n))
@@ -1199,22 +1199,22 @@ ignore:
  * done outside of scope of rte_announce().
  */
 static void
-rte_announce(struct rtable_private *tab, const struct netindex *i, net *net, struct rte_storage *new, struct rte_storage *old,
-	     struct rte_storage *new_best, struct rte_storage *old_best)
+rte_announce(struct rtable_private *tab, const struct netindex *i, net *net, const rte *new, const rte *old,
+	     const rte *new_best, const rte *old_best)
 {
   /* Update network count */
   tab->net_count += (!!new_best - !!old_best);
 
-  int new_best_valid = rte_is_valid(RTE_OR_NULL(new_best));
-  int old_best_valid = rte_is_valid(RTE_OR_NULL(old_best));
+  int new_best_valid = rte_is_valid(new_best);
+  int old_best_valid = rte_is_valid(old_best);
 
   if ((new == old) && (new_best == old_best))
     return;
 
   if (new_best_valid)
-    new_best->rte.sender->stats.pref++;
+    new_best->sender->stats.pref++;
   if (old_best_valid)
-    old_best->rte.sender->stats.pref--;
+    old_best->sender->stats.pref--;
 
   if (EMPTY_LIST(tab->exporter.e.hooks) && EMPTY_LIST(tab->exporter.pending))
   {
@@ -1222,8 +1222,8 @@ rte_announce(struct rtable_private *tab, const struct netindex *i, net *net, str
     if (!old)
       return;
 
-    hmap_clear(&tab->id_map, old->rte.id);
-    rte_free(old, tab);
+    hmap_clear(&tab->id_map, old->id);
+    rte_free(SKIP_BACK(struct rte_storage, rte, old), tab);
     return;
   }
 
@@ -1268,10 +1268,10 @@ rte_announce(struct rtable_private *tab, const struct netindex *i, net *net, str
       "new_best=%p id %u, "
       "old_best=%p id %u seq=%lu",
       i->addr,
-      new, new ? new->rte.id : 0, new ? new->rte.sender->req->name : NULL,
-      old, old ? old->rte.id : 0, old ? old->rte.sender->req->name : NULL,
-      new_best, new_best ? new_best->rte.id : 0,
-      old_best, old_best ? old_best->rte.id : 0,
+      new, new ? new->id : 0, new ? new->sender->req->name : NULL,
+      old, old ? old->id : 0, old ? old->sender->req->name : NULL,
+      new_best, new_best ? new_best->id : 0,
+      old_best, old_best ? old_best->id : 0,
       rpe->seq);
 
   ASSERT_DIE(atomic_fetch_add_explicit(&rpeb->end, 1, memory_order_release) == end);
@@ -1720,8 +1720,9 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
       log(L_TRACE "%s > ignored %N %s->%s", req->name, i->addr, old ? "filtered" : "none", new ? "filtered" : "none");
 
   /* Propagate the route change */
-  rte_announce(table, i, net, new_stored, old_stored,
-      net->routes, old_best_stored);
+  rte_announce(table, i, net,
+      RTE_OR_NULL(new_stored), RTE_OR_NULL(old_stored),
+      RTE_OR_NULL(net->routes), RTE_OR_NULL(old_best_stored));
 
   return 1;
 }
@@ -1908,7 +1909,7 @@ rt_examine(rtable *tp, net_addr *a, struct channel *c, const struct filter *filt
     const struct netindex *i = net_find_index(t->netindex, a);
     net *n = i ? net_find(t, i) : NULL;
     if (n)
-      rt = RTE_COPY_VALID(n->routes);
+      rt = RTE_COPY_VALID(RTE_OR_NULL(n->routes));
   }
 
   if (!rt.src)
@@ -2590,7 +2591,7 @@ rt_flowspec_export_one(struct rt_export_request *req, const net_addr *net, struc
 
   /* This net may affect some flowspecs, check the actual change */
   const rte *o = RTE_VALID_OR_NULL(first->old_best);
-  struct rte_storage *new_best = first->new_best;
+  const rte *new_best = first->new_best;
 
   RPE_WALK(first, rpe, NULL)
   {
@@ -3125,8 +3126,8 @@ rt_export_cleanup(struct rtable_private *tab)
     ASSERT_DIE(first->new || first->old);
 
     const net_addr *n = first->new ?
-      first->new->rte.net :
-      first->old->rte.net;
+      first->new->net :
+      first->old->net;
     struct netindex *i = NET_TO_INDEX(n);
     ASSERT_DIE(i->index < tab->routes_block_size);
     net *net = &tab->routes[i->index];
@@ -3145,9 +3146,9 @@ rt_export_cleanup(struct rtable_private *tab)
     /* For now, the old route may be finally freed */
     if (first->old)
     {
-      rt_rte_trace_in(D_ROUTES, first->old->rte.sender->req, &first->old->rte, "freed");
-      hmap_clear(&tab->id_map, first->old->rte.id);
-      rte_free(first->old, tab);
+      rt_rte_trace_in(D_ROUTES, first->old->sender->req, first->old, "freed");
+      hmap_clear(&tab->id_map, first->old->id);
+      rte_free(SKIP_BACK(struct rte_storage, rte, first->old), tab);
     }
 
 #ifdef LOCAL_DEBUG
@@ -3574,7 +3575,7 @@ rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, ea_list *
     net *nb = net_route(tip, &dst);
     if (nb)
     {
-      rb = RTE_COPY_VALID(nb->routes);
+      rb = RTE_COPY_VALID(RTE_OR_NULL(nb->routes));
       rta_clone(rb.attrs);
       net_copy(&nau.n, nb->routes->rte.net);
       rb.net = &nau.n;
@@ -3823,7 +3824,7 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
       { "autoupdated [+best]", "autoupdated [best]" }
     };
     rt_rte_trace_in(D_ROUTES, updates[i].new.sender->req, &updates[i].new, best_indicator[nb][ob]);
-    rte_announce(tab, ni, n, updates[i].new_stored, updates[i].old, new, old_best);
+    rte_announce(tab, ni, n, &updates[i].new_stored->rte, &updates[i].old->rte, &new->rte, &old_best->rte);
 
     total++;
   }
@@ -4227,7 +4228,8 @@ rt_prepare_feed(struct rt_table_export_hook *c, net *n, rt_feed_block *b)
       if (!b->pos)
 	b->rpe = tmp_alloc(sizeof(struct rt_pending_export) * bs);
 
-      b->rpe[b->pos++] = (struct rt_pending_export) { .new = n->routes, .new_best = n->routes };
+      const rte *new = RTE_OR_NULL(n->routes);
+      b->rpe[b->pos++] = (struct rt_pending_export) { .new = new, .new_best = new, };
     }
   }
   else
@@ -4260,7 +4262,7 @@ rt_process_feed(struct rt_table_export_hook *c, rt_feed_block *b)
   }
   else
     for (uint p = 0; p < b->pos; p++)
-      c->h.req->export_one(c->h.req, b->rpe[p].new->rte.net, &b->rpe[p]);
+      c->h.req->export_one(c->h.req, b->rpe[p].new->net, &b->rpe[p]);
 }
 
 /**
@@ -4294,9 +4296,9 @@ rt_feed_by_fib(void *data)
       else if (!n->first)
 	continue;
       else if (n->first->old)
-	a = n->first->old->rte.net;
+	a = n->first->old->net;
       else
-	a = n->first->new->rte.net;
+	a = n->first->new->net;
 
       if (rt_prefilter_net(&c->h.req->prefilter, a))
       {
@@ -4565,7 +4567,7 @@ hc_notify_export_one(struct rt_export_request *req, const net_addr *net, struct 
     {
       /* This net may affect some hostentries, check the actual change */
       const rte *o = RTE_VALID_OR_NULL(first->old_best);
-      struct rte_storage *new_best = first->new_best;
+      const rte *new_best = first->new_best;
 
       RPE_WALK(first, rpe, NULL)
       {

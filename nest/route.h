@@ -245,9 +245,9 @@ struct rte_storage {
 };
 
 #define RTE_COPY(r)		((r) ? (r)->rte : (rte) {})
-#define RTE_COPY_VALID(r)	(((r) && (rte_is_valid(&(r)->rte))) ? (r)->rte : (rte) {})
+#define RTE_COPY_VALID(r)	(((r) && (rte_is_valid((r)))) ? *(r) : (rte) {})
 #define RTE_OR_NULL(r)		((r) ? &((r)->rte) : NULL)
-#define RTE_VALID_OR_NULL(r)	(((r) && (rte_is_valid(&(r)->rte))) ? &((r)->rte) : NULL)
+#define RTE_VALID_OR_NULL(r)	(((r) && (rte_is_valid((r)))) ? (r) : NULL)
 
 #define RTES_WRITE(r)		(((r) != ((struct rte_storage *) 0)) ? ((struct rte *) &(r)->rte) : NULL)
 
@@ -315,7 +315,7 @@ struct rt_import_hook {
 
 struct rt_pending_export {
   struct rt_pending_export * _Atomic next;	/* Next export for the same destination */
-  struct rte_storage *new, *new_best, *old, *old_best;
+  const rte *new, *new_best, *old, *old_best;
   u64 seq;				/* Sequential ID (table-local) of the pending export */
 };
 
