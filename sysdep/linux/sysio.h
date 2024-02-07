@@ -8,6 +8,7 @@
 
 #include "sysdep/linux/tcp-ao.h"
 
+
 #ifndef IPV6_MINHOPCOUNT
 #define IPV6_MINHOPCOUNT 73
 #endif
@@ -202,18 +203,35 @@ sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface 
     sockaddr_fill((sockaddr *) &ao.addr, s->af, remote, ifa, 0);
     ao.set_current	= 0;
     ao.set_rnext	= 0;
-    ao.prefix	= -1;
+    if (pxlen >= 0)
+      ao.prefix	= pxlen;
+    else if(s->af == AF_INET)
+      ao.prefix = 32;
+    else
+      ao.prefix = 128;
     ao.sndid	= 100;
     ao.rcvid	= 100;
     ao.maclen	= 0;
     ao.keyflags	= 0;
-    ao.keylen	= strlen(passwd);
     ao.ifindex	= 0;
 
-    memcpy(ao.key, passwd, (strlen(passwd) > TCP_AO_MAXKEYLEN_) ? TCP_AO_MAXKEYLEN_ : strlen(passwd));
+    strncpy(ao.alg_name, DEFAULT_TEST_ALGO, 64);
+
+    if (passwd != NULL)
+    {
+      ao.keylen	= strlen(passwd);
+      memcpy(ao.key, passwd, (strlen(passwd) > TCP_AO_MAXKEYLEN_) ? TCP_AO_MAXKEYLEN_ : strlen(passwd));
+    }
+    else
+    {
+      log("no passwd was given, lets use default.");
+      ao.keylen	= strlen("1cx4c6b");
+      memcpy(ao.key, "1cx4c6b", (strlen("1cx4c6b") > TCP_AO_MAXKEYLEN_) ? TCP_AO_MAXKEYLEN_ : strlen("1cx4c6b"));
+    }
 
     int IPPROTO_TCP_ = 6;
-    if (setsockopt(s->fd, SOL_TCP, TCP_AO_ADD_KEY, &md5, sizeof(md5)) < 0)
+    log("socket: fd %i", s->fd);
+    if (setsockopt(s->fd, IPPROTO_TCP, TCP_AO_ADD_KEY, &ao, sizeof(ao)) < 0)
       bug("tcp ao err %i", errno);
     log("ok");
     /*if (setsockopt(s->fd, SOL_TCP, TCP_MD5SIG_EXT, &md5, sizeof(md5)) < 0)
