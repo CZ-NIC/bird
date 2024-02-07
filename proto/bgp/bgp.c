@@ -1616,6 +1616,7 @@ bgp_start(struct proto *P)
   struct object_lock *lock;
   lock = p->lock = olock_new(P->pool);
   lock->addr = p->remote_ip;
+  lock->addr_local = p->cf->local_ip;
   lock->port = p->cf->remote_port;
   lock->iface = p->cf->iface;
   lock->vrf = p->cf->iface ? NULL : p->p.vrf;

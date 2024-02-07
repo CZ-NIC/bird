@@ -48,7 +48,8 @@ olock_same(struct object_lock *x, struct object_lock *y)
     x->vrf == y->vrf &&
     x->port == y->port &&
     x->inst == y->inst &&
-    ipa_equal(x->addr, y->addr);
+    ipa_equal(x->addr, y->addr) &&
+    ipa_equal_wildcard(x->addr_local, y->addr_local);
 }
 
 static void
@@ -91,7 +92,7 @@ olock_dump(resource *r)
   struct object_lock *l = (struct object_lock *) r;
   static char *olock_states[] = { "free", "locked", "waiting", "event" };
 
-  debug("(%d:%s:%I:%d:%d) [%s]\n", l->type, (l->iface ? l->iface->name : "?"), l->addr, l->port, l->inst, olock_states[l->state]);
+  debug("(%d:%s:%I:%I:%d:%d) [%s]\n", l->type, (l->iface ? l->iface->name : "?"), l->addr, l->addr_local, l->port, l->inst, olock_states[l->state]);
   if (!EMPTY_LIST(l->waiters))
     debug(" [wanted]\n");
 }

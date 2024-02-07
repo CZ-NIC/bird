@@ -25,7 +25,8 @@
 
 struct object_lock {
   resource r;
-  ip_addr addr;		/* Identification of a object: IP address */
+  ip_addr addr;		/* Identification of a object: IP address (strict compare) */
+  ip_addr addr_local;	/* ... another IP address (allow zero IP wildcard) */
   uint type;		/* ... object type (OBJLOCK_xxx) */
   uint port;		/* ... port number */
   uint inst;		/* ... instance ID */
