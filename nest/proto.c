@@ -434,6 +434,7 @@ struct roa_subscription {
   node roa_node;
   struct settle settle;
   struct channel *c;
+  rtable *tab;
   struct rt_export_request req;
   struct f_trie *trie;
 };
@@ -518,12 +519,11 @@ channel_dump_roa_req(struct rt_export_request *req)
 {
   struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
   struct channel *c = s->c;
-  struct rtable_private *tab = SKIP_BACK(struct rtable_private, exporter.e, req->hook->table);
 
-  debug("  Channel %s.%s ROA %s change notifier from table %s request %p\n",
+  debug("  Channel %s.%s ROA %s change notifier request %p\n",
       c->proto->name, c->name,
       (s->settle.hook == channel_roa_in_changed) ? "import" : "export",
-      tab->name, req);
+      req);
 }
 
 static int
@@ -536,8 +536,7 @@ channel_roa_is_subscribed(struct channel *c, rtable *tab, int dir)
   node *n;
 
   WALK_LIST2(s, n, c->roa_subscriptions, roa_node)
-    if ((tab == SKIP_BACK(rtable, priv.exporter.e, s->req.hook->table))
-	  && (s->settle.hook == hook))
+    if ((tab == s->tab) && (s->settle.hook == hook))
       return 1;
 
   return 0;
@@ -555,6 +554,7 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
     .settle = SETTLE_INIT(&c->roa_settle, dir ? channel_roa_in_changed : channel_roa_out_changed, NULL),
     .c = c,
     .trie = f_new_trie(lp_new(c->proto->pool), 0),
+    .tab = tab,
     .req = {
       .name = mb_sprintf(c->proto->pool, "%s.%s.roa-%s.%s",
 	  c->proto->name, c->name, dir ? "in" : "out", tab->name),
@@ -588,6 +588,7 @@ channel_roa_unsubscribe(struct roa_subscription *s)
   rfree(s->trie->lp);
   rt_stop_export(&s->req, channel_roa_unsubscribed);
   settle_cancel(&s->settle);
+  s->settle.hook = NULL;
 }
 
 static void
