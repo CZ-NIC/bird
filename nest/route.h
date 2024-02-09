@@ -87,10 +87,9 @@ struct rt_exporter {
   pool *rp;
   list hooks;				/* Registered route export hooks */
   uint addr_type;			/* Type of address data exported (NET_*) */
-};
 
-struct rt_table_exporter {
-  struct rt_exporter e;
+  /* Table-specific */
+
   list pending;				/* List of packed struct rt_pending_export */
 
   struct rt_pending_export *first;	/* First export to announce */
@@ -129,7 +128,7 @@ struct rtable_private {
   u32 debug;				/* Debugging flags (D_*) */
 
   list imports;				/* Registered route importers */
-  struct rt_table_exporter exporter;	/* Exporter API structure */
+  struct rt_exporter exporter;		/* Exporter API structure */
 
   struct hmap id_map;
   struct hostcache *hostcache;
@@ -384,17 +383,9 @@ struct rt_export_hook {
   struct bmap seq_map;			/* Keep track which exports were already procesed */
 
   void (*stopped)(struct rt_export_request *);	/* Stored callback when export is stopped */
-};
 
-struct rt_table_export_hook {
-  union {
-    struct rt_export_hook h;
-    struct {				/* Overriding the parent structure beginning */
-      node _n;
-      struct rt_table_exporter *table;
-    };
-  };
-  
+  /* Table-specific items */
+
   union {
     u32 feed_index;				/* Routing table iterator used during feeding */
     struct {
@@ -413,7 +404,6 @@ struct rt_table_export_hook {
 
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
   u8 feed_type;				/* Which feeding method is used (TFT_*, see below) */
-
 };
 
 #define TIS_DOWN	0
@@ -659,7 +649,7 @@ extern const int rt_default_ecmp;
 struct rt_show_data_rtable {
   node n;
   const char *name;
-  struct rt_exporter *table;
+  rtable *table;
   struct channel *export_channel;
   struct channel *prefilter;
   struct krt_proto *kernel;
