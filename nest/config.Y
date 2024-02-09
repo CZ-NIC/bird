@@ -755,8 +755,9 @@ r_args:
    }
  | r_args IMPORT TABLE channel_arg {
      if (!($4->in_keep & RIK_PREFILTER)) cf_error("No import table in channel %s.%s", $4->proto->name, $4->name);
-     RT_LOCKED($4->table, tab)
-       rt_show_add_exporter($$, &tab->exporter.e, "import")->prefilter = $4;
+     struct rt_show_data_rtable *rsdr = rt_show_add_table($$, $4->table);
+     rsdr->name = "import";
+     rsdr->prefilter = $4;
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
  | r_args FILTER filter {
