@@ -705,6 +705,7 @@ struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t
 #define RSEM_EXPORT	2		/* Routes accepted by export filter */
 #define RSEM_NOEXPORT	3		/* Routes rejected by export filter */
 #define RSEM_EXPORTED	4		/* Routes marked in export map */
+#define RSEM_EXPORT_TABLE 5		/* Export from export table */
 
 /* Host entry: Resolve hook for recursive nexthops */
 extern struct ea_class ea_gen_hostentry;
