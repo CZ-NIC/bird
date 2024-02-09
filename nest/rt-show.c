@@ -313,7 +313,7 @@ rt_show_cont(struct rt_show_data *d)
   if (d->tables_defined_by & RSD_TDB_SET)
     rt_show_table(d);
 
-  rt_request_export_other(d->tab->table, &d->req);
+  rt_request_export(d->tab->table, &d->req);
 }
 
 static void
@@ -356,21 +356,12 @@ rt_show_export_stopped(struct rt_export_request *req)
 }
 
 struct rt_show_data_rtable *
-rt_show_add_exporter(struct rt_show_data *d, struct rt_exporter *t, const char *name)
-{
-  struct rt_show_data_rtable *tab = cfg_allocz(sizeof(struct rt_show_data_rtable));
-  tab->table = t;
-  tab->name = name;
-  add_tail(&(d->tables), &(tab->n));
-  return tab;
-}
-
-struct rt_show_data_rtable *
 rt_show_add_table(struct rt_show_data *d, rtable *t)
 {
-  struct rt_show_data_rtable *rsdr;
-  RT_LOCKED(t, tp)
-    rsdr = rt_show_add_exporter(d, &tp->exporter.e, t->name);
+  struct rt_show_data_rtable *rsdr = cfg_allocz(sizeof(struct rt_show_data_rtable));
+  rsdr->table = t;
+  rsdr->name = t->name;
+  add_tail(&(d->tables), &(rsdr->n));
 
   struct proto_config *krt = t->config->krt_attached;
   if (krt)
@@ -432,7 +423,7 @@ rt_show_prepare_tables(struct rt_show_data *d)
     /* Ensure there is defined export_channel for each table */
     if (d->export_mode)
     {
-      rtable *rt = SKIP_BACK(rtable, priv.exporter.e, tab->table);
+      rtable *rt = tab->table;
       if (!tab->export_channel && d->export_channel &&
 	  (rt == d->export_channel->table))
 	tab->export_channel = d->export_channel;
