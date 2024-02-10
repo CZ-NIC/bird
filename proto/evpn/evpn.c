@@ -242,6 +242,9 @@ evpn_receive_mac(struct evpn_proto *p, const net_addr_evpn_mac *n0, rte *new)
     a->nh.labels = MIN(ms->u.ptr->length / 4, MPLS_MAX_LABEL_STACK);
     memcpy(a->nh.label, ms->u.ptr->data, a->nh.labels * 4);
 
+    /* Hack to handle src_vni in bridge code */
+    ea_set_attr_u32(&a->eattrs, tmp_linpool, EA_MPLS_LABEL, 0, EAF_TYPE_INT, p->vni);
+
     rte *e = rte_get_temp(a, p->p.main_source);
     rte_update2(c, n, e, p->p.main_source);
   }
@@ -283,6 +286,9 @@ evpn_receive_imet(struct evpn_proto *p, const net_addr_evpn_imet *n0, rte *new)
 
     a->nh.labels = 1;
     a->nh.label[0] = bgp_pmsi_get_label(pt->u.ptr);
+
+    /* Hack to handle src_vni in bridge code */
+    ea_set_attr_u32(&a->eattrs, tmp_linpool, EA_MPLS_LABEL, 0, EAF_TYPE_INT, p->vni);
 
     rte *e = rte_get_temp(a, s);
     rte_update2(c, n, e, s);
