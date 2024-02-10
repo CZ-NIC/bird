@@ -2047,6 +2047,10 @@ nl_send_fdb(const net_addr *n0, rte *e, int op, int tunnel)
     if (nh->labels)
       nl_add_attr_u32(&r->h, rsize, NDA_VNI, nh->label[0]);
 
+    eattr *ea = ea_find(e->attrs->eattrs, EA_MPLS_LABEL);
+    if (ea)
+      nl_add_attr_u32(&r->h, rsize, NDA_SRC_VNI, ea->u.data);
+
     r->n.ndm_state |= NUD_PERMANENT;
   }
 
