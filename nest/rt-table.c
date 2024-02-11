@@ -2564,6 +2564,23 @@ rt_kick_prune_timer(struct rtable_private *tab)
   tm_start_in(tab->prune_timer, gc_period, tab->loop);
 }
 
+#define TLIST_PREFIX rt_flowspec_link
+#define TLIST_TYPE struct rt_flowspec_link
+#define TLIST_ITEM n
+#define TLIST_WANT_WALK
+#define TLIST_WANT_ADD_TAIL
+#define TLIST_DEFINED_BEFORE
+
+struct rt_flowspec_link {
+  TLIST_DEFAULT_NODE;
+  rtable *src;
+  rtable *dst;
+  u32 uc;
+  struct rt_export_request req;
+};
+
+#include "lib/tlists.h"
+
 
 static void
 rt_flowspec_export_one(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
@@ -2618,20 +2635,15 @@ rt_flowspec_log_state_change(struct rt_export_request *req, u8 state)
 static struct rt_flowspec_link *
 rt_flowspec_find_link(struct rtable_private *src, rtable *dst)
 {
-  struct rt_export_hook *hook; node *n;
-  WALK_LIST2(hook, n, src->exporter.hooks, n)
-    switch (atomic_load_explicit(&hook->export_state, memory_order_acquire))
-    {
-      case TES_HUNGRY:
-      case TES_FEEDING:
-      case TES_READY:
-	if (hook->req->export_one == rt_flowspec_export_one)
-	{
-	  struct rt_flowspec_link *ln = SKIP_BACK(struct rt_flowspec_link, req, hook->req);
-	  if (ln->dst == dst)
-	    return ln;
-	}
-    }
+  WALK_TLIST(rt_flowspec_link, ln, &src->flowspec_links)
+    if (ln->dst == dst && ln->req.hook)
+      switch (atomic_load_explicit(&ln->req.hook->export_state, memory_order_acquire))
+      {
+	case TES_HUNGRY:
+	case TES_FEEDING:
+	case TES_READY:
+	  return ln;
+      }
 
   return NULL;
 }
@@ -2665,6 +2677,7 @@ rt_flowspec_link(rtable *src_pub, rtable *dst_pub)
 	.log_state_change = rt_flowspec_log_state_change,
 	.export_one = rt_flowspec_export_one,
       };
+      rt_flowspec_link_add_tail(&src->flowspec_links, ln);
 
       rt_table_export_start_locked(src, &ln->req);
 
@@ -2703,7 +2716,10 @@ rt_flowspec_unlink(rtable *src, rtable *dst)
     ASSERT(ln && (ln->uc > 0));
 
     if (!--ln->uc)
+    {
+      rt_flowspec_link_rem_node(&t->flowspec_links, ln);
       rt_stop_export(&ln->req, rt_flowspec_link_stopped);
+    }
   }
 
   birdloop_leave(dst->loop);

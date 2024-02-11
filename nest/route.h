@@ -11,6 +11,7 @@
 #define _BIRD_ROUTE_H_
 
 #include "lib/lists.h"
+#include "lib/tlists.h"
 #include "lib/bitmap.h"
 #include "lib/resource.h"
 #include "lib/net.h"
@@ -129,6 +130,7 @@ struct rtable_private {
 
   list imports;				/* Registered route importers */
   struct rt_exporter exporter;		/* Exporter API structure */
+  TLIST_STRUCT_DEF(rt_flowspec_link, struct rt_flowspec_link) flowspec_links;	/* Links serving flowspec reload */
 
   struct hmap id_map;
   struct hostcache *hostcache;
@@ -540,13 +542,6 @@ struct hostcache {
   list hostentries;			/* List of all hostentries */
   event update;
   struct rt_export_request req;		/* Notifier */
-};
-
-struct rt_flowspec_link {
-  rtable *src;
-  rtable *dst;
-  u32 uc;
-  struct rt_export_request req;
 };
 
 #define rte_update  channel_rte_import
