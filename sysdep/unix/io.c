@@ -1341,6 +1341,7 @@ sk_open(sock *s)
   int bind_port = 0;
   ip_addr bind_addr = IPA_NONE;
   sockaddr sa;
+  log("opening sock");
 
   if (s->type <= SK_IP)
   {
@@ -1457,11 +1458,16 @@ sk_open(sock *s)
     if (bind(fd, &sa.sa, SA_LEN(sa)) < 0)
       ERR2("bind");
   }
+  //s->password = "abcd1234";
 
-  if (s->password)
-    if (sk_set_md5_auth(s, s->saddr, s->daddr, -1, s->iface, s->password, 0) < 0)
+  if (s->password) //TODO condition if it should be ao or md5
+  {
+    log("set ao");
+    if (sk_set_ao_auth(s, s->saddr, s->daddr, -1, s->iface, s->password, 123, 123, 0) < 0)
       goto err;
-
+  }
+  else
+    log("no password given");
   switch (s->type)
   {
   case SK_TCP_ACTIVE:

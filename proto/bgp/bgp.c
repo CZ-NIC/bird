@@ -179,6 +179,7 @@ bgp_open(struct bgp_proto *p)
   sk->type = SK_TCP_PASSIVE;
   sk->ttl = 255;
   sk->saddr = addr;
+ // sk->daddr = p->remote_ip;
   sk->sport = port;
   sk->iface = ifa;
   sk->vrf = p->p.vrf;
@@ -188,7 +189,9 @@ bgp_open(struct bgp_proto *p)
   sk->tbsize = BGP_TX_BUFFER_SIZE;
   sk->rx_hook = bgp_incoming_connection;
   sk->err_hook = bgp_listen_sock_err;
+  //sk->password = p->cf->password;
 
+  log("passive connect p %i, c cf %i %s", p, p->cf, p->cf->password ? p->cf->password : "no password");
   if (sk_open(sk) < 0)
     goto err;
 
@@ -243,10 +246,11 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
       prefix = net_prefix(p->cf->remote_range);
       pxlen = net_pxlen(p->cf->remote_range);
     }
-
-    int rv = sk_set_md5_auth(p->sock->sk,
+    int rv = 0;
+    if (enable)
+      rv = sk_set_ao_auth(p->sock->sk,
 			     p->cf->local_ip, prefix, pxlen, p->cf->iface,
-			     enable ? p->cf->password : NULL, p->cf->setkey);
+			     p->cf->password, 123, 123, p->cf->setkey);
 
     if (rv < 0)
       sk_log_error(p->sock->sk, p->p.name);
@@ -1098,6 +1102,12 @@ bgp_active(struct bgp_proto *p)
   bgp_start_timer(conn->connect_timer, delay);
 }
 
+void
+log_ao(int fd)
+{
+  log_tcp_ao_info(fd);
+}
+
 /**
  * bgp_connect - initiate an outgoing connection
  * @p: BGP instance
@@ -1124,6 +1134,7 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   s->rbsize = p->cf->enable_extended_messages ? BGP_RX_BUFFER_EXT_SIZE : BGP_RX_BUFFER_SIZE;
   s->tbsize = p->cf->enable_extended_messages ? BGP_TX_BUFFER_EXT_SIZE : BGP_TX_BUFFER_SIZE;
   s->tos = IP_PREC_INTERNET_CONTROL;
+ // s->password = "abcd1234";/
   s->password = p->cf->password;
   s->tx_hook = bgp_connected;
   s->flags = p->cf->free_bind ? SKF_FREEBIND : 0;
@@ -1134,9 +1145,11 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   bgp_setup_sk(conn, s);
   bgp_conn_set_state(conn, BS_CONNECT);
 
+  log("active open p %i, c cf %i %s ", p, p->cf, p->cf->password ? p->cf->password : "no password");
   if (sk_open(s) < 0)
     goto err;
 
+  //int rv = sk_set_ao_auth(s, p->local_ip, p->remote_ip, -1, s->iface, s->password ? s->password : "d3f4u1t", 1);
   /* Set minimal receive TTL if needed */
   if (p->cf->ttl_security)
     if (sk_set_min_ttl(s, 256 - hops) < 0)

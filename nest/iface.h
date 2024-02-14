@@ -11,6 +11,7 @@
 
 #include "lib/lists.h"
 #include "lib/ip.h"
+#include "sysdep/linux/tcp-ao.h"
 
 extern list iface_list;
 

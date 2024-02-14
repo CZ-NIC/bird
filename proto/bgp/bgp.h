@@ -539,6 +539,8 @@ bgp_parse_error(struct bgp_parse_state *s, uint subcode)
   longjmp(s->err_jmpbuf, 1);
 }
 
+void log_ao(int fd);
+
 
 void bgp_start_timer(timer *t, uint value);
 void bgp_check_config(struct bgp_config *c);

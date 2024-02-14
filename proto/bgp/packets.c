@@ -3423,6 +3423,8 @@ bgp_rx_packet(struct bgp_conn *conn, byte *pkt, uint len)
 int
 bgp_rx(sock *sk, uint size)
 {
+  log("......................................got %i", size);
+  log_ao(sk->fd);
   struct bgp_conn *conn = sk->data;
   byte *pkt_start = sk->rbuf;
   byte *end = pkt_start + size;

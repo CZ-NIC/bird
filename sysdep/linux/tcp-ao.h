@@ -1,4 +1,7 @@
 
+#ifndef TCP_AO_STRUCTS
+#define TCP_AO_STRUCTS
+
 #define TCP_AO_MAXKEYLEN_	80
 
 #define DEFAULT_TEST_ALGO	"cmac(aes128)"
@@ -93,3 +96,5 @@ struct tcp_ao_repair_ext { /* {s,g}etsockopt(TCP_AO_REPAIR) */
 	u32			snd_sne;
 	u32			rcv_sne;
 } __attribute__((aligned(8)));
+
+#endif /* TCP_AO_STRUCTS*/

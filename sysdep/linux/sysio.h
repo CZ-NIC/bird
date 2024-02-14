@@ -176,11 +176,11 @@ sk_prepare_cmsgs4(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
 /*
  *	Miscellaneous Linux socket syscalls
  */
-
 int
-sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int setkey UNUSED) // local UNUSED
+sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int setkey UNUSED)
 {
   struct tcp_md5sig_ext md5;
+  log("md5 password is %i, socket fd %i", passwd, s->fd);
 
   memset(&md5, 0, sizeof(md5));
   sockaddr_fill((sockaddr *) &md5.tcpm_addr, s->af, remote, ifa, 0);
@@ -198,87 +198,7 @@ sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface 
 
   if (pxlen < 0)
   {
-    struct tcp_ao_add_ext ao;
-    memset(&ao, 0, sizeof(struct tcp_ao_add_ext));
-    sockaddr_fill((sockaddr *) &ao.addr, s->af, remote, ifa, 0);
-    ao.set_current	= 0;
-    ao.set_rnext	= 0;
-    if (pxlen >= 0)
-      ao.prefix	= pxlen;
-    else if(s->af == AF_INET)
-      ao.prefix = 32;
-    else
-      ao.prefix = 128;
-    ao.sndid	= 100;
-    ao.rcvid	= 100;
-    ao.maclen	= 0;
-    ao.keyflags	= 0;
-    ao.ifindex	= 0;
-
-    strncpy(ao.alg_name, DEFAULT_TEST_ALGO, 64);
-
-    if (passwd != NULL)
-    {
-      ao.keylen	= strlen(passwd);
-      memcpy(ao.key, passwd, (strlen(passwd) > TCP_AO_MAXKEYLEN_) ? TCP_AO_MAXKEYLEN_ : strlen(passwd));
-    }
-    else
-    {
-      log("no passwd was given, lets use default.");
-      ao.keylen	= strlen("1cx4c6b");
-      memcpy(ao.key, "1cx4c6b", (strlen("1cx4c6b") > TCP_AO_MAXKEYLEN_) ? TCP_AO_MAXKEYLEN_ : strlen("1cx4c6b"));
-    }
-
-    int IPPROTO_TCP_ = 6;
-    log("socket: fd %i", s->fd);
-    if (setsockopt(s->fd, IPPROTO_TCP, TCP_AO_ADD_KEY, &ao, sizeof(ao)) < 0)
-      bug("tcp ao err %i", errno);
-    log("ok");
-    /*if (setsockopt(s->fd, SOL_TCP, TCP_MD5SIG_EXT, &md5, sizeof(md5)) < 0)
-      if (errno == ENOPROTOOPT)
-	ERR_MSG("Kernel does not support TCP MD5 signatures");
-      else
-	ERR("TCP_MD5SIG");*/
-  }
-  else
-  {
-    md5.tcpm_flags = TCP_MD5SIG_FLAG_PREFIX;
-    md5.tcpm_prefixlen = pxlen;
-
     if (setsockopt(s->fd, SOL_TCP, TCP_MD5SIG_EXT, &md5, sizeof(md5)) < 0)
-    {
-      if (errno == ENOPROTOOPT)
-	ERR_MSG("Kernel does not support extended TCP MD5 signatures");
-      else
-	ERR("TCP_MD5SIG_EXT");
-    }
-  }
-
-  return 0;
-}
-
-/**int
-sk_set_tcpao_auth(sock *s, ip_addr local UNUSED, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int setkey UNUSED)
-{
-  struct tcp_ao_add *ao;
-
-  memset(&ao, 0, sizeof(struct tcp_ao_add));
-  sockaddr_fill((sockaddr *) &md5.tcpm_addr, s->af, remote, ifa, 0);
-
-  if (passwd)
-  {
-    int len = strlen(passwd);
-
-    if (len > TCP_MD5SIG_MAXKEYLEN)
-      ERR_MSG("The password for TCP MD5 Signature is too long");
-
-    md5.tcpm_keylen = len;
-    memcpy(&md5.tcpm_key, passwd, len);
-  }
-
-  if (pxlen < 0)
-  {
-    if (setsockopt(s->fd, SOL_TCP, TCP_MD5SIG, &md5, sizeof(md5)) < 0)
       if (errno == ENOPROTOOPT)
 	ERR_MSG("Kernel does not support TCP MD5 signatures");
       else
@@ -299,7 +219,96 @@ sk_set_tcpao_auth(sock *s, ip_addr local UNUSED, ip_addr remote, int pxlen, stru
   }
 
   return 0;
-}**/
+}
+
+void log_tcp_ao_info(int sock_fd)
+{
+  struct tcp_ao_info_opt_ext tmp;
+  memset(&tmp, 0, sizeof(struct tcp_ao_info_opt_ext));
+  socklen_t len = sizeof(tmp);
+  log("socket: fd %i", sock_fd);
+
+  if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, &len))
+  {
+     log("log tcp ao info failed with err code %i", errno);
+     return;
+  }
+  else
+    log("current key id %i, set current %i, ao required %i ", tmp.current_key, tmp.set_current, tmp.ao_required);
+}
+
+int
+sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int passwd_id_loc, int passwd_id_rem, int setkey UNUSED)
+{
+  struct tcp_ao_add_ext ao;
+  memset(&ao, 0, sizeof(struct tcp_ao_add_ext));
+  log("af %i %I %I (%i or %i) %s %i", s->af, remote, local, AF_INET, AF_INET6, passwd, passwd[0]);
+ /* int af;
+  if (ipa_is_ip4(remote))
+    af = AF_INET;
+  else
+    af = AF_INET6;*/
+  sockaddr_fill((sockaddr *) &ao.addr, s->af, remote, ifa, 0);
+  ao.set_current	= 0;
+  ao.set_rnext	= 0;
+  if (pxlen >= 0)
+    ao.prefix	= pxlen;
+  else if(s->af == AF_INET)
+    ao.prefix = 32;
+  else
+    ao.prefix = 128;
+  ao.sndid	= passwd_id_rem;
+  ao.rcvid	= passwd_id_loc;
+  ao.maclen	= 0;
+  ao.keyflags	= 0;
+  ao.ifindex	= 0;
+
+  strncpy(ao.alg_name, DEFAULT_TEST_ALGO, 64);
+
+  ao.keylen	= strlen(passwd);
+  memcpy(ao.key, passwd, (strlen(passwd) > TCP_AO_MAXKEYLEN_) ? TCP_AO_MAXKEYLEN_ : strlen(passwd));
+    
+  int IPPROTO_TCP_ = 6;
+  if (setsockopt(s->fd, IPPROTO_TCP, TCP_AO_ADD_KEY, &ao, sizeof(ao)) < 0)
+    bug("tcp ao err %i", errno);
+  
+  log_tcp_ao_info(s->fd);
+  return 0;
+}
+
+void
+save_to_repair(int sock_fd)
+{
+  struct tcp_ao_repair_ext replace_me; //TODO not ignore replace_me
+  socklen_t len = sizeof(replace_me);
+  memset(&replace_me, 0, sizeof(struct tcp_ao_repair_ext));
+  if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_REPAIR, &replace_me, &len) < 0)
+    bug("geting tcp ao img not succeed %i", errno);
+  log("got tcp ao img");
+}
+
+
+void
+repair_tcp_ao(int sock_fd, struct iface *ifa)
+{
+  //if (setsockopt(sock_fd, SOL_TCP, TCP_AO_REPAIR, &ifa->tcp_ao_img, sizeof(ifa->tcp_ao_img)) < 0)
+   // bug("tcp ao err %i", errno);
+  log("tcp ao repair skiped");
+}
+
+void
+change_ao_keys(sock *s, int passwd_id_loc, int passwd_id_rem )
+{
+  struct tcp_ao_info_opt_ext tmp;
+  tmp.rnext = passwd_id_loc;
+  socklen_t len = sizeof(tmp);
+  if (setsockopt(s->fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, &len))
+  {
+     log("log tcp ao key change failed with err code %i", errno);
+     return;
+  }
+
+}
 
 static inline int
 sk_set_min_ttl4(sock *s, int ttl)
