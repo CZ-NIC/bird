@@ -861,6 +861,9 @@
       case EAF_TYPE_LC_SET:
 	RESULT_(T_LCLIST, ad, e->u.ptr);
 	break;
+      case EAF_TYPE_STRING:
+	RESULT_(T_STRING, s, (const char *) e->u.ptr->data);
+	break;
       default:
 	bug("Unknown dynamic attribute type");
       }
@@ -912,6 +915,12 @@
       case EAF_TYPE_EC_SET:
       case EAF_TYPE_LC_SET:
 	l->attrs[0].u.ptr = v1.val.ad;
+	break;
+
+      case EAF_TYPE_STRING:;
+	struct adata *d = lp_alloc_adata(fs->pool, strlen(v1.val.s) + 1);
+	memcpy(d->data, v1.val.s, d->length);
+	l->attrs[0].u.ptr = d;
 	break;
 
       case EAF_TYPE_BITFIELD:

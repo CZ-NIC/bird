@@ -938,7 +938,7 @@ term:
  | '-' '-' EMPTY '-' '-' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_ECLIST)); }
  | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_LCLIST)); }
 
-| PREPEND '(' term ',' term ')' { $$ = f_dispatch_method_x("prepend", $3->type, $3, $5); }
+ | PREPEND '(' term ',' term ')' { $$ = f_dispatch_method_x("prepend", $3->type, $3, $5); }
  | ADD '(' term ',' term ')' { $$ = f_dispatch_method_x("add", $3->type, $3, $5); }
  | DELETE '(' term ',' term ')' { $$ = f_dispatch_method_x("delete", $3->type, $3, $5); }
  | FILTER '(' term ',' term ')' { $$ = f_dispatch_method_x("filter", $3->type, $3, $5); }

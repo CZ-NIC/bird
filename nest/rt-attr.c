@@ -1015,6 +1015,9 @@ ea_show(struct cli *c, const eattr *e)
 	case EAF_TYPE_LC_SET:
 	  ea_show_lc_set(c, ad, pos, buf, end);
 	  return;
+	case EAF_TYPE_STRING:
+	  bsnprintf(pos, end - pos, "%s", (const char *) ad->data);
+	  break;
 	default:
 	  bsprintf(pos, "<type %02x>", e->type);
 	}
