@@ -39,7 +39,7 @@ static inline struct ifa * kif_get_primary_ip(struct iface *i UNUSED) { return N
 #define EA_KRT_SCOPE		EA_CODE(PROTOCOL_KERNEL, 0x12)
 
 
-#define KRT_METRICS_MAX		0x10	/* RTAX_QUICKACK+1 */
+#define KRT_METRICS_MAX		0x11	/* RTAX_CC_ALGO+1 */
 #define KRT_METRICS_OFFSET	0x20	/* Offset of EA_KRT_* vs RTAX_* */
 
 #define KRT_FEATURES_MAX	4
@@ -64,6 +64,7 @@ static inline struct ifa * kif_get_primary_ip(struct iface *i UNUSED) { return N
 #define EA_KRT_RTO_MIN		EA_CODE(PROTOCOL_KERNEL, 0x2d)
 #define EA_KRT_INITRWND		EA_CODE(PROTOCOL_KERNEL, 0x2e)
 #define EA_KRT_QUICKACK		EA_CODE(PROTOCOL_KERNEL, 0x2f)
+#define EA_KRT_CONGCTL		EA_CODE(PROTOCOL_KERNEL, 0x30)
 
 
 struct krt_params {
