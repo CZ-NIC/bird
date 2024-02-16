@@ -2148,7 +2148,7 @@ krt_sys_copy_config(struct krt_config *d, struct krt_config *s)
 }
 
 static const char *krt_metrics_names[KRT_METRICS_MAX] = {
-  NULL, "lock", "mtu", "window", "rtt", "rttvar", "sstresh", "cwnd", "advmss",
+  NULL, "lock", "mtu", "window", "rtt", "rttvar", "ssthresh", "cwnd", "advmss",
   "reordering", "hoplimit", "initcwnd", "features", "rto_min", "initrwnd", "quickack",
   "congctl", "fastopen_no_cookie"
 };
