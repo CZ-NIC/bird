@@ -87,6 +87,9 @@ stat_nexthop:
       this_snh->via = IPA_NONE;
       this_snh->iface = if_get_by_name($2);
     }
+  | stat_nexthop DEV TEXT {
+      this_snh->iface = if_get_by_name($3);
+    }
   | stat_nexthop MPLS label_stack {
     this_snh->mls = $3;
   }
