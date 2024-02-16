@@ -1840,7 +1840,15 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 
       for (t = 1; t < KRT_METRICS_MAX; t++)
 	if (metrics[0] & (1 << t))
-	  if (t == RTAX_CC_ALGO)
+	  if ((t == RTAX_LOCK) || (t == RTAX_FEATURES))
+	    {
+	      ea->attrs[n++] = (eattr) {
+		.id = EA_KRT_METRICS + t,
+		.type = EAF_TYPE_BITFIELD,
+		.u.data = metrics[t],
+	      };
+	    }
+          else if (t == RTAX_CC_ALGO)
 	    {
 	      struct adata *ad = lp_alloc_adata(s->pool, strlen(cc_algo));
 	      memcpy(ad->data, cc_algo, ad->length);
@@ -1855,7 +1863,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	    {
 	      ea->attrs[n++] = (eattr) {
 		.id = EA_KRT_METRICS + t,
-		.type = EAF_TYPE_INT,	/* FIXME: Some are EAF_TYPE_BITFIELD */
+		.type = EAF_TYPE_INT,
 		.u.data = metrics[t],
 	      };
 	    }
@@ -2142,7 +2150,7 @@ krt_sys_copy_config(struct krt_config *d, struct krt_config *s)
 static const char *krt_metrics_names[KRT_METRICS_MAX] = {
   NULL, "lock", "mtu", "window", "rtt", "rttvar", "sstresh", "cwnd", "advmss",
   "reordering", "hoplimit", "initcwnd", "features", "rto_min", "initrwnd", "quickack",
-  "congctl"
+  "congctl", "fastopen_no_cookie"
 };
 
 static const char *krt_features_names[KRT_FEATURES_MAX] = {
