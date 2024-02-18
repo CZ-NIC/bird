@@ -3275,7 +3275,6 @@ static struct {
   { 3, 10, "Invalid network field" },
   { 3, 11, "Malformed AS_PATH" },
   { 4, 0, "Hold timer expired" },
-  { 4, 1, "Send hold timer expired" }, /* Provisional [draft-ietf-idr-bgp-sendholdtimer] */
   { 5, 0, "Finite state machine error" }, /* Subcodes are according to [RFC6608] */
   { 5, 1, "Unexpected message in OpenSent state" },
   { 5, 2, "Unexpected message in OpenConfirm state" },
@@ -3290,7 +3289,8 @@ static struct {
   { 6, 7, "Connection collision resolution" },
   { 6, 8, "Out of Resources" },
   { 7, 0, "Invalid ROUTE-REFRESH message" }, /* [RFC7313] */
-  { 7, 1, "Invalid ROUTE-REFRESH message length" } /* [RFC7313] */
+  { 7, 1, "Invalid ROUTE-REFRESH message length" }, /* [RFC7313] */
+  { 8, 0, "Send hold timer expired" }, /* [draft-ietf-idr-bgp-sendholdtimer] */
 };
 
 /**
