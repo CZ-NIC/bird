@@ -36,6 +36,17 @@ struct ssh_sock {
 };
 #endif
 
+struct ao_key
+{
+  int local_id;
+  int remote_id;
+  const char *cipher;
+  const char *master_key;
+  int requested;
+  struct linpool *lp;
+  struct ao_key *next_key;
+};
+
 typedef struct birdsock {
   resource r;
   pool *pool;				/* Pool where incoming connections should be allocated (for SK_xxx_PASSIVE) */
@@ -77,6 +88,7 @@ typedef struct birdsock {
   node n;
   void *rbuf_alloc, *tbuf_alloc;
   const char *password;			/* Password for MD5 authentication */
+  struct ao_key *ao_key;		/* Key for tcp ao authentication */
   const char *err;			/* Error message */
   struct ssh_sock *ssh;			/* Used in SK_SSH */
 } sock;
@@ -107,8 +119,11 @@ int sk_setup_broadcast(sock *s);
 int sk_set_ttl(sock *s, int ttl);	/* Set transmit TTL for given socket */
 int sk_set_min_ttl(sock *s, int ttl);	/* Set minimal accepted TTL for given socket */
 int sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int setkey);
-int sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int passwd_id_loc, int passwd_id_rem, int setkey);
-void log_tcp_ao_info(int fd);
+
+int sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int passwd_id_loc, int passwd_id_rem, const char *cipher);
+void log_tcp_ao_info(int sock_fd);
+void log_tcp_ao_get_key(int sock_fd);
+void ao_try_change_master(int sock_fd, int next_key_id);
 int sk_set_ipv6_checksum(sock *s, int offset);
 int sk_set_icmp6_filter(sock *s, int p1, int p2);
 void sk_log_error(sock *s, const char *p);

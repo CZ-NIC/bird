@@ -234,14 +234,36 @@ void log_tcp_ao_info(int sock_fd)
      return;
   }
   else
-    log("current key id %i, set current %i, ao required %i ", tmp.current_key, tmp.set_current, tmp.ao_required);
+    log("current key id %i, next key %i,\n set current %i, ao required %i\n good packets %i, bad packets %i",
+		    tmp.current_key, tmp.rnext, tmp.set_current, tmp.ao_required, tmp.pkt_good, tmp.pkt_bad);
+}
+
+void
+log_tcp_ao_get_key(int sock_fd)
+{
+  struct tcp_ao_getsockopt_ext tmp;
+  memset(&tmp, 0, sizeof(struct tcp_ao_getsockopt_ext));
+  socklen_t len = sizeof(tmp);
+  tmp.nkeys = 1;
+  tmp.get_all = 1;
+
+  if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_GET_KEYS, &tmp, &len))
+  {
+     log("log tcp ao get keys failed with err code %i", errno);
+     return;
+  }
+  else
+    log("cipher %s key %s num of keys %i", tmp.alg_name, tmp.key, tmp.nkeys);
+
 }
 
 int
-sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int passwd_id_loc, int passwd_id_rem, int setkey UNUSED)
+sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int passwd_id_loc, int passwd_id_rem, const char* cipher)
 {
   struct tcp_ao_add_ext ao;
   memset(&ao, 0, sizeof(struct tcp_ao_add_ext));
+  log("in sk set ao");
+  log("%s %i %i", passwd, passwd_id_loc, passwd_id_rem);
   log("af %i %I %I (%i or %i) %s %i", s->af, remote, local, AF_INET, AF_INET6, passwd, passwd[0]);
  /* int af;
   if (ipa_is_ip4(remote))
@@ -263,7 +285,7 @@ sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *
   ao.keyflags	= 0;
   ao.ifindex	= 0;
 
-  strncpy(ao.alg_name, DEFAULT_TEST_ALGO, 64);
+  strncpy(ao.alg_name, (cipher) ? cipher : DEFAULT_TEST_ALGO, 64);
 
   ao.keylen	= strlen(passwd);
   memcpy(ao.key, passwd, (strlen(passwd) > TCP_AO_MAXKEYLEN_) ? TCP_AO_MAXKEYLEN_ : strlen(passwd));
@@ -274,6 +296,24 @@ sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *
   
   log_tcp_ao_info(s->fd);
   return 0;
+}
+
+void
+ao_try_change_master(int sock_fd, int next_master_id )
+{
+  struct tcp_ao_info_opt_ext tmp;
+  memset(&tmp, 0, sizeof(struct tcp_ao_info_opt_ext));
+  socklen_t len = sizeof(tmp);
+  tmp.set_rnext = 1;
+  tmp.rnext = next_master_id;
+
+  if (setsockopt(sock_fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, &len))
+  {
+     log(" tcp ao change master key failed with err code %i", errno);
+     return;
+  }
+  else
+    log("tried to change master");
 }
 
 void
@@ -294,20 +334,6 @@ repair_tcp_ao(int sock_fd, struct iface *ifa)
   //if (setsockopt(sock_fd, SOL_TCP, TCP_AO_REPAIR, &ifa->tcp_ao_img, sizeof(ifa->tcp_ao_img)) < 0)
    // bug("tcp ao err %i", errno);
   log("tcp ao repair skiped");
-}
-
-void
-change_ao_keys(sock *s, int passwd_id_loc, int passwd_id_rem )
-{
-  struct tcp_ao_info_opt_ext tmp;
-  tmp.rnext = passwd_id_loc;
-  socklen_t len = sizeof(tmp);
-  if (setsockopt(s->fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, &len))
-  {
-     log("log tcp ao key change failed with err code %i", errno);
-     return;
-  }
-
 }
 
 static inline int

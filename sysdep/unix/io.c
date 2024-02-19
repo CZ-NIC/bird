@@ -1460,9 +1460,19 @@ sk_open(sock *s)
   }
   //s->password = "abcd1234";
 
-  if (s->password) //TODO condition if it should be ao or md5
+  if (s->ao_key)
   {
-    log("set ao");
+    log("set ao, %s", s->ao_key->cipher);
+    struct ao_key *key = s->ao_key;
+    do {
+      if (sk_set_ao_auth(s, s->saddr, s->daddr, -1, s->iface, key->master_key, key->local_id, key->remote_id, key->cipher) < 0)
+        goto err;
+      key = key->next_key;
+    } while (key);
+  }
+  if (s->password)
+  {
+    log("set md5");
     if (sk_set_ao_auth(s, s->saddr, s->daddr, -1, s->iface, s->password, 123, 123, 0) < 0)
       goto err;
   }

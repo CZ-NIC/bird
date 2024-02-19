@@ -32,7 +32,8 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY, INTERNAL, EXTERNAL, SETS,
 	DYNAMIC, RANGE, NAME, DIGITS, BGP_AIGP, AIGP, ORIGINATE, COST, ENFORCE,
 	FIRST, FREE, VALIDATE, BASE, ROLE, ROLES, PEER, PROVIDER, CUSTOMER,
-	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL)
+	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL, AUTHENTICATE, MANUAL,
+	KEY, MASTER, DEPRECATED, REQUIRED, CIPHER, LOCAL, REMOTE)
 
 %type <i> bgp_nh
 %type <i32> bgp_afi
@@ -191,7 +192,8 @@ bgp_proto:
  | bgp_proto ENABLE EXTENDED MESSAGES bool ';' { BGP_CFG->enable_extended_messages = $5; }
  | bgp_proto ADVERTISE HOSTNAME bool ';' { BGP_CFG->enable_hostname = $4; }
  | bgp_proto CAPABILITIES bool ';' { BGP_CFG->capabilities = $3; }
- | bgp_proto PASSWORD text ';' { BGP_CFG->password = $3; }
+ | bgp_proto PASSWORD text ';' { log("%s", $3); BGP_CFG->password = $3; }
+ | bgp_proto AUTHENTICATE MANUAL '{' ao_keys '}'
  | bgp_proto SETKEY bool ';' { BGP_CFG->setkey = $3; }
  | bgp_proto PASSIVE bool ';' { BGP_CFG->passive = $3; }
  | bgp_proto INTERPRET COMMUNITIES bool ';' { BGP_CFG->interpret_communities = $4; }
@@ -229,6 +231,47 @@ bgp_afi:
  | VPN6 MULTICAST	{ $$ = BGP_AF_VPN6_MC; }
  | FLOW4		{ $$ = BGP_AF_FLOW4; }
  | FLOW6		{ $$ = BGP_AF_FLOW6; }
+ ;
+
+ao_keys:
+   KEY '{' ao_first_item  ao_key '}' 
+   | KEY '{' ao_first_item ao_key '}' ao_keys
+ ;
+
+ao_key:
+  ao_item 
+  | ao_item ao_key
+;
+
+ao_first_item:
+    LOCAL ID expr ';' {
+      struct linpool *lp;
+      if (BGP_CFG->ao_key)
+        lp = BGP_CFG->ao_key->lp;
+      else
+        lp = lp_new(rp_new(&root_pool, "ao struct pool"));
+      struct ao_key *new_key = lp_alloc(lp, sizeof(struct ao_key));
+      new_key->lp = lp;
+      new_key->next_key = BGP_CFG->ao_key;
+      BGP_CFG->ao_key = new_key;
+      BGP_CFG->ao_key->requested = 0;
+      BGP_CFG->ao_key->local_id = $3;
+    }
+;
+
+ao_item:
+      REMOTE ID expr ';' {log("remote id %i", $3); BGP_CFG->ao_key->remote_id = $3; }
+    | CIPHER text ';' { char *c = lp_alloc(BGP_CFG->ao_key->lp, strlen($2));
+       memcpy(c, $2, strlen($2));
+       BGP_CFG->ao_key->cipher = c;
+       log("ciph[%s]", $2); }
+    | MASTER KEY text ';' {
+       char *k = lp_alloc(BGP_CFG->ao_key->lp, strlen($3));
+       memcpy(k, $3, strlen($3));
+       BGP_CFG->ao_key->master_key = k;
+       log("key[%s]", BGP_CFG->ao_key->master_key);}
+    | DEPRECATED ';' { BGP_CFG->ao_key->requested = -1; }
+    | REQUIRED ';' { BGP_CFG->ao_key->requested = 1; }
  ;
 
 bgp_channel_start: bgp_afi

@@ -236,7 +236,7 @@ bgp_close(struct bgp_proto *p)
 static inline int
 bgp_setup_auth(struct bgp_proto *p, int enable)
 {
-  if (p->cf->password)
+  if (p->cf->password || p->cf->ao_key)
   {
     ip_addr prefix = p->cf->remote_ip;
     int pxlen = -1;
@@ -247,10 +247,22 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
       pxlen = net_pxlen(p->cf->remote_range);
     }
     int rv = 0;
-    if (enable)
-      rv = sk_set_ao_auth(p->sock->sk,
+    if (p->cf->ao_key)
+    {
+      log("set ao auth [%s]", p->cf->ao_key->master_key);
+      struct ao_key *key = p->cf->ao_key;
+      do {
+        rv = sk_set_ao_auth(p->sock->sk,
 			     p->cf->local_ip, prefix, pxlen, p->cf->iface,
-			     p->cf->password, 123, 123, p->cf->setkey);
+			     key->master_key, key->local_id, key->remote_id, key->cipher);
+	key = key->next_key;
+
+      } while(key);
+    }
+    else if (enable)
+      rv = sk_set_md5_auth(p->sock->sk,
+			     p->cf->local_ip, prefix, pxlen, p->cf->iface,
+			     p->cf->password, p->cf->setkey);
 
     if (rv < 0)
       sk_log_error(p->sock->sk, p->p.name);
@@ -1105,7 +1117,10 @@ bgp_active(struct bgp_proto *p)
 void
 log_ao(int fd)
 {
+  log("the two ao logs");
   log_tcp_ao_info(fd);
+  log_tcp_ao_get_key(fd);
+  ao_try_change_master(fd, 101);
 }
 
 /**
@@ -1136,6 +1151,7 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   s->tos = IP_PREC_INTERNET_CONTROL;
  // s->password = "abcd1234";/
   s->password = p->cf->password;
+  s->ao_key = p->cf->ao_key;
   s->tx_hook = bgp_connected;
   s->flags = p->cf->free_bind ? SKF_FREEBIND : 0;
   BGP_TRACE(D_EVENTS, "Connecting to %I%J from local address %I%J",
