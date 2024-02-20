@@ -89,7 +89,7 @@ bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintp
       attrs,
       pool,
       EA_CODE(PROTOCOL_BGP, code),
-      flags & ~BAF_EXT_LEN,
+      bgp_attr_table[code].flags | (flags & BAF_PARTIAL),
       bgp_attr_table[code].type,
       val
   );
@@ -1158,13 +1158,6 @@ bgp_attr_name(uint code)
   return (code < ARRAY_SIZE(bgp_attr_table)) ? bgp_attr_table[code].name : NULL;
 }
 
-void bgp_fix_attr_flags(ea_list *attrs)
-{
-  for (u8 i = 0; i < attrs->count; i++)
-  {
-    attrs->attrs[i].flags = bgp_attr_table[EA_ID(attrs->attrs[i].id)].flags;
-  }
-}
 
 /*
  *	Attribute export
@@ -1182,7 +1175,8 @@ bgp_export_attr(struct bgp_export_state *s, eattr *a, ea_list *to)
   {
     const struct bgp_attr_desc *desc = &bgp_attr_table[code];
 
-    /* The flags might have been zero if the attr was added by filters */
+    /* The flags should be correct, we reset them just to be sure */
+    ASSERT(!((a->flags ^ desc->flags) & (BAF_OPTIONAL | BAF_TRANSITIVE)));
     a->flags = (a->flags & BAF_PARTIAL) | desc->flags;
 
     /* Set partial bit if new opt-trans attribute is attached to non-local route */
