@@ -1465,6 +1465,10 @@ aggregator_start(struct proto *P)
     .data = p,
   };
 
+  struct network *default_net = mb_alloc(P->pool, sizeof(struct network) + sizeof(struct net_addr_ip4));
+  net_fill_ip4(default_net->n.addr, (struct ip4_addr) { 0 }, 0);
+  log("Creating net %p for default route", default_net);
+
   /* Create route attributes with zero nexthop */
   struct rta rta = { 0 };
 
@@ -1484,7 +1488,12 @@ aggregator_start(struct proto *P)
   arte->rte.next = new_bucket->rte;
   new_bucket->rte = &arte->rte;
   new_bucket->count++;
+
+  arte->rte.net = default_net;
+  default_net->routes = &arte->rte;
+
   HASH_INSERT2(p->routes, AGGR_RTE, p->p.pool, arte);
+  HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 
   /* Assign default route to the root */
   p->root->bucket = new_bucket;
