@@ -110,6 +110,7 @@ extern uint rtable_max_id;
     struct rtable_config *config;	/* Configuration of this table */			\
     struct birdloop *loop;		/* Service thread */					\
     netindex_hash *netindex;		/* Prefix index for this table */			\
+    event *nhu_event;			/* Nexthop updater */					\
 
 /* The complete rtable structure */
 struct rtable_private {
@@ -182,6 +183,7 @@ LOBJ_UNLOCK_CLEANUP(rtable, rtable);
 
 #define RT_IS_LOCKED(tab)	LOBJ_IS_LOCKED((tab), rtable)
 #define RT_LOCKED(tab, tp)	LOBJ_LOCKED((tab), tp, rtable, rtable)
+#define RT_LOCK(tab, tp)	LOBJ_LOCK((tab), tp, rtable, rtable)
 
 #define RT_LOCK_SIMPLE(tab)	LOBJ_LOCK_SIMPLE((tab), rtable)
 #define RT_UNLOCK_SIMPLE(tab)	LOBJ_UNLOCK_SIMPLE((tab), rtable)
@@ -192,7 +194,6 @@ LOBJ_UNLOCK_CLEANUP(rtable, rtable);
 
 /* Flags for birdloop_flag() */
 #define RTF_CLEANUP	1
-#define RTF_NHU		2
 #define RTF_EXPORT	4
 #define RTF_DELETE	8
 
