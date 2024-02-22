@@ -138,7 +138,7 @@ struct rt_export_block {
 
 static void rt_free_hostcache(struct rtable_private *tab);
 static void rt_update_hostcache(void *tab);
-static void rt_next_hop_update(struct rtable_private *tab);
+static void rt_next_hop_update(void *_tab);
 static void rt_nhu_uncork(void *_tab);
 static inline void rt_next_hop_resolve_rte(rte *r);
 static inline void rt_flowspec_resolve_rte(rte *r, struct channel *c);
@@ -2482,7 +2482,7 @@ rt_schedule_nhu(struct rtable_private *tab)
      *   NHU_RUNNING -> NHU_DIRTY
      */
     if ((tab->nhu_state |= NHU_SCHEDULED) == NHU_SCHEDULED)
-      birdloop_flag(tab->loop, RTF_NHU);
+      ev_send_loop(tab->loop, tab->nhu_event);
   }
 }
 
@@ -2518,9 +2518,6 @@ rt_flag_handler(struct birdloop_flag_handler *fh, u32 flags)
   {
     ASSERT_DIE(birdloop_inside(tab->loop));
     rt_lock_table(tab);
-
-    if (flags & RTF_NHU)
-      rt_next_hop_update(tab);
 
     if (flags & RTF_EXPORT)
       rt_kick_export_settle(tab);
@@ -2848,6 +2845,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   hmap_set(&t->id_map, 0);
 
   t->fh = (struct birdloop_flag_handler) { .hook = rt_flag_handler, };
+  t->nhu_event = ev_new_init(p, rt_next_hop_update, t);
   t->nhu_uncork_event = ev_new_init(p, rt_nhu_uncork, t);
   t->prune_timer = tm_new_init(p, rt_prune_timer, t, 0, 0);
   t->last_rt_change = t->gc_time = current_time();
@@ -3857,13 +3855,15 @@ rt_nhu_uncork(void *_tab)
     tab->nhu_corked = 0;
     rt_trace(tab, D_STATES, "Next hop updater uncorked");
 
-    birdloop_flag(tab->loop, RTF_NHU);
+    ev_send_loop(tab->loop, tab->nhu_event);
   }
 }
 
 static void
-rt_next_hop_update(struct rtable_private *tab)
+rt_next_hop_update(void *_tab)
 {
+  RT_LOCK((rtable *) _tab, tab);
+
   ASSERT_DIE(birdloop_inside(tab->loop));
 
   if (tab->nhu_corked)
@@ -3906,7 +3906,7 @@ rt_next_hop_update(struct rtable_private *tab)
 
       if (max_feed <= 0)
 	{
-	  birdloop_flag(tab->loop, RTF_NHU);
+	  ev_send_loop(tab->loop, tab->nhu_event);
 	  return;
 	}
 
@@ -3923,7 +3923,7 @@ rt_next_hop_update(struct rtable_private *tab)
    *   NHU_RUNNING -> NHU_CLEAN
    */
   if ((tab->nhu_state &= NHU_SCHEDULED) == NHU_SCHEDULED)
-    birdloop_flag(tab->loop, RTF_NHU);
+    ev_send_loop(tab->loop, tab->nhu_event);
 }
 
 void
