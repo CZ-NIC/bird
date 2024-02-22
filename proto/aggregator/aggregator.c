@@ -385,15 +385,27 @@ bucket_sets_are_disjoint(const struct trie_node *left, const struct trie_node *r
     int res = aggregator_bucket_compare(left->potential_buckets[i], right->potential_buckets[j]);
 
     if (res == 0)
+    {
+      // log("left: %p, right: %p, res: %d, verdict: EQUAL", left->potential_buckets[i], right->potential_buckets[i], res);
+      // log("Buckets are NOT disjoint");
       return 0;
+    }
     else if (res == -1)
+    {
+      // log("left: %p, right: %p, res: %d, verdict: LEFT < RIGHT", left->potential_buckets[i], right->potential_buckets[i], res);
       i++;
+    }
     else if (res == 1)
+    {
+      // log("left: %p, right: %p, res: %d, verdict: LEFT > RIGHT", left->potential_buckets[i], right->potential_buckets[i], res);
       j++;
+    }
     else
       bug("Impossible");
   }
 
+  // log("Buckets are disjoint");
+  // log("==========================================");
   return 1;
 }
 
@@ -434,6 +446,7 @@ second_pass(struct trie_node *node)
     for (int j = i + 1; j < right->potential_buckets_count; j++)
       assert(right->potential_buckets[i] != right->potential_buckets[j]);
 
+  /*
   qsort(left->potential_buckets, left->potential_buckets_count, sizeof(struct aggregator_bucket *), aggregator_bucket_compare_wrapper);
   qsort(right->potential_buckets, right->potential_buckets_count, sizeof(struct aggregator_bucket *), aggregator_bucket_compare_wrapper);
 
@@ -446,6 +459,7 @@ second_pass(struct trie_node *node)
   {
     assert((uintptr_t)right->potential_buckets[i - 1] < (uintptr_t)right->potential_buckets[i]);
   }
+  */
 
   if (bucket_sets_are_disjoint(left, right))
     unionize_buckets(left, right, node);
@@ -798,6 +812,8 @@ calculate_trie(void *p)
   print_prefixes(proto->root, NET_IP4);
 
   collect_prefixes(proto);
+
+  log("==== AGGREGATION DONE ====");
 }
 
 /*
