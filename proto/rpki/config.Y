@@ -32,7 +32,7 @@ rpki_check_unused_transport(void)
 CF_DECLS
 
 CF_KEYWORDS(RPKI, REMOTE, BIRD, PRIVATE, PUBLIC, KEY, TCP, SSH, TRANSPORT, USER,
-	    RETRY, REFRESH, EXPIRE, KEEP, IGNORE, MAX, LENGTH)
+	    RETRY, REFRESH, EXPIRE, KEEP, IGNORE, MAX, LENGTH, LOCAL, ADDRESS)
 
 %type <i> rpki_keep_interval
 
@@ -60,6 +60,7 @@ rpki_proto_item:
  | REMOTE rpki_cache_addr
  | REMOTE rpki_cache_addr rpki_proto_item_port
  | rpki_proto_item_port
+ | LOCAL ADDRESS ipa { RPKI_CFG->local_ip = $3; }
  | TRANSPORT rpki_transport
  | REFRESH rpki_keep_interval expr {
      if (rpki_check_refresh_interval($3))

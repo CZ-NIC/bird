@@ -116,6 +116,7 @@ struct rpki_proto {
 struct rpki_config {
   struct proto_config c;
   const char *hostname;			/* Full domain name or stringified IP address of cache server */
+  ip_addr local_ip;			/* Source address to use */
   ip_addr ip;				/* IP address of cache server or IPA_NONE */
   u16 port;				/* Port number of cache server */
   struct rpki_tr_config tr_config;	/* Specific transport configuration structure */

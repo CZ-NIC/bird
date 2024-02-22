@@ -5697,6 +5697,7 @@ protocol rpki [&lt;name&gt;] {
         roa6 { table &lt;tab&gt;; };
         remote &lt;ip&gt; | "&lt;domain&gt;" [port &lt;num&gt;];
         port &lt;num&gt;;
+        local address &lt;ip&gt;;
         refresh [keep] &lt;num&gt;;
         retry [keep] &lt;num&gt;;
         expire [keep] &lt;num&gt;;
@@ -5725,6 +5726,9 @@ specify both channels.
         <tag>port <m/num/</tag> Specifies the port number. The default port
         number is 323 for transport without any encryption and 22 for transport
         with SSH encryption.
+
+        <tag>local address <m/ip/</tag>
+        Define local address we should use as a source address for the RTR session.
 
         <tag>refresh [keep] <m/num/</tag> Time period in seconds. Tells how
         long to wait before next attempting to poll the cache using a Serial
