@@ -3354,17 +3354,18 @@ ea_set_hostentry(ea_list **to, rtable *dep, rtable *src, ip_addr gw, ip_addr ll,
 {
   struct {
     struct hostentry_adata head;
-    u32 label_space[lnum];
-  } h;
-
-  memset(&h, 0, sizeof h);
+    u32 label_space[];
+  } *h;
+  u32 sz = sizeof *h + lnum * sizeof(u32);
+  h = alloca(sz);
+  memset(h, 0, sz);
 
   RT_LOCKED(src, tab)
-    h.head.he = rt_get_hostentry(tab, gw, ll, dep);
+    h->head.he = rt_get_hostentry(tab, gw, ll, dep);
 
-  memcpy(h.head.labels, labels, lnum * sizeof(u32));
+  memcpy(h->head.labels, labels, lnum * sizeof(u32));
 
-  ea_set_attr_data(to, &ea_gen_hostentry, 0, h.head.ad.data, (byte *) &h.head.labels[lnum] - h.head.ad.data);
+  ea_set_attr_data(to, &ea_gen_hostentry, 0, h->head.ad.data, (byte *) &h->head.labels[lnum] - h->head.ad.data);
 }
 
 
