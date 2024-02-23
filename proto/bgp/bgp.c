@@ -254,7 +254,7 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
       do {
         rv = sk_set_ao_auth(p->sock->sk,
 			     p->cf->local_ip, prefix, pxlen, p->cf->iface,
-			     key->master_key, key->local_id, key->remote_id, key->cipher);
+			     key->master_key, key->local_id, key->remote_id, key->cipher, 0);
 	key = key->next_key;
 
       } while(key);
@@ -1117,10 +1117,9 @@ bgp_active(struct bgp_proto *p)
 void
 log_ao(int fd)
 {
-  log("the two ao logs");
+  //log("the two ao logs");
   log_tcp_ao_info(fd);
   log_tcp_ao_get_key(fd);
-  ao_try_change_master(fd, 101);
 }
 
 /**
@@ -2155,6 +2154,89 @@ bgp_postconfig(struct proto_config *CF)
   }
 }
 
+int compare_aos(struct ao_key *a, struct ao_key *b)
+{
+  if (a->local_id != b->local_id)
+    return 1;
+  if (a->remote_id != b->remote_id)
+    return 1;
+  if (strcmp(a->cipher, b->cipher))
+    return 1;
+  return strcmp(a->master_key, b->master_key);
+}
+
+int reconfigure_tcp_ao(struct bgp_proto old_proto, struct bgp_config new)
+{
+  log("in reconf ao");
+  sock *s_passiv = old_proto.sock->sk;
+  sock *s_activ = old_proto.conn->sk;
+  int key_in_use = get_current_key_id(s_activ->fd);
+
+  if (key_in_use == -1)
+    {
+      log("Unable to detect currently used key");
+      return 0;
+    }
+
+  struct ao_key *old_aos[256];
+  memset(&old_aos, 0, sizeof(struct ao_key*)*256);
+  for(struct ao_key *ao_key = old_proto.cf->ao_key; ao_key; ao_key = ao_key->next_key)
+  {
+     old_aos[ao_key->local_id] = ao_key;
+  }
+  for(struct ao_key *ao_key = new.ao_key; ao_key; ao_key = ao_key->next_key)
+  {
+     if(old_aos[ao_key->local_id])
+     {
+       if(compare_aos(ao_key, old_aos[ao_key->local_id]))
+       {
+	 struct ao_key *o = old_aos[ao_key->local_id];
+	 log("%i %i %i %i %s %s %s %s", ao_key->local_id, o->local_id, ao_key->remote_id, o->remote_id, ao_key->cipher, o->cipher, ao_key->master_key, o->master_key);
+	 if (ao_key->local_id == key_in_use)
+	 {
+	   //struct ao_key *o = old_aos[ao_key->local_id];
+	   //log("%i %i %i %i %s %s %s %s", ao_key->local_id, o->local_id, ao_key->remote_id, o->remote_id, ao_key->cipher, o->cipher, ao_key->master_key, o->master_key);
+           log("Currently used master key part update. This is not allowed.");
+	   return 0;
+	 }
+         log("Reusing key id. Not nice. Lets try to update.");
+
+	 struct ao_key *old_key = old_aos[ao_key->local_id];
+	 ao_delete_key(s_activ,  old_proto.remote_ip, -1, s_activ->iface, old_key->local_id, old_key->remote_id);
+         ao_delete_key(s_passiv,  old_proto.remote_ip, -1, s_passiv->iface, old_key->local_id, old_key->remote_id);
+	 sk_set_ao_auth(s_activ, old_proto.local_ip, old_proto.remote_ip, -1, s_activ->iface, ao_key->master_key, ao_key->local_id, ao_key->remote_id, ao_key->cipher, ao_key->required == 1);
+         sk_set_ao_auth(s_passiv, old_proto.local_ip, old_proto.remote_ip, -1, s_passiv->iface, ao_key->master_key, ao_key->local_id, ao_key->remote_id, ao_key->cipher, 0);
+       }
+       old_aos[ao_key->local_id] = 0;
+     }
+     else
+     {
+       sk_set_ao_auth(s_activ, old_proto.local_ip, old_proto.remote_ip, -1, s_activ->iface, ao_key->master_key, ao_key->local_id, ao_key->remote_id, ao_key->cipher, ao_key->required == 1);
+       sk_set_ao_auth(s_passiv, old_proto.local_ip, old_proto.remote_ip, -1, s_passiv->iface, ao_key->master_key, ao_key->local_id, ao_key->remote_id, ao_key->cipher, 0);
+     }
+
+    if (ao_key->required == 1)
+    {
+      ao_try_change_master(s_activ->fd, ao_key->local_id); // or remote id?
+    }
+  }
+  for(int i = 0; i<256; i++)
+  {
+     if (old_aos[i])
+     {
+       if (i == key_in_use)
+       {
+         log("Currently used key deletion. This is not allowed.");
+	 return 0;
+       } 
+       ao_delete_key(s_activ, old_proto.remote_ip, -1, s_activ->iface, old_aos[i]->local_id, old_aos[i]->remote_id);
+       ao_delete_key(s_passiv, old_proto.remote_ip, -1, s_passiv->iface, old_aos[i]->local_id, old_aos[i]->remote_id);
+     }
+  }
+  log("no changes in ao");
+  return 1;
+}
+
 static int
 bgp_reconfigure(struct proto *P, struct proto_config *CF)
 {
@@ -2170,6 +2252,7 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 		     // password item is last and must be checked separately
 		     OFFSETOF(struct bgp_config, password) - sizeof(struct proto_config))
     && !bstrcmp(old->password, new->password)
+    && reconfigure_tcp_ao(*p, *new)
     && ((!old->remote_range && !new->remote_range)
 	|| (old->remote_range && new->remote_range && net_equal(old->remote_range, new->remote_range)))
     && !bstrcmp(old->dynamic_name, new->dynamic_name)
