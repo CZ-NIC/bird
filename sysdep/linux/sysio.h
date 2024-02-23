@@ -244,7 +244,7 @@ int get_current_key_id(int sock_fd)
   memset(&tmp, 0, sizeof(struct tcp_ao_info_opt_ext));
   socklen_t len = sizeof(tmp);
 
-  if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, len))
+  if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, &len))
   {
      log("get current ao key failed %i", errno);
      return -1;

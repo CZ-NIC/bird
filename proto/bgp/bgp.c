@@ -2158,7 +2158,7 @@ int compare_aos(struct ao_key *a, struct ao_key *b)
 {
   if (a->local_id != b->local_id)
     return 1;
-  if (a->remote_id != b->local_id)
+  if (a->remote_id != b->remote_id)
     return 1;
   if (strcmp(a->cipher, b->cipher))
     return 1;

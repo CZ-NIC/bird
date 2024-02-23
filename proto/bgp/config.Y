@@ -257,13 +257,13 @@ ao_first_item:
 
 ao_item:
       REMOTE ID expr ';' {log("remote id %i", $3); BGP_CFG->ao_key->remote_id = $3; }
-    | CIPHER text ';' { char *c = lp_alloc(BGP_CFG->ao_lp, strlen($2)+1);
-       memcpy(c, $2, strlen($2)+1);
+    | CIPHER text ';' { char *c = lp_alloc(BGP_CFG->ao_lp, strlen($2));
+       memcpy(c, $2, strlen($2));
        BGP_CFG->ao_key->cipher = c;
        log("ciph[%s]", $2); }
     | MASTER KEY text ';' {
-       char *k = lp_alloc(BGP_CFG->ao_lp, strlen($3)+1);
-       memcpy(k, $3, strlen($3)+1);
+       char *k = lp_alloc(BGP_CFG->ao_lp, strlen($3));
+       memcpy(k, $3, strlen($3));
        BGP_CFG->ao_key->master_key = k;
        log("key[%s]", BGP_CFG->ao_key->master_key);}
     | DEPRECATED ';' { BGP_CFG->ao_key->required = -1; }
