@@ -193,7 +193,7 @@ bgp_proto:
  | bgp_proto ADVERTISE HOSTNAME bool ';' { BGP_CFG->enable_hostname = $4; }
  | bgp_proto CAPABILITIES bool ';' { BGP_CFG->capabilities = $3; }
  | bgp_proto PASSWORD text ';' { log("%s", $3); BGP_CFG->password = $3; }
- | bgp_proto AUTHENTICATE MANUAL '{' ao_keys '}'
+ | bgp_proto AUTHENTICATE MANUAL '{' ao_keys '}' tcp_ao_end
  | bgp_proto SETKEY bool ';' { BGP_CFG->setkey = $3; }
  | bgp_proto PASSIVE bool ';' { BGP_CFG->passive = $3; }
  | bgp_proto INTERPRET COMMUNITIES bool ';' { BGP_CFG->interpret_communities = $4; }
@@ -245,34 +245,60 @@ ao_key:
 
 ao_first_item:
     LOCAL ID expr ';' {
-      struct linpool *lp;
-      if (BGP_CFG->ao_key)
-        lp = BGP_CFG->ao_key->lp;
-      else
-        lp = lp_new(rp_new(&root_pool, "ao struct pool"));
-      struct ao_key *new_key = lp_alloc(lp, sizeof(struct ao_key));
-      new_key->lp = lp;
+      if (!BGP_CFG->ao_lp)
+        BGP_CFG->ao_lp = lp_new(rp_new(&root_pool, "ao struct pool"));
+      struct ao_key *new_key = lp_alloc(BGP_CFG->ao_lp, sizeof(struct ao_key));
       new_key->next_key = BGP_CFG->ao_key;
       BGP_CFG->ao_key = new_key;
-      BGP_CFG->ao_key->requested = 0;
+      BGP_CFG->ao_key->required = 0;
       BGP_CFG->ao_key->local_id = $3;
     }
 ;
 
 ao_item:
       REMOTE ID expr ';' {log("remote id %i", $3); BGP_CFG->ao_key->remote_id = $3; }
-    | CIPHER text ';' { char *c = lp_alloc(BGP_CFG->ao_key->lp, strlen($2));
-       memcpy(c, $2, strlen($2));
+    | CIPHER text ';' { char *c = lp_alloc(BGP_CFG->ao_lp, strlen($2)+1);
+       memcpy(c, $2, strlen($2)+1);
        BGP_CFG->ao_key->cipher = c;
        log("ciph[%s]", $2); }
     | MASTER KEY text ';' {
-       char *k = lp_alloc(BGP_CFG->ao_key->lp, strlen($3));
-       memcpy(k, $3, strlen($3));
+       char *k = lp_alloc(BGP_CFG->ao_lp, strlen($3)+1);
+       memcpy(k, $3, strlen($3)+1);
        BGP_CFG->ao_key->master_key = k;
        log("key[%s]", BGP_CFG->ao_key->master_key);}
-    | DEPRECATED ';' { BGP_CFG->ao_key->requested = -1; }
-    | REQUIRED ';' { BGP_CFG->ao_key->requested = 1; }
+    | DEPRECATED ';' { BGP_CFG->ao_key->required = -1; }
+    | REQUIRED ';' { BGP_CFG->ao_key->required = 1; }
  ;
+
+tcp_ao_end:
+{ //TODO this is not all what we need to check  - old current master same, cipher, key exist...
+  char used_aos_id_loc[256];
+  char used_aos_id_rem[256];
+  memset(used_aos_id_loc, 0, sizeof(char)*256);
+  memset(used_aos_id_rem, 0, sizeof(char)*256);
+
+  int required_found = 0;
+
+  struct ao_key *key = BGP_CFG->ao_key;
+  while (key)
+  {
+    if (used_aos_id_loc[key->local_id])
+      cf_error("Reused local key id");
+    used_aos_id_loc[key->local_id] = 1;
+    if (used_aos_id_rem[key->remote_id])
+      cf_error("Reused remote key id");
+    used_aos_id_rem[key->remote_id] = 1;
+    if (key->required == 1)
+    {
+      if (required_found)
+        cf_error("How do you want to use two keys at once? Check 'REQUIRED'");
+      required_found = 1;
+    }
+    key = key->next_key;
+  }
+  if (required_found == 0)
+    cf_error("Missing 'REQUIRED'. Which key should be used?");
+}
 
 bgp_channel_start: bgp_afi
 {

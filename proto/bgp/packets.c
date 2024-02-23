@@ -3423,8 +3423,9 @@ bgp_rx_packet(struct bgp_conn *conn, byte *pkt, uint len)
 int
 bgp_rx(sock *sk, uint size)
 {
-  log_ao(sk->fd);
   struct bgp_conn *conn = sk->data;
+  //if (get_current_key_id(sk->fd) == conn->last_used_ao_key)  TODO: uncoment after debug
+    log_ao(sk->fd);
   byte *pkt_start = sk->rbuf;
   byte *end = pkt_start + size;
   uint i, len;

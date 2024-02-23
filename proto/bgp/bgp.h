@@ -134,7 +134,8 @@ struct bgp_config {
   u32 disable_after_cease;		/* Disable it when cease is received, bitfield */
 
   const char *password;			/* Password used for MD5 authentication */
-  struct ao_key *ao_key;		/* Keys for tcp ao authentication */
+  struct ao_key *ao_key;		/* Keys for tcp ao authentication TODO: copy to protocol? */
+  struct linpool *ao_lp;		/* Linpool for allocating ao keys */
   net_addr *remote_range;		/* Allowed neighbor range for dynamic BGP */
   const char *dynamic_name;		/* Name pattern for dynamic BGP */
   int dynamic_name_digits;		/* Minimum number of digits for dynamic names */
@@ -306,6 +307,7 @@ struct bgp_conn {
   u8 last_channel_count;		/* Number of times the last channel was used in succession */
   int notify_code, notify_subcode, notify_size;
   byte *notify_data;
+  int last_used_ao_key;			/* ID of last ao authentication key, which was used */
 
   uint hold_time, keepalive_time;	/* Times calculated from my and neighbor's requirements */
 };

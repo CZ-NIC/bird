@@ -238,6 +238,21 @@ void log_tcp_ao_info(int sock_fd)
 		    tmp.current_key, tmp.rnext, tmp.set_current, tmp.ao_required, tmp.pkt_good, tmp.pkt_bad);
 }
 
+int get_current_key_id(int sock_fd)
+{
+  struct tcp_ao_info_opt_ext tmp;
+  memset(&tmp, 0, sizeof(struct tcp_ao_info_opt_ext));
+  socklen_t len = sizeof(tmp);
+
+  if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, len))
+  {
+     log("get current ao key failed %i", errno);
+     return -1;
+  }
+  else
+    return tmp.current_key;
+}
+
 void
 log_tcp_ao_get_key(int sock_fd)
 {
@@ -252,29 +267,43 @@ log_tcp_ao_get_key(int sock_fd)
      log("log tcp ao get keys failed with err code %i", errno);
      return;
   }
-  else
-    log("cipher %s key %s num of keys %i", tmp.alg_name, tmp.key, tmp.nkeys);
-
+  
+  int nkeys = tmp.nkeys;
+  struct tcp_ao_getsockopt_ext tm_all[nkeys];
+  memset(tm_all, 0, sizeof(struct tcp_ao_getsockopt_ext)*nkeys);
+  tm_all[0].nkeys = nkeys;
+  tm_all[0].get_all = 1;
+  if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_GET_KEYS, tm_all, &len))  // len should be still size of one struct. Because kernel net/ipv4/tcp_ao.c line 2165
+  {
+     log("log tcp ao get keys failed with err code %i", errno);
+     return;
+  }
+  log("keys %i %i", nkeys, tm_all[0].nkeys);
+  for (int i = 0; i < nkeys; i++)
+  {
+    log("sndid %i rcvid %i, %s %s, cipher %s key %s (%i/%i)", tm_all[i].sndid, tm_all[i].rcvid, tm_all[i].is_current ? "current" : "", tm_all[i].is_rnext ? "rnext" : "", tm_all[i].alg_name, tm_all[i].key, i+1, tm_all[0].nkeys);
+  }
 }
 
 int
-sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int passwd_id_loc, int passwd_id_rem, const char* cipher)
+sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int passwd_id_loc, int passwd_id_rem, const char* cipher, int set_current)
 {
   struct tcp_ao_add_ext ao;
   memset(&ao, 0, sizeof(struct tcp_ao_add_ext));
-  log("in sk set ao");
-  log("%s %i %i", passwd, passwd_id_loc, passwd_id_rem);
-  log("af %i %I %I (%i or %i) %s %i", s->af, remote, local, AF_INET, AF_INET6, passwd, passwd[0]);
+  log("in sk set ao, pass %s", passwd);
  /* int af;
   if (ipa_is_ip4(remote))
     af = AF_INET;
   else
-    af = AF_INET6;*/
+    a = AF_INET6;*/
   sockaddr_fill((sockaddr *) &ao.addr, s->af, remote, ifa, 0);
-  ao.set_current	= 0;
-  ao.set_rnext	= 0;
+  if (set_current)
+  {
+    ao.set_rnext = 1;
+    ao.set_current = 1;
+  }
   if (pxlen >= 0)
-    ao.prefix	= pxlen;
+    ao.prefix = pxlen;
   else if(s->af == AF_INET)
     ao.prefix = 32;
   else
@@ -294,8 +323,28 @@ sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *
   if (setsockopt(s->fd, IPPROTO_TCP, TCP_AO_ADD_KEY, &ao, sizeof(ao)) < 0)
     bug("tcp ao err %i", errno);
   
-  log_tcp_ao_info(s->fd);
+  log_tcp_ao_get_key(s->fd);
   return 0;
+}
+
+void
+ao_delete_key(sock *s, ip_addr remote, int pxlen, struct iface *ifa, int passwd_id_loc, int passwd_id_rem)
+{
+  struct tcp_ao_del_ext del;
+  memset(&del, 0, sizeof(struct tcp_ao_del_ext));
+  sockaddr_fill((sockaddr *) &del.addr, s->af, remote, ifa, 0);
+  del.sndid = passwd_id_rem;
+  del.rcvid = passwd_id_loc;
+  if (pxlen >= 0)
+    del.prefix = pxlen;
+  else if(s->af == AF_INET)
+    del.prefix = 32;
+  else
+    del.prefix = 128;
+  int IPPROTO_TCP_ = 6;
+  if (setsockopt(s->fd, IPPROTO_TCP, TCP_AO_DEL_KEY, &del, sizeof(del)) < 0)
+    bug("tcp ao deletion err %i", errno);
+  log("tcp ao key %i %i deleted", passwd_id_loc, passwd_id_rem);
 }
 
 void
@@ -303,13 +352,13 @@ ao_try_change_master(int sock_fd, int next_master_id )
 {
   struct tcp_ao_info_opt_ext tmp;
   memset(&tmp, 0, sizeof(struct tcp_ao_info_opt_ext));
-  socklen_t len = sizeof(tmp);
   tmp.set_rnext = 1;
   tmp.rnext = next_master_id;
 
-  if (setsockopt(sock_fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, &len))
+  if (setsockopt(sock_fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, sizeof(tmp)))
   {
      log(" tcp ao change master key failed with err code %i", errno);
+     log_tcp_ao_get_key(sock_fd);
      return;
   }
   else

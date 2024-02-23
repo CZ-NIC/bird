@@ -1465,15 +1465,15 @@ sk_open(sock *s)
     log("set ao, %s", s->ao_key->cipher);
     struct ao_key *key = s->ao_key;
     do {
-      if (sk_set_ao_auth(s, s->saddr, s->daddr, -1, s->iface, key->master_key, key->local_id, key->remote_id, key->cipher) < 0)
+      if (sk_set_ao_auth(s, s->saddr, s->daddr, -1, s->iface, key->master_key, key->local_id, key->remote_id, key->cipher, key->required == 1) < 0)
         goto err;
       key = key->next_key;
     } while (key);
   }
-  if (s->password)
+  else if (s->password)
   {
     log("set md5");
-    if (sk_set_ao_auth(s, s->saddr, s->daddr, -1, s->iface, s->password, 123, 123, 0) < 0)
+    if (sk_set_md5_auth(s, s->saddr, s->daddr, -1, s->iface, s->password, 0) < 0)
       goto err;
   }
   else
