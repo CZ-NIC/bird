@@ -245,6 +245,8 @@ ao_key:
 
 ao_first_item:
     LOCAL ID expr ';' {
+      if($3 >= 256)
+        cf_error("Key ids ust be in range 0 - 255");
       if (!BGP_CFG->ao_lp)
         BGP_CFG->ao_lp = lp_new(rp_new(&root_pool, "ao struct pool"));
       struct ao_key *new_key = lp_alloc(BGP_CFG->ao_lp, sizeof(struct ao_key));
@@ -252,20 +254,27 @@ ao_first_item:
       BGP_CFG->ao_key = new_key;
       BGP_CFG->ao_key->required = 0;
       BGP_CFG->ao_key->local_id = $3;
+      BGP_CFG->ao_key->remote_id = -1;
     }
 ;
 
 ao_item:
-      REMOTE ID expr ';' {log("remote id %i", $3); BGP_CFG->ao_key->remote_id = $3; }
-    | CIPHER text ';' { char *c = lp_alloc(BGP_CFG->ao_lp, strlen($2));
+      REMOTE ID expr ';' {
+        if ($3 > 255)
+          cf_error("TCP AO: Key id must be in range 0 - 255");
+        BGP_CFG->ao_key->remote_id = $3; }
+    | CIPHER text ';' {
+       if (strcmp($2, "cmac(aes128)") & strcmp($2, "hmac(sha1)") & strcmp($2, "hmac(sha224)") & strcmp($2, "hmac(sha256)") & strcmp($2, "hmac(sha384)") & strcmp($2, "hmac(sha512)")& strcmp($2, "hmac(md5)"))
+         cf_error("TCP AO: Here are ciphers 'cmac(aes128)', 'hmac(md5)', 'hmac(sha1)', 'hmac(sha224)', 'hmac(sha256)', 'hmac(sha384)' and 'hmac(sha512)' hardcoded. If there is another cipher available in kernel, please contact BIRD developers.");
+       char *c = lp_alloc(BGP_CFG->ao_lp, strlen($2));
        memcpy(c, $2, strlen($2));
        BGP_CFG->ao_key->cipher = c;
-       log("ciph[%s]", $2); }
+       }
     | MASTER KEY text ';' {
        char *k = lp_alloc(BGP_CFG->ao_lp, strlen($3));
        memcpy(k, $3, strlen($3));
        BGP_CFG->ao_key->master_key = k;
-       log("key[%s]", BGP_CFG->ao_key->master_key);}
+       }
     | DEPRECATED ';' { BGP_CFG->ao_key->required = -1; }
     | REQUIRED ';' { BGP_CFG->ao_key->required = 1; }
  ;
@@ -283,21 +292,27 @@ tcp_ao_end:
   while (key)
   {
     if (used_aos_id_loc[key->local_id])
-      cf_error("Reused local key id");
+      cf_error("TCP AO: Reused local key id %i", key->local_id);
     used_aos_id_loc[key->local_id] = 1;
+    if (key->remote_id == -1)
+      cf_error("TCP AO: No remote key id for local id %i", key->local_id);
     if (used_aos_id_rem[key->remote_id])
-      cf_error("Reused remote key id");
+      cf_error("TCP AO: Reused remote key id %i", key->remote_id);
     used_aos_id_rem[key->remote_id] = 1;
+    if (!key->cipher)
+      cf_error("TCP AO: No cipher given for key id %i.", key->local_id);
+    if (!key->master_key)
+      cf_error("TCP AO: No master key given for key id %i.", key->local_id);
     if (key->required == 1)
     {
       if (required_found)
-        cf_error("How do you want to use two keys at once? Check 'REQUIRED'");
+        cf_error("TCP AO: How do you want to use two keys at once? Check 'REQUIRED'");
       required_found = 1;
     }
     key = key->next_key;
   }
   if (required_found == 0)
-    cf_error("Missing 'REQUIRED'. Which key should be used?");
+    cf_error("TCP AO: Missing 'REQUIRED'. Which key should be used?");
 }
 
 bgp_channel_start: bgp_afi

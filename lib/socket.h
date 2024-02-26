@@ -120,6 +120,7 @@ int sk_set_min_ttl(sock *s, int ttl);	/* Set minimal accepted TTL for given sock
 int sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int setkey);
 
 int get_current_key_id(int sock_fd);
+int get_rnext_key_id(int sock_fd);
 int sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int passwd_id_loc, int passwd_id_rem, const char *cipher, int set_current);
 void ao_delete_key(sock *s, ip_addr remote, int pxlen, struct iface *ifa, int passwd_id_rem, int passwd_id_loc);
 void log_tcp_ao_info(int sock_fd);

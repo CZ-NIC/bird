@@ -179,7 +179,6 @@ bgp_open(struct bgp_proto *p)
   sk->type = SK_TCP_PASSIVE;
   sk->ttl = 255;
   sk->saddr = addr;
- // sk->daddr = p->remote_ip;
   sk->sport = port;
   sk->iface = ifa;
   sk->vrf = p->p.vrf;
@@ -189,12 +188,11 @@ bgp_open(struct bgp_proto *p)
   sk->tbsize = BGP_TX_BUFFER_SIZE;
   sk->rx_hook = bgp_incoming_connection;
   sk->err_hook = bgp_listen_sock_err;
-  //sk->password = p->cf->password;
 
-  log("passive connect p %i, c cf %i %s", p, p->cf, p->cf->password ? p->cf->password : "no password");
   if (sk_open(sk) < 0)
     goto err;
-
+  
+  log("____________________________________________________________________________%i %i", sk->fd, sk->ao_key);
   bs = mb_allocz(proto_pool, sizeof(struct bgp_socket));
   bs->sk = sk;
   bs->uc = 1;
@@ -251,6 +249,7 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
     {
       log("set ao auth [%s]", p->cf->ao_key->master_key);
       struct ao_key *key = p->cf->ao_key;
+      p->sock->sk->ao_key = key;
       do {
         rv = sk_set_ao_auth(p->sock->sk,
 			     p->cf->local_ip, prefix, pxlen, p->cf->iface,
@@ -1085,6 +1084,7 @@ bgp_setup_conn(struct bgp_proto *p, struct bgp_conn *conn)
   conn->channels_to_send = 0;
   conn->last_channel = 0;
   conn->last_channel_count = 0;
+  conn->last_used_ao_key = -1;
 
   conn->connect_timer	= tm_new_init(p->p.pool, bgp_connect_timeout,	 conn, 0, 0);
   conn->hold_timer 	= tm_new_init(p->p.pool, bgp_hold_timeout,	 conn, 0, 0);
@@ -1160,11 +1160,11 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   bgp_setup_sk(conn, s);
   bgp_conn_set_state(conn, BS_CONNECT);
 
-  log("active open p %i, c cf %i %s ", p, p->cf, p->cf->password ? p->cf->password : "no password");
   if (sk_open(s) < 0)
     goto err;
 
-  //int rv = sk_set_ao_auth(s, p->local_ip, p->remote_ip, -1, s->iface, s->password ? s->password : "d3f4u1t", 1);
+  log("a..........................................................................................fd %i key %i %I", s->fd, s->ao_key, s->daddr);
+
   /* Set minimal receive TTL if needed */
   if (p->cf->ttl_security)
     if (sk_set_min_ttl(s, 256 - hops) < 0)
@@ -2170,9 +2170,9 @@ int reconfigure_tcp_ao(struct bgp_proto old_proto, struct bgp_config new)
   log("in reconf ao");
   sock *s_passiv = old_proto.sock->sk;
   sock *s_activ = old_proto.conn->sk;
-  int key_in_use = get_current_key_id(s_activ->fd);
+  int key_in_use_rem = get_current_key_id(s_activ->fd);
 
-  if (key_in_use == -1)
+  if (key_in_use_rem == -1)
     {
       log("Unable to detect currently used key");
       return 0;
@@ -2180,10 +2180,15 @@ int reconfigure_tcp_ao(struct bgp_proto old_proto, struct bgp_config new)
 
   struct ao_key *old_aos[256];
   memset(&old_aos, 0, sizeof(struct ao_key*)*256);
+  struct ao_key *old_rem_id[256];
+  memset(&old_rem_id, 0, sizeof(struct ao_key*)*256);
+
   for(struct ao_key *ao_key = old_proto.cf->ao_key; ao_key; ao_key = ao_key->next_key)
   {
      old_aos[ao_key->local_id] = ao_key;
+     old_rem_id[ao_key->remote_id] = ao_key;
   }
+  int key_in_use = old_rem_id[key_in_use_rem]->local_id;
   for(struct ao_key *ao_key = new.ao_key; ao_key; ao_key = ao_key->next_key)
   {
      if(old_aos[ao_key->local_id])
@@ -2191,15 +2196,13 @@ int reconfigure_tcp_ao(struct bgp_proto old_proto, struct bgp_config new)
        if(compare_aos(ao_key, old_aos[ao_key->local_id]))
        {
 	 struct ao_key *o = old_aos[ao_key->local_id];
-	 log("%i %i %i %i %s %s %s %s", ao_key->local_id, o->local_id, ao_key->remote_id, o->remote_id, ao_key->cipher, o->cipher, ao_key->master_key, o->master_key);
+	 log("%i %i (master %i) %i %i %s %s %s %s", ao_key->local_id, o->local_id, key_in_use, ao_key->remote_id, o->remote_id, ao_key->cipher, o->cipher, ao_key->master_key, o->master_key);
 	 if (ao_key->local_id == key_in_use)
 	 {
-	   //struct ao_key *o = old_aos[ao_key->local_id];
-	   //log("%i %i %i %i %s %s %s %s", ao_key->local_id, o->local_id, ao_key->remote_id, o->remote_id, ao_key->cipher, o->cipher, ao_key->master_key, o->master_key);
-           log("Currently used master key part update. This is not allowed.");
+           cf_warn("TCP AO reconfiguration: Currently used master key (%i) part update. This is not allowed.", ao_key->local_id);
 	   return 0;
 	 }
-         log("Reusing key id. Not nice. Lets try to update.");
+         cf_warn("TCP AO reconfiguration: Reusing or manipulating key with id %i. This might break connection.", ao_key->local_id);
 
 	 struct ao_key *old_key = old_aos[ao_key->local_id];
 	 ao_delete_key(s_activ,  old_proto.remote_ip, -1, s_activ->iface, old_key->local_id, old_key->remote_id);
@@ -2211,13 +2214,19 @@ int reconfigure_tcp_ao(struct bgp_proto old_proto, struct bgp_config new)
      }
      else
      {
+       if (old_rem_id[ao_key->remote_id])
+         cf_warn("TCP AO reconfiguration: Reusing remote id %i with new local id %i. This might break your connection.", ao_key->remote_id, ao_key->local_id);
        sk_set_ao_auth(s_activ, old_proto.local_ip, old_proto.remote_ip, -1, s_activ->iface, ao_key->master_key, ao_key->local_id, ao_key->remote_id, ao_key->cipher, ao_key->required == 1);
        sk_set_ao_auth(s_passiv, old_proto.local_ip, old_proto.remote_ip, -1, s_passiv->iface, ao_key->master_key, ao_key->local_id, ao_key->remote_id, ao_key->cipher, 0);
      }
+     s_activ->ao_key = new.ao_key; 
+     s_passiv->ao_key = new.ao_key;
 
-    if (ao_key->required == 1)
+    if (ao_key->required == 1 && (ao_key->local_id != get_rnext_key_id(s_activ->fd)))
     {
-      ao_try_change_master(s_activ->fd, ao_key->local_id); // or remote id?
+      ao_try_change_master(s_activ->fd, ao_key->local_id);
+      if (old_proto.conn->hold_timer->expires != 0)
+        bgp_schedule_packet(old_proto.conn, NULL, PKT_KEEPALIVE); // According to RFC we should not send keepalive shortly after another, but since reconfiguration is rare, this is harmless
     }
   }
   for(int i = 0; i<256; i++)
@@ -2226,14 +2235,14 @@ int reconfigure_tcp_ao(struct bgp_proto old_proto, struct bgp_config new)
      {
        if (i == key_in_use)
        {
-         log("Currently used key deletion. This is not allowed.");
+         cf_warn("TCP AO reconfiguration: Currently used key (id %i) deletion. This is not allowed.", i);
 	 return 0;
        } 
        ao_delete_key(s_activ, old_proto.remote_ip, -1, s_activ->iface, old_aos[i]->local_id, old_aos[i]->remote_id);
        ao_delete_key(s_passiv, old_proto.remote_ip, -1, s_passiv->iface, old_aos[i]->local_id, old_aos[i]->remote_id);
      }
   }
-  log("no changes in ao");
+  log("no big changes in ao");
   return 1;
 }
 
