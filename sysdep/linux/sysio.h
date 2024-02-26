@@ -253,6 +253,21 @@ int get_current_key_id(int sock_fd)
     return tmp.current_key;
 }
 
+int get_rnext_key_id(int sock_fd)
+{
+  struct tcp_ao_info_opt_ext tmp;
+  memset(&tmp, 0, sizeof(struct tcp_ao_info_opt_ext));
+  socklen_t len = sizeof(tmp);
+
+  if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, &len))
+  {
+     log("get rnext ao key failed %i", errno);
+     return -1;
+  }
+  else
+    return tmp.rnext;
+}
+
 void
 log_tcp_ao_get_key(int sock_fd)
 {
@@ -290,7 +305,9 @@ sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *
 {
   struct tcp_ao_add_ext ao;
   memset(&ao, 0, sizeof(struct tcp_ao_add_ext));
-  log("in sk set ao, pass %s", passwd);
+  if (!s->ao_key)
+    bug("no ao key");
+  log(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>in sk set ao, pass %s fd %i sk %i %i", passwd, s->fd, s, s->ao_key);
  /* int af;
   if (ipa_is_ip4(remote))
     af = AF_INET;
@@ -318,8 +335,7 @@ sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *
 
   ao.keylen	= strlen(passwd);
   memcpy(ao.key, passwd, (strlen(passwd) > TCP_AO_MAXKEYLEN_) ? TCP_AO_MAXKEYLEN_ : strlen(passwd));
-    
-  int IPPROTO_TCP_ = 6;
+
   if (setsockopt(s->fd, IPPROTO_TCP, TCP_AO_ADD_KEY, &ao, sizeof(ao)) < 0)
     bug("tcp ao err %i", errno);
   
@@ -341,7 +357,7 @@ ao_delete_key(sock *s, ip_addr remote, int pxlen, struct iface *ifa, int passwd_
     del.prefix = 32;
   else
     del.prefix = 128;
-  int IPPROTO_TCP_ = 6;
+
   if (setsockopt(s->fd, IPPROTO_TCP, TCP_AO_DEL_KEY, &del, sizeof(del)) < 0)
     bug("tcp ao deletion err %i", errno);
   log("tcp ao key %i %i deleted", passwd_id_loc, passwd_id_rem);

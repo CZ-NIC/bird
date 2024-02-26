@@ -1098,6 +1098,7 @@ sk_passive_connected(sock *s, int type)
   t->vrf = s->vrf;
   t->rbsize = s->rbsize;
   t->tbsize = s->tbsize;
+  t->ao_key = s->ao_key;
 
   if (type == SK_TCP)
   {

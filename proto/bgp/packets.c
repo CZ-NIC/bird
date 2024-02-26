@@ -3424,8 +3424,25 @@ int
 bgp_rx(sock *sk, uint size)
 {
   struct bgp_conn *conn = sk->data;
-  //if (get_current_key_id(sk->fd) == conn->last_used_ao_key)  TODO: uncoment after debug
-    log_ao(sk->fd);
+  
+  if (sk->ao_key)
+  {
+    if (get_current_key_id(sk->fd) != conn->last_used_ao_key)
+    {
+      if (conn->hold_timer->expires != 0)
+        bgp_schedule_packet(conn, NULL, PKT_KEEPALIVE); // We might send this keepalive shortly after another. RFC says we should wait, but since reconfiguration is rare, this is harmless.
+      conn->last_used_ao_key = get_current_key_id(sk->fd);
+      log_ao(sk->fd);
+      log("%i", sk->ao_key);
+    }
+    else //todo delete after debug
+    {
+      log_ao(sk->fd);
+      log("%i %i", get_current_key_id(sk->fd), conn->last_used_ao_key);
+      log("fd %i sk %i key %i", sk->fd, sk, sk->ao_key);
+    }
+  }
+  
   byte *pkt_start = sk->rbuf;
   byte *end = pkt_start + size;
   uint i, len;
