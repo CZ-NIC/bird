@@ -223,6 +223,14 @@ bgp_close(struct bgp_proto *p)
 
   ASSERT(bs && bs->uc);
 
+  log("in bgp close");
+  struct ao_key *key = bs->sk->ao_key;
+  while (key)
+  {
+    log("delete %i", key->local_id);
+    ao_delete_key(bs->sk, p->remote_ip, -1, bs->sk->iface, key->local_id, key->remote_id);
+    key = key->next_key;
+  }
   if (--bs->uc)
     return;
 
@@ -2196,7 +2204,7 @@ int reconfigure_tcp_ao(struct bgp_proto old_proto, struct bgp_config new)
        if(compare_aos(ao_key, old_aos[ao_key->local_id]))
        {
 	 struct ao_key *o = old_aos[ao_key->local_id];
-	 log("%i %i (master %i) %i %i %s %s %s %s", ao_key->local_id, o->local_id, key_in_use, ao_key->remote_id, o->remote_id, ao_key->cipher, o->cipher, ao_key->master_key, o->master_key);
+	 log("%i %i (master %i %i) remotes %i %i %s %s %s %s", ao_key->local_id, o->local_id, key_in_use, key_in_use_rem, ao_key->remote_id, o->remote_id, ao_key->cipher, o->cipher, ao_key->master_key, o->master_key);
 	 if (ao_key->local_id == key_in_use)
 	 {
            cf_warn("TCP AO reconfiguration: Currently used master key (%i) part update. This is not allowed.", ao_key->local_id);
@@ -2215,7 +2223,14 @@ int reconfigure_tcp_ao(struct bgp_proto old_proto, struct bgp_config new)
      else
      {
        if (old_rem_id[ao_key->remote_id])
+       {
+         if (ao_key->remote_id == key_in_use_rem)
+	 {
+	   cf_warn("TCP AO reconfiguration: Currently used master key (%i %i) part update. This is not allowed.", ao_key->local_id, ao_key->remote_id);
+	   return 0;
+	 }
          cf_warn("TCP AO reconfiguration: Reusing remote id %i with new local id %i. This might break your connection.", ao_key->remote_id, ao_key->local_id);
+       }
        sk_set_ao_auth(s_activ, old_proto.local_ip, old_proto.remote_ip, -1, s_activ->iface, ao_key->master_key, ao_key->local_id, ao_key->remote_id, ao_key->cipher, ao_key->required == 1);
        sk_set_ao_auth(s_passiv, old_proto.local_ip, old_proto.remote_ip, -1, s_passiv->iface, ao_key->master_key, ao_key->local_id, ao_key->remote_id, ao_key->cipher, 0);
      }

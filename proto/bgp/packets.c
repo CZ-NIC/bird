@@ -3442,7 +3442,8 @@ bgp_rx(sock *sk, uint size)
       log("fd %i sk %i key %i", sk->fd, sk, sk->ao_key);
     }
   }
-  
+  else
+    log("no ao");
   byte *pkt_start = sk->rbuf;
   byte *end = pkt_start + size;
   uint i, len;
