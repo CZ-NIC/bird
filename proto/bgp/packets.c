@@ -3425,25 +3425,28 @@ bgp_rx(sock *sk, uint size)
 {
   struct bgp_conn *conn = sk->data;
   
-  if (sk->ao_key)
+  if (sk->use_ao && sk->desired_ao_key != sk->last_used_ao_key)
   {
-    if (get_current_key_id(sk->fd) != conn->last_used_ao_key)
+    int new_rnext = get_current_key_id(sk->fd); 
+    if (new_rnext != sk->last_used_ao_key)
     {
       if (conn->hold_timer->expires != 0)
         bgp_schedule_packet(conn, NULL, PKT_KEEPALIVE); // We might send this keepalive shortly after another. RFC says we should wait, but since reconfiguration is rare, this is harmless.
-      conn->last_used_ao_key = get_current_key_id(sk->fd);
+      sk->last_used_ao_key = new_rnext;
+      log("Expected desired rnext %i, arrived %i", sk->desired_ao_key, new_rnext);
       log_ao(sk->fd);
-      log("%i", sk->ao_key);
     }
     else //todo delete after debug
     {
+      log("Nothing happend %i %i", get_current_key_id(sk->fd), sk->last_used_ao_key);
       log_ao(sk->fd);
-      log("%i %i", get_current_key_id(sk->fd), conn->last_used_ao_key);
-      log("fd %i sk %i key %i", sk->fd, sk, sk->ao_key);
     }
   }
   else
-    log("no ao");
+  {
+    log("No ao or not expecting changes %i %i", get_current_key_id(sk->fd), sk->last_used_ao_key);
+    log_ao(sk->fd);
+  }
   byte *pkt_start = sk->rbuf;
   byte *end = pkt_start + size;
   uint i, len;

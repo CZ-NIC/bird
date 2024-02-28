@@ -1097,8 +1097,7 @@ sk_passive_connected(sock *s, int type)
   t->tos = s->tos;
   t->vrf = s->vrf;
   t->rbsize = s->rbsize;
-  t->tbsize = s->tbsize;
-  t->ao_key = s->ao_key;
+  t->tbsize = s->tbsize; 
 
   if (type == SK_TCP)
   {
@@ -1459,12 +1458,10 @@ sk_open(sock *s)
     if (bind(fd, &sa.sa, SA_LEN(sa)) < 0)
       ERR2("bind");
   }
-  //s->password = "abcd1234";
 
-  if (s->ao_key)
+  if (s->ao_key_init)
   {
-    log("set ao, %s", s->ao_key->cipher);
-    struct ao_key *key = s->ao_key;
+    struct ao_key *key = s->ao_key_init;
     do {
       if (sk_set_ao_auth(s, s->saddr, s->daddr, -1, s->iface, key->master_key, key->local_id, key->remote_id, key->cipher, key->required == 1) < 0)
         goto err;
