@@ -234,7 +234,7 @@ void log_tcp_ao_info(int sock_fd)
      return;
   }
   else
-    log("current key id %i, next key %i,\n set current %i, ao required %i\n good packets %i, bad packets %i",
+    log("current key id %i (rem), next key %i (loc),\n set current %i, ao required %i\n good packets %i, bad packets %i",
 		    tmp.current_key, tmp.rnext, tmp.set_current, tmp.ao_required, tmp.pkt_good, tmp.pkt_bad);
 }
 
@@ -268,8 +268,7 @@ int get_rnext_key_id(int sock_fd)
     return tmp.rnext;
 }
 
-void
-log_tcp_ao_get_key(int sock_fd)
+int get_num_ao_keys(int sock_fd)
 {
   struct tcp_ao_getsockopt_ext tmp;
   memset(&tmp, 0, sizeof(struct tcp_ao_getsockopt_ext));
@@ -279,12 +278,20 @@ log_tcp_ao_get_key(int sock_fd)
 
   if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_GET_KEYS, &tmp, &len))
   {
-     log("log tcp ao get keys failed with err code %i", errno);
-     return;
+     log("tcp ao get keys failed with err code %i", errno);
+     return -1;
   }
-  
-  int nkeys = tmp.nkeys;
+  return tmp.nkeys;
+}
+
+void
+log_tcp_ao_get_key(int sock_fd)
+{  
+  int nkeys = get_num_ao_keys(sock_fd);
+  if (nkeys < 0)
+    return;
   struct tcp_ao_getsockopt_ext tm_all[nkeys];
+  socklen_t len = sizeof(struct tcp_ao_getsockopt_ext);
   memset(tm_all, 0, sizeof(struct tcp_ao_getsockopt_ext)*nkeys);
   tm_all[0].nkeys = nkeys;
   tm_all[0].get_all = 1;
@@ -301,13 +308,11 @@ log_tcp_ao_get_key(int sock_fd)
 }
 
 int
-sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int passwd_id_loc, int passwd_id_rem, const char* cipher, int set_current)
+sk_set_ao_auth(sock *s, ip_addr local UNUSED, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int passwd_id_loc, int passwd_id_rem, const char* cipher, int set_current)
 {
   struct tcp_ao_add_ext ao;
   memset(&ao, 0, sizeof(struct tcp_ao_add_ext));
-  if (!s->ao_key)
-    bug("no ao key");
-  log(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>in sk set ao, pass %s fd %i sk %i %i", passwd, s->fd, s, s->ao_key);
+  log(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>in sk set ao, pass %s fd %i sk %i %i", passwd, s->fd, s);
  /* int af;
   if (ipa_is_ip4(remote))
     af = AF_INET;
@@ -337,8 +342,16 @@ sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *
   memcpy(ao.key, passwd, (strlen(passwd) > TCP_AO_MAXKEYLEN_) ? TCP_AO_MAXKEYLEN_ : strlen(passwd));
 
   if (setsockopt(s->fd, IPPROTO_TCP, TCP_AO_ADD_KEY, &ao, sizeof(ao)) < 0)
-    bug("tcp ao err %i", errno);
+  {
+     if (errno == ENOPROTOOPT)
+	ERR_MSG("Kernel does not support extended TCP AO signatures");
+      else
+	ERR("TCP_AOSIG_EXT");
+  }
   
+  s->use_ao = 1;
+  if (set_current)
+    s->desired_ao_key = passwd_id_rem;
   log_tcp_ao_get_key(s->fd);
   return 0;
 }
@@ -359,46 +372,79 @@ ao_delete_key(sock *s, ip_addr remote, int pxlen, struct iface *ifa, int passwd_
     del.prefix = 128;
 
   if (setsockopt(s->fd, IPPROTO_TCP, TCP_AO_DEL_KEY, &del, sizeof(del)) < 0)
+  {
+    log("log keys for debug delete error key %i %i", passwd_id_loc, passwd_id_rem);
+    log_tcp_ao_get_key(s->fd);
     bug("tcp ao deletion err %i", errno);
+  }
   log("tcp ao key %i %i deleted", passwd_id_loc, passwd_id_rem);
 }
 
 void
-ao_try_change_master(int sock_fd, int next_master_id )
+ao_try_change_master(sock *s, int next_master_id_loc, int next_master_id_rem)
 {
   struct tcp_ao_info_opt_ext tmp;
   memset(&tmp, 0, sizeof(struct tcp_ao_info_opt_ext));
   tmp.set_rnext = 1;
-  tmp.rnext = next_master_id;
+  tmp.rnext = next_master_id_loc;
 
-  if (setsockopt(sock_fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, sizeof(tmp)))
+  if (setsockopt(s->fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, sizeof(tmp)))
   {
      log(" tcp ao change master key failed with err code %i", errno);
-     log_tcp_ao_get_key(sock_fd);
+     log_tcp_ao_get_key(s->fd);
      return;
   }
   else
     log("tried to change master");
+  s->desired_ao_key = next_master_id_rem;
+
 }
 
-void
-save_to_repair(int sock_fd)
+int check_ao_keys_id(int sock_fd, struct ao_key *keys)
 {
-  struct tcp_ao_repair_ext replace_me; //TODO not ignore replace_me
-  socklen_t len = sizeof(replace_me);
-  memset(&replace_me, 0, sizeof(struct tcp_ao_repair_ext));
-  if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_REPAIR, &replace_me, &len) < 0)
-    bug("geting tcp ao img not succeed %i", errno);
-  log("got tcp ao img");
-}
-
-
-void
-repair_tcp_ao(int sock_fd, struct iface *ifa)
-{
-  //if (setsockopt(sock_fd, SOL_TCP, TCP_AO_REPAIR, &ifa->tcp_ao_img, sizeof(ifa->tcp_ao_img)) < 0)
-   // bug("tcp ao err %i", errno);
-  log("tcp ao repair skiped");
+  int errors = 0;
+  int expected_keys[256]; //can not have char, because we must support 0 key id
+  memset(expected_keys, 0, sizeof(int)*256);
+  for (struct ao_key *key = keys; key; key = key->next_key)
+    expected_keys[key->local_id] = key->remote_id + 1; // the + 1 because we do not want 0 id be 0
+  int nkeys = get_num_ao_keys(sock_fd);
+  if(nkeys == -1)
+  {
+    cf_warn("TCP AO: unable to get num of keys");
+    return 1;
+  }
+  struct tcp_ao_getsockopt_ext tm_all[nkeys];
+  socklen_t len = sizeof(struct tcp_ao_getsockopt_ext);
+  memset(tm_all, 0, sizeof(struct tcp_ao_getsockopt_ext)*nkeys);
+  tm_all[0].nkeys = nkeys;
+  tm_all[0].get_all = 1;
+  if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_GET_KEYS, tm_all, &len))  // len should be still size of one struct. Because kernel net/ipv4/tcp_ao.c line 2165
+  {
+     cf_warn("log tcp ao get keys failed with err code %i", errno);
+     return 1;
+  }
+  for (int i = 0; i< nkeys; i++)
+  {
+    struct tcp_ao_getsockopt_ext sock_key = tm_all[i];
+    if (expected_keys[sock_key.rcvid] - 1 != sock_key.sndid)
+    {
+      if (expected_keys[sock_key.rcvid] == 0) 
+        cf_warn("TCP AO: unexpected ao key %i %i", sock_key.rcvid, sock_key.sndid);
+      else
+	cf_warn("TCP AO: expected key local id %i has different remote id than expected (%i vs %i)", sock_key.rcvid, expected_keys[sock_key.rcvid] - 1, sock_key.sndid);
+      errors++;
+    }     
+     expected_keys[sock_key.rcvid] = 0;  
+  }
+  for (int i = 0; i < 256; i++)
+  {
+    if (expected_keys[i] != 0)
+    {
+      cf_warn("TCP AO: key %i %i is not in socket", i, expected_keys - 1);
+      errors++;
+    }
+  }
+  return errors;
 }
 
 static inline int

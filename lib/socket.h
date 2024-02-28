@@ -87,7 +87,10 @@ typedef struct birdsock {
   node n;
   void *rbuf_alloc, *tbuf_alloc;
   const char *password;			/* Password for MD5 authentication */
-  struct ao_key *ao_key;		/* Key for tcp ao authentication */
+  struct ao_key *ao_key_init;		/* Key for tcp ao authentication icialization. */
+  char use_ao;
+  int last_used_ao_key; 		/* Last ID the other site requested */
+  int desired_ao_key;			/* ID of requested ao key */
   const char *err;			/* Error message */
   struct ssh_sock *ssh;			/* Used in SK_SSH */
 } sock;
@@ -125,7 +128,8 @@ int sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct ifa
 void ao_delete_key(sock *s, ip_addr remote, int pxlen, struct iface *ifa, int passwd_id_rem, int passwd_id_loc);
 void log_tcp_ao_info(int sock_fd);
 void log_tcp_ao_get_key(int sock_fd);
-void ao_try_change_master(int sock_fd, int next_key_id);
+int check_ao_keys_id(int sock_fd, struct ao_key *key);
+void ao_try_change_master(sock *s, int next_key_id_loc, int next_id_rem);
 int sk_set_ipv6_checksum(sock *s, int offset);
 int sk_set_icmp6_filter(sock *s, int p1, int p2);
 void sk_log_error(sock *s, const char *p);

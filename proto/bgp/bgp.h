@@ -307,7 +307,6 @@ struct bgp_conn {
   u8 last_channel_count;		/* Number of times the last channel was used in succession */
   int notify_code, notify_subcode, notify_size;
   byte *notify_data;
-  int last_used_ao_key;			/* ID of last ao authentication key, which was used */
 
   uint hold_time, keepalive_time;	/* Times calculated from my and neighbor's requirements */
 };
