@@ -659,7 +659,7 @@ channel_start_import(struct channel *c)
   c->in_req = (struct rt_import_request) {
     .name = mb_sprintf(c->proto->pool, "%s.%s", c->proto->name, c->name),
     .trace_routes = c->debug | c->proto->debug,
-    .list = proto_work_list(c->proto),
+    .loop = c->proto->loop,
     .dump_req = channel_dump_import_req,
     .log_state_change = channel_import_log_state_change,
     .preimport = channel_preimport,
@@ -731,7 +731,8 @@ channel_start_export(struct channel *c)
   }
 
   c->refeed_req = c->out_req;
-  c->refeed_req.name = mb_sprintf(p, "%s.%s.refeed", c->proto->name, c->name);
+  c->refeed_req.pool = rp_newf(c->proto->pool, c->proto->pool->domain, "Channel %s.%s export refeed", c->proto->name, c->name);
+  c->refeed_req.name = mb_sprintf(c->refeed_req.pool, "%s.%s.refeed", c->proto->name, c->name);
   c->refeed_req.dump_req = channel_dump_refeed_req;
   c->refeed_req.log_state_change = channel_refeed_log_state_change;
   c->refeed_req.mark_seen = channel_rpe_mark_seen_refeed;
@@ -829,6 +830,7 @@ channel_refeed_stopped(struct rt_export_request *req)
   req->hook = NULL;
 
   channel_feed_end(c);
+  channel_check_stopped(c);
 }
 
 static void
@@ -995,6 +997,8 @@ static void
 channel_reload_stopped(struct rt_export_request *req)
 {
   struct channel *c = SKIP_BACK(struct channel, reload_req, req);
+
+  req->hook = NULL;
 
   /* Restart reload */
   if (c->reload_pending)
@@ -1198,8 +1202,6 @@ channel_set_state(struct channel *c, uint state)
 void
 channel_request_feeding(struct channel *c, struct channel_feeding_request *cfr)
 {
-  ASSERT_DIE(c->out_req.hook);
-
   CD(c, "Feeding requested (%s)",
       cfr->type == CFRT_DIRECT ? "direct" :
       (cfr->trie ? "partial" : "auxiliary"));
