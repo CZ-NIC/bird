@@ -1899,7 +1899,7 @@ bgp_free_pending_tx(struct bgp_channel *c)
   c->ptx = NULL;
 }
 
-
+#if 0
 /*
  *	Prefix hash table exporter
  */
@@ -2057,6 +2057,11 @@ bgp_setup_out_table(struct bgp_channel *c)
 
   c->c.out_table = &c->prefix_exporter;
 }
+#else
+void
+bgp_setup_out_table(struct bgp_channel *c)
+{}
+#endif
 
 
 /*

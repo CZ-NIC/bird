@@ -396,7 +396,7 @@ struct bgp_channel {
   /* Rest are zeroed when down */
   pool *pool;
   struct bgp_pending_tx	*ptx;		/* Routes waiting to be sent */
-  struct rt_exporter prefix_exporter;	/* Table-like exporter for ptx */
+//  struct rt_exporter prefix_exporter;	/* Table-like exporter for ptx */
 
   ip_addr next_hop_addr;		/* Local address for NEXT_HOP attribute */
   ip_addr link_addr;			/* Link-local version of next_hop_addr */
