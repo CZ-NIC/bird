@@ -358,16 +358,16 @@ rt_show_export_stopped(struct rt_export_request *req)
 struct rt_show_data_rtable *
 rt_show_add_table(struct rt_show_data *d, rtable *t)
 {
-  struct rt_show_data_rtable *rsdr = cfg_allocz(sizeof(struct rt_show_data_rtable));
-  rsdr->table = t;
-  rsdr->name = t->name;
-  add_tail(&(d->tables), &(rsdr->n));
+  struct rt_show_data_rtable *tab = cfg_allocz(sizeof(struct rt_show_data_rtable));
+  tab->table = t;
+  tab->name = t->name;
+  add_tail(&(d->tables), &(tab->n));
 
   struct proto_config *krt = t->config->krt_attached;
   if (krt)
-    rsdr->kernel = (struct krt_proto *) krt->proto;
+    tab->kernel = (struct krt_proto *) krt->proto;
 
-  return rsdr;
+  return tab;
 }
 
 static inline void

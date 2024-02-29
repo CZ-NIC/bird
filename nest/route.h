@@ -12,6 +12,7 @@
 
 #include "lib/lists.h"
 #include "lib/tlists.h"
+#include "lib/lockfree.h"
 #include "lib/bitmap.h"
 #include "lib/resource.h"
 #include "lib/net.h"
@@ -77,26 +78,6 @@ struct rt_export_hook;
 struct rt_export_request;
 struct rt_exporter;
 
-struct rt_exporter_class {
-  void (*start)(struct rt_exporter *, struct rt_export_request *);
-  void (*stop)(struct rt_export_hook *);
-  void (*done)(void *_rt_export_hook);
-};
-
-struct rt_exporter {
-  const struct rt_exporter_class *class;
-  pool *rp;
-  list hooks;				/* Registered route export hooks */
-  uint addr_type;			/* Type of address data exported (NET_*) */
-
-  /* Table-specific */
-
-  list pending;				/* List of packed struct rt_pending_export */
-
-  struct rt_pending_export *first;	/* First export to announce */
-  u64 next_seq;				/* The next export will have this ID */
-};
-
 extern uint rtable_max_id;
 
 /* The public part of rtable structure */
@@ -130,7 +111,7 @@ struct rtable_private {
   u32 debug;				/* Debugging flags (D_*) */
 
   list imports;				/* Registered route importers */
-  struct rt_exporter exporter;		/* Exporter API structure */
+  struct lfjour journal;		/* Exporter API structure */
   TLIST_STRUCT_DEF(rt_flowspec_link, struct rt_flowspec_link) flowspec_links;	/* Links serving flowspec reload */
 
   struct hmap id_map;
@@ -140,8 +121,8 @@ struct rtable_private {
 					 * obstacle from this routing table.
 					 */
   struct event *nhu_uncork_event;	/* Helper event to schedule NHU on uncork */
-  struct settle export_settle;		/* Export batching settle timer */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
+  struct event *prune_event;		/* Event for prune execution */
   struct birdloop_flag_handler fh;	/* Handler for simple events */
   btime last_rt_change;			/* Last time when route changed */
   btime gc_time;			/* Time of last GC */
@@ -193,8 +174,6 @@ LOBJ_UNLOCK_CLEANUP(rtable, rtable);
 #define RT_PUB(tab)	SKIP_BACK(rtable, priv, tab)
 
 /* Flags for birdloop_flag() */
-#define RTF_CLEANUP	1
-#define RTF_EXPORT	4
 #define RTF_DELETE	8
 
 extern struct rt_cork {
@@ -279,7 +258,7 @@ struct rt_import_request {
   char *name;
   u8 trace_routes;
 
-  event_list *list;			/* Where to schedule announce events */
+  struct birdloop *loop;		/* Where to schedule cleanup event */
 
   void (*dump_req)(struct rt_import_request *req);
   void (*log_state_change)(struct rt_import_request *req, u8 state);
@@ -312,13 +291,13 @@ struct rt_import_hook {
   u8 stale_pruning;			/* Last prune started when this value was set at stale_valid */
 
   void (*stopped)(struct rt_import_request *);	/* Stored callback when import is stopped */
-  event announce_event;			/* This event announces table updates */
+  event cleanup_event;			/* Used to finally unhook the import from the table */
 };
 
 struct rt_pending_export {
+  LFJOUR_ITEM_INHERIT(li);
   struct rt_pending_export * _Atomic next;	/* Next export for the same destination */
   const rte *new, *new_best, *old, *old_best;
-  u64 seq;				/* Sequential ID (table-local) of the pending export */
 };
 
 struct rt_export_request {
@@ -365,8 +344,7 @@ static inline int rt_prefilter_net(const struct rt_prefilter *p, const net_addr 
 }
 
 struct rt_export_hook {
-  node n;
-  struct rt_exporter *table;		/* The connected table */
+  struct lfjour_recipient recipient;	/* Journal recipient structure */
 
   pool *pool;
 
@@ -381,7 +359,7 @@ struct rt_export_hook {
   btime last_state_change;		/* Time of last state transition */
 
   _Atomic u8 export_state;		/* Route export state (TES_*, see below) */
-  struct event event;			/* Event running all the export operations */
+  struct event *event;			/* Event running all the export operations */
 
   struct bmap seq_map;			/* Keep track which exports were already procesed */
 
@@ -389,6 +367,7 @@ struct rt_export_hook {
 
   /* Table-specific items */
 
+  rtable *tab;					/* The table pointer to use in corner cases */
   union {
     u32 feed_index;				/* Routing table iterator used during feeding */
     struct {
@@ -402,12 +381,10 @@ struct rt_export_hook {
     };
   };
 
-  struct rt_pending_export *_Atomic last_export;/* Last export processed */
-  struct rt_pending_export *rpe_next;	/* Next pending export to process */
-
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
   u8 feed_type;				/* Which feeding method is used (TFT_*, see below) */
 };
+
 
 #define TIS_DOWN	0
 #define TIS_UP		1
@@ -673,7 +650,6 @@ struct rt_show_data {
 };
 
 void rt_show(struct rt_show_data *);
-struct rt_show_data_rtable * rt_show_add_exporter(struct rt_show_data *d, struct rt_exporter *t, const char *name);
 struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t);
 
 /* Value of table definition mode in struct rt_show_data */
