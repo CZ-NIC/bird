@@ -1,8 +1,8 @@
 /*
  *	BIRD Library -- Generic lock-free structures
  *
- *	(c) 2023       Maria Matejka <mq@jmq.cz>
- *	(c) 2023       CZ.NIC, z.s.p.o.
+ *	(c) 2023--2024 Maria Matejka <mq@jmq.cz>
+ *	(c) 2023--2024 CZ.NIC, z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -12,6 +12,8 @@
 
 #include "lib/event.h"
 #include "lib/rcu.h"
+#include "lib/settle.h"
+#include "lib/tlists.h"
 
 #include <stdatomic.h>
 
@@ -147,4 +149,120 @@ lfuc_init(struct lfuc *c)
   atomic_store_explicit(&c->uc, 1, memory_order_release);
 }
 
+
+/**
+ * Lock-free journal.
+ */
+
+/* Journal item. Put LFJOUR_ITEM_INHERIT(name) into your structure
+ * to inherit lfjour_item */
+#define LFJOUR_ITEM	\
+  u64 seq;		\
+
+struct lfjour_item {
+  LFJOUR_ITEM;
+};
+
+#define LFJOUR_ITEM_INHERIT(name) union { \
+  struct lfjour_item name; \
+  struct { LFJOUR_ITEM; }; \
+}
+
+/* Journal item block. Internal structure, no need to check out. */
+#define TLIST_PREFIX lfjour_block
+#define TLIST_TYPE struct lfjour_block
+#define TLIST_ITEM n
+#define TLIST_WANT_ADD_TAIL
+
+struct lfjour_block {
+  TLIST_DEFAULT_NODE;
+  _Atomic u32 end;
+  _Atomic _Bool not_last;
+
+  struct lfjour_item _block[0];
+};
+
+/* Defines lfjour_block_list */
+#include "lib/tlists.h"
+
+/* Journal recipient. Inherit this in your implementation. */
+#define TLIST_PREFIX lfjour_recipient
+#define TLIST_TYPE struct lfjour_recipient
+#define TLIST_ITEM n
+#define TLIST_WANT_ADD_TAIL
+#define TLIST_WANT_WALK
+
+struct lfjour_recipient {
+  TLIST_DEFAULT_NODE;
+  event *event;					/* Event running when something is in the journal */
+  event_list *target;				/* Event target */
+  struct lfjour_item * _Atomic last;		/* Last item processed */
+  struct lfjour_item *cur;			/* Processing this now */
+  _Atomic u64 recipient_flags;			/* LFJOUR_R_* */
+};
+
+enum lfjour_recipient_flags {
+  LFJOUR_R_SEQ_RESET = 1,			/* Signalling of sequence number reset */
+};
+
+/* Defines lfjour_recipient_list */
+#include "lib/tlists.h"
+
+/* Journal base structure. Include this. */
+struct lfjour {
+  struct domain_generic *domain;		/* The journal itself belongs to this domain (if different from the loop) */
+  struct birdloop *loop;			/* Cleanup loop */
+  u32 item_size, item_count;			/* Allocation parameters */
+  struct lfjour_block_list pending;		/* List of packed journal blocks */
+  struct lfjour_item * _Atomic first;		/* First journal item to announce */
+  struct lfjour_item *open;			/* Journal item in progress */
+  u64 next_seq;					/* Next export to push has this ID */
+  struct lfjour_recipient_list recipients;	/* Announce updates to these */
+  event announce_kick_event;			/* Kicks announce_timer */
+  struct settle announce_timer;			/* Announces changes to recipients */
+  event cleanup_event;				/* Runs the journal cleanup routine */
+
+  /* Callback on item removal from journal */
+  void (*item_done)(struct lfjour *, struct lfjour_item *);
+
+  /* Callback when the cleanup routine is ending */
+  void (*cleanup_done)(struct lfjour *, u64 begin_seq, u64 end_seq);
+};
+
+struct lfjour_item *lfjour_push_prepare(struct lfjour *);
+void lfjour_push_commit(struct lfjour *);
+
+struct lfjour_item *lfjour_get(struct lfjour_recipient *);
+void lfjour_release(struct lfjour_recipient *);
+static inline _Bool lfjour_reset_seqno(struct lfjour_recipient *r)
+{
+  return atomic_fetch_and_explicit(&r->recipient_flags, ~LFJOUR_R_SEQ_RESET, memory_order_acq_rel) & LFJOUR_R_SEQ_RESET;
+}
+
+void lfjour_announce_now(struct lfjour *);
+u64 lfjour_pending_items(struct lfjour *);
+
+static inline void lfjour_schedule_cleanup(struct lfjour *j)
+{ ev_send_loop(j->loop, &j->cleanup_event); }
+
+static inline void lfjour_do_cleanup_now(struct lfjour *j)
+{
+  /* This requires the caller to own the cleanup event loop */
+  ev_postpone(&j->cleanup_event);
+  j->cleanup_event.hook(j->cleanup_event.data);
+}
+
+void lfjour_register(struct lfjour *, struct lfjour_recipient *);
+void lfjour_unregister(struct lfjour_recipient *);
+static inline uint lfjour_count_recipients(struct lfjour *j)
+{ return TLIST_LENGTH(lfjour_recipient, &j->recipients); }
+
+void lfjour_init(struct lfjour *, struct settle_config *);
+
+
+static inline struct lfjour *lfjour_of_recipient(struct lfjour_recipient *r)
+{
+  struct lfjour_recipient_list *list = lfjour_recipient_enlisted(r);
+  return list ? SKIP_BACK(struct lfjour, recipients, list) : NULL;
+}
 #endif
