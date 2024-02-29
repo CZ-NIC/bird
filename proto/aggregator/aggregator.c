@@ -700,7 +700,6 @@ create_route_ip4(struct aggregator_proto *p, const struct net_addr_ip4 *addr, st
 
   assert(addr->type == NET_IP4);
   net_copy_ip4((struct net_addr_ip4 *)&net_placeholder.net.n.addr, addr);
-  bucket->rte->src = p->p.main_source;
   aggregator_bucket_update(p, bucket, &net_placeholder.net);
 }
 
@@ -714,7 +713,6 @@ create_route_ip6(struct aggregator_proto *p, struct net_addr_ip6 *addr, struct a
 
   assert(addr->type == NET_IP6);
   net_copy_ip6((struct net_addr_ip6 *)&net_placeholder.n.n.addr, addr);
-  bucket->rte->src = p->p.main_source;
   aggregator_bucket_update(p, bucket, &net_placeholder.n);
 }
 
@@ -971,7 +969,7 @@ aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *b
       rta_set_static_attr(rta, bucket->rte->attrs, p->aggr_on[i].sa);
   }
 
-  struct rte *new = rte_get_temp(rta, bucket->rte->src);
+  struct rte *new = rte_get_temp(rta, p->p.main_source);
   new->net = net;
 
   log("=============== CREATE MERGED ROUTE ===============");
