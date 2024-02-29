@@ -73,11 +73,19 @@
     u32 _h = HASH_FN(v, id, id##_KEY((node)));				\
     HASH_TYPE(v) *_n, **_nn = (v).data + _h;				\
 									\
+    log(L_WARN "hash: %u", _h); \
+                                    \
     while ((*_nn) && (*_nn != (node)))					\
+    {       \
+      log(L_WARN "_nn: %p", *_nn);  \
       _nn = &(id##_NEXT((*_nn)));					\
+    }   \
 									\
     if (_n = *_nn)							\
+    {       \
+      log(L_WARN "Success %p", _n);       \
       HASH_DO_REMOVE(v,id,_nn);						\
+    }       \
     _n;									\
   })
 

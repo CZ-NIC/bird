@@ -65,6 +65,24 @@
 
 extern linpool *rte_update_pool;
 
+static void
+dump_hash_table(const struct aggregator_proto *p)
+{
+  log("================ HASH TABLE DUMP ================");
+
+  HASH_WALK(p->buckets, next_hash, b)
+  {
+    for (const struct rte *rte = b->rte; rte; rte = rte->next)
+    {
+      struct net_addr *addr = rte->net->n.addr;
+      log("bucket %p: addr: %N,\troute: %p, net: %p, src: %p", b, addr, rte, rte->net, rte->src);
+    }
+  }
+  HASH_WALK_END;
+
+  log("============== END HASH TABLE DUMP ==============");
+}
+
 static void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net);
 
 static inline int
@@ -671,6 +689,8 @@ print_prefixes(const struct trie_node *node, int type)
 static void
 create_route_ip4(struct aggregator_proto *p, const struct net_addr_ip4 *addr, struct aggregator_bucket *bucket)
 {
+  log("create route XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+
   struct {
     struct network net;
     union net_addr_union u;
@@ -699,6 +719,8 @@ create_route_ip6(struct aggregator_proto *p, struct net_addr_ip6 *addr, struct a
 static void
 collect_prefixes_helper_ip4(const struct trie_node *node, struct net_addr_ip4 *addr, struct aggregator_proto *p, int depth, int *count)
 {
+  log("collect prefixes XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+
   assert(node != NULL);
 
   if (is_leaf(node))
@@ -909,6 +931,8 @@ same_val_list(const struct f_val *v1, const struct f_val *v2, uint len)
 static void
 aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net)
 {
+  log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+
   /* Empty bucket */
   if (!bucket->rte)
   {
@@ -949,6 +973,8 @@ aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *b
   log("=============== CREATE MERGED ROUTE ===============");
   log("New route created: id = %d, protocol: %s", new->src->global_id, new->src->proto->name);
   log("===================================================");
+
+  log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
 
 
   /* merge filter needs one argument called "routes" */
@@ -1323,6 +1349,8 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     else
       new->attrs = rta_lookup(new->attrs);
 
+    log("new rte: %p, net: %p, src: %p, hash: %x", new, new->net, new->src, aggr_route_hash(new));
+
     /* Insert the new route into the bucket */
     struct aggregator_route *arte = sl_alloc(p->route_slab);
     *arte = (struct aggregator_route) {
@@ -1333,6 +1361,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     new_bucket->rte = &arte->rte;
     new_bucket->count++;
     HASH_INSERT2(p->routes, AGGR_RTE, p->p.pool, arte);
+    log("Inserting rte: %p, arte: %p, net: %p, src: %p, hash: %x", &arte->rte, arte, arte->rte.net, arte->rte.src, aggr_route_hash(&arte->rte));
   }
 
   /* Remove the old route from its bucket */
@@ -1350,6 +1379,8 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     rta_free(old_route->rte.attrs);
     sl_free(old_route);
   }
+
+  dump_hash_table(p);
 
   HASH_WALK(p->buckets, next_hash, bucket)
   {
@@ -1497,6 +1528,8 @@ aggregator_start(struct proto *P)
   arte->rte.net = default_net;
   default_net->routes = &arte->rte;
 
+  p->default_arte = arte;
+
   HASH_INSERT2(p->routes, AGGR_RTE, p->p.pool, arte);
   HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 
@@ -1511,16 +1544,61 @@ aggregator_shutdown(struct proto *P)
 {
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
 
+  HASH_WALK(p->buckets, next_hash, b)
+  {
+    log(L_WARN "Buckets: %u %p", _i, b);
+
+    for (struct rte *r = b->rte; r; r = r->next)
+    {
+      log(L_WARN "    in bucket: %p", SKIP_BACK(struct aggregator_route, rte, r));
+    }
+  }
+  HASH_WALK_END;
+
+  HASH_WALK(p->routes, next_hash, r)
+  {
+    log(L_WARN "Routes: %u %p, net: %p, src: %p, hash: %x", _i, r, r->rte.net, r->rte.src, aggr_route_hash(&r->rte));
+  }
+  HASH_WALK_END;
+
   HASH_WALK_DELSAFE(p->buckets, next_hash, b)
   {
     while (b->rte)
     {
+      {
+        HASH_WALK(p->routes, next_hash, r)
+        {
+          log(L_WARN "%u %p", _i, r);
+        }
+        HASH_WALK_END;
+      }
+
+      log("Hash table dump before");
+      dump_hash_table(p);
+
       struct aggregator_route *arte = SKIP_BACK(struct aggregator_route, rte, b->rte);
+      struct net_addr *addr = arte->rte.net->n.addr;
+
+      log("Removing arte %p, rte: %p, addr: %N, net: %p, src: %p, hash: %x",
+          arte, &arte->rte, addr, arte->rte.net, arte->rte.src, aggr_route_hash(&arte->rte));
+
+      net_addr_union *n = (void *)arte->rte.net->n.addr;
+      log("Net type: %d", n->n.type);
       b->rte = arte->rte.next;
       b->count--;
+      int count_before_remove = p->routes.count;
+
+      assert(n->n.type == NET_IP4);
+      log("Hash count before HASH_REMOVE: %d", count_before_remove);
       HASH_REMOVE(p->routes, AGGR_RTE, arte);
+      int count_after_remove = p->routes.count;
+      log("Hash count after HASH_REMOVE:  %d", count_after_remove);
+      assert(count_before_remove == count_after_remove + 1);
       rta_free(arte->rte.attrs);
       sl_free(arte);
+
+      log("Hash table dump after");
+      dump_hash_table(p);
     }
 
     ASSERT_DIE(b->count == 0);
