@@ -637,6 +637,7 @@ print_prefixes_ip4_helper(const struct trie_node *node, struct net_addr_ip4 *add
     ip4_setbit(&addr->prefix, depth);
     addr->pxlen = depth + 1;
     print_prefixes_ip4_helper(node->child[1], addr, depth + 1);
+    ip4_clrbit(&addr->prefix, depth);
   }
 }
 
@@ -668,6 +669,7 @@ print_prefixes_ip6_helper(const struct trie_node *node, struct net_addr_ip6 *add
     ip6_setbit(&addr->prefix, depth);
     addr->pxlen = depth + 1;
     print_prefixes_ip6_helper(node->child[1], addr, depth + 1);
+    ip6_clrbit(&addr->prefix, depth);
   }
 }
 
@@ -749,6 +751,7 @@ collect_prefixes_helper_ip4(const struct trie_node *node, struct net_addr_ip4 *a
     ip4_setbit(&addr->prefix, depth);
     addr->pxlen = depth + 1;
     collect_prefixes_helper_ip4(node->child[1], addr, p, depth + 1, count);
+    ip4_clrbit(&addr->prefix, depth);
   }
 }
 
@@ -783,6 +786,7 @@ collect_prefixes_helper_ip6(const struct trie_node *node, struct net_addr_ip6 *a
     ip6_setbit(&addr->prefix, depth);
     addr->pxlen = depth + 1;
     collect_prefixes_helper_ip6(node->child[1], addr, p, depth + 1, count);
+    ip6_clrbit(&addr->prefix, depth);
   }
 }
 
