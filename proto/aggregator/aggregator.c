@@ -669,7 +669,7 @@ print_prefixes(const struct trie_node *node, int type)
 }
 
 static void
-create_route_ip4(struct aggregator_proto *proto, const struct net_addr_ip4 *addr, struct aggregator_bucket *bucket)
+create_route_ip4(struct aggregator_proto *p, const struct net_addr_ip4 *addr, struct aggregator_bucket *bucket)
 {
   struct {
     struct network net;
@@ -678,12 +678,12 @@ create_route_ip4(struct aggregator_proto *proto, const struct net_addr_ip4 *addr
 
   assert(addr->type == NET_IP4);
   net_copy_ip4((struct net_addr_ip4 *)&net_placeholder.net.n.addr, addr);
-  bucket->rte->src = proto->p.main_source;
-  aggregator_bucket_update(proto, bucket, &net_placeholder.net);
+  bucket->rte->src = p->p.main_source;
+  aggregator_bucket_update(p, bucket, &net_placeholder.net);
 }
 
 static void
-create_route_ip6(struct aggregator_proto *proto, struct net_addr_ip6 *addr, struct aggregator_bucket *bucket)
+create_route_ip6(struct aggregator_proto *p, struct net_addr_ip6 *addr, struct aggregator_bucket *bucket)
 {
   struct {
     struct network n;
@@ -692,26 +692,26 @@ create_route_ip6(struct aggregator_proto *proto, struct net_addr_ip6 *addr, stru
 
   assert(addr->type == NET_IP6);
   net_copy_ip6((struct net_addr_ip6 *)&net_placeholder.n.n.addr, addr);
-  bucket->rte->src = proto->p.main_source;
-  aggregator_bucket_update(proto, bucket, &net_placeholder.n);
+  bucket->rte->src = p->p.main_source;
+  aggregator_bucket_update(p, bucket, &net_placeholder.n);
 }
 
 static void
-collect_prefixes_helper_ip4(const struct trie_node *node, struct net_addr_ip4 *addr, struct aggregator_proto *proto, int depth, int *count)
+collect_prefixes_helper_ip4(const struct trie_node *node, struct net_addr_ip4 *addr, struct aggregator_proto *p, int depth, int *count)
 {
   assert(node != NULL);
 
   if (is_leaf(node))
   {
     assert(node->bucket != NULL);
-    create_route_ip4(proto, addr, node->bucket);
+    create_route_ip4(p, addr, node->bucket);
     *count += 1;
     return;
   }
 
   if (node->bucket != NULL)
   {
-    create_route_ip4(proto, addr, node->bucket);
+    create_route_ip4(p, addr, node->bucket);
     *count += 1;
   }
 
@@ -719,33 +719,33 @@ collect_prefixes_helper_ip4(const struct trie_node *node, struct net_addr_ip4 *a
   {
     ip4_clrbit(&addr->prefix, depth);
     addr->pxlen = depth + 1;
-    collect_prefixes_helper_ip4(node->child[0], addr, proto, depth + 1, count);
+    collect_prefixes_helper_ip4(node->child[0], addr, p, depth + 1, count);
   }
 
   if (node->child[1])
   {
     ip4_setbit(&addr->prefix, depth);
     addr->pxlen = depth + 1;
-    collect_prefixes_helper_ip4(node->child[1], addr, proto, depth + 1, count);
+    collect_prefixes_helper_ip4(node->child[1], addr, p, depth + 1, count);
   }
 }
 
 static void
-collect_prefixes_helper_ip6(const struct trie_node *node, struct net_addr_ip6 *addr, struct aggregator_proto *proto, int depth, int *count)
+collect_prefixes_helper_ip6(const struct trie_node *node, struct net_addr_ip6 *addr, struct aggregator_proto *p, int depth, int *count)
 {
   assert(node != NULL);
 
   if (is_leaf(node))
   {
     assert(node->bucket != NULL);
-    create_route_ip6(proto, addr, node->bucket);
+    create_route_ip6(p, addr, node->bucket);
     *count += 1;
     return;
   }
 
   if (node->bucket != NULL)
   {
-    create_route_ip6(proto, addr, node->bucket);
+    create_route_ip6(p, addr, node->bucket);
     *count += 1;
   }
 
@@ -753,19 +753,19 @@ collect_prefixes_helper_ip6(const struct trie_node *node, struct net_addr_ip6 *a
   {
     ip6_clrbit(&addr->prefix, depth);
     addr->pxlen = depth + 1;
-    collect_prefixes_helper_ip6(node->child[0], addr, proto, depth + 1, count);
+    collect_prefixes_helper_ip6(node->child[0], addr, p, depth + 1, count);
   }
 
   if (node->child[1])
   {
     ip6_setbit(&addr->prefix, depth);
     addr->pxlen = depth + 1;
-    collect_prefixes_helper_ip6(node->child[1], addr, proto, depth + 1, count);
+    collect_prefixes_helper_ip6(node->child[1], addr, p, depth + 1, count);
   }
 }
 
 static void
-collect_prefixes(struct aggregator_proto *proto)
+collect_prefixes(struct aggregator_proto *p)
 {
   int count = 0;
   int type = NET_IP4;
@@ -775,14 +775,14 @@ collect_prefixes(struct aggregator_proto *proto)
     struct net_addr_ip4 *addr = allocz(sizeof(struct net_addr_ip4));
     addr->type = NET_IP4;
     addr->length = sizeof(struct net_addr_ip4);
-    collect_prefixes_helper_ip4(proto->root, addr, proto, 0, &count);
+    collect_prefixes_helper_ip4(p->root, addr, p, 0, &count);
   }
   else if (type == NET_IP6)
   {
     struct net_addr_ip6 *addr = allocz(sizeof(struct net_addr_ip6));
     addr->type = NET_IP6;
     addr->length = sizeof(struct net_addr_ip6);
-    collect_prefixes_helper_ip6(proto->root, addr, proto, 0, &count);
+    collect_prefixes_helper_ip6(p->root, addr, p, 0, &count);
   }
 
   log("%d prefixes collected", count);
@@ -792,26 +792,31 @@ collect_prefixes(struct aggregator_proto *proto)
  * Run Optimal Routing Table Constructor (ORTC) algorithm
  */
 static void
-calculate_trie(void *p)
+calculate_trie(void *P)
 {
-  struct aggregator_proto *proto = (struct aggregator_proto *)p;
+  struct aggregator_proto *p = (struct aggregator_proto *)P;
 
   log("====PREFIXES BEFORE ====");
-  print_prefixes(proto->root, NET_IP4);
+  log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+  print_prefixes(p->root, NET_IP4);
 
-  first_pass(proto->root, proto->trie_slab);
+  first_pass(p->root, p->trie_slab);
   log("====FIRST PASS====");
-  print_prefixes(proto->root, NET_IP4);
+  log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+  print_prefixes(p->root, NET_IP4);
 
-  second_pass(proto->root);
+  second_pass(p->root);
   log("====SECOND PASS====");
-  print_prefixes(proto->root, NET_IP4);
+  log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+  print_prefixes(p->root, NET_IP4);
 
-  third_pass(proto->root);
+  third_pass(p->root);
   log("====THIRD PASS====");
-  print_prefixes(proto->root, NET_IP4);
+  log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+  print_prefixes(p->root, NET_IP4);
 
-  collect_prefixes(proto);
+  collect_prefixes(p);
+  log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
 
   log("==== AGGREGATION DONE ====");
 }
