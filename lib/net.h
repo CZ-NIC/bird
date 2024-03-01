@@ -155,6 +155,24 @@ extern const u16 net_max_text_length[];
 
 #define NET_MAX_TEXT_LENGTH	256
 
+#define NET_PTR_UNION(_n)	SKIP_BACK(net_addr_union, n, (_n))
+#define NET_ASSERT_TYPE(_n, _t)	ASSERT_DIE((_n)->type == (_t))
+#define NET_PTR_GEN(_n, _t, _u)	({ \
+    net_addr_union *u = NET_PTR_UNION(_n); \
+    NET_ASSERT_TYPE(&(u->n), _t); \
+    &u->_u; })
+
+#define NET_PTR_IP4(_n)		NET_PTR_GEN((_n), NET_IP4,     ip4)
+#define NET_PTR_IP6(_n)		NET_PTR_GEN((_n), NET_IP6,     ip6)
+#define NET_PTR_VPN4(_n)	NET_PTR_GEN((_n), NET_VPN4,   vpn4)
+#define NET_PTR_VPN6(_n)	NET_PTR_GEN((_n), NET_VPN6,   vpn6)
+#define NET_PTR_ROA4(_n)	NET_PTR_GEN((_n), NET_ROA4,   roa4)
+#define NET_PTR_ROA6(_n)	NET_PTR_GEN((_n), NET_ROA6,   roa6)
+#define NET_PTR_FLOW4(_n)	NET_PTR_GEN((_n), NET_FLOW4, flow4)
+#define NET_PTR_FLOW6(_n)	NET_PTR_GEN((_n), NET_FLOW6, flow6)
+#define NET_PTR_IP6_SADR(_n)	NET_PTR_GEN((_n), NET_IP6_SADR, ip6_sadr)
+#define NET_PTR_MPLS(_n)	NET_PTR_GEN((_n), NET_MPLS, mpls)
+
 
 #define NET_ADDR_IP4(prefix,pxlen) \
   ((net_addr_ip4) { NET_IP4, pxlen, sizeof(net_addr_ip4), prefix })
