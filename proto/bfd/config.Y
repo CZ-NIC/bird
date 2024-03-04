@@ -29,7 +29,7 @@ CF_KEYWORDS(BFD, MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE,
 %type <iface> bfd_neigh_iface
 %type <a> bfd_neigh_local
 %type <i> bfd_neigh_multihop bfd_auth_type
-%type <net> opt_addr
+%type <bssc> bfd_show_sessions_args
 
 CF_GRAMMAR
 
@@ -182,24 +182,26 @@ bfd_neighbor: ipa bfd_neigh_iface bfd_neigh_local bfd_neigh_multihop
     cf_error("Multihop neighbor requires specified local address");
 };
 
-opt_addr:
-  /* empty */ {
-    net_addr addr;
-    addr.type = 0;
-    $$ = addr; }
- | net_ip4_
- | net_ip6_
- | IP4 { net_fill_ip4(&($$), $1, IP4_MAX_PREFIX_LENGTH); }
- | IP6 { net_fill_ip6(&($$), $1, IP6_MAX_PREFIX_LENGTH); }
-
-
 
 CF_CLI_HELP(SHOW BFD, ..., [[Show information about BFD protocol]]);
-CF_CLI(SHOW BFD SESSIONS, optproto opt_addr, [<name>] [<addr>], [[Show information about BFD sessions]])
-{ PROTO_WALK_CMD($4, &proto_bfd, p) bfd_show_sessions(p, 0, $5); };
 
-CF_CLI(SHOW BFD SESSIONS ALL, optproto opt_addr, [<name>] [<addr>], [[Show information about BFD sessions]])
-{ PROTO_WALK_CMD($5, &proto_bfd, p) bfd_show_sessions(p, 1, $6); };
+CF_CLI_HELP(SHOW BFD SESSIONS, ..., [[Show information about BFD sessions]]);
+CF_CLI(SHOW BFD SESSIONS, bfd_show_sessions_args, [<name>] [address <ip|prefix>] [(interface|dev) \"<name>\"] [ipv4|ipv6] [direct|multihop] [all], [[Show information about BFD sessions]])
+{ PROTO_WALK_CMD($4->name, &proto_bfd, p) bfd_show_sessions(p, $4); };
+
+bfd_show_sessions_args:
+   /* empty */ { $$ = cfg_allocz(sizeof(struct bfd_show_sessions_cmd)); }
+ | bfd_show_sessions_args CF_SYM_KNOWN { cf_assert_symbol($2, SYM_PROTO); $$->name = $2; }
+ | bfd_show_sessions_args ADDRESS net_or_ipa { net_copy(&($$->address), &($3)); }
+ | bfd_show_sessions_args INTERFACE text { $$->iface = if_get_by_name($3); }
+ | bfd_show_sessions_args DEV text { $$->iface = if_get_by_name($3); }
+ | bfd_show_sessions_args ALL { $$->verbose = 1; }
+ | bfd_show_sessions_args IPV4 { $$->ipv4 = 1; if ($$->ipv6) cf_error("Options 'ipv4' and 'ipv6' are mutually exclusive"); }
+ | bfd_show_sessions_args IPV6 { $$->ipv6 = 1; if ($$->ipv4) cf_error("Options 'ipv4' and 'ipv6' are mutually exclusive"); }
+ | bfd_show_sessions_args DIRECT { $$->direct = 1; if ($$->multihop) cf_error("Options 'direct' and 'multihop' are mutually exclusive"); }
+ | bfd_show_sessions_args MULTIHOP { $$->multihop = 1; if ($$->direct) cf_error("Options 'direct' and 'multihop' are mutually exclusive"); }
+ ;
+
 
 CF_CODE
 

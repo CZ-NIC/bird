@@ -1288,8 +1288,9 @@ This argument can be omitted if there exists only a single instance.
 	<tag><label id="cli-show-static">show static [<m/name/]</tag>
 	Show detailed information about static routes.
 
-	<tag><label id="cli-show-bfd-sessions">show bfd sessions [<m/name/]</tag>
-	Show information about BFD sessions.
+	<tag><label id="cli-show-bfd-sessions">show bfd sessions [<m/name/] [address (<m/IP/|<m/prefix/)] [(interface|dev) "<m/name/"] [ipv4|ipv6] [direct|multihop] [all]</tag>
+	Show information about BFD sessions. Options could be used to filter
+	entries, or in the case of the option <cf/all/ to give verbose output.
 
 	<tag><label id="cli-show-symbols">show symbols [table|filter|function|protocol|template|roa|<m/symbol/]</tag>
 	Show the list of symbols defined in the configuration (names of

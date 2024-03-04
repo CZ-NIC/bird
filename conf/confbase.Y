@@ -89,6 +89,7 @@ CF_DECLS
   struct lsadb_show_data *ld;
   struct mrt_dump_data *md;
   struct mpls_show_ranges_cmd *msrc;
+  struct bfd_show_sessions_cmd *bssc;
   struct iface *iface;
   void *g;
   btime time;

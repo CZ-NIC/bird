@@ -1256,7 +1256,7 @@ bfd_show_session(struct bfd_session *s, int details)
 }
 
 void
-bfd_show_sessions(struct proto *P, int details, net_addr addr)
+bfd_show_sessions(struct proto *P, struct bfd_show_sessions_cmd *args)
 {
   struct bfd_proto *p = (struct bfd_proto *) P;
 
@@ -1267,16 +1267,25 @@ bfd_show_sessions(struct proto *P, int details, net_addr addr)
   }
 
   cli_msg(-1020, "%s:", p->p.name);
-  if (!details)
+  if (!args->verbose)
     cli_msg(-1020, "%-25s %-10s %-10s %-12s  %8s %8s",
 	  "IP address", "Interface", "State", "Since", "Interval", "Timeout");
 
   HASH_WALK(p->session_hash_id, next_id, s)
   {
-    if (addr.type != 0 && !ipa_in_netX(s->addr, &addr))
+    if (args->address.type && !ipa_in_netX(s->addr, &args->address))
       continue;
 
-    bfd_show_session(s, details);
+    if (args->iface && (s->ifa->iface != args->iface))
+      continue;
+
+    if (ipa_is_ip4(s->addr) ? args->ipv6 :  args->ipv4)
+      continue;
+
+    if (s->ifa->iface ? args->multihop : args->direct)
+      continue;
+
+    bfd_show_session(s, args->verbose);
   }
   HASH_WALK_END;
 }
