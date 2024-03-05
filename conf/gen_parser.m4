@@ -48,6 +48,7 @@ m4_divert(2)CF_KEYWORDS(m4_translit($1, [[ ]], [[,]]))
 m4_divert(3)cli_cmd: CF_cmd
 CF_cmd: $1 $2 END')
 m4_define(CF_CLI_CMD, `')
+m4_define(CF_CLI_OPT, `')
 m4_define(CF_CLI_HELP, `')
 
 # ENUM declarations are ignored

@@ -546,6 +546,14 @@ CF_CLI(SHOW OSPF LSADB, lsadb_args, [global | area <id> | link] [type <num>] [ls
   ospf_sh_lsadb($4);
 };
 
+CF_CLI_OPT(SHOW OSPF LSADB GLOBAL)
+CF_CLI_OPT(SHOW OSPF LSADB AREA, <id>)
+CF_CLI_OPT(SHOW OSPF LSADB LINK)
+CF_CLI_OPT(SHOW OSPF LSADB TYPE, <num>)
+CF_CLI_OPT(SHOW OSPF LSADB LSID, <id>)
+CF_CLI_OPT(SHOW OSPF LSADB SELF)
+CF_CLI_OPT(SHOW OSPF LSADB ROUTER, <id>)
+
 lsadb_args:
    /* empty */ {
      $$ = cfg_allocz(sizeof(struct lsadb_show_data));

@@ -53,6 +53,11 @@ CF_CLI_HELP(MRT DUMP, [table <name>|\"<pattern>\"] [to \"<file>\"] [filter <filt
 CF_CLI(MRT DUMP, mrt_dump_args, [table <name>|\"<pattern>\"] [to \"<file>\"] [filter <filter>|where <where filter>], [[Save mrt table dump v2 of table name <t> right now]])
 { mrt_dump_cmd($3); } ;
 
+CF_CLI_OPT(MRT DUMP TABLE, <name>|\"<pattern>\")
+CF_CLI_OPT(MRT DUMP TO, \"<file>\")
+CF_CLI_OPT(MRT DUMP FILTER, <filter>)
+CF_CLI_OPT(MRT DUMP WHERE, <where filter>)
+
 mrt_dump_args:
    /* empty */ { $$ = cfg_allocz(sizeof(struct mrt_dump_data)); }
  | mrt_dump_args TABLE rtable	{ $$ = $1; $$->table_ptr = $3->table; }

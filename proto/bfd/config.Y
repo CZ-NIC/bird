@@ -189,6 +189,15 @@ CF_CLI_HELP(SHOW BFD SESSIONS, ..., [[Show information about BFD sessions]]);
 CF_CLI(SHOW BFD SESSIONS, bfd_show_sessions_args, [<name>] [address <ip|prefix>] [(interface|dev) \"<name>\"] [ipv4|ipv6] [direct|multihop] [all], [[Show information about BFD sessions]])
 { PROTO_WALK_CMD($4->name, &proto_bfd, p) bfd_show_sessions(p, $4); };
 
+CF_CLI_OPT(SHOW BFD SESSIONS ADDRESS, <ip>|<prefix>)
+CF_CLI_OPT(SHOW BFD SESSIONS INTERFACE, \"<name>\")
+CF_CLI_OPT(SHOW BFD SESSIONS DEV, \"<name>\")
+CF_CLI_OPT(SHOW BFD SESSIONS ALL)
+CF_CLI_OPT(SHOW BFD SESSIONS IPV4)
+CF_CLI_OPT(SHOW BFD SESSIONS IPV6)
+CF_CLI_OPT(SHOW BFD SESSIONS DIRECT)
+CF_CLI_OPT(SHOW BFD SESSIONS MULTIHOP)
+
 bfd_show_sessions_args:
    /* empty */ { $$ = cfg_allocz(sizeof(struct bfd_show_sessions_cmd)); }
  | bfd_show_sessions_args CF_SYM_KNOWN { cf_assert_symbol($2, SYM_PROTO); $$->name = $2; }
