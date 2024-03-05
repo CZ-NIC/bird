@@ -175,9 +175,6 @@ LOBJ_UNLOCK_CLEANUP(rtable, rtable);
 
 #define RT_PUB(tab)	SKIP_BACK(rtable, priv, tab)
 
-/* Flags for birdloop_flag() */
-#define RTF_DELETE	8
-
 extern struct rt_cork {
   _Atomic uint active;
   event_list queue;

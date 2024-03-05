@@ -2376,26 +2376,6 @@ rt_schedule_prune(struct rtable_private *tab)
 }
 
 static void
-rt_flag_handler(struct birdloop_flag_handler *fh, u32 flags)
-{
-  RT_LOCKED(RT_PUB(SKIP_BACK(struct rtable_private, fh, fh)), tab)
-  {
-    ASSERT_DIE(birdloop_inside(tab->loop));
-    rt_lock_table(tab);
-
-    if (flags & RTF_DELETE)
-    {
-      if (tab->hostcache)
-	rt_stop_export_locked(tab, tab->hostcache->req.hook);
-
-      rt_unlock_table(tab);
-    }
-
-    rt_unlock_table(tab);
-  }
-}
-
-static void
 rt_prune_timer(timer *t)
 {
   RT_LOCKED((rtable *) t->data, tab)
@@ -2685,7 +2665,6 @@ rt_setup(pool *pp, struct rtable_config *cf)
   hmap_init(&t->id_map, p, 1024);
   hmap_set(&t->id_map, 0);
 
-  t->fh = (struct birdloop_flag_handler) { .hook = rt_flag_handler, };
   t->nhu_event = ev_new_init(p, rt_next_hop_update, t);
   t->nhu_uncork_event = ev_new_init(p, rt_nhu_uncork, t);
   t->prune_timer = tm_new_init(p, rt_prune_timer, t, 0, 0);
@@ -3796,15 +3775,20 @@ rt_commit(struct config *new, struct config *old)
   if (old)
     {
       WALK_LIST(o, old->tables)
+      {
+	_Bool ok;
 	RT_LOCKED(o->table, tab)
 	{
-	  if (tab->deleted)
-	    continue;
+	  r = tab->deleted ? NULL : rt_find_table_config(new, o->name);
+	  ok = r && !new->shutdown && rt_reconfigure(tab, r, o);
+	}
 
-	  r = rt_find_table_config(new, o->name);
-	  if (r && !new->shutdown && rt_reconfigure(tab, r, o))
-	    continue;
+	if (ok)
+	  continue;
 
+	birdloop_enter(o->table->loop);
+	RT_LOCKED(o->table, tab)
+	{
 	  DBG("\t%s: deleted\n", o->name);
 	  tab->deleted = old;
 	  config_add_obstacle(old);
@@ -3812,12 +3796,17 @@ rt_commit(struct config *new, struct config *old)
 
 	  rt_check_cork_low(tab);
 
-	  if (tab->hcu_event && (ev_get_list(tab->hcu_event) == &rt_cork.queue))
-	    ev_postpone(tab->hcu_event);
+	  if (tab->hcu_event)
+	  {
+	    if (ev_get_list(tab->hcu_event) == &rt_cork.queue)
+	      ev_postpone(tab->hcu_event);
 
-	  /* Force one more loop run */
-	  birdloop_flag(tab->loop, RTF_DELETE);
+	    rt_stop_export_locked(tab, tab->hostcache->req.hook);
+	  }
+	  rt_unlock_table(tab);
 	}
+	birdloop_leave(o->table->loop);
+      }
     }
 
   WALK_LIST(r, new->tables)
