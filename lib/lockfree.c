@@ -12,6 +12,18 @@
 
 #define LOCAL_DEBUG
 
+_Thread_local struct lfuc_unlock_queue *lfuc_unlock_queue;
+
+void lfuc_unlock_deferred(void *_q)
+{
+  struct lfuc_unlock_queue *q = _q;
+  for (u32 i = 0; i < q->pos; i++)
+    lfuc_unlock_immediately(q->block[i].c, q->block[i].el, q->block[i].ev);
+
+  free_page(q);
+  lfuc_unlock_queue = NULL;
+}
+
 #if 0
 #define lfjour_debug(...) log(L_TRACE __VA_ARGS__)
 #define lfjour_debug_detailed(...) log(L_TRACE __VA_ARGS__)
