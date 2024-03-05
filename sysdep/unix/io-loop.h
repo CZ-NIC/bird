@@ -58,8 +58,6 @@ struct birdloop
   _Atomic u32 thread_transition;
 #define LTT_PING  1
 #define LTT_MOVE  2
-  _Atomic u32 flags;
-  struct birdloop_flag_handler *flag_handler;
 
   void (*stopped)(void *data);
   void *stop_data;
