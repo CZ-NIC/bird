@@ -2693,8 +2693,6 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
   UNLOCK_DOMAIN(rtable, dom);
 
-  /* Setup the service thread flag handler */
-  birdloop_flag_set_handler(t->loop, &t->fh);
   birdloop_leave(t->loop);
 
   return RT_PUB(t);

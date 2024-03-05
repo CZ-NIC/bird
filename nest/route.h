@@ -125,7 +125,6 @@ struct rtable_private {
   struct event *hcu_uncork_event;	/* Helper event to schedule HCU on uncork */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
   struct event *prune_event;		/* Event for prune execution */
-  struct birdloop_flag_handler fh;	/* Handler for simple events */
   btime last_rt_change;			/* Last time when route changed */
   btime gc_time;			/* Time of last GC */
   uint gc_counter;			/* Number of operations since last GC */

@@ -53,14 +53,6 @@ void birdloop_unlink(struct birdloop *loop);
 
 void birdloop_ping(struct birdloop *loop);
 
-struct birdloop_flag_handler {
-  void (*hook)(struct birdloop_flag_handler *, u32 flags);
-  void *data;
-};
-
-void birdloop_flag(struct birdloop *loop, u32 flag);
-void birdloop_flag_set_handler(struct birdloop *, struct birdloop_flag_handler *);
-
 /* Setup sockets */
 void birdloop_add_socket(struct birdloop *, struct birdsock *);
 void birdloop_remove_socket(struct birdloop *, struct birdsock *);

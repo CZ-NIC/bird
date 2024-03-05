@@ -188,34 +188,6 @@ birdloop_in_this_thread(struct birdloop *loop)
   return pthread_equal(pthread_self(), loop->thread->thread_id);
 }
 
-void
-birdloop_flag(struct birdloop *loop, u32 flag)
-{
-  atomic_fetch_or_explicit(&loop->flags, flag, memory_order_acq_rel);
-  birdloop_ping(loop);
-}
-
-void
-birdloop_flag_set_handler(struct birdloop *loop, struct birdloop_flag_handler *fh)
-{
-  ASSERT_DIE(birdloop_inside(loop));
-  loop->flag_handler = fh;
-}
-
-static int
-birdloop_process_flags(struct birdloop *loop)
-{
-  if (!loop->flag_handler)
-    return 0;
-
-  u32 flags = atomic_exchange_explicit(&loop->flags, 0, memory_order_acq_rel);
-  if (!flags)
-    return 0;
-
-  loop->flag_handler->hook(loop->flag_handler, flags);
-  return 1;
-}
-
 /*
  *	Wakeup code for birdloop
  */
@@ -1482,9 +1454,6 @@ birdloop_run(void *_loop)
 
     /* Run timers */
     timers_fire(&loop->time, 0);
-
-    /* Run flag handlers */
-    repeat += birdloop_process_flags(loop);
 
     /* Run events */
     repeat += ev_run_list(&loop->event_list);
