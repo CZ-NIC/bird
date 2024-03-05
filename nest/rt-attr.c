@@ -143,14 +143,14 @@ struct ea_class ea_gen_nexthop = {
 ea_gen_hostentry_stored(const eattr *ea)
 {
   struct hostentry_adata *had = (struct hostentry_adata *) ea->u.ptr;
-  had->he->uc++;
+  lfuc_lock(&had->he->uc);
 }
 
 static void
 ea_gen_hostentry_freed(const eattr *ea)
 {
   struct hostentry_adata *had = (struct hostentry_adata *) ea->u.ptr;
-  had->he->uc--;
+  lfuc_unlock(&had->he->uc, birdloop_event_list(had->he->owner->loop), had->he->owner->hcu_event);
 }
 
 struct ea_class ea_gen_hostentry = {
