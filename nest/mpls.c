@@ -1196,8 +1196,8 @@ inline void mpls_lock_fec(struct mpls_fec *fec)
 
 inline void mpls_unlock_fec(struct mpls_fec *fec)
 {
-  UNUSED u64 s = lfuc_unlock(&fec->uc, birdloop_event_list(fec->map->loop), fec->map->cleanup_event);
-  DBGL("Unlocked FEC %p %u, now %lu", fec, fec->label, s);
+  lfuc_unlock(&fec->uc, birdloop_event_list(fec->map->loop), fec->map->cleanup_event);
+  DBGL("Unlocked FEC %p %u (deferred)", fec, fec->label);
 }
 
 static inline void
