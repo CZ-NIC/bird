@@ -678,13 +678,15 @@ print_prefixes(const struct trie_node *node, int type)
 {
   if (type == NET_IP4)
   {
-    struct net_addr_ip4 *addr = allocz(sizeof(struct net_addr_ip4));
-    print_prefixes_ip4_helper(node, addr, 0);
+    struct net_addr_ip4 addr = { 0 };
+    net_fill_ip4((net_addr *)&addr, IP4_NONE, 0);
+    print_prefixes_ip4_helper(node, &addr, 0);
   }
   else if (type == NET_IP6)
   {
-    struct net_addr_ip6 *addr = allocz(sizeof(struct net_addr_ip6));
-    print_prefixes_ip6_helper(node, addr, 0);
+    struct net_addr_ip6 addr = { 0 };
+    net_fill_ip6((net_addr *)&addr, IP6_NONE, 0);
+    print_prefixes_ip6_helper(node, &addr, 0);
   }
 }
 
@@ -796,18 +798,18 @@ collect_prefixes(struct aggregator_proto *p)
 
   if (type == NET_IP4)
   {
-    struct net_addr_ip4 *addr = allocz(sizeof(struct net_addr_ip4));
-    addr->type = NET_IP4;
-    addr->length = sizeof(struct net_addr_ip4);
-    collect_prefixes_helper_ip4(p->root, addr, p, 0, &count);
+    struct net_addr_ip4 addr = { 0 };
+    net_fill_ip4((net_addr *)&addr, IP4_NONE, 0);
+    collect_prefixes_helper_ip4(p->root, &addr, p, 0, &count);
   }
   else if (type == NET_IP6)
   {
-    struct net_addr_ip6 *addr = allocz(sizeof(struct net_addr_ip6));
-    addr->type = NET_IP6;
-    addr->length = sizeof(struct net_addr_ip6);
-    collect_prefixes_helper_ip6(p->root, addr, p, 0, &count);
+    struct net_addr_ip6 addr = { 0 };
+    net_fill_ip6((net_addr *)&addr, IP6_NONE, 0);
+    collect_prefixes_helper_ip6(p->root, &addr, p, 0, &count);
   }
+  else
+    bug("Invalid NET type");
 
   log("%d prefixes collected", count);
 }
@@ -1504,7 +1506,7 @@ aggregator_start(struct proto *P)
   };
 
   struct network *default_net = mb_alloc(P->pool, sizeof(struct network) + sizeof(struct net_addr_ip4));
-  net_fill_ip4(default_net->n.addr, (struct ip4_addr) { 0 }, 0);
+  net_fill_ip4(default_net->n.addr, IP4_NONE, 0);
   log("Creating net %p for default route", default_net);
 
   /* Create route attributes with zero nexthop */
