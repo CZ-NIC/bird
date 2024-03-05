@@ -616,13 +616,13 @@ print_prefixes_ip4_helper(const struct trie_node *node, struct net_addr_ip4 *add
 
   if (is_leaf(node))
   {
-    log("%I4/%d\t-> %p", addr->prefix, addr->pxlen, node->bucket);
+    log("%N\t-> %p", addr, node->bucket);
     return;
   }
 
   if (node->bucket != NULL)
   {
-    log("%I4/%d\t-> %p", addr->prefix, addr->pxlen, node->bucket);
+    log("%N\t-> %p", addr, node->bucket);
   }
 
   if (node->child[0])
@@ -648,13 +648,13 @@ print_prefixes_ip6_helper(const struct trie_node *node, struct net_addr_ip6 *add
 
   if (is_leaf(node))
   {
-    log("%I6/%d\t-> %p", addr->prefix, addr->pxlen, node->bucket);
+    log("%N\t-> %p", addr, node->bucket);
     return;
   }
 
   if (node->bucket != NULL)
   {
-    log("%I6/%d\n-> %p", addr->prefix, addr->pxlen, node->bucket);
+    log("%N\t-> %p", addr, node->bucket);
   }
 
   if (node->child[0])
@@ -1393,7 +1393,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
       union net_addr_union *uptr = (net_addr_union *)rte->net->n.addr;
       trie_insert_prefix(uptr, p->root, bucket, p->trie_slab);
       const struct net_addr_ip4 * const ip4 = &uptr->ip4;
-      log("INSERT %I4/%d", ip4->prefix.addr, ip4->pxlen);
+      log("INSERT %N", ip4);
     }
   }
   HASH_WALK_END;
