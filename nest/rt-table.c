@@ -4797,10 +4797,7 @@ hostentry_tmp_unlock(resource *r)
 {
   struct hostentry_tmp_lock *l = SKIP_BACK(struct hostentry_tmp_lock, r, r);
   RT_LOCKED(l->tab, tab)
-  {
     l->he->uc--;
-    rt_unlock_table(tab);
-  }
 }
 
 static void
@@ -4845,7 +4842,6 @@ rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep)
   l->he = he;
   l->tab = RT_PUB(tab);
   l->he->uc++;
-  rt_lock_table(tab);
 
   return he;
 }
