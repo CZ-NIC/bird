@@ -362,7 +362,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	IF, THEN, ELSE, CASE,
 	FOR, DO,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
-	FROM, GW, NET, PROTO, SOURCE, SCOPE, DEST, IFNAME, IFINDEX, WEIGHT, GW_MPLS, ONLINK,
+	FROM, GW, NET, PROTO, SOURCE, SCOPE, DEST, IFNAME, IFINDEX, WEIGHT, GW_MPLS, GW_MPLS_STACK, ONLINK,
 	PREFERENCE,
 	ROA_CHECK,
 	DEFINED,
@@ -879,6 +879,7 @@ static_attr:
  | WEIGHT  { $$ = f_new_static_attr(T_INT,        SA_WEIGHT,	0); }
  | PREFERENCE { $$ = f_new_static_attr(T_INT,	  SA_PREF,	0); }
  | GW_MPLS { $$ = f_new_static_attr(T_INT,        SA_GW_MPLS,	0); }
+ | GW_MPLS_STACK { $$ = f_new_static_attr(T_CLIST, SA_GW_MPLS_STACK,	0); }
  | ONLINK  { $$ = f_new_static_attr(T_BOOL,       SA_ONLINK,	0); }
  ;
 

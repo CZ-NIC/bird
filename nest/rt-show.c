@@ -72,7 +72,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   if (a->dest == RTD_UNICAST)
     for (nh = &(a->nh); nh; nh = nh->next)
     {
-      char mpls[MPLS_MAX_LABEL_STACK*12 + 5], *lsp = mpls;
+      char mpls[MPLS_MAX_LABEL_STRING], *lsp = mpls;
       char *onlink = (nh->flags & RNF_ONLINK) ? " onlink" : "";
       char weight[16] = "";
 

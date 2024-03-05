@@ -392,6 +392,7 @@ static inline ip6_addr ip6_ntoh(ip6_addr a)
 #define MPLS_MAX_LABEL 0x100000
 
 #define MPLS_MAX_LABEL_STACK 8
+#define MPLS_MAX_LABEL_STRING MPLS_MAX_LABEL_STACK*12 + 5
 typedef struct mpls_label_stack {
   uint len;
   u32 stack[MPLS_MAX_LABEL_STACK];

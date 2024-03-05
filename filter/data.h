@@ -120,6 +120,7 @@ enum f_sa_code {
   SA_WEIGHT,
   SA_PREF,
   SA_GW_MPLS,
+  SA_GW_MPLS_STACK,
   SA_ONLINK,
 } PACKED;
 
