@@ -3815,8 +3815,8 @@ rt_commit(struct config *new, struct config *old)
 
 	  rt_check_cork_low(tab);
 
-	  if (tab->hostcache && ev_get_list(&tab->hostcache->update) == &rt_cork.queue)
-	    ev_postpone(&tab->hostcache->update);
+	  if (tab->hcu_event && (ev_get_list(tab->hcu_event) == &rt_cork.queue))
+	    ev_postpone(tab->hcu_event);
 
 	  /* Force one more loop run */
 	  birdloop_flag(tab->loop, RTF_DELETE);
@@ -4226,7 +4226,7 @@ static void
 hc_notify_log_state_change(struct rt_export_request *req, u8 state)
 {
   struct hostcache *hc = SKIP_BACK(struct hostcache, req, req);
-  rt_trace((rtable *) hc->update.data, D_STATES, "HCU Export state changed to %s", rt_export_state_name(state));
+  rt_trace(hc->tab, D_STATES, "HCU Export state changed to %s", rt_export_state_name(state));
 }
 
 static void
@@ -4234,8 +4234,8 @@ hc_notify_export_one(struct rt_export_request *req, const net_addr *net, struct 
 {
   struct hostcache *hc = SKIP_BACK(struct hostcache, req, req);
 
-  RT_LOCKED((rtable *) hc->update.data, tab)
-    if (ev_active(&hc->update) || !trie_match_net(hc->trie, net))
+  RT_LOCKED(hc->tab, tab)
+    if (ev_active(tab->hcu_event) || !trie_match_net(hc->trie, net))
       /* No interest in this update, mark seen only */
       rpe_mark_seen_all(req->hook, first, NULL, NULL);
     else
@@ -4253,8 +4253,8 @@ hc_notify_export_one(struct rt_export_request *req, const net_addr *net, struct 
       /* Yes, something has actually changed. Do the hostcache update. */
       if ((o != RTE_VALID_OR_NULL(new_best))
 	  && (atomic_load_explicit(&req->hook->export_state, memory_order_acquire) == TES_READY)
-	  && !ev_active(&hc->update))
-	ev_send_loop(tab->loop, &hc->update);
+	  && !ev_active(tab->hcu_event))
+	ev_send_loop(tab->loop, tab->hcu_event);
     }
 }
 
@@ -4272,14 +4272,13 @@ rt_init_hostcache(struct rtable_private *tab)
   hc->lp = lp_new(tab->rp);
   hc->trie = f_new_trie(hc->lp, 0);
 
-  hc->update = (event) {
-    .hook = rt_update_hostcache,
-    .data = tab,
-  };
+  hc->tab = RT_PUB(tab);
 
+  tab->hcu_event = ev_new_init(tab->rp, rt_update_hostcache, tab);
+  tab->hcu_uncork_event = ev_new_init(tab->rp, rt_update_hostcache, tab);
   tab->hostcache = hc;
 
-  ev_send_loop(tab->loop, &hc->update);
+  ev_send_loop(tab->loop, tab->hcu_event);
 }
 
 static void
@@ -4293,7 +4292,7 @@ rt_free_hostcache(struct rtable_private *tab)
       struct hostentry *he = SKIP_BACK(struct hostentry, ln, n);
       rta_free(he->src);
 
-      if (he->uc)
+      if (!lfuc_finished(&he->uc))
 	log(L_ERR "Hostcache is not empty in table %s", tab->name);
     }
 
@@ -4429,7 +4428,7 @@ rt_update_hostcache(void *data)
   if (!hc->req.hook)
     return;
 
-  if (rt_cork_check(&hc->update))
+  if (rt_cork_check(tab->hcu_uncork_event))
   {
     rt_trace(tab, D_STATES, "Hostcache update corked");
     return;
@@ -4448,11 +4447,11 @@ rt_update_hostcache(void *data)
   WALK_LIST_DELSAFE(n, x, hc->hostentries)
     {
       he = SKIP_BACK(struct hostentry, ln, n);
-      if (!he->uc)
-	{
-	  hc_delete_hostentry(hc, tab->rp, he);
-	  continue;
-	}
+      if (lfuc_finished(&he->uc))
+      {
+	hc_delete_hostentry(hc, tab->rp, he);
+	continue;
+      }
 
       if (rt_update_hostentry(tab, he))
 	nhu_pending[he->tab->id] = he->tab;
@@ -4464,36 +4463,6 @@ rt_update_hostcache(void *data)
       RT_LOCKED(nhu_pending[i], dst)
 	rt_schedule_nhu(dst);
 }
-
-struct hostentry_tmp_lock {
-  resource r;
-  rtable *tab;
-  struct hostentry *he;
-};
-
-static void
-hostentry_tmp_unlock(resource *r)
-{
-  struct hostentry_tmp_lock *l = SKIP_BACK(struct hostentry_tmp_lock, r, r);
-  RT_LOCKED(l->tab, tab)
-    l->he->uc--;
-}
-
-static void
-hostentry_tmp_lock_dump(resource *r, unsigned indent UNUSED)
-{
-  struct hostentry_tmp_lock *l = SKIP_BACK(struct hostentry_tmp_lock, r, r);
-  debug("he=%p tab=%s\n", l->he, l->tab->name);
-}
-
-struct resclass hostentry_tmp_lock_class = {
-  .name = "Temporary hostentry lock",
-  .size = sizeof(struct hostentry_tmp_lock),
-  .free = hostentry_tmp_unlock,
-  .dump = hostentry_tmp_lock_dump,
-  .lookup = NULL,
-  .memsize = NULL,
-};
 
 static struct hostentry *
 rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep)
@@ -4510,17 +4479,19 @@ rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep)
     if (ipa_equal(he->addr, a) && ipa_equal(he->link, link) && (he->tab == dep))
       break;
 
-  if (!he)
+  if (he)
+    lfuc_lock(&he->uc);
+  else
   {
     he = hc_new_hostentry(hc, tab->rp, a, link, dep, k);
+    lfuc_lock_revive(&he->uc);
+
     he->owner = RT_PUB(tab);
     rt_update_hostentry(tab, he);
   }
 
-  struct hostentry_tmp_lock *l = ralloc(tmp_res.pool, &hostentry_tmp_lock_class);
-  l->he = he;
-  l->tab = RT_PUB(tab);
-  l->he->uc++;
+  /* Free the hostentry if filtered out */
+  lfuc_unlock(&he->uc, birdloop_event_list(tab->loop), tab->hcu_event);
 
   return he;
 }

@@ -92,6 +92,7 @@ extern uint rtable_max_id;
     struct birdloop *loop;		/* Service thread */					\
     netindex_hash *netindex;		/* Prefix index for this table */			\
     event *nhu_event;			/* Nexthop updater */					\
+    event *hcu_event;			/* Hostcache updater */					\
 
 /* The complete rtable structure */
 struct rtable_private {
@@ -121,6 +122,7 @@ struct rtable_private {
 					 * obstacle from this routing table.
 					 */
   struct event *nhu_uncork_event;	/* Helper event to schedule NHU on uncork */
+  struct event *hcu_uncork_event;	/* Helper event to schedule HCU on uncork */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
   struct event *prune_event;		/* Event for prune execution */
   struct birdloop_flag_handler fh;	/* Handler for simple events */
@@ -503,14 +505,15 @@ struct hostentry {
   rtable *owner;			/* Nexthop owner table */
   struct hostentry *next;		/* Next in hash chain */
   unsigned hash_key;			/* Hash key */
-  unsigned uc;				/* Use count */
-  ea_list *src;				/* Source attributes */
-  byte nexthop_linkable;		/* Nexthop list is completely non-device */
   u32 igp_metric;			/* Chosen route IGP metric */
+  ea_list *src;				/* Source attributes */
+  struct lfuc uc;			/* Use count */
+  byte nexthop_linkable;		/* Nexthop list is completely non-device */
 };
 
 struct hostcache {
   slab *slab;				/* Slab holding all hostentries */
+  rtable *tab;				/* Parent routing table */
   struct hostentry **hash_table;	/* Hash table for hostentries */
   unsigned hash_order, hash_shift;
   unsigned hash_max, hash_min;
@@ -518,7 +521,6 @@ struct hostcache {
   linpool *lp;				/* Linpool for trie */
   struct f_trie *trie;			/* Trie of prefixes that might affect hostentries */
   list hostentries;			/* List of all hostentries */
-  event update;
   struct rt_export_request req;		/* Notifier */
 };
 
