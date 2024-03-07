@@ -815,15 +815,14 @@ static void
 collect_prefixes(struct aggregator_proto *p)
 {
   int count = 0;
-  int type = NET_IP4;
 
-  if (type == NET_IP4)
+  if (p->addr_type == NET_IP4)
   {
     struct net_addr_ip4 addr = { 0 };
     net_fill_ip4((net_addr *)&addr, IP4_NONE, 0);
     collect_prefixes_helper_ip4(p->root, &addr, p, 0, &count);
   }
-  else if (type == NET_IP6)
+  else if (p->addr_type == NET_IP6)
   {
     struct net_addr_ip6 addr = { 0 };
     net_fill_ip6((net_addr *)&addr, IP6_NONE, 0);
@@ -845,26 +844,44 @@ calculate_trie(void *P)
 
   log("====PREFIXES BEFORE ====");
   log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
-  print_prefixes(p->root, NET_IP4);
 
-  first_pass(p->root, p->trie_slab);
-  log("====FIRST PASS====");
-  log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
-  print_prefixes(p->root, NET_IP4);
+  if (p->addr_type == NET_IP4)
+  {
+    first_pass(p->root, p->trie_slab);
+    log("====FIRST PASS====");
+    log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+    print_prefixes(p->root, NET_IP4);
 
-  second_pass(p->root);
-  log("====SECOND PASS====");
-  log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
-  print_prefixes(p->root, NET_IP4);
+    second_pass(p->root);
+    log("====SECOND PASS====");
+    log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+    print_prefixes(p->root, NET_IP4);
 
-  third_pass(p->root);
-  log("====THIRD PASS====");
-  log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
-  print_prefixes(p->root, NET_IP4);
+    third_pass(p->root);
+    log("====THIRD PASS====");
+    log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+    print_prefixes(p->root, NET_IP4);
+  }
+  else if (p->addr_type == NET_IP6)
+  {
+    first_pass(p->root, p->trie_slab);
+    log("====FIRST PASS====");
+    log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+    print_prefixes(p->root, NET_IP6);
+
+    second_pass(p->root);
+    log("====SECOND PASS====");
+    log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+    print_prefixes(p->root, NET_IP6);
+
+    third_pass(p->root);
+    log("====THIRD PASS====");
+    log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+    print_prefixes(p->root, NET_IP6);
+  }
 
   collect_prefixes(p);
   log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
-
   log("==== AGGREGATION DONE ====");
 }
 
