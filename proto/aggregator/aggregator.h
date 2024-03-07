@@ -67,11 +67,10 @@ struct aggregator_proto {
   event reload_buckets;
 
   /* Aggregation trie */
+  uint addr_type;
   slab *trie_slab;
   struct trie_node *root;
-
   struct event reload_trie;
-
   struct aggregator_route *default_arte;
 };
 

@@ -151,22 +151,18 @@ delete_trie(struct trie_node *node)
  * Insert prefix in @addr to prefix trie with beginning at @root and assign @bucket to this prefix
  */
 static void
-trie_insert_prefix(const union net_addr_union *addr, struct trie_node * const root, struct aggregator_bucket *bucket, slab *trie_slab)
+trie_insert_prefix_ip4(const struct net_addr_ip4 *addr, struct trie_node *const root, struct aggregator_bucket *bucket, slab *trie_slab)
 {
   assert(addr != NULL);
   assert(bucket != NULL);
   assert(root != NULL);
   assert(trie_slab != NULL);
 
-  if (addr->n.type != NET_IP4)
-    return;
-
-  const struct net_addr_ip4 * const ip4 = &addr->ip4;
   struct trie_node *node = root;
 
-  for (u32 i = 0; i < ip4->pxlen; i++)
+  for (u32 i = 0; i < addr->pxlen; i++)
   {
-    u32 bit = (ip4->prefix.addr >> (31 - i)) & 1;
+    u32 bit = ip4_getbit(addr->prefix, i);
 
     if (!node->child[bit])
     {
@@ -180,6 +176,31 @@ trie_insert_prefix(const union net_addr_union *addr, struct trie_node * const ro
 
   /* Assign bucket to the last node */
   node->bucket = bucket;
+}
+
+static void
+trie_insert_prefix_ip6(const struct net_addr_ip6 *addr, struct trie_node * const root, struct aggregator_bucket *bucket, slab *trie_slab)
+{
+  assert(addr != NULL);
+  assert(bucket != NULL);
+  assert(root != NULL);
+  assert(trie_slab != NULL);
+
+  struct trie_node *node = root;
+
+  for (u32 i = 0; i < addr->pxlen; i++)
+  {
+    u32 bit = ip6_getbit(addr->prefix, i);
+
+    if (!node->child[bit])
+    {
+      struct trie_node *new = new_node(trie_slab);
+      new->parent = node;
+      node->child[bit] = new;
+    }
+
+    node = node->child[bit];
+  }
 }
 
 /*
@@ -1391,9 +1412,20 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     for (const struct rte *rte = bucket->rte; rte; rte = rte->next)
     {
       union net_addr_union *uptr = (net_addr_union *)rte->net->n.addr;
-      trie_insert_prefix(uptr, p->root, bucket, p->trie_slab);
-      const struct net_addr_ip4 * const ip4 = &uptr->ip4;
-      log("INSERT %N", ip4);
+      assert(uptr->n.type == NET_IP4 || uptr->n.type == NET_IP6);
+
+      if (uptr->n.type == NET_IP4)
+      {
+        const struct net_addr_ip4 *addr = &uptr->ip4;
+        trie_insert_prefix_ip4(addr, p->root, bucket, p->trie_slab);
+        log("INSERT %N", addr);
+      }
+      else if (uptr->n.type == NET_IP6)
+      {
+        const struct net_addr_ip6 *addr = &uptr->ip6;
+        trie_insert_prefix_ip6(addr, p->root, bucket, p->trie_slab);
+        log("INSERT %N", addr);
+      }
     }
   }
   HASH_WALK_END;
@@ -1485,6 +1517,8 @@ static int
 aggregator_start(struct proto *P)
 {
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
+
+  p->addr_type = p->src->table->addr_type;
 
   p->bucket_slab = sl_new(P->pool, sizeof(struct aggregator_bucket) + AGGR_DATA_MEMSIZE);
   HASH_INIT(p->buckets, P->pool, AGGR_BUCK_ORDER);
