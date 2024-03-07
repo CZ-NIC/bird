@@ -82,7 +82,14 @@ aggregator_proto_item:
 ;
 
 aggregator_proto_opts: /* empty */ | aggregator_proto_opts aggregator_proto_item ';' ;
-aggregator_proto: aggregator_proto_start proto_name '{' aggregator_proto_opts '}' ;
+aggregator_proto: aggregator_proto_start proto_name '{' aggregator_proto_opts '}' {
+  if (AGGREGATOR_CFG->src->table->addr_type != AGGREGATOR_CFG->dst->table->addr_type)
+    cf_error("Both rtables in aggregator must have the same network type");
+
+  if (AGGREGATOR_CFG->net_present == 0)
+    if (AGGREGATOR_CFG->src->table->addr_type != NET_IP4 && AGGREGATOR_CFG->src->table->addr_type != NET_IP6)
+      cf_error("Trie aggregation is available only for IP4 or IPv6 networks");
+};
 
 
 aggr_list:
