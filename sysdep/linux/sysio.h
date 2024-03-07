@@ -8,7 +8,6 @@
 
 #include "sysdep/linux/tcp-ao.h"
 
-
 #ifndef IPV6_MINHOPCOUNT
 #define IPV6_MINHOPCOUNT 73
 #endif
@@ -25,14 +24,6 @@
 #define TCP_MD5SIG_FLAG_PREFIX 1
 #endif
 
-#ifndef TCP_AO_ADD_KEY
-#define TCP_AO_ADD_KEY		38	/* Add/Set MKT */
-#define TCP_AO_DEL_KEY		39	/* Delete MKT */
-#define TCP_AO_INFO		40	/* Set/list TCP-AO per-socket options */
-#define TCP_AO_GET_KEYS		41	/* List MKT(s) */
-#define TCP_AO_REPAIR		42	/* Get/Set SNEs and ISNs */
-
-#endif
 
 /* We redefine the tcp_md5sig structure with different name to avoid collision with older headers */
 struct tcp_md5sig_ext {
@@ -176,11 +167,11 @@ sk_prepare_cmsgs4(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
 /*
  *	Miscellaneous Linux socket syscalls
  */
+
 int
 sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int setkey UNUSED)
 {
   struct tcp_md5sig_ext md5;
-  log("md5 password is %i, socket fd %i", passwd, s->fd);
 
   memset(&md5, 0, sizeof(md5));
   sockaddr_fill((sockaddr *) &md5.tcpm_addr, s->af, remote, ifa, 0);
@@ -198,7 +189,7 @@ sk_set_md5_auth(sock *s, ip_addr local UNUSED, ip_addr remote, int pxlen, struct
 
   if (pxlen < 0)
   {
-    if (setsockopt(s->fd, SOL_TCP, TCP_MD5SIG_EXT, &md5, sizeof(md5)) < 0)
+    if (setsockopt(s->fd, SOL_TCP, TCP_MD5SIG, &md5, sizeof(md5)) < 0)
       if (errno == ENOPROTOOPT)
 	ERR_MSG("Kernel does not support TCP MD5 signatures");
       else
@@ -230,11 +221,11 @@ void log_tcp_ao_info(int sock_fd)
 
   if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, &len))
   {
-     log("log tcp ao info failed with err code %i", errno);
-     return;
+    log(L_WARN "TCP AO: log tcp ao info failed with err code %i", errno);
+    return;
   }
   else
-    log("current key id %i (rem), next key %i (loc),\n set current %i, ao required %i\n good packets %i, bad packets %i",
+    log(L_INFO "TCP AO:\ncurrent key id %i (rem), next key %i (loc),\n set current %i, is ao required %i\n good packets %i, bad packets %i",
 		    tmp.current_key, tmp.rnext, tmp.set_current, tmp.ao_required, tmp.pkt_good, tmp.pkt_bad);
 }
 
@@ -246,7 +237,7 @@ int get_current_key_id(int sock_fd)
 
   if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, &len))
   {
-     log("get current ao key failed %i", errno);
+     log(L_WARN "TCP AO: Getting current ao key for socket file descriptor %i failed with errno %i", sock_fd, errno);
      return -1;
   }
   else
@@ -261,8 +252,8 @@ int get_rnext_key_id(int sock_fd)
 
   if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, &len))
   {
-     log("get rnext ao key failed %i", errno);
-     return -1;
+    log(L_WARN "TCP AO: Getting rnext ao key for socket file descriptor %i failed with errno %i", sock_fd, errno);
+    return -1;
   }
   else
     return tmp.rnext;
@@ -278,7 +269,7 @@ int get_num_ao_keys(int sock_fd)
 
   if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_GET_KEYS, &tmp, &len))
   {
-     log("tcp ao get keys failed with err code %i", errno);
+     log(L_WARN "TCP AO: get keys on socket fd %i failed with err code %i", sock_fd, errno);
      return -1;
   }
   return tmp.nkeys;
@@ -286,7 +277,7 @@ int get_num_ao_keys(int sock_fd)
 
 void
 log_tcp_ao_get_key(int sock_fd)
-{  
+{
   int nkeys = get_num_ao_keys(sock_fd);
   if (nkeys < 0)
     return;
@@ -297,14 +288,32 @@ log_tcp_ao_get_key(int sock_fd)
   tm_all[0].get_all = 1;
   if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_GET_KEYS, tm_all, &len))  // len should be still size of one struct. Because kernel net/ipv4/tcp_ao.c line 2165
   {
-     log("log tcp ao get keys failed with err code %i", errno);
+     log(L_WARN "TCP AO: getting keys on socket fd %i failed with err code %i", sock_fd, errno);
      return;
   }
-  log("keys %i %i", nkeys, tm_all[0].nkeys);
+  log(L_INFO "TCP AO on socket fd %i has %i keys", tm_all[0].nkeys);
   for (int i = 0; i < nkeys; i++)
   {
-    log("sndid %i rcvid %i, %s %s, cipher %s key %s (%i/%i)", tm_all[i].sndid, tm_all[i].rcvid, tm_all[i].is_current ? "current" : "", tm_all[i].is_rnext ? "rnext" : "", tm_all[i].alg_name, tm_all[i].key, i+1, tm_all[0].nkeys);
+    log(L_INFO "sndid %i rcvid %i, %s %s, cipher %s key %s (%i/%i)", tm_all[i].sndid, tm_all[i].rcvid, tm_all[i].is_current ? "current" : "", tm_all[i].is_rnext ? "rnext" : "", tm_all[i].alg_name, tm_all[i].key, i+1, tm_all[0].nkeys);
   }
+}
+
+void
+tcp_ao_get_info(int sock_fd, int key_info[4])
+{
+  struct tcp_ao_info_opt_ext tmp;
+  memset(&tmp, 0, sizeof(struct tcp_ao_info_opt_ext));
+  socklen_t len = sizeof(tmp);
+
+  if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, &len))
+  {
+    log(L_WARN "TCP AO: log tcp ao info failed with err code %i", errno);
+    return;
+  }
+  key_info[0] = tmp.current_key;
+  key_info[1] = tmp.rnext;
+  key_info[2] = tmp.pkt_good;
+  key_info[3] = tmp.pkt_bad;
 }
 
 int
@@ -312,12 +321,8 @@ sk_set_ao_auth(sock *s, ip_addr local UNUSED, ip_addr remote, int pxlen, struct 
 {
   struct tcp_ao_add_ext ao;
   memset(&ao, 0, sizeof(struct tcp_ao_add_ext));
-  log(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>in sk set ao, pass %s fd %i sk %i %i", passwd, s->fd, s);
- /* int af;
-  if (ipa_is_ip4(remote))
-    af = AF_INET;
-  else
-    a = AF_INET6;*/
+  log(L_DEBUG "tcp ao: socket sets ao, password %s socket fd %i", passwd, s->fd);
+
   sockaddr_fill((sockaddr *) &ao.addr, s->af, remote, ifa, 0);
   if (set_current)
   {
@@ -337,18 +342,16 @@ sk_set_ao_auth(sock *s, ip_addr local UNUSED, ip_addr remote, int pxlen, struct 
   ao.ifindex	= 0;
 
   strncpy(ao.alg_name, (cipher) ? cipher : DEFAULT_TEST_ALGO, 64);
-
-  ao.keylen	= strlen(passwd);
+  ao.keylen = strlen(passwd);
   memcpy(ao.key, passwd, (strlen(passwd) > TCP_AO_MAXKEYLEN_) ? TCP_AO_MAXKEYLEN_ : strlen(passwd));
 
   if (setsockopt(s->fd, IPPROTO_TCP, TCP_AO_ADD_KEY, &ao, sizeof(ao)) < 0)
   {
-     if (errno == ENOPROTOOPT)
-	ERR_MSG("Kernel does not support extended TCP AO signatures");
-      else
-	ERR("TCP_AOSIG_EXT");
+    if (errno == ENOPROTOOPT)
+      ERR_MSG("Kernel does not support extended TCP AO signatures");
+    else
+      ERR("TCP_AOSIG_EXT");
   }
-  
   s->use_ao = 1;
   if (set_current)
     s->desired_ao_key = passwd_id_rem;
@@ -356,7 +359,7 @@ sk_set_ao_auth(sock *s, ip_addr local UNUSED, ip_addr remote, int pxlen, struct 
   return 0;
 }
 
-void
+int
 ao_delete_key(sock *s, ip_addr remote, int pxlen, struct iface *ifa, int passwd_id_loc, int passwd_id_rem)
 {
   struct tcp_ao_del_ext del;
@@ -373,11 +376,11 @@ ao_delete_key(sock *s, ip_addr remote, int pxlen, struct iface *ifa, int passwd_
 
   if (setsockopt(s->fd, IPPROTO_TCP, TCP_AO_DEL_KEY, &del, sizeof(del)) < 0)
   {
-    log("log keys for debug delete error key %i %i", passwd_id_loc, passwd_id_rem);
-    log_tcp_ao_get_key(s->fd);
-    bug("tcp ao deletion err %i", errno);
+    log(L_WARN "TCP AO: deletion of key %i %i on socket fd %i failed with err %i", passwd_id_loc, passwd_id_rem, s->fd, errno);
+    return errno;
   }
-  log("tcp ao key %i %i deleted", passwd_id_loc, passwd_id_rem);
+  log(L_DEBUG "tcp ao: key %i %i deleted", passwd_id_loc, passwd_id_rem);
+  return 0;
 }
 
 void
@@ -390,27 +393,27 @@ ao_try_change_master(sock *s, int next_master_id_loc, int next_master_id_rem)
 
   if (setsockopt(s->fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, sizeof(tmp)))
   {
-     log(" tcp ao change master key failed with err code %i", errno);
+     log(L_WARN "TCP AO: change master key failed with err code %i", errno);
      log_tcp_ao_get_key(s->fd);
      return;
   }
   else
-    log("tried to change master");
+    log(L_DEBUG "tcp ao: tried to change master to %i %i", next_master_id_loc, next_master_id_rem);
   s->desired_ao_key = next_master_id_rem;
 
 }
 
-int check_ao_keys_id(int sock_fd, struct ao_key *keys)
+int check_ao_keys_id(int sock_fd, struct bgp_ao_key *keys)
 {
   int errors = 0;
   int expected_keys[256]; //can not have char, because we must support 0 key id
   memset(expected_keys, 0, sizeof(int)*256);
-  for (struct ao_key *key = keys; key; key = key->next_key)
-    expected_keys[key->local_id] = key->remote_id + 1; // the + 1 because we do not want 0 id be 0
+  for (struct bgp_ao_key *key = keys; key; key = key->next_key)
+    expected_keys[key->key.local_id] = key->key.remote_id + 1; // the + 1 because we do not want 0 id be 0
   int nkeys = get_num_ao_keys(sock_fd);
   if(nkeys == -1)
   {
-    cf_warn("TCP AO: unable to get num of keys");
+    log(L_WARN "TCP AO: unable to get num of keys");
     return 1;
   }
   struct tcp_ao_getsockopt_ext tm_all[nkeys];
@@ -420,27 +423,27 @@ int check_ao_keys_id(int sock_fd, struct ao_key *keys)
   tm_all[0].get_all = 1;
   if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_GET_KEYS, tm_all, &len))  // len should be still size of one struct. Because kernel net/ipv4/tcp_ao.c line 2165
   {
-     cf_warn("log tcp ao get keys failed with err code %i", errno);
-     return 1;
+    log(L_WARN "TCP AO: log tcp ao get keys failed with err code %i", errno);
+    return 1;
   }
   for (int i = 0; i< nkeys; i++)
   {
     struct tcp_ao_getsockopt_ext sock_key = tm_all[i];
     if (expected_keys[sock_key.rcvid] - 1 != sock_key.sndid)
     {
-      if (expected_keys[sock_key.rcvid] == 0) 
-        cf_warn("TCP AO: unexpected ao key %i %i", sock_key.rcvid, sock_key.sndid);
+      if (expected_keys[sock_key.rcvid] == 0)
+        log(L_WARN "TCP AO: unexpected ao key %i %i", sock_key.rcvid, sock_key.sndid);
       else
-	cf_warn("TCP AO: expected key local id %i has different remote id than expected (%i vs %i)", sock_key.rcvid, expected_keys[sock_key.rcvid] - 1, sock_key.sndid);
+	log(L_WARN "TCP AO: expected key local id %i has different remote id than expected (%i vs %i)", sock_key.rcvid, expected_keys[sock_key.rcvid] - 1, sock_key.sndid);
       errors++;
-    }     
-     expected_keys[sock_key.rcvid] = 0;  
+    }
+    expected_keys[sock_key.rcvid] = 0;
   }
   for (int i = 0; i < 256; i++)
   {
     if (expected_keys[i] != 0)
     {
-      cf_warn("TCP AO: key %i %i is not in socket", i, expected_keys - 1);
+      log(L_WARN "TCP AO: key %i %i is not in socket", i, expected_keys - 1);
       errors++;
     }
   }

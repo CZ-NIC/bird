@@ -1,4 +1,13 @@
 
+#ifndef TCP_AO_ADD_KEY
+#define TCP_AO_ADD_KEY		38	/* Add/Set MKT */
+#define TCP_AO_DEL_KEY		39	/* Delete MKT */
+#define TCP_AO_INFO		40	/* Set/list TCP-AO per-socket options */
+#define TCP_AO_GET_KEYS		41	/* List MKT(s) */
+#define TCP_AO_REPAIR		42	/* Get/Set SNEs and ISNs */
+#endif
+
+
 #ifndef TCP_AO_STRUCTS
 #define TCP_AO_STRUCTS
 

@@ -1097,7 +1097,7 @@ sk_passive_connected(sock *s, int type)
   t->tos = s->tos;
   t->vrf = s->vrf;
   t->rbsize = s->rbsize;
-  t->tbsize = s->tbsize; 
+  t->tbsize = s->tbsize;
 
   if (type == SK_TCP)
   {
@@ -1341,7 +1341,6 @@ sk_open(sock *s)
   int bind_port = 0;
   ip_addr bind_addr = IPA_NONE;
   sockaddr sa;
-  log("opening sock");
 
   if (s->type <= SK_IP)
   {
@@ -1461,21 +1460,23 @@ sk_open(sock *s)
 
   if (s->ao_key_init)
   {
-    struct ao_key *key = s->ao_key_init;
+    struct bgp_ao_key *key = s->ao_key_init;
     do {
-      if (sk_set_ao_auth(s, s->saddr, s->daddr, -1, s->iface, key->master_key, key->local_id, key->remote_id, key->cipher, key->required == 1) < 0)
+      if (sk_set_ao_auth(s, s->saddr, s->daddr, -1, s->iface, key->key.master_key, key->key.local_id, key->key.remote_id, key->key.cipher, key->key.required == 1) < 0)
         goto err;
+      if (s->type == SK_TCP_ACTIVE)
+        key->activ_alive = 1;
+      else
+        key->passiv_alive = 1;
       key = key->next_key;
     } while (key);
   }
   else if (s->password)
   {
-    log("set md5");
     if (sk_set_md5_auth(s, s->saddr, s->daddr, -1, s->iface, s->password, 0) < 0)
       goto err;
   }
-  else
-    log("no password given");
+
   switch (s->type)
   {
   case SK_TCP_ACTIVE:
