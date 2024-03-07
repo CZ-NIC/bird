@@ -43,7 +43,20 @@ struct ao_key
   const char *cipher;
   const char *master_key;
   int required;
-  struct ao_key *next_key;
+};
+
+struct ao_config
+{
+  struct ao_key key;
+  struct ao_config *next_key;
+};
+
+struct bgp_ao_key {
+  struct ao_key key;
+  int activ_alive;			/* this ao key is in activ socket */
+  int passiv_alive;			/* this ao key is in passiv socket */
+  int to_delete;			/* flag for reconfig */
+  struct bgp_ao_key *next_key;
 };
 
 typedef struct birdsock {
@@ -87,8 +100,9 @@ typedef struct birdsock {
   node n;
   void *rbuf_alloc, *tbuf_alloc;
   const char *password;			/* Password for MD5 authentication */
-  struct ao_key *ao_key_init;		/* Key for tcp ao authentication icialization. */
-  char use_ao;
+  struct bgp_ao_key *ao_key_init;	/* Key for tcp ao authentication icialization. */
+  struct bgp_proto *proto_del_ao_key;	/* For deletion of the currently used deprecated ao key */
+  char use_ao;				/* This is the only reliable flag saying if the socket use ao or not */
   int last_used_ao_key; 		/* Last ID the other site requested */
   int desired_ao_key;			/* ID of requested ao key */
   const char *err;			/* Error message */
@@ -125,10 +139,11 @@ int sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct if
 int get_current_key_id(int sock_fd);
 int get_rnext_key_id(int sock_fd);
 int sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int passwd_id_loc, int passwd_id_rem, const char *cipher, int set_current);
-void ao_delete_key(sock *s, ip_addr remote, int pxlen, struct iface *ifa, int passwd_id_rem, int passwd_id_loc);
+int ao_delete_key(sock *s, ip_addr remote, int pxlen, struct iface *ifa, int passwd_id_rem, int passwd_id_loc);
 void log_tcp_ao_info(int sock_fd);
 void log_tcp_ao_get_key(int sock_fd);
-int check_ao_keys_id(int sock_fd, struct ao_key *key);
+void tcp_ao_get_info(int sock_fd, int key_info[4]);
+int check_ao_keys_id(int sock_fd, struct bgp_ao_key *key);
 void ao_try_change_master(sock *s, int next_key_id_loc, int next_id_rem);
 int sk_set_ipv6_checksum(sock *s, int offset);
 int sk_set_icmp6_filter(sock *s, int p1, int p2);

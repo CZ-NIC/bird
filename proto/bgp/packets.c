@@ -3410,6 +3410,24 @@ bgp_rx_packet(struct bgp_conn *conn, byte *pkt, uint len)
   }
 }
 
+void
+delete_deprecated_key(sock *sk, struct bgp_proto *p, int key_rem_id)
+{
+  struct bgp_ao_key *key = p->ao_key;
+  while (key->key.remote_id != key_rem_id)
+  {
+    key = key->next_key;
+  }
+  if (key->key.required != -1)
+    bug("TCP AO: unexpected key management error");
+  if (ao_delete_key(sk, p->remote_ip, -1, sk->iface, key->key.local_id, key->key.remote_id))
+    bug("TCP AO: Can not delete deprecated key %i %i on socket %i", key->key.local_id, key->key.remote_id, sk->fd);
+  key->activ_alive = 0;
+  if (ao_delete_key(p->sock->sk, p->remote_ip, -1, p->sock->sk->iface, key->key.local_id, key->key.remote_id))
+    bug("TCP AO: Can not delete deprecated key %i %i on socket %i", key->key.local_id, key->key.remote_id, p->sock->sk->fd);
+  key->passiv_alive = 0;
+}
+
 /**
  * bgp_rx - handle received data
  * @sk: socket
@@ -3424,29 +3442,25 @@ int
 bgp_rx(sock *sk, uint size)
 {
   struct bgp_conn *conn = sk->data;
-  
   if (sk->use_ao && sk->desired_ao_key != sk->last_used_ao_key)
   {
-    int new_rnext = get_current_key_id(sk->fd); 
+    int new_rnext = get_current_key_id(sk->fd);
     if (new_rnext != sk->last_used_ao_key)
     {
       if (conn->hold_timer->expires != 0)
         bgp_schedule_packet(conn, NULL, PKT_KEEPALIVE); // We might send this keepalive shortly after another. RFC says we should wait, but since reconfiguration is rare, this is harmless.
+      log(L_INFO "TCP AO: Expected key rotation: desired rnext %i, received %i", sk->desired_ao_key, new_rnext);
+      log_tcp_ao_info(sk->fd);
+
+      if (sk->proto_del_ao_key && sk->desired_ao_key == new_rnext)
+      {
+        delete_deprecated_key(sk, sk->proto_del_ao_key, sk->last_used_ao_key);
+	sk->proto_del_ao_key = NULL;
+      }
       sk->last_used_ao_key = new_rnext;
-      log("Expected desired rnext %i, arrived %i", sk->desired_ao_key, new_rnext);
-      log_ao(sk->fd);
-    }
-    else //todo delete after debug
-    {
-      log("Nothing happend %i %i", get_current_key_id(sk->fd), sk->last_used_ao_key);
-      log_ao(sk->fd);
     }
   }
-  else
-  {
-    log("No ao or not expecting changes %i %i", get_current_key_id(sk->fd), sk->last_used_ao_key);
-    log_ao(sk->fd);
-  }
+
   byte *pkt_start = sk->rbuf;
   byte *end = pkt_start + size;
   uint i, len;
