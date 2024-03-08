@@ -217,7 +217,6 @@ void log_tcp_ao_info(int sock_fd)
   struct tcp_ao_info_opt_ext tmp;
   memset(&tmp, 0, sizeof(struct tcp_ao_info_opt_ext));
   socklen_t len = sizeof(tmp);
-  log("socket: fd %i", sock_fd);
 
   if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, &len))
   {
@@ -225,8 +224,8 @@ void log_tcp_ao_info(int sock_fd)
     return;
   }
   else
-    log(L_INFO "TCP AO:\ncurrent key id %i (rem), next key %i (loc),\n set current %i, is ao required %i\n good packets %i, bad packets %i",
-		    tmp.current_key, tmp.rnext, tmp.set_current, tmp.ao_required, tmp.pkt_good, tmp.pkt_bad);
+    log(L_INFO "TCP AO on socket %i:\ncurrent key id %i (rem), next key %i (loc),\n set current %i, is ao required %i\n good packets %i, bad packets %i",
+		    sock_fd, tmp.current_key, tmp.rnext, tmp.set_current, tmp.ao_required, tmp.pkt_good, tmp.pkt_bad);
 }
 
 int get_current_key_id(int sock_fd)
@@ -237,8 +236,8 @@ int get_current_key_id(int sock_fd)
 
   if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_INFO, &tmp, &len))
   {
-     log(L_WARN "TCP AO: Getting current ao key for socket file descriptor %i failed with errno %i", sock_fd, errno);
-     return -1;
+    log(L_WARN "TCP AO: Getting current ao key for socket file descriptor %i failed with errno %i", sock_fd, errno);
+    return -1;
   }
   else
     return tmp.current_key;
@@ -269,8 +268,8 @@ int get_num_ao_keys(int sock_fd)
 
   if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_GET_KEYS, &tmp, &len))
   {
-     log(L_WARN "TCP AO: get keys on socket fd %i failed with err code %i", sock_fd, errno);
-     return -1;
+    log(L_WARN "TCP AO: get keys on socket fd %i failed with err code %i", sock_fd, errno);
+    return -1;
   }
   return tmp.nkeys;
 }
@@ -288,13 +287,15 @@ log_tcp_ao_get_key(int sock_fd)
   tm_all[0].get_all = 1;
   if (getsockopt(sock_fd, IPPROTO_TCP, TCP_AO_GET_KEYS, tm_all, &len))  // len should be still size of one struct. Because kernel net/ipv4/tcp_ao.c line 2165
   {
-     log(L_WARN "TCP AO: getting keys on socket fd %i failed with err code %i", sock_fd, errno);
-     return;
+    log(L_WARN "TCP AO: getting keys on socket fd %i failed with err code %i", sock_fd, errno);
+    return;
   }
   log(L_INFO "TCP AO on socket fd %i has %i keys", tm_all[0].nkeys);
   for (int i = 0; i < nkeys; i++)
   {
-    log(L_INFO "sndid %i rcvid %i, %s %s, cipher %s key %s (%i/%i)", tm_all[i].sndid, tm_all[i].rcvid, tm_all[i].is_current ? "current" : "", tm_all[i].is_rnext ? "rnext" : "", tm_all[i].alg_name, tm_all[i].key, i+1, tm_all[0].nkeys);
+    log(L_INFO "sndid %i rcvid %i, %s %s, cipher %s key %s (%i/%i)",
+		    tm_all[i].sndid, tm_all[i].rcvid, tm_all[i].is_current ? "current" : "",
+		    tm_all[i].is_rnext ? "rnext" : "", tm_all[i].alg_name, tm_all[i].key, i+1, tm_all[0].nkeys);
   }
 }
 
@@ -411,7 +412,7 @@ int check_ao_keys_id(int sock_fd, struct bgp_ao_key *keys)
   for (struct bgp_ao_key *key = keys; key; key = key->next_key)
     expected_keys[key->key.local_id] = key->key.remote_id + 1; // the + 1 because we do not want 0 id be 0
   int nkeys = get_num_ao_keys(sock_fd);
-  if(nkeys == -1)
+  if (nkeys == -1)
   {
     log(L_WARN "TCP AO: unable to get num of keys");
     return 1;
@@ -434,7 +435,7 @@ int check_ao_keys_id(int sock_fd, struct bgp_ao_key *keys)
       if (expected_keys[sock_key.rcvid] == 0)
         log(L_WARN "TCP AO: unexpected ao key %i %i", sock_key.rcvid, sock_key.sndid);
       else
-	log(L_WARN "TCP AO: expected key local id %i has different remote id than expected (%i vs %i)", sock_key.rcvid, expected_keys[sock_key.rcvid] - 1, sock_key.sndid);
+        log(L_WARN "TCP AO: expected key local id %i has different remote id than expected (%i vs %i)", sock_key.rcvid, expected_keys[sock_key.rcvid] - 1, sock_key.sndid);
       errors++;
     }
     expected_keys[sock_key.rcvid] = 0;
