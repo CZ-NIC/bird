@@ -1,3 +1,15 @@
+Version 2.15 (2024-03-10)
+  o BGP: Send hold timer
+  o BGP: New options to specify required BGP capabilities
+  o BFD: Improvements to 'show bfd sessions' command
+  o RPKI: New 'local address' configuration option
+  o Linux: Support for more route attributes, including
+    TCP congestion control algorithm
+  o Support for UDP logging
+  o Static routes can have both nexthop and interface specified
+  o Completion of command options in BIRD client
+  o Many bugfixes and improvements
+
 Version 2.14 (2023-10-06)
   o MPLS subsystem
   o L3VPN: BGP/MPLS VPNs (RFC 4364)
