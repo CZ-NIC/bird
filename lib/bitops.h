@@ -25,6 +25,8 @@ uint u32_masklen(u32 x);
 
 u32 u32_log2(u32 v);
 
+u32 u32_bitflip(u32 n);
+
 static inline u32 u32_hash(u32 v) { return v * 2902958171u; }
 
 static inline u8 u32_popcount(u32 v) { return __builtin_popcount(v); }
