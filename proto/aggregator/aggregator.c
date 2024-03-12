@@ -236,6 +236,12 @@ first_pass(struct trie_node *node, slab *trie_slab)
 
   if (is_leaf(node))
   {
+    for (int i = 0; i < node->potential_buckets_count; i++)
+    {
+      if (node->potential_buckets[i] == node->bucket)
+        return;
+    }
+
     node->potential_buckets[node->potential_buckets_count++] = node->bucket;
     return;
   }
