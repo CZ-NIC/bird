@@ -110,6 +110,31 @@ t_log2(void)
   return 1;
 }
 
+static void
+check_bitflip(u32 n)
+{
+  u32 rot = u32_bitflip(n);
+  for (int i = 0; i < 16; i++)
+  {
+    bt_assert(!((n >> i) & 1) == !((rot << i) & 0x80000000));
+    bt_assert(!((rot >> i) & 1) == !((n << i) & 0x80000000));
+  }
+}
+
+static int
+t_bitflip(void)
+{
+  u32 i;
+
+  for (i = 0; i < MAX_NUM; i++)
+  {
+    check_bitflip(i);
+    check_bitflip((u32) bt_random());
+  }
+
+  return 1;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -118,6 +143,7 @@ main(int argc, char *argv[])
   bt_test_suite(t_mkmask, "u32_mkmask()");
   bt_test_suite(t_masklen, "u32_masklen()");
   bt_test_suite(t_log2, "u32_log2()");
+  bt_test_suite(t_bitflip, "u32_bitflip()");
 
   return bt_exit_value();
 }
