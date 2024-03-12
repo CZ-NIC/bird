@@ -841,44 +841,25 @@ static void
 calculate_trie(void *P)
 {
   struct aggregator_proto *p = (struct aggregator_proto *)P;
+  assert(p->addr_type == NET_IP4 || p->addr_type == NET_IP6);
 
   log("====PREFIXES BEFORE ====");
   log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
 
-  if (p->addr_type == NET_IP4)
-  {
-    first_pass(p->root, p->trie_slab);
-    log("====FIRST PASS====");
-    log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
-    print_prefixes(p->root, NET_IP4);
+  first_pass(p->root, p->trie_slab);
+  log("====FIRST PASS====");
+  log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+  print_prefixes(p->root, p->addr_type);
 
-    second_pass(p->root);
-    log("====SECOND PASS====");
-    log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
-    print_prefixes(p->root, NET_IP4);
+  second_pass(p->root);
+  log("====SECOND PASS====");
+  log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+  print_prefixes(p->root, p->addr_type);
 
-    third_pass(p->root);
-    log("====THIRD PASS====");
-    log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
-    print_prefixes(p->root, NET_IP4);
-  }
-  else if (p->addr_type == NET_IP6)
-  {
-    first_pass(p->root, p->trie_slab);
-    log("====FIRST PASS====");
-    log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
-    print_prefixes(p->root, NET_IP6);
-
-    second_pass(p->root);
-    log("====SECOND PASS====");
-    log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
-    print_prefixes(p->root, NET_IP6);
-
-    third_pass(p->root);
-    log("====THIRD PASS====");
-    log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
-    print_prefixes(p->root, NET_IP6);
-  }
+  third_pass(p->root);
+  log("====THIRD PASS====");
+  log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
+  print_prefixes(p->root, p->addr_type);
 
   collect_prefixes(p);
   log("XXX arte: %p, src: %p", p->default_arte, p->default_arte->rte.src);
