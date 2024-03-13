@@ -516,7 +516,7 @@ rte_store(const rte *r, struct netindex *i, struct rtable_private *tab)
  * rte_free() deletes the given &rte from the routing table it's linked to.
  */
 
-void
+static void
 rte_free(struct rte_storage *e, struct rtable_private *tab)
 {
   struct netindex *i = RTE_GET_NETINDEX(&e->rte);
@@ -1120,6 +1120,9 @@ rte_export(struct rt_export_hook *hook, struct rt_pending_export *rpe)
   else
     hook->stats.withdraws_received++;
 
+  if (rpe->old)
+    ASSERT_DIE(rpe->old->flags & REF_OBSOLETE);
+
   if (hook->req->export_one)
     hook->req->export_one(hook->req, n, rpe);
   else if (hook->req->export_bulk)
@@ -1293,6 +1296,7 @@ rt_cleanup_export(struct lfjour *j, struct lfjour_item *i)
 
   if (rpe->old)
   {
+    ASSERT_DIE(rpe->old->flags & REF_OBSOLETE);
     hmap_clear(&tab->id_map, rpe->old->id);
     rte_free(SKIP_BACK(struct rte_storage, rte, rpe->old), tab);
   }
@@ -1527,6 +1531,10 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
       stats->withdraws_ignored++;
       return;
     }
+
+  /* Mark the old route as obsolete */
+  if (old)
+    SKIP_BACK(struct rte_storage, rte, old)->flags |= REF_OBSOLETE;
 
   /* If rejected by import limit, we need to pretend there is no route */
   if (req->preimport && (req->preimport(req, new, old) == 0))
@@ -3404,7 +3412,10 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
 
     struct rte_storage *put;
     if (updates[i].new.attrs)
+    {
       put = updates[i].new_stored = rte_store(&updates[i].new, ni, tab);
+      updates[i].old->flags |= REF_OBSOLETE;
+    }
     else
       put = updates[i].old;
 
