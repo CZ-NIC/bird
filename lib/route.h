@@ -26,11 +26,11 @@ struct rte_storage;
 
 #define RTE_IN_TABLE_WRITABLE \
   byte pflags;				/* Protocol-specific flags; may change in-table (!) */ \
+  byte flags;				/* Table-specific flags */ \
   u8 stale_cycle;			/* Auxiliary value for route refresh; may change in-table (!) */ \
 
 typedef struct rte {
   RTE_IN_TABLE_WRITABLE;
-  byte flags;				/* Table-specific flags */
   u8 generation;			/* If this route import is based on other previously exported route,
 					   this value should be 1 + MAX(generation of the parent routes).
 					   Otherwise the route is independent and this value is zero. */
@@ -43,6 +43,7 @@ typedef struct rte {
 } rte;
 
 #define REF_FILTERED	2		/* Route is rejected by import filter */
+#define REF_OBSOLETE	16		/* Route is obsolete, pending propagation */
 #define REF_PENDING	32		/* Route has not propagated completely yet */
 
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
