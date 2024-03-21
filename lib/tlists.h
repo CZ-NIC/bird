@@ -231,5 +231,8 @@ static inline void TLIST_NAME(rem_node)(TLIST_LIST_STRUCT *list, TLIST_TYPE *nod
 /* Empty check */
 #define EMPTY_TLIST(_name, _list) (!(_list)->first)
 
+/* List length */
+#define TLIST_LENGTH(_name, _list)  ({ uint _len = 0; WALK_TLIST(_name, _, _list) _len++; _len; })
+
 #endif
 
