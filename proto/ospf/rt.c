@@ -1796,12 +1796,7 @@ calc_next_hop(struct ospf_area *oa, struct top_hash_entry *en,
     if (ifa->type == OSPF_IT_VLINK)
       return new_nexthop(p, IPA_NONE, NULL, 0);
 
-    /*
-     * The type of the ospf_iface is PtP and the iface is a physical PtP link,
-     * so we can simply use the iface, and skip further resolving.
-     */
-    if (ifa->type == OSPF_IT_PTP && !(ifa->iface->flags & IF_MULTIACCESS))
-      return new_nexthop(p, IPA_NONE, ifa->iface, ifa->ecmp_weight);
+    /* FIXME: On physical PtP links we may skip next-hop altogether */
 
     if (ospf_is_v2(p) || ospf_is_ip6(p))
     {
