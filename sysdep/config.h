@@ -13,7 +13,7 @@
 #ifdef GIT_LABEL
 #define BIRD_VERSION XSTR1(GIT_LABEL)
 #else
-#define BIRD_VERSION "2.15"
+#define BIRD_VERSION "2.15.1"
 #endif
 
 /* Include parameters determined by configure script */
