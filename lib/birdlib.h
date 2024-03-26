@@ -9,6 +9,8 @@
 #ifndef _BIRD_BIRDLIB_H_
 #define _BIRD_BIRDLIB_H_
 
+#include <setjmp.h>
+
 #include "lib/alloca.h"
 
 /* Ugly structure offset handling macros */
@@ -42,6 +44,13 @@ struct align_probe { char x; long int y; };
 #define BYTES(n) ((((uint) (n)) + 7) / 8)
 #define CALL(fn, args...) ({ if (fn) fn(args); })
 #define ADVANCE(w, r, l) ({ r -= (l); w += (l); })
+
+extern const enum build_target {
+  BT_BIRD,
+  BT_TEST,
+} build_target;
+
+jmp_buf *get_test_bug_jump(char *msg);
 
 static inline int uint_cmp(uint i1, uint i2)
 { return (int)(i1 > i2) - (int)(i1 < i2); }

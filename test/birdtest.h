@@ -13,6 +13,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <setjmp.h>
 
 #include "nest/bird.h"
 
@@ -31,7 +32,8 @@ extern const char *bt_filename;
 extern const char *bt_test_id;
 
 void bt_init(int argc, char *argv[]);
-int  bt_exit_value(void);
+int bt_exit_value(void);
+int bt_assert_bug(void (*functionPtr)(void), char *msg);
 void bt_reset_suite_case_timer(void);
 int bt_test_suite_base(int (*test_fn)(const void *), const char *test_id, const void *test_fn_argument, int forked, int timeout, const char *dsc, ...);
 static inline u64 bt_random(void)

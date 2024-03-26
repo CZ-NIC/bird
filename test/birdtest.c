@@ -13,6 +13,7 @@
 #include <signal.h>
 #include <time.h>
 #include <unistd.h>
+#include <setjmp.h>
 
 #include <sys/ioctl.h>
 #include <sys/resource.h>
@@ -30,6 +31,8 @@
 
 #define sprintf_concat(s, format, ...) \
     snprintf(s + strlen(s), sizeof(s) - strlen(s), format, ##__VA_ARGS__)
+
+const enum build_target build_target = BT_TEST;
 
 static const char *request;
 static int list_tests;
@@ -51,6 +54,9 @@ const char *bt_test_id;
 int bt_result;			/* Overall program run result */
 int bt_suite_result;		/* One suit result */
 char bt_out_fmt_buf[1024];	/* Temporary memory buffer for output of testing function */
+jmp_buf bug_jump_buf;
+int bug_expected = 0;
+char *expected_bug_message;
 
 struct timespec bt_begin, bt_suite_begin, bt_suite_case_begin;
 
@@ -415,6 +421,35 @@ bt_exit_value(void)
   if (!list_tests || (list_tests && !bt_result))
     bt_log_overall_result(bt_result, "");
   return bt_result ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+/**
+ * It tests that given function calls bug with given error massage. Sets jump, and bug() function jumps back.
+*/
+int
+bt_assert_bug(void (*functionPtr)(void), char *expected_message)
+{
+  bug_expected = 1;
+  expected_bug_message = expected_message;
+  if (setjmp(bug_jump_buf))
+  {
+    bug_expected = 0;
+    expected_bug_message = "";
+    return 1;
+  }
+  else
+    (*functionPtr)();
+  bug_expected = 0;
+  expected_bug_message = "";
+  return 0;
+}
+
+jmp_buf *
+get_test_bug_jump(char *msg)
+{
+  if (!bug_expected || strcmp(msg, expected_bug_message) != 0)
+    abort();
+  return &bug_jump_buf;
 }
 
 /**

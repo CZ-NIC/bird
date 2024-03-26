@@ -43,6 +43,8 @@
 #include "unix.h"
 #include "krt.h"
 
+const enum build_target build_target = BT_BIRD;
+
 /*
  *	Debugging
  */

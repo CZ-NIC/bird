@@ -23,6 +23,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <errno.h>
+#include <setjmp.h>
 
 #include "nest/bird.h"
 #include "nest/cli.h"
@@ -336,6 +337,8 @@ log_rl(struct tbf *f, const char *msg, ...)
 void
 bug(const char *msg, ...)
 {
+  if (build_target == BT_TEST)
+    longjmp(*get_test_bug_jump(msg), 1);
   va_list args;
 
   va_start(args, msg);

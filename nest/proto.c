@@ -2233,7 +2233,10 @@ proto_cmd_reload(struct proto *p, uintptr_t dir, int cnt UNUSED)
 
   /* If the protocol in not UP, it has no routes */
   if (p->proto_state != PS_UP)
+  {
+    cli_msg(-8, "%s: not reloading - protocol is not UP", p->name);
     return;
+  }
 
   /* All channels must support reload */
   if (dir != CMD_RELOAD_OUT)
