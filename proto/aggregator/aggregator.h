@@ -71,7 +71,6 @@ struct aggregator_proto {
   slab *trie_slab;
   struct trie_node *root;
   struct event reload_trie;
-  struct aggregator_route *default_arte;
 };
 
 enum aggr_item_type {
