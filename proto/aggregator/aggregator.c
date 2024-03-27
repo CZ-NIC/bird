@@ -169,6 +169,7 @@ trie_insert_prefix_ip4(const struct net_addr_ip4 *addr, struct trie_node *const 
       struct trie_node *new = new_node(trie_slab);
       new->parent = node;
       node->child[bit] = new;
+      new->depth = new->parent->depth + 1;
     }
 
     node = node->child[bit];
@@ -197,10 +198,14 @@ trie_insert_prefix_ip6(const struct net_addr_ip6 *addr, struct trie_node * const
       struct trie_node *new = new_node(trie_slab);
       new->parent = node;
       node->child[bit] = new;
+      new->depth = new->parent->depth + 1;
     }
 
     node = node->child[bit];
   }
+
+  /* Assign bucket to the last node */
+  node->bucket = bucket;
 }
 
 /*
@@ -255,6 +260,7 @@ first_pass(struct trie_node *node, slab *trie_slab)
       new->parent = node;
       new->bucket = get_ancestor_bucket(new);
       node->child[i] = new;
+      new->depth = new->parent->depth + 1;
     }
   }
 
@@ -1537,6 +1543,7 @@ aggregator_start(struct proto *P)
 
   p->trie_slab = sl_new(p->p.pool, sizeof(struct trie_node));
   p->root = new_node(p->trie_slab);
+  p->root->depth = 1;
 
   p->reload_trie = (event) {
     .hook = calculate_trie,
