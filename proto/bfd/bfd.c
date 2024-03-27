@@ -764,7 +764,7 @@ bfd_drop_requests(struct bfd_proto *p)
     WALK_LIST_FIRST(n, s->request_list)
       bfd_submit_request(SKIP_BACK(struct bfd_request, n, n));
   }
-  HASH_WALK_END;
+  HASH_WALK_END(p->session_hash_id);
 }
 
 static struct resclass bfd_request_class;
@@ -1162,7 +1162,7 @@ bfd_reconfigure(struct proto *P, struct proto_config *c)
     if (s->ifa->changed)
       bfd_reconfigure_session(p, s);
   }
-  HASH_WALK_END;
+  HASH_WALK_END(p->session_hash_id);
 
   bfd_reconfigure_neighbors(p, new);
 
@@ -1289,7 +1289,7 @@ bfd_show_sessions(struct proto *P, struct bfd_show_sessions_cmd *args)
 
     bfd_show_session(s, args->verbose);
   }
-  HASH_WALK_END;
+  HASH_WALK_END(p->session_hash_id);
 }
 
 

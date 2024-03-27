@@ -185,7 +185,7 @@ t_walk(void)
   {
     check[n->key]++;
   }
-  HASH_WALK_END;
+  HASH_WALK_END(hash);
 
   for (i = 0; i < MAX_NUM; i++)
     bt_assert(check[i] == 1);
@@ -285,6 +285,26 @@ t_walk_filter(void)
   return 1;
 }
 
+void
+do_walk_delete_error(void)
+{
+    init_hash();
+  fill_hash();
+
+  HASH_WALK(hash, next, n)
+  {
+    HASH_DELETE(hash, TEST, n->key);
+  }
+  HASH_WALK_END(hash);
+}
+
+static int
+t_walk_check_bug(void)
+{
+  return bt_assert_bug(do_walk_delete_error, "HASH_DELETE: Attempt to remove in HASH_WALK");
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -299,6 +319,7 @@ main(int argc, char *argv[])
   bt_test_suite(t_walk_delsafe_remove, 	"HASH_WALK_DELSAFE and HASH_REMOVE");
   bt_test_suite(t_walk_delsafe_remove2,	"HASH_WALK_DELSAFE and HASH_REMOVE2. HASH_REMOVE2 is HASH_REMOVE and smart auto-resize function");
   bt_test_suite(t_walk_filter,		"HASH_WALK_FILTER");
+  bt_test_suite(t_walk_check_bug,	"HASH_DO_REMOVE returns error, because called from HASH_WALK");
 
   return bt_exit_value();
 }

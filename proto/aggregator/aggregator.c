@@ -254,7 +254,7 @@ aggregator_reload_buckets(void *data)
       aggregator_bucket_update(p, b, b->rte->net);
       lp_flush(rte_update_pool);
     }
-  HASH_WALK_END;
+  HASH_WALK_END(p->buckets);
 }
 
 
@@ -732,7 +732,7 @@ aggregator_shutdown(struct proto *P)
     HASH_REMOVE(p->buckets, AGGR_BUCK, b);
     sl_free(b);
   }
-  HASH_WALK_END;
+  HASH_WALK_END(p->buckets);
 
   return PS_DOWN;
 }

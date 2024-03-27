@@ -62,7 +62,7 @@ cmd_show_symbols(struct sym_show_data *sd)
 
 	cli_msg(-1010, "%-8s\t%s", sym->name, cf_symbol_class_name(sym));
       }
-      HASH_WALK_END;
+      HASH_WALK_END(scope->hash);
 
     cli_msg(0, "");
   }

@@ -755,7 +755,7 @@ mpls_fec_map_reconfigure(struct mpls_fec_map *m, struct channel *C)
     mpls_unlink_fec(m, fec);
     fec->policy = MPLS_POLICY_NONE;
   }
-  HASH_WALK_END;
+  HASH_WALK_END(m->label_hash);
 
   /* Remove old unused handles */
 
@@ -777,7 +777,7 @@ mpls_fec_map_free(struct mpls_fec_map *m)
       rta_free(fec->rta);
       fec->rta = NULL;
     }
-    HASH_WALK_END;
+    HASH_WALK_END(m->rta_hash);
   }
 
   /* Free allocated labels */
@@ -788,7 +788,7 @@ mpls_fec_map_free(struct mpls_fec_map *m)
     if (!fec->policy && !fec->handle->label_count)
       mpls_free_handle(m->domain, fec->handle);
   }
-  HASH_WALK_END;
+  HASH_WALK_END(m->label_hash);
 
   if (m->static_handle)
     mpls_free_handle(m->domain, m->static_handle);

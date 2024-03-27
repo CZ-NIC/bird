@@ -10,7 +10,7 @@
 #ifndef _BIRD_HASH_H_
 #define _BIRD_HASH_H_
 
-#define HASH(type)		struct { type **data; uint count, order; }
+#define HASH(type)		struct { type **data; uint count, order; char* is_in_walk; }
 #define HASH_TYPE(v)		typeof(** (v).data)
 #define HASH_SIZE(v)		(1U << (v).order)
 
@@ -23,6 +23,8 @@
     (v).count = 0;							\
     (v).order = (init_order);						\
     (v).data = mb_allocz(pool, HASH_SIZE(v) * sizeof(* (v).data));	\
+    (v).is_in_walk = mb_allocz(pool, sizeof(char));			\
+    *(v).is_in_walk = 0;						\
   })
 
 #define HASH_FREE(v)							\
@@ -42,6 +44,8 @@
 
 #define HASH_INSERT(v,id,node)						\
   ({									\
+    if (*(v).is_in_walk)						\
+      bug("HASH_INSERT: Attempt to insert in HASH_WALK");		\
     u32 _h = HASH_FN(v, id, id##_KEY((node)));				\
     HASH_TYPE(v) **_nn = (v).data + _h;					\
     id##_NEXT(node) = *_nn;						\
@@ -51,6 +55,8 @@
 
 #define HASH_DO_REMOVE(v,id,_nn)					\
   ({									\
+    if (*(v).is_in_walk)						\
+      bug("HASH_DELETE: Attempt to remove in HASH_WALK");		\
     *_nn = id##_NEXT((*_nn));						\
     (v).count--;							\
   })
@@ -165,12 +171,13 @@
 #define HASH_WALK(v,next,n)						\
   do {									\
     HASH_TYPE(v) *n;							\
+    *(v).is_in_walk = 1;						\
     uint _i;								\
     uint _s = HASH_SIZE(v);						\
     for (_i = 0; _i < _s; _i++)						\
       for (n = (v).data[_i]; n; n = n->next)
 
-#define HASH_WALK_END } while (0)
+#define HASH_WALK_END(v) *(v).is_in_walk = 0; } while (0)
 
 
 #define HASH_WALK_DELSAFE(v,next,n)					\
