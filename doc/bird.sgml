@@ -1436,7 +1436,7 @@ This argument can be omitted if there exists only a single instance.
 	Enable, disable or restart a given protocol instance, instances matching
 	the <cf><m/pattern/</cf> or <cf/all/ instances.
 
-	<tag><label id="cli-reload">reload [in|out] (<m/name/|"<m/pattern/"|all) [partial prefix] </tag>
+	<tag><label id="cli-reload">reload filters [in|out] (<m/name/|"<m/pattern/"|all) [partial prefix] </tag>
 	Reload a given protocol instance, that means re-import routes from the
 	protocol instance and re-export preferred routes to the instance. If
 	<cf/in/ or <cf/out/ options are used, the command is restricted to one

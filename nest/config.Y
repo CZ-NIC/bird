@@ -980,12 +980,12 @@ CF_CLI(ENABLE, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message],
 { proto_apply_cmd($2, proto_cmd_enable, 1, (uintptr_t) $3); } ;
 CF_CLI(RESTART, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message], [[Restart protocol]])
 { proto_apply_cmd($2, proto_cmd_restart, 1, (uintptr_t) $3); } ;
-CF_CLI(RELOAD, proto_patt partial_opt, (<protocol> | \"<pattern>\" | all) [partial <prefix set>], [[Reload protocol]])
-{ proto_call_cmd_reload($2, CMD_RELOAD, $3); } ;
-CF_CLI(RELOAD IN, proto_patt partial_opt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just imported routes)]])
-{ proto_call_cmd_reload($3, CMD_RELOAD_IN, $4); } ;
-CF_CLI(RELOAD OUT, proto_patt partial_opt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just exported routes)]])
-{ proto_call_cmd_reload($3, CMD_RELOAD_OUT, $4); } ;
+CF_CLI(RELOAD FILTERS, proto_patt partial_opt, (<protocol> | \"<pattern>\" | all) [partial <prefix set>], [[Reload protocol filters]])
+{ proto_call_cmd_reload($3, CMD_RELOAD, $4); } ;
+CF_CLI(RELOAD FILTERS IN, proto_patt partial_opt, <protocol> | \"<pattern>\" | all, [[Reload protocol filters (just imported routes)]])
+{ proto_call_cmd_reload($4, CMD_RELOAD_IN, $5); } ;
+CF_CLI(RELOAD FILTERS OUT, proto_patt partial_opt, <protocol> | \"<pattern>\" | all, [[Reload protocol filters (just exported routes)]])
+{ proto_call_cmd_reload($4, CMD_RELOAD_OUT, $5); } ;
 
 CF_CLI_HELP(DEBUG, ..., [[Control protocol debugging via BIRD logs]])
 CF_CLI(DEBUG, debug_args, (<protocol> | <channel> | \"<pattern>\" | all) (all | off | { states|routes|filters|interfaces|events|packets [, ...] }), [[Control protocol debugging via BIRD logs]])

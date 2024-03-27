@@ -68,7 +68,10 @@ static inline int channel_is_active(struct channel *c)
 { return (c->channel_state != CS_DOWN); }
 
 static inline int channel_reloadable(struct channel *c)
-{ return c->proto->reload_routes && c->reloadable; }
+{
+  return c->reloadable && c->proto->reload_routes
+      || ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER);
+}
 
 static inline void
 channel_log_state_change(struct channel *c)
@@ -604,12 +607,6 @@ channel_roa_subscribe_filter(struct channel *c, int dir)
   /* No automatic reload for non-reloadable channels */
   if (dir && !channel_reloadable(c))
     valid = 0;
-
-#ifdef CONFIG_BGP
-  /* No automatic reload for BGP channels without in_table / out_table */
-  if (c->class == &channel_bgp)
-    valid = dir ? ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER) : !!c->out_table;
-#endif
 
   struct filter_iterator fit;
   FILTER_ITERATE_INIT(&fit, f->root, c->proto->pool);
@@ -2922,7 +2919,7 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
     return;
 
   /* All channels must support reload */
-  if (prr->dir != CMD_RELOAD_OUT)
+  if (prr->dir & CMD_RELOAD_IN)
     WALK_LIST(c, p->channels)
       if ((c->channel_state == CS_UP) && !channel_reloadable(c))
       {

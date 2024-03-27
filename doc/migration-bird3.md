@@ -58,6 +58,8 @@ shouldn't have complex export filters anyway.
 Export supports also `export in` form, allowing to export only subprefixes of
 the given prefix. Experimental.
 
+Reload of filters is now done by `reload filters` command, contrary to just `reload` in BIRD 2.
+
 ## Route attributes
 
 All protocol attributes have been renamed in CLI to align with the filter language tokens.
