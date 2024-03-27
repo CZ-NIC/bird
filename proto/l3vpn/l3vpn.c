@@ -339,6 +339,23 @@ l3vpn_rte_better(const rte *new, const rte *old)
 }
 
 static void
+l3vpn_get_route_info(const rte *rte, byte *buf)
+{
+  u32 pref = rt_get_preference(rte);
+  u32 metric = rt_get_igp_metric(rte);
+
+  if (metric < IGP_METRIC_UNKNOWN)
+    bsprintf(buf, " (%u/%u)", pref, metric);
+  else
+    bsprintf(buf, " (%u/?)", pref);
+}
+
+static struct rte_owner_class l3vpn_rte_owner_class = {
+  .get_route_info =	l3vpn_get_route_info,
+  .rte_better =		l3vpn_rte_better,
+};
+
+static void
 l3vpn_postconfig(struct proto_config *CF)
 {
   struct l3vpn_config *cf = (void *) CF;
@@ -394,6 +411,8 @@ l3vpn_init(struct proto_config *CF)
   P->rt_notify = l3vpn_rt_notify;
   P->preexport = l3vpn_preexport;
   P->reload_routes = l3vpn_reload_routes;
+
+  P->sources.class = &l3vpn_rte_owner_class;
 
   return P;
 }
@@ -482,23 +501,6 @@ l3vpn_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNU
 {
   /* Just a shallow copy, not many items here */
 }
-
-static void
-l3vpn_get_route_info(const rte *rte, byte *buf)
-{
-  u32 metric = rt_get_igp_metric(rte);
-  u32 pref = rt_get_preference(rte);
-
-  if (metric < IGP_METRIC_UNKNOWN)
-    bsprintf(buf, " (%u/%u)", pref, metric);
-  else
-    bsprintf(buf, " (%u/?)", pref);
-}
-
-struct rte_owner_class l3vpn_rte_owner_class = {
-  .get_route_info =	l3vpn_get_route_info,
-  .rte_better =		l3vpn_rte_better,
-};
 
 struct protocol proto_l3vpn = {
   .name =		"L3VPN",
