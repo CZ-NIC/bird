@@ -1384,7 +1384,7 @@ ea_show_hostentry(const struct adata *ad, byte *buf, uint size)
   if (!lc)
     return;
 
-  s = bsnprintf((buf += s), (size -= s), " labels");
+  s = bsnprintf((buf += s), (size -= s), " mpls");
   for (uint i=0; i < lc; i++)
     s = bsnprintf((buf += s), (size -= s), " %u", had->labels[i]);
 }
