@@ -1376,9 +1376,9 @@ ea_show_hostentry(const struct adata *ad, byte *buf, uint size)
   uint s = 0;
 
   if (ipa_nonzero(had->he->link) && !ipa_equal(had->he->link, had->he->addr))
-    s = bsnprintf(buf, size, "via %I %I table %s", had->he->addr, had->he->link, had->he->tab->name);
+    s = bsnprintf(buf, size, "via %I %I table %s", had->he->addr, had->he->link, had->he->owner->name);
   else
-    s = bsnprintf(buf, size, "via %I table %s", had->he->addr, had->he->tab->name);
+    s = bsnprintf(buf, size, "via %I table %s", had->he->addr, had->he->owner->name);
 
   uint lc = HOSTENTRY_LABEL_COUNT(had);
   if (!lc)
