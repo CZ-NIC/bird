@@ -286,7 +286,11 @@ struct proto *proto_iterate_named(struct symbol *sym, struct protocol *proto, st
 struct proto_reload_request {
   const struct f_trie *trie;	/* Trie to apply */
   _Atomic uint counter;		/* How many channels remaining */
-  uint dir;			/* Direction of reload */
+  enum cmd_reload {
+    CMD_RELOAD_IN	= 1,
+    CMD_RELOAD_OUT	= 2,
+    CMD_RELOAD		= (CMD_RELOAD_IN | CMD_RELOAD_OUT),
+  } dir;			/* Direction of reload */
   event ev;			/* Event to run when finished */
 };
 
@@ -303,10 +307,6 @@ struct proto_reload_request {
 
 static inline struct domain_generic *proto_domain(struct proto *p)
 { return birdloop_domain(p->loop); }
-
-#define CMD_RELOAD	0
-#define CMD_RELOAD_IN	1
-#define CMD_RELOAD_OUT	2
 
 static inline u32
 proto_get_router_id(struct proto_config *pc)
