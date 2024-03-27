@@ -100,6 +100,7 @@ struct trie_node {
   struct aggregator_bucket *bucket;
   struct aggregator_bucket *potential_buckets[MAX_POTENTIAL_BUCKETS_COUNT];
   int potential_buckets_count;
+  int depth;
 };
 
 struct prefix_bucket {
