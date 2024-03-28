@@ -1207,12 +1207,13 @@ bgp_send_hold_timeout(timer *t)
   struct bgp_conn *conn = t->data;
   struct bgp_proto *p = conn->bgp;
 
+  DBG("BGP: Send hold timeout\n");
+
   if (conn->state == BS_CLOSE)
     return;
 
-  /* Error codes not yet assigned by IANA */
-  uint code = 4;
-  uint subcode = 1;
+  uint code = 8;
+  uint subcode = 0;
 
   /* Like bgp_error() but without NOTIFICATION */
   bgp_log_error(p, BE_BGP_TX, "Error", code, subcode, NULL, 0);

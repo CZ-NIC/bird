@@ -5967,6 +5967,12 @@ options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 	that BFD protocol also has to be configured, see <ref id="bfd" name="BFD">
 	section for details. Default value is no.
 
+	<tag><label id="static-route-dev">dev <m/text/</tag>
+	The outgoing interface associated with the nexthop. Useful for
+	link-local nexthop addresses or when multiple interfaces use the same
+	network prefix. By default, the outgoing interface is resolved from the
+	nexthop address.
+
 	<tag><label id="static-route-mpls">mpls <m/num/[/<m/num/[/<m/num/[...]]]</tag>
 	MPLS labels that should be pushed to packets forwarded by the route.
 	The option could be used for both IP routes (on MPLS ingress routers)
@@ -6147,7 +6153,8 @@ protocol static {
 		via 198.51.100.20 bfd	# BFD-controlled next hop
 		via 192.0.2.1;
 	route 203.0.113.0/24 blackhole; # Sink route
-	route 10.2.0.0/24 via "arc0";	# Secondary network
+	route 10.2.0.0/24 via "arc0";	# Direct route
+	route 10.2.2.0/24 via 192.0.2.1 dev "eth0" onlink; # Route with both nexthop and iface
 	route 192.168.10.0/24 via 198.51.100.100 {
 		ospf_metric1 = 20;	# Set extended attribute
 	};
@@ -6166,7 +6173,8 @@ protocol static {
 	route 2001:db8:10::/48 via 2001:db8:1::1;	# Route with global nexthop
 	route 2001:db8:20::/48 via fe80::10%eth0;	# Route with link-local nexthop
 	route 2001:db8:30::/48 via fe80::20%'eth1.60';	# Iface with non-alphanumeric characters
-	route 2001:db8:40::/48 via "eth2";		# Direct route to eth2
+	route 2001:db8:40::/48 via fe80::30 dev "eth1";	# Another link-local nexthop
+	route 2001:db8:50::/48 via "eth2";		# Direct route to eth2
 	route 2001:db8::/32 unreachable;		# Unreachable route
 	route ::/0 via 2001:db8:1::1 bfd;		# BFD-controlled default route
 }
