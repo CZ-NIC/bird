@@ -95,13 +95,14 @@ static struct ea_class ea_krt_metrics[] = {
   KRT_METRIC_INT(RTAX_RTO_MIN, "krt_rto_min"),
   KRT_METRIC_INT(RTAX_INITRWND, "krt_initrwnd"),
   KRT_METRIC_INT(RTAX_QUICKACK, "krt_quickack"),
+  KRT_METRIC_INT(RTAX_FASTOPEN_NO_COOKIE, "krt_fastopen_no_cookie"),
 #undef KRT_METRIC_INT
 };
 
 static const char *krt_metrics_names[KRT_METRICS_MAX] = {
   NULL, "lock", "mtu", "window", "rtt", "rttvar", "sstresh", "cwnd", "advmss",
   "reordering", "hoplimit", "initcwnd", "features", "rto_min", "initrwnd", "quickack",
-  "congctl"
+  "congctl", "fastopen_no_cookie"
 };
 
 static const char *krt_features_names[KRT_FEATURES_MAX] = {

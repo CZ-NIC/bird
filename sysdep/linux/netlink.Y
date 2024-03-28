@@ -10,12 +10,16 @@ CF_HDR
 
 CF_DECLS
 
-CF_KEYWORDS(KERNEL, TABLE, METRIC, NETLINK, RX, BUFFER,
-	    KRT_LOCK_MTU, KRT_LOCK_WINDOW, KRT_LOCK_RTT, KRT_LOCK_RTTVAR,
+CF_KEYWORDS(KERNEL, TABLE, METRIC, NETLINK, RX, BUFFER)
+
+CF_KEYWORDS(KRT_LOCK_MTU, KRT_LOCK_WINDOW, KRT_LOCK_RTT, KRT_LOCK_RTTVAR,
 	    KRT_LOCK_SSTRESH, KRT_LOCK_CWND, KRT_LOCK_ADVMSS, KRT_LOCK_REORDERING,
-	    KRT_LOCK_HOPLIMIT, KRT_LOCK_RTO_MIN, KRT_FEATURE_ECN, KRT_FEATURE_ALLFRAG)
+	    KRT_LOCK_HOPLIMIT, KRT_LOCK_INITCWND, KRT_LOCK_RTO_MIN, KRT_LOCK_INITRWND,
+	    KRT_LOCK_QUICKACK, KRT_LOCK_CONGCTL, KRT_LOCK_FASTOPEN_NO_COOKIE,
+	    KRT_FEATURE_ECN, KRT_FEATURE_ALLFRAG)
 
 %type <fab> attr_bit
+
 
 CF_GRAMMAR
 
@@ -28,17 +32,22 @@ kern_sys_item:
  ;
 
 /* Bits of EA_KRT_LOCK, based on RTAX_* constants */
-
-attr_bit: KRT_LOCK_MTU	{ $$ = f_new_dynamic_attr_bit(2, "krt_lock"); } ;
+attr_bit: KRT_LOCK_MTU		{ $$ = f_new_dynamic_attr_bit(2, "krt_lock"); } ;
 attr_bit: KRT_LOCK_WINDOW	{ $$ = f_new_dynamic_attr_bit(3, "krt_lock"); } ;
-attr_bit: KRT_LOCK_RTT	{ $$ = f_new_dynamic_attr_bit(4, "krt_lock"); } ;
+attr_bit: KRT_LOCK_RTT		{ $$ = f_new_dynamic_attr_bit(4, "krt_lock"); } ;
 attr_bit: KRT_LOCK_RTTVAR	{ $$ = f_new_dynamic_attr_bit(5, "krt_lock"); } ;
 attr_bit: KRT_LOCK_SSTRESH	{ $$ = f_new_dynamic_attr_bit(6, "krt_lock"); } ;
-attr_bit: KRT_LOCK_CWND	{ $$ = f_new_dynamic_attr_bit(7, "krt_lock"); } ;
+attr_bit: KRT_LOCK_CWND		{ $$ = f_new_dynamic_attr_bit(7, "krt_lock"); } ;
 attr_bit: KRT_LOCK_ADVMSS	{ $$ = f_new_dynamic_attr_bit(8, "krt_lock"); } ;
-attr_bit: KRT_LOCK_REORDERING { $$ = f_new_dynamic_attr_bit(9, "krt_lock"); } ;
-attr_bit: KRT_LOCK_HOPLIMIT { $$ = f_new_dynamic_attr_bit(10, "krt_lock"); } ;
-attr_bit: KRT_LOCK_RTO_MIN { $$ = f_new_dynamic_attr_bit(13, "krt_lock"); } ;
+attr_bit: KRT_LOCK_REORDERING	{ $$ = f_new_dynamic_attr_bit(9, "krt_lock"); } ;
+attr_bit: KRT_LOCK_HOPLIMIT	{ $$ = f_new_dynamic_attr_bit(10, "krt_lock"); } ;
+attr_bit: KRT_LOCK_INITCWND	{ $$ = f_new_dynamic_attr_bit(11, "krt_lock"); } ;
+/* No lock for FEATURES bitfield */
+attr_bit: KRT_LOCK_RTO_MIN	{ $$ = f_new_dynamic_attr_bit(13, "krt_lock"); } ;
+attr_bit: KRT_LOCK_INITRWND	{ $$ = f_new_dynamic_attr_bit(14, "krt_lock"); } ;
+attr_bit: KRT_LOCK_QUICKACK	{ $$ = f_new_dynamic_attr_bit(15, "krt_lock"); } ;
+attr_bit: KRT_LOCK_CONGCTL	{ $$ = f_new_dynamic_attr_bit(16, "krt_lock"); } ;
+attr_bit: KRT_LOCK_FASTOPEN_NO_COOKIE	{ $$ = f_new_dynamic_attr_bit(17, "krt_lock"); } ;
 
 /* Bits of EA_KRT_FEATURES */
 attr_bit: KRT_FEATURE_ECN	{ $$ = f_new_dynamic_attr_bit(0, "krt_features"); } ;
