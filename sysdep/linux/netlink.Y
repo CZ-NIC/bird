@@ -13,7 +13,7 @@ CF_DECLS
 CF_KEYWORDS(KERNEL, TABLE, METRIC, NETLINK, RX, BUFFER)
 
 CF_KEYWORDS(KRT_LOCK_MTU, KRT_LOCK_WINDOW, KRT_LOCK_RTT, KRT_LOCK_RTTVAR,
-	    KRT_LOCK_SSTRESH, KRT_LOCK_CWND, KRT_LOCK_ADVMSS, KRT_LOCK_REORDERING,
+	    KRT_LOCK_SSTHRESH, KRT_LOCK_CWND, KRT_LOCK_ADVMSS, KRT_LOCK_REORDERING,
 	    KRT_LOCK_HOPLIMIT, KRT_LOCK_INITCWND, KRT_LOCK_RTO_MIN, KRT_LOCK_INITRWND,
 	    KRT_LOCK_QUICKACK, KRT_LOCK_CONGCTL, KRT_LOCK_FASTOPEN_NO_COOKIE,
 	    KRT_FEATURE_ECN, KRT_FEATURE_ALLFRAG)
@@ -36,7 +36,7 @@ attr_bit: KRT_LOCK_MTU		{ $$ = f_new_dynamic_attr_bit(2, "krt_lock"); } ;
 attr_bit: KRT_LOCK_WINDOW	{ $$ = f_new_dynamic_attr_bit(3, "krt_lock"); } ;
 attr_bit: KRT_LOCK_RTT		{ $$ = f_new_dynamic_attr_bit(4, "krt_lock"); } ;
 attr_bit: KRT_LOCK_RTTVAR	{ $$ = f_new_dynamic_attr_bit(5, "krt_lock"); } ;
-attr_bit: KRT_LOCK_SSTRESH	{ $$ = f_new_dynamic_attr_bit(6, "krt_lock"); } ;
+attr_bit: KRT_LOCK_SSTHRESH	{ $$ = f_new_dynamic_attr_bit(6, "krt_lock"); } ;
 attr_bit: KRT_LOCK_CWND		{ $$ = f_new_dynamic_attr_bit(7, "krt_lock"); } ;
 attr_bit: KRT_LOCK_ADVMSS	{ $$ = f_new_dynamic_attr_bit(8, "krt_lock"); } ;
 attr_bit: KRT_LOCK_REORDERING	{ $$ = f_new_dynamic_attr_bit(9, "krt_lock"); } ;

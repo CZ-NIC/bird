@@ -86,7 +86,7 @@ static struct ea_class ea_krt_metrics[] = {
   KRT_METRIC_INT(RTAX_WINDOW, "krt_window"),
   KRT_METRIC_INT(RTAX_RTT, "krt_rtt"),
   KRT_METRIC_INT(RTAX_RTTVAR, "krt_rttvar"),
-  KRT_METRIC_INT(RTAX_SSTHRESH, "krt_sstresh"),
+  KRT_METRIC_INT(RTAX_SSTHRESH, "krt_ssthresh"),
   KRT_METRIC_INT(RTAX_CWND, "krt_cwnd"),
   KRT_METRIC_INT(RTAX_ADVMSS, "krt_advmss"),
   KRT_METRIC_INT(RTAX_REORDERING, "krt_reordering"),
@@ -100,7 +100,7 @@ static struct ea_class ea_krt_metrics[] = {
 };
 
 static const char *krt_metrics_names[KRT_METRICS_MAX] = {
-  NULL, "lock", "mtu", "window", "rtt", "rttvar", "sstresh", "cwnd", "advmss",
+  NULL, "lock", "mtu", "window", "rtt", "rttvar", "ssthresh", "cwnd", "advmss",
   "reordering", "hoplimit", "initcwnd", "features", "rto_min", "initrwnd", "quickack",
   "congctl", "fastopen_no_cookie"
 };
