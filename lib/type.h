@@ -72,10 +72,11 @@ enum btype {
   T_CLIST = 0x0a,		/* Set of u32's (e.g., a community list) */
   T_ECLIST = 0x0e,		/* Set of pairs of u32's - ext. community list */
   T_LCLIST = 0x08,		/* Set of triplets of u32's - large community list */
+  T_STRING = 0x10,
 
-  T_ENUM_BGP_ORIGIN = 0x11,	/* BGP Origin enum */
-  T_ENUM_RA_PREFERENCE = 0x13,	/* RA Preference enum */
-  T_ENUM_FLOWSPEC_VALID = 0x15,	/* Flowspec validation result */
+  T_ENUM_BGP_ORIGIN = 0x13,	/* BGP Origin enum */
+  T_ENUM_RA_PREFERENCE = 0x15,	/* RA Preference enum */
+  T_ENUM_FLOWSPEC_VALID = 0x17,	/* Flowspec validation result */
 
 #define EAF_TYPE__MAX 0x1f
 #define EAF_EMBEDDED 0x01		/* Data stored in eattr.u.data (part of type spec) */
@@ -86,7 +87,7 @@ enum btype {
   T_PAIR = 0xa4,  /*	Notice that pair is stored as integer: first << 16 | second */
 
 /* Put enumerational types in 0x20..0x3f range */
-  T_ENUM_LO = 0x10,
+  T_ENUM_LO = 0x12,
   T_ENUM_HI = 0x3f,
 
   T_ENUM_RTS = 0x31,
@@ -103,7 +104,6 @@ enum btype {
 
 /* Bigger ones */
   T_NET = 0xb0,
-  T_STRING = 0xb4,
   T_PATH_MASK = 0xb8,	/* mask for BGP path */
   T_EC = 0xbc,		/* Extended community value, u64 */
   T_LC = 0xc0,		/* Large community value, lcomm */
