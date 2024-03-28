@@ -470,10 +470,10 @@ test-mpls-bgp:
   variables:
     TEST_NAME: cf-mpls-bgp
 
-#test-mpls-bgp-l3vpn:
-#  <<: *test-base
-#  variables:
-#    TEST_NAME: cf-mpls-bgp-l3vpn
+test-mpls-bgp-l3vpn:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-mpls-bgp-l3vpn
 
 
 .build-birdlab-base: &build-birdlab-base
