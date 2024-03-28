@@ -54,7 +54,7 @@ attr_bit: KRT_FEATURE_ECN	{ $$ = f_new_dynamic_attr_bit(0, "krt_features"); } ;
 attr_bit: KRT_FEATURE_ALLFRAG { $$ = f_new_dynamic_attr_bit(3, "krt_features"); } ;
 
 /* Using attribute bits in filters (moved here to not confuse Bison on *BSD) */
-lvalue: attr_bit { $$ = (struct f_lval) { .type = F_LVAL_ATTR_BIT, .fab = $1 }; };
+lvalue: attr_bit { $$ = (struct f_lval) { .type = F_LVAL_ATTR_BIT, .fab = $1, .rte = f_new_inst(FI_CURRENT_ROUTE), }; };
 
 CF_CODE
 

@@ -1248,6 +1248,7 @@ ea_list_unref(ea_list *l)
 void
 ea_format_bitfield(const struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max)
 {
+  byte *start = buf;
   byte *bound = buf + bufsize - 32;
   u32 data = a->u.data;
   int i;
@@ -1261,13 +1262,17 @@ ea_format_bitfield(const struct eattr *a, byte *buf, int bufsize, const char **n
 	return;
       }
 
-      buf += bsprintf(buf, " %s", names[i]);
+      buf += bsprintf(buf, "%s ", names[i]);
       data &= ~(1u << i);
     }
 
   if (data)
-    bsprintf(buf, " %08x", data);
+    bsprintf(buf, "%08x ", data);
 
+  if (buf != start)
+    buf--;
+
+  *buf = 0;
   return;
 }
 
