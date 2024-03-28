@@ -3981,15 +3981,15 @@ these attributes:
 <p>In Linux, there is also a plenty of obscure route attributes mostly focused
 on tuning TCP performance of local connections. BIRD supports most of these
 attributes, see Linux or iproute2 documentation for their meaning. Attributes
-<cf/krt_lock_*/ and <cf/krt_feature_*/ have type bool, others have type int.
-Supported attributes are:
+<cf/krt_lock_*/ and <cf/krt_feature_*/ have type bool, <cf/krt_congctl/ has type
+string, others have type int. Supported attributes are:
 
 <cf/krt_mtu/, <cf/krt_lock_mtu/, <cf/krt_window/, <cf/krt_lock_window/,
 <cf/krt_rtt/, <cf/krt_lock_rtt/, <cf/krt_rttvar/, <cf/krt_lock_rttvar/,
 <cf/krt_sstresh/, <cf/krt_lock_sstresh/, <cf/krt_cwnd/, <cf/krt_lock_cwnd/,
 <cf/krt_advmss/, <cf/krt_lock_advmss/, <cf/krt_reordering/, <cf/krt_lock_reordering/,
 <cf/krt_hoplimit/, <cf/krt_lock_hoplimit/, <cf/krt_rto_min/, <cf/krt_lock_rto_min/,
-<cf/krt_initcwnd/, <cf/krt_initrwnd/, <cf/krt_quickack/,
+<cf/krt_initcwnd/, <cf/krt_initrwnd/, <cf/krt_quickack/, <cf/krt_congctl/,
 <cf/krt_feature_ecn/, <cf/krt_feature_allfrag/
 
 <sect1>Example

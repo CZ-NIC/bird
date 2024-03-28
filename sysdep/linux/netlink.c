@@ -77,6 +77,10 @@ static struct ea_class ea_krt_metrics[] = {
     .type = T_INT,
     .format = krt_bitfield_format,
   },
+  [RTAX_CC_ALGO] = {
+    .name = "krt_congctl",
+    .type = T_STRING,
+  },
 #define KRT_METRIC_INT(_rtax, _name)	[_rtax] = { .name = _name, .type = T_INT }
   KRT_METRIC_INT(RTAX_MTU, "krt_mtu"),
   KRT_METRIC_INT(RTAX_WINDOW, "krt_window"),
@@ -96,7 +100,8 @@ static struct ea_class ea_krt_metrics[] = {
 
 static const char *krt_metrics_names[KRT_METRICS_MAX] = {
   NULL, "lock", "mtu", "window", "rtt", "rttvar", "sstresh", "cwnd", "advmss",
-  "reordering", "hoplimit", "initcwnd", "features", "rto_min", "initrwnd", "quickack"
+  "reordering", "hoplimit", "initcwnd", "features", "rto_min", "initrwnd", "quickack",
+  "congctl"
 };
 
 static const char *krt_features_names[KRT_FEATURES_MAX] = {
@@ -575,6 +580,9 @@ static inline u16 rta_get_u16(struct rtattr *a)
 static inline u32 rta_get_u32(struct rtattr *a)
 { return *(u32 *) RTA_DATA(a); }
 
+static inline const char *rta_get_str(struct rtattr *a)
+{ return RTA_DATA(a); }
+
 static inline ip4_addr rta_get_ip4(struct rtattr *a)
 { return ip4_ntoh(*(ip4_addr *) RTA_DATA(a)); }
 
@@ -663,6 +671,12 @@ static inline void
 nl_add_attr_u32(struct nlmsghdr *h, uint bufsize, int code, u32 data)
 {
   nl_add_attr(h, bufsize, code, &data, 4);
+}
+
+static inline void
+nl_add_attr_str(struct nlmsghdr *h, unsigned bufsize, int code, const char *str)
+{
+  nl_add_attr(h, bufsize, code, str, strlen(str) + 1);
 }
 
 static inline void
@@ -930,20 +944,23 @@ err:
 }
 
 static void
-nl_add_metrics(struct nlmsghdr *h, uint bufsize, u32 *metrics, int max)
+nl_add_metrics(struct nlmsghdr *h, uint bufsize, u32 *metrics, const char *cc_algo, int max)
 {
   struct rtattr *a = nl_open_attr(h, bufsize, RTA_METRICS);
   int t;
 
   for (t = 1; t < max; t++)
     if (metrics[0] & (1 << t))
-      nl_add_attr_u32(h, bufsize, t, metrics[t]);
+      if (t == RTAX_CC_ALGO)
+        nl_add_attr_str(h, bufsize, t, cc_algo);
+      else
+        nl_add_attr_u32(h, bufsize, t, metrics[t]);
 
   nl_close_attr(h, a);
 }
 
 static int
-nl_parse_metrics(struct rtattr *hdr, u32 *metrics, int max)
+nl_parse_metrics(struct rtattr *hdr, u32 *metrics, const char **cc_algo, int max)
 {
   struct rtattr *a = RTA_DATA(hdr);
   int len = RTA_PAYLOAD(hdr);
@@ -951,17 +968,31 @@ nl_parse_metrics(struct rtattr *hdr, u32 *metrics, int max)
   metrics[0] = 0;
   for (; RTA_OK(a, len); a = RTA_NEXT(a, len))
   {
-    if (a->rta_type == RTA_UNSPEC)
+    if (a->rta_type == RTAX_UNSPEC)
       continue;
 
     if (a->rta_type >= max)
       continue;
 
-    if (RTA_PAYLOAD(a) != 4)
-      return -1;
+    if (a->rta_type == RTAX_CC_ALGO)
+    {
+      *cc_algo = rta_get_str(a);
+      int slen = RTA_PAYLOAD(a);
 
-    metrics[0] |= 1 << a->rta_type;
-    metrics[a->rta_type] = rta_get_u32(a);
+      if (!slen || ((*cc_algo)[slen - 1] != 0))
+	return -1;
+
+      metrics[0] |= 1 << a->rta_type;
+      metrics[a->rta_type] = 0;
+    }
+    else
+    {
+      if (RTA_PAYLOAD(a) != 4)
+	return -1;
+
+      metrics[0] |= 1 << a->rta_type;
+      metrics[a->rta_type] = rta_get_u32(a);
+    }
   }
 
   if (len > 0)
@@ -1495,6 +1526,7 @@ nl_send_route(struct krt_proto *p, const rte *e, int op)
 
 
   u32 metrics[KRT_METRICS_MAX];
+  const char *cc_algo = NULL;
   metrics[0] = 0;
 
   struct ea_walk_state ews = { .eattrs = eattrs };
@@ -1502,11 +1534,15 @@ nl_send_route(struct krt_proto *p, const rte *e, int op)
   {
     int id = ea->id - ea_krt_metrics[0].id;
     metrics[0] |= 1 << id;
-    metrics[id] = ea->u.data;
+
+    if (id == RTAX_CC_ALGO)
+      cc_algo = ea->u.ptr->data;
+    else
+      metrics[id] = ea->u.data;
   }
 
   if (metrics[0])
-    nl_add_metrics(&r->h, rsize, metrics, KRT_METRICS_MAX);
+    nl_add_metrics(&r->h, rsize, metrics, cc_algo, KRT_METRICS_MAX);
 
   switch (dest)
     {
@@ -1868,7 +1904,9 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
   if (a[RTA_METRICS])
     {
       u32 metrics[KRT_METRICS_MAX];
-      if (nl_parse_metrics(a[RTA_METRICS], metrics, ARRAY_SIZE(metrics)) < 0)
+      const char *cc_algo = NULL;
+
+      if (nl_parse_metrics(a[RTA_METRICS], metrics, &cc_algo, ARRAY_SIZE(metrics)) < 0)
         {
 	  log(L_ERR "KRT: Received route %N with strange RTA_METRICS attribute", net);
 	  return;
@@ -1876,8 +1914,10 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 
       for (uint t = 1; t < KRT_METRICS_MAX; t++)
 	if (metrics[0] & (1 << t))
-	  ea_set_attr(&ra,
-	      EA_LITERAL_EMBEDDED(&ea_krt_metrics[t], 0, metrics[t]));
+	  if (t == RTAX_CC_ALGO)
+	    ea_set_attr(&ra, EA_LITERAL_STORE_ADATA(&ea_krt_metrics[t], 0, cc_algo, strlen(cc_algo)));
+	  else
+	    ea_set_attr(&ra, EA_LITERAL_EMBEDDED(&ea_krt_metrics[t], 0, metrics[t]));
     }
 
   rte e0 = {
