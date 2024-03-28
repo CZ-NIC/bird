@@ -136,6 +136,9 @@ input_help(int arg, int key UNUSED)
   input_start_list();
   cmd_help(rl_line_buffer, rl_point);
   rl_undo_command(1, 0);
+  /* <cmd> ? is "internal". Do not submit command in non interactive session */
+  if (!interactive)
+    rl_replace_line("", 0);
   input_stop_list();
   return 0;
 }
