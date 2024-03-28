@@ -874,6 +874,11 @@
 	  case T_IP:
 	    RESULT_(T_IP, ip, *((const ip_addr *) e->u.ptr->data));
 	    break;
+
+	  case T_STRING:
+	    RESULT_(T_STRING, s, (const char *) e->u.ptr->data);
+	    break;
+
 	  default:
 	    RESULT_VAL([[(struct f_val) {
 		.type = e->type,
@@ -914,6 +919,11 @@
       case T_IP:
 	a = ea_set_attr(&fs->rte->attrs,
 	    EA_LITERAL_STORE_ADATA(da, 0, &v1.val.ip, sizeof(ip_addr)));
+	break;
+
+      case T_STRING:
+	a = ea_set_attr(&fs->rte->attrs,
+	    EA_LITERAL_STORE_ADATA(da, 0, &v1.val.s, strlen(v1.val.s) + 1));
 	break;
 
       default:

@@ -1446,6 +1446,9 @@ ea_show(struct cli *c, const eattr *e)
 	case T_LCLIST:
 	  ea_show_lc_set(c, cls->name, ad, buf);
 	  return;
+	case T_STRING:
+	  bsnprintf(pos, end - pos, "%s", (const char *) ad->data);
+	  break;
 	case T_NEXTHOP_LIST:
 	  ea_show_nexthop_list(c, (struct nexthop_adata *) e->u.ptr);
 	  return;

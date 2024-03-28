@@ -946,22 +946,10 @@ term:
  | '-' '-' EMPTY '-' '-' { $$ = f_new_inst(FI_CONSTANT, f_get_empty(T_ECLIST)); }
  | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_new_inst(FI_CONSTANT, f_get_empty(T_LCLIST)); }
 
- | PREPEND '(' term ',' term ')' {
-     $$ = f_dispatch_method_x("prepend", $3->type, $3, $5);
-     cf_warn("prepend(x,y) function is deprecated, please use x.prepend(y)");
-   }
- | ADD '(' term ',' term ')' {
-     $$ = f_dispatch_method_x("add", $3->type, $3, $5);
-     cf_warn("add(x,y) function is deprecated, please use x.add(y)");
-   }
- | DELETE '(' term ',' term ')' {
-     $$ = f_dispatch_method_x("delete", $3->type, $3, $5);
-     cf_warn("delete(x,y) function is deprecated, please use x.delete(y)");
-   }
- | FILTER '(' term ',' term ')' {
-     $$ = f_dispatch_method_x("filter", $3->type, $3, $5);
-     cf_warn("filter(x,y) function is deprecated, please use x.filter(y)");
-   }
+ | PREPEND '(' term ',' term ')' { $$ = f_dispatch_method_x("prepend", $3->type, $3, $5); }
+ | ADD '(' term ',' term ')' { $$ = f_dispatch_method_x("add", $3->type, $3, $5); }
+ | DELETE '(' term ',' term ')' { $$ = f_dispatch_method_x("delete", $3->type, $3, $5); }
+ | FILTER '(' term ',' term ')' { $$ = f_dispatch_method_x("filter", $3->type, $3, $5); }
 
  | ROA_CHECK '(' rtable ')' { $$ = f_implicit_roa_check($3); }
  | ROA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_new_inst(FI_ROA_CHECK, $5, $7, $3); }
