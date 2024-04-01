@@ -96,7 +96,7 @@ void bgp_set_attr_u32(ea_list **to, uint code, uint flags, u32 val)
 
   ea_set_attr(to, EA_LITERAL_EMBEDDED(
 	&desc->class,
-	flags & ~BAF_EXT_LEN,
+	desc->flags | (flags & BAF_PARTIAL),
 	val
 	));
 }
@@ -107,7 +107,7 @@ void bgp_set_attr_ptr(ea_list **to, uint code, uint flags, const struct adata *a
 
   ea_set_attr(to, EA_LITERAL_DIRECT_ADATA(
 	&desc->class,
-	flags & ~BAF_EXT_LEN,
+	desc->flags | (flags & BAF_PARTIAL),
 	ad
 	));
 }
@@ -119,7 +119,7 @@ bgp_set_attr_data(ea_list **to, uint code, uint flags, void *data, uint len)
 
   ea_set_attr(to, EA_LITERAL_STORE_ADATA(
 	&desc->class,
-	flags & ~BAF_EXT_LEN,
+	desc->flags | (flags & BAF_PARTIAL),
 	data,
 	len
 	));
@@ -1254,7 +1254,8 @@ bgp_export_attr(struct bgp_export_state *s, eattr *a, ea_list *to)
   if (!desc)
     return;
 
-  /* The flags might have been zero if the attr was added locally */
+  /* The flags should be correct, we reset them just to be sure */
+  ASSERT(!((a->flags ^ desc->flags) & (BAF_OPTIONAL | BAF_TRANSITIVE)));
   a->flags = (a->flags & BAF_PARTIAL) | desc->flags;
 
   /* Set partial bit if new opt-trans attribute is attached to non-local route */
