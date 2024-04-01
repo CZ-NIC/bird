@@ -30,18 +30,10 @@ typedef union netindex_hash netindex_hash;
 /* Initialization */
 netindex_hash *netindex_hash_new(pool *);
 
-/* Find/get/resolve index and allocate its usecount to the given pool */
-struct netindex *net_find_index_persistent(netindex_hash *, const net_addr *, pool *);
-struct netindex *net_get_index_persistent(netindex_hash *, const net_addr *, pool *);
-struct netindex *net_resolve_index_persistent(netindex_hash *, u8, u32, pool *);
-
 /* Find/get/resolve index; pointer valid until end of task */ 
-static inline struct netindex *net_find_index(netindex_hash *h, const net_addr *n)
-{ return net_find_index_persistent(h, n, tmp_res.pool); }
-static inline struct netindex *net_get_index(netindex_hash *h, const net_addr *n)
-{ return net_get_index_persistent(h, n, tmp_res.pool); }
-static inline struct netindex *net_resolve_index(netindex_hash *h, u8 net_type, u32 index)
-{ return net_resolve_index_persistent(h, net_type, index, tmp_res.pool); }
+struct netindex *net_find_index(netindex_hash *, const net_addr *);
+struct netindex *net_get_index(netindex_hash *, const net_addr *);
+struct netindex *net_resolve_index(netindex_hash *, u8, u32);
 
 /* Update use-count without allocating a handle. Take same care
  * to ensure that your locks and unlocks are always balanced. */
