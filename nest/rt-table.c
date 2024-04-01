@@ -779,7 +779,7 @@ channel_rpe_mark_seen(struct channel *c, struct rt_pending_export *rpe)
   ASSERT_DIE(c->out_req.hook);
   rpe_mark_seen(c->out_req.hook, rpe);
 
-  if (c->refeed_req.hook && (c->refeed_req.hook->export_state == TES_FEEDING))
+  if (c->refeed_req.hook && (atomic_load_explicit(&c->refeed_req.hook->export_state, memory_order_acquire) == TES_FEEDING))
     rpe_mark_seen(c->refeed_req.hook, rpe);
 
   if (rpe->old)
@@ -3916,7 +3916,7 @@ rt_prepare_feed(struct rt_export_hook *c, net *n, rt_feed_block *b)
       struct rt_pending_export *last_seen = last_seen_item ? SKIP_BACK(struct rt_pending_export, li, last_seen_item) : NULL;
 
       while (last_seen && first && (first->seq <= last_seen->seq))
-	first = first->next;
+	first = atomic_load_explicit(&first->next, memory_order_relaxed);
 
       b->aux[b->pos++] = (struct rt_feed_block_aux) {
 	.start = b->cnt,

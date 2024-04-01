@@ -180,7 +180,7 @@ alloc_page(void)
   struct free_page *fp = local_page_stack;
   if (fp)
   {
-    local_page_stack = fp->next;
+    local_page_stack = atomic_load_explicit(&fp->next, memory_order_relaxed);
     atomic_fetch_sub_explicit(&pages_kept_locally, 1, memory_order_relaxed);
     pages_kept_here--;
     UNPROTECT_PAGE(fp);
@@ -194,14 +194,14 @@ alloc_page(void)
   if (fp = PAGE_STACK_GET)
   {
     /* Reinstate the stack with the next page in list */
-    PAGE_STACK_PUT(fp->next);
+    PAGE_STACK_PUT(atomic_load_explicit(&fp->next, memory_order_relaxed));
 
     /* Update the counters */
     UNUSED uint pk = atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
 
     /* Release the page */
     UNPROTECT_PAGE(fp);
-    ajlog(fp, fp->next, pk, AJT_ALLOC_GLOBAL_HOT);
+    ajlog(fp, atomic_load_explicit(&fp->next, memory_order_relaxed), pk, AJT_ALLOC_GLOBAL_HOT);
     return fp;
   }
 
@@ -302,7 +302,7 @@ flush_local_pages(void)
    * Also, we need to know the last page. */
   struct free_page *last = local_page_stack, *next;
   int check_count = 1;
-  while (next = last->next)
+  while (next = atomic_load_explicit(&last->next, memory_order_relaxed))
   {
     check_count++;
     last = next;
@@ -313,7 +313,7 @@ flush_local_pages(void)
 
   /* Block the stack by a cork */
   UNPROTECT_PAGE(last);
-  last->next = PAGE_STACK_GET;
+  atomic_store_explicit(&last->next, PAGE_STACK_GET, memory_order_relaxed);
   PROTECT_PAGE(last);
 
   /* Update the stack */
@@ -355,7 +355,7 @@ page_cleanup(void *_ UNUSED)
 
   do {
     struct free_page *fp = stack;
-    stack = fp->next;
+    stack = atomic_load_explicit(&fp->next, memory_order_relaxed);
 
     LOCK_DOMAIN(resource, empty_pages_domain);
     /* Empty pages are stored as pointers. To store them, we need a pointer block. */
@@ -397,7 +397,7 @@ page_cleanup(void *_ UNUSED)
   while (stack)
   {
     struct free_page *f = stack;
-    stack = f->next;
+    stack = atomic_load_explicit(&f->next, memory_order_acquire);
     UNPROTECT_PAGE(f);
     free_page(f);
 
