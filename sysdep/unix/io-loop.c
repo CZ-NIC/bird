@@ -885,7 +885,7 @@ bird_thread_main(void *arg)
       ASSERT_DIE(pfd.loop.used == pfd.pfd.used);
     }
     /* Nothing to do in at least 5 seconds, flush local hot page cache */
-    else if ((timeout > 5000) && (timeout < 0))
+    else if ((timeout > 5000) || (timeout < 0))
       flush_local_pages();
 
     bird_thread_busy_update(thr, timeout);
