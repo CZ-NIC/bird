@@ -918,17 +918,17 @@
 
       case T_IP:
 	a = ea_set_attr(&fs->rte->attrs,
-	    EA_LITERAL_STORE_ADATA(da, 0, &v1.val.ip, sizeof(ip_addr)));
+	    EA_LITERAL_STORE_ADATA(da, da->flags, &v1.val.ip, sizeof(ip_addr)));
 	break;
 
       case T_STRING:
 	a = ea_set_attr(&fs->rte->attrs,
-	    EA_LITERAL_STORE_ADATA(da, 0, v1.val.s, strlen(v1.val.s) + 1));
+	    EA_LITERAL_STORE_ADATA(da, da->flags, v1.val.s, strlen(v1.val.s) + 1));
 	break;
 
       default:
 	a = ea_set_attr(&fs->rte->attrs,
-	    EA_LITERAL_GENERIC(da->id, da->type, 0, .u = v1.val.bval));
+	    EA_LITERAL_GENERIC(da->id, da->type, da->flags, .u = v1.val.bval));
 	break;
       }
 

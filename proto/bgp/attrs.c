@@ -70,7 +70,6 @@ union bgp_attr_desc {
   struct ea_class class;
   struct {
     EA_CLASS_INSIDE;
-    uint flags;
     void (*export)(struct bgp_export_state *s, eattr *a);
     int  (*encode)(struct bgp_write_state *s, eattr *a, byte *buf, uint size);
     void (*decode)(struct bgp_parse_state *s, uint code, uint flags, byte *data, uint len, ea_list **to);

@@ -259,6 +259,7 @@ struct ea_class {
   uint id;				/* Autoassigned attribute ID */ \
   uint uc;				/* Reference count */ \
   btype type;				/* Data type ID */ \
+  u16 flags;				/* Protocol-dependent flags */ \
   uint readonly:1;			/* This attribute can't be changed by filters */ \
   uint conf:1;				/* Requested by config */ \
   uint hidden:1;			/* Technical attribute, do not show, do not expose to filters */ \
