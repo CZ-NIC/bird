@@ -712,6 +712,23 @@ CF_CLI_HELP(SHOW ROUTE, ..., [[Show routing table]])
 CF_CLI(SHOW ROUTE, r_args, [[[<prefix>|for <prefix>|for <ip>|in <prefix>] [table <t>] [(import|export) table <p>.<c>] [filter <f>|where <cond>] [all] [primary] [filtered] [(export|preexport|noexport) <p>] [protocol <p>] [stats|count]]], [[Show routing table]])
 { rt_show($3); } ;
 
+CF_CLI_OPT(SHOW ROUTE FOR, <ip>|<prefix>)
+CF_CLI_OPT(SHOW ROUTE IN, <prefix>)
+CF_CLI_OPT(SHOW ROUTE TABLE, <t>)
+CF_CLI_OPT(SHOW ROUTE FILTER, <f>)
+CF_CLI_OPT(SHOW ROUTE WHERE, <cond>)
+CF_CLI_OPT(SHOW ROUTE ALL)
+CF_CLI_OPT(SHOW ROUTE PRIMARY)
+CF_CLI_OPT(SHOW ROUTE FILTERED)
+CF_CLI_OPT(SHOW ROUTE IMPORT, <p>[.<c>])
+CF_CLI_OPT(SHOW ROUTE EXPORT, <p>[.<c>])
+CF_CLI_OPT(SHOW ROUTE EXPORTED, <p>[.<c>])
+CF_CLI_OPT(SHOW ROUTE PREEXPORT, <p>[.<c>])
+CF_CLI_OPT(SHOW ROUTE NOEXPORT, <p>[.<c>])
+CF_CLI_OPT(SHOW ROUTE PROTOCOL, <p>)
+CF_CLI_OPT(SHOW ROUTE STATS)
+CF_CLI_OPT(SHOW ROUTE COUNT)
+
 r_args:
    /* empty */ {
      $$ = cfg_allocz(sizeof(struct rt_show_data));
@@ -906,13 +923,19 @@ CF_CLI_HELP(SHOW SYMBOLS, ..., [[Show all known symbolic names]])
 CF_CLI(SHOW SYMBOLS, sym_args, [table|filter|function|protocol|template|<symbol>], [[Show all known symbolic names]])
 { cmd_show_symbols($3); } ;
 
+CF_CLI_OPT(SHOW SYMBOLS TABLE)
+CF_CLI_OPT(SHOW SYMBOLS FILTER)
+CF_CLI_OPT(SHOW SYMBOLS FUNCTION)
+CF_CLI_OPT(SHOW SYMBOLS PROTOCOL)
+CF_CLI_OPT(SHOW SYMBOLS TEMPLATE)
+
 sym_args:
    /* empty */ {
      $$ = cfg_allocz(sizeof(struct sym_show_data));
    }
  | sym_args TABLE { $$ = $1; $$->type = SYM_TABLE; }
- | sym_args FUNCTION { $$ = $1; $$->type = SYM_FUNCTION; }
  | sym_args FILTER { $$ = $1; $$->type = SYM_FILTER; }
+ | sym_args FUNCTION { $$ = $1; $$->type = SYM_FUNCTION; }
  | sym_args PROTOCOL { $$ = $1; $$->type = SYM_PROTO; }
  | sym_args TEMPLATE { $$ = $1; $$->type = SYM_TEMPLATE; }
  | sym_args CF_SYM_KNOWN { $$ = $1; $$->sym = $2; }
@@ -970,6 +993,15 @@ CF_CLI(RELOAD OUT, proto_patt partial_opt, <protocol> | \"<pattern>\" | all, [[R
 CF_CLI_HELP(DEBUG, ..., [[Control protocol debugging via BIRD logs]])
 CF_CLI(DEBUG, debug_args, (<protocol> | <channel> | \"<pattern>\" | all) (all | off | { states|routes|filters|interfaces|events|packets [, ...] }), [[Control protocol debugging via BIRD logs]])
 { /* Done in debug_args */  };
+
+CF_CLI_OPT(DEBUG ALL)
+CF_CLI_OPT(DEBUG OFF)
+CF_CLI_OPT(DEBUG STATES)
+CF_CLI_OPT(DEBUG ROUTES)
+CF_CLI_OPT(DEBUG FILTERS)
+CF_CLI_OPT(DEBUG INTERFACES)
+CF_CLI_OPT(DEBUG EVENTS)
+CF_CLI_OPT(DEBUG PACKETS)
 
 debug_args:
    proto_patt debug_mask { proto_apply_cmd($1, proto_cmd_debug, 1, $2);  }

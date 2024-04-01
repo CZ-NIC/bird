@@ -20,6 +20,7 @@ struct cmd_info {
   char *args;
   char *help;
   int is_real_cmd;
+  int is_option;
 };
 
 static struct cmd_info command_table[] = {
@@ -30,7 +31,8 @@ struct cmd_node {
   struct cmd_node *sibling, *son, **plastson;
   struct cmd_info *cmd, *help;
   int len;
-  signed char prio;
+  u8 final;
+  s8 prio;
   char token[1];
 };
 
@@ -51,12 +53,13 @@ cmd_build_tree(void)
       struct cmd_node *old, *new;
       char *c = cmd->command;
 
-      old = &cmd_root;
+      new = &cmd_root;
       while (*c)
 	{
 	  char *d = c;
 	  while (*c && !isspace_(*c))
 	    c++;
+	  old = new;
 	  for(new=old->son; new; new=new->sibling)
 	    if (new->len == c-d && !memcmp(new->token, d, c-d))
 	      break;
@@ -72,14 +75,17 @@ cmd_build_tree(void)
 	      memcpy(new->token, d, c-d);
 	      new->prio = (new->len == 3 && (!memcmp(new->token, "roa", 3) || !memcmp(new->token, "rip", 3))) ? 0 : 1; /* Hack */
 	    }
-	  old = new;
 	  while (isspace_(*c))
 	    c++;
 	}
+
       if (cmd->is_real_cmd)
-	old->cmd = cmd;
+	new->cmd = cmd;
       else
-	old->help = cmd;
+	new->help = cmd;
+
+      if (cmd->is_option)
+	old->final = 1;
     }
 }
 
@@ -147,7 +153,7 @@ cmd_help(char *cmd, int len)
   int ambig;
 
   n = &cmd_root;
-  while (cmd < end)
+  while (cmd < end && !n->final)
     {
       if (isspace_(*cmd))
 	{
@@ -168,6 +174,11 @@ cmd_help(char *cmd, int len)
       n = m;
     }
   cmd_display_help(n->cmd, NULL);
+
+  /* Currently no help for options */
+  if (n->final)
+    return;
+
   for (m=n->son; m; m=m->sibling)
     cmd_display_help(m->help, m->cmd);
 }
@@ -229,7 +240,7 @@ cmd_complete(char *cmd, int len, char *buf, int again)
 
   /* Find the context */
   n = &cmd_root;
-  while (cmd < fin && n->son)
+  while (cmd < fin && n->son && !n->final)
     {
       if (isspace_(*cmd))
 	{
@@ -290,7 +301,7 @@ cmd_expand(char *cmd)
 
   args = c = cmd;
   n = &cmd_root;
-  while (*c)
+  while (*c && !n->final)
     {
       if (isspace_(*c))
 	{
