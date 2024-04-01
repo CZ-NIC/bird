@@ -126,6 +126,43 @@ static struct {
 
 const char *bfd_state_names[] = { "AdminDown", "Down", "Init", "Up" };
 
+const char *bfd_diag_names[] = {
+  [BFD_DIAG_NOTHING] =		"None",
+  [BFD_DIAG_TIMEOUT] =		"Time expired",
+  [BFD_DIAG_ECHO_FAILED] =	"Echo failed",
+  [BFD_DIAG_NEIGHBOR_DOWN] =	"Neighbor down",
+  [BFD_DIAG_FWD_RESET] =	"Fwd plane reset",
+  [BFD_DIAG_PATH_DOWN] =	"Path down",
+  [BFD_DIAG_C_PATH_DOWN] =	"Concat path down",
+  [BFD_DIAG_ADMIN_DOWN] =	"Admin down",
+  [BFD_DIAG_RC_PATH_DOWN] =	"Rev concat path down",
+};
+
+const char *bfd_auth_names[] = {
+  [BFD_AUTH_NONE] =			"None",
+  [BFD_AUTH_SIMPLE] =			"Simple",
+  [BFD_AUTH_KEYED_MD5] =		"Keyed MD5",
+  [BFD_AUTH_METICULOUS_KEYED_MD5] =	"Meticulous keyed MD5",
+  [BFD_AUTH_KEYED_SHA1] =		"Keyed SHA1",
+  [BFD_AUTH_METICULOUS_KEYED_SHA1] =	"Meticulous keyed SHA1",
+};
+
+#define BFD_DIAG_BUFFER_SIZE	16
+
+static inline const char *
+bfd_diag_name(u8 id, char buf[BFD_DIAG_BUFFER_SIZE])
+{
+  return (id < ARRAY_SIZE(bfd_diag_names)) ?
+    bfd_diag_names[id] :
+    (bsprintf(buf, "Error #%u", (uint) id), buf);
+}
+
+static inline const char *
+bfd_auth_name(u8 id)
+{
+  return (id < ARRAY_SIZE(bfd_auth_names)) ?  bfd_auth_names[id] : "?";
+}
+
 static void bfd_session_set_min_tx(struct bfd_session *s, u32 val);
 static struct bfd_iface *bfd_get_iface(struct bfd_proto *p, ip_addr local, struct iface *iface);
 static void bfd_free_iface(struct bfd_iface *ifa);
@@ -1179,13 +1216,84 @@ bfd_copy_config(struct proto_config *dest, struct proto_config *src UNUSED)
 }
 
 void
-bfd_show_sessions(struct proto *P)
+bfd_show_session(struct bfd_session *s, int details)
 {
+  /* FIXME: this is thread-unsafe, but perhaps harmless */
+
+  u8 loc_state = s->loc_state;
+  u8 rem_state = s->rem_state;
+  u8 loc_diag = s->loc_diag;
+  u8 rem_diag = s->rem_diag;
+  uint loc_id = s->loc_id;
+  uint rem_id = s->rem_id;
+
+  const char *ifname = (s->ifa && s->ifa->iface) ? s->ifa->iface->name : "---";
+  btime tx_int = s->last_tx ? MAX(s->des_min_tx_int, s->rem_min_rx_int) : 0;
+  btime timeout = (btime) MAX(s->req_min_rx_int, s->rem_min_tx_int) * s->rem_detect_mult;
+  u8 auth_type = s->ifa->cf->auth_type;
+
+  loc_state = (loc_state < 4) ? loc_state : 0;
+  rem_state = (rem_state < 4) ? rem_state : 0;
+
+  byte dbuf[BFD_DIAG_BUFFER_SIZE];
   byte tbuf[TM_DATETIME_BUFFER_SIZE];
+  tm_format_time(tbuf, &config->tf_proto, s->last_state_change);
+
+  if (!details)
+  {
+    cli_msg(-1020, "%-25I %-10s %-10s %-12s  %7t  %7t",
+	    s->addr, ifname, bfd_state_names[loc_state], tbuf, tx_int, timeout);
+
+    return;
+  }
+
+  cli_msg(-1020, "  %-21s %I", "Address:", s->addr);
+  cli_msg(-1020, "  %-21s %s", "Interface:", ifname);
+  cli_msg(-1020, "  %-21s %s", "Session type:", s->ifa->iface ? "Direct" : "Multihop");
+  cli_msg(-1020, "  %-21s %s", "Session state:", bfd_state_names[loc_state]);
+  cli_msg(-1020, "  %-21s %s", "Remote state:", bfd_state_names[rem_state]);
+  cli_msg(-1020, "  %-21s %s", "Last state change:", tbuf);
+  cli_msg(-1020, "  %-21s %s", "Local diagnostic:", bfd_diag_name(loc_diag, dbuf));
+  cli_msg(-1020, "  %-21s %s", "Remote diagnostic:", bfd_diag_name(rem_diag, dbuf));
+  cli_msg(-1020, "  %-21s %u", "Local discriminator:", loc_id);
+  cli_msg(-1020, "  %-21s %u", "Remote discriminator:", rem_id);
+
+  if (tm_active(s->tx_timer))
+    cli_msg(-1020, "  %-21s %t / %t", "Transmit timer:", tm_remains(s->tx_timer), tx_int);
+
+  if (tm_active(s->hold_timer))
+    cli_msg(-1020, "  %-21s %t / %t", "Detect timer:", tm_remains(s->hold_timer), timeout);
+
+  cli_msg(-1020, "  Local parameters:");
+  cli_msg(-1020, "    %-19s %t", "Min TX interval:", (btime) s->des_min_tx_int);
+  cli_msg(-1020, "    %-19s %t", "Min RX interval:", (btime) s->req_min_rx_int);
+  cli_msg(-1020, "    %-19s %s", "Demand mode:", s->demand_mode ? "Yes" : "No");
+  cli_msg(-1020, "    %-19s %i", "Multiplier:", s->detect_mult);
+  cli_msg(-1020, "  Remote parameters:");
+  cli_msg(-1020, "    %-19s %t", "Min TX interval:", (btime) s->rem_min_tx_int);
+  cli_msg(-1020, "    %-19s %t", "Min RX interval:", (btime) s->rem_min_rx_int);
+  cli_msg(-1020, "    %-19s %s", "Demand mode:", s->rem_demand_mode ? "Yes" : "No");
+  cli_msg(-1020, "    %-19s %i", "Multiplier:", s->rem_detect_mult);
+
+  if (auth_type)
+  {
+    cli_msg(-1020, "  Authentication:");
+    cli_msg(-1020, "    %-19s %s", "Type:", bfd_auth_name(auth_type));
+
+    if (s->rx_csn_known)
+      cli_msg(-1020, "    %-19s %u", "RX CSN:", s->rx_csn);
+
+    if (auth_type > BFD_AUTH_SIMPLE)
+      cli_msg(-1020, "    %-19s %u", "TX CSN:", s->tx_csn);
+  }
+
+  cli_msg(-1020, "");
+}
+
+void
+bfd_show_sessions(struct proto *P, struct bfd_show_sessions_cmd *args)
+{
   struct bfd_proto *p = (struct bfd_proto *) P;
-  uint state, diag UNUSED;
-  btime tx_int, timeout;
-  const char *ifname;
 
   if (p->p.proto_state != PS_UP)
   {
@@ -1194,24 +1302,25 @@ bfd_show_sessions(struct proto *P)
   }
 
   cli_msg(-1020, "%s:", p->p.name);
-  cli_msg(-1020, "%-25s %-10s %-10s %-12s  %8s %8s",
+  if (!args->verbose)
+    cli_msg(-1020, "%-25s %-10s %-10s %-12s  %8s %8s",
 	  "IP address", "Interface", "State", "Since", "Interval", "Timeout");
-
 
   HASH_WALK(p->session_hash_id, next_id, s)
   {
-    /* FIXME: this is thread-unsafe, but perhaps harmless */
-    state = s->loc_state;
-    diag = s->loc_diag;
-    ifname = (s->ifa && s->ifa->iface) ? s->ifa->iface->name : "---";
-    tx_int = s->last_tx ? MAX(s->des_min_tx_int, s->rem_min_rx_int) : 0;
-    timeout = (btime) MAX(s->req_min_rx_int, s->rem_min_tx_int) * s->rem_detect_mult;
+    if (args->address.type && !ipa_in_netX(s->addr, &args->address))
+      continue;
 
-    state = (state < 4) ? state : 0;
-    tm_format_time(tbuf, &config->tf_proto, s->last_state_change);
+    if (args->iface && (s->ifa->iface != args->iface))
+      continue;
 
-    cli_msg(-1020, "%-25I %-10s %-10s %-12s  %7t  %7t",
-	    s->addr, ifname, bfd_state_names[state], tbuf, tx_int, timeout);
+    if (ipa_is_ip4(s->addr) ? args->ipv6 :  args->ipv4)
+      continue;
+
+    if (s->ifa->iface ? args->multihop : args->direct)
+      continue;
+
+    bfd_show_session(s, args->verbose);
   }
   HASH_WALK_END;
 }

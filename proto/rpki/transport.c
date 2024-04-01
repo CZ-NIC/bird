@@ -82,6 +82,7 @@ rpki_tr_open(struct rpki_tr_sock *tr)
   sk->daddr = cf->ip;
   sk->dport = cf->port;
   sk->host = cf->hostname;
+  sk->saddr = cf->local_ip;
   sk->rbsize = RPKI_RX_BUFFER_SIZE;
   sk->tbsize = RPKI_TX_BUFFER_SIZE;
   sk->tos = IP_PREC_INTERNET_CONTROL;
