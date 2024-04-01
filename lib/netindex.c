@@ -22,48 +22,15 @@ HASH_DEFINE_REHASH_FN(NETINDEX, struct netindex);
 
 static void netindex_hash_cleanup(void *netindex_hash);
 
-/*
- * Handle for persistent or semipersistent usage
- */
-struct netindex_handle {
-  resource r;
-  struct netindex *index;
-  netindex_hash *h;
-};
-
-static void
-net_unlock_index_persistent(resource *r)
-{
-  struct netindex_handle *nh = SKIP_BACK(struct netindex_handle, r, r);
-  net_unlock_index(nh->h, nh->index);
-}
-
-static void
-netindex_handle_dump(resource *r, unsigned indent UNUSED)
-{
-  struct netindex_handle *nh = SKIP_BACK(struct netindex_handle, r, r);
-  debug("index=%u, net=%N", nh->index->index, nh->index->addr);
-}
-
-static struct resclass netindex_handle_class = {
-  .name = "Netindex handle",
-  .size = sizeof(struct netindex_handle),
-  .free = net_unlock_index_persistent,
-  .dump = netindex_handle_dump,
-};
-
 static struct netindex *
-net_lock_index_persistent(struct netindex_hash_private *hp, struct netindex *ni, pool *p)
+net_lock_revive_unlock(struct netindex_hash_private *hp, struct netindex *i)
 {
-  if (!ni)
+  if (!i)
     return NULL;
 
-  struct netindex_handle *nh = ralloc(p, &netindex_handle_class);
-//  log(L_TRACE "Revive index %p", ni);
-  lfuc_lock_revive(&ni->uc);
-  nh->index = ni;
-  nh->h = SKIP_BACK(netindex_hash, priv, hp);
-  return ni;
+  lfuc_lock_revive(&i->uc);
+  lfuc_unlock(&i->uc, hp->cleanup_list, &hp->cleanup_event);
+  return i;
 }
 
 /*
@@ -151,14 +118,13 @@ net_find_index_fragile(struct netindex_hash_private *hp, const net_addr *n)
 }
 
 static struct netindex *
-net_find_index_locked(struct netindex_hash_private *hp, const net_addr *n, pool *p)
+net_find_index_locked(struct netindex_hash_private *hp, const net_addr *n)
 {
-  struct netindex *ni = net_find_index_fragile(hp, n);
-  return ni ? net_lock_index_persistent(hp, ni, p) : NULL;
+  return net_lock_revive_unlock(hp, net_find_index_fragile(hp, n));
 }
 
 static struct netindex *
-net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n, pool *p)
+net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n)
 {
   if (!hp->net[n->type].block)
     netindex_hash_init(hp, n->type);
@@ -178,7 +144,7 @@ net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n, pool *
 
   HASH_INSERT2(hp->net[n->type].hash, NETINDEX, hp->pool, ni);
 
-  return net_lock_index_persistent(hp, ni, p);
+  return net_lock_revive_unlock(hp, ni);
 }
 
 
@@ -199,24 +165,27 @@ void net_unlock_index(netindex_hash *h, struct netindex *i)
 }
 
 struct netindex *
-net_find_index_persistent(netindex_hash *h, const net_addr *n, pool *p)
+net_find_index(netindex_hash *h, const net_addr *n)
 {
   NH_LOCK(h, hp);
-  return net_find_index_locked(hp, n, p);
+  return net_find_index_locked(hp, n);
 }
 
 struct netindex *
-net_get_index_persistent(netindex_hash *h, const net_addr *n, pool *p)
+net_get_index(netindex_hash *h, const net_addr *n)
 {
   NH_LOCK(h, hp);
   return
-    net_find_index_locked(hp, n, p) ?:
-    net_new_index_locked(hp, n, p);
+    net_find_index_locked(hp, n) ?:
+    net_new_index_locked(hp, n);
 }
 
 struct netindex *
-net_resolve_index_persistent(netindex_hash *h, u8 net_type, u32 i, pool *p)
+net_resolve_index(netindex_hash *h, u8 net_type, u32 i)
 {
   NH_LOCK(h, hp);
-  return net_lock_index_persistent(hp, hp->net[net_type].block_size > i ? hp->net[net_type].block[i] : NULL, p);
+  if (i >= hp->net[net_type].block_size)
+    return NULL;
+  else
+    return net_lock_revive_unlock(hp, hp->net[net_type].block[i]);
 }
