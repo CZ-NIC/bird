@@ -202,7 +202,7 @@ config_free(struct config *c)
   if (!c)
     return;
 
-  ASSERT(!c->obstacle_count);
+  ASSERT(!atomic_load_explicit(&c->obstacle_count, memory_order_relaxed));
 
   rp_free(c->pool);
 }
@@ -218,7 +218,7 @@ config_free(struct config *c)
 void
 config_free_old(void)
 {
-  if (!old_config || old_config->obstacle_count)
+  if (!old_config || atomic_load_explicit(&old_config->obstacle_count, memory_order_acquire))
     return;
 
   tm_stop(config_timer);
@@ -231,15 +231,16 @@ config_free_old(void)
 void
 config_add_obstacle(struct config *c)
 {
-  DBG("+++ adding obstacle %d\n", c->obstacle_count);
-  atomic_fetch_add_explicit(&c->obstacle_count, 1, memory_order_acq_rel);
+  UNUSED int obs = atomic_fetch_add_explicit(&c->obstacle_count, 1, memory_order_acq_rel);
+  DBG("+++ adding obstacle %d\n", obs);
 }
 
 void
 config_del_obstacle(struct config *c)
 {
-  DBG("+++ deleting obstacle %d\n", c->obstacle_count);
-  if (atomic_fetch_sub_explicit(&c->obstacle_count, 1, memory_order_acq_rel) == 1)
+  int obs = atomic_fetch_sub_explicit(&c->obstacle_count, 1, memory_order_acq_rel);
+  DBG("+++ deleting obstacle %d\n", obs);
+  if (obs == 1)
     ev_send_loop(&main_birdloop, &c->done_event);
 }
 
@@ -294,7 +295,7 @@ config_do_commit(struct config *c, int type)
     log(L_INFO "Reconfiguring");
 
   if (old_config)
-    old_config->obstacle_count++;
+    config_add_obstacle(old_config);
 
   DBG("filter_commit\n");
   filter_commit(c, old_config);
@@ -307,10 +308,9 @@ config_do_commit(struct config *c, int type)
   rt_commit(c, old_config);
   DBG("protos_commit\n");
   protos_commit(c, old_config, force_restart, type);
-
-  int obs = 0;
-  if (old_config)
-    obs = --old_config->obstacle_count;
+  int obs = old_config ?
+    atomic_fetch_sub_explicit(&old_config->obstacle_count, 1, memory_order_acq_rel) - 1
+    : 0;
 
   DBG("do_commit finished with %d obstacles remaining\n", obs);
   return !obs;

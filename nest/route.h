@@ -415,7 +415,7 @@ const char *rt_import_state_name(u8 state);
 const char *rt_export_state_name(u8 state);
 
 static inline u8 rt_import_get_state(struct rt_import_hook *ih) { return ih ? ih->import_state : TIS_DOWN; }
-static inline u8 rt_export_get_state(struct rt_export_hook *eh) { return eh ? eh->export_state : TES_DOWN; }
+static inline u8 rt_export_get_state(struct rt_export_hook *eh) { return eh ? atomic_load_explicit(&eh->export_state, memory_order_acquire) : TES_DOWN; }
 
 u8 rt_set_export_state(struct rt_export_hook *hook, u32 expected_mask, u8 state);
 

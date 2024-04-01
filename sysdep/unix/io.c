@@ -151,7 +151,7 @@ rf_open(pool *p, const char *name, enum rf_mode mode, off_t limit)
   {
     case RF_APPEND:
       rf_stat(r);
-      r->pos = S_ISREG(r->stat.st_mode) ? r->stat.st_size : 0;
+      atomic_store_explicit(&r->pos, S_ISREG(r->stat.st_mode) ? r->stat.st_size : 0, memory_order_relaxed);
       break;
 
     case RF_FIXED:

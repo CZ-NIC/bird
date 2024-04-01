@@ -1082,7 +1082,7 @@ channel_do_pause(struct channel *c)
   /* Need to abort feeding */
   c->reload_pending = 0;
 
-  if (c->reload_req.hook && c->reload_req.hook->export_state != TES_STOP)
+  if (c->reload_req.hook && atomic_load_explicit(&c->reload_req.hook->export_state, memory_order_acquire) != TES_STOP)
     rt_stop_export(&c->reload_req, channel_reload_stopped);
 
   /* Stop export */
@@ -1236,10 +1236,10 @@ channel_request_feeding_dynamic(struct channel *c, enum channel_feeding_request_
 static void
 channel_stop_export(struct channel *c)
 {
-  if (c->refeed_req.hook && (c->refeed_req.hook->export_state != TES_STOP))
+  if (c->refeed_req.hook && (atomic_load_explicit(&c->refeed_req.hook->export_state, memory_order_acquire) != TES_STOP))
     rt_stop_export(&c->refeed_req, channel_refeed_stopped);
 
-  if (c->out_req.hook && (c->out_req.hook->export_state != TES_STOP))
+  if (c->out_req.hook && (atomic_load_explicit(&c->out_req.hook->export_state, memory_order_acquire) != TES_STOP))
     rt_stop_export(&c->out_req, channel_export_stopped);
 }
 
