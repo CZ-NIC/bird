@@ -29,7 +29,7 @@ static int
 rcu_gp_ongoing(_Atomic uint *ctl)
 {
   uint val = atomic_load(ctl);
-  return (val & RCU_NEST_CNT) && ((val ^ rcu_gp_ctl) & RCU_GP_PHASE);
+  return (val & RCU_NEST_CNT) && ((val ^ atomic_load_explicit(&rcu_gp_ctl, memory_order_acquire)) & RCU_GP_PHASE);
 }
 
 static void

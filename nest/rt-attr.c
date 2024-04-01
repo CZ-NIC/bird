@@ -1508,7 +1508,8 @@ ea_dump(ea_list *e)
 	    (e->flags & EALF_SORTED) ? 'S' : 's',
 	    (e->flags & EALF_BISECT) ? 'B' : 'b',
 	    (e->flags & EALF_CACHED) ? 'C' : 'c',
-	    s ? s->uc : 0, s ? s->hash_key : 0);
+	    s ? atomic_load_explicit(&s->uc, memory_order_relaxed) : 0,
+	    s ? s->hash_key : 0);
       for(i=0; i<e->count; i++)
 	{
 	  eattr *a = &e->attrs[i];
@@ -1706,7 +1707,7 @@ ea_lookup(ea_list *o, int overlay)
 
   r->l->flags |= EALF_CACHED | huge;
   r->hash_key = h;
-  r->uc = 1;
+  atomic_store_explicit(&r->uc, 1, memory_order_release);
 
   rta_insert(r);
 

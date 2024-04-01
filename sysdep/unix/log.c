@@ -565,10 +565,11 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
       pprev = &ol->next)
   {
     ol->new_mask = 0;
-    if (ol->rf)
+    struct rfile *orf = atomic_load_explicit(&ol->rf, memory_order_relaxed);
+    if (orf)
     {
       WALK_LIST(l, *logs)
-	if (l->rf && rf_same(l->rf, ol->rf))
+	if (l->rf && rf_same(l->rf, orf))
 	{
 	  /* Merge the mask */
 	  ol->new_mask |= l->mask;
@@ -657,7 +658,9 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
 
       /* Find more */
       for (struct log_config *ll = NODE_NEXT(l); NODE_VALID(ll); ll = NODE_NEXT(ll))
-	if (ll->filename && ll->rf && rf_same(lc->rf, ll->rf))
+      {
+	struct rfile *crf = atomic_load_explicit(&lc->rf, memory_order_relaxed);
+	if (ll->filename && ll->rf && rf_same(crf, ll->rf))
 	{
 	  /* Merged with this channel */
 	  lc->new_mask |= ll->mask;
@@ -671,6 +674,7 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
 	  }
 	  ll->rf = NULL;
 	}
+      }
     }
     else if (l->udp_port)
     {
@@ -765,7 +769,9 @@ resolve_fail:
     atomic_store_explicit(&ol->mask, ol->new_mask, memory_order_release);
 
     /* Never close syslog channel or debug */
-    if (ol->new_mask || (!ol->rf && !ol->udp_sk) || (ol->rf == dbg_rf))
+    struct rfile *orf = atomic_load_explicit(&ol->rf, memory_order_relaxed);
+    sock *ousk = atomic_load_explicit(&ol->udp_sk, memory_order_relaxed);
+    if (ol->new_mask || (!orf && !ousk) || (orf == dbg_rf))
     {
       pprev = &ol->next;
       ol = atomic_load_explicit(pprev, memory_order_acquire);
