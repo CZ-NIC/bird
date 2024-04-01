@@ -30,6 +30,12 @@ Version 3.0-alpha0 (2022-02-07)
   o Bugfixes and improvements as they came along
 
 
+Version 2.15.1 (2024-03-22)
+  o OSPF: Fix regression in handling PtP links
+  o RPKI: Handle connection resets properly
+  o Static: Reject invalid combination of options
+  o Fix builds with limited set of protocols
+
 Version 2.15 (2024-03-10)
   o BGP: Send hold timer
   o BGP: New options to specify required BGP capabilities
