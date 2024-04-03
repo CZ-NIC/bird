@@ -81,6 +81,54 @@ extern DOMAIN(the_bird) the_bird_domain;
 
 #define ASSERT_THE_BIRD_LOCKED	({ if (!the_bird_locked()) bug("The BIRD lock must be locked here: %s:%d", __FILE__, __LINE__); })
 
+/* Unwind stored lock state helpers */
+struct locking_unwind_status {
+  struct lock_order *desired;
+  enum {
+    LOCKING_UNWIND_SAME,
+    LOCKING_UNWIND_UNLOCK,
+  } state;
+};
+
+static inline struct locking_unwind_status locking_unwind_helper(struct locking_unwind_status status, uint order)
+{
+  struct domain_generic **lsp = ((void *) &locking_stack) + order;
+  struct domain_generic **dp = ((void *) status.desired) + order;
+
+  if (!status.state)
+  {
+    /* Just checking that the rest of the stack is consistent */
+    if (*lsp != *dp)
+      bug("Mangled lock unwind state at order %d", order);
+  }
+  else if (*dp)
+    /* Stored state expects locked */
+    if (*lsp == *dp)
+      /* Indeed is locked, switch to check mode */
+      status.state = 0;
+    else
+      /* Not locked or locked elsewhere */
+      bug("Mangled lock unwind state at order %d", order);
+  else if (*lsp)
+    /* Stored state expects unlocked but we're locked */
+    DG_UNLOCK(*lsp);
+
+  return status;
+}
+
+static inline void locking_unwind(struct lock_order *desired)
+{
+  struct locking_unwind_status status = {
+    .desired = desired,
+    .state = LOCKING_UNWIND_UNLOCK,
+  };
+
+#define LOCK_ORDER_POS_HELPER(x)	DOMAIN_ORDER(x),
+#define LOCK_ORDER_POS			MACRO_FOREACH(LOCK_ORDER_POS_HELPER, LOCK_ORDER)
+  MACRO_RPACK(locking_unwind_helper, status, LOCK_ORDER_POS);
+#undef LOCK_ORDER_POS_HELPER
+}
+
 /**
  *  Objects bound with domains
  *
