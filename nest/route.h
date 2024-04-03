@@ -91,6 +91,9 @@ extern uint rtable_max_id;
     struct rtable_config *config;	/* Configuration of this table */			\
     struct birdloop *loop;		/* Service thread */					\
     netindex_hash *netindex;		/* Prefix index for this table */			\
+    struct network * _Atomic routes;	/* Actual route objects in the table */			\
+    _Atomic u32 routes_block_size;	/* Size of the route object pointer block */		\
+    struct f_trie * _Atomic trie;	/* Trie of prefixes defined in fib */			\
     event *nhu_event;			/* Nexthop updater */					\
     event *hcu_event;			/* Hostcache updater */					\
 
@@ -103,9 +106,6 @@ struct rtable_private {
   /* Here the private items not to be accessed without locking */
   pool *rp;				/* Resource pool to allocate everything from, including itself */
   struct slab *rte_slab;		/* Slab to allocate route objects */
-  struct network *routes;		/* Actual route objects in the table */
-  u32 routes_block_size;		/* Size of the route object pointer block */
-  struct f_trie *trie;			/* Trie of prefixes defined in fib */
   int use_count;			/* Number of protocols using this table */
   u32 rt_count;				/* Number of routes in the table */
   u32 net_count;			/* Number of nets in the table */
@@ -143,7 +143,7 @@ struct rtable_private {
   u32 prune_index;			/* Rtable prune FIB iterator */
   u32 nhu_index;			/* Next Hop Update FIB iterator */
   struct f_trie *trie_new;		/* New prefix trie defined during pruning */
-  struct f_trie *trie_old;		/* Old prefix trie waiting to be freed */
+  const struct f_trie *trie_old;	/* Old prefix trie waiting to be freed */
   u32 trie_lock_count;			/* Prefix trie locked by walks */
   u32 trie_old_lock_count;		/* Old prefix trie locked by walks */
   struct tbf rl_pipe;			/* Rate limiting token buffer for pipe collisions */
@@ -209,12 +209,12 @@ static inline int rt_cork_check(event *e)
 
 
 typedef struct network {
-  struct rte_storage *routes;		/* Available routes for this network */
-  struct rt_pending_export *first, *last;
+  struct rte_storage * _Atomic routes;				/* Available routes for this network */
+  struct rt_pending_export * _Atomic first, * _Atomic last;	/* Uncleaned pending exports */
 } net;
 
 struct rte_storage {
-  struct rte_storage *next;		/* Next in chain */
+  struct rte_storage * _Atomic next;		/* Next in chain */
   union {
     struct {
       RTE_IN_TABLE_WRITABLE;
@@ -366,18 +366,7 @@ struct rt_export_hook {
   /* Table-specific items */
 
   rtable *tab;					/* The table pointer to use in corner cases */
-  union {
-    u32 feed_index;				/* Routing table iterator used during feeding */
-    struct {
-      struct f_trie_walk_state *walk_state;	/* Iterator over networks in trie */
-      struct f_trie *walk_lock;			/* Locked trie for walking */
-      union {					/* Last net visited but not processed */
-	net_addr walk_last;
-	net_addr_ip4 walk_last_ip4;
-	net_addr_ip6 walk_last_ip6;
-      };
-    };
-  };
+  u32 feed_index;				/* Routing table iterator used during feeding */
 
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
   u8 feed_type;				/* Which feeding method is used (TFT_*, see below) */
@@ -575,14 +564,11 @@ static inline void rt_unlock_table_pub(rtable *t, const char *file, uint line)
 #define rt_unlock_table(t)	_Generic((t),  rtable *: rt_unlock_table_pub, \
 				struct rtable_private *: rt_unlock_table_priv)((t), __FILE__, __LINE__)
 
-struct f_trie * rt_lock_trie(struct rtable_private *tab);
-void rt_unlock_trie(struct rtable_private *tab, struct f_trie *trie);
+const struct f_trie * rt_lock_trie(struct rtable_private *tab);
+void rt_unlock_trie(struct rtable_private *tab, const struct f_trie *trie);
 void rt_flowspec_link(rtable *src, rtable *dst);
 void rt_flowspec_unlink(rtable *src, rtable *dst);
 rtable *rt_setup(pool *, struct rtable_config *);
-
-static inline net *net_find(struct rtable_private *tab, const struct netindex *i)
-{ return (i->index < tab->routes_block_size) ? &(tab->routes[i->index]) : NULL; }
 
 int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
 rte *rt_export_merged(struct channel *c, const net_addr *n, const rte ** feed, uint count, linpool *pool, int silent);

@@ -339,83 +339,8 @@ krt_learn_async(struct krt_proto *p, rte *e, int new)
  *	Routes
  */
 
-static inline int
-krt_is_installed(struct krt_proto *p, net *n)
-{
-  return n->routes && bmap_test(&p->p.main_channel->export_map, n->routes->rte.id);
-}
-
-static uint
-rte_feed_count_valid(net *n)
-{
-  uint count = 0;
-  for (struct rte_storage *e = n->routes; e; e = e->next)
-    if (rte_is_valid(RTE_OR_NULL(e)))
-      count++;
-  return count;
-}
-
-static void
-rte_feed_obtain_valid(net *n, const rte **feed, uint count)
-{
-  uint i = 0;
-  for (struct rte_storage *e = n->routes; e; e = e->next)
-    if (rte_is_valid(RTE_OR_NULL(e)))
-    {
-      ASSERT_DIE(i < count);
-      feed[i++] = &e->rte;
-    }
-  ASSERT_DIE(i == count);
-}
-
-static struct rte *
-krt_export_net(struct krt_proto *p, struct netindex *i, net *net)
-{
-  /* FIXME: Here we are calling filters in table-locked context when exporting
-   * to kernel. Here BIRD can crash if the user requested ROA check in kernel
-   * export filter. It doesn't make much sense to write the filters like this,
-   * therefore we may keep this unfinished piece of work here for later as it
-   * won't really affect anybody. */
-  ASSERT_DIE(RT_IS_LOCKED(p->p.main_channel->table));
-
-  struct channel *c = p->p.main_channel;
-  const struct filter *filter = c->out_filter;
-
-  if (c->ra_mode == RA_MERGED)
-  {
-    uint count = rte_feed_count_valid(net);
-    if (!count)
-      return NULL;
-
-    const rte **feed = alloca(count * sizeof(rte *));
-    rte_feed_obtain_valid(net, feed, count);
-    return rt_export_merged(c, i->addr, feed, count, krt_filter_lp, 1);
-  }
-
-  static _Thread_local rte rt;
-  rt = net->routes->rte;
-
-  if (!rte_is_valid(&rt))
-    return NULL;
-
-  if (filter == FILTER_REJECT)
-    return NULL;
-
-  /* We could run krt_preexport() here, but it is already handled by krt_is_installed() */
-
-  if (filter == FILTER_ACCEPT)
-    goto accept;
-
-  if (f_run(filter, &rt, FF_SILENT) > F_ACCEPT)
-    goto reject;
-
-
-accept:
-  return &rt;
-
-reject:
-  return NULL;
-}
+/* Hook defined in nest/rt-table.c ... to be refactored away later */
+rte *krt_export_net(struct channel *c, const net_addr *a, linpool *lp);
 
 static int
 krt_same_dest(rte *k, rte *e)
@@ -465,10 +390,6 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
 #endif
 
   /* The rest is for KRT_SRC_BIRD (or KRT_SRC_UNKNOWN) */
-
-  RT_LOCKED(p->p.main_channel->table, tab)
-  {
-
   /* Deleting all routes if final flush is requested */
   if (p->sync_state == KPS_FLUSHING)
     goto delete;
@@ -477,12 +398,8 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
   if (!p->ready)
     goto ignore;
 
-  struct netindex *i = net_find_index(tab->netindex, e->net);
-  net *net = i ? net_find(tab, i) : NULL;
-  if (!net || !krt_is_installed(p, net))
-    goto delete;
-
-  new = krt_export_net(p, i, net);
+  /* Get the exported version */
+  new = krt_export_net(p->p.main_channel, e->net, krt_filter_lp);
 
   /* Rejected by filters */
   if (!new)
@@ -524,7 +441,6 @@ delete:
   goto done;
 
 done:;
-  }
 
   lp_flush(krt_filter_lp);
 }
