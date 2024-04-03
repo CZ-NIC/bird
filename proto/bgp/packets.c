@@ -1104,17 +1104,11 @@ bgp_apply_next_hop(struct bgp_parse_state *s, ea_list **to, ip_addr gw, ip_addr 
 
     ea_set_attr_u32(to, &ea_gen_igp_metric, 0, c->cf->cost);
 
-    struct nexthop_adata_mpls nam = {
-      .nhad = {
-	.nh = {
-	  .gw = nbr->addr,
-	  .iface = nbr->iface,
-	},
-	.ad = {
-	  .length = NEXTHOP_NEXT(&nam.nhad.nh) - (void *) nam.nhad.ad.data,
-	},
-      },
-    };
+    struct nexthop_adata_mpls nam;
+    memset(&nam, 0, sizeof nam);
+    nam.nhad.nh.gw = nbr->addr;
+    nam.nhad.nh.iface = nbr->iface;
+    nam.nhad.ad.length = NEXTHOP_NEXT(&nam.nhad.nh) - (void *) nam.nhad.ad.data;
     ea_set_attr_data(to, &ea_gen_nexthop, 0, nam.nhad.ad.data, nam.nhad.ad.length);
   }
   else /* GW_RECURSIVE */
