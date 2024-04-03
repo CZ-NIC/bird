@@ -62,7 +62,12 @@ struct krt_proto {
   byte ready;			/* Initial feed has been finished */
   byte initialized;		/* First scan has been finished */
   byte reload;			/* Next scan is doing reload */
-  byte flush_routes;		/* Scanning to flush */
+  PACKED enum krt_prune_state {
+    KPS_IDLE,
+    KPS_SCANNING,
+    KPS_PRUNING,
+    KPS_FLUSHING,
+  } sync_state;			/* What is happening with the table sync routine */
 };
 
 extern pool *krt_pool;
