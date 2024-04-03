@@ -436,10 +436,6 @@ krt_same_dest(rte *k, rte *e)
 void
 krt_got_route(struct krt_proto *p, rte *e, s8 src)
 {
-  /* Ignore when flushing from table */
-  if (p->flush_routes == 1)
-    return;
-
   rte *new = NULL;
   e->pflags = 0;
 
@@ -459,7 +455,7 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
       }
       /* fallthrough */
 
-    case  KRT_SRC_ALIEN:
+    case KRT_SRC_ALIEN:
       if (KRT_CF->learn)
 	krt_learn_scan(p, e);
       else
@@ -474,7 +470,7 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
   {
 
   /* Deleting all routes if final flush is requested */
-  if (p->flush_routes == 2)
+  if (p->sync_state == KPS_FLUSHING)
     goto delete;
 
   /* We wait for the initial feed to have correct installed state */
@@ -533,46 +529,50 @@ done:;
   lp_flush(krt_filter_lp);
 }
 
-static void
+static _Bool
 krt_init_scan(struct krt_proto *p)
 {
-  rt_refresh_begin(&p->p.main_channel->in_req);
-  bmap_reset(&p->seen_map, 1024);
+  switch (p->sync_state)
+  {
+    case KPS_IDLE:
+      rt_refresh_begin(&p->p.main_channel->in_req);
+      bmap_reset(&p->seen_map, 1024);
+      p->sync_state = KPS_SCANNING;
+      return 1;
+
+    case KPS_SCANNING:
+      bug("Kernel scan double-init");
+
+    case KPS_PRUNING:
+      log(L_WARN "%s: Can't scan, still pruning", p->p.name);
+      return 0;
+
+    case KPS_FLUSHING:
+      bug("Can't scan, flushing");
+  }
 }
 
 static void
 krt_prune(struct krt_proto *p)
 {
-  RT_LOCKED(p->p.main_channel->table, t)
+  switch (p->sync_state)
   {
+    case KPS_IDLE:
+      bug("Kernel scan prune without scan");
 
-  KRT_TRACE(p, D_EVENTS, "Pruning table %s", t->name);
-  for (u32 i = 0; i < t->routes_block_size; i++)
-  {
-    net *n = &t->routes[i];
-    if (!n->routes)
-      continue;
+    case KPS_SCANNING:
+      p->sync_state = KPS_PRUNING;
+      KRT_TRACE(p, D_EVENTS, "Pruning table %s", p->p.main_channel->table->name);
+      rt_refresh_end(&p->p.main_channel->in_req);
+      channel_request_feeding_dynamic(p->p.main_channel, CFRT_DIRECT);
+      return;
 
-    if (p->ready && krt_is_installed(p, n) && !bmap_test(&p->seen_map, n->routes->rte.id))
-    {
-      struct netindex *ni = RTE_GET_NETINDEX(&n->routes->rte);
-      rte *new = krt_export_net(p, ni, n);
+    case KPS_PRUNING:
+      bug("Kernel scan double-prune");
 
-      if (new)
-      {
-	krt_trace_in(p, new, "installing");
-	krt_replace_rte(p, new->net, new, NULL);
-      }
-
-      lp_flush(krt_filter_lp);
-    }
+    case KPS_FLUSHING:
+      bug("Attemted kernel scan prune when flushing");
   }
-
-  if (p->ready)
-    p->initialized = 1;
-
-  }
-  rt_refresh_end(&p->p.main_channel->in_req);
 }
 
 void
@@ -638,7 +638,8 @@ krt_scan_all(timer *t UNUSED)
   krt_do_scan(NULL);
 
   WALK_LIST2(p, n, krt_proto_list, krt_node)
-    krt_prune(p);
+    if (p->sync_state == KPS_SCANNING)
+      krt_prune(p);
 }
 
 static void
@@ -687,7 +688,9 @@ krt_scan(timer *t)
   kif_force_scan();
 
   KRT_TRACE(p, D_EVENTS, "Scanning routing table");
-  krt_init_scan(p);
+  if (!krt_init_scan(p))
+    return;
+
   krt_do_scan(p);
   krt_prune(p);
 }
@@ -753,19 +756,30 @@ krt_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net,
 {
   struct krt_proto *p = (struct krt_proto *) P;
 
-  if (p->flush_routes)
-  {
-    krt_replace_rte(p, net, NULL, old ?: new);
-    return;
-  }
-
 #ifdef CONFIG_SINGLE_ROUTE
   /* Got the same route as we imported. Keep it, do nothing. */
   if (new && new->src->owner == &P->sources)
     return;
 #endif
 
-  krt_replace_rte(p, net, new, old);
+  switch (p->sync_state)
+  {
+    case KPS_IDLE:
+    case KPS_PRUNING:
+      if (new && bmap_test(&p->seen_map, new->id))
+	/* Already installed and seen in the kernel dump */
+	return;
+
+      /* fall through */
+    case KPS_SCANNING:
+      /* Actually replace the route */
+      krt_replace_rte(p, net, new, old);
+      break;
+
+    case KPS_FLUSHING:
+      /* Drop any incoming route */
+      krt_replace_rte(p, net, NULL, old ?: new);
+  }
 }
 
 static void
@@ -819,19 +833,27 @@ krt_feed_end(struct channel *C)
   if (C->refeeding && C->refeed_req.hook)
     return;
 
-  if (p->flush_routes)
-  {
-    p->flush_routes = 2;
-    krt_init_scan(p);
-    krt_do_scan(p);
-    krt_cleanup(p);
-    proto_notify_state(&p->p, PS_DOWN);
-    return;
-  }
-
   p->ready = 1;
-  bmap_reset(&C->export_reject_map, 16);
-  krt_scan_timer_kick(p);
+  p->initialized = 1;
+
+  switch (p->sync_state)
+  {
+    case KPS_PRUNING:
+      KRT_TRACE(p, D_EVENTS, "Table %s pruned", C->table->name);
+      p->sync_state = KPS_IDLE;
+      return;
+
+    case KPS_IDLE:
+    case KPS_SCANNING:
+      krt_scan_timer_kick(p);
+      return;
+
+    case KPS_FLUSHING:
+      krt_do_scan(p);
+      krt_cleanup(p);
+      proto_notify_state(&p->p, PS_DOWN);
+      return;
+  }
 }
 
 static int
@@ -954,8 +976,10 @@ krt_shutdown(struct proto *P)
   /* FIXME we should flush routes even when persist during reconfiguration */
   if (p->initialized && !KRT_CF->persist && (P->down_code != PDC_CMD_GR_DOWN))
   {
-    p->flush_routes = 1;
+    p->sync_state = KPS_FLUSHING;
     channel_request_feeding_dynamic(p->p.main_channel, CFRT_AUXILIARY);
+
+    /* Keeping the protocol UP until the feed-to-flush is done */
     return PS_UP;
   }
   else
