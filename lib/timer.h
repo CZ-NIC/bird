@@ -117,6 +117,8 @@ void times_update(void);
 void timers_init(struct timeloop *loop, pool *p);
 void timers_fire(struct timeloop *loop, int io_log);
 
+/* For extra fine precision */
+u64 ns_now(void);
 
 struct timeformat {
   const char *fmt1, *fmt2;
