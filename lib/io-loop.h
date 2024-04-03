@@ -16,6 +16,12 @@
 
 extern struct birdloop main_birdloop;
 
+/* Currently running birdloop */
+extern _Thread_local struct birdloop *this_birdloop;
+
+/* Check that the task has enough time to do a bit more */
+_Bool task_still_in_limit(void);
+
 /* Start a new birdloop owned by given pool and domain */
 struct birdloop *birdloop_new(pool *p, uint order, btime max_latency, const char *fmt, ...);
 
