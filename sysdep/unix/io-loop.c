@@ -51,7 +51,7 @@ static void ns_init(void)
 
 #define NSEC_IN_SEC	((u64) (1000 * 1000 * 1000))
 
-static u64 ns_now(void)
+u64 ns_now(void)
 {
   struct timespec ts;
   if (clock_gettime(CLOCK_MONOTONIC, &ts))
@@ -817,6 +817,7 @@ bird_thread_main(void *arg)
   account_to(&thr->overhead);
 
   birdloop_enter(thr->meta);
+  this_birdloop = thr->meta;
 
   tmp_init(thr->pool, birdloop_domain(thr->meta));
   init_list(&thr->loops);
@@ -1362,6 +1363,11 @@ cmd_show_threads(int show_loops)
   bird_thread_sync_all(&tsd->sync, bird_thread_show, cmd_show_threads_done, "Show Threads");
 }
 
+_Bool task_still_in_limit(void)
+{
+  return ns_now() < account_last + this_thread->max_loop_time_ns;
+}
+
 
 /*
  *	Birdloop
@@ -1369,6 +1375,7 @@ cmd_show_threads(int show_loops)
 
 static struct bird_thread main_thread;
 struct birdloop main_birdloop = { .thread = &main_thread, };
+_Thread_local struct birdloop *this_birdloop;
 
 static void birdloop_enter_locked(struct birdloop *loop);
 
@@ -1396,6 +1403,7 @@ birdloop_init(void)
   timers_init(&main_birdloop.time, &root_pool);
 
   birdloop_enter_locked(&main_birdloop);
+  this_birdloop = &main_birdloop;
   this_thread = &main_thread;
 }
 
@@ -1442,6 +1450,7 @@ birdloop_stop_internal(struct birdloop *loop)
   ASSERT_DIE(!ev_active(&loop->event));
   loop->ping_pending = 0;
   account_to(&this_thread->overhead);
+  this_birdloop = this_thread->meta;
   birdloop_leave(loop);
 
   /* Request local socket reload */
@@ -1462,6 +1471,7 @@ birdloop_run(void *_loop)
   struct birdloop *loop = _loop;
   account_to(&loop->locking);
   birdloop_enter(loop);
+  this_birdloop = loop;
   u64 dif = account_to(&loop->working);
 
   if (dif > this_thread->max_loop_time_ns)
@@ -1490,7 +1500,7 @@ birdloop_run(void *_loop)
     repeat += ev_run_list(&loop->event_list);
 
     /* Check end time */
-  } while (repeat && (ns_now() < account_last + this_thread->max_loop_time_ns));
+  } while (repeat && task_still_in_limit());
 
   /* Request meta timer */
   timer *t = timers_first(&loop->time);
@@ -1508,6 +1518,7 @@ birdloop_run(void *_loop)
   loop->sock_changed = 0;
 
   account_to(&this_thread->overhead);
+  this_birdloop = this_thread->meta;
   birdloop_leave(loop);
 }
 
