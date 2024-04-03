@@ -2648,8 +2648,16 @@ bgp_rte_recalculate(struct rtable_private *table, net *net,
 
   /* The default case - find a new best-in-group route */
   struct rte_storage *r = new_stored; /* new may not be in the list */
-  for (struct rte_storage *s = net->routes; rte_is_valid(RTE_OR_NULL(s)); s = s->next)
-    if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
+  struct rte_storage *spinlocked = atomic_load_explicit(&net->routes, memory_order_acquire);
+  ASSERT_DIE(spinlocked->rte.flags & REF_OBSOLETE);
+  ASSERT_DIE(!spinlocked->rte.src);
+
+  for (struct rte_storage *s, * _Atomic *ptr = &spinlocked->next;
+      s = atomic_load_explicit(ptr, memory_order_acquire);
+      ptr = &s->next)
+    if (!rte_is_valid(&s->rte))
+      break;
+    else if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
     {
       s->pflags |= BGP_REF_SUPPRESSED;
       if (!r || bgp_rte_better(&s->rte, &r->rte))
@@ -2665,8 +2673,12 @@ bgp_rte_recalculate(struct rtable_private *table, net *net,
     new_stored->pflags &= ~BGP_REF_SUPPRESSED;
 
   /* Found all existing routes mergable with best-in-group */
-  for (struct rte_storage *s = net->routes; rte_is_valid(RTE_OR_NULL(s)); s = s->next)
-    if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
+  for (struct rte_storage *s, * _Atomic *ptr = &spinlocked->next;
+      s = atomic_load_explicit(ptr, memory_order_acquire);
+      ptr = &s->next)
+    if (!rte_is_valid(&s->rte))
+      break;
+    else if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
       if ((s != r) && bgp_rte_mergable(&r->rte, &s->rte))
 	s->pflags &= ~BGP_REF_SUPPRESSED;
 
