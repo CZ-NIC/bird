@@ -502,9 +502,10 @@ struct hostentry {
   struct hostentry *next;		/* Next in hash chain */
   unsigned hash_key;			/* Hash key */
   u32 igp_metric;			/* Chosen route IGP metric */
+  _Atomic u32 version;			/* Bumped on update */
+  byte nexthop_linkable;		/* Nexthop list is completely non-device */
   ea_list *src;				/* Source attributes */
   struct lfuc uc;			/* Use count */
-  byte nexthop_linkable;		/* Nexthop list is completely non-device */
 };
 
 struct hostcache {
@@ -669,6 +670,7 @@ struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t
 
 /* Host entry: Resolve hook for recursive nexthops */
 extern struct ea_class ea_gen_hostentry;
+extern struct ea_class ea_gen_hostentry_version;
 struct hostentry_adata {
   adata ad;
   struct hostentry *he;
