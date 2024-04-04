@@ -54,9 +54,9 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   else
     from[0] = 0;
 
-  /* Need to normalize the extended attributes */
-  if (d->verbose && !rta_is_cached(a) && a)
-    a = ea_normalize(a, 0);
+  /* Need to normalize the attributes for dumping */
+  if (d->verbose && !a->stored)
+    a = ea_normalize(a, EALS_NONE);
 
   get_route_info = e->src->owner->class ? e->src->owner->class->get_route_info : NULL;
   if (get_route_info)

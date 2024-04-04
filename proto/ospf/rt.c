@@ -2088,7 +2088,7 @@ again1:
 
 	ASSERT_DIE(ARRAY_SIZE(eattrs.a) >= eattrs.l.count);
 
-	ea_list *eal = ea_lookup(&eattrs.l, 0);
+	ea_list *eal = ea_lookup(&eattrs.l, 0, EALS_CUSTOM);
 	ea_free(nf->old_ea);
 	nf->old_ea = eal;
 
@@ -2107,7 +2107,7 @@ again1:
     else if (nf->old_ea)
     {
       /* Remove the route */
-      rta_free(nf->old_ea);
+      ea_free(nf->old_ea);
       nf->old_ea = NULL;
 
       rte_update(p->p.main_channel, nf->fn.addr, NULL, p->p.main_source);

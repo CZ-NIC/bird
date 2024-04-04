@@ -1225,7 +1225,7 @@ mpls_get_key_attrs(struct mpls_fec_map *m, ea_list *src)
   ea.a[ea.l.count++] = EA_LITERAL_EMBEDDED(&ea_gen_source, 0, m->mpls_rts);
   PUT_ATTR(&ea_gen_mpls_class);
 
-  return ea_get_storage(ea_lookup(&ea.l, 0));
+  return ea_get_storage(ea_lookup(&ea.l, 0, EALS_KEY));
 }
 
 static void
