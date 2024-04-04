@@ -217,7 +217,8 @@ neigh_find(struct proto *p, ip_addr a, struct iface *iface, uint flags)
   struct ifa *addr = NULL;
 
   WALK_LIST(n, neigh_hash_table[h])	/* Search the cache */
-    if ((n->proto == p) && ipa_equal(n->addr, a) && (n->ifreq == iface))
+    if ((n->proto == p) && ipa_equal(n->addr, a) && (n->ifreq == iface) &&
+	((n->flags & NEF_ONLINK) == (flags & NEF_ONLINK)))
       return n;
 
   if (flags & NEF_IFACE)

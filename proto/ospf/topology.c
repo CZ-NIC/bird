@@ -1402,6 +1402,46 @@ lsab_put_prefix(struct ospf_proto *p, net_addr *n, u32 cost)
   ospf3_put_prefix(buf, n, flags, cost);
 }
 
+static inline void
+update_loopback_addr(struct ospf_proto *p)
+{
+  ip_addr old_addr = p->loopback_addr;
+  ip_addr best_addr = IPA_NONE;
+  int best_pref = 0;
+
+  struct ospf_iface *ifa;
+  WALK_LIST(ifa, p->iface_list)
+  {
+    if (ifa->type == OSPF_IT_VLINK)
+      continue;
+
+    struct ifa *a;
+    WALK_LIST(a, ifa->iface->addrs)
+    {
+      if ((a->prefix.type != ospf_get_af(p)) ||
+	  (a->flags & IA_SECONDARY) ||
+	  (a->scope <= SCOPE_LINK))
+	continue;
+
+      int pref = (a->flags & IA_HOST) ? 3 : (ifa->stub ? 2 : 1);
+      if ((pref > best_pref) || ((pref == best_pref) && ipa_equal(a->ip, old_addr)))
+      {
+	best_addr = a->ip;
+	best_pref = pref;
+      }
+    }
+  }
+
+  if (ipa_equal(best_addr, old_addr))
+    return;
+
+  p->loopback_addr = best_addr;
+
+  WALK_LIST(ifa, p->iface_list)
+    if (ifa->loopback_addr_used)
+      ospf_notify_link_lsa(ifa);
+}
+
 static void
 prepare_link_lsa_body(struct ospf_proto *p, struct ospf_iface *ifa)
 {
@@ -1425,6 +1465,12 @@ prepare_link_lsa_body(struct ospf_proto *p, struct ospf_iface *ifa)
 
     lsab_put_prefix(p, &a->prefix, 0);
     i++;
+  }
+
+  if (ospf_is_ip4(p) && ipa_zero(nh))
+  {
+    nh = p->loopback_addr;
+    ifa->loopback_addr_used = 1;
   }
 
   /* Filling the preallocated header */
@@ -1853,6 +1899,9 @@ ospf_update_topology(struct ospf_proto *p)
     }
   }
 
+  if (ospf_is_v3(p) && ospf_is_ip4(p))
+    update_loopback_addr(p);
+
   WALK_LIST(ifa, p->iface_list)
   {
     if (ifa->type == OSPF_IT_VLINK)
@@ -1860,6 +1909,8 @@ ospf_update_topology(struct ospf_proto *p)
 
     if (ifa->update_link_lsa)
     {
+      ifa->loopback_addr_used = 0;
+
       if ((ifa->state > OSPF_IS_LOOP) && !ifa->link_lsa_suppression)
 	ospf_originate_link_lsa(p, ifa);
       else

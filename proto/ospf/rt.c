@@ -2038,6 +2038,14 @@ again1:
 	{
 	  neighbor *nbr = neigh_find(&p->p, nh->gw, nh->iface,
 				    (nh->flags & RNF_ONLINK) ? NEF_ONLINK : 0);
+
+	  /* According to RFC 5838 2.5 Direct Interface Address */
+	  if (ospf_is_v3(p) && !nbr && ipa_is_ip4(nh->gw))
+	  {
+	    nh->flags |= RNF_ONLINK;
+	    nbr = neigh_find(&p->p, nh->gw, nh->iface, NEF_ONLINK);
+	  }
+
 	  if (!nbr || (nbr->scope == SCOPE_HOST))
 	    { reset_ri(nf); break; }
 	}
