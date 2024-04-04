@@ -265,10 +265,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *ne
     }
 
     /* Store the route attributes */
-    if (rta_is_cached(new->attrs))
-      rta_clone(new->attrs);
-    else
-      new->attrs = rta_lookup(new->attrs, 0);
+    new->attrs = ea_lookup(new->attrs, 0, EALS_KEY);
 
     /* Insert the new route into the bucket */
     struct aggregator_route *arte = sl_alloc(p->route_slab);
@@ -296,7 +293,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *ne
 
     old_bucket->count--;
     HASH_REMOVE2(p->routes, AGGR_RTE, p->p.pool, old_route);
-    rta_free(old_route->rte.attrs);
+    ea_free(old_route->rte.attrs);
     sl_free(old_route);
   }
 
@@ -408,7 +405,7 @@ aggregator_shutdown(struct proto *P)
       b->rte = arte->next_rte;
       b->count--;
       HASH_REMOVE(p->routes, AGGR_RTE, arte);
-      rta_free(arte->rte.attrs);
+      ea_free(arte->rte.attrs);
       sl_free(arte);
     }
 
