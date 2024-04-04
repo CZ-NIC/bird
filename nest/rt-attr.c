@@ -1027,7 +1027,7 @@ ea_sort(ea_list *e)
  * a given &ea_list after merging with ea_merge().
  */
 static unsigned
-ea_scan(const ea_list *e, int overlay)
+ea_scan(const ea_list *e, u32 upto)
 {
   unsigned cnt = 0;
 
@@ -1035,7 +1035,7 @@ ea_scan(const ea_list *e, int overlay)
     {
       cnt += e->count;
       e = e->next;
-      if (e && overlay && ea_is_cached(e))
+      if (e && BIT32_TEST(&upto, e->stored))
 	break;
     }
   return sizeof(ea_list) + sizeof(eattr)*cnt;
@@ -1056,7 +1056,7 @@ ea_scan(const ea_list *e, int overlay)
  * by calling ea_sort().
  */
 static void
-ea_merge(ea_list *e, ea_list *t, int overlay)
+ea_merge(ea_list *e, ea_list *t, u32 upto)
 {
   eattr *d = t->attrs;
 
@@ -1070,7 +1070,7 @@ ea_merge(ea_list *e, ea_list *t, int overlay)
       d += e->count;
       e = e->next;
 
-      if (e && overlay && ea_is_cached(e))
+      if (e && BIT32_TEST(&upto, e->stored))
 	break;
     }
 
@@ -1078,22 +1078,22 @@ ea_merge(ea_list *e, ea_list *t, int overlay)
 }
 
 ea_list *
-ea_normalize(ea_list *e, int overlay)
+ea_normalize(ea_list *e, u32 upto)
 {
 #if 0
   debug("(normalize)");
   ea_dump(e);
   debug(" ----> ");
 #endif
-  ea_list *t = tmp_alloc(ea_scan(e, overlay));
-  ea_merge(e, t, overlay);
+  ea_list *t = tmp_allocz(ea_scan(e, upto));
+  ea_merge(e, t, upto);
   ea_sort(t);
 #if 0
   ea_dump(t);
   debug("\n");
 #endif
 
-  return t->count ? t : t->next;
+  return t;
 }
 
 static _Bool
@@ -1214,10 +1214,7 @@ ea_list_ref(ea_list *l)
     }
 
   if (l->next)
-  {
-    ASSERT_DIE(ea_is_cached(l->next));
-    ea_clone(l->next);
-  }
+    ea_ref(l->next);
 }
 
 static void ea_free_nested(ea_list *l);
@@ -1503,11 +1500,11 @@ ea_dump(ea_list *e)
     }
   while (e)
     {
-      struct ea_storage *s = ea_is_cached(e) ? ea_get_storage(e) : NULL;
-      debug("[%c%c%c] uc=%d h=%08x",
+      struct ea_storage *s = e->stored ? ea_get_storage(e) : NULL;
+      debug("[%c%c] overlay=%d uc=%d h=%08x",
 	    (e->flags & EALF_SORTED) ? 'S' : 's',
 	    (e->flags & EALF_BISECT) ? 'B' : 'b',
-	    (e->flags & EALF_CACHED) ? 'C' : 'c',
+	    e->stored,
 	    s ? atomic_load_explicit(&s->uc, memory_order_relaxed) : 0,
 	    s ? s->hash_key : 0);
       for(i=0; i<e->count; i++)
@@ -1553,7 +1550,7 @@ ea_dump(ea_list *e)
  * ea_hash() takes an extended attribute list and calculated a hopefully
  * uniformly distributed hash value from its contents.
  */
-inline uint
+uint
 ea_hash(ea_list *e)
 {
   const u64 mul = 0x68576150f3d6847;
@@ -1670,19 +1667,22 @@ rta_rehash(void)
  * converted to the normalized form.
  */
 ea_list *
-ea_lookup(ea_list *o, int overlay)
+ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
 {
   struct ea_storage *r;
   uint h;
 
-  ASSERT(!ea_is_cached(o));
-  o = ea_normalize(o, overlay);
+  ASSERT(o->stored != oid);
+  ASSERT(oid);
+  o = ea_normalize(o, squash_upto);
   h = ea_hash(o);
+
+  squash_upto |= BIT32_VAL(oid);
 
   RTA_LOCK;
 
   for(r=rta_hash_table[h & rta_cache_mask]; r; r=r->next_hash)
-    if (r->hash_key == h && ea_same(r->l, o))
+    if (r->hash_key == h && ea_same(r->l, o) && BIT32_TEST(&squash_upto, r->l->stored))
     {
       atomic_fetch_add_explicit(&r->uc, 1, memory_order_acq_rel);
       RTA_UNLOCK;
@@ -1705,7 +1705,8 @@ ea_lookup(ea_list *o, int overlay)
   ea_list_copy(r->l, o, elen);
   ea_list_ref(r->l);
 
-  r->l->flags |= EALF_CACHED | huge;
+  r->l->flags |= huge;
+  r->l->stored = oid;
   r->hash_key = h;
   atomic_store_explicit(&r->uc, 1, memory_order_release);
 

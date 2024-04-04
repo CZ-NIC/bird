@@ -1541,7 +1541,7 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, ea_lis
 
   /* Prepare cached route attributes */
   if (!s->mpls && (s->cached_ea == NULL))
-    a0 = s->cached_ea = ea_lookup(a0, 0);
+    a0 = s->cached_ea = ea_lookup(a0, 0, EALS_CUSTOM);
 
   rte e0 = {
     .attrs = a0,
@@ -1600,7 +1600,7 @@ bgp_decode_mpls_labels(struct bgp_parse_state *s, byte **pos, uint *len, uint *p
   bgp_apply_mpls_labels(s, to, lnum, labels);
 
   /* Attributes were changed, invalidate cached entry */
-  rta_free(s->cached_ea);
+  ea_free(s->cached_ea);
   s->cached_ea = NULL;
 
   return;
@@ -2717,7 +2717,7 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
   c->desc->decode_nlri(s, nlri, len, ea);
 
-  rta_free(s->cached_ea);
+  ea_free(s->cached_ea);
   s->cached_ea = NULL;
 
   rt_unlock_source(s->last_src);
@@ -2826,7 +2826,7 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 		    ea, s.mp_next_hop_data, s.mp_next_hop_len);
 
 done:
-  rta_free(s.cached_ea);
+  ea_free(s.cached_ea);
   lp_restore(tmp_linpool, tmpp);
   return;
 }

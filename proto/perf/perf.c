@@ -156,10 +156,10 @@ perf_loop(void *data)
       ea_set_attr_data(&ea, &ea_gen_nexthop, 0,
 	  &nhad.ad.data, sizeof nhad - sizeof nhad.ad);
 
-      p->data[i].a = rta_lookup(ea, 0);
+      p->data[i].a = ea_lookup(ea, 0, EALS_CUSTOM);
     }
     else
-      p->data[i].a = rta_clone(p->data[i-1].a);
+      p->data[i].a = ea_ref(p->data[i-1].a);
   }
 
   clock_gettime(CLOCK_MONOTONIC, &ts_generated);

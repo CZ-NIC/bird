@@ -494,10 +494,7 @@ rte_store(const rte *r, struct netindex *i, struct rtable_private *tab)
 
   rt_lock_source(e->src);
 
-  if (ea_is_cached(e->attrs))
-    e->attrs = rta_clone(e->attrs);
-  else
-    e->attrs = rta_lookup(e->attrs, 1);
+  e->attrs = ea_lookup(e->attrs, BIT32_ALL(EALS_PREIMPORT, EALS_FILTERED), EALS_IN_TABLE);
 
 #if 0
   debug("(store) %N ", i->addr);
@@ -524,7 +521,7 @@ rte_free(struct rte_storage *e, struct rtable_private *tab)
 
   rt_unlock_source(e->rte.src);
 
-  rta_free(e->rte.attrs);
+  ea_free(e->rte.attrs);
   sl_free(e);
 }
 
@@ -1456,7 +1453,7 @@ rte_same(const rte *x, const rte *y)
   return
     (x == y) || (
      (x->attrs == y->attrs) ||
-     ((!(x->attrs->flags & EALF_CACHED) || !(y->attrs->flags & EALF_CACHED)) && ea_same(x->attrs, y->attrs))
+     ((!x->attrs->stored || !y->attrs->stored) && ea_same(x->attrs, y->attrs))
     ) &&
     x->src == y->src &&
     rte_is_filtered(x) == rte_is_filtered(y);
@@ -1719,14 +1716,11 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
   ASSERT(c->channel_state == CS_UP);
 
-  ea_list *ea_tmp[2] = {};
+  ea_list *ea_prefilter = NULL, *ea_postfilter = NULL;
 
-  /* The import reloader requires prefilter routes to be the first layer */
+  /* Storing prefilter routes as an explicit layer */
   if (new && (c->in_keep & RIK_PREFILTER))
-    ea_tmp[0] = new->attrs =
-      (ea_is_cached(new->attrs) && !new->attrs->next) ?
-      ea_clone(new->attrs) :
-      ea_lookup(new->attrs, 0);
+    ea_prefilter = new->attrs = ea_lookup(new->attrs, 0, EALS_PREIMPORT);
 
 #if 0
   debug("%s.%s -(prefilter)-> %s: %N ", c->proto->name, c->name, c->table->name, n);
@@ -1769,8 +1763,8 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
       if (new)
       {
-	ea_tmp[1] = new->attrs =
-	  ea_is_cached(new->attrs) ? ea_clone(new->attrs) : ea_lookup(new->attrs, !!ea_tmp[0]);
+	ea_postfilter = new->attrs = ea_lookup(new->attrs,
+	    ea_prefilter ? BIT32_ALL(EALS_PREIMPORT) : 0, EALS_FILTERED);
 
 	if (net_is_flow(n))
 	  rt_flowspec_resolve_rte(new, c);
@@ -1798,9 +1792,8 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
   /* Now the route attributes are kept by the in-table cached version
    * and we may drop the local handles */
-  for (uint k = 0; k < ARRAY_SIZE(ea_tmp); k++)
-    if (ea_tmp[k])
-      ea_free(ea_tmp[k]);
+  ea_free(ea_prefilter);
+  ea_free(ea_postfilter);
 }
 
 void
@@ -3138,7 +3131,10 @@ rt_next_hop_update_rte(const rte *old, rte *new)
   if (!head)
     return 0;
 
+  /* Get the state of the route just before nexthop was resolved */
   *new = *old;
+  new->attrs = ea_strip_to(new->attrs, BIT32_ALL(EALS_PREIMPORT, EALS_FILTERED));
+
   RT_LOCKED(head->he->owner, tab)
     rta_apply_hostentry(tab, &new->attrs, head);
   return 1;
@@ -3229,7 +3225,7 @@ rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, ea_list *
     if (nb)
     {
       rb = RTE_COPY_VALID(RTE_OR_NULL(nb->routes));
-      rta_clone(rb.attrs);
+      ea_ref(rb.attrs);
       net_copy(&nau.n, nb->routes->rte.net);
       rb.net = &nau.n;
     }
@@ -3310,6 +3306,7 @@ rt_flowspec_update_rte(rtable *tab, const rte *r, rte *new)
     return 0;
 
   *new = *r;
+  new->attrs = ea_strip_to(new->attrs, BIT32_ALL(EALS_PREIMPORT, EALS_FILTERED));
   ea_set_attr_u32(&new->attrs, &ea_gen_flowspec_valid, 0, valid);
   return 1;
 #else
@@ -4101,8 +4098,7 @@ void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *n
       rte new = rte_init_from(feed[i]);
 
       /* Strip the later attribute layers */
-      while (new.attrs->next)
-	new.attrs = new.attrs->next;
+      new.attrs = ea_strip_to(new.attrs, BIT32_ALL(EALS_PREIMPORT));
 
       /* And reload the route */
       rte_update(c, net, &new, new.src);
@@ -4203,7 +4199,7 @@ hc_new_hostentry(struct hostcache *hc, pool *p, ip_addr a, ip_addr ll, rtable *d
 static void
 hc_delete_hostentry(struct hostcache *hc, pool *p, struct hostentry *he)
 {
-  rta_free(he->src);
+  ea_free(he->src);
 
   rem_node(&he->ln);
   hc_remove(hc, he);
@@ -4288,7 +4284,7 @@ rt_free_hostcache(struct rtable_private *tab)
   WALK_LIST(n, hc->hostentries)
     {
       struct hostentry *he = SKIP_BACK(struct hostentry, ln, n);
-      rta_free(he->src);
+      ea_free(he->src);
 
       if (!lfuc_finished(&he->uc))
 	log(L_ERR "Hostcache is not empty in table %s", tab->name);
@@ -4384,7 +4380,7 @@ rt_update_hostentry(struct rtable_private *tab, struct hostentry *he)
 		direct++;
 	      }
 
-      he->src = rta_clone(a);
+      he->src = ea_ref(a);
       he->nexthop_linkable = !direct;
       he->igp_metric = rt_get_igp_metric(&e->rte);
     }
@@ -4393,7 +4389,7 @@ done:
   /* Add a prefix range to the trie */
   trie_add_prefix(tab->hostcache->trie, &he_addr, pxlen, he_addr.pxlen);
 
-  rta_free(old_src);
+  ea_free(old_src);
   return old_src != he->src;
 }
 

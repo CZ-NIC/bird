@@ -235,10 +235,21 @@ typedef struct eattr {
 typedef struct ea_list {
   struct ea_list *next;			/* In case we have an override list */
   byte flags;				/* Flags: EALF_... */
-  byte rfu;
+  byte stored:5;			/* enum ea_stored */
+  byte rfu:3;
   word count;				/* Number of attributes */
   eattr attrs[0];			/* Attribute definitions themselves */
 } ea_list;
+
+enum ea_stored {
+  EALS_NONE = 0,			/* This is a temporary ea_list */
+  EALS_PREIMPORT = 1,			/* State when route entered rte_update() */
+  EALS_FILTERED = 2,			/* State after filters */
+  EALS_IN_TABLE = 3,			/* State in table */
+  EALS_KEY = 4,				/* EA list used as key */
+  EALS_CUSTOM = 0x10,			/* OR this with custom values */
+  EALS_MAX = 0x20,
+};
 
 struct ea_storage {
   struct ea_storage *next_hash;		/* Next in hash chain */
@@ -250,7 +261,6 @@ struct ea_storage {
 
 #define EALF_SORTED 1			/* Attributes are sorted by code */
 #define EALF_BISECT 2			/* Use interval bisection for searching */
-#define EALF_CACHED 4			/* List is cached */
 #define EALF_HUGE   8			/* List is too big to fit into slab */
 
 struct ea_class {
@@ -332,12 +342,12 @@ static inline eattr *ea_find_by_name(ea_list *l, const char *name)
 eattr *ea_walk(struct ea_walk_state *s, uint id, uint max);
 void ea_dump(ea_list *);
 int ea_same(ea_list *x, ea_list *y);	/* Test whether two ea_lists are identical */
-uint ea_hash(ea_list *e);	/* Calculate 16-bit hash value */
+uint ea_hash(ea_list *e);		/* Calculate attributes hash value */
 ea_list *ea_append(ea_list *to, ea_list *what);
 void ea_format_bitfield(const struct eattr *a, byte *buf, int bufsize, const char **names, int min, int max);
 
 /* Normalize ea_list; allocates the result from tmp_linpool */
-ea_list *ea_normalize(ea_list *e, int overlay);
+ea_list *ea_normalize(ea_list *e, u32 upto);
 
 uint ea_list_size(ea_list *);
 void ea_list_copy(ea_list *dest, ea_list *src, uint size);
@@ -522,18 +532,39 @@ static inline int rte_dest(const rte *r)
 }
 
 void rta_init(void);
-ea_list *ea_lookup(ea_list *, int overlay);		/* Get a cached (and normalized) variant of this attribute list */
-static inline int ea_is_cached(const ea_list *r) { return r->flags & EALF_CACHED; }
+
+ea_list *ea_lookup_slow(ea_list *r, u32 squash_upto, enum ea_stored oid);
+
 static inline struct ea_storage *ea_get_storage(ea_list *r)
 {
-  ASSERT_DIE(ea_is_cached(r));
+  ASSERT_DIE(r->stored);
   return SKIP_BACK(struct ea_storage, l[0], r);
 }
 
-static inline ea_list *ea_clone(ea_list *r) {
+static inline ea_list *ea_ref(ea_list *r)
+{
   ASSERT_DIE(0 < atomic_fetch_add_explicit(&ea_get_storage(r)->uc, 1, memory_order_acq_rel));
   return r;
 }
+
+static inline ea_list *ea_lookup(ea_list *r, u32 squash_upto, enum ea_stored oid)
+{
+  ASSERT_DIE(oid);
+  if ((r->stored == oid) || BIT32_TEST(&squash_upto, r->stored))
+    return ea_ref(r);
+  else
+    return ea_lookup_slow(r, squash_upto, oid);
+}
+
+static inline ea_list *ea_strip_to(ea_list *r, u32 strip_to)
+{
+  ASSERT_DIE(strip_to);
+  while (r && !BIT32_TEST(&strip_to, r->stored))
+    r = r->next;
+
+  return r;
+}
+
 void ea__free(struct ea_storage *r);
 static inline void ea_free(ea_list *l) {
   if (!l) return;
@@ -544,10 +575,5 @@ static inline void ea_free(ea_list *l) {
 void ea_dump(ea_list *);
 void ea_dump_all(void);
 void ea_show_list(struct cli *, ea_list *);
-
-#define rta_lookup	ea_lookup
-#define rta_is_cached	ea_is_cached
-#define rta_clone	ea_clone
-#define rta_free	ea_free
 
 #endif
