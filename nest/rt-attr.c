@@ -161,6 +161,13 @@ struct ea_class ea_gen_hostentry = {
   .freed = ea_gen_hostentry_freed,
 };
 
+struct ea_class ea_gen_hostentry_version = {
+  .name = "hostentry version",
+  .type = T_INT,
+  .readonly = 1,
+  .hidden = 1,
+};
+
 const char * rta_dest_names[RTD_MAX] = {
   [RTD_NONE]		= "",
   [RTD_UNICAST]		= "unicast",
@@ -1821,6 +1828,7 @@ rta_init(void)
   /* These attributes are required to be first for nice "show route" output */
   ea_register_init(&ea_gen_nexthop);
   ea_register_init(&ea_gen_hostentry);
+  ea_register_init(&ea_gen_hostentry_version);
 
   /* Other generic route attributes */
   ea_register_init(&ea_gen_preference);
