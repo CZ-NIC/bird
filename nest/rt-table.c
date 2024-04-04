@@ -3004,139 +3004,143 @@ ea_set_hostentry(ea_list **to, rtable *dep, rtable *src, ip_addr gw, ip_addr ll,
 
 
 static void
-rta_apply_hostentry(struct rtable_private *tab UNUSED, ea_list **to, struct hostentry_adata *head)
+rta_apply_hostentry(ea_list **to, struct hostentry_adata *head)
 {
-  struct hostentry *he = head->he;
   u32 *labels = head->labels;
   u32 lnum = (u32 *) (head->ad.data + head->ad.length) - labels;
+  struct hostentry *he = head->he;
 
-  ea_set_attr_u32(to, &ea_gen_igp_metric, 0, he->igp_metric);
+  rcu_read_lock();
+  u32 version = atomic_load_explicit(&he->version, memory_order_acquire);
 
-  if (!he->src)
+  while (1)
   {
-    ea_set_dest(to, 0, RTD_UNREACHABLE);
-    return;
-  }
-
-  eattr *he_nh_ea = ea_find(he->src, &ea_gen_nexthop);
-  ASSERT_DIE(he_nh_ea);
-
-  struct nexthop_adata *nhad = (struct nexthop_adata *) he_nh_ea->u.ptr;
-  int idest = nhea_dest(he_nh_ea);
-
-  if ((idest != RTD_UNICAST) ||
-      !lnum && he->nexthop_linkable)
-  { /* Just link the nexthop chain, no label append happens. */
-    ea_copy_attr(to, he->src, &ea_gen_nexthop);
-    return;
-  }
-
-  uint total_size = OFFSETOF(struct nexthop_adata, nh);
-
-  NEXTHOP_WALK(nh, nhad)
-  {
-    if (nh->labels + lnum > MPLS_MAX_LABEL_STACK)
+    if (version & 1)
     {
-      log(L_WARN "Sum of label stack sizes %d + %d = %d exceedes allowed maximum (%d)",
-	    nh->labels, lnum, nh->labels + lnum, MPLS_MAX_LABEL_STACK);
+      rcu_read_unlock();
+      birdloop_yield();
+      rcu_read_lock();
+      version = atomic_load_explicit(&he->version, memory_order_acquire);
       continue;
     }
 
-    total_size += NEXTHOP_SIZE_CNT(nh->labels + lnum);
-  }
+    ea_set_attr_u32(to, &ea_gen_igp_metric, 0, he->igp_metric);
 
-  if (total_size == OFFSETOF(struct nexthop_adata, nh))
-  {
-    log(L_WARN "No valid nexthop remaining, setting route unreachable");
-
-    struct nexthop_adata nha = {
-      .ad.length = NEXTHOP_DEST_SIZE,
-      .dest = RTD_UNREACHABLE,
-    };
-
-    ea_set_attr_data(to, &ea_gen_nexthop, 0, &nha.ad.data, nha.ad.length);
-    return;
-  }
-
-  struct nexthop_adata *new = (struct nexthop_adata *) tmp_alloc_adata(total_size);
-  struct nexthop *dest = &new->nh;
-
-  NEXTHOP_WALK(nh, nhad)
-  {
-    if (nh->labels + lnum > MPLS_MAX_LABEL_STACK)
-      continue;
-
-    memcpy(dest, nh, NEXTHOP_SIZE(nh));
-    if (lnum)
+    if (!he->src)
     {
-      memcpy(&(dest->label[dest->labels]), labels, lnum * sizeof labels[0]);
-      dest->labels += lnum;
+      ea_set_dest(to, 0, RTD_UNREACHABLE);
+      break;
     }
 
-    if (ipa_nonzero(nh->gw))
-      /* Router nexthop */
-      dest->flags = (dest->flags & RNF_ONLINK);
-    else if (!(nh->iface->flags & IF_MULTIACCESS) || (nh->iface->flags & IF_LOOPBACK))
-      dest->gw = IPA_NONE;		/* PtP link - no need for nexthop */
-    else if (ipa_nonzero(he->link))
-      dest->gw = he->link;		/* Device nexthop with link-local address known */
-    else
-      dest->gw = he->addr;		/* Device nexthop with link-local address unknown */
+    eattr *he_nh_ea = ea_find(he->src, &ea_gen_nexthop);
+    ASSERT_DIE(he_nh_ea);
 
-    dest = NEXTHOP_NEXT(dest);
+    struct nexthop_adata *nhad = (struct nexthop_adata *) he_nh_ea->u.ptr;
+    int idest = nhea_dest(he_nh_ea);
+
+    if ((idest != RTD_UNICAST) ||
+	!lnum && he->nexthop_linkable)
+    {
+      /* Just link the nexthop chain, no label append happens. */
+      ea_copy_attr(to, he->src, &ea_gen_nexthop);
+      break;
+    }
+
+    uint total_size = OFFSETOF(struct nexthop_adata, nh);
+
+    NEXTHOP_WALK(nh, nhad)
+    {
+      if (nh->labels + lnum > MPLS_MAX_LABEL_STACK)
+      {
+	log(L_WARN "Sum of label stack sizes %d + %d = %d exceedes allowed maximum (%d)",
+	      nh->labels, lnum, nh->labels + lnum, MPLS_MAX_LABEL_STACK);
+	continue;
+      }
+
+      total_size += NEXTHOP_SIZE_CNT(nh->labels + lnum);
+    }
+
+    if (total_size == OFFSETOF(struct nexthop_adata, nh))
+    {
+      log(L_WARN "No valid nexthop remaining, setting route unreachable");
+
+      struct nexthop_adata nha = {
+	.ad.length = NEXTHOP_DEST_SIZE,
+	.dest = RTD_UNREACHABLE,
+      };
+
+      ea_set_attr_data(to, &ea_gen_nexthop, 0, &nha.ad.data, nha.ad.length);
+      break;
+    }
+
+    struct nexthop_adata *new = (struct nexthop_adata *) tmp_alloc_adata(total_size);
+    struct nexthop *dest = &new->nh;
+
+    NEXTHOP_WALK(nh, nhad)
+    {
+      if (nh->labels + lnum > MPLS_MAX_LABEL_STACK)
+	continue;
+
+      memcpy(dest, nh, NEXTHOP_SIZE(nh));
+      if (lnum)
+      {
+	memcpy(&(dest->label[dest->labels]), labels, lnum * sizeof labels[0]);
+	dest->labels += lnum;
+      }
+
+      if (ipa_nonzero(nh->gw))
+	/* Router nexthop */
+	dest->flags = (dest->flags & RNF_ONLINK);
+      else if (!(nh->iface->flags & IF_MULTIACCESS) || (nh->iface->flags & IF_LOOPBACK))
+	dest->gw = IPA_NONE;		/* PtP link - no need for nexthop */
+      else if (ipa_nonzero(he->link))
+	dest->gw = he->link;		/* Device nexthop with link-local address known */
+      else
+	dest->gw = he->addr;		/* Device nexthop with link-local address unknown */
+
+      dest = NEXTHOP_NEXT(dest);
+    }
+
+    /* Fix final length */
+    new->ad.length = (void *) dest - (void *) new->ad.data;
+    ea_set_attr(to, EA_LITERAL_DIRECT_ADATA(
+	  &ea_gen_nexthop, 0, &new->ad));
+
+    /* Has the HE version changed? */
+    u32 end_version = atomic_load_explicit(&he->version, memory_order_acquire);
+
+    /* Stayed stable, we can finalize the route */
+    if (end_version == version)
+      break;
+
+    /* No, retry once again */
+    version = end_version;
   }
 
-  /* Fix final length */
-  new->ad.length = (void *) dest - (void *) new->ad.data;
-  ea_set_attr(to, EA_LITERAL_DIRECT_ADATA(
-	&ea_gen_nexthop, 0, &new->ad));
-}
+  rcu_read_unlock();
 
-static inline struct hostentry_adata *
-rta_next_hop_outdated(ea_list *a)
-{
-  /* First retrieve the hostentry */
-  eattr *heea = ea_find(a, &ea_gen_hostentry);
-  if (!heea)
-    return NULL;
-
-  struct hostentry_adata *head = (struct hostentry_adata *) heea->u.ptr;
-
-  /* If no nexthop is present, we have to create one */
-  eattr *a_nh_ea = ea_find(a, &ea_gen_nexthop);
-  if (!a_nh_ea)
-    return head;
-
-  struct nexthop_adata *nhad = (struct nexthop_adata *) a_nh_ea->u.ptr;
-
-  /* Shortcut for unresolvable hostentry */
-  if (!head->he->src)
-    return NEXTHOP_IS_REACHABLE(nhad) ? head : NULL;
-
-  /* Comparing our nexthop with the hostentry nexthop */
-  eattr *he_nh_ea = ea_find(head->he->src, &ea_gen_nexthop);
-
-  return (
-      (ea_get_int(a, &ea_gen_igp_metric, IGP_METRIC_UNKNOWN) != head->he->igp_metric) ||
-      (!head->he->nexthop_linkable) ||
-      (!he_nh_ea != !a_nh_ea) ||
-      (he_nh_ea && a_nh_ea && !adata_same(he_nh_ea->u.ptr, a_nh_ea->u.ptr)))
-    ? head : NULL;
+  ea_set_attr_u32(to, &ea_gen_hostentry_version, 0, version);
 }
 
 static inline int
 rt_next_hop_update_rte(const rte *old, rte *new)
 {
-  struct hostentry_adata *head = rta_next_hop_outdated(old->attrs);
-  if (!head)
+  eattr *hev = ea_find(old->attrs, &ea_gen_hostentry_version);
+  if (!hev)
+    return 0;
+  u32 last_version = hev->u.data;
+
+  eattr *heea = ea_find(old->attrs, &ea_gen_hostentry);
+  ASSERT_DIE(heea);
+  struct hostentry_adata *head = (struct hostentry_adata *) heea->u.ptr;
+
+  u32 current_version = atomic_load_explicit(&head->he->version, memory_order_acquire);
+  if (current_version == last_version)
     return 0;
 
-  /* Get the state of the route just before nexthop was resolved */
   *new = *old;
   new->attrs = ea_strip_to(new->attrs, BIT32_ALL(EALS_PREIMPORT, EALS_FILTERED));
-
-  RT_LOCKED(head->he->owner, tab)
-    rta_apply_hostentry(tab, &new->attrs, head);
+  rta_apply_hostentry(&new->attrs, head);
   return 1;
 }
 
@@ -3147,10 +3151,7 @@ rt_next_hop_resolve_rte(rte *r)
   if (!heea)
     return;
 
-  struct hostentry_adata *head = (struct hostentry_adata *) heea->u.ptr;
-
-  RT_LOCKED(head->he->owner, tab)
-    rta_apply_hostentry(tab, &r->attrs, head);
+  rta_apply_hostentry(&r->attrs, (struct hostentry_adata *) heea->u.ptr);
 }
 
 #ifdef CONFIG_BGP
@@ -4334,6 +4335,9 @@ rt_update_hostentry(struct rtable_private *tab, struct hostentry *he)
   int direct = 0;
   int pxlen = 0;
 
+  /* Signalize work in progress */
+  ASSERT_DIE((atomic_fetch_add_explicit(&he->version, 1, memory_order_acq_rel) & 1) == 0);
+
   /* Reset the hostentry */
   he->src = NULL;
   he->nexthop_linkable = 0;
@@ -4386,6 +4390,10 @@ rt_update_hostentry(struct rtable_private *tab, struct hostentry *he)
     }
 
 done:
+  /* Signalize work done and wait for readers */
+  ASSERT_DIE((atomic_fetch_add_explicit(&he->version, 1, memory_order_acq_rel) & 1) == 1);
+  synchronize_rcu();
+
   /* Add a prefix range to the trie */
   trie_add_prefix(tab->hostcache->trie, &he_addr, pxlen, he_addr.pxlen);
 
