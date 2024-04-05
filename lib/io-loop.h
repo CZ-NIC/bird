@@ -29,6 +29,9 @@ void birdloop_free(struct birdloop *loop);
 /* Get birdloop's event list */
 event_list *birdloop_event_list(struct birdloop *loop);
 
+/* Run this event in this thread's priority event list */
+void ev_send_this_thread(event *e);
+
 /* Get birdloop's time heap */
 struct timeloop *birdloop_time_loop(struct birdloop *loop);
 #define birdloop_domain(l)  (birdloop_time_loop((l))->domain)
