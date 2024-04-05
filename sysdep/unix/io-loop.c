@@ -1396,6 +1396,7 @@ birdloop_init(void)
   timers_init(&main_birdloop.time, &root_pool);
 
   birdloop_enter_locked(&main_birdloop);
+  this_thread = &main_thread;
 }
 
 static void
@@ -1688,4 +1689,13 @@ void
 birdloop_yield(void)
 {
   usleep(100);
+}
+
+void
+ev_send_this_thread(event *e)
+{
+  if (this_thread == &main_thread)
+    ev_send_loop(&main_birdloop, e);
+  else
+    ev_send(&this_thread->priority_events, e);
 }
