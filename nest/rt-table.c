@@ -3464,20 +3464,55 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
       n->routes = new;
     }
 
+  /* Now we have to announce the routes the right way, to not cause any
+   * strange problems with consistency. */
+
+  ASSERT_DIE(updates[0].old == old_best);
+
+  /* Find new best route original position */
+  uint nbpos = ~0;
+  for (uint i=0; i<count; i++)
+    if ((updates[i].new_stored == new) || (updates[i].old == new))
+    {
+      nbpos = i;
+      break;
+    }
+  ASSERT_DIE(~nbpos);
+
+  const char *best_indicator[2][2] = {
+    { "autoupdated", "autoupdated [-best]" },
+    { "autoupdated [+best]", "autoupdated [best]" }
+  };
+
+  /* Best both updated and promoted: announce it first */
+  if (nbpos && updates[nbpos].new_stored)
+  {
+    rt_rte_trace_in(D_ROUTES, updates[nbpos].new.sender->req, &updates[nbpos].new,
+	best_indicator[1][0]);
+    rte_announce(tab, ni, n,
+	&updates[nbpos].new_stored->rte, &updates[nbpos].old->rte,
+	&new->rte, &old_best->rte);
+  }
+  else
+    nbpos = 0;
+
   uint total = 0;
   /* Announce the changes */
   for (uint i=0; i<count; i++)
   {
+    /* Not changed at all */
     if (!updates[i].new_stored)
       continue;
 
+    /* Already announced */
+    if (nbpos && (i == nbpos))
+      continue;
+
     _Bool nb = (new->rte.src == updates[i].new.src), ob = (i == 0);
-    const char *best_indicator[2][2] = {
-      { "autoupdated", "autoupdated [-best]" },
-      { "autoupdated [+best]", "autoupdated [best]" }
-    };
     rt_rte_trace_in(D_ROUTES, updates[i].new.sender->req, &updates[i].new, best_indicator[nb][ob]);
-    rte_announce(tab, ni, n, &updates[i].new_stored->rte, &updates[i].old->rte, &new->rte, &old_best->rte);
+    rte_announce(tab, ni, n,
+	&updates[i].new_stored->rte, &updates[i].old->rte,
+	&new->rte, (!nbpos && !i) ? &old_best->rte : &new->rte);
 
     total++;
   }
