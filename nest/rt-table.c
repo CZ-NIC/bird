@@ -4736,7 +4736,7 @@ rt_update_hostcache(void *data)
     hc->req = (struct rt_export_request) {
       .name = mb_sprintf(tab->rp, "%s.hcu.notifier", tab->name),
       .list = birdloop_event_list(tab->loop),
-      .pool = tab->rp,
+      .pool = birdloop_pool(tab->loop),
       .trace_routes = tab->config->debug,
       .dump_req = hc_notify_dump_req,
       .log_state_change = hc_notify_log_state_change,
