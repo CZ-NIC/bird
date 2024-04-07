@@ -3933,6 +3933,14 @@ rt_prepare_feed(struct rt_export_hook *c, net *n, rt_feed_block *b)
 
       const rte *new = RTE_OR_NULL(n->routes);
       b->rpe[b->pos++] = (struct rt_pending_export) { .new = new, .new_best = new, };
+
+      /* Mark all journal items seen */
+      if (req->mark_seen)
+	RPE_WALK(n->first, rpe, NULL)
+	  req->mark_seen(req, rpe);
+      else
+	RPE_WALK(n->first, rpe, NULL)
+	  rpe_mark_seen(c, rpe);
     }
   }
   else
