@@ -727,15 +727,12 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
   if (new)
     bmap_set(&c->export_map, new->id);
 
-  if (p->debug & D_ROUTES)
-  {
-    if (new && old)
-      channel_rte_trace_out(D_ROUTES, c, new, "replaced");
-    else if (new)
-      channel_rte_trace_out(D_ROUTES, c, new, "added");
-    else if (old)
-      channel_rte_trace_out(D_ROUTES, c, old, "removed");
-  }
+  if (new && old)
+    channel_rte_trace_out(D_ROUTES, c, new, "replaced");
+  else if (new)
+    channel_rte_trace_out(D_ROUTES, c, new, "added");
+  else if (old)
+    channel_rte_trace_out(D_ROUTES, c, old, "removed");
 
   p->rt_notify(p, c, net, new, old);
 }
