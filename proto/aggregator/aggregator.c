@@ -297,12 +297,15 @@ first_pass(struct trie_node *node, slab *trie_slab)
 
   if (is_leaf(node))
   {
+    /*
     for (int i = 0; i < node->potential_buckets_count; i++)
     {
       if (node->potential_buckets[i] == node->bucket)
         return;
     }
+    */
 
+    assert(node->bucket != NULL);
     node->potential_buckets[node->potential_buckets_count++] = node->bucket;
     return;
   }
@@ -513,12 +516,14 @@ second_pass(struct trie_node *node)
   assert(node != NULL);
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
-  if (node->parent == NULL)
-    assert(node->bucket != NULL);
+  //if (node->parent == NULL)
+    //assert(node->bucket != NULL);
 
   if (is_leaf(node))
   {
     assert(node->potential_buckets_count > 0);
+    assert(node->potential_buckets[0] != NULL);
+    assert(node->potential_buckets[0] == node->bucket);
     return;
   }
 
@@ -593,8 +598,8 @@ third_pass(struct trie_node *node)
   if (node == NULL)
     return;
 
-  if (node->parent == NULL)
-    assert(node->bucket != NULL);
+  //if (node->parent == NULL)
+    //assert(node->bucket != NULL);
 
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
@@ -602,7 +607,8 @@ third_pass(struct trie_node *node)
   if (node->parent == NULL)
   {
     assert(node->potential_buckets_count > 0);
-    assert(node->bucket != NULL);
+    assert(node->potential_buckets[0] != NULL);
+    //assert(node->bucket != NULL);
     node->bucket = node->potential_buckets[0];
     goto descent;
   }
