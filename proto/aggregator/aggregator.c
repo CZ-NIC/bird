@@ -209,6 +209,80 @@ get_ancestor_bucket(const struct trie_node *node)
   }
 }
 
+static void
+first_pass_new(struct trie_node *node, slab *trie_slab)
+{
+  assert(node != NULL);
+  assert(trie_slab != NULL);
+
+  if (is_leaf(node))
+  {
+    assert(node->bucket != NULL);
+    assert(node->potential_buckets_count == 0);
+    node->potential_buckets[node->potential_buckets_count++] = node->bucket;
+    return;
+  }
+
+  if (node->bucket == NULL)
+  {
+    node->bucket = node->parent->bucket;
+  }
+
+  for (int i = 0; i < 2; i++)
+  {
+    if (!node->child[i])
+    {
+      struct trie_node *new = new_node(trie_slab);
+      new->parent = node;
+      new->bucket = node->bucket;
+      new->depth = node->depth + 1;
+      node->child[i] = new;
+    }
+  }
+
+  if (node->child[0])
+  {
+    first_pass_new(node->child[0], trie_slab);
+    log("Entering first pass with node %p", node->child[0]);
+  }
+
+  if (node->child[1])
+  {
+    first_pass_new(node->child[1], trie_slab);
+    log("Entering first pass with node %p", node->child[1]);
+  }
+
+  node->bucket = NULL;
+}
+
+static void
+first_pass_after_check_helper(const struct trie_node *node)
+{
+  for (int i = 0; i < node->potential_buckets_count; i++)
+  {
+    for (int j = i + 1; j < node->potential_buckets_count; j++)
+    {
+      assert(node->potential_buckets[i] != node->potential_buckets[j]);
+    }
+  }
+}
+
+static void
+first_pass_after_check(const struct trie_node *node)
+{
+  first_pass_after_check_helper(node);
+
+  if (node->child[0])
+  {
+    first_pass_after_check_helper(node->child[0]);
+  }
+
+  if (node->child[1])
+  {
+    first_pass_after_check_helper(node->child[1]);
+  }
+}
+
 /*
  * First pass of Optimal Route Table Construction (ORTC) algorithm
  */
