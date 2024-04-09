@@ -1949,7 +1949,7 @@ rt_stop_import(struct rt_import_request *req, void (*stopped)(struct rt_import_r
 
     /* Cancel table rr_counter */
     if (hook->stale_set != hook->stale_pruned)
-      tab->rr_counter -= (hook->stale_set - hook->stale_pruned);
+      tab->rr_counter -= ((int) hook->stale_set - (int) hook->stale_pruned);
 
     tab->rr_counter++;
 
@@ -2182,7 +2182,7 @@ rt_refresh_begin(struct rt_import_request *req)
 	  e->stale_cycle = 0;
 
     /* Smash the route refresh counter and zero everything. */
-    tab->rr_counter -= hook->stale_set - hook->stale_pruned;
+    tab->rr_counter -= ((int) hook->stale_set - (int) hook->stale_pruned);
     hook->stale_set = hook->stale_valid = hook->stale_pruning = hook->stale_pruned = 0;
   }
 
@@ -2862,7 +2862,7 @@ rt_prune_table(void *_tab)
     }
     else if (ih->stale_pruning != ih->stale_pruned)
     {
-      tab->rr_counter -= (ih->stale_pruning - ih->stale_pruned);
+      tab->rr_counter -= ((int) ih->stale_pruning - (int) ih->stale_pruned);
       ih->stale_pruned = ih->stale_pruning;
       rt_refresh_trace(tab, ih, "table prune after refresh end");
     }
