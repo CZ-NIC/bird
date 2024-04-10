@@ -3500,7 +3500,7 @@ bgp_rx(sock *sk, uint size)
       {
 	sk_pause_rx(p->p.loop, sk);
 	BGP_TRACE(D_PACKETS, "Corked");
-	return 0;
+	break;
       }
       for(i=0; i<16; i++)
 	if (pkt_start[i] != 0xff)
