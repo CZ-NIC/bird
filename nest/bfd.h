@@ -21,6 +21,8 @@ struct bfd_options {
   u8 passive;
   u8 passive_set;
   u8 mode;
+  u8 auth_type;				/* Authentication type (BFD_AUTH_*) */
+  list *passwords;			/* Passwords for authentication */
 };
 
 struct bfd_request {
