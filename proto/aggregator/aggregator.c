@@ -882,6 +882,36 @@ collect_prefixes(struct aggregator_proto *p)
     bug("Invalid NET type");
 
   log("%d prefixes collected", count);
+  p->after_count = count;
+}
+
+static void
+construct_trie(struct aggregator_proto *p)
+{
+  HASH_WALK(p->buckets, next_hash, bucket)
+  {
+    for (const struct rte *rte = bucket->rte; rte; rte = rte->next)
+    {
+      union net_addr_union *uptr = (net_addr_union *)rte->net->n.addr;
+      assert(uptr->n.type == NET_IP4 || uptr->n.type == NET_IP6);
+
+      if (uptr->n.type == NET_IP4)
+      {
+        const struct net_addr_ip4 *addr = &uptr->ip4;
+        trie_insert_prefix_ip4(addr, p->root, bucket, p->trie_slab);
+        log("INSERT %N", addr);
+        p->before_count++;
+      }
+      else if (uptr->n.type == NET_IP6)
+      {
+        const struct net_addr_ip6 *addr = &uptr->ip6;
+        trie_insert_prefix_ip6(addr, p->root, bucket, p->trie_slab);
+        log("INSERT %N", addr);
+        p->before_count++;
+      }
+    }
+  }
+  HASH_WALK_END;
 }
 
 /*
@@ -1467,9 +1497,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   }
   HASH_WALK_END;
 
-  if (p->net_present == 0)
-    ev_schedule(&p->reload_trie);
-  else
+  if (p->net_present != 0)
   {
     /* Announce changes */
     if (old_bucket)
@@ -1546,6 +1574,7 @@ aggregator_init(struct proto_config *CF)
 
   P->rt_notify = aggregator_rt_notify;
   P->preexport = aggregator_preexport;
+  P->feed_end = calculate_trie;
 
   return P;
 }
@@ -1571,11 +1600,6 @@ aggregator_start(struct proto *P)
   p->trie_slab = sl_new(p->p.pool, sizeof(struct trie_node));
   p->root = new_node(p->trie_slab);
   p->root->depth = 1;
-
-  p->reload_trie = (event) {
-    .hook = calculate_trie,
-    .data = p,
-  };
 
   struct network *default_net = NULL;
 
@@ -1647,7 +1671,6 @@ aggregator_shutdown(struct proto *P)
   }
   HASH_WALK_END;
 
-  ev_postpone(&p->reload_trie);
   delete_trie(p->root);
   p->root = NULL;
 
