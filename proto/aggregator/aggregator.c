@@ -895,8 +895,9 @@ calculate_trie(void *P)
 
   log("====PREFIXES BEFORE ====");
 
-  first_pass(p->root, p->trie_slab);
   log("====FIRST PASS====");
+  first_pass_new(p->root, p->trie_slab);
+  first_pass_after_check(p->root);
   print_prefixes(p->root, p->addr_type);
 
   second_pass(p->root);
