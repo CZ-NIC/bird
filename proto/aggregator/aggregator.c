@@ -918,9 +918,8 @@ construct_trie(struct aggregator_proto *p)
  * Run Optimal Routing Table Constructor (ORTC) algorithm
  */
 static void
-calculate_trie(void *P)
+calculate_trie(struct aggregator_proto *p)
 {
-  struct aggregator_proto *p = (struct aggregator_proto *)P;
   assert(p->addr_type == NET_IP4 || p->addr_type == NET_IP6);
 
   log("====PREFIXES BEFORE ====");
@@ -938,6 +937,19 @@ calculate_trie(void *P)
   log("====THIRD PASS====");
   print_prefixes(p->root, p->addr_type);
 
+}
+
+static void
+run_aggregation(struct channel *C)
+{
+  struct aggregator_proto *p = (void *)C->proto;
+
+  /* Run aggregation only on feed-end from source channel */
+  if (C == p->dst)
+    return;
+
+  construct_trie(p);
+  calculate_trie(p);
   collect_prefixes(p);
   log("==== AGGREGATION DONE ====");
 }
@@ -1474,29 +1486,6 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     sl_free(old_route);
   }
 
-  HASH_WALK(p->buckets, next_hash, bucket)
-  {
-    for (const struct rte *rte = bucket->rte; rte; rte = rte->next)
-    {
-      union net_addr_union *uptr = (net_addr_union *)rte->net->n.addr;
-      assert(uptr->n.type == NET_IP4 || uptr->n.type == NET_IP6);
-
-      if (uptr->n.type == NET_IP4)
-      {
-        const struct net_addr_ip4 *addr = &uptr->ip4;
-        trie_insert_prefix_ip4(addr, p->root, bucket, p->trie_slab);
-        log("INSERT %N", addr);
-      }
-      else if (uptr->n.type == NET_IP6)
-      {
-        const struct net_addr_ip6 *addr = &uptr->ip6;
-        trie_insert_prefix_ip6(addr, p->root, bucket, p->trie_slab);
-        log("INSERT %N", addr);
-      }
-    }
-  }
-  HASH_WALK_END;
-
   if (p->net_present != 0)
   {
     /* Announce changes */
@@ -1574,7 +1563,7 @@ aggregator_init(struct proto_config *CF)
 
   P->rt_notify = aggregator_rt_notify;
   P->preexport = aggregator_preexport;
-  P->feed_end = calculate_trie;
+  P->feed_end = run_aggregation;
 
   return P;
 }
