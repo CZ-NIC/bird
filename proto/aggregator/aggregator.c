@@ -224,9 +224,7 @@ first_pass_new(struct trie_node *node, slab *trie_slab)
   }
 
   if (node->bucket == NULL)
-  {
     node->bucket = node->parent->bucket;
-  }
 
   for (int i = 0; i < 2; i++)
   {
@@ -241,16 +239,10 @@ first_pass_new(struct trie_node *node, slab *trie_slab)
   }
 
   if (node->child[0])
-  {
     first_pass_new(node->child[0], trie_slab);
-    log("Entering first pass with node %p", node->child[0]);
-  }
 
   if (node->child[1])
-  {
     first_pass_new(node->child[1], trie_slab);
-    log("Entering first pass with node %p", node->child[1]);
-  }
 
   node->bucket = NULL;
 }
