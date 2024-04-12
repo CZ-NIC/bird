@@ -78,7 +78,7 @@ is_leaf(const struct trie_node *node)
  * Allocate new node in protocol slab
  */
 static struct trie_node *
-new_node(slab *trie_slab)
+create_new_node(slab *trie_slab)
 {
   struct trie_node *new = sl_alloc(trie_slab);
   assert(new != NULL);
@@ -148,7 +148,7 @@ trie_insert_prefix_ip4(const struct net_addr_ip4 *addr, struct trie_node *const 
 
     if (!node->child[bit])
     {
-      struct trie_node *new = new_node(trie_slab);
+      struct trie_node *new = create_new_node(trie_slab);
       new->parent = node;
       node->child[bit] = new;
       new->depth = new->parent->depth + 1;
@@ -177,7 +177,7 @@ trie_insert_prefix_ip6(const struct net_addr_ip6 *addr, struct trie_node * const
 
     if (!node->child[bit])
     {
-      struct trie_node *new = new_node(trie_slab);
+      struct trie_node *new = create_new_node(trie_slab);
       new->parent = node;
       node->child[bit] = new;
       new->depth = new->parent->depth + 1;
@@ -230,7 +230,7 @@ first_pass_new(struct trie_node *node, slab *trie_slab)
   {
     if (!node->child[i])
     {
-      struct trie_node *new = new_node(trie_slab);
+      struct trie_node *new = create_new_node(trie_slab);
       new->parent = node;
       new->bucket = node->bucket;
       new->depth = node->depth + 1;
@@ -307,7 +307,7 @@ first_pass(struct trie_node *node, slab *trie_slab)
   {
     if (!node->child[i])
     {
-      struct trie_node *new = new_node(trie_slab);
+      struct trie_node *new = create_new_node(trie_slab);
       new->parent = node;
       new->bucket = get_ancestor_bucket(new);
       node->child[i] = new;
@@ -1587,7 +1587,7 @@ aggregator_start(struct proto *P)
   };
 
   p->trie_slab = sl_new(p->p.pool, sizeof(struct trie_node));
-  p->root = new_node(p->trie_slab);
+  p->root = create_new_node(p->trie_slab);
   p->root->depth = 1;
 
   struct network *default_net = NULL;
