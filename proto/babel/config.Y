@@ -35,6 +35,7 @@ proto: babel_proto ;
 babel_proto_start: proto_start BABEL
 {
   this_proto = proto_config_new(&proto_babel, $1);
+  this_proto->loop_order = DOMAIN_ORDER(proto);
   init_list(&BABEL_CFG->iface_list);
   BABEL_CFG->hold_time = 1 S_;
 };

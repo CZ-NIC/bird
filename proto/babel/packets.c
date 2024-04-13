@@ -1533,7 +1533,7 @@ babel_kick_queue(struct babel_iface *ifa)
    */
 
   if ((ifa->sk->tpos == ifa->sk->tbuf) && !ev_active(ifa->send_event))
-    ev_schedule(ifa->send_event);
+    ev_send_loop(ifa->proto->p.loop, ifa->send_event);
 }
 
 /**
