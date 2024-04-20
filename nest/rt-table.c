@@ -2721,10 +2721,63 @@ rt_prune_net(struct rtable_private *tab, struct network *n)
   for (struct rte_storage *e = n->routes; e; e = e->next)
   {
     struct rt_import_hook *s = e->rte.sender;
-    if ((s->import_state == TIS_FLUSHING) ||
-	(e->rte.stale_cycle < s->stale_valid) ||
-	(e->rte.stale_cycle > s->stale_set))
+
+    _Bool stale = (s->import_state == TIS_FLUSHING);
+
+    if (!stale)
     {
+
+    /*
+     * The range of 0..256 is split by s->stale_* like this:
+     *
+     *     pruned    pruning     valid      set
+     *       |          |          |         |
+     * 0     v          v          v         v       256
+     * |...........................+++++++++++........|
+     *
+     * We want to drop everything outside the marked range, thus
+     *	    (e->rte.stale_cycle < s->stale_valid) ||
+     *	    (e->rte.stale_cycle > s->stale_set))
+     *	  looks right.
+     *
+     * But the pointers may wrap around, and in the following situation, all the routes get pruned:
+     *
+     *      set         pruned    pruning     valid
+     *       |            |          |          |
+     * 0     v            v          v          v    256
+     * |++++++..................................++++++|
+     *
+     * In that case, we want
+     *	    (e->rte.stale_cycle > s->stale_valid) ||
+     *	    (e->rte.stale_cycle < s->stale_set))
+     *
+     * Full logic table:
+     *
+     *	   permutation   |  result  |  (S < V) + (S < SC) + (SC < V)
+     *	-----------------+----------+---------------------------------
+     *   SC <   V <=  S  |   prune  |     0    +    0     +     1    =  1
+     *    S <  SC <   V  |   prune  |     1    +    1     +     1    =  3
+     *    V <=  S <  SC  |   prune  |     0    +    1     +     0    =  1
+     *   SC <=  S <   V  |    keep  |     1    +    0     +     1    =  2
+     *    V <= SC <=  S  |    keep  |     0    +    0     +     0    =  0
+     *    S <   V <= SC  |    keep  |     1    +    1     +     0    =  2
+     *
+     * Now the following code hopefully makes sense.
+     */
+
+      int sv = (s->stale_set < s->stale_valid);
+      int ssc = (s->stale_set < e->rte.stale_cycle);
+      int scv = (e->rte.stale_cycle < s->stale_valid);
+      stale = (sv + ssc + scv) & 1;
+    }
+
+    /* By the C standard, either the importer is flushing and stale_perm is 1,
+     * or by the table above, stale_perm is between 0 and 3, where even values
+     * say "keep" and odd values say "prune". */
+
+    if (stale)
+    {
+      /* Announce withdrawal */
       struct netindex *i = RTE_GET_NETINDEX(&e->rte);
       rte_recalculate(tab, e->rte.sender, i, n, NULL, e->rte.src);
       return 1;
