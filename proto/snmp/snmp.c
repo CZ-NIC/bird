@@ -511,7 +511,6 @@ snmp_start(struct proto *P)
 
   /* We create copy of bonds to BGP protocols. */
   HASH_INIT(p->bgp_hash, p->pool, 10);
-
   snmp_bgp_start(p);
 
   return snmp_set_state(p, SNMP_INIT);
@@ -550,7 +549,7 @@ skip:
 }
 
 /*
- * snmp_reconfigure - Test if SNMP instance is reconfigurable
+ * snmp_reconfigure - Indicate instance reconfigurability
  * @P - SNMP protocol generic handle, current state
  * @CF - SNMP protocol configuration generic handle carring new values
  *
@@ -565,16 +564,16 @@ snmp_reconfigure(struct proto *P, struct proto_config *CF)
   const struct snmp_config *new = SKIP_BACK(struct snmp_config, cf, CF);
 
   /* We are searching for configuration changes */
-  int retval = snmp_reconfigure_logic(p, new);
+  int config_changed = snmp_reconfigure_logic(p, new);
 
-  if (retval)
+  if (config_changed)
   {
     /* Reinitialize the hash after snmp_shutdown() */
     HASH_INIT(p->bgp_hash, p->pool, 10);
     snmp_bgp_start(p);
   }
 
-  return retval;
+  return config_changed;
 }
 
 /*

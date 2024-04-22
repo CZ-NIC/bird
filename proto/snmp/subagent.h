@@ -25,7 +25,7 @@ void snmp_ping(struct snmp_proto *p);
 #define SNMP_BGP4_MIB	 15	      /* part of oid .1.3.6.1.2.1.15  */
 #define SNMP_OSPFv3_MIB	192	      /* part of oid .1.3.6.1.2.1.192 */
 
-extern u32 snmp_internet[4];
+extern const u32 snmp_internet[4];
 
 #define SNMP_DEFAULT_CONTEXT 0
 
@@ -169,6 +169,9 @@ struct oid {
   u32 ids[];
 };
 
+/* enforced by MIB tree, see mib_tree.h for more info */
+#define OID_MAX_LEN 32
+
 struct agentx_varbind {
   u16 type;
   u16 reserved; /* always zero filled */
@@ -297,6 +300,11 @@ struct snmp_pdu {
   u32 index;			    /* index on which the error was found */
 };
 
+struct snmp_proto_pdu {
+  struct snmp_proto *p;
+  struct snmp_pdu *c;
+};
+
 struct snmp_packet_info {
   node n;
   u8 type; // enum type
@@ -323,9 +331,9 @@ void snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, 
 void snmp_unregister(struct snmp_proto *p, struct oid *oid, uint index, uint len, uint contid);
 void snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, int include_uptime);
 
-void snmp_manage_tbuf(struct snmp_proto *p, struct snmp_pdu *c);
+void snmp_manage_tbuf(struct snmp_proto *p, void **ptr, struct snmp_pdu *c);
 
-struct oid *snmp_prefixize(struct snmp_proto *p, const struct oid *o);
+struct agentx_varbind *snmp_vb_to_tx(struct snmp_proto *p, const struct oid *oid, struct snmp_pdu *c);
 u8 snmp_get_mib_class(const struct oid *oid);
 
 void snmp_register_mibs(struct snmp_proto *p);

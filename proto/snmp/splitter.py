@@ -2,7 +2,8 @@
 
 """
 A very simple script used to test that BIRD does not segfaults on randomly split
-AgentX PDUs.
+AgentX PDUs. A split is when the AgentX PDUs do not align with socket's
+write()/read() boundaries.
 """
 
 import socket

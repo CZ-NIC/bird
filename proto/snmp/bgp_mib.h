@@ -48,8 +48,9 @@ void snmp_bgp_reg_failed(struct snmp_proto *p, struct agentx_response *r, struct
 u8 snmp_bgp_get_valid(u8 state);
 u8 snmp_bgp_getnext_valid(u8 state);
 
-enum snmp_search_res snmp_bgp_search(struct snmp_proto *p, struct oid **searched, const struct oid *o_end, uint contid);
-void snmp_bgp_fill(struct snmp_proto *p, struct agentx_varbind *vb, struct snmp_pdu *c);
+enum snmp_search_res snmp_bgp_search(struct snmp_proto *p, struct agentx_varbind **vb_search, const struct oid *o_end, struct snmp_pdu *c);
+enum snmp_search_res snmp_bgp_search2(struct snmp_proto *p, struct oid **searched, const struct oid *o_end, uint contid);
+void snmp_bgp_fill(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_pdu *c);
 //int snmp_bgp_testset(struct snmp_proto *p, const struct agentx_varbind *vb, void* tr, struct oid *oid, uint pkt_type);
 
 void snmp_bgp_notify_established(struct snmp_proto *p, struct bgp_proto *bgp);

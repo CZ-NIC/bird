@@ -24,10 +24,19 @@ size_t snmp_str_size(const char *str);
 
 /* type OID - Object Identifier */
 int snmp_is_oid_empty(const struct oid *oid);
+int snmp_oid_is_prefixable(const struct oid *oid);
 uint snmp_oid_size(const struct oid *o);
 size_t snmp_oid_size_from_len(uint n_subid);
 void snmp_oid_copy(struct oid *dest, const struct oid *src);
+void snmp_oid_copy2(struct oid *dest, const struct oid *src);
 int snmp_oid_compare(const struct oid *first, const struct oid *second);
+void snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct oid *result);
+
+static inline int
+snmp_oid_is_prefixed(const struct oid *oid)
+{
+  return LOAD_U8(oid->prefix) != 0;
+}
 
 /* type IPv4 */
 int snmp_valid_ip4_index(const struct oid *o, uint start);
@@ -44,6 +53,8 @@ uint snmp_varbind_size_unsafe(const struct agentx_varbind *vb);
 size_t snmp_varbind_size_from_len(uint n_subid, enum agentx_type t, uint len);
 int snmp_test_varbind(const struct agentx_varbind *vb);
 void *snmp_varbind_data(const struct agentx_varbind *vb);
+struct oid *snmp_varbind_set_name_len(struct snmp_proto *p, struct agentx_varbind **vb, u8 len, struct snmp_pdu *c);
+void snmp_varbind_duplicate_hdr(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_pdu *c);
 
 /*
  *  AgentX - PDU headers, types, contexts
@@ -63,12 +74,12 @@ int snmp_test_close_reason(byte value);
 /* Functions filling buffer a typed value */
 struct agentx_varbind *snmp_create_varbind(byte *buf, struct oid *oid);
 struct agentx_varbind *snmp_create_varbind_null(byte *buf);
-byte *snmp_varbind_int(struct agentx_varbind *vb, uint size, u32 val);
-byte *snmp_varbind_counter32(struct agentx_varbind *vb, uint size, u32 val);
-byte *snmp_varbind_gauge32(struct agentx_varbind *vb, uint size, s64 val);
-byte *snmp_varbind_ticks(struct agentx_varbind *vb, uint size, u32 val);
-byte *snmp_varbind_ip4(struct agentx_varbind *vb, uint size, ip4_addr addr);
-byte *snmp_varbind_nstr(struct agentx_varbind *vb, uint size, const char *str, uint len);
+void snmp_varbind_int(struct agentx_varbind *vb, struct snmp_pdu *c, u32 val);
+void snmp_varbind_counter32(struct agentx_varbind *vb, struct snmp_pdu *c, u32 val);
+void snmp_varbind_gauge32(struct agentx_varbind *vb, struct snmp_pdu *c, s64 time);
+void snmp_varbind_ticks(struct agentx_varbind *vb, struct snmp_pdu *c, u32 val);
+void snmp_varbind_ip4(struct agentx_varbind *vb, struct snmp_pdu *c, ip4_addr addr);
+void snmp_varbind_nstr(struct agentx_varbind *vb, struct snmp_pdu *c, const char *str, uint len);
 
 /* Raw */
 byte *snmp_no_such_object(byte *buf, struct agentx_varbind *vb, struct oid *oid);
@@ -91,7 +102,12 @@ int snmp_registration_match(struct snmp_registration *r, struct agentx_header *h
 
 void snmp_dump_packet(byte *pkt, uint size);
 void snmp_oid_dump(const struct oid *oid);
+void snmp_oid_log(const struct oid *oid);
 
 enum agentx_type snmp_search_res_to_type(enum snmp_search_res res);
+
+#define AGENTX_TYPE_INT_SIZE ((uint) agentx_type_size(AGENTX_INTEGER))
+#define AGENTX_TYPE_IP4_SIZE ((uint) agentx_type_size(AGENTX_IP_ADDRESS))
+#define AGENTX_TYPE_COUNTER32_SIZE ((uint) agentx_type_size(AGENTX_COUNTER_32))
 
 #endif
