@@ -66,6 +66,17 @@ async_dump(void)
   debug("\n");
 }
 
+#ifndef BACKTRACE_MAX_LINES
+// not in test
+// To be compilatible with some systems, we need to define get_test_bug_jump here
+jmp_buf *
+get_test_bug_jump(const char *msg UNUSED)
+{
+  return NULL;
+}
+#endif
+
+
 /*
  *	Dropping privileges
  */

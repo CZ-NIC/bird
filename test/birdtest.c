@@ -445,7 +445,7 @@ bt_assert_bug(void (*functionPtr)(void), char *expected_message)
 }
 
 jmp_buf *
-get_test_bug_jump(char *msg)
+get_test_bug_jump(const char *msg)
 {
   if (!bug_expected || strcmp(msg, expected_bug_message) != 0)
     abort();

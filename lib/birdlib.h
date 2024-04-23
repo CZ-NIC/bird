@@ -50,7 +50,7 @@ extern const enum build_target {
   BT_TEST,
 } build_target;
 
-jmp_buf *get_test_bug_jump(char *msg);
+jmp_buf *get_test_bug_jump(const char *msg);
 
 static inline int uint_cmp(uint i1, uint i2)
 { return (int)(i1 > i2) - (int)(i1 < i2); }

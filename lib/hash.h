@@ -10,7 +10,16 @@
 #ifndef _BIRD_HASH_H_
 #define _BIRD_HASH_H_
 
-#define HASH(type)		struct { type **data; uint count, order; char* is_in_walk; }
+enum hash_walk_state {
+  NO_WALK,
+  WALK,
+  WALK_DELSAFE,
+  WALK_RESIZABLE,
+  NEED_RESIZE
+};
+
+
+#define HASH(type)		struct { type **data; uint count, order; char* is_in_walk; int* deep_of_walks;}
 #define HASH_TYPE(v)		typeof(** (v).data)
 #define HASH_SIZE(v)		(1U << (v).order)
 
@@ -24,7 +33,9 @@
     (v).order = (init_order);						\
     (v).data = mb_allocz(pool, HASH_SIZE(v) * sizeof(* (v).data));	\
     (v).is_in_walk = mb_allocz(pool, sizeof(char));			\
-    *(v).is_in_walk = 0;						\
+    *(v).is_in_walk = NO_WALK;						\
+    (v).deep_of_walks = mb_allocz(pool, sizeof(char));			\
+    *(v).deep_of_walks = 0;						\
   })
 
 #define HASH_FREE(v)							\
@@ -44,8 +55,6 @@
 
 #define HASH_INSERT(v,id,node)						\
   ({									\
-    if (*(v).is_in_walk)						\
-      bug("HASH_INSERT: Attempt to insert in HASH_WALK");		\
     u32 _h = HASH_FN(v, id, id##_KEY((node)));				\
     HASH_TYPE(v) **_nn = (v).data + _h;					\
     id##_NEXT(node) = *_nn;						\
@@ -55,14 +64,16 @@
 
 #define HASH_DO_REMOVE(v,id,_nn)					\
   ({									\
-    if (*(v).is_in_walk)						\
-      bug("HASH_DELETE: Attempt to remove in HASH_WALK");		\
     *_nn = id##_NEXT((*_nn));						\
     (v).count--;							\
   })
 
 #define HASH_DELETE(v,id,key...)					\
   ({									\
+    if (*(v).is_in_walk == WALK)					\
+      bug("HASH_DELETE: Attempt to delete in HASH_WALK");		\
+    if (*(v).deep_of_walks > 1)						\
+      bug("HASH_DELETE: Attempt to delete inside multiple hash walks");	\
     u32 _h = HASH_FN(v, id, key);					\
     HASH_TYPE(v) *_n, **_nn = (v).data + _h;				\
 									\
@@ -76,6 +87,10 @@
 
 #define HASH_REMOVE(v,id,node)						\
   ({									\
+    if (*(v).is_in_walk == WALK)					\
+      bug("HASH_REMOVE: Attempt to remove in HASH_WALK");		\
+    if (*(v).deep_of_walks > 1)						\
+      bug("HASH_REMOVE: Attempt to remove inside multiple hash walks");	\
     u32 _h = HASH_FN(v, id, id##_KEY((node)));				\
     HASH_TYPE(v) *_n, **_nn = (v).data + _h;				\
 									\
@@ -124,46 +139,61 @@
 
 #define HASH_MAY_STEP_UP_(v,pool,rehash_fn,args)			\
   ({                                                                    \
-    if (((v).count > (HASH_SIZE(v) REHASH_HI_MARK(args))) &&		\
-	((v).order < (REHASH_HI_BOUND(args))))				\
+    if (((v).count > (HASH_SIZE(v) REHASH_HI_MARK(args))) &&	\
+	((v).order <= (REHASH_HI_BOUND(args) - REHASH_HI_STEP(args)))) \
       rehash_fn(&(v), pool, REHASH_HI_STEP(args));			\
   })
 
 #define HASH_MAY_STEP_DOWN_(v,pool,rehash_fn,args)			\
   ({                                                                    \
-    if (((v).count < (HASH_SIZE(v) REHASH_LO_MARK(args))) &&		\
-	((v).order > (REHASH_LO_BOUND(args))))				\
+    if (((v).count < (HASH_SIZE(v) REHASH_LO_MARK(args))) &&	\
+	((v).order >= (REHASH_LO_BOUND(args) + REHASH_LO_STEP(args)))) \
       rehash_fn(&(v), pool, -(REHASH_LO_STEP(args)));			\
   })
 
 #define HASH_MAY_RESIZE_DOWN_(v,pool,rehash_fn,args)			\
-  ({                                                                    \
-    uint _o = (v).order;							\
+  ({  									\
+    uint _o = (v).order;						\
     while (((v).count < ((1U << _o) REHASH_LO_MARK(args))) &&		\
 	   (_o > (REHASH_LO_BOUND(args))))				\
       _o -= (REHASH_LO_STEP(args));					\
-    if (_o < (v).order)							\
+    if (_o < (v).order)						\
       rehash_fn(&(v), pool, _o - (v).order);				\
   })
 
 
 #define HASH_INSERT2(v,id,pool,node)					\
   ({									\
+    if (*(v).is_in_walk == WALK || *(v).is_in_walk == WALK_DELSAFE)	\
+      bug("HASH_INSERT2: called in hash walk or hash delsafe walk");	\
     HASH_INSERT(v, id, node);						\
-    HASH_MAY_STEP_UP(v, id, pool);					\
+    if (*(v).is_in_walk == NO_WALK)					\
+      HASH_MAY_STEP_UP(v, id, pool);					\
+    else if (*(v).is_in_walk == WALK_RESIZABLE)				\
+      *(v).is_in_walk = NEED_RESIZE;					\
   })
 
 #define HASH_DELETE2(v,id,pool,key...)					\
   ({									\
+    if (*(v).is_in_walk == WALK || *(v).is_in_walk == WALK_DELSAFE)	\
+      bug("HASH_DELETE2 called in hash walk or hash delsafe walk");	\
     HASH_TYPE(v) *_n = HASH_DELETE(v, id, key);				\
-    if (_n) HASH_MAY_STEP_DOWN(v, id, pool);				\
+    if (*(v).is_in_walk == WALK_RESIZABLE)				\
+      *(v).is_in_walk = NEED_RESIZE;					\
+    else if (*(v).is_in_walk == NO_WALK)				\
+      if (_n) HASH_MAY_STEP_DOWN(v, id, pool);				\
     _n;									\
   })
 
 #define HASH_REMOVE2(v,id,pool,node)					\
   ({									\
+    if (*(v).is_in_walk == WALK || *(v).is_in_walk == WALK_DELSAFE)	\
+      bug("HASH_REMOVE2 called in hash walk or hash delsafe walk");	\
     HASH_TYPE(v) *_n = HASH_REMOVE(v, id, node);			\
-    if (_n) HASH_MAY_STEP_DOWN(v, id, pool);				\
+    if (*(v).is_in_walk == WALK_RESIZABLE)				\
+      *(v).is_in_walk = NEED_RESIZE;					\
+    else if (*(v).is_in_walk == NO_WALK)				\
+      if (_n) HASH_MAY_STEP_DOWN(v, id, pool);				\
     _n;									\
   })
 
@@ -171,25 +201,80 @@
 #define HASH_WALK(v,next,n)						\
   do {									\
     HASH_TYPE(v) *n;							\
-    *(v).is_in_walk = 1;						\
+    if (*(v).is_in_walk != WALK && *(v).is_in_walk != NO_WALK)		\
+      bug("HASH_WALK can not be called from other walks");		\
+    *(v).is_in_walk = WALK;						\
+    *(v).deep_of_walks += 1;						\
     uint _i;								\
     uint _s = HASH_SIZE(v);						\
     for (_i = 0; _i < _s; _i++)						\
       for (n = (v).data[_i]; n; n = n->next)
 
-#define HASH_WALK_END(v) *(v).is_in_walk = 0; } while (0)
+#define HASH_WALK_END(v)						\
+  if (*(v).is_in_walk != WALK)						\
+    bug("HASH_WALK_END called when HASH_WALK is not opened");		\
+  *(v).deep_of_walks -= 1;						\
+  if (*(v).deep_of_walks == 0)						\
+    *(v).is_in_walk = NO_WALK;						\
+  } while (0)								\
 
 
 #define HASH_WALK_DELSAFE(v,next,n)					\
   do {									\
     HASH_TYPE(v) *n, *_next;						\
+    if (*(v).is_in_walk != NO_WALK && *(v).is_in_walk != WALK_DELSAFE)	\
+      bug("HASH_WALK_DELSAFE can not be called from other walks");	\
+    *(v).is_in_walk = WALK_DELSAFE;					\
+    *(v).deep_of_walks += 1;						\
     uint _i;								\
     uint _s = HASH_SIZE(v);						\
     for (_i = 0; _i < _s; _i++)						\
       for (n = (v).data[_i]; n && (_next = n->next, 1); n = _next)
 
-#define HASH_WALK_DELSAFE_END } while (0)
+#define HASH_WALK_DELSAFE_END(v) 					\
+  if (*(v).is_in_walk != WALK_DELSAFE)					\
+    bug("HASH_WALK_DELSAFE_END called when HASH_WALK_DELSAFE is not opened"); \
+  *(v).deep_of_walks -= 1;						\
+  if (*(v).deep_of_walks == 0)						\
+    *(v).is_in_walk = NO_WALK;						\
+  } while (0)
 
+
+#define HASH_WALK_RESIZABLE(v,next,n)					\
+  do {									\
+    HASH_TYPE(v) *n, *_next;						\
+    if (*(v).is_in_walk == NO_WALK)					\
+      *(v).is_in_walk = WALK_RESIZABLE;					\
+    else if (*(v).is_in_walk != WALK_RESIZABLE && *(v).is_in_walk != NEED_RESIZE) \
+      bug("HASH_WALK_RESIZABLE can not be called from other walks");	\
+    *(v).deep_of_walks += 1;						\
+    uint _i;								\
+    uint _s = HASH_SIZE(v);						\
+    for (_i = 0; _i < _s; _i++)						\
+      for (n = (v).data[_i]; n && (_next = n->next, 1); n = _next)
+
+#define HASH_WALK_RESIZABLE_END(v, id, pool) 				\
+  if (*(v).is_in_walk != WALK_RESIZABLE && *(v).is_in_walk != NEED_RESIZE) \
+    bug("HASH_WALK_RESIZABLE_END called when HASH_WALK_RESIZABLE is not opened"); \
+  *(v).deep_of_walks -= 1;						\
+  if (*(v).deep_of_walks == 0)						\
+  {									\
+    if (*(v).is_in_walk == NEED_RESIZE)					\
+    {									\
+      *(v).is_in_walk = NO_WALK;					\
+      uint order;							\
+      do {								\
+        order = (v).order;						\
+        HASH_MAY_STEP_DOWN(v, id, pool);				\
+      } while (order!=(v).order);					\
+      do {								\
+        order = (v).order;						\
+        HASH_MAY_STEP_UP(v, id, pool);					\
+      } while (order!=(v).order);					\
+    }									\
+    *(v).is_in_walk = NO_WALK;						\
+  }									\
+  } while (0)
 
 #define HASH_WALK_FILTER(v,next,n,nn)					\
   do {									\
