@@ -1770,6 +1770,12 @@ ea__free(struct ea_storage *a)
   RTA_UNLOCK;
 }
 
+void
+ea_free_deferred(struct deferred_call *dc)
+{
+  ea_free(SKIP_BACK(struct ea_free_deferred, dc, dc)->attrs);
+}
+
 /**
  * rta_dump_all - dump attribute cache
  *

@@ -557,6 +557,29 @@ static inline ea_list *ea_lookup(ea_list *r, u32 squash_upto, enum ea_stored oid
     return ea_lookup_slow(r, squash_upto, oid);
 }
 
+struct ea_free_deferred {
+  struct deferred_call dc;
+  ea_list *attrs;
+};
+
+void ea_free_deferred(struct deferred_call *dc);
+
+static inline ea_list *ea_free_later(ea_list *r)
+{
+  struct ea_free_deferred efd = {
+    .dc.hook = ea_free_deferred,
+    .attrs = r,
+  };
+
+  defer_call(&efd.dc, sizeof efd);
+  return r;
+}
+
+static inline ea_list *ea_lookup_tmp(ea_list *r, u32 squash_upto, enum ea_stored oid)
+{
+  return ea_free_later(ea_lookup(r, squash_upto, oid));
+}
+
 static inline ea_list *ea_strip_to(ea_list *r, u32 strip_to)
 {
   ASSERT_DIE(strip_to);
