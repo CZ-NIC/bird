@@ -1,0 +1,2 @@
+This is bgp YANG in process. Files bgp_yang_v2.odt, bgp_route_yang.odt and bgp_proto_yang.odt compare bird strures and draft draft-ietf-idr-bgp-model-17 yang. They contain possible structs where to find some of variables from yang.
+There is smaller yang created from draft which bird can fulfill in file bgp_yang_our_version.yang. Some of groupings there are without usage, becouse they are part of other, hard to implement ones. File color_copied_yang.odt tracks what is in bgp_yang_our_version.yang yet.
