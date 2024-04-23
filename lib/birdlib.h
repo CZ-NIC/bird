@@ -33,6 +33,10 @@
     SAME_TYPE(&_ptr->i, _orig); \
     _ptr; })
 #define BIRD_ALIGN(s, a) (((s)+a-1)&~(a-1))
+#define BIRD_SET_ALIGNED_POINTER(ptr, val)  do { \
+  size_t _alignment = _Alignof(typeof(*ptr)); \
+  ptr = (typeof(ptr)) BIRD_ALIGN((uintptr_t)(val), _alignment); \
+} while (0)
 #define CPU_STRUCT_ALIGN  (MAX_(_Alignof(void*), _Alignof(u64)))
 #define BIRD_CPU_ALIGN(s) BIRD_ALIGN((s), CPU_STRUCT_ALIGN)
 
