@@ -12,16 +12,10 @@
 
 #define LOCAL_DEBUG
 
-_Thread_local struct lfuc_unlock_queue *lfuc_unlock_queue;
-
-void lfuc_unlock_deferred(void *_q)
+void lfuc_unlock_deferred(struct deferred_call *dc)
 {
-  struct lfuc_unlock_queue *q = _q;
-  for (u32 i = 0; i < q->pos; i++)
-    lfuc_unlock_immediately(q->block[i].c, q->block[i].el, q->block[i].ev);
-
-  free_page(q);
-  lfuc_unlock_queue = NULL;
+  struct lfuc_unlock_queue_item *luqi = SKIP_BACK(struct lfuc_unlock_queue_item, dc, dc);
+  lfuc_unlock_immediately(luqi->c, luqi->el, luqi->ev);
 }
 
 #if 0
