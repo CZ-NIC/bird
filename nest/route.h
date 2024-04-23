@@ -298,6 +298,14 @@ struct rt_pending_export {
   const rte *new, *new_best, *old, *old_best;
 };
 
+struct rt_export_feed {
+  uint count_routes, count_exports;
+  struct netindex *ni;
+  rte *block;
+  u64 *exports;
+  char data[0];
+};
+
 struct rt_export_request {
   struct rt_export_hook *hook;		/* Table part of the export */
   char *name;
@@ -570,6 +578,8 @@ void rt_flowspec_link(rtable *src, rtable *dst);
 void rt_flowspec_unlink(rtable *src, rtable *dst);
 rtable *rt_setup(pool *, struct rtable_config *);
 
+struct rt_export_feed *rt_net_feed(rtable *t, net_addr *a);
+rte rt_net_best(rtable *t, net_addr *a);
 int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
 rte *rt_export_merged(struct channel *c, const net_addr *n, const rte ** feed, uint count, linpool *pool, int silent);
 void rt_refresh_begin(struct rt_import_request *);
