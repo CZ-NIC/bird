@@ -17,6 +17,7 @@
 #include "nest/bird.h"
 
 #include "lib/buffer.h"
+#include "lib/defer.h"
 #include "lib/lists.h"
 #include "lib/locking.h"
 #include "lib/resource.h"
@@ -794,6 +795,8 @@ bird_thread_main(void *arg)
   tmp_init(thr->pool, birdloop_domain(thr->meta));
   init_list(&thr->loops);
 
+  defer_init(lp_new(thr->pool));
+
   thr->sock_changed = 1;
 
   struct pfd pfd;
@@ -1377,6 +1380,8 @@ birdloop_init(void)
   birdloop_enter_locked(&main_birdloop);
   this_birdloop = &main_birdloop;
   this_thread = &main_thread;
+
+  defer_init(lp_new(&root_pool));
 }
 
 static void

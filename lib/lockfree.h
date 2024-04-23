@@ -10,6 +10,7 @@
 #ifndef _BIRD_LOCKFREE_H_
 #define _BIRD_LOCKFREE_H_
 
+#include "lib/defer.h"
 #include "lib/event.h"
 #include "lib/rcu.h"
 #include "lib/settle.h"
@@ -108,46 +109,25 @@ static inline void lfuc_unlock_immediately(struct lfuc *c, event_list *el, event
 //  return uc - LFUC_IN_PROGRESS - 1;
 }
 
-extern _Thread_local struct lfuc_unlock_queue {
-  event e;
-  u32 pos;
-  struct lfuc_unlock_queue_block {
-    struct lfuc *c;
-    event_list *el;
-    event *ev;
-  } block[0];
-} *lfuc_unlock_queue;
+struct lfuc_unlock_queue_item {
+  struct deferred_call dc;
+  struct lfuc *c;
+  event_list *el;
+  event *ev;
+};
 
-void lfuc_unlock_deferred(void *queue);
+void lfuc_unlock_deferred(struct deferred_call *dc);
 
 static inline void lfuc_unlock(struct lfuc *c, event_list *el, event *ev)
 {
-  static u32 queue_items = 0;
-  if (queue_items == 0)
-  {
-    ASSERT_DIE((u64) page_size > sizeof(struct lfuc_unlock_queue) + sizeof(struct lfuc_unlock_queue_block));
-    queue_items = (page_size - OFFSETOF(struct lfuc_unlock_queue, block))
-      / sizeof lfuc_unlock_queue->block[0];
-  }
-
-  if (!lfuc_unlock_queue || (lfuc_unlock_queue->pos >= queue_items))
-  {
-    lfuc_unlock_queue = alloc_page();
-    *lfuc_unlock_queue = (struct lfuc_unlock_queue) {
-      .e = {
-	.hook = lfuc_unlock_deferred,
-	.data = lfuc_unlock_queue,
-      },
-    };
-
-    ev_send_this_thread(&lfuc_unlock_queue->e);
-  }
-
-  lfuc_unlock_queue->block[lfuc_unlock_queue->pos++] = (struct lfuc_unlock_queue_block) {
+  struct lfuc_unlock_queue_item luqi = {
+    .dc.hook = lfuc_unlock_deferred,
     .c = c,
     .el = el,
     .ev = ev,
   };
+
+  defer_call(&luqi.dc, sizeof luqi);
 }
 
 /**
