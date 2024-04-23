@@ -685,6 +685,23 @@ rte_feed_obtain(struct rtable_reading *tr, net *n, const rte **feed, uint count)
     RT_READ_RETRY(tr);
 }
 
+static void
+rte_feed_obtain_copy(struct rtable_reading *tr, net *n, rte *feed, uint count)
+{
+  uint i = 0;
+  NET_READ_WALK_ROUTES(tr, n, ep, e)
+  {
+    if (i >= count)
+      RT_READ_RETRY(tr);
+
+    feed[i++] = e->rte;
+    ea_free_later(ea_ref(e->rte.attrs));
+  }
+
+  if (i != count)
+    RT_READ_RETRY(tr);
+}
+
 static rte *
 export_filter(struct channel *c, rte *rt, int silent)
 {
@@ -2013,9 +2030,89 @@ rte_import(struct rt_import_request *req, const net_addr *n, rte *new, struct rt
   }
 }
 
-/* Check rtable for best route to given net whether it would be exported do p */
-int
-rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter)
+struct rt_export_feed *
+rt_net_feed(rtable *t, net_addr *a)
+{
+  RT_READ(t, tr);
+
+  const struct netindex *i = net_find_index(t->netindex, a);
+  net *n = i ? net_find(tr, i) : NULL;
+  if (!n)
+    return 0;
+
+  /* Get the feed itself. It may change under our hands tho. */
+  struct rt_pending_export *first = atomic_load_explicit(&n->first, memory_order_acquire);
+  struct rt_pending_export *last = atomic_load_explicit(&n->last, memory_order_acquire);
+
+  /* Count the elements */
+  uint rcnt = rte_feed_count(tr, n);
+  uint ecnt = 0;
+  uint ocnt = 0;
+  for (struct rt_pending_export *rpe = first; rpe;
+      rpe = atomic_load_explicit(&rpe->next, memory_order_acquire))
+  {
+    ecnt++;
+    if (rpe->old)
+      ocnt++;
+  }
+
+  struct rt_export_feed *feed = NULL;
+
+  if (rcnt || ocnt || ecnt)
+  {
+    uint size = sizeof *feed
+	+ (rcnt+ocnt) * sizeof *feed->block + _Alignof(typeof(*feed->block))
+	+ ecnt * sizeof *feed->exports + _Alignof(typeof(*feed->exports));
+
+    feed = tmp_alloc(size);
+
+    feed->ni = i;
+    feed->count_routes = rcnt+ocnt;
+    feed->count_exports = ecnt;
+    BIRD_SET_ALIGNED_POINTER(feed->block, feed->data);
+    BIRD_SET_ALIGNED_POINTER(feed->exports, &feed->block[rcnt+ocnt]);
+
+    /* Consistency check */
+    ASSERT_DIE(((void *) &feed->exports[ecnt]) <= ((void *) feed) + size);
+
+    if (rcnt)
+      rte_feed_obtain_copy(tr, n, feed->block, rcnt);
+
+    if (ecnt)
+    {
+      uint e = 0;
+      uint rpos = rcnt;
+      for (struct rt_pending_export *rpe = first; rpe;
+	  rpe = atomic_load_explicit(&rpe->next, memory_order_acquire))
+	if (e >= ecnt)
+	  RT_READ_RETRY(tr);
+	else
+	{
+	  feed->exports[e++] = rpe->seq;
+
+	  /* Copy also obsolete routes */
+	  if (rpe->old)
+	  {
+	    ASSERT_DIE(rpos < rcnt + ocnt);
+	    feed->block[rpos++] = *rpe->old;
+	    ea_free_later(ea_ref(rpe->old->attrs));
+	  }
+	}
+
+      ASSERT_DIE(e == ecnt);
+    }
+  }
+
+  /* Check that it indeed didn't change and the last export is still the same. */
+  if (last != atomic_load_explicit(&n->last, memory_order_acquire) ||
+      first != atomic_load_explicit(&n->first, memory_order_acquire))
+    RT_READ_RETRY(tr);
+
+  return feed;
+}
+
+rte
+rt_net_best(rtable *t, net_addr *a)
 {
   rte rt = {};
 
@@ -2023,12 +2120,23 @@ rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filte
 
   const struct netindex *i = net_find_index(t->netindex, a);
   net *n = i ? net_find(tr, i) : NULL;
+  if (!n)
+    return rt;
+
   struct rte_storage *e = NET_READ_BEST_ROUTE(tr, n);
-
   if (!e || !rte_is_valid(&e->rte))
-    return 0;
+    return rt;
 
-  rt = RTE_COPY(e);
+  ea_free_later(ea_ref(e->rte.attrs));
+  return RTE_COPY(e);
+}
+
+/* Check rtable for best route to given net whether it would be exported do p */
+int
+rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter)
+{
+  rte rt = rt_net_best(t, a);
+
   int v = c->proto->preexport ? c->proto->preexport(c, &rt) : 0;
   if (v == RIC_PROCESS)
     v = (f_run(filter, &rt, FF_SILENT) <= F_ACCEPT);
