@@ -520,7 +520,6 @@ struct bgp_parse_state {
   /* Cached state for bgp_rte_update() */
   u32 last_id;
   struct rte_src *last_src;
-  ea_list *cached_ea;
 };
 
 #define BGP_PORT		179

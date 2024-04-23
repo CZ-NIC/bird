@@ -1871,11 +1871,9 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
   ASSERT(c->channel_state == CS_UP);
 
-  ea_list *ea_prefilter = NULL, *ea_postfilter = NULL;
-
   /* Storing prefilter routes as an explicit layer */
   if (new && (c->in_keep & RIK_PREFILTER))
-    ea_prefilter = new->attrs = ea_lookup(new->attrs, 0, EALS_PREIMPORT);
+    new->attrs = ea_lookup_tmp(new->attrs, 0, EALS_PREIMPORT);
 
 #if 0
   debug("%s.%s -(prefilter)-> %s: %N ", c->proto->name, c->name, c->table->name, n);
@@ -1918,8 +1916,8 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
       if (new)
       {
-	ea_postfilter = new->attrs = ea_lookup(new->attrs,
-	    ea_prefilter ? BIT32_ALL(EALS_PREIMPORT) : 0, EALS_FILTERED);
+	new->attrs = ea_lookup_tmp(new->attrs,
+	    (c->in_keep & RIK_PREFILTER) ? BIT32_ALL(EALS_PREIMPORT) : 0, EALS_FILTERED);
 
 	if (net_is_flow(n))
 	  rt_flowspec_resolve_rte(new, c);
@@ -1944,11 +1942,6 @@ rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
     mpls_unlock_fec(fec);
     DBGL( "Unlock FEC %p (rte_update %N)", fec, n);
   }
-
-  /* Now the route attributes are kept by the in-table cached version
-   * and we may drop the local handles */
-  ea_free(ea_prefilter);
-  ea_free(ea_postfilter);
 }
 
 void
