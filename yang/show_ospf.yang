@@ -32,53 +32,55 @@ module show_ospf {
       uses router;
       uses distance;
 
-      list vlink {
-        key "vlink";
-        leaf vlink {
-          type int32;
-        }
-        uses metric;
-      }
+      list rt {
+	key "dummy_yang_id";
+	leaf dummy_yang_id {
+	  type int32;
+	}
+	leaf metric {
+	  type int32;
+	}
+	choice rt_type {
+	  case vlink {
+	    grouping vlink {
+	      leaf vlink {
+		type int32;
+	      }
+	    }
+	  }
 
-      list router_metric {
-        key "router";
-        uses router;
-        uses metric;
-      }
+	  case router {
+	    grouping router_metric {
+	      uses router;
+	    }
+	  }
 
-      list network {
-        key "dummy_yang_id";
-        leaf dummy_yang_id {
-          type int32;
-        }
-        leaf network {
-          type int32;
-        }
-        choice len_nif {
-          case len {
-            leaf len {
-              type int32;
-            }
-          }
-          case nif {
-            leaf nif {
-              type int32;
-            }
-          }
-        }
-        leaf metric {
-          mandatory false;
-          type int32;
-        }
-        list stubnet {
-          key "stubnet";
-          leaf stubnet {
-            type int32;
-          }
-          leaf len {
-            type int32;
-          }
-          uses metric;
+	  case network {
+	    grouping network {
+	      leaf network {
+		type ipv4;
+	      }
+	      leaf len {
+		type int32;
+		mandatory false;
+	      }
+	      leaf nif {
+		type int32;
+		mandatory false;
+	      }
+	    }
+	  }
+
+	  case stubnet {
+	    grouping stubnet {
+	      leaf stubnet {
+		type ipv4;
+	      }
+	      leaf len {
+		type int32;
+	      }
+	    }
+	  }
         }
       }
     }
