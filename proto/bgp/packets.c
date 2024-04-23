@@ -1533,10 +1533,6 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, ea_lis
     return;
   }
 
-  /* Prepare cached route attributes */
-  if (!s->mpls && (s->cached_ea == NULL))
-    a0 = s->cached_ea = ea_lookup(a0, 0, EALS_CUSTOM);
-
   rte e0 = {
     .attrs = a0,
     .src = s->last_src,
@@ -1593,10 +1589,6 @@ bgp_decode_mpls_labels(struct bgp_parse_state *s, byte **pos, uint *len, uint *p
   /* Update next hop entry in rta */
   bgp_apply_mpls_labels(s, to, lnum, labels);
 
-  /* Attributes were changed, invalidate cached entry */
-  ea_free(s->cached_ea);
-  s->cached_ea = NULL;
-
   return;
 }
 
@@ -1642,6 +1634,7 @@ bgp_decode_nlri_ip4(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 {
   while (len)
   {
+    ea_list *ea = a;
     net_addr_ip4 net;
     u32 path_id = 0;
 
@@ -1664,7 +1657,7 @@ bgp_decode_nlri_ip4(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 
     /* Decode MPLS labels */
     if (s->mpls)
-      bgp_decode_mpls_labels(s, &pos, &len, &l, &a);
+      bgp_decode_mpls_labels(s, &pos, &len, &l, &ea);
 
     if (l > IP4_MAX_PREFIX_LENGTH)
       bgp_parse_error(s, 10);
@@ -1680,7 +1673,7 @@ bgp_decode_nlri_ip4(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 
     // XXXX validate prefix
 
-    bgp_rte_update(s, (net_addr *) &net, path_id, a);
+    bgp_rte_update(s, (net_addr *) &net, path_id, ea);
   }
 }
 
@@ -1727,6 +1720,7 @@ bgp_decode_nlri_ip6(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 {
   while (len)
   {
+    ea_list *ea = a;
     net_addr_ip6 net;
     u32 path_id = 0;
 
@@ -1749,7 +1743,7 @@ bgp_decode_nlri_ip6(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 
     /* Decode MPLS labels */
     if (s->mpls)
-      bgp_decode_mpls_labels(s, &pos, &len, &l, &a);
+      bgp_decode_mpls_labels(s, &pos, &len, &l, &ea);
 
     if (l > IP6_MAX_PREFIX_LENGTH)
       bgp_parse_error(s, 10);
@@ -1765,7 +1759,7 @@ bgp_decode_nlri_ip6(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 
     // XXXX validate prefix
 
-    bgp_rte_update(s, (net_addr *) &net, path_id, a);
+    bgp_rte_update(s, (net_addr *) &net, path_id, ea);
   }
 }
 
@@ -1815,6 +1809,7 @@ bgp_decode_nlri_vpn4(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 {
   while (len)
   {
+    ea_list *ea = a;
     net_addr_vpn4 net;
     u32 path_id = 0;
 
@@ -1837,7 +1832,7 @@ bgp_decode_nlri_vpn4(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 
     /* Decode MPLS labels */
     if (s->mpls)
-      bgp_decode_mpls_labels(s, &pos, &len, &l, &a);
+      bgp_decode_mpls_labels(s, &pos, &len, &l, &ea);
 
     /* Decode route distinguisher */
     if (l < 64)
@@ -1861,7 +1856,7 @@ bgp_decode_nlri_vpn4(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 
     // XXXX validate prefix
 
-    bgp_rte_update(s, (net_addr *) &net, path_id, a);
+    bgp_rte_update(s, (net_addr *) &net, path_id, ea);
   }
 }
 
@@ -1912,6 +1907,7 @@ bgp_decode_nlri_vpn6(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 {
   while (len)
   {
+    ea_list *ea = a;
     net_addr_vpn6 net;
     u32 path_id = 0;
 
@@ -1934,7 +1930,7 @@ bgp_decode_nlri_vpn6(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 
     /* Decode MPLS labels */
     if (s->mpls)
-      bgp_decode_mpls_labels(s, &pos, &len, &l, &a);
+      bgp_decode_mpls_labels(s, &pos, &len, &l, &ea);
 
     /* Decode route distinguisher */
     if (l < 64)
@@ -1958,7 +1954,7 @@ bgp_decode_nlri_vpn6(struct bgp_parse_state *s, byte *pos, uint len, ea_list *a)
 
     // XXXX validate prefix
 
-    bgp_rte_update(s, (net_addr *) &net, path_id, a);
+    bgp_rte_update(s, (net_addr *) &net, path_id, ea);
   }
 }
 
@@ -2707,12 +2703,12 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
     /* Handle withdraw during next hop decoding */
     if (s->err_withdraw)
       ea = NULL;
+
+    if (ea)
+      ea = ea_lookup_tmp(ea, 0, EALS_CUSTOM);
   }
 
   c->desc->decode_nlri(s, nlri, len, ea);
-
-  ea_free(s->cached_ea);
-  s->cached_ea = NULL;
 
   rt_unlock_source(s->last_src);
 }
@@ -2820,7 +2816,6 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 		    ea, s.mp_next_hop_data, s.mp_next_hop_len);
 
 done:
-  ea_free(s.cached_ea);
   lp_restore(tmp_linpool, tmpp);
   return;
 }
