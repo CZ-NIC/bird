@@ -43,6 +43,7 @@ struct bfd_config
   list patt_list;		/* List of iface configs (struct bfd_iface_config) */
   list neigh_list;		/* List of configured neighbors (struct bfd_neighbor) */
   struct bfd_iface_config *multihop; /* Multihop pseudoiface config */
+  u32 session_delete_timeout;
   u8 accept_ipv4;
   u8 accept_ipv6;
   u8 accept_direct;
@@ -124,6 +125,13 @@ struct bfd_iface
   u8 changed;
 };
 
+struct dummy_request
+{
+  struct bfd_request *req;
+  struct bfd_proto *p; // to get actual timeout
+  timer *t;
+};
+
 struct bfd_session
 {
   node n;
@@ -165,8 +173,8 @@ struct bfd_session
   timer *hold_timer;			/* Timer for session down detection time */
 
   list request_list;			/* List of client requests (struct bfd_request) */
+  struct dummy_request dummy_request;	/* Request and timer for delating removing session */
   btime last_state_change;		/* Time of last state change */
-  u8 notify_running;			/* 1 if notify hooks are running */
 
   u8 rx_csn_known;			/* Received crypto sequence number is known */
   u32 rx_csn;				/* Last received crypto sequence number */

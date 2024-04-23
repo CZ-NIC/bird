@@ -24,7 +24,7 @@ CF_DECLS
 CF_KEYWORDS(BFD, MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE,
 	INTERFACE, MULTIHOP, NEIGHBOR, DEV, LOCAL, AUTHENTICATION,
 	NONE, SIMPLE, METICULOUS, KEYED, MD5, SHA1, IPV4, IPV6, DIRECT,
-	STRICT, BIND)
+	STRICT, BIND, SESSION, DELETE, TIMEOUT)
 
 %type <iface> bfd_neigh_iface
 %type <a> bfd_neigh_local
@@ -42,6 +42,7 @@ bfd_proto_start: proto_start BFD
   init_list(&BFD_CFG->neigh_list);
   BFD_CFG->accept_ipv4 = BFD_CFG->accept_ipv6 = 1;
   BFD_CFG->accept_direct = BFD_CFG->accept_multihop = 1;
+  BFD_CFG->session_delete_timeout = 30;
 };
 
 bfd_proto_item:
@@ -51,6 +52,7 @@ bfd_proto_item:
  | MULTIHOP bfd_multihop
  | NEIGHBOR bfd_neighbor
  | STRICT BIND bool { BFD_CFG->strict_bind = $3; }
+ | SESSION DELETE TIMEOUT expr { BFD_CFG->session_delete_timeout = $4; }
  ;
 
 bfd_proto_opts:

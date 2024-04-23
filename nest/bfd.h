@@ -17,6 +17,7 @@ struct bfd_options {
   u32 min_rx_int;
   u32 min_tx_int;
   u32 idle_tx_int;
+  u32 session_delete_timeout;
   u8 multiplier;
   u8 passive;
   u8 passive_set;

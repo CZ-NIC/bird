@@ -159,6 +159,7 @@ static void bfd_session_set_min_tx(struct bfd_session *s, u32 val);
 static struct bfd_iface *bfd_get_iface(struct bfd_proto *p, ip_addr local, struct iface *iface);
 static void bfd_free_iface(struct bfd_iface *ifa);
 static inline void bfd_notify_kick(struct bfd_proto *p);
+static void bfd_request_free(resource *r);
 
 
 /*
@@ -693,6 +694,22 @@ bfd_request_notify(struct bfd_request *req, u8 state, u8 remote, u8 diag)
     req->hook(req);
 }
 
+void
+bfd_delete_dummy_request(timer *t)
+{
+  struct bfd_session *s = t->data;
+  struct bfd_request *req = s->dummy_request.req;
+  s->dummy_request.req = NULL;
+  if (list_length(&s->request_list) != 1)
+  {
+    log(L_WARN "BFD: Attempt to delete dummy request from session with % requests in total.", list_length(&s->request_list));
+    return;
+  }
+  rfree(&req->r);
+}
+
+static struct resclass bfd_request_class;
+
 static int
 bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
 {
@@ -712,7 +729,18 @@ bfd_add_request(struct bfd_proto *p, struct bfd_request *req)
   u8 loc_state, rem_state, diag;
 
   if (!s)
+  {
     s = bfd_add_session(p, req->addr, req->local, req->iface, &req->opts);
+    // Create one dummy request in order to be able keep session some time after last real request will be removed
+    struct bfd_request *dummy_request = ralloc(p->p.pool, &bfd_request_class);
+    add_tail(&s->request_list, &dummy_request->n);
+    dummy_request->session = s;
+
+    s->dummy_request.t = tm_new_init(p->p.pool, bfd_delete_dummy_request, s, 0, 0);
+    s->dummy_request.req = dummy_request;
+    s->dummy_request.p = p;
+  } else
+    tm_stop(s->dummy_request.t);
 
   rem_node(&req->n);
   add_tail(&s->request_list, &req->n);
@@ -767,8 +795,6 @@ bfd_drop_requests(struct bfd_proto *p)
   HASH_WALK_END(p->session_hash_id);
 }
 
-static struct resclass bfd_request_class;
-
 struct bfd_request *
 bfd_request_session(pool *p, ip_addr addr, ip_addr local,
 		    struct iface *iface, struct iface *vrf,
@@ -821,8 +847,20 @@ bfd_request_free(resource *r)
   /* Remove the session if there is no request for it. Skip that if
      inside notify hooks, will be handled by bfd_notify_hook() itself */
 
-  if (s && EMPTY_LIST(s->request_list) && !s->notify_running)
+  if (s && EMPTY_LIST(s->request_list))
     bfd_remove_session(s->ifa->bfd, s);
+  else if (s && list_length(&s->request_list) == 1)
+  {
+    struct bfd_request *f_req = SKIP_BACK(struct bfd_request, n, HEAD(s->request_list));
+    if (f_req != s->dummy_request.req)
+      bug("Last bfd request is not the dummy one");
+    if (!tm_active(s->dummy_request.t))
+    {
+      struct bfd_config *conf = (struct bfd_config *) (s->dummy_request.p->p.cf);
+      btime time = (btime) conf->session_delete_timeout S;
+      tm_start(s->dummy_request.t, time);
+    }
+  }
 }
 
 static void
@@ -986,14 +1024,9 @@ bfd_notify_hook(sock *sk, uint len UNUSED)
     diag = s->loc_diag;
     bfd_unlock_sessions(p);
 
-    s->notify_running = 1;
     WALK_LIST_DELSAFE(n, nn, s->request_list)
       bfd_request_notify(SKIP_BACK(struct bfd_request, n, n), loc_state, rem_state, diag);
-    s->notify_running = 0;
 
-    /* Remove the session if all requests were removed in notify hooks */
-    if (EMPTY_LIST(s->request_list))
-      bfd_remove_session(p, s);
   }
 
   return 0;
