@@ -7,14 +7,15 @@ UYTC_MODULE(show_memory) {
 
   UYTC_CONTAINER(message, msg) {
     UYTC_LEAF(header, "BIRD memory usage");
-    UYTC_CONTAINER(body, body) {
-      UYTC_LEAF(routing_tables, rmemsize(rt_table_pool));
-      UYTC_LEAF(route_attributes, rmemsize(rta_pool));
-      ...;
+    UYTC_CONTAINER(body) {
+      UYTC_USE(memory, routing_tables, rmemsize(rt_table_pool));
+      UYTC_USE(memory, route_attributes, rmemsize(rta_pool));
+      UYTC_USE(memory, protocols, rmemsize(proto_pool));
+      UYTC_USE(memory, current_config, rmemsize(config_pool));
 #ifdef HAVE_MMAP
-      UYTC_LEAF(standby_memory, (struct resmem) { .overhead = page_size * *pages_kept });
+      UYTC_USE(memory, standby_memory, (struct resmem) { .overhead = page_size * *pages_kept });
 #endif
-      UYTC_LEAF(total, rmemsize(&root_pool));
+      UYTC_LEAF(total, (struct resmem) { .overhead = &root_pool.overhead + page_size * *pages_kept, .effective = &root_pool.effective });
     }
   }
 }

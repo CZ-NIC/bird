@@ -37,26 +37,24 @@ module show_ospf {
 	leaf dummy_yang_id {
 	  type int32;
 	}
-	leaf metric {
-	  type int32;
-	}
+	uses metric;
 	choice rt_type {
 	  case vlink {
-	    grouping vlink {
-	      leaf vlink {
-		type int32;
-	      }
+	     container vlink {
+	       leaf vlink {
+	         type int32;
+	       }
 	    }
 	  }
 
 	  case router {
-	    grouping router_metric {
+	    container router {
 	      uses router;
 	    }
 	  }
 
 	  case network {
-	    grouping network {
+	    container network {
 	      leaf network {
 		type ipv4;
 	      }
@@ -72,7 +70,7 @@ module show_ospf {
 	  }
 
 	  case stubnet {
-	    grouping stubnet {
+	    container stubnet {
 	      leaf stubnet {
 		type ipv4;
 	      }
@@ -204,12 +202,7 @@ module show_ospf {
         }
       }
     }
-    list asbrs {
-      key "router";
-
-      leaf other_ABSRs {
-        type empty;
-      }
+    container other_ABSR {
       uses router;
       uses lsa_external;
       
