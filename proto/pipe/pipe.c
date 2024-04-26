@@ -99,7 +99,7 @@ pipe_preexport(struct channel *C, rte *e)
 void
 pipe_import_by_refeed_free(struct channel_feeding_request *cfr)
 {
-  struct import_to_export_reload *reload = SKIP_BACK(struct import_to_export_reload, cfr, cfr);
+  SKIP_BACK_DECLARE(struct import_to_export_reload, reload, cfr, cfr);
   reload->cir->done(reload->cir);
 }
 

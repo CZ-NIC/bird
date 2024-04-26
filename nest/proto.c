@@ -79,14 +79,14 @@ channel_log_state_change(struct channel *c)
 void
 channel_import_log_state_change(struct rt_import_request *req, u8 state)
 {
-  struct channel *c = SKIP_BACK(struct channel, in_req, req);
+  SKIP_BACK_DECLARE(struct channel, c, in_req, req);
   CD(c, "Channel import state changed to %s", rt_import_state_name(state));
 }
 
 void
 channel_export_log_state_change(struct rt_export_request *req, u8 state)
 {
-  struct channel *c = SKIP_BACK(struct channel, out_req, req);
+  SKIP_BACK_DECLARE(struct channel, c, out_req, req);
   CD(c, "Channel export state changed to %s", rt_export_state_name(state));
 
   switch (state)
@@ -104,7 +104,7 @@ channel_export_log_state_change(struct rt_export_request *req, u8 state)
 void
 channel_refeed_log_state_change(struct rt_export_request *req, u8 state)
 {
-  struct channel *c = SKIP_BACK(struct channel, refeed_req, req);
+  SKIP_BACK_DECLARE(struct channel, c, refeed_req, req);
   CD(c, "Channel export state changed to %s", rt_export_state_name(state));
 
   switch (state)
@@ -123,21 +123,21 @@ channel_refeed_log_state_change(struct rt_export_request *req, u8 state)
 static void
 channel_dump_import_req(struct rt_import_request *req)
 {
-  struct channel *c = SKIP_BACK(struct channel, in_req, req);
+  SKIP_BACK_DECLARE(struct channel, c, in_req, req);
   debug("  Channel %s.%s import request %p\n", c->proto->name, c->name, req);
 }
 
 static void
 channel_dump_export_req(struct rt_export_request *req)
 {
-  struct channel *c = SKIP_BACK(struct channel, out_req, req);
+  SKIP_BACK_DECLARE(struct channel, c, out_req, req);
   debug("  Channel %s.%s export request %p\n", c->proto->name, c->name, req);
 }
 
 static void
 channel_dump_refeed_req(struct rt_export_request *req)
 {
-  struct channel *c = SKIP_BACK(struct channel, refeed_req, req);
+  SKIP_BACK_DECLARE(struct channel, c, refeed_req, req);
   debug("  Channel %s.%s refeed request %p\n", c->proto->name, c->name, req);
 }
 
@@ -448,7 +448,7 @@ channel_roa_in_reload_done(struct channel_import_request *req)
 static void
 channel_roa_in_changed(struct settle *se)
 {
-  struct roa_subscription *s = SKIP_BACK(struct roa_subscription, settle, se);
+  SKIP_BACK_DECLARE(struct roa_subscription, s, settle, se);
   struct channel *c = s->c;
 
   CD(c, "Reload triggered by RPKI change");
@@ -472,7 +472,7 @@ channel_roa_out_reload_done(struct channel_feeding_request *req)
 static void
 channel_roa_out_changed(struct settle *se)
 {
-  struct roa_subscription *s = SKIP_BACK(struct roa_subscription, settle, se);
+  SKIP_BACK_DECLARE(struct roa_subscription, s, settle, se);
   struct channel *c = s->c;
 
   CD(c, "Feeding triggered by RPKI change");
@@ -495,7 +495,7 @@ channel_roa_out_changed(struct settle *se)
 static void
 channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
-  struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
+  SKIP_BACK_DECLARE(struct roa_subscription, s, req, req);
 
   switch (net->type)
   {
@@ -517,7 +517,7 @@ channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struc
 static void
 channel_dump_roa_req(struct rt_export_request *req)
 {
-  struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
+  SKIP_BACK_DECLARE(struct roa_subscription, s, req, req);
   struct channel *c = s->c;
 
   debug("  Channel %s.%s ROA %s change notifier request %p\n",
@@ -573,7 +573,7 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
 static void
 channel_roa_unsubscribed(struct rt_export_request *req)
 {
-  struct roa_subscription *s = SKIP_BACK(struct roa_subscription, req, req);
+  SKIP_BACK_DECLARE(struct roa_subscription, s, req, req);
   struct channel *c = s->c;
 
   rem_node(&s->roa_node);
@@ -781,7 +781,7 @@ channel_del_obstacle(struct channel *c)
 void
 channel_import_stopped(struct rt_import_request *req)
 {
-  struct channel *c = SKIP_BACK(struct channel, in_req, req);
+  SKIP_BACK_DECLARE(struct channel, c, in_req, req);
 
   mb_free(c->in_req.name);
   c->in_req.name = NULL;
@@ -792,7 +792,7 @@ channel_import_stopped(struct rt_import_request *req)
 static void
 channel_export_stopped(struct rt_export_request *req)
 {
-  struct channel *c = SKIP_BACK(struct channel, out_req, req);
+  SKIP_BACK_DECLARE(struct channel, c, out_req, req);
 
   /* The hook has already stopped */
   req->hook = NULL;
@@ -825,7 +825,7 @@ channel_export_stopped(struct rt_export_request *req)
 static void
 channel_refeed_stopped(struct rt_export_request *req)
 {
-  struct channel *c = SKIP_BACK(struct channel, refeed_req, req);
+  SKIP_BACK_DECLARE(struct channel, c, refeed_req, req);
 
   req->hook = NULL;
 
@@ -996,7 +996,7 @@ channel_schedule_reload(struct channel *c, struct channel_import_request *cir)
 static void
 channel_reload_stopped(struct rt_export_request *req)
 {
-  struct channel *c = SKIP_BACK(struct channel, reload_req, req);
+  SKIP_BACK_DECLARE(struct channel, c, reload_req, req);
 
   req->hook = NULL;
 
@@ -1014,7 +1014,7 @@ channel_reload_stopped(struct rt_export_request *req)
 static void
 channel_reload_log_state_change(struct rt_export_request *req, u8 state)
 {
-  struct channel *c = SKIP_BACK(struct channel, reload_req, req);
+  SKIP_BACK_DECLARE(struct channel, c, reload_req, req);
 
   if (state == TES_READY)
   {
@@ -1028,7 +1028,7 @@ channel_reload_log_state_change(struct rt_export_request *req, u8 state)
 static void
 channel_reload_dump_req(struct rt_export_request *req)
 {
-  struct channel *c = SKIP_BACK(struct channel, reload_req, req);
+  SKIP_BACK_DECLARE(struct channel, c, reload_req, req);
   debug("  Channel %s.%s import reload request %p\n", c->proto->name, c->name, req);
 }
 
@@ -2893,7 +2893,7 @@ struct channel_cmd_reload_import_request {
 static void
 channel_reload_out_done(struct channel_feeding_request *cfr)
 {
-  struct channel_cmd_reload_feeding_request *ccrfr = SKIP_BACK(struct channel_cmd_reload_feeding_request, cfr, cfr);
+  SKIP_BACK_DECLARE(struct channel_cmd_reload_feeding_request, ccrfr, cfr, cfr);
   if (atomic_fetch_sub_explicit(&ccrfr->prr->counter, 1, memory_order_acq_rel) == 1)
     ev_send_loop(&main_birdloop, &ccrfr->prr->ev);
 }
@@ -2901,7 +2901,7 @@ channel_reload_out_done(struct channel_feeding_request *cfr)
 static void
 channel_reload_in_done(struct channel_import_request *cir)
 {
-  struct channel_cmd_reload_import_request *ccrir = SKIP_BACK(struct channel_cmd_reload_import_request, cir, cir);
+  SKIP_BACK_DECLARE(struct channel_cmd_reload_import_request, ccrir, cir, cir);
   if (atomic_fetch_sub_explicit(&ccrir->prr->counter, 1, memory_order_acq_rel) == 1)
     ev_send_loop(&main_birdloop, &ccrir->prr->ev);
 }

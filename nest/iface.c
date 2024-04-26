@@ -286,7 +286,7 @@ if_enqueue_notify(struct iface_notification x)
 static inline void
 ifa_send_notify(struct iface_subscription *s, unsigned c, struct ifa *a)
 {
-  struct proto *p = SKIP_BACK(struct proto, iface_sub, s);
+  SKIP_BACK_DECLARE(struct proto, p, iface_sub, s);
 
   if (s->ifa_notify &&
       (p->proto_state != PS_DOWN) &&
@@ -328,7 +328,7 @@ ifa_notify_change(unsigned c, struct ifa *a)
 static inline void
 if_send_notify(struct iface_subscription *s, unsigned c, struct iface *i)
 {
-  struct proto *p = SKIP_BACK(struct proto, iface_sub, s);
+  SKIP_BACK_DECLARE(struct proto, p, iface_sub, s);
 
   if (s->if_notify &&
       (p->proto_state != PS_DOWN) &&
@@ -655,7 +655,7 @@ iface_unsubscribe(struct iface_subscription *s)
 {
   IFACE_LOCK;
 
-  struct proto *p = SKIP_BACK(struct proto, iface_sub, s);
+  SKIP_BACK_DECLARE(struct proto, p, iface_sub, s);
   WALK_TLIST_DELSAFE(proto_neigh, n, &p->neighbors)
     neigh_unlink(n);
 

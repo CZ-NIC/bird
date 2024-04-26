@@ -210,7 +210,7 @@ HASH_DEFINE_REHASH_FN(AGGR_BUCK, struct aggregator_bucket);
 static void
 aggregator_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *net, rte *new, const rte *old)
 {
-  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
+  SKIP_BACK_DECLARE(struct aggregator_proto, p, p, P);
   ASSERT_DIE(src_ch == p->src);
   struct aggregator_bucket *new_bucket = NULL, *old_bucket = NULL;
   struct aggregator_route *old_route = NULL;
@@ -316,7 +316,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *ne
 static int
 aggregator_preexport(struct channel *C, struct rte *new)
 {
-  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, C->proto);
+  SKIP_BACK_DECLARE(struct aggregator_proto, p, p, C->proto);
   /* Reject our own routes */
   if (new->sender == p->dst->in_req.hook)
     return -1;
@@ -334,7 +334,7 @@ aggregator_preexport(struct channel *C, struct rte *new)
 static void
 aggregator_postconfig(struct proto_config *CF)
 {
-  struct aggregator_config *cf = SKIP_BACK(struct aggregator_config, c, CF);
+  SKIP_BACK_DECLARE(struct aggregator_config, cf, c, CF);
 
   if (!cf->dst->table)
     cf_error("Source table not specified");
@@ -357,8 +357,8 @@ static struct proto *
 aggregator_init(struct proto_config *CF)
 {
   struct proto *P = proto_new(CF);
-  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
-  struct aggregator_config *cf = SKIP_BACK(struct aggregator_config, c, CF);
+  SKIP_BACK_DECLARE(struct aggregator_proto, p, p, P);
+  SKIP_BACK_DECLARE(struct aggregator_config, cf, c, CF);
 
   proto_configure_channel(P, &p->src, cf->src);
   proto_configure_channel(P, &p->dst, cf->dst);
@@ -377,7 +377,7 @@ aggregator_init(struct proto_config *CF)
 static int
 aggregator_start(struct proto *P)
 {
-  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
+  SKIP_BACK_DECLARE(struct aggregator_proto, p, p, P);
 
   p->bucket_slab = sl_new(P->pool, sizeof(struct aggregator_bucket) + AGGR_DATA_MEMSIZE);
   HASH_INIT(p->buckets, P->pool, AGGR_BUCK_ORDER);
@@ -396,7 +396,7 @@ aggregator_start(struct proto *P)
 static int
 aggregator_shutdown(struct proto *P)
 {
-  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
+  SKIP_BACK_DECLARE(struct aggregator_proto, p, p, P);
 
   HASH_WALK_DELSAFE(p->buckets, next_hash, b)
   {
@@ -424,8 +424,8 @@ aggregator_shutdown(struct proto *P)
 static int
 aggregator_reconfigure(struct proto *P, struct proto_config *CF)
 {
-  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
-  struct aggregator_config *cf = SKIP_BACK(struct aggregator_config, c, CF);
+  SKIP_BACK_DECLARE(struct aggregator_proto, p, p, P);
+  SKIP_BACK_DECLARE(struct aggregator_config, cf, c, CF);
 
   TRACE(D_EVENTS, "Reconfiguring");
 

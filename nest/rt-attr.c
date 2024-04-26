@@ -628,7 +628,7 @@ ea_class_free(struct ea_class *cl)
 static void
 ea_class_ref_free(resource *r)
 {
-  struct ea_class_ref *ref = SKIP_BACK(struct ea_class_ref, r, r);
+  SKIP_BACK_DECLARE(struct ea_class_ref, ref, r, r);
   if (!--ref->class->uc)
     ea_class_free(ref->class);
 }
@@ -636,7 +636,7 @@ ea_class_ref_free(resource *r)
 static void
 ea_class_ref_dump(resource *r, unsigned indent UNUSED)
 {
-  struct ea_class_ref *ref = SKIP_BACK(struct ea_class_ref, r, r);
+  SKIP_BACK_DECLARE(struct ea_class_ref, ref, r, r);
   debug("name \"%s\", type=%d\n", ref->class->name, ref->class->type);
 }
 

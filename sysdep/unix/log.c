@@ -110,7 +110,7 @@ struct log_thread_syncer {
 static void
 lts_done(struct bird_thread_syncer *sync)
 {
-  struct log_thread_syncer *lts = SKIP_BACK(struct log_thread_syncer, sync, sync);
+  SKIP_BACK_DECLARE(struct log_thread_syncer, lts, sync, sync);
 
   log_lock();
   if (lts->lc_close)

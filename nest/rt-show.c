@@ -223,14 +223,14 @@ rt_show_net_export_bulk(struct rt_export_request *req, const net_addr *n,
     struct rt_pending_export *first UNUSED, struct rt_pending_export *last UNUSED,
     const rte **feed, uint count)
 {
-  struct rt_show_data *d = SKIP_BACK(struct rt_show_data, req, req);
+  SKIP_BACK_DECLARE(struct rt_show_data, d, req, req);
   return rt_show_net(d, n, feed, count);
 }
 
 static void
 rt_show_export_stopped_cleanup(struct rt_export_request *req)
 {
-  struct rt_show_data *d = SKIP_BACK(struct rt_show_data, req, req);
+  SKIP_BACK_DECLARE(struct rt_show_data, d, req, req);
 
   /* The hook is now invalid */
   req->hook = NULL;
@@ -319,7 +319,7 @@ rt_show_cont(struct rt_show_data *d)
 static void
 rt_show_export_stopped(struct rt_export_request *req)
 {
-  struct rt_show_data *d = SKIP_BACK(struct rt_show_data, req, req);
+  SKIP_BACK_DECLARE(struct rt_show_data, d, req, req);
 
   /* The hook is now invalid */
   req->hook = NULL;
