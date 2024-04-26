@@ -1860,7 +1860,7 @@ bgp_done_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucket 
 static void
 bgp_pending_tx_rfree(resource *r)
 {
-  struct bgp_pending_tx *ptx = SKIP_BACK(struct bgp_pending_tx, r, r);
+  SKIP_BACK_DECLARE(struct bgp_pending_tx, ptx, r, r);
 
   HASH_WALK(ptx->prefix_hash, next, n)
     rt_unlock_source(rt_find_source_global(n->path_id));
@@ -1913,7 +1913,7 @@ static void
 bgp_out_table_feed(void *data)
 {
   struct bgp_out_export_hook *hook = data;
-  struct bgp_channel *bc = SKIP_BACK(struct bgp_channel, prefix_exporter, hook->h.table);
+  SKIP_BACK_DECLARE(struct bgp_channel, bc, prefix_exporter, hook->h.table);
   struct bgp_pending_tx *c = bc->ptx;
 
   int max = 512;
@@ -2012,7 +2012,7 @@ bgp_out_table_export_start(struct rt_exporter *re, struct rt_export_request *req
   req->hook = rt_alloc_export(re, req->pool, sizeof(struct bgp_out_export_hook));
   req->hook->req = req;
 
-  struct bgp_out_export_hook *hook = SKIP_BACK(struct bgp_out_export_hook, h, req->hook);
+  SKIP_BACK_DECLARE(struct bgp_out_export_hook, hook, h, req->hook);
 
   hook->h.event.hook = bgp_out_table_feed;
   rt_init_export(re, req->hook);
@@ -2720,7 +2720,7 @@ bgp_rte_modify_stale(struct rt_export_request *req, const net_addr *n,
     struct rt_pending_export *first, struct rt_pending_export *last,
     const rte **feed, uint count)
 {
-  struct bgp_channel *c = SKIP_BACK(struct bgp_channel, stale_feed, req);
+  SKIP_BACK_DECLARE(struct bgp_channel, c, stale_feed, req);
   struct rt_import_hook *irh = c->c.in_req.hook;
 
   /* Find our routes among others */

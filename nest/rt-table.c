@@ -396,7 +396,7 @@ static net *
 net_route(struct rtable_reading *tr, const net_addr *n)
 {
   ASSERT(tr->t->addr_type == n->type);
-  net_addr_union *nu = SKIP_BACK(net_addr_union, n, n);
+  SKIP_BACK_DECLARE(net_addr_union, nu, n, n);
 
   const struct f_trie *trie = atomic_load_explicit(&tr->t->trie, memory_order_acquire);
 
@@ -471,7 +471,7 @@ net_route(struct rtable_reading *tr, const net_addr *n)
 int
 net_roa_check(rtable *tp, const net_addr *n, u32 asn)
 {
-  net_addr_union *nu = SKIP_BACK(net_addr_union, n, n);
+  SKIP_BACK_DECLARE(net_addr_union, nu, n, n);
   int anything = 0;
 
 #define TW(ipv) do {								\
@@ -1195,7 +1195,7 @@ rte_export(struct rt_export_hook *hook, struct rt_pending_export *rpe)
     uint count = 0;
     const rte **feed = NULL;
 
-    const struct netindex *i = SKIP_BACK(struct netindex, addr, (net_addr (*)[0]) n);
+    const SKIP_BACK_DECLARE(struct netindex, i, addr, (net_addr (*)[0]) n);
     ASSERT_DIE(i->index < atomic_load_explicit(&hook->tab->routes_block_size, memory_order_relaxed));
 
     struct rt_pending_export *last;
@@ -1276,7 +1276,7 @@ rte_announce(struct rtable_private *tab, const struct netindex *i, net *net, con
   if (old_best_valid)
     old_best->sender->stats.pref--;
 
-  struct rt_pending_export *rpe = SKIP_BACK(struct rt_pending_export, li, lfjour_push_prepare(&tab->journal));
+  SKIP_BACK_DECLARE(struct rt_pending_export, rpe, li, lfjour_push_prepare(&tab->journal));
 
   if (!rpe)
   {
@@ -1355,8 +1355,8 @@ rt_send_export_event(struct rt_export_hook *hook)
 static void
 rt_cleanup_export(struct lfjour *j, struct lfjour_item *i)
 {
-  struct rtable_private *tab = SKIP_BACK(struct rtable_private, journal, j);
-  struct rt_pending_export *rpe = SKIP_BACK(struct rt_pending_export, li, i);
+  SKIP_BACK_DECLARE(struct rtable_private, tab, journal, j);
+  SKIP_BACK_DECLARE(struct rt_pending_export, rpe, li, i);
 
   /* Unlink this export from struct network */
   ASSERT_DIE(rpe->new || rpe->old);
@@ -1425,7 +1425,7 @@ rt_import_cleared(void *_ih)
 static void
 rt_cleanup_done(struct lfjour *j, u64 begin_seq, u64 end_seq)
 {
-  struct rtable_private *tab = SKIP_BACK(struct rtable_private, journal, j);
+  SKIP_BACK_DECLARE(struct rtable_private, tab, journal, j);
   ASSERT_DIE(DG_IS_LOCKED(tab->lock.rtable));
 
   if (~end_seq)
@@ -1848,7 +1848,7 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
 int
 channel_preimport(struct rt_import_request *req, rte *new, const rte *old)
 {
-  struct channel *c = SKIP_BACK(struct channel, in_req, req);
+  SKIP_BACK_DECLARE(struct channel, c, in_req, req);
 
   if (new && !old)
     if (CHANNEL_LIMIT_PUSH(c, RX))
@@ -2339,7 +2339,7 @@ rt_table_export_start_feed(struct rtable_private *tab, struct rt_export_hook *ho
   };
   lfjour_register(&tab->journal, &hook->recipient);
 
-  struct rt_pending_export *rpe = SKIP_BACK(struct rt_pending_export, li, atomic_load_explicit(&hook->recipient.last, memory_order_relaxed));
+  SKIP_BACK_DECLARE(struct rt_pending_export, rpe, li, atomic_load_explicit(&hook->recipient.last, memory_order_relaxed));
   req_trace(req, D_STATES, "Export initialized, last export %p (%lu)", rpe, rpe ? rpe->seq : 0);
 
   bmap_init(&hook->seq_map, hook->pool, 16);
@@ -2589,7 +2589,7 @@ rt_dump_hooks(rtable *tp)
 
   WALK_TLIST(lfjour_recipient, r, &tab->journal.recipients)
   {
-    struct rt_export_hook *eh = SKIP_BACK(struct rt_export_hook, recipient, r);
+    SKIP_BACK_DECLARE(struct rt_export_hook, eh, recipient, r);
     eh->req->dump_req(eh->req);
     debug("  Export hook %p requested by %p:"
        " refeed_pending=%u last_state_change=%t export_state=%u\n",
@@ -2687,7 +2687,7 @@ struct rt_flowspec_link {
 static void
 rt_flowspec_export_one(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
-  struct rt_flowspec_link *ln = SKIP_BACK(struct rt_flowspec_link, req, req);
+  SKIP_BACK_DECLARE(struct rt_flowspec_link, ln, req, req);
   rtable *dst_pub = ln->dst;
   ASSUME(rt_is_flow(dst_pub));
 
@@ -2722,14 +2722,14 @@ rt_flowspec_export_one(struct rt_export_request *req, const net_addr *net, struc
 static void
 rt_flowspec_dump_req(struct rt_export_request *req)
 {
-  struct rt_flowspec_link *ln = SKIP_BACK(struct rt_flowspec_link, req, req);
+  SKIP_BACK_DECLARE(struct rt_flowspec_link, ln, req, req);
   debug("  Flowspec link for table %s (%p)\n", ln->dst->name, req);
 }
 
 static void
 rt_flowspec_log_state_change(struct rt_export_request *req, u8 state)
 {
-  struct rt_flowspec_link *ln = SKIP_BACK(struct rt_flowspec_link, req, req);
+  SKIP_BACK_DECLARE(struct rt_flowspec_link, ln, req, req);
   rt_trace(ln->dst, D_STATES, "Flowspec link from %s export state changed to %s",
       ln->src->name, rt_export_state_name(state));
 }
@@ -2798,7 +2798,7 @@ rt_flowspec_link(rtable *src_pub, rtable *dst_pub)
 static void
 rt_flowspec_link_stopped(struct rt_export_request *req)
 {
-  struct rt_flowspec_link *ln = SKIP_BACK(struct rt_flowspec_link, req, req);
+  SKIP_BACK_DECLARE(struct rt_flowspec_link, ln, req, req);
   rtable *dst = ln->dst;
 
   mb_free(ln);
@@ -2842,7 +2842,7 @@ rt_flowspec_reset_trie(struct rtable_private *tab)
 static void
 rt_free(resource *_r)
 {
-  struct rtable_private *r = SKIP_BACK(struct rtable_private, r, _r);
+  SKIP_BACK_DECLARE(struct rtable_private, r, r, _r);
 
   DBG("Deleting routing table %s\n", r->name);
   ASSERT_DIE(r->use_count == 0);
@@ -2864,7 +2864,7 @@ rt_free(resource *_r)
 static void
 rt_res_dump(resource *_r, unsigned indent)
 {
-  struct rtable_private *r = SKIP_BACK(struct rtable_private, r, _r);
+  SKIP_BACK_DECLARE(struct rtable_private, r, r, _r);
 
   debug("name \"%s\", addr_type=%s, rt_count=%u, use_count=%d\n",
       r->name, net_label[r->addr_type], r->rt_count, r->use_count);
@@ -3620,7 +3620,7 @@ rt_flowspec_update_rte(struct rtable_private *tab, const rte *r, rte *new)
   if (!bc->base_table)
     return 0;
 
-  struct bgp_proto *p = SKIP_BACK(struct bgp_proto, p, bc->c.proto);
+  SKIP_BACK_DECLARE(struct bgp_proto, p, p, bc->c.proto);
 
   enum flowspec_valid old = rt_get_flowspec_valid(r),
 		      valid = rt_flowspec_check(bc->base_table, tab, r->net, r->attrs, p->is_interior);
@@ -3648,7 +3648,7 @@ rt_flowspec_resolve_rte(rte *r, struct channel *c)
      && (c->class == &channel_bgp)
      && (bc->base_table))
   {
-    struct bgp_proto *p = SKIP_BACK(struct bgp_proto, p, bc->c.proto);
+    SKIP_BACK_DECLARE(struct bgp_proto, p, p, bc->c.proto);
     RT_LOCKED(c->in_req.hook->table, tab)
       valid = rt_flowspec_check(
 	  bc->base_table, tab,
@@ -4377,7 +4377,7 @@ void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *n
     struct rt_pending_export *first, struct rt_pending_export *last,
     const rte **feed, uint count)
 {
-  struct channel *c = SKIP_BACK(struct channel, reload_req, req);
+  SKIP_BACK_DECLARE(struct channel, c, reload_req, req);
 
   for (uint i=0; i<count; i++)
     if (feed[i]->sender == c->in_req.hook)
@@ -4507,14 +4507,14 @@ hc_notify_dump_req(struct rt_export_request *req)
 static void
 hc_notify_log_state_change(struct rt_export_request *req, u8 state)
 {
-  struct hostcache *hc = SKIP_BACK(struct hostcache, req, req);
+  SKIP_BACK_DECLARE(struct hostcache, hc, req, req);
   rt_trace(hc->tab, D_STATES, "HCU Export state changed to %s", rt_export_state_name(state));
 }
 
 static void
 hc_notify_export_one(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
 {
-  struct hostcache *hc = SKIP_BACK(struct hostcache, req, req);
+  SKIP_BACK_DECLARE(struct hostcache, hc, req, req);
 
   RT_LOCKED(hc->tab, tab)
     if (ev_active(tab->hcu_event) || !trie_match_net(hc->trie, net))
@@ -4586,7 +4586,7 @@ rt_free_hostcache(struct rtable_private *tab)
   node *n;
   WALK_LIST(n, hc->hostentries)
     {
-      struct hostentry *he = SKIP_BACK(struct hostentry, ln, n);
+      SKIP_BACK_DECLARE(struct hostentry, he, ln, n);
       ea_free(he->src);
 
       if (!lfuc_finished(&he->uc))

@@ -31,6 +31,7 @@
     s *_ptr = ((s *)((char *)_orig - OFFSETOF(s, i))); \
     SAME_TYPE(&_ptr->i, _orig); \
     _ptr; })
+#define SKIP_BACK_DECLARE(s, n, i, p) s *n = SKIP_BACK(s, i, p)
 #define BIRD_ALIGN(s, a) (((s)+a-1)&~(a-1))
 #define BIRD_SET_ALIGNED_POINTER(ptr, val)  do { \
   size_t _alignment = _Alignof(typeof(*ptr)); \

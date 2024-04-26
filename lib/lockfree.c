@@ -14,7 +14,7 @@
 
 void lfuc_unlock_deferred(struct deferred_call *dc)
 {
-  struct lfuc_unlock_queue_item *luqi = SKIP_BACK(struct lfuc_unlock_queue_item, dc, dc);
+  SKIP_BACK_DECLARE(struct lfuc_unlock_queue_item, luqi, dc, dc);
   lfuc_unlock_immediately(luqi->c, luqi->el, luqi->ev);
 }
 

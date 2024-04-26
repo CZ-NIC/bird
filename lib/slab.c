@@ -101,7 +101,7 @@ sl_allocz(slab *s)
 void
 sl_free(void *oo)
 {
-  struct sl_obj *o = SKIP_BACK(struct sl_obj, data, oo);
+  SKIP_BACK_DECLARE(struct sl_obj, o, data, oo);
 
   rem_node(&o->n);
   xfree(o);

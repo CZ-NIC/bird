@@ -482,7 +482,7 @@ sockets_prepare(struct birdloop *loop, struct pfd *pfd)
   node *n;
   WALK_LIST(n, loop->sock_list)
   {
-    sock *s = SKIP_BACK(sock, n, n);
+    SKIP_BACK_DECLARE(sock, s, n, n);
     uint w = sk_want_events(s);
 
     if (!w)
@@ -1244,7 +1244,7 @@ bird_thread_show_loop(struct bird_thread_show_data *tsd, struct birdloop *loop)
 static void
 bird_thread_show(struct bird_thread_syncer *sync)
 {
-  struct bird_thread_show_data *tsd = SKIP_BACK(struct bird_thread_show_data, sync, sync);
+  SKIP_BACK_DECLARE(struct bird_thread_show_data, tsd, sync, sync);
 
   if (!tsd->lp)
     tsd->lp = lp_new(tsd->sync.pool);
@@ -1276,7 +1276,7 @@ bird_thread_show(struct bird_thread_syncer *sync)
 static void
 cmd_show_threads_done(struct bird_thread_syncer *sync)
 {
-  struct bird_thread_show_data *tsd = SKIP_BACK(struct bird_thread_show_data, sync, sync);
+  SKIP_BACK_DECLARE(struct bird_thread_show_data, tsd, sync, sync);
   ASSERT_DIE(birdloop_inside(&main_birdloop));
 
   tsd->cli->cont = NULL;
