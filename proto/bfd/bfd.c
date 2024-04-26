@@ -567,7 +567,7 @@ bfd_reconfigure_session(struct bfd_proto *p, struct bfd_session *s)
 
   ASSERT_DIE(birdloop_inside(p->p.loop));
 
-  struct bfd_request *req = SKIP_BACK(struct bfd_request, n, HEAD(s->request_list));
+  SKIP_BACK_DECLARE(struct bfd_request, req, n, HEAD(s->request_list));
   s->cf = bfd_merge_options(s->ifa->cf, &req->opts);
 
   u32 tx = (s->loc_state == BFD_STATE_UP) ? s->cf.min_tx_int : s->cf.idle_tx_int;
@@ -780,7 +780,7 @@ bfd_pickup_requests(void *_data UNUSED)
     node *n;
     WALK_LIST(n, bfd_global.proto_list)
     {
-      struct bfd_proto *p = SKIP_BACK(struct bfd_proto, bfd_node, n);
+      SKIP_BACK_DECLARE(struct bfd_proto, p, bfd_node, n);
       birdloop_enter(p->p.loop);
       BFD_LOCK;
 
@@ -845,7 +845,7 @@ bfd_drop_requests(struct bfd_proto *p)
   {
     WALK_LIST_FIRST(n, s->request_list)
     {
-      struct bfd_request *req = SKIP_BACK(struct bfd_request, n, n);
+      SKIP_BACK_DECLARE(struct bfd_request, req, n, n);
       rem_node(&req->n);
       add_tail(&bfd_global.pickup_list, &req->n);
       req->session = NULL;

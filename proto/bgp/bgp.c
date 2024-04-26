@@ -268,7 +268,7 @@ bgp_listen_create(void *_ UNUSED)
 
     /* Get the first request to match */
     struct bgp_listen_request *req = HEAD(bgp_listen_pending);
-    struct bgp_proto *p = SKIP_BACK(struct bgp_proto, listen, req);
+    SKIP_BACK_DECLARE(struct bgp_proto, p, listen, req);
     rem_node(&req->n);
 
     /* First try to find existing socket */
@@ -922,14 +922,14 @@ bgp_graceful_restart_feed_done(struct rt_export_request *req)
 static void
 bgp_graceful_restart_feed_dump_req(struct rt_export_request *req)
 {
-  struct bgp_channel *c = SKIP_BACK(struct bgp_channel, stale_feed, req);
+  SKIP_BACK_DECLARE(struct bgp_channel, c, stale_feed, req);
   debug("  BGP-GR %s.%s export request %p\n", c->c.proto->name, c->c.name, req);
 }
 
 static void
 bgp_graceful_restart_feed_log_state_change(struct rt_export_request *req, u8 state)
 {
-  struct bgp_channel *c = SKIP_BACK(struct bgp_channel, stale_feed, req);
+  SKIP_BACK_DECLARE(struct bgp_channel, c, stale_feed, req);
   struct bgp_proto *p = (void *) c->c.proto;
   BGP_TRACE(D_EVENTS, "Long-lived graceful restart export state changed to %s", rt_export_state_name(state));
 
@@ -1339,7 +1339,7 @@ bgp_find_proto(sock *sk)
 
   WALK_LIST(req, bs->requests)
   {
-    struct bgp_proto *p = SKIP_BACK(struct bgp_proto, listen, req);
+    SKIP_BACK_DECLARE(struct bgp_proto, p, listen, req);
     if ((p->p.proto == &proto_bgp) &&
 	(ipa_equal(p->remote_ip, sk->daddr) || bgp_is_dynamic(p)) &&
 	(!p->cf->remote_range || ipa_in_netX(sk->daddr, p->cf->remote_range)) &&

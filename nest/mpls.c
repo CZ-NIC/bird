@@ -1241,7 +1241,7 @@ mpls_announce_fec(struct mpls_fec_map *m, struct mpls_fec *fec, ea_list *src)
   const struct eattr *heea = ea_find_by_class(src, &ea_gen_hostentry);
   if (heea) {
     /* The same hostentry, but different dependent table */
-    struct hostentry_adata *head = SKIP_BACK(struct hostentry_adata, ad, heea->u.ad);
+    SKIP_BACK_DECLARE(struct hostentry_adata, head, ad, heea->u.ad);
     struct hostentry *he = head->he;
     ea_set_hostentry(&e.attrs, m->channel->table, he->owner, he->addr, he->link,
 	HOSTENTRY_LABEL_COUNT(head), head->labels);
@@ -1295,7 +1295,7 @@ mpls_apply_fec(rte *r, struct mpls_fec *fec)
 int
 mpls_handle_rte(struct channel *c, const net_addr *n, rte *r, struct mpls_fec **fecp)
 {
-  struct mpls_channel *mc = SKIP_BACK(struct mpls_channel, c, c->proto->mpls_channel);
+  SKIP_BACK_DECLARE(struct mpls_channel, mc, c, c->proto->mpls_channel);
   struct mpls_fec_map *m = mc->mpls_map;
   struct mpls_fec *fec = *fecp = NULL;
 

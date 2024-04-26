@@ -59,7 +59,7 @@ static void
 olock_free(resource *r)
 {
   /* Called externally from rfree() */
-  struct object_lock *l = SKIP_BACK(struct object_lock, r, r);
+  SKIP_BACK_DECLARE(struct object_lock, l, r, r);
   node *n;
 
   OBJ_LOCK;
@@ -79,7 +79,7 @@ olock_free(resource *r)
       n = HEAD(l->waiters);
       if (NODE_VALID(n))
 	{
-	  struct object_lock *q = SKIP_BACK(struct object_lock, n, n);
+	  SKIP_BACK_DECLARE(struct object_lock, q, n, n);
 
 	  /* Remove this candidate from waiters list */
 	  rem_node(n);

@@ -1149,7 +1149,7 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, ea_list **to, u32 lnum, u32 lab
   if (s->channel->cf->gw_mode == GW_DIRECT)
   {
     eattr *e = ea_find(*to, &ea_gen_nexthop);
-    struct nexthop_adata_mpls *namp = SKIP_BACK(struct nexthop_adata_mpls, nhad.ad, e->u.ptr);
+    SKIP_BACK_DECLARE(struct nexthop_adata_mpls, namp, nhad.ad, e->u.ptr);
 
     namp->nhad.nh.labels = lnum;
     memcpy(namp->nhad.nh.label, labels, lnum * sizeof(u32));
