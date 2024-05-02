@@ -109,7 +109,7 @@
 #include "lib/macro.h"
 
 static int ospf_preexport(struct channel *C, rte *new);
-static int ospf_reload_routes(struct channel *C, struct channel_import_request *cir);
+static int ospf_reload_routes(struct channel *C, struct rt_feeding_request *rfr);
 static int ospf_rte_better(const rte *new, const rte *old);
 static u32 ospf_rte_igp_metric(const rte *rt);
 static void ospf_disp(timer *timer);
@@ -375,8 +375,6 @@ ospf_init(struct proto_config *CF)
   P->iface_sub.ifa_notify = cf->ospf2 ? ospf_ifa_notify2 : ospf_ifa_notify3;
   P->preexport = ospf_preexport;
   P->reload_routes = ospf_reload_routes;
-  P->feed_begin = ospf_feed_begin;
-  P->feed_end = ospf_feed_end;
 
   P->sources.class = &ospf_rte_owner_class;
 
@@ -433,12 +431,12 @@ ospf_schedule_rtcalc(struct ospf_proto *p)
 }
 
 static int
-ospf_reload_routes(struct channel *C, struct channel_import_request *cir)
+ospf_reload_routes(struct channel *C, struct rt_feeding_request *rfr)
 {
   struct ospf_proto *p = (struct ospf_proto *) C->proto;
 
-  if (cir)
-    CALL(cir->done, cir);
+  if (rfr)
+    CALL(rfr->done, rfr);
 
   if (p->calcrt == 2)
     return 1;

@@ -34,8 +34,7 @@ typedef struct cli {
   struct cli_out *tx_buf, *tx_pos, *tx_write;
   event *event;
   void (*cont)(struct cli *c);
-  int (*cleanup)(struct cli *c);	/* Return 0 if finished and cli may be freed immediately.
-					   Otherwise return 1 and call rfree(c->pool) when appropriate. */
+  void (*cleanup)(struct cli *c);	/* The CLI has closed prematurely */
   void *rover;				/* Private to continuation routine */
   int last_reply;
   int restricted;			/* CLI is restricted to read-only commands */

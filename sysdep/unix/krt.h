@@ -89,7 +89,7 @@ static inline int
 krt_get_sync_error(struct krt_proto *p, struct rte *e)
 {
   return (p->p.proto_state == PS_UP) &&
-    bmap_test(&p->p.main_channel->export_map, e->id) &&
+    bmap_test(&p->p.main_channel->export_accepted_map, e->id) &&
     !bmap_test(&p->sync_map, e->id);
 }
 

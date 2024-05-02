@@ -227,7 +227,8 @@ lfjour_announce_now(struct lfjour *j)
     return lfjour_schedule_cleanup(j);
 
   WALK_TLIST(lfjour_recipient, r, &j->recipients)
-    ev_send(r->target, r->event);
+    if (r->event)
+      ev_send(r->target, r->event);
 }
 
 static void
@@ -260,8 +261,7 @@ void
 lfjour_register(struct lfjour *j, struct lfjour_recipient *r)
 {
   ASSERT_DIE(!j->domain || DG_IS_LOCKED(j->domain));
-  ASSERT_DIE(r->event);
-  ASSERT_DIE(r->target);
+  ASSERT_DIE(!r->event == !r->target);
 
   atomic_store_explicit(&r->last, NULL, memory_order_relaxed);
   ASSERT_DIE(!r->cur);
@@ -274,6 +274,9 @@ lfjour_unregister(struct lfjour_recipient *r)
 {
   struct lfjour *j = lfjour_of_recipient(r);
   ASSERT_DIE(!j->domain || DG_IS_LOCKED(j->domain));
+
+  if (r->cur)
+    lfjour_release(r);
 
   lfjour_recipient_rem_node(&j->recipients, r);
   lfjour_schedule_cleanup(j);

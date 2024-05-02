@@ -300,19 +300,12 @@ extern cli *cmd_reconfig_stored_cli;
 void
 cli_free(cli *c)
 {
-  int defer = 0;
-  if (c->cleanup)
-    defer = c->cleanup(c);
+  CALL(c->cleanup, c);
+
   if (c == cmd_reconfig_stored_cli)
     cmd_reconfig_stored_cli = NULL;
 
-  if (defer)
-  {
-    sk_close(c->sock);
-    c->sock = NULL;
-  }
-  else
-    rp_free(c->pool);
+  rp_free(c->pool);
 }
 
 /**

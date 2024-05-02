@@ -188,13 +188,13 @@ static_mark_all(struct static_proto *p)
 }
 
 static void
-static_mark_partial(struct static_proto *p, struct channel_import_request *cir)
+static_mark_partial(struct static_proto *p, struct rt_feeding_request *rfr)
 {
   struct static_config *cf = (void *) p->p.cf;
   struct static_route *r;
 
   WALK_LIST(r, cf->routes)
-    if (r->state == SRS_CLEAN && trie_match_net(cir->trie, r->net))
+    if (r->state == SRS_CLEAN && (!rfr || rt_prefilter_net(&rfr->prefilter, r->net)))
     {
       r->state = SRS_DIRTY;
       BUFFER_PUSH(p->marked) = r;
@@ -203,7 +203,7 @@ static_mark_partial(struct static_proto *p, struct channel_import_request *cir)
   if (!ev_active(p->event))
     ev_schedule(p->event);
 
-  cir->done(cir);
+  rfr->done(rfr);
 }
 
 
@@ -430,14 +430,14 @@ static_bfd_notify(struct bfd_request *req)
 }
 
 static int
-static_reload_routes(struct channel *C, struct channel_import_request *cir)
+static_reload_routes(struct channel *C, struct rt_feeding_request *rfr)
 {
   struct static_proto *p = (void *) C->proto;
 
   TRACE(D_EVENTS, "Scheduling route reload");
 
-  if (cir->trie)
-    static_mark_partial(p, cir);
+  if (rfr)
+    static_mark_partial(p, rfr);
   else
     static_mark_all(p);
 

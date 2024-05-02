@@ -367,7 +367,6 @@ channel_item_:
      this_channel->out_filter = $4;
    }
  | EXPORT imexport { this_channel->out_filter = $2; }
- | EXPORT BLOCK expr { this_channel->feed_block_size = $3; }
  | RECEIVE LIMIT limit_spec { this_channel->rx_limit = $3; }
  | IMPORT LIMIT limit_spec { this_channel->in_limit = $3; }
  | EXPORT LIMIT limit_spec { this_channel->out_limit = $3; }
@@ -445,6 +444,7 @@ debug_default:
  | DEBUG CHANNELS debug_mask { new_config->channel_default_debug = $3; }
  | DEBUG TABLES debug_mask { new_config->table_default_debug = $3; }
  | DEBUG COMMANDS expr { new_config->cli_debug = $3; }
+ | DEBUG SHOW ROUTE debug_mask { new_config->show_route_debug = $4; }
  ;
 
 /* MRTDUMP PROTOCOLS is in systep/unix/config.Y */

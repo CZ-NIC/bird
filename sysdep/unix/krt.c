@@ -466,6 +466,8 @@ krt_init_scan(struct krt_proto *p)
     case KPS_FLUSHING:
       bug("Can't scan, flushing");
   }
+
+  bug("Bad kernel sync state");
 }
 
 static void
@@ -480,8 +482,8 @@ krt_prune(struct krt_proto *p)
       p->sync_state = KPS_PRUNING;
       KRT_TRACE(p, D_EVENTS, "Pruning table %s", p->p.main_channel->table->name);
       rt_refresh_end(&p->p.main_channel->in_req);
-      channel_request_feeding_dynamic(p->p.main_channel, CFRT_DIRECT);
-      return;
+      channel_request_full_refeed(p->p.main_channel);
+      break;
 
     case KPS_PRUNING:
       bug("Kernel scan double-prune");
@@ -657,11 +659,21 @@ krt_preexport(struct channel *C, rte *e)
 #endif
 
   if (!krt_capable(e))
+  {
+    if (C->debug & D_ROUTES)
+      log(L_TRACE "%s.%s: refusing incapable route for %N",
+	  C->proto->name, C->name, e->net);
     return -1;
+  }
 
   /* Before first scan we don't touch the routes */
   if (!SKIP_BACK(struct krt_proto, p, C->proto)->ready)
+  {
+    if (C->debug & D_ROUTES)
+      log(L_TRACE "%s.%s not ready yet to accept route for %N",
+	  C->proto->name, C->name, e->net);
     return -1;
+  }
 
   return 0;
 }
@@ -716,18 +728,9 @@ krt_if_notify(struct proto *P, uint flags, struct iface *iface UNUSED)
 }
 
 static int
-krt_reload_routes(struct channel *C, struct channel_import_request *cir)
+krt_reload_routes(struct channel *C, struct rt_feeding_request *rfr)
 {
   struct krt_proto *p = (void *) C->proto;
-
-
-  if (cir->trie)
-  {
-    cir->done(cir);
-    return 0;
-  }
-
-  /* Although we keep learned routes in krt_table, we rather schedule a scan */
 
   if (KRT_CF->learn)
   {
@@ -735,34 +738,35 @@ krt_reload_routes(struct channel *C, struct channel_import_request *cir)
     krt_scan_timer_kick(p);
   }
 
-  cir->done(cir);
+  if (rfr)
+    CALL(rfr->done, rfr);
+
   return 1;
 }
 
 static void krt_cleanup(struct krt_proto *p);
 
 static void
-krt_feed_end(struct channel *C)
+krt_export_fed(struct channel *C)
 {
   struct krt_proto *p = (void *) C->proto;
-
-  if (C->refeeding && C->refeed_req.hook)
-    return;
 
   p->ready = 1;
   p->initialized = 1;
 
   switch (p->sync_state)
   {
-    case KPS_PRUNING:
-      KRT_TRACE(p, D_EVENTS, "Table %s pruned", C->table->name);
-      p->sync_state = KPS_IDLE;
-      return;
-
     case KPS_IDLE:
-    case KPS_SCANNING:
       krt_scan_timer_kick(p);
-      return;
+      break;
+
+    case KPS_SCANNING:
+      break;
+
+    case KPS_PRUNING:
+      KRT_TRACE(p, D_EVENTS, "Table %s pruned", p->p.main_channel->table->name);
+      p->sync_state = KPS_IDLE;
+      break;
 
     case KPS_FLUSHING:
       krt_do_scan(p);
@@ -837,7 +841,7 @@ krt_init(struct proto_config *CF)
   p->p.rt_notify = krt_rt_notify;
   p->p.iface_sub.if_notify = krt_if_notify;
   p->p.reload_routes = krt_reload_routes;
-  p->p.feed_end = krt_feed_end;
+  p->p.export_fed = krt_export_fed;
 
   p->p.sources.class = &krt_rte_owner_class;
 
@@ -893,7 +897,7 @@ krt_shutdown(struct proto *P)
   if (p->initialized && !KRT_CF->persist && (P->down_code != PDC_CMD_GR_DOWN))
   {
     p->sync_state = KPS_FLUSHING;
-    channel_request_feeding_dynamic(p->p.main_channel, CFRT_AUXILIARY);
+    channel_request_full_refeed(p->p.main_channel);
 
     /* Keeping the protocol UP until the feed-to-flush is done */
     return PS_UP;

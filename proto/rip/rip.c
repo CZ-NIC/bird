@@ -420,46 +420,6 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net, s
 }
 
 void
-rip_feed_begin(struct channel *C)
-{
-  if (!C->refeeding || C->refeed_req.hook)
-    return;
-
-  struct rip_proto *p = (struct rip_proto *) C->proto;
-
-  FIB_WALK(&p->rtable, struct rip_entry, en)
-  {
-    if (en->valid == RIP_ENTRY_VALID)
-      en->valid = RIP_ENTRY_REFEEDING;
-  }
-  FIB_WALK_END;
-}
-
-void
-rip_feed_end(struct channel *C)
-{
-  if (!C->refeeding || C->refeed_req.hook)
-    return;
-
-  struct rip_proto *p = (struct rip_proto *) C->proto;
-  int changed = 0;
-
-  FIB_WALK(&p->rtable, struct rip_entry, en)
-  {
-    if (en->valid == RIP_ENTRY_REFEEDING)
-    {
-      rip_withdraw_entry(p, en);
-      changed++;
-    }
-  }
-  FIB_WALK_END;
-
-  if (changed)
-    rip_trigger_update(p);
-}
-
-
-void
 rip_flush_table(struct rip_proto *p, struct rip_neighbor *n)
 {
   btime expires = current_time() + n->ifa->cf->timeout_time;
@@ -1149,13 +1109,13 @@ rip_trigger_update(struct rip_proto *p)
  */
 
 static int
-rip_reload_routes(struct channel *C, struct channel_import_request *cir)
+rip_reload_routes(struct channel *C, struct rt_feeding_request *rfr)
 {
   struct rip_proto *p = (struct rip_proto *) C->proto;
 
   /* Always reload full */
-  if (cir)
-    CALL(cir->done, cir);
+  if (rfr)
+    CALL(rfr->done, rfr);
 
   if (p->rt_reload)
     return 1;
@@ -1209,8 +1169,6 @@ rip_init(struct proto_config *CF)
   P->iface_sub.neigh_notify = rip_neigh_notify;
   P->reload_routes = rip_reload_routes;
   P->sources.class = &rip_rte_owner_class;
-  P->feed_begin = rip_feed_begin;
-  P->feed_end = rip_feed_end;
 
   return P;
 }

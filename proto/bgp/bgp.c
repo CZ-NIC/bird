@@ -749,6 +749,10 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
     if (peer->gr_aware)
       c->load_state = BFS_LOADING;
 
+    /* We'll also send End-of-RIB */
+    if (p->cf->gr_mode)
+      c->feed_state = BFS_LOADING;
+
     c->ext_next_hop = c->cf->ext_next_hop && (bgp_channel_is_ipv6(c) || rem->ext_next_hop);
     c->add_path_rx = (loc->add_path & BGP_ADD_PATH_RX) && (rem->add_path & BGP_ADD_PATH_TX);
     c->add_path_tx = (loc->add_path & BGP_ADD_PATH_TX) && (rem->add_path & BGP_ADD_PATH_RX);
@@ -913,52 +917,22 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
   tm_start_in(p->gr_timer, p->conn->remote_caps->gr_time S, p->p.loop);
 }
 
-static void
-bgp_graceful_restart_feed_done(struct rt_export_request *req)
-{
-  req->hook = NULL;
-}
-
-static void
-bgp_graceful_restart_feed_dump_req(struct rt_export_request *req)
-{
-  SKIP_BACK_DECLARE(struct bgp_channel, c, stale_feed, req);
-  debug("  BGP-GR %s.%s export request %p\n", c->c.proto->name, c->c.name, req);
-}
-
-static void
-bgp_graceful_restart_feed_log_state_change(struct rt_export_request *req, u8 state)
-{
-  SKIP_BACK_DECLARE(struct bgp_channel, c, stale_feed, req);
-  struct bgp_proto *p = (void *) c->c.proto;
-  BGP_TRACE(D_EVENTS, "Long-lived graceful restart export state changed to %s", rt_export_state_name(state));
-
-  if (state == TES_READY)
-    rt_stop_export(req, bgp_graceful_restart_feed_done);
-}
-
-static void
-bgp_graceful_restart_drop_export(struct rt_export_request *req UNUSED, const net_addr *n UNUSED, struct rt_pending_export *rpe UNUSED)
-{ /* Nothing to do */ }
 
 static void
 bgp_graceful_restart_feed(struct bgp_channel *c)
 {
-  c->stale_feed = (struct rt_export_request) {
-    .name = "BGP-GR",
-    .list = proto_event_list(c->c.proto),
-    .pool = c->c.proto->pool,
-    .feed_block_size = c->c.feed_block_size,
-    .trace_routes = c->c.debug | c->c.proto->debug,
-    .dump_req = bgp_graceful_restart_feed_dump_req,
-    .log_state_change = bgp_graceful_restart_feed_log_state_change,
-    .export_bulk = bgp_rte_modify_stale,
-    .export_one = bgp_graceful_restart_drop_export,
+  c->stale_feed = (struct rt_export_feeder) {
+    .name = mb_sprintf(c->c.proto->pool, "%s.%s.llgr", c->c.proto->name, c->c.name),
+    .trace_routes = c->c.debug,
+  };
+  c->stale_event = (event) {
+    .hook = bgp_rte_modify_stale,
+    .data = c,
   };
 
-  rt_request_export(c->c.table, &c->stale_feed);
+  rt_feeder_subscribe(&c->c.table->export_all, &c->stale_feed);
+  proto_send_event(c->c.proto, &c->stale_event);
 }
-
 
 
 
@@ -1624,85 +1598,40 @@ bgp_reload_out(struct proto *P, uintptr_t _ UNUSED, int __ UNUSED)
   cli_msg(-8006, "%s: bgp reload out not implemented yet", P->name);
 }
 
+struct bgp_enhanced_refresh_request {
+  struct rt_feeding_request rfr;
+  struct bgp_channel *c;
+};
 
-static void
-bgp_feed_begin(struct channel *C)
+void
+bgp_done_route_refresh(struct rt_feeding_request *rfr)
 {
-  struct bgp_proto *p = (void *) C->proto;
-  struct bgp_channel *c = (void *) C;
+  SKIP_BACK_DECLARE(struct bgp_enhanced_refresh_request, berr, rfr, rfr);
+  struct bgp_channel *c = berr->c;
+  SKIP_BACK_DECLARE(struct bgp_proto, p, p, c->c.proto);
 
-  /* Ignore non-BGP channels */
-  if (C->class != &channel_bgp)
-    return;
+  /* Schedule EoRR packet */
+  ASSERT_DIE(c->feed_state == BFS_REFRESHING);
 
-  /* This should not happen */
-  if (!p->conn)
-    return;
+  c->feed_state = BFS_REFRESHED;
+  bgp_schedule_packet(p->conn, c, PKT_UPDATE);
 
-  if (!C->refeeding)
-  {
-    if (p->cf->gr_mode)
-      c->feed_state = BFS_LOADING;
-    return;
-  }
-
-  if (!C->refeed_req.hook)
-  {
-    /* Direct refeed */
-    if (C->out_table)
-    {
-      /* FIXME: THIS IS BROKEN, IT DOESN'T PRUNE THE OUT TABLE */
-      c->feed_out_table = 1;
-      return;
-    }
-
-    ASSERT_DIE(p->enhanced_refresh);
-
-    /* It is refeed and both sides support enhanced route refresh */
-    /* BoRR must not be sent before End-of-RIB */
-    ASSERT_DIE((c->feed_state != BFS_LOADING) && (c->feed_state != BFS_LOADED));
-
-    c->feed_state = BFS_REFRESHING;
-    bgp_schedule_packet(p->conn, c, PKT_BEGIN_REFRESH);
-  }
+  mb_free(berr);
 }
 
 static void
-bgp_feed_end(struct channel *C)
+bgp_export_fed(struct channel *C)
 {
-  struct bgp_proto *p = (void *) C->proto;
-  struct bgp_channel *c = (void *) C;
-
-  /* Ignore non-BGP channels */
-  if (C->class != &channel_bgp)
-    return;
-
-  if (c->feed_out_table)
-  {
-    c->feed_out_table = 0;
-    return;
-  }
-
-  /* This should not happen */
-  if (!p->conn)
-    return;
-
-  /* Non-demarcated feed ended, nothing to do */
-  if (c->feed_state == BFS_NONE)
-    return;
+  SKIP_BACK_DECLARE(struct bgp_channel, c, c, C);
+  SKIP_BACK_DECLARE(struct bgp_proto, p, p, c->c.proto);
 
   /* Schedule End-of-RIB packet */
   if (c->feed_state == BFS_LOADING)
+  {
     c->feed_state = BFS_LOADED;
-
-  /* Schedule EoRR packet */
-  if (c->feed_state == BFS_REFRESHING)
-    c->feed_state = BFS_REFRESHED;
-
-  /* Kick TX hook */
-  bgp_schedule_packet(p->conn, c, PKT_UPDATE);
+    bgp_schedule_packet(p->conn, c, PKT_UPDATE);
+  }
 }
-
 
 static void
 bgp_start_locked(void *_p)
@@ -1936,8 +1865,7 @@ bgp_init(struct proto_config *CF)
   P->rt_notify = bgp_rt_notify;
   P->preexport = bgp_preexport;
   P->iface_sub.neigh_notify = bgp_neigh_notify;
-  P->feed_begin = bgp_feed_begin;
-  P->feed_end = bgp_feed_end;
+  P->export_fed = bgp_export_fed;
 
   P->sources.class = &bgp_rte_owner_class;
   P->sources.rte_recalculate = cf->deterministic_med ? bgp_rte_recalculate : NULL;
