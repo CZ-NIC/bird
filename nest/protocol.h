@@ -122,12 +122,6 @@ struct proto_config {
   /* Protocol-specific data follow... */
 };
 
-struct channel_import_request {
-  struct channel_import_request *next;			/* Next in request chain */
-  void (*done)(struct channel_import_request *);	/* Called when import finishes */
-  const struct f_trie *trie;				/* Reload only matching nets */
-};
-
 #define TLIST_PREFIX proto
 #define TLIST_TYPE struct proto
 #define TLIST_ITEM n
@@ -194,15 +188,12 @@ struct proto {
    *	   reload_routes   Request channel to reload all its routes to the core
    *			(using rte_update()). Returns: 0=reload cannot be done,
    *			1= reload is scheduled and will happen (asynchronously).
-   *	   feed_begin	Notify channel about beginning of route feeding.
-   *	   feed_end	Notify channel about finish of route feeding.
    */
 
   void (*rt_notify)(struct proto *, struct channel *, const net_addr *net, struct rte *new, const struct rte *old);
   int (*preexport)(struct channel *, struct rte *rt);
-  int (*reload_routes)(struct channel *, struct channel_import_request *cir);
-  void (*feed_begin)(struct channel *);
-  void (*feed_end)(struct channel *);
+  void (*export_fed)(struct channel *);
+  int (*reload_routes)(struct channel *, struct rt_feeding_request *cir);
 
   /*
    *	Routing entry hooks (called only for routes belonging to this protocol):
@@ -522,8 +513,6 @@ struct channel_config {
 
   struct settle_config roa_settle;	/* Settle times for ROA-induced reload */
 
-  uint feed_block_size;			/* How many routes to feed at once */
-
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
   u16 preference;			/* Default route preference */
@@ -545,8 +534,8 @@ struct channel {
   const struct filter *in_filter;	/* Input filter */
   const struct filter *out_filter;	/* Output filter */
   const net_addr *out_subprefix;	/* Export only subprefixes of this net */
-  struct bmap export_map;		/* Keeps track which routes were really exported */
-  struct bmap export_reject_map;	/* Keeps track which routes were rejected by export filter */
+  struct bmap export_accepted_map;	/* Keeps track which routes were really exported */
+  struct bmap export_rejected_map;	/* Keeps track which routes were rejected by export filter */
 
   struct limit rx_limit;		/* Receive limit (for in_keep & RIK_REJECTED) */
   struct limit in_limit;		/* Input limit */
@@ -579,15 +568,7 @@ struct channel {
 
   struct rt_import_request in_req;	/* Table import connection */
   struct rt_export_request out_req;	/* Table export connection */
-
-  struct rt_export_request refeed_req;	/* Auxiliary refeed request */
-  struct bmap refeed_map;		/* Auxiliary refeed netindex bitmap */
-  struct channel_feeding_request *refeeding;	/* Refeeding the channel */
-  struct channel_feeding_request *refeed_pending;	/* Scheduled refeeds */
-  struct channel_import_request *importing;	/* Importing the channel */
-  struct channel_import_request *import_pending;	/* Scheduled imports */
-
-  uint feed_block_size;			/* How many routes to feed at once */
+  event out_event;			/* Table export event */
 
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
@@ -607,9 +588,9 @@ struct channel {
 
   btime last_state_change;		/* Time of last state transition */
 
-  struct rt_export_request reload_req;	/* Feeder for import reload */
+  struct rt_export_feeder reimporter;	/* Feeder for import reload */
+  event reimport_event;			/* Event doing that import reload */
 
-  u8 reload_pending;			/* Reloading and another reload is scheduled */
   u8 rpki_reload;			/* RPKI changes trigger channel reload */
 
   struct rt_exporter *out_table;	/* Internal table for exported routes */
@@ -687,8 +668,6 @@ void proto_remove_channel(struct proto *p, struct channel *c);
 int proto_configure_channel(struct proto *p, struct channel **c, struct channel_config *cf);
 
 void channel_set_state(struct channel *c, uint state);
-void channel_schedule_reload(struct channel *c, struct channel_import_request *cir);
-int channel_import_request_prefilter(struct channel_import_request *cir_head, const net_addr *n);
 
 void channel_add_obstacle(struct channel *c);
 void channel_del_obstacle(struct channel *c);
@@ -697,53 +676,8 @@ static inline void channel_init(struct channel *c) { channel_set_state(c, CS_STA
 static inline void channel_open(struct channel *c) { channel_set_state(c, CS_UP); }
 static inline void channel_close(struct channel *c) { channel_set_state(c, CS_STOP); }
 
-struct channel_feeding_request {
-  struct channel_feeding_request *next;			/* Next in request chain */
-  void (*done)(struct channel_feeding_request *);	/* Called when refeed finishes */
-  const struct f_trie *trie;				/* Reload only matching nets */
-  PACKED enum channel_feeding_request_type {
-    CFRT_DIRECT = 1,					/* Refeed by export restart */
-    CFRT_AUXILIARY,					/* Refeed by auxiliary request */
-  } type;
-  PACKED enum {
-    CFRS_INACTIVE = 0,					/* Inactive request */
-    CFRS_PENDING,					/* Request enqueued, do not touch */
-    CFRS_RUNNING,					/* Request active, do not touch */
-  } state;
-};
-
-struct channel *channel_from_export_request(struct rt_export_request *req);
-void channel_request_feeding(struct channel *c, struct channel_feeding_request *);
-void channel_request_feeding_dynamic(struct channel *c, enum channel_feeding_request_type);
-
-static inline int channel_net_is_refeeding(struct channel *c, const net_addr *n)
-{
-  /* Not refeeding if not refeeding at all */
-  if (!c->refeeding)
-    return 0;
-
-  /* Not refeeding if already refed */
-  struct netindex *ni = NET_TO_INDEX(n);
-  if (bmap_test(&c->refeed_map, ni->index))
-    return 0;
-
-  /* Refeeding if matching any request */
-  for (struct channel_feeding_request *cfr = c->refeeding; cfr; cfr = cfr->next)
-    if (!cfr->trie || trie_match_net(cfr->trie, n))
-      return 1;
-
-  /* Not matching any request */
-  return 0;
-}
-static inline void channel_net_mark_refed(struct channel *c, const net_addr *n)
-{
-  ASSERT_DIE(c->refeeding);
-
-  struct netindex *ni = NET_TO_INDEX(n);
-  bmap_set(&c->refeed_map, ni->index);
-}
-
-void channel_request_reload(struct channel *c);
+void channel_request_reload(struct channel *c, struct rt_feeding_request *cir);
+void channel_request_full_refeed(struct channel *c);
 
 void *channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 void *channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);

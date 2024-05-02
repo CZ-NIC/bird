@@ -2510,44 +2510,6 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *net,
   }
 }
 
-static void
-babel_feed_begin(struct channel *C)
-{
-  if (!C->refeeding || C->refeed_req.hook)
-    return;
-
-  struct babel_proto *p = (struct babel_proto *) C->proto;
-  struct fib *rtable = (C->net_type == NET_IP4) ? &p->ip4_rtable : &p->ip6_rtable;
-
-  FIB_WALK(rtable, struct babel_entry, e)
-    if (e->valid == BABEL_ENTRY_VALID)
-      e->valid = BABEL_ENTRY_REFEEDING;
-  FIB_WALK_END;
-}
-
-static void
-babel_feed_end(struct channel *C)
-{
-  if (!C->refeeding || C->refeed_req.hook)
-    return;
-
-  struct babel_proto *p = (struct babel_proto *) C->proto;
-  struct fib *rtable = (C->net_type == NET_IP4) ? &p->ip4_rtable : &p->ip6_rtable;
-  int changed = 0;
-
-  FIB_WALK(rtable, struct babel_entry, e)
-    if (e->valid == BABEL_ENTRY_REFEEDING)
-    {
-      babel_entry_invalidate(e);
-      changed++;
-    }
-  FIB_WALK_END;
-
-  if (changed)
-    babel_trigger_update(p);
-}
-
-
 static int
 babel_rte_better(const rte *new, const rte *old)
 {
@@ -2600,8 +2562,6 @@ babel_init(struct proto_config *CF)
   P->iface_sub.if_notify = babel_if_notify;
   P->rt_notify = babel_rt_notify;
   P->preexport = babel_preexport;
-  P->feed_begin = babel_feed_begin;
-  P->feed_end = babel_feed_end;
 
   P->sources.class = &babel_rte_owner_class;
 

@@ -383,6 +383,7 @@ nl_error(struct nlmsghdr *h, int ignore_esrch)
   ec = netlink_error_to_os(e->error);
   if (ec && !(ignore_esrch && (ec == ESRCH)))
     log_rl(&rl_netlink_err, L_WARN "Netlink: %s", strerror(ec));
+
   return ec;
 }
 

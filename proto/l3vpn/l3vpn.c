@@ -272,11 +272,8 @@ l3vpn_preexport(struct channel *C, rte *e)
   }
 }
 
-/* TODO: unify the code between l3vpn and pipe */
-void pipe_import_by_refeed_free(struct channel_feeding_request *cfr);
-
 static int
-l3vpn_reload_routes(struct channel *C, struct channel_import_request *cir)
+l3vpn_reload_routes(struct channel *C, struct rt_feeding_request *rfr)
 {
   struct l3vpn_proto *p = (void *) C->proto;
   struct channel *feed = NULL;
@@ -302,32 +299,13 @@ l3vpn_reload_routes(struct channel *C, struct channel_import_request *cir)
 
   case NET_MPLS:
     /* MPLS doesn't support partial refeed, always do a full one. */
-    channel_request_feeding_dynamic(p->ip4_channel, CFRT_DIRECT);
-    channel_request_feeding_dynamic(p->ip6_channel, CFRT_DIRECT);
-    cir->done(cir);
+    channel_request_full_refeed(p->ip4_channel);
+    channel_request_full_refeed(p->ip6_channel);
+    rfr->done(rfr);
     return 1;
   }
 
-  if (cir->trie)
-  {
-    struct import_to_export_reload *reload = lp_alloc(cir->trie->lp, sizeof *reload);
-    *reload = (struct import_to_export_reload) {
-      .cir = cir,
-      .cfr = {
-	      .type = CFRT_AUXILIARY,
-	      .done = pipe_import_by_refeed_free,
-	      .trie = cir->trie,
-	    },
-    };
-    channel_request_feeding(feed, &reload->cfr);
-  }
-  else
-  {
-    /* Route reload on one channel is just refeed on the other */
-    channel_request_feeding_dynamic(feed, CFRT_DIRECT);
-    cir->done(cir);
-  }
-
+  rt_export_refeed(&feed->out_req, rfr);
   return 1;
 }
 
@@ -474,10 +452,10 @@ l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
     l3vpn_prepare_import_targets(p);
 
     if (p->vpn4_channel && (p->vpn4_channel->channel_state == CS_UP))
-      channel_request_feeding_dynamic(p->vpn4_channel, CFRT_AUXILIARY);
+      channel_request_full_refeed(p->vpn4_channel);
 
     if (p->vpn6_channel && (p->vpn6_channel->channel_state == CS_UP))
-      channel_request_feeding_dynamic(p->vpn6_channel, CFRT_AUXILIARY);
+      channel_request_full_refeed(p->vpn6_channel);
   }
 
   if (export_changed)
@@ -487,10 +465,10 @@ l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
     l3vpn_prepare_export_targets(p);
 
     if (p->ip4_channel && (p->ip4_channel->channel_state == CS_UP))
-      channel_request_feeding_dynamic(p->ip4_channel, CFRT_AUXILIARY);
+      channel_request_full_refeed(p->ip4_channel);
 
     if (p->ip6_channel && (p->ip6_channel->channel_state == CS_UP))
-      channel_request_feeding_dynamic(p->ip6_channel, CFRT_AUXILIARY);
+      channel_request_full_refeed(p->ip6_channel);
   }
 
   return 1;

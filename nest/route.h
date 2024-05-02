@@ -2,7 +2,7 @@
  *	BIRD Internet Routing Daemon -- Routing Table
  *
  *	(c) 1998--2000 Martin Mares <mj@ucw.cz>
- *	(c) 2019--2021 Maria Matejka <mq@jmq.cz>
+ *	(c) 2019--2024 Maria Matejka <mq@jmq.cz>
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -42,10 +42,6 @@ struct f_trie;
 struct f_trie_walk_state;
 struct cli;
 
-struct rt_cork_threshold {
-  u64 low, high;
-};
-
 /*
  *	Master Routing Tables. Generally speaking, each of them contains a FIB
  *	with each entry pointing to a list of route entries representing routes
@@ -68,15 +64,272 @@ struct rtable_config {
   u32 debug;				/* Debugging flags (D_*) */
   byte sorted;				/* Routes of network are sorted according to rte_better() */
   byte trie_used;			/* Rtable has attached trie */
-  struct rt_cork_threshold cork_threshold;	/* Cork threshold values */
+  struct rt_cork_threshold {
+    u64 low, high;
+  } cork_threshold;			/* Cork threshold values */
   struct settle_config export_settle;	/* Export announcement settler */
   struct settle_config export_rr_settle;/* Export announcement settler config valid when any
 					   route refresh is running */
 };
 
+/*
+ *	Route export journal
+ *
+ *	The journal itself is held in struct rt_exporter.
+ *	Workflow:
+ *	  (1) Initialize by rt_exporter_init()
+ *	  (2) Push data by rt_exporter_push() (the export item is copied)
+ *	  (3) Shutdown by rt_exporter_shutdown(), event is called after cleanup
+ *
+ *	Subscribers:
+ *	  (1) Initialize by rt_export_subscribe()
+ *	  (2a) Get data by rt_export_get();
+ *	  (2b) Release data after processing by rt_export_release()
+ *	  (3) Request refeed by rt_export_refeed()
+ *	  (4) Unsubscribe by rt_export_unsubscribe()
+ */
+
+struct rt_export_request {
+  /* Formal name */
+  char *name;
+
+  /* Memory */
+  pool *pool;
+
+  /* State information */
+  enum rt_export_state {
+#define RT_EXPORT_STATES \
+    DOWN, \
+    FEEDING, \
+    PARTIAL, \
+    READY, \
+    STOP, \
+
+#define RT_EXPORT_STATES_ENUM_HELPER(p) TES_##p,
+    MACRO_FOREACH(RT_EXPORT_STATES_ENUM_HELPER, RT_EXPORT_STATES)
+    TES_MAX
+#undef RT_EXPORT_STATES_ENUM_HELPER
+  } _Atomic export_state;
+  btime last_state_change;
+
+  /* Table feeding contraption */
+  struct rt_export_feeder {
+    /* Formal name */
+    char *name;
+
+    /* Enlisting */
+    struct rt_exporter * _Atomic exporter;
+    struct rt_export_feeder * _Atomic next;
+
+    /* Prefiltering, useful for more scenarios */
+    struct rt_prefilter {
+      /* Network prefilter mode (TE_ADDR_*) */
+      enum {
+	TE_ADDR_NONE = 0,	/* No address matching */
+	TE_ADDR_EQUAL,		/* Exact query - show route <addr> */
+	TE_ADDR_FOR,		/* Longest prefix match - show route for <addr> */
+	TE_ADDR_IN,		/* Interval query - show route in <addr> */
+	TE_ADDR_TRIE,		/* Query defined by trie */
+	TE_ADDR_HOOK,		/* Query processed by supplied custom hook */
+      } mode;
+
+      union {
+	const struct f_trie *trie;
+	const net_addr *addr;
+	int (*hook)(const struct rt_prefilter *, const net_addr *);
+      };
+    } prefilter;
+
+#define TLIST_PREFIX	rt_export_feeder
+#define TLIST_TYPE	struct rt_export_feeder
+#define TLIST_ITEM	n
+#define TLIST_WANT_WALK
+#define TLIST_WANT_ADD_TAIL
+
+    /* Feeding itself */
+    union {
+      u64 feed_index;				/* Index of the feed in progress */
+      struct rt_feeding_index *feed_index_ptr;	/* Use this when u64 is not enough */
+    };
+    struct rt_feeding_request {
+      struct rt_feeding_request *next;		/* Next in request chain */
+      void (*done)(struct rt_feeding_request *);/* Called when this refeed finishes */
+      struct rt_prefilter prefilter;		/* Reload only matching nets */
+      PACKED enum {
+	RFRS_INACTIVE = 0,	/* Inactive request */
+	RFRS_PENDING,		/* Request enqueued, do not touch */
+	RFRS_RUNNING,		/* Request active, do not touch */
+      } state;
+    } *feeding, *feed_pending;
+    TLIST_DEFAULT_NODE;
+    u8 trace_routes;
+  } feeder;
+
+  /* Regular updates */
+  struct bmap seq_map;		/* Which lfjour items are already processed */
+  struct bmap feed_map;		/* Which nets were already fed (for initial feeding) */
+  struct lfjour_recipient r;
+  struct rt_export_union *cur;
+
+  /* Statistics */
+  struct rt_export_stats {
+    u32 updates_received;	/* Number of route updates received */
+    u32 withdraws_received;	/* Number of route withdraws received */
+  } stats;
+
+  /* Tracing */
+  u8 trace_routes;
+  void (*dump)(struct rt_export_request *req);
+  void (*fed)(struct rt_export_request *req);
+};
+
+#include "lib/tlists.h"
+
+struct rt_export_union {
+  enum rt_export_kind {
+    RT_EXPORT_STOP = 1,
+    RT_EXPORT_FEED,
+    RT_EXPORT_UPDATE,
+  } kind;
+  const struct rt_export_item {
+    LFJOUR_ITEM_INHERIT(li);		/* Member of lockfree journal */
+    char data[0];			/* Memcpy helper */
+    const rte *new, *old;		/* Route update */
+  } *update;
+  const struct rt_export_feed {
+    uint count_routes, count_exports;
+    const struct netindex *ni;
+    rte *block;
+    u64 *exports;
+    char data[0];
+  } *feed;
+  struct rt_export_request *req;
+};
+
+struct rt_exporter {
+  struct lfjour journal;			/* Journal for update keeping */
+  TLIST_LIST(rt_export_feeder) feeders;		/* List of active feeder structures */
+  _Bool _Atomic feeders_lock;			/* Spinlock for the above list */
+  u8 trace_routes;				/* Debugging flags (D_*) */
+  const char *name;				/* Name for logging */
+  void (*stopped)(struct rt_exporter *);	/* Callback when exporter can stop */
+  void (*cleanup_done)(struct rt_exporter *, u64 end);	/* Callback when cleanup has been done */
+  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rcu_unwinder *, const net_addr *, const struct rt_export_item *first);
+  const net_addr *(*feed_next)(struct rt_exporter *, struct rcu_unwinder *, struct rt_export_feeder *);
+  void (*feed_cleanup)(struct rt_exporter *, struct rt_export_feeder *);
+};
+
+/* Exporter API */
+void rt_exporter_init(struct rt_exporter *, struct settle_config *);
+struct rt_export_item *rt_exporter_push(struct rt_exporter *, const struct rt_export_item *);
+void rt_exporter_shutdown(struct rt_exporter *, void (*stopped)(struct rt_exporter *));
+
+/* Standalone feeds */
+void rt_feeder_subscribe(struct rt_exporter *, struct rt_export_feeder *);
+void rt_feeder_unsubscribe(struct rt_export_feeder *);
+void rt_export_refeed_feeder(struct rt_export_feeder *, struct rt_feeding_request *);
+
+struct rt_export_feed *rt_export_next_feed(struct rt_export_feeder *);
+#define RT_FEED_WALK(_feeder, _f)	\
+  for (const struct rt_export_feed *_f; _f = rt_export_next_feed(_feeder); ) \
+
+static inline _Bool rt_export_feed_active(struct rt_export_feeder *f)
+{ return !!atomic_load_explicit(&f->exporter, memory_order_acquire); }
+
+/* Full blown exports */
+void rtex_export_subscribe(struct rt_exporter *, struct rt_export_request *);
+void rtex_export_unsubscribe(struct rt_export_request *);
+
+const struct rt_export_union * rt_export_get(struct rt_export_request *);
+void rt_export_release(const struct rt_export_union *);
+void rt_export_retry_later(const struct rt_export_union *);
+void rt_export_processed(struct rt_export_request *, u64);
+void rt_export_refeed_request(struct rt_export_request *rer, struct rt_feeding_request *rfr);
+
+static inline enum rt_export_state rt_export_get_state(struct rt_export_request *r)
+{ return atomic_load_explicit(&r->export_state, memory_order_acquire); }
+const char *rt_export_state_name(enum rt_export_state state);
+
+static inline void rt_export_walk_cleanup(const struct rt_export_union **up)
+{
+  if (*up)
+    rt_export_release(*up);
+}
+
+#define RT_EXPORT_WALK(_reader, _u)	\
+  for (CLEANUP(rt_export_walk_cleanup) const struct rt_export_union *_u;\
+      _u = rt_export_get(_reader);					\
+      rt_export_release(_u))						\
+
+/* Convenince common call to request refeed */
+#define rt_export_refeed(h, r)	_Generic((h), \
+    struct rt_export_feeder *: rt_export_refeed_feeder, \
+    struct rt_export_request *: rt_export_refeed_request, \
+    void *: bug)(h, r)
+
+/* Subscription to regular table exports needs locking */
+#define rt_export_subscribe(_t, _kind, f) do { \
+  RT_LOCKED(_t, tp) { \
+    rt_lock_table(tp); \
+    rtex_export_subscribe(&tp->export_##_kind, f); \
+  }} while (0) \
+
+#define rt_export_unsubscribe(_kind, _fx) do { \
+  struct rt_export_request *_f = _fx; \
+  struct rt_exporter *e = atomic_load_explicit(&_f->feeder.exporter, memory_order_acquire); \
+  RT_LOCKED(SKIP_BACK(rtable, export_##_kind, e), _tp) { \
+    rtex_export_unsubscribe(_f); \
+    rt_unlock_table(_tp); \
+  }} while (0) \
+
+static inline int rt_prefilter_net(const struct rt_prefilter *p, const net_addr *n)
+{
+  switch (p->mode)
+  {
+    case TE_ADDR_NONE:	return 1;
+    case TE_ADDR_IN:	return net_in_netX(n, p->addr);
+    case TE_ADDR_EQUAL:	return net_equal(n, p->addr);
+    case TE_ADDR_FOR:	return net_in_netX(p->addr, n);
+    case TE_ADDR_TRIE:	return trie_match_net(p->trie, n);
+    case TE_ADDR_HOOK:	return p->hook(p, n);
+  }
+
+  bug("Crazy prefilter application attempt failed wildly.");
+}
+
+static inline _Bool
+rt_net_is_feeding_feeder(struct rt_export_feeder *ref, const net_addr *n)
+{
+  for (struct rt_feeding_request *rfr = ref->feeding; rfr; rfr = rfr->next)
+    if (rt_prefilter_net(&rfr->prefilter, n))
+      return 1;
+
+  return 0;
+}
+
+static inline _Bool
+rt_net_is_feeding_request(struct rt_export_request *req, const net_addr *n)
+{
+  struct netindex *ni = NET_TO_INDEX(n);
+  return
+    !bmap_test(&req->feed_map, ni->index)
+    && rt_net_is_feeding_feeder(&req->feeder, n);
+}
+
+#define rt_net_is_feeding(h, n)	_Generic((h), \
+    struct rt_export_feeder *: rt_net_is_feeding_feeder, \
+    struct rt_export_request *: rt_net_is_feeding_request, \
+    void *: bug)(h, n)
+
+
+/*
+ *	The original rtable
+ *
+ *	To be kept as is for now until we refactor the new structures out of BGP Attrs.
+ */
+
+
 struct rt_export_hook;
-struct rt_export_request;
-struct rt_exporter;
 
 extern uint rtable_max_id;
 
@@ -96,6 +349,8 @@ extern uint rtable_max_id;
     struct f_trie * _Atomic trie;	/* Trie of prefixes defined in fib */			\
     event *nhu_event;			/* Nexthop updater */					\
     event *hcu_event;			/* Hostcache updater */					\
+    struct rt_exporter export_all;	/* Route export journal for all routes */		\
+    struct rt_exporter export_best;	/* Route export journal for best routes */		\
 
 /* The complete rtable structure */
 struct rtable_private {
@@ -112,7 +367,7 @@ struct rtable_private {
   u32 debug;				/* Debugging flags (D_*) */
 
   list imports;				/* Registered route importers */
-  struct lfjour journal;		/* Exporter API structure */
+
   TLIST_STRUCT_DEF(rt_flowspec_link, struct rt_flowspec_link) flowspec_links;	/* Links serving flowspec reload */
 
   struct hmap id_map;
@@ -121,6 +376,7 @@ struct rtable_private {
 					 * delete as soon as use_count becomes 0 and remove
 					 * obstacle from this routing table.
 					 */
+  struct rt_export_request best_req;	/* Internal request from best route announcement cleanup */
   struct event *nhu_uncork_event;	/* Helper event to schedule NHU on uncork */
   struct event *hcu_uncork_event;	/* Helper event to schedule HCU on uncork */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
@@ -203,10 +459,22 @@ static inline _Bool rt_cork_check(event *e)
   return corked;
 }
 
+struct rt_pending_export {
+  struct rt_export_item it;
+  struct rt_pending_export *_Atomic next;	/* Next export for the same net */
+  u64 seq_all;					/* Interlink from BEST to ALL */
+};
+
+struct rt_net_pending_export {
+  struct rt_pending_export * _Atomic first, * _Atomic last;
+};
 
 typedef struct network {
-  struct rte_storage * _Atomic routes;				/* Available routes for this network */
-  struct rt_pending_export * _Atomic first, * _Atomic last;	/* Uncleaned pending exports */
+  struct rte_storage * _Atomic routes;		/* Available routes for this network */
+
+  /* Uncleaned pending exports */
+  struct rt_net_pending_export all;
+  struct rt_net_pending_export best;
 } net;
 
 struct rte_storage {
@@ -228,24 +496,7 @@ struct rte_storage {
 
 #define RTE_GET_NETINDEX(e) NET_TO_INDEX((e)->net)
 
-/* Table-channel connections */
-
-struct rt_prefilter {
-  union {
-    const struct f_trie *trie;
-    const net_addr *addr;	/* Network prefilter address */
-    int (*hook)(const struct rt_prefilter *, const net_addr *);
-  };
-				/* Network prefilter mode (TE_ADDR_*) */
-  enum {
-    TE_ADDR_NONE = 0,		/* No address matching */
-    TE_ADDR_EQUAL,		/* Exact query - show route <addr> */
-    TE_ADDR_FOR,		/* Longest prefix match - show route for <addr> */
-    TE_ADDR_IN,			/* Interval query - show route in <addr> */
-    TE_ADDR_TRIE,		/* Query defined by trie */
-    TE_ADDR_HOOK,		/* Query processed by supplied custom hook */
-  } mode;
-} PACKED;
+/* Table import */
 
 struct rt_import_request {
   struct rt_import_hook *hook;		/* The table part of importer */
@@ -288,94 +539,6 @@ struct rt_import_hook {
   event cleanup_event;			/* Used to finally unhook the import from the table */
 };
 
-struct rt_pending_export {
-  LFJOUR_ITEM_INHERIT(li);
-  struct rt_pending_export * _Atomic next;	/* Next export for the same destination */
-  const rte *new, *new_best, *old, *old_best;
-};
-
-struct rt_export_feed {
-  uint count_routes, count_exports;
-  struct netindex *ni;
-  rte *block;
-  u64 *exports;
-  char data[0];
-};
-
-struct rt_export_request {
-  struct rt_export_hook *hook;		/* Table part of the export */
-  char *name;
-  u8 trace_routes;
-  uint feed_block_size;			/* How many routes to feed at once */
-  struct rt_prefilter prefilter;
-
-  event_list *list;			/* Where to schedule export events */
-  pool *pool;				/* Pool to use for allocations */
-
-  /* There are two methods of export. You can either request feeding every single change
-   * or feeding the whole route feed. In case of regular export, &export_one is preferred.
-   * Anyway, when feeding, &export_bulk is preferred, falling back to &export_one.
-   * Thus, for RA_OPTIMAL, &export_one is only set,
-   *	   for RA_MERGED and RA_ACCEPTED, &export_bulk is only set
-   *	   and for RA_ANY, both are set to accomodate for feeding all routes but receiving single changes
-   */
-  void (*export_one)(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
-  void (*export_bulk)(struct rt_export_request *req, const net_addr *net,
-      struct rt_pending_export *rpe, struct rt_pending_export *last,
-      const rte **feed, uint count);
-
-  void (*mark_seen)(struct rt_export_request *req, struct rt_pending_export *rpe);
-
-  void (*dump_req)(struct rt_export_request *req);
-  void (*log_state_change)(struct rt_export_request *req, u8);
-};
-
-static inline int rt_prefilter_net(const struct rt_prefilter *p, const net_addr *n)
-{
-  switch (p->mode)
-  {
-    case TE_ADDR_NONE:	return 1;
-    case TE_ADDR_IN:	return net_in_netX(n, p->addr);
-    case TE_ADDR_EQUAL:	return net_equal(n, p->addr);
-    case TE_ADDR_FOR:	return net_in_netX(p->addr, n);
-    case TE_ADDR_TRIE:	return trie_match_net(p->trie, n);
-    case TE_ADDR_HOOK:	return p->hook(p, n);
-  }
-
-  bug("Crazy prefilter application attempt failed wildly.");
-}
-
-struct rt_export_hook {
-  struct lfjour_recipient recipient;	/* Journal recipient structure */
-
-  pool *pool;
-
-  struct rt_export_request *req;	/* The requestor */
-
-  struct rt_export_stats {
-    /* Export - from core to protocol */
-    u32 updates_received;		/* Number of route updates received */
-    u32 withdraws_received;		/* Number of route withdraws received */
-  } stats;
-
-  btime last_state_change;		/* Time of last state transition */
-
-  _Atomic u8 export_state;		/* Route export state (TES_*, see below) */
-  struct event *event;			/* Event running all the export operations */
-
-  struct bmap seq_map;			/* Keep track which exports were already procesed */
-
-  void (*stopped)(struct rt_export_request *);	/* Stored callback when export is stopped */
-
-  /* Table-specific items */
-
-  rtable *tab;					/* The table pointer to use in corner cases */
-  u32 feed_index;				/* Routing table iterator used during feeding */
-
-  u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
-  u8 feed_type;				/* Which feeding method is used (TFT_*, see below) */
-};
-
 
 #define TIS_DOWN	0
 #define TIS_UP		1
@@ -385,35 +548,15 @@ struct rt_export_hook {
 #define TIS_CLEARED	5
 #define TIS_MAX		6
 
-#define TES_DOWN	0
-#define TES_HUNGRY	1
-#define TES_FEEDING	2
-#define TES_READY	3
-#define TES_STOP	4
-#define TES_MAX		5
-
-
-#define TFT_FIB		1
-#define TFT_TRIE	2
-#define TFT_HASH	3
 
 void rt_request_import(rtable *tab, struct rt_import_request *req);
-void rt_request_export(rtable *tab, struct rt_export_request *req);
-void rt_request_export_other(struct rt_exporter *tab, struct rt_export_request *req);
-
 void rt_stop_import(struct rt_import_request *, void (*stopped)(struct rt_import_request *));
-void rt_stop_export(struct rt_export_request *, void (*stopped)(struct rt_export_request *));
-
 const char *rt_import_state_name(u8 state);
-const char *rt_export_state_name(u8 state);
-
 static inline u8 rt_import_get_state(struct rt_import_hook *ih) { return ih ? ih->import_state : TIS_DOWN; }
-static inline u8 rt_export_get_state(struct rt_export_hook *eh) { return eh ? atomic_load_explicit(&eh->export_state, memory_order_acquire) : TES_DOWN; }
-
-u8 rt_set_export_state(struct rt_export_hook *hook, u32 expected_mask, u8 state);
 
 void rte_import(struct rt_import_request *req, const net_addr *net, rte *new, struct rte_src *src);
 
+#if 0
 /*
  * For table export processing
  */
@@ -437,15 +580,7 @@ void rpe_mark_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
 /* Get pending export seen status */
 int rpe_get_seen(struct rt_export_hook *hook, struct rt_pending_export *rpe);
 
-/*
- * For rt_export_hook and rt_exporter inheritance
- */
-
-void rt_init_export(struct rt_exporter *re, struct rt_export_hook *hook);
-struct rt_export_hook *rt_alloc_export(struct rt_exporter *re, pool *pool, uint size);
-void rt_stop_export_common(struct rt_export_hook *hook);
-void rt_export_stopped(struct rt_export_hook *hook);
-void rt_exporter_init(struct rt_exporter *re);
+#endif
 
 /*
  * Channel export hooks. To be refactored out.
@@ -453,15 +588,6 @@ void rt_exporter_init(struct rt_exporter *re);
 
 int channel_preimport(struct rt_import_request *req, rte *new, const rte *old);
 
-void channel_reload_export_bulk(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first, struct rt_pending_export *last, const rte **feed, uint count);
-
-void rt_notify_optimal(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
-void rt_notify_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *rpe);
-void rt_feed_any(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first, struct rt_pending_export *last, const rte **feed, uint count);
-void rt_notify_accepted(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first, struct rt_pending_export *last, const rte **feed, uint count);
-void rt_notify_merged(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first, struct rt_pending_export *last, const rte **feed, uint count);
-
-void channel_rpe_mark_seen(struct channel *c, struct rt_pending_export *rpe);
 
 /* Types of route announcement, also used as flags */
 #define RA_UNDEF	0		/* Undefined RA type */
@@ -512,6 +638,7 @@ struct hostcache {
   struct f_trie *trie;			/* Trie of prefixes that might affect hostentries */
   list hostentries;			/* List of all hostentries */
   struct rt_export_request req;		/* Notifier */
+  event source_event;
 };
 
 #define rte_update  channel_rte_import
@@ -574,10 +701,10 @@ void rt_flowspec_link(rtable *src, rtable *dst);
 void rt_flowspec_unlink(rtable *src, rtable *dst);
 rtable *rt_setup(pool *, struct rtable_config *);
 
-struct rt_export_feed *rt_net_feed(rtable *t, net_addr *a);
-rte rt_net_best(rtable *t, net_addr *a);
+struct rt_export_feed *rt_net_feed(rtable *t, const net_addr *a, const struct rt_pending_export *first);
+rte rt_net_best(rtable *t, const net_addr *a);
 int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
-rte *rt_export_merged(struct channel *c, const net_addr *n, const rte ** feed, uint count, linpool *pool, int silent);
+rte *rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *pool, int silent);
 void rt_refresh_begin(struct rt_import_request *);
 void rt_refresh_end(struct rt_import_request *);
 void rt_schedule_prune(struct rtable_private *t);
@@ -588,7 +715,6 @@ void rt_dump_hooks(rtable *);
 void rt_dump_hooks_all(void);
 int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
-void rt_refeed_channel(struct channel *c);
 void rt_prune_sync(rtable *t, int all);
 struct rtable_config *rt_new_table(struct symbol *s, uint addr_type);
 void rt_new_default_table(struct symbol *s);
@@ -617,6 +743,7 @@ struct rt_show_data_rtable {
   struct channel *export_channel;
   struct channel *prefilter;
   struct krt_proto *kernel;
+  struct rt_export_feeder req;		/* Export feeder in use */
 };
 
 struct rt_show_data {
@@ -625,14 +752,13 @@ struct rt_show_data {
   list tables;
   struct rt_show_data_rtable *tab;	/* Iterator over table list */
   struct rt_show_data_rtable *last_table; /* Last table in output */
-  struct rt_export_request req;		/* Export request in use */
   int verbose, tables_defined_by;
   const struct filter *filter;
   struct proto *show_protocol;
   struct proto *export_protocol;
   struct channel *export_channel;
   struct config *running_on_config;
-  struct rt_export_hook *kernel_export_hook;
+//  struct rt_export_hook *kernel_export_hook;
   int export_mode, addr_mode, primary_only, filtered, stats;
 
   int net_counter, rt_counter, show_counter, table_counter;

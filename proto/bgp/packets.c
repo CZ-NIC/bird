@@ -2965,7 +2965,7 @@ bgp_rx_route_refresh(struct bgp_conn *conn, byte *pkt, uint len)
       /* FIXME: REQUEST REFRESH FROM OUT TABLE */
     }
     else
-      channel_request_feeding_dynamic(&c->c, p->enhanced_refresh ? CFRT_DIRECT : CFRT_AUXILIARY);
+      rt_export_refeed(&c->c.out_req, NULL);
     break;
 
   case BGP_RR_BEGIN:

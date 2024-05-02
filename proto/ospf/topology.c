@@ -550,36 +550,6 @@ ospf_update_lsadb(struct ospf_proto *p)
   }
 }
 
-void
-ospf_feed_begin(struct channel *C)
-{
-  if (!C->refeeding || C->refeed_req.hook)
-    return;
-
-  struct ospf_proto *p = (struct ospf_proto *) C->proto;
-  struct top_hash_entry *en;
-
-  /* Mark all external LSAs as stale */
-  WALK_SLIST(en, p->lsal)
-    if (en->mode == LSA_M_EXPORT)
-      en->mode = LSA_M_EXPORT_STALE;
-}
-
-void
-ospf_feed_end(struct channel *C)
-{
-  if (!C->refeeding || C->refeed_req.hook)
-    return;
-
-  struct ospf_proto *p = (struct ospf_proto *) C->proto;
-  struct top_hash_entry *en;
-
-  /* Flush stale LSAs */
-  WALK_SLIST(en, p->lsal)
-    if (en->mode == LSA_M_EXPORT_STALE)
-      ospf_flush_lsa(p, en);
-}
-
 static u32
 ort_to_lsaid(struct ospf_proto *p, ort *nf)
 {

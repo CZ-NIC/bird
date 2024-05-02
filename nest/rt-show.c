@@ -18,6 +18,9 @@
 #include "filter/data.h"
 #include "sysdep/unix/krt.h"
 
+static void rt_show_cont(struct cli *c);
+static void rt_show_done(struct rt_show_data *d);
+
 static void
 rt_show_table(struct rt_show_data *d)
 {
@@ -93,7 +96,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
 }
 
 static void
-rt_show_net(struct rt_show_data *d, const net_addr *n, const rte **feed, uint count)
+rt_show_net(struct rt_show_data *d, const struct rt_export_feed *feed)
 {
   struct cli *c = d->cli;
   byte ia[NET_MAX_TEXT_LENGTH+16+1];
@@ -108,9 +111,13 @@ rt_show_net(struct rt_show_data *d, const net_addr *n, const rte **feed, uint co
   uint last_label = 0;
   int pass = 0;
 
-  for (uint i = 0; i < count; i++)
+  for (uint i = 0; i < feed->count_routes; i++)
     {
-      if (!d->tab->prefilter && (rte_is_filtered(feed[i]) != d->filtered))
+      rte *e = &feed->block[i];
+      if (e->flags & REF_OBSOLETE)
+	break;
+
+      if (!d->tab->prefilter && (rte_is_filtered(e) != d->filtered))
 	continue;
 
       d->rt_counter++;
@@ -120,20 +127,19 @@ rt_show_net(struct rt_show_data *d, const net_addr *n, const rte **feed, uint co
       if (pass)
 	continue;
 
-      struct rte e = *feed[i];
       if (d->tab->prefilter)
-	if (e.sender != d->tab->prefilter->in_req.hook)
+	if (e->sender != d->tab->prefilter->in_req.hook)
 	  continue;
-	else while (e.attrs->next)
-	  e.attrs = e.attrs->next;
+	else
+	  e->attrs = ea_strip_to(e->attrs, BIT32_ALL(EALS_PREIMPORT));
 
       /* Export channel is down, do not try to export routes to it */
-      if (ec && !ec->out_req.hook)
+      if (ec && (rt_export_get_state(&ec->out_req) == TES_DOWN))
 	goto skip;
 
       if (d->export_mode == RSEM_EXPORTED)
         {
-	  if (!bmap_test(&ec->export_map, e.id))
+	  if (!bmap_test(&ec->export_accepted_map, e->id))
 	    goto skip;
 
 	  // if (ec->ra_mode != RA_ANY)
@@ -143,17 +149,17 @@ rt_show_net(struct rt_show_data *d, const net_addr *n, const rte **feed, uint co
 	{
 	  /* Special case for merged export */
 	  pass = 1;
-	  rte *em = rt_export_merged(ec, n, feed, count, tmp_linpool, 1);
+	  rte *em = rt_export_merged(ec, feed, tmp_linpool, 1);
 
 	  if (em)
-	    e = *em;
+	    e = em;
 	  else
 	    goto skip;
 	}
       else if (d->export_mode)
 	{
 	  struct proto *ep = ec->proto;
-	  int ic = ep->preexport ? ep->preexport(ec, &e) : 0;
+	  int ic = ep->preexport ? ep->preexport(ec, e) : 0;
 
 	  if (ec->ra_mode == RA_OPTIMAL || ec->ra_mode == RA_MERGED)
 	    pass = 1;
@@ -169,7 +175,7 @@ rt_show_net(struct rt_show_data *d, const net_addr *n, const rte **feed, uint co
 	       * command may change the export filter and do not update routes.
 	       */
 	      int do_export = (ic > 0) ||
-		(f_run(ec->out_filter, &e, FF_SILENT) <= F_ACCEPT);
+		(f_run(ec->out_filter, e, FF_SILENT) <= F_ACCEPT);
 
 	      if (do_export != (d->export_mode == RSEM_EXPORT))
 		goto skip;
@@ -179,27 +185,27 @@ rt_show_net(struct rt_show_data *d, const net_addr *n, const rte **feed, uint co
 	    }
 	}
 
-      if (d->show_protocol && (&d->show_protocol->sources != e.src->owner))
+      if (d->show_protocol && (&d->show_protocol->sources != e->src->owner))
 	goto skip;
 
-      if (f_run(d->filter, &e, 0) > F_ACCEPT)
+      if (f_run(d->filter, e, 0) > F_ACCEPT)
 	goto skip;
 
       if (d->stats < 2)
       {
-	uint label = ea_get_int(e.attrs, &ea_gen_mpls_label, ~0U);
+	uint label = ea_get_int(e->attrs, &ea_gen_mpls_label, ~0U);
 
 	if (first_show || (last_label != label))
 	{
 	  if (!~label)
-	    net_format(n, ia, sizeof(ia));
+	    net_format(feed->ni->addr, ia, sizeof(ia));
 	  else
-	    bsnprintf(ia, sizeof(ia), "%N mpls %d", n, label);
+	    bsnprintf(ia, sizeof(ia), "%N mpls %d", feed->ni->addr, label);
 	}
 	else
 	  ia[0] = 0;
 
-	rt_show_rte(c, ia, &e, d, !d->tab->prefilter && !i);
+	rt_show_rte(c, ia, e, d, !d->tab->prefilter && !i);
 	first_show = 0;
 	last_label = label;
       }
@@ -209,6 +215,7 @@ rt_show_net(struct rt_show_data *d, const net_addr *n, const rte **feed, uint co
     skip:
       if (d->primary_only)
 	break;
+#undef e
     }
 
   if ((d->show_counter - d->show_counter_last_flush) > 64)
@@ -219,90 +226,45 @@ rt_show_net(struct rt_show_data *d, const net_addr *n, const rte **feed, uint co
 }
 
 static void
-rt_show_net_export_bulk(struct rt_export_request *req, const net_addr *n,
-    struct rt_pending_export *first UNUSED, struct rt_pending_export *last UNUSED,
-    const rte **feed, uint count)
-{
-  SKIP_BACK_DECLARE(struct rt_show_data, d, req, req);
-  return rt_show_net(d, n, feed, count);
-}
-
-static void
-rt_show_export_stopped_cleanup(struct rt_export_request *req)
-{
-  SKIP_BACK_DECLARE(struct rt_show_data, d, req, req);
-
-  /* The hook is now invalid */
-  req->hook = NULL;
-
-  /* And free the CLI (deferred) */
-  rp_free(d->cli->pool);
-}
-
-static int
 rt_show_cleanup(struct cli *c)
 {
   struct rt_show_data *d = c->rover;
+  struct rt_show_data_rtable *tab, *tabx;
   c->cleanup = NULL;
 
-  /* Cancel the feed */
-  if (d->req.hook)
+  /* Cancel the feeds */
+  WALK_LIST_DELSAFE(tab, tabx, d->tables)
   {
-    rt_stop_export(&d->req, rt_show_export_stopped_cleanup);
-    return 1;
+    if (rt_export_feed_active(&tab->req))
+      rt_feeder_unsubscribe(&tab->req);
   }
-  else
-    return 0;
-}
-
-static void rt_show_export_stopped(struct rt_export_request *req);
-
-static void
-rt_show_log_state_change(struct rt_export_request *req, u8 state)
-{
-  if (state == TES_READY)
-    rt_stop_export(req, rt_show_export_stopped);
-}
-
-static void
-rt_show_dump_req(struct rt_export_request *req)
-{
-  debug("  CLI Show Route Feed %p\n", req);
 }
 
 static void
 rt_show_done(struct rt_show_data *d)
 {
+  /* Force the cleanup */
+  rt_show_cleanup(d->cli);
+
+  /* Write pending messages */
+  cli_write_trigger(d->cli);
+
   /* No more action */
   d->cli->cleanup = NULL;
   d->cli->cont = NULL;
   d->cli->rover = NULL;
-
-  /* Write pending messages */
-  cli_write_trigger(d->cli);
 }
 
 static void
-rt_show_cont(struct rt_show_data *d)
+rt_show_cont(struct cli *c)
 {
-  struct cli *c = d->cli;
+  struct rt_show_data *d = c->rover;
 
   if (d->running_on_config && (d->running_on_config != config))
   {
     cli_printf(c, 8004, "Stopped due to reconfiguration");
     return rt_show_done(d);
   }
-
-  d->req = (struct rt_export_request) {
-    .prefilter.addr = d->addr,
-    .name = "CLI Show Route",
-    .list = &global_work_list,
-    .pool = c->pool,
-    .export_bulk = rt_show_net_export_bulk,
-    .dump_req = rt_show_dump_req,
-    .log_state_change = rt_show_log_state_change,
-    .prefilter.mode = d->addr_mode,
-  };
 
   d->table_counter++;
 
@@ -313,16 +275,17 @@ rt_show_cont(struct rt_show_data *d)
   if (d->tables_defined_by & RSD_TDB_SET)
     rt_show_table(d);
 
-  rt_request_export(d->tab->table, &d->req);
-}
+  RT_FEED_WALK(&d->tab->req, f)
+    if (f->count_routes)
+      rt_show_net(d, f);
 
-static void
-rt_show_export_stopped(struct rt_export_request *req)
-{
-  SKIP_BACK_DECLARE(struct rt_show_data, d, req, req);
-
-  /* The hook is now invalid */
-  req->hook = NULL;
+  if (rt_export_feed_active(&d->tab->req))
+    rt_feeder_unsubscribe(&d->tab->req);
+  else
+  {
+    cli_printf(c, 8004, "Table is shutting down");
+    return rt_show_done(d);
+  }
 
   if (d->stats)
   {
@@ -330,21 +293,22 @@ rt_show_export_stopped(struct rt_export_request *req)
       rt_show_table(d);
 
     cli_printf(d->cli, -1007, "%d of %d routes for %d networks in table %s",
-	       d->show_counter - d->show_counter_last, d->rt_counter - d->rt_counter_last,
-	       d->net_counter - d->net_counter_last, d->tab->name);
+	d->show_counter - d->show_counter_last, d->rt_counter - d->rt_counter_last,
+	d->net_counter - d->net_counter_last, d->tab->name);
   }
 
   d->tab = NODE_NEXT(d->tab);
 
   if (NODE_VALID(d->tab))
-    return rt_show_cont(d);
+    /* Gonna be called later by this_cli->cont() */
+    return;
 
   /* Printout total stats */
   if (d->stats && (d->table_counter > 1))
   {
     if (d->last_table) cli_printf(d->cli, -1007, "");
     cli_printf(d->cli, 14, "Total: %d of %d routes for %d networks in %d tables",
-	       d->show_counter, d->rt_counter, d->net_counter, d->table_counter);
+	d->show_counter, d->rt_counter, d->net_counter, d->table_counter);
   }
   else if (!d->rt_counter && ((d->addr_mode == TE_ADDR_EQUAL) || (d->addr_mode == TE_ADDR_FOR)))
     cli_printf(d->cli, 8001, "Network not found");
@@ -388,7 +352,7 @@ rt_show_get_default_tables(struct rt_show_data *d)
   {
     WALK_LIST(c, d->export_protocol->channels)
     {
-      if (!c->out_req.hook)
+      if (rt_export_get_state(&c->out_req) == TES_DOWN)
 	continue;
 
       tab = rt_show_add_table(d, c->table);
@@ -450,17 +414,23 @@ rt_show_prepare_tables(struct rt_show_data *d)
       rem_node(&(tab->n));
       continue;
     }
+
+    /* Open the export request */
+    tab->req = (struct rt_export_feeder) {
+      .name = "cli.feeder",
+      .prefilter = {
+	.addr = d->addr,
+	.mode = d->addr_mode,
+      },
+      .trace_routes = config->show_route_debug,
+    };
+
+    rt_feeder_subscribe(&tab->table->export_all, &tab->req);
   }
 
   /* Ensure there is at least one table */
   if (EMPTY_LIST(d->tables))
     cf_error("No valid tables");
-}
-
-static void
-rt_show_dummy_cont(struct cli *c UNUSED)
-{
-  /* Explicitly do nothing to prevent CLI from trying to parse another command. */
 }
 
 void
@@ -479,7 +449,7 @@ rt_show(struct rt_show_data *d)
 
   this_cli->cleanup = rt_show_cleanup;
   this_cli->rover = d;
-  this_cli->cont = rt_show_dummy_cont;
+  this_cli->cont = rt_show_cont;
 
-  rt_show_cont(d);
+  cli_write_trigger(this_cli);
 }

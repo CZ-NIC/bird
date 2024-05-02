@@ -250,6 +250,9 @@ rt_get_source_o(struct rte_owner *p, u32 id)
 
   if (src)
   {
+#ifdef RT_SOURCE_DEBUG
+    log(L_INFO "Found source %uG", src->global_id);
+#endif
     lfuc_lock_revive(&src->uc);
     return src;
   }

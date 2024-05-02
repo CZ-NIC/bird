@@ -51,15 +51,18 @@ static char *proto_state_name(struct proto *p);
 static void channel_init_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf);
 static void channel_update_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf);
 static void channel_reset_limit(struct channel *c, struct limit *l, int dir);
-static int channel_refeed_prefilter(const struct rt_prefilter *p, const net_addr *n);
-static int channel_import_prefilter(const struct rt_prefilter *p, const net_addr *n);
-static void channel_feed_end(struct channel *c);
 static void channel_stop_export(struct channel *c);
-static void channel_export_stopped(struct rt_export_request *req);
-static void channel_refeed_stopped(struct rt_export_request *req);
 static void channel_check_stopped(struct channel *c);
-static void channel_reload_in_done(struct channel_import_request *cir);
-static void channel_request_partial_reload(struct channel *c, struct channel_import_request *cir);
+static inline void channel_reimport(struct channel *c, struct rt_feeding_request *rfr)
+{
+  rt_export_refeed(&c->reimporter, rfr);
+  ev_send(proto_event_list(c->proto), &c->reimport_event);
+}
+
+static inline void channel_refeed(struct channel *c, struct rt_feeding_request *rfr)
+{
+  rt_export_refeed(&c->out_req, rfr);
+}
 
 static inline int proto_is_done(struct proto *p)
 { return (p->proto_state == PS_DOWN) && proto_is_inactive(p); }
@@ -79,49 +82,35 @@ channel_log_state_change(struct channel *c)
   CD(c, "State changed to %s", c_states[c->channel_state]);
 }
 
-void
+static void
 channel_import_log_state_change(struct rt_import_request *req, u8 state)
 {
   SKIP_BACK_DECLARE(struct channel, c, in_req, req);
   CD(c, "Channel import state changed to %s", rt_import_state_name(state));
 }
 
-void
-channel_export_log_state_change(struct rt_export_request *req, u8 state)
+static void
+channel_export_fed(struct rt_export_request *req)
 {
   SKIP_BACK_DECLARE(struct channel, c, out_req, req);
-  CD(c, "Channel export state changed to %s", rt_export_state_name(state));
 
-  switch (state)
+  struct limit *l = &c->out_limit;
+  if ((c->limit_active & (1 << PLD_OUT)) && (l->count <= l->max))
   {
-    case TES_FEEDING:
-      if (c->proto->feed_begin)
-	c->proto->feed_begin(c);
-      break;
-    case TES_READY:
-      channel_feed_end(c);
-      break;
+    c->limit_active &= ~(1 << PLD_OUT);
+    channel_request_full_refeed(c);
   }
+  else
+    CALL(c->proto->export_fed, c);
 }
 
 void
-channel_refeed_log_state_change(struct rt_export_request *req, u8 state)
+channel_request_full_refeed(struct channel *c)
 {
-  SKIP_BACK_DECLARE(struct channel, c, refeed_req, req);
-  CD(c, "Channel export state changed to %s", rt_export_state_name(state));
-
-  switch (state)
-  {
-    case TES_FEEDING:
-      if (c->proto->feed_begin)
-	c->proto->feed_begin(c);
-      break;
-    case TES_READY:
-      rt_stop_export(req, channel_refeed_stopped);
-      break;
-  }
+  rt_export_refeed(&c->out_req, NULL);
+  bmap_reset(&c->export_accepted_map, 16);
+  bmap_reset(&c->export_rejected_map, 16);
 }
-
 
 static void
 channel_dump_import_req(struct rt_import_request *req)
@@ -135,39 +124,6 @@ channel_dump_export_req(struct rt_export_request *req)
 {
   SKIP_BACK_DECLARE(struct channel, c, out_req, req);
   debug("  Channel %s.%s export request %p\n", c->proto->name, c->name, req);
-}
-
-static void
-channel_dump_refeed_req(struct rt_export_request *req)
-{
-  SKIP_BACK_DECLARE(struct channel, c, refeed_req, req);
-  debug("  Channel %s.%s refeed request %p\n", c->proto->name, c->name, req);
-}
-
-
-static void
-channel_rpe_mark_seen_export(struct rt_export_request *req, struct rt_pending_export *rpe)
-{
-  channel_rpe_mark_seen(SKIP_BACK(struct channel, out_req, req), rpe);
-}
-
-static void
-channel_rpe_mark_seen_refeed(struct rt_export_request *req, struct rt_pending_export *rpe)
-{
-  channel_rpe_mark_seen(SKIP_BACK(struct channel, refeed_req, req), rpe);
-}
-
-
-struct channel *
-channel_from_export_request(struct rt_export_request *req)
-{
-  if (req->dump_req == channel_dump_export_req)
-    return SKIP_BACK(struct channel, out_req, req);
-
-  if (req->dump_req == channel_dump_refeed_req)
-    return SKIP_BACK(struct channel, refeed_req, req);
-
-  bug("Garbled channel export request");
 }
 
 
@@ -266,8 +222,6 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->in_filter = cf->in_filter;
   c->out_filter = cf->out_filter;
   c->out_subprefix = cf->out_subprefix;
-
-  c->feed_block_size = cf->feed_block_size;
 
   channel_init_limit(c, &c->rx_limit, PLD_RX, &cf->rx_limit);
   channel_init_limit(c, &c->in_limit, PLD_IN, &cf->in_limit);
@@ -438,42 +392,21 @@ struct roa_subscription {
   struct settle settle;
   struct channel *c;
   rtable *tab;
-  struct rt_export_request req;
+  struct rt_export_request reader;
+  event update_event;
   struct f_trie *trie;
+  void (*refeed_hook)(struct channel *, struct rt_feeding_request *);
 };
 
 static void
-channel_roa_in_reload_done(struct channel_import_request *req)
+channel_roa_reload_done(struct rt_feeding_request *req)
 {
-  rfree(req->trie->lp);
+  rfree(req->prefilter.trie->lp);
+  /* FIXME: this should reset import/export filters if ACTION BLOCK */
 }
 
 static void
-channel_roa_in_changed(struct settle *se)
-{
-  SKIP_BACK_DECLARE(struct roa_subscription, s, settle, se);
-  struct channel *c = s->c;
-
-  CD(c, "Reload triggered by RPKI change");
-  struct channel_import_request *cir = lp_alloc(s->trie->lp, sizeof *cir);
-  *cir = (struct channel_import_request) {
-    .trie = s->trie,
-    .done = channel_roa_in_reload_done,
-  };
-
-  s->trie = f_new_trie(lp_new(c->proto->pool), 0);
-
-  channel_request_partial_reload(c, cir);
-}
-
-static void
-channel_roa_out_reload_done(struct channel_feeding_request *req)
-{
-  rfree(req->trie->lp);
-}
-
-static void
-channel_roa_out_changed(struct settle *se)
+channel_roa_changed(struct settle *se)
 {
   SKIP_BACK_DECLARE(struct roa_subscription, s, settle, se);
   struct channel *c = s->c;
@@ -481,25 +414,25 @@ channel_roa_out_changed(struct settle *se)
   CD(c, "Feeding triggered by RPKI change");
 
   /* Setup feeding request */
-  struct channel_feeding_request *cfr = lp_alloc(s->trie->lp, sizeof *cfr);
-  *cfr = (struct channel_feeding_request) {
-    .type = CFRT_AUXILIARY,
-    .trie = s->trie,
-    .done = channel_roa_out_reload_done,
+  struct rt_feeding_request *rfr = lp_alloc(s->trie->lp, sizeof *rfr);
+  *rfr = (struct rt_feeding_request) {
+    .prefilter = {
+      .mode = TE_ADDR_TRIE,
+      .trie = s->trie,
+    },
+    .done = channel_roa_reload_done,
   };
 
   /* Prepare new trie */
   s->trie = f_new_trie(lp_new(c->proto->pool), 0);
 
   /* Actually request the feed */
-  channel_request_feeding(c, cfr);
+  s->refeed_hook(c, rfr);
 }
 
 static void
-channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struct rt_pending_export *first)
+channel_roa_update_net(struct roa_subscription *s, const net_addr *net)
 {
-  SKIP_BACK_DECLARE(struct roa_subscription, s, req, req);
-
   switch (net->type)
   {
     case NET_ROA4:
@@ -513,33 +446,59 @@ channel_export_one_roa(struct rt_export_request *req, const net_addr *net, struc
   }
 
   settle_kick(&s->settle, s->c->proto->loop);
+}
 
-  rpe_mark_seen_all(req->hook, first, NULL, NULL);
+static void
+channel_roa_update(void *_s)
+{
+  struct roa_subscription *s = _s;
+
+  RT_EXPORT_WALK(&s->reader, u)
+    switch (u->kind)
+    {
+      case RT_EXPORT_STOP:
+	bug("Main table export stopped");
+	break;
+
+      case RT_EXPORT_FEED:
+	if (u->feed->count_routes)
+	  channel_roa_update_net(s, u->feed->block[0].net);
+	break;
+
+      case RT_EXPORT_UPDATE:
+	/* Only switched ROA from one source to another */
+	if (!u->update->new || !u->update->old)
+	  channel_roa_update_net(s, u->update->new ? u->update->new->net : u->update->old->net);
+	break;
+
+    }
+}
+
+static inline void (*channel_roa_reload_hook(int dir))(struct channel *, struct rt_feeding_request *)
+{
+  return dir ? channel_reimport : channel_refeed;
 }
 
 static void
 channel_dump_roa_req(struct rt_export_request *req)
 {
-  SKIP_BACK_DECLARE(struct roa_subscription, s, req, req);
+  SKIP_BACK_DECLARE(struct roa_subscription, s, reader, req);
   struct channel *c = s->c;
 
   debug("  Channel %s.%s ROA %s change notifier request %p\n",
       c->proto->name, c->name,
-      (s->settle.hook == channel_roa_in_changed) ? "import" : "export",
+      (s->refeed_hook == channel_roa_reload_hook(1)) ? "import" : "export",
       req);
 }
 
 static int
 channel_roa_is_subscribed(struct channel *c, rtable *tab, int dir)
 {
-  void (*hook)(struct settle *) =
-    dir ? channel_roa_in_changed : channel_roa_out_changed;
-
   struct roa_subscription *s;
   node *n;
 
   WALK_LIST2(s, n, c->roa_subscriptions, roa_node)
-    if ((tab == s->tab) && (s->settle.hook == hook))
+    if ((tab == s->tab) && (s->refeed_hook == channel_roa_reload_hook(dir)))
       return 1;
 
   return 0;
@@ -554,44 +513,50 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
   struct roa_subscription *s = mb_allocz(c->proto->pool, sizeof(struct roa_subscription));
 
   *s = (struct roa_subscription) {
-    .settle = SETTLE_INIT(&c->roa_settle, dir ? channel_roa_in_changed : channel_roa_out_changed, NULL),
+    .settle = SETTLE_INIT(&c->roa_settle, channel_roa_changed, NULL),
+    .refeed_hook = channel_roa_reload_hook(dir),
     .c = c,
     .trie = f_new_trie(lp_new(c->proto->pool), 0),
     .tab = tab,
-    .req = {
+    .update_event = {
+      .hook = channel_roa_update,
+      .data = s,
+    },
+    .reader = {
       .name = mb_sprintf(c->proto->pool, "%s.%s.roa-%s.%s",
 	  c->proto->name, c->name, dir ? "in" : "out", tab->name),
-      .list = proto_work_list(c->proto),
+      .r = {
+	.target = proto_work_list(c->proto),
+	.event = &s->update_event,
+      },
       .pool = c->proto->pool,
       .trace_routes = c->debug | c->proto->debug,
-      .dump_req = channel_dump_roa_req,
-      .export_one = channel_export_one_roa,
+      .dump = channel_dump_roa_req,
     },
   };
 
   add_tail(&c->roa_subscriptions, &s->roa_node);
-  rt_request_export(tab, &s->req);
-}
-
-static void
-channel_roa_unsubscribed(struct rt_export_request *req)
-{
-  SKIP_BACK_DECLARE(struct roa_subscription, s, req, req);
-  struct channel *c = s->c;
-
-  rem_node(&s->roa_node);
-  mb_free(s);
-  
-  channel_check_stopped(c);
+  rt_export_subscribe(tab, best, &s->reader);
 }
 
 static void
 channel_roa_unsubscribe(struct roa_subscription *s)
 {
-  rfree(s->trie->lp);
-  rt_stop_export(&s->req, channel_roa_unsubscribed);
+  struct channel *c = s->c;
+
+  rt_export_unsubscribe(best, &s->reader);
   settle_cancel(&s->settle);
   s->settle.hook = NULL;
+  ev_postpone(&s->update_event);
+
+  ASSERT_DIE(rt_export_get_state(&s->reader) == TES_DOWN);
+
+  rfree(s->trie->lp);
+
+  rem_node(&s->roa_node);
+  mb_free(s);
+  
+  channel_check_stopped(c);
 }
 
 static void
@@ -673,14 +638,15 @@ channel_start_import(struct channel *c)
   rt_request_import(c->table, &c->in_req);
 }
 
+void channel_notify_basic(void *);
+void channel_notify_accepted(void *);
+void channel_notify_merged(void *);
+
 static void
 channel_start_export(struct channel *c)
 {
-  if (c->out_req.hook)
-  {
-    log(L_WARN "%s.%s: Attempted to start channel's already started export", c->proto->name, c->name);
-    return;
-  }
+  if (rt_export_get_state(&c->out_req) != TES_DOWN)
+    bug("%s.%s: Attempted to start channel's already started export", c->proto->name, c->name);
 
   ASSERT(c->channel_state == CS_UP);
 
@@ -688,54 +654,53 @@ channel_start_export(struct channel *c)
 
   c->out_req = (struct rt_export_request) {
     .name = mb_sprintf(p, "%s.%s", c->proto->name, c->name),
-    .list = proto_work_list(c->proto),
+    .r = {
+      .target = proto_work_list(c->proto),
+      .event = &c->out_event,
+    },
     .pool = p,
-    .feed_block_size = c->feed_block_size,
-    .prefilter = {
+    .feeder.prefilter = {
       .mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
       .addr = c->out_subprefix,
     },
     .trace_routes = c->debug | c->proto->debug,
-    .dump_req = channel_dump_export_req,
-    .log_state_change = channel_export_log_state_change,
-    .mark_seen = channel_rpe_mark_seen_export,
+    .dump = channel_dump_export_req,
+    .fed = channel_export_fed,
   };
 
-  bmap_init(&c->export_map, p, 16);
-  bmap_init(&c->export_reject_map, p, 16);
-  bmap_init(&c->refeed_map, p, 16);
+  c->out_event = (event) {
+    .data = c,
+  };
+
+  bmap_init(&c->export_accepted_map, p, 16);
+  bmap_init(&c->export_rejected_map, p, 16);
 
   channel_reset_limit(c, &c->out_limit, PLD_OUT);
 
   memset(&c->export_stats, 0, sizeof(struct channel_export_stats));
 
+  DBG("%s.%s: Channel start export req=%p\n", c->proto->name, c->name, &c->out_req);
+
   switch (c->ra_mode) {
     case RA_OPTIMAL:
-      c->out_req.export_one = rt_notify_optimal;
+      c->out_event.hook = channel_notify_basic;
+      rt_export_subscribe(c->table, best, &c->out_req);
       break;
     case RA_ANY:
-      c->out_req.export_one = rt_notify_any;
-      c->out_req.export_bulk = rt_feed_any;
+      c->out_event.hook = channel_notify_basic;
+      rt_export_subscribe(c->table, all, &c->out_req);
       break;
     case RA_ACCEPTED:
-      c->out_req.export_bulk = rt_notify_accepted;
+      c->out_event.hook = channel_notify_accepted;
+      rt_export_subscribe(c->table, all, &c->out_req);
       break;
     case RA_MERGED:
-      c->out_req.export_bulk = rt_notify_merged;
+      c->out_event.hook = channel_notify_merged;
+      rt_export_subscribe(c->table, all, &c->out_req);
       break;
     default:
       bug("Unknown route announcement mode");
   }
-
-  c->refeed_req = c->out_req;
-  c->refeed_req.pool = rp_newf(c->proto->pool, c->proto->pool->domain, "Channel %s.%s export refeed", c->proto->name, c->name);
-  c->refeed_req.name = mb_sprintf(c->refeed_req.pool, "%s.%s.refeed", c->proto->name, c->name);
-  c->refeed_req.dump_req = channel_dump_refeed_req;
-  c->refeed_req.log_state_change = channel_refeed_log_state_change;
-  c->refeed_req.mark_seen = channel_rpe_mark_seen_refeed;
-
-  DBG("%s.%s: Channel start export req=%p\n", c->proto->name, c->name, &c->out_req);
-  rt_request_export(c->table, &c->out_req);
 }
 
 static void
@@ -744,16 +709,22 @@ channel_check_stopped(struct channel *c)
   switch (c->channel_state)
   {
     case CS_STOP:
-      if (c->obstacles || !EMPTY_LIST(c->roa_subscriptions) || c->out_req.hook || c->refeed_req.hook || c->in_req.hook || c->reload_req.hook)
+      if (c->obstacles || !EMPTY_LIST(c->roa_subscriptions) || c->in_req.hook)
 	return;
+
+      ASSERT_DIE(rt_export_get_state(&c->out_req) == TES_DOWN);
+      ASSERT_DIE(!rt_export_feed_active(&c->reimporter));
 
       channel_set_state(c, CS_DOWN);
       proto_send_event(c->proto, c->proto->event);
 
       break;
     case CS_PAUSE:
-      if (c->obstacles || !EMPTY_LIST(c->roa_subscriptions) || c->out_req.hook || c->refeed_req.hook || c->reload_req.hook)
+      if (c->obstacles || !EMPTY_LIST(c->roa_subscriptions))
 	return;
+
+      ASSERT_DIE(rt_export_get_state(&c->out_req) == TES_DOWN);
+      ASSERT_DIE(!rt_export_feed_active(&c->reimporter));
 
       channel_set_state(c, CS_START);
       break;
@@ -787,262 +758,56 @@ channel_import_stopped(struct rt_import_request *req)
 }
 
 static void
-channel_export_stopped(struct rt_export_request *req)
+channel_do_reload(void *_c)
 {
-  SKIP_BACK_DECLARE(struct channel, c, out_req, req);
+  struct channel *c = _c;
 
-  /* The hook has already stopped */
-  req->hook = NULL;
-
-  if (c->refeed_pending)
-  {
-    ASSERT_DIE(!c->refeeding);
-    c->refeeding = c->refeed_pending;
-    c->refeed_pending = NULL;
-
-    channel_reset_limit(c, &c->out_limit, PLD_OUT);
-
-    bmap_reset(&c->export_map, 16);
-    bmap_reset(&c->export_reject_map, 16);
-    bmap_reset(&c->refeed_map, 16);
-
-    rt_request_export(c->table, req);
-    return;
-  }
-
-  bmap_free(&c->export_map);
-  bmap_free(&c->export_reject_map);
-
-  c->out_req.name = NULL;
-  rfree(c->out_req.pool);
-
-  channel_check_stopped(c);
-}
-
-static void
-channel_refeed_stopped(struct rt_export_request *req)
-{
-  SKIP_BACK_DECLARE(struct channel, c, refeed_req, req);
-
-  req->hook = NULL;
-
-  channel_feed_end(c);
-  channel_check_stopped(c);
-}
-
-static void
-channel_init_feeding(struct channel *c)
-{
-  int no_trie = 0;
-
-  for (struct channel_feeding_request *cfrp = c->refeed_pending; cfrp; cfrp = cfrp->next)
-    if (cfrp->type == CFRT_DIRECT)
+  RT_FEED_WALK(&c->reimporter, f)
+    if (task_still_in_limit())
     {
-      /* Direct feeding requested? Restart the export by force. */
-      channel_stop_export(c);
+      for (uint i = 0; i < f->count_routes; i++)
+      {
+	rte *r = &f->block[i];
+
+	if (r->flags & REF_OBSOLETE)
+	  break;
+
+	if (r->sender == c->in_req.hook)
+	{
+	  /* Strip the table-specific information */
+	  rte new = rte_init_from(r);
+
+	  /* Strip the later attribute layers */
+	  new.attrs = ea_strip_to(new.attrs, BIT32_ALL(EALS_PREIMPORT));
+
+	  /* And reload the route */
+	  rte_update(c, r->net, &new, new.src);
+	}
+      }
+
+      /* Local data needed no more */
+      tmp_flush();
+    }
+    else
+    {
+      ev_send(proto_work_list(c->proto), &c->reimport_event);
       return;
     }
-    else if (!cfrp->trie)
-      no_trie = 1;
-
-  /* No direct feeding, running auxiliary refeed. */
-  c->refeeding = c->refeed_pending;
-  c->refeed_pending = NULL;
-  bmap_reset(&c->refeed_map, 16);
-
-  if (no_trie)
-  {
-    c->refeed_req.prefilter.mode = TE_ADDR_NONE;
-    c->refeed_req.prefilter.hook = NULL;
-  }
-  else
-  {
-    c->refeed_req.prefilter.mode = TE_ADDR_HOOK;
-    c->refeed_req.prefilter.hook = channel_refeed_prefilter;
-  }
-
-  rt_request_export(c->table, &c->refeed_req);
-}
-
-static int
-channel_refeed_prefilter(const struct rt_prefilter *p, const net_addr *n)
-{
-  const struct channel *c =
-    SKIP_BACK(struct channel, refeed_req,
-	SKIP_BACK(struct rt_export_request, prefilter, p)
-	);
-
-  ASSERT_DIE(c->refeeding);
-  for (struct channel_feeding_request *cfr = c->refeeding; cfr; cfr = cfr->next)
-    if (!cfr->trie || trie_match_net(cfr->trie, n))
-      return 1;
-  return 0;
-}
-
-int
-channel_import_request_prefilter(struct channel_import_request *cir_head, const net_addr *n)
-{
-  for (struct channel_import_request *cir = cir_head; cir; cir = cir->next)
-  {
-    if (!cir->trie || trie_match_net(cir->trie, n))
-      return 1;
-  }
-  return 0;
-}
-
-static int
-channel_import_prefilter(const struct rt_prefilter *p, const net_addr *n)
-{
-  const struct channel *c =
-    SKIP_BACK(struct channel, reload_req,
-	SKIP_BACK(struct rt_export_request, prefilter, p)
-	);
-  ASSERT_DIE(c->importing);
-
-  return channel_import_request_prefilter(c->importing, n);
-}
-
-static void
-channel_feed_end(struct channel *c)
-{
-  /* Reset export limit if the feed ended with acceptable number of exported routes */
-  struct limit *l = &c->out_limit;
-  if (c->refeeding &&
-      (c->limit_active & (1 << PLD_OUT)) &&
-      (l->count <= l->max))
-  {
-    log(L_INFO "Protocol %s resets route export limit (%u)", c->proto->name, l->max);
-    c->limit_active &= ~(1 << PLD_OUT);
-
-    /* Queue the same refeed batch back into pending */
-    struct channel_feeding_request **ptr = &c->refeed_pending;
-    while (*ptr)
-      ptr = &((*ptr)->next);
-
-    *ptr = c->refeeding;
-
-    /* Mark the requests to be redone */
-    for (struct channel_feeding_request *cfr = c->refeeding; cfr; cfr = cfr->next)
-      cfr->state = CFRS_PENDING;
-
-    c->refeeding = NULL;
-  }
-
-  /* Inform the protocol about the feed ending */
-  CALL(c->proto->feed_end, c);
-
-  /* Free the dynamic feeding requests */
-  for (struct channel_feeding_request *cfr = c->refeeding, *next = cfr ? cfr->next : NULL;
-      cfr;
-      (cfr = next), (next = next ? next->next : NULL))
-    CALL(cfr->done, cfr);
-
-  /* Drop the refeed batch */
-  c->refeeding = NULL;
-
-  /* Run the pending batch */
-  if (c->refeed_pending)
-    channel_init_feeding(c);
-}
-
-/* Called by protocol for reload from in_table */
-void
-channel_schedule_reload(struct channel *c, struct channel_import_request *cir)
-{
-  ASSERT(c->in_req.hook);
-  int no_trie = 0;
-  if (cir)
-  {
-    cir->next = c->import_pending;
-    c->import_pending = cir;
-  }
-
-  if (c->reload_req.hook)
-  {
-    CD(c, "Reload triggered before the previous one has finished");
-    c->reload_pending = 1;
-    return;
-  }
-
-  /* If there is any full-reload request, we can disregard all partials */
-  for (struct channel_import_request *last = cir; last && no_trie==0;)
-  {
-    if (!last->trie)
-      no_trie = 1;
-     last = last->next;
-  }
-
-  /* activating pending imports */
-  c->importing = c->import_pending;
-  c->import_pending = NULL;
-
-  if (no_trie)
-  {
-    c->reload_req.prefilter.mode = TE_ADDR_NONE;
-    c->reload_req.prefilter.hook = NULL;
-  }
-  else
-  {
-    c->reload_req.prefilter.mode = TE_ADDR_HOOK;
-    c->reload_req.prefilter.hook = channel_import_prefilter;
-  }
-
-  rt_request_export(c->table, &c->reload_req);
-}
-
-static void
-channel_reload_stopped(struct rt_export_request *req)
-{
-  SKIP_BACK_DECLARE(struct channel, c, reload_req, req);
-
-  req->hook = NULL;
-
-  /* Restart reload */
-  if (c->reload_pending)
-  {
-    c->reload_pending = 0;
-    channel_request_reload(c);
-  }
-
-  if (c->channel_state != CS_UP)
-    channel_check_stopped(c);
-}
-
-static void
-channel_reload_log_state_change(struct rt_export_request *req, u8 state)
-{
-  SKIP_BACK_DECLARE(struct channel, c, reload_req, req);
-
-  if (state == TES_READY)
-  {
-    if (c->channel_state == CS_UP)
-      rt_refresh_end(&c->in_req);
-
-    rt_stop_export(req, channel_reload_stopped);
-  }
-}
-
-static void
-channel_reload_dump_req(struct rt_export_request *req)
-{
-  SKIP_BACK_DECLARE(struct channel, c, reload_req, req);
-  debug("  Channel %s.%s import reload request %p\n", c->proto->name, c->name, req);
 }
 
 /* Called by protocol to activate in_table */
 static void
 channel_setup_in_table(struct channel *c)
 {
-  c->reload_req = (struct rt_export_request) {
-    .name = mb_sprintf(c->proto->pool, "%s.%s.import", c->proto->name, c->name),
-    .list = proto_work_list(c->proto),
-    .pool = c->proto->pool,
-    .feed_block_size = c->feed_block_size,
-    .trace_routes = c->debug | c->proto->debug,
-    .export_bulk = channel_reload_export_bulk,
-    .dump_req = channel_reload_dump_req,
-    .log_state_change = channel_reload_log_state_change,
+  c->reimporter = (struct rt_export_feeder) {
+    .name = mb_sprintf(c->proto->pool, "%s.%s.reimport", c->proto->name, c->name),
+    .trace_routes = c->debug,
   };
+  c->reimport_event = (event) {
+    .hook = channel_do_reload,
+    .data = c,
+  };
+  rt_feeder_subscribe(&c->table->export_all, &c->reimporter);
 }
 
 
@@ -1076,14 +841,7 @@ channel_do_pause(struct channel *c)
   /* Drop ROA subscriptions */
   channel_roa_unsubscribe_all(c);
 
-  /* Need to abort feeding */
-  c->reload_pending = 0;
-
-  if (c->reload_req.hook && atomic_load_explicit(&c->reload_req.hook->export_state, memory_order_acquire) != TES_STOP)
-    rt_stop_export(&c->reload_req, channel_reload_stopped);
-
   /* Stop export */
-  c->refeed_pending = 0;
   channel_stop_export(c);
 }
 
@@ -1093,6 +851,9 @@ channel_do_stop(struct channel *c)
   /* Stop import */
   if (c->in_req.hook)
     rt_stop_import(&c->in_req, channel_import_stopped);
+
+  /* Need to abort reimports as well */
+  rt_feeder_unsubscribe(&c->reimporter);
 
   c->gr_wait = 0;
   if (c->gr_lock)
@@ -1105,7 +866,7 @@ channel_do_stop(struct channel *c)
 static void
 channel_do_down(struct channel *c)
 {
-  ASSERT(!c->reload_req.hook);
+  ASSERT_DIE(!rt_export_feed_active(&c->reimporter));
 
   c->proto->active_channels--;
 
@@ -1186,93 +947,50 @@ channel_set_state(struct channel *c, uint state)
   channel_log_state_change(c);
 }
 
-/**
- * channel_request_feeding - request feeding routes to the channel
- * @c: given channel
- *
- * Sometimes it is needed to send again all routes to the channel. This is
- * called feeding and can be requested by this function. This would cause
- * channel export state transition to ES_FEEDING (during feeding) and when
- * completed, it will switch back to ES_READY. This function can be called
- * even when feeding is already running, in that case it is restarted.
- */
-void
-channel_request_feeding(struct channel *c, struct channel_feeding_request *cfr)
-{
-  CD(c, "Feeding requested (%s)",
-      cfr->type == CFRT_DIRECT ? "direct" :
-      (cfr->trie ? "partial" : "auxiliary"));
-
-  /* Enqueue the request */
-  cfr->next = c->refeed_pending;
-  c->refeed_pending = cfr;
-
-  /* Initialize refeeds unless already refeeding */
-  if (!c->refeeding)
-    channel_init_feeding(c);
-}
-
-static void
-channel_feeding_request_done_dynamic(struct channel_feeding_request *req)
-{
-  mb_free(req);
-}
-
-void
-channel_request_feeding_dynamic(struct channel *c, enum channel_feeding_request_type type)
-{
-  struct channel_feeding_request *req = mb_alloc(c->proto->pool, sizeof *req);
-  *req = (struct channel_feeding_request) {
-    .type = type,
-    .done = channel_feeding_request_done_dynamic,
-  };
-
-  channel_request_feeding(c, req);
-}
-
 static void
 channel_stop_export(struct channel *c)
 {
-  if (c->refeed_req.hook && (atomic_load_explicit(&c->refeed_req.hook->export_state, memory_order_acquire) != TES_STOP))
-    rt_stop_export(&c->refeed_req, channel_refeed_stopped);
+  switch (rt_export_get_state(&c->out_req))
+  {
+    case TES_FEEDING:
+    case TES_PARTIAL:
+    case TES_READY:
+      if (c->ra_mode == RA_OPTIMAL)
+	rt_export_unsubscribe(best, &c->out_req);
+      else
+	rt_export_unsubscribe(all, &c->out_req);
 
-  if (c->out_req.hook && (atomic_load_explicit(&c->out_req.hook->export_state, memory_order_acquire) != TES_STOP))
-    rt_stop_export(&c->out_req, channel_export_stopped);
-}
+      bmap_free(&c->export_accepted_map);
+      bmap_free(&c->export_rejected_map);
 
-static void
-channel_import_request_done_dynamic(struct channel_import_request *req)
-{
-  mb_free(req);
+      c->out_req.name = NULL;
+      rfree(c->out_req.pool);
+
+      channel_check_stopped(c);
+      break;
+
+    case TES_DOWN:
+      break;
+
+    case TES_STOP:
+    case TES_MAX:
+      bug("Impossible export state");
+  }
 }
 
 void
-channel_request_reload(struct channel *c)
+channel_request_reload(struct channel *c, struct rt_feeding_request *cir)
 {
   ASSERT(c->in_req.hook);
   ASSERT(channel_reloadable(c));
 
-  CD(c, "Reload requested");
-  struct channel_import_request* cir = mb_alloc(c->proto->pool, sizeof *cir);
-  cir->trie = NULL;
-  cir->done = channel_import_request_done_dynamic;
+  if (cir)
+    CD(c, "Partial import reload requested");
+  else
+    CD(c, "Full import reload requested");
 
   if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
-    channel_schedule_reload(c, cir);
-  else if (! c->proto->reload_routes(c, cir))
-    bug("Channel %s.%s refused full import reload.", c->proto->name, c->name);
-}
-
-static void
-channel_request_partial_reload(struct channel *c, struct channel_import_request *cir)
-{
-  ASSERT(c->in_req.hook);
-  ASSERT(channel_reloadable(c));
-
-  CD(c, "Partial import reload requested");
-
-  if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
-    channel_schedule_reload(c, cir);
+    channel_reimport(c, cir);
   else if (! c->proto->reload_routes(c, cir))
     cli_msg(-15, "%s.%s: partial reload refused, please run full reload instead", c->proto->name, c->name);
 }
@@ -1308,8 +1026,6 @@ channel_config_new(const struct channel_class *cc, const char *name, uint net_ty
   cf->parent = proto;
   cf->table = tab;
   cf->out_filter = FILTER_REJECT;
-
-  cf->feed_block_size = 16384;
 
   cf->net_type = net_type;
   cf->ra_mode = RA_OPTIMAL;
@@ -1401,7 +1117,7 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   // c->ra_mode = cf->ra_mode;
   c->merge_limit = cf->merge_limit;
   c->preference = cf->preference;
-  c->out_req.prefilter.addr = c->out_subprefix = cf->out_subprefix;
+  c->out_req.feeder.prefilter.addr = c->out_subprefix = cf->out_subprefix;
   c->debug = cf->debug;
   c->in_req.trace_routes = c->out_req.trace_routes = c->debug | c->proto->debug;
   c->rpki_reload = cf->rpki_reload;
@@ -1461,10 +1177,10 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
     log(L_INFO "Reloading channel %s.%s", c->proto->name, c->name);
 
   if (import_changed)
-    channel_request_reload(c);
+    channel_request_reload(c, NULL);
 
   if (export_changed)
-    channel_request_feeding_dynamic(c, CFRT_AUXILIARY);
+    channel_request_full_refeed(c);
 
 done:
   CD(c, "Reconfigured");
@@ -2284,7 +2000,7 @@ protos_dump_all(void)
 	debug("\tOutput filter: %s\n", filter_name(c->out_filter));
       debug("\tChannel state: %s/%s/%s\n", c_states[c->channel_state],
 	  c->in_req.hook ? rt_import_state_name(rt_import_get_state(c->in_req.hook)) : "-",
-	  c->out_req.hook ? rt_export_state_name(rt_export_get_state(c->out_req.hook)) : "-");
+	  rt_export_state_name(rt_export_get_state(&c->out_req)));
     }
 
     debug("\tSOURCES\n");
@@ -2693,7 +2409,7 @@ channel_show_stats(struct channel *c)
   struct channel_import_stats *ch_is = &c->import_stats;
   struct channel_export_stats *ch_es = &c->export_stats;
   struct rt_import_stats *rt_is = c->in_req.hook ? &c->in_req.hook->stats : NULL;
-  struct rt_export_stats *rt_es = c->out_req.hook ? &c->out_req.hook->stats : NULL;
+  struct rt_export_stats *rt_es = &c->out_req.stats;
 
 #define SON(ie, item)	((ie) ? (ie)->item : 0)
 #define SCI(item) SON(ch_is, item)
@@ -2750,7 +2466,7 @@ channel_show_info(struct channel *c)
   cli_msg(-1006, "  Channel %s", c->name);
   cli_msg(-1006, "    State:          %s", c_states[c->channel_state]);
   cli_msg(-1006, "    Import state:   %s", rt_import_state_name(rt_import_get_state(c->in_req.hook)));
-  cli_msg(-1006, "    Export state:   %s", rt_export_state_name(rt_export_get_state(c->out_req.hook)));
+  cli_msg(-1006, "    Export state:   %s", rt_export_state_name(rt_export_get_state(&c->out_req)));
   cli_msg(-1006, "    Table:          %s", c->table->name);
   cli_msg(-1006, "    Preference:     %d", c->preference);
   cli_msg(-1006, "    Input filter:   %s", filter_name(c->in_filter));
@@ -2877,30 +2593,42 @@ proto_cmd_restart(struct proto *p, uintptr_t arg, int cnt UNUSED)
   cli_msg(-12, "%s: restarted", p->name);
 }
 
-struct channel_cmd_reload_feeding_request {
-  struct channel_feeding_request cfr;
-  struct proto_reload_request *prr;
-};
-
-struct channel_cmd_reload_import_request {
-  struct channel_import_request cir;
+struct channel_cmd_reload_request {
+  struct rt_feeding_request cfr;
   struct proto_reload_request *prr;
 };
 
 static void
-channel_reload_out_done(struct channel_feeding_request *cfr)
+channel_reload_done(struct rt_feeding_request *cfr)
 {
-  SKIP_BACK_DECLARE(struct channel_cmd_reload_feeding_request, ccrfr, cfr, cfr);
+  SKIP_BACK_DECLARE(struct channel_cmd_reload_request, ccrfr, cfr, cfr);
   if (atomic_fetch_sub_explicit(&ccrfr->prr->counter, 1, memory_order_acq_rel) == 1)
     ev_send_loop(&main_birdloop, &ccrfr->prr->ev);
 }
 
-static void
-channel_reload_in_done(struct channel_import_request *cir)
+static struct rt_feeding_request *
+channel_create_reload_request(struct proto_reload_request *prr)
 {
-  SKIP_BACK_DECLARE(struct channel_cmd_reload_import_request, ccrir, cir, cir);
-  if (atomic_fetch_sub_explicit(&ccrir->prr->counter, 1, memory_order_acq_rel) == 1)
-    ev_send_loop(&main_birdloop, &ccrir->prr->ev);
+  if (!prr->trie)
+    return NULL;
+  
+  /* Increase the refeed counter */
+  atomic_fetch_add_explicit(&prr->counter, 1, memory_order_relaxed);
+  ASSERT_DIE(this_cli->parser_pool != prr->trie->lp);
+
+  struct channel_cmd_reload_request *req = lp_alloc(prr->trie->lp, sizeof *req);
+  *req = (struct channel_cmd_reload_request) {
+    .cfr = {
+      .done = channel_reload_done,
+      .prefilter = {
+	.mode = TE_ADDR_TRIE,
+	.trie = prr->trie,
+      },
+    },
+      .prr = prr,
+  };
+
+  return &req->cfr;
 }
 
 void
@@ -2930,56 +2658,15 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
   log(L_INFO "Reloading protocol %s", p->name);
 
   /* re-importing routes */
-  if (prr->dir != CMD_RELOAD_OUT)
-    WALK_LIST(c, p->channels)
-      if (c->channel_state == CS_UP)
-      {
-        if (prr->trie)
-	{
-	  /* Increase the refeed counter */
-	  atomic_fetch_add_explicit(&prr->counter, 1, memory_order_relaxed);
-	  ASSERT_DIE(this_cli->parser_pool != prr->trie->lp);
+  WALK_LIST(c, p->channels)
+    if (c->channel_state == CS_UP)
+    {
+      if (prr->dir & CMD_RELOAD_IN)
+	channel_request_reload(c, channel_create_reload_request(prr));
 
-	  struct channel_cmd_reload_import_request *req = lp_alloc(prr->trie->lp, sizeof *req);
-	  *req = (struct channel_cmd_reload_import_request) {
-	    .cir = {
-	      .done = channel_reload_in_done,
-	      .trie = prr->trie,
-	    },
-	    .prr = prr,
-	  };
-	  channel_request_partial_reload(c, &req->cir);
-        }
-        else
-	  channel_request_reload(c);
-      }
-
-  /* re-exporting routes */
-  if (prr->dir != CMD_RELOAD_IN)
-    WALK_LIST(c, p->channels)
-      if ((c->channel_state == CS_UP) && (c->out_req.hook))
-        if (prr->trie)
-	{
-	  /* Increase the refeed counter */
-	  atomic_fetch_add_explicit(&prr->counter, 1, memory_order_relaxed);
-	  ASSERT_DIE(this_cli->parser_pool != prr->trie->lp);
-
-	  /* Request actually the feeding */
-
-	  struct channel_cmd_reload_feeding_request *req = lp_alloc(prr->trie->lp, sizeof *req);
-	  *req = (struct channel_cmd_reload_feeding_request) {
-	    .cfr = {
-	      .type = CFRT_AUXILIARY,
-	      .done = channel_reload_out_done,
-	      .trie = prr->trie,
-	    },
-	    .prr = prr,
-	  };
-
-	  channel_request_feeding(c, &req->cfr);
-	}
-	else
-	  channel_request_feeding_dynamic(c, CFRT_AUXILIARY);
+      if (prr->dir & CMD_RELOAD_OUT)
+	rt_export_refeed(&c->out_req, channel_create_reload_request(prr));
+    }
 
   cli_msg(-15, "%s: reloading", p->name);
 }

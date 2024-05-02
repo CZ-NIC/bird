@@ -48,17 +48,9 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *
 {
   struct pipe_proto *p = (void *) P;
   struct channel *dst = (src_ch == p->pri) ? p->sec : p->pri;
-  uint *flags = (src_ch == p->pri) ? &p->sec_flags : &p->pri_flags;
 
   if (!new && !old)
     return;
-
-  /* Start the route refresh if requested to */
-  if (*flags & PIPE_FL_RR_BEGIN_PENDING)
-  {
-    *flags &= ~PIPE_FL_RR_BEGIN_PENDING;
-    rt_refresh_begin(&dst->in_req);
-  }
 
   if (new)
     {
@@ -96,70 +88,12 @@ pipe_preexport(struct channel *C, rte *e)
   return 0;
 }
 
-void
-pipe_import_by_refeed_free(struct channel_feeding_request *cfr)
-{
-  SKIP_BACK_DECLARE(struct import_to_export_reload, reload, cfr, cfr);
-  reload->cir->done(reload->cir);
-}
-
 static int
-pipe_reload_routes(struct channel *C, struct channel_import_request *cir)
+pipe_reload_routes(struct channel *C, struct rt_feeding_request *rfr)
 {
-  struct pipe_proto *p = (void *) C->proto;
-  if (cir->trie)
-  {
-    struct import_to_export_reload *reload = lp_alloc(cir->trie->lp, sizeof *reload);
-    *reload = (struct import_to_export_reload) {
-      .cir = cir,
-      .cfr = {
-	      .type = CFRT_AUXILIARY,
-	      .done = pipe_import_by_refeed_free,
-	      .trie = cir->trie,
-	    },
-    };
-    channel_request_feeding((C == p->pri) ? p->sec : p->pri, &reload->cfr);
-  }
-  else
-  {
-    /* Route reload on one channel is just refeed on the other */
-    channel_request_feeding_dynamic((C == p->pri) ? p->sec : p->pri, CFRT_DIRECT);
-    cir->done(cir);
-  }
+  SKIP_BACK_DECLARE(struct pipe_proto, p, p, C->proto);
+  rt_export_refeed(&((C == p->pri) ? p->sec : p->pri)->out_req, rfr);
   return 1;
-}
-
-static void
-pipe_feed_begin(struct channel *C)
-{
-  if (!C->refeeding || C->refeed_req.hook)
-    return;
-
-  struct pipe_proto *p = (void *) C->proto;
-  uint *flags = (C == p->pri) ? &p->sec_flags : &p->pri_flags;
-
-  *flags |= PIPE_FL_RR_BEGIN_PENDING;
-}
-
-static void
-pipe_feed_end(struct channel *C)
-{
-  if (!C->refeeding || C->refeed_req.hook)
-    return;
-
-  struct pipe_proto *p = (void *) C->proto;
-  struct channel *dst = (C == p->pri) ? p->sec : p->pri;
-  uint *flags = (C == p->pri) ? &p->sec_flags : &p->pri_flags;
-
-  /* If not even started, start the RR now */
-  if (*flags & PIPE_FL_RR_BEGIN_PENDING)
-  {
-    *flags &= ~PIPE_FL_RR_BEGIN_PENDING;
-    rt_refresh_begin(&dst->in_req);
-  }
-
-  /* Finish RR always */
-  rt_refresh_end(&dst->in_req);
 }
 
 static void
@@ -239,8 +173,6 @@ pipe_init(struct proto_config *CF)
   P->rt_notify = pipe_rt_notify;
   P->preexport = pipe_preexport;
   P->reload_routes = pipe_reload_routes;
-  P->feed_begin = pipe_feed_begin;
-  P->feed_end = pipe_feed_end;
 
   p->rl_gen = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
 
@@ -281,9 +213,9 @@ pipe_show_stats(struct pipe_proto *p)
   struct channel_export_stats *s2e = &p->sec->export_stats;
 
   struct rt_import_stats *rs1i = p->pri->in_req.hook ? &p->pri->in_req.hook->stats : NULL;
-  struct rt_export_stats *rs1e = p->pri->out_req.hook ? &p->pri->out_req.hook->stats : NULL;
+  struct rt_export_stats *rs1e = &p->pri->out_req.stats;
   struct rt_import_stats *rs2i = p->sec->in_req.hook ? &p->sec->in_req.hook->stats : NULL;
-  struct rt_export_stats *rs2e = p->sec->out_req.hook ? &p->sec->out_req.hook->stats : NULL;
+  struct rt_export_stats *rs2e = &p->sec->out_req.stats;
 
   u32 pri_routes = p->pri->in_limit.count;
   u32 sec_routes = p->sec->in_limit.count;
@@ -334,8 +266,8 @@ pipe_show_proto_info(struct proto *P)
   cli_msg(-1006, "  Channel %s", "main");
   cli_msg(-1006, "    Table:          %s", p->pri->table->name);
   cli_msg(-1006, "    Peer table:     %s", p->sec->table->name);
-  cli_msg(-1006, "    Import state:   %s", rt_export_state_name(rt_export_get_state(p->sec->out_req.hook)));
-  cli_msg(-1006, "    Export state:   %s", rt_export_state_name(rt_export_get_state(p->pri->out_req.hook)));
+  cli_msg(-1006, "    Import state:   %s", rt_export_state_name(rt_export_get_state(&p->sec->out_req)));
+  cli_msg(-1006, "    Export state:   %s", rt_export_state_name(rt_export_get_state(&p->pri->out_req)));
   cli_msg(-1006, "    Import filter:  %s", filter_name(p->sec->out_filter));
   cli_msg(-1006, "    Export filter:  %s", filter_name(p->pri->out_filter));
 
