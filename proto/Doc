@@ -9,4 +9,5 @@ C radv
 C rip
 C rpki
 C static
+C export
 S ../nest/rt-dev.c
