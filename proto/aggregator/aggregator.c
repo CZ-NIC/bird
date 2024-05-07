@@ -350,7 +350,8 @@ aggregator_bucket_compare_wrapper(const void *a, const void *b)
 /*
  * Compute union of two sets of potential buckets in @left and @right and put result in @node
  */
-static void unionize_buckets(const struct trie_node *left, const struct trie_node *right, struct trie_node *node)
+static void
+compute_buckets_union(struct trie_node *node, const struct trie_node *left, const struct trie_node *right)
 {
   assert(left  != NULL);
   assert(right != NULL);
@@ -401,7 +402,7 @@ static void unionize_buckets(const struct trie_node *left, const struct trie_nod
  * Compute intersection of two sets of potential buckets in @left and @right and put result in @node
  */
 static void
-intersect_buckets(const struct trie_node *left, const struct trie_node *right, struct trie_node *node)
+compute_buckets_intersection(struct trie_node *node, const struct trie_node *left, const struct trie_node *right)
 {
   assert(left  != NULL);
   assert(right != NULL);
@@ -554,9 +555,9 @@ second_pass(struct trie_node *node)
   */
 
   if (bucket_sets_are_disjoint(left, right))
-    unionize_buckets(left, right, node);
+    compute_buckets_union(node, left, right);
   else
-    intersect_buckets(left, right, node);
+    compute_buckets_intersection(node, left, right);
 }
 
 /*
