@@ -168,15 +168,18 @@ const uint krt_max_metric = KRT_MAX_METRIC;
 int
 krt_capable(rte *e)
 {
-  rta *a = e->attrs;
+  ea_list *eattrs = e->attrs;
+  eattr *nhea = ea_find(eattrs, &ea_gen_nexthop);
+  struct nexthop_adata *nh = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
+  int dest = nhea_dest(nhea);
 
   return
-    ((a->dest == RTD_UNICAST && !a->nh.next) /* No multipath support */
+    ((dest == RTD_UNICAST && !NEXTHOP_ONE(nh)) /* No multipath support */
 #ifdef RTF_REJECT
-     || a->dest == RTD_UNREACHABLE
+     || dest == RTD_UNREACHABLE
 #endif
 #ifdef RTF_BLACKHOLE
-     || a->dest == RTD_BLACKHOLE
+     || dest == RTD_BLACKHOLE
 #endif
      );
 }
@@ -221,18 +224,22 @@ sockaddr_fill_dl(struct sockaddr_dl *sa, struct iface *ifa)
 }
 
 static int
-krt_send_route(struct krt_proto *p, int cmd, rte *e)
+krt_send_route(struct krt_proto *p, int cmd, const rte *e)
 {
-  net *net = e->net;
-  rta *a = e->attrs;
+  const net_addr *net = e->net;
+  ea_list *eattrs = e->attrs;
+  eattr *nhea = ea_find(eattrs, &ea_gen_nexthop);
+  struct nexthop_adata *nh = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
+  int dest = nhea_dest(nhea);
+
   static int msg_seq;
-  struct iface *j, *i = a->nh.iface;
+  struct iface *j, *i = (dest == RTD_UNICAST) ? nh->nh.iface : NULL;
   int l;
   struct ks_msg msg;
   char *body = (char *)msg.buf;
   sockaddr gate, mask, dst;
 
-  DBG("krt-sock: send %I/%d via %I\n", net->n.prefix, net->n.pxlen, a->gw);
+  DBG("krt-sock: send %N via %I\n", net, nh->nh.gw);
 
   bzero(&msg,sizeof (struct rt_msghdr));
   msg.rtm.rtm_version = RTM_VERSION;
@@ -242,7 +249,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
   msg.rtm.rtm_flags = RTF_UP | RTF_PROTO1;
 
   /* XXXX */
-  if (net_pxlen(net->n.addr) == net_max_prefix_length[net->n.addr->type])
+  if (net_pxlen(e->net) == net_max_prefix_length[net->type])
     msg.rtm.rtm_flags |= RTF_HOST;
   else
     msg.rtm.rtm_addrs |= RTA_NETMASK;
@@ -256,11 +263,11 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
 #endif
 
 #ifdef RTF_REJECT
-  if(a->dest == RTD_UNREACHABLE)
+  if(dest == RTD_UNREACHABLE)
     msg.rtm.rtm_flags |= RTF_REJECT;
 #endif
 #ifdef RTF_BLACKHOLE
-  if(a->dest == RTD_BLACKHOLE)
+  if(dest == RTD_BLACKHOLE)
     msg.rtm.rtm_flags |= RTF_BLACKHOLE;
 #endif
 
@@ -270,14 +277,17 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
    */
   if (!i)
   {
-    WALK_LIST(j, iface_list)
+    j = if_walk_first();
+    while (j)
     {
       if (j->flags & IF_LOOPBACK)
       {
         i = j;
         break;
       }
+      j = if_walk_next(j);
     }
+    if_walk_done();
 
     if (!i)
     {
@@ -288,7 +298,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
 
   int af = AF_UNSPEC;
 
-  switch (net->n.addr->type) {
+  switch (net->type) {
     case NET_IP4:
       af = AF_INET;
       break;
@@ -296,19 +306,19 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
       af = AF_INET6;
       break;
     default:
-      log(L_ERR "KRT: Not sending route %N to kernel", net->n.addr);
+      log(L_ERR "KRT: Not sending route %N to kernel", net);
       return -1;
   }
 
-  sockaddr_fill(&dst,  af, net_prefix(net->n.addr), NULL, 0);
-  sockaddr_fill(&mask, af, net_pxmask(net->n.addr), NULL, 0);
+  sockaddr_fill(&dst,  af, net_prefix(net), NULL, 0);
+  sockaddr_fill(&mask, af, net_pxmask(net), NULL, 0);
 
-  switch (a->dest)
+  switch (dest)
   {
   case RTD_UNICAST:
-    if (ipa_nonzero(a->nh.gw))
+    if (ipa_nonzero(nh->nh.gw))
     {
-      ip_addr gw = a->nh.gw;
+      ip_addr gw = nh->nh.gw;
 
       /* Embed interface ID to link-local address */
       if (ipa_is_link_local(gw))
@@ -319,6 +329,8 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
       msg.rtm.rtm_addrs |= RTA_GATEWAY;
       break;
     }
+
+    /* Fall through */
 
 #ifdef RTF_REJECT
   case RTD_UNREACHABLE:
@@ -331,7 +343,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
 
 #if __OpenBSD__
     /* Keeping temporarily old code for OpenBSD */
-    struct ifa *addr = (net->n.addr->type == NET_IP4) ? i->addr4 : (i->addr6 ?: i->llv6);
+    struct ifa *addr = (net->type == NET_IP4) ? i->addr4 : (i->addr6 ?: i->llv6);
 
     if (!addr)
     {
@@ -367,7 +379,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
   msg.rtm.rtm_msglen = l;
 
   if ((l = write(p->sys.sk->fd, (char *)&msg, l)) < 0) {
-    log(L_ERR "KRT: Error sending route %N to kernel: %m", net->n.addr);
+    log(L_ERR "KRT: Error sending route %N to kernel: %m", net);
     return -1;
   }
 
@@ -375,7 +387,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
 }
 
 void
-krt_replace_rte(struct krt_proto *p, net *n UNUSED, rte *new, rte *old)
+krt_replace_rte(struct krt_proto *p, const net_addr *n UNUSED, rte *new, const rte *old)
 {
   int err = 0;
 
@@ -426,8 +438,6 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   /* p is NULL iff KRT_SHARED_SOCKET and !scan */
 
   int ipv6;
-  rte *e;
-  net *net;
   sockaddr dst, gate, mask;
   ip_addr idst, igate, imask;
   net_addr ndst;
@@ -543,96 +553,92 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
     src = KRT_SRC_ALIEN;
   else
     src = KRT_SRC_KERNEL;
+  
+  union {
+    struct {
+      struct adata ad;
+      struct nexthop nh;
+      u32 labels[MPLS_MAX_LABEL_STACK];
+    };
+    struct nexthop_adata nhad;
+  } nhad = {};
 
-  net = net_get(p->p.main_channel->table, &ndst);
+  ea_list *eattrs = NULL;
 
-  rta a = {
-    .source = RTS_INHERIT,
-    .scope = SCOPE_UNIVERSE,
-  };
+  ea_set_attr_u32(&eattrs, &ea_gen_source, 0, RTS_INHERIT);
 
   /* reject/blackhole routes have also set RTF_GATEWAY,
      we wil check them first. */
 
 #ifdef RTF_REJECT
   if(flags & RTF_REJECT) {
-    a.dest = RTD_UNREACHABLE;
+    nhad.nhad = NEXTHOP_DEST_LITERAL(RTD_UNREACHABLE);
     goto done;
   }
 #endif
 
 #ifdef RTF_BLACKHOLE
   if(flags & RTF_BLACKHOLE) {
-    a.dest = RTD_BLACKHOLE;
+    nhad.nhad = NEXTHOP_DEST_LITERAL(RTD_BLACKHOLE);
     goto done;
   }
 #endif
 
-  a.nh.iface = if_find_by_index(msg->rtm.rtm_index);
-  if (!a.nh.iface)
+  nhad.nh.iface = if_find_by_index(msg->rtm.rtm_index);
+  if (!nhad.nh.iface)
     {
       log(L_ERR "KRT: Received route %N with unknown ifindex %u",
-	  net->n.addr, msg->rtm.rtm_index);
+	  &ndst, msg->rtm.rtm_index);
       return;
     }
 
-  a.dest = RTD_UNICAST;
   if (flags & RTF_GATEWAY)
   {
-    a.nh.gw = igate;
+    nhad.nh.gw = igate;
 
     /* Clean up embedded interface ID returned in link-local address */
-    if (ipa_is_link_local(a.nh.gw))
-      _I0(a.nh.gw) = 0xfe800000;
+    if (ipa_is_link_local(nhad.nh.gw))
+      _I0(nhad.nh.gw) = 0xfe800000;
 
     /* The BSD kernel does not support an onlink flag. We heuristically
        set the onlink flag, if the iface has only host addresses. */
-    if (krt_assume_onlink(a.nh.iface, ipv6))
-      a.nh.flags |= RNF_ONLINK;
+    if (krt_assume_onlink(nhad.nh.iface, ipv6))
+      nhad.nh.flags |= RNF_ONLINK;
 
     neighbor *nbr;
-    nbr = neigh_find(&p->p, a.nh.gw, a.nh.iface,
-		    (a.nh.flags & RNF_ONLINK) ? NEF_ONLINK : 0);
+    nbr = neigh_find(&p->p, nhad.nh.gw, nhad.nh.iface,
+		    (nhad.nh.flags & RNF_ONLINK) ? NEF_ONLINK : 0);
     if (!nbr || (nbr->scope == SCOPE_HOST))
       {
 	/* Ignore routes with next-hop 127.0.0.1, host routes with such
 	   next-hop appear on OpenBSD for address aliases. */
-        if (ipa_classify(a.nh.gw) == (IADDR_HOST | SCOPE_HOST))
+        if (ipa_classify(nhad.nh.gw) == (IADDR_HOST | SCOPE_HOST))
           return;
 
 	log(L_ERR "KRT: Received route %N with strange next-hop %I",
-	    net->n.addr, a.nh.gw);
+	    &ndst, nhad.nh.gw);
 	return;
       }
   }
 
+  nhad.ad.length = (void *) NEXTHOP_NEXT(&nhad.nh) - (void *) nhad.ad.data;
+
  done:
-  e = rte_get_temp(&a, p->p.main_source);
-  e->net = net;
+  ea_set_attr(&eattrs, EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, &nhad.ad));
+  rte e0 = { .attrs = eattrs, .net = &ndst, };
 
-  ea_list *ea = alloca(sizeof(ea_list) + 2 * sizeof(eattr));
-  *ea = (ea_list) { .count = 1, .next = e->attrs->eattrs };
-  e->attrs->eattrs = ea;
-
-  ea->attrs[0] = (eattr) {
-    .id = EA_KRT_SOURCE,
-    .type = EAF_TYPE_INT,
-    .u.data = src2,
-  };
+  ea_set_attr(&e0.attrs,
+      EA_LITERAL_EMBEDDED(&ea_krt_source, 0, src2));
 
 #ifdef KRT_USE_METRIC
-  ea->count++;
-  ea->attrs[1] = (eattr) {
-    .id = EA_KRT_METRIC,
-    .type = EAF_TYPE_INT,
-    .u.data = msg->rtm.rtm_priority,
-  };
+  ea_set_attr(&e0.attrs,
+      EA_LITERAL_EMBEDDED(&ea_krt_metric, 0, msg->rtm.rtm_priority));
 #endif
 
   if (scan)
-    krt_got_route(p, e, src);
+    krt_got_route(p, &e0, src);
   else
-    krt_got_route_async(p, e, new, src);
+    krt_got_route_async(p, &e0, new, src);
 }
 
 static void
@@ -868,6 +874,7 @@ krt_read_msg(struct proto *p, struct ks_msg *msg, int scan)
   {
     case RTM_GET:
       if(!scan) return;
+      /* Fall through */
     case RTM_ADD:
     case RTM_DELETE:
     case RTM_CHANGE:
@@ -1081,7 +1088,7 @@ krt_sock_open(pool *pool, void *data, int table_id UNUSED)
   sk->fd = fd;
   sk->data = data;
 
-  if (sk_open(sk) < 0)
+  if (sk_open(sk, &main_birdloop) < 0)
     bug("krt-sock: sk_open failed");
 
   return sk;
@@ -1111,7 +1118,7 @@ krt_sock_close_shared(void)
 
   if (!krt_sock_count)
   {
-    rfree(krt_sock);
+    sk_close(krt_sock);
     krt_sock = NULL;
   }
 }
@@ -1174,7 +1181,7 @@ krt_sys_shutdown(struct krt_proto *p)
 {
   krt_table_cf[(KRT_CF->sys.table_id)/32][!!(p->af == AF_INET6)] &= ~(1 << ((KRT_CF->sys.table_id)%32));
 
-  rfree(p->sys.sk);
+  sk_close(p->sys.sk);
   p->sys.sk = NULL;
 
   krt_buffer_release(&p->p);
@@ -1241,7 +1248,7 @@ kif_update_sysdep_addr(struct iface *i)
     return 0;
 
   ip4_addr old = i->sysdep;
-  i->sysdep = ipa_to_ip4(ipa_from_sa4((sockaddr *) &ifr.ifr_addr));
+  i->sysdep = ipa_to_ip4(ipa_from_sa4(&ifr.ifr_addr));
 
   return !ip4_equal(i->sysdep, old);
 }

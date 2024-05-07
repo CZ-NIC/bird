@@ -1,0 +1,55 @@
+/*
+ *	BIRD Internet Routing Daemon -- Semi-global index of nets
+ *
+ *	(c) 2023       Maria Matejka <mq@jmq.cz>
+ *
+ *	Can be freely distributed and used under the terms of the GNU GPL.
+ */
+
+#ifndef _BIRD_LIB_NETINDEX_H_
+#define _BIRD_LIB_NETINDEX_H_
+
+#include "lib/bitmap.h"
+#include "lib/hash.h"
+#include "lib/lockfree.h"
+#include "lib/net.h"
+#include "lib/resource.h"
+
+/* Index object */
+struct netindex {
+  struct netindex *next;	/* Next in hash chain */
+  u32 hash;			/* Cached hash value */
+  u32 index;			/* Assigned index */
+  struct lfuc uc;		/* Atomic usecount */
+  net_addr addr[0];		/* The net itself (one) */
+};
+
+/* Index hash: data structure completely opaque, use handlers */
+typedef union netindex_hash netindex_hash;
+
+/* Initialization */
+netindex_hash *netindex_hash_new(pool *);
+
+/* Find/get/resolve index and allocate its usecount to the given pool */
+struct netindex *net_find_index_persistent(netindex_hash *, const net_addr *, pool *);
+struct netindex *net_get_index_persistent(netindex_hash *, const net_addr *, pool *);
+struct netindex *net_resolve_index_persistent(netindex_hash *, u8, u32, pool *);
+
+/* Find/get/resolve index; pointer valid until end of task */ 
+static inline struct netindex *net_find_index(netindex_hash *h, const net_addr *n)
+{ return net_find_index_persistent(h, n, tmp_res.pool); }
+static inline struct netindex *net_get_index(netindex_hash *h, const net_addr *n)
+{ return net_get_index_persistent(h, n, tmp_res.pool); }
+static inline struct netindex *net_resolve_index(netindex_hash *h, u8 net_type, u32 index)
+{ return net_resolve_index_persistent(h, net_type, index, tmp_res.pool); }
+
+/* Update use-count without allocating a handle. Take same care
+ * to ensure that your locks and unlocks are always balanced. */
+void net_lock_index(netindex_hash *h, struct netindex *i);
+void net_unlock_index(netindex_hash *h, struct netindex *i);
+
+/* Retrieve the index from its addr pointer */
+#define NET_TO_INDEX(a) \
+  SKIP_BACK(struct netindex, addr, TYPE_CAST(net_addr *, net_addr (*)[0], a))
+
+#endif //_BIRD_LIB_NETINDEX_H_

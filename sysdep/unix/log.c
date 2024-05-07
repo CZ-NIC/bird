@@ -15,12 +15,11 @@
  * user's manual.
  */
 
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <time.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #include <errno.h>
 
@@ -31,34 +30,28 @@
 #include "lib/lists.h"
 #include "lib/socket.h"
 #include "sysdep/unix/unix.h"
+#include "sysdep/unix/io-loop.h"
 
-static int dbg_fd = -1;
-static FILE *dbgf;
-static list *current_log_list;
-static char *current_syslog_name; /* NULL -> syslog closed */
+static pool *log_pool;
 
+static struct rfile *dbg_rf;
+static char *current_syslog_name = NULL; /* NULL -> syslog closed */
 
-#ifdef USE_PTHREADS
+_Atomic uint max_thread_id = 1;
+_Thread_local uint this_thread_id;
 
 #include <pthread.h>
 
-static pthread_mutex_t log_mutex;
-static inline void log_lock(void) { pthread_mutex_lock(&log_mutex); }
-static inline void log_unlock(void) { pthread_mutex_unlock(&log_mutex); }
+static DOMAIN(logging) log_domain;
+#define log_lock()  LOCK_DOMAIN(logging, log_domain);
+#define log_unlock()  UNLOCK_DOMAIN(logging, log_domain);
 
-static pthread_t main_thread;
-void main_thread_init(void) { main_thread = pthread_self(); }
-static int main_thread_self(void) { return pthread_equal(pthread_self(), main_thread); }
+static struct log_channel * _Atomic global_logs;
 
-#else
+/* Logging flags to validly prepare logging messages */
 
-static inline void log_lock(void) {  }
-static inline void log_unlock(void) {  }
-void main_thread_init(void) { }
-static int main_thread_self(void) { return 1; }
-
-#endif
-
+static _Atomic uint logging_flags;
+static _Atomic uint logging_mask;
 
 #ifdef HAVE_SYSLOG_H
 #include <sys/syslog.h>
@@ -90,102 +83,85 @@ static char *class_names[] = {
   "BUG"
 };
 
-static inline off_t
-log_size(struct log_config *l)
+struct log_channel {
+  struct log_channel * _Atomic next;
+  const char *filename;			/* Log filename */
+  const char *backup;			/* Secondary filename (for log rotation) */
+  struct rfile * _Atomic rf;		/* File handle */
+  off_t limit;				/* Log size limit */
+  _Atomic uint mask;			/* Classes to log */
+  uint new_mask;			/* Pending new mask */
+  uint prepare;				/* Which message parts to prepare */
+  const char *udp_host;			/* UDP log dst host name */
+  ip_addr udp_ip;			/* UDP log dst IP address */
+  uint udp_port;			/* UDP log dst port */
+  sock * _Atomic udp_sk;		/* UDP socket */
+};
+
+struct log_thread_syncer {
+  struct bird_thread_syncer sync;
+  struct log_channel *lc_close;
+  struct rfile *rf_close;
+  sock *sk_close;
+  const char *name;
+  event lts_event;
+};
+
+static void
+lts_done(struct bird_thread_syncer *sync)
 {
-  struct stat st;
-  return (!fstat(rf_fileno(l->rf), &st) && S_ISREG(st.st_mode)) ? st.st_size : 0;
+  struct log_thread_syncer *lts = SKIP_BACK(struct log_thread_syncer, sync, sync);
+
+  log_lock();
+  if (lts->lc_close)
+  {
+    lts->rf_close = atomic_load_explicit(&lts->lc_close->rf, memory_order_relaxed);
+    lts->sk_close = atomic_load_explicit(&lts->lc_close->udp_sk, memory_order_relaxed);
+    mb_free(lts->lc_close);
+  }
+
+  if (lts->rf_close && lts->rf_close != &rf_stderr)
+    rfree(lts->rf_close);
+
+  if (lts->sk_close)
+    rfree(lts->sk_close);
+
+  mb_free(lts);
+  log_unlock();
 }
 
 static void
-log_close(struct log_config *l)
+lts_event(void *_lts)
 {
-  rfree(l->rf);
-  l->rf = NULL;
-  l->fh = NULL;
+  struct log_thread_syncer *lts = _lts;
+  bird_thread_sync_all(&lts->sync, NULL, lts_done, lts->name);
 }
 
-static int
-log_open(struct log_config *l)
+static void
+lts_request(struct log_channel *lc_close, struct rfile *rf_close, const char *name)
 {
-  l->rf = rf_open(config->pool, l->filename, "a");
-  if (!l->rf)
-  {
-    /* Well, we cannot do much in case of error as log is closed */
-    l->mask = 0;
-    return -1;
-  }
-
-  l->fh = rf_file(l->rf);
-  l->pos = log_size(l);
-
-  return 0;
+  struct log_thread_syncer *lts = mb_allocz(log_pool, sizeof *lts);
+  lts->lc_close = lc_close;
+  lts->rf_close = rf_close;
+  lts->name = name;
+  lts->lts_event = (event) { .hook = lts_event, .data = lts, };
+  ev_send_loop(&main_birdloop, &lts->lts_event);
 }
 
-static int
-log_rotate(struct log_config *l)
+static void
+log_rotate(struct log_channel *lc)
 {
-  log_close(l);
+  struct log_thread_syncer *lts = mb_allocz(log_pool, sizeof *lts);
 
-  /* If we cannot rename the logfile, we at least try to delete it
-     in order to continue logging and not exceeding logfile size */
-  if ((rename(l->filename, l->backup) < 0) &&
-      (unlink(l->filename) < 0))
-  {
-    l->mask = 0;
-    return -1;
-  }
+  if ((rename(lc->filename, lc->backup) < 0) && (unlink(lc->filename) < 0))
+    return lts_request(lc, NULL, "Log Rotate Failed");
 
-  return log_open(l);
-}
+  struct rfile *rf = rf_open(log_pool, lc->filename, RF_APPEND, lc->limit);
+  if (!rf)
+    return lts_request(lc, NULL, "Log Rotate Failed");
 
-/* Expected to be called during config parsing */
-int
-log_open_udp(struct log_config *l, pool *p)
-{
-  ASSERT(l->host || ipa_nonzero(l->ip));
-
-  if (l->host && ipa_zero(l->ip))
-  {
-    const char *err_msg;
-    l->ip = resolve_hostname(l->host, SK_UDP, &err_msg);
-
-    if (ipa_zero(l->ip))
-    {
-      cf_warn("Cannot resolve hostname '%s': %s", l->host, err_msg);
-      goto err0;
-    }
-  }
-
-  sock *sk = sk_new(p);
-  sk->type = SK_UDP;
-  sk->daddr = l->ip;
-  sk->dport = l->port;
-  sk->flags = SKF_CONNECT | SKF_THREAD;
-
-  if (sk_open(sk) < 0)
-  {
-    cf_warn("Cannot open UDP log socket: %s%#m", sk->err);
-    goto err1;
-  }
-
-  /* Move fd from sk resource to rf resource */
-  l->rf = rf_fdopen(p, sk->fd, "a");
-  if (!l->rf)
-    goto err1;
-
-  l->fh = rf_file(l->rf);
-
-  sk->fd = -1;
-  rfree(sk);
-
-  return 0;
-
-err1:
-  rfree(sk);
-err0:
-  l->mask = 0;
-  return -1;
+  lts_request(NULL, atomic_load_explicit(&lc->rf, memory_order_relaxed), "Log Rotate Close Old File");
+  atomic_store_explicit(&lc->rf, rf, memory_order_release);
 }
 
 /**
@@ -202,85 +178,162 @@ err0:
  * in log(), so it should be written like *L_INFO.
  */
 void
-log_commit(int class, buffer *buf)
+log_commit(log_buffer *buf)
 {
-  struct log_config *l;
+  /* Store the last pointer */
+  buf->pos[LBP__MAX] = buf->buf.pos;
 
-  if (buf->pos == buf->end)
-    strcpy(buf->end - 100, " ... <too long>");
+  /* Append the too-long message if too long */
+  if (buf->buf.pos == buf->buf.end)
+#define TOO_LONG " ... <too long>"
+    memcpy(buf->buf.end - sizeof TOO_LONG, TOO_LONG, sizeof TOO_LONG);
+#undef TOO_LONG
 
-  log_lock();
-  WALK_LIST(l, *current_log_list)
+  for (
+      struct log_channel *l = atomic_load_explicit(&global_logs, memory_order_acquire);
+      l;
+      l = atomic_load_explicit(&l->next, memory_order_acquire)
+      )
     {
-      if (!(l->mask & (1 << class)))
+      uint mask = atomic_load_explicit(&l->mask, memory_order_acquire);
+      if (!(mask & (1 << buf->class)))
 	continue;
-      if (l->fh)
+
+      struct rfile *rf = atomic_load_explicit(&l->rf, memory_order_acquire);
+      sock *sk = atomic_load_explicit(&l->udp_sk, memory_order_acquire);
+
+      if (rf || sk)
 	{
-	  if (l->terminal_flag)
-	    fputs("bird: ", l->fh);
-	  else if (l->udp_flag)
-	    {
-	      int pri = LOG_DAEMON | syslog_priorities[class];
-	      char tbuf[TM_DATETIME_BUFFER_SIZE];
-	      const char *hostname = (config && config->hostname) ? config->hostname : "<none>";
-	      const char *fmt = "%b %d %T.%6f";
-	      if (!tm_format_real_time(tbuf, sizeof(tbuf), fmt, current_real_time()))
-		strcpy(tbuf, "<error>");
+	  /* Construct the iovec */
+	  static char terminal_prefix[] = "bird: ",
+		      newline[] = "\n";
+	  STATIC_ASSERT(sizeof newline == 2);
 
-	      /* Legacy RFC 3164 format, but with us precision */
-	      fprintf(l->fh, "<%d>%s %s %s: ", pri, tbuf, hostname, bird_name);
+	  struct iovec iov[LBP__MAX+2];
+	  uint iov_count = 0;
+	  if (BIT32_TEST(&l->prepare, LBPP_TERMINAL))
+	    iov[iov_count++] = (struct iovec) {
+	      .iov_base = terminal_prefix,
+	      .iov_len = sizeof terminal_prefix - 1,
+	    };
+
+	  for (uint p = 0; p < LBP__MAX; p++)
+	    if (BIT32_TEST(&l->prepare, p))
+	    {
+	      off_t sz = buf->pos[p+1] - buf->pos[p];
+	      if (sz > 0)
+		iov[iov_count++] = (struct iovec) {
+		  .iov_base = buf->pos[p],
+		  .iov_len = sz,
+		};
 	    }
-	  else
-	    {
-	      byte tbuf[TM_DATETIME_BUFFER_SIZE];
-	      const char *fmt = config ? config->tf_log.fmt1 : "%F %T.%3f";
-	      if (!tm_format_real_time(tbuf, sizeof(tbuf), fmt, current_real_time()))
-		strcpy(tbuf, "<error>");
 
-	      if (l->limit)
+	  if (rf)
+	  {
+	    iov[iov_count++] = (struct iovec) {
+	      .iov_base = newline,
+	      .iov_len = sizeof newline - 1,
+	    };
+
+	    do {
+	      if (rf_writev(rf, iov, iov_count))
+		break;
+
+	      log_lock();
+	      rf = atomic_load_explicit(&l->rf, memory_order_acquire);
+	      if (rf_writev(rf, iov, iov_count))
 	      {
-		off_t msg_len = strlen(tbuf) + strlen(class_names[class]) +
-		  (buf->pos - buf->start) + 5;
-
-		if (l->pos < 0)
-		  l->pos = log_size(l);
-
-		if (l->pos + msg_len > l->limit)
-		  if (log_rotate(l) < 0)
-		    continue;
-
-		l->pos += msg_len;
+		log_unlock();
+		break;
 	      }
 
-	      fprintf(l->fh, "%s <%s> ", tbuf, class_names[class]);
-	    }
-	  fputs(buf->start, l->fh);
-	  fputc('\n', l->fh);
-	  fflush(l->fh);
+	      log_rotate(l);
+	      log_unlock();
+
+	      rf = atomic_load_explicit(&l->rf, memory_order_relaxed);
+	    } while (!rf_writev(rf, iov, iov_count));
+	  }
+	  else if (sk)
+	  {
+	    while ((writev(sk->fd, iov, iov_count) < 0) && (errno == EINTR))
+	      ;
+	    /* FIXME: Silently ignoring write errors */
+	  }
 	}
 #ifdef HAVE_SYSLOG_H
       else
-	syslog(syslog_priorities[class], "%s", buf->start);
+      {
+	syslog(syslog_priorities[buf->class], "%s", buf->pos[LBP_MSG]);
+      }
 #endif
     }
-  log_unlock();
-
-  /* cli_echo is not thread-safe, so call it just from the main thread */
-  if (main_thread_self())
-    cli_echo(class, buf->start);
-
-  buf->pos = buf->start;
 }
 
 int buffer_vprint(buffer *buf, const char *fmt, va_list args);
 
+void
+log_prepare(log_buffer *buf, int class)
+{
+  buf->class = class;
+
+  buf->buf.start = buf->buf.pos = buf->block;
+  buf->buf.end = buf->block + sizeof buf->block;
+
+  int lf = atomic_load_explicit(&logging_flags, memory_order_acquire);
+
+  buf->pos[LBP_TIMESTAMP] = buf->buf.pos;
+  if (BIT32_TEST(&lf, LBP_TIMESTAMP))
+  {
+    const char *fmt = config ? config->tf_log.fmt1 : "%F %T.%3f";
+    int t = tm_format_real_time(buf->buf.pos, buf->buf.end - buf->buf.pos, fmt, current_real_time());
+    if (t)
+      buf->buf.pos += t;
+    else
+      buffer_puts(&buf->buf, "<time format error>");
+
+    *(buf->buf.pos++) = ' ';
+  }
+
+  buf->pos[LBP_UDP_HEADER] = buf->buf.pos;
+  if (BIT32_TEST(&lf, LBP_UDP_HEADER))
+  {
+    /* Legacy RFC 3164 format, but with us precision */
+    buffer_print(&buf->buf, "<%d>", LOG_DAEMON | syslog_priorities[class]);
+
+    const char *fmt = "%b %d %T.%6f";
+    int t = tm_format_real_time(buf->buf.pos, buf->buf.end - buf->buf.pos, fmt, current_real_time());
+    if (t)
+      buf->buf.pos += t;
+    else
+      buffer_puts(&buf->buf, "<time format error>");
+
+    const char *hostname = (config && config->hostname) ? config->hostname : "<none>";
+    buffer_print(&buf->buf, " %s %s: ", hostname, bird_name);
+  }
+
+  buf->pos[LBP_THREAD_ID] = buf->buf.pos;
+  if (BIT32_TEST(&lf, LBP_THREAD_ID))
+    buffer_print(&buf->buf, "[%04x] ", THIS_THREAD_ID);
+
+  buf->pos[LBP_CLASS] = buf->buf.pos;
+  if (BIT32_TEST(&lf, LBP_CLASS))
+    buffer_print(&buf->buf, "<%s> ", class_names[class]);
+
+  buf->pos[LBP_MSG] = buf->buf.pos;
+}
+
 static void
 vlog(int class, const char *msg, va_list args)
 {
-  buffer buf;
-  LOG_BUFFER_INIT(buf);
-  buffer_vprint(&buf, msg, args);
-  log_commit(class, &buf);
+  static _Thread_local log_buffer buf;
+
+  /* No logging at all if nobody would receive the message either */
+  if (!(atomic_load_explicit(&logging_mask, memory_order_acquire) & (1 << class)))
+    return;
+
+  log_prepare(&buf, class);
+  buffer_vprint(&buf.buf, msg, args);
+  log_commit(&buf);
 }
 
 
@@ -362,6 +415,8 @@ die(const char *msg, ...)
   exit(1);
 }
 
+static struct timespec dbg_time_start;
+
 /**
  * debug - write to debug output
  * @msg: a printf-like message
@@ -374,15 +429,21 @@ debug(const char *msg, ...)
 {
 #define MAX_DEBUG_BUFSIZE 16384
   va_list args;
-  char buf[MAX_DEBUG_BUFSIZE];
+  char buf[MAX_DEBUG_BUFSIZE], *pos = buf;
+  int max = MAX_DEBUG_BUFSIZE;
 
   va_start(args, msg);
-  if (dbgf)
+  if (dbg_rf)
     {
-      if (bvsnprintf(buf, MAX_DEBUG_BUFSIZE, msg, args) < 0)
+      int s = bvsnprintf(pos, max, msg, args);
+      if (s < 0)
 	bug("Extremely long debug output, split it.");
 
-      fputs(buf, dbgf);
+      struct iovec i = {
+	.iov_base = buf,
+	.iov_len = s,
+      };
+      rf_writev(dbg_rf, &i, 1);
     }
   va_end(args);
 }
@@ -398,8 +459,8 @@ debug(const char *msg, ...)
 void
 debug_safe(const char *msg)
 {
-  if (dbg_fd >= 0)
-    write(dbg_fd, msg, strlen(msg));
+  if (dbg_rf)
+    rf_write_crude(dbg_rf, msg, strlen(msg));
 }
 
 static list *
@@ -410,11 +471,11 @@ default_log_list(int initial, const char **syslog_name)
   *syslog_name = NULL;
 
 #ifdef HAVE_SYSLOG_H
-  if (!dbgf)
+  if (!dbg_rf)
     {
       static struct log_config lc_syslog;
       lc_syslog = (struct log_config){
-	.mask = ~0
+	.mask = ~0,
       };
 
       add_tail(&log_list, &lc_syslog.n);
@@ -422,24 +483,24 @@ default_log_list(int initial, const char **syslog_name)
     }
 #endif
 
-  if (dbgf && (dbgf != stderr))
+  if (dbg_rf && (dbg_rf != &rf_stderr))
     {
       static struct log_config lc_debug;
       lc_debug = (struct log_config){
 	.mask = ~0,
-	.fh = dbgf
+	.rf = dbg_rf,
       };
 
       add_tail(&log_list, &lc_debug.n);
     }
 
-  if (initial || (dbgf == stderr))
+  if (initial || (dbg_rf == &rf_stderr))
     {
       static struct log_config lc_stderr;
       lc_stderr = (struct log_config){
 	.mask = ~0,
 	.terminal_flag = 1,
-	.fh = stderr
+	.rf = &rf_stderr,
       };
 
       add_tail(&log_list, &lc_stderr.n);
@@ -448,76 +509,326 @@ default_log_list(int initial, const char **syslog_name)
   return &log_list;
 }
 
+
 void
 log_switch(int initial, list *logs, const char *new_syslog_name)
 {
-  struct log_config *l;
+  if (initial)
+  {
+    log_domain = DOMAIN_NEW(logging);
+    log_lock();
+    log_pool = rp_new(&root_pool, log_domain.logging, "Log files");
 
-  /* We should not manipulate with log list when other threads may use it */
-  log_lock();
+#if HAVE_SYSLOG_H
+    /* Create syslog channel */
+    struct log_channel *lc = mb_alloc(log_pool, sizeof *lc);
+
+    *lc = (struct log_channel) {
+      .prepare = BIT32_ALL(LBP_MSG),
+    };
+    ASSERT_DIE(NULL == atomic_exchange_explicit(&global_logs, lc, memory_order_release));
+#endif
+
+    log_unlock();
+  }
 
   if (!logs || EMPTY_LIST(*logs))
     logs = default_log_list(initial, &new_syslog_name);
 
-  /* Close the logs to avoid pinning them on disk when deleted */
-  if (current_log_list)
-    WALK_LIST(l, *current_log_list)
-      if (l->filename && l->rf)
-	log_close(l);
+  ASSERT_DIE(logs);
 
-  /* Reopen the logs, needed for 'configure undo' */
-  if (logs)
-    WALK_LIST(l, *logs)
-      if (l->filename && !l->rf)
-	log_open(l);
+  /* Prepare the new log configuration */
+  struct log_config *l;
+  WALK_LIST(l, *logs)
+  {
+    int erf = 0;
+    log_lock();
+    if (l->rf && (l->rf != &rf_stderr))
+      rmove(l->rf, log_pool);
+    else if (l->filename)
+    {
+      l->rf = rf_open(log_pool, l->filename, RF_APPEND, l->limit);
+      erf = l->rf ? 0 : errno;
+    }
+    log_unlock();
+    if (erf)
+      log(L_ERR "Failed to open log file '%s': %M", l->filename, erf);
+  }
 
-  current_log_list = logs;
+  uint total_mask = 0;
+  uint flags = 0;
+
+  /* Update pre-existing log channels */
+  for (
+      struct log_channel * _Atomic *pprev = &global_logs, *ol;
+      ol = atomic_load_explicit(pprev, memory_order_acquire);
+      pprev = &ol->next)
+  {
+    ol->new_mask = 0;
+    if (ol->rf)
+    {
+      WALK_LIST(l, *logs)
+	if (l->rf && rf_same(l->rf, ol->rf))
+	{
+	  /* Merge the mask */
+	  ol->new_mask |= l->mask;
+	  total_mask |= l->mask;
+
+	  /* Merge flags */
+	  flags |= ol->prepare;
+
+	  /* The filehandle is no longer needed */
+	  if ((l->rf != &rf_stderr ) && (l->rf != dbg_rf))
+	  {
+	    log_lock();
+	    rfree(l->rf);
+	    log_unlock();
+	  }
+
+	  l->rf = NULL;
+	  l->found_old = 1;
+	}
+    }
+    else if (ol->udp_port)
+    {
+      WALK_LIST(l, *logs)
+	if (
+	    (l->udp_port == ol->udp_port) && (
+	      (l->udp_host && !strcmp(l->udp_host, ol->udp_host)) ||
+	      (ipa_nonzero(l->udp_ip) && (ipa_equal(l->udp_ip, ol->udp_ip)))
+	      ))
+	{
+	  /* Merge the mask */
+	  ol->new_mask |= l->mask;
+	  total_mask |= l->mask;
+
+	  /* Merge flags */
+	  flags |= ol->prepare;
+
+	  /* The socket just stays open */
+	  l->found_old = 1;
+	}
+    }
+    else
+    {
+      WALK_LIST(l, *logs)
+	if (!l->filename && !l->rf && !l->udp_port)
+	{
+	  ol->new_mask |= l->mask;
+	  total_mask |= l->mask;
+	  l->found_old = 1;
+	}
+    }
+
+    /* First only extend masks */
+    atomic_fetch_or_explicit(&ol->mask, ol->new_mask, memory_order_acq_rel);
+  }
+
+  atomic_fetch_or_explicit(&logging_mask, total_mask, memory_order_acq_rel);
+
+  /* Open new log channels */
+  WALK_LIST(l, *logs)
+  {
+    if (l->found_old)
+      continue;
+
+    if (!l->rf && !l->udp_port)
+      continue;
+
+    /* Truly new log channel */
+    log_lock();
+    struct log_channel *lc = mb_alloc(log_pool, sizeof *lc);
+    log_unlock();
+
+    if (l->rf)
+    {
+      *lc = (struct log_channel) {
+	.filename = l->filename,
+	.backup = l->backup,
+	.rf = l->rf,
+	.limit = l->limit,
+	.new_mask = l->mask,
+	.prepare = BIT32_ALL(LBP_TIMESTAMP, LBP_THREAD_ID, LBP_CLASS, LBP_MSG) |
+	  (l->terminal_flag ? BIT32_VAL(LBPP_TERMINAL) : 0),
+      };
+
+      /* Now the file handle ownership is transferred to the log channel */
+      l->rf = NULL;
+
+      /* Find more */
+      for (struct log_config *ll = NODE_NEXT(l); NODE_VALID(ll); ll = NODE_NEXT(ll))
+	if (ll->filename && ll->rf && rf_same(lc->rf, ll->rf))
+	{
+	  /* Merged with this channel */
+	  lc->new_mask |= ll->mask;
+	  total_mask |= ll->mask;
+
+	  if (l->rf != &rf_stderr)
+	  {
+	    log_lock();
+	    rfree(ll->rf);
+	    log_unlock();
+	  }
+	  ll->rf = NULL;
+	}
+    }
+    else if (l->udp_port)
+    {
+      sock *sk;
+
+      ASSERT(l->udp_host || ipa_nonzero(l->udp_ip));
+
+      *lc = (struct log_channel) {
+	.new_mask = l->mask,
+	.prepare = BIT32_ALL(LBP_UDP_HEADER, LBP_MSG),
+	.udp_host = l->udp_host,
+	.udp_port = l->udp_port,
+	.udp_ip = l->udp_ip,
+      };
+
+      if (lc->udp_host && ipa_zero(lc->udp_ip))
+      {
+	const char *err_msg;
+	lc->udp_ip = resolve_hostname(lc->udp_host, SK_UDP, &err_msg);
+
+	if (ipa_zero(lc->udp_ip))
+	{
+	  cf_warn("Cannot resolve hostname '%s': %s", l->udp_host, err_msg);
+	  goto resolve_fail;
+	}
+      }
+
+      log_lock();
+      sk = sk_new(log_pool);
+      log_unlock();
+      sk->type = SK_UDP;
+      sk->daddr = lc->udp_ip;
+      sk->dport = lc->udp_port;
+      sk->flags = SKF_CONNECT;
+
+      if (sk_open(sk, &main_birdloop) < 0)
+      {
+	cf_warn("Cannot open UDP log socket: %s%#m", sk->err);
+	rfree(sk);
+resolve_fail:
+	log_lock();
+	mb_free(lc);
+	log_unlock();
+	continue;
+      }
+
+      atomic_store_explicit(&lc->udp_sk, sk, memory_order_relaxed);
+
+      /* Find more */
+      for (struct log_config *ll = NODE_NEXT(l); NODE_VALID(ll); ll = NODE_NEXT(ll))
+	if (
+	    (l->udp_port == ll->udp_port) && (
+	      (l->udp_host && !strcmp(l->udp_host, ll->udp_host)) ||
+	      (ipa_nonzero(l->udp_ip) && (ipa_equal(l->udp_ip, ll->udp_ip)))
+	      ))
+	{
+	  /* Merged with this channel */
+	  lc->new_mask |= ll->mask;
+	  total_mask |= ll->mask;
+
+	  ll->found_old = 1;
+	}
+    }
+
+    /* Mask union */
+    total_mask |= l->mask;
+
+    /* Store the new final local mask */
+    atomic_store_explicit(&lc->mask, lc->new_mask, memory_order_release);
+
+    /* Message preparation flags */
+    flags |= lc->prepare;
+
+    /* Insert into the main log list */
+    struct log_channel *head = atomic_load_explicit(&global_logs, memory_order_acquire);
+    do atomic_store_explicit(&lc->next, head, memory_order_release);
+    while (!atomic_compare_exchange_strong_explicit(
+	  &global_logs, &head, lc,
+	  memory_order_acq_rel, memory_order_acquire));
+  }
+
+  /* Merge overall flags */
+  atomic_fetch_or_explicit(&logging_flags, flags, memory_order_acq_rel);
+  atomic_fetch_or_explicit(&logging_mask, total_mask, memory_order_acq_rel);
+
+  /* Close end-of-life log channels */
+  for (struct log_channel * _Atomic *pprev = &global_logs,
+			  *ol = atomic_load_explicit(pprev, memory_order_acquire);
+      ol; )
+  {
+    /* Store new mask after opening new files to minimize missing log message race conditions */
+    atomic_store_explicit(&ol->mask, ol->new_mask, memory_order_release);
+
+    /* Never close syslog channel or debug */
+    if (ol->new_mask || (!ol->rf && !ol->udp_sk) || (ol->rf == dbg_rf))
+    {
+      pprev = &ol->next;
+      ol = atomic_load_explicit(pprev, memory_order_acquire);
+    }
+    else
+    {
+      /* This file has no logging set up, remove from list */
+      struct log_channel *next = atomic_load_explicit(&ol->next, memory_order_acquire);
+      atomic_store_explicit(pprev, next, memory_order_release);
+
+      /* Free the channel after all worker threads leave the critical section */
+      log_lock();
+      lts_request(ol, NULL, "Log Reconfigure Close Old File");
+      log_unlock();
+
+      /* Continue to next */
+      ol = next;
+    }
+  }
+
+  /* Set overall flags after files are closed */
+  atomic_store_explicit(&logging_flags, flags, memory_order_release);
+  atomic_store_explicit(&logging_mask, total_mask, memory_order_release);
 
 #ifdef HAVE_SYSLOG_H
-  if (!bstrcmp(current_syslog_name, new_syslog_name))
-    goto done;
-
-  if (current_syslog_name)
+  if ((!current_syslog_name != !new_syslog_name)
+      || bstrcmp(current_syslog_name, new_syslog_name))
   {
-    closelog();
-    xfree(current_syslog_name);
-    current_syslog_name = NULL;
-  }
+    char *old_syslog_name = current_syslog_name;
 
-  if (new_syslog_name)
-  {
-    current_syslog_name = xstrdup(new_syslog_name);
-    openlog(current_syslog_name, LOG_CONS | LOG_NDELAY, LOG_DAEMON);
-  }
+    if (new_syslog_name)
+    {
+      current_syslog_name = xstrdup(new_syslog_name);
+      openlog(current_syslog_name, LOG_CONS | LOG_NDELAY, LOG_DAEMON);
+    }
+    else
+    {
+      current_syslog_name = NULL;
+      closelog();
+    }
 
+    if (old_syslog_name)
+      xfree(old_syslog_name);
+  }
 #endif
-
-done:
-  /* Logs exchange done, let the threads log as before */
-  log_unlock();
 }
 
 void
 log_init_debug(char *f)
 {
-  dbg_fd = -1;
-  if (dbgf && dbgf != stderr)
-    fclose(dbgf);
+  clock_gettime(CLOCK_MONOTONIC, &dbg_time_start);
+
+  if (dbg_rf && dbg_rf != &rf_stderr)
+    rfree(dbg_rf);
 
   if (!f)
-    dbgf = NULL;
+    dbg_rf = NULL;
   else if (!*f)
-    dbgf = stderr;
-  else if (!(dbgf = fopen(f, "a")))
+    dbg_rf = &rf_stderr;
+  else if (!(dbg_rf = rf_open(&root_pool, f, RF_APPEND, 0)))
   {
     /* Cannot use die() nor log() here, logging is not yet initialized */
     fprintf(stderr, "bird: Unable to open debug file %s: %s\n", f, strerror(errno));
     exit(1);
-  }
-
-  if (dbgf)
-  {
-    setvbuf(dbgf, NULL, _IONBF, 0);
-    dbg_fd = fileno(dbgf);
   }
 }

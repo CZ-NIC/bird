@@ -67,13 +67,11 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
 
       /* Use iface ID as local source ID */
       struct rte_src *src = rt_get_source(P, ad->iface->index);
-      rte_update2(c, net, NULL, src);
+      rte_update(c, net, NULL, src);
+      rt_unlock_source(src);
     }
   else if (flags & IF_CHANGE_UP)
     {
-      rta *a;
-      rte *e;
-
       DBG("dev_if_notify: %s:%I going up\n", ad->iface->name, ad->ip);
 
       if (cf->check_link && !(ad->iface->flags & IF_LINK_UP))
@@ -82,17 +80,23 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
       /* Use iface ID as local source ID */
       struct rte_src *src = rt_get_source(P, ad->iface->index);
 
-      rta a0 = {
-	.pref = c->preference,
-	.source = RTS_DEVICE,
-	.scope = SCOPE_UNIVERSE,
-	.dest = RTD_UNICAST,
-	.nh.iface = ad->iface,
+      ea_list *ea = NULL;
+      struct nexthop_adata nhad = {
+	.nh = { .iface = ad->iface, },
+	.ad = { .length = (void *) NEXTHOP_NEXT(&nhad.nh) - (void *) nhad.ad.data, },
       };
 
-      a = rta_lookup(&a0);
-      e = rte_get_temp(a, src);
-      rte_update2(c, net, e, src);
+      ea_set_attr_u32(&ea, &ea_gen_preference, 0, c->preference);
+      ea_set_attr_u32(&ea, &ea_gen_source, 0, RTS_DEVICE);
+      ea_set_attr_data(&ea, &ea_gen_nexthop, 0, nhad.ad.data, nhad.ad.length);
+
+      rte e0 = {
+	.attrs = ea,
+	.src = src,
+      };
+
+      rte_update(c, net, &e0, src);
+      rt_unlock_source(src);
     }
 }
 
@@ -141,8 +145,8 @@ dev_init(struct proto_config *CF)
   proto_configure_channel(P, &p->ip4_channel, cf->ip4_channel);
   proto_configure_channel(P, &p->ip6_channel, cf->ip6_channel);
 
-  P->if_notify = dev_if_notify;
-  P->ifa_notify = dev_ifa_notify;
+  P->iface_sub.if_notify = dev_if_notify;
+  P->iface_sub.ifa_notify = dev_ifa_notify;
 
   return P;
 }
@@ -184,7 +188,6 @@ dev_copy_config(struct proto_config *dest, struct proto_config *src)
 struct protocol proto_device = {
   .name =		"Direct",
   .template =		"direct%d",
-  .class =		PROTOCOL_DIRECT,
   .preference =		DEF_PREF_DIRECT,
   .channel_mask =	NB_IP | NB_IP6_SADR,
   .proto_size =		sizeof(struct rt_dev_proto),

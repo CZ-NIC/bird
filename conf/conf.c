@@ -61,7 +61,8 @@
 
 static jmp_buf conf_jmpbuf;
 
-struct config *config, *new_config;
+struct config *config;
+_Thread_local struct config *new_config;
 pool *config_pool;
 
 static struct config *old_config;	/* Old configuration */
@@ -71,7 +72,7 @@ static int future_cftype;		/* Type of scheduled transition, may also be RECONFIG
 /* Note that when future_cftype is RECONFIG_UNDO, then future_config is NULL,
    therefore proper check for future scheduled config checks future_cftype */
 
-static event *config_event;		/* Event for finalizing reconfiguration */
+static void config_done(void *cf);
 static timer *config_timer;		/* Timer for scheduled configuration rollback */
 
 /* These are public just for cmd_show_status(), should not be accessed elsewhere */
@@ -91,7 +92,7 @@ int undo_available;			/* Undo was not requested from last reconfiguration */
 struct config *
 config_alloc(const char *name)
 {
-  pool *p = rp_new(config_pool, "Config");
+  pool *p = rp_new(config_pool, the_bird_domain.the_bird, "Config");
   linpool *l = lp_new_default(p);
   struct config *c = lp_allocz(l, sizeof(struct config));
 
@@ -102,7 +103,6 @@ config_alloc(const char *name)
 
   init_list(&c->tests);
   init_list(&c->symbols);
-  c->mrtdump_file = -1; /* Hack, this should be sysdep-specific */
   c->pool = p;
   c->mem = l;
   c->file_name = ndup;
@@ -110,6 +110,8 @@ config_alloc(const char *name)
   c->tf_route = c->tf_proto = TM_ISO_SHORT_MS;
   c->tf_base = c->tf_log = TM_ISO_LONG_MS;
   c->gr_wait = DEFAULT_GR_WAIT;
+
+  c->done_event = (event) { .hook = config_done, .data = c, };
 
   return c;
 }
@@ -202,7 +204,7 @@ config_free(struct config *c)
 
   ASSERT(!c->obstacle_count);
 
-  rfree(c->pool);
+  rp_free(c->pool);
 }
 
 /**
@@ -230,29 +232,20 @@ void
 config_add_obstacle(struct config *c)
 {
   DBG("+++ adding obstacle %d\n", c->obstacle_count);
-  c->obstacle_count++;
+  atomic_fetch_add_explicit(&c->obstacle_count, 1, memory_order_acq_rel);
 }
 
 void
 config_del_obstacle(struct config *c)
 {
   DBG("+++ deleting obstacle %d\n", c->obstacle_count);
-  c->obstacle_count--;
-  if (!c->obstacle_count && (c != config))
-    ev_schedule(config_event);
+  if (atomic_fetch_sub_explicit(&c->obstacle_count, 1, memory_order_acq_rel) == 1)
+    ev_send_loop(&main_birdloop, &c->done_event);
 }
 
 static int
 global_commit(struct config *new, struct config *old)
 {
-  if (!new->hostname)
-    {
-      new->hostname = get_hostname(new->mem);
-
-      if (!new->hostname)
-        log(L_WARN "Cannot determine hostname");
-    }
-
   if (!old)
     return 0;
 
@@ -288,6 +281,14 @@ config_do_commit(struct config *c, int type)
   old_cftype = type;
   config = c;
 
+  if (!c->hostname)
+    {
+      c->hostname = get_hostname(c->mem);
+
+      if (!c->hostname)
+        log(L_WARN "Cannot determine hostname");
+    }
+
   configuring = 1;
   if (old_config && !config->shutdown)
     log(L_INFO "Reconfiguring");
@@ -316,8 +317,11 @@ config_do_commit(struct config *c, int type)
 }
 
 static void
-config_done(void *unused UNUSED)
+config_done(void *cf)
 {
+  if (cf == config)
+    return;
+
   if (config->shutdown)
     sysdep_shutdown_done();
 
@@ -518,10 +522,7 @@ config_timeout(timer *t UNUSED)
 void
 config_init(void)
 {
-  config_pool = rp_new(&root_pool, "Configurations");
-
-  config_event = ev_new(config_pool);
-  config_event->hook = config_done;
+  config_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Configurations");
 
   config_timer = tm_new(config_pool);
   config_timer->hook = config_timeout;

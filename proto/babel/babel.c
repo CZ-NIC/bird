@@ -42,6 +42,7 @@
 
 #include <stdlib.h>
 #include "babel.h"
+#include "lib/macro.h"
 
 #define LOG_PKT_AUTH(msg, args...) \
   log_rl(&p->log_pkt_tbf, L_AUTH "%s: " msg, p->p.name, args)
@@ -66,6 +67,8 @@ static void babel_send_seqno_request(struct babel_proto *p, struct babel_entry *
 static void babel_update_cost(struct babel_neighbor *n);
 static inline void babel_kick_timer(struct babel_proto *p);
 static inline void babel_iface_kick_timer(struct babel_iface *ifa);
+
+static struct ea_class ea_babel_metric, ea_babel_router_id, ea_babel_seqno;
 
 /*
  *	Functions to maintain data structures
@@ -685,37 +688,14 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
 
   if (r)
   {
-    rta a0 = {
-      .source = RTS_BABEL,
-      .scope = SCOPE_UNIVERSE,
-      .dest = RTD_UNICAST,
-      .pref = c->preference,
-      .from = r->neigh->addr,
-      .nh.gw = r->next_hop,
-      .nh.iface = r->neigh->ifa->iface,
-      .eattrs = alloca(sizeof(ea_list) + 3*sizeof(eattr)),
-    };
-
-    *a0.eattrs = (ea_list) { .count = 3 };
-    a0.eattrs->attrs[0] = (eattr) {
-      .id = EA_BABEL_METRIC,
-      .type = EAF_TYPE_INT,
-      .u.data = r->metric,
-    };
-
-    struct adata *ad = alloca(sizeof(struct adata) + sizeof(u64));
-    ad->length = sizeof(u64);
-    memcpy(ad->data, &(r->router_id), sizeof(u64));
-    a0.eattrs->attrs[1] = (eattr) {
-      .id = EA_BABEL_ROUTER_ID,
-      .type = EAF_TYPE_OPAQUE,
-      .u.ptr = ad,
-    };
-
-    a0.eattrs->attrs[2] = (eattr) {
-      .id = EA_BABEL_SEQNO,
-      .type = EAF_TYPE_INT,
-      .u.data = r->seqno,
+    struct nexthop_adata nhad = {
+      .nh = {
+	.gw = r->next_hop,
+	.iface = r->neigh->ifa->iface,
+      },
+      .ad = {
+	.length = sizeof nhad - sizeof nhad.ad,
+      },
     };
 
     /*
@@ -724,35 +704,54 @@ babel_announce_rte(struct babel_proto *p, struct babel_entry *e)
      * have routing work.
      */
     if (!neigh_find(&p->p, r->next_hop, r->neigh->ifa->iface, 0))
-      a0.nh.flags = RNF_ONLINK;
+      nhad.nh.flags = RNF_ONLINK;
+    
+    struct {
+      ea_list l;
+      eattr a[7];
+    } eattrs = {
+      .l.count = ARRAY_SIZE(eattrs.a),
+      .a = {
+	EA_LITERAL_EMBEDDED(&ea_gen_preference, 0, c->preference),
+	EA_LITERAL_STORE_ADATA(&ea_gen_from, 0, &r->neigh->addr, sizeof(r->neigh->addr)),
+	EA_LITERAL_EMBEDDED(&ea_gen_source, 0, RTS_BABEL),
+	EA_LITERAL_STORE_ADATA(&ea_gen_nexthop, 0, nhad.ad.data, nhad.ad.length),
+	EA_LITERAL_EMBEDDED(&ea_babel_metric, 0, r->metric),
+	EA_LITERAL_STORE_ADATA(&ea_babel_router_id, 0, &r->router_id, sizeof(r->router_id)),
+	EA_LITERAL_EMBEDDED(&ea_babel_seqno, 0, r->seqno),
+      }
+    };
 
-    rta *a = rta_lookup(&a0);
-    rte *rte = rte_get_temp(a, p->p.main_source);
+    rte e0 = {
+      .attrs = &eattrs.l,
+      .src = p->p.main_source,
+    };
 
     e->unreachable = 0;
-    rte_update2(c, e->n.addr, rte, p->p.main_source);
+    rte_update(c, e->n.addr, &e0, p->p.main_source);
   }
   else if (e->valid && (e->router_id != p->router_id))
   {
     /* Unreachable */
-    rta a0 = {
-      .source = RTS_BABEL,
-      .scope = SCOPE_UNIVERSE,
-      .dest = RTD_UNREACHABLE,
-      .pref = 1,
+    ea_list *ea = NULL;
+
+    ea_set_attr_u32(&ea, &ea_gen_preference, 0, 1);
+    ea_set_attr_u32(&ea, &ea_gen_source, 0, RTS_BABEL);
+    ea_set_dest(&ea, 0, RTD_UNREACHABLE);
+
+    rte e0 = {
+      .attrs = ea,
+      .src = p->p.main_source,
     };
 
-    rta *a = rta_lookup(&a0);
-    rte *rte = rte_get_temp(a, p->p.main_source);
-
     e->unreachable = 1;
-    rte_update2(c, e->n.addr, rte, p->p.main_source);
+    rte_update(c, e->n.addr, &e0, p->p.main_source);
   }
   else
   {
     /* Retraction */
     e->unreachable = 0;
-    rte_update2(c, e->n.addr, NULL, p->p.main_source);
+    rte_update(c, e->n.addr, NULL, p->p.main_source);
   }
 }
 
@@ -762,7 +761,7 @@ babel_announce_retraction(struct babel_proto *p, struct babel_entry *e)
 {
   struct channel *c = (e->n.addr->type == NET_IP4) ? p->ip4_channel : p->ip6_channel;
   e->unreachable = 0;
-  rte_update2(c, e->n.addr, NULL, p->p.main_source);
+  rte_update(c, e->n.addr, NULL, p->p.main_source);
 }
 
 
@@ -1878,9 +1877,9 @@ babel_find_iface(struct babel_proto *p, struct iface *what)
 }
 
 static void
-babel_iface_locked(struct object_lock *lock)
+babel_iface_locked(void *_ifa)
 {
-  struct babel_iface *ifa = lock->data;
+  struct babel_iface *ifa = _ifa;
   struct babel_proto *p = ifa->proto;
 
   if (!babel_open_socket(ifa))
@@ -1900,7 +1899,7 @@ babel_add_iface(struct babel_proto *p, struct iface *new, struct babel_iface_con
 
   TRACE(D_EVENTS, "Adding interface %s", new->name);
 
-  pool *pool = rp_new(p->p.pool, new->name);
+  pool *pool = rp_new(p->p.pool, proto_domain(&p->p), new->name);
 
   ifa = mb_allocz(pool, sizeof(struct babel_iface));
   ifa->proto = p;
@@ -1935,8 +1934,11 @@ babel_add_iface(struct babel_proto *p, struct iface *new, struct babel_iface_con
   lock->addr = IP6_BABEL_ROUTERS;
   lock->port = ifa->cf->port;
   lock->iface = ifa->iface;
-  lock->hook = babel_iface_locked;
-  lock->data = ifa;
+  lock->event = (event) {
+    .hook = babel_iface_locked,
+    .data = ifa,
+  };
+  lock->target = &global_event_list;
 
   olock_acquire(lock);
 }
@@ -1952,7 +1954,7 @@ babel_remove_iface(struct babel_proto *p, struct babel_iface *ifa)
 
   rem_node(NODE ifa);
 
-  rfree(ifa->pool); /* contains ifa itself, locks, socket, etc */
+  rp_free(ifa->pool); /* contains ifa itself, locks, socket, etc */
 }
 
 static int
@@ -2058,11 +2060,9 @@ babel_reconfigure_iface(struct babel_proto *p, struct babel_iface *ifa, struct b
 static void
 babel_reconfigure_ifaces(struct babel_proto *p, struct babel_config *cf)
 {
-  struct iface *iface;
-
-  WALK_LIST(iface, iface_list)
+  IFACE_WALK(iface)
   {
-    if (p->p.vrf_set && !if_in_vrf(iface, p->p.vrf))
+    if (p->p.vrf && !if_in_vrf(iface, p->p.vrf))
       continue;
 
     if (!(iface->flags & IF_UP))
@@ -2184,41 +2184,45 @@ babel_dump(struct proto *P)
 }
 
 static void
-babel_get_route_info(rte *rte, byte *buf)
+babel_get_route_info(const rte *rte, byte *buf)
 {
   u64 rid = 0;
-  eattr *e = ea_find(rte->attrs->eattrs, EA_BABEL_ROUTER_ID);
+  eattr *e = ea_find(rte->attrs, &ea_babel_router_id);
   if (e)
     memcpy(&rid, e->u.ptr->data, sizeof(u64));
 
-  buf += bsprintf(buf, " (%d/%d) [%lR]", rte->attrs->pref,
-      ea_get_int(rte->attrs->eattrs, EA_BABEL_METRIC, BABEL_INFINITY), rid);
+  buf += bsprintf(buf, " (%d/%d) [%lR]",
+      rt_get_preference(rte),
+      ea_get_int(rte->attrs, &ea_babel_metric, BABEL_INFINITY), rid);
 }
 
-static int
-babel_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
+static void
+babel_router_id_format(const eattr *a, byte *buf, uint len)
 {
-  switch (a->id)
-  {
-  case EA_BABEL_METRIC:
-    bsprintf(buf, "metric: %d", a->u.data);
-    return GA_FULL;
-
-  case EA_BABEL_ROUTER_ID:
-  {
-    u64 rid = 0;
-    memcpy(&rid, a->u.ptr->data, sizeof(u64));
-    bsprintf(buf, "router_id: %lR", rid);
-    return GA_FULL;
-  }
-
-  case EA_BABEL_SEQNO:
-    return GA_HIDDEN;
-
-  default:
-    return GA_UNKNOWN;
-  }
+  u64 rid = 0;
+  memcpy(&rid, a->u.ptr->data, sizeof(u64));
+  bsnprintf(buf, len, "%lR", rid);
 }
+
+static struct ea_class ea_babel_metric = {
+  .name = "babel_metric",
+  .type = T_INT,
+};
+
+static struct ea_class ea_babel_router_id = {
+  .name = "babel_router_id",
+  .type = T_OPAQUE,
+  .readonly = 1,
+  .format = babel_router_id_format,
+};
+
+static struct ea_class ea_babel_seqno = {
+  .name = "babel_seqno",
+  .type = T_INT,
+  .readonly = 1,
+  .hidden = 1,
+};
+
 
 void
 babel_show_interfaces(struct proto *P, const char *iff)
@@ -2419,21 +2423,34 @@ babel_kick_timer(struct babel_proto *p)
 static int
 babel_preexport(struct channel *C, struct rte *new)
 {
-  struct rta *a = new->attrs;
+  if (new->src->owner != &C->proto->sources)
+    return 0;
+
   /* Reject our own unreachable routes */
-  if ((a->dest == RTD_UNREACHABLE) && (new->src->proto == C->proto))
+  eattr *ea = ea_find(new->attrs, &ea_gen_nexthop);
+  struct nexthop_adata *nhad = (void *) ea->u.ptr;
+  if (!NEXTHOP_IS_REACHABLE(nhad))
     return -1;
 
   return 0;
 }
+
+static void
+babel_entry_invalidate(struct babel_entry *e)
+{
+  e->valid = BABEL_ENTRY_STALE;
+  e->metric = BABEL_INFINITY;
+  e->updated = current_time();
+}
+
 
 /*
  * babel_rt_notify - core tells us about new route (possibly our own),
  * so store it into our data structures.
  */
 static void
-babel_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net,
-		struct rte *new, struct rte *old UNUSED)
+babel_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *net,
+		struct rte *new, const struct rte *old UNUSED)
 {
   struct babel_proto *p = (void *) P;
   struct babel_entry *e;
@@ -2442,13 +2459,13 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net,
   {
     /* Update */
     uint rt_seqno;
-    uint rt_metric = ea_get_int(new->attrs->eattrs, EA_BABEL_METRIC, 0);
+    uint rt_metric = ea_get_int(new->attrs, &ea_babel_metric, 0);
     u64 rt_router_id = 0;
 
-    if (new->src->proto == P)
+    if (new->src->owner == &P->sources)
     {
-      rt_seqno = ea_find(new->attrs->eattrs, EA_BABEL_SEQNO)->u.data;
-      eattr *e = ea_find(new->attrs->eattrs, EA_BABEL_ROUTER_ID);
+      rt_seqno = ea_get_int(new->attrs, &ea_babel_seqno, 0);
+      eattr *e = ea_find(new->attrs, &ea_babel_router_id);
       if (e)
 	memcpy(&rt_router_id, e->u.ptr->data, sizeof(u64));
     }
@@ -2461,14 +2478,14 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net,
     if (rt_metric > BABEL_INFINITY)
     {
       log(L_WARN "%s: Invalid babel_metric value %u for route %N",
-	  p->p.name, rt_metric, net->n.addr);
+	  p->p.name, rt_metric, net);
       rt_metric = BABEL_INFINITY;
     }
 
-    e = babel_get_entry(p, net->n.addr);
+    e = babel_get_entry(p, net);
 
     /* Activate triggered updates */
-    if ((e->valid != BABEL_ENTRY_VALID) ||
+    if (!(e->valid & BABEL_ENTRY_VALID) ||
 	(e->router_id != rt_router_id))
     {
       babel_trigger_update(p);
@@ -2483,32 +2500,67 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net,
   else
   {
     /* Withdraw */
-    e = babel_find_entry(p, net->n.addr);
+    e = babel_find_entry(p, net);
 
     if (!e || e->valid != BABEL_ENTRY_VALID)
       return;
 
-    e->valid = BABEL_ENTRY_STALE;
-    e->metric = BABEL_INFINITY;
-
+    babel_entry_invalidate(e);
     babel_trigger_update(p);
-    e->updated = current_time();
   }
 }
 
-static int
-babel_rte_better(struct rte *new, struct rte *old)
+static void
+babel_feed_begin(struct channel *C)
 {
-  uint new_metric = ea_get_int(new->attrs->eattrs, EA_BABEL_METRIC, BABEL_INFINITY);
-  uint old_metric = ea_get_int(old->attrs->eattrs, EA_BABEL_METRIC, BABEL_INFINITY);
+  if (!C->refeeding || C->refeed_req.hook)
+    return;
+
+  struct babel_proto *p = (struct babel_proto *) C->proto;
+  struct fib *rtable = (C->net_type == NET_IP4) ? &p->ip4_rtable : &p->ip6_rtable;
+
+  FIB_WALK(rtable, struct babel_entry, e)
+    if (e->valid == BABEL_ENTRY_VALID)
+      e->valid = BABEL_ENTRY_REFEEDING;
+  FIB_WALK_END;
+}
+
+static void
+babel_feed_end(struct channel *C)
+{
+  if (!C->refeeding || C->refeed_req.hook)
+    return;
+
+  struct babel_proto *p = (struct babel_proto *) C->proto;
+  struct fib *rtable = (C->net_type == NET_IP4) ? &p->ip4_rtable : &p->ip6_rtable;
+  int changed = 0;
+
+  FIB_WALK(rtable, struct babel_entry, e)
+    if (e->valid == BABEL_ENTRY_REFEEDING)
+    {
+      babel_entry_invalidate(e);
+      changed++;
+    }
+  FIB_WALK_END;
+
+  if (changed)
+    babel_trigger_update(p);
+}
+
+
+static int
+babel_rte_better(const rte *new, const rte *old)
+{
+  uint new_metric = ea_get_int(new->attrs, &ea_babel_metric, BABEL_INFINITY);
+  uint old_metric = ea_get_int(old->attrs, &ea_babel_metric, BABEL_INFINITY);
 
   return new_metric < old_metric;
 }
 
 static u32
-babel_rte_igp_metric(struct rte *rt)
+babel_rte_igp_metric(const rte *rt)
 {
-  return ea_get_int(rt->attrs->eattrs, EA_BABEL_METRIC, BABEL_INFINITY);
+  return ea_get_int(rt->attrs, &ea_babel_metric, BABEL_INFINITY);
 }
 
 
@@ -2529,6 +2581,12 @@ babel_postconfig(struct proto_config *CF)
   cf->ip6_channel = ip6 ?: ip6_sadr;
 }
 
+static struct rte_owner_class babel_rte_owner_class = {
+  .get_route_info =	babel_get_route_info,
+  .rte_better =		babel_rte_better,
+  .rte_igp_metric =	babel_rte_igp_metric,
+};
+
 static struct proto *
 babel_init(struct proto_config *CF)
 {
@@ -2539,11 +2597,13 @@ babel_init(struct proto_config *CF)
   proto_configure_channel(P, &p->ip4_channel, cf->ip4_channel);
   proto_configure_channel(P, &p->ip6_channel, cf->ip6_channel);
 
-  P->if_notify = babel_if_notify;
+  P->iface_sub.if_notify = babel_if_notify;
   P->rt_notify = babel_rt_notify;
   P->preexport = babel_preexport;
-  P->rte_better = babel_rte_better;
-  P->rte_igp_metric = babel_rte_igp_metric;
+  P->feed_begin = babel_feed_begin;
+  P->feed_end = babel_feed_end;
+
+  P->sources.class = &babel_rte_owner_class;
 
   return P;
 }
@@ -2611,8 +2671,11 @@ babel_shutdown(struct proto *P)
 
   TRACE(D_EVENTS, "Shutdown requested");
 
-  WALK_LIST(ifa, p->interfaces)
+  WALK_LIST_FIRST(ifa, p->interfaces)
+  {
     babel_iface_shutdown(ifa);
+    babel_remove_iface(p, ifa);
+  }
 
   return PS_DOWN;
 }
@@ -2664,11 +2727,9 @@ babel_set_logging_rate(struct proto *P, uintptr_t arg)
 }
 
 
-
 struct protocol proto_babel = {
   .name =		"Babel",
   .template =		"babel%d",
-  .class =		PROTOCOL_BABEL,
   .preference =		DEF_PREF_BABEL,
   .channel_mask =	NB_IP | NB_IP6_SADR,
   .proto_size =		sizeof(struct babel_proto),
@@ -2679,12 +2740,16 @@ struct protocol proto_babel = {
   .start =		babel_start,
   .shutdown =		babel_shutdown,
   .reconfigure =	babel_reconfigure,
-  .get_route_info =	babel_get_route_info,
-  .get_attr =		babel_get_attr
 };
 
 void
 babel_build(void)
 {
   proto_build(&proto_babel);
+
+  EA_REGISTER_ALL(
+      &ea_babel_metric,
+      &ea_babel_router_id,
+      &ea_babel_seqno
+      );
 }

@@ -54,30 +54,23 @@ cf_file_read(byte *dest, uint max_len, int fd)
   return l;
 }
 
+void resource_sys_init(void);
+
 void
 bt_bird_init(void)
 {
   if(bt_verbose)
     log_init_debug("");
-  log_switch(bt_verbose != 0, NULL, NULL);
 
   olock_init();
-  timer_init();
-  io_init();
   rt_init();
+  log_switch(1, NULL, NULL);
+  io_init();
   if_init();
   mpls_init();
   config_init();
 
   protos_build();
-}
-
-void bt_bird_cleanup(void)
-{
-  for (int i = 0; i < PROTOCOL__MAX; i++)
-    class_to_protocol[i] = NULL;
-
-  config = new_config = NULL;
 }
 
 static char *

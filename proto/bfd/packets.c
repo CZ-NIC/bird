@@ -416,7 +416,7 @@ bfd_err_hook(sock *sk, int err)
 sock *
 bfd_open_rx_sk(struct bfd_proto *p, int multihop, int af)
 {
-  sock *sk = sk_new(p->tpool);
+  sock *sk = sk_new(p->p.pool);
   sk->type = SK_UDP;
   sk->subtype = af;
   sk->sport = !multihop ? BFD_CONTROL_PORT : BFD_MULTI_CTL_PORT;
@@ -430,17 +430,16 @@ bfd_open_rx_sk(struct bfd_proto *p, int multihop, int af)
   /* TODO: configurable ToS and priority */
   sk->tos = IP_PREC_INTERNET_CONTROL;
   sk->priority = sk_priority_control;
-  sk->flags = SKF_THREAD | SKF_LADDR_RX | (!multihop ? SKF_TTL_RX : 0);
+  sk->flags = SKF_LADDR_RX | (!multihop ? SKF_TTL_RX : 0);
 
-  if (sk_open(sk) < 0)
+  if (sk_open(sk, p->p.loop) < 0)
     goto err;
 
-  sk_start(sk);
   return sk;
 
 err:
   sk_log_error(sk, p->p.name);
-  rfree(sk);
+  sk_close(sk);
   return NULL;
 }
 
@@ -462,24 +461,23 @@ bfd_open_rx_sk_bound(struct bfd_proto *p, ip_addr local, struct iface *ifa)
   /* TODO: configurable ToS and priority */
   sk->tos = IP_PREC_INTERNET_CONTROL;
   sk->priority = sk_priority_control;
-  sk->flags = SKF_THREAD | SKF_BIND | (ifa ? SKF_TTL_RX : 0);
+  sk->flags = SKF_BIND | (ifa ? SKF_TTL_RX : 0);
 
-  if (sk_open(sk) < 0)
+  if (sk_open(sk, p->p.loop) < 0)
     goto err;
 
-  sk_start(sk);
   return sk;
 
 err:
   sk_log_error(sk, p->p.name);
-  rfree(sk);
+  sk_close(sk);
   return NULL;
 }
 
 sock *
 bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa)
 {
-  sock *sk = sk_new(p->tpool);
+  sock *sk = sk_new(p->p.pool);
   sk->type = SK_UDP;
   sk->saddr = local;
   sk->dport = ifa ? BFD_CONTROL_PORT : BFD_MULTI_CTL_PORT;
@@ -494,16 +492,15 @@ bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa)
   sk->tos = IP_PREC_INTERNET_CONTROL;
   sk->priority = sk_priority_control;
   sk->ttl = ifa ? 255 : -1;
-  sk->flags = SKF_THREAD | SKF_BIND | SKF_HIGH_PORT;
+  sk->flags = SKF_BIND | SKF_HIGH_PORT;
 
-  if (sk_open(sk) < 0)
+  if (sk_open(sk, p->p.loop) < 0)
     goto err;
 
-  sk_start(sk);
   return sk;
 
 err:
   sk_log_error(sk, p->p.name);
-  rfree(sk);
+  sk_close(sk);
   return NULL;
 }

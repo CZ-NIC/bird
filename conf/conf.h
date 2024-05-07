@@ -26,9 +26,9 @@ struct config {
   list tests;				/* Configured unit tests (f_bt_test_suite) */
   list symbols;				/* Configured symbols in config order */
 
-  int mrtdump_file;			/* Configured MRTDump file (sysdep, fd in unix) */
+  struct rfile *mrtdump_file;		/* Configured MRTDump file */
   const char *syslog_name;		/* Name used for syslog (NULL -> no syslog) */
-  struct rtable_config *def_tables[NET_MAX]; /* Default routing tables for each network */
+  struct symbol *def_tables[NET_MAX];	/* Default routing tables for each network */
   struct iface_patt *router_id_from;	/* Configured list of router ID iface patterns */
 
   u32 router_id;			/* Our Router ID */
@@ -36,6 +36,7 @@ struct config {
   u32 proto_default_mrtdump;		/* Default protocol mrtdump mask */
   u32 channel_default_debug;		/* Default channel debug mask */
   u32 table_default_debug;		/* Default table debug mask */
+  u16 filter_vstk, filter_estk;		/* Filter stack depth */
   struct timeformat tf_route;		/* Time format for 'show route' */
   struct timeformat tf_proto;		/* Time format for 'show protocol' */
   struct timeformat tf_log;		/* Time format for the logfile */
@@ -54,10 +55,13 @@ struct config {
   char *err_file_name;			/* File name containing error */
   char *file_name;			/* Name of main configuration file */
   int file_fd;				/* File descriptor of main configuration file */
+  int thread_count;			/* How many worker threads to prefork */
 
   struct sym_scope *root_scope;		/* Scope for root symbols */
   struct sym_scope *current_scope;	/* Current scope where we are actually in while parsing */
-  int obstacle_count;			/* Number of items blocking freeing of this config */
+  int allow_attributes;			/* Allow attributes in the current state of configuration parsing */
+  _Atomic int obstacle_count;		/* Number of items blocking freeing of this config */
+  event done_event;			/* Called when obstacle_count reaches zero */
   int shutdown;				/* This is a pseudo-config for daemon shutdown */
   int gr_down;				/* This is a pseudo-config for graceful restart */
   btime load_time;			/* When we've got this configuration */
@@ -65,7 +69,7 @@ struct config {
 
 /* Please don't use these variables in protocols. Use proto_config->global instead. */
 extern struct config *config;		/* Currently active configuration */
-extern struct config *new_config;	/* Configuration being parsed */
+extern _Thread_local struct config *new_config;	/* Configuration being parsed */
 
 struct config *config_alloc(const char *name);
 int config_parse(struct config *);
@@ -129,7 +133,7 @@ struct symbol {
     const struct f_line *function;	/* For SYM_FUNCTION */
     const struct filter *filter;	/* For SYM_FILTER */
     struct rtable_config *table;	/* For SYM_TABLE */
-    struct f_dynamic_attr *attribute;	/* For SYM_ATTRIBUTE */
+    struct ea_class *attribute;		/* For SYM_ATTRIBUTE */
     struct mpls_domain_config *mpls_domain;	/* For SYM_MPLS_DOMAIN */
     struct mpls_range_config *mpls_range;	/* For SYM_MPLS_RANGE */
     struct f_val *val;			/* For SYM_CONSTANT */
@@ -149,12 +153,15 @@ struct sym_scope {
 
   uint slots;				/* Variable slots */
   byte soft_scopes;			/* Number of soft scopes above */
-  byte active:1;			/* Currently entered */
   byte block:1;				/* No independent stack frame */
   byte readonly:1;			/* Do not add new symbols */
 };
 
-extern struct sym_scope *global_root_scope;
+void cf_enter_filters(void);
+void cf_exit_filters(void);
+int cf_maybe_enter_filters(void);
+int cf_maybe_exit_filters(void);
+
 extern pool *global_root_scope_pool;
 extern linpool *global_root_scope_linpool;
 
@@ -222,6 +229,7 @@ static inline int cf_symbol_is_local(struct config *conf, struct symbol *sym)
 
 /* internal */
 struct symbol *cf_new_symbol(struct sym_scope *scope, pool *p, struct linpool *lp, const byte *c);
+struct symbol *cf_root_symbol(const byte *, struct sym_scope *);
 
 /**
  * cf_define_symbol - define meaning of a symbol
@@ -243,9 +251,6 @@ struct symbol *cf_new_symbol(struct sym_scope *scope, pool *p, struct linpool *l
     sym_->class = type_; \
     sym_->var_ = def_; \
     sym_; })
-
-#define cf_create_symbol(conf_, name_, type_, var_, def_) \
-  cf_define_symbol(conf_, cf_get_symbol(conf_, name_), type_, var_, def_)
 
 void cf_push_scope(struct config *, struct symbol *);
 void cf_pop_scope(struct config *);

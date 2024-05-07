@@ -40,7 +40,7 @@ struct mrt_proto {
 
 struct mrt_dump_data {
   const char *table_expr;
-  struct rtable *table_ptr;
+  rtable *table_ptr;
   const struct filter *filter;
   const char *filename;
 };
@@ -60,7 +60,7 @@ struct mrt_table_dump_state {
 
 					/* Configuration information */
   const char *table_expr;		/* Wildcard for table name (or NULL) */
-  struct rtable *table_ptr;		/* Explicit table (or NULL) */
+  rtable *table_ptr;			/* Explicit table (or NULL) */
   const struct filter *filter;		/* Optional filter */
   const char *filename;			/* Filename pattern */
   int always_add_path;			/* Always use *_ADDPATH message subtypes */
@@ -73,7 +73,7 @@ struct mrt_table_dump_state {
 
   HASH(struct mrt_peer_entry) peer_hash; /* Hash for peers to find the index */
 
-  struct rtable *table;			/* Processed table, NULL initially */
+  rtable *table;			/* Processed table, NULL initially */
   struct fib_iterator fit;		/* Iterator in processed table */
   int table_open;			/* Whether iterator is linked */
 

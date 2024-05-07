@@ -228,12 +228,12 @@ get_outer_net(net_addr *net, const struct f_prefix *src)
 static list *
 make_random_prefix_list(int num, int v6, int tight)
 {
-  list *prefixes = lp_allocz(tmp_linpool, sizeof(struct f_prefix_node));
+  list *prefixes = tmp_allocz(sizeof(struct f_prefix_node));
   init_list(prefixes);
 
   for (int i = 0; i < num; i++)
   {
-    struct f_prefix_node *px = lp_allocz(tmp_linpool, sizeof(struct f_prefix_node));
+    struct f_prefix_node *px = tmp_allocz(sizeof(struct f_prefix_node));
     get_random_prefix(&px->prefix, v6, tight);
     add_tail(prefixes, &px->n);
 
@@ -271,7 +271,7 @@ read_prefix_list(FILE *f, int v6, int plus)
   char s[32];
   int n;
 
-  list *pxlist = lp_allocz(tmp_linpool, sizeof(struct f_prefix_node));
+  list *pxlist = tmp_allocz(sizeof(struct f_prefix_node));
   init_list(pxlist);
 
   errno = 0;
@@ -285,7 +285,7 @@ read_prefix_list(FILE *f, int v6, int plus)
     if (n != 5)
       bt_abort_msg("Invalid content of trie_data");
 
-    struct f_prefix_node *px = lp_allocz(tmp_linpool, sizeof(struct f_prefix_node));
+    struct f_prefix_node *px = tmp_allocz(sizeof(struct f_prefix_node));
     net_fill_ip4(&px->prefix.net, ip4_build(a0, a1, a2, a3), pl);
     px->prefix.lo = pl;
     px->prefix.hi = plus ? IP4_MAX_PREFIX_LENGTH : pl;
@@ -409,9 +409,6 @@ test_match_net(list *prefixes, struct f_trie *trie, const net_addr *net)
 static int
 t_match_random_net(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   int v6 = 0;
   for (int round = 0; round < TESTS_NUM; round++)
   {
@@ -429,16 +426,12 @@ t_match_random_net(void)
     tmp_flush();
   }
 
-  bt_bird_cleanup();
   return 1;
 }
 
 static int
 t_match_inner_net(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   int v6 = 0;
   for (int round = 0; round < TESTS_NUM; round++)
   {
@@ -459,16 +452,12 @@ t_match_inner_net(void)
     tmp_flush();
   }
 
-  bt_bird_cleanup();
   return 1;
 }
 
 static int
 t_match_outer_net(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   int v6 = 0;
   for (int round = 0; round < TESTS_NUM; round++)
   {
@@ -490,7 +479,6 @@ t_match_outer_net(void)
   }
 
   v6 = !v6;
-  bt_bird_cleanup();
   return 1;
 }
 
@@ -551,16 +539,11 @@ benchmark_trie_dataset(const char *filename, int plus)
 static int UNUSED
 t_bench_trie_datasets_subset(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   /* Specific datasets, not included */
   benchmark_trie_dataset("trie-data-bgp-1", 0);
   benchmark_trie_dataset("trie-data-bgp-10", 0);
   benchmark_trie_dataset("trie-data-bgp-100", 0);
   benchmark_trie_dataset("trie-data-bgp-1000", 0);
-
-  bt_bird_cleanup();
 
   return 1;
 }
@@ -568,16 +551,11 @@ t_bench_trie_datasets_subset(void)
 static int UNUSED
 t_bench_trie_datasets_random(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   /* Specific datasets, not included */
   benchmark_trie_dataset("trie-data-bgp-1", 1);
   benchmark_trie_dataset("trie-data-bgp-10", 1);
   benchmark_trie_dataset("trie-data-bgp-100", 1);
   benchmark_trie_dataset("trie-data-bgp-1000", 1);
-
-  bt_bird_cleanup();
 
   return 1;
 }
@@ -586,9 +564,6 @@ t_bench_trie_datasets_random(void)
 static int
 t_trie_same(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   int v6 = 0;
   for (int round = 0; round < TESTS_NUM*4; round++)
   {
@@ -609,7 +584,6 @@ t_trie_same(void)
     tmp_flush();
   }
 
-  bt_bird_cleanup();
   return 1;
 }
 
@@ -629,9 +603,6 @@ log_networks(const net_addr *a, const net_addr *b)
 static int
 t_trie_walk(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   for (int round = 0; round < TESTS_NUM*8; round++)
   {
     int level = round / TESTS_NUM;
@@ -740,7 +711,6 @@ t_trie_walk(void)
     tmp_flush();
   }
 
-  bt_bird_cleanup();
   return 1;
 }
 
@@ -779,9 +749,6 @@ find_covering_nets(struct f_prefix *prefixes, int num, const net_addr *net, net_
 static int
 t_trie_walk_to_root(void)
 {
-  bt_bird_init();
-  bt_config_parse(BT_CONFIG_SIMPLE);
-
   for (int round = 0; round < TESTS_NUM * 4; round++)
   {
     int level = round / TESTS_NUM;
@@ -853,7 +820,6 @@ t_trie_walk_to_root(void)
     tmp_flush();
   }
 
-  bt_bird_cleanup();
   return 1;
 }
 
@@ -861,6 +827,8 @@ int
 main(int argc, char *argv[])
 {
   bt_init(argc, argv);
+  bt_bird_init();
+  bt_config_parse(BT_CONFIG_SIMPLE);
 
   bt_test_suite(t_match_random_net, "Testing random prefix matching");
   bt_test_suite(t_match_inner_net, "Testing random inner prefix matching");

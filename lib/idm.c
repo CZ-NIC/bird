@@ -22,6 +22,7 @@ idm_init(struct idm *m, pool *p, uint size)
   m->used = 1;
   m->size = size;
   m->data = mb_allocz(p, m->size * sizeof(u32));
+  m->pool = p;
 
   /* ID 0 is reserved */
   m->data[0] = 1;
@@ -33,6 +34,8 @@ u32
 idm_alloc(struct idm *m)
 {
   uint i, j;
+
+  ASSERT_DIE(DG_IS_LOCKED(m->pool->domain));
 
   for (i = m->pos; i < m->size; i++)
     if (m->data[i] != 0xffffffff)
@@ -67,6 +70,8 @@ found:
 void
 idm_free(struct idm *m, u32 id)
 {
+  ASSERT_DIE(DG_IS_LOCKED(m->pool->domain));
+
   uint i = id / 32;
   uint j = id % 32;
 

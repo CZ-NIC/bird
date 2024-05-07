@@ -9,13 +9,18 @@
 #ifndef _BIRD_UNIX_H_
 #define _BIRD_UNIX_H_
 
+#include "nest/bird.h"
+#include "lib/io-loop.h"
+
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <signal.h>
 
 struct pool;
 struct iface;
 struct birdsock;
 struct rfile;
+struct config;
 
 /* main.c */
 
@@ -32,6 +37,8 @@ void cmd_reconfig_undo(void);
 void cmd_reconfig_status(void);
 void cmd_shutdown(void);
 void cmd_graceful_restart(void);
+void cmd_show_threads(int);
+void bird_thread_commit(struct config *new, struct config *old);
 
 #define UNIX_DEFAULT_CONFIGURE_TIMEOUT	300
 
@@ -107,11 +114,21 @@ extern volatile sig_atomic_t async_shutdown_flag;
 void io_init(void);
 void io_loop(void);
 void io_log_dump(void);
-int sk_open_unix(struct birdsock *s, char *name);
-struct rfile *rf_open(struct pool *, const char *name, const char *mode);
-struct rfile *rf_fdopen(pool *p, int fd, const char *mode);
-void *rf_file(struct rfile *f);
-int rf_fileno(struct rfile *f);
+int sk_open_unix(struct birdsock *s, struct birdloop *, char *name);
+
+enum rf_mode {
+  RF_APPEND = 1,
+  RF_FIXED,
+};
+
+struct rfile *rf_open(struct pool *, const char *name, enum rf_mode mode, off_t limit);
+off_t rf_size(struct rfile *);
+int rf_same(struct rfile *, struct rfile *);
+int rf_writev(struct rfile *, struct iovec *, int);
+void rf_write_crude(struct rfile *, const char *, int);
+
+extern struct rfile rf_stderr;
+
 void test_old_bird(char *path);
 ip_addr resolve_hostname(const char *host, int type, const char **err_msg);
 
@@ -121,26 +138,21 @@ void krt_io_init(void);
 
 /* log.c */
 
-void main_thread_init(void);
 void log_init_debug(char *);		/* Initialize debug dump to given file (NULL=stderr, ""=off) */
 void log_switch(int initial, list *l, const char *);
 
 struct log_config {
   node n;
   uint mask;				/* Classes to log */
-  void *fh;				/* FILE to log to, NULL=syslog */
-  struct rfile *rf;			/* Resource for log file */
+  struct rfile *rf;			/* File handle */
   const char *filename;			/* Log filename */
   const char *backup;			/* Secondary filename (for log rotation) */
-  off_t pos;				/* Position/size of current log */
   off_t limit;				/* Log size limit */
   int terminal_flag;
-  int udp_flag;
-  const char *host;			/* UDP log dst host name */
-  ip_addr ip;				/* UDP log dst IP address */
-  uint port;				/* UDP log dst port */
+  int found_old;
+  const char *udp_host;			/* UDP log dst host name */
+  ip_addr udp_ip;			/* UDP log dst IP address */
+  uint udp_port;			/* UDP log dst port */
 };
-
-int log_open_udp(struct log_config *l, pool *p);
 
 #endif

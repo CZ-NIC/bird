@@ -10,7 +10,7 @@
 #include "test/bt-utils.h"
 
 #include "nest/route.h"
-#include "nest/attrs.h"
+#include "lib/attrs.h"
 #include "lib/resource.h"
 #include "filter/data.h"
 
@@ -78,13 +78,13 @@ t_path_format(void)
     bt_debug("Prepending ASN: %10u \n", i);
   }
 
-#define BUFFER_SIZE 120
-  byte buf[BUFFER_SIZE] = {};
+#define T_BUFFER_SIZE 120
+  byte buf[T_BUFFER_SIZE] = {};
 
-  as_path_format(&empty_as_path, buf, BUFFER_SIZE);
+  as_path_format(&empty_as_path, buf, T_BUFFER_SIZE);
   bt_assert_msg(strcmp(buf, "") == 0, "Buffer(%zu): '%s'", strlen(buf), buf);
 
-  as_path_format(as_path, buf, BUFFER_SIZE);
+  as_path_format(as_path, buf, T_BUFFER_SIZE);
   bt_assert_msg(strcmp(buf, "4294967294 4294967293 4294967292 4294967291 4294967290 4294967289 4294967288 4294967287 4294967286 4294967285") == 0, "Buffer(%zu): '%s'", strlen(buf), buf);
 
 #define SMALL_BUFFER_SIZE 25

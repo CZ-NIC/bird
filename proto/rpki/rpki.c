@@ -109,6 +109,7 @@ static void rpki_schedule_next_expire_check(struct rpki_cache *cache);
 static void rpki_stop_refresh_timer_event(struct rpki_cache *cache);
 static void rpki_stop_retry_timer_event(struct rpki_cache *cache);
 static void rpki_stop_expire_timer_event(struct rpki_cache *cache);
+static void rpki_stop_all_timers(struct rpki_cache *cache);
 
 
 /*
@@ -120,26 +121,46 @@ rpki_table_add_roa(struct rpki_cache *cache, struct channel *channel, const net_
 {
   struct rpki_proto *p = cache->p;
 
-  rta a0 = {
-    .pref = channel->preference,
-    .source = RTS_RPKI,
-    .scope = SCOPE_UNIVERSE,
-    .dest = RTD_NONE,
-  };
+  ea_list *ea = NULL;
+  ea_set_attr_u32(&ea, &ea_gen_preference, 0, channel->preference);
+  ea_set_attr_u32(&ea, &ea_gen_source, 0, RTS_RPKI);
 
-  rta *a = rta_lookup(&a0);
-  rte *e = rte_get_temp(a, p->p.main_source);
+  rte e0 = { .attrs = ea, .src = p->p.main_source, };
 
-  rte_update2(channel, &pfxr->n, e, e->src);
+  rte_update(channel, &pfxr->n, &e0, p->p.main_source);
 }
 
 void
 rpki_table_remove_roa(struct rpki_cache *cache, struct channel *channel, const net_addr_union *pfxr)
 {
   struct rpki_proto *p = cache->p;
-  rte_update2(channel, &pfxr->n, NULL, p->p.main_source);
+  rte_update(channel, &pfxr->n, NULL, p->p.main_source);
 }
 
+void
+rpki_start_refresh(struct rpki_proto *p)
+{
+  if (p->roa4_channel)
+    rt_refresh_begin(&p->roa4_channel->in_req);
+  if (p->roa6_channel)
+    rt_refresh_begin(&p->roa6_channel->in_req);
+
+  p->refresh_channels = 1;
+}
+
+void
+rpki_stop_refresh(struct rpki_proto *p)
+{
+  if (!p->refresh_channels)
+    return;
+
+  p->refresh_channels = 0;
+
+  if (p->roa4_channel)
+    rt_refresh_end(&p->roa4_channel->in_req);
+  if (p->roa6_channel)
+    rt_refresh_end(&p->roa6_channel->in_req);
+}
 
 /*
  *	RPKI Protocol Logic
@@ -196,6 +217,8 @@ rpki_force_restart_proto(struct rpki_proto *p)
 {
   if (p->cache)
   {
+    rpki_tr_close(p->cache->tr_sock);
+    rpki_stop_all_timers(p->cache);
     CACHE_DBG(p->cache, "Connection object destroying");
   }
 
@@ -321,7 +344,7 @@ rpki_schedule_next_refresh(struct rpki_cache *cache)
   btime t = cache->refresh_interval S;
 
   CACHE_DBG(cache, "after %t s", t);
-  tm_start(cache->refresh_timer, t);
+  tm_start_in(cache->refresh_timer, t, cache->p->p.loop);
 }
 
 static void
@@ -330,7 +353,7 @@ rpki_schedule_next_retry(struct rpki_cache *cache)
   btime t = cache->retry_interval S;
 
   CACHE_DBG(cache, "after %t s", t);
-  tm_start(cache->retry_timer, t);
+  tm_start_in(cache->retry_timer, t, cache->p->p.loop);
 }
 
 static void
@@ -341,7 +364,7 @@ rpki_schedule_next_expire_check(struct rpki_cache *cache)
   t = MAX(t, 1 S);
 
   CACHE_DBG(cache, "after %t s", t);
-  tm_start(cache->expire_timer, t);
+  tm_start_in(cache->expire_timer, t, cache->p->p.loop);
 }
 
 static void
@@ -358,11 +381,19 @@ rpki_stop_retry_timer_event(struct rpki_cache *cache)
   tm_stop(cache->retry_timer);
 }
 
-static void UNUSED
+static void
 rpki_stop_expire_timer_event(struct rpki_cache *cache)
 {
   CACHE_DBG(cache, "Stop");
   tm_stop(cache->expire_timer);
+}
+
+static void
+rpki_stop_all_timers(struct rpki_cache *cache)
+{
+  rpki_stop_refresh_timer_event(cache);
+  rpki_stop_retry_timer_event(cache);
+  rpki_stop_expire_timer_event(cache);
 }
 
 static int
@@ -385,6 +416,9 @@ static void
 rpki_refresh_hook(timer *tm)
 {
   struct rpki_cache *cache = tm->data;
+
+  if (cache->p->cache != cache)
+    return;
 
   CACHE_DBG(cache, "%s", rpki_cache_state_to_str(cache->state));
 
@@ -431,6 +465,9 @@ static void
 rpki_retry_hook(timer *tm)
 {
   struct rpki_cache *cache = tm->data;
+
+  if (cache->p->cache != cache)
+    return;
 
   CACHE_DBG(cache, "%s", rpki_cache_state_to_str(cache->state));
 
@@ -481,6 +518,9 @@ static void
 rpki_expire_hook(timer *tm)
 {
   struct rpki_cache *cache = tm->data;
+
+  if (cache->p->cache != cache)
+    return;
 
   if (!cache->last_update)
     return;
@@ -559,7 +599,7 @@ rpki_check_expire_interval(uint seconds)
 static struct rpki_cache *
 rpki_init_cache(struct rpki_proto *p, struct rpki_config *cf)
 {
-  pool *pool = rp_new(p->p.pool, cf->hostname);
+  pool *pool = rp_new(p->p.pool, proto_domain(&p->p), cf->hostname);
 
   struct rpki_cache *cache = mb_allocz(pool, sizeof(struct rpki_cache));
 
@@ -624,6 +664,7 @@ rpki_close_connection(struct rpki_cache *cache)
 {
   CACHE_TRACE(D_EVENTS, cache, "Closing a connection");
   rpki_tr_close(cache->tr_sock);
+  rpki_stop_refresh(cache->p);
   proto_notify_state(&cache->p->p, PS_START);
 }
 
@@ -950,10 +991,10 @@ rpki_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNUS
 struct protocol proto_rpki = {
   .name = 		"RPKI",
   .template = 		"rpki%d",
-  .class =		PROTOCOL_RPKI,
   .preference = 	DEF_PREF_RPKI,
   .proto_size = 	sizeof(struct rpki_proto),
   .config_size =	sizeof(struct rpki_config),
+  .startup =		PROTOCOL_STARTUP_GENERATOR,
   .init = 		rpki_init,
   .start = 		rpki_start,
   .postconfig = 	rpki_postconfig,

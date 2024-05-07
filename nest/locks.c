@@ -37,7 +37,10 @@
 #include "nest/iface.h"
 
 static list olock_list;
-static event *olock_event;
+
+static DOMAIN(attrs) olock_domain;
+#define OBJ_LOCK	LOCK_DOMAIN(attrs, olock_domain)
+#define OBJ_UNLOCK	UNLOCK_DOMAIN(attrs, olock_domain)
 
 static inline int
 olock_same(struct object_lock *x, struct object_lock *y)
@@ -55,39 +58,56 @@ olock_same(struct object_lock *x, struct object_lock *y)
 static void
 olock_free(resource *r)
 {
-  struct object_lock *q, *l = (struct object_lock *) r;
+  /* Called externally from rfree() */
+  struct object_lock *l = SKIP_BACK(struct object_lock, r, r);
   node *n;
 
+  OBJ_LOCK;
   DBG("olock: Freeing %p\n", l);
   switch (l->state)
     {
     case OLOCK_STATE_FREE:
       break;
     case OLOCK_STATE_LOCKED:
-    case OLOCK_STATE_EVENT:
+      /* Remove myself from the olock_list */
       rem_node(&l->n);
+
+      /* Maybe the notification is still pending. */
+      ev_postpone(&l->event);
+
+      /* Get new lock candidate */
       n = HEAD(l->waiters);
-      if (n->next)
+      if (NODE_VALID(n))
 	{
-	  DBG("olock: -> %p becomes locked\n", n);
-	  q = SKIP_BACK(struct object_lock, n, n);
+	  struct object_lock *q = SKIP_BACK(struct object_lock, n, n);
+
+	  /* Remove this candidate from waiters list */
 	  rem_node(n);
+
+	  /* Move waiter lists */
+	  DBG("olock: -> %p becomes locked\n", n);
 	  add_tail_list(&q->waiters, &l->waiters);
-	  q->state = OLOCK_STATE_EVENT;
+
+	  /* Add the new olock to olock_list */
 	  add_head(&olock_list, n);
-	  ev_schedule(olock_event);
+
+	  /* Inform */
+	  q->state = OLOCK_STATE_LOCKED;
+	  ev_send(q->target, &q->event);
 	}
       break;
     case OLOCK_STATE_WAITING:
+      /* Remove from the waiters list */
       rem_node(&l->n);
       break;
     default:
       ASSERT(0);
     }
+  OBJ_UNLOCK;
 }
 
 static void
-olock_dump(resource *r)
+olock_dump(resource *r, unsigned indent UNUSED)
 {
   struct object_lock *l = (struct object_lock *) r;
   static char *olock_states[] = { "free", "locked", "waiting", "event" };
@@ -141,6 +161,8 @@ olock_acquire(struct object_lock *l)
   node *n;
   struct object_lock *q;
 
+  OBJ_LOCK;
+
   WALK_LIST(n, olock_list)
     {
       q = SKIP_BACK(struct object_lock, n, n);
@@ -149,36 +171,19 @@ olock_acquire(struct object_lock *l)
 	  l->state = OLOCK_STATE_WAITING;
 	  add_tail(&q->waiters, &l->n);
 	  DBG("olock: %p waits\n", l);
+
+	  OBJ_UNLOCK;
 	  return;
 	}
     }
+
   DBG("olock: %p acquired immediately\n", l);
-  l->state = OLOCK_STATE_EVENT;
   add_head(&olock_list, &l->n);
-  ev_schedule(olock_event);
-}
 
-static void
-olock_run_event(void *unused UNUSED)
-{
-  node *n;
-  struct object_lock *q;
+  l->state = OLOCK_STATE_LOCKED;
+  ev_send(l->target, &l->event);
 
-  DBG("olock: Processing events\n");
-  for(;;)
-    {
-      n = HEAD(olock_list);
-      if (!n->next)
-	break;
-      q = SKIP_BACK(struct object_lock, n, n);
-      if (q->state != OLOCK_STATE_EVENT)
-	break;
-      DBG("olock: %p locked\n", q);
-      q->state = OLOCK_STATE_LOCKED;
-      rem_node(&q->n);
-      add_tail(&olock_list, &q->n);
-      q->hook(q);
-    }
+  OBJ_UNLOCK;
 }
 
 /**
@@ -192,5 +197,6 @@ olock_init(void)
 {
   DBG("olock: init\n");
   init_list(&olock_list);
-  olock_event = ev_new_init(&root_pool, olock_run_event, NULL);
+  olock_domain = DOMAIN_NEW(attrs);
+  DOMAIN_SETUP(attrs, olock_domain, "Object lock", NULL);
 }

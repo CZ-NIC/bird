@@ -233,7 +233,12 @@ static const size_t min_pdu_size[] = {
   [ERROR] 			= 16,
 };
 
-static int rpki_send_error_pdu(struct rpki_cache *cache, const enum pdu_error_type error_code, const u32 err_pdu_len, const struct pdu_header *erroneous_pdu, const char *fmt, ...);
+static int rpki_send_error_pdu_(struct rpki_cache *cache, const enum pdu_error_type error_code, const u32 err_pdu_len, const struct pdu_header *erroneous_pdu, const char *fmt, ...);
+
+#define rpki_send_error_pdu(cache, error_code, err_pdu_len, erroneous_pdu, fmt...) ({ \
+    rpki_send_error_pdu_(cache, error_code, err_pdu_len, erroneous_pdu, #fmt); \
+    CACHE_TRACE(D_PACKETS, cache, #fmt); \
+    })
 
 static void
 rpki_pdu_to_network_byte_order(struct pdu_header *pdu)
@@ -595,6 +600,7 @@ rpki_handle_error_pdu(struct rpki_cache *cache, const struct pdu_error *pdu)
   case INTERNAL_ERROR:
   case INVALID_REQUEST:
   case UNSUPPORTED_PDU_TYPE:
+    CACHE_TRACE(D_PACKETS, cache, "Got UNSUPPORTED_PDU_TYPE");
     rpki_cache_change_state(cache, RPKI_CS_ERROR_FATAL);
     break;
 
@@ -652,21 +658,7 @@ rpki_handle_cache_response_pdu(struct rpki_cache *cache, const struct pdu_cache_
 {
   if (cache->request_session_id)
   {
-    if (cache->last_update)
-    {
-      /*
-       * This isn't the first sync and we already received records. This point
-       * is after Reset Query and before importing new records from cache
-       * server. We need to load new ones and kick out missing ones.  So start
-       * a refresh cycle.
-       */
-      if (cache->p->roa4_channel)
-	rt_refresh_begin(cache->p->roa4_channel->table, cache->p->roa4_channel);
-      if (cache->p->roa6_channel)
-	rt_refresh_begin(cache->p->roa6_channel->table, cache->p->roa6_channel);
-
-      cache->p->refresh_channels = 1;
-    }
+    rpki_start_refresh(cache->p);
     cache->session_id = pdu->session_id;
     cache->request_session_id = 0;
   }
@@ -842,14 +834,7 @@ rpki_handle_end_of_data_pdu(struct rpki_cache *cache, const struct pdu_end_of_da
 		(cf->keep_expire_interval ? "keeps " : ""),  cache->expire_interval);
   }
 
-  if (cache->p->refresh_channels)
-  {
-    cache->p->refresh_channels = 0;
-    if (cache->p->roa4_channel)
-      rt_refresh_end(cache->p->roa4_channel->table, cache->p->roa4_channel);
-    if (cache->p->roa6_channel)
-      rt_refresh_end(cache->p->roa6_channel->table, cache->p->roa6_channel);
-  }
+  rpki_stop_refresh(cache->p);
 
   cache->last_update = current_time();
   cache->serial_num = pdu->serial_num;
@@ -924,6 +909,9 @@ rpki_rx_hook(struct birdsock *sk, uint size)
   struct rpki_cache *cache = sk->data;
   struct rpki_proto *p = cache->p;
 
+  if ((p->p.proto_state == PS_DOWN) || (p->cache != cache))
+    return 0;
+
   byte *pkt_start = sk->rbuf;
   byte *end = pkt_start + size;
 
@@ -980,6 +968,8 @@ rpki_err_hook(struct birdsock *sk, int error_num)
     CACHE_TRACE(D_EVENTS, cache, "The other side closed a connection");
   }
 
+  if (cache->p->cache != cache)
+    return;
 
   rpki_cache_change_state(cache, RPKI_CS_ERROR_TRANSPORT);
 }
@@ -999,6 +989,9 @@ rpki_tx_hook(sock *sk)
 {
   struct rpki_cache *cache = sk->data;
 
+  if (cache->p->cache != cache)
+    return;
+
   while (rpki_fire_tx(cache) > 0)
     ;
 }
@@ -1007,6 +1000,9 @@ void
 rpki_connected_hook(sock *sk)
 {
   struct rpki_cache *cache = sk->data;
+
+  if (cache->p->cache != cache)
+    return;
 
   CACHE_TRACE(D_EVENTS, cache, "Connected");
   proto_notify_state(&cache->p->p, PS_UP);
@@ -1029,7 +1025,7 @@ rpki_connected_hook(sock *sk)
  * This function prepares Error PDU and sends it to a cache server.
  */
 static int
-rpki_send_error_pdu(struct rpki_cache *cache, const enum pdu_error_type error_code, const u32 err_pdu_len, const struct pdu_header *erroneous_pdu, const char *fmt, ...)
+rpki_send_error_pdu_(struct rpki_cache *cache, const enum pdu_error_type error_code, const u32 err_pdu_len, const struct pdu_header *erroneous_pdu, const char *fmt, ...)
 {
   va_list args;
   char msg[128];

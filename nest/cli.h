@@ -10,6 +10,7 @@
 #define _BIRD_CLI_H_
 
 #include "lib/resource.h"
+#include "lib/lists.h"
 #include "lib/event.h"
 
 #define CLI_RX_BUF_SIZE 4096
@@ -28,20 +29,17 @@ struct cli_out {
 typedef struct cli {
   node n;				/* Node in list of all log hooks */
   pool *pool;
-  void *priv;				/* Private to sysdep layer */
+  struct birdsock *sock;		/* Underlying socket */
   byte *rx_buf, *rx_pos;		/* sysdep */
   struct cli_out *tx_buf, *tx_pos, *tx_write;
   event *event;
   void (*cont)(struct cli *c);
-  void (*cleanup)(struct cli *c);
+  int (*cleanup)(struct cli *c);	/* Return 0 if finished and cli may be freed immediately.
+					   Otherwise return 1 and call rfree(c->pool) when appropriate. */
   void *rover;				/* Private to continuation routine */
   int last_reply;
   int restricted;			/* CLI is restricted to read-only commands */
   struct linpool *parser_pool;		/* Pool used during parsing */
-  struct linpool *show_pool;		/* Pool used during route show */
-  byte *ring_buf;			/* Ring buffer for asynchronous messages */
-  byte *ring_end, *ring_read, *ring_write;	/* Pointers to the ring buffer */
-  uint ring_overflow;			/* Counter of ring overflows */
   uint log_mask;			/* Mask of allowed message levels */
   uint log_threshold;			/* When free < log_threshold, store only important messages */
   uint async_msg_size;			/* Total size of async messages queued in tx_buf */
@@ -56,19 +54,17 @@ extern struct cli *this_cli;		/* Used during parsing */
 
 void cli_printf(cli *, int, char *, ...);
 #define cli_msg(x...) cli_printf(this_cli, x)
-void cli_set_log_echo(cli *, uint mask, uint size);
 
 static inline void cli_separator(cli *c)
 { if (c->last_reply) cli_printf(c, -c->last_reply, ""); };
 
 /* Functions provided to sysdep layer */
 
-cli *cli_new(void *);
+cli *cli_new(struct birdsock *);
 void cli_init(void);
 void cli_free(cli *);
 void cli_kick(cli *);
 void cli_written(cli *);
-void cli_echo(uint class, byte *msg);
 
 static inline int cli_access_restricted(void)
 {

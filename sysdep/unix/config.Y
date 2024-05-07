@@ -17,9 +17,9 @@ static struct log_config *this_log;
 
 CF_DECLS
 
-CF_KEYWORDS(LOG, SYSLOG, NAME, STDERR, UDP, PORT)
-CF_KEYWORDS(ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG)
-CF_KEYWORDS(DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, TIMEOUT, THREADS)
+CF_KEYWORDS(LOG, SYSLOG, ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG, STDERR, SOFT, UDP, PORT)
+CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, STATUS)
+CF_KEYWORDS(GRACEFUL, RESTART, FIXED)
 
 %type <i> log_mask log_mask_list log_cat cfg_timeout
 %type <t> cfg_name
@@ -27,9 +27,6 @@ CF_KEYWORDS(DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, TIMEOUT, THREADS)
 %type <t> syslog_name
 
 CF_GRAMMAR
-
-/* Dummy threads setting for forward compatibility */
-conf: THREADS expr ';' ;
 
 conf: log_config ;
 
@@ -55,35 +52,36 @@ log_file:
    text log_limit {
      if (!parse_and_exit)
      {
-       this_log->rf = rf_open(new_config->pool, $1, "a");
+       this_log->rf = rf_open(new_config->pool, $1, RF_APPEND, this_log->limit);
        if (!this_log->rf) cf_error("Unable to open log file '%s': %m", $1);
-       this_log->fh = rf_file(this_log->rf);
      }
-     this_log->pos = -1;
      this_log->filename = $1;
    }
- | SYSLOG syslog_name { this_log->fh = NULL; new_config->syslog_name = $2; }
- | STDERR { this_log->fh = stderr; }
- | UDP log_udp_host log_udp_port {
-     this_log->udp_flag = 1;
-
+ | FIXED text expr {
      if (!parse_and_exit)
-       log_open_udp(this_log, new_config->pool);
+     {
+       this_log->rf = rf_open(new_config->pool, $2, RF_FIXED, this_log->limit = $3);
+       if (!this_log->rf) cf_error("Unable to open log file '%s': %m", $2);
+     }
+     this_log->filename = $2;
    }
+ | SYSLOG syslog_name { this_log->rf = NULL; new_config->syslog_name = $2; }
+ | STDERR { this_log->rf = &rf_stderr; this_log->terminal_flag = 1; }
+ | UDP log_udp_host log_udp_port { this_log->rf = NULL; }
  ;
 
 log_udp_host: text_or_ipa
 {
   if ($1.type == T_STRING)
-    this_log->host = $1.val.s;
+    this_log->udp_host = $1.val.s;
   else if ($1.type == T_IP)
-    this_log->ip = $1.val.ip;
+    this_log->udp_ip = $1.val.ip;
   else bug("Bad text_or_ipa");
 };
 
 log_udp_port:
-    /* empty */ { this_log->port = 514; }
-  | PORT NUM { check_u16($2); this_log->port = $2; }
+    /* empty */ { this_log->udp_port = 514; }
+  | PORT NUM { check_u16($2); this_log->udp_port = $2; }
   ;
 
 log_mask:
@@ -116,12 +114,18 @@ mrtdump_base:
  | MRTDUMP text ';' {
      if (!parse_and_exit)
      {
-       struct rfile *f = rf_open(new_config->pool, $2, "a");
+       struct rfile *f = rf_open(new_config->pool, $2, RF_APPEND, 0);
        if (!f) cf_error("Unable to open MRTDump file '%s': %m", $2);
-       new_config->mrtdump_file = rf_fileno(f);
+       new_config->mrtdump_file = f;
      }
    }
  ;
+
+
+conf: THREADS expr {
+    if ($2 < 1) cf_error("Number of threads must be at least one.");
+    new_config->thread_count = $2;
+}
 
 
 conf: debug_unix ;
@@ -168,6 +172,11 @@ CF_CLI_HELP(GRACEFUL, restart, [[Shut the daemon down for graceful restart]])
 CF_CLI(GRACEFUL RESTART,,, [[Shut the daemon down for graceful restart]])
 { cmd_graceful_restart(); } ;
 
+CF_CLI(SHOW THREADS,,, [[Write out thread information]])
+{ cmd_show_threads(0); } ;
+
+CF_CLI(SHOW THREADS ALL,,, [[Write out thread and IO loop information]])
+{ cmd_show_threads(1); } ;
 
 cfg_name:
    /* empty */ { $$ = NULL; }

@@ -54,9 +54,6 @@ cmd_show_symbols(struct sym_show_data *sd)
     for (const struct sym_scope *scope = config->root_scope; scope; scope = scope->next)
       HASH_WALK(scope->hash, next, sym)
       {
-	if (!sym->scope->active)
-	  continue;
-
 	if (sd->type && (sym->class != sd->type))
 	  continue;
 
@@ -109,7 +106,6 @@ print_size(char *dsc, struct resmem vals)
 
 extern pool *rt_table_pool;
 extern pool *rta_pool;
-extern uint *pages_kept;
 
 void
 cmd_show_memory(void)
@@ -122,8 +118,10 @@ cmd_show_memory(void)
   print_size("Current config:", rmemsize(config_pool));
   struct resmem total = rmemsize(&root_pool);
 #ifdef HAVE_MMAP
-  print_size("Standby memory:", (struct resmem) { .overhead = page_size * *pages_kept });
-  total.overhead += page_size * *pages_kept;
+  int pk  = atomic_load_explicit(&pages_kept, memory_order_relaxed)
+	  + atomic_load_explicit(&pages_kept_locally, memory_order_relaxed);
+  print_size("Standby memory:", (struct resmem) { .overhead = page_size * pk });
+  total.overhead += page_size * pk;
 #endif
   print_size("Total:", total);
   cli_msg(0, "");
@@ -133,9 +131,9 @@ void
 cmd_eval(const struct f_line *expr)
 {
   buffer buf;
-  LOG_BUFFER_INIT(buf);
+  STACK_BUFFER_INIT(buf, CLI_MSG_SIZE);
 
-  if (f_eval_buf(expr, this_cli->parser_pool, &buf) > F_RETURN)
+  if (f_eval_buf(expr, &buf) > F_RETURN)
     {
       cli_msg(8008, "runtime error");
       return;

@@ -12,6 +12,7 @@
 
 struct idm
 {
+  pool *pool;
   u32 *data;
   u32 pos;
   u32 used;

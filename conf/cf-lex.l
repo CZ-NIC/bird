@@ -73,9 +73,18 @@ static uint cf_hash(const byte *c);
 
 HASH_DEFINE_REHASH_FN(SYM, struct symbol)
 
-struct sym_scope *global_root_scope;
+/* Global symbol scopes */
 pool *global_root_scope_pool;
 linpool *global_root_scope_linpool;
+struct sym_scope
+  global_root_scope = {
+  },
+  global_filter_scope = {
+    .next = &global_root_scope,
+  };
+
+/* Local symbol scope: TODO this isn't thread-safe */
+struct sym_scope *conf_this_scope;
 
 linpool *cfg_mem;
 
@@ -323,7 +332,7 @@ else: {
   return DDOT;
 }
 
-[={}:;,.()+*/%<>~\[\]?!\|-] {
+[={}:;,.()+*/%<>~\[\]?!\|&-] {
   return yytext[0];
 }
 
@@ -567,7 +576,7 @@ cf_new_symbol(struct sym_scope *scope, pool *p, struct linpool *lp, const byte *
 
   s = lp_alloc(lp, sizeof(struct symbol) + l + 1);
   *s = (struct symbol) { .scope = scope, .class = SYM_VOID, };
-  strcpy(s->name, c);
+  memcpy(s->name, c, l+1);
 
   if (!scope->hash.data)
     HASH_INIT(scope->hash, p, SYM_ORDER);
@@ -579,6 +588,31 @@ cf_new_symbol(struct sym_scope *scope, pool *p, struct linpool *lp, const byte *
 
   return s;
 }
+
+struct symbol *
+cf_root_symbol(const byte *c, struct sym_scope *ss)
+{
+  uint l = strlen(c);
+  if (l > SYM_MAX_LEN)
+    bug("Root symbol %s too long", c);
+
+  if (!global_root_scope_pool)
+  {
+    global_root_scope_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Keywords pool");
+    global_root_scope_linpool = lp_new(global_root_scope_pool);
+  }
+
+  struct symbol *s = lp_alloc(global_root_scope_linpool, sizeof(struct symbol) + l + 1);
+  *s = (struct symbol) { .scope = ss, .class = SYM_VOID, };
+  memcpy(s->name, c, l+1);
+
+  if (!ss->hash.data)
+    HASH_INIT(ss->hash, &root_pool, SYM_ORDER);
+
+  HASH_INSERT2(ss->hash, SYM, &root_pool, s);
+  return s;
+}
+
 
 /**
  * cf_find_symbol_scope - find a symbol by name
@@ -598,7 +632,8 @@ cf_find_symbol_scope(const struct sym_scope *scope, const byte *c)
 
   /* Find the symbol here or anywhere below */
   while (scope)
-    if (scope->hash.data && (s = HASH_FIND(scope->hash, SYM, c)))
+    if (((scope != &global_filter_scope) || !new_config || new_config->allow_attributes) &&
+	scope->hash.data && (s = HASH_FIND(scope->hash, SYM, c)))
       return s;
     else
       scope = scope->next;
@@ -691,6 +726,33 @@ cf_lex_symbol(const char *data)
   }
 }
 
+void
+ea_lex_register(struct ea_class *def)
+{
+  def->sym = cf_root_symbol(def->name, &global_filter_scope);
+  def->sym->class = SYM_ATTRIBUTE;
+  def->sym->attribute = def;
+}
+
+#if 0
+/* When we start to support complete protocol removal, we may need this function */
+void
+ea_lex_unregister(struct ea_class *def)
+{
+  struct symbol *sym = def->sym;
+  HASH_REMOVE2(global_filter_scope.hash, SYM, &root_pool, sym);
+  mb_free(sym);
+  def->sym = NULL;
+}
+#endif
+
+struct ea_class *
+ea_class_find_by_name(const char *name)
+{
+  struct symbol *sym = cf_find_symbol_scope(config ? config->root_scope : &global_filter_scope, name);
+  return sym && (sym->class == SYM_ATTRIBUTE) ? sym->attribute : NULL;
+}
+
 void f_type_methods_register(void);
 
 /**
@@ -704,20 +766,17 @@ void f_type_methods_register(void);
 void
 cf_lex_init(int is_cli, struct config *c)
 {
-  if (!global_root_scope_pool)
+  if (!global_root_scope.readonly)
   {
-    global_root_scope_pool = rp_new(&root_pool, "Keywords pool");
-    global_root_scope_linpool = lp_new(global_root_scope_pool);
-    global_root_scope = lp_allocz(global_root_scope_linpool, sizeof(*global_root_scope));
-
     for (const struct keyword *k = keyword_list; k->name; k++)
     {
-      struct symbol *sym = cf_new_symbol(global_root_scope, global_root_scope_pool, global_root_scope_linpool, k->name);
-      sym->class = SYM_KEYWORD;
-      sym->keyword = k;
+      struct symbol *s = cf_root_symbol(k->name, &global_root_scope);
+      s->class = SYM_KEYWORD;
+      s->keyword = k;
     }
 
-    global_root_scope->readonly = 1;
+    global_root_scope.readonly = 1;
+    global_filter_scope.readonly = 1;
 
     f_type_methods_register();
   }
@@ -739,12 +798,11 @@ cf_lex_init(int is_cli, struct config *c)
     BEGIN(INITIAL);
 
   c->root_scope = c->current_scope = cfg_allocz(sizeof(struct sym_scope));
-  c->root_scope->active = 1;
 
   if (is_cli)
     c->current_scope->next = config->root_scope;
   else
-    c->current_scope->next = global_root_scope;
+    c->current_scope->next = &global_filter_scope;
 }
 
 /**
@@ -764,7 +822,6 @@ cf_push_scope(struct config *conf, struct symbol *sym)
 
   s->next = conf->current_scope;
   conf->current_scope = s;
-  s->active = 1;
   s->name = sym;
   s->slots = 0;
 }
@@ -780,10 +837,7 @@ void
 cf_pop_scope(struct config *conf)
 {
   ASSERT(!conf->current_scope->soft_scopes);
-
-  conf->current_scope->active = 0;
   conf->current_scope = conf->current_scope->next;
-
   ASSERT(conf->current_scope);
 }
 
@@ -834,6 +888,41 @@ cf_swap_soft_scope(struct config *conf)
 }
 
 /**
+ * cf_enter_filters - enable filter / route attributes namespace
+ */
+void
+cf_enter_filters(void)
+{
+  ASSERT_DIE(!cf_maybe_enter_filters());
+}
+
+int
+cf_maybe_enter_filters(void)
+{
+  int o = new_config->allow_attributes;
+  new_config->allow_attributes = 1;
+  return o;
+}
+
+/**
+ * cf_exit_filters - disable filter / route attributes namespace
+ */
+void
+cf_exit_filters(void)
+{
+  ASSERT_DIE(cf_maybe_exit_filters());
+}
+
+int
+cf_maybe_exit_filters(void)
+{
+  int o = new_config->allow_attributes;
+  new_config->allow_attributes = 0;
+  return o;
+}
+
+
+/**
  * cf_symbol_class_name - get name of a symbol class
  * @sym: symbol
  *
@@ -863,6 +952,8 @@ cf_symbol_class_name(struct symbol *sym)
       return "MPLS domain";
     case SYM_MPLS_RANGE:
       return "MPLS label range";
+    case SYM_KEYWORD:
+      return "symbol";
     case SYM_CONSTANT_RANGE:
       return "constant";
     case SYM_VARIABLE_RANGE:

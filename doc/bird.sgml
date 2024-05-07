@@ -1,7 +1,7 @@
 <!doctype birddoc system>
 
 <!--
-	BIRD 2.0 documentation
+	BIRD 3.0 documentation
 
 This documentation can have 4 forms: sgml (this is master copy), html, ASCII
 text and dvi/postscript (generated from sgml using sgmltools). You should always
@@ -20,7 +20,7 @@ configuration - something in config which is not keyword.
 
 <book>
 
-<title>BIRD 2.0 User's Guide
+<title>BIRD 3.0 User's Guide
 <author>
 Ondrej Filip <it/&lt;feela@network.cz&gt;/,
 Martin Mares <it/&lt;mj@ucw.cz&gt;/,
@@ -543,7 +543,7 @@ ipv6 table
 include "tablename.conf";;
 </code>
 
-	<tag><label id="opt-log">log "<m/filename/" [<m/limit/ "<m/backup/"] | syslog [name <m/name/] | stderr | udp <m/address/ [port <m/port/] all|{ <m/list of classes/ }</tag>
+	<tag><label id="opt-log">log "<m/filename/" [<m/limit/ "<m/backup/"] | fixed "<m/filename/" <m/size/ | syslog [name <m/name/] | stderr | udp <m/address/ [port <m/port/] all|{ <m/list of classes/ }</tag>
 	Set logging of messages having the given class (either <cf/all/ or <cf>{
 	error|trace [, <m/.../] }</cf> etc.) into selected destination - a file
 	specified as a filename string (with optional log rotation information),
@@ -561,7 +561,8 @@ include "tablename.conf";;
 	Logging directly to file supports basic log rotation -- there is an
 	optional log file limit and a backup filename, when log file reaches the
 	limit, the current log file is renamed to the backup filename and a new
-	log file is created.
+	log file is created. It's also possible to log to a single file behaving
+	as a ring buffer with a fixed size.
 
 	You may specify more than one <cf/log/ line to establish logging to
 	multiple destinations. Default: log everything to the system log, or
@@ -580,7 +581,7 @@ include "tablename.conf";;
 
 	<tag><label id="opt-debug-tables">debug tables all|off|{ states|routes|filters|events [, <m/.../] }</tag>
 	Set global defaults of table debugging options.
-	See <ref id="table-debug" name="debug"> in the table section.
+	See <ref id="rtable-debug" name="debug"> in the table section.
 	Default: off.
 
 	<tag><label id="opt-debug-commands">debug commands <m/number/</tag>
@@ -604,6 +605,12 @@ include "tablename.conf";;
 	Set time limit for I/O loop cycle. If the limit is breached, BIRD is
 	killed by abort signal. The timeout has effective granularity of
 	seconds, zero means disabled. Default: disabled (0).
+
+	<tag><label id="opt-threads">threads <m/number/</tag>
+	Set how many worker threads should BIRD spawn. Tests show that every
+        thread can utilize one complete CPU core, therefore you probably want to
+        keep at least one free core. The maximum feasible thread count heavily
+        depends on the actual workload and must be determined by testing or estimation. Default: 1
 
 	<tag><label id="opt-mrtdump">mrtdump "<m/filename/"</tag>
 	Set MRTdump file name. This option must be specified to allow MRTdump
@@ -724,12 +731,6 @@ that implicit tables (<cf/master4/ and <cf/master6/) can be redefined in order
 to set options.
 
 <descrip>
-	<tag><label id="table-debug">debug all|off|{ states|routes|filters [, <m/.../] }</tag>
-	Set table debugging options. Like in <ref id="proto-debug"
-	name="protocol debugging">, tables are capable of writing trace
-	messages about its work to the log (with category <cf/trace/).
-	For now, this does nothing, but in version 3, it is used. Default: off.
-
 	<tag><label id="rtable-sorted">sorted <m/switch/</tag>
 	Usually, a routing table just chooses the selected (best) route from a
 	list of routes for each network, while keeping remaining routes unsorted.
@@ -760,21 +761,6 @@ to set options.
 	disadvantage is that trie-enabled routing tables require more memory,
 	which may be an issue especially in multi-table setups. Default: off.
 
-	<tag><label id="rtable-min-settle-time">min settle time <m/time/</tag>
-	Specify a minimum value of the settle time. When a ROA table changes,
-	automatic <ref id="proto-rpki-reload" name="RPKI reload"> may be
-	triggered, after a short settle time. Minimum settle time is a delay
-	from the last ROA table change to wait for more updates. Default: 1 s.
-
-
-	<tag><label id="rtable-max-settle-time">max settle time <m/time/</tag>
-	Specify a maximum value of the settle time. When a ROA table changes,
-	automatic <ref id="proto-rpki-reload" name="RPKI reload"> may be
-	triggered, after a short settle time. Maximum settle time is an upper
-	limit to the settle time from the initial ROA table change even if
-	there are consecutive updates gradually renewing the settle time.
-	Default: 20 s.
-
 	<tag><label id="rtable-gc-threshold">gc threshold <m/number/</tag>
 	Specify a minimum amount of removed networks that triggers a garbage
 	collection (GC) cycle. Default: 1000.
@@ -789,6 +775,40 @@ to set options.
 	periods. Default: adaptive, based on number of routing tables in the
 	configuration. From 10 s (with <= 25 routing tables) up to 600 s (with
 	>= 1500 routing tables).
+
+	<tag><label id="rtable-cork-threshold">cork threshold <m/number/ <m/number/</tag>
+	Too many pending exports may lead to memory bloating. In such cases,
+        BIRD tries to relieve the memory pressure by pausing some routines until
+        the queue sizes get low enough. This option allows the user to set the
+        thresholds; first value is the low threshold (when to resume), the
+        second one is the high threshold (when to pause). The higher is the
+        threshold, the more memory can get used. In most cases, the defaults
+	should work for you. Default: 1024 8192.
+
+	<tag><label id="rtable-export-settle-time">export settle time <m/time/ <m/time/</tag>
+	Minimum and maximum settle times, respectively, for export announcements.
+	When multiple routes are changing, this mechanism waits for the changes
+	to settle before waking up sleeping export threads but if the changes are coming
+	steadily, BIRD isn't waiting forever; at most the maximum time.
+	Default values: <cf/1 ms 100 ms/. You have to always provide both values.
+
+	<tag><label id="rtable-route-refresh-export-settle-time">route refresh export settle time <m/time/ <m/time/</tag>
+	Minimum and maximum settle times, respectively, for export announcements
+	(the same as above), valid when any channel is currently doing a route refresh.
+	This serves a purpose of even more aggresive change bundling, knowing that there
+	is some active process generating changes in a fast pace. If you don't want
+	this feature, set this to the same values as <ref id="rtable-export-settle-time" name="export settle time">.
+	Default values: <cf/100 ms 3 s/.
+
+	<tag><label id="rtable-debug">debug all|off|{ states|routes|events [, <m/.../] }</tag>
+	Set table debugging options. Each table can write some trace messages
+	into log with category <cf/trace/. You can request <cf/all/ trace messages
+	or select some types: <cf/states/ for table state changes and auxiliary
+	processes, <cf/routes/ for auxiliary route notifications (next hop update,
+        flowspec revalidation) and <cf/events/ for more detailed auxiliary routine
+	debug. See also <ref id="channel-debug" name="channel debugging option">.
+	Default: off.
+
 </descrip>
 
 
@@ -1017,10 +1037,12 @@ inherited from templates can be updated by new definitions.
 	<cf/none/ is for dropping all routes. Default: <cf/all/ (except for
 	EBGP).
 
-	<tag><label id="proto-export">export <m/filter/</tag>
+	<tag><label id="proto-export">export [ in <m/prefix/ ] <m/filter/</tag>
 	This is similar to the <cf>import</cf> keyword, except that it works in
-	the direction from the routing table to the protocol. Default: <cf/none/
-	(except for EBGP and L3VPN).
+	the direction from the routing table to the protocol. If <cf/in/ keyword is used,
+	only routes inside the given prefix are exported. Other routes are completely
+	ignored (e.g. no logging and no statistics).
+	Default: <cf/none/ (except for EBGP and L3VPN).
 
 	<tag><label id="proto-import-keep-filtered">import keep filtered <m/switch/</tag>
 	Usually, if an import filter rejects a route, the route is forgotten.
@@ -1034,13 +1056,24 @@ inherited from templates can be updated by new definitions.
 	<cf/roa_check()/ operator). In contrast to to other filter operators,
 	this status for the same route may change as the content of ROA tables
 	changes. When this option is active, BIRD activates automatic reload of
-	affected channels whenever ROA tables are updated (after a short settle
+	the appropriate subset of prefixes imported or exported by the channels
+	whenever ROA tables are updated (after a short settle
 	time). When disabled, route reloads have to be requested manually. The
 	option is ignored if <cf/roa_check()/ is not used in channel filters.
 	Note that for BGP channels, automatic reload requires
 	<ref id="bgp-import-table" name="import table"> or
 	<ref id="bgp-export-table" name="export table"> (for respective
 	direction). Default: on.
+
+	<tag><label id="rtable-min-settle-time">roa settle time <m/time/ <m/time/</tag>
+	Minimum and maximum settle times, respectively, for ROA table changes.
+        The automatic reload is triggered after the minimum time after the last
+        ROA table change has been received but not later than the maximum time after
+        first unprocessed ROA table change. Therefore with default values, the
+        automatic reload happens 1 second after the ROA table stops updating, yet if it
+	were to be later than 20 seconds after the ROA table starts updating,
+	the automatic reload is triggered anyway. Default values: <cf/1 s 20 s/.
+	You have to always provide both values.
 
 	<tag><label id="proto-import-limit">import limit [<m/number/ | off ] [action warn | block | restart | disable]</tag>
 	Specify an import route limit (a maximum number of routes imported from
@@ -1070,6 +1103,13 @@ inherited from templates can be updated by new definitions.
 	counter ignores route blocking and block action also blocks route
 	updates of already accepted routes -- and these details will probably
 	change in the future. Default: <cf/off/.
+
+	<tag><label id="proto-export-block">export block <m/number/</tag>
+        Set the minimum amount of routes exported at once when feeding or
+	if `merge paths` or `secondary` is selected. This affects overall latency.
+	Basically, when your export filters are very expensive, processing
+	the whole block of routes may take too much time. In such cases, you may need to
+        shrink this value to improve responsiveness. Default: <cf/16384/.
 </descrip>
 
 <p>This is a trivial example of RIP configured for IPv6 on all interfaces:
@@ -1396,7 +1436,7 @@ This argument can be omitted if there exists only a single instance.
 	Enable, disable or restart a given protocol instance, instances matching
 	the <cf><m/pattern/</cf> or <cf/all/ instances.
 
-	<tag><label id="cli-reload">reload [in|out] <m/name/|"<m/pattern/"|all</tag>
+	<tag><label id="cli-reload">reload [in|out] (<m/name/|"<m/pattern/"|all) [partial prefix] </tag>
 	Reload a given protocol instance, that means re-import routes from the
 	protocol instance and re-export preferred routes to the instance. If
 	<cf/in/ or <cf/out/ options are used, the command is restricted to one
@@ -1406,6 +1446,9 @@ This argument can be omitted if there exists only a single instance.
 	protocol instance was not restarted (or reloaded), therefore it still
 	propagates the old set of routes. For example when <cf/configure soft/
 	command was used to change filters.
+
+	If <cf/partial prefix/ option is used, only corresponding routes are reloaded.
+	Protocol BGP does partial reload only if it has import table enabled, otherwise partial reload for BGP is refused.
 
 	Re-export always succeeds, but re-import is protocol-dependent and might
 	fail (for example, if BGP neighbor does not support route-refresh
@@ -1973,17 +2016,8 @@ Common route attributes are:
 	primary key of the routing table. Read-only. (See the <ref id="routes"
 	name="chapter about routes">.)
 
-	<tag><label id="rta-scope"><m/enum/ scope</tag>
-	The scope of the route. Possible values: <cf/SCOPE_HOST/ for routes
-	local to this host, <cf/SCOPE_LINK/ for those specific for a physical
-	link, <cf/SCOPE_SITE/ and <cf/SCOPE_ORGANIZATION/ for private routes and
-	<cf/SCOPE_UNIVERSE/ for globally visible routes. This attribute is not
-	interpreted by BIRD and can be used to mark routes in filters. The
-	default value for new routes is <cf/SCOPE_UNIVERSE/.
-
 	<tag><label id="rta-preference"><m/int/ preference</tag>
-	Preference of the route. Valid values are 0-65535. (See the chapter
-	about routing tables.)
+	Preference of the route.
 
 	<tag><label id="rta-from"><m/ip/ from</tag>
 	The router which the route has originated from.
@@ -2023,14 +2057,6 @@ Common route attributes are:
 	be used for interface matching, however indexes might change on interface
 	creation/removal. Zero is returned for routes with undefined outgoing
 	interfaces. Read-only.
-
-	<tag><label id="rta-onlink"><m/bool/ onlink</tag>
-	Onlink flag means that the specified nexthop is accessible on the
-	interface regardless of IP prefixes configured on the interface.
-	The attribute can be used to configure such next hops by first setting
-	<cf/onlink = true/ and <cf/ifname/, and then setting <cf/gw/. Possible
-	use case for setting this flag is to automatically build overlay IP-IP
-	networks on linux.
 
 	<tag><label id="rta-weight"><m/int/ weight</tag>
 	Multipath weight of route next hops. Valid values are 1-256. Reading
@@ -3404,13 +3430,6 @@ be used in explicit configuration.
 	Enabling <cf/import table/ allows to store unprocessed routes, which can
 	be examined later by <cf/show route/, and can be used to reconfigure
 	import filters without full route refresh. Default: off.
-
-	Note that currently the import table breaks routes with recursive
-	nexthops (e.g. ones from IBGP, see <ref id="bgp-gateway" name="gateway
-	recursive">), they are not properly updated after next hop change. For
-	the same reason, it also breaks re-evaluation of flowspec routes with
-	<ref id="bgp-validate" name="flowspec validation"> option enabled on
-	flowspec channels.
 
 	<tag><label id="bgp-export-table">export table <m/switch/</tag>
 	A BGP export table contains all routes sent to given BGP neighbor, after
@@ -4941,6 +4960,14 @@ include standard channel config options; see the example below.
 	<tag><label id="pipe-peer-table">peer table <m/table/</tag>
 	Defines secondary routing table to connect to. The primary one is
 	selected by the <cf/table/ keyword.
+
+	<tag><label id="pipe-max-generation">max generation <m/expr/</tag>
+	Sets maximal generation of route that may pass through this pipe.
+	The generation value is increased by one by each pipe on its path.
+	Not meeting this requirement causes an error message complaining about
+	an overpiped route. If you have long chains of pipes, you probably want
+	to raise this value; anyway the default of 16 should be enough for even
+	most strange uses. Maximum is 254.
 </descrip>
 
 <sect1>Attributes

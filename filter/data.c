@@ -16,10 +16,11 @@
 #include "lib/unaligned.h"
 #include "lib/net.h"
 #include "lib/ip.h"
+#include "lib/hash.h"
 #include "nest/route.h"
 #include "nest/protocol.h"
 #include "nest/iface.h"
-#include "nest/attrs.h"
+#include "lib/attrs.h"
 #include "conf/conf.h"
 #include "filter/filter.h"
 #include "filter/f-inst.h"
@@ -29,6 +30,9 @@ static const char * const f_type_str[] = {
   [T_VOID]	= "void",
   [T_NONE]	= "none",
 
+  [T_OPAQUE]	= "opaque byte string",
+  [T_IFACE]	= "interface",
+
   [T_INT]	= "int",
   [T_BOOL]	= "bool",
   [T_PAIR]	= "pair",
@@ -37,7 +41,6 @@ static const char * const f_type_str[] = {
   [T_ENUM_RTS]	= "enum rts",
   [T_ENUM_BGP_ORIGIN] = "enum bgp_origin",
   [T_ENUM_SCOPE] = "enum scope",
-  [T_ENUM_RTC]	= "enum rtc",
   [T_ENUM_RTD]	= "enum rtd",
   [T_ENUM_ROA]	= "enum roa",
   [T_ENUM_NETTYPE] = "enum nettype",
@@ -49,6 +52,7 @@ static const char * const f_type_str[] = {
   [T_STRING]	= "string",
   [T_BYTESTRING]	= "bytestring",
   [T_PATH_MASK]	= "bgpmask",
+  [T_PATH_MASK_ITEM] = "bgpmask item",
   [T_PATH]	= "bgppath",
   [T_CLIST]	= "clist",
   [T_EC]	= "ec",
@@ -57,24 +61,23 @@ static const char * const f_type_str[] = {
   [T_LCLIST]	= "lclist",
   [T_RD]	= "rd",
 
-  [T_ROUTE] = "route",
+  [T_ROUTE]	= "route",
   [T_ROUTES_BLOCK] = "block of routes",
+
+  [T_SET]	= "set",
+  [T_PREFIX_SET] = "prefix set",
 };
 
+STATIC_ASSERT((1 << (8 * sizeof(btype))) == ARRAY_SIZE(f_type_str));
+
 const char *
-f_type_name(enum f_type t)
+f_type_name(btype t)
 {
-  if (t < ARRAY_SIZE(f_type_str))
-    return f_type_str[t] ?: "?";
-
-  if ((t == T_SET) || (t == T_PREFIX_SET))
-    return "set";
-
-  return "?";
+  return f_type_str[t] ?: "?";
 }
 
-enum f_type
-f_type_element_type(enum f_type t)
+btype
+f_type_element_type(btype t)
 {
   switch(t) {
     case T_PATH:   return T_INT;
@@ -91,14 +94,6 @@ const struct f_val f_const_empty_prefix_set = {
   .type = T_PREFIX_SET,
   .val.ti = &f_const_empty_trie,
 };
-
-static struct adata *
-adata_empty(struct linpool *pool, int l)
-{
-  struct adata *res = lp_alloc(pool, sizeof(struct adata) + l);
-  res->length = l;
-  return res;
-}
 
 static void
 pm_format(const struct f_path_mask *p, buffer *buf)
@@ -213,7 +208,6 @@ val_compare(const struct f_val *v1, const struct f_val *v2)
   case T_PATH:
     return as_path_compare(v1->val.ad, v2->val.ad);
   case T_ROUTE:
-  /* Fall through */
   case T_ROUTES_BLOCK:
   default:
     return F_CMP_ERROR;
@@ -306,9 +300,14 @@ val_same(const struct f_val *v1, const struct f_val *v2)
   case T_PREFIX_SET:
     return trie_same(v1->val.ti, v2->val.ti);
   case T_ROUTE:
-    return v1->val.rte == v2->val.rte;
+    return rte_same(v1->val.rte, v2->val.rte);
   case T_ROUTES_BLOCK:
-    return v1->val.ad == v2->val.ad;
+    if (v1->val.rte_block.len != v2->val.rte_block.len)
+      return 0;
+    for (uint i=0; i < v1->val.rte_block.len; i++)
+      if (!rte_same(v1->val.rte_block.rte[i], v2->val.rte_block.rte[i]))
+	return 0;
+    return 1;
   default:
     bug("Invalid type in val_same(): %x", v1->type);
   }
@@ -445,7 +444,7 @@ clist_filter(struct linpool *pool, const struct adata *list, const struct f_val 
   if (nl == list->length)
     return list;
 
-  struct adata *res = adata_empty(pool, nl);
+  struct adata *res = lp_alloc_adata(pool, nl);
   memcpy(res->data, tmp, nl);
   return res;
 }
@@ -479,7 +478,7 @@ eclist_filter(struct linpool *pool, const struct adata *list, const struct f_val
   if (nl == list->length)
     return list;
 
-  struct adata *res = adata_empty(pool, nl);
+  struct adata *res = lp_alloc_adata(pool, nl);
   memcpy(res->data, tmp, nl);
   return res;
 }
@@ -511,7 +510,7 @@ lclist_filter(struct linpool *pool, const struct adata *list, const struct f_val
   if (nl == list->length)
     return list;
 
-  struct adata *res = adata_empty(pool, nl);
+  struct adata *res = lp_alloc_adata(pool, nl);
   memcpy(res->data, tmp, nl);
   return res;
 }
@@ -582,6 +581,79 @@ val_in_range(const struct f_val *v1, const struct f_val *v2)
   return F_CMP_ERROR;
 }
 
+uint
+val_hash(struct f_val *v)
+{
+  u64 haux;
+  mem_hash_init(&haux);
+  mem_hash_mix_f_val(&haux, v);
+  return mem_hash_value(&haux);
+}
+
+void
+mem_hash_mix_f_val(u64 *h, struct f_val *v)
+{
+  mem_hash_mix_num(h, v->type);
+
+#define MX(k) mem_hash_mix(h, &IT(k), sizeof IT(k));
+#define IT(k) v->val.k
+
+  switch (v->type)
+  {
+    case T_VOID:
+      break;
+    case T_INT:
+    case T_BOOL:
+    case T_PAIR:
+    case T_QUAD:
+    case T_ENUM:
+      MX(i);
+      break;
+    case T_EC:
+    case T_RD:
+      MX(ec);
+      break;
+    case T_LC:
+      MX(lc);
+      break;
+    case T_IP:
+      MX(ip);
+      break;
+    case T_NET:
+      mem_hash_mix_num(h, net_hash(IT(net)));
+      break;
+    case T_STRING:
+      mem_hash_mix_str(h, IT(s));
+      break;
+    case T_PATH_MASK:
+      mem_hash_mix(h, IT(path_mask), sizeof(*IT(path_mask)) + IT(path_mask)->len * sizeof (IT(path_mask)->item));
+      break;
+    case T_PATH:
+    case T_CLIST:
+    case T_ECLIST:
+    case T_LCLIST:
+    case T_BYTESTRING:
+      mem_hash_mix(h, IT(ad)->data, IT(ad)->length);
+      break;
+    case T_SET:
+      MX(t);
+      break;
+    case T_PREFIX_SET:
+      MX(ti);
+      break;
+
+    case T_NONE:
+    case T_PATH_MASK_ITEM:
+    case T_ROUTE:
+    case T_ROUTES_BLOCK:
+    case T_OPAQUE:
+    case T_NEXTHOP_LIST:
+    case T_HOSTENTRY:
+    case T_IFACE:
+      bug("Invalid type %s in f_val hashing", f_type_name(v->type));
+  }
+}
+
 /*
  * rte_format - format route information
  */
@@ -589,26 +661,23 @@ static void
 rte_format(const struct rte *rte, buffer *buf)
 {
   if (rte)
-    buffer_print(buf, "Route [%d] to %N from %s.%s via %s",
-                 rte->src->global_id, rte->net->n.addr,
-                 rte->sender->proto->name, rte->sender->name,
-                 rte->src->proto->name);
+    buffer_print(buf, "Route [%d] to %N from %s via %s",
+                 rte->src->global_id, rte->net,
+                 rte->sender->req->name,
+                 rte->src->owner->name);
   else
     buffer_puts(buf, "[No route]");
 }
 
 static void
-rte_block_format(const struct rte *rte, buffer *buf)
+rte_block_format(const struct rte_block *block, buffer *buf)
 {
   buffer_print(buf, "Block of routes:");
 
-  int i = 0;
-  while (rte)
+  for (uint i = 0; i < block->len; i++)
   {
     buffer_print(buf, "%s%d: ", i ? "; " : " ", i);
-    rte_format(rte, buf);
-    rte = rte->next;
-    i++;
+    rte_format(block->rte[i], buf);
   }
 }
 
@@ -642,7 +711,7 @@ val_format(const struct f_val *v, buffer *buf)
   case T_LCLIST: lc_set_format(v->val.ad, -1, buf2, 1000); buffer_print(buf, "(lclist %s)", buf2); return;
   case T_PATH_MASK: pm_format(v->val.path_mask, buf); return;
   case T_ROUTE: rte_format(v->val.rte, buf); return;
-  case T_ROUTES_BLOCK: rte_block_format(v->val.rte, buf); return;
+  case T_ROUTES_BLOCK: rte_block_format(&v->val.rte_block, buf); return;
   default:	buffer_print(buf, "[unknown type %x]", v->type); return;
   }
 }
@@ -650,7 +719,7 @@ val_format(const struct f_val *v, buffer *buf)
 char *
 val_format_str(struct linpool *lp, const struct f_val *v) {
   buffer b;
-  LOG_BUFFER_INIT(b);
+  STACK_BUFFER_INIT(b, 1024);
   val_format(v, &b);
   return lp_strdup(lp, b.start);
 }
@@ -666,4 +735,76 @@ val_dump(const struct f_val *v) {
   b.pos = b.start;
   val_format(v, &b);
   return val_dump_buffer;
+}
+
+struct f_val *
+lp_val_copy(struct linpool *lp, const struct f_val *v)
+{
+  switch (v->type)
+  {
+    case T_VOID:
+    case T_BOOL:
+    case T_INT:
+    case T_IP:
+    case T_PAIR:
+    case T_QUAD:
+    case T_EC:
+    case T_LC:
+    case T_RD:
+    case T_ENUM:
+    case T_PATH_MASK_ITEM:
+      /* These aren't embedded but there is no need to copy them */
+    case T_SET:
+    case T_PREFIX_SET:
+    case T_PATH_MASK:
+    case T_IFACE:
+      {
+	struct f_val *out = lp_alloc(lp, sizeof(*out));
+	*out = *v;
+	return out;
+      }
+
+    case T_NET:
+      {
+	struct {
+	  struct f_val val;
+	  net_addr net[0];
+	} *out = lp_alloc(lp, sizeof(*out) + v->val.net->length);
+	out->val = *v;
+	out->val.val.net = out->net;
+	net_copy(out->net, v->val.net);
+	return &out->val;
+      }
+
+    case T_STRING:
+      {
+	uint len = strlen(v->val.s);
+	struct {
+	  struct f_val val;
+	  char buf[0];
+	} *out = lp_alloc(lp, sizeof(*out) + len + 1);
+	out->val = *v;
+	out->val.val.s = out->buf;
+	memcpy(out->buf, v->val.s, len+1);
+	return &out->val;
+      }
+
+    case T_PATH:
+    case T_CLIST:
+    case T_ECLIST:
+    case T_LCLIST:
+      {
+	struct {
+	  struct f_val val;
+	  struct adata ad;
+	} *out = lp_alloc(lp, sizeof(*out) + v->val.ad->length);
+	out->val = *v;
+	out->val.val.ad = &out->ad;
+	memcpy(&out->ad, v->val.ad, v->val.ad->length);
+	return &out->val;
+      }
+
+    default:
+      bug("Unknown type in value copy: %d", v->type);
+  }
 }

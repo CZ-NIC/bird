@@ -21,6 +21,7 @@
 #include "test/birdtest.h"
 #include "lib/string.h"
 #include "lib/event.h"
+#include "lib/io-loop.h"
 
 #ifdef HAVE_EXECINFO_H
 #include <execinfo.h>
@@ -63,6 +64,9 @@ void
 bt_init(int argc, char *argv[])
 {
   int c;
+
+  /* We have no interest in stdin */
+  close(0);
 
   initstate(BT_RANDOM_SEED, (char *) bt_random_state, sizeof(bt_random_state));
 
@@ -120,9 +124,11 @@ bt_init(int argc, char *argv[])
   clock_gettime(CLOCK_MONOTONIC, &bt_begin);
   bt_suite_case_begin = bt_suite_begin = bt_begin;
 
+  the_bird_lock();
   resource_init();
-  ev_init_list(&global_event_list);
-
+  ev_init_list(&global_event_list, &main_birdloop, "Global event list in unit tests");
+  ev_init_list(&global_work_list, &main_birdloop, "Global work list in unit tests");
+  birdloop_init();
   return;
 
  usage:
@@ -246,7 +252,7 @@ bt_log_result(int result, u64 time, const char *fmt, va_list argptr)
   printf("%s\n", result_str);
 
   if (do_die && !result)
-    abort();
+    exit(1);
 }
 
 static u64
@@ -551,7 +557,14 @@ void cmd_reconfig_undo_notify(void) {}
 #include "lib/net.h"
 #include "conf/conf.h"
 void sysdep_preconfig(struct config *c UNUSED) {}
-int sysdep_commit(struct config *new UNUSED, struct config *old UNUSED) { return 0; }
+
+void bird_thread_commit(struct config *new, struct config *old);
+int sysdep_commit(struct config *new, struct config *old)
+{
+  bird_thread_commit(new, old);
+  return 0;
+}
+
 void sysdep_shutdown_done(void) {}
 
 #include "nest/cli.h"

@@ -10,6 +10,7 @@
 
 #include <stdlib.h>
 #include "radv.h"
+#include "lib/macro.h"
 
 /**
  * DOC: Router Advertisements
@@ -41,6 +42,8 @@
  * RFC 4191 - Default Router Preferences and More-Specific Routes
  * RFC 6106 - DNS extensions (RDDNS, DNSSL)
  */
+
+static struct ea_class ea_radv_preference, ea_radv_lifetime;
 
 static void radv_prune_prefixes(struct radv_iface *ifa);
 static void radv_prune_routes(struct radv_proto *p);
@@ -263,9 +266,9 @@ radv_iface_find(struct radv_proto *p, struct iface *what)
 }
 
 static void
-radv_iface_add(struct object_lock *lock)
+radv_iface_add(void *_ifa)
 {
-  struct radv_iface *ifa = lock->data;
+  struct radv_iface *ifa = _ifa;
   struct radv_proto *p = ifa->ra;
 
   if (! radv_sk_open(ifa))
@@ -284,7 +287,7 @@ radv_iface_new(struct radv_proto *p, struct iface *iface, struct radv_iface_conf
 
   RADV_TRACE(D_EVENTS, "Adding interface %s", iface->name);
 
-  pool *pool = rp_new(p->p.pool, iface->name);
+  pool *pool = rp_new(p->p.pool, proto_domain(&p->p), iface->name);
   ifa = mb_allocz(pool, sizeof(struct radv_iface));
   ifa->pool = pool;
   ifa->ra = p;
@@ -302,8 +305,11 @@ radv_iface_new(struct radv_proto *p, struct iface *iface, struct radv_iface_conf
   lock->type = OBJLOCK_IP;
   lock->port = ICMPV6_PROTO;
   lock->iface = iface;
-  lock->data = ifa;
-  lock->hook = radv_iface_add;
+  lock->event = (event) {
+    .hook = radv_iface_add,
+    .data = ifa,
+  };
+  lock->target = &global_event_list;
   ifa->lock = lock;
 
   olock_acquire(lock);
@@ -317,7 +323,7 @@ radv_iface_remove(struct radv_iface *ifa)
 
   rem_node(NODE ifa);
 
-  rfree(ifa->pool);
+  rp_free(ifa->pool);
 }
 
 static void
@@ -385,9 +391,9 @@ radv_trigger_valid(struct radv_config *cf)
 }
 
 static inline int
-radv_net_match_trigger(struct radv_config *cf, net *n)
+radv_net_match_trigger(struct radv_config *cf, const net_addr *n)
 {
-  return radv_trigger_valid(cf) && net_equal(n->n.addr, &cf->trigger);
+  return radv_trigger_valid(cf) && net_equal(n, &cf->trigger);
 }
 
 int
@@ -406,7 +412,7 @@ radv_preexport(struct channel *C, rte *new)
 }
 
 static void
-radv_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte *old UNUSED)
+radv_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *n, rte *new, const rte *old UNUSED)
 {
   struct radv_proto *p = (struct radv_proto *) P;
   struct radv_config *cf = (struct radv_config *) (P->cf);
@@ -444,11 +450,11 @@ radv_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
   {
     /* Update */
 
-    ea = ea_find(new->attrs->eattrs, EA_RA_PREFERENCE);
+    ea = ea_find(new->attrs, &ea_radv_preference);
     uint preference = ea ? ea->u.data : RA_PREF_MEDIUM;
     uint preference_set = !!ea;
 
-    ea = ea_find(new->attrs->eattrs, EA_RA_LIFETIME);
+    ea = ea_find(new->attrs, &ea_radv_lifetime);
     uint lifetime = ea ? ea->u.data : 0;
     uint lifetime_set = !!ea;
 
@@ -457,14 +463,14 @@ radv_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
 	(preference != RA_PREF_HIGH))
     {
       log(L_WARN "%s: Invalid ra_preference value %u on route %N",
-	  p->p.name, preference, n->n.addr);
+	  p->p.name, preference, n);
       preference = RA_PREF_MEDIUM;
       preference_set = 1;
       lifetime = 0;
       lifetime_set = 1;
     }
 
-    rt = fib_get(&p->routes, n->n.addr);
+    rt = fib_get(&p->routes, n);
 
     /* Ignore update if nothing changed */
     if (rt->valid &&
@@ -487,7 +493,7 @@ radv_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
   else
   {
     /* Withdraw */
-    rt = fib_find(&p->routes, n->n.addr);
+    rt = fib_find(&p->routes, n);
 
     if (!rt || !rt->valid)
       return;
@@ -577,8 +583,8 @@ radv_init(struct proto_config *CF)
 
   P->preexport = radv_preexport;
   P->rt_notify = radv_rt_notify;
-  P->if_notify = radv_if_notify;
-  P->ifa_notify = radv_ifa_notify;
+  P->iface_sub.if_notify = radv_if_notify;
+  P->iface_sub.ifa_notify = radv_ifa_notify;
 
   return P;
 }
@@ -658,12 +664,11 @@ radv_reconfigure(struct proto *P, struct proto_config *CF)
 
   /* We started to accept routes so we need to refeed them */
   if (!old->propagate_routes && new->propagate_routes)
-    channel_request_feeding(p->p.main_channel);
+    channel_request_feeding_dynamic(p->p.main_channel, CFRT_DIRECT);
 
-  struct iface *iface;
-  WALK_LIST(iface, iface_list)
+  IFACE_WALK(iface)
   {
-    if (p->p.vrf_set && !if_in_vrf(iface, p->p.vrf))
+    if (p->p.vrf && !if_in_vrf(iface, p->p.vrf))
       continue;
 
     if (!(iface->flags & IF_UP))
@@ -741,27 +746,26 @@ radv_pref_str(u32 pref)
   }
 }
 
-/* The buffer has some minimal size */
-static int
-radv_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
+static void
+radv_preference_format(const eattr *a, byte *buf, uint buflen)
 {
-  switch (a->id)
-  {
-  case EA_RA_PREFERENCE:
-    bsprintf(buf, "preference: %s", radv_pref_str(a->u.data));
-    return GA_FULL;
-  case EA_RA_LIFETIME:
-    bsprintf(buf, "lifetime");
-    return GA_NAME;
-  default:
-    return GA_UNKNOWN;
-  }
+  bsnprintf(buf, buflen, "%s", radv_pref_str(a->u.data));
 }
+
+static struct ea_class ea_radv_preference = {
+  .name = "radv_preference",
+  .type = T_ENUM_RA_PREFERENCE,
+  .format = radv_preference_format,
+};
+
+static struct ea_class ea_radv_lifetime = {
+  .name = "radv_lifetime",
+  .type = T_INT,
+};
 
 struct protocol proto_radv = {
   .name =		"RAdv",
   .template =		"radv%d",
-  .class =		PROTOCOL_RADV,
   .channel_mask =	NB_IP6,
   .proto_size =		sizeof(struct radv_proto),
   .config_size =	sizeof(struct radv_config),
@@ -772,11 +776,15 @@ struct protocol proto_radv = {
   .reconfigure =	radv_reconfigure,
   .copy_config =	radv_copy_config,
   .get_status =		radv_get_status,
-  .get_attr =		radv_get_attr
 };
 
 void
 radv_build(void)
 {
   proto_build(&proto_radv);
+
+  EA_REGISTER_ALL(
+      &ea_radv_preference,
+      &ea_radv_lifetime
+      );
 }

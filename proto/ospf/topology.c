@@ -551,8 +551,11 @@ ospf_update_lsadb(struct ospf_proto *p)
 }
 
 void
-ospf_feed_begin(struct channel *C, int initial UNUSED)
+ospf_feed_begin(struct channel *C)
 {
+  if (!C->refeeding || C->refeed_req.hook)
+    return;
+
   struct ospf_proto *p = (struct ospf_proto *) C->proto;
   struct top_hash_entry *en;
 
@@ -565,6 +568,9 @@ ospf_feed_begin(struct channel *C, int initial UNUSED)
 void
 ospf_feed_end(struct channel *C)
 {
+  if (!C->refeeding || C->refeed_req.hook)
+    return;
+
   struct ospf_proto *p = (struct ospf_proto *) C->proto;
   struct top_hash_entry *en;
 
@@ -1300,7 +1306,7 @@ find_surrogate_fwaddr(struct ospf_proto *p, struct ospf_area *oa)
 }
 
 void
-ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte *old UNUSED)
+ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *n, rte *new, const rte *old UNUSED)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
   struct ospf_area *oa = NULL;	/* non-NULL for NSSA-LSA */
@@ -1319,7 +1325,7 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
 
   if (!new)
   {
-    nf = fib_find(&p->rtf, n->n.addr);
+    nf = fib_find(&p->rtf, n);
 
     if (!nf || !nf->external_rte)
       return;
@@ -1337,23 +1343,23 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
   ASSERT(p->asbr);
 
   /* Get route attributes */
-  rta *a = new->attrs;
-  eattr *m1a = ea_find(a->eattrs, EA_OSPF_METRIC1);
-  eattr *m2a = ea_find(a->eattrs, EA_OSPF_METRIC2);
+  ea_list *a = new->attrs;
+  eattr *m1a = ea_find(a, &ea_ospf_metric1);
+  eattr *m2a = ea_find(a, &ea_ospf_metric2);
   uint m1 = m1a ? m1a->u.data : 0;
   uint m2 = m2a ? m2a->u.data : 10000;
 
   if (m1 > LSINFINITY)
   {
     log(L_WARN "%s: Invalid ospf_metric1 value %u for route %N",
-	p->p.name, m1, n->n.addr);
+	p->p.name, m1, n);
     m1 = LSINFINITY;
   }
 
   if (m2 > LSINFINITY)
   {
     log(L_WARN "%s: Invalid ospf_metric2 value %u for route %N",
-	p->p.name, m2, n->n.addr);
+	p->p.name, m2, n);
     m2 = LSINFINITY;
   }
 
@@ -1363,11 +1369,14 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
 
   uint ebit = m2a || !m1a;
   uint metric = ebit ? m2 : m1;
-  uint tag = ea_get_int(a->eattrs, EA_OSPF_TAG, 0);
+  uint tag = ea_get_int(a, &ea_ospf_tag, 0);
 
   ip_addr fwd = IPA_NONE;
-  if ((a->dest == RTD_UNICAST) && use_gw_for_fwaddr(p, a->nh.gw, a->nh.iface))
-    fwd = a->nh.gw;
+  eattr *nhea = ea_find(a, &ea_gen_nexthop);
+  struct nexthop_adata *nhad = (struct nexthop_adata *) nhea->u.ptr;
+  if (NEXTHOP_IS_REACHABLE(nhad))
+    if (use_gw_for_fwaddr(p, nhad->nh.gw, nhad->nh.iface))
+      fwd = nhad->nh.gw;
 
   /* NSSA-LSA with P-bit set must have non-zero forwarding address */
   if (oa && ipa_zero(fwd))
@@ -1377,12 +1386,12 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, net *n, rte *new, rte
     if (ipa_zero(fwd))
     {
       log(L_ERR "%s: Cannot find forwarding address for NSSA-LSA %N",
-	  p->p.name, n->n.addr);
+	  p->p.name, n);
       return;
     }
   }
 
-  nf = fib_get(&p->rtf, n->n.addr);
+  nf = fib_get(&p->rtf, n);
   ospf_originate_ext_lsa(p, oa, nf, LSA_M_EXPORT, metric, ebit, fwd, tag, 1, p->vpn_pe);
   nf->external_rte = 1;
 }

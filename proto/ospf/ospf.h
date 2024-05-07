@@ -221,6 +221,7 @@ struct ospf_proto
   slist lsal;			/* List of all LSA's */
   int calcrt;			/* Routing table calculation scheduled?
 				   0=no, 1=normal, 2=forced reload */
+  struct channel_import_request *cir; /* Struct with trie for partial reload */
   list iface_list;		/* List of OSPF interfaces (struct ospf_iface) */
   list area_list;		/* List of OSPF areas (struct ospf_area) */
   int areano;			/* Number of area I belong to */
@@ -941,12 +942,7 @@ struct lsadb_show_data {
   u32 router;		/* Advertising router, 0 -> all */
 };
 
-
-#define EA_OSPF_METRIC1	EA_CODE(PROTOCOL_OSPF, 0)
-#define EA_OSPF_METRIC2	EA_CODE(PROTOCOL_OSPF, 1)
-#define EA_OSPF_TAG	EA_CODE(PROTOCOL_OSPF, 2)
-#define EA_OSPF_ROUTER_ID EA_CODE(PROTOCOL_OSPF, 3)
-
+extern struct ea_class ea_ospf_metric1, ea_ospf_metric2, ea_ospf_tag, ea_ospf_router_id;
 
 /*
  * For regular networks, neighbor address must match network prefix.
@@ -1008,6 +1004,8 @@ void ospf_sh_iface(struct proto *P, const char *iff);
 void ospf_sh_state(struct proto *P, int verbose, int reachable);
 
 void ospf_sh_lsadb(struct lsadb_show_data *ld);
+
+extern struct rte_owner_class ospf_rte_owner_class;
 
 /* iface.c */
 void ospf_iface_chstate(struct ospf_iface *ifa, u8 state);

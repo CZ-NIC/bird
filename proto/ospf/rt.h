@@ -18,8 +18,6 @@
 typedef struct orta
 {
   u8 type;			/* RTS_OSPF_* */
-  u8 nhs_reuse;			/* Whether nhs nodes can be reused during merging.
-				   See a note in rt.c:add_cand() */
   u32 options;
   /*
    * For ORT_ROUTER routes, options field are router-LSA style
@@ -53,7 +51,7 @@ typedef struct orta
   struct ospf_area *oa;
   struct ospf_area *voa;	/* Used when route is replaced in ospf_rt_sum_tr(),
 				   NULL otherwise */
-  struct nexthop *nhs;		/* Next hops computed during SPF */
+  struct nexthop_adata *nhs;	/* Next hops computed during SPF */
   struct top_hash_entry *en;	/* LSA responsible for this orta */
 }
 orta;
@@ -80,7 +78,7 @@ typedef struct ort
    */
   orta n;
   u32 old_metric1, old_metric2, old_tag, old_rid;
-  rta *old_rta;
+  ea_list *old_ea;
   u32 lsa_id;
   u8 external_rte;
   u8 area_net;

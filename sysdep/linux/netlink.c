@@ -25,6 +25,7 @@
 #include "lib/socket.h"
 #include "lib/string.h"
 #include "lib/hash.h"
+#include "lib/macro.h"
 #include "conf/conf.h"
 
 #include CONFIG_INCLUDE_NLSYS_H
@@ -41,6 +42,107 @@ struct nl_parse_state
 
   u32 rta_flow;
 };
+
+/*
+ *	Netlink eattr definitions
+ */
+
+#define KRT_METRICS_MAX		ARRAY_SIZE(ea_krt_metrics)
+#define KRT_FEATURES_MAX	4
+
+static void krt_bitfield_format(const eattr *e, byte *buf, uint buflen);
+
+static struct ea_class
+  ea_krt_prefsrc = {
+    .name = "krt_prefsrc",
+    .type = T_IP,
+  },
+  ea_krt_realm = {
+    .name = "krt_realm",
+    .type = T_INT,
+  },
+  ea_krt_scope = {
+    .name = "krt_scope",
+    .type = T_INT,
+  };
+
+static struct ea_class ea_krt_metrics[] = {
+  [RTAX_LOCK] = {
+    .name = "krt_lock",
+    .type = T_INT,
+    .format = krt_bitfield_format,
+  },
+  [RTAX_FEATURES] = {
+    .name = "krt_features",
+    .type = T_INT,
+    .format = krt_bitfield_format,
+  },
+  [RTAX_CC_ALGO] = {
+    .name = "krt_congctl",
+    .type = T_STRING,
+  },
+#define KRT_METRIC_INT(_rtax, _name)	[_rtax] = { .name = _name, .type = T_INT }
+  KRT_METRIC_INT(RTAX_MTU, "krt_mtu"),
+  KRT_METRIC_INT(RTAX_WINDOW, "krt_window"),
+  KRT_METRIC_INT(RTAX_RTT, "krt_rtt"),
+  KRT_METRIC_INT(RTAX_RTTVAR, "krt_rttvar"),
+  KRT_METRIC_INT(RTAX_SSTHRESH, "krt_ssthresh"),
+  KRT_METRIC_INT(RTAX_CWND, "krt_cwnd"),
+  KRT_METRIC_INT(RTAX_ADVMSS, "krt_advmss"),
+  KRT_METRIC_INT(RTAX_REORDERING, "krt_reordering"),
+  KRT_METRIC_INT(RTAX_HOPLIMIT, "krt_hoplimit"),
+  KRT_METRIC_INT(RTAX_INITCWND, "krt_initcwnd"),
+  KRT_METRIC_INT(RTAX_RTO_MIN, "krt_rto_min"),
+  KRT_METRIC_INT(RTAX_INITRWND, "krt_initrwnd"),
+  KRT_METRIC_INT(RTAX_QUICKACK, "krt_quickack"),
+  KRT_METRIC_INT(RTAX_FASTOPEN_NO_COOKIE, "krt_fastopen_no_cookie"),
+#undef KRT_METRIC_INT
+};
+
+static const char *krt_metrics_names[KRT_METRICS_MAX] = {
+  NULL, "lock", "mtu", "window", "rtt", "rttvar", "ssthresh", "cwnd", "advmss",
+  "reordering", "hoplimit", "initcwnd", "features", "rto_min", "initrwnd", "quickack",
+  "congctl", "fastopen_no_cookie"
+};
+
+static const char *krt_features_names[KRT_FEATURES_MAX] = {
+  "ecn", NULL, NULL, "allfrag"
+};
+
+static void
+krt_bitfield_format(const eattr *a, byte *buf, uint buflen)
+{
+  if (a->id == ea_krt_metrics[RTAX_LOCK].id)
+    ea_format_bitfield(a, buf, buflen, krt_metrics_names, 2, KRT_METRICS_MAX);
+  else if (a->id == ea_krt_metrics[RTAX_FEATURES].id)
+    ea_format_bitfield(a, buf, buflen, krt_features_names, 0, KRT_FEATURES_MAX);
+}
+
+static void
+nl_ea_register(void)
+{
+  EA_REGISTER_ALL(
+      &ea_krt_prefsrc,
+      &ea_krt_realm,
+      &ea_krt_scope
+      );
+
+  for (uint i = 0; i < KRT_METRICS_MAX; i++)
+  {
+    if (!ea_krt_metrics[i].name)
+      ea_krt_metrics[i] = (struct ea_class) {
+	.name = mb_sprintf(&root_pool, "krt_metric_%d", i),
+	.type = T_INT,
+      };
+
+    ea_register_init(&ea_krt_metrics[i]);
+  }
+
+  for (uint i = 1; i < KRT_METRICS_MAX; i++)
+    ASSERT_DIE(ea_krt_metrics[i].id == ea_krt_metrics[0].id + i);
+}
+
+
 
 /*
  *	Synchronous Netlink interface
@@ -685,12 +787,12 @@ nl_add_nexthop(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af UNUS
 }
 
 static void
-nl_add_multipath(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af, ea_list *eattrs)
+nl_add_multipath(struct nlmsghdr *h, uint bufsize, struct nexthop_adata *nhad, int af, ea_list *eattrs)
 {
   struct rtattr *a = nl_open_attr(h, bufsize, RTA_MULTIPATH);
-  eattr *flow = ea_find(eattrs, EA_KRT_REALM);
+  eattr *flow = ea_find(eattrs, &ea_krt_realm);
 
-  for (; nh; nh = nh->next)
+  NEXTHOP_WALK(nh, nhad)
   {
     struct rtnexthop *rtnh = nl_open_nexthop(h, bufsize);
 
@@ -714,31 +816,44 @@ nl_add_multipath(struct nlmsghdr *h, uint bufsize, struct nexthop *nh, int af, e
   nl_close_attr(h, a);
 }
 
-static struct nexthop *
+static struct nexthop_adata *
 nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, const net_addr *n, struct rtattr *ra, int af, int krt_src)
 {
   struct rtattr *a[BIRD_RTA_MAX];
-  struct rtnexthop *nh = RTA_DATA(ra);
-  struct nexthop *rv, *first, **last;
-  unsigned len = RTA_PAYLOAD(ra);
+  struct rtnexthop *nh, *orig_nh = RTA_DATA(ra);
+  unsigned len, orig_len = RTA_PAYLOAD(ra);
+  uint cnt = 0;
 
-  first = NULL;
-  last = &first;
-
-  while (len)
+  /* First count the nexthops */
+  for (len = orig_len, nh = orig_nh; len; len -= NLMSG_ALIGN(nh->rtnh_len), nh = RTNH_NEXT(nh))
     {
       /* Use RTNH_OK(nh,len) ?? */
       if ((len < sizeof(*nh)) || (len < nh->rtnh_len))
 	goto err;
 
       if ((nh->rtnh_flags & RTNH_F_DEAD) && (krt_src != KRT_SRC_BIRD))
-	goto next;
+	;
+      else
+	cnt++;
+    }
 
-      *last = rv = lp_allocz(s->pool, NEXTHOP_MAX_SIZE);
-      last = &(rv->next);
+  struct nexthop_adata *nhad = lp_allocz(s->pool, cnt * NEXTHOP_MAX_SIZE + sizeof *nhad);
+  struct nexthop *rv = &nhad->nh;
 
-      rv->weight = nh->rtnh_hops;
-      rv->iface = if_find_by_index(nh->rtnh_ifindex);
+  for (len = orig_len, nh = orig_nh; len; len -= NLMSG_ALIGN(nh->rtnh_len), nh = RTNH_NEXT(nh))
+    {
+      /* Use RTNH_OK(nh,len) ?? */
+      if ((len < sizeof(*nh)) || (len < nh->rtnh_len))
+	goto err;
+
+      if ((nh->rtnh_flags & RTNH_F_DEAD) && (krt_src != KRT_SRC_BIRD))
+	continue;
+
+      *rv = (struct nexthop) {
+	.weight = nh->rtnh_hops,
+	.iface = if_find_by_index(nh->rtnh_ifindex),
+      };
+
       if (!rv->iface)
 	{
 	  log(L_ERR "KRT: Received route %N with unknown ifindex %u", n, nh->rtnh_ifindex);
@@ -815,23 +930,19 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, const net_addr
       }
 #endif
 
-    next:
-      len -= NLMSG_ALIGN(nh->rtnh_len);
-      nh = RTNH_NEXT(nh);
+      rv = NEXTHOP_NEXT(rv);
     }
 
-  /* Ensure nexthops are sorted to satisfy nest invariant */
-  if (!nexthop_is_sorted(first))
-    first = nexthop_sort(first);
+  /* Store final length */
+  nhad->ad.length = (void *) rv - (void *) nhad->ad.data;
 
-  return first;
+  /* Ensure nexthops are sorted to satisfy nest invariant */
+  return nexthop_is_sorted(nhad) ? nhad : nexthop_sort(nhad, s->pool);
 
 err:
   log(L_ERR "KRT: Received strange multipath route %N", n);
   return NULL;
 }
-
-STATIC_ASSERT(EA_KRT_METRICS + RTAX_CC_ALGO == EA_KRT_CONGCTL);
 
 static void
 nl_add_metrics(struct nlmsghdr *h, uint bufsize, u32 *metrics, const char *cc_algo, int max)
@@ -1222,8 +1333,7 @@ kif_do_scan(struct kif_proto *p UNUSED)
       log(L_DEBUG "nl_scan_ifaces: Unknown packet received (type=%d)", h->nlmsg_type);
 
   /* Re-resolve master interface for slaves */
-  struct iface *i;
-  WALK_LIST(i, iface_list)
+  IFACE_WALK(i)
     if (i->master_index)
     {
       struct iface f = {
@@ -1231,13 +1341,13 @@ kif_do_scan(struct kif_proto *p UNUSED)
 	.mtu = i->mtu,
 	.index = i->index,
 	.master_index = i->master_index,
-	.master = if_find_by_index(i->master_index)
+	.master = if_find_by_index_locked(i->master_index)
       };
 
       if (f.master != i->master)
       {
 	memcpy(f.name, i->name, sizeof(f.name));
-	if_update(&f);
+	if_update_locked(&f);
       }
     }
 
@@ -1283,11 +1393,16 @@ HASH_DEFINE_REHASH_FN(RTH, struct krt_proto)
 int
 krt_capable(rte *e)
 {
-  rta *a = e->attrs;
+  eattr *ea = ea_find(e->attrs, &ea_gen_nexthop);
+  if (!ea)
+    return 0;
 
-  switch (a->dest)
+  struct nexthop_adata *nhad = (void *) ea->u.ptr;
+  if (NEXTHOP_IS_REACHABLE(nhad))
+    return 1;
+
+  switch (nhad->dest)
   {
-    case RTD_UNICAST:
     case RTD_BLACKHOLE:
     case RTD_UNREACHABLE:
     case RTD_PROHIBIT:
@@ -1299,22 +1414,24 @@ krt_capable(rte *e)
 }
 
 static inline int
-nh_bufsize(struct nexthop *nh)
+nh_bufsize(struct nexthop_adata *nhad)
 {
   int rv = 0;
-  for (; nh != NULL; nh = nh->next)
+  NEXTHOP_WALK(nh, nhad)
     rv += RTNH_LENGTH(RTA_LENGTH(sizeof(ip_addr)));
   return rv;
 }
 
 static int
-nl_send_route(struct krt_proto *p, rte *e, int op)
+nl_send_route(struct krt_proto *p, const rte *e, int op)
 {
   eattr *ea;
-  net *net = e->net;
-  rta *a = e->attrs;
-  ea_list *eattrs = a->eattrs;
-  int bufsize = 128 + KRT_METRICS_MAX*8 + nh_bufsize(&(a->nh));
+  ea_list *eattrs = e->attrs;
+  eattr *nhea = ea_find(eattrs, &ea_gen_nexthop);
+  struct nexthop_adata *nh = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
+  int dest = nhea_dest(nhea);
+
+  int bufsize = 128 + KRT_METRICS_MAX*8 + (nh ? nh_bufsize(nh) : 0);
   u32 priority = 0;
 
   struct {
@@ -1326,7 +1443,7 @@ nl_send_route(struct krt_proto *p, rte *e, int op)
   int rsize = sizeof(*r) + bufsize;
   r = alloca(rsize);
 
-  DBG("nl_send_route(%N,op=%x)\n", net->n.addr, op);
+  DBG("nl_send_route(%N,op=%x)\n", e->net, op);
 
   bzero(&r->h, sizeof(r->h));
   bzero(&r->r, sizeof(r->r));
@@ -1335,7 +1452,7 @@ nl_send_route(struct krt_proto *p, rte *e, int op)
   r->h.nlmsg_flags = op | NLM_F_REQUEST | NLM_F_ACK;
 
   r->r.rtm_family = p->af;
-  r->r.rtm_dst_len = net_pxlen(net->n.addr);
+  r->r.rtm_dst_len = net_pxlen(e->net);
   r->r.rtm_protocol = RTPROT_BIRD;
   r->r.rtm_scope = RT_SCOPE_NOWHERE;
 #ifdef HAVE_MPLS_KERNEL
@@ -1347,7 +1464,7 @@ nl_send_route(struct krt_proto *p, rte *e, int op)
      * 2) Never use RTA_PRIORITY
      */
 
-    u32 label = net_mpls(net->n.addr);
+    u32 label = net_mpls(e->net);
     nl_add_attr_mpls(&r->h, rsize, RTA_DST, 1, &label);
     r->r.rtm_scope = RT_SCOPE_UNIVERSE;
     r->r.rtm_type = RTN_UNICAST;
@@ -1355,12 +1472,12 @@ nl_send_route(struct krt_proto *p, rte *e, int op)
   else
 #endif
   {
-    nl_add_attr_ipa(&r->h, rsize, RTA_DST, net_prefix(net->n.addr));
+    nl_add_attr_ipa(&r->h, rsize, RTA_DST, net_prefix(e->net));
 
     /* Add source address for IPv6 SADR routes */
-    if (net->n.addr->type == NET_IP6_SADR)
+    if (e->net->type == NET_IP6_SADR)
     {
-      net_addr_ip6_sadr *a = (void *) &net->n.addr;
+      net_addr_ip6_sadr *a = (void *) &e->net;
       nl_add_attr_ip6(&r->h, rsize, RTA_SRC, a->src_prefix);
       r->r.rtm_src_len = a->src_pxlen;
     }
@@ -1382,7 +1499,7 @@ nl_send_route(struct krt_proto *p, rte *e, int op)
     priority = 0;
   else if (KRT_CF->sys.metric)
     priority = KRT_CF->sys.metric;
-  else if ((op != NL_OP_DELETE) && (ea = ea_find(eattrs, EA_KRT_METRIC)))
+  else if ((op != NL_OP_DELETE) && (ea = ea_find(eattrs, &ea_krt_metric)))
     priority = ea->u.data;
 
   if (priority)
@@ -1395,17 +1512,17 @@ nl_send_route(struct krt_proto *p, rte *e, int op)
   /* Default scope is LINK for device routes, UNIVERSE otherwise */
   if (p->af == AF_MPLS)
     r->r.rtm_scope = RT_SCOPE_UNIVERSE;
-  else if (ea = ea_find(eattrs, EA_KRT_SCOPE))
+  else if (ea = ea_find(eattrs, &ea_krt_scope))
     r->r.rtm_scope = ea->u.data;
-  else if (a->dest == RTD_UNICAST && ipa_zero(a->nh.gw))
+  else if (dest == RTD_UNICAST && ipa_zero(nh->nh.gw))
     r->r.rtm_scope = RT_SCOPE_LINK;
   else
     r->r.rtm_scope = RT_SCOPE_UNIVERSE;
 
-  if (ea = ea_find(eattrs, EA_KRT_PREFSRC))
+  if (ea = ea_find(eattrs, &ea_krt_prefsrc))
     nl_add_attr_ipa(&r->h, rsize, RTA_PREFSRC, *(ip_addr *)ea->u.ptr->data);
 
-  if (ea = ea_find(eattrs, EA_KRT_REALM))
+  if (ea = ea_find(eattrs, &ea_krt_realm))
     nl_add_attr_u32(&r->h, rsize, RTA_FLOW, ea->u.data);
 
 
@@ -1414,9 +1531,9 @@ nl_send_route(struct krt_proto *p, rte *e, int op)
   metrics[0] = 0;
 
   struct ea_walk_state ews = { .eattrs = eattrs };
-  while (ea = ea_walk(&ews, EA_KRT_METRICS, KRT_METRICS_MAX))
+  while (ea = ea_walk(&ews, ea_krt_metrics[0].id, KRT_METRICS_MAX))
   {
-    int id = ea->id - EA_KRT_METRICS;
+    int id = ea->id - ea_krt_metrics[0].id;
     metrics[0] |= 1 << id;
 
     if (id == RTAX_CC_ALGO)
@@ -1428,19 +1545,18 @@ nl_send_route(struct krt_proto *p, rte *e, int op)
   if (metrics[0])
     nl_add_metrics(&r->h, rsize, metrics, cc_algo, KRT_METRICS_MAX);
 
-  switch (a->dest)
+  switch (dest)
     {
     case RTD_UNICAST:
       r->r.rtm_type = RTN_UNICAST;
-      struct nexthop *nh = &(a->nh);
-      if (nh->next)
+      if (!NEXTHOP_ONE(nh))
 	nl_add_multipath(&r->h, rsize, nh, p->af, eattrs);
       else
       {
-	nl_add_attr_u32(&r->h, rsize, RTA_OIF, nh->iface->index);
-	nl_add_nexthop(&r->h, rsize, nh, p->af);
+	nl_add_attr_u32(&r->h, rsize, RTA_OIF, nh->nh.iface->index);
+	nl_add_nexthop(&r->h, rsize, &nh->nh, p->af);
 
-	if (nh->flags & RNF_ONLINK)
+	if (nh->nh.flags & RNF_ONLINK)
 	  r->r.rtm_flags |= RTNH_F_ONLINK;
       }
       break;
@@ -1486,12 +1602,15 @@ nl_allow_replace(struct krt_proto *p, rte *new)
   if (krt_ipv4(p))
     return 1;
 
-  rta *a = new->attrs;
-  return (a->dest == RTD_UNICAST) && ipa_nonzero(a->nh.gw);
+  eattr *nhea = ea_find(new->attrs, &ea_gen_nexthop);
+  struct nexthop_adata *nh = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
+  int dest = nhea_dest(nhea);
+
+  return (dest == RTD_UNICAST) && ipa_nonzero(nh->nh.gw);
 }
 
 void
-krt_replace_rte(struct krt_proto *p, net *n UNUSED, rte *new, rte *old)
+krt_replace_rte(struct krt_proto *p, const net_addr *n UNUSED, rte *new, const rte *old)
 {
   int err = 0;
 
@@ -1644,105 +1763,118 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       krt_src = KRT_SRC_ALIEN;
     }
 
-  net_addr *n = &dst;
+  net_addr *net = &dst;
   if (p->p.net_type == NET_IP6_SADR)
   {
-    n = alloca(sizeof(net_addr_ip6_sadr));
-    net_fill_ip6_sadr(n, net6_prefix(&dst), net6_pxlen(&dst),
+    net = alloca(sizeof(net_addr_ip6_sadr));
+    net_fill_ip6_sadr(net, net6_prefix(&dst), net6_pxlen(&dst),
 		      net6_prefix(&src), net6_pxlen(&src));
   }
 
-  net *net = net_get(p->p.main_channel->table, n);
-
-  rta *ra = lp_allocz(s->pool, RTA_MAX_SIZE);
-  ra->source = RTS_INHERIT;
-  ra->scope = SCOPE_UNIVERSE;
-
-  {
-    ea_list *ea = lp_alloc(s->pool, sizeof(ea_list) + 2 * sizeof(eattr));
-    *ea = (ea_list) { .flags = EALF_SORTED, .count = 2 };
-    ea->next = ra->eattrs;
-    ra->eattrs = ea;
-
-    ea->attrs[0] = (eattr) {
-      .id = EA_KRT_SOURCE,
-      .type = EAF_TYPE_INT,
-      .u.data = i->rtm_protocol
-    };
-
-    ea->attrs[1] = (eattr) {
-      .id = EA_KRT_METRIC,
-      .type = EAF_TYPE_INT,
-      .u.data = priority,
-    };
-  }
+  ea_list *ra = NULL;
+  ea_set_attr_u32(&ra, &ea_gen_source, 0, RTS_INHERIT);
+  ea_set_attr_u32(&ra, &ea_krt_source, 0, i->rtm_protocol);
+  ea_set_attr_u32(&ra, &ea_krt_metric, 0, priority);
 
   if (a[RTA_FLOW])
     s->rta_flow = rta_get_u32(a[RTA_FLOW]);
   else
     s->rta_flow = 0;
 
+  union {
+    struct {
+      struct adata ad;
+      struct nexthop nh;
+      u32 labels[MPLS_MAX_LABEL_STACK];
+    };
+    struct nexthop_adata nhad;
+  } nhad = {};
+
   switch (i->rtm_type)
     {
     case RTN_UNICAST:
-      ra->dest = RTD_UNICAST;
-
       if (a[RTA_MULTIPATH])
         {
-	  struct nexthop *nh = nl_parse_multipath(s, p, n, a[RTA_MULTIPATH], i->rtm_family, krt_src);
+	  struct nexthop_adata *nh = nl_parse_multipath(s, p, net, a[RTA_MULTIPATH], i->rtm_family, krt_src);
 	  if (!nh)
 	    SKIP("strange RTA_MULTIPATH\n");
 
-	  nexthop_link(ra, nh);
+	  ea_set_attr(&ra, EA_LITERAL_DIRECT_ADATA(
+		&ea_gen_nexthop, 0, &nh->ad));
 	  break;
 	}
 
       if ((i->rtm_flags & RTNH_F_DEAD) && (krt_src != KRT_SRC_BIRD))
 	SKIP("ignore RTNH_F_DEAD\n");
 
-      ra->nh.iface = if_find_by_index(oif);
-      if (!ra->nh.iface)
+      nhad.nh.iface = if_find_by_index(oif);
+      if (!nhad.nh.iface)
 	{
-	  log(L_ERR "KRT: Received route %N with unknown ifindex %u", net->n.addr, oif);
+	  log(L_ERR "KRT: Received route %N with unknown ifindex %u", net, oif);
 	  return;
 	}
 
       if (a[RTA_GATEWAY])
-	ra->nh.gw = rta_get_ipa(a[RTA_GATEWAY]);
+	nhad.nh.gw = rta_get_ipa(a[RTA_GATEWAY]);
 
       if (a[RTA_VIA])
-	ra->nh.gw = rta_get_via(a[RTA_VIA]);
+	nhad.nh.gw = rta_get_via(a[RTA_VIA]);
 
       if (i->rtm_flags & RTNH_F_ONLINK)
-	ra->nh.flags |= RNF_ONLINK;
+	nhad.nh.flags |= RNF_ONLINK;
 
-      if (ipa_nonzero(ra->nh.gw))
+      if (ipa_nonzero(nhad.nh.gw))
 	{
 	  /* Silently skip strange 6to4 routes */
 	  const net_addr_ip6 sit = NET_ADDR_IP6(IP6_NONE, 96);
-	  if ((i->rtm_family == AF_INET6) && ipa_in_netX(ra->nh.gw, (net_addr *) &sit))
+	  if ((i->rtm_family == AF_INET6) && ipa_in_netX(nhad.nh.gw, (net_addr *) &sit))
 	    return;
 
 	  neighbor *nbr;
-	  nbr = neigh_find(&p->p, ra->nh.gw, ra->nh.iface,
-			   (ra->nh.flags & RNF_ONLINK) ? NEF_ONLINK : 0);
+	  nbr = neigh_find(&p->p, nhad.nh.gw, nhad.nh.iface,
+			   (nhad.nh.flags & RNF_ONLINK) ? NEF_ONLINK : 0);
 	  if (!nbr || (nbr->scope == SCOPE_HOST))
 	    {
-	      log(L_ERR "KRT: Received route %N with strange next-hop %I", net->n.addr,
-                  ra->nh.gw);
+	      log(L_ERR "KRT: Received route %N with strange next-hop %I", net,
+                  nhad.nh.gw);
 	      return;
 	    }
 	}
 
+#ifdef HAVE_MPLS_KERNEL
+      if ((i->rtm_family == AF_MPLS) && a[RTA_NEWDST] && !a[RTA_MULTIPATH])
+	nhad.nh.labels = rta_get_mpls(a[RTA_NEWDST], nhad.nh.label);
+
+      if (a[RTA_ENCAP] && a[RTA_ENCAP_TYPE] && !a[RTA_MULTIPATH])
+	{
+	  switch (rta_get_u16(a[RTA_ENCAP_TYPE]))
+	    {
+	      case LWTUNNEL_ENCAP_MPLS:
+		{
+		  struct rtattr *enca[BIRD_RTA_MAX];
+		  nl_attr_len = RTA_PAYLOAD(a[RTA_ENCAP]);
+		  nl_parse_attrs(RTA_DATA(a[RTA_ENCAP]), encap_mpls_want, enca, sizeof(enca));
+		  nhad.nh.labels = rta_get_mpls(enca[RTA_DST], nhad.nh.label);
+		  break;
+		}
+	      default:
+		SKIP("unknown encapsulation method %d\n", rta_get_u16(a[RTA_ENCAP_TYPE]));
+		break;
+	    }
+	}
+#endif
+
+      /* Finalize the nexthop */
+      nhad.ad.length = (void *) NEXTHOP_NEXT(&nhad.nh) - (void *) nhad.ad.data;
       break;
     case RTN_BLACKHOLE:
-      ra->dest = RTD_BLACKHOLE;
+      nhad.nhad = NEXTHOP_DEST_LITERAL(RTD_BLACKHOLE);
       break;
     case RTN_UNREACHABLE:
-      ra->dest = RTD_UNREACHABLE;
+      nhad.nhad = NEXTHOP_DEST_LITERAL(RTD_UNREACHABLE);
       break;
     case RTN_PROHIBIT:
-      ra->dest = RTD_PROHIBIT;
+      nhad.nhad = NEXTHOP_DEST_LITERAL(RTD_PROHIBIT);
       break;
     /* FIXME: What about RTN_THROW? */
     default:
@@ -1750,140 +1882,54 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       return;
     }
 
-#ifdef HAVE_MPLS_KERNEL
-  if ((i->rtm_family == AF_MPLS) && a[RTA_NEWDST] && !ra->nh.next)
-    ra->nh.labels = rta_get_mpls(a[RTA_NEWDST], ra->nh.label);
-
-  if (a[RTA_ENCAP] && a[RTA_ENCAP_TYPE] && !ra->nh.next)
-    {
-      switch (rta_get_u16(a[RTA_ENCAP_TYPE]))
-	{
-	  case LWTUNNEL_ENCAP_MPLS:
-	    {
-	      struct rtattr *enca[BIRD_RTA_MAX];
-	      nl_attr_len = RTA_PAYLOAD(a[RTA_ENCAP]);
-	      nl_parse_attrs(RTA_DATA(a[RTA_ENCAP]), encap_mpls_want, enca, sizeof(enca));
-	      ra->nh.labels = rta_get_mpls(enca[RTA_DST], ra->nh.label);
-	      break;
-	    }
-	  default:
-	    SKIP("unknown encapsulation method %d\n", rta_get_u16(a[RTA_ENCAP_TYPE]));
-	    break;
-	}
-    }
-#endif
+  if (nhad.ad.length)
+    ea_set_attr(&ra, EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0, &nhad.ad));
 
   if (i->rtm_scope != def_scope)
-    {
-      ea_list *ea = lp_alloc(s->pool, sizeof(ea_list) + sizeof(eattr));
-      ea->next = ra->eattrs;
-      ra->eattrs = ea;
-      ea->flags = EALF_SORTED;
-      ea->count = 1;
-      ea->attrs[0] = (eattr) {
-        .id = EA_KRT_SCOPE,
-        .flags = 0,
-        .type = EAF_TYPE_INT,
-        .u.data = i->rtm_scope,
-      };
-    }
+    ea_set_attr(&ra,
+	EA_LITERAL_EMBEDDED(&ea_krt_scope, 0, i->rtm_scope));
 
   if (a[RTA_PREFSRC])
-    {
-      ip_addr ps = rta_get_ipa(a[RTA_PREFSRC]);
+  {
+    ip_addr ps = rta_get_ipa(a[RTA_PREFSRC]);
 
-      struct adata *ad = lp_alloc(s->pool, sizeof(struct adata) + sizeof(ps));
-      ad->length = sizeof(ps);
-      memcpy(ad->data, &ps, sizeof(ps));
-
-      ea_list *ea = lp_alloc(s->pool, sizeof(ea_list) + sizeof(eattr));
-      ea->next = ra->eattrs;
-      ra->eattrs = ea;
-      ea->flags = EALF_SORTED;
-      ea->count = 1;
-      ea->attrs[0] = (eattr) {
-	.id = EA_KRT_PREFSRC,
-        .flags = 0,
-        .type = EAF_TYPE_IP_ADDRESS,
-        .u.ptr = ad,
-      };
-    }
+    ea_set_attr(&ra,
+	EA_LITERAL_STORE_ADATA(&ea_krt_prefsrc, 0, &ps, sizeof(ps)));
+  }
 
   /* Can be set per-route or per-nexthop */
   if (s->rta_flow)
-    {
-      ea_list *ea = lp_alloc(s->pool, sizeof(ea_list) + sizeof(eattr));
-      ea->next = ra->eattrs;
-      ra->eattrs = ea;
-      ea->flags = EALF_SORTED;
-      ea->count = 1;
-      ea->attrs[0] = (eattr) {
-	.id = EA_KRT_REALM,
-	.flags = 0,
-	.type = EAF_TYPE_INT,
-	.u.data = s->rta_flow,
-      };
-    }
+    ea_set_attr(&ra,
+	EA_LITERAL_EMBEDDED(&ea_krt_realm, 0, s->rta_flow));
 
   if (a[RTA_METRICS])
     {
       u32 metrics[KRT_METRICS_MAX];
       const char *cc_algo = NULL;
-      ea_list *ea = lp_alloc(s->pool, sizeof(ea_list) + KRT_METRICS_MAX * sizeof(eattr));
-      int t, n = 0;
 
       if (nl_parse_metrics(a[RTA_METRICS], metrics, &cc_algo, ARRAY_SIZE(metrics)) < 0)
         {
-	  log(L_ERR "KRT: Received route %N with strange RTA_METRICS attribute", net->n.addr);
+	  log(L_ERR "KRT: Received route %N with strange RTA_METRICS attribute", net);
 	  return;
 	}
 
-      for (t = 1; t < KRT_METRICS_MAX; t++)
+      for (uint t = 1; t < KRT_METRICS_MAX; t++)
 	if (metrics[0] & (1 << t))
-	  if ((t == RTAX_LOCK) || (t == RTAX_FEATURES))
-	    {
-	      ea->attrs[n++] = (eattr) {
-		.id = EA_KRT_METRICS + t,
-		.type = EAF_TYPE_BITFIELD,
-		.u.data = metrics[t],
-	      };
-	    }
-          else if (t == RTAX_CC_ALGO)
-	    {
-	      struct adata *ad = lp_alloc_adata(s->pool, strlen(cc_algo));
-	      memcpy(ad->data, cc_algo, ad->length);
-
-	      ea->attrs[n++] = (eattr) {
-		.id = EA_KRT_CONGCTL,
-		.type = EAF_TYPE_STRING,
-		.u.ptr = ad,
-	      };
-	    }
+	  if (t == RTAX_CC_ALGO)
+	    ea_set_attr(&ra, EA_LITERAL_STORE_ADATA(&ea_krt_metrics[t], 0, cc_algo, strlen(cc_algo)));
 	  else
-	    {
-	      ea->attrs[n++] = (eattr) {
-		.id = EA_KRT_METRICS + t,
-		.type = EAF_TYPE_INT,
-		.u.data = metrics[t],
-	      };
-	    }
-
-      if (n > 0)
-        {
-	  ea->next = ra->eattrs;
-	  ea->flags = EALF_SORTED;
-	  ea->count = n;
-	  ra->eattrs = ea;
-	}
+	    ea_set_attr(&ra, EA_LITERAL_EMBEDDED(&ea_krt_metrics[t], 0, metrics[t]));
     }
 
-  rte *e = rte_get_temp(ra, p->p.main_source);
-  e->net = net;
+  rte e0 = {
+    .net = net,
+    .attrs = ra,
+  };
 
   if (s->scan)
-    krt_got_route(p, e, krt_src);
+    krt_got_route(p, &e0, krt_src);
   else
-    krt_got_route_async(p, e, new, krt_src);
+    krt_got_route_async(p, &e0, new, krt_src);
 
   lp_flush(s->pool);
 }
@@ -2054,7 +2100,7 @@ nl_open_async(void)
   sk->rx_hook = nl_async_hook;
   sk->err_hook = nl_async_err_hook;
   sk->fd = fd;
-  if (sk_open(sk) < 0)
+  if (sk_open(sk, &main_birdloop) < 0)
     bug("Netlink: sk_open failed");
 }
 
@@ -2094,6 +2140,8 @@ krt_sys_io_init(void)
 {
   nl_linpool = lp_new_default(krt_pool);
   HASH_INIT(nl_table_map, krt_pool, 6);
+
+  nl_ea_register();
 }
 
 int
@@ -2146,57 +2194,6 @@ krt_sys_copy_config(struct krt_config *d, struct krt_config *s)
   d->sys.table_id = s->sys.table_id;
   d->sys.metric = s->sys.metric;
 }
-
-static const char *krt_metrics_names[KRT_METRICS_MAX] = {
-  NULL, "lock", "mtu", "window", "rtt", "rttvar", "ssthresh", "cwnd", "advmss",
-  "reordering", "hoplimit", "initcwnd", "features", "rto_min", "initrwnd", "quickack",
-  "congctl", "fastopen_no_cookie"
-};
-
-static const char *krt_features_names[KRT_FEATURES_MAX] = {
-  "ecn", NULL, NULL, "allfrag"
-};
-
-int
-krt_sys_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
-{
-  switch (a->id)
-  {
-  case EA_KRT_PREFSRC:
-    bsprintf(buf, "prefsrc");
-    return GA_NAME;
-
-  case EA_KRT_REALM:
-    bsprintf(buf, "realm");
-    return GA_NAME;
-
-  case EA_KRT_SCOPE:
-    bsprintf(buf, "scope");
-    return GA_NAME;
-
-  case EA_KRT_LOCK:
-    buf += bsprintf(buf, "lock:");
-    ea_format_bitfield(a, buf, buflen, krt_metrics_names, 2, KRT_METRICS_MAX);
-    return GA_FULL;
-
-  case EA_KRT_FEATURES:
-    buf += bsprintf(buf, "features:");
-    ea_format_bitfield(a, buf, buflen, krt_features_names, 0, KRT_FEATURES_MAX);
-    return GA_FULL;
-
-  default:;
-    int id = (int)EA_ID(a->id) - KRT_METRICS_OFFSET;
-    if (id > 0 && id < KRT_METRICS_MAX)
-    {
-      bsprintf(buf, "%s", krt_metrics_names[id]);
-      return GA_NAME;
-    }
-
-    return GA_UNKNOWN;
-  }
-}
-
-
 
 void
 kif_sys_start(struct kif_proto *p UNUSED)

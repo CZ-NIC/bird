@@ -83,6 +83,8 @@ const char *rpki_cache_state_to_str(enum rpki_cache_state state);
 void rpki_table_add_roa(struct rpki_cache *cache, struct channel *channel, const net_addr_union *pfxr);
 void rpki_table_remove_roa(struct rpki_cache *cache, struct channel *channel, const net_addr_union *pfxr);
 
+void rpki_start_refresh(struct rpki_proto *p);
+void rpki_stop_refresh(struct rpki_proto *p);
 
 /*
  *	RPKI Protocol Logic

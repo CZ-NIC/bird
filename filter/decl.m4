@@ -100,7 +100,7 @@ FID_DUMP_BODY()m4_dnl
 debug("%s" $4 "\n", INDENT, $5);
 ]])
 FID_INTERPRET_EXEC()m4_dnl
-const $1 $2 = whati->$2
+$1 $2 = whati->$2
 FID_INTERPRET_BODY')
 
 #	Instruction arguments are needed only until linearization is done.
@@ -216,6 +216,7 @@ FID_INTERPRET_BODY()')
 #	that was needed in the former implementation.
 m4_define(LINEX, `FID_INTERPRET_EXEC()LINEX_($1)FID_INTERPRET_NEW()return $1 FID_INTERPRET_BODY()')
 m4_define(LINEX_, `do if ($1) {
+  if (fstk->ecnt + 1 >= fstk->elen) runtime("Filter execution stack overflow");
   fstk->estk[fstk->ecnt].pos = 0;
   fstk->estk[fstk->ecnt].line = $1;
   fstk->estk[fstk->ecnt].ventry = fstk->vcnt;
@@ -257,7 +258,7 @@ FID_INTERPRET_BODY()')
 #	state the result and put it to the right place.
 m4_define(RESULT, `RESULT_TYPE([[$1]]) RESULT_([[$1]],[[$2]],[[$3]])')
 m4_define(RESULT_, `RESULT_VAL([[ (struct f_val) { .type = $1, .val.$2 = $3 } ]])')
-m4_define(RESULT_VAL, `FID_HIC(, [[do { res = $1; fstk->vcnt++; } while (0)]],
+m4_define(RESULT_VAL, `FID_HIC(, [[do { res = $1; f_vcnt_check_overflow(1); fstk->vcnt++; } while (0)]],
 [[return fi_constant(what, $1)]])')
 m4_define(RESULT_VOID, `RESULT_VAL([[ (struct f_val) { .type = T_VOID } ]])')
 
@@ -284,7 +285,7 @@ FID_INTERPRET_BODY()')
 m4_define(SYMBOL, `FID_MEMBER(struct symbol *, sym, [[strcmp(f1->sym->name, f2->sym->name) || (f1->sym->class != f2->sym->class)]], "symbol %s", item->sym->name)')
 m4_define(RTC, `FID_MEMBER(struct rtable_config *, rtc, [[strcmp(f1->rtc->name, f2->rtc->name)]], "route table %s", item->rtc->name)')
 m4_define(STATIC_ATTR, `FID_MEMBER(struct f_static_attr, sa, f1->sa.sa_code != f2->sa.sa_code,,)')
-m4_define(DYNAMIC_ATTR, `FID_MEMBER(struct f_dynamic_attr, da, f1->da.ea_code != f2->da.ea_code,,)')
+m4_define(DYNAMIC_ATTR, `FID_MEMBER(const struct ea_class *, da, f1->da != f2->da,,)')
 m4_define(ACCESS_RTE, `FID_HIC(,[[do { if (!fs->rte) runtime("No route to access"); } while (0)]],NEVER_CONSTANT())')
 
 #	Method constructor block
@@ -425,7 +426,7 @@ m4_undivert(112)
 FID_METHOD_SCOPE_INIT()m4_dnl
   [INST_METHOD_OBJECT_TYPE] = {},
 FID_METHOD_REGISTER()m4_dnl
-  method = lp_allocz(global_root_scope_linpool, sizeof(struct f_method) + INST_METHOD_NUM_ARGS * sizeof(enum f_type));
+  method = lp_allocz(global_root_scope_linpool, sizeof(struct f_method) + INST_METHOD_NUM_ARGS * sizeof(enum btype));
   method->new_inst = f_new_method_]]INST_NAME()[[;
   method->arg_num = INST_METHOD_NUM_ARGS;
 m4_undivert(113)
@@ -574,7 +575,7 @@ fi_constant(struct f_inst *what, struct f_val val)
 }
 
 int
-f_const_promotion_(struct f_inst *arg, enum f_type want, int update)
+f_const_promotion_(struct f_inst *arg, btype want, int update)
 {
   if (arg->fi_code != FI_CONSTANT)
     return 0;
@@ -621,6 +622,8 @@ FID_WR_PUT(11)
 #pragma GCC diagnostic ignored "-Woverride-init"
 #endif
 
+#pragma clang diagnostic ignored "-Winitializer-overrides"
+
 static struct sym_scope f_type_method_scopes[] = {
 FID_WR_PUT(12)
 };
@@ -629,20 +632,20 @@ FID_WR_PUT(12)
 #pragma GCC diagnostic pop
 #endif
 
-struct sym_scope *f_type_method_scope(enum f_type t)
+struct sym_scope *f_type_method_scope(enum btype t)
 {
   return (t < ARRAY_SIZE(f_type_method_scopes)) ? &f_type_method_scopes[t] : NULL;
 }
 
 static void
-f_register_method(enum f_type t, const byte *name, struct f_method *dsc)
+f_register_method(enum btype t, const byte *name, struct f_method *dsc)
 {
   struct sym_scope *scope = &f_type_method_scopes[t];
   struct symbol *sym = cf_find_symbol_scope(scope, name);
 
   if (!sym)
   {
-    sym = cf_new_symbol(scope, global_root_scope_pool, global_root_scope_linpool, name);
+    sym = cf_root_symbol(name, scope);
     sym->class = SYM_METHOD;
   }
 
@@ -650,6 +653,8 @@ f_register_method(enum f_type t, const byte *name, struct f_method *dsc)
   dsc->next = sym->method;
   sym->method = dsc;
 }
+
+extern struct sym_scope global_filter_scope;
 
 void f_type_methods_register(void)
 {
@@ -659,6 +664,8 @@ FID_WR_PUT(13)
 
   for (uint i = 0; i < ARRAY_SIZE(f_type_method_scopes); i++)
     f_type_method_scopes[i].readonly = 1;
+
+  f_type_method_scopes[T_ROUTE].next = &global_filter_scope;
 }
 
 /* Line dumpers */
@@ -782,7 +789,7 @@ struct f_inst {
   struct f_inst *next;			/* Next instruction */
   enum f_instruction_code fi_code;	/* Instruction code */
   enum f_instruction_flags flags;	/* Flags, instruction-specific */
-  enum f_type type;			/* Type of returned value, if known */
+  btype type;				/* Type of returned value, if known */
   int size;				/* How many instructions are underneath */
   int lineno;				/* Line number */
   union {

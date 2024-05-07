@@ -14,6 +14,7 @@ CF_HDR
 #include "conf/conf.h"
 #include "lib/resource.h"
 #include "lib/socket.h"
+#include "lib/settle.h"
 #include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/protocol.h"
@@ -26,6 +27,8 @@ CF_HDR
 /* FIXME: Turn on YYERROR_VERBOSE and work around lots of bison bugs? */
 
 CF_DEFINES
+
+static _Bool this_sadr_from_hack_active;
 
 static void
 check_u16(uint val)
@@ -63,7 +66,6 @@ CF_DECLS
   net_addr net;
   net_addr *net_ptr;
   struct symbol *s;
-  struct keyword *kw;
   const char *t;
   struct rtable_config *r;
   struct channel_config *cc;
@@ -74,14 +76,16 @@ CF_DECLS
   } xp;
   enum filter_return fret;
   enum ec_subtype ecs;
-  struct f_dynamic_attr fda;
+  struct ea_class *ea_class;
   struct f_static_attr fsa;
+  struct f_attr_bit fab;
   struct f_lval flv;
   struct f_line *fl;
   struct f_arg *fa;
   const struct filter *f;
   struct f_tree *e;
   struct f_trie *trie;
+  const struct f_trie *const_trie;
   struct f_val v;
   struct password_item *p;
   struct rt_show_data *ra;
@@ -98,7 +102,8 @@ CF_DECLS
   struct table_spec ts;
   struct channel_limit cl;
   struct timeformat *tf;
-  mpls_label_stack *mls;
+  struct settle_config settle;
+  struct adata *ad;
   const struct adata *bs;
   struct aggr_item_node *ai;
   struct logging_rate_targets *lrt;
@@ -120,14 +125,15 @@ CF_DECLS
 
 %type <i> expr bool pxlen4
 %type <time> expr_us time
-%type <a> ipa
+%type <settle> settle
+%type <a> ipa net_ip6_slash
 %type <net> net_ip4_ net_ip4 net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_
-%type <mls> label_stack_start label_stack
+%type <ad> label_stack_start label_stack
 
 %type <t> text opttext
 %type <bs> bytestring
-%type <s> symbol symbol_known
+%type <s> symbol
 
 %type <v> bytestring_text text_or_ipa
 %type <x> bytestring_expr
@@ -135,6 +141,7 @@ CF_DECLS
 %nonassoc PREFIX_DUMMY
 %left AND OR
 %nonassoc '=' '<' '>' '~' GEQ LEQ NEQ NMA IMP PO PC
+%left '|' '&'
 %left '+' '-'
 %left '*' '/' '%'
 %left '!'
@@ -166,8 +173,7 @@ conf: definition ;
 
 definition:
    DEFINE symbol '=' term ';' {
-     struct f_val *val = cfg_allocz(sizeof(struct f_val));
-     *val = cf_eval($4, T_VOID);
+     struct f_val *val = cf_eval($4, T_VOID);
      cf_define_symbol(new_config, $2, SYM_CONSTANT | val->type, val, val);
    }
  ;
@@ -175,7 +181,7 @@ definition:
 expr:
    NUM
  | '(' term ')' { $$ = cf_eval_int($2); }
- | symbol_known {
+ | CF_SYM_KNOWN {
      if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number constant expected");
      $$ = SYM_VAL($1).i; }
  ;
@@ -186,8 +192,7 @@ expr_us:
  | expr US { $$ = $1 US_; }
  ;
 
-symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN | KEYWORD ;
-symbol_known: CF_SYM_KNOWN ;
+symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN ;
 
 /* Switches */
 
@@ -237,12 +242,24 @@ net_ip4_: IP4 pxlen4
 	     n->prefix, n->pxlen, ip4_and(n->prefix, ip4_mkmask(n->pxlen)), n->pxlen);
 };
 
-net_ip6_: IP6 '/' NUM
+net_ip6_slash: IP6 '/'
 {
-  if ($3 > IP6_MAX_PREFIX_LENGTH)
-    cf_error("Invalid prefix length %u", $3);
+  this_sadr_from_hack_active = cf_maybe_exit_filters();
+  $$ = $1;
+}
 
-  net_fill_ip6(&($$), $1, $3);
+net_ip6_: net_ip6_slash NUM
+{
+  if (this_sadr_from_hack_active)
+  {
+    cf_enter_filters();
+    this_sadr_from_hack_active = 0;
+  }
+
+  if ($2 > IP6_MAX_PREFIX_LENGTH)
+    cf_error("Invalid prefix length %u", $2);
+
+  net_fill_ip6(&($$), $1, $2);
 
   net_addr_ip6 *n = (void *) &($$);
   if (!net_validate_ip6(n))
@@ -250,16 +267,25 @@ net_ip6_: IP6 '/' NUM
 	     n->prefix, n->pxlen, ip6_and(n->prefix, ip6_mkmask(n->pxlen)), n->pxlen);
 };
 
-net_ip6_sadr_: IP6 '/' NUM FROM IP6 '/' NUM
+net_ip6_sadr_: net_ip6_slash NUM FROM IP6 '/' NUM
 {
-  if ($3 > IP6_MAX_PREFIX_LENGTH)
-    cf_error("Invalid prefix length %u", $3);
+  if (this_sadr_from_hack_active)
+  {
+    cf_enter_filters();
+    this_sadr_from_hack_active = 0;
+  }
 
-  if ($7 > IP6_MAX_PREFIX_LENGTH)
-    cf_error("Invalid prefix length %u", $7);
+  if (($3->class != SYM_KEYWORD) || ($3->keyword->value != FROM))
+    cf_error("Expected FROM after %I6/%d", $1, $2);
+
+  if ($2 > IP6_MAX_PREFIX_LENGTH)
+    cf_error("Invalid prefix length %u", $2);
+
+  if ($6 > IP6_MAX_PREFIX_LENGTH)
+    cf_error("Invalid prefix length %u", $6);
 
   $$ = cfg_alloc(sizeof(net_addr_ip6_sadr));
-  net_fill_ip6_sadr($$, $1, $3, $5, $7);
+  net_fill_ip6_sadr($$, $1, $2, $4, $6);
 
   net_addr_ip6_sadr *n = (void *) $$;
   if (!net_validate_ip6_sadr(n))
@@ -372,17 +398,19 @@ net_or_ipa:
 
 label_stack_start: NUM
 {
-  $$ = cfg_allocz(sizeof(mpls_label_stack));
-  $$->len = 1;
-  $$->stack[0] = $1;
+  $$ = cfg_allocz(ADATA_SIZE(MPLS_MAX_LABEL_STACK * sizeof(u32)));
+  $$->length = sizeof(u32);
+  *((u32 *)$$->data) = $1;
 };
 
 label_stack:
     label_stack_start
   | label_stack '/' NUM {
-    if ($1->len >= MPLS_MAX_LABEL_STACK)
+    if ($1->length >= MPLS_MAX_LABEL_STACK * sizeof(u32))
       cf_error("Too many labels in stack");
-    $1->stack[$1->len++] = $3;
+
+    *((u32 *)($$->data + $1->length)) = $3;
+    $1->length += sizeof(u32);
     $$ = $1;
   }
 ;
@@ -394,6 +422,13 @@ time:
        cf_error("Invalid date/time");
    }
  ;
+
+/* Settle timer configuration */
+settle: expr_us expr_us {
+  if ($1 > $2) cf_error("Minimum settle time %t is bigger than maximum settle time %t", $1, $2);
+  $$.min = $1;
+  $$.max = $2;
+};
 
 text:
    TEXT
@@ -420,7 +455,7 @@ text_or_ipa:
        cf_error("String or IP constant expected");
    }
  | '(' term ')' {
-     $$ = cf_eval($2, T_VOID);
+     $$ = *cf_eval($2, T_VOID);
      if (($$.type != T_BYTESTRING) && ($$.type != T_STRING))
        cf_error("Bytestring or string value expected");
    }
@@ -428,21 +463,21 @@ text_or_ipa:
 
 bytestring:
    BYTETEXT
- | bytestring_expr { $$ = cf_eval($1, T_BYTESTRING).val.bs; }
+ | bytestring_expr { $$ = cf_eval($1, T_BYTESTRING)->val.bs; }
  ;
 
 bytestring_text:
    BYTETEXT { $$.type = T_BYTESTRING; $$.val.bs = $1; }
  | TEXT { $$.type = T_STRING; $$.val.s = $1; }
  | bytestring_expr {
-     $$ = cf_eval($1, T_VOID);
+     $$ = *cf_eval($1, T_VOID);
      if (($$.type != T_BYTESTRING) && ($$.type != T_STRING))
        cf_error("Bytestring or string value expected");
    }
  ;
 
 bytestring_expr:
-   symbol_value
+   lvalue { $$ = f_lval_getter(&$1); }
  | term_bs
  | '(' term ')' { $$ = $2; }
  ;

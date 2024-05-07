@@ -1,3 +1,35 @@
+Version 3.0alpha2 (2023-05-11)
+  o Fixed memory leaks and use-after free bugs
+  o Simple thread work balancing
+  o MRT switched off
+  o Slow kernel route synchronization to be fixed later
+
+Version 3.0alpha1 (2023-04-18)
+  o Worker threads for BGP, Pipe, RPKI and BFD
+  o Configurable number of threads
+  o Asynchronous route export
+  o Flat attribute structure
+  o Inline import tables
+  o Export tables merged with BGP prefix / attribute buckets
+  o Fixed ROA check locking inversion in route table dumps
+  o MRT switched off
+
+Version 3.0-alpha0 (2022-02-07)
+  o Removal of fixed protocol-specific route attributes
+  o Asynchronous route export
+  o Explicit table import / export hooks
+  o Partially lockless route attribute cache
+  o Thread-safe resource management
+  o Thread-safe interface notifications
+  o Thread-safe protocol API
+  o Adoption of BFD IO loop for general use
+  o Parallel Pipe protocol
+  o Parallel RPKI protocol
+  o Parallel BGP protocol
+  o Lots of refactoring
+  o Bugfixes and improvements as they came along
+
+
 Version 2.15.1 (2024-03-22)
   o OSPF: Fix regression in handling PtP links
   o RPKI: Handle connection resets properly

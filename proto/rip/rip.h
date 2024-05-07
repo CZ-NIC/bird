@@ -105,6 +105,7 @@ struct rip_proto
 
   struct tbf log_pkt_tbf;		/* TBF for packet messages */
   struct tbf log_rte_tbf;		/* TBF for RTE messages */
+  struct channel_import_request *cir;	/* Trie for partial reload */
 };
 
 struct rip_iface
@@ -196,10 +197,7 @@ struct rip_rte
 #define RIP_ENTRY_DUMMY		0	/* Only used to store list of incoming routes */
 #define RIP_ENTRY_VALID		1	/* Valid outgoing route */
 #define RIP_ENTRY_STALE		2	/* Stale outgoing route, waiting for GC */
-
-#define EA_RIP_METRIC		EA_CODE(PROTOCOL_RIP, 0)
-#define EA_RIP_TAG		EA_CODE(PROTOCOL_RIP, 1)
-#define EA_RIP_FROM		EA_CODE(PROTOCOL_RIP, 2)
+#define RIP_ENTRY_REFEEDING	3	/* Route valid until feed ends */
 
 static inline int rip_is_v2(struct rip_proto *p)
 { return p->rip2; }

@@ -30,7 +30,7 @@
 
 struct mpls_domain_config {
   node n;				/* Node in config.mpls_domains */
-  struct mpls_domain *domain;		/* Our instance */
+  struct mpls_domain_pub *domain;	/* Our instance */
   const char *name;
 
   list ranges;				/* List of label ranges (struct mpls_range_config) */
@@ -38,26 +38,9 @@ struct mpls_domain_config {
   struct mpls_range_config *dynamic_range; /* Default dynamic label range */
 };
 
-struct mpls_domain {
-  node n;				/* Node in global list of MPLS domains (mpls_domains) */
-  struct mpls_domain_config *cf;	/* Our config */
-  const char *name;
-  pool *pool;				/* Pool for the domain and associated objects */
-
-  struct lmap labels;			/* Bitmap of allocated labels */
-  uint label_count;			/* Number of allocated labels */
-  uint use_count;			/* Reference counter */
-
-  struct config *removed;		/* Deconfigured, waiting for zero use_count,
-					   while keeping config obstacle */
-
-  list ranges;				/* List of label ranges (struct mpls_range) */
-  list handles;				/* List of label handles (struct mpls_handle) */
-};
-
 struct mpls_range_config {
   node n;				/* Node in mpls_domain_config.ranges */
-  struct mpls_range *range;		/* Our instance */
+  struct mpls_range_pub *range;		/* Our instance */
   struct mpls_domain_config *domain;	/* Parent MPLS domain */
   const char *name;
 
@@ -66,34 +49,12 @@ struct mpls_range_config {
   u8 implicit;				/* Implicitly defined range */
 };
 
-struct mpls_range {
-  node n;				/* Node in mpls_domain.ranges */
-  struct mpls_range_config *cf;		/* Our config */
-  const char *name;
-
-  uint lo, hi;				/* Label range interval */
-  uint label_count;			/* Number of allocated labels */
-  uint use_count;			/* Reference counter */
-  u8 removed;				/* Deconfigured, waiting for zero use_count */
-};
-
-struct mpls_handle {
-  node n;				/* Node in mpls_domain.handles */
-
-  struct mpls_range *range;		/* Associated range, keeping reference */
-  uint label_count;			/* Number of allocated labels */
-};
-
-
 void mpls_init(void);
 struct mpls_domain_config * mpls_domain_config_new(struct symbol *s);
 void mpls_domain_postconfig(struct mpls_domain_config *cf);
 struct mpls_range_config * mpls_range_config_new(struct mpls_domain_config *m, struct symbol *s);
 void mpls_preconfig(struct config *c);
 void mpls_commit(struct config *new, struct config *old);
-uint mpls_new_label(struct mpls_domain *m, struct mpls_handle *h, uint n);
-void mpls_free_label(struct mpls_domain *m, struct mpls_handle *h, uint n);
-void mpls_move_label(struct mpls_domain *m, struct mpls_handle *fh, struct mpls_handle *th, uint n);
 
 static inline struct mpls_domain_config *cf_default_mpls_domain(struct config *cfg)
 { return EMPTY_LIST(cfg->mpls_domains) ? NULL : HEAD(cfg->mpls_domains); }
@@ -106,30 +67,46 @@ struct mpls_channel_config {
   struct mpls_range_config *range;
 
   uint label_policy;
+  uint rts;
 };
 
 struct mpls_channel {
   struct channel c;
 
-  struct mpls_domain *domain;
-  struct mpls_range *range;
+  struct mpls_domain_pub *domain;
+  struct mpls_range_pub *range;
 
   uint label_policy;
+  uint rts;
+
+  struct mpls_fec_map *mpls_map;	/* Maps protocol routes to FECs / labels */
 };
 
 
 void mpls_channel_postconfig(struct channel_config *CF);
 extern struct channel_class channel_mpls;
 
+static inline int
+proto_configure_mpls_channel(struct proto *p, struct proto_config *pc, uint rts)
+{
+  struct channel_config *cf = proto_cf_mpls_channel(pc);
+  if (cf)
+    SKIP_BACK(struct mpls_channel_config, c, cf)->rts = rts;
+
+  return proto_configure_channel(p, &p->mpls_channel, cf);
+}
+
 
 struct mpls_fec {
   u32 label;				/* Label for FEC */
   u32 hash;				/* Hash for primary key (net / rta) */
-  u32 uc;				/* Number of LSPs for FEC */
   u8 state;				/* FEC state (MPLS_FEC_*) */
   u8 policy;				/* Label policy (MPLS_POLICY_*) */
 
-  struct mpls_handle *handle;		/* Handle holding the label */
+  struct lfuc uc;			/* Number of LSPs for FEC */
+
+  struct mpls_handle_pub *handle;	/* Handle holding the label */
+  struct mpls_fec_map *map;		/* Belonging to this map */
 
   struct mpls_fec *next_k;		/* Next in mpls_fec.net_hash/rta_hash */
   struct mpls_fec *next_l;		/* Next in mpls_fec.label_hash */
@@ -139,7 +116,7 @@ struct mpls_fec {
     u32 class_id;			/* Aaggregation class */
   };
   union {				/* Primary key */
-    struct rta *rta;
+    struct ea_storage *rta;
     struct iface *iface;
     net_addr net[0];
   };
@@ -147,43 +124,42 @@ struct mpls_fec {
 
 struct mpls_fec_map {
   pool *pool;				/* Pool for FEC map */
+  struct birdloop *loop;		/* Owner's loop for sending events */
+  event *cleanup_event;			/* Event for unlocked FEC cleanup */
   slab *slabs[4];			/* Slabs for FEC allocation */
   HASH(struct mpls_fec) net_hash;	/* Hash table for MPLS_POLICY_PREFIX FECs */
-  HASH(struct mpls_fec) rta_hash;	/* Hash table for MPLS_POLICY_AGGREGATE FECs */
+  HASH(struct mpls_fec) attrs_hash;	/* Hash table for MPLS_POLICY_AGGREGATE FECs */
   HASH(struct mpls_fec) label_hash;	/* Hash table for FEC lookup by label */
   struct mpls_fec *vrf_fec;		/* Single FEC for MPLS_POLICY_VRF */
 
   struct channel *channel;		/* MPLS channel for FEC announcement */
-  struct mpls_domain *domain;		/* MPLS domain, keeping reference */
-  struct mpls_handle *handle;		/* Handle for dynamic allocation of labels */
-  struct mpls_handle *static_handle;	/* Handle for static label allocations, optional */
+  struct mpls_domain_pub *domain;	/* MPLS domain, keeping reference */
+  struct mpls_handle_pub *handle;	/* Handle for dynamic allocation of labels */
+  struct mpls_handle_pub *static_handle;/* Handle for static label allocations, optional */
   struct iface *vrf_iface;
 
   u8 mpls_rts;				/* Source value used for MPLS routes (RTS_*) */
-  u8 mpls_scope;			/* Scope  value used for MPLS routes (SCOPE_*) */
 };
 
 
-struct mpls_fec_map *mpls_fec_map_new(pool *p, struct channel *c, uint rts);
+struct mpls_fec_map *mpls_fec_map_new(pool *p, struct birdloop *loop, struct channel *c, uint rts);
 void mpls_fec_map_reconfigure(struct mpls_fec_map *m, struct channel *C);
 void mpls_fec_map_free(struct mpls_fec_map *m);
 struct mpls_fec *mpls_find_fec_by_label(struct mpls_fec_map *x, u32 label);
 struct mpls_fec *mpls_get_fec_by_label(struct mpls_fec_map *m, u32 label);
 struct mpls_fec *mpls_get_fec_by_net(struct mpls_fec_map *m, const net_addr *net, u64 path_id);
-struct mpls_fec *mpls_get_fec_by_rta(struct mpls_fec_map *m, const rta *src, u32 class_id);
-void mpls_free_fec(struct mpls_fec_map *x, struct mpls_fec *fec);
-int  mpls_handle_rte(struct mpls_fec_map *m, const net_addr *n, rte *r, linpool *lp, struct mpls_fec **locked_fec);
-void mpls_handle_rte_cleanup(struct mpls_fec_map *m, struct mpls_fec **locked_fec);
-void mpls_rte_insert(net *n UNUSED, rte *r);
-void mpls_rte_remove(net *n UNUSED, rte *r);
+struct mpls_fec *mpls_get_fec_by_destination(struct mpls_fec_map *m, ea_list *dest);
+
+void mpls_lock_fec(struct mpls_fec *fec);
+void mpls_unlock_fec(struct mpls_fec *fec);
+
+int mpls_handle_rte(struct channel *c, const net_addr *n, rte *r, struct mpls_fec **fecp);
+void mpls_rte_preimport(rte *new, const rte *old);
 
 
 struct mpls_show_ranges_cmd {
   struct mpls_domain_config *domain;
   struct mpls_range_config *range;
-
-  /* Runtime */
-  struct mpls_domain *dom;
 };
 
 void mpls_show_ranges(struct mpls_show_ranges_cmd *cmd);

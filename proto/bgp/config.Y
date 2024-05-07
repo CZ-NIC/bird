@@ -19,18 +19,17 @@ CF_DECLS
 
 CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	MULTIHOP, STARTUP, VIA, NEXT, HOP, SELF, DEFAULT, PATH, METRIC, ERROR,
-	START, DELAY, FORGET, WAIT, ENABLE, DISABLE, AFTER, BGP_PATH,
-	BGP_LOCAL_PREF, BGP_MED, BGP_ORIGIN, BGP_NEXT_HOP, BGP_ATOMIC_AGGR,
-	BGP_AGGREGATOR, BGP_COMMUNITY, BGP_EXT_COMMUNITY, BGP_LARGE_COMMUNITY,
+	START, DELAY, FORGET, WAIT, ENABLE, DISABLE, AFTER,
+	BGP_LOCAL_PREF, BGP_MED, 
 	SOURCE, ADDRESS, PASSWORD, RR, RS, CLIENT, CLUSTER, ID, AS4, ADVERTISE,
 	IPV4, CAPABILITIES, LIMIT, PASSIVE, PREFER, OLDER, MISSING, LLADDR,
-	DROP, IGNORE, ENHANCED, ROUTE, REFRESH, INTERPRET, COMMUNITIES, BGP_ORIGINATOR_ID,
-	BGP_CLUSTER_LIST, IGP, TABLE, GATEWAY, DIRECT, RECURSIVE, MED, TTL,
+	DROP, IGNORE, ENHANCED, ROUTE, REFRESH, INTERPRET, COMMUNITIES,
+	IGP, TABLE, GATEWAY, DIRECT, RECURSIVE, MED, TTL,
 	SECURITY, DETERMINISTIC, SECONDARY, ALLOW, BFD, ADD, PATHS, RX, TX,
 	GRACEFUL, RESTART, AWARE, CHECK, LINK, PORT, EXTENDED, MESSAGES, SETKEY,
 	STRICT, BIND, CONFEDERATION, MEMBER, MULTICAST, FLOW4, FLOW6, LONG,
 	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY, INTERNAL, EXTERNAL, SETS,
-	DYNAMIC, RANGE, NAME, DIGITS, BGP_AIGP, AIGP, ORIGINATE, COST, ENFORCE,
+	DYNAMIC, RANGE, NAME, DIGITS, AIGP, ORIGINATE, COST, ENFORCE,
 	FIRST, FREE, VALIDATE, BASE, ROLE, ROLES, PEER, PROVIDER, CUSTOMER,
 	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL, SEND)
 
@@ -49,6 +48,7 @@ proto: bgp_proto '}'  ;
 
 bgp_proto_start: proto_start BGP {
      this_proto = proto_config_new(&proto_bgp, $1);
+     this_proto->loop_order = DOMAIN_ORDER(proto);
      BGP_CFG->local_port = BGP_PORT;
      BGP_CFG->remote_port = BGP_PORT;
      BGP_CFG->multihop = -1;	/* undefined */
@@ -342,53 +342,25 @@ bgp_channel_end:
   if (!this_channel->table)
     cf_error("Routing table not specified");
 
+  if (BGP_CC->import_table)
+    this_channel->in_keep |= RIK_PREFILTER;
+
   this_channel = NULL;
 };
 
 bgp_proto_channel: bgp_channel_start bgp_channel_opt_list bgp_channel_end;
 
-
-dynamic_attr: BGP_ORIGIN
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_ENUM_BGP_ORIGIN, EA_CODE(PROTOCOL_BGP, BA_ORIGIN));	$$.flags = BAF_TRANSITIVE; } ;
-dynamic_attr: BGP_PATH
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_AS_PATH, T_PATH, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));		$$.flags = BAF_TRANSITIVE; } ;
-dynamic_attr: BGP_NEXT_HOP
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_IP_ADDRESS, T_IP, EA_CODE(PROTOCOL_BGP, BA_NEXT_HOP));	$$.flags = BAF_TRANSITIVE; } ;
-dynamic_attr: BGP_MED
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_MULTI_EXIT_DISC));	$$.flags = BAF_OPTIONAL; } ;
-dynamic_attr: BGP_LOCAL_PREF
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_LOCAL_PREF));		$$.flags = BAF_TRANSITIVE; } ;
-dynamic_attr: BGP_ATOMIC_AGGR
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_ATOMIC_AGGR)); $$.flags = BAF_TRANSITIVE; } ;
-dynamic_attr: BGP_AGGREGATOR
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_AGGREGATOR));	$$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
-dynamic_attr: BGP_COMMUNITY
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_CODE(PROTOCOL_BGP, BA_COMMUNITY));	$$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
-dynamic_attr: BGP_ORIGINATOR_ID
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_ROUTER_ID, T_QUAD, EA_CODE(PROTOCOL_BGP, BA_ORIGINATOR_ID));	$$.flags = BAF_OPTIONAL; } ;
-dynamic_attr: BGP_CLUSTER_LIST
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT_SET, T_CLIST, EA_CODE(PROTOCOL_BGP, BA_CLUSTER_LIST));	$$.flags = BAF_OPTIONAL; } ;
-dynamic_attr: BGP_EXT_COMMUNITY
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_EC_SET, T_ECLIST, EA_CODE(PROTOCOL_BGP, BA_EXT_COMMUNITY));	$$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
-dynamic_attr: BGP_AIGP
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_OPAQUE, T_ENUM_EMPTY, EA_CODE(PROTOCOL_BGP, BA_AIGP));	$$.flags = BAF_OPTIONAL; } ;
-dynamic_attr: BGP_LARGE_COMMUNITY
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_LC_SET, T_LCLIST, EA_CODE(PROTOCOL_BGP, BA_LARGE_COMMUNITY)); $$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
-dynamic_attr: BGP_OTC
-	{ $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_CODE(PROTOCOL_BGP, BA_ONLY_TO_CUSTOMER));	$$.flags = BAF_OPTIONAL | BAF_TRANSITIVE; } ;
-
-custom_attr: ATTRIBUTE BGP expr type symbol ';' {
+custom_attr: ATTRIBUTE BGP NUM type symbol ';' {
   if ($3 > 255 || $3 < 1)
-    cf_error("Invalid attribute number (Given %i, must be 1-255)", $3);
-  if ($4 != T_BYTESTRING)
-    cf_error("Attribute type must be bytestring, not %s", f_type_name($4));
-  if (bgp_attr_name($3))
-    cf_error("Attribute BGP.%d already known as %s", $3, bgp_attr_name($3));
+    cf_error("Invalid attribute number. (Given %i, must be 1-255.)", $3);
 
-  struct f_dynamic_attr *a = cfg_alloc(sizeof(struct f_dynamic_attr));
-  *a = f_new_dynamic_attr(f_type_attr($4), T_BYTESTRING, EA_CODE(PROTOCOL_BGP, $3));
-  a->flags = BAF_TRANSITIVE | BAF_OPTIONAL;
-  cf_define_symbol(new_config, $5, SYM_ATTRIBUTE, attribute, a);
+  struct ea_class *ac = bgp_find_ea_class_by_id($3);
+  ASSERT_DIE(ac);
+  if ($4 != ac->type)
+    cf_error("Attribute %d type must be %s, not %s.", $3, f_type_name(ac->type), f_type_name($4));
+
+  ea_ref_class(new_config->pool, ac);
+  cf_define_symbol(new_config, $5, SYM_ATTRIBUTE, attribute, ac);
 };
 
 CF_ENUM(T_ENUM_BGP_ORIGIN, ORIGIN_, IGP, EGP, INCOMPLETE)

@@ -85,7 +85,7 @@ random_net_ip4(void)
 }
 
 struct perf_random_routes {
-  struct rta *a;
+  ea_list *a;
   net_addr net;
 };
 
@@ -142,17 +142,21 @@ perf_loop(void *data)
     *((net_addr_ip4 *) &(p->data[i].net)) = random_net_ip4();
 
     if (!p->attrs_per_rte || !(i % p->attrs_per_rte)) {
-      struct rta a0 = {
-	.source = RTS_PERF,
-	.scope = SCOPE_UNIVERSE,
-	.dest = RTD_UNICAST,
-	.pref = p->p.main_channel->preference,
+      ea_list *ea = NULL;
+
+      ea_set_attr_u32(&ea, &ea_gen_preference, 0, p->p.main_channel->preference);
+      ea_set_attr_u32(&ea, &ea_gen_source, 0, RTS_PERF);
+
+      struct nexthop_adata nhad = {
 	.nh.iface = p->ifa->iface,
 	.nh.gw = gw,
 	.nh.weight = 1,
       };
 
-      p->data[i].a = rta_lookup(&a0);
+      ea_set_attr_data(&ea, &ea_gen_nexthop, 0,
+	  &nhad.ad.data, sizeof nhad - sizeof nhad.ad);
+
+      p->data[i].a = rta_lookup(ea, 0);
     }
     else
       p->data[i].a = rta_clone(p->data[i-1].a);
@@ -160,17 +164,17 @@ perf_loop(void *data)
 
   clock_gettime(CLOCK_MONOTONIC, &ts_generated);
 
-  for (uint i=0; i<N; i++) {
-    rte *e = rte_get_temp(p->data[i].a, p->p.main_source);
-
-    rte_update(P, &(p->data[i].net), e);
+  for (uint i=0; i<N; i++)
+  {
+    rte e0 = { .attrs = p->data[i].a, .src = P->main_source, };
+    rte_update(P->main_channel, &(p->data[i].net), &e0, P->main_source);
   }
 
   clock_gettime(CLOCK_MONOTONIC, &ts_update);
 
   if (!p->keep)
     for (uint i=0; i<N; i++)
-      rte_update(P, &(p->data[i].net), NULL);
+      rte_update(P->main_channel, &(p->data[i].net), NULL, P->main_source);
 
   clock_gettime(CLOCK_MONOTONIC, &ts_withdraw);
 
@@ -198,12 +202,14 @@ perf_loop(void *data)
     p->exp++;
   }
 
-  rt_schedule_prune(P->main_channel->table);
+  RT_LOCKED(P->main_channel->table, tab)
+    rt_schedule_prune(tab);
+
   ev_schedule(p->loop);
 }
 
 static void
-perf_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net UNUSED, struct rte *new UNUSED, struct rte *old UNUSED)
+perf_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *net UNUSED, struct rte *new UNUSED, const struct rte *old UNUSED)
 {
   struct perf_proto *p = (struct perf_proto *) P;
   p->exp++;
@@ -211,7 +217,7 @@ perf_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net UN
 }
 
 static void
-perf_feed_begin(struct channel *c, int initial UNUSED)
+perf_feed_begin(struct channel *c)
 {
   struct perf_proto *p = (struct perf_proto *) c->proto;
 
@@ -226,6 +232,7 @@ static void
 perf_feed_end(struct channel *c)
 {
   struct perf_proto *p = (struct perf_proto *) c->proto;
+
   struct timespec ts_end;
   clock_gettime(CLOCK_MONOTONIC, &ts_end);
 
@@ -237,7 +244,7 @@ perf_feed_end(struct channel *c)
   p->feed_begin = NULL;
 
   if (p->run < p->repeat)
-    channel_request_feeding(c);
+    channel_request_feeding_dynamic(c, CFRT_DIRECT);
   else
     PLOG("feed done");
 }
@@ -266,7 +273,7 @@ perf_init(struct proto_config *CF)
 
   switch (p->mode) {
     case PERF_MODE_IMPORT:
-      P->ifa_notify = perf_ifa_notify;
+      P->iface_sub.ifa_notify = perf_ifa_notify;
       break;
     case PERF_MODE_EXPORT:
       P->rt_notify = perf_rt_notify;
@@ -305,7 +312,6 @@ perf_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNUS
 struct protocol proto_perf = {
   .name = 		"Perf",
   .template =		"perf%d",
-  .class =		PROTOCOL_PERF,
   .channel_mask = 	NB_IP,
   .proto_size =		sizeof(struct perf_proto),
   .config_size = 	sizeof(struct perf_config),

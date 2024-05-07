@@ -39,16 +39,17 @@ static inline void f_method_call_start(struct f_inst *object)
     cf_error("Too many nested method calls");
 
   struct sym_scope *scope = f_type_method_scope(object->type);
-  if (!scope)
+  if (!scope->hash.count && !scope->next)
     cf_error("No methods defined for type %s", f_type_name(object->type));
 
+  /* Replacing the current symbol scope with the appropriate method scope
+     for the given type. */
   FM = (struct f_method_scope) {
     .object = object,
     .main = new_config->current_scope,
     .scope = {
-      .next = global_root_scope,
+      .next = scope->next,
       .hash = scope->hash,
-      .active = 1,
       .block = 1,
       .readonly = 1,
     },
@@ -58,21 +59,15 @@ static inline void f_method_call_start(struct f_inst *object)
 
 static inline void f_method_call_args(void)
 {
-  ASSERT_DIE(FM.scope.active);
-  FM.scope.active = 0;
-
+  /* For argument parsing, we need to revert back to the standard symbol scope. */
   new_config->current_scope = FM.main;
 }
 
 static inline void f_method_call_end(void)
 {
   ASSERT_DIE(f_method_scope_pos >= 0);
-  if (FM.scope.active) {
-    ASSERT_DIE(&FM.scope == new_config->current_scope);
+  if (&FM.scope == new_config->current_scope)
     new_config->current_scope = FM.main;
-
-    FM.scope.active = 0;
-  }
 
   f_method_scope_pos--;
 }
@@ -106,6 +101,10 @@ f_new_var(struct sym_scope *s)
 
   return offset;
 }
+
+/* Macro for top-level pre-defined variables. */
+#define f_predefined_variable(conf_, name_, type_) \
+    cf_define_symbol(conf_, cf_get_symbol(conf_, name_), SYM_VARIABLE | type_, offset, f_new_var(conf_->current_scope))
 
 /*
  * Sets and their items are during parsing handled as lists, linked
@@ -245,24 +244,6 @@ f_new_lc_item(u32 f1, u32 t1, u32 f2, u32 t2, u32 f3, u32 t3)
   return t;
 }
 
-static inline struct f_inst *
-f_const_empty(enum f_type t)
-{
-  switch (t) {
-    case T_PATH:
-    case T_CLIST:
-    case T_ECLIST:
-    case T_LCLIST:
-      return f_new_inst(FI_CONSTANT, (struct f_val) {
-	.type = t,
-	.val.ad = &null_adata,
-      });
-    case T_ROUTE:
-      return f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE });
-    default:
-      return f_new_inst(FI_CONSTANT, (struct f_val) {});
-  }
-}
 
 /*
  * Remove all new lines and doubled whitespaces
@@ -322,9 +303,15 @@ static struct f_inst *
 f_lval_getter(struct f_lval *lval)
 {
   switch (lval->type) {
+    case F_LVAL_CONSTANT:	return f_new_inst(FI_CONSTANT, *(lval->sym->val));
     case F_LVAL_VARIABLE:	return f_new_inst(FI_VAR_GET, lval->sym);
     case F_LVAL_SA:		return f_new_inst(FI_RTA_GET, lval->rte, lval->sa);
     case F_LVAL_EA:		return f_new_inst(FI_EA_GET, lval->rte, lval->da);
+    case F_LVAL_ATTR_BIT:
+      {
+	struct f_inst *c = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = (1U << lval->fab.bit)});
+	return f_new_inst(FI_EQ, c, f_new_inst(FI_BITAND, f_new_inst(FI_EA_GET, lval->rte, lval->fab.class), c));
+      }
     default:			bug("Unknown lval type");
   }
 }
@@ -333,9 +320,28 @@ static struct f_inst *
 f_lval_setter(struct f_lval *lval, struct f_inst *expr)
 {
   switch (lval->type) {
+    case F_LVAL_CONSTANT:	cf_error("Constant %s is read-only", lval->sym->name);
     case F_LVAL_VARIABLE:	return f_new_inst(FI_VAR_SET, expr, lval->sym);
-    case F_LVAL_SA:		return f_new_inst(FI_RTA_SET, expr, lval->sa);
+    case F_LVAL_SA:
+      if (lval->sa.readonly)
+	cf_error( "This static attribute is read-only.");
+      return f_new_inst(FI_RTA_SET, expr, lval->sa);
+
     case F_LVAL_EA:		return f_new_inst(FI_EA_SET, expr, lval->da);
+    case F_LVAL_ATTR_BIT:	return f_new_inst(FI_CONDITION, expr,
+	f_new_inst(FI_EA_SET,
+	  f_new_inst(FI_BITOR,
+	    f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = (1U << lval->fab.bit)}),
+	    f_new_inst(FI_EA_GET, lval->rte, lval->fab.class)
+	  ),
+	  lval->fab.class),
+	f_new_inst(FI_EA_SET,
+	  f_new_inst(FI_BITAND,
+	    f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_INT, .val.i = ~(1U << lval->fab.bit)}),
+	    f_new_inst(FI_EA_GET, lval->rte, lval->fab.class)
+	  ),
+	  lval->fab.class)
+	);
     default:			bug("Unknown lval type");
   }
 }
@@ -354,16 +360,14 @@ assert_assign(struct f_lval *lval, struct f_inst *expr, const char *start, const
 
 CF_DECLS
 
-CF_KEYWORDS_EXCLUSIVE(IN)
 CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	ACCEPT, REJECT, ERROR,
 	INT, BOOL, IP, PREFIX, RD, PAIR, QUAD, EC, LC,
 	SET, STRING, BYTESTRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
 	IF, THEN, ELSE, CASE,
-	FOR, DO,
+	FOR, IN, DO,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
-	FROM, GW, NET, PROTO, SOURCE, SCOPE, DEST, IFNAME, IFINDEX, WEIGHT, GW_MPLS, GW_MPLS_STACK, ONLINK,
-	PREFERENCE,
+	FROM, GW, NET, PROTO, SCOPE, DEST, IFNAME, IFINDEX, WEIGHT, GW_MPLS,
 	ROA_CHECK,
 	DEFINED,
 	ADD, DELETE, RESET,
@@ -371,14 +375,13 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	EMPTY,
 	FILTER, WHERE, EVAL, ATTRIBUTE,
 	FROM_HEX,
-	BT_ASSERT, BT_TEST_SUITE, BT_CHECK_ASSIGN, BT_TEST_SAME, FORMAT)
+	BT_ASSERT, BT_TEST_SUITE, BT_CHECK_ASSIGN, BT_TEST_SAME, FORMAT, STACKS)
 
 %nonassoc THEN
 %nonassoc ELSE
 
 %type <xp> cmds_int cmd_prep
-%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor var var_list var_list_r function_call symbol_value bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
-%type <fda> dynamic_attr
+%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor var var_list var_list_r function_call bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
 %type <fsa> static_attr
 %type <f> filter where_filter
 %type <fl> filter_body function_body
@@ -397,10 +400,17 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 
 CF_GRAMMAR
 
+conf: FILTER STACKS expr expr ';' {
+  new_config->filter_vstk = $3;
+  new_config->filter_estk = $4;
+ }
+ ;
+
 conf: filter_def ;
 filter_def:
    FILTER symbol {
      $2 = cf_define_symbol(new_config, $2, SYM_FILTER, filter, NULL);
+     cf_enter_filters();
      cf_push_scope( new_config, $2 );
      this_function = NULL;
    } filter_body {
@@ -409,6 +419,7 @@ filter_def:
      $2->filter = f;
 
      cf_pop_scope(new_config);
+     cf_exit_filters();
    }
  ;
 
@@ -419,12 +430,23 @@ filter_eval:
 
 conf: custom_attr ;
 custom_attr: ATTRIBUTE type symbol ';' {
-  cf_define_symbol(new_config, $3, SYM_ATTRIBUTE, attribute, ca_lookup(new_config->pool, $3->name, $2)->fda);
+  cf_enter_filters();
+  struct ea_class *ac = ea_class_find_by_name($3->name);
+  cf_exit_filters();
+  if (ac && (ac->type == $2))
+    ea_ref_class(new_config->pool, ac);
+  else
+    ac = ea_register_alloc(new_config->pool, (struct ea_class) {
+	.name = $3->name,
+	.type = $2,
+    })->class;
+
+  cf_define_symbol(new_config, $3, SYM_ATTRIBUTE, attribute, ac);
 };
 
 conf: bt_test_suite ;
 bt_test_suite:
- BT_TEST_SUITE '(' symbol_known ',' text ')' {
+ BT_TEST_SUITE '(' CF_SYM_KNOWN ',' text ')' {
   cf_assert_symbol($3, SYM_FUNCTION);
   struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));
   t->fn = $3->function;
@@ -437,7 +459,7 @@ bt_test_suite:
 
 conf: bt_test_same ;
 bt_test_same:
- BT_TEST_SAME '(' symbol_known ',' symbol_known ',' NUM ')' {
+ BT_TEST_SAME '(' CF_SYM_KNOWN ',' CF_SYM_KNOWN ',' NUM ')' {
   cf_assert_symbol($3, SYM_FUNCTION);
   cf_assert_symbol($5, SYM_FUNCTION);
   struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));
@@ -525,11 +547,12 @@ function_type:
 filter_body: function_body ;
 
 filter:
-   symbol_known {
+   CF_SYM_KNOWN {
      cf_assert_symbol($1, SYM_FILTER);
      $$ = $1->filter;
    }
  | {
+     cf_enter_filters();
      cf_push_scope(new_config, NULL);
      this_function = NULL;
    } filter_body {
@@ -538,13 +561,17 @@ filter:
      $$ = f;
 
      cf_pop_scope(new_config);
+     cf_exit_filters();
    }
  ;
 
 where_filter:
-   WHERE term {
+   WHERE {
+     cf_enter_filters();
+   } term {
      /* Construct 'IF term THEN { ACCEPT; } ELSE { REJECT; }' */
-     $$ = f_new_where($2);
+     $$ = f_new_where($3);
+     cf_exit_filters();
    }
  ;
 
@@ -561,6 +588,7 @@ function_def:
    FUNCTION symbol {
      DBG( "Beginning of function %s\n", $2->name );
      this_function = cf_define_symbol(new_config, $2, SYM_FUNCTION, function, NULL);
+     cf_enter_filters();
      cf_push_scope(new_config, this_function);
    } function_args function_type {
      /* Make dummy f_line for storing function prototype */
@@ -584,6 +612,7 @@ function_def:
      $7->return_type = this_function->function->return_type;
      $2->function = $7;
      cf_pop_scope(new_config);
+     cf_exit_filters();
    }
  ;
 
@@ -642,10 +671,10 @@ set_atom:
  | VPN_RD { $$.type = T_RD; $$.val.ec = $1; }
  | ENUM   { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  | '(' term ')' {
-     $$ = cf_eval($2, T_VOID);
+     $$ = cf_eval_tmp($2, T_VOID);
      if (!f_valid_set_type($$.type)) cf_error("Set-incompatible type");
    }
- | symbol_known {
+ | CF_SYM_KNOWN {
      cf_assert_symbol($1, SYM_CONSTANT);
      if (!f_valid_set_type(SYM_TYPE($1))) cf_error("%s: set-incompatible type", $1->name);
      $$ = *$1->val;
@@ -654,7 +683,7 @@ set_atom:
 
 switch_atom:
    NUM   { $$.type = T_INT; $$.val.i = $1; }
- | '(' term ')' { $$ = cf_eval($2, T_INT); }
+ | '(' term ')' { $$ = cf_eval_tmp($2, T_INT); }
  | fipa  { $$ = $1; }
  | ENUM  { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  ;
@@ -766,7 +795,7 @@ switch_body: /* EMPTY */ { $$ = NULL; }
  ;
 
 bgp_path_expr:
-   symbol_value { $$ = $1; }
+   lvalue { $$ = f_lval_getter(&$1); }
  | '(' term ')' { $$ = $2; }
  ;
 
@@ -839,7 +868,7 @@ var_list: var_list_r
  ;
 
 function_call:
-   symbol_known '(' var_list ')'
+   CF_SYM_KNOWN '(' var_list ')'
    {
      if ($1->class != SYM_FUNCTION)
        cf_error("You can't call something which is not a function. Really.");
@@ -848,39 +877,16 @@ function_call:
    }
  ;
 
-symbol_value: symbol_known
-  {
-    switch ($1->class) {
-      case SYM_CONSTANT_RANGE:
-	$$ = f_new_inst(FI_CONSTANT, *($1->val));
-	break;
-      case SYM_VARIABLE_RANGE:
-	$$ = f_new_inst(FI_VAR_GET, $1);
-	break;
-      case SYM_ATTRIBUTE:
-	$$ = f_new_inst(FI_EA_GET, f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL }), *$1->attribute);
-	break;
-      default:
-	cf_error("Can't get value of symbol %s", $1->name);
-    }
-  }
- ;
 
 static_attr:
-   FROM    { $$ = f_new_static_attr(T_IP,         SA_FROM,	0); }
- | GW      { $$ = f_new_static_attr(T_IP,         SA_GW,	0); }
+   GW      { $$ = f_new_static_attr(T_IP,         SA_GW,	0); }
  | NET     { $$ = f_new_static_attr(T_NET,	  SA_NET,	1); }
  | PROTO   { $$ = f_new_static_attr(T_STRING,     SA_PROTO,	1); }
- | SOURCE  { $$ = f_new_static_attr(T_ENUM_RTS,   SA_SOURCE,	1); }
- | SCOPE   { $$ = f_new_static_attr(T_ENUM_SCOPE, SA_SCOPE,	0); }
  | DEST    { $$ = f_new_static_attr(T_ENUM_RTD,   SA_DEST,	0); }
  | IFNAME  { $$ = f_new_static_attr(T_STRING,     SA_IFNAME,	0); }
  | IFINDEX { $$ = f_new_static_attr(T_INT,        SA_IFINDEX,	1); }
  | WEIGHT  { $$ = f_new_static_attr(T_INT,        SA_WEIGHT,	0); }
- | PREFERENCE { $$ = f_new_static_attr(T_INT,	  SA_PREF,	0); }
  | GW_MPLS { $$ = f_new_static_attr(T_INT,        SA_GW_MPLS,	0); }
- | GW_MPLS_STACK { $$ = f_new_static_attr(T_CLIST, SA_GW_MPLS_STACK,	0); }
- | ONLINK  { $$ = f_new_static_attr(T_BOOL,       SA_ONLINK,	0); }
  ;
 
 term_dot_method: term '.' { f_method_call_start($1); } method_name_cont { f_method_call_end(); $$ = $4; };
@@ -898,10 +904,12 @@ method_name_cont:
        cf_error("Getting a route attribute from %s, need a route", f_type_name(FM.object->type));
      $$ = f_new_inst(FI_RTA_GET, FM.object, $1);
    }
- | dynamic_attr {
+ | CF_SYM_KNOWN {
+     if ($1->class != SYM_ATTRIBUTE)
+       cf_error("Not a method of %s: %s", f_type_name(FM.object->type), $1->name);
      if (FM.object->type != T_ROUTE)
        cf_error("Getting a route attribute from %s, need a route", f_type_name(FM.object->type));
-     $$ = f_new_inst(FI_EA_GET, FM.object, $1);
+     $$ = f_new_inst(FI_EA_GET, FM.object, $1->attribute);
    }
  ;
 
@@ -911,6 +919,8 @@ term:
  | term '-' term	{ $$ = f_new_inst(FI_SUBTRACT, $1, $3); }
  | term '*' term	{ $$ = f_new_inst(FI_MULTIPLY, $1, $3); }
  | term '/' term	{ $$ = f_new_inst(FI_DIVIDE, $1, $3); }
+ | term '&' term	{ $$ = f_new_inst(FI_BITAND, $1, $3); }
+ | term '|' term	{ $$ = f_new_inst(FI_BITOR, $1, $3); }
  | term AND term	{ $$ = f_new_inst(FI_AND, $1, $3); }
  | term OR  term	{ $$ = f_new_inst(FI_OR, $1, $3); }
  | term '=' term	{ $$ = f_new_inst(FI_EQ, $1, $3); }
@@ -924,28 +934,25 @@ term:
  | '!' term		{ $$ = f_new_inst(FI_NOT, $2); }
  | DEFINED '(' term ')' { $$ = f_new_inst(FI_DEFINED, $3); }
 
- | symbol_value   { $$ = $1; }
  | constant { $$ = $1; }
  | constructor { $$ = $1; }
 
- | static_attr { $$ = f_new_inst(FI_RTA_GET, f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL }), $1); }
-
- | dynamic_attr { $$ = f_new_inst(FI_EA_GET, f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL }), $1); }
+ | lvalue { $$ = f_lval_getter(&$1); }
 
  | term_dot_method
 
- | '+' EMPTY '+' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_PATH)); }
- | '-' EMPTY '-' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_CLIST)); }
- | '-' '-' EMPTY '-' '-' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_ECLIST)); }
- | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_LCLIST)); }
+ | '+' EMPTY '+' { $$ = f_new_inst(FI_CONSTANT, f_get_empty(T_PATH)); }
+ | '-' EMPTY '-' { $$ = f_new_inst(FI_CONSTANT, f_get_empty(T_CLIST)); }
+ | '-' '-' EMPTY '-' '-' { $$ = f_new_inst(FI_CONSTANT, f_get_empty(T_ECLIST)); }
+ | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_new_inst(FI_CONSTANT, f_get_empty(T_LCLIST)); }
 
  | PREPEND '(' term ',' term ')' { $$ = f_dispatch_method_x("prepend", $3->type, $3, $5); }
  | ADD '(' term ',' term ')' { $$ = f_dispatch_method_x("add", $3->type, $3, $5); }
  | DELETE '(' term ',' term ')' { $$ = f_dispatch_method_x("delete", $3->type, $3, $5); }
  | FILTER '(' term ',' term ')' { $$ = f_dispatch_method_x("filter", $3->type, $3, $5); }
 
- | ROA_CHECK '(' rtable ')' { $$ = f_new_inst(FI_ROA_CHECK_IMPLICIT, $3); }
- | ROA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_new_inst(FI_ROA_CHECK_EXPLICIT, $5, $7, $3); }
+ | ROA_CHECK '(' rtable ')' { $$ = f_implicit_roa_check($3); }
+ | ROA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_new_inst(FI_ROA_CHECK, $5, $7, $3); }
 
  | FORMAT '(' term ')' {  $$ = f_new_inst(FI_FORMAT, $3); }
 
@@ -1002,17 +1009,8 @@ cmd:
      cf_pop_block_scope(new_config);
      $$ = f_for_cycle($3, $6, $9);
    }
- | symbol_known '=' term ';' {
-     switch ($1->class) {
-       case SYM_VARIABLE_RANGE:
-	 $$ = f_new_inst(FI_VAR_SET, $3, $1);
-	 break;
-       case SYM_ATTRIBUTE:
-	 $$ = f_new_inst(FI_EA_SET, $3, *$1->attribute);
-	 break;
-       default:
-	 cf_error("Can't assign to symbol %s", $1->name);
-     }
+ | lvalue '=' term ';' {
+     $$ = f_lval_setter(&$1, $3);
    }
  | RETURN term ';' {
      DBG( "Ook, we'll return the value\n" );
@@ -1030,26 +1028,13 @@ cmd:
 
      $$ = f_new_inst(FI_RETURN, $2);
    }
- | dynamic_attr '=' term ';' {
-     $$ = f_new_inst(FI_EA_SET, $3, $1);
+ | UNSET '(' CF_SYM_KNOWN ')' ';' {
+     if ($3->class != SYM_ATTRIBUTE)
+       cf_error("Can't unset %s", $3->name);
+     if ($3->attribute->readonly)
+       cf_error("Attribute %s is read-only", $3->attribute->name);
+     $$ = f_new_inst(FI_EA_UNSET, $3->attribute);
    }
- | static_attr '=' term ';' {
-     if ($1.readonly)
-       cf_error( "This static attribute is read-only.");
-     $$ = f_new_inst(FI_RTA_SET, $3, $1);
-   }
- | UNSET '(' dynamic_attr ')' ';' {
-     $$ = f_new_inst(FI_EA_UNSET, $3);
-   }
- | UNSET '(' symbol_known ')' ';' {
-     switch ($3->class) {
-       case SYM_ATTRIBUTE:
-	 $$ = f_new_inst(FI_EA_UNSET, *$3->attribute);
-	 break;
-       default:
-	 cf_error("Can't unset symbol %s", $3->name);
-     }
- }
  | break_command var_list_r ';' {
     $$ = f_print($2, !!$2, $1);
    }
@@ -1082,18 +1067,20 @@ lvalue:
    CF_SYM_KNOWN {
      switch ($1->class)
      {
+       case SYM_CONSTANT_RANGE:
+	 $$ = (struct f_lval) { .type = F_LVAL_CONSTANT, .sym = $1, };
+	 break;
        case SYM_VARIABLE_RANGE:
-	 $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1, .rte = f_const_empty(T_ROUTE) };
+	 $$ = (struct f_lval) { .type = F_LVAL_VARIABLE, .sym = $1, };
          break;
        case SYM_ATTRIBUTE:
-         $$ = (struct f_lval) { .type = F_LVAL_EA, .da = *($1->attribute), .rte = f_const_empty(T_ROUTE) };
+         $$ = (struct f_lval) { .type = F_LVAL_EA, .da = $1->attribute, .rte = f_new_inst(FI_CURRENT_ROUTE), };
 	 break;
        default:
-	 cf_error("Variable name or custom attribute name required");
+	 cf_error("Variable name or attribute name required");
      }
    }
- | static_attr { $$ = (struct f_lval) { .type = F_LVAL_SA, .sa = $1, .rte = f_const_empty(T_ROUTE) }; }
- | dynamic_attr { $$ = (struct f_lval) { .type = F_LVAL_EA, .da = $1, .rte = f_const_empty(T_ROUTE) }; }
+ | static_attr { $$ = (struct f_lval) { .type = F_LVAL_SA, .sa = $1, .rte = f_new_inst(FI_CURRENT_ROUTE), }; }
  ;
 
 CF_END

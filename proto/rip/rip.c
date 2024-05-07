@@ -79,6 +79,7 @@
 #include <stdlib.h>
 
 #include "rip.h"
+#include "lib/macro.h"
 
 
 static inline void rip_lock_neighbor(struct rip_neighbor *n);
@@ -89,6 +90,7 @@ static inline void rip_iface_kick_timer(struct rip_iface *ifa);
 static void rip_iface_timer(timer *timer);
 static void rip_trigger_update(struct rip_proto *p);
 
+static struct ea_class ea_rip_metric, ea_rip_tag, ea_rip_from;
 
 /*
  *	RIP routes
@@ -150,91 +152,94 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
   if (rt)
   {
     /* Update */
-    rta a0 = {
-      .pref = p->p.main_channel->preference,
-      .source = RTS_RIP,
-      .scope = SCOPE_UNIVERSE,
-      .dest = RTD_UNICAST,
+    struct {
+      ea_list l;
+      eattr a[3];
+    } ea_block = {
+      .l.count = ARRAY_SIZE(ea_block.a),
+      .a = {
+	EA_LITERAL_EMBEDDED(&ea_gen_preference, 0, p->p.main_channel->preference),
+	EA_LITERAL_EMBEDDED(&ea_gen_source, 0, RTS_RIP),
+	EA_LITERAL_EMBEDDED(&ea_rip_metric, 0, rt->metric),
+      },
     };
 
-    u8 rt_metric = rt->metric;
+    ea_list *ea = &ea_block.l;
+
     u16 rt_tag = rt->tag;
+    struct iface *rt_from = NULL;
 
     if (p->ecmp)
     {
       /* ECMP route */
-      struct nexthop *nhs = NULL;
       int num = 0;
+
+      for (rt = en->routes; rt && (num < p->ecmp); rt = rt->next)
+	if (rip_valid_rte(rt))
+	  num++;
+
+      struct nexthop_adata *nhad = (struct nexthop_adata *) tmp_alloc_adata((num+1) * sizeof(struct nexthop));
+      struct nexthop *nh = &nhad->nh;
 
       for (rt = en->routes; rt && (num < p->ecmp); rt = rt->next)
       {
 	if (!rip_valid_rte(rt))
-	    continue;
+	  continue;
 
-	struct nexthop *nh = allocz(sizeof(struct nexthop));
+	*nh = (struct nexthop) {
+	  .gw = rt->next_hop,
+	  .iface = rt->from->ifa->iface,
+	  .weight = rt->from->ifa->cf->ecmp_weight,
+	};
 
-	nh->gw = rt->next_hop;
-	nh->iface = rt->from->ifa->iface;
-	nh->weight = rt->from->ifa->cf->ecmp_weight;
+	if (!rt_from)
+	  rt_from = rt->from->ifa->iface;
 
-	nexthop_insert(&nhs, nh);
-	num++;
+	nh = NEXTHOP_NEXT(nh);
 
 	if (rt->tag != rt_tag)
 	  rt_tag = 0;
       }
 
-      a0.nh = *nhs;
+      nhad->ad.length = ((void *) nh - (void *) nhad->ad.data);
+
+      ea_set_attr(&ea,
+	  EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0,
+	    &(nexthop_sort(nhad, tmp_linpool)->ad)));
     }
     else
     {
       /* Unipath route */
-      a0.from = rt->from->nbr->addr;
-      a0.nh.gw = rt->next_hop;
-      a0.nh.iface = rt->from->ifa->iface;
+      rt_from = rt->from->ifa->iface;
+
+      struct nexthop_adata nhad = {
+	.nh.gw = rt->next_hop,
+	.nh.iface = rt->from->ifa->iface,
+      };
+
+      ea_set_attr_data(&ea, &ea_gen_nexthop, 0,
+	  &nhad.ad.data, sizeof nhad - sizeof nhad.ad);
+      ea_set_attr_data(&ea, &ea_gen_from, 0, &rt->from->nbr->addr, sizeof(ip_addr));
     }
 
-    struct {
-      ea_list l;
-      eattr e[3];
-      struct rip_iface_adata riad;
-    } ea_block = {
-      .l = { .count = 3, },
-      .e = {
-	{
-	  .id = EA_RIP_METRIC,
-	  .type = EAF_TYPE_INT,
-	  .u.data = rt_metric,
-	},
-	{
-	  .id = EA_RIP_TAG,
-	  .type = EAF_TYPE_INT,
-	  .u.data = rt_tag,
-	},
-	{
-	  .id = EA_RIP_FROM,
-	  .type = EAF_TYPE_IFACE,
-	  .u.ptr = &ea_block.riad.ad,
-	}
-      },
-      .riad = {
-	.ad = { .length = sizeof(struct rip_iface_adata) - sizeof(struct adata) },
-	.iface = a0.nh.iface,
-      },
+    ea_set_attr_u32(&ea, &ea_rip_tag, 0, rt_tag);
+
+    struct rip_iface_adata riad = {
+      .ad = { .length = sizeof(struct rip_iface_adata) - sizeof(struct adata) },
+      .iface = rt_from,
+    };
+    ea_set_attr(&ea,
+	EA_LITERAL_DIRECT_ADATA(&ea_rip_from, 0, &riad.ad));
+
+    rte e0 = {
+      .attrs = ea,
+      .src = p->p.main_source,
     };
 
-    a0.eattrs = &ea_block.l;
-
-    rta *a = rta_lookup(&a0);
-    rte *e = rte_get_temp(a, p->p.main_source);
-
-    rte_update(&p->p, en->n.addr, e);
+    rte_update(p->p.main_channel, en->n.addr, &e0, p->p.main_source);
   }
   else
-  {
-    /* Withdraw */
-    rte_update(&p->p, en->n.addr, NULL);
-  }
+    rte_update(p->p.main_channel, en->n.addr, NULL, p->p.main_source);
 }
 
 /**
@@ -324,13 +329,24 @@ rip_withdraw_rte(struct rip_proto *p, net_addr *n, struct rip_neighbor *from)
     rip_announce_rte(p, en);
 }
 
+static void
+rip_withdraw_entry(struct rip_proto *p, struct rip_entry *en)
+{
+  en->valid = RIP_ENTRY_STALE;
+  en->metric = p->infinity;
+  en->tag = 0;
+  en->from = NULL;
+  en->iface = NULL;
+  en->next_hop = IPA_NONE;
+}
+
 /*
  * rip_rt_notify - core tells us about new route, so store
  * it into our data structures.
  */
 static void
-rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, struct rte *new,
-	      struct rte *old UNUSED)
+rip_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net, struct rte *new,
+	      const struct rte *old UNUSED)
 {
   struct rip_proto *p = (struct rip_proto *) P;
   struct rip_entry *en;
@@ -339,22 +355,22 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
   if (new)
   {
     /* Update */
-    u32 rt_tag = ea_get_int(new->attrs->eattrs, EA_RIP_TAG, 0);
-    u32 rt_metric = ea_get_int(new->attrs->eattrs, EA_RIP_METRIC, 1);
-    const eattr *rie = ea_find(new->attrs->eattrs, EA_RIP_FROM);
+    u32 rt_tag = ea_get_int(new->attrs, &ea_rip_tag, 0);
+    u32 rt_metric = ea_get_int(new->attrs, &ea_rip_metric, 1);
+    const eattr *rie = ea_find(new->attrs, &ea_rip_from);
     struct iface *rt_from = rie ? ((struct rip_iface_adata *) rie->u.ptr)->iface : NULL;
 
     if (rt_metric > p->infinity)
     {
       log(L_WARN "%s: Invalid rip_metric value %u for route %N",
-	  p->p.name, rt_metric, net->n.addr);
+	  p->p.name, rt_metric, net);
       rt_metric = p->infinity;
     }
 
     if (rt_tag > 0xffff)
     {
       log(L_WARN "%s: Invalid rip_tag value %u for route %N",
-	  p->p.name, rt_tag, net->n.addr);
+	  p->p.name, rt_tag, net);
       rt_metric = p->infinity;
       rt_tag = 0;
     }
@@ -366,33 +382,33 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
      * collection.
      */
 
-    en = fib_get(&p->rtable, net->n.addr);
+    en = fib_get(&p->rtable, net);
 
     old_metric = en->valid ? en->metric : -1;
 
     en->valid = RIP_ENTRY_VALID;
     en->metric = rt_metric;
     en->tag = rt_tag;
-    en->from = (new->src->proto == P) ? rt_from : NULL;
-    en->iface = new->attrs->nh.iface;
-    en->next_hop = new->attrs->nh.gw;
+    en->from = (new->src->owner == &P->sources) ? rt_from : NULL;
+
+    eattr *nhea = ea_find(new->attrs, &ea_gen_nexthop);
+    if (nhea)
+    {
+      struct nexthop_adata *nhad = (struct nexthop_adata *) nhea->u.ptr;
+      en->iface = nhad->nh.iface;
+      en->next_hop = nhad->nh.gw;
+    }
   }
   else
   {
     /* Withdraw */
-    en = fib_find(&p->rtable, net->n.addr);
+    en = fib_find(&p->rtable, net);
 
-    if (!en || en->valid != RIP_ENTRY_VALID)
+    if (!en || !(en->valid & RIP_ENTRY_VALID))
       return;
 
     old_metric = en->metric;
-
-    en->valid = RIP_ENTRY_STALE;
-    en->metric = p->infinity;
-    en->tag = 0;
-    en->from = NULL;
-    en->iface = NULL;
-    en->next_hop = IPA_NONE;
+    rip_withdraw_entry(p, en);
   }
 
   /* Activate triggered updates */
@@ -402,6 +418,46 @@ rip_rt_notify(struct proto *P, struct channel *ch UNUSED, struct network *net, s
     rip_trigger_update(p);
   }
 }
+
+void
+rip_feed_begin(struct channel *C)
+{
+  if (!C->refeeding || C->refeed_req.hook)
+    return;
+
+  struct rip_proto *p = (struct rip_proto *) C->proto;
+
+  FIB_WALK(&p->rtable, struct rip_entry, en)
+  {
+    if (en->valid == RIP_ENTRY_VALID)
+      en->valid = RIP_ENTRY_REFEEDING;
+  }
+  FIB_WALK_END;
+}
+
+void
+rip_feed_end(struct channel *C)
+{
+  if (!C->refeeding || C->refeed_req.hook)
+    return;
+
+  struct rip_proto *p = (struct rip_proto *) C->proto;
+  int changed = 0;
+
+  FIB_WALK(&p->rtable, struct rip_entry, en)
+  {
+    if (en->valid == RIP_ENTRY_REFEEDING)
+    {
+      rip_withdraw_entry(p, en);
+      changed++;
+    }
+  }
+  FIB_WALK_END;
+
+  if (changed)
+    rip_trigger_update(p);
+}
+
 
 void
 rip_flush_table(struct rip_proto *p, struct rip_neighbor *n)
@@ -533,7 +589,7 @@ rip_update_bfd(struct rip_proto *p, struct rip_neighbor *n)
     ip_addr saddr = rip_is_v2(p) ? n->ifa->sk->saddr : n->nbr->ifa->ip;
     n->bfd_req = bfd_request_session(p->p.pool, n->nbr->addr, saddr,
 				     n->nbr->iface, p->p.vrf,
-				     rip_bfd_notify, n, NULL);
+				     rip_bfd_notify, n, p->p.loop, NULL);
   }
 
   if (!use_bfd && n->bfd_req)
@@ -657,9 +713,9 @@ rip_iface_update_bfd(struct rip_iface *ifa)
 
 
 static void
-rip_iface_locked(struct object_lock *lock)
+rip_iface_locked(void *_ifa)
 {
-  struct rip_iface *ifa = lock->data;
+  struct rip_iface *ifa = _ifa;
   struct rip_proto *p = ifa->rip;
 
   if (!rip_open_socket(ifa))
@@ -714,15 +770,18 @@ rip_add_iface(struct rip_proto *p, struct iface *iface, struct rip_iface_config 
 
   add_tail(&p->iface_list, NODE ifa);
 
-  ifa->timer = tm_new_init(p->p.pool, rip_iface_timer, ifa, 0, 0);
-  ifa->rxmt_timer = tm_new_init(p->p.pool, rip_rxmt_timeout, ifa, 0, 0);
+  ifa->timer = tm_new_init(p->p.pool_up, rip_iface_timer, ifa, 0, 0);
+  ifa->rxmt_timer = tm_new_init(p->p.pool_up, rip_rxmt_timeout, ifa, 0, 0);
 
   struct object_lock *lock = olock_new(p->p.pool);
   lock->type = OBJLOCK_UDP;
   lock->port = ic->port;
   lock->iface = iface;
-  lock->data = ifa;
-  lock->hook = rip_iface_locked;
+  lock->event = (event) {
+    .hook = rip_iface_locked,
+    .data = ifa,
+  };
+  lock->target = &global_event_list;
   ifa->lock = lock;
 
   olock_acquire(lock);
@@ -737,7 +796,7 @@ rip_remove_iface(struct rip_proto *p, struct rip_iface *ifa)
 
   rem_node(NODE ifa);
 
-  rfree(ifa->sk);
+  sk_close(ifa->sk);
   rfree(ifa->lock);
   rfree(ifa->timer);
 
@@ -794,11 +853,9 @@ rip_reconfigure_iface(struct rip_proto *p, struct rip_iface *ifa, struct rip_ifa
 static void
 rip_reconfigure_ifaces(struct rip_proto *p, struct rip_config *cf)
 {
-  struct iface *iface;
-
-  WALK_LIST(iface, iface_list)
+  IFACE_WALK(iface)
   {
-    if (p->p.vrf_set && !if_in_vrf(iface, p->p.vrf))
+    if (p->p.vrf && !if_in_vrf(iface, p->p.vrf))
       continue;
 
     if (!(iface->flags & IF_UP))
@@ -912,6 +969,9 @@ rip_timer(timer *t)
 
   FIB_ITERATE_INIT(&fit, &p->rtable);
 
+  struct channel_import_request *cir = p->cir;
+  p->cir = NULL;
+
   loop:
   FIB_ITERATE_START(&p->rtable, &fit, struct rip_entry, en)
   {
@@ -933,14 +993,13 @@ rip_timer(timer *t)
     }
 
     /* Propagating eventual change */
-    if (changed || p->rt_reload)
+    if ((changed || p->rt_reload) && (cir == NULL || channel_import_request_prefilter(cir, en->n.addr)))
     {
       /*
        * We have to restart the iteration because there may be a cascade of
        * synchronous events rip_announce_rte() -> nest table change ->
        * rip_rt_notify() -> p->rtable change, invalidating hidden variables.
        */
-
       FIB_ITERATE_PUT_NEXT(&fit, &p->rtable);
       rip_announce_rte(p, en);
       goto loop;
@@ -991,7 +1050,19 @@ rip_timer(timer *t)
       }
   }
 
-  tm_start(p->timer, MAX(next - now_, 100 MS));
+  while(cir)
+  {
+    struct channel_import_request *next_cir = cir->next;
+    cir->done(cir);
+    cir = next_cir;
+  }
+  if (p->cir)
+  {
+    p->rt_reload = 1;
+    rip_kick_timer(p);
+  }
+  else
+    tm_start(p->timer, MAX(next - now_, 100 MS));
 }
 
 static inline void
@@ -1092,27 +1163,40 @@ rip_trigger_update(struct rip_proto *p)
  *	RIP protocol glue
  */
 
-static void
-rip_reload_routes(struct channel *C)
+static int
+rip_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct rip_proto *p = (struct rip_proto *) C->proto;
 
+  cir->next = p->cir;
+  p->cir = cir;
+
   if (p->rt_reload)
-    return;
+    return 1;
 
   TRACE(D_EVENTS, "Scheduling route reload");
   p->rt_reload = 1;
   rip_kick_timer(p);
+  return 1;
+}
+
+static struct rte_owner_class rip_rte_owner_class;
+
+static inline struct rip_proto *
+rip_rte_proto(const rte *rte)
+{
+  return (rte->src->owner->class == &rip_rte_owner_class) ?
+    SKIP_BACK(struct rip_proto, p.sources, rte->src->owner) : NULL;
 }
 
 static u32
-rip_rte_igp_metric(struct rte *rt)
+rip_rte_igp_metric(const rte *rt)
 {
-  return ea_get_int(rt->attrs->eattrs, EA_RIP_METRIC, IGP_METRIC_UNKNOWN);
+  return ea_get_int(rt->attrs, &ea_rip_metric, IGP_METRIC_UNKNOWN);
 }
 
 static int
-rip_rte_better(struct rte *new, struct rte *old)
+rip_rte_better(const rte *new, const rte *old)
 {
   return rip_rte_igp_metric(new) < rip_rte_igp_metric(old);
 }
@@ -1134,12 +1218,13 @@ rip_init(struct proto_config *CF)
 
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
 
-  P->if_notify = rip_if_notify;
+  P->iface_sub.if_notify = rip_if_notify;
   P->rt_notify = rip_rt_notify;
-  P->neigh_notify = rip_neigh_notify;
+  P->iface_sub.neigh_notify = rip_neigh_notify;
   P->reload_routes = rip_reload_routes;
-  P->rte_better = rip_rte_better;
-  P->rte_igp_metric = rip_rte_igp_metric;
+  P->sources.class = &rip_rte_owner_class;
+  P->feed_begin = rip_feed_begin;
+  P->feed_end = rip_feed_end;
 
   return P;
 }
@@ -1154,7 +1239,7 @@ rip_start(struct proto *P)
   fib_init(&p->rtable, P->pool, cf->rip2 ? NET_IP4 : NET_IP6,
 	   sizeof(struct rip_entry), OFFSETOF(struct rip_entry, n), 0, NULL);
   p->rte_slab = sl_new(P->pool, sizeof(struct rip_rte));
-  p->timer = tm_new_init(P->pool, rip_timer, p, 0, 0);
+  p->timer = tm_new_init(P->pool_up, rip_timer, p, 0, 0);
 
   p->rip2 = cf->rip2;
   p->ecmp = cf->ecmp;
@@ -1178,8 +1263,8 @@ rip_shutdown(struct proto *P)
   TRACE(D_EVENTS, "Shutdown requested");
 
   struct rip_iface *ifa;
-  WALK_LIST(ifa, p->iface_list)
-    rip_iface_stop(ifa);
+  WALK_LIST_FIRST(ifa, p->iface_list)
+    rip_remove_iface(p, ifa);
 
   return PS_DOWN;
 }
@@ -1241,38 +1326,41 @@ rip_set_logging_rate(struct proto *P, uintptr_t arg)
 }
 
 static void
-rip_get_route_info(rte *rte, byte *buf)
+rip_get_route_info(const rte *rte, byte *buf)
 {
-  struct rip_proto *p = (struct rip_proto *) rte->src->proto;
-  u32 rt_metric = ea_get_int(rte->attrs->eattrs, EA_RIP_METRIC, p->infinity);
-  u32 rt_tag = ea_get_int(rte->attrs->eattrs, EA_RIP_TAG, 0);
+  struct rip_proto *p = rip_rte_proto(rte);
+  u32 rt_metric = ea_get_int(rte->attrs, &ea_rip_metric, p->infinity);
+  u32 rt_tag = ea_get_int(rte->attrs, &ea_rip_tag, 0);
 
-  buf += bsprintf(buf, " (%d/%d)", rte->attrs->pref, rt_metric);
+  buf += bsprintf(buf, " (%d/%d)", rt_get_preference(rte), rt_metric);
 
   if (rt_tag)
     bsprintf(buf, " [%04x]", rt_tag);
 }
 
-static int
-rip_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
+static void
+rip_tag_format(const eattr *a, byte *buf, uint buflen)
 {
-  switch (a->id)
-  {
-  case EA_RIP_METRIC:
-    bsprintf(buf, "metric: %d", a->u.data);
-    return GA_FULL;
-
-  case EA_RIP_TAG:
-    bsprintf(buf, "tag: %04x", a->u.data);
-    return GA_FULL;
-
-  case EA_RIP_FROM:
-    return GA_HIDDEN;
-
-  default:
-    return GA_UNKNOWN;
-  }
+  bsnprintf(buf, buflen, "%04x", a->u.data);
 }
+
+static struct ea_class ea_rip_metric = {
+  .name = "rip_metric",
+  .type = T_INT,
+};
+
+static struct ea_class ea_rip_tag = {
+  .name = "rip_tag",
+  .type = T_INT,
+  .format = rip_tag_format,
+};
+
+static struct ea_class ea_rip_from = {
+  .name = "rip_from",
+  .type = T_IFACE,
+  .readonly = 1,
+  .hidden = 1,
+};
 
 void
 rip_show_interfaces(struct proto *P, const char *iff)
@@ -1373,10 +1461,15 @@ rip_dump(struct proto *P)
 }
 
 
+static struct rte_owner_class rip_rte_owner_class = {
+  .get_route_info =	rip_get_route_info,
+  .rte_better =		rip_rte_better,
+  .rte_igp_metric =	rip_rte_igp_metric,
+};
+
 struct protocol proto_rip = {
   .name =		"RIP",
   .template =		"rip%d",
-  .class =		PROTOCOL_RIP,
   .preference =		DEF_PREF_RIP,
   .channel_mask =	NB_IP,
   .proto_size =		sizeof(struct rip_proto),
@@ -1387,12 +1480,16 @@ struct protocol proto_rip = {
   .start =		rip_start,
   .shutdown =		rip_shutdown,
   .reconfigure =	rip_reconfigure,
-  .get_route_info =	rip_get_route_info,
-  .get_attr =		rip_get_attr,
 };
 
 void
 rip_build(void)
 {
   proto_build(&proto_rip);
+
+  EA_REGISTER_ALL(
+      &ea_rip_metric,
+      &ea_rip_tag,
+      &ea_rip_from
+      );
 }

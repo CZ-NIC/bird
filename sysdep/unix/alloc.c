@@ -10,86 +10,154 @@
 #include "lib/resource.h"
 #include "lib/lists.h"
 #include "lib/event.h"
+#include "lib/io-loop.h"
 
 #include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 #ifdef HAVE_MMAP
-#include <sys/mman.h>
+# include <sys/mman.h>
 #endif
 
 #ifdef CONFIG_DISABLE_THP
-#include <sys/prctl.h>
-#ifndef PR_SET_THP_DISABLE
-#define PR_SET_THP_DISABLE 41
-#endif
+# include <sys/prctl.h>
+# ifndef PR_SET_THP_DISABLE
+#   define PR_SET_THP_DISABLE 41
+# endif
 #endif
 
 long page_size = 0;
 
 #ifdef HAVE_MMAP
-#define KEEP_PAGES_MAIN_MAX	256
-#define KEEP_PAGES_MAIN_MIN	8
-#define CLEANUP_PAGES_BULK	256
+# define KEEP_PAGES_MAX	512
+# define KEEP_PAGES_MIN	32
+# define KEEP_PAGES_MAX_LOCAL	16
+# define ALLOC_PAGES_AT_ONCE	8
 
-STATIC_ASSERT(KEEP_PAGES_MAIN_MIN * 4 < KEEP_PAGES_MAIN_MAX);
+  STATIC_ASSERT(KEEP_PAGES_MIN * 4 < KEEP_PAGES_MAX);
+  STATIC_ASSERT(ALLOC_PAGES_AT_ONCE < KEEP_PAGES_MAX_LOCAL);
 
-static _Bool use_fake = 0;
+  static _Bool use_fake = 0;
+  static _Bool initialized = 0;
 
-#if DEBUGGING
-struct free_page {
-  node unused[42];
-  node n;
-};
-#else
-struct free_page {
-  node n;
-};
-#endif
+# define PROTECT_PAGE(pg)
+# define UNPROTECT_PAGE(pg)
 
-#define EP_POS_MAX	((page_size - OFFSETOF(struct empty_pages, pages)) / sizeof (void *))
+# if DEBUGGING
+#   ifdef ENABLE_EXPENSIVE_CHECKS
+#     undef PROTECT_PAGE
+#     undef UNPROTECT_PAGE
+#     define PROTECT_PAGE(pg)	mprotect((pg), page_size, PROT_READ)
+#     define UNPROTECT_PAGE(pg)	mprotect((pg), page_size, PROT_READ | PROT_WRITE)
+#   endif
 
-struct empty_pages {
-  node n;
-  uint pos;
-  void *pages[0];
-};
+#   define AJSIZE	16384
 
-struct free_pages {
-  list pages;		/* List of (struct free_page) keeping free pages without releasing them (hot) */
-  list empty;		/* List of (struct empty_pages) keeping invalidated pages mapped for us (cold) */
-  u16 min, max;		/* Minimal and maximal number of free pages kept */
-  uint cnt;		/* Number of free pages in list */
-  event cleanup;
-};
+    static struct alloc_journal {
+      void *fp;
+      void *next;
+      u16 pos;
+      u16 type;
+      uint thread_id;
+    } alloc_journal[AJSIZE];
 
-static void global_free_pages_cleanup_event(void *);
-static void *alloc_cold_page(void);
+    _Thread_local int alloc_journal_local_pos = -1;
+    _Atomic int alloc_journal_pos = 0;
 
-static struct free_pages global_free_pages = {
-  .min = KEEP_PAGES_MAIN_MIN,
-  .max = KEEP_PAGES_MAIN_MAX,
-  .cleanup = { .hook = global_free_pages_cleanup_event },
-};
+#   define AJT_ALLOC_LOCAL_HOT		1
+#   define AJT_ALLOC_GLOBAL_HOT		2
+#   define AJT_ALLOC_COLD_STD		3
+#   define AJT_ALLOC_COLD_KEEPER	4
+#   define AJT_ALLOC_MMAP		5
 
-uint *pages_kept = &global_free_pages.cnt;
+#   define AJT_FREE_LOCAL_HOT		0x11
+#   define AJT_FREE_GLOBAL_HOT		0x12
 
-static void *
-alloc_sys_page(void)
-{
-  void *ptr = mmap(NULL, page_size, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+#   define AJT_CLEANUP_NOTHING		0xc0
+#   define AJT_CLEANUP_COLD_STD		0xc3
+#   define AJT_CLEANUP_COLD_KEEPER	0xc4
+#   define AJT_CLEANUP_BEGIN		0xcb
+#   define AJT_CLEANUP_END		0xce
 
-  if (ptr == MAP_FAILED)
-    die("mmap(%ld) failed: %m", (s64) page_size);
+#   define AJT_FLUSH_LOCAL_BEGIN	0xfb
+#   define AJT_FLUSH_LOCAL_END		0xfe
+#   define AJT_SCHEDULE_CLEANUP		0xff
 
-  return ptr;
-}
+    static void
+    ajlog(void *fp, void *next, u16 pos, u16 type)
+    {
+      alloc_journal[(alloc_journal_local_pos = atomic_fetch_add_explicit(&alloc_journal_pos, 1, memory_order_relaxed)) % AJSIZE] = (struct alloc_journal) {
+	.fp = fp,
+	.next = next,
+	.pos = pos,
+	.type = type,
+	.thread_id = THIS_THREAD_ID,
+      };
+    }
 
-extern int shutting_down; /* Shutdown requested. */
+    struct free_page {
+      node unused[42];
+      struct free_page * _Atomic next;
+    };
+# else /* ! DEBUGGING */
+
+#   define ajlog(...)
+
+    struct free_page {
+      struct free_page * _Atomic next;
+    };
+
+# endif
+
+# define WRITE_NEXT(pg, val)	do { UNPROTECT_PAGE((pg)); (pg)->next = (val); PROTECT_PAGE((pg)); } while (0)
+
+# define EP_POS_MAX	((page_size - OFFSETOF(struct empty_pages, pages)) / sizeof (void *))
+
+  struct empty_pages {
+    struct empty_pages *next;
+    uint pos;
+    void *pages[0];
+  };
+
+  static DOMAIN(resource) empty_pages_domain;
+  static struct empty_pages *empty_pages = NULL;
+
+  static struct free_page * _Atomic page_stack = NULL;
+  static _Thread_local struct free_page * local_page_stack = NULL;
+  static struct free_page page_stack_blocked;
+
+  /* Try to replace the page stack head with a cork, until it succeeds. */
+# define PAGE_STACK_GET	({ \
+    struct free_page *fp; \
+    while ((fp = atomic_exchange_explicit(&page_stack, &page_stack_blocked, memory_order_acq_rel)) == &page_stack_blocked) birdloop_yield(); \
+    fp; })
+  /* Reinstate the stack with another value */
+# define PAGE_STACK_PUT(val)	ASSERT_DIE(atomic_exchange_explicit(&page_stack, (val), memory_order_acq_rel) == &page_stack_blocked)
+
+  static void page_cleanup(void *);
+  static event page_cleanup_event = { .hook = page_cleanup, };
+# define SCHEDULE_CLEANUP  do if (initialized && !shutting_down) ev_send(&global_event_list, &page_cleanup_event); while (0)
+
+  _Atomic int pages_kept = 0;
+  _Atomic int pages_kept_locally = 0;
+  static _Thread_local int pages_kept_here = 0;
+
+  static void *
+  alloc_sys_page(void)
+  {
+    void *ptr = mmap(NULL, page_size * ALLOC_PAGES_AT_ONCE, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+    if (ptr == MAP_FAILED)
+      die("mmap(%ld) failed: %m", (s64) page_size);
+
+    return ptr;
+  }
+
+  extern int shutting_down; /* Shutdown requested. */
 
 #else // ! HAVE_MMAP
-#define use_fake  1
+# define use_fake  1
 #endif
 
 void *
@@ -108,45 +176,71 @@ alloc_page(void)
   }
 
 #ifdef HAVE_MMAP
-  struct free_pages *fps = &global_free_pages;
-
-  /* If there is any free page kept hot, we use it. */
-  if (fps->cnt)
+  /* If there is any free page kept hot in this thread, we use it. */
+  struct free_page *fp = local_page_stack;
+  if (fp)
   {
-    struct free_page *fp = SKIP_BACK(struct free_page, n, HEAD(fps->pages));
-    rem_node(&fp->n);
-
-    /* If the hot-free-page cache is getting short, request the cleanup routine to replenish the cache */
-    if ((--fps->cnt < fps->min) && !shutting_down)
-      ev_schedule(&fps->cleanup);
-
+    local_page_stack = fp->next;
+    atomic_fetch_sub_explicit(&pages_kept_locally, 1, memory_order_relaxed);
+    pages_kept_here--;
+    UNPROTECT_PAGE(fp);
+    ajlog(fp, local_page_stack, pages_kept_here, AJT_ALLOC_LOCAL_HOT);
     return fp;
   }
-  else
-    return alloc_cold_page();
-}
 
-static void *
-alloc_cold_page(void)
-{
-  struct free_pages *fps = &global_free_pages;
+  ASSERT_DIE(pages_kept_here == 0);
 
-  /* If there is any free page kept cold, we use that. */
-  if (!EMPTY_LIST(fps->empty))
+  /* If there is any free page kept hot in global storage, we use it. */
+  if (fp = PAGE_STACK_GET)
   {
-    struct empty_pages *ep = HEAD(fps->empty);
+    /* Reinstate the stack with the next page in list */
+    PAGE_STACK_PUT(fp->next);
 
-    /* Either the keeper page contains at least one cold page pointer, return that */
-    if (ep->pos)
-      return ep->pages[--ep->pos];
+    /* Update the counters */
+    UNUSED uint pk = atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
 
-    /* Or the keeper page has no more cold page pointer, return the keeper page */
-    rem_node(&ep->n);
-    return ep;
+    /* Release the page */
+    UNPROTECT_PAGE(fp);
+    ajlog(fp, fp->next, pk, AJT_ALLOC_GLOBAL_HOT);
+    return fp;
   }
 
-  /* And in the worst case, allocate a new page by mmap() */
-  return alloc_sys_page();
+  /* Reinstate the stack with zero */
+  PAGE_STACK_PUT(NULL);
+
+  /* If there is any free page kept cold, we use that. */
+  LOCK_DOMAIN(resource, empty_pages_domain);
+  if (empty_pages) {
+    UNPROTECT_PAGE(empty_pages);
+    if (empty_pages->pos)
+    {
+      /* Either the keeper page contains at least one cold page pointer, return that */
+      fp = empty_pages->pages[--empty_pages->pos];
+      PROTECT_PAGE(empty_pages);
+      UNPROTECT_PAGE(fp);
+      ajlog(fp, empty_pages, empty_pages->pos, AJT_ALLOC_COLD_STD);
+    }
+    else
+    {
+      /* Or the keeper page has no more cold page pointer, return the keeper page */
+      fp = (struct free_page *) empty_pages;
+      empty_pages = empty_pages->next;
+      ajlog(fp, empty_pages, 0, AJT_ALLOC_COLD_KEEPER);
+    }
+  }
+  UNLOCK_DOMAIN(resource, empty_pages_domain);
+
+  if (fp)
+    return fp;
+
+  /* And in the worst case, allocate some new pages by mmap() */
+  void *ptr = alloc_sys_page();
+  ajlog(ptr, NULL, 0, AJT_ALLOC_MMAP);
+
+  for (int i=1; i<ALLOC_PAGES_AT_ONCE; i++)
+    free_page(ptr + page_size * i);
+
+  return ptr;
 #endif
 }
 
@@ -161,53 +255,131 @@ free_page(void *ptr)
   }
 
 #ifdef HAVE_MMAP
-  struct free_pages *fps = &global_free_pages;
+  /* We primarily try to keep the pages locally. */
   struct free_page *fp = ptr;
+  if (shutting_down || (pages_kept_here < KEEP_PAGES_MAX_LOCAL))
+  {
+    struct free_page *next = local_page_stack;
+    atomic_store_explicit(&fp->next, next, memory_order_relaxed);
+    PROTECT_PAGE(fp);
+    local_page_stack = fp;
 
-  /* Otherwise, we add the free page to the hot-free-page list */
-  fp->n = (node) {};
-  add_tail(&fps->pages, &fp->n);
+    atomic_fetch_add_explicit(&pages_kept_locally, 1, memory_order_relaxed);
+    pages_kept_here++;
+    ajlog(fp, next, pages_kept_here, AJT_FREE_LOCAL_HOT);
+    return;
+  }
 
-  /* And if there are too many hot free pages, we ask for page cleanup */
-  if ((++fps->cnt > fps->max) && !shutting_down)
-    ev_schedule(&fps->cleanup);
+  /* If there are too many local pages, we add the free page to the global hot-free-page list */
+  struct free_page *next = PAGE_STACK_GET;
+  atomic_store_explicit(&fp->next, next, memory_order_relaxed);
+  PROTECT_PAGE(fp);
+
+  /* Unblock the stack with the page being freed */
+  PAGE_STACK_PUT(fp);
+
+  /* Update counters */
+  uint pk = atomic_fetch_add_explicit(&pages_kept, 1, memory_order_relaxed);
+  ajlog(fp, next, pk, AJT_FREE_GLOBAL_HOT);
+
+  /* And if there are too many global hot free pages, we ask for page cleanup */
+  if (pk >= KEEP_PAGES_MAX)
+    SCHEDULE_CLEANUP;
 #endif
+}
+
+/* When the routine is going to sleep for a long time, we flush the local
+ * hot page cache to not keep dirty pages for nothing. */
+void
+flush_local_pages(void)
+{
+  if (use_fake || !local_page_stack || shutting_down)
+    return;
+
+  ajlog(local_page_stack, NULL, pages_kept_here, AJT_FLUSH_LOCAL_BEGIN);
+
+  /* We first count the pages to enable consistency checking.
+   * Also, we need to know the last page. */
+  struct free_page *last = local_page_stack, *next;
+  int check_count = 1;
+  while (next = last->next)
+  {
+    check_count++;
+    last = next;
+  }
+
+  /* The actual number of pages must be equal to the counter value. */
+  ASSERT_DIE(check_count == pages_kept_here);
+
+  /* Block the stack by a cork */
+  UNPROTECT_PAGE(last);
+  last->next = PAGE_STACK_GET;
+  PROTECT_PAGE(last);
+
+  /* Update the stack */
+  PAGE_STACK_PUT(last);
+
+  /* Finished. Now the local stack is empty. */
+  local_page_stack = NULL;
+  pages_kept_here = 0;
+
+  ajlog(NULL, NULL, 0, AJT_FLUSH_LOCAL_END);
+
+  /* Check the state of global page cache and maybe schedule its cleanup. */
+  atomic_fetch_sub_explicit(&pages_kept_locally, check_count, memory_order_relaxed);
+  if (atomic_fetch_add_explicit(&pages_kept, check_count, memory_order_relaxed) >= KEEP_PAGES_MAX)
+    SCHEDULE_CLEANUP;
 }
 
 #ifdef HAVE_MMAP
 static void
-global_free_pages_cleanup_event(void *data UNUSED)
+page_cleanup(void *_ UNUSED)
 {
   /* Cleanup on shutdown is ignored. All pages may be kept hot, OS will take care. */
   if (shutting_down)
     return;
 
-  struct free_pages *fps = &global_free_pages;
+  ajlog(NULL, NULL, 0, AJT_CLEANUP_BEGIN);
 
-  /* Cleanup may get called when hot free page cache is short of pages. Replenishing. */
-  while (fps->cnt / 2 < fps->min)
-    free_page(alloc_cold_page());
+  /* Prevent contention */
+  struct free_page *stack = PAGE_STACK_GET;
 
-  /* Or the hot free page cache is too big. Moving some pages to the cold free page cache. */
-  for (int limit = CLEANUP_PAGES_BULK; limit && (fps->cnt > fps->max / 2); fps->cnt--, limit--)
+  /* Always replace by zero */
+  PAGE_STACK_PUT(NULL);
+
+  if (!stack)
   {
-    struct free_page *fp = SKIP_BACK(struct free_page, n, TAIL(fps->pages));
-    rem_node(&fp->n);
+    ajlog(NULL, NULL, 0, AJT_CLEANUP_NOTHING);
+    return;
+  }
 
+  do {
+    struct free_page *fp = stack;
+    stack = fp->next;
+
+    LOCK_DOMAIN(resource, empty_pages_domain);
     /* Empty pages are stored as pointers. To store them, we need a pointer block. */
-    struct empty_pages *ep;
-    if (EMPTY_LIST(fps->empty) || ((ep = HEAD(fps->empty))->pos == EP_POS_MAX))
+    if (!empty_pages || (empty_pages->pos == EP_POS_MAX))
     {
       /* There is either no pointer block or the last block is full. We use this block as a pointer block. */
-      ep = (struct empty_pages *) fp;
-      *ep = (struct empty_pages) {};
-      add_head(&fps->empty, &ep->n);
+      struct empty_pages *ep = (struct empty_pages *) fp;
+      UNPROTECT_PAGE(ep);
+      *ep = (struct empty_pages) {
+	.next = empty_pages,
+      };
+      PROTECT_PAGE(ep);
+      empty_pages = ep;
+      ajlog(empty_pages, empty_pages->next, 0, AJT_CLEANUP_COLD_KEEPER);
     }
     else
     {
       /* We store this block as a pointer into the first free place
        * and tell the OS that the underlying memory is trash. */
-      ep->pages[ep->pos++] = fp;
+      UNPROTECT_PAGE(empty_pages);
+      empty_pages->pages[empty_pages->pos++] = fp;
+      PROTECT_PAGE(empty_pages);
+
+      PROTECT_PAGE(fp);
       if (madvise(fp, page_size,
 #ifdef CONFIG_MADV_DONTNEED_TO_FREE
 	    MADV_DONTNEED
@@ -216,13 +388,22 @@ global_free_pages_cleanup_event(void *data UNUSED)
 #endif
 	    ) < 0)
 	bug("madvise(%p) failed: %m", fp);
+      ajlog(fp, empty_pages, empty_pages->pos, AJT_CLEANUP_COLD_STD);
     }
+    UNLOCK_DOMAIN(resource, empty_pages_domain);
   }
+  while ((atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed) >= KEEP_PAGES_MAX / 2) && stack);
 
-  /* If the hot free page cleanup hit the limit, re-schedule this routine
-   * to allow for other routines to run. */
-  if (fps->cnt > fps->max)
-    ev_schedule(&fps->cleanup);
+  while (stack)
+  {
+    struct free_page *f = stack;
+    stack = f->next;
+    UNPROTECT_PAGE(f);
+    free_page(f);
+
+    atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
+  }
+  ajlog(NULL, NULL, 0, AJT_CLEANUP_END);
 }
 #endif
 
@@ -236,8 +417,6 @@ resource_sys_init(void)
 #endif
 
 #ifdef HAVE_MMAP
-  ASSERT_DIE(global_free_pages.cnt == 0);
-
   /* Check what page size the system supports */
   if (!(page_size = sysconf(_SC_PAGESIZE)))
     die("System page size must be non-zero");
@@ -247,11 +426,9 @@ resource_sys_init(void)
     /* We assume that page size has only one bit and is between 1K and 256K (incl.).
      * Otherwise, the assumptions in lib/slab.c (sl_head's num_full range) aren't met. */
 
-    struct free_pages *fps = &global_free_pages;
-
-    init_list(&fps->pages);
-    init_list(&fps->empty);
-    global_free_pages_cleanup_event(NULL);
+    empty_pages_domain = DOMAIN_NEW(resource);
+    DOMAIN_SETUP(resource, empty_pages_domain, "Empty Pages", NULL);
+    initialized = 1;
     return;
   }
 
@@ -261,4 +438,5 @@ resource_sys_init(void)
 #endif
 
   page_size = 4096;
+  initialized = 1;
 }

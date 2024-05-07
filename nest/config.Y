@@ -109,12 +109,50 @@ proto_postconfig(void)
   this_proto = NULL;
 }
 
+static void
+channel_reload_out_done_main(void *_prr)
+{
+  struct proto_reload_request *prr = _prr;
+  ASSERT_THE_BIRD_LOCKED;
+
+  rfree(prr->trie->lp);
+}
+
+static inline void
+proto_call_cmd_reload(struct proto_spec ps, int dir, const struct f_trie *trie)
+{
+  struct proto_reload_request *prr = cfg_alloc(sizeof *prr);
+  *prr = (struct proto_reload_request) {
+    .trie = trie,
+    .dir = dir,
+    .counter = 1,
+  };
+  if (trie)
+  {
+    /* CLI linpool is moved to trie, because trie is need for longer time
+     * than the linpool would exist in CLI. The linpool is freed in channel_reload_out_done_main.
+     */
+    ASSERT_DIE(this_cli->parser_pool == prr->trie->lp);
+    rmove(this_cli->parser_pool, &root_pool);
+    this_cli->parser_pool = lp_new(this_cli->pool);
+    prr->ev = (event) {
+      .data = prr,
+      .hook = channel_reload_out_done_main,
+    };
+  }
+
+  proto_apply_cmd(ps, proto_cmd_reload, 1, (uintptr_t) prr);
+  /* This function used reference to this trie, so it is freed here as well as in protocols*/
+  if (trie)
+    if (atomic_fetch_sub_explicit(&prr->counter, 1, memory_order_acq_rel) == 1)
+      ev_send_loop(&main_birdloop, &prr->ev);
+}
 
 #define DIRECT_CFG ((struct rt_dev_config *) this_proto)
 
 CF_DECLS
 
-CF_KEYWORDS(ROUTER, ID, HOSTNAME, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT)
+CF_KEYWORDS(ROUTER, ID, HOSTNAME, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT, PIPE)
 CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, VRF, DEFAULT, TABLE, TABLES, STATES, ROUTES, FILTERS)
 CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED, RPKI)
@@ -122,12 +160,12 @@ CF_KEYWORDS(PASSWORD, KEY, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, CH
 CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512, BLAKE2S128, BLAKE2S256, BLAKE2B256, BLAKE2B512)
 CF_KEYWORDS(PRIMARY, STATS, COUNT, FOR, IN, COMMANDS, PREEXPORT, NOEXPORT, EXPORTED, GENERATE)
 CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION)
-CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, IGP_METRIC, CLASS, DSCP)
+CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, CLASS, DSCP, PARTIAL)
 CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, AS)
 CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
 CF_KEYWORDS(CHECK, LINK)
-CF_KEYWORDS(SORTED, TRIE, MIN, MAX, SETTLE, TIME, GC, THRESHOLD, PERIOD)
+CF_KEYWORDS(CORK, SORTED, TRIE, MIN, MAX, ROA, ROUTE, REFRESH, SETTLE, TIME, GC, THRESHOLD, PERIOD)
 CF_KEYWORDS(MPLS_LABEL, MPLS_POLICY, MPLS_CLASS)
 CF_KEYWORDS(ASPA_PROVIDERS)
 CF_KEYWORDS(LOGGING, RATE)
@@ -151,7 +189,7 @@ CF_ENUM(T_ENUM_MPLS_POLICY, MPLS_POLICY_, NONE, STATIC, PREFIX, AGGREGATE, VRF)
 %type <s> optproto
 %type <ra> r_args
 %type <sd> sym_args
-%type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type net_type_base tos password_algorithm
+%type <i> proto_start debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type net_type_base tos password_algorithm
 %type <ps> proto_patt proto_patt2
 %type <ts> table_patt
 %type <cc> channel_start proto_channel
@@ -163,6 +201,7 @@ CF_ENUM(T_ENUM_MPLS_POLICY, MPLS_POLICY_, NONE, STATIC, PREFIX, AGGREGATE, VRF)
 %type <lrt> logging_rate_targets
 %type <tc> logging_rate
 %type <tt> tbf_target
+%type <const_trie> partial_opt
 
 CF_GRAMMAR
 
@@ -246,11 +285,15 @@ table_opt:
        cf_error("Trie option not supported for %s table", net_label[this_table->addr_type]);
      this_table->trie_used = $2;
    }
- | MIN SETTLE TIME expr_us { this_table->min_settle_time = $4; }
- | MAX SETTLE TIME expr_us { this_table->max_settle_time = $4; }
  | GC THRESHOLD expr { this_table->gc_threshold = $3; }
  | GC PERIOD expr_us { this_table->gc_period = (uint) $3; if ($3 > 3600 S_) cf_error("GC period must be at most 3600 s"); }
  | LOGGING RATE expr expr	{ this_table->log_tbf_cf.rate = $3; this_table->log_tbf_cf.burst = $4; }
+ | CORK THRESHOLD expr expr {
+     if ($3 > $4) cf_error("Cork low threshold must be lower than the high threshold.");
+     this_table->cork_threshold.low = $3;
+     this_table->cork_threshold.high = $4; }
+ | EXPORT SETTLE TIME settle { this_table->export_settle = $4; }
+ | ROUTE REFRESH EXPORT SETTLE TIME settle { this_table->export_rr_settle = $6; }
  ;
 
 table_opts:
@@ -311,8 +354,8 @@ proto_item:
  | MRTDUMP mrtdump_mask { this_proto->mrtdump = $2; }
  | ROUTER ID idval { this_proto->router_id = $3; }
  | DESCRIPTION text { this_proto->dsc = $2; }
- | VRF text { this_proto->vrf = if_get_by_name($2); this_proto->vrf_set = 1; }
- | VRF DEFAULT { this_proto->vrf = NULL; this_proto->vrf_set = 1; }
+ | VRF text { this_proto->vrf = if_get_by_name($2); }
+ | VRF DEFAULT { this_proto->vrf = &default_vrf; }
  ;
 
 
@@ -328,12 +371,27 @@ channel_item_:
      this_channel->table = $2;
    }
  | IMPORT imexport { this_channel->in_filter = $2; }
+ | EXPORT IN net_any imexport {
+     if (this_channel->net_type && ($3->type != this_channel->net_type))
+       cf_error("Incompatible export prefilter type");
+     this_channel->out_subprefix = $3;
+     this_channel->out_filter = $4;
+   }
  | EXPORT imexport { this_channel->out_filter = $2; }
+ | EXPORT BLOCK expr { this_channel->feed_block_size = $3; }
  | RECEIVE LIMIT limit_spec { this_channel->rx_limit = $3; }
  | IMPORT LIMIT limit_spec { this_channel->in_limit = $3; }
  | EXPORT LIMIT limit_spec { this_channel->out_limit = $3; }
+ | ROA SETTLE TIME settle { this_channel->roa_settle = $4; }
  | PREFERENCE expr { this_channel->preference = $2; check_u16($2); }
- | IMPORT KEEP FILTERED bool { this_channel->in_keep_filtered = $4; }
+ | IMPORT KEEP FILTERED bool {
+     if ($4)
+       this_channel->in_keep |= RIK_REJECTED;
+     else if ((this_channel->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
+       cf_error("Import keep filtered is implied by the import table.");
+     else
+       this_channel->in_keep &= ~RIK_REJECTED;
+   }
  | RPKI RELOAD bool { this_channel->rpki_reload = $3; }
  ;
 
@@ -364,7 +422,11 @@ channel_end:
 proto_channel: channel_start channel_opt_list channel_end;
 
 
-rtable: CF_SYM_KNOWN { cf_assert_symbol($1, SYM_TABLE); $$ = $1->table; } ;
+rtable: CF_SYM_KNOWN {
+  cf_assert_symbol($1, SYM_TABLE);
+  if (!$1->table) rt_new_default_table($1);
+  $$ = $1->table;
+} ;
 
 imexport:
    FILTER filter { $$ = $2; }
@@ -422,7 +484,6 @@ timeformat_base:
    TIMEFORMAT timeformat_spec ';'
  ;
 
-
 /* Interface patterns */
 
 iface_patt_node_init:
@@ -479,6 +540,7 @@ proto: dev_proto '}' ;
 dev_proto_start: proto_start DIRECT {
      this_proto = proto_config_new(&proto_device, $1);
      init_list(&DIRECT_CFG->iface_list);
+     this_proto->late_if_feed = 1;
    }
  ;
 
@@ -684,28 +746,30 @@ r_args:
      init_list(&($$->tables));
      $$->filter = FILTER_ACCEPT;
      $$->running_on_config = config;
+     $$->cli = this_cli;
    }
  | r_args net_any {
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
      $$->addr = $2;
-     $$->addr_mode = RSD_ADDR_EQUAL;
+     $$->addr_mode = TE_ADDR_EQUAL;
    }
  | r_args FOR r_args_for {
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
      $$->addr = $3;
-     $$->addr_mode = RSD_ADDR_FOR;
+     $$->addr_mode = TE_ADDR_FOR;
    }
  | r_args IN net_any {
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
      if (!net_type_match($3, NB_IP)) cf_error("Only IP networks accepted for 'in' argument");
      $$->addr = $3;
-     $$->addr_mode = RSD_ADDR_IN;
+     $$->addr_mode = TE_ADDR_IN;
    }
-| r_args TABLE symbol_known {
+| r_args TABLE CF_SYM_KNOWN {
      cf_assert_symbol($3, SYM_TABLE);
+     if (!$3->table) cf_error("Table %s not configured", $3->name);
      $$ = $1;
      rt_show_add_table($$, $3->table->table);
      $$->tables_defined_by = RSD_TDB_DIRECT;
@@ -718,13 +782,14 @@ r_args:
      $$->tables_defined_by = RSD_TDB_ALL;
    }
  | r_args IMPORT TABLE channel_arg {
-     if (!$4->in_table) cf_error("No import table in channel %s.%s", $4->proto->name, $4->name);
-     rt_show_add_table($$, $4->in_table);
+     if (!($4->in_keep & RIK_PREFILTER)) cf_error("No import table in channel %s.%s", $4->proto->name, $4->name);
+     RT_LOCKED($4->table, tab)
+       rt_show_add_exporter($$, &tab->exporter.e, "import")->prefilter = $4;
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
  | r_args EXPORT TABLE channel_arg {
      if (!$4->out_table) cf_error("No export table in channel %s.%s", $4->proto->name, $4->name);
-     rt_show_add_table($$, $4->out_table);
+     rt_show_add_exporter($$, $4->out_table, "export");
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
  | r_args FILTER filter {
@@ -749,7 +814,7 @@ r_args:
      $$ = $1;
      $$->filtered = 1;
    }
- | r_args export_mode symbol_known {
+ | r_args export_mode CF_SYM_KNOWN {
      cf_assert_symbol($3, SYM_PROTO);
      struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
@@ -766,7 +831,7 @@ r_args:
      $$->export_channel = $3;
      $$->tables_defined_by = RSD_TDB_INDIRECT;
    }
- | r_args PROTOCOL symbol_known {
+ | r_args PROTOCOL CF_SYM_KNOWN {
      cf_assert_symbol($3, SYM_PROTO);
      struct proto_config *c = (struct proto_config *) $3->proto;
      $$ = $1;
@@ -890,7 +955,7 @@ sym_args:
 
 CF_CLI_HELP(DUMP, ..., [[Dump debugging information]])
 CF_CLI(DUMP RESOURCES,,, [[Dump all allocated resource]])
-{ rdump(&root_pool); cli_msg(0, ""); } ;
+{ rdump(&root_pool, 0); cli_msg(0, ""); } ;
 CF_CLI(DUMP SOCKETS,,, [[Dump open sockets]])
 { sk_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP EVENTS,,, [[Dump event log]])
@@ -900,9 +965,11 @@ CF_CLI(DUMP INTERFACES,,, [[Dump interface information]])
 CF_CLI(DUMP NEIGHBORS,,, [[Dump neighbor cache]])
 { neigh_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP ATTRIBUTES,,, [[Dump attribute cache]])
-{ rta_dump_all(); cli_msg(0, ""); } ;
-CF_CLI(DUMP ROUTES,,, [[Dump routing table]])
+{ ea_dump_all(); cli_msg(0, ""); } ;
+CF_CLI(DUMP ROUTES,,, [[Dump routes]])
 { rt_dump_all(); cli_msg(0, ""); } ;
+CF_CLI(DUMP TABLES,,, [[Dump table connections]])
+{ rt_dump_hooks_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP PROTOCOLS,,, [[Dump protocol information]])
 { protos_dump_all(); cli_msg(0, ""); } ;
 CF_CLI(DUMP FILTER ALL,,, [[Dump all filters in linearized form]])
@@ -911,25 +978,15 @@ CF_CLI(DUMP FILTER ALL,,, [[Dump all filters in linearized form]])
 CF_CLI(EVAL, term, <expr>, [[Evaluate an expression]])
 { cmd_eval(f_linearize($2, 1)); } ;
 
-CF_CLI_HELP(ECHO, ..., [[Control echoing of log messages]])
-CF_CLI(ECHO, echo_mask echo_size, (all | off | { debug|trace|info|remote|warning|error|auth [, ...] }) [<buffer-size>], [[Control echoing of log messages]]) {
-  cli_set_log_echo(this_cli, $2, $3);
-  cli_msg(0, "");
-} ;
-
-echo_mask:
-   ALL { $$ = ~0; }
- | OFF { $$ = 0; }
- | '{' log_mask_list '}' { $$ = $2; }
- ;
-
-echo_size:
-   /* empty */ { $$ = 4096; }
- | NUM {
-     if ($1 < 256 || $1 > 65536) cf_error("Invalid log buffer size");
-     $$ = $1;
-   }
- ;
+partial_opt:
+  PARTIAL term {
+    struct f_val val;
+    if (f_eval(f_linearize($2, 1), &val) > F_RETURN) cf_error("Runtime error");
+    if (val.type != T_PREFIX_SET) cf_error("Partial spec must be prefix set");
+    $$ = val.val.ti;
+  }
+  | /* empty */ { $$ = NULL; }
+  ;
 
 CF_CLI(DISABLE, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message], [[Disable protocol]])
 { proto_apply_cmd($2, proto_cmd_disable, 1, (uintptr_t) $3); } ;
@@ -937,12 +994,12 @@ CF_CLI(ENABLE, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message],
 { proto_apply_cmd($2, proto_cmd_enable, 1, (uintptr_t) $3); } ;
 CF_CLI(RESTART, proto_patt opttext, (<protocol> | \"<pattern>\" | all) [message], [[Restart protocol]])
 { proto_apply_cmd($2, proto_cmd_restart, 1, (uintptr_t) $3); } ;
-CF_CLI(RELOAD, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol]])
-{ proto_apply_cmd($2, proto_cmd_reload, 1, CMD_RELOAD); } ;
-CF_CLI(RELOAD IN, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just imported routes)]])
-{ proto_apply_cmd($3, proto_cmd_reload, 1, CMD_RELOAD_IN); } ;
-CF_CLI(RELOAD OUT, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just exported routes)]])
-{ proto_apply_cmd($3, proto_cmd_reload, 1, CMD_RELOAD_OUT); } ;
+CF_CLI(RELOAD, proto_patt partial_opt, (<protocol> | \"<pattern>\" | all) [partial <prefix set>], [[Reload protocol]])
+{ proto_call_cmd_reload($2, CMD_RELOAD, $3); } ;
+CF_CLI(RELOAD IN, proto_patt partial_opt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just imported routes)]])
+{ proto_call_cmd_reload($3, CMD_RELOAD_IN, $4); } ;
+CF_CLI(RELOAD OUT, proto_patt partial_opt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just exported routes)]])
+{ proto_call_cmd_reload($3, CMD_RELOAD_OUT, $4); } ;
 
 CF_CLI_HELP(DEBUG, ..., [[Control protocol debugging via BIRD logs]])
 CF_CLI(DEBUG, debug_args, (<protocol> | <channel> | \"<pattern>\" | all) (all | off | { states|routes|filters|interfaces|events|packets [, ...] }), [[Control protocol debugging via BIRD logs]])
@@ -1029,13 +1086,6 @@ table_patt:
  | ALL  { $$.ptr = NULL; $$.patt = 1; }
  | TEXT { $$.ptr = $1; $$.patt = 1; }
  ;
-
-dynamic_attr: IGP_METRIC { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_GEN_IGP_METRIC); } ;
-
-dynamic_attr: MPLS_LABEL  { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_MPLS_LABEL); } ;
-dynamic_attr: MPLS_POLICY { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_ENUM_MPLS_POLICY, EA_MPLS_POLICY); } ;
-dynamic_attr: MPLS_CLASS  { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_MPLS_CLASS); } ;
-
 
 CF_CODE
 

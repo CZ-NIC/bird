@@ -36,56 +36,12 @@
 #include "lib/resource.h"
 #include "lib/timer.h"
 
-
-struct timeloop main_timeloop;
-
-
-#ifdef USE_PTHREADS
-
 #include <pthread.h>
 
-/* Data accessed and modified from proto/bfd/io.c */
-pthread_key_t current_time_key;
-
-static inline struct timeloop *
-timeloop_current(void)
-{
-  return pthread_getspecific(current_time_key);
-}
-
-static inline void
-timeloop_init_current(void)
-{
-  pthread_key_create(&current_time_key, NULL);
-  pthread_setspecific(current_time_key, &main_timeloop);
-}
+_Atomic btime last_time;
+_Atomic btime real_time;
 
 void wakeup_kick_current(void);
-
-#else
-
-/* Just use main timelooop */
-static inline struct timeloop * timeloop_current(void) { return &main_timeloop; }
-static inline void timeloop_init_current(void) { }
-
-#endif
-
-btime
-current_time(void)
-{
-  return timeloop_current()->last_time;
-}
-
-btime
-current_real_time(void)
-{
-  struct timeloop *loop = timeloop_current();
-
-  if (!loop->real_time)
-    times_update_real_time(loop);
-
-  return loop->real_time;
-}
 
 
 #define TIMER_LESS(a,b)		((a)->expires < (b)->expires)
@@ -102,7 +58,7 @@ tm_free(resource *r)
 }
 
 static void
-tm_dump(resource *r)
+tm_dump(resource *r, unsigned indent UNUSED)
 {
   timer *t = (void *) r;
 
@@ -112,7 +68,7 @@ tm_dump(resource *r)
   if (t->recurrent)
     debug("recur %d, ", t->recurrent);
   if (t->expires)
-    debug("expires in %d ms)\n", (t->expires - current_time()) TO_MS);
+    debug("in loop %p expires in %d ms)\n", t->loop, (t->expires - current_time()) TO_MS);
   else
     debug("inactive)\n");
 }
@@ -135,41 +91,40 @@ tm_new(pool *p)
   return t;
 }
 
-void
-tm_set(timer *t, btime when)
+static void
+tm_set_in_tl(timer *t, btime when, struct timeloop *local_timeloop)
 {
-  struct timeloop *loop = timeloop_current();
-  uint tc = timers_count(loop);
+  uint tc = timers_count(local_timeloop);
 
   if (!t->expires)
   {
     t->index = ++tc;
     t->expires = when;
-    BUFFER_PUSH(loop->timers) = t;
-    HEAP_INSERT(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP);
+    BUFFER_PUSH(local_timeloop->timers) = t;
+    HEAP_INSERT(local_timeloop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP);
   }
   else if (t->expires < when)
   {
     t->expires = when;
-    HEAP_INCREASE(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
+    HEAP_INCREASE(local_timeloop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
   }
   else if (t->expires > when)
   {
     t->expires = when;
-    HEAP_DECREASE(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
+    HEAP_DECREASE(local_timeloop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
   }
 
-#ifdef CONFIG_BFD
-  /* Hack to notify BFD loops */
-  if ((loop != &main_timeloop) && (t->index == 1))
-    wakeup_kick_current();
-#endif
+  t->loop = local_timeloop;
+
+  if (t->index == 1)
+    birdloop_ping(local_timeloop->loop);
 }
 
 void
-tm_start(timer *t, btime after)
+tm_set_in(timer *t, btime when, struct birdloop *loop)
 {
-  tm_set(t, current_time() + MAX(after, 0));
+  ASSERT_DIE(birdloop_inside(loop));
+  tm_set_in_tl(t, when, birdloop_time_loop(loop));
 }
 
 void
@@ -178,20 +133,22 @@ tm_stop(timer *t)
   if (!t->expires)
     return;
 
-  struct timeloop *loop = timeloop_current();
-  uint tc = timers_count(loop);
+  TLOCK_TIMER_ASSERT(t->loop);
 
-  HEAP_DELETE(loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
-  BUFFER_POP(loop->timers);
+  uint tc = timers_count(t->loop);
+
+  HEAP_DELETE(t->loop->timers.data, tc, timer *, TIMER_LESS, TIMER_SWAP, t->index);
+  BUFFER_POP(t->loop->timers);
 
   t->index = -1;
   t->expires = 0;
+  t->loop = NULL;
 }
 
 void
 timers_init(struct timeloop *loop, pool *p)
 {
-  times_init(loop);
+  TLOCK_TIMER_ASSERT(loop);
 
   BUFFER_INIT(loop->timers, p, 4);
   BUFFER_PUSH(loop->timers) = NULL;
@@ -200,13 +157,15 @@ timers_init(struct timeloop *loop, pool *p)
 void io_log_event(void *hook, void *data);
 
 void
-timers_fire(struct timeloop *loop)
+timers_fire(struct timeloop *loop, int io_log)
 {
+  TLOCK_TIMER_ASSERT(loop);
+
   btime base_time;
   timer *t;
 
-  times_update(loop);
-  base_time = loop->last_time;
+  times_update();
+  base_time = current_time();
 
   while (t = timers_first(loop))
   {
@@ -217,31 +176,24 @@ timers_fire(struct timeloop *loop)
     {
       btime when = t->expires + t->recurrent;
 
-      if (when <= loop->last_time)
-	when = loop->last_time + t->recurrent;
+      if (when <= base_time)
+	when = base_time + t->recurrent;
 
       if (t->randomize)
 	when += random() % (t->randomize + 1);
 
-      tm_set(t, when);
+      tm_set_in_tl(t, when, loop);
     }
     else
       tm_stop(t);
 
     /* This is ugly hack, we want to log just timers executed from the main I/O loop */
-    if (loop == &main_timeloop)
+    if (io_log)
       io_log_event(t->hook, t->data);
 
     t->hook(t);
     tmp_flush();
   }
-}
-
-void
-timer_init(void)
-{
-  timers_init(&main_timeloop, &root_pool);
-  timeloop_init_current();
 }
 
 
@@ -371,8 +323,5 @@ tm_format_real_time(char *x, size_t max, const char *fmt, btime t)
   if (!strfusec(tbuf, tbuf_size, fmt, t2))
     return 0;
 
-  if (!strftime(x, max, tbuf, &tm))
-    return 0;
-
-  return 1;
+  return strftime(x, max, tbuf, &tm);
 }

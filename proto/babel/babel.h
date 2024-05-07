@@ -26,10 +26,6 @@
 #include "lib/string.h"
 #include "lib/timer.h"
 
-#define EA_BABEL_METRIC		EA_CODE(PROTOCOL_BABEL, 0)
-#define EA_BABEL_ROUTER_ID	EA_CODE(PROTOCOL_BABEL, 1)
-#define EA_BABEL_SEQNO		EA_CODE(PROTOCOL_BABEL, 2)
-
 #define BABEL_MAGIC		42
 #define BABEL_VERSION		2
 #define BABEL_PORT		6696
@@ -324,6 +320,7 @@ struct babel_entry {
 #define BABEL_ENTRY_DUMMY	0	/* No outgoing route */
 #define BABEL_ENTRY_VALID	1	/* Valid outgoing route */
 #define BABEL_ENTRY_STALE	2	/* Stale outgoing route, waiting for GC */
+#define BABEL_ENTRY_REFEEDING	3	/* Route valid until feed ends */
 
 
 /*

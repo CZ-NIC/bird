@@ -15,13 +15,6 @@
 
 #define MAX_TREE_HEIGHT 13
 
-static void
-start_conf_env(void)
-{
-  bt_bird_init();
-  cfg_mem = tmp_linpool;
-}
-
 static struct f_tree *
 new_tree(uint id)
 {
@@ -153,8 +146,6 @@ get_balanced_tree_with_ranged_values(uint nodes_count)
 static int
 t_balancing(void)
 {
-  start_conf_env();
-
   uint height;
   for (height = 1; height < MAX_TREE_HEIGHT; height++)
   {
@@ -170,6 +161,8 @@ t_balancing(void)
     show_tree(balanced_tree_from_simple);
 
     bt_assert(same_tree(balanced_tree_from_simple, expected_balanced_tree));
+
+    tmp_flush();
   }
 
   return 1;
@@ -179,8 +172,6 @@ t_balancing(void)
 static int
 t_balancing_random(void)
 {
-  start_conf_env();
-
   uint height;
   for (height = 1; height < MAX_TREE_HEIGHT; height++)
   {
@@ -191,6 +182,8 @@ t_balancing_random(void)
     uint i;
     for(i = 0; i < 10; i++)
     {
+      struct lp_state *lps = lp_save(tmp_linpool);
+
       struct f_tree *random_degenerated_tree = get_random_degenerated_left_tree(nodes_count);
       show_tree(random_degenerated_tree);
 
@@ -200,7 +193,11 @@ t_balancing_random(void)
       show_tree(balanced_tree_from_random);
 
       bt_assert(same_tree(balanced_tree_from_random, expected_balanced_tree));
+
+      lp_restore(tmp_linpool, lps);
     }
+
+    tmp_flush();
   }
 
   return 1;
@@ -209,8 +206,6 @@ t_balancing_random(void)
 static int
 t_find(void)
 {
-  start_conf_env();
-
   uint height;
   for (height = 1; height < MAX_TREE_HEIGHT; height++)
   {
@@ -227,6 +222,8 @@ t_find(void)
       const struct f_tree *found_tree = find_tree(tree, &looking_up_value);
       bt_assert((val_compare(&looking_up_value, &(found_tree->from)) == 0) && (val_compare(&looking_up_value, &(found_tree->to)) == 0));
     }
+
+    tmp_flush();
   }
 
   return 1;
@@ -255,8 +252,6 @@ get_max_value_in_unbalanced_tree(struct f_tree *node, uint max)
 static int
 t_find_ranges(void)
 {
-  start_conf_env();
-
   uint height;
   for (height = 1; height < MAX_TREE_HEIGHT; height++)
   {
@@ -283,6 +278,8 @@ t_find_ranges(void)
 	 ((val_compare(&needle, &(found_tree->from)) == 1) && (val_compare(&needle, &(found_tree->to)) == -1))
       );
     }
+
+    tmp_flush();
   }
 
   return 1;
@@ -292,6 +289,8 @@ int
 main(int argc, char *argv[])
 {
   bt_init(argc, argv);
+  bt_bird_init();
+  cfg_mem = tmp_linpool;
 
   bt_test_suite(t_balancing, "Balancing strong unbalanced trees");
   bt_test_suite(t_balancing_random, "Balancing random unbalanced trees");

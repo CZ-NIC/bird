@@ -21,8 +21,7 @@ struct kif_proto;
 
 #define KRT_DEFAULT_ECMP_LIMIT	16
 
-#define EA_KRT_SOURCE	EA_CODE(PROTOCOL_KERNEL, 0)
-#define EA_KRT_METRIC	EA_CODE(PROTOCOL_KERNEL, 1)
+extern struct ea_class ea_krt_source, ea_krt_metric;
 
 #define KRT_REF_SEEN	0x1	/* Seen in table */
 #define KRT_REF_BEST	0x2	/* Best in table */
@@ -55,10 +54,6 @@ struct krt_proto {
   struct proto p;
   struct krt_state sys;		/* Sysdep state */
 
-#ifdef KRT_ALLOW_LEARN
-  struct rtable *krt_table;	/* Internal table of inherited routes */
-#endif
-
   timer *scan_timer;
   struct bmap sync_map;		/* Keeps track which exported routes were successfully written to kernel */
   struct bmap seen_map;		/* Routes seen during last periodic scan */
@@ -67,6 +62,7 @@ struct krt_proto {
   byte ready;			/* Initial feed has been finished */
   byte initialized;		/* First scan has been finished */
   byte reload;			/* Next scan is doing reload */
+  byte flush_routes;		/* Scanning to flush */
 };
 
 extern pool *krt_pool;
@@ -145,7 +141,7 @@ void krt_sys_copy_config(struct krt_config *, struct krt_config *);
 
 int  krt_capable(rte *e);
 void krt_do_scan(struct krt_proto *);
-void krt_replace_rte(struct krt_proto *p, net *n, rte *new, rte *old);
+void krt_replace_rte(struct krt_proto *p, const net_addr *n, rte *new, const rte *old);
 int krt_sys_get_attr(const eattr *a, byte *buf, int buflen);
 
 

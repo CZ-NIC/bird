@@ -42,12 +42,6 @@ AC_ARG_ENABLE([compact-tries],
   [enable_compact_tries=no]
 )
 
-AC_ARG_ENABLE([pthreads],
-  [AS_HELP_STRING([--enable-pthreads], [enable POSIX threads support @<:@try@:>@])],
-  [],
-  [enable_pthreads=try]
-)
-
 AC_ARG_ENABLE([libssh],
   [AS_HELP_STRING([--enable-libssh], [enable LibSSH support in RPKI @<:@try@:>@])],
   [],
@@ -131,25 +125,19 @@ if test -z "$GCC" ; then
 fi
 
 BIRD_CHECK_THREAD_LOCAL
-if test "$bird_cv_thread_local" = yes ; then
-  AC_DEFINE([HAVE_THREAD_LOCAL], [1], [Define to 1 if _Thread_local is available])
+if test "$bird_cv_thread_local" = no ; then
+  AC_MSG_ERROR([This program requires thread local storage.])
+elif test "$bird_cv_thread_local" != yes ; then
+  AC_DEFINE_UNQUOTED([_Thread_local], [$bird_cv_thread_local], [Legacy _Thread_local])
 fi
 
-if test "$enable_pthreads" != no ; then
-  BIRD_CHECK_PTHREADS
+BIRD_CHECK_PTHREADS
 
-  if test "$bird_cv_lib_pthreads" = yes ; then
-    AC_DEFINE([USE_PTHREADS], [1], [Define to 1 if pthreads are enabled])
-    CFLAGS="$CFLAGS -pthread"
-    LDFLAGS="$LDFLAGS -pthread"
-    proto_bfd=bfd
-  elif test "$enable_pthreads" = yes ; then
-    AC_MSG_ERROR([POSIX threads not available.])
-  fi
-
-  if test "$enable_pthreads" = try ; then
-    enable_pthreads="$bird_cv_lib_pthreads"
-  fi
+if test "$bird_cv_lib_pthreads" = yes ; then
+  CFLAGS="$CFLAGS -pthread"
+  LDFLAGS="$LDFLAGS -pthread"
+else
+  AC_MSG_ERROR([POSIX threads not available.])
 fi
 
 # This is assumed to be necessary for proper BIRD build
@@ -158,6 +146,7 @@ CFLAGS="$CFLAGS -fno-strict-aliasing -fno-strict-overflow"
 if test "$bird_cflags_default" = yes ; then
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_pointer_sign], [-Wno-pointer-sign], [-Wall])
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_wno_missing_init], [-Wno-missing-field-initializers], [-Wall -Wextra])
+
 
   if test "$enable_debug" = no; then
     BIRD_CHECK_LTO
@@ -296,6 +285,12 @@ if test "$enable_libssh" != no ; then
       enable_libssh=no
     fi
   fi
+
+  AC_CHECK_LIB([ssh], [ssh_session_is_known_server], [ssh_old_server_validation_api=no], [ssh_old_server_validation_api=yes])
+
+  if test "$ssh_old_server_validation_api" = yes; then
+    AC_DEFINE([HAVE_SSH_OLD_SERVER_VALIDATION_API], [1], [Define to 1 if ssh_session_is_known_server isn't defined])
+  fi
 fi
 
 if test "$enable_mpls_kernel" != no ; then
@@ -312,8 +307,8 @@ if test "$enable_mpls_kernel" != no ; then
   fi
 fi
 
-all_protocols="aggregator $proto_bfd babel bgp l3vpn mrt ospf perf pipe radv rip rpki static"
-
+# temporarily removed "mrt" from all_protocols to speed up 3.0-alpha1 release
+all_protocols="aggregator bfd babel bgp l3vpn ospf perf pipe radv rip rpki static"
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
 
 if test "$with_protocols" = all ; then
@@ -361,15 +356,28 @@ case $sysdesc in
     ;;
 esac
 
-AC_CHECK_HEADERS_ONCE([alloca.h syslog.h])
-AC_CHECK_HEADER([sys/mman.h], [AC_DEFINE([HAVE_MMAP], [1], [Define to 1 if mmap() is available.])])
+AC_CHECK_HEADERS_ONCE([alloca.h syslog.h stdatomic.h])
+AC_CHECK_HEADER([sys/mman.h], [AC_DEFINE([HAVE_MMAP], [1], [Define to 1 if mmap() is available.])], have_mman=no)
+AC_CHECK_FUNC([aligned_alloc], [AC_DEFINE([HAVE_ALIGNED_ALLOC], [1], [Define to 1 if aligned_alloc() is available.])], have_aligned_alloc=no)
 AC_CHECK_MEMBERS([struct sockaddr.sa_len], [], [], [#include <sys/socket.h>])
+
+if test "$have_aligned_alloc" = "no" && test "$have_mman" = "no" ; then
+  AC_MSG_ERROR([No means of aligned alloc found. Need mmap() or aligned_alloc().])
+fi
+
 
 AC_C_BIGENDIAN(
   [AC_DEFINE([CPU_BIG_ENDIAN], [1], [Define to 1 if cpu is big endian])],
   [AC_DEFINE([CPU_LITTLE_ENDIAN], [1], [Define to 1 if cpu is little endian])],
   [AC_MSG_ERROR([Cannot determine CPU endianity.])]
 )
+
+BIRD_CHECK_POINTER_ALIGNMENT
+if test "$bird_cv_pointer_alignment" = "unknown" ; then
+  AC_MSG_ERROR([Couldn't determine pointer alignment])
+else
+  AC_DEFINE_UNQUOTED([CPU_POINTER_ALIGNMENT], [$bird_cv_pointer_alignment], [Pointer alignment for macro usage])
+fi
 
 BIRD_CHECK_ANDROID_GLOB
 if test "$bird_cv_lib_glob" = no ; then
@@ -482,7 +490,6 @@ AC_MSG_RESULT([        Iproute2 directory:	$iproutedir])
 AC_MSG_RESULT([        System configuration:	$sysdesc])
 AC_MSG_RESULT([        Debugging:		$enable_debug])
 AC_MSG_RESULT([        Compact tries:		$enable_compact_tries])
-AC_MSG_RESULT([        POSIX threads:		$enable_pthreads])
 AC_MSG_RESULT([        Routing protocols:	$protocols])
 AC_MSG_RESULT([        LibSSH support in RPKI:	$enable_libssh])
 AC_MSG_RESULT([        Kernel MPLS support:	$enable_mpls_kernel])

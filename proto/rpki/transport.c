@@ -121,7 +121,7 @@ rpki_tr_close(struct rpki_tr_sock *tr)
 
   if (tr->sk)
   {
-    rfree(tr->sk);
+    sk_close(tr->sk);
     tr->sk = NULL;
   }
 }

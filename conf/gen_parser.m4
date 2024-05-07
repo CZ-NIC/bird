@@ -29,17 +29,11 @@ m4_define(CF_END, `m4_divert(-1)')
 m4_define(CF_itera, `m4_ifelse($#, 1, [[CF_iter($1)]], [[CF_iter($1)[[]]CF_itera(m4_shift($@))]])')
 m4_define(CF_iterate, `m4_define([[CF_iter]], m4_defn([[$1]]))CF_itera($2)')
 
-m4_define(CF_append, `m4_define([[$1]], m4_ifdef([[$1]], m4_defn([[$1]])[[$3]])[[$2]])')
-
-# Keywords act as %token<s>
-m4_define(CF_keywd, `m4_ifdef([[CF_tok_$1]],,[[m4_define([[CF_tok_$1]],1)CF_append([[CF_kw_rule]],$1,[[ | ]])m4_define([[CF_toks]],CF_toks $1)]])')
+# Keywords act as untyped %token
+m4_define(CF_keywd, `m4_ifdef([[CF_tok_$1]],,[[m4_define([[CF_tok_$1]],1)m4_define([[CF_toks]],CF_toks $1)]])')
 m4_define(CF_KEYWORDS, `m4_define([[CF_toks]],[[]])CF_iterate([[CF_keywd]], [[$@]])m4_ifelse(CF_toks,,,%token<s>[[]]CF_toks
 )DNL')
 m4_define(CF_METHODS, `m4_define([[CF_toks]],[[]])CF_iterate([[CF_keywd]], [[$@]])m4_ifelse(CF_toks,,,%token<s>[[]]CF_toks
-)DNL')
-
-m4_define(CF_keywd2, `m4_ifdef([[CF_tok_$1]],,[[m4_define([[CF_tok_$1]],1)m4_define([[CF_toks]],CF_toks $1)]])')
-m4_define(CF_KEYWORDS_EXCLUSIVE, `m4_define([[CF_toks]],[[]])CF_iterate([[CF_keywd2]], [[$@]])m4_ifelse(CF_toks,,,%token<s>[[]]CF_toks
 )DNL')
 
 # CLI commands
@@ -64,11 +58,7 @@ m4_undivert(1)DNL
 
 m4_undivert(2)DNL
 
-%type <s> KEYWORD
-
 %%
-KEYWORD: CF_kw_rule;
-
 m4_undivert(3)DNL
 
 %%

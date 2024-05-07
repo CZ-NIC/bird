@@ -10,6 +10,8 @@
 #ifndef _BIRD_BITMAP_H_
 #define _BIRD_BITMAP_H_
 
+#include "lib/resource.h"
+
 struct bmap
 {
   u32 size;

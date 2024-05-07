@@ -41,7 +41,7 @@
 #endif
 
 static void slab_free(resource *r);
-static void slab_dump(resource *r);
+static void slab_dump(resource *r, unsigned indent);
 static resource *slab_lookup(resource *r, unsigned long addr);
 static struct resmem slab_memsize(resource *r);
 
@@ -118,7 +118,7 @@ slab_free(resource *r)
 }
 
 static void
-slab_dump(resource *r)
+slab_dump(resource *r, unsigned indent UNUSED)
 {
   slab *s = (slab *) r;
   int cnt = 0;
@@ -197,7 +197,7 @@ static struct resclass sl_class = {
   slab_memsize
 };
 
-#define SL_GET_HEAD(x)	((struct sl_head *) (((uintptr_t) (x)) & ~(page_size-1)))
+#define SL_GET_HEAD(x)	PAGE_HEAD(x)
 
 #define SL_HEAD_CHANGE_STATE(_s, _h, _from, _to) ({ \
     ASSERT_DIE(_h->state == slh_##_from); \
@@ -236,7 +236,7 @@ sl_new(pool *p, uint size)
       + sizeof(u32) * s->head_bitfield_len
       + align - 1)
     / align * align;
-  } while (s->objs_per_slab * size + s->head_size > page_size);
+  } while (s->objs_per_slab * size + s->head_size > (size_t) page_size);
 
   if (!s->objs_per_slab)
     bug("Slab: object too large");
@@ -256,6 +256,7 @@ void *
 sl_alloc(slab *s)
 {
   struct sl_head *h;
+  ASSERT_DIE(DG_IS_LOCKED(resource_parent(&s->r)->domain));
 
 redo:
   if (!(h = s->partial_heads.first))
@@ -331,6 +332,7 @@ sl_free(void *oo)
 {
   struct sl_head *h = SL_GET_HEAD(oo);
   struct slab *s = h->slab;
+  ASSERT_DIE(DG_IS_LOCKED(resource_parent(&s->r)->domain));
 
 #ifdef POISON
   memset(oo, 0xdb, s->data_size);
@@ -378,7 +380,7 @@ slab_free(resource *r)
 }
 
 static void
-slab_dump(resource *r)
+slab_dump(resource *r, unsigned indent UNUSED)
 {
   slab *s = (slab *) r;
   int ec=0, pc=0, fc=0;
@@ -390,6 +392,15 @@ slab_dump(resource *r)
   WALK_TLIST(sl_head, h, &s->full_heads)
     fc++;
   debug("(%de+%dp+%df blocks per %d objs per %d bytes)\n", ec, pc, fc, s->objs_per_slab, s->obj_size);
+
+  char x[16];
+  bsprintf(x, "%%%ds%%s %%p\n", indent + 2);
+  WALK_TLIST(sl_head, h, &s->full_heads)
+    debug(x, "", "full", h);
+  WALK_TLIST(sl_head, h, &s->partial_heads)
+    debug(x, "", "partial", h);
+  WALK_TLIST(sl_head, h, &s->empty_heads)
+    debug(x, "", "empty", h);
 }
 
 static struct resmem

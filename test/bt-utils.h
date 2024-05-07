@@ -34,7 +34,6 @@ net_addr *bt_read_nets(FILE *f, int type, uint *n);
 net_addr *bt_read_net_file(const char *filename, int type, uint *n);
 
 void bt_bird_init(void);
-void bt_bird_cleanup(void);
 struct config *bt_config_parse(const char *cfg);
 struct config *bt_config_file_parse(const char *filepath);
 

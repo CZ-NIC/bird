@@ -132,10 +132,6 @@ build-fedora-34-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:fedora-33-amd64
 
-#build-centos-7-amd64:
-#  <<: *build-linux
-#  image: registry.nic.cz/labs/bird:centos-7-amd64
-
 build-centos-8-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:centos-8-amd64
@@ -260,13 +256,6 @@ pkg-fedora-34-amd64:
   needs: [build-fedora-34-amd64]
   image: registry.nic.cz/labs/bird:fedora-34-amd64
 
-#pkg-centos-7-amd64:
-#  <<: *pkg-rpm-wa
-#  variables:
-#    LC_ALL: en_US.UTF-8
-#  needs: [build-centos-7-amd64]
-#  image: registry.nic.cz/labs/bird:centos-7-amd64
-
 pkg-centos-8-amd64:
   <<: *pkg-rpm-wa
   needs: [build-centos-8-amd64]
@@ -334,7 +323,7 @@ build-netlab:
   script:
     - cd $TOOLS_DIR/netlab
     - sudo ./stop
-    - sudo ./runtest -s v2 -m check $TEST_NAME
+    - sudo ./runtest -s v3 -m check $TEST_NAME
 
 test-ospf-base:
   <<: *test-base
@@ -446,11 +435,11 @@ test-ibgp-loop:
   variables:
     TEST_NAME: cf-ibgp-loop
 
-test-ibgp-loop-big:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ibgp-loop-big
-
+#test-ibgp-loop-big:
+#  <<: *test-base
+#  variables:
+#    TEST_NAME: cf-ibgp-loop-big
+#
 test-ibgp-flat:
   <<: *test-base
   variables:

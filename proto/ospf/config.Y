@@ -190,8 +190,7 @@ ospf_check_auth(void)
 
 CF_DECLS
 
-CF_KEYWORDS_EXCLUSIVE(V2, V3)
-CF_KEYWORDS(OSPF, OSPF_METRIC1, OSPF_METRIC2, OSPF_TAG, OSPF_ROUTER_ID)
+CF_KEYWORDS(OSPF, V2, V3)
 CF_KEYWORDS(AREA, NEIGHBORS, RFC1583COMPAT, STUB, TICK, COST, COST2, RETRANSMIT)
 CF_KEYWORDS(HELLO, TRANSMIT, PRIORITY, DEAD, TYPE, BROADCAST, BCAST, DEFAULT)
 CF_KEYWORDS(NONBROADCAST, NBMA, POINTOPOINT, PTP, POINTOMULTIPOINT, PTMP)
@@ -512,11 +511,6 @@ ospf_iface_opt_list:
 ospf_iface:
   ospf_iface_start ospf_iface_patt_list ospf_iface_opt_list { ospf_iface_finish(); }
  ;
-
-dynamic_attr: OSPF_METRIC1 { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_OSPF_METRIC1); } ;
-dynamic_attr: OSPF_METRIC2 { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_OSPF_METRIC2); } ;
-dynamic_attr: OSPF_TAG { $$ = f_new_dynamic_attr(EAF_TYPE_INT, T_INT, EA_OSPF_TAG); } ;
-dynamic_attr: OSPF_ROUTER_ID { $$ = f_new_dynamic_attr(EAF_TYPE_ROUTER_ID, T_QUAD, EA_OSPF_ROUTER_ID); } ;
 
 CF_CLI_HELP(SHOW OSPF, ..., [[Show information about OSPF protocol]]);
 CF_CLI(SHOW OSPF, optproto, [<name>], [[Show information about OSPF protocol]])

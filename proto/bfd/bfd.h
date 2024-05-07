@@ -17,12 +17,12 @@
 #include "nest/password.h"
 #include "conf/conf.h"
 #include "lib/hash.h"
+#include "lib/io-loop.h"
 #include "lib/resource.h"
 #include "lib/socket.h"
 #include "lib/string.h"
 
 #include "nest/bfd.h"
-#include "io.h"
 
 
 #define BFD_CONTROL_PORT	3784
@@ -88,17 +88,18 @@ struct bfd_neighbor
 struct bfd_proto
 {
   struct proto p;
-  struct birdloop *loop;
-  pool *tpool;
+
   pthread_spinlock_t lock;
+
+  pool *tpool;
+
   node bfd_node;
 
   slab *session_slab;
   HASH(struct bfd_session) session_hash_id;
   HASH(struct bfd_session) session_hash_ip;
 
-  sock *notify_rs;
-  sock *notify_ws;
+  event notify_event;
   list notify_list;
 
   sock *rx4_1;
@@ -164,7 +165,6 @@ struct bfd_session
 
   list request_list;			/* List of client requests (struct bfd_request) */
   btime last_state_change;		/* Time of last state change */
-  u8 notify_running;			/* 1 if notify hooks are running */
 
   u8 rx_csn_known;			/* Received crypto sequence number is known */
   u32 rx_csn;				/* Last received crypto sequence number */

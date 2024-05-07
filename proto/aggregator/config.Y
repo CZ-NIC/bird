@@ -17,12 +17,11 @@ CF_DEFINES
 #define AGGREGATOR_CFG ((struct aggregator_config *) this_proto)
 #define AGGR_ITEM_ALLOC ((struct aggr_item_node *) cfg_allocz(sizeof(struct aggr_item_node)))
 
-
 CF_DECLS
 
 CF_KEYWORDS(AGGREGATOR, PEER, AGGREGATE, ON, MERGE, BY)
 
-%type <ai> aggr_item aggr_list
+%type <xp> aggr_item aggr_list
 
 CF_GRAMMAR
 
@@ -41,41 +40,43 @@ aggregator_proto_item:
    proto_item
  | channel_item_
  | PEER TABLE rtable { AGGREGATOR_CFG->dst->table = $3; }
- | AGGREGATE ON aggr_list {
+ | AGGREGATE ON {
     if (AGGREGATOR_CFG->aggr_on)
       cf_error("Only one aggregate on clause allowed");
 
-    _Bool net_present = 0;
-    int count = 0;
+    cf_enter_filters();
+    cf_push_block_scope(new_config);
+ } aggr_list {
+    int count = new_config->current_scope->slots;
+    cf_pop_block_scope(new_config);
+    cf_exit_filters();
 
-    for (const struct aggr_item_node *item = $3; item; item = item->next) {
-//      log(L_WARN "type %d sacode %d", item->i.type, item->i.sa.sa_code);
-      if (item->i.type == AGGR_ITEM_STATIC_ATTR && item->i.sa.sa_code == SA_NET)
-	net_present = 1;
+    if (!AGGREGATOR_CFG->aggr_on_net)
+      cf_error("aggregate on must be always include 'net'.");
 
-      count++;
-    }
-
-   if (!net_present)
-     cf_error("'NET' must be present");
-
-   AGGREGATOR_CFG->aggr_on = cfg_alloc(sizeof(struct aggr_item) * count);
-
-   int pos = 0;
-   for (const struct aggr_item_node *item = $3; item; item = item->next) {
-     if (item->i.type == AGGR_ITEM_DYNAMIC_ATTR)
-       AGGREGATOR_CFG->aggr_on_da_count++;
-
-     AGGREGATOR_CFG->aggr_on[pos++] = item->i;
+   struct f_inst *rot = NULL;
+   while ($4.begin)
+   {
+     struct f_inst *tmp = $4.begin->next;
+     $4.begin->next = rot;
+     rot = $4.begin;
+     $4.begin = tmp;
    }
 
-   AGGREGATOR_CFG->aggr_on_count = pos;
+   AGGREGATOR_CFG->aggr_on_count = count;
+   AGGREGATOR_CFG->aggr_on = f_linearize(rot, count);
+
+   struct f_line *premerge = f_linearize($4.end, 0);
+   premerge->args = count;
+   AGGREGATOR_CFG->premerge = premerge;
  }
  | MERGE BY {
+   cf_enter_filters();
    cf_push_block_scope(new_config);
-   cf_create_symbol(new_config, "routes", SYM_VARIABLE | T_ROUTES_BLOCK, offset, f_new_var(sym_->scope));
+   f_predefined_variable(new_config, "routes", T_ROUTES_BLOCK);
  } function_body {
    cf_pop_block_scope(new_config);
+   cf_exit_filters();
    $4->args++;
    AGGREGATOR_CFG->merge_by = $4;
  }
@@ -88,45 +89,61 @@ aggregator_proto: aggregator_proto_start proto_name '{' aggregator_proto_opts '}
 aggr_list:
    aggr_item
  | aggr_list ',' aggr_item {
-       if ($3 == NULL) {
-         $$ = $1;
-       } else {
-         $$ = $3;
-         $$->next = $1;
-       }
-   }
+    if ($$.begin = $3.begin)
+      $$.begin->next = $1.begin;
+    else
+      $$.begin = $1.begin;
+
+    if ($$.end = $3.end)
+      $$.end->next = $1.end;
+    else
+      $$.end = $1.end;
+ }
  ;
 
 aggr_item:
    '(' term ')' {
-       $$ = AGGR_ITEM_ALLOC;
-       $$->i.type = AGGR_ITEM_TERM;
-       $$->i.line = f_linearize($2, 1);
+     switch ($2->type) {
+       case T_INT:
+       case T_BOOL:
+       case T_PAIR:
+       case T_QUAD:
+       case T_ENUM:
+       case T_IP:
+       case T_EC:
+       case T_LC:
+       case T_RD:
+	 /* Fits, OK */
+	 break;
+
+       default:
+	 cf_error("Expression evaluated to type %s unsupported by aggregator. Store this value as a custom attribute instead", f_type_name($2->type));
+     }
+
+     $$.begin = $2;
+     $$.end = NULL;
+     f_new_var(new_config->current_scope);
+   }
+  | lvalue {
+    $$.begin = f_lval_getter(&$1);
+    int vari = f_new_var(new_config->current_scope);
+
+    if ($1.type == F_LVAL_SA && $1.sa.sa_code == SA_NET)
+      AGGREGATOR_CFG->aggr_on_net = 1;
+    if (($1.type == F_LVAL_CONSTANT) || 
+	($1.type == F_LVAL_SA && $1.sa.readonly))
+      $$.end = NULL;
+    else
+    {
+      char varname[12];
+      bsnprintf(varname, 12, "!aggr%d", vari);
+      $$.end = f_lval_setter(&$1,
+	  f_new_inst(FI_VAR_GET, cf_define_symbol(
+	      new_config, cf_get_symbol(new_config, varname),
+	      SYM_VARIABLE | $$.begin->type, offset, vari
+	      )));
     }
-  | CF_SYM_KNOWN {
-      switch ($1->class) {
-        case SYM_ATTRIBUTE:
-          $$ = AGGR_ITEM_ALLOC;
-          $$->i.type = AGGR_ITEM_DYNAMIC_ATTR;
-          $$->i.da = *$1->attribute;
-          break;
-        case SYM_CONSTANT_RANGE:
-          $$ = NULL;
-          break;
-        default:
-          cf_error("Can't aggregate on symbol type %s.", cf_symbol_class_name($1));
-      }
-    }
-  | dynamic_attr {
-      $$ = AGGR_ITEM_ALLOC;
-      $$->i.type = AGGR_ITEM_DYNAMIC_ATTR;
-      $$->i.da = $1;
-    }
-  | static_attr {
-      $$ = AGGR_ITEM_ALLOC;
-      $$->i.type = AGGR_ITEM_STATIC_ATTR;
-      $$->i.sa = $1;
-    }
+  }
   ;
 
 CF_CODE

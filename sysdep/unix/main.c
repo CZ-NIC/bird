@@ -28,6 +28,7 @@
 #include "lib/resource.h"
 #include "lib/socket.h"
 #include "lib/event.h"
+#include "lib/locking.h"
 #include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/route.h"
@@ -52,12 +53,12 @@ async_dump(void)
 {
   debug("INTERNAL STATE DUMP\n\n");
 
-  rdump(&root_pool);
+  rdump(&root_pool, 0);
   sk_dump_all();
   // XXXX tm_dump_all();
   if_dump_all();
   neigh_dump_all();
-  rta_dump_all();
+  ea_dump_all();
   rt_dump_all();
   protos_dump_all();
 
@@ -200,9 +201,12 @@ sysdep_preconfig(struct config *c)
 }
 
 int
-sysdep_commit(struct config *new, struct config *old UNUSED)
+sysdep_commit(struct config *new, struct config *old)
 {
-  log_switch(0, &new->logfiles, new->syslog_name);
+  if (!new->shutdown)
+    log_switch(0, &new->logfiles, new->syslog_name);
+
+  bird_thread_commit(new, old);
   return 0;
 }
 
@@ -402,7 +406,8 @@ static char *path_control_socket = PATH_CONTROL_SOCKET;
 static void
 cli_write(cli *c)
 {
-  sock *s = c->priv;
+  sock *s = c->sock;
+  ASSERT_DIE(c->sock);
 
   while (c->tx_pos)
     {
@@ -426,7 +431,9 @@ cli_write(cli *c)
 void
 cli_write_trigger(cli *c)
 {
-  sock *s = c->priv;
+  sock *s = c->sock;
+  if (!s)
+    return;
 
   if (s->tbuf == NULL)
     cli_write(c);
@@ -441,7 +448,8 @@ cli_tx(sock *s)
 int
 cli_get_command(cli *c)
 {
-  sock *s = c->priv;
+  sock *s = c->sock;
+  ASSERT_DIE(c->sock);
   byte *t = s->rbuf;
   byte *tend = s->rpos;
   byte *d = c->rx_pos;
@@ -490,6 +498,7 @@ cli_err(sock *s, int err)
       else
 	log(L_INFO "CLI connection closed");
     }
+
   cli_free(s->data);
 }
 
@@ -535,7 +544,7 @@ cli_init_unix(uid_t use_uid, gid_t use_gid)
   /* Return value intentionally ignored */
   unlink(path_control_socket);
 
-  if (sk_open_unix(s, path_control_socket) < 0)
+  if (sk_open_unix(s, &main_birdloop, path_control_socket) < 0)
     die("Cannot create control socket %s: %m", path_control_socket);
 
   if (use_uid || use_gid)
@@ -886,19 +895,24 @@ main(int argc, char **argv)
     dmalloc_debug(0x2f03d00);
 #endif
 
-  parse_args(argc, argv);
-  log_switch(1, NULL, NULL);
-
-  random_init();
+  /* Prepare necessary infrastructure */
+  the_bird_lock();
+  times_update();
   resource_init();
-  timer_init();
+  random_init();
+
+  birdloop_init();
   olock_init();
-  io_init();
   rt_init();
+  io_init();
   if_init();
   mpls_init();
 //  roa_init();
   config_init();
+
+  /* Arguments and logs */
+  parse_args(argc, argv);
+  log_switch(1, NULL, NULL);
 
   uid_t use_uid = get_uid(use_user);
   gid_t use_gid = get_gid(use_group);
@@ -925,6 +939,8 @@ main(int argc, char **argv)
   if (parse_and_exit)
     exit(0);
 
+  flush_local_pages();
+
   if (!run_in_foreground)
     {
       pid_t pid = fork();
@@ -939,8 +955,6 @@ main(int argc, char **argv)
       dup2(0, 1);
       dup2(0, 2);
     }
-
-  main_thread_init();
 
   write_pid_file();
 

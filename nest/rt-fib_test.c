@@ -30,14 +30,13 @@ static inline int net_match(struct test_node *tn, net_addr *query, net_addr *dat
 static int
 t_match_random_net(void)
 {
-  bt_bird_init();
   bt_config_parse(BT_CONFIG_SIMPLE);
 
   for (int round = 0; round < TESTS_NUM; round++)
   {
     int type = !(round & 1) ? NET_IP4 : NET_IP6;
 
-    pool *p = rp_new(&root_pool, "FIB pool");
+    pool *p = rp_new(&root_pool, the_bird_domain.the_bird, "FIB pool");
     net_addr *nets = bt_random_nets(type, PREFIXES_NUM);
 
     /* Make FIB structure */
@@ -74,21 +73,19 @@ t_match_random_net(void)
     tmp_flush();
   }
 
-  bt_bird_cleanup();
   return 1;
 }
 
 static int
 t_fib_walk(void)
 {
-  bt_bird_init();
   bt_config_parse(BT_CONFIG_SIMPLE);
 
   for (int round = 0; round < TESTS_NUM; round++)
   {
     int type = !(round & 1) ? NET_IP4 : NET_IP6;
 
-    pool *p = rp_new(&root_pool, "FIB pool");
+    pool *p = rp_new(&root_pool, the_bird_domain.the_bird, "FIB pool");
     net_addr *nets = bt_random_nets(type, PREFIXES_NUM);
     byte *marks = tmp_allocz(PREFIXES_NUM);
 
@@ -125,7 +122,6 @@ t_fib_walk(void)
     tmp_flush();
   }
 
-  bt_bird_cleanup();
   return 1;
 }
 
@@ -143,7 +139,7 @@ benchmark_fib_dataset(const char *filename, int type)
   bt_log_suite_case_result(1, "Read net data, %u nets", n);
   bt_reset_suite_case_timer();
 
-  pool *p = rp_new(&root_pool, "FIB pool");
+  pool *p = rp_new(&root_pool, the_bird_domain.the_bird, "FIB pool");
 
   /* Make FIB structure */
   struct fib f;
@@ -218,7 +214,6 @@ benchmark_fib_dataset(const char *filename, int type)
 static int UNUSED
 t_bench_fib_datasets(void)
 {
-  bt_bird_init();
   bt_config_parse(BT_CONFIG_SIMPLE);
 
   /* Specific datasets, not included */
@@ -227,8 +222,6 @@ t_bench_fib_datasets(void)
   benchmark_fib_dataset("fib-data-bgp-v6-1",  NET_IP6);
   benchmark_fib_dataset("fib-data-bgp-v6-10", NET_IP6);
 
-  bt_bird_cleanup();
-
   return 1;
 }
 
@@ -236,6 +229,7 @@ int
 main(int argc, char *argv[])
 {
   bt_init(argc, argv);
+  bt_bird_init();
 
   bt_test_suite(t_match_random_net, "Testing random prefix matching");
   bt_test_suite(t_fib_walk, "Testing FIB_WALK() on random FIB");

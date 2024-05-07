@@ -11,7 +11,7 @@
 
 #include "lib/net.h"
 #include "nest/route.h"
-#include "nest/attrs.h"
+#include "lib/attrs.h"
 #include "lib/resource.h"
 
 #define SET_SIZE 10
@@ -20,8 +20,8 @@ static const struct adata *set_sequence_same;		/* <0; SET_SIZE) */
 static const struct adata *set_sequence_higher;	/* <SET_SIZE; 2*SET_SIZE) */
 static const struct adata *set_random;
 
-#define BUFFER_SIZE 1000
-static byte buf[BUFFER_SIZE] = {};
+#define T_BUFFER_SIZE 1000
+static byte buf[T_BUFFER_SIZE] = {};
 
 #define SET_SIZE_FOR_FORMAT_OUTPUT 10
 
@@ -92,11 +92,11 @@ t_set_int_union(void)
   const struct adata *set_union;
   set_union = int_set_union(tmp_linpool, set_sequence, set_sequence_same);
   bt_assert(int_set_get_size(set_union) == SET_SIZE);
-  bt_assert(int_set_format(set_union, 0, 2, buf, BUFFER_SIZE) == 0);
+  bt_assert(int_set_format(set_union, 0, 2, buf, T_BUFFER_SIZE) == 0);
 
   set_union = int_set_union(tmp_linpool, set_sequence, set_sequence_higher);
   bt_assert_msg(int_set_get_size(set_union) == SET_SIZE*2, "int_set_get_size(set_union) %d, SET_SIZE*2 %d", int_set_get_size(set_union), SET_SIZE*2);
-  bt_assert(int_set_format(set_union, 0, 2, buf, BUFFER_SIZE) == 0);
+  bt_assert(int_set_format(set_union, 0, 2, buf, T_BUFFER_SIZE) == 0);
 
   return 1;
 }
@@ -106,15 +106,15 @@ t_set_int_format(void)
 {
   generate_set_sequence(SET_TYPE_INT, SET_SIZE_FOR_FORMAT_OUTPUT);
 
-  bt_assert(int_set_format(set_sequence, 0, 0, buf, BUFFER_SIZE) == 0);
+  bt_assert(int_set_format(set_sequence, 0, 0, buf, T_BUFFER_SIZE) == 0);
   bt_assert(strcmp(buf, "0.0.0.0 0.0.0.1 0.0.0.2 0.0.0.3 0.0.0.4 0.0.0.5 0.0.0.6 0.0.0.7 0.0.0.8 0.0.0.9") == 0);
 
-  bzero(buf, BUFFER_SIZE);
-  bt_assert(int_set_format(set_sequence, 0, 2, buf, BUFFER_SIZE) == 0);
+  bzero(buf, T_BUFFER_SIZE);
+  bt_assert(int_set_format(set_sequence, 0, 2, buf, T_BUFFER_SIZE) == 0);
   bt_assert(strcmp(buf, "0.0.0.2 0.0.0.3 0.0.0.4 0.0.0.5 0.0.0.6 0.0.0.7 0.0.0.8 0.0.0.9") == 0);
 
-  bzero(buf, BUFFER_SIZE);
-  bt_assert(int_set_format(set_sequence, 1, 0, buf, BUFFER_SIZE) == 0);
+  bzero(buf, T_BUFFER_SIZE);
+  bt_assert(int_set_format(set_sequence, 1, 0, buf, T_BUFFER_SIZE) == 0);
   bt_assert(strcmp(buf, "(0,0) (0,1) (0,2) (0,3) (0,4) (0,5) (0,6) (0,7) (0,8) (0,9)") == 0);
 
   return 1;
@@ -174,11 +174,11 @@ t_set_ec_union(void)
   const struct adata *set_union;
   set_union = ec_set_union(tmp_linpool, set_sequence, set_sequence_same);
   bt_assert(ec_set_get_size(set_union) == SET_SIZE);
-  bt_assert(ec_set_format(set_union, 0, buf, BUFFER_SIZE) == 0);
+  bt_assert(ec_set_format(set_union, 0, buf, T_BUFFER_SIZE) == 0);
 
   set_union = ec_set_union(tmp_linpool, set_sequence, set_sequence_higher);
   bt_assert_msg(ec_set_get_size(set_union) == SET_SIZE*2, "ec_set_get_size(set_union) %d, SET_SIZE*2 %d", ec_set_get_size(set_union), SET_SIZE*2);
-  bt_assert(ec_set_format(set_union, 0, buf, BUFFER_SIZE) == 0);
+  bt_assert(ec_set_format(set_union, 0, buf, T_BUFFER_SIZE) == 0);
 
   return 1;
 }
@@ -194,7 +194,7 @@ t_set_ec_format(void)
   for (i = 1; i < SET_SIZE_FOR_FORMAT_OUTPUT; i++)
     set_sequence = ec_set_add(tmp_linpool, set_sequence, i + ((i%2) ? ((u64)EC_RO << 48) : ((u64)EC_RT << 48)));
 
-  bt_assert(ec_set_format(set_sequence, 0, buf, BUFFER_SIZE) == 0);
+  bt_assert(ec_set_format(set_sequence, 0, buf, T_BUFFER_SIZE) == 0);
   bt_assert_msg(strcmp(buf, "(unknown 0x0, 0, 0) (ro, 0, 1) (rt, 0, 2) (ro, 0, 3) (rt, 0, 4) (ro, 0, 5) (rt, 0, 6) (ro, 0, 7) (rt, 0, 8) (ro, 0, 9)") == 0,
 		"ec_set_format() returns '%s'", buf);
 
@@ -220,6 +220,7 @@ t_set_ec_delete(void)
 
   return 1;
 }
+
 
 int
 main(int argc, char *argv[])

@@ -10,6 +10,7 @@
 #define _BIRD_LOCKS_H_
 
 #include "lib/resource.h"
+#include "lib/lists.h"
 #include "lib/event.h"
 
 /*
@@ -32,8 +33,8 @@ struct object_lock {
   uint inst;		/* ... instance ID */
   struct iface *iface;	/* ... interface */
   struct iface *vrf;	/* ... or VRF (if iface is unknown) */
-  void (*hook)(struct object_lock *);	/* Called when the lock succeeds */
-  void *data;		/* User data */
+  event event;		/* Enqueued when the lock succeeds */
+  event_list *target;	/* Where to put the event */
   /* ... internal to lock manager, don't touch ... */
   node n;		/* Node in list of olocks */
   int state;		/* OLOCK_STATE_xxx */
@@ -51,6 +52,5 @@ void olock_init(void);
 #define OLOCK_STATE_FREE 0
 #define OLOCK_STATE_LOCKED 1
 #define OLOCK_STATE_WAITING 2
-#define OLOCK_STATE_EVENT 3		/* waiting for unlock processing */
 
 #endif

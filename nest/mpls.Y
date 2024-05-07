@@ -53,13 +53,15 @@ mpls_domain_end: { mpls_domain_postconfig(this_mpls_domain); this_mpls_domain = 
 
 mpls_range: mpls_range_start mpls_range_opt_list mpls_range_end;
 
-mpls_range_start: LABEL RANGE symbol
-{
-  if (($3->class == SYM_KEYWORD) && ($3->keyword->value == STATIC))
+mpls_range_start: LABEL RANGE STATIC {
     this_mpls_range = this_mpls_domain->static_range;
-  else if (($3->class == SYM_KEYWORD) && ($3->keyword->value == DYNAMIC))
+};
+
+mpls_range_start: LABEL RANGE DYNAMIC {
     this_mpls_range = this_mpls_domain->dynamic_range;
-  else
+};
+
+mpls_range_start: LABEL RANGE symbol {
     this_mpls_range = mpls_range_config_new(this_mpls_domain, $3);
 };
 
@@ -122,8 +124,8 @@ mpls_label_policy:
 
 mpls_channel_opt:
    channel_item
- | DOMAIN symbol_known { cf_assert_symbol($2, SYM_MPLS_DOMAIN); MPLS_CC->domain = $2->mpls_domain; }
- | LABEL RANGE symbol_known { cf_assert_symbol($3, SYM_MPLS_RANGE); MPLS_CC->range = $3->mpls_range; }
+ | DOMAIN CF_SYM_KNOWN { cf_assert_symbol($2, SYM_MPLS_DOMAIN); MPLS_CC->domain = $2->mpls_domain; }
+ | LABEL RANGE CF_SYM_KNOWN { cf_assert_symbol($3, SYM_MPLS_RANGE); MPLS_CC->range = $3->mpls_range; }
  | LABEL RANGE STATIC  { MPLS_CC->range = MPLS_CC->domain->static_range; }
  | LABEL RANGE DYNAMIC { MPLS_CC->range = MPLS_CC->domain->dynamic_range; }
  | LABEL POLICY mpls_label_policy { MPLS_CC->label_policy = $3; }
@@ -150,7 +152,7 @@ show_mpls_ranges_args:
 
      $$ = cfg_allocz(sizeof(struct mpls_show_ranges_cmd));
    }
- | show_mpls_ranges_args symbol_known
+ | show_mpls_ranges_args CF_SYM_KNOWN
    {
      if ($2->class == SYM_MPLS_DOMAIN)
      {

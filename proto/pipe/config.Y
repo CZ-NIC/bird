@@ -16,7 +16,7 @@ CF_DEFINES
 
 CF_DECLS
 
-CF_KEYWORDS(PIPE, PEER, TABLE)
+CF_KEYWORDS(PIPE, PEER, TABLE, MAX, GENERATION)
 
 CF_GRAMMAR
 
@@ -25,6 +25,8 @@ proto: pipe_proto '}' { this_channel = NULL; }  ;
 pipe_proto_start: proto_start PIPE
 {
   this_proto = proto_config_new(&proto_pipe, $1);
+  this_proto->loop_order = DOMAIN_ORDER(proto);
+  PIPE_CFG->max_generation = 16;
 }
 proto_name
 {
@@ -40,7 +42,17 @@ pipe_proto:
    pipe_proto_start '{'
  | pipe_proto proto_item ';'
  | pipe_proto channel_item_ ';'
+ | pipe_proto IMPORT IN net_any imexport ';' {
+    if (this_channel->net_type && ($4->type != this_channel->net_type))
+      cf_error("Incompatible export prefilter type");
+    PIPE_CFG->in_subprefix = $4;
+    this_channel->in_filter = $5;
+  }
  | pipe_proto PEER TABLE rtable ';' { PIPE_CFG->peer = $4; }
+ | pipe_proto MAX GENERATION expr ';' {
+    if (($4 < 1) || ($4 > 254)) cf_error("Max generation must be in range 1..254, got %u", $4);
+    PIPE_CFG->max_generation = $4;
+  }
  ;
 
 CF_CODE

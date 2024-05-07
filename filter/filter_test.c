@@ -46,7 +46,7 @@ run_function(const void *arg)
   if (t->cmp)
     return t->result == f_same(t->fn, t->cmp);
 
-  enum filter_return fret = f_eval(t->fn, tmp_linpool, NULL);
+  enum filter_return fret = f_eval(t->fn, NULL);
 
   return (fret < F_REJECT);
 }
@@ -70,6 +70,7 @@ int
 main(int argc, char *argv[])
 {
   bt_init(argc, argv);
+
   bt_bird_init();
 
   bt_assert_hook = bt_assert_filter;
@@ -78,14 +79,13 @@ main(int argc, char *argv[])
   if (!bt_config_file_parse(BT_CONFIG_FILE))
     abort();
 
-  bt_test_suite_arg(t_reconfig, BT_CONFIG_FILE ".overlay", "Testing reconfiguration to overlay");
-  bt_test_suite_arg(t_reconfig, BT_CONFIG_FILE, "Testing reconfiguration back");
-  bt_test_suite_arg(t_reconfig, BT_CONFIG_FILE, "Testing reconfiguration to the same file");
+  bt_test_suite_arg_extra(t_reconfig, BT_CONFIG_FILE ".overlay", 0, BT_TIMEOUT, "Testing reconfiguration to overlay");
+  bt_test_suite_arg_extra(t_reconfig, BT_CONFIG_FILE, 0, BT_TIMEOUT, "Testing reconfiguration back");
+  bt_test_suite_arg_extra(t_reconfig, BT_CONFIG_FILE, 0, BT_TIMEOUT, "Testing reconfiguration to the same file");
 
   struct f_bt_test_suite *t;
   WALK_LIST(t, config->tests)
-    bt_test_suite_base(run_function, t->fn_name, t, BT_FORKING, BT_TIMEOUT, "%s", t->dsc);
+    bt_test_suite_base(run_function, t->fn_name, t, 0, BT_TIMEOUT, "%s", t->dsc);
 
-  bt_bird_cleanup();
   return bt_exit_value();
 }

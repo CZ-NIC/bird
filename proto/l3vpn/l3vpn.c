@@ -46,7 +46,9 @@
 
 #include "l3vpn.h"
 
-#include "proto/bgp/bgp.h"
+#include "proto/pipe/pipe.h"
+
+#include <stdbool.h>
 
 /*
  * TODO:
@@ -59,22 +61,19 @@
  * - MPLS-in-IP encapsulation
  */
 
-#define EA_BGP_NEXT_HOP		EA_CODE(PROTOCOL_BGP, BA_NEXT_HOP)
-#define EA_BGP_EXT_COMMUNITY	EA_CODE(PROTOCOL_BGP, BA_EXT_COMMUNITY)
-#define EA_BGP_MPLS_LABEL_STACK	EA_CODE(PROTOCOL_BGP, BA_MPLS_LABEL_STACK)
-
-static inline const struct adata * ea_get_adata(ea_list *e, uint id)
-{ eattr *a = ea_find(e, id); return a ? a->u.ptr : &null_adata; }
+static struct ea_class *ea_bgp_next_hop,
+		       *ea_bgp_ext_community,
+		       *ea_bgp_mpls_label_stack;
 
 static inline int
-mpls_valid_nexthop(const rta *a)
+mpls_valid_nexthop(struct nexthop_adata *nhad)
 {
   /* MPLS does not support special blackhole targets */
-  if (a->dest != RTD_UNICAST)
+  if (!NEXTHOP_IS_REACHABLE(nhad))
     return 0;
 
   /* MPLS does not support ARP / neighbor discovery */
-  for (const struct nexthop *nh = &a->nh; nh ; nh = nh->next)
+  NEXTHOP_WALK(nh, nhad)
     if (ipa_zero(nh->gw) && (nh->iface->flags & IF_MULTIACCESS))
       return 0;
 
@@ -149,28 +148,27 @@ l3vpn_prepare_export_targets(struct l3vpn_proto *p)
 }
 
 static void
-l3vpn_rt_notify(struct proto *P, struct channel *c0, net *net, rte *new, rte *old UNUSED)
+l3vpn_rt_notify(struct proto *P, struct channel *c0, const net_addr *n0, rte *new, const rte *old UNUSED)
 {
   struct l3vpn_proto *p = (void *) P;
   struct rte_src *src = NULL;
   struct channel *dst = NULL;
   int export;
 
-  const net_addr *n0 = net->n.addr;
   net_addr *n = alloca(sizeof(net_addr_vpn6));
 
   switch (c0->net_type)
   {
   case NET_IP4:
     net_fill_vpn4(n, net4_prefix(n0), net4_pxlen(n0), p->rd);
-    src = p->p.main_source;
+    rt_lock_source(src = p->p.main_source);
     dst = p->vpn4_channel;
     export = 1;
     break;
 
   case NET_IP6:
     net_fill_vpn6(n, net6_prefix(n0), net6_pxlen(n0), p->rd);
-    src = p->p.main_source;
+    rt_lock_source(src = p->p.main_source);
     dst = p->vpn6_channel;
     export = 1;
     break;
@@ -195,53 +193,56 @@ l3vpn_rt_notify(struct proto *P, struct channel *c0, net *net, rte *new, rte *ol
 
   if (new)
   {
-    const rta *a0 = new->attrs;
-    rta *a = alloca(RTA_MAX_SIZE);
-    *a = (rta) {
-      .source = RTS_L3VPN,
-      .scope = SCOPE_UNIVERSE,
-      .dest = a0->dest,
-      .pref = dst->preference,
-      .eattrs = a0->eattrs
-    };
+    const struct adata *ecad = ea_get_adata(new->attrs, ea_bgp_ext_community);
+    struct nexthop_adata *nhad_orig = rte_get_nexthops(new);
 
-    nexthop_link(a, &a0->nh);
+    new->src = src;
+
+    ea_set_attr_u32(&new->attrs, &ea_gen_source, 0, RTS_L3VPN);
+    ea_set_attr_u32(&new->attrs, &ea_gen_preference, 0, dst->preference);
 
     /* Do not keep original labels, we may assign new ones */
-    ea_unset_attr(&a->eattrs, tmp_linpool, 0, EA_MPLS_LABEL);
-    ea_unset_attr(&a->eattrs, tmp_linpool, 0, EA_MPLS_POLICY);
+    ea_unset_attr(&new->attrs, 0, &ea_gen_mpls_label);
+    ea_unset_attr(&new->attrs, 0, &ea_gen_mpls_policy);
 
     /* We are crossing VRF boundary, NEXT_HOP is no longer valid */
-    ea_unset_attr(&a->eattrs, tmp_linpool, 0, EA_BGP_NEXT_HOP);
-    ea_unset_attr(&a->eattrs, tmp_linpool, 0, EA_BGP_MPLS_LABEL_STACK);
+    ea_unset_attr(&new->attrs, 0, ea_bgp_next_hop);
+    ea_unset_attr(&new->attrs, 0, ea_bgp_mpls_label_stack);
+
+    /* Hostentry also validn't */
+    ea_unset_attr(&new->attrs, 0, &ea_gen_hostentry);
 
     if (export)
     {
       struct mpls_channel *mc = (void *) p->p.mpls_channel;
-      ea_set_attr_u32(&a->eattrs, tmp_linpool, EA_MPLS_POLICY, 0, EAF_TYPE_INT, mc->label_policy);
+      ea_set_attr_u32(&new->attrs, &ea_gen_mpls_policy, 0, mc->label_policy);
 
-      struct adata *ad = l3vpn_export_targets(p, ea_get_adata(a0->eattrs, EA_BGP_EXT_COMMUNITY));
-      ea_set_attr_ptr(&a->eattrs, tmp_linpool, EA_BGP_EXT_COMMUNITY, 0, EAF_TYPE_EC_SET, ad);
+      ea_set_attr(&new->attrs, EA_LITERAL_DIRECT_ADATA(
+	    ea_bgp_ext_community, 0, l3vpn_export_targets(p, ecad)));
 
       /* Replace MPLS-incompatible nexthop with lookup in VRF table */
-      if (!mpls_valid_nexthop(a) && p->p.vrf)
+      if (!nhad_orig || !mpls_valid_nexthop(nhad_orig) && p->p.vrf)
       {
-	a->dest = RTD_UNICAST;
-	a->nh = (struct nexthop) { .iface = p->p.vrf };
+	struct nexthop_adata nhad = {
+	  .nh.iface = p->p.vrf,
+	  .ad.length = sizeof nhad - sizeof nhad.ad,
+	};
+	ea_set_attr_data(&new->attrs, &ea_gen_nexthop, 0, nhad.ad.data, nhad.ad.length);
       }
+
+      /* Drop original IGP metric on export;
+       * kept on import as a base for L3VPN metric */
+      ea_unset_attr(&new->attrs, 0, &ea_gen_igp_metric);
     }
 
-    /* Keep original IGP metric as a base for L3VPN metric */
-    if (!export)
-      a->igp_metric = a0->igp_metric;
-
-    rte *e = rte_get_temp(a, src);
-    rte_update2(dst, n, e, src);
+    rte_update(dst, n, new, src);
   }
   else
   {
-    rte_update2(dst, n, NULL, src);
+    rte_update(dst, n, NULL, src);
   }
+
+  rt_unlock_source(src);
 }
 
 
@@ -249,9 +250,8 @@ static int
 l3vpn_preexport(struct channel *C, rte *e)
 {
   struct l3vpn_proto *p = (void *) C->proto;
-  struct proto *pp = e->sender->proto;
 
-  if (pp == C->proto)
+  if (&C->in_req == e->sender->req)
     return -1;	/* Avoid local loops automatically */
 
   switch (C->net_type)
@@ -262,7 +262,7 @@ l3vpn_preexport(struct channel *C, rte *e)
 
   case NET_VPN4:
   case NET_VPN6:
-    return l3vpn_import_targets(p, ea_get_adata(e->attrs->eattrs, EA_BGP_EXT_COMMUNITY)) ? 0 : -1;
+    return l3vpn_import_targets(p, ea_get_adata(e->attrs, ea_bgp_ext_community)) ? 0 : -1;
 
   case NET_MPLS:
     return -1;
@@ -272,50 +272,88 @@ l3vpn_preexport(struct channel *C, rte *e)
   }
 }
 
-static void
-l3vpn_reload_routes(struct channel *C)
+/* TODO: unify the code between l3vpn and pipe */
+void pipe_import_by_refeed_free(struct channel_feeding_request *cfr);
+
+static int
+l3vpn_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct l3vpn_proto *p = (void *) C->proto;
+  struct channel *feed = NULL;
 
   /* Route reload on one channel is just refeed on the other */
   switch (C->net_type)
   {
   case NET_IP4:
-    channel_request_feeding(p->vpn4_channel);
+    feed = p->vpn4_channel;
     break;
 
   case NET_IP6:
-    channel_request_feeding(p->vpn6_channel);
+    feed = p->vpn6_channel;
     break;
 
   case NET_VPN4:
-    channel_request_feeding(p->ip4_channel);
+    feed = p->ip4_channel;
     break;
 
   case NET_VPN6:
-    channel_request_feeding(p->ip6_channel);
+    feed = p->ip6_channel;
     break;
 
   case NET_MPLS:
-    channel_request_feeding(p->ip4_channel);
-    channel_request_feeding(p->ip6_channel);
-    break;
+    /* MPLS doesn't support partial refeed, always do a full one. */
+    channel_request_feeding_dynamic(p->ip4_channel, CFRT_DIRECT);
+    channel_request_feeding_dynamic(p->ip6_channel, CFRT_DIRECT);
+    cir->done(cir);
+    return 1;
   }
-}
 
-static inline u32
-l3vpn_metric(rte *e)
-{
-  u32 metric = ea_get_int(e->attrs->eattrs, EA_GEN_IGP_METRIC, e->attrs->igp_metric);
-  return MIN(metric, IGP_METRIC_UNKNOWN);
+  if (cir->trie)
+  {
+    struct import_to_export_reload *reload = lp_alloc(cir->trie->lp, sizeof *reload);
+    *reload = (struct import_to_export_reload) {
+      .cir = cir,
+      .cfr = {
+	      .type = CFRT_AUXILIARY,
+	      .done = pipe_import_by_refeed_free,
+	      .trie = cir->trie,
+	    },
+    };
+    channel_request_feeding(feed, &reload->cfr);
+  }
+  else
+  {
+    /* Route reload on one channel is just refeed on the other */
+    channel_request_feeding_dynamic(feed, CFRT_DIRECT);
+    cir->done(cir);
+  }
+
+  return 1;
 }
 
 static int
-l3vpn_rte_better(rte *new, rte *old)
+l3vpn_rte_better(const rte *new, const rte *old)
 {
   /* This is hack, we should have full BGP-style comparison */
-  return l3vpn_metric(new) < l3vpn_metric(old);
+  return rt_get_igp_metric(new) < rt_get_igp_metric(old);
 }
+
+static void
+l3vpn_get_route_info(const rte *rte, byte *buf)
+{
+  u32 pref = rt_get_preference(rte);
+  u32 metric = rt_get_igp_metric(rte);
+
+  if (metric < IGP_METRIC_UNKNOWN)
+    bsprintf(buf, " (%u/%u)", pref, metric);
+  else
+    bsprintf(buf, " (%u/?)", pref);
+}
+
+static struct rte_owner_class l3vpn_rte_owner_class = {
+  .get_route_info =	l3vpn_get_route_info,
+  .rte_better =		l3vpn_rte_better,
+};
 
 static void
 l3vpn_postconfig(struct proto_config *CF)
@@ -347,6 +385,18 @@ l3vpn_postconfig(struct proto_config *CF)
 static struct proto *
 l3vpn_init(struct proto_config *CF)
 {
+  ASSERT_DIE(the_bird_locked());
+
+  /* Resolve registered BGP attribute classes once */
+  static bool bgp_attributes_resolved = 0;
+  if (!bgp_attributes_resolved)
+  {
+    ea_bgp_next_hop = ea_class_find_by_name("bgp_next_hop");
+    ea_bgp_ext_community = ea_class_find_by_name("bgp_ext_community");
+    ea_bgp_mpls_label_stack = ea_class_find_by_name("bgp_mpls_label_stack");
+    bgp_attributes_resolved = 1;
+  }
+
   struct proto *P = proto_new(CF);
   struct l3vpn_proto *p = (void *) P;
   // struct l3vpn_config *cf = (void *) CF;
@@ -355,12 +405,14 @@ l3vpn_init(struct proto_config *CF)
   proto_configure_channel(P, &p->ip6_channel, proto_cf_find_channel(CF, NET_IP6));
   proto_configure_channel(P, &p->vpn4_channel, proto_cf_find_channel(CF, NET_VPN4));
   proto_configure_channel(P, &p->vpn6_channel, proto_cf_find_channel(CF, NET_VPN6));
-  proto_configure_channel(P, &P->mpls_channel, proto_cf_find_channel(CF, NET_MPLS));
+
+  proto_configure_mpls_channel(P, CF, RTS_L3VPN);
 
   P->rt_notify = l3vpn_rt_notify;
   P->preexport = l3vpn_preexport;
   P->reload_routes = l3vpn_reload_routes;
-  P->rte_better = l3vpn_rte_better;
+
+  P->sources.class = &l3vpn_rte_owner_class;
 
   return P;
 }
@@ -379,23 +431,18 @@ l3vpn_start(struct proto *P)
   l3vpn_prepare_import_targets(p);
   l3vpn_prepare_export_targets(p);
 
-  proto_setup_mpls_map(P, RTS_L3VPN, 1);
-
-  if (P->vrf_set)
-    P->mpls_map->vrf_iface = P->vrf;
-
   return PS_UP;
 }
 
+#if 0
 static int
-l3vpn_shutdown(struct proto *P)
+l3vpn_shutdown(struct proto *P UNUSED)
 {
   // struct l3vpn_proto *p = (void *) P;
 
-  proto_shutdown_mpls_map(P, 1);
-
   return PS_DOWN;
 }
+#endif
 
 static int
 l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
@@ -407,7 +454,7 @@ l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
       !proto_configure_channel(P, &p->ip6_channel, proto_cf_find_channel(CF, NET_IP6)) ||
       !proto_configure_channel(P, &p->vpn4_channel, proto_cf_find_channel(CF, NET_VPN4)) ||
       !proto_configure_channel(P, &p->vpn6_channel, proto_cf_find_channel(CF, NET_VPN6)) ||
-      !proto_configure_channel(P, &P->mpls_channel, proto_cf_find_channel(CF, NET_MPLS)))
+      !proto_configure_mpls_channel(P, CF, RTS_L3VPN))
     return 0;
 
   if (p->rd != cf->rd)
@@ -420,8 +467,6 @@ l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
   p->import_target = cf->import_target;
   p->export_target = cf->export_target;
 
-  proto_setup_mpls_map(P, RTS_L3VPN, 1);
-
   if (import_changed)
   {
     TRACE(D_EVENTS, "Import target changed");
@@ -429,10 +474,10 @@ l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
     l3vpn_prepare_import_targets(p);
 
     if (p->vpn4_channel && (p->vpn4_channel->channel_state == CS_UP))
-      channel_request_feeding(p->vpn4_channel);
+      channel_request_feeding_dynamic(p->vpn4_channel, CFRT_AUXILIARY);
 
     if (p->vpn6_channel && (p->vpn6_channel->channel_state == CS_UP))
-      channel_request_feeding(p->vpn6_channel);
+      channel_request_feeding_dynamic(p->vpn6_channel, CFRT_AUXILIARY);
   }
 
   if (export_changed)
@@ -442,10 +487,10 @@ l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
     l3vpn_prepare_export_targets(p);
 
     if (p->ip4_channel && (p->ip4_channel->channel_state == CS_UP))
-      channel_request_feeding(p->ip4_channel);
+      channel_request_feeding_dynamic(p->ip4_channel, CFRT_AUXILIARY);
 
     if (p->ip6_channel && (p->ip6_channel->channel_state == CS_UP))
-      channel_request_feeding(p->ip6_channel);
+      channel_request_feeding_dynamic(p->ip6_channel, CFRT_AUXILIARY);
   }
 
   return 1;
@@ -457,31 +502,19 @@ l3vpn_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNU
   /* Just a shallow copy, not many items here */
 }
 
-static void
-l3vpn_get_route_info(rte *rte, byte *buf)
-{
-  u32 metric = l3vpn_metric(rte);
-  if (metric < IGP_METRIC_UNKNOWN)
-    bsprintf(buf, " (%u/%u)", rte->attrs->pref, metric);
-  else
-    bsprintf(buf, " (%u/?)", rte->attrs->pref);
-}
-
-
 struct protocol proto_l3vpn = {
   .name =		"L3VPN",
   .template =		"l3vpn%d",
-  .class =		PROTOCOL_L3VPN,
   .channel_mask =	NB_IP | NB_VPN | NB_MPLS,
   .proto_size =		sizeof(struct l3vpn_proto),
   .config_size =	sizeof(struct l3vpn_config),
+  .startup =		PROTOCOL_STARTUP_CONNECTOR,
   .postconfig =		l3vpn_postconfig,
   .init =		l3vpn_init,
   .start =		l3vpn_start,
-  .shutdown =		l3vpn_shutdown,
+//  .shutdown =		l3vpn_shutdown,
   .reconfigure =	l3vpn_reconfigure,
   .copy_config = 	l3vpn_copy_config,
-  .get_route_info =	l3vpn_get_route_info
 };
 
 void
