@@ -110,6 +110,7 @@
 #include "lib/string.h"
 #include "lib/alloca.h"
 #include "lib/flowspec.h"
+#include "nest/cli.h"
 
 #ifdef CONFIG_BGP
 #include "proto/bgp/bgp.h"
@@ -1029,7 +1030,6 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
   struct proto *p = c->proto;
   struct rtable *table = c->table;
   struct proto_stats *stats = &c->stats;
-  static struct tbf rl_pipe = TBF_DEFAULT_LOG_LIMITS;
   rte *before_old = NULL;
   rte *old_best = net->routes;
   rte *old = NULL;
@@ -1053,7 +1053,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 	    {
 	      if (new)
 		{
-		  log_rl(&rl_pipe, L_ERR "Pipe collision detected when sending %N to table %s",
+		  log_rl(&table->log_tbf, L_ERR "Pipe collision detected when sending %N to table %s",
 		      net->n.addr, table->name);
 		  rte_free_quick(new);
 		}
@@ -1960,6 +1960,8 @@ rt_setup(pool *pp, struct rtable_config *cf)
   t->config = cf;
   t->addr_type = cf->addr_type;
   t->debug = cf->debug;
+  t->log_tbf.cf.rate = cf->log_tbf_cf.rate;
+  t->log_tbf.cf.burst = cf->log_tbf_cf.burst;
 
   fib_init(&t->fib, p, t->addr_type, sizeof(net), OFFSETOF(net, n), 0, NULL);
 
@@ -2731,6 +2733,8 @@ rt_reconfigure(rtable *tab, struct rtable_config *new, struct rtable_config *old
   tab->name = new->name;
   tab->config = new;
   tab->debug = new->debug;
+  tab->log_tbf.cf.rate = new->log_tbf_cf.rate;
+  tab->log_tbf.cf.burst = new->log_tbf_cf.burst;
 
   return 1;
 }
@@ -3482,6 +3486,47 @@ rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep)
   return he;
 }
 
+void
+cmd_logging_rate(rtable *table, struct tbf_config *rate)
+{
+  table->log_tbf.cf.rate = rate->rate;
+  table->log_tbf.cf.burst = rate->burst;
+}
+
+void
+table_logging_cmd(struct table_spec ts, struct tbf_config *rate)
+{
+  if (ts.patt)
+  {
+    const char *patt = (void *) ts.ptr;
+    int cnt = 0;
+    rtable *t;
+    node *n;
+
+    WALK_LIST2(t, n, routing_tables, n)
+      if (!ts.ptr || patmatch(patt, t->name))
+      {
+        cmd_logging_rate(t, rate);
+        cnt++;
+      }
+
+    if (!cnt)
+      cli_msg(8003, "No tables match");
+    else
+      cli_msg(0, "");
+  }
+  else
+  {
+    const struct symbol *s = (struct symbol*) ts.ptr;
+    if (s->table->table)
+    {
+      cmd_logging_rate(s->table->table, rate);
+      cli_msg(0, "");
+    }
+    else
+      cli_msg(9002, "%s does not exist", s->name);
+  }
+}
 
 /*
  *  Documentation for functions declared inline in route.h

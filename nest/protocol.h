@@ -243,6 +243,7 @@ struct proto {
   void (*rte_insert)(struct network *, struct rte *);
   void (*rte_remove)(struct network *, struct rte *);
   u32 (*rte_igp_metric)(struct rte *);
+  void (*set_logging_rate)(struct proto *P, uintptr_t arg);
 
   /* Hic sunt protocol-specific data */
 };
@@ -293,6 +294,7 @@ void proto_cmd_restart(struct proto *, uintptr_t, int);
 void proto_cmd_reload(struct proto *, uintptr_t, int);
 void proto_cmd_debug(struct proto *, uintptr_t, int);
 void proto_cmd_mrtdump(struct proto *, uintptr_t, int);
+void proto_cmd_logging_rate(struct proto *, uintptr_t, int);
 
 void proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uintptr_t, int), int restricted, uintptr_t arg);
 struct proto *proto_get_named(struct symbol *, struct protocol *);

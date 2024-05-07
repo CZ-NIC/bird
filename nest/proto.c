@@ -2280,6 +2280,15 @@ proto_cmd_mrtdump(struct proto *p, uintptr_t mask, int cnt UNUSED)
   p->mrtdump = mask;
 }
 
+void
+proto_cmd_logging_rate(struct proto *p, uintptr_t arg, int cnt UNUSED)
+{
+  if (p->set_logging_rate)
+    p->set_logging_rate(p, arg);
+  else
+    cli_msg(9002, "protocol %s does not support logging rate changes", p->name);
+}
+
 static void
 proto_apply_cmd_symbol(const struct symbol *s, void (* cmd)(struct proto *, uintptr_t, int), uintptr_t arg)
 {

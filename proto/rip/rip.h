@@ -55,6 +55,8 @@ struct rip_config
 
   btime min_timeout_time;		/* Minimum of interface timeout_time */
   btime max_garbage_time;		/* Maximum of interface garbage_time */
+  struct tbf_config log_pkt_tbf;
+  struct tbf_config log_rte_tbf;
 };
 
 struct rip_iface_config
@@ -224,6 +226,7 @@ struct rip_neighbor * rip_get_neighbor(struct rip_proto *p, ip_addr *a, struct r
 void rip_update_bfd(struct rip_proto *p, struct rip_neighbor *n);
 void rip_show_interfaces(struct proto *P, const char *iff);
 void rip_show_neighbors(struct proto *P, const char *iff);
+void rip_set_logging_rate(struct proto *P, uintptr_t arg);
 
 /* packets.c */
 void rip_send_request(struct rip_proto *p, struct rip_iface *ifa);

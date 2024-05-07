@@ -38,7 +38,7 @@ CF_KEYWORDS(RIP, ECMP, LIMIT, WEIGHT, INFINITY, METRIC, UPDATE, TIMEOUT,
 	    PASSIVE, VERSION, SPLIT, HORIZON, POISON, REVERSE, CHECK, ZERO,
 	    TIME, BFD, AUTHENTICATION, NONE, PLAINTEXT, CRYPTOGRAPHIC, MD5,
 	    TTL, SECURITY, RX, TX, BUFFER, LENGTH, PRIORITY, ONLY, LINK,
-	    DEMAND, CIRCUIT, RIP_METRIC, RIP_TAG)
+	    DEMAND, CIRCUIT, RIP_METRIC, RIP_TAG, PKT, RTE, LOGGING, RATE, BURST)
 
 %type <i> rip_variant rip_auth
 
@@ -62,6 +62,10 @@ rip_proto_start: proto_start rip_variant
   RIP_CFG->infinity = RIP_DEFAULT_INFINITY;
   RIP_CFG->min_timeout_time = 60 S_;
   RIP_CFG->max_garbage_time = 60 S_;
+  RIP_CFG->log_pkt_tbf.rate = 1;
+  RIP_CFG->log_rte_tbf.rate = 4;
+  RIP_CFG->log_pkt_tbf.burst = 5;
+  RIP_CFG->log_rte_tbf.burst = 20;
 };
 
 rip_proto_item:
@@ -71,6 +75,8 @@ rip_proto_item:
  | ECMP bool LIMIT expr	{ RIP_CFG->ecmp = $2 ? $4 : 0; }
  | INFINITY expr	{ RIP_CFG->infinity = $2; }
  | INTERFACE rip_iface
+ | LOGGING RATE PKT expr expr	{ RIP_CFG->log_pkt_tbf.rate = $4; RIP_CFG->log_pkt_tbf.burst = $5; }
+ | LOGGING RATE RTE expr expr	{ RIP_CFG->log_rte_tbf.rate = $4; RIP_CFG->log_rte_tbf.burst = $4; }
  ;
 
 rip_proto_opts:
@@ -201,6 +207,8 @@ CF_CLI(SHOW RIP INTERFACES, optproto opttext, [<name>] [\"<interface>\"], [[Show
 
 CF_CLI(SHOW RIP NEIGHBORS, optproto opttext, [<name>] [\"<interface>\"], [[Show information about RIP neighbors]])
 { PROTO_WALK_CMD($4, &proto_rip, p) rip_show_neighbors(p, $5); };
+
+logging_rate_target: RIP_PKT | RIP_RTE ;
 
 
 CF_CODE

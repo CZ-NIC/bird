@@ -26,7 +26,8 @@ CF_KEYWORDS(BABEL, INTERFACE, METRIC, RXCOST, HELLO, UPDATE, INTERVAL, PORT,
 	TYPE, WIRED, WIRELESS, RX, TX, BUFFER, PRIORITY, LENGTH, CHECK, LINK,
 	NEXT, HOP, IPV4, IPV6, BABEL_METRIC, SHOW, INTERFACES, NEIGHBORS,
 	ENTRIES, RANDOMIZE, ROUTER, ID, AUTHENTICATION, NONE, MAC, PERMISSIVE,
-	EXTENDED, TUNNEL, RTT, MIN, MAX, DECAY, SEND, TIMESTAMPS, COST, DELAY)
+	EXTENDED, TUNNEL, RTT, MIN, MAX, DECAY, SEND, TIMESTAMPS, COST, DELAY,
+	PKT, LOGGING, RATE, BURST)
 
 CF_GRAMMAR
 
@@ -37,6 +38,8 @@ babel_proto_start: proto_start BABEL
   this_proto = proto_config_new(&proto_babel, $1);
   init_list(&BABEL_CFG->iface_list);
   BABEL_CFG->hold_time = 1 S_;
+  BABEL_CFG->log_pkt_tbf.rate = 1;
+  BABEL_CFG->log_pkt_tbf.burst = 5;
 };
 
 babel_proto_item:
@@ -44,6 +47,7 @@ babel_proto_item:
  | proto_channel
  | INTERFACE babel_iface
  | RANDOMIZE ROUTER ID bool { BABEL_CFG->randomize_router_id = $4; }
+ | LOGGING RATE PKT expr expr	{ BABEL_CFG->log_pkt_tbf.rate = $4; BABEL_CFG->log_pkt_tbf.burst = $5; }
  ;
 
 babel_proto_opts:

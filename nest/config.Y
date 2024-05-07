@@ -15,6 +15,7 @@ CF_HDR
 #include "nest/mpls.h"
 #include "lib/lists.h"
 #include "lib/mac.h"
+#include "lib/birdlib.h"
 
 CF_DEFINES
 
@@ -128,6 +129,9 @@ CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
 CF_KEYWORDS(CHECK, LINK)
 CF_KEYWORDS(SORTED, TRIE, MIN, MAX, SETTLE, TIME, GC, THRESHOLD, PERIOD)
 CF_KEYWORDS(MPLS_LABEL, MPLS_POLICY, MPLS_CLASS)
+CF_KEYWORDS(ASPA_PROVIDERS)
+CF_KEYWORDS(LOGGING, RATE)
+CF_KEYWORDS( OSPF_PKT, OSPF_LSA, RIP_PKT, RIP_RTE, BABEL_PKT)
 
 /* For r_args_channel */
 CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC)
@@ -149,12 +153,16 @@ CF_ENUM(T_ENUM_MPLS_POLICY, MPLS_POLICY_, NONE, STATIC, PREFIX, AGGREGATE, VRF)
 %type <sd> sym_args
 %type <i> proto_start echo_mask echo_size debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type net_type_base tos password_algorithm
 %type <ps> proto_patt proto_patt2
+%type <ts> table_patt
 %type <cc> channel_start proto_channel
 %type <cl> limit_spec
 %type <net> r_args_for_val
 %type <net_ptr> r_args_for
 %type <t> channel_sym
 %type <c> channel_arg
+%type <lrt> logging_rate_targets
+%type <tc> logging_rate
+%type <tt> tbf_target
 
 CF_GRAMMAR
 
@@ -220,6 +228,8 @@ table: table_start table_sorted table_opt_list ;
 
 table_start: net_type TABLE symbol {
    this_table = rt_new_table($3, $1);
+   this_table->log_tbf_cf.rate = 1;
+   this_table->log_tbf_cf.burst = 5;
    }
  ;
 
@@ -240,6 +250,7 @@ table_opt:
  | MAX SETTLE TIME expr_us { this_table->max_settle_time = $4; }
  | GC THRESHOLD expr { this_table->gc_threshold = $3; }
  | GC PERIOD expr_us { this_table->gc_period = (uint) $3; if ($3 > 3600 S_) cf_error("GC period must be at most 3600 s"); }
+ | LOGGING RATE expr expr	{ this_table->log_tbf_cf.rate = $3; this_table->log_tbf_cf.burst = $4; }
  ;
 
 table_opts:
@@ -937,6 +948,49 @@ CF_CLI_HELP(DEBUG, ..., [[Control protocol debugging via BIRD logs]])
 CF_CLI(DEBUG, debug_args, (<protocol> | <channel> | \"<pattern>\" | all) (all | off | { states|routes|filters|interfaces|events|packets [, ...] }), [[Control protocol debugging via BIRD logs]])
 { /* Done in debug_args */  };
 
+logging_rate_target: PIPE ;
+
+tbf_target:
+  OSPF_PKT { $$ = TBF_OSPF_PKT; }
+ |OSPF_LSA { $$ = TBF_OSPF_LSA; }
+ |RIP_PKT  { $$ = TBF_RIP_PKT; }
+ |RIP_RTE { $$ = TBF_RIP_RTE; }
+ |BABEL_PKT { $$ = TBF_BABEL_PKT; }
+ |ALL { $$ = TBF_ALL; }
+
+logging_rate_targets:
+  logging_rate_targets tbf_target {
+    $$ = (struct logging_rate_targets *) cfg_allocz(sizeof(struct logging_rate_targets));
+    $$->next = $1;
+    $$->target = $2;
+  } | tbf_target {
+    $$ = cfg_allocz(sizeof(struct logging_rate_targets));
+    $$->next = NULL;
+    $$->target = $1;
+  };
+
+logging_rate: expr expr
+{
+  $$ = cfg_allocz(sizeof(struct tbf_config));
+  $$->rate = $1;
+  $$->burst = $2;
+};
+
+CF_CLI(LOGGING RATE PROTOCOL, proto_patt logging_rate_targets logging_rate, (<protocol> | \"<pattern>\" | all) targets <rate> <burst>, [[Set logging rate for given protocols and targets]])
+{
+  struct cmd_logging_rate_info info = {
+    .tbfc = $6,
+    .targets = $5,
+  };
+  proto_apply_cmd($4, proto_cmd_logging_rate, 1, (uintptr_t) &info);
+};
+
+CF_CLI(LOGGING RATE TABLE, table_patt logging_rate, (<table> | \"<pattern>\" | all) <rate> <burst>, [[Set logging rate for given tables and targets]])
+{
+  table_logging_cmd($4, $5);
+};
+
+
 CF_CLI_OPT(DEBUG ALL)
 CF_CLI_OPT(DEBUG OFF)
 CF_CLI_OPT(DEBUG STATES)
@@ -967,6 +1021,12 @@ proto_patt:
 proto_patt2:
    CF_SYM_KNOWN { cf_assert_symbol($1, SYM_PROTO); $$.ptr = $1; $$.patt = 0; }
  |      { $$.ptr = NULL; $$.patt = 1; }
+ | TEXT { $$.ptr = $1; $$.patt = 1; }
+ ;
+
+table_patt:
+   CF_SYM_KNOWN { cf_assert_symbol($1, SYM_TABLE); $$.ptr = $1; $$.patt = 0; }
+ | ALL  { $$.ptr = NULL; $$.patt = 1; }
  | TEXT { $$.ptr = $1; $$.patt = 1; }
  ;
 

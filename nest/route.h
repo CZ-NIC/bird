@@ -156,6 +156,7 @@ struct rtable_config {
   byte trie_used;			/* Rtable has attached trie */
   btime min_settle_time;		/* Minimum settle time for notifications */
   btime max_settle_time;		/* Maximum settle time for notifications */
+  struct tbf_config log_tbf_cf;		/* Config logging rate for rtable */
 };
 
 typedef struct rtable {
@@ -203,6 +204,7 @@ typedef struct rtable {
   list flowspec_links;			/* List of flowspec links, src for NET_IPx and dst for NET_FLOWx */
   struct f_trie *flowspec_trie;		/* Trie for evaluation of flowspec notifications */
   // struct mpls_domain *mpls_domain;	/* Label allocator for MPLS */
+  struct tbf log_tbf;			/* Actual logging rate for rtable (might be changed in cmd) */
 } rtable;
 
 struct rt_subscription {
@@ -718,6 +720,8 @@ static inline rta * rta_cow(rta *r, linpool *lp) { return rta_is_cached(r) ? rta
 void rta_dump(rta *);
 void rta_dump_all(void);
 void rta_show(struct cli *, rta *);
+
+void table_logging_cmd(struct table_spec ts, struct tbf_config *rate);
 
 u32 rt_get_igp_metric(rte *rt);
 struct hostentry * rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);

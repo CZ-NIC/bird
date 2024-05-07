@@ -1161,8 +1161,9 @@ rip_start(struct proto *P)
   p->infinity = cf->infinity;
   p->triggered = 0;
 
-  p->log_pkt_tbf = (struct tbf){ .rate = 1, .burst = 5 };
-  p->log_rte_tbf = (struct tbf){ .rate = 4, .burst = 20 };
+  p->log_pkt_tbf = (struct tbf){ .cf.rate = cf->log_pkt_tbf.rate, .cf.burst = cf->log_pkt_tbf.burst };
+  p->log_rte_tbf = (struct tbf){ .cf.rate = cf->log_rte_tbf.rate, .cf.burst = cf->log_pkt_tbf.burst };
+  P->set_logging_rate = rip_set_logging_rate;
 
   tm_start(p->timer, MIN(cf->min_timeout_time, cf->max_garbage_time));
 
@@ -1204,11 +1205,39 @@ rip_reconfigure(struct proto *P, struct proto_config *CF)
   p->p.cf = CF;
   p->ecmp = new->ecmp;
   rip_reconfigure_ifaces(p, new);
+  p->log_pkt_tbf.cf.rate = new->log_pkt_tbf.rate;
+  p->log_pkt_tbf.cf.burst = new->log_pkt_tbf.burst;
+  p->log_rte_tbf.cf.rate = new->log_rte_tbf.rate;
+  p->log_rte_tbf.cf.burst = new->log_rte_tbf.burst;
 
   p->rt_reload = 1;
   rip_kick_timer(p);
 
   return 1;
+}
+
+void
+rip_set_logging_rate(struct proto *P, uintptr_t arg)
+{
+  struct rip_proto *p = (void *) P;
+  struct cmd_logging_rate_info *info = (struct cmd_logging_rate_info*) arg;
+  struct logging_rate_targets *targets = info->targets;
+  while (targets)
+  {
+    if (targets->target == TBF_RIP_PKT || targets->target == TBF_ALL)
+    {
+      p->log_pkt_tbf.cf.rate = info->tbfc->rate;
+      p->log_pkt_tbf.cf.burst = info->tbfc->burst;
+    }
+    else if (targets->target == TBF_RIP_RTE || targets->target == TBF_ALL)
+    {
+      p->log_rte_tbf.cf.rate = info->tbfc->rate;
+      p->log_rte_tbf.cf.burst = info->tbfc->burst;
+    }
+    else
+      cli_msg(9002, "protocol %s: wrong logging rate change type for rip protocol", P->name);
+    targets = targets->next;
+  }
 }
 
 static void

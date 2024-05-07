@@ -202,6 +202,7 @@ CF_KEYWORDS(WAIT, DELAY, LSADB, ECMP, LIMIT, WEIGHT, NSSA, TRANSLATOR, STABILITY
 CF_KEYWORDS(GLOBAL, LSID, ROUTER, SELF, INSTANCE, REAL, NETMASK, TX, PRIORITY, LENGTH)
 CF_KEYWORDS(MERGE, LSA, SUPPRESSION, MULTICAST, RFC5838, VPN, PE, ADDRESS)
 CF_KEYWORDS(GRACEFUL, RESTART, AWARE, TIME)
+CF_KEYWORDS(PKT, LSA, LOGGING, RATE, BURST)
 
 %type <ld> lsadb_args
 %type <i> ospf_variant ospf_af_mc nbma_eligible
@@ -230,6 +231,10 @@ ospf_proto_start: proto_start ospf_variant
   OSPF_CFG->af_ext = !$2;
   OSPF_CFG->gr_mode = OSPF_GR_AWARE;
   OSPF_CFG->gr_time = OSPF_DEFAULT_GR_TIME;
+  OSPF_CFG->log_pkt_tbf.rate = 1;
+  OSPF_CFG->log_lsa_tbf.rate = 4;
+  OSPF_CFG->log_pkt_tbf.burst = 5;
+  OSPF_CFG->log_lsa_tbf.burst = 20;
 };
 
 ospf_proto:
@@ -270,6 +275,8 @@ ospf_proto_item:
  | TICK expr { OSPF_CFG->tick = $2; if($2 <= 0) cf_error("Tick must be greater than zero"); }
  | INSTANCE ID expr { OSPF_CFG->instance_id = $3; OSPF_CFG->instance_id_set = 1; if ($3 > 255) cf_error("Instance ID must be in range 0-255"); }
  | ospf_area
+ | LOGGING RATE PKT expr expr	{ OSPF_CFG->log_pkt_tbf.rate = $4; OSPF_CFG->log_pkt_tbf.burst = $5; }
+ | LOGGING RATE LSA expr expr	{ OSPF_CFG->log_lsa_tbf.rate = $4; OSPF_CFG->log_lsa_tbf.burst = $4; }
  ;
 
 ospf_area_start: AREA idval {
@@ -567,6 +574,8 @@ lsadb_args:
  | lsadb_args ROUTER idval { $$ = $1; $$->router = $3; }
  | lsadb_args CF_SYM_KNOWN { cf_assert_symbol($2, SYM_PROTO); $$ = $1; $$->proto = (struct ospf_proto *) proto_get_named($2, &proto_ospf); }
  ;
+
+logging_rate_target: OSPF_PKT | OSPF_LSA ;
 
 CF_CODE
 

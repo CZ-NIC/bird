@@ -106,6 +106,8 @@ struct ospf_config
   uint ecmp;
   list area_list;		/* list of area configs (struct ospf_area_config) */
   list vlink_list;		/* list of configured vlinks (struct ospf_iface_patt) */
+  struct tbf_config log_pkt_tbf;
+  struct tbf_config log_lsa_tbf;
 };
 
 struct ospf_area_config
@@ -1021,6 +1023,7 @@ void ospf_iface_remove(struct ospf_iface *ifa);
 void ospf_iface_shutdown(struct ospf_iface *ifa);
 int ospf_iface_assure_bufsize(struct ospf_iface *ifa, uint plen);
 int ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new);
+void ospf_set_logging_rate(struct proto *P, uintptr_t arg);
 void ospf_reconfigure_ifaces(struct ospf_proto *p);
 void ospf_open_vlink_sk(struct ospf_proto *p);
 struct nbma_node *find_nbma_node_(list *nnl, ip_addr ip);

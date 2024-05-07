@@ -311,8 +311,9 @@ ospf_start(struct proto *P)
 
   p->flood_event = ev_new_init(P->pool, ospf_flood_event, p);
 
-  p->log_pkt_tbf = (struct tbf){ .rate = 1, .burst = 5 };
-  p->log_lsa_tbf = (struct tbf){ .rate = 4, .burst = 20 };
+  p->log_pkt_tbf = (struct tbf){ .cf.rate = c->log_pkt_tbf.rate, .cf.burst = c->log_pkt_tbf.burst };
+  p->log_lsa_tbf = (struct tbf){ .cf.rate = c->log_lsa_tbf.rate, .cf.burst = c->log_lsa_tbf.burst };
+  P->set_logging_rate = ospf_set_logging_rate; // for setting logging tbf temporarily from cmd
 
   /* Lock the channel when in GR recovery mode */
   if (p->p.gr_recovery && (p->gr_mode == OSPF_GR_ABLE))
@@ -771,6 +772,30 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
   ospf_schedule_rtcalc(p);
 
   return 1;
+}
+
+void
+ospf_set_logging_rate(struct proto *P, uintptr_t arg)
+{
+  struct ospf_proto *p = (void *) P;
+  struct cmd_logging_rate_info *info = (struct cmd_logging_rate_info*) arg;
+  struct logging_rate_targets *targets = info->targets;
+  while (targets)
+  {
+    if (targets->target == TBF_OSPF_PKT || targets->target == TBF_ALL)
+    {
+      p->log_pkt_tbf.cf.rate = info->tbfc->rate;
+      p->log_pkt_tbf.cf.burst = info->tbfc->burst;
+    }
+    else if (targets->target == TBF_OSPF_LSA || targets->target == TBF_ALL)
+    {
+      p->log_lsa_tbf.cf.rate = info->tbfc->rate;
+      p->log_lsa_tbf.cf.burst = info->tbfc->burst;
+    }
+    else
+      cli_msg(9002, "protocol %s: wrong logging rate change type for ospf protocol", P->name);
+    targets = targets->next;
+  }
 }
 
 

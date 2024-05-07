@@ -17,8 +17,8 @@ tbf_limit(struct tbf *f)
 
   if (delta > 0)
   {
-    u64 next = f->count + delta * f->rate;
-    u64 burst = (u64) f->burst << 20;
+    u64 next = f->count + delta * f->cf.rate;
+    u64 burst = (u64) f->cf.burst << 20;
     f->count = MIN(next, burst);
     f->timestamp += delta;
   }
