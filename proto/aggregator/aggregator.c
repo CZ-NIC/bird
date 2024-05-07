@@ -514,7 +514,7 @@ second_pass(struct trie_node *node)
 
   if (is_leaf(node))
   {
-    assert(node->potential_buckets_count > 0);
+    assert(node->potential_buckets_count == 1);
     assert(node->potential_buckets[0] != NULL);
     assert(node->potential_buckets[0] == node->bucket);
     return;
@@ -882,7 +882,7 @@ collect_prefixes(struct aggregator_proto *p)
   else
     bug("Invalid NET type");
 
-  log("%d prefixes collected", count);
+  log("%d prefixes after aggregation", count);
   p->after_count = count;
 }
 
@@ -910,6 +910,8 @@ construct_trie(struct aggregator_proto *p)
         log("INSERT %N", addr);
         p->before_count++;
       }
+      else
+        bug("Invalid NET type");
     }
   }
   HASH_WALK_END;
@@ -946,7 +948,7 @@ run_aggregation(struct channel *C)
   struct aggregator_proto *p = (void *)C->proto;
 
   /* Run aggregation only on feed-end from source channel */
-  if (C == p->dst)
+  if (C != p->src)
     return;
 
   construct_trie(p);
@@ -1597,13 +1599,13 @@ aggregator_start(struct proto *P)
   {
     default_net = mb_alloc(P->pool, sizeof(struct network) + sizeof(struct net_addr_ip4));
     net_fill_ip4(default_net->n.addr, IP4_NONE, 0);
-    log("Creating net %p for default route", default_net);
+    log("Creating net %p for default route %N", default_net, default_net->n.addr);
   }
   else if (p->addr_type == NET_IP6)
   {
     default_net = mb_alloc(P->pool, sizeof(struct network) + sizeof(struct net_addr_ip6));
     net_fill_ip6(default_net->n.addr, IP6_NONE, 0);
-    log("Creating net %p for default route", default_net);
+    log("Creating net %p for default route %N", default_net, default_net->n.addr);
   }
 
   /* Create route attributes with zero nexthop */
