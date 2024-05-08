@@ -207,6 +207,7 @@ lp_save(linpool *m)
   struct lp_state *p = lp_alloc(m, sizeof(struct lp_state));
   ASSERT_DIE(m->current);
   *p = (struct lp_state) {
+    .p = m,
     .current = m->current,
     .large = m->first_large,
     .total_large = m->total_large,
@@ -233,6 +234,7 @@ lp_restore(linpool *m, lp_state *p)
 
   /* Move ptr to the saved pos and free all newer large chunks */
   ASSERT_DIE(p->current);
+  ASSERT_DIE(p->p == m);
   m->current = c = p->current;
   m->ptr = (byte *) p;
   m->end = c->data + LP_DATA_SIZE;

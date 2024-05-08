@@ -91,6 +91,7 @@ void mb_free(void *);
 typedef struct linpool linpool;
 
 typedef struct lp_state {
+  struct linpool *p;
   void *current, *large;
   uint total_large;
 } lp_state;
@@ -103,27 +104,27 @@ void lp_flush(linpool *);			/* Free everything, but leave linpool */
 lp_state *lp_save(linpool *m);			/* Save state */
 void lp_restore(linpool *m, lp_state *p);	/* Restore state */
 
-#define LP_SAVED(m)	for (struct lp_state *_lp_state = lp_save(m); _lp_state; lp_restore(m, _lp_state), _lp_state = NULL)
-#define TMP_SAVED	LP_SAVED(tmp_linpool)
+static inline void lp_saved_cleanup(struct lp_state **lps)
+{
+  if (*lps)
+    lp_restore((*lps)->p, (*lps));
+}
 
-struct tmp_resources {
-  pool *pool, *parent;
-  linpool *lp;
-  struct domain_generic *domain;
-};
+#define LP_SAVED(m)	for (CLEANUP(lp_saved_cleanup) struct lp_state *_lp_state = lp_save(m); _lp_state; lp_restore(m, _lp_state), _lp_state = NULL)
 
-extern _Thread_local struct tmp_resources tmp_res;
+#define lp_new_default	lp_new
 
-#define tmp_linpool	tmp_res.lp
+/* Thread-local temporary linpools */
+
+extern _Thread_local linpool *tmp_linpool;
 #define tmp_alloc(sz)	lp_alloc(tmp_linpool, sz)
 #define tmp_allocu(sz)	lp_allocu(tmp_linpool, sz)
 #define tmp_allocz(sz)	lp_allocz(tmp_linpool, sz)
+#define TMP_SAVED	LP_SAVED(tmp_linpool)
 
-void tmp_init(pool *p, struct domain_generic *dg);
+void tmp_init(pool *p);
 void tmp_flush(void);
 
-
-#define lp_new_default	lp_new
 
 /* Slabs */
 
