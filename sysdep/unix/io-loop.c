@@ -792,7 +792,7 @@ bird_thread_main(void *arg)
   birdloop_enter(thr->meta);
   this_birdloop = thr->meta;
 
-  tmp_init(thr->pool, birdloop_domain(thr->meta));
+  tmp_init(thr->pool);
   init_list(&thr->loops);
 
   defer_init(lp_new(thr->pool));

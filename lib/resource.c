@@ -338,28 +338,22 @@ resource_init(void)
 
   root_pool.r.class = &pool_class;
   rp_init(&root_pool, the_bird_domain.the_bird, "Root");
-  tmp_init(&root_pool, the_bird_domain.the_bird);
+  tmp_init(&root_pool);
 }
 
-_Thread_local struct tmp_resources tmp_res;
+_Thread_local linpool *tmp_linpool;
 
 void
-tmp_init(pool *p, struct domain_generic *dom)
+tmp_init(pool *p)
 {
-  tmp_res.lp = lp_new_default(p);
-  tmp_res.parent = p;
-  tmp_res.pool = rp_new(p, dom, "TMP");
-  tmp_res.domain = dom;
+  ASSERT_DIE(!tmp_linpool);
+  tmp_linpool = lp_new_default(p);
 }
 
 void
 tmp_flush(void)
 {
-  ASSERT_DIE(DG_IS_LOCKED(tmp_res.domain));
-
   lp_flush(tmp_linpool);
-  rp_free(tmp_res.pool);
-  tmp_res.pool = rp_new(tmp_res.parent, tmp_res.domain, "TMP");
 }
 
 
