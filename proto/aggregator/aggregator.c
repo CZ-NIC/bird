@@ -793,7 +793,7 @@ create_route_ip6(struct aggregator_proto *p, struct net_addr_ip6 *addr, struct a
 }
 
 static void
-collect_prefixes_helper_ip4(const struct trie_node *node, struct net_addr_ip4 *addr, struct aggregator_proto *p, int depth, int *count)
+collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *addr, const struct trie_node *node, int *count, int depth)
 {
   assert(node != NULL);
 
@@ -815,20 +815,20 @@ collect_prefixes_helper_ip4(const struct trie_node *node, struct net_addr_ip4 *a
   {
     ip4_clrbit(&addr->prefix, depth);
     addr->pxlen = depth + 1;
-    collect_prefixes_helper_ip4(node->child[0], addr, p, depth + 1, count);
+    collect_prefixes_ip4_helper(p, addr, node->child[0], count, depth + 1);
   }
 
   if (node->child[1])
   {
     ip4_setbit(&addr->prefix, depth);
     addr->pxlen = depth + 1;
-    collect_prefixes_helper_ip4(node->child[1], addr, p, depth + 1, count);
+    collect_prefixes_ip4_helper(p, addr, node->child[1], count, depth + 1);
     ip4_clrbit(&addr->prefix, depth);
   }
 }
 
 static void
-collect_prefixes_helper_ip6(const struct trie_node *node, struct net_addr_ip6 *addr, struct aggregator_proto *p, int depth, int *count)
+collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *addr, const struct trie_node *node, int *count, int depth)
 {
   assert(node != NULL);
 
@@ -850,14 +850,14 @@ collect_prefixes_helper_ip6(const struct trie_node *node, struct net_addr_ip6 *a
   {
     ip6_clrbit(&addr->prefix, depth);
     addr->pxlen = depth + 1;
-    collect_prefixes_helper_ip6(node->child[0], addr, p, depth + 1, count);
+    collect_prefixes_ip6_helper(p, addr, node->child[0], count, depth + 1);
   }
 
   if (node->child[1])
   {
     ip6_setbit(&addr->prefix, depth);
     addr->pxlen = depth + 1;
-    collect_prefixes_helper_ip6(node->child[1], addr, p, depth + 1, count);
+    collect_prefixes_ip6_helper(p, addr, node->child[1], count, depth + 1);
     ip6_clrbit(&addr->prefix, depth);
   }
 }
@@ -871,13 +871,13 @@ collect_prefixes(struct aggregator_proto *p)
   {
     struct net_addr_ip4 addr = { 0 };
     net_fill_ip4((net_addr *)&addr, IP4_NONE, 0);
-    collect_prefixes_helper_ip4(p->root, &addr, p, 0, &count);
+    collect_prefixes_ip4_helper(p, &addr, p->root, &count, 0);
   }
   else if (p->addr_type == NET_IP6)
   {
     struct net_addr_ip6 addr = { 0 };
     net_fill_ip6((net_addr *)&addr, IP6_NONE, 0);
-    collect_prefixes_helper_ip6(p->root, &addr, p, 0, &count);
+    collect_prefixes_ip6_helper(p, &addr, p->root, &count, 0);
   }
   else
     bug("Invalid NET type");
