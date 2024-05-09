@@ -132,6 +132,8 @@ struct babel_config {
 
   struct channel_config *ip4_channel;
   struct channel_config *ip6_channel;
+
+  struct tbf_config log_pkt_tbf;
 };
 
 struct babel_iface_config {

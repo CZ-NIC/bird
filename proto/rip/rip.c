@@ -1246,8 +1246,11 @@ rip_start(struct proto *P)
   p->infinity = cf->infinity;
   p->triggered = 0;
 
-  p->log_pkt_tbf = (struct tbf){ .rate = 1, .burst = 5 };
-  p->log_rte_tbf = (struct tbf){ .rate = 4, .burst = 20 };
+  p->log_pkt_tbf = (struct tbf){ .cf.rate = cf->log_pkt_tbf.rate, .cf.burst = cf->log_pkt_tbf.burst };
+  p->log_rte_tbf = (struct tbf){ .cf.rate = cf->log_rte_tbf.rate, .cf.burst = cf->log_pkt_tbf.burst };
+  P->tbfs.pkt = &p->log_pkt_tbf;
+  P->tbfs.rte = &p->log_rte_tbf;
+  P->tbfs.lsa = NULL;
 
   tm_start(p->timer, MIN(cf->min_timeout_time, cf->max_garbage_time));
 
@@ -1289,6 +1292,10 @@ rip_reconfigure(struct proto *P, struct proto_config *CF)
   p->p.cf = CF;
   p->ecmp = new->ecmp;
   rip_reconfigure_ifaces(p, new);
+  p->log_pkt_tbf.cf.rate = new->log_pkt_tbf.rate;
+  p->log_pkt_tbf.cf.burst = new->log_pkt_tbf.burst;
+  p->log_rte_tbf.cf.rate = new->log_rte_tbf.rate;
+  p->log_rte_tbf.cf.burst = new->log_rte_tbf.burst;
 
   p->rt_reload = 1;
   rip_kick_timer(p);

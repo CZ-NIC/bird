@@ -110,6 +110,7 @@
 #include "lib/flowspec.h"
 #include "lib/idm.h"
 #include "lib/netindex_private.h"
+#include "nest/cli.h"
 
 #ifdef CONFIG_BGP
 #include "proto/bgp/bgp.h"
@@ -2818,6 +2819,8 @@ rt_setup(pool *pp, struct rtable_config *cf)
   t->id = idm_alloc(&rtable_idm);
   if (t->id >= rtable_max_id)
     rtable_max_id = t->id + 1;
+  t->log_tbf.cf.rate = cf->log_tbf_cf.rate;
+  t->log_tbf.cf.burst = cf->log_tbf_cf.burst;
 
   t->netindex = rt_global_netindex_hash;
   t->routes = mb_allocz(p, (t->routes_block_size = 128) * sizeof(net));
@@ -4082,6 +4085,8 @@ rt_reconfigure(struct rtable_private *tab, struct rtable_config *new, struct rta
   tab->name = new->name;
   tab->config = new;
   tab->debug = new->debug;
+  tab->log_tbf.cf.rate = new->log_tbf_cf.rate;
+  tab->log_tbf.cf.burst = new->log_tbf_cf.burst;
 
   if (tab->hostcache)
     tab->hostcache->req.trace_routes = new->debug;
@@ -4852,6 +4857,50 @@ rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep)
   return he;
 }
 
+void
+cmd_logging_rate(rtable *tp, struct tbf_config *rate)
+{
+  RT_LOCKED(tp, table)
+  {
+    table->log_tbf.cf.rate = rate->rate;
+    table->log_tbf.cf.burst = rate->burst;
+  }
+}
+
+void
+table_logging_cmd(struct table_spec ts, struct tbf_config *rate)
+{
+  if (ts.patt)
+  {
+    const char *patt = (void *) ts.ptr;
+    int cnt = 0;
+    rtable *t;
+    node *n;
+
+    WALK_LIST2(t, n, routing_tables, n)
+      if (!ts.ptr || patmatch(patt, t->name))
+      {
+        cmd_logging_rate(t, rate);
+        cnt++;
+      }
+
+    if (!cnt)
+      cli_msg(8003, "No tables match");
+    else
+      cli_msg(0, "");
+  }
+  else
+  {
+    const struct symbol *s = (struct symbol*) ts.ptr;
+    if (s->table->table)
+    {
+      cmd_logging_rate(s->table->table, rate);
+      cli_msg(0, "");
+    }
+    else
+      cli_msg(9002, "%s does not exist", s->name);
+  }
+}
 
 /*
  *  Documentation for functions declared inline in route.h

@@ -99,12 +99,16 @@ CF_DECLS
   btime time;
   struct f_prefix px;
   struct proto_spec ps;
+  struct table_spec ts;
   struct channel_limit cl;
   struct timeformat *tf;
   struct settle_config settle;
   struct adata *ad;
   const struct adata *bs;
   struct aggr_item_node *ai;
+  struct logging_rate_targets *lrt;
+  struct tbf_config *tc;
+  enum tbf_targets tt;
 }
 
 %token END CLI_MARKER INVALID_TOKEN ELSECOL DDOT

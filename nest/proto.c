@@ -3003,6 +3003,43 @@ proto_cmd_mrtdump(struct proto *p, uintptr_t mask, int cnt UNUSED)
   p->mrtdump = mask;
 }
 
+void
+proto_cmd_logging_rate(struct proto *p, uintptr_t arg, int cnt UNUSED)
+{
+  struct cmd_logging_rate_info *args = (struct cmd_logging_rate_info *) arg;
+  struct logging_rate_targets *targets = args->targets;
+  while (targets)
+  {
+    int rate_changed = 0;
+    if ((targets->target == TBF_PKT || targets->target == TBF_ALL) && p->tbfs.pkt)
+    {
+      p->tbfs.pkt->cf.rate = args->tbfc->rate;
+      p->tbfs.pkt->cf.burst = args->tbfc->burst;
+      rate_changed++;
+    }
+    if ((targets->target == TBF_LSA || targets->target == TBF_ALL) && p->tbfs.lsa)
+    {
+      p->tbfs.lsa->cf.rate = args->tbfc->rate;
+      p->tbfs.lsa->cf.burst = args->tbfc->burst;
+      rate_changed++;
+    }
+    if ((targets->target == TBF_RTE || targets->target == TBF_ALL) && p->tbfs.rte)
+    {
+      p->tbfs.rte->cf.rate = args->tbfc->rate;
+      p->tbfs.rte->cf.burst = args->tbfc->burst;
+      rate_changed++;
+    }
+    if (rate_changed == 0 && args->all_protos == 0)
+    {
+      if (p->tbfs.pkt || p->tbfs.lsa || p->tbfs.rte)
+        cli_msg(9002, "%s supports rated logging only for%s%s%s", p->name, p->tbfs.pkt? " PKT":"", p->tbfs.lsa? " LSA":"", p->tbfs.rte? " RTE":"");
+      else
+        cli_msg(9002, "%s does not use rated logging", p->name);
+    }
+    targets = targets->next;
+  }
+}
+
 static void
 proto_apply_cmd_symbol(const struct symbol *s, void (* cmd)(struct proto *, uintptr_t, int), uintptr_t arg)
 {

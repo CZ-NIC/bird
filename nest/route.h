@@ -70,6 +70,9 @@ struct rtable_config {
   struct settle_config export_settle;	/* Export announcement settler */
   struct settle_config export_rr_settle;/* Export announcement settler config valid when any
 					   route refresh is running */
+  btime min_settle_time;		/* Minimum settle time for notifications */
+  btime max_settle_time;		/* Maximum settle time for notifications */
+  struct tbf_config log_tbf_cf;		/* Config logging rate for rtable */
 };
 
 struct rt_export_hook;
@@ -166,6 +169,7 @@ struct rtable_private {
 
   struct f_trie *flowspec_trie;		/* Trie for evaluation of flowspec notifications */
   // struct mpls_domain *mpls_domain;	/* Label allocator for MPLS */
+  struct tbf log_tbf;			/* Actual logging rate for rtable (might be changed in cmd) */
 };
 
 /* The final union private-public rtable structure */
@@ -721,6 +725,8 @@ ea_set_hostentry(ea_list **to, rtable *dep, rtable *tab, ip_addr gw, ip_addr ll,
 
 void ea_show_hostentry(const struct adata *ad, byte *buf, uint size);
 void ea_show_nexthop_list(struct cli *c, struct nexthop_adata *nhad);
+
+void table_logging_cmd(struct table_spec ts, struct tbf_config *rate);
 
 /*
  *	Default protocol preferences

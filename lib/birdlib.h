@@ -139,16 +139,45 @@ typedef s64 btime;
 
 /* Rate limiting */
 
+struct tbf_config {
+   u16 burst;			/* Max number of tokens */
+   u16 rate;			/* Rate of replenishment (tokens / sec) */
+ };
+
 struct tbf {
   btime timestamp;			/* Last update */
   u64 count;				/* Available micro-tokens */
-  u16 burst;				/* Max number of tokens */
-  u16 rate;				/* Rate of replenishment (tokens / sec) */
   u32 drop;				/* Number of failed request since last successful */
+  struct tbf_config cf;			/* Configuration */
+};
+
+enum tbf_targets {
+  TBF_INVALID = 0,
+  TBF_PKT,
+  TBF_LSA,
+  TBF_RTE,
+  TBF_ALL
+};
+
+struct logging_rate_targets {
+  enum tbf_targets target;
+  struct logging_rate_targets *next;
+};
+
+struct cmd_logging_rate_info {
+  int all_protos;
+  struct tbf_config *tbfc;
+  struct logging_rate_targets *targets;
+};
+
+
+struct table_spec {
+  const void *ptr;
+  int patt;
 };
 
 /* Default TBF values for rate limiting log messages */
-#define TBF_DEFAULT_LOG_LIMITS { .rate = 1, .burst = 5 }
+#define TBF_DEFAULT_LOG_LIMITS { .cf.rate = 1, .cf.burst = 5 }
 
 int tbf_limit(struct tbf *f);
 

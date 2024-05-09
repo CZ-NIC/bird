@@ -55,6 +55,8 @@ struct rip_config
 
   btime min_timeout_time;		/* Minimum of interface timeout_time */
   btime max_garbage_time;		/* Maximum of interface garbage_time */
+  struct tbf_config log_pkt_tbf;
+  struct tbf_config log_rte_tbf;
 };
 
 struct rip_iface_config

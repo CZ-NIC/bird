@@ -2642,7 +2642,10 @@ babel_start(struct proto *P)
   p->msg_slab = sl_new(P->pool, sizeof(struct babel_msg_node));
   p->seqno_slab = sl_new(P->pool, sizeof(struct babel_seqno_request));
 
-  p->log_pkt_tbf = (struct tbf){ .rate = 1, .burst = 5 };
+  p->log_pkt_tbf = (struct tbf){ .cf.rate = cf->log_pkt_tbf.rate, .cf.burst = cf->log_pkt_tbf.burst };
+  P->tbfs.pkt = &p->log_pkt_tbf;
+  P->tbfs.rte = NULL;
+  P->tbfs.lsa = NULL;
 
   return PS_UP;
 }
@@ -2697,6 +2700,8 @@ babel_reconfigure(struct proto *P, struct proto_config *CF)
 
   p->p.cf = CF;
   babel_reconfigure_ifaces(p, new);
+  p->log_pkt_tbf.cf.rate = new->log_pkt_tbf.rate;
+  p->log_pkt_tbf.cf.burst = new->log_pkt_tbf.burst;
 
   babel_trigger_update(p);
   babel_kick_timer(p);

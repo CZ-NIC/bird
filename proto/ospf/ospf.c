@@ -312,8 +312,11 @@ ospf_start(struct proto *P)
 
   p->flood_event = ev_new_init(P->pool, ospf_flood_event, p);
 
-  p->log_pkt_tbf = (struct tbf){ .rate = 1, .burst = 5 };
-  p->log_lsa_tbf = (struct tbf){ .rate = 4, .burst = 20 };
+  p->log_pkt_tbf = (struct tbf){ .cf.rate = c->log_pkt_tbf.rate, .cf.burst = c->log_pkt_tbf.burst };
+  p->log_lsa_tbf = (struct tbf){ .cf.rate = c->log_lsa_tbf.rate, .cf.burst = c->log_lsa_tbf.burst };
+  P->tbfs.pkt = &p->log_pkt_tbf;
+  P->tbfs.rte = NULL;
+  P->tbfs.lsa = &p->log_lsa_tbf;
 
   /* Lock the channel when in GR recovery mode */
   if (p->p.gr_recovery && (p->gr_mode == OSPF_GR_ABLE))
@@ -761,7 +764,6 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
 
   return 1;
 }
-
 
 void
 ospf_sh_neigh(struct proto *P, const char *iff)

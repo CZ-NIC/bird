@@ -128,6 +128,13 @@ struct channel_import_request {
   const struct f_trie *trie;				/* Reload only matching nets */
 };
 
+struct proto_tbfs {
+  /* Pointers to rate limiting logging structures */
+  struct tbf *pkt;
+  struct tbf *lsa;
+  struct tbf *rte;
+};
+
 #define TLIST_PREFIX proto
 #define TLIST_TYPE struct proto
 #define TLIST_ITEM n
@@ -178,6 +185,7 @@ struct proto {
   btime last_state_change;		/* Time of last state transition */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
   char *message;			/* State-change message, allocated from proto_pool */
+  struct proto_tbfs tbfs;		/* Pointers to rate limiting logging structures */
 
   /*
    *	General protocol hooks:
@@ -275,6 +283,7 @@ void proto_cmd_restart(struct proto *, uintptr_t, int);
 void proto_cmd_reload(struct proto *, uintptr_t, int);
 void proto_cmd_debug(struct proto *, uintptr_t, int);
 void proto_cmd_mrtdump(struct proto *, uintptr_t, int);
+void proto_cmd_logging_rate(struct proto *, uintptr_t, int);
 
 void proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uintptr_t, int), int restricted, uintptr_t arg);
 struct proto *proto_get_named(struct symbol *, struct protocol *);

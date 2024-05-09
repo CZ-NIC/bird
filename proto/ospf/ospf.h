@@ -106,6 +106,8 @@ struct ospf_config
   uint ecmp;
   list area_list;		/* list of area configs (struct ospf_area_config) */
   list vlink_list;		/* list of configured vlinks (struct ospf_iface_patt) */
+  struct tbf_config log_pkt_tbf;
+  struct tbf_config log_lsa_tbf;
 };
 
 struct ospf_area_config
