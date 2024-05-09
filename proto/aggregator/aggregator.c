@@ -357,23 +357,18 @@ compute_buckets_union(struct trie_node *node, const struct trie_node *left, cons
   assert(right != NULL);
   assert(node  != NULL);
 
-  struct aggregator_bucket *input_buckets[64] = { 0 };
-  int input_count = 0;
+  struct aggregator_bucket *input_buckets[MAX_POTENTIAL_BUCKETS_COUNT * 2] = { 0 };
+  const int input_count = left->potential_buckets_count + right->potential_buckets_count;
 
-  for (int i = 0; i < left->potential_buckets_count; i++)
-    input_buckets[input_count++] = left->potential_buckets[i];
+  memcpy(input_buckets, left->potential_buckets, sizeof(left->potential_buckets[0]) * left->potential_buckets_count);
+  memcpy(&input_buckets[left->potential_buckets_count], right->potential_buckets, sizeof(right->potential_buckets[0]) * right->potential_buckets_count);
+  qsort(input_buckets, input_count, sizeof(input_buckets[0]), aggregator_bucket_compare_wrapper);
 
-  for (int i = 0; i < right->potential_buckets_count; i++)
-    input_buckets[input_count++] = right->potential_buckets[i];
-
-  qsort(input_buckets, input_count, sizeof(struct aggregator_bucket *), aggregator_bucket_compare_wrapper);
-
-  struct aggregator_bucket *output_buckets[64] = { 0 };
+  struct aggregator_bucket *output_buckets[MAX_POTENTIAL_BUCKETS_COUNT * 2] = { 0 };
   int output_count = 0;
 
   for (int i = 0; i < input_count; i++)
   {
-
     if (output_count != 0 && output_buckets[output_count - 1] == input_buckets[i])
       continue;
 
@@ -389,13 +384,8 @@ compute_buckets_union(struct trie_node *node, const struct trie_node *left, cons
     for (int j = i + 1; j < output_count; j++)
       assert(output_buckets[i] != output_buckets[j]);
 
-  for (int i = 0; i < output_count; i++)
-  {
-    if (node->potential_buckets_count >= MAX_POTENTIAL_BUCKETS_COUNT)
-      break;
-
-    node->potential_buckets[node->potential_buckets_count++] = output_buckets[i];
-  }
+  node->potential_buckets_count = output_count < MAX_POTENTIAL_BUCKETS_COUNT ? output_count : MAX_POTENTIAL_BUCKETS_COUNT;
+  memcpy(node->potential_buckets, output_buckets, sizeof(node->potential_buckets[0]) * node->potential_buckets_count);
 }
 
 /*
