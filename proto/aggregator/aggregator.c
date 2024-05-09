@@ -882,7 +882,6 @@ collect_prefixes(struct aggregator_proto *p)
   else
     bug("Invalid NET type");
 
-  log("%d prefixes after aggregation", count);
   p->after_count = count;
 }
 
@@ -954,6 +953,9 @@ run_aggregation(struct channel *C)
   construct_trie(p);
   calculate_trie(p);
   collect_prefixes(p);
+
+  log("%d prefixes before aggregation", p->before_count);
+  log("%d prefixes after aggregation", p->after_count);
   log("==== AGGREGATION DONE ====");
 }
 

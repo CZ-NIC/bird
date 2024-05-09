@@ -70,7 +70,8 @@ struct aggregator_proto {
   uint addr_type;
   slab *trie_slab;
   struct trie_node *root;
-  struct event reload_trie;
+  int before_count;
+  int after_count;
 };
 
 enum aggr_item_type {
@@ -100,11 +101,6 @@ struct trie_node {
   struct aggregator_bucket *potential_buckets[MAX_POTENTIAL_BUCKETS_COUNT];
   int potential_buckets_count;
   int depth;
-};
-
-struct prefix_bucket {
-  net_addr_ip4 trie_prefix;
-  struct aggregator_bucket *bucket;
 };
 
 #endif
