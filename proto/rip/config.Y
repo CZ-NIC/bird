@@ -208,8 +208,6 @@ CF_CLI(SHOW RIP INTERFACES, optproto opttext, [<name>] [\"<interface>\"], [[Show
 CF_CLI(SHOW RIP NEIGHBORS, optproto opttext, [<name>] [\"<interface>\"], [[Show information about RIP neighbors]])
 { PROTO_WALK_CMD($4, &proto_rip, p) rip_show_neighbors(p, $5); };
 
-logging_rate_target: RIP_PKT | RIP_RTE ;
-
 
 CF_CODE
 

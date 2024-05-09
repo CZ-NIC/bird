@@ -136,6 +136,14 @@ struct proto_config {
   /* Protocol-specific data follow... */
 };
 
+struct proto_tbfs
+{
+  /* Pointers to rate limiting logging structures */
+  struct tbf *pkt;
+  struct tbf *lsa;
+  struct tbf *rte;
+};
+
 /* Protocol statistics */
 struct proto_stats {
   /* Import - from protocol to core */
@@ -196,6 +204,7 @@ struct proto {
   btime last_state_change;		/* Time of last state transition */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
   char *message;			/* State-change message, allocated from proto_pool */
+  struct proto_tbfs tbfs;		/* Pointers to rate limiting logging structures */
 
   /*
    *	General protocol hooks:
@@ -243,7 +252,6 @@ struct proto {
   void (*rte_insert)(struct network *, struct rte *);
   void (*rte_remove)(struct network *, struct rte *);
   u32 (*rte_igp_metric)(struct rte *);
-  void (*set_logging_rate)(struct proto *P, uintptr_t arg);
 
   /* Hic sunt protocol-specific data */
 };

@@ -2582,8 +2582,10 @@ babel_start(struct proto *P)
   p->msg_slab = sl_new(P->pool, sizeof(struct babel_msg_node));
   p->seqno_slab = sl_new(P->pool, sizeof(struct babel_seqno_request));
 
-  P->set_logging_rate = babel_set_logging_rate;
   p->log_pkt_tbf = (struct tbf){ .cf.rate = cf->log_pkt_tbf.rate, .cf.burst = cf->log_pkt_tbf.burst };
+  P->tbfs.pkt = &p->log_pkt_tbf;
+  P->tbfs.rte = NULL;
+  P->tbfs.lsa = NULL;
 
   return PS_UP;
 }
@@ -2643,26 +2645,6 @@ babel_reconfigure(struct proto *P, struct proto_config *CF)
 
   return 1;
 }
-
-void
-babel_set_logging_rate(struct proto *P, uintptr_t arg)
-{
-  struct babel_proto *p = (void *) P;
-  struct cmd_logging_rate_info *info = (struct cmd_logging_rate_info*) arg;
-  struct logging_rate_targets *targets = info->targets;
-  while (targets)
-  {
-    if (targets->target == TBF_BABEL_PKT || targets->target == TBF_ALL)
-    {
-      p->log_pkt_tbf.cf.rate = info->tbfc->rate;
-      p->log_pkt_tbf.cf.burst = info->tbfc->burst;
-    }
-    else
-      cli_msg(9002, "protocol %s: wrong logging rate change type for babel protocol", P->name);
-    targets = targets->next;
-  }
-}
-
 
 
 struct protocol proto_babel = {

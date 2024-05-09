@@ -226,7 +226,6 @@ struct rip_neighbor * rip_get_neighbor(struct rip_proto *p, ip_addr *a, struct r
 void rip_update_bfd(struct rip_proto *p, struct rip_neighbor *n);
 void rip_show_interfaces(struct proto *P, const char *iff);
 void rip_show_neighbors(struct proto *P, const char *iff);
-void rip_set_logging_rate(struct proto *P, uintptr_t arg);
 
 /* packets.c */
 void rip_send_request(struct rip_proto *p, struct rip_iface *ifa);

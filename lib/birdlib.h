@@ -122,11 +122,9 @@ struct tbf {
 
 enum tbf_targets {
   TBF_INVALID = 0,
-  TBF_OSPF_PKT,
-  TBF_OSPF_LSA,
-  TBF_RIP_PKT,
-  TBF_RIP_RTE,
-  TBF_BABEL_PKT,
+  TBF_PKT,
+  TBF_LSA,
+  TBF_RTE,
   TBF_ALL
 };
 
@@ -136,8 +134,9 @@ struct logging_rate_targets {
 };
 
 struct cmd_logging_rate_info {
-    struct tbf_config *tbfc;
-    struct logging_rate_targets *targets;
+  int all_protos;
+  struct tbf_config *tbfc;
+  struct logging_rate_targets *targets;
 };
 
 

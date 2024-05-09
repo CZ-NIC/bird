@@ -457,7 +457,6 @@ void babel_show_routes(struct proto *P);
 
 void babel_auth_reset_index(struct babel_iface *ifa);
 int babel_auth_check_pc(struct babel_iface *ifa, struct babel_msg_auth *msg);
-void babel_set_logging_rate(struct proto *P, uintptr_t arg);
 
 /* packets.c */
 void babel_enqueue(union babel_msg *msg, struct babel_iface *ifa);

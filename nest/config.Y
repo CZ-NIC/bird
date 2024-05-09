@@ -129,9 +129,8 @@ CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
 CF_KEYWORDS(CHECK, LINK)
 CF_KEYWORDS(SORTED, TRIE, MIN, MAX, SETTLE, TIME, GC, THRESHOLD, PERIOD)
 CF_KEYWORDS(MPLS_LABEL, MPLS_POLICY, MPLS_CLASS)
-CF_KEYWORDS(ASPA_PROVIDERS)
 CF_KEYWORDS(LOGGING, RATE)
-CF_KEYWORDS( OSPF_PKT, OSPF_LSA, RIP_PKT, RIP_RTE, BABEL_PKT)
+CF_KEYWORDS(PKT, LSA, RTE)
 
 /* For r_args_channel */
 CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC)
@@ -948,14 +947,10 @@ CF_CLI_HELP(DEBUG, ..., [[Control protocol debugging via BIRD logs]])
 CF_CLI(DEBUG, debug_args, (<protocol> | <channel> | \"<pattern>\" | all) (all | off | { states|routes|filters|interfaces|events|packets [, ...] }), [[Control protocol debugging via BIRD logs]])
 { /* Done in debug_args */  };
 
-logging_rate_target: PIPE ;
-
 tbf_target:
-  OSPF_PKT { $$ = TBF_OSPF_PKT; }
- |OSPF_LSA { $$ = TBF_OSPF_LSA; }
- |RIP_PKT  { $$ = TBF_RIP_PKT; }
- |RIP_RTE { $$ = TBF_RIP_RTE; }
- |BABEL_PKT { $$ = TBF_BABEL_PKT; }
+  PKT { $$ = TBF_PKT; }
+ |LSA { $$ = TBF_LSA; }
+ |RTE { $$ = TBF_RTE; }
  |ALL { $$ = TBF_ALL; }
 
 logging_rate_targets:
@@ -981,6 +976,7 @@ CF_CLI(LOGGING RATE PROTOCOL, proto_patt logging_rate_targets logging_rate, (<pr
   struct cmd_logging_rate_info info = {
     .tbfc = $6,
     .targets = $5,
+    .all_protos = $4.ptr == NULL
   };
   proto_apply_cmd($4, proto_cmd_logging_rate, 1, (uintptr_t) &info);
 };

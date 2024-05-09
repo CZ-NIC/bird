@@ -575,8 +575,6 @@ lsadb_args:
  | lsadb_args CF_SYM_KNOWN { cf_assert_symbol($2, SYM_PROTO); $$ = $1; $$->proto = (struct ospf_proto *) proto_get_named($2, &proto_ospf); }
  ;
 
-logging_rate_target: OSPF_PKT | OSPF_LSA ;
-
 CF_CODE
 
 CF_END
