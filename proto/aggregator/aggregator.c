@@ -398,22 +398,16 @@ compute_buckets_intersection(struct trie_node *node, const struct trie_node *lef
   assert(right != NULL);
   assert(node  != NULL);
 
-  struct aggregator_bucket *fst[64] = { 0 };
-  struct aggregator_bucket *snd[64] = { 0 };
+  struct aggregator_bucket *fst[MAX_POTENTIAL_BUCKETS_COUNT] = { 0 };
+  struct aggregator_bucket *snd[MAX_POTENTIAL_BUCKETS_COUNT] = { 0 };
 
-  int fst_count = 0;
-  int snd_count = 0;
+  memcpy(fst, left->potential_buckets,  sizeof(left->potential_buckets[0])  * left->potential_buckets_count);
+  memcpy(snd, right->potential_buckets, sizeof(right->potential_buckets[0]) * right->potential_buckets_count);
 
-  for (int i = 0; i < left->potential_buckets_count; i++)
-    fst[fst_count++] = left->potential_buckets[i];
+  qsort(fst, left->potential_buckets_count,  sizeof(fst[0]), aggregator_bucket_compare_wrapper);
+  qsort(snd, right->potential_buckets_count, sizeof(snd[0]), aggregator_bucket_compare_wrapper);
 
-  for (int i = 0; i < right->potential_buckets_count; i++)
-    snd[snd_count++] = right->potential_buckets[i];
-
-  qsort(fst, fst_count, sizeof(struct aggregator_bucket *), aggregator_bucket_compare_wrapper);
-  qsort(snd, snd_count, sizeof(struct aggregator_bucket *), aggregator_bucket_compare_wrapper);
-
-  struct aggregator_bucket *output[64] = { 0 };
+  struct aggregator_bucket *output[MAX_POTENTIAL_BUCKETS_COUNT * 2] = { 0 };
   int output_count = 0;
 
   int i = 0;
@@ -421,11 +415,11 @@ compute_buckets_intersection(struct trie_node *node, const struct trie_node *lef
 
   while (i < left->potential_buckets_count && j < right->potential_buckets_count)
   {
-    int res = aggregator_bucket_compare(left->potential_buckets[i], right->potential_buckets[j]);
+    int res = aggregator_bucket_compare(fst[i], snd[j]);
 
     if (res == 0)
     {
-      output[output_count++] = left->potential_buckets[i];
+      output[output_count++] = fst[i];
       i++;
       j++;
     }
@@ -446,13 +440,8 @@ compute_buckets_intersection(struct trie_node *node, const struct trie_node *lef
     for (int l = k + 1; l < output_count; l++)
       assert(output[k] != output[l]);
 
-  for (int k = 0; k < output_count; k++)
-  {
-    if (node->potential_buckets_count >= MAX_POTENTIAL_BUCKETS_COUNT)
-      break;
-
-    node->potential_buckets[node->potential_buckets_count++] = output[k];
-  }
+  node->potential_buckets_count = output_count < MAX_POTENTIAL_BUCKETS_COUNT ? output_count : MAX_POTENTIAL_BUCKETS_COUNT;
+  memcpy(node->potential_buckets, output, sizeof(node->potential_buckets[0]) * node->potential_buckets_count);
 }
 
 /*
