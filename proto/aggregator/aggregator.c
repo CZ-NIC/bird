@@ -488,9 +488,6 @@ second_pass(struct trie_node *node)
   assert(node != NULL);
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
-  //if (node->parent == NULL)
-    //assert(node->bucket != NULL);
-
   if (is_leaf(node))
   {
     assert(node->potential_buckets_count == 1);
@@ -517,21 +514,6 @@ second_pass(struct trie_node *node)
   for (int i = 0; i < right->potential_buckets_count; i++)
     for (int j = i + 1; j < right->potential_buckets_count; j++)
       assert(right->potential_buckets[i] != right->potential_buckets[j]);
-
-  /*
-  qsort(left->potential_buckets, left->potential_buckets_count, sizeof(struct aggregator_bucket *), aggregator_bucket_compare_wrapper);
-  qsort(right->potential_buckets, right->potential_buckets_count, sizeof(struct aggregator_bucket *), aggregator_bucket_compare_wrapper);
-
-  for (int i = 1; i < left->potential_buckets_count; i++)
-  {
-    assert((uintptr_t)left->potential_buckets[i - 1] < (uintptr_t)left->potential_buckets[i]);
-  }
-
-  for (int i = 1; i < right->potential_buckets_count; i++)
-  {
-    assert((uintptr_t)right->potential_buckets[i - 1] < (uintptr_t)right->potential_buckets[i]);
-  }
-  */
 
   if (bucket_sets_are_disjoint(left, right))
     compute_buckets_union(node, left, right);
@@ -570,9 +552,6 @@ third_pass(struct trie_node *node)
   if (node == NULL)
     return;
 
-  //if (node->parent == NULL)
-    //assert(node->bucket != NULL);
-
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
   /* Root is assigned any of its potential buckets */
@@ -580,7 +559,6 @@ third_pass(struct trie_node *node)
   {
     assert(node->potential_buckets_count > 0);
     assert(node->potential_buckets[0] != NULL);
-    //assert(node->bucket != NULL);
     node->bucket = node->potential_buckets[0];
   }
   else
