@@ -969,9 +969,6 @@ rip_timer(timer *t)
 
   FIB_ITERATE_INIT(&fit, &p->rtable);
 
-  struct channel_import_request *cir = p->cir;
-  p->cir = NULL;
-
   loop:
   FIB_ITERATE_START(&p->rtable, &fit, struct rip_entry, en)
   {
@@ -993,7 +990,7 @@ rip_timer(timer *t)
     }
 
     /* Propagating eventual change */
-    if ((changed || p->rt_reload) && (cir == NULL || channel_import_request_prefilter(cir, en->n.addr)))
+    if (changed || p->rt_reload)
     {
       /*
        * We have to restart the iteration because there may be a cascade of
@@ -1050,19 +1047,7 @@ rip_timer(timer *t)
       }
   }
 
-  while(cir)
-  {
-    struct channel_import_request *next_cir = cir->next;
-    cir->done(cir);
-    cir = next_cir;
-  }
-  if (p->cir)
-  {
-    p->rt_reload = 1;
-    rip_kick_timer(p);
-  }
-  else
-    tm_start(p->timer, MAX(next - now_, 100 MS));
+  tm_start(p->timer, MAX(next - now_, 100 MS));
 }
 
 static inline void
@@ -1168,8 +1153,9 @@ rip_reload_routes(struct channel *C, struct channel_import_request *cir)
 {
   struct rip_proto *p = (struct rip_proto *) C->proto;
 
-  cir->next = p->cir;
-  p->cir = cir;
+  /* Always reload full */
+  if (cir)
+    CALL(cir->done, cir);
 
   if (p->rt_reload)
     return 1;
