@@ -582,30 +582,30 @@ third_pass(struct trie_node *node)
     assert(node->potential_buckets[0] != NULL);
     //assert(node->bucket != NULL);
     node->bucket = node->potential_buckets[0];
-    goto descent;
-  }
-
-  const struct aggregator_bucket *inherited_bucket = get_ancestor_bucket(node);
-
-  /*
-   * If bucket inherited from ancestor is one of potential buckets of this node,
-   * then this node doesn't need bucket because it inherits one.
-   */
-  if (is_bucket_potential(node, inherited_bucket))
-  {
-    node->bucket = NULL;
-    remove_potential_buckets(node);
   }
   else
   {
-    assert(node->potential_buckets_count > 0);
-    node->bucket = node->potential_buckets[0];
+    const struct aggregator_bucket *inherited_bucket = get_ancestor_bucket(node);
+
+    /*
+     * If bucket inherited from ancestor is one of potential buckets of this node,
+     * then this node doesn't need bucket because it inherits one.
+     */
+    if (is_bucket_potential(node, inherited_bucket))
+    {
+      node->bucket = NULL;
+      remove_potential_buckets(node);
+    }
+    else
+    {
+      assert(node->potential_buckets_count > 0);
+      node->bucket = node->potential_buckets[0];
+    }
   }
 
   /* Preorder traversal */
-  descent:
-    third_pass(node->child[0]);
-    third_pass(node->child[1]);
+  third_pass(node->child[0]);
+  third_pass(node->child[1]);
 
   /* Leaves with no assigned bucket are removed */
   if (node->bucket == NULL && is_leaf(node))
