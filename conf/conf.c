@@ -40,7 +40,6 @@
  * text to make the parser recognize only the rules corresponding to CLI commands.
  */
 
-#include <setjmp.h>
 #include <stdarg.h>
 
 #undef LOCAL_DEBUG
