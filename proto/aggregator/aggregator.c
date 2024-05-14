@@ -360,11 +360,11 @@ compute_buckets_union(struct trie_node *node, const struct trie_node *left, cons
   struct aggregator_bucket *input_buckets[MAX_POTENTIAL_BUCKETS_COUNT * 2] = { 0 };
   const int input_count = left->potential_buckets_count + right->potential_buckets_count;
 
-  memcpy(input_buckets, left->potential_buckets, sizeof(left->potential_buckets[0]) * left->potential_buckets_count);
-  memcpy(&input_buckets[left->potential_buckets_count], right->potential_buckets, sizeof(right->potential_buckets[0]) * right->potential_buckets_count);
+  memcpy(input_buckets, left->potential_buckets, sizeof(input_buckets[0]) * left->potential_buckets_count);
+  memcpy(&input_buckets[left->potential_buckets_count], right->potential_buckets, sizeof(input_buckets[0]) * right->potential_buckets_count);
   qsort(input_buckets, input_count, sizeof(input_buckets[0]), aggregator_bucket_compare_wrapper);
 
-  struct aggregator_bucket *output_buckets[MAX_POTENTIAL_BUCKETS_COUNT * 2] = { 0 };
+  struct aggregator_bucket *output_buckets[ARRAY_SIZE(input_buckets)] = { 0 };
   int output_count = 0;
 
   for (int i = 0; i < input_count; i++)
@@ -401,13 +401,13 @@ compute_buckets_intersection(struct trie_node *node, const struct trie_node *lef
   struct aggregator_bucket *fst[MAX_POTENTIAL_BUCKETS_COUNT] = { 0 };
   struct aggregator_bucket *snd[MAX_POTENTIAL_BUCKETS_COUNT] = { 0 };
 
-  memcpy(fst, left->potential_buckets,  sizeof(left->potential_buckets[0])  * left->potential_buckets_count);
-  memcpy(snd, right->potential_buckets, sizeof(right->potential_buckets[0]) * right->potential_buckets_count);
+  memcpy(fst, left->potential_buckets,  sizeof(fst[0]) * left->potential_buckets_count);
+  memcpy(snd, right->potential_buckets, sizeof(snd[0]) * right->potential_buckets_count);
 
   qsort(fst, left->potential_buckets_count,  sizeof(fst[0]), aggregator_bucket_compare_wrapper);
   qsort(snd, right->potential_buckets_count, sizeof(snd[0]), aggregator_bucket_compare_wrapper);
 
-  struct aggregator_bucket *output[MAX_POTENTIAL_BUCKETS_COUNT * 2] = { 0 };
+  struct aggregator_bucket *output[ARRAY_SIZE(fst) + ARRAY_SIZE(snd)] = { 0 };
   int output_count = 0;
 
   int i = 0;
