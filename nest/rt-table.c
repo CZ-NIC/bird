@@ -215,9 +215,7 @@ static inline rtable *rt_pub_to_pub(rtable *tab) { return tab; }
  */
 struct rtable_reading {
   rtable *t;
-  struct lock_order locking_stack;
-  u64 retry;
-  jmp_buf buf;
+  struct rcu_unwinder *u;
 };
 
 static inline void _rt_rcu_unlock_(struct rtable_reading *o)
@@ -226,25 +224,17 @@ static inline void _rt_rcu_unlock_(struct rtable_reading *o)
     rcu_read_unlock();
 }
 
-#define RT_READ(_o, _i) \
-  CLEANUP(_rt_rcu_unlock_) struct rtable_reading _s##_i = { .t = _o };	\
-  struct rtable_reading *_i = &_s##_i;					\
-  if (setjmp(_i->buf)) {						\
-    rcu_read_unlock();							\
-    locking_unwind(&_i->locking_stack);					\
-    birdloop_yield();							\
-    if (!(++_i->retry % NET_GET_BLOCK_WARN))				\
-      log(L_WARN "Suspiciously many RT_READs retried (%lu) in table %s"	\
-	 " at %s:%d", _i->retry, _i->t->name, __FILE__, __LINE__);	\
-  }									\
-  _i->locking_stack = locking_stack;					\
-  rcu_read_lock();							\
+#define RT_READ_ANCHORED(_o, _i, _u)  \
+  struct rtable_reading _s##_i = { .t = _o, .u = _u, }, *_i = &_s##_i;
 
-#define RT_READ_RETRY(tr) do { if (RT_IS_LOCKED(tr->t)) bug("No obsolete route allowed here"); else longjmp(tr->buf, 1); } while (0)
+#define RT_READ(_o, _i) RCU_ANCHOR(_u##_i); RT_READ_ANCHORED(_o, _i, _u##_i);
+
+#define RT_READ_RETRY(tr) RCU_RETRY(tr->u)
 
 #define RT_READ_LOCKED(_o, _i) \
-  struct rtable_reading _s##_i = { .t = RT_PUB(_o) },	\
-  *_i = ({ ASSERT_DIE(RT_IS_LOCKED(_o)); &_s##_i; });	\
+  ASSERT_DIE(RT_IS_LOCKED(_o));	\
+  struct rtable_reading _s##_i = { .t = RT_PUB(_o), .u = RCU_WONT_RETRY, }, *_i = &_s##_i;
+
 
 #define RTE_IS_OBSOLETE(s)  ((s)->rte.flags & REF_OBSOLETE)
 #define RTE_OBSOLETE_CHECK(tr, _s) ({	\
@@ -253,7 +243,6 @@ static inline void _rt_rcu_unlock_(struct rtable_reading *o)
       RT_READ_RETRY(tr);		\
     s; })
 
-#define NET_GET_BLOCK_WARN  16384
 #define NET_READ_WALK_ROUTES(tr, n, ptr, r)						\
   for (struct rte_storage *r, * _Atomic *ptr = &(n)->routes;				\
       r = RTE_OBSOLETE_CHECK(tr, atomic_load_explicit(ptr, memory_order_acquire));	\
