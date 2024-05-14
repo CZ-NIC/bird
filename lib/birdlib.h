@@ -10,6 +10,7 @@
 #define _BIRD_BIRDLIB_H_
 
 #include <stddef.h>
+#include <setjmp.h>
 
 #include "sysdep/config.h"
 #include "lib/alloca.h"

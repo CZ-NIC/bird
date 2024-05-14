@@ -10,6 +10,7 @@
 #define _BIRD_LOCKING_H_
 
 #include "lib/macro.h"
+#include "lib/rcu.h"
 
 struct domain_generic;
 struct pool;
@@ -337,4 +338,43 @@ static inline void locking_unwind(struct lock_order *desired)
 #define LOBJ_PRIV(_obj, _level) \
   ({ ASSERT_DIE(DOMAIN_IS_LOCKED(_level, (_obj)->lock)); &(_obj)->priv; })
 
+
+/*
+ * RCU retry unwinder
+ *
+ * Start a retriable operation with RCU_ANCHOR() and pass the _i object along
+ * with the code which may then call RCU_RETRY() to return back to RCU_ANCHOR
+ * and try again.
+ */
+
+struct rcu_unwinder {
+  struct lock_order locking_stack;
+  u64 retry;
+  jmp_buf buf;
+};
+
+static inline void _rcu_unwinder_unlock_(struct rcu_unwinder *o UNUSED)
+{
+  rcu_read_unlock();
+}
+
+#define RCU_UNWIND_WARN	4096
+
+#define RCU_ANCHOR(_i)	\
+  CLEANUP(_rcu_unwinder_unlock_) struct rcu_unwinder _s##_i = {};	\
+  struct rcu_unwinder *_i = &_s##_i;					\
+  if (setjmp(_i->buf)) {						\
+    rcu_read_unlock();							\
+    locking_unwind(&_i->locking_stack);					\
+    birdloop_yield();							\
+    if (!(++_i->retry % RCU_UNWIND_WARN))				\
+      log(L_WARN "Suspiciously many RCU_ANCHORs retried (%lu)"		\
+	 " at %s:%d", _i->retry, __FILE__, __LINE__);			\
+  }									\
+  _i->locking_stack = locking_stack;					\
+  rcu_read_lock();							\
+
+#define RCU_RETRY(_i) do { if (_i) longjmp(_i->buf, 1); else bug("No rcu retry allowed here"); } while (0)
+
+#define RCU_WONT_RETRY	((struct rcu_unwinder *) NULL)
 #endif

@@ -12,7 +12,6 @@
 #define _BIRD_BGP_H_
 
 #include <stdint.h>
-#include <setjmp.h>
 #include "nest/bird.h"
 #include "nest/route.h"
 #include "nest/bfd.h"
