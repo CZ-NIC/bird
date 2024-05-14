@@ -223,6 +223,10 @@ first_pass_new(struct trie_node *node, slab *trie_slab)
     return;
   }
 
+  /* Root node */
+  if (node->parent == NULL)
+    assert(node->bucket != NULL);
+
   if (node->bucket == NULL)
     node->bucket = node->parent->bucket;
 
@@ -495,6 +499,9 @@ second_pass(struct trie_node *node)
     assert(node->potential_buckets[0] == node->bucket);
     return;
   }
+
+  /* Internal node */
+  assert(node->potential_buckets_count == 0);
 
   struct trie_node * const left = node->child[0];
   struct trie_node * const right = node->child[1];
