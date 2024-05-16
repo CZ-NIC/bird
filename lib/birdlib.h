@@ -13,6 +13,9 @@
 
 /* Ugly structure offset handling macros */
 
+#define SAME_TYPE(a, b)	({ int _ = ((a) != (b)); !_; })
+#define TYPE_CAST(from, to, what) ( SAME_TYPE(((from) NULL), (what)), ((to) (what)))
+
 struct align_probe { char x; long int y; };
 
 #define OFFSETOF(s, i) ((size_t) &((s *)0)->i)

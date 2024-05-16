@@ -22,6 +22,7 @@ CF_HDR
 #include "nest/bfd.h"
 #include "nest/cli.h"
 #include "filter/filter.h"
+#include "lib/settle.h"
 
 /* FIXME: Turn on YYERROR_VERBOSE and work around lots of bison bugs? */
 
@@ -93,6 +94,7 @@ CF_DECLS
   struct proto_spec ps;
   struct channel_limit cl;
   struct timeformat *tf;
+  struct settle_config settle;
   mpls_label_stack *mls;
   const struct adata *bs;
   struct aggr_item_node *ai;
@@ -112,6 +114,7 @@ CF_DECLS
 
 %type <i> expr bool pxlen4
 %type <time> expr_us time
+%type <settle> settle
 %type <a> ipa
 %type <net> net_ip4_ net_ip4 net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_
