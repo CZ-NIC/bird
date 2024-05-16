@@ -906,14 +906,8 @@ calculate_trie(struct aggregator_proto *p)
 }
 
 static void
-run_aggregation(struct channel *C)
+run_aggregation(struct aggregator_proto *p)
 {
-  struct aggregator_proto *p = (void *)C->proto;
-
-  /* Run aggregation only on feed-end from source channel */
-  if (C != p->src)
-    return;
-
   construct_trie(p);
   calculate_trie(p);
   collect_prefixes(p);
@@ -921,6 +915,16 @@ run_aggregation(struct channel *C)
   log("%d prefixes before aggregation", p->before_count);
   log("%d prefixes after aggregation", p->after_count);
   log("==== AGGREGATION DONE ====");
+}
+
+static void
+aggregate_on_feed_end(struct channel *C)
+{
+  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, C);
+
+  /* Run aggregation only on feed end from the source channel */
+  if (C == p->src)
+    run_aggregation(p);
 }
 
 /*
@@ -1532,7 +1536,7 @@ aggregator_init(struct proto_config *CF)
 
   P->rt_notify = aggregator_rt_notify;
   P->preexport = aggregator_preexport;
-  P->feed_end = run_aggregation;
+  P->feed_end = aggregate_on_feed_end;
 
   return P;
 }
