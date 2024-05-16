@@ -27,6 +27,7 @@ struct rcu_thread {
 };
 
 extern _Thread_local struct rcu_thread *this_rcu_thread;
+extern _Thread_local uint rcu_blocked;
 
 static inline void rcu_read_lock(void)
 {
@@ -41,6 +42,11 @@ static inline void rcu_read_lock(void)
 static inline void rcu_read_unlock(void)
 {
   atomic_fetch_sub(&this_rcu_thread->ctl, RCU_NEST_CNT);
+}
+
+static inline _Bool rcu_read_active(void)
+{
+  return !!(atomic_load_explicit(&this_rcu_thread->ctl, memory_order_acquire) & RCU_NEST_MASK);
 }
 
 void synchronize_rcu(void);
