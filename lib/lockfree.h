@@ -93,10 +93,6 @@ static inline void lfuc_unlock_immediately(struct lfuc *c, event_list *el, event
   u64 pending = (uc >> LFUC_PU_SHIFT) + 1;
   uc &= LFUC_IN_PROGRESS - 1;
 
-  /* We per-use the RCU critical section indicator to make the prune event wait
-   * until we finish here in the rare case we get preempted. */
-  rcu_read_lock();
-
   /* Obviously, there can't be more pending unlocks than the usecount itself */
   if (uc == pending)
     /* If we're the last unlocker (every owner is already unlocking), schedule
@@ -108,10 +104,6 @@ static inline void lfuc_unlock_immediately(struct lfuc *c, event_list *el, event
   /* And now, finally, simultaneously pop the in-progress indicator and the
    * usecount, possibly allowing the pruning routine to free this structure */
   uc = atomic_fetch_sub_explicit(&c->uc, LFUC_IN_PROGRESS + 1, memory_order_acq_rel);
-
-  /* ... and to reduce the load a bit, the pruning routine will better wait for
-   * RCU synchronization instead of a busy loop. */
-  rcu_read_unlock();
 
 //  return uc - LFUC_IN_PROGRESS - 1;
 }
@@ -172,7 +164,7 @@ lfuc_finished(struct lfuc *c)
   u64 uc;
   /* Wait until all unlockers finish */
   while ((uc = atomic_load_explicit(&c->uc, memory_order_acquire)) >> LFUC_PU_SHIFT)
-    synchronize_rcu();
+    birdloop_yield();
 
   /* All of them are now done and if the usecount is now zero, then we're
    * the last place to reference the object and we can call it finished. */

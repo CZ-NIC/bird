@@ -18,6 +18,7 @@
 
 _Atomic uint rcu_gp_ctl = RCU_NEST_CNT;
 _Thread_local struct rcu_thread *this_rcu_thread = NULL;
+_Thread_local uint rcu_blocked;
 
 static list rcu_thread_list;
 
@@ -45,6 +46,9 @@ update_counter_and_wait(void)
 void
 synchronize_rcu(void)
 {
+  if (!rcu_blocked && last_locked)
+    bug("Forbidden to synchronize RCU unless an appropriate lock is taken");
+
   LOCK_DOMAIN(resource, rcu_domain);
   update_counter_and_wait();
   update_counter_and_wait();
