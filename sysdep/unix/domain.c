@@ -43,24 +43,29 @@ _Thread_local struct domain_generic **last_locked = NULL;
 struct domain_generic {
   pthread_mutex_t mutex;
   uint order;
+  _Bool forbidden_when_reading_rcu;
   struct domain_generic **prev;
   struct lock_order *locked_by;
   const char *name;
   pool *pool;
 };
 
-#define DOMAIN_INIT(_order) { .mutex = PTHREAD_MUTEX_INITIALIZER, .order = _order }
+#define DOMAIN_INIT(_order, _allow_rcu) { \
+  .mutex = PTHREAD_MUTEX_INITIALIZER, \
+  .order = _order, \
+  .forbidden_when_reading_rcu = !_allow_rcu, \
+}
 
-static struct domain_generic the_bird_domain_gen = DOMAIN_INIT(OFFSETOF(struct lock_order, the_bird));
+static struct domain_generic the_bird_domain_gen = DOMAIN_INIT(OFFSETOF(struct lock_order, the_bird), 1);
 
 DOMAIN(the_bird) the_bird_domain = { .the_bird = &the_bird_domain_gen };
 
 struct domain_generic *
-domain_new(uint order)
+domain_new(uint order, _Bool allow_rcu)
 {
   ASSERT_DIE(order < sizeof(struct lock_order));
   struct domain_generic *dg = xmalloc(sizeof(struct domain_generic));
-  *dg = (struct domain_generic) DOMAIN_INIT(order);
+  *dg = (struct domain_generic) DOMAIN_INIT(order, allow_rcu);
   return dg;
 }
 
@@ -95,6 +100,12 @@ void do_lock(struct domain_generic *dg, struct domain_generic **lsp)
   struct lock_order stack_copy;
   memcpy(&stack_copy, &locking_stack, sizeof(stack_copy));
   struct domain_generic **lll = last_locked;
+
+  if (dg->forbidden_when_reading_rcu)
+    if (rcu_read_active())
+      bug("Locking of this lock forbidden while RCU reader is active");
+    else
+      rcu_blocked++;
 
   if ((char *) lsp - (char *) &locking_stack != dg->order)
     bug("Trying to lock on bad position: order=%u, lsp=%p, base=%p", dg->order, lsp, &locking_stack);
@@ -132,4 +143,7 @@ void do_unlock(struct domain_generic *dg, struct domain_generic **lsp)
   *lsp = NULL;
   dg->prev = NULL;
   pthread_mutex_unlock(&dg->mutex);
+
+  if (dg->forbidden_when_reading_rcu)
+    ASSERT_DIE(rcu_blocked--);
 }

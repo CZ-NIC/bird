@@ -831,7 +831,8 @@ rt_notify_basic(struct channel *c, const net_addr *net, rte *new, const rte *old
 void
 channel_rpe_mark_seen(struct channel *c, struct rt_pending_export *rpe)
 {
-  channel_trace(c, D_ROUTES, "Marking seen %p (%lu)", rpe, rpe->seq);
+  if (rpe->seq)
+    channel_trace(c, D_ROUTES, "Marking seen %p (%lu)", rpe, rpe->seq);
 
   ASSERT_DIE(c->out_req.hook);
   rpe_mark_seen(c->out_req.hook, rpe);
@@ -2889,7 +2890,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   pool *sp = birdloop_pool(loop);
 
   /* Create the table domain and pool */
-  DOMAIN(rtable) dom = DOMAIN_NEW(rtable);
+  DOMAIN(rtable) dom = DOMAIN_NEW_RCU_SYNC(rtable);
   LOCK_DOMAIN(rtable, dom);
 
   pool *p = rp_newf(sp, dom.rtable, "Routing table data %s", cf->name);
@@ -3189,7 +3190,7 @@ rt_prune_table(void *_tab)
 static void
 rt_cork_release_hook(void *data UNUSED)
 {
-  do synchronize_rcu();
+  do birdloop_yield();
   while (
       !atomic_load_explicit(&rt_cork.active, memory_order_acquire) &&
       ev_run_list(&rt_cork.queue)
@@ -4537,7 +4538,7 @@ hc_notify_export_one(struct rt_export_request *req, const net_addr *net, struct 
 	  && !ev_active(tab->hcu_event))
       {
 	if (req->trace_routes & D_EVENTS)
-	  log(L_TRACE "%s requesting HCU");
+	  log(L_TRACE "%s requesting HCU", req->name);
 
 	ev_send_loop(tab->loop, tab->hcu_event);
       }

@@ -188,21 +188,17 @@ static inline void rt_cork_acquire(void)
 static inline void rt_cork_release(void)
 {
   if (atomic_fetch_sub_explicit(&rt_cork.active, 1, memory_order_acq_rel) == 1)
-  {
-    synchronize_rcu();
     ev_send(&global_work_list, &rt_cork.run);
-  }
 }
 
-static inline int rt_cork_check(event *e)
+static inline _Bool rt_cork_check(event *e)
 {
-  rcu_read_lock();
-
   int corked = (atomic_load_explicit(&rt_cork.active, memory_order_acquire) > 0);
   if (corked)
     ev_send(&rt_cork.queue, e);
 
-  rcu_read_unlock();
+  if (atomic_load_explicit(&rt_cork.active, memory_order_acquire) == 0)
+    ev_send(&global_work_list, &rt_cork.run);
 
   return corked;
 }
