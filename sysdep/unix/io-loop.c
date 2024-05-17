@@ -1472,6 +1472,17 @@ birdloop_run(void *_loop)
   account_to(&loop->locking);
   birdloop_enter(loop);
   this_birdloop = loop;
+
+  /* Wait until pingers end to wait for all events to actually arrive */
+  for (u32 ltt;
+      ltt = atomic_load_explicit(&loop->thread_transition, memory_order_acquire);
+      )
+  {
+    ASSERT_DIE(ltt == LTT_PING);
+    birdloop_yield();
+  }
+
+  /* Now we can actually do some work */
   u64 dif = account_to(&loop->working);
 
   if (dif > this_thread->max_loop_time_ns)
