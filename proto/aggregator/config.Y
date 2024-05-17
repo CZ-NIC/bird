@@ -11,6 +11,7 @@
 CF_HDR
 
 #include "proto/aggregator/aggregator.h"
+#include "lib/settle.h"
 
 CF_DEFINES
 
@@ -20,7 +21,7 @@ CF_DEFINES
 
 CF_DECLS
 
-CF_KEYWORDS(AGGREGATOR, AGGREGATE, ON, MERGE, BY)
+CF_KEYWORDS(AGGREGATOR, AGGREGATE, ON, MERGE, BY, RELOAD, AFTER)
 
 %type <ai> aggr_item aggr_list
 
@@ -35,8 +36,12 @@ aggregator_proto_start: proto_start AGGREGATOR
   this_proto = proto_config_new(&proto_aggregator, $1);
   this_channel = AGGREGATOR_CFG->src = channel_config_new(NULL, "source", 0, this_proto);
   AGGREGATOR_CFG->dst = channel_config_new(NULL, "destination", 0, this_proto);
-
   AGGREGATOR_CFG->src->ra_mode = AGGREGATOR_CFG->dst->ra_mode = RA_ANY;
+
+  AGGREGATOR_CFG->aggr_timer_cf = (struct settle_config) {
+    .min = 10 MS_,
+    .max = 100 MS_,
+  };
 };
 
 aggregator_proto_item:
@@ -79,6 +84,7 @@ aggregator_proto_item:
    $4->args++;
    AGGREGATOR_CFG->merge_by = $4;
  }
+ | RELOAD AFTER settle { AGGREGATOR_CFG->aggr_timer_cf = $3; }
 ;
 
 aggregator_proto_opts: /* empty */ | aggregator_proto_opts aggregator_proto_item ';' ;
@@ -135,6 +141,16 @@ aggr_item:
       $$->i.sa = $1;
     }
   ;
+
+/* Settle timer configuration */
+settle:
+   expr_us expr_us {
+     if ($1 > $2)
+       cf_error("Minimum settle time %t is bigger than maximum settle time %t", $1, $2);
+     $$.min = $1 MS_;
+     $$.max = $2 MS_;
+   }
+ ;
 
 CF_CODE
 

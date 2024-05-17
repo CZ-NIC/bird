@@ -44,9 +44,11 @@
 #include "nest/iface.h"
 #include "filter/filter.h"
 #include "proto/aggregator/aggregator.h"
+#include "lib/settle.h"
 
 #include <stdlib.h>
 #include <assert.h>
+
 /*
 #include "nest/route.h"
 #include "nest/iface.h"
@@ -928,6 +930,13 @@ aggregate_on_feed_end(struct channel *C)
     run_aggregation(p);
 }
 
+static void
+aggregate_on_settle_timer(struct settle *timer)
+{
+  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, timer);
+  run_aggregation(p);
+}
+
 /*
  * Set static attribute in @rta from static attribute in @old according to @sa.
  */
@@ -1477,6 +1486,8 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     HASH_REMOVE2(p->buckets, AGGR_BUCK, p->p.pool, old_bucket);
     sl_free(old_bucket);
   }
+
+  settle_kick(&p->aggr_timer);
 }
 
 static int
@@ -1534,6 +1545,7 @@ aggregator_init(struct proto_config *CF)
   p->aggr_on = cf->aggr_on;
   p->net_present = cf->net_present;
   p->merge_by = cf->merge_by;
+  p->aggr_timer_cf = cf->aggr_timer_cf;
 
   P->rt_notify = aggregator_rt_notify;
   P->preexport = aggregator_preexport;
@@ -1608,6 +1620,8 @@ aggregator_start(struct proto *P)
   /* Assign default route to the root */
   p->root->bucket = new_bucket;
 
+  settle_init(&p->aggr_timer, &p->aggr_timer_cf, aggregate_on_settle_timer, p);
+
   return PS_UP;
 }
 
@@ -1634,6 +1648,8 @@ aggregator_shutdown(struct proto *P)
   }
   HASH_WALK_END;
 
+  settle_cancel(&p->aggr_timer);
+
   delete_trie(p->root);
   p->root = NULL;
 
@@ -1647,6 +1663,10 @@ aggregator_reconfigure(struct proto *P, struct proto_config *CF)
   struct aggregator_config *cf = SKIP_BACK(struct aggregator_config, c, CF);
 
   TRACE(D_EVENTS, "Reconfiguring");
+
+  /* Compare timer configuration */
+  if (cf->aggr_timer_cf.min != p->aggr_timer_cf.min || cf->aggr_timer_cf.max != p->aggr_timer_cf.max)
+    return 0;
 
   /* Compare numeric values (shortcut) */
   if (cf->aggr_on_count != p->aggr_on_count)

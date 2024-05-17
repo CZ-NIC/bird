@@ -16,6 +16,7 @@
 #include "nest/bird.h"
 #include "nest/protocol.h"
 #include "lib/hash.h"
+#include "lib/settle.h"
 
 #define MAX_POTENTIAL_BUCKETS_COUNT 16
 
@@ -27,6 +28,7 @@ struct aggregator_config {
   struct aggr_item *aggr_on;
   int net_present;
   const struct f_line *merge_by;
+  struct settle_config aggr_timer_cf;
 };
 
 struct aggregator_route {
@@ -70,6 +72,8 @@ struct aggregator_proto {
   uint addr_type;
   slab *trie_slab;
   struct trie_node *root;
+  struct settle_config aggr_timer_cf;
+  struct settle aggr_timer;
   int before_count;
   int after_count;
 };
