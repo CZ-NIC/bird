@@ -98,17 +98,18 @@ remove_node(struct trie_node *node)
   assert(node->child[0] == NULL && node->child[1] == NULL);
 
   if (node->parent == NULL)
-    goto free_node;
-
-  if (node->parent->child[0] == node)
-    node->parent->child[0] = NULL;
-  else if (node->parent->child[1] == node)
-    node->parent->child[1] = NULL;
+    ;
   else
-    bug("Invalid child pointer");
+  {
+    if (node->parent->child[0] == node)
+      node->parent->child[0] = NULL;
+    else if (node->parent->child[1] == node)
+      node->parent->child[1] = NULL;
+    else
+      bug("Invalid child pointer");
+  }
 
-  free_node:
-    sl_free(node);
+  sl_free(node);
 }
 
 /*
