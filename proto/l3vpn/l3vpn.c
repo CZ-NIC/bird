@@ -218,7 +218,7 @@ l3vpn_rt_notify(struct proto *P, struct channel *c0, const net_addr *n0, rte *ne
       ea_set_attr_u32(&new->attrs, &ea_gen_mpls_policy, 0, mc->label_policy);
 
       ea_set_attr(&new->attrs, EA_LITERAL_DIRECT_ADATA(
-	    ea_bgp_ext_community, 0, l3vpn_export_targets(p, ecad)));
+	    ea_bgp_ext_community, ea_bgp_ext_community->flags, l3vpn_export_targets(p, ecad)));
 
       /* Replace MPLS-incompatible nexthop with lookup in VRF table */
       if (!nhad_orig || !mpls_valid_nexthop(nhad_orig) && p->p.vrf)
