@@ -160,7 +160,11 @@ ev_postpone(event *e)
   ASSERT_DIE(birdloop_inside(sl->loop));
 
   /* Remove from one of these lists. */
-  ASSERT(ev_remove_from(e, &sl->_executor) || ev_remove_from(e, &sl->receiver));
+  while (
+      !ev_remove_from(e, &sl->_executor) &&
+      !ev_remove_from(e, &sl->receiver))
+    /* We may need to wait until the sender actually puts the event inside */
+    birdloop_yield();
 
   /* Mark as inactive */
   ASSERT_DIE(sl == atomic_exchange_explicit(&e->list, NULL, memory_order_acq_rel));
@@ -242,7 +246,7 @@ ev_send(event_list *l, event *e)
     else
       bug("Queuing an already queued event to another queue is not supported.");
 
-  /* Here should be no concurrent senders */
+  /* Here should be no concurrent senders of this event */
   event *next = atomic_load_explicit(&l->receiver, memory_order_acquire);
   edlog(l, e, next, 2, EDL_SEND);
   event *old_next = NULL;

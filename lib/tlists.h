@@ -71,15 +71,14 @@
 
 #define TLIST_NAME(x)	MACRO_CONCAT_AFTER(TLIST_PREFIX,_##x)
 #ifndef TLIST_LIST_STRUCT
-#define TLIST_LIST_STRUCT	TLIST_NAME(list)
+#define TLIST_LIST_STRUCT	struct TLIST_NAME(list)
 #endif
 
-typedef struct TLIST_LIST_STRUCT {
-  TLIST_TYPE *first;
-  TLIST_TYPE *last;
-} TLIST_LIST_STRUCT;
+#ifndef TLIST_DEFINED_BEFORE
+TLIST_STRUCT_DEF(TLIST_PREFIX, TLIST_TYPE);
+#endif
 
-static inline struct TLIST_LIST_STRUCT * TLIST_NAME(enlisted)(TLIST_TYPE *node)
+static inline TLIST_LIST_STRUCT * TLIST_NAME(enlisted)(TLIST_TYPE *node)
 {
   return node->TLIST_ITEM.list;
 }
@@ -206,6 +205,7 @@ static inline void TLIST_NAME(rem_node)(TLIST_LIST_STRUCT *list, TLIST_TYPE *nod
 #endif
 
 #define TLIST_LIST(_name)		struct _name##_list
+#define TLIST_STRUCT_DEF(_name, _type)	TLIST_LIST(_name) { _type *first, *last; }
 
 #define TLIST_NODE_IN(_name, _type)	{ _type *next; _type *prev; TLIST_LIST(_name) *list; }
 #define TLIST_NODE(_name, _type)	struct _name##_node TLIST_NODE_IN(_name, _type)
@@ -230,6 +230,9 @@ static inline void TLIST_NAME(rem_node)(TLIST_LIST_STRUCT *list, TLIST_TYPE *nod
 
 /* Empty check */
 #define EMPTY_TLIST(_name, _list) (!(_list)->first)
+
+/* List length */
+#define TLIST_LENGTH(_name, _list)  ({ uint _len = 0; WALK_TLIST(_name, _, _list) _len++; _len; })
 
 #endif
 

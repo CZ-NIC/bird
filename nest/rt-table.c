@@ -734,15 +734,12 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
   if (new)
     bmap_set(&c->export_map, new->id);
 
-  if (p->debug & D_ROUTES)
-  {
-    if (new && old)
-      channel_rte_trace_out(D_ROUTES, c, new, "replaced");
-    else if (new)
-      channel_rte_trace_out(D_ROUTES, c, new, "added");
-    else if (old)
-      channel_rte_trace_out(D_ROUTES, c, old, "removed");
-  }
+  if (new && old)
+    channel_rte_trace_out(D_ROUTES, c, new, "replaced");
+  else if (new)
+    channel_rte_trace_out(D_ROUTES, c, new, "added");
+  else if (old)
+    channel_rte_trace_out(D_ROUTES, c, old, "removed");
 
   p->rt_notify(p, c, net, new, old);
 }
@@ -2024,7 +2021,7 @@ rt_stop_import(struct rt_import_request *req, void (*stopped)(struct rt_import_r
 
     /* Cancel table rr_counter */
     if (hook->stale_set != hook->stale_pruned)
-      tab->rr_counter -= (hook->stale_set - hook->stale_pruned);
+      tab->rr_counter -= ((int) hook->stale_set - (int) hook->stale_pruned);
 
     tab->rr_counter++;
 
@@ -2302,7 +2299,7 @@ rt_refresh_begin(struct rt_import_request *req)
 	  e->stale_cycle = 0;
 
     /* Smash the route refresh counter and zero everything. */
-    tab->rr_counter -= hook->stale_set - hook->stale_pruned;
+    tab->rr_counter -= ((int) hook->stale_set - (int) hook->stale_pruned);
     hook->stale_set = hook->stale_valid = hook->stale_pruning = hook->stale_pruned = 0;
   }
 
@@ -3036,7 +3033,7 @@ rt_prune_table(struct rtable_private *tab)
     }
     else if (ih->stale_pruning != ih->stale_pruned)
     {
-      tab->rr_counter -= (ih->stale_pruning - ih->stale_pruned);
+      tab->rr_counter -= ((int) ih->stale_pruning - (int) ih->stale_pruned);
       ih->stale_pruned = ih->stale_pruning;
       rt_refresh_trace(tab, ih, "table prune after refresh end");
     }
@@ -3342,17 +3339,18 @@ ea_set_hostentry(ea_list **to, rtable *dep, rtable *src, ip_addr gw, ip_addr ll,
 {
   struct {
     struct hostentry_adata head;
-    u32 label_space[lnum];
-  } h;
-
-  memset(&h, 0, sizeof h);
+    u32 label_space[];
+  } *h;
+  u32 sz = sizeof *h + lnum * sizeof(u32);
+  h = alloca(sz);
+  memset(h, 0, sz);
 
   RT_LOCKED(src, tab)
-    h.head.he = rt_get_hostentry(tab, gw, ll, dep);
+    h->head.he = rt_get_hostentry(tab, gw, ll, dep);
 
-  memcpy(h.head.labels, labels, lnum * sizeof(u32));
+  memcpy(h->head.labels, labels, lnum * sizeof(u32));
 
-  ea_set_attr_data(to, &ea_gen_hostentry, 0, h.head.ad.data, (byte *) &h.head.labels[lnum] - h.head.ad.data);
+  ea_set_attr_data(to, &ea_gen_hostentry, 0, h->head.ad.data, (byte *) &h->head.labels[lnum] - h->head.ad.data);
 }
 
 
@@ -4738,7 +4736,7 @@ rt_update_hostcache(void *data)
     hc->req = (struct rt_export_request) {
       .name = mb_sprintf(tab->rp, "%s.hcu.notifier", tab->name),
       .list = birdloop_event_list(tab->loop),
-      .pool = tab->rp,
+      .pool = birdloop_pool(tab->loop),
       .trace_routes = tab->config->debug,
       .dump_req = hc_notify_dump_req,
       .log_state_change = hc_notify_log_state_change,
@@ -4799,10 +4797,7 @@ hostentry_tmp_unlock(resource *r)
 {
   struct hostentry_tmp_lock *l = SKIP_BACK(struct hostentry_tmp_lock, r, r);
   RT_LOCKED(l->tab, tab)
-  {
     l->he->uc--;
-    rt_unlock_table(tab);
-  }
 }
 
 static void
@@ -4847,7 +4842,6 @@ rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep)
   l->he = he;
   l->tab = RT_PUB(tab);
   l->he->uc++;
-  rt_lock_table(tab);
 
   return he;
 }

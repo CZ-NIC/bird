@@ -34,15 +34,11 @@ unresolved_vlink(ort *ort)
 static inline struct nexthop_adata *
 new_nexthop(struct ospf_proto *p, ip_addr gw, struct iface *iface, byte weight)
 {
-  struct nexthop_adata *nhad = lp_alloc(p->nhpool, sizeof(struct nexthop_adata));
-  *nhad = (struct nexthop_adata) {
-    .ad = { .length = sizeof *nhad - sizeof nhad->ad, },
-    .nh = {
-      .gw = gw,
-      .iface = iface,
-      .weight = weight,
-    },
-  };
+  struct nexthop_adata *nhad = lp_allocz(p->nhpool, sizeof(struct nexthop_adata));
+  nhad->ad.length = sizeof *nhad - sizeof nhad->ad;
+  nhad->nh.gw = gw;
+  nhad->nh.iface = iface;
+  nhad->nh.weight = weight;
 
   return nhad;
 }

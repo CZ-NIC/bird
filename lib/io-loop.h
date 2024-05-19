@@ -16,6 +16,12 @@
 
 extern struct birdloop main_birdloop;
 
+/* Currently running birdloop */
+extern _Thread_local struct birdloop *this_birdloop;
+
+/* Check that the task has enough time to do a bit more */
+_Bool task_still_in_limit(void);
+
 /* Start a new birdloop owned by given pool and domain */
 struct birdloop *birdloop_new(pool *p, uint order, btime max_latency, const char *fmt, ...);
 
@@ -28,6 +34,9 @@ void birdloop_free(struct birdloop *loop);
 
 /* Get birdloop's event list */
 event_list *birdloop_event_list(struct birdloop *loop);
+
+/* Run this event in this thread's priority event list */
+void ev_send_this_thread(event *e);
 
 /* Get birdloop's time heap */
 struct timeloop *birdloop_time_loop(struct birdloop *loop);

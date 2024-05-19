@@ -51,7 +51,7 @@ static void ns_init(void)
 
 #define NSEC_IN_SEC	((u64) (1000 * 1000 * 1000))
 
-static u64 ns_now(void)
+u64 ns_now(void)
 {
   struct timespec ts;
   if (clock_gettime(CLOCK_MONOTONIC, &ts))
@@ -817,6 +817,7 @@ bird_thread_main(void *arg)
   account_to(&thr->overhead);
 
   birdloop_enter(thr->meta);
+  this_birdloop = thr->meta;
 
   tmp_init(thr->pool, birdloop_domain(thr->meta));
   init_list(&thr->loops);
@@ -885,7 +886,7 @@ bird_thread_main(void *arg)
       ASSERT_DIE(pfd.loop.used == pfd.pfd.used);
     }
     /* Nothing to do in at least 5 seconds, flush local hot page cache */
-    else if ((timeout > 5000) && (timeout < 0))
+    else if ((timeout > 5000) || (timeout < 0))
       flush_local_pages();
 
     bird_thread_busy_update(thr, timeout);
@@ -1362,6 +1363,11 @@ cmd_show_threads(int show_loops)
   bird_thread_sync_all(&tsd->sync, bird_thread_show, cmd_show_threads_done, "Show Threads");
 }
 
+_Bool task_still_in_limit(void)
+{
+  return ns_now() < account_last + this_thread->max_loop_time_ns;
+}
+
 
 /*
  *	Birdloop
@@ -1369,6 +1375,7 @@ cmd_show_threads(int show_loops)
 
 static struct bird_thread main_thread;
 struct birdloop main_birdloop = { .thread = &main_thread, };
+_Thread_local struct birdloop *this_birdloop;
 
 static void birdloop_enter_locked(struct birdloop *loop);
 
@@ -1396,6 +1403,8 @@ birdloop_init(void)
   timers_init(&main_birdloop.time, &root_pool);
 
   birdloop_enter_locked(&main_birdloop);
+  this_birdloop = &main_birdloop;
+  this_thread = &main_thread;
 }
 
 static void
@@ -1441,6 +1450,7 @@ birdloop_stop_internal(struct birdloop *loop)
   ASSERT_DIE(!ev_active(&loop->event));
   loop->ping_pending = 0;
   account_to(&this_thread->overhead);
+  this_birdloop = this_thread->meta;
   birdloop_leave(loop);
 
   /* Request local socket reload */
@@ -1461,6 +1471,18 @@ birdloop_run(void *_loop)
   struct birdloop *loop = _loop;
   account_to(&loop->locking);
   birdloop_enter(loop);
+  this_birdloop = loop;
+
+  /* Wait until pingers end to wait for all events to actually arrive */
+  for (u32 ltt;
+      ltt = atomic_load_explicit(&loop->thread_transition, memory_order_acquire);
+      )
+  {
+    ASSERT_DIE(ltt == LTT_PING);
+    birdloop_yield();
+  }
+
+  /* Now we can actually do some work */
   u64 dif = account_to(&loop->working);
 
   if (dif > this_thread->max_loop_time_ns)
@@ -1489,7 +1511,7 @@ birdloop_run(void *_loop)
     repeat += ev_run_list(&loop->event_list);
 
     /* Check end time */
-  } while (repeat && (ns_now() < account_last + this_thread->max_loop_time_ns));
+  } while (repeat && task_still_in_limit());
 
   /* Request meta timer */
   timer *t = timers_first(&loop->time);
@@ -1507,6 +1529,7 @@ birdloop_run(void *_loop)
   loop->sock_changed = 0;
 
   account_to(&this_thread->overhead);
+  this_birdloop = this_thread->meta;
   birdloop_leave(loop);
 }
 
@@ -1688,4 +1711,13 @@ void
 birdloop_yield(void)
 {
   usleep(100);
+}
+
+void
+ev_send_this_thread(event *e)
+{
+  if (this_thread == &main_thread)
+    ev_send_loop(&main_birdloop, e);
+  else
+    ev_send(&this_thread->priority_events, e);
 }
