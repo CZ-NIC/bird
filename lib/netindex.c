@@ -70,6 +70,8 @@ netindex_hash_cleanup(void *_nh)
       {
 	HASH_DO_REMOVE(nh->net[t].hash, NETINDEX, ii);
 	hmap_clear(&nh->net[t].id_map, i->index);
+	nh->net[t].block[i->index] = NULL;
+
 	if (nh->net[t].slab)
 	  sl_free(i);
 	else
@@ -143,6 +145,17 @@ net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n)
   net_copy(ni->addr, n);
 
   HASH_INSERT2(hp->net[n->type].hash, NETINDEX, hp->pool, ni);
+  while (hp->net[n->type].block_size <= i)
+  {
+    u32 bs = hp->net[n->type].block_size;
+    struct netindex **nb = mb_alloc(hp->pool, bs * 2 * sizeof *nb);
+    memcpy(nb, hp->net[n->type].block, bs * sizeof *nb);
+    memset(&nb[bs], 0, bs * sizeof *nb);
+    hp->net[n->type].block_size *= 2;
+    hp->net[n->type].block = nb;
+  }
+
+  hp->net[n->type].block[i] = ni;
 
   return net_lock_revive_unlock(hp, ni);
 }
@@ -186,6 +199,8 @@ net_resolve_index(netindex_hash *h, u8 net_type, u32 i)
   NH_LOCK(h, hp);
   if (i >= hp->net[net_type].block_size)
     return NULL;
-  else
-    return net_lock_revive_unlock(hp, hp->net[net_type].block[i]);
+
+  struct netindex *ni = hp->net[net_type].block[i];
+  ASSERT_DIE(!ni || (ni->addr->type == net_type));
+  return net_lock_revive_unlock(hp, ni);
 }
