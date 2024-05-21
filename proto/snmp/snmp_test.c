@@ -12,11 +12,20 @@
 #include "test/birdtest.h"
 #include "test/bt-utils.h"
 
-#include "bgp_mib.h"
+#include "bgp4_mib.h"
 #include "subagent.h"
 #include "snmp.h"
 #include "snmp_utils.h"
 #include "mib_tree.h"
+
+/*************************************************************************
+ *
+ * TODO: reject OIDs longer than OID_MAX_LEN in subagent.c/snmp_utils.c
+ *
+ *************************************************************************/
+
+// TODO: limit for prefixed OID used for walking is 27 ids (32 - 4inet -1prefix
+// resp. 33 - 4inet-1prefix-1empty)
 
 // TODO test walk state stack overflow
 // TODO hint for child len alloc size
@@ -24,6 +33,7 @@
 static int t_oid_empty(void);
 static int t_oid_compare(void);
 static int t_oid_prefixize(void);
+static int t_walk_to_oid(void);
 static int t_tree_find(void);
 static int t_tree_traversal(void);
 static int t_tree_leafs(void);
@@ -31,7 +41,7 @@ static int t_tree_add(void);
 static int t_tree_delete(void);
 
 #define SNMP_BUFFER_SIZE 1024
-#define TESTS_NUM   20
+#define TESTS_NUM   32
 #define SMALL_TESTS_NUM 10
 static int tree_sizes[] = { 0, 1, 10, 100, 1000 };
 
@@ -99,7 +109,7 @@ oid_random_id(void)
 static struct oid *
 random_prefixed_oid(void)
 {
-  u32 len = xrandom(OID_MAX_LEN + 1 - ARRAY_SIZE(snmp_internet));
+  u32 len = xrandom(OID_MAX_LEN + 1 - (ARRAY_SIZE(snmp_internet) + 1));
 
   u8 prefix = (u8) xrandom(UINT8_MAX + 1);
 
@@ -356,6 +366,34 @@ t_oid_compare(void)
 
   bt_assert(snmp_oid_compare(super, weird) != 0);
 
+  struct oid *pref = oid_create(0, 7, 0); // no ids, only prefix
+  struct oid *no_pref = oid_create(5, 0, 0, /* ids */ 1, 3, 6, 1, 7);
+
+  bt_assert(snmp_oid_compare(pref, no_pref) == 0);
+
+  struct oid *inet = oid_create(4, 0, 0, /* ids */ 1, 3, 6, 1);
+
+  bt_assert(snmp_oid_compare(inet, pref) < 0);
+  bt_assert(snmp_oid_compare(pref, inet) > 0);
+  bt_assert(snmp_oid_compare(inet, no_pref) < 0);
+  bt_assert(snmp_oid_compare(no_pref, inet) > 0);
+
+  struct oid *pref2 = oid_create(0, 16, 0); // no ids, only prefix
+  struct oid *no_pref2 = oid_create(5, 0, 0, /* ids */ 1, 3, 6, 1, 16);
+
+  bt_assert(snmp_oid_compare(pref2, no_pref2) == 0);
+  bt_assert(snmp_oid_compare(no_pref2, pref2) == 0);
+
+  bt_assert(snmp_oid_compare(pref, pref2) < 0);
+  bt_assert(snmp_oid_compare(pref2, pref) > 0); 
+  bt_assert(snmp_oid_compare(pref, no_pref2) < 0);
+  bt_assert(snmp_oid_compare(no_pref2, pref) > 0);
+  bt_assert(snmp_oid_compare(no_pref, pref2) < 0);
+  bt_assert(snmp_oid_compare(pref2, no_pref) > 0);
+  bt_assert(snmp_oid_compare(no_pref, no_pref2) < 0);
+  bt_assert(snmp_oid_compare(no_pref2, no_pref) > 0);
+
+
   tmp_flush();
   return 1;
 }
@@ -508,6 +546,63 @@ continue_testing:
   return 1;
 }
 
+static inline void
+walk_to_oid_one(pool *pool, const struct oid *oid)
+{
+  struct mib_tree storage, *tree = &storage;
+  mib_tree_init(pool, tree);
+
+  struct mib_walk_state walk;
+  mib_tree_walk_init(&walk, tree);
+
+  const struct oid *inet_pref = oid_create(1, 0, 0, /* ids */ 1);
+  mib_tree_remove(tree, inet_pref);
+
+  (void) mib_tree_add(pool, tree, oid, xrandom(2));
+  mib_tree_find(tree, &walk, oid);
+
+  char buf[1024];
+  struct oid *from_walk = (void *) buf;
+
+  int r = mib_tree_walk_to_oid(&walk, from_walk,
+    (1024 - sizeof(struct oid)) / sizeof(u32));
+
+  /* the memory limit should not be breached */
+  bt_assert(r == 0);
+
+  bt_assert(snmp_oid_compare(from_walk, oid) == 0);
+
+  /* cleanup */
+  mib_tree_remove(tree, inet_pref);
+}
+
+/* test MIB tree walk to OID */
+static int
+t_walk_to_oid(void)
+{
+  lp_state tmps;
+  lp_save(tmp_linpool, &tmps);
+
+
+  pool *pool = &root_pool;
+
+  for (int test = 0; test < TESTS_NUM; test++)
+  {
+
+    walk_to_oid_one(pool, random_prefixed_oid());
+    walk_to_oid_one(pool, random_no_prefix_oid());
+    walk_to_oid_one(pool, random_prefixable_oid());
+    /* only a one of above */
+    //walk_to_oid_one(random_oid);
+
+    lp_restore(tmp_linpool, &tmps);
+  }
+
+  tmp_flush();
+
+  return 1;
+}
+
 static void
 test_both(void *buffer, uint size, const struct oid *left, const struct oid
 *right, const struct oid *expected)
@@ -640,31 +735,6 @@ generate_oids(struct oid *oids[], struct oid *sorted[], int size, struct oid *(*
   return (size > 1) ? last_used + 1 : size;
 }
 
-/* checks if the last two oids are same, but one is leaf and the other is not */
-static inline int UNUSED
-corner_case(struct oid **oids, int oid_idx, struct oid **leafs, int leaf_idx, int is_leaf)
-{
-  const struct oid **oids_c = (const struct oid **) oids;
-  const struct oid **leafs_c = (const struct oid **) leafs;
-  if (oid_idx == 0)
-    return 0;
-
-  /* if the current (last) OID from oids is not leaf */
-  if (!is_leaf && leaf_idx > 0 &&
-      /* and is same as the last leaf */
-      snmp_oid_compare(oids_c[oid_idx], leafs_c[leaf_idx - 1]) == 0)
-    return 1;	/* then return true */
-
-
-  /* if the current (last) OID from oids is a leaf */
-  if (is_leaf && oid_idx > 0 &&
-      /* and is same as previous OID */
-      snmp_oid_compare(oids_c[oid_idx], oids_c[oid_idx - 1]) == 0)
-    return 1;	/* then return true */
-
-  return 0; /* false */
-}
-
 static void UNUSED
 print_dups(const struct oid *oids[], uint size)
 {
@@ -754,7 +824,7 @@ gen_test_add(struct oid *(*generator)(void))
 
     struct oid **oids = mb_alloc(pool, size * sizeof(struct oid *));
     byte *types = mb_alloc(pool, size * sizeof(byte));
-    byte *invalid_hist = mb_alloc(pool, size & sizeof(byte));
+    byte *invalid_hist = mb_alloc(pool, size * sizeof(byte));
     struct oid **sorted = mb_alloc(pool, size * sizeof(struct oid *));
     struct oid **leafs = (with_leafs) ? mb_alloc(pool, size * sizeof(struct oid *))
       : NULL;
@@ -786,6 +856,20 @@ gen_test_add(struct oid *(*generator)(void))
 
       if (oid_nulled && is_leaf)
 	invalid = 1;
+
+      if (!no_inet_prefix)
+      {
+	char buffer[1024];
+	struct oid *o = (void *) buffer;
+
+	struct oid *inet = oid_create(4, 0, 0, /* ids */ 1, 3, 6, 1);
+	snmp_oid_common_ancestor(oids[i], inet, o);
+
+	/* If the standard internet prefix is present,
+	 * then the prefix leafs are invalid. */
+	if (snmp_oid_compare(oids[i], o) == 0)
+	  invalid = is_leaf;
+      }
 
       /* check existence of ancestor node of a new leaf */
       for (int oi = 0; !invalid && !oid_nulled && oi < i; oi++)
@@ -959,6 +1043,7 @@ gen_test_find(struct oid *(*generator)(void))
       }
     }
 
+    mib_node_u *last = NULL;
     for (int i = 0; i < size; i++)
     {
       /*
@@ -970,15 +1055,35 @@ gen_test_find(struct oid *(*generator)(void))
        */
       int expected_precise = 1;
       mib_node_u *expected = nodes[i];
-      for (int j = 0; j < size; j++)
+
+      if (!no_inet_prefix)
+      {
+	char buf[1024];
+	struct oid *o = (void *) buf;
+	snmp_oid_common_ancestor(oids[i], longest_inet_pref, o);
+	if (snmp_oid_compare(oids[i], o) == 0)
+	  expected_precise = 0;
+      }
+
+      if (snmp_is_oid_empty(oids[i]))
+      {
+	expected_precise = 0;
+      }
+
+      for (int j = 0; expected_precise && j < size; j++)
       {
 	if (i == j) continue;
 
 	if (snmp_oid_compare(oids[i], oids[j]) == 0 &&
 	    types[i] != types[j] && nodes[i] == NULL)
 	{
-	  expected = nodes[j];
-	  break;
+	  if (nodes[j] != NULL)
+	  {
+	    expected = nodes[j];
+	    break;
+	  }
+
+	  /* else expected = NULL; */
 	}
 
 	char buf[1024];
@@ -996,15 +1101,50 @@ gen_test_find(struct oid *(*generator)(void))
 	}
       }
 
+
       struct mib_walk_state walk;
-      mib_tree_walk_init(&walk);
+      //mib_tree_walk_init(&walk, tree, 0);
+      mib_tree_walk_init(&walk, NULL);
       mib_node_u *found = mib_tree_find(tree, &walk, oids[i]);
+
+      bt_assert(walk.stack_pos <= MIB_WALK_STACK_SIZE + 1);
+      bt_assert(walk.id_pos <= OID_MAX_LEN);
 
       if (expected_precise)
 	bt_assert(found == expected);
       else
 	/* found is an auto-inserted node on path to some dest OID */
 	bt_assert(found != NULL);
+
+      last = found;
+
+      /* test finding with walk state not pointing at the root of the tree */
+      u8 subids = LOAD_U8(oids[i]->n_subid); 
+      if (subids > 0)
+      {
+	found = NULL;
+	u32 new_ids = xrandom(subids);
+	mib_tree_walk_init(&walk, (xrandom(2)) ? tree : NULL);
+
+	STORE_U8(oids[i]->n_subid, new_ids);
+
+	mib_node_u *ignored UNUSED;
+	ignored = mib_tree_find(tree, &walk, oids[i]);
+
+	STORE_U8(oids[i]->n_subid, subids);
+
+	found = mib_tree_find(tree, &walk, oids[i]);
+
+	/* see above */
+	if (expected_precise)
+	  bt_assert(found == expected);
+	else
+	{
+	  /* test that the result is same as direct searched from tree root */
+	  bt_assert(found == last);
+	  bt_assert(found != NULL);
+	}
+      }
     }
 
     for (int search = 0; search < size; search++)
@@ -1016,6 +1156,8 @@ gen_test_find(struct oid *(*generator)(void))
 	struct oid *o = (void *) buf;
 	snmp_oid_common_ancestor(oids[stored], searched[search], o);
 
+	/* test if OID oids[stored] is valid and if it forms a path from root
+	 * with OID searched[search] */
 	if (nodes[stored] != NULL && snmp_oid_compare(searched[search], o) == 0)
 	{
 	  has_node = 1;
@@ -1044,9 +1186,40 @@ gen_test_find(struct oid *(*generator)(void))
       }
 
       struct mib_walk_state walk;
-      mib_tree_walk_init(&walk);
+      mib_tree_walk_init(&walk, NULL);
+      //mib_tree_walk_init(&walk, tree); /* TODO should work also like this */
       mib_node_u *found = mib_tree_find(tree, &walk, searched[search]);
       bt_assert(has_node == (found != NULL));
+
+      bt_assert(walk.stack_pos <= MIB_WALK_STACK_SIZE + 1);
+      bt_assert(walk.id_pos <= OID_MAX_LEN);
+
+      last = found;
+
+      u8 subids = LOAD_U8(searched[search]->n_subid);
+      if (subids > 0)
+      {
+	found = NULL;
+	u32 new_ids = xrandom(subids);
+	mib_tree_walk_init(&walk, (xrandom(2)) ? tree : NULL);
+
+	STORE_U8(searched[search]->n_subid, new_ids);
+  
+	mib_node_u *ignored UNUSED;
+	ignored = mib_tree_find(tree, &walk, searched[search]);
+  
+	STORE_U8(searched[search]->n_subid, subids);
+
+	found = mib_tree_find(tree, &walk, searched[search]);
+
+	bt_assert(has_node == (found != NULL));
+
+	bt_assert(walk.stack_pos <= MIB_WALK_STACK_SIZE + 1);
+	bt_assert(walk.id_pos <= OID_MAX_LEN);
+
+	/* test that the result is same as direct search from tree root */
+	bt_assert(last == found);
+      }
     }
 
     lp_restore(tmp_linpool, &tmps);
@@ -1072,6 +1245,7 @@ t_tree_find(void)
   return 1;
 }
 
+#if 0
 static int
 delete_cleanup(const struct oid *oid, struct oid *oids[], mib_node_u *valid[], int size)
 {
@@ -1098,9 +1272,10 @@ delete_cleanup(const struct oid *oid, struct oid *oids[], mib_node_u *valid[], i
 
   return counter;
 }
+#endif
 
 static int
-gen_test_delete(struct oid *(*generator)(void))
+gen_test_delete_remove(struct oid *(*generator)(void), int remove)
 {
   lp_state tmps;
   lp_save(tmp_linpool, &tmps);
@@ -1113,62 +1288,119 @@ gen_test_delete(struct oid *(*generator)(void))
 
     int size = tree_sizes[test % tsz];
     int with_leafs = (test % (2 * tsz)) < tsz;
-    int no_iet_prefix = (test % (4 * tsz)) < (2 * tsz);
+    int no_inet_prefix = (test % (4 * tsz)) < (2 * tsz);
 
     struct oid **oids = mb_alloc(pool, size * sizeof(struct oid *));
-    mib_node_u **nodes = mb_alloc(pool, size * sizeof(struct mib_node_u *));
+    struct oid **sorted = mb_alloc(pool, size * sizeof(struct oid *));
+    mib_node_u **nodes = mb_alloc(pool, size * sizeof(mib_node_u *));
     byte *types = mb_alloc(pool, size * sizeof(byte));
 
     struct mib_tree storage, *tree = &storage;
-    mib_tree_init(tree);
+    mib_tree_init(pool, tree);
 
-    generate_raw_oids(oids, size, generator);
+    if (no_inet_prefix)
+    {
+      /* remove the node .1 and all children */
+      const struct oid *inet_pref = oid_create(1, 0, 0, /* ids */ 1);
+      mib_tree_remove(tree, inet_pref);
+    }
+
+    int distinct = generate_oids(oids, sorted, size, generator);
 
     for (int i = 0; i < size; i++)
     {
       int is_leaf;
       is_leaf = types[i] = (byte) (with_leafs) ? xrandom(2) : 0;
-      nodes[i] = mib_tree_add(pool, tree, oids[i], is_leaf);
+      (void) mib_tree_add(pool, tree, oids[i], is_leaf);
     }
 
-    for (int round = 0; round < size / 4; round++)
+    for (int d = 0; d < distinct; d++)
     {
-      int i = xrandom(size);
+      struct mib_walk_state walk;
+      mib_tree_walk_init(&walk, NULL);
+      //mib_tree_walk_init(&walk, tree); TODO
+      nodes[d] = mib_tree_find(tree, &walk, sorted[d]);
+    }
 
-      mib_tree_walk_state walk;
-      mib_tree_walk_walk_init(&walk);
-      mib_node_u *node = mib_tree_find(tree, walk, oids[i]);
+    /* we need to populate the nodes array after all insertions because
+     * some insertion may fail (== NULL) because we try to insert a leaf */
+#if 0
+    for (int i = 0; i < size; i++)
+    {
+      struct mib_walk_state walk;
+      mib_tree_walk_init(&walk, tree, 0);
+      nodes[i] = mib_tree_find(tree, &walk, oids[i]);
+    }
+#endif
 
-      int deleted = mib_tree_delete(tree, walk);
-
-      int invalid_counter = 0;
-      for (int j = 0; j < size; j++)
+    int deleted, invalid_counter;
+    /* test deletion one of the inserted OIDs */
+    for (int round = 0; round < (size + 3) / 4 + remove; round++)
+    {
+      /* note: we do not run any rounds for size zero because xrandom(0)
+       * does not exist */
+      int i;
+      struct oid *oid;
+      if (!remove)
       {
-	if (oids[i] == oids[j])
+	/* this way we are also testing remove non-existent tree nodes */
+	i = xrandom(size); /* not xrandom(distinct) */
+	oid = oids[i];
+      }
+      else
+      {
+	i = -1; /* break fast  */
+	oid = generator();
+      }
+
+      struct mib_walk_state walk;
+      mib_tree_walk_init(&walk, NULL);
+      // mib_tree_walk_init(&walk, tree); TODO
+      mib_node_u *node = mib_tree_find(tree, &walk, oid);
+
+      if (node == NULL)
+	continue;
+
+      if (!remove)
+	deleted = mib_tree_delete(tree, &walk);
+      else
+	deleted = mib_tree_remove(tree, oid);
+
+      bt_assert(deleted > 0 || snmp_is_oid_empty(oid));
+
+      invalid_counter = 0;
+      int counted_removed = 0;
+      for (int j = 0; j < distinct; j++)
+      {
+	//mib_tree_walk_init(&walk, tree, 0);
+	mib_tree_walk_init(&walk, NULL);
+	mib_node_u *node = mib_tree_find(tree, &walk, sorted[j]);
+	
+	if (snmp_is_oid_empty(oid))
+	  ;
+	/* the oid could have multiple instances in the oids dataset */
+	else if (snmp_oid_compare(oid, sorted[j]) == 0 && !counted_removed)
 	{
-	  mib_node_u *node = mib_tree_find(oids[j]);
+	  invalid_counter++;
+	  counted_removed = 1;
 	  bt_assert(node == NULL);
-	  invalid_counter++;
-	  continue;
-	}
-
-	char buf[1024];
-	struct oid *o = (void *) buf;
-
-	// TODO check that new invalid oids is == or below the deleted one */
-
-	mib_node_u *node = mib_tree_find(oids[j]);
-	if (node != nodes[j])
-	{
 	  nodes[j] = NULL;
+	}
+	else if (node != nodes[j])
+	{
 	  invalid_counter++;
+	  bt_assert(node == NULL);
+	  nodes[j] = NULL;
 	}
       }
 
+      /* we do not count the internal node that are included in the deleted */
+      bt_assert(deleted >= invalid_counter);
     }
 
     lp_restore(tmp_linpool, &tmps);
     mb_free(oids);
+    mb_free(sorted);
     mb_free(nodes);
   }
 
@@ -1181,10 +1413,10 @@ static int
 t_tree_delete(void)
 {
 
-  gen_test_delete(random_prefixed_oid);
-  gen_test_delete(random_no_prefix_oid);
-  gen_test_delete(random_prefixable_oid);
-  gen_test_delete(random_oid);
+  gen_test_delete_remove(random_prefixed_oid, 0);
+  gen_test_delete_remove(random_no_prefix_oid, 0);
+  gen_test_delete_remove(random_prefixable_oid, 0);
+  gen_test_delete_remove(random_oid, 0);
 
   return 1;
 }
@@ -1192,28 +1424,261 @@ t_tree_delete(void)
 static int
 t_tree_remove(void)
 {
-  return 0; /* failed */
+
+  gen_test_delete_remove(random_prefixed_oid, 1);
+  gen_test_delete_remove(random_no_prefix_oid, 1);
+  gen_test_delete_remove(random_prefixable_oid, 1);
+  gen_test_delete_remove(random_oid, 1);
+
+  return 1;
 }
 
+static void
+gen_test_traverse(struct oid *(*generator)(void))
+{
+  lp_state tmps;
+  lp_save(tmp_linpool, &tmps);
+
+  pool *pool = &root_pool;
+
+  for (int test = 0; test < TESTS_NUM; test++)
+  {
+    size_t tsz = ARRAY_SIZE(tree_sizes);
+
+    int size = tree_sizes[test % tsz];
+    int with_leafs = (test % (2 * tsz)) < tsz;
+    int no_inet_prefix = (test % (4 * tsz)) < (2 * tsz);
+
+    struct oid **oids = mb_alloc(pool, size * sizeof(struct oid *));
+    struct oid **sorted = mb_alloc(pool, size * sizeof(struct oid *));
+    mib_node_u **nodes = mb_allocz(pool, size * sizeof(mib_node_u *));
+
+    const int distinct = generate_oids(oids, sorted, size, generator);
+
+    struct mib_tree storage, *tree = &storage;
+    mib_tree_init(pool, tree);
+
+    if (no_inet_prefix)
+    {
+      /* remove the node .1 and all children */
+      const struct oid *inet_pref = oid_create(1, 0, 0, /* ids */ 1);
+      mib_tree_remove(tree, inet_pref);
+    }
+
+    for (int o = 0; o < size; o++)
+    {
+      int is_leaf = (with_leafs) ? (int) xrandom(2) : 0;
+      (void) mib_tree_add(pool, tree, oids[o], is_leaf);
+    }
+
+    for (int d = 0; d < distinct; d++)
+    {
+      struct mib_walk_state walk;
+      mib_tree_walk_init(&walk, NULL);
+      nodes[d] = mib_tree_find(tree, &walk, sorted[d]);
+    }
+
+    int bound = 0; 
+
+    for (int d = 0; d < distinct; d++)
+    {
+      if (snmp_oid_is_prefixed(sorted[d]))
+	bound += 5;
+      bound += (int)LOAD_U8(sorted[d]->n_subid);
+    }
+
+    if (!no_inet_prefix)
+      bound += (ARRAY_SIZE(snmp_internet) + 1);
+
+    struct mib_walk_state walk;
+    mib_tree_walk_init(&walk, tree);
+
+    char buf[1024], buf2[1024];
+    struct oid *oid = (void *) buf;
+    struct oid *last = (void *) buf2;
+    memset(oid, 0, sizeof(struct oid));	  /* create a null OID */
+    memset(last, 0, sizeof(struct oid));
+
+    int oid_index = 0;
+    if (size > 0  && snmp_is_oid_empty(sorted[oid_index]))
+      oid_index++;
+
+    mib_node_u *current;
+    int i = 0;
+    while ((current = mib_tree_walk_next(tree, &walk)) != NULL && i++ < bound)
+    {
+      memcpy(last, oid, snmp_oid_size(oid));
+      mib_tree_walk_to_oid(&walk, oid,
+	  (1024 - sizeof(struct oid) / sizeof(u32)));
+
+      bt_assert(snmp_oid_compare(last, oid) < 0);
+
+      while (oid_index < distinct && nodes[oid_index] == NULL)
+	oid_index++;
+
+      if (oid_index < distinct && snmp_oid_compare(sorted[oid_index], oid) == 0)
+	oid_index++;
+    }
+
+    bt_assert(current == NULL);
+    while (oid_index < distinct && nodes[oid_index] == NULL)
+      oid_index++;
+
+    /* the bound check is only for that the loop is finite */
+    bt_assert(i <= bound + 2);
+
+    current = mib_tree_walk_next(tree, &walk);
+    bt_assert(current == NULL);
+    bt_assert(oid_index == distinct);
+
+    mb_free(oids);
+    mb_free(sorted);
+    mb_free(nodes);
+
+    lp_restore(tmp_linpool, &tmps);
+  }
+
+  tmp_flush();
+}
 
 static int
 t_tree_traversal(void)
 {
-  return 0; /* failed */
+  gen_test_traverse(random_prefixed_oid);
+  gen_test_traverse(random_no_prefix_oid);
+  gen_test_traverse(random_prefixable_oid);
+  gen_test_traverse(random_oid);
+
+  return 1;
+}
+
+static void
+gen_test_leafs(struct oid *(*generator)(void))
+{
+  lp_state tmps;
+  lp_save(tmp_linpool, &tmps);
+
+  pool *pool = &root_pool;
+
+  for (int test = 0; test < TESTS_NUM; test++)
+  {
+    size_t tsz = ARRAY_SIZE(tree_sizes);
+
+    int size = tree_sizes[test % tsz];
+    int with_leafs = (test % (2 * tsz)) < tsz;
+    int no_inet_prefix = (test % (4 * tsz)) < (2 * tsz);
+
+    struct oid **oids = mb_alloc(pool, size * sizeof(struct oid *));
+    struct oid **sorted = mb_alloc(pool, size * sizeof(struct oid *));
+    mib_node_u **nodes = mb_allocz(pool, size * sizeof(mib_node_u *));
+
+    const int distinct = generate_oids(oids, sorted, size, generator);
+
+    struct mib_tree storage, *tree = &storage;
+    mib_tree_init(pool, tree);
+
+    if (no_inet_prefix)
+    {
+      /* remove the node .1 and all children */
+      const struct oid *inet_pref = oid_create(1, 0, 0, /* ids */ 1);
+      mib_tree_remove(tree, inet_pref);
+    }
+
+    for (int o = 0; o < size; o++)
+    {
+      int is_leaf = (with_leafs) ? (int) xrandom(2) : 0;
+      (void) mib_tree_add(pool, tree, oids[o], is_leaf);
+    }
+
+    int leafs = 0;
+    for (int d = 0; d < distinct; d++)
+    {
+      struct mib_walk_state walk;
+      mib_tree_walk_init(&walk, NULL);
+      nodes[d] = mib_tree_find(tree, &walk, sorted[d]);
+
+      /* count only leafs that was successfully inserted without duplicits */
+      if (nodes[d] != NULL && mib_node_is_leaf(nodes[d]))
+	leafs++;
+    }
+
+    struct mib_walk_state walk;
+    mib_tree_walk_init(&walk, tree);
+    if (!with_leafs)
+    {
+      struct mib_leaf *leaf = mib_tree_walk_next_leaf(tree, &walk);
+      bt_assert(leaf == NULL);
+
+      continue;
+    }
+
+    char buf[1024], buf2[1024];
+    struct oid *oid = (void *) buf;
+    struct oid *last = (void *) buf2;
+    memset(oid, 0, sizeof(struct oid));	  /* create a null OID */
+    memset(last, 0, sizeof(struct oid));
+
+    int oid_index = 0;
+
+    struct mib_leaf *current;
+    int i = 0;	/* iteration counter ~ leafs found */
+    while ((current = mib_tree_walk_next_leaf(tree, &walk)) != NULL && i++ < leafs)
+    {
+      memcpy(last, oid, snmp_oid_size(oid));
+      mib_tree_walk_to_oid(&walk, oid,
+	  (1024 - sizeof(struct oid) / sizeof(u32)));
+
+      bt_assert(snmp_oid_compare(last, oid) < 0);
+      bt_assert(mib_node_is_leaf(((mib_node_u *)current)));
+  
+      while (oid_index < distinct && 
+	  (nodes[oid_index] == NULL || !mib_node_is_leaf(nodes[oid_index])))
+	oid_index++;
+
+      if (oid_index < distinct && snmp_oid_compare(sorted[oid_index], oid) == 0)
+	oid_index++;
+    }
+
+    bt_assert(current == NULL);
+    while (oid_index < distinct &&
+	(nodes[oid_index] == NULL || !mib_node_is_leaf(nodes[oid_index])))
+      oid_index++;
+
+    current = mib_tree_walk_next_leaf(tree, &walk);
+    bt_assert(current == NULL);
+    bt_assert(oid_index == distinct); 
+    bt_assert(i == leafs);
+
+    mb_free(oids);
+    mb_free(sorted);
+    mb_free(nodes);
+
+    lp_restore(tmp_linpool, &tmps);
+  }
+
+  tmp_flush();
 }
 
 static int
 t_tree_leafs(void)
 {
-  return 0; /* failed */
+
+  gen_test_leafs(random_prefixed_oid);
+  gen_test_leafs(random_no_prefix_oid);
+  gen_test_leafs(random_prefixable_oid);
+  gen_test_leafs(random_oid);
+
+  return 1;
 }
 
+#if 0
 static int
 t_tree_all(void)
 {
-  /* random sequences of insertion/deletion */
+  /* random sequences of insertion/deletion/searches and walks */
   return 0; /* failed */
 }
+#endif
 
 
 int main(int argc, char **argv)
@@ -1221,18 +1686,24 @@ int main(int argc, char **argv)
   bt_init(argc, argv);
   bt_bird_init();
 
-  srandom(0x0000fa00);
+  unsigned seed = rand();
+  //unsigned seed = 1000789714;
+  log("random seed is %d", seed);
+  srandom(seed);
 
   bt_test_suite(t_oid_empty, "Function that determines if the OID is empty");
   bt_test_suite(t_oid_compare, "Function defining lexicographical order on OIDs");
   bt_test_suite(t_oid_prefixize, "Function transforming OID to prefixed form");
   bt_test_suite(t_oid_ancestor, "Function finding common ancestor of two OIDs");
+  bt_test_suite(t_walk_to_oid, "Function transforming MIB tree walk state to OID");
 
   bt_test_suite(t_tree_find, "MIB tree search");
   bt_test_suite(t_tree_traversal, "MIB tree traversal");
   bt_test_suite(t_tree_leafs, "MIB tree leafs traversal");
   bt_test_suite(t_tree_add, "MIB tree insertion");
-  bt_test_suite(t_tree_delete, "MIB tree removal");
+  bt_test_suite(t_tree_delete, "MIB tree deletion");
+  bt_test_suite(t_tree_remove, "MIB tree removal");
+  //bt_test_suite(t_tree_all, "MIB tree random find, add, delete mix");
 
   return bt_exit_value();
 }

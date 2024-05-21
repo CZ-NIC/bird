@@ -18,6 +18,8 @@ snmp_pdu_context(struct snmp_pdu *pdu, sock *sk)
   pdu->buffer = sk->tpos;
   pdu->size = sk->tbuf + sk->tbsize - sk->tpos;
   pdu->index = 0;
+  pdu->sr_vb_start = NULL;
+  pdu->sr_o_end = NULL;
 }
 
 /**
@@ -629,7 +631,7 @@ int
 snmp_oid_compare(const struct oid *left, const struct oid *right)
 {
   const u8 left_subids = LOAD_U8(left->n_subid);
-  const u8 right_subids = LOAD_U8(right->n_subid);
+  u8 right_subids = LOAD_U8(right->n_subid); // see hack for more info
 
   const u8 left_prefix = LOAD_U8(left->prefix);
   const u8 right_prefix = LOAD_U8(right->prefix);
@@ -655,16 +657,18 @@ snmp_oid_compare(const struct oid *left, const struct oid *right)
     if (left_subids <= ARRAY_SIZE(snmp_internet))
       return -1;
 
+    /* check prefix */
     if (LOAD_U32(left->ids[4]) < (u32) right_prefix)
       return -1;
     else if (LOAD_U32(left->ids[4]) > (u32) right_prefix) 
       return 1;
 
-    int limit = MIN(left_subids - (int) ARRAY_SIZE(snmp_internet),
+    /* the right prefix is already checked (+1) */
+    int limit = MIN(left_subids - (int) (ARRAY_SIZE(snmp_internet) + 1),
       (int) right_subids);
     for (int i = 0; i < limit; i++)
     {
-      u32 left_id = LOAD_U32(left->ids[i + ARRAY_SIZE(snmp_internet)]);
+      u32 left_id = LOAD_U32(left->ids[i + ARRAY_SIZE(snmp_internet) + 1]);
       u32 right_id = LOAD_U32(right->ids[i]);
       if (left_id < right_id)
 	return -1;
@@ -672,6 +676,10 @@ snmp_oid_compare(const struct oid *left, const struct oid *right)
 	return 1;
     }
 
+    /* hack: we known at this point that right has >= 5 subids
+     *   (implicit in snmp_internet and oid->prefix), so
+     *   we simplify to common case by altering left_subids */
+    right_subids += 5;
     goto all_same;
   }
 
@@ -939,7 +947,8 @@ snmp_oid_log(const struct oid *oid)
  * The @out must be large enough to always fit the resulting OID, a safe value
  * is minimum between number of left subids and right subids. The result might
  * be NULL OID in cases where there is no common subid. The result could be also
- * viewed as longest common prefix.
+ * viewed as longest common prefix. Note that if both @left and @right are
+ * prefixable but not prefixed the result in @out will also not be prefixed.
  */
 void
 snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct oid *out)
@@ -948,6 +957,7 @@ snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct
 
   STORE_U8(out->include, 0);
   STORE_U8(out->reserved, 0);
+  STORE_U8(out->prefix, 0);
 
   u32 offset = 0;
   u8 left_ids = LOAD_U8(left->n_subid), right_ids = LOAD_U8(right->n_subid);
@@ -958,7 +968,6 @@ snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct
     if (LOAD_U8(left->prefix) != LOAD_U8(right->prefix))
     {
       STORE_U8(out->n_subid, 4);
-      STORE_U8(out->prefix, 0);
 
       for (uint id = 0; id < ARRAY_SIZE(snmp_internet); id++)
 	STORE_U32(out->ids[id], snmp_internet[id]);
@@ -974,7 +983,6 @@ snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct
     {
       /* finish creating NULL OID */
       STORE_U8(out->n_subid, 0);
-      STORE_U8(out->prefix, 0);
       return;
     }
 
@@ -983,7 +991,6 @@ snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct
       if (LOAD_U32(left->ids[id]) != snmp_internet[id])
       {
 	STORE_U8(out->n_subid, id);
-	STORE_U8(out->prefix, 0);
 	return;
       }
 
@@ -1029,3 +1036,4 @@ snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct
   }
   STORE_U8(out->n_subid, subids);
 }
+

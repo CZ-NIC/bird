@@ -1,8 +1,6 @@
 #include "mib_tree.h"
 #include "snmp_utils.h"
 
-/* TODO does the code handle leafs correctly ?! */
-
 #ifdef allocz
 #undef allocz
 #endif
@@ -29,6 +27,14 @@ mib_mb_realloc(pool *p, void *ptr, unsigned size)
   return mb_realloc(ptr, size);
 }
 
+/*
+ *mib_tree_init - Initialize a MIB tree
+ * @p: allocation source pool
+ * @t: pointer to a tree being initialized
+ *
+ * By default the standard SNMP internet prefix (.1.3.6.1) is inserted into the
+ * tree.
+ */
 void
 mib_tree_init(pool *p, struct mib_tree *t)
 {
@@ -49,21 +55,29 @@ mib_tree_init(pool *p, struct mib_tree *t)
     STORE_U32(oid->ids[i], snmp_internet[i]);
 
   (void) mib_tree_add(p, t, oid, 0);
-
-  /* WTF ??
-  struct mib_walk_state walk = { };
-  (void) mib_tree_find(t, &walk, oid);
-*/
 }
 
 
-// This function does not work with leaf nodes inside the snmp_internet prefix
+// TODO: This function does not work with leaf nodes inside the snmp_internet prefix
 // area
 // Return NULL of failure, valid mib_node_u pointer otherwise
+
+/*
+ * mib_tree_add - Insert a new node to the tree
+ * @p: allocation source pool
+ * @t: MIB tree to insert to
+ * @oid: identification of inserted node.
+ * @is_leaf: flag signaling that inserted OID should be leaf node.
+ *
+ * Reinsertion only return already valid node pointer, no allocations are done
+ * in this case. Return pointer to node in the MIB tree @t or NULL if the
+ * requested insertion is invalid. Insertion is invalid if we want to insert
+ * node below a leaf or insert a leaf in place taken by normal node.
+ *
+ */
 mib_node_u *
 mib_tree_add(pool *p, struct mib_tree *t, const struct oid *oid, int is_leaf)
 {
-  //ASSERT(snmp_oid_is_prefixed(oid) || !snmp_oid_is_prefixable(oid));
   struct mib_walk_state walk;
   mib_node_u *node;
 
@@ -73,7 +87,7 @@ mib_tree_add(pool *p, struct mib_tree *t, const struct oid *oid, int is_leaf)
   else if (snmp_is_oid_empty(oid))
     return NULL;
 
-  mib_tree_walk_init(&walk);
+  mib_tree_walk_init(&walk, t);
   node = mib_tree_find(t, &walk, oid);
   ASSERT(walk.id_pos <= LOAD_U8(oid->n_subid) + 1);
 
@@ -186,11 +200,6 @@ mib_tree_add(pool *p, struct mib_tree *t, const struct oid *oid, int is_leaf)
 
     node_inner->child_len = child_id + 1;
     node_inner->children = allocz(node_inner->child_len * sizeof(mib_node_u *));
-    /*
-    node_inner->child_len = (child_id == 0) ? 0 : child_id;
-    node_inner->children = (child_id == 0) ? NULL
-      : allocz(node_inner->child_len * sizeof(mib_node_u *));
-    */
   }
 
   parent = node_inner;
@@ -203,7 +212,6 @@ mib_tree_add(pool *p, struct mib_tree *t, const struct oid *oid, int is_leaf)
     parent->children[child_id] = (mib_node_u *) leaf;
     leaf->c.id = child_id;
 
-    //leaf->c.id = LOAD_U32(oid->ids[subids - 1]);
     leaf->c.flags = MIB_TREE_LEAF;
   }
   else
@@ -213,236 +221,22 @@ mib_tree_add(pool *p, struct mib_tree *t, const struct oid *oid, int is_leaf)
 
     parent->children[child_id] = (mib_node_u *) node_inner;
     node_inner->c.id = child_id;
-    //node_inner->c.id = LOAD_U32(oid->ids[subids - 1]);
     /* fields c.flags, child_len and children are set by zeroed allocz() */
   }
 
   return last;
 }
 
-#if 0
-// TODO merge functions mib_tree_add and mib_tree_insert into one with public iface
-
-mib_node_u *
-mib_tree_add(struct snmp_proto *p, struct mib_tree *t, const struct oid *oid, uint size, int is_leaf)
-{
-  struct mib_walk_state walk = { };
-  mib_node_u *known = mib_tree_find(t, &walk, oid);
-
-  if (known)
-    return known;
-
-  known = walk.stack[walk.stack_pos];
-
-  // redundant ??, if not, would be returned from find
-  if (walk.id_pos_abs == oid->n_subid)
-    return known;
-
-  if (walk.id_pos_rel < 0)
-
-  if (walk.id_pos_abs < oid->n_subid && (u32) walk.id_pos_rel == known->id_len)
-  {
-    if (known->child_len >= oid->ids[walk.id_pos_abs]) // abs +1?
-    {
-      u32 old_len = known->child_len;
-      known->child_len = oid->ids[walk.id_pos_abs] + 1;
-      known->children = mb_realloc(known->children,
-	  known->child_len * sizeof(struct mib_node *));
-
-      for (uint i = old_len; i < known->child_len; i++)
-	known->children[i] = NULL;
-    }
-
-    /* find would return it
-    if (known->children[oid->ids[]])
-      return known->children[oid->ids[]];
-    */
-
-    struct mib_node *node = mb_alloc(p->p.pool, sizeof(struct mib_node));
-    node->id_len = oid->n_subid - walk.id_pos_abs;
-    node->ids = mb_alloc(p->p.pool, node->id_len * sizeof(u32));
-    node->flags = 0;
-    node->children = NULL;
-    node->child_len = 0;
-    node->child_count = 0;
-
-    known->child_count++;
-    known->children[oid->ids[0]] = node;
-    return node;
-  }
-  else if (walk.id_pos_abs < oid->n_subid)
-  {
-    /* We known that walk.id_pos_rel < known->id_len */
-    struct mib_node *parent = mb_alloc(p->p.pool, sizeof(struct mib_node));
-    parent->id_len = known->id_len - walk.id_pos_rel;
-    parent->ids = mb_alloc(p->p.pool,
-      parent->id_len * sizeof(struct mib_node *));
-    memcpy(&parent->ids, &known->ids, parent->id_len * sizeof(struct mib_node *));
-    u32 *ids = mb_alloc(p->p.pool,
-      (known->id_len - walk.id_pos_rel) * sizeof(u32));
-    memcpy(ids, &known->ids[parent->id_len],
-      (known->id_len - parent->id_len) * sizeof(struct mib_node *));
-    mb_free(known->ids);
-    known->id_len = known->id_len - walk.id_pos_rel;
-    known->ids = ids;
-    parent->child_len = MAX(known->ids[0], oid->ids[walk.id_pos_abs]) + 1;
-    parent->children = mb_allocz(p->p.pool,
-      parent->child_len * sizeof(struct mib_node *));
-    parent->children[known->ids[0]] = known;
-
-    struct mib_node *child = mb_alloc(p->p.pool, sizeof(struct mib_node));
-    child->id_len = oid->n_subid - walk.id_pos_abs - parent->id_len;
-    child->ids = mb_alloc(p->p.pool,
-      child->id_len * sizeof(struct mib_node *));
-    memcpy(&child->ids, &oid->ids[oid->n_subid - child->id_len],
-      child->id_len * sizeof(u32));
-    // TODO test that we do not override the known
-    parent->children[child->ids[0]] = child;
-
-    return child;
-  }
-  else if (walk.id_pos_abs > oid->n_subid)
-    die("unreachable");
-
-  return NULL;
-}
-#endif
-
 /*
-int
-mib_tree_insert(struct snmp_proto *p, struct mib_tree *t, struct oid *oid)
-{
-  ASSUME(oid);
-
-  struct mib_walk_state walk = { };
-  struct mib_node *node = mib_tree_find(t, &walk, oid);
-  struct mib_leaf *leaf = NULL;
-
-  if (!node)
-  {
-    node = walk.stack[walk.stack_pos];
-
-    if (walk.id_pos_abs > oid->n_subid)
-    {
-    }
-    else / * walk.id_pos_abs <= oid->n_subid * /
-    {
-      leaf = mb_alloc(p->p.pool, sizeof(struct mib_leaf));
-      leaf->id_len = oid->n_subid - walk.id_pos_abs;
-      leaf->ids = mb_alloc(p->p.pool, leaf->id_len * sizeof(struct mib_node *));
-      memcpy(&leaf->ids, &oid->ids[oid->n_subid - leaf->id_len],
-	leaf->id_len * sizeof(u32));
-      leaf->flags = 0;
-      leaf->children = NULL;
-      leaf->child_len = 0;
-      leaf->child_count = 0;
-    }
-  }
-}
-*/
-
-#if 0
-int
-mib_tree_insert(struct snmp_proto *p, struct mib_tree *t, struct oid *oid, struct mib_leaf *leaf)
-{
-  ASSUME(oid);
-
-  struct mib_walk_state walk = { };
-  struct mib_node *node = mib_tree_find(t, &walk, oid);
-  struct mib_node *leaf_node = &leaf->n;
-
-  if (!node)
-  {
-    node = walk.stack[walk.stack_pos];
-
-    // can this really happen ??
-    if (walk.id_pos_abs > oid->n_subid)
-    {
-      struct mib_node *parent = mb_alloc(p->p.pool, sizeof(struct mib_node));
-      parent->id_len = walk.id_pos_abs - oid->n_subid; // -1?
-      parent->ids = mb_alloc(p->p.pool, parent->id_len * sizeof(u32));
-      memcpy(&parent->ids, &node->ids, parent->id_len * sizeof(u32));
-      u32 *ids = mb_alloc(p->p.pool,
-	(node->id_len - parent->id_len) * sizeof(u32));
-      node->id_len = node->id_len - parent->id_len;
-      memcpy(ids, &node->ids[parent->id_len], node->id_len * sizeof(u32));
-      mb_free(node->ids);
-      node->ids = ids;
-
-      parent->child_count = 2;
-      parent->child_len = MAX(node->ids[0], oid->ids[walk.id_pos_abs]) + 1;
-      parent->children = mb_allocz(p->p.pool,
-	parent->child_len * sizeof(struct mib_node *));
-      parent->children[node->ids[0]] = node;
-      parent->children[leaf_node->ids[0]] = leaf_node;
-      return 1;
-    }
-    else
-    {
-      mb_free(leaf_node->ids);
-      leaf_node->id_len = oid->n_subid - walk.id_pos_abs;
-      leaf_node->ids = mb_alloc(p->p.pool, leaf_node->id_len * sizeof(u32));
-      return 1;
-    }
-  }
-
-  if (mib_node_is_leaf(node))
-  {
-    struct mib_leaf *l = SKIP_BACK(struct mib_leaf, n, node);
-    insert_node(&leaf->leafs, &l->leafs);
-    return 1;
-  }
-
-  if (node->child_len > 0)
-    return 0;
-
-  // problem when node->id_len + (walk.id_pos_abs - walk.id_pos_rel) > oid->n_subid
-  if (walk.id_pos_abs < oid->n_subid) // +-1??
-  {
-    leaf_node->id_len = node->id_len - walk.id_pos_abs;
-    leaf_node->ids = mb_alloc(p->p.pool, leaf_node->id_len * sizeof(u32));
-    memcpy(&leaf_node->ids, &oid->ids[walk.id_pos_abs], leaf_node->id_len * sizeof(u32));
-    leaf_node->child_len = leaf_node->child_count = 0;
-    leaf_node->children = NULL;
-    return 1;
-  }
-  else
-    return 0;
-  return 1;
-}
-#endif
-
-/*
-int
-mib_tree_remove(struct mib_tree *tree, struct oid *oid)
-{
-  struct mib_walk_state walk = { };
-  struct mib_node *node = mib_tree_find(tree, &walk, oid);
-
-  if (!node)
-    return 0;
-
-  mib_tree_delete(&walk);
-  //mib_tree_delete(tree, &walk);
-  return 1;
-}
-*/
-
-int
-mib_tree_remove(struct mib_tree *t, const struct oid *oid)
-{
-  struct mib_walk_state walk = { };
-  mib_node_u *node = mib_tree_find(t, &walk, oid);
-
-  if (!node)
-    return 0;
-  else
-  {
-    (void) mib_tree_delete(t, &walk);
-    return 1;
-  }
-}
-
+ * mib_tree_delete - delete a MIB subtree
+ * @t: MIB tree
+ * @walk: MIB tree walk state that specify the subtree
+ *
+ * Return number of nodes deleted in the subtree. It is possible to delete an empty
+ * prefix which leads to deletion of all nodes inside the MIB tree. Note that
+ * the empty prefix (tree root) node itself could be deleted therefore 0 may be
+ * returned in case of empty prefix deletion.
+ */
 int
 mib_tree_delete(struct mib_tree *t, struct mib_walk_state *walk)
 {
@@ -450,8 +244,25 @@ mib_tree_delete(struct mib_tree *t, struct mib_walk_state *walk)
   ASSUME(t);
 
   /* (walk->stack_pos < 2) It is impossible to delete root node */
-  if (!walk || !walk->id_pos || walk->stack_pos < 2)
+  if (!walk || walk->stack_pos == 0)
     return 0;
+
+  if (walk->stack_pos == 1)
+  {
+    for (u32 child = 0; child < t->root.child_len; child++)
+    {
+      if (!t->root.children[child])
+	continue;
+
+      walk->stack_pos = 2;
+      walk->stack[0] = (mib_node_u*) &t->root;
+      walk->stack[1] = t->root.children[child];
+
+      deleted += mib_tree_delete(t, walk);
+    }
+
+    return deleted;
+  }
 
   struct mib_node *parent = &walk->stack[walk->stack_pos - 2]->inner;
   mib_node_u *node = walk->stack[walk->stack_pos - 1];
@@ -537,10 +348,39 @@ continue_while:	  /* like outer continue, but skip always true condition */
   return deleted;
 }
 
-/* currently support only search with blank new walk state */
-/* requires non-NULL walk */
-/* TODO doc string, user should check if the node is not root (or at least be
- * aware of that */
+/*
+ * mib_tree_remove - delete a MIB subtree
+ * @t: MIB tree
+ * @oid: object identifier specifying the subtree
+ *
+ * This is a convenience wrapper around mib_tree_delete(). The mib_tree_remove()
+ * finds the corresponding node and deletes it. Return 0 if the OID was not
+ * found. Otherwise return number of deleted nodes (see mib_tree_delete() for
+ * more details).
+ */
+int
+mib_tree_remove(struct mib_tree *t, const struct oid *oid)
+{
+  struct mib_walk_state walk = { };
+  mib_node_u *node = mib_tree_find(t, &walk, oid);
+
+  if (!node)
+    return 0;
+
+  return mib_tree_delete(t, &walk);
+}
+
+/*
+ * mib_tree_find - Find a OID node in MIB tree
+ * @t: searched tree
+ * @walk: output search state
+ * @oid: searched node identification
+ *
+ * Return valid pointer to node in MIB tree or NULL. The search state @walk is
+ * always updated and contains the longest possible prefix of @oid present
+ * inside the tree @t. The @walk must not be NULL and must be blank (only
+ * initialized).
+ */
 mib_node_u *
 mib_tree_find(const struct mib_tree *t, struct mib_walk_state *walk, const struct oid *oid)
 {
@@ -556,39 +396,41 @@ mib_tree_find(const struct mib_tree *t, struct mib_walk_state *walk, const struc
   mib_node_u *node;
   struct mib_node *node_inner;
 
-  u8 oid_pos = walk->id_pos = 0;
-  node = walk->stack[walk->stack_pos++] = (mib_node_u *) &t->root;
-
-#if 0
+  /* the OID id index to use */
   u8 oid_pos = walk->id_pos;
 
   if (walk->stack_pos > 0)
-    node = walk->stack[walk->stack_pos];
+    node = walk->stack[walk->stack_pos - 1];
   else
     node = walk->stack[walk->stack_pos++] = (mib_node_u *) &t->root;
 
   if (mib_node_is_leaf(node))
   {
-    if (snmp_oid_is_prefixed(oid) && LOAD_U8(oid->n_subid) + ARRAY_SIZE(snmp_internet) + 1 == walk->id_pos)
+    /* In any of cases below we did not move in the tree therefore the
+     * walk->id_pos is left untouched. */
+    if (snmp_oid_is_prefixed(oid) && 
+	LOAD_U8(oid->n_subid) + ARRAY_SIZE(snmp_internet) + 1 == walk->id_pos)
       return node;
+
+    else if (snmp_oid_is_prefixed(oid) &&
+	LOAD_U8(oid->n_subid) + ARRAY_SIZE(snmp_internet) + 1 > walk->id_pos)
+      return NULL;
 
     else if (!snmp_oid_is_prefixed(oid) && LOAD_U8(oid->n_subid) + 1 == walk->id_pos)
       return node;
-
-    /* it could hold that LOAD_U8(oid->n_subid) >= walk->id_pos */
-    return NULL;
   }
-#endif
 
   node_inner = &node->inner;
-  ASSERT(node && !mib_node_is_leaf(node));
+  ASSERT(node); /* node may be leaf if OID is not in tree t */
 
   /* Handling of prefixed OID */
-  if (snmp_oid_is_prefixed(oid))
+  if (snmp_oid_is_prefixed(oid) && walk->stack_pos < 6)
   {
-    uint i;
+    /* The movement inside implicit SNMP internet and following prefix is not
+     * projected to walk->id_pos. */
+    uint i = (uint) walk->stack_pos - 1;
     /* walking the snmp_internet prefix itself */
-    for (i = 0; i < ARRAY_SIZE(snmp_internet); i++)
+    for (; i < ARRAY_SIZE(snmp_internet); i++)
     {
       if (node_inner->child_len <= snmp_internet[i])
 	return NULL;
@@ -629,11 +471,13 @@ mib_tree_find(const struct mib_tree *t, struct mib_walk_state *walk, const struc
     return (node == (mib_node_u *) &t->root) ? NULL : node;
 
   /* loop for all OID's ids except the last one */
-  for (oid_pos = 0; oid_pos < subids - 1; oid_pos++) // remove oid_pos assignment
+  for (; oid_pos < subids - 1 && walk->stack_pos < MIB_WALK_STACK_SIZE + 1; oid_pos++)
   {
     u32 id = LOAD_U32(oid->ids[oid_pos]);
     if (node_inner->child_len <= id)
     {
+      /* The walk->id_pos points after the last accepted OID id.
+       * This is correct because we did not find the last OID in the tree. */
       walk->id_pos = oid_pos;
       return NULL;
     }
@@ -643,6 +487,8 @@ mib_tree_find(const struct mib_tree *t, struct mib_walk_state *walk, const struc
 
     if (!node)
     {
+      /* Same as above, the last node is not valid therefore the walk->is_pos
+       * points after the last accepted OID id. */
       walk->id_pos = oid_pos;
       return NULL;
     }
@@ -652,6 +498,8 @@ mib_tree_find(const struct mib_tree *t, struct mib_walk_state *walk, const struc
 
     if (mib_node_is_leaf(node))
     {
+      /* We need to increment the oid_pos because the walk->is_pos suppose the
+       * pointer after the last valid OID id. */
       walk->id_pos = ++oid_pos;
       return NULL;
     }
@@ -659,7 +507,8 @@ mib_tree_find(const struct mib_tree *t, struct mib_walk_state *walk, const struc
 
   walk->id_pos = oid_pos;
   u32 last_id = LOAD_U32(oid->ids[oid_pos]);
-  if (node_inner->child_len <= last_id)
+  if (node_inner->child_len <= last_id ||
+      walk->stack_pos >= MIB_WALK_STACK_SIZE + 1)
     return NULL;
 
   node = node_inner->children[last_id];
@@ -671,36 +520,90 @@ mib_tree_find(const struct mib_tree *t, struct mib_walk_state *walk, const struc
   /* here, the check of node being a leaf is intentionally omitted
    * because we may need to search for a inner node */
   ASSERT(node->empty.id == last_id);
+
+  /* We need to increment the oid_pos because the walk->is_pos suppose the
+   * pointer after the last valid OID id. */
   walk->id_pos = ++oid_pos;
   return walk->stack[walk->stack_pos++] = node;
 }
 
 void
-mib_tree_walk_init(struct mib_walk_state *walk)
+mib_tree_walk_init(struct mib_walk_state *walk, const struct mib_tree *t)
 {
   walk->id_pos = 0;
-  walk->stack_pos = 0;
+  walk->stack_pos = (t != NULL) ? 1 : 0;
   memset(&walk->stack, 0, sizeof(walk->stack));
+
+  if (t != NULL)
+    walk->stack[0] = (mib_node_u *) &t->root;
 }
 
-/*
-void
-mib_node_free(mib_node_u *node)
+static inline int
+walk_is_prefixable(const struct mib_walk_state *walk)
 {
-  if (!mib_node_is_leaf(node))
+  /* empty prefix and oid->prefix (+2) */
+  if (walk->stack_pos < ARRAY_SIZE(snmp_internet) + 2)
+    return 0;
+
+  for (uint i = 0; i < ARRAY_SIZE(snmp_internet); i++)
   {
-    struct mib_node *node_inner = &node->inner;
-    node_inner->child_len = 0;
-    free(node_inner->children);
-    node_inner->children = NULL;
+    if (walk->stack[i + 1]->empty.id != snmp_internet[i])
+      return 0;
   }
 
-  free(node);
+  u32 id = walk->stack[ARRAY_SIZE(snmp_internet) + 1]->empty.id;
+  return id > 0 && id <= UINT8_MAX;
 }
-*/
+
+int
+mib_tree_walk_to_oid(const struct mib_walk_state *walk, struct oid *result, u32 subids)
+{
+  ASSERT(walk && result);
+
+  /* the stack_pos point after last valid index, and the first is always empty
+   * prefix */
+  if (walk->stack_pos <= 1)
+  {
+    /* create a null valued OID; sets all n_subid, prefix, include and reserved */
+    memset(result, 0, sizeof(struct oid));
+    return 0;
+  }
+
+  u32 index;
+  if (walk_is_prefixable(walk))
+  {
+    if (walk->stack_pos - 2 > subids - (ARRAY_SIZE(snmp_internet) + 1))
+      return 1;
+
+    /* skip empty prefix, whole snmp_internet .1.3.6.1 and oid->prefix */
+    index = 2 + ARRAY_SIZE(snmp_internet);
+    STORE_U8(result->n_subid, walk->stack_pos - (ARRAY_SIZE(snmp_internet) + 2));
+    STORE_U8(result->prefix,
+      walk->stack[ARRAY_SIZE(snmp_internet) + 1]->empty.id);
+  }
+  else
+  {
+    if (walk->stack_pos - 2 > subids)
+      return 1;
+
+    index = 1;	/* skip empty prefix */
+    STORE_U8(result->n_subid, walk->stack_pos - 1);
+    STORE_U8(result->prefix, 0);
+  }
+
+  STORE_U8(result->include, 0);
+  STORE_U8(result->reserved, 0);
+
+  u32 i = 0;
+  /* the index could point after last stack array element */
+  for (; index < walk->stack_pos && index < MIB_WALK_STACK_SIZE; index++)
+    STORE_U32(result->ids[i++], walk->stack[index]->empty.id);
+
+  return 0;
+}
 
 mib_node_u *
-mib_tree_walk_next(struct mib_tree *t, struct mib_walk_state *walk)
+mib_tree_walk_next(const struct mib_tree *t, struct mib_walk_state *walk)
 {
   ASSERT(t && walk);
 
@@ -747,63 +650,10 @@ mib_tree_walk_next(struct mib_tree *t, struct mib_walk_state *walk)
   return NULL;
 }
 
-#if 0
-struct mib_node *
-mib_tree_walk_next(struct mib_walk_state *walk)
-{
-  ASSUME(walk->stack[walk->stack_pos]);
-
-  if (walk->stack_pos == 0 && walk->stack[0] &&
-      walk->stack[0]->flags & (MIB_TREE_REG_ACK || MIB_TREE_REG_WAIT))
-    return walk->stack[0];
-
-  struct mib_node *node = walk->stack[walk->stack_pos];
-  u32 id;
-
-find_leaf:
-  while (!mib_node_is_leaf(node))
-  {
-    for (id = 0; id < node->child_len; id++)
-    {
-      if (node->children[id])
-      {
-	node = node->children[id];
-	walk->stack[++walk->stack_pos] = node;
-	break;
-      }
-    }
-
-    if (node->flags & (MIB_TREE_REG_ACK || MIB_TREE_REG_WAIT))
-      return node;
-  }
-
-  id = node->ids[0];
-
-  while (walk->stack_pos)
-  {
-    walk->stack[walk->stack_pos] = NULL;
-    --walk->stack_pos;
-    node = walk->stack[walk->stack_pos];
-
-    if (id + 1 != node->child_len)
-      break;
-  }
-
-  if (id + 1 == node->child_len)
-    return walk->stack[0] = NULL;
-
-  node = node->children[id + 1];
-  walk->stack_pos++;
-  walk->stack[walk->stack_pos] = node;
-  goto find_leaf;
-}
-#endif
-
-
 struct mib_leaf *
-mib_tree_walk_next_leaf(struct mib_tree *t, struct mib_walk_state *walk)
+mib_tree_walk_next_leaf(const struct mib_tree *t, struct mib_walk_state *walk)
 {
-  (void) t;
+  (void)t;
 
   if (walk->stack_pos == 0)
     return NULL;
@@ -815,7 +665,7 @@ mib_tree_walk_next_leaf(struct mib_tree *t, struct mib_walk_state *walk)
   {
     next_id = node->leaf.c.id + 1;
     walk->stack[--walk->stack_pos] = NULL;
-    node = walk->stack[walk->stack_pos - 1]; // does it underflow ??
+    node = walk->stack[walk->stack_pos - 1];
   }
   else if (mib_node_is_leaf(node))
   {
@@ -824,19 +674,13 @@ mib_tree_walk_next_leaf(struct mib_tree *t, struct mib_walk_state *walk)
     return NULL;
   }
 
-  mib_node_u *parent = (walk->stack_pos <= 1) ? NULL :
-     walk->stack[walk->stack_pos - 2];
-
   while (walk->stack_pos > 0)
   {
 continue_while:
     node = walk->stack[walk->stack_pos - 1];
 
     if (mib_node_is_leaf(node))
-    {
-      walk->stack[walk->stack_pos++] = node;
       return (struct mib_leaf *) node;
-    }
 
     struct mib_node *node_inner = &node->inner;
     for (u32 id = next_id; id < node_inner->child_len; id++)
@@ -852,58 +696,10 @@ continue_while:
       goto continue_while;
     }
 
-    while (walk->stack_pos > 1)	// endless loop here possible ??
-    {
-      parent = walk->stack[walk->stack_pos - 2];
-      node = walk->stack[walk->stack_pos - 1];
-
-      ASSUME(mib_node_is_leaf(node));
-      if (node->leaf.c.id + 1 == parent->inner.child_len)
-	walk->stack[--walk->stack_pos] = NULL;
-
-      next_id = node->inner.c.id + 1;
-    }
+    next_id = node->empty.id + 1;
+    walk->stack[--walk->stack_pos] = NULL;
   }
 
   return NULL;
 }
-
-#if 0
-struct mib_leaf *
-mib_tree_next_leaf(struct mib_walk_state *walk)
-{
-  ASSUME(walk->stack[walk->stack_pos] &&
-	 mib_node_is_leaf(walk->stack[walk->stack_pos]));
-
-  struct mib_node *node = walk->stack[walk->stack_pos];
-  u32 id;
-
-  while (walk->stack_pos)
-  {
-    id = node->ids[0];
-    walk->stack[walk->stack_pos] = NULL;
-    --walk->stack_pos;
-    node = walk->stack[walk->stack_pos];
-
-    if (id + 1 != node->child_len)
-      break;
-  }
-
-  if (id + 1 == node->child_len)
-    return (struct mib_leaf *) (walk->stack[0] = NULL);
-
-  id++;
-  while (!mib_node_is_leaf(node))
-  {
-    for (; id < node->child_len && !node->children[id]; id++)
-      ;
-
-    node = node->children[id];
-    walk->stack[++walk->stack_pos] = node;
-    id = 0;
-  }
-
-  return (struct mib_leaf *) node;
-}
-#endif
 
