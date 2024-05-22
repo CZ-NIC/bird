@@ -80,12 +80,10 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
       if (!r2->active)
 	continue;
 
-      *nh = (struct nexthop) {
-	.gw = r2->via,
-	.iface = r2->neigh->iface,
-	.flags = r2->onlink ? RNF_ONLINK : 0,
-	.weight = r2->weight,
-      };
+      nh->gw = r2->via;
+      nh->iface = r2->neigh->iface;
+      nh->flags = r2->onlink ? RNF_ONLINK : 0;
+      nh->weight = r2->weight;
 
       if (r2->mls)
       {
