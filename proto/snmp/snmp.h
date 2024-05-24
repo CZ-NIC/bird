@@ -17,8 +17,7 @@
 #include "nest/bird.h"
 #include "nest/protocol.h"
 #include "filter/data.h"
-#include "proto/bgp/bgp.h"
-
+#include "proto/bgp/bgp.h" // TODO remove me
 
 #define SNMP_UNDEFINED	0
 #define SNMP_BGP	1
@@ -40,6 +39,11 @@ enum snmp_proto_state {
   SNMP_CONN,
   SNMP_STOP,
   SNMP_RESET,
+};
+
+enum snmp_tags {
+  EMPTY_TAG = 0,
+  BGP4_TAG,
 };
 
 struct snmp_bond {
@@ -81,19 +85,12 @@ struct snmp_bgp_peer {
   struct snmp_bgp_peer *next;
 };
 
-struct snmp_registration {
-  node n;
-  u8 mib_class;
-  u32 session_id;
-  u32 transaction_id;
-  u32 packet_id;
-  struct oid *oid;
-};
-
 struct snmp_registered_oid {
   node n;
   struct oid *oid;
 };
+
+struct mib_tree;      /* see mib_tree.h */
 
 struct snmp_proto {
   struct proto p;
@@ -125,8 +122,6 @@ struct snmp_proto {
 
   uint registrations_to_ack;		    /* counter of pending responses to register-pdu */
   list registration_queue;		    /* list containing snmp_register records */
-  list bgp_registered;		    /* list of currently registered bgp oids
-				     * (struct snmp_registered_oid) */
 
   // map
   struct f_trie *bgp_trie;
@@ -138,6 +133,23 @@ struct snmp_proto {
   timer *ping_timer;
   btime startup_delay;
   timer *startup_timer;
+
+  struct mib_tree *mib_tree;
+};
+
+struct snmp_registration;
+struct agentx_response; /* declared in subagent.h */
+typedef void (*snmp_reg_hook_t)(struct snmp_proto *p, const struct agentx_response *res, struct snmp_registration *reg);
+
+struct snmp_registration {
+  node n;
+  u8 mib_class;
+  u32 session_id;
+  u32 transaction_id;
+  u32 packet_id;
+  struct oid *oid;
+  snmp_reg_hook_t reg_hook_ok; /* hook called when successful response to OID registration is recieved */
+  snmp_reg_hook_t reg_hook_fail; /* hook called when OID registration fail */
 };
 
 //void snmp_tx(sock *sk);

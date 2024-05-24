@@ -24,10 +24,13 @@ struct mib_node {
   u32 child_len;
 };
 
+struct mib_walk_state;
+
 struct mib_leaf {
   struct mib_node_core c;
   enum snmp_search_res (*filler)(struct snmp_proto *p, struct snmp_pdu *c);
   //enum snmp_search_res (*filler)(struct snmp_proto_pdu *pc, struct agentx_varbind **vb);
+  int (*call_next)(struct snmp_proto *p, struct snmp_pdu *c, struct mib_walk_state *state);
   enum agentx_type type;
   int size;
 };

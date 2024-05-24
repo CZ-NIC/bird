@@ -14,7 +14,7 @@ uint snmp_pkt_len(const byte *start, const byte *end);
 /*
  *  AgentX - Variable Binding (VarBind) type utils
  */
-void snmp_set_varbind_type(struct agentx_varbind *vb, enum agentx_type t);
+enum snmp_search_res snmp_set_varbind_type(struct agentx_varbind *vb, enum agentx_type t);
 enum agentx_type snmp_get_varbind_type(const struct agentx_varbind *vb);
 int agentx_type_size(enum agentx_type t);
 
@@ -74,12 +74,12 @@ int snmp_test_close_reason(byte value);
 /* Functions filling buffer a typed value */
 struct agentx_varbind *snmp_create_varbind(byte *buf, struct oid *oid);
 struct agentx_varbind *snmp_create_varbind_null(byte *buf);
-void snmp_varbind_int(struct agentx_varbind *vb, struct snmp_pdu *c, u32 val);
-void snmp_varbind_counter32(struct agentx_varbind *vb, struct snmp_pdu *c, u32 val);
-void snmp_varbind_gauge32(struct agentx_varbind *vb, struct snmp_pdu *c, s64 time);
-void snmp_varbind_ticks(struct agentx_varbind *vb, struct snmp_pdu *c, u32 val);
-void snmp_varbind_ip4(struct agentx_varbind *vb, struct snmp_pdu *c, ip4_addr addr);
-void snmp_varbind_nstr(struct agentx_varbind *vb, struct snmp_pdu *c, const char *str, uint len);
+void snmp_varbind_int(struct snmp_pdu *c, u32 val);
+void snmp_varbind_counter32(struct snmp_pdu *c, u32 val);
+void snmp_varbind_gauge32(struct snmp_pdu *c, s64 time);
+void snmp_varbind_ticks(struct snmp_pdu *c, u32 val);
+void snmp_varbind_ip4(struct snmp_pdu *c, ip4_addr addr);
+void snmp_varbind_nstr(struct snmp_pdu *c, const char *str, uint len);
 
 /* Raw */
 byte *snmp_no_such_object(byte *buf, struct agentx_varbind *vb, struct oid *oid);

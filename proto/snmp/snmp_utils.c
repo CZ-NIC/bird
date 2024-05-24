@@ -65,7 +65,7 @@ snmp_varbind_set_name_len(struct snmp_proto *p, struct agentx_varbind **vb, u8 l
   uint diff_size = (len - LOAD_U8(oid->n_subid)) * sizeof(u32);
   if (c->size < diff_size)
   {
-    snmp_manage_tbuf(p, (void **) vb, c);
+    snmp_manage_tbuf(p, c);
     oid = &(*vb)->name;
   }
 
@@ -81,7 +81,7 @@ snmp_varbind_duplicate_hdr(struct snmp_proto *p, struct agentx_varbind **vb, str
   ASSUME(vb != NULL && *vb != NULL);
   uint hdr_size = snmp_varbind_header_size(*vb);
   if (c->size < hdr_size)
-    snmp_manage_tbuf(p, (void **) vb, c);
+    snmp_manage_tbuf(p, c);
 
   ASSERT(c->size >= hdr_size);
   byte *buffer = c->buffer;
@@ -260,12 +260,38 @@ snmp_varbind_hdr_size_from_oid(const struct oid *oid)
  *
  * This function assumes valid @t.
  */
-inline void
+inline enum snmp_search_res
 snmp_set_varbind_type(struct agentx_varbind *vb, enum agentx_type t)
 {
   ASSUME(t != AGENTX_INVALID);
   STORE_U16(vb->type, t);
   STORE_U16(vb->reserved, 0);
+
+  switch (t)
+  {
+    case AGENTX_END_OF_MIB_VIEW:
+      return SNMP_SEARCH_END_OF_VIEW;
+    case AGENTX_NO_SUCH_OBJECT:
+      return SNMP_SEARCH_NO_OBJECT;
+    case AGENTX_NO_SUCH_INSTANCE:
+      return SNMP_SEARCH_NO_INSTANCE;
+
+    /* valid varbind types */
+    case AGENTX_INTEGER:
+    case AGENTX_OCTET_STRING:
+    case AGENTX_NULL:
+    case AGENTX_OBJECT_ID:
+    case AGENTX_IP_ADDRESS:
+    case AGENTX_COUNTER_32:
+    case AGENTX_GAUGE_32:
+    case AGENTX_TIME_TICKS:
+    case AGENTX_OPAQUE:
+    case AGENTX_COUNTER_64:
+      return SNMP_SEARCH_OK;
+
+    default:
+      die("invalid varbind type");
+  }
 }
 
 /* Internal wrapper */
@@ -660,7 +686,7 @@ snmp_oid_compare(const struct oid *left, const struct oid *right)
     /* check prefix */
     if (LOAD_U32(left->ids[4]) < (u32) right_prefix)
       return -1;
-    else if (LOAD_U32(left->ids[4]) > (u32) right_prefix) 
+    else if (LOAD_U32(left->ids[4]) > (u32) right_prefix)
       return 1;
 
     /* the right prefix is already checked (+1) */
@@ -798,45 +824,46 @@ snmp_varbind_type32(struct agentx_varbind *vb, struct snmp_pdu *c, enum agentx_t
 }
 
 inline void
-snmp_varbind_int(struct agentx_varbind *vb, struct snmp_pdu *c, u32 val)
+snmp_varbind_int(struct snmp_pdu *c, u32 val)
 {
-  snmp_varbind_type32(vb, c, AGENTX_INTEGER, val);
+  snmp_varbind_type32(c->sr_vb_start, c, AGENTX_INTEGER, val);
 }
 
 inline void
-snmp_varbind_counter32(struct agentx_varbind *vb, struct snmp_pdu *c, u32 val)
+snmp_varbind_counter32(struct snmp_pdu *c, u32 val)
 {
-  snmp_varbind_type32(vb, c, AGENTX_COUNTER_32, val);
+  snmp_varbind_type32(c->sr_vb_start, c, AGENTX_COUNTER_32, val);
 }
 
 inline void
-snmp_varbind_ticks(struct agentx_varbind *vb, struct snmp_pdu *c, u32 val)
+snmp_varbind_ticks(struct snmp_pdu *c, u32 val)
 {
-  snmp_varbind_type32(vb, c, AGENTX_TIME_TICKS, val);
+  snmp_varbind_type32(c->sr_vb_start, c, AGENTX_TIME_TICKS, val);
 }
 
 inline void
-snmp_varbind_gauge32(struct agentx_varbind *vb, struct snmp_pdu *c, s64 time)
+snmp_varbind_gauge32(struct snmp_pdu *c, s64 time)
 {
-  snmp_varbind_type32(vb, c, AGENTX_GAUGE_32, MAX(0, MIN(time, UINT32_MAX)));
+  snmp_varbind_type32(c->sr_vb_start, c,
+    AGENTX_GAUGE_32, MAX(0, MIN(time, UINT32_MAX)));
 }
 
 inline void
-snmp_varbind_ip4(struct agentx_varbind *vb, struct snmp_pdu *c, ip4_addr addr)
+snmp_varbind_ip4(struct snmp_pdu *c, ip4_addr addr)
 {
-  snmp_set_varbind_type(vb, AGENTX_IP_ADDRESS);
-  c->buffer = snmp_put_ip4(snmp_varbind_data(vb), addr);
+  snmp_set_varbind_type(c->sr_vb_start, AGENTX_IP_ADDRESS);
+  c->buffer = snmp_put_ip4(snmp_varbind_data(c->sr_vb_start), addr);
 }
 
 // TODO doc string, we have already the varbind prepared
 inline byte *
-snmp_varbind_nstr2(struct agentx_varbind *vb, uint size, const char *str, uint len)
+snmp_varbind_nstr2(struct snmp_pdu *c, uint size, const char *str, uint len)
 {
   if (size < snmp_str_size_from_len(len))
     return NULL;
 
-  snmp_set_varbind_type(vb, AGENTX_OCTET_STRING);
-  return snmp_put_nstr(snmp_varbind_data(vb), str, len);
+  snmp_set_varbind_type(c->sr_vb_start, AGENTX_OCTET_STRING);
+  return snmp_put_nstr(snmp_varbind_data(c->sr_vb_start), str, len);
 }
 
 /*
@@ -851,10 +878,10 @@ snmp_varbind_nstr2(struct agentx_varbind *vb, uint size, const char *str, uint l
  * more info.
  */
 void
-snmp_varbind_nstr(struct agentx_varbind *vb, struct snmp_pdu *c, const char *str, uint len)
+snmp_varbind_nstr(struct snmp_pdu *c, const char *str, uint len)
 {
-  snmp_set_varbind_type(vb, AGENTX_OCTET_STRING);
-  c->buffer = snmp_put_nstr(snmp_varbind_data(vb), str, len);
+  snmp_set_varbind_type(c->sr_vb_start, AGENTX_OCTET_STRING);
+  c->buffer = snmp_put_nstr(snmp_varbind_data(c->sr_vb_start), str, len);
 }
 
 inline enum agentx_type

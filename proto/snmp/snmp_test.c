@@ -385,7 +385,7 @@ t_oid_compare(void)
   bt_assert(snmp_oid_compare(no_pref2, pref2) == 0);
 
   bt_assert(snmp_oid_compare(pref, pref2) < 0);
-  bt_assert(snmp_oid_compare(pref2, pref) > 0); 
+  bt_assert(snmp_oid_compare(pref2, pref) > 0);
   bt_assert(snmp_oid_compare(pref, no_pref2) < 0);
   bt_assert(snmp_oid_compare(no_pref2, pref) > 0);
   bt_assert(snmp_oid_compare(no_pref, pref2) < 0);
@@ -1119,7 +1119,7 @@ gen_test_find(struct oid *(*generator)(void))
       last = found;
 
       /* test finding with walk state not pointing at the root of the tree */
-      u8 subids = LOAD_U8(oids[i]->n_subid); 
+      u8 subids = LOAD_U8(oids[i]->n_subid);
       if (subids > 0)
       {
 	found = NULL;
@@ -1204,10 +1204,10 @@ gen_test_find(struct oid *(*generator)(void))
 	mib_tree_walk_init(&walk, (xrandom(2)) ? tree : NULL);
 
 	STORE_U8(searched[search]->n_subid, new_ids);
-  
+
 	mib_node_u *ignored UNUSED;
 	ignored = mib_tree_find(tree, &walk, searched[search]);
-  
+
 	STORE_U8(searched[search]->n_subid, subids);
 
 	found = mib_tree_find(tree, &walk, searched[search]);
@@ -1375,7 +1375,7 @@ gen_test_delete_remove(struct oid *(*generator)(void), int remove)
 	//mib_tree_walk_init(&walk, tree, 0);
 	mib_tree_walk_init(&walk, NULL);
 	mib_node_u *node = mib_tree_find(tree, &walk, sorted[j]);
-	
+
 	if (snmp_is_oid_empty(oid))
 	  ;
 	/* the oid could have multiple instances in the oids dataset */
@@ -1478,7 +1478,7 @@ gen_test_traverse(struct oid *(*generator)(void))
       nodes[d] = mib_tree_find(tree, &walk, sorted[d]);
     }
 
-    int bound = 0; 
+    int bound = 0;
 
     for (int d = 0; d < distinct; d++)
     {
@@ -1630,8 +1630,8 @@ gen_test_leafs(struct oid *(*generator)(void))
 
       bt_assert(snmp_oid_compare(last, oid) < 0);
       bt_assert(mib_node_is_leaf(((mib_node_u *)current)));
-  
-      while (oid_index < distinct && 
+
+      while (oid_index < distinct &&
 	  (nodes[oid_index] == NULL || !mib_node_is_leaf(nodes[oid_index])))
 	oid_index++;
 
@@ -1646,7 +1646,7 @@ gen_test_leafs(struct oid *(*generator)(void))
 
     current = mib_tree_walk_next_leaf(tree, &walk);
     bt_assert(current == NULL);
-    bt_assert(oid_index == distinct); 
+    bt_assert(oid_index == distinct);
     bt_assert(i == leafs);
 
     mb_free(oids);

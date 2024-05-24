@@ -191,11 +191,6 @@ struct agentx_octet_str {
   byte data[0];
 };
 
-struct agentx_getbulk {
-  u16 non_repeaters;
-  u16 max_repetitions;
-};
-
 struct agentx_response {
   struct agentx_header h;
   u32 uptime;
@@ -219,11 +214,17 @@ struct agentx_un_register_hdr {
   u8 reserved;	/* always zero filled */
 };
 
+struct agentx_getbulk {
+  u16 non_repeaters;
+  u16 max_repetitions;
+};
+
 struct agentx_bulk_state {
   struct agentx_getbulk getbulk;
   u16 index;
   u16 repetition;
   u32 repeaters;
+  int has_any;	    /* flag is clear when all responses are EndOfMibView */
 };
 
 enum agentx_pdu_types {
@@ -292,17 +293,29 @@ enum agentx_response_errs {
   AGENTX_RES_PROCESSING_ERR	    = 268,	/* processingError */
 } PACKED;
 
-/* SNMP PDU TX-buffer info */
+/* SNMP PDU info */
 struct snmp_pdu {
+  /* TX buffer */
   byte *buffer;			    /* pointer to buffer */
   uint size;			    /* unused space in buffer */
+
+  /* Search Range */
+  struct agentx_varbind *sr_vb_start; /* search range starting OID inside TX buffer (final storage) */
+  struct oid *sr_o_end;		    /* search range ending OID */
+
+  /* Control */
   enum agentx_response_errs error;  /* storage for result of current action */
   u32 index;			    /* index on which the error was found */
+
+  union snmp_mibs_data *mibs_data;  /* data passed from MIB search phase to MIB fill phase */
 };
 
-struct snmp_proto_pdu {
-  struct snmp_proto *p;
-  struct snmp_pdu *c;
+#include "bgp4_mib.h"
+
+union snmp_mibs_data {
+  enum snmp_tags empty;
+
+  struct bgp4_mib bgp4;
 };
 
 struct snmp_packet_info {
@@ -331,7 +344,7 @@ void snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, 
 void snmp_unregister(struct snmp_proto *p, struct oid *oid, uint index, uint len, uint contid);
 void snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, int include_uptime);
 
-void snmp_manage_tbuf(struct snmp_proto *p, void **ptr, struct snmp_pdu *c);
+void snmp_manage_tbuf(struct snmp_proto *p, struct snmp_pdu *c);
 
 struct agentx_varbind *snmp_vb_to_tx(struct snmp_proto *p, const struct oid *oid, struct snmp_pdu *c);
 u8 snmp_get_mib_class(const struct oid *oid);

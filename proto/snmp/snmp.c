@@ -10,7 +10,7 @@
  *
  * The SNMP protocol is divided into several parts: |snmp.c| which implements
  * the BIRD intergration, |subagent.c| contains functions for creating and
- * parsing packets, |bgp_mib.c| takes care of the bgp MIB subtree of standard
+ * parsing packets, |bgp4_mib.c| takes care of the bgp MIB subtree of standard
  * BGP4-MIB and |snmp_utils.c| which is collections of helper functions for
  * working with OIDs, VarBinds.
  *
@@ -334,14 +334,6 @@ snmp_cleanup(struct snmp_proto *p)
     r = NULL;
   }
 
-  struct snmp_registered_oid *ro, *ro2;
-  WALK_LIST_DELSAFE(ro, ro2, p->bgp_registered)
-  {
-    rem_node(&r->n);
-    mb_free(ro);
-    ro = NULL;
-  }
-
   HASH_FREE(p->bgp_hash);
 
   rfree(p->lp);
@@ -507,7 +499,6 @@ snmp_start(struct proto *P)
   p->ping_timer = tm_new_init(p->pool, snmp_ping_timeout, p, p->timeout, 0);
 
   init_list(&p->registration_queue);
-  init_list(&p->bgp_registered);
 
   /* We create copy of bonds to BGP protocols. */
   HASH_INIT(p->bgp_hash, p->pool, 10);

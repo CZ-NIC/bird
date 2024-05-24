@@ -28,7 +28,7 @@ mib_mb_realloc(pool *p, void *ptr, unsigned size)
 }
 
 /*
- *mib_tree_init - Initialize a MIB tree
+ * mib_tree_init - Initialize a MIB tree
  * @p: allocation source pool
  * @t: pointer to a tree being initialized
  *
