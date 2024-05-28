@@ -394,7 +394,13 @@ struct bgp_channel {
 
   /* Rest are zeroed when down */
   pool *pool;
-  struct bgp_pending_tx	*ptx;		/* Routes waiting to be sent */
+
+  HASH(struct bgp_bucket) bucket_hash;	/* Hash table of route buckets */
+  struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
+  list bucket_queue;			/* Queue of buckets to send (struct bgp_bucket) */
+
+  HASH(struct bgp_prefix) prefix_hash;	/* Prefixes to be sent */
+  slab *prefix_slab;			/* Slab holding prefix nodes */
 //  struct rt_exporter prefix_exporter;	/* Table-like exporter for ptx */
 
   ip_addr next_hop_addr;		/* Local address for NEXT_HOP attribute */
@@ -422,7 +428,7 @@ struct bgp_channel {
 };
 
 struct bgp_prefix {
-  node buck_node_xx;			/* Node in per-bucket list */
+  node buck_node;			/* Node in per-bucket list */
   struct bgp_prefix *next;		/* Node in prefix hash table */
   struct bgp_bucket *last;		/* Last bucket sent with this prefix */
   struct bgp_bucket *cur;		/* Current bucket (cur == last) if no update is required */
@@ -440,18 +446,6 @@ struct bgp_bucket {
   u32 px_uc:31;				/* How many prefixes are linking this bucket */
   u32 bmp:1;				/* Temporary bucket for BMP encoding */
   ea_list eattrs[0];			/* Per-bucket extended attributes */
-};
-
-struct bgp_pending_tx {
-  resource r;
-  pool *pool;
-
-  HASH(struct bgp_bucket) bucket_hash;	/* Hash table of route buckets */
-  struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
-  list bucket_queue;			/* Queue of buckets to send (struct bgp_bucket) */
-
-  HASH(struct bgp_prefix) prefix_hash;	/* Prefixes to be sent */
-  slab *prefix_slab;			/* Slab holding prefix nodes */
 };
 
 struct bgp_export_state {

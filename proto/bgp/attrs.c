@@ -1586,7 +1586,7 @@ bgp_finish_attrs(struct bgp_parse_state *s, ea_list **to)
 HASH_DEFINE_REHASH_FN(RBH, struct bgp_bucket)
 
 static void
-bgp_init_bucket_table(struct bgp_pending_tx *c)
+bgp_init_bucket_table(struct bgp_channel *c)
 {
   HASH_INIT(c->bucket_hash, c->pool, 8);
 
@@ -1595,7 +1595,7 @@ bgp_init_bucket_table(struct bgp_pending_tx *c)
 }
 
 static struct bgp_bucket *
-bgp_get_bucket(struct bgp_pending_tx *c, ea_list *new)
+bgp_get_bucket(struct bgp_channel *c, ea_list *new)
 {
   /* Hash and lookup */
   u32 hash = ea_hash(new);
@@ -1624,7 +1624,7 @@ bgp_get_bucket(struct bgp_pending_tx *c, ea_list *new)
 }
 
 static struct bgp_bucket *
-bgp_get_withdraw_bucket(struct bgp_pending_tx *c)
+bgp_get_withdraw_bucket(struct bgp_channel *c)
 {
   if (!c->withdraw_bucket)
   {
@@ -1636,17 +1636,15 @@ bgp_get_withdraw_bucket(struct bgp_pending_tx *c)
 }
 
 static void
-bgp_free_bucket(struct bgp_pending_tx *c, struct bgp_bucket *b)
+bgp_free_bucket(struct bgp_channel *c, struct bgp_bucket *b)
 {
   HASH_REMOVE2(c->bucket_hash, RBH, c->pool, b);
   mb_free(b);
 }
 
 int
-bgp_done_bucket(struct bgp_channel *bc, struct bgp_bucket *b)
+bgp_done_bucket(struct bgp_channel *c, struct bgp_bucket *b)
 {
-  struct bgp_pending_tx *c = bc->ptx;
-
   /* Won't free the withdraw bucket */
   if (b == c->withdraw_bucket)
     return 0;
@@ -1662,21 +1660,19 @@ bgp_done_bucket(struct bgp_channel *bc, struct bgp_bucket *b)
 }
 
 void
-bgp_defer_bucket(struct bgp_channel *bc, struct bgp_bucket *b)
+bgp_defer_bucket(struct bgp_channel *c, struct bgp_bucket *b)
 {
-  struct bgp_pending_tx *c = bc->ptx;
   rem_node(&b->send_node);
   add_tail(&c->bucket_queue, &b->send_node);
 }
 
 void
-bgp_withdraw_bucket(struct bgp_channel *bc, struct bgp_bucket *b)
+bgp_withdraw_bucket(struct bgp_channel *c, struct bgp_bucket *b)
 {
   if (b->bmp)
     return;
 
-  struct bgp_proto *p = (void *) bc->c.proto;
-  struct bgp_pending_tx *c = bc->ptx;
+  SKIP_BACK_DECLARE(struct bgp_proto, p, p, c->c.proto);
   struct bgp_bucket *wb = bgp_get_withdraw_bucket(c);
 
   log(L_ERR "%s: Attribute list too long", p->p.name);
@@ -1685,8 +1681,8 @@ bgp_withdraw_bucket(struct bgp_channel *bc, struct bgp_bucket *b)
     struct bgp_prefix *px = HEAD(b->prefixes);
 
     log(L_ERR "%s: - withdrawing %N", p->p.name, &px->net);
-    rem_node(&px->buck_node_xx);
-    add_tail(&wb->prefixes, &px->buck_node_xx);
+    rem_node(&px->buck_node);
+    add_tail(&wb->prefixes, &px->buck_node);
   }
 }
 
@@ -1707,17 +1703,16 @@ bgp_withdraw_bucket(struct bgp_channel *bc, struct bgp_bucket *b)
 HASH_DEFINE_REHASH_FN(PXH, struct bgp_prefix)
 
 static void
-bgp_init_prefix_table(struct bgp_channel *bc)
+bgp_init_prefix_table(struct bgp_channel *c)
 {
-  struct bgp_pending_tx *c = bc->ptx;
   HASH_INIT(c->prefix_hash, c->pool, 8);
 
-  uint alen = net_addr_length[bc->c.net_type];
+  uint alen = net_addr_length[c->c.net_type];
   c->prefix_slab = alen ? sl_new(c->pool, sizeof(struct bgp_prefix) + alen) : NULL;
 }
 
 static struct bgp_prefix *
-bgp_get_prefix(struct bgp_pending_tx *c, const net_addr *net, struct rte_src *src, int add_path_tx)
+bgp_get_prefix(struct bgp_channel *c, const net_addr *net, struct rte_src *src, int add_path_tx)
 {
   u32 path_id = src->global_id;
   u32 path_id_hash = add_path_tx ? path_id : 0;
@@ -1753,12 +1748,12 @@ bgp_get_prefix(struct bgp_pending_tx *c, const net_addr *net, struct rte_src *sr
   return px;
 }
 
-static void bgp_free_prefix(struct bgp_pending_tx *c, struct bgp_prefix *px);
+static void bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px);
 
 static inline int
 bgp_update_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucket *b)
 {
-#define IS_WITHDRAW_BUCKET(b)	((b) == c->ptx->withdraw_bucket)
+#define IS_WITHDRAW_BUCKET(b)	((b) == c->withdraw_bucket)
 #define BPX_TRACE(what)	do { \
   if (c->c.debug & D_ROUTES) log(L_TRACE "%s.%s < %s %N %uG %s", \
       c->c.proto->name, c->c.name, what, \
@@ -1775,7 +1770,7 @@ bgp_update_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucke
   /* Unqueue from the old bucket */
   if (px->cur)
   {
-    rem_node(&px->buck_node_xx);
+    rem_node(&px->buck_node);
     bgp_done_bucket(c, px->cur);
   }
 
@@ -1789,7 +1784,7 @@ bgp_update_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucke
 
     /* Well, we haven't sent anything yet */
     if (!px->last)
-      bgp_free_prefix(c->ptx, px);
+      bgp_free_prefix(c, px);
 
     px->cur = NULL;
     return 0;
@@ -1797,10 +1792,10 @@ bgp_update_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucke
 
   /* Enqueue the bucket if it has been empty */
   if (!IS_WITHDRAW_BUCKET(b) && EMPTY_LIST(b->prefixes))
-    add_tail(&c->ptx->bucket_queue, &b->send_node);
+    add_tail(&c->bucket_queue, &b->send_node);
 
   /* Enqueue to the new bucket and indicate the change */
-  add_tail(&b->prefixes, &px->buck_node_xx);
+  add_tail(&b->prefixes, &px->buck_node);
   px->cur = b;
 
   BPX_TRACE("queued");
@@ -1810,7 +1805,7 @@ bgp_update_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucke
 }
 
 static void
-bgp_free_prefix(struct bgp_pending_tx *c, struct bgp_prefix *px)
+bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
 {
   HASH_REMOVE2(c->prefix_hash, PXH, c->pool, px);
 
@@ -1831,7 +1826,7 @@ bgp_done_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucket 
 
   /* Cleanup: We're called from bucket senders. */
   ASSERT_DIE(px->cur == buck);
-  rem_node(&px->buck_node_xx);
+  rem_node(&px->buck_node);
 
   /* We may want to store the updates */
   if (c->c.out_table)
@@ -1854,49 +1849,46 @@ bgp_done_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucket 
     /* Prefixes belonging to the withdraw bucket are freed always */
   }
 
-  bgp_free_prefix(c->ptx, px);
+  bgp_free_prefix(c, px);
 }
-
-static void
-bgp_pending_tx_rfree(resource *r)
-{
-  SKIP_BACK_DECLARE(struct bgp_pending_tx, ptx, r, r);
-
-  HASH_WALK(ptx->prefix_hash, next, n)
-    rt_unlock_source(rt_find_source_global(n->path_id));
-  HASH_WALK_END;
-}
-
-static void bgp_pending_tx_dump(resource *r UNUSED, unsigned indent UNUSED) { debug("\n"); }
-
-static struct resclass bgp_pending_tx_class = {
-  .name = "BGP Pending TX",
-  .size = sizeof(struct bgp_pending_tx),
-  .free = bgp_pending_tx_rfree,
-  .dump = bgp_pending_tx_dump,
-};
 
 void
 bgp_init_pending_tx(struct bgp_channel *c)
 {
-  ASSERT_DIE(!c->ptx);
-
-  pool *p = rp_new(c->pool, proto_domain(c->c.proto), "BGP Pending TX");
-  c->ptx = ralloc(p, &bgp_pending_tx_class);
-  c->ptx->pool = p;
-
-  bgp_init_bucket_table(c->ptx);
+  bgp_init_bucket_table(c);
   bgp_init_prefix_table(c);
 }
 
 void
 bgp_free_pending_tx(struct bgp_channel *c)
 {
-  ASSERT_DIE(c->ptx);
-  ASSERT_DIE(c->ptx->pool);
+  if (!c->bucket_hash.data)
+    return;
 
-  rp_free(c->ptx->pool);
-  c->ptx = NULL;
+  struct bgp_prefix *px;
+  if (c->withdraw_bucket)
+    WALK_LIST_FIRST(px, c->withdraw_bucket->prefixes)
+      bgp_done_prefix(c, px, c->withdraw_bucket);
+
+  struct bgp_bucket *b;
+  WALK_LIST_FIRST(b, c->bucket_queue)
+  {
+    WALK_LIST_FIRST(px, b->prefixes)
+      bgp_done_prefix(c, px, b);
+    bgp_done_bucket(c, b);
+  }
+
+  HASH_WALK(c->prefix_hash, next, n)
+    bug("Stray prefix after cleanup");
+  HASH_WALK_END;
+
+  HASH_FREE(c->prefix_hash);
+
+  HASH_WALK(c->bucket_hash, next, n)
+    bug("Stray bucket after cleanup");
+  HASH_WALK_END;
+
+  HASH_FREE(c->bucket_hash);
 }
 
 #if 0
@@ -1913,8 +1905,7 @@ static void
 bgp_out_table_feed(void *data)
 {
   struct bgp_out_export_hook *hook = data;
-  SKIP_BACK_DECLARE(struct bgp_channel, bc, prefix_exporter, hook->h.table);
-  struct bgp_pending_tx *c = bc->ptx;
+  SKIP_BACK_DECLARE(struct bgp_channel, c, prefix_exporter, hook->h.table);
 
   int max = 512;
 
@@ -2059,7 +2050,7 @@ bgp_setup_out_table(struct bgp_channel *c)
 }
 #else
 void
-bgp_setup_out_table(struct bgp_channel *c)
+bgp_setup_out_table(struct bgp_channel *c UNUSED)
 {}
 #endif
 
@@ -2299,16 +2290,16 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
       log(L_ERR "%s: Invalid route %N withdrawn", p->p.name, n);
 
     /* If attributes are invalid, we fail back to withdraw */
-    buck = attrs ? bgp_get_bucket(c->ptx, attrs) : bgp_get_withdraw_bucket(c->ptx);
+    buck = attrs ? bgp_get_bucket(c, attrs) : bgp_get_withdraw_bucket(c);
     path = new->src;
   }
   else
   {
-    buck = bgp_get_withdraw_bucket(c->ptx);
+    buck = bgp_get_withdraw_bucket(c);
     path = old->src;
   }
 
-  if (bgp_update_prefix(c, bgp_get_prefix(c->ptx, n, path, c->add_path_tx), buck))
+  if (bgp_update_prefix(c, bgp_get_prefix(c, n, path, c->add_path_tx), buck))
     bgp_schedule_packet(p->conn, c, PKT_UPDATE);
 }
 
