@@ -435,7 +435,7 @@ struct bgp_prefix {
   btime lastmod;			/* Last modification of this prefix */
   u32 hash;
   u32 path_id;
-  net_addr net[0];
+  struct netindex *ni;
 };
 
 struct bgp_bucket {
