@@ -183,6 +183,52 @@ bfd_neighbor: ipa bfd_neigh_iface bfd_neigh_local bfd_neigh_multihop
 };
 
 
+/* BFD options */
+
+bfd_item:
+   INTERVAL expr_us { this_bfd_opts->min_rx_int = this_bfd_opts->min_tx_int = $2; }
+ | MIN RX INTERVAL expr_us { this_bfd_opts->min_rx_int = $4; }
+ | MIN TX INTERVAL expr_us { this_bfd_opts->min_tx_int = $4; }
+ | IDLE TX INTERVAL expr_us { this_bfd_opts->idle_tx_int = $4; }
+ | MULTIPLIER expr { this_bfd_opts->multiplier = $2; }
+ | PASSIVE bool { this_bfd_opts->passive = $2; this_bfd_opts->passive_set = 1; }
+ | GRACEFUL { this_bfd_opts->mode = BGP_BFD_GRACEFUL; }
+ | AUTHENTICATION bfd_auth_type { this_bfd_opts->auth_type = $2; }
+ | password_list {}
+ ;
+
+bfd_items:
+   /* empty */
+ | bfd_items bfd_item ';'
+ ;
+
+bfd_opts_start:
+{ reset_passwords(); } ;
+
+bfd_opts_end:
+{
+  this_bfd_opts->passwords = get_passwords();
+
+  if (!this_bfd_opts->auth_type != !this_bfd_opts->passwords)
+    cf_warn("Authentication and password options should be used together");
+
+  if (this_bfd_opts->passwords)
+  {
+    struct password_item *pass;
+    WALK_LIST(pass, *this_bfd_opts->passwords)
+    {
+      if (pass->alg)
+        cf_error("Password algorithm option not available in BFD protocol");
+
+      pass->alg = bfd_auth_type_to_hash_alg[this_bfd_opts->auth_type];
+    }
+  }
+};
+
+bfd_opts:
+  '{' bfd_opts_start bfd_items '}' bfd_opts_end;
+
+
 CF_CLI_HELP(SHOW BFD, ..., [[Show information about BFD protocol]]);
 
 CF_CLI_HELP(SHOW BFD SESSIONS, ..., [[Show information about BFD sessions]]);
