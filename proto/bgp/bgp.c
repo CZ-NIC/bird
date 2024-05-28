@@ -630,8 +630,7 @@ bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len)
 
   struct bgp_channel *c;
   BGP_WALK_CHANNELS(p, c)
-    if (c->ptx)
-      bgp_free_pending_tx(c);
+    bgp_free_pending_tx(c);
 
   proto_send_event(&p->p, p->event);
 }
@@ -2839,14 +2838,13 @@ bgp_show_proto_info(struct proto *P)
       uint prefix_cnt = 0;
       struct bgp_bucket *buck;
       struct bgp_prefix *px;
-      if (c->ptx)
-	WALK_LIST(buck, c->ptx->bucket_queue)
-	{
-	  bucket_cnt++;
-	  WALK_LIST(px, buck->prefixes)
-	    if (px->cur)
-	      prefix_cnt++;
-	}
+      WALK_LIST(buck, c->bucket_queue)
+      {
+	bucket_cnt++;
+	WALK_LIST(px, buck->prefixes)
+	  if (px->cur)
+	    prefix_cnt++;
+      }
 
       cli_msg(-1006, "    Pending %u attribute sets with total %u prefixes to send",
 	 bucket_cnt, prefix_cnt);
