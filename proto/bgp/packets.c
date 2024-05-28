@@ -1600,7 +1600,7 @@ bgp_encode_nlri_ip4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
   while (!EMPTY_LIST(buck->prefixes) && (size >= BGP_NLRI_MAX))
   {
     struct bgp_prefix *px = HEAD(buck->prefixes);
-    struct net_addr_ip4 *net = (void *) px->net;
+    struct net_addr_ip4 *net = NET_PTR_IP4(&px->ni->addr[0]);
 
     /* Encode path ID */
     if (s->add_path)
@@ -1686,7 +1686,7 @@ bgp_encode_nlri_ip6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
   while (!EMPTY_LIST(buck->prefixes) && (size >= BGP_NLRI_MAX))
   {
     struct bgp_prefix *px = HEAD(buck->prefixes);
-    struct net_addr_ip6 *net = (void *) px->net;
+    struct net_addr_ip6 *net = NET_PTR_IP6(&px->ni->addr[0]);
 
     /* Encode path ID */
     if (s->add_path)
@@ -1771,7 +1771,7 @@ bgp_encode_nlri_vpn4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
   while (!EMPTY_LIST(buck->prefixes) && (size >= BGP_NLRI_MAX))
   {
     struct bgp_prefix *px = HEAD(buck->prefixes);
-    struct net_addr_vpn4 *net = (void *) px->net;
+    struct net_addr_vpn4 *net = NET_PTR_VPN4(&px->ni->addr[0]);
 
     /* Encode path ID */
     if (s->add_path)
@@ -1869,7 +1869,7 @@ bgp_encode_nlri_vpn6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
   while (!EMPTY_LIST(buck->prefixes) && (size >= BGP_NLRI_MAX))
   {
     struct bgp_prefix *px = HEAD(buck->prefixes);
-    struct net_addr_vpn6 *net = (void *) px->net;
+    struct net_addr_vpn6 *net = NET_PTR_VPN6(&px->ni->addr[0]);
 
     /* Encode path ID */
     if (s->add_path)
@@ -1967,7 +1967,7 @@ bgp_encode_nlri_flow4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
   while (!EMPTY_LIST(buck->prefixes) && (size >= 4))
   {
     struct bgp_prefix *px = HEAD(buck->prefixes);
-    struct net_addr_flow4 *net = (void *) px->net;
+    struct net_addr_flow4 *net = NET_PTR_FLOW4(&px->ni->addr[0]);
     uint flen = net->length - sizeof(net_addr_flow4);
 
     /* Encode path ID */
@@ -2055,7 +2055,7 @@ bgp_encode_nlri_flow6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
   while (!EMPTY_LIST(buck->prefixes) && (size >= 4))
   {
     struct bgp_prefix *px = HEAD(buck->prefixes);
-    struct net_addr_flow6 *net = (void *) px->net;
+    struct net_addr_flow6 *net = NET_PTR_FLOW6(&px->ni->addr[0]);
     uint flen = net->length - sizeof(net_addr_flow6);
 
     /* Encode path ID */
