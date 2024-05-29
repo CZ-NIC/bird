@@ -365,6 +365,22 @@ custom_attr: ATTRIBUTE BGP NUM type symbol ';' {
 
 CF_ENUM(T_ENUM_BGP_ORIGIN, ORIGIN_, IGP, EGP, INCOMPLETE)
 
+CF_CLI(RELOAD BGP, proto_patt, [<name>], [[Send and request route refresh to/from neighbor]])
+{
+  proto_apply_cmd($3, bgp_reload_in, 1, 0);
+  proto_apply_cmd($3, bgp_reload_out, 1, 0);
+};
+
+CF_CLI(RELOAD BGP IN, proto_patt, [<name>], [[Request route refresh from neighbor]])
+{
+  proto_apply_cmd($4, bgp_reload_in, 1, 0);
+}
+
+CF_CLI(RELOAD BGP OUT, proto_patt, [<name>], [[Refresh routes to neighbor]])
+{
+  proto_apply_cmd($4, bgp_reload_out, 1, 0);
+}
+
 CF_CODE
 
 CF_END

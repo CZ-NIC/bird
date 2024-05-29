@@ -1599,43 +1599,31 @@ bgp_update_bfd(struct bgp_proto *p, const struct bfd_options *bfd)
   }
 }
 
-static int
-bgp_reload_routes(struct channel *C, struct channel_import_request *cir)
+void
+bgp_reload_in(struct proto *P, uintptr_t _ UNUSED, int __ UNUSED)
 {
-  struct bgp_proto *p = (void *) C->proto;
-  struct bgp_channel *c = (void *) C;
+  SKIP_BACK_DECLARE(struct bgp_proto, p, p, P);
 
-  /* For MPLS channel, reload all MPLS-aware channels */
-  if (C == p->p.mpls_channel)
+  if (P->proto_state == PS_UP)
   {
+    struct bgp_channel *c;
     BGP_WALK_CHANNELS(p, c)
-      if ((c->desc->mpls) && (p->route_refresh || c->cf->import_table))
-	channel_request_reload(&c->c);
-
-    /* Ignoring CIR, reloading always everything */
-    cir->done(cir);
-    return 1;
+      if (&c->c != P->mpls_channel)
+      {
+	cli_msg(-15, "%s.%s: reloading", P->name, c->c.name);
+	bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
+      }
   }
-
-  /* Ignore non-BGP channels */
-  if (C->class != &channel_bgp)
-  {
-    cir->done(cir);
-    return 1;
-  }
-
-  if (cir->trie)
-  {
-    cir->done(cir);
-    return 0;
-  }
-  /* We do not need cir anymore and later we will not be able to detect when to free it. */
-  cir->done(cir);
-
-  ASSERT(p->conn && p->route_refresh);
-  bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
-  return 1;
+  else
+    cli_msg(-8006, "%s: not reloading, not up", P->name);
 }
+
+void
+bgp_reload_out(struct proto *P, uintptr_t _ UNUSED, int __ UNUSED)
+{
+  cli_msg(-8006, "%s: bgp reload out not implemented yet", P->name);
+}
+
 
 static void
 bgp_feed_begin(struct channel *C)
@@ -1948,7 +1936,6 @@ bgp_init(struct proto_config *CF)
   P->rt_notify = bgp_rt_notify;
   P->preexport = bgp_preexport;
   P->iface_sub.neigh_notify = bgp_neigh_notify;
-  P->reload_routes = bgp_reload_routes;
   P->feed_begin = bgp_feed_begin;
   P->feed_end = bgp_feed_end;
 

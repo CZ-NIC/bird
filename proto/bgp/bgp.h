@@ -589,6 +589,9 @@ void bgp_store_error(struct bgp_proto *p, struct bgp_conn *c, u8 class, u32 code
 void bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len);
 const char *bgp_format_role_name(u8 role);
 
+void bgp_reload_in(struct proto *P, uintptr_t, int);
+void bgp_reload_out(struct proto *P, uintptr_t, int);
+
 static inline int
 rte_resolvable(const rte *rt)
 {

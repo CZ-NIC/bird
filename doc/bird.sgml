@@ -1297,6 +1297,10 @@ This argument can be omitted if there exists only a single instance.
 	specified.
 
 	<!-- TODO: Move these protocol-specific remote control commands to the protocol sections -->
+	<tag><label id="cli-reload-bgp">reload bgp [in|out] [<m/name/]</tag>
+        Manually request (in) or send (out) route refresh (or both) on the
+        given BGP protocol(s).
+
 	<tag><label id="cli-show-ospf-iface">show ospf interface [<m/name/] ["<m/interface/"]</tag>
 	Show detailed information about OSPF interfaces.
 
