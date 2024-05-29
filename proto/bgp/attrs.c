@@ -1718,10 +1718,10 @@ bgp_finish_attrs(struct bgp_parse_state *s, ea_list **to)
  *	Route bucket hash table
  */
 
-#define RBH_KEY(b)		b->eattrs, b->hash
+#define RBH_KEY(b)		b->attrs
 #define RBH_NEXT(b)		b->next
-#define RBH_EQ(a1,h1,a2,h2)	h1 == h2 && ea_same(a1, a2)
-#define RBH_FN(a,h)		h
+#define RBH_EQ(a1,a2)		a1 == a2
+#define RBH_FN(a)		ea_get_storage(a)->hash_key
 
 #define RBH_REHASH		bgp_rbh_rehash
 #define RBH_PARAMS		/8, *2, 2, 2, 12, 20
@@ -1730,9 +1730,10 @@ bgp_finish_attrs(struct bgp_parse_state *s, ea_list **to)
 HASH_DEFINE_REHASH_FN(RBH, struct bgp_bucket)
 
 static void
-bgp_init_bucket_table(struct bgp_ptx_private *c)
+bgp_init_bucket_table(struct bgp_ptx_private *c, struct event_list *cleanup_ev_list)
 {
   HASH_INIT(c->bucket_hash, c->pool, 8);
+  c->bucket_slab = sl_new(c->pool, cleanup_ev_list, sizeof(struct bgp_bucket));
 
   init_list(&c->bucket_queue);
   c->withdraw_bucket = NULL;
@@ -1742,24 +1743,21 @@ static struct bgp_bucket *
 bgp_get_bucket(struct bgp_ptx_private *c, ea_list *new)
 {
   /* Hash and lookup */
-  u32 hash = ea_hash(new);
-  struct bgp_bucket *b = HASH_FIND(c->bucket_hash, RBH, new, hash);
+  ea_list *ns = ea_lookup(new, 0, EALS_CUSTOM);
+  struct bgp_bucket *b = HASH_FIND(c->bucket_hash, RBH, ns);
 
   if (b)
+  {
+    ea_free(ns);
     return b;
-
-  /* Scan the list for total size */
-  uint ea_size = BIRD_CPU_ALIGN(ea_list_size(new));
-  uint size = sizeof(struct bgp_bucket) + ea_size;
+  }
 
   /* Allocate the bucket */
-  b = mb_alloc(c->pool, size);
-  *b = (struct bgp_bucket) { };
+  b = sl_alloc(c->bucket_slab);
+  *b = (struct bgp_bucket) {
+    .attrs = ns,
+  };
   init_list(&b->prefixes);
-  b->hash = hash;
-
-  /* Copy the ea_list */
-  ea_list_copy(b->eattrs, new, ea_size);
 
   /* Insert the bucket to bucket hash */
   HASH_INSERT2(c->bucket_hash, RBH, c->pool, b);
@@ -1783,7 +1781,8 @@ static void
 bgp_free_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b)
 {
   HASH_REMOVE2(c->bucket_hash, RBH, c->pool, b);
-  mb_free(b);
+  ea_free(b->attrs);
+  sl_free(b);
 }
 
 int
@@ -2103,7 +2102,7 @@ bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, UNUSE
       {
 	if (px->cur)
 	  feed->block[pos++] = (rte) {
-	    .attrs = (px->cur == c->withdraw_bucket) ? NULL : ea_free_later(ea_lookup_slow(px->cur->eattrs, 0, EALS_CUSTOM)),
+	    .attrs = (px->cur == c->withdraw_bucket) ? NULL : ea_free_later(ea_lookup_slow(px->cur->attrs, 0, EALS_CUSTOM)),
 	    .net = ni->addr,
 	    .src = px->src,
 	    .lastmod = px->lastmod,
@@ -2112,7 +2111,7 @@ bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, UNUSE
 
 	if (px->last)
 	  feed->block[pos++] = (rte) {
-	    .attrs = (px->last == c->withdraw_bucket) ? NULL : ea_free_later(ea_lookup_slow(px->last->eattrs, 0, EALS_CUSTOM)),
+	    .attrs = (px->last == c->withdraw_bucket) ? NULL : ea_free_later(ea_lookup_slow(px->last->attrs, 0, EALS_CUSTOM)),
 	    .net = ni->addr,
 	    .src = px->src,
 	    .lastmod = px->lastmod,
@@ -2143,7 +2142,7 @@ bgp_init_pending_tx(struct bgp_channel *c)
   bpp->pool = p;
   bpp->c = c;
 
-  bgp_init_bucket_table(bpp);
+  bgp_init_bucket_table(bpp, birdloop_event_list(c->c.proto->loop));
   bgp_init_prefix_table(bpp, birdloop_event_list(c->c.proto->loop));
 
   bpp->exporter = (struct rt_exporter) {
