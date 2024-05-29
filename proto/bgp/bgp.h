@@ -434,8 +434,7 @@ struct bgp_prefix {
   struct bgp_bucket *last;		/* Last bucket sent with this prefix */
   struct bgp_bucket *cur;		/* Current bucket (cur == last) if no update is required */
   btime lastmod;			/* Last modification of this prefix */
-  u32 hash;
-  u32 path_id;
+  struct rte_src *src;			/* Path ID encoded as rte_src */
   struct netindex *ni;
 };
 

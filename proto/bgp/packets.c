@@ -1605,7 +1605,7 @@ bgp_encode_nlri_ip4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->path_id);
+      put_u32(pos, px->src->global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -1691,7 +1691,7 @@ bgp_encode_nlri_ip6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->path_id);
+      put_u32(pos, px->src->global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -1776,7 +1776,7 @@ bgp_encode_nlri_vpn4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->path_id);
+      put_u32(pos, px->src->global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -1874,7 +1874,7 @@ bgp_encode_nlri_vpn6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->path_id);
+      put_u32(pos, px->src->global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -1973,7 +1973,7 @@ bgp_encode_nlri_flow4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->path_id);
+      put_u32(pos, px->src->global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -2061,7 +2061,7 @@ bgp_encode_nlri_flow6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->path_id);
+      put_u32(pos, px->src->global_id);
       ADVANCE(pos, size, 4);
     }
 

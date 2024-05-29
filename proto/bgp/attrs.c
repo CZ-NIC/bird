@@ -1690,10 +1690,10 @@ bgp_withdraw_bucket(struct bgp_channel *c, struct bgp_bucket *b)
  *	Prefix hash table
  */
 
-#define PXH_KEY(px)		px->ni->index, px->path_id, px->hash
+#define PXH_KEY(px)		px->ni->index, px->src
 #define PXH_NEXT(px)		px->next
-#define PXH_EQ(n1,i1,h1,n2,i2,h2) h1 == h2 && (add_path_tx ? (i1 == i2) : 1) && (n1 == n2)
-#define PXH_FN(n,i,h)		h
+#define PXH_EQ(n1,i1,n2,i2)	(add_path_tx ? (i1 == i2) : 1) && (n1 == n2)
+#define PXH_FN(n,i)		u32_hash(n)
 
 #define PXH_REHASH		bgp_pxh_rehash
 #define PXH_PARAMS		/16, *1, 2, 2, 12, 24
@@ -1711,19 +1711,15 @@ bgp_init_prefix_table(struct bgp_channel *c)
 static struct bgp_prefix *
 bgp_get_prefix(struct bgp_channel *c, struct netindex *ni, struct rte_src *src, int add_path_tx)
 {
-  u32 path_id = src->global_id;
-  u32 path_id_hash = add_path_tx ? path_id : 0;
-  /* We must use a different hash function than the rtable */
-  u32 hash = u32_hash(u32_hash(ni->index) ^ u32_hash(path_id_hash));
-  struct bgp_prefix *px = HASH_FIND(c->prefix_hash, PXH, ni->index, path_id_hash, hash);
+  struct bgp_prefix *px = HASH_FIND(c->prefix_hash, PXH, ni->index, src);
 
   if (px)
   {
-    if (!add_path_tx && (path_id != px->path_id))
+    if (!add_path_tx && (src != px->src))
     {
-      rt_unlock_source(rt_find_source_global(px->path_id));
+      rt_unlock_source(px->src);
       rt_lock_source(src);
-      px->path_id = path_id;
+      px->src = src;
     }
 
     return px;
@@ -1731,8 +1727,7 @@ bgp_get_prefix(struct bgp_channel *c, struct netindex *ni, struct rte_src *src, 
 
   px = sl_alloc(c->prefix_slab);
   *px = (struct bgp_prefix) {
-    .hash = hash,
-    .path_id = path_id,
+    .src = src,
     .ni = ni,
   };
 
@@ -1753,7 +1748,7 @@ bgp_update_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucke
 #define BPX_TRACE(what)	do { \
   if (c->c.debug & D_ROUTES) log(L_TRACE "%s.%s < %s %N %uG %s", \
       c->c.proto->name, c->c.name, what, \
-      px->ni->addr, px->path_id, IS_WITHDRAW_BUCKET(b) ? "withdraw" : "update"); } while (0)
+      px->ni->addr, px->src->global_id, IS_WITHDRAW_BUCKET(b) ? "withdraw" : "update"); } while (0)
   px->lastmod = current_time();
 
   /* Already queued for the same bucket */
@@ -1806,7 +1801,7 @@ bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
   HASH_REMOVE2(c->prefix_hash, PXH, c->pool, px);
 
   net_unlock_index(c->c.table->netindex, px->ni);
-  rt_unlock_source(rt_find_source_global(px->path_id));
+  rt_unlock_source(px->src);
 
   sl_free(px);
 }
