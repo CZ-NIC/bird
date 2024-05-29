@@ -3445,6 +3445,13 @@ be used in explicit configuration.
 	<cf/show route/, and can be used to eliminate unnecessary updates or
 	withdraws. Default: off.
 
+	<tag><label id="rtable-export-settle-time">export settle time <m/time/ <m/time/</tag>
+        Minimum and maximum settle times, respectively, for announcements from
+        export table to external readers. These values don't apply for regular TX,
+        just for side channel exports. You will probably never need to change
+        these values.
+	Default values: <cf/10 ms 100 ms/. You have to always provide both values.
+
 	<tag><label id="bgp-secondary">secondary <m/switch/</tag>
 	Usually, if an export filter rejects a selected route, no other route is
 	propagated for that network. This option allows to try the next route in

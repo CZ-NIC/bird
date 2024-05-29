@@ -119,7 +119,6 @@ struct rt_export_request {
 
     /* Enlisting */
     struct rt_exporter * _Atomic exporter;
-    struct rt_export_feeder * _Atomic next;
 
     /* Prefiltering, useful for more scenarios */
     struct rt_prefilter {
@@ -221,6 +220,7 @@ struct rt_exporter {
 /* Exporter API */
 void rt_exporter_init(struct rt_exporter *, struct settle_config *);
 struct rt_export_item *rt_exporter_push(struct rt_exporter *, const struct rt_export_item *);
+struct rt_export_feed *rt_alloc_feed(uint routes, uint exports);
 void rt_exporter_shutdown(struct rt_exporter *, void (*stopped)(struct rt_exporter *));
 
 /* Standalone feeds */
@@ -738,7 +738,7 @@ extern const int rt_default_ecmp;
 struct rt_show_data_rtable {
   node n;
   const char *name;
-  rtable *table;
+  struct rt_exporter *exporter;
   struct channel *export_channel;
   struct channel *prefilter;
   struct krt_proto *kernel;
@@ -767,6 +767,7 @@ struct rt_show_data {
 
 void rt_show(struct rt_show_data *);
 struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t);
+struct rt_show_data_rtable * rt_show_add_exporter(struct rt_show_data *d, struct rt_exporter *e);
 
 /* Value of table definition mode in struct rt_show_data */
 #define RSD_TDB_DEFAULT	  0		/* no table specified */
@@ -783,7 +784,6 @@ struct rt_show_data_rtable * rt_show_add_table(struct rt_show_data *d, rtable *t
 #define RSEM_EXPORT	2		/* Routes accepted by export filter */
 #define RSEM_NOEXPORT	3		/* Routes rejected by export filter */
 #define RSEM_EXPORTED	4		/* Routes marked in export map */
-#define RSEM_EXPORT_TABLE 5		/* Export from export table */
 
 /* Host entry: Resolve hook for recursive nexthops */
 extern struct ea_class ea_gen_hostentry;

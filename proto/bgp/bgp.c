@@ -1594,7 +1594,26 @@ bgp_reload_in(struct proto *P, uintptr_t _ UNUSED, int __ UNUSED)
 void
 bgp_reload_out(struct proto *P, uintptr_t _ UNUSED, int __ UNUSED)
 {
-  cli_msg(-8006, "%s: bgp reload out not implemented yet", P->name);
+  SKIP_BACK_DECLARE(struct bgp_proto, p, p, P);
+
+  if (P->proto_state == PS_UP)
+  {
+    struct bgp_channel *c;
+    BGP_WALK_CHANNELS(p, c)
+      if (&c->c != P->mpls_channel)
+	if (c->tx_keep)
+	{
+	  bgp_tx_resend(p, c);
+	  cli_msg(-15, "%s.%s: reloading", P->name, c->c.name);
+	}
+	else
+	{
+	  rt_export_refeed(&c->c.out_req, NULL);
+	  cli_msg(-15, "%s.%s: reloading by table refeed", P->name, c->c.name);
+	}
+  }
+  else
+    cli_msg(-8006, "%s: not reloading, not up", P->name);
 }
 
 struct bgp_enhanced_refresh_request {
@@ -1938,10 +1957,8 @@ bgp_channel_start(struct channel *C)
 
   c->pool = p->p.pool; // XXXX
 
-  if (c->cf->export_table)
-    bgp_setup_out_table(c);
-
   bgp_init_pending_tx(c);
+  c->tx_keep = c->cf->export_table;
 
   c->stale_timer = tm_new_init(c->pool, bgp_long_lived_stale_timeout, c, 0, 0);
 
@@ -2415,6 +2432,9 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
       (new->aigp != old->aigp) ||
       (new->aigp_originate != old->aigp_originate))
     *export_changed = 1;
+
+  /* Update prefix exporter settle timer */
+  c->prefix_exporter.journal.announce_timer.cf = c->cf->ptx_exporter_settle;
 
   c->cf = new;
   return 1;

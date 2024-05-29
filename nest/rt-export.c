@@ -214,6 +214,27 @@ rt_export_processed(struct rt_export_request *r, u64 seq)
 }
 
 struct rt_export_feed *
+rt_alloc_feed(uint routes, uint exports)
+{
+  struct rt_export_feed *feed;
+  uint size = sizeof *feed
+    + routes * sizeof *feed->block + _Alignof(typeof(*feed->block))
+    + exports * sizeof *feed->exports + _Alignof(typeof(*feed->exports));
+
+  feed = tmp_alloc(size);
+
+  feed->count_routes = routes;
+  feed->count_exports = exports;
+  BIRD_SET_ALIGNED_POINTER(feed->block, feed->data);
+  BIRD_SET_ALIGNED_POINTER(feed->exports, &feed->block[routes]);
+
+  /* Consistency check */
+  ASSERT_DIE(((void *) &feed->exports[exports]) <= ((void *) feed) + size);
+
+  return feed;
+}
+
+struct rt_export_feed *
 rt_export_next_feed(struct rt_export_feeder *f)
 {
   ASSERT_DIE(f);
