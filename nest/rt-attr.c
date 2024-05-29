@@ -2022,7 +2022,7 @@ ea_rehash(void * u UNUSED)
 static void
 ea_dump_esa(struct dump_request *dreq, struct ea_stor_array *esa, u64 order)
 {
-  for (uint i = 0; i < 1 << (order); i++)
+  for (int i = 0; i < 1 << (order); i++)
   {
     struct ea_storage *eap = atomic_load_explicit(&esa->eas[i], memory_order_acquire);
     for (; eap; eap = atomic_load_explicit(&eap->next_hash, memory_order_acquire))
