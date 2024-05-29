@@ -264,6 +264,7 @@ bgp_channel_start: bgp_afi
     BGP_CC->llgr_able = 0xff;	/* undefined */
     BGP_CC->llgr_time = ~0U;	/* undefined */
     BGP_CC->aigp = 0xff;	/* undefined */
+    BGP_CC->ptx_exporter_settle = (struct settle_config) { 10 MS_, 100 MS_ };
   }
 };
 
@@ -301,6 +302,7 @@ bgp_channel_item:
  | REQUIRE ADD PATHS bool { BGP_CC->require_add_path = $4; }
  | IMPORT TABLE bool { BGP_CC->import_table = $3; }
  | EXPORT TABLE bool { BGP_CC->export_table = $3; }
+ | EXPORT SETTLE TIME settle { BGP_CC->ptx_exporter_settle = $4; }
  | AIGP bool { BGP_CC->aigp = $2; BGP_CC->aigp_originate = 0; }
  | AIGP ORIGINATE { BGP_CC->aigp = 1; BGP_CC->aigp_originate = 1; }
  | COST expr { BGP_CC->cost = $2; if ($2 < 1) cf_error("Cost must be positive"); }

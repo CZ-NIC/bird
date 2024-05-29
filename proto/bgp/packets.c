@@ -2964,10 +2964,8 @@ bgp_rx_route_refresh(struct bgp_conn *conn, byte *pkt, uint len)
   {
   case BGP_RR_REQUEST:
     BGP_TRACE(D_PACKETS, "Got ROUTE-REFRESH");
-    if (c->c.out_table)
-    {
-      /* FIXME: REQUEST REFRESH FROM OUT TABLE */
-    }
+    if (c->tx_keep)
+      bgp_tx_resend(p, c);
     else
       rt_export_refeed(&c->c.out_req, NULL);
     break;

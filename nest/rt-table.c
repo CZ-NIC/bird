@@ -1948,27 +1948,6 @@ rte_import(struct rt_import_request *req, const net_addr *n, rte *new, struct rt
  *	Feeding
  */
 
-static struct rt_export_feed *
-rt_alloc_feed(uint routes, uint exports)
-{
-  struct rt_export_feed *feed;
-  uint size = sizeof *feed
-    + routes * sizeof *feed->block + _Alignof(typeof(*feed->block))
-    + exports * sizeof *feed->exports + _Alignof(typeof(*feed->exports));
-
-  feed = tmp_alloc(size);
-
-  feed->count_routes = routes;
-  feed->count_exports = exports;
-  BIRD_SET_ALIGNED_POINTER(feed->block, feed->data);
-  BIRD_SET_ALIGNED_POINTER(feed->exports, &feed->block[routes]);
-
-  /* Consistency check */
-  ASSERT_DIE(((void *) &feed->exports[exports]) <= ((void *) feed) + size);
-
-  return feed;
-}
-
 static net *
 rt_net_feed_get_net(struct rtable_reading *tr, uint index)
 {

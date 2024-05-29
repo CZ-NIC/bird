@@ -320,12 +320,20 @@ rt_show_cont(struct cli *c)
 }
 
 struct rt_show_data_rtable *
-rt_show_add_table(struct rt_show_data *d, rtable *t)
+rt_show_add_exporter(struct rt_show_data *d, struct rt_exporter *e)
 {
   struct rt_show_data_rtable *tab = cfg_allocz(sizeof(struct rt_show_data_rtable));
-  tab->table = t;
-  tab->name = t->name;
+  tab->name = e->name;
+  tab->exporter = e;
   add_tail(&(d->tables), &(tab->n));
+  return tab;
+}
+
+struct rt_show_data_rtable *
+rt_show_add_table(struct rt_show_data *d, rtable *t)
+{
+  struct rt_show_data_rtable *tab = rt_show_add_exporter(d, &t->export_all);
+  tab->name = t->name;
 
   struct proto_config *krt = t->config->krt_attached;
   if (krt)
@@ -384,16 +392,17 @@ rt_show_prepare_tables(struct rt_show_data *d)
 
   WALK_LIST_DELSAFE(tab, tabx, d->tables)
   {
+    struct rt_exporter *ex = tab->exporter;
+
     /* Ensure there is defined export_channel for each table */
     if (d->export_mode)
     {
-      rtable *rt = tab->table;
       if (!tab->export_channel && d->export_channel &&
-	  (rt == d->export_channel->table))
+	  (ex == &d->export_channel->table->export_all))
 	tab->export_channel = d->export_channel;
 
       if (!tab->export_channel && d->export_protocol)
-	tab->export_channel = proto_find_channel_by_table(d->export_protocol, rt);
+	tab->export_channel = proto_find_channel_by_table(d->export_protocol, SKIP_BACK(rtable, export_all, ex));
 
       if (!tab->export_channel)
       {
@@ -406,7 +415,7 @@ rt_show_prepare_tables(struct rt_show_data *d)
     }
 
     /* Ensure specified network is compatible with each table */
-    if (d->addr && (tab->table->addr_type != d->addr->type))
+    if (d->addr && (ex->net_type != d->addr->type))
     {
       if (d->tables_defined_by & RSD_TDB_NMN)
 	cf_error("Incompatible type of prefix/ip for table %s", tab->name);
@@ -425,7 +434,7 @@ rt_show_prepare_tables(struct rt_show_data *d)
       .trace_routes = config->show_route_debug,
     };
 
-    rt_feeder_subscribe(&tab->table->export_all, &tab->req);
+    rt_feeder_subscribe(ex, &tab->req);
   }
 
   /* Ensure there is at least one table */

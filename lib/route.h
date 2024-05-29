@@ -580,6 +580,12 @@ static inline ea_list *ea_lookup_tmp(ea_list *r, u32 squash_upto, enum ea_stored
   return ea_free_later(ea_lookup(r, squash_upto, oid));
 }
 
+static inline ea_list *ea_ref_tmp(ea_list *r)
+{
+  ASSERT_DIE(r->stored);
+  return ea_free_later(ea_ref(r));
+}
+
 static inline ea_list *ea_strip_to(ea_list *r, u32 strip_to)
 {
   ASSERT_DIE(strip_to);

@@ -176,6 +176,8 @@ struct bgp_channel_config {
   u8 import_table;			/* Use c.in_table as Adj-RIB-In */
   u8 export_table;			/* Keep Adj-RIB-Out and export it */
 
+  struct settle_config ptx_exporter_settle;    /* Settle timer for export dumps */
+
   struct rtable_config *igp_table_ip4;	/* Table for recursive IPv4 next hop lookups */
   struct rtable_config *igp_table_ip6;	/* Table for recursive IPv6 next hop lookups */
   struct rtable_config *base_table;	/* Base table for Flowspec validation */
@@ -407,12 +409,14 @@ struct bgp_channel {
 
   slab *prefix_slab;			/* Slab holding prefix nodes */
   slab *bucket_slab;			/* Slab holding buckets to send */
-//  struct rt_exporter prefix_exporter;	/* Table-like exporter for ptx */
+  struct rt_exporter prefix_exporter;	/* Table-like exporter for ptx */
 
   ip_addr next_hop_addr;		/* Local address for NEXT_HOP attribute */
   ip_addr link_addr;			/* Link-local version of next_hop_addr */
 
   u32 packets_to_send;			/* Bitmap of packet types to be sent */
+
+  u8 tx_keep;				/* Keep prefixes to be sent */
 
   u8 ext_next_hop;			/* Session allows both IPv4 and IPv6 next hops */
 
@@ -429,8 +433,6 @@ struct bgp_channel {
 
   u8 feed_state;			/* Feed state (TX) for EoR, RR packets, see BFS_* */
   u8 load_state;			/* Load state (RX) for EoR, RR packets, see BFS_* */
-
-  u8 feed_out_table;			/* Refeed into out_table */
 };
 
 struct bgp_prefix {
@@ -637,6 +639,7 @@ void bgp_setup_out_table(struct bgp_channel *c);
 
 void bgp_init_pending_tx(struct bgp_channel *c);
 void bgp_free_pending_tx(struct bgp_channel *c);
+void bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *c);
 
 void bgp_withdraw_bucket(struct bgp_channel *c, struct bgp_bucket *b);
 int bgp_done_bucket(struct bgp_channel *c, struct bgp_bucket *b);

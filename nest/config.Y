@@ -777,6 +777,12 @@ r_args:
      rsdr->prefilter = $4;
      $$->tables_defined_by = RSD_TDB_DIRECT;
    }
+ | r_args EXPORT TABLE channel_arg {
+     if (!($4->out_table)) cf_error("No export table in channel %s.%s", $4->proto->name, $4->name);
+     struct rt_show_data_rtable *rsdr = rt_show_add_exporter($$, $4->out_table);
+     rsdr->name = "export";
+     $$->tables_defined_by = RSD_TDB_DIRECT;
+   }
  | r_args FILTER filter {
      $$ = $1;
      if ($$->filter != FILTER_ACCEPT) cf_error("Filter specified twice");
@@ -879,7 +885,6 @@ export_mode:
  | EXPORT	{ $$ = RSEM_EXPORT; }
  | NOEXPORT	{ $$ = RSEM_NOEXPORT; }
  | EXPORTED	{ $$ = RSEM_EXPORTED; }
- | EXPORT TABLE { cf_error("Temporarily switched off export table display."); $$ = RSEM_EXPORT_TABLE; }
  ;
 
 /* This is ugly hack */
