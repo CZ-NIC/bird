@@ -398,7 +398,7 @@ typedef struct mpls_label_stack {
   u32 stack[MPLS_MAX_LABEL_STACK];
 } mpls_label_stack;
 
-static inline int
+static inline int ACCESS_READ(1, 2)
 mpls_get(const char *buf, int buflen, u32 *stack)
 {
   for (int i=0; (i<MPLS_MAX_LABEL_STACK) && (i*4+3 < buflen); i++)

@@ -639,8 +639,8 @@ void net_normalize(net_addr *N);
 
 
 int net_classify(const net_addr *N);
-int net_format(const net_addr *N, char *buf, int buflen);
-int rd_format(const u64 rd, char *buf, int buflen);
+int net_format(const net_addr *N, char *buf, int buflen) ACCESS_WRITE(2, 3);
+int rd_format(const u64 rd, char *buf, int buflen) ACCESS_WRITE(2, 3);
 
 static inline int ipa_in_px4(ip4_addr a, ip4_addr prefix, uint pxlen)
 { return ip4_zero(ip4_and(ip4_xor(a, prefix), ip4_mkmask(pxlen))); }
