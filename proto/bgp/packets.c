@@ -2391,7 +2391,7 @@ bgp_create_ip_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
 
   int lr, la;
 
-  la = bgp_encode_attrs(s, buck->eattrs, buf+4, buf + MAX_ATTRS_LENGTH);
+  la = bgp_encode_attrs(s, buck->attrs, buf+4, buf + MAX_ATTRS_LENGTH);
   if (la < 0)
   {
     /* Attribute list too long */
@@ -2441,7 +2441,7 @@ bgp_create_mp_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
 
   /* Encode attributes to temporary buffer */
   byte *abuf = alloca(MAX_ATTRS_LENGTH);
-  la = bgp_encode_attrs(s, buck->eattrs, abuf, abuf + MAX_ATTRS_LENGTH);
+  la = bgp_encode_attrs(s, buck->attrs, abuf, abuf + MAX_ATTRS_LENGTH);
   if (la < 0)
   {
     /* Attribute list too long */
@@ -2584,7 +2584,7 @@ bgp_bmp_encode_rte(ea_list *c, byte *buf, byte *end, const struct rte *new)
   init_list(&b->prefixes);
 
   if (new->attrs)
-    memcpy(b->eattrs, new->attrs, ea_size);
+    memcpy(b->attrs, new->attrs, ea_size);
 
   /* Temporary prefix */
   struct bgp_prefix *px = tmp_allocz(prefix_size);
