@@ -3030,30 +3030,28 @@ bgp_create_update_bmp(ea_list *channel_ea, byte *buf, byte *end, struct bgp_buck
 byte *
 bgp_bmp_encode_rte(ea_list *c, byte *buf, byte *end, const struct rte *new)
 {
-  uint ea_size = new->attrs ? (sizeof(ea_list) + new->attrs->count * sizeof(eattr)) : 0;
-  uint prefix_size = sizeof(struct bgp_prefix) + new->net->length;
-
+  /* Aggressive tmppool flushing */
   struct lp_state *tmpp = lp_save(tmp_linpool);
 
   /* Temporary bucket */
-  struct bgp_bucket *b = tmp_allocz(sizeof(struct bgp_bucket) + ea_size);
-  b->bmp = 1;
-  init_list(&b->prefixes);
-
-  if (new->attrs)
-    memcpy(b->eattrs, new->attrs, ea_size);
+  struct bgp_bucket b = {
+    .bmp = 1,
+    .eattrs = new->attrs,
+  };
+  init_list(&b.prefixes);
 
   /* Temporary prefix */
-  struct bgp_prefix *px = tmp_allocz(prefix_size);
-  px->src = tmp_allocz(sizeof(struct rte_src));
-  memcpy(px->src, new->src, sizeof(struct rte_src));
-  px->ni = NET_TO_INDEX(new->net);
-  add_tail(&b->prefixes, &px->buck_node);
+  struct bgp_prefix px = {
+    .src = new->src,
+    .ni = NET_TO_INDEX(new->net),
+  };
 
-  end = bgp_create_update_bmp(c, buf, end, b, !!new->attrs);
+  /* Insert prefix into bucket and create the update */
+  add_tail(&b.prefixes, &px.buck_node);
+  end = bgp_create_update_bmp(c, buf, end, &b, !!new->attrs);
 
+  /* Flush and go */
   lp_restore(tmp_linpool, tmpp);
-
   return end;
 }
 
