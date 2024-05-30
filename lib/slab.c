@@ -246,6 +246,17 @@ sl_new(pool *p, uint size)
 }
 
 /**
+ * sl_delete - destroy an existing Slab
+ * @s: slab
+ *
+ * This function destroys the given Slab.
+ */
+void sl_delete(slab *s)
+{
+  rfree(&s->r);
+}
+
+/**
  * sl_alloc - allocate an object from Slab
  * @s: slab
  *
