@@ -99,7 +99,7 @@ remove_node(struct trie_node *node)
   assert(node != NULL);
   assert(node->child[0] == NULL && node->child[1] == NULL);
 
-  if (node->parent == NULL)
+  if (!node->parent)
     ;
   else
   {
@@ -202,10 +202,10 @@ get_ancestor_bucket(const struct trie_node *node)
   /* Defined for other than root nodes */
   while (1)
   {
-    if (node->parent == NULL)
+    if (!node->parent)
       return node->bucket;
 
-    if (node->parent->bucket != NULL)
+    if (node->parent->bucket)
       return node->parent->bucket;
 
     node = node->parent;
@@ -227,10 +227,10 @@ first_pass_new(struct trie_node *node, slab *trie_slab)
   }
 
   /* Root node */
-  if (node->parent == NULL)
+  if (!node->parent)
     assert(node->bucket != NULL);
 
-  if (node->bucket == NULL)
+  if (!node->bucket)
     node->bucket = node->parent->bucket;
 
   for (int i = 0; i < 2; i++)
@@ -291,7 +291,7 @@ first_pass(struct trie_node *node, slab *trie_slab)
   assert(node != NULL);
   assert(trie_slab != NULL);
 
-  if (node->parent == NULL)
+  if (!node->parent)
     assert(node->bucket != NULL);
 
   if (is_leaf(node))
@@ -559,13 +559,13 @@ remove_potential_buckets(struct trie_node *node)
 static void
 third_pass(struct trie_node *node)
 {
-  if (node == NULL)
+  if (!node)
     return;
 
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
   /* Root is assigned any of its potential buckets */
-  if (node->parent == NULL)
+  if (!node->parent)
   {
     assert(node->potential_buckets_count > 0);
     assert(node->potential_buckets[0] != NULL);
@@ -596,7 +596,7 @@ third_pass(struct trie_node *node)
   third_pass(node->child[1]);
 
   /* Leaves with no assigned bucket are removed */
-  if (node->bucket == NULL && is_leaf(node))
+  if (!node->bucket && is_leaf(node))
     remove_node(node);
 }
 
@@ -772,7 +772,7 @@ collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *add
     return;
   }
 
-  if (node->bucket != NULL)
+  if (node->bucket)
   {
     create_route_ip4(p, addr, node->bucket);
     *count += 1;
@@ -807,7 +807,7 @@ collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *add
     return;
   }
 
-  if (node->bucket != NULL)
+  if (node->bucket)
   {
     create_route_ip6(p, addr, node->bucket);
     *count += 1;
