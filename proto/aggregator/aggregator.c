@@ -921,16 +921,6 @@ run_aggregation(struct aggregator_proto *p)
 }
 
 static void
-aggregate_on_feed_end(struct channel *C)
-{
-  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, C->proto);
-
-  /* Run aggregation only on feed end from the source channel */
-  if (C == p->src)
-    run_aggregation(p);
-}
-
-static void
 aggregate_on_settle_timer(struct settle *s)
 {
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, s->tm.data);
@@ -1549,7 +1539,6 @@ aggregator_init(struct proto_config *CF)
 
   P->rt_notify = aggregator_rt_notify;
   P->preexport = aggregator_preexport;
-  P->feed_end = aggregate_on_feed_end;
 
   return P;
 }
