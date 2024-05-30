@@ -621,9 +621,18 @@ FID_WR_PUT(11)
 #pragma GCC diagnostic ignored "-Woverride-init"
 #endif
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winitializer-overrides"
+#endif
+
 static struct sym_scope f_type_method_scopes[] = {
 FID_WR_PUT(12)
 };
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #if defined(__GNUC__) && __GNUC__ >= 6
 #pragma GCC diagnostic pop
