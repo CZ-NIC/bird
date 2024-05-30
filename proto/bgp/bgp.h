@@ -399,7 +399,12 @@ struct bgp_channel {
   struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
   list bucket_queue;			/* Queue of buckets to send (struct bgp_bucket) */
 
-  HASH(struct bgp_prefix) prefix_hash;	/* Prefixes to be sent */
+  /* Prefixes to be sent */
+  struct bgp_prefix * _Atomic * _Atomic prefixes;
+  u32 _Atomic prefixes_len;		/* Block size of prefixes array */
+  netindex_hash *tx_netindex;		/* Netindex indexing the prefixes to be sent */
+  DOMAIN(rtable) tx_lock;		/* Domain to be locked for prefix access */
+
   slab *prefix_slab;			/* Slab holding prefix nodes */
   slab *bucket_slab;			/* Slab holding buckets to send */
 //  struct rt_exporter prefix_exporter;	/* Table-like exporter for ptx */
@@ -430,7 +435,7 @@ struct bgp_channel {
 
 struct bgp_prefix {
   node buck_node;			/* Node in per-bucket list */
-  struct bgp_prefix *next;		/* Node in prefix hash table */
+  struct bgp_prefix * _Atomic next;	/* Node in prefix block table */
   struct bgp_bucket *last;		/* Last bucket sent with this prefix */
   struct bgp_bucket *cur;		/* Current bucket (cur == last) if no update is required */
   btime lastmod;			/* Last modification of this prefix */

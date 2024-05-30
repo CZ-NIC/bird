@@ -1690,51 +1690,88 @@ bgp_withdraw_bucket(struct bgp_channel *c, struct bgp_bucket *b)
  *	Prefix hash table
  */
 
-#define PXH_KEY(px)		px->ni->index, px->src
-#define PXH_NEXT(px)		px->next
-#define PXH_EQ(n1,i1,n2,i2)	(add_path_tx ? (i1 == i2) : 1) && (n1 == n2)
-#define PXH_FN(n,i)		u32_hash(n)
-
-#define PXH_REHASH		bgp_pxh_rehash
-#define PXH_PARAMS		/16, *1, 2, 2, 12, 24
-
-
-HASH_DEFINE_REHASH_FN(PXH, struct bgp_prefix)
-
 static void
 bgp_init_prefix_table(struct bgp_channel *c)
 {
-  HASH_INIT(c->prefix_hash, c->pool, 8);
+  ASSERT_DIE(!c->prefix_slab);
   c->prefix_slab = sl_new(c->pool, sizeof(struct bgp_prefix));
+
+  ASSERT_DIE(!c->tx_netindex);
+  c->tx_netindex = netindex_hash_new(c->pool, proto_event_list(c->c.proto));
+
+  u32 len = 64;
+  struct bgp_prefix * _Atomic * block = mb_allocz(c->pool, len * sizeof *block);
+
+  atomic_store_explicit(&c->prefixes_len, len, memory_order_relaxed);
+  atomic_store_explicit(&c->prefixes, block, memory_order_relaxed);
+
+  c->tx_lock = DOMAIN_NEW_RCU_SYNC(rtable);
+}
+
+static struct bgp_prefix *
+bgp_find_prefix(struct bgp_channel *c, struct netindex *ni, struct rte_src *src, int add_path_tx)
+{
+  u32 len = atomic_load_explicit(&c->prefixes_len, memory_order_relaxed);
+  struct bgp_prefix * _Atomic * block = atomic_load_explicit(&c->prefixes, memory_order_relaxed);
+
+  for (
+      struct bgp_prefix *px = ni->index < len ?
+	atomic_load_explicit(&block[ni->index], memory_order_relaxed) : NULL;
+      px; px = atomic_load_explicit(&px->next, memory_order_relaxed)
+      )
+    if (!add_path_tx || (px->src == src))
+      return px;
+
+  return NULL;
 }
 
 static struct bgp_prefix *
 bgp_get_prefix(struct bgp_channel *c, struct netindex *ni, struct rte_src *src, int add_path_tx)
 {
-  struct bgp_prefix *px = HASH_FIND(c->prefix_hash, PXH, ni->index, src);
-
+  /* Find existing */
+  struct bgp_prefix *px = bgp_find_prefix(c, ni, src, add_path_tx);
   if (px)
-  {
-    if (!add_path_tx && (src != px->src))
-    {
-      rt_unlock_source(px->src);
-      rt_lock_source(src);
-      px->src = src;
-    }
-
     return px;
+
+  /* Possibly expand the block */
+  u32 len = atomic_load_explicit(&c->prefixes_len, memory_order_relaxed);
+  struct bgp_prefix * _Atomic * block =
+    atomic_load_explicit(&c->prefixes, memory_order_relaxed);
+
+  u32 nlen = len;
+  while (ni->index >= nlen)
+    nlen *= 2;
+
+  if (nlen > len)
+  {
+    /* Yes, expansion needed */
+    struct bgp_prefix * _Atomic * nb = mb_allocz(c->pool, nlen * sizeof *nb);
+    memcpy(nb, block, len * sizeof *nb);
+    memset(&nb[len], 0, (nlen - len) * sizeof *nb);
+
+    atomic_store_explicit(&c->prefixes, nb, memory_order_release);
+    atomic_store_explicit(&c->prefixes_len, nlen, memory_order_release);
+
+    synchronize_rcu();
+
+    mb_free(block);
+
+    block = nb;
+    len = nlen;
   }
 
+  /* Allocate new prefix */
   px = sl_alloc(c->prefix_slab);
   *px = (struct bgp_prefix) {
     .src = src,
     .ni = ni,
+    .next = atomic_load_explicit(&block[ni->index], memory_order_relaxed),
   };
 
-  net_lock_index(c->c.table->netindex, ni);
+  net_lock_index(c->tx_netindex, ni);
   rt_lock_source(src);
 
-  HASH_INSERT2(c->prefix_hash, PXH, c->pool, px);
+  atomic_store_explicit(&block[ni->index], px, memory_order_release);
 
   return px;
 }
@@ -1798,9 +1835,24 @@ bgp_update_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucke
 static void
 bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
 {
-  HASH_REMOVE2(c->prefix_hash, PXH, c->pool, px);
+  u32 len = atomic_load_explicit(&c->prefixes_len, memory_order_relaxed);
+  struct bgp_prefix * _Atomic * block =
+    atomic_load_explicit(&c->prefixes, memory_order_relaxed);
 
-  net_unlock_index(c->c.table->netindex, px->ni);
+  ASSERT_DIE(px->ni->index < len);
+  for (
+      struct bgp_prefix * _Atomic *ppx = &block[px->ni->index], *cpx;
+      cpx = atomic_load_explicit(ppx, memory_order_relaxed);
+      ppx = &cpx->next)
+    if (cpx == px)
+    {
+      atomic_store_explicit(ppx, atomic_load_explicit(&cpx->next, memory_order_relaxed), memory_order_release);
+      break;
+    }
+
+  synchronize_rcu();
+
+  net_unlock_index(c->tx_netindex, px->ni);
   rt_unlock_source(px->src);
 
   sl_free(px);
@@ -1848,11 +1900,28 @@ bgp_init_pending_tx(struct bgp_channel *c)
   bgp_init_prefix_table(c);
 }
 
+struct bgp_pending_tx_finisher {
+  event e;
+  struct bgp_channel *c;
+};
+
+static void
+bgp_finish_pending_tx(void *_bptf)
+{
+  struct bgp_pending_tx_finisher *bptf = _bptf;
+  struct bgp_channel *c = bptf->c;
+
+  mb_free(bptf);
+  channel_del_obstacle(&c->c);
+}
+
 void
 bgp_free_pending_tx(struct bgp_channel *c)
 {
   if (!c->bucket_hash.data)
     return;
+
+  LOCK_DOMAIN(rtable, c->tx_lock);
 
   struct bgp_prefix *px;
   if (c->withdraw_bucket)
@@ -1867,17 +1936,45 @@ bgp_free_pending_tx(struct bgp_channel *c)
     bgp_done_bucket(c, b);
   }
 
-  HASH_WALK(c->prefix_hash, next, n)
-    bug("Stray prefix after cleanup");
-  HASH_WALK_END;
+  u32 len = atomic_load_explicit(&c->prefixes_len, memory_order_relaxed);
+  struct bgp_prefix * _Atomic * block =
+    atomic_load_explicit(&c->prefixes, memory_order_relaxed);
 
-  HASH_FREE(c->prefix_hash);
+  for (u32 i = 0; i < len; i++)
+    if (atomic_load_explicit(&block[i], memory_order_relaxed))
+      bug("Stray prefix after cleanup");
+
+  atomic_store_explicit(&c->prefixes, NULL, memory_order_release);
+  atomic_store_explicit(&c->prefixes_len, 0, memory_order_release);
+
+  synchronize_rcu();
+  mb_free(block);
+  sl_delete(c->prefix_slab);
+  c->prefix_slab = NULL;
 
   HASH_WALK(c->bucket_hash, next, n)
     bug("Stray bucket after cleanup");
   HASH_WALK_END;
 
   HASH_FREE(c->bucket_hash);
+  sl_delete(c->bucket_slab);
+  c->bucket_slab = NULL;
+
+  struct bgp_pending_tx_finisher *bptf = mb_alloc(c->c.proto->pool, sizeof *bptf);
+  *bptf = (struct bgp_pending_tx_finisher) {
+    .e = {
+      .hook = bgp_finish_pending_tx,
+      .data = bptf,
+    },
+    .c = c,
+  };
+
+  channel_add_obstacle(&c->c);
+  netindex_hash_delete(c->tx_netindex, &bptf->e, proto_event_list(c->c.proto));
+  c->tx_netindex = NULL;
+
+  UNLOCK_DOMAIN(rtable, c->tx_lock);
+  DOMAIN_FREE(rtable, c->tx_lock);
 }
 
 #if 0
@@ -2270,6 +2367,8 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
   if (C->class != &channel_bgp)
     return;
 
+  LOCK_DOMAIN(rtable, c->tx_lock);
+
   if (new)
   {
     struct ea_list *attrs = bgp_update_attrs(p, c, new, new->attrs, tmp_linpool);
@@ -2288,8 +2387,10 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
     path = old->src;
   }
 
-  if (bgp_update_prefix(c, bgp_get_prefix(c, NET_TO_INDEX(n), path, c->add_path_tx), buck))
+  if (bgp_update_prefix(c, bgp_get_prefix(c, net_get_index(c->tx_netindex, n), path, c->add_path_tx), buck))
     bgp_schedule_packet(p->conn, c, PKT_UPDATE);
+
+  UNLOCK_DOMAIN(rtable, c->tx_lock);
 }
 
 

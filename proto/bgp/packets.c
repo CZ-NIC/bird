@@ -2544,6 +2544,8 @@ bgp_create_update(struct bgp_channel *c, byte *buf)
   byte *res = NULL;
   struct lp_state *tmpp = NULL;
 
+  LOCK_DOMAIN(rtable, c->tx_lock);
+
 again:
   if (tmpp)
     lp_restore(tmp_linpool, tmpp);
@@ -2593,10 +2595,12 @@ again:
   }
 
   /* No more prefixes to send */
+  UNLOCK_DOMAIN(rtable, c->tx_lock);
   lp_restore(tmp_linpool, tmpp);
   return NULL;
 
 done:
+  UNLOCK_DOMAIN(rtable, c->tx_lock);
   BGP_TRACE_RL(&rl_snd_update, D_PACKETS, "Sending UPDATE");
   p->stats.tx_updates++;
   lp_restore(tmp_linpool, tmpp);
