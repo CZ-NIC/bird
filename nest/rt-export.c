@@ -129,6 +129,8 @@ rt_export_get(struct rt_export_request *r)
 
   /* Is this update allowed by prefilter? */
   const net_addr *n = (update->new ?: update->old)->net;
+  struct netindex *ni = NET_TO_INDEX(n);
+
   if (!rt_prefilter_net(&r->feeder.prefilter, n))
   {
     rtex_trace(r, D_ROUTES, "Not exporting %N due to prefilter", n);
@@ -140,9 +142,9 @@ rt_export_get(struct rt_export_request *r)
     /* But this net shall get a feed first! */
     rtex_trace(r, D_ROUTES, "Expediting %N feed due to pending update %lu", n, update->seq);
     RCU_ANCHOR(u);
-    feed = e->feed_net(e, u, n, update);
+    feed = e->feed_net(e, u, ni, update);
 
-    bmap_set(&r->feed_map, NET_TO_INDEX(n)->index);
+    bmap_set(&r->feed_map, ni->index);
     ASSERT_DIE(feed);
 
     EXPORT_FOUND(RT_EXPORT_FEED);
@@ -226,26 +228,33 @@ rt_export_next_feed(struct rt_export_feeder *f)
       return NULL;
     }
 
-    const net_addr *a = e->feed_next(e, u, f);
-    if (!a)
+    struct netindex *ni = NULL;
+    u32 mfi = atomic_load_explicit(&e->max_feed_index, memory_order_acquire);
+    for (; !ni && f->feed_index < mfi; f->feed_index++)
+      ni = net_resolve_index(e->netindex, e->net_type, f->feed_index);
+
+    if (!ni)
+    {
+      f->feed_index = ~0;
       break;
+    }
 
-    if (!rt_prefilter_net(&f->prefilter, a))
+    if (!rt_prefilter_net(&f->prefilter, ni->addr))
     {
-      rtex_trace(f, D_ROUTES, "Not feeding %N due to prefilter", a);
+      rtex_trace(f, D_ROUTES, "Not feeding %N due to prefilter", ni->addr);
       continue;
     }
 
-    if (f->feeding && !rt_net_is_feeding_feeder(f, a))
+    if (f->feeding && !rt_net_is_feeding_feeder(f, ni->addr))
     {
-      rtex_trace(f, D_ROUTES, "Not feeding %N, not requested", a);
+      rtex_trace(f, D_ROUTES, "Not feeding %N, not requested", ni->addr);
       continue;
     }
 
-    struct rt_export_feed *feed = e->feed_net(e, u, a, NULL);
+    struct rt_export_feed *feed = e->feed_net(e, u, ni, NULL);
     if (feed)
     {
-      rtex_trace(f, D_ROUTES, "Feeding %u routes for %N", feed->count_routes, a);
+      rtex_trace(f, D_ROUTES, "Feeding %u routes for %N", feed->count_routes, ni->addr);
       return feed;
     }
   }
@@ -371,7 +380,7 @@ rt_exporter_init(struct rt_exporter *e, struct settle_config *scf)
   e->journal.cleanup_done = rt_exporter_cleanup_done;
   lfjour_init(&e->journal, scf);
   ASSERT_DIE(e->feed_net);
-  ASSERT_DIE(e->feed_next);
+  ASSERT_DIE(e->netindex);
 }
 
 struct rt_export_item *

@@ -147,10 +147,7 @@ struct rt_export_request {
 #define TLIST_WANT_ADD_TAIL
 
     /* Feeding itself */
-    union {
-      u64 feed_index;				/* Index of the feed in progress */
-      struct rt_feeding_index *feed_index_ptr;	/* Use this when u64 is not enough */
-    };
+    u32 feed_index;				/* Index of the feed in progress */
     struct rt_feeding_request {
       struct rt_feeding_request *next;		/* Next in request chain */
       void (*done)(struct rt_feeding_request *);/* Called when this refeed finishes */
@@ -211,11 +208,13 @@ struct rt_exporter {
   TLIST_LIST(rt_export_feeder) feeders;		/* List of active feeder structures */
   _Bool _Atomic feeders_lock;			/* Spinlock for the above list */
   u8 trace_routes;				/* Debugging flags (D_*) */
+  u8 net_type;					/* Which net this exporter provides */
+  u32 _Atomic max_feed_index;			/* Stop feeding at this index */
   const char *name;				/* Name for logging */
+  netindex_hash *netindex;			/* Table for net <-> id conversion */
   void (*stopped)(struct rt_exporter *);	/* Callback when exporter can stop */
   void (*cleanup_done)(struct rt_exporter *, u64 end);	/* Callback when cleanup has been done */
-  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rcu_unwinder *, const net_addr *, const struct rt_export_item *first);
-  const net_addr *(*feed_next)(struct rt_exporter *, struct rcu_unwinder *, struct rt_export_feeder *);
+  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rcu_unwinder *, const struct netindex *, const struct rt_export_item *first);
   void (*feed_cleanup)(struct rt_exporter *, struct rt_export_feeder *);
 };
 

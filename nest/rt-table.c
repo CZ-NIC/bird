@@ -1193,7 +1193,7 @@ rte_announce_to(struct rt_exporter *e, struct rt_net_pending_export *npe, const 
 }
 
 static void
-rte_announce(struct rtable_private *tab, const struct netindex *i, net *net, const rte *new, const rte *old,
+rte_announce(struct rtable_private *tab, const struct netindex *i UNUSED, net *net, const rte *new, const rte *old,
 	     const rte *new_best, const rte *old_best)
 {
   /* Update network count */
@@ -1903,6 +1903,12 @@ rte_import(struct rt_import_request *req, const net_addr *n, rte *new, struct rt
 	ASSERT_DIE(atomic_compare_exchange_strong_explicit(
 	      &tab->routes_block_size, &bs, nbs,
 	      memory_order_acq_rel, memory_order_relaxed));
+	ASSERT_DIE(atomic_compare_exchange_strong_explicit(
+	      &tab->export_all.max_feed_index, &bs, nbs,
+	      memory_order_acq_rel, memory_order_relaxed));
+	ASSERT_DIE(atomic_compare_exchange_strong_explicit(
+	      &tab->export_best.max_feed_index, &bs, nbs,
+	      memory_order_acq_rel, memory_order_relaxed));
 
 	synchronize_rcu();
 	mb_free(routes);
@@ -1941,38 +1947,6 @@ rte_import(struct rt_import_request *req, const net_addr *n, rte *new, struct rt
 /*
  *	Feeding
  */
-
-static const net_addr *
-rt_feed_next(struct rtable_reading *tr, struct rt_export_feeder *f)
-{
-  u32 rbs = atomic_load_explicit(&tr->t->routes_block_size, memory_order_acquire);
-  for (; f->feed_index < rbs; f->feed_index++)
-  {
-    struct netindex *ni = net_resolve_index(tr->t->netindex, tr->t->addr_type, f->feed_index);
-    if (ni)
-    {
-      f->feed_index++;
-      return ni->addr;
-    }
-  }
-
-  f->feed_index = ~0ULL;
-  return NULL;
-}
-
-static const net_addr *
-rt_feed_next_best(struct rt_exporter *e, struct rcu_unwinder *u, struct rt_export_feeder *f)
-{
-  RT_READ_ANCHORED(SKIP_BACK(rtable, priv.export_best, e), tr, u);
-  return rt_feed_next(tr, f);
-}
-
-static const net_addr *
-rt_feed_next_all(struct rt_exporter *e, struct rcu_unwinder *u, struct rt_export_feeder *f)
-{
-  RT_READ_ANCHORED(SKIP_BACK(rtable, priv.export_all, e), tr, u);
-  return rt_feed_next(tr, f);
-}
 
 static struct rt_export_feed *
 rt_alloc_feed(uint routes, uint exports)
@@ -2112,10 +2086,9 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, const struct rt_pending_exp
 }
 
 static struct rt_export_feed *
-rt_net_feed_internal(struct rtable_reading *tr, const net_addr *a, const struct rt_pending_export *first)
+rt_net_feed_internal(struct rtable_reading *tr, const struct netindex *ni, const struct rt_pending_export *first)
 {
-  const struct netindex *i = net_find_index(tr->t->netindex, a);
-  net *n = rt_net_feed_get_net(tr, i->index);
+  net *n = rt_net_feed_get_net(tr, ni->index);
   if (!n)
     return NULL;
 
@@ -2126,14 +2099,15 @@ struct rt_export_feed *
 rt_net_feed(rtable *t, const net_addr *a, const struct rt_pending_export *first)
 {
   RT_READ(t, tr);
-  return rt_net_feed_internal(tr, a, first);
+  const struct netindex *ni = net_find_index(tr->t->netindex, a);
+  return ni ? rt_net_feed_internal(tr, ni, first) : NULL;
 }
 
 static struct rt_export_feed *
-rt_feed_net_all(struct rt_exporter *e, struct rcu_unwinder *u, const net_addr *a, const struct rt_export_item *_first)
+rt_feed_net_all(struct rt_exporter *e, struct rcu_unwinder *u, const struct netindex *ni, const struct rt_export_item *_first)
 {
   RT_READ_ANCHORED(SKIP_BACK(rtable, export_all, e), tr, u);
-  return rt_net_feed_internal(tr, a, SKIP_BACK(const struct rt_pending_export, it, _first));
+  return rt_net_feed_internal(tr, ni, SKIP_BACK(const struct rt_pending_export, it, _first));
 }
 
 rte
@@ -2158,12 +2132,10 @@ rt_net_best(rtable *t, const net_addr *a)
 }
 
 static struct rt_export_feed *
-rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, const net_addr *a, const struct rt_export_item *_first)
+rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, const struct netindex *ni, const struct rt_export_item *_first)
 {
   SKIP_BACK_DECLARE(rtable, t, export_best, e);
   SKIP_BACK_DECLARE(const struct rt_pending_export, first, it, _first);
-
-  struct netindex *ni = NET_TO_INDEX(a);
 
   RT_READ_ANCHORED(t, tr, u);
 
@@ -2854,10 +2826,12 @@ rt_setup(pool *pp, struct rtable_config *cf)
       .item_done = rt_cleanup_export_best,
     },
     .name = mb_sprintf(p, "%s.export-best", t->name),
+    .net_type = t->addr_type,
+    .max_feed_index = RT_INITIAL_ROUTES_BLOCK_SIZE,
+    .netindex = t->netindex,
     .trace_routes = t->debug,
     .cleanup_done = rt_cleanup_done_best,
     .feed_net = rt_feed_net_best,
-    .feed_next = rt_feed_next_best,
   };
 
   rt_exporter_init(&t->export_best, &cf->export_settle);
@@ -2870,10 +2844,12 @@ rt_setup(pool *pp, struct rtable_config *cf)
       .item_done = rt_cleanup_export_all,
     },
     .name = mb_sprintf(p, "%s.export-all", t->name),
+    .net_type = t->addr_type,
+    .max_feed_index = RT_INITIAL_ROUTES_BLOCK_SIZE,
+    .netindex = t->netindex,
     .trace_routes = t->debug,
     .cleanup_done = rt_cleanup_done_all,
     .feed_net = rt_feed_net_all,
-    .feed_next = rt_feed_next_all,
   };
 
   rt_exporter_init(&t->export_all, &cf->export_settle);
