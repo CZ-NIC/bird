@@ -1465,8 +1465,24 @@ done:
 }
 
 static inline int
-nl_allow_replace(struct krt_proto *p, rte *new)
+nl_allow_replace(struct krt_proto *p, rte *new, rte *old)
 {
+  /*
+   * In kernel routing tables, (net, metric) is the primary key. Therefore, we
+   * can use NL_OP_REPLACE only if the new and and the old route have the same
+   * kernel metric, otherwise the replace would just add the new route while
+   * keep the old one.
+   */
+
+  if ((p->af != AF_MPLS) && (KRT_CF->sys.metric == 0))
+  {
+    uint new_metric = ea_get_int(new->attrs->eattrs, EA_KRT_METRIC, 0);
+    uint old_metric = ea_get_int(old->attrs->eattrs, EA_KRT_METRIC, 0);
+
+    if (new_metric != old_metric)
+      return 0;
+  }
+
   /*
    * We use NL_OP_REPLACE for IPv4, it has an issue with not checking for
    * matching rtm_protocol, but that is OK when dedicated priority is used.
@@ -1495,7 +1511,7 @@ krt_replace_rte(struct krt_proto *p, net *n UNUSED, rte *new, rte *old)
 {
   int err = 0;
 
-  if (old && new && nl_allow_replace(p, new))
+  if (old && new && nl_allow_replace(p, new, old))
   {
     err = nl_send_route(p, new, NL_OP_REPLACE);
   }
