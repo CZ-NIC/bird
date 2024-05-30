@@ -78,7 +78,7 @@ static inline int u64_cmp(u64 i1, u64 i2)
 #define NONNULL(...) __attribute__((nonnull(__VA_ARGS__)))
 #define ALLOC_SIZE(...) __attribute__((alloc_size(__VA_ARGS__)))
 
-#if __GNUC_PREREQ(10, 0)
+#if __GNUC__ >= 10
 #define ACCESS_READ(...) __attribute__((access(read_only, __VA_ARGS__)))
 #define ACCESS_WRITE(...) __attribute__((access(write_only, __VA_ARGS__)))
 #define ACCESS_RW(...) __attribute__((access(read_write, __VA_ARGS__)))
