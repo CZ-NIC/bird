@@ -2899,7 +2899,7 @@ rt_init(void)
   ev_init_list(&rt_cork.queue, &main_birdloop, "Route cork release");
   rt_cork.run = (event) { .hook = rt_cork_release_hook };
   idm_init(&rtable_idm, rt_table_pool, 256);
-  rt_global_netindex_hash = netindex_hash_new(rt_table_pool);
+  rt_global_netindex_hash = netindex_hash_new(rt_table_pool, &global_event_list);
 }
 
 static _Bool

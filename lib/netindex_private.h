@@ -27,6 +27,8 @@ struct netindex_hash_private {
     struct netindex **block;
     struct hmap id_map;
   } net[NET_MAX];
+  event *deleted_event;
+  event_list *deleted_target;
 };
 
 typedef union netindex_hash {
