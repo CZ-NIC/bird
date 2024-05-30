@@ -33,11 +33,32 @@ net_lock_revive_unlock(struct netindex_hash_private *hp, struct netindex *i)
   return i;
 }
 
+void
+netindex_hash_consistency_check(struct netindex_hash_private *nh)
+{
+  for (uint t = 0; t < NET_MAX; t++)
+  {
+    if (!nh->net[t].hash.data)
+      continue;
+
+    uint count = 0;
+    HASH_WALK(nh->net[t].hash, next, i)
+    {
+      ASSERT_DIE(count < nh->net[t].hash.count);
+      ASSERT_DIE(nh->net[t].block[i->index] == i);
+      count++;
+    }
+    HASH_WALK_END;
+
+    ASSERT_DIE(count == nh->net[t].hash.count);
+  }
+}
+
 /*
  * Index initialization
  */
 netindex_hash *
-netindex_hash_new(pool *sp)
+netindex_hash_new(pool *sp, event_list *cleanup_target)
 {
   DOMAIN(attrs) dom = DOMAIN_NEW(attrs);
   LOCK_DOMAIN(attrs, dom);
@@ -48,7 +69,7 @@ netindex_hash_new(pool *sp)
   nh->lock = dom;
   nh->pool = p;
 
-  nh->cleanup_list = &global_event_list;
+  nh->cleanup_list = cleanup_target;
   nh->cleanup_event = (event) { .hook = netindex_hash_cleanup, nh };
 
   UNLOCK_DOMAIN(attrs, dom);
@@ -58,29 +79,71 @@ netindex_hash_new(pool *sp)
 static void
 netindex_hash_cleanup(void *_nh)
 {
-  NH_LOCK((netindex_hash *) _nh, nh);
+  struct netindex_hash_private *nh = _nh;
+
+  DOMAIN(attrs) dom = nh->lock;
+  LOCK_DOMAIN(attrs, dom);
+
+  EXPENSIVE_CHECK(netindex_hash_consistency_check(nh));
+
+  uint kept = 0;
 
   for (uint t = 0; t < NET_MAX; t++)
-  {
-    if (!nh->net[t].hash.data)
-      continue;
+    for (uint i = 0; i < nh->net[t].block_size; i++)
+    {
+      struct netindex *ni = nh->net[t].block[i];
+      if (!ni)
+	continue;
 
-    HASH_WALK_FILTER(nh->net[t].hash, next, i, ii)
-      if (lfuc_finished(&i->uc))
+      ASSERT_DIE(i == ni->index);
+
+      if (lfuc_finished(&ni->uc))
       {
-	HASH_DO_REMOVE(nh->net[t].hash, NETINDEX, ii);
-	hmap_clear(&nh->net[t].id_map, i->index);
-	nh->net[t].block[i->index] = NULL;
+	HASH_REMOVE2(nh->net[t].hash, NETINDEX, nh->pool, ni);
+	hmap_clear(&nh->net[t].id_map, ni->index);
+	nh->net[t].block[i] = NULL;
 
 	if (nh->net[t].slab)
-	  sl_free(i);
+	  sl_free(ni);
 	else
-	  mb_free(i);
+	  mb_free(ni);
       }
-    HASH_WALK_DELSAFE_END;
-  }
-}
+      else
+	kept++;
+    }
 
+  EXPENSIVE_CHECK(netindex_hash_consistency_check(nh));
+
+  if (kept || !nh->deleted_event)
+  {
+    UNLOCK_DOMAIN(attrs, dom);
+    return;
+  }
+
+  ev_postpone(&nh->cleanup_event);
+
+  event *e = nh->deleted_event;
+  event_list *t = nh->deleted_target;
+
+  /* Check cleanliness */
+  for (uint t = 0; t < NET_MAX; t++)
+    if (nh->net[t].hash.data)
+    {
+      HASH_WALK(nh->net[t].hash, next, i)
+	bug("Stray netindex in deleted hash");
+      HASH_WALK_END;
+    }
+
+  /* Pool free is enough to drop everything */
+  rp_free(nh->pool);
+
+  /* And only the lock remains */
+  UNLOCK_DOMAIN(attrs, dom);
+  DOMAIN_FREE(attrs, dom);
+
+  /* Notify the requestor */
+  ev_send(t, e);
+}
 
 static void
 netindex_hash_init(struct netindex_hash_private *hp, u8 type)
@@ -93,6 +156,19 @@ netindex_hash_init(struct netindex_hash_private *hp, u8 type)
   hp->net[type].block = mb_allocz(hp->pool, hp->net[type].block_size * sizeof (struct netindex *));
   hmap_init(&hp->net[type].id_map, hp->pool, 128);
 };
+
+void
+netindex_hash_delete(netindex_hash *h, event *e, event_list *t)
+{
+  NH_LOCK(h, hp);
+
+  EXPENSIVE_CHECK(netindex_hash_consistency_check(nh));
+
+  hp->deleted_event = e;
+  hp->deleted_target = t;
+
+  ev_send(hp->cleanup_list, &hp->cleanup_event);
+}
 
 /*
  * Private index manipulation
@@ -115,6 +191,8 @@ net_find_index_fragile(struct netindex_hash_private *hp, const net_addr *n)
   if (!hp->net[n->type].block)
     return NULL;
 
+  EXPENSIVE_CHECK(netindex_hash_consistency_check(nh));
+
   u32 h = net_hash(n);
   return HASH_FIND(hp->net[n->type].hash, NETINDEX, h, n);
 }
@@ -128,6 +206,8 @@ net_find_index_locked(struct netindex_hash_private *hp, const net_addr *n)
 static struct netindex *
 net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n)
 {
+  ASSERT_DIE(!hp->deleted_event);
+
   if (!hp->net[n->type].block)
     netindex_hash_init(hp, n->type);
 
@@ -151,8 +231,11 @@ net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n)
     struct netindex **nb = mb_alloc(hp->pool, bs * 2 * sizeof *nb);
     memcpy(nb, hp->net[n->type].block, bs * sizeof *nb);
     memset(&nb[bs], 0, bs * sizeof *nb);
-    hp->net[n->type].block_size *= 2;
+
+    mb_free(hp->net[n->type].block);
     hp->net[n->type].block = nb;
+
+    hp->net[n->type].block_size *= 2;
   }
 
   hp->net[n->type].block[i] = ni;

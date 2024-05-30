@@ -27,8 +27,9 @@ struct netindex {
 /* Index hash: data structure completely opaque, use handlers */
 typedef union netindex_hash netindex_hash;
 
-/* Initialization */
-netindex_hash *netindex_hash_new(pool *);
+/* Initialization and teardown */
+netindex_hash *netindex_hash_new(pool *, event_list *);
+void netindex_hash_delete(netindex_hash *, event *, event_list *);
 
 /* Find/get/resolve index; pointer valid until end of task */ 
 struct netindex *net_find_index(netindex_hash *, const net_addr *);
