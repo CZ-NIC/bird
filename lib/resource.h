@@ -179,7 +179,7 @@ void resource_sys_init(void);
 #define xrealloc bird_xrealloc
 void *xmalloc(unsigned);
 void *xrealloc(void *, unsigned);
-#define xfree(x) free(x)
+void xfree(void *);
 #endif
 
 #endif
