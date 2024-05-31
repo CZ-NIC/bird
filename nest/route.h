@@ -622,7 +622,7 @@ struct hostentry {
   u32 igp_metric;			/* Chosen route IGP metric */
   _Atomic u32 version;			/* Bumped on update */
   byte nexthop_linkable;		/* Nexthop list is completely non-device */
-  ea_list *src;				/* Source attributes */
+  ea_list * _Atomic src;		/* Source attributes */
   struct lfuc uc;			/* Use count */
 };
 

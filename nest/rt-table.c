@@ -3275,13 +3275,14 @@ rta_apply_hostentry(ea_list **to, struct hostentry_adata *head)
     do {
       ea_set_attr_u32(to, &ea_gen_igp_metric, 0, he->igp_metric);
 
-      if (!he->src)
+      ea_list *src = atomic_load_explicit(&he->src, memory_order_acquire);
+      if (!src)
       {
 	ea_set_dest(to, 0, RTD_UNREACHABLE);
 	break;
       }
 
-      eattr *he_nh_ea = ea_find(he->src, &ea_gen_nexthop);
+      eattr *he_nh_ea = ea_find(src, &ea_gen_nexthop);
       ASSERT_DIE(he_nh_ea);
 
       struct nexthop_adata *nhad = (struct nexthop_adata *) he_nh_ea->u.ptr;
@@ -3291,7 +3292,7 @@ rta_apply_hostentry(ea_list **to, struct hostentry_adata *head)
 	  !lnum && he->nexthop_linkable)
       {
 	/* Just link the nexthop chain, no label append happens. */
-	ea_copy_attr(to, he->src, &ea_gen_nexthop);
+	ea_copy_attr(to, src, &ea_gen_nexthop);
 	break;
       }
 
@@ -4225,7 +4226,7 @@ hc_new_hostentry(struct hostcache *hc, pool *p, ip_addr a, ip_addr ll, rtable *d
 static void
 hc_delete_hostentry(struct hostcache *hc, pool *p, struct hostentry *he)
 {
-  ea_free(he->src);
+  ea_free(atomic_load_explicit(&he->src, memory_order_relaxed));
 
   rem_node(&he->ln);
   hc_remove(hc, he);
@@ -4351,7 +4352,7 @@ rt_free_hostcache(struct rtable_private *tab)
   WALK_LIST(n, hc->hostentries)
     {
       SKIP_BACK_DECLARE(struct hostentry, he, ln, n);
-      ea_free(he->src);
+      ea_free(atomic_load_explicit(&he->src, memory_order_relaxed));
 
       if (!lfuc_finished(&he->uc))
 	log(L_ERR "Hostcache is not empty in table %s", tab->name);
@@ -4397,7 +4398,6 @@ rt_get_igp_metric(const rte *rt)
 static int
 rt_update_hostentry(struct rtable_private *tab, struct hostentry *he)
 {
-  ea_list *old_src = he->src;
   int direct = 0;
   int pxlen = 0;
 
@@ -4405,7 +4405,8 @@ rt_update_hostentry(struct rtable_private *tab, struct hostentry *he)
   ASSERT_DIE((atomic_fetch_add_explicit(&he->version, 1, memory_order_acq_rel) & 1) == 0);
 
   /* Reset the hostentry */
-  he->src = NULL;
+  ea_list *old_src = atomic_exchange_explicit(&he->src, NULL, memory_order_acq_rel);
+  ea_list *new_src = NULL;
   he->nexthop_linkable = 0;
   he->igp_metric = 0;
 
@@ -4455,11 +4456,11 @@ rt_update_hostentry(struct rtable_private *tab, struct hostentry *he)
 		direct++;
 	      }
 
-      he->src = ea_ref(a);
+      new_src = ea_ref(a);
       he->nexthop_linkable = !direct;
       he->igp_metric = rt_get_igp_metric(&e->rte);
 
-      if ((old_src != he->src) && (tab->debug & D_ROUTES))
+      if ((old_src != new_src) && (tab->debug & D_ROUTES))
 	if (ipa_zero(he->link) || ipa_equal(he->link, he->addr))
 	  log(L_TRACE "%s: Hostentry %p for %I in %s resolved via %N (%uG)",
 	      tab->name, he, he->addr, he->tab->name, e->rte.net, e->rte.src->global_id);
@@ -4477,6 +4478,7 @@ rt_update_hostentry(struct rtable_private *tab, struct hostentry *he)
 
 done:
   /* Signalize work done and wait for readers */
+  ASSERT_DIE(atomic_exchange_explicit(&he->src, new_src, memory_order_acq_rel) == NULL);
   ASSERT_DIE((atomic_fetch_add_explicit(&he->version, 1, memory_order_acq_rel) & 1) == 1);
   synchronize_rcu();
 
@@ -4484,7 +4486,7 @@ done:
   trie_add_prefix(tab->hostcache->trie, &he_addr, pxlen, he_addr.pxlen);
 
   ea_free(old_src);
-  return old_src != he->src;
+  return old_src != new_src;
 }
 
 static void
