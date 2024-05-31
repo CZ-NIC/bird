@@ -1546,6 +1546,7 @@ birdloop_vnew_internal(pool *pp, uint order, struct birdloop_pickup_group *group
   {
     LOCK_DOMAIN(attrs, group->domain);
     group->loop_count++;
+    group->loop_unassigned_count++;
     add_tail(&group->loops, &loop->n);
     if (EMPTY_LIST(group->threads))
       ev_send(&global_event_list, &group->start_threads);
