@@ -817,7 +817,11 @@ bird_thread_main(void *arg)
     /* Compute maximal time per loop */
     u64 thr_before_run = ns_now();
     if (thr->loop_count > 0)
+    {
       thr->max_loop_time_ns = (thr->max_latency_ns / 2 - (thr_before_run - thr_loop_start)) / (u64) thr->loop_count;
+      if (thr->max_loop_time_ns > 300 MS)
+	thr->max_loop_time_ns = 300 MS;
+    }
 
     /* Run all scheduled loops */
     int more_events = ev_run_list(&thr->meta->event_list);
