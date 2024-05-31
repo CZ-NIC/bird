@@ -10,8 +10,24 @@
 
 #include "nest/bird.h"
 #include "lib/resource.h"
+#include "lib/timer.h"
 
 #ifndef HAVE_LIBDMALLOC
+
+#if DEBUGGING
+struct minfo {
+  void *ptr;
+  uint size;
+  uint action;
+  uint thread_id;
+  btime time;
+} minfo_block[65536];
+_Atomic uint minfo_pos;
+
+#define MINFO(p, s, a)	minfo_block[atomic_fetch_add_explicit(&minfo_pos, 1, memory_order_acq_rel) % 65536] = (struct minfo) { .ptr = p, .size = s, .action = a, .thread_id = THIS_THREAD_ID, .time = current_time_now(), }
+#else
+#define MINFO(...)
+#endif
 
 /**
  * xmalloc - malloc with checking
@@ -26,7 +42,10 @@
 void *
 xmalloc(uint size)
 {
+
   void *p = malloc(size);
+  MINFO(p, size, 1);
+
   if (p)
     return p;
   die("Unable to allocate %d bytes of memory", size);
@@ -47,9 +66,19 @@ void *
 xrealloc(void *ptr, uint size)
 {
   void *p = realloc(ptr, size);
+
+  MINFO(ptr, 0, 2);
+  MINFO(p, size, 3);
+
   if (p)
     return p;
   die("Unable to allocate %d bytes of memory", size);
 }
 
+
+void xfree(void *p)
+{
+  MINFO(p, 0, 4);
+  free(p);
+}
 #endif
