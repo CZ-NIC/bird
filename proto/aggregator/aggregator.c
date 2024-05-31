@@ -1290,6 +1290,10 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   struct aggregator_bucket *new_bucket = NULL, *old_bucket = NULL;
   struct aggregator_route *old_route = NULL;
 
+  /* Ignore all updates if protocol is not up */
+  if (p->p.proto_state != PS_UP)
+    return;
+
   /* Find the objects for the old route */
   if (old)
     old_route = HASH_FIND(p->routes, AGGR_RTE, old);
