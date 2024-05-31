@@ -82,12 +82,7 @@ is_leaf(const struct trie_node *node)
 static struct trie_node *
 create_new_node(slab *trie_slab)
 {
-  struct trie_node *new = sl_alloc(trie_slab);
-  assert(new != NULL);
-  *new = (struct trie_node) { 0 };
-  assert(new->bucket == NULL);
-
-  return new;
+  return sl_allocz(trie_slab);
 }
 
 /*
