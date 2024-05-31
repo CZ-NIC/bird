@@ -27,12 +27,10 @@ static struct block {
 static struct block *_Atomic bin;
 static _Atomic uint seen = 0;
 
-_Thread_local struct rcu_thread rtl;
-
 static void *
 t_rcu_basic_reader(void *_ UNUSED)
 {
-  rcu_thread_start(&rtl);
+  rcu_thread_start();
 
   while (atomic_load_explicit(&bin, memory_order_acquire) == NULL)
     birdloop_yield();
@@ -58,7 +56,7 @@ t_rcu_basic_reader(void *_ UNUSED)
     rcu_read_unlock();
   }
 
-  rcu_thread_stop(&rtl);
+  rcu_thread_stop();
   return NULL;
 }
 
@@ -80,7 +78,7 @@ spin_unlock(void)
 static void *
 t_rcu_basic_writer(void *order_ptr)
 {
-  rcu_thread_start(&rtl);
+  rcu_thread_start();
 
   uint order = (uintptr_t) order_ptr;
   struct block *cur = &ball[order][0];
@@ -160,7 +158,7 @@ t_rcu_basic_writer(void *order_ptr)
   cur->value = 0xd4d4d4d4d4d4d4d4;
   atomic_store_explicit(&cur->next, ((void *) 0xd8d8d8d8d8d8d8d8), memory_order_relaxed);
 
-  rcu_thread_stop(&rtl);
+  rcu_thread_stop();
   return NULL;
 }
 
