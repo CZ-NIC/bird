@@ -172,6 +172,7 @@ struct proto {
   btime last_state_change;		/* Time of last state transition */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
   char *message;			/* State-change message, allocated from proto_pool */
+  u32 id;                   /* Id of the protocol indexing its position in proto_attributes */
 
   /*
    *	General protocol hooks:
@@ -390,6 +391,28 @@ static inline int proto_is_inactive(struct proto *p)
       && EMPTY_TLIST(proto_neigh, &p->neighbors)
     ;
 }
+
+
+struct proto_attrs {
+  ea_list *_Atomic *attrs;
+  _Atomic u32 length;
+  struct hmap *proto_id_maker;
+};
+
+extern struct lfjour *proto_journal;
+extern struct proto_attrs *proto_attributes;
+
+struct proto_pending_update {
+  LFJOUR_ITEM_INHERIT(li);
+  ea_list *proto_attr;
+  ea_list *old_attr;
+  struct proto *protocol;
+};
+
+void proto_journal_state_changed(ea_list *attr, ea_list *old_attr, struct proto *p);
+ea_list *proto_state_to_eattr(struct proto *p, int old_state, int protocol_deleting);
+void create_dummy_recipient(void);
+void protos_attr_field_grow(void);
 
 
 /*

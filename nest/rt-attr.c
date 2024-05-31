@@ -1765,6 +1765,52 @@ ea_show_list(struct cli *c, ea_list *eal)
     ea_show(c, &n->attrs[i]);
 }
 
+
+struct ea_class ea_proto_name = {
+  .name = "proto_name",
+  .type = T_STRING,
+};
+
+struct ea_class ea_proto_protocol_name = {
+  .name = "proto_protocol_name",
+  .type = T_STRING,
+};
+
+struct ea_class ea_proto_table = {
+  .name = "proto_table",
+  .type = T_STRING,
+};
+
+struct ea_class ea_proto_state = {
+  .name = "proto_state",
+  .type = T_ENUM_STATE,
+};
+
+struct ea_class ea_proto_old_state = {
+  .name = "proto_old_state",
+  .type = T_ENUM_STATE,
+};
+
+struct ea_class ea_proto_last_modified = {
+  .name = "proto_last_modified",
+  .type = T_BTIME,
+};
+
+struct ea_class ea_proto_info = {
+  .name = "proto_info",
+  .type = T_STRING,
+};
+
+struct ea_class ea_proto_deleted = {
+  .name = "proto_deleted",
+  .type = T_INT,
+};
+
+struct ea_class ea_proto_id = {
+  .name = "proto_id",
+  .type = T_INT,
+};
+
 /**
  * rta_init - initialize route attribute cache
  *
@@ -1809,6 +1855,17 @@ rta_init(void)
   ea_register_init(&ea_gen_mpls_policy);
   ea_register_init(&ea_gen_mpls_class);
   ea_register_init(&ea_gen_mpls_label);
+
+  /* Protocol attributes */
+  ea_register_init(&ea_proto_name);
+  ea_register_init(&ea_proto_protocol_name);
+  ea_register_init(&ea_proto_table);
+  ea_register_init(&ea_proto_state);
+  ea_register_init(&ea_proto_old_state);
+  ea_register_init(&ea_proto_last_modified);
+  ea_register_init(&ea_proto_info);
+  ea_register_init(&ea_proto_id);
+  ea_register_init(&ea_proto_deleted);
 }
 
 /*

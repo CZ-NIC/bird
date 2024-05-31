@@ -377,6 +377,8 @@ void ea_list_copy(ea_list *dest, ea_list *src, uint size);
 #define EA_LITERAL_GENERIC(_id, _type, _flags, ...) \
   ((eattr) { .id = _id, .type = _type, .flags = _flags, __VA_ARGS__ })
 
+#define EA_LITERAL_STORE_STRING(_class, _flags, string) ({EA_LITERAL_STORE_ADATA(_class, _flags, string, strlen(string)+1);})
+
 static inline eattr *
 ea_set_attr(ea_list **to, eattr a)
 {
@@ -443,6 +445,9 @@ extern struct ea_class ea_gen_from;
 extern struct ea_class ea_gen_mpls_label,
        ea_gen_mpls_policy, ea_gen_mpls_class;
 
+extern struct ea_class ea_proto_name, ea_proto_protocol_name, ea_proto_table,
+       ea_proto_state, ea_proto_old_state, ea_proto_last_modified, ea_proto_info,
+       ea_proto_id, ea_proto_deleted;
 
 /* Source: An old method to devise the route source protocol and kind.
  * To be superseded in a near future by something more informative. */

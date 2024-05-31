@@ -271,7 +271,7 @@ mrt_open_file(struct mrt_table_dump_state *s)
     return 0;
   }
 
-  s->file = rf_open(s->pool, name, "a");
+  s->file = rf_open(s->pool, name, RF_APPEND, -1); //TODO: is this correct? Do we want to limit appending file (or does it even make sence for append)? 
   if (!s->file)
   {
     mrt_log(s, "Unable to open MRT file '%s': %m", name);
@@ -359,7 +359,7 @@ mrt_peer_table_dump(struct mrt_table_dump_state *s)
   /* 0 is fake peer for non-BGP routes */
   mrt_peer_table_entry(s, 0, 0, IPA_NONE);
 
-#ifdef CONFIG_BGP
+/*#ifdef CONFIG_BGP
   struct proto *P;
   WALK_LIST(P, proto_list)
     if ((P->proto == &proto_bgp) && (P->proto_state != PS_DOWN))
@@ -367,7 +367,7 @@ mrt_peer_table_dump(struct mrt_table_dump_state *s)
       struct bgp_proto *p = (void *) P;
       mrt_peer_table_entry(s, p->remote_id, p->remote_as, p->remote_ip);
     }
-#endif
+#endif*/
 
   /* Fix Peer Count */
   put_u16(s->buf.start + s->peer_count_offset, s->peer_count);

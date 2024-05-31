@@ -1954,7 +1954,7 @@ bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *bc)
  */
 
 static void
-bgp_out_item_done(struct lfjour *j, struct lfjour_item *i)
+bgp_out_item_done(struct lfjour *j UNUSED, struct lfjour_item *i UNUSED)
 {}
 
 static struct rt_export_feed *

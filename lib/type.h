@@ -113,6 +113,10 @@ enum btype {
 
   T_SET = 0x80,
   T_PREFIX_SET = 0x84,
+
+/* protocol */
+  T_ENUM_STATE = 0xd1,
+  T_BTIME = 0xd4,
 } PACKED;
 
 typedef enum btype btype;

@@ -650,6 +650,8 @@ mem_hash_mix_f_val(u64 *h, struct f_val *v)
     case T_NEXTHOP_LIST:
     case T_HOSTENTRY:
     case T_IFACE:
+    case T_ENUM_STATE:
+    case T_BTIME:
       bug("Invalid type %s in f_val hashing", f_type_name(v->type));
   }
 }

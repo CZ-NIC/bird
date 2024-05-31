@@ -28,6 +28,9 @@ static TLIST_LIST(proto) global_proto_list;
 
 static list STATIC_LIST_INIT(protocol_list);
 
+struct lfjour *proto_journal;
+DOMAIN(rtable) proto_journal_domain;
+
 #define CD(c, msg, args...) ({ if (c->debug & D_STATES) log(L_TRACE "%s.%s: " msg, c->proto->name, c->name ?: "?", ## args); })
 #define PD(p, msg, args...) ({ if (p->debug & D_STATES) log(L_TRACE "%s: " msg, p->name, ## args); })
 
@@ -45,6 +48,7 @@ static char *p_states[] = { "DOWN", "START", "UP", "STOP" };
 static char *c_states[] = { "DOWN", "START", "UP", "STOP", "RESTART" };
 
 extern struct protocol proto_unix_iface;
+struct proto_attrs *proto_attributes;
 
 static void proto_rethink_goal(struct proto *p);
 static char *proto_state_name(struct proto *p);
@@ -63,6 +67,8 @@ static inline void channel_refeed(struct channel *c, struct rt_feeding_request *
 {
   rt_export_refeed(&c->out_req, rfr);
 }
+
+void init_proto_journal(void);
 
 static inline int proto_is_done(struct proto *p)
 { return (p->proto_state == PS_DOWN) && proto_is_inactive(p); }
@@ -1235,6 +1241,7 @@ proto_init(struct proto_config *c, struct proto *after)
   struct proto *p = pr->init(c);
 
   p->loop = &main_birdloop;
+  int old_state = p->proto_state;
   p->proto_state = PS_DOWN;
   p->last_state_change = current_time();
   p->vrf = c->vrf;
@@ -1243,6 +1250,16 @@ proto_init(struct proto_config *c, struct proto *after)
   p->event = ev_new_init(proto_pool, proto_event, p);
 
   PD(p, "Initializing%s", p->disabled ? " [disabled]" : "");
+
+  log("try to change state");
+  p->id = hmap_first_zero(proto_attributes->proto_id_maker);
+  hmap_set(proto_attributes->proto_id_maker, p->id);
+  if (p->id >= proto_attributes->length)
+    protos_attr_field_grow();
+  ea_list *eal = proto_state_to_eattr(p, old_state, 0);
+  ea_list *old_eal = proto_attributes->attrs[p->id];
+  atomic_store(&proto_attributes->attrs[p->id], eal);
+  proto_journal_state_changed(eal, old_eal, p);
 
   return p;
 }
@@ -1665,6 +1682,9 @@ proto_rethink_goal(struct proto *p)
     struct proto_config *nc = p->cf_new;
     struct proto *after = p->n.prev;
 
+    hmap_clear(proto_attributes->proto_id_maker, p->id);
+    atomic_store(&proto_attributes->attrs[p->id], NULL);
+
     DBG("%s has shut down for reconfiguration\n", p->name);
     p->cf->proto = NULL;
     config_del_obstacle(p->cf->global);
@@ -1955,6 +1975,8 @@ protos_build(void)
 {
   proto_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Protocols");
 
+  init_proto_journal();
+  create_dummy_recipient();
   protos_build_gen();
 }
 
@@ -2254,8 +2276,14 @@ proto_notify_state(struct proto *p, uint state)
   if (state == ps)
     return;
 
+  log("try to change state");
+  int old_state = p->proto_state;
   p->proto_state = state;
   p->last_state_change = current_time();
+  ea_list *eal = proto_state_to_eattr(p, old_state, 0);
+  ea_list *old_eal = proto_attributes->attrs[p->id];
+  atomic_store(&proto_attributes->attrs[p->id], eal);
+  proto_journal_state_changed(eal, old_eal, p);
 
   switch (state)
   {
@@ -2307,6 +2335,19 @@ proto_state_name(struct proto *p)
   switch (p->proto_state)
   {
   case PS_DOWN:		return p->active ? "flush" : "down";
+  case PS_START:	return "start";
+  case PS_UP:		return "up";
+  case PS_STOP:		return "stop";
+  default:		return "???";
+  }
+}
+
+static char *
+proto_state_name_from_int(int state)
+{
+  switch (state)
+  {
+  case PS_DOWN:		return "flush or down";
   case PS_START:	return "start";
   case PS_UP:		return "up";
   case PS_STOP:		return "stop";
@@ -2416,17 +2457,28 @@ proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
     cli_msg(-2002, "%-10s %-10s %-10s %-6s %-12s  %s",
 	    "Name", "Proto", "Table", "State", "Since", "Info");
 
+  rcu_read_lock();
+  ea_list *eal = proto_attributes->attrs[p->id];
+  ea_free_later(ea_ref(eal));
+  rcu_read_unlock();
+
+  const char *name = ea_find(eal, &ea_proto_name)->u.ad->data;
+  const char *proto = ea_find(eal, &ea_proto_protocol_name)->u.ad->data;
+  const int state = ea_find(eal, &ea_proto_state)->u.i;
+  const char *table = ea_find(eal, &ea_proto_table)->u.ad->data;
+  const char *info = ea_find(eal, &ea_proto_info)->u.ad->data;
+  const btime *time = (btime*) ea_find(eal, &ea_proto_last_modified)->u.ad->data;
   buf[0] = 0;
   if (p->proto->get_status)
     p->proto->get_status(p, buf);
-  tm_format_time(tbuf, &config->tf_proto, p->last_state_change);
+  tm_format_time(tbuf, &config->tf_proto, *time);
   cli_msg(-1002, "%-10s %-10s %-10s %-6s %-12s  %s",
-	  p->name,
-	  p->proto->name,
-	  p->main_channel ? p->main_channel->table->name : "---",
-	  proto_state_name(p),
+	  name,
+	  proto,
+	  table,
+	  proto_state_name_from_int(state),
 	  tbuf,
-	  buf);
+	  info);
 
   if (verbose)
   {
@@ -2723,4 +2775,163 @@ proto_iterate_named(struct symbol *sym, struct protocol *proto, struct proto *ol
     cli_msg(0, "");
     return NULL;
   }
+}
+
+
+
+void
+protos_attr_field_init(void)
+{
+  proto_attributes = mb_allocz(&root_pool, sizeof(struct proto_attrs));
+  proto_attributes->attrs = mb_allocz(&root_pool, sizeof(ea_list *_Atomic)*16);
+  proto_attributes->length = 16;
+  proto_attributes->proto_id_maker = mb_allocz(&root_pool, sizeof(struct hmap));
+  hmap_init(proto_attributes->proto_id_maker, &root_pool, 16);
+  //TODO free? or have self pool?
+}
+
+void
+protos_attr_field_grow(void)
+{
+  ea_list *_Atomic * new_field = mb_allocz(&root_pool, sizeof(ea_list *_Atomic)*proto_attributes->length*2);
+  memcpy(new_field, proto_attributes->attrs, proto_attributes->length*(sizeof(ea_list* _Atomic)));
+  atomic_store(&proto_attributes->attrs, new_field);
+  atomic_store(&proto_attributes->length, (proto_attributes->length*2));
+}
+
+void
+cleanup_journal_item(struct lfjour * UNUSED, struct lfjour_item *i)
+{
+  log("clean item");
+  struct proto_pending_update *pupdate = SKIP_BACK(struct proto_pending_update, li, i);
+  ea_free_later(pupdate->old_attr);
+  eattr *new_ea = ea_find(pupdate->proto_attr, &ea_proto_deleted);
+  if (new_ea->u.i)
+    ea_free_later(pupdate->proto_attr);
+}
+
+void
+after_journal_birdloop_stop(void* UNUSED){}
+
+void
+init_proto_journal(void)
+{
+  protos_attr_field_init();
+  proto_journal = mb_allocz(&root_pool, sizeof(struct lfjour));
+  struct settle_config cf = {.min = 0, .max = 0};
+  proto_journal->item_done = cleanup_journal_item;
+  proto_journal->item_size = sizeof(struct proto_pending_update);
+  proto_journal->loop = birdloop_new(&root_pool, DOMAIN_ORDER(service), 1, "Protocol state journal");
+  proto_journal_domain = DOMAIN_NEW_RCU_SYNC(rtable);
+  proto_journal->domain = proto_journal_domain.rtable;
+
+  lfjour_init(proto_journal, &cf);
+}
+
+ea_list *
+proto_state_to_eattr(struct proto *p, int old_state, int proto_deleting)
+{
+  struct {
+	ea_list l;
+	eattr a[8];
+  } eattrs;
+
+  eattrs.l = (ea_list) {};
+
+  eattrs.a[eattrs.l.count++] = EA_LITERAL_STORE_STRING(&ea_proto_name, 0, p->name);
+  eattrs.a[eattrs.l.count++] = EA_LITERAL_STORE_STRING(&ea_proto_protocol_name, 0, p->proto->name);
+  eattrs.a[eattrs.l.count++] = EA_LITERAL_STORE_STRING(&ea_proto_table, 0, p->main_channel ? p->main_channel->table->name : "---");
+  eattrs.a[eattrs.l.count++] = EA_LITERAL_EMBEDDED(&ea_proto_state, 0, p->proto_state);
+  eattrs.a[eattrs.l.count++] = EA_LITERAL_EMBEDDED(&ea_proto_old_state, 0, old_state);
+  eattrs.a[eattrs.l.count++] = EA_LITERAL_STORE_ADATA(&ea_proto_last_modified, 0, &p->last_state_change, sizeof(btime));
+  eattrs.a[eattrs.l.count++] = EA_LITERAL_EMBEDDED(&ea_proto_id, 0, p->id);
+  eattrs.a[eattrs.l.count++] = EA_LITERAL_EMBEDDED(&ea_proto_deleted, 0, proto_deleting);
+  byte buf[256];
+  buf[0] = 0;
+  if (p->proto->get_status)
+    p->proto->get_status(p, buf);
+  eattrs.a[eattrs.l.count++] = EA_LITERAL_STORE_STRING(&ea_proto_info, 0, buf);
+  return ea_lookup_slow(&eattrs.l, 0, EALS_CUSTOM);
+}
+
+void
+proto_journal_state_changed(ea_list *attr, ea_list *old_attr, struct proto *p)
+{
+  LOCK_DOMAIN(rtable, proto_journal_domain);
+  struct proto_pending_update *pupdate = SKIP_BACK(struct proto_pending_update, li, lfjour_push_prepare(proto_journal));
+  if (!pupdate)
+  {
+    log("no recievers");
+    //if (free_add_data)
+    //  free_add_data(add_data);
+    log("returning");
+    UNLOCK_DOMAIN(rtable, proto_journal_domain);
+    return;
+  }
+  *pupdate = (struct proto_pending_update) {
+    .li = pupdate->li,	/* Keep the item's internal state */
+    .proto_attr = attr,
+    .old_attr = old_attr,
+    .protocol = p
+  };
+  lfjour_push_commit(proto_journal);
+  log("in journal state change, proto %s, jfjour %i - pushed", p->name, proto_journal);
+  UNLOCK_DOMAIN(rtable, proto_journal_domain);
+}
+
+void dummy_log_proto_attr_list(void)
+{
+//debugging function
+  ea_list *eal;
+  for(u32 i = 0; i < proto_attributes->length; i++)
+  {
+    rcu_read_lock();
+    eal = proto_attributes->attrs[i];
+    if (eal)
+      ea_free_later(ea_ref(eal));
+    rcu_read_unlock();
+    if (eal)
+    {
+      const char *name = ea_find(eal, &ea_proto_name)->u.ad->data;
+      const char *type = ea_find(eal, &ea_proto_protocol_name)->u.ad->data;
+      const int state = ea_find(eal, &ea_proto_state)->u.i;
+      const char *table = ea_find(eal, &ea_proto_table)->u.ad->data;
+      const btime *time = (btime*) ea_find(eal, &ea_proto_last_modified)->u.ad->data;
+      log("protocol %s of type %s is in state %i (table %s, last modified %t)", name, type, state, table, time);
+    }
+  }
+}
+
+void
+fc_for_dummy_recipient(void *rec)
+{
+  struct lfjour_item *last_up;
+  struct proto_pending_update *pupdate;
+  while (last_up = lfjour_get((struct lfjour_recipient *)rec))
+  {
+    pupdate = SKIP_BACK(struct proto_pending_update, li, last_up);
+    eattr *name = ea_find(pupdate->proto_attr, &ea_proto_name);
+    eattr *state = ea_find(pupdate->proto_attr, &ea_proto_state);
+    if (name && state)
+      log("protocol %s changed state to %i", name->u.ad->data, state->u.i);
+    else
+      log("not found in %i", pupdate->proto_attr);
+    lfjour_release(rec);
+    dummy_log_proto_attr_list();
+  }
+}
+
+void
+create_dummy_recipient(void)
+{
+  struct lfjour_recipient *r = mb_allocz(&root_pool, sizeof(struct lfjour_recipient));
+  r->event = ev_new_init(&root_pool, fc_for_dummy_recipient, r);
+  struct birdloop *loop = birdloop_new(&root_pool, DOMAIN_ORDER(service), 1, "dummy recipient loop");
+  r->target = birdloop_event_list(loop);
+
+  LOCK_DOMAIN(rtable, proto_journal_domain);
+  lfjour_register(proto_journal, r);
+  UNLOCK_DOMAIN(rtable, proto_journal_domain);
+  log("recipient created r %i j %i", r, proto_journal);
+  dummy_log_proto_attr_list();
 }
