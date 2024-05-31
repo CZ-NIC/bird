@@ -82,8 +82,6 @@ struct bird_thread
   pthread_t thread_id;
   pthread_attr_t thread_attr;
 
-  struct rcu_thread rcu;
-
   list loops;
   struct birdloop_pickup_group *group;
   pool *pool;

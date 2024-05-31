@@ -784,8 +784,7 @@ bird_thread_main(void *arg)
 {
   struct bird_thread *thr = this_thread = arg;
 
-  rcu_thread_start(&thr->rcu);
-  synchronize_rcu();
+  rcu_thread_start();
 
   account_to(&thr->overhead);
 
@@ -1065,7 +1064,7 @@ bird_thread_shutdown(void * _ UNUSED)
   flush_local_pages();
 
   /* Unregister from RCU */
-  rcu_thread_stop(&thr->rcu);
+  rcu_thread_stop();
 
   /* Now we can be cleaned up */
   birdloop_leave(thr->meta);
