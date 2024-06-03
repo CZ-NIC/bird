@@ -921,8 +921,8 @@ channel_notify_accepted(void *_channel)
 	}
     }
 
-    if (!task_still_in_limit())
-      return ev_send(c->out_req.r.target, c->out_req.r.event);
+    MAYBE_DEFER_TASK(c->out_req.r.target, c->out_req.r.event,
+	"export to %s.%s (secondary)", c->proto->name, c->name);
   }
 }
 
@@ -1054,8 +1054,8 @@ channel_notify_merged(void *_channel)
 	}
     }
 
-    if (!task_still_in_limit())
-      return ev_send(c->out_req.r.target, c->out_req.r.event);
+    MAYBE_DEFER_TASK(c->out_req.r.target, c->out_req.r.event,
+	"export to %s.%s (merged)", c->proto->name, c->name);
   }
 }
 
@@ -1145,8 +1145,8 @@ channel_notify_basic(void *_channel)
 	}
     }
 
-    if (!task_still_in_limit())
-      return ev_send(c->out_req.r.target, c->out_req.r.event);
+    MAYBE_DEFER_TASK(c->out_req.r.target, c->out_req.r.event,
+	"export to %s.%s (regular)", c->proto->name, c->name);
   }
 }
 
@@ -2569,8 +2569,8 @@ rt_flowspec_export(void *_link)
       rt_schedule_nhu(dst);
     }
 
-    if (!task_still_in_limit())
-      return ev_send_loop(dst_pub->loop, &ln->event);
+    MAYBE_DEFER_TASK(birdloop_event_list(dst_pub->loop), &ln->event,
+	"flowspec ctl export from %s to %s", ln->src->name, dst_pub->name);
   }
 }
 
@@ -4294,8 +4294,8 @@ hc_notify_export(void *_hc)
       }
     }
 
-    if (!task_still_in_limit())
-      return ev_send(hc->req.r.target, hc->req.r.event);
+    MAYBE_DEFER_TASK(hc->req.r.target, hc->req.r.event,
+	"hostcache updater in %s", tab->name);
   }
 }
 

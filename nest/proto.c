@@ -763,36 +763,33 @@ channel_do_reload(void *_c)
   struct channel *c = _c;
 
   RT_FEED_WALK(&c->reimporter, f)
-    if (task_still_in_limit())
+  {
+    for (uint i = 0; i < f->count_routes; i++)
     {
-      for (uint i = 0; i < f->count_routes; i++)
+      rte *r = &f->block[i];
+
+      if (r->flags & REF_OBSOLETE)
+	break;
+
+      if (r->sender == c->in_req.hook)
       {
-	rte *r = &f->block[i];
+	/* Strip the table-specific information */
+	rte new = rte_init_from(r);
 
-	if (r->flags & REF_OBSOLETE)
-	  break;
+	/* Strip the later attribute layers */
+	new.attrs = ea_strip_to(new.attrs, BIT32_ALL(EALS_PREIMPORT));
 
-	if (r->sender == c->in_req.hook)
-	{
-	  /* Strip the table-specific information */
-	  rte new = rte_init_from(r);
-
-	  /* Strip the later attribute layers */
-	  new.attrs = ea_strip_to(new.attrs, BIT32_ALL(EALS_PREIMPORT));
-
-	  /* And reload the route */
-	  rte_update(c, r->net, &new, new.src);
-	}
+	/* And reload the route */
+	rte_update(c, r->net, &new, new.src);
       }
+    }
 
-      /* Local data needed no more */
-      tmp_flush();
-    }
-    else
-    {
-      ev_send(proto_work_list(c->proto), &c->reimport_event);
-      return;
-    }
+    /* Local data needed no more */
+    tmp_flush();
+
+    MAYBE_DEFER_TASK(proto_work_list(c->proto), &c->reimport_event,
+	"%s.%s reimport", c->proto->name, c->name);
+  }
 }
 
 /* Called by protocol to activate in_table */

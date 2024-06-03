@@ -22,6 +22,13 @@ extern _Thread_local struct birdloop *this_birdloop;
 /* Check that the task has enough time to do a bit more */
 _Bool task_still_in_limit(void);
 
+#define MAYBE_DEFER_TASK(target, event, fmt, args...) do { \
+  if (!task_still_in_limit()) { \
+    if (config && config->latency_debug) \
+      log(L_TRACE "Deferring " fmt, ##args); \
+    return ev_send(target, event); \
+  } } while (0)
+
 /* Start a new birdloop owned by given pool and domain */
 struct birdloop *birdloop_new(pool *p, uint order, btime max_latency, const char *fmt, ...);
 
