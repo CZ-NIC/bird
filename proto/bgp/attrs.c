@@ -2793,49 +2793,46 @@ bgp_rte_modify_stale(void *_bc)
   struct rt_import_hook *irh = c->c.in_req.hook;
 
   RT_FEED_WALK(&c->stale_feed, f) TMP_SAVED
-    if (task_still_in_limit())
+  {
+    for (uint i = 0; i < f->count_routes; i++)
     {
-      for (uint i = 0; i < f->count_routes; i++)
+      rte *r = &f->block[i];
+      if ((r->sender != irh) ||		/* Not our route */
+	  (r->stale_cycle == irh->stale_set))	/* A new route, do not mark as stale */
+	continue;
+
+      /* Don't reinstate obsolete routes */
+      if (r->flags & REF_OBSOLETE)
+	break;
+
+      eattr *ea = ea_find(r->attrs, BGP_EA_ID(BA_COMMUNITY));
+      const struct adata *ad = ea ? ea->u.ptr : NULL;
+      uint flags = ea ? ea->flags : BAF_PARTIAL;
+
+      /* LLGR not allowed, withdraw the route */
+      if (ad && int_set_contains(ad, BGP_COMM_NO_LLGR))
       {
-	rte *r = &f->block[i];
-	if ((r->sender != irh) ||		/* Not our route */
-	    (r->stale_cycle == irh->stale_set))	/* A new route, do not mark as stale */
-	  continue;
-
-	/* Don't reinstate obsolete routes */
-	if (r->flags & REF_OBSOLETE)
-	  break;
-
-	eattr *ea = ea_find(r->attrs, BGP_EA_ID(BA_COMMUNITY));
-	const struct adata *ad = ea ? ea->u.ptr : NULL;
-	uint flags = ea ? ea->flags : BAF_PARTIAL;
-
-	/* LLGR not allowed, withdraw the route */
-	if (ad && int_set_contains(ad, BGP_COMM_NO_LLGR))
-	{
-	  rte_import(&c->c.in_req, r->net, NULL, r->src);
-	  continue;
-	}
-
-	/* Route already marked as LLGR, do nothing */
-	if (ad && int_set_contains(ad, BGP_COMM_LLGR_STALE))
-	  continue;
-
-	/* Mark the route as LLGR */
-	bgp_set_attr_ptr(&r->attrs, BA_COMMUNITY, flags, int_set_add(tmp_linpool, ad, BGP_COMM_LLGR_STALE));
-
-	/* We need to update the route but keep it stale. */
-	ASSERT_DIE(irh->stale_set == irh->stale_valid + 1);
-	irh->stale_set--;
-	rte_import(&c->c.in_req, r->net, r, r->src);
-	irh->stale_set++;
+	rte_import(&c->c.in_req, r->net, NULL, r->src);
+	continue;
       }
+
+      /* Route already marked as LLGR, do nothing */
+      if (ad && int_set_contains(ad, BGP_COMM_LLGR_STALE))
+	continue;
+
+      /* Mark the route as LLGR */
+      bgp_set_attr_ptr(&r->attrs, BA_COMMUNITY, flags, int_set_add(tmp_linpool, ad, BGP_COMM_LLGR_STALE));
+
+      /* We need to update the route but keep it stale. */
+      ASSERT_DIE(irh->stale_set == irh->stale_valid + 1);
+      irh->stale_set--;
+      rte_import(&c->c.in_req, r->net, r, r->src);
+      irh->stale_set++;
     }
-    else
-    {
-      proto_send_event(c->c.proto, &c->stale_event);
-      return;
-    }
+
+    MAYBE_DEFER_TASK(proto_event_list(c->c.proto), &c->stale_event,
+	"BGP %s.%s LLGR updater", c->c.proto->name, c->c.name);
+  }
 
   rt_feeder_unsubscribe(&c->stale_feed);
 }
