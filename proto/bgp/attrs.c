@@ -1945,7 +1945,7 @@ bgp_out_item_done(struct lfjour *j, struct lfjour_item *i)
 {}
 
 static struct rt_export_feed *
-bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, const struct netindex *ni, const struct rt_export_item *_first)
+bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, struct netindex *ni, const struct rt_export_item *_first)
 {
   struct rt_export_feed *feed = NULL;
   SKIP_BACK_DECLARE(struct bgp_channel, c, prefix_exporter, e);

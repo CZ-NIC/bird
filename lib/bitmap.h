@@ -41,6 +41,7 @@ static inline void bmap_clear(struct bmap *b, uint n)
   BIT32_CLR(b->data, n);
 }
 
+#define BMAP_WALK(_b, _n) for (uint _max = bmap_max((_b)), _n = 0; _n < _max; _n++) if (!BIT32_TEST((_b)->data, _n)) ; else
 
 struct hmap
 {

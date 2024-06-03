@@ -70,6 +70,8 @@ struct rtable_config {
   struct settle_config export_settle;	/* Export announcement settler */
   struct settle_config export_rr_settle;/* Export announcement settler config valid when any
 					   route refresh is running */
+  struct settle_config roa_settle;	/* Settle times for ROA-induced reload */
+
 };
 
 /*
@@ -194,7 +196,7 @@ struct rt_export_union {
   } *update;
   const struct rt_export_feed {
     uint count_routes, count_exports;
-    const struct netindex *ni;
+    struct netindex *ni;
     rte *block;
     u64 *exports;
     char data[0];
@@ -213,7 +215,7 @@ struct rt_exporter {
   netindex_hash *netindex;			/* Table for net <-> id conversion */
   void (*stopped)(struct rt_exporter *);	/* Callback when exporter can stop */
   void (*cleanup_done)(struct rt_exporter *, u64 end);	/* Callback when cleanup has been done */
-  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rcu_unwinder *, const struct netindex *, const struct rt_export_item *first);
+  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rcu_unwinder *, struct netindex *, const struct rt_export_item *first);
   void (*feed_cleanup)(struct rt_exporter *, struct rt_export_feeder *);
 };
 
@@ -404,6 +406,7 @@ struct rtable_private {
   struct tbf rl_pipe;			/* Rate limiting token buffer for pipe collisions */
 
   struct f_trie *flowspec_trie;		/* Trie for evaluation of flowspec notifications */
+  struct roa_digestor *roa_digest;	/* Digest of changed ROAs export */
   // struct mpls_domain *mpls_domain;	/* Label allocator for MPLS */
 };
 
@@ -638,6 +641,20 @@ struct hostcache {
   list hostentries;			/* List of all hostentries */
   struct rt_export_request req;		/* Notifier */
   event source_event;
+};
+
+struct roa_digestor {
+  struct rt_export_request req;		/* Notifier from the table */
+  struct lfjour	digest;			/* Digest journal of struct roa_digest */
+  struct settle settle;			/* Settle timer before announcing digests */
+  struct f_trie *trie;			/* Trie to be announced */
+  rtable *tab;				/* Table this belongs to */
+  event event;
+};
+
+struct roa_digest {
+  LFJOUR_ITEM_INHERIT(li);
+  struct f_trie *trie;			/* Trie marking all prefixes where ROA have changed */
 };
 
 #define rte_update  channel_rte_import
