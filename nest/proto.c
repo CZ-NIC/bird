@@ -389,106 +389,49 @@ proto_remove_channels(struct proto *p)
 
 struct roa_subscription {
   node roa_node;
-  struct settle settle;
   struct channel *c;
   rtable *tab;
-  struct rt_export_request reader;
-  event update_event;
-  struct f_trie *trie;
   void (*refeed_hook)(struct channel *, struct rt_feeding_request *);
+  struct lfjour_recipient digest_recipient;
+  event update_event;
+  struct rt_feeding_request rfr;
 };
 
 static void
 channel_roa_reload_done(struct rt_feeding_request *req)
 {
-  rfree(req->prefilter.trie->lp);
+  SKIP_BACK_DECLARE(struct roa_subscription, s, rfr, req);
+  lfjour_release(&s->digest_recipient);
+  ev_send(proto_work_list(s->c->proto), &s->update_event);
   /* FIXME: this should reset import/export filters if ACTION BLOCK */
 }
 
 static void
-channel_roa_changed(struct settle *se)
+channel_roa_changed(void *_s)
 {
-  SKIP_BACK_DECLARE(struct roa_subscription, s, settle, se);
-  struct channel *c = s->c;
+  struct roa_subscription *s = _s;
 
-  CD(c, "Feeding triggered by RPKI change");
+  if (s->digest_recipient.cur)
+    return;
 
-  /* Setup feeding request */
-  struct rt_feeding_request *rfr = lp_alloc(s->trie->lp, sizeof *rfr);
-  *rfr = (struct rt_feeding_request) {
+  if (!lfjour_get(&s->digest_recipient))
+    return;
+
+  SKIP_BACK_DECLARE(struct roa_digest, rd, li, s->digest_recipient.cur);
+  s->rfr = (struct rt_feeding_request) {
     .prefilter = {
       .mode = TE_ADDR_TRIE,
-      .trie = s->trie,
+      .trie = rd->trie,
     },
     .done = channel_roa_reload_done,
   };
 
-  /* Prepare new trie */
-  s->trie = f_new_trie(lp_new(c->proto->pool), 0);
-
-  /* Actually request the feed */
-  s->refeed_hook(c, rfr);
-}
-
-static void
-channel_roa_update_net(struct roa_subscription *s, const net_addr *net)
-{
-  switch (net->type)
-  {
-    case NET_ROA4:
-      trie_add_prefix(s->trie, net, net_pxlen(net), 32);
-      break;
-    case NET_ROA6:
-      trie_add_prefix(s->trie, net, net_pxlen(net), 128);
-      break;
-    default:
-      bug("ROA table sent us a non-roa export");
-  }
-
-  settle_kick(&s->settle, s->c->proto->loop);
-}
-
-static void
-channel_roa_update(void *_s)
-{
-  struct roa_subscription *s = _s;
-
-  RT_EXPORT_WALK(&s->reader, u)
-    switch (u->kind)
-    {
-      case RT_EXPORT_STOP:
-	bug("Main table export stopped");
-	break;
-
-      case RT_EXPORT_FEED:
-	if (u->feed->count_routes)
-	  channel_roa_update_net(s, u->feed->block[0].net);
-	break;
-
-      case RT_EXPORT_UPDATE:
-	/* Only switched ROA from one source to another */
-	if (!u->update->new || !u->update->old)
-	  channel_roa_update_net(s, u->update->new ? u->update->new->net : u->update->old->net);
-	break;
-
-    }
+  s->refeed_hook(s->c, &s->rfr);
 }
 
 static inline void (*channel_roa_reload_hook(int dir))(struct channel *, struct rt_feeding_request *)
 {
   return dir ? channel_reimport : channel_refeed;
-}
-
-static void
-channel_dump_roa_req(struct rt_export_request *req)
-{
-  SKIP_BACK_DECLARE(struct roa_subscription, s, reader, req);
-  struct channel *c = s->c;
-
-  debug("  Channel %s.%s ROA %s change notifier request %p\n",
-      c->proto->name, c->name,
-      (s->refeed_hook == channel_roa_reload_hook(1)) ? "import" : "export",
-      req);
 }
 
 static int
@@ -513,30 +456,23 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
   struct roa_subscription *s = mb_allocz(c->proto->pool, sizeof(struct roa_subscription));
 
   *s = (struct roa_subscription) {
-    .settle = SETTLE_INIT(&c->roa_settle, channel_roa_changed, NULL),
-    .refeed_hook = channel_roa_reload_hook(dir),
     .c = c,
-    .trie = f_new_trie(lp_new(c->proto->pool), 0),
     .tab = tab,
-    .update_event = {
-      .hook = channel_roa_update,
-      .data = s,
+    .refeed_hook = channel_roa_reload_hook(dir),
+    .digest_recipient = {
+      .target = proto_work_list(c->proto),
+      .event = &s->update_event,
     },
-    .reader = {
-      .name = mb_sprintf(c->proto->pool, "%s.%s.roa-%s.%s",
-	  c->proto->name, c->name, dir ? "in" : "out", tab->name),
-      .r = {
-	.target = proto_work_list(c->proto),
-	.event = &s->update_event,
-      },
-      .pool = c->proto->pool,
-      .trace_routes = c->debug | c->proto->debug,
-      .dump = channel_dump_roa_req,
+    .update_event = {
+      .hook = channel_roa_changed,
+      .data = s,
     },
   };
 
   add_tail(&c->roa_subscriptions, &s->roa_node);
-  rt_export_subscribe(tab, best, &s->reader);
+  RT_LOCK(tab, t);
+  rt_lock_table(t);
+  lfjour_register(&t->roa_digest->digest, &s->digest_recipient);
 }
 
 static void
@@ -544,18 +480,17 @@ channel_roa_unsubscribe(struct roa_subscription *s)
 {
   struct channel *c = s->c;
 
-  rt_export_unsubscribe(best, &s->reader);
-  settle_cancel(&s->settle);
-  s->settle.hook = NULL;
+  RT_LOCKED(s->tab, t)
+  {
+    lfjour_unregister(&s->digest_recipient);
+    rt_unlock_table(t);
+  }
+
   ev_postpone(&s->update_event);
-
-  ASSERT_DIE(rt_export_get_state(&s->reader) == TES_DOWN);
-
-  rfree(s->trie->lp);
 
   rem_node(&s->roa_node);
   mb_free(s);
-  
+
   channel_check_stopped(c);
 }
 
@@ -1030,11 +965,6 @@ channel_config_new(const struct channel_class *cc, const char *name, uint net_ty
   cf->debug = new_config->channel_default_debug;
   cf->rpki_reload = 1;
 
-  cf->roa_settle = (struct settle_config) {
-    .min = 1 S,
-    .max = 20 S,
-  };
-
   add_tail(&proto->channels, &cf->n);
 
   return cf;
@@ -1118,22 +1048,6 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   c->debug = cf->debug;
   c->in_req.trace_routes = c->out_req.trace_routes = c->debug | c->proto->debug;
   c->rpki_reload = cf->rpki_reload;
-
-  if (	  (c->roa_settle.min != cf->roa_settle.min)
-       || (c->roa_settle.max != cf->roa_settle.max))
-  {
-    c->roa_settle = cf->roa_settle;
-
-    struct roa_subscription *s;
-    node *n;
-
-    WALK_LIST2(s, n, c->roa_subscriptions, roa_node)
-    {
-      s->settle.cf = cf->roa_settle;
-      if (settle_active(&s->settle))
-	settle_kick(&s->settle, &main_birdloop);
-    }
-  }
 
   /* Execute channel-specific reconfigure hook */
   if (c->class->reconfigure && !c->class->reconfigure(c, cf, &import_changed, &export_changed))
@@ -2608,7 +2522,7 @@ channel_create_reload_request(struct proto_reload_request *prr)
 {
   if (!prr->trie)
     return NULL;
-  
+
   /* Increase the refeed counter */
   atomic_fetch_add_explicit(&prr->counter, 1, memory_order_relaxed);
   ASSERT_DIE(this_cli->parser_pool != prr->trie->lp);

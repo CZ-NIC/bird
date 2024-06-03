@@ -283,6 +283,7 @@ table_opt:
      this_table->cork_threshold.high = $4; }
  | EXPORT SETTLE TIME settle { this_table->export_settle = $4; }
  | ROUTE REFRESH EXPORT SETTLE TIME settle { this_table->export_rr_settle = $6; }
+ | ROA SETTLE TIME settle { this_table->roa_settle = $4; }
  ;
 
 table_opts:
@@ -370,7 +371,6 @@ channel_item_:
  | RECEIVE LIMIT limit_spec { this_channel->rx_limit = $3; }
  | IMPORT LIMIT limit_spec { this_channel->in_limit = $3; }
  | EXPORT LIMIT limit_spec { this_channel->out_limit = $3; }
- | ROA SETTLE TIME settle { this_channel->roa_settle = $4; }
  | PREFERENCE expr { this_channel->preference = $2; check_u16($2); }
  | IMPORT KEEP FILTERED bool {
      if ($4)
