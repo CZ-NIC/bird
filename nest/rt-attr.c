@@ -1623,53 +1623,17 @@ ea_append(ea_list *to, ea_list *what)
  *	rta's
  */
 
-static uint rta_cache_count;
-static uint rta_cache_size = 32;
-static uint rta_cache_limit;
-static uint rta_cache_mask;
-static struct ea_storage **rta_hash_table;
+static HASH(struct ea_storage) rta_hash_table;
 
-static void
-rta_alloc_hash(void)
-{
-  rta_hash_table = mb_allocz(rta_pool, sizeof(struct ea_storage *) * rta_cache_size);
-  if (rta_cache_size < 32768)
-    rta_cache_limit = rta_cache_size * 2;
-  else
-    rta_cache_limit = ~0;
-  rta_cache_mask = rta_cache_size - 1;
-}
+#define RTAH_KEY(a)		a->l, a->hash_key
+#define RTAH_NEXT(a)		a->next_hash
+#define RTAH_EQ(a, b)		((a)->hash_key == (b)->hash_key) && (ea_same((a), (b)))
+#define RTAH_FN(a, h)		h
 
-static inline void
-rta_insert(struct ea_storage *r)
-{
-  uint h = r->hash_key & rta_cache_mask;
-  r->next_hash = rta_hash_table[h];
-  if (r->next_hash)
-    r->next_hash->pprev_hash = &r->next_hash;
-  r->pprev_hash = &rta_hash_table[h];
-  rta_hash_table[h] = r;
-}
+#define RTAH_REHASH		rta_rehash
+#define RTAH_PARAMS		/8, *2, 2, 2, 12, 28
 
-static void
-rta_rehash(void)
-{
-  uint ohs = rta_cache_size;
-  uint h;
-  struct ea_storage *r, *n;
-  struct ea_storage **oht = rta_hash_table;
-
-  rta_cache_size = 2*rta_cache_size;
-  DBG("Rehashing rta cache from %d to %d entries.\n", ohs, rta_cache_size);
-  rta_alloc_hash();
-  for(h=0; h<ohs; h++)
-    for(r=oht[h]; r; r=n)
-      {
-	n = r->next_hash;
-	rta_insert(r);
-      }
-  mb_free(oht);
-}
+HASH_DEFINE_REHASH_FN(RTAH, struct ea_storage);
 
 /**
  * rta_lookup - look up a &rta in attribute cache
@@ -1687,7 +1651,7 @@ rta_rehash(void)
 ea_list *
 ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
 {
-  struct ea_storage *r;
+  struct ea_storage *r = NULL;
   uint h;
 
   ASSERT(o->stored != oid);
@@ -1699,13 +1663,22 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
 
   RTA_LOCK;
 
-  for(r=rta_hash_table[h & rta_cache_mask]; r; r=r->next_hash)
-    if (r->hash_key == h && ea_same(r->l, o) && BIT32_TEST(&squash_upto, r->l->stored))
-    {
-      atomic_fetch_add_explicit(&r->uc, 1, memory_order_acq_rel);
-      RTA_UNLOCK;
-      return r->l;
-    }
+  for (struct ea_storage *ea = HASH_FIND_CHAIN(rta_hash_table, RTAH, o, h);
+      ea;
+      ea = RTAH_NEXT(ea))
+    if (
+	(h == ea->hash_key) &&
+	ea_same(o, ea->l) &&
+	BIT32_TEST(&squash_upto, ea->l->stored) &&
+	(!r || r->l->stored > ea->l->stored))
+      r = ea;
+
+  if (r)
+  {
+    atomic_fetch_add_explicit(&r->uc, 1, memory_order_acq_rel);
+    RTA_UNLOCK;
+    return r->l;
+  }
 
   uint elen = ea_list_size(o);
   uint sz = elen + sizeof(struct ea_storage);
@@ -1728,10 +1701,7 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
   r->hash_key = h;
   atomic_store_explicit(&r->uc, 1, memory_order_release);
 
-  rta_insert(r);
-
-  if (++rta_cache_count > rta_cache_limit)
-    rta_rehash();
+  HASH_INSERT2(rta_hash_table, RTAH, rta_pool, r);
 
   RTA_UNLOCK;
   return r->l;
@@ -1744,11 +1714,7 @@ ea_free_locked(struct ea_storage *a)
   if (atomic_load_explicit(&a->uc, memory_order_acquire))
     return;
 
-  ASSERT(rta_cache_count);
-  rta_cache_count--;
-  *a->pprev_hash = a->next_hash;
-  if (a->next_hash)
-    a->next_hash->pprev_hash = a->pprev_hash;
+  HASH_REMOVE2(rta_hash_table, RTAH, rta_pool, a);
 
   ea_list_unref(a->l);
   if (a->l->flags & EALF_HUGE)
@@ -1790,14 +1756,15 @@ ea_dump_all(void)
 {
   RTA_LOCK;
 
-  debug("Route attribute cache (%d entries, rehash at %d):\n", rta_cache_count, rta_cache_limit);
-  for (uint h=0; h < rta_cache_size; h++)
-    for (struct ea_storage *a = rta_hash_table[h]; a; a = a->next_hash)
+  debug("Route attribute cache (%d entries, order %d):\n", rta_hash_table.count, rta_hash_table.order);
+
+  HASH_WALK(rta_hash_table, next_hash, a)
       {
 	debug("%p ", a);
 	ea_dump(a->l);
 	debug("\n");
       }
+  HASH_WALK_END;
   debug("\n");
 
   RTA_UNLOCK;
@@ -1828,7 +1795,8 @@ rta_init(void)
   for (uint i=0; i<ARRAY_SIZE(ea_slab_sizes); i++)
     ea_slab[i] = sl_new(rta_pool, ea_slab_sizes[i]);
 
-  rta_alloc_hash();
+  HASH_INIT(rta_hash_table, rta_pool, 12);
+
   rte_src_init();
   ea_class_init();
 
