@@ -1227,8 +1227,6 @@ ea_list_ref(ea_list *l)
     ea_ref(l->next);
 }
 
-static void ea_free_nested(ea_list *l);
-
 static void
 ea_list_unref(ea_list *l)
 {
@@ -1249,7 +1247,7 @@ ea_list_unref(ea_list *l)
     }
 
   if (l->next)
-    ea_free_nested(l->next);
+    lfuc_unlock(&ea_get_storage(l->next)->uc, &global_work_list, &ea_cleanup_event);
 }
 
 void
@@ -1523,7 +1521,7 @@ ea_dump(ea_list *e)
 	    (e->flags & EALF_SORTED) ? 'S' : 's',
 	    (e->flags & EALF_BISECT) ? 'B' : 'b',
 	    e->stored,
-	    s ? atomic_load_explicit(&s->uc, memory_order_relaxed) : 0,
+	    s ? atomic_load_explicit(&s->uc.uc, memory_order_relaxed) : 0,
 	    s ? s->hash_key : 0);
       for(i=0; i<e->count; i++)
 	{
@@ -1623,6 +1621,8 @@ ea_append(ea_list *to, ea_list *what)
  *	rta's
  */
 
+event ea_cleanup_event;
+
 static HASH(struct ea_storage) rta_hash_table;
 
 #define RTAH_KEY(a)		a->l, a->hash_key
@@ -1675,7 +1675,7 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
 
   if (r)
   {
-    atomic_fetch_add_explicit(&r->uc, 1, memory_order_acq_rel);
+    lfuc_lock_revive(&r->uc);
     RTA_UNLOCK;
     return r->l;
   }
@@ -1699,7 +1699,9 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
   r->l->flags |= huge;
   r->l->stored = oid;
   r->hash_key = h;
-  atomic_store_explicit(&r->uc, 1, memory_order_release);
+
+  memset(&r->uc, 0, sizeof r->uc);
+  lfuc_lock_revive(&r->uc);
 
   HASH_INSERT2(rta_hash_table, RTAH, rta_pool, r);
 
@@ -1708,41 +1710,26 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
 }
 
 static void
-ea_free_locked(struct ea_storage *a)
-{
-  /* Somebody has cloned this rta inbetween. This sometimes happens. */
-  if (atomic_load_explicit(&a->uc, memory_order_acquire))
-    return;
-
-  HASH_REMOVE2(rta_hash_table, RTAH, rta_pool, a);
-
-  ea_list_unref(a->l);
-  if (a->l->flags & EALF_HUGE)
-    mb_free(a);
-  else
-    sl_free(a);
-}
-
-static void
-ea_free_nested(struct ea_list *l)
-{
-  struct ea_storage *r = ea_get_storage(l);
-  if (1 == atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel))
-    ea_free_locked(r);
-}
-
-void
-ea__free(struct ea_storage *a)
+ea_cleanup(void *_ UNUSED)
 {
   RTA_LOCK;
-  ea_free_locked(a);
-  RTA_UNLOCK;
-}
 
-void
-ea_free_deferred(struct deferred_call *dc)
-{
-  ea_free(SKIP_BACK(struct ea_free_deferred, dc, dc)->attrs);
+  HASH_WALK_FILTER(rta_hash_table, next_hash, r, rp)
+  {
+    if (lfuc_finished(&r->uc))
+    {
+      HASH_DO_REMOVE(rta_hash_table, RTAH, rp);
+
+      ea_list_unref(r->l);
+      if (r->l->flags & EALF_HUGE)
+	mb_free(r);
+      else
+	sl_free(r);
+    }
+  }
+  HASH_WALK_FILTER_END;
+
+  RTA_UNLOCK;
 }
 
 /**
@@ -1799,6 +1786,10 @@ rta_init(void)
 
   rte_src_init();
   ea_class_init();
+
+  ea_cleanup_event = (event) {
+    .hook = ea_cleanup,
+  };
 
   RTA_UNLOCK;
 
