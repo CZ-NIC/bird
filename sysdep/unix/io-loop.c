@@ -152,7 +152,7 @@ static _Thread_local uint birdloop_wakeup_masked_count;
 #define LOOP_TRACE(loop, fmt, args...)	do { if (config && config->latency_debug) log(L_TRACE "%s (%p): " fmt, LOOP_NAME(loop), (loop), ##args); } while (0)
 #define THREAD_TRACE(...)		do { if (config && config->latency_debug) log(L_TRACE "Thread: " __VA_ARGS__); } while (0)
 
-#define LOOP_WARN(loop, fmt, args...)	log(L_TRACE "%s (%p): " fmt, LOOP_NAME(loop), (loop), ##args)
+#define LOOP_WARN(loop, fmt, args...)	log(L_WARN "%s (%p): " fmt, LOOP_NAME(loop), (loop), ##args)
 
 
 event_list *
@@ -1465,8 +1465,8 @@ birdloop_run(void *_loop)
   /* Now we can actually do some work */
   u64 dif = account_to(&loop->working);
 
-  if (dif > this_thread->max_loop_time_ns)
-    LOOP_WARN(loop, "locked %lu ns after its scheduled end time", dif);
+  if (dif > this_thread->max_loop_time_ns + config->latency_limit TO_NS)
+    LOOP_WARN(loop, "locked %lu us after its scheduled end time", dif NS TO_US);
 
   uint repeat, loop_runs = 0;
   do {
