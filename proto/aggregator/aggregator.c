@@ -108,24 +108,6 @@ remove_node(struct trie_node *node)
 }
 
 /*
- * Recursively free all trie nodes
- */
-static void
-delete_trie(struct trie_node *node)
-{
-  assert(node != NULL);
-
-  if (node->child[0])
-    delete_trie(node->child[0]);
-
-  if (node->child[1])
-    delete_trie(node->child[1]);
-
-  assert(is_leaf(node));
-  remove_node(node);
-}
-
-/*
  * Insert prefix in @addr to prefix trie with beginning at @root and assign @bucket to this prefix
  */
 static void
