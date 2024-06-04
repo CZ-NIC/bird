@@ -530,8 +530,16 @@ rte_store(const rte *r, struct netindex *i, struct rtable_private *tab)
   return s;
 }
 
+static void rte_free_deferred(struct deferred_call *dc);
+
+struct rte_free_deferred_item {
+  struct deferred_call dc;
+  struct rte_storage *e;
+  rtable *tab;
+};
+
 /**
- * rte_free - delete a &rte
+ * rte_free_defer - delete a &rte (happens later)
  * @e: &struct rte_storage to be deleted
  * @tab: the table which the rte belongs to
  *
@@ -541,8 +549,27 @@ rte_store(const rte *r, struct netindex *i, struct rtable_private *tab)
 static void
 rte_free(struct rte_storage *e, struct rtable_private *tab)
 {
-  /* Wait for very slow table readers */
-  synchronize_rcu();
+  struct rte_free_deferred_item rfdi = {
+    .dc.hook = rte_free_deferred,
+    .e = e,
+    .tab = RT_PUB(tab),
+  };
+
+  if (!tab->rte_free_deferred++)
+    rt_lock_table(tab);
+
+  defer_call(&rfdi.dc, sizeof rfdi);
+}
+
+static void
+rte_free_deferred(struct deferred_call *dc)
+{
+  SKIP_BACK_DECLARE(struct rte_free_deferred_item, rfdi, dc, dc);
+
+  struct rte_storage *e = rfdi->e;
+  RT_LOCK(rfdi->tab, tab);
+
+  /* No need for synchronize_rcu, implied by the deferred_call */
 
   rt_rte_trace_in(D_ROUTES, e->rte.sender->req, &e->rte, "freeing");
 
@@ -553,6 +580,9 @@ rte_free(struct rte_storage *e, struct rtable_private *tab)
 
   ea_free(e->rte.attrs);
   sl_free(e);
+
+  if (!--tab->rte_free_deferred)
+    rt_unlock_table(tab);
 }
 
 static int				/* Actually better or at least as good as */

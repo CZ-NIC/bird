@@ -408,6 +408,7 @@ struct rtable_private {
   struct f_trie *flowspec_trie;		/* Trie for evaluation of flowspec notifications */
   struct roa_digestor *roa_digest;	/* Digest of changed ROAs export */
   // struct mpls_domain *mpls_domain;	/* Label allocator for MPLS */
+  u32 rte_free_deferred;		/* Counter of deferred rte_free calls */
 };
 
 /* The final union private-public rtable structure */
