@@ -919,7 +919,14 @@ static void
 aggregate_on_settle_timer(struct settle *s)
 {
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, s->tm.data);
-  run_aggregation(p);
+
+  if (!p->aggr_done)
+  {
+    run_aggregation(p);
+    p->aggr_done = 1;
+  }
+  else
+    log("Aggregation is already finished");
 }
 
 /*
@@ -1563,6 +1570,7 @@ aggregator_start(struct proto *P)
   p->trie_slab = sl_new(p->p.pool, sizeof(struct trie_node));
   p->root = create_new_node(p->trie_slab);
   p->root->depth = 1;
+  p->aggr_done = 0;
 
   struct network *default_net = NULL;
 
