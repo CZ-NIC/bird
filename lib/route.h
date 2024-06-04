@@ -253,8 +253,10 @@ enum ea_stored {
 
 struct ea_storage {
   struct ea_storage *next_hash;		/* Next in hash chain */
-  _Atomic u32 uc;			/* Use count */
+  struct lfuc uc;			/* Use count */
   u32 hash_key;				/* List hash */
+  /* 32 bits unused but we don't wanna squeeze the use count
+   * into 32 bits to pack with the list hash, sorry */
   ea_list l[0];				/* The list itself */
 };
 
@@ -543,7 +545,7 @@ static inline struct ea_storage *ea_get_storage(ea_list *r)
 
 static inline ea_list *ea_ref(ea_list *r)
 {
-  ASSERT_DIE(0 < atomic_fetch_add_explicit(&ea_get_storage(r)->uc, 1, memory_order_acq_rel));
+  lfuc_lock(&ea_get_storage(r)->uc);
   return r;
 }
 
@@ -556,33 +558,25 @@ static inline ea_list *ea_lookup(ea_list *r, u32 squash_upto, enum ea_stored oid
     return ea_lookup_slow(r, squash_upto, oid);
 }
 
-struct ea_free_deferred {
-  struct deferred_call dc;
-  ea_list *attrs;
-};
-
-void ea_free_deferred(struct deferred_call *dc);
-
-static inline ea_list *ea_free_later(ea_list *r)
+#define ea_free_later ea_free
+extern event ea_cleanup_event;
+static inline void ea_free(ea_list *l)
 {
-  struct ea_free_deferred efd = {
-    .dc.hook = ea_free_deferred,
-    .attrs = r,
-  };
-
-  defer_call(&efd.dc, sizeof efd);
-  return r;
+  if (l)
+    lfuc_unlock(&ea_get_storage(l)->uc, &global_work_list, &ea_cleanup_event);
 }
 
 static inline ea_list *ea_lookup_tmp(ea_list *r, u32 squash_upto, enum ea_stored oid)
 {
-  return ea_free_later(ea_lookup(r, squash_upto, oid));
+  ea_free_later(r = ea_lookup(r, squash_upto, oid));
+  return r;
 }
 
 static inline ea_list *ea_ref_tmp(ea_list *r)
 {
   ASSERT_DIE(r->stored);
-  return ea_free_later(ea_ref(r));
+  ea_free_later(ea_ref(r));
+  return r;
 }
 
 static inline ea_list *ea_strip_to(ea_list *r, u32 strip_to)
@@ -592,13 +586,6 @@ static inline ea_list *ea_strip_to(ea_list *r, u32 strip_to)
     r = r->next;
 
   return r;
-}
-
-void ea__free(struct ea_storage *r);
-static inline void ea_free(ea_list *l) {
-  if (!l) return;
-  struct ea_storage *r = ea_get_storage(l);
-  if (1 == atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel)) ea__free(r);
 }
 
 void ea_dump(ea_list *);
