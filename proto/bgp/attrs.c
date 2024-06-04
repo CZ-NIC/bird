@@ -1586,7 +1586,7 @@ bgp_finish_attrs(struct bgp_parse_state *s, ea_list **to)
 HASH_DEFINE_REHASH_FN(RBH, struct bgp_bucket)
 
 static void
-bgp_init_bucket_table(struct bgp_channel *c)
+bgp_init_bucket_table(struct bgp_ptx_private *c)
 {
   HASH_INIT(c->bucket_hash, c->pool, 8);
   c->bucket_slab = sl_new(c->pool, sizeof(struct bgp_bucket));
@@ -1596,7 +1596,7 @@ bgp_init_bucket_table(struct bgp_channel *c)
 }
 
 static struct bgp_bucket *
-bgp_get_bucket(struct bgp_channel *c, ea_list *new)
+bgp_get_bucket(struct bgp_ptx_private *c, ea_list *new)
 {
   /* Hash and lookup */
   ea_list *ns = ea_lookup(new, 0, EALS_CUSTOM);
@@ -1622,7 +1622,7 @@ bgp_get_bucket(struct bgp_channel *c, ea_list *new)
 }
 
 static struct bgp_bucket *
-bgp_get_withdraw_bucket(struct bgp_channel *c)
+bgp_get_withdraw_bucket(struct bgp_ptx_private *c)
 {
   if (!c->withdraw_bucket)
   {
@@ -1634,7 +1634,7 @@ bgp_get_withdraw_bucket(struct bgp_channel *c)
 }
 
 static void
-bgp_free_bucket(struct bgp_channel *c, struct bgp_bucket *b)
+bgp_free_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b)
 {
   HASH_REMOVE2(c->bucket_hash, RBH, c->pool, b);
   ea_free(b->attrs);
@@ -1642,7 +1642,7 @@ bgp_free_bucket(struct bgp_channel *c, struct bgp_bucket *b)
 }
 
 int
-bgp_done_bucket(struct bgp_channel *c, struct bgp_bucket *b)
+bgp_done_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b)
 {
   /* Won't free the withdraw bucket */
   if (b == c->withdraw_bucket)
@@ -1659,19 +1659,12 @@ bgp_done_bucket(struct bgp_channel *c, struct bgp_bucket *b)
 }
 
 void
-bgp_defer_bucket(struct bgp_channel *c, struct bgp_bucket *b)
-{
-  rem_node(&b->send_node);
-  add_tail(&c->bucket_queue, &b->send_node);
-}
-
-void
-bgp_withdraw_bucket(struct bgp_channel *c, struct bgp_bucket *b)
+bgp_withdraw_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b)
 {
   if (b->bmp)
     return;
 
-  SKIP_BACK_DECLARE(struct bgp_proto, p, p, c->c.proto);
+  SKIP_BACK_DECLARE(struct bgp_proto, p, p, c->c->c.proto);
   struct bgp_bucket *wb = bgp_get_withdraw_bucket(c);
 
   log(L_ERR "%s: Attribute list too long", p->p.name);
@@ -1691,25 +1684,27 @@ bgp_withdraw_bucket(struct bgp_channel *c, struct bgp_bucket *b)
  */
 
 static void
-bgp_init_prefix_table(struct bgp_channel *c)
+bgp_init_prefix_table(struct bgp_ptx_private *c)
 {
   ASSERT_DIE(!c->prefix_slab);
   c->prefix_slab = sl_new(c->pool, sizeof(struct bgp_prefix));
 
-  ASSERT_DIE(!c->tx_netindex);
-  c->tx_netindex = netindex_hash_new(c->pool, proto_event_list(c->c.proto));
+  /* Netindex must be allocated from the main BGP pool
+   * as its cleanup routines are expecting to be allocated from something
+   * locked while entering a loop. That's kinda stupid but i'm lazy now
+   * to rework it. */
+  ASSERT_DIE(!c->netindex);
+  c->netindex = netindex_hash_new(c->c->pool, proto_event_list(c->c->c.proto));
 
   u32 len = 64;
   struct bgp_prefix * _Atomic * block = mb_allocz(c->pool, len * sizeof *block);
 
   atomic_store_explicit(&c->prefixes_len, len, memory_order_relaxed);
   atomic_store_explicit(&c->prefixes, block, memory_order_relaxed);
-
-  c->tx_lock = DOMAIN_NEW_RCU_SYNC(rtable);
 }
 
 static struct bgp_prefix *
-bgp_find_prefix(struct bgp_channel *c, struct netindex *ni, struct rte_src *src, int add_path_tx)
+bgp_find_prefix(struct bgp_ptx_private *c, struct netindex *ni, struct rte_src *src, int add_path_tx)
 {
   u32 len = atomic_load_explicit(&c->prefixes_len, memory_order_relaxed);
   struct bgp_prefix * _Atomic * block = atomic_load_explicit(&c->prefixes, memory_order_relaxed);
@@ -1723,12 +1718,10 @@ bgp_find_prefix(struct bgp_channel *c, struct netindex *ni, struct rte_src *src,
       return px;
 
   return NULL;
-
-  c->tx_lock = DOMAIN_NEW(rtable);
 }
 
 static struct bgp_prefix *
-bgp_get_prefix(struct bgp_channel *c, struct netindex *ni, struct rte_src *src, int add_path_tx)
+bgp_get_prefix(struct bgp_ptx_private *c, struct netindex *ni, struct rte_src *src, int add_path_tx)
 {
   /* Find existing */
   struct bgp_prefix *px = bgp_find_prefix(c, ni, src, add_path_tx);
@@ -1753,7 +1746,7 @@ bgp_get_prefix(struct bgp_channel *c, struct netindex *ni, struct rte_src *src, 
 
     atomic_store_explicit(&c->prefixes, nb, memory_order_release);
     atomic_store_explicit(&c->prefixes_len, nlen, memory_order_release);
-    atomic_store_explicit(&c->prefix_exporter.max_feed_index, nlen, memory_order_release);
+    atomic_store_explicit(&c->exporter.max_feed_index, nlen, memory_order_release);
 
     synchronize_rcu();
 
@@ -1771,7 +1764,7 @@ bgp_get_prefix(struct bgp_channel *c, struct netindex *ni, struct rte_src *src, 
     .next = atomic_load_explicit(&block[ni->index], memory_order_relaxed),
   };
 
-  net_lock_index(c->tx_netindex, ni);
+  net_lock_index(c->netindex, ni);
   rt_lock_source(src);
 
   atomic_store_explicit(&block[ni->index], px, memory_order_release);
@@ -1779,15 +1772,15 @@ bgp_get_prefix(struct bgp_channel *c, struct netindex *ni, struct rte_src *src, 
   return px;
 }
 
-static void bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px);
+static void bgp_free_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px);
 
 static inline int
-bgp_update_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucket *b)
+bgp_update_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_bucket *b)
 {
 #define IS_WITHDRAW_BUCKET(b)	((b) == c->withdraw_bucket)
 #define BPX_TRACE(what)	do { \
-  if (c->c.debug & D_ROUTES) log(L_TRACE "%s.%s < %s %N %uG %s", \
-      c->c.proto->name, c->c.name, what, \
+  if (c->c->c.debug & D_ROUTES) log(L_TRACE "%s.%s < %s %N %uG %s", \
+      c->c->c.proto->name, c->c->c.name, what, \
       px->ni->addr, px->src->global_id, IS_WITHDRAW_BUCKET(b) ? "withdraw" : "update"); } while (0)
   px->lastmod = current_time();
 
@@ -1806,7 +1799,7 @@ bgp_update_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucke
   }
 
   /* The new bucket is the same as we sent before */
-  if ((px->last == b) || c->tx_keep && !px->last && IS_WITHDRAW_BUCKET(b))
+  if ((px->last == b) || c->c->tx_keep && !px->last && IS_WITHDRAW_BUCKET(b))
   {
     if (px->cur)
       BPX_TRACE("reverted");
@@ -1835,8 +1828,29 @@ bgp_update_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucke
 #undef BPX_TRACE
 }
 
+struct bgp_free_prefix_deferred_item {
+  struct deferred_call dc;
+  union bgp_ptx *tx;
+  struct bgp_prefix *px;
+};
+
 static void
-bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
+bgp_free_prefix_deferred(struct deferred_call *dc)
+{
+  SKIP_BACK_DECLARE(struct bgp_free_prefix_deferred_item, bfpdi, dc, dc);
+  union bgp_ptx *tx = bfpdi->tx;
+  struct bgp_prefix *px = bfpdi->px;
+
+  BGP_PTX_LOCK(tx, ptx);
+
+  net_unlock_index(ptx->netindex, px->ni);
+  rt_unlock_source(px->src);
+
+  sl_free(px);
+}
+
+static void
+bgp_free_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px)
 {
   u32 len = atomic_load_explicit(&c->prefixes_len, memory_order_relaxed);
   struct bgp_prefix * _Atomic * block =
@@ -1853,16 +1867,17 @@ bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
       break;
     }
 
-  synchronize_rcu();
+  struct bgp_free_prefix_deferred_item bfpdi = {
+    .dc.hook = bgp_free_prefix_deferred,
+    .tx = BGP_PTX_PUB(c),
+    .px = px,
+  };
 
-  net_unlock_index(c->tx_netindex, px->ni);
-  rt_unlock_source(px->src);
-
-  sl_free(px);
+  defer_call(&bfpdi.dc, sizeof bfpdi);
 }
 
 void
-bgp_done_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucket *buck)
+bgp_done_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_bucket *buck)
 {
   /* BMP hack */
   if (buck->bmp)
@@ -1873,7 +1888,7 @@ bgp_done_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucket 
   rem_node(&px->buck_node);
 
   /* We may want to store the updates */
-  if (c->tx_keep)
+  if (c->c->tx_keep)
   {
     /* Nothing to be sent right now */
     px->cur = NULL;
@@ -1898,11 +1913,11 @@ bgp_done_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucket 
 }
 
 void
-bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *c)
+bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *bc)
 {
-  LOCK_DOMAIN(rtable, c->tx_lock);
+  BGP_PTX_LOCK(bc->tx, c);
 
-  ASSERT_DIE(c->tx_keep);
+  ASSERT_DIE(bc->tx_keep);
   uint seen = 0;
 
   u32 len = atomic_load_explicit(&c->prefixes_len, memory_order_relaxed);
@@ -1926,14 +1941,12 @@ bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *c)
 	seen += bgp_update_prefix(c, px, last);
       }
 
-  if (c->c.debug & D_EVENTS)
+  if (bc->c.debug & D_EVENTS)
     log(L_TRACE "%s.%s: TX resending %u routes",
-	c->c.proto->name, c->c.name, seen);
-
-  UNLOCK_DOMAIN(rtable, c->tx_lock);
+	bc->c.proto->name, bc->c.name, seen);
 
   if (seen)
-    bgp_schedule_packet(p->conn, c, PKT_UPDATE);
+    bgp_schedule_packet(p->conn, bc, PKT_UPDATE);
 }
 
 /*
@@ -1948,7 +1961,7 @@ static struct rt_export_feed *
 bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, struct netindex *ni, const struct rt_export_item *_first)
 {
   struct rt_export_feed *feed = NULL;
-  SKIP_BACK_DECLARE(struct bgp_channel, c, prefix_exporter, e);
+  SKIP_BACK_DECLARE(union bgp_ptx, c, exporter, e);
 
   u32 len = atomic_load_explicit(&c->prefixes_len, memory_order_relaxed);
   if (ni->index >= len)
@@ -2012,11 +2025,22 @@ void
 bgp_init_pending_tx(struct bgp_channel *c)
 {
   ASSERT_DIE(c->c.out_table == NULL);
+  ASSERT_DIE(c->tx == NULL);
 
-  bgp_init_bucket_table(c);
-  bgp_init_prefix_table(c);
+  DOMAIN(rtable) dom = DOMAIN_NEW_RCU_SYNC(rtable);
+  LOCK_DOMAIN(rtable, dom);
+  pool *p = rp_newf(c->pool, dom.rtable, "%s.%s TX", c->c.proto->name, c->c.name);
 
-  c->prefix_exporter = (struct rt_exporter) {
+  struct bgp_ptx_private *bpp = mb_allocz(p, sizeof *bpp);
+
+  bpp->lock = dom;
+  bpp->pool = p;
+  bpp->c = c;
+
+  bgp_init_bucket_table(bpp);
+  bgp_init_prefix_table(bpp);
+
+  bpp->exporter = (struct rt_exporter) {
     .journal = {
       .loop = c->c.proto->loop,
       .item_size = sizeof(struct rt_export_item),
@@ -2024,49 +2048,75 @@ bgp_init_pending_tx(struct bgp_channel *c)
     },
     .name = mb_sprintf(c->c.proto->pool, "%s.%s.export", c->c.proto->name, c->c.name),
     .net_type = c->c.net_type,
-    .max_feed_index = atomic_load_explicit(&c->prefixes_len, memory_order_relaxed),
-    .netindex = c->tx_netindex,
+    .max_feed_index = atomic_load_explicit(&bpp->prefixes_len, memory_order_relaxed),
+    .netindex = bpp->netindex,
     .trace_routes = c->c.debug,
     .feed_net = bgp_out_feed_net,
   };
 
-  rt_exporter_init(&c->prefix_exporter, &c->cf->ptx_exporter_settle);
+  rt_exporter_init(&bpp->exporter, &c->cf->ptx_exporter_settle);
+  c->c.out_table = &bpp->exporter;
 
-  c->c.out_table = &c->prefix_exporter;
+  c->tx = BGP_PTX_PUB(bpp);
+
+  UNLOCK_DOMAIN(rtable, dom);
 }
 
 struct bgp_pending_tx_finisher {
   event e;
-  struct bgp_channel *c;
+  union bgp_ptx *ptx;
 };
 
 static void
 bgp_finish_pending_tx(void *_bptf)
 {
   struct bgp_pending_tx_finisher *bptf = _bptf;
-  struct bgp_channel *c = bptf->c;
+  union bgp_ptx *ptx = bptf->ptx;
+  struct bgp_ptx_private *c = &ptx->priv;
+  struct bgp_channel *bc = c->c;
+
+  DOMAIN(rtable) dom = c->lock;
+  LOCK_DOMAIN(rtable, dom);
 
   mb_free(bptf);
-  channel_del_obstacle(&c->c);
+
+  mb_free(atomic_load_explicit(&c->prefixes, memory_order_relaxed));
+  sl_delete(c->prefix_slab);
+  c->prefix_slab = NULL;
+
+  HASH_WALK(c->bucket_hash, next, n)
+    bug("Stray bucket after cleanup");
+  HASH_WALK_END;
+
+  HASH_FREE(c->bucket_hash);
+  sl_delete(c->bucket_slab);
+  c->bucket_slab = NULL;
+
+  rp_free(ptx->priv.pool);
+
+  UNLOCK_DOMAIN(rtable, dom);
+  DOMAIN_FREE(rtable, dom);
+
+  channel_del_obstacle(&bc->c);
 }
 
 void
-bgp_free_pending_tx(struct bgp_channel *c)
+bgp_free_pending_tx(struct bgp_channel *bc)
 {
-  if (!c->bucket_hash.data)
+  if (!bc->tx)
     return;
 
-  LOCK_DOMAIN(rtable, c->tx_lock);
+  BGP_PTX_LOCK(bc->tx, c);
 
-  c->c.out_table = NULL;
-  rt_exporter_shutdown(&c->prefix_exporter, NULL);
+  bc->c.out_table = NULL;
+  rt_exporter_shutdown(&c->exporter, NULL);
 
   struct bgp_prefix *px;
   u32 len = atomic_load_explicit(&c->prefixes_len, memory_order_relaxed);
   struct bgp_prefix * _Atomic * block =
     atomic_load_explicit(&c->prefixes, memory_order_relaxed);
 
-  if (c->tx_keep)
+  if (bc->tx_keep)
   {
     /* Move all kept prefixes to the withdraw bucket */
     struct bgp_bucket *b = bgp_get_withdraw_bucket(c);
@@ -2098,38 +2148,27 @@ bgp_free_pending_tx(struct bgp_channel *c)
 
   atomic_store_explicit(&c->prefixes, NULL, memory_order_release);
   atomic_store_explicit(&c->prefixes_len, 0, memory_order_release);
-  atomic_store_explicit(&c->prefix_exporter.max_feed_index, 0, memory_order_release);
+  atomic_store_explicit(&c->exporter.max_feed_index, 0, memory_order_release);
 
-  synchronize_rcu();
-  mb_free(block);
-  sl_delete(c->prefix_slab);
-  c->prefix_slab = NULL;
-
-  HASH_WALK(c->bucket_hash, next, n)
-    bug("Stray bucket after cleanup");
-  HASH_WALK_END;
-
-  HASH_FREE(c->bucket_hash);
-  sl_delete(c->bucket_slab);
-  c->bucket_slab = NULL;
-
-  struct bgp_pending_tx_finisher *bptf = mb_alloc(c->c.proto->pool, sizeof *bptf);
+  struct bgp_pending_tx_finisher *bptf = mb_alloc(c->pool, sizeof *bptf);
   *bptf = (struct bgp_pending_tx_finisher) {
     .e = {
       .hook = bgp_finish_pending_tx,
       .data = bptf,
     },
-    .c = c,
+    .ptx = bc->tx,
   };
 
-  channel_add_obstacle(&c->c);
-  netindex_hash_delete(c->tx_netindex, &bptf->e, proto_event_list(c->c.proto));
-  c->tx_netindex = NULL;
-  c->prefix_exporter.netindex = NULL;
-
-  UNLOCK_DOMAIN(rtable, c->tx_lock);
-  DOMAIN_FREE(rtable, c->tx_lock);
+  channel_add_obstacle(&bc->c);
+  netindex_hash_delete(c->netindex, &bptf->e, proto_event_list(c->c->c.proto));
+  /* We can't null this, bgp_free_prefix_deferred expects
+   * this to be set:
+   * c->netindex = NULL;
+   */
+  c->exporter.netindex = NULL;
+  bc->tx = NULL;
 }
+
 
 /*
  *	BGP protocol glue
@@ -2349,7 +2388,7 @@ void
 bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, const rte *old)
 {
   struct bgp_proto *p = (void *) P;
-  struct bgp_channel *c = (void *) C;
+  struct bgp_channel *bc = (void *) C;
   struct bgp_bucket *buck;
   struct rte_src *path;
 
@@ -2357,30 +2396,21 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
   if (C->class != &channel_bgp)
     return;
 
-  LOCK_DOMAIN(rtable, c->tx_lock);
+  struct ea_list *attrs = new ? bgp_update_attrs(p, bc, new, new->attrs, tmp_linpool) : NULL;
 
-  if (new)
-  {
-    struct ea_list *attrs = bgp_update_attrs(p, c, new, new->attrs, tmp_linpool);
+  BGP_PTX_LOCK(bc->tx, c);
 
-    /* Error during attribute processing */
-    if (!attrs)
-      log(L_ERR "%s: Invalid route %N withdrawn", p->p.name, n);
+  /* Error during attribute processing */
+  if (new && !attrs)
+    log(L_ERR "%s: Invalid route %N withdrawn", p->p.name, n);
 
-    /* If attributes are invalid, we fail back to withdraw */
-    buck = attrs ? bgp_get_bucket(c, attrs) : bgp_get_withdraw_bucket(c);
-    path = new->src;
-  }
-  else
-  {
-    buck = bgp_get_withdraw_bucket(c);
-    path = old->src;
-  }
+  /* If attributes are invalid, we fail back to withdraw */
+  buck = attrs ? bgp_get_bucket(c, attrs) : bgp_get_withdraw_bucket(c);
+  path = (new ?: old)->src;
 
-  if (bgp_update_prefix(c, bgp_get_prefix(c, net_get_index(c->tx_netindex, n), path, c->add_path_tx), buck))
-    bgp_schedule_packet(p->conn, c, PKT_UPDATE);
-
-  UNLOCK_DOMAIN(rtable, c->tx_lock);
+  /* And queue the notification */
+  if (bgp_update_prefix(c, bgp_get_prefix(c, net_get_index(c->netindex, n), path, bc->add_path_tx), buck))
+    bgp_schedule_packet(p->conn, bc, PKT_UPDATE);
 }
 
 

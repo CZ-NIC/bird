@@ -13,6 +13,8 @@ _Thread_local struct deferred local_deferred = {};
 static void
 defer_execute(void *_ld)
 {
+  synchronize_rcu();
+
   ASSERT_DIE(_ld == &local_deferred);
 
   /* Run */

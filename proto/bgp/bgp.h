@@ -397,19 +397,7 @@ struct bgp_channel {
   /* Rest are zeroed when down */
   pool *pool;
 
-  HASH(struct bgp_bucket) bucket_hash;	/* Hash table of route buckets */
-  struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
-  list bucket_queue;			/* Queue of buckets to send (struct bgp_bucket) */
-
-  /* Prefixes to be sent */
-  struct bgp_prefix * _Atomic * _Atomic prefixes;
-  u32 _Atomic prefixes_len;		/* Block size of prefixes array */
-  netindex_hash *tx_netindex;		/* Netindex indexing the prefixes to be sent */
-  DOMAIN(rtable) tx_lock;		/* Domain to be locked for prefix access */
-
-  slab *prefix_slab;			/* Slab holding prefix nodes */
-  slab *bucket_slab;			/* Slab holding buckets to send */
-  struct rt_exporter prefix_exporter;	/* Table-like exporter for ptx */
+  union bgp_ptx *tx;			/* TX encapsulation */
 
   ip_addr next_hop_addr;		/* Local address for NEXT_HOP attribute */
   ip_addr link_addr;			/* Link-local version of next_hop_addr */
@@ -434,6 +422,39 @@ struct bgp_channel {
   u8 feed_state;			/* Feed state (TX) for EoR, RR packets, see BFS_* */
   u8 load_state;			/* Load state (RX) for EoR, RR packets, see BFS_* */
 };
+
+struct bgp_ptx_private {
+#define BGP_PTX_PUBLIC \
+  DOMAIN(rtable) lock;			/* Domain to be locked for prefix access */ \
+  struct bgp_prefix * _Atomic * _Atomic prefixes; \
+  u32 _Atomic prefixes_len;		/* Block size of prefixes array */ \
+  struct rt_exporter exporter;		/* Table-like exporter for ptx */ \
+  struct bgp_channel *c;		/* Backlink to the channel */ \
+
+  struct { BGP_PTX_PUBLIC; };
+  struct bgp_ptx_private **locked_at;
+
+  pool *pool;				/* Resource pool for TX related allocations */
+
+  HASH(struct bgp_bucket) bucket_hash;	/* Hash table of route buckets */
+  struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
+  list bucket_queue;			/* Queue of buckets to send (struct bgp_bucket) */
+
+  /* Prefixes to be sent */
+  netindex_hash *netindex;		/* Netindex indexing the prefixes to be sent */
+
+  slab *prefix_slab;			/* Slab holding prefix nodes */
+  slab *bucket_slab;			/* Slab holding buckets to send */
+};
+
+typedef union bgp_ptx {
+  struct { BGP_PTX_PUBLIC; };
+  struct bgp_ptx_private priv;
+} bgp_ptx;
+
+LOBJ_UNLOCK_CLEANUP(bgp_ptx, rtable);
+#define BGP_PTX_LOCK(_c, _tx)  LOBJ_LOCK(_c, _tx, bgp_ptx, rtable)
+#define BGP_PTX_PUB(_tx)	SKIP_BACK(union bgp_ptx, priv, (_tx))
 
 struct bgp_prefix {
   node buck_node;			/* Node in per-bucket list */
@@ -470,7 +491,7 @@ struct bgp_export_state {
 
 struct bgp_write_state {
   struct bgp_proto *proto;
-  struct bgp_channel *channel;
+  struct bgp_ptx_private *ptx;
   struct linpool *pool;
 
   int mp_reach;
@@ -641,10 +662,10 @@ void bgp_init_pending_tx(struct bgp_channel *c);
 void bgp_free_pending_tx(struct bgp_channel *c);
 void bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *c);
 
-void bgp_withdraw_bucket(struct bgp_channel *c, struct bgp_bucket *b);
-int bgp_done_bucket(struct bgp_channel *c, struct bgp_bucket *b);
+void bgp_withdraw_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b);
+int bgp_done_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b);
 
-void bgp_done_prefix(struct bgp_channel *c, struct bgp_prefix *px, struct bgp_bucket *buck);
+void bgp_done_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_bucket *buck);
 
 int bgp_rte_better(const rte *, const rte *);
 int bgp_rte_mergable(const rte *pri, const rte *sec);

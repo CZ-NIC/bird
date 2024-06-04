@@ -1337,7 +1337,7 @@ bgp_encode_next_hop_ip(struct bgp_write_state *s, eattr *a, byte *buf, uint size
    * IPv6 address with IPv6 NLRI.
    */
 
-  if (bgp_channel_is_ipv4(s->channel) && ipa_is_ip4(nh[0]))
+  if (bgp_channel_is_ipv4(s->ptx->c) && ipa_is_ip4(nh[0]))
   {
     put_ip4(buf, ipa_to_ip4(nh[0]));
     return 4;
@@ -1412,7 +1412,7 @@ bgp_encode_next_hop_vpn(struct bgp_write_state *s, eattr *a, byte *buf, uint siz
    * IPv6 address with VPNv6 NLRI.
    */
 
-  if (bgp_channel_is_ipv4(s->channel) && ipa_is_ip4(nh[0]))
+  if (bgp_channel_is_ipv4(s->ptx->c) && ipa_is_ip4(nh[0]))
   {
     put_u64(buf, 0); /* VPN RD is 0 */
     put_ip4(buf+8, ipa_to_ip4(nh[0]));
@@ -1623,7 +1623,7 @@ bgp_encode_nlri_ip4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
     memcpy(pos, &a, b);
     ADVANCE(pos, size, b);
 
-    bgp_done_prefix(s->channel, px, buck);
+    bgp_done_prefix(s->ptx, px, buck);
   }
 
   return pos - buf;
@@ -1709,7 +1709,7 @@ bgp_encode_nlri_ip6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
     memcpy(pos, &a, b);
     ADVANCE(pos, size, b);
 
-    bgp_done_prefix(s->channel, px, buck);
+    bgp_done_prefix(s->ptx, px, buck);
   }
 
   return pos - buf;
@@ -1798,7 +1798,7 @@ bgp_encode_nlri_vpn4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
     memcpy(pos, &a, b);
     ADVANCE(pos, size, b);
 
-    bgp_done_prefix(s->channel, px, buck);
+    bgp_done_prefix(s->ptx, px, buck);
   }
 
   return pos - buf;
@@ -1896,7 +1896,7 @@ bgp_encode_nlri_vpn6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
     memcpy(pos, &a, b);
     ADVANCE(pos, size, b);
 
-    bgp_done_prefix(s->channel, px, buck);
+    bgp_done_prefix(s->ptx, px, buck);
   }
 
   return pos - buf;
@@ -1984,7 +1984,7 @@ bgp_encode_nlri_flow4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
     memcpy(pos, net->data, flen);
     ADVANCE(pos, size, flen);
 
-    bgp_done_prefix(s->channel, px, buck);
+    bgp_done_prefix(s->ptx, px, buck);
   }
 
   return pos - buf;
@@ -2072,7 +2072,7 @@ bgp_encode_nlri_flow6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
     memcpy(pos, net->data, flen);
     ADVANCE(pos, size, flen);
 
-    bgp_done_prefix(s->channel, px, buck);
+    bgp_done_prefix(s->ptx, px, buck);
   }
 
   return pos - buf;
@@ -2278,13 +2278,13 @@ bgp_get_af_desc(u32 afi)
 static inline uint
 bgp_encode_nlri(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, byte *end)
 {
-  return s->channel->desc->encode_nlri(s, buck, buf, end - buf);
+  return s->ptx->c->desc->encode_nlri(s, buck, buf, end - buf);
 }
 
 static inline uint
 bgp_encode_next_hop(struct bgp_write_state *s, eattr *nh, byte *buf)
 {
-  return s->channel->desc->encode_next_hop(s, nh, buf, 255);
+  return s->ptx->c->desc->encode_next_hop(s, nh, buf, 255);
 }
 
 void
@@ -2306,7 +2306,7 @@ bgp_create_ip_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
    *	var	IPv4 Network Layer Reachability Information
    */
 
-  ASSERT_DIE(s->channel->withdraw_bucket != buck);
+  ASSERT_DIE(s->ptx->withdraw_bucket != buck);
 
   int lr, la;
 
@@ -2314,7 +2314,7 @@ bgp_create_ip_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
   if (la < 0)
   {
     /* Attribute list too long */
-    bgp_withdraw_bucket(s->channel, buck);
+    bgp_withdraw_bucket(s->ptx, buck);
     return NULL;
   }
 
@@ -2329,7 +2329,7 @@ bgp_create_ip_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
 static byte *
 bgp_create_mp_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, byte *end)
 {
-  ASSERT_DIE(s->channel->withdraw_bucket != buck);
+  ASSERT_DIE(s->ptx->withdraw_bucket != buck);
 
   /*
    *	2 B	IPv4 Withdrawn Routes Length (zero)
@@ -2354,7 +2354,7 @@ bgp_create_mp_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
   buf[4] = BAF_OPTIONAL | BAF_EXT_LEN;
   buf[5] = BA_MP_REACH_NLRI;
   put_u16(buf+6, 0);		/* Will be fixed later */
-  put_af3(buf+8, s->channel->afi);
+  put_af3(buf+8, s->ptx->c->afi);
   byte *pos = buf+11;
 
   /* Encode attributes to temporary buffer */
@@ -2363,7 +2363,7 @@ bgp_create_mp_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
   if (la < 0)
   {
     /* Attribute list too long */
-    bgp_withdraw_bucket(s->channel, buck);
+    bgp_withdraw_bucket(s->ptx, buck);
     return NULL;
   }
 
@@ -2439,7 +2439,7 @@ bgp_create_mp_unreach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
   buf[4] = BAF_OPTIONAL | BAF_EXT_LEN;
   buf[5] = BA_MP_UNREACH_NLRI;
   put_u16(buf+6, 3+len);
-  put_af3(buf+8, s->channel->afi);
+  put_af3(buf+8, s->ptx->c->afi);
 
   return buf+11+len;
 }
@@ -2544,7 +2544,7 @@ bgp_create_update(struct bgp_channel *c, byte *buf)
   byte *res = NULL;
   struct lp_state *tmpp = NULL;
 
-  LOCK_DOMAIN(rtable, c->tx_lock);
+  BGP_PTX_LOCK(c->tx, ptx);
 
 again:
   if (tmpp)
@@ -2555,7 +2555,7 @@ again:
   /* Initialize write state */
   struct bgp_write_state s = {
     .proto = p,
-    .channel = c,
+    .ptx = ptx,
     .pool = tmp_linpool,
     .mp_reach = (c->afi != BGP_AF_IPV4) || c->ext_next_hop,
     .as4_session = p->as4_session,
@@ -2564,7 +2564,7 @@ again:
   };
 
   /* Try unreachable bucket */
-  if ((buck = c->withdraw_bucket) && !EMPTY_LIST(buck->prefixes))
+  if ((buck = ptx->withdraw_bucket) && !EMPTY_LIST(buck->prefixes))
   {
     res = (c->afi == BGP_AF_IPV4) && !c->ext_next_hop ?
       bgp_create_ip_unreach(&s, buck, buf, end):
@@ -2574,19 +2574,19 @@ again:
   }
 
   /* Try reachable buckets */
-  if (!EMPTY_LIST(c->bucket_queue))
+  if (!EMPTY_LIST(ptx->bucket_queue))
   {
-    buck = HEAD(c->bucket_queue);
+    buck = HEAD(ptx->bucket_queue);
 
     /* Cleanup empty buckets */
-    if (bgp_done_bucket(c, buck))
+    if (bgp_done_bucket(ptx, buck))
       goto again;
 
     res = !s.mp_reach ?
       bgp_create_ip_reach(&s, buck, buf, end):
       bgp_create_mp_reach(&s, buck, buf, end);
 
-    bgp_done_bucket(c, buck);
+    bgp_done_bucket(ptx, buck);
 
     if (!res)
       goto again;
@@ -2595,12 +2595,10 @@ again:
   }
 
   /* No more prefixes to send */
-  UNLOCK_DOMAIN(rtable, c->tx_lock);
   lp_restore(tmp_linpool, tmpp);
   return NULL;
 
 done:
-  UNLOCK_DOMAIN(rtable, c->tx_lock);
   BGP_TRACE_RL(&rl_snd_update, D_PACKETS, "Sending UPDATE");
   p->stats.tx_updates++;
   lp_restore(tmp_linpool, tmpp);

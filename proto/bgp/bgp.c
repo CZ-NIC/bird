@@ -2434,7 +2434,8 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
     *export_changed = 1;
 
   /* Update prefix exporter settle timer */
-  c->prefix_exporter.journal.announce_timer.cf = c->cf->ptx_exporter_settle;
+  if (c->tx)
+    c->tx->exporter.journal.announce_timer.cf = c->cf->ptx_exporter_settle;
 
   c->cf = new;
   return 1;
@@ -2854,11 +2855,13 @@ bgp_show_proto_info(struct proto *P)
       if (c->base_table)
 	cli_msg(-1006, "    Base table:     %s", c->base_table->name);
 
+      BGP_PTX_LOCK(c->tx, tx);
+
       uint bucket_cnt = 0;
       uint prefix_cnt = 0;
       struct bgp_bucket *buck;
       struct bgp_prefix *px;
-      WALK_LIST(buck, c->bucket_queue)
+      WALK_LIST(buck, tx->bucket_queue)
       {
 	bucket_cnt++;
 	WALK_LIST(px, buck->prefixes)

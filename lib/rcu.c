@@ -36,7 +36,7 @@ rcu_critical(struct rcu_thread *t, u64 phase)
 void
 synchronize_rcu(void)
 {
-  if (!rcu_blocked && last_locked)
+  if (!rcu_blocked && (last_locked > &locking_stack.meta))
     bug("Forbidden to synchronize RCU unless an appropriate lock is taken");
 
   /* Increment phase */
