@@ -77,16 +77,16 @@ is_leaf(const struct trie_node *node)
 }
 
 /*
- * Allocate new node in protocol slab
+ * Allocate new node in protocol linpool
  */
 static struct trie_node *
-create_new_node(slab *trie_slab)
+create_new_node(linpool *trie_pool)
 {
-  return sl_allocz(trie_slab);
+  return lp_allocz(trie_pool, sizeof(struct trie_node));
 }
 
 /*
- * Mark appropriate child of parent node as NULL and free @node
+ * Mark appropriate child of parent node as NULL
  */
 static void
 remove_node(struct trie_node *node)
@@ -105,8 +105,6 @@ remove_node(struct trie_node *node)
     else
       bug("Invalid child pointer");
   }
-
-  sl_free(node);
 }
 
 /*
@@ -131,12 +129,12 @@ delete_trie(struct trie_node *node)
  * Insert prefix in @addr to prefix trie with beginning at @root and assign @bucket to this prefix
  */
 static void
-trie_insert_prefix_ip4(const struct net_addr_ip4 *addr, struct trie_node *const root, struct aggregator_bucket *bucket, slab *trie_slab)
+trie_insert_prefix_ip4(const struct net_addr_ip4 *addr, struct trie_node *const root, struct aggregator_bucket *bucket, linpool *trie_pool)
 {
   assert(addr != NULL);
   assert(bucket != NULL);
   assert(root != NULL);
-  assert(trie_slab != NULL);
+  assert(trie_pool != NULL);
 
   struct trie_node *node = root;
 
@@ -146,7 +144,7 @@ trie_insert_prefix_ip4(const struct net_addr_ip4 *addr, struct trie_node *const 
 
     if (!node->child[bit])
     {
-      struct trie_node *new = create_new_node(trie_slab);
+      struct trie_node *new = create_new_node(trie_pool);
       new->parent = node;
       node->child[bit] = new;
       new->depth = new->parent->depth + 1;
@@ -160,12 +158,12 @@ trie_insert_prefix_ip4(const struct net_addr_ip4 *addr, struct trie_node *const 
 }
 
 static void
-trie_insert_prefix_ip6(const struct net_addr_ip6 *addr, struct trie_node * const root, struct aggregator_bucket *bucket, slab *trie_slab)
+trie_insert_prefix_ip6(const struct net_addr_ip6 *addr, struct trie_node * const root, struct aggregator_bucket *bucket, linpool *trie_pool)
 {
   assert(addr != NULL);
   assert(bucket != NULL);
   assert(root != NULL);
-  assert(trie_slab != NULL);
+  assert(trie_pool != NULL);
 
   struct trie_node *node = root;
 
@@ -175,7 +173,7 @@ trie_insert_prefix_ip6(const struct net_addr_ip6 *addr, struct trie_node * const
 
     if (!node->child[bit])
     {
-      struct trie_node *new = create_new_node(trie_slab);
+      struct trie_node *new = create_new_node(trie_pool);
       new->parent = node;
       node->child[bit] = new;
       new->depth = new->parent->depth + 1;
@@ -208,10 +206,10 @@ get_ancestor_bucket(const struct trie_node *node)
 }
 
 static void
-first_pass_new(struct trie_node *node, slab *trie_slab)
+first_pass_new(struct trie_node *node, linpool *trie_pool)
 {
   assert(node != NULL);
-  assert(trie_slab != NULL);
+  assert(trie_pool != NULL);
 
   if (is_leaf(node))
   {
@@ -232,7 +230,7 @@ first_pass_new(struct trie_node *node, slab *trie_slab)
   {
     if (!node->child[i])
     {
-      struct trie_node *new = create_new_node(trie_slab);
+      struct trie_node *new = create_new_node(trie_pool);
       new->parent = node;
       new->bucket = node->bucket;
       new->depth = node->depth + 1;
@@ -241,10 +239,10 @@ first_pass_new(struct trie_node *node, slab *trie_slab)
   }
 
   if (node->child[0])
-    first_pass_new(node->child[0], trie_slab);
+    first_pass_new(node->child[0], trie_pool);
 
   if (node->child[1])
-    first_pass_new(node->child[1], trie_slab);
+    first_pass_new(node->child[1], trie_pool);
 
   node->bucket = NULL;
 }
@@ -281,11 +279,11 @@ first_pass_after_check(const struct trie_node *node)
  * First pass of Optimal Route Table Construction (ORTC) algorithm
  */
 static void
-first_pass(struct trie_node *node, slab *trie_slab)
+first_pass(struct trie_node *node, linpool *trie_pool)
 {
   bug("");
   assert(node != NULL);
-  assert(trie_slab != NULL);
+  assert(trie_pool != NULL);
 
   if (!node->parent)
     assert(node->bucket != NULL);
@@ -310,7 +308,7 @@ first_pass(struct trie_node *node, slab *trie_slab)
   {
     if (!node->child[i])
     {
-      struct trie_node *new = create_new_node(trie_slab);
+      struct trie_node *new = create_new_node(trie_pool);
       new->parent = node;
       new->bucket = get_ancestor_bucket(new);
       node->child[i] = new;
@@ -319,8 +317,8 @@ first_pass(struct trie_node *node, slab *trie_slab)
   }
 
   /* Preorder traversal */
-  first_pass(node->child[0], trie_slab);
-  first_pass(node->child[1], trie_slab);
+  first_pass(node->child[0], trie_pool);
+  first_pass(node->child[1], trie_pool);
 }
 
 static int
@@ -861,14 +859,14 @@ construct_trie(struct aggregator_proto *p)
       if (uptr->n.type == NET_IP4)
       {
         const struct net_addr_ip4 *addr = &uptr->ip4;
-        trie_insert_prefix_ip4(addr, p->root, bucket, p->trie_slab);
+        trie_insert_prefix_ip4(addr, p->root, bucket, p->trie_pool);
         log("INSERT %N", addr);
         p->before_count++;
       }
       else if (uptr->n.type == NET_IP6)
       {
         const struct net_addr_ip6 *addr = &uptr->ip6;
-        trie_insert_prefix_ip6(addr, p->root, bucket, p->trie_slab);
+        trie_insert_prefix_ip6(addr, p->root, bucket, p->trie_pool);
         log("INSERT %N", addr);
         p->before_count++;
       }
@@ -890,7 +888,7 @@ calculate_trie(struct aggregator_proto *p)
   log("====PREFIXES BEFORE ====");
 
   log("====FIRST PASS====");
-  first_pass_new(p->root, p->trie_slab);
+  first_pass_new(p->root, p->trie_pool);
   first_pass_after_check(p->root);
   print_prefixes(p->root, p->addr_type);
 
@@ -1320,7 +1318,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
       return;
 
     /* Evaluate route attributes. */
-    struct aggregator_bucket *tmp_bucket = sl_allocz(p->bucket_slab);
+    struct aggregator_bucket *tmp_bucket = lp_allocz(p->bucket_pool, sizeof(*tmp_bucket));
 
     for (uint val_idx = 0; val_idx < p->aggr_on_count; val_idx++)
     {
@@ -1425,7 +1423,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
 
     /* Find the existing bucket */
     if (new_bucket = HASH_FIND(p->buckets, AGGR_BUCK, tmp_bucket))
-      sl_free(tmp_bucket);
+      ;
     else
     {
       new_bucket = tmp_bucket;
@@ -1441,7 +1439,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     log("new rte: %p, net: %p, src: %p, hash: %x", new, new->net, new->src, aggr_route_hash(new));
 
     /* Insert the new route into the bucket */
-    struct aggregator_route *arte = sl_alloc(p->route_slab);
+    struct aggregator_route *arte = lp_allocz(p->route_pool, sizeof(*arte));
     *arte = (struct aggregator_route) {
       .bucket = new_bucket,
       .rte = *new,
@@ -1466,7 +1464,6 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     old_bucket->count--;
     HASH_REMOVE2(p->routes, AGGR_RTE, p->p.pool, old_route);
     rta_free(old_route->rte.attrs);
-    sl_free(old_route);
   }
 
   if (p->net_present != 0)
@@ -1484,7 +1481,6 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   {
     ASSERT_DIE(!old_bucket->rte && !old_bucket->count);
     HASH_REMOVE2(p->buckets, AGGR_BUCK, p->p.pool, old_bucket);
-    sl_free(old_bucket);
   }
 
   assert(p->root != NULL);
@@ -1561,10 +1557,10 @@ aggregator_start(struct proto *P)
 
   p->addr_type = p->src->table->addr_type;
 
-  p->bucket_slab = sl_new(P->pool, sizeof(struct aggregator_bucket) + AGGR_DATA_MEMSIZE);
+  p->bucket_pool = lp_new(P->pool);
   HASH_INIT(p->buckets, P->pool, AGGR_BUCK_ORDER);
 
-  p->route_slab = sl_new(P->pool, sizeof(struct aggregator_route));
+  p->route_pool = lp_new(P->pool);
   HASH_INIT(p->routes, P->pool, AGGR_RTE_ORDER);
 
   p->reload_buckets = (event) {
@@ -1572,8 +1568,8 @@ aggregator_start(struct proto *P)
     .data = p,
   };
 
-  p->trie_slab = sl_new(p->p.pool, sizeof(struct trie_node));
-  p->root = create_new_node(p->trie_slab);
+  p->trie_pool = lp_new(P->pool);
+  p->root = create_new_node(p->trie_pool);
   p->root->depth = 1;
   p->aggr_done = 0;
 
@@ -1596,12 +1592,12 @@ aggregator_start(struct proto *P)
   struct rta rta = { 0 };
 
   /* Allocate bucket for root node */
-  struct aggregator_bucket *new_bucket = sl_allocz(p->bucket_slab);
+  struct aggregator_bucket *new_bucket = lp_allocz(p->bucket_pool, sizeof(*new_bucket));
   u64 haux = 0;
   mem_hash_init(&haux);
   new_bucket->hash = mem_hash_value(&haux);
 
-  struct aggregator_route *arte = sl_alloc(p->route_slab);
+  struct aggregator_route *arte = lp_allocz(p->route_pool, sizeof(*arte));
 
   *arte = (struct aggregator_route) {
     .bucket = new_bucket,
@@ -1640,19 +1636,16 @@ aggregator_shutdown(struct proto *P)
       b->count--;
       HASH_REMOVE(p->routes, AGGR_RTE, arte);
       rta_free(arte->rte.attrs);
-      sl_free(arte);
     }
 
     ASSERT_DIE(b->count == 0);
     HASH_REMOVE(p->buckets, AGGR_BUCK, b);
-    sl_free(b);
   }
   HASH_WALK_END;
 
   settle_cancel(&p->aggr_timer);
 
   assert(p->root != NULL);
-  delete_trie(p->root);
   p->root = NULL;
 
   return PS_DOWN;

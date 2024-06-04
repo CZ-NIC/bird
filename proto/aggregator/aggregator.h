@@ -52,11 +52,11 @@ struct aggregator_proto {
 
   /* Buckets by aggregator rule */
   HASH(struct aggregator_bucket) buckets;
-  slab *bucket_slab;
+  linpool *bucket_pool;
 
   /* Routes by net and src */
   HASH(struct aggregator_route) routes;
-  slab *route_slab;
+  linpool *route_pool;
 
   /* Aggregator rule */
   uint aggr_on_count;
@@ -70,7 +70,7 @@ struct aggregator_proto {
 
   /* Aggregation trie */
   uint addr_type;
-  slab *trie_slab;
+  linpool *trie_pool;
   struct trie_node *root;
   struct settle_config aggr_timer_cf;
   struct settle aggr_timer;
