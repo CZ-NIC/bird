@@ -654,13 +654,13 @@ print_prefixes_ip4_helper(const struct trie_node *node, struct net_addr_ip4 *add
 
   if (is_leaf(node))
   {
-    log("%N\t-> %p", addr, node->bucket);
+    log("%N -> %p", addr, node->bucket);
     return;
   }
 
-  if (node->bucket != NULL)
+  if (node->bucket)
   {
-    log("%N\t-> %p", addr, node->bucket);
+    log("%N -> %p", addr, node->bucket);
   }
 
   if (node->child[0])
@@ -686,13 +686,13 @@ print_prefixes_ip6_helper(const struct trie_node *node, struct net_addr_ip6 *add
 
   if (is_leaf(node))
   {
-    log("%N\t-> %p", addr, node->bucket);
+    log("%N -> %p", addr, node->bucket);
     return;
   }
 
-  if (node->bucket != NULL)
+  if (node->bucket)
   {
-    log("%N\t-> %p", addr, node->bucket);
+    log("%N -> %p", addr, node->bucket);
   }
 
   if (node->child[0])
