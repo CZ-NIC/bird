@@ -10,7 +10,7 @@
 #ifndef _BIRD_HASH_H_
 #define _BIRD_HASH_H_
 
-#define HASH(type)		struct { type **data; uint count; u16 iterators; u8 order; u8 down_requested:1; }
+#define HASH(type)		struct { type **data; uint count; u8 order; }
 #define HASH_TYPE(v)		typeof(** (v).data)
 #define HASH_SIZE(v)		(1U << (v).order)
 
@@ -130,18 +130,14 @@
 
 #define HASH_MAY_STEP_DOWN_(v,pool,rehash_fn,args)			\
   ({                                                                    \
-    if ((v).iterators)							\
-      (v).down_requested = 1;						\
-    else if (((v).count < (HASH_SIZE(v) REHASH_LO_MARK(args))) &&	\
-	     ((v).order > (REHASH_LO_BOUND(args))))			\
+    if (((v).count < (HASH_SIZE(v) REHASH_LO_MARK(args))) &&		\
+	((v).order > (REHASH_LO_BOUND(args))))				\
       rehash_fn(&(v), pool, -(REHASH_LO_STEP(args)));			\
   })
 
 #define HASH_MAY_RESIZE_DOWN_(v,pool,rehash_fn,args)			\
   ({                                                                    \
-    if ((v).iterators)							\
-      (v).down_requested = 1;						\
-    else {								\
+    {									\
       uint _o = (v).order;						\
       while (((v).count < ((1U << _o) REHASH_LO_MARK(args))) &&		\
 	     (_o > (REHASH_LO_BOUND(args))))				\
