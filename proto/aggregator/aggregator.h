@@ -76,6 +76,7 @@ struct aggregator_proto {
   struct settle aggr_timer;
   int before_count;
   int after_count;
+  int aggr_done;
 };
 
 enum aggr_item_type {
