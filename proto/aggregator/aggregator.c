@@ -283,6 +283,7 @@ first_pass_after_check(const struct trie_node *node)
 static void
 first_pass(struct trie_node *node, slab *trie_slab)
 {
+  bug("");
   assert(node != NULL);
   assert(trie_slab != NULL);
 
@@ -906,6 +907,9 @@ calculate_trie(struct aggregator_proto *p)
 static void
 run_aggregation(struct aggregator_proto *p)
 {
+  assert(p->root != NULL);
+  log("==== AGGREGATION START ====");
+
   construct_trie(p);
   calculate_trie(p);
   collect_prefixes(p);
@@ -1483,6 +1487,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     sl_free(old_bucket);
   }
 
+  assert(p->root != NULL);
   settle_kick(&p->aggr_timer);
 }
 
@@ -1646,6 +1651,7 @@ aggregator_shutdown(struct proto *P)
 
   settle_cancel(&p->aggr_timer);
 
+  assert(p->root != NULL);
   delete_trie(p->root);
   p->root = NULL;
 
