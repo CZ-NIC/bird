@@ -253,7 +253,6 @@ enum ea_stored {
 
 struct ea_storage {
   struct ea_storage *next_hash;		/* Next in hash chain */
-  struct ea_storage **pprev_hash;	/* Previous in hash chain */
   _Atomic u32 uc;			/* Use count */
   u32 hash_key;				/* List hash */
   ea_list l[0];				/* The list itself */
