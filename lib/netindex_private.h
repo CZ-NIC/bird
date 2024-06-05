@@ -15,18 +15,17 @@
   DOMAIN(attrs) lock;		/* Assigned lock */		\
   event_list *cleanup_list;	/* Cleanup event list */	\
   event cleanup_event;		/* Cleanup event */		\
+  u8 net_type;			/* Which NET_* is stored */	\
 
 struct netindex_hash_private {
   struct { NETINDEX_HASH_PUBLIC; };
   struct netindex_hash_private **locked_at;
   pool *pool;
-  struct {
-    slab *slab;
-    HASH(struct netindex) hash;
-    uint block_size;
-    struct netindex **block;
-    struct hmap id_map;
-  } net[NET_MAX];
+  slab *slab;
+  HASH(struct netindex) hash;
+  uint block_size;
+  struct netindex **block;
+  struct hmap id_map;
   event *deleted_event;
   event_list *deleted_target;
 };

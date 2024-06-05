@@ -252,7 +252,7 @@ rt_export_next_feed(struct rt_export_feeder *f)
     struct netindex *ni = NULL;
     u32 mfi = atomic_load_explicit(&e->max_feed_index, memory_order_acquire);
     for (; !ni && f->feed_index < mfi; f->feed_index++)
-      ni = net_resolve_index(e->netindex, e->net_type, f->feed_index);
+      ni = net_resolve_index(e->netindex, f->feed_index);
 
     if (!ni)
     {

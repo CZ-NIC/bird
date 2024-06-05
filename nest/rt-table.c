@@ -123,7 +123,7 @@ pool *rt_table_pool;
 list routing_tables;
 list deleted_routing_tables;
 
-netindex_hash *rt_global_netindex_hash;
+netindex_hash *rt_global_netindex_hash[NET_MAX];
 #define RT_INITIAL_ROUTES_BLOCK_SIZE   128
 
 struct rt_cork rt_cork;
@@ -2884,7 +2884,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   if (t->id >= rtable_max_id)
     rtable_max_id = t->id + 1;
 
-  t->netindex = rt_global_netindex_hash;
+  t->netindex = rt_global_netindex_hash[cf->addr_type];
   atomic_store_explicit(&t->routes, mb_allocz(p, RT_INITIAL_ROUTES_BLOCK_SIZE * sizeof(net)), memory_order_relaxed);
   atomic_store_explicit(&t->routes_block_size, RT_INITIAL_ROUTES_BLOCK_SIZE, memory_order_relaxed);
 
@@ -3025,7 +3025,9 @@ rt_init(void)
   ev_init_list(&rt_cork.queue, &main_birdloop, "Route cork release");
   rt_cork.run = (event) { .hook = rt_cork_release_hook };
   idm_init(&rtable_idm, rt_table_pool, 256);
-  rt_global_netindex_hash = netindex_hash_new(rt_table_pool, &global_event_list);
+
+  for (uint i=1; i<NET_MAX; i++)
+    rt_global_netindex_hash[i] = netindex_hash_new(rt_table_pool, &global_event_list, i);
 }
 
 static _Bool

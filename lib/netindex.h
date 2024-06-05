@@ -28,13 +28,13 @@ struct netindex {
 typedef union netindex_hash netindex_hash;
 
 /* Initialization and teardown */
-netindex_hash *netindex_hash_new(pool *, event_list *);
+netindex_hash *netindex_hash_new(pool *, event_list *, u8);
 void netindex_hash_delete(netindex_hash *, event *, event_list *);
 
 /* Find/get/resolve index; pointer valid until end of task */ 
 struct netindex *net_find_index(netindex_hash *, const net_addr *);
 struct netindex *net_get_index(netindex_hash *, const net_addr *);
-struct netindex *net_resolve_index(netindex_hash *, u8, u32);
+struct netindex *net_resolve_index(netindex_hash *, u32);
 
 /* Update use-count without allocating a handle. Take same care
  * to ensure that your locks and unlocks are always balanced. */

@@ -1694,7 +1694,7 @@ bgp_init_prefix_table(struct bgp_ptx_private *c)
    * locked while entering a loop. That's kinda stupid but i'm lazy now
    * to rework it. */
   ASSERT_DIE(!c->netindex);
-  c->netindex = netindex_hash_new(c->c->pool, proto_event_list(c->c->c.proto));
+  c->netindex = netindex_hash_new(c->c->pool, proto_event_list(c->c->c.proto), c->c->c.net_type);
 
   u32 len = 64;
   struct bgp_prefix * _Atomic * block = mb_allocz(c->pool, len * sizeof *block);

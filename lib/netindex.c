@@ -36,29 +36,23 @@ net_lock_revive_unlock(struct netindex_hash_private *hp, struct netindex *i)
 void
 netindex_hash_consistency_check(struct netindex_hash_private *nh)
 {
-  for (uint t = 0; t < NET_MAX; t++)
+  uint count = 0;
+  HASH_WALK(nh->hash, next, i)
   {
-    if (!nh->net[t].hash.data)
-      continue;
-
-    uint count = 0;
-    HASH_WALK(nh->net[t].hash, next, i)
-    {
-      ASSERT_DIE(count < nh->net[t].hash.count);
-      ASSERT_DIE(nh->net[t].block[i->index] == i);
-      count++;
-    }
-    HASH_WALK_END;
-
-    ASSERT_DIE(count == nh->net[t].hash.count);
+    ASSERT_DIE(count < nh->hash.count);
+    ASSERT_DIE(nh->block[i->index] == i);
+    count++;
   }
+  HASH_WALK_END;
+
+  ASSERT_DIE(count == nh->hash.count);
 }
 
 /*
  * Index initialization
  */
 netindex_hash *
-netindex_hash_new(pool *sp, event_list *cleanup_target)
+netindex_hash_new(pool *sp, event_list *cleanup_target, u8 type)
 {
   DOMAIN(attrs) dom = DOMAIN_NEW(attrs);
   LOCK_DOMAIN(attrs, dom);
@@ -68,6 +62,15 @@ netindex_hash_new(pool *sp, event_list *cleanup_target)
   struct netindex_hash_private *nh = mb_allocz(p, sizeof *nh);
   nh->lock = dom;
   nh->pool = p;
+  nh->net_type = type;
+
+  nh->slab = net_addr_length[type] ? sl_new(nh->pool, sizeof (struct netindex) + net_addr_length[type]) : NULL;
+
+  HASH_INIT(nh->hash, nh->pool, NETINDEX_ORDER);
+  nh->block_size = 128;
+  nh->block = mb_allocz(nh->pool, nh->block_size * sizeof (struct netindex *));
+
+  hmap_init(&nh->id_map, nh->pool, 128);
 
   nh->cleanup_list = cleanup_target;
   nh->cleanup_event = (event) { .hook = netindex_hash_cleanup, nh };
@@ -88,29 +91,28 @@ netindex_hash_cleanup(void *_nh)
 
   uint kept = 0;
 
-  for (uint t = 0; t < NET_MAX; t++)
-    for (uint i = 0; i < nh->net[t].block_size; i++)
+  for (uint i = 0; i < nh->block_size; i++)
+  {
+    struct netindex *ni = nh->block[i];
+    if (!ni)
+      continue;
+
+    ASSERT_DIE(i == ni->index);
+
+    if (lfuc_finished(&ni->uc))
     {
-      struct netindex *ni = nh->net[t].block[i];
-      if (!ni)
-	continue;
+      HASH_REMOVE2(nh->hash, NETINDEX, nh->pool, ni);
+      hmap_clear(&nh->id_map, ni->index);
+      nh->block[i] = NULL;
 
-      ASSERT_DIE(i == ni->index);
-
-      if (lfuc_finished(&ni->uc))
-      {
-	HASH_REMOVE2(nh->net[t].hash, NETINDEX, nh->pool, ni);
-	hmap_clear(&nh->net[t].id_map, ni->index);
-	nh->net[t].block[i] = NULL;
-
-	if (nh->net[t].slab)
-	  sl_free(ni);
-	else
-	  mb_free(ni);
-      }
+      if (nh->slab)
+	sl_free(ni);
       else
-	kept++;
+	mb_free(ni);
     }
+    else
+      kept++;
+  }
 
   EXPENSIVE_CHECK(netindex_hash_consistency_check(nh));
 
@@ -126,13 +128,9 @@ netindex_hash_cleanup(void *_nh)
   event_list *t = nh->deleted_target;
 
   /* Check cleanliness */
-  for (uint t = 0; t < NET_MAX; t++)
-    if (nh->net[t].hash.data)
-    {
-      HASH_WALK(nh->net[t].hash, next, i)
-	bug("Stray netindex in deleted hash");
-      HASH_WALK_END;
-    }
+  HASH_WALK(nh->hash, next, i)
+    bug("Stray netindex in deleted hash");
+  HASH_WALK_END;
 
   /* Pool free is enough to drop everything */
   rp_free(nh->pool);
@@ -144,18 +142,6 @@ netindex_hash_cleanup(void *_nh)
   /* Notify the requestor */
   ev_send(t, e);
 }
-
-static void
-netindex_hash_init(struct netindex_hash_private *hp, u8 type)
-{
-  ASSERT_DIE(hp->net[type].block == NULL);
-
-  hp->net[type].slab = net_addr_length[type] ? sl_new(hp->pool, sizeof (struct netindex) + net_addr_length[type]) : NULL;
-  HASH_INIT(hp->net[type].hash, hp->pool, NETINDEX_ORDER);
-  hp->net[type].block_size = 128;
-  hp->net[type].block = mb_allocz(hp->pool, hp->net[type].block_size * sizeof (struct netindex *));
-  hmap_init(&hp->net[type].id_map, hp->pool, 128);
-};
 
 void
 netindex_hash_delete(netindex_hash *h, event *e, event_list *t)
@@ -176,25 +162,20 @@ netindex_hash_delete(netindex_hash *h, event *e, event_list *t)
 struct netindex *
 net_find_index_fragile_chain(struct netindex_hash_private *hp, const net_addr *n)
 {
-  ASSERT_DIE(n->type < NET_MAX);
-  if (!hp->net[n->type].block)
-    return NULL;
-
+  ASSERT_DIE(n->type == hp->net_type);
   u32 h = net_hash(n);
-  return HASH_FIND_CHAIN(hp->net[n->type].hash, NETINDEX, h, n);
+  return HASH_FIND_CHAIN(hp->hash, NETINDEX, h, n);
 }
 
 struct netindex *
 net_find_index_fragile(struct netindex_hash_private *hp, const net_addr *n)
 {
-  ASSERT_DIE(n->type < NET_MAX);
-  if (!hp->net[n->type].block)
-    return NULL;
+  ASSERT_DIE(n->type == hp->net_type);
 
-  EXPENSIVE_CHECK(netindex_hash_consistency_check(nh));
+  EXPENSIVE_CHECK(netindex_hash_consistency_check(hp));
 
   u32 h = net_hash(n);
-  return HASH_FIND(hp->net[n->type].hash, NETINDEX, h, n);
+  return HASH_FIND(hp->hash, NETINDEX, h, n);
 }
 
 static struct netindex *
@@ -208,14 +189,11 @@ net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n)
 {
   ASSERT_DIE(!hp->deleted_event);
 
-  if (!hp->net[n->type].block)
-    netindex_hash_init(hp, n->type);
+  u32 i = hmap_first_zero(&hp->id_map);
+  hmap_set(&hp->id_map, i);
 
-  u32 i = hmap_first_zero(&hp->net[n->type].id_map);
-  hmap_set(&hp->net[n->type].id_map, i);
-
-  struct netindex *ni = hp->net[n->type].slab ?
-    sl_alloc(hp->net[n->type].slab) :
+  struct netindex *ni = hp->slab ?
+    sl_alloc(hp->slab) :
     mb_alloc(hp->pool, n->length + sizeof *ni);
 
   *ni = (struct netindex) {
@@ -224,21 +202,21 @@ net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n)
   };
   net_copy(ni->addr, n);
 
-  HASH_INSERT2(hp->net[n->type].hash, NETINDEX, hp->pool, ni);
-  while (hp->net[n->type].block_size <= i)
+  HASH_INSERT2(hp->hash, NETINDEX, hp->pool, ni);
+  while (hp->block_size <= i)
   {
-    u32 bs = hp->net[n->type].block_size;
+    u32 bs = hp->block_size;
     struct netindex **nb = mb_alloc(hp->pool, bs * 2 * sizeof *nb);
-    memcpy(nb, hp->net[n->type].block, bs * sizeof *nb);
+    memcpy(nb, hp->block, bs * sizeof *nb);
     memset(&nb[bs], 0, bs * sizeof *nb);
 
-    mb_free(hp->net[n->type].block);
-    hp->net[n->type].block = nb;
+    mb_free(hp->block);
+    hp->block = nb;
 
-    hp->net[n->type].block_size *= 2;
+    hp->block_size *= 2;
   }
 
-  hp->net[n->type].block[i] = ni;
+  hp->block[i] = ni;
 
   return net_lock_revive_unlock(hp, ni);
 }
@@ -277,13 +255,10 @@ net_get_index(netindex_hash *h, const net_addr *n)
 }
 
 struct netindex *
-net_resolve_index(netindex_hash *h, u8 net_type, u32 i)
+net_resolve_index(netindex_hash *h, u32 i)
 {
   NH_LOCK(h, hp);
-  if (i >= hp->net[net_type].block_size)
-    return NULL;
 
-  struct netindex *ni = hp->net[net_type].block[i];
-  ASSERT_DIE(!ni || (ni->addr->type == net_type));
+  struct netindex *ni = hp->block[i];
   return net_lock_revive_unlock(hp, ni);
 }
