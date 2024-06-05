@@ -55,7 +55,7 @@ static inline void rcu_read_lock(void)
 static inline void rcu_read_unlock(void)
 {
   /* Just decrement the nesting counter; when unlocked, nobody cares */
-  atomic_fetch_sub(&this_rcu_thread.ctl, RCU_NEST_CNT);
+  atomic_fetch_sub_explicit(&this_rcu_thread.ctl, RCU_NEST_CNT, memory_order_acq_rel);
 }
 
 static inline _Bool rcu_read_active(void)

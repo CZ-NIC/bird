@@ -9,6 +9,7 @@
 #ifndef _BIRD_LOCKING_H_
 #define _BIRD_LOCKING_H_
 
+#include "lib/birdlib.h"
 #include "lib/macro.h"
 #include "lib/rcu.h"
 
@@ -83,7 +84,150 @@ extern DOMAIN(the_bird) the_bird_domain;
 
 #define ASSERT_THE_BIRD_LOCKED	({ if (!the_bird_locked()) bug("The BIRD lock must be locked here: %s:%d", __FILE__, __LINE__); })
 
-/* Unwind stored lock state helpers */
+/*
+ * RW spinlocks
+ */
+
+#define RWS_READ_PENDING_POS	0
+#define RWS_READ_ACTIVE_POS	20
+#define RWS_WRITE_PENDING_POS	40
+#define RWS_WRITE_ACTIVE_POS	56
+
+#define RWS_READ_PENDING	(1ULL << RWS_READ_PENDING_POS)
+#define RWS_READ_ACTIVE		(1ULL << RWS_READ_ACTIVE_POS)
+#define RWS_WRITE_PENDING	(1ULL << RWS_WRITE_PENDING_POS)
+#define RWS_WRITE_ACTIVE	(1ULL << RWS_WRITE_ACTIVE_POS)
+
+#define RWS_READ_PENDING_MASK	(RWS_READ_ACTIVE - 1)
+#define RWS_READ_ACTIVE_MASK	((RWS_WRITE_PENDING - 1) & ~(RWS_READ_ACTIVE - 1))
+#define RWS_WRITE_PENDING_MASK	((RWS_WRITE_ACTIVE - 1) & ~(RWS_WRITE_PENDING - 1))
+#define RWS_WRITE_ACTIVE_MASK	(~(RWS_WRITE_ACTIVE - 1))
+
+typedef struct {
+  u64 _Atomic spin;
+} rw_spinlock;
+
+#define MAX_RWS_AT_ONCE		32
+extern _Thread_local rw_spinlock *rw_spinlocks_taken[MAX_RWS_AT_ONCE];
+extern _Thread_local btime rw_spinlocks_time[MAX_RWS_AT_ONCE];
+extern _Thread_local u32 rw_spinlocks_taken_cnt;
+extern _Thread_local u32 rw_spinlocks_taken_write;
+
+/* Borrowed from lib/timer.h */
+btime current_time_now(void);
+
+#ifdef DEBUGGING
+static inline void rws_mark(rw_spinlock *p, _Bool write, _Bool lock)
+{
+  if (lock) {
+    ASSERT_DIE(rw_spinlocks_taken_cnt < MAX_RWS_AT_ONCE);
+    if (write)
+      rw_spinlocks_taken_write |= (1 << rw_spinlocks_taken_cnt);
+    else
+      rw_spinlocks_taken_write &= ~(1 << rw_spinlocks_taken_cnt);
+    rw_spinlocks_time[rw_spinlocks_taken_cnt] = current_time_now();
+    rw_spinlocks_taken[rw_spinlocks_taken_cnt++] = p;
+
+  }
+  else {
+    ASSERT_DIE(rw_spinlocks_taken_cnt > 0);
+    ASSERT_DIE(rw_spinlocks_taken[--rw_spinlocks_taken_cnt] == p);
+    ASSERT_DIE(!(rw_spinlocks_taken_write & (1 << rw_spinlocks_taken_cnt)) == !write);
+    btime tdif = current_time_now() - rw_spinlocks_time[rw_spinlocks_taken_cnt];
+    if (tdif > 1 S_)
+      log(L_WARN "Spent an alarming time %t s in spinlock %p (%s); "
+	 "if this happens often to you, please contact the developers.",
+	 tdif, p, write ? "write" : "read");
+  }
+}
+#else
+#define rws_mark(...)
+#endif
+
+static inline void rws_init(rw_spinlock *p)
+{
+  atomic_store_explicit(&p->spin, 0, memory_order_relaxed);
+}
+
+static inline void rws_read_lock(rw_spinlock *p)
+{
+  u64 old = atomic_fetch_add_explicit(&p->spin, RWS_READ_PENDING, memory_order_acquire);
+
+  while (1)
+  {
+    /* Wait until all writers end */
+    while (old & (RWS_WRITE_PENDING_MASK | RWS_WRITE_ACTIVE_MASK))
+    {
+      birdloop_yield();
+      old = atomic_load_explicit(&p->spin, memory_order_acquire);
+    }
+
+    /* Convert to active */
+    old = atomic_fetch_add_explicit(&p->spin, RWS_READ_ACTIVE - RWS_READ_PENDING, memory_order_acq_rel);
+
+    if (old & RWS_WRITE_ACTIVE_MASK)
+      /* Oh but some writer was faster */
+      old = atomic_fetch_sub_explicit(&p->spin, RWS_READ_ACTIVE - RWS_READ_PENDING, memory_order_acq_rel);
+    else
+      /* No writers, approved */
+      break;
+  }
+
+  rws_mark(p, 0, 1);
+}
+
+static inline void rws_read_unlock(rw_spinlock *p)
+{
+  rws_mark(p, 0, 0);
+  u64 old = atomic_fetch_sub_explicit(&p->spin, RWS_READ_ACTIVE, memory_order_release);
+  ASSERT_DIE(old & RWS_READ_ACTIVE_MASK);
+}
+
+static inline void rws_write_lock(rw_spinlock *p)
+{
+  u64 old = atomic_fetch_add_explicit(&p->spin, RWS_WRITE_PENDING, memory_order_acquire);
+
+  /* Wait until all active readers end */
+  while (1)
+  {
+    while (old & (RWS_READ_ACTIVE_MASK | RWS_WRITE_ACTIVE_MASK))
+    {
+      birdloop_yield();
+      old = atomic_load_explicit(&p->spin, memory_order_acquire);
+    }
+
+    /* Mark self as active */
+    u64 updated = atomic_fetch_or_explicit(&p->spin, RWS_WRITE_ACTIVE, memory_order_acquire);
+
+    /* And it's us */
+    if (!(updated & RWS_WRITE_ACTIVE))
+    {
+      if (updated & RWS_READ_ACTIVE_MASK)
+	/* But some reader was faster */
+	atomic_fetch_and_explicit(&p->spin, ~RWS_WRITE_ACTIVE, memory_order_release);
+      else
+	/* No readers, approved */
+	break;
+    }
+  }
+
+  /* It's us, then we aren't actually pending */
+  u64 updated = atomic_fetch_sub_explicit(&p->spin, RWS_WRITE_PENDING, memory_order_acquire);
+  ASSERT_DIE(updated & RWS_WRITE_PENDING_MASK);
+  rws_mark(p, 1, 1);
+}
+
+static inline void rws_write_unlock(rw_spinlock *p)
+{
+  rws_mark(p, 1, 0);
+  u64 old = atomic_fetch_and_explicit(&p->spin, ~RWS_WRITE_ACTIVE, memory_order_release);
+  ASSERT_DIE(old & RWS_WRITE_ACTIVE);
+}
+
+
+/*
+ * Unwind stored lock state helpers
+ */
 struct locking_unwind_status {
   struct lock_order *desired;
   enum {

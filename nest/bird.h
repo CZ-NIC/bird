@@ -10,6 +10,7 @@
 #define _BIRD_BIRD_H_
 
 #include "lib/birdlib.h"
+#include "lib/locking.h"
 #include "lib/ip.h"
 #include "lib/net.h"
 

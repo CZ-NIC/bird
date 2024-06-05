@@ -72,7 +72,4 @@ void birdloop_remove_socket(struct birdloop *, struct birdsock *);
 
 void birdloop_init(void);
 
-/* Yield for a little while. Use only in special cases. */
-void birdloop_yield(void);
-
 #endif /* _BIRD_IO_LOOP_H_ */

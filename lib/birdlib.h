@@ -291,4 +291,9 @@ static inline u64 u64_hash0(u64 v, u32 p, u64 acc)
 static inline u32 u64_hash(u64 v)
 { return hash_value(u64_hash0(v, HASH_PARAM, 0)); }
 
+
+/* Yield for a little while. Use only in special cases. */
+void birdloop_yield(void);
+
+
 #endif
