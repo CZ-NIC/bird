@@ -494,7 +494,8 @@ static inline void locking_unwind(struct lock_order *desired)
 
 struct rcu_unwinder {
   struct lock_order locking_stack;
-  u64 retry;
+  u32 retry;
+  u8 fast;
   jmp_buf buf;
 };
 
@@ -511,15 +512,20 @@ static inline void _rcu_unwinder_unlock_(struct rcu_unwinder *o UNUSED)
   if (setjmp(_i->buf)) {						\
     rcu_read_unlock();							\
     locking_unwind(&_i->locking_stack);					\
-    birdloop_yield();							\
-    if (!(++_i->retry % RCU_UNWIND_WARN))				\
-      log(L_WARN "Suspiciously many RCU_ANCHORs retried (%lu)"		\
-	 " at %s:%d", _i->retry, __FILE__, __LINE__);			\
+    if (_i->fast) _i->fast = 0;						\
+    else {								\
+      birdloop_yield();							\
+      if (!(++_i->retry % RCU_UNWIND_WARN))				\
+	log(L_WARN "Suspiciously many RCU_ANCHORs retried (%lu)"	\
+	   " at %s:%d", _i->retry, __FILE__, __LINE__);			\
+    }									\
   }									\
   _i->locking_stack = locking_stack;					\
   rcu_read_lock();							\
 
 #define RCU_RETRY(_i) do { if (_i) longjmp(_i->buf, 1); else bug("No rcu retry allowed here"); } while (0)
+
+#define RCU_RETRY_FAST(_i) do { (_i)->fast++; RCU_RETRY(_i); } while (0)
 
 #define RCU_WONT_RETRY	((struct rcu_unwinder *) NULL)
 #endif
