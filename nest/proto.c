@@ -2579,7 +2579,8 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
 	channel_request_reload(c, channel_create_reload_request(prr));
 
       if (prr->dir & CMD_RELOAD_OUT)
-	rt_export_refeed(&c->out_req, channel_create_reload_request(prr));
+	if (c->out_req.name)
+	  rt_export_refeed(&c->out_req, channel_create_reload_request(prr));
     }
 
   cli_msg(-15, "%s: reloading", p->name);
