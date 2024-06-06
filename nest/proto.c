@@ -401,6 +401,8 @@ static void
 channel_roa_reload_done(struct rt_feeding_request *req)
 {
   SKIP_BACK_DECLARE(struct roa_subscription, s, rfr, req);
+  ASSERT_DIE(s->c->channel_state == CS_UP);
+
   lfjour_release(&s->digest_recipient);
   ev_send(proto_work_list(s->c->proto), &s->update_event);
   /* FIXME: this should reset import/export filters if ACTION BLOCK */
@@ -786,6 +788,7 @@ channel_do_stop(struct channel *c)
 
   /* Need to abort reimports as well */
   rt_feeder_unsubscribe(&c->reimporter);
+  ev_postpone(&c->reimport_event);
 
   c->gr_wait = 0;
   if (c->gr_lock)
