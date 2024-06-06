@@ -141,8 +141,17 @@ rt_export_get(struct rt_export_request *r)
   {
     /* But this net shall get a feed first! */
     rtex_trace(r, D_ROUTES, "Expediting %N feed due to pending update %lu", n, update->seq);
-    RCU_ANCHOR(u);
-    feed = e->feed_net(e, u, ni, update);
+    if (r->feeder.domain.rtable)
+    {
+      LOCK_DOMAIN(rtable, r->feeder.domain);
+      feed = e->feed_net(e, NULL, ni, update);
+      UNLOCK_DOMAIN(rtable, r->feeder.domain);
+    }
+    else
+    {
+      RCU_ANCHOR(u);
+      feed = e->feed_net(e, u, ni, update);
+    }
 
     bmap_set(&r->feed_map, ni->index);
     ASSERT_DIE(feed);
@@ -234,13 +243,12 @@ rt_alloc_feed(uint routes, uint exports)
   return feed;
 }
 
-struct rt_export_feed *
-rt_export_next_feed(struct rt_export_feeder *f)
+static struct rt_export_feed *
+rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u)
 {
-  ASSERT_DIE(f);
   while (1)
   {
-    RCU_ANCHOR(u);
+    ASSERT_DIE(u || DOMAIN_IS_LOCKED(rtable, f->domain));
 
     struct rt_exporter *e = atomic_load_explicit(&f->exporter, memory_order_acquire);
     if (!e)
@@ -257,19 +265,25 @@ rt_export_next_feed(struct rt_export_feeder *f)
     if (!ni)
     {
       f->feed_index = ~0;
-      break;
+      return NULL;
     }
 
     if (!rt_prefilter_net(&f->prefilter, ni->addr))
     {
       rtex_trace(f, D_ROUTES, "Not feeding %N due to prefilter", ni->addr);
-      continue;
+      if (u)
+	RCU_RETRY_FAST(u);
+      else
+	continue;
     }
 
     if (f->feeding && !rt_net_is_feeding_feeder(f, ni->addr))
     {
       rtex_trace(f, D_ROUTES, "Not feeding %N, not requested", ni->addr);
-      continue;
+      if (u)
+	RCU_RETRY_FAST(u);
+      else
+	continue;
     }
 
     struct rt_export_feed *feed = e->feed_net(e, u, ni, NULL);
@@ -279,6 +293,28 @@ rt_export_next_feed(struct rt_export_feeder *f)
       return feed;
     }
   }
+}
+
+struct rt_export_feed *
+rt_export_next_feed(struct rt_export_feeder *f)
+{
+  ASSERT_DIE(f);
+
+  struct rt_export_feed *feed = NULL;
+  if (f->domain.rtable)
+  {
+    LOCK_DOMAIN(rtable, f->domain);
+    feed = rt_export_get_next_feed(f, NULL);
+    UNLOCK_DOMAIN(rtable, f->domain);
+  }
+  else
+  {
+    RCU_ANCHOR(u);
+    feed = rt_export_get_next_feed(f, u);
+  }
+
+  if (feed)
+    return feed;
 
   /* Feeding done */
   while (f->feeding)
@@ -445,6 +481,7 @@ rt_feeder_subscribe(struct rt_exporter *e, struct rt_export_feeder *f)
   f->feed_index = 0;
 
   atomic_store_explicit(&f->exporter, e, memory_order_relaxed);
+  f->domain = e->domain;
 
   RTEX_FEEDERS_LOCK(e);
   rt_export_feeder_add_tail(&e->feeders, f);
@@ -452,10 +489,9 @@ rt_feeder_subscribe(struct rt_exporter *e, struct rt_export_feeder *f)
   rtex_trace(f, D_STATES, "Subscribed to exporter %s", e->name);
 }
 
-void
-rt_feeder_unsubscribe(struct rt_export_feeder *f)
+static void
+rt_feeder_do_unsubscribe(struct rt_export_feeder *f)
 {
-  RCU_ANCHOR(a);
   struct rt_exporter *e = atomic_exchange_explicit(&f->exporter, NULL, memory_order_acquire);
   if (e)
   {
@@ -466,6 +502,22 @@ rt_feeder_unsubscribe(struct rt_export_feeder *f)
   }
   else
     rtex_trace(f, D_STATES, "Already unsubscribed");
+}
+
+void
+rt_feeder_unsubscribe(struct rt_export_feeder *f)
+{
+  if (f->domain.rtable)
+  {
+    LOCK_DOMAIN(rtable, f->domain);
+    rt_feeder_do_unsubscribe(f);
+    UNLOCK_DOMAIN(rtable, f->domain);
+  }
+  else
+  {
+    RCU_ANCHOR(u);
+    rt_feeder_do_unsubscribe(f);
+  }
 }
 
 void

@@ -426,8 +426,6 @@ struct bgp_channel {
 struct bgp_ptx_private {
 #define BGP_PTX_PUBLIC \
   DOMAIN(rtable) lock;			/* Domain to be locked for prefix access */ \
-  struct bgp_prefix * _Atomic * _Atomic prefixes; \
-  u32 _Atomic prefixes_len;		/* Block size of prefixes array */ \
   struct rt_exporter exporter;		/* Table-like exporter for ptx */ \
   struct bgp_channel *c;		/* Backlink to the channel */ \
 
@@ -440,8 +438,7 @@ struct bgp_ptx_private {
   struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
   list bucket_queue;			/* Queue of buckets to send (struct bgp_bucket) */
 
-  /* Prefixes to be sent */
-  netindex_hash *netindex;		/* Netindex indexing the prefixes to be sent */
+  HASH(struct bgp_prefix) prefix_hash;	/* Hash table of pending prefices */
 
   slab *prefix_slab;			/* Slab holding prefix nodes */
   slab *bucket_slab;			/* Slab holding buckets to send */
@@ -458,12 +455,12 @@ LOBJ_UNLOCK_CLEANUP(bgp_ptx, rtable);
 
 struct bgp_prefix {
   node buck_node;			/* Node in per-bucket list */
-  struct bgp_prefix * _Atomic next;	/* Node in prefix block table */
+  struct bgp_prefix *next;		/* Node in prefix hash */
   struct bgp_bucket *last;		/* Last bucket sent with this prefix */
   struct bgp_bucket *cur;		/* Current bucket (cur == last) if no update is required */
   btime lastmod;			/* Last modification of this prefix */
   struct rte_src *src;			/* Path ID encoded as rte_src */
-  struct netindex *ni;
+  struct netindex *ni;			/* Shared with the table */
 };
 
 struct bgp_bucket {

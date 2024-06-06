@@ -121,6 +121,7 @@ struct rt_export_request {
 
     /* Enlisting */
     struct rt_exporter * _Atomic exporter;
+    DOMAIN(rtable) domain;			/* Lock this instead of RCU */
 
     /* Prefiltering, useful for more scenarios */
     struct rt_prefilter {
@@ -210,6 +211,7 @@ struct rt_exporter {
   _Bool _Atomic feeders_lock;			/* Spinlock for the above list */
   u8 trace_routes;				/* Debugging flags (D_*) */
   u8 net_type;					/* Which net this exporter provides */
+  DOMAIN(rtable) domain;			/* Lock this instead of RCU */
   u32 _Atomic max_feed_index;			/* Stop feeding at this index */
   const char *name;				/* Name for logging */
   netindex_hash *netindex;			/* Table for net <-> id conversion */
