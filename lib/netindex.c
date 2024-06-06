@@ -9,6 +9,9 @@
 #include "lib/birdlib.h"
 #include "lib/netindex_private.h"
 
+#define NETINDEX_INIT_BLOCK_SIZE	128
+struct netindex netindex_in_progress;
+
 #define NETINDEX_KEY(n)		(n)->hash, (n)->addr
 #define NETINDEX_NEXT(n)	(n)->next
 #define NETINDEX_EQ(h,n,i,o)	((h == i) && net_equal(n,o))
@@ -37,10 +40,13 @@ void
 netindex_hash_consistency_check(struct netindex_hash_private *nh)
 {
   uint count = 0;
+  struct netindex * _Atomic *block = atomic_load_explicit(&nh->block, memory_order_relaxed);
+  u32 block_size = atomic_load_explicit(&nh->block_size, memory_order_relaxed);
   HASH_WALK(nh->hash, next, i)
   {
     ASSERT_DIE(count < nh->hash.count);
-    ASSERT_DIE(nh->block[i->index] == i);
+    ASSERT_DIE(i->index < block_size);
+    ASSERT_DIE(atomic_load_explicit(&block[i->index], memory_order_relaxed) == i);
     count++;
   }
   HASH_WALK_END;
@@ -67,8 +73,10 @@ netindex_hash_new(pool *sp, event_list *cleanup_target, u8 type)
   nh->slab = net_addr_length[type] ? sl_new(nh->pool, sizeof (struct netindex) + net_addr_length[type]) : NULL;
 
   HASH_INIT(nh->hash, nh->pool, NETINDEX_ORDER);
-  nh->block_size = 128;
-  nh->block = mb_allocz(nh->pool, nh->block_size * sizeof (struct netindex *));
+  atomic_store_explicit(&nh->block_size, NETINDEX_INIT_BLOCK_SIZE, memory_order_release);
+  atomic_store_explicit(&nh->block,
+      mb_allocz(nh->pool, NETINDEX_INIT_BLOCK_SIZE * sizeof *nh->block),
+      memory_order_release);
 
   hmap_init(&nh->id_map, nh->pool, 128);
 
@@ -91,27 +99,61 @@ netindex_hash_cleanup(void *_nh)
 
   uint kept = 0;
 
-  for (uint i = 0; i < nh->block_size; i++)
+  uint bs = atomic_load_explicit(&nh->block_size, memory_order_relaxed);
+  struct netindex * _Atomic *block = atomic_load_explicit(&nh->block, memory_order_relaxed);
+
+  for (uint i = 0; i < bs; i++)
   {
-    struct netindex *ni = nh->block[i];
+    struct netindex *ni = atomic_load_explicit(&block[i], memory_order_acquire);
     if (!ni)
       continue;
 
+    /* We may use the acquired netindex pointer as we are
+     * the only process which deletes them */
     ASSERT_DIE(i == ni->index);
 
-    if (lfuc_finished(&ni->uc))
+    /* Check finished */
+    if (!lfuc_finished(&ni->uc))
     {
-      HASH_REMOVE2(nh->hash, NETINDEX, nh->pool, ni);
-      hmap_clear(&nh->id_map, ni->index);
-      nh->block[i] = NULL;
-
-      if (nh->slab)
-	sl_free(ni);
-      else
-	mb_free(ni);
-    }
-    else
       kept++;
+      continue;
+    }
+
+    /* Looks finished, try removing temporarily */
+    ASSERT_DIE(ni == atomic_exchange_explicit(&block[i], &netindex_in_progress, memory_order_acq_rel));
+
+    u32 block_epoch = nh->block_epoch;
+    UNLOCK_DOMAIN(attrs, dom);
+    synchronize_rcu();
+    LOCK_DOMAIN(attrs, dom);
+    if (block_epoch != nh->block_epoch)
+    {
+      /* Somebody reallocated the block inbetween, use the new one */
+      block = atomic_load_explicit(&nh->block, memory_order_relaxed);
+      bs = atomic_load_explicit(&nh->block_size, memory_order_relaxed);
+    }
+
+    /* Now no reader can possibly still have the old pointer,
+     * unless somebody found it inbetween and ref'd it. */
+    if (!lfuc_finished(&ni->uc))
+    {
+      /* Collision, return the netindex to the block. */
+      ASSERT_DIE(&netindex_in_progress == atomic_exchange_explicit(&block[i], ni, memory_order_acq_rel));
+      kept++;
+      continue;
+    }
+
+    /* Now the netindex is definitely obsolete, set block to NULL */
+    ASSERT_DIE(&netindex_in_progress == atomic_exchange_explicit(&block[i], NULL, memory_order_acq_rel));
+
+    /* And free it from other structures */
+    HASH_REMOVE2(nh->hash, NETINDEX, nh->pool, ni);
+    hmap_clear(&nh->id_map, ni->index);
+
+    if (nh->slab)
+      sl_free(ni);
+    else
+      mb_free(ni);
   }
 
   EXPENSIVE_CHECK(netindex_hash_consistency_check(nh));
@@ -179,12 +221,6 @@ net_find_index_fragile(struct netindex_hash_private *hp, const net_addr *n)
 }
 
 static struct netindex *
-net_find_index_locked(struct netindex_hash_private *hp, const net_addr *n)
-{
-  return net_lock_revive_unlock(hp, net_find_index_fragile(hp, n));
-}
-
-static struct netindex *
 net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n)
 {
   ASSERT_DIE(!hp->deleted_event);
@@ -203,20 +239,31 @@ net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n)
   net_copy(ni->addr, n);
 
   HASH_INSERT2(hp->hash, NETINDEX, hp->pool, ni);
-  while (hp->block_size <= i)
+
+  struct netindex * _Atomic *block = atomic_load_explicit(&hp->block, memory_order_relaxed);
+  u32 bs = atomic_load_explicit(&hp->block_size, memory_order_relaxed);
+  u32 nbs = bs;
+  while (nbs <= i)
+    nbs *= 2;
+
+  if (nbs > bs)
   {
-    u32 bs = hp->block_size;
-    struct netindex **nb = mb_alloc(hp->pool, bs * 2 * sizeof *nb);
-    memcpy(nb, hp->block, bs * sizeof *nb);
-    memset(&nb[bs], 0, bs * sizeof *nb);
+    struct netindex * _Atomic *nb = mb_alloc(hp->pool, bs * 2 * sizeof *nb);
+    memcpy(nb, block, bs * sizeof *nb);
+    memset(&nb[bs], 0, (nbs - bs) * sizeof *nb);
 
-    mb_free(hp->block);
-    hp->block = nb;
+    ASSERT_DIE(block == atomic_exchange_explicit(&hp->block, nb, memory_order_acq_rel));
+    ASSERT_DIE(bs == atomic_exchange_explicit(&hp->block_size, nbs, memory_order_acq_rel));
+    synchronize_rcu();
 
-    hp->block_size *= 2;
+    mb_free(block);
+    block = nb;
+
+    hp->block_epoch++;
   }
 
-  hp->block[i] = ni;
+  ASSERT_DIE(i < nbs);
+  atomic_store_explicit(&block[i], ni, memory_order_release);
 
   return net_lock_revive_unlock(hp, ni);
 }
@@ -242,23 +289,47 @@ struct netindex *
 net_find_index(netindex_hash *h, const net_addr *n)
 {
   NH_LOCK(h, hp);
-  return net_find_index_locked(hp, n);
+  struct netindex *ni = net_find_index_fragile(hp, n);
+  return (ni == &netindex_in_progress) ? NULL : net_lock_revive_unlock(hp, ni);
 }
 
 struct netindex *
 net_get_index(netindex_hash *h, const net_addr *n)
 {
-  NH_LOCK(h, hp);
-  return
-    net_find_index_locked(hp, n) ?:
-    net_new_index_locked(hp, n);
+  while (1)
+  {
+    NH_LOCK(h, hp);
+    struct netindex *ni = net_find_index_fragile(hp, n);
+    if (ni == &netindex_in_progress)
+      continue;
+
+    if (ni)
+      return net_lock_revive_unlock(hp, ni);
+    else
+      return net_new_index_locked(hp, n);
+  }
 }
 
 struct netindex *
 net_resolve_index(netindex_hash *h, u32 i)
 {
-  NH_LOCK(h, hp);
+  RCU_ANCHOR(u);
 
-  struct netindex *ni = hp->block[i];
-  return net_lock_revive_unlock(hp, ni);
+  struct netindex * _Atomic *block = atomic_load_explicit(&h->block, memory_order_relaxed);
+  u32 bs = atomic_load_explicit(&h->block_size, memory_order_relaxed);
+
+  if (i >= bs)
+    return NULL;
+
+  struct netindex *ni = atomic_load_explicit(&block[i], memory_order_acquire);
+  if (ni == NULL)
+    return NULL;
+
+  if (ni == &netindex_in_progress)
+    RCU_RETRY(u);
+
+  lfuc_lock_revive(&ni->uc);
+  net_unlock_index(h, ni);
+
+  return ni;
 }
