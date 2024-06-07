@@ -164,7 +164,7 @@ CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, AS)
 CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
 CF_KEYWORDS(CHECK, LINK)
-CF_KEYWORDS(CORK, SORTED, TRIE, MIN, MAX, ROA, ROUTE, REFRESH, SETTLE, TIME, GC, THRESHOLD, PERIOD)
+CF_KEYWORDS(CORK, SORTED, TRIE, MIN, MAX, ROA, DIGEST, ROUTE, REFRESH, SETTLE, TIME, GC, THRESHOLD, PERIOD)
 CF_KEYWORDS(MPLS_LABEL, MPLS_POLICY, MPLS_CLASS)
 
 /* For r_args_channel */
@@ -283,7 +283,7 @@ table_opt:
      this_table->cork_threshold.high = $4; }
  | EXPORT SETTLE TIME settle { this_table->export_settle = $4; }
  | ROUTE REFRESH EXPORT SETTLE TIME settle { this_table->export_rr_settle = $6; }
- | ROA SETTLE TIME settle { this_table->roa_settle = $4; }
+ | DIGEST SETTLE TIME settle { this_table->digest_settle = $4; }
  ;
 
 table_opts:

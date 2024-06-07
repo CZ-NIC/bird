@@ -109,6 +109,8 @@ enum btype {
   T_RD = 0xc4,		/* Route distinguisher for VPN addresses */
   T_PATH_MASK_ITEM = 0xc8,	/* Path mask item for path mask constructors */
   T_BYTESTRING = 0xcc,
+  T_ROA_AGGREGATED = 0xd0,	/* ASN and maxlen tuple list */
+
 
   T_SET = 0x80,
   T_PREFIX_SET = 0x84,

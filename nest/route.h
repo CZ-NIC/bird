@@ -70,8 +70,13 @@ struct rtable_config {
   struct settle_config export_settle;	/* Export announcement settler */
   struct settle_config export_rr_settle;/* Export announcement settler config valid when any
 					   route refresh is running */
-  struct settle_config roa_settle;	/* Settle times for ROA-induced reload */
-
+  struct settle_config digest_settle;	/* Settle times for digests */
+  struct rtable_config *roa_aux_table;	/* Auxiliary table config for ROA connections */
+  struct rt_stream_config {
+    struct rtable_config *src;
+    void (*setup)(union rtable *);
+    void (*stop)(union rtable *);
+  } master;				/* Data source (this table is aux) */
 };
 
 /*
@@ -408,9 +413,11 @@ struct rtable_private {
   struct tbf rl_pipe;			/* Rate limiting token buffer for pipe collisions */
 
   struct f_trie *flowspec_trie;		/* Trie for evaluation of flowspec notifications */
-  struct roa_digestor *roa_digest;	/* Digest of changed ROAs export */
   // struct mpls_domain *mpls_domain;	/* Label allocator for MPLS */
   u32 rte_free_deferred;		/* Counter of deferred rte_free calls */
+
+  struct rt_digestor *export_digest;	/* Route export journal for digest tries */
+  struct rt_stream *master;		/* Data source (this table is aux) */
 };
 
 /* The final union private-public rtable structure */
@@ -561,6 +568,13 @@ static inline u8 rt_import_get_state(struct rt_import_hook *ih) { return ih ? ih
 
 void rte_import(struct rt_import_request *req, const net_addr *net, rte *new, struct rte_src *src);
 
+/* When rtable is just a view / aggregate, this is the basis for its source */
+struct rt_stream {
+  struct rt_import_request dst;
+  rtable *dst_tab;
+};
+	
+
 #if 0
 /*
  * For table export processing
@@ -646,16 +660,16 @@ struct hostcache {
   event source_event;
 };
 
-struct roa_digestor {
+struct rt_digestor {
   struct rt_export_request req;		/* Notifier from the table */
-  struct lfjour	digest;			/* Digest journal of struct roa_digest */
+  struct lfjour	digest;			/* Digest journal of struct rt_digest */
   struct settle settle;			/* Settle timer before announcing digests */
   struct f_trie *trie;			/* Trie to be announced */
   rtable *tab;				/* Table this belongs to */
   event event;
 };
 
-struct roa_digest {
+struct rt_digest {
   LFJOUR_ITEM_INHERIT(li);
   struct f_trie *trie;			/* Trie marking all prefixes where ROA have changed */
 };
@@ -719,6 +733,7 @@ void rt_unlock_trie(struct rtable_private *tab, const struct f_trie *trie);
 void rt_flowspec_link(rtable *src, rtable *dst);
 void rt_flowspec_unlink(rtable *src, rtable *dst);
 rtable *rt_setup(pool *, struct rtable_config *);
+void rt_setup_digestor(struct rtable_private *tab);
 
 struct rt_export_feed *rt_net_feed(rtable *t, const net_addr *a, const struct rt_pending_export *first);
 rte rt_net_best(rtable *t, const net_addr *a);

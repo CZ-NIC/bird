@@ -426,6 +426,236 @@ net_route(struct rtable_reading *tr, const net_addr *n)
 #undef FVR_VPN
 }
 
+/*
+ * ROA aggregation subsystem
+ */
+
+struct rt_roa_aggregator {
+  struct rt_stream stream;
+  struct rt_export_request src;
+  event event;
+};
+
+static void
+rt_dump_roa_aggregator_dst_req(struct rt_import_request *req)
+{
+  debug("  ROA aggregator import request req=%p", req);
+}
+
+static void
+rt_dump_roa_aggregator_src_req(struct rt_export_request *req)
+{
+  debug("  ROA aggregator export request req=%p", req);
+}
+
+static void
+rt_roa_aggregator_state_change(struct rt_import_request *req, u8 state)
+{
+  if (req->trace_routes & D_STATES)
+    log("%s: import state changed to %s",
+	req->name, rt_import_state_name(state));
+}
+
+struct rt_roa_aggregated_adata {
+  adata ad;
+  u32 padding;
+  struct { u32 asn, max_pxlen; } u[0];
+};
+
+#define ROA_AGGR_COUNT(rad)   (((typeof (&(rad)->u[0])) (rad->ad.data + rad->ad.length)) - &(rad)->u[0])
+
+static void
+ea_roa_aggregate_format(const eattr *a, byte *buf, uint size)
+{
+  SKIP_BACK_DECLARE(struct rt_roa_aggregated_adata, rad, ad, a->u.ptr);
+  uint cnt = ROA_AGGR_COUNT(rad);
+  for (uint upos = 0; upos < cnt; upos++)
+  {
+    int x = bsnprintf(buf, size, "as %u max %u, ", rad->u[upos].asn, rad->u[upos].max_pxlen);
+    size -= x;
+    buf += x;
+    if (size < 30)
+    {
+      bsnprintf(buf, size, " ... ");
+      return;
+    }
+  }
+
+  buf[-2] = 0;
+}
+
+static struct ea_class ea_roa_aggregated = {
+  .name = "roa_aggregated",
+  .type = T_ROA_AGGREGATED,
+  .format = ea_roa_aggregate_format,
+};
+
+
+static void
+rt_aggregate_roa(void *_rag)
+{
+  struct rt_roa_aggregator *rag = _rag;
+
+  RT_EXPORT_WALK(&rag->src, u)
+  {
+    const net_addr *nroa = NULL;
+    struct rte_src *src = NULL;
+    switch (u->kind)
+    {
+      case RT_EXPORT_STOP:
+	bug("Main table export stopped");
+	break;
+
+      case RT_EXPORT_FEED:
+	nroa = u->feed->ni->addr;
+	src = (u->feed->count_routes > 0) ? u->feed->block[0].src : NULL;
+	break;
+
+      case RT_EXPORT_UPDATE:
+	nroa = u->update->new ? u->update->new->net : u->update->old->net;
+	src = u->update->new ? u->update->new->src : NULL;
+	break;
+    }
+
+    net_addr_union nip;
+    net_copy(&nip.n, nroa);
+
+    uint asn, max_pxlen;
+
+    switch (nip.n.type)
+    {
+      case NET_ROA6: nip.n.type = NET_IP6;
+		     nip.n.length = net_addr_length[NET_IP6];
+		     asn = nip.roa6.asn;
+		     max_pxlen = nip.roa6.max_pxlen;
+		     break;
+      case NET_ROA4: nip.n.type = NET_IP4;
+		     nip.n.length = net_addr_length[NET_IP4];
+		     asn = nip.roa4.asn;
+		     max_pxlen = nip.roa4.max_pxlen;
+		     break;
+      default: bug("exported garbage from ROA table");
+    }
+
+    rte prev = rt_net_best(rag->stream.dst_tab, &nip.n);
+
+    struct rt_roa_aggregated_adata *rad_new;
+    uint count;
+
+    if (prev.attrs)
+    {
+      eattr *ea = ea_find(prev.attrs, &ea_roa_aggregated);
+      SKIP_BACK_DECLARE(struct rt_roa_aggregated_adata, rad, ad, ea->u.ptr);
+
+      count = ROA_AGGR_COUNT(rad);
+      rad_new = alloca(sizeof *rad_new + (count + 1) * sizeof rad_new->u[0]);
+
+      /* Insertion into a sorted list */
+      uint p = 0;
+      for (p = 0; p < count; p++)
+	if ((rad->u[p].asn < asn) || (rad->u[p].asn == asn) && (rad->u[p].max_pxlen < max_pxlen))
+	  rad_new->u[p] = rad->u[p];
+	else
+	  break;
+
+      if ((rad->u[p].asn == asn) && (rad->u[p].max_pxlen))
+	/* Found */
+	if (src)
+	  continue;
+	else
+	  memcpy(&rad_new->u[p], &rad->u[p+1], (--count - p) * sizeof rad->u[p]);
+      else
+	/* Not found */
+	if (src)
+	{
+	  rad_new->u[p].asn = asn;
+	  rad_new->u[p].max_pxlen = max_pxlen;
+	  memcpy(&rad_new->u[p+1], &rad->u[p], (count++ - p) * sizeof rad->u[p]);
+	}
+	else
+	  continue;
+    }
+    else if (src)
+    {
+      count = 1;
+      rad_new = alloca(sizeof *rad_new + sizeof rad_new->u[0]);
+      rad_new->u[0].asn = asn;
+      rad_new->u[0].max_pxlen = max_pxlen;
+    }
+    else
+      continue;
+
+    rad_new->ad.length = (byte *) &rad_new->u[count] - rad_new->ad.data;
+
+    rte r = {
+      .src = src ?: prev.src,
+    };
+
+    ea_set_attr(&r.attrs, EA_LITERAL_DIRECT_ADATA(&ea_roa_aggregated, 0, &rad_new->ad));
+
+    rte_import(&rag->stream.dst, &nip.n, &r, prev.src ?: src);
+
+    MAYBE_DEFER_TASK(rag->src.r.target, rag->src.r.event,
+	"export to %s", rag->src.name);
+  }
+}
+
+static void
+rt_setup_roa_aggregator(rtable *t)
+{
+  rtable *src = t->config->master.src->table;
+  struct rt_roa_aggregator *rag;
+  {
+    RT_LOCK(t, tab);
+    char *ragname = mb_sprintf(tab->rp, "%s.roa-aggregator", src->name);
+    rag = mb_alloc(tab->rp, sizeof *rag);
+    *rag = (struct rt_roa_aggregator) {
+      .stream = {
+	.dst = {
+	  .name = ragname,
+	  .trace_routes = tab->debug,
+	  .loop = t->loop,
+	  .dump_req = rt_dump_roa_aggregator_dst_req,
+	  .log_state_change = rt_roa_aggregator_state_change,
+	},
+	.dst_tab = t,
+      },
+      .src = {
+	.name = ragname,
+	.r = {
+	  .target = birdloop_event_list(t->loop),
+	  .event = &rag->event,
+	},
+	.pool = birdloop_pool(t->loop),
+	.dump = rt_dump_roa_aggregator_src_req,
+	.trace_routes = tab->debug,
+      },
+      .event = {
+	.hook = rt_aggregate_roa,
+	.data = rag,
+      },
+    };
+
+    tab->master = &rag->stream;
+  }
+
+  rt_request_import(t, &rag->stream.dst);
+  rt_export_subscribe(src, best, &rag->src);
+}
+
+static void
+rt_stop_roa_aggregator(rtable *t)
+{
+  struct rt_roa_aggregator *rag;
+  RT_LOCKED(t, tab)
+    rag = SKIP_BACK(struct rt_roa_aggregator, stream, tab->master);
+
+  /* Stopping both import and export.
+   * All memory will be freed with table shutdown,
+   * no need to do anything from import done callback */
+  rt_stop_import(&rag->stream.dst, NULL);
+  rt_export_unsubscribe(best, &rag->src);
+}
 
 /**
  * roa_check - check validity of route origination in a ROA table
@@ -1372,7 +1602,7 @@ rt_import_cleared(void *_ih)
   }
 
   /* And call the callback */
-  stopped(req);
+  CALL(stopped, req);
 }
 
 static void
@@ -2722,29 +2952,29 @@ rt_flowspec_reset_trie(struct rtable_private *tab)
 /* ROA digestor */
 
 static void
-rt_dump_roa_digestor_req(struct rt_export_request *req)
+rt_dump_digestor_req(struct rt_export_request *req)
 {
   debug("  ROA update digestor %s (%p)\n", req->name, req);
 }
 
 static void
-rt_cleanup_roa_digest(struct lfjour *j UNUSED, struct lfjour_item *i)
+rt_cleanup_digest(struct lfjour *j UNUSED, struct lfjour_item *i)
 {
-  SKIP_BACK_DECLARE(struct roa_digest, d, li, i);
+  SKIP_BACK_DECLARE(struct rt_digest, d, li, i);
   rfree(d->trie->lp);
 }
 
 static void
-rt_roa_announce_digest(struct settle *s)
+rt_announce_digest(struct settle *s)
 {
-  SKIP_BACK_DECLARE(struct roa_digestor, d, settle, s);
+  SKIP_BACK_DECLARE(struct rt_digestor, d, settle, s);
 
   RT_LOCK(d->tab, tab);
 
   struct lfjour_item *it = lfjour_push_prepare(&d->digest);
   if (it)
   {
-    SKIP_BACK_DECLARE(struct roa_digest, dd, li, it);
+    SKIP_BACK_DECLARE(struct rt_digest, dd, li, it);
     dd->trie = d->trie;
     lfjour_push_commit(&d->digest);
   }
@@ -2755,16 +2985,16 @@ rt_roa_announce_digest(struct settle *s)
 }
 
 static void
-rt_roa_update_net(struct roa_digestor *d, struct netindex *ni, uint maxlen)
+rt_digest_update_net(struct rt_digestor *d, struct netindex *ni, uint maxlen)
 {
   trie_add_prefix(d->trie, ni->addr, net_pxlen(ni->addr), maxlen);
   settle_kick(&d->settle, d->tab->loop);
 }
 
 static void
-rt_roa_update(void *_d)
+rt_digest_update(void *_d)
 {
-  struct roa_digestor *d = _d;
+  struct rt_digestor *d = _d;
   RT_LOCK(d->tab, tab);
 
   RT_EXPORT_WALK(&d->req, u)
@@ -2781,14 +3011,12 @@ rt_roa_update(void *_d)
 	break;
 
       case RT_EXPORT_UPDATE:
-	/* Only switched ROA from one source to another? No change indicated. */
-	if (!u->update->new || !u->update->old)
-	  ni = NET_TO_INDEX(u->update->new ? u->update->new->net : u->update->old->net);
+	ni = NET_TO_INDEX(u->update->new ? u->update->new->net : u->update->old->net);
 	break;
     }
 
     if (ni)
-      rt_roa_update_net(d, ni, (tab->addr_type == NET_ROA6) ? 128 : 32);
+      rt_digest_update_net(d, ni, net_max_prefix_length[tab->addr_type]);
 
     MAYBE_DEFER_TASK(birdloop_event_list(tab->loop), &d->event,
 	"ROA digestor update in %s", tab->name);
@@ -2953,44 +3181,6 @@ rt_setup(pool *pp, struct rtable_config *cf)
   RT_EXPORT_WALK(&t->best_req, u)
     ASSERT_DIE(u->kind == RT_EXPORT_FEED);
 
-  /* Prepare the ROA digestor */
-  if ((t->addr_type == NET_ROA6) || (t->addr_type == NET_ROA4))
-  {
-    struct roa_digestor *d = mb_alloc(p, sizeof *d);
-    *d = (struct roa_digestor) {
-      .tab = RT_PUB(t),
-      .req = {
-	.name = mb_sprintf(p, "%s.roa-digestor", t->name),
-	.r = {
-	  .target = birdloop_event_list(t->loop),
-	  .event = &d->event,
-	},
-	.pool = p,
-	.trace_routes = t->debug,
-	.dump = rt_dump_roa_digestor_req,
-      },
-      .digest = {
-	.loop = t->loop,
-	.domain = t->lock.rtable,
-	.item_size = sizeof(struct roa_digest),
-	.item_done = rt_cleanup_roa_digest,
-      },
-      .settle = SETTLE_INIT(&cf->roa_settle, rt_roa_announce_digest, NULL),
-      .event = {
-	.hook = rt_roa_update,
-	.data = d,
-      },
-      .trie = f_new_trie(lp_new(t->rp), 0),
-    };
-
-    struct settle_config digest_settle_config = {};
-
-    rtex_export_subscribe(&t->export_best, &d->req);
-    lfjour_init(&d->digest, &digest_settle_config);
-
-    t->roa_digest = d;
-  }
-
   t->cork_threshold = cf->cork_threshold;
 
   t->rl_pipe = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
@@ -3003,10 +3193,54 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
   UNLOCK_DOMAIN(rtable, dom);
 
+  CALL(cf->master.setup, RT_PUB(t));
+
   birdloop_leave(t->loop);
 
   return RT_PUB(t);
 }
+
+void
+rt_setup_digestor(struct rtable_private *t)
+{
+  if (t->export_digest)
+    return;
+
+  struct rt_digestor *d = mb_alloc(t->rp, sizeof *d);
+  *d = (struct rt_digestor) {
+    .tab = RT_PUB(t),
+    .req = {
+    .name = mb_sprintf(t->rp, "%s.rt-digestor", t->name),
+      .r = {
+	.target = birdloop_event_list(t->loop),
+	.event = &d->event,
+      },
+      .pool = t->rp,
+      .trace_routes = t->debug,
+      .dump = rt_dump_digestor_req,
+    },
+    .digest = {
+      .loop = t->loop,
+      .domain = t->lock.rtable,
+      .item_size = sizeof(struct rt_digest),
+      .item_done = rt_cleanup_digest,
+    },
+    .settle = SETTLE_INIT(&t->config->digest_settle, rt_announce_digest, NULL),
+    .event = {
+      .hook = rt_digest_update,
+      .data = d,
+    },
+    .trie = f_new_trie(lp_new(t->rp), 0),
+  };
+
+  struct settle_config digest_settle_config = {};
+
+  rtex_export_subscribe(&t->export_best, &d->req);
+  lfjour_init(&d->digest, &digest_settle_config);
+
+  t->export_digest = d;
+}
+
 
 /**
  * rt_init - initialize routing tables
@@ -3027,6 +3261,8 @@ rt_init(void)
 
   for (uint i=1; i<NET_MAX; i++)
     rt_global_netindex_hash[i] = netindex_hash_new(rt_table_pool, &global_event_list, i);
+
+  ea_register_init(&ea_roa_aggregated);
 }
 
 static _Bool
@@ -3340,8 +3576,25 @@ rt_postconfig(struct config *c)
 
   struct rtable_config *rc;
   WALK_LIST(rc, c->tables)
+  {
     if (rc->gc_period == (uint) -1)
       rc->gc_period = (uint) def_gc_period;
+
+    if (rc->roa_aux_table)
+    {
+      rc->trie_used = 0; /* Never use trie on base ROA table */
+#define COPY(x)	rc->roa_aux_table->x = rc->x;
+      MACRO_FOREACH(COPY,
+	  digest_settle,
+	  export_settle,
+	  export_rr_settle,
+	  cork_threshold,
+	  gc_threshold,
+	  gc_period,
+	  debug);
+#undef COPY
+    }
+  }
 
   for (uint net_type = 0; net_type < NET_MAX; net_type++)
     if (c->def_tables[net_type] && !c->def_tables[net_type]->table)
@@ -4016,6 +4269,19 @@ rt_get_default_table(struct config *cf, uint addr_type)
 }
 
 struct rtable_config *
+rt_new_aux_table(struct rtable_config *c, uint addr_type)
+{
+  uint sza = strlen(c->name), szb = strlen("!aux");
+  char *auxname = alloca(sza + szb + 2);
+  memcpy(auxname, c->name, sza);
+  memcpy(auxname + sza, "!aux", szb);
+  auxname[sza+szb] = 0;
+
+  struct symbol *saux = cf_get_symbol(new_config, auxname);
+  return rt_new_table(saux, addr_type);
+}
+
+struct rtable_config *
 rt_new_table(struct symbol *s, uint addr_type)
 {
   if (s->table)
@@ -4042,7 +4308,7 @@ rt_new_table(struct symbol *s, uint addr_type)
     .min = 100 MS,
     .max = 3 S,
   };
-  c->roa_settle = (struct settle_config) {
+  c->digest_settle = (struct settle_config) {
     .min = 1 S,
     .max = 20 S,
   };
@@ -4053,6 +4319,29 @@ rt_new_table(struct symbol *s, uint addr_type)
   /* First table of each type is kept as default */
   if (! new_config->def_tables[addr_type])
     new_config->def_tables[addr_type] = s;
+
+  /* Custom options per addr_type */
+  switch (addr_type) {
+    case NET_ROA4:
+      c->roa_aux_table = rt_new_aux_table(c, NET_IP4);
+      c->roa_aux_table->trie_used = 1;
+      c->roa_aux_table->master = (struct rt_stream_config) {
+	.src = c,
+	.setup = rt_setup_roa_aggregator,
+	.stop = rt_stop_roa_aggregator,
+      };
+      break;
+
+    case NET_ROA6:
+      c->roa_aux_table = rt_new_aux_table(c, NET_IP6);
+      c->roa_aux_table->trie_used = 1;
+      c->roa_aux_table->master = (struct rt_stream_config) {
+	.src = c,
+	.setup = rt_setup_roa_aggregator,
+	.stop = rt_stop_roa_aggregator,
+      };
+      break;
+  }
 
   return c;
 }
@@ -4095,12 +4384,12 @@ rt_shutdown(void *tab_)
   rtable *t = tab_;
   RT_LOCK(t, tab);
 
-  if (tab->roa_digest)
+  if (tab->export_digest)
   {
-    rtex_export_unsubscribe(&tab->roa_digest->req);
-    ASSERT_DIE(EMPTY_TLIST(lfjour_recipient, &tab->roa_digest->digest.recipients));
-    ev_postpone(&tab->roa_digest->event);
-    settle_cancel(&tab->roa_digest->settle);
+    rtex_export_unsubscribe(&tab->export_digest->req);
+    ASSERT_DIE(EMPTY_TLIST(lfjour_recipient, &tab->export_digest->digest.recipients));
+    ev_postpone(&tab->export_digest->event);
+    settle_cancel(&tab->export_digest->settle);
   }
 
   rtex_export_unsubscribe(&tab->best_req);
@@ -4176,6 +4465,9 @@ rt_reconfigure(struct rtable_private *tab, struct rtable_config *new, struct rta
       (new->trie_used != old->trie_used))
     return 0;
 
+  ASSERT_DIE(new->master.setup == old->master.setup);
+  ASSERT_DIE(new->master.stop == old->master.stop);
+
   DBG("\t%s: same\n", new->name);
   new->table = RT_PUB(tab);
   tab->name = new->name;
@@ -4197,10 +4489,10 @@ rt_reconfigure(struct rtable_private *tab, struct rtable_config *new, struct rta
   if (new->cork_threshold.low != old->cork_threshold.low)
     rt_check_cork_low(tab);
 
-  if (tab->roa_digest && (
-	(new->roa_settle.min != tab->roa_digest->settle.cf.min)
-    ||  (new->roa_settle.max != tab->roa_digest->settle.cf.max)))
-    tab->roa_digest->settle.cf = new->roa_settle;
+  if (tab->export_digest && (
+	(new->digest_settle.min != tab->export_digest->settle.cf.min)
+    ||  (new->digest_settle.max != tab->export_digest->settle.cf.max)))
+    tab->export_digest->settle.cf = new->digest_settle;
 
   return 1;
 }
@@ -4230,6 +4522,7 @@ rt_commit(struct config *new, struct config *old)
   struct rtable_config *o, *r;
 
   DBG("rt_commit:\n");
+
   if (old)
     {
       WALK_LIST(o, old->tables)
@@ -4264,6 +4557,8 @@ rt_commit(struct config *new, struct config *old)
 
 	  rt_unlock_table(tab);
 	}
+
+	CALL(o->table->config->master.stop, o->table);
 	birdloop_leave(o->table->loop);
       }
     }

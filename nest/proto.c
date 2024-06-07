@@ -419,7 +419,7 @@ channel_roa_changed(void *_s)
   if (!lfjour_get(&s->digest_recipient))
     return;
 
-  SKIP_BACK_DECLARE(struct roa_digest, rd, li, s->digest_recipient.cur);
+  SKIP_BACK_DECLARE(struct rt_digest, rd, li, s->digest_recipient.cur);
   s->rfr = (struct rt_feeding_request) {
     .prefilter = {
       .mode = TE_ADDR_TRIE,
@@ -455,11 +455,12 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
   if (channel_roa_is_subscribed(c, tab, dir))
     return;
 
-  struct roa_subscription *s = mb_allocz(c->proto->pool, sizeof(struct roa_subscription));
+  rtable *aux = tab->config->roa_aux_table->table;
 
+  struct roa_subscription *s = mb_allocz(c->proto->pool, sizeof(struct roa_subscription));
   *s = (struct roa_subscription) {
     .c = c,
-    .tab = tab,
+    .tab = aux,
     .refeed_hook = channel_roa_reload_hook(dir),
     .digest_recipient = {
       .target = proto_work_list(c->proto),
@@ -472,9 +473,11 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
   };
 
   add_tail(&c->roa_subscriptions, &s->roa_node);
-  RT_LOCK(tab, t);
+
+  RT_LOCK(aux, t);
   rt_lock_table(t);
-  lfjour_register(&t->roa_digest->digest, &s->digest_recipient);
+  rt_setup_digestor(t);
+  lfjour_register(&t->export_digest->digest, &s->digest_recipient);
 }
 
 static void

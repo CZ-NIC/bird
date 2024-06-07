@@ -633,6 +633,7 @@ mem_hash_mix_f_val(u64 *h, struct f_val *v)
     case T_ECLIST:
     case T_LCLIST:
     case T_BYTESTRING:
+    case T_ROA_AGGREGATED:
       mem_hash_mix(h, IT(ad)->data, IT(ad)->length);
       break;
     case T_SET:

@@ -801,6 +801,12 @@ to set options.
 	this feature, set this to the same values as <ref id="rtable-export-settle-time" name="export settle time">.
 	Default values: <cf/100 ms 3 s/.
 
+	<tag><label id="rtable-digest-settle-time">digest settle time <m/time/ <m/time/</tag>
+	Minimum and maximum settle times, respectively, for table change digests.
+	This settle time applies to ROA table changes where a trie is generated
+	containing all changed ROAs to automatically reload depending channels.
+	Default values: <cf/1 s 20 s/.
+
 	<tag><label id="rtable-debug">debug all|off|{ states|routes|events [, <m/.../] }</tag>
 	Set table debugging options. Each table can write some trace messages
 	into log with category <cf/trace/. You can request <cf/all/ trace messages
@@ -1065,16 +1071,6 @@ inherited from templates can be updated by new definitions.
 	<ref id="bgp-import-table" name="import table"> or
 	<ref id="bgp-export-table" name="export table"> (for respective
 	direction). Default: on.
-
-	<tag><label id="rtable-min-settle-time">roa settle time <m/time/ <m/time/</tag>
-	Minimum and maximum settle times, respectively, for ROA table changes.
-        The automatic reload is triggered after the minimum time after the last
-        ROA table change has been received but not later than the maximum time after
-        first unprocessed ROA table change. Therefore with default values, the
-        automatic reload happens 1 second after the ROA table stops updating, yet if it
-	were to be later than 20 seconds after the ROA table starts updating,
-	the automatic reload is triggered anyway. Default values: <cf/1 s 20 s/.
-	You have to always provide both values.
 
 	<tag><label id="proto-import-limit">import limit [<m/number/ | off ] [action warn | block | restart | disable]</tag>
 	Specify an import route limit (a maximum number of routes imported from
