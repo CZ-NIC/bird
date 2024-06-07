@@ -11,6 +11,9 @@
 #include "test/birdtest.h"
 
 #include "lib/hash.h"
+#include "lib/event.h"
+
+#include <pthread.h>
 
 struct test_node {
   struct test_node *next;	/* Hash chain */
@@ -285,43 +288,119 @@ t_walk_filter(void)
   return 1;
 }
 
-static int
-t_walk_iter(void)
+
+/*
+ * Spinlocked hashes
+ */
+
+struct st_node {
+  struct st_node *next;	/* Hash chain */
+  u32 key;
+};
+
+#define ST_KEY(n)		n->key
+#define ST_NEXT(n)		n->next
+#define ST_EQ(n1,n2)		n1 == n2
+#define ST_FN(n)		(n) ^ u32_hash((n))
+#define ST_ORDER		4
+
+#define ST_PARAMS		*1, *8, 3, 2, 3, 9
+
+#define ST_MAX			16384
+#define ST_READERS		1
+
+static uint const st_skip[] = { 3, 7, 13, 17, 23, 37 };
+
+typedef SPINHASH(struct st_node) shtest;
+
+static _Atomic uint st_end = 0;
+static _Atomic uint st_skip_pos = 0;
+
+static void *
+st_rehash_thread(void *_v)
 {
-  init_hash();
-  fill_hash();
+  shtest *v = _v;
+  int step;
 
-  u32 hit = 0;
-
-  u32 prev_hash = ~0;
-  for (uint cnt = 0; cnt < MAX_NUM; )
+  the_bird_lock();
+  while (!atomic_load_explicit(&st_end, memory_order_relaxed))
   {
-    u32 last_hash = ~0;
-//    printf("PUT!\n");
-    HASH_WALK_ITER(hash, TEST, n, hit)
-    {
-      cnt++;
-      u32 cur_hash = HASH_FN(hash, TEST, n->key);
-      /*
-      printf("C%08x L%08x P%08x K%08x H%08x N%p S%d I%ld\n",
-	  cur_hash, last_hash, prev_hash, n->key, hit, n, _shift, n - &nodes[0]);
-	  */
+    birdloop_yield();
+    SPINHASH_REHASH_PREPARE(v, ST, struct st_node, step);
 
-      if (last_hash == ~0U)
-      {
-	if (prev_hash != ~0U)
-	  bt_assert(prev_hash < cur_hash);
-	last_hash = prev_hash = cur_hash;
-      }
-      else
-	bt_assert(last_hash == cur_hash);
+    if (!step)		continue;
+    if (step < 0)	SPINHASH_REHASH_DOWN(v, ST, struct st_node, -step);
+    if (step > 0)	SPINHASH_REHASH_UP  (v, ST, struct st_node,  step);
 
-      if (cnt < MAX_NUM)
-	HASH_WALK_ITER_PUT;
-    }
-    HASH_WALK_ITER_END;
+    SPINHASH_REHASH_FINISH(v, ST);
+  }
+  the_bird_unlock();
+
+  return NULL;
+}
+
+static void *
+st_find_thread(void *_v)
+{
+  shtest *v = _v;
+
+  uint skip = st_skip[atomic_fetch_add_explicit(&st_skip_pos, 1, memory_order_acq_rel)];
+
+  for (u64 i = 0; !atomic_load_explicit(&st_end, memory_order_relaxed); i += skip)
+  {
+    struct st_node *n = SPINHASH_FIND(*v, ST, i % ST_MAX);
+    ASSERT_DIE(!n || (n->key == i % ST_MAX));
   }
 
+  return NULL;
+}
+
+static void *
+st_update_thread(void *_v)
+{
+  shtest *v = _v;
+
+  struct st_node block[ST_MAX];
+  for (uint i = 0; i < ST_MAX; i++)
+    block[i] = (struct st_node) { .key = i, };
+
+  for (uint r = 0; r < 32; r++)
+  {
+    for (uint i = 0; i < ST_MAX; i++)
+      SPINHASH_INSERT(*v, ST, (&block[i]));
+
+    for (uint i = 0; i < ST_MAX; i++)
+      SPINHASH_REMOVE(*v, ST, (&block[i]));
+  }
+
+  atomic_store_explicit(&st_end, 1, memory_order_release);
+
+  return NULL;
+}
+
+int
+t_spinhash_basic(void)
+{
+  pthread_t reader[6], updater, rehasher;
+
+  shtest v = {};
+  void *ST_REHASH = NULL;
+  SPINHASH_INIT(v, ST, rp_new(&root_pool, the_bird_domain.the_bird, "Test pool"), NULL);
+  the_bird_unlock();
+
+  for (int i=0; i<ST_READERS; i++)
+    pthread_create(&reader[i], NULL, st_find_thread, &v);
+
+  pthread_create(&rehasher, NULL, st_rehash_thread, &v);
+  pthread_create(&updater, NULL, st_update_thread, &v);
+
+  pthread_join(updater, NULL);
+  pthread_join(rehasher, NULL);
+
+  for (int i=0; i<ST_READERS; i++)
+    pthread_join(reader[i], NULL);
+
+  the_bird_lock();
   return 1;
 }
 
@@ -339,7 +418,8 @@ main(int argc, char *argv[])
   bt_test_suite(t_walk_delsafe_remove, 	"HASH_WALK_DELSAFE and HASH_REMOVE");
   bt_test_suite(t_walk_delsafe_remove2,	"HASH_WALK_DELSAFE and HASH_REMOVE2. HASH_REMOVE2 is HASH_REMOVE and smart auto-resize function");
   bt_test_suite(t_walk_filter,		"HASH_WALK_FILTER");
-  bt_test_suite(t_walk_iter,		"HASH_WALK_ITER");
+
+  bt_test_suite(t_spinhash_basic,	"SPINHASH insert, remove, find and rehash");
 
   return bt_exit_value();
 }
