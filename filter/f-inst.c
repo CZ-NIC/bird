@@ -907,9 +907,6 @@
     {
       struct eattr *a;
 
-      if (da->type >= EAF_TYPE__MAX)
-	bug("Unsupported attribute type");
-
       switch (da->type) {
       case T_IFACE:
       case T_OPAQUE:

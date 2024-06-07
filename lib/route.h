@@ -380,6 +380,9 @@ void ea_list_copy(ea_list *dest, ea_list *src, uint size);
 static inline eattr *
 ea_set_attr(ea_list **to, eattr a)
 {
+  if (!a.id)
+    bug("You have forgotten to register your EA class");
+
   EA_LOCAL_LIST(1) *ea = tmp_alloc(sizeof(*ea));
   *ea = (typeof(*ea)) {
     .l.flags = EALF_SORTED,
