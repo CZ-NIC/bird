@@ -46,7 +46,14 @@ struct config {
   const char *hostname;			/* Hostname */
 
   int cli_debug;			/* Tracing of CLI connections and commands */
-  int latency_debug;			/* I/O loop tracks duration of each event */
+  enum latency_debug_flags {
+    DL_PING = 1,
+    DL_WAKEUP = 2,
+    DL_SCHEDULING = 4,
+    DL_SOCKETS = 0x10,
+    DL_EVENTS = 0x20,
+    DL_TIMERS = 0x40,
+  } latency_debug;			/* I/O loops log information about task scheduling */
   u32 latency_limit;			/* Events with longer duration are logged (us) */
   u32 watchdog_warning;			/* I/O loop watchdog limit for warning (us) */
   u32 watchdog_timeout;			/* Watchdog timeout (in seconds, 0 = disabled) */

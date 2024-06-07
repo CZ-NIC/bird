@@ -19,9 +19,10 @@ CF_DECLS
 
 CF_KEYWORDS(LOG, SYSLOG, ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG, STDERR, SOFT, UDP, PORT)
 CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, STATUS)
+CF_KEYWORDS(PING, WAKEUP, SOCKETS, SCHEDULING, EVENTS, TIMERS)
 CF_KEYWORDS(GRACEFUL, RESTART, FIXED)
 
-%type <i> log_mask log_mask_list log_cat cfg_timeout
+%type <i> log_mask log_mask_list log_cat cfg_timeout debug_unix latency_debug_mask latency_debug_flag latency_debug_list
 %type <t> cfg_name
 %type <tf> timeformat_which
 %type <t> syslog_name
@@ -131,10 +132,27 @@ conf: THREADS expr {
 conf: debug_unix ;
 
 debug_unix:
-   DEBUG LATENCY bool { new_config->latency_debug = $3; }
+   DEBUG LATENCY latency_debug_mask { new_config->latency_debug = $3; }
  | DEBUG LATENCY LIMIT expr_us { new_config->latency_limit = $4; }
  | WATCHDOG WARNING expr_us { new_config->watchdog_warning = $3; }
  | WATCHDOG TIMEOUT expr_us { new_config->watchdog_timeout = ($3 + 999999) TO_S; }
+ ;
+
+latency_debug_mask:
+   ALL { $$ = ~0; }
+ | OFF { $$ = 0; }
+ | '{' latency_debug_list '}' { $$ = $2; }
+ ;
+
+latency_debug_list: latency_debug_flag | latency_debug_list ',' latency_debug_flag { $$ = $1 | $3; };
+
+latency_debug_flag:
+   PING		{ $$ = DL_PING; }
+ | WAKEUP	{ $$ = DL_WAKEUP; }
+ | SOCKETS	{ $$ = DL_SOCKETS; }
+ | SCHEDULING	{ $$ = DL_SCHEDULING; }
+ | EVENTS	{ $$ = DL_EVENTS; }
+ | TIMERS	{ $$ = DL_TIMERS; }
  ;
 
 

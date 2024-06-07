@@ -24,7 +24,7 @@ _Bool task_still_in_limit(void);
 
 #define MAYBE_DEFER_TASK(target, event, fmt, args...) do { \
   if (!task_still_in_limit()) { \
-    if (config && config->latency_debug) \
+    if (config && (config->latency_debug & DL_SCHEDULING)) \
       log(L_TRACE "Deferring " fmt, ##args); \
     return ev_send(target, event); \
   } } while (0)

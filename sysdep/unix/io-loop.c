@@ -149,8 +149,8 @@ static _Thread_local uint birdloop_wakeup_masked_count;
 
 #define LOOP_NAME(loop)			domain_name((loop)->time.domain)
 
-#define LOOP_TRACE(loop, fmt, args...)	do { if (config && config->latency_debug) log(L_TRACE "%s (%p): " fmt, LOOP_NAME(loop), (loop), ##args); } while (0)
-#define THREAD_TRACE(...)		do { if (config && config->latency_debug) log(L_TRACE "Thread: " __VA_ARGS__); } while (0)
+#define LOOP_TRACE(loop, flags, fmt, args...)	do { if (config && (config->latency_debug & (flags))) log(L_TRACE "%s (%p): " fmt, LOOP_NAME(loop), (loop), ##args); } while (0)
+#define THREAD_TRACE(flags, ...)		do { if (config && (config->latency_debug & (flags))) log(L_TRACE "Thread: " __VA_ARGS__); } while (0)
 
 #define LOOP_WARN(loop, fmt, args...)	log(L_WARN "%s (%p): " fmt, LOOP_NAME(loop), (loop), ##args)
 
@@ -304,14 +304,14 @@ birdloop_try_ping(struct birdloop *loop, u32 ltt)
   /* Somebody else is already pinging, be idempotent */
   if (ltt & LTT_PING)
   {
-    LOOP_TRACE(loop, "already being pinged");
+    LOOP_TRACE(loop, DL_PING, "already being pinged");
     return 0;
   }
 
   /* Thread moving is an implicit ping */
   if (ltt & LTT_MOVE)
   {
-    LOOP_TRACE(loop, "ping while moving");
+    LOOP_TRACE(loop, DL_PING, "ping while moving");
     return 1;
   }
 
@@ -321,14 +321,14 @@ birdloop_try_ping(struct birdloop *loop, u32 ltt)
   /* No ping when not picked up */
   if (!loop->thread)
   {
-    LOOP_TRACE(loop, "not picked up yet, can't ping");
+    LOOP_TRACE(loop, DL_PING, "not picked up yet, can't ping");
     return 1;
   }
 
   /* No ping when masked */
   if (loop == birdloop_wakeup_masked)
   {
-    LOOP_TRACE(loop, "wakeup masked, can't ping");
+    LOOP_TRACE(loop, DL_PING, "wakeup masked, can't ping");
     birdloop_wakeup_masked_count++;
     return 1;
   }
@@ -336,13 +336,13 @@ birdloop_try_ping(struct birdloop *loop, u32 ltt)
   /* Send meta event to ping */
   if ((loop != loop->thread->meta) && (loop != &main_birdloop))
   {
-    LOOP_TRACE(loop, "Ping by meta event to %p", loop->thread->meta);
+    LOOP_TRACE(loop, DL_PING, "Ping by meta event to %p", loop->thread->meta);
     ev_send_loop(loop->thread->meta, &loop->event);
     return 1;
   }
 
   /* Do the real ping of Meta or Main */
-  LOOP_TRACE(loop, "sending pipe ping");
+  LOOP_TRACE(loop, DL_WAKEUP, "sending pipe ping");
   wakeup_do_kick(loop->thread);
   return 0;
 }
@@ -363,12 +363,12 @@ birdloop_ping(struct birdloop *loop)
 {
   if (!birdloop_inside(loop))
   {
-    LOOP_TRACE(loop, "ping from outside");
+    LOOP_TRACE(loop, DL_PING, "ping from outside");
     birdloop_do_ping(loop);
   }
   else
   {
-    LOOP_TRACE(loop, "ping from inside, pending=%d", loop->ping_pending);
+    LOOP_TRACE(loop, DL_PING, "ping from inside, pending=%d", loop->ping_pending);
     if (!loop->ping_pending)
       loop->ping_pending++;
   }
@@ -402,7 +402,7 @@ birdloop_add_socket(struct birdloop *loop, sock *s)
   ASSERT_DIE(birdloop_inside(loop));
   ASSERT_DIE(!s->loop);
 
-  LOOP_TRACE(loop, "adding socket %p (total=%d)", s, loop->sock_num);
+  LOOP_TRACE(loop, DL_SOCKETS, "adding socket %p (total=%d)", s, loop->sock_num);
   add_tail(&loop->sock_list, &s->n);
   loop->sock_num++;
 
@@ -426,7 +426,7 @@ birdloop_remove_socket(struct birdloop *loop, sock *s)
   ASSERT_DIE(s->loop == loop);
 
   /* Decouple the socket from the loop at all. */
-  LOOP_TRACE(loop, "removing socket %p (total=%d)", s, loop->sock_num);
+  LOOP_TRACE(loop, DL_SOCKETS, "removing socket %p (total=%d)", s, loop->sock_num);
 
   if (loop->sock_active == s)
     loop->sock_active = sk_next(s);
@@ -492,7 +492,7 @@ sockets_prepare(struct birdloop *loop, struct pfd *pfd)
     }
 
     s->index = pfd->pfd.used;
-    LOOP_TRACE(loop, "socket %p poll index is %d", s, s->index);
+    LOOP_TRACE(loop, DL_SOCKETS, "socket %p poll index is %d", s, s->index);
 
     BUFFER_PUSH(pfd->pfd) = (struct pollfd) {
 	.fd = s->fd,
@@ -675,6 +675,8 @@ birdloop_take(struct birdloop_pickup_group *group)
 
   if (drop)
   {
+    THREAD_TRACE(DL_SCHEDULING, "Loop drop requested (tbc=%d, tc=%d, lc=%d)",
+	group->thread_busy_count, group->thread_count, this_thread->loop_count);
     UNLOCK_DOMAIN(attrs, group->domain);
 
     node *n;
@@ -683,7 +685,7 @@ birdloop_take(struct birdloop_pickup_group *group)
       birdloop_enter(loop);
       if (ev_active(&loop->event))
       {
-	LOOP_TRACE(loop, "Moving to another thread");
+	LOOP_TRACE(loop, DL_SCHEDULING, "Dropping from thread");
 	/* Pass to another thread */
 	rem_node(&loop->n);
 	this_thread->loop_count--;
@@ -706,6 +708,8 @@ birdloop_take(struct birdloop_pickup_group *group)
 
   if (take)
   {
+    THREAD_TRACE(DL_SCHEDULING, "Loop take requested");
+
     /* Take a proportional amount of loops from the pickup list and unlock */
     uint thread_count = group->thread_count + 1;
     if (group->thread_busy_count < group->thread_count)
@@ -721,6 +725,7 @@ birdloop_take(struct birdloop_pickup_group *group)
 
       birdloop_enter(loop);
       birdloop_set_thread(loop, this_thread, group);
+      LOOP_TRACE(loop, DL_SCHEDULING, "Picked up by thread");
 
       node *n;
       WALK_LIST(n, loop->sock_list)
@@ -791,6 +796,8 @@ bird_thread_main(void *arg)
   birdloop_enter(thr->meta);
   this_birdloop = thr->meta;
 
+  THREAD_TRACE(DL_SCHEDULING, "Started");
+
   tmp_init(thr->pool);
   init_list(&thr->loops);
 
@@ -827,16 +834,16 @@ bird_thread_main(void *arg)
     int more_events = ev_run_list(&thr->meta->event_list);
     if (more_events)
     {
-      THREAD_TRACE("More events to run");
+      THREAD_TRACE(DL_SCHEDULING, "More metaevents to run");
       timeout = 0;
     }
     else
     {
       timeout = poll_timeout(thr->meta);
       if (timeout == -1)
-	THREAD_TRACE("No timers, no events");
+	THREAD_TRACE(DL_SCHEDULING, "No timers, no events in meta");
       else
-	THREAD_TRACE("Next timer in %d ms", timeout);
+	THREAD_TRACE(DL_SCHEDULING, "Next meta timer in %d ms", timeout);
     }
 
     /* Run priority events before sleeping */
@@ -845,6 +852,7 @@ bird_thread_main(void *arg)
     /* Do we have to refresh sockets? */
     if (thr->sock_changed)
     {
+      THREAD_TRACE(DL_SOCKETS, "Recalculating socket poll");
       thr->sock_changed = 0;
 
       BUFFER_FLUSH(pfd.pfd);
@@ -862,6 +870,7 @@ bird_thread_main(void *arg)
       }
 
       ASSERT_DIE(pfd.loop.used == pfd.pfd.used);
+      THREAD_TRACE(DL_SOCKETS, "Total %d sockets", pfd.pfd.used);
     }
     /* Nothing to do in at least 5 seconds, flush local hot page cache */
     else if ((timeout > 5000) || (timeout < 0))
@@ -886,6 +895,7 @@ poll_retry:;
     /* Drain wakeup fd */
     if (pfd.pfd.data[0].revents & POLLIN)
     {
+      THREAD_TRACE(DL_WAKEUP, "Ping received");
       ASSERT_DIE(rv > 0);
       rv--;
       wakeup_drain(thr);
@@ -899,7 +909,7 @@ poll_retry:;
       for (uint i = 1; i < pfd.pfd.used; i++)
 	if (pfd.pfd.data[i].revents)
 	{
-	  LOOP_TRACE(pfd.loop.data[i], "socket id %d got revents=%d", i, pfd.pfd.data[i].revents);
+	  LOOP_TRACE(pfd.loop.data[i], DL_SOCKETS, "socket id %d got revents=0x%x", i, pfd.pfd.data[i].revents);
 	  ev_send_loop(thr->meta, &pfd.loop.data[i]->event);
 	}
   }
@@ -1014,7 +1024,7 @@ bird_thread_shutdown(void * _ UNUSED)
 
   UNLOCK_DOMAIN(attrs, group->domain);
 
-  DBG("Thread pickup size differs from dropper goal by %d%s\n", dif, tdl_stop ? ", stopping" : "");
+  THREAD_TRACE(DL_SCHEDULING, "Thread pickup size differs from dropper goal by %d%s", dif, tdl_stop ? ", stopping" : "");
 
   if (tdl_stop)
   {
@@ -1074,6 +1084,7 @@ bird_thread_shutdown(void * _ UNUSED)
   birdloop_leave(thr->meta);
 
   /* Exit! */
+  THREAD_TRACE(DL_SCHEDULING, "Stopped");
   pthread_exit(NULL);
 }
 
@@ -1390,7 +1401,7 @@ birdloop_init(void)
 static void
 birdloop_stop_internal(struct birdloop *loop)
 {
-  LOOP_TRACE(loop, "Stopping");
+  LOOP_TRACE(loop, DL_SCHEDULING, "Stopping");
 
   /* Block incoming pings */
   u32 ltt = atomic_load_explicit(&loop->thread_transition, memory_order_acquire);
@@ -1471,7 +1482,7 @@ birdloop_run(void *_loop)
   uint repeat, loop_runs = 0;
   do {
     repeat = 0;
-    LOOP_TRACE(loop, "Regular run");
+    LOOP_TRACE(loop, DL_SCHEDULING, "Regular run (%d)", loop_runs);
     loop_runs++;
 
     if (loop->stopped)
@@ -1514,7 +1525,7 @@ static void
 birdloop_run_timer(timer *tm)
 {
   struct birdloop *loop = tm->data;
-  LOOP_TRACE(loop, "Timer ready, requesting run");
+  LOOP_TRACE(loop, DL_TIMERS, "Meta timer ready, requesting run");
   ev_send_loop(loop->thread->meta, &loop->event);
 }
 
@@ -1535,12 +1546,14 @@ birdloop_vnew_internal(pool *pp, uint order, struct birdloop_pickup_group *group
 
   birdloop_enter_locked(loop);
 
-  ev_init_list(&loop->event_list, loop, name);
+  ev_init_list(&loop->event_list, loop, p->name);
   timers_init(&loop->time, p);
   sockets_init(loop);
 
   loop->event = (event) { .hook = birdloop_run, .data = loop, };
   loop->timer = (timer) { .hook = birdloop_run_timer, .data = loop, };
+
+  LOOP_TRACE(loop, DL_SCHEDULING, "New loop: %s", p->name);
 
   if (group)
   {
@@ -1585,7 +1598,7 @@ birdloop_new(pool *pp, uint order, btime max_latency, const char *name, ...)
 static void
 birdloop_do_stop(struct birdloop *loop, void (*stopped)(void *data), void *data)
 {
-  LOOP_TRACE(loop, "Stop requested");
+  LOOP_TRACE(loop, DL_SCHEDULING, "Stop requested");
 
   loop->stopped = stopped;
   loop->stop_data = data;
@@ -1651,7 +1664,7 @@ birdloop_leave_locked(struct birdloop *loop)
   /* Send pending pings */
   if (loop->ping_pending)
   {
-    LOOP_TRACE(loop, "sending pings on leave");
+    LOOP_TRACE(loop, DL_PING, "sending pings on leave");
     loop->ping_pending = 0;
     birdloop_do_ping(loop);
   }

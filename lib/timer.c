@@ -36,6 +36,8 @@
 #include "lib/resource.h"
 #include "lib/timer.h"
 
+#include "conf/conf.h"
+
 #include <pthread.h>
 
 _Atomic btime last_time;
@@ -154,7 +156,7 @@ timers_init(struct timeloop *loop, pool *p)
   BUFFER_PUSH(loop->timers) = NULL;
 }
 
-void io_log_event(void *hook, void *data);
+void io_log_event(void *hook, void *data, uint flag);
 
 void
 timers_fire(struct timeloop *loop, int io_log)
@@ -189,7 +191,7 @@ timers_fire(struct timeloop *loop, int io_log)
 
     /* This is ugly hack, we want to log just timers executed from the main I/O loop */
     if (io_log)
-      io_log_event(t->hook, t->data);
+      io_log_event(t->hook, t->data, DL_TIMERS);
 
     t->hook(t);
     tmp_flush();

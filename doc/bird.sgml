@@ -589,9 +589,10 @@ include "tablename.conf";;
 	of connects and disconnects, 2 and higher for logging of all client
 	commands). Default: 0.
 
-	<tag><label id="opt-debug-latency">debug latency <m/switch/</tag>
-	Activate tracking of elapsed time for internal events. Recent events
-	could be examined using <cf/dump events/ command. Default: off.
+	<tag><label id="opt-debug-latency">debug latency all|off|{ ping|wakeup|scheduling|sockets|events|timers }</tag>
+	Activate tracking of internal scheduler actions. This is a developer
+	and technical support tool for cases when internal events are missed.
+	You should keep this off unless you know what you are doing. Default: off.
 
 	<tag><label id="opt-debug-latency-limit">debug latency limit <m/time/</tag>
 	If <cf/debug latency/ is enabled, this option allows to specify a limit

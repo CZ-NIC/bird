@@ -2265,9 +2265,9 @@ io_update_time(void)
  * entry is kept open (in @event_open) so the duration can be filled later.
  */
 void
-io_log_event(void *hook, void *data)
+io_log_event(void *hook, void *data, uint flag)
 {
-  if (config->latency_debug)
+  if (config->latency_debug & flag)
     io_update_time();
 
   struct event_log_entry *en = event_log + event_log_pos;
@@ -2281,7 +2281,7 @@ io_log_event(void *hook, void *data)
   event_log_pos++;
   event_log_pos %= EVENT_LOG_LENGTH;
 
-  event_open = config->latency_debug ? en : NULL;
+  event_open = (config->latency_debug & flag) ? en : NULL;
 }
 
 static inline void
@@ -2432,21 +2432,21 @@ io_loop(void)
 
       if (async_config_flag)
 	{
-	  io_log_event(async_config, NULL);
+	  io_log_event(async_config, NULL, DL_EVENTS);
 	  async_config();
 	  async_config_flag = 0;
 	  continue;
 	}
       if (async_dump_flag)
 	{
-	  io_log_event(async_dump, NULL);
+	  io_log_event(async_dump, NULL, DL_EVENTS);
 	  async_dump();
 	  async_dump_flag = 0;
 	  continue;
 	}
       if (async_shutdown_flag)
 	{
-	  io_log_event(async_shutdown, NULL);
+	  io_log_event(async_shutdown, NULL, DL_EVENTS);
 	  async_shutdown();
 	  async_shutdown_flag = 0;
 	  continue;
@@ -2493,7 +2493,7 @@ io_loop(void)
 		do
 		  {
 		    steps--;
-		    io_log_event(s->rx_hook, s->data);
+		    io_log_event(s->rx_hook, s->data, DL_SOCKETS);
 		    e = sk_read(s, pfd.pfd.data[s->index].revents);
 		  }
 		while (e && (main_birdloop.sock_active == s) && s->rx_hook && steps);
@@ -2506,7 +2506,7 @@ io_loop(void)
 		do
 		  {
 		    steps--;
-		    io_log_event(s->tx_hook, s->data);
+		    io_log_event(s->tx_hook, s->data, DL_SOCKETS);
 		    e = sk_write(s);
 		  }
 		while (e && (main_birdloop.sock_active == s) && steps);
@@ -2537,7 +2537,7 @@ io_loop(void)
 	      if (!s->fast_rx && (pfd.pfd.data[s->index].revents & POLLIN) && s->rx_hook)
 		{
 		  count++;
-		  io_log_event(s->rx_hook, s->data);
+		  io_log_event(s->rx_hook, s->data, DL_SOCKETS);
 		  sk_read(s, pfd.pfd.data[s->index].revents);
 		  if (s != main_birdloop.sock_active)
 		    continue;
