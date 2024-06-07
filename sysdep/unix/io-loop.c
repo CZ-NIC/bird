@@ -666,7 +666,6 @@ birdloop_take(struct birdloop_pickup_group *group)
   struct birdloop *loop = NULL;
 
   LOCK_DOMAIN(attrs, group->domain);
-
   int drop =
     this_thread->busy_active &&
     (group->thread_busy_count < group->thread_count) &&
@@ -683,7 +682,7 @@ birdloop_take(struct birdloop_pickup_group *group)
     WALK_LIST2(loop, n, this_thread->loops, n)
     {
       birdloop_enter(loop);
-      if (ev_active(&loop->event))
+      if (ev_active(&loop->event) && !loop->stopped)
       {
 	LOOP_TRACE(loop, DL_SCHEDULING, "Dropping from thread");
 	/* Pass to another thread */
