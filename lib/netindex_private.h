@@ -11,20 +11,22 @@
 
 #include "lib/netindex.h"
 
+typedef SPINHASH(struct netindex) netindex_spinhash;
+
 #define NETINDEX_HASH_PUBLIC \
   DOMAIN(attrs) lock;		/* Assigned lock */		\
   event_list *cleanup_list;	/* Cleanup event list */	\
   event cleanup_event;		/* Cleanup event */		\
   u8 net_type;			/* Which NET_* is stored */	\
   uint _Atomic block_size;	/* How big block is */		\
-  struct netindex * _Atomic * _Atomic block;	/* u32 to netindex */	\
+  struct netindex * _Atomic * _Atomic block;	/* u32 to netindex */		\
+  netindex_spinhash hash;	/* Spinlocking hashtable */	\
 
 struct netindex_hash_private {
   struct { NETINDEX_HASH_PUBLIC; };
   struct netindex_hash_private **locked_at;
   pool *pool;
   slab *slab;
-  HASH(struct netindex) hash;
   struct hmap id_map;
   u32 block_epoch;
   event *deleted_event;
