@@ -678,63 +678,41 @@ net_roa_check(rtable *tp, const net_addr *n, u32 asn)
   SKIP_BACK_DECLARE(net_addr_union, nu, n, n);
   int anything = 0;
 
+  rtable *aux = tp->config->roa_aux_table->table;
+
 #define TW(ipv) do {								\
   TRIE_WALK_TO_ROOT_IP##ipv(trie, &(nu->ip##ipv), var) {			\
-    net_addr_roa##ipv roa0 = NET_ADDR_ROA##ipv(var.prefix, var.pxlen, 0, 0);	\
-    ROA_PARTIAL_CHECK(ipv);							\
+    rte r = rt_net_best(aux, (net_addr *) &var);				\
+    if (!r.attrs) continue;							\
+    SKIP_BACK_DECLARE(struct rt_roa_aggregated_adata, rad,			\
+	ad, ea_get_adata(r.attrs, &ea_roa_aggregated));				\
+    uint count = ROA_AGGR_COUNT(rad);						\
+    for (uint p = 0; p < count; p++)						\
+      if ((rad->u[p].max_pxlen >= nu->ip##ipv.pxlen) &&				\
+	  (rad->u[p].asn == asn))						\
+	return ROA_VALID;							\
+      else									\
+	anything = 1;								\
   } TRIE_WALK_TO_ROOT_END;							\
-  return anything ? ROA_INVALID : ROA_UNKNOWN;					\
 } while (0)
 
-#define FW(ipv) do {								\
-  net_addr_roa##ipv roa0 = NET_ADDR_ROA##ipv(nu->ip##ipv.prefix, nu->ip##ipv.pxlen, 0, 0);\
-  while (1) {									\
-    ROA_PARTIAL_CHECK(ipv);							\
-    if (roa0.pxlen == 0) break;							\
-    roa0.pxlen--; ip##ipv##_clrbit(&roa0.prefix, roa0.pxlen);			\
-  }										\
-} while (0)
-
-#define ROA_PARTIAL_CHECK(ipv) do {						\
-  for (struct netindex *i = net_find_index_fragile_chain(nh, (net_addr *) &roa0); i; i = i->next)\
-  {										\
-    if (bs < i->index) continue;						\
-    net_addr_roa##ipv *roa = (void *) i->addr;					\
-    if (!net_equal_prefix_roa##ipv(roa, &roa0))	continue;			\
-    net *r = &(atomic_load_explicit(&tr->t->routes, memory_order_acquire)[i->index]);	\
-    struct rte_storage *s = NET_READ_BEST_ROUTE(tr, r);				\
-    if (s && rte_is_valid(&s->rte))						\
-    {										\
-      anything = 1;								\
-      if (asn && (roa->asn == asn) && (roa->max_pxlen >= nu->ip##ipv.pxlen))	\
-      return ROA_VALID;								\
-    }										\
-  }										\
-} while (0)
-
-  RT_READ(tp, tr);
+  RT_READ(aux, tr);
 
   {
-    u32 bs = atomic_load_explicit(&tr->t->routes_block_size, memory_order_acquire);
     const struct f_trie *trie = atomic_load_explicit(&tr->t->trie, memory_order_acquire);
+    ASSERT_DIE(trie);
 
-    NH_LOCK(tr->t->netindex, nh);
-    if ((tr->t->addr_type == NET_ROA4) && (n->type == NET_IP4))
-    {
-      if (trie)	TW(4);
-      else	FW(4);
-    }
-    else if ((tr->t->addr_type == NET_ROA6) && (n->type == NET_IP6))
-    {
-      if (trie)	TW(6);
-      else	FW(6);
-    }
+    if ((tp->addr_type == NET_ROA4) && (n->type == NET_IP4))
+      TW(4);
+    else if ((tp->addr_type == NET_ROA6) && (n->type == NET_IP6))
+      TW(6);
+    else
+      log(L_WARN "Trying to run roa_check() of %s in %s",
+	  net_label[n->type], net_label[tr->t->addr_type]);
   }
 
   return anything ? ROA_INVALID : ROA_UNKNOWN;
-#undef ROA_PARTIAL_CHECK
 #undef TW
-#undef FW
 }
 
 struct rte_storage *
