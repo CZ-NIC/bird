@@ -558,6 +558,7 @@ rte_free(struct rte_storage *e, struct rtable_private *tab)
   if (!tab->rte_free_deferred++)
     rt_lock_table(tab);
 
+  rt_rte_trace_in(D_ROUTES, e->rte.sender->req, &e->rte, "freeing");
   defer_call(&rfdi.dc, sizeof rfdi);
 }
 
@@ -570,8 +571,6 @@ rte_free_deferred(struct deferred_call *dc)
   RT_LOCK(rfdi->tab, tab);
 
   /* No need for synchronize_rcu, implied by the deferred_call */
-
-  rt_rte_trace_in(D_ROUTES, e->rte.sender->req, &e->rte, "freeing");
 
   struct netindex *i = RTE_GET_NETINDEX(&e->rte);
   net_unlock_index(tab->netindex, i);
