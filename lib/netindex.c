@@ -202,14 +202,6 @@ netindex_hash_delete(netindex_hash *h, event *e, event_list *t)
  * Private index manipulation
  */
 struct netindex *
-net_find_index_fragile_chain(struct netindex_hash_private *hp, const net_addr *n)
-{
-  ASSERT_DIE(n->type == hp->net_type);
-  u32 h = net_hash(n);
-  return HASH_FIND_CHAIN(hp->hash, NETINDEX, h, n);
-}
-
-struct netindex *
 net_find_index_fragile(struct netindex_hash_private *hp, const net_addr *n)
 {
   ASSERT_DIE(n->type == hp->net_type);

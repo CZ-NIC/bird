@@ -41,11 +41,4 @@ extern struct netindex netindex_in_progress;
 LOBJ_UNLOCK_CLEANUP(netindex_hash, attrs);
 #define NH_LOCK(h, hp)	LOBJ_LOCK(h, hp, netindex_hash, attrs)
 
-/* Find indices in a locked context with no usecounting */
-struct netindex *net_find_index_fragile(struct netindex_hash_private *hp, const net_addr *n);
-
-/* The same but instead of returning the exact match,
- * return the first item in hash chain */
-struct netindex *net_find_index_fragile_chain(struct netindex_hash_private *hp, const net_addr *n);
-
 #endif

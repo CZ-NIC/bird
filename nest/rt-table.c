@@ -110,7 +110,6 @@
 #include "lib/alloca.h"
 #include "lib/flowspec.h"
 #include "lib/idm.h"
-#include "lib/netindex_private.h"
 
 #ifdef CONFIG_BGP
 #include "proto/bgp/bgp.h"
@@ -254,9 +253,9 @@ net_find(struct rtable_reading *tr, const struct netindex *i)
 }
 
 static inline net *
-net_find_valid(struct rtable_reading *tr, struct netindex_hash_private *nh, const net_addr *addr)
+net_find_valid(struct rtable_reading *tr, netindex_hash *nh, const net_addr *addr)
 {
-  struct netindex *i = net_find_index_fragile(nh, addr);
+  struct netindex *i = net_find_index(nh, addr);
   if (!i)
     return NULL;
 
@@ -273,41 +272,33 @@ net_find_valid(struct rtable_reading *tr, struct netindex_hash_private *nh, cons
 }
 
 static inline void *
-net_route_ip6_sadr_trie(struct rtable_reading *tr, struct netindex_hash_private *nh, const net_addr_ip6_sadr *n0)
+net_route_ip6_sadr_trie(struct rtable_reading *tr, netindex_hash *nh, const net_addr_ip6_sadr *n0)
 {
   u32 bs = atomic_load_explicit(&tr->t->routes_block_size, memory_order_acquire);
   const struct f_trie *trie = atomic_load_explicit(&tr->t->trie, memory_order_acquire);
   TRIE_WALK_TO_ROOT_IP6(trie, (const net_addr_ip6 *) n0, px)
   {
-    net_addr_ip6_sadr n = NET_ADDR_IP6_SADR(px.prefix, px.pxlen, n0->src_prefix, n0->src_pxlen);
-    net *best = NULL;
-    int best_pxlen = 0;
+    net_addr_union n = {
+      .ip6_sadr = NET_ADDR_IP6_SADR(px.prefix, px.pxlen, n0->src_prefix, n0->src_pxlen),
+    };
 
-    /* We need to do dst first matching. Since sadr addresses are hashed on dst
-       prefix only, find the hash table chain and go through it to find the
-       match with the longest matching src prefix. */
-    for (struct netindex *i = net_find_index_fragile_chain(nh, (net_addr *) &n); i; i = i->next)
+    while (1)
     {
-      net_addr_ip6_sadr *a = (void *) i->addr;
-
-      if ((i->index < bs) &&
-	  net_equal_dst_ip6_sadr(&n, a) &&
-	  net_in_net_src_ip6_sadr(&n, a) &&
-	  (a->src_pxlen >= best_pxlen))
+      struct netindex *i = net_find_index(nh, &n.n);
+      if (i && (i->index < bs))
       {
 	net *cur = &(atomic_load_explicit(&tr->t->routes, memory_order_acquire)[i->index]);
 	struct rte_storage *s = NET_READ_BEST_ROUTE(tr, cur);
 
 	if (s && rte_is_valid(&s->rte))
-	{
-	  best = cur;
-	  best_pxlen = a->src_pxlen;
-	}
+	  return s;
       }
-    }
 
-    if (best)
-      return best;
+      if (!n.ip6_sadr.src_pxlen)
+	break;
+
+      ip6_clrbit(&n.ip6_sadr.src_prefix, --n.ip6_sadr.src_pxlen);
+    }
   }
   TRIE_WALK_TO_ROOT_END;
 
@@ -316,7 +307,7 @@ net_route_ip6_sadr_trie(struct rtable_reading *tr, struct netindex_hash_private 
 
 
 static inline void *
-net_route_ip6_sadr_fib(struct rtable_reading *tr, struct netindex_hash_private *nh, const net_addr_ip6_sadr *n0)
+net_route_ip6_sadr_fib(struct rtable_reading *tr, netindex_hash *nh, const net_addr_ip6_sadr *n0)
 {
   u32 bs = atomic_load_explicit(&tr->t->routes_block_size, memory_order_acquire);
 
@@ -325,36 +316,27 @@ net_route_ip6_sadr_fib(struct rtable_reading *tr, struct netindex_hash_private *
 
   while (1)
   {
-    net *best = NULL;
-    int best_pxlen = 0;
+    net_addr_union nn = {
+      .ip6_sadr = n,
+    };
 
-    /* We need to do dst first matching. Since sadr addresses are hashed on dst
-       prefix only, find the hash table chain and go through it to find the
-       match with the longest matching src prefix. */
-    for (struct netindex *i = net_find_index_fragile_chain(nh, (net_addr *) &n); i; i = i->next)
+    while (1)
     {
-      net_addr_ip6_sadr *a = (void *) i->addr;
-
-      if ((i->index < bs) &&
-	  net_equal_dst_ip6_sadr(&n, a) &&
-	  net_in_net_src_ip6_sadr(&n, a) &&
-	  (a->src_pxlen >= best_pxlen))
+      struct netindex *i = net_find_index(nh, &nn.n);
+      if (i && (i->index < bs))
       {
 	net *cur = &(atomic_load_explicit(&tr->t->routes, memory_order_acquire)[i->index]);
 	struct rte_storage *s = NET_READ_BEST_ROUTE(tr, cur);
-	if (RTE_IS_OBSOLETE(s))
-	  RT_READ_RETRY(tr);
 
 	if (s && rte_is_valid(&s->rte))
-	{
-	  best = cur;
-	  best_pxlen = a->src_pxlen;
-	}
+	  return s;
       }
-    }
 
-    if (best)
-      return best;
+      if (!nn.ip6_sadr.src_pxlen)
+	break;
+
+      ip6_clrbit(&nn.ip6_sadr.src_prefix, --nn.ip6_sadr.src_pxlen);
+    }
 
     if (!n.dst_pxlen)
       break;
@@ -374,7 +356,7 @@ net_route(struct rtable_reading *tr, const net_addr *n)
 
   const struct f_trie *trie = atomic_load_explicit(&tr->t->trie, memory_order_acquire);
 
-  NH_LOCK(tr->t->netindex, nh);
+  netindex_hash *nh = tr->t->netindex;
 
 #define TW(ipv, what) \
   TRIE_WALK_TO_ROOT_IP##ipv(trie, &(nu->ip##ipv), var) \
@@ -3867,11 +3849,9 @@ rt_flowspec_check(rtable *tab_ip, struct rtable_private *tab_flow, const net_add
     return FLOWSPEC_INVALID;
 
   /* RFC 8955 6. c) More-specific routes are from the same AS as the best-match route */
-  NH_LOCK(tip->t->netindex, nh);
-
   TRIE_WALK(ip_trie, subnet, &dst)
   {
-    net *nc = net_find_valid(tip, nh, &subnet);
+    net *nc = net_find_valid(tip, tip->t->netindex, &subnet);
     if (!nc)
       continue;
 
