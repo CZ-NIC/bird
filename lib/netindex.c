@@ -16,10 +16,10 @@ struct netindex netindex_in_progress;
 #define NETINDEX_NEXT(n)	(n)->next
 #define NETINDEX_EQ(h,n,i,o)	((h == i) && net_equal(n,o))
 #define NETINDEX_FN(h,n)	(h)
-#define NETINDEX_ORDER		4 /* Initial */
+#define NETINDEX_ORDER		12 /* Initial */
 
 #define NETINDEX_REHASH		netindex_rehash
-#define NETINDEX_PARAMS		/8, *1, 2, 2, 4, 28
+#define NETINDEX_PARAMS		/8, *2, 2, 2, 12, 28
 
 static void NETINDEX_REHASH(void *_v) {
   netindex_spinhash *v = _v;
