@@ -2196,23 +2196,18 @@ rt_net_feed_validate_first(
   if (!first)
     return first_in_net;
 
-  for (uint i = 1; i < 4096; i++)
-  {
-    /* Export item validity check: we must find it between first_in_net and last_in_net */
-    const struct rt_pending_export *rpe = first_in_net;
-    while (rpe)
-      if (rpe == first)
-	return first;
-      else if (rpe == last_in_net)
-	/* Got to the end without finding the beginning */
-	break;
-      else
-	rpe = atomic_load_explicit(&rpe->next, memory_order_acquire);
+  /* Export item validity check: we must find it between first_in_net and last_in_net */
+  const struct rt_pending_export *rpe = first_in_net;
+  while (rpe)
+    if (rpe == first)
+      return first;
+    else if (rpe == last_in_net)
+      /* Got to the end without finding the beginning */
+      break;
+    else
+      rpe = atomic_load_explicit(&rpe->next, memory_order_acquire);
 
-    birdloop_yield();
-  }
-
-  log(L_WARN "Waiting too long for table announcement to finish");
+  /* Not found, inconsistent export, retry */
   RT_READ_RETRY(tr);
 }
 
