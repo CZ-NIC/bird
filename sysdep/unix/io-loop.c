@@ -573,6 +573,7 @@ sockets_fire(struct birdloop *loop)
  */
 
 static void bird_thread_start_event(void *_data);
+static void bird_thread_busy_update(struct bird_thread *thr, int timeout_ms);
 
 struct birdloop_pickup_group {
   DOMAIN(attrs) domain;
@@ -671,18 +672,16 @@ birdloop_take(struct birdloop_pickup_group *group)
   struct birdloop *loop = NULL;
 
   LOCK_DOMAIN(attrs, group->domain);
-  int drop =
-    this_thread->busy_active &&
-    (group->thread_busy_count < group->thread_count) &&
-    (this_thread->loop_count > 1);
-  int take = !EMPTY_LIST(group->loops);
 
-  if (drop)
+  if (this_thread->busy_active &&
+      (group->thread_busy_count < group->thread_count) &&
+      (this_thread->loop_count > 1))
   {
     THREAD_TRACE(DL_SCHEDULING, "Loop drop requested (tbc=%d, tc=%d, lc=%d)",
 	group->thread_busy_count, group->thread_count, this_thread->loop_count);
     UNLOCK_DOMAIN(attrs, group->domain);
 
+    int dropped = 0;
     node *n;
     WALK_LIST2(loop, n, this_thread->loops, n)
     {
@@ -702,15 +701,20 @@ birdloop_take(struct birdloop_pickup_group *group)
 	LOCK_DOMAIN(attrs, group->domain);
 	bird_thread_pickup_next(group);
 	UNLOCK_DOMAIN(attrs, group->domain);
+	dropped = 1;
 	break;
       }
       birdloop_leave(loop);
     }
 
-    return;
+    if (dropped)
+      return;
+
+    bird_thread_busy_update(this_thread, -1);
+    LOCK_DOMAIN(attrs, group->domain);
   }
 
-  if (take)
+  if (!EMPTY_LIST(group->loops))
   {
     THREAD_TRACE(DL_SCHEDULING, "Loop take requested");
 
