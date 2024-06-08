@@ -1623,17 +1623,54 @@ ea_append(ea_list *to, ea_list *what)
 
 event ea_cleanup_event;
 
-static HASH(struct ea_storage) rta_hash_table;
+static SPINHASH(struct ea_storage) rta_hash_table;
 
 #define RTAH_KEY(a)		a->l, a->hash_key
 #define RTAH_NEXT(a)		a->next_hash
 #define RTAH_EQ(a, b)		((a)->hash_key == (b)->hash_key) && (ea_same((a), (b)))
 #define RTAH_FN(a, h)		h
+#define RTAH_ORDER		12
 
 #define RTAH_REHASH		rta_rehash
 #define RTAH_PARAMS		/8, *2, 2, 2, 12, 28
 
-HASH_DEFINE_REHASH_FN(RTAH, struct ea_storage);
+static void RTAH_REHASH(void *_ UNUSED) {
+  int step;
+
+  RTA_LOCK;
+  SPINHASH_REHASH_PREPARE(&rta_hash_table, RTAH, struct ea_storage, step);
+  RTA_UNLOCK;
+
+  if (!step)	return;
+
+  if (step > 0) SPINHASH_REHASH_UP  (&rta_hash_table, RTAH, struct ea_storage,  step);
+  if (step < 0) SPINHASH_REHASH_DOWN(&rta_hash_table, RTAH, struct ea_storage, -step);
+
+  RTA_LOCK;
+  SPINHASH_REHASH_FINISH(&rta_hash_table, RTAH);
+  RTA_UNLOCK;
+}
+
+static ea_list *
+ea_lookup_existing(ea_list *o, u32 squash_upto, uint h)
+{
+  struct ea_storage *r = NULL;
+
+  SPINHASH_BEGIN_CHAIN(rta_hash_table, RTAH, read, eap, o, h);
+  for (struct ea_storage *ea; ea = *eap; eap = &RTAH_NEXT(ea))
+    if (
+	(h == ea->hash_key) &&
+	ea_same(o, ea->l) &&
+	BIT32_TEST(&squash_upto, ea->l->stored) &&
+	(!r || r->l->stored > ea->l->stored))
+      r = ea;
+  if (r)
+    lfuc_lock_revive(&r->uc);
+  SPINHASH_END_CHAIN(read);
+
+  return r ? r->l : NULL;
+}
+
 
 /**
  * rta_lookup - look up a &rta in attribute cache
@@ -1651,7 +1688,6 @@ HASH_DEFINE_REHASH_FN(RTAH, struct ea_storage);
 ea_list *
 ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
 {
-  struct ea_storage *r = NULL;
   uint h;
 
   ASSERT(o->stored != oid);
@@ -1661,25 +1697,17 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
 
   squash_upto |= BIT32_VAL(oid);
 
+  struct ea_list *rr = ea_lookup_existing(o, squash_upto, h);
+  if (rr) return rr;
+
   RTA_LOCK;
-
-  for (struct ea_storage *ea = HASH_FIND_CHAIN(rta_hash_table, RTAH, o, h);
-      ea;
-      ea = RTAH_NEXT(ea))
-    if (
-	(h == ea->hash_key) &&
-	ea_same(o, ea->l) &&
-	BIT32_TEST(&squash_upto, ea->l->stored) &&
-	(!r || r->l->stored > ea->l->stored))
-      r = ea;
-
-  if (r)
+  if (rr = ea_lookup_existing(o, squash_upto, oid))
   {
-    lfuc_lock_revive(&r->uc);
     RTA_UNLOCK;
-    return r->l;
+    return rr;
   }
 
+  struct ea_storage *r = NULL;
   uint elen = ea_list_size(o);
   uint sz = elen + sizeof(struct ea_storage);
   for (uint i=0; i<ARRAY_SIZE(ea_slab_sizes); i++)
@@ -1703,7 +1731,7 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
   memset(&r->uc, 0, sizeof r->uc);
   lfuc_lock_revive(&r->uc);
 
-  HASH_INSERT2(rta_hash_table, RTAH, rta_pool, r);
+  SPINHASH_INSERT(rta_hash_table, RTAH, r);
 
   RTA_UNLOCK;
   return r->l;
@@ -1714,11 +1742,15 @@ ea_cleanup(void *_ UNUSED)
 {
   RTA_LOCK;
 
-  HASH_WALK_FILTER(rta_hash_table, next_hash, r, rp)
+  _Bool run_again = 0;
+
+  SPINHASH_WALK_FILTER(rta_hash_table, RTAH, write, rp)
   {
+    struct ea_storage *r = *rp;
     if (lfuc_finished(&r->uc))
     {
-      HASH_DO_REMOVE(rta_hash_table, RTAH, rp);
+      run_again = 1;
+      SPINHASH_DO_REMOVE(rta_hash_table, RTAH, rp);
 
       ea_list_unref(r->l);
       if (r->l->flags & EALF_HUGE)
@@ -1727,7 +1759,10 @@ ea_cleanup(void *_ UNUSED)
 	sl_free(r);
     }
   }
-  HASH_WALK_FILTER_END;
+  SPINHASH_WALK_FILTER_END(write);
+
+  if (run_again)
+    ev_send(&global_work_list, &ea_cleanup_event);
 
   RTA_UNLOCK;
 }
@@ -1741,20 +1776,18 @@ ea_cleanup(void *_ UNUSED)
 void
 ea_dump_all(void)
 {
-  RTA_LOCK;
+  debug("Route attribute cache (%d entries, order %d):\n",
+      atomic_load_explicit(&rta_hash_table.count, memory_order_relaxed),
+      rta_hash_table.cur_order);
 
-  debug("Route attribute cache (%d entries, order %d):\n", rta_hash_table.count, rta_hash_table.order);
-
-  HASH_WALK(rta_hash_table, next_hash, a)
+  SPINHASH_WALK(rta_hash_table, RTAH, a)
       {
 	debug("%p ", a);
 	ea_dump(a->l);
 	debug("\n");
       }
-  HASH_WALK_END;
+  SPINHASH_WALK_END;
   debug("\n");
-
-  RTA_UNLOCK;
 }
 
 void
@@ -1782,7 +1815,7 @@ rta_init(void)
   for (uint i=0; i<ARRAY_SIZE(ea_slab_sizes); i++)
     ea_slab[i] = sl_new(rta_pool, ea_slab_sizes[i]);
 
-  HASH_INIT(rta_hash_table, rta_pool, 12);
+  SPINHASH_INIT(rta_hash_table, RTAH, rta_pool, &global_work_list);
 
   rte_src_init();
   ea_class_init();
