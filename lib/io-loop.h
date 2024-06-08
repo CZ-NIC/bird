@@ -21,6 +21,7 @@ extern _Thread_local struct birdloop *this_birdloop;
 
 /* Check that the task has enough time to do a bit more */
 _Bool task_still_in_limit(void);
+_Bool task_before_halftime(void);
 
 #define MAYBE_DEFER_TASK(target, event, fmt, args...) do { \
   if (!task_still_in_limit()) { \

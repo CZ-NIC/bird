@@ -543,9 +543,14 @@ sockets_fire(struct birdloop *loop)
 
       if (rev & POLLIN)
 	/* Read just one packet and request repeat. */
-	if ((s == loop->sock_active) && s->rx_hook)
-	  if (sk_read(s, rev))
+	while ((s == loop->sock_active) && s->rx_hook)
+	  if (!task_before_halftime())
+	  {
 	    repeat++;
+	    break;
+	  }
+	  else if (!sk_read(s, rev))
+	    break;
 
       if (s != loop->sock_active)
 	continue;
@@ -1354,6 +1359,11 @@ cmd_show_threads(int show_loops)
 _Bool task_still_in_limit(void)
 {
   return ns_now() < account_last + this_thread->max_loop_time_ns;
+}
+
+_Bool task_before_halftime(void)
+{
+  return ns_now() < account_last + this_thread->max_loop_time_ns / 2;
 }
 
 
