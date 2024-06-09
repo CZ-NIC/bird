@@ -59,6 +59,8 @@ struct birdloop
 #define LTT_PING  1
 #define LTT_MOVE  2
 
+  u64 last_transition_ns;
+
   void (*stopped)(void *data);
   void *stop_data;
 

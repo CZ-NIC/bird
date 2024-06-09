@@ -573,7 +573,7 @@ sockets_fire(struct birdloop *loop)
  */
 
 static void bird_thread_start_event(void *_data);
-static void bird_thread_busy_update(struct bird_thread *thr, int timeout_ms);
+static void bird_thread_busy_set(struct bird_thread *thr, int val);
 
 struct birdloop_pickup_group {
   DOMAIN(attrs) domain;
@@ -652,6 +652,8 @@ birdloop_set_thread(struct birdloop *loop, struct bird_thread *thr, struct birdl
     group->loop_unassigned_count++;
     UNLOCK_DOMAIN(attrs, group->domain);
   }
+
+  loop->last_transition_ns = ns_now();
 }
 
 static void
@@ -666,6 +668,14 @@ bird_thread_pickup_next(struct birdloop_pickup_group *group)
     wakeup_do_kick(SKIP_BACK(struct bird_thread, n, HEAD(group->threads)));
 }
 
+static _Bool
+birdloop_hot_potato(struct birdloop *loop)
+{
+  if (!loop)  return 0;
+  if (!NODE_VALID(&loop->n)) return 0;
+  return ns_now() - loop->last_transition_ns < 1 S TO_NS;
+}
+
 static void
 birdloop_take(struct birdloop_pickup_group *group)
 {
@@ -675,7 +685,8 @@ birdloop_take(struct birdloop_pickup_group *group)
 
   if (this_thread->busy_active &&
       (group->thread_busy_count < group->thread_count) &&
-      (this_thread->loop_count > 1))
+      (this_thread->loop_count > 1) &&
+      birdloop_hot_potato(HEAD(group->loops)))
   {
     THREAD_TRACE(DL_SCHEDULING, "Loop drop requested (tbc=%d, tc=%d, lc=%d)",
 	group->thread_busy_count, group->thread_count, this_thread->loop_count);
@@ -686,7 +697,7 @@ birdloop_take(struct birdloop_pickup_group *group)
     WALK_LIST2(loop, n, this_thread->loops, n)
     {
       birdloop_enter(loop);
-      if (ev_active(&loop->event) && !loop->stopped)
+      if (ev_active(&loop->event) && !loop->stopped && !birdloop_hot_potato(loop))
       {
 	LOOP_TRACE(loop, DL_SCHEDULING, "Dropping from thread");
 	/* Pass to another thread */
@@ -710,7 +721,8 @@ birdloop_take(struct birdloop_pickup_group *group)
     if (dropped)
       return;
 
-    bird_thread_busy_update(this_thread, -1);
+    this_thread->busy_counter = 0;
+    bird_thread_busy_set(this_thread, 0);
     LOCK_DOMAIN(attrs, group->domain);
   }
 
@@ -771,25 +783,6 @@ bird_thread_busy_set(struct bird_thread *thr, int val)
     thr->group->thread_busy_count--;
   ASSERT_DIE(thr->group->thread_busy_count <= thr->group->thread_count);
   UNLOCK_DOMAIN(attrs, thr->group->domain);
-}
-
-static void
-bird_thread_busy_update(struct bird_thread *thr, int timeout_ms)
-{
-  int idle_force = (timeout_ms < 0);
-  int val = (timeout_ms < 5) && !idle_force;
-
-  if (val == thr->busy_active)
-    return;
-
-  if (val && (++thr->busy_counter == 4))
-    return bird_thread_busy_set(thr, 1);
-
-  if (!val && (idle_force || (--thr->busy_counter == 0)))
-  {
-    thr->busy_counter = 0;
-    bird_thread_busy_set(thr, 0);
-  }
 }
 
 static void *
@@ -880,11 +873,31 @@ bird_thread_main(void *arg)
       ASSERT_DIE(pfd.loop.used == pfd.pfd.used);
       THREAD_TRACE(DL_SOCKETS, "Total %d sockets", pfd.pfd.used);
     }
-    /* Nothing to do in at least 5 seconds, flush local hot page cache */
-    else if ((timeout > 5000) || (timeout < 0))
-      flush_local_pages();
 
-    bird_thread_busy_update(thr, timeout);
+    /* Check thread busy indicator */
+    int idle_force = (timeout < 0) || (timeout > 300);
+    int busy_now = (timeout < 5) && !idle_force;
+
+    /* Nothing to do right now, flush local hot page cache */
+    if (idle_force)
+    {
+      LOCK_DOMAIN(attrs, thr->group->domain);
+      if (!EMPTY_LIST(thr->group->loops))
+	timeout = 0;
+      UNLOCK_DOMAIN(attrs, thr->group->domain);
+
+      if (timeout)
+	flush_local_pages();
+    }
+
+    if (busy_now && !thr->busy_active && (++thr->busy_counter == 4))
+      bird_thread_busy_set(thr, 1);
+
+    if (!busy_now && thr->busy_active && (idle_force || (--thr->busy_counter == 0)))
+    {
+      thr->busy_counter = 0;
+      bird_thread_busy_set(thr, 0);
+    }
 
     account_to(&this_thread->idle);
     birdloop_leave(thr->meta);
