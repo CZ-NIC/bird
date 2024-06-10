@@ -3916,7 +3916,7 @@ rt_flowspec_resolve_rte(rte *r, struct channel *c)
 #endif
 }
 
-static inline int
+static inline void
 rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
 {
   uint count = 0;
@@ -3924,13 +3924,13 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
 
   struct rte_storage *old_best = NET_BEST_ROUTE(tab, n);
   if (!old_best)
-    return 0;
+    return;
 
   NET_WALK_ROUTES(tab, n, ep, e)
     count++;
 
   if (!count)
-    return 0;
+    return;
 
   struct rte_multiupdate {
     struct rte_storage *old, *new_stored;
@@ -3951,7 +3951,7 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
       mod += rt_next_hop_update_rte(&updates[i].old->rte, &updates[i].new);
 
   if (!mod)
-    return 0;
+    return;
 
   /* We add a spinlock sentinel to the beginning */
   struct rte_storage local_sentinel = {
@@ -4095,7 +4095,7 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
   /* Now we can finally release the changes back into the table */
   atomic_store_explicit(&n->routes, new_best, memory_order_release);
 
-  return total;
+  return;
 }
 
 static void
@@ -4144,8 +4144,6 @@ rt_next_hop_update(void *_tab)
     return;
   }
 
-  int max_feed = 32;
-
   /* Initialize a new run */
   if (tab->nhu_state == NHU_SCHEDULED)
   {
@@ -4166,14 +4164,11 @@ rt_next_hop_update(void *_tab)
       if (!s)
 	continue;
 
-      if (max_feed <= 0)
-	{
-	  ev_send_loop(tab->loop, tab->nhu_event);
-	  return;
-	}
+      MAYBE_DEFER_TASK(birdloop_event_list(tab->loop), tab->nhu_event,
+	  "next hop updater in %s", tab->name);
 
       TMP_SAVED
-	max_feed -= rt_next_hop_update_net(tab, RTE_GET_NETINDEX(&s->rte), n);
+	rt_next_hop_update_net(tab, RTE_GET_NETINDEX(&s->rte), n);
     }
 
   /* Finished NHU, cleanup */
