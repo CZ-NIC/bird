@@ -392,6 +392,7 @@ socket_changed(sock *s)
   struct birdloop *loop = s->loop;
   ASSERT_DIE(birdloop_inside(loop));
 
+  LOOP_TRACE(loop, DL_SOCKETS, "socket %p changed", s);
   loop->sock_changed = 1;
   birdloop_ping(loop);
 }
@@ -506,13 +507,11 @@ int sk_read(sock *s, int revents);
 int sk_write(sock *s);
 void sk_err(sock *s, int revents);
 
-static int
-sockets_fire(struct birdloop *loop)
+static void
+sockets_fire(struct birdloop *loop, _Bool read, _Bool write)
 {
   if (EMPTY_LIST(loop->sock_list))
-    return 0;
-
-  int repeat = 0;
+    return;
 
   times_update();
 
@@ -528,10 +527,10 @@ sockets_fire(struct birdloop *loop)
     {
       int e = 1;
 
-      if (rev & POLLOUT)
+      if (write && (rev & POLLOUT))
       {
-	/* Write everything. */
-	while ((s == loop->sock_active) && (e = sk_write(s)))
+	/* Write until task limit is up */
+	while ((s == loop->sock_active) && (e = sk_write(s)) && task_still_in_limit())
 	  ;
 
 	if (s != loop->sock_active)
@@ -541,16 +540,10 @@ sockets_fire(struct birdloop *loop)
 	  loop->thread->sock_changed = 1;
       }
 
-      if (rev & POLLIN)
-	/* Read just one packet and request repeat. */
-	while ((s == loop->sock_active) && s->rx_hook)
-	  if (!task_before_halftime())
-	  {
-	    repeat++;
-	    break;
-	  }
-	  else if (!sk_read(s, rev))
-	    break;
+      /* Read until task limit is up */
+      if (read && (rev & POLLIN))
+	while ((s == loop->sock_active) && s->rx_hook && sk_read(s, rev) && task_still_in_limit())
+	  ;
 
       if (s != loop->sock_active)
 	continue;
@@ -564,8 +557,6 @@ sockets_fire(struct birdloop *loop)
 
     loop->sock_active = sk_next(s);
   }
-
-  return repeat;
 }
 
 /*
@@ -1516,7 +1507,6 @@ birdloop_run(void *_loop)
 
   uint repeat, loop_runs = 0;
   do {
-    repeat = 0;
     LOOP_TRACE(loop, DL_SCHEDULING, "Regular run (%d)", loop_runs);
     loop_runs++;
 
@@ -1524,14 +1514,17 @@ birdloop_run(void *_loop)
       /* Birdloop left inside the helper function */
       return birdloop_stop_internal(loop);
 
-    /* Process sockets */
-    repeat += sockets_fire(loop);
+    /* Process socket TX */
+    sockets_fire(loop, 0, 1);
 
     /* Run timers */
     timers_fire(&loop->time, 0);
 
     /* Run events */
-    repeat += ev_run_list(&loop->event_list);
+    repeat = ev_run_list(&loop->event_list);
+
+    /* Process socket RX */
+    sockets_fire(loop, 1, 0);
 
     /* Check end time */
   } while (repeat && task_still_in_limit());
