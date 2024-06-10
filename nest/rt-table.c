@@ -3312,7 +3312,6 @@ rt_prune_table(void *_tab)
 {
   RT_LOCK((rtable *) _tab, tab);
 
-  int limit = 2000;
   struct rt_import_hook *ih;
   node *n, *x;
 
@@ -3352,21 +3351,15 @@ rt_prune_table(void *_tab)
   for (; tab->prune_index < bs; tab->prune_index++)
     {
       net *n = &routes[tab->prune_index];
-      while ((limit > 0) && rt_prune_net(tab, n))
-	limit--;
-
-      if (limit <= 0)
-      {
-	ev_send_loop(tab->loop, tab->prune_event);
-	return;
-      }
+      while (rt_prune_net(tab, n))
+	MAYBE_DEFER_TASK(birdloop_event_list(tab->loop), tab->prune_event,
+	    "%s pruning", tab->name);
 
       struct rte_storage *e = NET_BEST_ROUTE(tab, n);
       if (tab->trie_new && e)
       {
 	const net_addr *a = e->rte.net;
 	trie_add_prefix(tab->trie_new, a, a->pxlen, a->pxlen);
-	limit--;
       }
     }
 
