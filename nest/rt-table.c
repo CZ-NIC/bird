@@ -2347,7 +2347,7 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, const
       rpe = atomic_load_explicit(&rpe->next, memory_order_acquire))
     ecnt++;
 
-  struct rte_storage *best = atomic_load_explicit(&n->routes, memory_order_acquire);
+  struct rte_storage *best = NET_READ_BEST_ROUTE(tr, n);
   if (!ecnt && !best)
     return NULL;
 
