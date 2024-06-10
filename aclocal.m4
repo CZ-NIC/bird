@@ -120,6 +120,31 @@ AC_DEFUN([BIRD_CHECK_MPLS_KERNEL],
   )
 ])
 
+AC_DEFUN([BIRD_CHECK_CLOCK],
+[
+  AC_CACHE_CHECK(
+    [for $1],
+    [bird_cv_clock_$1],
+    [
+      AC_COMPILE_IFELSE(
+	[
+	  AC_LANG_PROGRAM(
+	    [
+	      #include <time.h>
+	    ],
+	    [
+	      struct timespec tv;
+	      clock_gettime($1, &tv);
+	    ]
+	  )
+	],
+	[bird_cv_clock_$1=yes],
+	[bird_cv_clock_$1=no]
+      )
+    ]
+  )
+])
+
 AC_DEFUN([BIRD_CHECK_ANDROID_GLOB],
 [
   AC_CACHE_CHECK(

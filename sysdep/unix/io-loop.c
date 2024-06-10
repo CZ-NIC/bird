@@ -42,11 +42,15 @@ static struct birdloop *birdloop_new_no_pickup(pool *pp, uint order, const char 
  *	BIRD for such a long time, please implement some means of overflow prevention.
  */
 
+#if ! HAVE_CLOCK_MONOTONIC_COARSE
+#define CLOCK_MONOTONIC_COARSE CLOCK_MONOTONIC
+#endif
+
 static struct timespec ns_begin;
 
 static void ns_init(void)
 {
-  if (clock_gettime(CLOCK_MONOTONIC, &ns_begin))
+  if (clock_gettime(CLOCK_MONOTONIC_COARSE, &ns_begin))
     bug("clock_gettime: %m");
 }
 
@@ -55,7 +59,7 @@ static void ns_init(void)
 u64 ns_now(void)
 {
   struct timespec ts;
-  if (clock_gettime(CLOCK_MONOTONIC, &ts))
+  if (clock_gettime(CLOCK_MONOTONIC_COARSE, &ts))
     bug("clock_gettime: %m");
 
   return (u64) (ts.tv_sec - ns_begin.tv_sec) * NSEC_IN_SEC + ts.tv_nsec - ns_begin.tv_nsec;

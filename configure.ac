@@ -308,6 +308,18 @@ if test "$enable_mpls_kernel" != no ; then
   fi
 fi
 
+BIRD_CHECK_CLOCK(CLOCK_MONOTONIC)
+if test "$bird_cv_clock_CLOCK_MONOTONIC" != yes ; then
+  AC_MSG_ERROR([Monotonic clock not supported])
+fi
+
+BIRD_CHECK_CLOCK(CLOCK_MONOTONIC_COARSE)
+if test "$bird_cv_clock_CLOCK_MONOTONIC_COARSE" != yes ; then
+  AC_DEFINE([HAVE_CLOCK_MONOTONIC_COARSE], [0], [Define to 1 if coarse clock is available])
+else
+  AC_DEFINE([HAVE_CLOCK_MONOTONIC_COARSE], [1], [Define to 1 if coarse clock is available])
+fi
+
 # temporarily removed "mrt" from all_protocols to speed up 3.0-alpha1 release
 all_protocols="aggregator bfd babel bgp l3vpn ospf pipe radv rip rpki static"
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
