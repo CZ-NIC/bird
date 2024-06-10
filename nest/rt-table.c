@@ -122,7 +122,6 @@ pool *rt_table_pool;
 list routing_tables;
 list deleted_routing_tables;
 
-netindex_hash *rt_global_netindex_hash[NET_MAX];
 #define RT_INITIAL_ROUTES_BLOCK_SIZE   128
 
 struct rt_cork rt_cork;
@@ -3070,7 +3069,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   if (t->id >= rtable_max_id)
     rtable_max_id = t->id + 1;
 
-  t->netindex = rt_global_netindex_hash[cf->addr_type];
+  t->netindex = netindex_hash_new(birdloop_pool(t->loop), birdloop_event_list(t->loop), cf->addr_type);
   atomic_store_explicit(&t->routes, mb_allocz(p, RT_INITIAL_ROUTES_BLOCK_SIZE * sizeof(net)), memory_order_relaxed);
   atomic_store_explicit(&t->routes_block_size, RT_INITIAL_ROUTES_BLOCK_SIZE, memory_order_relaxed);
 
@@ -3217,9 +3216,6 @@ rt_init(void)
   ev_init_list(&rt_cork.queue, &main_birdloop, "Route cork release");
   rt_cork.run = (event) { .hook = rt_cork_release_hook };
   idm_init(&rtable_idm, rt_table_pool, 256);
-
-  for (uint i=1; i<NET_MAX; i++)
-    rt_global_netindex_hash[i] = netindex_hash_new(rt_table_pool, &global_event_list, i);
 
   ea_register_init(&ea_roa_aggregated);
 }
@@ -4324,6 +4320,14 @@ rt_unlock_table_priv(struct rtable_private *r, const char *file, uint line)
 }
 
 static void
+rt_shutdown_finished(void *tab_)
+{
+  rtable *t = tab_;
+  RT_LOCK(t, tab);
+  birdloop_stop_self(t->loop, rt_delete, t);
+}
+
+static void
 rt_shutdown(void *tab_)
 {
   rtable *t = tab_;
@@ -4342,7 +4346,9 @@ rt_shutdown(void *tab_)
   rt_exporter_shutdown(&tab->export_best, NULL);
   rt_exporter_shutdown(&tab->export_all, NULL);
 
-  birdloop_stop_self(t->loop, rt_delete, t);
+  netindex_hash_delete(tab->netindex,
+      ev_new_init(tab->rp, rt_shutdown_finished, tab),
+      birdloop_event_list(tab->loop));
 }
 
 static void
