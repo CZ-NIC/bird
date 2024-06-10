@@ -3181,12 +3181,9 @@ bgp_kick_tx(void *vconn)
   struct bgp_conn *conn = vconn;
 
   DBG("BGP: kicking TX\n");
-  uint max = 1024;
-  while (--max && (bgp_fire_tx(conn) > 0))
-    ;
-
-  if (!max && !ev_active(conn->tx_ev))
-    proto_send_event(&conn->bgp->p, conn->tx_ev);
+  while (bgp_fire_tx(conn) > 0)
+    MAYBE_DEFER_TASK(proto_event_list(&conn->bgp->p), conn->tx_ev,
+	"BGP TX for %s", conn->bgp->p.name);
 }
 
 void
@@ -3201,12 +3198,9 @@ bgp_tx(sock *sk)
     bgp_start_timer(conn->bgp, conn->send_hold_timer, conn->send_hold_time);
 
   DBG("BGP: TX hook\n");
-  uint max = 1024;
-  while (--max && (bgp_fire_tx(conn) > 0))
-    ;
-
-  if (!max && !ev_active(conn->tx_ev))
-    proto_send_event(&conn->bgp->p, conn->tx_ev);
+  while (bgp_fire_tx(conn) > 0)
+    MAYBE_DEFER_TASK(proto_event_list(&conn->bgp->p), conn->tx_ev,
+	"BGP TX for %s", conn->bgp->p.name);
 }
 
 
