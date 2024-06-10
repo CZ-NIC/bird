@@ -898,6 +898,8 @@ channel_stop_export(struct channel *c)
       else
 	rt_export_unsubscribe(all, &c->out_req);
 
+      ev_postpone(&c->out_event);
+
       bmap_free(&c->export_accepted_map);
       bmap_free(&c->export_rejected_map);
 
