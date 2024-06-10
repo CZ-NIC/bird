@@ -59,7 +59,7 @@ net_lock_revive_unlock(netindex_hash *h, struct netindex *i)
 netindex_hash *
 netindex_hash_new(pool *sp, event_list *cleanup_target, u8 type)
 {
-  DOMAIN(attrs) dom = DOMAIN_NEW(attrs);
+  DOMAIN(attrs) dom = DOMAIN_NEW_RCU_SYNC(attrs);
   LOCK_DOMAIN(attrs, dom);
 
   pool *p = rp_new(sp, dom.attrs, "Network index");
@@ -119,16 +119,7 @@ netindex_hash_cleanup(void *_nh)
     /* Looks finished, try removing temporarily */
     ASSERT_DIE(ni == atomic_exchange_explicit(&block[i], &netindex_in_progress, memory_order_acq_rel));
 
-    u32 block_epoch = nh->block_epoch;
-    UNLOCK_DOMAIN(attrs, dom);
     synchronize_rcu();
-    LOCK_DOMAIN(attrs, dom);
-    if (block_epoch != nh->block_epoch)
-    {
-      /* Somebody reallocated the block inbetween, use the new one */
-      block = atomic_load_explicit(&nh->block, memory_order_relaxed);
-      bs = atomic_load_explicit(&nh->block_size, memory_order_relaxed);
-    }
 
     /* Now no reader can possibly still have the old pointer,
      * unless somebody found it inbetween and ref'd it. */
