@@ -1879,11 +1879,16 @@ bgp_out_item_done(struct lfjour *j, struct lfjour_item *i)
 {}
 
 static struct rt_export_feed *
-bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, struct netindex *ni, const struct rt_export_item *_first)
+bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, const struct rt_export_item *_first)
 {
   ASSERT_DIE(u == NULL);
   SKIP_BACK_DECLARE(struct bgp_ptx_private, c, exporter, e);
   ASSERT_DIE(DOMAIN_IS_LOCKED(rtable, c->lock));
+  struct netindex *ni = net_resolve_index(c->c->c.table->netindex, index);
+  if (ni == &net_index_out_of_range)
+    return &rt_feed_index_out_of_range;
+  if (ni == NULL)
+    return NULL;
 
   struct rt_export_feed *feed = NULL;
 

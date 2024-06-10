@@ -222,9 +222,11 @@ struct rt_exporter {
   netindex_hash *netindex;			/* Table for net <-> id conversion */
   void (*stopped)(struct rt_exporter *);	/* Callback when exporter can stop */
   void (*cleanup_done)(struct rt_exporter *, u64 end);	/* Callback when cleanup has been done */
-  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rcu_unwinder *, struct netindex *, const struct rt_export_item *first);
+  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rcu_unwinder *, u32, const struct rt_export_item *first);
   void (*feed_cleanup)(struct rt_exporter *, struct rt_export_feeder *);
 };
+
+extern struct rt_export_feed rt_feed_index_out_of_range;
 
 /* Exporter API */
 void rt_exporter_init(struct rt_exporter *, struct settle_config *);

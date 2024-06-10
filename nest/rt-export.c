@@ -10,6 +10,8 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 
+struct rt_export_feed rt_feed_index_out_of_range;
+
 #define rtex_trace(_req, _cat, msg, args...) do { \
   if ((_req)->trace_routes & _cat) \
     log(L_TRACE "%s: " msg, (_req)->name, ##args); \
@@ -144,17 +146,17 @@ rt_export_get(struct rt_export_request *r)
     if (r->feeder.domain.rtable)
     {
       LOCK_DOMAIN(rtable, r->feeder.domain);
-      feed = e->feed_net(e, NULL, ni, update);
+      feed = e->feed_net(e, NULL, ni->index, update);
       UNLOCK_DOMAIN(rtable, r->feeder.domain);
     }
     else
     {
       RCU_ANCHOR(u);
-      feed = e->feed_net(e, u, ni, update);
+      feed = e->feed_net(e, u, ni->index, update);
     }
 
     bmap_set(&r->feed_map, ni->index);
-    ASSERT_DIE(feed);
+    ASSERT_DIE(feed && (feed != &rt_feed_index_out_of_range));
 
     EXPORT_FOUND(RT_EXPORT_FEED);
   }
@@ -246,7 +248,7 @@ rt_alloc_feed(uint routes, uint exports)
 static struct rt_export_feed *
 rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u)
 {
-  while (1)
+  for (uint retry = 0; retry < (u ? 1024 : ~0U); retry++)
   {
     ASSERT_DIE(u || DOMAIN_IS_LOCKED(rtable, f->domain));
 
@@ -257,42 +259,35 @@ rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u)
       return NULL;
     }
 
-    struct netindex *ni = NULL;
-    u32 mfi = atomic_load_explicit(&e->max_feed_index, memory_order_acquire);
-    for (; !ni && f->feed_index < mfi; f->feed_index++)
-      ni = net_resolve_index(e->netindex, f->feed_index);
-
-    if (!ni)
+    struct rt_export_feed *feed = e->feed_net(e, u, f->feed_index, NULL);
+    if (feed == &rt_feed_index_out_of_range)
     {
+      rtex_trace(f, D_ROUTES, "Nothing more to feed", f->feed_index);
       f->feed_index = ~0;
       return NULL;
     }
 
+#define NOT_THIS_FEED(...) {		\
+  rtex_trace(f, D_ROUTES, __VA_ARGS__);	\
+  f->feed_index++;			\
+  continue;				\
+}
+
+    if (!feed)
+      NOT_THIS_FEED("Nothing found for index %u", f->feed_index);
+
+    struct netindex *ni = feed->ni;
     if (!rt_prefilter_net(&f->prefilter, ni->addr))
-    {
-      rtex_trace(f, D_ROUTES, "Not feeding %N due to prefilter", ni->addr);
-      if (u)
-	RCU_RETRY_FAST(u);
-      else
-	continue;
-    }
+      NOT_THIS_FEED("Not feeding %N due to prefilter", ni->addr);
 
     if (f->feeding && !rt_net_is_feeding_feeder(f, ni->addr))
-    {
-      rtex_trace(f, D_ROUTES, "Not feeding %N, not requested", ni->addr);
-      if (u)
-	RCU_RETRY_FAST(u);
-      else
-	continue;
-    }
+      NOT_THIS_FEED("Not feeding %N, not requested", ni->addr);
 
-    struct rt_export_feed *feed = e->feed_net(e, u, ni, NULL);
-    if (feed)
-    {
-      rtex_trace(f, D_ROUTES, "Feeding %u routes for %N", feed->count_routes, ni->addr);
-      return feed;
-    }
+    f->feed_index++;
+    return feed;
   }
+
+  RCU_RETRY_FAST(u);
 }
 
 struct rt_export_feed *

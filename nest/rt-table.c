@@ -2279,11 +2279,11 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, const struct rt_pending_exp
 }
 
 static struct rt_export_feed *
-rt_net_feed_internal(struct rtable_reading *tr, const struct netindex *ni, const struct rt_pending_export *first)
+rt_net_feed_internal(struct rtable_reading *tr, u32 index, const struct rt_pending_export *first)
 {
-  net *n = rt_net_feed_get_net(tr, ni->index);
+  net *n = rt_net_feed_get_net(tr, index);
   if (!n)
-    return NULL;
+    return &rt_feed_index_out_of_range;
 
   return rt_net_feed_index(tr, n, first);
 }
@@ -2293,14 +2293,14 @@ rt_net_feed(rtable *t, const net_addr *a, const struct rt_pending_export *first)
 {
   RT_READ(t, tr);
   const struct netindex *ni = net_find_index(tr->t->netindex, a);
-  return ni ? rt_net_feed_internal(tr, ni, first) : NULL;
+  return ni ? rt_net_feed_internal(tr, ni->index, first) : NULL;
 }
 
 static struct rt_export_feed *
-rt_feed_net_all(struct rt_exporter *e, struct rcu_unwinder *u, struct netindex *ni, const struct rt_export_item *_first)
+rt_feed_net_all(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, const struct rt_export_item *_first)
 {
   RT_READ_ANCHORED(SKIP_BACK(rtable, export_all, e), tr, u);
-  return rt_net_feed_internal(tr, ni, SKIP_BACK(const struct rt_pending_export, it, _first));
+  return rt_net_feed_internal(tr, index, SKIP_BACK(const struct rt_pending_export, it, _first));
 }
 
 rte
@@ -2325,17 +2325,17 @@ rt_net_best(rtable *t, const net_addr *a)
 }
 
 static struct rt_export_feed *
-rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, struct netindex *ni, const struct rt_export_item *_first)
+rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, const struct rt_export_item *_first)
 {
   SKIP_BACK_DECLARE(rtable, t, export_best, e);
   SKIP_BACK_DECLARE(const struct rt_pending_export, first, it, _first);
 
   RT_READ_ANCHORED(t, tr, u);
 
-  net *n = rt_net_feed_get_net(tr, ni->index);
+  net *n = rt_net_feed_get_net(tr, index);
   if (!n)
+    return &rt_feed_index_out_of_range;
     /* No more to feed, we are fed up! */
-    return NULL;
 
   const struct rt_pending_export *first_in_net, *last_in_net;
   first_in_net = atomic_load_explicit(&n->best.first, memory_order_acquire);
@@ -2352,9 +2352,13 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, struct netindex 
     return NULL;
 
   struct rt_export_feed *feed = rt_alloc_feed(!!best, ecnt);
-  feed->ni = ni;
   if (best)
+  {
     feed->block[0] = best->rte;
+    feed->ni = NET_TO_INDEX(best->rte.net);
+  }
+  else
+    feed->ni = NET_TO_INDEX((first->it.new ?: first->it.old)->net);
 
   if (ecnt)
   {

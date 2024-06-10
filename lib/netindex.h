@@ -36,6 +36,8 @@ struct netindex *net_find_index(netindex_hash *, const net_addr *);
 struct netindex *net_get_index(netindex_hash *, const net_addr *);
 struct netindex *net_resolve_index(netindex_hash *, u32);
 
+extern struct netindex net_index_out_of_range;
+
 /* Update use-count without allocating a handle. Take same care
  * to ensure that your locks and unlocks are always balanced. */
 void net_lock_index(netindex_hash *h, struct netindex *i);

@@ -308,6 +308,8 @@ net_get_index(netindex_hash *h, const net_addr *n)
        net_new_index_locked(hp, n)));
 }
 
+struct netindex net_index_out_of_range;
+
 struct netindex *
 net_resolve_index(netindex_hash *h, u32 i)
 {
@@ -317,7 +319,7 @@ net_resolve_index(netindex_hash *h, u32 i)
   u32 bs = atomic_load_explicit(&h->block_size, memory_order_relaxed);
 
   if (i >= bs)
-    return NULL;
+    return &net_index_out_of_range;
 
   struct netindex *ni = atomic_load_explicit(&block[i], memory_order_acquire);
   if (ni == NULL)
