@@ -767,10 +767,18 @@ poll_timeout(struct birdloop *loop)
 {
   timer *t = timers_first(&loop->time);
   if (!t)
+  {
+    THREAD_TRACE(DL_SCHEDULING, "No timers, no events in meta");
     return -1;
+  }
 
   btime remains = tm_remains(t);
-  return remains TO_MS + ((remains TO_MS) MS < remains);
+  int timeout = remains TO_MS + ((remains TO_MS) MS < remains);
+
+  THREAD_TRACE(DL_SCHEDULING, "Next meta timer in %d ms for %s", timeout,
+      LOOP_NAME(SKIP_BACK(struct birdloop, timer, t)));
+
+  return timeout;
 }
 
 static void
@@ -835,17 +843,14 @@ bird_thread_main(void *arg)
     int more_events = ev_run_list(&thr->meta->event_list);
     if (more_events)
     {
-      THREAD_TRACE(DL_SCHEDULING, "More metaevents to run");
+      THREAD_TRACE(DL_SCHEDULING, "More metaevents to run from %s",
+	  LOOP_NAME(SKIP_BACK(struct birdloop, event,
+	      atomic_load_explicit(&thr->meta->event_list.receiver, memory_order_relaxed)))
+	  );
       timeout = 0;
     }
     else
-    {
       timeout = poll_timeout(thr->meta);
-      if (timeout == -1)
-	THREAD_TRACE(DL_SCHEDULING, "No timers, no events in meta");
-      else
-	THREAD_TRACE(DL_SCHEDULING, "Next meta timer in %d ms", timeout);
-    }
 
     /* Run priority events before sleeping */
     ev_run_list(&thr->priority_events);
