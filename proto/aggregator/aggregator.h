@@ -50,6 +50,7 @@ struct aggregator_proto {
   struct proto p;
   struct channel *src, *dst;
 
+
   /* Buckets by aggregator rule */
   HASH(struct aggregator_bucket) buckets;
   linpool *bucket_pool;
@@ -69,6 +70,7 @@ struct aggregator_proto {
   event reload_buckets;
 
   /* Aggregation trie */
+  int first_run;
   uint addr_type;
   linpool *trie_pool;
   struct trie_node *root;
