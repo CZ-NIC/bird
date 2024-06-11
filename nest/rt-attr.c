@@ -1227,8 +1227,6 @@ ea_list_ref(ea_list *l)
     ea_ref(l->next);
 }
 
-static void ea_free_nested(ea_list *l);
-
 static void
 ea_list_unref(ea_list *l)
 {
@@ -1249,7 +1247,7 @@ ea_list_unref(ea_list *l)
     }
 
   if (l->next)
-    ea_free_nested(l->next);
+    ea_free_later(l->next);
 }
 
 void
@@ -1735,41 +1733,62 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
   return r->l;
 }
 
-static void
-ea_free_locked(struct ea_storage *a)
-{
-  /* Somebody has cloned this rta inbetween. This sometimes happens. */
-  if (atomic_load_explicit(&a->uc, memory_order_acquire))
-    return;
+#define EA_UC_SUB   (1ULL << 56)
+#define EA_UC_IN_PROGRESS(x)	((x) >> 56)
+#define EA_UC_ASSIGNED(x)	((x) & (EA_UC_SUB-1))
 
-  SPINHASH_REMOVE(rta_hash_table, RTAH, a);
-
-  ea_list_unref(a->l);
-  if (a->l->flags & EALF_HUGE)
-    mb_free(a);
-  else
-    sl_free(a);
-}
-
-static void
-ea_free_nested(struct ea_list *l)
-{
-  struct ea_storage *r = ea_get_storage(l);
-  if (1 == atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel))
-    ea_free_locked(r);
-}
+#define EA_UC_DONE(x)		(EA_UC_ASSIGNED(x) == EA_UC_IN_PROGRESS(x))
 
 void
 ea_free_deferred(struct deferred_call *dc)
 {
   struct ea_storage *r = ea_get_storage(SKIP_BACK(struct ea_free_deferred, dc, dc)->attrs);
-  if (1 != atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel))
-    return;
 
+  /* Wait until the previous free has ended */
+  u64 prev;
+  do prev = atomic_fetch_or_explicit(&r->uc, EA_UC_SUB, memory_order_acq_rel);
+  while (prev & EA_UC_SUB);
+
+  prev |= EA_UC_SUB;
+
+  if (!EA_UC_DONE(prev))
+  {
+    /* The easy case: somebody else holds the usecount */
+    ASSERT_DIE(EA_UC_IN_PROGRESS(prev) < EA_UC_ASSIGNED(prev));
+    atomic_fetch_sub_explicit(&r->uc, EA_UC_SUB + 1, memory_order_acq_rel);
+    return;
+  }
+
+  /* We are the last one to free this ea */
   RTA_LOCK;
-  ea_free_locked(r);
+
+  /* Trying to remove the ea from the hash */
+  SPINHASH_REMOVE(rta_hash_table, RTAH, r);
+
+  /* Somebody has cloned this rta inbetween. This sometimes happens. */
+  prev = atomic_load_explicit(&r->uc, memory_order_acquire);
+  if (!EA_UC_DONE(prev))
+  {
+    /* Reinsert the ea */
+    SPINHASH_INSERT(rta_hash_table, RTAH, r);
+    atomic_fetch_sub_explicit(&r->uc, EA_UC_SUB + 1, memory_order_acq_rel);
+    RTA_UNLOCK;
+    return;
+  }
+
+  /* Fine, wait until everybody is actually done */
+  ASSERT_DIE(atomic_load_explicit(&r->uc, memory_order_acquire) == EA_UC_SUB + 1);
+
+  /* And now we can free the object, finally */
+  ea_list_unref(r->l);
+  if (r->l->flags & EALF_HUGE)
+    mb_free(r);
+  else
+    sl_free(r);
+
   RTA_UNLOCK;
 }
+
 
 /**
  * rta_dump_all - dump attribute cache

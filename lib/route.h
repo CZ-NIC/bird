@@ -253,8 +253,9 @@ enum ea_stored {
 
 struct ea_storage {
   struct ea_storage *next_hash;		/* Next in hash chain */
-  _Atomic u32 uc;			/* Use count */
+  _Atomic u64 uc;			/* Use count */
   u32 hash_key;				/* List hash */
+  PADDING(unused, 0, 4);		/* Sorry, we need u64 for the usecount */
   ea_list l[0];				/* The list itself */
 };
 
