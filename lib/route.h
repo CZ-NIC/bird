@@ -253,10 +253,8 @@ enum ea_stored {
 
 struct ea_storage {
   struct ea_storage *next_hash;		/* Next in hash chain */
-  struct lfuc uc;			/* Use count */
+  _Atomic u32 uc;			/* Use count */
   u32 hash_key;				/* List hash */
-  /* 32 bits unused but we don't wanna squeeze the use count
-   * into 32 bits to pack with the list hash, sorry */
   ea_list l[0];				/* The list itself */
 };
 
@@ -548,7 +546,7 @@ static inline struct ea_storage *ea_get_storage(ea_list *r)
 
 static inline ea_list *ea_ref(ea_list *r)
 {
-  lfuc_lock(&ea_get_storage(r)->uc);
+  ASSERT_DIE(0 < atomic_fetch_add_explicit(&ea_get_storage(r)->uc, 1, memory_order_acq_rel));
   return r;
 }
 
@@ -561,25 +559,38 @@ static inline ea_list *ea_lookup(ea_list *r, u32 squash_upto, enum ea_stored oid
     return ea_lookup_slow(r, squash_upto, oid);
 }
 
-#define ea_free_later ea_free
-extern event ea_cleanup_event;
-static inline void ea_free(ea_list *l)
+struct ea_free_deferred {
+  struct deferred_call dc;
+  ea_list *attrs;
+};
+
+void ea_free_deferred(struct deferred_call *dc);
+
+static inline ea_list *ea_free_later(ea_list *r)
 {
-  if (l)
-    lfuc_unlock(&ea_get_storage(l)->uc, &global_work_list, &ea_cleanup_event);
+  if (!r)
+    return NULL;
+
+  struct ea_free_deferred efd = {
+    .dc.hook = ea_free_deferred,
+    .attrs = r,
+  };
+
+  defer_call(&efd.dc, sizeof efd);
+  return r;
 }
+
+#define ea_free ea_free_later
 
 static inline ea_list *ea_lookup_tmp(ea_list *r, u32 squash_upto, enum ea_stored oid)
 {
-  ea_free_later(r = ea_lookup(r, squash_upto, oid));
-  return r;
+  return ea_free_later(ea_lookup(r, squash_upto, oid));
 }
 
 static inline ea_list *ea_ref_tmp(ea_list *r)
 {
   ASSERT_DIE(r->stored);
-  ea_free_later(ea_ref(r));
-  return r;
+  return ea_free_later(ea_ref(r));
 }
 
 static inline ea_list *ea_strip_to(ea_list *r, u32 strip_to)

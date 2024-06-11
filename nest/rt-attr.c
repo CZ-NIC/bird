@@ -1227,6 +1227,8 @@ ea_list_ref(ea_list *l)
     ea_ref(l->next);
 }
 
+static void ea_free_nested(ea_list *l);
+
 static void
 ea_list_unref(ea_list *l)
 {
@@ -1247,7 +1249,7 @@ ea_list_unref(ea_list *l)
     }
 
   if (l->next)
-    lfuc_unlock(&ea_get_storage(l->next)->uc, &global_work_list, &ea_cleanup_event);
+    ea_free_nested(l->next);
 }
 
 void
@@ -1521,7 +1523,7 @@ ea_dump(ea_list *e)
 	    (e->flags & EALF_SORTED) ? 'S' : 's',
 	    (e->flags & EALF_BISECT) ? 'B' : 'b',
 	    e->stored,
-	    s ? atomic_load_explicit(&s->uc.uc, memory_order_relaxed) : 0,
+	    s ? atomic_load_explicit(&s->uc, memory_order_relaxed) : 0,
 	    s ? s->hash_key : 0);
       for(i=0; i<e->count; i++)
 	{
@@ -1621,8 +1623,6 @@ ea_append(ea_list *to, ea_list *what)
  *	rta's
  */
 
-event ea_cleanup_event;
-
 static SPINHASH(struct ea_storage) rta_hash_table;
 
 #define RTAH_KEY(a)		a->l, a->hash_key
@@ -1665,7 +1665,7 @@ ea_lookup_existing(ea_list *o, u32 squash_upto, uint h)
 	(!r || r->l->stored > ea->l->stored))
       r = ea;
   if (r)
-    lfuc_lock_revive(&r->uc);
+    atomic_fetch_add_explicit(&r->uc, 1, memory_order_acq_rel);
   SPINHASH_END_CHAIN(read);
 
   return r ? r->l : NULL;
@@ -1727,9 +1727,7 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
   r->l->flags |= huge;
   r->l->stored = oid;
   r->hash_key = h;
-
-  memset(&r->uc, 0, sizeof r->uc);
-  lfuc_lock_revive(&r->uc);
+  atomic_store_explicit(&r->uc, 1, memory_order_release);
 
   SPINHASH_INSERT(rta_hash_table, RTAH, r);
 
@@ -1738,32 +1736,38 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
 }
 
 static void
-ea_cleanup(void *_ UNUSED)
+ea_free_locked(struct ea_storage *a)
 {
+  /* Somebody has cloned this rta inbetween. This sometimes happens. */
+  if (atomic_load_explicit(&a->uc, memory_order_acquire))
+    return;
+
+  SPINHASH_REMOVE(rta_hash_table, RTAH, a);
+
+  ea_list_unref(a->l);
+  if (a->l->flags & EALF_HUGE)
+    mb_free(a);
+  else
+    sl_free(a);
+}
+
+static void
+ea_free_nested(struct ea_list *l)
+{
+  struct ea_storage *r = ea_get_storage(l);
+  if (1 == atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel))
+    ea_free_locked(r);
+}
+
+void
+ea_free_deferred(struct deferred_call *dc)
+{
+  struct ea_storage *r = ea_get_storage(SKIP_BACK(struct ea_free_deferred, dc, dc)->attrs);
+  if (1 != atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel))
+    return;
+
   RTA_LOCK;
-
-  _Bool run_again = 0;
-
-  SPINHASH_WALK_FILTER(rta_hash_table, RTAH, write, rp)
-  {
-    struct ea_storage *r = *rp;
-    if (lfuc_finished(&r->uc))
-    {
-      run_again = 1;
-      SPINHASH_DO_REMOVE(rta_hash_table, RTAH, rp);
-
-      ea_list_unref(r->l);
-      if (r->l->flags & EALF_HUGE)
-	mb_free(r);
-      else
-	sl_free(r);
-    }
-  }
-  SPINHASH_WALK_FILTER_END(write);
-
-  if (run_again)
-    ev_send(&global_work_list, &ea_cleanup_event);
-
+  ea_free_locked(r);
   RTA_UNLOCK;
 }
 
@@ -1819,10 +1823,6 @@ rta_init(void)
 
   rte_src_init();
   ea_class_init();
-
-  ea_cleanup_event = (event) {
-    .hook = ea_cleanup,
-  };
 
   RTA_UNLOCK;
 
