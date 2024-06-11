@@ -1371,13 +1371,17 @@ channel_notify_basic(void *_channel)
 static void
 rt_flush_best(struct rtable_private *tab, u64 upto)
 {
+  u64 last_seq = 0;
   RT_EXPORT_WALK(&tab->best_req, u)
   {
     ASSERT_DIE(u->kind == RT_EXPORT_UPDATE);
     ASSERT_DIE(u->update->seq <= upto);
-    if (u->update->seq == upto)
+    last_seq = u->update->seq;
+    if (last_seq == upto)
       return;
   }
+
+  rt_trace(tab, D_STATES, "Export best full flushed regular up to %lu", last_seq);
 }
 
 static struct rt_pending_export *
