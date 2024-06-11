@@ -900,6 +900,14 @@ run_aggregation(struct aggregator_proto *p)
 }
 
 static void
+flush_trie(struct aggregator_proto *p)
+{
+  lp_flush(p->bucket_pool);
+  lp_flush(p->route_pool);
+  lp_flush(p->trie_pool);
+}
+
+static void
 aggregate_on_settle_timer(struct settle *s)
 {
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, s->tm.data);
@@ -1285,6 +1293,9 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   if (p->p.proto_state != PS_UP)
     return;
 
+  if (!p->root)
+    trie_init(p);
+
   /* Find the objects for the old route */
   if (old)
     old_route = HASH_FIND(p->routes, AGGR_RTE, old);
@@ -1532,40 +1543,38 @@ aggregator_init(struct proto_config *CF)
   return P;
 }
 
-static int
-aggregator_start(struct proto *P)
+static void
+trie_init(struct aggregator_proto *p)
 {
-  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
+  /*
+   * Hash tables are initialized in aggregator_start() before the first run.
+   * They are initialized here for subsequent runs.
+   */
+  if (!p->first_run)
+  {
+    HASH_INIT(p->buckets, p->p.pool, AGGR_BUCK_ORDER);
+    HASH_INIT(p->routes, p->p.pool, AGGR_RTE_ORDER);
 
-  p->addr_type = p->src->table->addr_type;
+    p->reload_buckets = (event) {
+      .hook = aggregator_reload_buckets,
+      .data = p,
+    };
+  }
 
-  p->bucket_pool = lp_new(P->pool);
-  HASH_INIT(p->buckets, P->pool, AGGR_BUCK_ORDER);
-
-  p->route_pool = lp_new(P->pool);
-  HASH_INIT(p->routes, P->pool, AGGR_RTE_ORDER);
-
-  p->reload_buckets = (event) {
-    .hook = aggregator_reload_buckets,
-    .data = p,
-  };
-
-  p->trie_pool = lp_new(P->pool);
   p->root = create_new_node(p->trie_pool);
   p->root->depth = 1;
-  p->aggr_done = 0;
 
   struct network *default_net = NULL;
 
   if (p->addr_type == NET_IP4)
   {
-    default_net = mb_alloc(P->pool, sizeof(struct network) + sizeof(struct net_addr_ip4));
+    default_net = mb_allocz(p->p.pool, sizeof(struct network) + sizeof(struct net_addr_ip4));
     net_fill_ip4(default_net->n.addr, IP4_NONE, 0);
     log("Creating net %p for default route %N", default_net, default_net->n.addr);
   }
   else if (p->addr_type == NET_IP6)
   {
-    default_net = mb_alloc(P->pool, sizeof(struct network) + sizeof(struct net_addr_ip6));
+    default_net = mb_allocz(p->p.pool, sizeof(struct network) + sizeof(struct net_addr_ip6));
     net_fill_ip6(default_net->n.addr, IP6_NONE, 0);
     log("Creating net %p for default route %N", default_net, default_net->n.addr);
   }
@@ -1598,6 +1607,28 @@ aggregator_start(struct proto *P)
 
   /* Assign default route to the root */
   p->root->bucket = new_bucket;
+}
+
+static int
+aggregator_start(struct proto *P)
+{
+  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
+
+  p->addr_type = p->src->table->addr_type;
+
+  p->bucket_pool = lp_new(P->pool);
+  HASH_INIT(p->buckets, P->pool, AGGR_BUCK_ORDER);
+
+  p->route_pool = lp_new(P->pool);
+  HASH_INIT(p->routes, P->pool, AGGR_RTE_ORDER);
+
+  p->reload_buckets = (event) {
+    .hook = aggregator_reload_buckets,
+    .data = p,
+  };
+
+  p->trie_pool = lp_new(P->pool);
+  p->aggr_done = 0;
 
   settle_init(&p->aggr_timer, &p->aggr_timer_cf, aggregate_on_settle_timer, p);
 
