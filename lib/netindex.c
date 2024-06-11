@@ -22,6 +22,7 @@ struct netindex netindex_in_progress;
 #define NETINDEX_PARAMS		/8, *2, 2, 2, 12, 28
 
 static void NETINDEX_REHASH(void *_v) {
+  log(L_TRACE "Netindex rehash: begin");
   netindex_spinhash *v = _v;
   int step;
   {
@@ -29,15 +30,18 @@ static void NETINDEX_REHASH(void *_v) {
     SPINHASH_REHASH_PREPARE(v,NETINDEX,struct netindex,step);
   }
 
+  log(L_TRACE "Netindex rehash: step=%d", step);
   if (!step)	return;
 
   if (step > 0) SPINHASH_REHASH_UP(v,NETINDEX,struct netindex,step);
   if (step < 0) SPINHASH_REHASH_DOWN(v,NETINDEX,struct netindex,-step);
 
+  log(L_TRACE "Netindex rehash: time to finish");
   {
     NH_LOCK(SKIP_BACK(netindex_hash, hash, v), _);
     SPINHASH_REHASH_FINISH(v,NETINDEX);
   }
+  log(L_TRACE "Netindex rehash: done");
 }
 
 static void netindex_hash_cleanup(void *netindex_hash);
