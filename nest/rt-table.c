@@ -1442,8 +1442,8 @@ rte_announce(struct rtable_private *tab, const struct netindex *i UNUSED, net *n
     if (best_rpe)
       /* Announced best, need an anchor to all */
       best_rpe->seq_all = all_rpe->it.seq;
-    else if (new_best != old_best)
-      /* Would announce best but it's empty with no reader */
+    else if (!lfjour_pending_items(&tab->export_best.journal))
+      /* Best is idle, flush its recipient immediately */
       rt_flush_best(tab, all_rpe->it.seq);
 
     rt_check_cork_high(tab);
