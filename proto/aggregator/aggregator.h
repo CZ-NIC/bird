@@ -28,7 +28,7 @@ struct aggregator_config {
   struct aggr_item *aggr_on;
   int net_present;
   const struct f_line *merge_by;
-  struct settle_config aggr_timer_cf;
+  struct settle_config notify_settle_cf;
 };
 
 struct aggregator_route {
@@ -74,8 +74,8 @@ struct aggregator_proto {
   uint addr_type;
   linpool *trie_pool;
   struct trie_node *root;
-  struct settle_config aggr_timer_cf;
-  struct settle aggr_timer;
+  struct settle_config notify_settle_cf;
+  struct settle notify_settle;
   int before_count;
   int after_count;
   int aggr_done;
