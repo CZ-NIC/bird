@@ -10,7 +10,6 @@
 #include "lib/netindex_private.h"
 
 #define NETINDEX_INIT_BLOCK_SIZE	128
-struct netindex netindex_in_progress;
 
 #define NETINDEX_KEY(n)		(n)->hash, (n)->addr
 #define NETINDEX_NEXT(n)	(n)->next
@@ -90,6 +89,39 @@ netindex_hash_new(pool *sp, event_list *cleanup_target, u8 type)
   return SKIP_BACK(netindex_hash, priv, nh);
 }
 
+static uint
+netindex_hash_cleanup_removed(struct netindex_hash_private *nh, struct netindex * _Atomic *block, struct netindex **removed, uint cnt)
+{
+  synchronize_rcu();
+
+  uint kept = 0;
+  for (uint q = 0; q < cnt; q++)
+  {
+    struct netindex *ni = removed[q];
+
+    /* Now no reader can possibly still have the old pointer,
+     * unless somebody found it inbetween and ref'd it. */
+    if (!lfuc_finished(&ni->uc))
+    {
+      /* Collision, return the netindex back. */
+      ASSERT_DIE(NULL == atomic_exchange_explicit(&block[ni->index], ni, memory_order_acq_rel));
+      SPINHASH_INSERT(nh->hash, NETINDEX, ni);
+      kept++;
+      continue;
+    }
+
+    /* Now the netindex is definitely obsolete, we can free it */
+    hmap_clear(&nh->id_map, ni->index);
+
+    if (nh->slab)
+      sl_free(ni);
+    else
+      mb_free(ni);
+  }
+
+  return kept;
+}
+
 static void
 netindex_hash_cleanup(void *_nh)
 {
@@ -102,6 +134,10 @@ netindex_hash_cleanup(void *_nh)
 
   uint bs = atomic_load_explicit(&nh->block_size, memory_order_relaxed);
   struct netindex * _Atomic *block = atomic_load_explicit(&nh->block, memory_order_relaxed);
+
+#define REMOVED_MAX 256
+  struct netindex *removed[REMOVED_MAX];
+  uint removed_cnt = 0;
 
   for (uint i = 0; i < bs; i++)
   {
@@ -120,34 +156,26 @@ netindex_hash_cleanup(void *_nh)
       continue;
     }
 
-    /* Looks finished, try removing temporarily */
-    ASSERT_DIE(ni == atomic_exchange_explicit(&block[i], &netindex_in_progress, memory_order_acq_rel));
-
-    synchronize_rcu();
-
-    /* Now no reader can possibly still have the old pointer,
-     * unless somebody found it inbetween and ref'd it. */
-    if (!lfuc_finished(&ni->uc))
-    {
-      /* Collision, return the netindex to the block. */
-      ASSERT_DIE(&netindex_in_progress == atomic_exchange_explicit(&block[i], ni, memory_order_acq_rel));
-      kept++;
-      continue;
-    }
-
-    /* Now the netindex is definitely obsolete, set block to NULL */
-    ASSERT_DIE(&netindex_in_progress == atomic_exchange_explicit(&block[i], NULL, memory_order_acq_rel));
-
-    /* And free it from other structures */
+    /* Looks finished, try dropping */
+    ASSERT_DIE(ni == atomic_exchange_explicit(&block[i], NULL, memory_order_acq_rel));
     SPINHASH_REMOVE(nh->hash, NETINDEX, ni);
-    hmap_clear(&nh->id_map, ni->index);
 
-    if (nh->slab)
-      sl_free(ni);
-    else
-      mb_free(ni);
+    /* Store into the removed-block */
+    removed[removed_cnt++] = ni;
+
+    /* If removed-block is full, flush it */
+    if (removed_cnt == REMOVED_MAX)
+    {
+      kept += netindex_hash_cleanup_removed(nh, block, removed, removed_cnt);
+      removed_cnt = 0;
+    }
   }
 
+  /* Flush remaining netindexes */
+  if (removed_cnt)
+    kept += netindex_hash_cleanup_removed(nh, block, removed, removed_cnt);
+
+  /* Return now unless we're deleted */
   if (kept || !nh->deleted_event)
   {
     UNLOCK_DOMAIN(attrs, dom);
@@ -209,11 +237,7 @@ net_validate_index(netindex_hash *h, struct netindex *ni)
 
   ASSERT_DIE(ni->index < bs);
   struct netindex *bni = atomic_load_explicit(&block[ni->index], memory_order_acquire);
-  if (bni == ni)
-    return 1;
-
-  ASSERT_DIE(bni == &netindex_in_progress);
-  return 0;
+  return (bni == ni);
 }
 
 static struct netindex *
@@ -319,9 +343,6 @@ net_resolve_index(netindex_hash *h, u32 i)
   struct netindex *ni = atomic_load_explicit(&block[i], memory_order_acquire);
   if (ni == NULL)
     return NULL;
-
-  if (ni == &netindex_in_progress)
-    RCU_RETRY(u);
 
   return net_lock_revive_unlock(h, ni);
 }

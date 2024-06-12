@@ -38,8 +38,6 @@ typedef union netindex_hash {
   struct netindex_hash_private priv;
 } netindex_hash;
 
-extern struct netindex netindex_in_progress;
-
 LOBJ_UNLOCK_CLEANUP(netindex_hash, attrs);
 #define NH_LOCK(h, hp)	LOBJ_LOCK(h, hp, netindex_hash, attrs)
 
