@@ -36,7 +36,14 @@ aggregator_proto_start: proto_start AGGREGATOR
   this_proto = proto_config_new(&proto_aggregator, $1);
   this_channel = AGGREGATOR_CFG->src = channel_config_new(NULL, "source", 0, this_proto);
   AGGREGATOR_CFG->dst = channel_config_new(NULL, "destination", 0, this_proto);
-  AGGREGATOR_CFG->src->ra_mode = AGGREGATOR_CFG->dst->ra_mode = RA_ANY;
+
+  /*
+   * Aggregation mode is set to prefix aggregation by default, in which case we want to receive
+   * updates with the best routes.
+   */
+  AGGREGATOR_CFG->aggr_mode = PREFIX_AGGR;
+  AGGREGATOR_CFG->src->ra_mode = RA_OPTIMAL;
+  AGGREGATOR_CFG->dst->ra_mode = RA_ANY;
 
   AGGREGATOR_CFG->notify_settle_cf = (struct settle_config) {
     .min = 10 MS_,
@@ -52,14 +59,19 @@ aggregator_proto_item:
     if (AGGREGATOR_CFG->aggr_on)
       cf_error("Only one aggregate on clause allowed");
 
-    AGGREGATOR_CFG->net_present = 0;
     int count = 0;
 
     for (const struct aggr_item_node *item = $3; item; item = item->next) {
       log(L_WARN "type %d sacode %d", item->i.type, item->i.sa.sa_code);
 
-      if (item->i.type == AGGR_ITEM_STATIC_ATTR && item->i.sa.sa_code == SA_NET)
-        AGGREGATOR_CFG->net_present = 1;
+      /*
+       * If NET attribute is present, aggregate routes within the same net
+       * and receive updates with any routes.
+       */
+      if (item->i.type == AGGR_ITEM_STATIC_ATTR && item->i.sa.sa_code == SA_NET) {
+        AGGREGATOR_CFG->aggr_mode = NET_AGGR;
+        AGGREGATOR_CFG->src->ra_mode = RA_ANY;
+      }
 
       count++;
     }
@@ -92,7 +104,7 @@ aggregator_proto: aggregator_proto_start proto_name '{' aggregator_proto_opts '}
   if (AGGREGATOR_CFG->src->table->addr_type != AGGREGATOR_CFG->dst->table->addr_type)
     cf_error("Both rtables in aggregator must have the same network type");
 
-  if (AGGREGATOR_CFG->net_present == 0)
+  if (PREFIX_AGGR == AGGREGATOR_CFG->aggr_mode)
     if (AGGREGATOR_CFG->src->table->addr_type != NET_IP4 && AGGREGATOR_CFG->src->table->addr_type != NET_IP6)
       cf_error("Trie aggregation is available only for IP4 or IPv6 networks");
 };

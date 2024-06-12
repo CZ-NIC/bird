@@ -1479,7 +1479,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     rta_free(old_route->rte.attrs);
   }
 
-  if (p->net_present != 0)
+  if (NET_AGGR == p->aggr_mode)
   {
     /* Announce changes */
     if (old_bucket)
@@ -1550,10 +1550,10 @@ aggregator_init(struct proto_config *CF)
   proto_configure_channel(P, &p->src, cf->src);
   proto_configure_channel(P, &p->dst, cf->dst);
 
+  p->aggr_mode = cf->aggr_mode;
   p->aggr_on_count = cf->aggr_on_count;
   p->aggr_on_da_count = cf->aggr_on_da_count;
   p->aggr_on = cf->aggr_on;
-  p->net_present = cf->net_present;
   p->merge_by = cf->merge_by;
   p->notify_settle_cf = cf->notify_settle_cf;
 
