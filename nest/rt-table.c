@@ -129,6 +129,7 @@ struct rt_cork rt_cork;
 /* Data structures for export journal */
 
 static void rt_free_hostcache(struct rtable_private *tab);
+static void rt_hcu_uncork(void *_tab);
 static void rt_update_hostcache(void *tab);
 static void rt_next_hop_update(void *_tab);
 static void rt_nhu_uncork(void *_tab);
@@ -4725,7 +4726,7 @@ rt_init_hostcache(struct rtable_private *tab)
   hc->tab = RT_PUB(tab);
 
   tab->hcu_event = ev_new_init(tab->rp, rt_update_hostcache, tab);
-  tab->hcu_uncork_event = ev_new_init(tab->rp, rt_update_hostcache, tab);
+  tab->hcu_uncork_event = ev_new_init(tab->rp, rt_hcu_uncork, tab);
   tab->hostcache = hc;
 
   ev_send_loop(tab->loop, tab->hcu_event);
@@ -4875,6 +4876,13 @@ done:
 
   ea_free(old_src);
   return old_src != new_src;
+}
+
+static void
+rt_hcu_uncork(void *_tab)
+{
+  RT_LOCKED((rtable *) _tab, tab)
+    ev_send_loop(tab->loop, tab->hcu_event);
 }
 
 static void

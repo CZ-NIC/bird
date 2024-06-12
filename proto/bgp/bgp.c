@@ -573,6 +573,8 @@ bgp_down(struct bgp_proto *p)
     bgp_close(p);
   }
 
+  rfree(p->uncork_do_ev);
+
   p->neigh = NULL;
 
   BGP_TRACE(D_EVENTS, "Down");
@@ -624,7 +626,7 @@ void
 bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len)
 {
   proto_notify_state(&p->p, PS_STOP);
-  p->uncork_ev->data = NULL;
+
   bgp_graceful_close_conn(&p->outgoing_conn, subcode, data, len);
   bgp_graceful_close_conn(&p->incoming_conn, subcode, data, len);
 
@@ -1730,7 +1732,8 @@ bgp_start(struct proto *P)
   p->last_rx_update = 0;
 
   p->event = ev_new_init(p->p.pool, bgp_decision, p);
-  p->uncork_ev = ev_new_init(p->p.pool, bgp_uncork, p);
+  p->uncork_main_ev = ev_new_init(p->p.pool, bgp_uncork_main, p);
+  p->uncork_do_ev = ev_new_init(p->p.pool, bgp_do_uncork, p);
 
   p->startup_timer = tm_new_init(p->p.pool, bgp_startup_timeout, p, 0, 0);
   p->gr_timer = tm_new_init(p->p.pool, bgp_graceful_restart_timeout, p, 0, 0);

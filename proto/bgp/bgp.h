@@ -364,7 +364,8 @@ struct bgp_proto {
   struct bgp_listen_request listen;	/* Shared listening socket */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
   struct birdsock *postponed_sk;	/* Postponed incoming socket for dynamic BGP */
-  event *uncork_ev;			/* Uncork event in case of congestion */
+  event *uncork_main_ev;		/* Uncork event for mainloop */
+  event *uncork_do_ev;			/* Uncork event to actually uncork */
   struct bgp_stats stats;		/* BGP statistics */
   btime last_established;		/* Last time of enter/leave of established state */
   btime last_rx_update;			/* Last time of RX update */
@@ -710,7 +711,8 @@ void bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type)
 void bgp_kick_tx(void *vconn);
 void bgp_tx(struct birdsock *sk);
 int bgp_rx(struct birdsock *sk, uint size);
-void bgp_uncork(void *vp);
+void bgp_uncork_main(void *vp);
+void bgp_do_uncork(void *vp);
 const char * bgp_error_dsc(unsigned code, unsigned subcode);
 void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsigned subcode, byte *data, unsigned len);
 
