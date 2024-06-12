@@ -359,10 +359,6 @@ lfjour_cleanup_hook(void *_j)
   {
     j->item_done(j, first);
 
-#ifdef LOCAL_DEBUG
-    memset(first, 0xbd, j->item_size);
-#endif
-
     /* Find next journal item */
     struct lfjour_item *next = lfjour_get_next(j, first);
     if (PAGE_HEAD(next) != PAGE_HEAD(first))
@@ -374,6 +370,11 @@ lfjour_cleanup_hook(void *_j)
 
       /* Free this block */
       lfjour_block_rem_node(&j->pending, block);
+
+      /* Wait for possible pending readers of the block */
+      synchronize_rcu();
+
+      /* Now we can finally drop the block */
 #ifdef LOCAL_DEBUG
       memset(block, 0xbe, page_size);
 #endif

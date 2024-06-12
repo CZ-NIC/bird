@@ -1503,9 +1503,6 @@ rt_cleanup_export_best(struct lfjour *j, struct lfjour_item *i)
 
   /* Update the first and last pointers */
   rt_cleanup_update_pointers(&net->best, rpe);
-
-  /* Wait for readers before releasing */
-  synchronize_rcu();
 }
 
 static void
@@ -1530,9 +1527,6 @@ rt_cleanup_export_all(struct lfjour *j, struct lfjour_item *i)
 
   if (is_last)
     tab->gc_counter++;
-
-  /* Wait for readers before releasing */
-  synchronize_rcu();
 }
 
 static void
