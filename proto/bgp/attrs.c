@@ -80,6 +80,7 @@ static union bgp_attr_desc bgp_attr_table[];
 static inline const union bgp_attr_desc *bgp_find_attr_desc(eattr *a)
 {
   const struct ea_class *class = ea_class_find(a->id);
+  log("eattr %i %i, class %i %s, class min = %i, class max = %i", a, a->id, class, class->name, &bgp_attr_table[0].class, &bgp_attr_table[BGP_ATTR_MAX].class );
 
   if ((class < &bgp_attr_table[0].class) || (class >= &bgp_attr_table[BGP_ATTR_MAX].class))
     return NULL;

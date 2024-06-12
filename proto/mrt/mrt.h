@@ -73,8 +73,8 @@ struct mrt_table_dump_state {
 
   HASH(struct mrt_peer_entry) peer_hash; /* Hash for peers to find the index */
 
-  rtable *table;			/* Processed table, NULL initially */
-  struct fib_iterator fit;		/* Iterator in processed table */
+  list *table;			/* Processed table, NULL initially - changed to list for v3*/
+  node *fit;		/* Iterator in processed table - changed to node for v3*/
   int table_open;			/* Whether iterator is linked */
 
   int ipv4;				/* Processed table is IPv4 */

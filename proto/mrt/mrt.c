@@ -38,6 +38,7 @@
  * - RFC 6396 - MRT format standard
  * - RFC 8050 - ADD_PATH extension
  */
+#include <stdio.h>
 
 #include <unistd.h>
 #include <limits.h>
@@ -169,6 +170,15 @@ mrt_init_message(buffer *b, u16 type, u16 subtype)
   mrt_put_u32_(b, 0);
 }
 
+rtable *
+get_tab(struct mrt_table_dump_state *s)
+{
+  if (s->table->head)
+    return (rtable*)SKIP_BACK(rtable, n, s->table->head);
+  else
+    return NULL;
+}
+
 static void
 mrt_dump_message(buffer *b, int fd)
 {
@@ -224,6 +234,10 @@ mrt_next_table_(rtable *tab, rtable *tab_ptr, const char *pattern)
     return !tab ? tab_ptr : NULL;
 
   /* Walk routing_tables list, starting after tab (if non-NULL) */
+  log("tab is? %i", tab);
+  if (tab){
+    log("its node is %s", tab->name);
+    log("next is %i", tab->n.next);}
   for (node *tn = tab ? tab->n.next : HEAD(routing_tables);
        NODE_VALID(tn);
        tn = tn->next)
@@ -240,20 +254,20 @@ mrt_next_table_(rtable *tab, rtable *tab_ptr, const char *pattern)
 static rtable *
 mrt_next_table(struct mrt_table_dump_state *s)
 {
-  rtable *tab = mrt_next_table_(s->table, s->table_ptr, s->table_expr);
+  rtable *tab = mrt_next_table_(get_tab(s), s->table_ptr, s->table_expr);
 
-  if (s->table)
-    RT_LOCKED(s->table, tab)
+  if (s->table->head)
+    RT_LOCKED(get_tab(s), tab)
       rt_unlock_table(tab);
 
-  s->table = tab;
+  s->table->head = &tab->n;
   s->ipv4 = tab ? (tab->addr_type == NET_IP4) : 0;
 
-  if (s->table)
-    RT_LOCKED(s->table, tab)
+  if (s->table->head)
+    RT_LOCKED(get_tab(s), tab)
       rt_lock_table(tab);
 
-  return s->table;
+  return get_tab(s);
 }
 
 static int
@@ -263,8 +277,9 @@ mrt_open_file(struct mrt_table_dump_state *s)
   char name[BIRD_PATH_MAX];
   btime now = current_time();
   btime now_real = current_real_time();
+  rtable *tab = get_tab(s);
 
-  if (!bstrsub(fmt1, sizeof(fmt1), s->filename, "%N", s->table->name) ||
+  if (!bstrsub(fmt1, sizeof(fmt1), s->filename, "%N", tab->name) ||
       !tm_format_real_time(name, sizeof(name), fmt1, now_real))
   {
     mrt_log(s, "Invalid filename '%s'", s->filename);
@@ -354,7 +369,7 @@ static void
 mrt_peer_table_dump(struct mrt_table_dump_state *s)
 {
   mrt_init_message(&s->buf, MRT_TABLE_DUMP_V2, MRT_PEER_INDEX_TABLE);
-  mrt_peer_table_header(s, config->router_id, s->table->name);
+  mrt_peer_table_header(s, config->router_id, get_tab(s)->name);
 
   /* 0 is fake peer for non-BGP routes */
   mrt_peer_table_entry(s, 0, 0, IPA_NONE);
@@ -388,7 +403,7 @@ mrt_peer_table_flush(struct mrt_table_dump_state *s)
  */
 
 static void
-mrt_rib_table_header(struct mrt_table_dump_state *s, net_addr *n)
+mrt_rib_table_header(struct mrt_table_dump_state *s, const net_addr *n)
 {
   buffer *b = &s->buf;
 
@@ -432,8 +447,8 @@ mrt_rib_table_entry_bgp_attrs(struct mrt_table_dump_state *s, rte *r)
     return;
 
   /* Attribute list must be normalized for bgp_encode_attrs() */
-  if (!rta_is_cached(r->attrs))
-    eattrs = ea_normalize(eattrs, 0);
+  //if (!rta_is_cached(r->attrs))       rte has no attribute cached... this needs deeper sight into rte struct
+  //  eattrs = ea_normalize(eattrs, 0);
 
   mrt_buffer_need(b, MRT_ATTR_BUFFER_SIZE);
   byte *pos = b->pos;
@@ -503,7 +518,7 @@ mrt_rib_table_entry(struct mrt_table_dump_state *s, rte *r)
 }
 
 static void
-mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
+mrt_rib_table_dump(struct mrt_table_dump_state *s, const struct rt_export_feed *feed, int add_path)
 {
   s->add_path = s->bws->add_path = add_path;
 
@@ -512,23 +527,23 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
     (!add_path ? MRT_RIB_IPV6_UNICAST : MRT_RIB_IPV6_UNICAST_ADDPATH);
 
   mrt_init_message(&s->buf, MRT_TABLE_DUMP_V2, subtype);
-  mrt_rib_table_header(s, n->n.addr);
+  mrt_rib_table_header(s, feed->block[0].net); // asi blbe, ale netusim
 
-  for (struct rte_storage *rt, *rt0 = n->routes; rt = rt0; rt0 = rt0->next)
+  for (uint i = 0; i < feed->count_routes; i++)
   {
-    if (rte_is_filtered(&rt->rte))
+    rte *rte = &feed->block[i];
+    if (rte_is_filtered(rte))
       continue;
 
     /* Skip routes that should be reported in the other phase */
-    if (!s->always_add_path && (!rt->rte.src->private_id != !s->add_path))
+    if (!s->always_add_path && (!rte->src->private_id != !s->add_path))
     {
       s->want_add_path = 1;
       continue;
     }
 
-    rte e = rt->rte;
-    if (f_run(s->filter, &e, 0) <= F_ACCEPT)
-      mrt_rib_table_entry(s, &e);
+    if (f_run(s->filter, rte, 0) <= F_ACCEPT)
+      mrt_rib_table_entry(s, rte);
 
     lp_flush(s->linpool);
   }
@@ -555,8 +570,11 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
 static struct mrt_table_dump_state *
 mrt_table_dump_init(pool *pp)
 {
-  pool *pool = rp_new(pp, "MRT Table Dump");
+  //LOCK_DOMAIN(proto, &pp->domain);
+  pool *pool = rp_new(pp, pp->domain, "MRT Table Dump"); //this domain is maybe not the correct one, but.
   struct mrt_table_dump_state *s = mb_allocz(pool, sizeof(struct mrt_table_dump_state));
+  s->table = (list*)mb_allocz(pool, sizeof(list));
+  //UNLOCK_DOMAIN(proto, &pp->domain);
 
   s->pool = pool;
   s->linpool = lp_new(pool);
@@ -575,18 +593,18 @@ mrt_table_dump_init(pool *pp)
 static void
 mrt_table_dump_free(struct mrt_table_dump_state *s)
 {
-  if (s->table)
+  /*if (s->table)
     RT_LOCKED(s->table, tab)
     {
       if (s->table_open)
-	FIB_ITERATE_UNLINK(&s->fit, &tab->fib);
+	FIB_ITERATE_UNLINK(&s->fit, &tab->fib); //table seems not to have fib iterator anymore
 
       rt_unlock_table(tab);
-    }
+    }*/
 
-  if (s->table_ptr)
+ /* if (s->table_ptr)       why? Lock and unlock?
     RT_LOCKED(s->table_ptr, tab)
-      rt_unlock_table(tab);
+      rt_unlock_table(tab); */
 
   config_del_obstacle(s->config);
 
@@ -612,37 +630,43 @@ mrt_table_dump_step(struct mrt_table_dump_state *s)
 
     mrt_peer_table_dump(s);
 
-    RT_LOCKED(s->table, tab)
-    {
-
-    FIB_ITERATE_INIT(&s->fit, &tab->fib);
+    // FIB_ITERATE_INIT(&s->fit, &tab->fib);  tab has no fib
     s->table_open = 1;
 
   step:
-    FIB_ITERATE_START(&tab->fib, &s->fit, net, n)
+    struct rt_export_feeder feeder = (struct rt_export_feeder) {
+      .name = "cli.feeder",
+    };
+    RT_LOCKED(get_tab(s), tab)
+    rt_feeder_subscribe(&tab->export_all, &feeder);
+    //FIB_ITERATE_START(&tab->fib, &s->fit, net, n)
+    RT_FEED_WALK(&feeder, route_feed)
     {
-      if (s->max < 0)
+     // RT_LOCKED(t, tab)
       {
-	FIB_ITERATE_PUT(&s->fit);
-	RT_RETURN(tab, 0);
+
+      if (s->max < 0) //but what in WALK?
+      {
+	//FIB_ITERATE_PUT(&s->fit); //vracime puvodni stav. asi. ale spis se ma tohle smazat
+	return 0;
       }
 
       /* With Always ADD_PATH option, we jump directly to second phase */
       s->want_add_path = s->always_add_path;
 
       if (s->want_add_path == 0)
-	mrt_rib_table_dump(s, n, 0);
+	mrt_rib_table_dump(s, route_feed, 0);
 
       if (s->want_add_path == 1)
-	mrt_rib_table_dump(s, n, 1);
+	mrt_rib_table_dump(s, route_feed, 1);
+      }
     }
-    FIB_ITERATE_END;
+    //FIB_ITERATE_END;*/
     s->table_open = 0;
-
-    }
 
     mrt_close_file(s);
     mrt_peer_table_flush(s);
+    rt_feeder_unsubscribe(&feeder);
   }
 
   return 1;
@@ -676,7 +700,7 @@ mrt_timer(timer *t)
       rt_lock_table(tab);
 
   p->table_dump = s;
-  ev_schedule(p->event);
+  ev_send_loop(p->p.loop, p->event);
 }
 
 static void
@@ -817,7 +841,7 @@ mrt_dump_bgp_message(struct mrt_bgp_data *d)
   mrt_init_message(b, MRT_BGP4MP, subtypes[d->as4 + 4*d->add_path]);
   mrt_bgp_header(b, d);
   mrt_put_data(b, d->message, d->msg_len);
-  mrt_dump_message(b, config->mrtdump_file);
+  mrt_dump_message(b, rf_fileno(config->mrtdump_file));
 }
 
 void
@@ -837,7 +861,7 @@ mrt_dump_bgp_state_change(struct mrt_bgp_data *d)
   mrt_bgp_header(b, d);
   mrt_put_u16(b, states[d->old_state]);
   mrt_put_u16(b, states[d->new_state]);
-  mrt_dump_message(b, config->mrtdump_file);
+  mrt_dump_message(b, rf_fileno(config->mrtdump_file));
 }
 
 
@@ -877,7 +901,7 @@ mrt_start(struct proto *P)
   p->timer = tm_new_init(P->pool, mrt_timer, p, cf->period S, 0);
   p->event = ev_new_init(P->pool, mrt_event, p);
 
-  tm_start(p->timer, cf->period S);
+  tm_start_in(p->timer, cf->period S, p->p.loop);
 
   return PS_UP;
 }
@@ -904,7 +928,7 @@ mrt_reconfigure(struct proto *P, struct proto_config *CF)
     btime now = current_time();
     btime new_time = p->timer->expires - (old->period S) + (new->period S);
     p->timer->recurrent = new->period S;
-    tm_set(p->timer, MAX(now, new_time));
+    tm_set_in(p->timer, MAX(now, new_time), p->p.loop);
   }
 
   return 1;
