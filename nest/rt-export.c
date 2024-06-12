@@ -49,122 +49,126 @@ rt_export_get(struct rt_export_request *r)
     .feed = feed, \
   }; \
   return (r->cur = reu); \
-} while (0) \
+} while (0)
 
-#define NOT_THIS_UPDATE	do { \
+#define NOT_THIS_UPDATE	\
   lfjour_release(&r->r); \
-  return rt_export_get(r); \
-} while (0) \
+  continue;
 
-  enum rt_export_state es = rt_export_get_state(r);
-  switch (es)
+  while (1)
   {
-    case TES_DOWN:
-      rtex_trace(r, (D_ROUTES|D_STATES), "Export is down");
-      return NULL;
-
-    case TES_STOP:
-      rtex_trace(r, (D_ROUTES|D_STATES), "Received stop event");
-      struct rt_export_union *reu = tmp_alloc(sizeof *reu);
-      *reu = (struct rt_export_union) {
-	.kind = RT_EXPORT_STOP,
-	.req = r,
-      };
-      return (r->cur = reu);
-
-    case TES_PARTIAL:
-    case TES_FEEDING:
-    case TES_READY:
-      break;
-
-    case TES_MAX:
-      bug("invalid export state");
-  }
-
-  /* Process sequence number reset event */
-  if (lfjour_reset_seqno(&r->r))
-    bmap_reset(&r->seq_map, 4);
-
-  /* Get a new update */
-  SKIP_BACK_DECLARE(struct rt_export_item, update, li, lfjour_get(&r->r));
-  SKIP_BACK_DECLARE(struct rt_exporter, e, journal, lfjour_of_recipient(&r->r));
-  struct rt_export_feed *feed = NULL;
-
-  /* No update, try feed */
-  if (!update)
-    if (es == TES_READY)
+    enum rt_export_state es = rt_export_get_state(r);
+    switch (es)
     {
-      /* Fed up of feeding */
-      rtex_trace(r, D_ROUTES, "Export drained");
-      return NULL;
+      case TES_DOWN:
+	rtex_trace(r, (D_ROUTES|D_STATES), "Export is down");
+	return NULL;
+
+      case TES_STOP:
+	rtex_trace(r, (D_ROUTES|D_STATES), "Received stop event");
+	struct rt_export_union *reu = tmp_alloc(sizeof *reu);
+	*reu = (struct rt_export_union) {
+	  .kind = RT_EXPORT_STOP,
+	  .req = r,
+	};
+	return (r->cur = reu);
+
+      case TES_PARTIAL:
+      case TES_FEEDING:
+      case TES_READY:
+	break;
+
+      case TES_MAX:
+	bug("invalid export state");
     }
-    else if (feed = rt_export_next_feed(&r->feeder))
+
+    /* Process sequence number reset event */
+    if (lfjour_reset_seqno(&r->r))
+      bmap_reset(&r->seq_map, 4);
+
+    /* Get a new update */
+    SKIP_BACK_DECLARE(struct rt_export_item, update, li, lfjour_get(&r->r));
+    SKIP_BACK_DECLARE(struct rt_exporter, e, journal, lfjour_of_recipient(&r->r));
+    struct rt_export_feed *feed = NULL;
+
+    /* No update, try feed */
+    if (!update)
     {
-      /* Feeding more */
-      bmap_set(&r->feed_map, feed->ni->index);
-      rtex_trace(r, D_ROUTES, "Feeding %N", feed->ni->addr);
+      if (es == TES_READY)
+      {
+	/* Fed up of feeding */
+	rtex_trace(r, D_ROUTES, "Export drained");
+	return NULL;
+      }
+      else if (feed = rt_export_next_feed(&r->feeder))
+      {
+	/* Feeding more */
+	bmap_set(&r->feed_map, feed->ni->index);
+	rtex_trace(r, D_ROUTES, "Feeding %N", feed->ni->addr);
+
+	EXPORT_FOUND(RT_EXPORT_FEED);
+      }
+      else if (rt_export_get_state(r) == TES_DOWN)
+      {
+	/* Torn down inbetween */
+	rtex_trace(r, D_STATES, "Export ended itself");
+	return NULL;
+      }
+      else
+      {
+	/* No more food */
+	rt_export_change_state(r, BIT32_ALL(TES_FEEDING, TES_PARTIAL), TES_READY);
+	rtex_trace(r, D_STATES, "Fed up");
+	CALL(r->fed, r);
+	return NULL;
+      }
+    }
+
+    /* There actually is an update */
+    if (bmap_test(&r->seq_map, update->seq))
+    {
+      /* But this update has been already processed, let's try another one */
+      rtex_trace(r, D_ROUTES, "Skipping an already processed update %lu", update->seq);
+      NOT_THIS_UPDATE;
+    }
+
+    /* Is this update allowed by prefilter? */
+    const net_addr *n = (update->new ?: update->old)->net;
+    struct netindex *ni = NET_TO_INDEX(n);
+
+    if (!rt_prefilter_net(&r->feeder.prefilter, n))
+    {
+      rtex_trace(r, D_ROUTES, "Not exporting %N due to prefilter", n);
+      NOT_THIS_UPDATE;
+    }
+
+    if ((es != TES_READY) && rt_net_is_feeding(r, n))
+    {
+      /* But this net shall get a feed first! */
+      rtex_trace(r, D_ROUTES, "Expediting %N feed due to pending update %lu", n, update->seq);
+      if (r->feeder.domain.rtable)
+      {
+	LOCK_DOMAIN(rtable, r->feeder.domain);
+	feed = e->feed_net(e, NULL, ni->index, update);
+	UNLOCK_DOMAIN(rtable, r->feeder.domain);
+      }
+      else
+      {
+	RCU_ANCHOR(u);
+	feed = e->feed_net(e, u, ni->index, update);
+      }
+
+      bmap_set(&r->feed_map, ni->index);
+      ASSERT_DIE(feed && (feed != &rt_feed_index_out_of_range));
 
       EXPORT_FOUND(RT_EXPORT_FEED);
     }
-    else if (rt_export_get_state(r) == TES_DOWN)
-    {
-      /* Torn down inbetween */
-      rtex_trace(r, D_STATES, "Export ended itself");
-      return NULL;
-    }
-    else
-    {
-      /* No more food */
-      rt_export_change_state(r, BIT32_ALL(TES_FEEDING, TES_PARTIAL), TES_READY);
-      rtex_trace(r, D_STATES, "Fed up");
-      CALL(r->fed, r);
-      return NULL;
-    }
 
-  /* There actually is an update */
-  if (bmap_test(&r->seq_map, update->seq))
-  {
-    /* But this update has been already processed, let's try another one */
-    rtex_trace(r, D_ROUTES, "Skipping an already processed update %lu", update->seq);
-    NOT_THIS_UPDATE;
+    /* OK, now this actually is an update, thank you for your patience */
+    rtex_trace(r, D_ROUTES, "Updating %N, seq %lu", n, update->seq);
+
+    EXPORT_FOUND(RT_EXPORT_UPDATE);
   }
-
-  /* Is this update allowed by prefilter? */
-  const net_addr *n = (update->new ?: update->old)->net;
-  struct netindex *ni = NET_TO_INDEX(n);
-
-  if (!rt_prefilter_net(&r->feeder.prefilter, n))
-  {
-    rtex_trace(r, D_ROUTES, "Not exporting %N due to prefilter", n);
-    NOT_THIS_UPDATE;
-  }
-
-  if ((es != TES_READY) && rt_net_is_feeding(r, n))
-  {
-    /* But this net shall get a feed first! */
-    rtex_trace(r, D_ROUTES, "Expediting %N feed due to pending update %lu", n, update->seq);
-    if (r->feeder.domain.rtable)
-    {
-      LOCK_DOMAIN(rtable, r->feeder.domain);
-      feed = e->feed_net(e, NULL, ni->index, update);
-      UNLOCK_DOMAIN(rtable, r->feeder.domain);
-    }
-    else
-    {
-      RCU_ANCHOR(u);
-      feed = e->feed_net(e, u, ni->index, update);
-    }
-
-    bmap_set(&r->feed_map, ni->index);
-    ASSERT_DIE(feed && (feed != &rt_feed_index_out_of_range));
-
-    EXPORT_FOUND(RT_EXPORT_FEED);
-  }
-
-  /* OK, now this actually is an update, thank you for your patience */
-  rtex_trace(r, D_ROUTES, "Updating %N, seq %lu", n, update->seq);
-
-  EXPORT_FOUND(RT_EXPORT_UPDATE);
 
 #undef NOT_THIS_UPDATE
 #undef EXPORT_FOUND
