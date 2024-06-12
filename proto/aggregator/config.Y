@@ -38,7 +38,7 @@ aggregator_proto_start: proto_start AGGREGATOR
   AGGREGATOR_CFG->dst = channel_config_new(NULL, "destination", 0, this_proto);
   AGGREGATOR_CFG->src->ra_mode = AGGREGATOR_CFG->dst->ra_mode = RA_ANY;
 
-  AGGREGATOR_CFG->aggr_timer_cf = (struct settle_config) {
+  AGGREGATOR_CFG->notify_settle_cf = (struct settle_config) {
     .min = 10 MS_,
     .max = 100 MS_,
   };
@@ -84,7 +84,7 @@ aggregator_proto_item:
    $4->args++;
    AGGREGATOR_CFG->merge_by = $4;
  }
- | RELOAD AFTER settle { AGGREGATOR_CFG->aggr_timer_cf = $3; }
+ | RELOAD AFTER settle { AGGREGATOR_CFG->notify_settle_cf = $3; }
 ;
 
 aggregator_proto_opts: /* empty */ | aggregator_proto_opts aggregator_proto_item ';' ;

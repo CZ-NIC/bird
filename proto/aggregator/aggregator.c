@@ -900,7 +900,7 @@ run_aggregation(struct aggregator_proto *p)
 }
 
 static void
-flush_trie(struct aggregator_proto *p)
+flush_aggregator(struct aggregator_proto *p)
 {
   lp_flush(p->bucket_pool);
   lp_flush(p->route_pool);
@@ -929,7 +929,7 @@ aggregate_on_feed_end(struct channel *C)
   if (C == p->src)
   {
     run_aggregation(p);
-    flush_trie(p);
+    flush_aggregator(p);
     p->root = NULL;
 
     if (p->first_run)
@@ -1497,7 +1497,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   }
 
   assert(p->root != NULL);
-  settle_kick(&p->aggr_timer);
+  settle_kick(&p->notify_settle);
 }
 
 static int
@@ -1555,7 +1555,7 @@ aggregator_init(struct proto_config *CF)
   p->aggr_on = cf->aggr_on;
   p->net_present = cf->net_present;
   p->merge_by = cf->merge_by;
-  p->aggr_timer_cf = cf->aggr_timer_cf;
+  p->notify_settle_cf = cf->notify_settle_cf;
 
   P->rt_notify = aggregator_rt_notify;
   P->preexport = aggregator_preexport;
@@ -1652,7 +1652,7 @@ aggregator_start(struct proto *P)
   p->first_run = 1;
   p->aggr_done = 0;
 
-  settle_init(&p->aggr_timer, &p->aggr_timer_cf, aggregate_on_settle_timer, p);
+  settle_init(&p->notify_settle, &p->notify_settle_cf, aggregate_on_settle_timer, p);
 
   return PS_UP;
 }
@@ -1678,7 +1678,7 @@ aggregator_shutdown(struct proto *P)
   }
   HASH_WALK_END;
 
-  settle_cancel(&p->aggr_timer);
+  settle_cancel(&p->notify_settle);
 
   assert(p->root != NULL);
   p->root = NULL;
@@ -1695,7 +1695,7 @@ aggregator_reconfigure(struct proto *P, struct proto_config *CF)
   TRACE(D_EVENTS, "Reconfiguring");
 
   /* Compare timer configuration */
-  if (cf->aggr_timer_cf.min != p->aggr_timer_cf.min || cf->aggr_timer_cf.max != p->aggr_timer_cf.max)
+  if (cf->notify_settle_cf.min != p->notify_settle_cf.min || cf->notify_settle_cf.max != p->notify_settle_cf.max)
     return 0;
 
   /* Compare numeric values (shortcut) */
