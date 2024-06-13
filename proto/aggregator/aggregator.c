@@ -1317,10 +1317,22 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   if (p->p.proto_state != PS_UP)
     return;
 
-  if (!p->root)
-    trie_init(p);
+  if (PREFIX_AGGR == p->aggr_mode)
+  {
+    assert(p->root == NULL);
 
-  channel_request_feeding(p->src);
+    /*
+     * Don't kick settle timer during first run. That would cause
+     * repeated calls to rt_notify() without any new updates.
+     */
+    if (!p->first_run)
+    {
+      log("rt notify: kick");
+      settle_kick(&p->notify_settle);
+    }
+
+    return;
+  }
 
   /* Find the objects for the old route */
   if (old)
@@ -1501,9 +1513,6 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     ASSERT_DIE(!old_bucket->rte && !old_bucket->count);
     HASH_REMOVE2(p->buckets, AGGR_BUCK, p->p.pool, old_bucket);
   }
-
-  assert(p->root != NULL);
-  settle_kick(&p->notify_settle);
 }
 
 static int

@@ -81,7 +81,6 @@ struct aggregator_proto {
   struct settle notify_settle;
   int before_count;
   int after_count;
-  int aggr_done;
 };
 
 enum aggr_item_type {
