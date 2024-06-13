@@ -70,6 +70,7 @@ const char *filter_name(const struct filter *filter);
 int filter_same(const struct filter *new, const struct filter *old);
 int f_same(const struct f_line *f1, const struct f_line *f2);
 
+void filter_preconfig(struct config *new);
 void filter_commit(struct config *new, struct config *old);
 
 void filters_dump_all(void);

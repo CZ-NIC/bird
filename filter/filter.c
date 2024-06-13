@@ -50,6 +50,15 @@ enum f_exception {
   FE_RETURN = 0x1,
 };
 
+/* Global filter runtime */
+static struct {
+  _Atomic u16 filter_vstk;
+  _Atomic u16 filter_estk;
+} global_filter_runtime = {
+  .filter_vstk = 128,
+  .filter_estk = 128,
+};
+
 struct filter_exec_stack {
   const struct f_line *line;		/* The line that is being executed */
   uint pos;				/* Instruction index in the line */
@@ -90,9 +99,9 @@ _Thread_local static struct filter_state filter_state;
 
 void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 
-#define _f_stack_init(fs, px, def) ((fs).stack.px##stk = alloca(sizeof(*(fs).stack.px##stk) * ((fs).stack.px##len = (config && config->filter_##px##stk) ? config->filter_##px##stk : (def))))
+#define _f_stack_init(fs, px) ((fs).stack.px##stk = alloca(sizeof(*(fs).stack.px##stk) * ((fs).stack.px##len = atomic_load_explicit(&global_filter_runtime.filter_##px##stk, memory_order_relaxed))))
 
-#define f_stack_init(fs) ( _f_stack_init(fs, v, 128), _f_stack_init(fs, e, 128) )
+#define f_stack_init(fs) ( _f_stack_init(fs, v), _f_stack_init(fs, e) )
 
 static struct tbf rl_runtime_err = TBF_DEFAULT_LOG_LIMITS;
 
@@ -340,12 +349,24 @@ filter_same(const struct filter *new, const struct filter *old)
   return new->sym->flags & SYM_FLAG_SAME;
 }
 
+/* Initialize filter knobs */
+void
+filter_preconfig(struct config *new)
+{
+  new->filter_vstk = 128;
+  new->filter_estk = 128;
+}
+
 /**
  * filter_commit - do filter comparisons on all the named functions and filters
  */
 void
 filter_commit(struct config *new, struct config *old)
 {
+  /* Update filter stack size variables */
+  atomic_store_explicit(&global_filter_runtime.filter_vstk, new->filter_vstk, memory_order_relaxed);
+  atomic_store_explicit(&global_filter_runtime.filter_estk, new->filter_estk, memory_order_relaxed);
+
   if (!old)
     return;
 

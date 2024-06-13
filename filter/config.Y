@@ -401,6 +401,9 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 CF_GRAMMAR
 
 conf: FILTER STACKS expr expr ';' {
+  if (($3 < 16) || ($4 < 16))
+    /* Check for self-crippling values */
+    cf_error("Filter stack values lesser than 16 not supported");
   new_config->filter_vstk = $3;
   new_config->filter_estk = $4;
  }
