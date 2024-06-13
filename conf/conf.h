@@ -281,7 +281,7 @@ int cf_parse(void);
 /* Sysdep hooks */
 
 void sysdep_preconfig(struct config *);
-int sysdep_commit(struct config *, struct config *);
+void sysdep_commit(struct config *, struct config *);
 void sysdep_shutdown_done(void);
 
 #endif

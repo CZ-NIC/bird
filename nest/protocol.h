@@ -76,7 +76,7 @@ struct protocol {
 void protos_build(void);		/* Called from sysdep to initialize protocols */
 void proto_build(struct protocol *);	/* Called from protocol to register itself */
 void protos_preconfig(struct config *);
-void protos_commit(struct config *new, struct config *old, int force_restart, int type);
+void protos_commit(struct config *new, struct config *old, int type);
 struct proto * proto_spawn(struct proto_config *cf, uint disabled);
 void protos_dump_all(void);
 

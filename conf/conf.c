@@ -243,11 +243,11 @@ config_del_obstacle(struct config *c)
     ev_send_loop(&main_birdloop, &c->done_event);
 }
 
-static int
+static void
 global_commit(struct config *new, struct config *old)
 {
   if (!old)
-    return 0;
+    return;
 
   if (!new->router_id)
     {
@@ -262,8 +262,6 @@ global_commit(struct config *new, struct config *old)
 	    new->router_id = id;
 	}
     }
-
-  return 0;
 }
 
 static int
@@ -299,14 +297,14 @@ config_do_commit(struct config *c, int type)
   DBG("filter_commit\n");
   filter_commit(c, old_config);
   DBG("sysdep_commit\n");
-  int force_restart = sysdep_commit(c, old_config);
+  sysdep_commit(c, old_config);
   DBG("global_commit\n");
-  force_restart |= global_commit(c, old_config);
+  global_commit(c, old_config);
   mpls_commit(c, old_config);
   DBG("rt_commit\n");
   rt_commit(c, old_config);
   DBG("protos_commit\n");
-  protos_commit(c, old_config, force_restart, type);
+  protos_commit(c, old_config, type);
   int obs = old_config ?
     atomic_fetch_sub_explicit(&old_config->obstacle_count, 1, memory_order_acq_rel) - 1
     : 0;

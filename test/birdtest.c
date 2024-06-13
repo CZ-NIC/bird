@@ -559,10 +559,9 @@ void cmd_reconfig_undo_notify(void) {}
 void sysdep_preconfig(struct config *c UNUSED) {}
 
 void bird_thread_commit(struct config *new, struct config *old);
-int sysdep_commit(struct config *new, struct config *old)
+void sysdep_commit(struct config *new, struct config *old)
 {
   bird_thread_commit(new, old);
-  return 0;
 }
 
 void sysdep_shutdown_done(void) {}

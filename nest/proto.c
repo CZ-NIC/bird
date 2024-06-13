@@ -1456,20 +1456,17 @@ static struct protos_commit_request {
   struct config *new;
   struct config *old;
   enum protocol_startup phase;
-  int force_reconfig;
   int type;
 } protos_commit_request;
 
 static int proto_rethink_goal_pending = 0;
 
-static void protos_do_commit(struct config *new, struct config *old, int force_reconfig, int type);
+static void protos_do_commit(struct config *new, struct config *old, int type);
 
 /**
  * protos_commit - commit new protocol configuration
  * @new: new configuration
  * @old: old configuration or %NULL if it's boot time config
- * @force_reconfig: force restart of all protocols (used for example
- * when the router ID changes)
  * @type: type of reconfiguration (RECONFIG_SOFT or RECONFIG_HARD)
  *
  * Scan differences between @old and @new configuration and adjust all
@@ -1493,21 +1490,20 @@ static void protos_do_commit(struct config *new, struct config *old, int force_r
  * configuration after the shutdown is completed.
  */
 void
-protos_commit(struct config *new, struct config *old, int force_reconfig, int type)
+protos_commit(struct config *new, struct config *old, int type)
 {
   protos_commit_request = (struct protos_commit_request) {
     .new = new,
     .old = old,
     .phase = (new->shutdown && !new->gr_down) ? PROTOCOL_STARTUP_REGULAR : PROTOCOL_STARTUP_NECESSARY,
-    .force_reconfig = force_reconfig,
     .type = type,
   };
 
-  protos_do_commit(new, old, force_reconfig, type);
+  protos_do_commit(new, old, type);
 }
 
 static void
-protos_do_commit(struct config *new, struct config *old, int force_reconfig, int type)
+protos_do_commit(struct config *new, struct config *old, int type)
 {
   enum protocol_startup phase = protos_commit_request.phase;
   struct proto_config *oc, *nc;
@@ -1558,7 +1554,7 @@ protos_do_commit(struct config *new, struct config *old, int force_reconfig, int
 	nc->proto = p;
 
 	/* We will try to reconfigure protocol p */
-	if (!force_reconfig && proto_reconfigure(p, oc, nc, type))
+	if (proto_reconfigure(p, oc, nc, type))
 	{
 	  PROTO_LEAVE_FROM_MAIN(proto_loop);
 	  continue;
@@ -1643,7 +1639,7 @@ protos_do_commit(struct config *new, struct config *old, int force_reconfig, int
 
   /* If something is pending, the next round will be called asynchronously from proto_rethink_goal(). */
   if (!proto_rethink_goal_pending)
-    protos_do_commit(new, old, force_reconfig, type);
+    protos_do_commit(new, old, type);
 }
 
 static void
@@ -1701,7 +1697,6 @@ done:
     protos_do_commit(
 	protos_commit_request.new,
 	protos_commit_request.old,
-	protos_commit_request.force_reconfig,
 	protos_commit_request.type
 	);
 }
