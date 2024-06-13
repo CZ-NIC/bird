@@ -40,9 +40,6 @@ void birdloop_stop(struct birdloop *loop, void (*stopped)(void *data), void *dat
 void birdloop_stop_self(struct birdloop *loop, void (*stopped)(void *data), void *data);
 void birdloop_free(struct birdloop *loop);
 
-/* Get birdloop's event list */
-event_list *birdloop_event_list(struct birdloop *loop);
-
 /* Run this event in this thread's priority event list */
 void ev_send_this_thread(event *e);
 

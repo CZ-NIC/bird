@@ -75,5 +75,36 @@ ev_new_init(pool *p, void (*hook)(void *), void *data)
 #define ev_new_send(loop, pool, hook, data) \
   ev_send_loop((loop), ev_new_init((pool), (hook), (data)))
 
+/* Get birdloop's event list */
+event_list *birdloop_event_list(struct birdloop *loop);
+
+typedef struct callback {
+  event event;
+  void (*hook)(struct callback *);
+  struct birdloop *target;
+} callback;
+
+static inline void callback_run(void *_c)
+{
+  struct callback *c = _c;
+  c->hook(c);
+}
+
+#define callback_init(_c, _h, _t)	\
+  ({					\
+    struct callback *_cc = (_c);	\
+    *_cc = (struct callback) {		\
+      .hook = _h,			\
+      .event = (event) {		\
+	.hook = callback_run,		\
+	.data = _cc,			\
+      },				\
+      .target = _t,			\
+    };					\
+  })
+
+#define callback_activate(_c)	ev_send_loop(((_c)->target), &((_c)->event))
+#define callback_is_active(_c)	ev_active(&((_c)->event))
+#define callback_cancel(_c)	ev_postpone(&((_c)->event))
 
 #endif
