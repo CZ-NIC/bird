@@ -81,7 +81,7 @@ extern _Thread_local struct config *new_config;	/* Configuration being parsed */
 
 struct config *config_alloc(const char *name);
 int config_parse(struct config *);
-int cli_parse(struct config *);
+int cli_parse(struct config *, struct config *);
 void config_free(struct config *);
 void config_free_old(void);
 int config_commit(struct config *, int type, uint timeout);
@@ -216,7 +216,7 @@ struct include_file_stack {
 extern struct include_file_stack *ifs;
 
 int cf_lex(void);
-void cf_lex_init(int is_cli, struct config *c);
+void cf_lex_init(struct config *cli_main, struct config *c);
 void cf_lex_unwind(void);
 
 struct symbol *cf_find_symbol_scope(const struct sym_scope *scope, const byte *c);

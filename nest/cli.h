@@ -36,6 +36,7 @@ typedef struct cli {
   void (*cont)(struct cli *c);
   void (*cleanup)(struct cli *c);	/* The CLI has closed prematurely */
   void *rover;				/* Private to continuation routine */
+  struct config *main_config;		/* Main config currently in use */
   int last_reply;
   int restricted;			/* CLI is restricted to read-only commands */
   struct linpool *parser_pool;		/* Pool used during parsing */

@@ -757,14 +757,14 @@ void f_type_methods_register(void);
 
 /**
  * cf_lex_init - initialize the lexer
- * @is_cli: true if we're going to parse CLI command, false for configuration
+ * @cli_main_config: main configuration structure if we're going to parse CLI command, NULL for new configuration
  * @c: configuration structure
  *
  * cf_lex_init() initializes the lexical analyzer and prepares it for
  * parsing of a new input.
  */
 void
-cf_lex_init(int is_cli, struct config *c)
+cf_lex_init(struct config *cli_main_config, struct config *c)
 {
   if (!global_root_scope.readonly)
   {
@@ -782,7 +782,7 @@ cf_lex_init(int is_cli, struct config *c)
   }
 
   ifs_head = ifs = push_ifs(NULL);
-  if (!is_cli)
+  if (!cli_main_config)
     {
       ifs->file_name = c->file_name;
       ifs->fd = c->file_fd;
@@ -792,15 +792,15 @@ cf_lex_init(int is_cli, struct config *c)
   yyrestart(NULL);
   ifs->buffer = YY_CURRENT_BUFFER;
 
-  if (is_cli)
+  if (cli_main_config)
     BEGIN(CLI);
   else
     BEGIN(INITIAL);
 
   c->root_scope = c->current_scope = cfg_allocz(sizeof(struct sym_scope));
 
-  if (is_cli)
-    c->current_scope->next = config->root_scope;
+  if (cli_main_config)
+    c->current_scope->next = cli_main_config->root_scope;
   else
     c->current_scope->next = &global_filter_scope;
 }

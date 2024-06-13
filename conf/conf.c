@@ -138,7 +138,7 @@ config_parse(struct config *c)
   if (setjmp(conf_jmpbuf))
     goto cleanup;
 
-  cf_lex_init(0, c);
+  cf_lex_init(NULL, c);
   sysdep_preconfig(c);
   protos_preconfig(c);
   mpls_preconfig(c);
@@ -170,7 +170,7 @@ cleanup:
  * it parses a CLI command. See the CLI module for more information.
  */
 int
-cli_parse(struct config *c)
+cli_parse(struct config *main_config, struct config *c)
 {
   int done = 0;
   new_config = c;
@@ -178,7 +178,7 @@ cli_parse(struct config *c)
   if (setjmp(conf_jmpbuf))
     goto cleanup;
 
-  cf_lex_init(1, c);
+  cf_lex_init(main_config, c);
   cf_parse();
   done = 1;
 
