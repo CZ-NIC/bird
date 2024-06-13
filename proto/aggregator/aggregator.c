@@ -908,29 +908,37 @@ flush_aggregator(struct aggregator_proto *p)
 }
 
 static void
-aggregate_on_settle_timer(struct settle *s)
+request_feed_on_settle_timer(struct settle *s)
 {
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, s->tm.data);
 
-  if (!p->aggr_done)
-  {
-    run_aggregation(p);
-    p->aggr_done = 1;
-  }
-  else
-    log("Aggregation is already finished");
+  assert(PREFIX_AGGR == p->aggr_mode);
+  log("Request feed on settle timer: aggr mode is PREFIX_AGGR");
+  assert(p->root == NULL);
+
+  log("Request feed on settle timer: requesting feed on src channel");
+  channel_request_feeding(p->src);
 }
+
+static void trie_init(struct aggregator_proto *p);
 
 static void
 aggregate_on_feed_end(struct channel *C)
 {
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, C->proto);
 
+  assert(PREFIX_AGGR == p->aggr_mode);
+  assert(p->root == NULL);
+
   if (C == p->src)
   {
+    trie_init(p);
     run_aggregation(p);
     flush_aggregator(p);
+
     p->root = NULL;
+    p->before_count = 0;
+    p->after_count = 0;
 
     if (p->first_run)
       p->first_run = 0;
@@ -1296,8 +1304,6 @@ HASH_DEFINE_REHASH_FN(AGGR_BUCK, struct aggregator_bucket);
 
 
 #define AGGR_DATA_MEMSIZE	(sizeof(struct f_val) * p->aggr_on_count)
-
-static void trie_init(struct aggregator_proto *p);
 
 static void
 aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new, rte *old)
