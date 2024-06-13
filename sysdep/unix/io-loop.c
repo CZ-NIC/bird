@@ -152,9 +152,10 @@ static _Thread_local struct birdloop *birdloop_wakeup_masked;
 static _Thread_local uint birdloop_wakeup_masked_count;
 
 #define LOOP_NAME(loop)			domain_name((loop)->time.domain)
+#define LATENCY_DEBUG(flags)		(atomic_load_explicit(&global_runtime, memory_order_relaxed)->latency_debug & (flags))
 
-#define LOOP_TRACE(loop, flags, fmt, args...)	do { if (config && (config->latency_debug & (flags))) log(L_TRACE "%s (%p): " fmt, LOOP_NAME(loop), (loop), ##args); } while (0)
-#define THREAD_TRACE(flags, ...)		do { if (config && (config->latency_debug & (flags))) log(L_TRACE "Thread: " __VA_ARGS__); } while (0)
+#define LOOP_TRACE(loop, flags, fmt, args...)	do { if (LATENCY_DEBUG(flags)) log(L_TRACE "%s (%p): " fmt, LOOP_NAME(loop), (loop), ##args); } while (0)
+#define THREAD_TRACE(flags, ...)		do { if (LATENCY_DEBUG(flags)) log(L_TRACE "Thread: " __VA_ARGS__); } while (0)
 
 #define LOOP_WARN(loop, fmt, args...)	log(L_WARN "%s (%p): " fmt, LOOP_NAME(loop), (loop), ##args)
 
@@ -1506,7 +1507,8 @@ birdloop_run(void *_loop)
   /* Now we can actually do some work */
   u64 dif = account_to(&loop->working);
 
-  if (dif > this_thread->max_loop_time_ns + config->latency_limit TO_NS)
+  struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
+  if (dif > this_thread->max_loop_time_ns + gr->latency_limit TO_NS)
     LOOP_WARN(loop, "locked %lu us after its scheduled end time", dif NS TO_US);
 
   uint repeat, loop_runs = 0;

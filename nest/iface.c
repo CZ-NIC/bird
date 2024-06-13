@@ -164,7 +164,9 @@ if_dump_all(void)
   debug("Known network interfaces:\n");
   IFACE_WALK(i)
     if_dump(i);
-  debug("Router ID: %08x\n", config->router_id);
+  rcu_read_lock();
+  debug("Router ID: %08x\n", atomic_load_explicit(&global_runtime, memory_order_relaxed)->router_id);
+  rcu_read_unlock();
 }
 
 void

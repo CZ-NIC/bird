@@ -284,8 +284,10 @@ log_prepare(log_buffer *buf, int class)
   buf->pos[LBP_TIMESTAMP] = buf->buf.pos;
   if (BIT32_TEST(&lf, LBP_TIMESTAMP))
   {
-    const char *fmt = config ? config->tf_log.fmt1 : "%F %T.%3f";
+    rcu_read_lock();
+    const char *fmt = atomic_load_explicit(&global_runtime, memory_order_acquire)->tf_log.fmt1;
     int t = tm_format_real_time(buf->buf.pos, buf->buf.end - buf->buf.pos, fmt, current_real_time());
+    rcu_read_unlock();
     if (t)
       buf->buf.pos += t;
     else
@@ -307,8 +309,10 @@ log_prepare(log_buffer *buf, int class)
     else
       buffer_puts(&buf->buf, "<time format error>");
 
-    const char *hostname = (config && config->hostname) ? config->hostname : "<none>";
+    rcu_read_lock();
+    const char *hostname = atomic_load_explicit(&global_runtime, memory_order_acquire)->hostname ?: "<none>";
     buffer_print(&buf->buf, " %s %s: ", hostname, bird_name);
+    rcu_read_unlock();
   }
 
   buf->pos[LBP_THREAD_ID] = buf->buf.pos;

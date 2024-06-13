@@ -283,13 +283,16 @@ bgp_prepare_capabilities(struct bgp_conn *conn)
   if (p->cf->llgr_mode)
     caps->llgr_aware = 1;
 
-  if (p->cf->enable_hostname && config->hostname)
+  rcu_read_lock();
+  struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
+  if (p->cf->enable_hostname && gr->hostname)
   {
-    size_t length = strlen(config->hostname);
+    size_t length = strlen(gr->hostname);
     char *hostname = mb_allocz(p->p.pool, length+1);
-    memcpy(hostname, config->hostname, length+1);
+    memcpy(hostname, gr->hostname, length+1);
     caps->hostname = hostname;
   }
+  rcu_read_unlock();
 
   /* Allocate and fill per-AF fields */
   BGP_WALK_CHANNELS(p, c)

@@ -24,14 +24,18 @@ cmd_show_status(void)
 {
   byte tim[TM_DATETIME_BUFFER_SIZE];
 
+  rcu_read_lock();
+  struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_acquire);
+  struct timeformat *tf = &gr->tf_base;
+
   cli_msg(-1000, "BIRD " BIRD_VERSION);
-  tm_format_time(tim, &config->tf_base, current_time());
-  cli_msg(-1011, "Router ID is %R", config->router_id);
-  cli_msg(-1011, "Hostname is %s", config->hostname);
+  tm_format_time(tim, tf, current_time());
+  cli_msg(-1011, "Router ID is %R", gr->router_id);
+  cli_msg(-1011, "Hostname is %s", gr->hostname);
   cli_msg(-1011, "Current server time is %s", tim);
-  tm_format_time(tim, &config->tf_base, boot_time);
+  tm_format_time(tim, tf, boot_time);
   cli_msg(-1011, "Last reboot on %s", tim);
-  tm_format_time(tim, &config->tf_base, config->load_time);
+  tm_format_time(tim, tf, gr->load_time);
   cli_msg(-1011, "Last reconfiguration on %s", tim);
 
   graceful_restart_show_status();
@@ -42,6 +46,8 @@ cmd_show_status(void)
     cli_msg(13, "Reconfiguration in progress");
   else
     cli_msg(13, "Daemon is up and running");
+
+  rcu_read_unlock();
 }
 
 void

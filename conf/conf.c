@@ -105,7 +105,6 @@ config_alloc(const char *name)
   c->pool = p;
   c->mem = l;
   c->file_name = ndup;
-  c->load_time = current_time();
   c->tf_route = c->tf_proto = TM_ISO_SHORT_MS;
   c->tf_base = c->tf_log = TM_ISO_LONG_MS;
   c->gr_wait = DEFAULT_GR_WAIT;
@@ -149,11 +148,6 @@ config_parse(struct config *c)
 
   if (EMPTY_LIST(c->protos))
     cf_error("No protocol is specified in the config file");
-
-  /*
-  if (!c->router_id)
-    cf_error("Router ID must be configured manually");
-  */
 
   done = 1;
 
@@ -244,25 +238,61 @@ config_del_obstacle(struct config *c)
     ev_send_loop(&main_birdloop, &c->done_event);
 }
 
+struct global_runtime global_runtime_internal[2] = {{
+  .tf_log = {
+    .fmt1 = "%F %T.%3f",
+  },
+}};
+struct global_runtime * _Atomic global_runtime = &global_runtime_internal[0];
+
 static void
 global_commit(struct config *new, struct config *old)
 {
-  if (!old)
-    return;
+  /* Updating the global runtime. */
+  struct global_runtime *og = atomic_load_explicit(&global_runtime, memory_order_relaxed);
+  struct global_runtime *ng = &global_runtime_internal[og == &global_runtime_internal[0]];
+  ASSERT_DIE(ng != og);
 
-  if (!new->router_id)
+#define COPY(x)	ng->x = new->x;
+  MACRO_FOREACH(COPY,
+      tf_route,
+      tf_proto,
+      tf_log,
+      tf_base,
+      cli_debug,
+      latency_debug,
+      latency_limit,
+      watchdog_warning,
+      watchdog_timeout,
+      gr_wait,
+      hostname
+      );
+#undef COPY
+
+  ng->load_time = current_time();
+
+  if (new->router_id)
+    ng->router_id = new->router_id;
+  else if (old)
+  {
+    /* The startup router ID must be determined after start of device protocol,
+     * thus if old == NULL then we do nothing */
+    ng->router_id = og->router_id;
+
+    if (new->router_id_from)
     {
-      new->router_id = old->router_id;
-
-      if (new->router_id_from)
-	{
-	  u32 id = if_choose_router_id(new->router_id_from, old->router_id);
-	  if (!id)
-	    log(L_WARN "Cannot determine router ID, using old one");
-	  else
-	    new->router_id = id;
-	}
+      u32 id = if_choose_router_id(new->router_id_from, og->router_id);
+      if (!id)
+	log(L_WARN "Cannot determine router ID, using old one");
+      else
+	ng->router_id = id;
     }
+  }
+
+  atomic_store_explicit(&global_runtime, ng, memory_order_release);
+
+  /* We have to wait until every reader surely doesn't read the old values */
+  synchronize_rcu();
 }
 
 static int

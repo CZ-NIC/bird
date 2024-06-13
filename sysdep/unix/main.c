@@ -487,10 +487,12 @@ cli_rx(sock *s, uint size UNUSED)
   return 0;
 }
 
+#define GLOBAL_CLI_DEBUG (atomic_load_explicit(&global_runtime, memory_order_relaxed)->cli_debug)
+
 static void
 cli_err(sock *s, int err)
 {
-  if (config->cli_debug)
+  if (GLOBAL_CLI_DEBUG)
     {
       if (err)
 	log(L_INFO "CLI connection dropped: %s", strerror(err));
@@ -505,7 +507,7 @@ static void
 cli_connect_err(sock *s UNUSED, int err)
 {
   ASSERT_DIE(err);
-  if (config->cli_debug)
+  if (GLOBAL_CLI_DEBUG)
     log(L_INFO "Failed to accept CLI connection: %s", strerror(err));
 }
 
@@ -514,7 +516,7 @@ cli_connect(sock *s, uint size UNUSED)
 {
   cli *c;
 
-  if (config->cli_debug)
+  if (GLOBAL_CLI_DEBUG)
     log(L_INFO "CLI connect");
   s->rx_hook = cli_rx;
   s->tx_hook = cli_tx;

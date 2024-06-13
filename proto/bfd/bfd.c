@@ -1237,7 +1237,11 @@ bfd_show_session(struct bfd_session *s, int details)
 
   byte dbuf[BFD_DIAG_BUFFER_SIZE];
   byte tbuf[TM_DATETIME_BUFFER_SIZE];
-  tm_format_time(tbuf, &config->tf_proto, s->last_state_change);
+
+  rcu_read_lock();
+  struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
+  tm_format_time(tbuf, &gr->tf_proto, s->last_state_change);
+  rcu_read_unlock();
 
   if (!details)
   {

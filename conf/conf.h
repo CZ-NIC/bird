@@ -72,8 +72,28 @@ struct config {
   event done_event;			/* Called when obstacle_count reaches zero */
   int shutdown;				/* This is a pseudo-config for daemon shutdown */
   int gr_down;				/* This is a pseudo-config for graceful restart */
-  btime load_time;			/* When we've got this configuration */
 };
+
+struct global_runtime {
+  struct timeformat tf_route;		/* Time format for 'show route' */
+  struct timeformat tf_proto;		/* Time format for 'show protocol' */
+  struct timeformat tf_log;		/* Time format for the logfile */
+  struct timeformat tf_base;		/* Time format for other purposes */
+
+  u32 gr_wait;				/* Graceful restart wait timeout (sec) */
+
+  u32 router_id;			/* Our Router ID */
+  const char *hostname;			/* Hostname */
+
+  btime load_time;			/* When we reconfigured last time */
+  int cli_debug;			/* Tracing of CLI connections and commands */
+  enum latency_debug_flags latency_debug;
+  u32 latency_limit;			/* Events with longer duration are logged (us) */
+  u32 watchdog_warning;			/* I/O loop watchdog limit for warning (us) */
+  u32 watchdog_timeout;			/* Watchdog timeout (in seconds, 0 = disabled) */
+};
+
+extern struct global_runtime * _Atomic global_runtime;
 
 /* Please don't use these variables in protocols. Use proto_config->global instead. */
 extern struct config *config;		/* Currently active configuration */

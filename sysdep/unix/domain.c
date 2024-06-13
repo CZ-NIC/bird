@@ -123,7 +123,8 @@ void do_lock(struct domain_generic *dg, struct domain_generic **lsp)
   btime lock_begin = current_time();
   pthread_mutex_lock(&dg->mutex);
   btime duration = current_time() - lock_begin;
-  if (config && (duration > config->watchdog_warning))
+  btime wdw = atomic_load_explicit(&global_runtime, memory_order_relaxed)->watchdog_warning;
+  if (wdw && (duration > wdw))
     log(L_WARN "Locking of %s took %d ms", dg->name, (int) (duration TO_MS));
 
   if (dg->prev || dg->locked_by)

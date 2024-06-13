@@ -302,7 +302,7 @@ static inline struct domain_generic *proto_domain(struct proto *p)
 static inline u32
 proto_get_router_id(struct proto_config *pc)
 {
-  return pc->router_id ? pc->router_id : pc->global->router_id;
+  return pc->router_id ?: atomic_load_explicit(&global_runtime, memory_order_relaxed)->router_id;
 }
 
 

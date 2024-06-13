@@ -2247,7 +2247,8 @@ io_update_time(void)
   {
     event_open->duration = last_io_time - event_open->timestamp;
 
-    if (event_open->duration > config->latency_limit)
+    struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
+    if (event_open->duration > gr->latency_limit)
       log(L_WARN "Event 0x%p 0x%p took %u.%03u ms",
 	  event_open->hook, event_open->data, (uint) (event_open->duration TO_MS), (uint) (event_open->duration % 1000));
 
@@ -2267,7 +2268,8 @@ io_update_time(void)
 void
 io_log_event(void *hook, void *data, uint flag)
 {
-  if (config->latency_debug & flag)
+  struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
+  if (gr->latency_debug & flag)
     io_update_time();
 
   struct event_log_entry *en = event_log + event_log_pos;
@@ -2281,7 +2283,7 @@ io_log_event(void *hook, void *data, uint flag)
   event_log_pos++;
   event_log_pos %= EVENT_LOG_LENGTH;
 
-  event_open = (config->latency_debug & flag) ? en : NULL;
+  event_open = (gr->latency_debug & flag) ? en : NULL;
 }
 
 static inline void
@@ -2310,7 +2312,8 @@ void
 watchdog_sigalrm(int sig UNUSED)
 {
   /* Update last_io_time and duration, but skip latency check */
-  config->latency_limit = 0xffffffff;
+  struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
+  gr->latency_limit = 0xffffffff;
   io_update_time();
 
   debug_safe("Watchdog timer timed out\n");
@@ -2335,9 +2338,10 @@ watchdog_start(void)
   loop_time = last_io_time;
   event_log_num = 0;
 
-  if (config->watchdog_timeout)
+  struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
+  if (gr->watchdog_timeout)
   {
-    alarm(config->watchdog_timeout);
+    alarm(gr->watchdog_timeout);
     watchdog_active = 1;
   }
 }
@@ -2354,7 +2358,8 @@ watchdog_stop(void)
   }
 
   btime duration = last_io_time - loop_time;
-  if (duration > config->watchdog_warning)
+  struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
+  if (duration > gr->watchdog_warning)
     log(L_WARN "I/O loop cycle took %u.%03u ms for %d events",
 	(uint) (duration TO_MS), (uint) (duration % 1000), event_log_num);
 }

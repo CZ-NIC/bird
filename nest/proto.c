@@ -1624,11 +1624,15 @@ protos_do_commit(struct config *new, struct config *old, int type)
 
   /* Determine router ID for the first time - it has to be here and not in
      global_commit() because it is postponed after start of device protocol */
-  if (!config->router_id)
+  if ((phase == PROTOCOL_STARTUP_NECESSARY) && !old)
   {
-    config->router_id = if_choose_router_id(config->router_id_from, 0);
-    if (!config->router_id)
-      die("Cannot determine router ID, please configure it manually");
+    struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
+    if (!gr->router_id)
+    {
+      gr->router_id = if_choose_router_id(new->router_id_from, 0);
+      if (!gr->router_id)
+	die("Cannot determine router ID, please configure it manually");
+    }
   }
 
   /* Commit next round of protocols */
@@ -1781,7 +1785,8 @@ graceful_restart_init(void)
 
   graceful_restart_state = GRS_ACTIVE;
   gr_wait_timer = tm_new_init(proto_pool, graceful_restart_done, NULL, 0, 0);
-  tm_start(gr_wait_timer, config->gr_wait S);
+  u32 gr_wait = atomic_load_explicit(&global_runtime, memory_order_relaxed)->gr_wait;
+  tm_start(gr_wait_timer, gr_wait S);
 }
 
 /**
@@ -1795,7 +1800,7 @@ graceful_restart_init(void)
  * restart wait timer fires (but there are still some locks).
  */
 static void
-graceful_restart_done(timer *t UNUSED)
+graceful_restart_done(timer *t)
 {
   log(L_INFO "Graceful restart done");
   graceful_restart_state = GRS_DONE;
@@ -1821,6 +1826,8 @@ graceful_restart_done(timer *t UNUSED)
   }
 
   graceful_restart_locks = 0;
+
+  rfree(t);
 }
 
 void
@@ -1831,7 +1838,8 @@ graceful_restart_show_status(void)
 
   cli_msg(-24, "Graceful restart recovery in progress");
   cli_msg(-24, "  Waiting for %d channels to recover", graceful_restart_locks);
-  cli_msg(-24, "  Wait timer is %t/%u", tm_remains(gr_wait_timer), config->gr_wait);
+  cli_msg(-24, "  Wait timer is %t/%u", tm_remains(gr_wait_timer),
+      atomic_load_explicit(&global_runtime, memory_order_relaxed)->gr_wait);
 }
 
 /**
@@ -2422,7 +2430,10 @@ proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
   buf[0] = 0;
   if (p->proto->get_status)
     p->proto->get_status(p, buf);
-  tm_format_time(tbuf, &config->tf_proto, p->last_state_change);
+
+  rcu_read_lock();
+  tm_format_time(tbuf, &atomic_load_explicit(&global_runtime, memory_order_acquire)->tf_proto, p->last_state_change);
+  rcu_read_unlock();
   cli_msg(-1002, "%-10s %-10s %-10s %-6s %-12s  %s",
 	  p->name,
 	  p->proto->name,
