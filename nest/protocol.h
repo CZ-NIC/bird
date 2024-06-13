@@ -133,6 +133,7 @@ struct proto_config {
 struct proto {
   TLIST_DEFAULT_NODE;			/* Node in global proto_list */
   struct protocol *proto;		/* Protocol */
+  config_ref global_config;		/* Global configuration reference */
   struct proto_config *cf;		/* Configuration data */
   struct proto_config *cf_new;		/* Configuration we want to switch to after shutdown (NULL=delete) */
   pool *pool;				/* Pool containing local objects */

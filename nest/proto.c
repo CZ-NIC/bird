@@ -1221,6 +1221,7 @@ proto_new(struct proto_config *cf)
 {
   struct proto *p = mb_allocz(proto_pool, cf->protocol->proto_size);
 
+  OBSREF_SET(p->global_config, cf->global);
   p->cf = cf;
   p->debug = cf->debug;
   p->mrtdump = cf->mrtdump;
@@ -1556,6 +1557,8 @@ protos_do_commit(struct config *new, struct config *old, int type)
 	/* We will try to reconfigure protocol p */
 	if (proto_reconfigure(p, oc, nc, type))
 	{
+	  OBSREF_CLEAR(p->global_config);
+	  OBSREF_SET(p->global_config, new);
 	  PROTO_LEAVE_FROM_MAIN(proto_loop);
 	  continue;
 	}
@@ -1598,7 +1601,6 @@ protos_do_commit(struct config *new, struct config *old, int type)
       p->reconfiguring = 1;
       PROTO_LEAVE_FROM_MAIN(proto_loop);
 
-      config_add_obstacle(old);
       proto_rethink_goal(p);
     }
   }
@@ -1675,7 +1677,7 @@ proto_rethink_goal(struct proto *p)
 
     DBG("%s has shut down for reconfiguration\n", p->name);
     p->cf->proto = NULL;
-    config_del_obstacle(p->cf->global);
+    OBSREF_CLEAR(p->global_config);
     proto_remove_channels(p);
     proto_rem_node(&global_proto_list, p);
     rfree(p->event);

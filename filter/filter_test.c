@@ -31,7 +31,7 @@ t_reconfig(const void *arg)
     return 0;
 
   struct symbol *s;
-  WALK_LIST(s, config->symbols)
+  WALK_LIST(s, OBSREF_GET(config)->symbols)
     if ((s->class == SYM_FUNCTION) || (s->class == SYM_FILTER))
       bt_assert_msg((s->flags & SYM_FLAG_SAME), "Symbol %s same check", s->name);
 
@@ -84,7 +84,7 @@ main(int argc, char *argv[])
   bt_test_suite_arg_extra(t_reconfig, BT_CONFIG_FILE, 0, BT_TIMEOUT, "Testing reconfiguration to the same file");
 
   struct f_bt_test_suite *t;
-  WALK_LIST(t, config->tests)
+  WALK_LIST(t, OBSREF_GET(config)->tests)
     bt_test_suite_base(run_function, t->fn_name, t, 0, BT_TIMEOUT, "%s", t->dsc);
 
   return bt_exit_value();

@@ -17,6 +17,7 @@
 #include "lib/resource.h"
 #include "lib/net.h"
 #include "lib/netindex.h"
+#include "lib/obstacle.h"
 #include "lib/type.h"
 #include "lib/fib.h"
 #include "lib/route.h"
@@ -26,6 +27,8 @@
 #include "lib/settle.h"
 
 #include "filter/data.h"
+
+#include "conf/conf.h"
 
 #include <stdatomic.h>
 
@@ -382,7 +385,7 @@ struct rtable_private {
 
   struct hmap id_map;
   struct hostcache *hostcache;
-  struct config *deleted;		/* Table doesn't exist in current configuration,
+  config_ref deleted;			/* Table doesn't exist in current configuration,
 					 * delete as soon as use_count becomes 0 and remove
 					 * obstacle from this routing table.
 					 */
@@ -794,7 +797,7 @@ struct rt_show_data {
   struct proto *show_protocol;
   struct proto *export_protocol;
   struct channel *export_channel;
-  struct config *running_on_config;
+  OBSREF(struct config) running_on_config;
 //  struct rt_export_hook *kernel_export_hook;
   int export_mode, addr_mode, primary_only, filtered, stats;
 

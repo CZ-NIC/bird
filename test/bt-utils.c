@@ -151,8 +151,8 @@ bt_config_parse__(struct config *cfg)
     return NULL;
   }
 
-  config_commit(cfg, RECONFIG_HARD, 0);
-  new_config = cfg;
+  CONFIG_REF_LOCAL(cr, cfg);
+  config_commit(&cr, RECONFIG_HARD, 0);
 
   return cfg;
 }

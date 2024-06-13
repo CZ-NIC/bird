@@ -749,7 +749,8 @@ ea_lex_unregister(struct ea_class *def)
 struct ea_class *
 ea_class_find_by_name(const char *name)
 {
-  struct symbol *sym = cf_find_symbol_scope(config ? config->root_scope : &global_filter_scope, name);
+  struct config *c = OBSREF_GET(config); /* FIXME: this may be wrong */
+  struct symbol *sym = cf_find_symbol_scope(c ? c->root_scope : &global_filter_scope, name);
   return sym && (sym->class == SYM_ATTRIBUTE) ? sym->attribute : NULL;
 }
 

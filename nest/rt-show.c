@@ -238,6 +238,9 @@ rt_show_cleanup(struct cli *c)
     if (rt_export_feed_active(&tab->req))
       rt_feeder_unsubscribe(&tab->req);
   }
+
+  /* Unreference the config */
+  OBSREF_CLEAR(d->running_on_config);
 }
 
 static void

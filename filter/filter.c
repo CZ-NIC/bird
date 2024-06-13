@@ -413,7 +413,7 @@ void channel_filter_dump(const struct filter *f)
 void filters_dump_all(void)
 {
   struct symbol *sym;
-  WALK_LIST(sym, config->symbols) {
+  WALK_LIST(sym, OBSREF_GET(config)->symbols) {
     switch (sym->class) {
       case SYM_FILTER:
 	debug("Named filter %s:\n", sym->name);

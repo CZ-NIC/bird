@@ -59,7 +59,7 @@ t_ev_run_list(void)
   if_init();
 //  roa_init();
   config_init();
-  config = config_alloc("");
+  OBSREF_SET(config, config_alloc(""));
 
   init_event_check_points();
 

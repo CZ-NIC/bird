@@ -608,10 +608,10 @@ bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip)
   bsprintf(fmt, "%s%%0%dd", pp->cf->dynamic_name, pp->cf->dynamic_name_digits);
 
   /* This is hack, we would like to share config, but we need to copy it now */
-  new_config = config;
-  cfg_mem = config->mem;
-  config->current_scope = config->root_scope;
-  sym = cf_default_name(config, fmt, &(pp->dynamic_name_counter));
+  new_config = OBSREF_GET(config);
+  cfg_mem = new_config->mem;
+  new_config->current_scope = new_config->root_scope;
+  sym = cf_default_name(new_config, fmt, &(pp->dynamic_name_counter));
   proto_clone_config(sym, pp->p.cf);
   new_config = NULL;
   cfg_mem = NULL;

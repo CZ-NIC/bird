@@ -173,6 +173,8 @@ read_iproute_table(struct config *conf, char *file, char *prefix, uint max)
 #endif // PATH_IPROUTE_DIR
 
 
+#define CONFIG_COMMIT(cf, ...)	({ CONFIG_REF_LOCAL(cr, cf); config_commit(&cr, __VA_ARGS__); })
+
 static char *config_name = PATH_CONFIG_FILE;
 
 static int
@@ -258,7 +260,7 @@ async_config(void)
       config_free(conf);
     }
   else
-    config_commit(conf, RECONFIG_HARD, 0);
+    CONFIG_COMMIT(conf, RECONFIG_HARD, 0);
 }
 
 static struct config *
@@ -339,7 +341,7 @@ cmd_reconfig(const char *name, int type, uint timeout)
   if (!conf)
     return;
 
-  int r = config_commit(conf, type, timeout);
+  int r = CONFIG_COMMIT(conf, type, timeout);
 
   if ((r >= 0) && (timeout > 0))
     {
@@ -961,7 +963,7 @@ main(int argc, char **argv)
 
   signal_init();
 
-  config_commit(conf, RECONFIG_HARD, 0);
+  CONFIG_COMMIT(conf, RECONFIG_HARD, 0);
 
   graceful_restart_init();
 

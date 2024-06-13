@@ -34,7 +34,7 @@ struct mpls_domain {
   uint label_count;			/* Number of allocated labels */
   uint use_count;			/* Reference counter */
 
-  struct config *removed;		/* Deconfigured, waiting for zero use_count,
+  config_ref removed;			/* Deconfigured, waiting for zero use_count,
 					   while keeping config obstacle */
 
   struct mpls_range *static_range;	/* Direct static range pointer */

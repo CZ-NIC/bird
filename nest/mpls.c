@@ -309,21 +309,18 @@ mpls_free_domain(void *_m)
   ASSERT(m->label_count == 0);
   ASSERT(EMPTY_LIST(m->ranges));
 
-  struct config *cfg = m->removed;
+  OBSREF_CLEAR(m->removed);
 
   m->cf->domain = NULL;
   rem_node(&m->n);
   rfree(m->pool);
   UNLOCK_DOMAIN(attrs, dom);
-
-  config_del_obstacle(cfg);
 }
 
 static void
 mpls_remove_domain(struct mpls_domain *m, struct config *cfg)
 {
-  m->removed = cfg;
-  config_add_obstacle(cfg);
+  OBSREF_SET(m->removed, cfg);
 
   struct mpls_range *r, *rnext;
   WALK_LIST_DELSAFE(r, rnext, m->ranges)
@@ -345,7 +342,7 @@ mpls_unlock_domain(struct mpls_domain *m)
   ASSERT(m->use_count > 0);
 
   m->use_count--;
-  if (!m->use_count && m->removed)
+  if (!m->use_count && OBSREF_GET(m->removed))
     ev_new_send(&main_birdloop, m->pool, mpls_free_domain, m);
 }
 

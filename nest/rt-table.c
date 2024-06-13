@@ -2573,7 +2573,7 @@ rt_dump(rtable *tab)
   RT_READ(tab, tp);
 
   /* Looking at priv.deleted is technically unsafe but we don't care */
-  debug("Dump of routing table <%s>%s\n", tab->name, tab->priv.deleted ? " (deleted)" : "");
+  debug("Dump of routing table <%s>%s\n", tab->name, OBSREF_GET(tab->priv.deleted) ? " (deleted)" : "");
 
   u32 bs = atomic_load_explicit(&tp->t->routes_block_size, memory_order_relaxed);
   net *routes = atomic_load_explicit(&tp->t->routes, memory_order_relaxed);
@@ -2608,7 +2608,7 @@ rt_dump_hooks(rtable *tp)
   RT_LOCKED(tp, tab)
   {
 
-  debug("Dump of hooks in routing table <%s>%s\n", tab->name, tab->deleted ? " (deleted)" : "");
+  debug("Dump of hooks in routing table <%s>%s\n", tab->name, OBSREF_GET(tab->deleted) ? " (deleted)" : "");
   debug("  nhu_state=%u use_count=%d rt_count=%u\n",
       tab->nhu_state, tab->use_count, tab->rt_count);
   debug("  last_rt_change=%t gc_time=%t gc_counter=%d prune_state=%u\n",
@@ -4313,7 +4313,7 @@ void
 rt_unlock_table_priv(struct rtable_private *r, const char *file, uint line)
 {
   rt_trace(r, D_STATES, "Unlocked at %s:%d", file, line);
-  if (!--r->use_count && r->deleted)
+  if (!--r->use_count && OBSREF_GET(r->deleted))
     /* Stop the service thread to finish this up */
     ev_send_loop(r->loop, ev_new_init(r->rp, rt_shutdown, r));
 }
@@ -4359,13 +4359,12 @@ rt_delete(void *tab_)
    * Anyway the last holder may still hold the lock. Therefore we lock and
    * unlock it the last time to be sure that nobody is there. */
   struct rtable_private *tab = RT_LOCK_SIMPLE((rtable *) tab_);
-  struct config *conf = tab->deleted;
+  OBSREF_CLEAR(tab->deleted);
   DOMAIN(rtable) dom = tab->lock;
   RT_UNLOCK_SIMPLE(RT_PUB(tab));
 
   /* Everything is freed by freeing the loop */
   birdloop_free(tab->loop);
-  config_del_obstacle(conf);
 
   /* Also drop the domain */
   DOMAIN_FREE(rtable, dom);
@@ -4378,7 +4377,7 @@ rt_check_cork_low(struct rtable_private *tab)
   if (!tab->cork_active)
     return;
 
-  if (tab->deleted ||
+  if (OBSREF_GET(tab->deleted) ||
       (lfjour_pending_items(&tab->export_best.journal) < tab->cork_threshold.low)
    && (lfjour_pending_items(&tab->export_all.journal) < tab->cork_threshold.low))
   {
@@ -4392,7 +4391,7 @@ rt_check_cork_low(struct rtable_private *tab)
 static void
 rt_check_cork_high(struct rtable_private *tab)
 {
-  if (!tab->deleted && !tab->cork_active && (
+  if (!OBSREF_GET(tab->deleted) && !tab->cork_active && (
 	(lfjour_pending_items(&tab->export_best.journal) >= tab->cork_threshold.low)
      || (lfjour_pending_items(&tab->export_all.journal) >= tab->cork_threshold.low)))
   {
@@ -4480,7 +4479,7 @@ rt_commit(struct config *new, struct config *old)
 	_Bool ok;
 	RT_LOCKED(o->table, tab)
 	{
-	  r = tab->deleted ? NULL : rt_find_table_config(new, o->name);
+	  r = OBSREF_GET(tab->deleted) ? NULL : rt_find_table_config(new, o->name);
 	  ok = r && !new->shutdown && rt_reconfigure(tab, r, o);
 	}
 
@@ -4491,8 +4490,7 @@ rt_commit(struct config *new, struct config *old)
 	RT_LOCKED(o->table, tab)
 	{
 	  DBG("\t%s: deleted\n", o->name);
-	  tab->deleted = old;
-	  config_add_obstacle(old);
+	  OBSREF_SET(tab->deleted, old);
 	  rt_lock_table(tab);
 
 	  rt_check_cork_low(tab);

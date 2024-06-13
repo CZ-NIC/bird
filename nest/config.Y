@@ -734,7 +734,7 @@ r_args:
      $$ = cfg_allocz(sizeof(struct rt_show_data));
      init_list(&($$->tables));
      $$->filter = FILTER_ACCEPT;
-     $$->running_on_config = this_cli->main_config;
+     OBSREF_SET($$->running_on_config, this_cli->main_config);
      $$->cli = this_cli;
      $$->tf_route = this_cli->main_config->tf_route;
    }

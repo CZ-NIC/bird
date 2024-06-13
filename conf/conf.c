@@ -60,25 +60,46 @@
 
 static jmp_buf conf_jmpbuf;
 
-struct config *config;
+config_ref config;
 _Thread_local struct config *new_config;
 pool *config_pool;
 
-static struct config *old_config;	/* Old configuration */
-static struct config *future_config;	/* New config held here if recon requested during recon */
+static config_ref old_config;		/* Old configuration */
+static config_ref future_config;	/* New config held here if recon requested during recon */
 static int old_cftype;			/* Type of transition old_config -> config (RECONFIG_SOFT/HARD) */
 static int future_cftype;		/* Type of scheduled transition, may also be RECONFIG_UNDO */
 /* Note that when future_cftype is RECONFIG_UNDO, then future_config is NULL,
    therefore proper check for future scheduled config checks future_cftype */
 
-static void config_done(void *cf);
+static void config_done(void);
 static timer *config_timer;		/* Timer for scheduled configuration rollback */
 
 /* These are public just for cmd_show_status(), should not be accessed elsewhere */
 int shutting_down;			/* Shutdown requested, do not accept new config changes */
 int configuring;			/* Reconfiguration is running */
+struct config *old_config_pending;	/* Just for debug convenience */
 int undo_available;			/* Undo was not requested from last reconfiguration */
 /* Note that both shutting_down and undo_available are related to requests, not processing */
+
+static void
+config_obstacles_cleared(struct callback *cb)
+{
+  SKIP_BACK_DECLARE(struct config, c, obstacles_cleared, cb);
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+
+  if (c == old_config_pending)
+  {
+    old_config_pending = NULL;
+
+    if (!shutting_down)
+      OBSREF_SET(old_config, c);
+
+    if (configuring)
+      config_done();
+  }
+  else
+    config_free(c);
+}
 
 /**
  * config_alloc - allocate a new configuration
@@ -109,7 +130,8 @@ config_alloc(const char *name)
   c->tf_base = c->tf_log = TM_ISO_LONG_MS;
   c->gr_wait = DEFAULT_GR_WAIT;
 
-  c->done_event = (event) { .hook = config_done, .data = c, };
+  callback_init(&c->obstacles_cleared, config_obstacles_cleared, &main_birdloop);
+  obstacle_target_init(&c->obstacles, &c->obstacles_cleared, p, "Config");
 
   return c;
 }
@@ -196,7 +218,8 @@ config_free(struct config *c)
   if (!c)
     return;
 
-  ASSERT(!atomic_load_explicit(&c->obstacle_count, memory_order_relaxed));
+  synchronize_rcu();
+  ASSERT_DIE(!obstacle_target_count(&c->obstacles));
 
   rp_free(c->pool);
 }
@@ -212,30 +235,9 @@ config_free(struct config *c)
 void
 config_free_old(void)
 {
-  if (!old_config || atomic_load_explicit(&old_config->obstacle_count, memory_order_acquire))
-    return;
-
+  OBSREF_CLEAR(old_config);
   tm_stop(config_timer);
   undo_available = 0;
-
-  config_free(old_config);
-  old_config = NULL;
-}
-
-void
-config_add_obstacle(struct config *c)
-{
-  UNUSED int obs = atomic_fetch_add_explicit(&c->obstacle_count, 1, memory_order_acq_rel);
-  DBG("+++ adding obstacle %d\n", obs);
-}
-
-void
-config_del_obstacle(struct config *c)
-{
-  int obs = atomic_fetch_sub_explicit(&c->obstacle_count, 1, memory_order_acq_rel);
-  DBG("+++ deleting obstacle %d\n", obs);
-  if (obs == 1)
-    ev_send_loop(&main_birdloop, &c->done_event);
 }
 
 struct global_runtime global_runtime_internal[2] = {{
@@ -296,19 +298,24 @@ global_commit(struct config *new, struct config *old)
 }
 
 static int
-config_do_commit(struct config *c, int type)
+config_do_commit(config_ref *cr, int type)
 {
   if (type == RECONFIG_UNDO)
     {
-      c = old_config;
+      OBSREF_SET(*cr, OBSREF_GET(old_config));
       type = old_cftype;
     }
-  else
-    config_free(old_config);
 
-  old_config = config;
+  OBSREF_CLEAR(old_config);
+
   old_cftype = type;
-  config = c;
+
+  struct config *c = OBSREF_GET(*cr);
+  struct config *oc = OBSREF_GET(config);
+  old_config_pending = oc;
+
+  OBSREF_CLEAR(config);
+  OBSREF_SET(config, OBSREF_GET(*cr));
 
   if (!c->hostname)
     {
@@ -319,54 +326,50 @@ config_do_commit(struct config *c, int type)
     }
 
   configuring = 1;
-  if (old_config && !config->shutdown)
+  if (oc && !c->shutdown)
     log(L_INFO "Reconfiguring");
 
-  if (old_config)
-    config_add_obstacle(old_config);
-
   DBG("filter_commit\n");
-  filter_commit(c, old_config);
+  filter_commit(c, oc);
   DBG("sysdep_commit\n");
-  sysdep_commit(c, old_config);
+  sysdep_commit(c, oc);
   DBG("global_commit\n");
-  global_commit(c, old_config);
-  mpls_commit(c, old_config);
+  global_commit(c, oc);
+  mpls_commit(c, oc);
   DBG("rt_commit\n");
-  rt_commit(c, old_config);
+  rt_commit(c, oc);
   DBG("protos_commit\n");
-  protos_commit(c, old_config, type);
-  int obs = old_config ?
-    atomic_fetch_sub_explicit(&old_config->obstacle_count, 1, memory_order_acq_rel) - 1
-    : 0;
+  protos_commit(c, oc, type);
 
-  DBG("do_commit finished with %d obstacles remaining\n", obs);
-  return !obs;
+  /* Can be cleared directly? */
+  return !oc || callback_is_active(&oc->obstacles_cleared);
 }
 
 static void
-config_done(void *cf)
+config_done(void)
 {
-  if (cf == config)
-    return;
+  struct config *c = OBSREF_GET(config);
+  ASSERT_DIE(c);
 
-  if (config->shutdown)
+  if (c->shutdown)
     sysdep_shutdown_done();
 
   configuring = 0;
-  if (old_config)
+  if (OBSREF_GET(old_config))
     log(L_INFO "Reconfigured");
 
   if (future_cftype)
     {
       int type = future_cftype;
-      struct config *conf = future_config;
+
+      CONFIG_REF_LOCAL(conf, OBSREF_GET(future_config));
+
       future_cftype = RECONFIG_NONE;
-      future_config = NULL;
+      OBSREF_CLEAR(future_config);
 
       log(L_INFO "Reconfiguring to queued configuration");
-      if (config_do_commit(conf, type))
-	config_done(NULL);
+      if (config_do_commit(&conf, type))
+	config_done();
     }
 }
 
@@ -398,11 +401,11 @@ config_done(void *cf)
  * are accepted.
  */
 int
-config_commit(struct config *c, int type, uint timeout)
+config_commit(config_ref *cr, int type, uint timeout)
 {
   if (shutting_down)
     {
-      config_free(c);
+      OBSREF_CLEAR(*cr);
       return CONF_SHUTDOWN;
     }
 
@@ -417,19 +420,19 @@ config_commit(struct config *c, int type, uint timeout)
       if (future_cftype)
 	{
 	  log(L_INFO "Queueing new configuration, ignoring the one already queued");
-	  config_free(future_config);
+	  OBSREF_CLEAR(future_config);
 	}
       else
 	log(L_INFO "Queueing new configuration");
 
       future_cftype = type;
-      future_config = c;
+      OBSREF_SET(future_config, OBSREF_GET(*cr));
       return CONF_QUEUED;
     }
 
-  if (config_do_commit(c, type))
+  if (config_do_commit(cr, type))
     {
-      config_done(NULL);
+      config_done();
       return CONF_DONE;
     }
   return CONF_PROGRESS;
@@ -483,7 +486,7 @@ config_undo(void)
   if (shutting_down)
     return CONF_SHUTDOWN;
 
-  if (!undo_available || !old_config)
+  if (!undo_available || !OBSREF_GET(old_config))
     return CONF_NOTHING;
 
   undo_available = 0;
@@ -493,8 +496,7 @@ config_undo(void)
     {
       if (future_cftype)
 	{
-	  config_free(future_config);
-	  future_config = NULL;
+	  OBSREF_CLEAR(future_config);
 
 	  log(L_INFO "Removing queued configuration");
 	  future_cftype = RECONFIG_NONE;
@@ -508,9 +510,11 @@ config_undo(void)
 	}
     }
 
-  if (config_do_commit(NULL, RECONFIG_UNDO))
+  CONFIG_REF_LOCAL_EMPTY(undo_conf);
+  if (config_do_commit(&undo_conf, RECONFIG_UNDO))
     {
-      config_done(NULL);
+      OBSREF_CLEAR(undo_conf);
+      config_done();
       return CONF_DONE;
     }
   return CONF_PROGRESS;
@@ -565,8 +569,6 @@ config_init(void)
 void
 order_shutdown(int gr)
 {
-  struct config *c;
-
   if (shutting_down)
     return;
 
@@ -575,17 +577,19 @@ order_shutdown(int gr)
   else
     log(L_INFO "Shutting down for graceful restart");
 
-  c = lp_alloc(config->mem, sizeof(struct config));
-  memcpy(c, config, sizeof(struct config));
+  struct config *c = lp_alloc(OBSREF_GET(config)->mem, sizeof(struct config));
+  memcpy(c, OBSREF_GET(config), sizeof(struct config));
   init_list(&c->protos);
   init_list(&c->tables);
   init_list(&c->mpls_domains);
   init_list(&c->symbols);
+  obstacle_target_init(&c->obstacles, &c->obstacles_cleared, c->pool, "Config");
   memset(c->def_tables, 0, sizeof(c->def_tables));
   c->shutdown = 1;
   c->gr_down = gr;
 
-  config_commit(c, RECONFIG_HARD, 0);
+  CONFIG_REF_LOCAL(cr, c);
+  config_commit(&cr, RECONFIG_HARD, 0);
   shutting_down = 1;
 }
 

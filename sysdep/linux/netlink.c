@@ -1974,7 +1974,6 @@ krt_do_scan(struct krt_proto *p)
 static sock *nl_async_sk;		/* BIRD socket for asynchronous notifications */
 static byte *nl_async_rx_buffer;	/* Receive buffer */
 static uint nl_async_bufsize;		/* Kernel rx buffer size for the netlink socket */
-static struct config *nl_last_config;	/* For tracking changes to nl_async_bufsize */
 
 static void
 nl_async_msg(struct nlmsghdr *h)
@@ -2119,12 +2118,23 @@ nl_update_async_bufsize(void)
   if (!nl_async_sk)
     return;
 
+  /* For tracking changes to nl_async_bufsize, just a pointer storage */
+  static struct config *nl_last_config;
+
+  /* Get current config. This is a bit sketchy but we now
+   * simply expect that we're running in the mainloop.
+   * When moving kernel protocol to proper loops,
+   * this may need to change to avoid funny races.
+   */
+  struct config *cur = OBSREF_GET(config);
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+
   /* Already reconfigured */
-  if (nl_last_config == config)
+  if (nl_last_config == cur)
     return;
 
   /* Update netlink buffer size */
-  uint bufsize = nl_cfg_rx_buffer_size(config);
+  uint bufsize = nl_cfg_rx_buffer_size(cur);
   if (bufsize && (bufsize != nl_async_bufsize))
   {
     /* Log message for reconfigurations only */
@@ -2135,7 +2145,7 @@ nl_update_async_bufsize(void)
     nl_async_bufsize = bufsize;
   }
 
-  nl_last_config = config;
+  nl_last_config = cur;
 }
 
 

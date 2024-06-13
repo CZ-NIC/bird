@@ -13,6 +13,7 @@
 #include "lib/ip.h"
 #include "lib/hash.h"
 #include "lib/resource.h"
+#include "lib/obstacle.h"
 #include "lib/timer.h"
 
 /* Configuration structure */
@@ -68,8 +69,8 @@ struct config {
   struct sym_scope *root_scope;		/* Scope for root symbols */
   struct sym_scope *current_scope;	/* Current scope where we are actually in while parsing */
   int allow_attributes;			/* Allow attributes in the current state of configuration parsing */
-  _Atomic int obstacle_count;		/* Number of items blocking freeing of this config */
-  event done_event;			/* Called when obstacle_count reaches zero */
+  struct obstacle_target obstacles;	/* May be externally blocked */
+  struct callback obstacles_cleared;	/* Called when ready to delete */
   int shutdown;				/* This is a pseudo-config for daemon shutdown */
   int gr_down;				/* This is a pseudo-config for graceful restart */
 };
@@ -96,7 +97,17 @@ struct global_runtime {
 extern struct global_runtime * _Atomic global_runtime;
 
 /* Please don't use these variables in protocols. Use proto_config->global instead. */
-extern struct config *config;		/* Currently active configuration */
+typedef OBSREF(struct config) config_ref;
+
+/* Self-clearing local reference */
+static inline void config_ref_local_cleanup(config_ref *r)
+{ OBSREF_CLEAR(*r); }
+#define CONFIG_REF_LOCAL_EMPTY(_ref)				\
+  CLEANUP(config_ref_local_cleanup) config_ref _ref = {};
+#define CONFIG_REF_LOCAL(_ref, _val)				\
+  CONFIG_REF_LOCAL_EMPTY(_ref); OBSREF_SET(_ref, _val);
+
+extern config_ref config;		/* Currently active configuration */
 extern _Thread_local struct config *new_config;	/* Configuration being parsed */
 
 struct config *config_alloc(const char *name);
@@ -104,7 +115,7 @@ int config_parse(struct config *);
 int cli_parse(struct config *, struct config *);
 void config_free(struct config *);
 void config_free_old(void);
-int config_commit(struct config *, int type, uint timeout);
+int config_commit(config_ref *, int type, uint timeout);
 int config_confirm(void);
 int config_undo(void);
 int config_status(void);
@@ -112,8 +123,6 @@ btime config_timer_status(void);
 void config_init(void);
 void cf_error(const char *msg, ...) NORET;
 #define cf_warn(msg, args...)  log(L_WARN "%s:%d:%d: " msg, ifs->file_name, ifs->lino, ifs->chno - ifs->toklen + 1, ##args)
-void config_add_obstacle(struct config *);
-void config_del_obstacle(struct config *);
 void order_shutdown(int gr);
 
 #define RECONFIG_NONE	0
