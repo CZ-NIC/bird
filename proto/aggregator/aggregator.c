@@ -1663,11 +1663,13 @@ aggregator_start(struct proto *P)
     .data = p,
   };
 
-  p->trie_pool = lp_new(P->pool);
-  p->first_run = 1;
-  p->aggr_done = 0;
+  if (PREFIX_AGGR == p->aggr_mode)
+  {
+    p->trie_pool = lp_new(P->pool);
+    settle_init(&p->notify_settle, &p->notify_settle_cf, request_feed_on_settle_timer, p);
+  }
 
-  settle_init(&p->notify_settle, &p->notify_settle_cf, aggregate_on_settle_timer, p);
+  p->first_run = 1;
 
   return PS_UP;
 }
@@ -1677,26 +1679,10 @@ aggregator_shutdown(struct proto *P)
 {
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
 
-  HASH_WALK_DELSAFE(p->buckets, next_hash, b)
-  {
-    while (b->rte)
-    {
-      struct aggregator_route *arte = SKIP_BACK(struct aggregator_route, rte, b->rte);
-      b->rte = arte->rte.next;
-      b->count--;
-      HASH_REMOVE(p->routes, AGGR_RTE, arte);
-      rta_free(arte->rte.attrs);
-    }
-
-    ASSERT_DIE(b->count == 0);
-    HASH_REMOVE(p->buckets, AGGR_BUCK, b);
-  }
-  HASH_WALK_END;
-
   settle_cancel(&p->notify_settle);
 
-  assert(p->root != NULL);
-  p->root = NULL;
+  assert(p->root == NULL);
+  flush_aggregator(p);
 
   return PS_DOWN;
 }
