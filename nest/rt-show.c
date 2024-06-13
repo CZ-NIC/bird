@@ -50,7 +50,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   int dest = nhad ? (NEXTHOP_IS_REACHABLE(nhad) ? RTD_UNICAST : nhad->dest) : RTD_NONE;
   int flowspec_valid = net_is_flow(e->net) ? rt_get_flowspec_valid(e) : FLOWSPEC_UNKNOWN;
 
-  tm_format_time(tm, &config->tf_route, e->lastmod);
+  tm_format_time(tm, &d->tf_route, e->lastmod);
   ip_addr a_from = ea_get_ip(a, &ea_gen_from, IPA_NONE);
   if (ipa_nonzero(a_from) && (!nhad || !ipa_equal(a_from, nhad->nh.gw)))
     bsprintf(from, " from %I", a_from);
@@ -260,7 +260,7 @@ rt_show_cont(struct cli *c)
 {
   struct rt_show_data *d = c->rover;
 
-  if (d->running_on_config && (d->running_on_config != config))
+  if (OBSREF_GET(d->running_on_config) != OBSREF_GET(config))
   {
     cli_printf(c, 8004, "Stopped due to reconfiguration");
     return rt_show_done(d);
@@ -376,9 +376,10 @@ rt_show_get_default_tables(struct rt_show_data *d)
     return;
   }
 
+  struct symbol **def_tables = d->cli->main_config->def_tables;
   for (int i=1; i<NET_MAX; i++)
-    if (config->def_tables[i] && config->def_tables[i]->table && config->def_tables[i]->table->table)
-      rt_show_add_table(d, config->def_tables[i]->table->table);
+    if (def_tables[i] && def_tables[i]->table && def_tables[i]->table->table)
+      rt_show_add_table(d, def_tables[i]->table->table);
 }
 
 static inline void
@@ -431,7 +432,7 @@ rt_show_prepare_tables(struct rt_show_data *d)
 	.addr = d->addr,
 	.mode = d->addr_mode,
       },
-      .trace_routes = config->show_route_debug,
+      .trace_routes = d->cli->main_config->show_route_debug,
     };
 
     rt_feeder_subscribe(ex, &tab->req);

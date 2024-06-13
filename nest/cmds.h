@@ -7,8 +7,9 @@
  */
 
 struct sym_show_data {
-	int	type;	/* Symbols type to show */
-	struct symbol	*sym;
+	int type;	/* Symbols type to show */
+	struct symbol *sym;
+	struct config *config;	/* The actual configuration to dump */
 };
 
 struct f_inst;

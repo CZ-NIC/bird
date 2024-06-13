@@ -734,8 +734,9 @@ r_args:
      $$ = cfg_allocz(sizeof(struct rt_show_data));
      init_list(&($$->tables));
      $$->filter = FILTER_ACCEPT;
-     $$->running_on_config = config;
+     $$->running_on_config = this_cli->main_config;
      $$->cli = this_cli;
+     $$->tf_route = this_cli->main_config->tf_route;
    }
  | r_args net_any {
      $$ = $1;
@@ -766,7 +767,7 @@ r_args:
  | r_args TABLE ALL {
      struct rtable_config *t;
      $$ = $1;
-     WALK_LIST(t, config->tables)
+     WALK_LIST(t, this_cli->main_config->tables)
        rt_show_add_table($$, t->table);
      $$->tables_defined_by = RSD_TDB_ALL;
    }
@@ -934,6 +935,7 @@ CF_CLI_OPT(SHOW SYMBOLS TEMPLATE)
 sym_args:
    /* empty */ {
      $$ = cfg_allocz(sizeof(struct sym_show_data));
+     $$->config = this_cli->main_config;
    }
  | sym_args TABLE { $$ = $1; $$->type = SYM_TABLE; }
  | sym_args FILTER { $$ = $1; $$->type = SYM_FILTER; }

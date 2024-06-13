@@ -51,7 +51,7 @@ cmd_show_symbols(struct sym_show_data *sd)
     cli_msg(1010, "%-8s\t%s", sd->sym->name, cf_symbol_class_name(sd->sym));
   else
   {
-    for (const struct sym_scope *scope = config->root_scope; scope; scope = scope->next)
+    for (const struct sym_scope *scope = sd->config->root_scope; scope; scope = scope->next)
       HASH_WALK(scope->hash, next, sym)
       {
 	if (sd->type && (sym->class != sd->type))

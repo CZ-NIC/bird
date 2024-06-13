@@ -789,6 +789,7 @@ struct rt_show_data {
   struct rt_show_data_rtable *tab;	/* Iterator over table list */
   struct rt_show_data_rtable *last_table; /* Last table in output */
   int verbose, tables_defined_by;
+  struct timeformat tf_route;
   const struct filter *filter;
   struct proto *show_protocol;
   struct proto *export_protocol;
