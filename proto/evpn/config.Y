@@ -14,12 +14,14 @@ CF_HDR
 
 CF_DEFINES
 
+static struct evpn_vlan_config *this_evpn_vlan;
+
 #define EVPN_CFG ((struct evpn_config *) this_proto)
 
 
 CF_DECLS
 
-CF_KEYWORDS(EVPN, ROUTE, IMPORT, EXPORT, TARGET, RD, DISTINGUISHER, TUNNEL, DEVICE, VNI, VID)
+CF_KEYWORDS(EVPN, ROUTE, IMPORT, EXPORT, TARGET, RD, DISTINGUISHER, TUNNEL, DEVICE, VNI, VID, VLAN, RANGE)
 
 %type <e> evpn_targets
 %type <cc> evpn_channel_start evpn_channel
@@ -48,6 +50,7 @@ evpn_channel: evpn_channel_start channel_opt_list channel_end;
 evpn_proto_start: proto_start EVPN
 {
   this_proto = proto_config_new(&proto_evpn, $1);
+  init_list(&EVPN_CFG->vlans);
 };
 
 
@@ -64,6 +67,8 @@ evpn_proto_item:
  | ROUTER ADDRESS ipa { EVPN_CFG->router_addr = $3; }
  | VNI expr { EVPN_CFG->vni = $2; }
  | VID expr { EVPN_CFG->vid = $2; if ($2 > 4095) cf_error("VID must be in range 0-4095"); }
+ | TAG expr { EVPN_CFG->tagX = $2; }
+ | evpn_vlan
  ;
 
 evpn_proto_opts:
@@ -79,6 +84,57 @@ evpn_targets:
    ec_item { f_tree_only_rt($1); $$ = $1; }
  | '[' ec_items ']' { f_tree_only_rt($2); $$ = build_tree($2, true); }
  ;
+
+
+evpn_vlan: evpn_vlan_start evpn_vlan_opt_list evpn_vlan_end;
+
+evpn_vlan_start: VLAN expr
+{
+  this_evpn_vlan = cfg_allocz(sizeof(struct evpn_vlan_config));
+  add_tail(&EVPN_CFG->vlans, &this_evpn_vlan->n);
+  this_evpn_vlan->id = $2;
+  this_evpn_vlan->range = 1;
+  this_evpn_vlan->vni = U32_UNDEF;
+  this_evpn_vlan->vid = U32_UNDEF;
+}
+
+evpn_vlan_opt:
+   RANGE expr { this_evpn_vlan->range = $2; }
+ | VNI expr { this_evpn_vlan->vni = $2; if ($2 > EVPN_VNI_MAX) cf_error("VNI must be less than 2^24"); }
+ | VID expr { this_evpn_vlan->vid = $2; if ($2 > EVPN_VID_MAX) cf_error("VID must be less than 2^12"); }
+ ;
+
+evpn_vlan_opts:
+   /* empty */
+ | evpn_vlan_opts evpn_vlan_opt ';'
+ ;
+
+evpn_vlan_opt_list:
+   /* empty */
+ | '{' evpn_vlan_opts '}'
+ ;
+
+evpn_vlan_end:
+{
+  struct evpn_vlan_config *vc = this_evpn_vlan;
+
+  if (vc->vni == U32_UNDEF)
+    vc->vni = vc->id;
+
+  if (vc->vid == U32_UNDEF)
+    vc->vid = vc->id;
+
+  if (((u64) vc->id + vc->range - 1) > EVPN_TAG_MAX)
+    cf_error("Last tag in range must be less than 2^32");
+
+  if (((u64) vc->vni + vc->range - 1) > EVPN_VNI_MAX)
+    cf_error("Last VNI in range must be less than 2^24");
+
+  if (((u64) vc->vid + vc->range - 1) > EVPN_VID_MAX)
+    cf_error("Last VID in range must be less than 2^12");
+
+  this_evpn_vlan = NULL;
+}
 
 
 CF_CODE

@@ -39,6 +39,12 @@
 
 #undef LOCAL_DEBUG
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include <stdlib.h>
+
 #include "nest/bird.h"
 #include "nest/iface.h"
 #include "nest/protocol.h"
@@ -62,20 +68,19 @@
 static inline const struct adata * ea_get_adata(ea_list *e, uint id)
 { eattr *a = ea_find(e, id); return a ? a->u.ptr : &null_adata; }
 
-static inline int
-mpls_valid_nexthop(const rta *a)
-{
-  /* MPLS does not support special blackhole targets */
-  if (a->dest != RTD_UNICAST)
-    return 0;
 
-  /* MPLS does not support ARP / neighbor discovery */
-  for (const struct nexthop *nh = &a->nh; nh ; nh = nh->next)
-    if (ipa_zero(nh->gw) && (nh->iface->flags & IF_MULTIACCESS))
-      return 0;
+static struct evpn_vlan *evpn_find_vlan_by_tag(struct evpn_proto *p, u32 tag);
+static struct evpn_vlan *evpn_find_vlan_by_vid(struct evpn_proto *p, u32 vid);
 
-  return 1;
-}
+#define EVPN_ROOT_VLAN(P) \
+  ( &(struct evpn_vlan){ .tag = (P)->tagX, .vni = (P)->vni, .vid = (P)->vid } )
+
+#define evpn_get_vlan_by_tag(P,TAG) \
+  ( evpn_find_vlan_by_tag((P), (TAG)) ?: EVPN_ROOT_VLAN(P) )
+
+#define evpn_get_vlan_by_vid(P,VID) \
+  ( evpn_find_vlan_by_vid((P), (VID)) ?: EVPN_ROOT_VLAN(P) )
+
 
 static int
 evpn_import_targets(struct evpn_proto *p, const struct adata *list)
@@ -148,9 +153,10 @@ static void
 evpn_announce_mac(struct evpn_proto *p, const net_addr_eth *n0, rte *new)
 {
   struct channel *c = p->evpn_channel;
+  struct evpn_vlan *v = evpn_get_vlan_by_vid(p, n0->vid);
 
   net_addr *n = alloca(sizeof(net_addr_evpn_mac));
-  net_fill_evpn_mac(n, p->rd, 0, n0->mac);
+  net_fill_evpn_mac(n, p->rd, v->tag, n0->mac);
 
   if (new)
   {
@@ -164,7 +170,7 @@ evpn_announce_mac(struct evpn_proto *p, const net_addr_eth *n0, rte *new)
     struct adata *ad = evpn_export_targets(p, &null_adata);
     ea_set_attr_ptr(&a->eattrs, tmp_linpool, EA_BGP_EXT_COMMUNITY, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_EC_SET, ad);
 
-    ea_set_attr_u32(&a->eattrs, tmp_linpool, EA_MPLS_LABEL, 0, EAF_TYPE_INT, p->vni);
+    ea_set_attr_u32(&a->eattrs, tmp_linpool, EA_MPLS_LABEL, 0, EAF_TYPE_INT, v->vni);
 
     rte *e = rte_get_temp(a, p->p.main_source);
     rte_update2(c, n, e, p->p.main_source);
@@ -176,12 +182,12 @@ evpn_announce_mac(struct evpn_proto *p, const net_addr_eth *n0, rte *new)
 }
 
 static void
-evpn_announce_imet(struct evpn_proto *p, int new)
+evpn_announce_imet(struct evpn_proto *p, struct evpn_vlan *v, int new)
 {
   struct channel *c = p->evpn_channel;
 
   net_addr *n = alloca(sizeof(net_addr_evpn_imet));
-  net_fill_evpn_imet(n, p->rd, 0, p->router_addr);
+  net_fill_evpn_imet(n, p->rd, v->tag, p->router_addr);
 
   if (new)
   {
@@ -195,7 +201,7 @@ evpn_announce_imet(struct evpn_proto *p, int new)
     struct adata *ad = evpn_export_targets(p, &null_adata);
     ea_set_attr_ptr(&a->eattrs, tmp_linpool, EA_BGP_EXT_COMMUNITY, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_EC_SET, ad);
 
-    ad = bgp_pmsi_new_ingress_replication(tmp_linpool, p->router_addr, p->vni);
+    ad = bgp_pmsi_new_ingress_replication(tmp_linpool, p->router_addr, v->vni);
     ea_set_attr_ptr(&a->eattrs, tmp_linpool, EA_BGP_PMSI_TUNNEL, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_OPAQUE, ad);
 
     rte *e = rte_get_temp(a, p->p.main_source);
@@ -215,9 +221,10 @@ static void
 evpn_receive_mac(struct evpn_proto *p, const net_addr_evpn_mac *n0, rte *new)
 {
   struct channel *c = p->eth_channel;
+  struct evpn_vlan *v = evpn_get_vlan_by_tag(p, n0->tag);
 
   net_addr *n = alloca(sizeof(net_addr_eth));
-  net_fill_eth(n, n0->mac, p->vid);
+  net_fill_eth(n, n0->mac, v->vid);
 
   if (new && rte_resolvable(new))
   {
@@ -243,7 +250,7 @@ evpn_receive_mac(struct evpn_proto *p, const net_addr_evpn_mac *n0, rte *new)
     memcpy(a->nh.label, ms->u.ptr->data, a->nh.labels * 4);
 
     /* Hack to handle src_vni in bridge code */
-    ea_set_attr_u32(&a->eattrs, tmp_linpool, EA_MPLS_LABEL, 0, EAF_TYPE_INT, p->vni);
+    ea_set_attr_u32(&a->eattrs, tmp_linpool, EA_MPLS_LABEL, 0, EAF_TYPE_INT, v->vni);
 
     rte *e = rte_get_temp(a, p->p.main_source);
     rte_update2(c, n, e, p->p.main_source);
@@ -260,9 +267,10 @@ evpn_receive_imet(struct evpn_proto *p, const net_addr_evpn_imet *n0, rte *new)
 {
   struct channel *c = p->eth_channel;
   struct rte_src *s = rt_get_source(&p->p, rd_to_u64(n0->rd));
+  struct evpn_vlan *v = evpn_get_vlan_by_tag(p, n0->tag);
 
   net_addr *n = alloca(sizeof(net_addr_eth));
-  net_fill_eth(n, MAC_NONE, p->vid);
+  net_fill_eth(n, MAC_NONE, v->vid);
 
   if (new && rte_resolvable(new))
   {
@@ -288,7 +296,7 @@ evpn_receive_imet(struct evpn_proto *p, const net_addr_evpn_imet *n0, rte *new)
     a->nh.label[0] = bgp_pmsi_get_label(pt->u.ptr);
 
     /* Hack to handle src_vni in bridge code */
-    ea_set_attr_u32(&a->eattrs, tmp_linpool, EA_MPLS_LABEL, 0, EAF_TYPE_INT, p->vni);
+    ea_set_attr_u32(&a->eattrs, tmp_linpool, EA_MPLS_LABEL, 0, EAF_TYPE_INT, v->vni);
 
     rte *e = rte_get_temp(a, s);
     rte_update2(c, n, e, s);
@@ -299,7 +307,6 @@ evpn_receive_imet(struct evpn_proto *p, const net_addr_evpn_imet *n0, rte *new)
     rte_update2(c, n, NULL, s);
   }
 }
-
 
 
 static void
@@ -346,13 +353,27 @@ evpn_preexport(struct channel *C, rte *e)
   switch (n->type)
   {
   case NET_ETH:
-    if (((const net_addr_eth *) n)->vid != p->vid)
+  {
+    u32 vid = ((const net_addr_eth *) n)->vid;
+
+    if ((vid != p->vid) && !evpn_find_vlan_by_vid(p, vid))
       return -1;
 
     return 0;
+  }
 
   case NET_EVPN:
-    return evpn_import_targets(p, ea_get_adata(e->attrs->eattrs, EA_BGP_EXT_COMMUNITY)) ? 0 : -1;
+  {
+    u32 tag = ((const net_addr_evpn *) n)->tag;
+
+    if (!evpn_import_targets(p, ea_get_adata(e->attrs->eattrs, EA_BGP_EXT_COMMUNITY)))
+      return -1;
+
+    if ((tag != p->tagX) && !evpn_find_vlan_by_tag(p, tag))
+      return -1;
+
+    return 0;
+  }
 
   case NET_MPLS:
     return -1;
@@ -384,6 +405,34 @@ evpn_reload_routes(struct channel *C)
   }
 }
 
+static void
+evpn_feed_end(struct channel *C)
+{
+  struct evpn_proto *p = (void *) C->proto;
+
+  switch (C->net_type)
+  {
+  case NET_ETH:
+    if (p->evpn_refreshing)
+    {
+      rt_refresh_end(p->evpn_channel->table, p->evpn_channel);
+      p->evpn_refreshing = false;
+    }
+    break;
+
+  case NET_EVPN:
+    if (p->eth_refreshing)
+    {
+      rt_refresh_end(p->eth_channel->table, p->eth_channel);
+      p->eth_refreshing = false;
+    }
+    break;
+
+  case NET_MPLS:
+    break;
+  }
+}
+
 static inline u32
 evpn_metric(rte *e)
 {
@@ -397,6 +446,225 @@ evpn_rte_better(rte *new, rte *old)
   /* This is hack, we should have full BGP-style comparison */
   return evpn_metric(new) < evpn_metric(old);
 }
+
+
+/*
+ *	EVPN VLANs
+ */
+
+#define VLAN_TAG_KEY(v)		v->tag
+#define VLAN_TAG_NEXT(v)	v->next_tag
+#define VLAN_TAG_EQ(v1,v2)	v1 == v2
+#define VLAN_TAG_FN(v)		u32_hash(v)
+
+#define VLAN_TAG_REHASH		evpn_tag_rehash
+#define VLAN_TAG_PARAMS		/8, *2, 2, 2, 4, 24
+
+
+#define VLAN_VID_KEY(v)		v->vid
+#define VLAN_VID_NEXT(v)	v->next_vid
+#define VLAN_VID_EQ(v1,v2)	v1 == v2
+#define VLAN_VID_FN(v)		u32_hash(v)
+
+#define VLAN_VID_REHASH		evpn_vid_rehash
+#define VLAN_VID_PARAMS		/8, *2, 2, 2, 4, 16
+
+
+HASH_DEFINE_REHASH_FN(VLAN_TAG, struct evpn_vlan)
+HASH_DEFINE_REHASH_FN(VLAN_VID, struct evpn_vlan)
+
+
+static struct evpn_vlan *
+evpn_new_vlan(struct evpn_proto *p, struct evpn_vlan_config *cf, uint index)
+{
+  struct evpn_vlan *v = mb_allocz(p->p.pool, sizeof(struct evpn_vlan));
+
+  v->tag = cf->id + index;
+  v->vni = cf->vni + index;
+  v->vid = cf->vid + index;
+
+  if (!p->vlan_tag_hash.data)
+    HASH_INIT(p->vlan_tag_hash, p->p.pool, 4);
+
+  if (!p->vlan_vid_hash.data)
+    HASH_INIT(p->vlan_vid_hash, p->p.pool, 4);
+
+  add_tail(&p->vlans, &v->n);
+  HASH_INSERT2(p->vlan_tag_hash, VLAN_TAG, p->p.pool, v);
+  HASH_INSERT2(p->vlan_vid_hash, VLAN_VID, p->p.pool, v);
+
+  return v;
+}
+
+static struct evpn_vlan *
+evpn_find_vlan_by_tag(struct evpn_proto *p, u32 tag)
+{
+  return p->vlan_tag_hash.data ? HASH_FIND(p->vlan_tag_hash, VLAN_TAG, tag) : NULL;
+}
+
+static struct evpn_vlan *
+evpn_find_vlan_by_vid(struct evpn_proto *p, u32 vid)
+{
+  return p->vlan_vid_hash.data ? HASH_FIND(p->vlan_vid_hash, VLAN_VID, vid) : NULL;
+}
+
+static void
+evpn_remove_vlan(struct evpn_proto *p, struct evpn_vlan *v)
+{
+  rem_node(&v->n);
+  HASH_REMOVE2(p->vlan_tag_hash, VLAN_TAG, p->p.pool, v);
+  HASH_REMOVE2(p->vlan_vid_hash, VLAN_VID, p->p.pool, v);
+
+  mb_free(v);
+}
+
+static inline int
+evpn_reconfigure_vlan(struct evpn_proto *p UNUSED, struct evpn_vlan *v, struct evpn_vlan_config *cf, uint index)
+{
+  return
+    (v->vni == cf->vni + index) &&
+    (v->vid == cf->vid + index);
+}
+
+static int
+evpn_reconfigure_vlans(struct evpn_proto *p, struct evpn_config *cf)
+{
+  list old_vlans;
+  init_list(&old_vlans);
+  add_tail_list(&old_vlans, &p->vlans);
+  init_list(&p->vlans);
+  int changed = 0;
+
+  struct evpn_vlan_config *vc;
+  WALK_LIST(vc, cf->vlans)
+    for (uint i = 0; i < vc->range; i++)
+    {
+      struct evpn_vlan *v = evpn_find_vlan_by_tag(p, vc->id + i);
+
+      if (v && evpn_reconfigure_vlan(p, v, vc, i))
+      {
+	rem_node(&v->n);
+	add_tail(&p->vlans, &v->n);
+	continue;
+      }
+
+      if (v)
+	evpn_remove_vlan(p, v);
+
+      v = evpn_new_vlan(p, vc, i);
+      // evpn_announce_imet(p, v, 1);
+      changed = 1;
+    }
+
+  struct evpn_vlan *v, *v2;
+  WALK_LIST_DELSAFE(v, v2, old_vlans)
+  {
+    // evpn_announce_imet(p, v, 0);
+    evpn_remove_vlan(p, v);
+    changed = 1;
+  }
+
+  if (changed)
+  {
+    TRACE(D_EVENTS, "VLANs changed");
+
+    /* Should not happend */
+    if ((p->eth_channel->channel_state != CS_UP) ||
+	(p->evpn_channel->channel_state != CS_UP))
+      return 0;
+
+    /*
+     * We hard-reload channels by switching to CS_START and CS_UP, this resets
+     * export maps so we do not get withdraws related to old exports, only
+     * updates that are processed through the new VLAN mapping. On export,
+     * rt_refresh_begin() / rt_refresh_end() is used for clean-up of old routes.
+     */
+
+    rt_refresh_begin(p->eth_channel->table, p->eth_channel);
+    p->eth_refreshing = true;
+
+    rt_refresh_begin(p->evpn_channel->table, p->evpn_channel);
+    p->evpn_refreshing = true;
+
+    channel_set_state(p->eth_channel, CS_START);
+    channel_set_state(p->eth_channel, CS_UP);
+
+    channel_set_state(p->evpn_channel, CS_START);
+    channel_set_state(p->evpn_channel, CS_UP);
+
+    WALK_LIST(v, p->vlans)
+      evpn_announce_imet(p, v, 1);
+  }
+
+  return 1;
+}
+
+static inline u32 evpn_vlan_config_field(const struct evpn_vlan_config *vc, size_t offset)
+{ return *(const u32 *)((const char *)vc + offset); }
+
+static int
+evpn_compare_vlan_configs(const void *vc1_, const void *vc2_, void *offset_)
+{
+  const struct evpn_vlan_config * const *vc1 = vc1_;
+  const struct evpn_vlan_config * const *vc2 = vc2_;
+  size_t offset = (size_t) offset_;
+
+  /* Compare tag, VNI or VID based on offset */
+  return uint_cmp(evpn_vlan_config_field(*vc1, offset),
+		  evpn_vlan_config_field(*vc2, offset));
+}
+
+static void
+evpn_check_intersections(struct evpn_vlan_config **vlans, int num_vlans, char *name, size_t offset)
+{
+  qsort_r(vlans, num_vlans, sizeof(struct evpn_vlan_config *), evpn_compare_vlan_configs, (void *) offset);
+
+  const struct evpn_vlan_config *o = NULL;
+  uint max = 0;
+
+  for (int i = 0; i < num_vlans; i++)
+  {
+    const struct evpn_vlan_config *v = vlans[i];
+    uint lo = evpn_vlan_config_field(v, offset);
+
+    if (lo < max)
+    {
+      if ((o->range == 1) && (v->range == 1))
+	cf_error("VLAN %s %u defined multiple times", name, lo);
+      else
+	cf_error("VLAN %s %u collision between vlan %u-%u and vlan %u-%u",
+		 name, lo, o->id, o->id + o->range - 1, v->id, v->id + v->range - 1);
+    }
+
+    o = v;
+    max = lo + v->range;
+  }
+}
+
+static void
+evpn_postconfig_vlans(struct evpn_config *cf)
+{
+  /* VLAN non-intersection check */
+
+  int num_vlans = list_length(&cf->vlans);
+  struct evpn_vlan_config **vlans = tmp_alloc(num_vlans * sizeof(struct evpn_vlan_config *));
+
+  {
+    int i = 0;
+    struct evpn_vlan_config *vc;
+    WALK_LIST(vc, cf->vlans)
+      vlans[i++] = vc;
+  }
+
+  evpn_check_intersections(vlans, num_vlans, "tag", OFFSETOF(struct evpn_vlan_config, id));
+  evpn_check_intersections(vlans, num_vlans, "VNI", OFFSETOF(struct evpn_vlan_config, vni));
+  evpn_check_intersections(vlans, num_vlans, "VID", OFFSETOF(struct evpn_vlan_config, vid));
+}
+
+
+/*
+ *	EVPN protocol glue
+ */
 
 static void
 evpn_postconfig(struct proto_config *CF)
@@ -423,6 +691,8 @@ evpn_postconfig(struct proto_config *CF)
 
   if (!cf->export_target)
     cf_error("Export target not specified");
+
+  evpn_postconfig_vlans(cf);
 }
 
 static struct proto *
@@ -439,6 +709,7 @@ evpn_init(struct proto_config *CF)
   P->rt_notify = evpn_rt_notify;
   P->preexport = evpn_preexport;
   P->reload_routes = evpn_reload_routes;
+  P->feed_end = evpn_feed_end;
   P->rte_better = evpn_rte_better;
 
   return P;
@@ -459,6 +730,16 @@ evpn_start(struct proto *P)
   p->router_addr = cf->router_addr;
   p->vni = cf->vni;
   p->vid = cf->vid;
+  p->tagX = cf->tagX;
+
+  init_list(&p->vlans);
+  memset(&p->vlan_tag_hash, 0, sizeof(p->vlan_tag_hash));
+  memset(&p->vlan_vid_hash, 0, sizeof(p->vlan_vid_hash));
+
+  struct evpn_vlan_config *vc;
+  WALK_LIST(vc, cf->vlans)
+    for (uint i = 0; i < vc->range; i++)
+      evpn_new_vlan(p, vc, i);
 
   evpn_prepare_import_targets(p);
   evpn_prepare_export_targets(p);
@@ -471,7 +752,11 @@ evpn_start(struct proto *P)
 
   proto_notify_state(P, PS_UP);
 
-  evpn_announce_imet(p, 1);
+  evpn_announce_imet(p, EVPN_ROOT_VLAN(p), 1);
+
+  struct evpn_vlan *v;
+  WALK_LIST(v, p->vlans)
+    evpn_announce_imet(p, v, 1);
 
   return PS_UP;
 }
@@ -519,7 +804,7 @@ evpn_reconfigure(struct proto *P, struct proto_config *CF)
 
     evpn_prepare_import_targets(p);
 
-    if (p->evpn_channel && (p->evpn_channel->channel_state == CS_UP))
+    if (p->evpn_channel->channel_state == CS_UP)
       channel_request_feeding(p->evpn_channel);
   }
 
@@ -529,9 +814,12 @@ evpn_reconfigure(struct proto *P, struct proto_config *CF)
 
     evpn_prepare_export_targets(p);
 
-    if (p->eth_channel && (p->eth_channel->channel_state == CS_UP))
+    if (p->eth_channel->channel_state == CS_UP)
       channel_request_feeding(p->eth_channel);
   }
+
+  if (!evpn_reconfigure_vlans(p, cf))
+    return 0;
 
   return 1;
 }

@@ -24,6 +24,10 @@ enum evpn_esi_type {
   EVPN_ESI_MAX
 };
 
+#define EVPN_TAG_MAX	0xffffffff
+#define EVPN_VNI_MAX	0x00ffffff
+#define EVPN_VID_MAX	0x00000fff
+
 typedef struct evpn_esi {
   u8 type;
   u8 value[9];
