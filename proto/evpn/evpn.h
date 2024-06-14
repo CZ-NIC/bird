@@ -21,6 +21,18 @@ struct evpn_config {
   ip_addr router_addr;
   u32 vni;
   u32 vid;
+  u32 tagX;
+
+  list vlans;				/* List of VLANs (struct evpn_vlan_config) */
+};
+
+struct evpn_vlan_config {
+  node n;				/* Node in evpn_config.vlans */
+
+  u32 id;
+  u32 range;
+  u32 vni;
+  u32 vid;
 };
 
 struct evpn_proto {
@@ -33,12 +45,31 @@ struct evpn_proto {
   struct f_tree *export_target;
   u32 *export_target_data;
   uint export_target_length;
-  uint import_target_one;
+  bool import_target_one;
+  bool eth_refreshing;
+  bool evpn_refreshing;
 
   struct iface *tunnel_dev;
   ip_addr router_addr;
   u32 vni;
   u32 vid;
+  u32 tagX;
+
+  list vlans;				/* List of VLANs (struct evpn_vlan) */
+  HASH(struct evpn_vlan) vlan_tag_hash;
+  HASH(struct evpn_vlan) vlan_vid_hash;
 };
+
+struct evpn_vlan {
+  node n;				/* Node in evpn_proto.vlans */
+
+  u32 tag;
+  u32 vni;
+  u32 vid;
+
+  struct evpn_vlan *next_tag;
+  struct evpn_vlan *next_vid;
+};
+
 
 #endif
