@@ -141,7 +141,7 @@ struct proto {
 					   as the protocol enters the STOP / DOWN state */
   pool *pool_inloop;			/* Pool containing local objects which need to be freed
 					   before the protocol's birdloop actually stops, like olocks */
-  event *event;				/* Protocol event */
+  callback done;			/* Protocol shutdown checker */
   timer *restart_timer;			/* Timer to restart the protocol from limits */
   event *restart_event;			/* Event to restart/shutdown the protocol from limits */
   struct birdloop *loop;		/* BIRDloop running this protocol */

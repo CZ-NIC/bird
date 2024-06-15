@@ -395,7 +395,7 @@ neigh_unlink(neighbor *n)
   proto_neigh_rem_node(&p->neighbors, n);
 
   if ((p->proto_state == PS_DOWN) && EMPTY_TLIST(proto_neigh, &p->neighbors))
-    proto_send_event(p, p->event);
+    callback_activate(&p->done);
 
   n->proto = NULL;
 

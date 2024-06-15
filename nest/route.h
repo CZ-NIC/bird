@@ -361,7 +361,7 @@ extern uint rtable_max_id;
     _Atomic u32 routes_block_size;	/* Size of the route object pointer block */		\
     struct f_trie * _Atomic trie;	/* Trie of prefixes defined in fib */			\
     event *nhu_event;			/* Nexthop updater */					\
-    event *hcu_event;			/* Hostcache updater */					\
+    callback shutdown_finished;		/* Shutdown finisher */					\
     struct rt_exporter export_all;	/* Route export journal for all routes */		\
     struct rt_exporter export_best;	/* Route export journal for best routes */		\
 
@@ -449,8 +449,10 @@ LOBJ_UNLOCK_CLEANUP(rtable, rtable);
 
 extern struct rt_cork {
   _Atomic uint active;
-  event_list queue;
-  event run;
+  struct rt_cork_callbacks {
+    struct rt_cork_callbacks *_Atomic next;
+    callback *uncork_block[0];
+  } *_Atomic callbacks;
 } rt_cork;
 
 static inline void rt_cork_acquire(void)
@@ -464,7 +466,7 @@ static inline void rt_cork_release(void)
     ev_send(&global_work_list, &rt_cork.run);
 }
 
-static inline _Bool rt_cork_check(event *e)
+static inline _Bool rt_cork_check(callback *cb)
 {
   int corked = (atomic_load_explicit(&rt_cork.active, memory_order_acquire) > 0);
   if (corked)
@@ -641,7 +643,7 @@ struct hostentry {
   ip_addr link;				/* (link-local) IP address of host, used as gw
 					   if host is directly attached */
   rtable *tab;				/* Dependent table, part of key */
-  rtable *owner;			/* Nexthop owner table */
+  struct hostcache *owner;		/* Nexthop owner hostcache (use with care) */
   struct hostentry *next;		/* Next in hash chain */
   unsigned hash_key;			/* Hash key */
   u32 igp_metric;			/* Chosen route IGP metric */
@@ -658,11 +660,14 @@ struct hostcache {
   unsigned hash_order, hash_shift;
   unsigned hash_max, hash_min;
   unsigned hash_items;
+  u8 corked;				/* Stuck by cork */
   linpool *lp;				/* Linpool for trie */
   struct f_trie *trie;			/* Trie of prefixes that might affect hostentries */
   list hostentries;			/* List of all hostentries */
   struct rt_export_request req;		/* Notifier */
   event source_event;
+  callback update;			/* Hostcache updater */
+  callback uncork;			/* Hostcache uncorker */
 };
 
 struct rt_digestor {

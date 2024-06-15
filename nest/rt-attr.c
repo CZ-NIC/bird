@@ -150,7 +150,7 @@ static void
 ea_gen_hostentry_freed(const eattr *ea)
 {
   struct hostentry_adata *had = (struct hostentry_adata *) ea->u.ptr;
-  lfuc_unlock(&had->he->uc, birdloop_event_list(had->he->owner->loop), had->he->owner->hcu_event);
+  lfuc_unlock(&had->he->uc, &had->he->owner->update);
 }
 
 struct ea_class ea_gen_hostentry = {
@@ -244,7 +244,7 @@ rt_get_source_o(struct rte_owner *p, u32 id)
   if (p->stop)
     bug("Stopping route owner asked for another source.");
 
-  ASSERT_DIE(birdloop_inside(p->list->loop));
+  ASSERT_DIE(birdloop_inside(p->prune.target));
 
   struct rte_src *src = rt_find_source(p, id);
 
@@ -327,16 +327,10 @@ rt_find_source_global(u32 id)
   return src;
 }
 
-static inline void
-rt_done_sources(struct rte_owner *o)
-{
-  ev_send(o->list, o->stop);
-}
-
 void
-rt_prune_sources(void *data)
+rt_prune_sources(callback *cb)
 {
-  struct rte_owner *o = data;
+  SKIP_BACK_DECLARE(struct rte_owner, o, prune, cb);
 
   HASH_WALK_FILTER(o->hash, next, src, sp)
   {
@@ -365,13 +359,13 @@ rt_prune_sources(void *data)
 
   if (o->stop && !o->uc)
   {
-    rfree(o->prune);
+    callback_cancel(&o->prune);
     RTA_UNLOCK;
 
     if (o->debug & D_EVENTS)
       log(L_TRACE "%s: all rte_src's pruned, scheduling stop event", o->name);
 
-    rt_done_sources(o);
+    callback_activate(o->stop);
   }
   else
     RTA_UNLOCK;
@@ -402,23 +396,22 @@ rt_dump_sources(struct rte_owner *o)
 }
 
 void
-rt_init_sources(struct rte_owner *o, const char *name, event_list *list)
+rt_init_sources(struct rte_owner *o, const char *name, struct birdloop *loop)
 {
   RTA_LOCK;
   HASH_INIT(o->hash, rta_pool, RSH_INIT_ORDER);
   o->hash_key = random_u32();
   o->uc = 0;
   o->name = name;
-  o->prune = ev_new_init(rta_pool, rt_prune_sources, o);
+  callback_init(&o->prune, rt_prune_sources, loop);
   o->stop = NULL;
-  o->list = list;
   RTA_UNLOCK;
   if (o->debug & D_EVENTS)
     log(L_TRACE "%s: initialized rte_src owner", o->name);
 }
 
 void
-rt_destroy_sources(struct rte_owner *o, event *done)
+rt_destroy_sources(struct rte_owner *o, callback *done)
 {
   o->stop = done;
 
@@ -427,11 +420,7 @@ rt_destroy_sources(struct rte_owner *o, event *done)
     if (o->debug & D_EVENTS)
       log(L_TRACE "%s: rte_src owner destroy requested, already clean, scheduling stop event", o->name);
 
-    RTA_LOCK;
-    rfree(o->prune);
-    RTA_UNLOCK;
-
-    rt_done_sources(o);
+    callback_activate(o->stop);
   }
   else
     if (o->debug & D_EVENTS)
@@ -1386,9 +1375,9 @@ ea_show_hostentry(const struct adata *ad, byte *buf, uint size)
   uint s = 0;
 
   if (ipa_nonzero(had->he->link) && !ipa_equal(had->he->link, had->he->addr))
-    s = bsnprintf(buf, size, "via %I %I table %s", had->he->addr, had->he->link, had->he->owner->name);
+    s = bsnprintf(buf, size, "via %I %I table %s", had->he->addr, had->he->link, had->he->owner->tab->name);
   else
-    s = bsnprintf(buf, size, "via %I table %s", had->he->addr, had->he->owner->name);
+    s = bsnprintf(buf, size, "via %I table %s", had->he->addr, had->he->owner->tab->name);
 
   uint lc = HOSTENTRY_LABEL_COUNT(had);
   if (!lc)
@@ -1632,7 +1621,7 @@ static SPINHASH(struct ea_storage) rta_hash_table;
 #define RTAH_REHASH		rta_rehash
 #define RTAH_PARAMS		/8, *2, 2, 2, 12, 28
 
-static void RTAH_REHASH(void *_ UNUSED) {
+static void RTAH_REHASH(callback *_ UNUSED) {
   int step;
 
   RTA_LOCK;
@@ -1838,7 +1827,7 @@ rta_init(void)
   for (uint i=0; i<ARRAY_SIZE(ea_slab_sizes); i++)
     ea_slab[i] = sl_new(rta_pool, ea_slab_sizes[i]);
 
-  SPINHASH_INIT(rta_hash_table, RTAH, rta_pool, &global_work_list);
+  SPINHASH_INIT(rta_hash_table, RTAH, rta_pool, &main_birdloop);
 
   rte_src_init();
   ea_class_init();

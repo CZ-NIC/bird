@@ -656,7 +656,7 @@ channel_check_stopped(struct channel *c)
       ASSERT_DIE(!rt_export_feed_active(&c->reimporter));
 
       channel_set_state(c, CS_DOWN);
-      proto_send_event(c->proto, c->proto->event);
+      callback_activate(&c->proto->done);
 
       break;
     case CS_PAUSE:
@@ -819,7 +819,7 @@ channel_do_down(struct channel *c)
 
   /* Schedule protocol shutddown */
   if (proto_is_done(c->proto))
-    proto_send_event(c->proto, c->proto->event);
+    callback_activate(&c->proto->done);
 }
 
 void
@@ -1182,9 +1182,9 @@ proto_loop_stopped(void *ptr)
 
 
 static void
-proto_event(void *ptr)
+proto_event(callback *cb)
 {
-  struct proto *p = ptr;
+  SKIP_BACK_DECLARE(struct proto, p, done, cb);
 
   if (p->do_stop)
   {
@@ -1249,7 +1249,7 @@ proto_init(struct proto_config *c, struct proto *after)
   p->vrf = c->vrf;
   proto_add_after(&global_proto_list, p, after);
 
-  p->event = ev_new_init(proto_pool, proto_event, p);
+  callback_init(&p->done, proto_event, p->loop);
 
   PD(p, "Initializing%s", p->disabled ? " [disabled]" : "");
 
@@ -1269,6 +1269,8 @@ proto_start(struct proto *p)
   {
     p->loop = birdloop_new(proto_pool, p->cf->loop_order, p->cf->loop_max_latency, "Protocol %s", p->cf->name);
     p->pool = birdloop_pool(p->loop);
+    ASSERT_DIE(!callback_is_active(&p->done));
+    p->done.target = p->loop;
   }
   else
     p->pool = rp_newf(proto_pool, the_bird_domain.the_bird, "Protocol %s", p->cf->name);
@@ -1680,7 +1682,7 @@ proto_rethink_goal(struct proto *p)
     OBSREF_CLEAR(p->global_config);
     proto_remove_channels(p);
     proto_rem_node(&global_proto_list, p);
-    rfree(p->event);
+    callback_cancel(&p->done);
     mb_free(p->message);
     mb_free(p);
     if (!nc)
@@ -2181,7 +2183,7 @@ proto_do_start(struct proto *p)
 {
   p->active = 1;
 
-  rt_init_sources(&p->sources, p->name, proto_event_list(p));
+  rt_init_sources(&p->sources, p->name, p->loop);
   if (!p->sources.class)
     p->sources.class = &default_rte_owner_class;
 
@@ -2226,10 +2228,10 @@ proto_do_stop(struct proto *p)
   p->pool_up = NULL;
 
   proto_stop_channels(p);
-  rt_destroy_sources(&p->sources, p->event);
+  rt_destroy_sources(&p->sources, &p->done);
 
   p->do_stop = 1;
-  proto_send_event(p, p->event);
+  callback_activate(&p->done);
 }
 
 static void
@@ -2239,7 +2241,7 @@ proto_do_down(struct proto *p)
 
   /* Shutdown is finished in the protocol event */
   if (proto_is_done(p))
-    proto_send_event(p, p->event);
+    callback_activate(&p->done);
 }
 
 
