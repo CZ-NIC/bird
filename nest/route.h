@@ -342,6 +342,11 @@ rt_net_is_feeding_request(struct rt_export_request *req, const net_addr *n)
  */
 
 
+struct rt_uncork_callback {
+  event ev;
+  callback cb;
+};
+
 struct rt_export_hook;
 
 extern uint rtable_max_id;
@@ -390,8 +395,8 @@ struct rtable_private {
 					 * obstacle from this routing table.
 					 */
   struct rt_export_request best_req;	/* Internal request from best route announcement cleanup */
-  struct event *nhu_uncork_event;	/* Helper event to schedule NHU on uncork */
-  struct event *hcu_uncork_event;	/* Helper event to schedule HCU on uncork */
+  struct rt_uncork_callback nhu_uncork;	/* Helper event to schedule NHU on uncork */
+  struct rt_uncork_callback hcu_uncork;	/* Helper event to schedule HCU on uncork */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */
   struct event *prune_event;		/* Event for prune execution */
   btime last_rt_change;			/* Last time when route changed */
@@ -447,10 +452,12 @@ LOBJ_UNLOCK_CLEANUP(rtable, rtable);
 
 #define RT_PUB(tab)	SKIP_BACK(rtable, priv, tab)
 
+#define RT_UNCORKING	(1ULL << 44)
+
 extern struct rt_cork {
-  _Atomic uint active;
+  _Atomic u64 active;
+  DOMAIN(resource) dom;
   event_list queue;
-  event run;
 } rt_cork;
 
 static inline void rt_cork_acquire(void)
@@ -460,20 +467,55 @@ static inline void rt_cork_acquire(void)
 
 static inline void rt_cork_release(void)
 {
-  if (atomic_fetch_sub_explicit(&rt_cork.active, 1, memory_order_acq_rel) == 1)
-    ev_send(&global_work_list, &rt_cork.run);
+  u64 upd = atomic_fetch_add_explicit(&rt_cork.active, RT_UNCORKING, memory_order_acq_rel) + RT_UNCORKING;
+
+  /* Actualy released? */
+  if ((upd >> 44) == (upd & (RT_UNCORKING - 1)))
+  {
+    LOCK_DOMAIN(resource, rt_cork.dom);
+    synchronize_rcu();
+    ev_run_list(&rt_cork.queue);
+    UNLOCK_DOMAIN(resource, rt_cork.dom);
+  }
+
+  atomic_fetch_sub_explicit(&rt_cork.active, RT_UNCORKING + 1, memory_order_acq_rel);
 }
 
-static inline _Bool rt_cork_check(event *e)
+void rt_cork_send_callback(void *_data);
+
+static inline _Bool rt_cork_check(struct rt_uncork_callback *rcc)
 {
-  int corked = (atomic_load_explicit(&rt_cork.active, memory_order_acquire) > 0);
-  if (corked)
-    ev_send(&rt_cork.queue, e);
+  /* Wait until all uncorks have finished */
+  while (1)
+  {
+    rcu_read_lock();
 
-  if (atomic_load_explicit(&rt_cork.active, memory_order_acquire) == 0)
-    ev_send(&global_work_list, &rt_cork.run);
+    /* Not corked */
+    u64 corked = atomic_load_explicit(&rt_cork.active, memory_order_acquire);
+    if (!corked)
+    {
+      rcu_read_unlock();
+      return 0;
+    }
 
-  return corked;
+    /* Yes, corked */
+    if (corked < RT_UNCORKING)
+    {
+      if (!rcc->ev.hook)
+      {
+	rcc->ev.hook = rt_cork_send_callback;
+	rcc->ev.data = rcc;
+      }
+
+      ev_send(&rt_cork.queue, &rcc->ev);
+      rcu_read_unlock();
+      return 1;
+    }
+
+    /* In progress, retry */
+    rcu_read_unlock();
+    birdloop_yield();
+  }
 }
 
 struct rt_pending_export {

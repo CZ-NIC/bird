@@ -129,10 +129,10 @@ struct rt_cork rt_cork;
 /* Data structures for export journal */
 
 static void rt_free_hostcache(struct rtable_private *tab);
-static void rt_hcu_uncork(void *_tab);
+static void rt_hcu_uncork(callback *);
 static void rt_update_hostcache(void *tab);
 static void rt_next_hop_update(void *_tab);
-static void rt_nhu_uncork(void *_tab);
+static void rt_nhu_uncork(callback *);
 static inline void rt_next_hop_resolve_rte(rte *r);
 static inline void rt_flowspec_resolve_rte(rte *r, struct channel *c);
 static void rt_refresh_trace(struct rtable_private *tab, struct rt_import_hook *ih, const char *msg);
@@ -140,7 +140,6 @@ static void rt_kick_prune_timer(struct rtable_private *tab);
 static void rt_prune_table(void *_tab);
 static void rt_check_cork_low(struct rtable_private *tab);
 static void rt_check_cork_high(struct rtable_private *tab);
-static void rt_cork_release_hook(void *);
 static void rt_shutdown(void *);
 static void rt_delete(void *);
 
@@ -3085,7 +3084,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   hmap_set(&t->id_map, 0);
 
   t->nhu_event = ev_new_init(p, rt_next_hop_update, t);
-  t->nhu_uncork_event = ev_new_init(p, rt_nhu_uncork, t);
+  callback_init(&t->nhu_uncork.cb, rt_nhu_uncork, t->loop);
   t->prune_timer = tm_new_init(p, rt_prune_timer, t, 0, 0);
   t->prune_event = ev_new_init(p, rt_prune_table, t);
   t->last_rt_change = t->gc_time = current_time();
@@ -3213,7 +3212,7 @@ rt_init(void)
   init_list(&routing_tables);
   init_list(&deleted_routing_tables);
   ev_init_list(&rt_cork.queue, &main_birdloop, "Route cork release");
-  rt_cork.run = (event) { .hook = rt_cork_release_hook };
+  rt_cork.dom = DOMAIN_NEW_RCU_SYNC(resource);
   idm_init(&rtable_idm, rt_table_pool, 256);
 
   ea_register_init(&ea_roa_aggregated);
@@ -3425,14 +3424,11 @@ rt_prune_table(void *_tab)
     }
 }
 
-static void
-rt_cork_release_hook(void *data UNUSED)
+void
+rt_cork_send_callback(void *_rcc)
 {
-  do birdloop_yield();
-  while (
-      !atomic_load_explicit(&rt_cork.active, memory_order_acquire) &&
-      ev_run_list(&rt_cork.queue)
-      );
+  struct rt_uncork_callback *rcc = _rcc;
+  callback_activate(&rcc->cb);
 }
 
 /**
@@ -4098,9 +4094,9 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
 }
 
 static void
-rt_nhu_uncork(void *_tab)
+rt_nhu_uncork(callback *cb)
 {
-  RT_LOCKED((rtable *) _tab, tab)
+  RT_LOCKED(SKIP_BACK(rtable, priv.nhu_uncork.cb, cb), tab)
   {
     ASSERT_DIE(tab->nhu_corked);
     ASSERT_DIE(tab->nhu_state == 0);
@@ -4128,7 +4124,7 @@ rt_next_hop_update(void *_tab)
     return;
 
   /* Check corkedness */
-  if (rt_cork_check(tab->nhu_uncork_event))
+  if (rt_cork_check(&tab->nhu_uncork))
   {
     rt_trace(tab, D_STATES, "Next hop updater corked");
 
@@ -4724,7 +4720,7 @@ rt_init_hostcache(struct rtable_private *tab)
   hc->tab = RT_PUB(tab);
 
   tab->hcu_event = ev_new_init(tab->rp, rt_update_hostcache, tab);
-  tab->hcu_uncork_event = ev_new_init(tab->rp, rt_hcu_uncork, tab);
+  callback_init(&tab->hcu_uncork.cb, rt_hcu_uncork, tab->loop);
   tab->hostcache = hc;
 
   ev_send_loop(tab->loop, tab->hcu_event);
@@ -4877,10 +4873,10 @@ done:
 }
 
 static void
-rt_hcu_uncork(void *_tab)
+rt_hcu_uncork(callback *cb)
 {
-  RT_LOCKED((rtable *) _tab, tab)
-    ev_send_loop(tab->loop, tab->hcu_event);
+  SKIP_BACK_DECLARE(rtable, tab, priv.hcu_uncork.cb, cb);
+  ev_send_loop(tab->loop, tab->hcu_event);
 }
 
 static void
@@ -4917,7 +4913,7 @@ rt_update_hostcache(void *data)
   if (rt_export_get_state(&hc->req) == TES_DOWN)
     return;
 
-  if (rt_cork_check(tab->hcu_uncork_event))
+  if (rt_cork_check(&tab->hcu_uncork))
   {
     rt_trace(tab, D_STATES, "Hostcache update corked");
     return;
