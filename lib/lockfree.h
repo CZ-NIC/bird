@@ -67,7 +67,7 @@ static inline u64 lfuc_lock_revive(struct lfuc *c)
  * If the usecount reaches zero, a prune event is run to possibly free the object.
  * The prune event MUST use lfuc_finished() to check the object state.
  */
-static inline void lfuc_unlock_immediately(struct lfuc *c, event_list *el, event *ev)
+static inline void lfuc_unlock_immediately(struct lfuc *c, struct callback *cb)
 {
   /* Unlocking is tricky. We do it lockless so at the same time, the prune
    * event may be running, therefore if the unlock gets us to zero, it must be
@@ -98,7 +98,7 @@ static inline void lfuc_unlock_immediately(struct lfuc *c, event_list *el, event
   if (uc == pending)
     /* If we're the last unlocker (every owner is already unlocking), schedule
      * the owner's prune event */
-    ev_send(el, ev);
+    callback_activate(cb);
   else
     ASSERT_DIE(uc > pending);
 
@@ -112,19 +112,17 @@ static inline void lfuc_unlock_immediately(struct lfuc *c, event_list *el, event
 struct lfuc_unlock_queue_item {
   struct deferred_call dc;
   struct lfuc *c;
-  event_list *el;
-  event *ev;
+  struct callback *cb;
 };
 
 void lfuc_unlock_deferred(struct deferred_call *dc);
 
-static inline void lfuc_unlock(struct lfuc *c, event_list *el, event *ev)
+static inline void lfuc_unlock(struct lfuc *c, struct callback *cb)
 {
   struct lfuc_unlock_queue_item luqi = {
     .dc.hook = lfuc_unlock_deferred,
     .c = c,
-    .el = el,
-    .ev = ev,
+    .cb = cb,
   };
 
   defer_call(&luqi.dc, sizeof luqi);

@@ -87,8 +87,7 @@ struct rte_owner {
   u32 hash_key;
   u32 uc;
   u32 debug;
-  event_list *list;
-  event *prune;
+  struct callback *prune_callback;
   event *stop;
 };
 
@@ -119,7 +118,7 @@ static inline void rt_lock_source(struct rte_src *src)
 
 static inline void rt_unlock_source(struct rte_src *src)
 {
-  lfuc_unlock(&src->uc, src->owner->list, src->owner->prune);
+  lfuc_unlock(&src->uc, src->owner->prune_callback);
 }
 
 #ifdef RT_SOURCE_DEBUG

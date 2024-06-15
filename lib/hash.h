@@ -218,8 +218,7 @@ struct {								\
   uint cur_order, new_order;						\
   struct { type *data; rw_spinlock lock; } *cur, *new;			\
   pool *pool;								\
-  event rehash;								\
-  event_list *target;							\
+  callback rehash;							\
 }
 
 #define SPINHASH_INIT(v,id,_pool,_target)				\
@@ -230,19 +229,18 @@ struct {								\
     (v).cur = mb_allocz(_pool, (1U << id##_ORDER) * sizeof *(v).cur);	\
     (v).new = NULL;							\
     (v).pool = _pool;							\
-    (v).rehash = (event) { .hook = id##_REHASH, .data = &(v), };	\
-    (v).target = _target;						\
+    if (_target) callback_init(&(v).rehash, id##_REHASH, _target);	\
   })
 
 #define SPINHASH_FREE(v)						\
   ({									\
-    ev_postpone(&(v).rehash);						\
+    callback_cancel(&(v).rehash);					\
     mb_free((v).cur);							\
     ASSERT_DIE((v).new == NULL);					\
     (v).cur = NULL;							\
     (v).cur_order = 0;							\
     (v).pool = NULL;							\
-    (v).target = NULL;							\
+    (v).rehash = (callback) {};						\
   })
 
 #define SPINHASH_BEGIN_CHAIN(v,id,rw,n,key...)				\
@@ -367,12 +365,12 @@ struct {								\
   })
 
 #define SPINHASH_REQUEST_REHASH(v,id,count)				\
-  if (SPINHASH_CHECK_REHASH(v,id,count) && (v).target)			\
-      ev_send((v).target, &(v).rehash);
+  if ((v).rehash.target && SPINHASH_CHECK_REHASH(v,id,count))		\
+    callback_activate(&(v).rehash);					\
 
 #define SPINHASH_DEFINE_REHASH_FN(id,type)				\
-static void id##_REHASH(void *_v) {					\
-  SPINHASH(type) *v = _v;						\
+static void id##_REHASH(callback *cb) {					\
+  SKIP_BACK_DECLARE(SPINHASH(type), v, rehash, cb);			\
   SPINHASH_REHASH_FN_BODY(v,id,type);					\
 }
 

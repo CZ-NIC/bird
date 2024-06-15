@@ -20,9 +20,9 @@
 #define NETINDEX_REHASH		netindex_rehash
 #define NETINDEX_PARAMS		/8, *2, 2, 2, 12, 28
 
-static void NETINDEX_REHASH(void *_v) {
+static void NETINDEX_REHASH(callback *cb) {
   log(L_TRACE "Netindex rehash: begin");
-  netindex_spinhash *v = _v;
+  SKIP_BACK_DECLARE(netindex_spinhash, v, rehash, cb);
   int step;
   {
     NH_LOCK(SKIP_BACK(netindex_hash, hash, v), _);
@@ -43,7 +43,7 @@ static void NETINDEX_REHASH(void *_v) {
   log(L_TRACE "Netindex rehash: done");
 }
 
-static void netindex_hash_cleanup(void *netindex_hash);
+static void netindex_hash_cleanup(callback *cb);
 
 static struct netindex *
 net_lock_revive_unlock(netindex_hash *h, struct netindex *i)
@@ -52,7 +52,7 @@ net_lock_revive_unlock(netindex_hash *h, struct netindex *i)
     return NULL;
 
   lfuc_lock_revive(&i->uc);
-  lfuc_unlock(&i->uc, h->cleanup_list, &h->cleanup_event);
+  lfuc_unlock(&i->uc, &h->cleanup);
   return i;
 }
 
@@ -60,7 +60,7 @@ net_lock_revive_unlock(netindex_hash *h, struct netindex *i)
  * Index initialization
  */
 netindex_hash *
-netindex_hash_new(pool *sp, event_list *cleanup_target, u8 type)
+netindex_hash_new(pool *sp, struct birdloop *cleanup_target, u8 type)
 {
   DOMAIN(attrs) dom = DOMAIN_NEW_RCU_SYNC(attrs);
   LOCK_DOMAIN(attrs, dom);
@@ -82,8 +82,7 @@ netindex_hash_new(pool *sp, event_list *cleanup_target, u8 type)
 
   hmap_init(&nh->id_map, nh->pool, 128);
 
-  nh->cleanup_list = cleanup_target;
-  nh->cleanup_event = (event) { .hook = netindex_hash_cleanup, nh };
+  callback_init(&nh->cleanup, netindex_hash_cleanup, cleanup_target);
 
   UNLOCK_DOMAIN(attrs, dom);
   return SKIP_BACK(netindex_hash, priv, nh);
@@ -123,9 +122,9 @@ netindex_hash_cleanup_removed(struct netindex_hash_private *nh, struct netindex 
 }
 
 static void
-netindex_hash_cleanup(void *_nh)
+netindex_hash_cleanup(callback *cb)
 {
-  struct netindex_hash_private *nh = _nh;
+  SKIP_BACK_DECLARE(struct netindex_hash_private, nh, cleanup, cb);
 
   DOMAIN(attrs) dom = nh->lock;
   LOCK_DOMAIN(attrs, dom);
@@ -176,16 +175,16 @@ netindex_hash_cleanup(void *_nh)
     kept += netindex_hash_cleanup_removed(nh, block, removed, removed_cnt);
 
   /* Return now unless we're deleted */
-  if (kept || !nh->deleted_event)
+  if (kept || !nh->deleted)
   {
     UNLOCK_DOMAIN(attrs, dom);
     return;
   }
 
-  ev_postpone(&nh->cleanup_event);
+  callback_cancel(&nh->cleanup);
 
-  event *e = nh->deleted_event;
-  event_list *t = nh->deleted_target;
+  /* Store the callback */
+  callback *cd = nh->deleted;
 
   /* Check cleanliness */
   SPINHASH_WALK(nh->hash, NETINDEX, i)
@@ -203,18 +202,16 @@ netindex_hash_cleanup(void *_nh)
   DOMAIN_FREE(attrs, dom);
 
   /* Notify the requestor */
-  ev_send(t, e);
+  callback_activate(cd);
 }
 
 void
-netindex_hash_delete(netindex_hash *h, event *e, event_list *t)
+netindex_hash_delete(netindex_hash *h, callback *cb)
 {
   NH_LOCK(h, hp);
 
-  hp->deleted_event = e;
-  hp->deleted_target = t;
-
-  ev_send(hp->cleanup_list, &hp->cleanup_event);
+  hp->deleted = cb;
+  callback_activate(&hp->cleanup);
 }
 
 /*
@@ -243,7 +240,7 @@ net_validate_index(netindex_hash *h, struct netindex *ni)
 static struct netindex *
 net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n)
 {
-  ASSERT_DIE(!hp->deleted_event);
+  ASSERT_DIE(!hp->deleted);
 
   u32 i = hmap_first_zero(&hp->id_map);
   hmap_set(&hp->id_map, i);
@@ -302,7 +299,7 @@ void net_lock_index(netindex_hash *h UNUSED, struct netindex *i)
 void net_unlock_index(netindex_hash *h, struct netindex *i)
 {
 //  log(L_TRACE "Unlock index %p", i);
-  lfuc_unlock(&i->uc, h->cleanup_list, &h->cleanup_event);
+  lfuc_unlock(&i->uc, &h->cleanup);
 }
 
 struct netindex *

@@ -124,8 +124,7 @@ struct mpls_fec {
 
 struct mpls_fec_map {
   pool *pool;				/* Pool for FEC map */
-  struct birdloop *loop;		/* Owner's loop for sending events */
-  event *cleanup_event;			/* Event for unlocked FEC cleanup */
+  callback cleanup;			/* Callback for unlocked FEC cleanup */
   slab *slabs[4];			/* Slabs for FEC allocation */
   HASH(struct mpls_fec) net_hash;	/* Hash table for MPLS_POLICY_PREFIX FECs */
   HASH(struct mpls_fec) attrs_hash;	/* Hash table for MPLS_POLICY_AGGREGATE FECs */
