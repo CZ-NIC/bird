@@ -149,13 +149,13 @@ rt_export_get(struct rt_export_request *r)
       if (r->feeder.domain.rtable)
       {
 	LOCK_DOMAIN(rtable, r->feeder.domain);
-	feed = e->feed_net(e, NULL, ni->index, update);
+	feed = e->feed_net(e, NULL, ni->index, NULL, NULL, update);
 	UNLOCK_DOMAIN(rtable, r->feeder.domain);
       }
       else
       {
 	RCU_ANCHOR(u);
-	feed = e->feed_net(e, u, ni->index, update);
+	feed = e->feed_net(e, u, ni->index, NULL, NULL, update);
       }
 
       bmap_set(&r->feed_map, ni->index);
@@ -263,7 +263,8 @@ rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u)
       return NULL;
     }
 
-    struct rt_export_feed *feed = e->feed_net(e, u, f->feed_index, NULL);
+    struct rt_export_feed *feed = e->feed_net(e, u, f->feed_index,
+	rt_net_is_feeding_feeder, f, NULL);
     if (feed == &rt_feed_index_out_of_range)
     {
       rtex_trace(f, D_ROUTES, "Nothing more to feed", f->feed_index);
@@ -279,13 +280,6 @@ rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u)
 
     if (!feed)
       NOT_THIS_FEED("Nothing found for index %u", f->feed_index);
-
-    struct netindex *ni = feed->ni;
-    if (!rt_prefilter_net(&f->prefilter, ni->addr))
-      NOT_THIS_FEED("Not feeding %N due to prefilter", ni->addr);
-
-    if (f->feeding && !rt_net_is_feeding_feeder(f, ni->addr))
-      NOT_THIS_FEED("Not feeding %N, not requested", ni->addr);
 
     f->feed_index++;
     return feed;

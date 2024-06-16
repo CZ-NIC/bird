@@ -225,7 +225,7 @@ struct rt_exporter {
   netindex_hash *netindex;			/* Table for net <-> id conversion */
   void (*stopped)(struct rt_exporter *);	/* Callback when exporter can stop */
   void (*cleanup_done)(struct rt_exporter *, u64 end);	/* Callback when cleanup has been done */
-  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rcu_unwinder *, u32, const struct rt_export_item *first);
+  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rcu_unwinder *, u32, _Bool (*)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *, const struct rt_export_item *first);
   void (*feed_cleanup)(struct rt_exporter *, struct rt_export_feeder *);
 };
 
@@ -313,6 +313,12 @@ static inline int rt_prefilter_net(const struct rt_prefilter *p, const net_addr 
 static inline _Bool
 rt_net_is_feeding_feeder(struct rt_export_feeder *ref, const net_addr *n)
 {
+  if (!rt_prefilter_net(&ref->prefilter, n))
+    return 0;
+
+  if (!ref->feeding)
+    return 1;
+
   for (struct rt_feeding_request *rfr = ref->feeding; rfr; rfr = rfr->next)
     if (rt_prefilter_net(&rfr->prefilter, n))
       return 1;

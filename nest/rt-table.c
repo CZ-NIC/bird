@@ -2209,7 +2209,7 @@ rt_net_feed_validate_first(
 }
 
 static struct rt_export_feed *
-rt_net_feed_index(struct rtable_reading *tr, net *n, const struct rt_pending_export *first)
+rt_net_feed_index(struct rtable_reading *tr, net *n, _Bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_pending_export *first)
 {
   /* Get the feed itself. It may change under our hands tho. */
   struct rt_pending_export *first_in_net, *last_in_net;
@@ -2230,10 +2230,19 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, const struct rt_pending_exp
       ocnt++;
   }
 
+  if (ecnt) {
+    const net_addr *a = (first->it.new ?: first->it.old)->net;
+    if (prefilter && !prefilter(f, a))
+      return NULL;
+  }
+
   struct rt_export_feed *feed = NULL;
 
   if (rcnt || ocnt || ecnt)
   {
+    if (!ecnt && prefilter && !prefilter(f, NET_READ_BEST_ROUTE(tr, n)->rte.net))
+      return NULL;
+
     feed = rt_alloc_feed(rcnt+ocnt, ecnt);
 
     if (rcnt)
@@ -2276,13 +2285,13 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, const struct rt_pending_exp
 }
 
 static struct rt_export_feed *
-rt_net_feed_internal(struct rtable_reading *tr, u32 index, const struct rt_pending_export *first)
+rt_net_feed_internal(struct rtable_reading *tr, u32 index, _Bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_pending_export *first)
 {
   net *n = rt_net_feed_get_net(tr, index);
   if (!n)
     return &rt_feed_index_out_of_range;
 
-  return rt_net_feed_index(tr, n, first);
+  return rt_net_feed_index(tr, n, prefilter, f, first);
 }
 
 struct rt_export_feed *
@@ -2290,14 +2299,14 @@ rt_net_feed(rtable *t, const net_addr *a, const struct rt_pending_export *first)
 {
   RT_READ(t, tr);
   const struct netindex *ni = net_find_index(tr->t->netindex, a);
-  return ni ? rt_net_feed_internal(tr, ni->index, first) : NULL;
+  return ni ? rt_net_feed_internal(tr, ni->index, NULL, NULL, first) : NULL;
 }
 
 static struct rt_export_feed *
-rt_feed_net_all(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, const struct rt_export_item *_first)
+rt_feed_net_all(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, _Bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
 {
   RT_READ_ANCHORED(SKIP_BACK(rtable, export_all, e), tr, u);
-  return rt_net_feed_internal(tr, index, SKIP_BACK(const struct rt_pending_export, it, _first));
+  return rt_net_feed_internal(tr, index, prefilter, f, SKIP_BACK(const struct rt_pending_export, it, _first));
 }
 
 rte
@@ -2322,7 +2331,7 @@ rt_net_best(rtable *t, const net_addr *a)
 }
 
 static struct rt_export_feed *
-rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, const struct rt_export_item *_first)
+rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, _Bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
 {
   SKIP_BACK_DECLARE(rtable, t, export_best, e);
   SKIP_BACK_DECLARE(const struct rt_pending_export, first, it, _first);
@@ -2344,8 +2353,15 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, const
       rpe = atomic_load_explicit(&rpe->next, memory_order_acquire))
     ecnt++;
 
+  if (ecnt) {
+    const net_addr *a = (first->it.new ?: first->it.old)->net;
+    if (prefilter && !prefilter(f, a))
+      return NULL;
+  }
+
   struct rte_storage *best = NET_READ_BEST_ROUTE(tr, n);
-  if (!ecnt && !best)
+
+  if (!ecnt && (!best || prefilter && !prefilter(f, best->rte.net)))
     return NULL;
 
   struct rt_export_feed *feed = rt_alloc_feed(!!best, ecnt);
