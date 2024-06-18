@@ -879,16 +879,13 @@ bird_thread_main(void *arg)
     int idle_force = (timeout < 0) || (timeout > 300);
     int busy_now = (timeout < 5) && !idle_force;
 
-    /* Nothing to do right now, flush local hot page cache */
+    /* Nothing to do right now but there may be some loops for pickup */
     if (idle_force)
     {
       LOCK_DOMAIN(attrs, thr->group->domain);
       if (!EMPTY_LIST(thr->group->loops))
 	timeout = 0;
       UNLOCK_DOMAIN(attrs, thr->group->domain);
-
-      if (timeout)
-	flush_local_pages();
     }
 
     if (busy_now && !thr->busy_active && (++thr->busy_counter == 4))
