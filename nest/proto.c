@@ -22,6 +22,7 @@
 #include "nest/cli.h"
 #include "filter/filter.h"
 #include "filter/f-inst.h"
+#include "proto/bgp/bgp.h"
 
 pool *proto_pool;
 static TLIST_LIST(proto) global_proto_list;
@@ -2800,9 +2801,8 @@ protos_attr_field_grow(void)
 }
 
 void
-cleanup_journal_item(struct lfjour * UNUSED, struct lfjour_item *i)
+cleanup_journal_item(struct lfjour * journal UNUSED, struct lfjour_item *i)
 {
-  log("clean item");
   struct proto_pending_update *pupdate = SKIP_BACK(struct proto_pending_update, li, i);
   ea_free_later(pupdate->old_attr);
   eattr *new_ea = ea_find(pupdate->proto_attr, &ea_proto_deleted);
@@ -2811,7 +2811,7 @@ cleanup_journal_item(struct lfjour * UNUSED, struct lfjour_item *i)
 }
 
 void
-after_journal_birdloop_stop(void* UNUSED){}
+after_journal_birdloop_stop(void* arg UNUSED){}
 
 void
 init_proto_journal(void)
@@ -2831,9 +2831,12 @@ init_proto_journal(void)
 ea_list *
 proto_state_to_eattr(struct proto *p, int old_state, int proto_deleting)
 {
+  int eatt_len = 8;
+  if (p->proto == &proto_bgp)
+    eatt_len += 3;
   struct {
 	ea_list l;
-	eattr a[8];
+	eattr a[eatt_len];
   } eattrs;
 
   eattrs.l = (ea_list) {};
@@ -2846,6 +2849,8 @@ proto_state_to_eattr(struct proto *p, int old_state, int proto_deleting)
   eattrs.a[eattrs.l.count++] = EA_LITERAL_STORE_ADATA(&ea_proto_last_modified, 0, &p->last_state_change, sizeof(btime));
   eattrs.a[eattrs.l.count++] = EA_LITERAL_EMBEDDED(&ea_proto_id, 0, p->id);
   eattrs.a[eattrs.l.count++] = EA_LITERAL_EMBEDDED(&ea_proto_deleted, 0, proto_deleting);
+  if (p->proto == &proto_bgp)
+    bgp_state_to_eattr(p, &eattrs.l, eattrs.a);
   byte buf[256];
   buf[0] = 0;
   if (p->proto->get_status)
@@ -2861,10 +2866,6 @@ proto_journal_state_changed(ea_list *attr, ea_list *old_attr, struct proto *p)
   struct proto_pending_update *pupdate = SKIP_BACK(struct proto_pending_update, li, lfjour_push_prepare(proto_journal));
   if (!pupdate)
   {
-    log("no recievers");
-    //if (free_add_data)
-    //  free_add_data(add_data);
-    log("returning");
     UNLOCK_DOMAIN(rtable, proto_journal_domain);
     return;
   }
@@ -2875,7 +2876,6 @@ proto_journal_state_changed(ea_list *attr, ea_list *old_attr, struct proto *p)
     .protocol = p
   };
   lfjour_push_commit(proto_journal);
-  log("in journal state change, proto %s, jfjour %i - pushed", p->name, proto_journal);
   UNLOCK_DOMAIN(rtable, proto_journal_domain);
 }
 
@@ -2932,6 +2932,5 @@ create_dummy_recipient(void)
   LOCK_DOMAIN(rtable, proto_journal_domain);
   lfjour_register(proto_journal, r);
   UNLOCK_DOMAIN(rtable, proto_journal_domain);
-  log("recipient created r %i j %i", r, proto_journal);
   dummy_log_proto_attr_list();
 }

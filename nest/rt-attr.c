@@ -1811,6 +1811,21 @@ struct ea_class ea_proto_id = {
   .type = T_INT,
 };
 
+struct ea_class ea_proto_bgp_rem_id = {
+  .name = "proto_bgp_rem_id",
+  .type = T_INT,
+};
+
+struct ea_class ea_proto_bgp_rem_as = {
+  .name = "proto_bgp_rem_as",
+  .type = T_INT,
+};
+
+struct ea_class ea_proto_bgp_rem_ip = {
+  .name = "proto_bgp_rem_ip",
+  .type = T_IP,
+};
+
 /**
  * rta_init - initialize route attribute cache
  *
@@ -1866,6 +1881,11 @@ rta_init(void)
   ea_register_init(&ea_proto_info);
   ea_register_init(&ea_proto_id);
   ea_register_init(&ea_proto_deleted);
+
+  /* Protocol bgp attributes */
+  ea_register_init(&ea_proto_bgp_rem_id);
+  ea_register_init(&ea_proto_bgp_rem_as);
+  ea_register_init(&ea_proto_bgp_rem_ip);
 }
 
 /*

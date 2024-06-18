@@ -19,6 +19,9 @@ extern struct birdloop main_birdloop;
 /* Currently running birdloop */
 extern _Thread_local struct birdloop *this_birdloop;
 
+/* The metaloop connected with thread */
+extern _Thread_local struct birdloop *this_metaloop;
+
 /* Check that the task has enough time to do a bit more */
 _Bool task_still_in_limit(void);
 

@@ -17,7 +17,6 @@
 #include "lib/event.h"
 #include "lib/hash.h"
 
-
 struct mrt_config {
   struct proto_config c;
 

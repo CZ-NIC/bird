@@ -46,10 +46,12 @@
 
 #include "mrt.h"
 
+#include "lib/io-loop.h"
 #include "nest/cli.h"
 #include "filter/filter.h"
 #include "proto/bgp/bgp.h"
 #include "sysdep/unix/unix.h"
+#include "sysdep/unix/io-loop.h"
 
 
 #ifdef PATH_MAX
@@ -234,10 +236,6 @@ mrt_next_table_(rtable *tab, rtable *tab_ptr, const char *pattern)
     return !tab ? tab_ptr : NULL;
 
   /* Walk routing_tables list, starting after tab (if non-NULL) */
-  log("tab is? %i", tab);
-  if (tab){
-    log("its node is %s", tab->name);
-    log("next is %i", tab->n.next);}
   for (node *tn = tab ? tab->n.next : HEAD(routing_tables);
        NODE_VALID(tn);
        tn = tn->next)
@@ -260,12 +258,20 @@ mrt_next_table(struct mrt_table_dump_state *s)
     RT_LOCKED(get_tab(s), tab)
       rt_unlock_table(tab);
 
+  if (tab == NULL)
+  {
+    s->ipv4 = 0;
+    return NULL;
+  }
   s->table->head = &tab->n;
   s->ipv4 = tab ? (tab->addr_type == NET_IP4) : 0;
 
   if (s->table->head)
-    RT_LOCKED(get_tab(s), tab)
+  {
+    rtable *t = get_tab(s);
+    RT_LOCKED(t, tab)
       rt_lock_table(tab);
+  }
 
   return get_tab(s);
 }
@@ -286,7 +292,7 @@ mrt_open_file(struct mrt_table_dump_state *s)
     return 0;
   }
 
-  s->file = rf_open(s->pool, name, RF_APPEND, -1); //TODO: is this correct? Do we want to limit appending file (or does it even make sence for append)? 
+  s->file = rf_open(s->pool, name, RF_APPEND, 0);
   if (!s->file)
   {
     mrt_log(s, "Unable to open MRT file '%s': %m", name);
@@ -374,15 +380,30 @@ mrt_peer_table_dump(struct mrt_table_dump_state *s)
   /* 0 is fake peer for non-BGP routes */
   mrt_peer_table_entry(s, 0, 0, IPA_NONE);
 
-/*#ifdef CONFIG_BGP
-  struct proto *P;
-  WALK_LIST(P, proto_list)
-    if ((P->proto == &proto_bgp) && (P->proto_state != PS_DOWN))
+#ifdef CONFIG_BGP
+  for(u32 i = 0; i<proto_attributes->length; i++)
+  {
+    rcu_read_lock();
+    ea_list *eal = proto_attributes->attrs[i];
+    if (eal)
+      ea_free_later(ea_ref(eal));
+    else
     {
-      struct bgp_proto *p = (void *) P;
-      mrt_peer_table_entry(s, p->remote_id, p->remote_as, p->remote_ip);
+      rcu_read_unlock();
+      continue;
     }
-#endif*/
+    rcu_read_unlock();
+    eattr *name = ea_find(proto_attributes->attrs[i], &ea_proto_protocol_name);
+    eattr *state = ea_find(proto_attributes->attrs[i], &ea_proto_state);
+    if ((strcmp(name->u.ad->data, "BGP") == 0) && (state->u.i != PS_DOWN))
+    {
+      eattr *rem_id = ea_find(proto_attributes->attrs[i], &ea_proto_bgp_rem_id);
+      eattr *rem_as = ea_find(proto_attributes->attrs[i], &ea_proto_bgp_rem_as);
+      eattr *rem_ip = ea_find(proto_attributes->attrs[i], &ea_proto_bgp_rem_ip);
+      mrt_peer_table_entry(s, rem_id->u.i, rem_as->u.i, *((ip_addr*) rem_ip->u.ad->data));
+    }
+  }
+#endif
 
   /* Fix Peer Count */
   put_u16(s->buf.start + s->peer_count_offset, s->peer_count);
@@ -447,14 +468,15 @@ mrt_rib_table_entry_bgp_attrs(struct mrt_table_dump_state *s, rte *r)
     return;
 
   /* Attribute list must be normalized for bgp_encode_attrs() */
-  //if (!rta_is_cached(r->attrs))       rte has no attribute cached... this needs deeper sight into rte struct
-  //  eattrs = ea_normalize(eattrs, 0);
+  if (!r->attrs->stored)
+    eattrs = ea_normalize(eattrs, 0);
 
   mrt_buffer_need(b, MRT_ATTR_BUFFER_SIZE);
   byte *pos = b->pos;
 
   s->bws->mp_reach = !s->ipv4;
   s->bws->mp_next_hop = NULL;
+  s->bws->ignore_non_bgp_attrs = 1;
 
   /* Encode BGP attributes */
   int len = bgp_encode_attrs(s->bws, eattrs, pos, b->end);
@@ -527,7 +549,7 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, const struct rt_export_feed *
     (!add_path ? MRT_RIB_IPV6_UNICAST : MRT_RIB_IPV6_UNICAST_ADDPATH);
 
   mrt_init_message(&s->buf, MRT_TABLE_DUMP_V2, subtype);
-  mrt_rib_table_header(s, feed->block[0].net); // asi blbe, ale netusim
+  mrt_rib_table_header(s, feed->block[0].net);
 
   for (uint i = 0; i < feed->count_routes; i++)
   {
@@ -570,11 +592,9 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, const struct rt_export_feed *
 static struct mrt_table_dump_state *
 mrt_table_dump_init(pool *pp)
 {
-  //LOCK_DOMAIN(proto, &pp->domain);
-  pool *pool = rp_new(pp, pp->domain, "MRT Table Dump"); //this domain is maybe not the correct one, but.
+  pool *pool = rp_new(pp, pp->domain, "MRT Table Dump");
   struct mrt_table_dump_state *s = mb_allocz(pool, sizeof(struct mrt_table_dump_state));
   s->table = (list*)mb_allocz(pool, sizeof(list));
-  //UNLOCK_DOMAIN(proto, &pp->domain);
 
   s->pool = pool;
   s->linpool = lp_new(pool);
@@ -593,19 +613,6 @@ mrt_table_dump_init(pool *pp)
 static void
 mrt_table_dump_free(struct mrt_table_dump_state *s)
 {
-  /*if (s->table)
-    RT_LOCKED(s->table, tab)
-    {
-      if (s->table_open)
-	FIB_ITERATE_UNLINK(&s->fit, &tab->fib); //table seems not to have fib iterator anymore
-
-      rt_unlock_table(tab);
-    }*/
-
- /* if (s->table_ptr)       why? Lock and unlock?
-    RT_LOCKED(s->table_ptr, tab)
-      rt_unlock_table(tab); */
-
   config_del_obstacle(s->config);
 
   rp_free(s->pool);
@@ -630,7 +637,6 @@ mrt_table_dump_step(struct mrt_table_dump_state *s)
 
     mrt_peer_table_dump(s);
 
-    // FIB_ITERATE_INIT(&s->fit, &tab->fib);  tab has no fib
     s->table_open = 1;
 
   step:
@@ -639,29 +645,20 @@ mrt_table_dump_step(struct mrt_table_dump_state *s)
     };
     RT_LOCKED(get_tab(s), tab)
     rt_feeder_subscribe(&tab->export_all, &feeder);
-    //FIB_ITERATE_START(&tab->fib, &s->fit, net, n)
     RT_FEED_WALK(&feeder, route_feed)
     {
-     // RT_LOCKED(t, tab)
-      {
-
-      if (s->max < 0) //but what in WALK?
-      {
-	//FIB_ITERATE_PUT(&s->fit); //vracime puvodni stav. asi. ale spis se ma tohle smazat
-	return 0;
-      }
-
+      if (s->max < 0)
+        return 0;
       /* With Always ADD_PATH option, we jump directly to second phase */
       s->want_add_path = s->always_add_path;
 
       if (s->want_add_path == 0)
-	mrt_rib_table_dump(s, route_feed, 0);
+        mrt_rib_table_dump(s, route_feed, 0);
 
       if (s->want_add_path == 1)
-	mrt_rib_table_dump(s, route_feed, 1);
-      }
+        mrt_rib_table_dump(s, route_feed, 1);
     }
-    //FIB_ITERATE_END;*/
+
     s->table_open = 0;
 
     mrt_close_file(s);
@@ -792,8 +789,10 @@ mrt_bgp_buffer(void)
   /* Static buffer for BGP4MP dump, TODO: change to use MRT protocol */
   static buffer b;
 
+  ASSERT(this_metaloop);
+  ASSERT(this_metaloop->pool);
   if (!b.start)
-    mrt_buffer_init(&b, &root_pool, 1024);
+    mrt_buffer_init(&b, this_metaloop->pool, 1024);
 
   return &b;
 }

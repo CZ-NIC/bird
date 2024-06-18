@@ -2574,6 +2574,15 @@ bgp_get_status(struct proto *P, byte *buf)
     bsprintf(buf, "%-14s%s%s", bgp_state_dsc(p), err1, err2);
 }
 
+void
+bgp_state_to_eattr(struct proto *P, ea_list *l, eattr *attributes)
+{
+  struct bgp_proto *p = (struct bgp_proto *) P;
+  attributes[l->count++] = EA_LITERAL_EMBEDDED(&ea_proto_bgp_rem_id, 0, p->remote_id);
+  attributes[l->count++] = EA_LITERAL_EMBEDDED(&ea_proto_bgp_rem_as, 0, p->remote_as);
+  attributes[l->count++] = EA_LITERAL_STORE_ADATA(&ea_proto_bgp_rem_ip, 0, &p->remote_ip, sizeof(ip_addr));
+}
+
 static void
 bgp_show_afis(int code, char *s, u32 *afis, uint count)
 {

@@ -93,6 +93,7 @@ extern struct protocol
   proto_ospf, proto_l3vpn, proto_aggregator,
   proto_pipe, proto_bgp, proto_bmp, proto_bfd, proto_babel, proto_rpki;
 
+void bgp_state_to_eattr(struct proto *P, ea_list *l, eattr *attributes);
 /*
  *	Routing Protocol Instance
  */

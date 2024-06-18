@@ -498,6 +498,7 @@ struct bgp_write_state {
   int as4_session;
   int add_path;
   int mpls;
+  int ignore_non_bgp_attrs;
 
   eattr *mp_next_hop;
   const adata *mpls_labels;
