@@ -1322,16 +1322,14 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     assert(p->root == NULL);
 
     /*
-     * Don't kick settle timer during first run. That would cause
-     * repeated calls to rt_notify() without any new updates.
+     * Don't kick settle timer during initial feed. That would cause
+     * cyclic calls to rt_notify() without receiving any new updates.
      */
     if (!p->first_run)
     {
       log("rt notify: kick");
       settle_kick(&p->notify_settle);
     }
-
-    return;
   }
 
   /* Find the objects for the old route */
@@ -1584,7 +1582,7 @@ trie_init(struct aggregator_proto *p)
 {
   /*
    * Hash tables are initialized in aggregator_start() before the first run.
-   * They are initialized here for subsequent runs.
+   * They are initialized here for all subsequent runs.
    */
   if (!p->first_run)
   {
