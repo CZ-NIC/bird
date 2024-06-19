@@ -137,6 +137,9 @@ void do_lock(struct domain_generic *dg, struct domain_generic **lsp)
 
 void do_unlock(struct domain_generic *dg, struct domain_generic **lsp)
 {
+  if (dg->forbidden_when_reading_rcu)
+    ASSERT_DIE(rcu_blocked--);
+
   if ((char *) lsp - (char *) &locking_stack != dg->order)
     bug("Trying to unlock on bad position: order=%u, lsp=%p, base=%p", dg->order, lsp, &locking_stack);
 
@@ -150,6 +153,5 @@ void do_unlock(struct domain_generic *dg, struct domain_generic **lsp)
   dg->prev = NULL;
   pthread_mutex_unlock(&dg->mutex);
 
-  if (dg->forbidden_when_reading_rcu)
-    ASSERT_DIE(rcu_blocked--);
+  /* From here on, the dg pointer is invalid! */
 }
