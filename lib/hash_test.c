@@ -309,6 +309,12 @@ struct st_node {
 #define ST_MAX			16384
 #define ST_READERS		1
 
+#if 0
+#define ST_DEBUG(...)		printf(__VA_ARGS__)
+#else
+#define ST_DEBUG(...)
+#endif
+
 static uint const st_skip[] = { 3, 7, 13, 17, 23, 37 };
 
 typedef SPINHASH(struct st_node) shtest;
@@ -320,22 +326,28 @@ static void *
 st_rehash_thread(void *_v)
 {
   shtest *v = _v;
+  rcu_thread_start();
   int step;
 
   the_bird_lock();
   while (!atomic_load_explicit(&st_end, memory_order_relaxed))
   {
     birdloop_yield();
+    ST_DEBUG("rehash prepare\n");
     SPINHASH_REHASH_PREPARE(v, ST, struct st_node, step);
+    ST_DEBUG("rehash prepared step=%d\n", step);
 
     if (!step)		continue;
     if (step < 0)	SPINHASH_REHASH_DOWN(v, ST, struct st_node, -step);
     if (step > 0)	SPINHASH_REHASH_UP  (v, ST, struct st_node,  step);
 
+    ST_DEBUG("rehash finish\n");
     SPINHASH_REHASH_FINISH(v, ST);
+    ST_DEBUG("rehash finished\n");
   }
   the_bird_unlock();
 
+  rcu_thread_stop();
   return NULL;
 }
 
@@ -343,6 +355,7 @@ static void *
 st_find_thread(void *_v)
 {
   shtest *v = _v;
+  rcu_thread_start();
 
   uint skip = st_skip[atomic_fetch_add_explicit(&st_skip_pos, 1, memory_order_acq_rel)];
 
@@ -352,6 +365,7 @@ st_find_thread(void *_v)
     ASSERT_DIE(!n || (n->key == i % ST_MAX));
   }
 
+  rcu_thread_stop();
   return NULL;
 }
 
@@ -359,6 +373,7 @@ static void *
 st_update_thread(void *_v)
 {
   shtest *v = _v;
+  rcu_thread_start();
 
   struct st_node block[ST_MAX];
   for (uint i = 0; i < ST_MAX; i++)
@@ -367,14 +382,23 @@ st_update_thread(void *_v)
   for (uint r = 0; r < 32; r++)
   {
     for (uint i = 0; i < ST_MAX; i++)
+    {
+      ST_DEBUG("insert start %d\n", i);
       SPINHASH_INSERT(*v, ST, (&block[i]));
+      ST_DEBUG("insert finish %d\n", i);
+    }
 
     for (uint i = 0; i < ST_MAX; i++)
+    {
+      ST_DEBUG("remove start %d\n", i);
       SPINHASH_REMOVE(*v, ST, (&block[i]));
+      ST_DEBUG("remove finish %d\n", i);
+    }
   }
 
   atomic_store_explicit(&st_end, 1, memory_order_release);
 
+  rcu_thread_stop();
   return NULL;
 }
 

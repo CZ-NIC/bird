@@ -214,9 +214,10 @@
 #define SPINHASH(type)							\
 struct {								\
   _Atomic uint count;							\
-  rw_spinlock lock;							\
-  uint cur_order, new_order;						\
-  struct { type *data; rw_spinlock lock; } *cur, *new;			\
+  struct {								\
+    uint order;								\
+    struct { type *data; rw_spinlock lock; } block[0];			\
+  } * _Atomic cur, * _Atomic new;					\
   pool *pool;								\
   event rehash;								\
   event_list *target;							\
@@ -225,10 +226,10 @@ struct {								\
 #define SPINHASH_INIT(v,id,_pool,_target)				\
   ({									\
     atomic_store_explicit(&(v).count, 0, memory_order_relaxed);		\
-    (v).cur_order = id##_ORDER;						\
-    (v).new_order = 0;							\
-    (v).cur = mb_allocz(_pool, (1U << id##_ORDER) * sizeof *(v).cur);	\
-    (v).new = NULL;							\
+    typeof(*(v).cur) *cb = mb_allocz(_pool, sizeof *cb + (1U << id##_ORDER) * sizeof *cb->block);	\
+    cb->order = id##_ORDER;						\
+    atomic_store_explicit(&(v).new, NULL, memory_order_relaxed);	\
+    atomic_store_explicit(&(v).cur, cb, memory_order_relaxed);		\
     (v).pool = _pool;							\
     (v).rehash = (event) { .hook = id##_REHASH, .data = &(v), };	\
     (v).target = _target;						\
@@ -237,32 +238,37 @@ struct {								\
 #define SPINHASH_FREE(v)						\
   ({									\
     ev_postpone(&(v).rehash);						\
-    mb_free((v).cur);							\
-    ASSERT_DIE((v).new == NULL);					\
-    (v).cur = NULL;							\
-    (v).cur_order = 0;							\
+    SPINHASH_GETBLOCK((&(v)),_cur,cur);					\
+    atomic_store_explicit(&(v).cur, NULL, memory_order_release);	\
+    mb_free(_cur);							\
+    SPINHASH_GETBLOCK((&(v)),_new,new);					\
+    ASSERT_DIE(_new == NULL);						\
     (v).pool = NULL;							\
     (v).target = NULL;							\
   })
 
+#define SPINHASH_GETBLOCK(v,name,which)					\
+  typeof(*v->which) *name = atomic_load_explicit(&(v)->which, memory_order_relaxed);
+
 #define SPINHASH_BEGIN_CHAIN(v,id,rw,n,key...)				\
   do {									\
-    typeof (&v) _v = &(v);						\
-    rws_read_lock(&_v->lock);						\
+    rcu_read_lock();							\
     u32 _hh = id##_FN(key);						\
+    SPINHASH_GETBLOCK((&(v)),_cur,cur);					\
+    SPINHASH_GETBLOCK((&(v)),_new,new);					\
     SPINHASH_BEGIN_CHAIN_INDEX(v,_hh,rw,n);				\
 
 #define SPINHASH_BEGIN_CHAIN_INDEX(v,h,rw,n)				\
-    u32 _ch = (h) >> (32 - (v).cur_order);				\
-    rw_spinlock *_lock = &(v).cur[_ch].lock;				\
+    u32 _ch = (h) >> (32 - _cur->order);				\
+    rw_spinlock *_lock = &_cur->block[_ch].lock;			\
     rws_##rw##_lock(_lock);						\
-    typeof (&(v).cur[_ch].data) n = &(v).cur[_ch].data;			\
+    typeof (&_cur->block[_ch].data) n = &_cur->block[_ch].data;		\
     if (*n == SPINHASH_REHASH_SENTINEL) {				\
       rws_##rw##_unlock(_lock);						\
-      u32 _nh = (h) >> (32 - (v).new_order);				\
-      _lock = &(v).new[_nh].lock;					\
+      u32 _nh = (h) >> (32 - _new->order);				\
+      _lock = &_new->block[_nh].lock;					\
       rws_##rw##_lock(_lock);						\
-      n = &(v).new[_nh].data;						\
+      n = &_new->block[_nh].data;					\
       ASSERT_DIE(*n != SPINHASH_REHASH_SENTINEL);			\
     };
 
@@ -271,12 +277,12 @@ struct {								\
 
 #define SPINHASH_END_CHAIN(rw)						\
     SPINHASH_END_CHAIN_INDEX(rw);					\
-    rws_read_unlock(&_v->lock);						\
+    rcu_read_unlock();							\
   } while (0)
 
 #define SPINHASH_FIND(v,id,key...)					\
   ({									\
-    typeof ((v).cur[0].data) _n;					\
+    typeof ((v).cur->block[0].data) _n;					\
     SPINHASH_BEGIN_CHAIN(v,id,read,_c,key);				\
     while ((*_c) && !HASH_EQ(v,id,id##_KEY((*_c)), key))		\
       _c = &id##_NEXT((*_c));						\
@@ -287,25 +293,27 @@ struct {								\
 
 #define SPINHASH_INSERT(v,id,n)						\
   do {									\
-    rws_read_lock(&(v).lock);						\
+    rcu_read_lock();							\
     uint _h = HASH_FNO(id, id##_KEY(n));				\
-    uint _ch = _h >> (32 - (v).cur_order);				\
-    rws_write_lock(&(v).cur[_ch].lock);					\
-    if ((v).cur[_ch].data == SPINHASH_REHASH_SENTINEL) {		\
-      uint _nh = _h >> (32 - (v).new_order);				\
-      rws_write_lock(&(v).new[_nh].lock);				\
-      ASSERT_DIE((v).new[_nh].data != SPINHASH_REHASH_SENTINEL);	\
-      id##_NEXT(n) = (v).new[_nh].data;					\
-      (v).new[_nh].data = n;						\
-      rws_write_unlock(&(v).new[_nh].lock);				\
+    SPINHASH_GETBLOCK((&(v)),_cur,cur);					\
+    uint _ch = _h >> (32 - _cur->order);				\
+    rws_write_lock(&_cur->block[_ch].lock);				\
+    if (_cur->block[_ch].data == SPINHASH_REHASH_SENTINEL) {		\
+      SPINHASH_GETBLOCK((&(v)),_new,new);				\
+      uint _nh = _h >> (32 - _new->order);				\
+      rws_write_lock(&_new->block[_nh].lock);				\
+      ASSERT_DIE(_new->block[_nh].data != SPINHASH_REHASH_SENTINEL);	\
+      id##_NEXT(n) = _new->block[_nh].data;				\
+      _new->block[_nh].data = n;					\
+      rws_write_unlock(&_new->block[_nh].lock);				\
     } else {								\
-      id##_NEXT(n) = (v).cur[_ch].data;					\
-      (v).cur[_ch].data = n;						\
+      id##_NEXT(n) = _cur->block[_ch].data;				\
+      _cur->block[_ch].data = n;					\
     }									\
-    rws_write_unlock(&(v).cur[_ch].lock);				\
+    rws_write_unlock(&_cur->block[_ch].lock);				\
     uint count = atomic_fetch_add_explicit(&(v).count, 1, memory_order_relaxed);\
-    SPINHASH_REQUEST_REHASH(v,id,count);				\
-    rws_read_unlock(&(v).lock);						\
+    SPINHASH_REQUEST_REHASH((&(v)),id,count);				\
+    rcu_read_unlock();							\
   } while (0)								\
 
 #define SPINHASH_REMOVE(v,id,n)						\
@@ -319,7 +327,7 @@ struct {								\
 	}								\
     SPINHASH_END_CHAIN(write);						\
     uint count = atomic_load_explicit(&(v).count, memory_order_relaxed);\
-    SPINHASH_REQUEST_REHASH(v,id,count);				\
+    SPINHASH_REQUEST_REHASH((&(v)),id,count);				\
   } while (0)
 
 #define SPINHASH_DO_REMOVE(v,id,c)					\
@@ -342,22 +350,27 @@ struct {								\
 
 #define SPINHASH_WALK_CHAINS(v,id,rw,nn)				\
   do {									\
-    typeof (&v) _v = &(v);						\
-    rws_read_lock(&_v->lock);						\
-    for (uint _h = 0; !(_h >> _v->cur_order); _h++) {			\
+    rcu_read_lock();							\
+    SPINHASH_GETBLOCK((&(v)),_cur,cur);					\
+    SPINHASH_GETBLOCK((&(v)),_new,new);					\
+    for (uint _h = 0; !(_h >> _cur->order); _h++) {			\
       SPINHASH_BEGIN_CHAIN_INDEX(v,_h,rw,nn);				\
 
 #define SPINHASH_WALK_CHAINS_END(rw)					\
       SPINHASH_END_CHAIN_INDEX(rw);					\
     }									\
-    rws_read_unlock(&_v->lock);						\
+    rcu_read_unlock();							\
   } while (0)
 
 #define SPINHASH_CHECK_REHASH(v,id,count) SPINHASH_CHECK_REHASH_(v,id,count,id##_PARAMS)
 
 #define SPINHASH_CHECK_REHASH_(v,id,count,args)				\
   ({									\
-    uint order = (v).new_order ?: (v).cur_order;			\
+    rcu_read_lock();							\
+    SPINHASH_GETBLOCK(v,_cur,cur);					\
+    SPINHASH_GETBLOCK(v,_new,new);					\
+    uint order = (_new ?: _cur)->order;					\
+    rcu_read_unlock();							\
     uint size = 1U << order;						\
     ((count > size REHASH_HI_MARK(args)) && (order < REHASH_HI_BOUND(args))) ? \
     REHASH_HI_STEP(args) :						\
@@ -367,8 +380,8 @@ struct {								\
   })
 
 #define SPINHASH_REQUEST_REHASH(v,id,count)				\
-  if (SPINHASH_CHECK_REHASH(v,id,count) && (v).target)			\
-      ev_send((v).target, &(v).rehash);
+  if (SPINHASH_CHECK_REHASH(v,id,count) && (v)->target)			\
+      ev_send((v)->target, &(v)->rehash);
 
 #define SPINHASH_DEFINE_REHASH_FN(id,type)				\
 static void id##_REHASH(void *_v) {					\
@@ -386,72 +399,80 @@ static void id##_REHASH(void *_v) {					\
   }									\
 
 #define SPINHASH_REHASH_PREPARE(v,id,type,step)				\
-  rws_write_lock(&(v)->lock);						\
-  ASSERT_DIE((v)->new_order == 0);					\
+  SPINHASH_GETBLOCK((v),_cur,cur);					\
+  typeof (_cur) _nb = NULL;						\
   uint _cb = atomic_load_explicit(&(v)->count, memory_order_relaxed);	\
-  step = SPINHASH_CHECK_REHASH((*(v)),id,_cb);				\
+  step = SPINHASH_CHECK_REHASH((v),id,_cb);				\
+  struct domain_generic *_dg = (v)->pool->domain;			\
   if (step) {								\
-    (v)->new_order = (v)->cur_order + step;				\
-    uint nsz = 1U << (v)->new_order;					\
-    (v)->new = mb_alloc((v)->pool, nsz * sizeof *(v)->new);		\
+    uint no = _cur->order + step;					\
+    uint nsz = 1U << no;						\
+    if (DG_IS_LOCKED(_dg)) _dg = NULL;					\
+    if (_dg) DG_LOCK(_dg);						\
+    _nb = mb_alloc((v)->pool, sizeof *_cur + nsz * sizeof *_cur->block);\
+    _nb->order = no;							\
     for (uint i=0; i<nsz; i++) {					\
-      (v)->new[i].data = SPINHASH_REHASH_SENTINEL;			\
-      (v)->new[i].lock = (rw_spinlock) {};				\
+      _nb->block[i].data = SPINHASH_REHASH_SENTINEL;			\
+      _nb->block[i].lock = (rw_spinlock) {};				\
     }									\
+    ASSERT_DIE(atomic_exchange_explicit(&(v)->new, _nb, memory_order_relaxed) == NULL);		\
+    synchronize_rcu();							\
+    if (_dg) DG_UNLOCK(_dg);						\
   }									\
-  rws_write_unlock(&(v)->lock);						\
 
 #define SPINHASH_REHASH_FINISH(v,id)					\
   ASSERT_DIE(step);							\
-  rws_write_lock(&(v)->lock);						\
-  (v)->cur = (v)->new; (v)->cur_order = (v)->new_order;			\
-  (v)->new = NULL; (v)->new_order = 0;					\
+  if (_dg) DG_LOCK(_dg);						\
+  typeof(*(v)->cur) *ob = atomic_exchange_explicit(&(v)->cur, _nb, memory_order_relaxed);	\
+  synchronize_rcu();							\
+  ASSERT_DIE(atomic_exchange_explicit(&(v)->new, NULL, memory_order_relaxed) == _nb);	\
+  synchronize_rcu();							\
   uint _ce = atomic_load_explicit(&(v)->count, memory_order_relaxed);	\
-  SPINHASH_REQUEST_REHASH(*(v),id,_ce)					\
-  rws_write_unlock(&(v)->lock);						\
-  mb_free((v)->new);							\
+  SPINHASH_REQUEST_REHASH((v),id,_ce)					\
+  mb_free(ob);								\
+  if (_dg) DG_UNLOCK(_dg);						\
 
 #define SPINHASH_REHASH_UP(v,id,type,step)				\
-  for (uint i=0; !(i >> (v)->cur_order); i++) {				\
-    rws_write_lock(&(v)->cur[i].lock);					\
+  for (uint i=0; !(i >> _cur->order); i++) {				\
+    rws_write_lock(&_cur->block[i].lock);				\
     for (uint p=0; !(p >> step); p++) {					\
       uint ppos = (i << step) | p;					\
-      rws_write_lock(&(v)->new[ppos].lock);				\
-      ASSERT_DIE((v)->new[ppos].data == SPINHASH_REHASH_SENTINEL);	\
-      (v)->new[ppos].data = NULL;					\
+      rws_write_lock(&_nb->block[ppos].lock);				\
+      ASSERT_DIE(_nb->block[ppos].data == SPINHASH_REHASH_SENTINEL);	\
+      _nb->block[ppos].data = NULL;					\
     }									\
-    for (type *n; n = (v)->cur[i].data; ) {				\
-      (v)->cur[i].data = id##_NEXT(n);					\
+    for (type *n; n = _cur->block[i].data; ) {				\
+      _cur->block[i].data = id##_NEXT(n);				\
       uint _h = HASH_FNO(id, id##_KEY(n));				\
-      ASSERT_DIE((_h >> (32 - (v)->cur_order)) == i);			\
-      uint _nh = _h >> (32 - (v)->new_order);				\
-      id##_NEXT(n) = (v)->new[_nh].data;				\
-      (v)->new[_nh].data = n;						\
+      ASSERT_DIE((_h >> (32 - _cur->order)) == i);			\
+      uint _nh = _h >> (32 - _nb->order);				\
+      id##_NEXT(n) = _nb->block[_nh].data;				\
+      _nb->block[_nh].data = n;						\
     }									\
-    (v)->cur[i].data = SPINHASH_REHASH_SENTINEL;			\
+    _cur->block[i].data = SPINHASH_REHASH_SENTINEL;			\
     for (uint p=0; !(p >> step); p++)					\
-      rws_write_unlock(&(v)->new[((i+1) << step) - p - 1].lock);	\
-    rws_write_unlock(&(v)->cur[i].lock);				\
+      rws_write_unlock(&_nb->block[((i+1) << step) - p - 1].lock);	\
+    rws_write_unlock(&_cur->block[i].lock);				\
   }									\
 
 #define SPINHASH_REHASH_DOWN(v,id,type,step)				\
-  for (uint i=0; !(i >> (v)->cur_order); i++) {				\
+  for (uint i=0; !(i >> _cur->order); i++) {				\
     uint p = i >> step;							\
-    rws_write_lock(&(v)->cur[i].lock);					\
-    rws_write_lock(&(v)->new[p].lock);					\
+    rws_write_lock(&_cur->block[i].lock);				\
+    rws_write_lock(&_nb->block[p].lock);				\
     if (i == (p << step)) {						\
-      ASSERT_DIE((v)->new[p].data == SPINHASH_REHASH_SENTINEL);		\
-      (v)->new[p].data = NULL;						\
+      ASSERT_DIE(_nb->block[p].data == SPINHASH_REHASH_SENTINEL);	\
+      _nb->block[p].data = NULL;					\
     } else								\
-      ASSERT_DIE((v)->new[p].data != SPINHASH_REHASH_SENTINEL);		\
-    for (type *n; n = (v)->cur[i].data; ) {				\
-      (v)->cur[i].data = id##_NEXT(n);					\
-      id##_NEXT(n) = (v)->new[p].data;					\
-      (v)->new[p].data = n;						\
+      ASSERT_DIE(_nb->block[p].data != SPINHASH_REHASH_SENTINEL);	\
+    for (type *n; n = _cur->block[i].data; ) {				\
+      _cur->block[i].data = id##_NEXT(n);				\
+      id##_NEXT(n) = _nb->block[p].data;				\
+      _nb->block[p].data = n;						\
     }									\
-    (v)->cur[i].data = SPINHASH_REHASH_SENTINEL;			\
-    rws_write_unlock(&(v)->new[p].lock);				\
-    rws_write_unlock(&(v)->cur[i].lock);				\
+    _cur->block[i].data = SPINHASH_REHASH_SENTINEL;			\
+    rws_write_unlock(&_nb->block[p].lock);				\
+    rws_write_unlock(&_cur->block[i].lock);				\
   }
 
 

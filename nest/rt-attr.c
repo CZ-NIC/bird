@@ -1801,7 +1801,7 @@ ea_dump_all(void)
 {
   debug("Route attribute cache (%d entries, order %d):\n",
       atomic_load_explicit(&rta_hash_table.count, memory_order_relaxed),
-      rta_hash_table.cur_order);
+      atomic_load_explicit(&rta_hash_table.cur, memory_order_relaxed)->order);
 
   SPINHASH_WALK(rta_hash_table, RTAH, a)
       {
