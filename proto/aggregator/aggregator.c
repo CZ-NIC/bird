@@ -1736,6 +1736,22 @@ aggregator_reconfigure(struct proto *P, struct proto_config *CF)
   return 1;
 }
 
+static void
+aggregator_get_status(struct proto *P, byte *buf)
+{
+  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
+
+  if (p->p.proto_state == PS_DOWN)
+    buf[0] = 0;
+  else
+  {
+    if (PREFIX_AGGR == p->aggr_mode)
+      strcpy(buf, "prefix aggregation");
+    else
+      strcpy(buf, "net aggregation");
+  }
+}
+
 struct protocol proto_aggregator = {
   .name =		"Aggregator",
   .template =		"aggregator%d",
@@ -1749,6 +1765,7 @@ struct protocol proto_aggregator = {
   .start =		aggregator_start,
   .shutdown =		aggregator_shutdown,
   .reconfigure =	aggregator_reconfigure,
+  .get_status = aggregator_get_status,
 };
 
 void
