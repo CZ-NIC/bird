@@ -371,7 +371,6 @@ extern uint rtable_max_id;
     struct network * _Atomic routes;	/* Actual route objects in the table */			\
     _Atomic u32 routes_block_size;	/* Size of the route object pointer block */		\
     struct f_trie * _Atomic trie;	/* Trie of prefixes defined in fib */			\
-    event *nhu_event;			/* Nexthop updater */					\
     event *hcu_event;			/* Hostcache updater */					\
     struct rt_exporter export_all;	/* Route export journal for all routes */		\
     struct rt_exporter export_best;	/* Route export journal for best routes */		\
@@ -422,6 +421,7 @@ struct rtable_private {
   struct rt_cork_threshold cork_threshold;	/* Threshold for table cork */
   u32 prune_index;			/* Rtable prune FIB iterator */
   u32 nhu_index;			/* Next Hop Update FIB iterator */
+  event *nhu_event;			/* Nexthop updater */
   struct f_trie *trie_new;		/* New prefix trie defined during pruning */
   const struct f_trie *trie_old;	/* Old prefix trie waiting to be freed */
   u32 trie_lock_count;			/* Prefix trie locked by walks */

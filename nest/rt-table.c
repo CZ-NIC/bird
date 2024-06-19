@@ -4123,6 +4123,7 @@ rt_nhu_uncork(callback *cb)
     rt_trace(tab, D_STATES, "Next hop updater uncorked");
 
     ev_send_loop(tab->loop, tab->nhu_event);
+    rt_unlock_table(tab);
   }
 }
 
@@ -4143,6 +4144,7 @@ rt_next_hop_update(void *_tab)
   if (rt_cork_check(&tab->nhu_uncork))
   {
     rt_trace(tab, D_STATES, "Next hop updater corked");
+    rt_lock_table(tab);
 
     if (tab->nhu_state & NHU_RUNNING)
     {
@@ -4353,9 +4355,16 @@ rt_shutdown(void *tab_)
   }
 
   rtex_export_unsubscribe(&tab->best_req);
+  if (tab->hostcache)
+    rtex_export_unsubscribe(&tab->hostcache->req);
 
   rt_exporter_shutdown(&tab->export_best, NULL);
   rt_exporter_shutdown(&tab->export_all, NULL);
+
+  rfree(tab->hcu_event);
+  tab->hcu_event = NULL;
+  rfree(tab->nhu_event);
+  tab->nhu_event = NULL;
 
   netindex_hash_delete(tab->netindex,
       ev_new_init(tab->rp, rt_shutdown_finished, tab),
@@ -4503,18 +4512,8 @@ rt_commit(struct config *new, struct config *old)
 	{
 	  DBG("\t%s: deleted\n", o->name);
 	  OBSREF_SET(tab->deleted, old);
-	  rt_lock_table(tab);
-
 	  rt_check_cork_low(tab);
-
-	  if (tab->hcu_event)
-	  {
-	    if (ev_get_list(tab->hcu_event) == &rt_cork.queue)
-	      ev_postpone(tab->hcu_event);
-
-	    rtex_export_unsubscribe(&tab->hostcache->req);
-	  }
-
+	  rt_lock_table(tab);
 	  rt_unlock_table(tab);
 	}
 
@@ -4601,16 +4600,22 @@ hc_resize(struct hostcache *hc, pool *p, unsigned new_order)
 }
 
 static struct hostentry *
-hc_new_hostentry(struct hostcache *hc, pool *p, ip_addr a, ip_addr ll, rtable *dep, unsigned k)
+hc_new_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep, unsigned k)
 {
+  struct hostcache *hc = tab->hostcache;
+  pool *p = tab->rp;
   struct hostentry *he = sl_alloc(hc->slab);
 
   *he = (struct hostentry) {
     .addr = a,
     .link = ll,
     .tab = dep,
+    .owner = RT_PUB(tab),
     .hash_key = k,
   };
+
+  if (EMPTY_LIST(hc->hostentries))
+    rt_lock_table(tab);
 
   add_tail(&hc->hostentries, &he->ln);
   hc_insert(hc, he);
@@ -4749,13 +4754,7 @@ rt_free_hostcache(struct rtable_private *tab)
 
   node *n;
   WALK_LIST(n, hc->hostentries)
-    {
-      SKIP_BACK_DECLARE(struct hostentry, he, ln, n);
-      ea_free(atomic_load_explicit(&he->src, memory_order_relaxed));
-
-      if (!lfuc_finished(&he->uc))
-	log(L_ERR "Hostcache is not empty in table %s", tab->name);
-    }
+    bug("Hostcache is not empty in table %s", tab->name);
 
   /* Freed automagically by the resource pool
   rfree(hc->slab);
@@ -4891,7 +4890,8 @@ done:
 static void
 rt_hcu_uncork(callback *cb)
 {
-  SKIP_BACK_DECLARE(rtable, tab, priv.hcu_uncork.cb, cb);
+  RT_LOCK(SKIP_BACK(rtable, priv.hcu_uncork.cb, cb), tab);
+
   ev_send_loop(tab->loop, tab->hcu_event);
 }
 
@@ -4945,19 +4945,29 @@ rt_update_hostcache(void *data)
   lp_flush(hc->lp);
   hc->trie = f_new_trie(hc->lp, 0);
 
+  uint finished = 0, updated = 0, kept = 0;
+
   WALK_LIST_DELSAFE(n, x, hc->hostentries)
     {
       he = SKIP_BACK(struct hostentry, ln, n);
       if (lfuc_finished(&he->uc))
       {
 	hc_delete_hostentry(hc, tab->rp, he);
-	continue;
+	finished++;
       }
-
-      if (rt_update_hostentry(tab, he))
+      else if (rt_update_hostentry(tab, he))
+      {
 	nhu_pending[he->tab->id] = he->tab;
+	updated++;
+      }
+      else
+	kept++;
     }
-  }
+
+  if (finished && !updated && !kept)
+    rt_unlock_table(tab);
+
+  } /* End of RT_LOCKED() */
 
   for (uint i=0; i<rtable_max_id; i++)
     if (nhu_pending[i])
@@ -4992,8 +5002,7 @@ rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep)
   }
   else
   {
-    he = hc_new_hostentry(hc, tab->rp, a, link, dep, k);
-    he->owner = RT_PUB(tab);
+    he = hc_new_hostentry(tab, a, link, dep, k);
     rt_update_hostentry(tab, he);
   }
 
