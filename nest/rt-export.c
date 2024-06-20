@@ -312,10 +312,20 @@ rt_export_next_feed(struct rt_export_feeder *f)
     return feed;
 
   /* Feeding done */
+  struct rt_feeding_request *reverse = NULL;
   while (f->feeding)
   {
     struct rt_feeding_request *rfr = f->feeding;
     f->feeding = rfr->next;
+    rfr->next = reverse;
+    reverse = rfr;
+  }
+
+  /* Call the done hook in the same order as requests came in */
+  while (reverse)
+  {
+    struct rt_feeding_request *rfr = reverse;
+    reverse = rfr->next;
     CALL(rfr->done, rfr);
   }
 
