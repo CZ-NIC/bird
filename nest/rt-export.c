@@ -340,8 +340,6 @@ rtex_export_subscribe(struct rt_exporter *e, struct rt_export_request *r)
 {
   rt_export_change_state(r, BIT32_ALL(TES_DOWN), TES_FEEDING);
 
-  log("subscribe e=%p r=%p", e, r);
-
   ASSERT_DIE(r->pool);
 
   rt_feeder_subscribe(e, &r->feeder);
@@ -359,7 +357,6 @@ rtex_export_subscribe(struct rt_exporter *e, struct rt_export_request *r)
 void
 rtex_export_unsubscribe(struct rt_export_request *r)
 {
-  log("unsubscribe r=%p", r);
   rt_feeder_unsubscribe(&r->feeder);
 
   if (r->cur)

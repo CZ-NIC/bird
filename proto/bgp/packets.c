@@ -3429,7 +3429,6 @@ bgp_rx_packet(struct bgp_conn *conn, byte *pkt, uint len)
   conn->bgp->stats.rx_messages++;
   conn->bgp->stats.rx_bytes += len;
 
-  log("conn->bgp->p.mrtdump %i, MD_MESSAGES %i", conn->bgp->p.mrtdump, MD_MESSAGES);
   if (conn->bgp->p.mrtdump & MD_MESSAGES)
     bgp_dump_message(conn, pkt, len);
 

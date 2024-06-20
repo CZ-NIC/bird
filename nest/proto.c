@@ -1252,7 +1252,6 @@ proto_init(struct proto_config *c, struct proto *after)
 
   PD(p, "Initializing%s", p->disabled ? " [disabled]" : "");
 
-  log("try to change state");
   p->id = hmap_first_zero(proto_attributes->proto_id_maker);
   hmap_set(proto_attributes->proto_id_maker, p->id);
   if (p->id >= proto_attributes->length)
@@ -1977,7 +1976,7 @@ protos_build(void)
   proto_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Protocols");
 
   init_proto_journal();
-  create_dummy_recipient();
+  //create_dummy_recipient();
   protos_build_gen();
 }
 
@@ -2277,7 +2276,6 @@ proto_notify_state(struct proto *p, uint state)
   if (state == ps)
     return;
 
-  log("try to change state");
   int old_state = p->proto_state;
   p->proto_state = state;
   p->last_state_change = current_time();
@@ -2777,7 +2775,6 @@ proto_iterate_named(struct symbol *sym, struct protocol *proto, struct proto *ol
     return NULL;
   }
 }
-
 
 
 void

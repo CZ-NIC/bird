@@ -639,7 +639,7 @@ mrt_table_dump_step(struct mrt_table_dump_state *s)
 
     s->table_open = 1;
 
-  step:
+  step: ;
     struct rt_export_feeder feeder = (struct rt_export_feeder) {
       .name = "cli.feeder",
     };
@@ -741,12 +741,11 @@ mrt_dump_cont(struct cli *c)
   c->rover = NULL;
 }
 
-static int
+void
 mrt_dump_cleanup(struct cli *c)
 {
   mrt_table_dump_free(c->rover);
   c->rover = NULL;
-  return 0;
 }
 
 void

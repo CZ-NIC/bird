@@ -219,7 +219,6 @@ void lfjour_release(struct lfjour_recipient *r)
 void
 lfjour_announce_now(struct lfjour *j)
 {
-  log("announce now %i", j);
   ASSERT_DIE(birdloop_inside(j->loop));
   settle_cancel(&j->announce_timer);
   ev_postpone(&j->announce_kick_event);
@@ -227,7 +226,6 @@ lfjour_announce_now(struct lfjour *j)
   if (EMPTY_TLIST(lfjour_recipient, &j->recipients))
     return lfjour_schedule_cleanup(j);
 
-  log("walk recipient list");
   WALK_TLIST(lfjour_recipient, r, &j->recipients)
     if (r->event)
       ev_send(r->target, r->event);
