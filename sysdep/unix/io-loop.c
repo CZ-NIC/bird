@@ -547,7 +547,7 @@ sockets_fire(struct birdloop *loop, _Bool read, _Bool write)
 
       /* Read until task limit is up */
       if (read && (rev & POLLIN))
-	while ((s == loop->sock_active) && s->rx_hook && sk_read(s, rev) && task_still_in_limit())
+	while ((s == loop->sock_active) && s->rx_hook && sk_read(s, rev) && (s->fast_rx || task_still_in_limit()))
 	  ;
 
       if (s != loop->sock_active)

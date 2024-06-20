@@ -76,6 +76,7 @@ rpki_tr_open(struct rpki_tr_sock *tr)
   /* sk->type -1 is invalid value, a correct value MUST be set in the specific transport layer in open_fp() hook */
   sk->type = -1;
 
+  sk->fast_rx = 1;  /* We need to load the ROAs DAMN FAST */
   sk->tx_hook = rpki_connected_hook;
   sk->err_hook = rpki_err_hook;
   sk->data = cache;
