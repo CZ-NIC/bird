@@ -533,6 +533,7 @@ struct channel {
   const struct filter *in_filter;	/* Input filter */
   const struct filter *out_filter;	/* Output filter */
   const net_addr *out_subprefix;	/* Export only subprefixes of this net */
+  struct bmap imported_map;		/* Which nets were touched by our import */
   struct bmap export_accepted_map;	/* Keeps track which routes were really exported */
   struct bmap export_rejected_map;	/* Keeps track which routes were rejected by export filter */
 

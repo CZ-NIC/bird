@@ -158,6 +158,7 @@ struct rt_export_request {
 
     /* Feeding itself */
     u32 feed_index;				/* Index of the feed in progress */
+    u32 (*next_feed_index)(struct rt_export_feeder *, u32 try_this);
     struct rt_feeding_request {
       struct rt_feeding_request *next;		/* Next in request chain */
       void (*done)(struct rt_feeding_request *);/* Called when this refeed finishes */

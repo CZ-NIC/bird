@@ -52,7 +52,7 @@ rt_export_get(struct rt_export_request *r)
 } while (0)
 
 #define NOT_THIS_UPDATE	\
-  lfjour_release(&r->r); \
+  lfjour_release(&r->r, &update->li); \
   continue;
 
   while (1)
@@ -200,7 +200,7 @@ rt_export_release(const struct rt_export_union *u)
 
     case RT_EXPORT_UPDATE:
       rtex_trace(r, D_ROUTES, "Export %lu released", u->update->seq);
-      lfjour_release(&r->r);
+      lfjour_release(&r->r, &u->update->li);
 
       break;
 
@@ -272,16 +272,18 @@ rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u)
       return NULL;
     }
 
+#define NEXT_INDEX(f) f->feed_index = f->next_feed_index ? f->next_feed_index(f, f->feed_index + 1) : f->feed_index + 1
+
 #define NOT_THIS_FEED(...) {		\
   rtex_trace(f, D_ROUTES, __VA_ARGS__);	\
-  f->feed_index++;			\
+  NEXT_INDEX(f);			\
   continue;				\
 }
 
     if (!feed)
       NOT_THIS_FEED("Nothing found for index %u", f->feed_index);
 
-    f->feed_index++;
+    NEXT_INDEX(f);
     return feed;
   }
 
@@ -319,18 +321,19 @@ rt_export_next_feed(struct rt_export_feeder *f)
 
   f->feed_index = 0;
 
-  if (f->feed_pending)
-  {
-    rtex_trace(f, D_STATES, "Feeding done, refeed request pending");
-    f->feeding = f->feed_pending;
-    f->feed_pending = NULL;
-    return rt_export_next_feed(f);
-  }
-  else
-  {
-    rtex_trace(f, D_STATES, "Feeding done (%u)", f->feed_index);
+  uint count = 0;
+  for (struct rt_feeding_request *rfr = f->feed_pending; rfr; rfr = rfr->next)
+    count++;
+
+  rtex_trace(f, D_STATES, "Feeding done, %u refeed request%s pending",
+      count, (count == 1) ? "" : "s");
+
+  if (!f->feed_pending)
     return NULL;
-  }
+
+  f->feeding = f->feed_pending;
+  f->feed_pending = NULL;
+  return rt_export_next_feed(f);
 }
 
 static void

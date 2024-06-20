@@ -211,7 +211,8 @@ struct lfjour_recipient {
   TLIST_DEFAULT_NODE;
   event *event;					/* Event running when something is in the journal */
   event_list *target;				/* Event target */
-  struct lfjour_item * _Atomic last;		/* Last item processed */
+  const struct lfjour_item * _Atomic last;	/* Last item processed */
+  u64 first_holding_seq;			/* First item not released yet */
   struct lfjour_item *cur;			/* Processing this now */
   _Atomic u64 recipient_flags;			/* LFJOUR_R_* */
 };
@@ -248,7 +249,7 @@ struct lfjour_item *lfjour_push_prepare(struct lfjour *);
 void lfjour_push_commit(struct lfjour *);
 
 struct lfjour_item *lfjour_get(struct lfjour_recipient *);
-void lfjour_release(struct lfjour_recipient *);
+void lfjour_release(struct lfjour_recipient *, const struct lfjour_item *);
 static inline _Bool lfjour_reset_seqno(struct lfjour_recipient *r)
 {
   return atomic_fetch_and_explicit(&r->recipient_flags, ~LFJOUR_R_SEQ_RESET, memory_order_acq_rel) & LFJOUR_R_SEQ_RESET;

@@ -477,7 +477,7 @@ rt_aggregate_roa(void *_rag)
 {
   struct rt_roa_aggregator *rag = _rag;
 
-  RT_EXPORT_WALK(&rag->src, u)
+  RT_EXPORT_WALK(&rag->src, u) TMP_SAVED
   {
     const net_addr *nroa = NULL;
     struct rte_src *src = NULL;
@@ -529,7 +529,7 @@ rt_aggregate_roa(void *_rag)
       SKIP_BACK_DECLARE(struct rt_roa_aggregated_adata, rad, ad, ea->u.ptr);
 
       count = ROA_AGGR_COUNT(rad);
-      rad_new = alloca(sizeof *rad_new + (count + 1) * sizeof rad_new->u[0]);
+      rad_new = tmp_alloc(sizeof *rad_new + (count + 1) * sizeof rad_new->u[0]);
 
       /* Insertion into a sorted list */
       uint p = 0;
@@ -559,7 +559,7 @@ rt_aggregate_roa(void *_rag)
     else if (src)
     {
       count = 1;
-      rad_new = alloca(sizeof *rad_new + sizeof rad_new->u[0]);
+      rad_new = tmp_alloc(sizeof *rad_new + sizeof rad_new->u[0]);
       rad_new->u[0].asn = asn;
       rad_new->u[0].max_pxlen = max_pxlen;
     }
@@ -1987,6 +1987,9 @@ channel_preimport(struct rt_import_request *req, rte *new, const rte *old)
     CHANNEL_LIMIT_POP(c, IN);
 
   mpls_rte_preimport(new_in ? new : NULL, old_in ? old : NULL);
+
+  if (new)
+    bmap_set(&c->imported_map, NET_TO_INDEX(new->net)->index);
 
   return verdict;
 }

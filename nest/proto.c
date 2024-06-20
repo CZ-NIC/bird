@@ -394,17 +394,23 @@ struct roa_subscription {
   void (*refeed_hook)(struct channel *, struct rt_feeding_request *);
   struct lfjour_recipient digest_recipient;
   event update_event;
-  struct rt_feeding_request rfr;
+};
+
+struct roa_reload_request {
+  struct rt_feeding_request req;
+  struct roa_subscription *s;
+  struct lfjour_item *item;
 };
 
 static void
 channel_roa_reload_done(struct rt_feeding_request *req)
 {
-  SKIP_BACK_DECLARE(struct roa_subscription, s, rfr, req);
-  ASSERT_DIE(s->c->channel_state == CS_UP);
+  SKIP_BACK_DECLARE(struct roa_reload_request, rrr, req, req);
+  ASSERT_DIE(rrr->s->c->channel_state == CS_UP);
 
-  lfjour_release(&s->digest_recipient);
-  ev_send(proto_work_list(s->c->proto), &s->update_event);
+  lfjour_release(&rrr->s->digest_recipient, rrr->item);
+  ev_send(proto_work_list(rrr->s->c->proto), &rrr->s->update_event);
+  mb_free(rrr);
   /* FIXME: this should reset import/export filters if ACTION BLOCK */
 }
 
@@ -413,22 +419,24 @@ channel_roa_changed(void *_s)
 {
   struct roa_subscription *s = _s;
 
-  if (s->digest_recipient.cur)
-    return;
+  for (struct lfjour_item *it; it = lfjour_get(&s->digest_recipient); )
+  {
+    SKIP_BACK_DECLARE(struct rt_digest, rd, li, s->digest_recipient.cur);
+    struct roa_reload_request *rrr = mb_alloc(s->c->proto->pool, sizeof *rrr);
+    *rrr = (struct roa_reload_request) {
+      .req = {
+	.prefilter = {
+	  .mode = TE_ADDR_TRIE,
+	  .trie = rd->trie,
+	},
+	.done = channel_roa_reload_done,
+      },
+      .s = s,
+      .item = it,
+    };
 
-  if (!lfjour_get(&s->digest_recipient))
-    return;
-
-  SKIP_BACK_DECLARE(struct rt_digest, rd, li, s->digest_recipient.cur);
-  s->rfr = (struct rt_feeding_request) {
-    .prefilter = {
-      .mode = TE_ADDR_TRIE,
-      .trie = rd->trie,
-    },
-    .done = channel_roa_reload_done,
-  };
-
-  s->refeed_hook(s->c, &s->rfr);
+    s->refeed_hook(s->c, &rrr->req);
+  }
 }
 
 static inline void (*channel_roa_reload_hook(int dir))(struct channel *, struct rt_feeding_request *)
@@ -572,6 +580,8 @@ channel_start_import(struct channel *c)
   channel_reset_limit(c, &c->rx_limit, PLD_RX);
   channel_reset_limit(c, &c->in_limit, PLD_IN);
 
+  bmap_init(&c->imported_map, c->proto->pool, 16);
+
   memset(&c->import_stats, 0, sizeof(struct channel_import_stats));
 
   DBG("%s.%s: Channel start import req=%p\n", c->proto->name, c->name, &c->in_req);
@@ -694,7 +704,22 @@ channel_import_stopped(struct rt_import_request *req)
   mb_free(c->in_req.name);
   c->in_req.name = NULL;
 
+  bmap_free(&c->imported_map);
+
   channel_check_stopped(c);
+}
+
+static u32
+channel_reimport_next_feed_index(struct rt_export_feeder *f, u32 try_this)
+{
+  SKIP_BACK_DECLARE(struct channel, c, reimporter, f);
+  while (!bmap_test(&c->imported_map, try_this))
+    if (!(try_this & (try_this - 1))) /* return every power of two to check for maximum */
+      return try_this;
+    else
+      try_this++;
+
+  return try_this;
 }
 
 static void
@@ -704,6 +729,7 @@ channel_do_reload(void *_c)
 
   RT_FEED_WALK(&c->reimporter, f)
   {
+    _Bool seen = 0;
     for (uint i = 0; i < f->count_routes; i++)
     {
       rte *r = &f->block[i];
@@ -721,8 +747,13 @@ channel_do_reload(void *_c)
 
 	/* And reload the route */
 	rte_update(c, r->net, &new, new.src);
+
+	seen = 1;
       }
     }
+
+    if (!seen)
+      bmap_clear(&c->imported_map, f->ni->index);
 
     /* Local data needed no more */
     tmp_flush();
@@ -739,6 +770,7 @@ channel_setup_in_table(struct channel *c)
   c->reimporter = (struct rt_export_feeder) {
     .name = mb_sprintf(c->proto->pool, "%s.%s.reimport", c->proto->name, c->name),
     .trace_routes = c->debug,
+    .next_feed_index = channel_reimport_next_feed_index,
   };
   c->reimport_event = (event) {
     .hook = channel_do_reload,

@@ -117,7 +117,7 @@ lfjour_push_commit(struct lfjour *j)
 }
 
 static struct lfjour_item *
-lfjour_get_next(struct lfjour *j, struct lfjour_item *last)
+lfjour_get_next(struct lfjour *j, const struct lfjour_item *last)
 {
   /* This is lockless, no domain checks. */
   if (!last)
@@ -158,36 +158,67 @@ lfjour_get_next(struct lfjour *j, struct lfjour_item *last)
 struct lfjour_item *
 lfjour_get(struct lfjour_recipient *r)
 {
-  ASSERT_DIE(r->cur == NULL);
   struct lfjour *j = lfjour_of_recipient(r);
 
-  /* The last pointer may get cleaned up under our hands.
-   * Indicating that we're using it, by RCU read. */
+  const struct lfjour_item *last = r->cur;
+  struct lfjour_item *next = NULL;
 
-  rcu_read_lock();
-  struct lfjour_item *last = atomic_load_explicit(&r->last, memory_order_acquire);
-  r->cur = lfjour_get_next(j, last);
-  rcu_read_unlock();
+  if (last)
+    next = lfjour_get_next(j, r->cur);
+  else
+  {
+    /* The last pointer may get cleaned up under our hands.
+     * Indicating that we're using it, by RCU read. */
+
+    rcu_read_lock();
+    last = atomic_load_explicit(&r->last, memory_order_acquire);
+    next = lfjour_get_next(j, last);
+    rcu_read_unlock();
+  }
 
   if (last)
   {
     lfjour_debug_detailed("lfjour(%p)_get(recipient=%p) returns %p, seq=%lu, last %p",
-	j, r, r->cur, r->cur ? r->cur->seq : 0ULL, last);
+	j, r, next, next ? next->seq : 0ULL, last);
   }
   else
   {
     lfjour_debug("lfjour(%p)_get(recipient=%p) returns %p, seq=%lu, clean",
-	j, r, r->cur, r->cur ? r->cur->seq : 0ULL);
+	j, r, next, next ? next->seq : 0ULL);
   }
 
-  return r->cur;
+  if (!next)
+    return NULL;
+
+  if (!r->first_holding_seq)
+    r->first_holding_seq = next->seq;
+
+  return r->cur = next;
 }
 
-void lfjour_release(struct lfjour_recipient *r)
+void lfjour_release(struct lfjour_recipient *r, const struct lfjour_item *it)
 {
-  /* This is lockless, no domain checks. */
+  /* Find out what we actually released last */
+  rcu_read_lock();
+  const struct lfjour_item *last = atomic_load_explicit(&r->last, memory_order_acquire);
+  struct lfjour_block *last_block = last ? PAGE_HEAD(last) : NULL;
+  rcu_read_unlock();
 
+  /* This is lockless, no domain checks. */
   ASSERT_DIE(r->cur);
+
+  /* Partial or full release? */
+  ASSERT_DIE(r->first_holding_seq);
+  ASSERT_DIE(it->seq >= r->first_holding_seq);
+  if (it->seq < r->cur->seq)
+  {
+    lfjour_debug("lfjour(%p)_release(recipient=%p) of %p, partial upto seq=%lu",
+	j, r, it, it->seq);
+    r->first_holding_seq = it->seq + 1;
+    atomic_store_explicit(&r->last, it, memory_order_release);
+    return;
+  }
+
   struct lfjour_block *block = PAGE_HEAD(r->cur);
   u32 end = atomic_load_explicit(&block->end, memory_order_acquire);
 
@@ -210,9 +241,10 @@ void lfjour_release(struct lfjour_recipient *r)
   atomic_store_explicit(&r->last, r->cur, memory_order_release);
 
   /* The last block may be available to free */
-  if (pos + 1 == end)
+  if ((pos + 1 == end) || last && (last_block != block))
     lfjour_schedule_cleanup(j);
 
+  r->first_holding_seq = 0;
   r->cur = NULL;
 }
 
@@ -276,7 +308,7 @@ lfjour_unregister(struct lfjour_recipient *r)
   ASSERT_DIE(!j->domain || DG_IS_LOCKED(j->domain));
 
   if (r->cur)
-    lfjour_release(r);
+    lfjour_release(r, r->cur);
 
   lfjour_recipient_rem_node(&j->recipients, r);
   lfjour_schedule_cleanup(j);
@@ -297,7 +329,7 @@ lfjour_cleanup_hook(void *_j)
   if (_locked) DG_LOCK(_locked);
 
   u64 min_seq = ~((u64) 0);
-  struct lfjour_item *last_item_to_free = NULL;
+  const struct lfjour_item *last_item_to_free = NULL;
   struct lfjour_item *first = atomic_load_explicit(&j->first, memory_order_acquire);
 
   if (!first)
@@ -310,7 +342,7 @@ lfjour_cleanup_hook(void *_j)
 
   WALK_TLIST(lfjour_recipient, r, &j->recipients)
   {
-    struct lfjour_item *last = atomic_load_explicit(&r->last, memory_order_acquire);
+    const struct lfjour_item *last = atomic_load_explicit(&r->last, memory_order_acquire);
 
     if (!last)
       /* No last export means that the channel has exported nothing since last cleanup */
@@ -333,7 +365,7 @@ lfjour_cleanup_hook(void *_j)
 
   WALK_TLIST(lfjour_recipient, r, &j->recipients)
   {
-    struct lfjour_item *last = last_item_to_free;
+    const struct lfjour_item *last = last_item_to_free;
     /* This either succeeds if this item is the most-behind-one,
      * or fails and gives us the actual last for debug output. */
     if (atomic_compare_exchange_strong_explicit(
