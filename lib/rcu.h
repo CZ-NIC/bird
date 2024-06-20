@@ -23,6 +23,7 @@ extern _Atomic u64 rcu_global_phase;
 
 struct rcu_thread {
   struct rcu_thread * _Atomic next;
+  u64 local_ctl;
   _Atomic u64 ctl;
 };
 
@@ -32,35 +33,31 @@ extern _Thread_local uint rcu_blocked;
 static inline void rcu_read_lock(void)
 {
   /* Increment the nesting counter */
-  u64 before = atomic_fetch_add_explicit(
-      &this_rcu_thread.ctl,
-      RCU_NEST_CNT,
-      memory_order_acq_rel
-      );
+  atomic_store_explicit(&this_rcu_thread.ctl, (this_rcu_thread.local_ctl += RCU_NEST_CNT), memory_order_release);
 
-  if (before & RCU_NEST_MASK)
+  /* Just nested */
+  u64 local_nest = this_rcu_thread.local_ctl & RCU_NEST_MASK;
+  if (local_nest > RCU_NEST_CNT)
     return;
 
-  /* Update the phase */
-  u64 phase = atomic_load_explicit(&rcu_global_phase, memory_order_acquire);
-  u64 dif = (before & ~RCU_NEST_MASK) ^ phase;
+  ASSUME(local_nest == RCU_NEST_CNT);
 
-  if (dif)
-    atomic_fetch_xor_explicit(
-	&this_rcu_thread.ctl,
-	dif,
-	memory_order_acq_rel);
+  /* Update the phase */
+  u64 new = atomic_load_explicit(&rcu_global_phase, memory_order_acquire) + RCU_NEST_CNT;
+  atomic_store_explicit(&this_rcu_thread.ctl, new, memory_order_release);
+  this_rcu_thread.local_ctl = new;
 }
 
 static inline void rcu_read_unlock(void)
 {
   /* Just decrement the nesting counter; when unlocked, nobody cares */
   atomic_fetch_sub_explicit(&this_rcu_thread.ctl, RCU_NEST_CNT, memory_order_acq_rel);
+  this_rcu_thread.local_ctl--;
 }
 
 static inline _Bool rcu_read_active(void)
 {
-  return !!(atomic_load_explicit(&this_rcu_thread.ctl, memory_order_acquire) & RCU_NEST_MASK);
+  return !!(this_rcu_thread.local_ctl & RCU_NEST_MASK);
 }
 
 void synchronize_rcu(void);
