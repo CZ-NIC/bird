@@ -1733,8 +1733,8 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
   return r->l;
 }
 
-#define EA_UC_SUB   (1ULL << 56)
-#define EA_UC_IN_PROGRESS(x)	((x) >> 56)
+#define EA_UC_SUB   (1ULL << 44)
+#define EA_UC_IN_PROGRESS(x)	((x) >> 44)
 #define EA_UC_ASSIGNED(x)	((x) & (EA_UC_SUB-1))
 
 #define EA_UC_DONE(x)		(EA_UC_ASSIGNED(x) == EA_UC_IN_PROGRESS(x))
@@ -1744,16 +1744,25 @@ ea_free_deferred(struct deferred_call *dc)
 {
   struct ea_storage *r = ea_get_storage(SKIP_BACK(struct ea_free_deferred, dc, dc)->attrs);
 
-  /* Wait until the previous free has ended */
-  u64 prev;
-  do prev = atomic_fetch_or_explicit(&r->uc, EA_UC_SUB, memory_order_acq_rel);
-  while (prev & EA_UC_SUB);
-
+  /* Indicate free intent */
+  u64 prev = atomic_fetch_add_explicit(&r->uc, EA_UC_SUB, memory_order_acq_rel);
   prev |= EA_UC_SUB;
 
   if (!EA_UC_DONE(prev))
   {
     /* The easy case: somebody else holds the usecount */
+    ASSERT_DIE(EA_UC_IN_PROGRESS(prev) < EA_UC_ASSIGNED(prev));
+    atomic_fetch_sub_explicit(&r->uc, EA_UC_SUB + 1, memory_order_acq_rel);
+    return;
+  }
+
+  /* Wait for others to finish */
+  while (EA_UC_DONE(prev) && (EA_UC_IN_PROGRESS(prev) > 1))
+    prev = atomic_load_explicit(&r->uc, memory_order_acquire);
+
+  if (!EA_UC_DONE(prev))
+  {
+    /* Somebody else has found us inbetween, no need to free */
     ASSERT_DIE(EA_UC_IN_PROGRESS(prev) < EA_UC_ASSIGNED(prev));
     atomic_fetch_sub_explicit(&r->uc, EA_UC_SUB + 1, memory_order_acq_rel);
     return;
@@ -1767,16 +1776,16 @@ ea_free_deferred(struct deferred_call *dc)
 
   /* Somebody has cloned this rta inbetween. This sometimes happens. */
   prev = atomic_load_explicit(&r->uc, memory_order_acquire);
-  if (!EA_UC_DONE(prev))
+  if (!EA_UC_DONE(prev) || (EA_UC_IN_PROGRESS(prev) > 1))
   {
-    /* Reinsert the ea */
+    /* Reinsert the ea and go away */
     SPINHASH_INSERT(rta_hash_table, RTAH, r);
     atomic_fetch_sub_explicit(&r->uc, EA_UC_SUB + 1, memory_order_acq_rel);
     RTA_UNLOCK;
     return;
   }
 
-  /* Fine, wait until everybody is actually done */
+  /* Fine, now everybody is actually done */
   ASSERT_DIE(atomic_load_explicit(&r->uc, memory_order_acquire) == EA_UC_SUB + 1);
 
   /* And now we can free the object, finally */
