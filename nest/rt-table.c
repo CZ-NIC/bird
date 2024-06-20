@@ -576,8 +576,11 @@ rt_aggregate_roa(void *_rag)
 
     rte_import(&rag->stream.dst, &nip.n, &r, prev.src ?: src);
 
+#if 0
+    /* Do not split ROA aggregator, we want this to be finished asap */
     MAYBE_DEFER_TASK(rag->src.r.target, rag->src.r.event,
 	"export to %s", rag->src.name);
+#endif
   }
 }
 
@@ -2993,8 +2996,12 @@ rt_digest_update(void *_d)
     if (ni)
       rt_digest_update_net(d, ni, net_max_prefix_length[tab->addr_type]);
 
+#if 0
+    /* Digestor is never splitting, it just digests everything
+     * because we prefer to generate one big trie instead of a lot of small ones. */
     MAYBE_DEFER_TASK(birdloop_event_list(tab->loop), &d->event,
 	"ROA digestor update in %s", tab->name);
+#endif
   }
 }
 
