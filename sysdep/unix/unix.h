@@ -112,7 +112,7 @@ struct rfile *rf_open(struct pool *, const char *name, const char *mode);
 struct rfile *rf_fdopen(pool *p, int fd, const char *mode);
 void *rf_file(struct rfile *f);
 int rf_fileno(struct rfile *f);
-void test_old_bird(char *path);
+void test_old_bird(const char *path);
 ip_addr resolve_hostname(const char *host, int type, const char **err_msg);
 
 /* krt.c bits */

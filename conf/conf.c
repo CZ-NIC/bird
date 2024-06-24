@@ -552,6 +552,7 @@ order_shutdown(int gr)
   init_list(&c->tables);
   init_list(&c->mpls_domains);
   init_list(&c->symbols);
+  c->cli = (struct cli_config_list) {};
   memset(c->def_tables, 0, sizeof(c->def_tables));
   c->shutdown = 1;
   c->gr_down = gr;

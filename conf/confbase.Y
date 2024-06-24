@@ -100,6 +100,7 @@ CF_DECLS
   mpls_label_stack *mls;
   const struct adata *bs;
   struct aggr_item_node *ai;
+  struct cli_config *cli;
 }
 
 %token END CLI_MARKER INVALID_TOKEN ELSECOL DDOT

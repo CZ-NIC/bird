@@ -21,6 +21,7 @@ CF_KEYWORDS(LOG, SYSLOG, NAME, STDERR, UDP, PORT, CLI)
 CF_KEYWORDS(ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, FATAL, BUG)
 CF_KEYWORDS(DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, TIMEOUT, THREADS)
 
+%type <cli> cli_opts
 %type <i> log_mask log_mask_list log_cat cfg_timeout
 %type <t> cfg_name
 %type <tf> timeformat_which
@@ -122,6 +123,21 @@ mrtdump_base:
      }
    }
  ;
+
+conf: cli ;
+
+cli: CLI text cli_opts {
+  $3->name = $2;
+  cli_config_add_tail(&new_config->cli, $3);
+} ;
+
+cli_opts: ';' {
+  $$ = cfg_alloc(sizeof *$$);
+  *$$ = (typeof (*$$)) {
+    .config = new_config,
+    .mode = 0660,
+  };
+};
 
 conf: debug_unix ;
 

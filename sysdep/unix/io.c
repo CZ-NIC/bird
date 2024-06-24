@@ -2427,7 +2427,7 @@ io_loop(void)
 }
 
 void
-test_old_bird(char *path)
+test_old_bird(const char *path)
 {
   int fd;
   struct sockaddr_un sa;
