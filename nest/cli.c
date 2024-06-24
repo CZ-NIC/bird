@@ -306,7 +306,7 @@ cli_event(void *data)
 }
 
 cli *
-cli_new(void *priv)
+cli_new(void *priv, struct cli_config *cf)
 {
   pool *p = rp_new(cli_pool, "CLI");
   cli *c = mb_alloc(p, sizeof(cli));
@@ -321,6 +321,10 @@ cli_new(void *priv)
   c->parser_pool = lp_new_default(c->pool);
   c->show_pool = lp_new_default(c->pool);
   c->rx_buf = mb_alloc(c->pool, CLI_RX_BUF_SIZE);
+
+  if (cf->restricted)
+    c->restricted = 1;
+
   ev_schedule(c->event);
   return c;
 }

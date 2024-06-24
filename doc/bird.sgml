@@ -1253,6 +1253,11 @@ socket multiple times and BIRD may behave weirdly if this happens. On shutdown,
 the additional sockets get removed immediately and only the main socket stays
 until the very end.
 
+<p>The remote control socket can be also set as restricted by
+<cf/cli "name" { restrict; };/ instead of sending the <cf/restrict/ command
+after connecting. The user may still overload the daemon by requesting insanely
+complex filters so you shouldn't expose this socket to public anyway.
+
 <sect>Usage
 <label id="remote-control-usage">
 

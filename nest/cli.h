@@ -60,6 +60,7 @@ struct cli_config {
   const char *name;
   struct config *config;
   uint uid, gid, mode;
+  _Bool restricted;
 };
 #include "lib/tlists.h"
 
@@ -81,7 +82,7 @@ static inline void cli_separator(cli *c)
 
 /* Functions provided to sysdep layer */
 
-cli *cli_new(void *);
+cli *cli_new(void *, struct cli_config *);
 void cli_init(void);
 void cli_free(cli *);
 void cli_kick(cli *);
