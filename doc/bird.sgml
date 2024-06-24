@@ -1219,9 +1219,11 @@ protocol bgp {
 <chapt>Remote control
 <label id="remote-control">
 
+<sect>Overview
+<label id="remote-control-overview">
+
 <p>You can use the command-line client <file>birdc</file> to talk with a running
-BIRD. Communication is done using a <file/bird.ctl/ UNIX domain socket (unless
-changed with the <tt/-s/ option given to both the server and the client). The
+BIRD. Communication is done using the appropriate UNIX domain socket. The
 commands can perform simple actions such as enabling/disabling of protocols,
 telling BIRD to show various information, telling it to show routing table
 filtered by filter, or asking BIRD to reconfigure. Press <tt/?/ at any time to
@@ -1237,10 +1239,27 @@ does not support command line editing and history and has minimal dependencies.
 This is useful for running BIRD in resource constrained environments, where
 Readline library (required for regular BIRD client) is not available.
 
-<p>Many commands have the <m/name/ of the protocol instance as an argument.
-This argument can be omitted if there exists only a single instance.
+<sect>Configuration
+<label id="remote-control-configuration">
 
-<p>Here is a brief list of supported functions:
+<p>By default, BIRD opens <file/bird.ctl/ UNIX domain socket and the CLI tool
+connects to it. If changed on the command line by the <tt/-s/ option,
+BIRD or the CLI tool connects there instead.
+
+<p>It's also possible to configure additional remote control sockets in the
+configuration file by <cf/cli "name";/ and you can open how many
+sockets you wish. There are no checks whether the user configured the same
+socket multiple times and BIRD may behave weirdly if this happens. On shutdown,
+the additional sockets get removed immediately and only the main socket stays
+until the very end.
+
+<sect>Usage
+<label id="remote-control-usage">
+
+<p>Here is a brief list of supported functions.
+
+<p>Note: Many commands have the <m/name/ of the protocol instance as an argument.
+This argument can be omitted if there exists only a single instance.
 
 <descrip>
 	<tag><label id="cli-show-status">show status</tag>
