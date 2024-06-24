@@ -71,27 +71,34 @@
 
 #define TLIST_NAME(x)	MACRO_CONCAT_AFTER(TLIST_PREFIX,_##x)
 #ifndef TLIST_LIST_STRUCT
-#define TLIST_LIST_STRUCT	TLIST_NAME(list)
+#define TLIST_LIST_STRUCT	struct TLIST_NAME(list)
 #endif
 
-typedef struct TLIST_LIST_STRUCT {
-  TLIST_TYPE *first;
-  TLIST_TYPE *last;
-} TLIST_LIST_STRUCT;
+#ifndef TLIST_DEFINED_BEFORE
+TLIST_STRUCT_DEF(TLIST_PREFIX, TLIST_TYPE);
+#endif
+
+static inline TLIST_LIST_STRUCT * TLIST_NAME(enlisted)(TLIST_TYPE *node)
+{
+  return node->TLIST_ITEM.list;
+}
 
 #ifdef TLIST_WANT_WALK
 static inline struct TLIST_NAME(node) * TLIST_NAME(node_get)(TLIST_TYPE *node)
 { return &(node->TLIST_ITEM); }
 #endif
 
-#ifdef TLIST_WANT_ADD_HEAD
+#if defined(TLIST_WANT_ADD_HEAD) || defined(TLIST_WANT_ADD_AFTER)
 static inline void TLIST_NAME(add_head)(TLIST_LIST_STRUCT *list, TLIST_TYPE *node)
 {
-  ASSERT_DIE(!node->TLIST_ITEM.prev && !node->TLIST_ITEM.next);
+  ASSERT_DIE(!TLIST_NAME(enlisted)(node));
+  node->TLIST_ITEM.list = list;
+
   if (node->TLIST_ITEM.next = list->first)
     list->first->TLIST_ITEM.prev = node;
   else
     list->last = node;
+
   list->first = node;
 }
 #endif
@@ -99,17 +106,65 @@ static inline void TLIST_NAME(add_head)(TLIST_LIST_STRUCT *list, TLIST_TYPE *nod
 #ifdef TLIST_WANT_ADD_TAIL
 static inline void TLIST_NAME(add_tail)(TLIST_LIST_STRUCT *list, TLIST_TYPE *node)
 {
-  ASSERT_DIE(!node->TLIST_ITEM.prev && !node->TLIST_ITEM.next);
+  ASSERT_DIE(!TLIST_NAME(enlisted)(node));
+  node->TLIST_ITEM.list = list;
+
   if (node->TLIST_ITEM.prev = list->last)
     list->last->TLIST_ITEM.next = node;
   else
     list->first = node;
+
   list->last = node;
 }
 #endif
 
+#ifdef TLIST_WANT_UPDATE_NODE
+static inline void TLIST_NAME(update_node)(TLIST_LIST_STRUCT *list, TLIST_TYPE *node)
+{
+  ASSERT_DIE(TLIST_NAME(enlisted)(node) == list);
+
+  if (node->TLIST_ITEM.prev)
+    node->TLIST_ITEM.prev->TLIST_ITEM.next = node;
+  else
+    list->first = node;
+
+  if (node->TLIST_ITEM.next)
+    node->TLIST_ITEM.next->TLIST_ITEM.prev = node;
+  else
+    list->last = node;
+}
+#endif
+
+#ifdef TLIST_WANT_ADD_AFTER
+static inline void TLIST_NAME(add_after)(TLIST_LIST_STRUCT *list, TLIST_TYPE *node, TLIST_TYPE *after)
+{
+  ASSERT_DIE(!TLIST_NAME(enlisted)(node));
+
+  /* Adding to beginning */
+  if (!(node->TLIST_ITEM.prev = after))
+    return TLIST_NAME(add_head)(list, node);
+
+  /* OK, Adding after a real node */
+  node->TLIST_ITEM.list = list;
+
+  /* There is another node after the anchor */
+  if (node->TLIST_ITEM.next = after->TLIST_ITEM.next)
+    /* Link back */
+    node->TLIST_ITEM.next->TLIST_ITEM.prev = node;
+  else
+    /* Or we are adding the last node */
+    list->last = node;
+
+  /* Link forward from "after" */
+  after->TLIST_ITEM.next = node;
+}
+#endif
+
+
 static inline void TLIST_NAME(rem_node)(TLIST_LIST_STRUCT *list, TLIST_TYPE *node)
 {
+  ASSERT_DIE(TLIST_NAME(enlisted)(node) == list);
+
   if (node->TLIST_ITEM.prev)
     node->TLIST_ITEM.prev->TLIST_ITEM.next = node->TLIST_ITEM.next;
   else
@@ -127,6 +182,7 @@ static inline void TLIST_NAME(rem_node)(TLIST_LIST_STRUCT *list, TLIST_TYPE *nod
   }
 
   node->TLIST_ITEM.next = node->TLIST_ITEM.prev = NULL;
+  node->TLIST_ITEM.list = NULL;
 }
 
 #undef TLIST_PREFIX
@@ -136,6 +192,7 @@ static inline void TLIST_NAME(rem_node)(TLIST_LIST_STRUCT *list, TLIST_TYPE *nod
 #undef TLIST_ITEM
 #undef TLIST_WANT_ADD_HEAD
 #undef TLIST_WANT_ADD_TAIL
+#undef TLIST_WANT_UPDATE_NODE
 
 # endif
 #else
@@ -147,8 +204,14 @@ static inline void TLIST_NAME(rem_node)(TLIST_LIST_STRUCT *list, TLIST_TYPE *nod
 #error "You should first include lib/tlists.h without requesting a TLIST"
 #endif
 
-#define TLIST_NODE(_name, _type)	struct _name##_node { _type *next; _type *prev; }
-#define TLIST_LIST(_name)		struct _name##_list 
+#define TLIST_LIST(_name)		struct _name##_list
+#define TLIST_STRUCT_DEF(_name, _type)	TLIST_LIST(_name) { _type *first, *last; }
+
+#define TLIST_NODE_IN(_name, _type)	{ _type *next; _type *prev; TLIST_LIST(_name) *list; }
+#define TLIST_NODE(_name, _type)	struct _name##_node TLIST_NODE_IN(_name, _type)
+#define TLIST_DEFAULT_NODE		struct MACRO_CONCAT_AFTER(TLIST_PREFIX,_node) \
+					TLIST_NODE_IN(TLIST_PREFIX,TLIST_TYPE) TLIST_ITEM
+
 
 /* Use ->first and ->last to access HEAD and TAIL */
 #define THEAD(_name, _list)  (_list)->first
@@ -167,6 +230,9 @@ static inline void TLIST_NAME(rem_node)(TLIST_LIST_STRUCT *list, TLIST_TYPE *nod
 
 /* Empty check */
 #define EMPTY_TLIST(_name, _list) (!(_list)->first)
+
+/* List length */
+#define TLIST_LENGTH(_name, _list)  ({ uint _len = 0; WALK_TLIST(_name, _, _list) _len++; _len; })
 
 #endif
 
