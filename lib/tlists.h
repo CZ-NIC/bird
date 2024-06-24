@@ -193,6 +193,7 @@ static inline void TLIST_NAME(rem_node)(TLIST_LIST_STRUCT *list, TLIST_TYPE *nod
 #undef TLIST_WANT_ADD_HEAD
 #undef TLIST_WANT_ADD_TAIL
 #undef TLIST_WANT_UPDATE_NODE
+#undef TLIST_DEFINED_BEFORE
 
 # endif
 #else
