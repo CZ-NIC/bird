@@ -2855,6 +2855,9 @@ bgp_show_proto_info(struct proto *P)
       if (c->base_table)
 	cli_msg(-1006, "    Base table:     %s", c->base_table->name);
 
+      if (!c->tx)
+	continue;
+
       BGP_PTX_LOCK(c->tx, tx);
 
       uint bucket_cnt = 0;
