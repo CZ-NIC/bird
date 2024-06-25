@@ -322,8 +322,6 @@ cli_new(void *priv, struct cli_config *cf)
   c->show_pool = lp_new_default(c->pool);
   c->rx_buf = mb_alloc(c->pool, CLI_RX_BUF_SIZE);
 
-  c->config = cf;
-  config_add_obstacle(cf->config);
   if (cf->restricted)
     c->restricted = 1;
 
@@ -419,7 +417,6 @@ cli_free(cli *c)
     c->cleanup(c);
   if (c == cmd_reconfig_stored_cli)
     cmd_reconfig_stored_cli = NULL;
-  config_del_obstacle(c->config->config);
   rfree(c->pool);
 }
 

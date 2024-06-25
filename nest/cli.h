@@ -29,7 +29,6 @@ struct cli_out {
 
 typedef struct cli {
   node n;				/* Node in list of all log hooks */
-  struct cli_config *config;		/* Configuration of the appropriate cli */
   pool *pool;
   void *priv;				/* Private to sysdep layer */
   byte *rx_buf, *rx_pos;		/* sysdep */
