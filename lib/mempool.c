@@ -43,6 +43,7 @@ struct linpool {
   uint total, total_large;
 };
 
+static void *lp_alloc_slow(struct linpool *, uint);
 static void lp_free(resource *);
 static void lp_dump(resource *, unsigned);
 static resource *lp_lookup(resource *, unsigned long);
@@ -99,6 +100,11 @@ lp_alloc(linpool *m, uint size)
       return a;
     }
   else
+    return lp_alloc_slow(m, size);
+}
+
+static void *
+lp_alloc_slow(linpool *m, uint size)
     {
       struct lp_chunk *c;
       if (size > LP_DATA_SIZE)
@@ -134,7 +140,6 @@ lp_alloc(linpool *m, uint size)
 	}
       return c->data;
     }
-}
 
 /**
  * lp_allocu - allocate unaligned memory from a &linpool
@@ -158,7 +163,7 @@ lp_allocu(linpool *m, uint size)
       m->ptr = e;
       return a;
     }
-  return lp_alloc(m, size);
+  return lp_alloc_slow(m, size);
 }
 
 /**
