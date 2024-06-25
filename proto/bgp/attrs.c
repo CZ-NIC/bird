@@ -1574,10 +1574,10 @@ bgp_finish_attrs(struct bgp_parse_state *s, ea_list **to)
  *	Route bucket hash table
  */
 
-#define RBH_KEY(b)		b->attrs
+#define RBH_KEY(b)		b->eattrs, b->hash
 #define RBH_NEXT(b)		b->next
-#define RBH_EQ(a1,a2)		a1 == a2
-#define RBH_FN(a)		ea_get_storage(a)->hash_key
+#define RBH_EQ(a1,h1,a2,h2)	h1 == h2 && ea_same(a1, a2)
+#define RBH_FN(a,h)		h
 
 #define RBH_REHASH		bgp_rbh_rehash
 #define RBH_PARAMS		/8, *2, 2, 2, 12, 20
@@ -1589,7 +1589,6 @@ static void
 bgp_init_bucket_table(struct bgp_ptx_private *c)
 {
   HASH_INIT(c->bucket_hash, c->pool, 8);
-  c->bucket_slab = sl_new(c->pool, sizeof(struct bgp_bucket));
 
   init_list(&c->bucket_queue);
   c->withdraw_bucket = NULL;
@@ -1599,21 +1598,24 @@ static struct bgp_bucket *
 bgp_get_bucket(struct bgp_ptx_private *c, ea_list *new)
 {
   /* Hash and lookup */
-  ea_list *ns = ea_lookup(new, 0, EALS_CUSTOM);
-  struct bgp_bucket *b = HASH_FIND(c->bucket_hash, RBH, ns);
+  u32 hash = ea_hash(new);
+  struct bgp_bucket *b = HASH_FIND(c->bucket_hash, RBH, new, hash);
 
   if (b)
-  {
-    ea_free(ns);
     return b;
-  }
+
+  /* Scan the list for total size */
+  uint ea_size = BIRD_CPU_ALIGN(ea_list_size(new));
+  uint size = sizeof(struct bgp_bucket) + ea_size;
 
   /* Allocate the bucket */
-  b = sl_alloc(c->bucket_slab);
-  *b = (struct bgp_bucket) {
-    .attrs = ns,
-  };
+  b = mb_alloc(c->pool, size);
+  *b = (struct bgp_bucket) { };
   init_list(&b->prefixes);
+  b->hash = hash;
+
+  /* Copy the ea_list */
+  ea_list_copy(b->eattrs, new, ea_size);
 
   /* Insert the bucket to bucket hash */
   HASH_INSERT2(c->bucket_hash, RBH, c->pool, b);
@@ -1637,8 +1639,7 @@ static void
 bgp_free_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b)
 {
   HASH_REMOVE2(c->bucket_hash, RBH, c->pool, b);
-  ea_free(b->attrs);
-  sl_free(b);
+  mb_free(b);
 }
 
 int
@@ -1917,7 +1918,7 @@ bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, _Bool
       {
 	if (px->cur)
 	  feed->block[pos++] = (rte) {
-	    .attrs = px->cur->attrs ? ea_ref_tmp(px->cur->attrs) : NULL,
+	    .attrs = (px->cur == c->withdraw_bucket) ? NULL : ea_free_later(ea_lookup_slow(px->cur->eattrs, 0, EALS_CUSTOM)),
 	    .net = ni->addr,
 	    .src = px->src,
 	    .lastmod = px->lastmod,
@@ -1926,7 +1927,7 @@ bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, _Bool
 
 	if (px->last)
 	  feed->block[pos++] = (rte) {
-	    .attrs = px->last->attrs ? ea_ref_tmp(px->last->attrs) : NULL,
+	    .attrs = (px->last == c->withdraw_bucket) ? NULL : ea_free_later(ea_lookup_slow(px->last->eattrs, 0, EALS_CUSTOM)),
 	    .net = ni->addr,
 	    .src = px->src,
 	    .lastmod = px->lastmod,
