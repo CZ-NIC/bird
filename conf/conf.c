@@ -64,7 +64,7 @@ config_ref config;
 _Thread_local struct config *new_config;
 pool *config_pool;
 
-static config_ref old_config;		/* Old configuration */
+struct config *old_config;		/* Old configuration */
 static config_ref future_config;	/* New config held here if recon requested during recon */
 static int old_cftype;			/* Type of transition old_config -> config (RECONFIG_SOFT/HARD) */
 static int future_cftype;		/* Type of scheduled transition, may also be RECONFIG_UNDO */
@@ -77,28 +77,15 @@ static timer *config_timer;		/* Timer for scheduled configuration rollback */
 /* These are public just for cmd_show_status(), should not be accessed elsewhere */
 int shutting_down;			/* Shutdown requested, do not accept new config changes */
 int configuring;			/* Reconfiguration is running */
-struct config *old_config_pending;	/* Just for debug convenience */
 int undo_available;			/* Undo was not requested from last reconfiguration */
 /* Note that both shutting_down and undo_available are related to requests, not processing */
 
 static void
-config_obstacles_cleared(struct callback *cb)
+config_obstacles_cleared(struct callback *_ UNUSED)
 {
-  SKIP_BACK_DECLARE(struct config, c, obstacles_cleared, cb);
   ASSERT_DIE(birdloop_inside(&main_birdloop));
-
-  if (c == old_config_pending)
-  {
-    old_config_pending = NULL;
-
-    if (!shutting_down)
-      OBSREF_SET(old_config, c);
-
-    if (configuring)
-      config_done();
-  }
-  else
-    config_free(c);
+  ASSERT_DIE(configuring);
+  config_done();
 }
 
 /**
@@ -235,9 +222,11 @@ config_free(struct config *c)
 void
 config_free_old(void)
 {
-  OBSREF_CLEAR(old_config);
   tm_stop(config_timer);
   undo_available = 0;
+
+  config_free(old_config);
+  old_config = NULL;
 }
 
 struct global_runtime global_runtime_internal[2] = {{
@@ -302,17 +291,17 @@ config_do_commit(config_ref *cr, int type)
 {
   if (type == RECONFIG_UNDO)
     {
-      OBSREF_SET(*cr, OBSREF_GET(old_config));
+      OBSREF_SET(*cr, old_config);
       type = old_cftype;
     }
+  else
+    config_free(old_config);
 
-  OBSREF_CLEAR(old_config);
-
+  old_config = NULL;
   old_cftype = type;
 
   struct config *c = OBSREF_GET(*cr);
-  struct config *oc = OBSREF_GET(config);
-  old_config_pending = oc;
+  old_config = OBSREF_GET(config);
 
   OBSREF_CLEAR(config);
   OBSREF_SET(config, OBSREF_GET(*cr));
@@ -326,23 +315,30 @@ config_do_commit(config_ref *cr, int type)
     }
 
   configuring = 1;
-  if (oc && !c->shutdown)
+  if (old_config && !c->shutdown)
     log(L_INFO "Reconfiguring");
 
   DBG("filter_commit\n");
-  filter_commit(c, oc);
+  filter_commit(c, old_config);
   DBG("sysdep_commit\n");
-  sysdep_commit(c, oc);
+  sysdep_commit(c, old_config);
   DBG("global_commit\n");
-  global_commit(c, oc);
-  mpls_commit(c, oc);
+  global_commit(c, old_config);
+  mpls_commit(c, old_config);
   DBG("rt_commit\n");
-  rt_commit(c, oc);
+  rt_commit(c, old_config);
   DBG("protos_commit\n");
-  protos_commit(c, oc, type);
+  protos_commit(c, old_config, type);
 
   /* Can be cleared directly? */
-  return !oc || callback_is_active(&oc->obstacles_cleared);
+  if (!old_config)
+    return 1;
+
+  if (!callback_is_active(&old_config->obstacles_cleared))
+    return 0;
+
+  callback_cancel(&old_config->obstacles_cleared);
+  return 1;
 }
 
 static void
@@ -355,7 +351,8 @@ config_done(void)
     sysdep_shutdown_done();
 
   configuring = 0;
-  if (OBSREF_GET(old_config))
+
+  if (old_config)
     log(L_INFO "Reconfigured");
 
   if (future_cftype)
@@ -486,7 +483,7 @@ config_undo(void)
   if (shutting_down)
     return CONF_SHUTDOWN;
 
-  if (!undo_available || !OBSREF_GET(old_config))
+  if (!undo_available || !old_config)
     return CONF_NOTHING;
 
   undo_available = 0;
