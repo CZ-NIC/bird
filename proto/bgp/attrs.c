@@ -1723,7 +1723,7 @@ bgp_get_prefix(struct bgp_ptx_private *c, struct netindex *ni, struct rte_src *s
     .ni = ni,
   };
 
-  net_lock_index(c->c->c.table->netindex, ni);
+  net_lock_index(c->exporter.netindex, ni);
   rt_lock_source(src);
 
   HASH_INSERT2(c->prefix_hash, PXH, c->pool, px);
@@ -1795,7 +1795,7 @@ bgp_free_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px)
 {
   HASH_REMOVE2(c->prefix_hash, PXH, c->pool, px);
 
-  net_unlock_index(c->c->c.table->netindex, px->ni);
+  net_unlock_index(c->exporter.netindex, px->ni);
   rt_unlock_source(px->src);
 
   sl_free(px);
@@ -1885,7 +1885,7 @@ bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, _Bool
   SKIP_BACK_DECLARE(struct bgp_ptx_private, c, exporter, e);
   ASSERT_DIE(DOMAIN_IS_LOCKED(rtable, c->lock));
 
-  struct netindex *ni = net_resolve_index(c->c->c.table->netindex, index);
+  struct netindex *ni = net_resolve_index(c->exporter.netindex, index);
   if (ni == &net_index_out_of_range)
     return &rt_feed_index_out_of_range;
 
