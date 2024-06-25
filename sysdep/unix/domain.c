@@ -35,10 +35,12 @@
  *	Locking subsystem
  */
 
+#ifdef DEBUGGING
 _Thread_local rw_spinlock *rw_spinlocks_taken[MAX_RWS_AT_ONCE];
 _Thread_local btime rw_spinlocks_time[MAX_RWS_AT_ONCE];
 _Thread_local u32 rw_spinlocks_taken_cnt;
 _Thread_local u32 rw_spinlocks_taken_write;
+#endif
 
 _Thread_local struct lock_order locking_stack = {};
 _Thread_local struct domain_generic **last_locked = NULL;

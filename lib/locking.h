@@ -107,6 +107,7 @@ typedef struct {
   u64 _Atomic spin;
 } rw_spinlock;
 
+#ifdef DEBUGGING
 #define MAX_RWS_AT_ONCE		32
 extern _Thread_local rw_spinlock *rw_spinlocks_taken[MAX_RWS_AT_ONCE];
 extern _Thread_local btime rw_spinlocks_time[MAX_RWS_AT_ONCE];
@@ -116,7 +117,6 @@ extern _Thread_local u32 rw_spinlocks_taken_write;
 /* Borrowed from lib/timer.h */
 btime current_time_now(void);
 
-#ifdef DEBUGGING
 static inline void rws_mark(rw_spinlock *p, _Bool write, _Bool lock)
 {
   if (lock) {
