@@ -667,8 +667,9 @@ bird_thread_pickup_next(struct birdloop_pickup_group *group)
 static _Bool
 birdloop_hot_potato(struct birdloop *loop)
 {
-  if (!loop)  return 0;
-  if (!NODE_VALID(&loop->n)) return 0;
+  if (!loop)
+    return 0;
+
   return ns_now() - loop->last_transition_ns < 1 S TO_NS;
 }
 
@@ -677,45 +678,56 @@ birdloop_take(struct birdloop_pickup_group *group)
 {
   struct birdloop *loop = NULL;
 
+  if (birdloop_hot_potato(this_thread->meta))
+    return;
+
   LOCK_DOMAIN(attrs, group->domain);
 
   if (this_thread->busy_active &&
       (group->thread_busy_count < group->thread_count) &&
       (this_thread->loop_count > 1) &&
+      !EMPTY_LIST(group->loops) &&
       birdloop_hot_potato(HEAD(group->loops)))
   {
     THREAD_TRACE(DL_SCHEDULING, "Loop drop requested (tbc=%d, tc=%d, lc=%d)",
 	group->thread_busy_count, group->thread_count, this_thread->loop_count);
     UNLOCK_DOMAIN(attrs, group->domain);
 
-    int dropped = 0;
+    uint dropped = 0;
     node *n;
     WALK_LIST2(loop, n, this_thread->loops, n)
     {
       birdloop_enter(loop);
       if (ev_active(&loop->event) && !loop->stopped && !birdloop_hot_potato(loop))
       {
-	LOOP_TRACE(loop, DL_SCHEDULING, "Dropping from thread");
 	/* Pass to another thread */
 	rem_node(&loop->n);
 	this_thread->loop_count--;
+	LOOP_TRACE(loop, DL_SCHEDULING, "Dropping from thread, remaining %u loops here", this_thread->loop_count);
 
 	/* This also unschedules the loop from Meta */
 	birdloop_set_thread(loop, NULL, group);
 
-	birdloop_leave(loop);
+	dropped++;
+	if (dropped * dropped > this_thread->loop_count)
+	{
+	  birdloop_leave(loop);
 
-	LOCK_DOMAIN(attrs, group->domain);
-	bird_thread_pickup_next(group);
-	UNLOCK_DOMAIN(attrs, group->domain);
-	dropped = 1;
-	break;
+	  LOCK_DOMAIN(attrs, group->domain);
+	  bird_thread_pickup_next(group);
+	  UNLOCK_DOMAIN(attrs, group->domain);
+
+	  break;
+	}
       }
       birdloop_leave(loop);
     }
 
     if (dropped)
+    {
+      this_thread->meta->last_transition_ns = ns_now();
       return;
+    }
 
     this_thread->busy_counter = 0;
     bird_thread_busy_set(this_thread, 0);
@@ -756,6 +768,7 @@ birdloop_take(struct birdloop_pickup_group *group)
   }
 
   UNLOCK_DOMAIN(attrs, group->domain);
+  this_thread->meta->last_transition_ns = ns_now();
 }
 
 static int
@@ -820,11 +833,11 @@ bird_thread_main(void *arg)
     u64 thr_loop_start = ns_now();
     int timeout;
 
-    /* Pickup new loops */
-    birdloop_take(thr->group);
-
     /* Schedule all loops with timed out timers */
     timers_fire(&thr->meta->time, 0);
+
+    /* Pickup new loops */
+    birdloop_take(thr->group);
 
     /* Compute maximal time per loop */
     u64 thr_before_run = ns_now();
