@@ -401,6 +401,8 @@ rt_dump_sources(struct rte_owner *o)
   debug("\n");
 }
 
+static struct rte_owner_class default_rte_owner_class;
+
 void
 rt_init_sources(struct rte_owner *o, const char *name, event_list *list)
 {
@@ -412,6 +414,8 @@ rt_init_sources(struct rte_owner *o, const char *name, event_list *list)
   o->prune = ev_new_init(rta_pool, rt_prune_sources, o);
   o->stop = NULL;
   o->list = list;
+  if (!o->class)
+    o->class = &default_rte_owner_class;
   RTA_UNLOCK;
   if (o->debug & D_EVENTS)
     log(L_TRACE "%s: initialized rte_src owner", o->name);

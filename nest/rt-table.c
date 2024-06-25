@@ -413,6 +413,8 @@ net_route(struct rtable_reading *tr, const net_addr *n)
 
 struct rt_roa_aggregator {
   struct rt_stream stream;
+  struct rte_owner sources;
+  struct rte_src *main_source;
   struct rt_export_request src;
   event event;
 };
@@ -479,8 +481,8 @@ rt_aggregate_roa(void *_rag)
 
   RT_EXPORT_WALK(&rag->src, u) TMP_SAVED
   {
+    _Bool withdraw = 0;
     const net_addr *nroa = NULL;
-    struct rte_src *src = NULL;
     switch (u->kind)
     {
       case RT_EXPORT_STOP:
@@ -489,12 +491,12 @@ rt_aggregate_roa(void *_rag)
 
       case RT_EXPORT_FEED:
 	nroa = u->feed->ni->addr;
-	src = (u->feed->count_routes > 0) ? u->feed->block[0].src : NULL;
+	withdraw = (u->feed->count_routes == 0);
 	break;
 
       case RT_EXPORT_UPDATE:
 	nroa = u->update->new ? u->update->new->net : u->update->old->net;
-	src = u->update->new ? u->update->new->src : NULL;
+	withdraw = !u->update->new;
 	break;
     }
 
@@ -541,22 +543,22 @@ rt_aggregate_roa(void *_rag)
 
       if ((rad->u[p].asn == asn) && (rad->u[p].max_pxlen))
 	/* Found */
-	if (src)
-	  continue;
-	else
+	if (withdraw)
 	  memcpy(&rad_new->u[p], &rad->u[p+1], (--count - p) * sizeof rad->u[p]);
+	else
+	  continue;
       else
 	/* Not found */
-	if (src)
+	if (withdraw)
+	  continue;
+	else
 	{
 	  rad_new->u[p].asn = asn;
 	  rad_new->u[p].max_pxlen = max_pxlen;
 	  memcpy(&rad_new->u[p+1], &rad->u[p], (count++ - p) * sizeof rad->u[p]);
 	}
-	else
-	  continue;
     }
-    else if (src)
+    else if (!withdraw)
     {
       count = 1;
       rad_new = tmp_alloc(sizeof *rad_new + sizeof rad_new->u[0]);
@@ -569,12 +571,12 @@ rt_aggregate_roa(void *_rag)
     rad_new->ad.length = (byte *) &rad_new->u[count] - rad_new->ad.data;
 
     rte r = {
-      .src = src ?: prev.src,
+      .src = rag->main_source,
     };
 
     ea_set_attr(&r.attrs, EA_LITERAL_DIRECT_ADATA(&ea_roa_aggregated, 0, &rad_new->ad));
 
-    rte_import(&rag->stream.dst, &nip.n, &r, prev.src ?: src);
+    rte_import(&rag->stream.dst, &nip.n, &r, rag->main_source);
 
 #if 0
     /* Do not split ROA aggregator, we want this to be finished asap */
@@ -620,6 +622,9 @@ rt_setup_roa_aggregator(rtable *t)
       },
     };
 
+    rt_init_sources(&rag->sources, ragname, birdloop_event_list(t->loop));
+    rag->main_source = rt_get_source_o(&rag->sources, 0);
+
     tab->master = &rag->stream;
   }
 
@@ -628,11 +633,24 @@ rt_setup_roa_aggregator(rtable *t)
 }
 
 static void
+rt_roa_aggregator_sources_gone(void *t)
+{
+  rt_unlock_table((rtable *) t);
+}
+
+static void
 rt_stop_roa_aggregator(rtable *t)
 {
   struct rt_roa_aggregator *rag;
   RT_LOCKED(t, tab)
+  {
     rag = SKIP_BACK(struct rt_roa_aggregator, stream, tab->master);
+
+    rt_lock_table(tab);
+    rt_destroy_sources(&rag->sources, ev_new_init(tab->rp,
+	  rt_roa_aggregator_sources_gone, tab));
+    rt_unlock_source(rag->main_source);
+  }
 
   /* Stopping both import and export.
    * All memory will be freed with table shutdown,

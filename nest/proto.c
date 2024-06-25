@@ -2206,18 +2206,13 @@ channel_reset_limit(struct channel *c, struct limit *l, int dir)
   c->limit_active &= ~(1 << dir);
 }
 
-static struct rte_owner_class default_rte_owner_class;
-
 static inline void
 proto_do_start(struct proto *p)
 {
   p->active = 1;
 
-  rt_init_sources(&p->sources, p->name, proto_event_list(p));
-  if (!p->sources.class)
-    p->sources.class = &default_rte_owner_class;
-
   p->sources.debug = p->debug;
+  rt_init_sources(&p->sources, p->name, proto_event_list(p));
 
   if (!p->cf->late_if_feed)
     iface_subscribe(&p->iface_sub);
