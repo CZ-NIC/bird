@@ -2457,9 +2457,9 @@ protocols are notified and act accordingly (e.g. break an OSPF adjacency when
 the BFD session went down).
 
 <p>BIRD implements basic BFD behavior as defined in <rfc id="5880"> (some
-advanced features like the echo mode or authentication are not implemented), IP
-transport for BFD as defined in <rfc id="5881"> and <rfc id="5883"> and
-interaction with client protocols as defined in <rfc id="5882">.
+advanced features like the echo mode are not implemented), IP transport for BFD
+as defined in <rfc id="5881"> and <rfc id="5883"> and interaction with client
+protocols as defined in <rfc id="5882">.
 
 <p>BFD packets are sent with a dynamic source port number. Linux systems use by
 default a bit different dynamic port range than the IANA approved one
@@ -2499,6 +2499,7 @@ milliseconds.
 <code>
 protocol bfd [&lt;name&gt;] {
 	accept [ipv4|ipv6] [direct|multihop];
+	strict bind &lt;switch&gt;;
 	zero udp6 checksum rx &lt;switch&gt;;
 	interface &lt;interface pattern&gt; {
 		interval &lt;time&gt;;
