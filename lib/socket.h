@@ -36,6 +36,29 @@ struct ssh_sock {
 };
 #endif
 
+struct ao_key
+{
+  int local_id;
+  int remote_id;
+  const char *cipher;
+  const char *master_key;
+  int required;
+};
+
+struct ao_config
+{
+  struct ao_key key;
+  struct ao_config *next_key;
+};
+
+struct bgp_ao_key {
+  struct ao_key key;
+  int activ_alive;			/* this ao key is in activ socket */
+  int passiv_alive;			/* this ao key is in passiv socket */
+  int to_delete;			/* flag for reconfig */
+  struct bgp_ao_key *next_key;
+};
+
 typedef struct birdsock {
   resource r;
   pool *pool;				/* Pool where incoming connections should be allocated (for SK_xxx_PASSIVE) */
@@ -77,6 +100,11 @@ typedef struct birdsock {
   node n;
   void *rbuf_alloc, *tbuf_alloc;
   const char *password;			/* Password for MD5 authentication */
+  struct bgp_ao_key *ao_key_init;	/* Key for tcp ao authentication icialization. */
+  struct bgp_proto *proto_del_ao_key;	/* For deletion of the currently used deprecated ao key */
+  char use_ao;				/* This is the only reliable flag saying if the socket use ao or not */
+  int last_used_ao_key; 		/* Last ID the other site requested */
+  int desired_ao_key;			/* ID of requested ao key */
   const char *err;			/* Error message */
   struct ssh_sock *ssh;			/* Used in SK_SSH */
 } sock;
@@ -107,6 +135,16 @@ int sk_setup_broadcast(sock *s);
 int sk_set_ttl(sock *s, int ttl);	/* Set transmit TTL for given socket */
 int sk_set_min_ttl(sock *s, int ttl);	/* Set minimal accepted TTL for given socket */
 int sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int setkey);
+
+int get_current_key_id(int sock_fd);
+int get_rnext_key_id(int sock_fd);
+int sk_set_ao_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int passwd_id_loc, int passwd_id_rem, const char *cipher, int set_current);
+int ao_delete_key(sock *s, ip_addr remote, int pxlen, struct iface *ifa, int passwd_id_rem, int passwd_id_loc);
+void log_tcp_ao_info(int sock_fd);
+void log_tcp_ao_get_key(int sock_fd);
+void tcp_ao_get_info(int sock_fd, int key_info[4]);
+int check_ao_keys_id(int sock_fd, struct bgp_ao_key *key);
+void ao_try_change_master(sock *s, int next_key_id_loc, int next_id_rem);
 int sk_set_ipv6_checksum(sock *s, int offset);
 int sk_set_icmp6_filter(sock *s, int p1, int p2);
 void sk_log_error(sock *s, const char *p);
