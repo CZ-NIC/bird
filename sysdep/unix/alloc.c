@@ -12,6 +12,8 @@
 #include "lib/event.h"
 #include "lib/io-loop.h"
 
+#include "conf/conf.h"
+
 #include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -122,6 +124,8 @@ long page_size = 0;
 
   static DOMAIN(resource) empty_pages_domain;
   static struct empty_pages *empty_pages = NULL;
+  _Atomic int pages_kept_cold = 0;
+  _Atomic int pages_kept_cold_index = 0;
 
   static struct free_page * _Atomic page_stack = NULL;
   static _Thread_local struct free_page * local_page_stack = NULL;
@@ -159,6 +163,9 @@ long page_size = 0;
 #else // ! HAVE_MMAP
 # define use_fake  1
 #endif
+
+#define ALLOC_TRACE(fmt...) do { \
+  if (atomic_load_explicit(&global_runtime, memory_order_relaxed)->latency_debug & DL_ALLOCATOR) log(L_TRACE "Allocator: " fmt, ##fmt); } while (0)
 
 void *
 alloc_page(void)
@@ -219,6 +226,7 @@ alloc_page(void)
       PROTECT_PAGE(empty_pages);
       UNPROTECT_PAGE(fp);
       ajlog(fp, empty_pages, empty_pages->pos, AJT_ALLOC_COLD_STD);
+      atomic_fetch_sub_explicit(&pages_kept_cold, 1, memory_order_relaxed);
     }
     else
     {
@@ -226,6 +234,9 @@ alloc_page(void)
       fp = (struct free_page *) empty_pages;
       empty_pages = empty_pages->next;
       ajlog(fp, empty_pages, 0, AJT_ALLOC_COLD_KEEPER);
+      atomic_fetch_sub_explicit(&pages_kept_cold_index, 1, memory_order_relaxed);
+      if (!empty_pages)
+	ALLOC_TRACE("Taken last page from cold storage");
     }
   }
   UNLOCK_DOMAIN(resource, empty_pages_domain);
@@ -339,25 +350,29 @@ page_cleanup(void *_ UNUSED)
   if (shutting_down)
     return;
 
-  ajlog(NULL, NULL, 0, AJT_CLEANUP_BEGIN);
-
-  /* Prevent contention */
-  struct free_page *stack = PAGE_STACK_GET;
-
-  /* Always replace by zero */
-  PAGE_STACK_PUT(NULL);
-
-  if (!stack)
-  {
-    ajlog(NULL, NULL, 0, AJT_CLEANUP_NOTHING);
+  /* Pages allocated inbetween */
+  uint pk = atomic_load_explicit(&pages_kept, memory_order_relaxed);
+  if (pk < KEEP_PAGES_MAX)
     return;
-  }
 
+  /* Walk the pages */
+  ajlog(NULL, NULL, 0, AJT_CLEANUP_BEGIN);
+  uint count = 0;
   do {
-    struct free_page *fp = stack;
-    stack = atomic_load_explicit(&fp->next, memory_order_relaxed);
+    /* Get next hot page */
+    struct free_page *fp = PAGE_STACK_GET;
+    if (!fp) {
+      PAGE_STACK_PUT(NULL);
+      ajlog(NULL, NULL, 0, AJT_CLEANUP_END);
+      return;
+    }
 
+    /* Reinstate the stack with the next page in list */
+    PAGE_STACK_PUT(atomic_load_explicit(&fp->next, memory_order_relaxed));
+
+    /* Cold pages are locked */
     LOCK_DOMAIN(resource, empty_pages_domain);
+
     /* Empty pages are stored as pointers. To store them, we need a pointer block. */
     if (!empty_pages || (empty_pages->pos == EP_POS_MAX))
     {
@@ -370,6 +385,7 @@ page_cleanup(void *_ UNUSED)
       PROTECT_PAGE(ep);
       empty_pages = ep;
       ajlog(empty_pages, empty_pages->next, 0, AJT_CLEANUP_COLD_KEEPER);
+      atomic_fetch_add_explicit(&pages_kept_cold_index, 1, memory_order_relaxed);
     }
     else
     {
@@ -389,20 +405,18 @@ page_cleanup(void *_ UNUSED)
 	    ) < 0)
 	bug("madvise(%p) failed: %m", fp);
       ajlog(fp, empty_pages, empty_pages->pos, AJT_CLEANUP_COLD_STD);
+      atomic_fetch_add_explicit(&pages_kept_cold, 1, memory_order_relaxed);
     }
     UNLOCK_DOMAIN(resource, empty_pages_domain);
+    count++;
   }
-  while ((atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed) >= KEEP_PAGES_MAX / 2) && stack);
+  while (atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed) >= KEEP_PAGES_MAX / 2);
 
-  while (stack)
-  {
-    struct free_page *f = stack;
-    stack = atomic_load_explicit(&f->next, memory_order_acquire);
-    UNPROTECT_PAGE(f);
-    free_page(f);
+  ALLOC_TRACE("Moved %u pages to cold storage, now %u cold, %u index", count,
+      atomic_load_explicit(&pages_kept_cold, memory_order_relaxed),
+      atomic_load_explicit(&pages_kept_cold_index, memory_order_relaxed)
+      );
 
-    atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
-  }
   ajlog(NULL, NULL, 0, AJT_CLEANUP_END);
 }
 #endif

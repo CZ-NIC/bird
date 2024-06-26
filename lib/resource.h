@@ -148,6 +148,8 @@ void buffer_realloc(void **buf, unsigned *size, unsigned need, unsigned item_siz
 extern long page_size;
 extern _Atomic int pages_kept;
 extern _Atomic int pages_kept_locally;
+extern _Atomic int pages_kept_cold;
+extern _Atomic int pages_kept_cold_index;
 void *alloc_page(void);
 void free_page(void *);
 void flush_local_pages(void);

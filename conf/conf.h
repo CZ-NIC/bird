@@ -51,6 +51,7 @@ struct config {
     DL_PING = 1,
     DL_WAKEUP = 2,
     DL_SCHEDULING = 4,
+    DL_ALLOCATOR = 8,
     DL_SOCKETS = 0x10,
     DL_EVENTS = 0x20,
     DL_TIMERS = 0x40,
