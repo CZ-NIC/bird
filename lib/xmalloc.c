@@ -65,9 +65,8 @@ xmalloc(uint size)
 void *
 xrealloc(void *ptr, uint size)
 {
-  void *p = realloc(ptr, size);
-
   MINFO(ptr, 0, 2);
+  void *p = realloc(ptr, size);
   MINFO(p, size, 3);
 
   if (p)
