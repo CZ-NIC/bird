@@ -83,6 +83,9 @@ main(int argc, char *argv[])
   bt_test_suite_arg_extra(t_reconfig, BT_CONFIG_FILE, 0, BT_TIMEOUT, "Testing reconfiguration back");
   bt_test_suite_arg_extra(t_reconfig, BT_CONFIG_FILE, 0, BT_TIMEOUT, "Testing reconfiguration to the same file");
 
+  /* Hack: this should be enough to let the other thread run and make the ROA table converge */
+  birdloop_yield();
+
   struct f_bt_test_suite *t;
   WALK_LIST(t, OBSREF_GET(config)->tests)
     bt_test_suite_base(run_function, t->fn_name, t, 0, BT_TIMEOUT, "%s", t->dsc);
