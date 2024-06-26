@@ -24,7 +24,7 @@ CF_DECLS
 CF_KEYWORDS(BFD, MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE,
 	INTERFACE, MULTIHOP, NEIGHBOR, DEV, LOCAL, AUTHENTICATION,
 	NONE, SIMPLE, METICULOUS, KEYED, MD5, SHA1, IPV4, IPV6, DIRECT,
-	STRICT, BIND)
+	STRICT, BIND, ZERO, UDP6, CHECKSUM, RX)
 
 %type <iface> bfd_neigh_iface
 %type <a> bfd_neigh_local
@@ -51,6 +51,7 @@ bfd_proto_item:
  | MULTIHOP bfd_multihop
  | NEIGHBOR bfd_neighbor
  | STRICT BIND bool { BFD_CFG->strict_bind = $3; }
+ | ZERO UDP6 CHECKSUM RX bool { BFD_CFG->zero_udp6_checksum_rx = $5; }
  ;
 
 bfd_proto_opts:

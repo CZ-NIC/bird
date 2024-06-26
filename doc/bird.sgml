@@ -2499,6 +2499,7 @@ milliseconds.
 <code>
 protocol bfd [&lt;name&gt;] {
 	accept [ipv4|ipv6] [direct|multihop];
+	zero udp6 checksum rx &lt;switch&gt;;
 	interface &lt;interface pattern&gt; {
 		interval &lt;time&gt;;
 		min rx interval &lt;time&gt;;
@@ -2547,6 +2548,14 @@ protocol bfd [&lt;name&gt;] {
 	accepting all addresses. Binding to a specific address could be useful
 	in cases like running multiple BIRD instances on a machine, each
 	handling a different set of interfaces. Default: disabled.
+
+	<tag><label id="bfd-zero-udp6-checksum-rx">zero udp6 checksum rx <m/switch/</tag>
+	UDP checksum computation is optional in IPv4 while it is mandatory in
+	IPv6. Some BFD implementations send UDP datagrams with zero (blank)
+	checksum even in IPv6 case. This option configures BFD listening sockets
+	to accept such datagrams. It is available only on platforms that support
+	the relevant socket option (e.g. <cf/UDP_NO_CHECK6_RX/ on Linux).
+	Default: disabled.
 
 	<tag><label id="bfd-iface">interface <m/pattern/ [, <m/.../] { <m/options/ }</tag>
 	Interface definitions allow to specify options for sessions associated
