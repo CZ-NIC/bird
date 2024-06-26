@@ -419,6 +419,8 @@ channel_roa_changed(void *_s)
 {
   struct roa_subscription *s = _s;
 
+  u64 first_seq = 0, last_seq = 0;
+  uint count = 0;
   for (struct lfjour_item *it; it = lfjour_get(&s->digest_recipient); )
   {
     SKIP_BACK_DECLARE(struct rt_digest, rd, li, s->digest_recipient.cur);
@@ -435,8 +437,19 @@ channel_roa_changed(void *_s)
       .item = it,
     };
 
+    if (!first_seq) first_seq = it->seq;
+    last_seq = it->seq;
+    count++;
     s->refeed_hook(s->c, &rrr->req);
   }
+
+  if (s->c->debug & D_EVENTS)
+    if (count)
+      log(L_INFO "%s.%s: Requested %u automatic roa reloads, seq %lu to %lu",
+	  s->c->proto->name, s->c->name, count, first_seq, last_seq);
+    else
+      log(L_INFO "%s.%s: No roa reload requested",
+	  s->c->proto->name, s->c->name);
 }
 
 static inline void (*channel_roa_reload_hook(int dir))(struct channel *, struct rt_feeding_request *)
