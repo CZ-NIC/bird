@@ -136,6 +136,7 @@ struct bgp_config {
   u32 disable_after_cease;		/* Disable it when cease is received, bitfield */
 
   const char *password;			/* Password used for MD5 authentication */
+  struct ao_config *ao_key;		/* Keys for tcp ao authentication */
   net_addr *remote_range;		/* Allowed neighbor range for dynamic BGP */
   const char *dynamic_name;		/* Name pattern for dynamic BGP */
   int dynamic_name_digits;		/* Minimum number of digits for dynamic names */
@@ -353,6 +354,7 @@ struct bgp_proto {
   struct object_lock *lock;		/* Lock for neighbor connection */
   struct neighbor *neigh;		/* Neighbor entry corresponding to remote ip, NULL if multihop */
   struct bgp_socket *sock;		/* Shared listening socket */
+  struct bgp_ao_key *ao_key;		/* Linked list for ao keys */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
   struct birdsock *postponed_sk;	/* Postponed incoming socket for dynamic BGP */
   struct bgp_stats stats;		/* BGP statistics */

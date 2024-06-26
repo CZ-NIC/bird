@@ -233,7 +233,7 @@ bgp_close(struct bgp_proto *p)
 static inline int
 bgp_setup_auth(struct bgp_proto *p, int enable)
 {
-  if (p->cf->password)
+  if (p->cf->password || p->cf->ao_key)
   {
     ip_addr prefix = p->cf->remote_ip;
     int pxlen = -1;
@@ -243,10 +243,37 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
       prefix = net_prefix(p->cf->remote_range);
       pxlen = net_pxlen(p->cf->remote_range);
     }
-
-    int rv = sk_set_md5_auth(p->sock->sk,
+    int rv = 0;
+    if (p->cf->ao_key)
+    {
+      if (enable)
+      {
+        struct bgp_ao_key *key = p->ao_key;
+        do {
+          rv = sk_set_ao_auth(p->sock->sk,
 			     p->cf->local_ip, prefix, pxlen, p->cf->iface,
-			     enable ? p->cf->password : NULL, p->cf->setkey);
+			     key->key.master_key, key->key.local_id, key->key.remote_id, key->key.cipher, 0);
+	  if (rv == 0)
+	    key->passiv_alive = 1;
+	  key = key->next_key;
+
+        } while(key);
+      }
+      else
+      {
+        struct bgp_ao_key *key = p->ao_key;
+        while (key)
+        {
+	  if (key->passiv_alive)
+            ao_delete_key(p->sock->sk, p->remote_ip, -1, p->sock->sk->iface, key->key.local_id, key->key.remote_id);
+          key = key->next_key;
+        }
+      }
+    }
+    else if (enable)
+      rv = sk_set_md5_auth(p->sock->sk,
+			     p->cf->local_ip, prefix, pxlen, p->cf->iface,
+			     p->cf->password, p->cf->setkey);
 
     if (rv < 0)
       sk_log_error(p->sock->sk, p->p.name);
@@ -1142,6 +1169,7 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   s->tbsize = p->cf->enable_extended_messages ? BGP_TX_BUFFER_EXT_SIZE : BGP_TX_BUFFER_SIZE;
   s->tos = IP_PREC_INTERNET_CONTROL;
   s->password = p->cf->password;
+  s->ao_key_init = p->ao_key;
   s->tx_hook = bgp_connected;
   s->flags = p->cf->free_bind ? SKF_FREEBIND : 0;
   BGP_TRACE(D_EVENTS, "Connecting to %I%J from local address %I%J",
@@ -1231,6 +1259,16 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     rfree(sk);
     return 0;
   }
+  if (p->cf->ao_key)
+  {
+    if (get_current_key_id(sk->fd) == -1)
+    {
+      log(L_WARN "BGP: Connection from address %I%J (port %d) has no TCP AO key",
+          sk->daddr, ipa_is_link_local(sk->daddr) ? sk->iface : NULL, sk->dport);
+      rfree(sk);
+      return 0;
+    }
+  }
 
   /*
    * BIRD should keep multiple incoming connections in OpenSent state (for
@@ -1273,6 +1311,26 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     if (sk_set_min_ttl(sk, 256 - hops) < 0)
       goto err;
 
+  if (p->ao_key)
+  {
+    if (check_ao_keys_id(sk->fd, p->ao_key) == 0)
+    {
+      sk->use_ao = 1;
+      for (struct bgp_ao_key *key = p->ao_key; key; key = key->next_key)
+      {
+        key->activ_alive = key->passiv_alive;
+        if (key->key.required == 1)
+        {
+          sk->desired_ao_key = key->key.local_id;
+          ao_try_change_master(sk, key->key.local_id, key->key.remote_id);
+        }
+        else if (key->key.required == -1)
+        {
+          sk->proto_del_ao_key = p;
+        }
+      }
+    }
+  }
   if (p->cf->enable_extended_messages)
   {
     sk->rbsize = BGP_RX_BUFFER_EXT_SIZE;
@@ -1755,6 +1813,20 @@ bgp_init(struct proto_config *CF)
   p->remote_ip = cf->remote_ip;
   p->remote_as = cf->remote_as;
 
+  if (cf->ao_key)
+  {
+    struct ao_config *cf_key = cf->ao_key;
+    do {
+      struct bgp_ao_key *key = mb_alloc(proto_pool, sizeof(struct bgp_ao_key));
+      key->key = cf_key->key;
+      key->activ_alive = 0;
+      key->passiv_alive = 0;
+      key->next_key = p->ao_key;
+      p->ao_key = key;
+      cf_key = cf_key->next_key;
+    } while (cf_key);
+  }
+
   /* Hack: We use cf->remote_ip just to pass remote_ip from bgp_spawn() */
   if (cf->c.parent)
     cf->remote_ip = IPA_NONE;
@@ -2180,6 +2252,146 @@ bgp_postconfig(struct proto_config *CF)
   }
 }
 
+int compare_aos(struct ao_key *a, struct ao_key *b)
+{
+  if (a->local_id != b->local_id)
+    return 1;
+  if (a->remote_id != b->remote_id)
+    return 1;
+  if (strcmp(a->cipher, b->cipher))
+    return 1;
+  return strcmp(a->master_key, b->master_key);
+}
+
+int reconfigure_tcp_ao(struct bgp_proto *old_proto, struct bgp_config new)
+{
+  log("reconfiguring proto");
+  if (old_proto->cf->ao_key == NULL && new.ao_key == NULL)
+    return 1;   // tcp ao not used
+  if (old_proto->cf->ao_key == NULL || new.ao_key == NULL)
+    return 0;   // connection is changing from ao to no ao or no ao to ao
+
+  if (!old_proto->conn)
+  {
+    log("tcp ao: reconfigure nonestablished connection");
+    return 0;	// Connection was not (re)established, so we can not change it.
+  }
+  sock *s_passiv = old_proto->sock->sk;
+  sock *s_activ = old_proto->conn->sk;
+
+  int key_in_use_loc = get_current_key_id(s_activ->fd);
+
+  if (key_in_use_loc == -1)
+  {
+      log(L_WARN "TCP AO: Unable to detect currently used key");
+      return 0;
+  }
+
+  for (struct bgp_ao_key *ao_key = old_proto->ao_key; ao_key; ao_key = ao_key->next_key)
+    ao_key->to_delete = 1;
+
+  struct bgp_ao_key *first = old_proto->ao_key;
+  for (struct ao_config *cf_ao = new.ao_key; cf_ao; cf_ao = cf_ao->next_key)
+  {
+    if (cf_ao->key.required == -1 && cf_ao->key.local_id != key_in_use_loc)
+      continue;
+
+    struct bgp_ao_key *found = NULL;
+    for (struct bgp_ao_key *old_ao = first; old_ao && !found; old_ao = old_ao->next_key)
+    {
+      if (old_ao->key.local_id == cf_ao->key.local_id || old_ao->key.remote_id == cf_ao->key.remote_id)
+      {
+        if (compare_aos(&old_ao->key, &cf_ao->key))
+          return 0;
+        if (old_ao->activ_alive == 0 && cf_ao->key.required >= 0)
+        {
+          if (sk_set_ao_auth(s_activ, old_proto->local_ip, old_proto->remote_ip, -1, s_activ->iface,
+				 old_ao->key.master_key, old_ao->key.local_id, old_ao->key.remote_id, old_ao->key.cipher, 0))
+            return 0;
+	  old_ao->activ_alive = 1;
+        }
+        if (old_ao->passiv_alive == 0 && cf_ao->key.required >= 0)
+	{
+          if (sk_set_ao_auth(s_passiv, old_proto->local_ip, old_proto->remote_ip, -1, s_passiv->iface,
+				  old_ao->key.master_key, old_ao->key.local_id, old_ao->key.remote_id, old_ao->key.cipher, 0))
+            return 0;
+	  old_ao->passiv_alive = 1;
+	}
+
+        if (cf_ao->key.required == 1 && old_ao->key.required != 1)
+        {
+          s_activ->desired_ao_key = old_ao->key.local_id;
+          s_passiv->desired_ao_key = old_ao->key.local_id;
+          ao_try_change_master(s_activ, old_ao->key.local_id, old_ao->key.remote_id);
+          if (old_proto->conn->hold_timer->expires != 0)
+            bgp_schedule_packet(old_proto->conn, NULL, PKT_KEEPALIVE); // We might send this keepalive shortly after another.
+								       // RFC says we should wait, but since reconfiguration is rare, this is harmless.
+        }
+        old_ao->key = cf_ao->key;
+        old_ao->to_delete = 0;
+        found = old_ao;
+      }
+    }
+    if (!found)
+    {
+      struct bgp_ao_key *key = mb_alloc(old_proto->p.pool, sizeof(struct bgp_ao_key));
+      key->key = cf_ao->key;
+      key->activ_alive = 0;
+      key->passiv_alive = 0;
+      key->next_key = first;
+      old_proto->ao_key = key;
+      if (sk_set_ao_auth(s_passiv, old_proto->local_ip, old_proto->remote_ip, -1, s_passiv->iface,
+			      cf_ao->key.master_key, cf_ao->key.local_id, cf_ao->key.remote_id, cf_ao->key.cipher, 0))
+        return 0;
+      key->passiv_alive = 1;
+      if (sk_set_ao_auth(s_activ, old_proto->local_ip, old_proto->remote_ip, -1, s_passiv->iface,
+			      cf_ao->key.master_key, cf_ao->key.local_id, cf_ao->key.remote_id, cf_ao->key.cipher, 0))
+        return 0;
+      key->activ_alive = 1;
+      key->to_delete = 0;
+      found = key;
+
+      if (found->key.required == 1)
+      {
+        s_activ->desired_ao_key = found->key.local_id;
+        s_passiv->desired_ao_key = found->key.local_id;
+        ao_try_change_master(s_activ, found->key.local_id, found->key.remote_id);
+        if (old_proto->conn->hold_timer->expires != 0)
+          bgp_schedule_packet(old_proto->conn, NULL, PKT_KEEPALIVE); // We might send this keepalive shortly after another.
+								     // RFC says we should wait, but since reconfiguration is rare, this is harmless.
+      }
+    }
+  }
+
+  key_in_use_loc = get_current_key_id(s_activ->fd);
+  struct bgp_ao_key *previous = NULL;
+  for (struct bgp_ao_key *old_ao = old_proto->ao_key; old_ao; old_ao = old_ao->next_key)
+  {
+    if (old_ao->to_delete)
+    {
+      if (old_ao->key.local_id == key_in_use_loc)
+      {
+        log(L_WARN "TCP AO: deleting currently used key");
+        return 0;
+      }
+      if (ao_delete_key(s_activ, old_proto->remote_ip, -1, s_activ->iface, old_ao->key.local_id, old_ao->key.remote_id))
+        return 0;
+      old_ao->activ_alive = 0;
+
+      if (ao_delete_key(s_passiv, old_proto->remote_ip, -1, s_passiv->iface, old_ao->key.local_id, old_ao->key.remote_id))
+        return 0;
+      old_ao->passiv_alive = 0;
+      if (previous)
+        previous->next_key = old_ao->next_key;
+      else
+        old_proto->ao_key = old_ao->next_key;
+    }
+    else
+      previous = old_ao;
+  }
+  return 1;
+}
+
 static int
 bgp_reconfigure(struct proto *P, struct proto_config *CF)
 {
@@ -2190,11 +2402,13 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   if (proto_get_router_id(CF) != p->local_id)
     return 0;
 
+  log("bgp_reconfigure, will tcp ao?");
   int same = !memcmp(((byte *) old) + sizeof(struct proto_config),
 		     ((byte *) new) + sizeof(struct proto_config),
 		     // password item is last and must be checked separately
 		     OFFSETOF(struct bgp_config, password) - sizeof(struct proto_config))
     && !bstrcmp(old->password, new->password)
+    && reconfigure_tcp_ao(p, *new)
     && ((!old->remote_range && !new->remote_range)
 	|| (old->remote_range && new->remote_range && net_equal(old->remote_range, new->remote_range)))
     && !bstrcmp(old->dynamic_name, new->dynamic_name)
@@ -2654,7 +2868,18 @@ bgp_show_proto_info(struct proto *P)
 	    tm_remains(p->conn->keepalive_timer), p->conn->keepalive_time);
     cli_msg(-1006, "    Send hold timer:  %t/%u",
 	    tm_remains(p->conn->send_hold_timer), p->conn->send_hold_time);
-}
+
+    if (p->cf->ao_key)
+    {
+      int tmp[4];
+      tcp_ao_get_info(p->conn->sk->fd, tmp);
+      cli_msg(-1006, "    TCP AO:");
+      cli_msg(-1006, "      current key remote id %i", tmp[0]);
+      cli_msg(-1006, "      rnext key local id %i", tmp[1]);
+      cli_msg(-1006, "      good packets %i", tmp[2]);
+      cli_msg(-1006, "      bad packets  %i", tmp[3]);
+    }
+  }
 
 #if 0
   struct bgp_stats *s = &p->stats;
