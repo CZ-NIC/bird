@@ -1668,9 +1668,24 @@ sk_open(sock *s)
       ERR2("bind");
   }
 
-  if (s->password)
+  if (s->ao_key_init)
+  {
+    struct bgp_ao_key *key = s->ao_key_init;
+    do {
+      if (sk_set_ao_auth(s, s->saddr, s->daddr, -1, s->iface, key->key.master_key, key->key.local_id, key->key.remote_id, key->key.cipher, key->key.required == 1) < 0)
+        goto err;
+      if (s->type == SK_TCP_ACTIVE)
+        key->activ_alive = 1;
+      else
+        key->passiv_alive = 1;
+      key = key->next_key;
+    } while (key);
+  }
+  else if (s->password)
+  {
     if (sk_set_md5_auth(s, s->saddr, s->daddr, -1, s->iface, s->password, 0) < 0)
       goto err;
+  }
 
   switch (s->type)
   {

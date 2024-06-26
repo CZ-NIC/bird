@@ -3507,6 +3507,32 @@ bgp_rx_packet(struct bgp_conn *conn, byte *pkt, uint len)
   }
 }
 
+int
+delete_deprecated_keys(sock *sk, struct bgp_proto *p, int new_lnext)
+{
+  struct bgp_ao_key *key = p->ao_key;
+  int ret  = 1;
+  while (key)
+  {
+    if (key->key.required == -1)
+    {
+      if (new_lnext == key->key.local_id)
+        ret = 0;
+      else
+      {
+        if (ao_delete_key(sk, p->remote_ip, -1, sk->iface, key->key.local_id, key->key.remote_id))
+          bug("TCP AO: Can not delete deprecated key %i %i on socket %i", key->key.local_id, key->key.remote_id, sk->fd);
+        key->activ_alive = 0;
+        if (ao_delete_key(p->sock->sk, p->remote_ip, -1, p->sock->sk->iface, key->key.local_id, key->key.remote_id))
+          bug("TCP AO: Can not delete deprecated key %i %i on socket %i", key->key.local_id, key->key.remote_id, p->sock->sk->fd);
+        key->passiv_alive = 0;
+      }
+    }
+    key = key->next_key;
+  }
+  return ret;
+}
+
 /**
  * bgp_rx - handle received data
  * @sk: socket
@@ -3521,6 +3547,25 @@ int
 bgp_rx(sock *sk, uint size)
 {
   struct bgp_conn *conn = sk->data;
+  if (sk->use_ao && sk->desired_ao_key != sk->last_used_ao_key)
+  {
+    int new_lnext = get_current_key_id(sk->fd);
+    if (new_lnext != sk->last_used_ao_key)
+    {
+      if (conn->hold_timer->expires != 0)
+        bgp_schedule_packet(conn, NULL, PKT_KEEPALIVE); // We might send this keepalive shortly after another. RFC says we should wait, but since reconfiguration is rare, this is harmless.
+      log(L_INFO "TCP AO: Expected key rotation: desired lnext %i, received %i", sk->desired_ao_key, new_lnext);
+      log_tcp_ao_info(sk->fd);
+
+      if (sk->proto_del_ao_key && sk->desired_ao_key == new_lnext)
+      {
+        if (delete_deprecated_keys(sk, sk->proto_del_ao_key, new_lnext))
+          sk->proto_del_ao_key = NULL;
+      }
+      sk->last_used_ao_key = new_lnext;
+    }
+  }
+
   byte *pkt_start = sk->rbuf;
   byte *end = pkt_start + size;
   uint i, len;
