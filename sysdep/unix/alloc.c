@@ -268,7 +268,7 @@ free_page(void *ptr)
 #ifdef HAVE_MMAP
   /* We primarily try to keep the pages locally. */
   struct free_page *fp = ptr;
-  if (shutting_down || (pages_kept_here < KEEP_PAGES_MAX_LOCAL))
+  if (pages_kept_here < KEEP_PAGES_MAX_LOCAL)
   {
     struct free_page *next = local_page_stack;
     atomic_store_explicit(&fp->next, next, memory_order_relaxed);
