@@ -46,7 +46,7 @@ extern _Thread_local struct domain_generic **last_locked;
 
 #define DOMAIN_NEW(type)  (DOMAIN(type)) { .type = domain_new(DOMAIN_ORDER(type), 1) }
 #define DOMAIN_NEW_RCU_SYNC(type)  (DOMAIN(type)) { .type = domain_new(DOMAIN_ORDER(type), 0) }
-struct domain_generic *domain_new(uint order, _Bool allow_rcu);
+struct domain_generic *domain_new(uint order, bool allow_rcu);
 
 #define DOMAIN_FREE(type, d)	domain_free((d).type)
 void domain_free(struct domain_generic *);
@@ -117,7 +117,7 @@ extern _Thread_local u32 rw_spinlocks_taken_write;
 /* Borrowed from lib/timer.h */
 btime current_time_now(void);
 
-static inline void rws_mark(rw_spinlock *p, _Bool write, _Bool lock)
+static inline void rws_mark(rw_spinlock *p, bool write, bool lock)
 {
   if (lock) {
     ASSERT_DIE(rw_spinlocks_taken_cnt < MAX_RWS_AT_ONCE);

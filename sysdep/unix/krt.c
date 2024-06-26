@@ -445,7 +445,7 @@ done:;
   lp_flush(krt_filter_lp);
 }
 
-static _Bool
+static bool
 krt_init_scan(struct krt_proto *p)
 {
   switch (p->sync_state)
@@ -536,7 +536,7 @@ krt_got_route_async(struct krt_proto *p, rte *e, int new, s8 src)
 
 static timer *krt_scan_all_timer;
 static int krt_scan_all_count;
-static _Bool krt_scan_all_tables;
+static bool krt_scan_all_tables;
 
 static void
 krt_scan_all(timer *t UNUSED)

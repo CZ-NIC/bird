@@ -90,7 +90,7 @@ rwspin_thread_run(void *_rtd)
 {
   struct rws_test_data *d = _rtd;
 
-  for (_Bool sorted = 0; !sorted++; )
+  for (bool sorted = 0; !sorted++; )
   {
     for (int i=0; (i<RWS_DATASIZE-1) && sorted; i++)
     {

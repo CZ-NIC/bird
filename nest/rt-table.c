@@ -481,7 +481,7 @@ rt_aggregate_roa(void *_rag)
 
   RT_EXPORT_WALK(&rag->src, u) TMP_SAVED
   {
-    _Bool withdraw = 0;
+    bool withdraw = 0;
     const net_addr *nroa = NULL;
     switch (u->kind)
     {
@@ -1082,8 +1082,8 @@ static void
 rt_notify_accepted(struct channel *c, const struct rt_export_feed *feed)
 {
   rte *old_best, *new_best;
-  _Bool feeding = rt_net_is_feeding(&c->out_req, feed->ni->addr);
-  _Bool idempotent = 0;
+  bool feeding = rt_net_is_feeding(&c->out_req, feed->ni->addr);
+  bool idempotent = 0;
 
   for (uint i = 0; i < feed->count_routes; i++)
   {
@@ -1168,7 +1168,7 @@ channel_notify_accepted(void *_channel)
 rte *
 rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *pool, int silent)
 {
-  _Bool feeding = !silent && rt_net_is_feeding(&c->out_req, feed->ni->addr);
+  bool feeding = !silent && rt_net_is_feeding(&c->out_req, feed->ni->addr);
 
   // struct proto *p = c->proto;
   struct nexthop_adata *nhs = NULL;
@@ -1492,7 +1492,7 @@ rt_cleanup_find_net(struct rtable_private *tab, struct rt_pending_export *rpe)
   return &routes[ni->index];
 }
 
-static _Bool
+static bool
 rt_cleanup_update_pointers(struct rt_net_pending_export *npe, struct rt_pending_export *rpe)
 {
   struct rt_pending_export *first = atomic_load_explicit(&npe->first, memory_order_relaxed);
@@ -1536,7 +1536,7 @@ rt_cleanup_export_all(struct lfjour *j, struct lfjour_item *i)
   net *net = rt_cleanup_find_net(tab, rpe);
 
   /* Update the first and last pointers */
-  _Bool is_last = rt_cleanup_update_pointers(&net->all, rpe);
+  bool is_last = rt_cleanup_update_pointers(&net->all, rpe);
 
   /* Free the old route */
   if (rpe->it.old)
@@ -2233,7 +2233,7 @@ rt_net_feed_validate_first(
 }
 
 static struct rt_export_feed *
-rt_net_feed_index(struct rtable_reading *tr, net *n, _Bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_pending_export *first)
+rt_net_feed_index(struct rtable_reading *tr, net *n, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_pending_export *first)
 {
   /* Get the feed itself. It may change under our hands tho. */
   struct rt_pending_export *first_in_net, *last_in_net;
@@ -2309,7 +2309,7 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, _Bool (*prefilter)(struct r
 }
 
 static struct rt_export_feed *
-rt_net_feed_internal(struct rtable_reading *tr, u32 index, _Bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_pending_export *first)
+rt_net_feed_internal(struct rtable_reading *tr, u32 index, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_pending_export *first)
 {
   net *n = rt_net_feed_get_net(tr, index);
   if (!n)
@@ -2327,7 +2327,7 @@ rt_net_feed(rtable *t, const net_addr *a, const struct rt_pending_export *first)
 }
 
 static struct rt_export_feed *
-rt_feed_net_all(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, _Bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
+rt_feed_net_all(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
 {
   RT_READ_ANCHORED(SKIP_BACK(rtable, export_all, e), tr, u);
   return rt_net_feed_internal(tr, index, prefilter, f, SKIP_BACK(const struct rt_pending_export, it, _first));
@@ -2355,7 +2355,7 @@ rt_net_best(rtable *t, const net_addr *a)
 }
 
 static struct rt_export_feed *
-rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, _Bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
+rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
 {
   SKIP_BACK_DECLARE(rtable, t, export_best, e);
   SKIP_BACK_DECLARE(const struct rt_pending_export, first, it, _first);
@@ -2909,7 +2909,7 @@ rt_flowspec_unlink(rtable *src, rtable *dst)
 {
   birdloop_enter(dst->loop);
 
-  _Bool unlock_dst = 0;
+  bool unlock_dst = 0;
 
   struct rt_flowspec_link *ln;
   RT_LOCKED(src, t)
@@ -3262,7 +3262,7 @@ rt_init(void)
   ea_register_init(&ea_roa_aggregated);
 }
 
-static _Bool
+static bool
 rt_prune_net(struct rtable_private *tab, struct network *n)
 {
   NET_WALK_ROUTES(tab, n, ep, e)
@@ -3270,7 +3270,7 @@ rt_prune_net(struct rtable_private *tab, struct network *n)
     ASSERT_DIE(!(e->flags & REF_OBSOLETE));
     struct rt_import_hook *s = e->rte.sender;
 
-    _Bool stale = (s->import_state == TIS_FLUSHING);
+    bool stale = (s->import_state == TIS_FLUSHING);
 
     if (!stale)
     {
@@ -4105,7 +4105,7 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
 	  &updates[i].new_stored->rte, &updates[i].old->rte);
 
     ASSERT_DIE(this_rpe);
-    _Bool nb = (new_best->rte.src == updates[i].new.src), ob = (i == 0);
+    bool nb = (new_best->rte.src == updates[i].new.src), ob = (i == 0);
     char info[96];
     char best_indicator[2][2] = { { ' ', '+' }, { '-', '=' } };
     bsnprintf(info, sizeof info, "autoupdated [%cbest]", best_indicator[ob][nb]);
@@ -4525,7 +4525,7 @@ rt_commit(struct config *new, struct config *old)
     {
       WALK_LIST(o, old->tables)
       {
-	_Bool ok;
+	bool ok;
 	RT_LOCKED(o->table, tab)
 	{
 	  r = OBSREF_GET(tab->deleted) ? NULL : rt_find_table_config(new, o->name);

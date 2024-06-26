@@ -884,7 +884,7 @@ static void
 mpls_fec_map_cleanup(void *_m)
 {
   struct mpls_fec_map *m = _m;
-  _Bool finished = (m->channel->channel_state == CS_STOP);
+  bool finished = (m->channel->channel_state == CS_STOP);
   HASH_WALK_DELSAFE(m->label_hash, next_l, fec)
     if (lfuc_finished(&fec->uc))
       mpls_free_fec(m, fec);
@@ -1436,7 +1436,7 @@ mpls_show_ranges(struct mpls_show_ranges_cmd *cmd)
   else
   {
     struct mpls_domain_pub *m;
-    _Bool first = 1;
+    bool first = 1;
     WALK_LIST(m, MPLS_GLOBAL->domains)
     {
       if (first)

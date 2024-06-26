@@ -18,8 +18,6 @@
 #include "lib/socket.h"
 #include "proto/bmp/map.h"
 
-#include <stdbool.h>
-
 // Max length of MIB-II description object
 #define MIB_II_STR_LEN 255
 

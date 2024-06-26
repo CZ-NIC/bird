@@ -20,8 +20,8 @@ extern struct birdloop main_birdloop;
 extern _Thread_local struct birdloop *this_birdloop;
 
 /* Check that the task has enough time to do a bit more */
-_Bool task_still_in_limit(void);
-_Bool task_before_halftime(void);
+bool task_still_in_limit(void);
+bool task_before_halftime(void);
 
 #define MAYBE_DEFER_TASK(target, event, fmt, args...) do { \
   if (!task_still_in_limit()) { \
@@ -54,7 +54,7 @@ pool *birdloop_pool(struct birdloop *loop);
 void birdloop_enter(struct birdloop *loop);
 void birdloop_leave(struct birdloop *loop);
 
-_Bool birdloop_inside(struct birdloop *loop);
+bool birdloop_inside(struct birdloop *loop);
 
 void birdloop_mask_wakeups(struct birdloop *loop);
 void birdloop_unmask_wakeups(struct birdloop *loop);

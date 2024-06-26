@@ -1827,7 +1827,7 @@ sk_recvmsg(sock *s)
 
 static inline void reset_tx_buffer(sock *s) { s->ttx = s->tpos = s->tbuf; }
 
-_Bool
+bool
 sk_tx_pending(sock *s)
 {
   return s->ttx != s->tpos;

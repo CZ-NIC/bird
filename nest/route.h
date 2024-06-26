@@ -217,7 +217,7 @@ struct rt_export_union {
 struct rt_exporter {
   struct lfjour journal;			/* Journal for update keeping */
   TLIST_LIST(rt_export_feeder) feeders;		/* List of active feeder structures */
-  _Bool _Atomic feeders_lock;			/* Spinlock for the above list */
+  bool _Atomic feeders_lock;			/* Spinlock for the above list */
   u8 trace_routes;				/* Debugging flags (D_*) */
   u8 net_type;					/* Which net this exporter provides */
   DOMAIN(rtable) domain;			/* Lock this instead of RCU */
@@ -226,7 +226,7 @@ struct rt_exporter {
   netindex_hash *netindex;			/* Table for net <-> id conversion */
   void (*stopped)(struct rt_exporter *);	/* Callback when exporter can stop */
   void (*cleanup_done)(struct rt_exporter *, u64 end);	/* Callback when cleanup has been done */
-  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rcu_unwinder *, u32, _Bool (*)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *, const struct rt_export_item *first);
+  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rcu_unwinder *, u32, bool (*)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *, const struct rt_export_item *first);
   void (*feed_cleanup)(struct rt_exporter *, struct rt_export_feeder *);
 };
 
@@ -247,7 +247,7 @@ struct rt_export_feed *rt_export_next_feed(struct rt_export_feeder *);
 #define RT_FEED_WALK(_feeder, _f)	\
   for (const struct rt_export_feed *_f; _f = rt_export_next_feed(_feeder); ) \
 
-static inline _Bool rt_export_feed_active(struct rt_export_feeder *f)
+static inline bool rt_export_feed_active(struct rt_export_feeder *f)
 { return !!atomic_load_explicit(&f->exporter, memory_order_acquire); }
 
 /* Full blown exports */
@@ -311,7 +311,7 @@ static inline int rt_prefilter_net(const struct rt_prefilter *p, const net_addr 
   bug("Crazy prefilter application attempt failed wildly.");
 }
 
-static inline _Bool
+static inline bool
 rt_net_is_feeding_feeder(struct rt_export_feeder *ref, const net_addr *n)
 {
   if (!rt_prefilter_net(&ref->prefilter, n))
@@ -327,7 +327,7 @@ rt_net_is_feeding_feeder(struct rt_export_feeder *ref, const net_addr *n)
   return 0;
 }
 
-static inline _Bool
+static inline bool
 rt_net_is_feeding_request(struct rt_export_request *req, const net_addr *n)
 {
   struct netindex *ni = NET_TO_INDEX(n);
@@ -490,7 +490,7 @@ static inline void rt_cork_release(void)
 
 void rt_cork_send_callback(void *_data);
 
-static inline _Bool rt_cork_check(struct rt_uncork_callback *rcc)
+static inline bool rt_cork_check(struct rt_uncork_callback *rcc)
 {
   /* Wait until all uncorks have finished */
   while (1)

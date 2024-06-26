@@ -38,8 +38,8 @@ long page_size = 0;
   STATIC_ASSERT(KEEP_PAGES_MIN * 4 < KEEP_PAGES_MAX);
   STATIC_ASSERT(ALLOC_PAGES_AT_ONCE < KEEP_PAGES_MAX_LOCAL);
 
-  static _Bool use_fake = 0;
-  static _Bool initialized = 0;
+  static bool use_fake = 0;
+  static bool initialized = 0;
 
 # define PROTECT_PAGE(pg)
 # define UNPROTECT_PAGE(pg)

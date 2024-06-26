@@ -91,7 +91,7 @@ void sk_reloop(sock *, struct birdloop *);	/* Move socket to another loop. Both 
 static inline void sk_close(sock *s) { rfree(&s->r); }	/* Explicitly close socket */
 
 int sk_rx_ready(sock *s);
-_Bool sk_tx_pending(sock *s);
+bool sk_tx_pending(sock *s);
 int sk_send(sock *, uint len);		/* Send data, <0=err, >0=ok, 0=sleep */
 int sk_send_to(sock *, uint len, ip_addr to, uint port); /* sk_send to given destination */
 void sk_reallocate(sock *);		/* Free and allocate tbuf & rbuf */

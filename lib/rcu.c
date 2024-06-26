@@ -48,7 +48,7 @@ synchronize_rcu(void)
       birdloop_yield();
 
     /* Check all threads */
-    _Bool critical = 0;
+    bool critical = 0;
     for (struct rcu_thread * _Atomic *tp = &rcu_thread_list, *t;
 	t = atomic_load_explicit(tp, memory_order_acquire);
 	tp = &t->next)

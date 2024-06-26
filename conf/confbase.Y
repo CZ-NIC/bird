@@ -28,7 +28,7 @@ CF_HDR
 
 CF_DEFINES
 
-static _Bool this_sadr_from_hack_active;
+static bool this_sadr_from_hack_active;
 
 static void
 check_u16(uint val)

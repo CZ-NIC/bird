@@ -50,7 +50,7 @@ _Thread_local struct domain_generic **last_locked = NULL;
 struct domain_generic {
   pthread_mutex_t mutex;
   uint order;
-  _Bool forbidden_when_reading_rcu;
+  bool forbidden_when_reading_rcu;
   struct domain_generic **prev;
   struct lock_order *locked_by;
   const char *name;
@@ -68,7 +68,7 @@ static struct domain_generic the_bird_domain_gen = DOMAIN_INIT(OFFSETOF(struct l
 DOMAIN(the_bird) the_bird_domain = { .the_bird = &the_bird_domain_gen };
 
 struct domain_generic *
-domain_new(uint order, _Bool allow_rcu)
+domain_new(uint order, bool allow_rcu)
 {
   ASSERT_DIE(order < sizeof(struct lock_order));
   struct domain_generic *dg = xmalloc(sizeof(struct domain_generic));

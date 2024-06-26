@@ -69,7 +69,7 @@ typedef union list {			/* In fact two overlayed nodes */
 
 #define EMPTY_LIST(list) (!(list).head->next)
 
-static inline _Bool
+static inline bool
 enlisted(node *n)
 {
   switch ((!!n->next) + (!!n->prev))

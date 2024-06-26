@@ -395,7 +395,7 @@ ea_set_attr(ea_list **to, eattr a)
 }
 
 static inline void
-ea_unset_attr(ea_list **to, _Bool local, const struct ea_class *def)
+ea_unset_attr(ea_list **to, bool local, const struct ea_class *def)
 {
   ea_set_attr(to, EA_LITERAL_GENERIC(def->id, 0, 0,
 	.fresh = local, .originated = local, .undef = 1));

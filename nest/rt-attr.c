@@ -913,7 +913,7 @@ ea_do_sort(ea_list *e)
   while (ss);
 }
 
-static _Bool eattr_same_value(const eattr *a, const eattr *b);
+static bool eattr_same_value(const eattr *a, const eattr *b);
 
 /**
  * In place discard duplicates and undefs in sorted ea_list. We use stable sort
@@ -1110,7 +1110,7 @@ ea_normalize(ea_list *e, u32 upto)
   return t;
 }
 
-static _Bool
+static bool
 eattr_same_value(const eattr *a, const eattr *b)
 {
   if (
@@ -1130,7 +1130,7 @@ eattr_same_value(const eattr *a, const eattr *b)
     return adata_same(a->u.ptr, b->u.ptr);
 }
 
-static _Bool
+static bool
 eattr_same(const eattr *a, const eattr *b)
 {
   return

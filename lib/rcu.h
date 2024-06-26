@@ -55,7 +55,7 @@ static inline void rcu_read_unlock(void)
   this_rcu_thread.local_ctl--;
 }
 
-static inline _Bool rcu_read_active(void)
+static inline bool rcu_read_active(void)
 {
   return !!(this_rcu_thread.local_ctl & RCU_NEST_MASK);
 }

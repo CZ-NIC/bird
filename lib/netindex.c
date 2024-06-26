@@ -223,7 +223,7 @@ net_find_index_fragile(netindex_hash *nh, const net_addr *n)
   return SPINHASH_FIND(nh->hash, NETINDEX, h, n);
 }
 
-static _Bool
+static bool
 net_validate_index(netindex_hash *h, struct netindex *ni)
 {
   struct netindex * _Atomic *block = atomic_load_explicit(&h->block, memory_order_relaxed);

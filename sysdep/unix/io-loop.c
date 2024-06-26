@@ -178,7 +178,7 @@ birdloop_pool(struct birdloop *loop)
   return loop->pool;
 }
 
-_Bool
+bool
 birdloop_inside(struct birdloop *loop)
 {
   for (struct birdloop *c = birdloop_current; c; c = c->prev_loop)
@@ -188,7 +188,7 @@ birdloop_inside(struct birdloop *loop)
   return 0;
 }
 
-_Bool
+bool
 birdloop_in_this_thread(struct birdloop *loop)
 {
   return pthread_equal(pthread_self(), loop->thread->thread_id);
@@ -303,7 +303,7 @@ wakeup_free(struct bird_thread *loop)
   pipe_free(&loop->wakeup);
 }
 
-static inline _Bool
+static inline bool
 birdloop_try_ping(struct birdloop *loop, u32 ltt)
 {
   /* Somebody else is already pinging, be idempotent */
@@ -513,7 +513,7 @@ int sk_write(sock *s);
 void sk_err(sock *s, int revents);
 
 static void
-sockets_fire(struct birdloop *loop, _Bool read, _Bool write)
+sockets_fire(struct birdloop *loop, bool read, bool write)
 {
   if (EMPTY_LIST(loop->sock_list))
     return;
@@ -664,7 +664,7 @@ bird_thread_pickup_next(struct birdloop_pickup_group *group)
     wakeup_do_kick(SKIP_BACK(struct bird_thread, n, HEAD(group->threads)));
 }
 
-static _Bool
+static bool
 birdloop_hot_potato(struct birdloop *loop)
 {
   if (!loop)
@@ -1137,7 +1137,7 @@ bird_thread_commit(struct config *new, struct config *old UNUSED)
     LOCK_DOMAIN(attrs, group->domain);
 
     int dif = group->thread_count - (thread_dropper_goal = new->thread_count);
-    _Bool thread_dropper_running = !!thread_dropper;
+    bool thread_dropper_running = !!thread_dropper;
 
     UNLOCK_DOMAIN(attrs, group->domain);
 
@@ -1384,7 +1384,7 @@ cmd_show_threads(int show_loops)
   bird_thread_sync_all(&tsd->sync, bird_thread_show, cmd_show_threads_done, "Show Threads");
 }
 
-_Bool task_still_in_limit(void)
+bool task_still_in_limit(void)
 {
   static u64 main_counter = 0;
   if (this_birdloop == &main_birdloop)
@@ -1393,7 +1393,7 @@ _Bool task_still_in_limit(void)
     return ns_now() < account_last + this_thread->max_loop_time_ns;
 }
 
-_Bool task_before_halftime(void)
+bool task_before_halftime(void)
 {
   return ns_now() < account_last + this_thread->max_loop_time_ns / 2;
 }

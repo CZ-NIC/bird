@@ -113,7 +113,7 @@ t_rcu_basic_writer(void *order_ptr)
     next->value = order + i*WRITERS;
 
     spin_lock();
-    _Bool seen = 0;
+    bool seen = 0;
     for (struct block * _Atomic *bp = &bin, *b;
 	b = atomic_load_explicit(bp, memory_order_acquire);
 	bp = &b->next)
@@ -139,7 +139,7 @@ t_rcu_basic_writer(void *order_ptr)
 
   /* Remove the object */
   spin_lock();
-  _Bool seen = 0;
+  bool seen = 0;
   for (struct block * _Atomic *bp = &bin, *b;
       b = atomic_load_explicit(bp, memory_order_acquire);
       bp = &b->next)

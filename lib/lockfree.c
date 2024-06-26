@@ -95,7 +95,7 @@ lfjour_push_commit(struct lfjour *j)
   if (end == 0)
   {
     struct lfjour_block *prev = b->n.prev;
-    _Bool f = 0;
+    bool f = 0;
     if (prev)
       ASSERT_DIE(atomic_compare_exchange_strong_explicit(&prev->not_last, &f, 1,
 	    memory_order_release, memory_order_relaxed));

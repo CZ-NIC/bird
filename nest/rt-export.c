@@ -538,7 +538,7 @@ rt_exporter_shutdown(struct rt_exporter *e, void (*stopped)(struct rt_exporter *
   e->journal.domain = NULL;
 
   /* We have to tell every receiver to stop */
-  _Bool done = 1;
+  bool done = 1;
   WALK_TLIST(lfjour_recipient, r, &e->journal.recipients)
   {
     done = 0;

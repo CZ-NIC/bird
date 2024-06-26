@@ -138,7 +138,7 @@ static inline void lfuc_unlock(struct lfuc *c, event_list *el, event *ev)
  * the critical section of lfuc_unlock(). Then we decide whether the usecount
  * is indeed zero or not, and therefore whether the structure is free to be freed.
  */
-static inline _Bool
+static inline bool
 lfuc_finished(struct lfuc *c)
 {
   u64 uc;
@@ -192,7 +192,7 @@ struct lfjour_item {
 struct lfjour_block {
   TLIST_DEFAULT_NODE;
   _Atomic u32 end;
-  _Atomic _Bool not_last;
+  _Atomic bool not_last;
 
   struct lfjour_item _block[0];
 };
@@ -250,7 +250,7 @@ void lfjour_push_commit(struct lfjour *);
 
 struct lfjour_item *lfjour_get(struct lfjour_recipient *);
 void lfjour_release(struct lfjour_recipient *, const struct lfjour_item *);
-static inline _Bool lfjour_reset_seqno(struct lfjour_recipient *r)
+static inline bool lfjour_reset_seqno(struct lfjour_recipient *r)
 {
   return atomic_fetch_and_explicit(&r->recipient_flags, ~LFJOUR_R_SEQ_RESET, memory_order_acq_rel) & LFJOUR_R_SEQ_RESET;
 }

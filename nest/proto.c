@@ -742,7 +742,7 @@ channel_do_reload(void *_c)
 
   RT_FEED_WALK(&c->reimporter, f)
   {
-    _Bool seen = 0;
+    bool seen = 0;
     for (uint i = 0; i < f->count_routes; i++)
     {
       rte *r = &f->block[i];
