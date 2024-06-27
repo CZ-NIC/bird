@@ -678,24 +678,21 @@ birdloop_take(struct birdloop_pickup_group *group)
 {
   struct birdloop *loop = NULL;
 
-  if (birdloop_hot_potato(this_thread->meta))
-    return;
-
   LOCK_DOMAIN(attrs, group->domain);
 
   if (this_thread->busy_active &&
       (group->thread_busy_count < group->thread_count) &&
       (this_thread->loop_count > 1) &&
-      !EMPTY_LIST(group->loops) &&
-      birdloop_hot_potato(HEAD(group->loops)))
+      (EMPTY_LIST(group->loops) ||
+      !birdloop_hot_potato(HEAD(group->loops))))
   {
     THREAD_TRACE(DL_SCHEDULING, "Loop drop requested (tbc=%d, tc=%d, lc=%d)",
 	group->thread_busy_count, group->thread_count, this_thread->loop_count);
     UNLOCK_DOMAIN(attrs, group->domain);
 
     uint dropped = 0;
-    node *n;
-    WALK_LIST2(loop, n, this_thread->loops, n)
+    node *n, *_nxt;
+    WALK_LIST2_DELSAFE(loop, n, _nxt, this_thread->loops, n)
     {
       birdloop_enter(loop);
       if (ev_active(&loop->event) && !loop->stopped && !birdloop_hot_potato(loop))
@@ -709,7 +706,7 @@ birdloop_take(struct birdloop_pickup_group *group)
 	birdloop_set_thread(loop, NULL, group);
 
 	dropped++;
-	if (dropped * dropped > this_thread->loop_count)
+	if ((dropped * dropped) / 2 > this_thread->loop_count)
 	{
 	  birdloop_leave(loop);
 
@@ -743,7 +740,9 @@ birdloop_take(struct birdloop_pickup_group *group)
     if (group->thread_busy_count < group->thread_count)
       thread_count -= group->thread_busy_count;
 
-    uint assign = 1 + group->loop_unassigned_count / thread_count;
+    uint assign = birdloop_hot_potato(this_thread->meta) ? 1 :
+		  1 + group->loop_unassigned_count / thread_count;
+
     for (uint i=0; !EMPTY_LIST(group->loops) && i<assign; i++)
     {
       loop = SKIP_BACK(struct birdloop, n, HEAD(group->loops));
@@ -765,10 +764,12 @@ birdloop_take(struct birdloop_pickup_group *group)
     }
 
     bird_thread_pickup_next(group);
+
+    if (assign)
+      this_thread->meta->last_transition_ns = ns_now();
   }
 
   UNLOCK_DOMAIN(attrs, group->domain);
-  this_thread->meta->last_transition_ns = ns_now();
 }
 
 static int
