@@ -3185,7 +3185,7 @@ bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type)
 
   if (was_active || (conn->sk->tpos != conn->sk->tbuf))
     return;
-  else if (type == PKT_KEEPALIVE)
+  else if ((type == PKT_KEEPALIVE) || (this_birdloop != p->p.loop))
     bgp_fire_tx(conn);
   else
   {
