@@ -39,7 +39,7 @@ static inline void defer_call(struct deferred_call *call, size_t actual_size) {
 
   /* If first, send the actual event to the local thread */
   if (local_deferred.last == &local_deferred.first)
-    ev_send_this_thread(&local_deferred.e);
+    ev_send_defer(&local_deferred.e);
 
   /* Add to list */
   a->next = NULL;

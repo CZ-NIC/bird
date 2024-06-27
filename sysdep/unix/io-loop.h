@@ -48,6 +48,7 @@ struct birdloop
 
   struct timeloop time;
   event_list event_list;
+  event_list defer_list;
   list sock_list;
   struct birdsock *sock_active;
   int sock_num;

@@ -1543,6 +1543,10 @@ birdloop_run(void *_loop)
     /* Process socket RX */
     sockets_fire(loop, 1, 0);
 
+    /* Flush deferred events */
+    while (ev_run_list(&loop->defer_list))
+      repeat++;
+
     /* Check end time */
   } while (repeat && task_still_in_limit());
 
@@ -1750,10 +1754,10 @@ birdloop_yield(void)
 }
 
 void
-ev_send_this_thread(event *e)
+ev_send_defer(event *e)
 {
   if (this_thread == &main_thread)
     ev_send_loop(&main_birdloop, e);
   else
-    ev_send(&this_thread->priority_events, e);
+    ev_send(&this_birdloop->defer_list, e);
 }
