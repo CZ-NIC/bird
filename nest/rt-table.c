@@ -1051,8 +1051,11 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old)
   /* If this is a refeed, we may need to copy the new route to the old one */
   if (!old && bmap_test(&c->export_accepted_map, new->id))
   {
-    ASSERT_DIE(rt_export_get_state(&c->out_req) == TES_PARTIAL);
-    old = new;
+    if (rt_export_get_state(&c->out_req) == TES_PARTIAL)
+      old = new;
+    else
+      log(L_WARN "%s.%s: Got new route for %N (id %u) which is already marked accepted, weird",
+	  c->proto->name, c->name, new->net, new->id);
   }
 
   /* Run the filters, actually */
