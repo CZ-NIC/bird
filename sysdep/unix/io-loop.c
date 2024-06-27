@@ -683,8 +683,8 @@ birdloop_take(struct birdloop_pickup_group *group)
   if (this_thread->busy_active &&
       (group->thread_busy_count < group->thread_count) &&
       (this_thread->loop_count > 1) &&
-      !EMPTY_LIST(group->loops) &&
-      birdloop_hot_potato(HEAD(group->loops)))
+      (EMPTY_LIST(group->loops) ||
+      !birdloop_hot_potato(HEAD(group->loops))))
   {
     THREAD_TRACE(DL_SCHEDULING, "Loop drop requested (tbc=%d, tc=%d, lc=%d)",
 	group->thread_busy_count, group->thread_count, this_thread->loop_count);
