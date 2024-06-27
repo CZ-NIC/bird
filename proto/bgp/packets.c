@@ -3142,6 +3142,12 @@ bgp_fire_tx(struct bgp_conn *conn)
   return 0;
 }
 
+static void bgp_tx_deferred(struct deferred_call *dc);
+struct bgp_tx_deferred_call {
+  struct deferred_call dc;
+  struct bgp_conn *conn;
+};
+
 /**
  * bgp_schedule_packet - schedule a packet for transmission
  * @conn: connection
@@ -3161,6 +3167,8 @@ bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type)
   else
     BGP_TRACE(D_PACKETS, "Scheduling packet type %d", type);
 
+  bool was_active = conn->channels_to_send || conn->packets_to_send;
+
   if (c)
   {
     if (! conn->channels_to_send)
@@ -3175,18 +3183,27 @@ bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type)
   else
     conn->packets_to_send |= 1 << type;
 
-  if ((conn->sk->tpos == conn->sk->tbuf) && !ev_active(conn->tx_ev))
-    proto_send_event(&p->p, conn->tx_ev);
+  if (was_active || (conn->sk->tpos != conn->sk->tbuf))
+    return;
+  else if (type == PKT_KEEPALIVE)
+    bgp_fire_tx(conn);
+  else
+  {
+    struct bgp_tx_deferred_call btdc = {
+      .dc.hook = bgp_tx_deferred,
+      .conn = conn,
+    };
+    defer_call(&btdc.dc, sizeof btdc);
+  }
 }
-void
-bgp_kick_tx(void *vconn)
-{
-  struct bgp_conn *conn = vconn;
 
+static void
+bgp_tx_deferred(struct deferred_call *dc)
+{
+  struct bgp_conn *conn = SKIP_BACK(struct bgp_tx_deferred_call, dc, dc)->conn;
   DBG("BGP: kicking TX\n");
   while (bgp_fire_tx(conn) > 0)
-    MAYBE_DEFER_TASK(proto_event_list(&conn->bgp->p), conn->tx_ev,
-	"BGP TX for %s", conn->bgp->p.name);
+    ;
 }
 
 void
@@ -3202,8 +3219,7 @@ bgp_tx(sock *sk)
 
   DBG("BGP: TX hook\n");
   while (bgp_fire_tx(conn) > 0)
-    MAYBE_DEFER_TASK(proto_event_list(&conn->bgp->p), conn->tx_ev,
-	"BGP TX for %s", conn->bgp->p.name);
+    ;
 }
 
 

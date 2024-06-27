@@ -475,8 +475,6 @@ bgp_close_conn(struct bgp_conn *conn)
   conn->hold_timer = NULL;
   rfree(conn->send_hold_timer);
   conn->send_hold_timer = NULL;
-  rfree(conn->tx_ev);
-  conn->tx_ev = NULL;
 
   sk_close(conn->sk);
   conn->sk = NULL;
@@ -1168,10 +1166,6 @@ bgp_keepalive_timeout(timer *t)
 
   DBG("BGP: Keepalive timer\n");
   bgp_schedule_packet(conn, NULL, PKT_KEEPALIVE);
-
-  /* Kick TX a bit faster */
-  if (ev_active(conn->tx_ev))
-    ev_run(conn->tx_ev);
 }
 
 void
@@ -1211,8 +1205,6 @@ bgp_setup_conn(struct bgp_proto *p, struct bgp_conn *conn)
   conn->hold_timer 	= tm_new_init(p->p.pool, bgp_hold_timeout,	 conn, 0, 0);
   conn->keepalive_timer	= tm_new_init(p->p.pool, bgp_keepalive_timeout, conn, 0, 0);
   conn->send_hold_timer = tm_new_init(p->p.pool, bgp_send_hold_timeout, conn, 0, 0);
-
-  conn->tx_ev = ev_new_init(p->p.pool, bgp_kick_tx, conn);
 }
 
 static void
@@ -2796,9 +2788,8 @@ bgp_show_proto_info(struct proto *P)
 	    tm_remains(p->conn->hold_timer), p->conn->hold_time);
     cli_msg(-1006, "    Keepalive timer:  %t/%u",
 	    tm_remains(p->conn->keepalive_timer), p->conn->keepalive_time);
-    cli_msg(-1006, "    TX pending:       %d bytes%s",
-	    p->conn->sk->tpos - p->conn->sk->ttx,
-	    ev_active(p->conn->tx_ev) ? " (refill scheduled)" : "");
+    cli_msg(-1006, "    TX pending:       %d bytes",
+	    p->conn->sk->tpos - p->conn->sk->ttx);
     cli_msg(-1006, "    Send hold timer:  %t/%u",
 	    tm_remains(p->conn->send_hold_timer), p->conn->send_hold_time);
 }

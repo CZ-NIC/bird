@@ -309,7 +309,6 @@ struct bgp_conn {
   timer *hold_timer;
   timer *keepalive_timer;
   timer *send_hold_timer;
-  event *tx_ev;
   u32 packets_to_send;			/* Bitmap of packet types to be sent */
   u32 channels_to_send;			/* Bitmap of channels with packets to be sent */
   u8 last_channel;			/* Channel used last time for TX */
@@ -708,7 +707,6 @@ int bgp_check_capabilities(struct bgp_conn *conn);
 const struct bgp_af_desc *bgp_get_af_desc(u32 afi);
 const struct bgp_af_caps *bgp_find_af_caps(struct bgp_caps *caps, u32 afi);
 void bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type);
-void bgp_kick_tx(void *vconn);
 void bgp_tx(struct birdsock *sk);
 int bgp_rx(struct birdsock *sk, uint size);
 void bgp_do_uncork(callback *);
