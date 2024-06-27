@@ -1841,32 +1841,34 @@ bgp_done_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_buc
 void
 bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *bc)
 {
-  BGP_PTX_LOCK(bc->tx, c);
-
-  ASSERT_DIE(bc->tx_keep);
   uint seen = 0;
-
-  HASH_WALK(c->prefix_hash, next, px)
   {
-    if (!px->cur)
+    BGP_PTX_LOCK(bc->tx, c);
+
+    ASSERT_DIE(bc->tx_keep);
+
+    HASH_WALK(c->prefix_hash, next, px)
     {
-      ASSERT_DIE(px->last);
-      struct bgp_bucket *last = px->last;
+      if (!px->cur)
+      {
+	ASSERT_DIE(px->last);
+	struct bgp_bucket *last = px->last;
 
-      /* Remove the last reference, we wanna resend the route */
-      px->last->px_uc--;
-      px->last = NULL;
+	/* Remove the last reference, we wanna resend the route */
+	px->last->px_uc--;
+	px->last = NULL;
 
-      /* And send it once again */
-      seen += bgp_update_prefix(c, px, last);
+	/* And send it once again */
+	seen += bgp_update_prefix(c, px, last);
+      }
     }
+    HASH_WALK_END;
+
+    if (bc->c.debug & D_EVENTS)
+      log(L_TRACE "%s.%s: TX resending %u routes",
+	  bc->c.proto->name, bc->c.name, seen);
+
   }
-  HASH_WALK_END;
-
-  if (bc->c.debug & D_EVENTS)
-    log(L_TRACE "%s.%s: TX resending %u routes",
-	bc->c.proto->name, bc->c.name, seen);
-
   if (seen)
     bgp_schedule_packet(p->conn, bc, PKT_UPDATE);
 }

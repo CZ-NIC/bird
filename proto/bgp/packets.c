@@ -1052,9 +1052,12 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
       conn->hold_time, conn->keepalive_time, p->remote_as, p->remote_id, conn->as4_session);
 
   bgp_schedule_packet(conn, NULL, PKT_KEEPALIVE);
-  bgp_start_timer(p, conn->hold_timer, conn->hold_time);
-  bgp_start_timer(p, conn->send_hold_timer, conn->send_hold_time);
-  bgp_conn_enter_openconfirm_state(conn);
+  if (conn->sk)
+  {
+    bgp_start_timer(p, conn->hold_timer, conn->hold_time);
+    bgp_start_timer(p, conn->send_hold_timer, conn->send_hold_time);
+    bgp_conn_enter_openconfirm_state(conn);
+  }
 }
 
 
@@ -3186,7 +3189,8 @@ bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type)
   if (was_active || (conn->sk->tpos != conn->sk->tbuf))
     return;
   else if ((type == PKT_KEEPALIVE) || (this_birdloop != p->p.loop))
-    bgp_fire_tx(conn);
+    while (bgp_fire_tx(conn) > 0)
+      ;
   else
   {
     struct bgp_tx_deferred_call btdc = {
