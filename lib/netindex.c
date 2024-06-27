@@ -56,7 +56,7 @@ net_lock_revive_unlock(netindex_hash *h, struct netindex *i)
 netindex_hash *
 netindex_hash_new(pool *sp, event_list *cleanup_target, u8 type)
 {
-  DOMAIN(attrs) dom = DOMAIN_NEW_RCU_SYNC(attrs);
+  DOMAIN(attrs) dom = DOMAIN_NEW(attrs);
   LOCK_DOMAIN(attrs, dom);
 
   pool *p = rp_new(sp, dom.attrs, "Network index");

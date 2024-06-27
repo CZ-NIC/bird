@@ -1579,7 +1579,7 @@ birdloop_run_timer(timer *tm)
 static struct birdloop *
 birdloop_vnew_internal(pool *pp, uint order, struct birdloop_pickup_group *group, const char *name, va_list args)
 {
-  struct domain_generic *dg = domain_new(order, 1);
+  struct domain_generic *dg = domain_new(order);
   DG_LOCK(dg);
 
   pool *p = rp_vnewf(pp, dg, name, args);

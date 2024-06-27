@@ -50,29 +50,27 @@ _Thread_local struct domain_generic **last_locked = NULL;
 struct domain_generic {
   pthread_mutex_t mutex;
   uint order;
-  bool forbidden_when_reading_rcu;
   struct domain_generic **prev;
   struct lock_order *locked_by;
   const char *name;
   pool *pool;
 };
 
-#define DOMAIN_INIT(_order, _allow_rcu) { \
+#define DOMAIN_INIT(_order) { \
   .mutex = PTHREAD_MUTEX_INITIALIZER, \
   .order = _order, \
-  .forbidden_when_reading_rcu = !_allow_rcu, \
 }
 
-static struct domain_generic the_bird_domain_gen = DOMAIN_INIT(OFFSETOF(struct lock_order, the_bird), 1);
+static struct domain_generic the_bird_domain_gen = DOMAIN_INIT(OFFSETOF(struct lock_order, the_bird));
 
 DOMAIN(the_bird) the_bird_domain = { .the_bird = &the_bird_domain_gen };
 
 struct domain_generic *
-domain_new(uint order, bool allow_rcu)
+domain_new(uint order)
 {
   ASSERT_DIE(order < sizeof(struct lock_order));
   struct domain_generic *dg = xmalloc(sizeof(struct domain_generic));
-  *dg = (struct domain_generic) DOMAIN_INIT(order, allow_rcu);
+  *dg = (struct domain_generic) DOMAIN_INIT(order);
   return dg;
 }
 
@@ -108,11 +106,8 @@ void do_lock(struct domain_generic *dg, struct domain_generic **lsp)
   memcpy(&stack_copy, &locking_stack, sizeof(stack_copy));
   struct domain_generic **lll = last_locked;
 
-  if (dg->forbidden_when_reading_rcu)
-    if (rcu_read_active())
-      bug("Locking of this lock forbidden while RCU reader is active");
-    else
-      rcu_blocked++;
+  if (rcu_read_active())
+    bug("Locking forbidden while RCU reader is active");
 
   if ((char *) lsp - (char *) &locking_stack != dg->order)
     bug("Trying to lock on bad position: order=%u, lsp=%p, base=%p", dg->order, lsp, &locking_stack);
@@ -139,9 +134,6 @@ void do_lock(struct domain_generic *dg, struct domain_generic **lsp)
 
 void do_unlock(struct domain_generic *dg, struct domain_generic **lsp)
 {
-  if (dg->forbidden_when_reading_rcu)
-    ASSERT_DIE(rcu_blocked--);
-
   if ((char *) lsp - (char *) &locking_stack != dg->order)
     bug("Trying to unlock on bad position: order=%u, lsp=%p, base=%p", dg->order, lsp, &locking_stack);
 

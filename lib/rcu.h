@@ -28,7 +28,6 @@ struct rcu_thread {
 };
 
 extern _Thread_local struct rcu_thread this_rcu_thread;
-extern _Thread_local uint rcu_blocked;
 
 static inline void rcu_read_lock(void)
 {
