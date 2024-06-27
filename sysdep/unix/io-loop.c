@@ -1295,7 +1295,7 @@ bird_thread_show(struct bird_thread_syncer *sync)
     tsd->lp = lp_new(tsd->sync.pool);
 
   if (tsd->show_loops)
-    tsd_append("Thread %p%s (busy counter %d)", this_thread, this_thread->busy_active ? " [busy]" : "", this_thread->busy_counter);
+    tsd_append("Thread %04x %s (busy counter %d)", THIS_THREAD_ID, this_thread->busy_active ? " [busy]" : "", this_thread->busy_counter);
 
   u64 total_time_ns = 0;
   struct birdloop *loop;
@@ -1314,8 +1314,9 @@ bird_thread_show(struct bird_thread_syncer *sync)
     bird_thread_show_spent_time(tsd, "Idle    ", &this_thread->idle);
   }
   else
-    tsd_append("Thread %p working %t s overhead %t s",
-	this_thread, total_time_ns NS, this_thread->overhead.total_ns NS);
+    tsd_append("Thread %04x %s working %t s overhead %t s",
+	THIS_THREAD_ID, this_thread->busy_active ? " [busy]" : "",
+	total_time_ns NS, this_thread->overhead.total_ns NS);
 }
 
 static void
