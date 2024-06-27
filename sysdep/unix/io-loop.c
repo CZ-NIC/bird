@@ -678,9 +678,6 @@ birdloop_take(struct birdloop_pickup_group *group)
 {
   struct birdloop *loop = NULL;
 
-  if (birdloop_hot_potato(this_thread->meta))
-    return;
-
   LOCK_DOMAIN(attrs, group->domain);
 
   if (this_thread->busy_active &&
@@ -743,7 +740,9 @@ birdloop_take(struct birdloop_pickup_group *group)
     if (group->thread_busy_count < group->thread_count)
       thread_count -= group->thread_busy_count;
 
-    uint assign = 1 + group->loop_unassigned_count / thread_count;
+    uint assign = birdloop_hot_potato(this_thread->meta) ? 1 :
+		  1 + group->loop_unassigned_count / thread_count;
+
     for (uint i=0; !EMPTY_LIST(group->loops) && i<assign; i++)
     {
       loop = SKIP_BACK(struct birdloop, n, HEAD(group->loops));
