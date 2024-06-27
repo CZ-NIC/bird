@@ -188,8 +188,11 @@ get_ancestor_bucket(const struct trie_node *node)
   }
 }
 
+/*
+ * First pass of Optimal Route Table Construction (ORTC) algorithm
+ */
 static void
-first_pass_new(struct trie_node *node, linpool *trie_pool)
+first_pass(struct trie_node *node, linpool *trie_pool)
 {
   assert(node != NULL);
   assert(trie_pool != NULL);
@@ -206,6 +209,7 @@ first_pass_new(struct trie_node *node, linpool *trie_pool)
   if (!node->parent)
     assert(node->bucket != NULL);
 
+  /* Initialize bucket from the nearest ancestor that has a bucket */
   if (!node->bucket)
     node->bucket = node->parent->bucket;
 
@@ -222,11 +226,12 @@ first_pass_new(struct trie_node *node, linpool *trie_pool)
   }
 
   if (node->child[0])
-    first_pass_new(node->child[0], trie_pool);
+    first_pass(node->child[0], trie_pool);
 
   if (node->child[1])
-    first_pass_new(node->child[1], trie_pool);
+    first_pass(node->child[1], trie_pool);
 
+  /* Discard bucket information in internal nodes */
   node->bucket = NULL;
 }
 
@@ -259,51 +264,7 @@ first_pass_after_check(const struct trie_node *node)
 }
 
 /*
- * First pass of Optimal Route Table Construction (ORTC) algorithm
  */
-static void
-first_pass(struct trie_node *node, linpool *trie_pool)
-{
-  bug("");
-  assert(node != NULL);
-  assert(trie_pool != NULL);
-
-  if (!node->parent)
-    assert(node->bucket != NULL);
-
-  if (is_leaf(node))
-  {
-    /*
-    for (int i = 0; i < node->potential_buckets_count; i++)
-    {
-      if (node->potential_buckets[i] == node->bucket)
-        return;
-    }
-    */
-
-    assert(node->bucket != NULL);
-    node->potential_buckets[node->potential_buckets_count++] = node->bucket;
-    return;
-  }
-
-  /* Add leave nodes so that each node has either two or no children */
-  for (int i = 0; i < 2; i++)
-  {
-    if (!node->child[i])
-    {
-      struct trie_node *new = create_new_node(trie_pool);
-      new->parent = node;
-      new->bucket = get_ancestor_bucket(new);
-      node->child[i] = new;
-      new->depth = new->parent->depth + 1;
-    }
-  }
-
-  /* Preorder traversal */
-  first_pass(node->child[0], trie_pool);
-  first_pass(node->child[1], trie_pool);
-}
-
 static int
 aggregator_bucket_compare(const struct aggregator_bucket *a, const struct aggregator_bucket *b)
 {
@@ -871,7 +832,7 @@ calculate_trie(struct aggregator_proto *p)
   log("====PREFIXES BEFORE ====");
 
   log("====FIRST PASS====");
-  first_pass_new(p->root, p->trie_pool);
+  first_pass(p->root, p->trie_pool);
   first_pass_after_check(p->root);
   print_prefixes(p->root, p->addr_type);
 
