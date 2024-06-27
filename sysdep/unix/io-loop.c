@@ -1362,6 +1362,9 @@ cmd_show_threads_done(struct bird_thread_syncer *sync)
     UNLOCK_DOMAIN(attrs, group->domain);
   }
 
+  if (!tsd->show_loops)
+    cli_printf(tsd->cli, -1027, "Thread ID       Working         Overhead        Last Pickup/Drop");
+
   for (uint i = 0; i < tsd->line_pos - 1; i++)
     cli_printf(tsd->cli, -1027, "%s", tsd->lines[i]);
 
@@ -1381,9 +1384,6 @@ cmd_show_threads(int show_loops)
 
   this_cli->cont = bird_thread_show_cli_cont;
   this_cli->cleanup = bird_thread_show_cli_cleanup;
-
-  if (!show_loops)
-    tsd_append("Thread ID       Working         Overhead        Last Pickup/Drop");
 
   bird_thread_sync_all(&tsd->sync, bird_thread_show, cmd_show_threads_done, "Show Threads");
 }
