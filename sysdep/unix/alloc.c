@@ -215,6 +215,14 @@ alloc_page(void)
   /* Reinstate the stack with zero */
   PAGE_STACK_PUT(NULL);
 
+  if (rcu_read_active())
+  {
+    /* We can't lock and we actually shouldn't alloc either when rcu is active
+     * but that's a quest for another day. */
+  }
+  else
+  {
+
   /* If there is any free page kept cold, we use that. */
   LOCK_DOMAIN(resource, empty_pages_domain);
   if (empty_pages) {
@@ -243,6 +251,8 @@ alloc_page(void)
 
   if (fp)
     return fp;
+
+  }
 
   /* And in the worst case, allocate some new pages by mmap() */
   void *ptr = alloc_sys_page();

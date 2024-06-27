@@ -44,9 +44,8 @@ extern _Thread_local struct domain_generic **last_locked;
 #define DOMAIN(type) struct domain__##type
 #define DOMAIN_ORDER(type)  OFFSETOF(struct lock_order, type)
 
-#define DOMAIN_NEW(type)  (DOMAIN(type)) { .type = domain_new(DOMAIN_ORDER(type), 1) }
-#define DOMAIN_NEW_RCU_SYNC(type)  (DOMAIN(type)) { .type = domain_new(DOMAIN_ORDER(type), 0) }
-struct domain_generic *domain_new(uint order, bool allow_rcu);
+#define DOMAIN_NEW(type)  (DOMAIN(type)) { .type = domain_new(DOMAIN_ORDER(type)) }
+struct domain_generic *domain_new(uint order);
 
 #define DOMAIN_FREE(type, d)	domain_free((d).type)
 void domain_free(struct domain_generic *);

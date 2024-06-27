@@ -18,7 +18,6 @@
 
 _Atomic u64 rcu_global_phase = RCU_GP_PHASE;
 _Thread_local struct rcu_thread this_rcu_thread;
-_Thread_local uint rcu_blocked;
 
 static struct rcu_thread * _Atomic rcu_thread_list = NULL;
 
@@ -36,9 +35,6 @@ rcu_critical(struct rcu_thread *t, u64 phase)
 void
 synchronize_rcu(void)
 {
-  if (!rcu_blocked && (last_locked > &locking_stack.meta))
-    bug("Forbidden to synchronize RCU unless an appropriate lock is taken");
-
   /* Increment phase */
   u64 phase = atomic_fetch_add_explicit(&rcu_global_phase, RCU_GP_PHASE, memory_order_acq_rel);
 

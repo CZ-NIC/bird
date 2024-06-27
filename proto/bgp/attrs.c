@@ -1948,7 +1948,7 @@ bgp_init_pending_tx(struct bgp_channel *c)
   ASSERT_DIE(c->c.out_table == NULL);
   ASSERT_DIE(c->tx == NULL);
 
-  DOMAIN(rtable) dom = DOMAIN_NEW_RCU_SYNC(rtable);
+  DOMAIN(rtable) dom = DOMAIN_NEW(rtable);
   LOCK_DOMAIN(rtable, dom);
   pool *p = rp_newf(c->pool, dom.rtable, "%s.%s TX", c->c.proto->name, c->c.name);
 
