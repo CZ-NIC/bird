@@ -706,7 +706,7 @@ birdloop_take(struct birdloop_pickup_group *group)
 	birdloop_set_thread(loop, NULL, group);
 
 	dropped++;
-	if (dropped * dropped > this_thread->loop_count)
+	if ((dropped * dropped) / 2 > this_thread->loop_count)
 	{
 	  birdloop_leave(loop);
 
@@ -764,10 +764,12 @@ birdloop_take(struct birdloop_pickup_group *group)
     }
 
     bird_thread_pickup_next(group);
+
+    if (assign)
+      this_thread->meta->last_transition_ns = ns_now();
   }
 
   UNLOCK_DOMAIN(attrs, group->domain);
-  this_thread->meta->last_transition_ns = ns_now();
 }
 
 static int
