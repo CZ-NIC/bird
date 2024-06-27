@@ -79,10 +79,11 @@ is_leaf(const struct trie_node *node)
 /*
  * Allocate new node in protocol linpool
  */
-static struct trie_node *
+static inline struct trie_node *
 create_new_node(linpool *trie_pool)
 {
-  return lp_allocz(trie_pool, sizeof(struct trie_node));
+  struct trie_node *node = lp_allocz(trie_pool, sizeof(*node));
+  return node;
 }
 
 /*
@@ -1602,13 +1603,13 @@ trie_init(struct aggregator_proto *p)
 
   if (p->addr_type == NET_IP4)
   {
-    default_net = mb_allocz(p->p.pool, sizeof(struct network) + sizeof(struct net_addr_ip4));
+    default_net = mb_allocz(p->p.pool, sizeof(*default_net) + sizeof(struct net_addr_ip4));
     net_fill_ip4(default_net->n.addr, IP4_NONE, 0);
     log("Creating net %p for default route %N", default_net, default_net->n.addr);
   }
   else if (p->addr_type == NET_IP6)
   {
-    default_net = mb_allocz(p->p.pool, sizeof(struct network) + sizeof(struct net_addr_ip6));
+    default_net = mb_allocz(p->p.pool, sizeof(*default_net) + sizeof(struct net_addr_ip6));
     net_fill_ip6(default_net->n.addr, IP6_NONE, 0);
     log("Creating net %p for default route %N", default_net, default_net->n.addr);
   }
