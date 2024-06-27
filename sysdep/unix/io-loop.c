@@ -1314,9 +1314,10 @@ bird_thread_show(struct bird_thread_syncer *sync)
     bird_thread_show_spent_time(tsd, "Idle    ", &this_thread->idle);
   }
   else
-    tsd_append("Thread %04x %s working %t s overhead %t s",
-	THIS_THREAD_ID, this_thread->busy_active ? " [busy]" : "",
-	total_time_ns NS, this_thread->overhead.total_ns NS);
+    tsd_append("%04x%s     % 9.3t s   % 9.3t s   % 9.3t s",
+	THIS_THREAD_ID, this_thread->busy_active ? " [busy]" : "       ",
+	total_time_ns NS, this_thread->overhead.total_ns NS,
+	(ns_now() - this_thread->meta->last_transition_ns) NS);
 }
 
 static void
@@ -1380,6 +1381,9 @@ cmd_show_threads(int show_loops)
 
   this_cli->cont = bird_thread_show_cli_cont;
   this_cli->cleanup = bird_thread_show_cli_cleanup;
+
+  if (!show_loops)
+    tsd_append("Thread ID       Working         Overhead        Last Pickup/Drop");
 
   bird_thread_sync_all(&tsd->sync, bird_thread_show, cmd_show_threads_done, "Show Threads");
 }
