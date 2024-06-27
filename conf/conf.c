@@ -358,8 +358,16 @@ config_done(void)
   if (future_cftype)
     {
       int type = future_cftype;
+      struct config *fc = OBSREF_GET(future_config);
 
-      CONFIG_REF_LOCAL(conf, OBSREF_GET(future_config));
+      if (type == RECONFIG_UNDO)
+      {
+	ASSERT_DIE(!fc);
+	ASSERT_DIE(old_config);
+	fc = old_config;
+      }
+
+      CONFIG_REF_LOCAL(conf, fc);
 
       future_cftype = RECONFIG_NONE;
       OBSREF_CLEAR(future_config);
