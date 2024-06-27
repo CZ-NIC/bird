@@ -691,8 +691,8 @@ birdloop_take(struct birdloop_pickup_group *group)
     UNLOCK_DOMAIN(attrs, group->domain);
 
     uint dropped = 0;
-    node *n;
-    WALK_LIST2(loop, n, this_thread->loops, n)
+    node *n, *_nxt;
+    WALK_LIST2_DELSAFE(loop, n, _nxt, this_thread->loops, n)
     {
       birdloop_enter(loop);
       if (ev_active(&loop->event) && !loop->stopped && !birdloop_hot_potato(loop))
