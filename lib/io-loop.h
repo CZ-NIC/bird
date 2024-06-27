@@ -19,6 +19,9 @@ extern struct birdloop main_birdloop;
 /* Currently running birdloop */
 extern _Thread_local struct birdloop *this_birdloop;
 
+/* Lowest entered birdloop */
+extern _Thread_local struct birdloop *birdloop_current;
+
 /* Check that the task has enough time to do a bit more */
 bool task_still_in_limit(void);
 bool task_before_halftime(void);
@@ -40,8 +43,8 @@ void birdloop_stop(struct birdloop *loop, void (*stopped)(void *data), void *dat
 void birdloop_stop_self(struct birdloop *loop, void (*stopped)(void *data), void *data);
 void birdloop_free(struct birdloop *loop);
 
-/* Run this event in this thread's priority event list */
-void ev_send_this_thread(event *e);
+/* Run this event in the running loop's priority event list to run asap */
+void ev_send_defer(event *e);
 
 /* Get birdloop's time heap */
 struct timeloop *birdloop_time_loop(struct birdloop *loop);
