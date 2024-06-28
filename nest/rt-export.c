@@ -103,9 +103,7 @@ rt_export_get(struct rt_export_request *r)
       else if (feed = rt_export_next_feed(&r->feeder))
       {
 	/* Feeding more */
-	bmap_set(&r->feed_map, feed->ni->index);
 	rtex_trace(r, D_ROUTES, "Feeding %N", feed->ni->addr);
-
 	EXPORT_FOUND(RT_EXPORT_FEED);
       }
       else if (rt_export_get_state(r) == TES_DOWN)
@@ -158,7 +156,6 @@ rt_export_get(struct rt_export_request *r)
 	feed = e->feed_net(e, u, ni->index, NULL, NULL, update);
       }
 
-      bmap_set(&r->feed_map, ni->index);
       ASSERT_DIE(feed && (feed != &rt_feed_index_out_of_range));
 
       EXPORT_FOUND(RT_EXPORT_FEED);
@@ -192,6 +189,8 @@ rt_export_release(const struct rt_export_union *u)
     case RT_EXPORT_FEED:
       for (uint i = 0; i < u->feed->count_exports; i++)
 	bmap_set(&r->seq_map, u->feed->exports[i]);
+
+      bmap_set(&r->feed_map, u->feed->ni->index);
 
       if (!u->update)
 	break;
