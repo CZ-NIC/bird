@@ -1081,12 +1081,20 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old)
   do_rt_notify(c, np ? np->net : old->net, np, old);
 }
 
+#if 0
+#define RT_NOTIFY_DEBUG(fmt...)	log(L_TRACE "rt_notify_accepted: " fmt, ##fmt)
+#else
+#define RT_NOTIFY_DEBUG(...)
+#endif
+
 static void
 rt_notify_accepted(struct channel *c, const struct rt_export_feed *feed)
 {
-  rte *old_best, *new_best;
+  rte *old_best = NULL, *new_best = NULL;
   bool feeding = rt_net_is_feeding(&c->out_req, feed->ni->addr);
   bool idempotent = 0;
+
+  RT_NOTIFY_DEBUG("%s feed for %N with %u routes", feeding ? "refeed" : "regular", feed->ni->addr, feed->count_routes);
 
   for (uint i = 0; i < feed->count_routes; i++)
   {
@@ -1095,45 +1103,62 @@ rt_notify_accepted(struct channel *c, const struct rt_export_feed *feed)
     /* Previously exported */
     if (!old_best && bmap_test(&c->export_accepted_map, r->id))
     {
+      RT_NOTIFY_DEBUG("route %u id %u previously exported, is old best", i, r->id);
       old_best = r;
 
+      /* Is being withdrawn */
+      if (r->flags & REF_OBSOLETE)
+	RT_NOTIFY_DEBUG("route %u id %u is also obsolete", i, r->id);
+
       /* Is still the best and need not be refed anyway */
-      if (!new_best && !feeding)
+      else if (!new_best && !feeding)
       {
-	idempotent = 1;
+	RT_NOTIFY_DEBUG("route %u id %u is also new best (idempotent)", i, r->id);
 	new_best = r;
+	idempotent = 1;
       }
     }
 
     /* Unflag obsolete routes */
-    if (r->flags & REF_OBSOLETE)
+    else if (r->flags & REF_OBSOLETE)
+    {
+      RT_NOTIFY_DEBUG("route %u id %u is obsolete", i, r->id);
       bmap_clear(&c->export_rejected_map, r->id);
+    }
 
     /* Mark invalid as rejected */
     else if (!rte_is_valid(r))
+    {
+      RT_NOTIFY_DEBUG("route %u id %u is invalid", i, r->id);
       bmap_set(&c->export_rejected_map, r->id);
+    }
 
     /* Already rejected */
     else if (!feeding && bmap_test(&c->export_rejected_map, r->id))
-      ;
+      RT_NOTIFY_DEBUG("route %u id %u has been rejected before", i, r->id);
 
     /* No new best route yet and this is a valid candidate */
     else if (!new_best)
     {
       /* This branch should not be executed if this route is old best */
-      ASSERT_DIE(r != old_best);
+      ASSERT_DIE(feeding || (r != old_best));
 
       /* Have no new best route yet, try this route not seen before */
       new_best = export_filter(c, r, 0);
-      DBG("rt_notify_accepted: checking route id %u: %s\n", r->id, new_best ? "ok" : "no");
+      RT_NOTIFY_DEBUG("route %u id %u is a new_best candidate %s", i, r->id,
+	  new_best ? "and is accepted" : "but got rejected");
     }
+
+    /* Just a debug message for the last case */
+    else
+      RT_NOTIFY_DEBUG("route %u id %u is suboptimal, not checking", i, r->id);
   }
 
   /* Nothing to export */
   if (!idempotent && (new_best || old_best))
     do_rt_notify(c, feed->ni->addr, new_best, old_best);
   else
-    DBG("rt_notify_accepted: nothing to export\n");
+    RT_NOTIFY_DEBUG("nothing to export for %N", feed->ni->addr);
 }
 
 void

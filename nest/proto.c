@@ -108,8 +108,6 @@ void
 channel_request_full_refeed(struct channel *c)
 {
   rt_export_refeed(&c->out_req, NULL);
-  bmap_reset(&c->export_accepted_map, 16);
-  bmap_reset(&c->export_rejected_map, 16);
 }
 
 static void

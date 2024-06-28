@@ -331,9 +331,21 @@ static inline bool
 rt_net_is_feeding_request(struct rt_export_request *req, const net_addr *n)
 {
   struct netindex *ni = NET_TO_INDEX(n);
-  return
-    !bmap_test(&req->feed_map, ni->index)
-    && rt_net_is_feeding_feeder(&req->feeder, n);
+  switch (rt_export_get_state(req))
+  {
+    case TES_PARTIAL:
+    case TES_FEEDING:
+      break;
+
+    default:
+      return 0;
+  }
+
+  /* Already fed */
+  if (bmap_test(&req->feed_map, ni->index))
+    return 0;
+
+  return rt_net_is_feeding_feeder(&req->feeder, n);
 }
 
 #define rt_net_is_feeding(h, n)	_Generic((h), \
