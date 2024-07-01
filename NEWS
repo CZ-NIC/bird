@@ -1,3 +1,11 @@
+Version 3.0alpha3 (2024-07-01)
+  o Merged 2.15.1
+  o Fixed major issues with channel reloads
+  o Fixed data inconsistencies in many corner cases
+  o Fixed internal scheduler corner cases
+  o MRT and BMP still switched off
+  o Expected one more alpha before stable
+
 Version 3.0alpha2 (2023-05-11)
   o Fixed memory leaks and use-after free bugs
   o Simple thread work balancing
