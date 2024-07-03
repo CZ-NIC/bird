@@ -20,14 +20,14 @@
 
 #define MAX_POTENTIAL_BUCKETS_COUNT 16
 
-enum aggr_mode {
+enum aggregation_mode {
   NET_AGGR, PREFIX_AGGR,
 };
 
 struct aggregator_config {
   struct proto_config c;
   struct channel_config *src, *dst;
-  enum aggr_mode aggr_mode;
+  enum aggregation_mode aggr_mode;
   uint aggr_on_count;
   uint aggr_on_da_count;
   struct aggr_item *aggr_on;
@@ -53,7 +53,7 @@ struct aggregator_bucket {
 struct aggregator_proto {
   struct proto p;
   struct channel *src, *dst;
-  enum aggr_mode aggr_mode;
+  enum aggregation_mode aggr_mode;
 
   /* Buckets by aggregator rule */
   HASH(struct aggregator_bucket) buckets;
