@@ -497,9 +497,7 @@ remove_potential_buckets(struct trie_node *node)
 static void
 third_pass(struct trie_node *node)
 {
-  if (!node)
-    return;
-
+  assert(node != NULL);
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
   /* Root is assigned any of its potential buckets */
@@ -511,6 +509,10 @@ third_pass(struct trie_node *node)
   }
   else
   {
+    // Internal nodes should not have a bucket since it was deleted during first pass
+    if (!is_leaf(node))
+      assert(node->bucket == NULL);
+
     const struct aggregator_bucket *inherited_bucket = get_ancestor_bucket(node);
 
     /*
@@ -530,8 +532,11 @@ third_pass(struct trie_node *node)
   }
 
   /* Preorder traversal */
-  third_pass(node->child[0]);
-  third_pass(node->child[1]);
+  if (node->child[0])
+    third_pass(node->child[0]);
+
+  if (node->child[1])
+    third_pass(node->child[1]);
 
   /* Leaves with no assigned bucket are removed */
   if (!node->bucket && is_leaf(node))
