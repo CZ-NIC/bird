@@ -676,8 +676,11 @@ print_prefixes(const struct trie_node *node, int type)
   }
 }
 
+/*
+ * Create route for aggregated prefix
+ */
 static void
-create_route_ip4(struct aggregator_proto *p, const struct net_addr_ip4 *addr, struct aggregator_bucket *bucket)
+create_route_ip4(struct aggregator_proto *p, struct aggregator_bucket *bucket, const struct net_addr_ip4 *addr)
 {
   struct {
     struct network net;
@@ -690,7 +693,7 @@ create_route_ip4(struct aggregator_proto *p, const struct net_addr_ip4 *addr, st
 }
 
 static void
-create_route_ip6(struct aggregator_proto *p, struct net_addr_ip6 *addr, struct aggregator_bucket *bucket)
+create_route_ip6(struct aggregator_proto *p, struct aggregator_bucket *bucket, const struct net_addr_ip6 *addr)
 {
   struct {
     struct network n;
@@ -710,14 +713,14 @@ collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *add
   if (is_leaf(node))
   {
     assert(node->bucket != NULL);
-    create_route_ip4(p, addr, node->bucket);
+    create_route_ip4(p, node->bucket, addr);
     *count += 1;
     return;
   }
 
   if (node->bucket)
   {
-    create_route_ip4(p, addr, node->bucket);
+    create_route_ip4(p, node->bucket, addr);
     *count += 1;
   }
 
@@ -745,14 +748,14 @@ collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *add
   if (is_leaf(node))
   {
     assert(node->bucket != NULL);
-    create_route_ip6(p, addr, node->bucket);
+    create_route_ip6(p, node->bucket, addr);
     *count += 1;
     return;
   }
 
   if (node->bucket)
   {
-    create_route_ip6(p, addr, node->bucket);
+    create_route_ip6(p, node->bucket, addr);
     *count += 1;
   }
 
