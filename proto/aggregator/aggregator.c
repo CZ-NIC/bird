@@ -1657,6 +1657,29 @@ aggregator_shutdown(struct proto *P)
   return PS_DOWN;
 }
 
+static void
+aggregator_cleanup(struct proto *P)
+{
+  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
+
+  assert(!tm_active(&p->notify_settle.tm));
+
+  /*
+   * Linpools will be freed with other protocol resources but pointers
+   * have to be erased because protocol may be started again
+   */
+  p->bucket_pool = NULL;
+  p->route_pool = NULL;
+  p->trie_pool = NULL;
+
+  assert(p->root == NULL);
+  p->root = NULL;
+  p->first_run = 1;
+
+  p->before_count = 0;
+  p->after_count = 0;
+}
+
 static int
 aggregator_reconfigure(struct proto *P, struct proto_config *CF)
 {
@@ -1734,8 +1757,9 @@ struct protocol proto_aggregator = {
   .init =		aggregator_init,
   .start =		aggregator_start,
   .shutdown =		aggregator_shutdown,
+  .cleanup =           aggregator_cleanup,
   .reconfigure =	aggregator_reconfigure,
-  .get_status = aggregator_get_status,
+  .get_status =        aggregator_get_status,
 };
 
 void
