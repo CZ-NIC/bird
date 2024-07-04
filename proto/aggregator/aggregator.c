@@ -51,8 +51,6 @@
 
 extern linpool *rte_update_pool;
 
-static void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net);
-
 static inline int
 is_leaf(const struct trie_node *node)
 {
@@ -73,7 +71,7 @@ create_new_node(linpool *trie_pool)
 /*
  * Mark appropriate child of parent node as NULL
  */
-static void
+static inline void
 remove_node(struct trie_node *node)
 {
   assert(node != NULL);
@@ -671,6 +669,8 @@ print_prefixes(const struct trie_node *node, int type)
   }
 }
 
+static void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net);
+
 /*
  * Create route for aggregated prefix
  */
@@ -1010,7 +1010,7 @@ aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *b
   rta->source = RTS_AGGREGATED;
   rta->scope = SCOPE_UNIVERSE;
 
-  struct ea_list *eal = allocz(sizeof(struct ea_list) + sizeof(struct eattr) * p->aggr_on_da_count);
+  struct ea_list *eal = allocz(sizeof(*eal) + sizeof(struct eattr) * p->aggr_on_da_count);
   eal->next = NULL;
   eal->count = 0;
   rta->eattrs = eal;
@@ -1615,6 +1615,10 @@ aggregator_start(struct proto *P)
 {
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
 
+  assert(p->bucket_pool == NULL);
+  assert(p->route_pool == NULL);
+  assert(p->trie_pool == NULL);
+
   p->addr_type = p->src->table->addr_type;
 
   p->bucket_pool = lp_new(P->pool);
@@ -1630,6 +1634,7 @@ aggregator_start(struct proto *P)
 
   if (PREFIX_AGGR == p->aggr_mode)
   {
+    assert(p->trie_pool == NULL);
     p->trie_pool = lp_new(P->pool);
     settle_init(&p->notify_settle, &p->notify_settle_cf, request_feed_on_settle_timer, p);
   }
