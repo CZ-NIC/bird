@@ -264,6 +264,7 @@ first_pass_after_check(const struct trie_node *node)
 }
 
 /*
+ * Compare buckets by linear ordering on pointers
  */
 static int
 aggregator_bucket_compare(const struct aggregator_bucket *a, const struct aggregator_bucket *b)
@@ -314,6 +315,10 @@ compute_buckets_union(struct trie_node *node, const struct trie_node *left, cons
 
   for (int i = 0; i < input_count; i++)
   {
+    /*
+     * Don't copy element if it's the same as the last inserted element
+     * to avoid duplicates
+     */
     if (output_count != 0 && output_buckets[output_count - 1] == input_buckets[i])
       continue;
 
@@ -463,6 +468,12 @@ second_pass(struct trie_node *node)
     for (int j = i + 1; j < right->potential_buckets_count; j++)
       assert(right->potential_buckets[i] != right->potential_buckets[j]);
 
+  /*
+   * If there are no common buckets among children's buckets, parent's
+   * buckets are computed as union of its children's buckets.
+   * Otherwise, parent's buckets are computed as intersection of its
+   * children's buckets.
+   */
   if (bucket_sets_are_disjoint(left, right))
     compute_buckets_union(node, left, right);
   else
@@ -718,6 +729,7 @@ collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *add
     return;
   }
 
+  /* Internal node with assigned bucket */
   if (node->bucket)
   {
     create_route_ip4(p, node->bucket, addr);
@@ -753,6 +765,7 @@ collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *add
     return;
   }
 
+  /* Internal node with assigned bucket */
   if (node->bucket)
   {
     create_route_ip6(p, node->bucket, addr);
@@ -994,11 +1007,7 @@ same_val_list(const struct f_val *v1, const struct f_val *v2, uint len)
 }
 
 /*
- * Create and export new merged route.
- * @old: first route in a sequence of equivalent routes that are to be merged
- * @rte_val: first element in a sequence of equivalent rte_val_list entries
- * @length: number of equivalent routes that are to be merged (at least 1)
- * @ail: aggregation list
+ * Create and export new merged route
  */
 static void
 aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net)
@@ -1465,6 +1474,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     rta_free(old_route->rte.attrs);
   }
 
+  /* Aggregation within nets allows incremental updates */
   if (NET_AGGR == p->aggr_mode)
   {
     /* Announce changes */
@@ -1547,6 +1557,9 @@ aggregator_init(struct proto_config *CF)
   return P;
 }
 
+/*
+ * Initialize hash table and create default route
+ */
 static void
 trie_init(struct aggregator_proto *p)
 {
