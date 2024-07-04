@@ -57,6 +57,27 @@ mib_tree_init(pool *p, struct mib_tree *t)
   (void) mib_tree_add(p, t, oid, 0);
 }
 
+int
+mib_tree_hint(pool *p, struct mib_tree *t, const struct oid *oid, uint size)
+{
+  mib_node_u *node = mib_tree_add(p, t, oid, 0);
+  if (!node || mib_node_is_leaf(node))
+    return 0;
+
+  struct mib_node *inner = &node->inner;
+  if (inner->child_len >= size + 1)
+    return 1;
+
+  u32 old_len = inner->child_len;
+  inner->child_len = size + 1;
+  inner->children = realloc(inner->children,
+    inner->child_len * sizeof(mib_node_u *));
+
+  for (u32 i = old_len; i < inner->child_len; i++)
+    inner->children[i] = NULL;
+  return 1;
+}
+
 
 // TODO: This function does not work with leaf nodes inside the snmp_internet prefix
 // area
@@ -602,6 +623,61 @@ mib_tree_walk_to_oid(const struct mib_walk_state *walk, struct oid *result, u32 
   return 0;
 }
 
+/**
+ * mib_tree_walk_is_oid_descendant - check if OID is in walk subtree
+ * @walk: MIB tree walk state
+ * @oid: OID to use
+ *
+ * Return 0 if @walk specify same path in MIB tree as @oid, return +1 if @oid is
+ * in @walk subtree, return -1 otherwise.
+ */
+int
+mib_tree_walk_is_oid_descendant(const struct mib_walk_state *walk, const struct oid *oid)
+{
+  /* walk stack index skipped zero prefix and OID subidentifier index */
+  u32 i = 1, j = 0;
+
+  if (!walk->stack_pos && snmp_is_oid_empty(oid))
+    return 0;
+
+  if (snmp_oid_is_prefixed(oid))
+  {
+    for (; i < MIN(walk->stack_pos - 1, ARRAY_SIZE(snmp_internet) + 1); i++)
+    {
+      if (walk->stack[i]->empty.id != snmp_internet[i - 1])
+	return -1;
+    }
+
+    if (i == walk->stack_pos)
+      return +1;
+
+    if (i < walk->stack_pos &&
+	walk->stack[i]->empty.id != (u32)LOAD_U8(oid->prefix))
+      return -1;
+
+    i++;
+  }
+
+  u32 ids = LOAD_U8(oid->n_subid);
+  for (; i < walk->stack_pos && j < ids; i++, j++)
+  {
+    if (walk->stack[i]->empty.id != LOAD_U32(oid->ids[j]))
+      return -1;
+  }
+
+  if (i < walk->stack_pos)
+    return -1;
+  else if (i == walk->stack_pos && j == ids)
+    return 0;
+  else if (i == walk->stack_pos)
+    return +1;
+  else
+  {
+    die("unreachable");
+    return -1;
+  }
+}
+
 mib_node_u *
 mib_tree_walk_next(const struct mib_tree *t, struct mib_walk_state *walk)
 {
@@ -656,7 +732,10 @@ mib_tree_walk_next_leaf(const struct mib_tree *t, struct mib_walk_state *walk)
   (void)t;
 
   if (walk->stack_pos == 0)
+  {
+    snmp_log("walk next leaf no leafs");
     return NULL;
+  }
 
   u32 next_id = 0;
   mib_node_u *node = walk->stack[walk->stack_pos - 1];
@@ -671,6 +750,7 @@ mib_tree_walk_next_leaf(const struct mib_tree *t, struct mib_walk_state *walk)
   {
     /* walk->stack_pos == 1, so we NULL out the last stack field */
     walk->stack[--walk->stack_pos] = NULL;
+    snmp_log("walk next leaf single leaf");
     return NULL;
   }
 
@@ -680,7 +760,10 @@ continue_while:
     node = walk->stack[walk->stack_pos - 1];
 
     if (mib_node_is_leaf(node))
+    {
+      snmp_log("walk next leaf %p at level %u", node, walk->stack_pos - 1);
       return (struct mib_leaf *) node;
+    }
 
     struct mib_node *node_inner = &node->inner;
     for (u32 id = next_id; id < node_inner->child_len; id++)
@@ -700,6 +783,7 @@ continue_while:
     walk->stack[--walk->stack_pos] = NULL;
   }
 
+  snmp_log("walk next leaf no more leafs");
   return NULL;
 }
 

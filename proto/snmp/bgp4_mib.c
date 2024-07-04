@@ -8,12 +8,11 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-/* need to be first header file included */
-#include "bgp4_mib.h"
-
 #include "snmp.h"
 #include "snmp_utils.h"
 #include "subagent.h"
+#include "bgp4_mib.h"
+#include "mib_tree.h"
 
 /* hash table macros */
 #define SNMP_HASH_KEY(n)  n->peer_ip
@@ -27,18 +26,17 @@
 /* hash table only store ip4 addresses */
 #define SNMP_HASH_LESS(ip1, ip2) SNMP_HASH_LESS4(ip1,ip2)
 
-// TODO delete me
+// delete me
 #define SNMP_MANAGE_TBUF(...) (void)0
 
 #define DECLARE_BGP4(addr, proto, conn, stats, config) \
   ip4_addr addr; \
-  const struct bgp_proto *proto; \
-  const struct bgp_conn *conn; \
-  const struct bgp_stats *stats; \
-  const struct bgp_config *config
+  const struct bgp_proto UNUSED *proto; \
+  const struct bgp_conn UNUSED *conn; \
+  const struct bgp_stats UNUSED *stats; \
+  const struct bgp_config UNUSED *config
 
-#define POPULATE_BGP4(addr, proto, conn, stats, config) populate_bgp4(p, c, &(addr), &(proto), &(conn), &(stats), &(config))
-
+#define POPULATE_BGP4(addr, proto, conn, stats, config) populate_bgp4(d, &(addr), &(proto), &(conn), &(stats), &(config))
 
 static inline void ip4_to_oid(struct oid *oid, ip4_addr addr);
 
@@ -378,8 +376,7 @@ snmp_bgp_notify_backward_trans(struct snmp_proto *p, struct bgp_proto *bgp)
 void
 snmp_bgp4_register(struct snmp_proto *p)
 {
-  u32 bgp_mib_prefix[] = { 1, 15 };
-  // TODO
+  u32 bgp_mib_prefix[] = { 1, BGP4_MIB }; // TODO remove constant
 
   {
     /* Register the whole BGP4-MIB::bgp root tree node */
@@ -602,25 +599,31 @@ oid_state_compare(const struct oid *oid, u8 state)
 }
 
 static inline enum snmp_search_res
-populate_bgp4(struct snmp_proto *p, struct snmp_pdu *c, ip4_addr *addr, const struct bgp_proto **proto, const struct bgp_conn
+populate_bgp4(struct snmp_data *d, ip4_addr *addr, const struct bgp_proto **proto, const struct bgp_conn
 **conn, const struct bgp_stats **stats, const struct bgp_config **config)
 {
-  const struct oid * const oid = &c->sr_vb_start->name;
+  const struct oid * const oid = &d->c->sr_vb_start->name;
   if (snmp_bgp_valid_ip4(oid))
     *addr = ip4_from_oid(oid);
   else
+  {
+    snmp_log("populate() invalid ip4");
     return SNMP_SEARCH_NO_INSTANCE;
+  }
 
-  struct snmp_bgp_peer *pe = snmp_hash_find(p, *addr);
+  struct snmp_bgp_peer *pe = snmp_hash_find(d->p, *addr);
   if (!pe)
+  {
+    snmp_log("populate() hash find failed");
     return SNMP_SEARCH_NO_INSTANCE;
+  }
 
   const struct bgp_proto *bgp_proto;
   *proto = bgp_proto = pe->bgp_proto;
-  if (ipa_is_ip4(bgp_proto->remote_ip))
+  if (!ipa_is_ip4(bgp_proto->remote_ip))
   {
-    log(L_ERR, "%s: Found BGP protocol instance with IPv6 address", bgp_proto->p.name);
-    c->error = AGENTX_RES_GEN_ERROR;
+    log(L_ERR "%s: Found BGP protocol instance with IPv6 address", bgp_proto->p.name);
+    d->c->error = AGENTX_RES_GEN_ERROR;
     return SNMP_SEARCH_NO_INSTANCE;
   }
 
@@ -628,9 +631,9 @@ populate_bgp4(struct snmp_proto *p, struct snmp_pdu *c, ip4_addr *addr, const st
   if (!ip4_equal(proto_ip, pe->peer_ip))
   {
     /* Here, we could be in problem as the bgp_proto IP address could be changed */
-    log(L_ERR, "%s: Stored hash key IP address and peer remote address differ.",
-      bgp_proto->p.name);
-    c->error = AGENTX_RES_GEN_ERROR;
+    log(L_ERR "%s: Stored hash key IP address and peer remote address differ "
+      "(%I, %I).", bgp_proto->p.name, proto_ip, pe->peer_ip);
+    d->c->error = AGENTX_RES_GEN_ERROR;
     return SNMP_SEARCH_NO_INSTANCE;
   }
 
@@ -638,525 +641,406 @@ populate_bgp4(struct snmp_proto *p, struct snmp_pdu *c, ip4_addr *addr, const st
   *stats = &bgp_proto->stats;
   *config = bgp_proto->cf;
 
+  snmp_log("populate() ok");
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_bgp_version(struct snmp_proto *p, struct snmp_pdu *c)
+fill_bgp_version(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
-  if (c->sr_vb_start->name.n_subid != 4)
-  {
-    snmp_set_varbind_type(c->sr_vb_start, AGENTX_NO_SUCH_INSTANCE);
-    return SNMP_SEARCH_NO_INSTANCE;
-  }
-
-  uint sz = snmp_str_size_from_len(1);
-  if (c->size < sz)
-    snmp_manage_tbuf(p, c);
-
-  c->size -= sz;
-  snmp_varbind_nstr(c, BGP4_VERSIONS, 1);
+  snmp_log("fill ver");
+  d->c->size -= snmp_str_size_from_len(1);
+  snmp_varbind_nstr(d->c, BGP4_VERSIONS, 1);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_local_as(struct snmp_proto *p, struct snmp_pdu *c)
+fill_local_as(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
-  if (c->size < AGENTX_TYPE_INT_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_int(c, p->bgp_local_as);
+  snmp_log("fill as");
+  snmp_varbind_int(d->c, d->p->bgp_local_as);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_peer_id(struct snmp_proto *p, struct snmp_pdu *c)
+fill_peer_id(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill peer id");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
   uint fsm_state = snmp_bgp_fsm_state(bgp_proto);
-
-  if (c->size < AGENTX_TYPE_IP4_SIZE)
-    snmp_manage_tbuf(p, c);
 
   if (fsm_state == BGP4_MIB_OPENCONFIRM || fsm_state == BGP4_MIB_ESTABLISHED)
     // TODO last
-    snmp_varbind_ip4(c, ip4_from_u32(bgp_proto->remote_id));
+    snmp_varbind_ip4(d->c, ip4_from_u32(bgp_proto->remote_id));
   else
-    snmp_varbind_ip4(c, IP4_NONE);
+    snmp_varbind_ip4(d->c, IP4_NONE);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_peer_state(struct snmp_proto *p, struct snmp_pdu *c)
+fill_peer_state(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill peer state");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
   uint fsm_state = snmp_bgp_fsm_state(bgp_proto);
 
-  if (c->size < AGENTX_TYPE_INT_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_int(c, fsm_state);
+  snmp_varbind_int(d->c, fsm_state);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_admin_status(struct snmp_proto *p, struct snmp_pdu *c)
+fill_admin_status(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill adm status");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
-
-  if (c->size < AGENTX_TYPE_INT_SIZE)
-    snmp_manage_tbuf(p, c);
 
   if (bgp_proto->p.disabled)
-    snmp_varbind_int(c, AGENTX_ADMIN_STOP);
+    snmp_varbind_int(d->c, AGENTX_ADMIN_STOP);
   else
-    snmp_varbind_int(c, AGENTX_ADMIN_START);
+    snmp_varbind_int(d->c, AGENTX_ADMIN_START);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_neg_version(struct snmp_proto *p, struct snmp_pdu *c)
+fill_neg_version(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill neg ver");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
   uint fsm_state = snmp_bgp_fsm_state(bgp_proto);
 
-  if (c->size < AGENTX_TYPE_INT_SIZE)
-    snmp_manage_tbuf(p, c);
-
   if (fsm_state == BGP4_MIB_ESTABLISHED || fsm_state == BGP4_MIB_ESTABLISHED)
-    snmp_varbind_int(c, BGP4_MIB_NEGOTIATED_VER_VALUE);
+    snmp_varbind_int(d->c, BGP4_MIB_NEGOTIATED_VER_VALUE);
   else
-    snmp_varbind_int(c, BGP4_MIB_NEGOTIATED_VER_NO_VALUE);
+    snmp_varbind_int(d->c, BGP4_MIB_NEGOTIATED_VER_NO_VALUE);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_local_addr(struct snmp_proto *p, struct snmp_pdu *c)
+fill_local_addr(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("bgp4_mib fill local addr");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
+
+  snmp_log("fill local addr result %u", res);
+
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
-  if (c->size < AGENTX_TYPE_IP4_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_ip4(c, ipa_to_ip4(bgp_proto->local_ip));
+  snmp_varbind_ip4(d->c, ipa_to_ip4(bgp_proto->local_ip));
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_local_port(struct snmp_proto *p, struct snmp_pdu *c)
+fill_local_port(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("bgp4_mib fill local port");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
-  if (c->size < AGENTX_TYPE_INT_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_int(c, bgp_conf->local_port);
+  snmp_varbind_int(d->c, bgp_conf->local_port);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_remove_addr(struct snmp_proto *p, struct snmp_pdu *c)
+fill_remote_addr(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("bgp4_mib fill remote addr");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
-  if (c->size < AGENTX_TYPE_IP4_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_ip4(c, ipa_to_ip4(bgp_proto->remote_ip));
+  snmp_varbind_ip4(d->c, ipa_to_ip4(bgp_proto->remote_ip));
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_remote_port(struct snmp_proto *p, struct snmp_pdu *c)
+fill_remote_port(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("bgp4_mib fill remote port");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
-  if (c->size < AGENTX_TYPE_INT_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_int(c, bgp_conf->remote_port);
+  snmp_varbind_int(d->c, bgp_conf->remote_port);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_remote_as(struct snmp_proto *p, struct snmp_pdu *c)
+fill_remote_as(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill rem as");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
-  if (c->size < AGENTX_TYPE_INT_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_int(c, bgp_proto->remote_as);
+  snmp_varbind_int(d->c, bgp_proto->remote_as);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_in_updates(struct snmp_proto *p, struct snmp_pdu *c)
+fill_in_updates(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill in updates");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
-  if (c->size < AGENTX_TYPE_COUNTER32_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_counter32(c, bgp_stats->rx_updates);
+  snmp_varbind_counter32(d->c, bgp_stats->rx_updates);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_out_update(struct snmp_proto *p, struct snmp_pdu *c)
+fill_out_updates(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill out updates");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
-  if (c->size < AGENTX_TYPE_COUNTER32_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_counter32(c, bgp_stats->tx_updates);
+  snmp_varbind_counter32(d->c, bgp_stats->tx_updates);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_in_total_msg(struct snmp_proto *p, struct snmp_pdu *c)
+fill_in_total_msg(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill in total");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
-  if (c->size < AGENTX_TYPE_COUNTER32_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_counter32(c, bgp_stats->rx_messages);
+  snmp_varbind_counter32(d->c, bgp_stats->rx_messages);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_out_total_msg(struct snmp_proto *p, struct snmp_pdu *c)
+fill_out_total_msg(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill out total");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
-  if (c->size < AGENTX_TYPE_COUNTER32_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_counter32(c, bgp_stats->tx_messages);
+  snmp_varbind_counter32(d->c, bgp_stats->tx_messages);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_last_err(struct snmp_proto *p, struct snmp_pdu *c)
+fill_last_err(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill last err");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
-
-  if (c->size < snmp_str_size_from_len(2))
-    snmp_manage_tbuf(p, c);
 
   char last_error[2];
   snmp_bgp_last_error(bgp_proto, last_error);
 
-  snmp_varbind_nstr(c, last_error, 2);
+  snmp_varbind_nstr(d->c, last_error, 2);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_established_trans(struct snmp_proto *p, struct snmp_pdu *c)
+fill_established_trans(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill est trans");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
-  if (c->size < AGENTX_TYPE_COUNTER32_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_counter32(c,
+  snmp_varbind_counter32(d->c,
       bgp_stats->fsm_established_transitions);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_established_time(struct snmp_proto *p, struct snmp_pdu *c)
+fill_established_time(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill est time");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
-
-  if (c->size < AGENTX_TYPE_COUNTER32_SIZE)
-    snmp_manage_tbuf(p, c);
 
 
-  snmp_varbind_gauge32(c,
+  snmp_varbind_gauge32(d->c,
 	(current_time() - bgp_proto->last_established) TO_S);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_retry_interval(struct snmp_proto *p, struct snmp_pdu *c)
+fill_retry_interval(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill retry int");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
-  if (c->size < AGENTX_TYPE_INT_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_int(c, bgp_conf->connect_retry_time);
+  snmp_varbind_int(d->c, bgp_conf->connect_retry_time);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_hold_time(struct snmp_proto *p, struct snmp_pdu *c)
+fill_hold_time(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill hold time");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
-  if (c->size < AGENTX_TYPE_INT_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_int(c, (bgp_conn) ?  bgp_conn->hold_time : 0);
+  snmp_varbind_int(d->c, (bgp_conn) ?  bgp_conn->hold_time : 0);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_keep_alive(struct snmp_proto *p, struct snmp_pdu *c)
+fill_keep_alive(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill keepalive");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
-
-  if (c->size < AGENTX_TYPE_INT_SIZE)
-    snmp_manage_tbuf(p, c);
 
   if (!bgp_conf->hold_time)
-    snmp_varbind_int(c, 0);
+    snmp_varbind_int(d->c, 0);
   else
-    snmp_varbind_int(c,
+    snmp_varbind_int(d->c,
       (bgp_conn) ? bgp_conn->keepalive_time : 0);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_hold_time_conf(struct snmp_proto *p, struct snmp_pdu *c)
+fill_hold_time_conf(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill hold time c");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
-  if (c->size < AGENTX_TYPE_INT_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_int(c, bgp_conf->hold_time);
+  snmp_varbind_int(d->c, bgp_conf->hold_time);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_keep_alive_conf(struct snmp_proto *p, struct snmp_pdu *c)
+fill_keep_alive_conf(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill keepalive c");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
-
-  if (c->size < AGENTX_TYPE_INT_SIZE)
-    snmp_manage_tbuf(p, c);
 
 
   if (!bgp_conf->keepalive_time)
-    snmp_varbind_int(c, 0);
+    snmp_varbind_int(d->c, 0);
   else
-    snmp_varbind_int(c,
+    snmp_varbind_int(d->c,
       (bgp_conn) ? bgp_conn->keepalive_time : 0);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_min_as_org_interval(struct snmp_proto *p, struct snmp_pdu *c)
+fill_min_as_org_interval(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill min org int");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
   /* value should be in 1..65535 but is not supported by bird */
-  if (c->size < AGENTX_TYPE_INT_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_int(c, 0);
+  snmp_varbind_int(d->c, 0);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_route_adv_interval(struct snmp_proto *p, struct snmp_pdu *c)
+fill_route_adv_interval(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fill rt adv int");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
   /* value should be in 1..65535 but is not supported by bird */
-  if (c->size < AGENTX_TYPE_INT_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_int(c, 0);
+  snmp_varbind_int(d->c, 0);
   return SNMP_SEARCH_OK;
 }
 
 static enum snmp_search_res
-fill_in_update_elapsed_time(struct snmp_proto *p, struct snmp_pdu *c)
+fill_in_update_elapsed_time(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
+  snmp_log("fil in elapsed");
   enum snmp_search_res res;
   DECLARE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   res = POPULATE_BGP4(addr, bgp_proto, bgp_conn, bgp_stats, bgp_conf);
   if (res != SNMP_SEARCH_OK)
-  {
-    (void) snmp_set_varbind_type(c->sr_vb_start, res);
     return res;
-  }
 
-  if (c->size < AGENTX_TYPE_INT_SIZE)
-    snmp_manage_tbuf(p, c);
-
-  snmp_varbind_gauge32(c,
+  snmp_varbind_gauge32(d->c,
     (current_time() - bgp_proto->last_rx_update) TO_S
   );
+  return SNMP_SEARCH_OK;
+}
+
+static enum snmp_search_res
+fill_local_id(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
+{
+  snmp_log("fill local id");
+  snmp_varbind_ip4(d->c, d->p->bgp_local_id);
   return SNMP_SEARCH_OK;
 }
 
@@ -1499,8 +1383,8 @@ bgp_fill_dynamic(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_p
     return;
   }
 
-  const struct bgp_conn *bgp_conn = bgp_proto->conn;
-  const struct bgp_stats *bgp_stats = &bgp_proto->stats;
+  //const struct bgp_conn *bgp_conn = bgp_proto->conn;
+  //const struct bgp_stats *bgp_stats = &bgp_proto->stats;
   const struct bgp_config *bgp_conf = bgp_proto->cf;
 
   uint fsm_state = snmp_bgp_fsm_state(bgp_proto);
@@ -1513,18 +1397,24 @@ bgp_fill_dynamic(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_p
   {
     case BGP4_MIB_S_PEER_IDENTIFIER:
       if (c->size < AGENTX_TYPE_IP4_SIZE)
+      {
+	snmp_log("BGP4-MIB small buffer");
 	snmp_manage_tbuf(p, c);
+      }
 
       if (fsm_state == BGP4_MIB_OPENCONFIRM || fsm_state == BGP4_MIB_ESTABLISHED)
 	// TODO last
-	; //snmp_varbind_ip4(*vb, c, ip4_from_u32(bgp_proto->remote_id));
+	{} //snmp_varbind_ip4(*vb, c, ip4_from_u32(bgp_proto->remote_id));
       else
-	; //snmp_varbind_ip4(*vb, c, IP4_NONE);
+	{} //snmp_varbind_ip4(*vb, c, IP4_NONE);
       break;
 
     case BGP4_MIB_S_STATE:
       if (c->size < AGENTX_TYPE_INT_SIZE)
+      {
+	snmp_log("BGP4-MIB small buffer 2");
 	snmp_manage_tbuf(p, c);
+      }
 
       //snmp_varbind_int(*vb, c, fsm_state);
       break;
@@ -1534,9 +1424,9 @@ bgp_fill_dynamic(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_p
 	SNMP_MANAGE_TBUF(p, vb, c);
 
       if (bgp_proto->p.disabled)
-	; //snmp_varbind_int(*vb, c, AGENTX_ADMIN_STOP);
+	{} //snmp_varbind_int(*vb, c, AGENTX_ADMIN_STOP);
       else
-	; //snmp_varbind_int(*vb, c, AGENTX_ADMIN_START);
+	{} //snmp_varbind_int(*vb, c, AGENTX_ADMIN_START);
 
       break;
 
@@ -1547,9 +1437,9 @@ bgp_fill_dynamic(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_p
       uint fsm_state = snmp_bgp_fsm_state(bgp_proto);
 
       if (fsm_state == BGP4_MIB_ESTABLISHED || fsm_state == BGP4_MIB_ESTABLISHED)
-	; //snmp_varbind_int(*vb, c, BGP4_MIB_NEGOTIATED_VER_VALUE);
+	{} //snmp_varbind_int(*vb, c, BGP4_MIB_NEGOTIATED_VER_VALUE);
       else
-	; //snmp_varbind_int(*vb, c, BGP4_MIB_NEGOTIATED_VER_NO_VALUE);
+	{} //snmp_varbind_int(*vb, c, BGP4_MIB_NEGOTIATED_VER_NO_VALUE);
 
       break;
 
@@ -1557,70 +1447,70 @@ bgp_fill_dynamic(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_p
       if (c->size < AGENTX_TYPE_IP4_SIZE)
 	SNMP_MANAGE_TBUF(p, vb, c);
 
-      ; //snmp_varbind_ip4(*vb, c, ipa_to_ip4(bgp_proto->local_ip));
+      {} //snmp_varbind_ip4(*vb, c, ipa_to_ip4(bgp_proto->local_ip));
       break;
 
     case BGP4_MIB_S_LOCAL_PORT:
       if (c->size < AGENTX_TYPE_INT_SIZE)
 	SNMP_MANAGE_TBUF(p, vb, c);
 
-      ; //snmp_varbind_int(*vb, c, bgp_conf->local_port);
+      {} //snmp_varbind_int(*vb, c, bgp_conf->local_port);
       break;
 
     case BGP4_MIB_S_REMOTE_ADDR:
       if (c->size < AGENTX_TYPE_IP4_SIZE)
 	SNMP_MANAGE_TBUF(p, vb, c);
 
-      ; //snmp_varbind_ip4(*vb, c, ipa_to_ip4(bgp_proto->remote_ip));
+      {} //snmp_varbind_ip4(*vb, c, ipa_to_ip4(bgp_proto->remote_ip));
       break;
 
     case BGP4_MIB_S_REMOTE_PORT:
       if (c->size < AGENTX_TYPE_INT_SIZE)
 	SNMP_MANAGE_TBUF(p, vb, c);
 
-      ; //snmp_varbind_int(*vb, c, bgp_conf->remote_port);
+      {} //snmp_varbind_int(*vb, c, bgp_conf->remote_port);
       break;
 
     case BGP4_MIB_S_REMOTE_AS:
       if (c->size < AGENTX_TYPE_INT_SIZE)
 	SNMP_MANAGE_TBUF(p, vb, c);
 
-      ; //snmp_varbind_int(*vb, c, bgp_proto->remote_as);
+      {} //snmp_varbind_int(*vb, c, bgp_proto->remote_as);
       break;
 
     case BGP4_MIB_S_RX_UPDATES:	  /* bgpPeerInUpdates */
       if (c->size < AGENTX_TYPE_COUNTER32_SIZE)
 	SNMP_MANAGE_TBUF(p, vb, c);
 
-      ; //snmp_varbind_counter32(*vb, c, bgp_stats->rx_updates);
+      {} //snmp_varbind_counter32(*vb, c, bgp_stats->rx_updates);
       break;
 
     case BGP4_MIB_S_TX_UPDATES:	  /* bgpPeerOutUpdate */
       if (c->size < AGENTX_TYPE_COUNTER32_SIZE)
 	SNMP_MANAGE_TBUF(p, vb, c);
 
-      ; //snmp_varbind_counter32(*vb, c, bgp_stats->tx_updates);
+      {} //snmp_varbind_counter32(*vb, c, bgp_stats->tx_updates);
       break;
 
     case BGP4_MIB_S_RX_MESSAGES:  /* bgpPeerInTotalMessages */
       if (c->size < AGENTX_TYPE_COUNTER32_SIZE)
 	SNMP_MANAGE_TBUF(p, vb, c);
 
-      ; //snmp_varbind_counter32(*vb, c, bgp_stats->rx_messages);
+      {} //snmp_varbind_counter32(*vb, c, bgp_stats->rx_messages);
       break;
 
     case BGP4_MIB_S_TX_MESSAGES:  /* bgpPeerOutTotalMessages */
       if (c->size < AGENTX_TYPE_COUNTER32_SIZE)
 	SNMP_MANAGE_TBUF(p, vb, c);
 
-      ; //snmp_varbind_counter32(*vb, c, bgp_stats->tx_messages);
+      {} //snmp_varbind_counter32(*vb, c, bgp_stats->tx_messages);
       break;
 
     case BGP4_MIB_S_LAST_ERROR:
       if (c->size < snmp_str_size_from_len(2))
 	SNMP_MANAGE_TBUF(p, vb, c);
 
-      ; //snmp_varbind_nstr(*vb, c, last_error, 2);
+      {} //snmp_varbind_nstr(*vb, c, last_error, 2);
       break;
 
     case BGP4_MIB_S_FSM_TRANSITIONS:
@@ -1659,9 +1549,9 @@ bgp_fill_dynamic(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_p
 	SNMP_MANAGE_TBUF(p, vb, c);
 
       if (!bgp_conf->hold_time)
-	; //snmp_varbind_int(*vb, c, 0);
+	{} //snmp_varbind_int(*vb, c, 0);
       else
-	; //snmp_varbind_int(*vb, c,
+	{} //snmp_varbind_int(*vb, c,
 	//  (bgp_conn) ? bgp_conn->keepalive_time : 0);
       break;
 
@@ -1678,9 +1568,9 @@ bgp_fill_dynamic(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_p
 
 
       if (!bgp_conf->keepalive_time)
-	; //snmp_varbind_int(*vb, c, 0);
+	{} //snmp_varbind_int(*vb, c, 0);
       else
-	; //snmp_varbind_int(*vb, c,
+	{} //snmp_varbind_int(*vb, c,
 	  // (bgp_conn) ? bgp_conn->keepalive_time : 0);
       break;
 
@@ -1730,6 +1620,7 @@ bgp_fill_dynamic(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_p
 void
 bgp_fill_static(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_pdu *c, u8 state)
 {
+  (void)p;
   ASSUME(c->buffer == snmp_varbind_data(*vb));
 
   struct oid *oid = &(*vb)->name;
@@ -1796,6 +1687,82 @@ snmp_bgp_fill(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_pdu 
 }
 
 /*
+ * bgp4_next_peer
+ */
+static int UNUSED
+bgp4_next_peer(struct mib_walk_state *state, struct snmp_data *data)
+{
+  //struct agentx_varbind *vb = data->c->sr_vb_start;
+  struct oid *oid = &data->c->sr_vb_start->name;
+
+  ip4_addr ip4 = ip4_from_oid(oid);
+
+  /* BGP4-MIB::bgpPeerIdentifier */
+  STATIC_OID(9) bgp4_peer_id = {
+    .n_subid = 9,
+    .prefix = SNMP_MGMT,
+    .include = 0,
+    .reserved = 0,
+    .ids = { SNMP_MIB_2, BGP4_MIB,
+      BGP4_MIB_PEER_TABLE, BGP4_MIB_PEER_ENTRY, BGP4_MIB_PEER_IDENTIFIER,
+      /* IP4_NONE */ 0, 0, 0, 0 }
+  };
+
+  const struct oid *peer_oid = (const struct oid *) &bgp4_peer_id;
+
+  if (snmp_oid_compare(oid, peer_oid) < 0 || LOAD_U8(oid->n_subid) < 9)
+  {
+    die("unreachable?");
+
+    int old = snmp_oid_size(oid);
+    int new = snmp_oid_size(peer_oid);
+
+    if (new - old > 0 && (uint) new - old > data->c->size)
+    {
+      snmp_log("bgp4_next_peer small buffer");
+      snmp_manage_tbuf(data->p, data->c);
+    }
+
+    if (new > old)
+      data->c->buffer += (new - old);
+
+    snmp_oid_copy(oid, peer_oid);
+
+    STORE_U8(oid->include, 1);
+  }
+
+  ASSUME(oid->n_subid == 9);
+  /* +1 includes empty prefix */
+
+  net_addr net;
+  net_fill_ip4(&net, ip4, IP4_MAX_PREFIX_LENGTH);
+  struct f_trie_walk_state ws;
+
+  int match = trie_walk_init(&ws, data->p->bgp_trie, &net, 1);
+
+  if (match && LOAD_U8(oid->include))
+  {
+    STORE_U8(oid->include, 0);
+    ip4_to_oid(oid, ip4);
+    return 0;
+  }
+
+  /* We skip the first match as we should not include ip address in oid */
+  if (match)
+   (void) trie_walk_next(&ws, &net);
+
+  if (trie_walk_next(&ws, &net))
+  {
+    ASSUME(oid->n_subid == 9);
+    ip4_addr res = ipa_to_ip4(net_prefix(&net));
+    ip4_to_oid(oid, res);
+    return 0;
+  }
+
+  return 1;
+}
+
+/*
  * snmp_bgp_start - prepare BGP4-MIB
  * @p - SNMP protocol instance holding memory pool
  *
@@ -1803,7 +1770,7 @@ snmp_bgp_fill(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_pdu 
  * It is gruaranteed that the BGP protocols exist.
  */
 void
-snmp_bgp_start(struct snmp_proto *p)
+snmp_bgp4_start(struct snmp_proto *p)
 {
   struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, p->p.cf);
   /* Create binding to BGP protocols */
@@ -1827,5 +1794,202 @@ snmp_bgp_start(struct snmp_proto *p)
       IP4_MAX_PREFIX_LENGTH);
 
     snmp_hash_add_peer(p, peer);
+  }
+
+  const STATIC_OID(2) bgp4_mib_root = {
+    .n_subid = 2,
+    .prefix = SNMP_MGMT,
+    .include = 0,
+    .reserved = 0,
+    .ids = { SNMP_MIB_2, BGP4_MIB },
+  };
+
+  const STATIC_OID(4) bgp4_mib_peer_entry = {
+    .n_subid = 4,
+    .prefix = SNMP_MGMT,
+    .include = 0,
+    .reserved = 0,
+    .ids = { SNMP_MIB_2, BGP4_MIB, BGP4_MIB_PEER_TABLE, BGP4_MIB_PEER_ENTRY },
+  };
+
+  (void) mib_tree_hint(p->pool, p->mib_tree,
+    (const struct oid *) &bgp4_mib_root, BGP4_MIB_IDENTIFIER);
+  (void) mib_tree_hint(p->pool, p->mib_tree,
+    (const struct oid *) &bgp4_mib_peer_entry, BGP4_MIB_IN_UPDATE_ELAPSED_TIME);
+
+  mib_node_u *node;
+  struct mib_leaf *leaf;
+  STATIC_OID(3) bgp4_var = {
+    .n_subid = 3,
+    .prefix = SNMP_MGMT,
+    .include = 0,
+    .reserved = 0,
+    .ids = { SNMP_MIB_2, BGP4_MIB, BGP4_MIB_VERSION },
+  };
+
+  struct {
+    u32 id;
+    enum snmp_search_res (*filler)(struct mib_walk_state *state, struct snmp_data *data);
+    enum agentx_type type;
+    int size;
+  } leafs[] = {
+    {
+      .id = BGP4_MIB_VERSION,
+      .filler = fill_bgp_version,
+      .type = AGENTX_OCTET_STRING,
+      .size = snmp_str_size_from_len(sizeof(BGP4_VERSIONS)),
+    },
+    {
+      .id =  BGP4_MIB_LOCAL_AS,
+      .filler = fill_local_as,
+      .type = AGENTX_INTEGER,
+    },
+    {
+      .id =  BGP4_MIB_IDENTIFIER,
+      .filler = fill_local_id,
+      .type = AGENTX_IP_ADDRESS,
+    },
+  };
+
+  for (uint i = 0; i < ARRAY_SIZE(leafs); i++)
+  {
+    bgp4_var.ids[ARRAY_SIZE(bgp4_var.ids) - 1] = leafs[i].id;
+    node = mib_tree_add(p->pool, p->mib_tree, (const struct oid *) &bgp4_var, 1);
+
+    ASSUME(mib_node_is_leaf(node));
+    leaf = &node->leaf;
+
+    leaf->filler = leafs[i].filler;
+    leaf->call_next = NULL; // TODO
+    leaf->type = leafs[i].type;
+    leaf->size = leafs[i].size;
+  }
+
+  STATIC_OID(5) bgp4_entry_var = {
+    .n_subid = 5,
+    .prefix = SNMP_MGMT,
+    .include = 0,
+    .reserved = 0,
+    .ids = { SNMP_MIB_2, BGP4_MIB,
+       BGP4_MIB_PEER_TABLE, BGP4_MIB_PEER_ENTRY, BGP4_MIB_PEER_IDENTIFIER },
+  };
+
+  struct {
+      enum snmp_search_res (*filler)(struct mib_walk_state *state, struct snmp_data *data);
+      enum agentx_type type;
+      int size;
+  } entry_leafs[] = {
+    [BGP4_MIB_PEER_IDENTIFIER] = {
+      .filler =	fill_peer_id,
+      .type = AGENTX_IP_ADDRESS,
+    },
+    [BGP4_MIB_STATE] = {
+      .filler = fill_peer_state,
+      .type = AGENTX_INTEGER,
+    },
+    [BGP4_MIB_ADMIN_STATUS] = {
+      .filler = fill_admin_status,
+      .type = AGENTX_INTEGER,
+    },
+    [BGP4_MIB_NEGOTIATED_VERSION] = {
+      .filler = fill_neg_version,
+      .type = AGENTX_INTEGER,
+    },
+    [BGP4_MIB_LOCAL_ADDR] = {
+      .filler = fill_local_addr,
+      .type = AGENTX_IP_ADDRESS,
+    },
+    [BGP4_MIB_LOCAL_PORT] = {
+      .filler = fill_local_port,
+      .type = AGENTX_INTEGER,
+    },
+    [BGP4_MIB_REMOTE_ADDR] = {
+      .filler = fill_remote_addr,
+      .type = AGENTX_IP_ADDRESS,
+    },
+    [BGP4_MIB_REMOTE_PORT] = {
+      .filler = fill_remote_port,
+      .type = AGENTX_INTEGER,
+    },
+    [BGP4_MIB_REMOTE_AS] = {
+      .filler = fill_remote_as,
+      .type = AGENTX_INTEGER,
+    },
+    [BGP4_MIB_RX_UPDATES] = {
+      .filler = fill_in_updates,
+      .type = AGENTX_COUNTER_32,
+    },
+    [BGP4_MIB_TX_UPDATES] = {
+      .filler = fill_out_updates,
+      .type = AGENTX_COUNTER_32,
+    },
+    [BGP4_MIB_RX_MESSAGES] = {
+      .filler = fill_in_total_msg,
+      .type = AGENTX_COUNTER_32,
+    },
+    [BGP4_MIB_TX_MESSAGES] = {
+      .filler = fill_out_total_msg,
+      .type = AGENTX_COUNTER_32,
+    },
+    [BGP4_MIB_LAST_ERROR] = {
+      .filler = fill_last_err,
+      .type = AGENTX_OCTET_STRING,
+      .size = snmp_str_size_from_len(2),
+    },
+    [BGP4_MIB_FSM_TRANSITIONS] = {
+      .filler = fill_established_trans,
+      .type = AGENTX_COUNTER_32,
+    },
+    [BGP4_MIB_FSM_ESTABLISHED_TIME] = {
+      .filler = fill_established_time,
+      .type = AGENTX_GAUGE_32,
+    },
+    [BGP4_MIB_RETRY_INTERVAL] = {
+      .filler = fill_retry_interval,
+      .type = AGENTX_INTEGER,
+    },
+    [BGP4_MIB_HOLD_TIME] = {
+      .filler = fill_hold_time,
+      .type = AGENTX_INTEGER,
+    },
+    [BGP4_MIB_KEEPALIVE] = {
+      .filler = fill_keep_alive,
+      .type = AGENTX_INTEGER,
+    },
+    [BGP4_MIB_HOLD_TIME_CONFIGURED] = {
+      .filler = fill_hold_time_conf,
+      .type = AGENTX_INTEGER,
+    },
+    [BGP4_MIB_KEEPALIVE_CONFIGURED] = {
+      .filler = fill_keep_alive_conf,
+      .type = AGENTX_INTEGER,
+    },
+    [BGP4_MIB_ORIGINATION_INTERVAL] = {
+      .filler = fill_min_as_org_interval,
+      .type = AGENTX_INTEGER,
+    },
+    [BGP4_MIB_MIN_ROUTE_ADVERTISEMENT] = {
+      .filler = fill_route_adv_interval,
+      .type = AGENTX_INTEGER,
+    },
+    [BGP4_MIB_IN_UPDATE_ELAPSED_TIME] = {
+      .filler = fill_in_update_elapsed_time,
+      .type = AGENTX_GAUGE_32,
+    },
+  }; /* struct _anon entry_leafs[] */
+
+  for (enum bgp4_mib_peer_entry_row e = BGP4_MIB_PEER_IDENTIFIER;
+      e <= BGP4_MIB_IN_UPDATE_ELAPSED_TIME; e++)
+  {
+    bgp4_entry_var.ids[ARRAY_SIZE(bgp4_entry_var.ids) - 1] = (u32) e;
+    node = mib_tree_add(p->pool, p->mib_tree, (const struct oid *) &bgp4_entry_var, 1);
+
+    ASSUME(mib_node_is_leaf(node));
+    leaf = &node->leaf;
+
+    leaf->filler = entry_leafs[e].filler;
+    leaf->call_next = bgp4_next_peer;
+    leaf->type = entry_leafs[e].type;
+    leaf->size = entry_leafs[e].size;
   }
 }

@@ -26,12 +26,52 @@ struct mib_node {
 
 struct mib_walk_state;
 
+//typedef enum snmp_search_res (*snmp_filler_hook_t)(struct mib_walk_state *state, struct snmp_data *data);
+
 struct mib_leaf {
   struct mib_node_core c;
-  enum snmp_search_res (*filler)(struct snmp_proto *p, struct snmp_pdu *c);
-  //enum snmp_search_res (*filler)(struct snmp_proto_pdu *pc, struct agentx_varbind **vb);
-  int (*call_next)(struct snmp_proto *p, struct snmp_pdu *c, struct mib_walk_state *state);
+
+  /**
+   * filler - hook for filling VarBind data value
+   * @state: self referencing MIB tree walk state
+   * @data: box holding destiantion VarBind and SNMP protocol instance
+   *
+   * If corresponding leaf node has filled in AgentX type and/or size, it is
+   * guaranteed that PDU buffer have enough space. Hook mustn't be NULL.
+   * If the leaf node has set valid type, the varbind type will be automatically
+   * set by the snmp_walk_fill() servicing routine. If the field type is set to
+   * AGENTX_INVALID, it is expected that filler() hook will also fill
+   * the VarBind type.
+   */
+  enum snmp_search_res (*filler)(struct mib_walk_state *state, struct snmp_data *data);
+
+  /**
+   * call_next - signal multileaf
+   * @state: self referencing MIB tree walk state
+   * @data: box holding destination VarBind and SNMP protocol insntace
+   *
+   * MIB modules can implement subtrees by a single leaf node in MIB node tree.
+   * When the tree is walked, the specific leaf node has to be returned multiple
+   * times. The @call_next hook determines if we should move to next leaf node.
+   * It is expected that call_next() hook may change the VarBind to be filled.
+   *
+   * Hook may be NULL meaning the leaf node is not multileaf/subtree.
+   *
+   */
+  int (*call_next)(struct mib_walk_state *state, struct snmp_data *data);
+
+  /**
+   * type of produced VarBind, may be replaced in packet instanciation by
+   * AGENTX_NO_SUCH_OBJECT, AGENTX_NO_SUCH_INSTANCE or AGENTX_END_OF_MIB_VIEW
+   * The field is unspecified if equal to AGENTX_INVALID.
+   */
   enum agentx_type type;
+
+  /*
+   * Specify upper bound of VarBind data size. If set to -1, all handling must
+   * be done in filler() hook. In all other cases the filler() hook has
+   * guaranteed that the space is available.
+   */
   int size;
 };
 
@@ -69,6 +109,9 @@ int mib_tree_delete(struct mib_tree *t, struct mib_walk_state *state);
 mib_node_u *mib_tree_find(const struct mib_tree *tree, struct mib_walk_state *walk, const struct oid *oid);
 mib_node_u *mib_tree_walk_next(const struct mib_tree *t, struct mib_walk_state *walk);
 struct mib_leaf *mib_tree_walk_next_leaf(const struct mib_tree *t, struct mib_walk_state *walk);
+
+int mib_tree_hint(pool *p, struct mib_tree *t, const struct oid *oid, uint size);
+int mib_tree_walk_is_oid_descendant(const struct mib_walk_state *walk, const struct oid *oid);
 
 static inline int
 mib_node_is_leaf(const mib_node_u *node)

@@ -2,6 +2,7 @@
 #define _BIRD_SNMP_UTILS_H_
 
 #include "subagent.h"
+#include "mib_tree.h"
 
 uint snmp_pkt_len(const byte *start, const byte *end);
 
@@ -109,5 +110,12 @@ enum agentx_type snmp_search_res_to_type(enum snmp_search_res res);
 #define AGENTX_TYPE_INT_SIZE ((uint) agentx_type_size(AGENTX_INTEGER))
 #define AGENTX_TYPE_IP4_SIZE ((uint) agentx_type_size(AGENTX_IP_ADDRESS))
 #define AGENTX_TYPE_COUNTER32_SIZE ((uint) agentx_type_size(AGENTX_COUNTER_32))
+
+/*
+ * SNMP MIB tree walking
+ */
+struct mib_leaf *snmp_walk_init(struct mib_tree *tree, struct mib_walk_state *state, const struct oid *start_rx, struct snmp_data *data);
+struct mib_leaf *snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *state, struct snmp_data *data);
+enum snmp_search_res snmp_walk_fill(struct mib_leaf *leaf, struct mib_walk_state *state, struct snmp_data *data);
 
 #endif

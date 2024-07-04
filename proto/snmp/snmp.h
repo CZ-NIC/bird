@@ -28,7 +28,7 @@
 
 #define SNMP_RX_BUFFER_SIZE 8192
 #define SNMP_TX_BUFFER_SIZE 8192
-#define SNMP_PKT_SIZE_MAX 8192
+#define SNMP_PKT_SIZE_MAX 4098
 
 enum snmp_proto_state {
   SNMP_DOWN = 0,
@@ -39,11 +39,6 @@ enum snmp_proto_state {
   SNMP_CONN,
   SNMP_STOP,
   SNMP_RESET,
-};
-
-enum snmp_tags {
-  EMPTY_TAG = 0,
-  BGP4_TAG,
 };
 
 struct snmp_bond {
@@ -89,8 +84,6 @@ struct snmp_registered_oid {
   node n;
   struct oid *oid;
 };
-
-struct mib_tree;      /* see mib_tree.h */
 
 struct snmp_proto {
   struct proto p;

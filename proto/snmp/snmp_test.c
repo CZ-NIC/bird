@@ -33,7 +33,7 @@
 static int t_oid_empty(void);
 static int t_oid_compare(void);
 static int t_oid_prefixize(void);
-static int t_walk_to_oid(void);
+static int t_walk_oid_desc(void);
 static int t_tree_find(void);
 static int t_tree_traversal(void);
 static int t_tree_leafs(void);
@@ -45,6 +45,7 @@ static int t_tree_delete(void);
 #define SMALL_TESTS_NUM 10
 static int tree_sizes[] = { 0, 1, 10, 100, 1000 };
 
+/* smaller than theoretical maximum (2^32) to fit in memory */
 #define OID_MAX_ID 16
 
 #define SNMP_EXPECTED(actual, expected) \
@@ -182,8 +183,6 @@ random_oid(void)
   else
     return random_prefixable_oid();
 }
-
-
 
 static int
 t_oid_empty(void)
@@ -603,6 +602,7 @@ t_walk_to_oid(void)
   return 1;
 }
 
+
 static void
 test_both(void *buffer, uint size, const struct oid *left, const struct oid
 *right, const struct oid *expected)
@@ -733,6 +733,121 @@ generate_oids(struct oid *oids[], struct oid *sorted[], int size, struct oid *(*
     sorted[i] = NULL;
 
   return (size > 1) ? last_used + 1 : size;
+}
+
+static int
+t_walk_oid_desc(void)
+{
+  lp_state tmps;
+  lp_save(tmp_linpool, &tmps);
+
+  pool *pool = &root_pool;
+
+  struct mib_tree storage, *tree = &storage;
+  mib_tree_init(pool, tree);
+
+  STATIC_ASSERT(ARRAY_SIZE(tree_sizes) > 0);
+  int size = tree_sizes[ARRAY_SIZE(tree_sizes) - 1];
+  ASSERT(size > 0);
+  struct oid **oids = mb_alloc(pool, size * sizeof(struct oid *));
+  struct oid **sorted = mb_alloc(pool, size * sizeof(struct oid *));
+
+  (void) generate_oids(oids, sorted, size, random_oid);
+
+  for (int i = 0; i < size; i++)
+    (void) mib_tree_add(pool, tree, oids[i], 0);
+
+  for (int test = 0; test < size; test++)
+  {
+    int i = xrandom(size);
+
+    char buffer[1024];
+    struct oid *oid = (void *) buffer;
+
+    memcpy(buffer, oids[i], snmp_oid_size(oids[i]));
+
+    struct mib_walk_state walk;
+    mib_tree_walk_init(&walk, NULL);
+    (void) mib_tree_find(tree, &walk, oid);
+
+    int type = xrandom(4);
+    switch (type)
+    {
+      case 0:
+	bt_assert(mib_tree_walk_is_oid_descendant(&walk, oids[i]) == 0);
+	break;
+
+      case 1:
+      {
+	/* oid is longer than walk or has same length */
+	u8 ids = LOAD_U8(oid->n_subid);
+	u32 upto = MIN(OID_MAX_LEN - ids, 16);
+
+	if (!upto)
+	  continue;
+
+	u32 new = xrandom(upto) + 1;
+	STORE_U8(oid->n_subid, ids + new);
+	ASSERT(snmp_oid_size(oid) < 1024);
+
+	for (u32 i = 0; i < new; i++)
+	  STORE_U32(oid->ids[ids + i], xrandom(OID_MAX_ID));
+
+	bt_assert(mib_tree_walk_is_oid_descendant(&walk, oid) > 0);
+
+	break;
+      }
+      case 2:
+      case 3:
+      {
+	/* oid is shorter than walk */
+	u8 ids = LOAD_U8(oid->n_subid);
+
+	if (ids == 0 || ids == OID_MAX_LEN)
+	  continue;
+
+	u32 split = (ids > 1) ? xrandom(ids - 1) + 1 : 0;
+	u32 ext = (type == 3) ? xrandom(MIN(OID_MAX_LEN - ids, 16)) : 0;
+
+	STORE_U16(oid->n_subid, split + ext);
+	for (u32 i = 0; i < ext; i++)
+	  STORE_U32(oid->ids[split + i], xrandom(OID_MAX_ID));
+
+	int no_change = 1;
+	for (u32 j = 0; j < MIN(ids, split + ext); j++)
+	{
+	  if (LOAD_U32(oid->ids[split + j]) != LOAD_U32(oids[i]->ids[split + j]))
+	    no_change = 1;
+	}
+
+	if (no_change)
+	  continue;
+
+	bt_assert(mib_tree_walk_is_oid_descendant(&walk, oid) < 0);
+	break;
+      }
+    }
+  }
+
+  {
+    struct mib_walk_state walk;
+    mib_tree_walk_init(&walk, tree);
+
+    u32 zero = 0;
+    const struct oid *null_oid = (void *) &zero;
+    u32 index = xrandom(size);
+
+    bt_assert(mib_tree_walk_is_oid_descendant(&walk, null_oid) == 0);
+    bt_assert(mib_tree_walk_is_oid_descendant(&walk, oids[index]) > 0);
+    (void) mib_tree_find(tree, &walk, oids[index]);
+    bt_assert(mib_tree_walk_is_oid_descendant(&walk, null_oid) < 0);
+  }
+
+  u32 null_oid = 0;
+  mib_tree_remove(tree, (struct oid *) &null_oid);
+  lp_restore(tmp_linpool, &tmps);
+
+  return 1;
 }
 
 static void UNUSED
@@ -1686,8 +1801,8 @@ int main(int argc, char **argv)
   bt_init(argc, argv);
   bt_bird_init();
 
-  unsigned seed = rand();
-  //unsigned seed = 1000789714;
+  //unsigned seed = rand();
+  unsigned seed = 1000789714;
   log("random seed is %d", seed);
   srandom(seed);
 
@@ -1696,6 +1811,7 @@ int main(int argc, char **argv)
   bt_test_suite(t_oid_prefixize, "Function transforming OID to prefixed form");
   bt_test_suite(t_oid_ancestor, "Function finding common ancestor of two OIDs");
   bt_test_suite(t_walk_to_oid, "Function transforming MIB tree walk state to OID");
+  bt_test_suite(t_walk_oid_desc, "Function comparing MIB tree walk to OID");
 
   bt_test_suite(t_tree_find, "MIB tree search");
   bt_test_suite(t_tree_traversal, "MIB tree traversal");

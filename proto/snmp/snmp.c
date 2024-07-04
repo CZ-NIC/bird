@@ -117,6 +117,7 @@
 #include "snmp.h"
 #include "subagent.h"
 #include "snmp_utils.h"
+#include "mib_tree.h"
 
 static void snmp_start_locked(struct object_lock *lock);
 static void snmp_sock_err(sock *sk, int err);
@@ -493,6 +494,7 @@ snmp_start(struct proto *P)
 
   p->pool = p->p.pool;
   p->lp = lp_new(p->pool);
+  p->mib_tree = mb_alloc(p->pool, sizeof(struct mib_tree));
   p->bgp_trie = f_new_trie(p->lp, 0);
 
   p->startup_timer = tm_new_init(p->pool, snmp_startup_timeout, p, 0, 0);
@@ -502,7 +504,9 @@ snmp_start(struct proto *P)
 
   /* We create copy of bonds to BGP protocols. */
   HASH_INIT(p->bgp_hash, p->pool, 10);
-  snmp_bgp_start(p);
+
+  mib_tree_init(p->pool, p->mib_tree);
+  snmp_bgp4_start(p);
 
   return snmp_set_state(p, SNMP_INIT);
 }
@@ -561,7 +565,7 @@ snmp_reconfigure(struct proto *P, struct proto_config *CF)
   {
     /* Reinitialize the hash after snmp_shutdown() */
     HASH_INIT(p->bgp_hash, p->pool, 10);
-    snmp_bgp_start(p);
+    snmp_bgp4_start(p);
   }
 
   return config_changed;

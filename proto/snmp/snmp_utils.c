@@ -65,6 +65,7 @@ snmp_varbind_set_name_len(struct snmp_proto *p, struct agentx_varbind **vb, u8 l
   uint diff_size = (len - LOAD_U8(oid->n_subid)) * sizeof(u32);
   if (c->size < diff_size)
   {
+    snmp_log("varbind_set_name_len small buffer");
     snmp_manage_tbuf(p, c);
     oid = &(*vb)->name;
   }
@@ -81,7 +82,10 @@ snmp_varbind_duplicate_hdr(struct snmp_proto *p, struct agentx_varbind **vb, str
   ASSUME(vb != NULL && *vb != NULL);
   uint hdr_size = snmp_varbind_header_size(*vb);
   if (c->size < hdr_size)
+  {
+    snmp_log("varbind_duplicate small buffer");
     snmp_manage_tbuf(p, c);
+  }
 
   ASSERT(c->size >= hdr_size);
   byte *buffer = c->buffer;
@@ -290,7 +294,7 @@ snmp_set_varbind_type(struct agentx_varbind *vb, enum agentx_type t)
       return SNMP_SEARCH_OK;
 
     default:
-      die("invalid varbind type");
+      die("invalid varbind type %d", (int) t);
   }
 }
 
@@ -644,11 +648,12 @@ snmp_oid_ip4_index(struct oid *o, uint start, ip4_addr addr)
 }
 
 
-/** snmp_oid_compare - find the lexicographical order relation between @left and @right
- * both @left and @right has to be non-blank.
+/**
+ * snmp_oid_compare - find the lexicographical order relation between @left and @right
  * @left: left object id relation operant
  * @right: right object id relation operant
  *
+ * both @left and @right has to be non-blank.
  * function returns 0 if left == right,
  *   -1 if left < right,
  *   and 1 otherwise
@@ -748,7 +753,7 @@ snmp_registration_create(struct snmp_proto *p, u8 mib_class)
   r->transaction_id = p->transaction_id;
   // TODO where is incremented? is this valid?
   r->packet_id = p->packet_id + 1;
-  log(L_INFO "using registration packet_id %u", r->packet_id);
+  snmp_log("using registration packet_id %u", r->packet_id);
 
   r->mib_class = mib_class;
 
@@ -760,7 +765,7 @@ snmp_registration_create(struct snmp_proto *p, u8 mib_class)
 int
 snmp_registration_match(struct snmp_registration *r, struct agentx_header *h, u8 class)
 {
-  log(L_INFO "snmp_reg_same() r->packet_id %u p->packet_id %u", r->packet_id, h->packet_id);
+  snmp_log("snmp_reg_same() r->packet_id %u p->packet_id %u", r->packet_id, h->packet_id);
   return
     (r->mib_class == class) &&
     (r->session_id == h->session_id) &&
@@ -961,7 +966,7 @@ snmp_oid_log(const struct oid *oid)
   for (int id = 0; id < oid->n_subid; id++)
     pos += snprintf(pos, buf + 1024 - pos, ".%u", oid->ids[id]);
 
-  log(L_INFO "%s", buf);
+  snmp_log("%s", buf);
 }
 
 
@@ -1062,5 +1067,122 @@ snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct
       break;
   }
   STORE_U8(out->n_subid, subids);
+}
+
+/*
+ * SNMP MIB tree walking
+ */
+struct mib_leaf *
+snmp_walk_init(struct mib_tree *tree, struct mib_walk_state *walk, const struct oid *oid, struct snmp_data *data)
+{
+  mib_tree_walk_init(walk, tree);
+
+  snmp_vb_to_tx(data->p, oid, data->c);
+
+  mib_node_u *node = mib_tree_find(tree, walk, &data->c->sr_vb_start->name);
+
+  // TODO hide me in mib_tree code
+  /* mib_tree_find() returns NULL if the oid is longer than existing any path */
+  if (node == NULL && walk->stack_pos > 0)
+    node = walk->stack[walk->stack_pos - 1];
+
+  return (!node || !mib_node_is_leaf(node)) ? NULL : &node->leaf;
+}
+
+// TODO alter the varbind
+struct mib_leaf *
+snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_data *data)
+{
+  ASSUME(tree && walk);
+
+  if (!walk->stack_pos)
+    return NULL;
+
+  mib_node_u *node = walk->stack[walk->stack_pos - 1];
+
+  int found = 0;
+  struct mib_leaf *leaf = &node->leaf;
+  if (mib_node_is_leaf(node) && LOAD_U8(data->c->sr_vb_start->name.include))
+  {
+    found = 1;
+    STORE_U8(data->c->sr_vb_start->name.include, 0);
+  }
+
+  if (!found && mib_node_is_leaf(node) && leaf->call_next && !leaf->call_next(walk, data))
+    found = 1;
+
+  while (!found && (leaf = mib_tree_walk_next_leaf(tree, walk)) != NULL)
+  {
+    int old = snmp_oid_size(&data->c->sr_vb_start->name);
+    if (mib_tree_walk_to_oid(walk, &data->c->sr_vb_start->name, 20 * sizeof(u32)))
+    {
+      snmp_log("walk_next copy failed");
+      return NULL;
+    }
+
+    int new = snmp_oid_size(&data->c->sr_vb_start->name);
+    data->c->buffer += (new - old);
+
+    if (leaf->call_next && !leaf->call_next(walk, data))
+      found = 1;
+    else if (!leaf->call_next)
+      found = 1;
+  }
+
+  if (!found)
+    return NULL;
+
+
+  return leaf;
+}
+
+enum snmp_search_res
+snmp_walk_fill(struct mib_leaf *leaf, struct mib_walk_state *walk, struct snmp_data *data)
+{
+  struct agentx_varbind *vb = data->c->sr_vb_start;
+
+  if (!leaf)
+  //if (!leaf || mib_tree_walk_is_oid_descendant(walk, &vb->name) < 0)
+    return SNMP_SEARCH_NO_OBJECT;
+
+  uint size = 0;
+  if (leaf->size >= 0)
+  {
+    if (leaf->type == AGENTX_OCTET_STRING || leaf->type == AGENTX_OPAQUE ||
+	  leaf->type == AGENTX_OBJECT_ID)
+    {
+      snmp_set_varbind_type(vb, leaf->type);
+      size = leaf->size;
+    }
+    else if (leaf->type != AGENTX_INVALID)
+    {
+      snmp_set_varbind_type(vb, leaf->type);
+      size = agentx_type_size(leaf->type);
+    }
+    else
+      size = leaf->size;
+  }
+
+  snmp_log("walk_fill got size %u based on lt %u ls %u, calling filler()", size, leaf->type, leaf->size);
+
+  if (size >= data->c->size)
+  {
+    snmp_log("walk_fill small buffer size %d to %d", size, data->c->size);
+    snmp_manage_tbuf(data->p, data->c);
+  }
+
+  enum snmp_search_res res = leaf->filler(walk, data);
+
+  vb = data->c->sr_vb_start;
+
+  if (res != SNMP_SEARCH_OK)
+    snmp_set_varbind_type(vb, snmp_search_res_to_type(res));
+
+  u16 type = snmp_load_varbind_type(vb);
+  /* Test that hook() did not overwrite the VarBind type to non-matching type */
+  ASSUME(type == leaf->type || type == AGENTX_END_OF_MIB_VIEW || type == AGENTX_NO_SUCH_OBJECT ||
+    type == AGENTX_NO_SUCH_INSTANCE);
+
+  return res;
 }
 

@@ -1,3 +1,4 @@
+
 #ifndef _BIRD_SNMP_SUBAGENT_H_
 #define _BIRD_SNMP_SUBAGENT_H_
 
@@ -51,7 +52,7 @@ enum agentx_type {
   AGENTX_NO_SUCH_INSTANCE   = 129,
   AGENTX_END_OF_MIB_VIEW    = 130,
 
-  AGENTX_INVALID	    =  -1,
+  AGENTX_INVALID	    =   0,
 } PACKED;
 
 enum snmp_search_res {
@@ -168,6 +169,15 @@ struct oid {
   u8 reserved;	/* always zero filled */
   u32 ids[];
 };
+
+#define STATIC_OID(sbids)						      \
+  struct {								      \
+    u8 n_subid;								      \
+    u8 prefix;								      \
+    u8 include;								      \
+    u8 reserved;							      \
+    u32 ids[sbids];							      \
+  }
 
 /* enforced by MIB tree, see mib_tree.h for more info */
 #define OID_MAX_LEN 32
@@ -301,21 +311,22 @@ struct snmp_pdu {
 
   /* Search Range */
   struct agentx_varbind *sr_vb_start; /* search range starting OID inside TX buffer (final storage) */
-  struct oid *sr_o_end;		    /* search range ending OID */
+  const struct oid *sr_o_end;	      /* search range ending OID */
 
   /* Control */
   enum agentx_response_errs error;  /* storage for result of current action */
   u32 index;			    /* index on which the error was found */
 
-  union snmp_mibs_data *mibs_data;  /* data passed from MIB search phase to MIB fill phase */
 };
 
-#include "bgp4_mib.h"
-
-union snmp_mibs_data {
-  enum snmp_tags empty;
-
-  struct bgp4_mib bgp4;
+/*
+ * snmp_data - Comprehensive hadle for Agentx PDU state
+ * @p: SNMP protocol instance
+ * @c: contextual data for currrently constructed AgentX PDU
+ */
+struct snmp_data {
+  struct snmp_proto *p;
+  struct snmp_pdu *c;
 };
 
 struct snmp_packet_info {
@@ -346,16 +357,17 @@ void snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint siz
 
 void snmp_manage_tbuf(struct snmp_proto *p, struct snmp_pdu *c);
 
-struct agentx_varbind *snmp_vb_to_tx(struct snmp_proto *p, const struct oid *oid, struct snmp_pdu *c);
+void snmp_vb_to_tx(struct snmp_proto *p, const struct oid *oid, struct snmp_pdu *c);
 u8 snmp_get_mib_class(const struct oid *oid);
 
 void snmp_register_mibs(struct snmp_proto *p);
-void snmp_bgp_start(struct snmp_proto *p);
+
+/* MIB modules */
+void snmp_bgp4_start(struct snmp_proto *p);
 
 
-// debug wrapper
-#if 0
-#define snmp_log(...) log(L_INFO "snmp " __VA_ARGS__)
+#if 1
+#define snmp_log(...) log(L_INFO "SNMP " __VA_ARGS__)
 #else
 #define snmp_log(...) do { } while(0)
 #endif
