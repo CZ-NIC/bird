@@ -5428,6 +5428,19 @@ protocol static {
 }
 </code>
 
+<sect>SNMP
+<label id="snmp">
+
+<p>The Simple Network Management Protocol is protocol for collecting and
+managing network devices.
+
+<p>The BIRD SNMP support is achieved by an additional component -- a SNMP deamon
+acting as AgentX master agent. Currently we only support TCP connection.
+
+<p>An example of SNMP protocol configuration.
+
+<code>
+</code>
 
 <chapt>Conclusions
 <label id="conclusion">
