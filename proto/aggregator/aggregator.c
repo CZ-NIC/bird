@@ -49,22 +49,6 @@
 #include <stdlib.h>
 #include <assert.h>
 
-/*
-#include "nest/route.h"
-#include "nest/iface.h"
-#include "lib/resource.h"
-#include "lib/event.h"
-#include "lib/timer.h"
-#include "lib/string.h"
-#include "conf/conf.h"
-#include "filter/filter.h"
-#include "filter/data.h"
-#include "lib/hash.h"
-#include "lib/string.h"
-#include "lib/alloca.h"
-#include "lib/flowspec.h"
-*/
-
 extern linpool *rte_update_pool;
 
 static void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net);
