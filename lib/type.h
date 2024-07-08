@@ -24,6 +24,7 @@ union bval {
   };											\
   const struct adata *ptr;	/* Generic attribute data inherited from eattrs */	\
   const struct adata *ad;     	/* Generic attribute data inherited from filters */	\
+  const void * v_ptr;       /* Stored pointer */ \
 
   BVAL_ITEMS;
 };
@@ -73,6 +74,7 @@ enum btype {
   T_ECLIST = 0x0e,		/* Set of pairs of u32's - ext. community list */
   T_LCLIST = 0x08,		/* Set of triplets of u32's - large community list */
   T_STRING = 0x10,
+  T_PTR = 0x11,         /* Void pointer */
 
   T_ENUM_BGP_ORIGIN = 0x13,	/* BGP Origin enum */
   T_ENUM_RA_PREFERENCE = 0x15,	/* RA Preference enum */

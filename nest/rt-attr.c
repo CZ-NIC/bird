@@ -1120,6 +1120,8 @@ eattr_same_value(const eattr *a, const eattr *b)
   if (a->undef)
     return 1;
 
+  if (a->type == T_PTR)
+    return a->u.v_ptr == b->u.v_ptr;
   if (a->type & EAF_EMBEDDED)
     return a->u.data == b->u.data;
   else

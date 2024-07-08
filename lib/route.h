@@ -321,9 +321,16 @@ static inline eattr *ea_find_by_name(ea_list *l, const char *name)
 
 #define ea_get_int(_l, _ident, _def)  ({ \
     struct ea_class *cls = ea_class_find((_ident)); \
-    ASSERT_DIE(cls->type & EAF_EMBEDDED); \
+    ASSERT_DIE(cls->type & EAF_EMBEDDED && cls->type != T_PTR); \
     const eattr *ea = ea_find((_l), cls->id); \
     (ea ? ea->u.data : (_def)); \
+    })
+
+#define ea_get_ptr(_l, _ident, _def)  ({ \
+    struct ea_class *cls = ea_class_find((_ident)); \
+    ASSERT_DIE(cls->type == T_PTR); \
+    const eattr *ea = ea_find((_l), cls->id); \
+    (ea ? ea->u.v_ptr : (_def)); \
     })
 
 #define ea_get_ip(_l, _ident, _def)  ({ \
@@ -357,8 +364,14 @@ void ea_list_copy(ea_list *dest, ea_list *src, uint size);
 
 #define EA_LITERAL_EMBEDDED(_class, _flags, _val) ({ \
     btype _type = (_class)->type; \
-    ASSERT_DIE(_type & EAF_EMBEDDED); \
+    ASSERT_DIE(_type & EAF_EMBEDDED && _type != T_PTR); \
     EA_LITERAL_GENERIC((_class)->id, _type, _flags, .u.i = _val); \
+    })
+
+#define EA_LITERAL_STORE_PTR(_class, _flags, _ptr) ({ \
+    btype _type = (_class)->type; \
+    ASSERT_DIE(!(_type == T_PTR)); \
+    EA_LITERAL_GENERIC((_class)->id, _type, _flags, .u.v_ptr = _ptr); \
     })
 
 #define EA_LITERAL_STORE_ADATA(_class, _flags, _buf, _len) ({ \
@@ -406,6 +419,10 @@ ea_set_attr_u32(ea_list **to, const struct ea_class *def, uint flags, u64 data)
 { ea_set_attr(to, EA_LITERAL_EMBEDDED(def, flags, data)); }
 
 static inline void
+ea_set_attr_ptr(ea_list **to, const struct ea_class *def, uint flags, const void *data)
+{ ea_set_attr(to, EA_LITERAL_STORE_PTR(def, flags, data)); }
+
+static inline void
 ea_set_attr_data(ea_list **to, const struct ea_class *def, uint flags, const void *data, uint len)
 { ea_set_attr(to, EA_LITERAL_STORE_ADATA(def, flags, data, len)); }
 
@@ -414,7 +431,9 @@ ea_copy_attr(ea_list **to, ea_list *from, const struct ea_class *def)
 {
   eattr *e = ea_find_by_class(from, def);
   if (e)
-    if (e->type & EAF_EMBEDDED)
+    if (e->type == T_PTR)
+      ea_set_attr_ptr(to, def, e->flags, (void *)e->u.v_ptr);
+    else if (e->type & EAF_EMBEDDED)
       ea_set_attr_u32(to, def, e->flags, e->u.data);
     else
       ea_set_attr_data(to, def, e->flags, e->u.ptr->data, e->u.ptr->length);
