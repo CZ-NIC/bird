@@ -90,7 +90,10 @@ The credits are scattered over all the source code files; in the commentary
 section, you may find typically the original authors of these files or some
 major contributors who felt like adding their names there. Overall, if you feel
 like your name should be there, include this change in your commits please.
-If your name should be changed, please do that change there.
+
+If your name should be changed, please do that change in the source code files.
+If your name should be changed in the displayed git commit author / commiter
+logs, please submit a patch on the `.mailmap` file.
 
 We are planning to centralize the credits one day; we'll then update this file
 accordingly.
