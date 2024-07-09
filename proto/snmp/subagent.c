@@ -62,17 +62,12 @@
  *
  */
 
-//static void snmp_mib_fill(struct snmp_proto *p, struct oid *oid, struct snmp_pdu *c);
-static void snmp_mib_fill(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_pdu *c);
 static uint parse_response(struct snmp_proto *p, byte *buf);
 static void do_response(struct snmp_proto *p, byte *buf);
 static uint parse_gets_pdu(struct snmp_proto *p, byte *pkt);
 static struct agentx_response *prepare_response(struct snmp_proto *p, struct snmp_pdu *c);
 static void response_err_ind(struct snmp_proto *p, struct agentx_response *res, enum agentx_response_errs err, u16 ind);
 static uint update_packet_size(struct agentx_header *start, byte *end);
-//static struct oid *search_mib2(struct snmp_proto *p, const struct oid *o_start, const struct oid *o_end, struct oid *o_curr, struct snmp_pdu *c, enum snmp_search_res *result);
-
-static enum snmp_search_res search_mib(struct snmp_proto *p, struct agentx_varbind **vb_search, const struct oid *o_end, struct snmp_pdu *c);
 
 /* standard SNMP internet prefix (1.3.6.1) */
 const u32 snmp_internet[] = { SNMP_ISO, SNMP_ORG, SNMP_DOD, SNMP_INTERNET };
@@ -254,7 +249,6 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
   struct snmp_pdu c;
   snmp_pdu_context(&c, sk);
 
-// TODO use more readable anonymous structure decl.
 #define UPTIME_SIZE \
   sizeof( struct { u32 vb_type; u32 oid_hdr; u32 ids[4]; } )
 #define TRAP0_HEADER_SIZE \
@@ -431,7 +425,7 @@ snmp_register(struct snmp_proto *p, struct oid *oid, u32 bound, uint index, u8 i
  *
  * For more detailed description see un_register_pdu() function.
  */
-void UNUSED
+void 
 snmp_unregister(struct snmp_proto *p, struct oid *oid, u32 bound, uint index, uint contid)
 {
   un_register_pdu(p, oid, bound, index, AGENTX_UNREGISTER_PDU, 0, contid);
@@ -442,7 +436,7 @@ snmp_unregister(struct snmp_proto *p, struct oid *oid, u32 bound, uint index, ui
  * @p: SNMP protocol instance
  * @reason: reason for closure
  */
-static void UNUSED
+static void 
 close_pdu(struct snmp_proto *p, enum agentx_close_reasons reason)
 {
   sock *sk = p->sock;
@@ -512,43 +506,6 @@ parse_close_pdu(struct snmp_proto *p, byte * const pkt_start)
 
 
 /*
- * snmp_testset - check possibility of VarBind name and data setting
- * @p: SNMP protocol instance
- * @vb: checked VarBind
- * @oid: pool-allocated prefixed copy of VarBind name
- * @pkt_size: number of not parsed bytes in processed PDU
- *
- * Check done by specialized function for specific MIB subtree whether
- * the VarBind is valid for set action (changing to current value to value
- * in VarBind).
- *
- * Return 1 if the VarBind setting is possible, 0 otherwise.
- */
-/* MUCH better signature would be
-    static int snmp_testset(struct snmp_proto *p, const struct agentx_varbind *vb, uint pkt_size);
- */
-static int UNUSED
-snmp_testset(struct snmp_proto *p, const struct agentx_varbind *vb, struct oid *oid, uint pkt_size)
-{
-  /* Hard-coded no support for writing */
-  (void)p;(void)vb;(void)oid;(void)pkt_size;
-  snmp_simple_response(p, AGENTX_RES_NOT_WRITABLE, 1);
-  return pkt_size + AGENTX_HEADER_SIZE;
-#if 0
-  if (!oid)
-    return 0;
-
-  switch (oid->ids[1])
-  {
-    case SNMP_BGP4_MIB:
-      return snmp_bgp_testset(p, vb, oid, pkt_size);
-    default:
-      return 0;
-  }
-#endif
-}
-
-/*
  * refresh_ids - Copy current ids from packet to protocol
  * @p: SNMP protocol instance
  * @h: PDU header with new transaction_id and packet_id ids.
@@ -578,7 +535,6 @@ parse_test_set_pdu(struct snmp_proto *p, byte * const pkt_start)
 
   struct agentx_header *h = (void *) pkt;
   pkt += AGENTX_HEADER_SIZE;
-  //uint pkt_size = LOAD_U32(h->payload);
 
   sock *sk = p->sock;
   struct snmp_pdu c;
@@ -598,42 +554,6 @@ parse_test_set_pdu(struct snmp_proto *p, byte * const pkt_start)
    * variables, when implementing the mentioned support, change the initializer
    * to 1
    */
-#if 0
-  // TODO think about future value setting data structure
-  //struct agentx_transaction *tr = mb_alloc(...);
-  void *tr = mb_alloc(p->pool, 16);
-
-  struct agentx_varbind *vb;
-  uint sz;
-  while (size > 0 && all_possible)
-  {
-    vb = (void *) pkt;
-    sz = snmp_varbind_size(vb, size);
-
-    if (sz > pkt_size)
-    {
-      c.error = AGENTX_RES_PARSE_ERROR;
-      all_possible = 0;
-      break;
-    }
-
-    /* Unknown VarBind type check */
-    if (!snmp_test_varbind(vb))
-    {
-      c.error = AGENTX_RES_PARSE_ERROR;
-      all_possible = 0;
-      break;
-    }
-    ADVANCE(pkt, size, snmp_varbind_size(vb, size));
-
-    // TODO remove the mb_alloc() in prefixize()
-    struct oid *work = snmp_prefixize(p, &vb->name);
-    (void)work;
-    all_possible = snmp_testset(p, vb, tr, work, pkt_size);
-    mb_free(work);
-  }
-  mb_free(tr);
-#endif
   s = update_packet_size(h, c.buffer);
 
   if (c.error != AGENTX_RES_NO_ERROR)
@@ -678,7 +598,6 @@ parse_sets_pdu(struct snmp_proto *p, byte * const pkt_start, enum agentx_respons
     snmp_simple_response(p, AGENTX_RES_PARSE_ERROR, 0);
     // TODO best solution for possibly malicious pkt_size
     return AGENTX_HEADER_SIZE;
-    // use varbind_list_size()??
   }
 
   struct snmp_pdu c;
@@ -1036,285 +955,6 @@ snmp_get_mib_class(const struct oid *oid)
   }
 }
 
-/*
- * snmp_get_next - process single agentx-GetNext-PDU search range
- * @p: SNMP protocol instance
- * @o_start: SearchRange start OID
- * @o_end: SearchRange end OID
- * @c: transmit PDU context to use
- *
- * Return 0 if the created VarBind type is endOfMibView, 1 otherwise.
- */
-// TODO remove me
-static int UNUSED
-snmp_get_next2(struct snmp_proto *p, struct agentx_varbind **vb_search, struct oid *o_end, struct snmp_pdu *c)
-{
-  enum snmp_search_res r;
-
-  //struct oid *o_copy = search_mib(p, o_start, o_end, NULL, c, &r);
-  r = search_mib(p, vb_search, o_end, c);
-  struct oid *o_start = &(*vb_search)->name;
-
-  switch (r)
-  {
-    case SNMP_SEARCH_NO_OBJECT:
-    case SNMP_SEARCH_NO_INSTANCE:
-    case SNMP_SEARCH_END_OF_VIEW:;
-      snmp_set_varbind_type(*vb_search, AGENTX_END_OF_MIB_VIEW);
-      return 0;
-
-    case SNMP_SEARCH_OK:
-    default:
-      break;
-  }
-
-  // TODO TODO different API
-  snmp_mib_fill(p, vb_search, c);
-
-  /* override the error for GetNext-PDU object not find */
-  switch ((*vb_search)->type)
-  {
-    case AGENTX_NO_SUCH_OBJECT:
-    case AGENTX_NO_SUCH_INSTANCE:
-    case AGENTX_END_OF_MIB_VIEW:
-      (*vb_search)->type = AGENTX_END_OF_MIB_VIEW;
-      return 0;
-
-    default:
-      return 1;
-  }
-
-  o_start = &(*vb_search)->name;
-  if (c->size < snmp_varbind_hdr_size_from_oid(o_start))
-  {
-    snmp_log("get_next2 small buffer");
-    snmp_manage_tbuf(p, c);
-  }
-
-  snmp_set_varbind_type(*vb_search, AGENTX_END_OF_MIB_VIEW);
-  return 0;
-}
-
-#if 0
-/*
- * snmp_get_next - process single agentx-GetNext-PDU search range
- * @p: SNMP protocol instance
- * @o_start: SearchRange start OID
- * @o_end: SearchRange end OID
- * @c: transmit PDU context to use
- *
- * Return 0 if the created VarBind type is endOfMibView, 1 otherwise.
- */
-static int
-snmp_get_next3(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
-	       struct snmp_pdu *c)
-{
-  enum snmp_search_res r;
-  struct oid *o_copy = search_mib2(p, o_start, o_end, NULL, c, &r);
-
-  struct agentx_varbind *vb = NULL;
-  switch (r)
-  {
-    case SNMP_SEARCH_NO_OBJECT:
-    case SNMP_SEARCH_NO_INSTANCE:
-    case SNMP_SEARCH_END_OF_VIEW:;
-      uint sz = snmp_varbind_hdr_size_from_oid(o_start);
-
-      if (c->size < sz && c->size >= sizeof(struct agentx_varbind))
-      {
-	struct agentx_varbind *vb_null = snmp_create_varbind_null(c->buffer);
-	ADVANCE(c->buffer, c->size, snmp_varbind_size_unsafe(vb_null));
-	c->error = AGENTX_RES_GEN_ERROR;
-	return 0;
-      }
-      else if (c->size < sz)
-      {
-	c->error = AGENTX_RES_GEN_ERROR;
-	return 0;
-      }
-
-      vb = snmp_create_varbind(c->buffer, o_start);
-      vb->type = AGENTX_END_OF_MIB_VIEW;
-      ADVANCE(c->buffer, c->size, snmp_varbind_header_size(vb));
-      return 0;
-
-    case SNMP_SEARCH_OK:
-    default:
-      break;
-  }
-
-  if (o_copy)
-  {
-    /* basicaly snmp_create_varbind(c->buffer, o_copy), but without any copying */
-    vb = (void *) c->buffer;
-    snmp_mib_fill(p, o_copy, c);
-
-    /* override the error for GetNext-PDU object not find */
-    switch (vb->type)
-    {
-      case AGENTX_NO_SUCH_OBJECT:
-      case AGENTX_NO_SUCH_INSTANCE:
-      case AGENTX_END_OF_MIB_VIEW:
-	vb->type = AGENTX_END_OF_MIB_VIEW;
-	return 0;
-
-      default:
-	return 1;
-    }
-  }
-
-  if (c->size < snmp_varbind_hdr_size_from_oid(o_start))
-  {
-    snmp_manage_tbuf(p, c);
-  }
-
-  vb = snmp_create_varbind(c->buffer, o_start);
-  vb->type = AGENTX_END_OF_MIB_VIEW;
-  ADVANCE(c->buffer, c->size, snmp_varbind_header_size(vb));
-  return 0;
-}
-#endif
-
-#if 0
-/*
- * snmp_get_bulk - process one iteration of get bulk PDU
- * @p: SNMP protocol instance
- * @o_start: SearchRange start OID
- * @o_end: SearchRange end OID
- * @state: state of get bulk PDU processing
- * @c: transmit PDU context to use
- *
- * Return 0 if the created VarBind has type endOfMibView, 1 otherwise.
- */
-static int
-snmp_get_bulk2(struct snmp_proto *p, struct oid *o_start, struct oid *o_end,
-	       struct agentx_bulk_state *state, struct snmp_pdu *c)
-{
-  struct oid *o_curr = NULL;
-  struct oid *o_predecessor = NULL;
-  enum snmp_search_res r;
-
-  uint i = 0;
-  do
-  {
-    o_predecessor = o_curr;
-    o_curr = search_mib(p, o_start, o_end, o_curr, c, &r);
-    i++;
-  } while (o_curr && i < state->repetition);
-
-  // TODO check if the approach below works
-  // it need to generate varbinds that will be only of type endOfMibView
-  /* Object Identifier fall-backs */
-  if (!o_curr)
-    o_curr = o_predecessor;
-
-  if (!o_curr)
-    o_curr = o_start;
-
-  uint sz = snmp_varbind_hdr_size_from_oid(o_curr);
-
-  if (c->size < sz)
-  {
-    c->error = AGENTX_RES_GEN_ERROR;
-    return 0;
-  }
-
-  /* we need the varbind handle to be able to override it's type */
-  struct agentx_varbind *vb = (void *) c->buffer;
-  vb->type = AGENTX_END_OF_MIB_VIEW;
-
-  if (r == SNMP_SEARCH_OK)
-    /* the varbind will be recreated inside the snmp_mib_fill() */
-    snmp_mib_fill(p, o_curr, c);
-  else
-    ADVANCE(c->buffer, c->size, snmp_varbind_header_size(vb));
-
-  /* override the error for GetBulk-PDU object not found */
-  switch (vb->type)
-  {
-    case AGENTX_NO_SUCH_OBJECT:
-    case AGENTX_NO_SUCH_INSTANCE:
-    case AGENTX_END_OF_MIB_VIEW:
-      vb->type = AGENTX_END_OF_MIB_VIEW;
-      return 0;
-
-    default:
-      return 1;
-  }
-}
-#endif
-
-#if 0
-static int
-snmp_get_bulk2(struct snmp_proto *p, struct agentx_varbind **vb_search, const struct oid *o_end, struct agentx_bulk_state *state, struct snmp_pdu *c)
-{
-  //struct oid *o_curr = NULL;
-  //struct oid *o_predecessor = NULL;
-  enum snmp_search_res r;
-
-  uint i = 0;
-  r = search_mib(p, vb_search, o_end, c);
-  while (r != SNMP_SEARCH_END_OF_VIEW && i < state->repetition)
-  {
-    snmp_mib_fill(p, vb_search, c);
-
-    snmp_varbind_duplicate_hdr(p, vb_search, c);
-    // renew all pointers here
-    r = search_mib(p, vb_search, o_end, c);
-  }
-
-  return r == SNMP_SEARCH_END_OF_VIEW;
-  do
-  {
-    r = search_mib(p, vb_search, o_end, c);
-    snmp_mib_fill(p, vb_search, ;
-    o_predecessor = o_curr;
-    o_curr = search_mib(p, o_start, o_end, o_curr, c, &r);
-    i++;
-  } while (r != SNMP_SEARCH_END_OF_VIEW && i < state->repetition);
-
-  // TODO check if the approach below works
-  // it need to generate varbinds that will be only of type endOfMibView
-  /* Object Identifier fall-backs */
-  if (!o_curr)
-    o_curr = o_predecessor;
-
-  if (!o_curr)
-    o_curr = o_start;
-
-  uint sz = snmp_varbind_hdr_size_from_oid(o_curr);
-
-  if (c->size < sz)
-  {
-    c->error = AGENTX_RES_GEN_ERROR;
-    return 0;
-  }
-
-  /* we need the varbind handle to be able to override it's type */
-  struct agentx_varbind *vb = (void *) c->buffer;
-  vb->type = AGENTX_END_OF_MIB_VIEW;
-
-  if (r == SNMP_SEARCH_OK)
-    /* the varbind will be recreated inside the snmp_mib_fill() */
-    snmp_mib_fill(p, o_curr, c);
-  else
-    ADVANCE(c->buffer, c->size, snmp_varbind_header_size(vb));
-
-  /* override the error for GetBulk-PDU object not found */
-  switch (vb->type)
-  {
-    case AGENTX_NO_SUCH_OBJECT:
-    case AGENTX_NO_SUCH_INSTANCE:
-    case AGENTX_END_OF_MIB_VIEW:
-      vb->type = AGENTX_END_OF_MIB_VIEW;
-      return 0;
-
-    default:
-      return 1;
-  }
-}
-#endif
-
 static inline struct oid *
 snmp_oid_prefixize_unsafe(struct oid *dest, const struct oid *src)
 {
@@ -1329,36 +969,6 @@ snmp_oid_prefixize_unsafe(struct oid *dest, const struct oid *src)
 
   return dest;
 }
-
-#if 0
-/*
- * snmp_oid_prefixize - convert oid to prefixed form
- * @p: SNMP protocol instance
- * @oid: object identifier to convert
- * @c: PDU context
- *
- * The function assumes that the supplied @oid is prefixable. The resulting OID
- * is allocated from PDU buffer inside @c.
- */
-struct oid *
-snmp_oid_prefixize(struct snmp_proto *p, const struct oid *oid, struct snmp_pdu *c)
-{
-  /* It may be beneficial to move to snmp_utils.c */
-  uint subids = LOAD_U8(oid->n_subid) - 5;
-  uint oid_size = snmp_oid_size(oid);
-
-  if (c->size < oid_size)
-  {
-    snmp_manage_tbuf(p, c);
-  }
-
-  // TODO check if the @oid is prefixable
-  ASSERT(c->size >= oid_size);
-  struct oid *result = c->buffer;
-  ADVANCE(c->buffer, c->size, oid_size);
-  return snmp_oid_prefixize_unsafe(result, oid);
-}
-#endif
 
 /*
  * snmp_vb_to_tx - create varbind from RX buffer OID
@@ -1646,26 +1256,14 @@ parse_gets_pdu(struct snmp_proto *p, byte * const pkt_start)
     {
       case AGENTX_GET_PDU:
 	snmp_get_pdu(p, &c, start_rx, &walk);
-	//snmp_mib_fill(p, &vb_start, &c);
 	break;
 
       case AGENTX_GET_NEXT_PDU:
 	snmp_get_next_pdu(p, &c, start_rx, &walk);
-	//snmp_get_next2(p, &vb_start, o_end, &c);
 	break;
 
       case AGENTX_GET_BULK_PDU:
 	snmp_get_bulk_pdu(p, &c, start_rx, &walk, &bulk_state);
-	#if 0
-	if (c.index >= bulk_state.getbulk.non_repeaters)
-	  bulk_state.repeaters++;
-
-	// store the o_start, o_end
-
-	/* The behavior of GetBulk pdu in the first iteration is
-	 * identical to GetNext pdu. */
-	has_any = snmp_get_next2(p, &vb_start, o_end, &c) || has_any;
-	#endif
 	break;
 
       default:
@@ -1682,19 +1280,6 @@ parse_gets_pdu(struct snmp_proto *p, byte * const pkt_start)
 
   if (h->type == AGENTX_GET_BULK_PDU)
   {
-  #if 0
-    // TODO
-    for (bulk_state.repetition++;
-	 has_any && bulk_state.repetition < bulk_state.getbulk.max_repetitions;
-	 bulk_state.repetition++)
-    {
-      vb_start = snmp_vb_copy_to_tx(p, vb_start, &c);
-      has_any = 0;
-      for (bulk_state.index = 0; bulk_state.index < bulk_state.repeaters;
-	   bulk_state.repeaters++)
-	has_any = snmp_get_bulk2(p, &vb_start, end, &bulk_state, &c) || has_any;
-    }
-  #endif
   }
 
   /* We update the error, index pair on the beginning of the packet. */
@@ -1739,7 +1324,7 @@ snmp_stop_subagent(struct snmp_proto *p)
 {
   tm_stop(p->ping_timer);
   /* This cause problems with net-snmp daemon witch halts afterwards */
-  //close_pdu(p, AGENTX_CLOSE_SHUTDOWN);
+  close_pdu(p, AGENTX_CLOSE_SHUTDOWN);
 }
 
 /*
@@ -1820,7 +1405,6 @@ snmp_ping(struct snmp_proto *p)
   if (unused < AGENTX_HEADER_SIZE)
     return;
 
-  //struct agentx_header *h = (void *) sk->tpos;
   struct agentx_header *h = (void *) c.buffer;
   ADVANCE(c.buffer, c.size, AGENTX_HEADER_SIZE);
   snmp_blank_header(h, AGENTX_PING_PDU);
@@ -1850,248 +1434,6 @@ snmp_search_check_end_oid(const struct oid *found, const struct oid *bound)
     return 1;
 
   return (snmp_oid_compare(found, bound) < 0);
-}
-
-/*
- * search_mib - search for successor of given OID
- * @p: SNMP protocol instance
- * @o_start: search starting OID
- * @o_end: search ending OID
- * @o_curr: current OID inside @o_start, @o_end interval
- * @c: transmit PDU context to use
- * @result: search result state
- *
- * Perform a search in MIB tree in SearchRange from @o_start to @o_end.
- * If the @o_start has set include the search is inclusive, the @o_end has
- * always the include flag cleared. For agentx-GetNext-PDU, the o_curr is always
- * NULL, for agentx-GetBulk-PDU it could have non-NULL value. In such case the
- * @o_curr effectively replaces the role of @o_start. It is mandatory to pass
- * @o_start and @o_end only allocated from @p protocol's memory pool.
- *
- * Return found OID or NULL.
- */
-/* tree is tree with "internet" prefix .1.3.6.1
-   working only with o_start, o_end allocated in heap (not from buffer)*/
-static enum snmp_search_res
-search_mib(struct snmp_proto *p, struct agentx_varbind **vb_search, const struct oid *o_end, struct snmp_pdu *c)
-{
-  ASSUME(vb_search != NULL);
-  struct oid *o_start = &(*vb_search)->name;
-  ASSUME(o_start != NULL);
-
-  (void)p;
-  (void)o_end;
-  (void)c;
-  // TODO TODO
-#if 0
-  enum snmp_search_res r;
-  switch (o_curr->ids[1])
-  {
-    case SNMP_BGP4_MIB:
-      r = snmp_bgp_search(p, &o_curr, o_end, 0);
-
-      if (r == SNMP_SEARCH_OK)
-      {
-	*result = r;
-	break;
-	return o_curr;
-      }
-
-      // TODO add early break for o_end less then thinkable maximum in each tree
-
-      /* fall through */
-
-    default:
-      if (o_curr) mb_free(o_curr);
-      o_curr = snmp_oid_duplicate(p->pool, o_start);
-      *result = SNMP_SEARCH_END_OF_VIEW;
-      break;
-  }
-
-  if (o_end == blank)
-    /* cast drops const qualifier */
-    mb_free((struct oid *)blank);
-
-  return o_curr;
-#endif
-  return SNMP_SEARCH_NO_OBJECT;
-}
-
-/*
- * search_mib - search for successor of given OID
- * @p: SNMP protocol instance
- * @o_start: search starting OID
- * @o_end: search ending OID
- * @o_curr: current OID inside @o_start, @o_end interval
- * @c: transmit PDU context to use
- * @result: search result state
- *
- * Perform a search in MIB tree in SearchRange from @o_start to @o_end.
- * If the @o_start has set include the search is inclusive, the @o_end has
- * always the include flag cleared. For agentx-GetNext-PDU, the o_curr is always
- * NULL, for agentx-GetBulk-PDU it could have non-NULL value. In such case the
- * @o_curr effectively replaces the role of @o_start. It is mandatory to pass
- * @o_start and @o_end only allocated from @p protocol's memory pool.
- *
- * Return found OID or NULL.
- */
-/* tree is tree with "internet" prefix .1.3.6.1
-   working only with o_start, o_end allocated in heap (not from buffer)*/
-#if 0
-static struct oid *
-search_mib2(struct snmp_proto *p, const struct oid *o_start, const struct oid *o_end,
-	   struct oid *o_curr, struct snmp_pdu UNUSED *c,
-	   enum snmp_search_res *result)
-{
-  // TODO flip retval and result (maybe on more place to stay consistent)
-  // TODO remove unnecessary o_start/o_curr duplication
-  ASSUME(o_start != NULL);
-
-  if (o_curr && (o_curr->n_subid < 2 || o_curr->ids[0] != 1))
-    return NULL;
-  if (!o_curr && (o_start->n_subid < 2 || o_start->ids[0] != 1))
-    return NULL;
-
-  if (!o_curr)
-  {
-    o_curr = snmp_oid_duplicate(p->pool, o_start);
-    // XXX is it right time to free o_start right now (here) ?
-	// not for use in snmp_get_next2() the o_start comes and ends in _gets_()
-  }
-
-  const struct oid *blank = NULL;
-  if (!snmp_is_oid_empty(o_end) &&
-      snmp_get_mib_class(o_curr) < snmp_get_mib_class(o_end))
-  {
-    o_end = blank = snmp_oid_blank(p);
-  }
-
-  enum snmp_search_res r;
-  switch (o_curr->ids[1])
-  {
-    case SNMP_BGP4_MIB:
-      r = snmp_bgp_search(p, &o_curr, o_end, 0);
-
-      if (r == SNMP_SEARCH_OK)
-      {
-	*result = r;
-	break;
-	return o_curr;
-      }
-
-      // TODO add early break for o_end less then thinkable maximum in each tree
-
-      /* fall through */
-
-    default:
-      if (o_curr) mb_free(o_curr);
-      o_curr = snmp_oid_duplicate(p->pool, o_start);
-      *result = SNMP_SEARCH_END_OF_VIEW;
-      break;
-  }
-
-  if (o_end == blank)
-    /* cast drops const qualifier */
-    mb_free((struct oid *)blank);
-
-  return o_curr;
-}
-#endif
-
-
-
-#if 0
-/**
- * snmp_prefixize - return prefixed OID copy if possible
- * @proto: allocation pool holder
- * @oid: from packet loaded object identifier
- *
- * Return prefixed (meaning with nonzero prefix field) oid copy of @oid if
- * possible, NULL otherwise. Returned pointer is always allocated from @proto's
- * pool not a pointer to RX-buffer (from which is most likely @oid).
- */
-struct oid *
-snmp_prefixize(struct snmp_proto *proto, const struct oid *oid)
-{
-  ASSUME(oid != NULL);
-
-  if (snmp_is_oid_empty(oid))
-  {
-    /* allocate new zeroed oid */
-    return snmp_oid_blank(proto);
-  }
-
-  /* already in prefixed form */
-  else if (oid->prefix != 0) {
-    struct oid *new = snmp_oid_duplicate(proto->pool, oid);
-    return new;
-  }
-
-  if (oid->n_subid < 5)
-    return NULL;
-
-  for (int i = 0; i < 4; i++)
-    if (LOAD_U32(oid->ids[i]) != snmp_internet[i])
-      return NULL;
-
-  /* validity check here */
-  if (oid->ids[4] >= 256)
-    return NULL;
-
-  struct oid *new = mb_alloc(proto->pool,
-          sizeof(struct oid) + MAX((oid->n_subid - 5) * sizeof(u32), 0));
-
-  memcpy(new, oid, sizeof(struct oid));
-  new->n_subid = oid->n_subid - 5;
-
-  /* validity check before allocation => ids[4] < 256
-     and can be copied to one byte new->prefix */
-  new->prefix = oid->ids[4];
-
-  memcpy(&new->ids, &oid->ids[5], new->n_subid * sizeof(u32));
-  return new;
-}
-#endif
-
-/*
- * snmp_mib_fill - append a AgentX VarBind to PDU
- * @p: SNMP protocol instance
- * @vb: indirect pointer to destination varbind
- * @c: transmit PDU context to use
- *
- * Append new AgentX VarBind at the end of created PDU. The content (v.data)
- * is handled in function specialized for given MIB subtree. The binding is
- * created only if the v.name matches some variable name precisely.
- */
-static void
-snmp_mib_fill(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_pdu *c)
-{
-  (void) p;
-  ASSUME(vb != NULL && *vb != NULL);
-
-  struct oid *oid = &((*vb)->name);
-
-  if (oid->n_subid < 2 || (oid->prefix != SNMP_MGMT && oid->ids[0] != SNMP_MIB_2))
-  {
-    snmp_set_varbind_type(*vb, AGENTX_NO_SUCH_OBJECT);
-    ADVANCE(c->buffer, c->size, snmp_varbind_header_size(*vb));
-    return;
-  }
-
-  u8 mib_class = snmp_get_mib_class(oid);
-  switch (mib_class)
-  {
-    case SNMP_CLASS_BGP:
-      //snmp_bgp_fill(p, vb, c);
-      break;
-
-    case SNMP_CLASS_INVALID:
-    case SNMP_CLASS_END:
-    default:
-      break;
-      (*vb)->type = AGENTX_NO_SUCH_OBJECT;
-      ADVANCE(c->buffer, c->size, snmp_varbind_header_size(*vb));
-  }
 }
 
 /*

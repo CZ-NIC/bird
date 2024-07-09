@@ -26,8 +26,6 @@ struct mib_node {
 
 struct mib_walk_state;
 
-//typedef enum snmp_search_res (*snmp_filler_hook_t)(struct mib_walk_state *state, struct snmp_data *data);
-
 struct mib_leaf {
   struct mib_node_core c;
 
@@ -99,7 +97,6 @@ struct mib_tree {
 };
 
 void mib_tree_init(pool *p, struct mib_tree *t);
-// TODO: remove need for argument include_root
 void mib_tree_walk_init(struct mib_walk_state *state, const struct mib_tree *t);
 int mib_tree_walk_to_oid(const struct mib_walk_state *state, struct oid *result, u32 subids);
 int mib_tree_walk_oid_compare(const struct mib_walk_state *state, const struct oid *oid);

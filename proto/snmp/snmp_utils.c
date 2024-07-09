@@ -107,7 +107,6 @@ snmp_is_oid_empty(const struct oid *oid)
   /* We intentionaly ignore padding that should be zeroed */
   if (oid != NULL)
     return LOAD_U8(oid->n_subid) == 0 && LOAD_U8(oid->prefix) == 0;
-	// && LOAD_U8(oid->include) == 0;
   else
     return 0;
 }
@@ -176,19 +175,6 @@ snmp_oid_copy2(struct oid *dest, const struct oid *src)
 
   /* The STORE_U32() and LOAD_U32 cancel out */
   memcpy(dest->ids, src->ids, LOAD_U8(src->n_subid) * sizeof(u32));
-}
-
-/*
- * snmp_oid_update
- *
- */
-void
-snmp_oid_update(struct oid *dest, const struct oid *src)
-{
-  dest->prefix = src->prefix;
-  dest->include = src->include;
-  dest->reserved = 0;
-  memcpy(dest->ids, src->ids, MIN(dest->n_subid, src->n_subid) * sizeof(u32));
 }
 
 /*
@@ -514,15 +500,6 @@ snmp_create_varbind(byte *buf, struct oid *oid)
   return vb;
 }
 
-#if 0
-byte *
-snmp_fix_varbind(struct agentx_varbind *vb, struct oid *new)
-{
-  memcpy(&vb->name, new, snmp_oid_size(new));
-  return (void *) vb + snmp_varbind_header_size(vb);
-}
-#endif
-
 /**
  * snmp_oid_ip4_index - check IPv4 address validity in oid
  * @o: object identifier holding ip address
@@ -675,7 +652,7 @@ int
 snmp_oid_compare(const struct oid *left, const struct oid *right)
 {
   const u8 left_subids = LOAD_U8(left->n_subid);
-  u8 right_subids = LOAD_U8(right->n_subid); // see hack for more info
+  u8 right_subids = LOAD_U8(right->n_subid); /* see hack for more info */
 
   const u8 left_prefix = LOAD_U8(left->prefix);
   const u8 right_prefix = LOAD_U8(right->prefix);
@@ -764,7 +741,6 @@ snmp_registration_create(struct snmp_proto *p, u8 mib_class)
   r->session_id = p->session_id;
   /* will be incremented by snmp_session() macro during packet assembly */
   r->transaction_id = p->transaction_id;
-  // TODO where is incremented? is this valid?
   r->packet_id = p->packet_id + 1;
   snmp_log("using registration packet_id %u", r->packet_id);
 
@@ -873,7 +849,6 @@ snmp_varbind_ip4(struct snmp_pdu *c, ip4_addr addr)
   c->buffer = snmp_put_ip4(snmp_varbind_data(c->sr_vb_start), addr);
 }
 
-// TODO doc string, we have already the varbind prepared
 inline byte *
 snmp_varbind_nstr2(struct snmp_pdu *c, uint size, const char *str, uint len)
 {
@@ -1180,7 +1155,6 @@ snmp_walk_fill(struct mib_leaf *leaf, struct mib_walk_state *walk, struct snmp_d
   struct agentx_varbind *vb = data->c->sr_vb_start;
 
   if (!leaf)
-  //if (!leaf || mib_tree_walk_is_oid_descendant(walk, &vb->name) < 0)
     return SNMP_SEARCH_NO_OBJECT;
 
   uint size = 0;

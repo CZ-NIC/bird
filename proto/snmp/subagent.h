@@ -338,16 +338,6 @@ struct snmp_packet_info {
   void *data;
 };
 
-#if 0
-struct agentx_alloc_context {
-  u8 is_instance; /* flag INSTANCE_REGISTRATION */
-  u8 new_index;   /* flag NEW_INDEX */
-  u8 any_index;	  /* flag ANY_INDEX */
-  char *context;  /* context to allocate in */
-  uint clen;	  /* length of context string */
-};
-#endif
-
 int snmp_rx(sock *sk, uint size);
 int snmp_rx_stop(sock *sk, uint size);
 void snmp_down(struct snmp_proto *p);

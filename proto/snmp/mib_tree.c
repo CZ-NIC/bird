@@ -629,7 +629,7 @@ mib_tree_walk_to_oid(const struct mib_walk_state *walk, struct oid *result, u32 
  * return +1 if walk_oid > oid
  *
  */
-// TODO tests
+// TODO tests, doc string
 int
 mib_tree_walk_oid_compare(const struct mib_walk_state *walk, const struct oid *oid)
 {

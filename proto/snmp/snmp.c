@@ -119,6 +119,10 @@
 #include "snmp_utils.h"
 #include "mib_tree.h"
 
+// TODO: remove me
+#include "proto/bgp/bgp.h"
+
+
 static void snmp_start_locked(struct object_lock *lock);
 static void snmp_sock_err(sock *sk, int err);
 static void snmp_stop_timeout(timer *tm);

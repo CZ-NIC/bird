@@ -17,7 +17,6 @@
 #include "nest/bird.h"
 #include "nest/protocol.h"
 #include "filter/data.h"
-#include "proto/bgp/bgp.h" // TODO remove me
 
 #define SNMP_UNDEFINED	0
 #define SNMP_BGP	1
