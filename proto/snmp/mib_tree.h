@@ -102,13 +102,14 @@ void mib_tree_init(pool *p, struct mib_tree *t);
 // TODO: remove need for argument include_root
 void mib_tree_walk_init(struct mib_walk_state *state, const struct mib_tree *t);
 int mib_tree_walk_to_oid(const struct mib_walk_state *state, struct oid *result, u32 subids);
+int mib_tree_walk_oid_compare(const struct mib_walk_state *state, const struct oid *oid);
 
 mib_node_u *mib_tree_add(pool *p, struct mib_tree *tree, const struct oid *oid, int is_leaf);
 int mib_tree_remove(struct mib_tree *t, const struct oid *oid);
 int mib_tree_delete(struct mib_tree *t, struct mib_walk_state *state);
 mib_node_u *mib_tree_find(const struct mib_tree *tree, struct mib_walk_state *walk, const struct oid *oid);
 mib_node_u *mib_tree_walk_next(const struct mib_tree *t, struct mib_walk_state *walk);
-struct mib_leaf *mib_tree_walk_next_leaf(const struct mib_tree *t, struct mib_walk_state *walk);
+struct mib_leaf *mib_tree_walk_next_leaf(const struct mib_tree *t, struct mib_walk_state *walk, u32 skip);
 
 int mib_tree_hint(pool *p, struct mib_tree *t, const struct oid *oid, uint size);
 int mib_tree_walk_is_oid_descendant(const struct mib_walk_state *walk, const struct oid *oid);

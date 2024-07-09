@@ -179,6 +179,19 @@ snmp_oid_copy2(struct oid *dest, const struct oid *src)
 }
 
 /*
+ * snmp_oid_update
+ *
+ */
+void
+snmp_oid_update(struct oid *dest, const struct oid *src)
+{
+  dest->prefix = src->prefix;
+  dest->include = src->include;
+  dest->reserved = 0;
+  memcpy(dest->ids, src->ids, MIN(dest->n_subid, src->n_subid) * sizeof(u32));
+}
+
+/*
  * snmp_oid_duplicate - duplicate an OID from memory pool
  * @pool: pool to use
  * @oid: OID to be duplicated
@@ -675,8 +688,8 @@ snmp_oid_compare(const struct oid *left, const struct oid *right)
 
   if (left_prefix == 0)
   {
-    size_t bound = MIN((size_t) left_subids, ARRAY_SIZE(snmp_internet));
-    for (size_t idx = 0; idx < bound; idx++)
+    uint bound = MIN((uint) left_subids, (uint) ARRAY_SIZE(snmp_internet));
+    for (uint idx = 0; idx < bound; idx++)
     {
       u32 id = LOAD_U32(left->ids[idx]);
       if (id < snmp_internet[idx])
@@ -1102,18 +1115,40 @@ snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_d
 
   int found = 0;
   struct mib_leaf *leaf = &node->leaf;
-  if (mib_node_is_leaf(node) && LOAD_U8(data->c->sr_vb_start->name.include))
+
+  if (mib_node_is_leaf(node) && leaf->call_next)
+  {
+    const struct oid *oid = &data->c->sr_vb_start->name;
+    if (mib_tree_walk_oid_compare(walk, oid) > 0)
+    {
+      int old = snmp_oid_size(&data->c->sr_vb_start->name);
+      if (mib_tree_walk_to_oid(walk,
+	  &data->c->sr_vb_start->name, 20 * sizeof(u32)))
+      {
+	snmp_log("walk_next copy failed");
+	return NULL;
+      }
+
+      int new = snmp_oid_size(&data->c->sr_vb_start->name);
+      data->c->buffer += (new - old);
+    }
+
+    found = !leaf->call_next(walk, data);
+  }
+  else if (mib_node_is_leaf(node) && LOAD_U8(data->c->sr_vb_start->name.include))
   {
     found = 1;
     STORE_U8(data->c->sr_vb_start->name.include, 0);
   }
 
-  if (!found && mib_node_is_leaf(node) && leaf->call_next && !leaf->call_next(walk, data))
-    found = 1;
-
-  while (!found && (leaf = mib_tree_walk_next_leaf(tree, walk)) != NULL)
+  const struct oid *oid = &data->c->sr_vb_start->name;
+  u32 skip = (walk->id_pos < LOAD_U8(oid->n_subid)) ?
+    LOAD_U32(oid->ids[walk->id_pos]) : 0;
+  while (!found && (leaf = mib_tree_walk_next_leaf(tree, walk, skip)) != NULL)
   {
+    /* mib_tree_walk_next() forces VarBind's name OID overwriting */
     int old = snmp_oid_size(&data->c->sr_vb_start->name);
+    // TODO autogrow
     if (mib_tree_walk_to_oid(walk, &data->c->sr_vb_start->name, 20 * sizeof(u32)))
     {
       snmp_log("walk_next copy failed");
@@ -1127,11 +1162,14 @@ snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_d
       found = 1;
     else if (!leaf->call_next)
       found = 1;
+
+    oid = &data->c->sr_vb_start->name;
+    skip = (walk->id_pos < LOAD_U8(oid->n_subid)) ?
+      LOAD_U32(oid->ids[walk->id_pos]) : 0;
   }
 
   if (!found)
     return NULL;
-
 
   return leaf;
 }
@@ -1179,7 +1217,6 @@ snmp_walk_fill(struct mib_leaf *leaf, struct mib_walk_state *walk, struct snmp_d
     snmp_set_varbind_type(vb, snmp_search_res_to_type(res));
 
   u16 type = snmp_load_varbind_type(vb);
-  /* Test that hook() did not overwrite the VarBind type to non-matching type */
   ASSUME(type == leaf->type || type == AGENTX_END_OF_MIB_VIEW || type == AGENTX_NO_SUCH_OBJECT ||
     type == AGENTX_NO_SUCH_INSTANCE);
 

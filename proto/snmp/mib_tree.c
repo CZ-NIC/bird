@@ -429,7 +429,7 @@ mib_tree_find(const struct mib_tree *t, struct mib_walk_state *walk, const struc
   {
     /* In any of cases below we did not move in the tree therefore the
      * walk->id_pos is left untouched. */
-    if (snmp_oid_is_prefixed(oid) && 
+    if (snmp_oid_is_prefixed(oid) &&
 	LOAD_U8(oid->n_subid) + ARRAY_SIZE(snmp_internet) + 1 == walk->id_pos)
       return node;
 
@@ -623,6 +623,68 @@ mib_tree_walk_to_oid(const struct mib_walk_state *walk, struct oid *result, u32 
   return 0;
 }
 
+/*
+ * return -1 if walk_oid < oid
+ * return 0 if walk_oid == oid
+ * return +1 if walk_oid > oid
+ *
+ */
+// TODO tests
+int
+mib_tree_walk_oid_compare(const struct mib_walk_state *walk, const struct oid *oid)
+{
+  /* code is very similar to snmp_oid_compare() */
+  if (!walk->stack_pos)
+    return -1;
+
+  uint walk_idx = 1;
+  u8 walk_subids = walk->stack_pos;	  /* left_subids */
+  u8 oid_subids = LOAD_U8(oid->n_subid);  /* right_subids */
+
+  const u8 oid_prefix = LOAD_U8(oid->prefix);
+
+  if (oid_prefix != 0)
+  {
+    for (; walk_idx < walk_subids && walk_idx < ARRAY_SIZE(snmp_internet) + 1; walk_idx++)
+    {
+      u32 id = walk->stack[walk_idx]->empty.id;
+      if (id < snmp_internet[walk_idx - 1])
+	return -1;
+      else if (id > snmp_internet[walk_idx - 1])
+	return 1;
+    }
+
+    if (walk_idx == walk_subids)
+      return 1;
+
+    const u8 walk_prefix = walk->stack[walk_idx++]->empty.id;
+    if (walk_prefix < oid_prefix)
+      return -1;
+    else if (walk_prefix > oid_prefix)
+      return 1;
+  }
+
+  uint i = 0;
+  for (; i < oid_subids && walk_idx < walk_subids; i++, walk_idx++)
+  {
+    u32 walk_id = walk->stack[walk_idx]->empty.id;
+    u32 oid_id = LOAD_U32(oid->ids[i]);
+    if (walk_id < oid_id)
+      return -1;
+    else if (walk_id > oid_id)
+      return 1;
+  }
+
+  if (walk_idx == walk_subids && i == oid_subids)
+    return 0;
+  else if (walk_idx == walk_subids)
+    return -1;
+  else /* if (i == oid_subids) */
+    return 1;
+}
+
+
+
 /**
  * mib_tree_walk_is_oid_descendant - check if OID is in walk subtree
  * @walk: MIB tree walk state
@@ -727,7 +789,7 @@ mib_tree_walk_next(const struct mib_tree *t, struct mib_walk_state *walk)
 }
 
 struct mib_leaf *
-mib_tree_walk_next_leaf(const struct mib_tree *t, struct mib_walk_state *walk)
+mib_tree_walk_next_leaf(const struct mib_tree *t, struct mib_walk_state *walk, u32 skip)
 {
   (void)t;
 
@@ -737,7 +799,7 @@ mib_tree_walk_next_leaf(const struct mib_tree *t, struct mib_walk_state *walk)
     return NULL;
   }
 
-  u32 next_id = 0;
+  u32 next_id = skip;
   mib_node_u *node = walk->stack[walk->stack_pos - 1];
 
   if (mib_node_is_leaf(node) && walk->stack_pos > 1)

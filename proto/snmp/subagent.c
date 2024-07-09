@@ -1498,7 +1498,7 @@ snmp_get_next_pdu(struct snmp_proto *p, struct snmp_pdu *c, const struct oid *o_
     .c = c,
   };
 
-  snmp_walk_init(p->mib_tree, walk, o_start, &d);
+  (void) snmp_walk_init(p->mib_tree, walk, o_start, &d);
   struct mib_leaf *leaf = snmp_walk_next(p->mib_tree, walk, &d);
 
   enum snmp_search_res res;
@@ -2135,6 +2135,15 @@ snmp_manage_tbuf2(struct snmp_proto *p, void **ptr, struct snmp_pdu *c)
 
   if (ptr)
     *ptr = sk->tbuf + diff;
+}
+
+void
+snmp_tbuf_reserve(struct snmp_data *data, size_t size)
+{
+  if (size > data->c->size)
+  {
+    snmp_manage_tbuf(data->p, data->c);
+  }
 }
 
 /*

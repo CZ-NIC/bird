@@ -603,7 +603,7 @@ populate_bgp4(struct snmp_data *d, ip4_addr *addr, const struct bgp_proto **prot
 **conn, const struct bgp_stats **stats, const struct bgp_config **config)
 {
   const struct oid * const oid = &d->c->sr_vb_start->name;
-  if (snmp_bgp_valid_ip4(oid))
+  if (snmp_bgp_valid_ip4(oid) && LOAD_U8(oid->n_subid) == 9)
     *addr = ip4_from_oid(oid);
   else
   {
@@ -649,6 +649,8 @@ static enum snmp_search_res
 fill_bgp_version(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
   snmp_log("fill ver");
+  if (LOAD_U8(d->c->sr_vb_start->name.n_subid) != 3)
+    return SNMP_SEARCH_NO_INSTANCE;
   d->c->size -= snmp_str_size_from_len(1);
   snmp_varbind_nstr(d->c, BGP4_VERSIONS, 1);
   return SNMP_SEARCH_OK;
@@ -658,6 +660,8 @@ static enum snmp_search_res
 fill_local_as(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
   snmp_log("fill as");
+  if (LOAD_U8(d->c->sr_vb_start->name.n_subid) != 3)
+    return SNMP_SEARCH_NO_INSTANCE;
   snmp_varbind_int(d->c, d->p->bgp_local_as);
   return SNMP_SEARCH_OK;
 }
@@ -1040,6 +1044,8 @@ static enum snmp_search_res
 fill_local_id(struct mib_walk_state *walk UNUSED, struct snmp_data *d)
 {
   snmp_log("fill local id");
+  if (LOAD_U8(d->c->sr_vb_start->name.n_subid) != 3)
+    return SNMP_SEARCH_NO_INSTANCE;
   snmp_varbind_ip4(d->c, d->p->bgp_local_id);
   return SNMP_SEARCH_OK;
 }
@@ -1695,8 +1701,6 @@ bgp4_next_peer(struct mib_walk_state *state, struct snmp_data *data)
   //struct agentx_varbind *vb = data->c->sr_vb_start;
   struct oid *oid = &data->c->sr_vb_start->name;
 
-  ip4_addr ip4 = ip4_from_oid(oid);
-
   /* BGP4-MIB::bgpPeerIdentifier */
   STATIC_OID(9) bgp4_peer_id = {
     .n_subid = 9,
@@ -1708,12 +1712,16 @@ bgp4_next_peer(struct mib_walk_state *state, struct snmp_data *data)
       /* IP4_NONE */ 0, 0, 0, 0 }
   };
 
+  ip4_addr ip4 = ip4_from_oid(oid);
+
   const struct oid *peer_oid = (const struct oid *) &bgp4_peer_id;
 
-  if (snmp_oid_compare(oid, peer_oid) < 0 || LOAD_U8(oid->n_subid) < 9)
-  {
-    die("unreachable?");
+  int precise = 1;
+  if (LOAD_U8(oid->n_subid) > 9)
+    precise = 0;
 
+  if (LOAD_U8(oid->n_subid) != 9 || snmp_oid_compare(oid, peer_oid) < 0)
+  {
     int old = snmp_oid_size(oid);
     int new = snmp_oid_size(peer_oid);
 
@@ -1721,18 +1729,21 @@ bgp4_next_peer(struct mib_walk_state *state, struct snmp_data *data)
     {
       snmp_log("bgp4_next_peer small buffer");
       snmp_manage_tbuf(data->p, data->c);
+      oid = &data->c->sr_vb_start->name;  // TODO fix sr_vb_start in manage_tbuf
     }
 
-    if (new > old)
-      data->c->buffer += (new - old);
+    data->c->buffer += (new - old);
 
     snmp_oid_copy(oid, peer_oid);
-
     STORE_U8(oid->include, 1);
   }
 
+
   ASSUME(oid->n_subid == 9);
-  /* +1 includes empty prefix */
+  /* full path BGP4-MIB::bgpPeerEntry.x: .1.3.6.1.2.1.15.3.1.x
+   * index offset = ARRAY_SIZE(snmp_internet) + 1 <prefix> + 4 + 1 <identifier x> */
+  ASSUME(state->stack_pos > 10);
+  oid->ids[4] = state->stack[10]->empty.id;
 
   net_addr net;
   net_fill_ip4(&net, ip4, IP4_MAX_PREFIX_LENGTH);
@@ -1740,7 +1751,7 @@ bgp4_next_peer(struct mib_walk_state *state, struct snmp_data *data)
 
   int match = trie_walk_init(&ws, data->p->bgp_trie, &net, 1);
 
-  if (match && LOAD_U8(oid->include))
+  if (match && LOAD_U8(oid->include) && precise)
   {
     STORE_U8(oid->include, 0);
     ip4_to_oid(oid, ip4);
@@ -1860,7 +1871,7 @@ snmp_bgp4_start(struct snmp_proto *p)
     leaf = &node->leaf;
 
     leaf->filler = leafs[i].filler;
-    leaf->call_next = NULL; // TODO
+    leaf->call_next = NULL;
     leaf->type = leafs[i].type;
     leaf->size = leafs[i].size;
   }
