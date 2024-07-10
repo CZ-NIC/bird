@@ -33,6 +33,7 @@ struct aggregator_config {
   struct aggr_item *aggr_on;
   const struct f_line *merge_by;
   struct settle_config notify_settle_cf;
+  int logging;
 };
 
 struct aggregator_route {
@@ -84,6 +85,7 @@ struct aggregator_proto {
   int after_count;
   int internal_nodes;
   int leaves;
+  int logging;
 };
 
 enum aggr_item_type {

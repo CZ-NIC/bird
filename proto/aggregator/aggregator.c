@@ -414,10 +414,7 @@ bucket_sets_are_disjoint(const struct trie_node *left, const struct trie_node *r
   assert(right != NULL);
 
   if (left->potential_buckets_count == 0 || right->potential_buckets_count == 0)
-  {
-    log("Buckets are disjoint");
     return 1;
-  }
 
   int i = 0;
   int j = 0;
@@ -841,15 +838,19 @@ construct_trie(struct aggregator_proto *p)
       {
         const struct net_addr_ip4 *addr = &uptr->ip4;
         trie_insert_prefix_ip4(p->root, addr, bucket, p->trie_pool);
-        log("INSERT %N", addr);
         p->before_count++;
+
+        if (p->logging)
+          log("Insert %N", addr);
       }
       else if (NET_IP6 == uptr->n.type)
       {
         const struct net_addr_ip6 *addr = &uptr->ip6;
         trie_insert_prefix_ip6(p->root, addr, bucket, p->trie_pool);
-        log("INSERT %N", addr);
         p->before_count++;
+
+        if (p->logging)
+          log("Insert %N", addr);
       }
       else
         bug("Invalid NET type");
@@ -866,24 +867,40 @@ calculate_trie(struct aggregator_proto *p)
 {
   assert(p->addr_type == NET_IP4 || p->addr_type == NET_IP6);
 
-  log("====PREFIXES BEFORE ====");
-
   /* Start with 1 as 0 is reserved for IDs that have not been assigned yet */
   u32 bucket_counter = 1;
   assign_bucket_id(p->root, &bucket_counter);
 
-  log("====FIRST PASS====");
+  if (p->logging)
+  {
+    log("==== PREFIXES BEFORE ====");
+    print_prefixes(p->root, p->addr_type);
+  }
+
   first_pass(p->root, p->trie_pool);
   first_pass_after_check(p->root);
-  print_prefixes(p->root, p->addr_type);
+
+  if (p->logging)
+  {
+    log("==== FIRST PASS ====");
+    print_prefixes(p->root, p->addr_type);
+  }
 
   second_pass(p->root);
-  log("====SECOND PASS====");
-  print_prefixes(p->root, p->addr_type);
+
+  if (p->logging)
+  {
+    log("==== SECOND PASS ====");
+    print_prefixes(p->root, p->addr_type);
+  }
 
   third_pass(p->root);
-  log("====THIRD PASS====");
-  print_prefixes(p->root, p->addr_type);
+
+  if (p->logging)
+  {
+    log("==== THIRD PASS ====");
+    print_prefixes(p->root, p->addr_type);
+  }
 
 }
 
@@ -918,10 +935,8 @@ request_feed_on_settle_timer(struct settle *s)
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, s->tm.data);
 
   assert(PREFIX_AGGR == p->aggr_mode);
-  log("Request feed on settle timer: aggr mode is PREFIX_AGGR");
   assert(p->root == NULL);
 
-  log("Request feed on settle timer: requesting feed on src channel");
   channel_request_feeding(p->src);
 }
 
@@ -1073,9 +1088,12 @@ aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *b
   struct rte *new = rte_get_temp(rta, p->p.main_source);
   new->net = net;
 
-  log("=============== CREATE MERGED ROUTE ===============");
-  log("New route created: id = %d, protocol: %s", new->src->global_id, new->src->proto->name);
-  log("===================================================");
+  if (p->logging)
+  {
+    log("=============== CREATE MERGED ROUTE ===============");
+    log("New route created: id = %d, protocol: %s", new->src->global_id, new->src->proto->name);
+    log("===================================================");
+  }
 
   /* merge filter needs one argument called "routes" */
   struct f_val val = {
@@ -1329,10 +1347,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
      * cyclic calls to rt_notify() without receiving any new updates.
      */
     if (!p->first_run)
-    {
-      log("rt notify: kick");
       settle_kick(&p->notify_settle);
-    }
   }
 
   /* Find the objects for the old route */
@@ -1468,7 +1483,8 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     else
       new->attrs = rta_lookup(new->attrs);
 
-    log("new rte: %p, net: %p, src: %p, hash: %x", new, new->net, new->src, aggr_route_hash(new));
+    if (p->logging)
+      log("New rte: %p, net: %p, src: %p, hash: %x", new, new->net, new->src, aggr_route_hash(new));
 
     /* Insert the new route into the bucket */
     struct aggregator_route *arte = lp_allocz(p->route_pool, sizeof(*arte));
@@ -1480,7 +1496,9 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     new_bucket->rte = &arte->rte;
     new_bucket->count++;
     HASH_INSERT2(p->routes, AGGR_RTE, p->p.pool, arte);
-    log("Inserting rte: %p, arte: %p, net: %p, src: %p, hash: %x", &arte->rte, arte, arte->rte.net, arte->rte.src, aggr_route_hash(&arte->rte));
+
+    if (p->logging)
+      log("Inserting rte: %p, arte: %p, net: %p, src: %p, hash: %x", &arte->rte, arte, arte->rte.net, arte->rte.src, aggr_route_hash(&arte->rte));
   }
 
   /* Remove the old route from its bucket */
@@ -1573,6 +1591,7 @@ aggregator_init(struct proto_config *CF)
   p->aggr_on = cf->aggr_on;
   p->merge_by = cf->merge_by;
   p->notify_settle_cf = cf->notify_settle_cf;
+  p->logging = cf->logging;
 
   P->rt_notify = aggregator_rt_notify;
   P->preexport = aggregator_preexport;
@@ -1611,13 +1630,17 @@ trie_init(struct aggregator_proto *p)
   {
     default_net = mb_allocz(p->p.pool, sizeof(*default_net) + sizeof(struct net_addr_ip4));
     net_fill_ip4(default_net->n.addr, IP4_NONE, 0);
-    log("Creating net %p for default route %N", default_net, default_net->n.addr);
+
+    if (p->logging)
+      log("Creating net %p for default route %N", default_net, default_net->n.addr);
   }
   else if (p->addr_type == NET_IP6)
   {
     default_net = mb_allocz(p->p.pool, sizeof(*default_net) + sizeof(struct net_addr_ip6));
     net_fill_ip6(default_net->n.addr, IP6_NONE, 0);
-    log("Creating net %p for default route %N", default_net, default_net->n.addr);
+
+    if (p->logging)
+      log("Creating net %p for default route %N", default_net, default_net->n.addr);
   }
 
   /* Create route attributes with zero nexthop */
