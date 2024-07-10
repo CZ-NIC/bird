@@ -710,6 +710,7 @@ collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *add
     assert(node->bucket != NULL);
     create_route_ip4(p, node->bucket, addr);
     *count += 1;
+    p->leaves++;
     return;
   }
 
@@ -718,6 +719,7 @@ collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *add
   {
     create_route_ip4(p, node->bucket, addr);
     *count += 1;
+    p->internal_nodes++;
   }
 
   if (node->child[0])
@@ -746,6 +748,7 @@ collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *add
     assert(node->bucket != NULL);
     create_route_ip6(p, node->bucket, addr);
     *count += 1;
+    p->leaves++;
     return;
   }
 
@@ -754,6 +757,7 @@ collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *add
   {
     create_route_ip6(p, node->bucket, addr);
     *count += 1;
+    p->internal_nodes++;
   }
 
   if (node->child[0])
@@ -863,6 +867,8 @@ run_aggregation(struct aggregator_proto *p)
 
   log("%d prefixes before aggregation", p->before_count);
   log("%d prefixes after aggregation", p->after_count);
+  log("%d internal nodes with bucket", p->internal_nodes);
+  log("%d leaves with bucket", p->leaves);
   log("==== AGGREGATION DONE ====");
 }
 
@@ -906,6 +912,8 @@ aggregate_on_feed_end(struct channel *C)
     p->root = NULL;
     p->before_count = 0;
     p->after_count = 0;
+    p->internal_nodes = 0;
+    p->leaves = 0;
 
     if (p->first_run)
       p->first_run = 0;
@@ -1678,6 +1686,8 @@ aggregator_cleanup(struct proto *P)
 
   p->before_count = 0;
   p->after_count = 0;
+  p->internal_nodes = 0;
+  p->leaves = 0;
 }
 
 static int
