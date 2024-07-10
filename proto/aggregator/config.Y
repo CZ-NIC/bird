@@ -21,7 +21,7 @@ CF_DEFINES
 
 CF_DECLS
 
-CF_KEYWORDS(AGGREGATOR, AGGREGATE, ON, MERGE, BY, RELOAD, AFTER)
+CF_KEYWORDS(AGGREGATOR, AGGREGATE, ON, MERGE, BY, RELOAD, AFTER, LOG, ALL)
 
 %type <ai> aggr_item aggr_list
 
@@ -42,6 +42,7 @@ aggregator_proto_start: proto_start AGGREGATOR
   AGGREGATOR_CFG->aggr_mode = PREFIX_AGGR;
   AGGREGATOR_CFG->src->ra_mode = RA_OPTIMAL;
   AGGREGATOR_CFG->dst->ra_mode = RA_ANY;
+  AGGREGATOR_CFG->logging = 0;
 
   AGGREGATOR_CFG->notify_settle_cf = (struct settle_config) {
     .min = 10 MS_,
@@ -95,6 +96,7 @@ aggregator_proto_item:
    AGGREGATOR_CFG->merge_by = $4;
  }
  | RELOAD AFTER settle { AGGREGATOR_CFG->notify_settle_cf = $3; }
+ | LOG ALL { AGGREGATOR_CFG->logging = 1; }
 ;
 
 aggregator_proto_opts: /* empty */ | aggregator_proto_opts aggregator_proto_item ';' ;
@@ -106,7 +108,6 @@ aggregator_proto: aggregator_proto_start proto_name '{' aggregator_proto_opts '}
     if (AGGREGATOR_CFG->src->table->addr_type != NET_IP4 && AGGREGATOR_CFG->src->table->addr_type != NET_IP6)
       cf_error("Trie aggregation is available only for IP4 or IPv6 networks");
 };
-
 
 aggr_list:
    aggr_item
