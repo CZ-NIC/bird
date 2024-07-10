@@ -47,6 +47,7 @@ struct aggregator_bucket {
   struct rte_src *last_src;		/* Which src we announced the bucket last with */
   u32 count;
   u32 hash;
+  u32 id;
   struct f_val aggr_data[0];
 };
 
