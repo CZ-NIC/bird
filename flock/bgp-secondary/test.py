@@ -9,10 +9,24 @@ import sys
 
 sys.path.insert(0, "/home/maria/flock")
 
-import flock.Hypervisor as Hypervisor
+from flock.Hypervisor import Hypervisor
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "lib"))
+
+from BIRD.CLI import CLI, Transport
+
+os.chdir(pathlib.Path(__file__).parent)
+
+class MinimalistTransport(Transport):
+    def __init__(self, socket, machine):
+        self.sock = socket
+        self.machine = machine
+
+    async def send_cmd(self, *args):
+        return await self.sock.send_cmd("run_in", self.machine, "./birdc", "-l", *args)
 
 async def main():
-    h = Hypervisor.Hypervisor("bgp-secondary")
+    h = Hypervisor("bgp-secondary")
     await h.prepare()
     os.symlink(pathlib.Path("bgp-secondary.log").absolute(), h.basedir / "flock.log")
     await h.start()
@@ -77,21 +91,46 @@ async def main():
         for where in ("src", "dest")
         ]))
 
+    await asyncio.sleep(5)
 
-    """
-    print(await asyncio.gather(
-            h.control_socket.send_cmd("run_in", "src", "ip", "a"),
-            h.control_socket.send_cmd("run_in", "dest", "ip", "a"),
-            ))
-            """
-    await asyncio.sleep(30)
+    src_cli = CLI(MinimalistTransport(h.control_socket, "src"))
+    dest_cli = CLI(MinimalistTransport(h.control_socket, "dest"))
 
     print(await asyncio.gather(*[
-        h.control_socket.send_cmd("run_in", where, "./birdc", "-l", "down")
+        h.control_socket.send_cmd("run_in", where, "./birdc", "-l", "show", "route", "table", "all")
         for where in ("src", "dest")
         ]))
 
     await asyncio.sleep(1)
+
+    for p in ("p170", "p180", "p190", "p200"):
+        print(await h.control_socket.send_cmd("run_in", "src", "./birdc", "-l", "enable", p))
+        await asyncio.sleep(1)
+
+        shr = await asyncio.gather(*[
+            h.control_socket.send_cmd("run_in", where, "./birdc", "-l", "show", "route", "table", "all")
+            for where in ("src", "dest")
+            ])
+
+        print(shr[0]["out"].decode(), shr[1]["out"].decode())
+
+        await asyncio.sleep(1)
+
+    print(await asyncio.gather(*[
+        h.control_socket.send_cmd("run_in", where, "./birdc", "-l", "show", "route", "table", "all")
+        for where in ("src", "dest")
+        ]))
+
+    print(await asyncio.gather(*[
+        c.down()
+        for c in (src_cli, dest_cli)
+        ]))
+
+    await asyncio.sleep(5)
+    for q in (dest, src):
+        for f in ("bird", "birdc", "bird.conf", "bird.log"):
+            (q["workdir"] / f).unlink()
+
     await h.control_socket.send_cmd("stop", True)
 
 assert(__name__ == "__main__")
