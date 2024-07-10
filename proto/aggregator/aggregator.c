@@ -171,6 +171,34 @@ get_ancestor_bucket(const struct trie_node *node)
 }
 
 /*
+ * Assign unique ID to all buckets to enable sorting
+ */
+static void
+assign_bucket_id(struct trie_node *node, u32 *counter)
+{
+  assert(node != NULL);
+
+  if (node->bucket)
+  {
+    if (node->bucket->id == 0)
+    {
+      node->bucket->id = *counter;
+      *counter += 1;
+    }
+
+    /* All leaves have a bucket */
+    if (is_leaf(node))
+      return;
+  }
+
+  if (node->child[0])
+    assign_bucket_id(node->child[0], counter);
+
+  if (node->child[1])
+    assign_bucket_id(node->child[1], counter);
+}
+
+/*
  * First pass of Optimal Route Table Construction (ORTC) algorithm
  */
 static void
@@ -254,10 +282,10 @@ aggregator_bucket_compare(const struct aggregator_bucket *a, const struct aggreg
   assert(a != NULL);
   assert(b != NULL);
 
-  if ((uintptr_t)a < (uintptr_t)b)
+  if (a->id < b->id)
     return -1;
 
-  if ((uintptr_t)a > (uintptr_t)b)
+  if (a->id > b->id)
     return 1;
 
   return 0;
@@ -307,11 +335,11 @@ compute_buckets_union(struct trie_node *node, const struct trie_node *left, cons
     output_buckets[output_count++] = input_buckets[i];
   }
 
-  // strictly greater
+  /* Strictly greater */
   for (int i = 1; i < output_count; i++)
-    assert(output_buckets[i - 1] < output_buckets[i]);
+    assert(output_buckets[i - 1]->id < output_buckets[i]->id);
 
-  // duplicates
+  /* Duplicates */
   for (int i = 0; i < output_count; i++)
     for (int j = i + 1; j < output_count; j++)
       assert(output_buckets[i] != output_buckets[j]);
@@ -363,11 +391,11 @@ compute_buckets_intersection(struct trie_node *node, const struct trie_node *lef
       bug("Impossible");
   }
 
-  // strictly greater
+  /* Strictly greater */
   for (int k = 1; k < output_count; k++)
-    assert(output[k - 1] < output[k]);
+    assert(output[k - 1]->id < output[k]->id);
 
-  // duplicates
+  /* Duplicates */
   for (int k = 0; k < output_count; k++)
     for (int l = k + 1; l < output_count; l++)
       assert(output[k] != output[l]);
@@ -441,7 +469,7 @@ second_pass(struct trie_node *node)
   second_pass(left);
   second_pass(right);
 
-  // duplicates
+  /* Duplicates */
   for (int i = 0; i < left->potential_buckets_count; i++)
     for (int j = i + 1; j < left->potential_buckets_count; j++)
       assert(left->potential_buckets[i] != left->potential_buckets[j]);
@@ -502,7 +530,7 @@ third_pass(struct trie_node *node)
   }
   else
   {
-    // Internal nodes should not have a bucket since it was deleted during first pass
+    /* Internal nodes should not have a bucket since it was deleted during first pass */
     if (!is_leaf(node))
       assert(node->bucket == NULL);
 
@@ -839,6 +867,10 @@ calculate_trie(struct aggregator_proto *p)
   assert(p->addr_type == NET_IP4 || p->addr_type == NET_IP6);
 
   log("====PREFIXES BEFORE ====");
+
+  /* Start with 1 as 0 is reserved for IDs that have not been assigned yet */
+  u32 bucket_counter = 1;
+  assign_bucket_id(p->root, &bucket_counter);
 
   log("====FIRST PASS====");
   first_pass(p->root, p->trie_pool);
