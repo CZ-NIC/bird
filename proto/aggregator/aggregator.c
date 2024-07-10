@@ -908,11 +908,15 @@ static void
 run_aggregation(struct aggregator_proto *p)
 {
   assert(p->root != NULL);
-  log("==== AGGREGATION START ====");
 
+  times_update(&main_timeloop);
+
+  log("==== AGGREGATION START ====");
   construct_trie(p);
   calculate_trie(p);
   collect_prefixes(p);
+
+  times_update(&main_timeloop);
 
   log("%d prefixes before aggregation", p->before_count);
   log("%d prefixes after aggregation", p->after_count);
@@ -1366,6 +1370,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
 
     /* Evaluate route attributes. */
     struct aggregator_bucket *tmp_bucket = lp_allocz(p->bucket_pool, sizeof(*tmp_bucket));
+    assert(tmp_bucket->id == 0);
 
     for (uint val_idx = 0; val_idx < p->aggr_on_count; val_idx++)
     {
@@ -1648,6 +1653,7 @@ trie_init(struct aggregator_proto *p)
 
   /* Allocate bucket for root node */
   struct aggregator_bucket *new_bucket = lp_allocz(p->bucket_pool, sizeof(*new_bucket));
+  assert(new_bucket->id == 0);
   u64 haux = 0;
   mem_hash_init(&haux);
   new_bucket->hash = mem_hash_value(&haux);
