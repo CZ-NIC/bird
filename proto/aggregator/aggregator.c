@@ -1,37 +1,78 @@
 /*
  *	BIRD Internet Routing Daemon -- Route aggregation
  *
- *	(c) 2023--2023 Igor Putovny <igor.putovny@nic.cz>
- *	(c) 2023       CZ.NIC, z.s.p.o.
+ *	(c) 2023--2024 Igor Putovny <igor.putovny@nic.cz>
+ *	(c) 2024       CZ.NIC, z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
 /**
- * DOC: Route aggregation
+ * DOC: Aggregator protocol
  *
- * This is an implementation of route aggregation functionality.
- * It enables user to specify a set of route attributes in the configuarion file
- * and then, for a given destination (net), aggregate routes with the same
- * values of these attributes into a single multi-path route.
+ * The purpose of the aggregator protocol is to aggregate routes based on
+ * user-specified set of route attributes. It can be used for aggregating
+ * routes for a given destination (net) or for aggregating prefixes.
  *
- * Structure &channel contains pointer to aggregation list which is represented
- * by &aggr_list_linearized. In rt_notify_aggregated(), attributes from this
- * list are evaluated for every route of a given net and results are stored
- * in &rte_val_list which contains pointer to this route and array of &f_val.
- * Array of pointers to &rte_val_list entries is sorted using
- * sort_rte_val_list(). For comparison of &f_val structures, val_compare()
- * is used. Comparator function is written so that sorting is stable. If all
- * attributes have the same values, routes are compared by their global IDs.
+ * Aggregation of routes for networks means that for each destination, routes
+ * with the same values of attributes will be aggregated into a single
+ * multi-path route. Aggregation is performed by inserting routes into a hash
+ * table based on values of their attributes and egenrating new routes from
+ * the routes in th same bucket. Buckets are represented by @aggregator_bucket,
+ * which contains linked list of @aggregator_route.
  *
- * After sorting, &rte_val_list entries containing equivalent routes will be
- * adjacent to each other. Function process_rte_list() iterates through these
- * entries to identify sequences of equivalent routes. New route will be
- * created for each such sequence, even if only from a single route.
- * Only attributes from the aggreagation list will be set for the new route.
- * New &rta is created and prepare_rta() is used to copy static and dynamic
- * attributes to new &rta from &rta of the original route. New route is created
- * by create_merged_rte() from new &rta and exported to the routing table.
+ * Aggregation of prefixes aggregates a given set of prefixes into another set
+ * of prefixes. It offers a reduction in number of prefixes without changing
+ * the routing semantics.
+ *
+ * Prefix aggregation implements the ORTC (Optimal Route Table Construction)
+ * algorithm. This algorithm uses a binary tree representation of the routing
+ * table. An edge from the parent node to its left child represents bit 0, and
+ * an edge from the parent node to its right child represents bit 1 as the
+ * prefix is traversed from the most to the least significant bit. Leaf node
+ * of every prefix contains pointer to @aggregator_bucket where the route for
+ * this prefix belongs.
+ *
+ * ORTC algorithm consists of three passes through the trie.
+ *
+ * The first pass adds new nodes to the trie so that every node has either two
+ * or zero children. During this pass, routing information is propagated to the
+ * leaves.
+ *
+ * The second pass finds the most prevalent buckets by pushing information from
+ * the leaves up towards the root. Each node is assigned a set of potential
+ * buckets. If there are any common buckets among the node's children, they
+ * are carried to the parent node. Otherwise, all of children's buckets are
+ * carried to the parent node.
+ *
+ * The third pass moves down the tree, selecting a bucket for the prefix and
+ * removing redundant routes. The node inherits a bucket from the closest
+ * ancestor node that has a bucket (except for the root node). If the inherited
+ * bucket is a member of the node's set of potential buckets, then the node
+ * does not need a bucket. Otherwise, the node does need a bucket and any of
+ * its potential buckets can be chosen. All leaves which have not been assigned
+ * a bucket are removed.
+ *
+ * The algorithm works on the assumption that there is a default route, that is,
+ * the null prefix at the root node has a bucket. This route is created before
+ * the aggregation starts.
+ *
+ * Incorporation of incremental updates of routes has not been implemented yet.
+ * The whole trie is rebuilt and aggregation runs all over again when enough
+ * updates are collected. To achieve this, the aggregator uses a settle timer
+ * configured with two intervals, @min and @max. User can specify these
+ * intervals in the configuration file. After receiving an update, settle timer
+ * is kicked. If no update is received for interval @min or if @max interval is
+ * exceeded, timer triggers and refeed of the source channel is requested. When
+ * the refeed ends, all prefixes are inserted into the trie and aggregation
+ * algorithm proceeds.
+ *
+ * Memory for the aggregator is allocated from three linpools: one for buckets,
+ * one for routes and one for trie used in prefix aggregation. Obviously, trie
+ * linpool is allocated only when aggregating prefixes. Linpools are flushed
+ * after prefix aggregation is finished, thus destroying all data structures
+ * used.
+ *
  */
 
 #undef LOCAL_DEBUG

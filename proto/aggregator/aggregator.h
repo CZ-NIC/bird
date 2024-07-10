@@ -1,9 +1,9 @@
 /*
  *	BIRD -- Aggregator Pseudoprotocol
  *
- *	(c) 2023       Igor Putovny <igor.putovny@nic.cz>
- *	(c) 2023       Maria Matejka <mq@ucw.cz>
- *	(c) 2023       CZ.NIC z.s.p.o.
+ *	(c) 2023--2024 Igor Putovny <igor.putovny@nic.cz>
+ *	(c) 2023--2024 Maria Matejka <mq@ucw.cz>
+ *	(c) 2024       CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  *
