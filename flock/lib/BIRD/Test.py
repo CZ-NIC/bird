@@ -7,6 +7,27 @@ sys.path.insert(0, "/home/maria/flock")
 
 from flock.Hypervisor import Hypervisor
 from flock.Machine import Machine
+from .CLI import CLI, Transport
+
+class MinimalistTransport(Transport):
+    def __init__(self, socket, machine):
+        self.sock = socket
+        self.machine = machine
+
+    async def send_cmd(self, *args):
+        return await self.sock.send_cmd("run_in", self.machine, "./birdc", "-l", *args)
+
+class BIRDInstance(CLI):
+    def __init__(self, mach: Machine):
+        self.mach = mach
+        self.workdir = self.mach.workdir
+
+        super().__init__(
+                transport=MinimalistTransport(
+                    socket=mach.hypervisor.control_socket,
+                    machine=self.mach.name
+                    )
+                )
 
 class Test:
     machines_start = {}
@@ -34,17 +55,17 @@ class Test:
 
         return await self.hypervisor.control_socket.send_cmd_early(*args)
 
-    async def machines(self, *names):
+    async def machines(self, *names, t: type):
         info = await asyncio.gather(*[
             self.hcom("machine", name, { "type": "minimalist" })
             for name in names
             ])
 
         return [
-                Machine.new(
+                t(mach=Machine.new(
                     name=n,
                     hypervisor=self.hypervisor,
                     **i
-                    ) for n,i in zip(names, info)
+                    )) for n,i in zip(names, info)
                 ]
 

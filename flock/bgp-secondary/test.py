@@ -12,22 +12,16 @@ name = selfpath.parent.stem
 
 sys.path.insert(0, str(selfpath.parent.parent / "lib"))
 
-from BIRD.CLI import CLI, Transport
-from BIRD.Test import Test
+from BIRD.Test import Test, BIRDInstance
 
 os.chdir(pathlib.Path(__file__).parent)
 
-class MinimalistTransport(Transport):
-    def __init__(self, socket, machine):
-        self.sock = socket
-        self.machine = machine
-
-    async def send_cmd(self, *args):
-        return await self.sock.send_cmd("run_in", self.machine, "./birdc", "-l", *args)
-
 class ThisTest(Test):
     async def start(self):
-        self.src, self.dest = await self.machines("src", "dest")
+        self.src, self.dest = await self.machines(
+                "src", "dest",
+                t=BIRDInstance,
+                )
 
 async def main():
     t = ThisTest(name)
@@ -89,23 +83,20 @@ async def main():
 
     await asyncio.sleep(5)
 
-    src_cli = CLI(MinimalistTransport(h.control_socket, "src"))
-    dest_cli = CLI(MinimalistTransport(h.control_socket, "dest"))
-
     print(await asyncio.gather(*[
         where.show_route()
-        for where in (src_cli, dest_cli)
+        for where in (t.src, t.dest)
         ]))
 
     await asyncio.sleep(1)
 
     for p in ("p170", "p180", "p190", "p200"):
-        await src_cli.enable(p)
+        await t.src.enable(p)
         await asyncio.sleep(1)
 
         shr = await asyncio.gather(*[
             where.show_route()
-            for where in (src_cli, dest_cli)
+            for where in (t.src, t.dest)
             ])
 
         print(shr[0]["out"].decode(), shr[1]["out"].decode())
@@ -114,12 +105,12 @@ async def main():
 
     print(await asyncio.gather(*[
         where.show_route()
-        for where in (src_cli, dest_cli)
+        for where in (t.src, t.dest)
         ]))
 
     print(await asyncio.gather(*[
         c.down()
-        for c in (src_cli, dest_cli)
+        for c in (t.src, t.dest)
         ]))
 
     await asyncio.sleep(5)
