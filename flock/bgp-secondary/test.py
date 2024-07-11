@@ -97,19 +97,19 @@ async def main():
     dest_cli = CLI(MinimalistTransport(h.control_socket, "dest"))
 
     print(await asyncio.gather(*[
-        h.control_socket.send_cmd("run_in", where, "./birdc", "-l", "show", "route", "table", "all")
-        for where in ("src", "dest")
+        where.show_route()
+        for where in (src_cli, dest_cli)
         ]))
 
     await asyncio.sleep(1)
 
     for p in ("p170", "p180", "p190", "p200"):
-        print(await h.control_socket.send_cmd("run_in", "src", "./birdc", "-l", "enable", p))
+        await src_cli.enable(p)
         await asyncio.sleep(1)
 
         shr = await asyncio.gather(*[
-            h.control_socket.send_cmd("run_in", where, "./birdc", "-l", "show", "route", "table", "all")
-            for where in ("src", "dest")
+            where.show_route()
+            for where in (src_cli, dest_cli)
             ])
 
         print(shr[0]["out"].decode(), shr[1]["out"].decode())
@@ -117,8 +117,8 @@ async def main():
         await asyncio.sleep(1)
 
     print(await asyncio.gather(*[
-        h.control_socket.send_cmd("run_in", where, "./birdc", "-l", "show", "route", "table", "all")
-        for where in ("src", "dest")
+        where.show_route()
+        for where in (src_cli, dest_cli)
         ]))
 
     print(await asyncio.gather(*[
