@@ -7,13 +7,13 @@ import os
 import pathlib
 import sys
 
-sys.path.insert(0, "/home/maria/flock")
+selfpath = pathlib.Path(__file__)
+name = selfpath.parent.stem
 
-from flock.Hypervisor import Hypervisor
-
-sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "lib"))
+sys.path.insert(0, str(selfpath.parent.parent / "lib"))
 
 from BIRD.CLI import CLI, Transport
+from BIRD.Test import Test
 
 os.chdir(pathlib.Path(__file__).parent)
 
@@ -25,19 +25,15 @@ class MinimalistTransport(Transport):
     async def send_cmd(self, *args):
         return await self.sock.send_cmd("run_in", self.machine, "./birdc", "-l", *args)
 
+class ThisTest(Test):
+    async def start(self):
+        self.src, self.dest = await self.machines("src", "dest")
+
 async def main():
-    h = Hypervisor("bgp-secondary")
-    await h.prepare()
-    os.symlink(pathlib.Path("bgp-secondary.log").absolute(), h.basedir / "flock.log")
-    await h.start()
+    t = ThisTest(name)
+    await t.start()
 
-    src, dest = await asyncio.gather(
-            h.control_socket.send_cmd_early("machine", "src", { "type": "minimalist"}),
-            h.control_socket.send_cmd_early("machine", "dest", { "type": "minimalist"}),
-            )
-
-    for q in src, dest:
-        q["workdir"] = pathlib.Path(q["workdir"])
+    h = t.hypervisor
 
     link, = await asyncio.gather(
             h.control_socket.send_cmd("link", "L", {
@@ -51,40 +47,40 @@ async def main():
             )
 
     for m in link:
-        for t in ("ipv4", "ipv6"):
-            link[m][t] = ipaddress.ip_interface(link[m][t])
+        for i in ("ipv4", "ipv6"):
+            link[m][i] = ipaddress.ip_interface(link[m][i])
 
-    print(link, src, dest)
+    print(link, t.src, t.dest)
 
     env = jinja2.Environment()
     src_conf = open("bird_src.conf", "r").read()
     jt = env.from_string(src_conf)
-    with open(src["workdir"] / "bird.conf", "w") as f:
+    with open(t.src.workdir / "bird.conf", "w") as f:
         f.write(jt.render( link=link ))
 
     dest_conf = open("bird_dest.conf", "r").read()
     jt = env.from_string(dest_conf)
-    with open(dest["workdir"] / "bird.conf", "w") as f:
+    with open(t.dest.workdir / "bird.conf", "w") as f:
         f.write(jt.render( link=link ))
 
     with open(pathlib.Path.cwd() / ".." / ".." / "bird", "rb") as b:
-        with open(dest["workdir"] / "bird", "wb") as d:
+        with open(t.dest.workdir / "bird", "wb") as d:
             d.write(dta := b.read())
 
-        with open(src["workdir"] / "bird", "wb") as d:
+        with open(t.src.workdir / "bird", "wb") as d:
             d.write(dta)
 
     with open(pathlib.Path.cwd() / ".." / ".." / "birdc", "rb") as b:
-        with open(dest["workdir"] / "birdc", "wb") as d:
+        with open(t.dest.workdir / "birdc", "wb") as d:
             d.write(dta := b.read())
 
-        with open(src["workdir"] / "birdc", "wb") as d:
+        with open(t.src.workdir / "birdc", "wb") as d:
             d.write(dta)
 
-    os.chmod(dest["workdir"] / "bird", 0o755)
-    os.chmod(src["workdir"] / "bird", 0o755)
-    os.chmod(dest["workdir"] / "birdc", 0o755)
-    os.chmod(src["workdir"] / "birdc", 0o755)
+    os.chmod(t.dest.workdir / "bird", 0o755)
+    os.chmod(t.src.workdir / "bird", 0o755)
+    os.chmod(t.dest.workdir / "birdc", 0o755)
+    os.chmod(t.src.workdir / "birdc", 0o755)
 
     print(await asyncio.gather(*[
         h.control_socket.send_cmd("run_in", where, "./bird", "-l")
@@ -127,9 +123,9 @@ async def main():
         ]))
 
     await asyncio.sleep(5)
-    for q in (dest, src):
+    for q in (t.dest, t.src):
         for f in ("bird", "birdc", "bird.conf", "bird.log"):
-            (q["workdir"] / f).unlink()
+            (q.workdir / f).unlink()
 
     await h.control_socket.send_cmd("stop", True)
 
