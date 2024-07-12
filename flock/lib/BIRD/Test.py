@@ -1,5 +1,6 @@
 import asyncio
 import ipaddress
+import jinja2
 import os
 import pathlib
 import sys
@@ -65,10 +66,11 @@ class BIRDBinDir:
 default_bindir = BIRDBinDir.get("..")
 
 class BIRDInstance(CLI):
-    def __init__(self, mach: Machine, bindir=None):
+    def __init__(self, mach: Machine, bindir=None, conf=None):
         self.mach = mach
         self.workdir = self.mach.workdir
         self.bindir = BIRDBinDir.get(bindir) if bindir is not None else default_bindir
+        self.conf = conf if conf is not None else f"bird_{mach.name}.conf"
 
         super().__init__(
                 transport=MinimalistTransport(
@@ -77,9 +79,24 @@ class BIRDInstance(CLI):
                     )
                 )
 
+    async def start(self, test):
         self.bindir.copy(self.workdir)
 
+        with (open(self.conf, "r") as s, open(self.workdir / "bird.conf", "w") as f):
+            f.write(jinja2.Environment().from_string(s.read()).render(t=test))
+
+        await test.hcom("run_in", self.mach.name, "./bird", "-l")
+
     async def cleanup(self):
+        # Send down command and wait for BIRD to actually finish
+        await self.down()
+        while (self.workdir / "bird.ctl").exists():
+            await asyncio.sleep(0.1)
+
+        # Remove known files
+        for f in ("bird.conf", "bird.log"):
+            (self.workdir / f).unlink()
+
         self.bindir.cleanup(self.workdir)
 
 class Test:
@@ -133,7 +150,8 @@ class Test:
                     name=n,
                     hypervisor=self.hypervisor,
                     **i
-                    )) for n,i in zip(names, info)
+                    ),
+                  ) for n,i in zip(names, info)
                 ]
 
         for n,i in zip(names, inst):
@@ -161,6 +179,9 @@ class Test:
 
             case _:
                 raise NotImplementedError("virtual bridge")
+
+    async def start(self):
+        await asyncio.gather(*[ v.start(test=self) for v in self.machine_index.values() ])
 
     async def cleanup(self):
         await asyncio.gather(*[ v.cleanup() for v in self.machine_index.values() ])

@@ -1,8 +1,6 @@
 #!/usr/bin/python3
 
 import asyncio
-import ipaddress
-import jinja2
 import os
 import pathlib
 import sys
@@ -26,29 +24,16 @@ class ThisTest(Test):
                 "L": await self.link("L", "src", "dest")
                 }
 
+        await super().start()
+
 async def main():
     t = ThisTest(name)
+
     await t.start()
 
     h = t.hypervisor
 
     print(t.links, t.src, t.dest)
-
-    env = jinja2.Environment()
-    src_conf = open("bird_src.conf", "r").read()
-    jt = env.from_string(src_conf)
-    with open(t.src.workdir / "bird.conf", "w") as f:
-        f.write(jt.render( links=t.links ))
-
-    dest_conf = open("bird_dest.conf", "r").read()
-    jt = env.from_string(dest_conf)
-    with open(t.dest.workdir / "bird.conf", "w") as f:
-        f.write(jt.render( links=t.links ))
-
-    print(await asyncio.gather(*[
-        h.control_socket.send_cmd("run_in", where, "./bird", "-l")
-        for where in ("src", "dest")
-        ]))
 
     await asyncio.sleep(5)
 
@@ -77,17 +62,7 @@ async def main():
         for where in (t.src, t.dest)
         ]))
 
-    print(await asyncio.gather(*[
-        c.down()
-        for c in (t.src, t.dest)
-        ]))
-
-    await asyncio.sleep(5)
     await t.cleanup()
-    for q in (t.dest, t.src):
-        for f in ("bird.conf", "bird.log"):
-            (q.workdir / f).unlink()
-
     await h.control_socket.send_cmd("stop", True)
 
 assert(__name__ == "__main__")
