@@ -17,10 +17,53 @@ class MinimalistTransport(Transport):
     async def send_cmd(self, *args):
         return await self.sock.send_cmd("run_in", self.machine, "./birdc", "-l", *args)
 
+class BIRDBinDir:
+    index = {}
+
+    def __init__(self, path):
+        self.path = path
+
+        f = [ "bird", "birdc", "birdcl", ]
+
+        self.files = { k: None for k in f }
+        self.mod = { k: None for k in f }
+        self.loaded = False
+
+    @classmethod
+    def get(cls, where):
+        w = pathlib.Path(where).absolute()
+        try:
+            return cls.index[s := str(w)]
+        except KeyError:
+            cls.index[s] = (b := cls(w))
+            return b
+
+    def load(self):
+        for bn,v in self.files.items():
+            if v is None:
+                with open(self.path / bn, "rb") as b:
+                    self.files[bn] = b.read()
+                self.mod[bn] = (self.path / bn).stat().st_mode
+
+        self.loaded = True
+
+    def copy(self, target):
+        if not self.loaded:
+            self.load()
+
+        for bn,v in self.files.items():
+            if v is not None:
+                with open(target / bn, "wb") as b:
+                    b.write(v)
+                (target / bn).chmod(self.mod[bn])
+
+default_bindir = BIRDBinDir.get("..")
+
 class BIRDInstance(CLI):
-    def __init__(self, mach: Machine):
+    def __init__(self, mach: Machine, bindir=None):
         self.mach = mach
         self.workdir = self.mach.workdir
+        self.bindir = BIRDBinDir.get(bindir) if bindir is not None else default_bindir
 
         super().__init__(
                 transport=MinimalistTransport(
@@ -28,6 +71,8 @@ class BIRDInstance(CLI):
                     machine=self.mach.name
                     )
                 )
+
+        self.bindir.copy(self.workdir)
 
 class Test:
     machines_start = {}

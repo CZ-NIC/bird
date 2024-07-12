@@ -57,25 +57,6 @@ async def main():
     with open(t.dest.workdir / "bird.conf", "w") as f:
         f.write(jt.render( link=link ))
 
-    with open(pathlib.Path.cwd() / ".." / ".." / "bird", "rb") as b:
-        with open(t.dest.workdir / "bird", "wb") as d:
-            d.write(dta := b.read())
-
-        with open(t.src.workdir / "bird", "wb") as d:
-            d.write(dta)
-
-    with open(pathlib.Path.cwd() / ".." / ".." / "birdc", "rb") as b:
-        with open(t.dest.workdir / "birdc", "wb") as d:
-            d.write(dta := b.read())
-
-        with open(t.src.workdir / "birdc", "wb") as d:
-            d.write(dta)
-
-    os.chmod(t.dest.workdir / "bird", 0o755)
-    os.chmod(t.src.workdir / "bird", 0o755)
-    os.chmod(t.dest.workdir / "birdc", 0o755)
-    os.chmod(t.src.workdir / "birdc", 0o755)
-
     print(await asyncio.gather(*[
         h.control_socket.send_cmd("run_in", where, "./bird", "-l")
         for where in ("src", "dest")
