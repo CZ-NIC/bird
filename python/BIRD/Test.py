@@ -63,7 +63,7 @@ class BIRDBinDir:
         for bn in self.files:
             (target / bn).unlink()
 
-default_bindir = BIRDBinDir.get("..")
+default_bindir = BIRDBinDir.get(".")
 
 class BIRDInstance(CLI):
     def __init__(self, mach: Machine, bindir=None, conf=None):
@@ -112,13 +112,16 @@ class Test:
         self.name = name
         self.hypervisor = Hypervisor(name)
         self.machine_index = {}
-        self._started = asyncio.Future()
+        self._started = None
         self._starting = False
 
         self.ipv6_pxgen = self.ipv6_prefix.subnets(new_prefix=self.ipv6_link_pxlen)
         self.ipv4_pxgen = self.ipv4_prefix.subnets(new_prefix=self.ipv4_link_pxlen)
 
     async def hcom(self, *args):
+        if self._started is None:
+            self._started = asyncio.Future()
+
         if self._started.done():
             return await self.hypervisor.control_socket.send_cmd(*args)
 
@@ -185,3 +188,18 @@ class Test:
 
     async def cleanup(self):
         await asyncio.gather(*[ v.cleanup() for v in self.machine_index.values() ])
+
+
+if __name__ == "__main__":
+    name = sys.argv[1]
+
+    p = (pathlib.Path(__file__).parent.parent.parent / "flock" / name).absolute()
+    sys.path.insert(0, str(p))
+
+    if "MAKEFLAGS" in os.environ:
+        print(os.environ["MAKEFLAGS"])
+
+    import test
+
+    os.chdir(p)
+    asyncio.run(test.ThisTest(name).run())
