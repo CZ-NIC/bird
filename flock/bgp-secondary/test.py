@@ -83,8 +83,9 @@ async def main():
         ]))
 
     await asyncio.sleep(5)
+    await t.cleanup()
     for q in (t.dest, t.src):
-        for f in ("bird", "birdc", "bird.conf", "bird.log"):
+        for f in ("bird.conf", "bird.log"):
             (q.workdir / f).unlink()
 
     await h.control_socket.send_cmd("stop", True)

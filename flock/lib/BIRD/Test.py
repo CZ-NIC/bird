@@ -58,6 +58,10 @@ class BIRDBinDir:
                     b.write(v)
                 (target / bn).chmod(self.mod[bn])
 
+    def cleanup(self, target):
+        for bn in self.files:
+            (target / bn).unlink()
+
 default_bindir = BIRDBinDir.get("..")
 
 class BIRDInstance(CLI):
@@ -75,6 +79,9 @@ class BIRDInstance(CLI):
 
         self.bindir.copy(self.workdir)
 
+    async def cleanup(self):
+        self.bindir.cleanup(self.workdir)
+
 class Test:
     ipv6_prefix = ipaddress.ip_network("2001:db8::/32")
     ipv4_prefix = ipaddress.ip_network("192.0.2.0/24")
@@ -87,6 +94,7 @@ class Test:
     def __init__(self, name):
         self.name = name
         self.hypervisor = Hypervisor(name)
+        self.machine_index = {}
         self._started = asyncio.Future()
         self._starting = False
 
@@ -111,18 +119,27 @@ class Test:
         return await self.hypervisor.control_socket.send_cmd_early(*args)
 
     async def machines(self, *names, t: type):
+        for n in names:
+            if n in self.machine_index:
+                raise Exception(f"Machine {n} duplicate")
+
         info = await asyncio.gather(*[
             self.hcom("machine", name, { "type": "minimalist" })
             for name in names
             ])
 
-        return [
+        inst = [
                 t(mach=Machine.new(
                     name=n,
                     hypervisor=self.hypervisor,
                     **i
                     )) for n,i in zip(names, info)
                 ]
+
+        for n,i in zip(names, inst):
+            self.machine_index[n] = i
+
+        return inst
 
     async def link(self, name, *machines):
         match len(machines):
@@ -144,3 +161,6 @@ class Test:
 
             case _:
                 raise NotImplementedError("virtual bridge")
+
+    async def cleanup(self):
+        await asyncio.gather(*[ v.cleanup() for v in self.machine_index.values() ])
