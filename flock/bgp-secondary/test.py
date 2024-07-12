@@ -4,7 +4,20 @@ import asyncio
 from python.BIRD.Test import Test, BIRDInstance
 
 class ThisTest(Test):
-    async def start(self):
+    async def route_dump(self, timeout=None):
+        if timeout is not None:
+            await asyncio.sleep(timeout)
+
+        print(*[
+            f["out"].decode()
+            for f in await asyncio.gather(*[
+                where.show_route()
+                for where in (self.src, self.dest)
+                ])
+            ])
+
+    async def run(self):
+        # Prepare machines and links
         self.src, self.dest = await self.machines(
                 "src", "dest",
                 t=BIRDInstance,
@@ -13,41 +26,14 @@ class ThisTest(Test):
                 "L": await self.link("L", "src", "dest")
                 }
 
-        await super().start()
+        # Start machines and links
+        await self.start()
 
-    async def run(t):
-        await t.start()
-
-        h = t.hypervisor
-
-        print(t.links, t.src, t.dest)
-
-        await asyncio.sleep(5)
-
-        print(await asyncio.gather(*[
-            where.show_route()
-            for where in (t.src, t.dest)
-            ]))
-
-        await asyncio.sleep(1)
+        # Partial test
+        await self.route_dump(5)
 
         for p in ("p170", "p180", "p190", "p200"):
-            await t.src.enable(p)
-            await asyncio.sleep(1)
+            await self.src.enable(p)
+            await self.route_dump(1)
 
-            shr = await asyncio.gather(*[
-                where.show_route()
-                for where in (t.src, t.dest)
-                ])
-
-            print(shr[0]["out"].decode(), shr[1]["out"].decode())
-
-            await asyncio.sleep(1)
-
-        print(await asyncio.gather(*[
-            where.show_route()
-            for where in (t.src, t.dest)
-            ]))
-
-        await t.cleanup()
-        await h.control_socket.send_cmd("stop", True)
+        await self.cleanup()

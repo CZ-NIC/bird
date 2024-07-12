@@ -188,6 +188,7 @@ class Test:
 
     async def cleanup(self):
         await asyncio.gather(*[ v.cleanup() for v in self.machine_index.values() ])
+        await self.hcom("stop", True)
 
 
 if __name__ == "__main__":
@@ -196,8 +197,8 @@ if __name__ == "__main__":
     p = (pathlib.Path(__file__).parent.parent.parent / "flock" / name).absolute()
     sys.path.insert(0, str(p))
 
-    if "MAKEFLAGS" in os.environ:
-        print(os.environ["MAKEFLAGS"])
+#    if "MAKEFLAGS" in os.environ:
+#        print(os.environ["MAKEFLAGS"])
 
     import test
 
