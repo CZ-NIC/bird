@@ -22,6 +22,9 @@ class ThisTest(Test):
                 "src", "dest",
                 t=BIRDInstance,
                 )
+        self.links = {
+                "L": await self.link("L", "src", "dest")
+                }
 
 async def main():
     t = ThisTest(name)
@@ -29,33 +32,18 @@ async def main():
 
     h = t.hypervisor
 
-    link, = await asyncio.gather(
-            h.control_socket.send_cmd("link", "L", {
-                "machines": {
-                    "src": { "name": "L" },
-                    "dest": { "name": "L" },
-                    },
-                "ipv6": "2001:db8:0:1::/64",
-                "ipv4": "10.0.1.0/29",
-                }),
-            )
-
-    for m in link:
-        for i in ("ipv4", "ipv6"):
-            link[m][i] = ipaddress.ip_interface(link[m][i])
-
-    print(link, t.src, t.dest)
+    print(t.links, t.src, t.dest)
 
     env = jinja2.Environment()
     src_conf = open("bird_src.conf", "r").read()
     jt = env.from_string(src_conf)
     with open(t.src.workdir / "bird.conf", "w") as f:
-        f.write(jt.render( link=link ))
+        f.write(jt.render( links=t.links ))
 
     dest_conf = open("bird_dest.conf", "r").read()
     jt = env.from_string(dest_conf)
     with open(t.dest.workdir / "bird.conf", "w") as f:
-        f.write(jt.render( link=link ))
+        f.write(jt.render( links=t.links ))
 
     print(await asyncio.gather(*[
         h.control_socket.send_cmd("run_in", where, "./bird", "-l")

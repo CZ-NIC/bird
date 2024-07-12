@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import os
 import pathlib
 import sys
@@ -75,13 +76,22 @@ class BIRDInstance(CLI):
         self.bindir.copy(self.workdir)
 
 class Test:
-    machines_start = {}
+    ipv6_prefix = ipaddress.ip_network("2001:db8::/32")
+    ipv4_prefix = ipaddress.ip_network("192.0.2.0/24")
+
+    ipv6_link_pxlen = 64
+    ipv4_link_pxlen = 28
+
+    # 198.51.100.0/24, 203.0.113.0/24
 
     def __init__(self, name):
         self.name = name
         self.hypervisor = Hypervisor(name)
         self._started = asyncio.Future()
         self._starting = False
+
+        self.ipv6_pxgen = self.ipv6_prefix.subnets(new_prefix=self.ipv6_link_pxlen)
+        self.ipv4_pxgen = self.ipv4_prefix.subnets(new_prefix=self.ipv4_link_pxlen)
 
     async def hcom(self, *args):
         if self._started.done():
@@ -114,3 +124,23 @@ class Test:
                     )) for n,i in zip(names, info)
                 ]
 
+    async def link(self, name, *machines):
+        match len(machines):
+            case 0:
+                raise Exception("Link with no machines? HOW?!")
+            case 1:
+                raise NotImplementedError("dummy link")
+            case 2:
+                linfo = await self.hcom("link", name, {
+                    "machines": { m: { "name": name } for m in machines },
+                    "ipv6": str(next(self.ipv6_pxgen)),
+                    "ipv4": str(next(self.ipv4_pxgen)),
+                    })
+                for m in machines:
+                    for i in ("ipv4", "ipv6"):
+                        linfo[m][i] = ipaddress.ip_interface(linfo[m][i])
+
+                return linfo
+
+            case _:
+                raise NotImplementedError("virtual bridge")
