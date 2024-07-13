@@ -4,18 +4,6 @@ import asyncio
 from python.BIRD.Test import Test, BIRDInstance
 
 class ThisTest(Test):
-    async def route_dump(self, timeout=None):
-        if timeout is not None:
-            await asyncio.sleep(timeout)
-
-        print(*[
-            f["out"].decode()
-            for f in await asyncio.gather(*[
-                where.show_route()
-                for where in (self.src, self.dest)
-                ])
-            ])
-
     async def run(self):
         # Prepare machines and links
         self.src, self.dest = await self.machines(

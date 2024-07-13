@@ -190,6 +190,26 @@ class Test:
         await asyncio.gather(*[ v.cleanup() for v in self.machine_index.values() ])
         await self.hcom("stop", True)
 
+    async def route_dump(self, timeout=None, machines=None):
+        if timeout is not None:
+            await asyncio.sleep(timeout)
+
+        if machines is None:
+            machines = self.machine_index.values()
+        else:
+            machines = [
+                    m if isinstance(m, CLI) else self.machine_index[m]
+                    for m in machines
+                    ]
+
+        print(*[
+            f["out"].decode()
+            for f in await asyncio.gather(*[
+                where.show_route()
+                for where in machines
+                ])
+            ])
+
 
 if __name__ == "__main__":
     name = sys.argv[1]
