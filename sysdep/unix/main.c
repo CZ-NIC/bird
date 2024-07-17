@@ -515,6 +515,7 @@ cli_init_unix(uid_t use_uid, gid_t use_gid)
   cli_init();
   s = cli_sk = sk_new(cli_pool);
   s->type = SK_UNIX_PASSIVE;
+  s->host = path_control_socket;
   s->rx_hook = cli_connect;
   s->err_hook = cli_connect_err;
   s->rbsize = 1024;
@@ -523,7 +524,7 @@ cli_init_unix(uid_t use_uid, gid_t use_gid)
   /* Return value intentionally ignored */
   unlink(path_control_socket);
 
-  if (sk_open_unix(s, path_control_socket) < 0)
+  if (sk_open(s) < 0)
     die("Cannot create control socket %s: %m", path_control_socket);
 
   if (use_uid || use_gid)

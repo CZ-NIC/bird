@@ -44,7 +44,7 @@ typedef struct birdsock {
   int subtype;				/* Socket subtype */
   void *data;				/* User data */
   ip_addr saddr, daddr;			/* IPA_NONE = unspecified */
-  const char *host;			/* Alternative to daddr, NULL = unspecified */
+  const char *host;			/* Alternative to daddr especially for UNIX sockets, NULL = unspecified */
   uint sport, dport;			/* 0 = unspecified (for IP: protocol type) */
   int tos;				/* TOS / traffic class, -1 = default */
   int priority;				/* Local socket priority, -1 = default */
@@ -98,6 +98,7 @@ void sk_dump_all(void);
 
 int sk_is_ipv4(sock *s);		/* True if socket is IPv4 */
 int sk_is_ipv6(sock *s);		/* True if socket is IPv6 */
+int sk_is_unix(sock *s);		/* True if socket is UNIX socket */
 
 static inline int sk_tx_buffer_empty(sock *sk)
 { return sk->tbuf == sk->tpos; }
@@ -111,6 +112,7 @@ int sk_set_min_ttl(sock *s, int ttl);	/* Set minimal accepted TTL for given sock
 int sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int setkey);
 int sk_set_ipv6_checksum(sock *s, int offset);
 int sk_set_icmp6_filter(sock *s, int p1, int p2);
+int sk_check_unix(const char *path);
 void sk_log_error(sock *s, const char *p);
 
 byte * sk_rx_buffer(sock *s, int *len);	/* Temporary */
@@ -143,10 +145,11 @@ extern int sk_priority_control;		/* Suggested priority for control traffic, shou
 #define SK_UDP		3          /* ?  ?  ?  ?  ?  ?   ?	*/
 #define SK_IP		5          /* ?  -  ?  *  ?  ?   ?	*/
 #define SK_MAGIC	7	   /* Internal use by sysdep code */
-#define SK_UNIX_PASSIVE	8
-#define SK_UNIX		9
-#define SK_SSH_ACTIVE	10         /* -  -  *  *  -  ?   -	DA = host */
-#define SK_SSH		11
+#define SK_UNIX_PASSIVE	8	   /* -  -  *  -  -  -   -      DA = host */
+#define SK_UNIX_ACTIVE	9	   /* -  -  *  -  -  -   -      DA = host */
+#define SK_UNIX		10
+#define SK_SSH_ACTIVE	11         /* -  -  *  *  -  ?   -	DA = host */
+#define SK_SSH		12
 
 /*
  *	Socket subtypes
@@ -177,6 +180,10 @@ extern int sk_priority_control;		/* Suggested priority for control traffic, shou
  * per-packet basis using platform dependent options (but these are not
  * available in some corner cases). The first way is used when SKF_BIND is
  * specified, the second way is used otherwise.
+ *
+ * For UNIX sockets (SK_UNIX_PASSIVE, SK_UNIX_ACTIVE), path is passed in host
+ * string. If the path does not fit into the sockaddr_un sun_path array, the
+ * sk_open will fail. One can check path length with sk_check_unix.
  */
 
 #endif
