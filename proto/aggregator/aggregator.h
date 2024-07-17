@@ -111,6 +111,7 @@ struct aggr_item_node {
 struct trie_node {
   struct trie_node *parent;
   struct trie_node *child[2];
+  struct trie_node *ancestor;
   struct aggregator_bucket *bucket;
   struct aggregator_bucket *potential_buckets[MAX_POTENTIAL_BUCKETS_COUNT];
   int potential_buckets_count;

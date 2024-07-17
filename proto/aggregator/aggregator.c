@@ -565,6 +565,9 @@ third_pass(struct trie_node *node)
     assert(node->potential_buckets_count > 0);
     assert(node->potential_buckets[0] != NULL);
     node->bucket = node->potential_buckets[0];
+
+    /* Root is the first node with a bucket */
+    node->ancestor = node;
   }
   else
   {
@@ -572,7 +575,8 @@ third_pass(struct trie_node *node)
     if (!is_leaf(node))
       assert(node->bucket == NULL);
 
-    const struct aggregator_bucket *inherited_bucket = get_ancestor_bucket(node);
+    /* Bucket inherited from the closest ancestor with a non-null bucket */
+    const struct aggregator_bucket *inherited_bucket = node->parent->ancestor->bucket;
 
     /*
      * If bucket inherited from ancestor is one of potential buckets of this node,
@@ -588,6 +592,12 @@ third_pass(struct trie_node *node)
       assert(node->potential_buckets_count > 0);
       node->bucket = node->potential_buckets[0];
     }
+
+    /*
+     * Node with a bucket is the closest ancestor for all his descendants.
+     * Otherwise, it must refer to the closest ancestor of its parent.
+     */
+    node->ancestor = node->bucket ? node : node->parent->ancestor;
   }
 
   /* Preorder traversal */
