@@ -601,6 +601,21 @@ sk_setup_multicast(sock *s)
 }
 
 /**
+ * sk_check_unix - check path length
+ * @path: filesystem path
+ *
+ * Check if path fits into the sockaddr_un sun_path array.
+ *
+ * Result: 0 for success, -1 for an error.
+ */
+
+int
+sk_check_unix(const char *path)
+{
+  return -(strlen(path) >= sizeof(((struct sockaddr_un *)0)->sun_path));
+}
+
+/**
  * sk_join_group - join multicast group for given socket
  * @s: socket
  * @maddr: multicast address
@@ -865,6 +880,10 @@ sk_free(resource *r)
     sk_ssh_free(s);
 #endif
 
+  if (s->host && s->type == SK_UNIX_PASSIVE)
+    /* Return value intentionally ignored */
+    (void) unlink(s->host);
+
   if (s->fd < 0)
     return;
 
@@ -935,7 +954,7 @@ static void
 sk_dump(resource *r)
 {
   sock *s = (sock *) r;
-  static char *sk_type_names[] = { "TCP<", "TCP>", "TCP", "UDP", NULL, "IP", NULL, "MAGIC", "UNIX<", "UNIX", "SSH>", "SSH", "DEL!" };
+  static char *sk_type_names[] = { "TCP<", "TCP>", "TCP", "UDP", NULL, "IP", NULL, "MAGIC", "UNIX<", "UNIX>", "UNIX", "SSH>", "SSH", "DEL!" };
 
   debug("(%s, ud=%p, sa=%I, sp=%d, da=%I, dp=%d, tos=%d, ttl=%d, if=%s)\n",
 	sk_type_names[s->type],
@@ -991,6 +1010,12 @@ sk_setup(sock *s)
 
   if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0)
     ERR("O_NONBLOCK");
+
+  if (s->type == SK_UNIX_ACTIVE || s->type == SK_UNIX_PASSIVE)
+    return sk_check_unix(s->host);
+
+  if (s->type == SK_UNIX)
+    return 0;
 
   if (!s->af)
     return 0;
@@ -1130,6 +1155,14 @@ sk_tcp_connected(sock *s)
   s->tx_hook(s);
 }
 
+static void
+sk_unix_connected(sock *s)
+{
+  s->type = SK_UNIX;
+  sk_alloc_bufs(s);
+  s->tx_hook(s);
+}
+
 #ifdef HAVE_LIBSSH
 static void
 sk_ssh_connected(sock *s)
@@ -1155,6 +1188,7 @@ sk_passive_connected(sock *s, int type)
     return 0;
   }
 
+  /* Do not copy UNIX address in s->host. */
   sock *t = sk_new(s->pool);
   t->type = type;
   t->data = s->data;
@@ -1408,6 +1442,9 @@ sk_open(sock *s)
   int bind_port = 0;
   ip_addr bind_addr = IPA_NONE;
   sockaddr sa;
+  struct sockaddr_un un;
+  struct sockaddr *addr;
+  socklen_t len;
 
   if (s->type <= SK_IP)
   {
@@ -1480,6 +1517,15 @@ sk_open(sock *s)
     fd = s->fd;
     break;
 
+  case SK_UNIX_ACTIVE:
+    s->ttx = "";
+    /* Fall thru */
+  case SK_UNIX_PASSIVE:
+    af = AF_UNIX;
+    fd = socket(af, SOCK_STREAM, 0);
+    do_bind = s->type == SK_UNIX_PASSIVE;
+    break;
+
   default:
     bug("sk_open() called for invalid sock type %d", s->type);
   }
@@ -1520,8 +1566,21 @@ sk_open(sock *s)
       if (sk_set_freebind(s) < 0)
         log(L_WARN "Socket error: %s%#m", s->err);
 
-    sockaddr_fill(&sa, s->af, bind_addr, s->iface, bind_port);
-    if (bind(fd, &sa.sa, SA_LEN(sa)) < 0)
+    if (s->type == SK_UNIX_PASSIVE)
+    {
+      un.sun_family = AF_UNIX;
+      strcpy(un.sun_path, s->host);
+      addr = (struct sockaddr *) &un;
+      len = SUN_LEN(&un);
+    }
+    else
+    {
+      sockaddr_fill(&sa, s->af, bind_addr, s->iface, bind_port);
+      addr = &sa.sa;
+      len = SA_LEN(sa);
+    }
+
+    if (bind(fd, addr, len) < 0)
       ERR2("bind");
   }
 
@@ -1552,6 +1611,21 @@ sk_open(sock *s)
     sk_alloc_bufs(s);
     break;
 
+  case SK_UNIX_ACTIVE:
+    un.sun_family = AF_UNIX;
+    strcpy(un.sun_path, s->host);
+
+    if (connect(s->fd, (struct sockaddr *) &un, SUN_LEN(&un)) >= 0)
+      sk_unix_connected(s);
+    else if (errno != EINTR && errno != EAGAIN && errno != EINPROGRESS)
+      ERR2("connect");
+    break;
+
+  case SK_UNIX_PASSIVE:
+    if (listen(fd, 8) < 0)
+      ERR2("listen");
+    break;
+
   case SK_SSH_ACTIVE:
   case SK_MAGIC:
     break;
@@ -1569,38 +1643,6 @@ err:
   close(fd);
   s->fd = -1;
   return -1;
-}
-
-int
-sk_open_unix(sock *s, const char *name)
-{
-  struct sockaddr_un sa;
-  int fd;
-
-  /* We are sloppy during error (leak fd and not set s->err), but we die anyway */
-
-  fd = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (fd < 0)
-    return -1;
-
-  if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0)
-    return -1;
-
-  /* Path length checked in test_old_bird() but we may need unix sockets for other reasons in future */
-  ASSERT_DIE(strlen(name) < sizeof(sa.sun_path));
-
-  sa.sun_family = AF_UNIX;
-  strcpy(sa.sun_path, name);
-
-  if (bind(fd, (struct sockaddr *) &sa, SUN_LEN(&sa)) < 0)
-    return -1;
-
-  if (listen(fd, 8) < 0)
-    return -1;
-
-  s->fd = fd;
-  sk_insert(s);
-  return 0;
 }
 
 
@@ -2026,6 +2068,20 @@ sk_write_noflush(sock *s)
       return 0;
     }
 
+  case SK_UNIX_ACTIVE:
+    {
+      struct sockaddr_un un;
+      un.sun_family = AF_UNIX;
+      strcpy(un.sun_path, s->host);
+
+      if (connect(s->fd, (struct sockaddr *) &un, SUN_LEN(&un)) >= 0 || errno == EISCONN)
+	sk_unix_connected(s);
+      else if (errno != EINTR && errno != EAGAIN && errno != EINPROGRESS)
+	s->err_hook(s, errno);
+
+      return 0;
+    }
+
 #ifdef HAVE_LIBSSH
   case SK_SSH_ACTIVE:
     {
@@ -2071,6 +2127,9 @@ int sk_is_ipv4(sock *s)
 
 int sk_is_ipv6(sock *s)
 { return s->af == AF_INET6; }
+
+int sk_is_unix(sock *s)
+{ return s->af == AF_UNIX; }
 
 void
 sk_err(sock *s, int revents)

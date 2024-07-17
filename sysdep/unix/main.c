@@ -553,6 +553,7 @@ cli_listen(struct cli_config *cf)
   l->config = cf;
   sock *s = l->s = sk_new(cli_pool);
   s->type = SK_UNIX_PASSIVE;
+  s->host = cf->name;
   s->rx_hook = cli_connect;
   s->err_hook = cli_connect_err;
   s->data = l;
@@ -560,9 +561,9 @@ cli_listen(struct cli_config *cf)
   s->fast_rx = 1;
 
   /* Return value intentionally ignored */
-  unlink(cf->name);
+  (void) unlink(cf->name);
 
-  if (sk_open_unix(s, cf->name) < 0)
+  if (sk_open(s) < 0)
   {
     log(L_ERR "Cannot create control socket %s: %m", cf->name);
     return NULL;
@@ -590,7 +591,6 @@ static void
 cli_deafen(struct cli_listener *l)
 {
   rfree(l->s);
-  unlink(l->config->name);
   cli_listener_rem_node(&cli_listeners, l);
   mb_free(l);
 }
