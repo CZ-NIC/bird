@@ -53,7 +53,6 @@ typedef struct sockaddr_bird {
 } sockaddr;
 
 
-
 /* This is sloppy hack, it should be detected by configure script */
 /* Linux systems have it defined so this is definition for BSD systems */
 #ifndef s6_addr32
@@ -107,7 +106,6 @@ extern volatile sig_atomic_t async_shutdown_flag;
 void io_init(void);
 void io_loop(void);
 void io_log_dump(void);
-int sk_open_unix(struct birdsock *s, const char *name);
 struct rfile *rf_open(struct pool *, const char *name, const char *mode);
 struct rfile *rf_fdopen(pool *p, int fd, const char *mode);
 void *rf_file(struct rfile *f);
