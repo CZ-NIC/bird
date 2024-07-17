@@ -305,7 +305,8 @@ enum agentx_response_errs {
 
 /* SNMP PDU info */
 struct snmp_pdu {
-  /* TX buffer */
+  struct snmp_proto *p;
+ /* TX buffer */
   byte *buffer;			    /* pointer to buffer */
   uint size;			    /* unused space in buffer */
 
@@ -316,17 +317,6 @@ struct snmp_pdu {
   /* Control */
   enum agentx_response_errs error;  /* storage for result of current action */
   u32 index;			    /* index on which the error was found */
-
-};
-
-/*
- * snmp_data - Comprehensive hadle for Agentx PDU state
- * @p: SNMP protocol instance
- * @c: contextual data for currrently constructed AgentX PDU
- */
-struct snmp_data {
-  struct snmp_proto *p;
-  struct snmp_pdu *c;
 };
 
 struct snmp_packet_info {

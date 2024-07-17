@@ -41,7 +41,7 @@ struct mib_leaf {
    * AGENTX_INVALID, it is expected that filler() hook will also fill
    * the VarBind type.
    */
-  enum snmp_search_res (*filler)(struct mib_walk_state *state, struct snmp_data *data);
+  enum snmp_search_res (*filler)(struct mib_walk_state *state, struct snmp_pdu *context);
 
   /**
    * call_next - signal multileaf
@@ -56,7 +56,7 @@ struct mib_leaf {
    * Hook may be NULL meaning the leaf node is not multileaf/subtree.
    *
    */
-  int (*call_next)(struct mib_walk_state *state, struct snmp_data *data);
+  int (*call_next)(struct mib_walk_state *state, struct snmp_pdu *context);
 
   /**
    * type of produced VarBind, may be replaced in packet instanciation by

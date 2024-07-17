@@ -12,8 +12,9 @@
 #include <stdio.h>
 
 inline void
-snmp_pdu_context(struct snmp_pdu *pdu, sock *sk)
+snmp_pdu_context(struct snmp_pdu *pdu, struct snmp_proto *p, sock *sk)
 {
+  pdu->p = p;
   pdu->error = AGENTX_RES_NO_ERROR;
   pdu->buffer = sk->tpos;
   pdu->size = sk->tbuf + sk->tbsize - sk->tpos;
@@ -1061,13 +1062,13 @@ snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct
  * SNMP MIB tree walking
  */
 struct mib_leaf *
-snmp_walk_init(struct mib_tree *tree, struct mib_walk_state *walk, const struct oid *oid, struct snmp_data *data)
+snmp_walk_init(struct mib_tree *tree, struct mib_walk_state *walk, const struct oid *oid, struct snmp_pdu *c)
 {
   mib_tree_walk_init(walk, tree);
 
-  snmp_vb_to_tx(data->p, oid, data->c);
+  snmp_vb_to_tx(c->p, oid, c);
 
-  mib_node_u *node = mib_tree_find(tree, walk, &data->c->sr_vb_start->name);
+  mib_node_u *node = mib_tree_find(tree, walk, &c->sr_vb_start->name);
 
   // TODO hide me in mib_tree code
   /* mib_tree_find() returns NULL if the oid is longer than existing any path */
@@ -1079,7 +1080,7 @@ snmp_walk_init(struct mib_tree *tree, struct mib_walk_state *walk, const struct 
 
 // TODO alter the varbind
 struct mib_leaf *
-snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_data *data)
+snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_pdu *c)
 {
   ASSUME(tree && walk);
 
@@ -1093,52 +1094,52 @@ snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_d
 
   if (mib_node_is_leaf(node) && leaf->call_next)
   {
-    const struct oid *oid = &data->c->sr_vb_start->name;
+    const struct oid *oid = &c->sr_vb_start->name;
     if (mib_tree_walk_oid_compare(walk, oid) > 0)
     {
-      int old = snmp_oid_size(&data->c->sr_vb_start->name);
+      int old = snmp_oid_size(&c->sr_vb_start->name);
       if (mib_tree_walk_to_oid(walk,
-	  &data->c->sr_vb_start->name, 20 * sizeof(u32)))
+	  &c->sr_vb_start->name, 20 * sizeof(u32)))
       {
 	snmp_log("walk_next copy failed");
 	return NULL;
       }
 
-      int new = snmp_oid_size(&data->c->sr_vb_start->name);
-      data->c->buffer += (new - old);
+      int new = snmp_oid_size(&c->sr_vb_start->name);
+      c->buffer += (new - old);
     }
 
-    found = !leaf->call_next(walk, data);
+    found = !leaf->call_next(walk, c);
   }
-  else if (mib_node_is_leaf(node) && LOAD_U8(data->c->sr_vb_start->name.include))
+  else if (mib_node_is_leaf(node) && LOAD_U8(c->sr_vb_start->name.include))
   {
     found = 1;
-    STORE_U8(data->c->sr_vb_start->name.include, 0);
+    STORE_U8(c->sr_vb_start->name.include, 0);
   }
 
-  const struct oid *oid = &data->c->sr_vb_start->name;
+  const struct oid *oid = &c->sr_vb_start->name;
   u32 skip = (walk->id_pos < LOAD_U8(oid->n_subid)) ?
     LOAD_U32(oid->ids[walk->id_pos]) : 0;
   while (!found && (leaf = mib_tree_walk_next_leaf(tree, walk, skip)) != NULL)
   {
     /* mib_tree_walk_next() forces VarBind's name OID overwriting */
-    int old = snmp_oid_size(&data->c->sr_vb_start->name);
+    int old = snmp_oid_size(&c->sr_vb_start->name);
     // TODO autogrow
-    if (mib_tree_walk_to_oid(walk, &data->c->sr_vb_start->name, 20 * sizeof(u32)))
+    if (mib_tree_walk_to_oid(walk, &c->sr_vb_start->name, 20 * sizeof(u32)))
     {
       snmp_log("walk_next copy failed");
       return NULL;
     }
 
-    int new = snmp_oid_size(&data->c->sr_vb_start->name);
-    data->c->buffer += (new - old);
+    int new = snmp_oid_size(&c->sr_vb_start->name);
+    c->buffer += (new - old);
 
-    if (leaf->call_next && !leaf->call_next(walk, data))
+    if (leaf->call_next && !leaf->call_next(walk, c))
       found = 1;
     else if (!leaf->call_next)
       found = 1;
 
-    oid = &data->c->sr_vb_start->name;
+    oid = &c->sr_vb_start->name;
     skip = (walk->id_pos < LOAD_U8(oid->n_subid)) ?
       LOAD_U32(oid->ids[walk->id_pos]) : 0;
   }
@@ -1150,9 +1151,9 @@ snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_d
 }
 
 enum snmp_search_res
-snmp_walk_fill(struct mib_leaf *leaf, struct mib_walk_state *walk, struct snmp_data *data)
+snmp_walk_fill(struct mib_leaf *leaf, struct mib_walk_state *walk, struct snmp_pdu *c)
 {
-  struct agentx_varbind *vb = data->c->sr_vb_start;
+  struct agentx_varbind *vb = c->sr_vb_start;
 
   if (!leaf)
     return SNMP_SEARCH_NO_OBJECT;
@@ -1177,15 +1178,15 @@ snmp_walk_fill(struct mib_leaf *leaf, struct mib_walk_state *walk, struct snmp_d
 
   snmp_log("walk_fill got size %u based on lt %u ls %u, calling filler()", size, leaf->type, leaf->size);
 
-  if (size >= data->c->size)
+  if (size >= c->size)
   {
-    snmp_log("walk_fill small buffer size %d to %d", size, data->c->size);
-    snmp_manage_tbuf(data->p, data->c);
+    snmp_log("walk_fill small buffer size %d to %d", size, c->size);
+    snmp_manage_tbuf(c->p, c);
   }
 
-  enum snmp_search_res res = leaf->filler(walk, data);
+  enum snmp_search_res res = leaf->filler(walk, c);
 
-  vb = data->c->sr_vb_start;
+  vb = c->sr_vb_start;
 
   if (res != SNMP_SEARCH_OK)
     snmp_set_varbind_type(vb, snmp_search_res_to_type(res));

@@ -169,7 +169,7 @@ snmp_simple_response(struct snmp_proto *p, enum agentx_response_errs error, u16 
 {
   sock *sk = p->sock;
   struct snmp_pdu c;
-  snmp_pdu_context(&c, sk);
+  snmp_pdu_context(&c, p, sk);
 
   ASSUME(c.size >= sizeof(struct agentx_response));
 
@@ -193,7 +193,7 @@ open_pdu(struct snmp_proto *p, struct oid *oid)
   sock *sk = p->sock;
 
   struct snmp_pdu c;
-  snmp_pdu_context(&c, sk);
+  snmp_pdu_context(&c, p, sk);
 
 #define TIMEOUT_SIZE sizeof(u32) /* 1B timeout, 3B zero padding */
 
@@ -247,7 +247,7 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
   sock *sk = p->sock;
 
   struct snmp_pdu c;
-  snmp_pdu_context(&c, sk);
+  snmp_pdu_context(&c, p, sk);
 
 #define UPTIME_SIZE \
   sizeof( struct { u32 vb_type; u32 oid_hdr; u32 ids[4]; } )
@@ -352,7 +352,7 @@ un_register_pdu(struct snmp_proto *p, struct oid *oid, u32 bound, uint index, en
   const struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, p->p.cf);
   sock *sk = p->sock;
   struct snmp_pdu c;
-  snmp_pdu_context(&c, sk);
+  snmp_pdu_context(&c, p, sk);
 
 #define BOUND_SIZE sizeof(u32)
   /* conditional +4 for upper-bound (optinal field) */
@@ -441,7 +441,7 @@ close_pdu(struct snmp_proto *p, enum agentx_close_reasons reason)
 {
   sock *sk = p->sock;
   struct snmp_pdu c;
-  snmp_pdu_context(&c, sk);
+  snmp_pdu_context(&c, p, sk);
 
 #define REASON_SIZE sizeof(u32)
   if (c.size < AGENTX_HEADER_SIZE + REASON_SIZE)
@@ -538,7 +538,7 @@ parse_test_set_pdu(struct snmp_proto *p, byte * const pkt_start)
 
   sock *sk = p->sock;
   struct snmp_pdu c;
-  snmp_pdu_context(&c, sk);
+  snmp_pdu_context(&c, p, sk);
 
   if (c.size < AGENTX_HEADER_SIZE)
   {
@@ -601,7 +601,7 @@ parse_sets_pdu(struct snmp_proto *p, byte * const pkt_start, enum agentx_respons
   }
 
   struct snmp_pdu c;
-  snmp_pdu_context(&c, p->sock);
+  snmp_pdu_context(&c, p, p->sock);
   if (c.size < sizeof(struct agentx_response))
   {
     snmp_log("parse_sets_pdu small buffer");
@@ -1081,18 +1081,14 @@ void
 snmp_get_pdu(struct snmp_proto *p, struct snmp_pdu *c, const struct oid *o_start, struct mib_walk_state *walk)
 {
   snmp_log("snmp_get_pdu()");
-  struct snmp_data d = {
-    .p = p,
-    .c = c,
-  };
 
   struct mib_leaf *leaf;
-  leaf = snmp_walk_init(p->mib_tree, walk, o_start, &d);
+  leaf = snmp_walk_init(p->mib_tree, walk, o_start, c);
 
   snmp_log("found node %p", leaf);
 
   enum snmp_search_res res;
-  res = snmp_walk_fill(leaf, walk, &d);
+  res = snmp_walk_fill(leaf, walk, c);
 
   snmp_log("fill result %u", res);
 
@@ -1103,16 +1099,11 @@ snmp_get_pdu(struct snmp_proto *p, struct snmp_pdu *c, const struct oid *o_start
 int
 snmp_get_next_pdu(struct snmp_proto *p, struct snmp_pdu *c, const struct oid *o_start, struct mib_walk_state *walk)
 {
-  struct snmp_data d = {
-    .p = p,
-    .c = c,
-  };
-
-  (void) snmp_walk_init(p->mib_tree, walk, o_start, &d);
-  struct mib_leaf *leaf = snmp_walk_next(p->mib_tree, walk, &d);
+  (void) snmp_walk_init(p->mib_tree, walk, o_start, c);
+  struct mib_leaf *leaf = snmp_walk_next(p->mib_tree, walk, c);
 
   enum snmp_search_res res;
-  res = snmp_walk_fill(leaf, walk, &d);
+  res = snmp_walk_fill(leaf, walk, c);
 
   if (res != SNMP_SEARCH_OK)
     snmp_set_varbind_type(c->sr_vb_start, AGENTX_END_OF_MIB_VIEW);
@@ -1204,7 +1195,7 @@ parse_gets_pdu(struct snmp_proto *p, byte * const pkt_start)
 
   sock *sk = p->sock;
   struct snmp_pdu c;
-  snmp_pdu_context(&c, sk);
+  snmp_pdu_context(&c, p, sk);
 
   /*
    * Get-Bulk processing stops if all the varbind have type END_OF_MIB_VIEW
@@ -1396,7 +1387,7 @@ snmp_ping(struct snmp_proto *p)
 
   sock *sk = p->sock;
   struct snmp_pdu c;
-  snmp_pdu_context(&c, sk);
+  snmp_pdu_context(&c, p, sk);
 
   if (c.size < AGENTX_HEADER_SIZE)
     return;
@@ -1480,11 +1471,11 @@ snmp_manage_tbuf2(struct snmp_proto *p, void **ptr, struct snmp_pdu *c)
 }
 
 void
-snmp_tbuf_reserve(struct snmp_data *data, size_t size)
+snmp_tbuf_reserve(struct snmp_pdu *c, size_t size)
 {
-  if (size > data->c->size)
+  if (size > c->size)
   {
-    snmp_manage_tbuf(data->p, data->c);
+    snmp_manage_tbuf(c->p, c);
   }
 }
 

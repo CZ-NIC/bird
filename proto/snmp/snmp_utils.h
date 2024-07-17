@@ -62,7 +62,7 @@ void snmp_varbind_duplicate_hdr(struct snmp_proto *p, struct agentx_varbind **vb
  */
 void snmp_session(const struct snmp_proto *p, struct agentx_header *h);
 int snmp_has_context(const struct agentx_header *h);
-void snmp_pdu_context(struct snmp_pdu *pdu, sock *sk);
+void snmp_pdu_context(struct snmp_pdu *pdu, struct snmp_proto *p, sock *sk);
 struct oid *snmp_oid_duplicate(pool *pool, const struct oid *oid);
 struct oid *snmp_oid_blank(struct snmp_proto *p);
 
@@ -114,8 +114,8 @@ enum agentx_type snmp_search_res_to_type(enum snmp_search_res res);
 /*
  * SNMP MIB tree walking
  */
-struct mib_leaf *snmp_walk_init(struct mib_tree *tree, struct mib_walk_state *state, const struct oid *start_rx, struct snmp_data *data);
-struct mib_leaf *snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *state, struct snmp_data *data);
-enum snmp_search_res snmp_walk_fill(struct mib_leaf *leaf, struct mib_walk_state *state, struct snmp_data *data);
+struct mib_leaf *snmp_walk_init(struct mib_tree *tree, struct mib_walk_state *state, const struct oid *start_rx, struct snmp_pdu *context);
+struct mib_leaf *snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *state, struct snmp_pdu *context);
+enum snmp_search_res snmp_walk_fill(struct mib_leaf *leaf, struct mib_walk_state *state, struct snmp_pdu *context);
 
 #endif
