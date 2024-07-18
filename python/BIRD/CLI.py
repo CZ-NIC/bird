@@ -1,3 +1,5 @@
+from . import ShowRoute
+
 class Transport:
     pass
 
@@ -20,4 +22,8 @@ class CLI:
             cmd.append("table")
             cmd.append(t)
 
-        return await self.transport.send_cmd(*cmd)
+        result = await self.transport.send_cmd(*cmd)
+        if len(result["err"]):
+            raise Exception(f"Command {cmd} returned {result['err'].decode()}, stdout={result['out'].decode()}")
+
+        return ShowRoute.parse(result["out"].decode())

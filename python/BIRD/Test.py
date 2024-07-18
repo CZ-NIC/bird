@@ -203,8 +203,7 @@ class Test:
                     ]
 
         print(*[
-            f["out"].decode()
-            for f in await asyncio.gather(*[
+            await asyncio.gather(*[
                 where.show_route()
                 for where in machines
                 ])
