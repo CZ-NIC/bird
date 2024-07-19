@@ -1,0 +1,80 @@
+tables:
+  master4:
+    networks: {}
+  master6:
+    networks:
+      2001:db8:cc00::/40:
+        routes:
+        - args: '* (200)'
+          dest: unreachable
+          proto: STARTUP
+          when: true
+      2001:db8:eee1::/48:
+        routes:
+        - args: '* (170)'
+          dest: unreachable
+          proto: p170
+          when: true
+      2001:db8:eee2::/48:
+        routes:
+        - args: '* (170)'
+          dest: unreachable
+          proto: p170
+          when: true
+      2001:db8:eee3::/48:
+        routes:
+        - args: '* (170)'
+          dest: unreachable
+          proto: p170
+          when: true
+      2001:db8:eee4::/48:
+        routes:
+        - args: '* (170)'
+          dest: unreachable
+          proto: p170
+          when: true
+      2001:db8:eee5::/48:
+        routes:
+        - args: '* (170)'
+          dest: unreachable
+          proto: p170
+          when: true
+      2001:db8:eee6::/48:
+        routes:
+        - args: '* (170)'
+          dest: unreachable
+          proto: p170
+          when: true
+version: v3.0-alpha2-660-g62145d08-x
+---
+tables:
+  master6:
+    networks:
+      2001:db8:cc00::/40:
+        routes:
+        - args: '* (100) [AS1i]'
+          dest: unicast
+          nexthop:
+          - iface: L
+            nexthop: 2001:db8::1
+          proto: LINK
+          when: true
+      2001:db8:eee4::/48:
+        routes:
+        - args: '* (100) [AS170i]'
+          dest: unicast
+          nexthop:
+          - iface: L
+            nexthop: 2001:db8::1
+          proto: LINK
+          when: true
+      2001:db8:eee5::/48:
+        routes:
+        - args: '* (100) [AS170i]'
+          dest: unicast
+          nexthop:
+          - iface: L
+            nexthop: 2001:db8::1
+          proto: LINK
+          when: true
+version: v3.0-alpha2-660-g62145d08-x

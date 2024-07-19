@@ -1,0 +1,26 @@
+tables:
+  master4:
+    networks: {}
+  master6:
+    networks:
+      2001:db8:cc00::/40:
+        routes:
+        - args: '* (200)'
+          dest: unreachable
+          proto: STARTUP
+          when: true
+version: v3.0-alpha2-660-g62145d08-x
+---
+tables:
+  master6:
+    networks:
+      2001:db8:cc00::/40:
+        routes:
+        - args: '* (100) [AS1i]'
+          dest: unicast
+          nexthop:
+          - iface: L
+            nexthop: 2001:db8::1
+          proto: LINK
+          when: true
+version: v3.0-alpha2-660-g62145d08-x

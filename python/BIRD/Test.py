@@ -4,12 +4,65 @@ import jinja2
 import os
 import pathlib
 import sys
+import yaml
 
 sys.path.insert(0, "/home/maria/flock")
 
 from flock.Hypervisor import Hypervisor
 from flock.Machine import Machine
 from .CLI import CLI, Transport
+
+# TODO: move this to some aux file
+class Differs(Exception):
+    def __init__(self, a, b, tree):
+        self.a = a
+        self.b = b
+        self.tree = tree
+
+    @classmethod
+    def false(cls, a, b, deep, tree):
+        if deep:
+            raise cls(a, b, tree)
+        else:
+            return False
+
+def deep_eq(a, b, deep=False):
+    if a == b:
+        return True
+
+    # Do not iterate over strings
+    if type(a) is str and type(b) is str:
+        return Differs.false(a, b, deep, tree=[])
+
+    try:
+        for k,v in a.items():
+            try:
+                deep_eq(v, b[k], True)
+            except Differs as d:
+                d.tree.append(k)
+                raise d
+            except KeyError:
+                return Differs.false(v, None, deep, tree=[k])
+
+        for k in b:
+            if not k in a:
+                return Differs.false(None, b[k], deep, tree=[k])
+
+    except AttributeError:
+        try:
+            if len(a) != len(b):
+                return Differs.false(len(a), len(b), deep, tree=[len])
+
+            for i in range(len(a)):
+                try:
+                    deep_eq(a[i], b[i])
+                except Differs as d:
+                    d.tree.append(i)
+                    raise d
+        except TypeError:
+            return Differs.false(a, b, deep, [])
+
+    return True
 
 class MinimalistTransport(Transport):
     def __init__(self, socket, machine):
@@ -106,17 +159,25 @@ class Test:
     ipv6_link_pxlen = 64
     ipv4_link_pxlen = 28
 
+    SAVE = 1
+    CHECK = 2
+
+    show_difs = False
+
     # 198.51.100.0/24, 203.0.113.0/24
 
-    def __init__(self, name):
+    def __init__(self, name, mode: int):
         self.name = name
         self.hypervisor = Hypervisor(name)
         self.machine_index = {}
+        self.mode = mode
         self._started = None
         self._starting = False
 
         self.ipv6_pxgen = self.ipv6_prefix.subnets(new_prefix=self.ipv6_link_pxlen)
         self.ipv4_pxgen = self.ipv4_prefix.subnets(new_prefix=self.ipv4_link_pxlen)
+
+        self.route_dump_id = 0
 
     async def hcom(self, *args):
         if self._started is None:
@@ -190,10 +251,15 @@ class Test:
         await asyncio.gather(*[ v.cleanup() for v in self.machine_index.values() ])
         await self.hcom("stop", True)
 
-    async def route_dump(self, timeout=None, machines=None):
-        if timeout is not None:
-            await asyncio.sleep(timeout)
+    async def route_dump(self, timeout, name, machines=None, check_timeout=10, check_retry_timeout=0.5):
+        # Compile dump ID
+        self.route_dump_id += 1
+        if name is None:
+            name = f"dump-{self.route_dump_id:04d}.yaml"
+        else:
+            name = f"dump-{self.route_dump_id:04d}-{name}.yaml"
 
+        # Collect machines to dump
         if machines is None:
             machines = self.machine_index.values()
         else:
@@ -202,16 +268,67 @@ class Test:
                     for m in machines
                     ]
 
-        print(*[
-            await asyncio.gather(*[
+        # Define the obtainer function
+        async def obtain():
+            dump = await asyncio.gather(*[
                 where.show_route()
                 for where in machines
                 ])
-            ])
+            for d in dump:
+                for t in d["tables"].values():
+                    for n in t["networks"].values():
+                        for r in n["routes"]:
+                            assert("when" in r)
+                            r["when"] = True
+            return dump
 
+        match self.mode:
+            case Test.SAVE:
+                await asyncio.sleep(timeout)
+                dump = await obtain()
+                with open(name, "w") as y:
+                    yaml.dump_all(dump, y)
+                print(f"{name}\t{self.route_dump_id}\t[ SAVED ]")
+
+            case Test.CHECK:
+                with open(name, "r") as y:
+                    c = [*yaml.safe_load_all(y)]
+
+                seen = []
+                try:
+                    async with asyncio.timeout(check_timeout) as to:
+                        while True:
+                            dump = await obtain()
+                            try:
+                                deep_eq(c, dump, True)
+#                            if deep_eq(c, dump):
+                                spent = asyncio.get_running_loop().time() - to.when() + check_timeout
+                                print(f"{name}\t{self.route_dump_id}\t[  OOK  ]\t{spent:.6f}s")
+                                return True
+                            except Differs as d:
+                                if self.show_difs:
+                                    print(f"Differs at {' -> '.join([str(s) for s in reversed(d.tree)])}: {d.a} != {d.b}")
+
+                            seen.append(dump)
+                            await asyncio.sleep(check_retry_timeout)
+                except TimeoutError as e:
+                    print(f"{name}\t{self.route_dump_id}\t[ BAD  ]")
+                    for q in range(len(seen)):
+                        with open(f"__result_bad_{q}__{name}", "w") as y:
+                            yaml.dump_all(seen[q], y)
+
+                    return False
+
+            case _:
+                raise Exception("Invalid test mode")
 
 if __name__ == "__main__":
     name = sys.argv[1]
+    mode = Test.CHECK
+
+    if name == "-s":
+        name = sys.argv[2]
+        mode = Test.SAVE
 
     p = (pathlib.Path(__file__).parent.parent.parent / "flock" / name).absolute()
     sys.path.insert(0, str(p))
@@ -222,4 +339,4 @@ if __name__ == "__main__":
     import test
 
     os.chdir(p)
-    asyncio.run(test.ThisTest(name).run())
+    asyncio.run(test.ThisTest(name, mode).run())

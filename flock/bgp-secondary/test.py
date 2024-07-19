@@ -17,11 +17,34 @@ class ThisTest(Test):
         # Start machines and links
         await self.start()
 
-        # Partial test
-        await self.route_dump(5)
+        # Startup check
+        await self.route_dump(10, "startup")
 
-        for p in ("p170", "p180", "p190", "p200"):
+        wtb = ("p170", "p180", "p190", "p200")
+        btw = reversed(wtb)
+
+        # Enable worst to best
+        for p in wtb:
             await self.src.enable(p)
-            await self.route_dump(1)
+            await self.route_dump(1, f"enable-{p}")
+
+        # Disable worst to best
+        for p in wtb:
+            await self.src.disable(p)
+            await self.route_dump(1, f"disable-{p}")
+
+        # Enable best to worst
+        for p in btw:
+            await self.src.enable(p)
+            await self.route_dump(1, f"enable-{p}")
+
+        # Disable worst to best
+        for p in btw:
+            await self.src.disable(p)
+            await self.route_dump(1, f"disable-{p}")
+
+        # Re-enable all at once
+        await asyncio.gather(*[ self.src.enable(p) for p in wtb ])
+        await self.route_dump(5, f"add-all")
 
         await self.cleanup()

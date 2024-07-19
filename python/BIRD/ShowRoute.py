@@ -21,25 +21,20 @@ class CLIParser:
             return
 
         self.enter(groups)
-        print("subparser inited", self, self.result)
 
     def parse(self, line: str):
-        print(f"in {self} parsing line {line}")
         assert(self.cur == None)
         if line is not None:
             for k,v in self.subparsers.items():
-                print(f"trying to match {k} for {v}")
                 if m := k.match(line):
                     self.cur = (c := v(groups=m.groups(), parent=self))
                     while c.cur is not None:
                         c = c.cur
                     return c
         elif self.parent is None:
-            print("overall exit", self, self.result)
             return self
 
         try:
-            print(f"exiting {self} with result {self.result}")
             self.exit()
             self.parent.cur = None
             return self.parent.parse(line)
@@ -67,7 +62,6 @@ class ShowRouteParser(CLIParser):
     def __init__(self):
         super().__init__()
         self.result["tables"] = {}
-        print("parser init", self, self.result)
 
 @subparser(ShowRouteParser)
 class NothingParser(CLIParser):
@@ -119,7 +113,7 @@ class RouteParser(CLIParser):
 class NextHopParser(CLIParser):
     entryRegex = re.compile("\\s+via ([0-9a-f:.]+) on (.*)")
     def enter(self, groups):
-        self.result = { 
+        self.result = {
                 k: v for k,v in zip(("nexthop", "iface"), groups)
                 }
 
@@ -128,11 +122,9 @@ class NextHopParser(CLIParser):
 
 def parse(data: str):
     parser = ShowRouteParser()
-    print("created parser", parser)
     for line in data.split("\n"):
         parser = parser.parse(line)
 
     parser = parser.parse(None)
 
-    print("returning result", parser.result)
     return parser.result
