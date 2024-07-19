@@ -10,6 +10,14 @@ class CLI:
     async def down(self):
         return await self.transport.send_cmd("down")
 
+    async def configure(self, file=None, undo=False):
+        if undo:
+            return await self.transport.send_cmd("configure", "undo")
+        if file:
+            return await self.transport.send_cmd("configure", f'"{file}"')
+
+        return await self.transport.send_cmd("configure")
+
     async def enable(self, proto: str):
         return await self.transport.send_cmd("enable", proto)
 

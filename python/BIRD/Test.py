@@ -132,12 +132,13 @@ class BIRDInstance(CLI):
                     )
                 )
 
-    async def start(self, test):
-        self.bindir.copy(self.workdir)
-
+    def write_config(self, test):
         with (open(self.conf, "r") as s, open(self.workdir / "bird.conf", "w") as f):
             f.write(jinja2.Environment().from_string(s.read()).render(t=test))
 
+    async def start(self, test):
+        self.bindir.copy(self.workdir)
+        self.write_config(test)
         await test.hcom("run_in", self.mach.name, "./bird", "-l")
 
     async def cleanup(self):

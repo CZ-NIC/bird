@@ -1,0 +1,200 @@
+tables:
+  master4:
+    networks: {}
+  master6:
+    networks:
+      2001:db8:cc00::/40:
+        routes:
+        - args: '* (200)'
+          dest: unreachable
+          preference: '200'
+          proto: STARTUP
+          source: static
+      2001:db8:eee1::/48:
+        routes:
+        - args: '* (190)'
+          dest: unreachable
+          preference: '190'
+          proto: p190
+          source: static
+        - args: (180)
+          dest: unreachable
+          preference: '180'
+          proto: p180
+          source: static
+        - args: (170)
+          dest: unreachable
+          preference: '170'
+          proto: p170
+          source: static
+      2001:db8:eee2::/48:
+        routes:
+        - args: '* (190)'
+          dest: unreachable
+          preference: '190'
+          proto: p190
+          source: static
+        - args: (180)
+          dest: unreachable
+          preference: '180'
+          proto: p180
+          source: static
+        - args: (170)
+          dest: unreachable
+          preference: '170'
+          proto: p170
+          source: static
+      2001:db8:eee3::/48:
+        routes:
+        - args: '* (190)'
+          dest: unreachable
+          preference: '190'
+          proto: p190
+          source: static
+        - args: (180)
+          dest: unreachable
+          preference: '180'
+          proto: p180
+          source: static
+        - args: (170)
+          dest: unreachable
+          preference: '170'
+          proto: p170
+          source: static
+      2001:db8:eee4::/48:
+        routes:
+        - args: '* (190)'
+          dest: unreachable
+          preference: '190'
+          proto: p190
+          source: static
+        - args: (180)
+          dest: unreachable
+          preference: '180'
+          proto: p180
+          source: static
+        - args: (170)
+          dest: unreachable
+          preference: '170'
+          proto: p170
+          source: static
+      2001:db8:eee5::/48:
+        routes:
+        - args: '* (190)'
+          dest: unreachable
+          preference: '190'
+          proto: p190
+          source: static
+        - args: (180)
+          dest: unreachable
+          preference: '180'
+          proto: p180
+          source: static
+        - args: (170)
+          dest: unreachable
+          preference: '170'
+          proto: p170
+          source: static
+      2001:db8:eee6::/48:
+        routes:
+        - args: '* (190)'
+          dest: unreachable
+          preference: '190'
+          proto: p190
+          source: static
+        - args: (180)
+          dest: unreachable
+          preference: '180'
+          proto: p180
+          source: static
+        - args: (170)
+          dest: unreachable
+          preference: '170'
+          proto: p170
+          source: static
+version: v3.0-alpha2-660-g62145d08-x
+---
+tables:
+  master6:
+    networks:
+      2001:db8:cc00::/40:
+        routes:
+        - args: '* (100) [AS1i]'
+          bgp_local_pref: '100'
+          bgp_next_hop: 2001:db8::1 fe80::bc92:adff:fea1:2c5c
+          bgp_origin: IGP
+          bgp_path: '1'
+          dest: unicast
+          from: 2001:db8::1
+          igp_metric: '0'
+          nexthop:
+          - iface: L
+            nexthop: 2001:db8::1
+          preference: '100'
+          proto: LINK
+          source: BGP
+      2001:db8:eee2::/48:
+        routes:
+        - args: '* (100) [AS190i]'
+          bgp_local_pref: '100'
+          bgp_next_hop: 2001:db8::1 fe80::bc92:adff:fea1:2c5c
+          bgp_origin: IGP
+          bgp_path: 1 190
+          dest: unicast
+          from: 2001:db8::1
+          igp_metric: '0'
+          nexthop:
+          - iface: L
+            nexthop: 2001:db8::1
+          preference: '100'
+          proto: LINK
+          source: BGP
+      2001:db8:eee3::/48:
+        routes:
+        - args: '* (100) [AS180i]'
+          bgp_local_pref: '100'
+          bgp_next_hop: 2001:db8::1 fe80::bc92:adff:fea1:2c5c
+          bgp_origin: IGP
+          bgp_path: 1 180
+          dest: unicast
+          from: 2001:db8::1
+          igp_metric: '0'
+          nexthop:
+          - iface: L
+            nexthop: 2001:db8::1
+          preference: '100'
+          proto: LINK
+          source: BGP
+      2001:db8:eee4::/48:
+        routes:
+        - args: '* (100) [AS190i]'
+          bgp_local_pref: '100'
+          bgp_next_hop: 2001:db8::1 fe80::bc92:adff:fea1:2c5c
+          bgp_origin: IGP
+          bgp_path: 1 190
+          dest: unicast
+          from: 2001:db8::1
+          igp_metric: '0'
+          nexthop:
+          - iface: L
+            nexthop: 2001:db8::1
+          preference: '100'
+          proto: LINK
+          source: BGP
+      2001:db8:eee5::/48:
+        routes:
+        - args: '* (100) [AS170i]'
+          bgp_local_pref: '100'
+          bgp_next_hop: 2001:db8::1 fe80::bc92:adff:fea1:2c5c
+          bgp_origin: IGP
+          bgp_path: 1 170
+          dest: unicast
+          from: 2001:db8::1
+          igp_metric: '0'
+          nexthop:
+          - iface: L
+            nexthop: 2001:db8::1
+          preference: '100'
+          proto: LINK
+          source: BGP
+version: v3.0-alpha2-660-g62145d08-x
