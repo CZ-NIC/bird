@@ -120,6 +120,31 @@ class NextHopParser(CLIParser):
     def exit(self):
         self.parent.result["nexthop"].append(self.result)
 
+@subparser(RouteParser)
+class AttributeParser(CLIParser):
+    entryRegex = re.compile("\\s+([a-zA-Z_.0-9]+): (.*)$")
+    def enter(self, groups):
+        self.key, self.value = groups
+
+    def exit(self):
+        if self.key in self.parent.result:
+            raise ParserException(f"Duplicate key {self.key} in route")
+        self.parent.result[self.key] = self.value
+
+@subparser(RouteParser)
+class InternalRouteHandlingValuesParser(CLIParser):
+    entryRegex = re.compile("\\s+Internal route handling values: (\\d+)L (\\d+)G (\\d+)S id (\\d+)$")
+    def enter(self, groups):
+        self.result = {
+                k: v for k,v in zip(("!_l", "!_g", "!_s", "!_id"), groups)
+                }
+
+    def exit(self):
+        for k,v in self.result.items():
+            if k in self.parent.result:
+                raise ParserException(f"Duplicate internal value {k} in route")
+            self.parent.result[k] = v
+
 def parse(data: str):
     parser = ShowRouteParser()
     for line in data.split("\n"):

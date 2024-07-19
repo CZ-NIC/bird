@@ -251,7 +251,7 @@ class Test:
         await asyncio.gather(*[ v.cleanup() for v in self.machine_index.values() ])
         await self.hcom("stop", True)
 
-    async def route_dump(self, timeout, name, machines=None, check_timeout=10, check_retry_timeout=0.5):
+    async def route_dump(self, timeout, name, full=True, machines=None, check_timeout=10, check_retry_timeout=0.5):
         # Compile dump ID
         self.route_dump_id += 1
         if name is None:
@@ -268,18 +268,24 @@ class Test:
                     for m in machines
                     ]
 
+        # Compile command
+        args = []
+        if full:
+            args.append("all")
+
         # Define the obtainer function
         async def obtain():
             dump = await asyncio.gather(*[
-                where.show_route()
+                where.show_route(args=args)
                 for where in machines
                 ])
             for d in dump:
                 for t in d["tables"].values():
                     for n in t["networks"].values():
                         for r in n["routes"]:
-                            assert("when" in r)
-                            r["when"] = True
+                            for k in ("when", "!_l", "!_g", "!_s", "!_id"):
+                                assert(k in r)
+                                del r[k]
             return dump
 
         match self.mode:
