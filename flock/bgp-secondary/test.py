@@ -4,7 +4,7 @@ import asyncio
 from python.BIRD.Test import Test, BIRDInstance
 
 class ThisTest(Test):
-    async def test(self):
+    async def prepare(self):
         # Set epoch
         self.epoch = 0
 
@@ -17,9 +17,7 @@ class ThisTest(Test):
                 "L": await self.link("L", "src", "dest")
                 }
 
-        # Start machines and links
-        await self.start()
-
+    async def test(self):
         # Startup check
         await self.route_dump(10, "startup")
 
@@ -53,7 +51,11 @@ class ThisTest(Test):
         # Update configuration
         self.epoch = 1
         self.src.write_config(test=self)
-        await self.src.configure()
+        await self.src.configure(expected_logs=[
+            f"<INFO> Reconfiguring$",
+            f"<INFO> Reloading channel LINK.ipv6",
+            f"<INFO> Reconfigured$",
+            ])
         await self.route_dump(5, f"check-reconfig")
 
         # Disable worst to best
@@ -79,7 +81,11 @@ class ThisTest(Test):
         # Update configuration once again
         self.epoch = 2
         self.src.write_config(test=self)
-        await self.src.configure()
+        await self.src.configure(expected_logs=[
+            f"<INFO> Reconfiguring$",
+            f"<INFO> Reloading channel LINK.ipv6",
+            f"<INFO> Reconfigured$",
+            ])
         await self.route_dump(5, f"check-reconfig")
 
         # Disable best to worst
@@ -102,5 +108,9 @@ class ThisTest(Test):
             await self.src.enable(p)
             await self.route_dump(1, f"enable-{p}")
 
-        # Finish
+        # Pre-cleanup log checker
+        self.src.default_log_checker.append(f"{self.src.logprefix} <RMT> LINK: Received: Administrative shutdown")
+        self.dest.default_log_checker.append(f"{self.dest.logprefix} <RMT> LINK: Received: Administrative shutdown")
+
+        # Regular cleanup
         await self.cleanup()

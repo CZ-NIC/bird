@@ -11,6 +11,7 @@ sys.path.insert(0, "/home/maria/flock")
 from flock.Hypervisor import Hypervisor
 from flock.Machine import Machine
 from .CLI import CLI, Transport
+from .LogChecker import LogChecker, LogExpectedFuture
 
 # TODO: move this to some aux file
 class Differs(Exception):
@@ -119,11 +120,18 @@ class BIRDBinDir:
 default_bindir = BIRDBinDir.get(".")
 
 class BIRDInstance(CLI):
-    def __init__(self, mach: Machine, bindir=None, conf=None):
+    logprefix = "^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \[\d{4}\]"
+
+    def __init__(self, mach: Machine, bindir=None, conf=None, logs=None):
         self.mach = mach
         self.workdir = self.mach.workdir
         self.bindir = BIRDBinDir.get(bindir) if bindir is not None else default_bindir
         self.conf = conf if conf is not None else f"bird_{mach.name}.conf"
+        if logs is None:
+            self.default_log_checker = LogChecker(name=self.workdir/"bird.log")
+            self.logs = [ self.default_log_checker ]
+        else:
+            self.logs = logs
 
         super().__init__(
                 transport=MinimalistTransport(
@@ -134,12 +142,61 @@ class BIRDInstance(CLI):
 
     def write_config(self, test):
         with (open(self.conf, "r") as s, open(self.workdir / "bird.conf", "w") as f):
-            f.write(jinja2.Environment().from_string(s.read()).render(t=test))
+            f.write(jinja2.Environment().from_string(s.read()).render(t=test, m=self))
+
+    async def logchecked(self, coro, pattern):
+        if type(pattern) is str:
+            exp = [ LogExpectedFuture(f"{self.logprefix} {pattern}") ]
+        else:
+            exp = [ LogExpectedFuture(f"{self.logprefix} {p}") for p in pattern ]
+
+        self.default_log_checker.expected += exp
+
+        async with asyncio.timeout(5):
+            await asyncio.gather(
+                    coro,
+                    *[ e.done for e in exp ]
+                    )
+
+        for e in exp:
+            self.default_log_checker.expected.remove(e)
+
+    async def down(self):
+        await self.logchecked(
+                super().down(),
+                [
+                "<INFO> Shutting down",
+                "<FATAL> Shutdown completed",
+                ]
+                )
+
+    async def configure(self, *args, expected_logs=f"<INFO> Reconfiguring$", **kwargs):
+        await self.logchecked(super().configure(*args, **kwargs), expected_logs)
+
+    async def enable(self, proto: str):
+        await self.logchecked(super().enable(proto), f"<INFO> Enabling protocol {proto}$")
+
+    async def disable(self, proto: str):
+        await self.logchecked(super().disable(proto), f"<INFO> Disabling protocol {proto}$")
 
     async def start(self, test):
         self.bindir.copy(self.workdir)
         self.write_config(test)
+
         await test.hcom("run_in", self.mach.name, "./bird", "-l")
+
+        exp = LogExpectedFuture(f"{self.logprefix} <INFO> Started$")
+        self.default_log_checker.expected.append(exp)
+
+        async def started():
+            async with asyncio.timeout(1):
+                await exp.done
+
+            self.default_log_checker.expected.remove(exp)
+
+        return [
+                l.run() for l in self.logs
+                ] + [ started() ]
 
     async def cleanup(self):
         # Send down command and wait for BIRD to actually finish
@@ -148,8 +205,8 @@ class BIRDInstance(CLI):
             await asyncio.sleep(0.1)
 
         # Remove known files
-        for f in ("bird.conf", "bird.log"):
-            (self.workdir / f).unlink()
+        for f in (self.workdir / "bird.conf", *[ l.name for l in self.logs ]):
+            f.unlink()
 
         self.bindir.cleanup(self.workdir)
 
@@ -176,6 +233,8 @@ class Test:
         self._started = None
         self._starting = False
         self._stopped = None
+
+        self.background_tasks = []
 
         self.ipv6_pxgen = self.ipv6_prefix.subnets(new_prefix=self.ipv6_link_pxlen)
         self.ipv4_pxgen = self.ipv4_prefix.subnets(new_prefix=self.ipv4_link_pxlen)
@@ -251,7 +310,7 @@ class Test:
                 raise NotImplementedError("virtual bridge")
 
     async def start(self):
-        await asyncio.gather(*[ v.start(test=self) for v in self.machine_index.values() ])
+        return await asyncio.gather(*[ v.start(test=self) for v in self.machine_index.values() ])
 
     async def cleanup(self):
         await asyncio.gather(*[ v.cleanup() for v in self.machine_index.values() ])
@@ -261,8 +320,26 @@ class Test:
 
     async def run(self):
         try:
-            await self.test()
+            await self.prepare()
+            tasks = [ t for q in await self.start() for t in q ]
+
+            async def arun():
+                await asyncio.gather(*tasks)
+                raise Exception("No auxiliary task, what?")
+
+            atask = asyncio.create_task(arun())
+
+            async def trun():
+                await self.test()
+                atask.cancel()
+
+            await asyncio.gather(atask, trun())
+
+        except asyncio.exceptions.CancelledError as e:
+            if not atask.cancelled():
+                raise e
         finally:
+            print("cleaning up")
             await self.cleanup()
 
     async def route_dump(self, timeout, name, full=True, machines=None, check_timeout=10, check_retry_timeout=0.5):
@@ -272,6 +349,8 @@ class Test:
             name = f"dump-{self.route_dump_id:04d}.yaml"
         else:
             name = f"dump-{self.route_dump_id:04d}-{name}.yaml"
+
+        print(f"{name}\t{self.route_dump_id}\t", end="", flush=True)
 
         # Collect machines to dump
         if machines is None:
@@ -308,7 +387,7 @@ class Test:
                 dump = await obtain()
                 with open(name, "w") as y:
                     yaml.dump_all(dump, y)
-                print(f"{name}\t{self.route_dump_id}\t[ SAVED ]")
+                print(f"[ SAVED ]")
 
             case Test.CHECK:
                 with open(name, "r") as y:
@@ -323,7 +402,7 @@ class Test:
                                 deep_eq(c, dump, True)
 #                            if deep_eq(c, dump):
                                 spent = asyncio.get_running_loop().time() - to.when() + check_timeout
-                                print(f"{name}\t{self.route_dump_id}\t[  OOK  ]\t{spent:.6f}s")
+                                print(f"[  OOK  ]\t{spent:.6f}s")
                                 return True
                             except Differs as d:
                                 if self.show_difs:
@@ -332,7 +411,7 @@ class Test:
                             seen.append(dump)
                             await asyncio.sleep(check_retry_timeout)
                 except TimeoutError as e:
-                    print(f"{name}\t{self.route_dump_id}\t[ BAD  ]")
+                    print(f"[ BAD  ]")
                     for q in range(len(seen)):
                         with open(f"__result_bad_{q}__{name}", "w") as y:
                             yaml.dump_all(seen[q], y)

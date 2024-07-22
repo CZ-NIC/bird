@@ -1,0 +1,3 @@
+[submodule "python/asyncinotify"]
+	path = python/asyncinotify
+	url = https://github.com/ProCern/asyncinotify.git
