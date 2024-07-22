@@ -4,7 +4,7 @@ import asyncio
 from python.BIRD.Test import Test, BIRDInstance
 
 class ThisTest(Test):
-    async def run(self):
+    async def test(self):
         # Set epoch
         self.epoch = 0
 

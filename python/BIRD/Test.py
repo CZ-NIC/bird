@@ -153,6 +153,7 @@ class BIRDInstance(CLI):
 
         self.bindir.cleanup(self.workdir)
 
+
 class Test:
     ipv6_prefix = ipaddress.ip_network("2001:db8::/32")
     ipv4_prefix = ipaddress.ip_network("192.0.2.0/24")
@@ -174,6 +175,7 @@ class Test:
         self.mode = mode
         self._started = None
         self._starting = False
+        self._stopped = None
 
         self.ipv6_pxgen = self.ipv6_prefix.subnets(new_prefix=self.ipv6_link_pxlen)
         self.ipv4_pxgen = self.ipv4_prefix.subnets(new_prefix=self.ipv4_link_pxlen)
@@ -181,6 +183,9 @@ class Test:
         self.route_dump_id = 0
 
     async def hcom(self, *args):
+        if self._stopped is not None:
+            return
+
         if self._started is None:
             self._started = asyncio.Future()
 
@@ -250,7 +255,15 @@ class Test:
 
     async def cleanup(self):
         await asyncio.gather(*[ v.cleanup() for v in self.machine_index.values() ])
+        self.machine_index = {}
         await self.hcom("stop", True)
+        self._stopped = True
+
+    async def run(self):
+        try:
+            await self.test()
+        finally:
+            await self.cleanup()
 
     async def route_dump(self, timeout, name, full=True, machines=None, check_timeout=10, check_retry_timeout=0.5):
         # Compile dump ID
