@@ -197,7 +197,7 @@ class Test:
         else:
             self._starting = True
             await self.hypervisor.prepare()
-            os.symlink(pathlib.Path("bgp-secondary.log").absolute(), self.hypervisor.basedir / "flock.log")
+            os.symlink(pathlib.Path(f"{self.name}.log").absolute(), self.hypervisor.basedir / "flock.log")
             await self.hypervisor.start()
 
             self._started.set_result(True)
