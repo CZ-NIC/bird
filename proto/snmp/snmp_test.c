@@ -34,6 +34,7 @@ static int t_oid_empty(void);
 static int t_oid_compare(void);
 static int t_oid_prefixize(void);
 static int t_walk_oid_desc(void);
+static int t_walk_oid_compare(void);
 static int t_tree_find(void);
 static int t_tree_traversal(void);
 static int t_tree_leafs(void);
@@ -400,7 +401,8 @@ t_oid_compare(void)
 static struct oid *
 snmp_oid_prefixize(struct snmp_proto *p, const struct oid *oid, struct snmp_pdu *c)
 {
-  struct agentx_varbind *vb = snmp_vb_to_tx(p, oid, c);
+  snmp_vb_to_tx(p, oid, c);
+  struct agentx_varbind *vb = c->sr_vb_start;
   bt_assert(vb->reserved == 0);
   return &vb->name;
 }
@@ -561,7 +563,7 @@ walk_to_oid_one(pool *pool, const struct oid *oid)
   mib_tree_find(tree, &walk, oid);
 
   char buf[1024];
-  struct oid *from_walk = (void *) buf;
+  struct oid *from_walk = (struct oid *) buf;
 
   int r = mib_tree_walk_to_oid(&walk, from_walk,
     (1024 - sizeof(struct oid)) / sizeof(u32));
@@ -684,6 +686,7 @@ t_oid_ancestor(void)
   return 1;
 }
 
+/* really: static int test_snmp_oid_compare(const struct oid **left, const struct oid **right); */
 static int
 test_snmp_oid_compare(const void *left, const void *right)
 {
@@ -762,9 +765,9 @@ t_walk_oid_desc(void)
     int i = xrandom(size);
 
     char buffer[1024];
-    struct oid *oid = (void *) buffer;
+    struct oid *oid = (struct oid *) buffer;
 
-    memcpy(buffer, oids[i], snmp_oid_size(oids[i]));
+    memcpy(oid, oids[i], snmp_oid_size(oids[i]));
 
     struct mib_walk_state walk;
     mib_tree_walk_init(&walk, NULL);
@@ -788,7 +791,6 @@ t_walk_oid_desc(void)
 
 	u32 new = xrandom(upto) + 1;
 	STORE_U8(oid->n_subid, ids + new);
-	ASSERT(snmp_oid_size(oid) < 1024);
 
 	for (u32 i = 0; i < new; i++)
 	  STORE_U32(oid->ids[ids + i], xrandom(OID_MAX_ID));
@@ -814,10 +816,10 @@ t_walk_oid_desc(void)
 	  STORE_U32(oid->ids[split + i], xrandom(OID_MAX_ID));
 
 	int no_change = 1;
-	for (u32 j = 0; j < MIN(ids, split + ext); j++)
+	for (u32 j = 0; j < MIN(ids - split, ext); j++)
 	{
 	  if (LOAD_U32(oid->ids[split + j]) != LOAD_U32(oids[i]->ids[split + j]))
-	    no_change = 1;
+	    no_change = 0;
 	}
 
 	if (no_change)
@@ -834,7 +836,7 @@ t_walk_oid_desc(void)
     mib_tree_walk_init(&walk, tree);
 
     u32 zero = 0;
-    const struct oid *null_oid = (void *) &zero;
+    const struct oid *null_oid = (struct oid *) &zero;
     u32 index = xrandom(size);
 
     bt_assert(mib_tree_walk_is_oid_descendant(&walk, null_oid) == 0);
@@ -848,6 +850,130 @@ t_walk_oid_desc(void)
   lp_restore(tmp_linpool, &tmps);
 
   return 1;
+}
+
+static int
+t_walk_oid_compare(void)
+{
+  lp_state tmps;
+  lp_save(tmp_linpool, &tmps);
+
+  pool *pool = &root_pool;
+
+  struct mib_tree storage, *tree = &storage;
+  mib_tree_init(pool, tree);
+
+  STATIC_ASSERT(ARRAY_SIZE(tree_sizes) > 0);
+  int size = tree_sizes[ARRAY_SIZE(tree_sizes) - 1];
+  ASSERT(size > 0);
+  struct oid **oids = mb_alloc(pool, size * sizeof(struct oid *));
+  struct oid **sorted = mb_alloc(pool, size * sizeof(struct oid *));
+
+  (void) generate_oids(oids, sorted, size, random_oid);
+
+  for (int i = 0; i < size; i++)
+    (void) mib_tree_add(pool, tree, oids[i], 0);
+
+  for (int test = 0; test < size; test++)
+  {
+    int i = xrandom(size);
+
+    char buffer[1024];
+    struct oid *oid = (struct oid *) buffer;
+
+    memcpy(oid, oids[i], snmp_oid_size(oids[i]));
+
+    struct mib_walk_state walk;
+    mib_tree_walk_init(&walk, NULL);
+    (void) mib_tree_find(tree, &walk, oids[i]);
+
+    int type = xrandom(4);
+    switch (type)
+    {
+      case 0:
+	bt_assert(mib_tree_walk_oid_compare(&walk, oids[i]) == 0);
+	break;
+
+      case 1:
+      {
+	/* oid is longer than walk or has same length */
+	u8 ids = LOAD_U8(oid->n_subid);
+	u32 upto = MIN(OID_MAX_LEN - ids, 16);
+
+	if (!upto)
+	  continue;
+
+	u32 new = xrandom(upto) + 1;
+	STORE_U8(oid->n_subid, ids + new);
+	ASSERT(snmp_oid_size(oid) < 1024);
+
+	for (u32 i = 0; i < new; i++)
+	  STORE_U32(oid->ids[ids + i], xrandom(OID_MAX_ID));
+
+
+	bt_assert(mib_tree_walk_oid_compare(&walk, oid) < 0);
+	break;
+      }
+      case 2:
+      case 3:
+      {
+	/* oid is shorter than walk */
+	u8 ids = LOAD_U8(oid->n_subid);
+
+	if (ids == 0 || ids == OID_MAX_LEN)
+	  continue;
+
+	u32 split = (ids > 1) ? xrandom(ids - 1) + 1 : 0;
+	u32 ext = (type == 3) ? xrandom(MIN(OID_MAX_LEN - ids, 16)) : 0;
+
+	STORE_U16(oid->n_subid, split + ext);
+	for (u32 i = 0; i < ext; i++)
+	  STORE_U32(oid->ids[split + i], xrandom(OID_MAX_ID));
+
+	int cmp_res = 0;
+	for (u32 j = 0; j < MIN(ids - split, ext) && !cmp_res; j++)
+	  cmp_res = LOAD_U32(oids[i]->ids[split + j]) - LOAD_U32(oid->ids[split + j]);
+
+	if (!cmp_res && split + ext == ids)
+	  continue;
+
+	if (!cmp_res && split < ids && ext == 0)
+	  cmp_res = +1;
+
+	if (!cmp_res && split < ids && split + ext > ids)
+	  cmp_res = -1;
+
+	if (cmp_res < 0)
+	  cmp_res = -1;
+	else if (cmp_res > 0)
+	  cmp_res = +1;
+
+	bt_assert(mib_tree_walk_oid_compare(&walk, oid) == cmp_res);
+	break;
+      }
+    }
+  }
+
+  {
+    struct mib_walk_state walk;
+    mib_tree_walk_init(&walk, tree);
+
+    u32 zero = 0;
+    const struct oid *null_oid = (struct oid *) &zero;
+    u32 index = xrandom(size);
+
+    bt_assert(mib_tree_walk_oid_compare(&walk, null_oid) == 0);
+    bt_assert(mib_tree_walk_oid_compare(&walk, oids[index]) < 0);
+    (void) mib_tree_find(tree, &walk, oids[index]);
+    bt_assert(mib_tree_walk_oid_compare(&walk, null_oid) > 0);
+  }
+
+  u32 null_oid = 0;
+  mib_tree_remove(tree, (struct oid *) &null_oid);
+  lp_restore(tmp_linpool, &tmps);
+
+  return 1;
+
 }
 
 static void UNUSED
@@ -975,7 +1101,7 @@ gen_test_add(struct oid *(*generator)(void))
       if (!no_inet_prefix)
       {
 	char buffer[1024];
-	struct oid *o = (void *) buffer;
+	struct oid *o = (struct oid *) buffer;
 
 	struct oid *inet = oid_create(4, 0, 0, /* ids */ 1, 3, 6, 1);
 	snmp_oid_common_ancestor(oids[i], inet, o);
@@ -990,7 +1116,7 @@ gen_test_add(struct oid *(*generator)(void))
       for (int oi = 0; !invalid && !oid_nulled && oi < i; oi++)
       {
 	char buffer[1024];
-	struct oid *o = (void *) buffer;
+	struct oid *o = (struct oid *) buffer;
 
 	if (invalid_hist[oi])
 	  continue;
@@ -1174,7 +1300,7 @@ gen_test_find(struct oid *(*generator)(void))
       if (!no_inet_prefix)
       {
 	char buf[1024];
-	struct oid *o = (void *) buf;
+	struct oid *o = (struct oid *) buf;
 	snmp_oid_common_ancestor(oids[i], longest_inet_pref, o);
 	if (snmp_oid_compare(oids[i], o) == 0)
 	  expected_precise = 0;
@@ -1202,7 +1328,7 @@ gen_test_find(struct oid *(*generator)(void))
 	}
 
 	char buf[1024];
-	struct oid *o = (void *) buf;
+	struct oid *o = (struct oid *) buf;
 
 	snmp_oid_common_ancestor(oids[i], oids[j], o);
 
@@ -1268,7 +1394,7 @@ gen_test_find(struct oid *(*generator)(void))
       for (int stored = 0; stored < size; stored++)
       {
 	char buf[1024];
-	struct oid *o = (void *) buf;
+	struct oid *o = (struct oid *) buf;
 	snmp_oid_common_ancestor(oids[stored], searched[search], o);
 
 	/* test if OID oids[stored] is valid and if it forms a path from root
@@ -1368,7 +1494,7 @@ delete_cleanup(const struct oid *oid, struct oid *oids[], mib_node_u *valid[], i
   for (int i = 0; i < size; i++)
   {
     char buf[1024];
-    struct oid *o = (void *) buf;
+    struct oid *o = (struct oid *) buf;
 
     if (oid == oids[i])
     {
@@ -1609,8 +1735,8 @@ gen_test_traverse(struct oid *(*generator)(void))
     mib_tree_walk_init(&walk, tree);
 
     char buf[1024], buf2[1024];
-    struct oid *oid = (void *) buf;
-    struct oid *last = (void *) buf2;
+    struct oid *oid = (struct oid *) buf;
+    struct oid *last = (struct oid *) buf2;
     memset(oid, 0, sizeof(struct oid));	  /* create a null OID */
     memset(last, 0, sizeof(struct oid));
 
@@ -1721,15 +1847,15 @@ gen_test_leafs(struct oid *(*generator)(void))
     mib_tree_walk_init(&walk, tree);
     if (!with_leafs)
     {
-      struct mib_leaf *leaf = mib_tree_walk_next_leaf(tree, &walk);
+      struct mib_leaf *leaf = mib_tree_walk_next_leaf(tree, &walk, 0);
       bt_assert(leaf == NULL);
 
       continue;
     }
 
     char buf[1024], buf2[1024];
-    struct oid *oid = (void *) buf;
-    struct oid *last = (void *) buf2;
+    struct oid *oid = (struct oid *) buf;
+    struct oid *last = (struct oid *) buf2;
     memset(oid, 0, sizeof(struct oid));	  /* create a null OID */
     memset(last, 0, sizeof(struct oid));
 
@@ -1737,7 +1863,7 @@ gen_test_leafs(struct oid *(*generator)(void))
 
     struct mib_leaf *current;
     int i = 0;	/* iteration counter ~ leafs found */
-    while ((current = mib_tree_walk_next_leaf(tree, &walk)) != NULL && i++ < leafs)
+    while ((current = mib_tree_walk_next_leaf(tree, &walk, 0)) != NULL && i++ < leafs)
     {
       memcpy(last, oid, snmp_oid_size(oid));
       mib_tree_walk_to_oid(&walk, oid,
@@ -1759,7 +1885,7 @@ gen_test_leafs(struct oid *(*generator)(void))
 	(nodes[oid_index] == NULL || !mib_node_is_leaf(nodes[oid_index])))
       oid_index++;
 
-    current = mib_tree_walk_next_leaf(tree, &walk);
+    current = mib_tree_walk_next_leaf(tree, &walk, 0);
     bt_assert(current == NULL);
     bt_assert(oid_index == distinct);
     bt_assert(i == leafs);
@@ -1811,7 +1937,8 @@ int main(int argc, char **argv)
   bt_test_suite(t_oid_prefixize, "Function transforming OID to prefixed form");
   bt_test_suite(t_oid_ancestor, "Function finding common ancestor of two OIDs");
   bt_test_suite(t_walk_to_oid, "Function transforming MIB tree walk state to OID");
-  bt_test_suite(t_walk_oid_desc, "Function comparing MIB tree walk to OID");
+  bt_test_suite(t_walk_oid_desc, "Function testing relation being subtree between MIB tree walk and OID");
+  bt_test_suite(t_walk_oid_compare, "Function comparing MIB tree walk and OID");
 
   bt_test_suite(t_tree_find, "MIB tree search");
   bt_test_suite(t_tree_traversal, "MIB tree traversal");
