@@ -15,6 +15,7 @@ void snmp_ping(struct snmp_proto *p);
 #define SNMP_STATE_BGP 1
 #define SNMP_STATE_INVALID 2
 
+/* standard snmp internet prefix */
 #define SNMP_ISO	  1	      /* last of oid .1		      */
 #define SNMP_ORG	  3	      /* last of oid .1.3	      */
 #define SNMP_DOD	  6	      /* last of oid .1.3.6	      */
@@ -22,9 +23,21 @@ void snmp_ping(struct snmp_proto *p);
 
 #define SNMP_MGMT	  2	      /* last of oid .1.3.6.1.2	      */
 #define SNMP_MIB_2	  1	      /* last of oid .1.3.6.1.2.1     */
-#define SNMP_OSPF_MIB	 14	      /* part of oid .1.3.6.1.2.1.14  */
-#define SNMP_BGP4_MIB	 15	      /* part of oid .1.3.6.1.2.1.15  */
-#define SNMP_OSPFv3_MIB	192	      /* part of oid .1.3.6.1.2.1.192 */
+#define SNMP_SYSTEM	  1	      /* last of oid .1.3.6.1.2.1.1   */
+#define SNMP_OSPF_MIB	 14	      /* last of oid .1.3.6.1.2.1.14  */
+#define SNMP_BGP4_MIB	 15	      /* last of oid .1.3.6.1.2.1.15  */
+#define SNMP_OSPFv3_MIB	192	      /* last of oid .1.3.6.1.2.1.192 */
+
+/* sysUpTime */
+#define SNMP_SYS_UP_TIME  3	      /* last of oid .1.3.6.1.2.1.1.3 */
+
+/* snmpTrapOID */
+#define SNMP_V2		  6	      /* last of oid .1.3.6.1.6		  */
+#define SNMP_MODULES	  3	      /* last of oid .1.3.6.1.6.3	  */
+#define SNMP_ALARM_NEXT_INDEX 1	      /* last of oid .1.3.6.1.6.3.1	  */
+#define SNMP_MIB_OBJECTS  1	      /* last of oid .1.3.6.1.6.3.1.1	  */
+#define SNMP_TRAP	  4	      /* last of oid .1.3.6.1.6.3.1.1.4	  */
+#define SNMP_TRAP_OID	  1	      /* last of oid .1.3.6.1.6.3.1.1.4.1 */
 
 extern const u32 snmp_internet[4];
 

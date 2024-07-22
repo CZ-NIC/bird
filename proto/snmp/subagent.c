@@ -14,18 +14,9 @@
 #include "snmp_utils.h"
 #include "bgp4_mib.h"
 
-/* =============================================================
- *  Problems
- *  ------------------------------------------------------------
- *
- *    change of remote ip -> no notification, no update (be careful in recofing)
- *    same ip, different ports
- *    distinct VRF (two interfaces with overlapping private addrs)
- *    posible link-local addresses in LOCAL_IP
- *
- *    context is allocated as copied, is it approach really needed? wouldn't it
- *	sufficient just use the context in rx-buffer?
- *
+/*
+ * Goals:
+ *  In current situation, we do not handle the dynamic BGP case.
  */
 
 /**
@@ -69,7 +60,7 @@ static struct agentx_response *prepare_response(struct snmp_proto *p, struct snm
 static void response_err_ind(struct snmp_proto *p, struct agentx_response *res, enum agentx_response_errs err, u16 ind);
 static uint update_packet_size(struct agentx_header *start, byte *end);
 
-/* standard SNMP internet prefix (1.3.6.1) */
+/* standard SNMP internet prefix (.1.3.6.1) */
 const u32 snmp_internet[] = { SNMP_ISO, SNMP_ORG, SNMP_DOD, SNMP_INTERNET };
 
 static inline int
@@ -139,20 +130,6 @@ snmp_register_ack(struct snmp_proto *p, struct agentx_response *res, u8 class)
       return;
     }
   }
-}
-
-/*
- * snmp_error - handle a malformed packet
- * @p: SNMP protocol instance
- *
- * We wait until all packets are send. Then we close the socket which also
- * closes the established session on given socket. Finally we try to start a new
- * session.
- */
-static inline void
-snmp_error(struct snmp_proto *p)
-{
-  snmp_reset(p);
 }
 
 /*
@@ -249,10 +226,8 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
   struct snmp_pdu c;
   snmp_pdu_context(&c, p, sk);
 
-#define UPTIME_SIZE \
-  sizeof( struct { u32 vb_type; u32 oid_hdr; u32 ids[4]; } )
-#define TRAP0_HEADER_SIZE \
-  sizeof( struct { u32 vb_type; u32 oid_hdr; u32 ids[6]; } )
+#define UPTIME_SIZE sizeof(STATIC_OID(4))
+#define TRAP0_HEADER_SIZE sizeof(STATIC_OID(6))
 
   uint sz = AGENTX_HEADER_SIZE + TRAP0_HEADER_SIZE + snmp_oid_size(oid) \
     + size;
@@ -276,18 +251,18 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
   if (include_uptime)
   {
     /* sysUpTime.0 oid */
-    struct oid uptime_oid = {
+    STATIC_OID(4) sys_up_time_0 = {
       .n_subid = 4,
       .prefix = SNMP_MGMT,
       .include = 0,
       .reserved = 0,
+      .ids = { SNMP_MIB_2, SNMP_SYSTEM, SNMP_SYS_UP_TIME, 0 },
     };
-    /* {mgmt}.mib-2.system.sysUpTime.sysUpTimeInstance (0) */
-    u32 uptime_ids[] = { 1, 1, 3, 0 };
+    struct oid *uptime_0 = (struct oid *) &sys_up_time_0;
 
-    struct agentx_varbind *vb = snmp_create_varbind(c.buffer, &uptime_oid);
-    for (uint i = 0; i < uptime_oid.n_subid; i++)
-      STORE_U32(vb->name.ids[i], uptime_ids[i]);
+    struct agentx_varbind *vb = snmp_create_varbind(c.buffer, uptime_0);
+    for (uint i = 0; i < uptime_0->n_subid; i++)
+      STORE_U32(vb->name.ids[i], uptime_0->ids[i]);
 
     /* TODO use time from last reconfiguration instead? [config->load_time] */
     btime uptime = current_time() - boot_time;
@@ -297,18 +272,18 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
   }
 
   /* snmpTrapOID.0 oid */
-  struct oid trap0 = {
+  STATIC_OID(6) snmp_trap_oid_0 = {
     .n_subid = 6,
-    .prefix = 6, /* snmpV2 */
+    .prefix = SNMP_V2,
     .include = 0,
     .reserved = 0,
+    .ids = { SNMP_MODULES, SNMP_ALARM_NEXT_INDEX, SNMP_MIB_OBJECTS, SNMP_TRAP, SNMP_TRAP_OID, 0 },
   };
-  /* {snmpV2}.snmpModules.snmpAlarmNextIndex.snmpMIBObjects.snmpTrap.snmpTrapIOD.0 */
-  u32 trap0_ids[] = { 3, 1, 1, 4, 1, 0 };
+  struct oid *trap_0 = (struct oid *) &snmp_trap_oid_0;
 
-  struct agentx_varbind *trap_vb = snmp_create_varbind(c.buffer, &trap0);
-  for (uint i = 0; i < trap0.n_subid; i++)
-    STORE_U32(trap_vb->name.ids[i], trap0_ids[i]);
+  struct agentx_varbind *trap_vb = snmp_create_varbind(c.buffer, trap_0);
+  for (uint i = 0; i < trap_0->n_subid; i++)
+    STORE_U32(trap_vb->name.ids[i], trap_0->ids[i]);
   trap_vb->type = AGENTX_OBJECT_ID;
   snmp_put_oid(snmp_varbind_data(trap_vb), oid);
   ADVANCE(c.buffer, c.size, snmp_varbind_size_unsafe(trap_vb));
@@ -425,7 +400,7 @@ snmp_register(struct snmp_proto *p, struct oid *oid, u32 bound, uint index, u8 i
  *
  * For more detailed description see un_register_pdu() function.
  */
-void 
+void
 snmp_unregister(struct snmp_proto *p, struct oid *oid, u32 bound, uint index, uint contid)
 {
   un_register_pdu(p, oid, bound, index, AGENTX_UNREGISTER_PDU, 0, contid);
@@ -436,7 +411,7 @@ snmp_unregister(struct snmp_proto *p, struct oid *oid, u32 bound, uint index, ui
  * @p: SNMP protocol instance
  * @reason: reason for closure
  */
-static void 
+static void
 close_pdu(struct snmp_proto *p, enum agentx_close_reasons reason)
 {
   sock *sk = p->sock;
@@ -559,7 +534,7 @@ parse_test_set_pdu(struct snmp_proto *p, byte * const pkt_start)
   if (c.error != AGENTX_RES_NO_ERROR)
   {
     response_err_ind(p, res, c.error, c.index + 1);
-    snmp_error(p);
+    snmp_reset(p);  // error
   }
   else if (all_possible)
   {
@@ -621,7 +596,7 @@ parse_sets_pdu(struct snmp_proto *p, byte * const pkt_start, enum agentx_respons
 
   /* Reset the connection on unrecoverable error */
   if (c.error != AGENTX_RES_NO_ERROR && c.error != err)
-    snmp_error(p);
+    snmp_reset(p);    /* error */
 
   return pkt - pkt_start;
 }
@@ -716,6 +691,7 @@ space_for_response(const sock *sk)
 static uint
 parse_pkt(struct snmp_proto *p, byte *pkt, uint size)
 {
+  snmp_log("parse_pkt %t", current_time());
   /* TX-buffer free space */
   if (size < AGENTX_HEADER_SIZE)
     return 0;
@@ -1280,6 +1256,8 @@ parse_gets_pdu(struct snmp_proto *p, byte * const pkt_start)
   /* We send the message in TX-buffer. */
   sk_send(sk, s);
 
+  snmp_log("gets send %t", current_time());
+
   // TODO think through the error state
 
   /* number of bytes parsed from RX-buffer */
@@ -1298,10 +1276,8 @@ snmp_start_subagent(struct snmp_proto *p)
   ASSUME(p->state == SNMP_OPEN);
 
   /* blank oid means unsupported */
-  struct oid *blank = snmp_oid_blank(p);
-  open_pdu(p, blank);
-
-  mb_free(blank);
+  STATIC_OID(0) blank = { 0 };
+  open_pdu(p, (struct oid *) &blank);
 }
 
 /*
