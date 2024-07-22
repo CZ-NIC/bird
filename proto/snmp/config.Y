@@ -31,7 +31,6 @@ snmp_proto:
 snmp_proto_item:
    proto_item
  | snmp_bgp_bond
- /* | INTERFACE snmp_interface TODO */
  | LOCAL PORT expr {
     if (($3 < 1) || ($3 > 65535)) cf_error("Invalid port number");
     SNMP_CFG->local_port = $3;
@@ -42,12 +41,31 @@ snmp_proto_item:
   }
  | LOCAL ID IP4 { SNMP_CFG->bgp_local_id = $3; }
  | LOCAL ADDRESS IP4 { SNMP_CFG->local_ip = $3; }
+ | REMOTE ADDRESS DEFAULT {
+    if (SNMP_CFG->trans_type != SNMP_TRANS_DEFAULT)
+      cf_error("Duplicit option remote address");
+  }
  | REMOTE ADDRESS IP4 {
-    if (ip4_zero($3)) cf_error("Invalid remote ip address");
+    if (SNMP_CFG->trans_type != SNMP_TRANS_DEFAULT)
+      cf_error("Duplicit option remote address");
+
+    // TODO
+    //if (ip4_zero($3)) cf_error("Invalid remote ip address");
+
     SNMP_CFG->remote_ip = $3;
+    SNMP_CFG->trans_type = SNMP_TRANS_TCP;
+  }
+ | REMOTE ADDRESS text {
+    if (SNMP_CFG->trans_type != SNMP_TRANS_DEFAULT)
+      cf_error("Duplicit option remote address");
+
+    if (strcmp($3, agentx_master_addr)) {
+      SNMP_CFG->remote_path = $3;
+      SNMP_CFG->trans_type = SNMP_TRANS_UNIX;
+    }
   }
  | LOCAL AS expr {
-    if ($3 < 1 || $3 > 65535) cf_error("Invalid local AS");
+    if ($3 < 1 || $3 > UINT16_MAX) cf_error("Invalid local AS");
     SNMP_CFG->bgp_local_as = $3;
   }
  | SNMP DESCRIPTION text {
@@ -87,7 +105,9 @@ snmp_proto_start: proto_start SNMP
   SNMP_CFG->bonds = 0;
 
   SNMP_CFG->local_ip = IP4_NONE;
-  SNMP_CFG->remote_ip = ip4_build(127,0,0,1);
+  SNMP_CFG->remote_ip = IP4_NONE;
+  SNMP_CFG->remote_path = agentx_master_addr;
+  SNMP_CFG->trans_type = SNMP_TRANS_DEFAULT;
   SNMP_CFG->bgp_local_id = IP4_NONE;
   SNMP_CFG->local_port = 0;
   SNMP_CFG->remote_port = 705;

@@ -122,6 +122,7 @@
 // TODO: remove me
 #include "proto/bgp/bgp.h"
 
+const char agentx_master_addr[] = AGENTX_MASTER_ADDR;
 
 static void snmp_start_locked(struct object_lock *lock);
 static void snmp_sock_err(sock *sk, int err);
@@ -170,6 +171,7 @@ int
 snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
 {
   enum snmp_proto_state last = p->state;
+  const struct snmp_config *cf = (struct snmp_config *) p->p.cf;
 
   TRACE(D_EVENTS, "SNMP changing state to %u", state);
 
@@ -193,31 +195,50 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
   case SNMP_INIT:
     DBG("snmp -> SNMP_INIT\n");
     ASSERT(last == SNMP_DOWN);
-    struct object_lock *lock;
-    lock = p->lock = olock_new(p->pool);
 
-    /*
-     * lock->addr
-     * lock->port
-     * lock->iface
-     * lock->vrf
-     */
-    lock->type = OBJLOCK_TCP;
-    lock->hook = snmp_start_locked;
-    lock->data = p;
-    olock_acquire(lock);
-    return PS_START;
+    if (cf->trans_type == SNMP_TRANS_TCP)
+    {
+      /* We need to lock the IP address */
+      struct object_lock *lock;
+      lock = p->lock = olock_new(p->pool);
+
+      /*
+       * lock->iface
+       * lock->vrf
+       */
+      lock->addr = ipa_from_ip4(cf->remote_ip);
+      lock->port = cf->remote_port;
+      lock->type = OBJLOCK_TCP;
+      lock->hook = snmp_start_locked;
+      lock->data = p;
+      olock_acquire(lock);
+      return PS_START;
+    }
+
+    p->state = state = SNMP_LOCKED;
+    /* Fall thru */
 
   case SNMP_LOCKED:
     DBG("snmp -> SNMP_LOCKED\n");
     ASSERT(last == SNMP_INIT || SNMP_RESET);
     sock *s = sk_new(p->pool);
-    s->type = SK_TCP_ACTIVE;
-    s->saddr = ipa_from_ip4(p->local_ip);
-    s->daddr = ipa_from_ip4(p->remote_ip);
-    s->dport = p->remote_port;
-    s->rbsize = SNMP_RX_BUFFER_SIZE;
-    s->tbsize = SNMP_TX_BUFFER_SIZE;
+
+    if (cf->trans_type == SNMP_TRANS_TCP)
+    {
+      s->type = SK_TCP_ACTIVE;
+      s->saddr = ipa_from_ip4(p->local_ip);
+      s->daddr = ipa_from_ip4(p->remote_ip);
+      s->dport = p->remote_port;
+      s->rbsize = SNMP_RX_BUFFER_SIZE;
+      s->tbsize = SNMP_TX_BUFFER_SIZE;
+    }
+    else
+    {
+      s->type = SK_UNIX_ACTIVE;
+      s->host = cf->remote_path; /* daddr */
+      s->rbsize = SNMP_RX_BUFFER_SIZE;
+      s->tbsize = SNMP_TX_BUFFER_SIZE;
+    }
 
     /* s->tos = IP_PREC_INTERNET_CONTROL */
     s->tx_hook = snmp_connected;
@@ -241,12 +262,14 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     p->sock->rx_hook = snmp_rx;
     p->sock->tx_hook = NULL;
     snmp_start_subagent(p);
-    // handle no response (for long time)
+    p->startup_timer->hook = snmp_stop_timeout;
+    tm_start(p->startup_timer, 1 S);
     return PS_START;
 
   case SNMP_REGISTER:
     DBG("snmp -> SNMP_REGISTER\n");
     ASSERT(last == SNMP_OPEN);
+    tm_stop(p->startup_timer); /* stop timeout */
     snmp_register_mibs(p);
     return PS_START;
 
@@ -276,6 +299,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     DBG("snmp -> SNMP_RESET\n");
     ASSUME(last == SNMP_REGISTER || last == SNMP_CONN);
     ASSUME(p->sock);
+    snmp_stop_subagent(p);
     p->sock->rx_hook = snmp_rx_skip;
     p->sock->tx_hook = snmp_tx_skip;
     return PS_STOP;
@@ -612,8 +636,10 @@ snmp_show_proto_info(struct proto *P)
 static void
 snmp_postconfig(struct proto_config *CF)
 {
+  const struct snmp_config *cf  = (struct snmp_config *) CF;
+
   /* Walk the BGP protocols and cache their references. */
-  if (((struct snmp_config *) CF)->bgp_local_as == 0)
+  if (cf->bgp_local_as == 0)
     cf_error("local as not specified");
 }
 

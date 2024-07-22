@@ -29,6 +29,8 @@
 #define SNMP_TX_BUFFER_SIZE 8192
 #define SNMP_PKT_SIZE_MAX 4098
 
+#define AGENTX_MASTER_ADDR "/var/agentx/master"
+
 enum snmp_proto_state {
   SNMP_DOWN = 0,
   SNMP_INIT = 1,
@@ -46,12 +48,20 @@ struct snmp_bond {
   u8 type;
 };
 
+enum snmp_transport_type {
+  SNMP_TRANS_DEFAULT,
+  SNMP_TRANS_UNIX,
+  SNMP_TRANS_TCP,
+};
+
 struct snmp_config {
   struct proto_config cf;
+  enum snmp_transport_type trans_type;
   ip4_addr local_ip;
-  ip4_addr remote_ip;
   u16 local_port;
+  ip4_addr remote_ip;		  /* master agentx IP address for TCP transport */
   u16 remote_port;
+  const char *remote_path;	  /* master agentx UNIX socket name */
 
   ip4_addr bgp_local_id;	  /* BGP4-MIB related fields */
   u32 bgp_local_as;
@@ -67,7 +77,7 @@ struct snmp_config {
 				   * We use this fact to check differences of
 				   * nonallocated parts of configs with memcpy
 				   */
-  //const struct oid *oid_identifier;	TODO 
+  //const struct oid *oid_identifier;	TODO
 };
 
 #define SNMP_BGP_P_REGISTERING	0x01
@@ -83,6 +93,7 @@ struct snmp_registered_oid {
   node n;
   struct oid *oid;
 };
+
 
 struct snmp_proto {
   struct proto p;
@@ -152,5 +163,7 @@ void snmp_reconnect(timer *tm);
 int snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state);
 
 void snmp_reset(struct snmp_proto *p);
+
+extern const char agentx_master_addr[sizeof(AGENTX_MASTER_ADDR)];
 
 #endif
