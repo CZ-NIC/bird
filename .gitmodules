@@ -1,3 +1,6 @@
 [submodule "python/asyncinotify"]
 	path = python/asyncinotify
 	url = https://github.com/ProCern/asyncinotify.git
+[submodule "python/flock"]
+	path = python/flock
+	url = https://gitlab.nic.cz/labs/flock

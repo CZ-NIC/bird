@@ -6,7 +6,7 @@ import pathlib
 import sys
 import yaml
 
-sys.path.insert(0, "/home/maria/flock")
+sys.path.insert(0, "python/flock")
 
 from flock.Hypervisor import Hypervisor
 from flock.Machine import Machine
