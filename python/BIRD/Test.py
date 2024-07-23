@@ -6,7 +6,12 @@ import pathlib
 import sys
 import yaml
 
-sys.path.insert(0, "python/flock")
+flock_path = pathlib.Path(__file__).parent.parent / "flock"
+if not (flock_path / "README.md").exists():
+    print("Flock not found, have you run \"git submodule update\"?")
+    exit(1)
+
+sys.path.insert(0, str(flock_path))
 
 from flock.Hypervisor import Hypervisor
 from flock.Machine import Machine

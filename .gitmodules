@@ -4,3 +4,4 @@
 [submodule "python/flock"]
 	path = python/flock
 	url = https://gitlab.nic.cz/labs/flock
+	branch = v0.0
