@@ -384,6 +384,8 @@ class Test:
                             for k in ("when", "!_l", "!_g", "!_s", "!_id"):
                                 assert(k in r)
                                 del r[k]
+                assert("version" in d)
+                del d["version"]
             return dump
 
         match self.mode:
