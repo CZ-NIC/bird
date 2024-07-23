@@ -100,7 +100,6 @@ struct snmp_proto {
   struct object_lock *lock;
   pool *pool;			  /* a shortcut to the procotol mem. pool */
   linpool *lp;			  /* linpool for bgp_trie nodes */
-  slab *request_storage;		  /* manages storages storage for incomming requests */
 
   enum snmp_proto_state state;
 
@@ -140,13 +139,23 @@ struct snmp_proto {
   struct mib_tree *mib_tree;
 };
 
+enum agentx_mibs {
+  BGP4_MIB_ID,
+  AGENTX_MIB_COUNT,
+  AGENTX_MIB_UNKNOWN,
+};
+
+extern const struct oid *agentx_available_mibs[AGENTX_MIB_COUNT + 1];
+void agentx_get_mib_init(pool *p);
+enum agentx_mibs agentx_get_mib(const struct oid *o);
+
 struct snmp_registration;
 struct agentx_response; /* declared in subagent.h */
 typedef void (*snmp_reg_hook_t)(struct snmp_proto *p, const struct agentx_response *res, struct snmp_registration *reg);
 
 struct snmp_registration {
   node n;
-  u8 mib_class;
+  enum agentx_mibs mib;
   u32 session_id;
   u32 transaction_id;
   u32 packet_id;
@@ -155,7 +164,6 @@ struct snmp_registration {
   snmp_reg_hook_t reg_hook_fail; /* hook called when OID registration fail */
 };
 
-//void snmp_tx(sock *sk);
 void snmp_startup(struct snmp_proto *p);
 void snmp_connected(sock *sk);
 void snmp_startup_timeout(timer *tm);

@@ -54,8 +54,8 @@ uint snmp_varbind_size_unsafe(const struct agentx_varbind *vb);
 size_t snmp_varbind_size_from_len(uint n_subid, enum agentx_type t, uint len);
 int snmp_test_varbind(const struct agentx_varbind *vb);
 void *snmp_varbind_data(const struct agentx_varbind *vb);
-struct oid *snmp_varbind_set_name_len(struct snmp_proto *p, struct agentx_varbind **vb, u8 len, struct snmp_pdu *c);
-void snmp_varbind_duplicate_hdr(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_pdu *c);
+struct oid *snmp_varbind_set_name_len(struct snmp_pdu *c, struct agentx_varbind **vb, u8 len);
+void snmp_varbind_duplicate_hdr(struct snmp_pdu *c, struct agentx_varbind **vb);
 
 /*
  *  AgentX - PDU headers, types, contexts
@@ -98,8 +98,8 @@ byte *snmp_put_fbyte(byte *buf, u8 data);
  *    Helpers, Misc, Debugging
  *
  */
-struct snmp_registration *snmp_registration_create(struct snmp_proto *p, u8 mib_class);
-int snmp_registration_match(struct snmp_registration *r, struct agentx_header *h, u8 class);
+struct snmp_registration *snmp_registration_create(struct snmp_proto *p, enum agentx_mibs mib);
+int snmp_registration_match(struct snmp_registration *r, struct agentx_header *h, enum agentx_mibs mib);
 
 void snmp_dump_packet(byte *pkt, uint size);
 void snmp_oid_dump(const struct oid *oid);

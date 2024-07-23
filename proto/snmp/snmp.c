@@ -123,11 +123,50 @@
 #include "proto/bgp/bgp.h"
 
 const char agentx_master_addr[] = AGENTX_MASTER_ADDR;
+const struct oid *agentx_available_mibs[AGENTX_MIB_COUNT + 1] = { 0 };
 
 static void snmp_start_locked(struct object_lock *lock);
 static void snmp_sock_err(sock *sk, int err);
 static void snmp_stop_timeout(timer *tm);
 static void snmp_cleanup(struct snmp_proto *p);
+
+/*
+ * agentx_get_mib_init - init function for agentx_get_mib()
+ * @p: SNMP instance protocol pool
+ */
+void agentx_get_mib_init(pool *p)
+{
+  const struct oid *src = agentx_available_mibs[AGENTX_MIB_COUNT - 1];
+  size_t size = snmp_oid_size(src);
+  struct oid *dest = mb_alloc(p, size);
+
+  memcpy(dest, src, size);
+  u8 ids = LOAD_U8(src->n_subid);
+
+  if (ids > 0)
+    STORE_U32(dest->ids[ids - 1], LOAD_U32(src->ids[ids - 1]) + 1);
+
+  agentx_available_mibs[AGENTX_MIB_COUNT] = dest;
+}
+
+/*
+ * agentx_get_mib - classify an OID based on MIB prefix
+ *
+ */
+enum agentx_mibs agentx_get_mib(const struct oid *o)
+{
+  enum agentx_mibs mib = AGENTX_MIB_UNKNOWN;
+  for (uint i = 0; i < AGENTX_MIB_COUNT + 1; i++)
+  {
+    ASSERT(agentx_available_mibs[i]);
+    if (snmp_oid_compare(o, agentx_available_mibs[i]) < 0)
+      return mib;
+    mib = (enum agentx_mibs) i;
+  }
+
+  return AGENTX_MIB_UNKNOWN;
+}
+
 
 /*
  * snmp_rx_skip - skip all received data
@@ -517,7 +556,6 @@ snmp_start(struct proto *P)
   p->bgp_local_as = cf->bgp_local_as;
   p->bgp_local_id = cf->bgp_local_id;
   p->timeout = cf->timeout;
-  // TODO add default value for startup_delay inside bison .Y file
   p->startup_delay = cf->startup_delay;
 
   p->pool = p->p.pool;
@@ -535,6 +573,7 @@ snmp_start(struct proto *P)
 
   mib_tree_init(p->pool, p->mib_tree);
   snmp_bgp4_start(p);
+  agentx_get_mib_init(p->pool);
 
   return snmp_set_state(p, SNMP_INIT);
 }

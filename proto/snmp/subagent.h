@@ -4,6 +4,7 @@
 
 #include "nest/bird.h"
 #include "snmp.h"
+#include "lib/macro.h"
 
 void snmp_start_subagent(struct snmp_proto *p);
 void snmp_stop_subagent(struct snmp_proto *p);
@@ -43,13 +44,6 @@ extern const u32 snmp_internet[4];
 
 #define SNMP_DEFAULT_CONTEXT 0
 
-enum SNMP_CLASSES {
-  SNMP_CLASS_INVALID = 0,
-  SNMP_CLASS_BGP = 1,
-  SNMP_CLASS_OSPF,
-  SNMP_CLASS_END,
-};
-
 enum agentx_type {
   AGENTX_INTEGER	    =   2,
   AGENTX_OCTET_STRING	    =   4,
@@ -75,8 +69,6 @@ enum snmp_search_res {
   SNMP_SEARCH_END_OF_VIEW = 3,
 };
 
-#define AGENTX_ADMIN_STOP   1
-#define AGENTX_ADMIN_START  2
 
 #define AGENTX_PRIORITY		127
 
@@ -116,11 +108,16 @@ enum agentx_flags {
 #define SNMP_ORDER 0
 #endif
 
+/* We recommend using STORE_U32 over VALUE_U32 when possible */
 #ifdef SNMP_NATIVE
-#define STORE_U32(dest, val)  ((dest) = (u32) (val))
-#define STORE_U16(dest, val)  ((dest) = (u16) (val))
-#define STORE_U8(dest, val)   ((dest) = (u8) (val))
+#define STORE_U32(dest, val)  ((u32) ((dest) = (u32) (val)))
+#define STORE_U16(dest, val)  ((u16) ((dest) = (u16) (val)))
+#define STORE_U8(dest, val)   ((u8) ((dest) = (u8) (val)))
 #define STORE_PTR(ptr, val)   (*((u32 *) (ptr)) = (u32) (val))
+
+#define VALUE_U32(val)	      ((u32) (val))
+#define VALUE_U16(val)	      ((u16) (val))
+#define VALUE_U8(val)	      ((u8) (val))
 
 #define LOAD_U32(src)	      *((u32 *) &(src))
 #define LOAD_U16(src)	      *((u16 *) &(src))
@@ -133,6 +130,11 @@ enum agentx_flags {
 #define STORE_U16(dest, val)  put_u16(&(dest), (val))
 #define STORE_U8(dest, val)   put_u8(&(dest), (val))
 #define STORE_PTR(ptr, val)   put_u32(ptr, val)
+
+#define VALUE_U32(val)	      htonl(val)
+#define VALUE_U16(val)	      htons(val)
+#define VALUE_U8(val)	      ((u8) (val))
+
 
 #define LOAD_U32(src)	      get_u32(&(src))
 #define LOAD_U16(src)	      get_u16(&(src))
@@ -190,6 +192,16 @@ struct oid {
     u8 include;								      \
     u8 reserved;							      \
     u32 ids[sbids];							      \
+  }
+
+#define VALUE_U32_HELPER(x) VALUE_U32(x),
+#define STATIC_OID_INITIALIZER(sbids, pref, ...)			      \
+  {									      \
+    .n_subid = VALUE_U8(sbids),						      \
+    .prefix = VALUE_U8(pref),						      \
+    .include = VALUE_U8(0),						      \
+    .reserved = VALUE_U8(0),						      \
+    .ids = { MACRO_FOREACH(VALUE_U32_HELPER, __VA_ARGS__) },		      \
   }
 
 /* enforced by MIB tree, see mib_tree.h for more info */
@@ -319,7 +331,8 @@ enum agentx_response_errs {
 /* SNMP PDU info */
 struct snmp_pdu {
   struct snmp_proto *p;
- /* TX buffer */
+
+  /* TX buffer */
   byte *buffer;			    /* pointer to buffer */
   uint size;			    /* unused space in buffer */
 
@@ -348,16 +361,15 @@ void snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, 
 void snmp_unregister(struct snmp_proto *p, struct oid *oid, uint index, uint len, uint contid);
 void snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, int include_uptime);
 
-void snmp_manage_tbuf(struct snmp_proto *p, struct snmp_pdu *c);
+int snmp_tbuf_reserve(struct snmp_pdu *c, size_t bytes);
 
-void snmp_vb_to_tx(struct snmp_proto *p, const struct oid *oid, struct snmp_pdu *c);
+void snmp_vb_to_tx(struct snmp_pdu *c, const struct oid *oid);
 u8 snmp_get_mib_class(const struct oid *oid);
 
 void snmp_register_mibs(struct snmp_proto *p);
 
 /* MIB modules */
 void snmp_bgp4_start(struct snmp_proto *p);
-
 
 #if 1
 #define snmp_log(...) log(L_INFO "SNMP " __VA_ARGS__)

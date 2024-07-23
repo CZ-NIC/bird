@@ -5,7 +5,7 @@
 #include "proto/bgp/bgp.h"
 #include "subagent.h"
 
-#define BGP4_MIB 15
+/* BGP4-MIB root identifier is found in snmp.h as SNMP_BGP4_MIB */
 
 /* peers attributes */
 enum bgp4_mib_peer_entry_row {
@@ -26,8 +26,8 @@ enum bgp4_mib_peer_entry_row {
   BGP4_MIB_FSM_TRANSITIONS	    = 15,   /* FSM established transitions */
   BGP4_MIB_FSM_ESTABLISHED_TIME	    = 16,
   BGP4_MIB_RETRY_INTERVAL	    = 17,
-  BGP4_MIB_HOLD_TIME		    = 18,
-  BGP4_MIB_KEEPALIVE		    = 19,
+  BGP4_MIB_HOLD_TIME		    = 18,   /* in read-only mode */
+  BGP4_MIB_KEEPALIVE		    = 19,   /* in read-only mode */
   BGP4_MIB_HOLD_TIME_CONFIGURED	    = 20,
   BGP4_MIB_KEEPALIVE_CONFIGURED	    = 21,
   BGP4_MIB_ORIGINATION_INTERVAL	    = 22,   /* UNSUPPORTED - 0 */
@@ -36,10 +36,17 @@ enum bgp4_mib_peer_entry_row {
 } PACKED;
 
 /* version of BGP, here BGP-4 */
-#define BGP4_VERSIONS ((char[]) { 0x10 }) /* OID bgp.bgpVersion */
-/* for OID bgp.bgpPeerTable.bgpPeerEntry.bgpPeerNegotiatedVersion */
+#define BGP4_VERSIONS ((char[]) { 0x10 }) /* OID BGP4-MIB::bgpVersion */
+
+/* values for BGP4-MIB::bgpPeerNegotiatedVersion */
 #define BGP4_MIB_NEGOTIATED_VER_VALUE 4
 #define BGP4_MIB_NEGOTIATED_VER_NO_VALUE 0
+
+/* values for BGP4-MIB::bgpPeerAdminStatus */
+enum bgp4_admin_status {
+  BGP4_ADMIN_STOP = 1,
+  BGP4_ADMIN_START = 2,
+};
 
 u8 snmp_bgp_get_valid(u8 state);
 u8 snmp_bgp_getnext_valid(u8 state);
@@ -65,44 +72,6 @@ enum bgp4_mib_peer_table_rows {
   BGP4_MIB_PEER_ENTRY = 1,
 };
 
-enum bgp4_mib_linearized_states {
-  BGP4_MIB_S_INVALID = 0, /* state invalid */
-  BGP4_MIB_S_START = 1,
-  BGP4_MIB_S_BGP,
-  BGP4_MIB_S_VERSION,
-  BGP4_MIB_S_LOCAL_AS,
-  BGP4_MIB_S_PEER_TABLE,
-  BGP4_MIB_S_PEER_ENTRY,
-  BGP4_MIB_S_PEER_IDENTIFIER,
-  BGP4_MIB_S_STATE,
-  BGP4_MIB_S_ADMIN_STATUS,
-  BGP4_MIB_S_NEGOTIATED_VERSION,
-  BGP4_MIB_S_LOCAL_ADDR,
-  BGP4_MIB_S_LOCAL_PORT,
-  BGP4_MIB_S_REMOTE_ADDR,
-  BGP4_MIB_S_REMOTE_PORT,
-  BGP4_MIB_S_REMOTE_AS,
-  BGP4_MIB_S_RX_UPDATES,
-  BGP4_MIB_S_TX_UPDATES,
-  BGP4_MIB_S_RX_MESSAGES,
-  BGP4_MIB_S_TX_MESSAGES,
-  BGP4_MIB_S_LAST_ERROR,
-  BGP4_MIB_S_FSM_TRANSITIONS,
-  BGP4_MIB_S_FSM_ESTABLISHED_TIME,
-  BGP4_MIB_S_RETRY_INTERVAL,
-  BGP4_MIB_S_HOLD_TIME,
-  BGP4_MIB_S_KEEPALIVE,
-  BGP4_MIB_S_HOLD_TIME_CONFIGURED,
-  BGP4_MIB_S_KEEPALIVE_CONFIGURED,
-  BGP4_MIB_S_ORIGINATION_INTERVAL,
-  BGP4_MIB_S_MIN_ROUTE_ADVERTISEMENT,
-  BGP4_MIB_S_IN_UPDATE_ELAPSED_TIME,
-  BGP4_MIB_S_PEER_TABLE_END,
-  BGP4_MIB_S_IDENTIFIER,	/* state local identification */
-  BGP4_MIB_S_END,
-  BGP4_MIB_S_NO_VALUE = 255,
-} PACKED;
-
 /* valid values for BGP4_MIB_STATE */
 enum bgp4_mib_bgp_states {
   BGP4_MIB_IDLE = 1,
@@ -121,7 +90,9 @@ STATIC_ASSERT(BGP4_MIB_OPENCONFIRM == BS_OPENCONFIRM + 1);
 STATIC_ASSERT(BGP4_MIB_ESTABLISHED == BS_ESTABLISHED + 1);
 
 /* Traps OID sub-identifiers */
-#define BGP4_MIB_ESTABLISHED_NOTIFICATION 1
-#define BGP4_MIB_BACKWARD_TRANS_NOTIFICATION 2
+enum bgp4_traps_subids {
+  BGP4_MIB_ESTABLISHED_NOTIFICATION = 1,
+  BGP4_MIB_BACKWARD_TRANS_NOTIFICATION = 2,
+};
 
 #endif

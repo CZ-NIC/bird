@@ -401,7 +401,7 @@ t_oid_compare(void)
 static struct oid *
 snmp_oid_prefixize(struct snmp_proto *p, const struct oid *oid, struct snmp_pdu *c)
 {
-  snmp_vb_to_tx(p, oid, c);
+  snmp_vb_to_tx(c, oid);
   struct agentx_varbind *vb = c->sr_vb_start;
   bt_assert(vb->reserved == 0);
   return &vb->name;

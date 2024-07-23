@@ -50,7 +50,7 @@ snmp_varbind_data(const struct agentx_varbind *vb)
 }
 
 struct oid *
-snmp_varbind_set_name_len(struct snmp_proto *p, struct agentx_varbind **vb, u8 len, struct snmp_pdu *c)
+snmp_varbind_set_name_len(struct snmp_pdu *c, struct agentx_varbind **vb, u8 len)
 {
   struct oid *oid = &(*vb)->name;
 
@@ -64,10 +64,10 @@ snmp_varbind_set_name_len(struct snmp_proto *p, struct agentx_varbind **vb, u8 l
   /* We need more space */
   ASSUME(len >= LOAD_U8(oid->n_subid));
   uint diff_size = (len - LOAD_U8(oid->n_subid)) * sizeof(u32);
-  if (c->size < diff_size)
+
+  if (snmp_tbuf_reserve(c, diff_size))
   {
     snmp_log("varbind_set_name_len small buffer");
-    snmp_manage_tbuf(p, c);
     oid = &(*vb)->name;
   }
 
@@ -78,15 +78,12 @@ snmp_varbind_set_name_len(struct snmp_proto *p, struct agentx_varbind **vb, u8 l
 }
 
 void
-snmp_varbind_duplicate_hdr(struct snmp_proto *p, struct agentx_varbind **vb, struct snmp_pdu *c)
+snmp_varbind_duplicate_hdr(struct snmp_pdu *c, struct agentx_varbind **vb)
 {
   ASSUME(vb != NULL && *vb != NULL);
   uint hdr_size = snmp_varbind_header_size(*vb);
-  if (c->size < hdr_size)
-  {
+  if (snmp_tbuf_reserve(c, hdr_size))
     snmp_log("varbind_duplicate small buffer");
-    snmp_manage_tbuf(p, c);
-  }
 
   ASSERT(c->size >= hdr_size);
   byte *buffer = c->buffer;
@@ -732,7 +729,7 @@ all_same:
 }
 
 struct snmp_registration *
-snmp_registration_create(struct snmp_proto *p, u8 mib_class)
+snmp_registration_create(struct snmp_proto *p, enum agentx_mibs mib)
 {
   struct snmp_registration *r;
   r = mb_alloc(p->p.pool, sizeof(struct snmp_registration));
@@ -743,21 +740,20 @@ snmp_registration_create(struct snmp_proto *p, u8 mib_class)
   /* will be incremented by snmp_session() macro during packet assembly */
   r->transaction_id = p->transaction_id;
   r->packet_id = p->packet_id + 1;
+  r->mib = mib;
+
   snmp_log("using registration packet_id %u", r->packet_id);
-
-  r->mib_class = mib_class;
-
   add_tail(&p->registration_queue, &r->n);
 
   return r;
 }
 
 int
-snmp_registration_match(struct snmp_registration *r, struct agentx_header *h, u8 class)
+snmp_registration_match(struct snmp_registration *r, struct agentx_header *h, enum agentx_mibs mib)
 {
   snmp_log("snmp_reg_same() r->packet_id %u p->packet_id %u", r->packet_id, h->packet_id);
   return
-    (r->mib_class == class) &&
+    (r->mib == mib) &&
     (r->session_id == h->session_id) &&
     (r->transaction_id == h->transaction_id) &&
     (r->packet_id == h->packet_id);
@@ -1066,7 +1062,7 @@ snmp_walk_init(struct mib_tree *tree, struct mib_walk_state *walk, const struct 
 {
   mib_tree_walk_init(walk, tree);
 
-  snmp_vb_to_tx(c->p, oid, c);
+  snmp_vb_to_tx(c, oid);
 
   mib_node_u *node = mib_tree_find(tree, walk, &c->sr_vb_start->name);
 
@@ -1178,11 +1174,8 @@ snmp_walk_fill(struct mib_leaf *leaf, struct mib_walk_state *walk, struct snmp_p
 
   snmp_log("walk_fill got size %u based on lt %u ls %u, calling filler()", size, leaf->type, leaf->size);
 
-  if (size >= c->size)
-  {
-    snmp_log("walk_fill small buffer size %d to %d", size, c->size);
-    snmp_manage_tbuf(c->p, c);
-  }
+  if (snmp_tbuf_reserve(c, size))
+    snmp_log("walk_fill small buffer size");
 
   enum snmp_search_res res = leaf->filler(walk, c);
 

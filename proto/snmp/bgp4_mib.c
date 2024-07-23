@@ -39,6 +39,7 @@
 #define POPULATE_BGP4(addr, proto, conn, stats, config) populate_bgp4(c, &(addr), &(proto), &(conn), &(stats), &(config))
 
 static inline void ip4_to_oid(struct oid *oid, ip4_addr addr);
+static const STATIC_OID(2) bgp4_mib_oid = STATIC_OID_INITIALIZER(2, SNMP_MGMT, SNMP_MIB_2, SNMP_BGP4_MIB);
 
 static inline void
 snmp_hash_add_peer(struct snmp_proto *p, struct snmp_bgp_peer *peer)
@@ -117,7 +118,7 @@ snmp_bgp_notify_common(struct snmp_proto *p, uint type, ip4_addr ip4, char last_
     (void *) error_vb + snmp_varbind_size_from_len(9, AGENTX_OCTET_STRING, 2);
 
   u32 oid_ids[] = {
-    SNMP_MIB_2, BGP4_MIB, BGP4_MIB_PEER_TABLE, BGP4_MIB_PEER_ENTRY
+    SNMP_MIB_2, SNMP_BGP4_MIB, BGP4_MIB_PEER_TABLE, BGP4_MIB_PEER_ENTRY
   };
 
   /*
@@ -234,12 +235,12 @@ snmp_bgp_notify_backward_trans(struct snmp_proto *p, struct bgp_proto *bgp)
 void
 snmp_bgp4_register(struct snmp_proto *p)
 {
-  u32 bgp_mib_prefix[] = { SNMP_MIB_2, BGP4_MIB };
+  u32 bgp_mib_prefix[] = { SNMP_MIB_2, SNMP_BGP4_MIB };
 
   {
     /* Register the whole BGP4-MIB::bgp root tree node */
     struct snmp_registration *reg;
-    reg = snmp_registration_create(p, BGP4_MIB);
+    reg = snmp_registration_create(p, BGP4_MIB_ID);
 
     struct oid *oid = mb_allocz(p->pool,
       snmp_oid_size_from_len(ARRAY_SIZE(bgp_mib_prefix)));
@@ -446,9 +447,9 @@ fill_admin_status(struct mib_walk_state *walk UNUSED, struct snmp_pdu *c)
     return res;
 
   if (bgp_proto->p.disabled)
-    snmp_varbind_int(c, AGENTX_ADMIN_STOP);
+    snmp_varbind_int(c, BGP4_ADMIN_STOP);
   else
-    snmp_varbind_int(c, AGENTX_ADMIN_START);
+    snmp_varbind_int(c, BGP4_ADMIN_START);
   return SNMP_SEARCH_OK;
 }
 
@@ -792,15 +793,9 @@ bgp4_next_peer(struct mib_walk_state *state, struct snmp_pdu *c)
   struct oid *oid = &c->sr_vb_start->name;
 
   /* BGP4-MIB::bgpPeerIdentifier */
-  STATIC_OID(9) bgp4_peer_id = {
-    .n_subid = 9,
-    .prefix = SNMP_MGMT,
-    .include = 0,
-    .reserved = 0,
-    .ids = { SNMP_MIB_2, BGP4_MIB,
-      BGP4_MIB_PEER_TABLE, BGP4_MIB_PEER_ENTRY, BGP4_MIB_PEER_IDENTIFIER,
-      /* IP4_NONE */ 0, 0, 0, 0 }
-  };
+  STATIC_OID(9) bgp4_peer_id = STATIC_OID_INITIALIZER(9, SNMP_MGMT,
+    /* ids */ SNMP_MIB_2, SNMP_BGP4_MIB,
+      BGP4_MIB_PEER_TABLE, BGP4_MIB_PEER_ENTRY, BGP4_MIB_PEER_IDENTIFIER);
 
   ip4_addr ip4 = ip4_from_oid(oid);
 
@@ -815,12 +810,8 @@ bgp4_next_peer(struct mib_walk_state *state, struct snmp_pdu *c)
     int old = snmp_oid_size(oid);
     int new = snmp_oid_size(peer_oid);
 
-    if (new - old > 0 && (uint) new - old > c->size)
-    {
-      snmp_log("bgp4_next_peer small buffer");
-      snmp_manage_tbuf(c->p, c);
-      oid = &c->sr_vb_start->name;  // TODO fix sr_vb_start in manage_tbuf
-    }
+    if (new - old > 0 && snmp_tbuf_reserve(c, new - old))
+      oid = &c->sr_vb_start->name;
 
     c->buffer += (new - old);
 
@@ -864,7 +855,7 @@ bgp4_next_peer(struct mib_walk_state *state, struct snmp_pdu *c)
 }
 
 /*
- * snmp_bgp_start - prepare BGP4-MIB
+ * snmp_bgp4_start - prepare BGP4-MIB
  * @p - SNMP protocol instance holding memory pool
  *
  * This function create all runtime bindings to BGP procotol structures.
@@ -873,6 +864,12 @@ bgp4_next_peer(struct mib_walk_state *state, struct snmp_pdu *c)
 void
 snmp_bgp4_start(struct snmp_proto *p)
 {
+  agentx_available_mibs[BGP4_MIB_ID] = (struct oid *) &bgp4_mib_oid;
+
+  snmp_log("snmp_bgp4_start setting bgp4_mib oid %u %p %p %p",
+    BGP4_MIB_ID, &agentx_available_mibs[BGP4_MIB_ID], agentx_available_mibs[BGP4_MIB_ID], &bgp4_mib_oid);
+
+
   struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, p->p.cf);
   /* Create binding to BGP protocols */
 
@@ -897,36 +894,18 @@ snmp_bgp4_start(struct snmp_proto *p)
     snmp_hash_add_peer(p, peer);
   }
 
-  const STATIC_OID(2) bgp4_mib_root = {
-    .n_subid = 2,
-    .prefix = SNMP_MGMT,
-    .include = 0,
-    .reserved = 0,
-    .ids = { SNMP_MIB_2, BGP4_MIB },
-  };
-
-  const STATIC_OID(4) bgp4_mib_peer_entry = {
-    .n_subid = 4,
-    .prefix = SNMP_MGMT,
-    .include = 0,
-    .reserved = 0,
-    .ids = { SNMP_MIB_2, BGP4_MIB, BGP4_MIB_PEER_TABLE, BGP4_MIB_PEER_ENTRY },
-  };
+  const STATIC_OID(4) bgp4_mib_peer_entry = STATIC_OID_INITIALIZER(4, SNMP_MGMT,
+    /* ids */ SNMP_MIB_2, SNMP_BGP4_MIB, BGP4_MIB_PEER_TABLE, BGP4_MIB_PEER_ENTRY);
 
   (void) mib_tree_hint(p->pool, p->mib_tree,
-    (const struct oid *) &bgp4_mib_root, BGP4_MIB_IDENTIFIER);
+    (const struct oid *) &bgp4_mib_oid, BGP4_MIB_IDENTIFIER);
   (void) mib_tree_hint(p->pool, p->mib_tree,
     (const struct oid *) &bgp4_mib_peer_entry, BGP4_MIB_IN_UPDATE_ELAPSED_TIME);
 
   mib_node_u *node;
   struct mib_leaf *leaf;
-  STATIC_OID(3) bgp4_var = {
-    .n_subid = 3,
-    .prefix = SNMP_MGMT,
-    .include = 0,
-    .reserved = 0,
-    .ids = { SNMP_MIB_2, BGP4_MIB, BGP4_MIB_VERSION },
-  };
+  STATIC_OID(3) bgp4_var = STATIC_OID_INITIALIZER(3, SNMP_MGMT,
+    /* ids */ SNMP_MIB_2, SNMP_BGP4_MIB, BGP4_MIB_VERSION);
 
   struct {
     u32 id;
@@ -966,14 +945,9 @@ snmp_bgp4_start(struct snmp_proto *p)
     leaf->size = leafs[i].size;
   }
 
-  STATIC_OID(5) bgp4_entry_var = {
-    .n_subid = 5,
-    .prefix = SNMP_MGMT,
-    .include = 0,
-    .reserved = 0,
-    .ids = { SNMP_MIB_2, BGP4_MIB,
-       BGP4_MIB_PEER_TABLE, BGP4_MIB_PEER_ENTRY, BGP4_MIB_PEER_IDENTIFIER },
-  };
+  STATIC_OID(5) bgp4_entry_var = STATIC_OID_INITIALIZER(5, SNMP_MGMT,
+    /* ids */ SNMP_MIB_2, SNMP_BGP4_MIB,
+       BGP4_MIB_PEER_TABLE, BGP4_MIB_PEER_ENTRY, BGP4_MIB_PEER_IDENTIFIER);
 
   struct {
       enum snmp_search_res (*filler)(struct mib_walk_state *state, struct snmp_pdu *c);
