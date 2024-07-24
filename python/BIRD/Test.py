@@ -157,11 +157,18 @@ class BIRDInstance(CLI):
 
         self.default_log_checker.expected += exp
 
-        async with asyncio.timeout(5):
-            await asyncio.gather(
-                    coro,
-                    *[ e.done for e in exp ]
-                    )
+        main_task = asyncio.create_task(coro)
+
+        try:
+            async with asyncio.timeout(5):
+                await asyncio.gather(
+                        main_task,
+                        *[ e.done for e in exp ]
+                        )
+        except TimeoutError as e:
+            for e in exp:
+                if not e.done.done():
+                    print(f"Not done: {e}: {e.pattern}")
 
         for e in exp:
             self.default_log_checker.expected.remove(e)
@@ -234,6 +241,7 @@ class Test:
         self.name = name
         self.hypervisor = Hypervisor(name)
         self.machine_index = {}
+        self.link_index = {}
         self.mode = mode
         self._started = None
         self._starting = False
@@ -299,7 +307,7 @@ class Test:
                 raise Exception("Link with no machines? HOW?!")
             case 1:
                 raise NotImplementedError("dummy link")
-            case 2:
+            case _:
                 linfo = await self.hcom("link", name, {
                     "machines": { m: { "name": name } for m in machines },
                     "ipv6": str(next(self.ipv6_pxgen)),
@@ -309,10 +317,8 @@ class Test:
                     for i in ("ipv4", "ipv6"):
                         linfo[m][i] = ipaddress.ip_interface(linfo[m][i])
 
+                self.link_index[name] = linfo
                 return linfo
-
-            case _:
-                raise NotImplementedError("virtual bridge")
 
     async def start(self):
         return await asyncio.gather(*[ v.start(test=self) for v in self.machine_index.values() ])

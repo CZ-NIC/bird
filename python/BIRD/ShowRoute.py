@@ -121,6 +121,15 @@ class NextHopParser(CLIParser):
         self.parent.result["nexthop"].append(self.result)
 
 @subparser(RouteParser)
+class DevNextHopParser(CLIParser):
+    entryRegex = re.compile("\\s+dev ([^:]*)")
+    def enter(self, groups):
+        self.iface ,= groups
+
+    def exit(self):
+        self.parent.result["nexthop"].append({ "iface": self.iface })
+
+@subparser(RouteParser)
 class AttributeParser(CLIParser):
     entryRegex = re.compile("\\s+([a-zA-Z_.0-9]+): (.*)$")
     def enter(self, groups):
