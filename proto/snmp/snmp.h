@@ -171,6 +171,7 @@ void snmp_reconnect(timer *tm);
 int snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state);
 
 void snmp_reset(struct snmp_proto *p);
+void snmp_stop(struct snmp_proto *p);
 
 extern const char agentx_master_addr[sizeof(AGENTX_MASTER_ADDR)];
 

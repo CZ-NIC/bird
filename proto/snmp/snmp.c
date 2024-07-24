@@ -151,10 +151,10 @@ void agentx_get_mib_init(pool *p)
 
 /*
  * agentx_get_mib - classify an OID based on MIB prefix
- *
  */
 enum agentx_mibs agentx_get_mib(const struct oid *o)
 {
+  /* TODO: move me into MIB tree as hooks/MIB module root */
   enum agentx_mibs mib = AGENTX_MIB_UNKNOWN;
   for (uint i = 0; i < AGENTX_MIB_COUNT + 1; i++)
   {
@@ -213,19 +213,6 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
   const struct snmp_config *cf = (struct snmp_config *) p->p.cf;
 
   TRACE(D_EVENTS, "SNMP changing state to %u", state);
-
-  if (state == SNMP_DOWN && (last == SNMP_REGISTER || last == SNMP_CONN))
-  {
-    /* We have a connection established (at least send out agentx-Open-PDU) */
-    state = SNMP_STOP;
-  }
-  /* else - We did not send any packet, we perform protocol cleanup only. */
-
-  if (last == SNMP_RESET)
-  {
-    rfree(p->sock);
-    p->sock = NULL;
-  }
 
   p->state = state;
 
@@ -321,14 +308,17 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     DBG("snmp -> SNMP_STOP\n");
     ASSUME(last == SNMP_REGISTER || last == SNMP_CONN);
     snmp_stop_subagent(p);
+    // FIXME: special treatment for SNMP_OPEN last state?
     p->sock->rx_hook = snmp_rx_skip;
     p->sock->tx_hook = snmp_tx_skip;
+
     p->startup_timer->hook = snmp_stop_timeout;
     tm_start(p->startup_timer, p->timeout);
     return PS_STOP;
 
   case SNMP_DOWN:
     DBG("snmp -> SNMP_DOWN\n");
+    ASSERT(last == SNMP_STOP || last == SNMP_RESET);
     snmp_cleanup(p);
     // FIXME: handle the state in which we call proto_notify_state and
     // immediately return PS_DOWN from snmp_shutdown()
@@ -338,7 +328,8 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     DBG("snmp -> SNMP_RESET\n");
     ASSUME(last == SNMP_REGISTER || last == SNMP_CONN);
     ASSUME(p->sock);
-    snmp_stop_subagent(p);
+    tm_stop(p->ping_timer);
+    // FIXME: special treatment for SNMP_OPEN last state?
     p->sock->rx_hook = snmp_rx_skip;
     p->sock->tx_hook = snmp_tx_skip;
     return PS_STOP;
@@ -423,19 +414,34 @@ snmp_connected(sock *sk)
 }
 
 /*
- * snmp_reset - end the communication on AgentX session
- * @p - SNMP protocol instance
+ * snmp_reset - reset AgentX session
+ * @p: SNMP protocol instance
  *
- * End the communication on AgentX session by downing the whole procotol. This
- * causes socket closure that implies AgentX session disconnection.
- * This function is internal and shouldn't be used outside the SNMP module.
+ * We wait until the last PDU written into the socket is send while ignoring all
+ * incomming PDUs. Then we hard reset the connection by socket closure. The
+ * protocol instance is automatically restarted by nest.
  */
 void
 snmp_reset(struct snmp_proto *p)
 {
-  tm_stop(p->ping_timer);
-  proto_notify_state(&p->p, snmp_set_state(p, SNMP_DOWN));
+  proto_notify_state(&p->p, snmp_set_state(p, SNMP_RESET));
 }
+
+
+/*
+ * snmp_stop - close AgentX session
+ * @p: SNMP protocol instance
+ *
+ * We write agentx-Close-PDU into the socket, wait until all written PDUs are
+ * send and then close the socket. The protocol instance is automatically
+ * restarted by nest.
+ */
+void
+snmp_stop(struct snmp_proto *p)
+{
+  proto_notify_state(&p->p, snmp_set_state(p, SNMP_STOP));
+}
+
 
 /*
  * snmp_sock_err - handle errors on socket by reopenning the socket

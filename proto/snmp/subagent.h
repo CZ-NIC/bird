@@ -148,7 +148,6 @@ enum agentx_flags {
 
 #define COPY_STR(proto, buf, str, length) ({				      \
   length = LOAD_PTR(buf);						      \
-  /*log(L_INFO "LOAD_STR(), %p %u", proto->pool, length + 1); */	      \
   str = mb_alloc(proto->pool, length + 1);				      \
   memcpy(str, buf+4, length);						      \
   str[length] = '\0'; /* set term. char */				      \
@@ -234,6 +233,13 @@ struct agentx_response {
 };
 
 STATIC_ASSERT(4 + 2 + 2 + AGENTX_HEADER_SIZE == sizeof(struct agentx_response));
+
+struct agentx_open_pdu {
+  struct agentx_header h;
+  u8 timeout;
+  u8 reserved1;	  /* reserved u24 */
+  u16 reserved2;  /* whole u24 is always zero filled */
+};
 
 struct agentx_close_pdu {
   struct agentx_header h;

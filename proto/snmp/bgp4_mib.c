@@ -26,9 +26,6 @@
 /* hash table only store ip4 addresses */
 #define SNMP_HASH_LESS(ip1, ip2) SNMP_HASH_LESS4(ip1,ip2)
 
-// delete me
-#define SNMP_MANAGE_TBUF(...) (void)0
-
 #define DECLARE_BGP4(addr, proto, conn, stats, config) \
   ip4_addr addr; \
   const struct bgp_proto UNUSED *proto; \
@@ -63,6 +60,7 @@ snmp_bgp_last_error(const struct bgp_proto *bgp, char err[2])
 static void
 snmp_bgp_reg_ok(struct snmp_proto *p, const struct agentx_response *res, struct snmp_registration *reg)
 {
+  /* TODO(contexts): add meaningful action */
   const struct oid * const oid = reg->oid;
   (void)oid;
   (void)p;
@@ -72,6 +70,7 @@ snmp_bgp_reg_ok(struct snmp_proto *p, const struct agentx_response *res, struct 
 static void
 snmp_bgp_reg_failed(struct snmp_proto *p, const struct agentx_response *res, struct snmp_registration *reg)
 {
+  /* TODO(contexts): add meaningful action */
   const struct oid * const oid = reg->oid;
   (void) res;
   (void)oid;
@@ -378,6 +377,13 @@ populate_bgp4(struct snmp_pdu *c, ip4_addr *addr, const struct bgp_proto **proto
   snmp_log("populate() ok");
   return SNMP_SEARCH_OK;
 }
+
+
+/*
+ *
+ *    MIB tree fill hooks
+ *
+ */
 
 static enum snmp_search_res
 fill_bgp_version(struct mib_walk_state *walk UNUSED, struct snmp_pdu *c)
@@ -785,7 +791,11 @@ fill_local_id(struct mib_walk_state *walk UNUSED, struct snmp_pdu *c)
 }
 
 /*
- * bgp4_next_peer
+ * bgp4_next_peer - find next BGP peer with IPv4 address
+ * @state: MIB tree walk state
+ * @c: SNMP PDU context data
+ *
+ * Update TX-buffer VarBind name to next peer address.
  */
 static int
 bgp4_next_peer(struct mib_walk_state *state, struct snmp_pdu *c)
@@ -821,8 +831,7 @@ bgp4_next_peer(struct mib_walk_state *state, struct snmp_pdu *c)
 
 
   ASSUME(oid->n_subid == 9);
-  /* full path BGP4-MIB::bgpPeerEntry.x: .1.3.6.1.2.1.15.3.1.x
-   * index offset = ARRAY_SIZE(snmp_internet) + 1 <prefix> + 4 + 1 <identifier x> */
+  /* Stack has one more node for empty prefix (tree root) */
   ASSUME(state->stack_pos > 10);
   oid->ids[4] = state->stack[10]->empty.id;
 
@@ -871,8 +880,8 @@ snmp_bgp4_start(struct snmp_proto *p)
 
 
   struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, p->p.cf);
-  /* Create binding to BGP protocols */
 
+  /* Create binding to BGP protocols */
   struct snmp_bond *b;
   WALK_LIST(b, cf->bgp_entries)
   {
