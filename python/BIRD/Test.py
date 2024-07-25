@@ -1,6 +1,7 @@
 import asyncio
 import ipaddress
 import jinja2
+import json
 import os
 import pathlib
 import sys
@@ -17,6 +18,7 @@ from flock.Hypervisor import Hypervisor
 from flock.Machine import Machine
 from .CLI import CLI, Transport
 from .LogChecker import LogChecker, LogExpectedFuture
+from .Aux import dict_gather, dict_expand
 
 # TODO: move this to some aux file
 class Differs(Exception):
@@ -31,6 +33,56 @@ class Differs(Exception):
             raise cls(a, b, tree)
         else:
             return False
+
+class ComparableDict(dict):
+    def __lt__(self, other):
+        if type(other) is dict:
+            return self < ComparableDict(other)
+        elif type(other) is ComparableDict:
+            sk = sorted(list(self.keys()))
+            ok = sorted(list(other.keys()))
+
+            if sk == ok:
+                for k in sk:
+                    if self[k] < other[k]:
+                        return True
+                    if self[k] > other[k]:
+                        return False
+
+                return False
+            else:
+                return sk < ok
+        else:
+            raise TypeError("Inequality impossible between ComparableDict and non-dict")
+
+    def __gt__(self, other):
+        if type(other) is dict:
+            return ComparableDict(other) < self
+        else:
+            return other < self
+
+    def __le__(self, other):
+        if self == other:
+            return True
+        else:
+            return self < other
+
+    def __ge__(self, other):
+        if self == other:
+            return True
+        else:
+            return self > other
+
+def sort_arrays(a):
+    if type(a) is str:
+        return a
+    if type(a) is int:
+        return a
+
+    try:
+        return { k: sort_arrays(v) for k,v in a.items() }
+    except AttributeError:
+        return sorted([sort_arrays(v) for v in a ], key=lambda v: ComparableDict(v) if type(v) is dict else v)
 
 def deep_eq(a, b, deep=False):
     if a == b:
@@ -224,6 +276,7 @@ class BIRDInstance(CLI):
 
 class DumpCheck:
     def __init__(self, test, timeout, name, check_timeout=None, check_id=None, check_retry_timeout=0.5):
+        self.test = test
         self.timeout = timeout
         self.check_timeout = timeout if check_timeout is None else check_timeout
         self.check_retry_timeout = check_retry_timeout
@@ -298,15 +351,15 @@ class DumpCheck:
             return False
 
 class DumpOnMachines(DumpCheck):
-    def __init__(self, test, *args, machines=None, **kwargs):
-        super().__init__(test, *args, **kwargs)
+    def __init__(self, *args, machines=None, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # Collect machines to dump
         if machines is None:
-            self.machines = test.machine_index.values()
+            self.machines = self.test.machine_index.values()
         else:
             self.machines = [
-                    m if isinstance(m, CLI) else test.machine_index[m]
+                    m if isinstance(m, CLI) else self.test.machine_index[m]
                     for m in machines
                     ]
 
@@ -337,7 +390,27 @@ class DumpRIB(DumpOnMachines):
                         del r[k]
         return d
 
+class DumpLinuxKRT(DumpOnMachines):
+    def __init__(self, *args, cmdargs=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if cmdargs is None:
+            self.cmdargs = []
+        else:
+            self.cmdargs = cmdargs
 
+    async def obtain_on_machine(self, mach):
+        raw = await dict_gather({
+                fam:
+                self.test.hypervisor.control_socket.send_cmd(
+                    "run_in", mach.mach.name, "ip", "-j", f"-{fam}", "route", "show", *self.cmdargs)
+                for fam in ("4", "6", "M")
+                })
+
+        for k,v in raw.items():
+            if v["ret"] != 0 or len(v["err"]) != 0:
+                raise Exception(f"Failed to gather krt dump for {k}: ret={v['ret']}, {v['err']}")
+
+        return { k: sort_arrays(json.loads(v["out"])) for k,v in raw.items() }
 
 class Test:
     ipv6_prefix = ipaddress.ip_network("2001:db8::/32")
@@ -468,6 +541,36 @@ class Test:
         finally:
             print("cleaning up")
             await self.cleanup()
+
+
+    async def krt_dump(self, timeout, name, *args, full=True, machines=None, check_timeout=10, check_retry_timeout=0.5):
+        # Collect machines to dump
+        if machines is None:
+            machines = self.machine_index.values()
+        else:
+            machines = [
+                    m if isinstance(m, CLI) else self.machine_index[m]
+                    for m in machines
+                    ]
+
+        raw = await dict_gather({
+                (mach.mach.name, fam):
+                mach.mach.hypervisor.control_socket.send_cmd(
+                    "run_in", mach.mach.name, "ip", "-j", f"-{fam}", "route", "show", *args)
+                for mach in machines
+                for fam in ("4", "6", "M")
+                })
+
+        for k,v in raw.items():
+            if v["ret"] != 0 or len(v["err"]) != 0:
+                raise Exception(f"Failed to gather krt dump for {k}: ret={v['ret']}, {v['err']}")
+
+        dump = dict_expand({ k: json.loads(v["out"]) for k,v in raw.items()})
+        print(dump)
+
+        name = "krt.yaml"
+        with open(name, "w") as y:
+            yaml.dump(dump, y)
 
 
 if __name__ == "__main__":

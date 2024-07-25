@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import asyncio
-from python.BIRD.Test import Test, BIRDInstance, DumpRIB
+from python.BIRD.Test import Test, BIRDInstance, DumpRIB, DumpLinuxKRT
 from python.BIRD.LogChecker import LogExpectedStub
 
 class ThisTest(Test):
@@ -32,4 +32,7 @@ class ThisTest(Test):
 
     async def test(self):
         # Startup check
-        await DumpRIB(self, 30, "startup")()
+        await asyncio.gather(*[
+            DumpRIB(self, 30, "rib-startup")(),
+            DumpLinuxKRT(self, 30, "fib-startup")(),
+            ])

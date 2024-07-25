@@ -1,0 +1,1102 @@
+m1:
+  '4':
+  - dev: ve31
+    dst: 192.0.2.48/28
+    flags: []
+    gateway: 192.0.2.1
+    metric: 32
+    protocol: bird
+  - dev: ve31
+    dst: 192.0.2.64/28
+    flags: []
+    gateway: 192.0.2.1
+    metric: 32
+    protocol: bird
+  - dev: ve31
+    dst: 192.0.2.80/28
+    flags: []
+    gateway: 192.0.2.1
+    metric: 32
+    protocol: bird
+  - dev: ve31
+    dst: 192.0.2.96/28
+    flags: []
+    gateway: 192.0.2.1
+    metric: 32
+    protocol: bird
+  - dev: ve12
+    dst: 192.0.2.16/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: ve31
+    dst: 192.0.2.0/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: ve12
+    dst: 192.0.2.16/28
+    flags: []
+    prefsrc: 192.0.2.17
+    protocol: kernel
+    scope: link
+  - dev: ve31
+    dst: 192.0.2.0/28
+    flags: []
+    prefsrc: 192.0.2.2
+    protocol: kernel
+    scope: link
+  - dst: 192.0.2.32/28
+    flags: []
+    metric: 32
+    nexthops:
+    - dev: ve12
+      flags: []
+      gateway: 192.0.2.18
+      weight: 1
+    - dev: ve31
+      flags: []
+      gateway: 192.0.2.1
+      weight: 1
+    protocol: bird
+  '6':
+  - dev: ve31
+    dst: 2001:db8:0:3::/64
+    flags: []
+    gateway: fe80::ac55:22ff:fe32:3610
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve31
+    dst: 2001:db8:0:4::/64
+    flags: []
+    gateway: fe80::ac55:22ff:fe32:3610
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve31
+    dst: 2001:db8:0:5::/64
+    flags: []
+    gateway: fe80::ac55:22ff:fe32:3610
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve31
+    dst: 2001:db8:0:6::/64
+    flags: []
+    gateway: fe80::ac55:22ff:fe32:3610
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve12
+    dst: 2001:db8:0:1::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve12
+    dst: 2001:db8:0:1::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve12
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve31
+    dst: 2001:db8::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve31
+    dst: 2001:db8::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve31
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dst: 2001:db8:0:2::/64
+    flags: []
+    metric: 32
+    nexthops:
+    - dev: ve12
+      flags: []
+      gateway: fe80::5c38:8eff:fe25:1d68
+      weight: 1
+    - dev: ve31
+      flags: []
+      gateway: fe80::ac55:22ff:fe32:3610
+      weight: 1
+    pref: medium
+    protocol: bird
+  M: []
+m2:
+  '4':
+  - dev: ve23
+    dst: 192.0.2.48/28
+    flags: []
+    gateway: 192.0.2.34
+    metric: 32
+    protocol: bird
+  - dev: ve23
+    dst: 192.0.2.64/28
+    flags: []
+    gateway: 192.0.2.34
+    metric: 32
+    protocol: bird
+  - dev: ve23
+    dst: 192.0.2.80/28
+    flags: []
+    gateway: 192.0.2.34
+    metric: 32
+    protocol: bird
+  - dev: ve23
+    dst: 192.0.2.96/28
+    flags: []
+    gateway: 192.0.2.34
+    metric: 32
+    protocol: bird
+  - dev: ve12
+    dst: 192.0.2.16/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: ve23
+    dst: 192.0.2.32/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: ve12
+    dst: 192.0.2.16/28
+    flags: []
+    prefsrc: 192.0.2.18
+    protocol: kernel
+    scope: link
+  - dev: ve23
+    dst: 192.0.2.32/28
+    flags: []
+    prefsrc: 192.0.2.33
+    protocol: kernel
+    scope: link
+  - dst: 192.0.2.0/28
+    flags: []
+    metric: 32
+    nexthops:
+    - dev: ve12
+      flags: []
+      gateway: 192.0.2.17
+      weight: 1
+    - dev: ve23
+      flags: []
+      gateway: 192.0.2.34
+      weight: 1
+    protocol: bird
+  '6':
+  - dev: ve23
+    dst: 2001:db8:0:3::/64
+    flags: []
+    gateway: fe80::7cda:1aff:feae:9831
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve23
+    dst: 2001:db8:0:4::/64
+    flags: []
+    gateway: fe80::7cda:1aff:feae:9831
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve23
+    dst: 2001:db8:0:5::/64
+    flags: []
+    gateway: fe80::7cda:1aff:feae:9831
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve23
+    dst: 2001:db8:0:6::/64
+    flags: []
+    gateway: fe80::7cda:1aff:feae:9831
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve12
+    dst: 2001:db8:0:1::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve12
+    dst: 2001:db8:0:1::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve12
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve23
+    dst: 2001:db8:0:2::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve23
+    dst: 2001:db8:0:2::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve23
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dst: 2001:db8::/64
+    flags: []
+    metric: 32
+    nexthops:
+    - dev: ve12
+      flags: []
+      gateway: fe80::4cfd:f0ff:fe23:167
+      weight: 1
+    - dev: ve23
+      flags: []
+      gateway: fe80::7cda:1aff:feae:9831
+      weight: 1
+    pref: medium
+    protocol: bird
+  M: []
+m3:
+  '4':
+  - dev: multi
+    dst: 192.0.2.48/28
+    flags: []
+    gateway: 192.0.2.99
+    metric: 32
+    protocol: bird
+  - dev: multi
+    dst: 192.0.2.80/28
+    flags: []
+    gateway: 192.0.2.100
+    metric: 32
+    protocol: bird
+  - dev: multi
+    dst: 192.0.2.96/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: ve23
+    dst: 192.0.2.32/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: ve31
+    dst: 192.0.2.0/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: multi
+    dst: 192.0.2.96/28
+    flags: []
+    prefsrc: 192.0.2.97
+    protocol: kernel
+    scope: link
+  - dev: ve23
+    dst: 192.0.2.32/28
+    flags: []
+    prefsrc: 192.0.2.34
+    protocol: kernel
+    scope: link
+  - dev: ve31
+    dst: 192.0.2.0/28
+    flags: []
+    prefsrc: 192.0.2.1
+    protocol: kernel
+    scope: link
+  - dst: 192.0.2.16/28
+    flags: []
+    metric: 32
+    nexthops:
+    - dev: ve23
+      flags: []
+      gateway: 192.0.2.33
+      weight: 1
+    - dev: ve31
+      flags: []
+      gateway: 192.0.2.2
+      weight: 1
+    protocol: bird
+  - dst: 192.0.2.64/28
+    flags: []
+    metric: 32
+    nexthops:
+    - dev: multi
+      flags: []
+      gateway: 192.0.2.100
+      weight: 1
+    - dev: multi
+      flags: []
+      gateway: 192.0.2.99
+      weight: 1
+    protocol: bird
+  '6':
+  - dev: multi
+    dst: 2001:db8:0:3::/64
+    flags: []
+    gateway: fe80::5c5b:1eff:fe50:3793
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:5::/64
+    flags: []
+    gateway: fe80::9ce1:eaff:fe4b:b4f9
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:6::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:6::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: multi
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve23
+    dst: 2001:db8:0:2::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve23
+    dst: 2001:db8:0:2::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve23
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve31
+    dst: 2001:db8::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve31
+    dst: 2001:db8::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve31
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dst: 2001:db8:0:1::/64
+    flags: []
+    metric: 32
+    nexthops:
+    - dev: ve23
+      flags: []
+      gateway: fe80::8c41:8bff:fe8f:9446
+      weight: 1
+    - dev: ve31
+      flags: []
+      gateway: fe80::5c82:ccff:fe47:46df
+      weight: 1
+    pref: medium
+    protocol: bird
+  - dst: 2001:db8:0:4::/64
+    flags: []
+    metric: 32
+    nexthops:
+    - dev: multi
+      flags: []
+      gateway: fe80::5c5b:1eff:fe50:3793
+      weight: 1
+    - dev: multi
+      flags: []
+      gateway: fe80::9ce1:eaff:fe4b:b4f9
+      weight: 1
+    pref: medium
+    protocol: bird
+  M: []
+m4:
+  '4':
+  - dev: multi
+    dst: 192.0.2.0/28
+    flags: []
+    gateway: 192.0.2.97
+    metric: 32
+    protocol: bird
+  - dev: multi
+    dst: 192.0.2.16/28
+    flags: []
+    gateway: 192.0.2.97
+    metric: 32
+    protocol: bird
+  - dev: multi
+    dst: 192.0.2.32/28
+    flags: []
+    gateway: 192.0.2.97
+    metric: 32
+    protocol: bird
+  - dev: multi
+    dst: 192.0.2.48/28
+    flags: []
+    gateway: 192.0.2.99
+    metric: 32
+    protocol: bird
+  - dev: multi
+    dst: 192.0.2.80/28
+    flags: []
+    gateway: 192.0.2.100
+    metric: 32
+    protocol: bird
+  - dev: multi
+    dst: 192.0.2.96/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: multi
+    dst: 192.0.2.96/28
+    flags: []
+    prefsrc: 192.0.2.98
+    protocol: kernel
+    scope: link
+  - dst: 192.0.2.64/28
+    flags: []
+    metric: 32
+    nexthops:
+    - dev: multi
+      flags: []
+      gateway: 192.0.2.100
+      weight: 1
+    - dev: multi
+      flags: []
+      gateway: 192.0.2.99
+      weight: 1
+    protocol: bird
+  '6':
+  - dev: multi
+    dst: 2001:db8:0:1::/64
+    flags: []
+    gateway: fe80::dc8f:6bff:fe0f:6ad9
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:2::/64
+    flags: []
+    gateway: fe80::dc8f:6bff:fe0f:6ad9
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:3::/64
+    flags: []
+    gateway: fe80::5c5b:1eff:fe50:3793
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:5::/64
+    flags: []
+    gateway: fe80::9ce1:eaff:fe4b:b4f9
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8::/64
+    flags: []
+    gateway: fe80::dc8f:6bff:fe0f:6ad9
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:6::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:6::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: multi
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dst: 2001:db8:0:4::/64
+    flags: []
+    metric: 32
+    nexthops:
+    - dev: multi
+      flags: []
+      gateway: fe80::5c5b:1eff:fe50:3793
+      weight: 1
+    - dev: multi
+      flags: []
+      gateway: fe80::9ce1:eaff:fe4b:b4f9
+      weight: 1
+    pref: medium
+    protocol: bird
+  M: []
+m5:
+  '4':
+  - dev: multi
+    dst: 192.0.2.0/28
+    flags: []
+    gateway: 192.0.2.97
+    metric: 32
+    protocol: bird
+  - dev: multi
+    dst: 192.0.2.16/28
+    flags: []
+    gateway: 192.0.2.97
+    metric: 32
+    protocol: bird
+  - dev: multi
+    dst: 192.0.2.32/28
+    flags: []
+    gateway: 192.0.2.97
+    metric: 32
+    protocol: bird
+  - dev: multi
+    dst: 192.0.2.80/28
+    flags: []
+    gateway: 192.0.2.100
+    metric: 32
+    protocol: bird
+  - dev: ve57
+    dst: 192.0.2.64/28
+    flags: []
+    gateway: 192.0.2.50
+    metric: 32
+    protocol: bird
+  - dev: multi
+    dst: 192.0.2.96/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: ve57
+    dst: 192.0.2.48/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: multi
+    dst: 192.0.2.96/28
+    flags: []
+    prefsrc: 192.0.2.99
+    protocol: kernel
+    scope: link
+  - dev: ve57
+    dst: 192.0.2.48/28
+    flags: []
+    prefsrc: 192.0.2.49
+    protocol: kernel
+    scope: link
+  '6':
+  - dev: multi
+    dst: 2001:db8:0:1::/64
+    flags: []
+    gateway: fe80::dc8f:6bff:fe0f:6ad9
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:2::/64
+    flags: []
+    gateway: fe80::dc8f:6bff:fe0f:6ad9
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:5::/64
+    flags: []
+    gateway: fe80::9ce1:eaff:fe4b:b4f9
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8::/64
+    flags: []
+    gateway: fe80::dc8f:6bff:fe0f:6ad9
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve57
+    dst: 2001:db8:0:4::/64
+    flags: []
+    gateway: fe80::9c97:afff:fe62:f695
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:6::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:6::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: multi
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve57
+    dst: 2001:db8:0:3::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve57
+    dst: 2001:db8:0:3::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve57
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  M: []
+m6:
+  '4':
+  - dev: multi
+    dst: 192.0.2.0/28
+    flags: []
+    gateway: 192.0.2.97
+    metric: 32
+    protocol: bird
+  - dev: multi
+    dst: 192.0.2.16/28
+    flags: []
+    gateway: 192.0.2.97
+    metric: 32
+    protocol: bird
+  - dev: multi
+    dst: 192.0.2.32/28
+    flags: []
+    gateway: 192.0.2.97
+    metric: 32
+    protocol: bird
+  - dev: multi
+    dst: 192.0.2.48/28
+    flags: []
+    gateway: 192.0.2.99
+    metric: 32
+    protocol: bird
+  - dev: ve86
+    dst: 192.0.2.64/28
+    flags: []
+    gateway: 192.0.2.81
+    metric: 32
+    protocol: bird
+  - dev: multi
+    dst: 192.0.2.96/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: ve86
+    dst: 192.0.2.80/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: multi
+    dst: 192.0.2.96/28
+    flags: []
+    prefsrc: 192.0.2.100
+    protocol: kernel
+    scope: link
+  - dev: ve86
+    dst: 192.0.2.80/28
+    flags: []
+    prefsrc: 192.0.2.82
+    protocol: kernel
+    scope: link
+  '6':
+  - dev: multi
+    dst: 2001:db8:0:1::/64
+    flags: []
+    gateway: fe80::dc8f:6bff:fe0f:6ad9
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:2::/64
+    flags: []
+    gateway: fe80::dc8f:6bff:fe0f:6ad9
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:3::/64
+    flags: []
+    gateway: fe80::5c5b:1eff:fe50:3793
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8::/64
+    flags: []
+    gateway: fe80::dc8f:6bff:fe0f:6ad9
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve86
+    dst: 2001:db8:0:4::/64
+    flags: []
+    gateway: fe80::6cc9:f2ff:feb9:754f
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:6::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: multi
+    dst: 2001:db8:0:6::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: multi
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve86
+    dst: 2001:db8:0:5::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve86
+    dst: 2001:db8:0:5::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve86
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  M: []
+m7:
+  '4':
+  - dev: ve57
+    dst: 192.0.2.0/28
+    flags: []
+    gateway: 192.0.2.49
+    metric: 32
+    protocol: bird
+  - dev: ve57
+    dst: 192.0.2.16/28
+    flags: []
+    gateway: 192.0.2.49
+    metric: 32
+    protocol: bird
+  - dev: ve57
+    dst: 192.0.2.32/28
+    flags: []
+    gateway: 192.0.2.49
+    metric: 32
+    protocol: bird
+  - dev: ve57
+    dst: 192.0.2.96/28
+    flags: []
+    gateway: 192.0.2.49
+    metric: 32
+    protocol: bird
+  - dev: ve78
+    dst: 192.0.2.80/28
+    flags: []
+    gateway: 192.0.2.66
+    metric: 32
+    protocol: bird
+  - dev: ve57
+    dst: 192.0.2.48/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: ve78
+    dst: 192.0.2.64/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: ve57
+    dst: 192.0.2.48/28
+    flags: []
+    prefsrc: 192.0.2.50
+    protocol: kernel
+    scope: link
+  - dev: ve78
+    dst: 192.0.2.64/28
+    flags: []
+    prefsrc: 192.0.2.65
+    protocol: kernel
+    scope: link
+  '6':
+  - dev: ve57
+    dst: 2001:db8:0:1::/64
+    flags: []
+    gateway: fe80::2c33:44ff:fe0f:454b
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve57
+    dst: 2001:db8:0:2::/64
+    flags: []
+    gateway: fe80::2c33:44ff:fe0f:454b
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve57
+    dst: 2001:db8:0:6::/64
+    flags: []
+    gateway: fe80::2c33:44ff:fe0f:454b
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve57
+    dst: 2001:db8::/64
+    flags: []
+    gateway: fe80::2c33:44ff:fe0f:454b
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve78
+    dst: 2001:db8:0:5::/64
+    flags: []
+    gateway: fe80::8c67:1aff:fe6f:1193
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve57
+    dst: 2001:db8:0:3::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve57
+    dst: 2001:db8:0:3::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve57
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve78
+    dst: 2001:db8:0:4::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve78
+    dst: 2001:db8:0:4::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve78
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  M: []
+m8:
+  '4':
+  - dev: ve78
+    dst: 192.0.2.48/28
+    flags: []
+    gateway: 192.0.2.65
+    metric: 32
+    protocol: bird
+  - dev: ve86
+    dst: 192.0.2.0/28
+    flags: []
+    gateway: 192.0.2.82
+    metric: 32
+    protocol: bird
+  - dev: ve86
+    dst: 192.0.2.16/28
+    flags: []
+    gateway: 192.0.2.82
+    metric: 32
+    protocol: bird
+  - dev: ve86
+    dst: 192.0.2.32/28
+    flags: []
+    gateway: 192.0.2.82
+    metric: 32
+    protocol: bird
+  - dev: ve86
+    dst: 192.0.2.96/28
+    flags: []
+    gateway: 192.0.2.82
+    metric: 32
+    protocol: bird
+  - dev: ve78
+    dst: 192.0.2.64/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: ve86
+    dst: 192.0.2.80/28
+    flags: []
+    metric: 32
+    protocol: bird
+    scope: link
+  - dev: ve78
+    dst: 192.0.2.64/28
+    flags: []
+    prefsrc: 192.0.2.66
+    protocol: kernel
+    scope: link
+  - dev: ve86
+    dst: 192.0.2.80/28
+    flags: []
+    prefsrc: 192.0.2.81
+    protocol: kernel
+    scope: link
+  '6':
+  - dev: ve78
+    dst: 2001:db8:0:3::/64
+    flags: []
+    gateway: fe80::ac21:71ff:fea9:abe
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve86
+    dst: 2001:db8:0:1::/64
+    flags: []
+    gateway: fe80::5cf4:d5ff:fe79:c89
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve86
+    dst: 2001:db8:0:2::/64
+    flags: []
+    gateway: fe80::5cf4:d5ff:fe79:c89
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve86
+    dst: 2001:db8:0:6::/64
+    flags: []
+    gateway: fe80::5cf4:d5ff:fe79:c89
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve86
+    dst: 2001:db8::/64
+    flags: []
+    gateway: fe80::5cf4:d5ff:fe79:c89
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve78
+    dst: 2001:db8:0:4::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve78
+    dst: 2001:db8:0:4::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve78
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve86
+    dst: 2001:db8:0:5::/64
+    flags: []
+    metric: 32
+    pref: medium
+    protocol: bird
+  - dev: ve86
+    dst: 2001:db8:0:5::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  - dev: ve86
+    dst: fe80::/64
+    flags: []
+    metric: 256
+    pref: medium
+    protocol: kernel
+  M: []
