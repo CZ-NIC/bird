@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import asyncio
-from python.BIRD.Test import Test, BIRDInstance
+from python.BIRD.Test import Test, BIRDInstance, DumpRIB
 from python.BIRD.LogChecker import LogExpectedStub
 
 class ThisTest(Test):
@@ -32,5 +32,4 @@ class ThisTest(Test):
 
     async def test(self):
         # Startup check
-        await self.route_dump(30, "startup")
-
+        await DumpRIB(self, 30, "startup")()
