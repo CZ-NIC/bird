@@ -1,34 +1,33 @@
-tables:
-  master4:
-    networks: {}
-  master6:
-    networks:
-      2001:db8:cc00::/40:
-        routes:
-        - args: '* (200)'
-          dest: unreachable
-          preference: '200'
-          proto: STARTUP
-          source: static
-version: v3.0-alpha2-660-g62145d08-x
----
-tables:
-  master6:
-    networks:
-      2001:db8:cc00::/40:
-        routes:
-        - args: '* (100) [AS1i]'
-          bgp_local_pref: '100'
-          bgp_next_hop: 2001:db8::1 fe80::bc92:adff:fea1:2c5c
-          bgp_origin: IGP
-          bgp_path: '1'
-          dest: unicast
-          from: 2001:db8::1
-          igp_metric: '0'
-          nexthop:
-          - iface: L
-            nexthop: 2001:db8::1
-          preference: '100'
-          proto: LINK
-          source: BGP
-version: v3.0-alpha2-660-g62145d08-x
+dest:
+  tables:
+    master6:
+      networks:
+        2001:db8:cc00::/40:
+          routes:
+          - args: '* (100) [AS1i]'
+            bgp_local_pref: '100'
+            bgp_next_hop: 2001:db8::1 fe80::bc92:adff:fea1:2c5c
+            bgp_origin: IGP
+            bgp_path: '1'
+            dest: unicast
+            from: 2001:db8::1
+            igp_metric: '0'
+            nexthop:
+            - iface: L
+              nexthop: 2001:db8::1
+            preference: '100'
+            proto: LINK
+            source: BGP
+src:
+  tables:
+    master4:
+      networks: {}
+    master6:
+      networks:
+        2001:db8:cc00::/40:
+          routes:
+          - args: '* (200)'
+            dest: unreachable
+            preference: '200'
+            proto: STARTUP
+            source: static
