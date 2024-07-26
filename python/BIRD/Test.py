@@ -21,12 +21,12 @@ from .LogChecker import LogChecker, LogExpectedFuture
 from .Aux import dict_gather, dict_expand, deep_sort_lists, deep_eq, Differs
 
 class MinimalistTransport(Transport):
-    def __init__(self, socket, machine):
-        self.sock = socket
+    def __init__(self, hypervisor, machine):
+        self.hypervisor = hypervisor
         self.machine = machine
 
     async def send_cmd(self, *args):
-        return await self.sock.send_cmd("run_in", self.machine, "./birdc", "-l", *args)
+        return await self.hypervisor.run_in(self.machine, "./birdc", "-l", *args)
 
 class BIRDBinDir:
     index = {}
@@ -90,8 +90,8 @@ class BIRDInstance(CLI):
 
         super().__init__(
                 transport=MinimalistTransport(
-                    socket=mach.hypervisor.control_socket,
-                    machine=self.mach.name
+                    hypervisor=mach.hypervisor,
+                    machine=self.mach.name,
                     )
                 )
 
@@ -145,7 +145,7 @@ class BIRDInstance(CLI):
         self.bindir.copy(self.workdir)
         self.write_config(test)
 
-        await test.hcom("run_in", self.mach.name, "./bird", "-l")
+        await test.hypervisor.run_in(self.mach.name, "./bird", "-l")
 
         exp = LogExpectedFuture(f"{self.logprefix} <INFO> Started$")
         self.default_log_checker.expected.append(exp)
@@ -299,8 +299,7 @@ class DumpLinuxKRT(DumpOnMachines):
     async def obtain_on_machine(self, mach):
         raw = await dict_gather({
                 fam:
-                self.test.hypervisor.control_socket.send_cmd(
-                    "run_in", mach.mach.name, "ip", "-j", f"-{fam}", "route", "show", *self.cmdargs)
+                self.test.hypervisor.run_in(mach.mach.name, "ip", "-j", f"-{fam}", "route", "show", *self.cmdargs)
                 for fam in ("4", "6", "M")
                 })
 
@@ -341,7 +340,7 @@ class Test:
 
         self.route_dump_id = 0
 
-    async def hcom(self, *args):
+    async def assure_running(self):
         if self._stopped is not None:
             return
 
@@ -349,28 +348,28 @@ class Test:
             self._started = asyncio.Future()
 
         if self._started.done():
-            return await self.hypervisor.control_socket.send_cmd(*args)
+            return
 
         if self._starting:
             await self._started
-        else:
-            self._starting = True
-            await self.hypervisor.prepare()
-            os.symlink(pathlib.Path(f"{self.name}.log").absolute(), self.hypervisor.basedir / "flock.log")
-            await self.hypervisor.start()
+            return
 
-            self._started.set_result(True)
-            self._starting = False
+        self._starting = True
+        await self.hypervisor.prepare()
+        os.symlink(pathlib.Path(f"{self.name}.log").absolute(), self.hypervisor.basedir / "flock.log")
+        await self.hypervisor.start()
 
-        return await self.hypervisor.control_socket.send_cmd_early(*args)
+        self._started.set_result(await self.hypervisor.status(__rpc_timeout=5))
 
     async def machines(self, *names, t: type):
         for n in names:
             if n in self.machine_index:
                 raise Exception(f"Machine {n} duplicate")
 
+        await self.assure_running()
+
         info = await asyncio.gather(*[
-            self.hcom("machine", name, { "type": "minimalist" })
+            self.hypervisor.machine( name, { "type": "minimalist" })
             for name in names
             ])
 
@@ -389,13 +388,15 @@ class Test:
         return inst
 
     async def link(self, name, *machines):
+        await self.assure_running()
+
         match len(machines):
             case 0:
                 raise Exception("Link with no machines? HOW?!")
             case 1:
                 raise NotImplementedError("dummy link")
             case _:
-                linfo = await self.hcom("link", name, {
+                linfo = await self.hypervisor.link(name, {
                     "machines": { m: { "name": name } for m in machines },
                     "ipv6": str(next(self.ipv6_pxgen)),
                     "ipv4": str(next(self.ipv4_pxgen)),
@@ -413,7 +414,7 @@ class Test:
     async def cleanup(self):
         await asyncio.gather(*[ v.cleanup() for v in self.machine_index.values() ])
         self.machine_index = {}
-        await self.hcom("stop", True)
+        await self.hypervisor.stop()
         self._stopped = True
 
     async def run(self):
@@ -453,8 +454,7 @@ class Test:
 
         raw = await dict_gather({
                 (mach.mach.name, fam):
-                mach.mach.hypervisor.control_socket.send_cmd(
-                    "run_in", mach.mach.name, "ip", "-j", f"-{fam}", "route", "show", *args)
+                mach.mach.hypervisor.run_in(mach.mach.name, "ip", "-j", f"-{fam}", "route", "show", *args)
                 for mach in machines
                 for fam in ("4", "6", "M")
                 })

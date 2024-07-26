@@ -111,6 +111,3 @@ class ThisTest(Test):
         # Pre-cleanup log checker
         self.src.default_log_checker.append(f"{self.src.logprefix} <RMT> LINK: Received: Administrative shutdown")
         self.dest.default_log_checker.append(f"{self.dest.logprefix} <RMT> LINK: Received: Administrative shutdown")
-
-        # Regular cleanup
-        await self.cleanup()
