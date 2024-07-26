@@ -208,15 +208,29 @@ class DumpCheck:
                 raise Exception("Invalid test mode")
 
     def __call__(self):
-        print(f"{self.stem}\t", end="", flush=True)
+        padlen = 48 - len(self.stem)
+        if padlen < 6:
+            padlen = 6
+        label = self.stem + " "*padlen
+
+        print(label)
+        self.label_col = len(label)
+        self.label_row = len(self.test.checks_running)
+        self.test.checks_running.append(self)
+
         return self.run()
+
+    def print_result(self, text):
+        rows_up = len(self.test.checks_running) - self.label_row
+        total_chars = len(text) + self.label_col
+        print(f"\033[{rows_up}A\033[{self.label_col}C{text}\033[{total_chars}D\033[{rows_up}B", flush=True, end="")
 
     async def save(self):
         await asyncio.sleep(self.timeout)
         dump = await self.obtain()
         with open(self.file, "w") as y:
             yaml.dump(dump, y)
-        print(f"[ SAVED ]")
+        self.print_result(f"[ SAVED ]")
 
     async def check(self):
         with open(self.file, "r") as y:
@@ -231,7 +245,7 @@ class DumpCheck:
                         deep_eq(c, dump, True)
 #                            if deep_eq(c, dump):
                         spent = asyncio.get_running_loop().time() - to.when() + self.check_timeout
-                        print(f"[  OOK  ]\t{spent:.6f}s")
+                        self.print_result(f"[  OK  ]      {spent:.6f}s")
                         return True
                     except Differs as d:
                         if self.show_difs:
@@ -241,7 +255,7 @@ class DumpCheck:
                     await asyncio.sleep(self.check_retry_timeout)
 
         except TimeoutError as e:
-            print(f"[ BAD  ]")
+            self.print_result(f"[ BAD  ]")
             for q in range(len(seen)):
                 with open(f"__result_bad_{q}__{self.stem}", "w") as y:
                     yaml.dump(seen[q], y)
@@ -335,10 +349,10 @@ class Test:
 
         self.background_tasks = []
 
+        self.checks_running = []
+
         self.ipv6_pxgen = self.ipv6_prefix.subnets(new_prefix=self.ipv6_link_pxlen)
         self.ipv4_pxgen = self.ipv4_prefix.subnets(new_prefix=self.ipv4_link_pxlen)
-
-        self.route_dump_id = 0
 
     async def assure_running(self):
         if self._stopped is not None:
