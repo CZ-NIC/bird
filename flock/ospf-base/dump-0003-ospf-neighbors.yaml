@@ -1,0 +1,344 @@
+m1:
+  ospf4:
+    ospf4:
+      neighbors:
+        192.0.2.1:
+          interface: ve31
+          ip: 192.0.2.1
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.18:
+          interface: ve12
+          ip: 192.0.2.18
+          position: PtP
+          priority: '1'
+          state: Full
+  ospf6:
+    ospf6:
+      neighbors:
+        192.0.2.1:
+          interface: ve31
+          ip: fe80::ac55:22ff:fe32:3610
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.18:
+          interface: ve12
+          ip: fe80::5c38:8eff:fe25:1d68
+          position: PtP
+          priority: '1'
+          state: Full
+m2:
+  ospf4:
+    ospf4:
+      neighbors:
+        192.0.2.1:
+          interface: ve23
+          ip: 192.0.2.34
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.2:
+          interface: ve12
+          ip: 192.0.2.17
+          position: PtP
+          priority: '1'
+          state: Full
+  ospf6:
+    ospf6:
+      neighbors:
+        192.0.2.1:
+          interface: ve23
+          ip: fe80::7cda:1aff:feae:9831
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.2:
+          interface: ve12
+          ip: fe80::4cfd:f0ff:fe23:167
+          position: PtP
+          priority: '1'
+          state: Full
+m3:
+  ospf4:
+    ospf4:
+      neighbors:
+        192.0.2.18:
+          interface: ve23
+          ip: 192.0.2.33
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.2:
+          interface: ve31
+          ip: 192.0.2.2
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.49:
+          interface: multi
+          ip: 192.0.2.99
+          position: "Other\t"
+          priority: '1'
+          state: 2-Way
+        192.0.2.82:
+          interface: multi
+          ip: 192.0.2.100
+          position: BDR
+          priority: '1'
+          state: Full
+        192.0.2.98:
+          interface: multi
+          ip: 192.0.2.98
+          position: DR
+          priority: '1'
+          state: Full
+  ospf6:
+    ospf6:
+      neighbors:
+        192.0.2.18:
+          interface: ve23
+          ip: fe80::8c41:8bff:fe8f:9446
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.2:
+          interface: ve31
+          ip: fe80::5c82:ccff:fe47:46df
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.49:
+          interface: multi
+          ip: fe80::5c5b:1eff:fe50:3793
+          position: "Other\t"
+          priority: '1'
+          state: 2-Way
+        192.0.2.82:
+          interface: multi
+          ip: fe80::9ce1:eaff:fe4b:b4f9
+          position: BDR
+          priority: '1'
+          state: Full
+        192.0.2.98:
+          interface: multi
+          ip: fe80::2cf6:51ff:feaa:3b4f
+          position: DR
+          priority: '1'
+          state: Full
+m4:
+  ospf4:
+    ospf4:
+      neighbors:
+        192.0.2.1:
+          interface: multi
+          ip: 192.0.2.97
+          position: "Other\t"
+          priority: '1'
+          state: Full
+        192.0.2.49:
+          interface: multi
+          ip: 192.0.2.99
+          position: "Other\t"
+          priority: '1'
+          state: Full
+        192.0.2.82:
+          interface: multi
+          ip: 192.0.2.100
+          position: BDR
+          priority: '1'
+          state: Full
+  ospf6:
+    ospf6:
+      neighbors:
+        192.0.2.1:
+          interface: multi
+          ip: fe80::dc8f:6bff:fe0f:6ad9
+          position: "Other\t"
+          priority: '1'
+          state: Full
+        192.0.2.49:
+          interface: multi
+          ip: fe80::5c5b:1eff:fe50:3793
+          position: "Other\t"
+          priority: '1'
+          state: Full
+        192.0.2.82:
+          interface: multi
+          ip: fe80::9ce1:eaff:fe4b:b4f9
+          position: BDR
+          priority: '1'
+          state: Full
+m5:
+  ospf4:
+    ospf4:
+      neighbors:
+        192.0.2.1:
+          interface: multi
+          ip: 192.0.2.97
+          position: "Other\t"
+          priority: '1'
+          state: 2-Way
+        192.0.2.50:
+          interface: ve57
+          ip: 192.0.2.50
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.82:
+          interface: multi
+          ip: 192.0.2.100
+          position: BDR
+          priority: '1'
+          state: Full
+        192.0.2.98:
+          interface: multi
+          ip: 192.0.2.98
+          position: DR
+          priority: '1'
+          state: Full
+  ospf6:
+    ospf6:
+      neighbors:
+        192.0.2.1:
+          interface: multi
+          ip: fe80::dc8f:6bff:fe0f:6ad9
+          position: "Other\t"
+          priority: '1'
+          state: 2-Way
+        192.0.2.50:
+          interface: ve57
+          ip: fe80::9c97:afff:fe62:f695
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.82:
+          interface: multi
+          ip: fe80::9ce1:eaff:fe4b:b4f9
+          position: BDR
+          priority: '1'
+          state: Full
+        192.0.2.98:
+          interface: multi
+          ip: fe80::2cf6:51ff:feaa:3b4f
+          position: DR
+          priority: '1'
+          state: Full
+m6:
+  ospf4:
+    ospf4:
+      neighbors:
+        192.0.2.1:
+          interface: multi
+          ip: 192.0.2.97
+          position: "Other\t"
+          priority: '1'
+          state: Full
+        192.0.2.49:
+          interface: multi
+          ip: 192.0.2.99
+          position: "Other\t"
+          priority: '1'
+          state: Full
+        192.0.2.66:
+          interface: ve86
+          ip: 192.0.2.81
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.98:
+          interface: multi
+          ip: 192.0.2.98
+          position: DR
+          priority: '1'
+          state: Full
+  ospf6:
+    ospf6:
+      neighbors:
+        192.0.2.1:
+          interface: multi
+          ip: fe80::dc8f:6bff:fe0f:6ad9
+          position: "Other\t"
+          priority: '1'
+          state: Full
+        192.0.2.49:
+          interface: multi
+          ip: fe80::5c5b:1eff:fe50:3793
+          position: "Other\t"
+          priority: '1'
+          state: Full
+        192.0.2.66:
+          interface: ve86
+          ip: fe80::6cc9:f2ff:feb9:754f
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.98:
+          interface: multi
+          ip: fe80::2cf6:51ff:feaa:3b4f
+          position: DR
+          priority: '1'
+          state: Full
+m7:
+  ospf4:
+    ospf4:
+      neighbors:
+        192.0.2.49:
+          interface: ve57
+          ip: 192.0.2.49
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.66:
+          interface: ve78
+          ip: 192.0.2.66
+          position: PtP
+          priority: '1'
+          state: Full
+  ospf6:
+    ospf6:
+      neighbors:
+        192.0.2.49:
+          interface: ve57
+          ip: fe80::2c33:44ff:fe0f:454b
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.66:
+          interface: ve78
+          ip: fe80::8c67:1aff:fe6f:1193
+          position: PtP
+          priority: '1'
+          state: Full
+m8:
+  ospf4:
+    ospf4:
+      neighbors:
+        192.0.2.50:
+          interface: ve78
+          ip: 192.0.2.65
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.82:
+          interface: ve86
+          ip: 192.0.2.82
+          position: PtP
+          priority: '1'
+          state: Full
+  ospf6:
+    ospf6:
+      neighbors:
+        192.0.2.50:
+          interface: ve78
+          ip: fe80::ac21:71ff:fea9:abe
+          position: PtP
+          priority: '1'
+          state: Full
+        192.0.2.82:
+          interface: ve86
+          ip: fe80::5cf4:d5ff:fe79:c89
+          position: PtP
+          priority: '1'
+          state: Full

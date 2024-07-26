@@ -239,6 +239,7 @@ class DumpCheck:
         seen = []
         try:
             async with asyncio.timeout(self.check_timeout) as to:
+                i = 0
                 while True:
                     dump = await self.obtain()
                     try:
@@ -252,6 +253,8 @@ class DumpCheck:
                             print(f"Differs at {' -> '.join([str(s) for s in reversed(d.tree)])}: {d.a} != {d.b}")
 
                     seen.append(dump)
+                    i += 1
+                    print('\-|/'[i % 4] + "\010", end='', flush=True)
                     await asyncio.sleep(self.check_retry_timeout)
 
         except TimeoutError as e:
@@ -300,6 +303,27 @@ class DumpRIB(DumpOnMachines):
                     for k in ("when", "!_l", "!_g", "!_s", "!_id"):
                         assert(k in r)
                         del r[k]
+        return d
+
+class DumpOSPFNeighbors(DumpOnMachines):
+    def __init__(self, *args, protocols, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.protocols = protocols
+
+    async def obtain_on_machine(self, mach):
+        d = await dict_gather({
+            p: mach.show_ospf_neighbors(proto=p)
+            for p in self.protocols
+            })
+
+        for p in d.values():
+            assert("version" in p)
+            del p["version"]
+            for pp in p.values():
+                for n in pp["neighbors"].values():
+                    assert("timeout" in n)
+                    del n["timeout"]
+
         return d
 
 class DumpLinuxKRT(DumpOnMachines):
@@ -454,35 +478,6 @@ class Test:
         finally:
             print("cleaning up")
             await self.cleanup()
-
-
-    async def krt_dump(self, timeout, name, *args, full=True, machines=None, check_timeout=10, check_retry_timeout=0.5):
-        # Collect machines to dump
-        if machines is None:
-            machines = self.machine_index.values()
-        else:
-            machines = [
-                    m if isinstance(m, CLI) else self.machine_index[m]
-                    for m in machines
-                    ]
-
-        raw = await dict_gather({
-                (mach.mach.name, fam):
-                mach.mach.hypervisor.run_in(mach.mach.name, "ip", "-j", f"-{fam}", "route", "show", *args)
-                for mach in machines
-                for fam in ("4", "6", "M")
-                })
-
-        for k,v in raw.items():
-            if v["ret"] != 0 or len(v["err"]) != 0:
-                raise Exception(f"Failed to gather krt dump for {k}: ret={v['ret']}, {v['err']}")
-
-        dump = dict_expand({ k: json.loads(v["out"]) for k,v in raw.items()})
-        print(dump)
-
-        name = "krt.yaml"
-        with open(name, "w") as y:
-            yaml.dump(dump, y)
 
 
 if __name__ == "__main__":

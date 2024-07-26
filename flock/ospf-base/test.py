@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import asyncio
-from python.BIRD.Test import Test, BIRDInstance, DumpRIB, DumpLinuxKRT
+from python.BIRD.Test import Test, BIRDInstance, DumpRIB, DumpLinuxKRT, DumpOSPFNeighbors
 from python.BIRD.LogChecker import LogExpectedStub
 
 class ThisTest(Test):
@@ -35,4 +35,5 @@ class ThisTest(Test):
         await asyncio.gather(*[
             DumpRIB(self, 30, "rib-startup")(),
             DumpLinuxKRT(self, 30, "fib-startup")(),
+            DumpOSPFNeighbors(self, 30, "ospf-neighbors", protocols=["ospf4", "ospf6"])(),
             ])
