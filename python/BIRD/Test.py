@@ -18,109 +18,7 @@ from flock.Hypervisor import Hypervisor
 from flock.Machine import Machine
 from .CLI import CLI, Transport
 from .LogChecker import LogChecker, LogExpectedFuture
-from .Aux import dict_gather, dict_expand
-
-# TODO: move this to some aux file
-class Differs(Exception):
-    def __init__(self, a, b, tree):
-        self.a = a
-        self.b = b
-        self.tree = tree
-
-    @classmethod
-    def false(cls, a, b, deep, tree):
-        if deep:
-            raise cls(a, b, tree)
-        else:
-            return False
-
-class ComparableDict(dict):
-    def __lt__(self, other):
-        if type(other) is dict:
-            return self < ComparableDict(other)
-        elif type(other) is ComparableDict:
-            sk = sorted(list(self.keys()))
-            ok = sorted(list(other.keys()))
-
-            if sk == ok:
-                for k in sk:
-                    if self[k] < other[k]:
-                        return True
-                    if self[k] > other[k]:
-                        return False
-
-                return False
-            else:
-                return sk < ok
-        else:
-            raise TypeError("Inequality impossible between ComparableDict and non-dict")
-
-    def __gt__(self, other):
-        if type(other) is dict:
-            return ComparableDict(other) < self
-        else:
-            return other < self
-
-    def __le__(self, other):
-        if self == other:
-            return True
-        else:
-            return self < other
-
-    def __ge__(self, other):
-        if self == other:
-            return True
-        else:
-            return self > other
-
-def sort_arrays(a):
-    if type(a) is str:
-        return a
-    if type(a) is int:
-        return a
-
-    try:
-        return { k: sort_arrays(v) for k,v in a.items() }
-    except AttributeError:
-        return sorted([sort_arrays(v) for v in a ], key=lambda v: ComparableDict(v) if type(v) is dict else v)
-
-def deep_eq(a, b, deep=False):
-    if a == b:
-        return True
-
-    # Do not iterate over strings
-    if type(a) is str and type(b) is str:
-        return Differs.false(a, b, deep, tree=[])
-
-    try:
-        for k,v in a.items():
-            try:
-                deep_eq(v, b[k], True)
-            except Differs as d:
-                d.tree.append(k)
-                raise d
-            except KeyError:
-                return Differs.false(v, None, deep, tree=[k])
-
-        for k in b:
-            if not k in a:
-                return Differs.false(None, b[k], deep, tree=[k])
-
-    except AttributeError:
-        try:
-            if len(a) != len(b):
-                return Differs.false(len(a), len(b), deep, tree=[len])
-
-            for i in range(len(a)):
-                try:
-                    deep_eq(a[i], b[i])
-                except Differs as d:
-                    d.tree.append(i)
-                    raise d
-        except TypeError:
-            return Differs.false(a, b, deep, [])
-
-    return True
+from .Aux import dict_gather, dict_expand, deep_sort_lists, deep_eq, Differs
 
 class MinimalistTransport(Transport):
     def __init__(self, socket, machine):
@@ -410,7 +308,7 @@ class DumpLinuxKRT(DumpOnMachines):
             if v["ret"] != 0 or len(v["err"]) != 0:
                 raise Exception(f"Failed to gather krt dump for {k}: ret={v['ret']}, {v['err']}")
 
-        return { k: sort_arrays(json.loads(v["out"])) for k,v in raw.items() }
+        return { k: deep_sort_lists(json.loads(v["out"])) for k,v in raw.items() }
 
 class Test:
     ipv6_prefix = ipaddress.ip_network("2001:db8::/32")
