@@ -12,10 +12,6 @@ void snmp_ping(struct snmp_proto *p);
 
 #define AGENTX_VERSION              1
 
-#define SNMP_STATE_START 0
-#define SNMP_STATE_BGP 1
-#define SNMP_STATE_INVALID 2
-
 /* standard snmp internet prefix */
 #define SNMP_ISO	  1	      /* last of oid .1		      */
 #define SNMP_ORG	  3	      /* last of oid .1.3	      */
@@ -369,13 +365,20 @@ void snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint siz
 
 int snmp_tbuf_reserve(struct snmp_pdu *c, size_t bytes);
 
+static inline int
+snmp_is_active(const struct snmp_proto *p)
+{
+  /* Note: states in which we have opened socket */
+  return p->state == SNMP_OPEN || p->state == SNMP_REGISTER ||
+      p->state == SNMP_CONN;
+}
+
 void snmp_vb_to_tx(struct snmp_pdu *c, const struct oid *oid);
 u8 snmp_get_mib_class(const struct oid *oid);
 
 void snmp_register_mibs(struct snmp_proto *p);
 
 /* MIB modules */
-void snmp_bgp4_start(struct snmp_proto *p);
 
 #if 1
 #define snmp_log(...) log(L_INFO "SNMP " __VA_ARGS__)

@@ -60,14 +60,6 @@ static uint update_packet_size(struct agentx_header *start, byte *end);
 /* standard SNMP internet prefix (.1.3.6.1) */
 const u32 snmp_internet[] = { SNMP_ISO, SNMP_ORG, SNMP_DOD, SNMP_INTERNET };
 
-static inline int
-snmp_is_active(struct snmp_proto *p)
-{
-  /* Note: states in which we have opened socket */
-  return p->state == SNMP_OPEN || p->state == SNMP_REGISTER ||
-      p->state == SNMP_CONN;
-}
-
 /*
  * snmp_header - store packet information into buffer
  * @h: pointer to created packet header in TX-buffer

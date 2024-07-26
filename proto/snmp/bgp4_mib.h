@@ -48,10 +48,9 @@ enum bgp4_admin_status {
   BGP4_ADMIN_START = 2,
 };
 
-u8 snmp_bgp_get_valid(u8 state);
-u8 snmp_bgp_getnext_valid(u8 state);
-
+void snmp_bgp4_start(struct snmp_proto *p);
 void snmp_bgp4_register(struct snmp_proto *p);
+void snmp_bgp4_show_info(struct snmp_proto *p);
 
 enum snmp_search_res snmp_bgp_search(struct snmp_proto *p, struct agentx_varbind **vb_search, const struct oid *o_end, struct snmp_pdu *c);
 enum snmp_search_res snmp_bgp_search2(struct snmp_proto *p, struct oid **searched, const struct oid *o_end, uint contid);

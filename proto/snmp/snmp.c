@@ -1,6 +1,8 @@
-/**	BIRD -- Simple Network Management Protocol (SNMP) *
- *      (c) 2022 Vojtech Vilimek <vojtech.vilimek@nic.cz>
- *      (c) 2022 CZ.NIC z.s.p.o.
+/*
+ *	BIRD -- Simple Network Management Procotol (SNMP)
+ *
+ *	(c) 2024 Vojtech Vilimek <vojtech.vilimek@nic.cz>
+ *	(c) 2024 CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -118,6 +120,7 @@
 #include "subagent.h"
 #include "snmp_utils.h"
 #include "mib_tree.h"
+#include "bgp4_mib.h"
 
 // TODO: remove me
 #include "proto/bgp/bgp.h"
@@ -325,10 +328,11 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     return PS_DOWN;
 
   case SNMP_RESET:
+    // TODO remove SNMP_RESET state
     DBG("snmp -> SNMP_RESET\n");
     ASSUME(last == SNMP_REGISTER || last == SNMP_CONN);
     ASSUME(p->sock);
-    tm_stop(p->ping_timer);
+    snmp_stop_subagent(p);
     // FIXME: special treatment for SNMP_OPEN last state?
     p->sock->rx_hook = snmp_rx_skip;
     p->sock->tx_hook = snmp_tx_skip;
@@ -397,6 +401,8 @@ snmp_cleanup(struct snmp_proto *p)
 
   rfree(p->lp);
   p->bgp_trie = NULL;
+
+  p->state = SNMP_DOWN;
 }
 
 /*
@@ -439,6 +445,7 @@ snmp_reset(struct snmp_proto *p)
 void
 snmp_stop(struct snmp_proto *p)
 {
+  // TODO: add option for passing close reason for agentx-Close-PDU
   proto_notify_state(&p->p, snmp_set_state(p, SNMP_STOP));
 }
 
@@ -656,22 +663,7 @@ snmp_show_proto_info(struct proto *P)
   cli_msg(-1006, "  SNMP state %u", p->state);
   cli_msg(-1006, "  MIBs");
 
-  // TODO move me into the bgp_mib.c
-  cli_msg(-1006, "    BGP4-MIB");
-  cli_msg(-1006, "      Local AS %u", p->bgp_local_as);
-  cli_msg(-1006, "      Local router id %R", p->bgp_local_id);
-  cli_msg(-1006, "      BGP peers");
-
-  if (p->state == SNMP_DOWN || p->state == SNMP_RESET)
-    return;
-
-  HASH_WALK(p->bgp_hash, next, peer)
-  {
-    cli_msg(-1006, "    protocol name: %s", peer->bgp_proto->p.name);
-    cli_msg(-1006, "    Remote IPv4 address: %I4", peer->peer_ip);
-    cli_msg(-1006, "    Remote router id %R", peer->bgp_proto->remote_id);
-  }
-  HASH_WALK_END;
+  snmp_bgp4_show_info(p);
 }
 
 /*

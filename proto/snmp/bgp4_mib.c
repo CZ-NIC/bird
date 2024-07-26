@@ -8,6 +8,8 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#include "nest/cli.h"
+
 #include "snmp.h"
 #include "snmp_utils.h"
 #include "subagent.h"
@@ -864,8 +866,34 @@ bgp4_next_peer(struct mib_walk_state *state, struct snmp_pdu *c)
 }
 
 /*
+ * snmp_bgp4_show_info - display info BGP4-MIB
+ * @p: SNMP protocol instance
+ *
+ * Print info about BGP4-MIB status and bound bgp peers to cli.
+ */
+void
+snmp_bgp4_show_info(struct snmp_proto *p)
+{
+  cli_msg(-1006, "    BGP4-MIB");
+  cli_msg(-1006, "      Local AS %u", p->bgp_local_as);
+  cli_msg(-1006, "      Local router id %R", p->bgp_local_id);
+  cli_msg(-1006, "      BGP peers");
+
+  if (!snmp_is_active(p))
+    return;
+
+  HASH_WALK(p->bgp_hash, next, peer)
+  {
+    cli_msg(-1006, "        protocol name: %s", peer->bgp_proto->p.name);
+    cli_msg(-1006, "        Remote IPv4 address: %I4", peer->peer_ip);
+    cli_msg(-1006, "        Remote router id %R", peer->bgp_proto->remote_id);
+  }
+  HASH_WALK_END;
+}
+
+/*
  * snmp_bgp4_start - prepare BGP4-MIB
- * @p - SNMP protocol instance holding memory pool
+ * @p: SNMP protocol instance holding memory pool
  *
  * This function create all runtime bindings to BGP procotol structures.
  * It is gruaranteed that the BGP protocols exist.
