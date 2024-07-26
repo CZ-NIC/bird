@@ -59,7 +59,7 @@ struct snmp_config {
   enum snmp_transport_type trans_type;
   ip4_addr local_ip;
   u16 local_port;
-  ip4_addr remote_ip;		  /* master agentx IP address for TCP transport */
+  ip_addr remote_ip;		  /* master agentx IP address for TCP transport */
   u16 remote_port;
   const char *remote_path;	  /* master agentx UNIX socket name */
 
@@ -104,7 +104,7 @@ struct snmp_proto {
   enum snmp_proto_state state;
 
   ip4_addr local_ip;
-  ip4_addr remote_ip;
+  ip_addr remote_ip;
   u16 local_port;
   u16 remote_port;
 

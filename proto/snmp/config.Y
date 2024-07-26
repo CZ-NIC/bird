@@ -45,7 +45,7 @@ snmp_proto_item:
     if (SNMP_CFG->trans_type != SNMP_TRANS_DEFAULT)
       cf_error("Duplicit option remote address");
   }
- | REMOTE ADDRESS IP4 {
+ | REMOTE ADDRESS ipa {
     if (SNMP_CFG->trans_type != SNMP_TRANS_DEFAULT)
       cf_error("Duplicit option remote address");
 
@@ -105,7 +105,7 @@ snmp_proto_start: proto_start SNMP
   SNMP_CFG->bonds = 0;
 
   SNMP_CFG->local_ip = IP4_NONE;
-  SNMP_CFG->remote_ip = IP4_NONE;
+  SNMP_CFG->remote_ip = IPA_NONE;
   SNMP_CFG->remote_path = agentx_master_addr;
   SNMP_CFG->trans_type = SNMP_TRANS_DEFAULT;
   SNMP_CFG->bgp_local_id = IP4_NONE;

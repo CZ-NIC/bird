@@ -235,8 +235,8 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
        * lock->iface
        * lock->vrf
        */
-      lock->addr = ipa_from_ip4(cf->remote_ip);
-      lock->port = cf->remote_port;
+      lock->addr = p->remote_ip;
+      lock->port = p->remote_port;
       lock->type = OBJLOCK_TCP;
       lock->hook = snmp_start_locked;
       lock->data = p;
@@ -256,7 +256,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     {
       s->type = SK_TCP_ACTIVE;
       s->saddr = ipa_from_ip4(p->local_ip);
-      s->daddr = ipa_from_ip4(p->remote_ip);
+      s->daddr = p->remote_ip;
       s->dport = p->remote_port;
       s->rbsize = SNMP_RX_BUFFER_SIZE;
       s->tbsize = SNMP_TX_BUFFER_SIZE;
