@@ -293,4 +293,6 @@ sk_set_udp6_no_csum_rx(sock *s)
 
   if (setsockopt(s->fd, SOL_UDP, UDP_NO_CHECK6_RX, &y, sizeof(y)) < 0)
     ERR("UDP_NO_CHECK6_RX");
+
+  return 0;
 }
