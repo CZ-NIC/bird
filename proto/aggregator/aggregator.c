@@ -554,62 +554,71 @@ remove_potential_buckets(struct trie_node *node)
  * Third pass of Optimal Route Table Construction (ORTC) algorithm
  */
 static void
-third_pass(struct trie_node *node)
+third_pass_helper(struct trie_node *node)
 {
   assert(node != NULL);
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
-  /* Root is assigned any of its potential buckets */
-  if (!node->parent)
-  {
-    assert(node->potential_buckets_count > 0);
-    assert(node->potential_buckets[0] != NULL);
-    node->bucket = node->potential_buckets[0];
+  /* Internal nodes should not have a bucket since it was deleted during first pass */
+  if (!is_leaf(node))
+    assert(node->bucket == NULL);
 
-    /* Root is the first node with a bucket */
-    node->ancestor = node;
+  /* Bucket inherited from the closest ancestor with a non-null bucket */
+  const struct aggregator_bucket *inherited_bucket = node->parent->ancestor->bucket;
+
+  /*
+   * If bucket inherited from ancestor is one of potential buckets of this node,
+   * then this node doesn't need bucket because it inherits one.
+   */
+  if (is_bucket_potential(node, inherited_bucket))
+  {
+    node->bucket = NULL;
+    remove_potential_buckets(node);
   }
   else
   {
-    /* Internal nodes should not have a bucket since it was deleted during first pass */
-    if (!is_leaf(node))
-      assert(node->bucket == NULL);
-
-    /* Bucket inherited from the closest ancestor with a non-null bucket */
-    const struct aggregator_bucket *inherited_bucket = node->parent->ancestor->bucket;
-
-    /*
-     * If bucket inherited from ancestor is one of potential buckets of this node,
-     * then this node doesn't need bucket because it inherits one.
-     */
-    if (is_bucket_potential(node, inherited_bucket))
-    {
-      node->bucket = NULL;
-      remove_potential_buckets(node);
-    }
-    else
-    {
-      assert(node->potential_buckets_count > 0);
-      node->bucket = node->potential_buckets[0];
-    }
-
-    /*
-     * Node with a bucket is the closest ancestor for all his descendants.
-     * Otherwise, it must refer to the closest ancestor of its parent.
-     */
-    node->ancestor = node->bucket ? node : node->parent->ancestor;
+    assert(node->potential_buckets_count > 0);
+    node->bucket = node->potential_buckets[0];
   }
+
+  /*
+   * Node with a bucket is the closest ancestor for all his descendants.
+   * Otherwise, it must refer to the closest ancestor of its parent.
+   */
+  node->ancestor = node->bucket ? node : node->parent->ancestor;
 
   /* Preorder traversal */
   if (node->child[0])
-    third_pass(node->child[0]);
+    third_pass_helper(node->child[0]);
 
   if (node->child[1])
-    third_pass(node->child[1]);
+    third_pass_helper(node->child[1]);
 
   /* Leaves with no assigned bucket are removed */
   if (!node->bucket && is_leaf(node))
     remove_node(node);
+}
+
+static void
+third_pass(struct trie_node *root)
+{
+  assert(root != NULL);
+  assert(root->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
+
+  assert(root->potential_buckets_count > 0);
+  assert(root->potential_buckets[0] != NULL);
+
+  /* Root is assigned any of its potential buckets */
+  root->bucket = root->potential_buckets[0];
+
+  /* The closest ancestor of the root node with a non-null bucket is the root itself */
+  root->ancestor = root;
+
+  if (root->child[0])
+    third_pass_helper(root->child[0]);
+
+  if (root->child[1])
+    third_pass_helper(root->child[1]);
 }
 
 static void
