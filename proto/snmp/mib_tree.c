@@ -794,10 +794,7 @@ mib_tree_walk_next_leaf(const struct mib_tree *t, struct mib_walk_state *walk, u
   (void)t;
 
   if (walk->stack_pos == 0)
-  {
-    snmp_log("walk next leaf no leafs");
     return NULL;
-  }
 
   u32 next_id = skip;
   mib_node_u *node = walk->stack[walk->stack_pos - 1];
@@ -812,7 +809,6 @@ mib_tree_walk_next_leaf(const struct mib_tree *t, struct mib_walk_state *walk, u
   {
     /* walk->stack_pos == 1, so we NULL out the last stack field */
     walk->stack[--walk->stack_pos] = NULL;
-    snmp_log("walk next leaf single leaf");
     return NULL;
   }
 
@@ -822,10 +818,7 @@ continue_while:
     node = walk->stack[walk->stack_pos - 1];
 
     if (mib_node_is_leaf(node))
-    {
-      snmp_log("walk next leaf %p at level %u", node, walk->stack_pos - 1);
       return (struct mib_leaf *) node;
-    }
 
     struct mib_node *node_inner = &node->inner;
     for (u32 id = next_id; id < node_inner->child_len; id++)
@@ -845,7 +838,6 @@ continue_while:
     walk->stack[--walk->stack_pos] = NULL;
   }
 
-  snmp_log("walk next leaf no more leafs");
   return NULL;
 }
 

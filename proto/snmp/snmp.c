@@ -49,7 +49,7 @@
  *    | SNMP_INIT	|     entry state after call snmp_start()
  *    +-----------------+
  *	  |
- *	  |   acquiring object lock for communication socket
+ *	  |   acquiring object lock for tcp communication socket
  *	  V
  *    +-----------------+
  *    | SNMP_LOCKED	|     object lock aquired
@@ -61,48 +61,37 @@
  *    | SNMP_OPEN	|     socket created, starting subagent
  *    +-----------------+
  *	  |
- *	  |   BIRD receive response for Open-PDU
+ *	  |   BIRD receive response for agentx-Open-PDU
  *	  V
  *    +-----------------+
  *    | SNMP_REGISTER   |     session was established, subagent registers MIBs
  *    +-----------------+
  *	  |
- *	  |   subagent received responses for all registration requests
+ *	  |   subagent received response for any registration requests
  *	  V
  *    +-----------------+
  *    | SNMP_CONN	|     everything is set
  *    +-----------------+
  *	  |
- * 	  |   function snmp_shutdown() is called, BIRD sends Close-PDU
+ *	  |   received malformed PDU, protocol disabled,
+ *	  |   BIRD sends agentx-Close-PDU or agentx-Response-PDU with an error
  *	  V
  *    +-----------------+
- *    | SNMP_STOP	|     waiting for response
+ *    | SNMP_STOP	|     waiting until the prepared PDUs are sent
  *    +-----------------+
  *	  |
- *	  |   cleaning old state information
+ *	  |   cleaning protocol state
  *	  V
  *    +-----------------+
  *    | SNMP_DOWN	|     session is closed
  *    +-----------------+
  *
  *
- *    +-----------------+
- *    | SNMP_RESET      |     waiting to transmit response to malformed packet
- *    +-----------------+
- *	 |
- *       |    response was send, reseting the session (with socket)
- *       |
- *	 \--> SNMP_LOCKED
- *
  *
  *  Erroneous transitions:
- *    SNMP is UP in states SNMP_CONN and also in SNMP_REGISTER because the
- *    session is establised and the GetNext request should be responsed
- *    without regard to MIB registration.
- *
- *    When the session has been closed for some reason (socket error, receipt of
- *    Close-PDU) SNMP cleans the session information and message queue and goes
- *    back to the SNMP_LOCKED state.
+ *    SNMP is UP (PS_UP) in states SNMP_CONN and also in SNMP_REGISTER because
+ *    the session is establised and the GetNext request should be responsed
+ *    without regards to MIB registration.
  *
  *    Reconfiguration is done in similar fashion to BGP, the reconfiguration
  *    request is declined, the protocols is stoped and started with new
@@ -122,9 +111,6 @@
 #include "mib_tree.h"
 #include "bgp4_mib.h"
 
-// TODO: remove me
-#include "proto/bgp/bgp.h"
-
 const char agentx_master_addr[] = AGENTX_MASTER_ADDR;
 const struct oid *agentx_available_mibs[AGENTX_MIB_COUNT + 1] = { 0 };
 
@@ -132,6 +118,16 @@ static void snmp_start_locked(struct object_lock *lock);
 static void snmp_sock_err(sock *sk, int err);
 static void snmp_stop_timeout(timer *tm);
 static void snmp_cleanup(struct snmp_proto *p);
+
+static const char *snmp_state_str[] = {
+  [SNMP_INIT]	  = "acquiring address lock",
+  [SNMP_LOCKED]	  = "address lock acquired",
+  [SNMP_OPEN]	  = "starting AgentX subagent",
+  [SNMP_REGISTER] = "registering MIBs",
+  [SNMP_CONN]	  = "AgentX session established",
+  [SNMP_STOP]	  = "stopping AgentX subagent",
+  [SNMP_DOWN]	  = "protocol down",
+};
 
 /*
  * agentx_get_mib_init - init function for agentx_get_mib()
@@ -154,6 +150,7 @@ void agentx_get_mib_init(pool *p)
 
 /*
  * agentx_get_mib - classify an OID based on MIB prefix
+ * @o: Object Identifier to classify
  */
 enum agentx_mibs agentx_get_mib(const struct oid *o)
 {
@@ -185,29 +182,28 @@ snmp_rx_skip(sock UNUSED *sk, uint UNUSED size)
 }
 
 /*
- * snmp_tx_skip - handle empty TX-buffer during session reset
+ * snmp_tx_skip - handle empty TX buffer during session reset
  * @sk: communication socket
  *
- * The socket tx_hook is called when the TX-buffer is empty, i.e. all data was
+ * The socket tx_hook is called when the TX buffer is empty, i.e. all data was
  * send. This function is used only when we found malformed PDU and we are
- * resetting the established session. If called, we are reseting the session.
+ * resetting the established session. If called, we perform a SNMP protocol
+ * state change.
  */
 static void
 snmp_tx_skip(sock *sk)
 {
   struct snmp_proto *p = sk->data;
-  proto_notify_state(&p->p, snmp_set_state(p, SNMP_DOWN));
+  proto_notify_state(&p->p, snmp_set_state(p, SNMP_STOP));
 }
 
 /*
  * snmp_set_state - change state with associated actions
- * @p - SNMP protocol instance
- * @state - new SNMP protocol state
+ * @p: SNMP protocol instance
+ * @state: new SNMP protocol state
  *
- * This function does not notify the bird about protocol state. It is therefore
- * a responsibility of the caller to use the returned value appropriately.
- *
- * Return current protocol state.
+ * This function does not notify the bird about protocol state. Return current
+ * protocol state (PS_UP, ...).
  */
 int
 snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
@@ -215,14 +211,12 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
   enum snmp_proto_state last = p->state;
   const struct snmp_config *cf = (struct snmp_config *) p->p.cf;
 
-  TRACE(D_EVENTS, "SNMP changing state to %u", state);
-
   p->state = state;
 
   switch (state)
   {
   case SNMP_INIT:
-    DBG("snmp -> SNMP_INIT\n");
+    TRACE(D_EVENTS, "TODO");
     ASSERT(last == SNMP_DOWN);
 
     if (cf->trans_type == SNMP_TRANS_TCP)
@@ -230,11 +224,6 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
       /* We need to lock the IP address */
       struct object_lock *lock;
       lock = p->lock = olock_new(p->pool);
-
-      /*
-       * lock->iface
-       * lock->vrf
-       */
       lock->addr = p->remote_ip;
       lock->port = p->remote_port;
       lock->type = OBJLOCK_TCP;
@@ -244,18 +233,19 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
       return PS_START;
     }
 
+    last = SNMP_INIT;
     p->state = state = SNMP_LOCKED;
     /* Fall thru */
 
   case SNMP_LOCKED:
-    DBG("snmp -> SNMP_LOCKED\n");
-    ASSERT(last == SNMP_INIT || SNMP_RESET);
+    TRACE(D_EVENTS, "snmp %s: address lock acquired", p->p.name);
+    ASSERT(last == SNMP_INIT);
     sock *s = sk_new(p->pool);
 
     if (cf->trans_type == SNMP_TRANS_TCP)
     {
       s->type = SK_TCP_ACTIVE;
-      s->saddr = ipa_from_ip4(p->local_ip);
+      //s->saddr = ipa_from_ip4(p->local_ip);
       s->daddr = p->remote_ip;
       s->dport = p->remote_port;
       s->rbsize = SNMP_RX_BUFFER_SIZE;
@@ -279,64 +269,68 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     /* Try opening the socket, schedule a retry on fail */
     if (sk_open(s) < 0)
     {
+      TRACE(D_EVENTS, "opening of communication socket failed");
       rfree(s);
       p->sock = NULL;
+      // TODO handle 0 timeout
       tm_start(p->startup_timer, p->timeout);
     }
     return PS_START;
 
   case SNMP_OPEN:
-    DBG("snmp -> SNMP_OPEN\n");
+    TRACE(D_EVENTS, "communication socket opened, starting AgentX subagent");
     ASSERT(last == SNMP_LOCKED);
+
     p->sock->rx_hook = snmp_rx;
     p->sock->tx_hook = NULL;
+
     snmp_start_subagent(p);
+
     p->startup_timer->hook = snmp_stop_timeout;
     tm_start(p->startup_timer, 1 S);
+
     return PS_START;
 
   case SNMP_REGISTER:
-    DBG("snmp -> SNMP_REGISTER\n");
+    TRACE(D_EVENTS, "registering MIBs");
     ASSERT(last == SNMP_OPEN);
+
     tm_stop(p->startup_timer); /* stop timeout */
+
+    p->sock->rx_hook = snmp_rx;
+    p->sock->tx_hook = snmp_tx;
+
     snmp_register_mibs(p);
     return PS_START;
 
   case SNMP_CONN:
-    DBG("snmp -> SNMP_CONN\n");
+    TRACE(D_EVENTS, "MIBs registered");
     ASSERT(last == SNMP_REGISTER);
     return PS_UP;
 
   case SNMP_STOP:
-    DBG("snmp -> SNMP_STOP\n");
-    ASSUME(last == SNMP_REGISTER || last == SNMP_CONN);
-    snmp_stop_subagent(p);
-    // FIXME: special treatment for SNMP_OPEN last state?
-    p->sock->rx_hook = snmp_rx_skip;
-    p->sock->tx_hook = snmp_tx_skip;
+    if (p->sock && p->state != SNMP_OPEN)
+    {
+      TRACE(D_EVENTS, "closing AgentX session");
+      if (p->state == SNMP_OPEN || p->state == SNMP_REGISTER ||
+	  p->state == SNMP_CONN)
+	snmp_stop_subagent(p);
 
-    p->startup_timer->hook = snmp_stop_timeout;
-    tm_start(p->startup_timer, p->timeout);
-    return PS_STOP;
+      p->sock->rx_hook = snmp_rx_skip;
+      p->sock->tx_hook = snmp_tx_skip;
+
+      p->startup_timer->hook = snmp_stop_timeout;
+      tm_start(p->startup_timer, 150 MS);
+      return PS_STOP;
+    }
+
+    p->state = state = SNMP_DOWN;
+    /* Fall thru */
 
   case SNMP_DOWN:
-    DBG("snmp -> SNMP_DOWN\n");
-    ASSERT(last == SNMP_STOP || last == SNMP_RESET);
+    TRACE(D_EVENTS, "AgentX session closed");
     snmp_cleanup(p);
-    // FIXME: handle the state in which we call proto_notify_state and
-    // immediately return PS_DOWN from snmp_shutdown()
     return PS_DOWN;
-
-  case SNMP_RESET:
-    // TODO remove SNMP_RESET state
-    DBG("snmp -> SNMP_RESET\n");
-    ASSUME(last == SNMP_REGISTER || last == SNMP_CONN);
-    ASSUME(p->sock);
-    snmp_stop_subagent(p);
-    // FIXME: special treatment for SNMP_OPEN last state?
-    p->sock->rx_hook = snmp_rx_skip;
-    p->sock->tx_hook = snmp_tx_skip;
-    return PS_STOP;
 
   default:
     die("unknown snmp state transition");
@@ -346,7 +340,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
 
 /*
  * snmp_init - preinitialize SNMP instance
- * @CF - SNMP configuration generic handle
+ * @CF: SNMP configuration generic handle
  *
  * Returns a generic handle pointing to preinitialized SNMP procotol
  * instance.
@@ -358,7 +352,6 @@ snmp_init(struct proto_config *CF)
   struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
 
   p->rl_gen = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
-
   p->state = SNMP_DOWN;
 
   return P;
@@ -366,12 +359,10 @@ snmp_init(struct proto_config *CF)
 
 /*
  * snmp_cleanup - free all resources allocated by SNMP protocol
- * @p - SNMP protocol instance
+ * @p: SNMP protocol instance
  *
  * This function forcefully stops and cleans all resources and memory acqiured
  * by given SNMP protocol instance, such as timers, lists, hash tables etc.
- * Function snmp_cleanup() does not change the protocol state to PS_DOWN for
- * practical reasons, it should be done by the caller.
  */
 static inline void
 snmp_cleanup(struct snmp_proto *p)
@@ -407,7 +398,7 @@ snmp_cleanup(struct snmp_proto *p)
 
 /*
  * snmp_connected - start AgentX session on created socket
- * @sk - socket owned by SNMP protocol instance
+ * @sk: socket owned by SNMP protocol instance
  *
  * Starts the AgentX communication by sending an agentx-Open-PDU.
  * This function is internal and shouldn't be used outside the SNMP module.
@@ -426,47 +417,35 @@ snmp_connected(sock *sk)
  * We wait until the last PDU written into the socket is send while ignoring all
  * incomming PDUs. Then we hard reset the connection by socket closure. The
  * protocol instance is automatically restarted by nest.
+ *
+ * Return protocol state (PS_STOP, ...).
  */
-void
+int
 snmp_reset(struct snmp_proto *p)
 {
-  proto_notify_state(&p->p, snmp_set_state(p, SNMP_RESET));
-}
-
-
-/*
- * snmp_stop - close AgentX session
- * @p: SNMP protocol instance
- *
- * We write agentx-Close-PDU into the socket, wait until all written PDUs are
- * send and then close the socket. The protocol instance is automatically
- * restarted by nest.
- */
-void
-snmp_stop(struct snmp_proto *p)
-{
-  // TODO: add option for passing close reason for agentx-Close-PDU
-  proto_notify_state(&p->p, snmp_set_state(p, SNMP_STOP));
+  int proto_state = snmp_set_state(p, SNMP_STOP);
+  proto_notify_state(&p->p, proto_state);
+  return proto_state;
 }
 
 
 /*
  * snmp_sock_err - handle errors on socket by reopenning the socket
- * @sk - socket owned by SNMP protocol instance
- * @err - socket error errno
+ * @sk: socket owned by SNMP protocol instance
+ * @err: socket error code
  */
 static void
 snmp_sock_err(sock *sk, int UNUSED err)
 {
   struct snmp_proto *p = sk->data;
-
-  TRACE(D_EVENTS, "SNMP socket error %d", err);
-  snmp_reset(p);
+  if (err != 0)
+    TRACE(D_EVENTS, "SNMP socket error (%d)", err);
+  snmp_set_state(p, SNMP_DOWN);
 }
 
 /*
  * snmp_start_locked - open the socket on locked address
- * @lock - object lock guarding the communication mean (address, ...)
+ * @lock: object lock guarding the communication mean (address, ...)
  *
  * This function is called when the object lock is acquired. Main goal is to set
  * socket parameters and try to open configured socket. Function
@@ -488,28 +467,13 @@ snmp_start_locked(struct object_lock *lock)
 }
 
 /*
- * snmp_reconnect - helper restarting the AgentX session on packet errors
- * @tm - the startup_timer holding the SNMP protocol instance
- *
- * Try to recover from an error by reseting the SNMP protocol. It is a simple
- * snmp_reset() wrapper for timers.
- */
-void
-snmp_reconnect(timer *tm)
-{
-  struct snmp_proto *p = tm->data;
-  snmp_reset(p);
-  return;
-}
-
-/*
  * snmp_startup_timeout - start the initiliazed SNMP protocol
- * @tm - the startup_timer holding the SNMP protocol instance.
+ * @tm: the startup_timer holding the SNMP protocol instance.
  *
  * When the timer rings, the function snmp_startup() is invoked.
  * This function is internal and shouldn't be used outside the SNMP module.
- * Used when we delaying the start procedure, or we want to resend
- * an agentx-Open-PDU for non-responding master agent.
+ * Used when we delaying the start procedure, or we want to retry opening
+ * the communication socket.
  */
 void
 snmp_startup_timeout(timer *tm)
@@ -519,13 +483,13 @@ snmp_startup_timeout(timer *tm)
 }
 
 /*
- * snmp_stop_timeout - a timeout for nonresponding master agent
- * @tm - the startup_timer holding the SNMP protocol instance.
+ * snmp_stop_timeout - a timeout for non-responding master agent
+ * @tm: the startup_timer holding the SNMP protocol instance.
  *
- * We are shutting down the SNMP protocol instance and we sent the
- * agentx-Close-PDU. This function forcefully closes the AgentX session and
- * stops the SNMP protocol instance. Used only when we did not receive any
- * agentx-Response-PDU for the sent closed packet (before timeout).
+ * We are trying to empty the TX buffer of communication socket. But if it is
+ * not done in reasonable amount of time, the function is called by timeout
+ * timer. We down the whole SNMP protocol with cleanup of associated data
+ * structures.
  */
 static void
 snmp_stop_timeout(timer *tm)
@@ -536,7 +500,7 @@ snmp_stop_timeout(timer *tm)
 
 /*
  * snmp_ping_timeout - send a agentx-Ping-PDU
- * @tm - the ping_timer holding the SNMP protocol instance.
+ * @tm: the ping_timer holding the SNMP protocol instance.
  *
  * Send an agentx-Ping-PDU. This function is periodically called by ping
  * timer.
@@ -550,11 +514,11 @@ snmp_ping_timeout(timer *tm)
 
 /*
  * snmp_start - Initialize the SNMP protocol instance
- * @P - SNMP protocol generic handle
+ * @P: SNMP protocol generic handle
  *
  * The first step in AgentX subagent startup is protocol initialition.
- * We must prepare lists, find BGP peers and finally asynchronously open
- * a AgentX subagent session through snmp_startup() function call.
+ * We must prepare lists, find BGP peers and finally asynchronously start
+ * a AgentX subagent session.
  */
 static int
 snmp_start(struct proto *P)
@@ -605,7 +569,7 @@ snmp_reconfigure_logic(struct snmp_proto *p, const struct snmp_config *new)
   {
     WALK_LIST(b2, old->bgp_entries)
     {
-      if (!strcmp(b1->config->name, b2->config->name))
+      if (!bstrcmp(b1->config->name, b2->config->name))
 	goto skip;
     }
 
@@ -617,10 +581,29 @@ skip:
   if (bonds != 0)
     return 0;
 
+  if (old->trans_type != new->trans_type
+      || ip4_compare(old->local_ip, new->local_ip)
+      || old->local_port != new->local_port
+      || ipa_compare(old->remote_ip, new->remote_ip)
+      || !bstrcmp(old->remote_path, new->remote_path)
+      || old->remote_port != new->remote_port
+	  // TODO can be changed on the fly
+      || !ip4_compare(old->bgp_local_id, new->bgp_local_id)
+      || old->bgp_local_as != new->bgp_local_as // TODO can be changed on the fly
+      || old->timeout != new->timeout
+    //|| old->startup_delay != new->startup_delay
+      || old->priority != new->priority
+      || !strncmp(old->description, new->description, UINT32_MAX))
+    return 0;
+
+  return 1;
+
+/*
   return !memcmp(((byte *) old) + sizeof(struct proto_config),
       ((byte *) new) + sizeof(struct proto_config),
       OFFSETOF(struct snmp_config, description) - sizeof(struct proto_config))
     && ! strncmp(old->description, new->description, UINT32_MAX);
+*/
 }
 
 /*
@@ -637,6 +620,8 @@ snmp_reconfigure(struct proto *P, struct proto_config *CF)
 {
   struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
   const struct snmp_config *new = SKIP_BACK(struct snmp_config, cf, CF);
+
+  // TODO do not reject reconfiguration when only BGP peer list changed
 
   /* We are searching for configuration changes */
   int config_changed = snmp_reconfigure_logic(p, new);
@@ -660,7 +645,7 @@ snmp_show_proto_info(struct proto *P)
 {
   struct snmp_proto *p = (void *) P;
 
-  cli_msg(-1006, "  SNMP state %u", p->state);
+  cli_msg(-1006, "  SNMP state: %s", snmp_state_str[p->state]);
   cli_msg(-1006, "  MIBs");
 
   snmp_bgp4_show_info(p);
@@ -682,19 +667,16 @@ snmp_postconfig(struct proto_config *CF)
 
 /*
  * snmp_shutdown - Forcefully stop the SNMP protocol instance
- * @P - SNMP protocol generic handle
+ * @P: SNMP protocol generic handle
  *
- * If we have established connection, we firstly stop the subagent and then
- * later cleanup the protocol. The subagent stopping consist of sending the
- * agentx-Close-PDU and changing the current protocol state to PS_STOP.
- * If we have no connection created, we simple do the cleanup.
- * The cleanup is transition straight to PS_DOWN state with snmp_cleanup() call.
+ * Simple cast-like wrapper around snmp_reset(), see more info there.
  */
 static int
 snmp_shutdown(struct proto *P)
 {
   struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
   return snmp_set_state(p, SNMP_DOWN);
+  return snmp_reset(p);
 }
 
 

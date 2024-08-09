@@ -49,9 +49,6 @@ snmp_proto_item:
     if (SNMP_CFG->trans_type != SNMP_TRANS_DEFAULT)
       cf_error("Duplicit option remote address");
 
-    // TODO
-    //if (ip4_zero($3)) cf_error("Invalid remote ip address");
-
     SNMP_CFG->remote_ip = $3;
     SNMP_CFG->trans_type = SNMP_TRANS_TCP;
   }
@@ -78,9 +75,11 @@ snmp_proto_item:
   }
  | MESSAGE TIMEOUT expr_us {
     /* TODO */
-    if ($3 TO_S > 255) log(L_WARN, "%s: msg", this_proto->name);
-    if ($3 TO_S < 1) log(L_WARN, "%s: msg", this_proto->name);
-    if (($3 TO_S) - (int)($3 TO_S) > 0) log(L_WARN, "%s: ", this_proto->name);
+    if ($3 TO_S > 255 || $3 TO_S < 1)
+      log(L_WARN "resolution of AgentX message timeout is from 1 to 255 s.");
+    if (($3 TO_S) - (int)($3 TO_S) > 0)
+      log(L_WARN "AgentX message timeout cannot use second fraction, "
+	"will use rounded up value.");
     SNMP_CFG->timeout = $3;
   }
 /*

@@ -10,12 +10,12 @@
 #ifndef _BIRD_SNMP_H_
 #define _BIRD_SNMP_H_
 
-#include "lib/ip.h"
-#include "lib/socket.h"
-#include "lib/resource.h"
-#include "lib/timer.h"
 #include "nest/bird.h"
 #include "nest/protocol.h"
+#include "lib/resource.h"
+#include "lib/ip.h"
+#include "lib/socket.h"
+#include "lib/timer.h"
 #include "filter/data.h"
 
 #define SNMP_UNDEFINED	0
@@ -39,7 +39,6 @@ enum snmp_proto_state {
   SNMP_REGISTER,
   SNMP_CONN,
   SNMP_STOP,
-  SNMP_RESET,
 };
 
 struct snmp_bond {
@@ -69,7 +68,6 @@ struct snmp_config {
   btime timeout;
   btime startup_delay;
   u8 priority;
-  //struct iface *iface;  TODO
   u32 bonds;
   const char *description;	  /* The order of fields is not arbitrary */
   list bgp_entries;		  /* We want dynamically allocated fields to be
@@ -170,9 +168,16 @@ void snmp_startup_timeout(timer *tm);
 void snmp_reconnect(timer *tm);
 int snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state);
 
-void snmp_reset(struct snmp_proto *p);
-void snmp_stop(struct snmp_proto *p);
+int snmp_reset(struct snmp_proto *p);
 
 extern const char agentx_master_addr[sizeof(AGENTX_MASTER_ADDR)];
+
+static inline int
+proto_is_snmp(const struct proto *P)
+{
+  extern struct protocol proto_snmp;
+  return P->proto == &proto_snmp;
+}
+
 
 #endif

@@ -66,10 +66,7 @@ snmp_varbind_set_name_len(struct snmp_pdu *c, struct agentx_varbind **vb, u8 len
   uint diff_size = (len - LOAD_U8(oid->n_subid)) * sizeof(u32);
 
   if (snmp_tbuf_reserve(c, diff_size))
-  {
-    snmp_log("varbind_set_name_len small buffer");
     oid = &(*vb)->name;
-  }
 
   ASSERT(c->size >= diff_size);
   c->size -= diff_size;
@@ -82,8 +79,7 @@ snmp_varbind_duplicate_hdr(struct snmp_pdu *c, struct agentx_varbind **vb)
 {
   ASSUME(vb != NULL && *vb != NULL);
   uint hdr_size = snmp_varbind_header_size(*vb);
-  if (snmp_tbuf_reserve(c, hdr_size))
-    snmp_log("varbind_duplicate small buffer");
+  (void) snmp_tbuf_reserve(c, hdr_size);
 
   ASSERT(c->size >= hdr_size);
   byte *buffer = c->buffer;
@@ -176,6 +172,23 @@ snmp_oid_copy2(struct oid *dest, const struct oid *src)
 }
 
 /*
+ * snmp_oid_from_buf - copy OID from RX buffer to dest in native byte order
+ * @dst: destination to use
+ * @src: OID to be copied from
+ */
+void
+snmp_oid_from_buf(struct oid *dst, const struct oid *src)
+{
+  dst->n_subid = LOAD_U8(src->n_subid);
+  dst->prefix = LOAD_U8(src->prefix);
+  dst->include = LOAD_U8(src->include) ? 1 : 0;
+  dst->reserved = 0;
+
+  for (uint i = 0; i < dst->n_subid; i++)
+    dst->ids[i] = LOAD_U32(src->ids[i]);
+}
+
+/*
  * snmp_oid_duplicate - duplicate an OID from memory pool
  * @pool: pool to use
  * @oid: OID to be duplicated
@@ -256,7 +269,7 @@ snmp_varbind_hdr_size_from_oid(const struct oid *oid)
 
 /*
  * snmp_set_varbind_type - set VarBind's type field
- * @vb: Varbind inside TX-buffer
+ * @vb: Varbind inside TX buffer
  * @t: a valid type to be set
  *
  * This function assumes valid @t.
@@ -304,10 +317,10 @@ snmp_load_varbind_type(const struct agentx_varbind *vb)
 
 /*
  * snmp_get_varbind_type - loads a VarBind type
- * @vb: VarBind pointer to TX-buffer
+ * @vb: VarBind pointer to TX buffer
  *
  * This function assumes VarBind with valid type, always call snmp_test_varbind
- * for in TX-buffer VarBinds!
+ * for in TX buffer VarBinds.
  */
 inline enum agentx_type
 snmp_get_varbind_type(const struct agentx_varbind *vb)
@@ -742,7 +755,6 @@ snmp_registration_create(struct snmp_proto *p, enum agentx_mibs mib)
   r->packet_id = p->packet_id + 1;
   r->mib = mib;
 
-  snmp_log("using registration packet_id %u", r->packet_id);
   add_tail(&p->registration_queue, &r->n);
 
   return r;
@@ -751,7 +763,6 @@ snmp_registration_create(struct snmp_proto *p, enum agentx_mibs mib)
 int
 snmp_registration_match(struct snmp_registration *r, struct agentx_header *h, enum agentx_mibs mib)
 {
-  snmp_log("snmp_reg_same() r->packet_id %u p->packet_id %u", r->packet_id, h->packet_id);
   return
     (r->mib == mib) &&
     (r->session_id == h->session_id) &&
@@ -864,7 +875,7 @@ snmp_varbind_nstr2(struct snmp_pdu *c, uint size, const char *str, uint len)
  * @len: length of the string @str
  *
  * Beware: this function assumes there is enough space in the underlaying
- * TX-buffer. The caller has to provide that, see snmp_str_size_from_len() for
+ * TX buffer. The caller has to provide that, see snmp_str_size_from_len() for
  * more info.
  */
 void
@@ -951,7 +962,7 @@ snmp_oid_log(const struct oid *oid)
   for (int id = 0; id < oid->n_subid; id++)
     pos += snprintf(pos, buf + 1024 - pos, ".%u", oid->ids[id]);
 
-  snmp_log("%s", buf);
+  log(L_WARN, "%s", buf);
 }
 
 
@@ -1096,10 +1107,7 @@ snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_p
       int old = snmp_oid_size(&c->sr_vb_start->name);
       if (mib_tree_walk_to_oid(walk,
 	  &c->sr_vb_start->name, 20 * sizeof(u32)))
-      {
-	snmp_log("walk_next copy failed");
 	return NULL;
-      }
 
       int new = snmp_oid_size(&c->sr_vb_start->name);
       c->buffer += (new - old);
@@ -1122,10 +1130,7 @@ snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_p
     int old = snmp_oid_size(&c->sr_vb_start->name);
     // TODO autogrow
     if (mib_tree_walk_to_oid(walk, &c->sr_vb_start->name, 20 * sizeof(u32)))
-    {
-      snmp_log("walk_next copy failed");
       return NULL;
-    }
 
     int new = snmp_oid_size(&c->sr_vb_start->name);
     c->buffer += (new - old);
@@ -1172,10 +1177,7 @@ snmp_walk_fill(struct mib_leaf *leaf, struct mib_walk_state *walk, struct snmp_p
       size = leaf->size;
   }
 
-  snmp_log("walk_fill got size %u based on lt %u ls %u, calling filler()", size, leaf->type, leaf->size);
-
-  if (snmp_tbuf_reserve(c, size))
-    snmp_log("walk_fill small buffer size");
+  (void) snmp_tbuf_reserve(c, size);
 
   enum snmp_search_res res = leaf->filler(walk, c);
 

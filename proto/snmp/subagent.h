@@ -357,10 +357,10 @@ struct snmp_packet_info {
 };
 
 int snmp_rx(sock *sk, uint size);
+void snmp_tx(sock *sk);
 int snmp_rx_stop(sock *sk, uint size);
-void snmp_down(struct snmp_proto *p);
-void snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 is_instance, uint contid);
-void snmp_unregister(struct snmp_proto *p, struct oid *oid, uint index, uint len, uint contid);
+void snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 is_instance);
+void snmp_unregister(struct snmp_proto *p, struct oid *oid, uint index, uint len);
 void snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, int include_uptime);
 
 int snmp_tbuf_reserve(struct snmp_pdu *c, size_t bytes);
@@ -377,13 +377,5 @@ void snmp_vb_to_tx(struct snmp_pdu *c, const struct oid *oid);
 u8 snmp_get_mib_class(const struct oid *oid);
 
 void snmp_register_mibs(struct snmp_proto *p);
-
-/* MIB modules */
-
-#if 1
-#define snmp_log(...) log(L_INFO "SNMP " __VA_ARGS__)
-#else
-#define snmp_log(...) do { } while(0)
-#endif
 
 #endif
