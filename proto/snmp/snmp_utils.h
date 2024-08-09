@@ -16,7 +16,6 @@ uint snmp_pkt_len(const byte *start, const byte *end);
  *  AgentX - Variable Binding (VarBind) type utils
  */
 enum snmp_search_res snmp_set_varbind_type(struct agentx_varbind *vb, enum agentx_type t);
-enum agentx_type snmp_get_varbind_type(const struct agentx_varbind *vb);
 int agentx_type_size(enum agentx_type t);
 
 /* type Octet String */
@@ -32,6 +31,8 @@ void snmp_oid_copy(struct oid *dest, const struct oid *src);
 void snmp_oid_copy2(struct oid *dest, const struct oid *src);
 int snmp_oid_compare(const struct oid *first, const struct oid *second);
 void snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct oid *result);
+void snmp_oid_from_buf(struct oid *dest, const struct oid *src);
+void snmp_oid_to_buf(struct oid *dest, const struct oid *src); 
 
 static inline int
 snmp_oid_is_prefixed(const struct oid *oid)
@@ -47,8 +48,7 @@ void snmp_oid_ip4_index(struct oid *o, uint start, ip4_addr addr);
 /*
  *  AgentX - Variable Binding (VarBind) manupulation
  */
-uint snmp_varbind_hdr_size_from_oid(const struct oid *oid);
-uint snmp_varbind_header_size(const struct agentx_varbind *vb);
+uint snmp_varbind_header_size(const struct oid *vb_name);
 uint snmp_varbind_size(const struct agentx_varbind *vb, uint limit);
 uint snmp_varbind_size_unsafe(const struct agentx_varbind *vb);
 size_t snmp_varbind_size_from_len(uint n_subid, enum agentx_type t, uint len);
@@ -81,6 +81,7 @@ void snmp_varbind_gauge32(struct snmp_pdu *c, s64 time);
 void snmp_varbind_ticks(struct snmp_pdu *c, u32 val);
 void snmp_varbind_ip4(struct snmp_pdu *c, ip4_addr addr);
 void snmp_varbind_nstr(struct snmp_pdu *c, const char *str, uint len);
+void snmp_varbind_oid(struct snmp_pdu *c, const struct oid *oid_val);
 
 /* Raw */
 byte *snmp_no_such_object(byte *buf, struct agentx_varbind *vb, struct oid *oid);
@@ -88,7 +89,6 @@ byte *snmp_no_such_instance(byte *buf, struct agentx_varbind *vb, struct oid *oi
 byte *snmp_put_str(byte *buf, const char *str);
 byte *snmp_put_nstr(byte *buf, const char *str, uint len);
 byte *snmp_put_blank(byte *buf);
-byte *snmp_put_oid(byte *buf, struct oid *oid);
 byte *snmp_put_ip4(byte *buf, ip4_addr ip4);
 byte *snmp_put_fbyte(byte *buf, u8 data);
 

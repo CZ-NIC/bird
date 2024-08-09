@@ -783,17 +783,17 @@ t_walk_oid_desc(void)
       case 1:
       {
 	/* oid is longer than walk or has same length */
-	u8 ids = LOAD_U8(oid->n_subid);
+	u8 ids = oid->n_subid;
 	u32 upto = MIN(OID_MAX_LEN - ids, 16);
 
 	if (!upto)
 	  continue;
 
 	u32 new = xrandom(upto) + 1;
-	STORE_U8(oid->n_subid, ids + new);
+	oid->n_subid = ids + new;
 
 	for (u32 i = 0; i < new; i++)
-	  STORE_U32(oid->ids[ids + i], xrandom(OID_MAX_ID));
+	  oid->ids[ids + i] = xrandom(OID_MAX_ID);
 
 	bt_assert(mib_tree_walk_is_oid_descendant(&walk, oid) > 0);
 
@@ -803,7 +803,7 @@ t_walk_oid_desc(void)
       case 3:
       {
 	/* oid is shorter than walk */
-	u8 ids = LOAD_U8(oid->n_subid);
+	u8 ids = oid->n_subid;
 
 	if (ids == 0 || ids == OID_MAX_LEN)
 	  continue;
@@ -811,14 +811,14 @@ t_walk_oid_desc(void)
 	u32 split = (ids > 1) ? xrandom(ids - 1) + 1 : 0;
 	u32 ext = (type == 3) ? xrandom(MIN(OID_MAX_LEN - ids, 16)) : 0;
 
-	STORE_U16(oid->n_subid, split + ext);
+	oid->n_subid = split + ext;
 	for (u32 i = 0; i < ext; i++)
-	  STORE_U32(oid->ids[split + i], xrandom(OID_MAX_ID));
+	  oid->ids[split + i] = xrandom(OID_MAX_ID);
 
 	int no_change = 1;
 	for (u32 j = 0; j < MIN(ids - split, ext); j++)
 	{
-	  if (LOAD_U32(oid->ids[split + j]) != LOAD_U32(oids[i]->ids[split + j]))
+	  if (oid->ids[split + j] != oids[i]->ids[split + j])
 	    no_change = 0;
 	}
 
@@ -897,18 +897,18 @@ t_walk_oid_compare(void)
       case 1:
       {
 	/* oid is longer than walk or has same length */
-	u8 ids = LOAD_U8(oid->n_subid);
+	u8 ids = oid->n_subid;
 	u32 upto = MIN(OID_MAX_LEN - ids, 16);
 
 	if (!upto)
 	  continue;
 
 	u32 new = xrandom(upto) + 1;
-	STORE_U8(oid->n_subid, ids + new);
+	oid->n_subid = ids + new;
 	ASSERT(snmp_oid_size(oid) < 1024);
 
 	for (u32 i = 0; i < new; i++)
-	  STORE_U32(oid->ids[ids + i], xrandom(OID_MAX_ID));
+	  oid->ids[ids + i] = xrandom(OID_MAX_ID);
 
 
 	bt_assert(mib_tree_walk_oid_compare(&walk, oid) < 0);
@@ -918,7 +918,7 @@ t_walk_oid_compare(void)
       case 3:
       {
 	/* oid is shorter than walk */
-	u8 ids = LOAD_U8(oid->n_subid);
+	u8 ids = oid->n_subid;
 
 	if (ids == 0 || ids == OID_MAX_LEN)
 	  continue;
@@ -926,13 +926,13 @@ t_walk_oid_compare(void)
 	u32 split = (ids > 1) ? xrandom(ids - 1) + 1 : 0;
 	u32 ext = (type == 3) ? xrandom(MIN(OID_MAX_LEN - ids, 16)) : 0;
 
-	STORE_U16(oid->n_subid, split + ext);
+	oid->n_subid = split + ext;
 	for (u32 i = 0; i < ext; i++)
-	  STORE_U32(oid->ids[split + i], xrandom(OID_MAX_ID));
+	  oid->ids[split + i] = xrandom(OID_MAX_ID);
 
 	int cmp_res = 0;
 	for (u32 j = 0; j < MIN(ids - split, ext) && !cmp_res; j++)
-	  cmp_res = LOAD_U32(oids[i]->ids[split + j]) - LOAD_U32(oid->ids[split + j]);
+	  cmp_res = oids[i]->ids[split + j] - oid->ids[split + j];
 
 	if (!cmp_res && split + ext == ids)
 	  continue;
@@ -1256,16 +1256,16 @@ gen_test_find(struct oid *(*generator)(void))
       }
       else
       {
-	for (uint j = 0; j < MIN(LOAD_U8(oids[i]->n_subid),
+	for (uint j = 0; j < MIN(oids[i]->n_subid,
 	    ARRAY_SIZE(snmp_internet)); j++)
 	{
-	  if (LOAD_U32(oids[i]->ids[j]) == snmp_internet[j] &&
+	  if (oids[i]->ids[j] == snmp_internet[j] &&
 	      j >= longest_inet_pref_len)
 	  {
 	    longest_inet_pref->ids[j] = snmp_internet[j];
 	    longest_inet_pref_len = j + 1;
 	  }
-	  else if (LOAD_U32(oids[i]->ids[j]) == snmp_internet[j])
+	  else if (oids[i]->ids[j] == snmp_internet[j])
 	    ;
 	  else
 	    break;
@@ -1360,19 +1360,19 @@ gen_test_find(struct oid *(*generator)(void))
       last = found;
 
       /* test finding with walk state not pointing at the root of the tree */
-      u8 subids = LOAD_U8(oids[i]->n_subid);
+      u8 subids = oids[i]->n_subid;
       if (subids > 0)
       {
 	found = NULL;
 	u32 new_ids = xrandom(subids);
 	mib_tree_walk_init(&walk, (xrandom(2)) ? tree : NULL);
 
-	STORE_U8(oids[i]->n_subid, new_ids);
+	oids[i]->n_subid = new_ids;
 
 	mib_node_u *ignored UNUSED;
 	ignored = mib_tree_find(tree, &walk, oids[i]);
 
-	STORE_U8(oids[i]->n_subid, subids);
+	oids[i]->n_subid = subids;
 
 	found = mib_tree_find(tree, &walk, oids[i]);
 
@@ -1410,7 +1410,7 @@ gen_test_find(struct oid *(*generator)(void))
       if (!has_node && !snmp_oid_is_prefixed(oid))
       {
 	for (uint i = 0; i < MIN(ARRAY_SIZE(snmp_internet),
-	    LOAD_U8(oid->n_subid)); i++)
+	    oid->n_subid); i++)
 	{
 	  if (longest_inet_pref->ids[i] != 0 &&
 	      longest_inet_pref->ids[i] == oid->ids[i])
@@ -1422,7 +1422,7 @@ gen_test_find(struct oid *(*generator)(void))
 	  }
 	}
 
-	if (has_node && LOAD_U8(oid->n_subid) > ARRAY_SIZE(snmp_internet))
+	if (has_node && oid->n_subid > ARRAY_SIZE(snmp_internet))
 	  has_node = 0;
       }
 
@@ -1437,19 +1437,19 @@ gen_test_find(struct oid *(*generator)(void))
 
       last = found;
 
-      u8 subids = LOAD_U8(searched[search]->n_subid);
+      u8 subids = searched[search]->n_subid;
       if (subids > 0)
       {
 	found = NULL;
 	u32 new_ids = xrandom(subids);
 	mib_tree_walk_init(&walk, (xrandom(2)) ? tree : NULL);
 
-	STORE_U8(searched[search]->n_subid, new_ids);
+	searched[search]->n_subid = new_ids;
 
 	mib_node_u *ignored UNUSED;
 	ignored = mib_tree_find(tree, &walk, searched[search]);
 
-	STORE_U8(searched[search]->n_subid, subids);
+	searched[search]->n_subid = subids;
 
 	found = mib_tree_find(tree, &walk, searched[search]);
 
@@ -1725,7 +1725,7 @@ gen_test_traverse(struct oid *(*generator)(void))
     {
       if (snmp_oid_is_prefixed(sorted[d]))
 	bound += 5;
-      bound += (int)LOAD_U8(sorted[d]->n_subid);
+      bound += (int) sorted[d]->n_subid;
     }
 
     if (!no_inet_prefix)

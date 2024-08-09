@@ -140,10 +140,10 @@ void agentx_get_mib_init(pool *p)
   struct oid *dest = mb_alloc(p, size);
 
   memcpy(dest, src, size);
-  u8 ids = LOAD_U8(src->n_subid);
+  u8 ids = src->n_subid;
 
   if (ids > 0)
-    STORE_U32(dest->ids[ids - 1], LOAD_U32(src->ids[ids - 1]) + 1);
+    dest->ids[ids - 1] = src->ids[ids - 1] + 1;
 
   agentx_available_mibs[AGENTX_MIB_COUNT] = dest;
 }

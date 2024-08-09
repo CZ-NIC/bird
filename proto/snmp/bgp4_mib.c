@@ -245,6 +245,7 @@ snmp_bgp4_register(struct snmp_proto *p)
 
     struct oid *oid = mb_allocz(p->pool,
       snmp_oid_size_from_len(ARRAY_SIZE(bgp_mib_prefix)));
+    print(;
     STORE_U8(oid->n_subid, ARRAY_SIZE(bgp_mib_prefix));
     STORE_U8(oid->prefix, SNMP_MGMT);
 
@@ -284,10 +285,10 @@ ip4_to_oid(struct oid *o, ip4_addr addr)
 {
   u32 tmp = ip4_to_u32(addr);
   ASSUME(o->n_subid >= 9);
-  STORE_U32(o->ids[5], (tmp & 0xFF000000) >> 24);
-  STORE_U32(o->ids[6], (tmp & 0x00FF0000) >> 16);
-  STORE_U32(o->ids[7], (tmp & 0x0000FF00) >>  8);
-  STORE_U32(o->ids[8], (tmp & 0x000000FF) >>  0);
+  o->ids[5] = (tmp & 0xFF000000) >> 24;
+  o->ids[6] = (tmp & 0x00FF0000) >> 16;
+  o->ids[7] = (tmp & 0x0000FF00) >>  8;
+  o->ids[8] = (tmp & 0x000000FF) >>  0;
 }
 
 static void UNUSED
@@ -337,7 +338,7 @@ populate_bgp4(struct snmp_pdu *c, ip4_addr *addr, const struct bgp_proto **proto
 **conn, const struct bgp_stats **stats, const struct bgp_config **config)
 {
   const struct oid * const oid = &c->sr_vb_start->name;
-  if (snmp_bgp_valid_ip4(oid) && LOAD_U8(oid->n_subid) == 9)
+  if (snmp_bgp_valid_ip4(oid) && oid->n_subid == 9)
     *addr = ip4_from_oid(oid);
   else
     return SNMP_SEARCH_NO_INSTANCE;
@@ -378,7 +379,7 @@ populate_bgp4(struct snmp_pdu *c, ip4_addr *addr, const struct bgp_proto **proto
 static enum snmp_search_res
 fill_bgp_version(struct mib_walk_state *walk UNUSED, struct snmp_pdu *c)
 {
-  if (LOAD_U8(c->sr_vb_start->name.n_subid) != 3)
+  if (c->sr_vb_start->name.n_subid != 3)
     return SNMP_SEARCH_NO_INSTANCE;
   c->size -= snmp_str_size_from_len(1);
   snmp_varbind_nstr(c, BGP4_VERSIONS, 1);
@@ -388,7 +389,7 @@ fill_bgp_version(struct mib_walk_state *walk UNUSED, struct snmp_pdu *c)
 static enum snmp_search_res
 fill_local_as(struct mib_walk_state *walk UNUSED, struct snmp_pdu *c)
 {
-  if (LOAD_U8(c->sr_vb_start->name.n_subid) != 3)
+  if (c->sr_vb_start->name.n_subid != 3)
     return SNMP_SEARCH_NO_INSTANCE;
   snmp_varbind_int(c, c->p->bgp_local_as);
   return SNMP_SEARCH_OK;
@@ -743,7 +744,7 @@ fill_in_update_elapsed_time(struct mib_walk_state *walk UNUSED, struct snmp_pdu 
 static enum snmp_search_res
 fill_local_id(struct mib_walk_state *walk UNUSED, struct snmp_pdu *c)
 {
-  if (LOAD_U8(c->sr_vb_start->name.n_subid) != 3)
+  if (c->sr_vb_start->name.n_subid != 3)
     return SNMP_SEARCH_NO_INSTANCE;
   snmp_varbind_ip4(c, c->p->bgp_local_id);
   return SNMP_SEARCH_OK;
@@ -771,10 +772,10 @@ bgp4_next_peer(struct mib_walk_state *state, struct snmp_pdu *c)
   const struct oid *peer_oid = (const struct oid *) &bgp4_peer_id;
 
   int precise = 1;
-  if (LOAD_U8(oid->n_subid) > 9)
+  if (oid->n_subid > 9)
     precise = 0;
 
-  if (LOAD_U8(oid->n_subid) != 9 || snmp_oid_compare(oid, peer_oid) < 0)
+  if (oid->n_subid != 9 || snmp_oid_compare(oid, peer_oid) < 0)
   {
     int old = snmp_oid_size(oid);
     int new = snmp_oid_size(peer_oid);
@@ -785,7 +786,7 @@ bgp4_next_peer(struct mib_walk_state *state, struct snmp_pdu *c)
     c->buffer += (new - old);
 
     snmp_oid_copy(oid, peer_oid);
-    STORE_U8(oid->include, 1);
+    oid->include = 1;
   }
 
   ASSUME(oid->n_subid == 9);
@@ -799,9 +800,9 @@ bgp4_next_peer(struct mib_walk_state *state, struct snmp_pdu *c)
 
   int match = trie_walk_init(&ws, c->p->bgp_trie, &net, 1);
 
-  if (match && LOAD_U8(oid->include) && precise)
+  if (match && oid->include && precise)
   {
-    STORE_U8(oid->include, 0);
+    oid->include = 0;
     ip4_to_oid(oid, ip4);
     return 0;
   }

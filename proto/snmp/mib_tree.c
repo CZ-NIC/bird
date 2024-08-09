@@ -46,13 +46,13 @@ mib_tree_init(pool *p, struct mib_tree *t)
 
   struct oid *oid = tmp_alloc(
     snmp_oid_size_from_len((uint) ARRAY_SIZE(snmp_internet)));
-  STORE_U8(oid->n_subid, ARRAY_SIZE(snmp_internet));
-  STORE_U8(oid->prefix, 0);
-  STORE_U8(oid->include, 0);
-  STORE_U8(oid->reserved, 0);
+  oid->n_subid =  ARRAY_SIZE(snmp_internet);
+  oid->prefix = 0;
+  oid->include =  0;
+  oid->reserved = 0;
 
   for (size_t i = 0; i < ARRAY_SIZE(snmp_internet); i++)
-    STORE_U32(oid->ids[i], snmp_internet[i]);
+    oid->ids[i] = snmp_internet[i];
 
   (void) mib_tree_add(p, t, oid, 0);
 }
@@ -110,7 +110,7 @@ mib_tree_add(pool *p, struct mib_tree *t, const struct oid *oid, int is_leaf)
 
   mib_tree_walk_init(&walk, t);
   node = mib_tree_find(t, &walk, oid);
-  ASSERT(walk.id_pos <= LOAD_U8(oid->n_subid) + 1);
+  ASSERT(walk.id_pos <= oid->n_subid + 1);
 
   if (node)
   {
@@ -122,7 +122,7 @@ mib_tree_add(pool *p, struct mib_tree *t, const struct oid *oid, int is_leaf)
     return NULL;
   }
 
-  ASSERT(walk.id_pos < LOAD_U8(oid->n_subid) + 1);
+  ASSERT(walk.id_pos < oid->n_subid + 1);
 
   node = walk.stack[walk.stack_pos - 1];
   /* we encounter leaf node before end of OID's id path */
@@ -161,14 +161,14 @@ mib_tree_add(pool *p, struct mib_tree *t, const struct oid *oid, int is_leaf)
     if (walk.stack_pos == ARRAY_SIZE(snmp_internet) + 1)
     {
       u32 old_len = node_inner->child_len;
-      node_inner->child_len = MAX(old_len, (u32) LOAD_U8(oid->prefix) + 1);
+      node_inner->child_len = MAX(old_len, (u32) oid->prefix + 1);
       node_inner->children = realloc(node_inner->children,
 	node_inner->child_len * sizeof(mib_node_u *));
 
       for (u32 i = old_len; i < node_inner->child_len; i++)
 	node_inner->children[i] = NULL;
 
-      if (is_leaf && !LOAD_U8(oid->n_subid))
+      if (is_leaf && !oid->n_subid)
       {
 	node = allocz(sizeof(struct mib_leaf));
 	node->empty.flags = MIB_TREE_LEAF;
@@ -179,9 +179,9 @@ mib_tree_add(pool *p, struct mib_tree *t, const struct oid *oid, int is_leaf)
 	node->empty.flags = 0;
       }
 
-      node->empty.id = LOAD_U8(oid->prefix);
+      node->empty.id = oid->prefix;
       /* add node into the parent's children array */
-      node_inner->children[LOAD_U8(oid->prefix)] = node;
+      node_inner->children[oid->prefix] = node;
       node_inner = &node->inner;
       walk.stack[walk.stack_pos++] = node;
     }
@@ -190,17 +190,17 @@ mib_tree_add(pool *p, struct mib_tree *t, const struct oid *oid, int is_leaf)
   /* snmp_internet + 2 = empty + snmp_internet + prefix */
   if (snmp_oid_is_prefixed(oid) &&
       walk.stack_pos == ARRAY_SIZE(snmp_internet) + 2 &&
-      LOAD_U8(oid->n_subid) == 0 &&
+      oid->n_subid == 0 &&
       mib_node_is_leaf(node) == is_leaf)
     return node;
 
   if (mib_node_is_leaf(node))
     return node;
 
-  u8 subids = LOAD_U8(oid->n_subid);
+  u8 subids = oid->n_subid;
   u32 old_len = node_inner->child_len;
   u32 child_id = oid->ids[walk.id_pos];
-  node_inner->child_len = MAX(old_len, LOAD_U32(child_id) + 1);
+  node_inner->child_len = MAX(old_len, child_id + 1);
   node_inner->children = realloc(node_inner->children,
     node_inner->child_len * sizeof(mib_node_u *));
 
@@ -217,7 +217,7 @@ mib_tree_add(pool *p, struct mib_tree *t, const struct oid *oid, int is_leaf)
     parent->children[child_id] = (mib_node_u *) node_inner;
     node_inner->c.id = child_id;
 
-    child_id = LOAD_U32(oid->ids[++walk.id_pos]);
+    child_id = oid->ids[++walk.id_pos];
 
     node_inner->child_len = child_id + 1;
     node_inner->children = allocz(node_inner->child_len * sizeof(mib_node_u *));
@@ -430,14 +430,14 @@ mib_tree_find(const struct mib_tree *t, struct mib_walk_state *walk, const struc
     /* In any of cases below we did not move in the tree therefore the
      * walk->id_pos is left untouched. */
     if (snmp_oid_is_prefixed(oid) &&
-	LOAD_U8(oid->n_subid) + ARRAY_SIZE(snmp_internet) + 1 == walk->id_pos)
+	oid->n_subid + ARRAY_SIZE(snmp_internet) + 1 == walk->id_pos)
       return node;
 
     else if (snmp_oid_is_prefixed(oid) &&
-	LOAD_U8(oid->n_subid) + ARRAY_SIZE(snmp_internet) + 1 > walk->id_pos)
+	oid->n_subid + ARRAY_SIZE(snmp_internet) + 1 > walk->id_pos)
       return NULL;
 
-    else if (!snmp_oid_is_prefixed(oid) && LOAD_U8(oid->n_subid) + 1 == walk->id_pos)
+    else if (!snmp_oid_is_prefixed(oid) && oid->n_subid + 1 == walk->id_pos)
       return node;
   }
 
@@ -470,7 +470,7 @@ mib_tree_find(const struct mib_tree *t, struct mib_walk_state *walk, const struc
     }
 
     /* walking the prefix continuation (OID field oid->prefix) */
-    u8 prefix = LOAD_U8(oid->prefix);
+    u8 prefix = oid->prefix;
     if (node_inner->child_len <= prefix)
       return NULL;
 
@@ -483,18 +483,18 @@ mib_tree_find(const struct mib_tree *t, struct mib_walk_state *walk, const struc
     ASSERT(node->empty.id == prefix);
     walk->stack[walk->stack_pos++] = node;
 
-    if (mib_node_is_leaf(node) && LOAD_U8(oid->n_subid) > 0)
+    if (mib_node_is_leaf(node) && oid->n_subid > 0)
       return NULL;
   }
 
-  u8 subids = LOAD_U8(oid->n_subid);
+  u8 subids = oid->n_subid;
   if (subids == 0)
     return (node == (mib_node_u *) &t->root) ? NULL : node;
 
   /* loop for all OID's ids except the last one */
   for (; oid_pos < subids - 1 && walk->stack_pos < MIB_WALK_STACK_SIZE + 1; oid_pos++)
   {
-    u32 id = LOAD_U32(oid->ids[oid_pos]);
+    u32 id = oid->ids[oid_pos];
     if (node_inner->child_len <= id)
     {
       /* The walk->id_pos points after the last accepted OID id.
@@ -527,7 +527,7 @@ mib_tree_find(const struct mib_tree *t, struct mib_walk_state *walk, const struc
   }
 
   walk->id_pos = oid_pos;
-  u32 last_id = LOAD_U32(oid->ids[oid_pos]);
+  u32 last_id = oid->ids[oid_pos];
   if (node_inner->child_len <= last_id ||
       walk->stack_pos >= MIB_WALK_STACK_SIZE + 1)
     return NULL;
@@ -598,9 +598,9 @@ mib_tree_walk_to_oid(const struct mib_walk_state *walk, struct oid *result, u32 
 
     /* skip empty prefix, whole snmp_internet .1.3.6.1 and oid->prefix */
     index = 2 + ARRAY_SIZE(snmp_internet);
-    STORE_U8(result->n_subid, walk->stack_pos - (ARRAY_SIZE(snmp_internet) + 2));
-    STORE_U8(result->prefix,
-      walk->stack[ARRAY_SIZE(snmp_internet) + 1]->empty.id);
+    result->n_subid = walk->stack_pos - (ARRAY_SIZE(snmp_internet) + 2);
+    result->prefix = \
+      walk->stack[ARRAY_SIZE(snmp_internet) + 1]->empty.id;
   }
   else
   {
@@ -608,17 +608,17 @@ mib_tree_walk_to_oid(const struct mib_walk_state *walk, struct oid *result, u32 
       return 1;
 
     index = 1;	/* skip empty prefix */
-    STORE_U8(result->n_subid, walk->stack_pos - 1);
-    STORE_U8(result->prefix, 0);
+    result->n_subid = walk->stack_pos - 1;
+    result->prefix = 0;
   }
 
-  STORE_U8(result->include, 0);
-  STORE_U8(result->reserved, 0);
+  result->include = 0;
+  result->reserved = 0;
 
   u32 i = 0;
   /* the index could point after last stack array element */
   for (; index < walk->stack_pos && index < MIB_WALK_STACK_SIZE; index++)
-    STORE_U32(result->ids[i++], walk->stack[index]->empty.id);
+    result->ids[i++] = walk->stack[index]->empty.id;
 
   return 0;
 }
@@ -639,9 +639,9 @@ mib_tree_walk_oid_compare(const struct mib_walk_state *walk, const struct oid *o
 
   uint walk_idx = 1;
   u8 walk_subids = walk->stack_pos;	  /* left_subids */
-  u8 oid_subids = LOAD_U8(oid->n_subid);  /* right_subids */
+  u8 oid_subids = oid->n_subid;  /* right_subids */
 
-  const u8 oid_prefix = LOAD_U8(oid->prefix);
+  const u8 oid_prefix = oid->prefix;
 
   if (oid_prefix != 0)
   {
@@ -668,7 +668,7 @@ mib_tree_walk_oid_compare(const struct mib_walk_state *walk, const struct oid *o
   for (; i < oid_subids && walk_idx < walk_subids; i++, walk_idx++)
   {
     u32 walk_id = walk->stack[walk_idx]->empty.id;
-    u32 oid_id = LOAD_U32(oid->ids[i]);
+    u32 oid_id = oid->ids[i];
     if (walk_id < oid_id)
       return -1;
     else if (walk_id > oid_id)
@@ -714,16 +714,16 @@ mib_tree_walk_is_oid_descendant(const struct mib_walk_state *walk, const struct 
       return +1;
 
     if (i < walk->stack_pos &&
-	walk->stack[i]->empty.id != (u32)LOAD_U8(oid->prefix))
+	walk->stack[i]->empty.id != (u32) oid->prefix)
       return -1;
 
     i++;
   }
 
-  u32 ids = LOAD_U8(oid->n_subid);
+  u32 ids = oid->n_subid;
   for (; i < walk->stack_pos && j < ids; i++, j++)
   {
-    if (walk->stack[i]->empty.id != LOAD_U32(oid->ids[j]))
+    if (walk->stack[i]->empty.id != oid->ids[j])
       return -1;
   }
 

@@ -77,7 +77,7 @@ snmp_blank_header(struct agentx_header *h, enum agentx_pdu_types type)
  * snmp_register_ack - handle registration response
  * @p: SNMP protocol instance
  * @res: header of agentx-Response-PDU
- * @oid: MIB subtree Object Identifier
+ * @oid: MIB subtree Object Identifier in cpu native byte order
  */
 void
 snmp_register_ack(struct snmp_proto *p, struct agentx_response *res, const struct oid *oid)
@@ -93,9 +93,9 @@ snmp_register_ack(struct snmp_proto *p, struct agentx_response *res, const struc
       p->registrations_to_ack--;
 
       if (res->error == AGENTX_RES_NO_ERROR)
-	reg->reg_hook_ok(p, (const struct agentx_response *) res, reg);
+	reg->reg_hook_ok(p, res, reg);
       else
-	reg->reg_hook_fail(p, (const struct agentx_response *) res, reg);
+	reg->reg_hook_fail(p, res, reg);
 
       mb_free(reg->oid);
       mb_free(reg);
@@ -172,7 +172,8 @@ open_pdu(struct snmp_proto *p, struct oid *oid)
   else /* p->timeout > 255 TO_US */
     c.buffer = snmp_put_fbyte(c.buffer, (u8) 255);
 
-  c.buffer = snmp_put_oid(c.buffer, oid);
+  snmp_oid_to_buf((struct oid *) c.buffer, oid);
+  c.buffer += snmp_oid_size(oid);
   c.buffer = snmp_put_str(c.buffer, cf->description);
 
   s = update_packet_size(h, c.buffer);
@@ -184,12 +185,12 @@ open_pdu(struct snmp_proto *p, struct oid *oid)
  * send_notify_pdu - send an agentx-Notify-PDU
  * @p: SNMP protocol instance
  * @oid: PDU notification Varbind name (OID)
- * @data: PDU Varbind payload
- * @size: PDU Varbind payload size
- * @include_uptime: flag enabling inclusion of sysUpTime.0 OID
+ * @data: PDU VarBind payload in packet byte order
+ * @size: PDU VarBind payload size
+ * @include_up_time: flag enabling inclusion of sysUpTime.0 OID
  */
 void
-snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, int include_uptime)
+snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, int include_up_time)
 {
   if (!snmp_is_active(p))
     return;
@@ -205,7 +206,7 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
   uint sz = AGENTX_HEADER_SIZE + TRAP0_HEADER_SIZE + snmp_oid_size(oid) \
     + size;
 
-  if (include_uptime)
+  if (include_up_time)
     sz += UPTIME_SIZE;
 
   /* Make sure that we have enough space in TX buffer */
@@ -217,7 +218,7 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
   p->packet_id++;   /* New packet id */
   snmp_session(p, h);
 
-  if (include_uptime)
+  if (include_up_time)
   {
     /* sysUpTime.0 oid */
     STATIC_OID(4) sys_up_time_0 = {
@@ -227,17 +228,19 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
       .reserved = 0,
       .ids = { SNMP_MIB_2, SNMP_SYSTEM, SNMP_SYS_UP_TIME, 0 },
     };
-    struct oid *uptime_0 = (struct oid *) &sys_up_time_0;
+    struct oid *up_time_0 = (struct oid *) &sys_up_time_0;
 
-    struct agentx_varbind *vb = snmp_create_varbind(c.buffer, uptime_0);
-    for (uint i = 0; i < uptime_0->n_subid; i++)
-      STORE_U32(vb->name.ids[i], uptime_0->ids[i]);
+    struct agentx_varbind *vb = (struct agentx_varbind *) c.buffer;
+    snmp_oid_to_buf(&vb->name, up_time_0);
 
     /* TODO use time from last reconfiguration instead? [config->load_time] */
     btime uptime = current_time() - boot_time;
     snmp_varbind_ticks(&c, (uptime TO_S) / 100);
-    ASSUME(snmp_test_varbind(vb));
     ADVANCE(c.buffer, c.size, snmp_varbind_size_unsafe(vb));
+    STORE_U16(vb->type, vb->type);
+    /* We do not need to call the snmp_varbind_leave() because we used
+     * the packet byte order in the first place.
+     */
   }
 
   /* snmpTrapOID.0 oid */
@@ -250,12 +253,15 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
   };
   struct oid *trap_0 = (struct oid *) &snmp_trap_oid_0;
 
-  struct agentx_varbind *trap_vb = snmp_create_varbind(c.buffer, trap_0);
-  for (uint i = 0; i < trap_0->n_subid; i++)
-    STORE_U32(trap_vb->name.ids[i], trap_0->ids[i]);
-  trap_vb->type = AGENTX_OBJECT_ID;
-  snmp_put_oid(snmp_varbind_data(trap_vb), oid);
+  struct agentx_varbind *trap_vb = (struct agentx_varbind *) c.buffer;
+  snmp_oid_to_buf(&trap_vb->name, trap_0);
+  /* snmp_oid_size() works for both byte orders same */
+  snmp_varbind_oid(trap_vb, oid);
   ADVANCE(c.buffer, c.size, snmp_varbind_size_unsafe(trap_vb));
+  STORE_U16(trap_vb, trap_vb);
+  /* We do not need to call the snmp_varbind_leave() because we used the packet
+   * byte order in the first place.
+   */
 
   memcpy(c.buffer, data, size);
   ADVANCE(c.buffer, c.size, size);
@@ -298,7 +304,6 @@ un_register_pdu(struct snmp_proto *p, struct oid *oid, u32 bound, uint index, en
   snmp_pdu_context(&c, p, sk);
 
 #define BOUND_SIZE sizeof(u32)
-  /* conditional +4 for upper-bound (optinal field) */
   uint sz = AGENTX_HEADER_SIZE + snmp_oid_size(oid) +
       ((bound > 1) ? BOUND_SIZE : 0);
 
@@ -321,7 +326,7 @@ un_register_pdu(struct snmp_proto *p, struct oid *oid, u32 bound, uint index, en
   STORE_U8(ur->reserved, 0);
   ADVANCE(c.buffer, c.size, sizeof(struct agentx_un_register_hdr));
 
-  (void) snmp_put_oid(c.buffer, oid);
+  snmp_oid_to_buf((struct oid *) c.buffer, oid);
   ADVANCE(c.buffer, c.size, snmp_oid_size(oid));
 
   /* place upper-bound if needed */
@@ -389,8 +394,8 @@ close_pdu(struct snmp_proto *p, enum agentx_close_reasons reason)
   p->packet_id++;
   snmp_session(p, h);
 
-  snmp_put_fbyte(c.buffer, (u8) reason);
-  ADVANCE(c.buffer, c.size, 4);
+  (void) snmp_put_fbyte(c.buffer, (u8) reason);
+  ADVANCE(c.buffer, c.size, REASON_SIZE);
 
   uint s = update_packet_size(h, c.buffer);
   sk_send(sk, s);
@@ -466,6 +471,7 @@ parse_test_set_pdu(struct snmp_proto *p, byte * const pkt_start)
   uint s; /* final packat size */
   struct agentx_response *res; /* pointer to reponse in TX buffer */
 
+  /* Presence of full header is guaranteed by parse_pkt() caller */
   struct agentx_header *h = (void *) pkt;
   pkt += AGENTX_HEADER_SIZE;
 
@@ -492,11 +498,13 @@ parse_test_set_pdu(struct snmp_proto *p, byte * const pkt_start)
   }
   else if (all_possible)
   {
+    /* All values in the agentx-TestSet-PDU are OK, realy to commit them */
     response_err_ind(p, res, AGENTX_RES_NO_ERROR, 0);
   }
   else
   {
-    TRACE(D_PACKETS, "SNMP SET action failed (not writable)");
+    // Currently the only reachable branch
+    //TRACE(D_PACKETS, "SNMP SET action failed (not writable)");
     /* This is a recoverable error, we do not need to reset the connection */
     response_err_ind(p, res, AGENTX_RES_NOT_WRITABLE, c.index + 1);
   }
@@ -517,6 +525,7 @@ static uint
 parse_sets_pdu(struct snmp_proto *p, byte * const pkt_start, enum agentx_response_errs err)
 {
   byte *pkt = pkt_start;
+  /* Presence of full header is guaranteed by parse_pkt() caller */
   struct agentx_header *h = (void *) pkt;
   pkt += AGENTX_HEADER_SIZE;
   uint pkt_size = LOAD_U32(h->payload);
@@ -525,8 +534,8 @@ parse_sets_pdu(struct snmp_proto *p, byte * const pkt_start, enum agentx_respons
   {
     TRACE(D_PACKETS, "SNMP received malformed set PDU (size)");
     snmp_simple_response(p, AGENTX_RES_PARSE_ERROR, 0);
-    // TODO best solution for possibly malicious pkt_size
-    return AGENTX_HEADER_SIZE;
+    snmp_reset(p);
+    return 0;
   }
 
   struct snmp_pdu c;
@@ -546,7 +555,10 @@ parse_sets_pdu(struct snmp_proto *p, byte * const pkt_start, enum agentx_respons
 
   /* Reset the connection on unrecoverable error */
   if (c.error != AGENTX_RES_NO_ERROR && c.error != err)
+  {
     snmp_reset(p);    /* error */
+    return 0;
+  }
 
   return pkt - pkt_start;
 }
@@ -593,11 +605,6 @@ parse_undo_set_pdu(struct snmp_proto *p, byte *pkt)
 static uint
 parse_cleanup_set_pdu(struct snmp_proto *p, byte * const pkt_start)
 {
-  TRACE(D_PACKETS, "SNMP received agentx-CleanupSet-PDU");
-  (void)p;
-  // TODO don't forget to free resources allocated by parse_test_set_pdu()
-  //mb_free(p->tr);
-
   byte *pkt = pkt_start;
   struct agentx_header *h = (void *) pkt;
   uint pkt_size = LOAD_U32(h->payload);
@@ -605,11 +612,16 @@ parse_cleanup_set_pdu(struct snmp_proto *p, byte * const pkt_start)
   /* errors are dropped silently, we must not send any agentx-Response-PDU */
   if (pkt_size != 0)
   {
-    // TODO should we free even for malformed packets ??
-    // TODO -> check that data is not freed
     return AGENTX_HEADER_SIZE;
+    TRACE(D_PACKET, "SNMP received malformed agentx-CleanupSet-PDU");
+    snmp_reset(p);
+    return 0;
   }
 
+  TRACE(D_PACKETS, "SNMP received agentx-CleanupSet-PDU");
+  (void)p;
+  // TODO don't forget to free resources allocated by parse_test_set_pdu()
+  //mb_free(p->tr);
   /* No agentx-Response-PDU is sent in response to agentx-CleanupSet-PDU */
   return pkt_size;
 }
@@ -734,7 +746,7 @@ parse_pkt(struct snmp_proto *p, byte *pkt, uint size)
 
     default:
       /* We reset the connection for malformed packet (Unknown packet type) */
-      TRACE(D_PACKETS, "SNMP received unknown packet with type %u", LOAD_U8(h->type));
+      TRACE(D_PACKETS, "SNMP received unknown packet type (%u)", LOAD_U8(h->type));
       snmp_reset(p);
       return 0;
   }
@@ -770,7 +782,10 @@ parse_response(struct snmp_proto *p, byte *res)
       // TODO more direct path to mib-specific code
       TRACE(D_PACKETS, "SNMP received agentx-Response-PDU with error %u", r->error);
       byte *pkt = res + sizeof(struct agentx_response);
-      struct oid *failed = (struct oid *) pkt;
+      const struct oid *failed_buf = (struct oid *) pkt;
+      uint failed_size = snmp_oid_size(failed_buf);
+      struct oid *failed = tmp_alloc(failed_size);
+      snmp_oid_from_buf(failed, failed_buf);
       snmp_register_ack(p, r, failed);
       break;
 
@@ -841,7 +856,10 @@ do_response(struct snmp_proto *p, byte *pkt)
     case SNMP_REGISTER:;
       pkt += AGENTX_HEADER_SIZE;
 
-      const struct oid *oid = (struct oid *) pkt;
+      const struct oid *oid_buf = (struct oid *) pkt;
+      uint oid_size = snmp_oid_size(oid_buf);
+      struct oid *oid = tmp_alloc(oid_size);
+      snmp_oid_from_buf(oid, oid_buf);
       snmp_register_ack(p, r, oid);
 
       if (p->registrations_to_ack == 0)
@@ -859,33 +877,44 @@ do_response(struct snmp_proto *p, byte *pkt)
   }
 }
 
-static inline struct oid *
+/*
+ * snmp_oid_prefixize_unsafe - normalize OID to prefixed form
+ * @dest: destination for normalized OID in native byte order
+ * @src: source OID in packet byte order
+ *
+ * Note that again, snmp_oid_prefixize_unsafe is intended to copy Object
+ * Identifier from RX buffer to TX buffer but also optionally swap the byte
+ * order from packet b.o. to cpu native b.o. This is done to simplify the code
+ * dealing with OIDs.
+ */
+static inline void
 snmp_oid_prefixize_unsafe(struct oid *dest, const struct oid *src)
 {
-  u8 subids = LOAD_U8(src->n_subid) - 5;
-  dest->n_subid = subids;
-  STORE_U8(dest->prefix, (u8) LOAD_U32(src->ids[ARRAY_SIZE(snmp_internet)]));
-  STORE_U8(dest->include, (LOAD_U8(src->include)) ? 1 : 0);
-  STORE_U8(dest->reserved, 0);
+  dest->n_subid = LOAD_U8(src->n_subid) - 5;
+  dest->prefix = (u8) LOAD_U32(src->ids[ARRAY_SIZE(snmp_internet)]);
+  dest->include = (LOAD_U8(src->include)) ? 1 : 0;
+  dest->reserved = 0;
 
   /* The LOAD_U32() and STORE_U32() cancel out */
-  memcpy(&dest->ids[0], &src->ids[5], subids * sizeof(u32));
+  for (i = 0; i < dest->n_subid; i++)
+    dest->ids[i] = LOAD_U32(src->ids[i + 5]);
 
   return dest;
 }
 
 /*
- * snmp_vb_to_tx - create varbind from RX buffer OID
+ * snmp_vb_to_tx - create VarBind in TX buffer from RX buffer OID
  * @c: PDU context
- * @oid: object identifier located in RX buffer
+ * @oid: Object Identifier located in RX buffer with packet byte order
  *
- * Create NULL initialized VarBind inside TX buffer (from @c) whose vb->name is
- * @oid. The @oid prefixed if possible. The result is stored in @c->sr_vb_start.
+ * Create a NULL initialized VarBind inside TX buffer (from @c) whose name
+ * is @oid. Because we want to simplify code dealing with OIDs, the byte order
+ * of the name is optionally swapped to match cpu native byte order.
  */
 void
 snmp_vb_to_tx(struct snmp_pdu *c, const struct oid *oid)
 {
-  uint vb_hdr_size = snmp_varbind_hdr_size_from_oid(oid);
+  uint vb_hdr_size = snmp_varbind_header_size(oid);
   (void) snmp_tbuf_reserve(c, vb_hdr_size);
 
   ASSERT(c->size >= vb_hdr_size);
@@ -898,32 +927,43 @@ snmp_vb_to_tx(struct snmp_pdu *c, const struct oid *oid)
   {
     u8 subids = LOAD_U8(oid->n_subid) - 5;
     ADVANCE(c->buffer, c->size, snmp_oid_size_from_len(subids));
-    (void) snmp_oid_prefixize_unsafe(&vb->name, oid);
+    snmp_oid_prefixize_unsafe(&vb->name, oid);
 
     c->sr_vb_start = vb;
     return;
   }
 
   ADVANCE(c->buffer, c->size, snmp_oid_size(oid));
-  snmp_oid_copy2(&vb->name, oid);
+  snmp_oid_from_buf(&vb->name, oid);
 
   c->sr_vb_start = vb;
 }
 
 /*
- * snmp_fix_vb - fix VarBind's name OID byte order
- * @vb: VarBind to use
+ * snmp_varbind_leave - transform VarBind to packet byte order
+ * @vb: prepared VarBind in cpu native byte order
  */
 void
-snmp_fix_vb(struct agentx_varbind *vb)
+snmp_varbind_leave(struct agentx_varbind *vb)
 {
-  snmp_oid_copy(&vb->name, &vb->name);
+  STORE_U16(vb->type, vb->type);
+
+  /* Does nothing */
+  STORE_U16(vb->reserved, 0);
+  struct oid *oid = &vb->name;
+  STORE_U8(oid->n_subid, oid->n_subid);
+  STORE_U8(oid->prefix, oid->prefix);
+  STORE_U8(oid->include, oid->include);
+  STORE_U8(oid->reserved, 0);
+
+  for (u8 i = 0; i < oid->n_subid; i++)
+    STORE_U32(oid->ids[i], oid->ids[i]);
 }
 
 /*
  * update_packet_size - set PDU size
- * @start - pointer to PDU data start (excluding header size)
- * @end - pointer after the last PDU byte
+ * @start: pointer to PDU data start (excluding header size)
+ * @end: pointer after the last PDU byte
  *
  * Return number of bytes in TX buffer (including header size).
  */
@@ -952,17 +992,17 @@ response_err_ind(struct snmp_proto *p, struct agentx_response *res, enum agentx_
   // TODO deal with auto-incrementing of snmp_pdu context c.ind
   if (err != AGENTX_RES_NO_ERROR && err != AGENTX_RES_GEN_ERROR)
   {
-    TRACE(D_PACKETS, "Last PDU resulted in error %u", err);
+    //TRACE(D_PACKETS, "Last PDU resulted in error %u", err);
     STORE_U16(res->index, ind);
-    TRACE(D_PACKETS, "Storing packet size %u (was %u)", sizeof(struct agentx_response) - AGENTX_HEADER_SIZE, LOAD_U32(res->h.payload));
+    /* Reset VarBindList to null */
     STORE_U32(res->h.payload,
       sizeof(struct agentx_response) - AGENTX_HEADER_SIZE);
   }
   else if (err == AGENTX_RES_GEN_ERROR)
   {
-    TRACE(D_PACKETS, "Last PDU resulted in error %u genErr", err);
+    //TRACE(D_PACKETS, "Last PDU resulted in error %u genErr", err);
     STORE_U16(res->index, 0);
-    TRACE(D_PACKETS, "Storing packet size %u (was %u)", sizeof(struct agentx_response) - AGENTX_HEADER_SIZE, LOAD_U32(res->h.payload));
+    /* Reset VarBindList to null */
     STORE_U32(res->h.payload,
       sizeof(struct agentx_response) - AGENTX_HEADER_SIZE);
   }

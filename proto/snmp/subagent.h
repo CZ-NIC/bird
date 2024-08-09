@@ -138,26 +138,6 @@ enum agentx_flags {
 #define LOAD_PTR(src)	      get_u32(ptr)
 #endif
 
-#define LOAD_STR(/* byte * */buf, str, length)  ({			      \
-  length = LOAD_PTR(buf);	  					      \
-  length > 0 ? (str = buf + 4) : (str = NULL); })
-
-#define COPY_STR(proto, buf, str, length) ({				      \
-  length = LOAD_PTR(buf);						      \
-  str = mb_alloc(proto->pool, length + 1);				      \
-  memcpy(str, buf+4, length);						      \
-  str[length] = '\0'; /* set term. char */				      \
-  buf += 4 + snmp_str_size_from_len(length); })
-
-#define SNMP_PUT_OID(buf, size, oid)					      \
-  ({									      \
-    struct agentx_varbind *vb = (void *) buf;				      \
-    SNMP_FILL_VARBIND(vb, oid);						      \
-  })
-
-#define SNMP_FILL_VARBIND(vb, oid)					      \
-  snmp_oid_copy(&(vb)->name, (oid)), snmp_oid_size((oid))
-
 struct agentx_header {
   u8 version;
   u8 type;
@@ -189,25 +169,31 @@ struct oid {
     u32 ids[sbids];							      \
   }
 
-#define VALUE_U32_HELPER(x) VALUE_U32(x),
 #define STATIC_OID_INITIALIZER(sbids, pref, ...)			      \
   {									      \
-    .n_subid = VALUE_U8(sbids),						      \
-    .prefix = VALUE_U8(pref),						      \
-    .include = VALUE_U8(0),						      \
-    .reserved = VALUE_U8(0),						      \
-    .ids = { MACRO_FOREACH(VALUE_U32_HELPER, __VA_ARGS__) },		      \
+    .n_subid = sbids,							      \
+    .prefix = pref,							      \
+    .include = 0,							      \
+    .reserved = 0,							      \
+    .ids = { __VA_ARGS__ },						      \
   }
 
 /* enforced by MIB tree, see mib_tree.h for more info */
 #define OID_MAX_LEN 32
 
+/*
+ * AgentX VarBind -- Variable Binding
+ * During the processing of the VarBind, the fields @type and @name are in cpu
+ * native byte order. This should be fixed by running snmp_varbind_leave()
+ * before VarBind control pointer abondonment or before packet transmission.
+ * The data following the structure should always follow the packet byte order.
+ */
 struct agentx_varbind {
   u16 type;
   u16 reserved; /* always zero filled */
   /* oid part */
   struct oid name;
-  /* AgentX variable binding data optionaly here */
+  /* AgentX variable binding data optionally here */
 };
 
 struct agentx_search_range {

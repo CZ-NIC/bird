@@ -46,7 +46,7 @@ inline void *
 snmp_varbind_data(const struct agentx_varbind *vb)
 {
   uint name_size = snmp_oid_size(&vb->name);
-  return (void *)&vb->name + name_size;
+  return (void *) &vb->name + name_size;
 }
 
 struct oid *
@@ -54,23 +54,23 @@ snmp_varbind_set_name_len(struct snmp_pdu *c, struct agentx_varbind **vb, u8 len
 {
   struct oid *oid = &(*vb)->name;
 
-  if (LOAD_U8(oid->n_subid) >= len)
+  if (oid->n_subid >= len)
   {
-    c->size += (LOAD_U8(oid->n_subid) - len) * sizeof(u32);
-    STORE_U8(oid->n_subid, len);
+    c->size += (oid->n_subid - len) * sizeof(u32);
+    oid->n_subid = len;
     return oid;
   }
 
   /* We need more space */
-  ASSUME(len >= LOAD_U8(oid->n_subid));
-  uint diff_size = (len - LOAD_U8(oid->n_subid)) * sizeof(u32);
+  ASSUME(len >= oid->n_subid);
+  uint diff_size = (len - oid->n_subid) * sizeof(u32);
 
   if (snmp_tbuf_reserve(c, diff_size))
     oid = &(*vb)->name;
 
   ASSERT(c->size >= diff_size);
   c->size -= diff_size;
-  STORE_U8(oid->n_subid, len);
+  oid->n_subid = len;
   return &(*vb)->name;
 }
 
@@ -78,7 +78,7 @@ void
 snmp_varbind_duplicate_hdr(struct snmp_pdu *c, struct agentx_varbind **vb)
 {
   ASSUME(vb != NULL && *vb != NULL);
-  uint hdr_size = snmp_varbind_header_size(*vb);
+  uint hdr_size = snmp_varbind_header_size(*vb->name);
   (void) snmp_tbuf_reserve(c, hdr_size);
 
   ASSERT(c->size >= hdr_size);
@@ -100,7 +100,7 @@ snmp_is_oid_empty(const struct oid *oid)
 {
   /* We intentionaly ignore padding that should be zeroed */
   if (oid != NULL)
-    return LOAD_U8(oid->n_subid) == 0 && LOAD_U8(oid->prefix) == 0;
+    return oid->n_subid == 0 && oid->prefix == 0;
   else
     return 0;
 }
@@ -119,10 +119,10 @@ snmp_oid_is_prefixable(const struct oid *oid)
     return 0;
 
   for (int i = 0; i < 4; i++)
-    if (LOAD_U32(oid->ids[i]) != snmp_internet[i])
+    if (oid->ids[i] != snmp_internet[i])
       return 0;
 
-  if (LOAD_U32(oid->ids[4]) >= 256)
+  if (oid->ids[4] >= 256)
     return 0;
 
   return 1;
@@ -148,27 +148,12 @@ snmp_pkt_len(const byte *start, const byte *end)
 void
 snmp_oid_copy(struct oid *dest, const struct oid *src)
 {
-  STORE_U8(dest->n_subid, src->n_subid);
-  STORE_U8(dest->prefix, src->prefix);
-  STORE_U8(dest->include, src->include ? 1 : 0);
-  STORE_U8(dest->reserved, 0);
-
-  for (int i = 0; i < LOAD_U8(src->n_subid); i++)
-    STORE_U32(dest->ids[i], src->ids[i]);
-}
-
-/* this function assumes enougth space inside dest is allocated */
-void
-snmp_oid_copy2(struct oid *dest, const struct oid *src)
-{
-  /* The STORE_U8() and LOAD_U8() cancel out */
   dest->n_subid = src->n_subid;
   dest->prefix = src->prefix;
   dest->include = src->include ? 1 : 0;
   dest->reserved = 0;
 
-  /* The STORE_U32() and LOAD_U32 cancel out */
-  memcpy(dest->ids, src->ids, LOAD_U8(src->n_subid) * sizeof(u32));
+  memcpy(dest->ids, src->ids, src->n_subid * sizeof(u32));
 }
 
 /*
@@ -235,36 +220,26 @@ snmp_str_size(const char *str)
 }
 
 /**
- * snmp_oid_size - measure size of oid in bytes
+ * snmp_oid_size - measure size of OID in bytes
  * @o: object identifier to use
+ *
+ * Work for both packet and cpu native byte orders.
  */
 uint
 snmp_oid_size(const struct oid *o)
 {
+  /* LOAD_U8() is in both cases basic mem read */
   return 4 + (LOAD_U8(o->n_subid) * 4);
 }
 
-/**
- * snmp_get_size - calculate size for allocation
- * @n_subid: number of ids in oid
+/*
+ * snmp_oid_size_from_len - return size of OID with @n_subid subids in bytes
+ * @n_subid: number of subids in ids array
  */
 inline size_t
 snmp_oid_size_from_len(uint n_subid)
 {
   return sizeof(struct oid) + n_subid * sizeof(u32);
-}
-
-/*
- * snmp_varbind_hdr_size_from_oid - return in-buffer size of VarBind
- * @oid: OID used as VarBind's name
- *
- * This function assume @oid to be not NULL.
- */
-uint
-snmp_varbind_hdr_size_from_oid(const struct oid *oid)
-{
-  ASSUME(oid);
-  return snmp_oid_size(oid) + OFFSETOF(struct agentx_varbind, name);
 }
 
 /*
@@ -308,54 +283,40 @@ snmp_set_varbind_type(struct agentx_varbind *vb, enum agentx_type t)
   }
 }
 
-/* Internal wrapper */
-static inline u16
-snmp_load_varbind_type(const struct agentx_varbind *vb)
-{
-  return LOAD_U16(vb->type);
-}
-
-/*
- * snmp_get_varbind_type - loads a VarBind type
- * @vb: VarBind pointer to TX buffer
- *
- * This function assumes VarBind with valid type, always call snmp_test_varbind
- * for in TX buffer VarBinds.
- */
-inline enum agentx_type
-snmp_get_varbind_type(const struct agentx_varbind *vb)
-{
-  ASSUME(snmp_test_varbind(vb));
-  return (enum agentx_type) snmp_load_varbind_type(vb);
-}
-
 static inline uint
 snmp_get_octet_size(const struct agentx_octet_str *str)
 {
-  return LOAD_U32(str->length);
+  return str->length;
 }
 
 /**
  * snmp_varbind_header_size - measure size of VarBind without data in bytes
- * @vb: VarBind to use
+ * @vb_name: VarBind OID name
  *
  * Return size including whole OID as well as the VarBind header.
  */
 uint
-snmp_varbind_header_size(const struct agentx_varbind *vb)
+snmp_varbind_header_size(const struct oid *vb_name)
 {
-  return snmp_varbind_hdr_size_from_oid(&vb->name);
+  ASSUME(vb_name);
+  return snmp_oid_size(vb_name) + OFFSETOF(struct agentx_varbind, name);
 }
 
+/*
+ * Beware that for octet string, using this function may be a bit tricky due to
+ * the different byte orders cpu native/packet
+ *
+ *
+ */
 uint
-snmp_varbind_size_unsafe(const struct agentx_varbind *vb)
+snmp_varbind_size_unsafe(const struct agentx_varbind *vb, int is_pkt_bo)
 {
   ASSUME(snmp_test_varbind(vb));
 
-  enum agentx_type type = snmp_get_varbind_type(vb);
+  enum agentx_type type = (is_pkt_bo) ? LOAD_U16(vb->type) : vb->type;
   int value_size = agentx_type_size(type);
 
-  uint vb_header = snmp_varbind_header_size(vb);
+  uint vb_header = snmp_varbind_header_size(&vb->name);
 
   if (value_size == 0)
     return vb_header;
@@ -377,6 +338,7 @@ snmp_varbind_size_unsafe(const struct agentx_varbind *vb)
 
     default:
       /* Shouldn't happen */
+      die("getting size of VarBind with unknown type (%u)", type);
       return 0;
   }
 }
@@ -392,7 +354,7 @@ snmp_varbind_size_unsafe(const struct agentx_varbind *vb)
 uint
 snmp_varbind_size(const struct agentx_varbind *vb, uint limit)
 {
-  ASSUME(snmp_test_varbind(vb));
+  //ASSUME(snmp_test_varbind(vb));
 
   if (limit < sizeof(struct agentx_varbind))
     return 0;
@@ -457,15 +419,12 @@ snmp_varbind_size_from_len(uint n_subid, enum agentx_type type, uint len)
 }
 
 /*
- * snmp_test_varbind - test validity of VarBind's type
- * @vb: VarBind to test
+ * snmp_test_varbind - test validity of VarBind type
+ * @type: Type of VarBind
  */
 int
-snmp_test_varbind(const struct agentx_varbind *vb)
+snmp_test_varbind(u16 type)
 {
-  ASSUME(vb);
-
-  u16 type = snmp_load_varbind_type(vb);
   if (type == AGENTX_INTEGER  ||
       type == AGENTX_OCTET_STRING  ||
       type == AGENTX_NULL  ||
@@ -506,7 +465,6 @@ struct agentx_varbind *
 snmp_create_varbind(byte *buf, struct oid *oid)
 {
   struct agentx_varbind *vb = (void *) buf;
-  STORE_U16(vb->reserved, 0);
   snmp_oid_copy(&vb->name, oid);
   return vb;
 }
@@ -519,7 +477,7 @@ snmp_create_varbind(byte *buf, struct oid *oid)
 int
 snmp_valid_ip4_index(const struct oid *o, uint start)
 {
-  if (start + 3 < LOAD_U8(o->n_subid))
+  if (start + 3 < o->n_subid)
     return snmp_valid_ip4_index_unsafe(o, start);
   else
     return 0;
@@ -537,7 +495,7 @@ int
 snmp_valid_ip4_index_unsafe(const struct oid *o, uint start)
 {
   for (int i = 0; i < 4; i++)
-    if (LOAD_U32(o->ids[start + i]) >= 256)
+    if (o->ids[start + i] >= 256)
       return 0;
 
   return 1;
@@ -561,7 +519,7 @@ snmp_put_nstr(byte *buf, const char *str, uint len)
 
   /* Insert zero padding in the gap at the end */
   for (uint i = 0; i < alen - len; i++)
-    STORE_U8(buf[i], '\0');
+    buf[i] = '\0';
 
   return buf + (alen - len);
 }
@@ -603,19 +561,6 @@ snmp_put_blank(byte *buf)
 }
 
 /**
- * snmp_put_oid - put oid into SNMP PDU transcieve buffer
- * @buf: pointer to first free buffer byte
- * @oid: object identifier to use
- */
-byte *
-snmp_put_oid(byte *buf, struct oid *oid)
-{
-  struct oid *oid_buf = (void *) buf;
-  snmp_oid_copy(oid_buf, oid);
-  return buf + snmp_oid_size(oid);
-}
-
-/**
  * snmp_put_fbyte - put one padded byte to SNMP PDU transcieve buffer
  * @buf: pointer to free buffer byte
  * @data: byte to use
@@ -642,10 +587,10 @@ void
 snmp_oid_ip4_index(struct oid *o, uint start, ip4_addr addr)
 {
   u32 temp = ip4_to_u32(addr);
-  STORE_U32(o->ids[start], temp >> 24);
-  STORE_U32(o->ids[start + 1], (temp >> 16) & 0xFF);
-  STORE_U32(o->ids[start + 2], (temp >>  8) & 0xFF);
-  STORE_U32(o->ids[start + 3], temp & 0xFF);
+  o->ids[start] = temp >> 24;
+  o->ids[start + 1] = (temp >> 16) & 0xFF;
+  o->ids[start + 2] = (temp >>  8) & 0xFF;
+  o->ids[start + 3] = temp & 0xFF;
 }
 
 
@@ -662,11 +607,11 @@ snmp_oid_ip4_index(struct oid *o, uint start, ip4_addr addr)
 int
 snmp_oid_compare(const struct oid *left, const struct oid *right)
 {
-  const u8 left_subids = LOAD_U8(left->n_subid);
-  u8 right_subids = LOAD_U8(right->n_subid); /* see hack for more info */
+  const u8 left_subids = left->n_subid;
+  u8 right_subids = right->n_subid; /* see hack for more info */
 
-  const u8 left_prefix = LOAD_U8(left->prefix);
-  const u8 right_prefix = LOAD_U8(right->prefix);
+  const u8 left_prefix = left->prefix;
+  const u8 right_prefix = right->prefix;
 
   if (left_prefix == 0 && right_prefix == 0)
     goto test_ids;
@@ -679,7 +624,7 @@ snmp_oid_compare(const struct oid *left, const struct oid *right)
     uint bound = MIN((uint) left_subids, (uint) ARRAY_SIZE(snmp_internet));
     for (uint idx = 0; idx < bound; idx++)
     {
-      u32 id = LOAD_U32(left->ids[idx]);
+      u32 id = left->ids[idx];
       if (id < snmp_internet[idx])
 	return -1;
       else if (id > snmp_internet[idx])
@@ -690,9 +635,9 @@ snmp_oid_compare(const struct oid *left, const struct oid *right)
       return -1;
 
     /* check prefix */
-    if (LOAD_U32(left->ids[4]) < (u32) right_prefix)
+    if (left->ids[4] < (u32) right_prefix)
       return -1;
-    else if (LOAD_U32(left->ids[4]) > (u32) right_prefix)
+    else if (left->ids[4] > (u32) right_prefix)
       return 1;
 
     /* the right prefix is already checked (+1) */
@@ -700,8 +645,8 @@ snmp_oid_compare(const struct oid *left, const struct oid *right)
       (int) right_subids);
     for (int i = 0; i < limit; i++)
     {
-      u32 left_id = LOAD_U32(left->ids[i + ARRAY_SIZE(snmp_internet) + 1]);
-      u32 right_id = LOAD_U32(right->ids[i]);
+      u32 left_id = left->ids[i + ARRAY_SIZE(snmp_internet + 1)];
+      u32 right_id = right->ids[i];
       if (left_id < right_id)
 	return -1;
       else if (left_id > right_id)
@@ -723,8 +668,8 @@ snmp_oid_compare(const struct oid *left, const struct oid *right)
 test_ids:
   for (int i = 0; i < MIN(left->n_subid, right->n_subid); i++)
   {
-    u32 left_id = LOAD_U32(left->ids[i]);
-    u32 right_id = LOAD_U32(right->ids[i]);
+    u32 left_id = left->ids[i];
+    u32 right_id = right->ids[i];
     if (left_id < right_id)
       return -1;
     else if (left_id > right_id)
@@ -857,6 +802,7 @@ snmp_varbind_ip4(struct snmp_pdu *c, ip4_addr addr)
   c->buffer = snmp_put_ip4(snmp_varbind_data(c->sr_vb_start), addr);
 }
 
+#if 0
 inline byte *
 snmp_varbind_nstr2(struct snmp_pdu *c, uint size, const char *str, uint len)
 {
@@ -866,6 +812,7 @@ snmp_varbind_nstr2(struct snmp_pdu *c, uint size, const char *str, uint len)
   snmp_set_varbind_type(c->sr_vb_start, AGENTX_OCTET_STRING);
   return snmp_put_nstr(snmp_varbind_data(c->sr_vb_start), str, len);
 }
+#endif
 
 /*
  * snmp_varbind_nstr - fill varbind context with octet string
@@ -883,6 +830,19 @@ snmp_varbind_nstr(struct snmp_pdu *c, const char *str, uint len)
 {
   snmp_set_varbind_type(c->sr_vb_start, AGENTX_OCTET_STRING);
   c->buffer = snmp_put_nstr(snmp_varbind_data(c->sr_vb_start), str, len);
+}
+
+/*
+ * snmp_varbind_oid - fill VarBind data with OID @oid_val
+ * @oid_val - Object Identifier in cpu native byte order
+ *
+ * Function puts the @oid_val to the packet byte order.
+ */
+void
+snmp_varbind_oid(struct snmp_pdu *c, const struct oid *oid_val)
+{
+  snmp_set_varbind_type(c->sr_vb_start, AGENTX_OBJECT_IDENTIFIER);
+  snmp_oid_to_buf(snmp_varbind_data(c->sr_vb_start), oid_val);
 }
 
 inline enum agentx_type
@@ -983,65 +943,65 @@ snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct
 {
   ASSERT(left && right && out);
 
-  STORE_U8(out->include, 0);
-  STORE_U8(out->reserved, 0);
-  STORE_U8(out->prefix, 0);
+  out->include, 0;
+  out->reserved = 0;
+  out->prefix = 0;
 
   u32 offset = 0;
-  u8 left_ids = LOAD_U8(left->n_subid), right_ids = LOAD_U8(right->n_subid);
+  u8 left_ids = left->n_subid, right_ids = right->n_subid;
 
   int l = snmp_oid_is_prefixed(left), r = snmp_oid_is_prefixed(right);
   if (l && r)
   {
-    if (LOAD_U8(left->prefix) != LOAD_U8(right->prefix))
+    if (left->prefix != right->prefix)
     {
-      STORE_U8(out->n_subid, 4);
+      out->n_subid = 4;
 
       for (uint id = 0; id < ARRAY_SIZE(snmp_internet); id++)
-	STORE_U32(out->ids[id], snmp_internet[id]);
+	out->ids[id] = snmp_internet[id];
 
       return;
     }
 
-    STORE_U8(out->prefix, LOAD_U8(left->prefix));
+    out->prefix = left->prefix;
   }
   else if (!l && r)
   {
     if (left_ids == 0)
     {
       /* finish creating NULL OID */
-      STORE_U8(out->n_subid, 0);
+      out->n_subid = 0;
       return;
     }
 
     for (uint id = 0; id < MIN(ARRAY_SIZE(snmp_internet), left_ids); id++)
     {
-      if (LOAD_U32(left->ids[id]) != snmp_internet[id])
+      if (left->ids[id] != snmp_internet[id])
       {
-	STORE_U8(out->n_subid, id);
+	out->n_subid = id;
 	return;
       }
 
-      STORE_U32(out->ids[id], snmp_internet[id]);
+      out->ids[id] = snmp_internet[id];
     }
 
     if (left_ids <= ARRAY_SIZE(snmp_internet))
     {
-      STORE_U8(out->n_subid, left_ids);
+      out->n_subid = left_ids;
       return;
     }
 
     /* index 4 is conresponding to the prefix in prefixed OID */
-    if (LOAD_U32(left->ids[4]) != (u32) LOAD_U8(right->prefix))
+    if (left->ids[4] != (u32) right->prefix)
     {
-      STORE_U8(out->n_subid, ARRAY_SIZE(snmp_internet));
+      out->n_subid = ARRAY_SIZE(snmp_internet);
       return;
     }
 
     /* delete snmp_internet from out->ids and store OID prefix */
     offset = ARRAY_SIZE(snmp_internet) + 1;
-    STORE_U8(out->n_subid, LOAD_U8(out->n_subid) - ARRAY_SIZE(snmp_internet));
-    STORE_U8(out->prefix, LOAD_U8(right->prefix));
+    out->n_subid = out->n_subid - ARRAY_SIZE(snmp_internet);
+    out->prefix = right->prefix;
   }
   else if (l && !r)
   {
@@ -1057,12 +1017,12 @@ snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct
     if (left->ids[offset + id] == right->ids[id])
     {
       subids++;
-      STORE_U32(out->ids[id], LOAD_U32(right->ids[id]));
+      out->ids[id] = right->ids[id];
     }
     else
       break;
   }
-  STORE_U8(out->n_subid, subids);
+  out->n_subid = subids;
 }
 
 /*
@@ -1115,15 +1075,15 @@ snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_p
 
     found = !leaf->call_next(walk, c);
   }
-  else if (mib_node_is_leaf(node) && LOAD_U8(c->sr_vb_start->name.include))
+  else if (mib_node_is_leaf(node) && c->sr_vb_start->name.include)
   {
     found = 1;
-    STORE_U8(c->sr_vb_start->name.include, 0);
+    c->sr_vb_start->name.include = 0;
   }
 
   const struct oid *oid = &c->sr_vb_start->name;
-  u32 skip = (walk->id_pos < LOAD_U8(oid->n_subid)) ?
-    LOAD_U32(oid->ids[walk->id_pos]) : 0;
+  u32 skip = (walk->id_pos < oid->n_subid) ?
+    oid->ids[walk->id_pos] : 0;
   while (!found && (leaf = mib_tree_walk_next_leaf(tree, walk, skip)) != NULL)
   {
     /* mib_tree_walk_next() forces VarBind's name OID overwriting */
@@ -1141,8 +1101,8 @@ snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_p
       found = 1;
 
     oid = &c->sr_vb_start->name;
-    skip = (walk->id_pos < LOAD_U8(oid->n_subid)) ?
-      LOAD_U32(oid->ids[walk->id_pos]) : 0;
+    skip = (walk->id_pos < oid->n_subid) ?
+      oid->ids[walk->id_pos] : 0;
   }
 
   if (!found)
@@ -1186,10 +1146,9 @@ snmp_walk_fill(struct mib_leaf *leaf, struct mib_walk_state *walk, struct snmp_p
   if (res != SNMP_SEARCH_OK)
     snmp_set_varbind_type(vb, snmp_search_res_to_type(res));
 
-  u16 type = snmp_load_varbind_type(vb);
+  u16 type = vb->type;
   ASSUME(type == leaf->type || type == AGENTX_END_OF_MIB_VIEW || type == AGENTX_NO_SUCH_OBJECT ||
     type == AGENTX_NO_SUCH_INSTANCE);
 
   return res;
 }
-
