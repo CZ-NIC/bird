@@ -121,7 +121,6 @@ struct snmp_proto {
   u32 transaction_id;
   u32 packet_id;
 
-  uint registrations_to_ack;		    /* counter of pending responses to register-pdu */
   list registration_queue;		    /* list containing snmp_register records */
 
   // map
@@ -158,7 +157,6 @@ struct snmp_registration {
   u32 session_id;
   u32 transaction_id;
   u32 packet_id;
-  struct oid *oid;
   snmp_reg_hook_t reg_hook_ok; /* hook called when successful response to OID registration is recieved */
   snmp_reg_hook_t reg_hook_fail; /* hook called when OID registration fail */
 };

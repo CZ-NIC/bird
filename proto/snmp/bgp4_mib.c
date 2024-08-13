@@ -60,23 +60,11 @@ snmp_bgp_last_error(const struct bgp_proto *bgp, char err[2])
 }
 
 static void
-snmp_bgp_reg_ok(struct snmp_proto *p, const struct agentx_response *res, struct snmp_registration *reg)
-{
-  /* TODO(contexts): add meaningful action */
-  const struct oid * const oid = reg->oid;
-  (void)oid;
-  (void)p;
-  (void) res;
-}
-
-static void
 snmp_bgp_reg_failed(struct snmp_proto *p, const struct agentx_response *res, struct snmp_registration *reg)
 {
-  /* TODO(contexts): add meaningful action */
-  const struct oid * const oid = reg->oid;
   (void) res;
-  (void)oid;
-  (void)p;
+  (void) reg;
+  snmp_reset(p);
 }
 
 /*
@@ -236,31 +224,21 @@ snmp_bgp_notify_backward_trans(struct snmp_proto *p, struct bgp_proto *bgp)
 void
 snmp_bgp4_register(struct snmp_proto *p)
 {
-  u32 bgp_mib_prefix[] = { SNMP_MIB_2, SNMP_BGP4_MIB };
+  /* Register the whole BGP4-MIB::bgp root tree node */
+  struct snmp_registration *reg;
+  reg = snmp_registration_create(p, BGP4_MIB_ID);
 
-  {
-    /* Register the whole BGP4-MIB::bgp root tree node */
-    struct snmp_registration *reg;
-    reg = snmp_registration_create(p, BGP4_MIB_ID);
+  struct oid *oid = mb_allocz(p->pool, sizeof(bgp4_mib_oid));
+  memcpy(oid, &bgp4_mib_oid, sizeof(bgp4_mib_oid));
 
-    struct oid *oid = mb_allocz(p->pool,
-      snmp_oid_size_from_len(ARRAY_SIZE(bgp_mib_prefix)));
-    print(;
-    STORE_U8(oid->n_subid, ARRAY_SIZE(bgp_mib_prefix));
-    STORE_U8(oid->prefix, SNMP_MGMT);
+  reg->reg_hook_ok = NULL;
+  reg->reg_hook_fail = snmp_bgp_reg_failed;
 
-    // TODO use STATIC_OID
-    memcpy(oid->ids, bgp_mib_prefix, sizeof(bgp_mib_prefix));
-    reg->oid = oid;
-    reg->reg_hook_ok = snmp_bgp_reg_ok;
-    reg->reg_hook_fail = snmp_bgp_reg_failed;
-
-    /*
-     * We set both upper bound and index to zero, therefore only single OID
-     * is being registered.
-     */
-    snmp_register(p, oid, 0, 0, SNMP_REGISTER_TREE);
-  }
+  /*
+   * We set both upper bound and index to zero, therefore only single OID
+   * is being registered.
+   */
+  snmp_register(p, oid, 0, 0, SNMP_REGISTER_TREE);
 }
 
 static int

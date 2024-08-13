@@ -665,13 +665,11 @@ snmp_registration_create(struct snmp_proto *p, enum agentx_mibs mib)
 }
 
 int
-snmp_registration_match(struct snmp_registration *r, struct agentx_header *h, enum agentx_mibs mib)
+snmp_registration_match(struct snmp_registration *r, struct agentx_header *h)
 {
-  return
-    (r->mib == mib) &&
-    (r->session_id == h->session_id) &&
-    (r->transaction_id == h->transaction_id) &&
-    (r->packet_id == h->packet_id);
+  return (LOAD_U32(r->session_id) == h->session_id) &&
+    (LOAD_U32(r->transaction_id) == h->transaction_id) &&
+    (LOAD_U32(r->packet_id) == h->packet_id);
 }
 
 

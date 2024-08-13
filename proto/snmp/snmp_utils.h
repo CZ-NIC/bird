@@ -96,7 +96,7 @@ byte *snmp_put_fbyte(byte *buf, u8 data);
  *
  */
 struct snmp_registration *snmp_registration_create(struct snmp_proto *p, enum agentx_mibs mib);
-int snmp_registration_match(struct snmp_registration *r, struct agentx_header *h, enum agentx_mibs mib);
+int snmp_registration_match(struct snmp_registration *r, struct agentx_header *h);
 
 void snmp_dump_packet(byte *pkt, uint size);
 void snmp_oid_dump(const struct oid *oid);

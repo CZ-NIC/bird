@@ -80,28 +80,27 @@ snmp_blank_header(struct agentx_header *h, enum agentx_pdu_types type)
  * @oid: MIB subtree Object Identifier in cpu native byte order
  */
 void
-snmp_register_ack(struct snmp_proto *p, struct agentx_response *res, const struct oid *oid)
+snmp_register_ack(struct snmp_proto *p, struct agentx_response *res)
 {
-  enum agentx_mibs mib = agentx_get_mib(oid);
-
   struct snmp_registration *reg;
   WALK_LIST(reg, p->registration_queue)
   {
-    if (snmp_registration_match(reg, &res->h, mib))
+    if (snmp_registration_match(reg, &res->h))
     {
       rem_node(&reg->n);
-      p->registrations_to_ack--;
 
-      if (res->error == AGENTX_RES_NO_ERROR)
+      if (res->error == AGENTX_RES_NO_ERROR && reg->reg_hook_ok)
 	reg->reg_hook_ok(p, res, reg);
-      else
+      else if (res->error != AGENTX_RES_NO_ERROR && reg->reg_hook_fail)
 	reg->reg_hook_fail(p, res, reg);
 
-      mb_free(reg->oid);
       mb_free(reg);
-      return;
+      break;
     }
   }
+
+  if (EMPTY_LIST(p->registration_queue))
+    snmp_up(p);
 }
 
 /*
@@ -784,12 +783,7 @@ parse_response(struct snmp_proto *p, byte *res)
     case AGENTX_RES_UNKNOWN_REGISTER:
       // TODO more direct path to mib-specific code
       TRACE(D_PACKETS, "SNMP received agentx-Response-PDU with error %u", r->error);
-      byte *pkt = res + sizeof(struct agentx_response);
-      const struct oid *failed_buf = (struct oid *) pkt;
-      uint failed_size = snmp_oid_size(failed_buf);
-      struct oid *failed = tmp_alloc(failed_size);
-      snmp_oid_from_buf(failed, failed_buf);
-      snmp_register_ack(p, r, failed);
+      snmp_register_ack(p, r);
       break;
 
     /*
@@ -820,6 +814,7 @@ void
 snmp_register_mibs(struct snmp_proto *p)
 {
   snmp_bgp4_register(p);
+  ASSUME(!EMPTY_LIST(p->registration_queue));
 }
 
 /*
@@ -856,16 +851,7 @@ do_response(struct snmp_proto *p, byte *pkt)
       break;
 
     case SNMP_REGISTER:;
-      pkt += AGENTX_HEADER_SIZE;
-
-      const struct oid *oid_buf = (struct oid *) pkt;
-      uint oid_size = snmp_oid_size(oid_buf);
-      struct oid *oid = tmp_alloc(oid_size);
-      snmp_oid_from_buf(oid, oid_buf);
-      snmp_register_ack(p, r, oid);
-
-      if (p->registrations_to_ack == 0)
-	snmp_set_state(p, SNMP_CONN);
+      snmp_register_ack(p, r);
       break;
 
     case SNMP_CONN:
