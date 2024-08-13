@@ -872,6 +872,7 @@ do_response(struct snmp_proto *p, byte *pkt)
       break;
 
     case SNMP_STOP:
+    case SNMP_DOWN:
       break;
 
     default:
@@ -1014,7 +1015,7 @@ response_err_ind(struct agentx_response *res, enum agentx_response_errs err, u16
 
 /* agentx-Get-PDU */
 void
-snmp_get_pdu(struct snmp_proto *p, struct snmp_pdu *c, const struct oid *o_start, struct mib_walk_state *walk)
+snmp_get_pdu(struct snmp_proto *p, struct snmp_pdu *c, struct mib_walk_state *walk)
 {
   struct mib_leaf *leaf;
   leaf = snmp_walk_init(p->mib_tree, walk, &c->sr_vb_start->name, c);
@@ -1022,13 +1023,14 @@ snmp_get_pdu(struct snmp_proto *p, struct snmp_pdu *c, const struct oid *o_start
   enum snmp_search_res res;
   res = snmp_walk_fill(leaf, walk, c);
 
+  // TODO is this really necessary?
   if (res != SNMP_SEARCH_OK)
     c->sr_vb_start->type = snmp_search_res_to_type(res);
 }
 
 /* agentx-GetNext-PDU */
 int
-snmp_get_next_pdu(struct snmp_proto *p, struct snmp_pdu *c, const struct oid *o_start, struct mib_walk_state *walk)
+snmp_get_next_pdu(struct snmp_proto *p, struct snmp_pdu *c, struct mib_walk_state *walk)
 {
   (void) snmp_walk_init(p->mib_tree, walk, &c->sr_vb_start->name, c);
   struct mib_leaf *leaf = snmp_walk_next(p->mib_tree, walk, c);
@@ -1044,14 +1046,14 @@ snmp_get_next_pdu(struct snmp_proto *p, struct snmp_pdu *c, const struct oid *o_
 
 /* agentx-GetBulk-PDU */
 void
-snmp_get_bulk_pdu(struct snmp_proto *p, struct snmp_pdu *c, const struct oid *o_start, struct mib_walk_state *walk, struct agentx_bulk_state *bulk)
+snmp_get_bulk_pdu(struct snmp_proto *p, struct snmp_pdu *c, struct mib_walk_state *walk)
 {
   if (c->index >= bulk->getbulk.non_repeaters)
     bulk->repeaters++;
 
   // store the o_start and o_end
 
-  bulk->has_any |= snmp_get_next_pdu(p, c, o_start, walk);
+  bulk->has_any |= snmp_get_next_pdu(p, c, walk);
 }
 
 int
@@ -1188,15 +1190,15 @@ parse_gets_pdu(struct snmp_proto *p, byte * const pkt_start)
     switch (h->type)
     {
       case AGENTX_GET_PDU:
-	snmp_get_pdu(p, &c, start_rx, &walk);
+	snmp_get_pdu(p, &c, &walk);
 	break;
 
       case AGENTX_GET_NEXT_PDU:
-	snmp_get_next_pdu(p, &c, start_rx, &walk);
+	snmp_get_next_pdu(p, &c, &walk);
 	break;
 
       case AGENTX_GET_BULK_PDU:
-	snmp_get_bulk_pdu(p, &c, start_rx, &walk, &bulk_state);
+	snmp_get_bulk_pdu(p, &c, &walk);
 	break;
 
       default:

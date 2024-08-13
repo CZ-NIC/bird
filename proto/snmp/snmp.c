@@ -194,7 +194,7 @@ static void
 snmp_tx_skip(sock *sk)
 {
   struct snmp_proto *p = sk->data;
-  proto_notify_state(&p->p, snmp_set_state(p, SNMP_STOP));
+  snmp_set_state(p, SNMP_STOP);
 }
 
 /*
@@ -219,6 +219,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     TRACE(D_EVENTS, "TODO");
     ASSERT(last == SNMP_DOWN);
 
+    proto_notify_state(&p->p, PS_START);
     if (cf->trans_type == SNMP_TRANS_TCP)
     {
       /* We need to lock the IP address */
@@ -288,7 +289,6 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
 
     p->startup_timer->hook = snmp_stop_timeout;
     tm_start(p->startup_timer, 1 S);
-
     return PS_START;
 
   case SNMP_REGISTER:
@@ -306,10 +306,11 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
   case SNMP_CONN:
     TRACE(D_EVENTS, "MIBs registered");
     ASSERT(last == SNMP_REGISTER);
+    proto_notify_state(&p->p, PS_UP);
     return PS_UP;
 
   case SNMP_STOP:
-    if (p->sock && p->state != SNMP_OPEN)
+    if (p->sock && p->state != SNMP_OPEN && !sk_tx_buffer_empty(p->sock))
     {
       TRACE(D_EVENTS, "closing AgentX session");
       if (p->state == SNMP_OPEN || p->state == SNMP_REGISTER ||
@@ -321,6 +322,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
 
       p->startup_timer->hook = snmp_stop_timeout;
       tm_start(p->startup_timer, 150 MS);
+      proto_notify_state(&p->p, PS_STOP);
       return PS_STOP;
     }
 
@@ -330,6 +332,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
   case SNMP_DOWN:
     TRACE(D_EVENTS, "AgentX session closed");
     snmp_cleanup(p);
+    proto_notify_state(&p->p, PS_DOWN);
     return PS_DOWN;
 
   default:
@@ -426,11 +429,19 @@ snmp_connected(sock *sk)
 int
 snmp_reset(struct snmp_proto *p)
 {
-  int proto_state = snmp_set_state(p, SNMP_STOP);
-  proto_notify_state(&p->p, proto_state);
-  return proto_state;
+  return snmp_set_state(p, SNMP_STOP);
 }
 
+/*
+ * snmp_up - AgentX session has registered all MIBs, protocols is up
+ * @p: SNMP protocol instance
+ */
+void
+snmp_up(struct snmp_proto *p)
+{
+  if (p->state == SNMP_REGISTER)
+    snmp_set_state(p, SNMP_CONN);
+}
 
 /*
  * snmp_sock_err - handle errors on socket by reopenning the socket
@@ -498,7 +509,7 @@ static void
 snmp_stop_timeout(timer *tm)
 {
   struct snmp_proto *p = tm->data;
-  proto_notify_state(&p->p, snmp_set_state(p, SNMP_DOWN));
+  snmp_set_state(p, SNMP_DOWN);
 }
 
 /*
