@@ -15,7 +15,6 @@ uint snmp_pkt_len(const byte *start, const byte *end);
 /*
  *  AgentX - Variable Binding (VarBind) type utils
  */
-enum snmp_search_res snmp_set_varbind_type(struct agentx_varbind *vb, enum agentx_type t);
 int agentx_type_size(enum agentx_type t);
 
 /* type Octet String */
@@ -52,7 +51,7 @@ uint snmp_varbind_header_size(const struct oid *vb_name);
 uint snmp_varbind_size(const struct agentx_varbind *vb, uint limit);
 uint snmp_varbind_size_unsafe(const struct agentx_varbind *vb);
 size_t snmp_varbind_size_from_len(uint n_subid, enum agentx_type t, uint len);
-int snmp_test_varbind(const struct agentx_varbind *vb);
+int snmp_test_varbind_type(u16 type);
 void *snmp_varbind_data(const struct agentx_varbind *vb);
 struct oid *snmp_varbind_set_name_len(struct snmp_pdu *c, struct agentx_varbind **vb, u8 len);
 void snmp_varbind_duplicate_hdr(struct snmp_pdu *c, struct agentx_varbind **vb);
@@ -73,8 +72,6 @@ int snmp_test_close_reason(byte value);
  */
 
 /* Functions filling buffer a typed value */
-struct agentx_varbind *snmp_create_varbind(byte *buf, struct oid *oid);
-struct agentx_varbind *snmp_create_varbind_null(byte *buf);
 void snmp_varbind_int(struct snmp_pdu *c, u32 val);
 void snmp_varbind_counter32(struct snmp_pdu *c, u32 val);
 void snmp_varbind_gauge32(struct snmp_pdu *c, s64 time);

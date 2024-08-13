@@ -393,6 +393,9 @@ snmp_cleanup(struct snmp_proto *p)
   rfree(p->lp);
   p->bgp_trie = NULL;
 
+  rfree(p->end_oids);
+  p->end_oids = NULL;
+
   p->state = SNMP_DOWN;
 }
 
@@ -539,6 +542,7 @@ snmp_start(struct proto *P)
   p->lp = lp_new(p->pool);
   p->mib_tree = mb_alloc(p->pool, sizeof(struct mib_tree));
   p->bgp_trie = f_new_trie(p->lp, 0);
+  p->end_oids = lp_new(p->pool);
 
   p->startup_timer = tm_new_init(p->pool, snmp_startup_timeout, p, 0, 0);
   p->ping_timer = tm_new_init(p->pool, snmp_ping_timeout, p, p->timeout, 0);
@@ -675,7 +679,6 @@ static int
 snmp_shutdown(struct proto *P)
 {
   struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
-  return snmp_set_state(p, SNMP_DOWN);
   return snmp_reset(p);
 }
 

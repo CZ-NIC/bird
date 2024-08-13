@@ -98,6 +98,7 @@ struct snmp_proto {
   struct object_lock *lock;
   pool *pool;			  /* a shortcut to the procotol mem. pool */
   linpool *lp;			  /* linpool for bgp_trie nodes */
+  linpool *end_oids;
 
   enum snmp_proto_state state;
 

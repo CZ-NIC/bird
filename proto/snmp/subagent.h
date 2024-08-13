@@ -87,7 +87,7 @@ enum agentx_flags {
   | AGENTX_NETWORK_BYTE_ORDER)
 
 // TODO - make me compile time option
-#define SNMP_NATIVE
+#define SNMP_NETWORK_BYTE_ORDER
 
 #if !(defined(SNMP_NATIVE) || defined(SNMP_NETWORK_BYTE_ORDER))
 # error "SNMP: currently support only native byte order or network byte order."
@@ -99,9 +99,9 @@ enum agentx_flags {
 #endif
 
 #if (defined(SNMP_NATIVE) && defined(CPU_BIG_ENDIAN)) || defined(SNMP_NETWORK_BYTE_ORDER)
-#define SNMP_ORDER AGENTX_NETWORK_BYTE_ORDER
+#define SNMP_BYTE_ORDER AGENTX_NETWORK_BYTE_ORDER
 #else
-#define SNMP_ORDER 0
+#define SNMP_BYTE_ORDER 0
 #endif
 
 /* We recommend using STORE_U32 over VALUE_U32 when possible */
@@ -359,7 +359,7 @@ snmp_is_active(const struct snmp_proto *p)
       p->state == SNMP_CONN;
 }
 
-void snmp_vb_to_tx(struct snmp_pdu *c, const struct oid *oid);
+struct agentx_varbind *snmp_vb_to_tx(struct snmp_pdu *c, const struct oid *oid);
 u8 snmp_get_mib_class(const struct oid *oid);
 
 void snmp_register_mibs(struct snmp_proto *p);
