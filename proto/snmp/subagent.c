@@ -1009,7 +1009,6 @@ snmp_get_pdu(struct snmp_proto *p, struct snmp_pdu *c, struct mib_walk_state *wa
   enum snmp_search_res res;
   res = snmp_walk_fill(leaf, walk, c);
 
-  // TODO is this really necessary?
   if (res != SNMP_SEARCH_OK)
     c->sr_vb_start->type = snmp_search_res_to_type(res);
 }
