@@ -357,7 +357,7 @@ populate_bgp4(struct snmp_pdu *c, ip4_addr *addr, const struct bgp_proto **proto
 static enum snmp_search_res
 fill_bgp_version(struct mib_walk_state *walk UNUSED, struct snmp_pdu *c)
 {
-  if (c->sr_vb_start->name.n_subid != 3)
+  if (c->sr_vb_start->name.n_subid != 4)
     return SNMP_SEARCH_NO_INSTANCE;
   c->size -= snmp_str_size_from_len(1);
   snmp_varbind_nstr(c, BGP4_VERSIONS, 1);
@@ -367,7 +367,7 @@ fill_bgp_version(struct mib_walk_state *walk UNUSED, struct snmp_pdu *c)
 static enum snmp_search_res
 fill_local_as(struct mib_walk_state *walk UNUSED, struct snmp_pdu *c)
 {
-  if (c->sr_vb_start->name.n_subid != 3)
+  if (c->sr_vb_start->name.n_subid != 4)
     return SNMP_SEARCH_NO_INSTANCE;
   snmp_varbind_int(c, c->p->bgp_local_as);
   return SNMP_SEARCH_OK;
@@ -722,7 +722,7 @@ fill_in_update_elapsed_time(struct mib_walk_state *walk UNUSED, struct snmp_pdu 
 static enum snmp_search_res
 fill_local_id(struct mib_walk_state *walk UNUSED, struct snmp_pdu *c)
 {
-  if (c->sr_vb_start->name.n_subid != 3)
+  if (c->sr_vb_start->name.n_subid != 4)
     return SNMP_SEARCH_NO_INSTANCE;
   snmp_varbind_ip4(c, c->p->bgp_local_id);
   return SNMP_SEARCH_OK;
@@ -872,8 +872,8 @@ snmp_bgp4_start(struct snmp_proto *p)
 
   mib_node_u *node;
   struct mib_leaf *leaf;
-  STATIC_OID(3) bgp4_var = STATIC_OID_INITIALIZER(3, SNMP_MGMT,
-    /* ids */ SNMP_MIB_2, SNMP_BGP4_MIB, BGP4_MIB_VERSION);
+  STATIC_OID(4) bgp4_var = STATIC_OID_INITIALIZER(4, SNMP_MGMT,
+    /* ids */ SNMP_MIB_2, SNMP_BGP4_MIB, BGP4_MIB_VERSION, 0);
 
   struct {
     u32 id;
@@ -901,7 +901,7 @@ snmp_bgp4_start(struct snmp_proto *p)
 
   for (uint i = 0; i < ARRAY_SIZE(leafs); i++)
   {
-    bgp4_var.ids[ARRAY_SIZE(bgp4_var.ids) - 1] = leafs[i].id;
+    bgp4_var.ids[ARRAY_SIZE(bgp4_var.ids) - 2] = leafs[i].id;
     node = mib_tree_add(p->pool, p->mib_tree, (const struct oid *) &bgp4_var, 1);
 
     ASSUME(mib_node_is_leaf(node));
