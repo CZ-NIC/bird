@@ -1000,7 +1000,6 @@ snmp_walk_init(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_p
   return (!node || !mib_node_is_leaf(node)) ? NULL : &node->leaf;
 }
 
-// TODO alter the varbind
 struct mib_leaf *
 snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_pdu *c)
 {

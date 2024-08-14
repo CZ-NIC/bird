@@ -77,7 +77,6 @@ snmp_blank_header(struct agentx_header *h, enum agentx_pdu_types type)
  * snmp_register_ack - handle registration response
  * @p: SNMP protocol instance
  * @res: header of agentx-Response-PDU
- * @oid: MIB subtree Object Identifier in cpu native byte order
  */
 void
 snmp_register_ack(struct snmp_proto *p, struct agentx_response *res)
@@ -781,7 +780,6 @@ parse_response(struct snmp_proto *p, byte *res)
     case AGENTX_RES_DUPLICATE_REGISTER:
     case AGENTX_RES_REQUEST_DENIED:
     case AGENTX_RES_UNKNOWN_REGISTER:
-      // TODO more direct path to mib-specific code
       TRACE(D_PACKETS, "SNMP received agentx-Response-PDU with error %u", r->error);
       snmp_register_ack(p, r);
       break;
@@ -974,7 +972,6 @@ static inline void
 response_err_ind(struct agentx_response *res, enum agentx_response_errs err, u16 ind)
 {
   STORE_U16(res->error, (u16) err);
-  // TODO deal with auto-incrementing of snmp_pdu context c.ind
   if (err != AGENTX_RES_NO_ERROR && err != AGENTX_RES_GEN_ERROR)
   {
     //TRACE(D_PACKETS, "Last PDU resulted in error %u", err);
