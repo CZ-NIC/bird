@@ -986,7 +986,7 @@ snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct
  * SNMP MIB tree walking
  */
 struct mib_leaf *
-snmp_walk_init(struct mib_tree *tree, struct mib_walk_state *walk, const struct oid *oid, struct snmp_pdu *c)
+snmp_walk_init(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_pdu *c)
 {
   mib_tree_walk_init(walk, tree);
 
@@ -1071,10 +1071,16 @@ snmp_walk_fill(struct mib_leaf *leaf, struct mib_walk_state *walk, struct snmp_p
 {
   struct agentx_varbind *vb = c->sr_vb_start;
 
-  enum agentx_search_res res;
-  if (snmp_oid_compare(&c->sr_vb_start->name, c->sr_o_end) >= 0)
+  enum snmp_search_res res;
+  /* The OID c->sr_vb_start->name is either left untouched for agentx-Get-PDU,
+   * or updated by snmp_walk_next() for agentx-GetNext-PDU and agentx-GetBulk-PDU
+   *
+   * The null OID in c->sr_o_end means no limits. The OID c->sr_o_end is always
+   * null for agentx-Get-PDU and therefore evaluates to 0.
+   */
+  if (!snmp_check_search_limit(&c->sr_vb_start->name, c->sr_o_end))
   {
-    res = AGENTX_END_OF_MIB_VIEW;
+    res = SNMP_SEARCH_END_OF_VIEW;
     vb->type = snmp_search_res_to_type(res);
     return res;
   }

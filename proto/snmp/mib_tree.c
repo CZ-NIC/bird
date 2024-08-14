@@ -262,7 +262,8 @@ int
 mib_tree_delete(struct mib_tree *t, struct mib_walk_state *walk)
 {
   int deleted = 0;
-  ASSUME(t);
+  if (!t)
+    return 0;
 
   /* (walk->stack_pos < 2) It is impossible to delete root node */
   if (!walk || walk->stack_pos == 0)

@@ -48,7 +48,7 @@ enum bgp4_admin_status {
   BGP4_ADMIN_START = 2,
 };
 
-void snmp_bgp4_start(struct snmp_proto *p);
+void snmp_bgp4_start(struct snmp_proto *p, int with_mib);
 void snmp_bgp4_register(struct snmp_proto *p);
 void snmp_bgp4_show_info(struct snmp_proto *p);
 

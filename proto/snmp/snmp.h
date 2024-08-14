@@ -142,10 +142,6 @@ enum agentx_mibs {
   AGENTX_MIB_UNKNOWN,
 };
 
-extern const struct oid *agentx_available_mibs[AGENTX_MIB_COUNT + 1];
-void agentx_get_mib_init(pool *p);
-enum agentx_mibs agentx_get_mib(const struct oid *o);
-
 struct snmp_registration;
 struct agentx_response; /* declared in subagent.h */
 typedef void (*snmp_reg_hook_t)(struct snmp_proto *p, const struct agentx_response *res, struct snmp_registration *reg);

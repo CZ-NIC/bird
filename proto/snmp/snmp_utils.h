@@ -31,7 +31,14 @@ void snmp_oid_copy2(struct oid *dest, const struct oid *src);
 int snmp_oid_compare(const struct oid *first, const struct oid *second);
 void snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct oid *result);
 void snmp_oid_from_buf(struct oid *dest, const struct oid *src);
-void snmp_oid_to_buf(struct oid *dest, const struct oid *src); 
+void snmp_oid_to_buf(struct oid *dest, const struct oid *src);
+
+static inline int
+snmp_check_search_limit(const struct oid *search, const struct oid *limit)
+{
+  ASSERT(search && limit);
+  return snmp_is_oid_empty(limit) || snmp_oid_compare(search, limit) < 0;
+}
 
 static inline int
 snmp_oid_is_prefixed(const struct oid *oid)
@@ -111,7 +118,7 @@ enum agentx_type snmp_search_res_to_type(enum snmp_search_res res);
 /*
  * SNMP MIB tree walking
  */
-struct mib_leaf *snmp_walk_init(struct mib_tree *tree, struct mib_walk_state *state, const struct oid *start_rx, struct snmp_pdu *context);
+struct mib_leaf *snmp_walk_init(struct mib_tree *tree, struct mib_walk_state *state, struct snmp_pdu *context);
 struct mib_leaf *snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *state, struct snmp_pdu *context);
 enum snmp_search_res snmp_walk_fill(struct mib_leaf *leaf, struct mib_walk_state *state, struct snmp_pdu *context);
 

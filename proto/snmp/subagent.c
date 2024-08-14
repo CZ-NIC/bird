@@ -1004,7 +1004,7 @@ void
 snmp_get_pdu(struct snmp_proto *p, struct snmp_pdu *c, struct mib_walk_state *walk)
 {
   struct mib_leaf *leaf;
-  leaf = snmp_walk_init(p->mib_tree, walk, &c->sr_vb_start->name, c);
+  leaf = snmp_walk_init(p->mib_tree, walk, c);
 
   enum snmp_search_res res;
   res = snmp_walk_fill(leaf, walk, c);
@@ -1017,7 +1017,7 @@ snmp_get_pdu(struct snmp_proto *p, struct snmp_pdu *c, struct mib_walk_state *wa
 int
 snmp_get_next_pdu(struct snmp_proto *p, struct snmp_pdu *c, struct mib_walk_state *walk)
 {
-  (void) snmp_walk_init(p->mib_tree, walk, &c->sr_vb_start->name, c);
+  (void) snmp_walk_init(p->mib_tree, walk, c);
   struct mib_leaf *leaf = snmp_walk_next(p->mib_tree, walk, c);
 
   enum snmp_search_res res;
@@ -1033,12 +1033,16 @@ snmp_get_next_pdu(struct snmp_proto *p, struct snmp_pdu *c, struct mib_walk_stat
 void
 snmp_get_bulk_pdu(struct snmp_proto *p, struct snmp_pdu *c, struct mib_walk_state *walk)
 {
-  if (c->index >= bulk->getbulk.non_repeaters)
-    bulk->repeaters++;
+  /* TODO */
+  (void) p;
+  (void) c;
+  (void) walk;
+  //if (c->index >= bulk->getbulk.non_repeaters)
+  //  bulk->repeaters++;
 
   // store the o_start and o_end
 
-  bulk->has_any |= snmp_get_next_pdu(p, c, walk);
+  //bulk->has_any |= snmp_get_next_pdu(p, c, walk);
 }
 
 int
@@ -1130,6 +1134,7 @@ parse_gets_pdu(struct snmp_proto *p, byte * const pkt_start)
   struct agentx_bulk_state bulk_state = { 0 };
   if (h->type == AGENTX_GET_BULK_PDU)
   {
+    (void)bulk_state;
     die("bulk");
 
 #if 0

@@ -130,45 +130,6 @@ static const char *snmp_state_str[] = {
 };
 
 /*
- * agentx_get_mib_init - init function for agentx_get_mib()
- * @p: SNMP instance protocol pool
- */
-void agentx_get_mib_init(pool *p)
-{
-  const struct oid *src = agentx_available_mibs[AGENTX_MIB_COUNT - 1];
-  size_t size = snmp_oid_size(src);
-  struct oid *dest = mb_alloc(p, size);
-
-  memcpy(dest, src, size);
-  u8 ids = src->n_subid;
-
-  if (ids > 0)
-    dest->ids[ids - 1] = src->ids[ids - 1] + 1;
-
-  agentx_available_mibs[AGENTX_MIB_COUNT] = dest;
-}
-
-/*
- * agentx_get_mib - classify an OID based on MIB prefix
- * @o: Object Identifier to classify
- */
-enum agentx_mibs agentx_get_mib(const struct oid *o)
-{
-  /* TODO: move me into MIB tree as hooks/MIB module root */
-  enum agentx_mibs mib = AGENTX_MIB_UNKNOWN;
-  for (uint i = 0; i < AGENTX_MIB_COUNT + 1; i++)
-  {
-    ASSERT(agentx_available_mibs[i]);
-    if (snmp_oid_compare(o, agentx_available_mibs[i]) < 0)
-      return mib;
-    mib = (enum agentx_mibs) i;
-  }
-
-  return AGENTX_MIB_UNKNOWN;
-}
-
-
-/*
  * snmp_rx_skip - skip all received data
  * @sk: communication socket
  * @size: size of received PDUs
@@ -392,9 +353,15 @@ snmp_cleanup(struct snmp_proto *p)
   }
 
   HASH_FREE(p->bgp_hash);
-
   rfree(p->lp);
+  p->lp = NULL;
+  /* bgp_trie is allocated exclusively from linpool lp */
   p->bgp_trie = NULL;
+
+  struct mib_walk_state *walk = tmp_alloc(sizeof(struct mib_walk_state));
+  mib_tree_walk_init(walk, p->mib_tree);
+  (void) mib_tree_delete(p->mib_tree, walk);
+  p->mib_tree = NULL;
 
   p->state = SNMP_DOWN;
 }
@@ -548,8 +515,8 @@ snmp_start(struct proto *P)
 
   p->pool = p->p.pool;
   p->lp = lp_new(p->pool);
-  p->mib_tree = mb_alloc(p->pool, sizeof(struct mib_tree));
   p->bgp_trie = f_new_trie(p->lp, 0);
+  p->mib_tree = mb_alloc(p->pool, sizeof(struct mib_tree));
 
   p->startup_timer = tm_new_init(p->pool, snmp_startup_timeout, p, 0, 0);
   p->ping_timer = tm_new_init(p->pool, snmp_ping_timeout, p, p->timeout, 0);
@@ -560,61 +527,42 @@ snmp_start(struct proto *P)
   HASH_INIT(p->bgp_hash, p->pool, 10);
 
   mib_tree_init(p->pool, p->mib_tree);
-  snmp_bgp4_start(p);
-  agentx_get_mib_init(p->pool);
+  snmp_bgp4_start(p, 1);
 
   return snmp_set_state(p, SNMP_INIT);
 }
 
+/*
+ * snmp_reconfigure_logic - find changes in configuration
+ * @p: SNMP protocol instance
+ * @new: new SNMP protocol configuration
+ *
+ * Return 1 if only minor changes have occured, 0 if we need full down-up cycle.
+ */
 static inline int
 snmp_reconfigure_logic(struct snmp_proto *p, const struct snmp_config *new)
 {
   const struct snmp_config *old = SKIP_BACK(struct snmp_config, cf, p->p.cf);
 
-  if (old->bonds != new->bonds)
+  if ((old->trans_type != SNMP_TRANS_TCP) && (new->trans_type == SNMP_TRANS_TCP)
+    || (old->trans_type == SNMP_TRANS_TCP) && (new->trans_type != SNMP_TRANS_TCP))
     return 0;
 
-  uint bonds = old->bonds;
-  struct snmp_bond *b1, *b2;
-  WALK_LIST(b1, new->bgp_entries)
-  {
-    WALK_LIST(b2, old->bgp_entries)
-    {
-      if (!bstrcmp(b1->config->name, b2->config->name))
-	goto skip;
-    }
-
-    return 0;
-skip:
-    bonds--;
-  }
-
-  if (bonds != 0)
+  if (old->trans_type == SNMP_TRANS_TCP &&
+      (ipa_compare(old->remote_ip, new->remote_ip)
+      || old->remote_port != new->remote_port))
     return 0;
 
-  if (old->trans_type != new->trans_type
-      || ip4_compare(old->local_ip, new->local_ip)
-      || old->local_port != new->local_port
-      || ipa_compare(old->remote_ip, new->remote_ip)
-      || !bstrcmp(old->remote_path, new->remote_path)
-      || old->remote_port != new->remote_port
-	  // TODO can be changed on the fly
-      || !ip4_compare(old->bgp_local_id, new->bgp_local_id)
-      || old->bgp_local_as != new->bgp_local_as // TODO can be changed on the fly
-      || old->timeout != new->timeout
-    //|| old->startup_delay != new->startup_delay
+  if (old->trans_type != SNMP_TRANS_TCP &&
+      bstrcmp(old->remote_path, new->remote_path))
+    return 0;
+
+  return !(ip4_compare(old->bgp_local_id, new->bgp_local_id)
+      || old->bgp_local_as != new->bgp_local_as
+      || old->timeout != new->timeout	// TODO distinguish message timemout
+	//(Open.timeout and timeout for timer)
       || old->priority != new->priority
-      || !strncmp(old->description, new->description, UINT32_MAX))
-    return 0;
-
-  return 1;
-
-/*
-  return !memcmp(((byte *) old) + sizeof(struct proto_config),
-      ((byte *) new) + sizeof(struct proto_config),
-      OFFSETOF(struct snmp_config, description) - sizeof(struct proto_config))
-    && ! strncmp(old->description, new->description, UINT32_MAX);
-*/
+      || strncmp(old->description, new->description, UINT32_MAX));
 }
 
 /*
@@ -632,19 +580,34 @@ snmp_reconfigure(struct proto *P, struct proto_config *CF)
   struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
   const struct snmp_config *new = SKIP_BACK(struct snmp_config, cf, CF);
 
-  // TODO do not reject reconfiguration when only BGP peer list changed
-
   /* We are searching for configuration changes */
-  int config_changed = snmp_reconfigure_logic(p, new);
+  int reconfigurable = snmp_reconfigure_logic(p, new);
 
-  if (config_changed)
+  if (reconfigurable)
   {
-    /* Reinitialize the hash after snmp_shutdown() */
+    /* copy possibly changed values */
+    p->startup_delay = new->startup_delay;
+
+    ASSERT(p->ping_timer);
+    int active = tm_active(p->ping_timer);
+    rfree(p->ping_timer);
+    p->ping_timer = tm_new_init(p->pool, snmp_ping_timeout, p, p->timeout, 0);
+
+    if (active)
+      tm_start(p->ping_timer, p->timeout);
+
+    HASH_FREE(p->bgp_hash);
     HASH_INIT(p->bgp_hash, p->pool, 10);
-    snmp_bgp4_start(p);
+
+    rfree(p->lp);
+    p->lp = lp_new(p->pool);
+    p->bgp_trie = f_new_trie(p->lp, 0);
+
+    /* We repopulate BGP related data structures (bgp_hash, bgp_trie). */
+    snmp_bgp4_start(p, 0);
   }
 
-  return config_changed;
+  return reconfigurable;
 }
 
 /*

@@ -829,15 +829,14 @@ snmp_bgp4_show_info(struct snmp_proto *p)
 /*
  * snmp_bgp4_start - prepare BGP4-MIB
  * @p: SNMP protocol instance holding memory pool
+ * @with_mib_tree: flag choosing to insert BGP4-MIB into MIB tree
  *
  * This function create all runtime bindings to BGP procotol structures.
  * It is gruaranteed that the BGP protocols exist.
  */
 void
-snmp_bgp4_start(struct snmp_proto *p)
+snmp_bgp4_start(struct snmp_proto *p, int with_mib_tree)
 {
-  agentx_available_mibs[BGP4_MIB_ID] = (struct oid *) &bgp4_mib_oid;
-
   struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, p->p.cf);
 
   /* Create binding to BGP protocols */
@@ -861,6 +860,9 @@ snmp_bgp4_start(struct snmp_proto *p)
 
     snmp_hash_add_peer(p, peer);
   }
+
+  if (!with_mib_tree)
+    return;
 
   const STATIC_OID(4) bgp4_mib_peer_entry = STATIC_OID_INITIALIZER(4, SNMP_MGMT,
     /* ids */ SNMP_MIB_2, SNMP_BGP4_MIB, BGP4_MIB_PEER_TABLE, BGP4_MIB_PEER_ENTRY);
