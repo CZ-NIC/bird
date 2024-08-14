@@ -266,14 +266,6 @@ first_pass(struct trie_node *node, linpool *trie_pool)
 
   for (int i = 0; i < 2; i++)
   {
-    if (!node->child[i])
-    {
-      struct trie_node *new = create_new_node(trie_pool);
-      new->parent = node;
-      new->bucket = node->bucket;
-      new->depth = node->depth + 1;
-      node->child[i] = new;
-    }
   }
 
   if (node->child[0])
@@ -281,9 +273,6 @@ first_pass(struct trie_node *node, linpool *trie_pool)
 
   if (node->child[1])
     first_pass(node->child[1], trie_pool);
-
-  /* Discard bucket information in internal nodes */
-  node->bucket = NULL;
 }
 
 static void
@@ -497,24 +486,47 @@ second_pass(struct trie_node *node)
   /* Internal node */
   assert(node->potential_buckets_count == 0);
 
-  struct trie_node * const left = node->child[0];
-  struct trie_node * const right = node->child[1];
-
-  assert(left != NULL);
-  assert(right != NULL);
+  struct trie_node *left  = node->child[0];
+  struct trie_node *right = node->child[1];
 
   /* Postorder traversal */
-  second_pass(left);
-  second_pass(right);
+  if (left)
+    second_pass(left);
+
+  if (right)
+    second_pass(right);
 
   /* Duplicates */
-  for (int i = 0; i < left->potential_buckets_count; i++)
-    for (int j = i + 1; j < left->potential_buckets_count; j++)
-      assert(left->potential_buckets[i] != left->potential_buckets[j]);
+  if (left)
+    for (int i = 0; i < left->potential_buckets_count; i++)
+      for (int j = i + 1; j < left->potential_buckets_count; j++)
+        assert(left->potential_buckets[i] != left->potential_buckets[j]);
 
-  for (int i = 0; i < right->potential_buckets_count; i++)
-    for (int j = i + 1; j < right->potential_buckets_count; j++)
-      assert(right->potential_buckets[i] != right->potential_buckets[j]);
+  if (right)
+    for (int i = 0; i < right->potential_buckets_count; i++)
+      for (int j = i + 1; j < right->potential_buckets_count; j++)
+        assert(right->potential_buckets[i] != right->potential_buckets[j]);
+
+  assert(node->bucket != NULL);
+
+  struct trie_node artificial_node = {
+    .parent = node,
+    .potential_buckets = { node->bucket },
+    .potential_buckets_count = 1,
+  };
+
+  /* Nodes with exactly one child */
+  if ((left && !right) || (!left && right))
+  {
+    if (left && !right)
+      right = &artificial_node;
+    else if (!left && right)
+      left = &artificial_node;
+    else
+      bug("Node does not have only one child");
+  }
+
+  assert(left != NULL && right != NULL);
 
   /*
    * If there are no common buckets among children's buckets, parent's
@@ -550,25 +562,23 @@ remove_potential_buckets(struct trie_node *node)
   node->potential_buckets_count = 0;
 }
 
-/*
- * Third pass of Optimal Route Table Construction (ORTC) algorithm
- */
 static void
-third_pass_helper(struct trie_node *node)
+third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
 {
   assert(node != NULL);
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
-  /* Internal nodes should not have a bucket since it was deleted during first pass */
-  if (!is_leaf(node))
-    assert(node->bucket == NULL);
-
   /* Bucket inherited from the closest ancestor with a non-null bucket */
   const struct aggregator_bucket *inherited_bucket = node->parent->ancestor->bucket;
+  assert(inherited_bucket != NULL);
+
+  /* Save bucket of the current node before it is (potentially) deleted in the next step */
+  struct aggregator_bucket * const current_node_bucket = node->bucket;
+  assert(current_node_bucket != NULL);
 
   /*
    * If bucket inherited from ancestor is one of potential buckets of this node,
-   * then this node doesn't need bucket because it inherits one.
+   * then this node doesn't need a bucket because it inherits one.
    */
   if (is_bucket_potential(node, inherited_bucket))
   {
@@ -586,21 +596,72 @@ third_pass_helper(struct trie_node *node)
    * Otherwise, it must refer to the closest ancestor of its parent.
    */
   node->ancestor = node->bucket ? node : node->parent->ancestor;
+  assert(node->ancestor != NULL);
+  assert(node->ancestor->bucket != NULL);
+
+  const struct trie_node * const left  = node->child[0];
+  const struct trie_node * const right = node->child[1];
+
+  /* Nodes with exactly one child */
+  if ((left && !right) || (!left && right))
+  {
+    /*
+     * Emulation of node that would have been added in the first pass.
+     * This node has the same bucket as its parent (current node).
+     */
+    struct trie_node artificial_node = {
+      .parent = node,
+      .bucket = current_node_bucket,
+      .potential_buckets = { current_node_bucket },
+      .potential_buckets_count = 1,
+    };
+
+    /*
+     * If the current node (parent of the artificial node) has a bucket,
+     * then the artificial node inherits this bucket.
+     * Otherwise it inherits bucket from the closest ancestor with
+     * a non-null bucket.
+     */
+    const struct aggregator_bucket * const artificial_node_inherited_bucket = node->bucket ? node->bucket : inherited_bucket;
+
+    /*
+     * Nodes that would have been added during first pass are not removed only
+     * if they have a bucket. And they have a bucket only if their potential
+     * bucket is different from the bucket they inherit from their ancestor.
+     * If this condition is met, we need to allocate these nodes and
+     * connect them to the trie.
+     */
+    if (!is_bucket_potential(&artificial_node, artificial_node_inherited_bucket))
+    {
+      struct trie_node *new = create_new_node(p->trie_pool);
+      *new = artificial_node;
+
+      if (left && !right)
+        node->child[1] = new;
+      else if (!left && right)
+        node->child[0] = new;
+      else
+        bug("Node does not have only one child");
+    }
+  }
 
   /* Preorder traversal */
   if (node->child[0])
-    third_pass_helper(node->child[0]);
+    third_pass_helper(p, node->child[0]);
 
   if (node->child[1])
-    third_pass_helper(node->child[1]);
+    third_pass_helper(p, node->child[1]);
 
   /* Leaves with no assigned bucket are removed */
   if (!node->bucket && is_leaf(node))
     remove_node(node);
 }
 
+/*
+ * Third pass of Optimal Route Table Construction (ORTC) algorithm
+ */
 static void
-third_pass(struct trie_node *root)
+third_pass(struct aggregator_proto *p, struct trie_node *root)
 {
   assert(root != NULL);
   assert(root->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
@@ -615,10 +676,10 @@ third_pass(struct trie_node *root)
   root->ancestor = root;
 
   if (root->child[0])
-    third_pass_helper(root->child[0]);
+    third_pass_helper(p, root->child[0]);
 
   if (root->child[1])
-    third_pass_helper(root->child[1]);
+    third_pass_helper(p, root->child[1]);
 }
 
 static void
@@ -954,7 +1015,7 @@ calculate_trie(struct aggregator_proto *p)
     print_prefixes(p->root, p->addr_type);
   }
 
-  third_pass(p->root);
+  third_pass(p, p->root);
 
   if (p->logging)
   {
