@@ -76,6 +76,7 @@ struct snmp_config {
 				   * nonallocated parts of configs with memcpy
 				   */
   //const struct oid *oid_identifier;	TODO
+  int verbose;
 };
 
 #define SNMP_BGP_P_REGISTERING	0x01
@@ -134,6 +135,8 @@ struct snmp_proto {
   timer *startup_timer;
 
   struct mib_tree *mib_tree;
+  int verbose;
+  u32 ignore_ping_id;
 };
 
 enum agentx_mibs {

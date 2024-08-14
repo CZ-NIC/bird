@@ -177,7 +177,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
   switch (state)
   {
   case SNMP_INIT:
-    TRACE(D_EVENTS, "TODO");
+    TRACE(D_EVENTS, "starting protocol");
     ASSERT(last == SNMP_DOWN);
 
     proto_notify_state(&p->p, PS_START);
@@ -200,7 +200,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     /* Fall thru */
 
   case SNMP_LOCKED:
-    TRACE(D_EVENTS, "snmp %s: address lock acquired", p->p.name);
+    TRACE(D_EVENTS, "address lock acquired");
     ASSERT(last == SNMP_INIT);
     sock *s = sk_new(p->pool);
 
@@ -265,7 +265,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     return PS_START;
 
   case SNMP_CONN:
-    TRACE(D_EVENTS, "MIBs registered");
+    TRACE(D_EVENTS, "MIBs registered, AgentX session established");
     ASSERT(last == SNMP_REGISTER);
     proto_notify_state(&p->p, PS_UP);
     return PS_UP;
@@ -297,7 +297,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     return PS_DOWN;
 
   default:
-    die("unknown snmp state transition");
+    die("unknown SNMP state transition");
     return PS_DOWN;
   }
 }
@@ -512,6 +512,7 @@ snmp_start(struct proto *P)
   p->bgp_local_id = cf->bgp_local_id;
   p->timeout = cf->timeout;
   p->startup_delay = cf->startup_delay;
+  p->verbose = cf->verbose;
 
   p->pool = p->p.pool;
   p->lp = lp_new(p->pool);
@@ -562,7 +563,7 @@ snmp_reconfigure_logic(struct snmp_proto *p, const struct snmp_config *new)
       || old->timeout != new->timeout	// TODO distinguish message timemout
 	//(Open.timeout and timeout for timer)
       || old->priority != new->priority
-      || strncmp(old->description, new->description, UINT32_MAX));
+      || strncmp(old->description, new->description, UINT16_MAX - 1));
 }
 
 /*
@@ -587,6 +588,7 @@ snmp_reconfigure(struct proto *P, struct proto_config *CF)
   {
     /* copy possibly changed values */
     p->startup_delay = new->startup_delay;
+    p->verbose = new->verbose;
 
     ASSERT(p->ping_timer);
     int active = tm_active(p->ping_timer);

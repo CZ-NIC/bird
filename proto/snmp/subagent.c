@@ -411,7 +411,6 @@ close_pdu(struct snmp_proto *p, enum agentx_close_reasons reason)
 static uint
 parse_close_pdu(struct snmp_proto *p, byte * const pkt_start)
 {
-  TRACE(D_PACKETS, "SNMP received agentx-Close-PDU");
   byte *pkt = pkt_start;
 
   struct agentx_close_pdu *pdu = (void *) pkt;
@@ -420,7 +419,7 @@ parse_close_pdu(struct snmp_proto *p, byte * const pkt_start)
 
   if (pkt_size != sizeof(struct agentx_close_pdu))
   {
-    TRACE(D_PACKETS, "SNMP malformed agentx-Close-PDU, closing anyway");
+    TRACE(D_PACKETS, "SNMP received agentx-Close-PDU that's malformed, closing anyway");
     snmp_simple_response(p, AGENTX_RES_GEN_ERROR, 0);
     snmp_reset(p);
     return 0;
@@ -428,14 +427,14 @@ parse_close_pdu(struct snmp_proto *p, byte * const pkt_start)
 
   if (!snmp_test_close_reason(pdu->reason))
   {
-    TRACE(D_PACKETS, "SNMP invalid close reason %u", pdu->reason);
+    TRACE(D_PACKETS, "SNMP received agentx-Close-PDU with invalid close reason %u", pdu->reason);
     snmp_simple_response(p, AGENTX_RES_GEN_ERROR, 0);
     snmp_reset(p);
     return 0;
   }
 
   enum agentx_close_reasons reason = (enum agentx_close_reasons) pdu->reason;
-  TRACE(D_PACKETS, "SNMP close reason %u", reason);
+  TRACE(D_PACKETS, "SNMP received agentx-Close-PDU with close reason %u", reason);
   snmp_simple_response(p, AGENTX_RES_NO_ERROR, 0);
   snmp_reset(p);
   return pkt_size + AGENTX_HEADER_SIZE;
@@ -531,7 +530,7 @@ parse_sets_pdu(struct snmp_proto *p, byte * const pkt_start, enum agentx_respons
 
   if (pkt_size != 0)
   {
-    TRACE(D_PACKETS, "SNMP received malformed set PDU (size)");
+    TRACE(D_PACKETS, "SNMP received PDU is malformed (size)");
     snmp_simple_response(p, AGENTX_RES_PARSE_ERROR, 0);
     snmp_reset(p);
     return 0;
@@ -548,7 +547,7 @@ parse_sets_pdu(struct snmp_proto *p, byte * const pkt_start, enum agentx_respons
   //mb_free(tr);
   c.error = err;
 
-  TRACE(D_PACKETS, "SNMP received set PDU with error %u", c.error);
+  TRACE(D_PACKETS, "SNMP received PDU parsed with error %u", c.error);
   response_err_ind(r, c.error, 0);
   sk_send(p->sock, AGENTX_HEADER_SIZE);
 
@@ -612,7 +611,7 @@ parse_cleanup_set_pdu(struct snmp_proto *p, byte * const pkt_start)
   if (pkt_size != 0)
   {
     return AGENTX_HEADER_SIZE;
-    TRACE(D_PACKETS, "SNMP received malformed agentx-CleanupSet-PDU");
+    TRACE(D_PACKETS, "SNMP received agentx-CleanupSet-PDU is malformed");
     snmp_reset(p);
     return 0;
   }
@@ -747,7 +746,7 @@ parse_pkt(struct snmp_proto *p, byte *pkt, uint size)
 
     default:
       /* We reset the connection for malformed packet (Unknown packet type) */
-      TRACE(D_PACKETS, "SNMP received unknown packet type (%u)", LOAD_U8(h->type));
+      TRACE(D_PACKETS, "SNMP received PDU with unknown type (%u)", LOAD_U8(h->type));
       snmp_reset(p);
       return 0;
   }
@@ -772,7 +771,10 @@ parse_response(struct snmp_proto *p, byte *res)
   switch (r->error)
   {
     case AGENTX_RES_NO_ERROR:
-      TRACE(D_PACKETS, "SNMP received agetnx-Response-PDU");
+      if (p->verbose || LOAD_U32(h->packet_id) != p->ignore_ping_id)
+	TRACE(D_PACKETS, "SNMP received agentx-Response-PDU");
+      if (LOAD_U32(h->packet_id) == p->ignore_ping_id)
+	p->ignore_ping_id = 0;
       do_response(p, res);
       break;
 
@@ -781,6 +783,8 @@ parse_response(struct snmp_proto *p, byte *res)
     case AGENTX_RES_REQUEST_DENIED:
     case AGENTX_RES_UNKNOWN_REGISTER:
       TRACE(D_PACKETS, "SNMP received agentx-Response-PDU with error %u", r->error);
+      if (LOAD_U32(h->packet_id) == p->ignore_ping_id)
+	p->ignore_ping_id = 0;
       snmp_register_ack(p, r);
       break;
 
@@ -1334,6 +1338,9 @@ snmp_ping(struct snmp_proto *p)
   snmp_blank_header(h, AGENTX_PING_PDU);
   p->packet_id++;
   snmp_session(p, h);
+  if (p->verbose)
+    TRACE(D_PACKETS, "SNMP sending agentx-Ping-PDU");
+  p->ignore_ping_id = p->packet_id;
 
   /* sending only header */
   uint s = update_packet_size(h, (byte *) h + AGENTX_HEADER_SIZE);

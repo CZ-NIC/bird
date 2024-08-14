@@ -19,7 +19,7 @@ CF_DEFINES
 CF_DECLS
 
 CF_KEYWORDS(SNMP, PROTOCOL, BGP, LOCAL, AS, REMOTE, ADDRESS, PORT, DESCRIPTION,
-	    TIMEOUT, PRIORITY, CONTEXT, DEFAULT, MESSAGE)
+	    TIMEOUT, PRIORITY, CONTEXT, DEFAULT, MESSAGE, VERBOSE)
 
 CF_GRAMMAR
 
@@ -66,7 +66,7 @@ snmp_proto_item:
     SNMP_CFG->bgp_local_as = $3;
   }
  | SNMP DESCRIPTION text {
-    if (strlen($3) > UINT32_MAX) cf_error("Description is too long");
+    if (strlen($3) > UINT16_MAX - 1) cf_error("Description is too long");
     SNMP_CFG->description = $3;
   }
  | PRIORITY expr {
@@ -89,6 +89,7 @@ snmp_proto_item:
   }
 */
  | START DELAY TIME expr_us { SNMP_CFG->startup_delay = $4; }
+ | VERBOSE bool { SNMP_CFG->verbose = $2; }
  ;
 
 snmp_proto_opts:
@@ -111,6 +112,7 @@ snmp_proto_start: proto_start SNMP
   SNMP_CFG->local_port = 0;
   SNMP_CFG->remote_port = 705;
   SNMP_CFG->bgp_local_as = 0;
+  SNMP_CFG->verbose = 0;
 
   SNMP_CFG->description = "bird";
   SNMP_CFG->timeout = 15;
