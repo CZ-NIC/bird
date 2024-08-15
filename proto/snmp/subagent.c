@@ -233,7 +233,7 @@ snmp_oid_prefixize_unsafe(struct oid *dest, const struct oid *src)
 }
 
 /*
- * snmp_vb_to_tx - create VarBind in TX buffer from RX buffer OID
+ * snmp_vb_name_to_tx - create VarBind in TX buffer from RX buffer OID
  * @c: PDU context
  * @oid: Object Identifier located in RX buffer with packet byte order
  *
@@ -242,7 +242,7 @@ snmp_oid_prefixize_unsafe(struct oid *dest, const struct oid *src)
  * of the name is optionally swapped to match cpu native byte order.
  */
 struct agentx_varbind *
-snmp_vb_to_tx(struct snmp_pdu *c, const struct oid *oid)
+snmp_vb_name_to_tx(struct snmp_pdu *c, const struct oid *oid)
 {
   uint vb_hdr_size = snmp_varbind_header_size(oid);
   (void) snmp_tbuf_reserve(c, vb_hdr_size);
@@ -253,7 +253,7 @@ snmp_vb_to_tx(struct snmp_pdu *c, const struct oid *oid)
   /* Move the c->buffer so that is points at &vb->name */
   vb->type = AGENTX_NULL;
 
-  if (snmp_oid_is_prefixable(oid) && !snmp_oid_is_prefixed(oid))
+  if (snmp_pkt_oid_is_prefixable(oid) && !snmp_oid_is_prefixed(oid))
   {
     u8 subids = LOAD_U8(oid->n_subid) - 5;
     ADVANCE(c->buffer, c->size, snmp_oid_size_from_len(subids));
@@ -301,7 +301,7 @@ snmp_load_oids(byte **pkt_ptr, uint *pkt_sz, struct snmp_pdu *c)
   }
 
   /* in cpu native byte order */
-  struct agentx_varbind *start_vb = snmp_vb_to_tx(c, start_buf);
+  struct agentx_varbind *start_vb = snmp_vb_name_to_tx(c, start_buf);
 
   /* in cpu native byte order */
   struct oid *end_oid = tmp_alloc(sz);

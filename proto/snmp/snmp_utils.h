@@ -21,7 +21,7 @@ size_t snmp_str_size(const char *str);
 
 /* type OID - Object Identifier */
 int snmp_is_oid_empty(const struct oid *oid);
-int snmp_oid_is_prefixable(const struct oid *oid);
+int snmp_pkt_oid_is_prefixable(const struct oid *oid);
 uint snmp_oid_size(const struct oid *o);
 size_t snmp_oid_size_from_len(uint n_subid);
 void snmp_oid_copy(struct oid *dest, const struct oid *src);
@@ -37,9 +37,16 @@ snmp_check_search_limit(const struct oid *search, const struct oid *limit)
   return snmp_is_oid_empty(limit) || snmp_oid_compare(search, limit) < 0;
 }
 
+/*
+ * snmp_oid_is_prefixed - test if OID is prefixed
+ * @oid: OID to use
+ *
+ * Works for both cpu native and packet byte order.
+ */
 static inline int
 snmp_oid_is_prefixed(const struct oid *oid)
 {
+  /* LOAD_U8() is in both cases basic mem load */
   return LOAD_U8(oid->prefix) != 0;
 }
 

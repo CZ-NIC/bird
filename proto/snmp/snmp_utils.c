@@ -62,22 +62,22 @@ snmp_is_oid_empty(const struct oid *oid)
 
 /*
  * snmp_oid_is_prefixable - check for prefixed form conversion possibility
- * @oid: object identfier to check
+ * @oid: Object Identifier in packet byte order to check
  *
  * Check if it is possible to convert @oid to prefixed form. The condition of
  * that is standart .1.3.6.1 internet prefix and 5-th id that fits in one byte.
  */
 inline int
-snmp_oid_is_prefixable(const struct oid *oid)
+snmp_pkt_oid_is_prefixable(const struct oid *oid)
 {
-  if (oid->n_subid < 5)
+  if (LOAD_U8(oid->n_subid) < 5)
     return 0;
 
   for (int i = 0; i < 4; i++)
-    if (oid->ids[i] != snmp_internet[i])
+    if (LOAD_U32(oid->ids[i]) != snmp_internet[i])
       return 0;
 
-  if (oid->ids[4] >= 256)
+  if (LOAD_U32(oid->ids[4]) >= 256)
     return 0;
 
   return 1;

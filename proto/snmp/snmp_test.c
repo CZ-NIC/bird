@@ -18,21 +18,9 @@
 #include "snmp_utils.h"
 #include "mib_tree.h"
 
-/*************************************************************************
- *
- * TODO: reject OIDs longer than OID_MAX_LEN in subagent.c/snmp_utils.c
- *
- *************************************************************************/
-
-// TODO: limit for prefixed OID used for walking is 27 ids (32 - 4inet -1prefix
-// resp. 33 - 4inet-1prefix-1empty)
-
-// TODO test walk state stack overflow
-// TODO hint for child len alloc size
-
 static int t_oid_empty(void);
 static int t_oid_compare(void);
-static int t_oid_prefixize(void);
+static int t_varbind_name_to_tx(void);
 static int t_walk_oid_desc(void);
 static int t_walk_oid_compare(void);
 static int t_tree_find(void);
@@ -398,49 +386,76 @@ t_oid_compare(void)
   return 1;
 }
 
-static struct oid *
-snmp_oid_prefixize(struct snmp_proto *p, const struct oid *oid, struct snmp_pdu *c)
+static inline void
+fix_byteorder(u32 *ids, u32 len)
 {
-  snmp_vb_to_tx(c, oid);
-  struct agentx_varbind *vb = c->sr_vb_start;
-  bt_assert(vb->reserved == 0);
-  return &vb->name;
+  for (u32 i = 0; i < len; i++)
+    STORE_U32(ids[i], ids[i]);
 }
 
-/*
- * t_oid_prefixize - test prefixing aspect of function snmp_vb_to_tx()
- */
-static int
-t_oid_prefixize(void)
+int
+u32cmp_bo(const u32 *cpu_native, const u32 *net_bo, u32 len)
 {
-  lp_state tmps = { };
-  struct snmp_proto *snmp_proto = NULL;
+  for (u32 i = 0; i < len; i++)
+  {
+    if (cpu_native[i] != LOAD_U32(net_bo[i]))
+      return LOAD_U32(net_bo[i]) - cpu_native[i];
+  }
 
-  byte *buffer = tmp_alloc(SNMP_BUFFER_SIZE);
-  const struct snmp_pdu copy = {
+  return 0;
+}
+
+#define CREATE_RANDOM(gen)	\
+  ({  \
+    struct oid *_o = gen(); \
+    fix_byteorder(_o->ids, _o->n_subid);  \
+    _o; \
+  })
+
+static int
+t_varbind_name_to_tx(void)
+{
+  /* Test snmp_vb_name_to_tx() */
+
+  lp_state tmps = { };
+  struct snmp_proto *snmp_proto = tmp_alloc(sizeof(struct snmp_proto));
+  memset(snmp_proto, 0, sizeof(struct snmp_proto));
+  sock *s = sk_new(&root_pool);
+  snmp_proto->sock = s;
+  /* dirty hack sk_alloc_bufs() */
+  s->tbsize = SNMP_BUFFER_SIZE;
+  s->tbuf = s->tbuf_alloc = xmalloc(s->tbsize);
+  void *buffer = s->tbuf;
+
+  struct snmp_pdu copy = {
+    .p = snmp_proto,
+    .sr_vb_start = (void *) buffer,
     .buffer = buffer,
-    .size = SNMP_BUFFER_SIZE,
-    .error = AGENTX_RES_NO_ERROR,
-    .index = 0,
   };
-  struct snmp_pdu c;
+  struct snmp_pdu c = copy;
+  struct oid *new;
+  struct agentx_varbind *vb;
 
   lp_save(tmp_linpool, &tmps);
-
 
   /* testing prefixable OIDs */
   for (int test = 0; test < TESTS_NUM; test++)
   {
-    const struct oid *oid = random_prefixable_oid();
+    const struct oid *oid = CREATE_RANDOM(random_prefixable_oid);
+
+    /* both LOAD_U8() and STORE_U8() are pointless as it byteorder does not
+     * influence single byte values.
+     */
 
     u8 subids = oid->n_subid;
     u8 include = oid->include;
-    u32 pid = oid->ids[ARRAY_SIZE(snmp_internet)];
+    u32 pid = LOAD_U32(oid->ids[ARRAY_SIZE(snmp_internet)]);
 
     /* reset to the default snmp_pdu */
     c = copy; memset(buffer, 0, snmp_oid_size(oid) + 8);
 
-    struct oid *new = snmp_oid_prefixize(snmp_proto, oid, &c);
+    vb = snmp_vb_name_to_tx(&c, oid);
+    new = &vb->name;
 
     bt_assert(new->n_subid == subids - (ARRAY_SIZE(snmp_internet) + 1));
     bt_assert(new->prefix == pid);
@@ -449,11 +464,11 @@ t_oid_prefixize(void)
 
     for (u32 i = 0; i < new->n_subid; i++)
     {
-      bt_assert(new->ids[i] == oid->ids[i + ARRAY_SIZE(snmp_internet) + 1]);
+      bt_assert(new->ids[i] == LOAD_U32(oid->ids[i + ARRAY_SIZE(snmp_internet) + 1]));
     }
 
     for (u32 j = 0; j < ARRAY_SIZE(snmp_internet); j++)
-      bt_assert(oid->ids[j] == snmp_internet[j]);
+      bt_assert(LOAD_U32(oid->ids[j]) == snmp_internet[j]);
 
     lp_restore(tmp_linpool, &tmps);
   }
@@ -461,18 +476,19 @@ t_oid_prefixize(void)
   /* testing already prefixed OIDs */
   for (int test = 0; test < TESTS_NUM; test++)
   {
-    const struct oid *prefixed = random_prefixed_oid();
+    const struct oid *prefixed = CREATE_RANDOM(random_prefixed_oid);
 
     /* reset to the default snmp_pdu */
     c = copy; memset(buffer, 0, snmp_oid_size(prefixed) + 8);
 
-    struct oid *new = snmp_oid_prefixize(snmp_proto, prefixed, &c);
+    vb = snmp_vb_name_to_tx(&c, prefixed);
+    new = &vb->name;
 
     bt_assert(new->n_subid == prefixed->n_subid);
     bt_assert(new->prefix == prefixed->prefix);
     bt_assert(!!new->include == !!prefixed->include);
     bt_assert(new->reserved == 0);
-    bt_assert(!memcmp(&new->ids[0], &prefixed->ids[0], new->n_subid * sizeof(u32)));
+    bt_assert(!u32cmp_bo(&new->ids[0], &prefixed->ids[0], new->n_subid));
 
     lp_restore(tmp_linpool, &tmps);
   }
@@ -482,14 +498,14 @@ t_oid_prefixize(void)
   /* testing non-prefixable OIDs */
   for (int test = 0; test < TESTS_NUM; test++)
   {
-    const struct oid *oid = random_no_prefix_oid();
+    const struct oid *oid = CREATE_RANDOM(random_no_prefix_oid);
 
     /* test that the OID is _really_ not prefixable */
     if (oid->n_subid > ARRAY_SIZE(snmp_internet) &&
-	oid->ids[ARRAY_SIZE(snmp_internet) + 1] <= UINT8_MAX)
+	LOAD_U32(oid->ids[ARRAY_SIZE(snmp_internet) + 1]) <= UINT8_MAX)
     {
       for (u32 i = 0; i < ARRAY_SIZE(snmp_internet); i++)
-	if (oid->ids[i] != snmp_internet[i]) goto continue_testing;
+	if (LOAD_U32(oid->ids[i]) != snmp_internet[i]) goto continue_testing;
 
       break; /* outer for loop */
     }
@@ -499,13 +515,14 @@ continue_testing:
     /* reset to the default snmp_pdu */
     c = copy; memset(buffer, 0, snmp_oid_size(oid) + 8);
 
-    struct oid *new = snmp_oid_prefixize(snmp_proto, oid, &c);
+    vb = snmp_vb_name_to_tx(&c, oid);
+    new = &vb->name;
 
     bt_assert(new->n_subid == oid->n_subid);
     bt_assert(new->prefix == oid->prefix);
     bt_assert(!!new->include == !!oid->include);
     bt_assert(new->reserved == 0);
-    bt_assert(!memcmp(&new->ids[0], &oid->ids[0], new->n_subid * sizeof(u32)));
+    bt_assert(!u32cmp_bo(&new->ids[0], &oid->ids[0], new->n_subid));
 
     lp_restore(tmp_linpool, &tmps);
   }
@@ -515,15 +532,16 @@ continue_testing:
     const struct oid *oid;
     {
       struct oid *work = random_prefixable_oid();
+      fix_byteorder(work->ids, work->n_subid);
 
       /* include also the prefix ID (at index 4) */
       u32 index = xrandom(ARRAY_SIZE(snmp_internet) + 1);
       /* change randomly picked id at index from 0..5 (included) */
       u32 random = bt_random();
       if (index == ARRAY_SIZE(snmp_internet) && random > 255)
-	work->ids[index] = random;
+	work->ids[index] = VALUE_U32(random);
       else if (index != ARRAY_SIZE(snmp_internet) && work->ids[index] != random)
-	work->ids[index] = random;
+	work->ids[index] = VALUE_U32(random);
       else
 	continue;
       oid = work;
@@ -532,17 +550,19 @@ continue_testing:
     /* reset to the default snmp_pdu */
     c = copy; memset(buffer, 0, snmp_oid_size(oid) + 8);
 
-    struct oid *new = snmp_oid_prefixize(snmp_proto, oid, &c);
+    vb = snmp_vb_name_to_tx(&c, oid);
+    new = &vb->name;
 
     bt_assert(new->n_subid == oid->n_subid);
     bt_assert(new->prefix == oid->prefix);
     bt_assert(!!new->include == !!oid->include);
     bt_assert(new->reserved == 0);
-    bt_assert(!memcmp(&new->ids[0], &oid->ids[0], new->n_subid * sizeof(u32)));
+    bt_assert(!u32cmp_bo(&new->ids[0], &oid->ids[0], new->n_subid));
 
     lp_restore(tmp_linpool, &tmps);
   }
 
+  rfree(snmp_proto->sock);
   tmp_flush();
   return 1;
 }
@@ -1934,7 +1954,7 @@ int main(int argc, char **argv)
 
   bt_test_suite(t_oid_empty, "Function that determines if the OID is empty");
   bt_test_suite(t_oid_compare, "Function defining lexicographical order on OIDs");
-  bt_test_suite(t_oid_prefixize, "Function transforming OID to prefixed form");
+  bt_test_suite(t_varbind_name_to_tx, "Function loading OID from RX buffer with prefixation");
   bt_test_suite(t_oid_ancestor, "Function finding common ancestor of two OIDs");
   bt_test_suite(t_walk_to_oid, "Function transforming MIB tree walk state to OID");
   bt_test_suite(t_walk_oid_desc, "Function testing relation being subtree between MIB tree walk and OID");

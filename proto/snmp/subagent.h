@@ -344,7 +344,7 @@ void snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, 
 void snmp_unregister(struct snmp_proto *p, struct oid *oid, uint index, uint len);
 void snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, int include_uptime);
 void snmp_register_mibs(struct snmp_proto *p);
-struct agentx_varbind *snmp_vb_to_tx(struct snmp_pdu *c, const struct oid *oid);
+struct agentx_varbind *snmp_vb_name_to_tx(struct snmp_pdu *c, const struct oid *oid);
 int snmp_tbuf_reserve(struct snmp_pdu *c, size_t bytes);
 
 static inline int
