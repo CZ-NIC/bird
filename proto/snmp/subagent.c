@@ -35,7 +35,7 @@ static uint parse_response(struct snmp_proto *p, byte *buf);
 static void do_response(struct snmp_proto *p, byte *buf);
 static uint parse_gets_pdu(struct snmp_proto *p, byte *pkt);
 static struct agentx_response *prepare_response(struct snmp_proto *p, struct snmp_pdu *c);
-static void response_err_ind(struct agentx_response *res, enum agentx_response_errs err, u16 ind);
+static void response_err_ind(struct snmp_proto *p, struct agentx_response *res, enum agentx_response_errs err, u16 ind);
 static uint update_packet_size(struct agentx_header *start, byte *end);
 
 /* standard SNMP internet prefix (.1.3.6.1) */
@@ -121,7 +121,7 @@ snmp_simple_response(struct snmp_proto *p, enum agentx_response_errs error, u16 
   ASSUME(c.size >= sizeof(struct agentx_response));
 
   struct agentx_response *res = prepare_response(p, &c);
-  response_err_ind(res, error, index);
+  response_err_ind(p, res, error, index);
   sk_send(sk, sizeof(struct agentx_response));
 }
 
@@ -138,6 +138,8 @@ open_pdu(struct snmp_proto *p, struct oid *oid)
 {
   const struct snmp_config *cf = SKIP_BACK(struct snmp_config, cf, p->p.cf);
   sock *sk = p->sock;
+
+  TRACE(D_PACKETS, "SNMP sending agentx-Open-PDU");
 
   struct snmp_pdu c;
   snmp_pdu_context(&c, p, sk);
@@ -194,7 +196,7 @@ snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, in
     return;
 
   sock *sk = p->sock;
-
+  TRACE(D_PACKETS, "SNMP sending agentx-Notify-PDU");
   struct snmp_pdu c;
   snmp_pdu_context(&c, p, sk);
 
@@ -354,6 +356,7 @@ un_register_pdu(struct snmp_proto *p, struct oid *oid, u32 bound, uint index, en
 void
 snmp_register(struct snmp_proto *p, struct oid *oid, u32 bound, uint index, u8 is_instance)
 {
+  TRACE(D_PACKETS, "SNMP sending agentx-Register-PDU");
   un_register_pdu(p, oid, bound, index, AGENTX_REGISTER_PDU, is_instance);
 }
 
@@ -366,9 +369,10 @@ snmp_register(struct snmp_proto *p, struct oid *oid, u32 bound, uint index, u8 i
  *
  * For more detailed description see un_register_pdu() function.
  */
-void
+void UNUSED
 snmp_unregister(struct snmp_proto *p, struct oid *oid, u32 bound, uint index)
 {
+  TRACE(D_PACKETS, "SNMP sending agentx-Unregister-PDU");
   un_register_pdu(p, oid, bound, index, AGENTX_UNREGISTER_PDU, 0);
 }
 
@@ -383,6 +387,8 @@ close_pdu(struct snmp_proto *p, enum agentx_close_reasons reason)
   sock *sk = p->sock;
   struct snmp_pdu c;
   snmp_pdu_context(&c, p, sk);
+
+  TRACE(D_PACKETS, "SNMP sending agentx-Close-PDU with reason %u", reason);
 
 #define REASON_SIZE sizeof(u32)
   (void) snmp_tbuf_reserve(&c, AGENTX_HEADER_SIZE + REASON_SIZE);
@@ -491,20 +497,20 @@ parse_test_set_pdu(struct snmp_proto *p, byte * const pkt_start)
 
   if (c.error != AGENTX_RES_NO_ERROR)
   {
-    response_err_ind(res, c.error, c.index + 1);
+    response_err_ind(p, res, c.error, c.index + 1);
     snmp_reset(p);
   }
   else if (all_possible)
   {
     /* All values in the agentx-TestSet-PDU are OK, realy to commit them */
-    response_err_ind(res, AGENTX_RES_NO_ERROR, 0);
+    response_err_ind(p, res, AGENTX_RES_NO_ERROR, 0);
   }
   else
   {
     // Currently the only reachable branch
-    //TRACE(D_PACKETS, "SNMP SET action failed (not writable)");
+    TRACE(D_PACKETS, "SNMP SET action failed (not writable)");
     /* This is a recoverable error, we do not need to reset the connection */
-    response_err_ind(res, AGENTX_RES_NOT_WRITABLE, c.index + 1);
+    response_err_ind(p, res, AGENTX_RES_NOT_WRITABLE, c.index + 1);
   }
 
   sk_send(sk, s);
@@ -548,7 +554,7 @@ parse_sets_pdu(struct snmp_proto *p, byte * const pkt_start, enum agentx_respons
   c.error = err;
 
   TRACE(D_PACKETS, "SNMP received PDU parsed with error %u", c.error);
-  response_err_ind(r, c.error, 0);
+  response_err_ind(p, r, c.error, 0);
   sk_send(p->sock, AGENTX_HEADER_SIZE);
 
   /* Reset the connection on unrecoverable error */
@@ -725,8 +731,15 @@ parse_pkt(struct snmp_proto *p, byte *pkt, uint size)
   switch (LOAD_U8(h->type))
   {
     case AGENTX_GET_PDU:
+      TRACE(D_PACKETS, "SNMP received agentx-Get-PDU");
+      return parse_gets_pdu(p, pkt);
+
     case AGENTX_GET_NEXT_PDU:
+      TRACE(D_PACKETS, "SNMP received agentx-GetNext-PDU");
+      return parse_gets_pdu(p, pkt);
+
     case AGENTX_GET_BULK_PDU:
+      TRACE(D_PACKETS, "SNMP received agentx-GetBulk-PDU");
       return parse_gets_pdu(p, pkt);
 
     case AGENTX_CLOSE_PDU:
@@ -800,7 +813,7 @@ parse_response(struct snmp_proto *p, byte *res)
     case AGENTX_RES_PARSE_ERROR:
     case AGENTX_RES_PROCESSING_ERR:
     default:
-      TRACE(D_PACKETS, "SNMP agentx-Response-PDU with unexepected error %u", r->error);
+      TRACE(D_PACKETS, "SNMP received agentx-Response-PDU with unexepected error %u", r->error);
       snmp_reset(p);
       break;
   }
@@ -965,6 +978,7 @@ update_packet_size(struct agentx_header *start, byte *end)
 
 /*
  * response_err_ind - update response error and index
+ * @p: SNMP protocol instance
  * @res: response PDU header
  * @err: error status
  * @ind: index of error, ignored for noAgentXError
@@ -973,12 +987,13 @@ update_packet_size(struct agentx_header *start, byte *end)
  * error is not noError, also set the corrent response PDU payload size.
  */
 static inline void
-response_err_ind(struct agentx_response *res, enum agentx_response_errs err, u16 ind)
+response_err_ind(struct snmp_proto *p, struct agentx_response *res, enum agentx_response_errs err, u16 ind)
 {
   STORE_U16(res->error, (u16) err);
   if (err != AGENTX_RES_NO_ERROR && err != AGENTX_RES_GEN_ERROR)
   {
-    //TRACE(D_PACKETS, "Last PDU resulted in error %u", err);
+    if (p->verbose)
+      TRACE(D_PACKETS, "SNMP last PDU resulted in error %u", err);
     STORE_U16(res->index, ind);
     /* Reset VarBindList to null */
     STORE_U32(res->h.payload,
@@ -986,7 +1001,8 @@ response_err_ind(struct agentx_response *res, enum agentx_response_errs err, u16
   }
   else if (err == AGENTX_RES_GEN_ERROR)
   {
-    //TRACE(D_PACKETS, "Last PDU resulted in error %u genErr", err);
+    if (p->verbose)
+      TRACE(D_PACKETS, "SNMP last PDU resulted in error genErr");
     STORE_U16(res->index, 0);
     /* Reset VarBindList to null */
     STORE_U32(res->h.payload,
@@ -1215,7 +1231,7 @@ parse_gets_pdu(struct snmp_proto *p, byte * const pkt_start)
 #endif
 
   /* We update the error, index pair on the beginning of the packet. */
-  response_err_ind(response_header, c.error, c.index + 1);
+  response_err_ind(p, response_header, c.error, c.index + 1);
   uint s = update_packet_size(&response_header->h, c.buffer);
 
   /* We send the message in TX buffer. */

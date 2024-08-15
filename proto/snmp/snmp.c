@@ -177,7 +177,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
   switch (state)
   {
   case SNMP_INIT:
-    TRACE(D_EVENTS, "starting protocol");
+    /* We intentionally do not log anything */
     ASSERT(last == SNMP_DOWN);
 
     proto_notify_state(&p->p, PS_START);
@@ -200,7 +200,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     /* Fall thru */
 
   case SNMP_LOCKED:
-    TRACE(D_EVENTS, "address lock acquired");
+    TRACE(D_EVENTS, "SNMP Address lock acquired");
     ASSERT(last == SNMP_INIT);
     sock *s = sk_new(p->pool);
 
@@ -231,7 +231,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     /* Try opening the socket, schedule a retry on fail */
     if (sk_open(s) < 0)
     {
-      TRACE(D_EVENTS, "opening of communication socket failed");
+      TRACE(D_EVENTS, "SNMP Opening of communication socket failed");
       rfree(s);
       p->sock = NULL;
       // TODO handle 0 timeout
@@ -240,7 +240,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     return PS_START;
 
   case SNMP_OPEN:
-    TRACE(D_EVENTS, "communication socket opened, starting AgentX subagent");
+    TRACE(D_EVENTS, "SNMP Communication socket opened, starting AgentX subagent");
     ASSERT(last == SNMP_LOCKED);
 
     p->sock->rx_hook = snmp_rx;
@@ -253,7 +253,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     return PS_START;
 
   case SNMP_REGISTER:
-    TRACE(D_EVENTS, "registering MIBs");
+    TRACE(D_EVENTS, "SNMP Registering MIBs");
     ASSERT(last == SNMP_OPEN);
 
     tm_stop(p->startup_timer); /* stop timeout */
@@ -273,7 +273,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
   case SNMP_STOP:
     if (p->sock && p->state != SNMP_OPEN && !sk_tx_buffer_empty(p->sock))
     {
-      TRACE(D_EVENTS, "closing AgentX session");
+      TRACE(D_EVENTS, "SNMP Closing AgentX session");
       if (p->state == SNMP_OPEN || p->state == SNMP_REGISTER ||
 	  p->state == SNMP_CONN)
 	snmp_stop_subagent(p);
@@ -291,7 +291,7 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     /* Fall thru */
 
   case SNMP_DOWN:
-    TRACE(D_EVENTS, "AgentX session closed");
+    TRACE(D_EVENTS, "SNMP AgentX session closed");
     snmp_cleanup(p);
     proto_notify_state(&p->p, PS_DOWN);
     return PS_DOWN;
