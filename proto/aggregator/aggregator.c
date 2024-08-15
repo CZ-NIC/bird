@@ -92,6 +92,14 @@
 
 extern linpool *rte_update_pool;
 
+static int total_nodes;
+static int prefix_nodes;
+static int artificial_nodes;
+static int additional_nodes;
+static int removed_nodes;
+static int one_child_nodes_1;
+static int one_child_nodes_2;
+
 static inline int
 is_leaf(const struct trie_node *node)
 {
@@ -106,6 +114,7 @@ static inline struct trie_node *
 create_new_node(linpool *trie_pool)
 {
   struct trie_node *node = lp_allocz(trie_pool, sizeof(*node));
+  total_nodes++;
   return node;
 }
 
@@ -129,6 +138,8 @@ remove_node(struct trie_node *node)
     else
       bug("Invalid child pointer");
   }
+
+  removed_nodes++;
 }
 
 /*
@@ -154,6 +165,7 @@ trie_insert_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 
       new->parent = node;
       node->child[bit] = new;
       new->depth = new->parent->depth + 1;
+      prefix_nodes++;
     }
 
     node = node->child[bit];
@@ -183,6 +195,7 @@ trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
       new->parent = node;
       node->child[bit] = new;
       new->depth = new->parent->depth + 1;
+      prefix_nodes++;
     }
 
     node = node->child[bit];
@@ -243,10 +256,9 @@ assign_bucket_id(struct trie_node *node, u32 *counter)
  * First pass of Optimal Route Table Construction (ORTC) algorithm
  */
 static void
-first_pass(struct trie_node *node, linpool *trie_pool)
+first_pass(struct trie_node *node)
 {
   assert(node != NULL);
-  assert(trie_pool != NULL);
 
   if (is_leaf(node))
   {
@@ -266,13 +278,15 @@ first_pass(struct trie_node *node, linpool *trie_pool)
 
   for (int i = 0; i < 2; i++)
   {
+    if (!node->child[i])
+      artificial_nodes++;
   }
 
   if (node->child[0])
-    first_pass(node->child[0], trie_pool);
+    first_pass(node->child[0]);
 
   if (node->child[1])
-    first_pass(node->child[1], trie_pool);
+    first_pass(node->child[1]);
 }
 
 static void
@@ -524,6 +538,8 @@ second_pass(struct trie_node *node)
       left = &artificial_node;
     else
       bug("Node does not have only one child");
+
+    one_child_nodes_1++;
   }
 
   assert(left != NULL && right != NULL);
@@ -642,7 +658,11 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
         node->child[0] = new;
       else
         bug("Node does not have only one child");
+
+      additional_nodes++;
     }
+
+    one_child_nodes_2++;
   }
 
   /* Preorder traversal */
@@ -732,6 +752,26 @@ get_trie_depth(const struct trie_node *node)
   get_trie_depth_helper(node, &result, 0);
 
   return result;
+}
+
+static void
+get_trie_node_count_helper(const struct trie_node *node, int *count)
+{
+  *count += 1;
+
+  if (node->child[0])
+    get_trie_node_count_helper(node->child[0], count);
+
+  if (node->child[1])
+    get_trie_node_count_helper(node->child[1], count);
+}
+
+static int
+get_trie_node_count(const struct trie_node *root)
+{
+  int count = 0;
+  get_trie_node_count_helper(root, &count);
+  return count;
 }
 
 static void
@@ -998,8 +1038,12 @@ calculate_trie(struct aggregator_proto *p)
     print_prefixes(p->root, p->addr_type);
   }
 
-  first_pass(p->root, p->trie_pool);
+  times_update(&main_timeloop);
+  log("==== FIRST PASS ====");
+  first_pass(p->root);
   first_pass_after_check(p->root);
+  times_update(&main_timeloop);
+  log("==== FIRST PASS DONE ====");
 
   if (p->logging)
   {
@@ -1007,7 +1051,11 @@ calculate_trie(struct aggregator_proto *p)
     print_prefixes(p->root, p->addr_type);
   }
 
+  times_update(&main_timeloop);
+  log("==== SECOND PASS ====");
   second_pass(p->root);
+  times_update(&main_timeloop);
+  log("==== SECOND PASS DONE");
 
   if (p->logging)
   {
@@ -1015,7 +1063,11 @@ calculate_trie(struct aggregator_proto *p)
     print_prefixes(p->root, p->addr_type);
   }
 
+  times_update(&main_timeloop);
+  log("==== THIRD PASS ====");
   third_pass(p, p->root);
+  times_update(&main_timeloop);
+  log("==== THIRD PASS DONE ====");
 
   if (p->logging)
   {
@@ -1043,6 +1095,18 @@ run_aggregation(struct aggregator_proto *p)
   log("%d prefixes after aggregation", p->after_count);
   log("%d internal nodes with bucket", p->internal_nodes);
   log("%d leaves with bucket", p->leaves);
+
+  log("");
+  log("%d nodes in total", total_nodes);
+  log("%d prefix nodes", prefix_nodes);
+  log("%d artificial nodes", artificial_nodes);
+  log("%d nodes added in the third pass", additional_nodes);
+  log("%d nodes removed", removed_nodes);
+  log("%d nodes left", get_trie_node_count(p->root));
+  log("%d one-child nodes in the second pass", one_child_nodes_1);
+  log("%d one-child nodes in the third  pass", one_child_nodes_2);
+
+  total_nodes = prefix_nodes = artificial_nodes = additional_nodes = removed_nodes = one_child_nodes_1 = one_child_nodes_2 = 0;
   log("==== AGGREGATION DONE ====");
 }
 
