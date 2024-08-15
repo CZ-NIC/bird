@@ -517,6 +517,40 @@ sk_set_high_port(sock *s UNUSED)
   return 0;
 }
 
+static inline int
+sk_set_min_rcvbuf_(sock *s, int bufsize)
+{
+  int oldsize = 0, oldsize_s = sizeof(oldsize);
+
+  if (getsockopt(s->fd, SOL_SOCKET, SO_RCVBUF, &oldsize, &oldsize_s) < 0)
+    ERR("SO_RCVBUF");
+
+  if (oldsize >= bufsize)
+    return 0;
+
+  bufsize = BIRD_ALIGN(bufsize, 64);
+  if (setsockopt(s->fd, SOL_SOCKET, SO_RCVBUF, &bufsize, sizeof(bufsize)) < 0)
+    ERR("SO_RCVBUF");
+
+  /*
+  int newsize = 0, newsize_s = sizeof(newsize);
+  if (getsockopt(s->fd, SOL_SOCKET, SO_RCVBUF, &newsize, &newsize_s) < 0)
+    ERR("SO_RCVBUF");
+
+  log(L_INFO "Setting rcvbuf on %s from %d to %d",
+      s->iface ? s->iface->name : "*", oldsize, newsize);
+  */
+
+  return 0;
+}
+
+static void
+sk_set_min_rcvbuf(sock *s, int bufsize)
+{
+  if (sk_set_min_rcvbuf_(s, bufsize) < 0)
+    log(L_WARN "Socket error: %s%#m", s->err);
+}
+
 static inline byte *
 sk_skip_ip_header(byte *pkt, int *len)
 {
@@ -881,6 +915,9 @@ sk_set_rbsize(sock *s, uint val)
   xfree(s->rbuf_alloc);
   s->rbuf_alloc = xmalloc(val);
   s->rpos = s->rbuf = s->rbuf_alloc;
+
+  if ((s->type == SK_UDP) || (s->type == SK_IP))
+    sk_set_min_rcvbuf(s, s->rbsize);
 }
 
 void
@@ -996,10 +1033,11 @@ sk_setup(sock *s)
   }
 #endif
 
-  if (s->vrf && !s->iface)
+  if (s->vrf && !s->iface && (s->type != SK_TCP))
   {
     /* Bind socket to associated VRF interface.
-       This is Linux-specific, but so is SO_BINDTODEVICE. */
+       This is Linux-specific, but so is SO_BINDTODEVICE.
+       For accepted TCP sockets it is inherited from the listening one. */
 #ifdef SO_BINDTODEVICE
     struct ifreq ifr = {};
     strcpy(ifr.ifr_name, s->vrf->name);
@@ -1081,6 +1119,9 @@ sk_setup(sock *s)
   if (s->priority >= 0)
     if (sk_set_priority(s, s->priority) < 0)
       return -1;
+
+  if ((s->type == SK_UDP) || (s->type == SK_IP))
+    sk_set_min_rcvbuf(s, s->rbsize);
 
   return 0;
 }
