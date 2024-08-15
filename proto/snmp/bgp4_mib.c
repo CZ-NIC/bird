@@ -814,14 +814,20 @@ snmp_bgp4_show_info(struct snmp_proto *p)
   cli_msg(-1006, "      Local router id %R", p->bgp_local_id);
   cli_msg(-1006, "      BGP peers");
 
+  if (p->bgp_hash.count == 0)
+  {
+    cli_msg(-1006, "        <no peers available>");
+  }
+
   if (!snmp_is_active(p))
     return;
 
   HASH_WALK(p->bgp_hash, next, peer)
   {
-    cli_msg(-1006, "        protocol name: %s", peer->bgp_proto->p.name);
-    cli_msg(-1006, "        Remote IPv4 address: %I4", peer->peer_ip);
-    cli_msg(-1006, "        Remote router id %R", peer->bgp_proto->remote_id);
+    cli_msg(-1006, "        Protocol name: %s", peer->bgp_proto->p.name);
+    cli_msg(-1006, "          Remote IPv4 address: %I4", peer->peer_ip);
+    cli_msg(-1006, "          Remote router id %R", peer->bgp_proto->remote_id);
+    // TODO: add local ip addr
   }
   HASH_WALK_END;
 }
