@@ -207,7 +207,6 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     if (cf->trans_type == SNMP_TRANS_TCP)
     {
       s->type = SK_TCP_ACTIVE;
-      //s->saddr = ipa_from_ip4(p->local_ip);
       s->daddr = p->remote_ip;
       s->dport = p->remote_port;
       s->rbsize = SNMP_RX_BUFFER_SIZE;
@@ -221,7 +220,6 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
       s->tbsize = SNMP_TX_BUFFER_SIZE;
     }
 
-    /* s->tos = IP_PREC_INTERNET_CONTROL */
     s->tx_hook = snmp_connected;
     s->err_hook = snmp_sock_err;
 
@@ -262,6 +260,9 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     p->sock->tx_hook = snmp_tx;
 
     snmp_register_mibs(p);
+
+    // TODO timer for CONN
+
     return PS_START;
 
   case SNMP_CONN:

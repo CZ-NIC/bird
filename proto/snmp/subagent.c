@@ -781,13 +781,21 @@ parse_response(struct snmp_proto *p, byte *res)
 
   uint pkt_size = LOAD_U32(h->payload);
 
+  if (p->ignore_ping_id && LOAD_U32(h->packet_id) == p->ignore_ping_id)
+  {
+    p->pings--;
+    p->ignore_ping_id = 0;
+  }
+
+  /* Number of agentx-Ping-PDU without response */
+  if (p->pings > 5)
+    snmp_reset(p);
+
   switch (r->error)
   {
     case AGENTX_RES_NO_ERROR:
       if (p->verbose || LOAD_U32(h->packet_id) != p->ignore_ping_id)
 	TRACE(D_PACKETS, "SNMP received agentx-Response-PDU");
-      if (LOAD_U32(h->packet_id) == p->ignore_ping_id)
-	p->ignore_ping_id = 0;
       do_response(p, res);
       break;
 
@@ -796,8 +804,6 @@ parse_response(struct snmp_proto *p, byte *res)
     case AGENTX_RES_REQUEST_DENIED:
     case AGENTX_RES_UNKNOWN_REGISTER:
       TRACE(D_PACKETS, "SNMP received agentx-Response-PDU with error %u", r->error);
-      if (LOAD_U32(h->packet_id) == p->ignore_ping_id)
-	p->ignore_ping_id = 0;
       snmp_register_ack(p, r);
       break;
 
@@ -1361,6 +1367,8 @@ snmp_ping(struct snmp_proto *p)
   /* sending only header */
   uint s = update_packet_size(h, (byte *) h + AGENTX_HEADER_SIZE);
 
+  if (p->packet_id)
+    p->pings++;
   sk_send(sk, s);
 }
 

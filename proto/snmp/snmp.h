@@ -136,6 +136,7 @@ struct snmp_proto {
 
   struct mib_tree *mib_tree;
   int verbose;
+  uint pings;
   u32 ignore_ping_id;
 };
 
