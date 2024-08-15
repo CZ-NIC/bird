@@ -6,10 +6,6 @@
 #include "snmp.h"
 #include "lib/macro.h"
 
-void snmp_start_subagent(struct snmp_proto *p);
-void snmp_stop_subagent(struct snmp_proto *p);
-void snmp_ping(struct snmp_proto *p);
-
 #define AGENTX_VERSION              1
 
 /* standard snmp internet prefix */
@@ -196,11 +192,6 @@ struct agentx_varbind {
   /* AgentX variable binding data optionally here */
 };
 
-struct agentx_search_range {
-  struct oid *start;
-  struct oid *end;
-};
-
 /* AgentX Octet String */
 struct agentx_octet_str {
   u32 length;
@@ -333,6 +324,7 @@ struct snmp_pdu {
   u32 index;			    /* index on which the error was found */
 };
 
+#if 0
 struct snmp_packet_info {
   node n;
   u8 type; // enum type
@@ -341,14 +333,18 @@ struct snmp_packet_info {
   u32 packet_id;
   void *data;
 };
+#endif
 
+void snmp_start_subagent(struct snmp_proto *p);
+void snmp_stop_subagent(struct snmp_proto *p);
+void snmp_ping(struct snmp_proto *p);
 int snmp_rx(sock *sk, uint size);
 void snmp_tx(sock *sk);
-int snmp_rx_stop(sock *sk, uint size);
 void snmp_register(struct snmp_proto *p, struct oid *oid, uint index, uint len, u8 is_instance);
 void snmp_unregister(struct snmp_proto *p, struct oid *oid, uint index, uint len);
 void snmp_notify_pdu(struct snmp_proto *p, struct oid *oid, void *data, uint size, int include_uptime);
-
+void snmp_register_mibs(struct snmp_proto *p);
+struct agentx_varbind *snmp_vb_to_tx(struct snmp_pdu *c, const struct oid *oid);
 int snmp_tbuf_reserve(struct snmp_pdu *c, size_t bytes);
 
 static inline int
@@ -359,9 +355,5 @@ snmp_is_active(const struct snmp_proto *p)
       p->state == SNMP_CONN;
 }
 
-struct agentx_varbind *snmp_vb_to_tx(struct snmp_pdu *c, const struct oid *oid);
-u8 snmp_get_mib_class(const struct oid *oid);
-
-void snmp_register_mibs(struct snmp_proto *p);
 
 #endif

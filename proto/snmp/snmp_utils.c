@@ -36,56 +36,11 @@ snmp_session(const struct snmp_proto *p, struct agentx_header *h)
   STORE_U32(h->packet_id, p->packet_id);
 }
 
-inline int
-snmp_has_context(const struct agentx_header *h)
-{
-  return h->flags & AGENTX_NON_DEFAULT_CONTEXT;
-}
-
 inline void *
 snmp_varbind_data(const struct agentx_varbind *vb)
 {
   uint name_size = snmp_oid_size(&vb->name);
   return (void *) &vb->name + name_size;
-}
-
-struct oid *
-snmp_varbind_set_name_len(struct snmp_pdu *c, struct agentx_varbind **vb, u8 len)
-{
-  struct oid *oid = &(*vb)->name;
-
-  if (oid->n_subid >= len)
-  {
-    c->size += (oid->n_subid - len) * sizeof(u32);
-    oid->n_subid = len;
-    return oid;
-  }
-
-  /* We need more space */
-  ASSUME(len >= oid->n_subid);
-  uint diff_size = (len - oid->n_subid) * sizeof(u32);
-
-  if (snmp_tbuf_reserve(c, diff_size))
-    oid = &(*vb)->name;
-
-  ASSERT(c->size >= diff_size);
-  c->size -= diff_size;
-  oid->n_subid = len;
-  return &(*vb)->name;
-}
-
-void
-snmp_varbind_duplicate_hdr(struct snmp_pdu *c, struct agentx_varbind **vb)
-{
-  ASSUME(vb != NULL && *vb != NULL);
-  uint hdr_size = snmp_varbind_header_size(&(*vb)->name);
-  (void) snmp_tbuf_reserve(c, hdr_size);
-
-  ASSERT(c->size >= hdr_size);
-  byte *buffer = c->buffer;
-  ADVANCE(c->buffer, c->size, hdr_size);
-  memcpy(buffer, *vb, hdr_size);
-  *vb = (struct agentx_varbind *) buffer;
 }
 
 /**
@@ -126,18 +81,6 @@ snmp_oid_is_prefixable(const struct oid *oid)
     return 0;
 
   return 1;
-}
-
-
-/**
- * snmp_pkt_len - returns size of SNMP packet payload (without header)
- * @buf: packet first byte
- * @pkt: first byte past packet end
- */
-uint
-snmp_pkt_len(const byte *start, const byte *end)
-{
-  return (end - start) - AGENTX_HEADER_SIZE;
 }
 
 /*
@@ -188,29 +131,6 @@ snmp_oid_to_buf(struct oid *dst, const struct oid *src)
 
   for (uint i = 0; i < src->n_subid; i++)
     STORE_U32(dst->ids[i], src->ids[i]);
-}
-
-/*
- * snmp_oid_duplicate - duplicate an OID from memory pool
- * @pool: pool to use
- * @oid: OID to be duplicated
- */
-struct oid *
-snmp_oid_duplicate(pool *pool, const struct oid *oid)
-{
-  struct oid *res = mb_alloc(pool, snmp_oid_size(oid));
-  memcpy(res, oid, snmp_oid_size(oid));
-  return res;
-}
-
-/**
- * snmp_oid_blank - create new null oid (blank)
- * @p: pool hodling snmp_proto structure
- */
-struct oid *
-snmp_oid_blank(struct snmp_proto *p)
-{
-  return mb_allocz(p->p.pool, sizeof(struct oid));
 }
 
 /**
@@ -278,12 +198,6 @@ snmp_varbind_header_size(const struct oid *vb_name)
   return snmp_oid_size(vb_name) + OFFSETOF(struct agentx_varbind, name);
 }
 
-/*
- * Beware that for octet string, using this function may be a bit tricky due to
- * the different byte orders cpu native/packet
- *
- *
- */
 uint
 snmp_varbind_size_unsafe(const struct agentx_varbind *vb)
 {
@@ -312,66 +226,6 @@ snmp_varbind_size_unsafe(const struct agentx_varbind *vb)
     default:
       /* Shouldn't happen */
       die("getting size of VarBind with unknown type (%u)", vb->type);
-      return 0;
-  }
-}
-
-/**
- * snmp_varbind_size - get size of in-buffer VarBind
- * @vb: VarBind in cpu native byte order to measure
- * @limit: upper limit of bytes that can be used
- *
- * This functions assumes valid VarBind type.
- * Return 0 for Varbinds longer than limit, Varbind's size otherwise.
- */
-uint UNUSED
-snmp_varbind_size(const struct agentx_varbind *vb, uint limit)
-{
-  if (limit < sizeof(struct agentx_varbind))
-    return 0;
-
-  if (!snmp_test_varbind_type(vb->type))
-    return 0;
-
-  enum agentx_type type = vb->type;
-  int s = agentx_type_size(type);
-  uint vb_header = snmp_varbind_header_size(&vb->name);
-
-  if (limit < vb_header)
-    return 0;
-
-  if (s == 0)
-    return vb_header;
-
-  if (s > 0 && vb_header + s <= limit)
-    return vb_header + s;
-  else if (s > 0)
-    return 0;
-
-  uint sz;
-  switch (type)
-  {
-    case AGENTX_OBJECT_ID:;
-      struct oid *oid = snmp_varbind_data(vb);
-      /* snmp_oid_size works for both native and packet byte order */
-      sz = snmp_oid_size(oid);
-      if (limit < vb_header + sz)
-	return 0;
-      else
-	return vb_header + snmp_oid_size(oid);
-
-    case AGENTX_OCTET_STRING:
-    case AGENTX_IP_ADDRESS:
-    case AGENTX_OPAQUE:;
-      struct agentx_octet_str *os = snmp_varbind_data(vb);
-      sz = snmp_get_octet_size(os);
-      if (limit < vb_header + sz)
-	return 0;
-      else
-	return vb_header + sz;
-
-    default:
-      /* This should not happen */
       return 0;
   }
 }
@@ -429,7 +283,7 @@ snmp_test_varbind_type(u16 type)
 
 
 /**
- * snmp_oid_ip4_index - check IPv4 address validity in oid
+ * snmp_valid_ip4_index - check IPv4 address validity in oid
  * @o: object identifier holding ip address
  * @start: index of first address id
  */
@@ -534,25 +388,6 @@ snmp_put_fbyte(byte *buf, u8 data)
   return buf + 3;
 }
 
-/*
- * snmp_oid_ip4_index - OID append IPv4 index
- * @o: OID to use
- * @start: index of IP addr's MSB
- * @addr: IPv4 address to use
- *
- * The indices from start to (inclusive) start+3 are overwritten by @addr bytes.
- */
-void
-snmp_oid_ip4_index(struct oid *o, uint start, ip4_addr addr)
-{
-  u32 temp = ip4_to_u32(addr);
-  o->ids[start] = temp >> 24;
-  o->ids[start + 1] = (temp >> 16) & 0xFF;
-  o->ids[start + 2] = (temp >>  8) & 0xFF;
-  o->ids[start + 3] = temp & 0xFF;
-}
-
-
 /**
  * snmp_oid_compare - find the lexicographical order relation between @left and @right
  * @left: left object id relation operant
@@ -654,8 +489,8 @@ snmp_registration_create(struct snmp_proto *p, enum agentx_mibs mib)
   r->n.prev = r->n.next = NULL;
 
   r->session_id = p->session_id;
-  /* will be incremented by snmp_session() macro during packet assembly */
   r->transaction_id = p->transaction_id;
+  /* will be incremented by snmp_session() macro during packet assembly */
   r->packet_id = p->packet_id + 1;
   r->mib = mib;
 
@@ -672,15 +507,6 @@ snmp_registration_match(struct snmp_registration *r, struct agentx_header *h)
     (LOAD_U32(r->packet_id) == h->packet_id);
 }
 
-
-void UNUSED
-snmp_dump_packet(byte UNUSED *pkt, uint size)
-{
-  DBG("dump");
-  for (uint i = 0; i < size; i += 4)
-    DBG("pkt [%d]  0x%02x%02x%02x%02x", i, pkt[i],pkt[i+1],pkt[i+2],pkt[i+3]);
-  DBG("end dump");
-}
 
 /*
  * agentx_type_size - get in packet VarBind type size
@@ -758,18 +584,6 @@ snmp_varbind_ip4(struct snmp_pdu *c, ip4_addr addr)
   c->sr_vb_start->type = AGENTX_IP_ADDRESS;
   c->buffer = snmp_put_ip4(snmp_varbind_data(c->sr_vb_start), addr);
 }
-
-#if 0
-inline byte *
-snmp_varbind_nstr2(struct snmp_pdu *c, uint size, const char *str, uint len)
-{
-  if (size < snmp_str_size_from_len(len))
-    return NULL;
-
-  c->sr_vb_start = AGENTX_OCTET_STRING;
-  return snmp_put_nstr(snmp_varbind_data(c->sr_vb_start), str, len);
-}
-#endif
 
 /*
  * snmp_varbind_nstr - fill varbind context with octet string
@@ -894,6 +708,8 @@ snmp_oid_log(const struct oid *oid)
  * be NULL OID in cases where there is no common subid. The result could be also
  * viewed as longest common prefix. Note that if both @left and @right are
  * prefixable but not prefixed the result in @out will also not be prefixed.
+ *
+ * This function is used intensively by snmp_test.c.
  */
 void
 snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct oid *out)

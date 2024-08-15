@@ -112,12 +112,6 @@
 #include "bgp4_mib.h"
 
 const char agentx_master_addr[] = AGENTX_MASTER_ADDR;
-const struct oid *agentx_available_mibs[AGENTX_MIB_COUNT + 1] = { 0 };
-
-static void snmp_start_locked(struct object_lock *lock);
-static void snmp_sock_err(sock *sk, int err);
-static void snmp_stop_timeout(timer *tm);
-static void snmp_cleanup(struct snmp_proto *p);
 
 static const char *snmp_state_str[] = {
   [SNMP_INIT]	  = "acquiring address lock",
@@ -128,6 +122,109 @@ static const char *snmp_state_str[] = {
   [SNMP_STOP]	  = "stopping AgentX subagent",
   [SNMP_DOWN]	  = "protocol down",
 };
+
+
+/*
+ *    Callbacks
+ */
+
+/*
+ * snmp_sock_err - handle errors on socket by reopenning the socket
+ * @sk: socket owned by SNMP protocol instance
+ * @err: socket error code
+ */
+static void
+snmp_sock_err(sock *sk, int UNUSED err)
+{
+  struct snmp_proto *p = sk->data;
+  if (err != 0)
+    TRACE(D_EVENTS, "SNMP socket error (%d)", err);
+  snmp_set_state(p, SNMP_DOWN);
+}
+
+/*
+ * snmp_ping_timeout - send a agentx-Ping-PDU
+ * @tm: the ping_timer holding the SNMP protocol instance.
+ *
+ * Send an agentx-Ping-PDU. This function is periodically called by ping
+ * timer.
+ */
+static void
+snmp_ping_timeout(timer *tm)
+{
+  struct snmp_proto *p = tm->data;
+  snmp_ping(p);
+}
+
+
+/*
+ * snmp_stop_timeout - a timeout for non-responding master agent
+ * @tm: the startup_timer holding the SNMP protocol instance.
+ *
+ * We are trying to empty the TX buffer of communication socket. But if it is
+ * not done in reasonable amount of time, the function is called by timeout
+ * timer. We down the whole SNMP protocol with cleanup of associated data
+ * structures.
+ */
+static void
+snmp_stop_timeout(timer *tm)
+{
+  struct snmp_proto *p = tm->data;
+  snmp_set_state(p, SNMP_DOWN);
+}
+
+/*
+ * snmp_connected - start AgentX session on created socket
+ * @sk: socket owned by SNMP protocol instance
+ *
+ * Starts the AgentX communication by sending an agentx-Open-PDU.
+ * This function is internal and shouldn't be used outside the SNMP module.
+ */
+void
+snmp_connected(sock *sk)
+{
+  struct snmp_proto *p = sk->data;
+  snmp_set_state(p, SNMP_OPEN);
+}
+
+/*
+ * snmp_start_locked - open the socket on locked address
+ * @lock: object lock guarding the communication mean (address, ...)
+ *
+ * This function is called when the object lock is acquired. Main goal is to set
+ * socket parameters and try to open configured socket. Function
+ * snmp_connected() handles next stage of SNMP protocol start. When the socket
+ * coundn't be opened, a new try is scheduled after a small delay.
+ */
+static void
+snmp_start_locked(struct object_lock *lock)
+{
+  struct snmp_proto *p = lock->data;
+  if (p->startup_delay)
+  {
+    ASSERT(p->startup_timer);
+    p->startup_timer->hook = snmp_startup_timeout;
+    tm_start(p->startup_timer, p->startup_delay);
+  }
+  else
+    snmp_set_state(p, SNMP_LOCKED);
+}
+
+/*
+ * snmp_startup_timeout - start the initiliazed SNMP protocol
+ * @tm: the startup_timer holding the SNMP protocol instance.
+ *
+ * When the timer rings, the function snmp_startup() is invoked.
+ * This function is internal and shouldn't be used outside the SNMP module.
+ * Used when we delaying the start procedure, or we want to retry opening
+ * the communication socket.
+ */
+void
+snmp_startup_timeout(timer *tm)
+{
+  struct snmp_proto *p = tm->data;
+  snmp_set_state(p, SNMP_LOCKED);
+}
 
 /*
  * snmp_rx_skip - skip all received data
@@ -156,6 +253,51 @@ snmp_tx_skip(sock *sk)
 {
   struct snmp_proto *p = sk->data;
   snmp_set_state(p, SNMP_STOP);
+}
+
+/*
+ * snmp_cleanup - free all resources allocated by SNMP protocol
+ * @p: SNMP protocol instance
+ *
+ * This function forcefully stops and cleans all resources and memory acqiured
+ * by given SNMP protocol instance, such as timers, lists, hash tables etc.
+ */
+static inline void
+snmp_cleanup(struct snmp_proto *p)
+{
+  /* Function tm_stop() is called inside rfree() */
+  rfree(p->startup_timer);
+  p->startup_timer = NULL;
+
+  rfree(p->ping_timer);
+  p->ping_timer = NULL;
+
+  rfree(p->sock);
+  p->sock = NULL;
+
+  rfree(p->lock);
+  p->lock = NULL;
+
+  struct snmp_registration *r, *r2;
+  WALK_LIST_DELSAFE(r, r2, p->registration_queue)
+  {
+    rem_node(&r->n);
+    mb_free(r);
+    r = NULL;
+  }
+
+  HASH_FREE(p->bgp_hash);
+  rfree(p->lp);
+  p->lp = NULL;
+  /* bgp_trie is allocated exclusively from linpool lp */
+  p->bgp_trie = NULL;
+
+  struct mib_walk_state *walk = tmp_alloc(sizeof(struct mib_walk_state));
+  mib_tree_walk_init(walk, p->mib_tree);
+  (void) mib_tree_delete(p->mib_tree, walk);
+  p->mib_tree = NULL;
+
+  p->state = SNMP_DOWN;
 }
 
 /*
@@ -304,84 +446,6 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
 }
 
 /*
- * snmp_init - preinitialize SNMP instance
- * @CF: SNMP configuration generic handle
- *
- * Returns a generic handle pointing to preinitialized SNMP procotol
- * instance.
- */
-static struct proto *
-snmp_init(struct proto_config *CF)
-{
-  struct proto *P = proto_new(CF);
-  struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
-
-  p->rl_gen = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
-  p->state = SNMP_DOWN;
-
-  return P;
-}
-
-/*
- * snmp_cleanup - free all resources allocated by SNMP protocol
- * @p: SNMP protocol instance
- *
- * This function forcefully stops and cleans all resources and memory acqiured
- * by given SNMP protocol instance, such as timers, lists, hash tables etc.
- */
-static inline void
-snmp_cleanup(struct snmp_proto *p)
-{
-  /* Function tm_stop() is called inside rfree() */
-  rfree(p->startup_timer);
-  p->startup_timer = NULL;
-
-  rfree(p->ping_timer);
-  p->ping_timer = NULL;
-
-  rfree(p->sock);
-  p->sock = NULL;
-
-  rfree(p->lock);
-  p->lock = NULL;
-
-  struct snmp_registration *r, *r2;
-  WALK_LIST_DELSAFE(r, r2, p->registration_queue)
-  {
-    rem_node(&r->n);
-    mb_free(r);
-    r = NULL;
-  }
-
-  HASH_FREE(p->bgp_hash);
-  rfree(p->lp);
-  p->lp = NULL;
-  /* bgp_trie is allocated exclusively from linpool lp */
-  p->bgp_trie = NULL;
-
-  struct mib_walk_state *walk = tmp_alloc(sizeof(struct mib_walk_state));
-  mib_tree_walk_init(walk, p->mib_tree);
-  (void) mib_tree_delete(p->mib_tree, walk);
-  p->mib_tree = NULL;
-
-  p->state = SNMP_DOWN;
-}
-
-/*
- * snmp_connected - start AgentX session on created socket
- * @sk: socket owned by SNMP protocol instance
- *
- * Starts the AgentX communication by sending an agentx-Open-PDU.
- * This function is internal and shouldn't be used outside the SNMP module.
- */
-void
-snmp_connected(sock *sk)
-{
-  struct snmp_proto *p = sk->data;
-  snmp_set_state(p, SNMP_OPEN);
-}
-
-/*
  * snmp_reset - reset AgentX session
  * @p: SNMP protocol instance
  *
@@ -409,129 +473,31 @@ snmp_up(struct snmp_proto *p)
 }
 
 /*
- * snmp_sock_err - handle errors on socket by reopenning the socket
- * @sk: socket owned by SNMP protocol instance
- * @err: socket error code
- */
-static void
-snmp_sock_err(sock *sk, int UNUSED err)
-{
-  struct snmp_proto *p = sk->data;
-  if (err != 0)
-    TRACE(D_EVENTS, "SNMP socket error (%d)", err);
-  snmp_set_state(p, SNMP_DOWN);
-}
-
-/*
- * snmp_start_locked - open the socket on locked address
- * @lock: object lock guarding the communication mean (address, ...)
- *
- * This function is called when the object lock is acquired. Main goal is to set
- * socket parameters and try to open configured socket. Function
- * snmp_connected() handles next stage of SNMP protocol start. When the socket
- * coundn't be opened, a new try is scheduled after a small delay.
- */
-static void
-snmp_start_locked(struct object_lock *lock)
-{
-  struct snmp_proto *p = lock->data;
-  if (p->startup_delay)
-  {
-    ASSERT(p->startup_timer);
-    p->startup_timer->hook = snmp_startup_timeout;
-    tm_start(p->startup_timer, p->startup_delay);
-  }
-  else
-    snmp_set_state(p, SNMP_LOCKED);
-}
-
-/*
- * snmp_startup_timeout - start the initiliazed SNMP protocol
- * @tm: the startup_timer holding the SNMP protocol instance.
- *
- * When the timer rings, the function snmp_startup() is invoked.
- * This function is internal and shouldn't be used outside the SNMP module.
- * Used when we delaying the start procedure, or we want to retry opening
- * the communication socket.
- */
-void
-snmp_startup_timeout(timer *tm)
-{
-  struct snmp_proto *p = tm->data;
-  snmp_set_state(p, SNMP_LOCKED);
-}
-
-/*
- * snmp_stop_timeout - a timeout for non-responding master agent
- * @tm: the startup_timer holding the SNMP protocol instance.
- *
- * We are trying to empty the TX buffer of communication socket. But if it is
- * not done in reasonable amount of time, the function is called by timeout
- * timer. We down the whole SNMP protocol with cleanup of associated data
- * structures.
- */
-static void
-snmp_stop_timeout(timer *tm)
-{
-  struct snmp_proto *p = tm->data;
-  snmp_set_state(p, SNMP_DOWN);
-}
-
-/*
- * snmp_ping_timeout - send a agentx-Ping-PDU
- * @tm: the ping_timer holding the SNMP protocol instance.
- *
- * Send an agentx-Ping-PDU. This function is periodically called by ping
- * timer.
- */
-static void
-snmp_ping_timeout(timer *tm)
-{
-  struct snmp_proto *p = tm->data;
-  snmp_ping(p);
-}
-
-/*
- * snmp_start - Initialize the SNMP protocol instance
+ * snmp_shutdown - Forcefully stop the SNMP protocol instance
  * @P: SNMP protocol generic handle
  *
- * The first step in AgentX subagent startup is protocol initialition.
- * We must prepare lists, find BGP peers and finally asynchronously start
- * a AgentX subagent session.
+ * Simple cast-like wrapper around snmp_reset(), see more info there.
  */
 static int
-snmp_start(struct proto *P)
+snmp_shutdown(struct proto *P)
+{
+  struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
+  return snmp_reset(p);
+}
+
+/*
+ * snmp_show_proto_info - print basic information about SNMP protocol instance
+ * @P: SNMP protocol generic handle
+ */
+static void
+snmp_show_proto_info(struct proto *P)
 {
   struct snmp_proto *p = (void *) P;
-  struct snmp_config *cf = (struct snmp_config *) P->cf;
 
-  p->local_ip = cf->local_ip;
-  p->remote_ip = cf->remote_ip;
-  p->local_port = cf->local_port;
-  p->remote_port = cf->remote_port;
-  p->bgp_local_as = cf->bgp_local_as;
-  p->bgp_local_id = cf->bgp_local_id;
-  p->timeout = cf->timeout;
-  p->startup_delay = cf->startup_delay;
-  p->verbose = cf->verbose;
+  cli_msg(-1006, "  SNMP state: %s", snmp_state_str[p->state]);
+  cli_msg(-1006, "  MIBs");
 
-  p->pool = p->p.pool;
-  p->lp = lp_new(p->pool);
-  p->bgp_trie = f_new_trie(p->lp, 0);
-  p->mib_tree = mb_alloc(p->pool, sizeof(struct mib_tree));
-
-  p->startup_timer = tm_new_init(p->pool, snmp_startup_timeout, p, 0, 0);
-  p->ping_timer = tm_new_init(p->pool, snmp_ping_timeout, p, p->timeout, 0);
-
-  init_list(&p->registration_queue);
-
-  /* We create copy of bonds to BGP protocols. */
-  HASH_INIT(p->bgp_hash, p->pool, 10);
-
-  mib_tree_init(p->pool, p->mib_tree);
-  snmp_bgp4_start(p, 1);
-
-  return snmp_set_state(p, SNMP_INIT);
+  snmp_bgp4_show_info(p);
 }
 
 /*
@@ -614,18 +580,65 @@ snmp_reconfigure(struct proto *P, struct proto_config *CF)
 }
 
 /*
- * snmp_show_proto_info - print basic information about SNMP protocol instance
+ * snmp_start - Initialize the SNMP protocol instance
  * @P: SNMP protocol generic handle
+ *
+ * The first step in AgentX subagent startup is protocol initialition.
+ * We must prepare lists, find BGP peers and finally asynchronously start
+ * a AgentX subagent session.
  */
-static void
-snmp_show_proto_info(struct proto *P)
+static int
+snmp_start(struct proto *P)
 {
   struct snmp_proto *p = (void *) P;
+  struct snmp_config *cf = (struct snmp_config *) P->cf;
 
-  cli_msg(-1006, "  SNMP state: %s", snmp_state_str[p->state]);
-  cli_msg(-1006, "  MIBs");
+  p->local_ip = cf->local_ip;
+  p->remote_ip = cf->remote_ip;
+  p->local_port = cf->local_port;
+  p->remote_port = cf->remote_port;
+  p->bgp_local_as = cf->bgp_local_as;
+  p->bgp_local_id = cf->bgp_local_id;
+  p->timeout = cf->timeout;
+  p->startup_delay = cf->startup_delay;
+  p->verbose = cf->verbose;
 
-  snmp_bgp4_show_info(p);
+  p->pool = p->p.pool;
+  p->lp = lp_new(p->pool);
+  p->bgp_trie = f_new_trie(p->lp, 0);
+  p->mib_tree = mb_alloc(p->pool, sizeof(struct mib_tree));
+
+  p->startup_timer = tm_new_init(p->pool, snmp_startup_timeout, p, 0, 0);
+  p->ping_timer = tm_new_init(p->pool, snmp_ping_timeout, p, p->timeout, 0);
+
+  init_list(&p->registration_queue);
+
+  /* We create copy of bonds to BGP protocols. */
+  HASH_INIT(p->bgp_hash, p->pool, 10);
+
+  mib_tree_init(p->pool, p->mib_tree);
+  snmp_bgp4_start(p, 1);
+
+  return snmp_set_state(p, SNMP_INIT);
+}
+
+/*
+ * snmp_init - preinitialize SNMP instance
+ * @CF: SNMP configuration generic handle
+ *
+ * Returns a generic handle pointing to preinitialized SNMP procotol
+ * instance.
+ */
+static struct proto *
+snmp_init(struct proto_config *CF)
+{
+  struct proto *P = proto_new(CF);
+  struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
+
+  p->rl_gen = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
+  p->state = SNMP_DOWN;
+
+  return P;
 }
 
 /*
@@ -640,19 +653,6 @@ snmp_postconfig(struct proto_config *CF)
   /* Walk the BGP protocols and cache their references. */
   if (cf->bgp_local_as == 0)
     cf_error("local as not specified");
-}
-
-/*
- * snmp_shutdown - Forcefully stop the SNMP protocol instance
- * @P: SNMP protocol generic handle
- *
- * Simple cast-like wrapper around snmp_reset(), see more info there.
- */
-static int
-snmp_shutdown(struct proto *P)
-{
-  struct snmp_proto *p = SKIP_BACK(struct snmp_proto, p, P);
-  return snmp_reset(p);
 }
 
 
@@ -670,8 +670,8 @@ struct protocol proto_snmp = {
   .init =		snmp_init,
   .start =		snmp_start,
   .reconfigure =	snmp_reconfigure,
-  .shutdown =		snmp_shutdown,
   .show_proto_info = 	snmp_show_proto_info,
+  .shutdown =		snmp_shutdown,
 };
 
 void

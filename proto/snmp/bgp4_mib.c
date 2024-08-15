@@ -68,6 +68,32 @@ snmp_bgp_reg_failed(struct snmp_proto *p, const struct agentx_response *res, str
 }
 
 /*
+ * snmp_bgp_fsm_state - extract BGP FSM state for SNMP BGP4-MIB
+ * @bgp_proto: BGP instance
+ *
+ * Return FSM state in BGP4-MIB encoding
+ */
+static inline uint
+snmp_bgp_fsm_state(const struct bgp_proto *bgp_proto)
+{
+  const struct bgp_conn *bgp_conn = bgp_proto->conn;
+  const struct bgp_conn *bgp_in = &bgp_proto->incoming_conn;
+  const struct bgp_conn *bgp_out = &bgp_proto->outgoing_conn;
+
+  if (bgp_conn)
+    return bgp_conn->state + 1;
+
+  if (MAX(bgp_in->state, bgp_out->state) == BS_CLOSE &&
+      MIN(bgp_in->state, bgp_out->state) != BS_CLOSE)
+    return MIN(bgp_in->state, bgp_out->state) + 1;
+  if (MIN(bgp_in->state, bgp_out->state) == BS_CLOSE)
+    return BS_IDLE;
+
+  return MAX(bgp_in->state, bgp_out->state) + 1;
+}
+
+
+/*
  * snmp_bgp_notify_common - common functionaly for BGP4-MIB notifications
  * @p: SNMP protocol instance
  * @type: type of notification send - either established or backward transition
@@ -173,31 +199,6 @@ snmp_bgp_notify_common(struct snmp_proto *p, uint type, ip4_addr ip4, char last_
   #undef OID_N_SUBID
 }
 
-/*
- * snmp_bgp_fsm_state - extract BGP FSM state for SNMP BGP4-MIB
- * @bgp_proto: BGP instance
- *
- * Return FSM state in BGP4-MIB encoding
- */
-static inline uint
-snmp_bgp_fsm_state(const struct bgp_proto *bgp_proto)
-{
-  const struct bgp_conn *bgp_conn = bgp_proto->conn;
-  const struct bgp_conn *bgp_in = &bgp_proto->incoming_conn;
-  const struct bgp_conn *bgp_out = &bgp_proto->outgoing_conn;
-
-  if (bgp_conn)
-    return bgp_conn->state + 1;
-
-  if (MAX(bgp_in->state, bgp_out->state) == BS_CLOSE &&
-      MIN(bgp_in->state, bgp_out->state) != BS_CLOSE)
-    return MIN(bgp_in->state, bgp_out->state) + 1;
-  if (MIN(bgp_in->state, bgp_out->state) == BS_CLOSE)
-    return BS_IDLE;
-
-  return MAX(bgp_in->state, bgp_out->state) + 1;
-}
-
 static void
 snmp_bgp_notify_wrapper(struct snmp_proto *p, struct bgp_proto *bgp, uint type)
 {
@@ -209,36 +210,16 @@ snmp_bgp_notify_wrapper(struct snmp_proto *p, struct bgp_proto *bgp, uint type)
   snmp_bgp_notify_common(p, type, ip4, last_error, state_val);
 }
 
-void
+void UNUSED
 snmp_bgp_notify_established(struct snmp_proto *p, struct bgp_proto *bgp)
 {
   snmp_bgp_notify_wrapper(p, bgp, BGP4_MIB_ESTABLISHED_NOTIFICATION);
 }
 
-void
+void UNUSED
 snmp_bgp_notify_backward_trans(struct snmp_proto *p, struct bgp_proto *bgp)
 {
   snmp_bgp_notify_wrapper(p, bgp, BGP4_MIB_BACKWARD_TRANS_NOTIFICATION);
-}
-
-void
-snmp_bgp4_register(struct snmp_proto *p)
-{
-  /* Register the whole BGP4-MIB::bgp root tree node */
-  struct snmp_registration *reg;
-  reg = snmp_registration_create(p, BGP4_MIB_ID);
-
-  struct oid *oid = mb_allocz(p->pool, sizeof(bgp4_mib_oid));
-  memcpy(oid, &bgp4_mib_oid, sizeof(bgp4_mib_oid));
-
-  reg->reg_hook_ok = NULL;
-  reg->reg_hook_fail = snmp_bgp_reg_failed;
-
-  /*
-   * We set both upper bound and index to zero, therefore only single OID
-   * is being registered.
-   */
-  snmp_register(p, oid, 0, 0, SNMP_REGISTER_TREE);
 }
 
 static int
@@ -267,48 +248,6 @@ ip4_to_oid(struct oid *o, ip4_addr addr)
   o->ids[6] = (tmp & 0x00FF0000) >> 16;
   o->ids[7] = (tmp & 0x0000FF00) >>  8;
   o->ids[8] = (tmp & 0x000000FF) >>  0;
-}
-
-static void UNUSED
-print_bgp_record(const struct bgp_proto *bgp_proto)
-{
-  struct bgp_conn *conn = bgp_proto->conn;
-
-  DBG("    name: %s", cf->name);
-  DBG(".");
-  DBG("    rem. identifier: %u", bgp_proto->remote_id);
-  DBG("    local ip: %I", config->local_ip);
-  DBG("    remote ip: %I", config->remote_ip);
-  DBG("    local port: %u", config->local_port);
-  DBG("    remote port: %u", config->remote_port);
-
-  if (conn) {
-    DBG("    state: %u", conn->state);
-    DBG("    remote as: %u", conn->remote_caps->as4_number);
-  }
-
-  DBG("    in updates: %u", bgp_proto->stats.rx_updates);
-  DBG("    out updates: %u", bgp_proto->stats.tx_updates);
-  DBG("    in total: %u", bgp_proto->stats.rx_messages);
-  DBG("    out total: %u", bgp_proto->stats.tx_messages);
-  DBG("    fsm transitions: %u",
-      bgp_proto->stats.fsm_established_transitions);
-
-  DBG("    fsm total time: -- (0)");   // not supported by bird
-  DBG("    retry interval: %u", config->connect_retry_time);
-
-  DBG("    hold configurated: %u", config->hold_time );
-  DBG("    keep alive config: %u", config->keepalive_time );
-
-  DBG("    min AS origin. int.: -- (0)");	// not supported by bird
-  DBG("    min route advertisement: %u", 0 );
-  DBG("    in update elapsed time: %u", 0 );
-
-  if (!conn)
-    DBG("  no connection established");
-
-  DBG("  outgoinin_conn state %u", bgp_proto->outgoing_conn.state + 1);
-  DBG("  incoming_conn state: %u", bgp_proto->incoming_conn.state + 1);
 }
 
 static inline enum snmp_search_res
@@ -831,6 +770,27 @@ snmp_bgp4_show_info(struct snmp_proto *p)
   }
   HASH_WALK_END;
 }
+
+void
+snmp_bgp4_register(struct snmp_proto *p)
+{
+  /* Register the whole BGP4-MIB::bgp root tree node */
+  struct snmp_registration *reg;
+  reg = snmp_registration_create(p, BGP4_MIB_ID);
+
+  struct oid *oid = mb_allocz(p->pool, sizeof(bgp4_mib_oid));
+  memcpy(oid, &bgp4_mib_oid, sizeof(bgp4_mib_oid));
+
+  reg->reg_hook_ok = NULL;
+  reg->reg_hook_fail = snmp_bgp_reg_failed;
+
+  /*
+   * We set both upper bound and index to zero, therefore only single OID
+   * is being registered.
+   */
+  snmp_register(p, oid, 0, 0, SNMP_REGISTER_TREE);
+}
+
 
 /*
  * snmp_bgp4_start - prepare BGP4-MIB

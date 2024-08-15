@@ -53,6 +53,15 @@ enum snmp_transport_type {
   SNMP_TRANS_TCP,
 };
 
+#define SNMP_BGP_P_REGISTERING	0x01
+#define SNMP_BGP_P_REGISTERED	0x02
+
+struct snmp_bgp_peer {
+  const struct bgp_proto *bgp_proto;
+  ip4_addr peer_ip;		      /* used as hash key */
+  struct snmp_bgp_peer *next;
+};
+
 struct snmp_config {
   struct proto_config cf;
   enum snmp_transport_type trans_type;
@@ -78,21 +87,6 @@ struct snmp_config {
   //const struct oid *oid_identifier;	TODO
   int verbose;
 };
-
-#define SNMP_BGP_P_REGISTERING	0x01
-#define SNMP_BGP_P_REGISTERED	0x02
-
-struct snmp_bgp_peer {
-  const struct bgp_proto *bgp_proto;
-  ip4_addr peer_ip;		      /* used as hash key */
-  struct snmp_bgp_peer *next;
-};
-
-struct snmp_registered_oid {
-  node n;
-  struct oid *oid;
-};
-
 
 struct snmp_proto {
   struct proto p;
@@ -165,7 +159,6 @@ void snmp_connected(sock *sk);
 void snmp_startup_timeout(timer *tm);
 void snmp_reconnect(timer *tm);
 int snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state);
-
 int snmp_reset(struct snmp_proto *p);
 void snmp_up(struct snmp_proto *p);
 

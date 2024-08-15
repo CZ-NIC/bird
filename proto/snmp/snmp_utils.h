@@ -4,8 +4,6 @@
 #include "subagent.h"
 #include "mib_tree.h"
 
-uint snmp_pkt_len(const byte *start, const byte *end);
-
 /*
  *
  *    AgentX Variable Biding (VarBind) utils
@@ -27,7 +25,6 @@ int snmp_oid_is_prefixable(const struct oid *oid);
 uint snmp_oid_size(const struct oid *o);
 size_t snmp_oid_size_from_len(uint n_subid);
 void snmp_oid_copy(struct oid *dest, const struct oid *src);
-void snmp_oid_copy2(struct oid *dest, const struct oid *src);
 int snmp_oid_compare(const struct oid *first, const struct oid *second);
 void snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct oid *result);
 void snmp_oid_from_buf(struct oid *dest, const struct oid *src);
@@ -49,28 +46,27 @@ snmp_oid_is_prefixed(const struct oid *oid)
 /* type IPv4 */
 int snmp_valid_ip4_index(const struct oid *o, uint start);
 int snmp_valid_ip4_index_unsafe(const struct oid *o, uint start);
-void snmp_oid_ip4_index(struct oid *o, uint start, ip4_addr addr);
 
 /*
  *  AgentX - Variable Binding (VarBind) manupulation
  */
 uint snmp_varbind_header_size(const struct oid *vb_name);
-uint snmp_varbind_size(const struct agentx_varbind *vb, uint limit);
 uint snmp_varbind_size_unsafe(const struct agentx_varbind *vb);
 size_t snmp_varbind_size_from_len(uint n_subid, enum agentx_type t, uint len);
 int snmp_test_varbind_type(u16 type);
 void *snmp_varbind_data(const struct agentx_varbind *vb);
-struct oid *snmp_varbind_set_name_len(struct snmp_pdu *c, struct agentx_varbind **vb, u8 len);
-void snmp_varbind_duplicate_hdr(struct snmp_pdu *c, struct agentx_varbind **vb);
 
 /*
  *  AgentX - PDU headers, types, contexts
  */
 void snmp_session(const struct snmp_proto *p, struct agentx_header *h);
-int snmp_has_context(const struct agentx_header *h);
 void snmp_pdu_context(struct snmp_pdu *pdu, struct snmp_proto *p, sock *sk);
-struct oid *snmp_oid_duplicate(pool *pool, const struct oid *oid);
-struct oid *snmp_oid_blank(struct snmp_proto *p);
+
+static inline int
+snmp_has_context(const struct agentx_header *h)
+{
+  return LOAD_U8(h->flags) & AGENTX_NON_DEFAULT_CONTEXT;
+}
 
 int snmp_test_close_reason(byte value);
 
@@ -105,7 +101,6 @@ byte *snmp_put_fbyte(byte *buf, u8 data);
 struct snmp_registration *snmp_registration_create(struct snmp_proto *p, enum agentx_mibs mib);
 int snmp_registration_match(struct snmp_registration *r, struct agentx_header *h);
 
-void snmp_dump_packet(byte *pkt, uint size);
 void snmp_oid_dump(const struct oid *oid);
 void snmp_oid_log(const struct oid *oid);
 
