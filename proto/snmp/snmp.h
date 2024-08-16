@@ -65,14 +65,13 @@ struct snmp_bgp_peer {
 struct snmp_config {
   struct proto_config cf;
   enum snmp_transport_type trans_type;
-  ip4_addr local_ip;
-  u16 local_port;
-  ip_addr remote_ip;		  /* master agentx IP address for TCP transport */
-  u16 remote_port;
-  const char *remote_path;	  /* master agentx UNIX socket name */
+  ip_addr local_ip;
+  ip_addr master_ip;		  /* master agentx IP address for TCP transport */
+  u16 master_port;
+  const char *master_path;	  /* master agentx UNIX socket name */
 
-  ip4_addr bgp_local_id;	  /* BGP4-MIB related fields */
-  u32 bgp_local_as;
+  u32 bgp4_local_id;	  /* BGP4-MIB related fields */
+  u32 bgp4_local_as;
 
   btime timeout;
   btime startup_delay;
@@ -96,13 +95,13 @@ struct snmp_proto {
 
   enum snmp_proto_state state;
 
-  ip4_addr local_ip;
-  ip_addr remote_ip;
-  u16 local_port;
-  u16 remote_port;
+  ip_addr local_ip;
+  ip_addr master_ip;
+  u16 master_port;
 
-  ip4_addr bgp_local_id;		  /* BGP4-MIB related fields */
-  u32 bgp_local_as;
+  /* TODO add struct for grouping BGP4-MIB data */
+  u32 bgp4_local_id;		  /* BGP4-MIB related fields */
+  u32 bgp4_local_as;
 
   sock *sock;
 

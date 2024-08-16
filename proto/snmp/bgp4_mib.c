@@ -308,7 +308,7 @@ fill_local_as(struct mib_walk_state *walk UNUSED, struct snmp_pdu *c)
 {
   if (c->sr_vb_start->name.n_subid != 4)
     return SNMP_SEARCH_NO_INSTANCE;
-  snmp_varbind_int(c, c->p->bgp_local_as);
+  snmp_varbind_int(c, c->p->bgp4_local_as);
   return SNMP_SEARCH_OK;
 }
 
@@ -663,7 +663,8 @@ fill_local_id(struct mib_walk_state *walk UNUSED, struct snmp_pdu *c)
 {
   if (c->sr_vb_start->name.n_subid != 4)
     return SNMP_SEARCH_NO_INSTANCE;
-  snmp_varbind_ip4(c, c->p->bgp_local_id);
+  ip4_addr router_id_ip = ip4_from_u32(c->p->bgp4_local_id);
+  snmp_varbind_ip4(c, router_id_ip);
   return SNMP_SEARCH_OK;
 }
 
@@ -749,8 +750,8 @@ void
 snmp_bgp4_show_info(struct snmp_proto *p)
 {
   cli_msg(-1006, "    BGP4-MIB");
-  cli_msg(-1006, "      Local AS %u", p->bgp_local_as);
-  cli_msg(-1006, "      Local router id %R", p->bgp_local_id);
+  cli_msg(-1006, "      Local AS %u", p->bgp4_local_as);
+  cli_msg(-1006, "      Local router id %R", p->bgp4_local_id);
   cli_msg(-1006, "      BGP peers");
 
   if (p->bgp_hash.count == 0)

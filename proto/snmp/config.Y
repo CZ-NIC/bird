@@ -18,8 +18,9 @@ CF_DEFINES
 
 CF_DECLS
 
-CF_KEYWORDS(SNMP, PROTOCOL, BGP, LOCAL, AS, REMOTE, ADDRESS, PORT, DESCRIPTION,
-	    TIMEOUT, PRIORITY, CONTEXT, DEFAULT, MESSAGE, VERBOSE)
+CF_KEYWORDS(SNMP, PROTOCOL, LOCAL, AS, REMOTE, ADDRESS, PORT, DESCRIPTION,
+	    TIMEOUT, PRIORITY, CONTEXT, DEFAULT, MESSAGE, VERBOSE, AGENTX,
+	    SUBAGENT, MASTER, BGP4, MIB, REGISTRATION, PEER)
 
 CF_GRAMMAR
 
@@ -30,48 +31,39 @@ snmp_proto:
 
 snmp_proto_item:
    proto_item
- | snmp_bgp_bond
- | LOCAL PORT expr {
-    if (($3 < 1) || ($3 > 65535)) cf_error("Invalid port number");
-    SNMP_CFG->local_port = $3;
-  }
- | REMOTE PORT expr {
-    if (($3 < 1) || ($3 > 65535)) cf_error("Invalid port number");
-    SNMP_CFG->remote_port = $3;
-  }
- | LOCAL ID IP4 { SNMP_CFG->bgp_local_id = $3; }
- | LOCAL ADDRESS IP4 { SNMP_CFG->local_ip = $3; }
- | REMOTE ADDRESS DEFAULT {
+ | SOURCE ADDRESS ipa { SNMP_CFG->local_ip = $3; }
+ | AGENTX MASTER ADDRESS DEFAULT {
     if (SNMP_CFG->trans_type != SNMP_TRANS_DEFAULT)
       cf_error("Duplicit option remote address");
   }
- | REMOTE ADDRESS ipa {
+ | AGENTX MASTER ADDRESS text {
     if (SNMP_CFG->trans_type != SNMP_TRANS_DEFAULT)
       cf_error("Duplicit option remote address");
 
-    SNMP_CFG->remote_ip = $3;
-    SNMP_CFG->trans_type = SNMP_TRANS_TCP;
-  }
- | REMOTE ADDRESS text {
-    if (SNMP_CFG->trans_type != SNMP_TRANS_DEFAULT)
-      cf_error("Duplicit option remote address");
-
-    if (strcmp($3, agentx_master_addr)) {
-      SNMP_CFG->remote_path = $3;
+    if (strcmp($4, agentx_master_addr)) {
+      SNMP_CFG->master_path = $4;
       SNMP_CFG->trans_type = SNMP_TRANS_UNIX;
     }
   }
- | LOCAL AS expr {
-    if ($3 < 1 || $3 > UINT16_MAX) cf_error("Invalid local AS");
-    SNMP_CFG->bgp_local_as = $3;
+ | AGENTX MASTER ADDRESS ipa {
+    if (SNMP_CFG->trans_type != SNMP_TRANS_DEFAULT)
+      cf_error("Duplicit option remote address");
+
+    SNMP_CFG->master_ip = $4;
+    SNMP_CFG->trans_type = SNMP_TRANS_TCP;
   }
- | SNMP DESCRIPTION text {
+ | AGENTX MASTER PORT expr {
+    /* TODO better grammar name (maybe: AX MSTR ADDRESS ipa / ADDRESS ipa [PORT] expr) */
+    if (($4 < 1) || ($4 > 65535)) cf_error("Invalid port number");
+    SNMP_CFG->master_port = $4;
+  }
+ | SUBAGENT DESCRIPTION text {
     if (strlen($3) > UINT16_MAX - 1) cf_error("Description is too long");
     SNMP_CFG->description = $3;
   }
- | PRIORITY expr {
-    if ($2 > 255) cf_error("Registration priority must be in range 0-255");
-    SNMP_CFG->priority = $2;
+ | REGISTRATION PRIORITY expr {
+    if ($3 > 255) cf_error("Registration priority must be in range 0-255");
+    SNMP_CFG->priority = $3;
   }
  | MESSAGE TIMEOUT expr_us {
     /* TODO */
@@ -87,39 +79,43 @@ snmp_proto_item:
     / * TODO * /
     SNMP_CFG->error_timeout = $3;
   }
+ | RETRY TIME expr_us {
+    / * TODO * /
+    SNMP_CFG->retry_timeout = $3;
+  }
 */
  | START DELAY TIME expr_us { SNMP_CFG->startup_delay = $4; }
  | VERBOSE bool { SNMP_CFG->verbose = $2; }
  ;
 
-snmp_proto_opts:
-   /* empty */
- | snmp_proto_opts snmp_proto_item ';'
+bgp4_mib:
+   BGP4 MIB '{' bgp4_mib_items '}'
+ | MIB BGP4 '{' bgp4_mib_items '}'
  ;
 
-snmp_proto_start: proto_start SNMP
-{
-  this_proto = proto_config_new(&proto_snmp, $1);
+bgp4_mib_items:
+   bgp4_mib_items_opt bgp4_mib_as bgp4_mib_items_opt bgp4_mib_id bgp4_mib_items_opt
+ ;
 
-  init_list(&SNMP_CFG->bgp_entries);
-  SNMP_CFG->bonds = 0;
+bgp4_mib_as:
+  LOCAL AS expr ';' {
+    if ($3 < 1 || $3 > UINT16_MAX) cf_error("Invalid local AS for BGP4-MIB");
+    SNMP_CFG->bgp4_local_as = $3;
+  }
+  /* TODO add option to follow some bgp peer local as */
+ ;
 
-  SNMP_CFG->local_ip = IP4_NONE;
-  SNMP_CFG->remote_ip = IPA_NONE;
-  SNMP_CFG->remote_path = agentx_master_addr;
-  SNMP_CFG->trans_type = SNMP_TRANS_DEFAULT;
-  SNMP_CFG->bgp_local_id = IP4_NONE;
-  SNMP_CFG->local_port = 0;
-  SNMP_CFG->remote_port = 705;
-  SNMP_CFG->bgp_local_as = 0;
-  SNMP_CFG->verbose = 0;
+bgp4_mib_id:
+   LOCAL ROUTER ID idval ';' { SNMP_CFG->bgp4_local_id = $4; }
+  /* TODO add option to inherit global router id, or follow some bgp peer */
+ ;
 
-  SNMP_CFG->description = "bird";
-  SNMP_CFG->timeout = 15;
-  SNMP_CFG->priority = AGENTX_PRIORITY;
-}
+bgp4_mib_items_opt:
+   /* empty */
+ | bgp4_mib_items_opt bgp4_mib_peer ';'
+ ;
 
-snmp_bgp_bond: BGP symbol
+bgp4_mib_peer: PEER symbol
 {
   /* the snmp_context rule sets the correct value of this_bond */
   cf_assert_symbol($2, SYM_PROTO);
@@ -129,11 +125,6 @@ snmp_bgp_bond: BGP symbol
   cf_assert($2->proto->protocol == &proto_bgp,
     "SNMP BGP bond accepts only BGP protocols");
 
-  struct bgp_config *bgp_config = SKIP_BACK(struct bgp_config, c, $2->proto);
-
-  if (!ipa_is_ip4(bgp_config->remote_ip))
-    cf_error("BGP4-MIB does not support IPv6 addresses.");
-
   struct snmp_bond *this_bond = cfg_alloc(sizeof(struct snmp_bond));
   this_bond->type = SNMP_BGP;
   this_bond->config = $2->proto;
@@ -141,6 +132,34 @@ snmp_bgp_bond: BGP symbol
   add_tail(&SNMP_CFG->bgp_entries, &this_bond->n);
   SNMP_CFG->bonds++;
 }
+
+snmp_proto_opts:
+   /* empty */
+ | snmp_proto_opts snmp_proto_item ';'
+ | snmp_proto_opts bgp4_mib
+ ;
+
+snmp_proto_start: proto_start SNMP
+{
+  this_proto = proto_config_new(&proto_snmp, $1);
+
+  init_list(&SNMP_CFG->bgp_entries);
+  SNMP_CFG->bonds = 0;
+
+  SNMP_CFG->local_ip = IPA_NONE;
+  SNMP_CFG->master_ip = IPA_NONE;
+  SNMP_CFG->master_port = SNMP_PORT;
+  SNMP_CFG->master_path = agentx_master_addr;
+  SNMP_CFG->trans_type = SNMP_TRANS_DEFAULT;
+  SNMP_CFG->bgp4_local_id = 0;
+  SNMP_CFG->bgp4_local_as = 0;
+  SNMP_CFG->verbose = 0;
+
+  SNMP_CFG->description = "bird";
+  SNMP_CFG->timeout = 15;
+  SNMP_CFG->priority = AGENTX_PRIORITY;
+}
+
 
 CF_CODE
 

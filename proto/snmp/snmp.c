@@ -328,8 +328,8 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
       /* We need to lock the IP address */
       struct object_lock *lock;
       lock = p->lock = olock_new(p->pool);
-      lock->addr = p->remote_ip;
-      lock->port = p->remote_port;
+      lock->addr = p->master_ip;
+      lock->port = p->master_port;
       lock->type = OBJLOCK_TCP;
       lock->hook = snmp_start_locked;
       lock->data = p;
@@ -349,15 +349,15 @@ snmp_set_state(struct snmp_proto *p, enum snmp_proto_state state)
     if (cf->trans_type == SNMP_TRANS_TCP)
     {
       s->type = SK_TCP_ACTIVE;
-      s->daddr = p->remote_ip;
-      s->dport = p->remote_port;
+      s->daddr = p->master_ip;
+      s->dport = p->master_port;
       s->rbsize = SNMP_RX_BUFFER_SIZE;
       s->tbsize = SNMP_TX_BUFFER_SIZE;
     }
     else
     {
       s->type = SK_UNIX_ACTIVE;
-      s->host = cf->remote_path; /* daddr */
+      s->host = cf->master_path; /* daddr */
       s->rbsize = SNMP_RX_BUFFER_SIZE;
       s->tbsize = SNMP_TX_BUFFER_SIZE;
     }
@@ -517,16 +517,16 @@ snmp_reconfigure_logic(struct snmp_proto *p, const struct snmp_config *new)
     return 0;
 
   if (old->trans_type == SNMP_TRANS_TCP &&
-      (ipa_compare(old->remote_ip, new->remote_ip)
-      || old->remote_port != new->remote_port))
+      (ipa_compare(old->master_ip, new->master_ip)
+      || old->master_port != new->master_port))
     return 0;
 
   if (old->trans_type != SNMP_TRANS_TCP &&
-      bstrcmp(old->remote_path, new->remote_path))
+      bstrcmp(old->master_path, new->master_path))
     return 0;
 
-  return !(ip4_compare(old->bgp_local_id, new->bgp_local_id)
-      || old->bgp_local_as != new->bgp_local_as
+  return (old->bgp4_local_id != new->bgp4_local_id
+      || old->bgp4_local_as != new->bgp4_local_as
       || old->timeout != new->timeout	// TODO distinguish message timemout
 	//(Open.timeout and timeout for timer)
       || old->priority != new->priority
@@ -594,11 +594,10 @@ snmp_start(struct proto *P)
   struct snmp_config *cf = (struct snmp_config *) P->cf;
 
   p->local_ip = cf->local_ip;
-  p->remote_ip = cf->remote_ip;
-  p->local_port = cf->local_port;
-  p->remote_port = cf->remote_port;
-  p->bgp_local_as = cf->bgp_local_as;
-  p->bgp_local_id = cf->bgp_local_id;
+  p->master_ip = cf->master_ip;
+  p->master_port = cf->master_port;
+  p->bgp4_local_as = cf->bgp4_local_as;
+  p->bgp4_local_id = cf->bgp4_local_id;
   p->timeout = cf->timeout;
   p->startup_delay = cf->startup_delay;
   p->verbose = cf->verbose;
@@ -651,7 +650,7 @@ snmp_postconfig(struct proto_config *CF)
   const struct snmp_config *cf  = (struct snmp_config *) CF;
 
   /* Walk the BGP protocols and cache their references. */
-  if (cf->bgp_local_as == 0)
+  if (cf->bgp4_local_as == 0)
     cf_error("local as not specified");
 }
 
