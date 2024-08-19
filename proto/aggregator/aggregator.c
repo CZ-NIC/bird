@@ -1554,7 +1554,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
       return;
 
     /* Evaluate route attributes. */
-    struct aggregator_bucket *tmp_bucket = lp_allocz(p->bucket_pool, sizeof(*tmp_bucket));
+    struct aggregator_bucket *tmp_bucket = allocz(sizeof(*tmp_bucket) + sizeof(tmp_bucket->aggr_data[0]) * p->aggr_on_count);
     assert(tmp_bucket->id == 0);
 
     for (uint val_idx = 0; val_idx < p->aggr_on_count; val_idx++)
@@ -1663,7 +1663,8 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
       ;
     else
     {
-      new_bucket = tmp_bucket;
+      new_bucket = lp_allocz(p->bucket_pool, sizeof(*new_bucket) + sizeof(new_bucket->aggr_data[0]) * p->aggr_on_count);
+      memcpy(new_bucket, tmp_bucket, sizeof(*new_bucket) + sizeof(new_bucket->aggr_data[0]) * p->aggr_on_count);
       HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
     }
 
