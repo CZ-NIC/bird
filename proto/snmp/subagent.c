@@ -932,8 +932,8 @@ snmp_get_bulk_pdu(struct snmp_proto *p, struct snmp_pdu *c, struct mib_walk_stat
   //bulk->has_any |= snmp_get_next_pdu(p, c, walk);
 }
 
-/*
- * parse_gets_pdu - parse received gets PDUs
+/**
+ * parse_gets_pdu - common parsing of received gets PDUs
  * @p: SNMP protocol instance
  * @pkt_start: pointer to first byte of received PDU
  *
@@ -1312,7 +1312,7 @@ snmp_register_ack(struct snmp_proto *p, struct agentx_response *res)
     snmp_up(p);
 }
 
-/*
+/**
  * snmp_stop_subagent - close established session
  * @p: SNMP protocol instance
  *
@@ -1326,7 +1326,7 @@ snmp_stop_subagent(struct snmp_proto *p)
   close_pdu(p, AGENTX_CLOSE_SHUTDOWN);
 }
 
-/*
+/**
  * snmp_register_mibs - register all MIB subtrees
  * @p: SNMP protocol instance
  */
@@ -1337,7 +1337,7 @@ snmp_register_mibs(struct snmp_proto *p)
   ASSUME(!EMPTY_LIST(p->registration_queue));
 }
 
-/*
+/**
  * snmp_start_subagent - send session open request
  * @p: SNMP protocol instance
  *

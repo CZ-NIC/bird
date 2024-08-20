@@ -23,7 +23,7 @@ snmp_pdu_context(struct snmp_pdu *pdu, struct snmp_proto *p, sock *sk)
   pdu->sr_o_end = NULL;
 }
 
-/**
+/*
  * snmp_session - store packet ids from protocol to header
  * @p: source SNMP protocol instance
  * @h: dest PDU header
@@ -43,7 +43,7 @@ snmp_varbind_data(const struct agentx_varbind *vb)
   return (void *) &vb->name + name_size;
 }
 
-/**
+/*
  * snmp_is_oid_empty - check if oid is null-valued
  * @oid: object identifier to check
  *
@@ -133,7 +133,7 @@ snmp_oid_to_buf(struct oid *dst, const struct oid *src)
     STORE_U32(dst->ids[i], src->ids[i]);
 }
 
-/**
+/*
  * snmp_str_size_from_len - return in-buffer octet string size
  * @len: length of C-string, returned from strlen()
  */
@@ -143,7 +143,7 @@ snmp_str_size_from_len(uint len)
   return 4 + BIRD_ALIGN(len, 4);
 }
 
-/**
+/*
  * snmp_str_size - return in packet size of supplied string
  * @str: measured string
  *
@@ -156,7 +156,7 @@ snmp_str_size(const char *str)
   return snmp_str_size_from_len(strlen(str));
 }
 
-/**
+/*
  * snmp_oid_size - measure size of OID in bytes
  * @o: object identifier to use
  *
@@ -185,7 +185,7 @@ snmp_get_octet_size(const struct agentx_octet_str *str)
   return str->length;
 }
 
-/**
+/*
  * snmp_varbind_header_size - measure size of VarBind without data in bytes
  * @vb_name: VarBind OID name
  *
@@ -230,7 +230,7 @@ snmp_varbind_size_unsafe(const struct agentx_varbind *vb)
   }
 }
 
-/**
+/*
  * snmp_varbind_size_from_len - get size in-buffer VarBind for known OID and data
  * @n_subid: number of subidentifiers of the VarBind's OID name
  * @type: type of VarBind
@@ -282,7 +282,7 @@ snmp_test_varbind_type(u16 type)
 }
 
 
-/**
+/*
  * snmp_valid_ip4_index - check IPv4 address validity in oid
  * @o: object identifier holding ip address
  * @start: index of first address id
@@ -296,7 +296,7 @@ snmp_valid_ip4_index(const struct oid *o, uint start)
     return 0;
 }
 
-/**
+/*
  * snmp_valid_ip4_index_unsafe - check validity of IPv4 address in oid
  * @o: object identifier holding ip address
  * @start: index of first address id
@@ -337,7 +337,7 @@ snmp_put_nstr(byte *buf, const char *str, uint len)
   return buf + (alen - len);
 }
 
-/**
+/*
  * snmp_put_str - put string into SNMP PDU transcieve buffer
  * @buf: pointer to first unoccupied buffer byte
  * @str: string to place
@@ -373,7 +373,7 @@ snmp_put_blank(byte *buf)
   return buf + 4;
 }
 
-/**
+/*
  * snmp_put_fbyte - put one padded byte to SNMP PDU transcieve buffer
  * @buf: pointer to free buffer byte
  * @data: byte to use
@@ -709,7 +709,7 @@ snmp_oid_log(const struct oid *oid)
  * viewed as longest common prefix. Note that if both @left and @right are
  * prefixable but not prefixed the result in @out will also not be prefixed.
  *
- * This function is used intensively by snmp_test.c.
+ * This function is used intensively by |snmp_test.c|.
  */
 void
 snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct oid *out)
@@ -801,6 +801,18 @@ snmp_oid_common_ancestor(const struct oid *left, const struct oid *right, struct
 /*
  * SNMP MIB tree walking
  */
+
+/**
+ * snmp_walk_init - Try to find exactly matching OID packat VarBind in MIB tree
+ * @tree: MIB tree to use
+ * @walk: MIB tree walk state storage
+ * @c: AgentX PDU creation context
+ *
+ * Populate the @walk state and try to find MIB tree leaf equivalent to
+ * c->sr_vb_start which is requested VarBind to fill based on it's OID name.
+ * Return value is either pointer to valid MIB tree leaf or NULL if no leaf
+ * matched.
+ */
 struct mib_leaf *
 snmp_walk_init(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_pdu *c)
 {
@@ -816,6 +828,15 @@ snmp_walk_init(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_p
   return (!node || !mib_node_is_leaf(node)) ? NULL : &node->leaf;
 }
 
+/**
+ * snmp_walk_next - wrapper around MIB tree mib_walk_next() for single call
+ * @tree: MIB tree to use
+ * @walk: MIB tree walk state storage
+ * @c: AgentX PDU creation context
+ *
+ * The snmp_walk_next() function searches MIB tree with updates of the VarBind
+ * OID name with.
+ */
 struct mib_leaf *
 snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_pdu *c)
 {
@@ -881,6 +902,18 @@ snmp_walk_next(struct mib_tree *tree, struct mib_walk_state *walk, struct snmp_p
   return leaf;
 }
 
+/**
+ * snmp_walk_fill - fill current VarBind by filler hook invocation
+ * @leaf: MIB tree leaf with filler hook
+ * @walk: MIB tree walk state
+ * @c: AgentX PDU creation context
+ *
+ * The function takes responsibility for VarBind type setting (for known VB
+ * types) and for buffer space allocated for VarBind data (based on type or
+ * configured size). This simplifies code of filler hooks in most cases.
+ * We also allow the @leaf to be NULL, in which case we set the VarBind to
+ * error type noSuchObject.
+ */
 enum snmp_search_res
 snmp_walk_fill(struct mib_leaf *leaf, struct mib_walk_state *walk, struct snmp_pdu *c)
 {

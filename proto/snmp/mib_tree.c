@@ -27,7 +27,7 @@ mib_mb_realloc(pool *p, void *ptr, unsigned size)
   return mb_realloc(ptr, size);
 }
 
-/*
+/**
  * mib_tree_init - Initialize a MIB tree
  * @p: allocation source pool
  * @t: pointer to a tree being initialized
@@ -57,6 +57,13 @@ mib_tree_init(pool *p, struct mib_tree *t)
   (void) mib_tree_add(p, t, oid, 0);
 }
 
+/**
+ * mib_tree_hint - preallocate child array for given OID
+ * @p: memory pool to allocated from
+ * @t: MIB tree to hint
+ * @oid: MIB subtree root with upto @size children
+ * @size: number of children in @oid subtree
+ */
 int
 mib_tree_hint(pool *p, struct mib_tree *t, const struct oid *oid, uint size)
 {
@@ -78,12 +85,7 @@ mib_tree_hint(pool *p, struct mib_tree *t, const struct oid *oid, uint size)
   return 1;
 }
 
-
-// TODO: This function does not work with leaf nodes inside the snmp_internet prefix
-// area
-// Return NULL of failure, valid mib_node_u pointer otherwise
-
-/*
+/**
  * mib_tree_add - Insert a new node to the tree
  * @p: allocation source pool
  * @t: MIB tree to insert to
@@ -99,6 +101,7 @@ mib_tree_hint(pool *p, struct mib_tree *t, const struct oid *oid, uint size)
 mib_node_u *
 mib_tree_add(pool *p, struct mib_tree *t, const struct oid *oid, int is_leaf)
 {
+  // TODO may not function properly in snmp_internet prefix region
   struct mib_walk_state walk;
   mib_node_u *node;
 
@@ -248,7 +251,7 @@ mib_tree_add(pool *p, struct mib_tree *t, const struct oid *oid, int is_leaf)
   return last;
 }
 
-/*
+/**
  * mib_tree_delete - delete a MIB subtree
  * @t: MIB tree
  * @walk: MIB tree walk state that specify the subtree
@@ -370,7 +373,7 @@ continue_while:	  /* like outer continue, but skip always true condition */
   return deleted;
 }
 
-/*
+/**
  * mib_tree_remove - delete a MIB subtree
  * @t: MIB tree
  * @oid: object identifier specifying the subtree
@@ -392,7 +395,7 @@ mib_tree_remove(struct mib_tree *t, const struct oid *oid)
   return mib_tree_delete(t, &walk);
 }
 
-/*
+/**
  * mib_tree_find - Find a OID node in MIB tree
  * @t: searched tree
  * @walk: output search state
@@ -549,6 +552,11 @@ mib_tree_find(const struct mib_tree *t, struct mib_walk_state *walk, const struc
   return walk->stack[walk->stack_pos++] = node;
 }
 
+/**
+ * mib_tree_walk_init - Initialize MIB tree walk state
+ * @walk: MIB tree walk state to init
+ * @t: optional MIB tree
+ */
 void
 mib_tree_walk_init(struct mib_walk_state *walk, const struct mib_tree *t)
 {
@@ -560,6 +568,12 @@ mib_tree_walk_init(struct mib_walk_state *walk, const struct mib_tree *t)
     walk->stack[0] = (mib_node_u *) &t->root;
 }
 
+/*
+ * walk_is_prefixable - test prefixability of MIB walk state
+ * @walk: MIB tree walk state to use
+ *
+ * This function is functionally equivalent to snmp_oid_is_prefixable().
+ */
 static inline int
 walk_is_prefixable(const struct mib_walk_state *walk)
 {
@@ -577,6 +591,14 @@ walk_is_prefixable(const struct mib_walk_state *walk)
   return id > 0 && id <= UINT8_MAX;
 }
 
+/*
+ * mib_tree_walk_to_oid - retrieve OID from MIB tree walk state
+ * @walk: MIB tree walk state to transform
+ * @result: destination OID
+ * @subids: Maximal number of subids in available space
+ *
+ * Return 1 if the space is insufficient, 0 otherwise.
+ */
 int
 mib_tree_walk_to_oid(const struct mib_walk_state *walk, struct oid *result, u32 subids)
 {
@@ -625,12 +647,12 @@ mib_tree_walk_to_oid(const struct mib_walk_state *walk, struct oid *result, u32 
 }
 
 /*
- * return -1 if walk_oid < oid
- * return 0 if walk_oid == oid
- * return +1 if walk_oid > oid
+ * mib_tree_walk_oid_compare - compare MIB tree walk state and OID
+ * @walk: left relation operand
+ * @oid: Object Identifier in cpu native byte order
  *
+ * Return value semantics is the same as snmp_oid_compare().
  */
-// TODO tests, doc string
 int
 mib_tree_walk_oid_compare(const struct mib_walk_state *walk, const struct oid *oid)
 {
@@ -741,6 +763,11 @@ mib_tree_walk_is_oid_descendant(const struct mib_walk_state *walk, const struct 
   }
 }
 
+/**
+ * mib_tree_walk_next - find MIB tree node successor in lexicagraphically ordered MIB tree
+ * @t: MIB tree to use
+ * @walk: MIB tree walk state to use
+ */
 mib_node_u *
 mib_tree_walk_next(const struct mib_tree *t, struct mib_walk_state *walk)
 {
@@ -789,6 +816,12 @@ mib_tree_walk_next(const struct mib_tree *t, struct mib_walk_state *walk)
   return NULL;
 }
 
+/**
+ * mib_tree_walk_next_leaf - wrapper around mib_tree_walk_next returning only leafs
+ * @t: MIB tree to use
+ * @walk: MIB tree walk state
+ * @skip: lower value bound for next OID id
+ */
 struct mib_leaf *
 mib_tree_walk_next_leaf(const struct mib_tree *t, struct mib_walk_state *walk, u32 skip)
 {
