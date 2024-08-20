@@ -31,6 +31,7 @@ snmp_proto:
 
 snmp_proto_item:
    proto_item
+ | bgp4_mib
  | SOURCE ADDRESS ipa { SNMP_CFG->local_ip = $3; }
  | AGENTX MASTER ADDRESS DEFAULT {
     if (SNMP_CFG->trans_type != SNMP_TRANS_DEFAULT)
@@ -47,15 +48,20 @@ snmp_proto_item:
   }
  | AGENTX MASTER ADDRESS ipa {
     if (SNMP_CFG->trans_type != SNMP_TRANS_DEFAULT)
-      cf_error("Duplicit option remote address");
+      cf_error("Duplicit option agentx master address");
 
     SNMP_CFG->master_ip = $4;
     SNMP_CFG->trans_type = SNMP_TRANS_TCP;
   }
- | AGENTX MASTER PORT expr {
-    /* TODO better grammar name (maybe: AX MSTR ADDRESS ipa / ADDRESS ipa [PORT] expr) */
-    if (($4 < 1) || ($4 > 65535)) cf_error("Invalid port number");
-    SNMP_CFG->master_port = $4;
+ | AGENTX MASTER ADDRESS ipa PORT expr {
+    if (SNMP_CFG->trans_type != SNMP_TRANS_DEFAULT)
+      cf_error("Duplicit option agentx master address");
+
+    if (($6 < 1) || ($6 > UINT16_MAX)) cf_error("Invalid port number");
+
+    SNMP_CFG->master_ip = $4;
+    SNMP_CFG->trans_type = SNMP_TRANS_TCP;
+    SNMP_CFG->master_port = $6;
   }
  | SUBAGENT DESCRIPTION text {
     if (strlen($3) > UINT16_MAX - 1) cf_error("Description is too long");
@@ -89,8 +95,8 @@ snmp_proto_item:
  ;
 
 bgp4_mib:
-   BGP4 MIB '{' bgp4_mib_items '}'
- | MIB BGP4 '{' bgp4_mib_items '}'
+   MIB BGP4 '{' bgp4_mib_items '}'
+ | BGP4 MIB '{' bgp4_mib_items '}'
  ;
 
 bgp4_mib_items:
@@ -136,7 +142,6 @@ bgp4_mib_peer: PEER symbol
 snmp_proto_opts:
    /* empty */
  | snmp_proto_opts snmp_proto_item ';'
- | snmp_proto_opts bgp4_mib
  ;
 
 snmp_proto_start: proto_start SNMP
@@ -151,8 +156,8 @@ snmp_proto_start: proto_start SNMP
   SNMP_CFG->master_port = SNMP_PORT;
   SNMP_CFG->master_path = agentx_master_addr;
   SNMP_CFG->trans_type = SNMP_TRANS_DEFAULT;
-  SNMP_CFG->bgp4_local_id = 0;
   SNMP_CFG->bgp4_local_as = 0;
+  SNMP_CFG->bgp4_local_id = 0;
   SNMP_CFG->verbose = 0;
 
   SNMP_CFG->description = "bird";

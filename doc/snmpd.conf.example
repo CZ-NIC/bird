@@ -1,0 +1,18 @@
+#
+#  snmpd configuration file
+#
+
+# SNMP connection address
+agentaddress  127.0.0.1
+
+# enable AgentX protocol
+master agentx
+
+# AgentX connection address
+agentXSocket tcp:localhost:705
+
+
+# Create example user
+createUser snmp_name MD5 test_pass
+rwuser snmp_name noauth
+

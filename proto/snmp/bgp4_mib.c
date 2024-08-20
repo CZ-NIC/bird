@@ -749,12 +749,14 @@ bgp4_next_peer(struct mib_walk_state *state, struct snmp_pdu *c)
 void
 snmp_bgp4_show_info(struct snmp_proto *p)
 {
+  /* TODO: Use special code (not -1006) for printing MIB, or BGP4-MIB data?
+   * don't forget add it into doc/reply_code */
   cli_msg(-1006, "    BGP4-MIB");
   cli_msg(-1006, "      Local AS %u", p->bgp4_local_as);
   cli_msg(-1006, "      Local router id %R", p->bgp4_local_id);
   cli_msg(-1006, "      BGP peers");
 
-  if (p->bgp_hash.count == 0)
+  if (p->bgp_hash.count == 0 || !snmp_is_active(p))
   {
     cli_msg(-1006, "        <no peers available>");
   }
@@ -767,7 +769,7 @@ snmp_bgp4_show_info(struct snmp_proto *p)
     cli_msg(-1006, "        Protocol name: %s", peer->bgp_proto->p.name);
     cli_msg(-1006, "          Remote IPv4 address: %I4", peer->peer_ip);
     cli_msg(-1006, "          Remote router id %R", peer->bgp_proto->remote_id);
-    // TODO: add local ip addr
+    /* TODO: add peer connection local ip */
   }
   HASH_WALK_END;
 }

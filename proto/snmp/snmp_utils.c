@@ -390,8 +390,8 @@ snmp_put_fbyte(byte *buf, u8 data)
 
 /**
  * snmp_oid_compare - find the lexicographical order relation between @left and @right
- * @left: left object id relation operant
- * @right: right object id relation operant
+ * @left: left object id relation operand
+ * @right: right object id relation operand
  *
  * both @left and @right has to be non-blank.
  * function returns 0 if left == right,

@@ -11,10 +11,11 @@
  * DOC: Simple Network Management Protocol
  *
  * The SNMP protocol is divided into several parts: |snmp.c| which implements
- * the BIRD intergration, |subagent.c| contains functions for creating and
- * parsing packets, |bgp4_mib.c| takes care of the bgp MIB subtree of standard
- * BGP4-MIB and |snmp_utils.c| which is collections of helper functions for
- * working with OIDs, VarBinds.
+ * integration with BIRD core, |subagent.c| provides AgentX subagent behaviour
+ * as well as functions for creating and parsing packets. In file |mib_tree.c|
+ * is implemented OID prefix tree for storing supported MIBs. File |bgp4_mib.c|
+ * implements parts of BGP4-MIB, |snmp_utils.c| is collection of helper
+ * functions for whole SNMP protocol.
  *
  * Althrough called SNMP the BIRD does not implement SNMP directly but acts as
  * an AgentX subagent. AgentX subagent connects to AgentX master agent that
@@ -40,6 +41,9 @@
  *
  *
  *
+ */
+
+/*
  * SNMP State Machine
  *
  *  States with main transitions

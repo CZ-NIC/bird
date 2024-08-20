@@ -1,0 +1,5 @@
+defSecurityName snmp_name
+defAuthType MD5
+defAuthPassphrase test_pass
+defSecurityLevel noAuthNoPriv
+defVersion 3
