@@ -85,12 +85,6 @@ oid_create(u8 n_subid, u8 prefix, u8 include, ...)
 }
 
 static u32
-xrandom(u32 max)
-{
-  return (bt_random() % max);
-}
-
-static u32
 oid_random_id(void)
 {
   return (bt_random() % (OID_MAX_ID));
@@ -99,17 +93,17 @@ oid_random_id(void)
 static struct oid *
 random_prefixed_oid(void)
 {
-  u32 len = xrandom(OID_MAX_LEN + 1 - (ARRAY_SIZE(snmp_internet) + 1));
+  u32 len = bt_random_n(OID_MAX_LEN + 1 - (ARRAY_SIZE(snmp_internet) + 1));
 
-  u8 prefix = (u8) xrandom(UINT8_MAX + 1);
+  u8 prefix = (u8) bt_random_n(UINT8_MAX + 1);
 
   if (!prefix)
     return oid_create(0, 0, 0, 0);
 
   struct oid *random = tmp_alloc(snmp_oid_size_from_len(len));
-  /* (xrandom(2) * bt_random()) has 0.5 probability to have value 0 and
+  /* (bt_random_n(2) * bt_random()) has 0.5 probability to have value 0 and
    * 0.5 to have random u32 (including zero) */
-  oid_init(random, 0, prefix, xrandom(2) * bt_random());
+  oid_init(random, 0, prefix, bt_random_n(2) * bt_random());
   random->n_subid = len;
 
   for (u32 id = 0; id < len; id++)
@@ -122,12 +116,12 @@ static struct oid *
 random_no_prefix_oid(void)
 {
   /* probability that the random OID is prefixable is practically zero */
-  u32 len = xrandom(OID_MAX_LEN + 1);
+  u32 len = bt_random_n(OID_MAX_LEN + 1);
 
   struct oid *random = tmp_alloc(snmp_oid_size_from_len(len));
-  /* (xrandom(2) * bt_random()) has 0.5 probability to have value 0 and
+  /* (bt_random_n(2) * bt_random()) has 0.5 probability to have value 0 and
    * 0.5 to have random u32 (including zero) */
-  oid_init(random, 0, 0, xrandom(2) * bt_random());
+  oid_init(random, 0, 0, bt_random_n(2) * bt_random());
   random->n_subid = len;
 
   for (u32 id = 0; id < len; id++)
@@ -140,19 +134,19 @@ static struct oid *
 random_prefixable_oid(void)
 {
   /* generate the len without the snmp_internet prefix included and prefix ID */
-  u32 len = xrandom(OID_MAX_LEN + 1 - (ARRAY_SIZE(snmp_internet) + 1));
+  u32 len = bt_random_n(OID_MAX_LEN + 1 - (ARRAY_SIZE(snmp_internet) + 1));
 
   struct oid *random = tmp_alloc(
       snmp_oid_size_from_len(len + ARRAY_SIZE(snmp_internet) + 1));
-  /* (xrandom(2) * bt_random()) has 0.5 probability to have value 0 and
+  /* (bt_random_n(2) * bt_random()) has 0.5 probability to have value 0 and
    * 0.5 to have random u32 (including zero) */
-  oid_init(random, 0, 0, xrandom(2) * bt_random());
+  oid_init(random, 0, 0, bt_random_n(2) * bt_random());
   random->n_subid = len + ARRAY_SIZE(snmp_internet) + 1;
 
   for (u32 inet_id = 0; inet_id < ARRAY_SIZE(snmp_internet); inet_id++)
     random->ids[inet_id] = snmp_internet[inet_id];
 
-  random->ids[ARRAY_SIZE(snmp_internet)] = xrandom(UINT8_MAX + 1);
+  random->ids[ARRAY_SIZE(snmp_internet)] = bt_random_n(UINT8_MAX + 1);
 
   for (u32 id = 0; id < len; id++)
     random->ids[id + ARRAY_SIZE(snmp_internet) + 1] = oid_random_id();
@@ -163,7 +157,7 @@ random_prefixable_oid(void)
 static struct oid *
 random_oid(void)
 {
-  u32 option = xrandom(3);
+  u32 option = bt_random_n(3);
 
   if (option == 0)
     return random_prefixed_oid();
@@ -422,9 +416,7 @@ t_varbind_name_to_tx(void)
   memset(snmp_proto, 0, sizeof(struct snmp_proto));
   sock *s = sk_new(&root_pool);
   snmp_proto->sock = s;
-  /* dirty hack sk_alloc_bufs() */
-  s->tbsize = SNMP_BUFFER_SIZE;
-  s->tbuf = s->tbuf_alloc = xmalloc(s->tbsize);
+  sk_set_tbsize(s, SNMP_BUFFER_SIZE);
   void *buffer = s->tbuf;
 
   struct snmp_pdu copy = {
@@ -535,7 +527,7 @@ continue_testing:
       fix_byteorder(work->ids, work->n_subid);
 
       /* include also the prefix ID (at index 4) */
-      u32 index = xrandom(ARRAY_SIZE(snmp_internet) + 1);
+      u32 index = bt_random_n(ARRAY_SIZE(snmp_internet) + 1);
       /* change randomly picked id at index from 0..5 (included) */
       u32 random = bt_random();
       if (index == ARRAY_SIZE(snmp_internet) && random > 255)
@@ -579,7 +571,7 @@ walk_to_oid_one(pool *pool, const struct oid *oid)
   const struct oid *inet_pref = oid_create(1, 0, 0, /* ids */ 1);
   mib_tree_remove(tree, inet_pref);
 
-  (void) mib_tree_add(pool, tree, oid, xrandom(2));
+  (void) mib_tree_add(pool, tree, oid, bt_random_n(2));
   mib_tree_find(tree, &walk, oid);
 
   char buf[1024];
@@ -722,7 +714,7 @@ generate_raw_oids(struct oid *oids[], int size, struct oid *(*generator)(void))
   for (int i = 0; i < size; i++)
   {
     /* binary version of ~5% */
-    if (i > 0 && xrandom(256) <= 13)
+    if (i > 0 && bt_random_n(256) <= 13)
     {
       /* at this chance, we create a copy instead of generating new oid */
       oids[i] = tmp_alloc(snmp_oid_size(oids[i-1]));
@@ -782,7 +774,7 @@ t_walk_oid_desc(void)
 
   for (int test = 0; test < size; test++)
   {
-    int i = xrandom(size);
+    int i = bt_random_n(size);
 
     char buffer[1024];
     struct oid *oid = (struct oid *) buffer;
@@ -793,7 +785,7 @@ t_walk_oid_desc(void)
     mib_tree_walk_init(&walk, NULL);
     (void) mib_tree_find(tree, &walk, oid);
 
-    int type = xrandom(4);
+    int type = bt_random_n(4);
     switch (type)
     {
       case 0:
@@ -809,11 +801,11 @@ t_walk_oid_desc(void)
 	if (!upto)
 	  continue;
 
-	u32 new = xrandom(upto) + 1;
+	u32 new = bt_random_n(upto) + 1;
 	oid->n_subid = ids + new;
 
 	for (u32 i = 0; i < new; i++)
-	  oid->ids[ids + i] = xrandom(OID_MAX_ID);
+	  oid->ids[ids + i] = bt_random_n(OID_MAX_ID);
 
 	bt_assert(mib_tree_walk_is_oid_descendant(&walk, oid) > 0);
 
@@ -828,12 +820,12 @@ t_walk_oid_desc(void)
 	if (ids == 0 || ids == OID_MAX_LEN)
 	  continue;
 
-	u32 split = (ids > 1) ? xrandom(ids - 1) + 1 : 0;
-	u32 ext = (type == 3) ? xrandom(MIN(OID_MAX_LEN - ids, 16)) : 0;
+	u32 split = (ids > 1) ? bt_random_n(ids - 1) + 1 : 0;
+	u32 ext = (type == 3) ? bt_random_n(MIN(OID_MAX_LEN - ids, 16)) : 0;
 
 	oid->n_subid = split + ext;
 	for (u32 i = 0; i < ext; i++)
-	  oid->ids[split + i] = xrandom(OID_MAX_ID);
+	  oid->ids[split + i] = bt_random_n(OID_MAX_ID);
 
 	int no_change = 1;
 	for (u32 j = 0; j < MIN(ids - split, ext); j++)
@@ -857,12 +849,14 @@ t_walk_oid_desc(void)
 
     u32 zero = 0;
     const struct oid *null_oid = (struct oid *) &zero;
-    u32 index = xrandom(size);
+    u32 index = bt_random_n(size);
 
     bt_assert(mib_tree_walk_is_oid_descendant(&walk, null_oid) == 0);
-    bt_assert(mib_tree_walk_is_oid_descendant(&walk, oids[index]) > 0);
+    if (!snmp_is_oid_empty(oids[index]))
+      bt_assert(mib_tree_walk_is_oid_descendant(&walk, oids[index]) > 0);
     (void) mib_tree_find(tree, &walk, oids[index]);
-    bt_assert(mib_tree_walk_is_oid_descendant(&walk, null_oid) < 0);
+    if (!snmp_is_oid_empty(oids[index]))
+      bt_assert(mib_tree_walk_is_oid_descendant(&walk, null_oid) < 0);
   }
 
   u32 null_oid = 0;
@@ -896,7 +890,7 @@ t_walk_oid_compare(void)
 
   for (int test = 0; test < size; test++)
   {
-    int i = xrandom(size);
+    int i = bt_random_n(size);
 
     char buffer[1024];
     struct oid *oid = (struct oid *) buffer;
@@ -907,7 +901,7 @@ t_walk_oid_compare(void)
     mib_tree_walk_init(&walk, NULL);
     (void) mib_tree_find(tree, &walk, oids[i]);
 
-    int type = xrandom(4);
+    int type = bt_random_n(4);
     switch (type)
     {
       case 0:
@@ -923,12 +917,12 @@ t_walk_oid_compare(void)
 	if (!upto)
 	  continue;
 
-	u32 new = xrandom(upto) + 1;
+	u32 new = bt_random_n(upto) + 1;
 	oid->n_subid = ids + new;
 	ASSERT(snmp_oid_size(oid) < 1024);
 
 	for (u32 i = 0; i < new; i++)
-	  oid->ids[ids + i] = xrandom(OID_MAX_ID);
+	  oid->ids[ids + i] = bt_random_n(OID_MAX_ID);
 
 
 	bt_assert(mib_tree_walk_oid_compare(&walk, oid) < 0);
@@ -943,12 +937,12 @@ t_walk_oid_compare(void)
 	if (ids == 0 || ids == OID_MAX_LEN)
 	  continue;
 
-	u32 split = (ids > 1) ? xrandom(ids - 1) + 1 : 0;
-	u32 ext = (type == 3) ? xrandom(MIN(OID_MAX_LEN - ids, 16)) : 0;
+	u32 split = (ids > 1) ? bt_random_n(ids - 1) + 1 : 0;
+	u32 ext = (type == 3) ? bt_random_n(MIN(OID_MAX_LEN - ids, 16)) : 0;
 
 	oid->n_subid = split + ext;
 	for (u32 i = 0; i < ext; i++)
-	  oid->ids[split + i] = xrandom(OID_MAX_ID);
+	  oid->ids[split + i] = bt_random_n(OID_MAX_ID);
 
 	int cmp_res = 0;
 	for (u32 j = 0; j < MIN(ids - split, ext) && !cmp_res; j++)
@@ -957,10 +951,10 @@ t_walk_oid_compare(void)
 	if (!cmp_res && split + ext == ids)
 	  continue;
 
-	if (!cmp_res && split < ids && ext == 0)
+	if (!cmp_res && split + ext < ids)
 	  cmp_res = +1;
 
-	if (!cmp_res && split < ids && split + ext > ids)
+	if (!cmp_res && split + ext > ids)
 	  cmp_res = -1;
 
 	if (cmp_res < 0)
@@ -980,12 +974,16 @@ t_walk_oid_compare(void)
 
     u32 zero = 0;
     const struct oid *null_oid = (struct oid *) &zero;
-    u32 index = xrandom(size);
+    u32 index = bt_random_n(size);
 
     bt_assert(mib_tree_walk_oid_compare(&walk, null_oid) == 0);
-    bt_assert(mib_tree_walk_oid_compare(&walk, oids[index]) < 0);
+    if (!snmp_is_oid_empty(oids[index]))
+      bt_assert(mib_tree_walk_oid_compare(&walk, oids[index]) < 0);
+    else
+      bt_assert(mib_tree_walk_oid_compare(&walk, oids[index]) == 0);
     (void) mib_tree_find(tree, &walk, oids[index]);
-    bt_assert(mib_tree_walk_oid_compare(&walk, null_oid) > 0);
+    if (!snmp_is_oid_empty(oids[index]))
+      bt_assert(mib_tree_walk_oid_compare(&walk, null_oid) > 0);
   }
 
   u32 null_oid = 0;
@@ -1109,7 +1107,7 @@ gen_test_add(struct oid *(*generator)(void))
     for (int i = 0; i < size; i++)
     {
       int invalid = 0;
-      int is_leaf = (with_leafs) ? (int) xrandom(2) : 0;
+      int is_leaf = (with_leafs) ? (int) bt_random_n(2) : 0;
       types[i] = (byte) is_leaf;
 
       int will_cut = 0;
@@ -1252,7 +1250,7 @@ gen_test_find(struct oid *(*generator)(void))
     }
 
     for (int i = 0; i < size; i++)
-      types[i] = (byte) ((with_leafs) ? xrandom(2) : 0);
+      types[i] = (byte) ((with_leafs) ? bt_random_n(2) : 0);
 
     /*
      * by default initialized MIB tree will have internet prefix have inserted
@@ -1384,8 +1382,8 @@ gen_test_find(struct oid *(*generator)(void))
       if (subids > 0)
       {
 	found = NULL;
-	u32 new_ids = xrandom(subids);
-	mib_tree_walk_init(&walk, (xrandom(2)) ? tree : NULL);
+	u32 new_ids = bt_random_n(subids);
+	mib_tree_walk_init(&walk, (bt_random_n(2)) ? tree : NULL);
 
 	oids[i]->n_subid = new_ids;
 
@@ -1410,7 +1408,8 @@ gen_test_find(struct oid *(*generator)(void))
 
     for (int search = 0; search < size; search++)
     {
-      int has_node = 0;
+      int has_node = snmp_is_oid_empty(searched[search]);
+
       for (int stored = 0; stored < size; stored++)
       {
 	char buf[1024];
@@ -1448,7 +1447,6 @@ gen_test_find(struct oid *(*generator)(void))
 
       struct mib_walk_state walk;
       mib_tree_walk_init(&walk, NULL);
-      //mib_tree_walk_init(&walk, tree); /* TODO should work also like this */
       mib_node_u *found = mib_tree_find(tree, &walk, searched[search]);
       bt_assert(has_node == (found != NULL));
 
@@ -1461,8 +1459,8 @@ gen_test_find(struct oid *(*generator)(void))
       if (subids > 0)
       {
 	found = NULL;
-	u32 new_ids = xrandom(subids);
-	mib_tree_walk_init(&walk, (xrandom(2)) ? tree : NULL);
+	u32 new_ids = bt_random_n(subids);
+	mib_tree_walk_init(&walk, (bt_random_n(2)) ? tree : NULL);
 
 	searched[search]->n_subid = new_ids;
 
@@ -1571,7 +1569,7 @@ gen_test_delete_remove(struct oid *(*generator)(void), int remove)
     for (int i = 0; i < size; i++)
     {
       int is_leaf;
-      is_leaf = types[i] = (byte) (with_leafs) ? xrandom(2) : 0;
+      is_leaf = types[i] = (byte) (with_leafs) ? bt_random_n(2) : 0;
       (void) mib_tree_add(pool, tree, oids[i], is_leaf);
     }
 
@@ -1598,14 +1596,14 @@ gen_test_delete_remove(struct oid *(*generator)(void), int remove)
     /* test deletion one of the inserted OIDs */
     for (int round = 0; round < (size + 3) / 4 + remove; round++)
     {
-      /* note: we do not run any rounds for size zero because xrandom(0)
+      /* note: we do not run any rounds for size zero because bt_random_n(0)
        * does not exist */
       int i;
       struct oid *oid;
       if (!remove)
       {
 	/* this way we are also testing remove non-existent tree nodes */
-	i = xrandom(size); /* not xrandom(distinct) */
+	i = bt_random_n(size); /* not bt_random_n(distinct) */
 	oid = oids[i];
       }
       else
@@ -1728,7 +1726,7 @@ gen_test_traverse(struct oid *(*generator)(void))
 
     for (int o = 0; o < size; o++)
     {
-      int is_leaf = (with_leafs) ? (int) xrandom(2) : 0;
+      int is_leaf = (with_leafs) ? (int) bt_random_n(2) : 0;
       (void) mib_tree_add(pool, tree, oids[o], is_leaf);
     }
 
@@ -1847,7 +1845,7 @@ gen_test_leafs(struct oid *(*generator)(void))
 
     for (int o = 0; o < size; o++)
     {
-      int is_leaf = (with_leafs) ? (int) xrandom(2) : 0;
+      int is_leaf = (with_leafs) ? (int) bt_random_n(2) : 0;
       (void) mib_tree_add(pool, tree, oids[o], is_leaf);
     }
 
@@ -1946,11 +1944,6 @@ int main(int argc, char **argv)
 {
   bt_init(argc, argv);
   bt_bird_init();
-
-  //unsigned seed = rand();
-  unsigned seed = 1000789714;
-  log("random seed is %d", seed);
-  srandom(seed);
 
   bt_test_suite(t_oid_empty, "Function that determines if the OID is empty");
   bt_test_suite(t_oid_compare, "Function defining lexicographical order on OIDs");

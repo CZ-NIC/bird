@@ -677,8 +677,8 @@ mib_tree_walk_oid_compare(const struct mib_walk_state *walk, const struct oid *o
 	return 1;
     }
 
-    if (walk_idx == walk_subids)
-      return 1;
+    if (walk_idx < ARRAY_SIZE(snmp_internet) + 1)
+      return -1;
 
     const u8 walk_prefix = walk->stack[walk_idx++]->empty.id;
     if (walk_prefix < oid_prefix)
