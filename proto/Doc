@@ -8,5 +8,6 @@ C pipe
 C radv
 C rip
 C rpki
+C snmp
 C static
 S ../nest/rt-dev.c

@@ -6198,6 +6198,358 @@ protocol static {
 }
 </code>
 
+<sect>SNMP
+<label id="snmp">
+
+<p>The Simple Network Management Protocol is protocol for collecting and
+managing network devices. Managed information is divided into so called MIBs --
+Management Information Bases. Each MIB describe information and semantics it
+provides. The SNMP architecture is very flexible, some MIB are standartized by
+IETF, others published by independent third parties.
+
+<p>The BIRD SNMP support is achieved by an additional component -- a SNMP daemon
+with AgentX protocol support. The SNMP daemon acts as an AgentX master agent and
+deal with user authentication, access control and managing MIB regions in OID
+tree. BIRD instance acts as AgentX subagent, register configurated MIBs and
+provides queried data. The AgentX communication protocol between master agent
+and subagents does not consider security what so ever. It is therefore upon the
+user to use the AgentX in a secure way. This can be achieved either by using
+Unix Domain sockets on same host or by using secure tunnel. Note that following
+sections containing pieces of Net-SNMP configuraiton are only meant as a helper
+for cold start, or as a pointer what to search for, not as full reference. For
+full reference consult the original manpages.
+
+<sect1>SNMP Daemon configuration
+<p>We recommend you to use Net-SNMP implementation of daemon and utilities, quick
+guide below assume that. Net-SNMP implementation is quite popular so you should
+find it's packages inside your distribution package manager.
+
+<sect2>Example snmpd configuration
+<p>
+<code>
+# file /etc/snmp/snmpd.conf
+# minimal SNMPv3 config
+agentx master
+agentaddress udp:192.0.2.64
+agentXSocket tcp:198.51.100.2
+
+createUser snmp_name MD5 example_pass
+rwuser snmp_name noauth
+</code>
+
+<sect2>AgentX Enabling
+<p>
+<code>
+# File /etc/snmp/snmpd.conf
+agentx master
+agentXSocket [unix:|tcp:|tcp6:]&lt;address&gt;[,...]
+agentXPerms &lt;sockperms&gt; [&lt;dirperms&gt; [&lt;user&gt;|&lt;uid&gt; [&lt;group&gt;|&lt;gid&gt;]]]
+agentaddress [&lt;trasport-type&gt;:]&lt;trasport-address&gt;[,...]
+</code>
+
+<descrip>
+	<tag><label id="snmpd-agentx-master">agentx master</tag>
+	SNMP daemon will enable AgentX functionality and start listening on
+	configured AgentX address.
+
+
+	<tag><label id="snmpd-agentxsocket">agentXSocket
+	[unix:|tcp:|tcp6:]<m/trasport-address/[,...] </tag>
+
+	Define address to listen for AgentX subagent. Use one of <cf>unix:,
+	tcp:, tcp6:</cf> transport type. Other transport type are not supported
+	by BIRD and also not mentioned in AgentX RFC, see <rfc id="2741">.
+	Default: Unix Domain socket <file>/var/run/agentx/master</file>.
+
+
+	<tag><label id="snmpd-agentxperms">agentXPerms <m/sockperms/
+	[<m/dirperms/ [<m/user/|<m/uid/ [<m/group/|<m/gid/]]]</tag>
+
+	Define common permissions for AgentX listening Unix Domain sockets. Both
+	<m/sockperms/ and <m/dirperms/ must be octal digits like for
+	<m/chmod(1)/. Option <m/user/ is string and <m/uid/ is numeric user id.
+	Same for <m/group/ and <m/gid/.
+
+
+	<tag><label id="snmpd-agentaddress">agentaddress
+	[<m/transport-type/:]<m/trasport-address/[,...]</tag>
+
+	Define address, or list of addresses, to listen for SNMP requests (send
+	for example by <it/snmpwalk(1)/). You most likely want <m/trasport-type/ to
+	be one from <cf/udp:/, <cf/udp6:/, <cf/tcp:/, <cf/tcp6:/, <cf/unix:/,
+	<cf/ssh:/ but Net-SNMP support even more transport types.
+	Value <m/transport-address/ define address, Net-SNMP should be able to
+	derive <m/trasport-type/ from <m/transport-address/. Beware that for
+	Unix Domain socket derivation to work, the path must start with /. Also
+	note that the working directory of snmpd daemon is filesystem root.
+	Default: UDP on all IPv4 interfaces on port 161. (e.g.
+	<cf>agentaddress udp6:localhost:161</cf>,
+	<cf>agentaddress tcp:192.0.2.1</cf>,
+	<cf>agentaddress /var/run/mydir/agentx_master</cf>,
+	<cf>agentaddress localhost,/p/u1,/p/u2</cf>).
+</descrip>
+
+<sect2>Configure access
+<p>You can use the SNMPv3 USM module for user authorization, or use simpler older
+version SNMPv1/SNMPv2c with authentication by community. Other means of
+authorization are also possible (e.g. external Kerberos) but out of scope of
+this guide.
+
+<sect3>SNMPv3 USM
+<p>
+<code>
+# file /etc/snmp/snmpd.conf (continuation)
+createUser [-e &lt;engineid&gt;] &lt;username&gt; (MD5|SHA|SHA-512|SHA-384|SHA-256|SHA-224) &lt;authpassphrase&gt; [DES|AES] [&lt;pass&gt;]
+rwuser [-s secmodel] &lt;user&gt; [noauth|auth|priv [&lt;oid&gt; | -V &lt;view&gt; [&lt;context&gt;]]]
+rouser [-s secmodel] &lt;user&gt; [noauth|auth|priv [&lt;oid&gt; | -V &lt;view&gt; [&lt;context&gt;]]]
+</code>
+
+<descrip>
+	<tag><label id="snmpd-createuser">createUser [-e <m/engineid/]
+	<m/username/ (MD5|SHA|SHA-512|SHA-384|SHA-256|SHA-224)
+	<m/authpassphrase/ [DES|AES] [<m/privpassphrase/] </tag>
+
+	Create user with in order specified username, authentication type,
+	authentication password, private protocol and private password. If the
+	private password is not used, it fallbacks to same password as the
+	authentication one.
+
+
+	<tag><label id="snmpd-rwuser">rwuser [-s <m/secmodel/] <m/user/
+	[noauth|auth|priv [<m/oid/ | -V <m/view/ [<m/context/]]]</tag>
+
+	Give user with selected security level read-write permissions
+	to the defined <m/oid/ OID subtree or <m/view/ view,
+	see <ref id="snmp_view" name="view definition">. Security level
+	<cf>noauth</cf> does not require authentication, <cf>auth</cf> requires
+	authentication and <cf>priv</cf> authentication with enforced message
+	encryption. View is a Net-SNMP construct to name and group set of OID
+	subtrees with optional context. Contexts are currently not supported by
+	BIRD.
+
+
+	<tag><label id="snmpd-rouser">rouser [-s <m/secmodel/] <m/user/
+	[noauth|auth|priv [<m/oid/ | -V <m/view/ [<m/context/]]]</tag>
+
+	Same as <cf>rwuser</cf> but only with read permissions.
+</descrip>
+
+<sect3>SNMPv1/SNMPv2c community-based
+<p>
+<code>
+# file /etc/snmp/snmpd.conf (continuation)
+rwcommunity &lt;community&gt; [&lt;source&gt; [&lt;oid&gt; | -V &lt;view&gt; [&lt;context&gt;]]]
+rocommunity &lt;community&gt; [&lt;source&gt; [&lt;oid&gt; | -V &lt;view&gt; [&lt;context&gt;]]]
+rwcommunity6 &lt;community&gt; [&lt;source&gt; [&lt;oid&gt; | -V &lt;view&gt; [&lt;context&gt;]]]
+rocommunity6 &lt;community&gt; [&lt;source&gt; [&lt;oid&gt; | -V &lt;view&gt; [&lt;context&gt;]]]
+view &lt;vname&gt; (include|exclude) &lt;oid&gt; [&lt;mask&gt;]
+</code>
+
+<descrip>
+	<tag><label id="snmpd-rwcommunity">rwcommunity <m/community/ [<m/source/
+	[<m/oid/ | -V <m/view/ [<m/context/]]]</tag>
+
+	Create a community with read-write permissions named <m/community/.
+	Option <m/source/ is used to restrict senders of request, use
+	<cf>"default"</cf> as a placeholder in doubts. You can also restrict
+	accessible regions of OID tree to OID subtree of <m/oid/ or named
+	<m/view/, otherwise the access is unrestricted to the whole OID tree.
+	Contexts are currently not supported by BIRD.
+
+
+	<tag><label id="snmpd-rocommunity">rocommunity <m/community/> [<m/source/
+	[<m/oid/ | -V <m/view/ [<m/context/]]]</tag>
+
+	Same as <cf>rwcommunity</cf> but only with read permissions.
+
+
+	<tag><label id="snmpd-rwcommunity6">rwcommunity6 <m/community/
+	[<m/source/ [<m/oid/ | -V <m/view/ [<m/context/]]] </tag>
+
+	Is <cf>rwcommunity</cf> for packet received using IPv6.
+
+	<tag><label id="snmpd-rocommunity6">rocommunity6 <m/community/
+	[<m/source/ [<m/oid/ | -V <m/view/ [<m/context/]]]</tag>
+
+	Same as <cf>rwcommunity6</cf> but only with read permissions.
+
+	<tag><label id="snmpd-view">view <m/vname/ (include|exclude) <m/oid/ [<m/mask/]</tag>
+	Define a named grouping of OIDs. May be used multiple times with same
+	<m/vname/.
+</descrip>
+
+
+<sect1>BIRD SNMP configuration
+<p>
+<code>
+protocol snmp [&lt;name&gt;] {
+	agentx master address (default|&lt;unix_path&gt;|&lt;ip&gt; [port &lt;port&gt;]);
+	subagent description &lt;text&gt;;
+	source address &lt;ip&gt;;
+	registration priority &lt;num&gt;;
+	message timeout &lt;time&gt;;
+	start delay time &lt;time&gt;;
+	verbose &lt;switch&gt;;
+
+	mib bgp4 {
+		local as &lt;num&gt;;
+		local router id &lt;ip4&gt;;
+		peer &lt;name&gt;;
+	};
+}
+</code>
+
+<descrip>
+	<tag><label id="snmp-master">agentx master address
+	(default|<m/unix_path/|<m/ip/ [port <m/port/])</tag>
+
+	Address of AgentX master. Default is <cf>"/var/run/agentx/master"</cf>.
+	String option <m/unix_path/ select transport over Unix Domain sockets
+	with selected path address. Option <m/ip/ select transport over TCP.
+
+	Default port for TCP transmission is 705.
+
+	<tag><label id="snmp-descr">subagent description <m/text/</tag>
+	Short string describing the subagent. Default: "bird".
+
+	<tag><label id="snmp-src-addr">source address <m/ip/</tag>
+	For TCP based AgentX communication sets socket's source address.
+
+	<tag><label id="snmp-reg-priority">registration priority <m/number/</tag>
+	Set AgentX registration priority for all MIBs. Lower values have higher
+	priority. Valid interval 0-255. Default: 127.
+
+	<tag><label id="snmp-msg-timeout">message timeout <m/time/ s|ms</tag>
+	Set timeout for all AgentX messages. With 1 second granurality with
+	values from interval 0-255. Default: 15 s.
+
+	<tag><label id="snmp-start-delay">start delay time <m/time/ s|ms</tag>
+	Wait <m/time/ before sending first packet after protocol start.
+
+	<tag><label id="snmp-verbose">verbose <m/switch/</tag>
+	Enable logging of events connected to AgentX master pinging. Default:
+	verbose logging is disabled.
+
+	<tag><label id="snmp-bgp4-mib">mib bgp4</tag>
+	Enable BGP4-MIB which is defined in <rfc id="4273">. The support is
+	limited to BGP4-MIB::bgpPeerTable; the BGP4-MIB::bgpRcvdPathAttrTable,
+	BGP4-MIB::bgpPathAttrTable, traps and notifications are not supported.
+
+	<tag><label id="snmp-bgp4-local-as">local as <m/number/</tag>
+	Specify Local As for BGP4 MIB (BGP4-MIB::bgpLocalAs.0). This option is
+	required.
+
+	<tag><label id="snmp-bgp4-router-id">local router id <m/IPv4 address/</tag>
+	Specify Router ID for BGP4 MIB (BGP4-MIB::bgpLocalIdentifier.0). This
+	option is required.
+
+	<tag><label id="snmp-bgp4-peer">peer <m/name/</tag>
+	Make information about BGP protocol <m/name/ accessible. This protocol
+	must over IPv4 (this limitation is introduced by the BGP4-MIB). May
+	be used multiple times.
+</descrip>
+
+<sect2>An example SNMP protocol configuration
+<p>
+<code>
+protocol bgp ibgp1 {
+	local as 2;
+	router id 192.0.2.1;
+	/* ... */
+}
+
+protocol bgp ibgp2 {
+	local as 4;
+	router id 192.0.2.128;
+	/* ... */
+}
+
+protocol snmp snmp1 {
+	agentx master address 198.51.100.2;
+
+	mib bgp4 {
+		local as 2;
+		local router id 192.0.2.1;
+		peer ibgp1;
+		peer ibgp2;
+	}
+}
+</code>
+
+<sect1>Accessing MIB data
+<p>To save some keystrokes and to avoid putting passwords in shell history, you
+could use common configuration file for all Net-SNMP command line utilities.
+Here is an example:
+
+<code>
+# file ~/.snmp/snmp.conf
+defVersion (1|2c|3)
+defCommunity &lt;community&gt;
+defSecurityName &lt;username&gt;
+defAuthType (MD5|SHA|SHA-512|SHA-384|SHA-256|SHA-224)
+defAuthPassphrase &lt;authpass&gt;
+defPrivType (DES|AES)
+defPrivPassphrase &lt;privpass&gt;
+clientaddr [&lt;transport-type&gt;:]&lt;transport-address&gt;
+</code>
+
+<descrip>
+	<tag><label id="snmpcmd-version">defVersion (1|2c|3)</tag>
+	Select version of SNMP packets, must follow
+	<file>/etc/snmp/snmpd.conf</file>. Use only if community/view based
+	configuration.
+
+	<tag><label id="snmpcmd-community">defCommunity <m/community/</tag>
+	Use by default given community. Use only for SNMP version 1 and 2c as
+	community as kind of a username for these versions.
+
+	<tag><label id="snmpcmd-authtype">defAuthType
+	(MD5|SHA|SHA-512|SHA-384|SHA-256|SHA-224)</tag>
+
+	Select authentication type.
+
+
+	<tag><label id="snmpcmd-authpass">defAuthPassphrase <m/authpass/</tag>
+	Set authentication password.
+
+	<tag><label id="snmpcmd-privtype">defPrivType (DES|AES)</tag>
+	Select private protocols.
+
+	<tag><label id="snmpcmd-privpass">defPrivPassphrase <m/privpass/</tag>
+	Set private password used for encryption.
+
+
+	<tag><label id="snmpcmd-clientaddr">clientaddr
+	[<m/transport-type/:]<m/transport-address/</tag>
+
+	SNMP command line utility equivalent to <cf>agentaddress</cf> daemon
+	option.
+</descrip>
+
+<p>For further information, see <it/snmp.conf(5)/.
+
+<p>Example of configuration for Net-SNMP utils.
+<code>
+# SNMPv3
+defVersion 3
+defSecurityName snmp_name
+defSecurityLevel noAuthNoPriv
+defAuthType MD5
+defAuthPassphrase example_pass
+</code>
+
+<code>
+$ # &lt;snmputil&gt; &lt;master-address&gt; &lt;oid&gt;[ &lt;oid&gt; [...]]
+$ snmpget     192.0.2.64 BGP4-MIB::bgpLocalAs.0
+$ snmpgetnext 192.0.2.64 BGP4-MIB::bgpPeerState BGP4-MIB::bgpPeerAdminStatus
+$ snmpwalk    192.0.2.64 BGP4-MIB::bgp
+$ snmptable   192.0.2.64 BGP4-MIB::bgpPeerTable
+</code>
+
+<p>We recommend you to check manpages for Net-SNMP utilities mentioned above,
+such as <it/snmp_config(5)/, <it/snmpd.conf(5)/, <it/snmpd(8)/,
+<it/snmp.conf(5)/, <it/snmpcmds(1)/, <it/snmpget(1)/, <it/snmpgetnext(1)/,
+<it/snmpbulkget(1)/, <it/snmpwalk(1)/, <it/snmptable(1)/.
 
 <chapt>Conclusions
 <label id="conclusion">

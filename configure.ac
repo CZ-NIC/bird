@@ -312,7 +312,7 @@ if test "$enable_mpls_kernel" != no ; then
   fi
 fi
 
-all_protocols="aggregator $proto_bfd babel bgp l3vpn mrt ospf perf pipe radv rip rpki static"
+all_protocols="aggregator $proto_bfd babel bgp l3vpn mrt ospf perf pipe radv rip rpki snmp static"
 
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
 
