@@ -270,7 +270,7 @@ rt_show_cont(struct cli *c)
     if (d->trie_walk)
     {
       d->walk_lock = rt_lock_trie(tab);
-      trie_walk_init(d->walk_state, tab->trie, d->addr);
+      trie_walk_init(d->walk_state, tab->trie, d->addr, 0);
     }
     else
       FIB_ITERATE_INIT(&d->fit, &tab->fib);

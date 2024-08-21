@@ -784,20 +784,47 @@ done:
 
 #define SAME_PREFIX(A,B,X,L) ((X) ? ip4_prefix_equal((A)->v4.addr, net4_prefix(B), (L)) : ip6_prefix_equal((A)->v6.addr, net6_prefix(B), (L)))
 #define GET_NET_BITS(N,X,A,B) ((X) ? ip4_getbits(net4_prefix(N), (A), (B)) : ip6_getbits(net6_prefix(N), (A), (B)))
+#define GET_NODE_BITS(N,X,A,B) ((X) ? ip4_getbits((N)->v4.addr, (A), (B)) : ip6_getbits((N)->v6.addr, (A), (B)))
+#define NEXT_PREFIX(A,B,X) ((X) ? ip4_compare((A)->v4.addr, net4_prefix(B)) < 0 : ip6_compare((A)->v6.addr, net6_prefix(B)) < 0)
+#define CHECK_LOCAL_MASK(A,B,L,X) \
+  ((X) ? (A)->v4.local >= trie_local_mask4(net4_prefix(B), (B)->pxlen, (L)) : (A)->v6.local >= trie_local_mask6(net6_prefix(B), (B)->pxlen, (L)))
+#define SELECT_CHILD(pos,step) ((1u << (step)) + (pos))
+#define MATCH_LOCAL_MASK(A,B,L,X) \
+  (!!((X) ? (A)->v4.local & trie_local_mask4(net4_prefix(B), (B)->pxlen, (L)) : (A)->v6.local & trie_local_mask6(net6_prefix(B), (B)->pxlen, (L))))
+/*
+ * We want to select a specific subtrie base on it's index in child array c.
+ *
+ *                           1
+ *               2                       3
+ *         4           5           6           7
+ *      8     9     A     B     C     D     E     F
+ * -----------------------------------------------------
+ *    10 11 12 13 14 15 16 17 18 19 1A 1B 1C 1D 1E 1F
+ *
+ */
+
+
 
 /**
  * trie_walk_init
  * @s: walk state
  * @t: trie
  * @net: optional subnet for walk
+ * @include_successors: optional flag for continue walking beyond subnet @net
  *
  * Initialize walk state for subsequent walk through nodes of the trie @t by
  * trie_walk_next(). The argument @net allows to restrict walk to given subnet,
  * otherwise full walk over all nodes is used. This is done by finding node at
- * or below @net and starting position in it.
+ * or below @net and starting position in it. The argument @include_successors,
+ * which requeries specifing the @net argument, removes the restriction for all
+ * nets lexicographically succeeding the @net. This is done by storing the walken
+ * nodes on the state's stack.
+ *
+ * For set @include_successors the return value is 1 if the @net is present in
+ * the trie @t, in all other cases 0.
  */
-void
-trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_addr *net)
+int
+trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_addr *net, u8 include_successors)
 {
   *s = (struct f_trie_walk_state) {
     .ipv4 = t->ipv4,
@@ -809,7 +836,7 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
   };
 
   if (!net)
-    return;
+    return 0;
 
   /* We want to find node of level at least plen */
   int plen = ROUND_DOWN_POW2(net->pxlen, TRIE_STEP);
@@ -827,29 +854,157 @@ trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_ad
     /* We found final node */
     if (nlen >= plen)
     {
+      if (!include_successors)
+	s->stack[0] = n;
+      else
+	s->stack[s->stack_pos] = n;
+
       if (nlen == plen)
       {
 	/* Find proper local_pos, while accept_length is not used */
 	int step = net->pxlen - plen;
-	s->start_pos = s->local_pos = (1u << step) + GET_NET_BITS(net, v4, plen, step);
+	s->local_pos = (1u << step) + GET_NET_BITS(net, v4, plen, step);
 	s->accept_length = plen;
+
+	if (!include_successors)
+	{
+	  s->start_pos = s->local_pos;
+	  return MATCH_LOCAL_MASK(n, net, nlen, v4);
+	}
+
+	if (GET_LOCAL(n, v4) != 0 && !CHECK_LOCAL_MASK(n, net, nlen, v4))
+	{
+	  s->local_pos = (1u << TRIE_STEP) + GET_NET_BITS(net, v4, nlen, TRIE_STEP);
+	  return 0;
+	}
+
+	int pos = 1;
+	int bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
+	for (int i = 0; i < net->pxlen - plen; i++)
+	{
+	  if (bits & (1u << (TRIE_STEP - i - 1)))
+	    pos = 2 * pos + 1;
+	  else
+	    pos = 2 * pos;
+	}
+
+	s->local_pos = pos;
+	return MATCH_LOCAL_MASK(n, net, nlen, v4);
       }
       else
       {
-	/* Start from pos 1 in local node, but first try accept mask */
+	/* Start from pos 1 in current node, but first try accept mask */
 	s->accept_length = net->pxlen;
+	return 0;
       }
-
-      s->stack[0] = n;
-      return;
     }
+
+    /* We store node in stack before moving on */
+    if (include_successors)
+      s->stack[s->stack_pos++] = n;
 
     /* Choose child */
     n = GET_CHILD(n, v4, GET_NET_BITS(net, v4, nlen, TRIE_STEP));
   }
 
-  s->stack[0] = NULL;
-  return;
+  /* We do not override the trie root in case of inclusive search */
+  if (!include_successors)
+  {
+    s->stack[0] = NULL;
+    return 0;
+  }
+
+  /* We are out of path, find nearest successor */
+  if (s->stack_pos == 0)
+    return 0;
+
+  /*
+   * If we end up on node that has compressed path, we need to step up node
+   * for better decision making
+   */
+  s->stack_pos--;
+  n = s->stack[s->stack_pos];
+  ASSERT(n != NULL);
+  int nlen = v4 ? n->v4.plen : n->v6.plen;
+
+  struct net_addr_ip4 *net4 = NULL;
+  struct net_addr_ip6 *net6 = NULL;
+
+  if (v4)   net4 = (net_addr_ip4 *) net;
+  else	    net6 = (net_addr_ip6 *) net;
+
+  /* We known for sure that the searched prefix is not in the trie */
+  int cmp;
+  int bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
+  const struct f_trie_node *child = GET_CHILD(n, v4, bits);
+  while (child)
+  {
+    cmp = v4 ? ip4_compare(child->v4.addr, net4->prefix)
+	     : ip6_compare(child->v6.addr, net6->prefix);
+
+    if (cmp == 0)
+    {
+      if (v4 ? child->v4.plen <= net4->pxlen : child->v6.plen <= net6->pxlen)
+	bits = 0;
+      else
+	bits = 15;
+    }
+    else if (cmp < 0)
+    {
+      for (int i = bits; i < (1 << TRIE_STEP); i++)
+      {
+	const struct f_trie_node *tmp = GET_CHILD(n, v4, i);
+	if (!tmp) continue;
+	if (v4 ? ip4_compare(tmp->v4.addr, net4->prefix) > 0
+	       : ip6_compare(tmp->v6.addr, net6->prefix) > 0)
+	  break;
+
+	child = tmp;
+      }
+      bits = 15;
+    }
+    else /* cmp > 0 */
+      bits = 0;
+
+    s->stack_pos++;
+    s->stack[s->stack_pos] = n = child;
+    child = GET_CHILD(child, v4, bits);
+  }
+
+  nlen = (v4) ? n->v4.plen : n->v6.plen;
+  cmp = v4 ? ip4_compare(n->v4.addr, net4->prefix)
+	   : ip6_compare(n->v6.addr, net6->prefix);
+
+  s->accept_length = nlen;
+  if (cmp == 0)
+  {
+    bits = GET_NET_BITS(net, v4, nlen, TRIE_STEP);
+    if (plen - nlen >= TRIE_STEP)
+    {
+      s->local_pos = SELECT_CHILD(bits, TRIE_STEP);
+      return 0;
+    }
+
+    int pos = 1;
+    for (int i = 0; i < net->pxlen - plen; i++)
+    {
+      if (bits & (1u << (TRIE_STEP - i - 1)))
+	pos = 2 * pos + 1;
+      else
+	pos = 2 * pos;
+    }
+    s->local_pos = pos;
+  }
+  else if (cmp < 0)
+  {
+    s->local_pos = SELECT_CHILD(bits, TRIE_STEP);
+  }
+  else /* cmp > 0 */
+  {
+    /* Everything already set */
+  }
+
+  return 0;
 }
 
 #define GET_ACCEPT_BIT(N,X,B) ((X) ? ip4_getbit((N)->v4.accept, (B)) : ip6_getbit((N)->v6.accept, (B)))

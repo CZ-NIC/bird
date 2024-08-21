@@ -12,6 +12,7 @@
 
 #include "nest/bird.h"
 #include "nest/route.h"
+#include "nest/attrs.h"
 
 /* Type numbers must be in 0..0xff range */
 #define T_MASK 0xff
@@ -231,7 +232,7 @@ void *trie_add_prefix(struct f_trie *t, const net_addr *n, uint l, uint h);
 int trie_match_net(const struct f_trie *t, const net_addr *n);
 int trie_match_longest_ip4(const struct f_trie *t, const net_addr_ip4 *net, net_addr_ip4 *dst, ip4_addr *found0);
 int trie_match_longest_ip6(const struct f_trie *t, const net_addr_ip6 *net, net_addr_ip6 *dst, ip6_addr *found0);
-void trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_addr *from);
+int trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_addr *from, u8 include_successors);
 int trie_walk_next(struct f_trie_walk_state *s, net_addr *net);
 int trie_same(const struct f_trie *t1, const struct f_trie *t2);
 void trie_format(const struct f_trie *t, buffer *buf);
@@ -283,14 +284,17 @@ trie_match_next_longest_ip6(net_addr_ip6 *n, ip6_addr *found)
 
 #define TRIE_WALK_TO_ROOT_END })
 
-
-#define TRIE_WALK(trie, net, from) ({				\
+#define TRIE_WALK2(trie, net, from, include) ({			\
   net_addr net;							\
   struct f_trie_walk_state tws_;				\
-  trie_walk_init(&tws_, trie, from);				\
+  trie_walk_init(&tws_, trie, from, include);			\
   while (trie_walk_next(&tws_, &net))
 
-#define TRIE_WALK_END })
+#define TRIE_WALK2_END })
+
+#define TRIE_WALK(trie, net, from) TRIE_WALK2(trie, net, from, 0) \
+
+#define TRIE_WALK_END TRIE_WALK2_END
 
 
 #define F_CMP_ERROR 999
