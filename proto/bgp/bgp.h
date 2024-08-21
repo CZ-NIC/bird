@@ -513,8 +513,8 @@ struct bgp_parse_state {
 #define BGP_RX_BUFFER_EXT_SIZE	65535
 #define BGP_TX_BUFFER_EXT_SIZE	65535
 
-#define BGP_CF_WALK_CHANNELS(P,C) WALK_LIST(C, P->c.channels) if (C->c.channel == &channel_bgp)
-#define BGP_WALK_CHANNELS(P,C) WALK_LIST(C, P->p.channels) if (C->c.channel == &channel_bgp)
+#define BGP_CF_WALK_CHANNELS(P,C) WALK_LIST(C, P->c.channels) if (C->c.class == &channel_bgp)
+#define BGP_WALK_CHANNELS(P,C) WALK_LIST(C, P->p.channels) if (C->c.class == &channel_bgp)
 
 #define BGP_MSG_HDR_MARKER_SIZE	16
 #define BGP_MSG_HDR_MARKER_POS	0
