@@ -147,11 +147,7 @@ enum flow_validated_state {
 const char *flow_validated_state_str(enum flow_validated_state code);
 enum flow_validated_state flow4_validate(const byte *nlri, uint len);
 enum flow_validated_state flow6_validate(const byte *nlri, uint len);
-void flow_check_cf_value_length(struct flow_builder *fb, u32 expr);
-void flow_check_cf_bmk_values(struct flow_builder *fb, u8 neg, u32 val, u32 mask);
-void flow4_validate_cf(net_addr_flow4 *f);
-void flow6_validate_cf(net_addr_flow6 *f);
-
+u8 flow_max_value_length(enum flow_type type, int ipv6);
 
 /*
  * 	Net Formatting
