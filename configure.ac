@@ -137,7 +137,7 @@ BIRD_CHECK_PTHREADS
 
 if test "$bird_cv_lib_pthreads" = yes ; then
   CFLAGS="$CFLAGS -pthread"
-  LDFLAGS="$LDFLAGS -pthread"
+  COMMON_LIBS="$COMMON_LIBS -pthread"
 else
   AC_MSG_ERROR([POSIX threads not available.])
 fi
@@ -180,9 +180,13 @@ AC_MSG_RESULT([$CFLAGS])
 AC_MSG_CHECKING([LDFLAGS])
 AC_MSG_RESULT([$LDFLAGS])
 
+DAEMON_LIBS="${DAEMON_LIBS} ${LIBS}"
+AC_SUBST(DAEMON_LIBS)
+AC_SUBST(COMMON_LIBS)
+
 AC_PROG_CPP
 AC_PROG_INSTALL
-AC_PROG_RANLIB
+
 AC_CHECK_PROG([FLEX], [flex], [flex])
 AC_CHECK_PROG([BISON], [bison], [bison])
 AC_CHECK_PROGS([M4], [gm4 m4])
@@ -276,16 +280,13 @@ fi
 
 AC_SUBST([iproutedir])
 
-DAEMON_LIBS=
-AC_SUBST(DAEMON_LIBS)
-
 if test "$enable_libssh" != no ; then
   AC_CHECK_HEADER([libssh/libssh.h], [true], [fail=yes], [ ])
   AC_CHECK_LIB([ssh], [ssh_connect], [true], [fail=yes])
 
   if test "$fail" != yes ; then
     AC_DEFINE([HAVE_LIBSSH], [1], [Define to 1 if you have the `ssh' library (-lssh).])
-    DAEMON_LIBS="-lssh $DAEMON_LIBS"
+    COMMON_LIBS="-lssh $COMMON_LIBS"
     enable_libssh=yes
   else
     if test "$enable_libssh" = yes ; then

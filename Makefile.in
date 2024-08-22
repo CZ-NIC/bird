@@ -12,7 +12,8 @@ LDFLAGS=@LDFLAGS@
 M4FLAGS=@M4FLAGS@
 BISONFLAGS=@BISONFLAGS@
 LIBS=@LIBS@
-DAEMON_LIBS=@DAEMON_LIBS@
+COMMON_LIBS=@COMMON_LIBS@
+DAEMON_LIBS=@DAEMON_LIBS@ $(COMMON_LIBS)
 CLIENT_LIBS=@CLIENT_LIBS@
 CC=@CC@
 M4=@M4@
@@ -25,6 +26,7 @@ INSTALL_DATA=@INSTALL_DATA@
 
 client=$(addprefix $(exedir)/,@CLIENT@)
 daemon=$(exedir)/bird
+common-lib=$(objdir)/libbird.o.txt
 protocols=@protocols@
 PROTO_BUILD := $(protocols) dev kif krt
 
@@ -88,6 +90,7 @@ tests-target-files = $(patsubst %.c,$(o)%,$(tests_src))
 
 all-daemon = $(daemon): $(obj)
 all-client = $(client): $(obj)
+all-lib = $(common-lib): $(obj)
 
 s = $(dir $(lastword $(MAKEFILE_LIST)))
 ifeq ($(srcdir),.)
@@ -156,9 +159,24 @@ $(objdir)/.dir-stamp: Makefile
 	$(Q)mkdir -p $(addprefix $(objdir)/,$(dirs) doc)
 	$(Q)touch $@
 
+# Composing static library; older GCC's and linkers somehow fail
+# both with partial linking with LTO and also with static library creation,
+# thus we just collect all the deps and add them to the final build
+$(common-lib):
+	$(E)echo TXT $^ > $@
+	$(Q)echo $^ > $@
+# Some time in future, somebody may want to try the following recipe again
+#	$(E)echo LD $(LDFLAGS) -r -o $@ $^
+#	+$(Q)$(CC) $(LDFLAGS) -r -o $@ $^
+
+# The lib must be linked last
+$(daemon): $(common-lib)
+
+#$(warning $(patsubst $(common-lib),$(shell cat $(common-lib)),whatever obj/libbird.o.txt))
+
 $(client) $(daemon):
 	$(E)echo LD $(LDFLAGS) -o $@ $^ $(LIBS)
-	+$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+	+$(Q)$(CC) $(LDFLAGS) -o $@ $(patsubst $(common-lib),$(shell cat $(common-lib)),$^) $(LIBS)
 
 $(objdir)/sysdep/paths.h: Makefile
 	$(E)echo GEN $@
@@ -171,9 +189,9 @@ $(objdir)/sysdep/paths.h: Makefile
 
 tests_targets_ok = $(addsuffix .ok,$(tests_targets))
 
-$(tests_targets): %: %.o $(tests_objs) | prepare
+$(tests_targets): %: %.o $(tests_objs) $(common-lib) | prepare
 	$(E)echo LD $(LDFLAGS) -o $@ $< "..." $(LIBS)
-	+$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+	+$(Q)$(CC) $(LDFLAGS) -o $@ $(patsubst $(common-lib),$(shell cat $(common-lib)),$^) $(LIBS)
 
 # Hack to avoid problems with tests linking everything
 $(tests_targets): LIBS += $(DAEMON_LIBS)
@@ -222,6 +240,7 @@ install-docs:
 clean::
 	rm -f $(objdir)/sysdep/paths.h $(objdir)/nest/proto-build.c
 	rm -f $(addprefix $(exedir)/,bird birdc birdcl)
+	rm -f $(common-lib)
 	find $(objdir) -name "*.[od]" -exec rm -f '{}' '+'
 
 testsclean:

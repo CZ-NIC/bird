@@ -1,4 +1,8 @@
-src := cli.c cmds.c iface.c iface-cli.c locks.c mpls.c neighbor.c password.c proto.c proto-build.c rt-attr.c rt-dev.c rt-export.c rt-fib.c rt-show.c rt-table.c
+src := iface.c neighbor.c
+obj := $(src-o-files)
+$(all-lib)
+
+src := cli.c cmds.c iface-cli.c locks.c mpls.c password.c proto.c proto-build.c rt-attr.c rt-dev.c rt-export.c rt-fib.c rt-show.c rt-table.c
 obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
