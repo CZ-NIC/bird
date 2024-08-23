@@ -206,25 +206,6 @@ trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
 }
 
 /*
- * Return first non-null bucket of the closest ancestor of @node
- */
-static struct aggregator_bucket *
-get_ancestor_bucket(const struct trie_node *node)
-{
-  /* Defined for other than root nodes */
-  while (1)
-  {
-    if (!node->parent)
-      return node->bucket;
-
-    if (node->parent->bucket)
-      return node->parent->bucket;
-
-    node = node->parent;
-  }
-}
-
-/*
  * Assign unique ID to all buckets to enable sorting
  */
 static void
@@ -289,33 +270,6 @@ first_pass(struct trie_node *node)
     first_pass(node->child[1]);
 }
 
-static void
-first_pass_after_check_helper(const struct trie_node *node)
-{
-  for (int i = 0; i < node->potential_buckets_count; i++)
-  {
-    for (int j = i + 1; j < node->potential_buckets_count; j++)
-    {
-      assert(node->potential_buckets[i] != node->potential_buckets[j]);
-    }
-  }
-}
-
-static void
-first_pass_after_check(const struct trie_node *node)
-{
-  first_pass_after_check_helper(node);
-
-  if (node->child[0])
-  {
-    first_pass_after_check_helper(node->child[0]);
-  }
-
-  if (node->child[1])
-  {
-    first_pass_after_check_helper(node->child[1]);
-  }
-}
 
 /*
  * Compare buckets by linear ordering on pointers
@@ -510,16 +464,8 @@ second_pass(struct trie_node *node)
   if (right)
     second_pass(right);
 
-  /* Duplicates */
-  if (left)
-    for (int i = 0; i < left->potential_buckets_count; i++)
-      for (int j = i + 1; j < left->potential_buckets_count; j++)
-        assert(left->potential_buckets[i] != left->potential_buckets[j]);
 
   if (right)
-    for (int i = 0; i < right->potential_buckets_count; i++)
-      for (int j = i + 1; j < right->potential_buckets_count; j++)
-        assert(right->potential_buckets[i] != right->potential_buckets[j]);
 
   assert(node->bucket != NULL);
 
@@ -1041,7 +987,6 @@ calculate_trie(struct aggregator_proto *p)
   times_update(&main_timeloop);
   log("==== FIRST PASS ====");
   first_pass(p->root);
-  first_pass_after_check(p->root);
   times_update(&main_timeloop);
   log("==== FIRST PASS DONE ====");
 
