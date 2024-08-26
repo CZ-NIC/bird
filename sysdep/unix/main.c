@@ -836,7 +836,6 @@ signal_init(void)
 
 static char *opt_list = "bc:dD:ps:P:u:g:flRh";
 int parse_and_exit;
-char *bird_name;
 static char *use_user;
 static char *use_group;
 static int run_in_foreground = 0;
@@ -879,20 +878,6 @@ display_version(void)
 {
   fprintf(stderr, "BIRD version " BIRD_VERSION "\n");
   exit(0);
-}
-
-static inline char *
-get_bird_name(char *s, char *def)
-{
-  char *t;
-  if (!s)
-    return def;
-  t = strrchr(s, '/');
-  if (!t)
-    return s;
-  if (!t[1])
-    return def;
-  return t+1;
 }
 
 static inline uid_t
@@ -948,7 +933,8 @@ parse_args(int argc, char **argv)
   int socket_changed = 0;
   int c;
 
-  bird_name = get_bird_name(argv[0], "bird");
+  set_daemon_name(argv[0], "bird");
+
   if (argc == 2)
     {
       if (!strcmp(argv[1], "--version"))

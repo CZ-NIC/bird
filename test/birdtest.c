@@ -76,6 +76,8 @@ bt_init(int argc, char *argv[])
   bt_test_id = NULL;
   is_terminal = isatty(fileno(stdout));
 
+  set_daemon_name(argv[0], "birdtest");
+
   while ((c = getopt(argc, argv, "lcdftv")) >= 0)
     switch (c)
     {
@@ -539,7 +541,6 @@ bt_is_char(byte c)
  */
 
 int parse_and_exit;
-char *bird_name;
 void async_config(void) {}
 void async_dump(void) {}
 void async_shutdown(void) {}

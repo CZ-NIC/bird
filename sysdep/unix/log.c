@@ -36,6 +36,7 @@ static pool *log_pool;
 
 static struct rfile *dbg_rf;
 static char *current_syslog_name = NULL; /* NULL -> syslog closed */
+const char *bird_name = NULL;
 
 _Atomic uint max_thread_id = 1;
 _Thread_local uint this_thread_id;
@@ -837,6 +838,7 @@ resolve_fail:
 void
 log_init_debug(char *f)
 {
+  ASSERT_DIE(bird_name);
   clock_gettime(CLOCK_MONOTONIC, &dbg_time_start);
 
   if (dbg_rf && dbg_rf != &rf_stderr)
@@ -852,4 +854,27 @@ log_init_debug(char *f)
     fprintf(stderr, "bird: Unable to open debug file %s: %s\n", f, strerror(errno));
     exit(1);
   }
+}
+
+/*
+ *	Setting BIRD name
+ */
+
+static inline char *
+get_bird_name(char *s, char *def)
+{
+  char *t;
+  if (!s)
+    return def;
+  t = strrchr(s, '/');
+  if (!t)
+    return s;
+  if (!t[1])
+    return def;
+  return t+1;
+}
+
+void set_daemon_name(char *path, char *def)
+{
+  bird_name = get_bird_name(path, def);
 }

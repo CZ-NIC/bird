@@ -25,7 +25,7 @@ struct config;
 
 /* main.c */
 
-extern char *bird_name;
+extern const char *bird_name;
 extern int parse_and_exit;
 void async_config(void);
 void async_dump(void);
