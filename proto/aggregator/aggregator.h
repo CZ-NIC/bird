@@ -18,7 +18,9 @@
 #include "lib/hash.h"
 #include "lib/settle.h"
 
-#define MAX_POTENTIAL_BUCKETS_COUNT 16
+#define BUCKET_LIST_INIT_SIZE         16
+#define POTENTIAL_BUCKETS_BITMAP_SIZE 8
+#define MAX_POTENTIAL_BUCKETS_COUNT   ((int)(sizeof(u32) * 8 * POTENTIAL_BUCKETS_BITMAP_SIZE))
 
 enum aggregation_mode {
   NET_AGGR, PREFIX_AGGR,
@@ -86,6 +88,11 @@ struct aggregator_proto {
   int internal_nodes;
   int leaves;
   int logging;
+
+  /* List of bucket pointers */
+  struct aggregator_bucket **bucket_list;
+  size_t bucket_list_size;
+  size_t bucket_list_count;
 };
 
 enum aggr_item_type {
@@ -113,7 +120,7 @@ struct trie_node {
   struct trie_node *child[2];
   struct trie_node *ancestor;
   struct aggregator_bucket *bucket;
-  struct aggregator_bucket *potential_buckets[MAX_POTENTIAL_BUCKETS_COUNT];
+  u32 potential_buckets[POTENTIAL_BUCKETS_BITMAP_SIZE];
   int potential_buckets_count;
   int depth;
 };
