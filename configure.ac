@@ -120,7 +120,7 @@ AC_SEARCH_LIBS([clock_gettime], [rt posix4],
 AC_CANONICAL_HOST
 
 # Store this value because ac_test_CFLAGS is overwritten by AC_PROG_CC
-if test "$ac_test_CFLAGS" != set ; then
+if ! test "$ac_test_CFLAGS" ; then
   bird_cflags_default=yes
 fi
 
