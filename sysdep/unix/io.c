@@ -664,7 +664,7 @@ static int short_loops = 0;
 #define SHORT_LOOP_MAX 10
 #define WORK_EVENTS_MAX 10
 
-sock *stored_sock;
+extern sock *stored_sock; /* mainloop hack */
 
 int sk_read(sock *s, int revents);
 int sk_write(sock *s);

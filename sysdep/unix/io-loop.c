@@ -418,7 +418,7 @@ birdloop_add_socket(struct birdloop *loop, sock *s)
   socket_changed(s);
 }
 
-extern sock *stored_sock; /* mainloop hack */
+sock *stored_sock; /* mainloop hack */
 
 void
 birdloop_remove_socket(struct birdloop *loop, sock *s)
