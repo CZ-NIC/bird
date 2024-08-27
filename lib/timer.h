@@ -22,8 +22,8 @@ typedef struct timer
   void *data;
 
   btime expires;			/* 0=inactive */
+  btime recurrent;			/* Timer recurrence */
   uint randomize;			/* Amount of randomization */
-  uint recurrent;			/* Timer recurrence */
 
   int index;
 } timer;
@@ -72,7 +72,7 @@ tm_remains(timer *t)
 }
 
 static inline timer *
-tm_new_init(pool *p, void (*hook)(struct timer *), void *data, uint rec, uint rand)
+tm_new_init(pool *p, void (*hook)(struct timer *), void *data, btime rec, uint rand)
 {
   timer *t = tm_new(p);
   t->hook = hook;

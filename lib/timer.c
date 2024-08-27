@@ -110,9 +110,9 @@ tm_dump(resource *r)
   if (t->randomize)
     debug("rand %d, ", t->randomize);
   if (t->recurrent)
-    debug("recur %d, ", t->recurrent);
+    debug("recur %ld, ", t->recurrent);
   if (t->expires)
-    debug("expires in %d ms)\n", (t->expires - current_time()) TO_MS);
+    debug("expires in %ld ms)\n", (t->expires - current_time()) TO_MS);
   else
     debug("inactive)\n");
 }
