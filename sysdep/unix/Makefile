@@ -1,4 +1,4 @@
-src := alloc.c io.c io-loop.c krt.c log.c main.c random.c domain.c socket.c
+src := alloc.c io.c io-loop.c krt.c log.c main.c random.c domain.c socket.c file.c time.c
 obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
