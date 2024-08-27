@@ -143,6 +143,126 @@ remove_node(struct trie_node *node)
 }
 
 /*
+ * Mark bucket with ID @id as present in bitmap of potential buckets in @node
+ */
+static inline void
+node_insert_potential_bucket(struct trie_node *node, u32 id)
+{
+  assert(node->potential_buckets_count < MAX_POTENTIAL_BUCKETS_COUNT);
+
+  if (BIT32R_TEST(node->potential_buckets, id))
+    return;
+
+  BIT32R_SET(node->potential_buckets, id);
+  node->potential_buckets_count++;
+}
+
+/*
+ * Return pointer to bucket with ID @id.
+ * Protocol contains list of pointers to all buckets. Every pointer
+ * lies at position equal to bucket ID to enable fast lookup.
+ */
+static inline struct aggregator_bucket *
+get_bucket_ptr(const struct aggregator_proto *p, u32 id)
+{
+  ASSERT_DIE(id < p->bucket_list_size);
+  ASSERT_DIE(p->bucket_list[id] != NULL);
+  ASSERT_DIE(p->bucket_list[id]->id == id);
+  return p->bucket_list[id];
+}
+
+static inline int
+popcount32(u32 x)
+{
+  static const u32 m1  = 0x55555555;
+  static const u32 m2  = 0x33333333;
+  static const u32 m4  = 0x0f0f0f0f;
+  static const u32 m8  = 0x00ff00ff;
+  static const u32 m16 = 0x0000ffff;
+
+  x = (x & m1)  + ((x >> 1)  &  m1);
+  x = (x & m2)  + ((x >> 2)  &  m2);
+  x = (x & m4)  + ((x >> 4)  &  m4);
+  x = (x & m8)  + ((x >> 8)  &  m8);
+  x = (x & m16) + ((x >> 16) & m16);
+
+  return (int)x;
+}
+
+/*
+ * If sets of potential buckets in @left and @right have non-empty intersection
+ * (computed as bitwise AND), save it to the target bucket. Otherwise compute
+ * their union as bitwise OR.
+ */
+static void
+process_potential_buckets(struct trie_node *target, const struct trie_node *left, const struct trie_node *right)
+{
+  assert(target != NULL);
+  assert(left != NULL);
+  assert(right != NULL);
+
+  int has_intersection = 0;
+  int bucket_count = 0;
+
+  for (int i = 0; i < POTENTIAL_BUCKETS_BITMAP_SIZE; i++)
+  {
+    has_intersection |= !!(target->potential_buckets[i] = left->potential_buckets[i] & right->potential_buckets[i]);
+    bucket_count += popcount32(target->potential_buckets[i]);
+  }
+
+  if (!has_intersection)
+  {
+    bucket_count = 0;
+
+    for (int i = 0; i < POTENTIAL_BUCKETS_BITMAP_SIZE; i++)
+    {
+      target->potential_buckets[i] = left->potential_buckets[i] | right->potential_buckets[i];
+      bucket_count += popcount32(target->potential_buckets[i]);
+    }
+  }
+
+  /* Update number of potential buckets */
+  target->potential_buckets_count = bucket_count;
+}
+
+/*
+ * Insert @bucket to bucket list in @p to position @bucket-ID
+ */
+static void
+proto_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket)
+{
+  if (!p->bucket_list)
+  {
+    p->bucket_list_size = BUCKET_LIST_INIT_SIZE;
+    p->bucket_list = mb_allocz(p->p.pool, sizeof(p->bucket_list[0]) * p->bucket_list_size);
+  }
+
+  /* Don't do anything if bucket is already in the list */
+  if (bucket->id < p->bucket_list_size && p->bucket_list[bucket->id])
+    return;
+
+  const size_t old_size = p->bucket_list_size;
+
+  /* Reallocate if more space is needed because of bucket ID */
+  if (bucket->id >= p->bucket_list_size)
+  {
+    while (bucket->id >= p->bucket_list_size)
+      p->bucket_list_size *= 2;
+
+    assert(old_size < p->bucket_list_size);
+
+    p->bucket_list = mb_realloc(p->bucket_list, sizeof(p->bucket_list[0]) * p->bucket_list_size);
+    memset(&p->bucket_list[old_size], 0, sizeof(p->bucket_list[0]) * (p->bucket_list_size - old_size));
+  }
+
+  assert(bucket->id < p->bucket_list_size);
+  assert(p->bucket_list[bucket->id] == NULL);
+
+  p->bucket_list[bucket->id] = bucket;
+  p->bucket_list_count++;
+}
+
+/*
  * Insert prefix in @addr to prefix trie with beginning at @root and assign @bucket to this prefix
  */
 static void
@@ -206,10 +326,10 @@ trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
 }
 
 /*
- * Assign unique ID to all buckets to enable sorting
+ * Assign unique ID to all buckets
  */
 static void
-assign_bucket_id(struct trie_node *node, u32 *counter)
+assign_bucket_id(struct aggregator_proto *p, struct trie_node *node, u32 *counter)
 {
   assert(node != NULL);
 
@@ -219,6 +339,7 @@ assign_bucket_id(struct trie_node *node, u32 *counter)
     {
       node->bucket->id = *counter;
       *counter += 1;
+      proto_insert_bucket(p, node->bucket);
     }
 
     /* All leaves have a bucket */
@@ -227,10 +348,10 @@ assign_bucket_id(struct trie_node *node, u32 *counter)
   }
 
   if (node->child[0])
-    assign_bucket_id(node->child[0], counter);
+    assign_bucket_id(p, node->child[0], counter);
 
   if (node->child[1])
-    assign_bucket_id(node->child[1], counter);
+    assign_bucket_id(p, node->child[1], counter);
 }
 
 /*
@@ -245,7 +366,7 @@ first_pass(struct trie_node *node)
   {
     assert(node->bucket != NULL);
     assert(node->potential_buckets_count == 0);
-    node->potential_buckets[node->potential_buckets_count++] = node->bucket;
+    node_insert_potential_bucket(node, node->bucket->id);
     return;
   }
 
@@ -270,175 +391,11 @@ first_pass(struct trie_node *node)
     first_pass(node->child[1]);
 }
 
-
-/*
- * Compare buckets by linear ordering on pointers
- */
-static int
-aggregator_bucket_compare(const struct aggregator_bucket *a, const struct aggregator_bucket *b)
-{
-  assert(a != NULL);
-  assert(b != NULL);
-
-  if (a->id < b->id)
-    return -1;
-
-  if (a->id > b->id)
-    return 1;
-
-  return 0;
-}
-
-static int
-aggregator_bucket_compare_wrapper(const void *a, const void *b)
-{
-  assert(a != NULL);
-  assert(b != NULL);
-
-  const struct aggregator_bucket *fst = *(struct aggregator_bucket **)a;
-  const struct aggregator_bucket *snd = *(struct aggregator_bucket **)b;
-
-  return aggregator_bucket_compare(fst, snd);
-}
-
-/*
- * Compute union of two sets of potential buckets in @left and @right and put result in @node
- */
-static void
-compute_buckets_union(struct trie_node *node, const struct trie_node *left, const struct trie_node *right)
-{
-  assert(left  != NULL);
-  assert(right != NULL);
-  assert(node  != NULL);
-
-  struct aggregator_bucket *input_buckets[MAX_POTENTIAL_BUCKETS_COUNT * 2] = { 0 };
-  const int input_count = left->potential_buckets_count + right->potential_buckets_count;
-
-  memcpy(input_buckets, left->potential_buckets, sizeof(input_buckets[0]) * left->potential_buckets_count);
-  memcpy(&input_buckets[left->potential_buckets_count], right->potential_buckets, sizeof(input_buckets[0]) * right->potential_buckets_count);
-  qsort(input_buckets, input_count, sizeof(input_buckets[0]), aggregator_bucket_compare_wrapper);
-
-  struct aggregator_bucket *output_buckets[ARRAY_SIZE(input_buckets)] = { 0 };
-  int output_count = 0;
-
-  for (int i = 0; i < input_count; i++)
-  {
-    /*
-     * Don't copy element if it's the same as the last inserted element
-     * to avoid duplicates
-     */
-    if (output_count != 0 && output_buckets[output_count - 1] == input_buckets[i])
-      continue;
-
-    output_buckets[output_count++] = input_buckets[i];
-  }
-
-  /* Strictly greater */
-  for (int i = 1; i < output_count; i++)
-    assert(output_buckets[i - 1]->id < output_buckets[i]->id);
-
-  /* Duplicates */
-  for (int i = 0; i < output_count; i++)
-    for (int j = i + 1; j < output_count; j++)
-      assert(output_buckets[i] != output_buckets[j]);
-
-  node->potential_buckets_count = output_count < MAX_POTENTIAL_BUCKETS_COUNT ? output_count : MAX_POTENTIAL_BUCKETS_COUNT;
-  memcpy(node->potential_buckets, output_buckets, sizeof(node->potential_buckets[0]) * node->potential_buckets_count);
-}
-
-/*
- * Compute intersection of two sets of potential buckets in @left and @right and put result in @node
- */
-static void
-compute_buckets_intersection(struct trie_node *node, const struct trie_node *left, const struct trie_node *right)
-{
-  assert(left  != NULL);
-  assert(right != NULL);
-  assert(node  != NULL);
-
-  struct aggregator_bucket *fst[MAX_POTENTIAL_BUCKETS_COUNT] = { 0 };
-  struct aggregator_bucket *snd[MAX_POTENTIAL_BUCKETS_COUNT] = { 0 };
-
-  memcpy(fst, left->potential_buckets,  sizeof(fst[0]) * left->potential_buckets_count);
-  memcpy(snd, right->potential_buckets, sizeof(snd[0]) * right->potential_buckets_count);
-
-  qsort(fst, left->potential_buckets_count,  sizeof(fst[0]), aggregator_bucket_compare_wrapper);
-  qsort(snd, right->potential_buckets_count, sizeof(snd[0]), aggregator_bucket_compare_wrapper);
-
-  struct aggregator_bucket *output[ARRAY_SIZE(fst) + ARRAY_SIZE(snd)] = { 0 };
-  int output_count = 0;
-
-  int i = 0;
-  int j = 0;
-
-  while (i < left->potential_buckets_count && j < right->potential_buckets_count)
-  {
-    int res = aggregator_bucket_compare(fst[i], snd[j]);
-
-    if (res == 0)
-    {
-      output[output_count++] = fst[i];
-      i++;
-      j++;
-    }
-    else if (res == -1)
-      i++;
-    else if (res == 1)
-      j++;
-    else
-      bug("Impossible");
-  }
-
-  /* Strictly greater */
-  for (int k = 1; k < output_count; k++)
-    assert(output[k - 1]->id < output[k]->id);
-
-  /* Duplicates */
-  for (int k = 0; k < output_count; k++)
-    for (int l = k + 1; l < output_count; l++)
-      assert(output[k] != output[l]);
-
-  node->potential_buckets_count = output_count < MAX_POTENTIAL_BUCKETS_COUNT ? output_count : MAX_POTENTIAL_BUCKETS_COUNT;
-  memcpy(node->potential_buckets, output, sizeof(node->potential_buckets[0]) * node->potential_buckets_count);
-}
-
-/*
- * Check if sets of potential buckets of two nodes are disjoint
- */
-static int
-bucket_sets_are_disjoint(const struct trie_node *left, const struct trie_node *right)
-{
-  assert(left != NULL);
-  assert(right != NULL);
-
-  if (left->potential_buckets_count == 0 || right->potential_buckets_count == 0)
-    return 1;
-
-  int i = 0;
-  int j = 0;
-
-  while (i < left->potential_buckets_count && j < right->potential_buckets_count)
-  {
-    int res = aggregator_bucket_compare(left->potential_buckets[i], right->potential_buckets[j]);
-
-    if (res == 0)
-      return 0;
-    else if (res == -1)
-      i++;
-    else if (res == 1)
-      j++;
-    else
-      bug("Impossible");
-  }
-
-  return 1;
-}
-
 /*
  * Second pass of Optimal Route Table Construction (ORTC) algorithm
  */
 static void
-second_pass(struct trie_node *node)
+second_pass(struct aggregator_proto *p, struct trie_node *node)
 {
   assert(node != NULL);
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
@@ -446,8 +403,10 @@ second_pass(struct trie_node *node)
   if (is_leaf(node))
   {
     assert(node->potential_buckets_count == 1);
-    assert(node->potential_buckets[0] != NULL);
-    assert(node->potential_buckets[0] == node->bucket);
+
+    /* The only potential bucket so far is the assigned bucket of the current node */
+    assert(BIT32R_TEST(node->potential_buckets, node->bucket->id));
+    assert(get_bucket_ptr(p, node->bucket->id) == node->bucket);
     return;
   }
 
@@ -459,21 +418,18 @@ second_pass(struct trie_node *node)
 
   /* Postorder traversal */
   if (left)
-    second_pass(left);
+    second_pass(p, left);
 
   if (right)
-    second_pass(right);
-
-
-  if (right)
+    second_pass(p, right);
 
   assert(node->bucket != NULL);
 
   struct trie_node artificial_node = {
     .parent = node,
-    .potential_buckets = { node->bucket },
-    .potential_buckets_count = 1,
   };
+
+  node_insert_potential_bucket(&artificial_node, node->bucket->id);
 
   /* Nodes with exactly one child */
   if ((left && !right) || (!left && right))
@@ -496,10 +452,7 @@ second_pass(struct trie_node *node)
    * Otherwise, parent's buckets are computed as intersection of its
    * children's buckets.
    */
-  if (bucket_sets_are_disjoint(left, right))
-    compute_buckets_union(node, left, right);
-  else
-    compute_buckets_intersection(node, left, right);
+  process_potential_buckets(node, left, right);
 }
 
 /*
@@ -508,20 +461,15 @@ second_pass(struct trie_node *node)
 static int
 is_bucket_potential(const struct trie_node *node, const struct aggregator_bucket *bucket)
 {
-  for (int i = 0; i < node->potential_buckets_count; i++)
-    if (node->potential_buckets[i] == bucket)
-      return 1;
-
-  return 0;
+  ASSERT_DIE(bucket->id < MAX_POTENTIAL_BUCKETS_COUNT);
+  return BIT32R_TEST(node->potential_buckets, bucket->id);
 }
 
 static void
 remove_potential_buckets(struct trie_node *node)
 {
-  for (int i = 0; i < node->potential_buckets_count; i++)
-    node->potential_buckets[i] = NULL;
-
   node->potential_buckets_count = 0;
+  memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
 }
 
 static void
@@ -550,7 +498,18 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
   else
   {
     assert(node->potential_buckets_count > 0);
-    node->bucket = node->potential_buckets[0];
+
+    /* Assign bucket with the lowest ID to the node */
+    for (u32 i = 0; i < MAX_POTENTIAL_BUCKETS_COUNT; i++)
+    {
+      if (BIT32R_TEST(node->potential_buckets, i))
+      {
+        node->bucket = get_bucket_ptr(p, i);
+        assert(node->bucket != NULL);
+        assert(node->bucket->id == i);
+        break;
+      }
+    }
   }
 
   /*
@@ -574,9 +533,9 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
     struct trie_node artificial_node = {
       .parent = node,
       .bucket = current_node_bucket,
-      .potential_buckets = { current_node_bucket },
-      .potential_buckets_count = 1,
     };
+
+    node_insert_potential_bucket(&artificial_node, current_node_bucket->id);
 
     /*
      * If the current node (parent of the artificial node) has a bucket,
@@ -631,12 +590,19 @@ third_pass(struct aggregator_proto *p, struct trie_node *root)
 {
   assert(root != NULL);
   assert(root->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
-
   assert(root->potential_buckets_count > 0);
-  assert(root->potential_buckets[0] != NULL);
 
-  /* Root is assigned any of its potential buckets */
-  root->bucket = root->potential_buckets[0];
+  /* Assign bucket with the lowest ID to root */
+  for (u32 i = 0; i < MAX_POTENTIAL_BUCKETS_COUNT; i++)
+  {
+    if (BIT32R_TEST(root->potential_buckets, i))
+    {
+      root->bucket = get_bucket_ptr(p, i);
+      assert(root->bucket != NULL);
+      assert(root->bucket->id == i);
+      break;
+    }
+  }
 
   /* The closest ancestor of the root node with a non-null bucket is the root itself */
   root->ancestor = root;
@@ -976,7 +942,7 @@ calculate_trie(struct aggregator_proto *p)
 
   /* Start with 1 as 0 is reserved for IDs that have not been assigned yet */
   u32 bucket_counter = 1;
-  assign_bucket_id(p->root, &bucket_counter);
+  assign_bucket_id(p, p->root, &bucket_counter);
 
   if (p->logging)
   {
@@ -998,7 +964,7 @@ calculate_trie(struct aggregator_proto *p)
 
   times_update(&main_timeloop);
   log("==== SECOND PASS ====");
-  second_pass(p->root);
+  second_pass(p, p->root);
   times_update(&main_timeloop);
   log("==== SECOND PASS DONE");
 
@@ -1061,6 +1027,8 @@ flush_aggregator(struct aggregator_proto *p)
   lp_flush(p->bucket_pool);
   lp_flush(p->route_pool);
   lp_flush(p->trie_pool);
+
+  memset(p->bucket_list, 0, p->bucket_list_size);
 }
 
 static void
@@ -1728,6 +1696,9 @@ aggregator_init(struct proto_config *CF)
   p->merge_by = cf->merge_by;
   p->notify_settle_cf = cf->notify_settle_cf;
   p->logging = cf->logging;
+  p->bucket_list = NULL;
+  p->bucket_list_size = 0;
+  p->bucket_list_count = 0;
 
   P->rt_notify = aggregator_rt_notify;
   P->preexport = aggregator_preexport;
@@ -1880,6 +1851,10 @@ aggregator_cleanup(struct proto *P)
   p->after_count = 0;
   p->internal_nodes = 0;
   p->leaves = 0;
+
+  p->bucket_list = NULL;
+  p->bucket_list_size = 0;
+  p->bucket_list_count = 0;
 }
 
 static int
