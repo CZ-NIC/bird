@@ -113,9 +113,9 @@ config_alloc(const char *name)
   c->pool = p;
   c->mem = l;
   c->file_name = ndup;
-  c->tf_route = c->tf_proto = TM_ISO_SHORT_MS;
-  c->tf_base = c->tf_log = TM_ISO_LONG_MS;
-  c->gr_wait = DEFAULT_GR_WAIT;
+  c->runtime.tf_route = c->runtime.tf_proto = TM_ISO_SHORT_MS;
+  c->runtime.tf_base = c->runtime.tf_log = TM_ISO_LONG_MS;
+  c->runtime.gr_wait = DEFAULT_GR_WAIT;
 
   callback_init(&c->obstacles_cleared, config_obstacles_cleared, &main_birdloop);
   obstacle_target_init(&c->obstacles, &c->obstacles_cleared, p, "Config");
@@ -229,42 +229,15 @@ config_free_old(void)
   old_config = NULL;
 }
 
-struct global_runtime global_runtime_internal[2] = {{
-  .tf_log = {
-    .fmt1 = "%F %T.%3f",
-  },
-}};
-struct global_runtime * _Atomic global_runtime = &global_runtime_internal[0];
-
 static void
 global_commit(struct config *new, struct config *old)
 {
   /* Updating the global runtime. */
-  struct global_runtime *og = atomic_load_explicit(&global_runtime, memory_order_relaxed);
-  struct global_runtime *ng = &global_runtime_internal[og == &global_runtime_internal[0]];
-  ASSERT_DIE(ng != og);
+  union bird_global_runtime *ng = &new->runtime;
+  SKIP_BACK_DECLARE(union bird_global_runtime, og, generic,
+      atomic_load_explicit(&global_runtime, memory_order_relaxed));
 
-#define COPY(x)	ng->x = new->x;
-  MACRO_FOREACH(COPY,
-      tf_route,
-      tf_proto,
-      tf_log,
-      tf_base,
-      cli_debug,
-      latency_debug,
-      latency_limit,
-      watchdog_warning,
-      watchdog_timeout,
-      gr_wait,
-      hostname
-      );
-#undef COPY
-
-  ng->load_time = current_time();
-
-  if (new->router_id)
-    ng->router_id = new->router_id;
-  else if (old)
+  if (!ng->router_id && old)
   {
     /* The startup router ID must be determined after start of device protocol,
      * thus if old == NULL then we do nothing */
@@ -280,10 +253,7 @@ global_commit(struct config *new, struct config *old)
     }
   }
 
-  atomic_store_explicit(&global_runtime, ng, memory_order_release);
-
-  /* We have to wait until every reader surely doesn't read the old values */
-  synchronize_rcu();
+  switch_runtime(&ng->generic);
 }
 
 static int
@@ -306,11 +276,11 @@ config_do_commit(config_ref *cr, int type)
   OBSREF_CLEAR(config);
   OBSREF_SET(config, OBSREF_GET(*cr));
 
-  if (!c->hostname)
+  if (!c->runtime.hostname)
     {
-      c->hostname = get_hostname(c->mem);
+      c->runtime.hostname = get_hostname(c->mem);
 
-      if (!c->hostname)
+      if (!c->runtime.hostname)
         log(L_WARN "Cannot determine hostname");
     }
 

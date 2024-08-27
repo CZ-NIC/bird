@@ -250,7 +250,7 @@ cli_command(struct cli *c)
   struct config f;
   int res;
 
-  if (OBSREF_GET(config)->cli_debug > 1)
+  if (BIRD_GLOBAL_RUNTIME->cli_debug > 1)
     log(L_TRACE "CLI: %s", c->rx_buf);
   bzero(&f, sizeof(f));
   f.mem = c->parser_pool;

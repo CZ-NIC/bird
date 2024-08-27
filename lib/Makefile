@@ -1,4 +1,4 @@
-src := a-path.c a-set.c bitmap.c bitops.c blake2s.c blake2b.c checksum.c defer.c event.c flowspec.c idm.c ip.c lists.c lockfree.c mac.c md5.c mempool.c net.c netindex.c patmatch.c printf.c rcu.c resource.c sha1.c sha256.c sha512.c slab.c slists.c strtoul.c tbf.c timer.c xmalloc.c
+src := a-path.c a-set.c bitmap.c bitops.c blake2s.c blake2b.c checksum.c defer.c event.c flowspec.c idm.c ip.c lists.c lockfree.c mac.c md5.c mempool.c net.c netindex.c patmatch.c printf.c rcu.c resource.c runtime.c sha1.c sha256.c sha512.c slab.c slists.c strtoul.c tbf.c timer.c xmalloc.c
 obj := $(src-o-files)
 $(all-daemon)
 

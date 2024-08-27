@@ -206,7 +206,7 @@ CF_GRAMMAR
 conf: rtrid ;
 
 rtrid:
-   ROUTER ID idval ';' { new_config->router_id = $3; }
+   ROUTER ID idval ';' { new_config->runtime.router_id = $3; }
  | ROUTER ID FROM iface_patt ';' { new_config->router_id_from = this_ipatt; }
  ;
 
@@ -226,11 +226,11 @@ idval:
 
 conf: hostname_override ;
 
-hostname_override: HOSTNAME text ';' { new_config->hostname = $2; } ;
+hostname_override: HOSTNAME text ';' { new_config->runtime.hostname = $2; } ;
 
 conf: gr_opts ;
 
-gr_opts: GRACEFUL RESTART WAIT expr ';' { new_config->gr_wait = $4; } ;
+gr_opts: GRACEFUL RESTART WAIT expr ';' { new_config->runtime.gr_wait = $4; } ;
 
 
 /* Network types (for tables, channels) */
@@ -447,7 +447,7 @@ debug_default:
    DEBUG PROTOCOLS debug_mask { new_config->proto_default_debug = $3; }
  | DEBUG CHANNELS debug_mask { new_config->channel_default_debug = $3; }
  | DEBUG TABLES debug_mask { new_config->table_default_debug = $3; }
- | DEBUG COMMANDS expr { new_config->cli_debug = $3; }
+ | DEBUG COMMANDS expr { new_config->runtime.cli_debug = $3; }
  | DEBUG SHOW ROUTE debug_mask { new_config->show_route_debug = $4; }
  ;
 
@@ -460,10 +460,10 @@ timeformat_base:
  ;
 
 timeformat_which:
-   ROUTE { $$ = &new_config->tf_route; }
- | PROTOCOL { $$ = &new_config->tf_proto; }
- | BASE { $$ = &new_config->tf_base; }
- | LOG { $$ = &new_config->tf_log; }
+   ROUTE { $$ = &new_config->runtime.tf_route; }
+ | PROTOCOL { $$ = &new_config->runtime.tf_proto; }
+ | BASE { $$ = &new_config->runtime.tf_base; }
+ | LOG { $$ = &new_config->runtime.tf_log; }
  ;
 
 timeformat_spec:
@@ -722,7 +722,7 @@ r_args:
      init_list(&($$->tables));
      $$->filter = FILTER_ACCEPT;
      $$->cli = this_cli;
-     $$->tf_route = this_cli->main_config->tf_route;
+     $$->tf_route = this_cli->main_config->runtime.tf_route;
    }
  | r_args net_any {
      $$ = $1;

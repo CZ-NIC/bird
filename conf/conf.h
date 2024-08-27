@@ -13,6 +13,7 @@
 #include "lib/ip.h"
 #include "lib/hash.h"
 #include "lib/resource.h"
+#include "lib/runtime.h"
 #include "lib/obstacle.h"
 #include "lib/timer.h"
 #include "lib/tlists.h"
@@ -34,33 +35,30 @@ struct config {
   struct symbol *def_tables[NET_MAX];	/* Default routing tables for each network */
   struct iface_patt *router_id_from;	/* Configured list of router ID iface patterns */
 
-  u32 router_id;			/* Our Router ID */
   u32 proto_default_debug;		/* Default protocol debug mask */
   u32 proto_default_mrtdump;		/* Default protocol mrtdump mask */
   u32 channel_default_debug;		/* Default channel debug mask */
   u32 table_default_debug;		/* Default table debug mask */
   u32 show_route_debug;			/* Exports to CLI debug mask */
   u16 filter_vstk, filter_estk;		/* Filter stack depth */
-  struct timeformat tf_route;		/* Time format for 'show route' */
-  struct timeformat tf_proto;		/* Time format for 'show protocol' */
-  struct timeformat tf_log;		/* Time format for the logfile */
-  struct timeformat tf_base;		/* Time format for other purposes */
-  u32 gr_wait;				/* Graceful restart wait timeout (sec) */
-  const char *hostname;			/* Hostname */
 
-  int cli_debug;			/* Tracing of CLI connections and commands */
-  enum latency_debug_flags {
-    DL_PING = 1,
-    DL_WAKEUP = 2,
-    DL_SCHEDULING = 4,
-    DL_ALLOCATOR = 8,
-    DL_SOCKETS = 0x10,
-    DL_EVENTS = 0x20,
-    DL_TIMERS = 0x40,
-  } latency_debug;			/* I/O loops log information about task scheduling */
-  u32 latency_limit;			/* Events with longer duration are logged (us) */
-  u32 watchdog_warning;			/* I/O loop watchdog limit for warning (us) */
-  u32 watchdog_timeout;			/* Watchdog timeout (in seconds, 0 = disabled) */
+  union bird_global_runtime {
+    struct global_runtime generic;
+    struct {
+      GLOBAL_RUNTIME_CONTENTS;
+
+      struct timeformat tf_route;	/* Time format for 'show route' */
+      struct timeformat tf_proto;	/* Time format for 'show protocol' */
+
+      u32 gr_wait;			/* Graceful restart wait timeout (sec) */
+
+      u32 router_id;			/* Our Router ID */
+
+      int cli_debug;			/* Tracing of CLI connections and commands */
+      u32 watchdog_timeout;		/* Watchdog timeout (in seconds, 0 = disabled) */
+    };
+  } runtime;
+
   char *err_msg;			/* Parser error message */
   int err_lino;				/* Line containing error */
   int err_chno;				/* Character where the parser stopped */
@@ -78,26 +76,8 @@ struct config {
   int gr_down;				/* This is a pseudo-config for graceful restart */
 };
 
-struct global_runtime {
-  struct timeformat tf_route;		/* Time format for 'show route' */
-  struct timeformat tf_proto;		/* Time format for 'show protocol' */
-  struct timeformat tf_log;		/* Time format for the logfile */
-  struct timeformat tf_base;		/* Time format for other purposes */
-
-  u32 gr_wait;				/* Graceful restart wait timeout (sec) */
-
-  u32 router_id;			/* Our Router ID */
-  const char *hostname;			/* Hostname */
-
-  btime load_time;			/* When we reconfigured last time */
-  int cli_debug;			/* Tracing of CLI connections and commands */
-  enum latency_debug_flags latency_debug;
-  u32 latency_limit;			/* Events with longer duration are logged (us) */
-  u32 watchdog_warning;			/* I/O loop watchdog limit for warning (us) */
-  u32 watchdog_timeout;			/* Watchdog timeout (in seconds, 0 = disabled) */
-};
-
-extern struct global_runtime * _Atomic global_runtime;
+/* BIRD's global runtime accessor */
+#define BIRD_GLOBAL_RUNTIME SKIP_BACK(union bird_global_runtime, generic, atomic_load_explicit(&global_runtime, memory_order_relaxed))
 
 /* Please don't use these variables in protocols. Use proto_config->global instead. */
 typedef OBSREF(struct config) config_ref;

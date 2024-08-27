@@ -284,7 +284,7 @@ bgp_prepare_capabilities(struct bgp_conn *conn)
     caps->llgr_aware = 1;
 
   rcu_read_lock();
-  struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
+  union bird_global_runtime *gr = BIRD_GLOBAL_RUNTIME;
   if (p->cf->enable_hostname && gr->hostname)
   {
     size_t length = strlen(gr->hostname);

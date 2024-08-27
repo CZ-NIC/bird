@@ -154,10 +154,10 @@ conf: THREADS expr {
 conf: debug_unix ;
 
 debug_unix:
-   DEBUG LATENCY latency_debug_mask { new_config->latency_debug = $3; }
- | DEBUG LATENCY LIMIT expr_us { new_config->latency_limit = $4; }
- | WATCHDOG WARNING expr_us { new_config->watchdog_warning = $3; }
- | WATCHDOG TIMEOUT expr_us { new_config->watchdog_timeout = ($3 + 999999) TO_S; }
+   DEBUG LATENCY latency_debug_mask { new_config->runtime.latency_debug = $3; }
+ | DEBUG LATENCY LIMIT expr_us { new_config->runtime.latency_limit = $4; }
+ | WATCHDOG WARNING expr_us { new_config->runtime.watchdog_warning = $3; }
+ | WATCHDOG TIMEOUT expr_us { new_config->runtime.watchdog_timeout = ($3 + 999999) TO_S; }
  ;
 
 latency_debug_mask:

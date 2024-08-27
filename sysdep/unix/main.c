@@ -211,8 +211,8 @@ sysdep_preconfig(struct config *c)
 {
   init_list(&c->logfiles);
 
-  c->latency_limit = UNIX_DEFAULT_LATENCY_LIMIT;
-  c->watchdog_warning = UNIX_DEFAULT_WATCHDOG_WARNING;
+  c->runtime.latency_limit = UNIX_DEFAULT_LATENCY_LIMIT;
+  c->runtime.watchdog_warning = UNIX_DEFAULT_WATCHDOG_WARNING;
 
 #ifdef PATH_IPROUTE_DIR
   read_iproute_table(c, PATH_IPROUTE_DIR "/rt_protos", "ipp_", 255);
@@ -533,7 +533,7 @@ cli_rx(sock *s, uint size UNUSED)
   return 0;
 }
 
-#define GLOBAL_CLI_DEBUG (atomic_load_explicit(&global_runtime, memory_order_relaxed)->cli_debug)
+#define GLOBAL_CLI_DEBUG (BIRD_GLOBAL_RUNTIME->cli_debug)
 
 static void
 cli_err(sock *s, int err)

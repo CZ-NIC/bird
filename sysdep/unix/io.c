@@ -613,7 +613,7 @@ watchdog_start(void)
   loop_time = last_io_time;
   event_log_num = 0;
 
-  struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
+  union bird_global_runtime *gr = BIRD_GLOBAL_RUNTIME;
   if (gr->watchdog_timeout)
   {
     alarm(gr->watchdog_timeout);
@@ -633,7 +633,7 @@ watchdog_stop(void)
   }
 
   btime duration = last_io_time - loop_time;
-  struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
+  union bird_global_runtime *gr = BIRD_GLOBAL_RUNTIME;
   if (duration > gr->watchdog_warning)
     log(L_WARN "I/O loop cycle took %u.%03u ms for %d events",
 	(uint) (duration TO_MS), (uint) (duration % 1000), event_log_num);

@@ -165,7 +165,7 @@ if_dump_all(struct dump_request *dreq)
   IFACE_WALK(i)
     if_dump_locked(dreq, i);
   rcu_read_lock();
-  RDUMP("Router ID: %08x\n", atomic_load_explicit(&global_runtime, memory_order_relaxed)->router_id);
+  RDUMP("Router ID: %08x\n", BIRD_GLOBAL_RUNTIME->router_id);
   rcu_read_unlock();
 }
 

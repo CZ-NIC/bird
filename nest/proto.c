@@ -1771,7 +1771,7 @@ protos_do_commit(struct config *new, struct config *old, int type)
      global_commit() because it is postponed after start of device protocol */
   if ((phase == PROTOCOL_STARTUP_NECESSARY) && !old)
   {
-    struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
+    union bird_global_runtime *gr = BIRD_GLOBAL_RUNTIME;
     if (!gr->router_id)
     {
       gr->router_id = if_choose_router_id(new->router_id_from, 0);
@@ -2008,7 +2008,7 @@ graceful_restart_init(void)
   _graceful_recovery_context.grc_state = GRS_ACTIVE;
 
   _graceful_recovery_context.wait_timer = (timer) { .hook = graceful_recovery_timeout };
-  u32 gr_wait = atomic_load_explicit(&global_runtime, memory_order_relaxed)->gr_wait;
+  u32 gr_wait = BIRD_GLOBAL_RUNTIME->gr_wait;
   tm_start(&_graceful_recovery_context.wait_timer, gr_wait S);
 
   callback_init(&_graceful_recovery_context.obstacles_cleared, graceful_recovery_done, &main_birdloop);
@@ -2029,7 +2029,7 @@ graceful_restart_show_status(void)
       obstacle_target_count(&_graceful_recovery_context.obstacles));
   cli_msg(-24, "  Wait timer is %t/%u",
       tm_remains(&_graceful_recovery_context.wait_timer),
-      atomic_load_explicit(&global_runtime, memory_order_relaxed)->gr_wait);
+      BIRD_GLOBAL_RUNTIME->gr_wait);
 }
 
 /**
@@ -2668,11 +2668,16 @@ proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
   if (p->proto->get_status)
     p->proto->get_status(p, buf);
 
-  rcu_read_lock();
-  struct timeformat *tf = this_cli->tf ?: &atomic_load_explicit(&global_runtime, memory_order_acquire)->tf_proto;
-  rcu_read_unlock();
+  struct timeformat *tf = this_cli->tf;
+  if (this_cli->tf)
+    tm_format_time(tbuf, this_cli->tf, p->last_state_change);
+  else
+  {
+    rcu_read_lock();
+    tm_format_time(tbuf, &BIRD_GLOBAL_RUNTIME->tf_proto, p->last_state_change);
+    rcu_read_unlock();
+  }
 
-  tm_format_time(tbuf, tf, p->last_state_change);
   cli_msg(-1002, "%-10s %-10s %-10s %-6s %-12s  %s",
 	  p->name,
 	  p->proto->name,
