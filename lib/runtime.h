@@ -9,6 +9,10 @@
 
 #include "lib/timer.h"
 
+/* Shutdown requested, behave accordingly.
+ * Initially zero, once set to one, never reset. */
+extern int shutting_down;
+
 /* I/O loops log information about task scheduling */
 enum latency_debug_flags {
   DL_PING = 1,

@@ -9,6 +9,8 @@
 
 #include "lib/runtime.h"
 
+int shutting_down = 0;
+
 struct global_runtime global_runtime_initial = {
   .tf_log = {
     .fmt1 = "%F %T.%3f",
