@@ -269,8 +269,6 @@ ev_send(event_list *l, event *e)
   if (l->loop) birdloop_ping(l->loop);
 }
 
-void io_log_event(void *hook, void *data, uint flag);
-
 /**
  * ev_run_list - run an event list
  * @l: an event list
@@ -319,10 +317,6 @@ ev_run_list_limited(event_list *l, uint limit)
       /* Check limit */
       if (!--limit)
 	return 1;
-
-      /* This is ugly hack, we want to log just events executed from the main I/O loop */
-      if ((l == &global_event_list) || (l == &global_work_list))
-	io_log_event(e->hook, e->data, DL_EVENTS);
 
       edlog(l, e, NULL, 6, EDL_RUN_LIST);
       /* Inactivate the event */

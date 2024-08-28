@@ -115,7 +115,7 @@ void times_update(void);
 
 /* For I/O loop */
 void timers_init(struct timeloop *loop, pool *p);
-void timers_fire(struct timeloop *loop, int io_log);
+void timers_fire(struct timeloop *loop);
 
 /* For extra fine precision */
 u64 ns_now(void);

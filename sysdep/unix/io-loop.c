@@ -835,7 +835,7 @@ bird_thread_main(void *arg)
     int timeout;
 
     /* Schedule all loops with timed out timers */
-    timers_fire(&thr->meta->time, 0);
+    timers_fire(&thr->meta->time);
 
     /* Pickup new loops */
     birdloop_take(thr->group);
@@ -1549,7 +1549,7 @@ birdloop_run(void *_loop)
     sockets_fire(loop, 0, 1);
 
     /* Run timers */
-    timers_fire(&loop->time, 0);
+    timers_fire(&loop->time);
 
     /* Run events */
     repeat = ev_run_list(&loop->event_list);

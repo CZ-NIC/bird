@@ -938,7 +938,7 @@ CF_CLI(DUMP RESOURCES, text,, [[Dump all allocated resource]])
 CF_CLI(DUMP SOCKETS, text,, [[Dump open sockets]])
 { cmd_dump_file(this_cli, $3, "sockets", sk_dump_all); } ;
 CF_CLI(DUMP EVENTS, text,, [[Dump event log]])
-{ cmd_dump_file(this_cli, $3, "event log", io_log_dump); } ;
+{ /* cmd_dump_file(this_cli, $3, "event log", io_log_dump); */ cli_msg(0, "Warning: this command did nothing and we still need to figure out how to reimplement it properly."); } ;
 CF_CLI(DUMP INTERFACES, text,, [[Dump interface information]])
 { cmd_dump_file(this_cli, $3, "interfaces", if_dump_all); } ;
 CF_CLI(DUMP NEIGHBORS, text,, [[Dump neighbor cache]])

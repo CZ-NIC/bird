@@ -61,6 +61,12 @@
    this to gen small latencies */
 #define MAX_RX_STEPS 4
 
+#if 0
+/**********
+ * Internal event log for the mainloop only makes no sense.
+ * To be replaced by a lockless event log keeping much more information
+ * about all the logs throughout all the threads.
+ */
 
 /*
  *	Internal event log and watchdog
@@ -152,13 +158,19 @@ io_log_dump(struct dump_request *dreq)
   }
 }
 
+#endif
+
+static btime last_io_time, loop_time;
+static int watchdog_active;
+
 void
 watchdog_sigalrm(int sig UNUSED)
 {
   /* Update last_io_time and duration, but skip latency check */
   struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
   gr->latency_limit = 0xffffffff;
-  io_update_time();
+
+  last_io_time = current_time_now();
 
   debug_safe("Watchdog timer timed out\n");
 
@@ -169,18 +181,14 @@ watchdog_sigalrm(int sig UNUSED)
 static inline void
 watchdog_start1(void)
 {
-  io_update_time();
-
-  loop_time = last_io_time;
+  loop_time = last_io_time = current_time_now();
 }
 
 static inline void
 watchdog_start(void)
 {
-  io_update_time();
-
-  loop_time = last_io_time;
-  event_log_num = 0;
+  loop_time = last_io_time = current_time_now();
+//  event_log_num = 0;
 
   union bird_global_runtime *gr = BIRD_GLOBAL_RUNTIME;
   if (gr->watchdog_timeout)
@@ -193,7 +201,7 @@ watchdog_start(void)
 static inline void
 watchdog_stop(void)
 {
-  io_update_time();
+  last_io_time = current_time_now();
 
   if (watchdog_active)
   {
@@ -203,9 +211,15 @@ watchdog_stop(void)
 
   btime duration = last_io_time - loop_time;
   union bird_global_runtime *gr = BIRD_GLOBAL_RUNTIME;
+  /*
   if (duration > gr->watchdog_warning)
     log(L_WARN "I/O loop cycle took %u.%03u ms for %d events",
 	(uint) (duration TO_MS), (uint) (duration % 1000), event_log_num);
+	*/
+
+  if (duration > gr->watchdog_warning)
+    log(L_WARN "I/O loop cycle took %u.%03u ms",
+	(uint) (duration TO_MS), (uint) (duration % 1000));
 }
 
 
@@ -256,8 +270,8 @@ io_loop(void)
       ev_run_list(&global_event_list);
       ev_run_list_limited(&global_work_list, WORK_EVENTS_MAX);
       ev_run_list(&main_birdloop.event_list);
-      timers_fire(&main_birdloop.time, 1);
-      io_close_event();
+      timers_fire(&main_birdloop.time);
+//      io_close_event();
 
       events =
 	!ev_list_empty(&global_event_list) ||
@@ -285,21 +299,21 @@ io_loop(void)
 
       if (async_config_flag)
 	{
-	  io_log_event(async_config, NULL, DL_EVENTS);
+//	  io_log_event(async_config, NULL, DL_EVENTS);
 	  async_config();
 	  async_config_flag = 0;
 	  continue;
 	}
       if (async_dump_flag)
 	{
-	  io_log_event(async_dump, NULL, DL_EVENTS);
+//	  io_log_event(async_dump, NULL, DL_EVENTS);
 	  async_dump();
 	  async_dump_flag = 0;
 	  continue;
 	}
       if (async_shutdown_flag)
 	{
-	  io_log_event(async_shutdown, NULL, DL_EVENTS);
+//	  io_log_event(async_shutdown, NULL, DL_EVENTS);
 	  async_shutdown();
 	  async_shutdown_flag = 0;
 	  continue;
@@ -346,7 +360,7 @@ io_loop(void)
 		do
 		  {
 		    steps--;
-		    io_log_event(s->rx_hook, s->data, DL_SOCKETS);
+//		    io_log_event(s->rx_hook, s->data, DL_SOCKETS);
 		    e = sk_read(s, pfd.pfd.data[s->index].revents);
 		  }
 		while (e && (main_birdloop.sock_active == s) && s->rx_hook && steps);
@@ -359,7 +373,7 @@ io_loop(void)
 		do
 		  {
 		    steps--;
-		    io_log_event(s->tx_hook, s->data, DL_SOCKETS);
+//		    io_log_event(s->tx_hook, s->data, DL_SOCKETS);
 		    e = sk_write(s);
 		  }
 		while (e && (main_birdloop.sock_active == s) && steps);
@@ -390,7 +404,7 @@ io_loop(void)
 	      if (!s->fast_rx && (pfd.pfd.data[s->index].revents & POLLIN) && s->rx_hook)
 		{
 		  count++;
-		  io_log_event(s->rx_hook, s->data, DL_SOCKETS);
+//		  io_log_event(s->rx_hook, s->data, DL_SOCKETS);
 		  sk_read(s, pfd.pfd.data[s->index].revents);
 		  if (s != main_birdloop.sock_active)
 		    continue;
