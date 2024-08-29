@@ -7,14 +7,16 @@
 #ifndef _BIRD_IO_LOOP_H_
 #define _BIRD_IO_LOOP_H_
 
+extern struct birdloop main_birdloop;
+
 #include "nest/bird.h"
 #include "lib/lists.h"
 #include "lib/locking.h"
 #include "lib/resource.h"
+#include "lib/buffer.h"
 #include "lib/event.h"
+#include "lib/timer.h"
 #include "lib/socket.h"
-
-extern struct birdloop main_birdloop;
 
 /* Currently running birdloop */
 extern _Thread_local struct birdloop *this_birdloop;

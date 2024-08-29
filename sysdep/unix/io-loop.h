@@ -103,6 +103,7 @@ struct bird_thread
   struct spent_time overhead, idle;
 };
 
+extern _Thread_local struct bird_thread *this_thread;
 
 struct bird_thread_syncer {
   pool *pool;
@@ -116,5 +117,19 @@ struct bird_thread_syncer {
 void bird_thread_sync_all(struct bird_thread_syncer *sync,
     void (*hook)(struct bird_thread_syncer *),
     void (*done)(struct bird_thread_syncer *), const char *name);
+
+struct birdloop_pickup_group {
+  DOMAIN(attrs) domain;
+  list loops;
+  list threads;
+  uint thread_count;
+  uint thread_busy_count;
+  uint loop_count;
+  uint loop_unassigned_count;
+  btime max_latency;
+  event start_threads;
+};
+
+extern struct birdloop_pickup_group pickup_groups[2];
 
 #endif

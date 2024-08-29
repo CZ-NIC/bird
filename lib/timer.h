@@ -120,6 +120,10 @@ void timers_fire(struct timeloop *loop);
 /* For extra fine precision */
 u64 ns_now(void);
 
+#define NSEC_IN_SEC	((u64) (1000 * 1000 * 1000))
+#define NSEC_TO_SEC(x)	((x) / NSEC_IN_SEC)
+#define CURRENT_SEC	NSEC_TO_SEC(ns_now())
+
 struct timeformat {
   const char *fmt1, *fmt2;
   btime limit;
