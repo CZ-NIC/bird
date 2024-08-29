@@ -78,7 +78,7 @@ cli: $(client)
 $(daemon): LIBS += $(DAEMON_LIBS)
 
 # Include directories
-dirs := client conf doc filter lib nest test $(addprefix proto/,$(protocols)) @sysdep_dirs@
+dirs := client conf doc filter flock lib nest test $(addprefix proto/,$(protocols)) @sysdep_dirs@
 
 # conf/Makefile declarations needed for all other modules
 conf-lex-targets := $(addprefix $(objdir)/conf/,cf-lex.o)
