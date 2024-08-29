@@ -15,10 +15,13 @@
  * user's manual.
  */
 
+#include <netdb.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
 #include <errno.h>
@@ -877,4 +880,36 @@ get_bird_name(char *s, char *def)
 void set_daemon_name(char *path, char *def)
 {
   bird_name = get_bird_name(path, def);
+}
+
+/*
+ *	DNS resolver
+ */
+
+ip_addr
+resolve_hostname(const char *host, int type, const char **err_msg)
+{
+  struct addrinfo *res;
+  struct addrinfo hints = {
+    .ai_family = AF_UNSPEC,
+    .ai_socktype = (type == SK_UDP) ? SOCK_DGRAM : SOCK_STREAM,
+    .ai_flags = AI_ADDRCONFIG,
+  };
+
+  *err_msg = NULL;
+
+  int err_code = getaddrinfo(host, NULL, &hints, &res);
+  if (err_code != 0)
+  {
+    *err_msg = gai_strerror(err_code);
+    return IPA_NONE;
+  }
+
+  ip_addr addr = IPA_NONE;
+  uint unused;
+
+  sockaddr_read((sockaddr *) res->ai_addr, res->ai_family, &addr, NULL, &unused);
+  freeaddrinfo(res);
+
+  return addr;
 }
