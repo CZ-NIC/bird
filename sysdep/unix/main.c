@@ -599,7 +599,6 @@ static void
 cli_init_unix(uid_t use_uid, gid_t use_gid)
 {
   ASSERT_DIE(main_control_socket_config == NULL);
-  cli_init();
 
   main_control_socket_config = &initial_control_socket_config;
   main_control_socket_config->uid = use_uid;
@@ -614,6 +613,9 @@ cli_init_unix(uid_t use_uid, gid_t use_gid)
 static void
 cli_preconfig(struct config *c)
 {
+  if (!main_control_socket_config)
+    return;
+
   struct cli_config *ccf = mb_alloc(cli_pool, sizeof *ccf);
   memcpy(ccf, main_control_socket_config, sizeof *ccf);
   ccf->n = (struct cli_config_node) {};
@@ -1010,6 +1012,8 @@ main(int argc, char **argv)
 
   uid_t use_uid = get_uid(use_user);
   gid_t use_gid = get_gid(use_group);
+
+  cli_init();
 
   if (!parse_and_exit)
   {
