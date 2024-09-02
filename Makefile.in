@@ -158,7 +158,7 @@ $(objdir)/.dir-stamp: Makefile
 
 $(client) $(daemon):
 	$(E)echo LD $(LDFLAGS) -o $@ $^ $(LIBS)
-	$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+	+$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 $(objdir)/sysdep/paths.h: Makefile
 	$(E)echo GEN $@
@@ -173,7 +173,7 @@ tests_targets_ok = $(addsuffix .ok,$(tests_targets))
 
 $(tests_targets): %: %.o $(tests_objs) | prepare
 	$(E)echo LD $(LDFLAGS) -o $@ $< "..." $(LIBS)
-	$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+	+$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 # Hack to avoid problems with tests linking everything
 $(tests_targets): LIBS += $(DAEMON_LIBS)

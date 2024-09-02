@@ -11,7 +11,7 @@ AC_DEFUN([BIRD_COMPILER_VENDOR],
     AC_COMPILE_IFELSE([
       AC_LANG_PROGRAM([ int x = __clang__; ], [])
     ],
-    [bird_cv_compiler_vendor=clang],
+    [bird_cv_compiler_vendor=llvm],
     AC_COMPILE_IFELSE([
       AC_LANG_PROGRAM([ int x = __GNUC__; ], [])
     ],
@@ -258,8 +258,8 @@ AC_DEFUN([BIRD_CHECK_LTO],
 [
   bird_tmp_cflags="$CFLAGS"
   bird_tmp_ldflags="$LDFLAGS"
-  CFLAGS="-flto"
-  LDFLAGS="-flto=4"
+  CFLAGS="$1"
+  LDFLAGS="$2"
 
   AC_CACHE_CHECK(
     [whether link time optimizer is available],

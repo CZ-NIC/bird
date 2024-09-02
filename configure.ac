@@ -124,6 +124,8 @@ if test -z "$GCC" ; then
   AC_MSG_ERROR([This program requires the GNU C Compiler.])
 fi
 
+BIRD_COMPILER_VENDOR
+
 BIRD_CHECK_THREAD_LOCAL
 if test "$bird_cv_thread_local" = no ; then
   AC_MSG_ERROR([This program requires thread local storage.])
@@ -149,12 +151,18 @@ if test "$bird_cflags_default" = yes ; then
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_watomic_implicit_seq_cst], [-Watomic-implicit-seq-cst], [-Wall -Wextra])
 
   if test "$enable_debug" = no; then
-    BIRD_CHECK_LTO
+    LTO_CFLAGS=-flto
+    AS_CASE(${bird_cv_compiler_vendor},
+	    gnu,LTO_LDFLAGS="-flto=jobserver",
+	    llvm,LTO_LDFLAGS="-flto",
+	    unknown,LTO_LDFLAGS="-flto",
+	    AC_MSG_ERROR([Compiler vendor check failed for LTO: got ${bird_cv_compiler_vendor}]))
+    BIRD_CHECK_LTO(${LTO_CFLAGS}, ${LTO_LDFLAGS})
   fi
 
   if test "$bird_cv_c_lto" = yes; then
-    CFLAGS="$CFLAGS -flto"
-    LDFLAGS="$LDFLAGS -flto=4 -g"
+    CFLAGS="$CFLAGS $LTO_CFLAGS"
+    LDFLAGS="$LDFLAGS $LTO_LDFLAGS -g"
   else
     LDFLAGS="$LDFLAGS -g"
   fi
