@@ -32,7 +32,6 @@
 #include "lib/string.h"
 #include "lib/locking.h"
 #include "conf/conf.h"
-#include "sysdep/unix/krt.h"
 
 DOMAIN(attrs) iface_domain;
 
@@ -784,6 +783,8 @@ if_set_preferred(struct ifa **pos, struct ifa *new)
   *pos = new;
 }
 
+int (*kif_update_sysdep_addr)(struct iface *) = NULL;
+
 static void
 if_recalc_preferred(struct iface *i)
 {
@@ -793,14 +794,14 @@ if_recalc_preferred(struct iface *i)
    * 2) Sysdep IPv4 address (BSD)
    * 3) Old preferred address
    * 4) First address in list
-   */
+  */
 
-  struct kif_iface_config *ic = kif_get_iface_config(i);
+  struct iface_config *ic = i->cf;
   struct ifa *a4 = i->addr4, *a6 = i->addr6, *ll = i->llv6;
   ip_addr pref_v4 = ic->pref_v4;
   uint change = 0;
 
-  if (kif_update_sysdep_addr(i))
+  if (kif_update_sysdep_addr && kif_update_sysdep_addr(i))
     change |= IF_CHANGE_SYSDEP;
 
   /* BSD sysdep address */

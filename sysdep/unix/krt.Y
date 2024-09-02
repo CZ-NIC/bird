@@ -14,7 +14,7 @@ CF_DEFINES
 
 #define THIS_KRT ((struct krt_config *) this_proto)
 #define THIS_KIF ((struct kif_config *) this_proto)
-#define KIF_IFACE ((struct kif_iface_config *) this_ipatt)
+#define KIF_IFACE ((struct iface_config *) this_ipatt)
 
 static void
 kif_set_preferred(ip_addr ip)
@@ -112,7 +112,7 @@ kif_item:
 
 kif_iface_start:
 {
-  this_ipatt = cfg_allocz(sizeof(struct kif_iface_config));
+  this_ipatt = cfg_allocz(sizeof(struct iface_config));
   add_tail(&THIS_KIF->iface_list, NODE this_ipatt);
   init_list(&this_ipatt->ipn_list);
 }
