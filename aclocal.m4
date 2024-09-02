@@ -2,6 +2,25 @@ dnl ** Additional Autoconf tests for BIRD configure script
 dnl ** (c) 1999 Martin Mares <mj@ucw.cz>
 dnl ** (c) 2021 Maria Matejka <mq@jmq.cz>
 
+# simplified adapted macro AX_COMPILER_VENDOR from autotools
+AC_DEFUN([BIRD_COMPILER_VENDOR],
+[
+  AC_CACHE_CHECK(
+    [which compiler vendor we are dealing with],
+    [bird_cv_compiler_vendor],
+    AC_COMPILE_IFELSE([
+      AC_LANG_PROGRAM([ int x = __clang__; ], [])
+    ],
+    [bird_cv_compiler_vendor=clang],
+    AC_COMPILE_IFELSE([
+      AC_LANG_PROGRAM([ int x = __GNUC__; ], [])
+    ],
+    [bird_cv_compiler_vendor=gnu],
+    [bird_cv_compiler_vendor=unknown]
+    ))
+  )
+])
+
 AC_DEFUN([BIRD_CHECK_POINTER_ALIGNMENT],
 [
   AC_CACHE_CHECK(
