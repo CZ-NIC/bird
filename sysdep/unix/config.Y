@@ -147,7 +147,7 @@ cli_opts_block:
 
 conf: THREADS expr {
     if ($2 < 1) cf_error("Number of threads must be at least one.");
-    new_config->thread_count = $2;
+    new_config->threads.count = $2;
 }
 
 

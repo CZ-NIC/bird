@@ -559,10 +559,10 @@ void cmd_reconfig_undo_notify(void) {}
 #include "conf/conf.h"
 void sysdep_preconfig(struct config *c UNUSED) {}
 
-void bird_thread_commit(struct config *new, struct config *old);
-void sysdep_commit(struct config *new, struct config *old)
+void bird_thread_commit(struct thread_config *new);
+void sysdep_commit(struct config *new, struct config *old UNUSED)
 {
-  bird_thread_commit(new, old);
+  bird_thread_commit(&new->threads);
 }
 
 void sysdep_shutdown_done(void) {}

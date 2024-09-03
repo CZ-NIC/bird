@@ -73,6 +73,14 @@ void birdloop_ping(struct birdloop *loop);
 void birdloop_add_socket(struct birdloop *, struct birdsock *);
 void birdloop_remove_socket(struct birdloop *, struct birdsock *);
 
+/* Initializations */
 void birdloop_init(void);
+
+struct thread_config {
+  uint count;
+};
+
+void bird_thread_commit(struct thread_config *new);
+
 
 #endif /* _BIRD_IO_LOOP_H_ */

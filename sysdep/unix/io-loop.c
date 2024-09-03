@@ -1106,22 +1106,19 @@ bird_thread_shutdown(void * _ UNUSED)
 }
 
 void
-bird_thread_commit(struct config *new, struct config *old UNUSED)
+bird_thread_commit(struct thread_config *new)
 {
   ASSERT_DIE(birdloop_inside(&main_birdloop));
 
-  if (new->shutdown)
-    return;
-
-  if (!new->thread_count)
-    new->thread_count = 1;
+  if (!new->count)
+    new->count = 1;
 
   while (1)
   {
     struct birdloop_pickup_group *group = &pickup_groups[0];
     LOCK_DOMAIN(attrs, group->domain);
 
-    int dif = group->thread_count - (thread_dropper_goal = new->thread_count);
+    int dif = group->thread_count - (thread_dropper_goal = new->count);
     bool thread_dropper_running = !!thread_dropper;
 
     UNLOCK_DOMAIN(attrs, group->domain);
