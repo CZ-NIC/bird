@@ -88,6 +88,7 @@ sock *sock_new(pool *);			/* Allocate new socket */
 #define sk_new(X) sock_new(X)		/* Wrapper to avoid name collision with OpenSSL */
 
 int sk_open(sock *, struct birdloop *);		/* Open socket */
+int sk_open_unix(struct birdsock *s, struct birdloop *, const char *name);  /* Open UNIX socket */
 void sk_reloop(sock *, struct birdloop *);	/* Move socket to another loop. Both loops must be locked. */
 static inline void sk_close(sock *s) { rfree(&s->r); }	/* Explicitly close socket */
 

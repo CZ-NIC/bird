@@ -114,7 +114,6 @@ extern volatile sig_atomic_t async_shutdown_flag;
 void io_init(void);
 void io_loop(void);
 void io_log_dump(struct dump_request *);
-int sk_open_unix(struct birdsock *s, struct birdloop *, const char *name);
 
 enum rf_mode {
   RF_APPEND = 1,
