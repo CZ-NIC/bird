@@ -66,6 +66,15 @@ lp_strdup(linpool *lp, const char *c)
   return z;
 }
 
+static inline char *
+mb_strdup(pool *p, const char *c)
+{
+  size_t l = strlen(c) + 1;
+  char *z = mb_alloc(p, l);
+  memcpy(z, c, l);
+  return z;
+}
+
 static inline void
 memset32(void *D, u32 val, uint n)
 {
