@@ -2,10 +2,56 @@
 
 #include "lib/resource.h"
 #include "lib/io-loop.h"
+#include "lib/socket.h"
+
+#include "flock/flock.h"
 
 #include <sys/socket.h>
 
-/* Local communication structure */
+/**
+ * Main control socket
+ **/
+
+pool *hypervisor_control_socket_pool;
+
+static int
+hcs_connect(sock *s, uint size UNUSED)
+{
+  log(L_INFO "CLI connected: %p", s);
+  sk_close(s);
+  return 1;
+}
+
+static void
+hcs_connect_err(sock *s UNUSED, int err)
+{
+  ASSERT_DIE(err);
+  log(L_INFO "Failed to accept CLI connection: %s", strerror(err));
+}
+
+void
+hypervisor_control_socket(void)
+{
+  struct birdloop *loop = birdloop_new(&root_pool, DOMAIN_ORDER(control), 0, "Control socket");
+  birdloop_enter(loop);
+
+  pool *p = hypervisor_control_socket_pool = rp_new(birdloop_pool(loop), birdloop_domain(loop), "Control socket pool");
+  sock *s = sk_new(p);
+  s->type = SK_UNIX_PASSIVE;
+  s->rx_hook = hcs_connect;
+  s->err_hook = hcs_connect_err;
+  s->rbsize = 1024;
+
+  unlink(flock_config.control_socket_path);
+  if (sk_open_unix(s, loop, flock_config.control_socket_path) < 0)
+    die("Can't create control socket %s: %m", flock_config.control_socket_path);
+
+  birdloop_leave(loop);
+}
+
+/**
+ * Exposed process' communication structure
+ **/
 static struct hypervisor_exposed {
   pool *p;
   sock *s;

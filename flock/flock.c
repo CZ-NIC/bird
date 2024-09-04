@@ -99,15 +99,32 @@ main(int argc, char **argv, char **argh UNUSED)
 
   log_switch(1, NULL, NULL);
 
+  /* Find the original UID/GIDs */
+  uid_t euid = geteuid(), egid = getegid();
+
   /* Parse args */
   flock_config.exec_name = argv[0] ?: "flock-sim";
   int opt;
-  while ((opt = getopt(argc, argv, "")) != -1)
+  while ((opt = getopt(argc, argv, "ls:")) != -1)
   {
-    /* TODO: add some options */
-    usage(stderr);
-    return 2;
+    switch (opt)
+    {
+      case 'l':
+	flock_config.control_socket_path = "flock-sim.ctl";
+	break;
+
+      case 's':
+	flock_config.control_socket_path = mb_strdup(&root_pool, optarg);
+	break;
+
+      default:
+	usage(stderr);
+	return 2;
+    }
   }
+
+  /* FIXME: have a default */
+  ASSERT_DIE(flock_config.control_socket_path);
 
   /* Get hypervisor name */
   if (optind != argc - 1)
@@ -127,11 +144,9 @@ main(int argc, char **argv, char **argh UNUSED)
 #undef FROB
   sigprocmask(SIG_BLOCK, &newmask, &oldmask);
 
-  /* Keep the original UID/GIDs */
-  uid_t euid = geteuid(), egid = getegid();
-
-  /* First we need to create the PID + mount + user namespace to acquire capabilities */
-  SYSCALL(unshare, CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUSER);
+  /* First we need to create the PID + mount + user namespace to acquire capabilities,
+   * and also time namespace for good measure */
+  SYSCALL(unshare, CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUSER | CLONE_NEWTIME);
 
   /* Then we have to fork() to become PID 1 of the new PID namespace */
   pid_t init_pid = fork();
@@ -173,8 +188,11 @@ main(int argc, char **argv, char **argh UNUSED)
    * let's spawn a child to do external communication before unsharing */
   hypervisor_exposed_fork();
 
-  /* And now finally we can go for unsharing the rest -- networks and time */
-  SYSCALL(unshare, CLONE_NEWTIME | CLONE_NEWNET);
+  /* We also need to prepare all the hypervisor-init stuff */
+  hypervisor_control_socket();
+
+  /* And now finally we can go for unsharing the networks */
+  SYSCALL(unshare, CLONE_NEWNET);
 
   /* Set signal handlers as this process is init in its PID namespace */
   signal(SIGTERM, hypervisor_poweroff_sighandler);
@@ -189,6 +207,10 @@ main(int argc, char **argv, char **argh UNUSED)
   struct rlimit corelimit;
   getrlimit(RLIMIT_CORE, &corelimit);
   log(L_INFO "Core limit %u %u", corelimit.rlim_cur, corelimit.rlim_max);
+
+  /* Run worker threads */
+  struct thread_config tc = {};
+  bird_thread_commit(&tc);
 
   /* Wait for Godot */
   log(L_INFO "Hypervisor running");
