@@ -4,6 +4,7 @@
 
 #include "lib/timer.h"
 #include "sysdep/unix/unix.h"
+#include "sysdep/unix/io-loop.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -29,28 +30,37 @@ struct flock_config flock_config;
  * For more information, see pid_namespaces(7).
  */
 
-static sig_atomic_t signal_received;
-#define SIGREQ_REBOOT	1
-#define SIGREQ_POWEROFF	2
-#define SIGREQ_FAIL	4
+static void
+reboot_event_hook(void *data UNUSED)
+{
+  log(L_ERR "Reboot requested but not implemented");
+}
+
+static void
+poweroff_event_hook(void *data UNUSED)
+{
+  log(L_INFO "Shutdown requested. TODO: properly clean up");
+  exit(0);
+}
+
+static event reboot_event = { .hook = reboot_event_hook },
+	     poweroff_event = { .hook = poweroff_event_hook };
 
 static void
 hypervisor_reboot_sighandler(int signo UNUSED)
 {
-  signal_received |= SIGREQ_REBOOT;
+  ev_send_loop(&main_birdloop, &reboot_event);
 }
 
 static void
 hypervisor_poweroff_sighandler(int signo UNUSED)
 {
-  signal_received |= SIGREQ_POWEROFF;
+  ev_send_loop(&main_birdloop, &poweroff_event);
 }
 
 static void
 hypervisor_fail_sighandler(int signo UNUSED)
 {
-  signal_received |= SIGREQ_FAIL;
-
   int e = fork();
   if (e == 0)
   {
@@ -95,6 +105,10 @@ main(int argc, char **argv, char **argh UNUSED)
   random_init();
 
   birdloop_init();
+
+  ev_init_list(&global_event_list, &main_birdloop, "Global event list");
+  ev_init_list(&global_work_list, &main_birdloop, "Global work list");
+  ev_init_list(&main_birdloop.event_list, &main_birdloop, "Global fast event list");
   boot_time = current_time();
 
   log_switch(1, NULL, NULL);
@@ -216,16 +230,31 @@ main(int argc, char **argv, char **argh UNUSED)
   log(L_INFO "Hypervisor running");
   while (1)
   {
-    pause();
+    times_update();
+    ev_run_list(&global_event_list);
+    ev_run_list(&global_work_list);
+    ev_run_list(&main_birdloop.event_list);
+    timers_fire(&main_birdloop.time);
 
-    uint s = signal_received;
-    signal_received &= ~s;
+    bool events =
+      !ev_list_empty(&global_event_list) ||
+      !ev_list_empty(&global_work_list) ||
+      !ev_list_empty(&main_birdloop.event_list);
 
-    if (s & SIGREQ_FAIL)
-      bug("Fail flag should never propagate from signal");
-    else if (s & SIGREQ_POWEROFF)
-      return 0;
-    else if (s & SIGREQ_REBOOT)
-      log(L_ERR "Reboot requested but not implemented");
+    int poll_tout = (events ? 0 : 3000); /* Time in milliseconds */
+    timer *t;
+    if (t = timers_first(&main_birdloop.time))
+    {
+      times_update();
+      int timeout = (tm_remains(t) TO_MS) + 1;
+      poll_tout = MIN(poll_tout, timeout);
+    }
+
+    struct pollfd pfd = {
+      .fd = main_birdloop.thread->wakeup.fd[0],
+      .events = POLLIN,
+    };
+
+    poll(&pfd, 1, poll_tout);
   }
 }
