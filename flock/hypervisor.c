@@ -15,10 +15,52 @@
 pool *hypervisor_control_socket_pool;
 
 static int
+hcs_rx(sock *s, uint size)
+{
+  s64 sz = hcs_parse(s->data, s->rbuf, size);
+  if (sz < 0)
+  {
+    log(L_INFO "CLI parser error at position %ld: %s", -sz-1, hcs_error(s->data));
+    sk_close(s);
+    return 0; /* Must return 0 when closed */
+  }
+
+  if (!hcs_complete(s->data))
+  {
+    ASSERT_DIE(sz == size);
+    return 1;
+  }
+
+  log(L_INFO "Parsed command.");
+
+  /* TODO do something more */
+
+  hcs_parser_cleanup(s->data);
+  s->data = hcs_parser_init(s->pool);
+
+  if (sz == size)
+    return 1;
+
+  memmove(s->rbuf, s->rbuf + sz, size - sz);
+  return hcs_rx(s, size - sz);
+}
+
+static void
+hcs_err(sock *s, int err)
+{
+  log(L_INFO "CLI dropped: %s", strerror(err));
+  hcs_parser_cleanup(s->data);
+  sk_close(s);
+}
+
+static int
 hcs_connect(sock *s, uint size UNUSED)
 {
   log(L_INFO "CLI connected: %p", s);
-  sk_close(s);
+
+  s->rx_hook = hcs_rx;
+  s->err_hook = hcs_err;
+  s->data = hcs_parser_init(s->pool);
   return 1;
 }
 

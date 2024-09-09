@@ -3,6 +3,7 @@
 #ifndef INCLUDE_FLOCK_H
 #define INCLUDE_FLOCK_H
 #include "lib/birdlib.h"
+#include "lib/resource.h"
 
 void hypervisor_exposed_fork(void);
 void hypervisor_control_socket(void);
@@ -14,5 +15,11 @@ struct flock_config {
 };
 
 extern struct flock_config flock_config;
+
+struct cbor_parser_context *hcs_parser_init(pool *p);
+s64 hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size);
+void hcs_parser_cleanup(struct cbor_parser_context *ctx);
+const char *hcs_error(struct cbor_parser_context *ctx);
+bool hcs_complete(struct cbor_parser_context *ctx);
 
 #endif

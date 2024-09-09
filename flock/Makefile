@@ -1,4 +1,4 @@
-src := flock.c hypervisor.c
+src := ctl.c flock.c hypervisor.c
 obj := $(src-o-files)
 
 flock=$(exedir)/flock-sim
