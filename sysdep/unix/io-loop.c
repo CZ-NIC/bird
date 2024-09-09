@@ -573,6 +573,7 @@ static void bird_thread_busy_set(struct bird_thread *thr, int val);
 struct birdloop_pickup_group pickup_groups[2] = {
   {
     /* all zeroes */
+    .start_threads.hook = bird_thread_start_event,
   },
   {
     /* FIXME: make this dynamic, now it copies the loop_max_latency value from proto/bfd/config.Y */
@@ -1014,7 +1015,8 @@ static void
 bird_thread_start_event(void *_data)
 {
   struct birdloop_pickup_group *group = _data;
-  bird_thread_start(group);
+  if (group)
+    bird_thread_start(group);
 }
 
 static struct birdloop *thread_dropper;
