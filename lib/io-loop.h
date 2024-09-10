@@ -82,5 +82,7 @@ struct thread_config {
 
 void bird_thread_commit(struct thread_config *new);
 
+/* Minimalist main */
+void birdloop_minimalist_main(void) NORET;
 
 #endif /* _BIRD_IO_LOOP_H_ */

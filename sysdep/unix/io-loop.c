@@ -297,6 +297,22 @@ wakeup_free(struct bird_thread *loop)
   pipe_free(&loop->wakeup);
 }
 
+static inline void
+wakeup_forked(struct bird_thread *thr)
+{
+  struct pipe new;
+  pipe_new(&new);
+
+  /* This is kinda sketchy but there is probably
+   * no actual architecture where copying an int
+   * would create an invalid inbetween value */
+  struct pipe old = thr->wakeup;
+  thr->wakeup = new;
+  synchronize_rcu();
+
+  pipe_free(&old);
+}
+
 static inline bool
 birdloop_try_ping(struct birdloop *loop, u32 ltt)
 {
@@ -1598,4 +1614,58 @@ ev_send_defer(event *e)
     ev_send_loop(&main_birdloop, e);
   else
     ev_send(&this_birdloop->defer_list, e);
+}
+
+/*
+ * Minimalist mainloop with no sockets
+ */
+
+void
+birdloop_minimalist_main(void)
+{
+  /* In case we got forked (hack for Flock) */
+  wakeup_forked(&main_thread);
+
+  while (1)
+  {
+    /* Unset ping information */
+    atomic_fetch_and_explicit(&main_birdloop.thread_transition, ~LTT_PING, memory_order_acq_rel);
+
+    times_update();
+    ev_run_list(&global_event_list);
+    ev_run_list(&global_work_list);
+    ev_run_list(&main_birdloop.event_list);
+    timers_fire(&main_birdloop.time);
+
+    bool events =
+      !ev_list_empty(&global_event_list) ||
+      !ev_list_empty(&global_work_list) ||
+      !ev_list_empty(&main_birdloop.event_list);
+
+    int poll_tout = (events ? 0 : 3000); /* Time in milliseconds */
+    timer *t;
+    if (t = timers_first(&main_birdloop.time))
+    {
+      times_update();
+      int timeout = (tm_remains(t) TO_MS) + 1;
+      poll_tout = MIN(poll_tout, timeout);
+    }
+
+    struct pollfd pfd = {
+      .fd = main_birdloop.thread->wakeup.fd[0],
+      .events = POLLIN,
+    };
+
+    int rv = poll(&pfd, 1, poll_tout);
+    if ((rv < 0) && (errno != EINTR) && (errno != EAGAIN))
+      bug("poll in main birdloop: %m");
+
+    /* Drain wakeup fd */
+    if (pfd.revents & POLLIN)
+    {
+      THREAD_TRACE(DL_WAKEUP, "Ping received");
+      ASSERT_DIE(rv == 1);
+      wakeup_drain(main_birdloop.thread);
+    }
+  }
 }
