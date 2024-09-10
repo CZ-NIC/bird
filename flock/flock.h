@@ -25,6 +25,8 @@ void hcs_parser_cleanup(struct cbor_parser_context *ctx);
 const char *hcs_error(struct cbor_parser_context *ctx);
 bool hcs_complete(struct cbor_parser_context *ctx);
 
+void hexp_get_telnet(sock *, const char *name);
+
 extern event reboot_event, poweroff_event;
 extern event_list shutdown_event_list;
 

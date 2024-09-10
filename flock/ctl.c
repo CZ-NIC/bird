@@ -184,8 +184,11 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 	  case 3: /* telnet listener open */
 	    if ((ctx->type != 7) || (ctx->value != 22))
 	      CBOR_PARSER_ERROR("Expected null, got %u-%u", ctx->type, ctx->value);
+	    /* TODO: allow this also for machines */
 
 	    log(L_INFO "Requested telnet open");
+
+	    hexp_get_telnet(ctx->sock, NULL);
 
 	    ctx->major_state = 1;
 	    break;

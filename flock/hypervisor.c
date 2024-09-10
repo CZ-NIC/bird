@@ -1,7 +1,9 @@
 #include "lib/birdlib.h"
 
-#include "lib/resource.h"
+#include "lib/cbor.h"
+#include "lib/hash.h"
 #include "lib/io-loop.h"
+#include "lib/resource.h"
 #include "lib/socket.h"
 
 #include "flock/flock.h"
@@ -149,8 +151,18 @@ hypervisor_exposed_parent_err(sock *sk UNUSED, int e UNUSED)
 static int
 hypervisor_exposed_child_rx(sock *sk, uint size UNUSED)
 {
-  log(L_INFO "HV EC RX");
-  recvmsg(sk->fd, NULL, 0);
+  byte buf[128];
+  struct iovec v = {
+    .iov_base = buf,
+    .iov_len = sizeof buf,
+  };
+  struct msghdr m = {
+    .msg_iov = &v,
+    .msg_iovlen = 1,
+  };
+  int e = recvmsg(sk->fd, &m, 0);
+  log(L_INFO "HV EC RX %d", e);
+
   return 0;
 }
 
@@ -210,4 +222,80 @@ hypervisor_exposed_fork(void)
 
   /* Wait for Godot */
   birdloop_minimalist_main();
+}
+
+
+/**
+ * Hypervisor's mapping between external ports and names
+ */
+
+#define HEXP_TELNET_KEY(tp)	tp->name, tp->hash
+#define HEXP_TELNET_NEXT(tp)	tp->next
+#define HEXP_TELNET_EQ(a,h,b,i)	((h) == (i)) && (!(a) && !(b) || !strcmp(a,b))
+#define HEXP_TELNET_FN(a,h)	h
+
+struct hexp_telnet_port {
+  struct hexp_telnet_port *next;
+  const char *name;
+  uint hash;
+  uint port;
+};
+
+static struct hexp_telnet {
+  pool *pool;
+  HASH(struct hexp_telnet_port) port_hash;
+} hexp_telnet;
+
+static void
+hexp_init_telnet(void)
+{
+  pool *p = rp_new(hcs_pool, hcs_pool->domain, "Hypervisor exposed telnets");
+  hexp_telnet.pool = p;
+  HASH_INIT(hexp_telnet.port_hash, p, 6);
+}
+
+static void
+hexp_have_telnet(sock *s, struct hexp_telnet_port *p)
+{
+  struct linpool *lp = lp_new(s->pool);
+  struct cbor_writer *cw = cbor_init(s->tbuf, s->tbsize, lp);
+  cbor_open_block_with_length(cw, 1);
+  cbor_add_int(cw, -2);
+  cbor_add_int(cw, p->port);
+  sk_send(s, cw->pt);
+  rfree(lp);
+}
+
+void
+hexp_get_telnet(sock *s, const char *name)
+{
+  if (!hexp_telnet.pool)
+    hexp_init_telnet();
+
+  uint h = name ? mem_hash(name, strlen(name)) : 0;
+  struct hexp_telnet_port *p = HASH_FIND(hexp_telnet.port_hash, HEXP_TELNET, name, h);
+  if (p)
+    return hexp_have_telnet(s, p);
+
+  uint8_t buf[64];
+  linpool *lp = lp_new(s->pool);
+  struct cbor_writer *cw = cbor_init(buf, sizeof buf, lp);
+  cbor_open_block_with_length(cw, 1);
+  cbor_add_int(cw, 1);
+  cw->cbor[cw->pt++] = 0xf6;
+
+  struct iovec v = {
+    .iov_base = buf,
+    .iov_len = cw->pt,
+  };
+  struct msghdr m = {
+    .msg_iov = &v,
+    .msg_iovlen = 1,
+  };
+
+  int e = sendmsg(he.s->fd, &m, 0);
+  if (e != cw->pt)
+    bug("sendmsg error handling not implemented, got %d (%m)", e);
+
+  rfree(lp);
 }
