@@ -3,6 +3,8 @@
 #ifndef INCLUDE_FLOCK_H
 #define INCLUDE_FLOCK_H
 #include "lib/birdlib.h"
+#include "lib/event.h"
+#include "lib/obstacle.h"
 #include "lib/resource.h"
 
 void hypervisor_exposed_fork(void);
@@ -22,4 +24,10 @@ void hcs_parser_cleanup(struct cbor_parser_context *ctx);
 const char *hcs_error(struct cbor_parser_context *ctx);
 bool hcs_complete(struct cbor_parser_context *ctx);
 
+extern event reboot_event, poweroff_event;
+extern event_list shutdown_event_list;
+
+extern struct shutdown_placeholder {
+  struct obstacle_target obstacles;
+} shutdown_placeholder;
 #endif

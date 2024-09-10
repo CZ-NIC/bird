@@ -1,5 +1,6 @@
 #include "lib/birdlib.h"
 #include "lib/string.h"
+#include "lib/io-loop.h"
 
 #include "flock/flock.h"
 
@@ -164,7 +165,8 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 	    if ((ctx->type != 7) || (ctx->value != 22))
 	      CBOR_PARSER_ERROR("Expected null, got %u-%u", ctx->type, ctx->value);
 
-	    log(L_INFO "Requested shutdown");
+	    log(L_INFO "Requested shutdown via CLI");
+	    ev_send_loop(&main_birdloop, &poweroff_event);
 	    ctx->major_state = 1;
 	    break;
 

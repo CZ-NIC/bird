@@ -12,7 +12,10 @@
  * Main control socket
  **/
 
-pool *hypervisor_control_socket_pool;
+static struct birdloop *hcs_loop;
+static pool *hcs_pool;
+
+OBSREF(struct shutdown_placeholder) hcs_shutdown_placeholder;
 
 static int
 hcs_rx(sock *s, uint size)
@@ -71,13 +74,30 @@ hcs_connect_err(sock *s UNUSED, int err)
   log(L_INFO "Failed to accept CLI connection: %s", strerror(err));
 }
 
+static void
+hcs_stopped(void *data)
+{
+  ASSERT_DIE(data == hcs_loop);
+  hcs_pool = NULL;
+  hcs_loop = NULL;
+  OBSREF_CLEAR(hcs_shutdown_placeholder);
+
+  unlink(flock_config.control_socket_path);
+}
+
+static void
+hcs_shutdown(void *_data UNUSED)
+{
+  birdloop_stop(hcs_loop, hcs_stopped, hcs_loop);
+}
+
 void
 hypervisor_control_socket(void)
 {
-  struct birdloop *loop = birdloop_new(&root_pool, DOMAIN_ORDER(control), 0, "Control socket");
+  struct birdloop *loop = hcs_loop = birdloop_new(&root_pool, DOMAIN_ORDER(control), 0, "Control socket");
   birdloop_enter(loop);
 
-  pool *p = hypervisor_control_socket_pool = rp_new(birdloop_pool(loop), birdloop_domain(loop), "Control socket pool");
+  pool *p = hcs_pool = rp_new(birdloop_pool(loop), birdloop_domain(loop), "Control socket pool");
   sock *s = sk_new(p);
   s->type = SK_UNIX_PASSIVE;
   s->rx_hook = hcs_connect;
@@ -88,8 +108,14 @@ hypervisor_control_socket(void)
   if (sk_open_unix(s, loop, flock_config.control_socket_path) < 0)
     die("Can't create control socket %s: %m", flock_config.control_socket_path);
 
+  ev_send(&shutdown_event_list, ev_new_init(p, hcs_shutdown, NULL));
+
   birdloop_leave(loop);
+
+  OBSREF_SET(hcs_shutdown_placeholder, &shutdown_placeholder);
 }
+
+
 
 /**
  * Exposed process' communication structure

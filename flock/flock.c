@@ -1,7 +1,7 @@
 #include "flock/flock.h"
 
+#include "lib/obstacle.h"
 #include "lib/string.h"
-
 #include "lib/timer.h"
 #include "sysdep/unix/unix.h"
 #include "sysdep/unix/io-loop.h"
@@ -23,12 +23,10 @@
 struct flock_config flock_config;
 
 /**
- * Signal handling
- *
- * We wanna behave as the init process inside the newly create PID namespace
- * which means that the signals have different meanings than for other processes,
- * For more information, see pid_namespaces(7).
+ * Shutdown routines
  */
+event_list shutdown_event_list;
+struct shutdown_placeholder shutdown_placeholder;
 
 static void
 reboot_event_hook(void *data UNUSED)
@@ -39,12 +37,29 @@ reboot_event_hook(void *data UNUSED)
 static void
 poweroff_event_hook(void *data UNUSED)
 {
-  log(L_INFO "Shutdown requested. TODO: properly clean up");
+  log(L_INFO "Shutdown requested.");
+  ev_run_list(&shutdown_event_list);
+}
+
+event reboot_event = { .hook = reboot_event_hook },
+      poweroff_event = { .hook = poweroff_event_hook };
+
+callback shutdown_done_callback;
+
+static void
+shutdown_done(callback *c UNUSED)
+{
+  log(L_INFO "Shutdown finished.");
   exit(0);
 }
 
-static event reboot_event = { .hook = reboot_event_hook },
-	     poweroff_event = { .hook = poweroff_event_hook };
+/**
+ * Signal handling
+ *
+ * We wanna behave as the init process inside the newly create PID namespace
+ * which means that the signals have different meanings than for other processes,
+ * For more information, see pid_namespaces(7).
+ */
 
 static void
 hypervisor_reboot_sighandler(int signo UNUSED)
@@ -109,6 +124,14 @@ main(int argc, char **argv, char **argh UNUSED)
   ev_init_list(&global_event_list, &main_birdloop, "Global event list");
   ev_init_list(&global_work_list, &main_birdloop, "Global work list");
   ev_init_list(&main_birdloop.event_list, &main_birdloop, "Global fast event list");
+
+  /* Shutdown hooks */
+  ev_init_list(&shutdown_event_list, &main_birdloop, "Shutdown event list");
+  callback_init(&shutdown_done_callback, shutdown_done, &main_birdloop);
+  obstacle_target_init(
+      &shutdown_placeholder.obstacles,
+      &shutdown_done_callback, &root_pool, "Shutdown");
+
   boot_time = current_time();
 
   log_switch(1, NULL, NULL);
