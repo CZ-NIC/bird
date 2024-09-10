@@ -8,6 +8,7 @@
 
 #include "flock/flock.h"
 
+#include <stdlib.h>
 #include <sys/socket.h>
 
 /**
@@ -133,16 +134,86 @@ static struct hypervisor_exposed {
  * Exposed process' parent side (requestor)
  **/
 static int
+hypervisor_telnet_connected(sock *sk, uint size UNUSED)
+{
+  int fd = accept(sk->fd, NULL, 0);
+  if (fd < 0)
+  {
+    if (errno == EAGAIN)
+      return 1;
+
+    log(L_ERR "failed to accept telnet connection: %m");
+    return 0;
+  }
+
+  int e = fork();
+  if (e < 0)
+  {
+    log(L_ERR "failed to fork: %m");
+    return 0;
+  }
+
+  if (e)
+  {
+    log(L_INFO "telnet connected");
+    close(fd);
+    return 1;
+  }
+
+  close(0);
+  close(1);
+  close(2);
+  dup2(fd, 0);
+  dup2(fd, 1);
+
+  e = execl("/usr/sbin/telnetd", "telnetd", "-E", "/bin/bash", NULL);
+  log(L_ERR "failed to execl: %m");
+  exit(42);
+}
+
+static int
 hypervisor_exposed_parent_rx(sock *sk, uint size UNUSED)
 {
-  log(L_INFO "HV EP RX");
-  recvmsg(sk->fd, NULL, 0);
+  int sfd = -1;
+  byte buf[128], cbuf[CMSG_SPACE(sizeof sfd)];
+  struct iovec v = {
+    .iov_base = buf,
+    .iov_len = sizeof buf,
+  };
+  struct msghdr m = {
+    .msg_iov = &v,
+    .msg_iovlen = 1,
+    .msg_control = &cbuf,
+    .msg_controllen = sizeof cbuf,
+  };
+
+  int e = recvmsg(sk->fd, &m, 0);
+
+  struct cmsghdr *c = CMSG_FIRSTHDR(&m);
+  memcpy(&sfd, CMSG_DATA(c), sizeof sfd);
+
+  ASSERT_DIE(buf[0] == 0xa1);
+  ASSERT_DIE(buf[1] == 0x21);
+  ASSERT_DIE(buf[2] == 0x19);
+
+  u16 port = ntohs(*((u16 *) &buf[3]));
+  log(L_INFO "RX %d bytes, fd %d, port %u", e, sfd, port);
+
+  sock *skl = sk_new(sk->pool);
+  skl->type = SK_MAGIC;
+  skl->rx_hook = hypervisor_telnet_connected;
+  skl->fd = sfd;
+  if (sk_open(skl, sk->loop) < 0)
+    bug("Telnet listener: sk_open failed");
+//  hexp_received_telnet(port, sfd);
+
   return 0;
 }
 
 static void
-hypervisor_exposed_parent_err(sock *sk UNUSED, int e UNUSED)
+hypervisor_exposed_parent_err(sock *sk, int e UNUSED)
 {
+  sk_close(sk);
 }
 
 /**
@@ -161,9 +232,88 @@ hypervisor_exposed_child_rx(sock *sk, uint size UNUSED)
     .msg_iovlen = 1,
   };
   int e = recvmsg(sk->fd, &m, 0);
-  log(L_INFO "HV EC RX %d", e);
+  if (e != 3)
+  {
+    log(L_ERR "Got something strange: %d, %m", e);
+    return 0;
+  }
 
-  return 0;
+  /* Only one thing is actually supported for now: opening a listening socket */
+  int sfd = socket(AF_INET6, SOCK_STREAM, 0);
+  if (sfd < 0)
+  {
+    log(L_ERR "Failed to socket(): %m");
+    return 0;
+  }
+
+  while (1)
+  {
+    u32 r = (random_u32() % (32768-1024) + 1024);
+    union {
+      struct sockaddr_in6 sin;
+      struct sockaddr a;
+    } sin = {
+      .sin = {
+	.sin6_family = AF_INET6,
+	.sin6_port = htons(r),
+	.sin6_addr.s6_addr[15] = 1,
+      },
+    };
+
+
+    int e = bind(sfd, &sin.a, sizeof sin);
+    if (e < 0)
+      if (errno == EADDRINUSE)
+      {
+	log(L_INFO "Tried to bind to %u but already in use", r);
+	continue;
+      } else {
+	log(L_ERR "Failed to bind to %u: %m", r);
+	close(sfd);
+	return 0;
+      }
+
+    e = listen(sfd, 10);
+    if (e < 0)
+    {
+      log(L_ERR "Failed to listen(): %m", e);
+      close(sfd);
+      return 0;
+    }
+
+    log(L_INFO "SUCCESS");
+
+    byte outbuf[128];
+    linpool *lp = lp_new(sk->pool);
+    struct cbor_writer *cw = cbor_init(outbuf, sizeof outbuf, lp);
+    cbor_open_block_with_length(cw, 1);
+    cbor_add_int(cw, -2);
+    cbor_add_int(cw, r);
+    struct iovec v = {
+      .iov_base = outbuf,
+      .iov_len = cw->pt,
+    };
+    byte cbuf[CMSG_SPACE(sizeof sfd)];
+    struct msghdr m = {
+      .msg_iov = &v,
+      .msg_iovlen = 1,
+      .msg_control = &cbuf,
+      .msg_controllen = sizeof cbuf,
+    };
+    struct cmsghdr *c = CMSG_FIRSTHDR(&m);
+    c->cmsg_level = SOL_SOCKET;
+    c->cmsg_type = SCM_RIGHTS;
+    c->cmsg_len = CMSG_LEN(sizeof sfd);
+    memcpy(CMSG_DATA(c), &sfd, sizeof sfd);
+
+    e = sendmsg(sk->fd, &m, 0);
+    if (e < 0)
+      log(L_ERR "Failed to send socket: %m");
+
+    close(sfd);
+
+    return 0;
+  }
 }
 
 static void
@@ -239,6 +389,7 @@ struct hexp_telnet_port {
   const char *name;
   uint hash;
   uint port;
+  int fd;
 };
 
 static struct hexp_telnet {
@@ -275,7 +426,10 @@ hexp_get_telnet(sock *s, const char *name)
   uint h = name ? mem_hash(name, strlen(name)) : 0;
   struct hexp_telnet_port *p = HASH_FIND(hexp_telnet.port_hash, HEXP_TELNET, name, h);
   if (p)
-    return hexp_have_telnet(s, p);
+    if (p->port)
+      return hexp_have_telnet(s, p);
+    else
+      return; /* Waiting for the exposed part */
 
   uint8_t buf[64];
   linpool *lp = lp_new(s->pool);
