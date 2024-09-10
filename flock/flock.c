@@ -251,33 +251,5 @@ main(int argc, char **argv, char **argh UNUSED)
 
   /* Wait for Godot */
   log(L_INFO "Hypervisor running");
-  while (1)
-  {
-    times_update();
-    ev_run_list(&global_event_list);
-    ev_run_list(&global_work_list);
-    ev_run_list(&main_birdloop.event_list);
-    timers_fire(&main_birdloop.time);
-
-    bool events =
-      !ev_list_empty(&global_event_list) ||
-      !ev_list_empty(&global_work_list) ||
-      !ev_list_empty(&main_birdloop.event_list);
-
-    int poll_tout = (events ? 0 : 3000); /* Time in milliseconds */
-    timer *t;
-    if (t = timers_first(&main_birdloop.time))
-    {
-      times_update();
-      int timeout = (tm_remains(t) TO_MS) + 1;
-      poll_tout = MIN(poll_tout, timeout);
-    }
-
-    struct pollfd pfd = {
-      .fd = main_birdloop.thread->wakeup.fd[0],
-      .events = POLLIN,
-    };
-
-    poll(&pfd, 1, poll_tout);
-  }
+  birdloop_minimalist_main();
 }

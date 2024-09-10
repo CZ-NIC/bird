@@ -175,13 +175,14 @@ hypervisor_exposed_fork(void)
   if (e < 0)
     die("Failed to fork exposed: %m");
 
-  /* Create the communication channel (both sides at once) */
+  /* Create the communication channel (this runs twice!) */
   he.loop = birdloop_new(&root_pool, DOMAIN_ORDER(proto), 0, "Exposed interlink");
 
   birdloop_enter(he.loop);
   he.p = rp_new(birdloop_pool(he.loop), birdloop_domain(he.loop), "Exposed interlink pool");
   he.s = sk_new(he.p);
   he.s->type = SK_MAGIC;
+  /* Set the hooks and fds according to the side we are at */
   he.s->rx_hook = e ? hypervisor_exposed_parent_rx : hypervisor_exposed_child_rx;
   he.s->err_hook = e ? hypervisor_exposed_parent_err : hypervisor_exposed_child_err;
   he.s->fd = fds[!!e];
@@ -198,7 +199,14 @@ hypervisor_exposed_fork(void)
   if (e)
     return;
 
-  /* Child-only */
-  while (1)
-    pause();
+  /**
+   * Child only
+   **/
+
+  /* Run worker threads */
+  struct thread_config tc = {};
+  bird_thread_commit(&tc);
+
+  /* Wait for Godot */
+  birdloop_minimalist_main();
 }
