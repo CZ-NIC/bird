@@ -11,6 +11,7 @@
 
 #include <errno.h>
 
+#include "lib/ip.h"
 #include "lib/resource.h"
 #include "lib/event.h"
 #ifdef HAVE_LIBSSH
