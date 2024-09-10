@@ -39,7 +39,7 @@ hcs_rx(sock *s, uint size)
   /* TODO do something more */
 
   hcs_parser_cleanup(s->data);
-  s->data = hcs_parser_init(s->pool);
+  s->data = hcs_parser_init(s);
 
   if (sz == size)
     return 1;
@@ -63,7 +63,7 @@ hcs_connect(sock *s, uint size UNUSED)
 
   s->rx_hook = hcs_rx;
   s->err_hook = hcs_err;
-  s->data = hcs_parser_init(s->pool);
+  s->data = hcs_parser_init(s);
   return 1;
 }
 
@@ -103,6 +103,7 @@ hypervisor_control_socket(void)
   s->rx_hook = hcs_connect;
   s->err_hook = hcs_connect_err;
   s->rbsize = 1024;
+  s->tbsize = 1024;
 
   unlink(flock_config.control_socket_path);
   if (sk_open_unix(s, loop, flock_config.control_socket_path) < 0)

@@ -1,4 +1,5 @@
 #include "lib/birdlib.h"
+#include "lib/cbor.h"
 #include "lib/string.h"
 #include "lib/io-loop.h"
 
@@ -19,6 +20,7 @@
 
 struct cbor_parser_context {
   linpool *lp;
+  sock *sock;
 
   PACKED enum {
     CPE_TYPE = 0,
@@ -58,12 +60,13 @@ struct cbor_parser_context {
 } while (0)
 
 struct cbor_parser_context *
-hcs_parser_init(pool *p)
+hcs_parser_init(sock *s)
 {
-  linpool *lp = lp_new(p);
+  linpool *lp = lp_new(s->pool);
   struct cbor_parser_context *ctx = lp_allocz(lp, sizeof *ctx);
 
   ctx->lp = lp;
+  ctx->sock = s;
 
   ctx->type = 0xff;
   ctx->stack_countdown[0] = 1;
@@ -154,7 +157,7 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 	  case 1: /* inside toplevel mapping */
 	    if (ctx->type != 0)
 	      CBOR_PARSER_ERROR("Expected integer, got %u", ctx->type);
-	    
+
 	    if (ctx->value >= 4)
 	      CBOR_PARSER_ERROR("Command key too high, got %lu", ctx->value);
 
@@ -167,6 +170,14 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 
 	    log(L_INFO "Requested shutdown via CLI");
 	    ev_send_loop(&main_birdloop, &poweroff_event);
+	    {
+	      struct cbor_writer *cw = cbor_init(ctx->sock->tbuf, ctx->sock->tbsize, ctx->lp);
+	      cbor_open_block_with_length(cw, 1);
+	      cbor_add_int(cw, -1);
+	      cbor_add_string(cw, "OK");
+	      sk_send(ctx->sock, cw->pt);
+	    }
+
 	    ctx->major_state = 1;
 	    break;
 
@@ -175,6 +186,7 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 	      CBOR_PARSER_ERROR("Expected null, got %u-%u", ctx->type, ctx->value);
 
 	    log(L_INFO "Requested telnet open");
+
 	    ctx->major_state = 1;
 	    break;
 
