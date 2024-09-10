@@ -12,6 +12,7 @@
 
 #include "lib/event.h"
 #include "lib/locking.h"
+#include "lib/string.h"
 #include "lib/tlists.h"
 
 #define TLIST_PREFIX obstacle
