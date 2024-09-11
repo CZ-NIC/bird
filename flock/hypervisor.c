@@ -239,7 +239,7 @@ hypervisor_exposed_child_rx(sock *sk, uint size UNUSED)
   }
 
   /* Only one thing is actually supported for now: opening a listening socket */
-  int sfd = socket(AF_INET6, SOCK_STREAM, 0);
+  int sfd = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
   if (sfd < 0)
   {
     log(L_ERR "Failed to socket(): %m");
@@ -259,7 +259,6 @@ hypervisor_exposed_child_rx(sock *sk, uint size UNUSED)
 	.sin6_addr.s6_addr[15] = 1,
       },
     };
-
 
     int e = bind(sfd, &sin.a, sizeof sin);
     if (e < 0)
@@ -317,8 +316,15 @@ hypervisor_exposed_child_rx(sock *sk, uint size UNUSED)
 }
 
 static void
-hypervisor_exposed_child_err(sock *sk UNUSED, int e UNUSED)
+hypervisor_exposed_child_err(sock *sk, int e)
 {
+  if (e == 0)
+    log(L_INFO "Exposed child exiting OK");
+  else
+    log(L_ERR "Exposed child control socket failure: %s", strerror(e));
+
+  sk_close(sk);
+  exit(!!e);
 }
 
 /**

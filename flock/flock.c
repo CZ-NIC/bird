@@ -41,8 +41,37 @@ poweroff_event_hook(void *data UNUSED)
   ev_run_list(&shutdown_event_list);
 }
 
+static void
+child_event_hook(void *data UNUSED)
+{
+  log(L_INFO "Zombie elimination routine invoked.");
+  while (1) {
+    int status;
+    pid_t p = waitpid(-1, &status, WNOHANG);
+
+    if (p < 0)
+    {
+      log(L_ERR "Zombie elimination failed: %m");
+      return;
+    }
+
+    if (p == 0)
+      return;
+
+    const char *coreinfo = WCOREDUMP(status) ? " (core dumped)" : "";
+
+    if (WIFEXITED(status))
+      log(L_INFO "Process %d ended with status %d%s", p, WEXITSTATUS(status), coreinfo);
+    else if (WIFSIGNALED(status))
+      log(L_INFO "Process %d exited by signal %d (%s)%s", p, WTERMSIG(status), strsignal(WTERMSIG(status)), coreinfo);
+    else
+      log(L_ERR "Process %d exited with a strange status %d", p, status);
+  }
+}
+
 event reboot_event = { .hook = reboot_event_hook },
-      poweroff_event = { .hook = poweroff_event_hook };
+      poweroff_event = { .hook = poweroff_event_hook },
+      child_event = { .hook = child_event_hook };
 
 callback shutdown_done_callback;
 
@@ -89,6 +118,11 @@ hypervisor_fail_sighandler(int signo UNUSED)
   _exit(1);
 }
 
+static void
+hypervisor_child_sighandler(int signo UNUSED)
+{
+  ev_send_loop(&main_birdloop, &child_event);
+}
 
 /* 
  * The Main.
@@ -236,6 +270,7 @@ main(int argc, char **argv, char **argh UNUSED)
   signal(SIGINT, hypervisor_poweroff_sighandler);
   signal(SIGHUP, hypervisor_reboot_sighandler);
   signal(SIGQUIT, hypervisor_fail_sighandler);
+  signal(SIGCHLD, hypervisor_child_sighandler);
 
   /* Unblock signals */
   sigprocmask(SIG_SETMASK, &oldmask, NULL);
