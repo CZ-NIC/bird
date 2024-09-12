@@ -133,6 +133,15 @@ static struct hypervisor_exposed {
 /**
  * Exposed process' parent side (requestor)
  **/
+
+static void hexp_received_telnet(void *);
+struct hexp_received_telnet {
+  event e;
+  struct hexp_telnet_port *p;
+  int fd;
+  u16 port;
+};
+
 static int
 hypervisor_telnet_connected(sock *sk, uint size UNUSED)
 {
@@ -205,7 +214,18 @@ hypervisor_exposed_parent_rx(sock *sk, uint size UNUSED)
   skl->fd = sfd;
   if (sk_open(skl, sk->loop) < 0)
     bug("Telnet listener: sk_open failed");
-//  hexp_received_telnet(port, sfd);
+
+  struct hexp_received_telnet *hrt = mb_allocz(he.p, sizeof *hrt);
+  *hrt = (struct hexp_received_telnet) {
+    .e = {
+      .hook = hexp_received_telnet,
+      .data = hrt,
+    },
+    .p = sk->data,
+    .port = port,
+    .fd = sfd,
+  };
+  ev_send_loop(hcs_loop, &hrt->e);
 
   return 0;
 }
@@ -390,11 +410,36 @@ hypervisor_exposed_fork(void)
 #define HEXP_TELNET_EQ(a,h,b,i)	((h) == (i)) && (!(a) && !(b) || !strcmp(a,b))
 #define HEXP_TELNET_FN(a,h)	h
 
+#define TLIST_PREFIX hexp_telnet_requestor
+#define TLIST_TYPE struct hexp_telnet_requestor
+#define TLIST_ITEM n
+struct hexp_telnet_requestor {
+  TLIST_DEFAULT_NODE;
+  sock *s;
+  struct cbor_parser_context *ctx;
+};
+
+#define TLIST_WANT_ADD_TAIL
+#include "lib/tlists.h"
+
+static void
+hexp_sock_err(sock *s, int err)
+{
+  struct hexp_telnet_requestor *req = s->data;
+  s->data = req->ctx;
+
+  hexp_telnet_requestor_rem_node(hexp_telnet_requestor_enlisted(req), req);
+  mb_free(req);
+  hcs_err(s, err);
+}
+
 struct hexp_telnet_port {
   struct hexp_telnet_port *next;
   const char *name;
   uint hash;
   uint port;
+
+  TLIST_LIST(hexp_telnet_requestor) requestors;
   int fd;
 };
 
@@ -431,31 +476,76 @@ hexp_get_telnet(sock *s, const char *name)
 
   uint h = name ? mem_hash(name, strlen(name)) : 0;
   struct hexp_telnet_port *p = HASH_FIND(hexp_telnet.port_hash, HEXP_TELNET, name, h);
-  if (p)
-    if (p->port)
-      return hexp_have_telnet(s, p);
-    else
-      return; /* Waiting for the exposed part */
+  if (p && p->port)
+    return hexp_have_telnet(s, p);
+  else if (!p)
+  {
+    he.s->data = p = mb_alloc(hcs_pool, sizeof *p);
+    *p = (struct hexp_telnet_port) {
+      .name = name,
+      .hash = h,
+      .fd = -1,
+    };
+    HASH_INSERT(hexp_telnet.port_hash, HEXP_TELNET, p);
 
-  uint8_t buf[64];
-  linpool *lp = lp_new(s->pool);
-  struct cbor_writer *cw = cbor_init(buf, sizeof buf, lp);
+    uint8_t buf[64];
+    linpool *lp = lp_new(s->pool);
+    struct cbor_writer *cw = cbor_init(buf, sizeof buf, lp);
+    cbor_open_block_with_length(cw, 1);
+    cbor_add_int(cw, 1);
+    cw->cbor[cw->pt++] = 0xf6;
+
+    struct iovec v = {
+      .iov_base = buf,
+      .iov_len = cw->pt,
+    };
+    struct msghdr m = {
+      .msg_iov = &v,
+      .msg_iovlen = 1,
+    };
+
+    int e = sendmsg(he.s->fd, &m, 0);
+    if (e != cw->pt)
+      bug("sendmsg error handling not implemented, got %d (%m)", e);
+
+    rfree(lp);
+  }
+
+  s->rx_hook = NULL;
+  s->err_hook = hexp_sock_err;
+
+  struct hexp_telnet_requestor *req = mb_allocz(hcs_pool, sizeof *req);
+  req->s = s;
+  req->ctx = s->data;
+  s->data = req;
+  hexp_telnet_requestor_add_tail(&p->requestors, req);
+}
+
+static void hexp_received_telnet(void *_data)
+{
+  struct hexp_received_telnet *hrt = _data;
+
+  ASSERT_DIE(!hrt->p->port);
+  hrt->p->port = hrt->port;
+  hrt->p->fd = hrt->fd;
+
+  byte outbuf[128];
+  linpool *lp = lp_new(hcs_pool);
+  struct cbor_writer *cw = cbor_init(outbuf, sizeof outbuf, lp);
   cbor_open_block_with_length(cw, 1);
-  cbor_add_int(cw, 1);
-  cw->cbor[cw->pt++] = 0xf6;
+  cbor_add_int(cw, -2);
+  cbor_add_int(cw, hrt->port);
 
-  struct iovec v = {
-    .iov_base = buf,
-    .iov_len = cw->pt,
-  };
-  struct msghdr m = {
-    .msg_iov = &v,
-    .msg_iovlen = 1,
-  };
+  WALK_TLIST_DELSAFE(hexp_telnet_requestor, r, &hrt->p->requestors)
+  {
+    r->s->rx_hook = hcs_rx;
+    r->s->err_hook = hcs_err;
+    memcpy(r->s->tbuf, outbuf, cw->pt);
+    sk_send(r->s, cw->pt);
+    hexp_telnet_requestor_rem_node(&hrt->p->requestors, r);
+  }
 
-  int e = sendmsg(he.s->fd, &m, 0);
-  if (e != cw->pt)
-    bug("sendmsg error handling not implemented, got %d (%m)", e);
-
-  rfree(lp);
+  birdloop_enter(he.loop);
+  mb_free(hrt);
+  birdloop_leave(he.loop);
 }
