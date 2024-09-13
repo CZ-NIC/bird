@@ -111,7 +111,7 @@ hypervisor_fail_sighandler(int signo UNUSED)
     signal(SIGABRT, SIG_DFL);
     abort();
   }
-  
+
   if (e > 0)
     waitpid(e, NULL, 0);
 
@@ -124,7 +124,7 @@ hypervisor_child_sighandler(int signo UNUSED)
   ev_send_loop(&main_birdloop, &child_event);
 }
 
-/* 
+/*
  * The Main.
  *
  * Bootstrapping and all the fiddling around before anything can actually
@@ -139,8 +139,13 @@ static inline void
 usage(FILE *f)
 {
   fprintf(f,
-      "Usage: %s name\n\n"
-      "Runs hypervisor with the given name.\n",
+      "Usage: %s [options] name\n\n"
+      "Runs Flock hypervisor with the given name.\n"
+      "\n"
+      "Options:\n"
+      "\t-s <path>\topen control socket at this path\n"
+      "\t-l       \tshortcut for -s ./<name>.ctl\n"
+      "\n",
       flock_config.exec_name);
 }
 
@@ -176,15 +181,17 @@ main(int argc, char **argv, char **argh UNUSED)
   /* Parse args */
   flock_config.exec_name = argv[0] ?: "flock-sim";
   int opt;
+  bool csp_local = 0;
   while ((opt = getopt(argc, argv, "ls:")) != -1)
   {
     switch (opt)
     {
       case 'l':
-	flock_config.control_socket_path = "flock-sim.ctl";
+	csp_local = 1;
 	break;
 
       case 's':
+	csp_local = 0;
 	flock_config.control_socket_path = mb_strdup(&root_pool, optarg);
 	break;
 
@@ -194,9 +201,6 @@ main(int argc, char **argv, char **argh UNUSED)
     }
   }
 
-  /* FIXME: have a default */
-  ASSERT_DIE(flock_config.control_socket_path);
-
   /* Get hypervisor name */
   if (optind != argc - 1)
   {
@@ -205,6 +209,16 @@ main(int argc, char **argv, char **argh UNUSED)
   }
 
   flock_config.hypervisor_name = argv[optind];
+
+  /* Fix the control socket path if -l was given */
+  if (csp_local)
+    flock_config.control_socket_path = mb_sprintf(&root_pool, "./%s.ctl", flock_config.hypervisor_name);
+  else if (!flock_config.control_socket_path)
+  {
+    fprintf(stderr, "No control socket path given, use -s or -l.");
+    usage(stderr);
+    return 2;
+  }
 
   /* Mask signals for forking and other fragile stuff */
   sigset_t oldmask;
