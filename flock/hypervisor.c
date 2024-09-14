@@ -108,7 +108,6 @@ hypervisor_control_socket(void)
   s->rbsize = 1024;
   s->tbsize = 1024;
 
-  unlink(flock_config.control_socket_path);
   if (sk_open_unix(s, loop, flock_config.control_socket_path) < 0)
     die("Can't create control socket %s: %m", flock_config.control_socket_path);
 

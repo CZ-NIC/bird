@@ -15,7 +15,8 @@
  *   - 0 with NULL (7-22) = shutdown the hypervisor
  *   - 1 with NULL = open a telnet listener
  *   - 2 with NULL = close the telnet listener (if not used)
- *   - 3 with array of strings = run the given command inside the hypervisor
+ *   - 3 with one string = create a machine of this name
+ *   - 4 with array of strings = run the given command inside the hypervisor
  */
 
 struct cbor_parser_context {
@@ -45,6 +46,9 @@ struct cbor_parser_context {
 #define LOCAL_STACK_MAX_DEPTH 3
   u64 stack_countdown[LOCAL_STACK_MAX_DEPTH];
   uint stack_pos;
+
+  /* Specific */
+  union flock_machine_config cfg;
 };
 
 #define CBOR_PARSER_ERROR(...)	do {		\
@@ -158,7 +162,7 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 	    if (ctx->type != 0)
 	      CBOR_PARSER_ERROR("Expected integer, got %u", ctx->type);
 
-	    if (ctx->value >= 4)
+	    if (ctx->value >= 5)
 	      CBOR_PARSER_ERROR("Command key too high, got %lu", ctx->value);
 
 	    ctx->major_state = ctx->value + 2;
@@ -201,8 +205,84 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 	    ctx->major_state = 1;
 	    break;
 
-	  case 5: /* process spawner */
+	  case 5: /* machine creation request */
+	    if (ctx->type != 5)
+	      CBOR_PARSER_ERROR("Expected mapping, got %u", ctx->type);
+
+	    ctx->major_state = 501;
+	    break;
+
+	  case 6: /* process spawner */
 	    CBOR_PARSER_ERROR("NOT IMPLEMENTED YET");
+	    break;
+
+	  case 501: /* machine creation argument */
+	    if (ctx->type != 0)
+	      CBOR_PARSER_ERROR("Expected integer, got %u", ctx->type);
+
+	    if (ctx->value >= 5)
+	      CBOR_PARSER_ERROR("Command key too high, got %lu", ctx->value);
+
+	    ctx->major_state = ctx->value + 502;
+	    break;
+
+	  case 502: /* machine creation argument 0: name */
+	    if (ctx->type != 3)
+	      CBOR_PARSER_ERROR("Expected string, got %u", ctx->type);
+
+	    if (value_is_special)
+	      CBOR_PARSER_ERROR("Variable length string not supported yet");
+
+	    if (ctx->cfg.cf.name)
+	      CBOR_PARSER_ERROR("Duplicate argument 0 / name");
+
+	    ASSERT_DIE(!ctx->target_buf);
+	    ctx->cfg.cf.name = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
+	    ctx->target_len = ctx->value;
+	    break;
+
+	  case 503: /* machine creation argument 1: type */
+	    if (ctx->type != 0)
+	      CBOR_PARSER_ERROR("Expected integer, got %u", ctx->type);
+
+	    if (ctx->cfg.cf.type)
+	      CBOR_PARSER_ERROR("Duplicate argument 1 / type, already have %d", ctx->cfg.cf.type);
+
+	    if ((ctx->value < 1) && (ctx->value > 1) )
+	      CBOR_PARSER_ERROR("Unexpected type, got %lu", ctx->value);
+
+	    ctx->cfg.cf.type = ctx->value;
+	    ctx->major_state = 501;
+	    break;
+
+	  case 504: /* machine creation argument 2: workdir */
+	    if (ctx->type != 2)
+	      CBOR_PARSER_ERROR("Expected bytestring, got %u", ctx->type);
+
+	    if (value_is_special)
+	      CBOR_PARSER_ERROR("Variable length string not supported yet");
+
+	    if (ctx->cfg.container.workdir)
+	      CBOR_PARSER_ERROR("Duplicate argument 2 / workdir");
+
+	    ASSERT_DIE(!ctx->target_buf);
+	    ctx->cfg.container.workdir = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
+	    ctx->target_len = ctx->value;
+	    break;
+
+	  case 505: /* machine creation argument 3: basedir */
+	    if (ctx->type != 2)
+	      CBOR_PARSER_ERROR("Expected bytestring, got %u", ctx->type);
+
+	    if (value_is_special)
+	      CBOR_PARSER_ERROR("Variable length string not supported yet");
+
+	    if (ctx->cfg.container.basedir)
+	      CBOR_PARSER_ERROR("Duplicate argument 3 / basedir");
+
+	    ASSERT_DIE(!ctx->target_buf);
+	    ctx->cfg.container.basedir = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
+	    ctx->target_len = ctx->value;
 	    break;
 
 	  default:
@@ -256,10 +336,19 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 	    /* Actually not this one */
 	    CBOR_PARSER_ERROR("NOT IMPLEMENTED YET");
 
+	  case 502:
+	  case 504:
+	  case 505:
+	    ctx->major_state = 501;
+	    break;
+
 	  default:
 	    bug("Unexpected state to end a (byte)string in");
 	  /* Code to run at the end of a (byte)string */
 	}
+
+	ctx->target_buf = NULL;
+	ctx->partial_state = CPE_TYPE;
 
 	exit_stack = !--ctx->stack_countdown[ctx->stack_pos];
     }
@@ -281,6 +370,23 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 	case 5:
 	  /* Finalize the command to exec in hypervisor */
 	  CBOR_PARSER_ERROR("NOT IMPLEMENTED YET");
+	  ctx->major_state = 1;
+	  break;
+
+	case 501:
+	  if (!ctx->cfg.cf.type)
+	    CBOR_PARSER_ERROR("Machine type not specified");
+
+	  if (!ctx->cfg.cf.name)
+	    CBOR_PARSER_ERROR("Machine name not specified");
+
+	  if (!ctx->cfg.container.workdir)
+	    CBOR_PARSER_ERROR("Machine workdir not specified");
+
+	  if (!ctx->cfg.container.basedir)
+	    CBOR_PARSER_ERROR("Machine basedir not specified");
+
+	  container_start(ctx->sock, &ctx->cfg.container);
 	  ctx->major_state = 1;
 	  break;
 

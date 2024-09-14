@@ -27,6 +27,23 @@ bool hcs_complete(struct cbor_parser_context *ctx);
 
 void hexp_get_telnet(sock *, const char *name);
 
+union flock_machine_config {
+  struct flock_machine_common_config {
+    const char *name;
+    enum {
+      FLOCK_MACHINE_NONE = 0,
+      FLOCK_MACHINE_CONTAINER = 1,
+    } type;
+  } cf;
+  struct flock_machine_container_config {
+    struct flock_machine_common_config cf;
+    const char *workdir;
+    const char *basedir;
+  } container;
+};
+
+void container_start(sock *, struct flock_machine_container_config *);
+
 extern event reboot_event, poweroff_event;
 extern event_list shutdown_event_list;
 
