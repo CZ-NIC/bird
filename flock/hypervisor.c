@@ -510,7 +510,7 @@ hexp_get_telnet(sock *s, const char *name)
     rfree(lp);
   }
 
-  s->rx_hook = NULL;
+  sk_pause_rx(s->loop, s);
   s->err_hook = hexp_sock_err;
 
   struct hexp_telnet_requestor *req = mb_allocz(hcs_pool, sizeof *req);
@@ -537,7 +537,7 @@ static void hexp_received_telnet(void *_data)
 
   WALK_TLIST_DELSAFE(hexp_telnet_requestor, r, &hrt->p->requestors)
   {
-    r->s->rx_hook = hcs_rx;
+    sk_resume_rx(r->s->loop, r->s, hcs_rx);
     r->s->err_hook = hcs_err;
     memcpy(r->s->tbuf, outbuf, cw->pt);
     sk_send(r->s, cw->pt);
