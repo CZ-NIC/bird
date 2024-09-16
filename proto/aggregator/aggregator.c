@@ -995,10 +995,21 @@ run_aggregation(struct aggregator_proto *p)
 
   times_update(&main_timeloop);
 
-  log("==== AGGREGATION START ====");
+  log("---- AGGREGATION START ----");
+
+  times_update(&main_timeloop);
+  log("==== BUILDING TRIE ====");
   construct_trie(p);
+  times_update(&main_timeloop);
+  log("==== BUILDING TRIE DONE  ====");
+
   calculate_trie(p);
+
+  times_update(&main_timeloop);
+  log("==== COLLECTING PREFIXES ====");
   collect_prefixes(p);
+  times_update(&main_timeloop);
+  log("==== COLLECTING PREFIXES DONE ====");
 
   times_update(&main_timeloop);
 
@@ -1018,7 +1029,7 @@ run_aggregation(struct aggregator_proto *p)
   log("%d one-child nodes in the third  pass", one_child_nodes_2);
 
   total_nodes = prefix_nodes = artificial_nodes = additional_nodes = removed_nodes = one_child_nodes_1 = one_child_nodes_2 = 0;
-  log("==== AGGREGATION DONE ====");
+  log("---- AGGREGATION DONE ----");
 }
 
 static void
@@ -1039,6 +1050,8 @@ request_feed_on_settle_timer(struct settle *s)
   assert(PREFIX_AGGR == p->aggr_mode);
   assert(p->root == NULL);
 
+  times_update(&main_timeloop);
+  log("==== FEED START ====");
   channel_request_feeding(p->src);
 }
 
@@ -1054,6 +1067,9 @@ aggregate_on_feed_end(struct channel *C)
 
   if (C == p->src)
   {
+    times_update(&main_timeloop);
+    log("==== FEED END ====");
+
     trie_init(p);
     run_aggregation(p);
     flush_aggregator(p);
@@ -1811,6 +1827,9 @@ aggregator_start(struct proto *P)
   }
 
   p->first_run = 1;
+
+  times_update(&main_timeloop);
+  log("==== FEED START ====");
 
   return PS_UP;
 }
