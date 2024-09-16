@@ -1,6 +1,7 @@
 #include "flock/flock.h"
 
 #include "lib/obstacle.h"
+#include "lib/runtime.h"
 #include "lib/string.h"
 #include "lib/timer.h"
 #include "sysdep/unix/unix.h"
@@ -11,6 +12,7 @@
 #include <poll.h>
 #include <sched.h>
 #include <signal.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mount.h>
@@ -159,6 +161,10 @@ main(int argc, char **argv, char **argh UNUSED)
   random_init();
 
   birdloop_init();
+
+  struct global_runtime gr = *atomic_load_explicit(&global_runtime, memory_order_relaxed);
+//  gr.latency_debug = ~0;
+  switch_runtime(&gr);
 
   ev_init_list(&global_event_list, &main_birdloop, "Global event list");
   ev_init_list(&global_work_list, &main_birdloop, "Global work list");

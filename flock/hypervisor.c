@@ -196,6 +196,13 @@ hypervisor_exposed_parent_rx(sock *sk, uint size UNUSED)
   };
 
   int e = recvmsg(sk->fd, &m, 0);
+  if (e < 3)
+  {
+    log(L_ERR "Exposed parent RX hangup, what the hell");
+    sk_close(sk);
+    ev_send_loop(&main_birdloop, &poweroff_event);
+    return 0;
+  }
 
   struct cmsghdr *c = CMSG_FIRSTHDR(&m);
   memcpy(&sfd, CMSG_DATA(c), sizeof sfd);
