@@ -329,29 +329,14 @@ trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
  * Assign unique ID to all buckets
  */
 static void
-assign_bucket_id(struct aggregator_proto *p, struct trie_node *node, u32 *counter)
+assign_bucket_id(struct aggregator_proto *p, struct aggregator_bucket *bucket)
 {
-  assert(node != NULL);
+  assert(p != NULL);
+  assert(bucket != NULL);
+  assert(bucket->id == 0);
 
-  if (node->bucket)
-  {
-    if (node->bucket->id == 0)
-    {
-      node->bucket->id = *counter;
-      *counter += 1;
-      proto_insert_bucket(p, node->bucket);
-    }
-
-    /* All leaves have a bucket */
-    if (is_leaf(node))
-      return;
-  }
-
-  if (node->child[0])
-    assign_bucket_id(p, node->child[0], counter);
-
-  if (node->child[1])
-    assign_bucket_id(p, node->child[1], counter);
+  bucket->id = hmap_first_zero(&p->bucket_id_map);
+  hmap_set(&p->bucket_id_map, bucket->id);
 }
 
 /*
@@ -939,10 +924,6 @@ static void
 calculate_trie(struct aggregator_proto *p)
 {
   assert(p->addr_type == NET_IP4 || p->addr_type == NET_IP6);
-
-  /* Start with 1 as 0 is reserved for IDs that have not been assigned yet */
-  u32 bucket_counter = 1;
-  assign_bucket_id(p, p->root, &bucket_counter);
 
   if (p->logging)
   {
@@ -1595,6 +1576,9 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
       new_bucket = lp_allocz(p->bucket_pool, sizeof(*new_bucket) + sizeof(new_bucket->aggr_data[0]) * p->aggr_on_count);
       memcpy(new_bucket, tmp_bucket, sizeof(*new_bucket) + sizeof(new_bucket->aggr_data[0]) * p->aggr_on_count);
       HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
+
+      assign_bucket_id(p, new_bucket);
+      proto_insert_bucket(p, new_bucket);
     }
 
     /* Store the route attributes */
@@ -1776,6 +1760,11 @@ trie_init(struct aggregator_proto *p)
   mem_hash_init(&haux);
   new_bucket->hash = mem_hash_value(&haux);
 
+  /* Assign ID to root node */
+  assign_bucket_id(p, new_bucket);
+  proto_insert_bucket(p, new_bucket);
+  assert(get_bucket_ptr(p, new_bucket->id) == new_bucket);
+
   struct aggregator_route *arte = lp_allocz(p->route_pool, sizeof(*arte));
 
   *arte = (struct aggregator_route) {
@@ -1826,6 +1815,9 @@ aggregator_start(struct proto *P)
     settle_init(&p->notify_settle, &p->notify_settle_cf, request_feed_on_settle_timer, p);
   }
 
+  hmap_init(&p->bucket_id_map, p->p.pool, 1024);
+  hmap_set(&p->bucket_id_map, 0);       /* 0 is default value, do not use it as ID */
+
   p->first_run = 1;
 
   times_update(&main_timeloop);
@@ -1874,6 +1866,8 @@ aggregator_cleanup(struct proto *P)
   p->bucket_list = NULL;
   p->bucket_list_size = 0;
   p->bucket_list_count = 0;
+
+  p->bucket_id_map = (struct hmap) { 0 };
 }
 
 static int
