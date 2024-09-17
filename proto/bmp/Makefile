@@ -1,4 +1,4 @@
-src := bmp.c buffer.c map.c
+src := bmp.c map.c
 obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)
