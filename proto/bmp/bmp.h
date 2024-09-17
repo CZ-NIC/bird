@@ -66,10 +66,9 @@ struct bmp_proto {
   // struct bmp_peer_map bgp_peers;   // Stores 'bgp_proto' structure per BGP peer
   pool *buffer_mpool;              // Memory pool used for BMP buffer allocations
   pool *tx_mem_pool;               // Memory pool used for packet allocations designated to BMP collector
-  pool *update_msg_mem_pool;       // Memory pool used for BPG UPDATE MSG allocations
   list tx_queue;                   // Stores queued packets going to be sent
+  struct bmp_tx_buffer *tx_pending;// This buffer waits for socket to flush
   timer *connect_retry_timer;      // Timer for retrying connection to the BMP collector
-  list update_msg_queue;           // Stores all composed BGP UPDATE MSGs
   bool started;                    // Flag that stores running status of BMP instance
   int sock_err;                    // Last socket error code
 };
