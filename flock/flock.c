@@ -285,6 +285,9 @@ main(int argc, char **argv, char **argh UNUSED)
   /* And now finally we can go for unsharing the networks */
   SYSCALL(unshare, CLONE_NEWNET);
 
+  /* Before resuming, we also need to fork the container forker */
+  hypervisor_container_fork();
+
   /* Set signal handlers as this process is init in its PID namespace */
   signal(SIGTERM, hypervisor_poweroff_sighandler);
   signal(SIGINT, hypervisor_poweroff_sighandler);

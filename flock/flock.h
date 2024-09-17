@@ -8,6 +8,7 @@
 #include "lib/resource.h"
 #include "lib/socket.h"
 
+void hypervisor_container_fork(void);
 void hypervisor_exposed_fork(void);
 void hypervisor_control_socket(void);
 
@@ -42,7 +43,8 @@ union flock_machine_config {
   } container;
 };
 
-void container_start(sock *, struct flock_machine_container_config *);
+
+void hypervisor_container_request(const char *name, const char *basedir, const char *workdir);
 
 extern event reboot_event, poweroff_event;
 extern event_list shutdown_event_list;

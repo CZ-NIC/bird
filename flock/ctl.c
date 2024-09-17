@@ -386,7 +386,11 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 	  if (!ctx->cfg.container.basedir)
 	    CBOR_PARSER_ERROR("Machine basedir not specified");
 
-	  container_start(ctx->sock, &ctx->cfg.container);
+	  hypervisor_container_request(
+	      ctx->cfg.cf.name,
+	      ctx->cfg.container.basedir,
+	      ctx->cfg.container.workdir);
+
 	  ctx->major_state = 1;
 	  break;
 
