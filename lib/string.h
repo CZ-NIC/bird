@@ -24,6 +24,8 @@ char *mb_sprintf(pool *p, const char *fmt, ...);
 char *mb_vsprintf(pool *p, const char *fmt, va_list args);
 char *lp_sprintf(linpool *p, const char *fmt, ...);
 char *lp_vsprintf(linpool *p, const char *fmt, va_list args);
+#define tmp_sprintf(...)    lp_sprintf(tmp_linpool, __VA_ARGS__)
+#define tmp_vsprintf(...)   lp_vsprintf(tmp_linpool, __VA_ARGS__)
 
 int buffer_vprint(buffer *buf, const char *fmt, va_list args);
 int buffer_print(buffer *buf, const char *fmt, ...);
@@ -35,6 +37,47 @@ byte bstrtobyte16(const char *str);
 
 int bstrhextobin(const char *s, byte *b);
 int bstrbintohex(const byte *b, size_t len, char *buf, size_t size, char delim) ACCESS_READ(1, 2) ACCESS_WRITE(3, 4);
+
+static inline const char *fmt_order(u64 value, int decimals, u64 kb_threshold)
+{
+  bool too_big = (value + 512 < 512ULL);
+
+  u64 mv = value;
+  int magnitude = 0;
+  while (mv > kb_threshold)
+  {
+    magnitude++;
+    mv = (mv + (too_big ? 0 : 512)) / 1024;
+  }
+
+  ASSERT_DIE(magnitude < 7);
+  char suffix = " kMGTEP"[magnitude];
+  while ((magnitude - 1) * 3 > decimals)
+  {
+    magnitude--;
+    value = (value + (too_big ? 0 : 512)) / 1024;
+    too_big = false;
+  }
+
+  if ((!decimals) || (suffix == ' '))
+    return tmp_sprintf("%lu %c", value, suffix);
+
+  u64 divisor = 1;
+  for (int i=0; i<decimals; i++)
+    divisor *= 10;
+
+  u64 magdiv = 1;
+  while (magnitude--)
+    magdiv *= 1024;
+
+  magdiv += (divisor / 2);
+  magdiv /= divisor;
+  value /= magdiv;
+
+  return tmp_sprintf(
+      tmp_sprintf("%%lu.%%0%ulu %%c", decimals),
+      value / divisor, value % divisor, suffix);
+}
 
 int patmatch(const byte *pat, const byte *str);
 
