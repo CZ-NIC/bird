@@ -16,10 +16,21 @@
 #include "lib/event.h"
 #include "lib/hash.h"
 #include "lib/socket.h"
+#include "proto/bgp/bgp.h"
 #include "proto/bmp/map.h"
 
 // Max length of MIB-II description object
 #define MIB_II_STR_LEN 255
+
+// Total size of Common Header
+#define BMP_COMMON_HDR_SIZE 6
+
+/* BMP Per-Peer Header [RFC 7854 - Section 4.2] */
+// Total size of Per-Peer Header
+#define BMP_PER_PEER_HDR_SIZE 42
+
+// Maximum length of BMP message altogether
+#define BMP_MSGBUF_LEN (BGP_MAX_EXT_MSG_LENGTH + BMP_PER_PEER_HDR_SIZE + BMP_COMMON_HDR_SIZE + 1)
 
 // The following fields of this structure controls whether there will be put
 // specific routes into Route Monitoring message and send to BMP collector
@@ -38,6 +49,7 @@ struct bmp_config {
   u16 station_port;                   // Monitoring station TCP port
   bool monitoring_rib_in_pre_policy;  // Route monitoring pre-policy Adj-Rib-In
   bool monitoring_rib_in_post_policy;  // Route monitoring post-policy Adj-Rib-In
+  uint tx_pending_limit;	      // Maximum on pending TX buffer count
 };
 
 /* Forward declarations */
@@ -64,14 +76,17 @@ struct bmp_proto {
   struct monitoring_rib monitoring_rib;
   // Below fields are for internal use
   // struct bmp_peer_map bgp_peers;   // Stores 'bgp_proto' structure per BGP peer
-  pool *buffer_mpool;              // Memory pool used for BMP buffer allocations
-  pool *tx_mem_pool;               // Memory pool used for packet allocations designated to BMP collector
-  pool *update_msg_mem_pool;       // Memory pool used for BPG UPDATE MSG allocations
-  list tx_queue;                   // Stores queued packets going to be sent
+  struct bmp_tx_buffer *tx_pending;// This buffer waits for socket to flush
+  struct bmp_tx_buffer *tx_last;   // This buffer is the last to flush 
+  uint tx_pending_count;	   // How many buffers waiting for flush
+  uint tx_pending_limit;	   // Maximum on buffer count
+  u64 tx_sent;			   // Amount of data sent
+  u64 tx_sent_total;		   // Amount of data sent accumulated over reconnections
+  event *tx_overflow_event;	   // Too many buffers waiting for flush
   timer *connect_retry_timer;      // Timer for retrying connection to the BMP collector
-  list update_msg_queue;           // Stores all composed BGP UPDATE MSGs
   bool started;                    // Flag that stores running status of BMP instance
   int sock_err;                    // Last socket error code
+  byte msgbuf[BMP_MSGBUF_LEN];     // Buffer for preparing the messages before sending them out
 };
 
 struct bmp_peer {

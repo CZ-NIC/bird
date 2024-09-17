@@ -3808,6 +3808,15 @@ by default and have to be enabled during installation by the configure option
 routes (in <ref id="bgp-import-table" name="BGP import tables">) and post-policy
 routes (in regular routing tables). All BGP protocols are monitored automatically.
 
+<sect1>Configuration (incomplete)
+<label id="bmp-config">
+
+<p><descrip>
+	<tag><label id="bmp-tx-buffer-limit">tx buffer limit <m/number/</tag>
+	How much data we are going to queue before we call the session stuck
+	and restart it, in megabytes. Default value: 1024 (effectively 1 gigabyte).
+</descrip>
+
 <sect1>Example
 <label id="bmp-exam">
 
@@ -3821,6 +3830,9 @@ protocol bmp {
 
 	# Monitor accepted routes (passed import filters)
 	monitoring rib in post_policy;
+
+	# Allow only 64M of pending data
+	tx buffer limit 64;
 }
 </code>
 
