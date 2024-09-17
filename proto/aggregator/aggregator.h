@@ -93,6 +93,8 @@ struct aggregator_proto {
   struct aggregator_bucket **bucket_list;
   size_t bucket_list_size;
   size_t bucket_list_count;
+
+  struct hmap bucket_id_map;
 };
 
 enum aggr_item_type {
