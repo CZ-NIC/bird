@@ -94,7 +94,7 @@ extern linpool *rte_update_pool;
 
 static int total_nodes;
 static int prefix_nodes;
-static int artificial_nodes;
+static int imaginary_nodes;
 static int additional_nodes;
 static int removed_nodes;
 static int one_child_nodes_1;
@@ -366,7 +366,7 @@ first_pass(struct trie_node *node)
   for (int i = 0; i < 2; i++)
   {
     if (!node->child[i])
-      artificial_nodes++;
+      imaginary_nodes++;
   }
 
   if (node->child[0])
@@ -410,19 +410,24 @@ second_pass(struct aggregator_proto *p, struct trie_node *node)
 
   assert(node->bucket != NULL);
 
-  struct trie_node artificial_node = {
+  /* Imaginary node if this was a complete binary tree */
+  struct trie_node imaginary_node = {
     .parent = node,
   };
 
-  node_insert_potential_bucket(&artificial_node, node->bucket->id);
+  /*
+   * Imaginary node is used only for computing sets of potential buckets
+   * of its parent node.
+   */
+  node_insert_potential_bucket(&imaginary_node, node->bucket->id);
 
   /* Nodes with exactly one child */
   if ((left && !right) || (!left && right))
   {
     if (left && !right)
-      right = &artificial_node;
+      right = &imaginary_node;
     else if (!left && right)
-      left = &artificial_node;
+      left = &imaginary_node;
     else
       bug("Node does not have only one child");
 
@@ -512,23 +517,24 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
   if ((left && !right) || (!left && right))
   {
     /*
-     * Emulation of node that would have been added in the first pass.
-     * This node has the same bucket as its parent (current node).
+     * Imaginary node that would have been added in the first pass.
+     * This node inherits bucket from its parent (current node).
      */
-    struct trie_node artificial_node = {
+    struct trie_node imaginary_node = {
       .parent = node,
       .bucket = current_node_bucket,
+      .depth = node->depth + 1,
     };
 
-    node_insert_potential_bucket(&artificial_node, current_node_bucket->id);
+    node_insert_potential_bucket(&imaginary_node, current_node_bucket->id);
 
     /*
-     * If the current node (parent of the artificial node) has a bucket,
-     * then the artificial node inherits this bucket.
+     * If the current node (parent of the imaginary node) has a bucket,
+     * then the imaginary node inherits this bucket.
      * Otherwise it inherits bucket from the closest ancestor with
      * a non-null bucket.
      */
-    const struct aggregator_bucket * const artificial_node_inherited_bucket = node->bucket ? node->bucket : inherited_bucket;
+    const struct aggregator_bucket * const imaginary_node_inherited_bucket = node->bucket ? node->bucket : inherited_bucket;
 
     /*
      * Nodes that would have been added during first pass are not removed only
@@ -537,10 +543,10 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
      * If this condition is met, we need to allocate these nodes and
      * connect them to the trie.
      */
-    if (!is_bucket_potential(&artificial_node, artificial_node_inherited_bucket))
+    if (!is_bucket_potential(&imaginary_node, imaginary_node_inherited_bucket))
     {
       struct trie_node *new = create_new_node(p->trie_pool);
-      *new = artificial_node;
+      *new = imaginary_node;
 
       if (left && !right)
         node->child[1] = new;
@@ -1002,14 +1008,14 @@ run_aggregation(struct aggregator_proto *p)
   log("");
   log("%d nodes in total", total_nodes);
   log("%d prefix nodes", prefix_nodes);
-  log("%d artificial nodes", artificial_nodes);
+  log("%d imaginary nodes", imaginary_nodes);
   log("%d nodes added in the third pass", additional_nodes);
   log("%d nodes removed", removed_nodes);
   log("%d nodes left", get_trie_node_count(p->root));
   log("%d one-child nodes in the second pass", one_child_nodes_1);
   log("%d one-child nodes in the third  pass", one_child_nodes_2);
 
-  total_nodes = prefix_nodes = artificial_nodes = additional_nodes = removed_nodes = one_child_nodes_1 = one_child_nodes_2 = 0;
+  total_nodes = prefix_nodes = imaginary_nodes = additional_nodes = removed_nodes = one_child_nodes_1 = one_child_nodes_2 = 0;
   log("---- AGGREGATION DONE ----");
 }
 
