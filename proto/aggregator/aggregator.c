@@ -226,24 +226,22 @@ process_potential_buckets(struct trie_node *target, const struct trie_node *left
 }
 
 /*
- * Insert @bucket to bucket list in @p to position @bucket-ID
+ * Insert @bucket to the list of bucket pointers in @p to position @bucket-ID
  */
 static void
 proto_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket)
 {
-  if (!p->bucket_list)
-  {
-    p->bucket_list_size = BUCKET_LIST_INIT_SIZE;
-    p->bucket_list = mb_allocz(p->p.pool, sizeof(p->bucket_list[0]) * p->bucket_list_size);
-  }
+  assert(p != NULL);
+  assert(p->bucket_list != NULL);
+  assert(bucket != NULL);
 
-  /* Don't do anything if bucket is already in the list */
+  /* Bucket is already in the list */
   if (bucket->id < p->bucket_list_size && p->bucket_list[bucket->id])
     return;
 
   const size_t old_size = p->bucket_list_size;
 
-  /* Reallocate if more space is needed because of bucket ID */
+  /* Reallocate if more space is needed */
   if (bucket->id >= p->bucket_list_size)
   {
     while (bucket->id >= p->bucket_list_size)
@@ -260,6 +258,8 @@ proto_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket
 
   p->bucket_list[bucket->id] = bucket;
   p->bucket_list_count++;
+
+  assert(get_bucket_ptr(p, bucket->id) == bucket);
 }
 
 /*
@@ -1026,7 +1026,7 @@ flush_aggregator(struct aggregator_proto *p)
   lp_flush(p->route_pool);
   lp_flush(p->trie_pool);
 
-  memset(p->bucket_list, 0, p->bucket_list_size);
+  memset(p->bucket_list, 0, sizeof(p->bucket_list[0]) * p->bucket_list_size);
 }
 
 static void
@@ -1049,27 +1049,27 @@ aggregate_on_feed_end(struct channel *C)
 {
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, C->proto);
 
+  if (C != p->src)
+    return;
+
   assert(PREFIX_AGGR == p->aggr_mode);
   assert(p->root == NULL);
 
-  if (C == p->src)
-  {
-    times_update(&main_timeloop);
-    log("==== FEED END ====");
+  times_update(&main_timeloop);
+  log("==== FEED END ====");
 
-    trie_init(p);
-    run_aggregation(p);
-    flush_aggregator(p);
+  trie_init(p);
+  run_aggregation(p);
+  flush_aggregator(p);
 
-    p->root = NULL;
-    p->before_count = 0;
-    p->after_count = 0;
-    p->internal_nodes = 0;
-    p->leaves = 0;
+  p->root = NULL;
+  p->before_count = 0;
+  p->after_count = 0;
+  p->internal_nodes = 0;
+  p->leaves = 0;
 
-    if (p->first_run)
-      p->first_run = 0;
-  }
+  if (p->first_run)
+    p->first_run = 0;
 }
 
 /*
@@ -1819,6 +1819,12 @@ aggregator_start(struct proto *P)
     assert(p->trie_pool == NULL);
     p->trie_pool = lp_new(P->pool);
     settle_init(&p->notify_settle, &p->notify_settle_cf, request_feed_on_settle_timer, p);
+
+    assert(p->bucket_list == NULL);
+    assert(p->bucket_list_size == 0);
+    assert(p->bucket_list_count == 0);
+    p->bucket_list_size = BUCKET_LIST_INIT_SIZE;
+    p->bucket_list = mb_allocz(p->p.pool, sizeof(p->bucket_list[0]) * p->bucket_list_size);
   }
 
   hmap_init(&p->bucket_id_map, p->p.pool, 1024);
