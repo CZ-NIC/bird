@@ -85,7 +85,6 @@
 #include "nest/iface.h"
 #include "filter/filter.h"
 #include "proto/aggregator/aggregator.h"
-#include "lib/settle.h"
 
 #include <stdlib.h>
 #include <assert.h>
@@ -1029,19 +1028,6 @@ flush_aggregator(struct aggregator_proto *p)
   memset(p->bucket_list, 0, sizeof(p->bucket_list[0]) * p->bucket_list_size);
 }
 
-static void
-request_feed_on_settle_timer(struct settle *s)
-{
-  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, s->tm.data);
-
-  assert(PREFIX_AGGR == p->aggr_mode);
-  assert(p->root == NULL);
-
-  times_update(&main_timeloop);
-  log("==== FEED START ====");
-  channel_request_feeding(p->src);
-}
-
 static void trie_init(struct aggregator_proto *p);
 
 static void
@@ -1443,17 +1429,6 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   if (p->p.proto_state != PS_UP)
     return;
 
-  if (PREFIX_AGGR == p->aggr_mode)
-  {
-    assert(p->root == NULL);
-
-    /*
-     * Don't kick settle timer during initial feed. That would cause
-     * cyclic calls to rt_notify() without receiving any new updates.
-     */
-    if (!p->first_run)
-      settle_kick(&p->notify_settle);
-  }
 
   /* Find the objects for the old route */
   if (old)
@@ -1700,7 +1675,6 @@ aggregator_init(struct proto_config *CF)
   p->aggr_on_da_count = cf->aggr_on_da_count;
   p->aggr_on = cf->aggr_on;
   p->merge_by = cf->merge_by;
-  p->notify_settle_cf = cf->notify_settle_cf;
   p->logging = cf->logging;
   p->bucket_list = NULL;
   p->bucket_list_size = 0;
@@ -1818,7 +1792,6 @@ aggregator_start(struct proto *P)
   {
     assert(p->trie_pool == NULL);
     p->trie_pool = lp_new(P->pool);
-    settle_init(&p->notify_settle, &p->notify_settle_cf, request_feed_on_settle_timer, p);
 
     assert(p->bucket_list == NULL);
     assert(p->bucket_list_size == 0);
@@ -1843,8 +1816,6 @@ aggregator_shutdown(struct proto *P)
 {
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
 
-  settle_cancel(&p->notify_settle);
-
   assert(p->root == NULL);
   flush_aggregator(p);
 
@@ -1855,8 +1826,6 @@ static void
 aggregator_cleanup(struct proto *P)
 {
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
-
-  assert(!tm_active(&p->notify_settle.tm));
 
   /*
    * Linpools will be freed with other protocol resources but pointers
@@ -1889,10 +1858,6 @@ aggregator_reconfigure(struct proto *P, struct proto_config *CF)
   struct aggregator_config *cf = SKIP_BACK(struct aggregator_config, c, CF);
 
   TRACE(D_EVENTS, "Reconfiguring");
-
-  /* Compare timer configuration */
-  if (cf->notify_settle_cf.min != p->notify_settle_cf.min || cf->notify_settle_cf.max != p->notify_settle_cf.max)
-    return 0;
 
   /* Compare numeric values (shortcut) */
   if (cf->aggr_on_count != p->aggr_on_count)

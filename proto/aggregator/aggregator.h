@@ -16,7 +16,6 @@
 #include "nest/bird.h"
 #include "nest/protocol.h"
 #include "lib/hash.h"
-#include "lib/settle.h"
 
 #define BUCKET_LIST_INIT_SIZE         16
 #define POTENTIAL_BUCKETS_BITMAP_SIZE 8
@@ -34,7 +33,6 @@ struct aggregator_config {
   uint aggr_on_da_count;
   struct aggr_item *aggr_on;
   const struct f_line *merge_by;
-  struct settle_config notify_settle_cf;
   int logging;
 };
 
@@ -81,8 +79,6 @@ struct aggregator_proto {
   uint addr_type;
   linpool *trie_pool;
   struct trie_node *root;
-  struct settle_config notify_settle_cf;
-  struct settle notify_settle;
   int before_count;
   int after_count;
   int internal_nodes;

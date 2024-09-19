@@ -11,7 +11,6 @@
 CF_HDR
 
 #include "proto/aggregator/aggregator.h"
-#include "lib/settle.h"
 
 CF_DEFINES
 
@@ -45,11 +44,6 @@ aggregator_proto_start: proto_start AGGREGATOR
   AGGREGATOR_CFG->src->ra_mode = RA_OPTIMAL;
   AGGREGATOR_CFG->dst->ra_mode = RA_ANY;
   AGGREGATOR_CFG->logging = 0;
-
-  AGGREGATOR_CFG->notify_settle_cf = (struct settle_config) {
-    .min = 10 MS_,
-    .max = 100 MS_,
-  };
 };
 
 aggregator_proto_item:
@@ -97,7 +91,6 @@ aggregator_proto_item:
    $4->args++;
    AGGREGATOR_CFG->merge_by = $4;
  }
- | RELOAD AFTER settle { AGGREGATOR_CFG->notify_settle_cf = $3; }
  | LOG ALL { AGGREGATOR_CFG->logging = 1; }
 ;
 
@@ -154,16 +147,6 @@ aggr_item:
       $$->i.sa = $1;
     }
   ;
-
-/* Settle timer configuration */
-settle:
-   expr_us expr_us {
-     if ($1 > $2)
-       cf_error("Minimum settle time %t is bigger than maximum settle time %t", $1, $2);
-     $$.min = $1 MS_;
-     $$.max = $2 MS_;
-   }
- ;
 
 CF_CODE
 
