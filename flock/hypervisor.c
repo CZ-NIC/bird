@@ -370,6 +370,8 @@ hypervisor_exposed_fork(void)
   if (e < 0)
     die("Failed to fork exposed: %m");
 
+  if (!e) this_thread_id |= 0xe000;
+
   /* Create the communication channel (this runs twice!) */
   he.loop = birdloop_new(&root_pool, DOMAIN_ORDER(proto), 0, "Exposed interlink");
 

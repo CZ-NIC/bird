@@ -26,6 +26,8 @@ container_mainloop(int fd)
   }
 }
 
+static uint container_counter = 0;
+
 static void
 container_start(void)
 {
@@ -40,14 +42,18 @@ container_start(void)
 
   pid_t pid = fork();
   if (pid < 0)
-    die("Failed to fork exposed: %m");
+    die("Failed to fork container: %m");
 
   if (!pid)
   {
     close(fds[0]);
+    ASSERT_DIE(container_counter < 0x6000);
+    this_thread_id -= (container_counter << 1) + 0x3000 ;
     container_mainloop(fds[1]); /* this never returns */
     bug("container_mainloop has returned");
   }
+
+  container_counter -= 2;
 
   close(fds[1]);
 
@@ -134,9 +140,6 @@ hypervisor_container_forker_rx(sock *sk, uint _sz UNUSED)
     bug("not implemented");
 
   log(L_INFO "Machine started with PID %d", pid);
-
-  u16 port = ntohs(*((u16 *) &buf[3]));
-  log(L_INFO "RX %d bytes, fd %d, port %u", e, sfd, port);
 
   sock *skl = sk_new(sk->pool);
   skl->type = SK_MAGIC;
@@ -483,7 +486,7 @@ hypervisor_container_fork(void)
 
   e = fork();
   if (e < 0)
-    die("Failed to fork exposed: %m");
+    die("Failed to fork container forker: %m");
 
   if (e)
   {
@@ -512,6 +515,8 @@ hypervisor_container_fork(void)
   close(fds[0]);
   container_forker_fd = fds[1];
 
+  this_thread_id |= 0xf000;
+
   /* initialize the forker */
   ctx->lp = lp_new(&root_pool);
   ctx->type = 0xff;
@@ -522,6 +527,9 @@ hypervisor_container_fork(void)
     byte buf[4096];
 
     ssize_t rx = read(fds[1], buf, sizeof buf);
+
+    times_update();
+
     if (rx == 0)
     {
       log(L_INFO "Container forker socket closed, exiting");
