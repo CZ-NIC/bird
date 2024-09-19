@@ -68,6 +68,8 @@ struct bmp_proto {
   pool *tx_mem_pool;               // Memory pool used for packet allocations designated to BMP collector
   list tx_queue;                   // Stores queued packets going to be sent
   struct bmp_tx_buffer *tx_pending;// This buffer waits for socket to flush
+  uint tx_pending_count;	   // How many buffers waiting for flush
+  event *tx_overflow_event;	   // Too many buffers waiting for flush
   timer *connect_retry_timer;      // Timer for retrying connection to the BMP collector
   bool started;                    // Flag that stores running status of BMP instance
   int sock_err;                    // Last socket error code
