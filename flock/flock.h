@@ -1,4 +1,6 @@
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #ifndef INCLUDE_FLOCK_H
 #define INCLUDE_FLOCK_H

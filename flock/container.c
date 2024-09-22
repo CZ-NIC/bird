@@ -1,10 +1,13 @@
+#include "flock/flock.h"
+
 #include "lib/birdlib.h"
 #include "lib/cbor.h"
 #include "lib/io-loop.h"
 
-#include "flock/flock.h"
-
+#include <sched.h>
 #include <stdlib.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 static struct container_config {
   const char *hostname;
@@ -18,7 +21,7 @@ static void
 container_mainloop(int fd)
 {
   log(L_INFO "container mainloop with fd %d", fd);
-  /* TODO cleanup the loops from the forked process */
+  /* TODO unshare, fork and send info */
   while (1)
   {
     pause();
@@ -42,7 +45,40 @@ container_start(void)
 
   pid_t pid = fork();
   if (pid < 0)
-    die("Failed to fork container: %m");
+    die("Failed to fork container (parent): %m");
+
+  if (pid)
+  {
+    log(L_INFO "Forked container parent pid %d", pid);
+    container_counter++;
+    int status;
+    pid_t pp = waitpid(pid, &status, 0);
+
+    if (pp < 0)
+      die("Failed to waitpid %d: %m");
+
+    if (pp != pid)
+      die("Waited pid %d instead of %d, wtf", pp, pid);
+
+    const char *coreinfo = WCOREDUMP(status) ? " (core dumped)" : "";
+
+    if (WIFEXITED(status))
+      log(L_INFO "Process %d ended with status %d%s", pp, WEXITSTATUS(status), coreinfo);
+    else if (WIFSIGNALED(status))
+      log(L_INFO "Process %d exited by signal %d (%s)%s", pp, WTERMSIG(status), strsignal(WTERMSIG(status)), coreinfo);
+    else
+      log(L_ERR "Process %d exited with a strange status %d", pp, status);
+
+    return;
+  }
+
+  e = unshare(CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUSER | CLONE_NEWTIME | CLONE_NEWNET);
+  if (e < 0)
+    die("Failed to unshare container: %m");
+
+  pid = fork();
+  if (pid < 0)
+    die("Failed to fork container (child): %m");
 
   if (!pid)
   {
@@ -52,8 +88,6 @@ container_start(void)
     container_mainloop(fds[1]); /* this never returns */
     bug("container_mainloop has returned");
   }
-
-  container_counter -= 2;
 
   close(fds[1]);
 
@@ -84,8 +118,7 @@ container_start(void)
   if (e < 0)
     log(L_ERR "Failed to send socket: %m");
 
-  close(fds[0]);
-  rfree(lp);
+  exit(0);
 }
 
 /* The Parent */
@@ -440,8 +473,12 @@ hcf_parse(byte *buf, int size)
       {
 	/* Code to run at the end of the mapping */
 	case 0: /* toplevel item ended */
-	  ctx->major_state = ~0ULL;
+	  /* Reinit the parser */
+	  ctx->type = 0xff;
+	  ctx->major_state = 0;
+	  ctx->stack_countdown[0] = 1;
 	  ctx->bytes_consumed = 0;
+
 	  if (size > pos + 1)
 	    hcf_parse(buf + pos + 1, size - pos - 1);
 	  return;
