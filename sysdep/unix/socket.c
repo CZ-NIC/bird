@@ -937,6 +937,12 @@ sk_setup(sock *s)
   return 0;
 }
 
+static void
+sk_err_hook(sock *s, int e)
+{
+  s->err_hook(s, e);
+}
+
 static int
 sk_connect(sock *s)
 {
@@ -981,7 +987,7 @@ sk_passive_connected(sock *s, int type)
   if (fd < 0)
   {
     if ((errno != EINTR) && (errno != EAGAIN))
-      s->err_hook(s, errno);
+      sk_err_hook(s, errno);
     return 0;
   }
 
@@ -1604,7 +1610,7 @@ sk_maybe_write(sock *s)
 	{
 	  reset_tx_buffer(s);
 	  /* EPIPE is just a connection close notification during TX */
-	  s->err_hook(s, (errno != EPIPE) ? errno : 0);
+	  sk_err_hook(s, (errno != EPIPE) ? errno : 0);
 	  return -1;
 	}
 	return 0;
@@ -1623,11 +1629,11 @@ sk_maybe_write(sock *s)
       if (e < 0)
       {
 	s->err = ssh_get_error(s->ssh->session);
-	s->err_hook(s, ssh_get_error_code(s->ssh->session));
+	sk_err_hook(s, ssh_get_error_code(s->ssh->session));
 
 	reset_tx_buffer(s);
 	/* EPIPE is just a connection close notification during TX */
-	s->err_hook(s, (errno != EPIPE) ? errno : 0);
+	sk_err_hook(s, (errno != EPIPE) ? errno : 0);
 	return -1;
       }
       s->ttx += e;
@@ -1649,7 +1655,7 @@ sk_maybe_write(sock *s)
 	if (errno != EINTR && errno != EAGAIN)
 	{
 	  reset_tx_buffer(s);
-	  s->err_hook(s, errno);
+	  sk_err_hook(s, errno);
 	  return -1;
 	}
 
@@ -1769,7 +1775,7 @@ sk_read_ssh(sock *s)
   if (ssh_channel_is_eof(s->ssh->channel) != 0)
   {
     /* The remote side is closing the connection */
-    s->err_hook(s, 0);
+    sk_err_hook(s, 0);
     return 0;
   }
 
@@ -1790,13 +1796,13 @@ sk_read_ssh(sock *s)
     if (ssh_channel_is_eof(s->ssh->channel) != 0)
     {
 	/* The remote side is closing the connection */
-	s->err_hook(s, 0);
+	sk_err_hook(s, 0);
     }
   }
   else
   {
     s->err = ssh_get_error(s->ssh->session);
-    s->err_hook(s, ssh_get_error_code(s->ssh->session));
+    sk_err_hook(s, ssh_get_error_code(s->ssh->session));
   }
 
   return 0; /* No data is available on the socket */
@@ -1824,15 +1830,15 @@ sk_read_noflush(sock *s, int revents)
       if (c < 0)
       {
 	if (errno != EINTR && errno != EAGAIN)
-	  s->err_hook(s, errno);
+	  sk_err_hook(s, errno);
 	else if (errno == EAGAIN && !(revents & POLLIN))
 	{
 	  log(L_ERR "Got EAGAIN from read when revents=%x (without POLLIN)", revents);
-	  s->err_hook(s, 0);
+	  sk_err_hook(s, 0);
 	}
       }
       else if (!c)
-	s->err_hook(s, 0);
+	sk_err_hook(s, 0);
       else
       {
 	s->rpos += c;
@@ -1857,7 +1863,7 @@ sk_read_noflush(sock *s, int revents)
       if (e < 0)
       {
 	if (errno != EINTR && errno != EAGAIN)
-	  s->err_hook(s, errno);
+	  sk_err_hook(s, errno);
 	return 0;
       }
 
@@ -1886,7 +1892,7 @@ sk_write_noflush(sock *s)
       if (sk_connect(s) >= 0 || errno == EISCONN)
 	sk_tcp_connected(s);
       else if (errno != EINTR && errno != EAGAIN && errno != EINPROGRESS)
-	s->err_hook(s, errno);
+	sk_err_hook(s, errno);
       return 0;
     }
 
@@ -1904,7 +1910,7 @@ sk_write_noflush(sock *s)
 
 	case SSH_ERROR:
 	  s->err = ssh_get_error(s->ssh->session);
-	  s->err_hook(s, ssh_get_error_code(s->ssh->session));
+	  sk_err_hook(s, ssh_get_error_code(s->ssh->session));
 	  break;
       }
       return 0;
@@ -1947,7 +1953,7 @@ sk_err(sock *s, int revents)
       se = 0;
     }
 
-  s->err_hook(s, se);
+  sk_err_hook(s, se);
   tmp_flush();
 }
 
