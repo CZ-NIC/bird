@@ -145,14 +145,14 @@ remove_node(struct trie_node *node)
  * Mark bucket with ID @id as present in bitmap of potential buckets in @node
  */
 static inline void
-node_insert_potential_bucket(struct trie_node *node, u32 id)
+node_insert_potential_bucket(struct trie_node *node, const struct aggregator_bucket *bucket)
 {
   assert(node->potential_buckets_count < MAX_POTENTIAL_BUCKETS_COUNT);
 
-  if (BIT32R_TEST(node->potential_buckets, id))
+  if (BIT32R_TEST(node->potential_buckets, bucket->id))
     return;
 
-  BIT32R_SET(node->potential_buckets, id);
+  BIT32R_SET(node->potential_buckets, bucket->id);
   node->potential_buckets_count++;
 }
 
@@ -350,7 +350,7 @@ first_pass(struct trie_node *node)
   {
     assert(node->bucket != NULL);
     assert(node->potential_buckets_count == 0);
-    node_insert_potential_bucket(node, node->bucket->id);
+    node_insert_potential_bucket(node, node->bucket);
     return;
   }
 
@@ -418,11 +418,12 @@ second_pass(struct aggregator_proto *p, struct trie_node *node)
    * Imaginary node is used only for computing sets of potential buckets
    * of its parent node.
    */
-  node_insert_potential_bucket(&imaginary_node, node->bucket->id);
+  node_insert_potential_bucket(&imaginary_node, node->bucket);
 
   /* Nodes with exactly one child */
   if ((left && !right) || (!left && right))
   {
+
     if (left && !right)
       right = &imaginary_node;
     else if (!left && right)
@@ -525,7 +526,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
       .depth = node->depth + 1,
     };
 
-    node_insert_potential_bucket(&imaginary_node, current_node_bucket->id);
+    node_insert_potential_bucket(&imaginary_node, current_node_bucket);
 
     /*
      * If the current node (parent of the imaginary node) has a bucket,
