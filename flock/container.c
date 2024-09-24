@@ -30,6 +30,11 @@ struct container_runtime {
   uint hash;
   pid_t pid;
   sock *s;
+  struct container_created_callback {
+    callback cb;
+    sock *s;
+    void *data;
+  } *ccc;
   char data[];
 };
 
@@ -44,10 +49,12 @@ static void
 container_mainloop(int fd)
 {
   log(L_INFO "container mainloop with fd %d", fd);
-  /* TODO unshare, fork and send info */
+
+  /* TODO: mount overlayfs and chroot */
   while (1)
   {
     pause();
+    /* TODO: check for telnet socket */
     log(L_INFO "woken up!");
   }
 }
@@ -198,7 +205,6 @@ hypervisor_container_forker_rx(sock *sk, uint _sz UNUSED)
   log(L_INFO "Machine started with PID %d", pid);
 
   sock *skl = sk_new(sk->pool);
-  log(L_INFO "skl is %p", skl);
   skl->type = SK_MAGIC;
   skl->rx_hook = hypervisor_container_rx;
   skl->fd = sfd;
@@ -208,23 +214,12 @@ hypervisor_container_forker_rx(sock *sk, uint _sz UNUSED)
   ASSERT_DIE(birdloop_inside(hcf.loop));
 
   ASSERT_DIE(hcf.cur_crt);
-
-  sock *sr = hcf.cur_crt->s;
-  log(L_INFO "sr is %p", sr);
-
   hcf.cur_crt->pid = pid;
   hcf.cur_crt->s = skl;
-
-  linpool *lp = lp_new(hcf.p);
-  struct cbor_writer *cw = cbor_init(sr->tbuf, sr->tbsize, lp);
-  cbor_open_block_with_length(cw, 1);
-  cbor_add_int(cw, -1);
-  cbor_add_string(cw, "OK");
-  sk_send(sr, cw->pt);
-  rfree(lp);
-
+  if (hcf.cur_crt->ccc)
+    callback_activate(&hcf.cur_crt->ccc->cb);
+  hcf.cur_crt->ccc = NULL;
   hcf.cur_crt = NULL;
-
   return 0;
 }
 
@@ -235,6 +230,36 @@ hypervisor_container_forker_err(sock *sk, int e UNUSED)
 }
 
 /* The child */
+
+static void
+crt_err(sock *s, int err UNUSED)
+{
+  struct container_runtime *crt = s->data;
+  s->data = crt->ccc->data;
+  callback_cancel(&crt->ccc->cb);
+  mb_free(crt->ccc);
+  crt->ccc = NULL;
+}
+
+static void
+container_created(callback *cb)
+{
+  SKIP_BACK_DECLARE(struct container_created_callback, ccc, cb, cb);
+  
+  sock *s = ccc->s;
+  linpool *lp = lp_new(s->pool);
+  struct cbor_writer *cw = cbor_init(s->tbuf, s->tbsize, lp);
+  cbor_open_block_with_length(cw, 1);
+  cbor_add_int(cw, -1);
+  cbor_add_string(cw, "OK");
+  sk_send(s, cw->pt);
+  rfree(lp);
+
+  s->data = ccc->data;
+  sk_resume_rx(s->loop, s);
+
+  mb_free(ccc);
+}
 
 void
 hypervisor_container_request(sock *s, const char *name, const char *basedir, const char *workdir)
@@ -254,6 +279,7 @@ hypervisor_container_request(sock *s, const char *name, const char *basedir, con
     sk_send(s, cw->pt);
 
     birdloop_leave(hcf.loop);
+    return;
   }
 
   uint nlen = strlen(name),
@@ -277,7 +303,14 @@ hypervisor_container_request(sock *s, const char *name, const char *basedir, con
   pos += blen + 1;
 
   crt->hash = h;
-  crt->s = s;
+
+  struct container_created_callback *ccc = mb_alloc(s->pool, sizeof *ccc);
+  *ccc = (struct container_created_callback) {
+    .s = s,
+    .data = s->data,
+  };
+  callback_init(&ccc->cb, container_created, s->loop);
+  crt->ccc = ccc;
 
   HASH_INSERT(hcf.hash, CRT, crt);
 
@@ -297,6 +330,10 @@ hypervisor_container_request(sock *s, const char *name, const char *basedir, con
   cbor_add_string(cw, workdir);
   sk_send(hcf.s, cw->pt);
   rfree(lp);
+
+  s->err_paused = crt_err;
+  s->data = crt;
+  sk_pause_rx(s->loop, s);
 
   birdloop_leave(hcf.loop);
 }
