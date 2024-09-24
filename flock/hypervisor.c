@@ -431,14 +431,12 @@ struct hexp_telnet_requestor {
 #include "lib/tlists.h"
 
 static void
-hexp_sock_err(sock *s, int err)
+hexp_sock_err(sock *s, int err UNUSED)
 {
   struct hexp_telnet_requestor *req = s->data;
   s->data = req->ctx;
 
   hexp_telnet_requestor_rem_node(hexp_telnet_requestor_enlisted(req), req);
-  mb_free(req);
-  hcs_err(s, err);
 }
 
 struct hexp_telnet_port {
@@ -519,8 +517,8 @@ hexp_get_telnet(sock *s, const char *name)
     rfree(lp);
   }
 
+  s->err_paused = hexp_sock_err;
   sk_pause_rx(s->loop, s);
-  s->err_hook = hexp_sock_err;
 
   struct hexp_telnet_requestor *req = mb_allocz(hcs_pool, sizeof *req);
   req->s = s;
@@ -546,8 +544,7 @@ static void hexp_received_telnet(void *_data)
 
   WALK_TLIST_DELSAFE(hexp_telnet_requestor, r, &hrt->p->requestors)
   {
-    sk_resume_rx(r->s->loop, r->s, hcs_rx);
-    r->s->err_hook = hcs_err;
+    sk_resume_rx(r->s->loop, r->s);
     memcpy(r->s->tbuf, outbuf, cw->pt);
     sk_send(r->s, cw->pt);
     hexp_telnet_requestor_rem_node(&hrt->p->requestors, r);
