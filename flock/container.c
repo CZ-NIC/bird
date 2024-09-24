@@ -3,17 +3,40 @@
 #include "lib/birdlib.h"
 #include "lib/cbor.h"
 #include "lib/io-loop.h"
+#include "lib/hash.h"
 
 #include <sched.h>
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
+static struct hypervisor_container_forker {
+  sock *s;
+  pool *p;
+  struct birdloop *loop;
+  HASH(struct container_runtime) hash;
+  struct container_runtime *cur_crt;
+} hcf;
+
 static struct container_config {
   const char *hostname;
   const char *workdir;
   const char *basedir;
 } ccf;
+
+struct container_runtime {
+  struct container_runtime *next;
+  struct container_config ccf;
+  uint hash;
+  pid_t pid;
+  sock *s;
+  char data[];
+};
+
+#define CRT_KEY(c)	c->ccf.hostname, c->hash
+#define CRT_NEXT(c)	c->next
+#define CRT_EQ(a,h,b,i)	((h) == (i)) && (!strcmp(a,b))
+#define CRT_FN(a,h)	h
 
 static int container_forker_fd = -1;
 
@@ -175,25 +198,32 @@ hypervisor_container_forker_rx(sock *sk, uint _sz UNUSED)
   log(L_INFO "Machine started with PID %d", pid);
 
   sock *skl = sk_new(sk->pool);
+  log(L_INFO "skl is %p", skl);
   skl->type = SK_MAGIC;
   skl->rx_hook = hypervisor_container_rx;
   skl->fd = sfd;
   if (sk_open(skl, sk->loop) < 0)
     bug("Machine control socket: sk_open failed");
 
-  /* TODO: create the machine struct
-  struct hexp_received_telnet *hrt = mb_allocz(he.p, sizeof *hrt);
-  *hrt = (struct hexp_received_telnet) {
-    .e = {
-      .hook = hexp_received_telnet,
-      .data = hrt,
-    },
-    .p = sk->data,
-    .port = port,
-    .fd = sfd,
-  };
-  ev_send_loop(hcs_loop, &hrt->e);
-  */
+  ASSERT_DIE(birdloop_inside(hcf.loop));
+
+  ASSERT_DIE(hcf.cur_crt);
+
+  sock *sr = hcf.cur_crt->s;
+  log(L_INFO "sr is %p", sr);
+
+  hcf.cur_crt->pid = pid;
+  hcf.cur_crt->s = skl;
+
+  linpool *lp = lp_new(hcf.p);
+  struct cbor_writer *cw = cbor_init(sr->tbuf, sr->tbsize, lp);
+  cbor_open_block_with_length(cw, 1);
+  cbor_add_int(cw, -1);
+  cbor_add_string(cw, "OK");
+  sk_send(sr, cw->pt);
+  rfree(lp);
+
+  hcf.cur_crt = NULL;
 
   return 0;
 }
@@ -206,16 +236,56 @@ hypervisor_container_forker_err(sock *sk, int e UNUSED)
 
 /* The child */
 
-static struct hypervisor_container_forker {
-  sock *s;
-  pool *p;
-  struct birdloop *loop;
-} hcf;
-
 void
-hypervisor_container_request(const char *name, const char *basedir, const char *workdir)
+hypervisor_container_request(sock *s, const char *name, const char *basedir, const char *workdir)
 {
   birdloop_enter(hcf.loop);
+
+  uint h = mem_hash(name, strlen(name));
+  struct container_runtime *crt = HASH_FIND(hcf.hash, CRT, name, h);
+  if (crt)
+  {
+    linpool *lp = lp_new(hcf.p);
+    struct cbor_writer *cw = cbor_init(s->tbuf, s->tbsize, lp);
+    cbor_open_block_with_length(cw, 1);
+    cbor_add_int(cw, -127);
+    cbor_add_string(cw, "BAD: Already exists");
+
+    sk_send(s, cw->pt);
+
+    birdloop_leave(hcf.loop);
+  }
+
+  uint nlen = strlen(name),
+       blen = strlen(basedir),
+       wlen = strlen(workdir);
+
+  crt = mb_allocz(hcf.p, sizeof *crt + nlen + blen + wlen + 3);
+
+  char *pos = crt->data;
+
+  crt->ccf.hostname = pos;
+  memcpy(pos, name, nlen + 1);
+  pos += nlen + 1;
+
+  crt->ccf.workdir = pos;
+  memcpy(pos, workdir, wlen + 1);
+  pos += wlen + 1;
+
+  crt->ccf.basedir = pos;
+  memcpy(pos, basedir, blen + 1);
+  pos += blen + 1;
+
+  crt->hash = h;
+  crt->s = s;
+
+  HASH_INSERT(hcf.hash, CRT, crt);
+
+  ASSERT_DIE(hcf.cur_crt == NULL);
+  hcf.cur_crt = crt;
+
+  log(L_INFO "requesting machine creation, socket %p", s);
+
   linpool *lp = lp_new(hcf.p);
   struct cbor_writer *cw = cbor_init(hcf.s->tbuf, hcf.s->tbsize, lp);
   cbor_open_block_with_length(cw, 3);
@@ -226,6 +296,8 @@ hypervisor_container_request(const char *name, const char *basedir, const char *
   cbor_add_int(cw, 2);
   cbor_add_string(cw, workdir);
   sk_send(hcf.s, cw->pt);
+  rfree(lp);
+
   birdloop_leave(hcf.loop);
 }
 
@@ -540,6 +612,8 @@ hypervisor_container_fork(void)
     sk_set_tbsize(hcf.s, 16384);
     hcf.s->fd = fds[0];
     close(fds[1]);
+
+    HASH_INIT(hcf.hash, hcf.p, 6);
 
     if (sk_open(hcf.s, hcf.loop) < 0)
       bug("Container forker parent: sk_open failed");
