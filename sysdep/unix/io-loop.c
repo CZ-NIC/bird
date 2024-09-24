@@ -460,16 +460,21 @@ void
 sk_pause_rx(struct birdloop *loop, sock *s)
 {
   ASSERT_DIE(birdloop_inside(loop));
+  ASSERT_DIE(!s->rx_paused);
+  ASSERT_DIE(s->rx_hook);
+  s->rx_paused = s->rx_hook;
   s->rx_hook = NULL;
   socket_changed(s);
 }
 
 void
-sk_resume_rx(struct birdloop *loop, sock *s, int (*hook)(sock *, uint))
+sk_resume_rx(struct birdloop *loop, sock *s)
 {
   ASSERT_DIE(birdloop_inside(loop));
-  ASSERT_DIE(hook);
-  s->rx_hook = hook;
+  ASSERT_DIE(s->rx_paused);
+  ASSERT_DIE(!s->rx_hook);
+  s->rx_hook = s->rx_paused;
+  s->rx_paused = NULL;
   socket_changed(s);
 }
 

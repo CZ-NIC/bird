@@ -3520,7 +3520,7 @@ bgp_do_uncork(callback *cb)
   {
     struct birdsock *sk = p->conn->sk;
     ASSERT_DIE(sk->rpos > sk->rbuf);
-    sk_resume_rx(p->p.loop, sk, bgp_rx);
+    sk_resume_rx(p->p.loop, sk);
     bgp_rx(sk, sk->rpos - sk->rbuf);
     BGP_TRACE(D_PACKETS, "Uncorked");
   }
