@@ -379,7 +379,7 @@ first_pass(struct trie_node *node)
  * Second pass of Optimal Route Table Construction (ORTC) algorithm
  */
 static void
-second_pass(struct aggregator_proto *p, struct trie_node *node)
+second_pass(struct trie_node *node)
 {
   assert(node != NULL);
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
@@ -390,7 +390,6 @@ second_pass(struct aggregator_proto *p, struct trie_node *node)
 
     /* The only potential bucket so far is the assigned bucket of the current node */
     assert(BIT32R_TEST(node->potential_buckets, node->bucket->id));
-    assert(get_bucket_ptr(p, node->bucket->id) == node->bucket);
     return;
   }
 
@@ -402,10 +401,10 @@ second_pass(struct aggregator_proto *p, struct trie_node *node)
 
   /* Postorder traversal */
   if (left)
-    second_pass(p, left);
+    second_pass(left);
 
   if (right)
-    second_pass(p, right);
+    second_pass(right);
 
   assert(node->bucket != NULL);
 
@@ -951,7 +950,7 @@ calculate_trie(struct aggregator_proto *p)
 
   times_update(&main_timeloop);
   log("==== SECOND PASS ====");
-  second_pass(p, p->root);
+  second_pass(p->root);
   times_update(&main_timeloop);
   log("==== SECOND PASS DONE");
 
