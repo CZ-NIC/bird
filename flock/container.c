@@ -31,7 +31,7 @@ struct container_runtime {
   uint hash;
   pid_t pid;
   sock *s;
-  struct container_created_callback {
+  struct container_operation_callback {
     callback cb;
     sock *s;
     void *data;
@@ -61,6 +61,19 @@ container_child_sighandler(int signo UNUSED)
 static int container_forker_fd = -1;
 
 static void
+container_poweroff(int fd, int sig)
+{
+  byte outbuf[128];
+  linpool *lp = lp_new(&root_pool);
+  struct cbor_writer *cw = cbor_init(outbuf, sizeof outbuf, lp);
+  cbor_open_block_with_length(cw, 1);
+  cbor_add_int(cw, -4);
+  cbor_add_int(cw, sig);
+  ASSERT_DIE(write(fd, outbuf, cw->pt) == cw->pt);
+  exit(0);
+}
+
+static void
 container_mainloop(int fd)
 {
   log(L_INFO "container mainloop with fd %d", fd);
@@ -83,15 +96,27 @@ container_mainloop(int fd)
     int res = ppoll(&pfd, 1, NULL, &newmask);
 
     if (poweroff)
+      container_poweroff(fd, poweroff);
+
+    if (pfd.revents & POLLIN)
     {
-      byte outbuf[128];
-      linpool *lp = lp_new(&root_pool);
-      struct cbor_writer *cw = cbor_init(outbuf, sizeof outbuf, lp);
-      cbor_open_block_with_length(cw, 1);
-      cbor_add_int(cw, -4);
-      cbor_add_int(cw, poweroff);
-      ASSERT_DIE(write(fd, outbuf, cw->pt) == cw->pt);
-      exit(0);
+      byte buf[128];
+      ssize_t sz = read(fd, buf, sizeof buf);
+      if (sz < 0)
+      {
+	log(L_ERR "error reading data from control socket: %m");
+	exit(1);
+      }
+
+      ASSERT_DIE(sz >= 3);
+      ASSERT_DIE(buf[0] == 0xa1);
+      switch (buf[1]) {
+	case 0:
+	  ASSERT_DIE(buf[2] == 0xf6);
+	  container_poweroff(fd, 0);
+	  break;
+
+      }
     }
 
     /* TODO: check for telnet socket */
@@ -203,6 +228,14 @@ container_start(void)
 
 /* The Parent */
 
+static void
+container_cleanup(struct container_runtime *crt)
+{
+  HASH_REMOVE(hcf.hash, CRT, crt);
+  sk_close(crt->s);
+  mb_free(crt);
+}
+
 static int
 hypervisor_container_rx(sock *sk, uint _sz UNUSED)
 {
@@ -215,7 +248,25 @@ hypervisor_container_rx(sock *sk, uint _sz UNUSED)
     return 0;
   }
 
-  log(L_INFO "received %u data from %p (container_rx)", sz, sk);
+  struct container_runtime *crt = sk->data;
+  ASSERT_DIE(crt->s == sk);
+
+  ASSERT_DIE(sz >= 3);
+  ASSERT_DIE(buf[0] == 0xa1);
+
+  switch (buf[1]) {
+    case 0x23:
+      log(L_INFO "container %s ended by signal %d", crt->ccf.hostname, buf[2]);
+      if (crt->ccc)
+	callback_activate(&crt->ccc->cb);
+      container_cleanup(crt);
+      break;
+
+    default:
+      log(L_ERR "container %s sent a weird message 0x%02x sz %d", crt->ccf.hostname, buf[1], sz);
+      break;
+  }
+
   return 0;
 }
 
@@ -267,18 +318,23 @@ hypervisor_container_forker_rx(sock *sk, uint _sz UNUSED)
   skl->type = SK_MAGIC;
   skl->rx_hook = hypervisor_container_rx;
   skl->fd = sfd;
+  sk_set_tbsize(skl, 1024);
+
   if (sk_open(skl, sk->loop) < 0)
     bug("Machine control socket: sk_open failed");
 
   ASSERT_DIE(birdloop_inside(hcf.loop));
 
   ASSERT_DIE(hcf.cur_crt);
+  skl->data = hcf.cur_crt;
+
   hcf.cur_crt->pid = pid;
   hcf.cur_crt->s = skl;
   if (hcf.cur_crt->ccc)
     callback_activate(&hcf.cur_crt->ccc->cb);
   hcf.cur_crt->ccc = NULL;
   hcf.cur_crt = NULL;
+
   return 0;
 }
 
@@ -303,8 +359,8 @@ crt_err(sock *s, int err UNUSED)
 static void
 container_created(callback *cb)
 {
-  SKIP_BACK_DECLARE(struct container_created_callback, ccc, cb, cb);
-  
+  SKIP_BACK_DECLARE(struct container_operation_callback, ccc, cb, cb);
+
   sock *s = ccc->s;
   linpool *lp = lp_new(s->pool);
   struct cbor_writer *cw = cbor_init(s->tbuf, s->tbsize, lp);
@@ -363,8 +419,8 @@ hypervisor_container_request(sock *s, const char *name, const char *basedir, con
 
   crt->hash = h;
 
-  struct container_created_callback *ccc = mb_alloc(s->pool, sizeof *ccc);
-  *ccc = (struct container_created_callback) {
+  struct container_operation_callback *ccc = mb_alloc(s->pool, sizeof *ccc);
+  *ccc = (struct container_operation_callback) {
     .s = s,
     .data = s->data,
   };
@@ -389,6 +445,72 @@ hypervisor_container_request(sock *s, const char *name, const char *basedir, con
   cbor_add_string(cw, workdir);
   sk_send(hcf.s, cw->pt);
   rfree(lp);
+
+  s->err_paused = crt_err;
+  s->data = crt;
+  sk_pause_rx(s->loop, s);
+
+  birdloop_leave(hcf.loop);
+}
+
+static void
+container_stopped(callback *cb)
+{
+  SKIP_BACK_DECLARE(struct container_operation_callback, ccc, cb, cb);
+
+  sock *s = ccc->s;
+  linpool *lp = lp_new(s->pool);
+  struct cbor_writer *cw = cbor_init(s->tbuf, s->tbsize, lp);
+  cbor_open_block_with_length(cw, 1);
+  cbor_add_int(cw, -1);
+  cbor_add_string(cw, "OK");
+  sk_send(s, cw->pt);
+  rfree(lp);
+
+  s->data = ccc->data;
+  sk_resume_rx(s->loop, s);
+
+  mb_free(ccc);
+}
+
+void
+hypervisor_container_shutdown(sock *s, const char *name)
+{
+  birdloop_enter(hcf.loop);
+
+  uint h = mem_hash(name, strlen(name));
+  struct container_runtime *crt = HASH_FIND(hcf.hash, CRT, name, h);
+
+  linpool *lp = lp_new(hcf.p);
+
+  if (!crt || !crt->s)
+  {
+    struct cbor_writer *cw = cbor_init(s->tbuf, s->tbsize, lp);
+    cbor_open_block_with_length(cw, 1);
+    cbor_add_int(cw, -127);
+    cbor_add_string(cw, "BAD: Not found");
+
+    sk_send(s, cw->pt);
+    rfree(lp);
+    birdloop_leave(hcf.loop);
+    return;
+  }
+
+  struct cbor_writer *cw = cbor_init(crt->s->tbuf, crt->s->tbsize, lp);
+  cbor_open_block_with_length(cw, 1);
+  cbor_add_int(cw, 0);
+  write_item(cw, 7, 22);
+
+  sk_send(crt->s, cw->pt);
+  rfree(lp);
+
+  struct container_operation_callback *ccc = mb_alloc(s->pool, sizeof *ccc);
+  *ccc = (struct container_operation_callback) {
+    .s = s,
+    .data = s->data,
+  };
+  callback_init(&ccc->cb, container_stopped, s->loop);
+  crt->ccc = ccc;
 
   s->err_paused = crt_err;
   s->data = crt;

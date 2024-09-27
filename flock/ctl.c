@@ -212,7 +212,14 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 	    ctx->major_state = 501;
 	    break;
 
-	  case 6: /* process spawner */
+	  case 6: /* machine shutdown request */
+	    if (ctx->type != 5)
+	      CBOR_PARSER_ERROR("Expecting mapping, got %u", ctx->type);
+
+	    ctx->major_state = 601;
+	    break;
+
+	  case 7: /* process spawner */
 	    CBOR_PARSER_ERROR("NOT IMPLEMENTED YET");
 	    break;
 
@@ -285,6 +292,31 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 	    ctx->target_len = ctx->value;
 	    break;
 
+	  case 601: /* machine shutdown argument */
+	    if (ctx->type != 0)
+	      CBOR_PARSER_ERROR("Expected integer, got %u", ctx->type);
+
+	    if (ctx->value >= 1)
+	      CBOR_PARSER_ERROR("Command key too high, got %lu", ctx->value);
+
+	    ctx->major_state = ctx->value + 602;
+	    break;
+
+	  case 602: /* machine creation argument 0: name */
+	    if (ctx->type != 3)
+	      CBOR_PARSER_ERROR("Expected string, got %u", ctx->type);
+
+	    if (value_is_special)
+	      CBOR_PARSER_ERROR("Variable length string not supported yet");
+
+	    if (ctx->cfg.cf.name)
+	      CBOR_PARSER_ERROR("Duplicate argument 0 / name");
+
+	    ASSERT_DIE(!ctx->target_buf);
+	    ctx->cfg.cf.name = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
+	    ctx->target_len = ctx->value;
+	    break;
+
 	  default:
 	    bug("invalid parser state");
 	}
@@ -342,6 +374,10 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 	    ctx->major_state = 501;
 	    break;
 
+	  case 602:
+	    ctx->major_state = 601;
+	    break;
+
 	  default:
 	    bug("Unexpected state to end a (byte)string in");
 	  /* Code to run at the end of a (byte)string */
@@ -391,6 +427,15 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 	      ctx->cfg.cf.name,
 	      ctx->cfg.container.basedir,
 	      ctx->cfg.container.workdir);
+
+	  ctx->major_state = 1;
+	  break;
+
+	case 601:
+	  if (!ctx->cfg.cf.name)
+	    CBOR_PARSER_ERROR("Machine name not specified");
+
+	  hypervisor_container_shutdown(ctx->sock, ctx->cfg.cf.name);
 
 	  ctx->major_state = 1;
 	  break;
