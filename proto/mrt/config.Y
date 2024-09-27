@@ -28,6 +28,7 @@ proto: mrt_proto ;
 mrt_proto_start: proto_start MRT
 {
   this_proto = proto_config_new(&proto_mrt, $1);
+  this_proto->loop_order = DOMAIN_ORDER(proto);
 };
 
 mrt_proto_item:
