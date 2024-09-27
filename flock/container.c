@@ -5,6 +5,7 @@
 #include "lib/io-loop.h"
 #include "lib/hash.h"
 
+#include <poll.h>
 #include <sched.h>
 #include <stdlib.h>
 #include <sys/wait.h>
@@ -43,6 +44,20 @@ struct container_runtime {
 #define CRT_EQ(a,h,b,i)	((h) == (i)) && (!strcmp(a,b))
 #define CRT_FN(a,h)	h
 
+static sig_atomic_t poweroff, zombie;
+
+static void
+container_poweroff_sighandler(int signo)
+{
+  poweroff = signo;
+}
+
+static void
+container_child_sighandler(int signo UNUSED)
+{
+  zombie = 1;
+}
+
 static int container_forker_fd = -1;
 
 static void
@@ -50,12 +65,37 @@ container_mainloop(int fd)
 {
   log(L_INFO "container mainloop with fd %d", fd);
 
+  signal(SIGTERM, container_poweroff_sighandler);
+  signal(SIGINT, container_poweroff_sighandler);
+  signal(SIGCHLD, container_child_sighandler);
+
   /* TODO: mount overlayfs and chroot */
   while (1)
   {
-    pause();
+    struct pollfd pfd = {
+      .fd = fd,
+      .events = POLLIN,
+    };
+
+    sigset_t newmask;
+    sigemptyset(&newmask);
+
+    int res = ppoll(&pfd, 1, NULL, &newmask);
+
+    if (poweroff)
+    {
+      byte outbuf[128];
+      linpool *lp = lp_new(&root_pool);
+      struct cbor_writer *cw = cbor_init(outbuf, sizeof outbuf, lp);
+      cbor_open_block_with_length(cw, 1);
+      cbor_add_int(cw, -4);
+      cbor_add_int(cw, poweroff);
+      ASSERT_DIE(write(fd, outbuf, cw->pt) == cw->pt);
+      exit(0);
+    }
+
     /* TODO: check for telnet socket */
-    log(L_INFO "woken up!");
+    log(L_INFO "woken up, res %d (%m)!", res);
   }
 }
 
@@ -102,9 +142,19 @@ container_start(void)
     return;
   }
 
-  e = unshare(CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUSER | CLONE_NEWTIME | CLONE_NEWNET);
+  e = unshare(CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWTIME | CLONE_NEWNET);
   if (e < 0)
     die("Failed to unshare container: %m");
+
+  /* Mask signals for forking and other fragile stuff */
+  sigset_t oldmask;
+  sigset_t newmask;
+  sigemptyset(&newmask);
+#define KILLABLE_SIGNALS  SIGINT, SIGTERM, SIGHUP, SIGQUIT
+#define FROB(x) sigaddset(&newmask, x);
+  MACRO_FOREACH(FROB, KILLABLE_SIGNALS);
+#undef FROB
+  sigprocmask(SIG_BLOCK, &newmask, &oldmask);
 
   pid = fork();
   if (pid < 0)
@@ -154,10 +204,19 @@ container_start(void)
 /* The Parent */
 
 static int
-hypervisor_container_rx(sock *sk, uint sz)
+hypervisor_container_rx(sock *sk, uint _sz UNUSED)
 {
+  byte buf[128];
+  ssize_t sz = read(sk->fd, buf, sizeof buf);
+  if (sz < 0)
+  {
+    log(L_ERR "error reading data from %p (container_rx): %m", sk);
+    sk_close(sk);
+    return 0;
+  }
+
   log(L_INFO "received %u data from %p (container_rx)", sz, sk);
-  return 1;
+  return 0;
 }
 
 static int
