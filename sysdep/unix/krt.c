@@ -390,9 +390,6 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
 #endif
 
   /* The rest is for KRT_SRC_BIRD (or KRT_SRC_UNKNOWN) */
-  /* Deleting all routes if final flush is requested */
-  if (p->sync_state == KPS_FLUSHING)
-    goto delete;
 
   /* We wait for the initial feed to have correct installed state */
   if (!p->ready)
@@ -463,8 +460,6 @@ krt_init_scan(struct krt_proto *p)
       log(L_WARN "%s: Can't scan, still pruning", p->p.name);
       return 0;
 
-    case KPS_FLUSHING:
-      bug("Can't scan, flushing");
   }
 
   bug("Bad kernel sync state");
@@ -488,8 +483,6 @@ krt_prune(struct krt_proto *p)
     case KPS_PRUNING:
       bug("Kernel scan double-prune");
 
-    case KPS_FLUSHING:
-      bug("Attemted kernel scan prune when flushing");
   }
 }
 
@@ -704,9 +697,6 @@ krt_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net,
       krt_replace_rte(p, net, new, old);
       break;
 
-    case KPS_FLUSHING:
-      /* Drop any incoming route */
-      krt_replace_rte(p, net, NULL, old ?: new);
   }
 }
 
@@ -768,11 +758,6 @@ krt_export_fed(struct channel *C)
       p->sync_state = KPS_IDLE;
       break;
 
-    case KPS_FLUSHING:
-      krt_do_scan(p);
-      krt_cleanup(p);
-      proto_notify_state(&p->p, PS_DOWN);
-      return;
   }
 }
 
@@ -896,17 +881,34 @@ krt_shutdown(struct proto *P)
   /* FIXME we should flush routes even when persist during reconfiguration */
   if (p->initialized && !KRT_CF->persist && (P->down_code != PDC_CMD_GR_DOWN))
   {
-    p->sync_state = KPS_FLUSHING;
-    channel_request_full_refeed(p->p.main_channel);
+    struct rt_export_feeder req = (struct rt_export_feeder)
+    {
+      .name = "shutdown.feeder",
+      .trace_routes = P->main_channel->debug,
+    };
+    rt_feeder_subscribe(&P->main_channel->table->export_best, &req);
 
-    /* Keeping the protocol UP until the feed-to-flush is done */
-    return PS_UP;
+    RT_FEED_WALK(&req, f)
+    {
+      for (uint i = 0; i < f->count_routes; i++)
+      {
+	      rte *e = &f->block[i];
+        if (bmap_test(&P->main_channel->export_rejected_map, e->id))
+          continue;
+
+      /* if exported then delete from kernel */
+      krt_replace_rte(p, e->net, NULL, e);
+      }
+    }
+
+    krt_do_scan(p);
+    krt_cleanup(p);
+    proto_notify_state(&p->p, PS_DOWN);
+    rt_feeder_unsubscribe(&req);
   }
   else
-  {
     krt_cleanup(p);
-    return PS_DOWN;
-  }
+  return PS_DOWN;
 }
 
 static void
