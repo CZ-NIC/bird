@@ -8,6 +8,7 @@
 #include <poll.h>
 #include <sched.h>
 #include <stdlib.h>
+#include <sys/mount.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -74,6 +75,39 @@ container_poweroff(int fd, int sig)
 }
 
 static void
+container_zombie(void)
+{
+  zombie = 0;
+  log(L_INFO "Zombie elimination routine invoked.");
+  while (1) {
+    int status;
+    pid_t p = waitpid(-1, &status, WNOHANG);
+
+    if (p < 0)
+    {
+      if (errno != ECHILD)
+	log(L_ERR "Zombie elimination failed: %m");
+      return;
+    }
+
+    if (p == 0)
+      return;
+
+    const char *coreinfo = WCOREDUMP(status) ? " (core dumped)" : "";
+
+    if (WIFEXITED(status))
+      log(L_INFO "Process %d ended with status %d%s", p, WEXITSTATUS(status), coreinfo);
+    else if (WIFSIGNALED(status))
+      log(L_INFO "Process %d exited by signal %d (%s)%s", p, WTERMSIG(status), strsignal(WTERMSIG(status)), coreinfo);
+    else
+      log(L_ERR "Process %d exited with a strange status %d", p, status);
+  }
+}
+
+
+#define SYSCALL(x, ...)	({ int e = x(__VA_ARGS__); if (e < 0) die("Failed to run %s at %s:%d: %m", #x, __FILE__, __LINE__); e; })
+
+static void
 container_mainloop(int fd)
 {
   log(L_INFO "container mainloop with fd %d", fd);
@@ -81,6 +115,10 @@ container_mainloop(int fd)
   signal(SIGTERM, container_poweroff_sighandler);
   signal(SIGINT, container_poweroff_sighandler);
   signal(SIGCHLD, container_child_sighandler);
+
+  /* Remounting proc to reflect the new PID namespace */
+  SYSCALL(mount, "none", "/", NULL, MS_REC | MS_PRIVATE, NULL);
+  SYSCALL(mount, "proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL);
 
   /* TODO: mount overlayfs and chroot */
   while (1)
@@ -95,13 +133,31 @@ container_mainloop(int fd)
 
     int res = ppoll(&pfd, 1, NULL, &newmask);
 
+    if ((res < 0) && (errno != EINTR))
+      log(L_INFO "ppoll returned -1: %m");
+
     if (poweroff)
       container_poweroff(fd, poweroff);
 
+    if (zombie)
+      container_zombie();
+
     if (pfd.revents & POLLIN)
     {
-      byte buf[128];
-      ssize_t sz = read(fd, buf, sizeof buf);
+      int sfd = -1;
+      byte buf[128], cbuf[CMSG_SPACE(sizeof sfd)];
+      struct iovec v = {
+	.iov_base = buf,
+	.iov_len = sizeof buf,
+      };
+      struct msghdr m = {
+	.msg_iov = &v,
+	.msg_iovlen = 1,
+	.msg_control = &cbuf,
+	.msg_controllen = sizeof cbuf,
+      };
+
+      int sz = recvmsg(fd, &m, 0);
       if (sz < 0)
       {
 	log(L_ERR "error reading data from control socket: %m");
@@ -116,11 +172,47 @@ container_mainloop(int fd)
 	  container_poweroff(fd, 0);
 	  break;
 
+	case 0x21:
+	  ASSERT_DIE(buf[2] == 0xf6);
+	  struct cmsghdr *c = CMSG_FIRSTHDR(&m);
+	  memcpy(&sfd, CMSG_DATA(c), sizeof sfd);
+
+	  int e = fork();
+	  if (e < 0) bug("Cannot fork: %m");
+	  if (e == 0) {
+	    int fd = accept(sfd, NULL, 0);
+	    if (fd < 0)
+	    {
+	      log(L_ERR "failed to accept telnet connection: %m");
+	      exit(1);
+	    }
+	    log(L_INFO "telnet connected");
+
+	    close(0);
+	    close(1);
+	    close(2);
+
+	    dup2(fd, 0);
+	    dup2(fd, 1);
+
+	    /* Unblock signals */
+	    sigset_t newmask;
+	    sigemptyset(&newmask);
+	    sigprocmask(SIG_SETMASK, &newmask, NULL);
+
+	    /* Exec the telnet */
+	    e = execl("/usr/sbin/telnetd", "telnetd", "-E", "/bin/bash", NULL);
+	    log(L_ERR "failed to execl: %m");
+	    exit(42);
+	  }
+	  close(sfd);
+	  break;
+
+	default:
+	  log(L_ERR "unknown command on control socket: %d", buf[1]);
+	  break;
       }
     }
-
-    /* TODO: check for telnet socket */
-    log(L_INFO "woken up, res %d (%m)!", res);
   }
 }
 
@@ -354,6 +446,14 @@ crt_err(sock *s, int err UNUSED)
   callback_cancel(&crt->ccc->cb);
   mb_free(crt->ccc);
   crt->ccc = NULL;
+}
+
+int
+container_ctl_fd(const char *name)
+{
+  uint h = mem_hash(name, strlen(name));
+  struct container_runtime *crt = HASH_FIND(hcf.hash, CRT, name, h);
+  return (crt && crt->s) ? crt->s->fd : -1;
 }
 
 static void

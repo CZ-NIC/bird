@@ -127,6 +127,8 @@ static struct hypervisor_exposed {
   pool *p;
   sock *s;
   struct birdloop *loop;
+  const char *port_name;
+  sock *port_sreq;
 } he;
 
 /**
@@ -136,7 +138,6 @@ static struct hypervisor_exposed {
 static void hexp_received_telnet(void *);
 struct hexp_received_telnet {
   event e;
-  struct hexp_telnet_port *p;
   int fd;
   u16 port;
 };
@@ -165,6 +166,7 @@ hypervisor_telnet_connected(sock *sk, uint size UNUSED)
   {
     log(L_INFO "telnet connected");
     close(fd);
+    sk_close(sk);
     return 1;
   }
 
@@ -214,20 +216,12 @@ hypervisor_exposed_parent_rx(sock *sk, uint size UNUSED)
   u16 port = ntohs(*((u16 *) &buf[3]));
   log(L_INFO "RX %d bytes, fd %d, port %u", e, sfd, port);
 
-  sock *skl = sk_new(sk->pool);
-  skl->type = SK_MAGIC;
-  skl->rx_hook = hypervisor_telnet_connected;
-  skl->fd = sfd;
-  if (sk_open(skl, sk->loop) < 0)
-    bug("Telnet listener: sk_open failed");
-
   struct hexp_received_telnet *hrt = mb_allocz(he.p, sizeof *hrt);
   *hrt = (struct hexp_received_telnet) {
     .e = {
       .hook = hexp_received_telnet,
       .data = hrt,
     },
-    .p = sk->data,
     .port = port,
     .fd = sfd,
   };
@@ -413,141 +407,108 @@ hypervisor_exposed_fork(void)
  * Hypervisor's mapping between external ports and names
  */
 
-#define HEXP_TELNET_KEY(tp)	tp->name, tp->hash
-#define HEXP_TELNET_NEXT(tp)	tp->next
-#define HEXP_TELNET_EQ(a,h,b,i)	((h) == (i)) && (!(a) && !(b) || !strcmp(a,b))
-#define HEXP_TELNET_FN(a,h)	h
-
-#define TLIST_PREFIX hexp_telnet_requestor
-#define TLIST_TYPE struct hexp_telnet_requestor
-#define TLIST_ITEM n
-struct hexp_telnet_requestor {
-  TLIST_DEFAULT_NODE;
-  sock *s;
-  struct cbor_parser_context *ctx;
-};
-
-#define TLIST_WANT_ADD_TAIL
-#include "lib/tlists.h"
-
 static void
 hexp_sock_err(sock *s, int err UNUSED)
 {
-  struct hexp_telnet_requestor *req = s->data;
-  s->data = req->ctx;
-
-  hexp_telnet_requestor_rem_node(hexp_telnet_requestor_enlisted(req), req);
-}
-
-struct hexp_telnet_port {
-  struct hexp_telnet_port *next;
-  const char *name;
-  uint hash;
-  uint port;
-
-  TLIST_LIST(hexp_telnet_requestor) requestors;
-  int fd;
-};
-
-static struct hexp_telnet {
-  pool *pool;
-  HASH(struct hexp_telnet_port) port_hash;
-} hexp_telnet;
-
-static void
-hexp_init_telnet(void)
-{
-  pool *p = rp_new(hcs_pool, hcs_pool->domain, "Hypervisor exposed telnets");
-  hexp_telnet.pool = p;
-  HASH_INIT(hexp_telnet.port_hash, p, 6);
-}
-
-static void
-hexp_have_telnet(sock *s, struct hexp_telnet_port *p)
-{
-  struct linpool *lp = lp_new(s->pool);
-  struct cbor_writer *cw = cbor_init(s->tbuf, s->tbsize, lp);
-  cbor_open_block_with_length(cw, 1);
-  cbor_add_int(cw, -2);
-  cbor_add_int(cw, p->port);
-  sk_send(s, cw->pt);
-  rfree(lp);
+  ASSERT_DIE(s == he.port_sreq);
+  he.port_name = NULL;
+  he.port_sreq = NULL;
 }
 
 void
 hexp_get_telnet(sock *s, const char *name)
 {
-  if (!hexp_telnet.pool)
-    hexp_init_telnet();
+  ASSERT_DIE(!he.port_name);
+  he.port_name = name ?: "";
+  he.port_sreq = s;
 
-  uint h = name ? mem_hash(name, strlen(name)) : 0;
-  struct hexp_telnet_port *p = HASH_FIND(hexp_telnet.port_hash, HEXP_TELNET, name, h);
-  if (p && p->port)
-    return hexp_have_telnet(s, p);
-  else if (!p)
-  {
-    he.s->data = p = mb_alloc(hcs_pool, sizeof *p);
-    *p = (struct hexp_telnet_port) {
-      .name = name,
-      .hash = h,
-      .fd = -1,
-    };
-    HASH_INSERT(hexp_telnet.port_hash, HEXP_TELNET, p);
+  uint8_t buf[64];
+  linpool *lp = lp_new(s->pool);
+  struct cbor_writer *cw = cbor_init(buf, sizeof buf, lp);
+  cbor_open_block_with_length(cw, 1);
+  cbor_add_int(cw, 1);
+  cw->cbor[cw->pt++] = 0xf6;
 
-    uint8_t buf[64];
-    linpool *lp = lp_new(s->pool);
-    struct cbor_writer *cw = cbor_init(buf, sizeof buf, lp);
-    cbor_open_block_with_length(cw, 1);
-    cbor_add_int(cw, 1);
-    cw->cbor[cw->pt++] = 0xf6;
+  int e = write(he.s->fd, buf, cw->pt);
+  if (e != cw->pt)
+    bug("write error handling not implemented, got %d (%m)", e);
 
-    struct iovec v = {
-      .iov_base = buf,
-      .iov_len = cw->pt,
-    };
-    struct msghdr m = {
-      .msg_iov = &v,
-      .msg_iovlen = 1,
-    };
-
-    int e = sendmsg(he.s->fd, &m, 0);
-    if (e != cw->pt)
-      bug("sendmsg error handling not implemented, got %d (%m)", e);
-
-    rfree(lp);
-  }
+  rfree(lp);
 
   s->err_paused = hexp_sock_err;
   sk_pause_rx(s->loop, s);
-
-  struct hexp_telnet_requestor *req = mb_allocz(hcs_pool, sizeof *req);
-  req->s = s;
-  req->ctx = s->data;
-  s->data = req;
-  hexp_telnet_requestor_add_tail(&p->requestors, req);
 }
 
 static void hexp_received_telnet(void *_data)
 {
   struct hexp_received_telnet *hrt = _data;
 
-  ASSERT_DIE(!hrt->p->port);
-  hrt->p->port = hrt->port;
-  hrt->p->fd = hrt->fd;
+  ASSERT_DIE(he.port_name);
+  const char *name = he.port_name;
+  he.port_name = NULL;
 
-  byte outbuf[128];
-  linpool *lp = lp_new(hcs_pool);
-  struct cbor_writer *cw = cbor_init(outbuf, sizeof outbuf, lp);
-  cbor_open_block_with_length(cw, 1);
-  cbor_add_int(cw, -2);
-  cbor_add_int(cw, hrt->port);
+  sock *s = he.port_sreq;
+  he.port_sreq = NULL;
 
-  WALK_TLIST_DELSAFE(hexp_telnet_requestor, r, &hrt->p->requestors)
+  if (name[0])
   {
-    sk_resume_rx(r->s->loop, r->s);
-    memcpy(r->s->tbuf, outbuf, cw->pt);
-    sk_send(r->s, cw->pt);
-    hexp_telnet_requestor_rem_node(&hrt->p->requestors, r);
+    /* Transferring the received listening socket to the container */
+    int fd = container_ctl_fd(name);
+
+    /* TODO: unduplicate this code */
+    byte outbuf[128];
+    linpool *lp = lp_new(hcs_pool);
+    struct cbor_writer *cw = cbor_init(outbuf, sizeof outbuf, lp);
+    cbor_open_block_with_length(cw, 1);
+    cbor_add_int(cw, -2);
+    write_item(cw, 7, 22);
+    struct iovec v = {
+      .iov_base = outbuf,
+      .iov_len = cw->pt,
+    };
+    byte cbuf[CMSG_SPACE(sizeof hrt->fd)];
+    struct msghdr m = {
+      .msg_iov = &v,
+      .msg_iovlen = 1,
+      .msg_control = &cbuf,
+      .msg_controllen = sizeof cbuf,
+    };
+    struct cmsghdr *c = CMSG_FIRSTHDR(&m);
+    c->cmsg_level = SOL_SOCKET;
+    c->cmsg_type = SCM_RIGHTS;
+    c->cmsg_len = CMSG_LEN(sizeof hrt->fd);
+    memcpy(CMSG_DATA(c), &hrt->fd, sizeof hrt->fd);
+
+    int e = sendmsg(fd, &m, 0);
+    if (e < 0)
+      log(L_ERR "Failed to send socket: %m");
+
+    close(hrt->fd);
+  }
+  else
+  {
+    /* Opening listener here */
+
+    sock *skl = sk_new(hcs_pool);
+    skl->type = SK_MAGIC;
+    skl->rx_hook = hypervisor_telnet_connected;
+    skl->data = skl;
+    skl->fd = hrt->fd;
+    if (sk_open(skl, hcs_loop) < 0)
+      bug("Telnet listener: sk_open failed");
+  }
+
+  if (s)
+  {
+    linpool *lp = lp_new(hcs_pool);
+    struct cbor_writer *cw = cbor_init(s->tbuf, s->tbsize, lp);
+    cbor_open_block_with_length(cw, 1);
+    cbor_add_int(cw, -2);
+    cbor_add_int(cw, hrt->port);
+
+    sk_send(s, cw->pt);
+    sk_resume_rx(hcs_loop, s);
+    rfree(lp);
   }
 
   birdloop_enter(he.loop);

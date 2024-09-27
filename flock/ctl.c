@@ -186,15 +186,20 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 	    break;
 
 	  case 3: /* telnet listener open */
-	    if ((ctx->type != 7) || (ctx->value != 22))
-	      CBOR_PARSER_ERROR("Expected null, got %u-%u", ctx->type, ctx->value);
-	    /* TODO: allow this also for machines */
+	    if ((ctx->type == 7) && (ctx->value == 22))
+	    {
+	      hexp_get_telnet(ctx->sock, NULL);
+	      ctx->major_state = 1;
+	      break;
+	    }
 
-	    log(L_INFO "Requested telnet open");
+	    else if (ctx->type != 3)
+	      CBOR_PARSER_ERROR("Expected null or string, got %u-%u", ctx->type, ctx->value);
 
-	    hexp_get_telnet(ctx->sock, NULL);
+	    ASSERT_DIE(!ctx->target_buf);
+	    ctx->cfg.cf.name = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
+	    ctx->target_len = ctx->value;
 
-	    ctx->major_state = 1;
 	    break;
 
 	  case 4: /* telnet listener close */
@@ -364,6 +369,11 @@ hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size)
 	/* Read completely! */
 	switch (ctx->major_state)
 	{
+	  case 3:
+	    hexp_get_telnet(ctx->sock, ctx->cfg.cf.name);
+	    ctx->major_state = 1;
+	    break;
+
 	  case 5:
 	    /* Actually not this one */
 	    CBOR_PARSER_ERROR("NOT IMPLEMENTED YET");

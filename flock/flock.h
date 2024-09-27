@@ -48,6 +48,7 @@ union flock_machine_config {
 
 void hypervisor_container_request(sock *s, const char *name, const char *basedir, const char *workdir);
 void hypervisor_container_shutdown(sock *s, const char *name);
+int container_ctl_fd(const char *name);
 
 extern event reboot_event, poweroff_event;
 extern event_list shutdown_event_list;
