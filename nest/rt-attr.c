@@ -168,6 +168,29 @@ struct ea_class ea_gen_hostentry_version = {
   .hidden = 1,
 };
 
+static void
+ea_gen_rtable_stored(const eattr *ea)
+{
+  rtable *r = (rtable *) ea->u.v_ptr;
+  rt_lock_table(r);
+}
+
+static void
+ea_gen_rtable_freed(const eattr *ea)
+{
+  rtable *r = (rtable *) ea->u.v_ptr;
+  rt_unlock_table(r);
+}
+
+struct ea_class ea_gen_rtable = {
+  .name = "rtable",
+  .type = T_RTABLE,
+  .readonly = 1,
+  .stored = ea_gen_rtable_stored,
+  .freed = ea_gen_rtable_freed,
+};
+
+
 const char * rta_dest_names[RTD_MAX] = {
   [RTD_NONE]		= "",
   [RTD_UNICAST]		= "unicast",
@@ -1124,6 +1147,8 @@ eattr_same_value(const eattr *a, const eattr *b)
   if (a->undef)
     return 1;
 
+  if (a->type == T_PTR)
+    return a->u.v_ptr == b->u.v_ptr;
   if (a->type & EAF_EMBEDDED)
     return a->u.data == b->u.data;
   else
@@ -1834,6 +1859,74 @@ ea_show_list(struct cli *c, ea_list *eal)
     ea_show(c, &n->attrs[i]);
 }
 
+
+struct ea_class ea_name = {
+  .name = "proto_name",
+  .type = T_STRING,
+};
+
+struct ea_class ea_protocol_name = {
+  .name = "proto_protocol_name",
+  .type = T_STRING,
+};
+
+struct ea_class ea_protocol_type = {
+  .name = "proto_protocol_type",
+  .type = T_PTR,
+};
+
+struct ea_class ea_table = {
+  .name = "proto_table",
+  .type = T_STRING,
+};
+
+struct ea_class ea_state = {
+  .name = "proto_state",
+  .type = T_ENUM_STATE,
+};
+
+struct ea_class ea_old_state = {
+  .name = "proto_old_state",
+  .type = T_ENUM_STATE,
+};
+
+struct ea_class ea_last_modified = {
+  .name = "proto_last_modified",
+  .type = T_BTIME,
+};
+
+struct ea_class ea_info = {
+  .name = "proto_info",
+  .type = T_STRING,
+};
+
+struct ea_class ea_deleted = {
+  .name = "proto_deleted",
+  .type = T_INT,
+};
+
+struct ea_class ea_proto_id = {
+  .name = "proto_proto_id",
+  .type = T_INT,
+};
+
+struct ea_class ea_channel_id = {
+  .name = "proto_channel_id",
+  .type = T_INT,
+};
+
+struct ea_class ea_in_keep = {
+  .name = "channel_in_keep",
+  .type = T_INT,
+};
+
+
+struct ea_class ea_rtable = {
+  .name = "rtable",
+  .type = T_PTR,
+};
+
+
 /**
  * rta_init - initialize route attribute cache
  *
@@ -1874,6 +1967,20 @@ rta_init(void)
   ea_register_init(&ea_gen_mpls_policy);
   ea_register_init(&ea_gen_mpls_class);
   ea_register_init(&ea_gen_mpls_label);
+
+  /* Protocol attributes */
+  ea_register_init(&ea_name);
+  ea_register_init(&ea_protocol_name);
+  ea_register_init(&ea_protocol_type);
+  ea_register_init(&ea_table);
+  ea_register_init(&ea_state);
+  ea_register_init(&ea_old_state);
+  ea_register_init(&ea_last_modified);
+  ea_register_init(&ea_info);
+  ea_register_init(&ea_proto_id);
+  ea_register_init(&ea_channel_id);
+  ea_register_init(&ea_deleted);
+  ea_register_init(&ea_in_keep);
 }
 
 /*

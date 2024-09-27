@@ -695,6 +695,11 @@ bgp_total_aigp_metric(const rte *e)
   return metric;
 }
 
+/* bgp protocol journal attributes */
+extern struct ea_class ea_bgp_rem_id, ea_bgp_rem_as, ea_bgp_loc_as, ea_bgp_rem_ip, ea_bgp_peer_type,
+       ea_bgp_local_open_msg, ea_bgp_remote_open_msg, ea_bgp_local_open_msg_len, ea_bgp_remote_open_msg_len,
+       ea_bgp_conn, ea_bgp_in_conn, ea_bgp_out_conn, ea_bgp_close_bmp, ea_bgp_close_bmp_set, ea_bgp_as4_session;
+
 void bgp_register_attrs(void);
 struct ea_class *bgp_find_ea_class_by_id(uint id);
 
