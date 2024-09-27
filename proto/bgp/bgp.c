@@ -807,7 +807,7 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   ea_set_attr(&ea_l, EA_LITERAL_EMBEDDED(&ea_bgp_remote_open_msg_len, 0, conn->remote_open_length));
   ea_l = ea_lookup(ea_l, 0, EALS_CUSTOM);
 
-  proto_announce_state(&p->p, eal_l);
+  proto_announce_state(&p->p, ea_l);
 #endif
 }
 
