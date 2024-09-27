@@ -25,6 +25,7 @@ proto: bmp_proto '}' ;
 
 bmp_proto_start: proto_start BMP {
      this_proto = proto_config_new(&proto_bmp, $1);
+     this_proto->loop_order = DOMAIN_ORDER(proto);
      BMP_CFG->sys_descr = "Not defined";
      BMP_CFG->sys_name = "Not defined";
    }

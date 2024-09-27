@@ -3054,6 +3054,13 @@ proto_states_subscribe(struct lfjour_recipient *r)
     lfjour_register(&proto_state_table_pub.journal, r);
 }
 
+void
+proto_states_unsubscribe(struct lfjour_recipient *r)
+{
+  PST_LOCKED(ts)
+    lfjour_unregister(r);
+}
+
 /* State attribute declarations */
 struct ea_class ea_name = {
   .name = "proto_name",

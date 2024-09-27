@@ -448,6 +448,7 @@ void proto_announce_state_later(struct proto *p, ea_list *attr);
 ea_list *channel_get_state(int id);
 ea_list *proto_get_state(int id);
 void proto_states_subscribe(struct lfjour_recipient *r);
+void proto_states_unsubscribe(struct lfjour_recipient *r);
 
 /* Protocol journal attributes */
 extern struct ea_class ea_name, ea_protocol_name, ea_protocol_type,

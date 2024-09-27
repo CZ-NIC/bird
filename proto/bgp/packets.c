@@ -2357,10 +2357,11 @@ bgp_create_ip_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
   return buf+4+la+lr;
 }
 
+
 static byte *
 bgp_create_mp_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, byte *end)
 {
-  ASSERT_DIE(s->ptx->withdraw_bucket != buck);
+  ASSERT_DIE((s->ptx->bmp) || (s->ptx->withdraw_bucket != buck));
 
   /*
    *	2 B	IPv4 Withdrawn Routes Length (zero)
@@ -2479,24 +2480,35 @@ bgp_create_mp_unreach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
 #ifdef CONFIG_BMP
 
 static byte *
-bgp_create_update_bmp(struct bgp_channel *c, byte *buf, struct bgp_bucket *buck, bool update)
+bgp_create_update_bmp(ea_list *channel_ea, struct bgp_proto *bgp_p, byte *buf, struct bgp_bucket *buck, bool update)
 {
-  struct bgp_proto *p = (void *) c->c.proto;
+  struct bgp_channel *c;
+  u32 c_id = ea_get_int(channel_ea, &ea_channel_id, 0);
+  BGP_WALK_CHANNELS(bgp_p, c)
+    if (c->c.id == c_id)
+      break;
+
   byte *end = buf + (BGP_MAX_EXT_MSG_LENGTH - BGP_HEADER_LENGTH);
   byte *res = NULL;
   /* FIXME: must be a bit shorter */
 
-  struct bgp_caps *peer = p->conn->remote_caps;
+  struct bgp_caps *peer = bgp_p->conn->remote_caps;
   const struct bgp_af_caps *rem = bgp_find_af_caps(peer, c->afi);
 
+  struct bgp_ptx_private ptx = {
+    .bmp = 1,
+    .c = c,
+  };
+
   struct bgp_write_state s = {
-    .proto = p,
-    .channel = c,
+    .proto = bgp_p,
+    .ptx = &ptx,
     .pool = tmp_linpool,
     .mp_reach = (c->afi != BGP_AF_IPV4) || rem->ext_next_hop,
     .as4_session = 1,
     .add_path = c->add_path_rx,
     .mpls = c->desc->mpls,
+    .ignore_non_bgp_attrs = 1,
   };
 
   if (!update)
@@ -2526,34 +2538,31 @@ bgp_bmp_prepare_bgp_hdr(byte *buf, const u16 msg_size, const u8 msg_type)
 }
 
 byte *
-bgp_bmp_encode_rte(struct bgp_channel *c, byte *buf, const net_addr *n,
-		   const struct rte *new, const struct rte_src *src)
+bgp_bmp_encode_rte(ea_list *c, struct bgp_proto *bgp_p, byte *buf, const struct rte *new)
 {
-//  struct bgp_proto *p = (void *) c->c.proto;
   byte *pkt = buf + BGP_HEADER_LENGTH;
 
-  ea_list *attrs = new ? new->attrs : NULL;
-  uint ea_size = new ? (sizeof(ea_list) + attrs->count * sizeof(eattr)) : 0;
-  uint bucket_size = sizeof(struct bgp_bucket) + ea_size;
-  uint prefix_size = sizeof(struct bgp_prefix) + n->length;
+  uint ea_size = new->attrs ? (sizeof(ea_list) + new->attrs->count * sizeof(eattr)) : 0;
+  uint prefix_size = sizeof(struct bgp_prefix) + new->net->length;
 
   struct lp_state *tmpp = lp_save(tmp_linpool);
 
   /* Temporary bucket */
-  struct bgp_bucket *b = tmp_allocz(bucket_size);
+  struct bgp_bucket *b = tmp_allocz(sizeof(struct bgp_bucket) + ea_size);
   b->bmp = 1;
   init_list(&b->prefixes);
 
-  if (attrs)
-    memcpy(b->eattrs, attrs, ea_size);
+  if (new->attrs)
+    memcpy(b->eattrs, new->attrs, ea_size);
 
   /* Temporary prefix */
   struct bgp_prefix *px = tmp_allocz(prefix_size);
-  px->path_id = (u32) src->private_id;
-  net_copy(px->net, n);
-  add_tail(&b->prefixes, &px->buck_node_xx);
+  px->src = tmp_allocz(sizeof(struct rte_src));
+  memcpy(px->src, new->src, sizeof(struct rte_src));
+  px->ni = NET_TO_INDEX(new->net);
+  add_tail(&b->prefixes, &px->buck_node);
 
-  byte *end = bgp_create_update_bmp(c, pkt, b, !!new);
+  byte *end = bgp_create_update_bmp(c, bgp_p, pkt, b, !!new->attrs);
 
   if (end)
     bgp_bmp_prepare_bgp_hdr(buf, end - buf, PKT_UPDATE);
@@ -2659,6 +2668,31 @@ bgp_create_mp_end_mark(struct bgp_channel *c, byte *buf)
   put_af3(buf+7, c->afi);
 
   return buf+10;
+}
+
+static byte *
+bgp_create_mp_end_mark_ea(ea_list *c, byte *buf)
+{
+  put_u16(buf+0, 0);
+  put_u16(buf+2, 6);		/* length 4--9 */
+
+  /* Empty MP_UNREACH_NLRI atribute */
+  buf[4] = BAF_OPTIONAL;
+  buf[5] = BA_MP_UNREACH_NLRI;
+  buf[6] = 3;			/* Length 7--9 */
+  int afi = ea_get_int(c, &ea_bgp_afi, 0);
+  put_af3(buf+7, afi);
+
+  return buf+10;
+}
+
+byte *
+bgp_create_end_mark_ea_(ea_list *c, byte *buf)
+{
+  int afi = ea_get_int(c, &ea_bgp_afi, 0);
+  return (afi == BGP_AF_IPV4) ?
+    bgp_create_ip_end_mark(NULL, buf):
+    bgp_create_mp_end_mark_ea(c, buf);
 }
 
 byte *
