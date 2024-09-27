@@ -47,7 +47,6 @@ struct bmp_proto;
 struct bmp_proto {
   struct proto p;                  // Parent proto
   const struct bmp_config *cf;     // Shortcut to BMP configuration
-  node bmp_node;                   // Node in bmp_proto_list
 
   HASH(struct bmp_peer) peer_map;
   HASH(struct bmp_stream) stream_map;
@@ -73,29 +72,38 @@ struct bmp_proto {
   list update_msg_queue;           // Stores all composed BGP UPDATE MSGs
   bool started;                    // Flag that stores running status of BMP instance
   int sock_err;                    // Last socket error code
+
+  struct lfjour_recipient proto_state_reader; // Reader of protocol states
+  event proto_state_changed;
+  int lf_jour_inited;
 };
 
 struct bmp_peer {
-  struct bgp_proto *bgp;
+  ea_list *bgp;
   struct bmp_peer *next;
   list streams;
 };
 
 struct bmp_stream {
   node n;
-  struct bgp_proto *bgp;
+  ea_list *bgp;
   u32 key;
   bool sync;
   struct bmp_stream *next;
   struct bmp_table *table;
-  struct bgp_channel *sender;
+  ea_list *sender;
+  int in_pre_policy;
 };
 
 struct bmp_table {
-  struct rtable *table;
+  rtable *table;
   struct bmp_table *next;
   struct channel *channel;
-  u32 uc;
+  struct rt_export_request out_req;
+  struct bmp_proto *p;
+  struct rt_export_feeder in_req;
+  event event;
+  atomic_int uc;
 };
 
 
@@ -105,7 +113,7 @@ struct bmp_table {
  * bmp_peer_up - send notification that BGP peer connection is established
  */
 void
-bmp_peer_up(struct bgp_proto *bgp,
+bmp_peer_up(struct ea_list *bgp,
 	    const byte *tx_open_msg, uint tx_open_length,
 	    const byte *rx_open_msg, uint rx_open_length);
 
