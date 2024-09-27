@@ -459,6 +459,8 @@ struct bgp_ptx_private {
 
   slab *prefix_slab;			/* Slab holding prefix nodes */
   slab *bucket_slab;			/* Slab holding buckets to send */
+
+  char bmp;                            /* This is a fake ptx for BMP encoding */
 };
 
 typedef union bgp_ptx {
@@ -700,7 +702,7 @@ static inline struct bgp_proto *bgp_rte_proto(const rte *rte)
     SKIP_BACK(struct bgp_proto, p.sources, rte->src->owner) : NULL;
 }
 
-byte * bgp_bmp_encode_rte(struct bgp_channel *c, byte *buf, const net_addr *n, const struct rte *new, const struct rte_src *src);
+byte * bgp_bmp_encode_rte(ea_list *c, struct bgp_proto *bgp_p, byte *buf, const struct rte *new);
 
 #define BGP_AIGP_METRIC		1
 #define BGP_AIGP_MAX		U64(0xffffffffffffffff)
@@ -746,6 +748,7 @@ void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsi
 
 void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
 byte *bgp_create_end_mark_(struct bgp_channel *c, byte *buf);
+byte *bgp_create_end_mark_ea_(ea_list *c, byte *buf);
 
 
 /* Packet types */

@@ -1926,7 +1926,10 @@ bgp_done_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_buc
 {
   /* BMP hack */
   if (buck->bmp)
+  {
+    rem_node(&px->buck_node);
     return;
+  }
 
   /* Cleanup: We're called from bucket senders. */
   ASSERT_DIE(px->cur == buck);
@@ -2001,7 +2004,7 @@ bgp_out_item_done(struct lfjour *j UNUSED, struct lfjour_item *i UNUSED)
 {}
 
 static struct rt_export_feed *
-bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
+bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, UNUSED const struct rt_export_item *_first)
 {
   ASSERT_DIE(u == NULL);
   SKIP_BACK_DECLARE(struct bgp_ptx_private, c, exporter, e);
