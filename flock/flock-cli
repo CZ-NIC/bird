@@ -92,7 +92,13 @@ def telnet(name: str):
 
 @handler
 def container_start(hypervisor: str, name: str):
-    print(f"start a machine {name} in {hypervisor}")
+    for k,v in msg(hypervisor, { 3: {
+        0: name,
+        1: 1,
+        2: bytes(DEFAULT_RUN_PATH / hypervisor / name),
+        3: b"/",
+        }}).items():
+        print(k,v)
 
 try:
     binname = sys.argv.pop(0)
