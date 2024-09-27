@@ -85,6 +85,12 @@ def cleanup(name: str):
         ctl.unlink()
 
 @handler
+def telnet(name: str):
+    for k,v in msg(name, { 1: None}).items():
+        assert(k == -2)
+        os.execlp("telnet", "telnet", "localhost", str(v))
+
+@handler
 def container_start(hypervisor: str, name: str):
     print(f"start a machine {name} in {hypervisor}")
 
@@ -102,9 +108,10 @@ def usage(name: str):
             f"\t                                         creates <name>.ctl in {DEFAULT_RUN_PATH}",
             f"\tstop <name>                              stop Flock hypervisor",
             f"\tcleanup <name>                           cleanup the control socket left behind a stale hypervisor",
+            f"\ttelnet <hypervisor>                      run telnet to hypervisor",
             f"\tcontainer start <hypervisor> <name>      start virtual machine",
             f"\tcontainer stop <hypervisor> <name>       stop virtual machine",
-            f"\ttelnet <hypervisor> <name>               run telnet to this machine",
+            f"\tcontainer telnet <hypervisor> <name>     run telnet to this machine",
             sep="\n")
 
 cmd = []
