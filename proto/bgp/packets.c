@@ -145,7 +145,7 @@ bgp_dump_message(struct bgp_conn *conn, byte *pkt, uint len)
   d.msg_len = len;
   d.add_path = bgp_estimate_add_path(conn->bgp, pkt, len);
 
-  mrt_dump_bgp_message(&d);
+  mrt_dump_bgp_message(&d, conn->bgp->p.pool);
 }
 
 void
@@ -157,7 +157,7 @@ bgp_dump_state_change(struct bgp_conn *conn, uint old, uint new)
   d.old_state = old;
   d.new_state = new;
 
-  mrt_dump_bgp_state_change(&d);
+  mrt_dump_bgp_state_change(&d, conn->bgp->p.pool);
 }
 
 static byte *

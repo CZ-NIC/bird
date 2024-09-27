@@ -126,6 +126,7 @@ off_t rf_size(struct rfile *);
 int rf_same(struct rfile *, struct rfile *);
 int rf_writev(struct rfile *, struct iovec *, int);
 void rf_write_crude(struct rfile *, const char *, int);
+int rf_fileno(struct rfile *f);
 
 extern struct rfile rf_stderr;
 

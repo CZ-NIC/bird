@@ -106,6 +106,12 @@ static struct resclass rf_class = {
   NULL
 };
 
+int
+rf_fileno(struct rfile *f)
+{
+  return f->fd;
+}
+
 static int
 rf_open_get_fd(const char *name, enum rf_mode mode)
 {

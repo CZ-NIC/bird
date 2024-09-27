@@ -56,7 +56,7 @@ struct mrt_peer_entry {
 struct mrt_table_dump_state {
   struct mrt_proto *proto;		/* Protocol for regular MRT dumps (or NULL) */
   struct cli *cli;			/* CLI for irregular MRT dumps (or NULL) */
-  struct config *config;		/* Config valid during start of dump, locked */
+  config_ref config;		/* Config valid during start of dump, locked */
 
 					/* Configuration information */
   const char *table_expr;		/* Wildcard for table name (or NULL) */
@@ -73,8 +73,8 @@ struct mrt_table_dump_state {
 
   HASH(struct mrt_peer_entry) peer_hash; /* Hash for peers to find the index */
 
-  rtable *table;			/* Processed table, NULL initially */
-  struct fib_iterator fit;		/* Iterator in processed table */
+  list *table;			/* Processed table, NULL initially - changed to list for v3*/
+  node *fit;		/* Iterator in processed table - changed to node for v3*/
   int table_open;			/* Whether iterator is linked */
 
   int ipv4;				/* Processed table is IPv4 */
@@ -147,12 +147,12 @@ struct mrt_bgp_data {
 
 #ifdef CONFIG_MRT
 void mrt_dump_cmd(struct mrt_dump_data *d);
-void mrt_dump_bgp_message(struct mrt_bgp_data *d);
-void mrt_dump_bgp_state_change(struct mrt_bgp_data *d);
+void mrt_dump_bgp_message(struct mrt_bgp_data *d, pool *p);
+void mrt_dump_bgp_state_change(struct mrt_bgp_data *d, pool *p);
 void mrt_check_config(struct proto_config *C);
 #else
-static inline void mrt_dump_bgp_message(struct mrt_bgp_data *d UNUSED) { }
-static inline void mrt_dump_bgp_state_change(struct mrt_bgp_data *d UNUSED) { }
+static inline void mrt_dump_bgp_message(struct mrt_bgp_data *d UNUSED, pool *p UNUSED) { }
+static inline void mrt_dump_bgp_state_change(struct mrt_bgp_data *d UNUSED, pool *p UNUSED) { }
 #endif
 
 #endif	/* _BIRD_MRT_H_ */
