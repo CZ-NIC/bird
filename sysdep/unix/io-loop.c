@@ -1412,6 +1412,7 @@ bool task_before_halftime(void)
 static struct bird_thread main_thread;
 struct birdloop main_birdloop = { .thread = &main_thread, };
 _Thread_local struct birdloop *this_birdloop;
+_Thread_local struct birdloop *this_metaloop;
 
 static void birdloop_enter_locked(struct birdloop *loop);
 
@@ -1434,12 +1435,14 @@ birdloop_init(void)
 
   main_birdloop.time.domain = the_bird_domain.the_bird;
   main_birdloop.time.loop = &main_birdloop;
+  main_birdloop.pool = rp_new(&root_pool, the_bird_domain.the_bird, "Main loop");
 
   times_update();
   timers_init(&main_birdloop.time, &root_pool);
 
   birdloop_enter_locked(&main_birdloop);
-  this_birdloop = &main_birdloop;
+  this_birdloop = this_metaloop = &main_birdloop;
+
   this_thread = &main_thread;
 
   defer_init(lp_new(&root_pool));
@@ -1488,7 +1491,7 @@ birdloop_stop_internal(struct birdloop *loop)
   ASSERT_DIE(!ev_active(&loop->event));
   loop->ping_pending = 0;
   account_to(&this_thread->overhead);
-  this_birdloop = this_thread->meta;
+  this_birdloop = this_metaloop = this_thread->meta;
   birdloop_leave(loop);
 
   /* Request local socket reload */
@@ -1509,7 +1512,7 @@ birdloop_run(void *_loop)
   struct birdloop *loop = _loop;
   account_to(&loop->locking);
   birdloop_enter(loop);
-  this_birdloop = loop;
+  this_birdloop = this_metaloop = loop;
 
   /* Wait until pingers end to wait for all events to actually arrive */
   for (u32 ltt;
@@ -1571,7 +1574,7 @@ birdloop_run(void *_loop)
   loop->sock_changed = 0;
 
   account_to(&this_thread->overhead);
-  this_birdloop = this_thread->meta;
+  this_birdloop = this_metaloop = this_thread->meta;
   birdloop_leave(loop);
 }
 
