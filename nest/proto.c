@@ -2419,6 +2419,19 @@ proto_state_name(struct proto *p)
   }
 }
 
+static char *
+proto_state_name_from_int(int state)
+{
+  switch (state)
+  {
+  case PS_DOWN:		return "flush or down";
+  case PS_START:	return "start";
+  case PS_UP:		return "up";
+  case PS_STOP:		return "stop";
+  default:		return "???";
+  }
+}
+
 static void
 channel_show_stats(struct channel *c)
 {
@@ -2512,7 +2525,7 @@ channel_cmd_debug(struct channel *c, uint mask)
 }
 
 void
-proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
+proto_cmd_show(struct proto *p, union cmd_arg verbose, int cnt)
 {
   byte buf[256], tbuf[TM_DATETIME_BUFFER_SIZE];
 
@@ -2521,23 +2534,33 @@ proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
     cli_msg(-2002, "%-10s %-10s %-10s %-6s %-12s  %s",
 	    "Name", "Proto", "Table", "State", "Since", "Info");
 
+  ea_list *eal = proto_get_state_list(p->id);
+
+  const char *name = ea_get_adata(eal, &ea_name)->data;
+  struct protocol *proto = (struct protocol *) ea_get_ptr(eal, &ea_protocol_type, 0);
+  const int state  = ea_get_int(eal, &ea_state, 0);
+  const char *table = ea_get_adata(eal, &ea_table)->data;
   buf[0] = 0;
   if (p->proto->get_status)
-    p->proto->get_status(p, buf);
+  {
+    PROTO_LOCKED_FROM_MAIN(p)
+      p->proto->get_status(p, buf);
+  }
+  const btime *time = (btime *)ea_get_adata(eal, &ea_last_modified)->data;
+  tm_format_time(tbuf, &atomic_load_explicit(&global_runtime, memory_order_acquire)->tf_proto, *time); //todo readlock????
 
-  rcu_read_lock();
-  tm_format_time(tbuf, &atomic_load_explicit(&global_runtime, memory_order_acquire)->tf_proto, p->last_state_change);
-  rcu_read_unlock();
   cli_msg(-1002, "%-10s %-10s %-10s %-6s %-12s  %s",
-	  p->name,
-	  p->proto->name,
-	  p->main_channel ? p->main_channel->table->name : "---",
-	  proto_state_name(p),
+	  name,
+	  proto->name,
+	  table ? table : "---",
+	  proto_state_name_from_int(state),
 	  tbuf,
 	  buf);
 
-  if (verbose)
+  if (verbose.verbose)
   {
+    PROTO_LOCKED_FROM_MAIN(p)
+    {
     if (p->cf->dsc)
       cli_msg(-1006, "  Description:    %s", p->cf->dsc);
     if (p->message)
@@ -2557,6 +2580,7 @@ proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
     }
 
     cli_msg(-1006, "");
+    }
   }
 }
 
@@ -2757,6 +2781,46 @@ proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uintptr_t, in
     proto_apply_cmd_patt(ps.ptr, cmd, arg);
   else
     proto_apply_cmd_symbol(ps.ptr, cmd, arg);
+}
+
+void
+proto_apply_cmd_no_lock(struct proto_spec ps, void (* cmd)(struct proto *, union cmd_arg, int),
+		int restricted, union cmd_arg arg)
+{
+  if (restricted && cli_access_restricted())
+    return;
+
+  if (ps.patt)
+  {
+    int cnt = 0;
+    const char *patt = ps.ptr;
+
+    WALK_TLIST(proto, p, &global_proto_list)
+    if (!patt || patmatch(patt, p->name))
+	  cmd(p, arg, cnt++);
+
+    if (!cnt)
+      cli_msg(8003, "No protocols match");
+    else
+    cli_msg(0, "");
+  }
+  else
+  {
+    const struct symbol *s = ps.ptr;
+    if (s->class != SYM_PROTO)
+    {
+      cli_msg(9002, "%s is not a protocol", s->name);
+      return;
+    }
+    if (s->proto->proto)
+    {
+      struct proto *p = s->proto->proto;
+      cmd(p, arg, 0);
+      cli_msg(0, "");
+    }
+    else
+      cli_msg(9002, "%s does not exist", s->name);
+  }
 }
 
 struct proto *

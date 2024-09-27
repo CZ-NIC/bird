@@ -262,7 +262,13 @@ void channel_show_limit(struct limit *l, const char *dsc, int active, int action
 void channel_show_info(struct channel *c);
 void channel_cmd_debug(struct channel *c, uint mask);
 
-void proto_cmd_show(struct proto *, uintptr_t, int);
+union cmd_arg {
+  int verbose;
+  struct proto_reload_request *prr;
+  char *msg;
+};
+
+void proto_cmd_show(struct proto *, union cmd_arg verbose, int);
 void proto_cmd_disable(struct proto *, uintptr_t, int);
 void proto_cmd_enable(struct proto *, uintptr_t, int);
 void proto_cmd_restart(struct proto *, uintptr_t, int);
@@ -271,6 +277,7 @@ void proto_cmd_debug(struct proto *, uintptr_t, int);
 void proto_cmd_mrtdump(struct proto *, uintptr_t, int);
 
 void proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uintptr_t, int), int restricted, uintptr_t arg);
+void proto_apply_cmd_no_lock(struct proto_spec ps, void (* cmd)(struct proto *, union cmd_arg, int), int restricted, union cmd_arg arg);
 struct proto *proto_get_named(struct symbol *, struct protocol *);
 struct proto *proto_iterate_named(struct symbol *sym, struct protocol *proto, struct proto *old);
 
