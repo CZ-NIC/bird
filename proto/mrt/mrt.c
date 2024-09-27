@@ -38,6 +38,7 @@
  * - RFC 6396 - MRT format standard
  * - RFC 8050 - ADD_PATH extension
  */
+#include <stdio.h>
 
 #include <unistd.h>
 #include <limits.h>
@@ -45,10 +46,13 @@
 
 #include "mrt.h"
 
+#include "lib/io-loop.h"
 #include "nest/cli.h"
 #include "filter/filter.h"
 #include "proto/bgp/bgp.h"
 #include "sysdep/unix/unix.h"
+#include "sysdep/unix/io-loop.h"
+#include "conf/conf.h"
 
 
 #ifdef PATH_MAX
@@ -65,6 +69,7 @@
       log(L_ERR "%s: " msg, s->proto->p.name, ## args);		\
   })
 
+extern proto_state_table proto_state_table_pub;
 
 /*
  *	MRT buffer code
@@ -76,6 +81,13 @@ mrt_buffer_init(buffer *b, pool *pool, size_t n)
   b->start = mb_alloc(pool, n);
   b->pos = b->start;
   b->end = b->start + n;
+}
+
+static void
+mrt_buffer_free(buffer *b)
+{
+  mb_free(b->start);
+  b->start = b->pos = b->end = NULL;
 }
 
 static void
@@ -216,46 +228,6 @@ bstrsub(char *dst, size_t n, const char *src, const char *key, const char *val)
   return 1;
 }
 
-static inline rtable *
-mrt_next_table_(rtable *tab, rtable *tab_ptr, const char *pattern)
-{
-  /* Handle explicit table, return it in the first pass */
-  if (tab_ptr)
-    return !tab ? tab_ptr : NULL;
-
-  /* Walk routing_tables list, starting after tab (if non-NULL) */
-  for (node *tn = tab ? tab->n.next : HEAD(routing_tables);
-       NODE_VALID(tn);
-       tn = tn->next)
-  {
-    tab = SKIP_BACK(rtable, n, tn);
-    if (patmatch(pattern, tab->name) &&
-	((tab->addr_type == NET_IP4) || (tab->addr_type == NET_IP6)))
-      return tab;
-  }
-
-  return NULL;
-}
-
-static rtable *
-mrt_next_table(struct mrt_table_dump_state *s)
-{
-  rtable *tab = mrt_next_table_(s->table, s->table_ptr, s->table_expr);
-
-  if (s->table)
-    RT_LOCKED(s->table, tab)
-      rt_unlock_table(tab);
-
-  s->table = tab;
-  s->ipv4 = tab ? (tab->addr_type == NET_IP4) : 0;
-
-  if (s->table)
-    RT_LOCKED(s->table, tab)
-      rt_lock_table(tab);
-
-  return s->table;
-}
-
 static int
 mrt_open_file(struct mrt_table_dump_state *s)
 {
@@ -263,15 +235,16 @@ mrt_open_file(struct mrt_table_dump_state *s)
   char name[BIRD_PATH_MAX];
   btime now = current_time();
   btime now_real = current_real_time();
+  rtable *tab = s->table_list[s->table_cur];
 
-  if (!bstrsub(fmt1, sizeof(fmt1), s->filename, "%N", s->table->name) ||
+  if (!bstrsub(fmt1, sizeof(fmt1), s->filename, "%N", tab->name) ||
       !tm_format_real_time(name, sizeof(name), fmt1, now_real))
   {
     mrt_log(s, "Invalid filename '%s'", s->filename);
     return 0;
   }
 
-  s->file = rf_open(s->pool, name, "a");
+  s->file = rf_open(s->pool, name, RF_APPEND, 0);
   if (!s->file)
   {
     mrt_log(s, "Unable to open MRT file '%s': %m", name);
@@ -354,19 +327,33 @@ static void
 mrt_peer_table_dump(struct mrt_table_dump_state *s)
 {
   mrt_init_message(&s->buf, MRT_TABLE_DUMP_V2, MRT_PEER_INDEX_TABLE);
-  mrt_peer_table_header(s, config->router_id, s->table->name);
+  mrt_peer_table_header(s, OBSREF_GET(config)->router_id, s->table_open->name);
 
   /* 0 is fake peer for non-BGP routes */
   mrt_peer_table_entry(s, 0, 0, IPA_NONE);
 
 #ifdef CONFIG_BGP
-  struct proto *P;
-  WALK_LIST(P, proto_list)
-    if ((P->proto == &proto_bgp) && (P->proto_state != PS_DOWN))
+  PST_LOCKED(ts)
+  {
+    for(u32 i = 0; i < ts->length_states; i++)
     {
-      struct bgp_proto *p = (void *) P;
-      mrt_peer_table_entry(s, p->remote_id, p->remote_as, p->remote_ip);
+      ea_list *eal = ts->states[i];
+      if (eal)
+        ea_free_later(ea_ref(eal));
+      else
+        continue;
+
+      struct protocol *type = (struct protocol *)ea_get_ptr(eal, &ea_protocol_type, 0);
+      int state = ea_get_int(eal, &ea_state, 0);
+      if ((type == &proto_bgp) && (state != PS_DOWN))
+      {
+        int rem_id = ea_get_int(eal, &ea_bgp_rem_id, 0);
+        int rem_as = ea_get_int(eal, &ea_bgp_rem_as, 0);
+        ip_addr *rem_ip = (ip_addr *)ea_get_adata(eal, &ea_bgp_rem_ip)->data;
+        mrt_peer_table_entry(s, rem_id, rem_as, *rem_ip);
+      }
     }
+  }
 #endif
 
   /* Fix Peer Count */
@@ -388,7 +375,7 @@ mrt_peer_table_flush(struct mrt_table_dump_state *s)
  */
 
 static void
-mrt_rib_table_header(struct mrt_table_dump_state *s, net_addr *n)
+mrt_rib_table_header(struct mrt_table_dump_state *s, const net_addr *n)
 {
   buffer *b = &s->buf;
 
@@ -432,7 +419,7 @@ mrt_rib_table_entry_bgp_attrs(struct mrt_table_dump_state *s, rte *r)
     return;
 
   /* Attribute list must be normalized for bgp_encode_attrs() */
-  if (!rta_is_cached(r->attrs))
+  if (!r->attrs->stored)
     eattrs = ea_normalize(eattrs, 0);
 
   mrt_buffer_need(b, MRT_ATTR_BUFFER_SIZE);
@@ -440,6 +427,7 @@ mrt_rib_table_entry_bgp_attrs(struct mrt_table_dump_state *s, rte *r)
 
   s->bws->mp_reach = !s->ipv4;
   s->bws->mp_next_hop = NULL;
+  s->bws->ignore_non_bgp_attrs = 1;
 
   /* Encode BGP attributes */
   int len = bgp_encode_attrs(s->bws, eattrs, pos, b->end);
@@ -503,7 +491,7 @@ mrt_rib_table_entry(struct mrt_table_dump_state *s, rte *r)
 }
 
 static void
-mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
+mrt_rib_table_dump(struct mrt_table_dump_state *s, const struct rt_export_feed *feed, int add_path)
 {
   s->add_path = s->bws->add_path = add_path;
 
@@ -512,23 +500,23 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
     (!add_path ? MRT_RIB_IPV6_UNICAST : MRT_RIB_IPV6_UNICAST_ADDPATH);
 
   mrt_init_message(&s->buf, MRT_TABLE_DUMP_V2, subtype);
-  mrt_rib_table_header(s, n->n.addr);
+  mrt_rib_table_header(s, feed->block[0].net);
 
-  for (struct rte_storage *rt, *rt0 = n->routes; rt = rt0; rt0 = rt0->next)
+  for (uint i = 0; i < feed->count_routes; i++)
   {
-    if (rte_is_filtered(&rt->rte))
+    rte *rte = &feed->block[i];
+    if (rte_is_filtered(rte))
       continue;
 
     /* Skip routes that should be reported in the other phase */
-    if (!s->always_add_path && (!rt->rte.src->private_id != !s->add_path))
+    if (!s->always_add_path && (!rte->src->private_id != !s->add_path))
     {
       s->want_add_path = 1;
       continue;
     }
 
-    rte e = rt->rte;
-    if (f_run(s->filter, &e, 0) <= F_ACCEPT)
-      mrt_rib_table_entry(s, &e);
+    if (f_run(s->filter, rte, 0) <= F_ACCEPT)
+      mrt_rib_table_entry(s, rte);
 
     lp_flush(s->linpool);
   }
@@ -547,25 +535,80 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
   mrt_dump_message(&s->buf, s->fd);
 }
 
+/*
+ *	MRT Table Dump: table lists
+ */
+
+static uint
+mrt_get_table_list(pool *p, const char *pattern, rtable ***tl)
+{
+  ASSERT_DIE(the_bird_locked());
+
+  rtable *tab;
+  node *n;
+
+  /*
+   * CAVEAT directly accessing tab->priv.deleted; this is safe due to
+   * the_bird_locked(), and this value changes only from the main loop.
+   * But this is a fragile piece of code which may need some rethinking
+   * later on.
+   */
+
+  uint count = 0;
+  WALK_LIST2(tab, n, routing_tables, n)
+    if (!OBSREF_GET(tab->priv.deleted) &&
+	patmatch(pattern, tab->name) &&
+	((tab->addr_type == NET_IP4) || (tab->addr_type == NET_IP6)))
+      count++;
+
+  *tl = mb_alloc(p, sizeof **tl * count);
+
+  uint pos = 0;
+  WALK_LIST2(tab, n, routing_tables, n)
+    if (!OBSREF_GET(tab->priv.deleted) &&
+	patmatch(pattern, tab->name) &&
+	((tab->addr_type == NET_IP4) || (tab->addr_type == NET_IP6)))
+    {
+      (*tl)[pos++] = tab;
+      rt_lock_table(tab);
+    }
+
+  ASSERT_DIE(pos == count);
+  return pos;
+}
+
+static void
+mrt_free_table_list(rtable **tl, int len)
+{
+  for (int i=0; i<len; i++)
+    rt_unlock_table(tl[i]);
+
+  mb_free(tl);
+}
+
 
 /*
  *	MRT Table Dump: main logic
  */
 
 static struct mrt_table_dump_state *
-mrt_table_dump_init(pool *pp)
+mrt_table_dump_init(pool *pp, const char *name)
 {
-  pool *pool = rp_new(pp, "MRT Table Dump");
-  struct mrt_table_dump_state *s = mb_allocz(pool, sizeof(struct mrt_table_dump_state));
+  pool *pool = rp_new(pp, pp->domain, "MRT Table Dump");
+  struct mrt_table_dump_state *s = mb_allocz(pool, sizeof *s);
 
   s->pool = pool;
   s->linpool = lp_new(pool);
   s->peer_lp = lp_new(pool);
   mrt_buffer_init(&s->buf, pool, 2 * MRT_ATTR_BUFFER_SIZE);
 
+  s->feeder = (struct rt_export_feeder) {
+    .name = name,
+  };
+
   /* We lock the current config as we may reference it indirectly by filter */
-  s->config = config;
-  config_add_obstacle(s->config);
+
+  OBSREF_SET(s->config, OBSREF_GET(config));
 
   s->fd = -1;
 
@@ -575,28 +618,20 @@ mrt_table_dump_init(pool *pp)
 static void
 mrt_table_dump_free(struct mrt_table_dump_state *s)
 {
-  if (s->table)
-    RT_LOCKED(s->table, tab)
-    {
-      if (s->table_open)
-	FIB_ITERATE_UNLINK(&s->fit, &tab->fib);
+  OBSREF_CLEAR(s->config);
 
-      rt_unlock_table(tab);
-    }
-
-  if (s->table_ptr)
-    RT_LOCKED(s->table_ptr, tab)
-      rt_unlock_table(tab);
-
-  config_del_obstacle(s->config);
+  if (s->table_open)
+    RT_LOCKED(s->table_open, tab)
+      rt_feeder_unsubscribe(&s->feeder);
 
   rp_free(s->pool);
 }
 
 
-static int
-mrt_table_dump_step(struct mrt_table_dump_state *s)
+static void
+mrt_table_dump_step(void *_s)
 {
+  struct mrt_table_dump_state *s = _s;
   struct bgp_write_state bws = { .as4_session = 1 };
 
   s->max = 2048;
@@ -605,48 +640,48 @@ mrt_table_dump_step(struct mrt_table_dump_state *s)
   if (s->table_open)
     goto step;
 
-  while (mrt_next_table(s))
+  while (++s->table_cur < s->table_end)
   {
     if (!mrt_open_file(s))
       continue;
 
+    s->table_open = s->table_list[s->table_cur];
+    s->ipv4 = (s->table_open->addr_type == NET_IP4);
+
     mrt_peer_table_dump(s);
 
-    RT_LOCKED(s->table, tab)
+    RT_LOCKED(s->table_open, tab)
+      rt_feeder_subscribe(&tab->export_all, &s->feeder);
+
+  step: ;
+    RT_FEED_WALK(&s->feeder, route_feed)
     {
-
-    FIB_ITERATE_INIT(&s->fit, &tab->fib);
-    s->table_open = 1;
-
-  step:
-    FIB_ITERATE_START(&tab->fib, &s->fit, net, n)
-    {
-      if (s->max < 0)
-      {
-	FIB_ITERATE_PUT(&s->fit);
-	RT_RETURN(tab, 0);
-      }
-
       /* With Always ADD_PATH option, we jump directly to second phase */
       s->want_add_path = s->always_add_path;
 
       if (s->want_add_path == 0)
-	mrt_rib_table_dump(s, n, 0);
+        mrt_rib_table_dump(s, route_feed, 0);
 
       if (s->want_add_path == 1)
-	mrt_rib_table_dump(s, n, 1);
-    }
-    FIB_ITERATE_END;
-    s->table_open = 0;
+        mrt_rib_table_dump(s, route_feed, 1);
 
+      MAYBE_DEFER_TASK(s->target, s->event,
+	  "MRT dump %s", s->feeder.name);
     }
+
+    RT_LOCKED(s->table_open, tab)
+      rt_feeder_unsubscribe(&s->feeder);
+
+    s->table_open = NULL;
 
     mrt_close_file(s);
     mrt_peer_table_flush(s);
   }
 
-  return 1;
+  CALL(s->cleanup, s);
 }
+
+static void mrt_proto_dump_done(struct mrt_table_dump_state *s);
 
 static void
 mrt_timer(timer *t)
@@ -662,44 +697,40 @@ mrt_timer(timer *t)
 
   TRACE(D_EVENTS, "RIB table dump started");
 
-  struct mrt_table_dump_state *s = mrt_table_dump_init(p->p.pool);
+  struct mrt_table_dump_state *s = mrt_table_dump_init(p->p.pool, p->p.name);
 
   s->proto = p;
-  s->table_expr = cf->table_expr;
-  s->table_ptr = cf->table_cf ? cf->table_cf->table : NULL;
+  s->table_list = p->table_list;
+  s->table_cur = -1;
+  s->table_end = p->table_list_len;
   s->filter = cf->filter;
   s->filename = cf->filename;
   s->always_add_path = cf->always_add_path;
+  s->cleanup = mrt_proto_dump_done;
 
-  if (s->table_ptr)
-    RT_LOCKED(s->table_ptr, tab)
-      rt_lock_table(tab);
+  s->event = ev_new_init(s->pool, mrt_table_dump_step, s);
+  s->target = proto_work_list(&p->p);
 
   p->table_dump = s;
-  ev_schedule(p->event);
+  ev_send_loop(p->p.loop, s->event);
 }
 
 static void
-mrt_event(void *P)
+mrt_proto_dump_done(struct mrt_table_dump_state *s)
 {
-  struct mrt_proto *p = P;
+  struct mrt_proto *p = s->proto;
 
-  if (!p->table_dump)
-    return;
-
-  if (!mrt_table_dump_step(p->table_dump))
-  {
-    ev_schedule(p->event);
-    return;
-  }
-
+  ASSERT_DIE(p->table_dump == s);
   mrt_table_dump_free(p->table_dump);
   p->table_dump = NULL;
 
   TRACE(D_EVENTS, "RIB table dump done");
 
   if (p->p.proto_state == PS_STOP)
+  {
+    mrt_free_table_list(p->table_list, p->table_list_len);
     proto_notify_state(&p->p, PS_DOWN);
+  }
 }
 
 
@@ -708,24 +739,29 @@ mrt_event(void *P)
  */
 
 static void
-mrt_dump_cont(struct cli *c)
+mrt_cli_dump_done(struct mrt_table_dump_state *s)
 {
-  if (!mrt_table_dump_step(c->rover))
-    return;
+  struct cli *c = s->cli;
+  ASSERT_DIE(c->rover == c);
 
   cli_printf(c, 0, "");
-  mrt_table_dump_free(c->rover);
+  mrt_table_dump_free(s);
   c->cont = NULL;
   c->cleanup = NULL;
   c->rover = NULL;
 }
 
-static int
+static void
+mrt_dump_cont(struct cli *c)
+{
+  return mrt_table_dump_step(c->rover);
+}
+
+void
 mrt_dump_cleanup(struct cli *c)
 {
   mrt_table_dump_free(c->rover);
   c->rover = NULL;
-  return 0;
 }
 
 void
@@ -740,17 +776,33 @@ mrt_dump_cmd(struct mrt_dump_data *d)
   if (!d->filename)
     cf_error("File not specified");
 
-  struct mrt_table_dump_state *s = mrt_table_dump_init(this_cli->pool);
+  struct mrt_table_dump_state *s = mrt_table_dump_init(this_cli->pool, "cli-mrt");
 
   s->cli = this_cli;
-  s->table_expr = d->table_expr;
-  s->table_ptr = d->table_ptr;
+
+  /* Either allocate single-pointer block or a full table list.
+   * We rather allocate the block anyway to make simpler cleanup,
+   * than to resolve corner cases in the end.
+   *
+   * This is the version for MRT requested from CLI */
+  if (d->table_ptr)
+  {
+    s->table_end = 1;
+    s->table_list = mb_allocz(s->pool, sizeof *s->table_list);
+    s->table_list[0] = d->table_ptr;
+    rt_lock_table(s->table_list[0]);
+  }
+  else
+    s->table_end = mrt_get_table_list(s->pool, d->table_expr, &s->table_list);
+
+  s->table_cur = -1;
+
   s->filter = d->filter;
   s->filename = d->filename;
 
-  if (s->table_ptr)
-    RT_LOCKED(s->table_ptr, tab)
-      rt_lock_table(tab);
+  s->event = this_cli->event;
+  s->target = &global_work_list;
+  s->cleanup = mrt_cli_dump_done;
 
   this_cli->cont = mrt_dump_cont;
   this_cli->cleanup = mrt_dump_cleanup;
@@ -763,14 +815,12 @@ mrt_dump_cmd(struct mrt_dump_data *d)
  */
 
 static buffer *
-mrt_bgp_buffer(void)
+mrt_bgp_buffer(pool *p)
 {
   /* Static buffer for BGP4MP dump, TODO: change to use MRT protocol */
-  static buffer b;
+  static _Thread_local buffer b;
 
-  if (!b.start)
-    mrt_buffer_init(&b, &root_pool, 1024);
-
+  mrt_buffer_init(&b, p, 1024);
   return &b;
 }
 
@@ -804,7 +854,7 @@ mrt_bgp_header(buffer *b, struct mrt_bgp_data *d)
 }
 
 void
-mrt_dump_bgp_message(struct mrt_bgp_data *d)
+mrt_dump_bgp_message(struct mrt_bgp_data *d, pool *p)
 {
   const u16 subtypes[] = {
     MRT_BGP4MP_MESSAGE,			MRT_BGP4MP_MESSAGE_AS4,
@@ -813,15 +863,16 @@ mrt_dump_bgp_message(struct mrt_bgp_data *d)
     MRT_BGP4MP_MESSAGE_LOCAL_ADDPATH,	MRT_BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH,
   };
 
-  buffer *b = mrt_bgp_buffer();
+  buffer *b = mrt_bgp_buffer(p);
   mrt_init_message(b, MRT_BGP4MP, subtypes[d->as4 + 4*d->add_path]);
   mrt_bgp_header(b, d);
   mrt_put_data(b, d->message, d->msg_len);
-  mrt_dump_message(b, config->mrtdump_file);
+  mrt_dump_message(b, rf_fileno(OBSREF_GET(config)->mrtdump_file));
+  mrt_buffer_free(b);
 }
 
 void
-mrt_dump_bgp_state_change(struct mrt_bgp_data *d)
+mrt_dump_bgp_state_change(struct mrt_bgp_data *d, pool *p)
 {
   /* Convert state from our BS_* values to values used in MRTDump */
   const u16 states[BS_MAX] = {1, 2, 3, 4, 5, 6, 1};
@@ -832,12 +883,13 @@ mrt_dump_bgp_state_change(struct mrt_bgp_data *d)
   /* Always use AS4 mode for STATE_CHANGE */
   d->as4 = 1;
 
-  buffer *b = mrt_bgp_buffer();
+  buffer *b = mrt_bgp_buffer(p);
   mrt_init_message(b, MRT_BGP4MP, MRT_BGP4MP_STATE_CHANGE_AS4);
   mrt_bgp_header(b, d);
   mrt_put_u16(b, states[d->old_state]);
   mrt_put_u16(b, states[d->new_state]);
-  mrt_dump_message(b, config->mrtdump_file);
+  mrt_dump_message(b, rf_fileno(OBSREF_GET(config)->mrtdump_file));
+  mrt_buffer_free(b);
 }
 
 
@@ -853,11 +905,33 @@ mrt_check_config(struct proto_config *CF)
   if (!cf->table_expr && !cf->table_cf)
     cf_error("Table not specified");
 
+  if (cf->table_expr && cf->table_cf)
+    cf_error("Clashing table specifiers");
+
   if (!cf->filename)
     cf_error("File not specified");
 
   if (!cf->period)
     cf_error("Period not specified");
+}
+
+static void
+mrt_proto_get_table_list(struct mrt_proto *p, struct mrt_config *cf)
+{
+  /* Either allocate single-pointer block or a full table list.
+   * We rather allocate the block anyway to make simpler cleanup,
+   * than to resolve corner cases in the end.
+   *
+   * This is the version for MRT (pseudo)protocol */
+  if (cf->table_cf)
+  {
+    p->table_list_len = 1;
+    p->table_list = mb_allocz(p->p.pool, sizeof *p->table_list);
+    p->table_list[0] = cf->table_cf->table;
+    rt_lock_table(p->table_list[0]);
+  }
+  else
+    p->table_list_len = mrt_get_table_list(p->p.pool, cf->table_expr, &p->table_list);
 }
 
 static struct proto *
@@ -875,9 +949,10 @@ mrt_start(struct proto *P)
   struct mrt_config *cf = (void *) (P->cf);
 
   p->timer = tm_new_init(P->pool, mrt_timer, p, cf->period S, 0);
-  p->event = ev_new_init(P->pool, mrt_event, p);
 
-  tm_start(p->timer, cf->period S);
+  tm_start_in(p->timer, cf->period S, p->p.loop);
+
+  mrt_proto_get_table_list(p, cf);
 
   return PS_UP;
 }
@@ -887,7 +962,11 @@ mrt_shutdown(struct proto *P)
 {
   struct mrt_proto *p = (void *) P;
 
-  return p->table_dump ? PS_STOP : PS_DOWN;
+  if (p->table_dump)
+    return PS_STOP;
+
+  mrt_free_table_list(p->table_list, p->table_list_len);
+  return PS_DOWN;
 }
 
 static int
@@ -904,8 +983,13 @@ mrt_reconfigure(struct proto *P, struct proto_config *CF)
     btime now = current_time();
     btime new_time = p->timer->expires - (old->period S) + (new->period S);
     p->timer->recurrent = new->period S;
-    tm_set(p->timer, MAX(now, new_time));
+    tm_set_in(p->timer, MAX(now, new_time), p->p.loop);
   }
+
+  if (!p->table_dump)
+    mrt_free_table_list(p->table_list, p->table_list_len);
+
+  mrt_proto_get_table_list(p, new);
 
   return 1;
 }

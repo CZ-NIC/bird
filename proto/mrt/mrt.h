@@ -36,6 +36,9 @@ struct mrt_proto {
 
   struct mrt_target *file;
   struct mrt_table_dump_state *table_dump;
+
+  rtable **table_list;
+  int table_list_len;
 };
 
 struct mrt_dump_data {
@@ -56,11 +59,10 @@ struct mrt_peer_entry {
 struct mrt_table_dump_state {
   struct mrt_proto *proto;		/* Protocol for regular MRT dumps (or NULL) */
   struct cli *cli;			/* CLI for irregular MRT dumps (or NULL) */
-  struct config *config;		/* Config valid during start of dump, locked */
+  config_ref config;		/* Config valid during start of dump, locked */
 
 					/* Configuration information */
-  const char *table_expr;		/* Wildcard for table name (or NULL) */
-  rtable *table_ptr;			/* Explicit table (or NULL) */
+  struct rt_export_feeder feeder;	/* Table feeder */
   const struct filter *filter;		/* Optional filter */
   const char *filename;			/* Filename pattern */
   int always_add_path;			/* Always use *_ADDPATH message subtypes */
@@ -73,9 +75,9 @@ struct mrt_table_dump_state {
 
   HASH(struct mrt_peer_entry) peer_hash; /* Hash for peers to find the index */
 
-  rtable *table;			/* Processed table, NULL initially */
-  struct fib_iterator fit;		/* Iterator in processed table */
-  int table_open;			/* Whether iterator is linked */
+  rtable **table_list;			/* List of tables to process */
+  int table_cur, table_end;		/* Table list iterator */
+  rtable *table_open;			/* Table to which the iterator is linked */
 
   int ipv4;				/* Processed table is IPv4 */
   int add_path;				/* Current message subtype is *_ADDPATH */
@@ -92,6 +94,11 @@ struct mrt_table_dump_state {
 
   struct rfile *file;			/* tracking for mrt table dump file */
   int fd;
+
+  event *event;				/* defer event */
+  event_list *target;			/* defer target */
+
+  void (*cleanup)(struct mrt_table_dump_state *);	/* call when done */
 };
 
 struct mrt_bgp_data {
@@ -147,12 +154,12 @@ struct mrt_bgp_data {
 
 #ifdef CONFIG_MRT
 void mrt_dump_cmd(struct mrt_dump_data *d);
-void mrt_dump_bgp_message(struct mrt_bgp_data *d);
-void mrt_dump_bgp_state_change(struct mrt_bgp_data *d);
+void mrt_dump_bgp_message(struct mrt_bgp_data *d, pool *p);
+void mrt_dump_bgp_state_change(struct mrt_bgp_data *d, pool *p);
 void mrt_check_config(struct proto_config *C);
 #else
-static inline void mrt_dump_bgp_message(struct mrt_bgp_data *d UNUSED) { }
-static inline void mrt_dump_bgp_state_change(struct mrt_bgp_data *d UNUSED) { }
+static inline void mrt_dump_bgp_message(struct mrt_bgp_data *d UNUSED, pool *p UNUSED) { }
+static inline void mrt_dump_bgp_state_change(struct mrt_bgp_data *d UNUSED, pool *p UNUSED) { }
 #endif
 
 #endif	/* _BIRD_MRT_H_ */

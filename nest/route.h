@@ -125,7 +125,7 @@ struct rt_export_request {
   /* Table feeding contraption */
   struct rt_export_feeder {
     /* Formal name */
-    char *name;
+    const char *name;
 
     /* Enlisting */
     struct rt_exporter * _Atomic exporter;
