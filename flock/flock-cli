@@ -95,8 +95,8 @@ def container_start(hypervisor: str, name: str):
     for k,v in msg(hypervisor, { 3: {
         0: name,
         1: 1,
-        2: bytes(DEFAULT_RUN_PATH / hypervisor / name),
-        3: b"/",
+        2: b"/",
+        3: bytes(DEFAULT_RUN_PATH / hypervisor / name),
         }}).items():
         print(k,v)
 

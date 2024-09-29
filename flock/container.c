@@ -9,6 +9,7 @@
 #include <sched.h>
 #include <stdlib.h>
 #include <sys/mount.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -71,7 +72,6 @@ container_poweroff(int fd, int sig)
   cbor_add_int(cw, -4);
   cbor_add_int(cw, sig);
   ASSERT_DIE(write(fd, outbuf, cw->pt) == cw->pt);
-  exit(0);
 }
 
 static void
@@ -104,8 +104,58 @@ container_zombie(void)
   }
 }
 
-
 #define SYSCALL(x, ...)	({ int e = x(__VA_ARGS__); if (e < 0) die("Failed to run %s at %s:%d: %m", #x, __FILE__, __LINE__); e; })
+
+
+static int
+container_getdir(char *path)
+{
+  int e = open(path, O_DIRECTORY | O_PATH | O_RDWR);
+  if ((e >= 0) || (errno != ENOENT))
+    return e;
+
+  /* Split the path */
+  char *sl = strrchr(path, '/');
+  char *name = sl+1;
+
+  while (sl && sl[1] == 0)
+  {
+    /* Trailing slash removal */
+    sl[0] = 0;
+    sl = strrchr(path, '/');
+  }
+
+  if (!sl)
+    if (path[0] == '.')
+      die("Current workdir disappeared");
+    else
+      die("Root directory missing");
+
+  /* Open the parent directory */
+  *sl = 0;
+  int fd = container_getdir(path);
+  if (fd < 0)
+    return fd;
+
+  for (uint i=0; i<256; i++)
+  {
+    e = mkdirat(fd, name, 0755);
+    if ((e < 0) && (errno != EEXIST))
+    {
+      close(fd);
+      return e;
+    }
+
+    e = openat(fd, name, O_DIRECTORY | O_PATH | O_RDWR);
+    if ((e >= 0) || (errno != ENOENT))
+    {
+      close(fd);
+      return e;
+    }
+  }
+
+  die("Somebody is messing with the filesystem too badly.");
+}
 
 static void
 container_mainloop(int fd)
@@ -115,6 +165,46 @@ container_mainloop(int fd)
   signal(SIGTERM, container_poweroff_sighandler);
   signal(SIGINT, container_poweroff_sighandler);
   signal(SIGCHLD, container_child_sighandler);
+
+  /* Move to the workdir */
+  linpool *lp = lp_new(&root_pool);
+
+  if (strchr(ccf.basedir, ',') ||
+      strchr(ccf.basedir, '=') ||
+      strchr(ccf.basedir, '\\'))
+    die("Refusing to work with paths containing chars: ,=\\");
+
+#define GETDIR(_path)  ({ char *path = _path; int fd = container_getdir(path); if (fd < 0) die("Failed to get the directory %s: %m", path); fd; })
+
+  int wfd = GETDIR(lp_sprintf(lp, "%s%s", ccf.workdir[0] == '/' ? "" : "./", ccf.workdir));
+  SYSCALL(fchdir, wfd);
+
+  GETDIR(lp_strdup(lp, "./upper"));
+  GETDIR(lp_strdup(lp, "./tmp"));
+  int rfd = GETDIR(lp_strdup(lp, "./root"));
+
+/* TODO: This worksn't well. The problem is mounts under the original root
+ * so we have to somehow define which parts of the original root to pick 
+ * and bind-mount to the new namespace one by one
+ *
+ * the expected scenario:
+ * - basedir is never "/" and contains prepared list (in a file)
+ *   of what to bind-mount
+ *   (typically /dev/something, /etc/, /usr, /bin and /lib{64,}),
+ *   what to mount freshly (proc, sys, run)
+ *   and also things we want to have immutable like the BIRD/FRR installations
+ * - upperdir may contain actual BIRD/FRR configuration
+ * - root is made by overlaying upperdir and basedir
+ * - mounts are done to the finished root afterwards
+ * - chroot
+ *
+ * - well actually create-overlay.sh is a good start
+ * */
+  const char *overlay_mount_options = lp_sprintf(lp, "lowerdir=%s,upperdir=%s,workdir=%s",
+      ccf.basedir, "./upper", "./tmp");
+  SYSCALL(mount, "overlay", "./root", "overlay", 0, overlay_mount_options);
+  SYSCALL(fchdir, rfd);
+  SYSCALL(chroot, ".");
 
   /* Remounting proc to reflect the new PID namespace */
   SYSCALL(mount, "none", "/", NULL, MS_REC | MS_PRIVATE, NULL);
@@ -137,7 +227,10 @@ container_mainloop(int fd)
       log(L_INFO "ppoll returned -1: %m");
 
     if (poweroff)
+    {
       container_poweroff(fd, poweroff);
+      exit(0);
+    }
 
     if (zombie)
       container_zombie();
@@ -170,6 +263,7 @@ container_mainloop(int fd)
 	case 0:
 	  ASSERT_DIE(buf[2] == 0xf6);
 	  container_poweroff(fd, 0);
+	  exit(0);
 	  break;
 
 	case 0x21:
@@ -362,6 +456,14 @@ hypervisor_container_rx(sock *sk, uint _sz UNUSED)
   return 0;
 }
 
+static void
+hypervisor_container_err(sock *sk, int err)
+{
+  struct container_runtime *crt = sk->data;
+  log(L_ERR "Container %s socket closed unexpectedly: %s", crt->ccf.hostname, strerror(err));
+  container_cleanup(crt);
+}
+
 static int
 hypervisor_container_forker_rx(sock *sk, uint _sz UNUSED)
 {
@@ -409,6 +511,7 @@ hypervisor_container_forker_rx(sock *sk, uint _sz UNUSED)
   sock *skl = sk_new(sk->pool);
   skl->type = SK_MAGIC;
   skl->rx_hook = hypervisor_container_rx;
+  skl->err_hook = hypervisor_container_err;
   skl->fd = sfd;
   sk_set_tbsize(skl, 1024);
 
