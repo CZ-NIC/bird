@@ -2964,7 +2964,7 @@ proto_state_to_eattr(struct proto *p, int old_state, int proto_deleting)
   ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_proto_id, 0, p->id));
   ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_deleted, 0, proto_deleting));
   if (p->main_channel)
-    ea_set_attr(&state, EA_LITERAL_STORE_STRING(&ea_table, 0, p->main_channel->table->name);
+    ea_set_attr(&state, EA_LITERAL_STORE_STRING(&ea_table, 0, p->main_channel->table->name));
 
   CALL(p->proto->init_state, p, state);
 

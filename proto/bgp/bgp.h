@@ -319,6 +319,21 @@ struct bgp_conn {
   uint hold_time, keepalive_time, send_hold_time;	/* Times calculated from my and neighbor's requirements */
 };
 
+
+struct journal_bgp_conn {
+  struct bgp_conn *conn;
+  struct bgp_conn outgoing_conn;
+  struct bgp_conn incoming_conn;
+};
+
+struct closing_bgp {
+  int err_class;
+  int err_code;
+  int err_subcode;
+  int length;
+  byte data[0];
+};
+
 struct bgp_listen_request {
   node n;				/* Node in bgp_socket / pending list */
   struct bgp_socket *sock;		/* Assigned socket */
