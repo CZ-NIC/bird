@@ -71,6 +71,7 @@ struct protocol {
 //  int (*get_attr)(const struct eattr *, byte *buf, int buflen);	/* ASCIIfy dynamic attribute (returns GA_*) */
   void (*show_proto_info)(struct proto *);	/* Show protocol info (for `show protocols all' command) */
   void (*copy_config)(struct proto_config *, struct proto_config *);	/* Copy config from given protocol instance */
+  int (*init_state)(struct proto *p, struct ea_list *state); /* Init protocol specific attributes for proto_state_table */
 };
 
 void protos_build(void);		/* Called from sysdep to initialize protocols */
@@ -173,6 +174,7 @@ struct proto {
   btime last_state_change;		/* Time of last state transition */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
   char *message;			/* State-change message, allocated from proto_pool */
+  u32 id;                   /* Id of the protocol indexing its position in proto_state_table */
 
   /*
    *	General protocol hooks:
@@ -391,6 +393,32 @@ static inline int proto_is_inactive(struct proto *p)
       && EMPTY_TLIST(proto_neigh, &p->neighbors)
     ;
 }
+
+
+struct proto_attrs {
+  ea_list *_Atomic *attrs;
+  _Atomic u32 length;
+  struct hmap *proto_id_maker;
+  struct hmap *channel_id_maker;
+};
+
+extern struct lfjour *proto_journal;
+extern struct proto_attrs *proto_state_table;
+extern DOMAIN(rtable) proto_journal_domain;
+
+
+struct proto_pending_update {
+  LFJOUR_ITEM_INHERIT(li);
+  ea_list *proto_attr;
+  ea_list *old_attr;
+  int free_old;
+  struct proto *protocol;
+};
+
+void proto_state_table_update(ea_list *attr, struct proto *p,  int save_to_jour);
+void protos_attr_field_grow(void);
+ea_list *proto_get_state_list_keep(int id);
+ea_list *proto_get_state_list(int id);
 
 
 /*
