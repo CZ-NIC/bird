@@ -405,18 +405,16 @@ static inline int proto_is_inactive(struct proto *p)
   DOMAIN(rtable) lock;		/* Lock needed to access global protocol state table */	\
   struct lfjour journal;	/* Subscribe here to get new content! */		\
 
-struct proto_state_table_private {
-  /* Include the public part */
-  struct { PROTO_STATE_TABLE_PUBLIC; };
-  struct proto_state_table_private **locked_at;
+#include "lib/tlists.h"
 
-  /* And private parts */
-  pool *pool;
+#define TLIST_PREFIX channel_attrs
+#define TLIST_TYPE struct channel_attrs
+#define TLIST_ITEM n
 
-  ea_list **states;
-  u32 length;
 
-  struct hmap proto_id_map;
+struct channel_attrs {
+  TLIST_DEFAULT_NODE;
+  ea_list *attrs;
 };
 
 typedef union proto_state_table {
@@ -442,7 +440,17 @@ struct proto_pending_update {
   struct proto *protocol;
 };
 
+struct channel_pending_update {
+  LFJOUR_ITEM_INHERIT(li);
+  ea_list *channel_attr;
+  ea_list *old_attr;
+  struct channel *channel;
+};
+
 void proto_state_table_update(ea_list *attr, struct proto *p,  int save_to_jour);
+void channel_journal_state_push(ea_list *attr, struct channel *ch);
+ea_list *proto_state_to_eattr(struct proto *p, int old_state, int protocol_deleting);
+ea_list *get_channel_ea(struct channel *ch);
 
 
 /*
@@ -578,6 +586,7 @@ struct channel {
   node n;				/* Node in proto->channels */
 
   const char *name;			/* Channel name (may be NULL) */
+  int id;
   const struct channel_class *class;
   struct proto *proto;
 

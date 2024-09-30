@@ -29,6 +29,7 @@ static TLIST_LIST(proto) global_proto_list;
 static list STATIC_LIST_INIT(protocol_list);
 
 struct lfjour *proto_journal;
+struct lfjour *channel_journal;
 DOMAIN(rtable) proto_journal_domain;
 
 #define CD(c, msg, args...) ({ if (c->debug & D_STATES) log(L_TRACE "%s.%s: " msg, c->proto->name, c->name ?: "?", ## args); })
@@ -60,6 +61,7 @@ static void channel_stop_export(struct channel *c);
 static void channel_check_stopped(struct channel *c);
 void init_journals(void);
 static ea_list *proto_state_to_eattr(struct proto *p, int old_state, int proto_deleting);
+void add_journal_channel(struct channel *ch);
 static inline void channel_reimport(struct channel *c, struct rt_feeding_request *rfr)
 {
   rt_export_refeed(&c->reimporter, rfr);
@@ -245,6 +247,8 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->channel_state = CS_DOWN;
   c->last_state_change = current_time();
   c->reloadable = 1;
+  c->id = hmap_first_zero(proto_state_table->channel_id_maker);
+  hmap_set(proto_state_table->channel_id_maker, c->id);
 
   init_list(&c->roa_subscriptions);
 
@@ -253,6 +257,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   add_tail(&p->channels, &c->n);
 
   CD(c, "Connected to table %s", c->table->name);
+  add_journal_channel(c);
 
   return c;
 }
@@ -273,6 +278,10 @@ proto_remove_channel(struct proto *p UNUSED, struct channel *c)
   ASSERT(c->channel_state == CS_DOWN);
 
   CD(c, "Removed", c->name);
+
+  ea_list *eal = get_channel_ea(c);
+  ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_deleted, 0, 1));
+  channel_journal_state_push(eal,c);
 
   rt_unlock_table(c->table);
   rem_node(&c->n);
@@ -2905,8 +2914,10 @@ protos_attr_field_init(void)
   int init_length = 32; /* We do not know, how many protos there will be. This is just a magic number. */
   proto_state_table = mb_allocz(&root_pool, sizeof(struct proto_attrs));
   proto_state_table->attrs = mb_allocz(&root_pool, sizeof(ea_list *_Atomic)*init_length);
+  proto_state_table->channels_attrs = mb_allocz(&root_pool, sizeof(struct channel_attrs_list) * init_length); /* allocate place for a header of list of channels for each protocol attr. */
   proto_state_table->length = init_length;
   proto_state_table->proto_id_maker = mb_allocz(&root_pool, sizeof(struct hmap));
+  proto_state_table->channel_id_maker = mb_allocz(&root_pool, sizeof(struct hmap));
   hmap_init(proto_state_table->proto_id_maker, &root_pool, init_length); /* for proto ids. Value of proto id is the same as index of that proto in ptoto_state_table->attrs */
 }
 
@@ -2924,14 +2935,26 @@ cleanup_journal_item_proto(struct lfjour * journal UNUSED, struct lfjour_item *i
 }
 
 void
+cleanup_journal_item_channel(struct lfjour * journal UNUSED, struct lfjour_item *i)
+{
+  /* not used - journals for channels does not work yet */
+  struct channel_pending_update *chupdate = SKIP_BACK(struct channel_pending_update, li, i);
+  //ea_free_later(chupdate->old_attr);
+  int deleting = ea_get_int(chupdate->channel_attr, &ea_deleted, 0);
+
+  if (deleting)
+    ea_free_later(chupdate->channel_attr);
+}
+
+void
 after_journal_birdloop_stop(void* arg UNUSED){}
 
 void
-init_journal(int item_size, char *loop_name)
+init_journal(int item_size, char *loop_name, int is_proto_jour)
 {
   proto_journal = mb_allocz(&root_pool, sizeof(struct lfjour));
   struct settle_config cf = {.min = 0, .max = 0};
-  proto_journal->item_done = cleanup_journal_item_proto;
+  proto_journal->item_done = is_proto_jour ? cleanup_journal_item_proto : cleanup_journal_item_channel;
   proto_journal->item_size = item_size;
   proto_journal->loop = birdloop_new(&root_pool, DOMAIN_ORDER(service), 1, loop_name);
   proto_journal->domain = proto_journal_domain.rtable;
@@ -2944,7 +2967,8 @@ init_journals(void)
 {
   protos_attr_field_init();
   proto_journal_domain = DOMAIN_NEW(rtable);
-  init_journal(sizeof(struct proto_pending_update), "proto journal loop");
+  init_journal(sizeof(struct proto_pending_update), "proto journal loop", 1);
+  init_journal(sizeof(struct channel_pending_update), "channel journal loop", 0);
 }
 
 static ea_list *
@@ -2970,6 +2994,36 @@ proto_state_to_eattr(struct proto *p, int old_state, int proto_deleting)
 
   return ea_lookup_slow(state, 0, EALS_CUSTOM);
 }
+
+ea_list *
+channel_state_to_eattr(struct channel *ch, int proto_deleting)
+{
+  /*
+    Making the first version of a channel eatters.
+  */
+  struct {
+	ea_list l;
+	eattr a[7];
+  } eattrs;
+
+  eattrs.l = (ea_list) {};
+
+  eattrs.a[eattrs.l.count++] = EA_LITERAL_STORE_STRING(&ea_name, 0, ch->name);
+  eattrs.a[eattrs.l.count++] = EA_LITERAL_EMBEDDED(&ea_proto_id, 0, ch->proto->id);
+  eattrs.a[eattrs.l.count++] = EA_LITERAL_EMBEDDED(&ea_channel_id, 0, ch->id);
+  eattrs.a[eattrs.l.count++] = EA_LITERAL_EMBEDDED(&ea_deleted, 0, proto_deleting);
+  eattrs.a[eattrs.l.count++] = EA_LITERAL_EMBEDDED(&ea_in_keep, 0, ch->in_keep);
+
+  eattrs.a[eattrs.l.count++] = EA_LITERAL_STORE_PTR(&ea_rtable, 0, ch->table);
+
+  if (ch->proto->proto == &proto_bgp && ch != ch->proto->mpls_channel)
+  {
+    struct bgp_channel *bc = (struct bgp_channel *) ch;
+    eattrs.a[eattrs.l.count++] = EA_LITERAL_EMBEDDED(&ea_bgp_afi, 0, bc->afi);
+  }
+  return ea_lookup_slow(&eattrs.l, 0, EALS_CUSTOM);
+}
+
 
 void
 proto_state_table_update(ea_list *attr, struct proto *p, int save_to_state_table)
@@ -3026,6 +3080,78 @@ proto_get_state_list(int id)
   rcu_read_unlock();
   return eal;
 }
+
+struct ea_list *
+get_channel_ea(struct channel *ch)
+{
+  /* Safely search for channel ea_list, put reference on it. After leaving current code block, the reference should disapper */
+  rcu_read_lock();
+  WALK_TLIST(channel_attrs, chan_att, &proto_state_table->channels_attrs[ch->proto->id])
+  {
+    const int id = ea_get_int(chan_att->attrs, &ea_channel_id, 0);
+    if (ch->id == id)
+    {
+      ea_list *ret = chan_att->attrs;
+      ea_free_later(ea_ref(ret));
+      rcu_read_unlock();
+      return ret;
+    }
+  }
+  rcu_read_unlock();
+  return NULL;
+}
+
+struct channel_attrs *
+get_channel_node(struct channel *ch)
+{
+  /* Get node where are eattrs for given channel. Should be used only for deleting or modifing nodes from the tlist. */
+  WALK_TLIST(channel_attrs, chan_att, &proto_state_table->channels_attrs[ch->proto->id])
+  {
+    const int id = ea_get_int(chan_att->attrs, &ea_channel_id, 0);
+    if (ch->id == id)
+      return chan_att;
+  }
+  return NULL;
+}
+
+void
+channel_journal_state_push(ea_list *attr, struct channel *ch)
+{
+  attr = ea_lookup(attr, 0, EALS_CUSTOM);
+  return; //TODO finish this function and cleanup_journal_item_channel, maybe add_journal_channel. Channel journal is not used (outside proto.c)
+  ea_list *old_attr = get_channel_ea(ch);
+  struct channel_attrs *ch_attr = get_channel_node(ch);
+  ch_attr->attrs = attr;
+  LOCK_DOMAIN(rtable, proto_journal_domain);
+  struct channel_pending_update *pupdate = SKIP_BACK(struct channel_pending_update, li, lfjour_push_prepare(channel_journal));
+  if (!pupdate)
+  {
+    UNLOCK_DOMAIN(rtable, proto_journal_domain);
+    return;
+  }
+  *pupdate = (struct channel_pending_update) {
+    .li = pupdate->li,	/* Keep the item's internal state */
+    .channel_attr = attr,
+    .old_attr = old_attr,
+    .channel = ch
+  };
+  lfjour_push_commit(channel_journal);
+  UNLOCK_DOMAIN(rtable, proto_journal_domain);
+}
+
+void
+add_journal_channel(struct channel *ch)
+{
+  //if (!NODE_VALID(HEAD(proto_state_table->channels_attrs[ch->proto->id])))
+  //  init_list(&proto_state_table->channels_attrs[ch->proto->id]); // if we realocated channels lists, earlier inicialization would be problematic. But it does not seem to be problem for nonempty lists
+
+  ea_list *eal = channel_state_to_eattr(ch, 0);
+  struct channel_attrs *attr = mb_allocz(&root_pool, sizeof(struct channel_attrs)); //TODO free
+  attr->attrs = eal;
+  channel_attrs_add_tail(&proto_state_table->channels_attrs[ch->proto->id], attr);
+  ASSERT(get_channel_ea(ch));
+}
+
 
 #if 0
 /* Testing proto journal */
