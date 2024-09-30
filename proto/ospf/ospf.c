@@ -368,7 +368,7 @@ ospf_init(struct proto_config *CF)
   struct ospf_config *cf = (struct ospf_config *) CF;
   struct proto *P = proto_new(CF);
 
-  P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
+  proto_add_main_channel(P, proto_cf_main_channel(CF));
 
   P->rt_notify = ospf_rt_notify;
   P->iface_sub.if_notify = ospf_if_notify;

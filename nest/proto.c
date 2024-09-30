@@ -257,6 +257,16 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   return c;
 }
 
+struct channel *
+proto_add_main_channel(struct proto *p, struct channel_config *cf)
+{
+  p->main_channel = proto_add_channel(p, cf);
+  ea_list *eal = proto_get_state_list(p->id);
+  ea_set_attr(&eal, EA_LITERAL_STORE_STRING(&ea_table, 0, p->main_channel->table->name));
+  proto_state_table_update(eal, p, 1);
+  return p->main_channel;
+}
+
 void
 proto_remove_channel(struct proto *p UNUSED, struct channel *c)
 {
@@ -2889,6 +2899,8 @@ proto_state_to_eattr(struct proto *p, int old_state, int proto_deleting)
   ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_last_modified, 0, &p->last_state_change, sizeof(btime)));
   ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_proto_id, 0, p->id));
   ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_deleted, 0, proto_deleting));
+  if (p->main_channel)
+    ea_set_attr(&state, EA_LITERAL_STORE_STRING(&ea_table, 0, p->main_channel->table->name);
 
   CALL(p->proto->init_state, p, state);
 
@@ -2964,6 +2976,8 @@ void dummy_log_proto_attr_list(void)
       const char *name = ea_get_adata(eal, &ea_name)->data;
       struct protocol *proto = (struct protocol *) ea_get_ptr(eal, &ea_protocol_type, 0);
       const int state  = ea_get_int(eal, &ea_state, 0);
+      const adata *tad = ea_get_adata(eal, &ea_table);
+      const char *table = tad ? tad->data : "";
       const btime *time = (btime *)ea_get_adata(eal, &ea_last_modified)->data;
       log("protocol %s of type %s is in state %i (table %s, last modified %t)", name, proto->name, state, table, time);
     }

@@ -820,7 +820,7 @@ krt_init(struct proto_config *CF)
   struct krt_proto *p = proto_new(CF);
   // struct krt_config *cf = (void *) CF;
 
-  p->p.main_channel = proto_add_channel(&p->p, proto_cf_main_channel(CF));
+  proto_add_main_channel(&p->p, proto_cf_main_channel(CF));
 
   p->p.preexport = krt_preexport;
   p->p.rt_notify = krt_rt_notify;
