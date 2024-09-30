@@ -58,8 +58,8 @@ static void channel_update_limit(struct channel *c, struct limit *l, int dir, st
 static void channel_reset_limit(struct channel *c, struct limit *l, int dir);
 static void channel_stop_export(struct channel *c);
 static void channel_check_stopped(struct channel *c);
-static ea_list *proto_state_to_eattr(struct proto *p, int old_state, int proto_deleting);
 void init_journals(void);
+static ea_list *proto_state_to_eattr(struct proto *p, int old_state, int proto_deleting);
 static inline void channel_reimport(struct channel *c, struct rt_feeding_request *rfr)
 {
   rt_export_refeed(&c->reimporter, rfr);
