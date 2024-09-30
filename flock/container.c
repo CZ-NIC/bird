@@ -5,11 +5,16 @@
 #include "lib/io-loop.h"
 #include "lib/hash.h"
 
+#include <dirent.h>
 #include <poll.h>
 #include <sched.h>
 #include <stdlib.h>
 #include <sys/mount.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
+#include <sys/types.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -104,7 +109,14 @@ container_zombie(void)
   }
 }
 
-#define SYSCALL(x, ...)	({ int e = x(__VA_ARGS__); if (e < 0) die("Failed to run %s at %s:%d: %m", #x, __FILE__, __LINE__); e; })
+//#define SYSCALL(x, ...)	({ int _e = x(__VA_ARGS__); if (_e < 0) die("Failed to run %s at %s:%d: %m", #x, __FILE__, __LINE__); else log(L_TRACE "OK %s at %s:%d", #x, __FILE__, __LINE__); _e; })
+#define SYSCALL(x, ...)	({ int _e = x(__VA_ARGS__); if (_e < 0) die("Failed to run %s at %s:%d: %m", #x, __FILE__, __LINE__); _e; })
+
+#define RUN(...)  do {	    \
+    pid_t pid = fork();	    \
+    if (pid) waitpid(pid, NULL, 0); \
+    else { execlp(__VA_ARGS__, NULL); bug("exec %s failed: %m", #__VA_ARGS__); }  \
+} while (0)
 
 
 static int
@@ -118,18 +130,20 @@ container_getdir(char *path)
   char *sl = strrchr(path, '/');
   char *name = sl+1;
 
-  while (sl && sl[1] == 0)
+  if (sl == path)
+    path = "/";
+  else
   {
-    /* Trailing slash removal */
-    sl[0] = 0;
-    sl = strrchr(path, '/');
-  }
+    while (sl && sl[1] == 0)
+    {
+      /* Trailing slash removal */
+      sl[0] = 0;
+      sl = strrchr(path, '/');
+    }
 
-  if (!sl)
-    if (path[0] == '.')
-      die("Current workdir disappeared");
-    else
-      die("Root directory missing");
+    if (!sl)
+      bug("Getdir failed, empty sl");
+  }
 
   /* Open the parent directory */
   *sl = 0;
@@ -158,6 +172,19 @@ container_getdir(char *path)
 }
 
 static void
+copylink(const char *src, int sz, const char *dst)
+{
+  char *contents = alloca(sz + 1);
+  int xsz = SYSCALL(readlink, src, contents, sz);
+  contents[xsz] = 0;
+//  log(L_INFO "symlinking device %s -> %s", dst, contents);
+  int se = symlink(contents, dst);
+  if (se < 0)
+//    die("failed to symlink %s: %m", dst);
+    log(L_ERR "failed to symlink %s: %m", dst);
+}
+
+static void
 container_mainloop(int fd)
 {
   log(L_INFO "container mainloop with fd %d", fd);
@@ -175,42 +202,164 @@ container_mainloop(int fd)
     die("Refusing to work with paths containing chars: ,=\\");
 
 #define GETDIR(_path)  ({ char *path = _path; int fd = container_getdir(path); if (fd < 0) die("Failed to get the directory %s: %m", path); fd; })
+#define MKDIR(_path)  close(GETDIR(lp_strdup(lp, _path)))
 
   int wfd = GETDIR(lp_sprintf(lp, "%s%s", ccf.workdir[0] == '/' ? "" : "./", ccf.workdir));
   SYSCALL(fchdir, wfd);
+  close(wfd); wfd = -1;
 
-  GETDIR(lp_strdup(lp, "./upper"));
-  GETDIR(lp_strdup(lp, "./tmp"));
-  int rfd = GETDIR(lp_strdup(lp, "./root"));
+  int ufd = GETDIR(lp_strdup(lp, "./upper"));
+  close(GETDIR(lp_strdup(lp, "./tmp")));
+  close(GETDIR(lp_strdup(lp, "./root")));
+  int lfd = -1;
 
-/* TODO: This worksn't well. The problem is mounts under the original root
- * so we have to somehow define which parts of the original root to pick 
- * and bind-mount to the new namespace one by one
- *
- * the expected scenario:
- * - basedir is never "/" and contains prepared list (in a file)
- *   of what to bind-mount
- *   (typically /dev/something, /etc/, /usr, /bin and /lib{64,}),
- *   what to mount freshly (proc, sys, run)
- *   and also things we want to have immutable like the BIRD/FRR installations
- * - upperdir may contain actual BIRD/FRR configuration
- * - root is made by overlaying upperdir and basedir
- * - mounts are done to the finished root afterwards
- * - chroot
- *
- * - well actually create-overlay.sh is a good start
- * */
+  bool cloneroot = !strcmp(ccf.basedir, "/");
+  bool clonedev = cloneroot;
+  if (cloneroot)
+  {
+    ccf.basedir = "./lower";
+    lfd = GETDIR(lp_strdup(lp, "./lower"));
+  }
+
   const char *overlay_mount_options = lp_sprintf(lp, "lowerdir=%s,upperdir=%s,workdir=%s",
       ccf.basedir, "./upper", "./tmp");
   SYSCALL(mount, "overlay", "./root", "overlay", 0, overlay_mount_options);
-  SYSCALL(fchdir, rfd);
-  SYSCALL(chroot, ".");
+
+  if (cloneroot)
+  {
+#define BINDMOUNT(path)	do { \
+  struct stat s; \
+  SYSCALL(lstat, "/" #path, &s); \
+  switch (s.st_mode & S_IFMT) { \
+    case S_IFLNK: \
+      copylink("/" #path, s.st_size, "./root/" #path); \
+      break; \
+    case S_IFDIR: \
+      close(GETDIR(lp_strdup(lp, "./root/" #path))); \
+      SYSCALL(mount, "/" #path, "./root/" #path, NULL, MS_BIND | MS_REC, NULL); \
+      break; \
+  } \
+} while (0)
+    BINDMOUNT(bin);
+    BINDMOUNT(etc);
+    BINDMOUNT(lib);
+    BINDMOUNT(lib32);
+    BINDMOUNT(lib64);
+    BINDMOUNT(libx32);
+    BINDMOUNT(sbin);
+    BINDMOUNT(usr);
+
+    close(GETDIR(lp_strdup(lp, "./lower/dev")));
+
+    DIR *x = opendir("/dev");
+    for (struct dirent *e; e = readdir(x); )
+    {
+      if (!strcmp(e->d_name, ".")
+	  || !strcmp(e->d_name, "..")
+	  || !strcmp(e->d_name, "ptmx"))
+	continue;
+
+      const char *path = lp_sprintf(lp, "./lower/dev/%s", e->d_name);
+      const char *mpnt = lp_sprintf(lp, "./root/dev/%s", e->d_name);
+      const char *orig = lp_sprintf(lp, "/dev/%s", e->d_name);
+
+      struct stat s;
+      SYSCALL(lstat, orig, &s);
+      if (!(s.st_mode & S_IRWXO))
+      {
+	log(L_INFO "ignoring unusable device %s", e->d_name);
+	continue;
+      }
+
+      switch (s.st_mode & S_IFMT)
+      {
+	case S_IFSOCK:
+	case S_IFIFO:
+	case S_IFCHR:
+	case S_IFBLK:
+	case S_IFREG:
+	  log(L_INFO "bindmounting device %s", e->d_name);
+	  SYSCALL(close, SYSCALL(open, path, O_WRONLY | O_CREAT, 0666));
+	  int me = mount(orig, mpnt, NULL, MS_BIND, NULL);
+	  if (me < 0)
+	    log(L_ERR "failed to bindmount %s to %s: %m", orig, mpnt);
+
+	  break;
+
+	case S_IFLNK:
+	  copylink(orig, s.st_size, path);
+	  break;
+
+	default:
+	  log(L_INFO "ignoring device %s", e->d_name);
+      }
+    }
+  }
+  
+  SYSCALL(chroot, "./root");
+  SYSCALL(chdir, "/");
 
   /* Remounting proc to reflect the new PID namespace */
-  SYSCALL(mount, "none", "/", NULL, MS_REC | MS_PRIVATE, NULL);
+  MKDIR("/proc");
   SYSCALL(mount, "proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL);
 
-  /* TODO: mount overlayfs and chroot */
+  MKDIR("/sys");
+  SYSCALL(mount, "sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL);
+
+  MKDIR("/run");
+  SYSCALL(mount, "tmpfs", "/run", "tmpfs", MS_NOSUID | MS_NODEV, NULL);
+
+  MKDIR("/tmp");
+  SYSCALL(mount, "tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV, NULL);
+
+  MKDIR("/dev/pts");
+  SYSCALL(mount, "devpts", "/dev/pts", "devpts", MS_NOSUID | MS_NOEXEC, "ptmxmode=600");
+
+  symlink("/dev/pts/ptmx", "/dev/ptmx");
+
+  pid_t logger_pid = fork();
+  if (!logger_pid)
+  {
+    MKDIR("/var/log");
+    int wfd = SYSCALL(open, "/var/log/syslog", O_WRONLY | O_CREAT, 0640);
+
+    int fd = SYSCALL(socket, AF_UNIX, SOCK_DGRAM, 0);
+    union {
+      struct sockaddr sa;
+      struct sockaddr_un un;
+    } sa;
+    sa.un.sun_family = AF_UNIX;
+    unlink("/dev/log");
+    strcpy(sa.un.sun_path, "/dev/log");
+    SYSCALL(bind, fd, &sa.sa, sizeof sa.un);
+
+    while (true)
+    {
+      char buf[65536], *pos = buf;
+      ssize_t sz = read(fd, buf, sizeof buf);
+      if (sz < 0)
+	if (errno == EINTR)
+	  continue;
+	else
+	  exit(100 + errno);
+      if (sz == 0)
+	exit(0);
+
+      while (sz > 0)
+      {
+	ssize_t wz = write(wfd, pos, sz);
+	if (wz < 0)
+	  if (errno == EINTR)
+	    continue;
+	  else
+	    exit(200 + errno);
+	ASSERT_DIE(wz > 0);
+	sz -= wz;
+	pos += wz;
+      }
+    }
+  }
+
   while (1)
   {
     struct pollfd pfd = {
@@ -284,7 +433,7 @@ container_mainloop(int fd)
 
 	    close(0);
 	    close(1);
-	    close(2);
+//	    close(2);
 
 	    dup2(fd, 0);
 	    dup2(fd, 1);
@@ -295,6 +444,8 @@ container_mainloop(int fd)
 	    sigprocmask(SIG_SETMASK, &newmask, NULL);
 
 	    /* Exec the telnet */
+
+	    e = execl("/usr/bin/strace", "strace", "-o", "/xxx", "-ff", "telnetd", "-E", "/bin/bash", NULL);
 	    e = execl("/usr/sbin/telnetd", "telnetd", "-E", "/bin/bash", NULL);
 	    log(L_ERR "failed to execl: %m");
 	    exit(42);
