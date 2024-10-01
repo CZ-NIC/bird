@@ -394,31 +394,48 @@ static inline int proto_is_inactive(struct proto *p)
     ;
 }
 
+#define PROTO_STATE_TABLE_PUBLIC \
+  DOMAIN(rtable) lock;		/* Lock needed to access global protocol state table */	\
+  struct lfjour journal;	/* Subscribe here to get new content! */		\
 
-struct proto_attrs {
-  ea_list *_Atomic *attrs;
-  _Atomic u32 length;
-  struct hmap *proto_id_maker;
-  struct hmap *channel_id_maker;
+struct proto_state_table_private {
+  /* Include the public part */
+  struct { PROTO_STATE_TABLE_PUBLIC; };
+  struct proto_state_table_private **locked_at;
+
+  /* And private parts */
+  ea_list **states;
+  u32 length;
+
+  struct hmap proto_id_map;
 };
 
-extern struct lfjour *proto_journal;
-extern struct proto_attrs *proto_state_table;
-extern DOMAIN(rtable) proto_journal_domain;
+typedef union proto_state_table {
+  struct {
+    PROTO_STATE_TABLE_PUBLIC;
+  };
+  struct proto_state_table_private priv;
+} proto_state_table;
 
+extern proto_state_table proto_state_table;
+
+/* Define the lock cleanup function */
+LOBJ_UNLOCK_CLEANUP(proto_state_table, rtable);
+
+#define PST_IS_LOCKED	LOBJ_IS_LOCKED(&proto_state_table, rtable)
+#define PST_LOCKED(tp)	LOBJ_LOCKED(&proto_state_table, tp, proto_state_table, rtable)
+#define PST_LOCK(tp)	LOBJ_LOCK(&proto_state_table, tp, proto_state_table, rtable)
+
+extern struct proto_attrs *proto_state_table;
 
 struct proto_pending_update {
   LFJOUR_ITEM_INHERIT(li);
   ea_list *proto_attr;
   ea_list *old_attr;
-  int free_old;
   struct proto *protocol;
 };
 
 void proto_state_table_update(ea_list *attr, struct proto *p,  int save_to_jour);
-void protos_attr_field_grow(void);
-ea_list *proto_get_state_list_keep(int id);
-ea_list *proto_get_state_list(int id);
 
 
 /*
