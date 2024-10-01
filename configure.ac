@@ -30,6 +30,12 @@ AC_ARG_ENABLE([debug-expensive],
   [enable_debug_expensive=no]
 )
 
+AC_ARG_ENABLE([debug-allocator],
+  [AS_HELP_STRING([--enable-debug-allocator], [enable internal memory allocator journal (implies --enable-debug) @<:@no@:>@])],
+  [],
+  [enable_debug_expensive=no]
+)
+
 AC_ARG_ENABLE([memcheck],
   [AS_HELP_STRING([--enable-memcheck], [check memory allocations when debugging @<:@yes@:>@])],
   [],
@@ -77,6 +83,10 @@ AC_ARG_WITH([iproutedir],
 AC_ARG_VAR([FLEX], [location of the Flex program])
 AC_ARG_VAR([BISON], [location of the Bison program])
 AC_ARG_VAR([M4], [location of the M4 program])
+
+if test "$enable_debug_allocator" = yes; then
+  enable_debug=yes
+fi
 
 if test "$enable_debug_expensive" = yes; then
   enable_debug=yes
@@ -448,6 +458,10 @@ if test "$enable_debug" = yes ; then
 
   if test "$enable_debug_expensive" = yes ; then
     AC_DEFINE([ENABLE_EXPENSIVE_CHECKS], [1], [Define to 1 if you want to run expensive consistency checks.])
+  fi
+
+  if test "$enable_debug_allocator" = yes; then
+    AC_DEFINE([DEBUG_ALLOCATOR], [1], [Define to 1 if you want to store journals from memory allocations.])
   fi
 fi
 

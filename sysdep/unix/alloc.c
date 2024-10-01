@@ -56,7 +56,7 @@ alloc_preconfig(struct alloc_config *ac)
 # define PROTECT_PAGE(pg)
 # define UNPROTECT_PAGE(pg)
 
-# if DEBUGGING
+# if DEBUG_ALLOCATOR
 #   ifdef ENABLE_EXPENSIVE_CHECKS
 #     undef PROTECT_PAGE
 #     undef UNPROTECT_PAGE
