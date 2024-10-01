@@ -445,9 +445,9 @@ container_mainloop(int fd)
 
 	    /* Exec the telnet */
 
-	    e = execl("/usr/bin/strace", "strace", "-o", "/xxx", "-ff", "telnetd", "-E", "/bin/bash", NULL);
+//	    e = execl("/usr/bin/strace", "strace", "-o", "/xxx", "-ff", "telnetd", "-E", "/bin/bash", NULL);
 	    e = execl("/usr/sbin/telnetd", "telnetd", "-E", "/bin/bash", NULL);
-	    log(L_ERR "failed to execl: %m");
+	    log(L_ERR "failed to execl telnet: %m");
 	    exit(42);
 	  }
 	  close(sfd);
