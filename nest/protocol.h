@@ -404,6 +404,8 @@ struct proto_state_table_private {
   struct proto_state_table_private **locked_at;
 
   /* And private parts */
+  pool *pool;
+
   ea_list **states;
   u32 length;
 
@@ -417,16 +419,14 @@ typedef union proto_state_table {
   struct proto_state_table_private priv;
 } proto_state_table;
 
-extern proto_state_table proto_state_table;
+extern proto_state_table proto_state_table_pub;
 
 /* Define the lock cleanup function */
 LOBJ_UNLOCK_CLEANUP(proto_state_table, rtable);
 
-#define PST_IS_LOCKED	LOBJ_IS_LOCKED(&proto_state_table, rtable)
-#define PST_LOCKED(tp)	LOBJ_LOCKED(&proto_state_table, tp, proto_state_table, rtable)
-#define PST_LOCK(tp)	LOBJ_LOCK(&proto_state_table, tp, proto_state_table, rtable)
-
-extern struct proto_attrs *proto_state_table;
+#define PST_IS_LOCKED	LOBJ_IS_LOCKED(&proto_state_table_pub, rtable)
+#define PST_LOCKED(tp)	LOBJ_LOCKED(&proto_state_table_pub, tp, proto_state_table, rtable)
+#define PST_LOCK(tp)	LOBJ_LOCK(&proto_state_table_pub, tp, proto_state_table, rtable)
 
 struct proto_pending_update {
   LFJOUR_ITEM_INHERIT(li);

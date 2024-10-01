@@ -47,9 +47,9 @@ static u32 graceful_restart_locks;
 static char *p_states[] = { "DOWN", "START", "UP", "STOP" };
 static char *c_states[] = { "DOWN", "START", "UP", "STOP", "RESTART" };
 
+proto_state_table proto_state_table_pub;
+
 extern struct protocol proto_unix_iface;
-struct proto_attrs *proto_state_table;
-//struct proto_attrs *channel_state_table;
 
 static void proto_rethink_goal(struct proto *p);
 static char *proto_state_name(struct proto *p);
@@ -1284,11 +1284,21 @@ proto_new(struct proto_config *cf)
   p->hash_key = random_u32();
   cf->proto = p;
 
-  p->id = hmap_first_zero(proto_state_table->proto_id_maker);
-  hmap_set(proto_state_table->proto_id_maker, p->id);
-  if (p->id >= proto_state_table->length) //TODO check
-    protos_attr_field_grow();
-  //init_list(&proto_state_table->channels_attrs[p->id]);
+  PST_LOCKED(tp)
+  {
+    p->id = hmap_first_zero(&tp->proto_id_map);
+    hmap_set(&tp->proto_id_map, p->id);
+
+    if (p->id >= tp->length)
+    {
+      /* Grow the states array */
+      ea_list **new_states = mb_allocz(tp->pool, sizeof *new_states * tp->length * 2);
+      memcpy(new_states, tp->states, tp->length * sizeof *new_states);
+
+      mb_free(tp->states);
+      tp->states = new_states;
+    }
+  }
 
   init_list(&p->channels);
 
@@ -2824,17 +2834,6 @@ protos_attr_field_init(void)
   proto_state_table->length = init_length;
   proto_state_table->proto_id_maker = mb_allocz(&root_pool, sizeof(struct hmap));
   hmap_init(proto_state_table->proto_id_maker, &root_pool, init_length); /* for proto ids. Value of proto id is the same as index of that proto in ptoto_state_table->attrs */
-}
-
-void
-protos_attr_field_grow(void)
-{
-  ea_list *_Atomic * new_field = mb_allocz(&root_pool, proto_state_table->length * sizeof(ea_list *_Atomic) * 2);
-  memcpy(new_field, proto_state_table->attrs, proto_state_table->length * (sizeof(ea_list* _Atomic)));
-  ea_list *_Atomic *old = proto_state_table->attrs;
-  atomic_store(&proto_state_table->attrs, new_field);
-  mb_free(old); //todo: free the channel_attrs_list as well
-  atomic_store(&proto_state_table->length, (proto_state_table->length*2));
 }
 
 void
