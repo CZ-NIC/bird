@@ -557,7 +557,9 @@ void cmd_reconfig_undo_notify(void) {}
 #include "nest/bird.h"
 #include "lib/net.h"
 #include "conf/conf.h"
-void sysdep_preconfig(struct config *c UNUSED) {}
+void sysdep_preconfig(struct config *c) {
+  alloc_preconfig(&c->runtime.alloc);
+}
 
 void bird_thread_commit(struct thread_config *new);
 void sysdep_commit(struct config *new, struct config *old UNUSED)

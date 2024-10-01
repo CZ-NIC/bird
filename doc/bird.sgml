@@ -722,6 +722,37 @@ include "tablename.conf";;
 	Evaluates given filter expression. It is used by the developers for testing of filters.
 </descrip>
 
+<sect>Global performance options
+<label id="perf-opts">
+
+<p>The internal scheduler and allocator can be tweaked if needed. You probably
+don't want to do this, yet if you encounter some weird performance problem,
+these knobs may be handy. For now, all the options are concentrated in the
+<cf/memory {}/ block.
+
+<descrip>
+	<tag><label id="memory-global-keep-hot">global keep hot <m/number/</tag>
+	How much memory is kept hot at most in the global memory storage.
+	Overflowing memory is returned back to the OS. The virtual memory,
+        aka address space, is kept in the cold storage and may be later reused,
+        to prevent address space fragmentation problems.
+	Aligned automatically to the system page size.
+	This knob must be higher than the following memory settings.
+	Default: 16777216.
+
+	<tag><label id="memory-local-keep-hot">local keep hot <m/number/</tag>
+	How much memory is kept hot at most in every thread-local memory storage.
+	Overflowing memory is moved to the global hot storage.
+	Aligned automatically to the system page size.
+	This knob must be higher than the following memory settings.
+	Default: 524288.
+
+	<tag><label id="memory-local-keep-hot">allocate block <m/number/</tag>
+	How much memory is allocated at once when no more memory is neither
+	in available hot nor cold storages.
+	Aligned automatically to the system page size.
+	Default: 131072.
+</descrip>
 
 <sect>Routing table options
 <label id="rtable-opts">

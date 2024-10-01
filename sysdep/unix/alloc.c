@@ -36,13 +36,19 @@
 long page_size = 0;
 
 #ifdef HAVE_MMAP
-# define KEEP_PAGES_MAX	16384
-# define KEEP_PAGES_MIN	32
-# define KEEP_PAGES_MAX_LOCAL	128
-# define ALLOC_PAGES_AT_ONCE	32
 
-  STATIC_ASSERT(KEEP_PAGES_MIN * 4 < KEEP_PAGES_MAX);
-  STATIC_ASSERT(ALLOC_PAGES_AT_ONCE < KEEP_PAGES_MAX_LOCAL);
+void
+alloc_preconfig(struct alloc_config *ac)
+{
+  ac->keep_mem_max_global = 16777216;
+  ac->keep_mem_max_local = 524288;
+  ac->at_once = 131072;
+}
+
+# define ALLOC_INFO (&(atomic_load_explicit(&global_runtime, memory_order_relaxed)->alloc))
+# define KEEP_MEM_MAX		ALLOC_INFO->keep_mem_max_global
+# define KEEP_MEM_MAX_LOCAL	ALLOC_INFO->keep_mem_max_local
+# define ALLOC_MEM_AT_ONCE	ALLOC_INFO->at_once
 
   static bool use_fake = 0;
   static bool initialized = 0;
@@ -136,8 +142,8 @@ long page_size = 0;
 
   static DOMAIN(resource) empty_pages_domain;
   static struct empty_pages *empty_pages = NULL;
-  _Atomic int pages_kept_cold = 0;
-  _Atomic int pages_kept_cold_index = 0;
+  _Atomic uint pages_kept_cold = 0;
+  _Atomic uint pages_kept_cold_index = 0;
   _Atomic int pages_total = 0;
   _Atomic int alloc_locking_in_rcu = 0;
 
@@ -157,19 +163,20 @@ long page_size = 0;
   static event page_cleanup_event = { .hook = page_cleanup, };
 # define SCHEDULE_CLEANUP  do if (initialized && !shutting_down) ev_send(&global_event_list, &page_cleanup_event); while (0)
 
-  _Atomic int pages_kept = 0;
-  _Atomic int pages_kept_locally = 0;
-  static _Thread_local int pages_kept_here = 0;
+  _Atomic uint pages_kept = 0;
+  _Atomic uint pages_kept_locally = 0;
+  static _Thread_local uint pages_kept_here = 0;
 
   static void *
   alloc_sys_page(void)
   {
-    void *ptr = mmap(NULL, page_size * ALLOC_PAGES_AT_ONCE, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    void *ptr = mmap(NULL, ALLOC_MEM_AT_ONCE, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
     if (ptr == MAP_FAILED)
       die("mmap(%ld) failed: %m", (s64) page_size);
 
-    atomic_fetch_add_explicit(&pages_total, ALLOC_PAGES_AT_ONCE, memory_order_acq_rel);
+    ASSUME(ALLOC_MEM_AT_ONCE % page_size == 0);
+    atomic_fetch_add_explicit(&pages_total, ALLOC_MEM_AT_ONCE / page_size, memory_order_acq_rel);
     return ptr;
   }
 
@@ -303,8 +310,8 @@ alloc_page(void)
   void *ptr = alloc_sys_page();
   ajlog(ptr, NULL, 0, AJT_ALLOC_MMAP);
 
-  for (int i=1; i<ALLOC_PAGES_AT_ONCE; i++)
-    free_page(ptr + page_size * i);
+  for (unsigned long skip = page_size; skip<ALLOC_MEM_AT_ONCE; skip += page_size)
+    free_page(ptr + skip);
 
   return ptr;
 #endif
@@ -324,7 +331,7 @@ free_page(void *ptr)
 #ifdef HAVE_MMAP
   /* We primarily try to keep the pages locally. */
   struct free_page *fp = ptr;
-  if (pages_kept_here < KEEP_PAGES_MAX_LOCAL)
+  if (pages_kept_here * page_size < KEEP_MEM_MAX_LOCAL)
   {
     struct free_page *next = local_page_stack;
     atomic_store_explicit(&fp->next, next, memory_order_relaxed);
@@ -350,7 +357,7 @@ free_page(void *ptr)
   ajlog(fp, next, pk, AJT_FREE_GLOBAL_HOT);
 
   /* And if there are too many global hot free pages, we ask for page cleanup */
-  if (pk >= KEEP_PAGES_MAX)
+  if (pk * page_size >= KEEP_MEM_MAX)
     SCHEDULE_CLEANUP;
 #endif
 }
@@ -368,7 +375,7 @@ flush_local_pages(void)
   /* We first count the pages to enable consistency checking.
    * Also, we need to know the last page. */
   struct free_page *last = local_page_stack, *next;
-  int check_count = 1;
+  uint check_count = 1;
   while (next = atomic_load_explicit(&last->next, memory_order_relaxed))
   {
     check_count++;
@@ -394,7 +401,7 @@ flush_local_pages(void)
 
   /* Check the state of global page cache and maybe schedule its cleanup. */
   atomic_fetch_sub_explicit(&pages_kept_locally, check_count, memory_order_relaxed);
-  if (atomic_fetch_add_explicit(&pages_kept, check_count, memory_order_relaxed) >= KEEP_PAGES_MAX)
+  if (atomic_fetch_add_explicit(&pages_kept, check_count, memory_order_relaxed) * page_size >= KEEP_MEM_MAX)
     SCHEDULE_CLEANUP;
 }
 
@@ -408,7 +415,7 @@ page_cleanup(void *_ UNUSED)
 
   /* Pages allocated inbetween */
   uint pk = atomic_load_explicit(&pages_kept, memory_order_relaxed);
-  if (pk < KEEP_PAGES_MAX)
+  if (pk * page_size < KEEP_MEM_MAX)
     return;
 
   /* Walk the pages */
@@ -466,7 +473,7 @@ page_cleanup(void *_ UNUSED)
     UNLOCK_DOMAIN(resource, empty_pages_domain);
     count++;
   }
-  while (atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed) >= KEEP_PAGES_MAX / 2);
+  while (atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed) * page_size >= KEEP_MEM_MAX / 2);
 
   ALLOC_TRACE("Moved %u pages to cold storage, now %u cold, %u index", count,
       atomic_load_explicit(&pages_kept_cold, memory_order_relaxed),
@@ -526,9 +533,12 @@ resource_sys_init(void)
     /* We assume that page size has only one bit and is between 1K and 256K (incl.).
      * Otherwise, the assumptions in lib/slab.c (sl_head's num_full range) aren't met. */
 
+    alloc_preconfig(&(atomic_load_explicit(&global_runtime, memory_order_relaxed)->alloc));
+
     empty_pages_domain = DOMAIN_NEW(resource);
     DOMAIN_SETUP(resource, empty_pages_domain, "Empty Pages", NULL);
     initialized = 1;
+
     return;
   }
 
@@ -538,5 +548,7 @@ resource_sys_init(void)
 #endif
 
   page_size = 4096;
+  alloc_preconfig(&(atomic_load_explicit(&global_runtime, memory_order_relaxed)->alloc));
+
   initialized = 1;
 }

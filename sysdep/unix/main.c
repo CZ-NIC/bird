@@ -214,6 +214,8 @@ sysdep_preconfig(struct config *c)
   c->runtime.latency_limit = UNIX_DEFAULT_LATENCY_LIMIT;
   c->runtime.watchdog_warning = UNIX_DEFAULT_WATCHDOG_WARNING;
 
+  alloc_preconfig(&c->runtime.alloc);
+
 #ifdef PATH_IPROUTE_DIR
   read_iproute_table(c, PATH_IPROUTE_DIR "/rt_protos", "ipp_", 255);
   read_iproute_table(c, PATH_IPROUTE_DIR "/rt_realms", "ipr_", 0xffffffff);

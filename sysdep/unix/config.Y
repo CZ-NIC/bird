@@ -22,6 +22,7 @@ CF_KEYWORDS(LOG, SYSLOG, ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, 
 CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, STATUS)
 CF_KEYWORDS(PING, WAKEUP, SOCKETS, SCHEDULING, EVENTS, TIMERS, ALLOCATOR)
 CF_KEYWORDS(GRACEFUL, RESTART, FIXED)
+CF_KEYWORDS(MEMORY, GLOBAL, LOCAL, KEEP, HOT, ALLOCATE, BLOCK)
 
 %type <i> log_mask log_mask_list log_cat cfg_timeout debug_unix latency_debug_mask latency_debug_flag latency_debug_list
 %type <t> cfg_name
@@ -177,6 +178,28 @@ latency_debug_flag:
  | EVENTS	{ $$ = DL_EVENTS; }
  | TIMERS	{ $$ = DL_TIMERS; }
  ;
+
+conf: MEMORY '{' memory_items '}'
+{
+  if (new_config->runtime.alloc.keep_mem_max_global <= new_config->runtime.alloc.keep_mem_max_local)
+    cf_error("Global (%u) hot memory limit must be higher than local (%u)",
+	new_config->runtime.alloc.keep_mem_max_global,
+	new_config->runtime.alloc.keep_mem_max_local);
+
+  if (new_config->runtime.alloc.keep_mem_max_local < new_config->runtime.alloc.at_once)
+    cf_error("Can't allocate more memory at once (%u) than local hot limit (%u)",
+	new_config->runtime.alloc.at_once,
+	new_config->runtime.alloc.keep_mem_max_local);
+}
+
+memory_items:
+ | memory_items GLOBAL KEEP HOT NUM ';' {
+   new_config->runtime.alloc.keep_mem_max_global = BIRD_ALIGN($5, page_size); }
+ | memory_items LOCAL KEEP HOT NUM ';' {
+   new_config->runtime.alloc.keep_mem_max_local = BIRD_ALIGN($5, page_size); }
+ | memory_items ALLOCATE BLOCK NUM ';' {
+   new_config->runtime.alloc.at_once = BIRD_ALIGN($4, page_size); }
+;
 
 
 /* Unix specific commands */

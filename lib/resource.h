@@ -163,10 +163,10 @@ void buffer_realloc(void **buf, unsigned *size, unsigned need, unsigned item_siz
 /* Allocator of whole pages; for use in slabs and other high-level allocators. */
 #define PAGE_HEAD(x)	((void *) (((uintptr_t) (x)) & ~(page_size-1)))
 extern long page_size;
-extern _Atomic int pages_kept;
-extern _Atomic int pages_kept_locally;
-extern _Atomic int pages_kept_cold;
-extern _Atomic int pages_kept_cold_index;
+extern _Atomic uint pages_kept;
+extern _Atomic uint pages_kept_locally;
+extern _Atomic uint pages_kept_cold;
+extern _Atomic uint pages_kept_cold_index;
 extern _Atomic int pages_total;
 extern _Atomic int alloc_locking_in_rcu;
 void *alloc_page(void);
@@ -174,6 +174,9 @@ void free_page(void *);
 void flush_local_pages(void);
 
 void resource_sys_init(void);
+
+struct alloc_config;
+void alloc_preconfig(struct alloc_config *);
 
 #ifdef HAVE_LIBDMALLOC
 /*

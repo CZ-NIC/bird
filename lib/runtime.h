@@ -24,6 +24,12 @@ enum latency_debug_flags {
   DL_TIMERS = 0x40,
 };
 
+struct alloc_config {
+  uint keep_mem_max_global;		/* How much free memory is kept hot in total */
+  uint keep_mem_max_local;		/* How much free memory is kept hot in every thread */
+  uint at_once;				/* How much memory to allocate at once */
+};
+
 #define GLOBAL_RUNTIME_CONTENTS \
   struct timeformat tf_log;		/* Time format for the logfile */		\
   struct timeformat tf_base;		/* Time format for other purposes */		\
@@ -32,6 +38,7 @@ enum latency_debug_flags {
   u32 latency_limit;			/* Events with longer duration are logged (us) */	\
   u32 watchdog_warning;			/* I/O loop watchdog limit for warning (us) */	\
   const char *hostname;			/* Hostname */					\
+  struct alloc_config alloc;		/* Allocation settings */			\
 
 struct global_runtime { GLOBAL_RUNTIME_CONTENTS };
 extern struct global_runtime * _Atomic global_runtime;
