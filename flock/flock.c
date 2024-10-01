@@ -165,6 +165,10 @@ main(int argc, char **argv, char **argh UNUSED)
   birdloop_init();
 
   struct global_runtime gr = *atomic_load_explicit(&global_runtime, memory_order_relaxed);
+  gr.alloc.keep_mem_max_global = BIRD_ALIGN(65536, page_size);
+  gr.alloc.keep_mem_max_local = BIRD_ALIGN(16384, page_size);
+  gr.alloc.at_once = BIRD_ALIGN(4096, page_size);
+
 //  gr.latency_debug = ~0;
   switch_runtime(&gr);
 
