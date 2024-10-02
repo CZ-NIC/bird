@@ -459,6 +459,12 @@ container_mainloop(int fd)
 	exit(1);
       }
 
+      if (sz == 0)
+      {
+	log(L_INFO "control socket closing, shutdown");
+	exit(0);
+      }
+
       ASSERT_DIE(sz >= 3);
       ASSERT_DIE(buf[0] == 0xa1);
       switch (buf[1]) {

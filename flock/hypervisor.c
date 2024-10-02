@@ -40,15 +40,15 @@ hcs_rx(sock *s, uint size)
   log(L_INFO "Parsed command.");
 
   /* TODO do something more */
+  if (sz < size)
+    memmove(s->rbuf, s->rbuf + sz, size - sz);
+  if (!s->rx_hook)
+    return (sz == size);
 
   hcs_parser_cleanup(s->data);
   s->data = hcs_parser_init(s);
 
-  if (sz == size)
-    return 1;
-
-  memmove(s->rbuf, s->rbuf + sz, size - sz);
-  return hcs_rx(s, size - sz);
+  return (sz < size) ? hcs_rx(s, size - sz) : 1;
 }
 
 static void
@@ -517,6 +517,10 @@ static void hexp_received_telnet(void *_data)
 
     sk_send(s, cw->pt);
     sk_resume_rx(hcs_loop, s);
+
+    hcs_parser_cleanup(s->data);
+    s->data = hcs_parser_init(s);
+
     rfree(lp);
   }
 
