@@ -470,12 +470,6 @@ container_start(void)
   log(L_INFO "Requested to start a container, name %s, base %s, work %s",
       ccf.hostname, ccf.basedir, ccf.workdir);
 
-  /* create socketpair before forking to do communication */
-  int fds[2];
-  int e = socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds);
-  if (e < 0)
-    die("Failed to create internal socketpair: %m");
-
   pid_t pid = fork();
   if (pid < 0)
     die("Failed to fork container (parent): %m");
@@ -505,7 +499,7 @@ container_start(void)
     return;
   }
 
-  e = unshare(CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWTIME | CLONE_NEWNET);
+  int e = unshare(CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWTIME | CLONE_NEWNET);
   if (e < 0)
     die("Failed to unshare container: %m");
 
@@ -518,6 +512,14 @@ container_start(void)
   MACRO_FOREACH(FROB, KILLABLE_SIGNALS);
 #undef FROB
   sigprocmask(SIG_BLOCK, &newmask, &oldmask);
+
+  /* create socketpair before forking to do communication */
+  int fds[2];
+  e = socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds);
+  if (e < 0)
+    die("Failed to create internal socketpair: %m");
+
+  log("container fork socketpair: %d %d", fds[0], fds[1]);
 
   pid = fork();
   if (pid < 0)
