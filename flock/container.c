@@ -209,17 +209,16 @@ container_mainloop(int fd)
   SYSCALL(fchdir, wfd);
   close(wfd); wfd = -1;
 
-  int ufd = GETDIR(lp_strdup(lp, "./upper"));
+  close(GETDIR(lp_strdup(lp, "./upper")));
   close(GETDIR(lp_strdup(lp, "./tmp")));
   close(GETDIR(lp_strdup(lp, "./root")));
-  int lfd = -1;
 
   bool cloneroot = !strcmp(ccf.basedir, "/");
   bool clonedev = cloneroot;
   if (cloneroot)
   {
     ccf.basedir = "./lower";
-    lfd = GETDIR(lp_strdup(lp, "./lower"));
+    close(GETDIR(lp_strdup(lp, "./lower")));
   }
 
   const char *overlay_mount_options = lp_sprintf(lp, "lowerdir=%s,upperdir=%s,workdir=%s",
@@ -321,6 +320,7 @@ container_mainloop(int fd)
   pid_t logger_pid = fork();
   if (!logger_pid)
   {
+    /* TODO: this HAS to run as birdloop */
     MKDIR("/var/log");
     int wfd = SYSCALL(open, "/var/log/syslog", O_WRONLY | O_CREAT, 0640);
 
