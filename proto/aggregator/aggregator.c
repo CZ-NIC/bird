@@ -189,12 +189,13 @@ popcount32(u32 x)
 }
 
 /*
- * If sets of potential buckets in @left and @right have non-empty intersection
- * (computed as bitwise AND), save it to the target bucket. Otherwise compute
- * their union as bitwise OR.
+ * If sets of potential buckets in @left and @right have non-empty intersection,
+ * computed as bitwise AND, save it to the target bucket. Otherwise compute
+ * their union as bitwise OR. Return whether the set of potential buckets in the
+ * target node has changed.
  */
-static void
-process_potential_buckets(struct trie_node *target, const struct trie_node *left, const struct trie_node *right)
+static int
+merge_potential_buckets(struct trie_node *target, const struct trie_node *left, const struct trie_node *right)
 {
   assert(target != NULL);
   assert(left != NULL);
@@ -202,26 +203,43 @@ process_potential_buckets(struct trie_node *target, const struct trie_node *left
 
   int has_intersection = 0;
   int bucket_count = 0;
+  int changed = 0;
+
+  u32 old[ARRAY_SIZE(target->potential_buckets)] = { 0 };
 
   for (int i = 0; i < POTENTIAL_BUCKETS_BITMAP_SIZE; i++)
   {
+    /* Save current bitmap values */
+    old[i] = target->potential_buckets[i];
+
     has_intersection |= !!(target->potential_buckets[i] = left->potential_buckets[i] & right->potential_buckets[i]);
     bucket_count += popcount32(target->potential_buckets[i]);
+
+    /*
+     * If old and new value are different, the result of their XOR will be
+     * non-zero, thus @changed will be set to non-zero - true as well.
+     */
+    changed |= !!(old[i] ^ target->potential_buckets[i]);
   }
 
+  /* Sets have an empty intersection, compute their union instead */
   if (!has_intersection)
   {
     bucket_count = 0;
+    changed = 0;
 
     for (int i = 0; i < POTENTIAL_BUCKETS_BITMAP_SIZE; i++)
     {
       target->potential_buckets[i] = left->potential_buckets[i] | right->potential_buckets[i];
       bucket_count += popcount32(target->potential_buckets[i]);
+      changed |= !!(old[i] ^ target->potential_buckets[i]);
     }
   }
 
   /* Update number of potential buckets */
   target->potential_buckets_count = bucket_count;
+
+  return changed;
 }
 
 /*
@@ -446,7 +464,7 @@ second_pass(struct trie_node *node)
    * Otherwise, parent's buckets are computed as intersection of its
    * children's buckets.
    */
-  process_potential_buckets(node, left, right);
+  merge_potential_buckets(node, left, right);
 }
 
 /*
