@@ -324,7 +324,7 @@ container_mainloop(int fd)
     MKDIR("/var/log");
     int wfd = SYSCALL(open, "/var/log/syslog", O_WRONLY | O_CREAT, 0640);
 
-    int fd = SYSCALL(socket, AF_UNIX, SOCK_DGRAM, 0);
+    int fd = SYSCALL(socket, AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     union {
       struct sockaddr sa;
       struct sockaddr_un un;
