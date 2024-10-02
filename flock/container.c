@@ -185,6 +185,93 @@ copylink(const char *src, int sz, const char *dst)
     log(L_ERR "failed to symlink %s: %m", dst);
 }
 
+#define GETDIR(_path)  ({ char *path = _path; int fd = container_getdir(path); if (fd < 0) die("Failed to get the directory %s: %m", path); fd; })
+#define MKDIR(_path)  close(GETDIR(tmp_strdup(_path)))
+
+struct container_logger {
+  struct birdloop *loop;
+  pool *p;
+  sock *rs;
+  sock *ws;
+};
+
+static int
+container_logger_rx(sock *sk, uint _sz UNUSED)
+{
+  struct container_logger *clg = sk->data;
+  ssize_t sz = read(sk->fd, clg->ws->tpos, clg->ws->tbsize - (clg->ws->tpos - clg->ws->tbuf));
+  if (sz < 0)
+    return CALL(sk->err_hook, sk, errno), 0;
+
+  if (clg->ws->tpos == clg->ws->tbuf)
+    sk_send(clg->ws, sz);
+  else
+    clg->ws->tpos += sz;
+
+  return 1;
+}
+
+static void
+container_logger_rerr(sock *sk UNUSED, int err)
+{
+  die("Logger receiver socket closed unexpectedly: %s", strerror(err));
+}
+
+static void
+container_logger_werr(sock *sk UNUSED, int err)
+{
+  die("Logger writer closed unexpectedly: %s", strerror(err));
+}
+
+static void
+container_init_logger(void)
+{
+  struct birdloop *loop = birdloop_new(&root_pool, DOMAIN_ORDER(proto), 0, "Logger");
+  birdloop_enter(loop);
+  pool *p = rp_new(birdloop_pool(loop), birdloop_domain(loop), "Logger pool");
+  sock *s = sk_new(p);
+  s->type = SK_MAGIC;
+  s->rx_hook = container_logger_rx;
+  s->err_hook = container_logger_rerr;
+
+  unlink("/dev/log");
+  s->fd = SYSCALL(socket, AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+  union {
+    struct sockaddr sa;
+    struct sockaddr_un un;
+  } sa;
+  sa.un.sun_family = AF_UNIX;
+  strcpy(sa.un.sun_path, "/dev/log");
+  SYSCALL(bind, s->fd, &sa.sa, sizeof sa.un);
+
+  struct container_logger *clg = mb_allocz(p, sizeof *clg);
+  clg->loop = loop;
+  clg->p = p;
+  clg->rs = s;
+  s->data = clg;
+
+  if (sk_open(clg->rs, clg->loop) < 0)
+    bug("Logger failed in sk_open(r): %m");
+
+  clg->rs->type = SK_UNIX;
+
+  s = clg->ws = sk_new(p);
+  s->data = clg;
+  s->type = SK_MAGIC;
+  s->err_hook = container_logger_werr;
+  sk_set_tbsize(s, 16384);
+
+  MKDIR("/var/log");
+  s->fd = SYSCALL(open, "/var/log/syslog", O_WRONLY | O_CREAT, 0640);
+
+  if (sk_open(clg->ws, clg->loop) < 0)
+    bug("Logger failed in sk_open(w): %m");
+
+  s->type = SK_UNIX;
+
+  birdloop_leave(loop);
+}
+
 static void
 container_mainloop(int fd)
 {
@@ -201,9 +288,6 @@ container_mainloop(int fd)
       strchr(ccf.basedir, '=') ||
       strchr(ccf.basedir, '\\'))
     die("Refusing to work with paths containing chars: ,=\\");
-
-#define GETDIR(_path)  ({ char *path = _path; int fd = container_getdir(path); if (fd < 0) die("Failed to get the directory %s: %m", path); fd; })
-#define MKDIR(_path)  close(GETDIR(lp_strdup(lp, _path)))
 
   int wfd = GETDIR(lp_sprintf(lp, "%s%s", ccf.workdir[0] == '/' ? "" : "./", ccf.workdir));
   SYSCALL(fchdir, wfd);
@@ -317,49 +401,7 @@ container_mainloop(int fd)
 
   symlink("/dev/pts/ptmx", "/dev/ptmx");
 
-  pid_t logger_pid = fork();
-  if (!logger_pid)
-  {
-    /* TODO: this HAS to run as birdloop */
-    MKDIR("/var/log");
-    int wfd = SYSCALL(open, "/var/log/syslog", O_WRONLY | O_CREAT, 0640);
-
-    int fd = SYSCALL(socket, AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-    union {
-      struct sockaddr sa;
-      struct sockaddr_un un;
-    } sa;
-    sa.un.sun_family = AF_UNIX;
-    unlink("/dev/log");
-    strcpy(sa.un.sun_path, "/dev/log");
-    SYSCALL(bind, fd, &sa.sa, sizeof sa.un);
-
-    while (true)
-    {
-      char buf[65536], *pos = buf;
-      ssize_t sz = read(fd, buf, sizeof buf);
-      if (sz < 0)
-	if (errno == EINTR)
-	  continue;
-	else
-	  exit(100 + errno);
-      if (sz == 0)
-	exit(0);
-
-      while (sz > 0)
-      {
-	ssize_t wz = write(wfd, pos, sz);
-	if (wz < 0)
-	  if (errno == EINTR)
-	    continue;
-	  else
-	    exit(200 + errno);
-	ASSERT_DIE(wz > 0);
-	sz -= wz;
-	pos += wz;
-      }
-    }
-  }
+  container_init_logger();
 
   while (1)
   {
