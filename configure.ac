@@ -281,6 +281,8 @@ sysdep_dirs="`sed <$sysdesc '/^Link: /!d;s/^Link: \(.*\)$/\1/' | tr '\012' ' '`"
 AC_MSG_RESULT([$sysdep_dirs])
 AC_SUBST([sysdep_dirs])
 
+AC_CHECK_FUNCS([pipe2])
+
 if test "$with_iproutedir" = no ; then with_iproutedir= ; fi
 
 if test -n "$given_iproutedir"

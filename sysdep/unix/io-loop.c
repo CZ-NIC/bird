@@ -4,6 +4,8 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -195,15 +197,22 @@ birdloop_in_this_thread(struct birdloop *loop)
 void
 pipe_new(struct pipe *p)
 {
+  int flags = O_NONBLOCK | O_CLOEXEC;
+#if HAVE_PIPE2
+  int rv = pipe2(p->fd, flags);
+  if (rv < 0)
+    die("pipe2: %m");
+#else
   int rv = pipe(p->fd);
   if (rv < 0)
     die("pipe: %m");
 
-  if (fcntl(p->fd[0], F_SETFL, O_NONBLOCK) < 0)
+  if (fcntl(p->fd[0], F_SETFL, flags) < 0)
     die("fcntl(O_NONBLOCK): %m");
 
-  if (fcntl(p->fd[1], F_SETFL, O_NONBLOCK) < 0)
+  if (fcntl(p->fd[1], F_SETFL, flags) < 0)
     die("fcntl(O_NONBLOCK): %m");
+#endif
 }
 
 void
