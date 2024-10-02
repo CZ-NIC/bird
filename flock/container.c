@@ -196,24 +196,29 @@ struct container_logger {
 };
 
 static int
-container_logger_rx(sock *sk, uint _sz UNUSED)
+container_logger_rx(sock *sk, uint sz)
 {
   struct container_logger *clg = sk->data;
-  ssize_t sz = read(sk->fd, clg->ws->tpos, clg->ws->tbsize - (clg->ws->tpos - clg->ws->tbuf));
-  if (sz < 0)
-    return CALL(sk->err_hook, sk, errno), 0;
+  if (clg->ws->tpos + sz >= clg->ws->tbuf + clg->ws->tbsize)
+    log(L_INFO "dropping a log message");
+
+  memcpy(clg->ws->tpos, sk->rbuf, sz);
+  clg->ws->tpos[sz] = '\n';
 
   if (clg->ws->tpos == clg->ws->tbuf)
-    sk_send(clg->ws, sz);
+    sk_send(clg->ws, sz + 1);
   else
-    clg->ws->tpos += sz;
+    clg->ws->tpos += sz + 1;
 
-  return 1;
+  return 0;
 }
 
 static void
 container_logger_rerr(sock *sk UNUSED, int err)
 {
+  if (!err)
+    bug("what");
+
   die("Logger receiver socket closed unexpectedly: %s", strerror(err));
 }
 
@@ -233,6 +238,7 @@ container_init_logger(void)
   s->type = SK_MAGIC;
   s->rx_hook = container_logger_rx;
   s->err_hook = container_logger_rerr;
+  sk_set_rbsize(s, 16384);
 
   unlink("/dev/log");
   s->fd = SYSCALL(socket, AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
@@ -253,7 +259,7 @@ container_init_logger(void)
   if (sk_open(clg->rs, clg->loop) < 0)
     bug("Logger failed in sk_open(r): %m");
 
-  clg->rs->type = SK_UNIX;
+  clg->rs->type = SK_UDP;
 
   s = clg->ws = sk_new(p);
   s->data = clg;
