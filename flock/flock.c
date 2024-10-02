@@ -285,14 +285,14 @@ main(int argc, char **argv, char **argh UNUSED)
    * let's spawn a child to do external communication before unsharing */
   hypervisor_exposed_fork();
 
-  /* We also need to prepare all the hypervisor-init stuff */
-  hypervisor_control_socket();
-
-  /* And now finally we can go for unsharing the networks */
+  /* And now we can unshare the networks */
   SYSCALL(unshare, CLONE_NEWNET);
 
-  /* Before resuming, we also need to fork the container forker */
+  /* Before running in multiple threads, we also need to fork the container forker */
   hypervisor_container_fork();
+
+  /* Control socket needs to exist */
+  hypervisor_control_socket();
 
   /* Set signal handlers as this process is init in its PID namespace */
   signal(SIGTERM, hypervisor_poweroff_sighandler);

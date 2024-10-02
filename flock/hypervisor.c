@@ -356,7 +356,7 @@ hypervisor_exposed_fork(void)
   int fds[2], e;
 
   /* create socketpair before forking to do communication */
-  e = socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
+  e = socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds);
   if (e < 0)
     die("Failed to create internal socketpair: %m");
 
@@ -402,6 +402,14 @@ hypervisor_exposed_fork(void)
   birdloop_minimalist_main();
 }
 
+void
+hexp_cleanup_after_fork(void)
+{
+  birdloop_enter(he.loop);
+  rp_free(he.p);
+  birdloop_leave(he.loop);
+  birdloop_free(he.loop);
+}
 
 /**
  * Hypervisor's mapping between external ports and names

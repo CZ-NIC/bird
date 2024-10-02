@@ -471,7 +471,7 @@ container_start(void)
 
   /* create socketpair before forking to do communication */
   int fds[2];
-  int e = socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
+  int e = socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds);
   if (e < 0)
     die("Failed to create internal socketpair: %m");
 
@@ -1161,7 +1161,7 @@ hypervisor_container_fork(void)
   int fds[2], e;
 
   /* create socketpair before forking to do communication */
-  e = socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
+  e = socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds);
   if (e < 0)
     die("Failed to create internal socketpair: %m");
 
@@ -1196,6 +1196,7 @@ hypervisor_container_fork(void)
 
   /* noreturn child side */
   close(fds[0]);
+  hexp_cleanup_after_fork();
   container_forker_fd = fds[1];
 
   this_thread_id |= 0xf000;
