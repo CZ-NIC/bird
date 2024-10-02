@@ -24,6 +24,7 @@ static struct hypervisor_container_forker {
   struct birdloop *loop;
   HASH(struct container_runtime) hash;
   struct container_runtime *cur_crt;
+  int ctl[2]; /* socketpair filedescriptors */
 } hcf;
 
 static struct container_config {
@@ -524,7 +525,10 @@ container_start(void)
 
   if (!pid)
   {
+    /* Cleanup in control sockets */
+    close(hcf.ctl[1]);
     close(fds[0]);
+
     ASSERT_DIE(container_counter < 0x6000);
     this_thread_id -= (container_counter << 1) + 0x3000 ;
     container_mainloop(fds[1]); /* this never returns */
@@ -556,10 +560,13 @@ container_start(void)
   c->cmsg_len = CMSG_LEN(sizeof fds[0]);
   memcpy(CMSG_DATA(c), &fds[0], sizeof fds[0]);
 
+  log(L_INFO "Sending socket");
+
   e = sendmsg(container_forker_fd, &m, 0);
   if (e < 0)
     log(L_ERR "Failed to send socket: %m");
 
+  log(L_INFO "Socket sent");
   exit(0);
 }
 
@@ -1158,7 +1165,7 @@ hcf_parse(byte *buf, int size)
 void
 hypervisor_container_fork(void)
 {
-  int fds[2], e;
+  int e, *fds = hcf.ctl;
 
   /* create socketpair before forking to do communication */
   e = socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds);
@@ -1226,4 +1233,3 @@ hypervisor_container_fork(void)
     hcf_parse(buf, rx);
   }
 }
-
