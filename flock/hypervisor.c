@@ -407,6 +407,7 @@ hexp_cleanup_after_fork(void)
 {
   birdloop_enter(he.loop);
   rp_free(he.p);
+  rem_node((node *) he.loop); /* FIXME: this is terrible but i'm lazy now */
   birdloop_leave(he.loop);
   birdloop_free(he.loop);
 }

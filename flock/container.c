@@ -403,6 +403,10 @@ container_mainloop(int fd)
 
   container_init_logger();
 
+  /* Run worker threads */
+  struct thread_config tc = {};
+  bird_thread_commit(&tc);
+
   while (1)
   {
     struct pollfd pfd = {
