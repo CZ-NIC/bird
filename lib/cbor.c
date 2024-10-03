@@ -3,6 +3,24 @@
 
 #include "lib/cbor.h"
 
+static const char *cbor_type_str_a[] = {
+  "POSINT",
+  "NEGINT",
+  "BYTES",
+  "TEXT",
+  "ARRAY",
+  "MAP",
+  "TAG",
+  "SPECIAL",
+};
+
+const char *
+cbor_type_str(enum cbor_basic_type t)
+{
+  return (t < ARRAY_SIZE(cbor_type_str_a)) ?
+    cbor_type_str_a[t] :
+    tmp_sprintf("(unknown: %u)", t);
+}
 
 void write_item(struct cbor_writer *writer, uint8_t major, uint64_t num);
 void check_memory(struct cbor_writer *writer, int add_size);
