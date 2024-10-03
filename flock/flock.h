@@ -22,11 +22,11 @@ struct flock_config {
 
 extern struct flock_config flock_config;
 
-struct cbor_parser_context *hcs_parser_init(sock *s);
-s64 hcs_parse(struct cbor_parser_context *ctx, const byte *buf, s64 size);
-void hcs_parser_cleanup(struct cbor_parser_context *ctx);
-const char *hcs_error(struct cbor_parser_context *ctx);
-bool hcs_complete(struct cbor_parser_context *ctx);
+struct hcs_parser_context *hcs_parser_init(sock *s);
+s64 hcs_parse(struct hcs_parser_context *ctx, const byte *buf, s64 size);
+void hcs_parser_cleanup(struct hcs_parser_context *ctx);
+const char *hcs_error(struct hcs_parser_context *ctx);
+bool hcs_complete(struct hcs_parser_context *ctx);
 
 void hexp_get_telnet(sock *, const char *name);
 
