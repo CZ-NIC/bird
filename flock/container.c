@@ -940,114 +940,36 @@ hypervisor_container_shutdown(sock *s, const char *name)
   birdloop_leave(hcf.loop);
 }
 
-struct cbor_parser_context {
-  linpool *lp;
-
-  PACKED enum {
-    CPE_TYPE = 0,
-    CPE_READ_INT,
-    CPE_COMPLETE_INT,
-    CPE_READ_BYTE,
-  } partial_state, partial_next;
-
-  byte type;
-  u64 value;
-  u64 partial_countdown;
+struct ccs_parser_context {
+  struct cbor_parser_context *ctx;
 
   u64 bytes_consumed;
-
-  byte *target_buf;
-  uint target_len;
-
   u64 major_state;
-
-  const char *error;
-
-#define LOCAL_STACK_MAX_DEPTH 3
-  u64 stack_countdown[LOCAL_STACK_MAX_DEPTH];
-  uint stack_pos;
 };
 
 #define CBOR_PARSER_ERROR bug
 
-#define CBOR_PARSER_READ_INT(next)  do {		\
-  ctx->partial_state = CPE_READ_INT;			\
-  ctx->partial_countdown = (1 << (ctx->value - 24));	\
-  ctx->value = 0;					\
-  ctx->partial_next = next;				\
-} while (0)
-
-static struct cbor_parser_context ctx_, *ctx = &ctx_;
+static struct ccs_parser_context ccx_, *ccx = &ccx_;
 
 static void
 hcf_parse(byte *buf, int size)
 {
   ASSERT_DIE(size > 0);
+  struct cbor_parser_context *ctx = ccx->ctx;
 
   for (int pos = 0; pos < size; pos++)
   {
-    const byte bp = buf[pos];
-    bool value_is_special = 0;
-    bool exit_stack = false;
-
-    switch (ctx->partial_state)
+    switch (cbor_parse_byte(ctx, buf[pos]))
     {
-      case CPE_TYPE:
-	/* Split the byte to type and value */
-	ctx->type = bp >> 5;
-	ctx->value = bp & 0x1f;
+      case CPR_ERROR:
+	bug("CBOR parser failure: %s", ctx->error);
 
-	if (ctx->type == 7)
-	{
-	  if (ctx->value < 20)
-	    CBOR_PARSER_ERROR("Unknown simple value %u", ctx->value);
-	  else if (ctx->value < 24)
-	    ; /* false, true, null, undefined */
-	  else if (ctx->value < 28)
-	  {
-	    /* Need more data */
-	    CBOR_PARSER_READ_INT(CPE_COMPLETE_INT);
-	    break;
-	  }
-	  else if (ctx->value == 31)
-	    ; /* break-stop */
-	  else
-	    CBOR_PARSER_ERROR("Unknown simple value %u", ctx->value);
-	}
-	else
-	{
-	  if (ctx->value < 24)
-	    ; /* Immediate value, fall through */
-	  else if (ctx->value < 28)
-	  {
-	    /* Need more data */
-	    CBOR_PARSER_READ_INT(CPE_COMPLETE_INT);
-	    break;
-	  }
-	  else if ((ctx->value == 31) && (ctx->type >= 2) && (ctx->type <= 5))
-	    /* Indefinite length, fall through */
-	    value_is_special = 1;
-	  else
-	    CBOR_PARSER_ERROR("Garbled additional value %u for type %u", ctx->value, ctx->type);
-	}
-	/* fall through */
+      case CPR_MORE:
+	continue;
 
-      case CPE_READ_INT:
-	if (ctx->partial_state == CPE_READ_INT)
-	{
-	  /* Reading a network order integer */
-	  ctx->value <<= 8;
-	  ctx->value |= bp;
-	  if (--ctx->partial_countdown)
-	    break;
-	}
-	/* fall through */
-
-      case CPE_COMPLETE_INT:
-	/* TODO: exception for 7-31 end of long thing */
-
+      case CPR_MAJOR:
 	/* Check type acceptance */
-	switch (ctx->major_state)
+	switch (ccx->major_state)
 	{
 	  case 0: /* toplevel */
 	    if (ctx->type != 5)
@@ -1055,7 +977,7 @@ hcf_parse(byte *buf, int size)
 
 	    ccf = (struct container_config) {};
 
-	    ctx->major_state = 1;
+	    ccx->major_state = 1;
 	    break;
 
 	  case 1: /* inside toplevel mapping */
@@ -1065,14 +987,14 @@ hcf_parse(byte *buf, int size)
 	    if (ctx->value >= 3)
 	      CBOR_PARSER_ERROR("Mapping key too high, got %lu", ctx->value);
 
-	    ctx->major_state = ctx->value + 2;
+	    ccx->major_state = ctx->value + 2;
 	    break;
 
 	  case 2: /* machine hostname */
 	    if (ctx->type != 3)
 	      CBOR_PARSER_ERROR("Expected string, got %u", ctx->type);
 
-	    if (value_is_special)
+	    if (ctx->tflags & CPT_VARLEN)
 	      CBOR_PARSER_ERROR("Variable length string not supported yet");
 
 	    if (ccf.hostname)
@@ -1087,7 +1009,7 @@ hcf_parse(byte *buf, int size)
 	    if (ctx->type != 3)
 	      CBOR_PARSER_ERROR("Expected string, got %u", ctx->type);
 
-	    if (value_is_special)
+	    if (ctx->tflags & CPT_VARLEN)
 	      CBOR_PARSER_ERROR("Variable length string not supported yet");
 
 	    if (ccf.workdir)
@@ -1102,7 +1024,7 @@ hcf_parse(byte *buf, int size)
 	    if (ctx->type != 3)
 	      CBOR_PARSER_ERROR("Expected string, got %u", ctx->type);
 
-	    if (value_is_special)
+	    if (ctx->tflags & CPT_VARLEN)
 	      CBOR_PARSER_ERROR("Variable length string not supported yet");
 
 	    if (ccf.basedir)
@@ -1116,79 +1038,38 @@ hcf_parse(byte *buf, int size)
 	  default:
 	    bug("invalid parser state");
 	}
-
-	/* Some types are completely parsed, some not yet */
-	switch (ctx->type)
-	{
-	  case 0:
-	  case 1:
-	  case 7:
-	    exit_stack = !--ctx->stack_countdown[ctx->stack_pos];
-	    ctx->partial_state = CPE_TYPE;
-	    break;
-
-	  case 2:
-	  case 3:
-	    ctx->partial_state = CPE_READ_BYTE;
-	    ctx->partial_countdown = ctx->value;
-	    ctx->target_buf = ctx->target_buf ?: lp_allocu(
-		ctx->lp, ctx->target_len = (ctx->target_len ?: ctx->value));
-	    break;
-
-	  case 4:
-	  case 5:
-	    if (++ctx->stack_pos >= LOCAL_STACK_MAX_DEPTH)
-	      CBOR_PARSER_ERROR("Stack too deep");
-
-	    /* set array/map size;
-	     * once for arrays, twice for maps;
-	     * ~0 for indefinite */
-	    ctx->stack_countdown[ctx->stack_pos] = value_is_special ? ~0ULL :
-	      (ctx->value * (ctx->type - 3));
-	    ctx->partial_state = CPE_TYPE;
-	    break;
-	}
-
 	break;
 
-      case CPE_READ_BYTE:
-	*ctx->target_buf = bp;
-	ctx->target_buf++;
-	if (--ctx->target_len)
-	  break;
-
-	/* Read completely! */
-	switch (ctx->major_state)
+      case CPR_STR_END:
+	/* Bytes read completely! */
+	switch (ccx->major_state)
 	{
 	  case 2:
 	  case 3:
 	  case 4:
-	    ctx->major_state = 1;
+	    ccx->major_state = 1;
 	    break;
 
 	  default:
 	    bug("Unexpected state to end a (byte)string in");
 	  /* Code to run at the end of a (byte)string */
 	}
+	break;
 
-	ctx->target_buf = NULL;
-	ctx->partial_state = CPE_TYPE;
-
-	exit_stack = !--ctx->stack_countdown[ctx->stack_pos];
     }
 
     /* End of array or map */
-    while (exit_stack)
+    while (cbor_parse_block_end(ctx))
     {
-      switch (ctx->major_state)
+      switch (ccx->major_state)
       {
 	/* Code to run at the end of the mapping */
 	case 0: /* toplevel item ended */
 	  /* Reinit the parser */
 	  ctx->type = 0xff;
-	  ctx->major_state = 0;
+	  ccx->major_state = 0;
 	  ctx->stack_countdown[0] = 1;
-	  ctx->bytes_consumed = 0;
+	  ccx->bytes_consumed = 0;
 
 	  if (size > pos + 1)
 	    hcf_parse(buf + pos + 1, size - pos - 1);
@@ -1206,20 +1087,16 @@ hcf_parse(byte *buf, int size)
 
 	  container_start();
 
-	  ctx->major_state = 0;
+	  ccx->major_state = 0;
 	  break;
 
 	default:
 	  bug("Unexpected state to end a mapping in");
       }
-
-      /* Check exit from the next item */
-      ASSERT_DIE(ctx->stack_pos);
-      exit_stack = !--ctx->stack_countdown[--ctx->stack_pos];
     }
   }
 
-  ctx->bytes_consumed += size;
+  ccx->bytes_consumed += size;
 }
 
 void
@@ -1269,9 +1146,7 @@ hypervisor_container_fork(void)
   this_thread_id |= 0xf000;
 
   /* initialize the forker */
-  ctx->lp = lp_new(&root_pool);
-  ctx->type = 0xff;
-  ctx->stack_countdown[0] = 1;
+  ccx->ctx = cbor_parser_new(&root_pool, 2);
 
   while (true)
   {
