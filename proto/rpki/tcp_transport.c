@@ -24,9 +24,15 @@
 static int
 rpki_tr_tcp_open(struct rpki_tr_sock *tr)
 {
+  struct rpki_cache *cache = tr->cache;
+  struct rpki_config *cf = (void *) cache->p->p.cf;
+  struct rpki_tr_tcp_config *tcp_cf = (void *) cf->tr_config.spec;
   sock *sk = tr->sk;
 
   sk->type = SK_TCP_ACTIVE;
+
+  if (tcp_cf->auth_type == RPKI_TCP_AUTH_MD5)
+    sk->password = tcp_cf->password;
 
   if (sk_open(sk) != 0)
     return RPKI_TR_ERROR;

@@ -685,6 +685,24 @@ rpki_reconfigure_cache(struct rpki_proto *p UNUSED, struct rpki_cache *cache, st
     try_reset = 1;
   }
 
+  if (new->tr_config.type == RPKI_TR_TCP)
+  {
+    struct rpki_tr_tcp_config *tcp_old = (void *) old->tr_config.spec;
+    struct rpki_tr_tcp_config *tcp_new = (void *) new->tr_config.spec;
+
+    if (tcp_old->auth_type != tcp_new->auth_type)
+    {
+      CACHE_TRACE(D_EVENTS, cache, "Authentication type changed");
+      return NEED_RESTART;
+    }
+
+    if (bstrcmp(tcp_old->password, tcp_new->password))
+    {
+      CACHE_TRACE(D_EVENTS, cache, "MD5 password changed");
+      return NEED_RESTART;
+    }
+  }
+
 #if HAVE_LIBSSH
   else if (new->tr_config.type == RPKI_TR_SSH)
   {
@@ -842,8 +860,12 @@ rpki_show_proto_info(struct proto *P)
       default_port = RPKI_SSH_PORT;
       break;
 #endif
-    case RPKI_TR_TCP:
-      transport_name = "Unprotected over TCP";
+    case RPKI_TR_TCP:;
+      struct rpki_tr_tcp_config *tcp_cf = (void *) cf->tr_config.spec;
+      if (tcp_cf->auth_type == RPKI_TCP_AUTH_MD5)
+	transport_name = "TCP-MD5";
+      else
+	transport_name = "Unprotected over TCP";
       default_port = RPKI_TCP_PORT;
       break;
     };
