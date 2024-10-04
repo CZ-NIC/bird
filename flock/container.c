@@ -78,6 +78,8 @@ container_poweroff(int fd, int sig)
   cbor_add_int(cw, -4);
   cbor_add_int(cw, sig);
   ASSERT_DIE(write(fd, outbuf, cw->pt) == cw->pt);
+
+  unlink("/dev/log");
 }
 
 static void
@@ -322,10 +324,10 @@ container_mainloop(int fd)
   SYSCALL(lstat, "/" #path, &s); \
   switch (s.st_mode & S_IFMT) { \
     case S_IFLNK: \
-      copylink("/" #path, s.st_size, "./root/" #path); \
+      copylink("/" #path, s.st_size, "./lower/" #path); \
       break; \
     case S_IFDIR: \
-      close(GETDIR(lp_strdup(lp, "./root/" #path))); \
+      close(GETDIR(lp_strdup(lp, "./lower/" #path))); \
       SYSCALL(mount, "/" #path, "./root/" #path, NULL, MS_BIND | MS_REC, NULL); \
       break; \
   } \
@@ -339,14 +341,17 @@ container_mainloop(int fd)
     BINDMOUNT(sbin);
     BINDMOUNT(usr);
 
-    close(GETDIR(lp_strdup(lp, "./lower/dev")));
+    close(GETDIR(lp_strdup(lp, "./lower/dev/pts")));
+    symlink("/dev/pts/ptmx", "./lower/dev/ptmx");
 
     DIR *x = opendir("/dev");
     for (struct dirent *e; e = readdir(x); )
     {
       if (!strcmp(e->d_name, ".")
 	  || !strcmp(e->d_name, "..")
-	  || !strcmp(e->d_name, "ptmx"))
+	  || !strcmp(e->d_name, "ptmx")
+	  || !strcmp(e->d_name, "log")
+	 )
 	continue;
 
       const char *path = lp_sprintf(lp, "./lower/dev/%s", e->d_name);
@@ -385,27 +390,21 @@ container_mainloop(int fd)
       }
     }
   }
+
+  MKDIR("./lower/proc");
+  MKDIR("./lower/sys");
+  MKDIR("./lower/run");
+  MKDIR("./lower/tmp");
   
   SYSCALL(chroot, "./root");
   SYSCALL(chdir, "/");
 
   /* Remounting proc to reflect the new PID namespace */
-  MKDIR("/proc");
   SYSCALL(mount, "proc", "/proc", "proc", MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL);
-
-  MKDIR("/sys");
   SYSCALL(mount, "sysfs", "/sys", "sysfs", MS_NOSUID | MS_NODEV | MS_NOEXEC, NULL);
-
-  MKDIR("/run");
   SYSCALL(mount, "tmpfs", "/run", "tmpfs", MS_NOSUID | MS_NODEV, NULL);
-
-  MKDIR("/tmp");
   SYSCALL(mount, "tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV, NULL);
-
-  MKDIR("/dev/pts");
   SYSCALL(mount, "devpts", "/dev/pts", "devpts", MS_NOSUID | MS_NOEXEC, "ptmxmode=600");
-
-  symlink("/dev/pts/ptmx", "/dev/ptmx");
 
   container_init_logger();
 
