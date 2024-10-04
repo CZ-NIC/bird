@@ -75,7 +75,6 @@ struct aggregator_proto {
   event reload_buckets;
 
   /* Aggregation trie */
-  int first_run;
   uint addr_type;
   linpool *trie_pool;
   struct trie_node *root;

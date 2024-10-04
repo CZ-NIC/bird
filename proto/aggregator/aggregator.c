@@ -1077,16 +1077,6 @@ run_aggregation(struct aggregator_proto *p)
   log("---- AGGREGATION DONE ----");
 }
 
-static void
-flush_aggregator(struct aggregator_proto *p)
-{
-  lp_flush(p->bucket_pool);
-  lp_flush(p->route_pool);
-  lp_flush(p->trie_pool);
-
-  memset(p->bucket_list, 0, sizeof(p->bucket_list[0]) * p->bucket_list_size);
-}
-
 static void trie_init(struct aggregator_proto *p);
 
 static void
@@ -1105,16 +1095,11 @@ aggregate_on_feed_end(struct channel *C)
 
   trie_init(p);
   run_aggregation(p);
-  flush_aggregator(p);
 
-  p->root = NULL;
   p->before_count = 0;
   p->after_count = 0;
   p->internal_nodes = 0;
   p->leaves = 0;
-
-  if (p->first_run)
-    p->first_run = 0;
 }
 
 /*
@@ -1752,21 +1737,6 @@ aggregator_init(struct proto_config *CF)
 static void
 trie_init(struct aggregator_proto *p)
 {
-  /*
-   * Hash tables are initialized in aggregator_start() before the first run.
-   * They are initialized here for all subsequent runs.
-   */
-  if (!p->first_run)
-  {
-    HASH_INIT(p->buckets, p->p.pool, AGGR_BUCK_ORDER);
-    HASH_INIT(p->routes, p->p.pool, AGGR_RTE_ORDER);
-
-    p->reload_buckets = (event) {
-      .hook = aggregator_reload_buckets,
-      .data = p,
-    };
-  }
-
   p->root = create_new_node(p->trie_pool);
   p->root->depth = 1;
 
@@ -1834,6 +1804,7 @@ aggregator_start(struct proto *P)
   assert(p->bucket_pool == NULL);
   assert(p->route_pool == NULL);
   assert(p->trie_pool == NULL);
+  assert(p->root == NULL);
 
   p->addr_type = p->src->table->addr_type;
 
@@ -1863,8 +1834,6 @@ aggregator_start(struct proto *P)
   hmap_init(&p->bucket_id_map, p->p.pool, 1024);
   hmap_set(&p->bucket_id_map, 0);       /* 0 is default value, do not use it as ID */
 
-  p->first_run = 1;
-
   times_update(&main_timeloop);
   log("==== FEED START ====");
 
@@ -1874,11 +1843,6 @@ aggregator_start(struct proto *P)
 static int
 aggregator_shutdown(struct proto *P)
 {
-  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
-
-  assert(p->root == NULL);
-  flush_aggregator(p);
-
   return PS_DOWN;
 }
 
@@ -1895,9 +1859,7 @@ aggregator_cleanup(struct proto *P)
   p->route_pool = NULL;
   p->trie_pool = NULL;
 
-  assert(p->root == NULL);
   p->root = NULL;
-  p->first_run = 1;
 
   p->before_count = 0;
   p->after_count = 0;
