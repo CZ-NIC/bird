@@ -146,7 +146,7 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	    break;
 
 	  case 7: /* process spawner */
-	    CBOR_PARSER_ERROR("NOT IMPLEMENTED YET");
+	    bug("process spawner not implemented");
 	    break;
 
 	  case 501: /* machine creation argument */
@@ -256,10 +256,6 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	    hexp_get_telnet(htx->sock, htx->cfg.cf.name);
 	    htx->major_state = 1;
 	    break;
-
-	  case 5:
-	    /* Actually not this one */
-	    CBOR_PARSER_ERROR("NOT IMPLEMENTED YET");
 
 	  case 502:
 	  case 504:
