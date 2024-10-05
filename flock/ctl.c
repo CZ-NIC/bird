@@ -80,13 +80,11 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	    break;
 
 	  case 1: /* inside toplevel mapping */
-	    if (ctx->type != 0)
-	      CBOR_PARSER_ERROR("Expected integer, got %u", ctx->type);
+	    CBOR_PARSE_ONLY(ctx, POSINT, htx->major_state);
+	    if (htx->major_state >= 5)
+	      CBOR_PARSER_ERROR("Command key too high, got %lu", htx->major_state);
 
-	    if (ctx->value >= 5)
-	      CBOR_PARSER_ERROR("Command key too high, got %lu", ctx->value);
-
-	    htx->major_state = ctx->value + 2;
+	    htx->major_state += 2;
 	    break;
 
 	  case 2: /* shutdown command: expected null */
@@ -114,13 +112,10 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	      break;
 	    }
 
-	    else if (ctx->type != 3)
-	      CBOR_PARSER_ERROR("Expected null or string, got %u-%u", ctx->type, ctx->value);
-
-	    ASSERT_DIE(!ctx->target_buf);
-	    htx->cfg.cf.name = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
-	    ctx->target_len = ctx->value;
-
+	    else CBOR_PARSE_IF(ctx, TEXT, htx->cfg.cf.name)
+	      ;
+	    else
+	      CBOR_PARSER_ERROR("Expected null or string, got %s", cbor_type_str(ctx->type));
 	    break;
 
 	  case 4: /* telnet listener close */
@@ -150,97 +145,46 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	    break;
 
 	  case 501: /* machine creation argument */
-	    if (ctx->type != 0)
-	      CBOR_PARSER_ERROR("Expected integer, got %u", ctx->type);
+	    CBOR_PARSE_ONLY(ctx, POSINT, htx->major_state);
 
 	    if (ctx->value >= 5)
 	      CBOR_PARSER_ERROR("Command key too high, got %lu", ctx->value);
 
-	    htx->major_state = ctx->value + 502;
+	    htx->major_state += 502;
 	    break;
 
 	  case 502: /* machine creation argument 0: name */
-	    if (ctx->type != 3)
-	      CBOR_PARSER_ERROR("Expected string, got %u", ctx->type);
-
-	    if (ctx->tflags & CPT_VARLEN)
-	      CBOR_PARSER_ERROR("Variable length string not supported yet");
-
-	    if (htx->cfg.cf.name)
-	      CBOR_PARSER_ERROR("Duplicate argument 0 / name");
-
-	    ASSERT_DIE(!ctx->target_buf);
-	    htx->cfg.cf.name = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
-	    ctx->target_len = ctx->value;
+	    CBOR_PARSE_ONLY(ctx, TEXT, htx->cfg.cf.name);
 	    break;
 
 	  case 503: /* machine creation argument 1: type */
-	    if (ctx->type != 0)
-	      CBOR_PARSER_ERROR("Expected integer, got %u", ctx->type);
-
-	    if (htx->cfg.cf.type)
-	      CBOR_PARSER_ERROR("Duplicate argument 1 / type, already have %d", htx->cfg.cf.type);
+	    CBOR_PARSE_ONLY(ctx, POSINT, htx->cfg.cf.type);
 
 	    if ((ctx->value < 1) && (ctx->value > 1) )
 	      CBOR_PARSER_ERROR("Unexpected type, got %lu", ctx->value);
 
-	    htx->cfg.cf.type = ctx->value;
 	    htx->major_state = 501;
 	    break;
 
 	  case 504: /* machine creation argument 2: basedir */
-	    if (ctx->type != 2)
-	      CBOR_PARSER_ERROR("Expected bytestring, got %u", ctx->type);
-
-	    if (ctx->tflags & CPT_VARLEN)
-	      CBOR_PARSER_ERROR("Variable length string not supported yet");
-
-	    if (htx->cfg.container.basedir)
-	      CBOR_PARSER_ERROR("Duplicate argument 2 / basedir");
-
-	    ASSERT_DIE(!ctx->target_buf);
-	    htx->cfg.container.basedir = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
-	    ctx->target_len = ctx->value;
+	    CBOR_PARSE_ONLY(ctx, BYTES, htx->cfg.container.basedir);
 	    break;
 
 	  case 505: /* machine creation argument 3: workdir */
-	    if (ctx->type != 2)
-	      CBOR_PARSER_ERROR("Expected bytestring, got %u", ctx->type);
-
-	    if (ctx->tflags & CPT_VARLEN)
-	      CBOR_PARSER_ERROR("Variable length string not supported yet");
-
-	    if (htx->cfg.container.workdir)
-	      CBOR_PARSER_ERROR("Duplicate argument 3 / workdir");
-
-	    ASSERT_DIE(!ctx->target_buf);
-	    htx->cfg.container.workdir = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
-	    ctx->target_len = ctx->value;
+	    CBOR_PARSE_ONLY(ctx, BYTES, htx->cfg.container.workdir);
 	    break;
 
 	  case 601: /* machine shutdown argument */
-	    if (ctx->type != 0)
-	      CBOR_PARSER_ERROR("Expected integer, got %u", ctx->type);
+	    CBOR_PARSE_ONLY(ctx, POSINT, htx->major_state);
 
-	    if (ctx->value >= 1)
+	    if (ctx->value >= 5)
 	      CBOR_PARSER_ERROR("Command key too high, got %lu", ctx->value);
 
-	    htx->major_state = ctx->value + 602;
+	    htx->major_state += 602;
 	    break;
 
 	  case 602: /* machine creation argument 0: name */
-	    if (ctx->type != 3)
-	      CBOR_PARSER_ERROR("Expected string, got %u", ctx->type);
-
-	    if (ctx->tflags & CPT_VARLEN)
-	      CBOR_PARSER_ERROR("Variable length string not supported yet");
-
-	    if (htx->cfg.cf.name)
-	      CBOR_PARSER_ERROR("Duplicate argument 0 / name");
-
-	    ASSERT_DIE(!ctx->target_buf);
-	    htx->cfg.cf.name = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
-	    ctx->target_len = ctx->value;
+	    CBOR_PARSE_ONLY(ctx, TEXT, htx->cfg.cf.name);
 	    break;
 
 	  default:

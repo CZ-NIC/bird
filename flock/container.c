@@ -1066,10 +1066,9 @@ hcf_parse(byte *buf, int size)
 	/* Code to run at the end of the mapping */
 	case 0: /* toplevel item ended */
 	  /* Reinit the parser */
-	  ctx->type = 0xff;
 	  ccx->major_state = 0;
-	  ctx->stack_countdown[0] = 1;
 	  ccx->bytes_consumed = 0;
+	  cbor_parser_reset(ccx->ctx);
 
 	  if (size > pos + 1)
 	    hcf_parse(buf + pos + 1, size - pos - 1);
