@@ -362,7 +362,7 @@ container_mainloop(int fd)
       SYSCALL(lstat, orig, &s);
       if (!(s.st_mode & S_IRWXO))
       {
-	log(L_INFO "ignoring unusable device %s", e->d_name);
+//	log(L_INFO "ignoring unusable device %s", e->d_name);
 	continue;
       }
 
@@ -373,7 +373,7 @@ container_mainloop(int fd)
 	case S_IFCHR:
 	case S_IFBLK:
 	case S_IFREG:
-	  log(L_INFO "bindmounting device %s", e->d_name);
+//	  log(L_INFO "bindmounting device %s", e->d_name);
 	  SYSCALL(close, SYSCALL(open, path, O_WRONLY | O_CREAT, 0666));
 	  int me = mount(orig, mpnt, NULL, MS_BIND, NULL);
 	  if (me < 0)
@@ -386,7 +386,8 @@ container_mainloop(int fd)
 	  break;
 
 	default:
-	  log(L_INFO "ignoring device %s", e->d_name);
+//	  log(L_INFO "ignoring device %s", e->d_name);
+	  break;
       }
     }
   }
@@ -1004,7 +1005,7 @@ hcf_parse(byte *buf, int size)
 	    ctx->target_len = ctx->value;
 	    break;
 
-	  case 3: /* workdir */
+	  case 3: /* basedir */
 	    if (ctx->type != 3)
 	      CBOR_PARSER_ERROR("Expected string, got %u", ctx->type);
 
@@ -1012,25 +1013,25 @@ hcf_parse(byte *buf, int size)
 	      CBOR_PARSER_ERROR("Variable length string not supported yet");
 
 	    if (ccf.workdir)
-	      CBOR_PARSER_ERROR("Duplicate argument 1 / workdir");
+	      CBOR_PARSER_ERROR("Duplicate argument 1 / basedir");
 
 	    ASSERT_DIE(!ctx->target_buf);
-	    ccf.workdir = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
+	    ccf.basedir = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
 	    ctx->target_len = ctx->value;
 	    break;
 
-	  case 4: /* basedir */
+	  case 4: /* workdir */
 	    if (ctx->type != 3)
 	      CBOR_PARSER_ERROR("Expected string, got %u", ctx->type);
 
 	    if (ctx->tflags & CPT_VARLEN)
 	      CBOR_PARSER_ERROR("Variable length string not supported yet");
 
-	    if (ccf.basedir)
-	      CBOR_PARSER_ERROR("Duplicate argument 1 / basedir");
+	    if (ccf.workdir)
+	      CBOR_PARSER_ERROR("Duplicate argument 2 / workdir");
 
 	    ASSERT_DIE(!ctx->target_buf);
-	    ccf.basedir = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
+	    ccf.workdir = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
 	    ctx->target_len = ctx->value;
 	    break;
 

@@ -188,22 +188,7 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	    htx->major_state = 501;
 	    break;
 
-	  case 504: /* machine creation argument 2: workdir */
-	    if (ctx->type != 2)
-	      CBOR_PARSER_ERROR("Expected bytestring, got %u", ctx->type);
-
-	    if (ctx->tflags & CPT_VARLEN)
-	      CBOR_PARSER_ERROR("Variable length string not supported yet");
-
-	    if (htx->cfg.container.workdir)
-	      CBOR_PARSER_ERROR("Duplicate argument 2 / workdir");
-
-	    ASSERT_DIE(!ctx->target_buf);
-	    htx->cfg.container.workdir = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
-	    ctx->target_len = ctx->value;
-	    break;
-
-	  case 505: /* machine creation argument 3: basedir */
+	  case 504: /* machine creation argument 2: basedir */
 	    if (ctx->type != 2)
 	      CBOR_PARSER_ERROR("Expected bytestring, got %u", ctx->type);
 
@@ -211,10 +196,25 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	      CBOR_PARSER_ERROR("Variable length string not supported yet");
 
 	    if (htx->cfg.container.basedir)
-	      CBOR_PARSER_ERROR("Duplicate argument 3 / basedir");
+	      CBOR_PARSER_ERROR("Duplicate argument 2 / basedir");
 
 	    ASSERT_DIE(!ctx->target_buf);
 	    htx->cfg.container.basedir = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
+	    ctx->target_len = ctx->value;
+	    break;
+
+	  case 505: /* machine creation argument 3: workdir */
+	    if (ctx->type != 2)
+	      CBOR_PARSER_ERROR("Expected bytestring, got %u", ctx->type);
+
+	    if (ctx->tflags & CPT_VARLEN)
+	      CBOR_PARSER_ERROR("Variable length string not supported yet");
+
+	    if (htx->cfg.container.workdir)
+	      CBOR_PARSER_ERROR("Duplicate argument 3 / workdir");
+
+	    ASSERT_DIE(!ctx->target_buf);
+	    htx->cfg.container.workdir = ctx->target_buf = lp_alloc(ctx->lp, ctx->value + 1);
 	    ctx->target_len = ctx->value;
 	    break;
 
