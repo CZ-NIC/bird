@@ -71,13 +71,21 @@ static int container_forker_fd = -1;
 static void
 container_poweroff(int fd, int sig)
 {
-  byte outbuf[128];
-  linpool *lp = lp_new(&root_pool);
-  struct cbor_writer *cw = cbor_init(outbuf, sizeof outbuf, lp);
-  cbor_open_block_with_length(cw, 1);
-  cbor_add_int(cw, -4);
-  cbor_add_int(cw, sig);
-  ASSERT_DIE(write(fd, outbuf, cw->pt) == cw->pt);
+  struct {
+    struct cbor_writer w;
+    struct cbor_writer_stack_item si[2];
+    byte buf[128];
+  } _cw;
+
+  struct cbor_writer *cw = cbor_writer_init(&_cw.w, 2, _cw.buf, sizeof _cw.buf);
+  CBOR_PUT_MAP(cw)
+  {
+    cbor_put_int(cw, -4);
+    cbor_put_int(cw, sig);
+  }
+  ASSERT_DIE(cbor_writer_done(cw) == 1);
+  s64 sz = cw->data.pos - cw->data.start;
+  ASSERT_DIE(write(fd, cw->data.start, sz) == sz);
 
   unlink("/dev/log");
 }
@@ -597,15 +605,22 @@ container_start(void)
 
   close(fds[1]);
 
-  byte outbuf[128];
-  linpool *lp = lp_new(&root_pool);
-  struct cbor_writer *cw = cbor_init(outbuf, sizeof outbuf, lp);
-  cbor_open_block_with_length(cw, 1);
-  cbor_add_int(cw, -2);
-  cbor_add_int(cw, pid);
+  struct {
+    struct cbor_writer w;
+    struct cbor_writer_stack_item si[2];
+    byte buf[128];
+  } _cw;
+
+  struct cbor_writer *cw = cbor_writer_init(&_cw.w, 2, _cw.buf, sizeof _cw.buf);
+  CBOR_PUT_MAP(cw)
+  {
+    cbor_put_int(cw, -2);
+    cbor_put_int(cw, pid);
+  }
+
   struct iovec v = {
-    .iov_base = outbuf,
-    .iov_len = cw->pt,
+    .iov_base = cw->data.start,
+    .iov_len = cw->data.pos - cw->data.start,
   };
   byte cbuf[CMSG_SPACE(sizeof fds[0])];
   struct msghdr m = {
@@ -766,13 +781,18 @@ container_created(callback *cb)
   SKIP_BACK_DECLARE(struct container_operation_callback, ccc, cb, cb);
 
   sock *s = ccc->s;
-  linpool *lp = lp_new(s->pool);
-  struct cbor_writer *cw = cbor_init(s->tbuf, s->tbsize, lp);
-  cbor_open_block_with_length(cw, 1);
-  cbor_add_int(cw, -1);
-  cbor_add_string(cw, "OK");
-  sk_send(s, cw->pt);
-  rfree(lp);
+  struct {
+    struct cbor_writer w;
+    struct cbor_writer_stack_item si[2];
+  } _cw;
+
+  struct cbor_writer *cw = cbor_writer_init(&_cw.w, 2, s->tbuf, s->tbsize);
+  CBOR_PUT_MAP(cw)
+  {
+    cbor_put_int(cw, -1);
+    cbor_put_string(cw, "OK");
+  }
+  sk_send(s, cw->data.pos - cw->data.start);
 
   s->data = ccc->data;
   sk_resume_rx(s->loop, s);
@@ -789,13 +809,19 @@ hypervisor_container_request(sock *s, const char *name, const char *basedir, con
   struct container_runtime *crt = HASH_FIND(hcf.hash, CRT, name, h);
   if (crt)
   {
-    linpool *lp = lp_new(hcf.p);
-    struct cbor_writer *cw = cbor_init(s->tbuf, s->tbsize, lp);
-    cbor_open_block_with_length(cw, 1);
-    cbor_add_int(cw, -127);
-    cbor_add_string(cw, "BAD: Already exists");
+    struct {
+      struct cbor_writer w;
+      struct cbor_writer_stack_item si[2];
+    } _cw;
 
-    sk_send(s, cw->pt);
+    struct cbor_writer *cw = cbor_writer_init(&_cw.w, 2, s->tbuf, s->tbsize);
+    CBOR_PUT_MAP(cw)
+    {
+      cbor_put_int(cw, -127);
+      cbor_put_string(cw, "BAD: Already exists");
+    }
+
+    sk_send(s, cw->data.pos - cw->data.start);
 
     birdloop_leave(hcf.loop);
     return;
@@ -838,17 +864,23 @@ hypervisor_container_request(sock *s, const char *name, const char *basedir, con
 
   log(L_INFO "requesting machine creation, socket %p", s);
 
-  linpool *lp = lp_new(hcf.p);
-  struct cbor_writer *cw = cbor_init(hcf.s->tbuf, hcf.s->tbsize, lp);
-  cbor_open_block_with_length(cw, 3);
-  cbor_add_int(cw, 0);
-  cbor_add_string(cw, name);
-  cbor_add_int(cw, 1);
-  cbor_add_string(cw, basedir);
-  cbor_add_int(cw, 2);
-  cbor_add_string(cw, workdir);
-  sk_send(hcf.s, cw->pt);
-  rfree(lp);
+  struct {
+    struct cbor_writer w;
+    struct cbor_writer_stack_item si[2];
+  } _cw;
+
+  struct cbor_writer *cw = cbor_writer_init(&_cw.w, 2, s->tbuf, s->tbsize);
+  CBOR_PUT_MAP(cw)
+  {
+    cbor_put_int(cw, 0);
+    cbor_put_string(cw, name);
+    cbor_put_int(cw, 1);
+    cbor_put_string(cw, basedir);
+    cbor_put_int(cw, 2);
+    cbor_put_string(cw, workdir);
+  }
+
+  sk_send(s, cw->data.pos - cw->data.start);
 
   s->err_paused = crt_err;
   s->data = crt;
@@ -863,13 +895,19 @@ container_stopped(callback *cb)
   SKIP_BACK_DECLARE(struct container_operation_callback, ccc, cb, cb);
 
   sock *s = ccc->s;
-  linpool *lp = lp_new(s->pool);
-  struct cbor_writer *cw = cbor_init(s->tbuf, s->tbsize, lp);
-  cbor_open_block_with_length(cw, 1);
-  cbor_add_int(cw, -1);
-  cbor_add_string(cw, "OK");
-  sk_send(s, cw->pt);
-  rfree(lp);
+  struct {
+    struct cbor_writer w;
+    struct cbor_writer_stack_item si[2];
+  } _cw;
+
+  struct cbor_writer *cw = cbor_writer_init(&_cw.w, 2, s->tbuf, s->tbsize);
+  CBOR_PUT_MAP(cw)
+  {
+    cbor_put_int(cw, -1);
+    cbor_put_string(cw, "OK");
+  }
+
+  sk_send(s, cw->data.pos - cw->data.start);
 
   s->data = ccc->data;
   sk_resume_rx(s->loop, s);
@@ -885,28 +923,38 @@ hypervisor_container_shutdown(sock *s, const char *name)
   uint h = mem_hash(name, strlen(name));
   struct container_runtime *crt = HASH_FIND(hcf.hash, CRT, name, h);
 
-  linpool *lp = lp_new(hcf.p);
-
   if (!crt || !crt->s)
   {
-    struct cbor_writer *cw = cbor_init(s->tbuf, s->tbsize, lp);
-    cbor_open_block_with_length(cw, 1);
-    cbor_add_int(cw, -127);
-    cbor_add_string(cw, "BAD: Not found");
+    struct {
+      struct cbor_writer w;
+      struct cbor_writer_stack_item si[2];
+    } _cw;
 
-    sk_send(s, cw->pt);
-    rfree(lp);
+    struct cbor_writer *cw = cbor_writer_init(&_cw.w, 2, s->tbuf, s->tbsize);
+    CBOR_PUT_MAP(cw)
+    {
+      cbor_put_int(cw, -127);
+      cbor_put_string(cw, "BAD: Not found");
+    }
+
+    sk_send(s, cw->data.pos - cw->data.start);
     birdloop_leave(hcf.loop);
     return;
   }
 
-  struct cbor_writer *cw = cbor_init(crt->s->tbuf, crt->s->tbsize, lp);
-  cbor_open_block_with_length(cw, 1);
-  cbor_add_int(cw, 0);
-  write_item(cw, 7, 22);
+  struct {
+    struct cbor_writer w;
+    struct cbor_writer_stack_item si[2];
+  } _cw;
 
-  sk_send(crt->s, cw->pt);
-  rfree(lp);
+  struct cbor_writer *cw = cbor_writer_init(&_cw.w, 2, s->tbuf, s->tbsize);
+  CBOR_PUT_MAP(cw)
+  {
+    cbor_put_int(cw, 0);
+    cbor_put_null(cw);
+  }
+
+  sk_send(s, cw->data.pos - cw->data.start);
 
   struct container_operation_callback *ccc = mb_alloc(s->pool, sizeof *ccc);
   *ccc = (struct container_operation_callback) {
