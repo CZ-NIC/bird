@@ -3,6 +3,7 @@
 
 #include "lib/cbor.h"
 
+/* String versions of type constants */
 static const char *cbor_type_str_a[] = {
   "POSINT",
   "NEGINT",
@@ -22,61 +23,178 @@ cbor_type_str(enum cbor_basic_type t)
     tmp_sprintf("(unknown: %u)", t);
 }
 
-void write_item(struct cbor_writer *writer, uint8_t major, uint64_t num);
-void check_memory(struct cbor_writer *writer, int add_size);
+/* Raw data writing */
 
-struct cbor_writer *cbor_init(uint8_t *buff, uint32_t capacity, struct linpool *lp)
+bool cbor_put_check(struct cbor_writer *w, u64 amount)
 {
-  struct cbor_writer *writer = (struct cbor_writer*)lp_alloc(lp, sizeof(struct cbor_writer));
-  writer->cbor = buff;
-  writer->capacity = capacity;
-  writer->pt = 0;
-  writer->lp = lp;
-  return writer;
-}
-  
-void cbor_open_block(struct cbor_writer *writer) { // We will need to close the block later manualy
-  check_memory(writer, 2);
-  writer->cbor[writer->pt] = 0xbf;
-  writer->pt++;
+  return w->data.pos + amount <= w->data.end;
 }
 
-void cbor_open_list(struct cbor_writer *writer)
+#define CBOR_PUT(amount) ({					\
+    byte *put = w->data.pos;					\
+    if ((w->data.pos += (amount)) >= w->data.end) return false;	\
+    put; })
+
+bool cbor_put_raw_u8(struct cbor_writer *w, byte b)
 {
-  check_memory(writer, 2);
-  writer->cbor[writer->pt] = 0x9f;
-  writer->pt++;
+  *(CBOR_PUT(1)) = b;
+  return true;
 }
 
-void cbor_close_block_or_list(struct cbor_writer *writer)
+bool cbor_put_raw_u16(struct cbor_writer *w, u16 val)
 {
-  check_memory(writer, 2);
-  writer->cbor[writer->pt] = 0xff;
-  writer->pt++;
+  put_u16(CBOR_PUT(2), val);
+  return true;
 }
 
-void cbor_open_block_with_length(struct cbor_writer *writer, uint32_t length)
+bool cbor_put_raw_u32(struct cbor_writer *w, u32 val)
 {
-  write_item(writer, 5, length);
+  put_u32(CBOR_PUT(4), val);
+  return true;
 }
 
-void cbor_open_list_with_length(struct cbor_writer *writer, uint32_t length)
+bool cbor_put_raw_u64(struct cbor_writer *w, u64 val)
 {
-  write_item(writer, 4, length);
+  put_u64(CBOR_PUT(8), val);
+  return true;
 }
 
-
-void cbor_add_int(struct cbor_writer *writer, int64_t item)
+bool cbor_put_raw_data(struct cbor_writer *w, const byte *block, u64 size)
 {
-  if (item >= 0)
+  memcpy(CBOR_PUT(size), block, size);
+  return true;
+}
+
+/* Basic value putting */
+bool cbor_put(struct cbor_writer *w, enum cbor_basic_type type, u64 value)
+{
+  ASSERT_DIE((type >= 0) && (type <= 8));
+  w->stack[w->stack_pos].items++;
+  byte tt = type << 5;
+  if (value < 0x18)
+    return
+      cbor_put_raw_u8(w, tt | value);
+  else if (value < 0x100)
+    return
+      cbor_put_raw_u8(w, tt | 0x18) &&
+      cbor_put_raw_u8(w, value);
+  else if (value < 0x10000)
+    return
+      cbor_put_raw_u8(w, tt | 0x19) &&
+      cbor_put_raw_u16(w, value);
+  else if (value < 0x100000000)
+    return
+      cbor_put_raw_u8(w, tt | 0x1a) &&
+      cbor_put_raw_u32(w, value);
+  else
+    return
+      cbor_put_raw_u8(w, tt | 0x1b) &&
+      cbor_put_raw_u64(w, value);
+}
+
+bool cbor_put_int(struct cbor_writer *w, int64_t value)
+{
+  if (value >= 0)
+    return cbor_put(w, CBOR_POSINT, value);
+  else
+    return cbor_put(w, CBOR_NEGINT, -1-value);
+}
+
+/* Strings */
+bool cbor_put_raw_bytes(struct cbor_writer *w, enum cbor_basic_type type, const byte *block, u64 size)
+{
+  return
+    cbor_put(w, type, size) &&
+    cbor_put_raw_data(w, block, size);
+}
+
+/* Arrays and maps */
+bool cbor_put_open(struct cbor_writer *w, enum cbor_basic_type type)
+{
+  if (++w->stack_pos >= w->stack_max)
+    return false;
+
+  w->stack[w->stack_pos].head = w->data.pos;
+  w->stack[w->stack_pos].items = 0;
+
+  return cbor_put(w, type, ~0ULL);
+}
+
+bool cbor_put_close(struct cbor_writer *w, u64 actual_size, bool strict)
+{
+  ASSERT_DIE(w->stack_pos > 0);
+
+  /* Pop the stack */
+  byte *head = w->stack[w->stack_pos].head;
+  u64 items = w->stack[w->stack_pos].items;
+
+  w->stack_pos--;
+
+  /* Check the original head position */
+  ASSERT_DIE((head[0] & 0x1f) == 0x1f);
+  ASSERT_DIE(w->data.pos >= w->data.start + 9);
+  switch (head[0] >> 5)
   {
-    write_item(writer, 0, item); // 0 is the "major" (three bits) introducing positive int, 1 is for negative
+    case CBOR_ARRAY:
+      if (strict && (items != actual_size))
+	bug("Inconsistent array item count");
+      break;
+
+    case CBOR_MAP:
+      if (strict && (items != actual_size * 2))
+	bug("Inconsistent map item count");
+      else if (items & 1)
+	bug("Trailing map key");
+      else
+	items /= 2;
+      break;
+
+    default:
+      bug("Head points to something other than array or map");
+  }
+
+  /* Move the data back */
+
+  if (items < 0x18)
+  {
+    memmove(head+1, head+9, w->data.pos - (head+9));
+    head[0] &= (0xe0 | items);
+    w->data.pos -= 8;
+  }
+  else if (items < 0x100)
+  {
+    memmove(head+2, head+9, w->data.pos - (head+9));
+    head[0] &= 0xf8;
+    head[1] = items;
+    w->data.pos -= 7;
+  }
+  else if (items < 0x10000)
+  {
+    memmove(head+3, head+9, w->data.pos - (head+9));
+    head[0] &= 0xf9;
+    put_u16(head+1, items);
+    w->data.pos -= 6;
+  }
+  else if (items < 0x100000000)
+  {
+    memmove(head+5, head+9, w->data.pos - (head+9));
+    head[0] &= 0xfa;
+    put_u32(head+1, items);
+    w->data.pos -= 4;
   }
   else
   {
-    write_item(writer, 1, -item - 1);
+    head[0] &= 0xfb;
+    put_u64(head+1, items);
   }
+
+  return true;
 }
+
+/* Tags: TODO! */
+
+
+#if 0
 
 void cbor_epoch_time(struct cbor_writer *writer, int64_t time, int shift)
 {
@@ -253,3 +371,4 @@ void check_memory(struct cbor_writer *writer, int add_size)
     bug("There is not enough space for cbor response in given buffer");
   }
 }
+#endif
