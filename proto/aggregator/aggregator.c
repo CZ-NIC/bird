@@ -142,7 +142,7 @@ remove_node(struct trie_node *node)
 }
 
 /*
- * Mark bucket with ID @id as present in bitmap of potential buckets in @node
+ * Insert @bucket to the set of potential buckets in @node
  */
 static inline void
 node_insert_potential_bucket(struct trie_node *node, const struct aggregator_bucket *bucket)
@@ -216,8 +216,8 @@ merge_potential_buckets(struct trie_node *target, const struct trie_node *left, 
     bucket_count += popcount32(target->potential_buckets[i]);
 
     /*
-     * If old and new value are different, the result of their XOR will be
-     * non-zero, thus @changed will be set to non-zero - true as well.
+     * If old and new values are different, the result of their XOR will be
+     * non-zero, thus @changed will be set to non-zero - true, as well.
      */
     changed |= !!(old[i] ^ target->potential_buckets[i]);
   }
@@ -347,7 +347,7 @@ trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
 }
 
 /*
- * Assign unique ID to all buckets
+ * Assign unique ID to @bucket
  */
 static void
 assign_bucket_id(struct aggregator_proto *p, struct aggregator_bucket *bucket)
@@ -445,7 +445,6 @@ second_pass(struct trie_node *node)
   /* Nodes with exactly one child */
   if ((left && !right) || (!left && right))
   {
-
     if (left && !right)
       right = &imaginary_node;
     else if (!left && right)
@@ -1472,7 +1471,6 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   /* Ignore all updates if protocol is not up */
   if (p->p.proto_state != PS_UP)
     return;
-
 
   /* Find the objects for the old route */
   if (old)
