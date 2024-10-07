@@ -280,9 +280,10 @@ proto_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket
 }
 
 /*
- * Insert prefix in @addr to prefix trie with beginning at @root and assign @bucket to this prefix
+ * Insert prefix in @addr to prefix trie with beginning at @root and assign @bucket to this prefix.
+ * If the prefix is already in the trie, update its bucket to @bucket and return updated node.
  */
-static void
+static struct trie_node *
 trie_insert_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 *addr, struct aggregator_bucket *bucket, linpool *trie_pool)
 {
   assert(addr != NULL);
@@ -312,9 +313,11 @@ trie_insert_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 
   /* Assign bucket to the last node */
   node->bucket = bucket;
   node->status = IN_FIB;
+
+  return node;
 }
 
-static void
+static struct trie_node *
 trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 *addr, struct aggregator_bucket *bucket, linpool *trie_pool)
 {
   assert(addr != NULL);
@@ -344,6 +347,8 @@ trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
   /* Assign bucket to the last node */
   node->bucket = bucket;
   node->status = IN_FIB;
+
+  return node;
 }
 
 /*
