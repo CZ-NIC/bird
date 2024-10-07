@@ -10,34 +10,66 @@
 /*
  * Hand-written parser for a very simple CBOR protocol:
  *
- * - on toplevel always mapping of one element
- * - key of the element may be:
- *   - 0 with NULL (7-22) = shutdown the hypervisor
- *   - 1 with NULL = open a telnet listener
- *   - 2 with NULL = close the telnet listener (if not used)
- *   - 3 with one string = create a machine of this name
- *   - 4 with array of strings = run the given command inside the hypervisor
+ * - on toplevel always array of three elements:
+ *   - the ID (u64)
+ *   - the command saying what to expect in the third element
+ *     - 0 with NULL (7-22) = shutdown the hypervisor
+ *     - 1 with NULL = open a telnet listener
+ *     - 2 with one string = create a machine of this name
+ *     - 3 with array of strings = run the given command inside the hypervisor
  */
 
 struct hcs_parser_context {
   struct cbor_parser_context *ctx;
+  struct cbor_stream *stream;
   sock *sock;
 
   u64 bytes_consumed;
   u64 major_state;
+};
 
-  /* Specific */
+struct hcs_parser_channel {
+  struct cbor_channel cch;
+  struct hcs_parser_context *htx;
+
+  enum {
+    HCS_CMD_SHUTDOWN = 1,
+    HCS_CMD_TELNET,
+    HCS_CMD_MACHINE_START,
+    HCS_CMD_MACHINE_STOP,
+    HCS_CMD__MAX,
+  } cmd;
+
   union flock_machine_config cfg;
 };
+
+static void
+hcs_request_poweroff(struct hcs_parser_channel *hpc)
+{
+  log(L_INFO "Requested shutdown via CLI");
+  ev_send_loop(&main_birdloop, &poweroff_event);
+
+  struct cbor_writer *cw = cbor_init(htx->sock->tbuf, htx->sock->tbsize, ctx->lp);
+  cbor_open_block_with_length(cw, 1);
+  cbor_add_int(cw, -1);
+  cbor_add_string(cw, "OK");
+  sk_send(htx->sock, cw->pt);
+}
+
+static void
+hcs_get_telnet(struct hcs_parser_context *htx)
+{
+}
 
 struct hcs_parser_context *
 hcs_parser_init(sock *s)
 {
   struct cbor_parser_context *ctx = cbor_parser_new(s->pool, 4);
-  struct hcs_parser_context *htx = lp_allocz(ctx->lp, sizeof *htx);
+  struct hcs_parser_context *htx = mb_allocz(s->pool, sizeof *htx);
 
   htx->ctx = ctx;
   htx->sock = s;
+  htx->stream = cbor_stream_new(s->pool, 4);
 
   return htx;
 }
@@ -55,6 +87,14 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 
   for (int pos = 0; pos < size; pos++)
   {
+    if (!htx->channel)
+    {
+      htx->channel = cbor_parse_channel(ctx, htx->stream, buf[pos]);
+      if (htx->channel == &cbor_channel_parse_error)
+	return -(htx->bytes_consumed + pos + 1);
+      continue;
+    }
+
     switch (cbor_parse_byte(ctx, buf[pos]))
     {
       case CPR_ERROR:
@@ -70,45 +110,42 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	switch (htx->major_state)
 	{
 	  case 0: /* toplevel */
-	    if (ctx->type != 5)
-	      CBOR_PARSER_ERROR("Expected mapping, got %u", ctx->type);
+	    if (ctx->type != 4)
+	      CBOR_PARSER_ERROR("Expected array, got %u", ctx->type);
 
-	    if (ctx->value != 1)
-	      CBOR_PARSER_ERROR("Expected mapping of length 1, got %u", ctx->value);
+	    if (ctx->value != 3)
+	      CBOR_PARSER_ERROR("Expected array of length 1, got %u", ctx->value);
 
 	    htx->major_state = 1;
 	    break;
 
-	  case 1: /* inside toplevel mapping */
-	    CBOR_PARSE_ONLY(ctx, POSINT, htx->major_state);
-	    if (htx->major_state >= 5)
-	      CBOR_PARSER_ERROR("Command key too high, got %lu", htx->major_state);
-
-	    htx->major_state += 2;
+	  case 1: /* ID */
+	    CBOR_PARSE_ONLY(ctx, POSINT, htx->id);
+	    htx->major_state = 2;
 	    break;
 
-	  case 2: /* shutdown command: expected null */
+	  case 2: /* Command */
+	    CBOR_PARSE_ONLY(ctx, POSINT, htx->cmd);
+	    if (htx->cmd > HCS_CMD__MAX)
+	      CBOR_PARSER_ERROR("Command key too high, got %lu", htx->cmd);
+
+	    htx->major_state = htx->cmd + 10;
+	    break;
+
+	  case HCS_CMD_SHUTDOWN + 10: /* shutdown command: expected null */
 	    if ((ctx->type != 7) || (ctx->value != 22))
 	      CBOR_PARSER_ERROR("Expected null, got %u-%u", ctx->type, ctx->value);
 
-	    log(L_INFO "Requested shutdown via CLI");
-	    ev_send_loop(&main_birdloop, &poweroff_event);
-	    {
-	      struct cbor_writer *cw = cbor_init(htx->sock->tbuf, htx->sock->tbsize, ctx->lp);
-	      cbor_open_block_with_length(cw, 1);
-	      cbor_add_int(cw, -1);
-	      cbor_add_string(cw, "OK");
-	      sk_send(htx->sock, cw->pt);
-	    }
+	    hcs_request_poweroff(htx);
 
-	    htx->major_state = 1;
+	    htx->major_state = 3;
 	    break;
 
-	  case 3: /* telnet listener open */
+	  case HCS_CMD_TELNET + 10: /* telnet listener open */
 	    if ((ctx->type == 7) && (ctx->value == 22))
 	    {
-	      hexp_get_telnet(htx->sock, NULL);
-	      htx->major_state = 1;
+	      hcs_get_telnet(htx);
+	      htx->major_state = 3;
 	      break;
 	    }
 
@@ -118,22 +155,14 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	      CBOR_PARSER_ERROR("Expected null or string, got %s", cbor_type_str(ctx->type));
 	    break;
 
-	  case 4: /* telnet listener close */
-	    if ((ctx->type != 7) || (ctx->value != 22))
-	      CBOR_PARSER_ERROR("Expected null, got %u-%u", ctx->type, ctx->value);
-
-	    log(L_INFO "Requested telnet close");
-	    htx->major_state = 1;
-	    break;
-
-	  case 5: /* machine creation request */
+	  case HCS_CMD_MACHINE_START + 10: /* machine creation request */
 	    if (ctx->type != 5)
 	      CBOR_PARSER_ERROR("Expected mapping, got %u", ctx->type);
 
 	    htx->major_state = 501;
 	    break;
 
-	  case 6: /* machine shutdown request */
+	  case HCS_CMD_MACHINE_STOP + 1: /* machine shutdown request */
 	    if (ctx->type != 5)
 	      CBOR_PARSER_ERROR("Expecting mapping, got %u", ctx->type);
 
