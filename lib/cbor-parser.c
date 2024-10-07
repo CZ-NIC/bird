@@ -8,6 +8,30 @@
 
 #include "lib/birdlib.h"
 #include "lib/cbor.h"
+#include "lib/hash.h"
+
+/*
+ * Basic parser bits
+ */
+
+static void
+cbor_parser_init(struct cbor_parser_context *ctx, linpool *lp, uint max_depth)
+{
+  ctx->lp = lp;
+  ctx->flush = lp_save(lp);
+
+  ctx->stack_countdown[0] = 1;
+  ctx->stack_pos = 0;
+  ctx->stack_max = max_depth;
+
+  ctx->target_buf = NULL;
+  ctx->target_len = 0;
+
+  ctx->type = 0xff;
+
+  ctx->partial_state = CPE_TYPE;
+  ctx->partial_countdown = 0;
+}
 
 struct cbor_parser_context *
 cbor_parser_new(pool *p, uint stack_max_depth)
@@ -16,13 +40,7 @@ cbor_parser_new(pool *p, uint stack_max_depth)
   struct cbor_parser_context *ctx = lp_allocz(
       lp, sizeof *ctx + (stack_max_depth + 1) * sizeof ctx->stack_countdown[0]);
 
-  ctx->lp = lp;
-  ctx->flush = lp_save(lp);
-
-  ctx->type = 0xff;
-  ctx->stack_countdown[0] = 1;
-  ctx->stack_max = stack_max_depth;
-
+  cbor_parser_init(ctx, lp, stack_max_depth);
   return ctx;
 }
 
@@ -177,4 +195,249 @@ cbor_parse_block_end(struct cbor_parser_context *ctx)
     ctx->partial_state = CPE_EXIT;
 
   return true;
+}
+
+/*
+ * CBOR channel multiplexer
+ */
+
+#define CCH_EQ(a,b)	(a)->id == (b)->id
+#define CCH_FN(x)	(x)->idhash
+#define CCH_KEY(x)	(x)
+#define CCH_NEXT(x)	(x)->next_hash
+
+struct cbor_channel cbor_channel_parse_error;
+
+#define CSTR_PARSER_ERROR(...) do {		\
+  log(L_ERR __VA_ARGS__);			\
+  sk_close(s);					\
+  return 0;					\
+} while (0)
+
+#define CCH_CALL_PARSER(cch, kind)  (			\
+    cch->parse ? cch->parse(cch, kind) :		\
+    (ctx->stack_pos > 1) ? CPR_MORE : CPR_BLOCK_END	\
+    )
+
+#define CCH_PARSE(kind)  do {				\
+  ASSERT_DIE(cch);					\
+  switch (CCH_CALL_PARSER(cch, kind)) {			\
+    case CPR_MORE:	continue;			\
+    case CPR_ERROR:	sk_close(s);			\
+			return 0;			\
+    case CPR_BLOCK_END: stream->state = CSTR_FINISH;	\
+			break;				\
+    default: bug("Invalid return value from channel parser");	\
+  }} while(0)
+
+static int
+cbor_stream_rx(sock *s, uint sz)
+{
+  struct cbor_stream *stream = s->data;
+  struct cbor_parser_context *ctx = &stream->parser;
+  struct cbor_channel *cch = stream->cur_rx_channel;
+  u64 id;
+
+  for (uint pos = 0; pos < sz; pos++)
+  {
+    switch (cbor_parse_byte(ctx, s->rbuf[pos]))
+    {
+      case CPR_MORE:
+	continue;
+
+      case CPR_ERROR:
+	log(L_ERR "CBOR parser failure: %s", ctx->error);
+	sk_close(s);
+	return 0;
+
+      case CPR_MAJOR:
+	switch (stream->state)
+	{
+	  case CSTR_INIT:
+	    if (ctx->type != 4)
+	      CSTR_PARSER_ERROR("Expected array, got %u", ctx->type);
+
+	    if (ctx->value < 2)
+	      CSTR_PARSER_ERROR("Expected array of length at least 2");
+
+	    stream->state = CSTR_EXPECT_ID;
+	    break;
+
+	  case CSTR_EXPECT_ID:
+	    CBOR_PARSE_ONLY(ctx, POSINT, id);
+	    stream->state = CSTR_MSG;
+	    stream->cur_rx_channel = cch = (
+		cbor_channel_find(stream, id) ?:
+		cbor_channel_create(stream, id)
+		);
+	    break;
+
+	  case CSTR_MSG:
+	    CCH_PARSE(CPR_MAJOR);
+	    break;
+
+	  case CSTR_FINISH:
+	  case CSTR_CLEANUP:
+	    bug("Invalid stream pre-parser state");
+	}
+	break;
+
+      case CPR_STR_END:
+	ASSERT_DIE(stream->state == CSTR_MSG);
+	CCH_PARSE(CPR_STR_END);
+	break;
+
+      case CPR_BLOCK_END:
+	bug("Impossible value returned from cbor_parse_byte()");
+    }
+
+    while (cbor_parse_block_end(ctx))
+    {
+      switch (stream->state)
+      {
+	case CSTR_INIT:
+	case CSTR_EXPECT_ID:
+	case CSTR_CLEANUP:
+//	  CSTR_PARSER_ERROR("Invalid stream pre-parser state");
+	  bug("Invalid stream pre-parser state");
+
+	case CSTR_MSG:
+	  CCH_PARSE(CPR_BLOCK_END);
+	  break;
+
+	case CSTR_FINISH:
+	  stream->state = CSTR_CLEANUP;
+	  break;
+      }
+    }
+
+    if (stream->state == CSTR_CLEANUP)
+    {
+      if (ctx->partial_state != CPE_EXIT)
+	CSTR_PARSER_ERROR("Garbled end of message");
+
+      stream->cur_rx_channel = NULL;
+
+      if (!cch->parse)
+	cbor_channel_done(cch);
+
+      ctx->partial_state = CPE_TYPE;
+      stream->state = CSTR_INIT;
+
+      if (pos + 1 < sz)
+      {
+	memmove(s->rbuf, s->rbuf + pos + 1, sz - pos - 1);
+	s->rpos = s->rbuf + sz - pos - 1;
+      }
+
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+static void
+cbor_stream_err(sock *sk, int err)
+{
+  struct cbor_stream *stream = sk->data;
+  if (err)
+    log(L_INFO "CBOR stream %p error: %d (%M)", sk, err, err);
+  else
+    log(L_INFO "CBOR stream %p hangup", sk);
+
+  stream->cur_rx_channel = NULL;
+
+  HASH_WALK_DELSAFE(stream->channels, next_hash, cch)
+  {
+    cbor_channel_done(cch);
+  }
+  HASH_WALK_DELSAFE_END;
+
+  stream->cancel(stream);
+
+  sk_close(sk);
+}
+
+void
+cbor_stream_init(struct cbor_stream *stream, pool *p, uint parser_depth, uint writer_depth, uint channel_size)
+{
+  stream->p = rp_newf(p, p->domain, "Stream pool");
+  HASH_INIT(stream->channels, stream->p, 4);
+  stream->slab = sl_new(stream->p, channel_size);
+
+  random_bytes(&stream->hmul, sizeof stream->hmul);
+  stream->writer_depth = writer_depth;
+  stream->state = CSTR_INIT;
+
+  cbor_parser_init(&stream->parser, lp_new(p), parser_depth);
+}
+
+void
+cbor_stream_attach(struct cbor_stream *stream, sock *sk)
+{
+  sk->data = stream;
+  sk->rx_hook = cbor_stream_rx;
+  sk->err_hook = cbor_stream_err;
+
+  stream->s = sk;
+  stream->loop = sk->loop;
+}
+
+struct cbor_channel *
+cbor_channel_create(struct cbor_stream *stream, u64 id)
+{
+  struct cbor_channel *cch = sl_allocz(stream->slab);
+  *cch = (struct cbor_channel) {
+    .id = id,
+    .idhash = id * stream->hmul,
+    .p = rp_newf(stream->p, stream->p->domain, "Channel 0x%lx", id),
+    .stream = stream,
+    .parse = stream->parse,
+  };
+
+  log(L_TRACE "CBOR channel create in stream %p, id %lx", stream, id);
+  HASH_INSERT(stream->channels, CCH, cch);
+  return cch;
+}
+
+struct cbor_channel *
+cbor_channel_find(struct cbor_stream *stream, u64 id)
+{
+  struct cbor_channel cchloc;
+  cchloc.id = id;
+  cchloc.idhash = cchloc.id * stream->hmul;
+
+  return HASH_FIND(stream->channels, CCH, &cchloc);
+}
+
+struct cbor_channel *
+cbor_channel_new(struct cbor_stream *stream)
+{
+  u64 id;
+  while (cbor_channel_find(stream, id = random_type(u64)))
+    ;
+
+  return cbor_channel_create(stream, id);
+}
+
+void
+cbor_channel_done(struct cbor_channel *channel)
+{
+  struct cbor_stream *stream = channel->stream;
+  bool active = (stream->cur_rx_channel == channel);
+
+  log(L_TRACE "CBOR channel%s done in stream %p, id %lx",
+      active ? " (active)" : "", stream, channel->id);
+
+  if (active)
+  {
+    channel->parse = NULL;
+  }
+  else
+  {
+    HASH_REMOVE(stream->channels, CCH, channel);
+    rp_free(channel->p);
+    sl_free(channel);
+  }
 }

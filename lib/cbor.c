@@ -130,8 +130,13 @@ bool cbor_put_close(struct cbor_writer *w, u64 actual_size, bool strict)
 
   w->stack_pos--;
 
+  /* The open mark puts its item counter one level
+   * too deep; fixing this. */
+  items--;
+  w->stack[w->stack_pos].items++;
+
   /* Check the original head position */
-  ASSERT_DIE((head[0] & 0x1f) == 0x1f);
+  ASSERT_DIE((head[0] & 0x1f) == 0x1b);
   ASSERT_DIE(w->data.pos >= w->data.start + 9);
   switch (head[0] >> 5)
   {
@@ -193,6 +198,31 @@ bool cbor_put_close(struct cbor_writer *w, u64 actual_size, bool strict)
 
 /* Tags: TODO! */
 
+
+/* Writer contexts */
+struct cbor_writer *
+cbor_reply_init(struct cbor_channel *cch)
+{
+  ASSERT_DIE(cch->stream->s->tbsize > 16);
+  ASSERT_DIE(cch->stream->s->tbuf);
+  struct cbor_writer *cw = &cch->writer;
+  if (cch->stream->s->tbuf != cch->stream->s->tpos)
+    bug("Not implemented reply to not-fully-flushed buffer");
+
+  cbor_writer_init(cw, cch->stream->writer_depth, cch->stream->s->tbuf, cch->stream->s->tbsize);
+
+  ASSERT_DIE(cbor_open_array(cw));
+  ASSERT_DIE(cbor_put_posint(cw, cch->id));
+  return cw;
+}
+
+void
+cbor_reply_send(struct cbor_channel *cch, struct cbor_writer *cw)
+{
+  ASSERT_DIE(cw == &cch->writer);
+  ASSERT_DIE(cbor_close_array(cw));
+  sk_send(cch->stream->s, cw->data.pos - cw->data.start);
+}
 
 #if 0
 
@@ -332,14 +362,14 @@ void write_item(struct cbor_writer *writer, uint8_t major, uint64_t num)
     return;
   }
   //log("write item major %i num %i writer->pt %i writer->capacity %i writer %i", major, num, writer->pt, writer->capacity, writer);
-  major += num;  // we can store the num as additional value 
+  major += num;  // we can store the num as additional value
   writer->cbor[writer->pt] = major;
   writer->pt++;
 }
 
 void cbor_write_item_with_constant_val_length_4(struct cbor_writer *writer, uint8_t major, uint64_t num)
 {
-// this is only for headers which should be constantly long. 
+// this is only for headers which should be constantly long.
   major = major<<5;
   check_memory(writer, 10);
   major += 0x1a; // reserving those bytes

@@ -2,6 +2,8 @@
 #define CBOR_H
 
 #include "nest/bird.h"
+#include "lib/hash.h"
+#include "lib/socket.h"
 
 /**
  * CBOR Commonalities
@@ -167,9 +169,10 @@ void cbor_parser_reset(struct cbor_parser_context *ctx);
 
 enum cbor_parse_result {
   CPR_ERROR	= 0,
-  CPR_MORE	= 1,
-  CPR_MAJOR	= 2,
-  CPR_STR_END	= 3,
+  CPR_MORE,
+  CPR_MAJOR,
+  CPR_STR_END,
+  CPR_BLOCK_END,
 } cbor_parse_byte(struct cbor_parser_context *, const byte);
 bool cbor_parse_block_end(struct cbor_parser_context *);
 
@@ -185,6 +188,85 @@ bool cbor_parse_block_end(struct cbor_parser_context *);
     _target = (_ctx)->target_buf = lp_alloc((_ctx)->lp, ((_ctx)->target_len = (_ctx)->value) + 1); \
     1; })
 #define CBOR_STORE_TEXT CBOR_STORE_BYTES
+
+
+/*
+ * Message channels
+ */
+
+struct cbor_channel;
+typedef enum cbor_parse_result (*cbor_stream_parse_fn)(struct cbor_channel *, enum cbor_parse_result);
+
+struct cbor_stream {
+  HASH(struct cbor_channel) channels;
+  pool *p;
+  struct birdloop *loop;
+  slab *slab;
+  sock *s;
+  cbor_stream_parse_fn parse;
+  void (*cancel)(struct cbor_stream *);
+  struct cbor_channel *cur_rx_channel;
+  u64 hmul;
+  enum {
+    CSTR_INIT,
+    CSTR_EXPECT_ID,
+    CSTR_MSG,
+    CSTR_FINISH,
+    CSTR_CLEANUP,
+  } state;
+  uint writer_depth;
+  struct cbor_parser_context parser;
+};
+
+#define CBOR_STREAM_EMBED(name, N)  struct {	\
+  struct cbor_stream name;			\
+  u64 _##name##_stack_countdown[N];		\
+}
+
+#define CBOR_STREAM_INIT(up, name, chname, p, T)		\
+  cbor_stream_init(&(up)->name, p,				\
+      ARRAY_SIZE((up)->_##name##_stack_countdown),		\
+      ARRAY_SIZE(((T *) NULL)->_##chname##_writer_stack),	\
+      sizeof(T))
+
+/* Init and cleanup of CBOR stream */
+void cbor_stream_init(struct cbor_stream *stream, pool *p, uint parser_depth, uint writer_depth, uint channel_size);
+void cbor_stream_attach(struct cbor_stream *, sock *);
+void cbor_stream_cleanup(struct cbor_stream *);
+
+struct cbor_channel {
+  struct cbor_channel *next_hash;
+  struct cbor_stream *stream;
+  cbor_stream_parse_fn parse;
+  void (*cancel)(struct cbor_channel *);
+  pool *p;
+  u64 id;
+  u64 idhash;
+  struct cbor_writer writer;
+};
+
+#define CBOR_CHANNEL_EMBED(name, N)  struct {			\
+  struct cbor_channel name;					\
+  struct cbor_writer_stack_item _##name##_writer_stack[N];	\
+}
+
+extern struct cbor_channel cbor_channel_parse_error;
+
+/* Locally define a new channel */
+struct cbor_channel *cbor_channel_new(struct cbor_stream *);
+
+/* Create a channel with a pre-determined ID.
+ * You have to check nonexistence manually. */
+struct cbor_channel *cbor_channel_create(struct cbor_stream *stream, u64 id);
+/* Find an existing channel */
+struct cbor_channel *cbor_channel_find(struct cbor_stream *, u64 id);
+
+/* Drop the channel */
+void cbor_channel_done(struct cbor_channel *);
+
+struct cbor_writer *cbor_reply_init(struct cbor_channel *);
+void cbor_reply_send(struct cbor_channel *, struct cbor_writer *);
+#define CBOR_REPLY(ch, cw) for (struct cbor_writer *cw = cbor_reply_init(ch); cw; cbor_reply_send(ch, cw), cw = NULL)
 
 
 #endif

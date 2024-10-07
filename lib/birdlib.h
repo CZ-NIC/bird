@@ -283,7 +283,7 @@ asm(
 u32 random_u32(void);
 void random_init(void);
 void random_bytes(void *buf, size_t size);
-
+#define random_type(T) ({ T out; random_bytes(&out, sizeof out); out; })
 
 /* Hashing */
 
