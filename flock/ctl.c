@@ -44,16 +44,25 @@ struct hcs_parser_channel {
 };
 
 static void
-hcs_request_poweroff(struct hcs_parser_channel *hpc)
+//hcs_request_poweroff(struct hcs_parser_channel *hpc)
+hcs_request_poweroff(struct hcs_parser_context *htx)
 {
   log(L_INFO "Requested shutdown via CLI");
   ev_send_loop(&main_birdloop, &poweroff_event);
 
-  struct cbor_writer *cw = cbor_init(htx->sock->tbuf, htx->sock->tbsize, ctx->lp);
-  cbor_open_block_with_length(cw, 1);
-  cbor_add_int(cw, -1);
-  cbor_add_string(cw, "OK");
-  sk_send(htx->sock, cw->pt);
+  struct {
+    struct cbor_writer w;
+    struct cbor_writer_stack_item si[2];
+  } _cw;
+
+  struct cbor_writer *cw = cbor_writer_init(&_cw.w, 2, htx->sock->tbuf, htx->sock->tbsize);
+  CBOR_PUT_MAP(cw)
+  {
+    cbor_put_int(cw, -1);
+    cbor_put_string(cw, "OK");
+  }
+
+  sk_send(htx->sock, cw->data.pos - cw->data.start);
 }
 
 static void
@@ -87,6 +96,7 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 
   for (int pos = 0; pos < size; pos++)
   {
+    /*
     if (!htx->channel)
     {
       htx->channel = cbor_parse_channel(ctx, htx->stream, buf[pos]);
@@ -94,6 +104,7 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	return -(htx->bytes_consumed + pos + 1);
       continue;
     }
+    */
 
     switch (cbor_parse_byte(ctx, buf[pos]))
     {
@@ -119,12 +130,7 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	    htx->major_state = 1;
 	    break;
 
-	  case 1: /* ID */
-	    CBOR_PARSE_ONLY(ctx, POSINT, htx->id);
-	    htx->major_state = 2;
-	    break;
-
-	  case 2: /* Command */
+	  case 1: /* Command */
 	    CBOR_PARSE_ONLY(ctx, POSINT, htx->cmd);
 	    if (htx->cmd > HCS_CMD__MAX)
 	      CBOR_PARSER_ERROR("Command key too high, got %lu", htx->cmd);
