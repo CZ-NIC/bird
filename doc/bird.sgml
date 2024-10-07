@@ -3111,7 +3111,7 @@ using the following configuration parameters:
 	<tag><label id="bgp-interpret-communities">interpret communities <m/switch/</tag>
 	<rfc id="1997"> demands that BGP speaker should process well-known
 	communities like no-export (65535, 65281) or no-advertise (65535,
-	65282). For example, received route carrying a no-adverise community
+	65282). For example, received route carrying a no-advertise community
 	should not be advertised to any of its neighbors. If this option is
 	enabled (which is by default), BIRD has such behavior automatically (it
 	is evaluated when a route is exported to the BGP protocol just before
