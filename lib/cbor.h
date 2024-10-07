@@ -3,6 +3,10 @@
 
 #include "nest/bird.h"
 
+/**
+ * CBOR Commonalities
+ **/
+
 enum cbor_basic_type {
   CBOR_POSINT = 0,
   CBOR_NEGINT = 1,
@@ -16,27 +20,78 @@ enum cbor_basic_type {
 
 const char *cbor_type_str(enum cbor_basic_type);
 
+/**
+ * CBOR Writer
+ **/
+
 struct cbor_writer {
-  int pt; // where will next byte go
-  int capacity;
-  int8_t *cbor;
-  struct linpool *lp;
+  buffer data;
+  uint stack_pos, stack_max;	/* Nesting of CBOR_ARRAY / CBOR_MAP */
+  struct cbor_writer_stack_item {
+    u64 items;
+    byte *head;
+  } stack[0];
 };
 
+/* Initialization */
+static inline struct cbor_writer *cbor_writer_init(struct cbor_writer *w, uint stack_max_depth, byte *buf, uint size)
+{
+  *w = (struct cbor_writer) {
+    .data = {
+      .start = buf,
+      .pos = buf,
+      .end = buf + size,
+    },
+    .stack_max = stack_max_depth,
+  };
+  return w;
+}
 
-struct cbor_writer *cbor_init(uint8_t *buff, uint32_t capacity, struct linpool *lp);
-  
-void cbor_open_block(struct cbor_writer *writer);
-
-void cbor_open_list(struct cbor_writer *writer);
-
-void cbor_close_block_or_list(struct cbor_writer *writer);
-
-void cbor_open_block_with_length(struct cbor_writer *writer, uint32_t length);
-
-void cbor_open_list_with_length(struct cbor_writer *writer, uint32_t length);
+#define cbor_writer_new(p, smax, buf, size) cbor_writer_init(mb_alloc((p), sizeof(struct cbor_writer) + (smax) * sizeof(struct cbor_writer_stack_item)), (smax), (buf), (size))
 
 
+/* Return how many items have been encoded */
+static inline int cbor_writer_done(struct cbor_writer *w)
+{
+  if (w->stack_pos > 0)
+    return -1;
+  else
+    return w->stack[0].items;
+}
+
+/* Integer types */
+bool cbor_put(struct cbor_writer *w, enum cbor_basic_type type, u64 value);
+#define cbor_put_posint(w,v)  cbor_put((w), CBOR_POSINT, (v))
+#define cbor_put_negint(w,v)  cbor_put((w), CBOR_NEGINT, -1-(v))
+bool cbor_put_int(struct cbor_writer *w, int64_t value);
+
+/* String types */
+bool cbor_put_raw_bytes(struct cbor_writer *w, enum cbor_basic_type type, const byte *block, u64 size);
+#define cbor_put_bytes(w, b, s)	cbor_put_raw_bytes((w), CBOR_BYTES, (b), (s))
+#define cbor_put_text(w, b, s)	cbor_put_raw_bytes((w), CBOR_TEXT, (b), (s))
+#define cbor_put_string(w, s)	cbor_put_raw_bytes((w), CBOR_TEXT, (s), strlen(s))
+#define cbor_put_toks(w, s)	cbor_put_raw_bytes((w), CBOR_TEXT, #s, sizeof #s)
+
+/* Compound types */
+bool cbor_put_open(struct cbor_writer *w, enum cbor_basic_type type);
+bool cbor_put_close(struct cbor_writer *w, u64 actual_size, bool strict);
+#define cbor_open_array(w)	cbor_put_open((w), CBOR_ARRAY)
+#define cbor_open_map(w)	cbor_put_open((w), CBOR_MAP)
+
+#define cbor_close_array(w)	cbor_put_close((w), 0, 0)
+#define cbor_close_map(w)	cbor_put_close((w), 0, 0)
+
+#define CBOR_PUT_ARRAY(w) for (struct cbor_writer *_w = w, *_ww = cbor_open_array(_w) ? (_w) : (bug("buffer overflow on CBOR_ARRAY"), NULL); (_w = NULL), _ww; cbor_close_array(_ww), _ww = NULL)
+
+#define CBOR_PUT_MAP(w) for (struct cbor_writer *_w = w, *_ww = cbor_open_map(_w) ? (_w) : (bug("buffer overflow on CBOR_MAP"), NULL); (_w = NULL), _ww; cbor_close_map(_ww), _ww = NULL)
+
+/* Specials */
+#define cbor_put_false(w)	cbor_put((w), CBOR_SPECIAL, 20);
+#define cbor_put_true(w)	cbor_put((w), CBOR_SPECIAL, 21);
+#define cbor_put_null(w)	cbor_put((w), CBOR_SPECIAL, 22);
+#define cbor_put_undef(w)	cbor_put((w), CBOR_SPECIAL, 23);
+
+#if 0
 void cbor_add_int(struct cbor_writer *writer, int64_t item);
 
 void cbor_add_ipv4(struct cbor_writer *writer, ip4_addr);
@@ -66,6 +121,7 @@ void write_item(struct cbor_writer *writer, uint8_t major, uint64_t num);
 void cbor_write_item_with_constant_val_length_4(struct cbor_writer *writer, uint8_t major, uint64_t num);
 
 void rewrite_4bytes_int(struct cbor_writer *writer, int pt, int num);
+#endif
 
 /*
  * Parser bits
