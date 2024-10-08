@@ -27,6 +27,8 @@ bmp_proto_start: proto_start BMP {
      this_proto = proto_config_new(&proto_bmp, $1);
      BMP_CFG->sys_descr = "Not defined";
      BMP_CFG->sys_name = "Not defined";
+     BMP_CFG->tx_bufsize = 1048576;
+     BMP_CFG->tx_pending_limit = 1024;
    }
  ;
 
@@ -70,6 +72,14 @@ bmp_proto:
    }
  | bmp_proto MONITORING RIB IN POST_POLICY bool ';' {
      BMP_CFG->monitoring_rib_in_post_policy = $6;
+   }
+ | bmp_proto TX BUFFER expr ';' {
+     BMP_CFG->tx_bufsize = $4;
+     if ($4 < 16384) cf_error("BMP TX buffer must be at least 16384 bytes long");
+   }
+ | bmp_proto TX BUFFER COUNT expr ';' {
+     BMP_CFG->tx_pending_limit = $5;
+     if ($5 < 2) cf_error("BMP must allow at least 2 pending TX buffers");
    }
  ;
 

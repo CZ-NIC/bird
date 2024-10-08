@@ -230,7 +230,14 @@ struct bmp_tx_buffer {
   resource r;
   node n;
   byte *end;
-  byte buf[0xfff00];
+  byte buf[0];
+};
+
+struct bmp_tx_buffer_class {
+  resource r;
+  struct resclass class;
+  uint counter;
+  bool deprecated;
 };
 
 // Stores necessary any data in list
@@ -282,8 +289,33 @@ bmp_init_msg_serialize(buffer *stream, const char *sys_descr, const char *sys_na
   bmp_info_tlv_hdr_serialize(stream, BMP_INFO_TLV_TYPE_SYS_NAME, sys_name);
 }
 
-static void btb_free(resource *r UNUSED) {
+static void
+btbm_free(resource *r)
+{
+  struct bmp_tx_buffer_class *btbc = SKIP_BACK(struct bmp_tx_buffer_class, r, r);
+  ASSERT_DIE(btbc->counter == 0);
+}
+
+static void
+btbm_dump(resource *r)
+{
+  struct bmp_tx_buffer_class *btbc = SKIP_BACK(struct bmp_tx_buffer_class, r, r);
+  debug("allocated %u blocks%s\n", btbc->counter, btbc->deprecated ? " (deprecated)" : "");
+}
+
+static struct resclass bmp_tx_buffer_metaclass = {
+  .name = "BMP TX buffer meta",
+  .size = sizeof(struct bmp_tx_buffer_class),
+  .free = btbm_free,
+  .dump = btbm_dump,
+};
+
+static void btb_free(resource *r) {
   UNUSED struct bmp_tx_buffer *btb = SKIP_BACK(struct bmp_tx_buffer, r, r);
+  struct bmp_tx_buffer_class *class = SKIP_BACK(struct bmp_tx_buffer_class, class, r->class);
+  ASSERT_DIE(class->counter);
+  if (!--class->counter && class->deprecated)
+    rfree(class);
 }
 
 static void
@@ -293,28 +325,37 @@ btb_dump(resource *r)
   debug("used %u bytes\n", btb->end - btb->buf);
 }
 
+static uint
+btb_bufsize(struct bmp_tx_buffer *btb)
+{
+  return btb->r.class->size - sizeof *btb;
+}
+
 static struct resmem
 btb_memsize(resource *r)
 {
   struct bmp_tx_buffer *btb = SKIP_BACK(struct bmp_tx_buffer, r, r);
   return (struct resmem) {
     .effective = btb->end - btb->buf,
-    .overhead = (sizeof *btb) - (btb->end - btb->buf),
+    .overhead = r->class->size - (btb->end - btb->buf),
   };
 }
 
-static struct resclass bmp_tx_buffer_class = {
-  .name = "BMP TX buffer",
-  .size = sizeof(struct bmp_tx_buffer),
-  .free = btb_free,
-  .dump = btb_dump,
-  .memsize = btb_memsize,
-};
-
-static bool
-bmp_check_tx_overflow(u64 cnt)
+static struct bmp_tx_buffer_class *
+btbm_new(struct bmp_proto *p, uint size)
 {
-  return cnt * bmp_tx_buffer_class.size > (1ULL << 30);
+  ASSERT_DIE(size > sizeof (struct bmp_tx_buffer) + 4096);
+  struct bmp_tx_buffer_class *c = ralloc(p->p.pool, &bmp_tx_buffer_metaclass);
+  c->class = (struct resclass) {
+    .name = "BMP TX buffer",
+    .size = size,
+    .free = btb_free,
+    .dump = btb_dump,
+    .memsize = btb_memsize,
+  };
+  c->counter = 0;
+  c->deprecated = false;
+  return c;
 }
 
 static void
@@ -326,15 +367,23 @@ bmp_schedule_tx_packet(struct bmp_proto *p, const byte *payload, const size_t si
 
   struct bmp_tx_buffer *btb = EMPTY_LIST(p->tx_queue) ? NULL :
     SKIP_BACK(struct bmp_tx_buffer, n, TAIL(p->tx_queue));
-  if (btb && (btb->end + size > btb->buf + sizeof btb->buf))
+  if (btb && (size + btb->end - btb->buf > btb_bufsize(btb)))
     btb = NULL;
+
+  if (size + sizeof *btb > p->tx_pcls->class.size)
+  {
+    log(L_ERR "%s: configured too small buffer (%u) for message size %lu",
+	p->tx_pcls->class.size, size + sizeof *btb);
+    return;
+  }
 
   if (!btb)
   {
-    if (bmp_check_tx_overflow(++p->tx_pending_count))
+    if (++p->tx_pending_count >= p->tx_pending_limit)
       ev_schedule(p->tx_overflow_event);
 
-    btb = ralloc(p->tx_mem_pool, &bmp_tx_buffer_class);
+    btb = ralloc(p->tx_mem_pool, &p->tx_pcls->class);
+    p->tx_pcls->counter++;
     btb->end = btb->buf;
     btb->n = (node) {};
     add_tail(&p->tx_queue, &btb->n);
@@ -1215,7 +1264,7 @@ static void
 bmp_tx_overflow(void *_p)
 {
   struct bmp_proto *p = _p;
-  if (!bmp_check_tx_overflow(p->tx_pending_count))
+  if (p->tx_pending_count < p->tx_pending_limit)
     return;
 
   p->sock_err = 0;
@@ -1306,6 +1355,8 @@ bmp_init(struct proto_config *CF)
   strcpy(p->sys_name, cf->sys_name);
   p->monitoring_rib.in_pre_policy = cf->monitoring_rib_in_pre_policy;
   p->monitoring_rib.in_post_policy = cf->monitoring_rib_in_post_policy;
+  p->tx_pcls = btbm_new(p, cf->tx_bufsize);
+  p->tx_pending_limit = cf->tx_pending_limit;
 
   return P;
 }
@@ -1380,6 +1431,15 @@ bmp_reconfigure(struct proto *P, struct proto_config *CF)
 
   /* We must update our copy of configuration ptr */
   p->cf = new;
+
+  /* Reconfigure tx buffer size limits */
+  if (new->tx_bufsize != p->tx_pcls->class.size)
+  {
+    p->tx_pcls->deprecated = true;
+    p->tx_pcls = btbm_new(p, new->tx_bufsize);
+  }
+
+  p->tx_pending_limit = new->tx_pending_limit;
 
   return 1;
 }

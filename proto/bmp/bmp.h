@@ -38,6 +38,8 @@ struct bmp_config {
   u16 station_port;                   // Monitoring station TCP port
   bool monitoring_rib_in_pre_policy;  // Route monitoring pre-policy Adj-Rib-In
   bool monitoring_rib_in_post_policy;  // Route monitoring post-policy Adj-Rib-In
+  uint tx_bufsize;		      // Pending TX buffer size
+  uint tx_pending_limit;	      // Maximum on pending TX buffer count
 };
 
 /* Forward declarations */
@@ -68,7 +70,9 @@ struct bmp_proto {
   pool *tx_mem_pool;               // Memory pool used for packet allocations designated to BMP collector
   list tx_queue;                   // Stores queued packets going to be sent
   struct bmp_tx_buffer *tx_pending;// This buffer waits for socket to flush
+  struct bmp_tx_buffer_class *tx_pcls; // Class used for tx_pending allocations
   uint tx_pending_count;	   // How many buffers waiting for flush
+  uint tx_pending_limit;	   // Maximum on buffer count
   event *tx_overflow_event;	   // Too many buffers waiting for flush
   timer *connect_retry_timer;      // Timer for retrying connection to the BMP collector
   bool started;                    // Flag that stores running status of BMP instance
@@ -97,7 +101,6 @@ struct bmp_table {
   struct channel *channel;
   u32 uc;
 };
-
 
 #ifdef CONFIG_BMP
 
