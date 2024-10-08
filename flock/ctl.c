@@ -22,6 +22,7 @@
 struct hcs_parser_context {
   struct cbor_parser_context *ctx;
   struct cbor_stream *stream;
+  struct hcs_parser_channel *channel;
   sock *sock;
 
   u64 bytes_consumed;
@@ -44,30 +45,25 @@ struct hcs_parser_channel {
 };
 
 static void
-//hcs_request_poweroff(struct hcs_parser_channel *hpc)
-hcs_request_poweroff(struct hcs_parser_context *htx)
+hcs_request_poweroff(struct hcs_parser_channel *hpc)
 {
   log(L_INFO "Requested shutdown via CLI");
   ev_send_loop(&main_birdloop, &poweroff_event);
 
-  struct {
-    struct cbor_writer w;
-    struct cbor_writer_stack_item si[2];
-  } _cw;
+  CBOR_REPLY(&hpc->cch, cw)
+    CBOR_PUT_MAP(cw)
+    {
+      cbor_put_int(cw, -1);
+      cbor_put_string(cw, "OK");
+    }
 
-  struct cbor_writer *cw = cbor_writer_init(&_cw.w, 2, htx->sock->tbuf, htx->sock->tbsize);
-  CBOR_PUT_MAP(cw)
-  {
-    cbor_put_int(cw, -1);
-    cbor_put_string(cw, "OK");
-  }
-
-  sk_send(htx->sock, cw->data.pos - cw->data.start);
+  cbor_done_channel(&hpc->cch);
 }
 
 static void
-hcs_get_telnet(struct hcs_parser_context *htx)
+hcs_get_telnet(struct hcs_parser_channel *hpc)
 {
+// TODO:  hexp_get_telnet();
 }
 
 struct hcs_parser_context *
@@ -93,18 +89,21 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 {
   ASSERT_DIE(size > 0);
   struct cbor_parser_context *ctx = htx->ctx;
+  struct hcs_parser_channel *hpc = htx->channel;
+
+  bool finish_cmd = false;
 
   for (int pos = 0; pos < size; pos++)
   {
-    /*
-    if (!htx->channel)
+    if (!hpc)
     {
-      htx->channel = cbor_parse_channel(ctx, htx->stream, buf[pos]);
-      if (htx->channel == &cbor_channel_parse_error)
+      struct cbor_channel *cch = cbor_parse_channel(ctx, htx->stream, buf[pos]);
+      if (cch == &cbor_channel_parse_error)
 	return -(htx->bytes_consumed + pos + 1);
+      else if (cch)
+	hpc = htx->channel = SKIP_BACK(struct hcs_parser_channel, cch, cch);
       continue;
     }
-    */
 
     switch (cbor_parse_byte(ctx, buf[pos]))
     {
@@ -120,42 +119,31 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	/* Check type acceptance */
 	switch (htx->major_state)
 	{
-	  case 0: /* toplevel */
-	    if (ctx->type != 4)
-	      CBOR_PARSER_ERROR("Expected array, got %u", ctx->type);
+	  case 0: /* Command */
+	    CBOR_PARSE_ONLY(ctx, POSINT, hpc->cmd);
+	    if (hpc->cmd > HCS_CMD__MAX)
+	      CBOR_PARSER_ERROR("Command key too high, got %lu", hpc->cmd);
 
-	    if (ctx->value != 3)
-	      CBOR_PARSER_ERROR("Expected array of length 1, got %u", ctx->value);
-
-	    htx->major_state = 1;
-	    break;
-
-	  case 1: /* Command */
-	    CBOR_PARSE_ONLY(ctx, POSINT, htx->cmd);
-	    if (htx->cmd > HCS_CMD__MAX)
-	      CBOR_PARSER_ERROR("Command key too high, got %lu", htx->cmd);
-
-	    htx->major_state = htx->cmd + 10;
+	    htx->major_state = hpc->cmd + 10;
 	    break;
 
 	  case HCS_CMD_SHUTDOWN + 10: /* shutdown command: expected null */
 	    if ((ctx->type != 7) || (ctx->value != 22))
 	      CBOR_PARSER_ERROR("Expected null, got %u-%u", ctx->type, ctx->value);
 
-	    hcs_request_poweroff(htx);
-
-	    htx->major_state = 3;
+	    hcs_request_poweroff(hpc);
+	    finish_cmd = true;
 	    break;
 
 	  case HCS_CMD_TELNET + 10: /* telnet listener open */
 	    if ((ctx->type == 7) && (ctx->value == 22))
 	    {
-	      hcs_get_telnet(htx);
-	      htx->major_state = 3;
+	      hcs_get_telnet(hpc);
+	      finish_cmd = true;
 	      break;
 	    }
 
-	    else CBOR_PARSE_IF(ctx, TEXT, htx->cfg.cf.name)
+	    else CBOR_PARSE_IF(ctx, TEXT, hpc->cfg.cf.name)
 	      ;
 	    else
 	      CBOR_PARSER_ERROR("Expected null or string, got %s", cbor_type_str(ctx->type));
@@ -189,11 +177,11 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	    break;
 
 	  case 502: /* machine creation argument 0: name */
-	    CBOR_PARSE_ONLY(ctx, TEXT, htx->cfg.cf.name);
+	    CBOR_PARSE_ONLY(ctx, TEXT, hpc->cfg.cf.name);
 	    break;
 
 	  case 503: /* machine creation argument 1: type */
-	    CBOR_PARSE_ONLY(ctx, POSINT, htx->cfg.cf.type);
+	    CBOR_PARSE_ONLY(ctx, POSINT, hpc->cfg.cf.type);
 
 	    if ((ctx->value < 1) && (ctx->value > 1) )
 	      CBOR_PARSER_ERROR("Unexpected type, got %lu", ctx->value);
@@ -202,11 +190,11 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	    break;
 
 	  case 504: /* machine creation argument 2: basedir */
-	    CBOR_PARSE_ONLY(ctx, BYTES, htx->cfg.container.basedir);
+	    CBOR_PARSE_ONLY(ctx, BYTES, hpc->cfg.container.basedir);
 	    break;
 
 	  case 505: /* machine creation argument 3: workdir */
-	    CBOR_PARSE_ONLY(ctx, BYTES, htx->cfg.container.workdir);
+	    CBOR_PARSE_ONLY(ctx, BYTES, hpc->cfg.container.workdir);
 	    break;
 
 	  case 601: /* machine shutdown argument */
@@ -219,7 +207,7 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	    break;
 
 	  case 602: /* machine creation argument 0: name */
-	    CBOR_PARSE_ONLY(ctx, TEXT, htx->cfg.cf.name);
+	    CBOR_PARSE_ONLY(ctx, TEXT, hpc->cfg.cf.name);
 	    break;
 
 	  default:
@@ -231,9 +219,9 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	/* Bytes read completely! */
 	switch (htx->major_state)
 	{
-	  case 3:
-	    hexp_get_telnet(htx->sock, htx->cfg.cf.name);
-	    htx->major_state = 1;
+	  case HCS_CMD_TELNET + 10:
+	    hcs_get_telnet(hpc);
+	    finish_cmd = true;
 	    break;
 
 	  case 502:
@@ -251,6 +239,19 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	  /* Code to run at the end of a (byte)string */
 	}
 	break;
+    }
+
+    if (finish_cmd)
+    {
+      finish_cmd = false;
+
+      if (!cbor_parse_channel_finish(ctx, htx->stream))
+	CBOR_PARSER_ERROR("Failed to finish CBOR channel parser");
+
+      htx->channel = NULL;
+      htx->bytes_consumed = 0;
+      htx->major_state = 0;
+      continue;
     }
 
     /* End of array or map */
@@ -274,33 +275,39 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	  break;
 
 	case 501:
-	  if (!htx->cfg.cf.type)
+	  /*
+	  if (!hpc->cfg.cf.type)
 	    CBOR_PARSER_ERROR("Machine type not specified");
 
-	  if (!htx->cfg.cf.name)
+	  if (!hpc->cfg.cf.name)
 	    CBOR_PARSER_ERROR("Machine name not specified");
 
-	  if (!htx->cfg.container.workdir)
+	  if (!hpc->cfg.container.workdir)
 	    CBOR_PARSER_ERROR("Machine workdir not specified");
 
-	  if (!htx->cfg.container.basedir)
+	  if (!hpc->cfg.container.basedir)
 	    CBOR_PARSER_ERROR("Machine basedir not specified");
 
 	  hypervisor_container_request(
 	      htx->sock,
-	      htx->cfg.cf.name,
-	      htx->cfg.container.basedir,
-	      htx->cfg.container.workdir);
+	      hpc->cfg.cf.name,
+	      hpc->cfg.container.basedir,
+	      hpc->cfg.container.workdir);
+	      */
 
+	  hypervisor_container_start(&hpc->cch, &hpc->cfg.container);
 	  htx->major_state = 1;
 	  break;
 
 	case 601:
+	  /*
 	  if (!htx->cfg.cf.name)
 	    CBOR_PARSER_ERROR("Machine name not specified");
 
 	  hypervisor_container_shutdown(htx->sock, htx->cfg.cf.name);
+	    */
 
+	  hypervisor_container_shutdown(&hpc->cch, &hpc->cfg.container);
 	  htx->major_state = 1;
 	  break;
 
