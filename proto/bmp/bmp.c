@@ -428,7 +428,10 @@ bmp_fire_tx(void *p_)
 
 //    log(L_INFO "btb send buf %p end %p", btb->buf, btb->end);
 
-    if (sk_send(p->sk, btb->end - btb->buf) <= 0)
+    u64 sz = btb->end - btb->buf;
+    p->tx_sent += sz;
+    p->tx_sent_total += sz;
+    if (sk_send(p->sk, sz) <= 0)
       return;
 
 //    log(L_INFO "btb free buf %p", btb->buf);
@@ -1174,6 +1177,7 @@ bmp_down(struct bmp_proto *p)
 {
   ASSERT(p->started);
   p->started = false;
+  p->tx_sent = 0;
 
   TRACE(D_EVENTS, "BMP session closed");
 
@@ -1477,6 +1481,10 @@ bmp_show_proto_info(struct proto *P)
 
     if (p->sock_err)
       cli_msg(-1006, "  %-19s %M", "Last error:", p->sock_err);
+
+    cli_msg(-1006, "  %-19s % 7u (limit %u)", "Pending buffers:", p->tx_pending_count, p->tx_pending_limit);
+    cli_msg(-1006, "  %-19s % 9sB", "Session TX:", fmt_order(p->tx_sent, 1, 10000));
+    cli_msg(-1006, "  %-19s % 9sB", "Total TX:", fmt_order(p->tx_sent_total, 1, 10000));
   }
 }
 

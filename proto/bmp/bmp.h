@@ -73,6 +73,8 @@ struct bmp_proto {
   struct bmp_tx_buffer_class *tx_pcls; // Class used for tx_pending allocations
   uint tx_pending_count;	   // How many buffers waiting for flush
   uint tx_pending_limit;	   // Maximum on buffer count
+  u64 tx_sent;			   // Amount of data sent
+  u64 tx_sent_total;		   // Amount of data sent accumulated over reconnections
   event *tx_overflow_event;	   // Too many buffers waiting for flush
   timer *connect_retry_timer;      // Timer for retrying connection to the BMP collector
   bool started;                    // Flag that stores running status of BMP instance
