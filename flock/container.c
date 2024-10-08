@@ -21,30 +21,25 @@
 static struct hypervisor_container_forker {
   sock *s;
   pool *p;
+  struct cbor_stream *stream;
   struct birdloop *loop;
   HASH(struct container_runtime) hash;
   struct container_runtime *cur_crt;
   int ctl[2]; /* socketpair filedescriptors */
 } hcf;
 
-static struct container_config {
-  const char *hostname;
-  const char *workdir;
-  const char *basedir;
-} ccf;
+struct container_fork_request {
+  struct cbor_channel cch;
+  struct cbor_channel *ctl_ch;
+  struct container_runtime *crt;
+};
 
 struct container_runtime {
   struct container_runtime *next;
-  struct container_config ccf;
   uint hash;
   pid_t pid;
   sock *s;
-  struct container_operation_callback {
-    callback cb;
-    sock *s;
-    void *data;
-  } *ccc;
-  char data[];
+  char hostname[];
 };
 
 #define CRT_KEY(c)	c->ccf.hostname, c->hash
@@ -289,7 +284,7 @@ container_init_logger(void)
 }
 
 static void
-container_mainloop(int fd)
+container_mainloop(int fd, struct flock_machine_container_config *ccf)
 {
   log(L_INFO "container mainloop with fd %d", fd);
 
@@ -300,12 +295,12 @@ container_mainloop(int fd)
   /* Move to the workdir */
   linpool *lp = lp_new(&root_pool);
 
-  if (strchr(ccf.basedir, ',') ||
-      strchr(ccf.basedir, '=') ||
-      strchr(ccf.basedir, '\\'))
+  if (strchr(ccf->basedir, ',') ||
+      strchr(ccf->basedir, '=') ||
+      strchr(ccf->basedir, '\\'))
     die("Refusing to work with paths containing chars: ,=\\");
 
-  int wfd = GETDIR(lp_sprintf(lp, "%s%s", ccf.workdir[0] == '/' ? "" : "./", ccf.workdir));
+  int wfd = GETDIR(lp_sprintf(lp, "%s%s", ccf->workdir[0] == '/' ? "" : "./", ccf->workdir));
   SYSCALL(fchdir, wfd);
   close(wfd); wfd = -1;
 
@@ -313,16 +308,16 @@ container_mainloop(int fd)
   close(GETDIR(lp_strdup(lp, "./tmp")));
   close(GETDIR(lp_strdup(lp, "./root")));
 
-  bool cloneroot = !strcmp(ccf.basedir, "/");
+  bool cloneroot = !strcmp(ccf->basedir, "/");
   bool clonedev = cloneroot;
   if (cloneroot)
   {
-    ccf.basedir = "./lower";
+    ccf->basedir = "./lower";
     close(GETDIR(lp_strdup(lp, "./lower")));
   }
 
   const char *overlay_mount_options = lp_sprintf(lp, "lowerdir=%s,upperdir=%s,workdir=%s",
-      ccf.basedir, "./upper", "./tmp");
+      ccf->basedir, "./upper", "./tmp");
   SYSCALL(mount, "overlay", "./root", "overlay", 0, overlay_mount_options);
 
   if (cloneroot)
@@ -531,10 +526,10 @@ container_mainloop(int fd)
 static uint container_counter = 0;
 
 static void
-container_start(void)
+container_start(struct flock_machine_container_config *ccf)
 {
   log(L_INFO "Requested to start a container, name %s, base %s, work %s",
-      ccf.hostname, ccf.basedir, ccf.workdir);
+      ccf->cf.name, ccf->basedir, ccf->workdir);
 
   pid_t pid = fork();
   if (pid < 0)
@@ -599,7 +594,7 @@ container_start(void)
 
     ASSERT_DIE(container_counter < 0x6000);
     this_thread_id -= (container_counter << 1) + 0x3000 ;
-    container_mainloop(fds[1]); /* this never returns */
+    container_mainloop(fds[1], ccf); /* this never returns */
     bug("container_mainloop has returned");
   }
 
@@ -757,6 +752,7 @@ hypervisor_container_forker_err(sock *sk, int e UNUSED)
 
 /* The child */
 
+#if 0
 static void
 crt_err(sock *s, int err UNUSED)
 {
@@ -799,92 +795,54 @@ container_created(callback *cb)
 
   mb_free(ccc);
 }
+#endif
 
 void
-hypervisor_container_request(sock *s, const char *name, const char *basedir, const char *workdir)
+hypervisor_container_start(struct cbor_channel *cch, struct flock_machine_container_config *ccf)
 {
   birdloop_enter(hcf.loop);
+// const char *name, const char *basedir, const char *workdir
 
+  const char *name = ccf->cf.name;
   uint h = mem_hash(name, strlen(name));
   struct container_runtime *crt = HASH_FIND(hcf.hash, CRT, name, h);
   if (crt)
   {
-    struct {
-      struct cbor_writer w;
-      struct cbor_writer_stack_item si[2];
-    } _cw;
+    CBOR_REPLY(cch, cw)
+      CBOR_PUT_MAP(cw)
+      {
+	cbor_put_int(cw, -127);
+	cbor_put_string(cw, "Container not created: Already exists");
+      }
 
-    struct cbor_writer *cw = cbor_writer_init(&_cw.w, 2, s->tbuf, s->tbsize);
-    CBOR_PUT_MAP(cw)
-    {
-      cbor_put_int(cw, -127);
-      cbor_put_string(cw, "BAD: Already exists");
-    }
-
-    sk_send(s, cw->data.pos - cw->data.start);
-
+    cbor_done_channel(cch);
     birdloop_leave(hcf.loop);
     return;
   }
 
-  uint nlen = strlen(name),
-       blen = strlen(basedir),
-       wlen = strlen(workdir);
-
-  crt = mb_allocz(hcf.p, sizeof *crt + nlen + blen + wlen + 3);
-
-  char *pos = crt->data;
-
-  crt->ccf.hostname = pos;
-  memcpy(pos, name, nlen + 1);
-  pos += nlen + 1;
-
-  crt->ccf.workdir = pos;
-  memcpy(pos, workdir, wlen + 1);
-  pos += wlen + 1;
-
-  crt->ccf.basedir = pos;
-  memcpy(pos, basedir, blen + 1);
-  pos += blen + 1;
-
+  uint nlen = strlen(name);
+  crt = mb_allocz(hcf.p, sizeof *crt + nlen + 1);
   crt->hash = h;
-
-  struct container_operation_callback *ccc = mb_alloc(s->pool, sizeof *ccc);
-  *ccc = (struct container_operation_callback) {
-    .s = s,
-    .data = s->data,
-  };
-  callback_init(&ccc->cb, container_created, s->loop);
-  crt->ccc = ccc;
+  memcpy(crt->hostname, name, nlen + 1);
 
   HASH_INSERT(hcf.hash, CRT, crt);
 
-  ASSERT_DIE(hcf.cur_crt == NULL);
-  hcf.cur_crt = crt;
+  log(L_INFO "requesting machine creation, name %s", name);
+  SKIP_BACK_DECLARE(struct container_fork_request, cfr, cch, cbor_channel_new(hcf.stream));
+  cfr->crl_ch = cch;
+  cfr->crt = crt;
+  cfr->cch.parse = container_fork_request_reply;
 
-  log(L_INFO "requesting machine creation, socket %p", s);
-
-  struct {
-    struct cbor_writer w;
-    struct cbor_writer_stack_item si[2];
-  } _cw;
-
-  struct cbor_writer *cw = cbor_writer_init(&_cw.w, 2, s->tbuf, s->tbsize);
-  CBOR_PUT_MAP(cw)
-  {
-    cbor_put_int(cw, 0);
-    cbor_put_string(cw, name);
-    cbor_put_int(cw, 1);
-    cbor_put_string(cw, basedir);
-    cbor_put_int(cw, 2);
-    cbor_put_string(cw, workdir);
-  }
-
-  sk_send(s, cw->data.pos - cw->data.start);
-
-  s->err_paused = crt_err;
-  s->data = crt;
-  sk_pause_rx(s->loop, s);
+  CBOR_REPLY(&cfr->cch, cw)
+    CBOR_PUT_MAP(cw)
+    {
+      cbor_put_int(cw, 0);
+      cbor_put_string(cw, name);
+      cbor_put_int(cw, 1);
+      cbor_put_string(cw, ccf->basedir);
+      cbor_put_int(cw, 2);
+      cbor_put_string(cw, ccf->workdir);
+    }
 
   birdloop_leave(hcf.loop);
 }
@@ -916,57 +874,44 @@ container_stopped(callback *cb)
 }
 
 void
-hypervisor_container_shutdown(sock *s, const char *name)
+hypervisor_container_shutdown(struct cbor_channel *cch, struct flock_machine_container_config *ccf)
 {
   birdloop_enter(hcf.loop);
 
+  const char *name = ccf->cf.name;
   uint h = mem_hash(name, strlen(name));
   struct container_runtime *crt = HASH_FIND(hcf.hash, CRT, name, h);
 
   if (!crt || !crt->s)
   {
-    struct {
-      struct cbor_writer w;
-      struct cbor_writer_stack_item si[2];
-    } _cw;
+    CBOR_REPLY(cch, cw)
+      CBOR_PUT_MAP(cw)
+      {
+	cbor_put_int(cw, -127);
+	cbor_put_string(cw, "BAD: Not found");
+      }
 
-    struct cbor_writer *cw = cbor_writer_init(&_cw.w, 2, s->tbuf, s->tbsize);
-    CBOR_PUT_MAP(cw)
-    {
-      cbor_put_int(cw, -127);
-      cbor_put_string(cw, "BAD: Not found");
-    }
-
-    sk_send(s, cw->data.pos - cw->data.start);
+    cbor_done_channel(cch);
     birdloop_leave(hcf.loop);
     return;
   }
 
-  struct {
-    struct cbor_writer w;
-    struct cbor_writer_stack_item si[2];
-  } _cw;
+  struct cbor_channel *xch = cbor_channel_new(crt->stream);
+  CBOR_REPLY(xch, cw)
+    CBOR_PUT_MAP(cw)
+    {
+      cbor_put_int(cw, 0);
+      cbor_put_null(cw);
+    }
 
-  struct cbor_writer *cw = cbor_writer_init(&_cw.w, 2, s->tbuf, s->tbsize);
-  CBOR_PUT_MAP(cw)
-  {
-    cbor_put_int(cw, 0);
-    cbor_put_null(cw);
-  }
-
-  sk_send(s, cw->data.pos - cw->data.start);
-
-  struct container_operation_callback *ccc = mb_alloc(s->pool, sizeof *ccc);
+  struct container_operation_callback *ccc = mb_alloc(cch->pool, sizeof *ccc);
   *ccc = (struct container_operation_callback) {
-    .s = s,
-    .data = s->data,
+    .cch = cch,
+    .ccf = ccf,
+    .cancel = container_operation_hangup,
   };
   callback_init(&ccc->cb, container_stopped, s->loop);
   crt->ccc = ccc;
-
-  s->err_paused = crt_err;
-  s->data = crt;
-  sk_pause_rx(s->loop, s);
 
   birdloop_leave(hcf.loop);
 }

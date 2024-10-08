@@ -5,6 +5,7 @@
 #ifndef INCLUDE_FLOCK_H
 #define INCLUDE_FLOCK_H
 #include "lib/birdlib.h"
+#include "lib/cbor.h"
 #include "lib/event.h"
 #include "lib/obstacle.h"
 #include "lib/resource.h"
@@ -45,9 +46,8 @@ union flock_machine_config {
   } container;
 };
 
-
-void hypervisor_container_request(sock *s, const char *name, const char *basedir, const char *workdir);
-void hypervisor_container_shutdown(sock *s, const char *name);
+void hypervisor_container_start(struct cbor_channel *, struct flock_machine_container_config *);
+void hypervisor_container_shutdown(struct cbor_channel *, struct flock_machine_container_config *);
 int container_ctl_fd(const char *name);
 
 void hexp_cleanup_after_fork(void);
