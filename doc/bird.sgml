@@ -1946,7 +1946,6 @@ and name is used). In both cases, it must have the same type as elements.
 
 <p>The <cf>case</cf> is similar to case from Pascal. Syntax is <cf>case
 <m/expr/ { else: | <m/set_body_expr/ /: <m/statement/ ; [... ] }</cf>.
-
 The expression after <cf>case</cf> can be of any type that could be a member of
 a set, while the <m/set_body_expr/ before <cf/:/ can be anything (constants,
 intervals, expressions) that could be a part of a set literal. One exception is
