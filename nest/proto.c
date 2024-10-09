@@ -60,7 +60,7 @@ static void channel_update_limit(struct channel *c, struct limit *l, int dir, st
 static void channel_reset_limit(struct channel *c, struct limit *l, int dir);
 static void channel_stop_export(struct channel *c);
 static void channel_check_stopped(struct channel *c);
-void init_journals(void);
+void init_journal(void);
 static ea_list *proto_state_to_eattr(struct proto *p, int old_state, int proto_deleting);
 void add_journal_channel(struct channel *ch);
 void remove_journal_channel(struct channel *ch);
@@ -2098,7 +2098,7 @@ protos_build(void)
   proto_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Protocols");
 
   init_pst_lock();
-  init_journals();
+  init_journal();
   //create_dummy_recipient();
   protos_build_gen();
 }
@@ -2970,8 +2970,6 @@ cleanup_journal_item_proto(struct lfjour * journal UNUSED, struct lfjour_item *i
 {
   /* Called after a journal update was has been read. */
   struct proto_pending_update *pupdate = SKIP_BACK(struct proto_pending_update, li, i);
-  if (pupdate->old_attr)
-    ea_free_later(pupdate->old_attr);
   int deleting = ea_get_int(pupdate->proto_attr, &ea_deleted, 0);
 
   if (deleting)
@@ -2979,39 +2977,24 @@ cleanup_journal_item_proto(struct lfjour * journal UNUSED, struct lfjour_item *i
 }
 
 void
-cleanup_journal_item_channel(struct lfjour * journal UNUSED, struct lfjour_item *i)
-{
-  /* not used - journals for channels does not work yet */
-  struct channel_pending_update *chupdate = SKIP_BACK(struct channel_pending_update, li, i);
-  //ea_free_later(chupdate->old_attr);
-  int deleting = ea_get_int(chupdate->channel_attr, &ea_deleted, 0);
-
-  if (deleting)
-    ea_free_later(chupdate->channel_attr);
-}
-
-void
 after_journal_birdloop_stop(void* arg UNUSED){}
 
 void
-init_journal(int item_size, char *loop_name)
-{
-  proto_journal = mb_allocz(&root_pool, sizeof(struct lfjour));
-  struct settle_config cf = {.min = 0, .max = 0};
-  proto_journal->item_done = cleanup_journal_item_proto;
-  proto_journal->item_size = item_size;
-  proto_journal->loop = birdloop_new(&root_pool, DOMAIN_ORDER(service), 1, loop_name);
-  proto_journal->domain = proto_journal_domain.rtable;
-
-  lfjour_init(proto_journal, &cf);
-}
-
-void
-init_journals(void)
+init_journal(void)
 {
   protos_attr_field_init();
   proto_journal_domain = DOMAIN_NEW(rtable);
-  init_journal(sizeof(struct proto_pending_update), "proto journal loop");
+
+  protos_attr_field_init();
+  proto_journal_domain = DOMAIN_NEW(rtable);
+  proto_journal = mb_allocz(&root_pool, sizeof(struct lfjour));
+  struct settle_config cf = {.min = 0, .max = 0};
+  proto_journal->item_done = cleanup_journal_item_proto;
+  proto_journal->item_size = sizeof(struct proto_pending_update);
+  proto_journal->loop = birdloop_new(&root_pool, DOMAIN_ORDER(service), 1, "proto journal loop");
+  proto_journal->domain = proto_journal_domain.rtable;
+
+  lfjour_init(proto_journal, &cf);
 }
 
 static ea_list *
@@ -3077,10 +3060,9 @@ proto_state_table_update(ea_list *attr, struct proto *p)
 
   attr = ea_lookup(attr, 0, EALS_CUSTOM);
 
-  ea_list *old_attr;
   PST_LOCKED(ts)
   {
-    old_attr = ts->states[p->id];
+    ea_free_later(ts->states[p->id]);
     atomic_store(&ts->states[p->id], attr);
   }
   LOCK_DOMAIN(rtable, proto_journal_domain);
@@ -3095,7 +3077,6 @@ proto_state_table_update(ea_list *attr, struct proto *p)
   *pupdate = (struct proto_pending_update) {
     .li = pupdate->li,	/* Keep the item's internal state */
     .proto_attr = attr,
-    .old_attr = old_attr,
     .protocol = p
   };
   ea_ref(attr); /* reference for the new eattr. It will (hopefully) be removed once it becomes an old route. */

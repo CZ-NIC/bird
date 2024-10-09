@@ -439,15 +439,7 @@ LOBJ_UNLOCK_CLEANUP(proto_state_table, rtable);
 struct proto_pending_update {
   LFJOUR_ITEM_INHERIT(li);
   ea_list *proto_attr;
-  ea_list *old_attr;
   struct proto *protocol;
-};
-
-struct channel_pending_update {
-  LFJOUR_ITEM_INHERIT(li);
-  ea_list *channel_attr;
-  ea_list *old_attr;
-  struct channel *channel;
 };
 
 void proto_state_table_update(ea_list *attr, struct proto *p);
