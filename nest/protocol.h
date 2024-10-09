@@ -404,8 +404,6 @@ static inline int proto_is_inactive(struct proto *p)
 #define PROTO_STATE_TABLE_PUBLIC \
   DOMAIN(rtable) lock;		/* Lock needed to access global protocol state table */	\
   struct lfjour journal;	/* Subscribe here to get new content! */		\
-  struct hmap *proto_id_map;              \
-  struct hmap *channel_id_map;            \
 
 
 struct proto_state_table_private {
@@ -416,6 +414,8 @@ struct proto_state_table_private {
   ea_list ** channels;
   u32 length_states;
   u32 length_channels;
+  struct hmap proto_id_map;
+  struct hmap channel_id_map;
   pool *pool;
   struct proto_state_table_private **locked_at;
 };
@@ -443,7 +443,6 @@ struct proto_pending_update {
 };
 
 void proto_state_table_update(ea_list *attr, struct proto *p);
-void channel_journal_state_push(ea_list *attr, struct channel *ch);
 ea_list *get_channel_ea(struct channel *ch);
 ea_list *get_states_proto(int id);
 void proto_states_register_domain(struct lfjour_recipient *r);

@@ -63,7 +63,7 @@ static void channel_check_stopped(struct channel *c);
 void init_journal(void);
 static ea_list *proto_state_to_eattr(struct proto *p, int old_state, int proto_deleting);
 void add_journal_channel(struct channel *ch);
-void remove_journal_channel(struct channel *ch);
+void remove_channel_eal(struct channel *ch);
 static inline void channel_reimport(struct channel *c, struct rt_feeding_request *rfr)
 {
   rt_export_refeed(&c->reimporter, rfr);
@@ -249,8 +249,11 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->channel_state = CS_DOWN;
   c->last_state_change = current_time();
   c->reloadable = 1;
-  c->id = hmap_first_zero(proto_state_table_pub.channel_id_map);
-  hmap_set(proto_state_table_pub.channel_id_map, c->id);
+  PST_LOCKED(ts)
+  {
+    c->id = hmap_first_zero(&ts->channel_id_map);
+    hmap_set(&ts->channel_id_map, c->id);
+  }
 
   init_list(&c->roa_subscriptions);
 
@@ -286,7 +289,7 @@ proto_remove_channel(struct proto *p UNUSED, struct channel *c)
 
   CD(c, "Removed", c->name);
 
-  remove_journal_channel(c);
+  remove_channel_eal(c);
 
   rt_unlock_table(c->table);
   rem_node(&c->n);
@@ -1310,8 +1313,8 @@ proto_new(struct proto_config *cf)
 
   PST_LOCKED(tp)
   {
-    p->id = hmap_first_zero(tp->proto_id_map);
-    hmap_set(tp->proto_id_map, p->id);
+    p->id = hmap_first_zero(&tp->proto_id_map);
+    hmap_set(&tp->proto_id_map, p->id);
 
     if (p->id >= tp->length_states)
     {
@@ -1348,8 +1351,6 @@ proto_init(struct proto_config *c, struct proto *after)
 
   ea_list *eal = proto_state_to_eattr(p, old_state, 0);
 
-  proto_state_table_update(eal, p);
-
   return p;
 }
 
@@ -1378,7 +1379,7 @@ proto_start(struct proto *p)
   {
     p->pool_inloop = rp_newf(p->pool, birdloop_domain(p->loop), "Protocol %s early cleanup objects", p->cf->name);
     p->pool_up = rp_newf(p->pool, birdloop_domain(p->loop), "Protocol %s stop-free objects", p->cf->name);
-  proto_notify_state(p, (p->proto->start ? p->proto->start(p) : PS_UP));
+    proto_notify_state(p, (p->proto->start ? p->proto->start(p) : PS_UP));
   }
 }
 
@@ -1779,11 +1780,6 @@ proto_rethink_goal(struct proto *p)
       ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_deleted, 0, 1));
     }
       proto_state_table_update(eal, p);
-    PST_LOCKED(tp)
-    {
-      hmap_clear(tp->proto_id_map, p->id);
-      tp->states[p->id] = NULL;
-    }
 
     DBG("%s has shut down for reconfiguration\n", p->name);
     p->cf->proto = NULL;
@@ -2064,24 +2060,6 @@ extern void bfd_init_all(void);
 
 void protos_build_gen(void);
 
-static void
-init_pst_lock(void)
-{
-  proto_state_table_pub.lock = DOMAIN_NEW(rtable);
-  /*LOCK_DOMAIN(rtable, proto_state_table_pub.lock);
-
-  pool *sp = birdloop_pool(loop);
-  pool *p = rp_newf(sp, dom.rtable, "Proto state table locking pool");
-
-  init_list(&t->imports);
-
-  struct rtable_private *t = ralloc(p, &rt_class);
-  t->rp = p;
-  t->loop = loop;
-  t->lock = dom;
-
-  UNLOCK_DOMAIN(rtable, dom);*/
-}
 
 /**
  * protos_build - build a protocol list
@@ -2097,7 +2075,7 @@ protos_build(void)
 {
   proto_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Protocols");
 
-  init_pst_lock();
+  proto_state_table_pub.lock = DOMAIN_NEW(rtable);
   init_journal();
   //create_dummy_recipient();
   protos_build_gen();
@@ -2952,12 +2930,11 @@ protos_attr_field_init(void)
 {
   int init_length = 32; /* We do not know, how many protos there will be. This is just a magic number. */
   pool *p = rp_new(&root_pool, the_bird_domain.the_bird, "Proto state table");
-  proto_state_table_pub.proto_id_map = mb_allocz(p, sizeof(struct hmap));
-  proto_state_table_pub.channel_id_map = mb_allocz(p, sizeof(struct hmap));
-  hmap_init(proto_state_table_pub.proto_id_map, p, init_length); /* for proto ids. Value of proto id is the same as index of that proto in ptoto_state_table->attrs */
-  hmap_init(proto_state_table_pub.channel_id_map, p, init_length * 2);
 
   PST_LOCK(ts)
+  hmap_init(&ts->proto_id_map, p, init_length); /* for proto ids. Value of proto id is the same as index of that proto in ptoto_state_table->attrs */
+  hmap_init(&ts->channel_id_map, p, init_length * 2);
+
   ts->pool = p;
   ts->states = mb_allocz(p, sizeof(ea_list *)*init_length);
   ts->channels = mb_allocz(p, sizeof(ea_list *)*init_length * 2);
@@ -2973,7 +2950,15 @@ cleanup_journal_item_proto(struct lfjour * journal UNUSED, struct lfjour_item *i
   int deleting = ea_get_int(pupdate->proto_attr, &ea_deleted, 0);
 
   if (deleting)
+  {
+    PST_LOCKED(tp)
+    {
+      int p_id = ea_get_int(pupdate->proto_attr, &ea_proto_id, 0);
+      hmap_clear(&tp->proto_id_map, p_id);
+      tp->states[p_id] = NULL;
+    }
     ea_free_later(pupdate->proto_attr);
+  }
 }
 
 void
@@ -2985,8 +2970,6 @@ init_journal(void)
   protos_attr_field_init();
   proto_journal_domain = DOMAIN_NEW(rtable);
 
-  protos_attr_field_init();
-  proto_journal_domain = DOMAIN_NEW(rtable);
   proto_journal = mb_allocz(&root_pool, sizeof(struct lfjour));
   struct settle_config cf = {.min = 0, .max = 0};
   proto_journal->item_done = cleanup_journal_item_proto;
@@ -3021,7 +3004,8 @@ proto_state_to_eattr(struct proto *p, int old_state, int proto_deleting)
 
   CALL(p->proto->init_state, p, state);
 
-  return ea_lookup_slow(state, 0, EALS_CUSTOM);
+  ea_list *eal = ea_lookup_slow(state, 0, EALS_CUSTOM);
+  proto_state_table_update(eal, p);
 }
 
 ea_list *
@@ -3096,8 +3080,6 @@ update_proto_state_channel(ea_list *attr, struct channel *ch)
 void
 add_journal_channel(struct channel *ch)
 {
-  //if (!NODE_VALID(HEAD(proto_state_table->channels_attrs[ch->proto->id])))
-  //  init_list(&proto_state_table->channels_attrs[ch->proto->id]); // if we realocated channels lists, earlier inicialization would be problematic. But it does not seem to be problem for nonempty lists
   ea_list *eal;
   ea_list *chan_att = channel_state_to_eattr(ch, 0);
 
@@ -3105,20 +3087,11 @@ add_journal_channel(struct channel *ch)
   {
     if (ts->length_channels <= ch->id)
     {
-      ea_list **l = mb_allocz(ts->pool, sizeof(ea_list*) * ts->length_channels * 2 + 1);
+      ea_list **l = mb_allocz(ts->pool, sizeof(ea_list*) * ts->length_channels * 2);
       memcpy(l, ts->channels, sizeof(ea_list*) * ts->length_channels);
       mb_free(ts->channels);
       ts->channels = l;
-      ts->length_channels = ts->length_channels * 2 + 1;
-    }
-
-    if (ts->length_states <= ch->proto->id) //TODO is this possible to happen?
-    {
-      ea_list **new_states = mb_allocz(ts->pool, sizeof *new_states * ts->length_states * 2);
-      memcpy(new_states, ts->states, ts->length_states * sizeof *new_states);
-
-      mb_free(ts->states);
-      ts->states = new_states;
+      ts->length_channels = ts->length_channels * 2;
     }
 
     ts->channels[ch->id] = chan_att;
@@ -3138,7 +3111,7 @@ add_journal_channel(struct channel *ch)
 }
 
 void
-remove_journal_channel(struct channel *ch)
+remove_channel_eal(struct channel *ch)
 {
   ea_list *eal;
   PST_LOCKED(ts)
@@ -3165,7 +3138,7 @@ remove_journal_channel(struct channel *ch)
   PST_LOCKED(ts)
   {
     ts->channels[ch->id] = NULL;
-    hmap_clear(ts->channel_id_map, ch->id);
+    hmap_clear(&ts->channel_id_map, ch->id);
   }
   ea_list *to_remove = get_channel_ea(ch);
   ea_free_later(to_remove);
@@ -3178,9 +3151,10 @@ get_channel_ea(struct channel *ch)
   PST_LOCKED(ts)
   {
     eal = ts->channels[ch->id];
-    ea_free_later(ea_ref(eal));
   }
-  return eal;
+  if (eal)
+    return ea_free_later(ea_ref(eal));
+  return NULL;
 }
 
 ea_list *
@@ -3190,10 +3164,10 @@ get_states_proto(int id)
   PST_LOCKED(ts)
   {
     eal = ts->states[id];
-    if (eal)
-      ea_free_later(ea_ref(eal));
   }
-  return eal;
+  if (eal)
+    return ea_free_later(ea_ref(eal));
+  return NULL;
 }
 
 void
