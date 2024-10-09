@@ -29,10 +29,6 @@ static TLIST_LIST(proto) global_proto_list;
 
 static list STATIC_LIST_INIT(protocol_list);
 
-struct lfjour *proto_journal;
-struct lfjour *channel_journal;
-DOMAIN(rtable) proto_journal_domain;
-
 #define CD(c, msg, args...) ({ if (c->debug & D_STATES) log(L_TRACE "%s.%s: " msg, c->proto->name, c->name ?: "?", ## args); })
 #define PD(p, msg, args...) ({ if (p->debug & D_STATES) log(L_TRACE "%s: " msg, p->name, ## args); })
 
@@ -60,10 +56,10 @@ static void channel_update_limit(struct channel *c, struct limit *l, int dir, st
 static void channel_reset_limit(struct channel *c, struct limit *l, int dir);
 static void channel_stop_export(struct channel *c);
 static void channel_check_stopped(struct channel *c);
-void init_journal(void);
-static ea_list *proto_state_to_eattr(struct proto *p, int old_state, int proto_deleting);
-void add_journal_channel(struct channel *ch);
-void remove_channel_eal(struct channel *ch);
+static void init_journal(void);
+static void proto_state_init_eal(struct proto *p, int old_state, int proto_deleting);
+static void add_channel_eal(struct channel *ch);
+static void remove_channel_eal(struct channel *ch);
 static inline void channel_reimport(struct channel *c, struct rt_feeding_request *rfr)
 {
   rt_export_refeed(&c->reimporter, rfr);
@@ -262,7 +258,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   add_tail(&p->channels, &c->n);
 
   CD(c, "Connected to table %s", c->table->name);
-  add_journal_channel(c);
+  add_channel_eal(c);
 
   return c;
 }
@@ -1349,7 +1345,7 @@ proto_init(struct proto_config *c, struct proto *after)
 
   PD(p, "Initializing%s", p->disabled ? " [disabled]" : "");
 
-  ea_list *eal = proto_state_to_eattr(p, old_state, 0);
+  proto_state_init_eal(p, old_state, 0);
 
   return p;
 }
@@ -2925,7 +2921,7 @@ proto_iterate_named(struct symbol *sym, struct protocol *proto, struct proto *ol
 }
 
 
-void
+static void
 protos_attr_field_init(void)
 {
   int init_length = 32; /* We do not know, how many protos there will be. This is just a magic number. */
@@ -2961,27 +2957,23 @@ cleanup_journal_item_proto(struct lfjour * journal UNUSED, struct lfjour_item *i
   }
 }
 
-void
-after_journal_birdloop_stop(void* arg UNUSED){}
-
-void
+static void
 init_journal(void)
 {
   protos_attr_field_init();
-  proto_journal_domain = DOMAIN_NEW(rtable);
+  proto_state_table_pub.lock = DOMAIN_NEW(rtable);
 
-  proto_journal = mb_allocz(&root_pool, sizeof(struct lfjour));
   struct settle_config cf = {.min = 0, .max = 0};
-  proto_journal->item_done = cleanup_journal_item_proto;
-  proto_journal->item_size = sizeof(struct proto_pending_update);
-  proto_journal->loop = birdloop_new(&root_pool, DOMAIN_ORDER(service), 1, "proto journal loop");
-  proto_journal->domain = proto_journal_domain.rtable;
+  proto_state_table_pub.journal.item_done = cleanup_journal_item_proto;
+  proto_state_table_pub.journal.item_size = sizeof(struct proto_pending_update);
+  proto_state_table_pub.journal.loop = birdloop_new(&root_pool, DOMAIN_ORDER(service), 1, "proto journal loop");
+  proto_state_table_pub.journal.domain = proto_state_table_pub.lock.rtable;
 
-  lfjour_init(proto_journal, &cf);
+  lfjour_init(&proto_state_table_pub.journal, &cf);
 }
 
-static ea_list *
-proto_state_to_eattr(struct proto *p, int old_state, int proto_deleting)
+static void
+proto_state_init_eal(struct proto *p, int old_state, int proto_deleting)
 {
   /*
     Making first version of proto eatters. In order to avoid reallocations, the eatters are inited in their maximum length.
@@ -3008,8 +3000,8 @@ proto_state_to_eattr(struct proto *p, int old_state, int proto_deleting)
   proto_state_table_update(eal, p);
 }
 
-ea_list *
-channel_state_to_eattr(struct channel *ch, int proto_deleting)
+static ea_list *
+channel_state_to_eattr(struct channel *ch)
 {
   /*
     Making the first version of a channel eatters.
@@ -3019,7 +3011,6 @@ channel_state_to_eattr(struct channel *ch, int proto_deleting)
   ea_set_attr(&chan, EA_LITERAL_STORE_STRING(&ea_name, 0, ch->name));
   ea_set_attr(&chan, EA_LITERAL_EMBEDDED(&ea_proto_id, 0, ch->proto->id));
   ea_set_attr(&chan, EA_LITERAL_EMBEDDED(&ea_channel_id, 0, ch->id));
-  ea_set_attr(&chan, EA_LITERAL_EMBEDDED(&ea_deleted, 0, proto_deleting));
   ea_set_attr(&chan, EA_LITERAL_EMBEDDED(&ea_in_keep, 0, ch->in_keep));
 
   ea_set_attr(&chan, EA_LITERAL_STORE_PTR(&ea_rtable, 0, ch->table));
@@ -3049,12 +3040,12 @@ proto_state_table_update(ea_list *attr, struct proto *p)
     ea_free_later(ts->states[p->id]);
     atomic_store(&ts->states[p->id], attr);
   }
-  LOCK_DOMAIN(rtable, proto_journal_domain);
-  struct proto_pending_update *pupdate = SKIP_BACK(struct proto_pending_update, li, lfjour_push_prepare(proto_journal));
+  LOCK_DOMAIN(rtable, proto_state_table_pub.lock);
+  struct proto_pending_update *pupdate = SKIP_BACK(struct proto_pending_update, li, lfjour_push_prepare(&proto_state_table_pub.journal));
 
   if (!pupdate)
   {
-    UNLOCK_DOMAIN(rtable, proto_journal_domain);
+    UNLOCK_DOMAIN(rtable, proto_state_table_pub.lock);
     return;
   }
 
@@ -3064,24 +3055,16 @@ proto_state_table_update(ea_list *attr, struct proto *p)
     .protocol = p
   };
   ea_ref(attr); /* reference for the new eattr. It will (hopefully) be removed once it becomes an old route. */
-  lfjour_push_commit(proto_journal);
-  UNLOCK_DOMAIN(rtable, proto_journal_domain);
+  lfjour_push_commit(&proto_state_table_pub.journal);
+  UNLOCK_DOMAIN(rtable, proto_state_table_pub.lock);
 }
 
-void
-update_proto_state_channel(ea_list *attr, struct channel *ch)
-{
-  attr = ea_lookup(attr, 0, EALS_CUSTOM);
-  PST_LOCK(ts)
-  ea_free_later(ts->channels[ch->id]);
-  ts->channels[ch->id] = attr;
-}
 
-void
-add_journal_channel(struct channel *ch)
+static void
+add_channel_eal(struct channel *ch)
 {
   ea_list *eal;
-  ea_list *chan_att = channel_state_to_eattr(ch, 0);
+  ea_list *chan_att = channel_state_to_eattr(ch);
 
   PST_LOCKED(ts)
   {
@@ -3110,7 +3093,7 @@ add_journal_channel(struct channel *ch)
   proto_state_table_update(eal, ch->proto);
 }
 
-void
+static void
 remove_channel_eal(struct channel *ch)
 {
   ea_list *eal;
@@ -3173,9 +3156,9 @@ get_states_proto(int id)
 void
 proto_states_register_domain(struct lfjour_recipient *r)
 {
-  LOCK_DOMAIN(rtable, proto_journal_domain);
-  lfjour_register(proto_journal, r);
-  UNLOCK_DOMAIN(rtable, proto_journal_domain);
+  LOCK_DOMAIN(rtable, proto_state_table_pub.lock);
+  lfjour_register(&proto_state_table_pub.journal, r);
+  UNLOCK_DOMAIN(rtable, proto_state_table_pub.lock);
 }
 
 #if 0
@@ -3228,9 +3211,9 @@ create_dummy_recipient(void)
   struct birdloop *loop = birdloop_new(&root_pool, DOMAIN_ORDER(service), 1, "dummy recipient loop");
   r->target = birdloop_event_list(loop);
 
-  LOCK_DOMAIN(rtable, proto_journal_domain);
-  lfjour_register(proto_journal, r);
-  UNLOCK_DOMAIN(rtable, proto_journal_domain);
+  LOCK_DOMAIN(rtable, proto_state_table_pub.lock);
+  lfjour_register(proto_state_table_pub.journal, r);
+  UNLOCK_DOMAIN(rtable, proto_state_table_pub.lock);
   dummy_log_proto_attr_list();
 }
 #endif

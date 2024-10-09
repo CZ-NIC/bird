@@ -410,6 +410,7 @@ struct proto_state_table_private {
   struct {
     PROTO_STATE_TABLE_PUBLIC;
   };
+  struct proto_state_table_private **locked_at;
   ea_list ** states;
   ea_list ** channels;
   u32 length_states;
@@ -417,7 +418,6 @@ struct proto_state_table_private {
   struct hmap proto_id_map;
   struct hmap channel_id_map;
   pool *pool;
-  struct proto_state_table_private **locked_at;
 };
 
 typedef union proto_state_table {
@@ -446,7 +446,6 @@ void proto_state_table_update(ea_list *attr, struct proto *p);
 ea_list *get_channel_ea(struct channel *ch);
 ea_list *get_states_proto(int id);
 void proto_states_register_domain(struct lfjour_recipient *r);
-void update_proto_state_channel(ea_list *attr, struct channel *ch);
 
 
 /*

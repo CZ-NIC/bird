@@ -1023,25 +1023,6 @@ bmp_peer_down_(struct bmp_proto *p, ea_list *bgp,
   bmp_remove_peer(p, bp);
 }
 
-//#if 0
-//void
-//bmp_peer_down(const struct bgp_proto *bgp,
-//	      int err_class, int code, int subcode, const byte *data, int length)
-//{
-//  int need_unlock = 1;
-//  if (DG_IS_LOCKED(p->p.pool->domain))
-//    need_unlock = 0;
-//  else
-//    DG_LOCK(p->p.pool->domain);
-
-//  struct bmp_proto *p; node *n;
-//  WALK_LIST2(p, n, bmp_proto_list, bmp_node)
-//    bmp_peer_down_(p, bgp, err_class, code, subcode, data, length);
-
-//  if (need_unlock)
-//    DG_UNLOCK(p->p.pool->domain);
-//}
-//#endif
 
 static void
 bmp_send_termination_msg(struct bmp_proto *p,
@@ -1065,6 +1046,7 @@ bmp_send_termination_msg(struct bmp_proto *p,
   bmp_buffer_free(&stream);
 }
 
+#if 0
 int
 bmp_preexport(struct channel *C UNUSED, rte *e)
 {
@@ -1085,6 +1067,7 @@ bmp_preexport(struct channel *C UNUSED, rte *e)
 
   return 1;
 }
+#endif
 
 static void
 bmp_split_policy(struct bmp_proto *p, const rte *new, const rte *old)
