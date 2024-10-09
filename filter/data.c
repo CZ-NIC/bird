@@ -655,6 +655,7 @@ mem_hash_mix_f_val(u64 *h, struct f_val *v)
     case T_ENUM_STATE:
     case T_BTIME:
     case T_BMP_CLOSING:
+    case T_CHANNEL_ID_LIST:
       bug("Invalid type %s in f_val hashing", f_type_name(v->type));
   }
 }

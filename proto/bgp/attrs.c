@@ -1299,7 +1299,7 @@ static void
 bgp_register_proto_jour_attrs(void)
 {
   EA_REGISTER_ALL(
-       &ea_bgp_rem_id, &ea_bgp_rem_as, &ea_bgp_loc_as, &ea_bgp_rem_ip, &ea_bgp_peer_type,
+       &ea_bgp_rem_id, &ea_bgp_rem_as, &ea_bgp_loc_as, &ea_bgp_rem_ip, &ea_bgp_peer_type, &ea_bgp_afi,
        &ea_bgp_local_open_msg, &ea_bgp_remote_open_msg, &ea_bgp_local_open_msg_len, &ea_bgp_remote_open_msg_len,
        &ea_bgp_conn, &ea_bgp_in_conn, &ea_bgp_out_conn, &ea_bgp_close_bmp, &ea_bgp_close_bmp_set, &ea_bgp_as4_session
       );

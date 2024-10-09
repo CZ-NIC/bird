@@ -469,7 +469,8 @@ extern struct ea_class ea_gen_mpls_label,
 /* protocol journal attributes */
 extern struct ea_class ea_name, ea_protocol_name, ea_protocol_type, ea_table,
        ea_state, ea_old_state, ea_last_modified, ea_info, ea_proto_id,
-       ea_channel_id, ea_deleted, ea_rtable, ea_bgp_afi, ea_in_keep;
+       ea_channel_id, ea_deleted, ea_rtable, ea_bgp_afi, ea_in_keep,
+       ea_proto_channel_count, ea_proto_channel_list;
 
 /* Source: An old method to devise the route source protocol and kind.
  * To be superseded in a near future by something more informative. */

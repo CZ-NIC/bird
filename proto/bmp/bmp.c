@@ -595,7 +595,7 @@ static inline bool bmp_stream_policy(struct bmp_stream *bs)
 static struct bmp_stream *
 bmp_find_stream(struct bmp_proto *p, const struct bgp_proto *bgp, u32 afi, bool policy)
 {
-  ea_list *bgp_attr = proto_get_state_list(bgp->p.id);
+  ea_list *bgp_attr = get_states_proto(bgp->p.id);
   struct bmp_stream *s = HASH_FIND(p->stream_map, HASH_STREAM, bgp_attr, bmp_stream_key(afi, policy));
   while (s == NULL)
   {
@@ -665,24 +665,32 @@ bmp_add_peer(struct bmp_proto *p, ea_list *bgp_attr)
 
   HASH_INSERT(p->peer_map, HASH_PEER, bp);
 
-  int proto_id = ea_get_int(bgp_attr, &ea_proto_id, 0);
+  u32 *chann_ids = (u32 *) ea_get_adata(bgp_attr, &ea_proto_channel_list)->data;
+  int id_count = ea_get_int(bgp_attr, &ea_proto_channel_count, 0);
 
-  WALK_TLIST(channel_attrs, chan_attr, &proto_state_table->channels_attrs[proto_id])
+  for (int i = 0; i < id_count; i++)
   {
-    rtable *ch_table = (rtable *) ea_get_ptr(chan_attr->attrs, &ea_rtable, 0);
-    const char *name = ea_get_adata(chan_attr->attrs, &ea_name)->data;
-    int in_keep = ea_get_int(chan_attr->attrs, &ea_in_keep, 0);
+    ea_list *chan_attr;
+    PST_LOCKED(ts)
+      chan_attr = ts->channels[chann_ids[i]];
+
+    if (chan_attr == NULL)
+      continue;
+
+    rtable *ch_table = (rtable *) ea_get_ptr(chan_attr, &ea_rtable, 0);
+    const char *name = ea_get_adata(chan_attr, &ea_name)->data;
+    int in_keep = ea_get_int(chan_attr, &ea_in_keep, 0);
 
     if (p->monitoring_rib.in_pre_policy && ch_table)
     {
       if (in_keep == RIK_PREFILTER)
-        bmp_add_stream(p, bp, ea_get_int(chan_attr->attrs, &ea_bgp_afi, 0), false, ch_table, chan_attr->attrs, 1);
+        bmp_add_stream(p, bp, ea_get_int(chan_attr, &ea_bgp_afi, 0), false, ch_table, chan_attr, 1);
       else
         log(L_WARN "%s: Try to do pre policy with disabled import tables (channel %s)", p->p.name, name);
     }
 
     if (p->monitoring_rib.in_post_policy && ch_table)
-      bmp_add_stream(p, bp, ea_get_int(chan_attr->attrs, &ea_bgp_afi, 0), true, ch_table, chan_attr->attrs, 0);
+      bmp_add_stream(p, bp, ea_get_int(chan_attr, &ea_bgp_afi, 0), true, ch_table, chan_attr, 0);
   }
 
   return bp;
@@ -1110,7 +1118,7 @@ bmp_split_policy(struct bmp_proto *p, const rte *new, const rte *old)
       struct bmp_stream *bs = bmp_find_stream(p, bgp, src_ch->afi, false);
       if (bs)
       {
-        if (bmp_find_peer(p, proto_get_state_list(bgp->p.id)) == NULL)
+        if (bmp_find_peer(p, get_states_proto(bgp->p.id)) == NULL)
           bug("Bmp got a route which belongs to a channel we do not know yet. It is more complicated state and needs to be implemented."); //TODO
 
         bmp_route_monitor_notify(p, bgp, bs, &loc);
@@ -1135,7 +1143,7 @@ bmp_split_policy(struct bmp_proto *p, const rte *new, const rte *old)
       struct bmp_stream *bs = bmp_find_stream(p, bgp, src_ch->afi, true);
       if (bs)
       {
-        if (bmp_find_peer(p, proto_get_state_list(bgp->p.id)) == NULL)
+        if (bmp_find_peer(p, get_states_proto(bgp->p.id)) == NULL)
           bug("Bmp got a route which belongs to a channel we do not know yet. It is more complicated state and needs to be implemented."); //TODO
 
         bmp_route_monitor_notify(p, bgp, bs, &loc);
@@ -1228,9 +1236,13 @@ bmp_startup(struct bmp_proto *p)
   bmp_buffer_free(&payload);
 
   /* Send Peer Up messages */
-  for (u32 i = 0; i < proto_state_table->length; i++)
+  u32 length;
+  PST_LOCKED(ts) /* The size of protos field will never decrease, the inconsistency caused by growing is not important */
+    length = ts->length_states;
+
+  for (u32 i = 0; i < length; i++)
   {
-    ea_list *proto_attr = proto_get_state_list(i);
+    ea_list *proto_attr = get_states_proto(i);
     if (proto_attr == NULL)
       continue;
 
@@ -1321,7 +1333,7 @@ bmp_connected(struct birdsock *sk)
   bmp_startup(p);
 }
 
-/* BMP socket error event - switch from any state to Idle state */
+/* BMPbmp_startup socket error event - switch from any state to Idle state */
 static void
 bmp_sock_err(sock *sk, int err)
 {
@@ -1393,12 +1405,12 @@ bmp_recip_iteration(struct bmp_proto *p, struct lfjour_item *last_up)
     const byte *rx_open_msg = ea_get_adata(pupdate->proto_attr, &ea_bgp_remote_open_msg)->data;
     int l_len = ea_get_int(pupdate->proto_attr, &ea_bgp_remote_open_msg_len, 0);
     int r_len = ea_get_int(pupdate->proto_attr, &ea_bgp_remote_open_msg_len, 0);
-    bmp_peer_up_(p, proto_get_state_list(id), true, tx_open_msg, l_len, rx_open_msg, r_len);
+    bmp_peer_up_(p, get_states_proto(id), true, tx_open_msg, l_len, rx_open_msg, r_len);
   }
   else if (ea_get_int(pupdate->proto_attr, &ea_bgp_close_bmp_set, 0))
   {
     struct closing_bgp *closing = (struct closing_bgp *) ea_get_ptr(pupdate->proto_attr, &ea_protocol_type, 0);
-    bmp_peer_down_(p, proto_get_state_list(id),
+    bmp_peer_down_(p, get_states_proto(id),
 	     closing->err_class, closing->err_code, closing->err_subcode, closing->data, closing->length);
   }
   lfjour_release(&p->proto_state_reader, last_up);
@@ -1424,9 +1436,7 @@ create_bmp_recipient(struct bmp_proto *p)
   *r->event = (event) { .hook = fc_for_bmp_recipient, .data = p };
   r->target = birdloop_event_list(p->p.loop);
 
-  LOCK_DOMAIN(rtable, proto_journal_domain);
-  lfjour_register(proto_journal, r);
-  UNLOCK_DOMAIN(rtable, proto_journal_domain);
+  proto_states_register_domain(r);
   p->lf_jour_inited = 1;
 }
 

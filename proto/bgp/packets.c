@@ -1047,9 +1047,10 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   conn->as4_session = conn->local_caps->as4_support && caps->as4_support;
   conn->ext_messages = conn->local_caps->ext_messages && caps->ext_messages;
   p->remote_id = id;
-  ea_list *eal = proto_get_state_list(p->p.id);
+
+  ea_list *eal = get_states_proto(p->p.id);
   ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_rem_id, 0, p->remote_id));
-  proto_state_table_update(eal, &p->p, 1);
+  proto_state_table_update(eal, &p->p);
 
   DBG("BGP: Hold timer set to %d, keepalive to %d, AS to %d, ID to %x, AS4 session to %d\n",
       conn->hold_time, conn->keepalive_time, p->remote_as, p->remote_id, conn->as4_session);
@@ -2461,7 +2462,7 @@ static byte *
 bgp_create_update_bmp(ea_list *channel_ea, struct bgp_proto *bgp_p, byte *buf, struct bgp_bucket *buck, bool update)
 {
   struct bgp_channel *c;
-  int c_id = ea_get_int(channel_ea, &ea_channel_id, 0);
+  u32 c_id = ea_get_int(channel_ea, &ea_channel_id, 0);
   BGP_WALK_CHANNELS(bgp_p, c)
     if (c->c.id == c_id)
       break;

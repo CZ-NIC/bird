@@ -69,7 +69,7 @@
       log(L_ERR "%s: " msg, s->proto->p.name, ## args);		\
   })
 
-extern struct proto_attrs *proto_state_table;
+extern proto_state_table proto_state_table_pub;
 
 /*
  *	MRT buffer code
@@ -390,26 +390,25 @@ mrt_peer_table_dump(struct mrt_table_dump_state *s)
   mrt_peer_table_entry(s, 0, 0, IPA_NONE);
 
 #ifdef CONFIG_BGP
-  for(u32 i = 0; i<proto_state_table->length; i++)
+  PST_LOCKED(ts)
   {
-    rcu_read_lock();
-    ea_list *eal = proto_state_table->attrs[i];
-    if (eal)
-      ea_free_later(ea_ref(eal));
-    else
+    for(u32 i = 0; i < ts->length_states; i++)
     {
-      rcu_read_unlock();
-      continue;
-    }
-    rcu_read_unlock();
-    struct protocol *type = (struct protocol *)ea_get_ptr(eal, &ea_protocol_type, 0);
-    int state = ea_get_int(eal, &ea_state, 0);
-    if ((type == &proto_bgp) && (state != PS_DOWN))
-    {
-      int rem_id = ea_get_int(eal, &ea_bgp_rem_id, 0);
-      int rem_as = ea_get_int(eal, &ea_bgp_rem_as, 0);
-      ip_addr *rem_ip = (ip_addr *)ea_get_adata(eal, &ea_bgp_rem_ip)->data;
-      mrt_peer_table_entry(s, rem_id, rem_as, *rem_ip);
+      ea_list *eal = ts->states[i];
+      if (eal)
+        ea_free_later(ea_ref(eal));
+      else
+        continue;
+
+      struct protocol *type = (struct protocol *)ea_get_ptr(eal, &ea_protocol_type, 0);
+      int state = ea_get_int(eal, &ea_state, 0);
+      if ((type == &proto_bgp) && (state != PS_DOWN))
+      {
+        int rem_id = ea_get_int(eal, &ea_bgp_rem_id, 0);
+        int rem_as = ea_get_int(eal, &ea_bgp_rem_as, 0);
+        ip_addr *rem_ip = (ip_addr *)ea_get_adata(eal, &ea_bgp_rem_ip)->data;
+        mrt_peer_table_entry(s, rem_id, rem_as, *rem_ip);
+      }
     }
   }
 #endif

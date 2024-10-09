@@ -75,6 +75,7 @@ enum btype {
   T_LCLIST = 0x08,		/* Set of triplets of u32's - large community list */
   T_STRING = 0x10,
   T_PTR = 0x11,         /* Void pointer */
+  T_CHANNEL_ID_LIST = 0x44,  /* List of proto ids, stored in proto_state_table in protocols eatters */
 
   T_ENUM_BGP_ORIGIN = 0x13,	/* BGP Origin enum */
   T_ENUM_RA_PREFERENCE = 0x15,	/* RA Preference enum */
