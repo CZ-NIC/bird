@@ -365,6 +365,26 @@ assign_bucket_id(struct aggregator_proto *p, struct aggregator_bucket *bucket)
   hmap_set(&p->bucket_id_map, bucket->id);
 }
 
+static void
+choose_lowest_id_bucket(struct aggregator_proto *p, struct trie_node *node)
+{
+  assert(p != NULL);
+  assert(node != NULL);
+
+  for (u32 i = 0; i < MAX_POTENTIAL_BUCKETS_COUNT; i++)
+  {
+    if (BIT32R_TEST(node->potential_buckets, i))
+    {
+      node->selected_bucket = get_bucket_ptr(p, i);
+      assert(node->selected_bucket != NULL);
+      assert(node->selected_bucket->id == i);
+      return;
+    }
+  }
+
+  bug("No bucket to choose from");
+}
+
 /*
  * First pass of Optimal Route Table Construction (ORTC) algorithm
  */
@@ -520,20 +540,8 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
     assert(node->potential_buckets_count > 0);
 
     /* Assign bucket with the lowest ID to the node */
-    for (u32 i = 0; i < MAX_POTENTIAL_BUCKETS_COUNT; i++)
-    {
-      if (BIT32R_TEST(node->potential_buckets, i))
-      {
-        // node->bucket = get_bucket_ptr(p, i);
-        assert(node->bucket != NULL);
-        // assert(node->bucket->id == i);
-        node->selected_bucket = get_bucket_ptr(p, i);
-        assert(node->selected_bucket != NULL);
-        assert(node->selected_bucket->id == i);
-        node->status = IN_FIB;
-        break;
-      }
-    }
+    choose_lowest_id_bucket(p, node);
+    node->status = IN_FIB;
   }
 
   /*
@@ -626,19 +634,8 @@ third_pass(struct aggregator_proto *p, struct trie_node *root)
   assert(root->potential_buckets_count > 0);
 
   /* Assign bucket with the lowest ID to root */
-  for (u32 i = 0; i < MAX_POTENTIAL_BUCKETS_COUNT; i++)
-  {
-    if (BIT32R_TEST(root->potential_buckets, i))
-    {
-      // root->bucket = get_bucket_ptr(p, i);
-      root->selected_bucket = get_bucket_ptr(p, i);
-      assert(root->selected_bucket != NULL);
-      assert(root->selected_bucket->id == i);
-      assert(root->bucket != NULL);
-      //assert(root->bucket->id == i);
-      break;
-    }
-  }
+  choose_lowest_id_bucket(p, root);
+  root->status = IN_FIB;
 
   /* The closest ancestor of the root node with a non-null bucket is the root itself */
   root->ancestor = root;
