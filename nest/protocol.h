@@ -442,10 +442,11 @@ struct proto_pending_update {
   struct proto *protocol;
 };
 
-void proto_state_table_update(ea_list *attr, struct proto *p);
+void proto_announce_state_locked(ea_list *attr, struct proto *p, struct proto_state_table_private *ts);
+void proto_announce_state(ea_list *attr, struct proto *p);
 ea_list *get_channel_ea(struct channel *ch);
 ea_list *get_states_proto(int id);
-void proto_states_register_domain(struct lfjour_recipient *r);
+void proto_states_subscribe(struct lfjour_recipient *r);
 
 
 /*

@@ -684,7 +684,8 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   ea_list *eal = get_states_proto(p->p.id);
   ea_set_attr(&eal, EA_LITERAL_STORE_PTR(&ea_bgp_conn, 0, p->conn));
   ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_as4_session, 0, p->as4_session));
-  proto_state_table_update(eal, &p->p);
+
+  proto_announce_state(eal, &p->p);
 
   p->route_refresh = peer->route_refresh;
   p->enhanced_refresh = local->enhanced_refresh && peer->enhanced_refresh;
@@ -805,7 +806,8 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   ea_set_attr(&ea_l, EA_LITERAL_EMBEDDED(&ea_bgp_local_open_msg_len, 0, conn->local_open_length));
   ea_set_attr(&ea_l, EA_LITERAL_EMBEDDED(&ea_bgp_remote_open_msg_len, 0, conn->remote_open_length));
   ea_l = ea_lookup(ea_l, 0, EALS_CUSTOM);
-  proto_state_table_update(ea_l, &p->p);
+
+  proto_announce_state(ea_l, &p->p);
 #endif
 }
 
@@ -837,7 +839,8 @@ bgp_conn_leave_established_state(struct bgp_conn *conn, struct bgp_proto *p)
   ea_set_attr(&eal, EA_LITERAL_STORE_PTR(&ea_bgp_conn, 0, p->conn));
   ea_set_attr(&eal, EA_LITERAL_STORE_ADATA(&ea_bgp_close_bmp, 0, &to_ea.closing_struct, sizeof(to_ea)));
   ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_close_bmp_set, 0, 1));
-  proto_state_table_update(eal, &p->p);
+
+  proto_announce_state(eal, &p->p);
 
   //bmp_peer_down(p, p->last_error_class,
 	//	conn->notify_code, conn->notify_subcode,
@@ -1769,7 +1772,8 @@ bgp_start(struct proto *P)
   ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_loc_as, 0, p->local_as));
   ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_rem_as, 0, p->remote_as));
   ea_set_attr(&eal, EA_LITERAL_STORE_ADATA(&ea_bgp_rem_ip, 0, &p->remote_ip, sizeof(ip_addr)));
-  proto_state_table_update(eal, &p->p);
+
+  proto_announce_state(eal, &p->p);
 
   /* Lock all channels when in GR recovery mode */
   if (p->p.gr_recovery && p->cf->gr_mode)
@@ -2402,7 +2406,8 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 
   ea_list *eal = get_states_proto(p->p.id);
   ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_peer_type, 0, p->cf->peer_type));
-  proto_state_table_update(eal, &p->p);
+
+  proto_announce_state(eal, &p->p);
 
   /* Check whether existing connections are compatible with required capabilities */
   struct bgp_conn *ci = &p->incoming_conn;

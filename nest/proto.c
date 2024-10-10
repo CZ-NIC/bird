@@ -58,8 +58,7 @@ static void channel_stop_export(struct channel *c);
 static void channel_check_stopped(struct channel *c);
 static void init_journal(void);
 static void proto_state_init_eal(struct proto *p, int old_state, int proto_deleting);
-static void add_channel_eal(struct channel *ch);
-static void remove_channel_eal(struct channel *ch);
+static ea_list *channel_state_to_eattr(struct channel *ch);
 static inline void channel_reimport(struct channel *c, struct rt_feeding_request *rfr)
 {
   rt_export_refeed(&c->reimporter, rfr);
@@ -258,7 +257,32 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   add_tail(&p->channels, &c->n);
 
   CD(c, "Connected to table %s", c->table->name);
-  add_channel_eal(c);
+
+  ea_list *chan_att = channel_state_to_eattr(c);
+
+  PST_LOCKED(ts)
+  {
+    if (ts->length_channels <= c->id)
+    {
+      ea_list **l = mb_allocz(ts->pool, sizeof(ea_list*) * ts->length_channels * 2);
+      memcpy(l, ts->channels, sizeof(ea_list*) * ts->length_channels);
+      mb_free(ts->channels);
+      ts->channels = l;
+      ts->length_channels = ts->length_channels * 2;
+    }
+
+    ts->channels[c->id] = chan_att;
+
+    ea_list *eal = ts->states[c->proto->id];
+    int old_field_len = ea_get_int(ts->states[c->proto->id], &ea_proto_channel_count, 0);
+
+    ea_set_attr(&eal,
+      EA_LITERAL_DIRECT_ADATA(&ea_proto_channel_list, 0, int_set_add(
+        tmp_linpool, ea_get_adata(ts->states[c->proto->id], &ea_proto_channel_list), c->id)));
+    ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_proto_channel_count, 0, old_field_len + 1));
+
+    proto_announce_state_locked(eal, c->proto, ts);
+  }
 
   return c;
 }
@@ -273,8 +297,8 @@ proto_add_main_channel(struct proto *p, struct channel_config *cf)
   {
     eal = ts->states[p->id];
     ea_set_attr(&eal, EA_LITERAL_STORE_STRING(&ea_table, 0, p->main_channel->table->name));
+    proto_announce_state_locked(eal, p, ts);
   }
-  proto_state_table_update(eal, p);
   return p->main_channel;
 }
 
@@ -285,7 +309,23 @@ proto_remove_channel(struct proto *p UNUSED, struct channel *c)
 
   CD(c, "Removed", c->name);
 
-  remove_channel_eal(c);
+  PST_LOCKED(ts)
+  {
+    ea_list *eal = ts->states[c->proto->id];
+    int old_field_len = ea_get_int(ts->states[c->proto->id], &ea_proto_channel_count, 0);
+
+    ea_set_attr(&eal,
+      EA_LITERAL_DIRECT_ADATA(&ea_proto_channel_list, 0, int_set_del(
+        tmp_linpool, ea_get_adata(ts->states[c->proto->id], &ea_proto_channel_list), c->id)));
+    ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_proto_channel_count, 0, old_field_len - 1));
+
+    proto_announce_state_locked(eal, c->proto, ts);
+
+    ts->channels[c->id] = NULL;
+    hmap_clear(&ts->channel_id_map, c->id);
+  }
+  ea_list *to_remove = get_channel_ea(c);
+  ea_free_later(to_remove);
 
   rt_unlock_table(c->table);
   rem_node(&c->n);
@@ -1774,8 +1814,8 @@ proto_rethink_goal(struct proto *p)
     {
       eal = tp->states[p->id];
       ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_deleted, 0, 1));
+      proto_announce_state_locked(eal, p, tp);
     }
-      proto_state_table_update(eal, p);
 
     DBG("%s has shut down for reconfiguration\n", p->name);
     p->cf->proto = NULL;
@@ -2378,8 +2418,8 @@ proto_notify_state(struct proto *p, uint state)
     eal = ts->states[p->id];
     ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_state, 0, p->proto_state));
     ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_old_state, 0, old_state));
+    proto_announce_state_locked(eal, p, ts);
   }
-  proto_state_table_update(eal, p);
 
   switch (state)
   {
@@ -2991,13 +3031,16 @@ proto_state_init_eal(struct proto *p, int old_state, int proto_deleting)
   ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_last_modified, 0, &p->last_state_change, sizeof(btime)));
   ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_proto_id, 0, p->id));
   ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_deleted, 0, proto_deleting));
+
   if (p->main_channel)
     ea_set_attr(&state, EA_LITERAL_STORE_STRING(&ea_table, 0, p->main_channel->table->name));
 
   CALL(p->proto->init_state, p, state);
 
   ea_list *eal = ea_lookup_slow(state, 0, EALS_CUSTOM);
-  proto_state_table_update(eal, p);
+
+  PST_LOCKED(ts)
+    proto_announce_state_locked(eal, p, ts);
 }
 
 static ea_list *
@@ -3025,7 +3068,7 @@ channel_state_to_eattr(struct channel *ch)
 
 
 void
-proto_state_table_update(ea_list *attr, struct proto *p)
+proto_announce_state_locked(ea_list *attr, struct proto *p, struct proto_state_table_private* ts)
 {
   /*
     Should be called each time one (or more) variables tracked in proto eattrs changes.
@@ -3035,19 +3078,13 @@ proto_state_table_update(ea_list *attr, struct proto *p)
 
   attr = ea_lookup(attr, 0, EALS_CUSTOM);
 
-  PST_LOCKED(ts)
-  {
-    ea_free_later(ts->states[p->id]);
-    atomic_store(&ts->states[p->id], attr);
-  }
-  LOCK_DOMAIN(rtable, proto_state_table_pub.lock);
+  ea_free_later(ts->states[p->id]);
+  atomic_store(&ts->states[p->id], attr);
+
   struct proto_pending_update *pupdate = SKIP_BACK(struct proto_pending_update, li, lfjour_push_prepare(&proto_state_table_pub.journal));
 
   if (!pupdate)
-  {
-    UNLOCK_DOMAIN(rtable, proto_state_table_pub.lock);
     return;
-  }
 
   *pupdate = (struct proto_pending_update) {
     .li = pupdate->li,	/* Keep the item's internal state */
@@ -3056,76 +3093,15 @@ proto_state_table_update(ea_list *attr, struct proto *p)
   };
   ea_ref(attr); /* reference for the new eattr. It will (hopefully) be removed once it becomes an old route. */
   lfjour_push_commit(&proto_state_table_pub.journal);
-  UNLOCK_DOMAIN(rtable, proto_state_table_pub.lock);
 }
 
-
-static void
-add_channel_eal(struct channel *ch)
+void
+proto_announce_state(ea_list *attr, struct proto *p)
 {
-  ea_list *eal;
-  ea_list *chan_att = channel_state_to_eattr(ch);
-
   PST_LOCKED(ts)
-  {
-    if (ts->length_channels <= ch->id)
-    {
-      ea_list **l = mb_allocz(ts->pool, sizeof(ea_list*) * ts->length_channels * 2);
-      memcpy(l, ts->channels, sizeof(ea_list*) * ts->length_channels);
-      mb_free(ts->channels);
-      ts->channels = l;
-      ts->length_channels = ts->length_channels * 2;
-    }
-
-    ts->channels[ch->id] = chan_att;
-
-    eal = ts->states[ch->proto->id];
-    int old_field_len = ea_get_int(ts->states[ch->proto->id], &ea_proto_channel_count, 0);
-    u32 field[old_field_len + 1];
-    const byte *old_field = ea_get_adata(ts->states[ch->proto->id], &ea_proto_channel_list)->data;
-
-    if (old_field)
-      memcpy(field, old_field, sizeof(u32) * old_field_len);
-    field[old_field_len] = ch->id;
-    ea_set_attr(&eal, EA_LITERAL_STORE_ADATA(&ea_proto_channel_list, 0, &field, sizeof(field)));
-    ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_proto_channel_count, 0, old_field_len + 1));
-  }
-  proto_state_table_update(eal, ch->proto);
+    proto_announce_state_locked(attr, p, ts);
 }
 
-static void
-remove_channel_eal(struct channel *ch)
-{
-  ea_list *eal;
-  PST_LOCKED(ts)
-  {
-    eal = ts->states[ch->proto->id];
-    int old_field_len = ea_get_int(ts->states[ch->proto->id], &ea_proto_channel_count, 0);
-    const byte *old_field = ea_get_adata(ts->states[ch->proto->id], &ea_proto_channel_list)->data;
-    u32 field[old_field_len];
-    int found = 0;
-    for (int i = 0; i < old_field_len; i++)
-    {
-      if (ch->id == old_field[i])
-        found = 1;
-      else
-        field[i - found] = old_field[i];
-    }
-    if (!found)
-      return;
-    ea_set_attr(&eal, EA_LITERAL_STORE_ADATA(&ea_proto_channel_list, 0, &field, sizeof(u32)*(old_field_len - 1)));
-    ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_proto_channel_count, 0, old_field_len - 1));
-  }
-  proto_state_table_update(eal, ch->proto);
-
-  PST_LOCKED(ts)
-  {
-    ts->channels[ch->id] = NULL;
-    hmap_clear(&ts->channel_id_map, ch->id);
-  }
-  ea_list *to_remove = get_channel_ea(ch);
-  ea_free_later(to_remove);
-}
 
 ea_list *
 get_channel_ea(struct channel *ch)
@@ -3154,11 +3130,10 @@ get_states_proto(int id)
 }
 
 void
-proto_states_register_domain(struct lfjour_recipient *r)
+proto_states_subscribe(struct lfjour_recipient *r)
 {
-  LOCK_DOMAIN(rtable, proto_state_table_pub.lock);
-  lfjour_register(&proto_state_table_pub.journal, r);
-  UNLOCK_DOMAIN(rtable, proto_state_table_pub.lock);
+  PST_LOCKED(ts)
+    lfjour_register(&proto_state_table_pub.journal, r);
 }
 
 #if 0
@@ -3211,9 +3186,9 @@ create_dummy_recipient(void)
   struct birdloop *loop = birdloop_new(&root_pool, DOMAIN_ORDER(service), 1, "dummy recipient loop");
   r->target = birdloop_event_list(loop);
 
-  LOCK_DOMAIN(rtable, proto_state_table_pub.lock);
-  lfjour_register(proto_state_table_pub.journal, r);
-  UNLOCK_DOMAIN(rtable, proto_state_table_pub.lock);
+  PST_LOCKED(ts)
+    lfjour_register(proto_state_table_pub.journal, r);
+
   dummy_log_proto_attr_list();
 }
 #endif

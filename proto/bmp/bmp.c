@@ -1419,7 +1419,7 @@ create_bmp_recipient(struct bmp_proto *p)
   *r->event = (event) { .hook = fc_for_bmp_recipient, .data = p };
   r->target = birdloop_event_list(p->p.loop);
 
-  proto_states_register_domain(r);
+  proto_states_subscribe(r);
   p->lf_jour_inited = 1;
 }
 

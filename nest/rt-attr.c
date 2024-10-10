@@ -1930,7 +1930,6 @@ struct ea_class ea_in_keep = {
   .type = T_INT,
 };
 
-
 struct ea_class ea_rtable = {
   .name = "rtable",
   .type = T_PTR,

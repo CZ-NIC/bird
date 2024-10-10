@@ -1050,7 +1050,9 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 
   ea_list *eal = get_states_proto(p->p.id);
   ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_rem_id, 0, p->remote_id));
-  proto_state_table_update(eal, &p->p);
+
+  PST_LOCKED(ts)
+    proto_announce_state_locked(eal, &p->p, ts);
 
   DBG("BGP: Hold timer set to %d, keepalive to %d, AS to %d, ID to %x, AS4 session to %d\n",
       conn->hold_time, conn->keepalive_time, p->remote_as, p->remote_id, conn->as4_session);
