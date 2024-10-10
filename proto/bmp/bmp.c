@@ -665,8 +665,9 @@ bmp_add_peer(struct bmp_proto *p, ea_list *bgp_attr)
 
   HASH_INSERT(p->peer_map, HASH_PEER, bp);
 
-  u32 *chann_ids = (u32 *) ea_get_adata(bgp_attr, &ea_proto_channel_list)->data;
-  int id_count = ea_get_int(bgp_attr, &ea_proto_channel_count, 0);
+  const adata *channels_adata = ea_get_adata(bgp_attr, &ea_proto_channel_list);
+  int id_count = channels_adata->length / sizeof(u32);
+  u32 *chann_ids = (u32 *) channels_adata->data;
 
   for (int i = 0; i < id_count; i++)
   {

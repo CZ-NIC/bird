@@ -274,12 +274,10 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
     ts->channels[c->id] = chan_att;
 
     ea_list *eal = ts->states[c->proto->id];
-    int old_field_len = ea_get_int(ts->states[c->proto->id], &ea_proto_channel_count, 0);
 
     ea_set_attr(&eal,
       EA_LITERAL_DIRECT_ADATA(&ea_proto_channel_list, 0, int_set_add(
         tmp_linpool, ea_get_adata(ts->states[c->proto->id], &ea_proto_channel_list), c->id)));
-    ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_proto_channel_count, 0, old_field_len + 1));
 
     proto_announce_state_locked(eal, c->proto, ts);
   }
@@ -312,12 +310,10 @@ proto_remove_channel(struct proto *p UNUSED, struct channel *c)
   PST_LOCKED(ts)
   {
     ea_list *eal = ts->states[c->proto->id];
-    int old_field_len = ea_get_int(ts->states[c->proto->id], &ea_proto_channel_count, 0);
 
     ea_set_attr(&eal,
       EA_LITERAL_DIRECT_ADATA(&ea_proto_channel_list, 0, int_set_del(
         tmp_linpool, ea_get_adata(ts->states[c->proto->id], &ea_proto_channel_list), c->id)));
-    ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_proto_channel_count, 0, old_field_len - 1));
 
     proto_announce_state_locked(eal, c->proto, ts);
 

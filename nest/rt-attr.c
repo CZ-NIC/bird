@@ -1915,11 +1915,6 @@ struct ea_class ea_proto_channel_list = {
   .type = T_CHANNEL_ID_LIST,
 };
 
-struct ea_class ea_proto_channel_count = {
-  .name = "ea_proto_channel_count",
-  .type = T_INT,
-};
-
 struct ea_class ea_channel_id = {
   .name = "proto_channel_id",
   .type = T_INT,
@@ -1991,7 +1986,6 @@ rta_init(void)
   ea_register_init(&ea_deleted);
   ea_register_init(&ea_in_keep);
   ea_register_init(&ea_proto_channel_list);
-  ea_register_init(&ea_proto_channel_count);
   ea_register_init(&ea_rtable);
 }
 
