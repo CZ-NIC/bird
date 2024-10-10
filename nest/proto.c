@@ -3022,7 +3022,11 @@ proto_state_init_eal(struct proto *p, int old_state, int proto_deleting)
   struct ea_list *state;
 
   PST_LOCKED(ts)  /* There may be inicialised channels for this proto. In such case, there already are first eatters */
+  {
     state = ts->states[p->id];
+    if (!ea_get_adata(ts->states[p->id], &ea_proto_channel_list))
+      ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_proto_channel_list, 0, NULL, 0));
+  }
 
   ea_set_attr(&state, EA_LITERAL_STORE_STRING(&ea_name, 0, p->name));
   ea_set_attr(&state, EA_LITERAL_STORE_PTR(&ea_protocol_type, 0, &p->proto));
