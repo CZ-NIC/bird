@@ -683,44 +683,27 @@ hypervisor_container_err(sock *sk, int err)
 }
 
 static int
-hypervisor_container_forker_rx(sock *sk, uint _sz UNUSED)
+hypervisor_container_forker_rx(sock *sk, uint sz)
 {
-  int sfd = -1;
-  byte buf[128], cbuf[CMSG_SPACE(sizeof sfd)];
-  struct iovec v = {
-    .iov_base = buf,
-    .iov_len = sizeof buf,
-  };
-  struct msghdr m = {
-    .msg_iov = &v,
-    .msg_iovlen = 1,
-    .msg_control = &cbuf,
-    .msg_controllen = sizeof cbuf,
-  };
-
-  int e = recvmsg(sk->fd, &m, 0);
-  if (e < 3)
+  if ((sz < 3) || (sk->rxfd < 0))
   {
-    log(L_ERR "Container forker RX hangup, what the hell");
+    log(L_ERR "Container forker RX strange behavior, what the hell (sz %d, fd %d)", sz, sk->rxfd);
     sk_close(sk);
     ev_send_loop(&main_birdloop, &poweroff_event);
     return 0;
   }
 
-  struct cmsghdr *c = CMSG_FIRSTHDR(&m);
-  memcpy(&sfd, CMSG_DATA(c), sizeof sfd);
-
-  ASSERT_DIE(buf[0] == 0xa1);
-  ASSERT_DIE(buf[1] == 0x21);
+  ASSERT_DIE(sk->rbuf[0] == 0xa1);
+  ASSERT_DIE(sk->rbuf[1] == 0x21);
   pid_t pid;
-  if (buf[2] < 0x18)
-    pid = buf[2];
-  else if (buf[2] == 24)
-    pid = buf[3];
-  else if (buf[2] == 25)
-    pid = buf[3] << 8 + buf[4];
-  else if (buf[3] == 26)
-    pid = buf[3] << 32 + buf[4] << 24 + buf[5] << 16 + buf[6];
+  if (sk->rbuf[2] < 0x18)
+    pid = sk->rbuf[2];
+  else if (sk->rbuf[2] == 24)
+    pid = sk->rbuf[3];
+  else if (sk->rbuf[2] == 25)
+    pid = sk->rbuf[3] << 8 + sk->rbuf[4];
+  else if (sk->rbuf[3] == 26)
+    pid = sk->rbuf[3] << 32 + sk->rbuf[4] << 24 + sk->rbuf[5] << 16 + sk->rbuf[6];
   else
     bug("not implemented");
 
@@ -730,7 +713,7 @@ hypervisor_container_forker_rx(sock *sk, uint _sz UNUSED)
   skl->type = SK_MAGIC;
   skl->rx_hook = hypervisor_container_rx;
   skl->err_hook = hypervisor_container_err;
-  skl->fd = sfd;
+  skl->fd = sk->rxfd;
   sk_set_tbsize(skl, 1024);
 
   if (sk_open(skl, sk->loop) < 0)
@@ -1125,6 +1108,7 @@ hypervisor_container_fork(void)
     hcf.s->rx_hook = hypervisor_container_forker_rx;
     hcf.s->err_hook = hypervisor_container_forker_err;
     sk_set_tbsize(hcf.s, 16384);
+    sk_set_rbsize(hcf.s, 128);
     hcf.s->fd = fds[0];
     close(fds[1]);
 
@@ -1132,6 +1116,8 @@ hypervisor_container_fork(void)
 
     if (sk_open(hcf.s, hcf.loop) < 0)
       bug("Container forker parent: sk_open failed");
+
+    hcf.s->type = SK_UNIX_MSG;
 
     birdloop_leave(hcf.loop);
     return;
