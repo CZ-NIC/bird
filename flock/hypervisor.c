@@ -182,39 +182,22 @@ hypervisor_telnet_connected(sock *sk, uint size UNUSED)
 }
 
 static int
-hypervisor_exposed_parent_rx(sock *sk, uint size UNUSED)
+hypervisor_exposed_parent_rx(sock *sk, uint size)
 {
-  int sfd = -1;
-  byte buf[128], cbuf[CMSG_SPACE(sizeof sfd)];
-  struct iovec v = {
-    .iov_base = buf,
-    .iov_len = sizeof buf,
-  };
-  struct msghdr m = {
-    .msg_iov = &v,
-    .msg_iovlen = 1,
-    .msg_control = &cbuf,
-    .msg_controllen = sizeof cbuf,
-  };
-
-  int e = recvmsg(sk->fd, &m, 0);
-  if (e < 3)
+  if ((size != 5) || (sk->rxfd < 0))
   {
-    log(L_ERR "Exposed parent RX hangup, what the hell");
+    log(L_ERR "Exposed parent RX %d bytes, fd %d, what the hell", size, sk->rxfd);
     sk_close(sk);
     ev_send_loop(&main_birdloop, &poweroff_event);
     return 0;
   }
 
-  struct cmsghdr *c = CMSG_FIRSTHDR(&m);
-  memcpy(&sfd, CMSG_DATA(c), sizeof sfd);
+  ASSERT_DIE(sk->rbuf[0] == 0xa1);
+  ASSERT_DIE(sk->rbuf[1] == 0x21);
+  ASSERT_DIE(sk->rbuf[2] == 0x19);
 
-  ASSERT_DIE(buf[0] == 0xa1);
-  ASSERT_DIE(buf[1] == 0x21);
-  ASSERT_DIE(buf[2] == 0x19);
-
-  u16 port = ntohs(*((u16 *) &buf[3]));
-  log(L_INFO "RX %d bytes, fd %d, port %u", e, sfd, port);
+  u16 port = ntohs(*((u16 *) &sk->rbuf[3]));
+  log(L_INFO "RX %d bytes, fd %d, port %u", size, sk->rxfd, port);
 
   struct hexp_received_telnet *hrt = mb_allocz(he.p, sizeof *hrt);
   *hrt = (struct hexp_received_telnet) {
@@ -223,9 +206,11 @@ hypervisor_exposed_parent_rx(sock *sk, uint size UNUSED)
       .data = hrt,
     },
     .port = port,
-    .fd = sfd,
+    .fd = sk->rxfd,
   };
   ev_send_loop(hcs_loop, &hrt->e);
+
+  sk->rxfd = -1;
 
   return 0;
 }
@@ -240,21 +225,13 @@ hypervisor_exposed_parent_err(sock *sk, int e UNUSED)
  * Exposed process' child side (executor)
  **/
 static int
-hypervisor_exposed_child_rx(sock *sk, uint size UNUSED)
+hypervisor_exposed_child_rx(sock *sk, uint size)
 {
-  byte buf[128];
-  struct iovec v = {
-    .iov_base = buf,
-    .iov_len = sizeof buf,
-  };
-  struct msghdr m = {
-    .msg_iov = &v,
-    .msg_iovlen = 1,
-  };
-  int e = recvmsg(sk->fd, &m, 0);
-  if (e != 3)
+  if (size != 3)
   {
-    log(L_ERR "Got something strange: %d, %m", e);
+    log(L_ERR "Got something strange: %d, %m", size);
+    abort();
+    sk_close(sk);
     return 0;
   }
 
@@ -302,30 +279,15 @@ hypervisor_exposed_child_rx(sock *sk, uint size UNUSED)
 
     log(L_INFO "SUCCESS");
 
-    byte outbuf[128];
+    sk->txfd = sfd;
+
     linpool *lp = lp_new(sk->pool);
-    struct cbor_writer *cw = cbor_init(outbuf, sizeof outbuf, lp);
+    struct cbor_writer *cw = cbor_init(sk->tbuf, sk->tbsize, lp);
     cbor_open_block_with_length(cw, 1);
     cbor_add_int(cw, -2);
     cbor_add_int(cw, r);
-    struct iovec v = {
-      .iov_base = outbuf,
-      .iov_len = cw->pt,
-    };
-    byte cbuf[CMSG_SPACE(sizeof sfd)];
-    struct msghdr m = {
-      .msg_iov = &v,
-      .msg_iovlen = 1,
-      .msg_control = &cbuf,
-      .msg_controllen = sizeof cbuf,
-    };
-    struct cmsghdr *c = CMSG_FIRSTHDR(&m);
-    c->cmsg_level = SOL_SOCKET;
-    c->cmsg_type = SCM_RIGHTS;
-    c->cmsg_len = CMSG_LEN(sizeof sfd);
-    memcpy(CMSG_DATA(c), &sfd, sizeof sfd);
 
-    e = sendmsg(sk->fd, &m, 0);
+    e = sk_send(sk, cw->pt);
     if (e < 0)
       log(L_ERR "Failed to send socket: %m");
 
@@ -372,15 +334,22 @@ hypervisor_exposed_fork(void)
   birdloop_enter(he.loop);
   he.p = rp_new(birdloop_pool(he.loop), birdloop_domain(he.loop), "Exposed interlink pool");
   he.s = sk_new(he.p);
-  he.s->type = SK_MAGIC;
+  he.s->type = SK_MAGIC; /* because we already have the fd */
+
   /* Set the hooks and fds according to the side we are at */
   he.s->rx_hook = e ? hypervisor_exposed_parent_rx : hypervisor_exposed_child_rx;
   he.s->err_hook = e ? hypervisor_exposed_parent_err : hypervisor_exposed_child_err;
   he.s->fd = fds[!!e];
+  he.s->flags = e ? SKF_FD_RX : SKF_FD_TX;
   close(fds[!e]);
 
   if (sk_open(he.s, he.loop) < 0)
     bug("Exposed parent: sk_open failed");
+
+  sk_set_rbsize(he.s, 128);
+  sk_set_tbsize(he.s, 128);
+
+  he.s->type = SK_UNIX_MSG; /* now we can reveal who we are */
 
   birdloop_leave(he.loop);
 
