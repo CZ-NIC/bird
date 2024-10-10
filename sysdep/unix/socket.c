@@ -300,6 +300,43 @@ sk_prepare_cmsgs6(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
   msg->msg_controllen = controllen;
 }
 
+/*
+ *	UNIX packet control messages
+ */
+
+#define CMSGU_SPACE_FD	CMSG_SPACE(sizeof (int))
+
+static inline void
+sk_prepare_cmsgs_unix(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
+{
+  if (s->txfd < 0)
+  {
+    msg->msg_control = NULL;
+    msg->msg_controllen = 0;
+    return;
+  }
+
+  msg->msg_control = cbuf;
+  msg->msg_controllen = cbuflen;
+
+  struct cmsghdr *cm = CMSG_FIRSTHDR(msg);
+  cm->cmsg_level = SOL_SOCKET;
+  cm->cmsg_type = SCM_RIGHTS;
+  cm->cmsg_len = CMSG_LEN(sizeof s->txfd);
+  memcpy(CMSG_DATA(cm), &s->txfd, sizeof s->txfd);
+
+  msg->msg_controllen = CMSGU_SPACE_FD;
+}
+
+static inline void
+sk_process_cmsg_unix_fd(sock *s, struct cmsghdr *cm)
+{
+  if (cm->cmsg_type == SCM_RIGHTS)
+    memcpy(&s->rxfd, CMSG_DATA(cm), sizeof s->rxfd);
+  else
+    s->rxfd = -1;
+}
+
 
 /*
  *	Miscellaneous socket syscalls
@@ -1465,14 +1502,17 @@ sk_open_unix(sock *s, struct birdloop *loop, const char *name)
 }
 
 
-#define CMSG_RX_SPACE MAX(CMSG4_SPACE_PKTINFO+CMSG4_SPACE_TTL, \
-			  CMSG6_SPACE_PKTINFO+CMSG6_SPACE_TTL)
-#define CMSG_TX_SPACE MAX(CMSG4_SPACE_PKTINFO,CMSG6_SPACE_PKTINFO)
+#define CMSG_RX_SPACE MAX(CMSGU_SPACE_FD, \
+		      MAX(CMSG4_SPACE_PKTINFO+CMSG4_SPACE_TTL, \
+			  CMSG6_SPACE_PKTINFO+CMSG6_SPACE_TTL))
+#define CMSG_TX_SPACE MAX(MAX(CMSG4_SPACE_PKTINFO,CMSG6_SPACE_PKTINFO),CMSGU_SPACE_FD)
 
 static void
 sk_prepare_cmsgs(sock *s, struct msghdr *msg, void *cbuf, size_t cbuflen)
 {
-  if (sk_is_ipv4(s))
+  if (s->type == SK_UNIX_MSG)
+    sk_prepare_cmsgs_unix(s, msg, cbuf, cbuflen);
+  else if (sk_is_ipv4(s))
     sk_prepare_cmsgs4(s, msg, cbuf, cbuflen);
   else
     sk_prepare_cmsgs6(s, msg, cbuf, cbuflen);
@@ -1500,6 +1540,11 @@ sk_process_cmsgs(sock *s, struct msghdr *msg)
       sk_process_cmsg6_pktinfo(s, cm);
       sk_process_cmsg6_ttl(s, cm);
     }
+
+    if ((cm->cmsg_level == SOL_SOCKET) && (s->type == SK_UNIX_MSG))
+    {
+      sk_process_cmsg_unix_fd(s, cm);
+    }
   }
 }
 
@@ -1512,14 +1557,18 @@ sk_sendmsg(sock *s)
   sockaddr dst;
   int flags = 0;
 
-  sockaddr_fill(&dst, s->af, s->daddr, s->iface, s->dport);
-
   struct msghdr msg = {
-    .msg_name = &dst.sa,
-    .msg_namelen = SA_LEN(dst),
     .msg_iov = &iov,
     .msg_iovlen = 1
   };
+
+  if (s->type != SK_UNIX_MSG)
+  {
+    sockaddr_fill(&dst, s->af, s->daddr, s->iface, s->dport);
+
+    msg.msg_name = &dst.sa;
+    msg.msg_namelen = SA_LEN(dst);
+  }
 
 #ifdef CONFIG_DONTROUTE_UNICAST
   /* FreeBSD silently changes TTL to 1 when MSG_DONTROUTE is used, therefore we
@@ -1540,7 +1589,7 @@ sk_sendmsg(sock *s)
   }
 #endif
 
-  if (s->flags & SKF_PKTINFO)
+  if (s->flags & (SKF_PKTINFO | SKF_FD_TX))
     sk_prepare_cmsgs(s, &msg, cmsg_buf, sizeof(cmsg_buf));
 
   return sendmsg(s->fd, &msg, flags);
@@ -1647,6 +1696,7 @@ sk_maybe_write(sock *s)
 
   case SK_UDP:
   case SK_IP:
+  case SK_UNIX_MSG:
     {
       if (s->tbuf == s->tpos)
 	return 1;
