@@ -918,6 +918,16 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   conn->remote_open_msg = bgp_copy_open(p, pkt, len);
   conn->remote_open_length = len - BGP_HEADER_LENGTH;
 
+  ea_list *attr = p->p.ea_state;
+  if (conn == &conn->bgp->incoming_conn)
+    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_remote_open_msg, 0, conn->remote_open_msg, conn->remote_open_length));
+  else
+  {
+    ASSERT_DIE(conn == &conn->bgp->outgoing_conn);
+    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_remote_open_msg, 0, conn->remote_open_msg, conn->remote_open_length));
+  }
+  proto_announce_state_later(&p->p, attr);
+
   if (bgp_read_options(conn, pkt+29, pkt[28], len-29) < 0)
     return;
 
@@ -1047,6 +1057,11 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   conn->as4_session = conn->local_caps->as4_support && caps->as4_support;
   conn->ext_messages = conn->local_caps->ext_messages && caps->ext_messages;
   p->remote_id = id;
+
+  ea_list *eal = proto_get_state(p->p.id);
+  ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_rem_id, 0, p->remote_id));
+
+  proto_announce_state_later(&p->p, eal);
 
   DBG("BGP: Hold timer set to %d, keepalive to %d, AS to %d, ID to %x, AS4 session to %d\n",
       conn->hold_time, conn->keepalive_time, p->remote_as, p->remote_id, conn->as4_session);
@@ -3083,6 +3098,16 @@ bgp_fire_tx(struct bgp_conn *conn)
 
     conn->local_open_msg = bgp_copy_open(p, buf, end - buf);
     conn->local_open_length = end - buf - BGP_HEADER_LENGTH;
+
+    ea_list *attr = p->p.ea_state;
+    if (conn == &conn->bgp->incoming_conn)
+      ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_local_open_msg, 0, conn->local_open_msg, conn->local_open_length));
+    else
+    {
+      ASSERT_DIE(conn == &conn->bgp->outgoing_conn);
+      ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_local_open_msg, 0, conn->local_open_msg, conn->local_open_length));
+    }
+    proto_announce_state_later(&p->p, attr);
 
     return bgp_send(conn, PKT_OPEN, end - buf);
   }
