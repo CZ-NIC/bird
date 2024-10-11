@@ -417,49 +417,19 @@ hexp_get_telnet(sock *s, const char *name)
   sk_pause_rx(s->loop, s);
 }
 
-static void hexp_received_telnet(void *_data)
+static void hexp_received_telnet(struct hexp_received_telnet *hrt)
 {
-  struct hexp_received_telnet *hrt = _data;
-
-  ASSERT_DIE(he.port_name);
-  const char *name = he.port_name;
-  he.port_name = NULL;
-
-  sock *s = he.port_sreq;
-  he.port_sreq = NULL;
-
-  if (name[0])
+  if (hrt->name[0])
   {
     /* Transferring the received listening socket to the container */
-    int fd = container_ctl_fd(name);
+    struct cbor_channel *ccc = container_get_channel(hrt->name);
 
-    /* TODO: unduplicate this code */
-    byte outbuf[128];
-    linpool *lp = lp_new(hcs_pool);
-    struct cbor_writer *cw = cbor_init(outbuf, sizeof outbuf, lp);
-    cbor_open_block_with_length(cw, 1);
-    cbor_add_int(cw, -2);
-    write_item(cw, 7, 22);
-    struct iovec v = {
-      .iov_base = outbuf,
-      .iov_len = cw->pt,
-    };
-    byte cbuf[CMSG_SPACE(sizeof hrt->fd)];
-    struct msghdr m = {
-      .msg_iov = &v,
-      .msg_iovlen = 1,
-      .msg_control = &cbuf,
-      .msg_controllen = sizeof cbuf,
-    };
-    struct cmsghdr *c = CMSG_FIRSTHDR(&m);
-    c->cmsg_level = SOL_SOCKET;
-    c->cmsg_type = SCM_RIGHTS;
-    c->cmsg_len = CMSG_LEN(sizeof hrt->fd);
-    memcpy(CMSG_DATA(c), &hrt->fd, sizeof hrt->fd);
-
-    int e = sendmsg(fd, &m, 0);
-    if (e < 0)
-      log(L_ERR "Failed to send socket: %m");
+    CBOR_REPLY(ccc, cw)
+      CBOR_PUT_MAP(cw) {
+	cbor_put_int(cw, -2);
+	cbor_put_null(cw);
+	ccc->stream->s->txfd = hrt->fd;
+      }
 
     close(hrt->fd);
   }

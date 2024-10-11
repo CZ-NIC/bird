@@ -21,12 +21,13 @@
 
 struct hcs_parser_context {
   struct cbor_parser_context *ctx;
-  struct cbor_stream *stream;
   struct hcs_parser_channel *channel;
   sock *sock;
 
   u64 bytes_consumed;
   u64 major_state;
+
+  struct cbor_stream stream;
 };
 
 struct hcs_parser_channel {
@@ -74,7 +75,7 @@ hcs_parser_init(sock *s)
 
   htx->ctx = ctx;
   htx->sock = s;
-  htx->stream = cbor_stream_new(s->pool, 4);
+  cbor_stream_init(&htx->stream, 3);
 
   return htx;
 }
@@ -94,7 +95,7 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
   bool finish_cmd = false;
 
   for (int pos = 0; pos < size; pos++)
-  {
+  {// TODO here → convert to the new channel parser
     if (!hpc)
     {
       struct cbor_channel *cch = cbor_parse_channel(ctx, htx->stream, buf[pos]);
@@ -275,27 +276,14 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	  break;
 
 	case 501:
-	  /*
-	  if (!hpc->cfg.cf.type)
-	    CBOR_PARSER_ERROR("Machine type not specified");
-
-	  if (!hpc->cfg.cf.name)
-	    CBOR_PARSER_ERROR("Machine name not specified");
-
-	  if (!hpc->cfg.container.workdir)
-	    CBOR_PARSER_ERROR("Machine workdir not specified");
-
-	  if (!hpc->cfg.container.basedir)
-	    CBOR_PARSER_ERROR("Machine basedir not specified");
-
-	  hypervisor_container_request(
-	      htx->sock,
-	      hpc->cfg.cf.name,
-	      hpc->cfg.container.basedir,
-	      hpc->cfg.container.workdir);
-	      */
-
-	  hypervisor_container_start(&hpc->cch, &hpc->cfg.container);
+	  switch (hpc->cfg.cf.type)
+	  {
+	    case 1:
+	      hypervisor_container_start(&hpc->cch, &hpc->cfg.container);
+	      break;
+	    default:
+	      CBOR_PARSER_ERROR("Unknown machine type: %d", hpc->cfg.cf.type);
+	  }
 	  htx->major_state = 1;
 	  break;
 
