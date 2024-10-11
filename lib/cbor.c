@@ -194,6 +194,25 @@ bool cbor_put_close(struct cbor_writer *w, u64 actual_size, bool strict)
 /* Tags: TODO! */
 
 
+/* Writer contexts */
+struct cbor_writer *
+cbor_reply_init(struct cbor_channel *cch)
+{
+  struct cbor_writer *cw = &cch->writer;
+  if (cch->stream->s->tbuf != cch->stream->s->tpos)
+    bug("Not implemented reply to not-fully-flushed buffer");
+
+  cbor_writer_init(cw, cch->stream->writer_depth, cch->stream->s->tbuf, cch->stream->s->tbsize);
+  return cw;
+}
+
+void
+cbor_reply_send(struct cbor_channel *cch, struct cbor_writer *cw)
+{
+  ASSERT_DIE(cw == &cch->writer);
+  sk_send(cch->stream->s, cw->data.pos - cw->data.start);
+}
+
 #if 0
 
 void cbor_epoch_time(struct cbor_writer *writer, int64_t time, int shift)

@@ -212,6 +212,7 @@ struct cbor_stream {
     CSTR_FINISH,
     CSTR_CLEANUP,
   } state;
+  uint writer_depth;
   struct cbor_parser_context parser;
 };
 
@@ -228,6 +229,7 @@ struct cbor_channel {
   pool *p;
   u64 id;
   u64 idhash;
+  struct cbor_writer writer;
 };
 
 extern struct cbor_channel cbor_channel_parse_error;
@@ -236,7 +238,7 @@ extern struct cbor_channel cbor_channel_parse_error;
 struct cbor_channel *cbor_channel_new(struct cbor_stream *);
 
 /* Drop the channel */
-void cbor_done_channel(struct cbor_channel *);
+void cbor_channel_done(struct cbor_channel *);
 
 struct cbor_writer *cbor_reply_init(struct cbor_channel *);
 void cbor_reply_send(struct cbor_channel *, struct cbor_writer *);

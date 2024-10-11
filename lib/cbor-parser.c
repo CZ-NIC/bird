@@ -325,3 +325,12 @@ cbor_stream_attach(struct cbor_stream *stream, sock *sk)
   sk->data = stream;
   sk->rx_hook = cbor_stream_rx;
 }
+
+void
+cbor_channel_done(struct cbor_channel *channel)
+{
+  struct cbor_stream *stream = stream;
+  HASH_REMOVE(stream->channels, CCH, channel);
+  rp_free(channel->p);
+  sl_free(channel);
+}
