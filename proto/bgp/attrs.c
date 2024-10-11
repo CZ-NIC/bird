@@ -1215,6 +1215,79 @@ bgp_find_attr(ea_list *attrs, uint code)
   return ea_find(attrs, BGP_EA_ID(code));
 }
 
+struct ea_class ea_bgp_rem_id = {
+  .name = "proto_bgp_rem_id",
+  .type = T_INT,
+};
+
+struct ea_class ea_bgp_rem_as = {
+  .name = "proto_bgp_rem_as",
+  .type = T_INT,
+};
+
+struct ea_class ea_bgp_loc_as = {
+  .name = "proto_bgp_loc_as",
+  .type = T_INT,
+};
+
+struct ea_class ea_bgp_rem_ip = {
+  .name = "proto_bgp_rem_ip",
+  .type = T_IP,
+};
+
+struct ea_class ea_bgp_afi = {
+  .name = "bgp_afi",
+  .type = T_INT,
+};
+
+struct ea_class ea_bgp_peer_type = {
+  .name = "bgp_peer_type",
+  .type = T_INT,
+};
+
+/*
+ * Protocol connections information
+ */
+
+struct ea_class ea_bgp_in_conn_local_open_msg = {
+  .name = "bgp_in_conn_local_open_msg",
+  .type = T_BYTESTRING,
+};
+
+struct ea_class ea_bgp_in_conn_remote_open_msg = {
+  .name = "bgp_in_conn_remote_open_msg",
+  .type = T_BYTESTRING,
+};
+
+struct ea_class ea_bgp_out_conn_local_open_msg = {
+  .name = "bgp_out_conn_local_open_msg",
+  .type = T_BYTESTRING,
+};
+
+struct ea_class ea_bgp_out_conn_remote_open_msg = {
+  .name = "bgp_out_conn_remote_open_msg",
+  .type = T_BYTESTRING,
+};
+
+struct ea_class ea_bgp_in_conn_state = {
+  .name = "bgp_in_conn_state",
+  .type = T_INT,
+};
+
+struct ea_class ea_bgp_out_conn_state = {
+  .name = "bgp_out_conn_state",
+  .type = T_INT,
+};
+
+struct ea_class ea_bgp_in_conn_sk = {
+  .name = "bgp_in_conn_sk",
+  .type = T_OPAQUE,
+};
+
+struct ea_class ea_bgp_out_conn_sk = {
+  .name = "bgp_out_conn_sk",
+  .type = T_OPAQUE,
+};
 
 /*
  *	Protocol extended state information
@@ -1222,6 +1295,31 @@ bgp_find_attr(ea_list *attrs, uint code)
 
 struct ea_class ea_bgp_state_startup = {
   .name = "bgp_state_startup",
+  .type = T_INT,
+};
+
+struct ea_class ea_bgp_close_bmp = {
+  .name = "bgp_close_bmp",
+  .type = T_OPAQUE,
+};
+
+struct ea_class ea_bgp_close_bmp_set = {
+  .name = "bgp_close_bmp_set",
+  .type = T_INT,
+};
+
+struct ea_class ea_bgp_as4_session = {
+  .name = "bgp_as4_session",
+  .type = T_INT,
+};
+
+struct ea_class ea_bgp_as4_in_conn = {
+  .name = "bgp_as4_in_conn",
+  .type = T_INT,
+};
+
+struct ea_class ea_bgp_as4_out_conn = {
+  .name = "bgp_as4_out_conn",
   .type = T_INT,
 };
 
@@ -1246,7 +1344,11 @@ bgp_register_attrs(void)
   }
 
   EA_REGISTER_ALL(
-      &ea_bgp_state_startup
+      &ea_bgp_rem_id, &ea_bgp_rem_as, &ea_bgp_loc_as, &ea_bgp_rem_ip, &ea_bgp_peer_type, &ea_bgp_afi,
+      &ea_bgp_in_conn_local_open_msg, &ea_bgp_out_conn_local_open_msg, &ea_bgp_in_conn_remote_open_msg,
+      &ea_bgp_out_conn_remote_open_msg, &ea_bgp_close_bmp, &ea_bgp_close_bmp_set, &ea_bgp_as4_session,
+      &ea_bgp_state_startup, &ea_bgp_in_conn_state, &ea_bgp_out_conn_state,
+      &ea_bgp_in_conn_sk, &ea_bgp_out_conn_sk, &ea_bgp_as4_in_conn, &ea_bgp_as4_out_conn
       );
 }
 
@@ -1892,7 +1994,7 @@ bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *bc)
  */
 
 static void
-bgp_out_item_done(struct lfjour *j, struct lfjour_item *i)
+bgp_out_item_done(struct lfjour *j UNUSED, struct lfjour_item *i UNUSED)
 {}
 
 static struct rt_export_feed *

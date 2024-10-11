@@ -293,7 +293,7 @@ struct bgp_stats {
 struct bgp_conn {
   struct bgp_proto *bgp;
   struct birdsock *sk;
-  u8 state;				/* State of connection state machine */
+  u8 state;                            /* State of connection state machine */
   u8 as4_session;			/* Session uses 4B AS numbers in AS_PATH (both sides support it) */
   u8 ext_messages;			/* Session uses extended message length */
   u32 received_as;			/* ASN received in OPEN message */
@@ -317,6 +317,21 @@ struct bgp_conn {
   byte *notify_data;
 
   uint hold_time, keepalive_time, send_hold_time;	/* Times calculated from my and neighbor's requirements */
+};
+
+struct bgp_conn_sk_ea {
+  ip_addr saddr;
+  ip_addr daddr;
+  int sport;
+  int dport;
+};
+
+struct closing_bgp {
+  int err_class;
+  int err_code;
+  int err_subcode;
+  int length;
+  byte data[0];
 };
 
 struct bgp_listen_request {
@@ -644,6 +659,7 @@ extern struct rte_owner_class bgp_rte_owner_class;
 eattr *
 bgp_find_attr(ea_list *attrs, uint code);
 
+int bgp_state_to_eattr(struct proto *P, struct ea_list *state);
 void bgp_set_attr_u32(ea_list **to, uint code, uint flags, u32 val);
 void bgp_set_attr_ptr(ea_list **to, uint code, uint flags, const struct adata *ad);
 void bgp_set_attr_data(ea_list **to, uint code, uint flags, void *data, uint len);
@@ -697,6 +713,13 @@ bgp_total_aigp_metric(const rte *e)
   bgp_total_aigp_metric_(e, &metric, &ad);
   return metric;
 }
+
+/* bgp protocol journal attributes */
+extern struct ea_class ea_bgp_rem_id, ea_bgp_rem_as, ea_bgp_loc_as, ea_bgp_rem_ip, ea_bgp_peer_type, ea_bgp_afi,
+      ea_bgp_in_conn_local_open_msg, ea_bgp_out_conn_local_open_msg, ea_bgp_in_conn_remote_open_msg,
+      ea_bgp_out_conn_remote_open_msg, ea_bgp_close_bmp, ea_bgp_close_bmp_set, ea_bgp_as4_session,
+      ea_bgp_state_startup, ea_bgp_in_conn_state, ea_bgp_out_conn_state,
+      ea_bgp_in_conn_sk, ea_bgp_out_conn_sk, ea_bgp_as4_out_conn, ea_bgp_as4_in_conn;
 
 /* Extended state attributes */
 extern struct ea_class

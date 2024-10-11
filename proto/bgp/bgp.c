@@ -486,6 +486,23 @@ bgp_close_conn(struct bgp_conn *conn)
   conn->local_open_length = 0;
   conn->remote_open_length = 0;
 
+  ea_list *attr = conn->bgp->p.ea_state;
+  if (conn == &conn->bgp->incoming_conn)
+  {
+    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_local_open_msg, 0, NULL, 0));
+    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_remote_open_msg, 0, NULL, 0));
+    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_sk, 0, NULL, 0));
+  }
+  else
+  {
+    ASSERT_DIE(conn == &conn->bgp->outgoing_conn);
+    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_local_open_msg, 0, NULL, 0));
+    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_remote_open_msg, 0, NULL, 0));
+    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_sk, 0, NULL, 0));
+  }
+  conn->bgp->p.ea_state = ea_lookup(conn->bgp->p.ea_state, 0, EALS_CUSTOM);
+  proto_announce_state_later(&conn->bgp->p, attr);
+
   mb_free(conn->local_caps);
   conn->local_caps = NULL;
   mb_free(conn->remote_caps);
@@ -640,6 +657,16 @@ bgp_conn_set_state(struct bgp_conn *conn, uint new_state)
     bgp_dump_state_change(conn, conn->state, new_state);
 
   conn->state = new_state;
+
+  if (conn == &conn->bgp->incoming_conn)
+    ea_set_attr(&conn->bgp->p.ea_state, EA_LITERAL_EMBEDDED(&ea_bgp_in_conn_state, 0, new_state));
+  else
+  {
+    ASSERT_DIE(conn == &conn->bgp->outgoing_conn);
+    ea_set_attr(&conn->bgp->p.ea_state, EA_LITERAL_EMBEDDED(&ea_bgp_out_conn_state, 0, new_state));
+  }
+  conn->bgp->p.ea_state = ea_lookup(conn->bgp->p.ea_state, 0, EALS_CUSTOM);
+  proto_announce_state_later(&conn->bgp->p, conn->bgp->p.ea_state);
 }
 
 void
@@ -680,6 +707,9 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   p->last_error_code = 0;
 
   p->as4_session = conn->as4_session;
+  ea_set_attr(&p->p.ea_state, EA_LITERAL_EMBEDDED(&ea_bgp_as4_session, 0, conn->as4_session));
+  p->p.ea_state = ea_lookup(p->p.ea_state, 0, EALS_CUSTOM);
+  proto_announce_state_later(&conn->bgp->p, conn->bgp->p.ea_state);
 
   p->route_refresh = peer->route_refresh;
   p->enhanced_refresh = local->enhanced_refresh && peer->enhanced_refresh;
@@ -791,11 +821,6 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
 
   bgp_conn_set_state(conn, BS_ESTABLISHED);
   proto_notify_state(&p->p, PS_UP);
-
-#ifdef CONFIG_BMP
-  bmp_peer_up(p, conn->local_open_msg, conn->local_open_length,
-	      conn->remote_open_msg, conn->remote_open_length);
-#endif
 }
 
 static void
@@ -809,9 +834,28 @@ bgp_conn_leave_established_state(struct bgp_conn *conn, struct bgp_proto *p)
     bgp_stop(p, 0, NULL, 0);
 
 #ifdef CONFIG_BMP
-  bmp_peer_down(p, p->last_error_class,
-		conn->notify_code, conn->notify_subcode,
-		conn->notify_data, conn->notify_size);
+  struct {
+    struct closing_bgp closing_struct;
+    byte data[conn->notify_size];
+  } to_ea;
+
+  to_ea.closing_struct = (struct closing_bgp) {
+    .err_class = p->last_error_class,
+    .err_code = conn->notify_code,
+    .err_subcode = conn->notify_subcode,
+    .length = conn->notify_size,
+  };
+  memcpy(to_ea.data, conn->notify_data, conn->notify_size);
+
+  ea_set_attr(&p->p.ea_state, EA_LITERAL_STORE_ADATA(&ea_bgp_close_bmp, 0, &to_ea.closing_struct, sizeof(to_ea)));
+  ea_set_attr(&p->p.ea_state, EA_LITERAL_EMBEDDED(&ea_bgp_close_bmp_set, 0, 1));
+  p->p.ea_state = ea_lookup(p->p.ea_state, 0, EALS_CUSTOM);
+
+  proto_announce_state_later(&p->p, p->p.ea_state);
+
+  //bmp_peer_down(p, p->last_error_class,
+	//	conn->notify_code, conn->notify_subcode,
+	//	conn->notify_data, conn->notify_size);
 #endif
 }
 
@@ -1205,6 +1249,17 @@ bgp_setup_conn(struct bgp_proto *p, struct bgp_conn *conn)
   conn->hold_timer 	= tm_new_init(p->p.pool, bgp_hold_timeout,	 conn, 0, 0);
   conn->keepalive_timer	= tm_new_init(p->p.pool, bgp_keepalive_timeout, conn, 0, 0);
   conn->send_hold_timer = tm_new_init(p->p.pool, bgp_send_hold_timeout, conn, 0, 0);
+
+  ea_list *attr = conn->bgp->p.ea_state;
+  if (conn == &conn->bgp->incoming_conn)
+    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_sk, 0, NULL, 0));
+  else
+  {
+    ASSERT_DIE(conn == &conn->bgp->outgoing_conn);
+    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_sk, 0, NULL, 0));
+  }
+  conn->bgp->p.ea_state = ea_lookup(conn->bgp->p.ea_state, 0, EALS_CUSTOM);
+  proto_announce_state_later(&p->p, attr);
 }
 
 static void
@@ -1214,6 +1269,24 @@ bgp_setup_sk(struct bgp_conn *conn, sock *s)
   s->err_hook = bgp_sock_err;
   s->fast_rx = 1;
   conn->sk = s;
+
+  struct bgp_conn_sk_ea sk_ea = {
+    .saddr = s->saddr,
+    .daddr = s->daddr,
+    .sport = s->sport,
+    .dport = s->dport
+  };
+
+  ea_list *attr = conn->bgp->p.ea_state;
+  if (conn == &conn->bgp->incoming_conn)
+    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_sk, 0, (byte*)(&sk_ea), sizeof(sk_ea)));
+  else
+  {
+    ASSERT_DIE(conn == &conn->bgp->outgoing_conn);
+    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_sk, 0, (byte*)(&sk_ea), sizeof(sk_ea)));
+  }
+  conn->bgp->p.ea_state = ea_lookup(conn->bgp->p.ea_state, 0, EALS_CUSTOM);
+  proto_announce_state_later(&conn->bgp->p, attr);
 }
 
 static void
@@ -1734,6 +1807,17 @@ bgp_start(struct proto *P)
   p->remote_id = 0;
   p->link_addr = IPA_NONE;
 
+  ea_list *eal = p->p.ea_state;
+  ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_rem_id, 0, p->remote_id));
+  ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_loc_as, 0, p->local_as));
+  ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_rem_as, 0, p->remote_as));
+  ea_set_attr(&eal, EA_LITERAL_STORE_ADATA(&ea_bgp_rem_ip, 0, &p->remote_ip, sizeof(ip_addr)));
+
+  ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_out_conn_state, 0, BS_IDLE));
+  ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_in_conn_state, 0, BS_IDLE));
+
+  proto_announce_state(&p->p, eal);
+
   /* Lock all channels when in GR recovery mode */
   if (p->p.gr_recovery && p->cf->gr_mode)
   {
@@ -1905,6 +1989,9 @@ bgp_init(struct proto_config *CF)
   /* Add MPLS channel */
   proto_configure_mpls_channel(P, CF, RTS_BGP);
 
+  PST_LOCKED(ts)
+    bgp_state_to_eattr(P, ts->states[P->id]);
+
   return P;
 }
 
@@ -1926,6 +2013,14 @@ bgp_channel_init(struct channel *C, struct channel_config *CF)
 
   if (cf->base_table)
     c->base_table = cf->base_table->table;
+
+  PST_LOCKED(ts)
+  {
+    ea_list *eal = ea_free_later(ts->channels[c->c.id]);
+    ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_afi, 0, c->afi));
+    ts->channels[c->c.id] = ea_lookup_slow(eal, 0, EALS_IN_TABLE);
+  }
+
 }
 
 static int
@@ -2363,6 +2458,11 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   /* We should update our copy of configuration ptr as old configuration will be freed */
   p->cf = new;
 
+  ea_list *eal = proto_get_state(p->p.id);
+  ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_peer_type, 0, p->cf->peer_type));
+  p->p.ea_state = ea_lookup(p->p.ea_state, 0, EALS_CUSTOM);
+  proto_announce_state_later(&p->p, eal);
+
   /* Check whether existing connections are compatible with required capabilities */
   struct bgp_conn *ci = &p->incoming_conn;
   if (((ci->state == BS_OPENCONFIRM) || (ci->state == BS_ESTABLISHED)) && !bgp_check_capabilities(ci))
@@ -2564,6 +2664,27 @@ bgp_get_status(struct proto *P, byte *buf)
     bsprintf(buf, "%s%s", err1, err2);
   else
     bsprintf(buf, "%-14s%s%s", bgp_state_dsc(p), err1, err2);
+}
+
+int
+bgp_state_to_eattr(struct proto *P, struct ea_list *state)
+{
+  struct bgp_proto *p = (struct bgp_proto *) P;
+  ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_bgp_rem_id, 0, p->remote_id));
+  ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_bgp_rem_ip, 0, &p->remote_ip, sizeof(ip_addr)));
+  ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_bgp_peer_type, 0, p->cf->peer_type));
+  ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_bgp_loc_as, 0, p->local_as));
+  ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_bgp_rem_as, 0, p->remote_as));
+  ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_bgp_as4_session, 0, p->as4_session));
+
+  ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_local_open_msg, 0, NULL, 0));
+  ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_remote_open_msg, 0, NULL, 0));
+  ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_local_open_msg, 0, NULL, 0));
+  ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_remote_open_msg, 0, NULL, 0));
+
+  ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_bgp_close_bmp, 0, NULL, 0));
+  ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_bgp_close_bmp_set, 0, 0));
+  return 1;
 }
 
 static void
