@@ -1151,14 +1151,18 @@ rt_notify_accepted(struct channel *c, const struct rt_export_feed *feed)
 
     /* Just a debug message for the last case */
     else
+    {
       RT_NOTIFY_DEBUG("route %u id %u is suboptimal, not checking", i, r->id);
+    }
   }
 
   /* Nothing to export */
   if (!idempotent && (new_best || old_best))
     do_rt_notify(c, feed->ni->addr, new_best, old_best);
   else
+  {
     RT_NOTIFY_DEBUG("nothing to export for %N", feed->ni->addr);
+  }
 }
 
 void
