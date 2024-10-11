@@ -319,6 +319,21 @@ struct bgp_conn {
   uint hold_time, keepalive_time, send_hold_time;	/* Times calculated from my and neighbor's requirements */
 };
 
+
+struct journal_bgp_conn {
+  struct bgp_conn *conn;
+  struct bgp_conn outgoing_conn;
+  struct bgp_conn incoming_conn;
+};
+
+struct closing_bgp {
+  int err_class;
+  int err_code;
+  int err_subcode;
+  int length;
+  byte data[0];
+};
+
 struct bgp_listen_request {
   node n;				/* Node in bgp_socket / pending list */
   struct bgp_socket *sock;		/* Assigned socket */
@@ -644,6 +659,7 @@ extern struct rte_owner_class bgp_rte_owner_class;
 eattr *
 bgp_find_attr(ea_list *attrs, uint code);
 
+int bgp_state_to_eattr(struct proto *P, struct ea_list *state);
 void bgp_set_attr_u32(ea_list **to, uint code, uint flags, u32 val);
 void bgp_set_attr_ptr(ea_list **to, uint code, uint flags, const struct adata *ad);
 void bgp_set_attr_data(ea_list **to, uint code, uint flags, void *data, uint len);
@@ -697,6 +713,11 @@ bgp_total_aigp_metric(const rte *e)
   bgp_total_aigp_metric_(e, &metric, &ad);
   return metric;
 }
+
+/* bgp protocol journal attributes */
+extern struct ea_class ea_bgp_rem_id, ea_bgp_rem_as, ea_bgp_loc_as, ea_bgp_rem_ip, ea_bgp_peer_type, ea_bgp_afi,
+       ea_bgp_local_open_msg, ea_bgp_remote_open_msg, ea_bgp_local_open_msg_len, ea_bgp_remote_open_msg_len,
+       ea_bgp_conn, ea_bgp_in_conn, ea_bgp_out_conn, ea_bgp_close_bmp, ea_bgp_close_bmp_set, ea_bgp_as4_session;
 
 /* Extended state attributes */
 extern struct ea_class

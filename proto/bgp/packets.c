@@ -1048,6 +1048,11 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   conn->ext_messages = conn->local_caps->ext_messages && caps->ext_messages;
   p->remote_id = id;
 
+  ea_list *eal = proto_get_state(p->p.id);
+  ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_rem_id, 0, p->remote_id));
+
+  proto_announce_state(&p->p, eal);
+
   DBG("BGP: Hold timer set to %d, keepalive to %d, AS to %d, ID to %x, AS4 session to %d\n",
       conn->hold_time, conn->keepalive_time, p->remote_as, p->remote_id, conn->as4_session);
 
