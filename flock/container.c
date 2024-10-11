@@ -822,24 +822,28 @@ void
 hypervisor_container_start(struct cbor_channel *cch, struct flock_machine_container_config *ccf)
 {
   birdloop_enter(hcf.loop);
-// const char *name, const char *basedir, const char *workdir
+
+#define FAIL(id, msg) do { \
+  CBOR_REPLY(cch, cw) CBOR_PUT_MAP(cw) { \
+    cbor_put_int(cw, id); cbor_put_string(cw, msg);\
+  } cbor_done_channel(cch); \
+  birdloop_leave(hcf.loop); \
+  return; } while (0)
+
+  if (!ccf->cf.name)
+    FAIL(-101, "Machine name not specified");
+
+  if (!ccf->workdir)
+    FAIL(-102, "Machine workdir not specified");
+
+  if (!ccf->basedir)
+    FAIL(-103, "Machine basedir not specified");
 
   const char *name = ccf->cf.name;
   uint h = mem_hash(name, strlen(name));
   struct container_runtime *crt = HASH_FIND(hcf.hash, CRT, name, h);
   if (crt)
-  {
-    CBOR_REPLY(cch, cw)
-      CBOR_PUT_MAP(cw)
-      {
-	cbor_put_int(cw, -127);
-	cbor_put_string(cw, "Container not created: Already exists");
-      }
-
-    cbor_done_channel(cch);
-    birdloop_leave(hcf.loop);
-    return;
-  }
+    FAIL(-127, "Container already exists");
 
   uint nlen = strlen(name);
   crt = mb_allocz(hcf.p, sizeof *crt + nlen + 1);
@@ -869,6 +873,7 @@ hypervisor_container_start(struct cbor_channel *cch, struct flock_machine_contai
       cbor_put_string(cw, ccf->workdir);
     }
 
+#undef FAIL
   birdloop_leave(hcf.loop);
 }
 
