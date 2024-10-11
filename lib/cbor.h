@@ -201,6 +201,7 @@ struct cbor_stream {
   HASH(struct cbor_channel) channels;
   pool *p;
   slab *slab;
+  sock *s;
   cbor_stream_parse_fn parse;
   struct cbor_channel *cur_rx_channel;
   u64 hmul;
