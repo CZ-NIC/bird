@@ -366,6 +366,23 @@ assign_bucket_id(struct aggregator_proto *p, struct aggregator_bucket *bucket)
 }
 
 static void
+before_check(const struct trie_node *node)
+{
+  assert(node != NULL);
+
+  if (node->bucket)
+    assert(IN_FIB == node->status);
+  else
+    assert(NON_FIB == node->status);
+
+  if (node->child[0])
+    before_check(node->child[0]);
+
+  if (node->child[1])
+    before_check(node->child[1]);
+}
+
+static void
 choose_lowest_id_bucket(struct aggregator_proto *p, struct trie_node *node)
 {
   assert(p != NULL);
@@ -489,6 +506,8 @@ second_pass(struct trie_node *node)
    * children's buckets.
    */
   merge_potential_buckets(node, left, right);
+
+  assert(node->selected_bucket == NULL);
 }
 
 /*
@@ -497,6 +516,9 @@ second_pass(struct trie_node *node)
 static int
 is_bucket_potential(const struct trie_node *node, const struct aggregator_bucket *bucket)
 {
+  assert(node != NULL);
+  assert(bucket != NULL);
+
   ASSERT_DIE(bucket->id < MAX_POTENTIAL_BUCKETS_COUNT);
   return BIT32R_TEST(node->potential_buckets, bucket->id);
 }
@@ -504,6 +526,7 @@ is_bucket_potential(const struct trie_node *node, const struct aggregator_bucket
 static void
 remove_potential_buckets(struct trie_node *node)
 {
+  assert(node != NULL);
   node->potential_buckets_count = 0;
   memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
 }
@@ -517,8 +540,13 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
   /* Bucket inherited from the closest ancestor with a non-null bucket */
   // const struct aggregator_bucket *inherited_bucket = node->parent->ancestor->bucket;
   const struct aggregator_bucket *inherited_bucket = node->parent->ancestor->selected_bucket;
+  assert(node->ancestor == NULL);
+  assert(node->selected_bucket == NULL);
+
+  assert(node->bucket != NULL);
   assert(node->parent->ancestor != NULL);
   assert(inherited_bucket != NULL);
+  assert(node->parent->ancestor->selected_bucket != NULL);
 
   /* Save bucket of the current node before it is (potentially) deleted in the next step */
   // struct aggregator_bucket * const current_node_bucket = node->bucket;
@@ -544,20 +572,21 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
     node->status = IN_FIB;
   }
 
+  assert((node->selected_bucket != NULL && node->status == IN_FIB) || (node->selected_bucket == NULL && node->status == NON_FIB));
+
   /*
    * Node with a bucket is the closest ancestor for all his descendants.
    * Otherwise, it must refer to the closest ancestor of its parent.
    */
   // node->ancestor = node->bucket ? node : node->parent->ancestor;
   node->ancestor = node->selected_bucket ? node : node->parent->ancestor;
+
   assert(node->ancestor != NULL);
   assert(node->ancestor->bucket != NULL);
   assert(node->ancestor->selected_bucket != NULL);
 
   const struct trie_node * const left  = node->child[0];
   const struct trie_node * const right = node->child[1];
-
-  assert(node->bucket != NULL);
 
   /* Nodes with exactly one child */
   if ((left && !right) || (!left && right))
@@ -982,6 +1011,42 @@ construct_trie(struct aggregator_proto *p)
   HASH_WALK_END;
 }
 
+static void
+after_third_check(const struct trie_node *node)
+{
+  assert(node != NULL);
+  assert(node->ancestor != NULL);
+
+  if (is_leaf(node))
+  {
+    assert(node->selected_bucket != NULL && node->status == IN_FIB);
+    assert(node->ancestor == node);
+    return;
+  }
+
+  if (IN_FIB == node->status)
+  {
+    assert(node->selected_bucket != NULL);
+    assert(node->ancestor == node);
+  }
+  else if (NON_FIB == node->status)
+  {
+    assert(node->selected_bucket == NULL);
+    assert(node->ancestor != node);
+  }
+  else
+    bug("Unknown node status");
+
+  if (node->selected_bucket)
+    assert(node->status == IN_FIB);
+
+  if (node->child[0])
+    after_third_check(node->child[0]);
+
+  if (node->child[1])
+    after_third_check(node->child[1]);
+}
+
 /*
  * Run Optimal Routing Table Constructor (ORTC) algorithm
  */
@@ -995,6 +1060,8 @@ calculate_trie(struct aggregator_proto *p)
     log("==== PREFIXES BEFORE ====");
     print_prefixes(p->root, p->addr_type);
   }
+
+  before_check(p->root);
 
   times_update(&main_timeloop);
   log("==== FIRST PASS ====");
@@ -1025,6 +1092,8 @@ calculate_trie(struct aggregator_proto *p)
   third_pass(p, p->root);
   times_update(&main_timeloop);
   log("==== THIRD PASS DONE ====");
+
+  after_third_check(p->root);
 
   if (p->logging)
   {
