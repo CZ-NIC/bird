@@ -812,7 +812,7 @@ container_fork_request_reply(struct cbor_channel *cch, enum cbor_parse_result re
       cbor_put_string(cw, "OK");
     }
 
-  cbor_done_channel(&cfr->cch);
+  cbor_channel_done(&cfr->cch);
 
   return CPR_BLOCK_END;
 #undef FAIL
@@ -826,7 +826,7 @@ hypervisor_container_start(struct cbor_channel *cch, struct flock_machine_contai
 #define FAIL(id, msg) do { \
   CBOR_REPLY(cch, cw) CBOR_PUT_MAP(cw) { \
     cbor_put_int(cw, id); cbor_put_string(cw, msg);\
-  } cbor_done_channel(cch); \
+  } cbor_channel_done(cch); \
   birdloop_leave(hcf.loop); \
   return; } while (0)
 
@@ -941,7 +941,7 @@ container_stopped(struct cbor_channel *cch, enum cbor_parse_result res)
       cbor_put_string(cw, "OK");
     }
 
-  cbor_done_channel(&ccc->cch);
+  cbor_channel_done(&ccc->cch);
   return CPR_BLOCK_END;
 #undef FAIL
 }
@@ -964,7 +964,7 @@ hypervisor_container_shutdown(struct cbor_channel *cch, struct flock_machine_con
 	cbor_put_string(cw, "BAD: Not found");
       }
 
-    cbor_done_channel(cch);
+    cbor_channel_done(cch);
     birdloop_leave(hcf.loop);
     return;
   }
