@@ -70,6 +70,7 @@ hcs_parser_init(sock *s)
   htx->ctx = ctx;
   htx->sock = s;
   cbor_stream_init(&htx->stream, 3);
+  cbor_stream_attach(&htx->stream, s);
 
   return htx;
 }

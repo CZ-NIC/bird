@@ -20,37 +20,6 @@ static pool *hcs_pool;
 
 OBSREF(struct shutdown_placeholder) hcs_shutdown_placeholder;
 
-static int
-hcs_rx(sock *s, uint size)
-{
-  s64 sz = hcs_parse(s->data, s->rbuf, size);
-  if (sz < 0)
-  {
-    log(L_INFO "CLI parser error at position %ld: %s", -sz-1, hcs_error(s->data));
-    sk_close(s);
-    return 0; /* Must return 0 when closed */
-  }
-
-  if (!hcs_complete(s->data))
-  {
-    ASSERT_DIE(sz == size);
-    return 1;
-  }
-
-  log(L_INFO "Parsed command.");
-
-  /* TODO do something more */
-  if (sz < size)
-    memmove(s->rbuf, s->rbuf + sz, size - sz);
-  if (!s->rx_hook)
-    return (sz == size);
-
-  hcs_parser_cleanup(s->data);
-  s->data = hcs_parser_init(s);
-
-  return (sz < size) ? hcs_rx(s, size - sz) : 1;
-}
-
 static void
 hcs_err(sock *s, int err)
 {
@@ -64,9 +33,7 @@ hcs_connect(sock *s, uint size UNUSED)
 {
   log(L_INFO "CLI connected: %p", s);
 
-  s->rx_hook = hcs_rx;
-  s->err_hook = hcs_err;
-  s->data = hcs_parser_init(s);
+  hcs_parser_init(s);
   return 1;
 }
 
@@ -127,8 +94,7 @@ static struct hypervisor_exposed {
   pool *p;
   sock *s;
   struct birdloop *loop;
-  const char *port_name;
-  sock *port_sreq;
+  struct hcs_parser_channel *hpc;
 } he;
 
 /**
@@ -281,13 +247,19 @@ hypervisor_exposed_child_rx(sock *sk, uint size)
 
     sk->txfd = sfd;
 
-    linpool *lp = lp_new(sk->pool);
-    struct cbor_writer *cw = cbor_init(sk->tbuf, sk->tbsize, lp);
-    cbor_open_block_with_length(cw, 1);
-    cbor_add_int(cw, -2);
-    cbor_add_int(cw, r);
+    struct {
+      struct cbor_writer cw;
+      struct cbor_writer_stack_item si[2];
+    } cw;
 
-    e = sk_send(sk, cw->pt);
+    cbor_writer_init(&cw.cw, 2, sk->tbuf, sk->tbsize);
+    CBOR_PUT_MAP(&cw.cw)
+    {
+      cbor_put_int(&cw.cw, -2);
+      cbor_put_int(&cw.cw, r);
+    }
+
+    e = sk_send(sk, cw.cw.data.pos - cw.cw.data.start);
     if (e < 0)
       log(L_ERR "Failed to send socket: %m");
 
@@ -388,9 +360,7 @@ hexp_cleanup_after_fork(void)
 static void
 hexp_sock_err(sock *s, int err UNUSED)
 {
-  ASSERT_DIE(s == he.port_sreq);
-  he.port_name = NULL;
-  he.port_sreq = NULL;
+  he.hpc = NULL;
 }
 
 void
@@ -406,17 +376,31 @@ hexp_get_telnet(struct hcs_parser_channel *hpc)
   int e = write(he.s->fd, buf, sizeof buf);
   if (e != sizeof buf)
     bug("write error handling not implemented, got %d (%m)", e);
-
-  s->err_paused = hexp_sock_err;
-  sk_pause_rx(s->loop, s);
 }
 
-static void hexp_received_telnet(struct hexp_received_telnet *hrt)
+struct hcs_parser_channel {
+  struct cbor_channel cch;
+  struct hcs_parser_stream *htx;
+
+  enum {
+    HCS_CMD_SHUTDOWN = 1,
+    HCS_CMD_TELNET,
+    HCS_CMD_MACHINE_START,
+    HCS_CMD_MACHINE_STOP,
+    HCS_CMD__MAX,
+  } cmd;
+
+  union flock_machine_config cfg;
+};
+
+static void hexp_received_telnet(void *_hrt)
 {
-  if (hrt->name[0])
+  struct hexp_received_telnet *hrt = _hrt;
+
+  if (he.hpc->cfg.cf.name[0])
   {
     /* Transferring the received listening socket to the container */
-    struct cbor_channel *ccc = container_get_channel(hrt->name);
+    struct cbor_channel *ccc = container_get_channel(he.hpc->cfg.cf.name);
 
     CBOR_REPLY(ccc, cw)
       CBOR_PUT_MAP(cw) {
@@ -440,21 +424,16 @@ static void hexp_received_telnet(struct hexp_received_telnet *hrt)
       bug("Telnet listener: sk_open failed");
   }
 
-  if (s)
+  if (he.hpc)
   {
-    linpool *lp = lp_new(hcs_pool);
-    struct cbor_writer *cw = cbor_init(s->tbuf, s->tbsize, lp);
-    cbor_open_block_with_length(cw, 1);
-    cbor_add_int(cw, -2);
-    cbor_add_int(cw, hrt->port);
+    CBOR_REPLY(&he.hpc->cch, cw)
+      CBOR_PUT_MAP(cw)
+      {
+	cbor_put_int(cw, -2);
+	cbor_put_int(cw, hrt->port);
+      }
 
-    sk_send(s, cw->pt);
-    sk_resume_rx(hcs_loop, s);
-
-    hcs_parser_cleanup(s->data);
-    s->data = hcs_parser_init(s);
-
-    rfree(lp);
+    cbor_channel_done(&he.hpc->cch);
   }
 
   birdloop_enter(he.loop);
