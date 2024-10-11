@@ -598,7 +598,6 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
     struct trie_node imaginary_node = {
       .parent = node,
       .bucket = node->bucket,
-      .selected_bucket = node->selected_bucket,
       .depth = node->depth + 1,
     };
 
