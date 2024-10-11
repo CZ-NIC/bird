@@ -1930,7 +1930,7 @@ aggregator_start(struct proto *P)
 }
 
 static int
-aggregator_shutdown(struct proto *P)
+aggregator_shutdown(struct proto *P UNUSED)
 {
   return PS_DOWN;
 }
