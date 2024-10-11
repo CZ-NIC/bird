@@ -394,24 +394,18 @@ hexp_sock_err(sock *s, int err UNUSED)
 }
 
 void
-hexp_get_telnet(sock *s, const char *name)
+hexp_get_telnet(struct hcs_parser_channel *hpc)
 {
-  ASSERT_DIE(!he.port_name);
-  he.port_name = name ?: "";
-  he.port_sreq = s;
+  if (he.hpc)
+    log(L_ERR "Multiple telnet requests not supported yet");
 
-  uint8_t buf[64];
-  linpool *lp = lp_new(s->pool);
-  struct cbor_writer *cw = cbor_init(buf, sizeof buf, lp);
-  cbor_open_block_with_length(cw, 1);
-  cbor_add_int(cw, 1);
-  cw->cbor[cw->pt++] = 0xf6;
+  he.hpc = hpc;
 
-  int e = write(he.s->fd, buf, cw->pt);
-  if (e != cw->pt)
+  /* TODO: use channels here as well */
+  uint8_t buf[] = { 0xa1, 0x01, 0xf6 };
+  int e = write(he.s->fd, buf, sizeof buf);
+  if (e != sizeof buf)
     bug("write error handling not implemented, got %d (%m)", e);
-
-  rfree(lp);
 
   s->err_paused = hexp_sock_err;
   sk_pause_rx(s->loop, s);

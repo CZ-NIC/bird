@@ -19,7 +19,7 @@
  *     - 3 with array of strings = run the given command inside the hypervisor
  */
 
-struct hcs_parser_context {
+struct hcs_parser_stream {
   struct cbor_parser_context *ctx;
   struct hcs_parser_channel *channel;
   sock *sock;
@@ -32,7 +32,7 @@ struct hcs_parser_context {
 
 struct hcs_parser_channel {
   struct cbor_channel cch;
-  struct hcs_parser_context *htx;
+  struct hcs_parser_stream *htx;
 
   enum {
     HCS_CMD_SHUTDOWN = 1,
@@ -61,17 +61,11 @@ hcs_request_poweroff(struct hcs_parser_channel *hpc)
   cbor_done_channel(&hpc->cch);
 }
 
-static void
-hcs_get_telnet(struct hcs_parser_channel *hpc)
-{
-// TODO:  hexp_get_telnet();
-}
-
-struct hcs_parser_context *
+struct hcs_parser_stream *
 hcs_parser_init(sock *s)
 {
   struct cbor_parser_context *ctx = cbor_parser_new(s->pool, 4);
-  struct hcs_parser_context *htx = mb_allocz(s->pool, sizeof *htx);
+  struct hcs_parser_stream *htx = mb_allocz(s->pool, sizeof *htx);
 
   htx->ctx = ctx;
   htx->sock = s;
@@ -80,42 +74,20 @@ hcs_parser_init(sock *s)
   return htx;
 }
 
-#define CBOR_PARSER_ERROR(...)	do {		\
-  ctx->error = lp_sprintf(ctx->lp, __VA_ARGS__);\
-  return -(htx->bytes_consumed + pos + 1);	\
+#define CBOR_PARSER_ERROR(...)	do {			\
+  log(L_ERR "Hypervisor ctl parse: " __VA_ARGS__);	\
+  return CPR_ERROR;					\
 } while (0)
 
-s64
-hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
+enum cbor_parse_result
+hcs_parse(struct cbor_channel *cch, enum cbor_parse_result res)
 {
-  ASSERT_DIE(size > 0);
-  struct cbor_parser_context *ctx = htx->ctx;
-  struct hcs_parser_channel *hpc = htx->channel;
+  SKIP_BACK_DECLARE(struct hcs_parser_channel, hpc, cch, cch);
+  SKIP_BACK_DECLARE(struct hcs_parser_stream, htx, stream, cch->stream);
+  struct cbor_parser_context *ctx = &htx->stream.parser;
 
-  bool finish_cmd = false;
-
-  for (int pos = 0; pos < size; pos++)
-  {// TODO here → convert to the new channel parser
-    if (!hpc)
-    {
-      struct cbor_channel *cch = cbor_parse_channel(ctx, htx->stream, buf[pos]);
-      if (cch == &cbor_channel_parse_error)
-	return -(htx->bytes_consumed + pos + 1);
-      else if (cch)
-	hpc = htx->channel = SKIP_BACK(struct hcs_parser_channel, cch, cch);
-      continue;
-    }
-
-    switch (cbor_parse_byte(ctx, buf[pos]))
-    {
-      case CPR_ERROR:
-	/* Parser failure */
-	return -(htx->bytes_consumed + pos + 1);
-
-      case CPR_MORE:
-	/* Need more bytes */
-	continue;
-
+  switch (res)
+  {
       case CPR_MAJOR:
 	/* Check type acceptance */
 	switch (htx->major_state)
@@ -126,47 +98,46 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	      CBOR_PARSER_ERROR("Command key too high, got %lu", hpc->cmd);
 
 	    htx->major_state = hpc->cmd + 10;
-	    break;
+	    return CPR_MORE;
 
 	  case HCS_CMD_SHUTDOWN + 10: /* shutdown command: expected null */
 	    if ((ctx->type != 7) || (ctx->value != 22))
 	      CBOR_PARSER_ERROR("Expected null, got %u-%u", ctx->type, ctx->value);
 
 	    hcs_request_poweroff(hpc);
-	    finish_cmd = true;
-	    break;
+	    htx->major_state = 3;
+	    return CPR_MORE;
 
 	  case HCS_CMD_TELNET + 10: /* telnet listener open */
 	    if ((ctx->type == 7) && (ctx->value == 22))
 	    {
-	      hcs_get_telnet(hpc);
-	      finish_cmd = true;
-	      break;
+	      hexp_get_telnet(hpc);
+	      htx->major_state = 3;
+	      return CPR_MORE;
 	    }
 
 	    else CBOR_PARSE_IF(ctx, TEXT, hpc->cfg.cf.name)
 	      ;
 	    else
 	      CBOR_PARSER_ERROR("Expected null or string, got %s", cbor_type_str(ctx->type));
-	    break;
+	    return CPR_MORE;
 
 	  case HCS_CMD_MACHINE_START + 10: /* machine creation request */
 	    if (ctx->type != 5)
 	      CBOR_PARSER_ERROR("Expected mapping, got %u", ctx->type);
 
 	    htx->major_state = 501;
-	    break;
+	    return CPR_MORE;
 
 	  case HCS_CMD_MACHINE_STOP + 1: /* machine shutdown request */
 	    if (ctx->type != 5)
 	      CBOR_PARSER_ERROR("Expecting mapping, got %u", ctx->type);
 
 	    htx->major_state = 601;
-	    break;
+	    return CPR_MORE;
 
 	  case 7: /* process spawner */
 	    bug("process spawner not implemented");
-	    break;
 
 	  case 501: /* machine creation argument */
 	    CBOR_PARSE_ONLY(ctx, POSINT, htx->major_state);
@@ -175,11 +146,11 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	      CBOR_PARSER_ERROR("Command key too high, got %lu", ctx->value);
 
 	    htx->major_state += 502;
-	    break;
+	    return CPR_MORE;
 
 	  case 502: /* machine creation argument 0: name */
 	    CBOR_PARSE_ONLY(ctx, TEXT, hpc->cfg.cf.name);
-	    break;
+	    return CPR_MORE;
 
 	  case 503: /* machine creation argument 1: type */
 	    CBOR_PARSE_ONLY(ctx, POSINT, hpc->cfg.cf.type);
@@ -188,15 +159,15 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	      CBOR_PARSER_ERROR("Unexpected type, got %lu", ctx->value);
 
 	    htx->major_state = 501;
-	    break;
+	    return CPR_MORE;
 
 	  case 504: /* machine creation argument 2: basedir */
 	    CBOR_PARSE_ONLY(ctx, BYTES, hpc->cfg.container.basedir);
-	    break;
+	    return CPR_MORE;
 
 	  case 505: /* machine creation argument 3: workdir */
 	    CBOR_PARSE_ONLY(ctx, BYTES, hpc->cfg.container.workdir);
-	    break;
+	    return CPR_MORE;
 
 	  case 601: /* machine shutdown argument */
 	    CBOR_PARSE_ONLY(ctx, POSINT, htx->major_state);
@@ -205,11 +176,11 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	      CBOR_PARSER_ERROR("Command key too high, got %lu", ctx->value);
 
 	    htx->major_state += 602;
-	    break;
+	    return CPR_MORE;
 
 	  case 602: /* machine creation argument 0: name */
 	    CBOR_PARSE_ONLY(ctx, TEXT, hpc->cfg.cf.name);
-	    break;
+	    return CPR_MORE;
 
 	  default:
 	    bug("invalid parser state");
@@ -221,59 +192,42 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	switch (htx->major_state)
 	{
 	  case HCS_CMD_TELNET + 10:
-	    hcs_get_telnet(hpc);
-	    finish_cmd = true;
+	    hexp_get_telnet(hpc);
 	    break;
 
 	  case 502:
 	  case 504:
 	  case 505:
 	    htx->major_state = 501;
-	    break;
+	    return CPR_MORE;
 
 	  case 602:
 	    htx->major_state = 601;
-	    break;
+	    return CPR_MORE;
 
 	  default:
 	    bug("Unexpected state to end a (byte)string in");
 	  /* Code to run at the end of a (byte)string */
 	}
 	break;
-    }
 
-    if (finish_cmd)
-    {
-      finish_cmd = false;
-
-      if (!cbor_parse_channel_finish(ctx, htx->stream))
-	CBOR_PARSER_ERROR("Failed to finish CBOR channel parser");
-
-      htx->channel = NULL;
-      htx->bytes_consumed = 0;
-      htx->major_state = 0;
-      continue;
-    }
-
-    /* End of array or map */
-    while (cbor_parse_block_end(ctx))
-    {
+    case CPR_BLOCK_END:
       switch (htx->major_state)
       {
 	/* Code to run at the end of the mapping */
 	case 0: /* toplevel item ended */
 	  htx->major_state = ~0ULL;
-	  return pos + 1;
+	  return CPR_BLOCK_END;
 
 	case 1:
 	  htx->major_state = 0;
-	  break;
+	  return CPR_MORE;
 
 	case 5:
 	  /* Finalize the command to exec in hypervisor */
 	  CBOR_PARSER_ERROR("NOT IMPLEMENTED YET");
 	  htx->major_state = 1;
-	  break;
+	  return CPR_MORE;
 
 	case 501:
 	  switch (hpc->cfg.cf.type)
@@ -285,7 +239,7 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 	      CBOR_PARSER_ERROR("Unknown machine type: %d", hpc->cfg.cf.type);
 	  }
 	  htx->major_state = 1;
-	  break;
+	  return CPR_MORE;
 
 	case 601:
 	  /*
@@ -297,32 +251,36 @@ hcs_parse(struct hcs_parser_context *htx, const byte *buf, s64 size)
 
 	  hypervisor_container_shutdown(&hpc->cch, &hpc->cfg.container);
 	  htx->major_state = 1;
-	  break;
+	  return CPR_MORE;
 
 	default:
 	  bug("Unexpected state to end a mapping in");
       }
-    }
+      break;
+
+    case CPR_ERROR:
+    case CPR_MORE:
+      CBOR_PARSER_ERROR("Invalid input");
+
   }
 
-  htx->bytes_consumed += size;
-  return size;
+  return CPR_MORE;
 }
 
 bool
-hcs_complete(struct hcs_parser_context *htx)
+hcs_complete(struct hcs_parser_stream *htx)
 {
   return htx->major_state == ~0ULL;
 }
 
 const char *
-hcs_error(struct hcs_parser_context *htx)
+hcs_error(struct hcs_parser_stream *htx)
 {
   return htx->ctx->error;
 }
 
 void
-hcs_parser_cleanup(struct hcs_parser_context *htx)
+hcs_parser_cleanup(struct hcs_parser_stream *htx)
 {
   cbor_parser_free(htx->ctx);
 }

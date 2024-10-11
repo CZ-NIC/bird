@@ -23,13 +23,17 @@ struct flock_config {
 
 extern struct flock_config flock_config;
 
-struct hcs_parser_context *hcs_parser_init(sock *s);
-s64 hcs_parse(struct hcs_parser_context *ctx, const byte *buf, s64 size);
-void hcs_parser_cleanup(struct hcs_parser_context *ctx);
-const char *hcs_error(struct hcs_parser_context *ctx);
-bool hcs_complete(struct hcs_parser_context *ctx);
+struct hcs_parser_stream *hcs_parser_init(sock *s);
 
-void hexp_get_telnet(sock *, const char *name);
+enum cbor_parse_result
+hcs_parse(struct cbor_channel *cch, enum cbor_parse_result res);
+
+void hcs_parser_cleanup(struct hcs_parser_stream *ctx);
+const char *hcs_error(struct hcs_parser_stream *ctx);
+bool hcs_complete(struct hcs_parser_stream *ctx);
+
+struct hcs_parser_channel;
+void hexp_get_telnet(struct hcs_parser_channel *);
 
 union flock_machine_config {
   struct flock_machine_common_config {
