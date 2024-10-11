@@ -537,20 +537,15 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
   assert(node != NULL);
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
-  /* Bucket inherited from the closest ancestor with a non-null bucket */
-  // const struct aggregator_bucket *inherited_bucket = node->parent->ancestor->bucket;
-  const struct aggregator_bucket *inherited_bucket = node->parent->ancestor->selected_bucket;
   assert(node->ancestor == NULL);
   assert(node->selected_bucket == NULL);
 
   assert(node->bucket != NULL);
   assert(node->parent->ancestor != NULL);
-  assert(inherited_bucket != NULL);
   assert(node->parent->ancestor->selected_bucket != NULL);
 
-  /* Save bucket of the current node before it is (potentially) deleted in the next step */
-  // struct aggregator_bucket * const current_node_bucket = node->bucket;
-  // assert(current_node_bucket != NULL);
+  /* Bucket inherited from the closest ancestor with a non-null selected bucket */
+  const struct aggregator_bucket * const inherited_bucket = node->parent->ancestor->selected_bucket;
 
   /*
    * If bucket inherited from ancestor is one of potential buckets of this node,
@@ -558,8 +553,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
    */
   if (is_bucket_potential(node, inherited_bucket))
   {
-    // node->bucket = NULL;
-    node->selected_bucket = NULL;
+    /* Selected bucket is NULL as it has never been assigned */
     node->status = NON_FIB;
     remove_potential_buckets(node);
   }
@@ -576,9 +570,8 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
 
   /*
    * Node with a bucket is the closest ancestor for all his descendants.
-   * Otherwise, it must refer to the closest ancestor of its parent.
+   * Its closest ancestor is its parent's ancestor otherwise.
    */
-  // node->ancestor = node->bucket ? node : node->parent->ancestor;
   node->ancestor = node->selected_bucket ? node : node->parent->ancestor;
 
   assert(node->ancestor != NULL);
@@ -601,7 +594,6 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
       .depth = node->depth + 1,
     };
 
-    // node_insert_potential_bucket(&imaginary_node, current_node_bucket);
     node_insert_potential_bucket(&imaginary_node, node->bucket);
 
     /*
@@ -610,7 +602,6 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
      * Otherwise it inherits bucket from the closest ancestor with
      * a non-null bucket.
      */
-    // const struct aggregator_bucket * const imaginary_node_inherited_bucket = node->bucket ? node->bucket : inherited_bucket;
     const struct aggregator_bucket * const imaginary_node_inherited_bucket = node->selected_bucket ? node->selected_bucket : inherited_bucket;
 
     /*
@@ -646,8 +637,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
     third_pass_helper(p, node->child[1]);
 
   /* Leaves with no assigned bucket are removed */
-  // if (!node->bucket && is_leaf(node))
-  if (!node->selected_bucket && is_leaf(node))
+  if (NON_FIB == node->status && is_leaf(node))
     remove_node(node);
 }
 
@@ -863,13 +853,14 @@ static void
 collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *addr, const struct trie_node *node, int *count, int depth)
 {
   assert(node != NULL);
+  assert(node->status == IN_FIB || node->status == NON_FIB);
 
   if (is_leaf(node))
   {
     assert(node->bucket != NULL);
     assert(node->selected_bucket != NULL);
     assert(IN_FIB == node->status);
-    // create_route_ip4(p, node->bucket, addr);
+
     create_route_ip4(p, node->selected_bucket, addr);
     *count += 1;
     p->leaves++;
@@ -877,18 +868,15 @@ collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *add
   }
 
   /* Internal node with assigned bucket */
-  // if (node->bucket)
-  if (node->selected_bucket)
+  if (IN_FIB == node->status)
   {
     assert(node->bucket != NULL);
-    assert(IN_FIB == node->status);
-    // create_route_ip4(p, node->bucket, addr);
+    assert(node->selected_bucket != NULL);
+
     create_route_ip4(p, node->selected_bucket, addr);
     *count += 1;
     p->internal_nodes++;
   }
-  else
-    assert(NON_FIB == node->status);
 
   if (node->child[0])
   {
@@ -910,12 +898,14 @@ static void
 collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *addr, const struct trie_node *node, int *count, int depth)
 {
   assert(node != NULL);
+  assert(node->status == IN_FIB || node->status == NON_FIB);
 
   if (is_leaf(node))
   {
     assert(node->bucket != NULL);
     assert(node->selected_bucket != NULL);
     assert(IN_FIB == node->status);
+
     create_route_ip6(p, node->bucket, addr);
     *count += 1;
     p->leaves++;
@@ -923,18 +913,15 @@ collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *add
   }
 
   /* Internal node with assigned bucket */
-  // if (node->bucket)
-  if (node->selected_bucket)
+  if (IN_FIB == node->status)
   {
-    // create_route_ip6(p, node->bucket, addr);
     assert(node->bucket != NULL);
-    assert(IN_FIB == node->status);
+    assert(node->selected_bucket != NULL);
+
     create_route_ip6(p, node->selected_bucket, addr);
     *count += 1;
     p->internal_nodes++;
   }
-  else
-    assert(NON_FIB == node->status);
 
   if (node->child[0])
   {
