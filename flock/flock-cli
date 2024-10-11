@@ -35,6 +35,9 @@ class HypervisorStaleError(HandlerError):
     def __init__(self, *args, **kwargs):
         return super().__init__("Hypervisor stale", *args, **kwargs)
 
+class GarbledReplyError(HandlerError):
+    pass
+
 def connect(where: pathlib.Path):
     if not where.exists():
         raise HypervisorNonexistentError()
@@ -49,15 +52,20 @@ def connect(where: pathlib.Path):
 def ctl_path(name: str):
     return DEFAULT_RUN_PATH / f"{name}.ctl"
 
-def msg(name: str, data: dict):
+def msg(name: str, cmd: int, data):
     try:
         ctl = connect(ctl_path(name))
     except HypervisorNonexistentError as e:
         e.add_note(f"Failed to send message {data} to {name}")
         raise e
 
-    ctl.sendall(cbor2.dumps(data))
-    return cbor2.loads(ctl.recv(1024))
+    ctl.sendall(cbor2.dumps([ 0, cmd, data]))
+    data = cbor2.loads(ctl.recv(1024))
+    if len(data) != 2:
+        raise GarbledReplyError(f"Expected 2 array items, got {len(data)}")
+    if data[0] != 0:
+        raise GarbledReplyError(f"Expected zero ID, got {data[0]}")
+    return data[1]
 
 @handler
 def start(name: str):
@@ -72,7 +80,7 @@ def start(name: str):
 
 @handler
 def stop(name: str):
-    for k,v in msg(name, { 0: None }).items():
+    for k,v in msg(name, 1, None).items():
         assert(k == -1)
         assert(v == "OK")
 
@@ -86,28 +94,28 @@ def cleanup(name: str):
 
 @handler
 def telnet(name: str):
-    for k,v in msg(name, { 1: None}).items():
+    for k,v in msg(name, 2, None).items():
         assert(k == -2)
         os.execlp("telnet", "telnet", "localhost", str(v))
 
 @handler
 def container_start(hypervisor: str, name: str):
-    for k,v in msg(hypervisor, { 3: {
+    for k,v in msg(hypervisor, 3, {
         0: name,
         1: 1,
         2: b"/",
         3: bytes(DEFAULT_RUN_PATH / hypervisor / name),
-        }}).items():
+        }).items():
         print(k,v)
 
 @handler
 def container_stop(hypervisor: str, name: str):
-    for k,v in msg(hypervisor, { 4: { 0: name, }}).items():
+    for k,v in msg(hypervisor, 4, { 0: name, }).items():
         print(k,v)
 
 @handler
 def container_telnet(hypervisor: str, name: str):
-    for k,v in msg(hypervisor, { 1: name}).items():
+    for k,v in msg(hypervisor, 2, name).items():
         assert(k == -2)
         os.execlp("telnet", "telnet", "localhost", str(v))
 

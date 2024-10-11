@@ -52,7 +52,8 @@ union flock_machine_config {
 
 void hypervisor_container_start(struct cbor_channel *, struct flock_machine_container_config *);
 void hypervisor_container_shutdown(struct cbor_channel *, struct flock_machine_container_config *);
-int container_ctl_fd(const char *name);
+
+struct cbor_channel *container_get_channel(const char *name);
 
 void hexp_cleanup_after_fork(void);
 
