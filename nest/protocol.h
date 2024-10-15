@@ -173,6 +173,8 @@ struct proto {
   btime last_state_change;		/* Time of last state transition */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
   char *message;			/* State-change message, allocated from proto_pool */
+  u32 id;             /* Id of the protocol indexing its position in proto_state_table */
+  ea_list *ea_state;			/* Last stored protocol state in proto_state_table */
 
   /*
    *	General protocol hooks:
@@ -392,6 +394,54 @@ static inline int proto_is_inactive(struct proto *p)
     ;
 }
 
+#define PROTO_STATE_TABLE_PUBLIC \
+  DOMAIN(rtable) lock;		/* Lock needed to access global protocol state table */	\
+  struct lfjour journal;	/* Subscribe here to get new content! */		\
+
+
+struct proto_state_table_private {
+  struct {
+    PROTO_STATE_TABLE_PUBLIC;
+  };
+  struct proto_state_table_private **locked_at;
+  ea_list ** states;
+  ea_list ** channels;
+  u32 length_states;
+  u32 length_channels;
+  struct hmap proto_id_map;
+  struct hmap channel_id_map;
+  pool *pool;
+};
+
+typedef union proto_state_table {
+  struct {
+    PROTO_STATE_TABLE_PUBLIC;
+  };
+  struct proto_state_table_private priv;
+} proto_state_table;
+
+extern proto_state_table proto_state_table_pub;
+
+/* Define the lock cleanup function */
+LOBJ_UNLOCK_CLEANUP(proto_state_table, rtable);
+
+#define PST_IS_LOCKED	LOBJ_IS_LOCKED(&proto_state_table_pub, rtable)
+#define PST_LOCKED(tp)	LOBJ_LOCKED(&proto_state_table_pub, tp, proto_state_table, rtable)
+#define PST_LOCK(tp)	LOBJ_LOCK(&proto_state_table_pub, tp, proto_state_table, rtable)
+
+struct proto_pending_update {
+  LFJOUR_ITEM_INHERIT(li);
+  ea_list *proto_attr;
+  ea_list *old_proto_attr;
+  struct proto *protocol;
+};
+
+void proto_announce_state_locked(struct proto_state_table_private *ts, struct proto *p, ea_list *attr);
+void proto_announce_state(struct proto *p, ea_list *attr);
+ea_list *channel_get_state(int id);
+ea_list *proto_get_state(int id);
+void proto_states_subscribe(struct lfjour_recipient *r);
+
 
 /*
  *	Debugging flags
@@ -526,6 +576,7 @@ struct channel {
   node n;				/* Node in proto->channels */
 
   const char *name;			/* Channel name (may be NULL) */
+  u32 id;
   const struct channel_class *class;
   struct proto *proto;
 
