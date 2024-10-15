@@ -1836,6 +1836,69 @@ ea_show_list(struct cli *c, ea_list *eal)
     ea_show(c, &n->attrs[i]);
 }
 
+
+struct ea_class ea_name = {
+  .name = "proto_name",
+  .type = T_STRING,
+};
+
+struct ea_class ea_protocol_name = {
+  .name = "proto_protocol_name",
+  .type = T_STRING,
+};
+
+struct ea_class ea_protocol_type = {
+  .name = "proto_protocol_type",
+  .type = T_PTR,
+};
+
+struct ea_class ea_main_table_id = {
+  .name = "proto_main_table_id",
+  .type = T_INT,
+};
+
+struct ea_class ea_state = {
+  .name = "proto_state",
+  .type = T_ENUM_STATE,
+};
+
+struct ea_class ea_last_modified = {
+  .name = "proto_last_modified",
+  .type = T_BTIME,
+};
+
+struct ea_class ea_info = {
+  .name = "proto_info",
+  .type = T_STRING,
+};
+
+struct ea_class ea_proto_id = {
+  .name = "proto_proto_id",
+  .type = T_INT,
+};
+
+struct ea_class ea_proto_channel_list = {
+  .name = "ea_proto_channel_list",
+  .type = T_CLIST,
+};
+
+struct ea_class ea_channel_id = {
+  .name = "proto_channel_id",
+  .type = T_INT,
+};
+
+struct ea_class ea_in_keep = {
+  .name = "channel_in_keep",
+  .type = T_INT,
+};
+
+
+struct ea_class ea_rtable = {
+  .name = "rtable",
+  .type = T_PTR,
+};
+
+
 /**
  * rta_init - initialize route attribute cache
  *
@@ -1876,6 +1939,20 @@ rta_init(void)
   ea_register_init(&ea_gen_mpls_policy);
   ea_register_init(&ea_gen_mpls_class);
   ea_register_init(&ea_gen_mpls_label);
+
+  /* Protocol attributes */
+  ea_register_init(&ea_name);
+  ea_register_init(&ea_protocol_name);
+  ea_register_init(&ea_protocol_type);
+  ea_register_init(&ea_main_table_id);
+  ea_register_init(&ea_state);
+  ea_register_init(&ea_last_modified);
+  ea_register_init(&ea_info);
+  ea_register_init(&ea_proto_id);
+  ea_register_init(&ea_channel_id);
+  ea_register_init(&ea_in_keep);
+  ea_register_init(&ea_proto_channel_list);
+  ea_register_init(&ea_rtable);
 }
 
 /*
