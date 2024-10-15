@@ -1215,6 +1215,16 @@ bgp_find_attr(ea_list *attrs, uint code)
   return ea_find(attrs, BGP_EA_ID(code));
 }
 
+
+/*
+ *	Protocol extended state information
+ */
+
+struct ea_class ea_bgp_state_startup = {
+  .name = "bgp_state_startup",
+  .type = T_INT,
+};
+
 void
 bgp_register_attrs(void)
 {
@@ -1234,6 +1244,10 @@ bgp_register_attrs(void)
 
     ea_register_init(&bgp_attr_table[i].class);
   }
+
+  EA_REGISTER_ALL(
+      &ea_bgp_state_startup
+      );
 }
 
 struct ea_class *
