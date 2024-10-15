@@ -579,7 +579,7 @@ radv_init(struct proto_config *CF)
 {
   struct proto *P = proto_new(CF);
 
-  P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
+  proto_add_main_channel(P, proto_cf_main_channel(CF));
 
   P->preexport = radv_preexport;
   P->rt_notify = radv_rt_notify;

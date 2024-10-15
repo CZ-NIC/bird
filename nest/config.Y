@@ -692,10 +692,10 @@ CF_CLI(SHOW MEMORY,,, [[Show memory usage]])
 { cmd_show_memory(); } ;
 
 CF_CLI(SHOW PROTOCOLS, proto_patt2, [<protocol> | \"<pattern>\"], [[Show routing protocols]])
-{ proto_apply_cmd($3, proto_cmd_show, 0, 0); } ;
+{ proto_apply_cmd_no_lock($3, proto_cmd_show, 0, (union cmd_arg){.verbose  = 0}); } ;
 
 CF_CLI(SHOW PROTOCOLS ALL, proto_patt2, [<protocol> | \"<pattern>\"], [[Show routing protocol details]])
-{ proto_apply_cmd($4, proto_cmd_show, 0, 1); } ;
+{ proto_apply_cmd_no_lock($4, proto_cmd_show, 0, (union cmd_arg){.verbose  = 1}); } ;
 
 optproto:
    CF_SYM_KNOWN { cf_assert_symbol($1, SYM_PROTO); $$ = $1; }

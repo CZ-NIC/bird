@@ -507,7 +507,7 @@ static_init(struct proto_config *CF)
   struct static_proto *p = (void *) P;
   struct static_config *cf = (void *) CF;
 
-  P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
+  proto_add_main_channel(P, proto_cf_main_channel(CF));
 
   proto_configure_mpls_channel(P, CF, RTS_STATIC);
 
