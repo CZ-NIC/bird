@@ -125,11 +125,11 @@ Anyway, it will probably work well also on older systems.
 and Perl, installing BIRD should be as easy as:
 
 <code>
-	./configure
-	make
-	make install
-	vi /usr/local/etc/bird.conf
-	bird
+./configure
+make
+make install
+vi /usr/local/etc/bird.conf
+bird
 </code>
 
 <p>You can use <tt>./configure --help</tt> to get a list of configure
@@ -1725,17 +1725,14 @@ in the foot).
 	in case of compound expressions, they require parentheses around them.
 	E.g.
 
-	<code>
-	 define one=1;
-	 define myas=64500;
-	 int set odds;
-	 pair set ps;
-	 ec set es;
+<code>
+define one=1;
+define myas=64500;
 
-	 odds = [ one, (2+1), (6-one), (2*2*2-1), 9, 11 ];
-	 ps = [ (1,one+one), (3,4)..(4,8), (5,*), (6,3..6), (7..9,*) ];
-	 es = [ (rt, myas, 3*10), (rt, myas+one, 0..16*16*16-1), (ro, myas+2, *) ];
-	</code>
+int set odds = [ one, (2+1), (6-one), (2*2*2-1), 9, 11 ];
+pair set ps = [ (1,one+one), (3,4)..(4,8), (5,*), (6,3..6), (7..9,*) ];
+ec set es = [ (rt, myas, *), (rt, myas+2, 0..16*16*16-1) ];
+</code>
 
 	Sets of prefixes are special: their literals does not allow ranges, but
 	allows prefix patterns that are written
