@@ -1599,9 +1599,9 @@ in the foot).
 	a shell pattern (represented also as a string).
 
 	<tag><label id="type-bytestring">bytestring</tag>
-	This is a sequences of arbitrary bytes. There are no ways to modify
-	bytestrings in filters. You can pass them between function, assign
-	them to variables of type <cf/bytestring/, print such values,
+	This is a sequence of arbitrary bytes. There are no ways to modify
+	bytestrings in filters. You can pass them between functions, assign
+	them to variables of type <cf/bytestring/, print such values, and
 	compare bytestings (<cf/=, !=/).
 
 	Bytestring literals are written as a sequence of hexadecimal digit
