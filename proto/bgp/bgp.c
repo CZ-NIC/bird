@@ -369,7 +369,7 @@ static void
 bgp_startup(struct bgp_proto *p)
 {
   BGP_TRACE(D_EVENTS, "Started");
-  p->start_state = BSS_CONNECT;
+  bgp_set_start_state(p, BSS_CONNECT);
 
   if (!p->passive)
     bgp_active(p);
@@ -403,7 +403,7 @@ bgp_initiate(struct bgp_proto *p)
 
   if (p->startup_delay)
   {
-    p->start_state = BSS_DELAY;
+    bgp_set_start_state(p, BSS_DELAY);
     BGP_TRACE(D_EVENTS, "Startup delayed by %d seconds due to errors", p->startup_delay);
     bgp_start_timer(p, p->startup_timer, p->startup_delay);
   }
@@ -565,7 +565,7 @@ bgp_graceful_close_conn(struct bgp_conn *conn, int subcode, byte *data, uint len
 static void
 bgp_down(struct bgp_proto *p)
 {
-  if (p->start_state > BSS_PREPARE)
+  if (bgp_start_state(p) > BSS_PREPARE)
   {
     bgp_setup_auth(p, 0);
     bgp_close(p);
@@ -1366,7 +1366,7 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
    */
 
   acc = (p->p.proto_state == PS_START || p->p.proto_state == PS_UP) &&
-    (p->start_state >= BSS_CONNECT) && (!p->incoming_conn.sk);
+    (bgp_start_state(p) >= BSS_CONNECT) && (!p->incoming_conn.sk);
 
   if (p->conn && (p->conn->state == BS_ESTABLISHED) && p->gr_ready)
   {
@@ -1473,7 +1473,7 @@ bgp_neigh_notify(neighbor *n)
   if ((ps == PS_DOWN) || (ps == PS_STOP))
     return;
 
-  int prepare = (ps == PS_START) && (p->start_state == BSS_PREPARE);
+  int prepare = (ps == PS_START) && (bgp_start_state(p) == BSS_PREPARE);
 
   if (n->scope <= 0)
   {
@@ -1706,7 +1706,7 @@ bgp_start(struct proto *P)
 
   p->passive = cf->passive || bgp_is_dynamic(p);
 
-  p->start_state = BSS_PREPARE;
+  bgp_set_start_state(p, BSS_PREPARE);
   p->outgoing_conn.state = BS_IDLE;
   p->incoming_conn.state = BS_IDLE;
   p->neigh = NULL;
@@ -2372,7 +2372,7 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   if (((co->state == BS_OPENCONFIRM) || (co->state == BS_ESTABLISHED)) && !bgp_check_capabilities(co))
     return 0;
 
-  if (p->start_state > BSS_PREPARE)
+  if (bgp_start_state(p) > BSS_PREPARE)
     bgp_update_bfd(p, new->bfd);
 
   return 1;
@@ -2546,7 +2546,7 @@ bgp_state_dsc(struct bgp_proto *p)
     return "Down";
 
   int state = MAX(p->incoming_conn.state, p->outgoing_conn.state);
-  if ((state == BS_IDLE) && (p->start_state >= BSS_CONNECT) && p->passive)
+  if ((state == BS_IDLE) && (bgp_start_state(p) >= BSS_CONNECT) && p->passive)
     return "Passive";
 
   return bgp_state_names[state];
@@ -2756,7 +2756,7 @@ bgp_show_proto_info(struct proto *P)
   {
     struct bgp_conn *oc = &p->outgoing_conn;
 
-    if ((p->start_state < BSS_CONNECT) &&
+    if ((bgp_start_state(p) < BSS_CONNECT) &&
 	(tm_active(p->startup_timer)))
       cli_msg(-1006, "    Error wait:       %t/%u",
 	      tm_remains(p->startup_timer), p->startup_delay);
