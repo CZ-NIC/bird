@@ -1162,7 +1162,7 @@ rip_init(struct proto_config *CF)
 {
   struct proto *P = proto_new(CF);
 
-  P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
+  proto_add_main_channel(P, proto_cf_main_channel(CF));
 
   P->iface_sub.if_notify = rip_if_notify;
   P->rt_notify = rip_rt_notify;
