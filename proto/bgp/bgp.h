@@ -338,7 +338,6 @@ struct bgp_proto {
   u32 local_id;				/* BGP identifier of this router */
   u32 remote_id;			/* BGP identifier of the neighbor */
   u32 rr_cluster_id;			/* Route reflector cluster ID */
-  u8 start_state;			/* Substates that partitions BS_START */
   u8 is_internal;			/* Internal BGP session (local_as == remote_as) */
   u8 is_interior;			/* Internal or intra-confederation BGP session */
   u8 as4_session;			/* Session uses 4B AS numbers in AS_PATH (both sides support it) */
@@ -378,6 +377,10 @@ struct bgp_proto {
   u32 last_error_code;			/* Error code of last error. BGP protocol errors
 					   are encoded as (bgp_err_code << 16 | bgp_err_subcode) */
 };
+
+#define bgp_ea_state(p)  _Generic((p), \
+    struct bgp_proto *: (p)->p.ea_state, \
+    ea_list *: (p))
 
 struct bgp_channel {
   struct channel c;
@@ -695,6 +698,10 @@ bgp_total_aigp_metric(const rte *e)
   return metric;
 }
 
+/* Extended state attributes */
+extern struct ea_class
+	      ea_bgp_state_startup;
+
 void bgp_register_attrs(void);
 struct ea_class *bgp_find_ea_class_by_id(uint id);
 
@@ -787,6 +794,13 @@ enum bgp_attr_id {
 #define BSS_PREPARE		0	/* Used before ordinary BGP started, i. e. waiting for lock */
 #define BSS_DELAY		1	/* Startup delay due to previous errors */
 #define BSS_CONNECT		2	/* Ordinary BGP connecting */
+
+#define bgp_start_state(p)	ea_get_int(bgp_ea_state(p), &ea_bgp_state_startup, BSS_PREPARE)
+#define bgp_set_start_state(p, val)	do {		\
+  ea_list *L = bgp_ea_state(p);				\
+  ea_set_attr_u32(&L, &ea_bgp_state_startup, 0, val);	\
+  proto_announce_state(&p->p, L);			\
+} while (0)
 
 
 /* BGP feed states (TX)
