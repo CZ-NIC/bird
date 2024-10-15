@@ -293,6 +293,19 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   return c;
 }
 
+struct channel *
+proto_add_main_channel(struct proto *p, struct channel_config *cf)
+{
+  p->main_channel = proto_add_channel(p, cf);
+  ea_list *eal;
+
+  eal = p->ea_state;
+  ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_main_table_id, 0, p->main_channel->table->id));
+  proto_announce_state(p, eal);
+
+  return p->main_channel;
+}
+
 void
 proto_remove_channel(struct proto *p UNUSED, struct channel *c)
 {
@@ -2090,6 +2103,7 @@ extern void bfd_init_all(void);
 
 void protos_build_gen(void);
 
+
 /**
  * protos_build - build a protocol list
  *
@@ -2489,6 +2503,19 @@ proto_state_name(struct proto *p)
   }
 }
 
+static char *
+proto_state_name_from_int(int state)
+{
+  switch (state)
+  {
+  case PS_DOWN:		return "flush or down";
+  case PS_START:	return "start";
+  case PS_UP:		return "up";
+  case PS_STOP:		return "stop";
+  default:		return "???";
+  }
+}
+
 static void
 channel_show_stats(struct channel *c)
 {
@@ -2582,7 +2609,7 @@ channel_cmd_debug(struct channel *c, uint mask)
 }
 
 void
-proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
+proto_cmd_show(struct proto *p, union cmd_arg verbose, int cnt)
 {
   byte buf[256], tbuf[TM_DATETIME_BUFFER_SIZE];
 
@@ -2591,23 +2618,37 @@ proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
     cli_msg(-2002, "%-10s %-10s %-10s %-6s %-12s  %s",
 	    "Name", "Proto", "Table", "State", "Since", "Info");
 
-  buf[0] = 0;
-  if (p->proto->get_status)
-    p->proto->get_status(p, buf);
-
-  rcu_read_lock();
-  tm_format_time(tbuf, &atomic_load_explicit(&global_runtime, memory_order_acquire)->tf_proto, p->last_state_change);
-  rcu_read_unlock();
-  cli_msg(-1002, "%-10s %-10s %-10s %-6s %-12s  %s",
-	  p->name,
-	  p->proto->name,
-	  p->main_channel ? p->main_channel->table->name : "---",
-	  proto_state_name(p),
-	  tbuf,
-	  buf);
-
-  if (verbose)
+  PST_LOCKED(ts)
   {
+    ea_list *eal = ts->states[p->id];
+
+    const char *name = ea_get_adata(eal, &ea_name)->data;
+    struct protocol *proto = (struct protocol *) ea_get_ptr(eal, &ea_protocol_type, 0);
+    const int state  = ea_get_int(eal, &ea_state, 0);
+    ea_list *chan_ea = ts->channels[ea_get_int(eal, &ea_main_table_id, 0)];
+    const char *table = ea_get_adata(chan_ea, &ea_name)->data;
+    buf[0] = 0;
+    if (p->proto->get_status)
+    {
+      PROTO_LOCKED_FROM_MAIN(p)
+        p->proto->get_status(p, buf);
+    }
+    const btime *time = (btime *)ea_get_adata(eal, &ea_last_modified)->data;
+    tm_format_time(tbuf, &atomic_load_explicit(&global_runtime, memory_order_acquire)->tf_proto, *time);
+
+    cli_msg(-1002, "%-10s %-10s %-10s %-6s %-12s  %s",
+	    name,
+	    proto->name,
+	    table ? table : "---",
+	    proto_state_name_from_int(state),
+	    tbuf,
+	    buf);
+	}
+
+  if (verbose.verbose)
+  {
+    PROTO_LOCKED_FROM_MAIN(p)
+    {
     if (p->cf->dsc)
       cli_msg(-1006, "  Description:    %s", p->cf->dsc);
     if (p->message)
@@ -2627,6 +2668,7 @@ proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
     }
 
     cli_msg(-1006, "");
+    }
   }
 }
 
@@ -2827,6 +2869,46 @@ proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uintptr_t, in
     proto_apply_cmd_patt(ps.ptr, cmd, arg);
   else
     proto_apply_cmd_symbol(ps.ptr, cmd, arg);
+}
+
+void
+proto_apply_cmd_no_lock(struct proto_spec ps, void (* cmd)(struct proto *, union cmd_arg, int),
+		int restricted, union cmd_arg arg)
+{
+  if (restricted && cli_access_restricted())
+    return;
+
+  if (ps.patt)
+  {
+    int cnt = 0;
+    const char *patt = ps.ptr;
+
+    WALK_TLIST(proto, p, &global_proto_list)
+    if (!patt || patmatch(patt, p->name))
+	  cmd(p, arg, cnt++);
+
+    if (!cnt)
+      cli_msg(8003, "No protocols match");
+    else
+    cli_msg(0, "");
+  }
+  else
+  {
+    const struct symbol *s = ps.ptr;
+    if (s->class != SYM_PROTO)
+    {
+      cli_msg(9002, "%s is not a protocol", s->name);
+      return;
+    }
+    if (s->proto->proto)
+    {
+      struct proto *p = s->proto->proto;
+      cmd(p, arg, 0);
+      cli_msg(0, "");
+    }
+    else
+      cli_msg(9002, "%s does not exist", s->name);
+  }
 }
 
 struct proto *
