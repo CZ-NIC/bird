@@ -293,13 +293,9 @@ flow_read_ip4_part(const byte *part)
 static inline ip6_addr
 flow_read_ip6(const byte *px, uint pxlen, uint pxoffset)
 {
-  uint floor_offset = BYTES(pxoffset - (pxoffset % 8));
-  uint ceil_len = BYTES(pxlen);
   ip6_addr ip = IP6_NONE;
-
-  memcpy(((byte *) &ip) + floor_offset, px, ceil_len - floor_offset);
-
-  return ip6_ntoh(ip);
+  memcpy(&ip, px, BYTES(pxlen - pxoffset));
+  return ip6_shift_right(ip6_ntoh(ip), pxoffset);
 }
 
 ip6_addr
@@ -476,7 +472,7 @@ flow_validate(const byte *nlri, uint len, int ipv6)
         uint pxoffset = *pos++;
         if (pxoffset > IP6_MAX_PREFIX_LENGTH || pxoffset > pxlen)
           return FLOW_ST_EXCEED_MAX_PREFIX_OFFSET;
-        bytes -= pxoffset / 8;
+        bytes = BYTES(pxlen - pxoffset);
       }
       pos += bytes;
 
@@ -749,12 +745,12 @@ flow_builder6_add_pfx(struct flow_builder *fb, const net_addr_ip6 *n6, u32 pxoff
   if (!builder_add_prepare(fb))
     return 0;
 
-  ip6_addr ip6 = ip6_hton(n6->prefix);
+  ip6_addr ip6 = ip6_hton(ip6_shift_left(n6->prefix, pxoffset));
 
   BUFFER_PUSH(fb->data) = fb->this_type;
   BUFFER_PUSH(fb->data) = n6->pxlen;
   BUFFER_PUSH(fb->data) = pxoffset;
-  push_pfx_to_buffer(fb, BYTES(n6->pxlen) - (pxoffset / 8), ((byte *) &ip6) + (pxoffset / 8));
+  push_pfx_to_buffer(fb, BYTES(n6->pxlen - pxoffset), ((byte *) &ip6));
 
   builder_add_finish(fb);
   return 1;

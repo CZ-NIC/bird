@@ -542,7 +542,7 @@ t_builder6(void)
 
   const net_addr_flow6 *expect = NET_ADDR_FLOW6_NLRI(
     0,
-    FLOW_TYPE_DST_PREFIX, 103, 61, 0x01, 0x12, 0x34, 0x56, 0x78, 0x98,
+    FLOW_TYPE_DST_PREFIX, 103, 61, 0x22, 0x46, 0x8a, 0xcf, 0x13, 0x00,
     FLOW_TYPE_SRC_PREFIX, 8, 0, 0xc0,
     FLOW_TYPE_NEXT_HEADER, 0x80, 0x06,
     FLOW_TYPE_PORT, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
@@ -678,7 +678,7 @@ t_formatting6(void)
   expect[0] = "flow6 { dst ::1:1234:5678:9800:0/103 offset 61; src c000::/8; next header 6; port 20..40,273; label < 500000; }";
   input[0] = NET_ADDR_FLOW6_NLRI(
     0,
-    FLOW_TYPE_DST_PREFIX, 103, 61, 0x01, 0x12, 0x34, 0x56, 0x78, 0x98,
+    FLOW_TYPE_DST_PREFIX, 103, 61, 0x22, 0x46, 0x8a, 0xcf, 0x13, 0x00,
     FLOW_TYPE_SRC_PREFIX, 8, 0, 0xc0,
     FLOW_TYPE_NEXT_HEADER, 0x81, 0x06,
     FLOW_TYPE_PORT, 0x03, 20, 0x45, 40, 0x91, 0x01, 0x11,
