@@ -445,6 +445,7 @@ struct proto_pending_update {
 
 void proto_announce_state_locked(struct proto_state_table_private *ts, struct proto *p, ea_list *attr);
 void proto_announce_state(struct proto *p, ea_list *attr);
+void proto_announce_state_later(struct proto *p, ea_list *attr);
 ea_list *channel_get_state(int id);
 ea_list *proto_get_state(int id);
 void proto_states_subscribe(struct lfjour_recipient *r);

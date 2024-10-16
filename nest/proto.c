@@ -3023,9 +3023,18 @@ proto_announce_state_locked(struct proto_state_table_private* ts, struct proto *
 
   ASSERT_DIE(p->id < ts->length_states);
   ea_list *old_attr = ts->states[p->id];
+
+  if (attr == old_attr)
+  {
+    /* Nothing has changed */
+    ea_free_later(attr);
+    return;
+  }
+
   ts->states[p->id] = attr;
 
-  p->ea_state = attr;
+  ea_free_later(p->ea_state);
+  p->ea_state = attr ? ea_ref(attr) : NULL;
 
   struct proto_pending_update *pupdate = SKIP_BACK(struct proto_pending_update, li, lfjour_push_prepare(&proto_state_table_pub.journal));
 
@@ -3052,6 +3061,30 @@ proto_announce_state(struct proto *p, ea_list *attr)
     proto_announce_state_locked(ts, p, attr);
 }
 
+struct proto_announce_state_deferred {
+  struct deferred_call dc;
+  struct proto *p;
+};
+
+static void proto_announce_state_deferred(struct deferred_call *dc)
+{
+  SKIP_BACK_DECLARE(struct proto_announce_state_deferred, pasd, dc, dc);
+  proto_announce_state(pasd->p, pasd->p->ea_state);
+}
+
+void
+proto_announce_state_later(struct proto *p, ea_list *attr)
+{
+  ea_free_later(p->ea_state);
+  p->ea_state = ea_lookup(attr, 0, EALS_CUSTOM);
+
+  struct proto_announce_state_deferred pasd = {
+    .dc.hook = proto_announce_state_deferred,
+    .p = p,
+  };
+
+  defer_call(&pasd.dc, sizeof pasd);
+}
 
 ea_list *
 channel_get_state(int id)
