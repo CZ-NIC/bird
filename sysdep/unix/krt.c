@@ -881,30 +881,36 @@ krt_shutdown(struct proto *P)
   /* FIXME we should flush routes even when persist during reconfiguration */
   if (p->initialized && !KRT_CF->persist && (P->down_code != PDC_CMD_GR_DOWN))
   {
+    /* Synchronous flush */
     struct rt_export_feeder req = (struct rt_export_feeder)
     {
-      .name = "shutdown.feeder",
+      .name = "krt.shutdown.feeder",
       .trace_routes = P->main_channel->debug,
     };
     rt_feeder_subscribe(&P->main_channel->table->export_best, &req);
 
+    /* Walk over the whole table */
     RT_FEED_WALK(&req, f)
     {
       for (uint i = 0; i < f->count_routes; i++)
       {
-	      rte *e = &f->block[i];
+	rte *e = &f->block[i];
+	/* If rejected then no need to delete from kernel */
         if (bmap_test(&P->main_channel->export_rejected_map, e->id))
-          continue;
+	  continue;
 
-      /* if exported then delete from kernel */
-      krt_replace_rte(p, e->net, NULL, e);
+	/* Otherwise explicitly delete */
+	krt_replace_rte(p, e->net, NULL, e);
       }
     }
+    rt_feeder_unsubscribe(&req);
 
+    /* Run an empty scan to flush remnants */
     krt_do_scan(p);
     krt_cleanup(p);
+
+    /* And now we are actually done */
     proto_notify_state(&p->p, PS_DOWN);
-    rt_feeder_unsubscribe(&req);
   }
   else
     krt_cleanup(p);
