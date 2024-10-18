@@ -39,7 +39,7 @@ enum f_type {
   T_ENUM_RTC = 0x33,
   T_ENUM_RTD = 0x34,
   T_ENUM_ROA = 0x35,
-  T_ENUM_NETTYPE = 0x36,
+  T_ENUM_NET_TYPE = 0x36,
   T_ENUM_RA_PREFERENCE = 0x37,
   T_ENUM_AF = 0x38,
   T_ENUM_MPLS_POLICY = 0x39,
