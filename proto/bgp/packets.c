@@ -919,6 +919,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   conn->remote_open_length = len - BGP_HEADER_LENGTH;
 
   ea_list *attr = p->p.ea_state;
+  log("rx open");
   if (conn == &conn->bgp->incoming_conn)
     ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_remote_open_msg, 0, conn->remote_open_msg, conn->remote_open_length));
   else

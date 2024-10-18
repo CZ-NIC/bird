@@ -487,6 +487,7 @@ bgp_close_conn(struct bgp_conn *conn)
   conn->remote_open_length = 0;
 
   ea_list *attr = conn->bgp->p.ea_state;
+  log("null conn bgp_close_conn");
   if (conn == &conn->bgp->incoming_conn)
   {
     ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_local_open_msg, 0, NULL, 0));
@@ -2663,6 +2664,7 @@ bgp_get_status(struct proto *P, byte *buf)
 int
 bgp_state_to_eattr(struct proto *P, struct ea_list *state)
 {
+  log("null conn");
   struct bgp_proto *p = (struct bgp_proto *) P;
   ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_bgp_rem_id, 0, p->remote_id));
   ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_bgp_rem_ip, 0, &p->remote_ip, sizeof(ip_addr)));
