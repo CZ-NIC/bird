@@ -25,7 +25,6 @@ class BIRDFValPrinter(BIRDPrinter):
             "T_ENUM_RTS": "i",
             "T_ENUM_BGP_ORIGIN": "i",
             "T_ENUM_SCOPE": "i",
-            "T_ENUM_RTC": "i",
             "T_ENUM_RTD": "i",
             "T_ENUM_ROA": "i",
             "T_ENUM_NET_TYPE": "i",
