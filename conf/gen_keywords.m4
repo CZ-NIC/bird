@@ -35,10 +35,11 @@ m4_define(CF_CLI, `CF_KEYWORDS(m4_translit($1, [[ ]], [[,]]))
 
 # Enums are translated to C initializers: use CF_ENUM(typename, prefix, values)
 # For different prefix: CF_ENUM_PX(typename, external prefix, C prefix, values)
+# The typename is converted to a keyword by removing T_ENUM_ prefix
 m4_define(CF_enum, `m4_divert(1){ "CF_enum_prefix_ext[[]]$1", -((CF_enum_type<<16) | CF_enum_prefix_int[[]]$1) },
 m4_divert(-1)')
-m4_define(CF_ENUM, `m4_define([[CF_enum_type]],$1)m4_define([[CF_enum_prefix_ext]],$2)m4_define([[CF_enum_prefix_int]],$2)CF_iterate([[CF_enum]], [[m4_shift(m4_shift($@))]])DNL')
-m4_define(CF_ENUM_PX, `m4_define([[CF_enum_type]],$1)m4_define([[CF_enum_prefix_ext]],$2)m4_define([[CF_enum_prefix_int]],$3)CF_iterate([[CF_enum]], [[m4_shift(m4_shift(m4_shift($@)))]])DNL')
+m4_define(CF_ENUM, `CF_keywd(m4_substr($1, 7))m4_define([[CF_enum_type]],$1)m4_define([[CF_enum_prefix_ext]],$2)m4_define([[CF_enum_prefix_int]],$2)CF_iterate([[CF_enum]], [[m4_shift(m4_shift($@))]])DNL')
+m4_define(CF_ENUM_PX, `CF_keywd(m4_substr($1, 7))m4_define([[CF_enum_type]],$1)m4_define([[CF_enum_prefix_ext]],$2)m4_define([[CF_enum_prefix_int]],$3)CF_iterate([[CF_enum]], [[m4_shift(m4_shift(m4_shift($@)))]])DNL')
 
 # After all configuration templates end, we generate the 
 m4_m4wrap(`

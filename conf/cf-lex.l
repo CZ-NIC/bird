@@ -680,7 +680,7 @@ cf_lex_symbol(const char *data)
       int val = sym->keyword->value;
       if (val > 0) return val;
       cf_lval.i = -val;
-      return ENUM;
+      return ENUM_TOKEN;
     }
     case SYM_METHOD:
       return (sym->method->arg_num > 1) ? CF_SYM_METHOD_ARGS : CF_SYM_METHOD_BARE;

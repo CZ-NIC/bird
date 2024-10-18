@@ -105,7 +105,7 @@ CF_DECLS
 %token END CLI_MARKER INVALID_TOKEN ELSECOL DDOT
 %token GEQ LEQ NEQ AND OR IMP
 %token PO PC
-%token <i> NUM ENUM
+%token <i> NUM ENUM_TOKEN
 %token <ip4> IP4
 %token <ip6> IP6
 %token <i64> VPN_RD

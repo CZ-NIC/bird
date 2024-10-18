@@ -357,7 +357,7 @@ CF_DECLS
 CF_KEYWORDS_EXCLUSIVE(IN)
 CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	ACCEPT, REJECT, ERROR,
-	INT, BOOL, IP, PREFIX, RD, PAIR, QUAD, EC, LC,
+	INT, BOOL, IP, PREFIX, RD, PAIR, QUAD, EC, LC, ENUM,
 	SET, STRING, BYTESTRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
 	IF, THEN, ELSE, CASE,
 	FOR, DO,
@@ -473,6 +473,7 @@ type:
 	  case T_INT:
 	  case T_PAIR:
 	  case T_QUAD:
+	  case T_ENUM:
 	  case T_EC:
 	  case T_LC:
 	  case T_RD:
@@ -488,6 +489,7 @@ type:
 		cf_error( "You can't create sets of this type." );
 	}
    }
+ | ENUM enum_type { $$ = $2; };
  ;
 
 function_argsn:
@@ -640,7 +642,7 @@ set_atom0:
    NUM    { $$.type = T_INT; $$.val.i = $1; }
  | fipa   { $$ = $1; }
  | VPN_RD { $$.type = T_RD; $$.val.ec = $1; }
- | ENUM   { $$.type = pair_a($1); $$.val.i = pair_b($1); }
+ | ENUM_TOKEN { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  | '(' term ')' {
      $$ = cf_eval($2, T_VOID);
      if (!f_valid_set_type($$.type))
@@ -808,7 +810,7 @@ constant:
      DBG( "ook\n" );
  }
  | '[' fprefix_set ']' { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PREFIX_SET, .val.ti = $2, }); }
- | ENUM	  { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = $1 >> 16, .val.i = $1 & 0xffff, }); }
+ | ENUM_TOKEN { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = $1 >> 16, .val.i = $1 & 0xffff, }); }
  ;
 
 constructor:
