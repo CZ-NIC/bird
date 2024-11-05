@@ -96,7 +96,8 @@ CF_DECLS
   struct f_prefix px;
   struct proto_spec ps;
   struct channel_limit cl;
-  struct timeformat *tf;
+  struct timeformat tf;
+  struct timeformat *tfp;
   mpls_label_stack *mls;
   const struct adata *bs;
   struct aggr_item_node *ai;

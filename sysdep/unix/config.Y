@@ -24,7 +24,6 @@ CF_KEYWORDS(DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, TIMEOUT, THREADS)
 
 %type <i> log_mask log_mask_list log_cat cfg_timeout
 %type <t> cfg_name
-%type <tf> timeformat_which
 %type <t> syslog_name
 
 CF_GRAMMAR

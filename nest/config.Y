@@ -153,6 +153,8 @@ CF_ENUM(T_ENUM_MPLS_POLICY, MPLS_POLICY_, NONE, STATIC, PREFIX, AGGREGATE, VRF)
 %type <ps> proto_patt proto_patt2
 %type <cc> channel_start proto_channel
 %type <cl> limit_spec
+%type <tf> timeformat_spec
+%type <tfp> timeformat_which
 %type <net> r_args_for_val
 %type <net_ptr> r_args_for
 %type <t> channel_sym
@@ -390,6 +392,10 @@ debug_default:
 
 conf: timeformat_base ;
 
+timeformat_base:
+   TIMEFORMAT timeformat_which timeformat_spec ';' { *$2 = $3; }
+ ;
+
 timeformat_which:
    ROUTE { $$ = &new_config->tf_route; }
  | PROTOCOL { $$ = &new_config->tf_proto; }
@@ -398,18 +404,14 @@ timeformat_which:
  ;
 
 timeformat_spec:
-   timeformat_which TEXT { *$1 = (struct timeformat){$2, NULL, 0}; }
- | timeformat_which TEXT expr TEXT { *$1 = (struct timeformat){$2, $4, (s64) $3 S_}; }
- | timeformat_which ISO SHORT    { *$1 = TM_ISO_SHORT_S; }
- | timeformat_which ISO SHORT MS { *$1 = TM_ISO_SHORT_MS; }
- | timeformat_which ISO SHORT US { *$1 = TM_ISO_SHORT_US; }
- | timeformat_which ISO LONG    { *$1 = TM_ISO_LONG_S; }
- | timeformat_which ISO LONG MS { *$1 = TM_ISO_LONG_MS; }
- | timeformat_which ISO LONG US { *$1 = TM_ISO_LONG_US; }
- ;
-
-timeformat_base:
-   TIMEFORMAT timeformat_spec ';'
+   TEXT { $$ = (struct timeformat){$1, NULL, 0}; }
+ | TEXT expr TEXT { $$ = (struct timeformat){$1, $3, (s64) $2 S_}; }
+ | ISO SHORT	{ $$ = TM_ISO_SHORT_S; }
+ | ISO SHORT MS	{ $$ = TM_ISO_SHORT_MS; }
+ | ISO SHORT US	{ $$ = TM_ISO_SHORT_US; }
+ | ISO LONG	{ $$ = TM_ISO_LONG_S; }
+ | ISO LONG MS	{ $$ = TM_ISO_LONG_MS; }
+ | ISO LONG US	{ $$ = TM_ISO_LONG_US; }
  ;
 
 
