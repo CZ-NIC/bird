@@ -22,16 +22,17 @@ extern int configuring;
 void
 cmd_show_status(void)
 {
+  struct timeformat *tf_base = this_cli->tf ?: &config->tf_base;
   byte tim[TM_DATETIME_BUFFER_SIZE];
 
   cli_msg(-1000, "BIRD " BIRD_VERSION);
-  tm_format_time(tim, &config->tf_base, current_time());
+  tm_format_time(tim, tf_base, current_time());
   cli_msg(-1011, "Router ID is %R", config->router_id);
   cli_msg(-1011, "Hostname is %s", config->hostname);
   cli_msg(-1011, "Current server time is %s", tim);
-  tm_format_time(tim, &config->tf_base, boot_time);
+  tm_format_time(tim, tf_base, boot_time);
   cli_msg(-1011, "Last reboot on %s", tim);
-  tm_format_time(tim, &config->tf_base, config->load_time);
+  tm_format_time(tim, tf_base, config->load_time);
   cli_msg(-1011, "Last reconfiguration on %s", tim);
 
   graceful_restart_show_status();

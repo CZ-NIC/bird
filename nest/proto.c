@@ -2135,7 +2135,7 @@ proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
   buf[0] = 0;
   if (p->proto->get_status)
     p->proto->get_status(p, buf);
-  tm_format_time(tbuf, &config->tf_proto, p->last_state_change);
+  tm_format_time(tbuf, (this_cli->tf ?: &config->tf_proto), p->last_state_change);
   cli_msg(-1002, "%-10s %-10s %-10s %-6s %-12s  %s",
 	  p->name,
 	  p->proto->name,

@@ -11,6 +11,7 @@
 
 #include "lib/resource.h"
 #include "lib/event.h"
+#include "lib/timer.h"
 #include "lib/tlists.h"
 #include "conf/conf.h"
 
@@ -39,6 +40,7 @@ typedef struct cli {
   void *rover;				/* Private to continuation routine */
   int last_reply;
   int restricted;			/* CLI is restricted to read-only commands */
+  struct timeformat *tf;		/* Time format override */
   struct linpool *parser_pool;		/* Pool used during parsing */
   struct linpool *show_pool;		/* Pool used during route show */
   byte *ring_buf;			/* Ring buffer for asynchronous messages */
@@ -76,6 +78,7 @@ extern struct cli *this_cli;		/* Used during parsing */
 void cli_printf(cli *, int, char *, ...);
 #define cli_msg(x...) cli_printf(this_cli, x)
 void cli_set_log_echo(cli *, uint mask, uint size);
+void cli_set_timeformat(cli *c, const struct timeformat tf);
 
 static inline void cli_separator(cli *c)
 { if (c->last_reply) cli_printf(c, -c->last_reply, ""); };

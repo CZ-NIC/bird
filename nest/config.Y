@@ -945,6 +945,16 @@ CF_CLI(MRTDUMP, proto_patt mrtdump_mask, (<protocol> | \"<pattern>\" | all) (all
 CF_CLI(RESTRICT,,,[[Restrict current CLI session to safe commands]])
 { this_cli->restricted = 1; cli_msg(16, "Access restricted"); } ;
 
+CF_CLI_HELP(TIMEFORMAT, ..., [[Set time format for this CLI session]])
+CF_CLI(TIMEFORMAT, timeformat_spec, \"<format1>\" [limit \"format2\"] | iso (short | long) [ ms | us ], [[Set time format for this CLI session]])
+{ cli_set_timeformat(this_cli, $2); } ;
+
+CF_CLI_OPT(TIMEFORMAT ISO)
+CF_CLI_OPT(TIMEFORMAT SHORT)
+CF_CLI_OPT(TIMEFORMAT LONG)
+CF_CLI_OPT(TIMEFORMAT MS)
+CF_CLI_OPT(TIMEFORMAT US)
+
 proto_patt:
    CF_SYM_KNOWN { cf_assert_symbol($1, SYM_PROTO); $$.ptr = $1; $$.patt = 0; }
  | ALL  { $$.ptr = NULL; $$.patt = 1; }

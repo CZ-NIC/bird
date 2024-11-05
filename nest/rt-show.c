@@ -47,7 +47,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   void (*get_route_info)(struct rte *, byte *buf);
   struct nexthop *nh;
 
-  tm_format_time(tm, &config->tf_route, e->lastmod);
+  tm_format_time(tm, (c->tf ?: &config->tf_route), e->lastmod);
   if (ipa_nonzero(a->from) && !ipa_equal(a->from, a->nh.gw))
     bsprintf(from, " from %I", a->from);
   else

@@ -1205,7 +1205,7 @@ bfd_show_session(struct bfd_session *s, int details)
 
   byte dbuf[BFD_DIAG_BUFFER_SIZE];
   byte tbuf[TM_DATETIME_BUFFER_SIZE];
-  tm_format_time(tbuf, &config->tf_proto, s->last_state_change);
+  tm_format_time(tbuf, (this_cli->tf ?: &config->tf_proto), s->last_state_change);
 
   if (!details)
   {

@@ -406,6 +406,36 @@ cli_echo(uint class, byte *msg)
     }
 }
 
+/* Set time format override for the current session */
+void
+cli_set_timeformat(cli *c, const struct timeformat tf)
+{
+  size_t len1 = strlen(tf.fmt1) + 1;
+  size_t len2 = tf.fmt2 ? strlen(tf.fmt2) + 1 : 0;
+
+  if (len1 > TM_DATETIME_BUFFER_SIZE || len2 > TM_DATETIME_BUFFER_SIZE)
+  {
+    cli_msg(9003, "Format string too long");
+    return;
+  }
+
+  struct timeformat *old_tf = c->tf;
+  struct timeformat *new_tf = mb_allocz(c->pool, sizeof(struct timeformat));
+  new_tf->fmt1 = memcpy(mb_alloc(c->pool, len1), tf.fmt1, len1);
+  new_tf->fmt2 = tf.fmt2 ? memcpy(mb_alloc(c->pool, len2), tf.fmt2, len2) : NULL;
+  new_tf->limit = tf.limit;
+  c->tf = new_tf;
+
+  if (old_tf)
+  {
+    mb_free((void *) old_tf->fmt1);
+    mb_free((void *) old_tf->fmt2);
+    mb_free(old_tf);
+  }
+
+  cli_msg(0, "");
+}
+
 /* Hack for scheduled undo notification */
 extern cli *cmd_reconfig_stored_cli;
 
