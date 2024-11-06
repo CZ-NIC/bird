@@ -39,7 +39,7 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 
 CF_KEYWORDS(CEASE, PREFIX, LIMIT, HIT, ADMINISTRATIVE, SHUTDOWN, RESET, PEER,
 	CONFIGURATION, CHANGE, DECONFIGURED, CONNECTION, REJECTED, COLLISION,
-	OUT, OF, RESOURCES)
+	OUT, OF, RESOURCES, ASPA_CHECK_CUSTOMER)
 
 %type<i> bgp_cease_mask bgp_cease_list bgp_cease_flag bgp_role_name
 
@@ -392,6 +392,31 @@ custom_attr: ATTRIBUTE BGP expr type symbol ';' {
 };
 
 CF_ENUM(T_ENUM_BGP_ORIGIN, ORIGIN_, IGP, EGP, INCOMPLETE)
+
+/* ASPA shortcuts */
+term: ASPA_CHECK '(' rtable ')' { $$ =
+  f_new_inst(FI_ASPA_CHECK_EXPLICIT,
+      f_new_inst(FI_EA_GET,
+	f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL, }),
+	f_new_dynamic_attr(EAF_TYPE_AS_PATH, T_PATH,
+	  EA_CODE(PROTOCOL_BGP, BA_AS_PATH))
+	),
+      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 0, }),
+      $3
+  );
+}
+
+term: ASPA_CHECK_CUSTOMER '(' rtable ')' { $$ =
+  f_new_inst(FI_ASPA_CHECK_EXPLICIT,
+      f_new_inst(FI_EA_GET,
+	f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL, }),
+	f_new_dynamic_attr(EAF_TYPE_AS_PATH, T_PATH,
+	  EA_CODE(PROTOCOL_BGP, BA_AS_PATH))
+      ),
+      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 1, }),
+      $3
+  );
+}
 
 CF_CODE
 
