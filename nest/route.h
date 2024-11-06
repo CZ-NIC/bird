@@ -321,7 +321,7 @@ static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) f
 net *net_get(rtable *tab, const net_addr *addr);
 net *net_route(rtable *tab, const net_addr *n);
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
-int aspa_check(rtable *tab, const struct adata *path);
+enum aspa_result aspa_check(rtable *tab, const struct adata *path, bool force_upstream);
 rte *rte_find(net *net, struct rte_src *src);
 rte *rte_get_temp(struct rta *, struct rte_src *src);
 void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
@@ -783,9 +783,12 @@ int rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *
 #define ROA_VALID	1
 #define ROA_INVALID	2
 
-#define ASPA_UNKNOWN	0
-#define ASPA_VALID	1
-#define ASPA_INVALID	2
-#define ASPA_CONTAINS_CONFED  3
+enum aspa_result {
+  ASPA_UNKNOWN = 0,
+  ASPA_VALID,
+  ASPA_INVALID_EMPTY,
+  ASPA_INVALID_CONFED,
+  ASPA_INVALID_LEAK,
+};
 
 #endif
