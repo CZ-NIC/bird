@@ -3290,7 +3290,7 @@ static struct {
   { 6, 8, "Out of Resources" },
   { 7, 0, "Invalid ROUTE-REFRESH message" }, /* [RFC7313] */
   { 7, 1, "Invalid ROUTE-REFRESH message length" }, /* [RFC7313] */
-  { 8, 0, "Send hold timer expired" }, /* [draft-ietf-idr-bgp-sendholdtimer] */
+  { 8, 0, "Send hold timer expired" }, /* [RFC9687] */
 };
 
 /**
