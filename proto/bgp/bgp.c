@@ -104,6 +104,7 @@
  * RFC 9072 - Extended Optional Parameters Length for BGP OPEN Message
  * RFC 9117 - Revised Validation Procedure for BGP Flow Specifications
  * RFC 9234 - Route Leak Prevention and Detection Using Roles
+ * RFC 9687 - Send Hold Timer
  * draft-uttaro-idr-bgp-persistence-04
  * draft-walton-bgp-hostname-capability-02
  */

@@ -2781,6 +2781,7 @@ avoid routing loops.
 <item> <rfc id="9072"> - Extended Optional Parameters Length for BGP OPEN Message
 <item> <rfc id="9117"> - Revised Validation Procedure for BGP Flow Specifications
 <item> <rfc id="9234"> - Route Leak Prevention and Detection Using Roles
+<item> <rfc id="9687"> - Send Hold Timer
 </itemize>
 
 <sect1>Route selection rules
