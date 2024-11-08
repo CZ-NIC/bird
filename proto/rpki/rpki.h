@@ -29,7 +29,8 @@
 
 #define RPKI_VERSION_0		0
 #define RPKI_VERSION_1		1
-#define RPKI_MAX_VERSION 	RPKI_VERSION_1
+#define RPKI_VERSION_2		2
+#define RPKI_MAX_VERSION 	RPKI_VERSION_2
 
 
 /*
@@ -83,6 +84,9 @@ const char *rpki_cache_state_to_str(enum rpki_cache_state state);
 void rpki_table_add_roa(struct rpki_cache *cache, struct channel *channel, const net_addr_union *pfxr);
 void rpki_table_remove_roa(struct rpki_cache *cache, struct channel *channel, const net_addr_union *pfxr);
 
+void rpki_table_add_aspa(struct rpki_cache *cache, struct channel *channel, u32 customer, void *providers, uint providers_length);
+void rpki_table_remove_aspa(struct rpki_cache *cache, struct channel *channel, u32 customer);
+
 
 /*
  *	RPKI Protocol Logic
@@ -110,6 +114,7 @@ struct rpki_proto {
 
   struct channel *roa4_channel;
   struct channel *roa6_channel;
+  struct channel *aspa_channel;
   u8 refresh_channels;			/* For non-incremental updates using rt_refresh_begin(), rt_refresh_end() */
 };
 

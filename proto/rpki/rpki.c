@@ -140,6 +140,37 @@ rpki_table_remove_roa(struct rpki_cache *cache, struct channel *channel, const n
   rte_update2(channel, &pfxr->n, NULL, p->p.main_source);
 }
 
+void
+rpki_table_add_aspa(struct rpki_cache *cache, struct channel *channel,
+    u32 customer, void *providers, uint providers_length)
+{
+  struct rpki_proto *p = cache->p;
+
+  net_addr_union n = { .aspa = NET_ADDR_ASPA(customer) };
+  rta a0 = {
+    .pref = channel->preference,
+    .source = RTS_RPKI,
+    .scope = SCOPE_UNIVERSE,
+    .dest = RTD_NONE,
+  };
+
+  ea_set_attr_data(&a0.eattrs, tmp_linpool, EA_ASPA_PROVIDERS, 0,
+		   EAF_TYPE_INT_SET, providers, providers_length);
+
+  rta *a = rta_lookup(&a0);
+  rte *e = rte_get_temp(a, p->p.main_source);
+
+  rte_update2(channel, &n.n, e, e->src);
+}
+
+void
+rpki_table_remove_aspa(struct rpki_cache *cache, struct channel *channel, u32 customer)
+{
+  struct rpki_proto *p = cache->p;
+  net_addr_union n = { .aspa = NET_ADDR_ASPA(customer) };
+  rte_update2(channel, &n.n, NULL, p->p.main_source);
+}
+
 
 /*
  *	RPKI Protocol Logic
@@ -773,7 +804,8 @@ rpki_reconfigure(struct proto *P, struct proto_config *CF)
   struct rpki_cache *cache = p->cache;
 
   if (!proto_configure_channel(&p->p, &p->roa4_channel, proto_cf_find_channel(CF, NET_ROA4)) ||
-      !proto_configure_channel(&p->p, &p->roa6_channel, proto_cf_find_channel(CF, NET_ROA6)))
+      !proto_configure_channel(&p->p, &p->roa6_channel, proto_cf_find_channel(CF, NET_ROA6)) ||
+      !proto_configure_channel(&p->p, &p->aspa_channel, proto_cf_find_channel(CF, NET_ASPA)))
     return NEED_RESTART;
 
   if (rpki_reconfigure_cache(p, cache, new, old) != SUCCESSFUL_RECONF)
@@ -795,6 +827,7 @@ rpki_init(struct proto_config *CF)
 
   proto_configure_channel(&p->p, &p->roa4_channel, proto_cf_find_channel(CF, NET_ROA4));
   proto_configure_channel(&p->p, &p->roa6_channel, proto_cf_find_channel(CF, NET_ROA6));
+  proto_configure_channel(&p->p, &p->aspa_channel, proto_cf_find_channel(CF, NET_ASPA));
 
   return P;
 }
@@ -908,6 +941,11 @@ rpki_show_proto_info(struct proto *P)
       channel_show_info(p->roa6_channel);
     else
       cli_msg(-1006, "  No roa6 channel");
+
+    if (p->aspa_channel)
+      channel_show_info(p->aspa_channel);
+    else
+      cli_msg(-1006, "  No aspa channel");
   }
 }
 
@@ -979,7 +1017,7 @@ struct protocol proto_rpki = {
   .init = 		rpki_init,
   .start = 		rpki_start,
   .postconfig = 	rpki_postconfig,
-  .channel_mask =	(NB_ROA4 | NB_ROA6),
+  .channel_mask =	(NB_ROA4 | NB_ROA6 | NB_ASPA),
   .show_proto_info =	rpki_show_proto_info,
   .shutdown = 		rpki_shutdown,
   .copy_config = 	rpki_copy_config,

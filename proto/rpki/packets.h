@@ -23,8 +23,10 @@
  * 	   +4 bytes (Length of inserted text)
  * 	 +800 bytes (UTF-8 text 400*2 bytes)
  * 	------------
- * 	= 848 bytes (Maximal expected PDU size) */
-#define RPKI_PDU_MAX_LEN	848
+ * 	= 848 bytes (Maximal expected PDU size)
+ *
+ * Received ASPA PDU can have any size, so let's start with 4k */
+#define RPKI_PDU_MAX_LEN	4096
 
 /* RX buffer size has a great impact to scheduler granularity */
 #define RPKI_RX_BUFFER_SIZE	4096

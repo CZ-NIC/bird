@@ -62,6 +62,7 @@ enum pdu_type {
   CACHE_RESET 			= 8,
   ROUTER_KEY 			= 9,
   ERROR 			= 10,
+  ASPA				= 11,
   PDU_TYPE_MAX
 };
 
@@ -76,7 +77,8 @@ static const char *str_pdu_type_[] = {
   [END_OF_DATA] 		= "End of Data",
   [CACHE_RESET] 		= "Cache Reset",
   [ROUTER_KEY] 			= "Router Key",
-  [ERROR] 			= "Error"
+  [ERROR] 			= "Error",
+  [ASPA]			= "ASPA",
 };
 
 static const char *str_pdu_type(uint type) {
@@ -193,6 +195,35 @@ struct pdu_error {
 				 * Error Diagnostic Message */
 } PACKED;
 
+/*
+ *0          8          16         24        31
+ *  .-------------------------------------------.
+ *  | Protocol |   PDU    |          |          |
+ *  | Version  |   Type   |   Flags  |   zero   |
+ *  |    2     |    11    |          |          |
+ *  +-------------------------------------------+
+ *  |                                           |
+ *  |                 Length                    |
+ *  |                                           |
+ *  +-------------------------------------------+
+ *  |                                           |
+ *  |    Customer Autonomous System Number      |
+ *  |                                           |
+ *  +-------------------------------------------+
+ *  |                                           |
+ *  ~    Provider Autonomous System Numbers     ~
+ *  |                                           |
+ *  ~-------------------------------------------~ */
+struct pdu_aspa {
+  u8 ver;
+  u8 type;
+  u8 flags;
+  u8 zero;
+  u32 len;
+  u32 customer_as_num;
+  u32 provider_as_nums[0];
+} PACKED;
+
 struct pdu_reset_query {
   u8 ver;
   u8 type;
@@ -230,8 +261,12 @@ static const size_t min_pdu_size[] = {
   [END_OF_DATA] 		= sizeof(struct pdu_end_of_data_v0),
   [CACHE_RESET] 		= sizeof(struct pdu_cache_response),
   [ROUTER_KEY] 			= sizeof(struct pdu_header), /* FIXME */
+  [ASPA]			= sizeof(struct pdu_aspa),
   [ERROR] 			= 16,
 };
+
+static inline int rpki_pdu_aspa_provider_asn_count(const struct pdu_aspa *pdu)
+{ return (pdu->len - sizeof(struct pdu_aspa)) / (sizeof(u32)); }
 
 static int rpki_send_error_pdu(struct rpki_cache *cache, const enum pdu_error_type error_code, const u32 err_pdu_len, const struct pdu_header *erroneous_pdu, const char *fmt, ...);
 
@@ -293,7 +328,7 @@ rpki_pdu_to_host_byte_order(struct pdu_header *pdu)
     struct pdu_end_of_data_v0 *eod0 = (void *) pdu;
     eod0->serial_num = ntohl(eod0->serial_num); /* Same either for version 1 */
 
-    if (pdu->ver == RPKI_VERSION_1)
+    if (pdu->ver > RPKI_VERSION_0)
     {
       struct pdu_end_of_data_v1 *eod1 = (void *) pdu;
       eod1->expire_interval = ntohl(eod1->expire_interval);
@@ -329,6 +364,21 @@ rpki_pdu_to_host_byte_order(struct pdu_header *pdu)
     break;
   }
 
+  case ASPA:
+  {
+    struct pdu_aspa *aspa = (void *) pdu;
+    int provider_asn_count = rpki_pdu_aspa_provider_asn_count(aspa);
+
+    /* Convert customer ASN */
+    aspa->customer_as_num = ntohl(aspa->customer_as_num);
+
+    /* Convert provider ASNs */
+    for (int i = 0; i < provider_asn_count ; i++)
+      aspa->provider_as_nums[i] = ntohl(aspa->provider_as_nums[i]);
+
+    break;
+  }
+
   case ROUTER_KEY:
     /* Router Key PDU is not supported yet */
 
@@ -354,6 +404,9 @@ rpki_pdu_to_host_byte_order(struct pdu_header *pdu)
 static struct pdu_header *
 rpki_pdu_back_to_network_byte_order(struct pdu_header *out, const struct pdu_header *in)
 {
+  /* Only valid for fixed-length PDUs */
+  ASSERT_DIE(in->type != ERROR && in->type != ASPA);
+
   memcpy(out, in, in->len);
   rpki_pdu_to_host_byte_order(out);
   return out;
@@ -387,7 +440,7 @@ rpki_log_packet(struct rpki_cache *cache, const struct pdu_header *pdu, const en
   case END_OF_DATA:
   {
     const struct pdu_end_of_data_v1 *eod = (void *) pdu;
-    if (eod->ver == RPKI_VERSION_1)
+    if (eod->ver > RPKI_VERSION_0)
       SAVE(bsnprintf(detail, sizeof(detail), "(session id: %u, serial number: %u, refresh: %us, retry: %us, expire: %us)", eod->session_id, eod->serial_num, eod->refresh_interval, eod->retry_interval, eod->expire_interval));
     else
       SAVE(bsnprintf(detail, sizeof(detail), "(session id: %u, serial number: %u)", eod->session_id, eod->serial_num));
@@ -452,6 +505,25 @@ rpki_log_packet(struct rpki_cache *cache, const struct pdu_header *pdu, const en
     }
 
     SAVE(bsnprintf(detail + strlen(detail), sizeof(detail) - strlen(detail), ")"));
+    break;
+  }
+
+  case ASPA:
+  {
+    const struct pdu_aspa *aspa = (void *) pdu;
+    int provider_asn_count = rpki_pdu_aspa_provider_asn_count(aspa);
+
+    if (provider_asn_count <= 0)
+      SAVE(bsnprintf(detail + strlen(detail), sizeof(detail) - strlen(detail),
+	    "%u transit", aspa->customer_as_num));
+    else
+    {
+      SAVE(bsnprintf(detail + strlen(detail), sizeof(detail) - strlen(detail),
+	    "%u (providers", aspa->customer_as_num));
+      for (int i = 0; i < provider_asn_count; i++)
+	SAVE(bsnprintf(detail + strlen(detail), sizeof(detail) - strlen(detail),
+	      " %u%c", aspa->provider_as_nums[i], (i == provider_asn_count-1) ? ')' : ','));
+    }
     break;
   }
 
@@ -571,7 +643,9 @@ rpki_check_receive_packet(struct rpki_cache *cache, const struct pdu_header *pdu
     }
   }
 
-  if ((pdu->type >= PDU_TYPE_MAX) || (pdu->ver == RPKI_VERSION_0 && pdu->type == ROUTER_KEY))
+  if ((pdu->type >= PDU_TYPE_MAX) ||
+      (pdu->ver < RPKI_VERSION_1 && pdu->type == ROUTER_KEY) ||
+      (pdu->ver < RPKI_VERSION_2 && pdu->type == ASPA))
   {
     rpki_send_error_pdu(cache, UNSUPPORTED_PDU_TYPE, pdu_len, pdu, "Unsupported PDU type %u received", pdu->type);
     return RPKI_ERROR;
@@ -797,6 +871,29 @@ rpki_handle_prefix_pdu(struct rpki_cache *cache, const struct pdu_header *pdu)
   return RPKI_SUCCESS;
 }
 
+static int
+rpki_handle_aspa_pdu(struct rpki_cache *cache, const struct pdu_header *pdu)
+{
+  struct pdu_aspa *aspa = (void *) pdu;
+  struct channel *channel = cache->p->aspa_channel;
+  uint providers_length = aspa->len - sizeof(struct pdu_aspa);
+
+  if (!channel)
+  {
+    CACHE_TRACE(D_ROUTES, cache, "Skip AS%u, missing aspa channel", aspa->customer_as_num);
+    return RPKI_ERROR;
+  }
+
+  cache->last_rx_prefix = current_time();
+
+  if (aspa->flags & RPKI_ADD_FLAG)
+    rpki_table_add_aspa(cache, channel, aspa->customer_as_num, aspa->provider_as_nums, providers_length);
+  else
+    rpki_table_remove_aspa(cache, channel, aspa->customer_as_num);
+
+  return RPKI_SUCCESS;
+}
+
 static uint
 rpki_check_interval(struct rpki_cache *cache, const char *(check_fn)(uint), uint interval)
 {
@@ -822,7 +919,7 @@ rpki_handle_end_of_data_pdu(struct rpki_cache *cache, const struct pdu_end_of_da
     return;
   }
 
-  if (pdu->ver == RPKI_VERSION_1)
+  if (pdu->ver > RPKI_VERSION_0)
   {
     if (!cf->keep_refresh_interval && rpki_check_interval(cache, rpki_check_refresh_interval, pdu->refresh_interval))
       cache->refresh_interval = pdu->refresh_interval;
@@ -849,6 +946,8 @@ rpki_handle_end_of_data_pdu(struct rpki_cache *cache, const struct pdu_end_of_da
       rt_refresh_end(cache->p->roa4_channel->table, cache->p->roa4_channel);
     if (cache->p->roa6_channel)
       rt_refresh_end(cache->p->roa6_channel->table, cache->p->roa6_channel);
+    if (cache->p->aspa_channel)
+      rt_refresh_end(cache->p->aspa_channel->table, cache->p->aspa_channel);
   }
 
   cache->last_update = current_time();
@@ -911,6 +1010,10 @@ rpki_rx_packet(struct rpki_cache *cache, struct pdu_header *pdu)
 
   case ROUTER_KEY:
     /* TODO: Implement Router Key PDU handling */
+    break;
+
+  case ASPA:
+    rpki_handle_aspa_pdu(cache, (void *) pdu);
     break;
 
   default:
