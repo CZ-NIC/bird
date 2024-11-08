@@ -100,7 +100,7 @@ net_format(const net_addr *N, char *buf, int buflen)
   switch (n->n.type)
   {
   case NET_IP4:
-    return bsnprintf(buf, buflen, "%I4/%d", n->ip4.prefix, n->ip4.pxlen);
+    return (buflen < IP4_PX_BUFFER_SIZE) ? -1 : ip4_px_ntop(n->ip4.prefix, n->ip4.pxlen, buf) - buf;
   case NET_IP6:
     return bsnprintf(buf, buflen, "%I6/%d", n->ip6.prefix, n->ip6.pxlen);
   case NET_VPN4:

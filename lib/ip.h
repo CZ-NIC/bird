@@ -457,8 +457,13 @@ static inline void * put_ip6(void *buf, ip6_addr a)
  *	Binary/text form conversions
  */
 
+#define IP4_BUFFER_SIZE		16	/* Required buffer for ip4_ntop() */
+#define IP4_PX_BUFFER_SIZE	20	/* Required buffer for ip4_ntop_px() */
+
 char *ip4_ntop(ip4_addr a, char *b);
 char *ip6_ntop(ip6_addr a, char *b);
+
+char *ip4_px_ntop(ip4_addr a, int len, char *b);
 
 static inline char * ip4_ntox(ip4_addr a, char *b)
 { return b + bsprintf(b, "%08x", _I(a)); }
