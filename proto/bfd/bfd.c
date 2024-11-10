@@ -994,6 +994,8 @@ bfd_start_neighbor(struct bfd_proto *p, struct bfd_neighbor *n)
     return;
   }
 
+  neigh_link(nb);
+
   n->neigh = nb;
   nb->data = n;
 
@@ -1007,8 +1009,11 @@ static void
 bfd_stop_neighbor(struct bfd_proto *p UNUSED, struct bfd_neighbor *n)
 {
   if (n->neigh)
+  {
     n->neigh->data = NULL;
-  n->neigh = NULL;
+    neigh_unlink(n->neigh);
+    n->neigh = NULL;
+  }
 
   rfree(n->req);
   n->req = NULL;

@@ -302,6 +302,8 @@ static_add_rte(struct static_proto *p, struct static_route *r)
 	continue;
       }
 
+      neigh_link(n);
+
       r2->neigh = n;
       r2->chain = n->data;
       n->data = r2;
@@ -321,7 +323,13 @@ static_reset_rte(struct static_proto *p UNUSED, struct static_route *r)
 
   for (r2 = r; r2; r2 = r2->mp_next)
   {
-    r2->neigh = NULL;
+    if (r2->neigh)
+    {
+      r2->neigh->data = NULL;
+      neigh_unlink(r2->neigh);
+      r2->neigh = NULL;
+    }
+
     r2->chain = NULL;
 
     r2->state = 0;

@@ -1291,13 +1291,17 @@ proto_event(void *ptr)
 
   if (p->do_stop)
   {
-    iface_unsubscribe(&p->iface_sub);
-
     p->do_stop = 0;
   }
 
   if (proto_is_done(p) && p->pool_inloop)  /* perusing pool_inloop to do this once only */
   {
+    /* Interface notification unsubscribe can't be done
+     * before the protocol is really done, as it also destroys
+     * the neighbors which may be needed (e.g. by BGP->MRT)
+     * during the STOP phase as well. */
+    iface_unsubscribe(&p->iface_sub);
+
     rp_free(p->pool_inloop);
     p->pool_inloop = NULL;
     if (p->loop != &main_birdloop)

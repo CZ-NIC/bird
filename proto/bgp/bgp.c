@@ -588,7 +588,11 @@ bgp_down(struct bgp_proto *p)
     bgp_close(p);
   }
 
-  p->neigh = NULL;
+  if (p->neigh)
+  {
+    neigh_unlink(p->neigh);
+    p->neigh = NULL;
+  }
 
   BGP_TRACE(D_EVENTS, "Down");
   proto_notify_state(&p->p, PS_DOWN);
@@ -1749,6 +1753,7 @@ bgp_start_locked(void *_p)
   }
 
   p->neigh = n;
+  neigh_link(n);
 
   if (n->scope <= 0)
     BGP_TRACE(D_EVENTS, "Waiting for %I%J to become my neighbor", p->remote_ip, cf->iface);

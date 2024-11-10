@@ -10,6 +10,7 @@
 #define _BIRD_IFACE_H_
 
 #include "lib/locking.h"
+#include "lib/defer.h"
 #include "lib/event.h"
 #include "lib/lists.h"
 #include "lib/tlists.h"
@@ -177,6 +178,27 @@ void neigh_init(struct pool *);
 
 void neigh_link(neighbor *);
 void neigh_unlink(neighbor *);
+
+struct neigh_unlink_deferred {
+  struct deferred_call dc;
+  neighbor *n;
+};
+
+void neigh_unlink_deferred(struct deferred_call *dc);
+
+static inline void neigh_unlink_later(neighbor *n)
+{
+  struct neigh_unlink_deferred nud = {
+    .dc.hook = neigh_unlink_deferred,
+    .n = n,
+  };
+
+  defer_call(&nud.dc, sizeof nud);
+}
+
+/* For internal use */
+void neigh_link_locked(neighbor *);
+void neigh_unlink_locked(neighbor *);
 
 /*
  *	Notification mechanism

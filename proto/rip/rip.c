@@ -454,6 +454,8 @@ rip_get_neighbor(struct rip_proto *p, ip_addr *a, struct rip_iface *ifa)
   struct rip_neighbor *n = mb_allocz(p->p.pool, sizeof(struct rip_neighbor));
   n->ifa = ifa;
   n->nbr = nbr;
+  neigh_link(nbr);
+
   nbr->data = n;
   n->csn = nbr->aux;
 
@@ -474,6 +476,8 @@ rip_remove_neighbor(struct rip_proto *p, struct rip_neighbor *n)
   n->nbr = NULL;
   nbr->data = NULL;
   nbr->aux = n->csn;
+
+  neigh_unlink(nbr);
 
   rfree(n->bfd_req);
   n->bfd_req = NULL;

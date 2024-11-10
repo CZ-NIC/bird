@@ -262,7 +262,7 @@ if_enqueue_notify_to(struct iface_notification x, struct iface_subscription *s)
       break;
     case IFNOT_NEIGHBOR:
       if (!s->neigh_notify) return;
-      neigh_link(x.n);
+      neigh_link_locked(x.n);
       break;
     default:
       bug("Unknown interface notification type: %d", x.type);
@@ -583,9 +583,7 @@ iface_notify_hook(void *_s)
 	break;
       case IFNOT_NEIGHBOR:
 	s->neigh_notify(n->n);
-	IFACE_LOCK;
 	neigh_unlink(n->n);
-	IFACE_UNLOCK;
 	break;
       default:
 	bug("Bad interface notification type: %d", n->type);
@@ -658,8 +656,6 @@ iface_unsubscribe(struct iface_subscription *s)
   IFACE_LOCK;
 
   SKIP_BACK_DECLARE(struct proto, p, iface_sub, s);
-  WALK_TLIST_DELSAFE(proto_neigh, n, &p->neighbors)
-    neigh_unlink(n);
 
   ifsub_rem_node(&iface_sub_list, s);
   ev_postpone(&s->event);
@@ -676,7 +672,7 @@ iface_unsubscribe(struct iface_subscription *s)
 	if_unlink(n->i);
 	break;
       case IFNOT_NEIGHBOR:
-	neigh_unlink(n->n);
+	neigh_unlink_locked(n->n);
 	break;
       default:
 	bug("Bad interface notification type: %d", n->type);
@@ -684,6 +680,12 @@ iface_unsubscribe(struct iface_subscription *s)
 
     ifnot_rem_node(&s->queue, n);
     sl_free(n);
+  }
+
+  WALK_TLIST_DELSAFE(proto_neigh, n, &p->neighbors)
+  {
+    log(L_WARN "%s: Unlinking forgotten neighbor %I", p->name, n->addr);
+    neigh_unlink_locked(n);
   }
 
   ASSERT_DIE(EMPTY_TLIST(proto_neigh, &p->neighbors));

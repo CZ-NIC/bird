@@ -283,7 +283,8 @@ neigh_find(struct proto *p, ip_addr a, struct iface *iface, uint flags)
   n->flags = flags;
   n->scope = scope;
 
-  neigh_link(n);
+  neigh_link_locked(n);
+  neigh_unlink_later(n);
 
   IFACE_UNLOCK;
   return n;
@@ -378,14 +379,14 @@ neigh_down(neighbor *n)
 }
 
 void
-neigh_link(neighbor *n)
+neigh_link_locked(neighbor *n)
 {
   IFACE_ASSERT_LOCKED;
   n->uc++;
 }
 
 void
-neigh_unlink(neighbor *n)
+neigh_unlink_locked(neighbor *n)
 {
   IFACE_ASSERT_LOCKED;
   if (--n->uc)
@@ -407,6 +408,27 @@ neigh_unlink(neighbor *n)
   if_unlink(n->ifreq);
 
   sl_free(n);
+}
+
+void
+neigh_link(neighbor *n)
+{
+  IFACE_LOCK;
+  neigh_link_locked(n);
+  IFACE_UNLOCK;
+}
+
+void
+neigh_unlink(neighbor *n)
+{
+  IFACE_LOCK;
+  neigh_unlink_locked(n);
+  IFACE_UNLOCK;
+}
+
+void neigh_unlink_deferred(struct deferred_call *dc)
+{
+  neigh_unlink(SKIP_BACK(struct neigh_unlink_deferred, dc, dc)->n);
 }
 
 /**
@@ -472,7 +494,7 @@ neigh_update(neighbor *n, struct iface *iface)
 
   if ((n->scope < 0) && !(n->flags & NEF_STICKY))
   {
-    neigh_unlink(n);
+    neigh_unlink_locked(n);
     return;
   }
 
