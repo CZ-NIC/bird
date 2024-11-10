@@ -12,6 +12,9 @@
  * full-blown event list overhead. Therefore, one just can use this tool
  * instead. */
 
+#ifndef _BIRD_LIB_DEFER_H_
+#define _BIRD_LIB_DEFER_H_
+
 #include "lib/birdlib.h"
 #include "lib/event.h"
 #include "lib/resource.h"
@@ -46,3 +49,5 @@ static inline void defer_call(struct deferred_call *call, size_t actual_size) {
   *local_deferred.last = a;
   local_deferred.last = &a->next;
 }
+
+#endif
