@@ -684,7 +684,7 @@ iface_unsubscribe(struct iface_subscription *s)
 
   WALK_TLIST_DELSAFE(proto_neigh, n, &p->neighbors)
   {
-    log(L_WARN "%s: Unlinking forgotten neighbor %I", p->name, n->addr);
+    bug("%s: Unlinking forgotten neighbor %I", p->name, n->addr);
     neigh_unlink_locked(n);
   }
 
