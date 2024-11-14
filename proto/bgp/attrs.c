@@ -1247,7 +1247,11 @@ bgp_export_attrs(struct bgp_export_state *s, ea_list *attrs)
 static inline int
 bgp_encode_attr(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
 {
-  ASSERT(EA_PROTO(a->id) == PROTOCOL_BGP);
+  if (EA_PROTO(a->id) != PROTOCOL_BGP)
+    if (s->ignore_non_bgp_attrs)
+      return 0;
+    else
+      bug("Tried to encode a non-BGP attribute");
 
   uint code = EA_ID(a->id);
 
