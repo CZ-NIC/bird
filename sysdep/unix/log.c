@@ -274,7 +274,7 @@ log_commit(int class, buffer *buf)
 
 int buffer_vprint(buffer *buf, const char *fmt, va_list args);
 
-static void
+void
 vlog(int class, const char *msg, va_list args)
 {
   buffer buf;
