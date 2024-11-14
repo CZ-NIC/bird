@@ -75,7 +75,15 @@ extern struct cli *this_cli;		/* Used during parsing */
 
 /* Functions to be called by command handlers */
 
-void cli_printf(cli *, int, char *, ...);
+void cli_vprintf(cli *, int, const char *, va_list);
+static inline void cli_printf(cli *cli, int code, const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  cli_vprintf(cli, code, fmt, args);
+  va_end(args);
+}
+
 #define cli_msg(x...) cli_printf(this_cli, x)
 void cli_set_log_echo(cli *, uint mask, uint size);
 void cli_set_timeformat(cli *c, const struct timeformat tf);

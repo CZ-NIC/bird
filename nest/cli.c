@@ -117,9 +117,8 @@ cli_alloc_out(cli *c, int size)
  * macro instead.
  */
 void
-cli_printf(cli *c, int code, char *msg, ...)
+cli_vprintf(cli *c, int code, const char *msg, va_list args)
 {
-  va_list args;
   byte buf[CLI_LINE_SIZE];
   int cd = code;
   int errcode;
@@ -147,9 +146,7 @@ cli_printf(cli *c, int code, char *msg, ...)
     }
 
   c->last_reply = cd;
-  va_start(args, msg);
   cnt = bvsnprintf(buf+size, sizeof(buf)-size-1, msg, args);
-  va_end(args);
   if (cnt < 0)
     {
       cli_printf(c, errcode, "<line overflow>");
