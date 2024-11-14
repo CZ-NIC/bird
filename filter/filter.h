@@ -65,7 +65,7 @@ int f_same(const struct f_line *f1, const struct f_line *f2);
 
 void filter_commit(struct config *new, struct config *old);
 
-void filters_dump_all(void);
+void filters_dump_all(struct dump_request *);
 
 #define FILTER_ACCEPT NULL
 #define FILTER_REJECT ((struct filter *) 1)

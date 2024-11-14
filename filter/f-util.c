@@ -251,10 +251,10 @@ ca_free(resource *r)
 }
 
 static void
-ca_dump(resource *r)
+ca_dump(struct dump_request *dreq, resource *r)
 {
   struct custom_attribute *ca = (void *) r;
-  debug("name \"%s\" id 0x%04x ea_type 0x%02x f_type 0x%02x\n",
+  RDUMP("name \"%s\" id 0x%04x ea_type 0x%02x f_type 0x%02x\n",
       ca->name, ca->fda->ea_code, ca->fda->type, ca->fda->f_type);
 }
 

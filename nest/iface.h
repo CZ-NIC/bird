@@ -101,9 +101,9 @@ struct iface {
 #define IF_CHANGE_PREFERRED (IF_CHANGE_ADDR4 | IF_CHANGE_ADDR6 | IF_CHANGE_LLV6)
 
 void if_init(void);
-void if_dump(struct iface *);
-void if_dump_all(void);
-void ifa_dump(struct ifa *);
+void if_dump(struct dump_request *dreq, struct iface *);
+void if_dump_all(struct dump_request *);
+void ifa_dump(struct dump_request *dreq, struct ifa *);
 void if_show(void);
 void if_show_summary(void);
 struct iface *if_update(struct iface *);
@@ -148,8 +148,8 @@ typedef struct neighbor {
 
 neighbor *neigh_find(struct proto *p, ip_addr a, struct iface *ifa, uint flags);
 
-void neigh_dump(neighbor *);
-void neigh_dump_all(void);
+void neigh_dump(struct dump_request *, neighbor *);
+void neigh_dump_all(struct dump_request *);
 void neigh_prune(void);
 void neigh_if_up(struct iface *);
 void neigh_if_down(struct iface *);

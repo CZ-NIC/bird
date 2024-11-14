@@ -47,9 +47,9 @@ static void if_recalc_preferred(struct iface *i);
  * This function dumps contents of an &ifa to the debug output.
  */
 void
-ifa_dump(struct ifa *a)
+ifa_dump(struct dump_request *dreq, struct ifa *a)
 {
-  debug("\t%I, net %N bc %I -> %I%s%s%s%s\n", a->ip, &a->prefix, a->brd, a->opposite,
+  RDUMP("\t%I, net %N bc %I -> %I%s%s%s%s\n", a->ip, &a->prefix, a->brd, a->opposite,
 	(a->flags & IA_PRIMARY) ? " PRIMARY" : "",
 	(a->flags & IA_SECONDARY) ? " SEC" : "",
 	(a->flags & IA_HOST) ? " HOST" : "",
@@ -64,35 +64,35 @@ ifa_dump(struct ifa *a)
  * network interface to the debug output.
  */
 void
-if_dump(struct iface *i)
+if_dump(struct dump_request *dreq, struct iface *i)
 {
   struct ifa *a;
 
-  debug("IF%d: %s", i->index, i->name);
+  RDUMP("IF%d: %s", i->index, i->name);
   if (i->flags & IF_SHUTDOWN)
-    debug(" SHUTDOWN");
+    RDUMP(" SHUTDOWN");
   if (i->flags & IF_UP)
-    debug(" UP");
+    RDUMP(" UP");
   else
-    debug(" DOWN");
+    RDUMP(" DOWN");
   if (i->flags & IF_ADMIN_UP)
-    debug(" LINK-UP");
+    RDUMP(" LINK-UP");
   if (i->flags & IF_MULTIACCESS)
-    debug(" MA");
+    RDUMP(" MA");
   if (i->flags & IF_BROADCAST)
-    debug(" BC");
+    RDUMP(" BC");
   if (i->flags & IF_MULTICAST)
-    debug(" MC");
+    RDUMP(" MC");
   if (i->flags & IF_LOOPBACK)
-    debug(" LOOP");
+    RDUMP(" LOOP");
   if (i->flags & IF_IGNORE)
-    debug(" IGN");
+    RDUMP(" IGN");
   if (i->flags & IF_TMP_DOWN)
-    debug(" TDOWN");
-  debug(" MTU=%d\n", i->mtu);
+    RDUMP(" TDOWN");
+  RDUMP(" MTU=%d\n", i->mtu);
   WALK_LIST(a, i->addrs)
     {
-      ifa_dump(a);
+      ifa_dump(dreq, a);
       ASSERT(!!(a->flags & IA_PRIMARY) ==
 	     ((a == i->addr4) || (a == i->addr6) || (a == i->llv6)));
     }
@@ -105,14 +105,14 @@ if_dump(struct iface *i)
  * interfaces to the debug output.
  */
 void
-if_dump_all(void)
+if_dump_all(struct dump_request *dreq)
 {
   struct iface *i;
 
-  debug("Known network interfaces:\n");
+  RDUMP("Known network interfaces:\n");
   WALK_LIST(i, iface_list)
-    if_dump(i);
-  debug("Router ID: %08x\n", config->router_id);
+    if_dump(dreq, i);
+  RDUMP("Router ID: %08x\n", config->router_id);
 }
 
 static inline unsigned

@@ -72,6 +72,7 @@ Reply codes of BIRD command-line interface
 8006	Reload failed
 8007	Access denied
 8008	Evaluation runtime error
+8009	Failed to open file
 
 9000	Command too long
 9001	Parse error

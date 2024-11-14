@@ -44,7 +44,7 @@ struct linpool {
 _Thread_local linpool *tmp_linpool;
 
 static void lp_free(resource *);
-static void lp_dump(resource *);
+static void lp_dump(struct dump_request *, resource *);
 static resource *lp_lookup(resource *, unsigned long);
 static struct resmem lp_memsize(resource *r);
 
@@ -271,7 +271,7 @@ lp_free(resource *r)
 }
 
 static void
-lp_dump(resource *r)
+lp_dump(struct dump_request *dreq, resource *r)
 {
   linpool *m = (linpool *) r;
   struct lp_chunk *c;
@@ -281,7 +281,7 @@ lp_dump(resource *r)
     ;
   for(cntl=0, c=m->first_large; c; c=c->next, cntl++)
     ;
-  debug("(count=%d+%d total=%d+%d)\n",
+  RDUMP("(count=%d+%d total=%d+%d)\n",
 	cnt,
 	cntl,
 	m->total,

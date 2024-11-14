@@ -2103,82 +2103,82 @@ babel_reconfigure_ifaces(struct babel_proto *p, struct babel_config *cf)
  */
 
 static void
-babel_dump_source(struct babel_source *s)
+babel_dump_source(struct dump_request *dreq, struct babel_source *s)
 {
-  debug("Source router_id %lR seqno %d metric %d expires %t\n",
+  RDUMP("Source router_id %lR seqno %d metric %d expires %t\n",
 	s->router_id, s->seqno, s->metric,
 	s->expires ? s->expires - current_time() : 0);
 }
 
 static void
-babel_dump_route(struct babel_route *r)
+babel_dump_route(struct dump_request *dreq, struct babel_route *r)
 {
-  debug("Route neigh %I if %s seqno %d metric %d/%d router_id %lR expires %t\n",
+  RDUMP("Route neigh %I if %s seqno %d metric %d/%d router_id %lR expires %t\n",
 	r->neigh->addr, r->neigh->ifa->ifname, r->seqno, r->advert_metric, r->metric,
 	r->router_id, r->expires ? r->expires - current_time() : 0);
 }
 
 static void
-babel_dump_entry(struct babel_entry *e)
+babel_dump_entry(struct dump_request *dreq, struct babel_entry *e)
 {
   struct babel_source *s;
   struct babel_route *r;
 
-  debug("Babel: Entry %N:\n", e->n.addr);
+  RDUMP("Babel: Entry %N:\n", e->n.addr);
 
   WALK_LIST(s,e->sources)
-  { debug(" "); babel_dump_source(s); }
+  { RDUMP(" "); babel_dump_source(dreq, s); }
 
   WALK_LIST(r,e->routes)
   {
-    debug(" ");
-    if (r == e->selected) debug("*");
-    babel_dump_route(r);
+    RDUMP(" ");
+    if (r == e->selected) RDUMP("*");
+    babel_dump_route(dreq, r);
   }
 }
 
 static void
-babel_dump_neighbor(struct babel_neighbor *n)
+babel_dump_neighbor(struct dump_request *dreq, struct babel_neighbor *n)
 {
-  debug("Neighbor %I txcost %d hello_map %x next seqno %d expires %t/%t\n",
+  RDUMP("Neighbor %I txcost %d hello_map %x next seqno %d expires %t/%t\n",
 	n->addr, n->txcost, n->hello_map, n->next_hello_seqno,
 	n->hello_expiry ? n->hello_expiry - current_time() : 0,
         n->ihu_expiry ? n->ihu_expiry - current_time() : 0);
 }
 
 static void
-babel_dump_iface(struct babel_iface *ifa)
+babel_dump_iface(struct dump_request *dreq, struct babel_iface *ifa)
 {
   struct babel_neighbor *n;
 
-  debug("Babel: Interface %s addr %I rxcost %d type %d hello seqno %d intervals %t %t",
+  RDUMP("Babel: Interface %s addr %I rxcost %d type %d hello seqno %d intervals %t %t",
 	ifa->ifname, ifa->addr, ifa->cf->rxcost, ifa->cf->type, ifa->hello_seqno,
 	ifa->cf->hello_interval, ifa->cf->update_interval);
-  debug(" next hop v4 %I next hop v6 %I\n", ifa->next_hop_ip4, ifa->next_hop_ip6);
+  RDUMP(" next hop v4 %I next hop v6 %I\n", ifa->next_hop_ip4, ifa->next_hop_ip6);
 
   WALK_LIST(n, ifa->neigh_list)
-  { debug(" "); babel_dump_neighbor(n); }
+  { RDUMP(" "); babel_dump_neighbor(dreq, n); }
 }
 
 static void
-babel_dump(struct proto *P)
+babel_dump(struct proto *P, struct dump_request *dreq)
 {
   struct babel_proto *p = (struct babel_proto *) P;
   struct babel_iface *ifa;
 
-  debug("Babel: router id %lR update seqno %d\n", p->router_id, p->update_seqno);
+  RDUMP("Babel: router id %lR update seqno %d\n", p->router_id, p->update_seqno);
 
   WALK_LIST(ifa, p->interfaces)
-    babel_dump_iface(ifa);
+    babel_dump_iface(dreq, ifa);
 
   FIB_WALK(&p->ip4_rtable, struct babel_entry, e)
   {
-    babel_dump_entry(e);
+    babel_dump_entry(dreq, e);
   }
   FIB_WALK_END;
   FIB_WALK(&p->ip6_rtable, struct babel_entry, e)
   {
-    babel_dump_entry(e);
+    babel_dump_entry(dreq, e);
   }
   FIB_WALK_END;
 }

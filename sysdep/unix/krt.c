@@ -532,14 +532,14 @@ krt_learn_init(struct krt_proto *p)
 }
 
 static void
-krt_dump(struct proto *P)
+krt_dump(struct proto *P, struct dump_request *dreq)
 {
   struct krt_proto *p = (struct krt_proto *) P;
 
   if (!KRT_CF->learn)
     return;
-  debug("KRT: Table of inheritable routes\n");
-  rt_dump(p->krt_table);
+  RDUMP("KRT: Table of inheritable routes\n");
+  rt_dump(dreq, p->krt_table);
 }
 
 #endif

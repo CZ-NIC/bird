@@ -1454,8 +1454,12 @@ This argument can be omitted if there exists only a single instance.
 	<tag><label id="cli-debug">debug <m/protocol/|<m/pattern/|all all|off|{ states|routes|filters|events|packets [, <m/.../] }</tag>
 	Control protocol debugging.
 
-	<tag><label id="cli-dump">dump resources|sockets|interfaces|neighbors|attributes|routes|protocols</tag>
-	Dump contents of internal data structures to the debugging output.
+	<tag><label id="cli-dump">dump resources|sockets|interfaces|neighbors|attributes|routes|protocols "<m/file/"</tag>
+	Truncates the given file and dumps contents of internal data structures
+	there. By sending SIGUSR1, you get all of these concatenated to
+	<cf/bird.dump/ in the current directory. The file is only readable for
+	the user running the daemon. The format of dump files is internal and
+	could change in the future.
 
 	<tag><label id="cli-echo">echo all|off|{ <m/list of log classes/ } [ <m/buffer-size/ ]</tag>
 	Control echoing of log messages to the command-line output.

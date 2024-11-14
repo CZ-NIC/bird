@@ -1315,7 +1315,7 @@ rip_show_neighbors(struct proto *P, const char *iff)
 }
 
 static void
-rip_dump(struct proto *P)
+rip_dump(struct proto *P, struct dump_request *dreq)
 {
   struct rip_proto *p = (struct rip_proto *) P;
   struct rip_iface *ifa;
@@ -1324,12 +1324,12 @@ rip_dump(struct proto *P)
   i = 0;
   FIB_WALK(&p->rtable, struct rip_entry, en)
   {
-    debug("RIP: entry #%d: %N via %I dev %s valid %d metric %d age %t\n",
+    RDUMP("RIP: entry #%d: %N via %I dev %s valid %d metric %d age %t\n",
 	  i++, en->n.addr, en->next_hop, en->iface ? en->iface->name : "(null)",
 	  en->valid, en->metric, current_time() - en->changed);
 
     for (struct rip_rte *e = en->routes; e; e = e->next)
-      debug("RIP:   via %I metric %d expires %t\n",
+      RDUMP("RIP:   via %I metric %d expires %t\n",
 	    e->next_hop, e->metric, e->expires - current_time());
   }
   FIB_WALK_END;
@@ -1337,7 +1337,7 @@ rip_dump(struct proto *P)
   i = 0;
   WALK_LIST(ifa, p->iface_list)
   {
-    debug("RIP: interface #%d: %s, %I, up = %d, busy = %d\n",
+    RDUMP("RIP: interface #%d: %s, %I, up = %d, busy = %d\n",
 	  i++, ifa->iface->name, ifa->sk ? ifa->sk->daddr : IPA_NONE,
 	  ifa->up, ifa->tx_active);
   }

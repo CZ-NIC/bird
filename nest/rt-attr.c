@@ -1044,40 +1044,40 @@ ea_show(struct cli *c, const eattr *e)
  * the debug output.
  */
 void
-ea_dump(ea_list *e)
+ea_dump(struct dump_request *dreq, ea_list *e)
 {
   int i;
 
   if (!e)
     {
-      debug("NONE");
+      RDUMP("NONE");
       return;
     }
   while (e)
     {
-      debug("[%c%c%c]",
+      RDUMP("[%c%c%c]",
 	    (e->flags & EALF_SORTED) ? 'S' : 's',
 	    (e->flags & EALF_BISECT) ? 'B' : 'b',
 	    (e->flags & EALF_CACHED) ? 'C' : 'c');
       for(i=0; i<e->count; i++)
 	{
 	  eattr *a = &e->attrs[i];
-	  debug(" %02x:%02x.%02x", EA_PROTO(a->id), EA_ID(a->id), a->flags);
-	  debug("=%c", "?iO?I?P???S?????" [a->type & EAF_TYPE_MASK]);
+	  RDUMP(" %02x:%02x.%02x", EA_PROTO(a->id), EA_ID(a->id), a->flags);
+	  RDUMP("=%c", "?iO?I?P???S?????" [a->type & EAF_TYPE_MASK]);
 	  if (a->originated)
-	    debug("o");
+	    RDUMP("o");
 	  if (a->type & EAF_EMBEDDED)
-	    debug(":%08x", a->u.data);
+	    RDUMP(":%08x", a->u.data);
 	  else
 	    {
 	      int j, len = a->u.ptr->length;
-	      debug("[%d]:", len);
+	      RDUMP("[%d]:", len);
 	      for(j=0; j<len; j++)
-		debug("%02x", a->u.ptr->data[j]);
+		RDUMP("%02x", a->u.ptr->data[j]);
 	    }
 	}
       if (e = e->next)
-	debug(" | ");
+	RDUMP(" | ");
     }
 }
 
@@ -1317,7 +1317,7 @@ rta_do_cow(rta *o, linpool *lp)
  * This function takes a &rta and dumps its contents to the debug output.
  */
 void
-rta_dump(rta *a)
+rta_dump(struct dump_request *dreq, rta *a)
 {
   static char *rts[] = { "", "RTS_STATIC", "RTS_INHERIT", "RTS_DEVICE",
 			 "RTS_STAT_DEV", "RTS_REDIR", "RTS_RIP",
@@ -1326,25 +1326,25 @@ rta_dump(rta *a)
 			 "RTS_RPKI", "RTS_PERF", "RTS_AGGREGATED", };
   static char *rtd[] = { "", " DEV", " HOLE", " UNREACH", " PROHIBIT" };
 
-  debug("pref=%d uc=%d %s %s%s h=%04x",
+  RDUMP("pref=%d uc=%d %s %s%s h=%04x",
 	a->pref, a->uc, rts[a->source], ip_scope_text(a->scope),
 	rtd[a->dest], a->hash_key);
   if (!a->cached)
-    debug(" !CACHED");
-  debug(" <-%I", a->from);
+    RDUMP(" !CACHED");
+  RDUMP(" <-%I", a->from);
   if (a->dest == RTD_UNICAST)
     for (struct nexthop *nh = &(a->nh); nh; nh = nh->next)
       {
-	if (ipa_nonzero(nh->gw)) debug(" ->%I", nh->gw);
-	if (nh->labels) debug(" L %d", nh->label[0]);
+	if (ipa_nonzero(nh->gw)) RDUMP(" ->%I", nh->gw);
+	if (nh->labels) RDUMP(" L %d", nh->label[0]);
 	for (int i=1; i<nh->labels; i++)
-	  debug("/%d", nh->label[i]);
-	debug(" [%s]", nh->iface ? nh->iface->name : "???");
+	  RDUMP("/%d", nh->label[i]);
+	RDUMP(" [%s]", nh->iface ? nh->iface->name : "???");
       }
   if (a->eattrs)
     {
-      debug(" EA: ");
-      ea_dump(a->eattrs);
+      RDUMP(" EA: ");
+      ea_dump(dreq, a->eattrs);
     }
 }
 
@@ -1355,20 +1355,20 @@ rta_dump(rta *a)
  * to the debug output.
  */
 void
-rta_dump_all(void)
+rta_dump_all(struct dump_request *dreq)
 {
   rta *a;
   uint h;
 
-  debug("Route attribute cache (%d entries, rehash at %d):\n", rta_cache_count, rta_cache_limit);
+  RDUMP("Route attribute cache (%d entries, rehash at %d):\n", rta_cache_count, rta_cache_limit);
   for(h=0; h<rta_cache_size; h++)
     for(a=rta_hash_table[h]; a; a=a->next)
       {
-	debug("%p ", a);
-	rta_dump(a);
-	debug("\n");
+	RDUMP("%p ", a);
+	rta_dump(dreq, a);
+	RDUMP("\n");
       }
-  debug("\n");
+  RDUMP("\n");
 }
 
 void

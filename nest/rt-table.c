@@ -1751,13 +1751,13 @@ rt_modify_stale(rtable *t, struct channel *c)
  * This functions dumps contents of a &rte to debug output.
  */
 void
-rte_dump(rte *e)
+rte_dump(struct dump_request *dreq, rte *e)
 {
   net *n = e->net;
-  debug("%-1N ", n->n.addr);
-  debug("PF=%02x ", e->pflags);
-  rta_dump(e->attrs);
-  debug("\n");
+  RDUMP("%-1N ", n->n.addr);
+  RDUMP("PF=%02x ", e->pflags);
+  rta_dump(dreq, e->attrs);
+  RDUMP("\n");
 }
 
 /**
@@ -1767,9 +1767,9 @@ rte_dump(rte *e)
  * This function dumps contents of a given routing table to debug output.
  */
 void
-rt_dump(rtable *t)
+rt_dump(struct dump_request *dreq, rtable *t)
 {
-  debug("Dump of routing table <%s>\n", t->name);
+  RDUMP("Dump of routing table <%s>\n", t->name);
 #ifdef DEBUGGING
   fib_check(&t->fib);
 #endif
@@ -1777,10 +1777,10 @@ rt_dump(rtable *t)
     {
       rte *e;
       for(e=n->routes; e; e=e->next)
-	rte_dump(e);
+	rte_dump(dreq, e);
     }
   FIB_WALK_END;
-  debug("\n");
+  RDUMP("\n");
 }
 
 /**
@@ -1789,13 +1789,13 @@ rt_dump(rtable *t)
  * This function dumps contents of all routing tables to debug output.
  */
 void
-rt_dump_all(void)
+rt_dump_all(struct dump_request *dreq)
 {
   rtable *t;
   node *n;
 
   WALK_LIST2(t, n, routing_tables, n)
-    rt_dump(t);
+    rt_dump(dreq, t);
 }
 
 static inline void
@@ -2057,10 +2057,10 @@ rt_free(resource *_r)
 }
 
 static void
-rt_res_dump(resource *_r)
+rt_res_dump(struct dump_request *dreq, resource *_r)
 {
   rtable *r = (rtable *) _r;
-  debug("name \"%s\", addr_type=%s, rt_count=%u, use_count=%d\n",
+  RDUMP("name \"%s\", addr_type=%s, rt_count=%u, use_count=%d\n",
       r->name, net_label[r->addr_type], r->rt_count, r->use_count);
 }
 

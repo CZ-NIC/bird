@@ -102,19 +102,19 @@ tm_free(resource *r)
 }
 
 static void
-tm_dump(resource *r)
+tm_dump(struct dump_request *dreq, resource *r)
 {
   timer *t = (void *) r;
 
-  debug("(code %p, data %p, ", t->hook, t->data);
+  RDUMP("(code %p, data %p, ", t->hook, t->data);
   if (t->randomize)
-    debug("rand %d, ", t->randomize);
+    RDUMP("rand %d, ", t->randomize);
   if (t->recurrent)
-    debug("recur %ld, ", t->recurrent);
+    RDUMP("recur %ld, ", t->recurrent);
   if (t->expires)
-    debug("expires in %ld ms)\n", (t->expires - current_time()) TO_MS);
+    RDUMP("expires in %ld ms)\n", (t->expires - current_time()) TO_MS);
   else
-    debug("inactive)\n");
+    RDUMP("inactive)\n");
 }
 
 

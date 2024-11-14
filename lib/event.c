@@ -36,11 +36,11 @@ ev_postpone(event *e)
 }
 
 static void
-ev_dump(resource *r)
+ev_dump(struct dump_request *dreq, resource *r)
 {
   event *e = (event *) r;
 
-  debug("(code %p, data %p, %s)\n",
+  RDUMP("(code %p, data %p, %s)\n",
 	e->hook,
 	e->data,
 	e->n.next ? "scheduled" : "inactive");

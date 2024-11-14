@@ -227,6 +227,26 @@ global_free_pages_cleanup_event(void *data UNUSED)
 #endif
 
 void
+page_dump(struct dump_request *dreq)
+{
+#ifdef HAVE_MMAP
+  RDUMP("Hot pages:\n");
+  node *n;
+  WALK_LIST(n, global_free_pages.pages)
+    RDUMP("  %p\n", n);
+
+  RDUMP("Cold pages:\n");
+  WALK_LIST(n, global_free_pages.empty)
+  {
+    struct empty_pages *ep = SKIP_BACK(struct empty_pages, n, n);
+    RDUMP("  %p (index)\n", ep);
+    for (uint i=0; i<ep->pos; i++)
+      RDUMP("    %p\n", ep->pages[i]);
+  }
+#endif
+}
+
+void
 resource_sys_init(void)
 {
 #ifdef CONFIG_DISABLE_THP

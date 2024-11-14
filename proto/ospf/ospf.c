@@ -333,32 +333,31 @@ ospf_start(struct proto *P)
 }
 
 static void
-ospf_dump(struct proto *P)
+ospf_dump(struct proto *P, struct dump_request *dreq)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
   struct ospf_iface *ifa;
   struct ospf_neighbor *n;
 
-  OSPF_TRACE(D_EVENTS, "Area number: %d", p->areano);
+  RDUMP("Area number: %d\n", p->areano);
 
   WALK_LIST(ifa, p->iface_list)
   {
-    OSPF_TRACE(D_EVENTS, "Interface: %s", ifa->ifname);
-    OSPF_TRACE(D_EVENTS, "state: %u", ifa->state);
-    OSPF_TRACE(D_EVENTS, "DR:  %R", ifa->drid);
-    OSPF_TRACE(D_EVENTS, "BDR: %R", ifa->bdrid);
+    RDUMP("Interface: %s\n", ifa->ifname);
+    RDUMP("state: %u\n", ifa->state);
+    RDUMP("DR:  %R\n", ifa->drid);
+    RDUMP("BDR: %R\n", ifa->bdrid);
     WALK_LIST(n, ifa->neigh_list)
     {
-      OSPF_TRACE(D_EVENTS, "  neighbor %R in state %u", n->rid, n->state);
+      RDUMP("  neighbor %R in state %u\n", n->rid, n->state);
     }
   }
 
   /*
-  OSPF_TRACE(D_EVENTS, "LSA graph dump start:");
+  RDUMP("LSA graph dump start:");
   ospf_top_dump(p->gr, p);
-  OSPF_TRACE(D_EVENTS, "LSA graph dump finished");
+  RDUMP("LSA graph dump finished");
   */
-  neigh_dump_all();
 }
 
 static struct proto *

@@ -92,7 +92,7 @@ void sk_reallocate(sock *);		/* Free and allocate tbuf & rbuf */
 void sk_set_rbsize(sock *s, uint val);	/* Resize RX buffer */
 void sk_set_tbsize(sock *s, uint val);	/* Resize TX buffer, keeping content */
 void sk_set_tbuf(sock *s, void *tbuf);	/* Switch TX buffer, NULL-> return to internal */
-void sk_dump_all(void);
+void sk_dump_all(struct dump_request *);
 
 int sk_is_ipv4(sock *s);		/* True if socket is IPv4 */
 int sk_is_ipv6(sock *s);		/* True if socket is IPv6 */

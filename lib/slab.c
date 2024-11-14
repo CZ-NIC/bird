@@ -41,7 +41,7 @@
 #endif
 
 static void slab_free(resource *r);
-static void slab_dump(resource *r);
+static void slab_dump(struct dump_request *dreq, resource *r);
 static resource *slab_lookup(resource *r, unsigned long addr);
 static struct resmem slab_memsize(resource *r);
 
@@ -378,7 +378,7 @@ slab_free(resource *r)
 }
 
 static void
-slab_dump(resource *r)
+slab_dump(struct dump_request *dreq, resource *r)
 {
   slab *s = (slab *) r;
   int ec=0, pc=0, fc=0;
@@ -389,7 +389,7 @@ slab_dump(resource *r)
     pc++;
   WALK_TLIST(sl_head, h, &s->full_heads)
     fc++;
-  debug("(%de+%dp+%df blocks per %d objs per %d bytes)\n", ec, pc, fc, s->objs_per_slab, s->obj_size);
+  RDUMP("(%de+%dp+%df blocks per %d objs per %d bytes)\n", ec, pc, fc, s->objs_per_slab, s->obj_size);
 }
 
 static struct resmem

@@ -68,7 +68,7 @@ struct f_line *f_linearize_concat(const struct f_inst * const inst[], uint count
 static inline struct f_line *f_linearize(const struct f_inst *root, uint results)
 { return f_linearize_concat(&root, 1, results); }
 
-void f_dump_line(const struct f_line *, uint indent);
+void f_dump_line(struct dump_request *, const struct f_line *, uint indent);
 
 
 /* Recursive iteration over filter instructions */

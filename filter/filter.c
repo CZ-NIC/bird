@@ -181,11 +181,6 @@ interpret(struct filter_state *fs, const struct f_line *line, uint argc, const s
 #define curline fstk->estk[fstk->ecnt-1]
 #define prevline fstk->estk[fstk->ecnt-2]
 
-#ifdef LOCAL_DEBUG
-  debug("Interpreting line.");
-  f_dump_line(line, 1);
-#endif
-
   while (fstk->ecnt > 0) {
     while (curline.pos < curline.line->len) {
       const struct f_line_item *what = &(curline.line->items[curline.pos++]);
@@ -474,37 +469,37 @@ filter_commit(struct config *new, struct config *old)
     }
 }
 
-void filters_dump_all(void)
+void filters_dump_all(struct dump_request *dreq)
 {
   struct symbol *sym;
   WALK_LIST(sym, config->symbols) {
     switch (sym->class) {
       case SYM_FILTER:
-	debug("Named filter %s:\n", sym->name);
-	f_dump_line(sym->filter->root, 1);
+	RDUMP("Named filter %s:\n", sym->name);
+	f_dump_line(dreq, sym->filter->root, 1);
 	break;
       case SYM_FUNCTION:
-	debug("Function %s:\n", sym->name);
-	f_dump_line(sym->function, 1);
+	RDUMP("Function %s:\n", sym->name);
+	f_dump_line(dreq, sym->function, 1);
 	break;
       case SYM_PROTO:
 	{
-	  debug("Protocol %s:\n", sym->name);
+	  RDUMP("Protocol %s:\n", sym->name);
 	  struct channel *c;
 	  WALK_LIST(c, sym->proto->proto->channels) {
-	    debug(" Channel %s (%s) IMPORT", c->name, net_label[c->net_type]);
+	    RDUMP(" Channel %s (%s) IMPORT", c->name, net_label[c->net_type]);
 	    if (c->in_filter == FILTER_ACCEPT)
-	      debug(" ALL\n");
+	      RDUMP(" ALL\n");
 	    else if (c->in_filter == FILTER_REJECT)
-	      debug(" NONE\n");
+	      RDUMP(" NONE\n");
 	    else if (c->in_filter == FILTER_UNDEF)
-	      debug(" UNDEF\n");
+	      RDUMP(" UNDEF\n");
 	    else if (c->in_filter->sym) {
 	      ASSERT(c->in_filter->sym->filter == c->in_filter);
-	      debug(" named filter %s\n", c->in_filter->sym->name);
+	      RDUMP(" named filter %s\n", c->in_filter->sym->name);
 	    } else {
-	      debug("\n");
-	      f_dump_line(c->in_filter->root, 2);
+	      RDUMP("\n");
+	      f_dump_line(dreq, c->in_filter->root, 2);
 	    }
 	  }
 	}
