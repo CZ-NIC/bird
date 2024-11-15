@@ -111,6 +111,7 @@ print_size(char *dsc, struct resmem vals)
 extern pool *rt_table_pool;
 extern pool *rta_pool;
 extern uint *pages_kept;
+extern uint pages_kept_cold, pages_kept_cold_index, pages_total;
 
 void
 cmd_show_memory(void)
@@ -123,10 +124,22 @@ cmd_show_memory(void)
   print_size("Current config:", rmemsize(config_pool));
   struct resmem total = rmemsize(&root_pool);
 #ifdef HAVE_MMAP
-  print_size("Standby memory:", (struct resmem) { .overhead = page_size * *pages_kept });
-  total.overhead += page_size * *pages_kept;
+  uint pages_standby = *pages_kept + pages_kept_cold_index;
+  print_size("Standby memory:", (struct resmem) { .overhead = page_size * pages_standby });
+  total.overhead += page_size * pages_standby;
 #endif
   print_size("Total:", total);
+  cli_msg(-1018, "");
+
+  uint pages_active = pages_total - *pages_kept - pages_kept_cold;
+  struct size_args active = get_size_args(page_size * pages_active);
+  struct size_args kept = get_size_args(page_size * *pages_kept);
+  struct size_args cold = get_size_args(page_size * pages_kept_cold);
+
+  cli_msg(-1018, "%-17s " SIZE_FORMAT, "Active pages:", SIZE_ARGS(active));
+  cli_msg(-1018, "%-17s " SIZE_FORMAT, "Kept free pages:", SIZE_ARGS(kept));
+  cli_msg(-1018, "%-17s " SIZE_FORMAT, "Cold free pages:", SIZE_ARGS(cold));
+
   cli_msg(0, "");
 }
 

@@ -74,10 +74,13 @@ static struct free_pages global_free_pages = {
 };
 
 uint *pages_kept = &global_free_pages.cnt;
+uint pages_kept_cold, pages_kept_cold_index, pages_total;
 
 static void *
 alloc_sys_page(void)
 {
+  pages_total++;
+
   void *ptr = mmap(NULL, page_size, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
   if (ptr == MAP_FAILED)
@@ -98,6 +101,7 @@ alloc_page(void)
   /* If the system page allocator is goofy, we use posix_memalign to get aligned blocks of memory. */
   if (use_fake)
   {
+    pages_total++;
     void *ptr = NULL;
     int err = posix_memalign(&ptr, page_size, page_size);
 
@@ -138,9 +142,13 @@ alloc_cold_page(void)
 
     /* Either the keeper page contains at least one cold page pointer, return that */
     if (ep->pos)
+    {
+      pages_kept_cold--;
       return ep->pages[--ep->pos];
+    }
 
     /* Or the keeper page has no more cold page pointer, return the keeper page */
+    pages_kept_cold_index--;
     rem_node(&ep->n);
     return ep;
   }
@@ -156,6 +164,7 @@ free_page(void *ptr)
   /* If the system page allocator is goofy, we just free the block and care no more. */
   if (use_fake)
   {
+    pages_total--;
     free(ptr);
     return;
   }
@@ -202,11 +211,13 @@ global_free_pages_cleanup_event(void *data UNUSED)
       ep = (struct empty_pages *) fp;
       *ep = (struct empty_pages) {};
       add_head(&fps->empty, &ep->n);
+      pages_kept_cold_index++;
     }
     else
     {
       /* We store this block as a pointer into the first free place
        * and tell the OS that the underlying memory is trash. */
+      pages_kept_cold++;
       ep->pages[ep->pos++] = fp;
       if (madvise(fp, page_size,
 #ifdef CONFIG_MADV_DONTNEED_TO_FREE
@@ -243,6 +254,7 @@ page_dump(struct dump_request *dreq)
     for (uint i=0; i<ep->pos; i++)
       RDUMP("    %p\n", ep->pages[i]);
   }
+  RDUMP("This request: %p\n", dreq);
 #endif
 }
 
