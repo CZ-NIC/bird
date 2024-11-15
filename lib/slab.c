@@ -383,13 +383,33 @@ slab_dump(struct dump_request *dreq, resource *r)
   slab *s = (slab *) r;
   int ec=0, pc=0, fc=0;
 
+  RDUMP("(%d objs per %d bytes in page)\n",
+      s->objs_per_slab, s->obj_size);
+
+  RDUMP("%*sempty:\n", dreq->indent+3, "");
   WALK_TLIST(sl_head, h, &s->empty_heads)
+  {
+    RDUMP("%*s%p\n", dreq->indent+6, "", h);
     ec++;
+  }
+
+  RDUMP("%*spartial:\n", dreq->indent+3, "");
   WALK_TLIST(sl_head, h, &s->partial_heads)
+  {
+    RDUMP("%*s%p (", dreq->indent+6, "", h);
+    for (uint i=1; i<=s->head_bitfield_len; i++)
+      RDUMP("%08x", h->used_bits[s->head_bitfield_len-i]);
+    RDUMP(")\n");
     pc++;
+  }
+
+  RDUMP("%*sfull:\n", dreq->indent+3, "");
   WALK_TLIST(sl_head, h, &s->full_heads)
+  {
+    RDUMP("%*s%p\n", dreq->indent+6, "", h);
     fc++;
-  RDUMP("(%de+%dp+%df blocks per %d objs per %d bytes)\n", ec, pc, fc, s->objs_per_slab, s->obj_size);
+  }
+  RDUMP("%*sempty=%d partial=%d total=%d\n", dreq->indent+3, "", ec, pc, fc);
 }
 
 static struct resmem
