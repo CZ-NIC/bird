@@ -300,9 +300,13 @@ trie_insert_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 
     if (!node->child[bit])
     {
       struct trie_node *new = create_new_node(trie_pool);
-      new->parent = node;
-      new->depth = new->parent->depth + 1;
-      new->status = NON_FIB;
+
+      *new = (struct trie_node) {
+        .parent = node,
+        .status = NON_FIB,
+        .depth = node->depth + 1,
+      };
+
       node->child[bit] = new;
       prefix_nodes++;
     }
@@ -334,9 +338,13 @@ trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
     if (!node->child[bit])
     {
       struct trie_node *new = create_new_node(trie_pool);
-      new->parent = node;
-      new->depth = new->parent->depth + 1;
-      new->status = NON_FIB;
+
+      *new = (struct trie_node) {
+        .parent = node,
+        .status = NON_FIB,
+        .depth = node->depth + 1,
+      };
+
       node->child[bit] = new;
       prefix_nodes++;
     }
@@ -748,7 +756,7 @@ print_prefixes_ip4_helper(struct net_addr_ip4 *addr, const struct trie_node *nod
     return;
   }
 
-  if (node->bucket)
+  if (IN_FIB == node->status)
   {
     log("%N -> %p", addr, node->bucket);
   }
@@ -780,7 +788,7 @@ print_prefixes_ip6_helper(struct net_addr_ip6 *addr, const struct trie_node *nod
     return;
   }
 
-  if (node->bucket)
+  if (IN_FIB == node->status)
   {
     log("%N -> %p", addr, node->bucket);
   }
