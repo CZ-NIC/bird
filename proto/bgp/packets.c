@@ -1241,7 +1241,8 @@ bgp_use_next_hop(struct bgp_export_state *s, eattr *a)
     return 1;
 
   /* Keep it when forwarded between single-hop BGPs on the same iface */
-  struct iface *ifa = (s->src && s->src->neigh && (s->src->p.proto_state != PS_DOWN)) ?
+  struct iface *ifa = (s->src && s->src->neigh &&
+      ((s->src->p.proto_state == PS_UP) || (s->src->p.proto_state == PS_START))) ?
     s->src->neigh->iface : NULL;
   return p->neigh && (p->neigh->iface == ifa);
 }
@@ -3503,7 +3504,7 @@ bgp_do_uncork(callback *cb)
   ASSERT_DIE(birdloop_inside(p->p.loop));
   ASSERT_DIE(p->p.active_loops--);
 
-  if (p->p.proto_state == PS_DOWN)
+  if (p->p.proto_state == PS_FLUSH)
     ev_send_loop(p->p.loop, p->p.event);
   else if (p->conn && (p->conn->state == BS_ESTABLISHED) && !p->conn->sk->rx_hook)
   {

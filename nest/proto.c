@@ -68,7 +68,7 @@ static inline void channel_refeed(struct channel *c, struct rt_feeding_request *
 }
 
 static inline int proto_is_done(struct proto *p)
-{ return (p->proto_state == PS_DOWN) && proto_is_inactive(p); }
+{ return (p->proto_state == PS_FLUSH) && proto_is_inactive(p); }
 
 static inline int channel_is_active(struct channel *c)
 { return (c->channel_state != CS_DOWN); }
@@ -1219,7 +1219,7 @@ proto_configure_channel(struct proto *p, struct channel **pc, struct channel_con
   {
     /* We could add the channel, but currently it would just stay in down state
        until protocol is restarted, so it is better to force restart anyways. */
-    if (p->proto_state != PS_DOWN)
+    if (p->proto_state != PS_DOWN_XX)
     {
       log(L_INFO "Cannot add channel %s.%s", p->name, cf->name);
       return 0;
@@ -1250,24 +1250,6 @@ proto_configure_channel(struct proto *p, struct channel **pc, struct channel_con
   return 1;
 }
 
-
-static void
-proto_cleanup(struct proto *p)
-{
-  CALL(p->proto->cleanup, p);
-
-  if (p->pool)
-  {
-    rp_free(p->pool);
-    p->pool = NULL;
-  }
-
-  p->active = 0;
-  proto_log_state_change(p);
-
-  proto_rethink_goal(p);
-}
-
 static void
 proto_loop_stopped(void *ptr)
 {
@@ -1280,9 +1262,9 @@ proto_loop_stopped(void *ptr)
   birdloop_free(p->loop);
   p->loop = &main_birdloop;
 
-  proto_cleanup(p);
+  proto_notify_state(p, PS_DOWN_XX);
+  proto_rethink_goal(p);
 }
-
 
 static void
 proto_event(void *ptr)
@@ -1307,7 +1289,10 @@ proto_event(void *ptr)
     if (p->loop != &main_birdloop)
       birdloop_stop_self(p->loop, proto_loop_stopped, p);
     else
-      proto_cleanup(p);
+    {
+      proto_notify_state(p, PS_DOWN_XX);
+      proto_rethink_goal(p);
+    }
   }
 }
 
@@ -1382,7 +1367,7 @@ proto_init(struct proto_config *c, struct proto *after)
   struct proto *p = pr->init(c);
 
   p->loop = &main_birdloop;
-  p->proto_state = PS_DOWN;
+  p->proto_state = PS_DOWN_XX;
   p->last_state_change = current_time();
   p->vrf = c->vrf;
   proto_add_after(&global_proto_list, p, after);
@@ -1565,7 +1550,7 @@ static int
 proto_reconfigure(struct proto *p, struct proto_config *oc, struct proto_config *nc, int type)
 {
   /* If the protocol is DOWN, we just restart it */
-  if (p->proto_state == PS_DOWN)
+  if (p->proto_state == PS_DOWN_XX)
     return 0;
 
   /* If there is a too big change in core attributes, ... */
@@ -1794,7 +1779,7 @@ proto_shutdown(struct proto *p)
     /* Going down */
     DBG("Kicking %s down\n", p->name);
     PD(p, "Shutting down");
-    proto_notify_state(p, (p->proto->shutdown ? p->proto->shutdown(p) : PS_DOWN));
+    proto_notify_state(p, (p->proto->shutdown ? p->proto->shutdown(p) : PS_FLUSH));
     if (p->reconfiguring)
     {
       proto_rethink_goal_pending++;
@@ -1808,7 +1793,7 @@ proto_rethink_goal(struct proto *p)
 {
   int goal_pending = (p->reconfiguring == 2);
 
-  if (p->reconfiguring && !p->active)
+  if (p->reconfiguring && (p->proto_state == PS_DOWN_XX))
   {
     struct proto_config *nc = p->cf_new;
     struct proto *after = p->n.prev;
@@ -1835,7 +1820,7 @@ proto_rethink_goal(struct proto *p)
     PROTO_LOCKED_FROM_MAIN(p)
       proto_shutdown(p);
   }
-  else if (!p->active)
+  else if (p->proto_state == PS_DOWN_XX)
     proto_start(p);
 
 done:
@@ -2049,9 +2034,9 @@ protos_dump_all(void)
   WALK_TLIST(proto, p, &global_proto_list) PROTO_LOCKED_FROM_MAIN(p)
   {
 #define DPF(x)	(p->x ? " " #x : "")
-    debug("  protocol %s (%p) state %s with %d active channels flags: %s%s%s%s\n",
+    debug("  protocol %s (%p) state %s with %d active channels flags: %s%s%s\n",
 	p->name, p, p_states[p->proto_state], p->active_channels,
-	DPF(disabled), DPF(active), DPF(do_stop), DPF(reconfiguring));
+	DPF(disabled), DPF(do_stop), DPF(reconfiguring));
 #undef DPF
 
     struct channel *c;
@@ -2070,7 +2055,9 @@ protos_dump_all(void)
     debug("\tSOURCES\n");
     rt_dump_sources(&p->sources);
 
-    if (p->proto->dump && (p->proto_state != PS_DOWN))
+    if (p->proto->dump &&
+	(p->proto_state != PS_DOWN_XX) &&
+	(p->proto_state != PS_FLUSH))
       p->proto->dump(p);
   }
 }
@@ -2357,8 +2344,6 @@ channel_reset_limit(struct channel *c, struct limit *l, int dir)
 static inline void
 proto_do_start(struct proto *p)
 {
-  p->active = 1;
-
   p->sources.debug = p->debug;
   rt_init_sources(&p->sources, p->name, proto_event_list(p));
 
@@ -2452,18 +2437,18 @@ proto_notify_state(struct proto *p, uint state)
   switch (state)
   {
   case PS_START:
-    ASSERT(ps == PS_DOWN || ps == PS_UP);
+    ASSERT(ps == PS_DOWN_XX || ps == PS_UP);
 
-    if (ps == PS_DOWN)
+    if (ps == PS_DOWN_XX)
       proto_do_start(p);
-    else
+    else 
       proto_do_pause(p);
     break;
 
   case PS_UP:
-    ASSERT(ps == PS_DOWN || ps == PS_START);
+    ASSERT(ps == PS_DOWN_XX || ps == PS_START);
 
-    if (ps == PS_DOWN)
+    if (ps == PS_DOWN_XX)
       proto_do_start(p);
 
     proto_do_up(p);
@@ -2475,11 +2460,24 @@ proto_notify_state(struct proto *p, uint state)
     proto_do_stop(p);
     break;
 
-  case PS_DOWN:
+  case PS_FLUSH:
     if (ps != PS_STOP)
       proto_do_stop(p);
 
     proto_do_down(p);
+    break;
+
+  case PS_DOWN_XX:
+    ASSERT(ps == PS_FLUSH);
+
+    CALL(p->proto->cleanup, p);
+
+    if (p->pool)
+    {
+      rp_free(p->pool);
+      p->pool = NULL;
+    }
+
     break;
 
   default:
@@ -2498,10 +2496,11 @@ proto_state_name(struct proto *p)
 {
   switch (p->proto_state)
   {
-  case PS_DOWN:		return p->active ? "flush" : "down";
+  case PS_DOWN_XX:		return "down";
   case PS_START:	return "start";
   case PS_UP:		return "up";
   case PS_STOP:		return "stop";
+  case PS_FLUSH:	return "flush";
   default:		return "???";
   }
 }
@@ -2864,7 +2863,7 @@ proto_get_named(struct symbol *sym, struct protocol *pr)
   {
     p = NULL;
     WALK_TLIST(proto, q, &global_proto_list)
-      if ((q->proto == pr) && (q->proto_state != PS_DOWN))
+      if ((q->proto == pr) && (q->proto_state != PS_DOWN_XX))
       {
 	if (p)
 	  cf_error("There are multiple %s protocols running", pr->name);
@@ -2904,7 +2903,7 @@ proto_iterate_named(struct symbol *sym, struct protocol *proto, struct proto *ol
 	p;
 	p = p->n.next)
     {
-      if ((p->proto == proto) && (p->proto_state != PS_DOWN))
+      if ((p->proto == proto) && (p->proto_state != PS_DOWN_XX))
       {
 	cli_separator(this_cli);
 	return p;

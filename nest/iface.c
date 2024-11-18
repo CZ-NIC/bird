@@ -291,7 +291,8 @@ ifa_send_notify(struct iface_subscription *s, unsigned c, struct ifa *a)
   SKIP_BACK_DECLARE(struct proto, p, iface_sub, s);
 
   if (s->ifa_notify &&
-      (p->proto_state != PS_DOWN) &&
+      (p->proto_state != PS_DOWN_XX) &&
+      (p->proto_state != PS_FLUSH) &&
       (!p->vrf || if_in_vrf(a->iface, p->vrf)))
     {
       if (p->debug & D_IFACES)
@@ -333,7 +334,8 @@ if_send_notify(struct iface_subscription *s, unsigned c, struct iface *i)
   SKIP_BACK_DECLARE(struct proto, p, iface_sub, s);
 
   if (s->if_notify &&
-      (p->proto_state != PS_DOWN) &&
+      (p->proto_state != PS_DOWN_XX) &&
+      (p->proto_state != PS_FLUSH) &&
       (!p->vrf || if_in_vrf(i, p->vrf)))
     {
       if (p->debug & D_IFACES)

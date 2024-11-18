@@ -2636,7 +2636,7 @@ babel_shutdown(struct proto *P)
     babel_remove_iface(p, ifa);
   }
 
-  return PS_DOWN;
+  return PS_FLUSH;
 }
 
 static int

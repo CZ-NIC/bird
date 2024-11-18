@@ -278,7 +278,7 @@ pipe_show_proto_info(struct proto *P)
   channel_show_limit(&p->sec->in_limit, "Export limit:",
       (p->sec->limit_active & (1 << PLD_IN)), p->sec->limit_actions[PLD_IN]);
 
-  if (P->proto_state != PS_DOWN)
+  if (P->proto_state != PS_DOWN_XX)
     pipe_show_stats(p);
 }
 

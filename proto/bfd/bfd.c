@@ -1171,7 +1171,7 @@ bfd_shutdown(struct proto *P)
 
   bfd_drop_requests(p);
 
-  return PS_DOWN;
+  return PS_FLUSH;
 }
 
 static int

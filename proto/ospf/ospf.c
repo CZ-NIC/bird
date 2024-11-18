@@ -541,7 +541,7 @@ ospf_shutdown(struct proto *P)
   }
   FIB_WALK_END;
 
-  return PS_DOWN;
+  return PS_FLUSH;
 }
 
 static void
@@ -549,7 +549,7 @@ ospf_get_status(struct proto *P, byte * buf)
 {
   struct ospf_proto *p = (struct ospf_proto *) P;
 
-  if (p->p.proto_state == PS_DOWN)
+  if ((p->p.proto_state == PS_DOWN_XX) || (p->p.proto_state == PS_FLUSH))
     buf[0] = 0;
   else
   {

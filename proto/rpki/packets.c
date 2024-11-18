@@ -909,7 +909,7 @@ rpki_rx_hook(struct birdsock *sk, uint size)
   struct rpki_cache *cache = sk->data;
   struct rpki_proto *p = cache->p;
 
-  if ((p->p.proto_state == PS_DOWN) || (p->cache != cache))
+  if ((p->p.proto_state == PS_FLUSH) || (p->cache != cache))
     return 0;
 
   byte *pkt_start = sk->rbuf;
@@ -934,7 +934,7 @@ rpki_rx_hook(struct birdsock *sk, uint size)
     rpki_rx_packet(cache, pdu);
 
     /* It is possible that bird socket was freed/closed */
-    if (p->p.proto_state == PS_DOWN || sk != cache->tr_sock->sk)
+    if (p->p.proto_state == PS_FLUSH || sk != cache->tr_sock->sk)
       return 0;
 
     pkt_start += pdu_size;

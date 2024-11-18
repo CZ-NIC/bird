@@ -163,7 +163,6 @@ struct proto {
   byte net_type;			/* Protocol network type (NET_*), 0 for undefined */
   byte disabled;			/* Manually disabled */
   byte proto_state;			/* Protocol state machine (PS_*, see below) */
-  byte active;				/* From PS_START to cleanup after PS_STOP */
   byte do_stop;				/* Stop actions are scheduled */
   byte reconfiguring;			/* We're shutting down due to reconfiguration */
   byte gr_recovery;			/* Protocol should participate in graceful restart recovery */
@@ -318,6 +317,9 @@ extern pool *proto_pool;
  *
  *		DOWN    ---->    START
  *		  ^		   |
+ *		  |		   |
+ *		FLUSH		   |
+ *		  ^		   |
  *		  |		   V
  *		STOP    <----     UP
  *
@@ -330,7 +332,10 @@ extern pool *proto_pool;
  *			connection breaks down or the core requests
  *			protocol to be terminated, it goes to STOP state.
  *		STOP	Protocol is disconnecting from the network.
- *			After it disconnects, it returns to DOWN state.
+ *			After it disconnects, it goes to FLUSH state.
+ *		FLUSH	Protocol is waiting for channels to stop
+ *			and routes and all other assets to flush.
+ *			When done, it goes to DOWN state.
  *
  *	In:	start()	Called in DOWN state to request protocol startup.
  *			Returns new state: either UP or START (in this
@@ -349,10 +354,11 @@ extern pool *proto_pool;
  *			shutdown).
  */
 
-#define PS_DOWN 0
+#define PS_DOWN_XX 0
 #define PS_START 1
 #define PS_UP 2
 #define PS_STOP 3
+#define PS_FLUSH 4
 
 void proto_notify_state(struct proto *p, unsigned state);
 

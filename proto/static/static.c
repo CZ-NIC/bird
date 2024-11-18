@@ -570,7 +570,7 @@ static_shutdown(struct proto *P)
   WALK_LIST(r, cf->routes)
     static_reset_rte(p, r);
 
-  return PS_DOWN;
+  return PS_FLUSH;
 }
 
 static void

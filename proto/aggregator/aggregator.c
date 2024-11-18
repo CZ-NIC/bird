@@ -418,7 +418,7 @@ aggregator_shutdown(struct proto *P)
   }
   HASH_WALK_END;
 
-  return PS_DOWN;
+  return PS_FLUSH;
 }
 
 static int

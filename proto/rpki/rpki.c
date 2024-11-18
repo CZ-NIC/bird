@@ -225,7 +225,7 @@ rpki_force_restart_proto(struct rpki_proto *p)
   /* Sign as freed */
   p->cache = NULL;
 
-  proto_notify_state(&p->p, PS_DOWN);
+  proto_notify_state(&p->p, PS_FLUSH);
 }
 
 /**
@@ -676,7 +676,7 @@ rpki_shutdown(struct proto *P)
   rpki_force_restart_proto(p);
 
   /* Protocol memory pool will be automatically freed */
-  return PS_DOWN;
+  return PS_FLUSH;
 }
 
 
@@ -839,7 +839,7 @@ rpki_get_status(struct proto *P, byte *buf)
 {
   struct rpki_proto *p = (struct rpki_proto *) P;
 
-  if (P->proto_state == PS_DOWN)
+  if ((P->proto_state == PS_DOWN_XX) || (P->proto_state == PS_FLUSH))
   {
     *buf = 0;
     return;
@@ -867,7 +867,7 @@ rpki_show_proto_info(struct proto *P)
   struct rpki_config *cf = (void *) p->p.cf;
   struct rpki_cache *cache = p->cache;
 
-  if (P->proto_state == PS_DOWN)
+  if ((P->proto_state == PS_DOWN_XX) || (P->proto_state == PS_FLUSH))
     return;
 
   if (cache)

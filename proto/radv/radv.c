@@ -643,7 +643,7 @@ radv_shutdown(struct proto *P)
   WALK_LIST(ifa, p->iface_list)
     radv_iface_shutdown(ifa);
 
-  return PS_DOWN;
+  return PS_FLUSH;
 }
 
 static int

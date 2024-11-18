@@ -160,7 +160,7 @@ kif_shutdown(struct proto *P)
   kif_sys_shutdown(p);
   kif_proto = NULL;
 
-  return PS_DOWN;
+  return PS_FLUSH;
 }
 
 static void
@@ -876,7 +876,7 @@ krt_shutdown(struct proto *P)
   krt_scan_timer_stop(p);
 
   if (p->p.proto_state == PS_START)
-    return PS_DOWN;
+    return PS_FLUSH;
 
   /* FIXME we should flush routes even when persist during reconfiguration */
   if (p->initialized && !KRT_CF->persist && (P->down_code != PDC_CMD_GR_DOWN))
@@ -903,12 +903,12 @@ krt_shutdown(struct proto *P)
 
     krt_do_scan(p);
     krt_cleanup(p);
-    proto_notify_state(&p->p, PS_DOWN);
+    proto_notify_state(&p->p, PS_FLUSH);
     rt_feeder_unsubscribe(&req);
   }
   else
     krt_cleanup(p);
-  return PS_DOWN;
+  return PS_FLUSH;
 }
 
 static void

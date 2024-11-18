@@ -395,7 +395,7 @@ neigh_unlink_locked(neighbor *n)
   struct proto *p = n->proto;
   proto_neigh_rem_node(&p->neighbors, n);
 
-  if ((p->proto_state == PS_DOWN) && EMPTY_TLIST(proto_neigh, &p->neighbors))
+  if ((p->proto_state == PS_FLUSH) && EMPTY_TLIST(proto_neigh, &p->neighbors))
     proto_send_event(p, p->event);
 
   n->proto = NULL;

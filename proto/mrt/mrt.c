@@ -345,7 +345,7 @@ mrt_peer_table_dump(struct mrt_table_dump_state *s)
 
       struct protocol *type = (struct protocol *)ea_get_ptr(eal, &ea_protocol_type, 0);
       int state = ea_get_int(eal, &ea_state, 0);
-      if ((type == &proto_bgp) && (state != PS_DOWN))
+      if ((type == &proto_bgp) && (state != PS_DOWN_XX))
       {
         int rem_id = ea_get_int(eal, &ea_bgp_rem_id, 0);
         int rem_as = ea_get_int(eal, &ea_bgp_rem_as, 0);
@@ -729,7 +729,7 @@ mrt_proto_dump_done(struct mrt_table_dump_state *s)
   if (p->p.proto_state == PS_STOP)
   {
     mrt_free_table_list(p->table_list, p->table_list_len);
-    proto_notify_state(&p->p, PS_DOWN);
+    proto_notify_state(&p->p, PS_FLUSH);
   }
 }
 
@@ -966,7 +966,7 @@ mrt_shutdown(struct proto *P)
     return PS_STOP;
 
   mrt_free_table_list(p->table_list, p->table_list_len);
-  return PS_DOWN;
+  return PS_FLUSH;
 }
 
 static int

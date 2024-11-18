@@ -1281,7 +1281,7 @@ bmp_shutdown(struct proto *P)
   p->sock_err = 0;
   rem_node(&p->bmp_node);
 
-  return PS_DOWN;
+  return PS_FLUSH;
 }
 
 static int
@@ -1314,8 +1314,10 @@ bmp_get_status(struct proto *P, byte *buf)
 {
   struct bmp_proto *p = (void *) P;
 
-  if (P->proto_state == PS_DOWN)
+  if (P->proto_state == PS_DOWN_XX)
     bsprintf(buf, "Down");
+  else if (P->proto_state == PS_FLUSH)
+    bsprintf(buf, "Flush");
   else
   {
     const char *state = !p->started ? (!p->sk ? "Idle" : "Connect") : "Established";
@@ -1332,7 +1334,7 @@ bmp_show_proto_info(struct proto *P)
 {
   struct bmp_proto *p = (void *) P;
 
-  if (P->proto_state != PS_DOWN)
+  if (P->proto_state != PS_DOWN_XX)
   {
     cli_msg(-1006, "  %-19s %I", "Station address:", p->station_ip);
     cli_msg(-1006, "  %-19s %u", "Station port:", p->station_port);

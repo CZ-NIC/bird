@@ -595,7 +595,7 @@ bgp_down(struct bgp_proto *p)
   }
 
   BGP_TRACE(D_EVENTS, "Down");
-  proto_notify_state(&p->p, PS_DOWN);
+  proto_notify_state(&p->p, PS_FLUSH);
 }
 
 static void
@@ -1547,7 +1547,7 @@ bgp_neigh_notify(neighbor *n)
   if (n != p->neigh)
     return;
 
-  if ((ps == PS_DOWN) || (ps == PS_STOP))
+  if ((ps == PS_FLUSH) || (ps == PS_STOP))
     return;
 
   int prepare = (ps == PS_START) && (bgp_start_state(p) == BSS_PREPARE);
@@ -1748,7 +1748,7 @@ bgp_start_locked(void *_p)
     /* As we do not start yet, we can just disable protocol */
     p->p.disabled = 1;
     bgp_store_error(p, NULL, BE_MISC, BEM_INVALID_NEXT_HOP);
-    proto_notify_state(&p->p, PS_DOWN);
+    proto_notify_state(&p->p, PS_FLUSH);
     return;
   }
 
@@ -2647,8 +2647,11 @@ bgp_last_errmsg(struct bgp_proto *p)
 static const char *
 bgp_state_dsc(struct bgp_proto *p)
 {
-  if (p->p.proto_state == PS_DOWN)
+  if (p->p.proto_state == PS_DOWN_XX)
     return "Down";
+
+  if (p->p.proto_state == PS_FLUSH)
+    return "Flush";
 
   int state = MAX(p->incoming_conn.state, p->outgoing_conn.state);
   if ((state == BS_IDLE) && (bgp_start_state(p) >= BSS_CONNECT) && p->passive)
@@ -2665,7 +2668,7 @@ bgp_get_status(struct proto *P, byte *buf)
   const char *err1 = bgp_err_classes[p->last_error_class];
   const char *err2 = bgp_last_errmsg(p);
 
-  if (P->proto_state == PS_DOWN)
+  if (P->proto_state == PS_DOWN_XX)
     bsprintf(buf, "%s%s", err1, err2);
   else
     bsprintf(buf, "%-14s%s%s", bgp_state_dsc(p), err1, err2);
