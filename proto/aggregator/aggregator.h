@@ -121,7 +121,7 @@ struct trie_node {
   struct trie_node *parent;
   struct trie_node *child[2];
   struct trie_node *ancestor;
-  struct aggregator_bucket *bucket;
+  struct aggregator_bucket *original_bucket;
   struct aggregator_bucket *selected_bucket;
   u32 potential_buckets[POTENTIAL_BUCKETS_BITMAP_SIZE];
   enum fib_status status;

@@ -315,7 +315,7 @@ trie_insert_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 
   }
 
   /* Assign bucket to the last node */
-  node->bucket = bucket;
+  node->original_bucket = bucket;
   node->status = IN_FIB;
 
   return node;
@@ -353,7 +353,7 @@ trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
   }
 
   /* Assign bucket to the last node */
-  node->bucket = bucket;
+  node->original_bucket = bucket;
   node->status = IN_FIB;
 
   return node;
@@ -378,7 +378,7 @@ before_check(const struct trie_node *node)
 {
   assert(node != NULL);
 
-  if (node->bucket)
+  if (node->original_bucket)
     assert(IN_FIB == node->status);
   else
     assert(NON_FIB == node->status);
@@ -420,20 +420,20 @@ first_pass(struct trie_node *node)
 
   if (is_leaf(node))
   {
-    assert(node->bucket != NULL);
+    assert(node->original_bucket != NULL);
     assert(node->potential_buckets_count == 0);
     assert(IN_FIB == node->status);
-    node_insert_potential_bucket(node, node->bucket);
+    node_insert_potential_bucket(node, node->original_bucket);
     return;
   }
 
   /* Root node */
   if (!node->parent)
-    assert(node->bucket != NULL);
+    assert(node->original_bucket != NULL);
 
   /* Initialize bucket from the nearest ancestor that has a bucket */
-  if (!node->bucket)
-    node->bucket = node->parent->bucket;
+  if (!node->original_bucket)
+    node->original_bucket = node->parent->original_bucket;
 
   for (int i = 0; i < 2; i++)
   {
@@ -462,7 +462,7 @@ second_pass(struct trie_node *node)
     assert(node->potential_buckets_count == 1);
 
     /* The only potential bucket so far is the assigned bucket of the current node */
-    assert(BIT32R_TEST(node->potential_buckets, node->bucket->id));
+    assert(BIT32R_TEST(node->potential_buckets, node->original_bucket->id));
     return;
   }
 
@@ -479,7 +479,7 @@ second_pass(struct trie_node *node)
   if (right)
     second_pass(right);
 
-  assert(node->bucket != NULL);
+  assert(node->original_bucket != NULL);
 
   /* Imaginary node if this was a complete binary tree */
   struct trie_node imaginary_node = {
@@ -490,7 +490,7 @@ second_pass(struct trie_node *node)
    * Imaginary node is used only for computing sets of potential buckets
    * of its parent node.
    */
-  node_insert_potential_bucket(&imaginary_node, node->bucket);
+  node_insert_potential_bucket(&imaginary_node, node->original_bucket);
 
   /* Nodes with exactly one child */
   if ((left && !right) || (!left && right))
@@ -548,7 +548,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
   assert(node->ancestor == NULL);
   assert(node->selected_bucket == NULL);
 
-  assert(node->bucket != NULL);
+  assert(node->original_bucket != NULL);
   assert(node->parent->ancestor != NULL);
   assert(node->parent->ancestor->selected_bucket != NULL);
 
@@ -584,7 +584,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
   node->ancestor = node->selected_bucket ? node : node->parent->ancestor;
 
   assert(node->ancestor != NULL);
-  assert(node->ancestor->bucket != NULL);
+  assert(node->ancestor->original_bucket != NULL);
   assert(node->ancestor->selected_bucket != NULL);
 
   const struct trie_node * const left  = node->child[0];
@@ -599,11 +599,11 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
      */
     struct trie_node imaginary_node = {
       .parent = node,
-      .bucket = node->bucket,
+      .original_bucket = node->original_bucket,
       .depth = node->depth + 1,
     };
 
-    node_insert_potential_bucket(&imaginary_node, node->bucket);
+    node_insert_potential_bucket(&imaginary_node, node->original_bucket);
 
     /*
      * If the current node (parent of the imaginary node) has a bucket,
@@ -790,13 +790,13 @@ print_prefixes_ip4_helper(struct net_addr_ip4 *addr, const struct trie_node *nod
 
   if (is_leaf(node))
   {
-    log("%N -> %p", addr, node->bucket);
+    log("%N -> %p", addr, node->original_bucket);
     return;
   }
 
   if (IN_FIB == node->status)
   {
-    log("%N -> %p", addr, node->bucket);
+    log("%N -> %p", addr, node->original_bucket);
   }
 
   if (node->child[0])
@@ -822,13 +822,13 @@ print_prefixes_ip6_helper(struct net_addr_ip6 *addr, const struct trie_node *nod
 
   if (is_leaf(node))
   {
-    log("%N -> %p", addr, node->bucket);
+    log("%N -> %p", addr, node->original_bucket);
     return;
   }
 
   if (IN_FIB == node->status)
   {
-    log("%N -> %p", addr, node->bucket);
+    log("%N -> %p", addr, node->original_bucket);
   }
 
   if (node->child[0])
@@ -903,7 +903,7 @@ collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *add
 
   if (is_leaf(node))
   {
-    assert(node->bucket != NULL);
+    assert(node->original_bucket != NULL);
     assert(node->selected_bucket != NULL);
     assert(IN_FIB == node->status);
 
@@ -916,7 +916,7 @@ collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *add
   /* Internal node with assigned bucket */
   if (IN_FIB == node->status)
   {
-    assert(node->bucket != NULL);
+    assert(node->original_bucket != NULL);
     assert(node->selected_bucket != NULL);
 
     create_route_ip4(p, node->selected_bucket, addr);
@@ -948,11 +948,11 @@ collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *add
 
   if (is_leaf(node))
   {
-    assert(node->bucket != NULL);
+    assert(node->original_bucket != NULL);
     assert(node->selected_bucket != NULL);
     assert(IN_FIB == node->status);
 
-    create_route_ip6(p, node->bucket, addr);
+    create_route_ip6(p, node->original_bucket, addr);
     *count += 1;
     p->leaves++;
     return;
@@ -961,7 +961,7 @@ collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *add
   /* Internal node with assigned bucket */
   if (IN_FIB == node->status)
   {
-    assert(node->bucket != NULL);
+    assert(node->original_bucket != NULL);
     assert(node->selected_bucket != NULL);
 
     create_route_ip6(p, node->selected_bucket, addr);
@@ -1856,7 +1856,7 @@ trie_init(struct aggregator_proto *p)
   HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 
   /* Assign default route to the root */
-  p->root->bucket = new_bucket;
+  p->root->original_bucket = new_bucket;
   p->root->status = IN_FIB;
 }
 
