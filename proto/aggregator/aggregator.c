@@ -390,8 +390,8 @@ before_check(const struct trie_node *node)
     before_check(node->child[1]);
 }
 
-static void
-choose_lowest_id_bucket(struct aggregator_proto *p, struct trie_node *node)
+static struct aggregator_bucket *
+choose_lowest_id_bucket(const struct aggregator_proto *p, const struct trie_node *node)
 {
   assert(p != NULL);
   assert(node != NULL);
@@ -400,10 +400,10 @@ choose_lowest_id_bucket(struct aggregator_proto *p, struct trie_node *node)
   {
     if (BIT32R_TEST(node->potential_buckets, i))
     {
-      node->selected_bucket = get_bucket_ptr(p, i);
-      assert(node->selected_bucket != NULL);
-      assert(node->selected_bucket->id == i);
-      return;
+      struct aggregator_bucket *bucket = get_bucket_ptr(p, i);
+      assert(bucket != NULL);
+      assert(bucket->id == i);
+      return bucket;
     }
   }
 
@@ -570,8 +570,9 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
     assert(node->potential_buckets_count > 0);
 
     /* Assign bucket with the lowest ID to the node */
-    choose_lowest_id_bucket(p, node);
+    node->selected_bucket = choose_lowest_id_bucket(p, node);
     node->status = IN_FIB;
+    assert(node->selected_bucket != NULL);
   }
 
   assert((node->selected_bucket != NULL && node->status == IN_FIB) || (node->selected_bucket == NULL && node->status == NON_FIB));
@@ -660,8 +661,9 @@ third_pass(struct aggregator_proto *p, struct trie_node *root)
   assert(root->potential_buckets_count > 0);
 
   /* Assign bucket with the lowest ID to root */
-  choose_lowest_id_bucket(p, root);
+  root->selected_bucket = choose_lowest_id_bucket(p, root);
   root->status = IN_FIB;
+  assert(root->selected_bucket != NULL);
 
   /* The closest ancestor of the root node with a non-null bucket is the root itself */
   root->ancestor = root;
