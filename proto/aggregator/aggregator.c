@@ -674,6 +674,42 @@ third_pass(struct aggregator_proto *p, struct trie_node *root)
 }
 
 static void
+check_ancestors_after_aggregation(const struct trie_node *node)
+{
+  assert(node != NULL);
+  assert(node->ancestor != NULL);
+
+  if (is_leaf(node))
+  {
+    assert(node->selected_bucket != NULL && node->status == IN_FIB);
+    assert(node->ancestor == node);
+    return;
+  }
+
+  if (IN_FIB == node->status)
+  {
+    assert(node->selected_bucket != NULL);
+    assert(node->ancestor != NULL);
+    assert(node->ancestor == node);
+  }
+  else if (NON_FIB == node->status)
+  {
+    assert(node->selected_bucket == NULL);
+    assert(node->ancestor != NULL);
+    assert(node->ancestor != node);
+    assert(node->ancestor == node->parent->ancestor);
+  }
+  else
+    bug("Unknown node status");
+
+  if (node->child[0])
+    check_ancestors_after_aggregation(node->child[0]);
+
+  if (node->child[1])
+    check_ancestors_after_aggregation(node->child[1]);
+}
+
+static void
 get_trie_prefix_count_helper(const struct trie_node *node, int *count)
 {
   if (is_leaf(node))
@@ -1005,42 +1041,6 @@ construct_trie(struct aggregator_proto *p)
   HASH_WALK_END;
 }
 
-static void
-after_third_check(const struct trie_node *node)
-{
-  assert(node != NULL);
-  assert(node->ancestor != NULL);
-
-  if (is_leaf(node))
-  {
-    assert(node->selected_bucket != NULL && node->status == IN_FIB);
-    assert(node->ancestor == node);
-    return;
-  }
-
-  if (IN_FIB == node->status)
-  {
-    assert(node->selected_bucket != NULL);
-    assert(node->ancestor == node);
-  }
-  else if (NON_FIB == node->status)
-  {
-    assert(node->selected_bucket == NULL);
-    assert(node->ancestor != node);
-  }
-  else
-    bug("Unknown node status");
-
-  if (node->selected_bucket)
-    assert(node->status == IN_FIB);
-
-  if (node->child[0])
-    after_third_check(node->child[0]);
-
-  if (node->child[1])
-    after_third_check(node->child[1]);
-}
-
 /*
  * Run Optimal Routing Table Constructor (ORTC) algorithm
  */
@@ -1087,14 +1087,13 @@ calculate_trie(struct aggregator_proto *p)
   times_update(&main_timeloop);
   log("==== THIRD PASS DONE ====");
 
-  after_third_check(p->root);
-
   if (p->logging)
   {
     log("==== THIRD PASS ====");
     print_prefixes(p->root, p->addr_type);
   }
 
+  check_ancestors_after_aggregation(p->root);
 }
 
 static void
