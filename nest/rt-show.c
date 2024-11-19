@@ -361,14 +361,22 @@ rt_show_get_default_tables(struct rt_show_data *d)
 
   if (d->export_protocol)
   {
+    int seen_only_export_down = 1;
+    int tab_found = 0;
     WALK_LIST(c, d->export_protocol->channels)
     {
+      tab_found = 1;
       if (rt_export_get_state(&c->out_req) == TES_DOWN)
-	continue;
+        continue;
 
+      seen_only_export_down = 0;
       tab = rt_show_add_table(d, c->table);
       tab->export_channel = c;
     }
+
+    if (tab_found && seen_only_export_down)
+      cf_error("Requested 'show route export' to protocols which aren't accepting exports at all.");
+
     return;
   }
 
@@ -459,6 +467,11 @@ rt_show(struct rt_show_data *d)
     cf_error("No suitable tables found");
 
   d->tab = HEAD(d->tables);
+
+  /* OBSREF_SET should not be called sooner than the last cf_error() may occur.
+     If cf_error() called after OBSREF_SET, the crreated obstacle may not be removed at all.
+     (cf_error() contains long jump.) */
+  OBSREF_SET(d->running_on_config, this_cli->main_config);
 
   this_cli->cleanup = rt_show_cleanup;
   this_cli->rover = d;
