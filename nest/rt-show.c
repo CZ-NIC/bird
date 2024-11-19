@@ -361,13 +361,24 @@ rt_show_get_default_tables(struct rt_show_data *d)
 
   if (d->export_protocol)
   {
+    int only_static = 1; // if all seen tabs were from static protocol(s), used to error message if no export tabs found
+    int tab_found = 0;
     WALK_LIST(c, d->export_protocol->channels)
     {
+      tab_found = 1;
       if (rt_export_get_state(&c->out_req) == TES_DOWN)
-	continue;
-
+      {
+        if (c->proto->proto != &proto_static)
+          only_static = 0;
+        continue;
+      }
+      only_static = 0;
       tab = rt_show_add_table(d, c->table);
       tab->export_channel = c;
+    }
+    if (only_static && tab_found){
+      cf_error("'show route export' command makes no sence with static protocols.");
+      return;
     }
     return;
   }
@@ -410,8 +421,8 @@ rt_show_prepare_tables(struct rt_show_data *d)
 
       if (!tab->export_channel)
       {
-	if (d->tables_defined_by & RSD_TDB_NMN)
-	  cf_error("No export channel for table %s", tab->name);
+        if (d->tables_defined_by & RSD_TDB_NMN)
+          cf_error("No export channel for table %s", tab->name);
 
 	rem_node(&(tab->n));
 	continue;
@@ -422,7 +433,7 @@ rt_show_prepare_tables(struct rt_show_data *d)
     if (d->addr && (ex->net_type != d->addr->type))
     {
       if (d->tables_defined_by & RSD_TDB_NMN)
-	cf_error("Incompatible type of prefix/ip for table %s", tab->name);
+        cf_error("Incompatible type of prefix/ip for table %s", tab->name);
 
       rem_node(&(tab->n));
       continue;
@@ -459,6 +470,11 @@ rt_show(struct rt_show_data *d)
     cf_error("No suitable tables found");
 
   d->tab = HEAD(d->tables);
+
+  /* OBSREF_SET should not be called sooner than the last cf_error() may occur.
+     If cf_error() called after OBSREF_SET, the crreated obstacle may not be removed at all.
+     (cf_error() contains long jump.) */
+  OBSREF_SET(d->running_on_config, this_cli->main_config);
 
   this_cli->cleanup = rt_show_cleanup;
   this_cli->rover = d;

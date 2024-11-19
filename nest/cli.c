@@ -267,6 +267,8 @@ cli_event(void *data)
 
   if (c->tx_pos)
     cli_write_trigger(c);
+  else
+    ev_schedule(c->event);
 }
 
 cli *
