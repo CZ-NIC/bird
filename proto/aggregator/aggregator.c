@@ -563,7 +563,6 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
   {
     /* Selected bucket is NULL as it has never been assigned */
     node->status = NON_FIB;
-    remove_potential_buckets(node);
   }
   else
   {
