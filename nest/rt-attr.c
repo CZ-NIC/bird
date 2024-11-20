@@ -865,6 +865,120 @@ ea_walk(struct ea_walk_state *s, uint id, uint max)
   return NULL;
 }
 
+static _Bool eattr_same_value(const eattr *a, const eattr *b);
+
+ea_list *
+ea_bucket_sort(ea_list *e, u32 upto, eattr **buckets, byte *originated)
+{
+  // buckets is expected to be ea_class_max long
+  memset(buckets, 0x00, ea_class_max * sizeof(eattr *));
+
+  while (e)
+  {
+    for (int i = 0; i < e->count; i++)
+    {
+      if (buckets[e->attrs[i].id] == NULL)
+        buckets[e->attrs[i].id] = &e->attrs[i];
+      originated[e->attrs[i].id] = e->attrs[i].originated;
+    }
+
+    e = e->next;
+    if (e && BIT32_TEST(&upto, e->stored))
+	  break;
+  }
+  return e;
+}
+
+ea_list *
+ea_merge_bucket(ea_list *e, u32 upto)
+{
+  eattr *merge_buc[ea_class_max];
+  byte originated[ea_class_max];
+  memset(originated, 0x00, ea_class_max);
+
+  ea_list *base_e = ea_bucket_sort(e, upto, merge_buc, originated);
+  uint cnt = 0;
+  uint alloc_siz = 0;
+
+  if (base_e)
+  {
+    // We need to compare the result with the rest of layers to deduplicate
+    eattr *base_buc[ea_class_max];
+    ASSERT(ea_bucket_sort(base_e, 0, base_buc, originated) == NULL);
+
+    for (uint i = 0; i < ea_class_max; i++)
+    {
+      if (merge_buc[i])
+      {
+        if ((!base_buc[i] && merge_buc[i]->undef) || (base_buc[i] && eattr_same_value(merge_buc[i], base_buc[i])))
+          merge_buc[i] = NULL;
+        else
+        {
+          cnt++;
+          if (!merge_buc[i]->undef && !(merge_buc[i]->type & EAF_EMBEDDED))
+            alloc_siz += ADATA_SIZE(merge_buc[i]->u.ptr->length);
+        }
+      }
+    }
+  }
+  else
+  {
+    // We went trough all of the layers, so we do not need to keep withdraws
+    for (uint i = 0; i < ea_class_max; i++)
+    {
+      if (merge_buc[i])
+        if (!merge_buc[i]->undef)
+        {
+          cnt++;
+          if (!merge_buc[i]->undef && !(merge_buc[i]->type & EAF_EMBEDDED))
+            alloc_siz += ADATA_SIZE(merge_buc[i]->u.ptr->length);
+        }
+        else
+          merge_buc[i] = NULL;
+    }
+  }
+  alloc_siz += cnt * sizeof(eattr) + sizeof(ea_list);
+  ea_list *merged = tmp_allocz(alloc_siz);
+
+  uint num_copied = 0;
+  uint adpos = sizeof(ea_list) + sizeof(eattr) * cnt;
+  for (uint i = 0; i < ea_class_max; i++)
+  {
+    if (merge_buc[i])
+    {
+      merged->attrs[num_copied] = *merge_buc[i];
+      merged->attrs[num_copied].fresh = 0;
+      merged->attrs[num_copied].originated = originated[i];
+
+      if (!merge_buc[i]->undef && !(merge_buc[i]->type & EAF_EMBEDDED))
+      {
+        unsigned size = ADATA_SIZE(merge_buc[i]->u.ptr->length);
+        ASSERT_DIE(adpos + size <= alloc_siz);
+
+        struct adata *d = ((void *) merged) + adpos;
+        memcpy(d, merge_buc[i]->u.ptr, size);
+        merged->attrs[num_copied].u.ptr = d;
+
+        adpos += size;
+      }
+      num_copied++;
+    }
+  }
+  ASSERT_DIE(adpos == alloc_siz);
+  ASSERT_DIE(num_copied == cnt);
+
+  merged->count = cnt;
+  merged->flags = EALF_SORTED;
+
+  if (merged->count > 5)
+    merged->flags |= EALF_BISECT;
+  merged->next = base_e;
+
+  return merged;
+}
+
+
+
 static inline void
 ea_do_sort(ea_list *e)
 {
@@ -908,8 +1022,6 @@ ea_do_sort(ea_list *e)
     }
   while (ss);
 }
-
-static _Bool eattr_same_value(const eattr *a, const eattr *b);
 
 /**
  * In place discard duplicates and undefs in sorted ea_list. We use stable sort
@@ -992,7 +1104,7 @@ ea_do_prune(ea_list *e)
       *d = *s0;
 
       /* Preserve info whether it originated locally */
-      d->originated = s[-1].originated;
+      d->originated = (prev? *prev:s[-1]).originated;
 
       /* Not fresh any more, we prefer surstroemming */
       d->fresh = 0;
@@ -1087,6 +1199,7 @@ ea_merge(ea_list *e, ea_list *t, u32 upto)
   t->next = e;
 }
 
+
 ea_list *
 ea_normalize(ea_list *e, u32 upto)
 {
@@ -1095,15 +1208,19 @@ ea_normalize(ea_list *e, u32 upto)
   ea_dump(e);
   debug(" ----> ");
 #endif
+#if 0
   ea_list *t = tmp_allocz(ea_scan(e, upto));
   ea_merge(e, t, upto);
   ea_sort(t);
+#endif
+  ea_list *nt = ea_merge_bucket(e, upto);
+
 #if 0
   ea_dump(t);
   debug("\n");
 #endif
 
-  return t;
+  return nt;
 }
 
 static _Bool
