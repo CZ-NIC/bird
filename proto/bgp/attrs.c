@@ -1303,11 +1303,6 @@ struct ea_class ea_bgp_close_bmp = {
   .type = T_OPAQUE,
 };
 
-struct ea_class ea_bgp_close_bmp_set = {
-  .name = "bgp_close_bmp_set",
-  .type = T_INT,
-};
-
 struct ea_class ea_bgp_as4_session = {
   .name = "bgp_as4_session",
   .type = T_INT,
@@ -1346,7 +1341,7 @@ bgp_register_attrs(void)
   EA_REGISTER_ALL(
       &ea_bgp_rem_id, &ea_bgp_rem_as, &ea_bgp_loc_as, &ea_bgp_rem_ip, &ea_bgp_peer_type, &ea_bgp_afi,
       &ea_bgp_in_conn_local_open_msg, &ea_bgp_out_conn_local_open_msg, &ea_bgp_in_conn_remote_open_msg,
-      &ea_bgp_out_conn_remote_open_msg, &ea_bgp_close_bmp, &ea_bgp_close_bmp_set, &ea_bgp_as4_session,
+      &ea_bgp_out_conn_remote_open_msg, &ea_bgp_close_bmp, &ea_bgp_as4_session,
       &ea_bgp_state_startup, &ea_bgp_in_conn_state, &ea_bgp_out_conn_state,
       &ea_bgp_in_conn_sk, &ea_bgp_out_conn_sk, &ea_bgp_as4_in_conn, &ea_bgp_as4_out_conn
       );

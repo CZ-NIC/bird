@@ -837,30 +837,20 @@ bgp_conn_leave_established_state(struct bgp_conn *conn, struct bgp_proto *p)
   if (p->p.proto_state == PS_UP)
     bgp_stop(p, 0, NULL, 0);
 
-#ifdef CONFIG_BMP
-  struct {
-    struct closing_bgp closing_struct;
-    byte data[conn->notify_size];
-  } to_ea;
-
-  to_ea.closing_struct = (struct closing_bgp) {
-    .err_class = p->last_error_class,
-    .err_code = conn->notify_code,
-    .err_subcode = conn->notify_subcode,
-    .length = conn->notify_size,
+  uint adsz;
+  struct bgp_session_close_ad *bscad = alloca(adsz = sizeof *bscad + conn->notify_size);
+  *bscad = (struct bgp_session_close_ad) {
+    .ad.length = adsz - sizeof(adata),
+    .last_error_class = p->last_error_class,
+    .notify_code = conn->notify_code,
+    .notify_subcode = conn->notify_subcode,
   };
-  memcpy(to_ea.data, conn->notify_data, conn->notify_size);
+  memcpy(bscad->data, conn->notify_data, conn->notify_size);
 
-  ea_set_attr(&p->p.ea_state, EA_LITERAL_STORE_ADATA(&ea_bgp_close_bmp, 0, &to_ea.closing_struct, sizeof(to_ea)));
-  ea_set_attr(&p->p.ea_state, EA_LITERAL_EMBEDDED(&ea_bgp_close_bmp_set, 0, 1));
+  ea_set_attr(&p->p.ea_state, EA_LITERAL_DIRECT_ADATA(&ea_bgp_close_bmp, 0, &bscad->ad));
   p->p.ea_state = ea_lookup(p->p.ea_state, 0, EALS_CUSTOM);
 
   proto_announce_state_later(&p->p, p->p.ea_state);
-
-  //bmp_peer_down(p, p->last_error_class,
-	//	conn->notify_code, conn->notify_subcode,
-	//	conn->notify_data, conn->notify_size);
-#endif
 }
 
 void
@@ -1274,21 +1264,24 @@ bgp_setup_sk(struct bgp_conn *conn, sock *s)
   s->fast_rx = 1;
   conn->sk = s;
 
-  struct bgp_conn_sk_ea sk_ea = {
+  struct bgp_conn_sk_ad sk_ad = {
+    .ad = { .length = sizeof sk_ad - sizeof sk_ad.ad },
     .saddr = s->saddr,
     .daddr = s->daddr,
     .sport = s->sport,
-    .dport = s->dport
+    .dport = s->dport,
   };
 
   ea_list *attr = conn->bgp->p.ea_state;
+
   if (conn == &conn->bgp->incoming_conn)
-    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_sk, 0, (byte*)(&sk_ea), sizeof(sk_ea)));
+    ea_set_attr(&attr, EA_LITERAL_DIRECT_ADATA(&ea_bgp_in_conn_sk, 0, &sk_ad.ad));
   else
   {
     ASSERT_DIE(conn == &conn->bgp->outgoing_conn);
-    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_sk, 0, (byte*)(&sk_ea), sizeof(sk_ea)));
+    ea_set_attr(&attr, EA_LITERAL_DIRECT_ADATA(&ea_bgp_out_conn_sk, 0, &sk_ad.ad));
   }
+
   conn->bgp->p.ea_state = ea_lookup(conn->bgp->p.ea_state, 0, EALS_CUSTOM);
   proto_announce_state_later(&conn->bgp->p, attr);
 }
@@ -1994,9 +1987,12 @@ bgp_init(struct proto_config *CF)
   /* Add MPLS channel */
   proto_configure_mpls_channel(P, CF, RTS_BGP);
 
-  PST_LOCKED(ts)
-    bgp_state_to_eattr(P, ts->states[P->id]);
+  ea_set_attr(&p->p.ea_state, EA_LITERAL_STORE_ADATA(&ea_bgp_rem_ip, 0, &cf->remote_ip, sizeof(ip_addr)));
+  ea_set_attr(&p->p.ea_state, EA_LITERAL_EMBEDDED(&ea_bgp_peer_type, 0, cf->peer_type));
+  ea_set_attr(&p->p.ea_state, EA_LITERAL_EMBEDDED(&ea_bgp_loc_as, 0, cf->local_as));
+  ea_set_attr(&p->p.ea_state, EA_LITERAL_EMBEDDED(&ea_bgp_rem_as, 0, cf->remote_as));
 
+  proto_announce_state_later(&p->p, p->p.ea_state);
   return P;
 }
 
@@ -2463,11 +2459,6 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   /* We should update our copy of configuration ptr as old configuration will be freed */
   p->cf = new;
 
-  ea_list *eal = proto_get_state(p->p.id);
-  ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_peer_type, 0, p->cf->peer_type));
-  p->p.ea_state = ea_lookup(p->p.ea_state, 0, EALS_CUSTOM);
-  proto_announce_state_later(&p->p, eal);
-
   /* Check whether existing connections are compatible with required capabilities */
   struct bgp_conn *ci = &p->incoming_conn;
   if (((ci->state == BS_OPENCONFIRM) || (ci->state == BS_ESTABLISHED)) && !bgp_check_capabilities(ci))
@@ -2672,27 +2663,6 @@ bgp_get_status(struct proto *P, byte *buf)
     bsprintf(buf, "%s%s", err1, err2);
   else
     bsprintf(buf, "%-14s%s%s", bgp_state_dsc(p), err1, err2);
-}
-
-int
-bgp_state_to_eattr(struct proto *P, struct ea_list *state)
-{
-  struct bgp_proto *p = (struct bgp_proto *) P;
-  ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_bgp_rem_id, 0, p->remote_id));
-  ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_bgp_rem_ip, 0, &p->remote_ip, sizeof(ip_addr)));
-  ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_bgp_peer_type, 0, p->cf->peer_type));
-  ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_bgp_loc_as, 0, p->local_as));
-  ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_bgp_rem_as, 0, p->remote_as));
-  ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_bgp_as4_session, 0, p->as4_session));
-
-  ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_local_open_msg, 0, NULL, 0));
-  ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_remote_open_msg, 0, NULL, 0));
-  ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_local_open_msg, 0, NULL, 0));
-  ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_remote_open_msg, 0, NULL, 0));
-
-  ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_bgp_close_bmp, 0, NULL, 0));
-  ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_bgp_close_bmp_set, 0, 0));
-  return 1;
 }
 
 static void
