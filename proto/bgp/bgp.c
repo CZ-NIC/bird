@@ -486,22 +486,22 @@ bgp_close_conn(struct bgp_conn *conn)
   conn->local_open_length = 0;
   conn->remote_open_length = 0;
 
-  ea_list *attr = conn->bgp->p.ea_state;
+  ea_list *pes = conn->bgp->p.ea_state;
   if (conn == &conn->bgp->incoming_conn)
   {
-    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_local_open_msg, 0, NULL, 0));
-    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_remote_open_msg, 0, NULL, 0));
-    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_sk, 0, NULL, 0));
+    ea_unset_attr(&pes, 0, &ea_bgp_in_conn_local_open_msg);
+    ea_unset_attr(&pes, 0, &ea_bgp_in_conn_remote_open_msg);
+    ea_unset_attr(&pes, 0, &ea_bgp_in_conn_sk);
   }
   else
   {
     ASSERT_DIE(conn == &conn->bgp->outgoing_conn);
-    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_local_open_msg, 0, NULL, 0));
-    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_remote_open_msg, 0, NULL, 0));
-    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_sk, 0, NULL, 0));
+    ea_unset_attr(&pes, 0, &ea_bgp_out_conn_local_open_msg);
+    ea_unset_attr(&pes, 0, &ea_bgp_out_conn_remote_open_msg);
+    ea_unset_attr(&pes, 0, &ea_bgp_out_conn_sk);
   }
-  conn->bgp->p.ea_state = ea_lookup(conn->bgp->p.ea_state, 0, EALS_CUSTOM);
-  proto_announce_state_later(&conn->bgp->p, attr);
+
+  proto_announce_state_later(&conn->bgp->p, pes);
 
   mb_free(conn->local_caps);
   conn->local_caps = NULL;
@@ -661,16 +661,17 @@ bgp_conn_set_state(struct bgp_conn *conn, uint new_state)
     bgp_dump_state_change(conn, conn->state, new_state);
 
   conn->state = new_state;
+  ea_list *pes = conn->bgp->p.ea_state;
 
   if (conn == &conn->bgp->incoming_conn)
-    ea_set_attr(&conn->bgp->p.ea_state, EA_LITERAL_EMBEDDED(&ea_bgp_in_conn_state, 0, new_state));
+    ea_set_attr(&pes, EA_LITERAL_EMBEDDED(&ea_bgp_in_conn_state, 0, new_state));
   else
   {
     ASSERT_DIE(conn == &conn->bgp->outgoing_conn);
-    ea_set_attr(&conn->bgp->p.ea_state, EA_LITERAL_EMBEDDED(&ea_bgp_out_conn_state, 0, new_state));
+    ea_set_attr(&pes, EA_LITERAL_EMBEDDED(&ea_bgp_out_conn_state, 0, new_state));
   }
-  conn->bgp->p.ea_state = ea_lookup(conn->bgp->p.ea_state, 0, EALS_CUSTOM);
-  proto_announce_state_later(&conn->bgp->p, conn->bgp->p.ea_state);
+
+  proto_announce_state_later(&conn->bgp->p, pes);
 }
 
 void
@@ -711,9 +712,10 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
   p->last_error_code = 0;
 
   p->as4_session = conn->as4_session;
-  ea_set_attr(&p->p.ea_state, EA_LITERAL_EMBEDDED(&ea_bgp_as4_session, 0, conn->as4_session));
-  p->p.ea_state = ea_lookup(p->p.ea_state, 0, EALS_CUSTOM);
-  proto_announce_state_later(&conn->bgp->p, conn->bgp->p.ea_state);
+
+  ea_list *pes = p->p.ea_state;
+  ea_set_attr(&pes, EA_LITERAL_EMBEDDED(&ea_bgp_as4_session, 0, conn->as4_session));
+  proto_announce_state_later(&conn->bgp->p, pes);
 
   p->route_refresh = peer->route_refresh;
   p->enhanced_refresh = local->enhanced_refresh && peer->enhanced_refresh;
@@ -847,10 +849,9 @@ bgp_conn_leave_established_state(struct bgp_conn *conn, struct bgp_proto *p)
   };
   memcpy(bscad->data, conn->notify_data, conn->notify_size);
 
-  ea_set_attr(&p->p.ea_state, EA_LITERAL_DIRECT_ADATA(&ea_bgp_close_bmp, 0, &bscad->ad));
-  p->p.ea_state = ea_lookup(p->p.ea_state, 0, EALS_CUSTOM);
-
-  proto_announce_state_later(&p->p, p->p.ea_state);
+  ea_list *pes = p->p.ea_state;
+  ea_set_attr(&pes, EA_LITERAL_DIRECT_ADATA(&ea_bgp_close_bmp, 0, &bscad->ad));
+  proto_announce_state_later(&p->p, pes);
 }
 
 void
@@ -1243,17 +1244,6 @@ bgp_setup_conn(struct bgp_proto *p, struct bgp_conn *conn)
   conn->hold_timer 	= tm_new_init(p->p.pool, bgp_hold_timeout,	 conn, 0, 0);
   conn->keepalive_timer	= tm_new_init(p->p.pool, bgp_keepalive_timeout, conn, 0, 0);
   conn->send_hold_timer = tm_new_init(p->p.pool, bgp_send_hold_timeout, conn, 0, 0);
-
-  ea_list *attr = conn->bgp->p.ea_state;
-  if (conn == &conn->bgp->incoming_conn)
-    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_in_conn_sk, 0, NULL, 0));
-  else
-  {
-    ASSERT_DIE(conn == &conn->bgp->outgoing_conn);
-    ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_bgp_out_conn_sk, 0, NULL, 0));
-  }
-  conn->bgp->p.ea_state = ea_lookup(conn->bgp->p.ea_state, 0, EALS_CUSTOM);
-  proto_announce_state_later(&p->p, attr);
 }
 
 static void
@@ -1272,18 +1262,17 @@ bgp_setup_sk(struct bgp_conn *conn, sock *s)
     .dport = s->dport,
   };
 
-  ea_list *attr = conn->bgp->p.ea_state;
+  ea_list *pes = conn->bgp->p.ea_state;
 
   if (conn == &conn->bgp->incoming_conn)
-    ea_set_attr(&attr, EA_LITERAL_DIRECT_ADATA(&ea_bgp_in_conn_sk, 0, &sk_ad.ad));
+    ea_set_attr(&pes, EA_LITERAL_DIRECT_ADATA(&ea_bgp_in_conn_sk, 0, &sk_ad.ad));
   else
   {
     ASSERT_DIE(conn == &conn->bgp->outgoing_conn);
-    ea_set_attr(&attr, EA_LITERAL_DIRECT_ADATA(&ea_bgp_out_conn_sk, 0, &sk_ad.ad));
+    ea_set_attr(&pes, EA_LITERAL_DIRECT_ADATA(&ea_bgp_out_conn_sk, 0, &sk_ad.ad));
   }
 
-  conn->bgp->p.ea_state = ea_lookup(conn->bgp->p.ea_state, 0, EALS_CUSTOM);
-  proto_announce_state_later(&conn->bgp->p, attr);
+  proto_announce_state_later(&conn->bgp->p, pes);
 }
 
 static void
@@ -1502,6 +1491,11 @@ err:
 
 leave:
   UNLOCK_DOMAIN(rtable, bgp_listen_domain);
+
+  /* We need to announce possible state changes immediately before
+   * leaving the protocol's loop, otherwise we're gonna access the protocol
+   * without having it locked from proto_announce_state_later(). */
+  proto_announce_state(&p->p, p->p.ea_state);
   birdloop_leave(p->p.loop);
   return 0;
 }
@@ -1536,6 +1530,9 @@ bgp_neigh_notify(neighbor *n)
 {
   struct bgp_proto *p = (struct bgp_proto *) n->proto;
   int ps = p->p.proto_state;
+
+  ASSERT_DIE(birdloop_inside(p->p.loop));
+  ASSERT_DIE(!birdloop_inside(&main_birdloop));
 
   if (n != p->neigh)
     return;
@@ -1607,6 +1604,9 @@ bgp_bfd_notify(struct bfd_request *req)
       bgp_stop(p, 0, NULL, 0);
     }
   }
+
+  /* BFD notify may run from another thread */
+  proto_announce_state(&p->p, p->p.ea_state);
 }
 
 static void
@@ -1719,6 +1719,8 @@ bgp_start_locked(void *_p)
   struct bgp_proto *p = _p;
   const struct bgp_config *cf = p->cf;
 
+  ASSERT_DIE(birdloop_inside(p->p.loop));
+
   if (p->p.proto_state != PS_START)
   {
     DBG("BGP: Got lock in different state %d\n", p->p.proto_state);
@@ -1731,6 +1733,7 @@ bgp_start_locked(void *_p)
   {
     /* Multi-hop sessions do not use neighbor entries */
     bgp_initiate(p);
+    proto_announce_state(&p->p, p->p.ea_state);
     return;
   }
 
@@ -1754,6 +1757,8 @@ bgp_start_locked(void *_p)
     BGP_TRACE(D_EVENTS, "Waiting for link on %s", n->iface->name);
   else
     bgp_start_neighbor(p);
+
+  proto_announce_state(&p->p, p->p.ea_state);
 }
 
 static int
@@ -1987,12 +1992,14 @@ bgp_init(struct proto_config *CF)
   /* Add MPLS channel */
   proto_configure_mpls_channel(P, CF, RTS_BGP);
 
-  ea_set_attr(&p->p.ea_state, EA_LITERAL_STORE_ADATA(&ea_bgp_rem_ip, 0, &cf->remote_ip, sizeof(ip_addr)));
-  ea_set_attr(&p->p.ea_state, EA_LITERAL_EMBEDDED(&ea_bgp_peer_type, 0, cf->peer_type));
-  ea_set_attr(&p->p.ea_state, EA_LITERAL_EMBEDDED(&ea_bgp_loc_as, 0, cf->local_as));
-  ea_set_attr(&p->p.ea_state, EA_LITERAL_EMBEDDED(&ea_bgp_rem_as, 0, cf->remote_as));
+  /* Export public info */
+  ea_list *pes = p->p.ea_state;
+  ea_set_attr(&pes, EA_LITERAL_STORE_ADATA(&ea_bgp_rem_ip, 0, &cf->remote_ip, sizeof(ip_addr)));
+  ea_set_attr(&pes, EA_LITERAL_EMBEDDED(&ea_bgp_peer_type, 0, cf->peer_type));
+  ea_set_attr(&pes, EA_LITERAL_EMBEDDED(&ea_bgp_loc_as, 0, cf->local_as));
+  ea_set_attr(&pes, EA_LITERAL_EMBEDDED(&ea_bgp_rem_as, 0, cf->remote_as));
 
-  proto_announce_state_later(&p->p, p->p.ea_state);
+  proto_announce_state_later(&p->p, pes);
   return P;
 }
 

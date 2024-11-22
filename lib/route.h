@@ -11,7 +11,7 @@
 #define _BIRD_LIB_ROUTE_H_
 
 #undef RT_SOURCE_DEBUG
-#define EA_FREE_DEBUG
+#undef EA_FREE_DEBUG
 
 #include "lib/type.h"
 #include "lib/rcu.h"

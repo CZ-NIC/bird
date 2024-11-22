@@ -242,7 +242,17 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
 
   init_list(&c->roa_subscriptions);
 
-  /* Announcing existence of the channel */
+  /* Create the channel information ea_list */
+  struct ea_list *ca = NULL;
+
+  ea_set_attr(&ca, EA_LITERAL_STORE_STRING(&ea_name, 0, c->name));
+  ea_set_attr(&ca, EA_LITERAL_EMBEDDED(&ea_proto_id, 0, c->proto->id));
+  ea_set_attr(&ca, EA_LITERAL_EMBEDDED(&ea_channel_id, 0, c->id));
+  ea_set_attr(&ca, EA_LITERAL_EMBEDDED(&ea_in_keep, 0, c->in_keep));
+  ea_set_attr(&ca, EA_LITERAL_STORE_PTR(&ea_rtable, 0, c->table));
+
+  /* Announcing existence of the channel
+   * TODO: make this an actual notification */
   PST_LOCKED(ts)
   {
     /* Allocating channel ID */
@@ -260,29 +270,19 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
       ts->length_channels = ts->length_channels * 2;
     }
 
-    /* Create the actual channel information */
-    struct ea_list *ca = NULL;
-
-    ea_set_attr(&ca, EA_LITERAL_STORE_STRING(&ea_name, 0, c->name));
-    ea_set_attr(&ca, EA_LITERAL_EMBEDDED(&ea_proto_id, 0, c->proto->id));
-    ea_set_attr(&ca, EA_LITERAL_EMBEDDED(&ea_channel_id, 0, c->id));
-    ea_set_attr(&ca, EA_LITERAL_EMBEDDED(&ea_in_keep, 0, c->in_keep));
-    ea_set_attr(&ca, EA_LITERAL_STORE_PTR(&ea_rtable, 0, c->table));
-
     ASSERT_DIE(c->id < ts->length_channels);
     ASSERT_DIE(ts->channels[c->id] == NULL);
+
+    /* Set the channel info */
     ts->channels[c->id] = ea_lookup_slow(ca, 0, EALS_IN_TABLE);
-
-    /* Update channel list in protocol state */
-    ASSERT_DIE(c->proto->id < ts->length_states);
-
-    ea_set_attr(&p->ea_state,
-      EA_LITERAL_DIRECT_ADATA(&ea_proto_channel_list, 0, int_set_add(
-        tmp_linpool, ea_get_adata(p->ea_state, &ea_proto_channel_list), c->id)));
-
-    ea_lookup(p->ea_state, 0, EALS_CUSTOM);
-    proto_announce_state_locked(ts, c->proto, p->ea_state);
   }
+
+  /* Update channel list in protocol state */
+  struct ea_list *pes = p->ea_state;
+  ea_set_attr(&pes,
+      EA_LITERAL_DIRECT_ADATA(&ea_proto_channel_list, 0, int_set_add(
+	  tmp_linpool, ea_get_adata(pes, &ea_proto_channel_list), c->id)));
+  proto_announce_state_later(c->proto, pes);
 
   CALL(c->class->init, c, cf);
 
@@ -300,13 +300,21 @@ proto_remove_channel(struct proto *p UNUSED, struct channel *c)
 
   CD(c, "Removed", c->name);
 
-  ea_set_attr(&p->ea_state,
+  struct ea_list *pes = p->ea_state;
+  ea_set_attr(&pes,
     EA_LITERAL_DIRECT_ADATA(&ea_proto_channel_list, 0, int_set_del(
       tmp_linpool, ea_get_adata(p->ea_state, &ea_proto_channel_list), c->id)));
 
-  ea_lookup(p->ea_state, 0, EALS_CUSTOM);
-  proto_announce_state(c->proto, p->ea_state);
+  proto_announce_state_later(c->proto, pes);
 
+  /*
+   * This may cause trouble if some protocol flaps really really fast,
+   * like trying to read channel info of a nonexistent channel,
+   * but until something like this actually happens in production,
+   * we are going to fix this anyway.
+   *
+   * (Famous last words by Maria.)
+   */
   PST_LOCKED(ts)
   {
     ASSERT_DIE(c->id < ts->length_channels);
@@ -1319,6 +1327,9 @@ proto_new(struct proto_config *cf)
   p->mrtdump = cf->mrtdump;
   p->name = cf->name;
   p->proto = cf->protocol;
+  p->proto_state = PS_DOWN_XX;
+  p->last_state_change = current_time();
+
   p->net_type = cf->net_type;
   p->disabled = cf->disabled;
   p->hash_key = random_u32();
@@ -1344,7 +1355,7 @@ proto_new(struct proto_config *cf)
   init_list(&p->channels);
 
   /*
-    Making first version of proto eatters.
+    Initial version of protocol state.
   */
   struct ea_list *state = NULL;
 
@@ -1355,7 +1366,7 @@ proto_new(struct proto_config *cf)
   ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_proto_id, 0, p->id));
   ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_proto_channel_list, 0, NULL, 0));
 
-  proto_announce_state(p, state);
+  proto_announce_state_later(p, state);
 
   return p;
 }
@@ -1367,10 +1378,10 @@ proto_init(struct proto_config *c, struct proto *after)
   struct proto *p = pr->init(c);
 
   p->loop = &main_birdloop;
-  p->proto_state = PS_DOWN_XX;
-  p->last_state_change = current_time();
   p->vrf = c->vrf;
   proto_add_after(&global_proto_list, p, after);
+
+  proto_announce_state(p, p->ea_state);
 
   p->event = ev_new_init(proto_pool, proto_event, p);
 
@@ -1682,6 +1693,7 @@ protos_do_commit(struct config *new, struct config *old, int type)
 	{
 	  OBSREF_CLEAR(p->global_config);
 	  OBSREF_SET(p->global_config, new);
+	  proto_announce_state(p, p->ea_state);
 	  PROTO_LEAVE_FROM_MAIN(proto_loop);
 	  continue;
 	}
@@ -1722,6 +1734,7 @@ protos_do_commit(struct config *new, struct config *old, int type)
       }
 
       p->reconfiguring = 1;
+      proto_announce_state(p, p->ea_state);
       PROTO_LEAVE_FROM_MAIN(proto_loop);
 
       proto_rethink_goal(p);
@@ -1798,12 +1811,13 @@ proto_rethink_goal(struct proto *p)
     struct proto_config *nc = p->cf_new;
     struct proto *after = p->n.prev;
 
-    proto_announce_state(p, NULL);
-
     DBG("%s has shut down for reconfiguration\n", p->name);
     p->cf->proto = NULL;
     OBSREF_CLEAR(p->global_config);
     proto_remove_channels(p);
+
+    proto_announce_state(p, NULL);
+
     proto_rem_node(&global_proto_list, p);
     rfree(p->event);
     mb_free(p->message);
@@ -2421,18 +2435,17 @@ proto_do_down(struct proto *p)
 void
 proto_notify_state(struct proto *p, uint state)
 {
+  ASSERT_DIE(birdloop_inside(p->loop));
+
   uint ps = p->proto_state;
 
   DBG("%s reporting state transition %s -> %s\n", p->name, p_states[ps], p_states[state]);
+  /* If nothing happened, announce possible pending extended states immediately */
   if (state == ps)
-    return;
+    return proto_announce_state(p, p->ea_state);
 
   p->proto_state = state;
   p->last_state_change = current_time();
-
-  ea_set_attr(&p->ea_state, EA_LITERAL_EMBEDDED(&ea_state, 0, p->proto_state));
-  ea_lookup(p->ea_state, 0, EALS_CUSTOM);
-  proto_announce_state(p, p->ea_state);
 
   switch (state)
   {
@@ -2483,6 +2496,11 @@ proto_notify_state(struct proto *p, uint state)
   default:
     bug("%s: Invalid state %d", p->name, ps);
   }
+
+  ea_list *pes = p->ea_state;
+  ea_set_attr(&pes, EA_LITERAL_EMBEDDED(&ea_state, 0, p->proto_state));
+  ea_set_attr(&pes, EA_LITERAL_STORE_ADATA(&ea_last_modified, 0, &p->last_state_change, sizeof(btime)));
+  proto_announce_state(p, pes);
 
   proto_log_state_change(p);
 }
@@ -2921,18 +2939,23 @@ proto_iterate_named(struct symbol *sym, struct protocol *proto, struct proto *ol
 }
 
 static void
-proto_journal_item_cleanup_(ea_list *proto_attr, ea_list *old_attr)
+proto_journal_item_cleanup_(bool withdrawal, ea_list *old_attr)
 {
+  /* The old attrs can be finally unref'd */
   ea_free_later(old_attr);
 
-  if (!proto_attr)
+  if (!withdrawal)
+    return;
+
+  /* The protocol itself is finished, cleanup its ID
+   * The protocol's structure may be already gone,
+   * the only thing left is the ID and the old attributes. */
+  PST_LOCKED(tp)
   {
-    PST_LOCKED(tp)
-    {
-      int p_id = ea_get_int(old_attr, &ea_proto_id, 0);
-      hmap_clear(&tp->proto_id_map, p_id);
-      tp->states[p_id] = NULL;
-    }
+    u32 id = ea_get_int(old_attr, &ea_proto_id, 0);
+    ASSERT_DIE(id);
+    ASSERT_DIE(tp->states[id] == NULL);
+    hmap_clear(&tp->proto_id_map, id);
   }
 }
 
@@ -2941,49 +2964,103 @@ proto_journal_item_cleanup(struct lfjour * journal UNUSED, struct lfjour_item *i
 {
   /* Called after a journal update was has been read. */
   struct proto_pending_update *pupdate = SKIP_BACK(struct proto_pending_update, li, i);
-  proto_journal_item_cleanup_(pupdate->proto_attr, pupdate->old_proto_attr);
+  proto_journal_item_cleanup_(!pupdate->new, pupdate->old);
 }
 
+/*
+ * Protocol state announcement.
+ *
+ * The authoritative protocol state is always stored in ts->states[p->id]
+ * and it holds a reference. But sometimes it's too clumsy to announce all
+ * protocol changes happening in a fast succession, so there is a
+ * state-to-be-announced stored in the protocol itself, in p->ea_state.
+ * That one is also a reference.
+ *
+ * The usage pattern is simple. First, you need to have a local ea_list copy.
+ *	ea_list *pes = p->ea_state;
+ *
+ * Then you update the state.
+ *	ea_set_attr(&pes, EA_LITERAL_...);
+ *	(possibly more of these)
+ *
+ * And finally, you queue the change for announcement.
+ *	proto_announce_state_later(p, pes);
+ *
+ * Alternatively, if you need immediate announcement and no table is locked.
+ *	proto_announce_state(p, pes);
+ *
+ * In all cases, the p->ea_state is updated immediately, and the public state
+ * is either updated directly (involving a table lock!) or the update is
+ * deferred after the current task ends.
+ *
+ * Never update p->ea_state from outside these functions.
+ * Also never access p->ea_state from outside the protocol context.
+ * It's a local copy for the protocol itself. From outside, always read the
+ * public state table.
+ *
+ * Also no explicit referencing or EAs is needed outside these functions,
+ * the reference lifecycle is complete here.
+ */
+
+struct proto_announce_state_deferred {
+  struct deferred_call dc;
+  struct proto *p;
+};
+
 void
-proto_announce_state_locked(struct proto_state_table_private* ts, struct proto *p, ea_list *attr)
+proto_announce_state_locked(struct proto_state_table_private* ts, struct proto *p, ea_list *new_state)
 {
-  /*
-    Should be called each time one (or more) variables tracked in proto eattrs changes.
-    Changes proto eattrs and activates journal.
-  */
-  ea_set_attr(&attr, EA_LITERAL_STORE_ADATA(&ea_last_modified, 0, &p->last_state_change, sizeof(btime)));
+  ASSERT_DIE(birdloop_inside(p->loop));
 
-  attr = ea_lookup(attr, 0, EALS_CUSTOM);
+  /* Cancel the previous deferred announcement */
+  if (p->deferred_state_announcement)
+  {
+    p->deferred_state_announcement->p = NULL;
+    p->deferred_state_announcement = NULL;
+  }
 
+  /* First we update the state-to-be-stored */
+  if (new_state != p->ea_state)
+  {
+    if (p->ea_state)
+      ea_free_later(p->ea_state);
+
+    p->ea_state = new_state ? ea_lookup(new_state, 0, EALS_IN_TABLE) : NULL;
+  }
+
+  /* Then we check the public state */
   ASSERT_DIE(p->id < ts->length_states);
-  ea_list *old_attr = ts->states[p->id];
+  ea_list *old_state = ts->states[p->id];
 
-  if (attr == old_attr)
+  /* Nothing has changed? */
+  if (p->ea_state == old_state)
+    return;
+
+  /* Set the new state */
+  ts->states[p->id] = p->ea_state ? ea_ref(p->ea_state) : NULL;
+
+  /* Announce the new state */
+  struct lfjour_item *li = lfjour_push_prepare(&proto_state_table_pub.journal);
+  if (!li)
   {
-    /* Nothing has changed */
-    ea_free_later(attr);
+    /* No reader, cleanup immediately
+     * There is another version of this code in
+     * proto_journal_item_cleanup_() but it must
+     * be kept separated because of locking. */
+    ea_free_later(old_state);
+
+    /* Protocol ID cleanup */
+    if (!p->ea_state)
+      hmap_clear(&ts->proto_id_map, p->id);
+
     return;
   }
 
-  ts->states[p->id] = attr;
-
-  if (p->ea_state && p->ea_state->stored)
-    ea_free_later(p->ea_state);
-  p->ea_state = attr ? ea_ref(attr) : NULL;
-
-  struct proto_pending_update *pupdate = SKIP_BACK(struct proto_pending_update, li, lfjour_push_prepare(&proto_state_table_pub.journal));
-
-  if (!pupdate)
-  {
-    proto_journal_item_cleanup_(attr, old_attr);
-    return;
-  }
-
-  *pupdate = (struct proto_pending_update) {
-    .li = pupdate->li,	/* Keep the item's internal state */
-    .proto_attr = attr,
-    .old_proto_attr = old_attr,
-    .protocol = p
+  SKIP_BACK_DECLARE(struct proto_pending_update, ppu, li, li);
+  *ppu = (struct proto_pending_update) {
+    .li = ppu->li,	/* Keep the item's internal state */
+    .new = p->ea_state,
+    .old = old_state,
   };
 
   lfjour_push_commit(&proto_state_table_pub.journal);
@@ -2996,29 +3073,35 @@ proto_announce_state(struct proto *p, ea_list *attr)
     proto_announce_state_locked(ts, p, attr);
 }
 
-struct proto_announce_state_deferred {
-  struct deferred_call dc;
-  struct proto *p;
-};
-
 static void proto_announce_state_deferred(struct deferred_call *dc)
 {
   SKIP_BACK_DECLARE(struct proto_announce_state_deferred, pasd, dc, dc);
-  proto_announce_state(pasd->p, pasd->p->ea_state);
+  if (pasd->p)
+    proto_announce_state(pasd->p, pasd->p->ea_state);
 }
 
 void
-proto_announce_state_later(struct proto *p, ea_list *attr)
+proto_announce_state_later_internal(struct proto *p, ea_list *new_state)
 {
-  ea_free_later(p->ea_state);
-  p->ea_state = ea_lookup(attr, 0, EALS_CUSTOM);
+  /* Cancel the previous deferred announcement */
+  if (p->deferred_state_announcement)
+    p->deferred_state_announcement->p = NULL;
 
+  /* The old stored state isn't needed any more */
+  ea_free_later(p->ea_state);
+
+  /* Store the new one */
+  p->ea_state = ea_lookup(new_state, 0, EALS_IN_TABLE);
+
+  /* Defer the rest */
   struct proto_announce_state_deferred pasd = {
     .dc.hook = proto_announce_state_deferred,
     .p = p,
   };
 
-  defer_call(&pasd.dc, sizeof pasd);
+  p->deferred_state_announcement =
+    SKIP_BACK(struct proto_announce_state_deferred, dc, 
+	defer_call(&pasd.dc, sizeof pasd));
 }
 
 ea_list *

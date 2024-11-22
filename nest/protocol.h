@@ -174,6 +174,7 @@ struct proto {
   char *message;			/* State-change message, allocated from proto_pool */
   u32 id;				/* Sequential ID used as index in proto_state_table */
   ea_list *ea_state;			/* Last stored protocol state in proto_state_table (cached) */
+  struct proto_announce_state_deferred *deferred_state_announcement;
 
   /*
    *	General protocol hooks:
@@ -437,14 +438,27 @@ LOBJ_UNLOCK_CLEANUP(proto_state_table, rtable);
 
 struct proto_pending_update {
   LFJOUR_ITEM_INHERIT(li);
-  ea_list *proto_attr;
-  ea_list *old_proto_attr;
-  struct proto *protocol;
+  ea_list *new, *old;
 };
 
 void proto_announce_state_locked(struct proto_state_table_private *ts, struct proto *p, ea_list *attr);
 void proto_announce_state(struct proto *p, ea_list *attr);
-void proto_announce_state_later(struct proto *p, ea_list *attr);
+
+void proto_announce_state_later_internal(struct proto *p, ea_list *attr);
+#if 0
+#define proto_announce_state_later(p, a) ( log(L_INFO "proto_announce_state_later(%s (%p), %p) at %s:%d", (p)->name, (p), (a), __FILE__, __LINE__), proto_announce_state_later_internal((p), (a)) )
+#else
+#define proto_announce_state_later proto_announce_state_later_internal
+#endif
+
+static inline void
+proto_update_extended_state(struct proto *p, eattr ea)
+{
+  ea_list *pes = p->ea_state;
+  ea_set_attr(&pes, ea);
+  proto_announce_state_later(p, pes);
+}
+
 ea_list *channel_get_state(int id);
 ea_list *proto_get_state(int id);
 void proto_states_subscribe(struct lfjour_recipient *r);

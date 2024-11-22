@@ -1333,13 +1333,13 @@ bmp_process_proto_state_change(struct bmp_proto *p, struct lfjour_item *last_up)
   if (!ppu)
     return;
 
-  if (bmp_peer_up_inout(p, ppu->proto_attr, true))
+  if (bmp_peer_up_inout(p, ppu->new, true))
     goto done;
 
-  SKIP_BACK_DECLARE(struct bgp_session_close_ad, bscad, ad, ea_get_adata(ppu->proto_attr, &ea_bgp_close_bmp));
+  SKIP_BACK_DECLARE(struct bgp_session_close_ad, bscad, ad, ea_get_adata(ppu->new, &ea_bgp_close_bmp));
   if (bscad)
   {
-    bmp_peer_down_(p, ppu->proto_attr, bscad);
+    bmp_peer_down_(p, ppu->new, bscad);
     goto done;
   }
 
