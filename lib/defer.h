@@ -34,7 +34,9 @@ struct deferred {
 extern _Thread_local struct deferred local_deferred;
 void defer_init(linpool *lp);
 
-static inline void defer_call(struct deferred_call *call, size_t actual_size) {
+static inline struct deferred_call *
+defer_call(struct deferred_call *call, size_t actual_size)
+{
   /* Reallocate the call to the appropriate linpool */
   ASSERT_DIE(actual_size < 128);
   struct deferred_call *a = lp_alloc(local_deferred.lp, actual_size);
@@ -48,6 +50,8 @@ static inline void defer_call(struct deferred_call *call, size_t actual_size) {
   a->next = NULL;
   *local_deferred.last = a;
   local_deferred.last = &a->next;
+
+  return a;
 }
 
 #endif
