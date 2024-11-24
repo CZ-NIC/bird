@@ -11,6 +11,7 @@
 #define _BIRD_LIB_ROUTE_H_
 
 #undef RT_SOURCE_DEBUG
+#define EA_FREE_DEBUG
 
 #include "lib/type.h"
 #include "lib/rcu.h"
@@ -588,6 +589,10 @@ struct ea_free_deferred {
 
 void ea_free_deferred(struct deferred_call *dc);
 
+#ifdef EA_FREE_DEBUG
+#define ea_free_later _ea_free_later_internal
+#endif
+
 static inline ea_list *ea_free_later(ea_list *r)
 {
   if (!r)
@@ -601,6 +606,11 @@ static inline ea_list *ea_free_later(ea_list *r)
   defer_call(&efd.dc, sizeof efd);
   return r;
 }
+
+#ifdef EA_FREE_DEBUG
+#undef ea_free_later
+#define ea_free_later(x) ( log(L_INFO "EA free request %p at %s:%d", (x), __FILE__, __LINE__), _ea_free_later_internal(x) )
+#endif
 
 #define ea_free ea_free_later
 
