@@ -359,11 +359,13 @@ st_find_thread(void *_v)
 
   uint skip = st_skip[atomic_fetch_add_explicit(&st_skip_pos, 1, memory_order_acq_rel)];
 
-  for (u64 i = 0; !atomic_load_explicit(&st_end, memory_order_relaxed); i += skip)
+  for (u64 i = 0; !atomic_load_explicit(&st_end, memory_order_acquire); i += skip)
   {
     struct st_node *n = SPINHASH_FIND(*v, ST, i % ST_MAX);
     ASSERT_DIE(!n || (n->key == i % ST_MAX));
   }
+
+  atomic_fetch_add_explicit(&st_end, 1, memory_order_release);
 
   rcu_thread_stop();
   return NULL;
@@ -397,6 +399,11 @@ st_update_thread(void *_v)
   }
 
   atomic_store_explicit(&st_end, 1, memory_order_release);
+
+  /* Wait for readers to properly end before releasing the memory,
+   * as the hash nodes may be accessed even after removed from hash */
+  while (atomic_load_explicit(&st_end, memory_order_acquire) < ST_READERS + 1)
+    birdloop_yield();
 
   rcu_thread_stop();
   return NULL;
