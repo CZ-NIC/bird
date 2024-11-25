@@ -381,7 +381,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc ELSE
 
 %type <xp> cmds_int cmd_prep
-%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor var var_list var_list_r function_call bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
+%type <x> term term_bs cmd cmd_var cmds constant constructor var var_list var_list_r function_call bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
 %type <fsa> static_attr
 %type <f> filter where_filter
 %type <fl> filter_body function_body
@@ -625,8 +625,6 @@ cmds: /* EMPTY */ { $$ = NULL; }
  | cmds_int { $$ = $1.begin; }
  ;
 
-cmds_scoped: { cf_push_soft_scope(new_config); } cmds { cf_pop_soft_scope(new_config); $$ = $2; } ;
-
 cmd_var: var | cmd ;
 
 cmd_prep: cmd_var {
@@ -781,14 +779,14 @@ fprefix_set:
  ;
 
 switch_body: /* EMPTY */ { $$ = NULL; }
- | switch_body switch_items ':' cmds_scoped  {
+ | switch_body switch_items ':' cmd  {
      /* Fill data fields */
      struct f_tree *t;
      for (t = $2; t; t = t->left)
        t->data = $4;
      $$ = f_merge_items($1, $2);
    }
- | switch_body ELSECOL cmds_scoped {
+ | switch_body ELSECOL cmd {
      struct f_tree *t = f_new_tree();
      t->from.type = t->to.type = T_VOID;
      t->right = t;
@@ -990,9 +988,7 @@ for_var:
  ;
 
 cmd:
-   '{' cmds_scoped '}' {
-     $$ = $2;
-   }
+   '{' { cf_push_soft_scope(new_config); } cmds { cf_pop_soft_scope(new_config); } '}' { $$ = $3; }
  | IF term THEN cmd {
      $$ = f_new_inst(FI_CONDITION, $2, $4, NULL);
    }

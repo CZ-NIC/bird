@@ -1974,8 +1974,8 @@ and name is used). In both cases, it must have the same type as elements.
 <m/expr/ { else: | <m/num_or_prefix [ .. num_or_prefix]/: <m/statement/ ; [
 ... ] }</cf>. The expression after <cf>case</cf> can be of any type which can be
 on the left side of the &tilde; operator and anything that could be a member of
-a set is allowed before <cf/:/. Multiple commands are allowed without <cf/{}/
-grouping. If <cf><m/expr/</cf> matches one of the <cf/:/ clauses, statements
+a set is allowed before <cf/:/. Multiple commands must be grouped by <cf/{}/.
+If <cf><m/expr/</cf> matches one of the <cf/:/ clauses, statements
 between it and next <cf/:/ statement are executed. If <cf><m/expr/</cf> matches
 neither of the <cf/:/ clauses, the statements after <cf/else:/ are executed.
 
@@ -1993,7 +1993,7 @@ for int asn in bgp_path do {
 }
 
 case arg1 {
-	2: print "two"; print "I can do more commands without {}";
+	2: { print "two"; print "Multiple commands must brace themselves."; }
 	3 .. 5: print "three to five";
 	else: print "something else";
 }

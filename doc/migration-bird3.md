@@ -60,6 +60,11 @@ the given prefix. Experimental.
 
 Reload of filters is now done by `reload filters` command, contrary to just `reload` in BIRD 2.
 
+## Filters
+
+We have removed the exception for `case` where multiple commands could be written
+after the case label without braces. This caused unneeded complexity in the parser.
+
 ## Route attributes
 
 All protocol attributes have been renamed in CLI to align with the filter language tokens.
