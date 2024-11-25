@@ -61,6 +61,7 @@ struct rpki_cache {
   u8 request_session_id;		/* 1: have to request new session id; 0: we have already received session id */
   u32 serial_num;			/* Serial number denotes the logical version of data from cache server */
   u8 version;				/* Protocol version */
+  u8 min_version;			/* Minimum allowed protocol version */
   btime last_update;			/* Last successful synchronization with cache server */
   btime last_rx_prefix;			/* Last received prefix PDU */
 
@@ -132,6 +133,8 @@ struct rpki_config {
   u8 keep_retry_interval:1;		/* Do not overwrite retry interval by cache server update */
   u8 keep_expire_interval:1;		/* Do not overwrite expire interval by cache server update */
   u8 ignore_max_length:1;		/* Ignore received max length and use MAX_PREFIX_LENGTH instead */
+  u8 min_version;			/* Minimum version allowed */
+  u8 max_version;			/* Maximum version allowed (to start with) */
 };
 
 void rpki_check_config(struct rpki_config *cf);

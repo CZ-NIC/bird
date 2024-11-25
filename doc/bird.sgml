@@ -5728,6 +5728,10 @@ affected routes after RPKI update, see option <ref id="proto-rpki-reload"
 name="rpki reload">. Or you can use a BIRD client command <cf>reload in
 <m/bgp_protocol_name/</cf> for manual call of revalidation of all routes.
 
+<p>The same protocol, since version 2, also receives and maintains a set
+of ASPAs. You can then validate AS paths using function <cf/aspa_check()/
+in (import) filters.
+
 <sect1>Supported transports
 <p>
 <itemize>
@@ -5747,6 +5751,7 @@ define more RPKI protocols generally.
 protocol rpki [&lt;name&gt;] {
         roa4 { table &lt;tab&gt;; };
         roa6 { table &lt;tab&gt;; };
+	aspa { table &lt;tab&gt;; };
         remote &lt;ip&gt; | "&lt;domain&gt;" [port &lt;num&gt;];
         port &lt;num&gt;;
         local address &lt;ip&gt;;
@@ -5762,10 +5767,12 @@ protocol rpki [&lt;name&gt;] {
                 remote public key "&lt;/path/to/known_host&gt;";
                 user "&lt;name&gt;";
         };
+	max version 2;
+	min version 2;
 }
 </code>
 
-<p>Alse note that you have to specify the ROA channel. If you want to import
+<p>Alse note that you have to specify the ROA and ASPA channels. If you want to import
 only IPv4 prefixes you have to specify only roa4 channel. Similarly with IPv6
 prefixes only. If you want to fetch both IPv4 and even IPv6 ROAs you have to
 specify both channels.
@@ -5811,6 +5818,16 @@ specify both channels.
 	Ignore received max length in ROA records and use max value (32 or 128)
 	instead. This may be useful for implementing loose RPKI check for
 	blackholes. Default: disabled.
+
+	<tag>min version <m/num/</tag>
+	Minimal allowed version of the RTR protocol. BIRD will refuse to
+	downgrade a connection below this version and drop the session instead.
+	Default: 0
+
+	<tag>max version <m/num/</tag>
+	Maximal allowed version of the RTR protocol. BIRD will start with this
+        version. Use this option if sending version 2 to your cache causes
+        problems. Default: 2
 
         <tag>transport tcp { <m/TCP transport options.../ }</tag> Transport over
         TCP, it's the default transport. Cannot be combined with a SSH transport.

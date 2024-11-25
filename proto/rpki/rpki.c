@@ -599,7 +599,8 @@ rpki_init_cache(struct rpki_proto *p, struct rpki_config *cf)
 
   cache->state = RPKI_CS_SHUTDOWN;
   cache->request_session_id = 1;
-  cache->version = RPKI_MAX_VERSION;
+  cache->version = cf->max_version;
+  cache->min_version = cf->min_version;
 
   cache->refresh_interval = cf->refresh_interval;
   cache->retry_interval = cf->retry_interval;
@@ -702,6 +703,23 @@ rpki_reconfigure_cache(struct rpki_proto *p UNUSED, struct rpki_cache *cache, st
   {
     CACHE_TRACE(D_EVENTS, cache, "Cache server port changed to %u", new->port);
     return NEED_RESTART;
+  }
+
+  if (new->min_version > cache->version)
+  {
+    CACHE_TRACE(D_EVENTS, cache, "Protocol min version %u higher than current version %u",
+	new->min_version, cache->version);
+    return NEED_RESTART;
+  }
+  else
+    cache->min_version = new->min_version;
+
+  if (new->max_version < cache->version)
+  {
+    CACHE_TRACE(D_EVENTS, cache, "Protocol max version %u lower than current version %u",
+	new->max_version, cache->version);
+    cache->version = new->max_version;
+    try_reset = 1;
   }
 
   if (old->tr_config.type != new->tr_config.type)
@@ -963,6 +981,9 @@ rpki_show_proto_info(struct proto *P)
 void
 rpki_check_config(struct rpki_config *cf)
 {
+  if (cf->min_version > cf->max_version)
+    cf_error("Impossible min/max version for RPKI: %u/%u", cf->min_version, cf->max_version);
+
   /* Do not check templates at all */
   if (cf->c.class == SYM_TEMPLATE)
     return;

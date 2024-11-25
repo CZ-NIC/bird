@@ -628,7 +628,9 @@ rpki_check_receive_packet(struct rpki_cache *cache, const struct pdu_header *pdu
       }
       else if (!cache->last_update &&
 	       (pdu->ver <= RPKI_MAX_VERSION) &&
-	       (pdu->ver < cache->version))
+	       (pdu->ver < cache->version) &&
+	       (pdu->ver >= cache->min_version)
+	       )
       {
         CACHE_TRACE(D_EVENTS, cache, "Downgrade session to %s from %u to %u version", rpki_get_cache_ident(cache), cache->version, pdu->ver);
         cache->version = pdu->ver;
@@ -679,7 +681,8 @@ rpki_handle_error_pdu(struct rpki_cache *cache, const struct pdu_error *pdu)
   case UNSUPPORTED_PROTOCOL_VER:
     CACHE_TRACE(D_PACKETS, cache, "Client uses unsupported protocol version");
     if (pdu->ver <= RPKI_MAX_VERSION &&
-	pdu->ver < cache->version)
+	pdu->ver < cache->version &&
+	pdu->ver >= cache->min_version)
     {
       CACHE_TRACE(D_EVENTS, cache, "Downgrading from protocol version %d to version %d", cache->version, pdu->ver);
       cache->version = pdu->ver;
