@@ -839,6 +839,13 @@ agreement").
 	command line interface without needing to touch the configuration.
 	Disabled protocols are not activated. Default: protocol is enabled.
 
+	<tag><label id="proto-restart-limit">restart time limit <m/time/</tag>
+	Set time limit for subsequent automatic restarts of the protocol.
+        If the protocol hits the limit (with a restart action) before this time
+        elapses from starting the protocol, the protocol is disabled with
+	an error message in the config file. This doesn't apply to manual
+	restarts or reconfiguration. Default: 5 s.
+
 	<tag><label id="proto-debug">debug all|off|{ states|routes|filters|interfaces|events|packets [, <m/.../] }</tag>
 	Set protocol debugging options. If asked, each protocol is capable of
 	writing trace messages about its work to the log (with category

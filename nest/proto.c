@@ -1335,6 +1335,9 @@ proto_new(struct proto_config *cf)
   p->hash_key = random_u32();
   cf->proto = p;
 
+  p->last_restart = current_time();
+  p->restart_limit = cf->restart_limit;
+
   PST_LOCKED(tp)
   {
     p->id = hmap_first_zero(&tp->proto_id_map);
@@ -1454,6 +1457,8 @@ proto_config_new(struct protocol *pr, int class)
   cf->mrtdump = new_config->proto_default_mrtdump;
   cf->loop_order = DOMAIN_ORDER(the_bird);
 
+  cf->restart_limit = 5 S;
+
   init_list(&cf->channels);
 
   return cf;
@@ -1561,7 +1566,7 @@ static int
 proto_reconfigure(struct proto *p, struct proto_config *oc, struct proto_config *nc, int type)
 {
   /* If the protocol is DOWN, we just restart it */
-  if (p->proto_state == PS_DOWN_XX)
+  if ((p->proto_state == PS_DOWN_XX) || (p->proto_state == PS_FLUSH))
     return 0;
 
   /* If there is a too big change in core attributes, ... */
@@ -1574,6 +1579,7 @@ proto_reconfigure(struct proto *p, struct proto_config *oc, struct proto_config 
   p->sources.name = p->name = nc->name;
   p->sources.debug = p->debug = nc->debug;
   p->mrtdump = nc->mrtdump;
+  p->restart_limit = nc->restart_limit;
   reconfigure_type = type;
 
   /* Execute protocol specific reconfigure hook */
@@ -2167,29 +2173,15 @@ proto_restart_event_hook(void *_p)
   p->disabled = 1;
   proto_rethink_goal(p);
 
-  p->restart_event = NULL;
-  p->restart_timer = NULL;
-
   if (proto_restart)
+    if (current_time_now() - p->last_restart < p->restart_limit)
+      log(L_ERR "%s: too frequent restarts, disabling", p->name);
+    else
+      p->disabled = 0;
+
     /* No need to call proto_rethink_goal() here again as the proto_cleanup() routine will
      * call it after the protocol stops ... and both these routines are fixed to main_birdloop.
      */
-    p->disabled = 0;
-}
-
-static void
-proto_send_restart_event(struct proto *p)
-{
-  if (!p->restart_event)
-    p->restart_event = ev_new_init(p->pool, proto_restart_event_hook, p);
-
-  ev_send(&global_event_list, p->restart_event);
-}
-
-static void
-proto_send_restart_event_from_timer(struct timer *t)
-{
-  proto_send_restart_event((struct proto *) t->data);
 }
 
 static inline void
@@ -2205,20 +2197,8 @@ proto_schedule_down(struct proto *p, byte restart, byte code)
   p->down_sched = restart ? PDS_RESTART : PDS_DISABLE;
   p->down_code = code;
 
-  if (!restart)
-  {
-    if (p->restart_timer && tm_active(p->restart_timer))
-      tm_stop(p->restart_timer);
-
-    proto_send_restart_event(p);
-  }
-  else
-  {
-    if (!p->restart_timer)
-      p->restart_timer = tm_new_init(p->pool, proto_send_restart_event_from_timer, p, 0, 0);
-
-    tm_start_max_in(p->restart_timer, 250 MS, p->loop);
-  }
+  /* Request protocol restart to be initiated from the mainloop */
+  ev_send(&global_event_list, ev_new_init(p->pool, proto_restart_event_hook, p));
 }
 
 /**

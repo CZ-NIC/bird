@@ -340,6 +340,7 @@ proto_name:
 proto_item:
    /* EMPTY */
  | DISABLED bool { this_proto->disabled = $2; }
+ | RESTART TIME expr_us { this_proto->restart_limit = $3; }
  | DEBUG debug_mask { this_proto->debug = $2; }
  | MRTDUMP mrtdump_mask { this_proto->mrtdump = $2; }
  | ROUTER ID idval { this_proto->router_id = $3; }

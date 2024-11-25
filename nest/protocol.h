@@ -113,6 +113,7 @@ struct proto_config {
   u32 router_id;			/* Protocol specific router ID */
   uint loop_order;			/* Launch a birdloop on this locking level; use DOMAIN_ORDER(the_bird) for mainloop */
   btime loop_max_latency;		/* Request this specific maximum latency of loop; zero to default */
+  btime restart_limit;			/* Minimum allowed time between limit restarts */
 
   list channels;			/* List of channel configs (struct channel_config) */
   struct iface *vrf;			/* Related VRF instance, NULL if global */
@@ -142,8 +143,6 @@ struct proto {
   pool *pool_inloop;			/* Pool containing local objects which need to be freed
 					   before the protocol's birdloop actually stops, like olocks */
   event *event;				/* Protocol event */
-  timer *restart_timer;			/* Timer to restart the protocol from limits */
-  event *restart_event;			/* Event to restart/shutdown the protocol from limits */
   struct birdloop *loop;		/* BIRDloop running this protocol */
 
   list channels;			/* List of channels to rtables (struct channel) */
@@ -170,6 +169,8 @@ struct proto {
   byte down_code;			/* Reason for shutdown (PDC_* codes) */
   u32 hash_key;				/* Random key used for hashing of neighbors */
   btime last_state_change;		/* Time of last state transition */
+  btime last_restart;			/* Time of last restart */
+  btime restart_limit;			/* Minimum allowed time between limit restarts */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
   char *message;			/* State-change message, allocated from proto_pool */
   u32 id;				/* Sequential ID used as index in proto_state_table */

@@ -72,6 +72,11 @@ how to implement it properly.
 
 The `scope` route attribute has been removed. Use custom route attributes instead.
 
+## Protocols common
+
+There is now a guard against too frequent restarts due to limits, called
+`restart time`, set by default to 5 seconds. To disable, set this to 1 us.
+
 ## Pipe
 
 It's now impossible to check immediately whether the route has entered a pipe
