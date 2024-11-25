@@ -1801,7 +1801,7 @@ static void
 trie_init(struct aggregator_proto *p)
 {
   p->root = create_new_node(p->trie_pool);
-  p->root->depth = 1;
+  p->root->depth = 0;
 
   struct network *default_net = NULL;
 
