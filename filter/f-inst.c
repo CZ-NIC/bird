@@ -886,6 +886,8 @@
 		}]]);
 	}
       }
+      else if (da->empty)
+	RESULT_VAL(da->empty(da));
       else if ((empty = f_get_empty(da->type)).type != T_VOID)
 	RESULT_VAL(empty);
       else

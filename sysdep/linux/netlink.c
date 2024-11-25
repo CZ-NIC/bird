@@ -51,6 +51,8 @@ struct nl_parse_state
 #define KRT_FEATURES_MAX	4
 
 static void krt_bitfield_format(const eattr *e, byte *buf, uint buflen);
+static struct f_val krt_bitfield_empty(const struct ea_class *cls UNUSED)
+{ return (struct f_val) { .type = T_INT }; }
 
 static struct ea_class
   ea_krt_prefsrc = {
@@ -71,11 +73,13 @@ static struct ea_class ea_krt_metrics[] = {
     .name = "krt_lock",
     .type = T_INT,
     .format = krt_bitfield_format,
+    .empty = krt_bitfield_empty,
   },
   [RTAX_FEATURES] = {
     .name = "krt_features",
     .type = T_INT,
     .format = krt_bitfield_format,
+    .empty = krt_bitfield_empty,
   },
   [RTAX_CC_ALGO] = {
     .name = "krt_congctl",

@@ -278,6 +278,7 @@ struct ea_class {
   void (*format)(const eattr *ea, byte *buf, uint size); \
   void (*stored)(const eattr *ea);	/* When stored into global hash */ \
   void (*freed)(const eattr *ea);	/* When released from global hash */ \
+  struct f_val (*empty)(const struct ea_class *);	/* Return this instead of T_VOID as default value for filters */ \
 
   EA_CLASS_INSIDE;
 };
