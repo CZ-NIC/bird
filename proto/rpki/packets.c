@@ -653,9 +653,13 @@ rpki_check_receive_packet(struct rpki_cache *cache, const struct pdu_header *pdu
     return RPKI_ERROR;
   }
 
-  if (pdu_len < min_pdu_size[pdu->type])
+  uint min_pdu_length = min_pdu_size[pdu->type];
+  if (pdu->type == END_OF_DATA && pdu->ver >= RPKI_VERSION_1)
+    min_pdu_length = sizeof(struct pdu_end_of_data_v1);
+
+  if (pdu_len < min_pdu_length)
   {
-    rpki_send_error_pdu(cache, CORRUPT_DATA, pdu_len, pdu, "Received %s packet with %d bytes, but expected at least %d bytes", str_pdu_type(pdu->type), pdu_len, min_pdu_size[pdu->type]);
+    rpki_send_error_pdu(cache, CORRUPT_DATA, pdu_len, pdu, "Received %s packet with %u bytes, but expected at least %u bytes", str_pdu_type(pdu->type), pdu_len, min_pdu_length);
     return RPKI_ERROR;
   }
 
