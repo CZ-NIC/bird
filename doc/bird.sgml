@@ -1961,6 +1961,9 @@ of a set" operation - it can be used on:
   and for <cf>aspa_check_upstream</cf> it is
   <cf>aspa_check(<m/table/, bgp_path, true)</cf>.
   Note: the ASPA check does not include the local ASN in the AS path.
+  Also, <cf>ASPA_INVALID</cf> is returned for an empty AS path
+  or for AS path containing <cf>CONFED_SET</cf> or <cf>CONFED_SEQUENCE</cf> blocks,
+  as the (draft) stipulates.
 </itemize>
 
 <p>The following example checks for ROA and ASPA on routes from a customer:

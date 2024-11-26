@@ -786,9 +786,7 @@ int rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *
 enum aspa_result {
   ASPA_UNKNOWN = 0,
   ASPA_VALID,
-  ASPA_INVALID_EMPTY,
-  ASPA_INVALID_CONFED,
-  ASPA_INVALID_LEAK,
+  ASPA_INVALID,
 };
 
 #endif

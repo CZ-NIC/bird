@@ -360,12 +360,12 @@ enum aspa_result aspa_check(rtable *tab, const adata *path, bool force_upstream)
 
   /* No support for confed paths */
   if (as_path_contains_confed(path))
-    return ASPA_INVALID_CONFED;
+    return ASPA_INVALID;
 
   /* Check path length */
   uint len = as_path_getlen(path);
   if (len == 0)
-    return ASPA_INVALID_EMPTY;
+    return ASPA_INVALID;
 
   /* Normalize the AS Path: drop stuffings */
   u32 *asns = alloca(sizeof(u32) * len);
@@ -420,7 +420,7 @@ end_of_aspa:;
 	min_up = ap;
       else if (ap && !up)
 	/* Exists but doesn't allow this upstream */
-	return ASPA_INVALID_LEAK;
+	return ASPA_INVALID;
     }
 
     /* Fast path for no ASPA here */
@@ -468,7 +468,7 @@ end_of_aspa:;
     return ASPA_UNKNOWN;
 
   /* Now there is surely a valley there. */
-  return ASPA_INVALID_LEAK;
+  return ASPA_INVALID;
 }
 
 /**
