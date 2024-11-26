@@ -766,7 +766,6 @@ to set options.
 	triggered, after a short settle time. Minimum settle time is a delay
 	from the last ROA table change to wait for more updates. Default: 1 s.
 
-
 	<tag><label id="rtable-max-settle-time">max settle time <m/time/</tag>
 	Specify a maximum value of the settle time. When a ROA table changes,
 	automatic <ref id="proto-rpki-reload" name="RPKI reload"> may be
@@ -1031,13 +1030,14 @@ inherited from templates can be updated by new definitions.
 
 	<tag><label id="proto-rpki-reload">rpki reload <m/switch/</tag>
 	Import or export filters may depend on route RPKI status (using
-	<cf/roa_check()/ operator). In contrast to to other filter operators,
-	this status for the same route may change as the content of ROA tables
-	changes. When this option is active, BIRD activates automatic reload of
-	affected channels whenever ROA tables are updated (after a short settle
-	time). When disabled, route reloads have to be requested manually. The
-	option is ignored if <cf/roa_check()/ is not used in channel filters.
-	Note that for BGP channels, automatic reload requires
+	<cf/roa_check()/ or <cf/aspa_check()/ operators). In contrast to other
+	filter operators, this status for the same route may change as the
+	content of ROA and ASPA tables changes. When this option is active, BIRD
+	activates automatic reload of affected channels whenever ROA and ASPA
+	tables are updated (after a short settle time). When disabled, route
+	reloads have to be requested manually. The option is ignored if neither
+	<cf/roa_check()/ nor <cf/aspa_check()/ is used in channel filters. Note
+	that for BGP channels, automatic reload requires
 	<ref id="bgp-import-table" name="import table"> or
 	<ref id="bgp-export-table" name="export table"> (for respective
 	direction). Default: on.
@@ -1927,16 +1927,64 @@ of a set" operation - it can be used on:
     clist that is also a member of the pair/quad set).
 </itemize>
 
-<p>There is one operator related to ROA infrastructure - <cf/roa_check()/. It
-examines a ROA table and does <rfc id="6483"> route origin validation for a
-given network prefix. The basic usage is <cf>roa_check(<m/table/)</cf>, which
-checks the current route (which should be from BGP to have AS_PATH argument) in
-the specified ROA table and returns ROA_UNKNOWN if there is no relevant ROA,
-ROA_VALID if there is a matching ROA, or ROA_INVALID if there are some relevant
-ROAs but none of them match. There is also an extended variant
-<cf>roa_check(<m/table/, <m/prefix/, <m/asn/)</cf>, which allows to specify a
-prefix and an ASN as arguments.
+<p>There are also operators related to RPKI infrastructure used to run
+<rfc id="6483"> route origin validation and (draft) AS path validation.
 
+<itemize>
+  <item><cf>roa_check(<m/table/)</cf> checks the current route in the specified
+  ROA table and returns <cf>ROA_UNKNOWN</cf>, <cf>ROA_INVALID</cf> or <cf>ROA_VALID</cf>,
+  if the validation result is unknown, invalid, or valid, respectively. The result is
+  valid if there is a matching ROA, it is invalid if there is either matching ROA
+  with a different ASN, or any covering ROA with shorter maximal prefix length.
+
+  <item><cf>roa_check(<m/table/, <m/prefix/, <m/asn/)</cf> is an explicit version
+  of the ROA check if the user for whatever reason needs to check a different prefix
+  or different ASN than the default one. The equivalent call of the short variant
+  is <cf>roa_check(<m/table/, net, bgp_path.last)</cf> and it is faster
+  to call the short variant.
+
+  <item><cf>aspa_check_downstream(<m/table/)</cf> checks the current route
+  in the specified ASPA table and returns <cf>ASPA_UNKNOWN</cf>, <cf>ASPA_INVALID</cf>,
+  or <cf>ASPA_VALID</cf> if the validation result is unknown, invalid, or valid,
+  respectively. The result is valid if there is a full coverage of matching
+  ASPA records according to the Algorithm for Downstream Paths by the (draft).
+  This operator is not present if BGP is not compiled in.
+
+  <item><cf>aspa_check_upstream(<m/table/)</cf> checks the current route
+  in the specified ASPA table as the former operator, but it applies the
+  (stricter) Algorithm for Upstream Paths by the (draft).
+  This operator is not present if BGP is not compiled in.
+
+  <item><cf>aspa_check(<m/table/, <m/path/, <m/is_upstream/)</cf> is
+  an explicit version of the former two ASPA check operators. The equivalent
+  of <cf>aspa_check_downstream</cf> is <cf>aspa_check(<m/table/, bgp_path, false)</cf>
+  and for <cf>aspa_check_upstream</cf> it is
+  <cf>aspa_check(<m/table/, bgp_path, true)</cf>.
+  Note: the ASPA check does not include the local ASN in the AS path.
+</itemize>
+
+<p>The following example checks for ROA and ASPA on routes from a customer:
+
+<code>
+roa6 table r6;
+aspa table at;
+attribute int valid_roa;
+attribute int valid_aspa;
+
+filter customer_check {
+  case roa_check(r6) {
+    ROA_INVALID: reject "Invalid ROA";
+    ROA_VALID: valid_roa = 1;
+  }
+
+  case aspa_check_upstream(at) {
+    ASPA_INVALID: reject "Invalid ASPA";
+    ASPA_VALID: valid_aspa = 1;
+  }
+
+  accept;
+}
+</code>
 
 <sect>Control structures
 <label id="control-structures">
