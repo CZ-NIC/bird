@@ -209,6 +209,16 @@ log_commit(int class, buffer *buf)
   if (buf->pos == buf->end)
     strcpy(buf->end - 100, " ... <too long>");
 
+  /* Exception for very early logs when current_log_list is not yet initialized. */
+  if (!current_log_list)
+  {
+    fputs("bird: ", stderr);
+    fputs(buf->start, stderr);
+    fflush(stderr);
+    buf->pos = buf->start;
+    return;
+  }
+
   log_lock();
   WALK_LIST(l, *current_log_list)
     {
