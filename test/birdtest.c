@@ -59,6 +59,9 @@ u64 bt_random_state[] = {
   0x53d9772877c1b647, 0xab8ce3eb466de6c5, 0xad02844c8a8e865f, 0xe8cc78080295065d
 };
 
+void log_init_debug(char *);
+void log_switch(int initial, list *l, const char *);
+
 void
 bt_init(int argc, char *argv[])
 {
@@ -119,6 +122,10 @@ bt_init(int argc, char *argv[])
 
   clock_gettime(CLOCK_MONOTONIC, &bt_begin);
   bt_suite_case_begin = bt_suite_begin = bt_begin;
+
+  /* Initialize logging to stderr */
+  log_init_debug("");
+  log_switch(1, NULL, NULL);
 
   resource_init();
   ev_init_list(&global_event_list);
