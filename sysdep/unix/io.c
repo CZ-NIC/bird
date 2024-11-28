@@ -1108,10 +1108,11 @@ sk_setup(sock *s)
   }
 #endif
 
-  if (s->vrf && (s->vrf != &default_vrf) && !s->iface)
+  if (s->vrf && (s->vrf != &default_vrf) && !s->iface && (s->type != SK_TCP))
   {
     /* Bind socket to associated VRF interface.
-       This is Linux-specific, but so is SO_BINDTODEVICE. */
+       This is Linux-specific, but so is SO_BINDTODEVICE.
+       For accepted TCP sockets it is inherited from the listening one. */
 #ifdef SO_BINDTODEVICE
     struct ifreq ifr = {};
     strcpy(ifr.ifr_name, s->vrf->name);
