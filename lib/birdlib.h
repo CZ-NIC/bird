@@ -118,6 +118,16 @@ static inline int u64_cmp(u64 i1, u64 i2)
 #define ALLOC_SIZE(...) __attribute__((alloc_size(__VA_ARGS__)))
 #define CLEANUP(fun) __attribute__((cleanup(fun)))
 
+#if __GNUC__ >= 10
+#define ACCESS_READ(...) __attribute__((access(read_only, __VA_ARGS__)))
+#define ACCESS_WRITE(...) __attribute__((access(write_only, __VA_ARGS__)))
+#define ACCESS_RW(...) __attribute__((access(read_write, __VA_ARGS__)))
+#else
+#define ACCESS_READ(...)
+#define ACCESS_WRITE(...)
+#define ACCESS_RW(...)
+#endif
+
 #define STATIC_ASSERT(EXP) _Static_assert(EXP, #EXP)
 #define STATIC_ASSERT_MSG(EXP,MSG) _Static_assert(EXP, MSG)
 
