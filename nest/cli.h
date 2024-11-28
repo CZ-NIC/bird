@@ -53,11 +53,15 @@ struct cli_config {
 #define TLIST_ITEM n
 #define TLIST_DEFINED_BEFORE
 #define TLIST_WANT_ADD_TAIL
+#define TLIST_WANT_WALK
   TLIST_DEFAULT_NODE;
   const char *name;
+  struct config *config;
   uint uid, gid, mode;
 };
 #include "lib/tlists.h"
+
+void cli_config_listen(struct cli_config *, const char *);
 
 extern pool *cli_pool;
 extern struct cli *this_cli;		/* Used during parsing */

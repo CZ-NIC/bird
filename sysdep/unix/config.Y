@@ -22,6 +22,7 @@ CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG
 CF_KEYWORDS(PING, WAKEUP, SOCKETS, SCHEDULING, EVENTS, TIMERS, ALLOCATOR)
 CF_KEYWORDS(GRACEFUL, RESTART, FIXED)
 
+%type <cli> cli_opts
 %type <i> log_mask log_mask_list log_cat cfg_timeout debug_unix latency_debug_mask latency_debug_flag latency_debug_list
 %type <t> cfg_name
 %type <tf> timeformat_which
@@ -121,6 +122,21 @@ mrtdump_base:
      }
    }
  ;
+
+conf: cli ;
+
+cli: CLI text cli_opts {
+  $3->name = $2;
+  cli_config_add_tail(&new_config->cli, $3);
+} ;
+
+cli_opts: ';' {
+  $$ = cfg_alloc(sizeof *$$);
+  *$$ = (typeof (*$$)) {
+    .config = new_config,
+    .mode = 0660,
+  };
+};
 
 conf: THREADS expr {
     if ($2 < 1) cf_error("Number of threads must be at least one.");

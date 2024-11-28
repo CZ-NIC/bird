@@ -130,7 +130,7 @@ int rf_fileno(struct rfile *f);
 
 extern struct rfile rf_stderr;
 
-void test_old_bird(char *path);
+void test_old_bird(const char *path);
 ip_addr resolve_hostname(const char *host, int type, const char **err_msg);
 
 /* krt.c bits */
