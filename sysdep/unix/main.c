@@ -550,7 +550,7 @@ cli_connect(sock *s, uint size UNUSED)
   s->rx_hook = cli_rx;
   s->tx_hook = cli_tx;
   s->err_hook = cli_err;
-  s->data = c = cli_new(s);
+  s->data = c = cli_new(s, ((struct cli_listener *) s->data)->config);
   s->pool = c->pool;		/* We need to have all the socket buffers allocated in the cli pool */
   s->fast_rx = 1;
   c->rx_pos = c->rx_buf;
@@ -567,7 +567,7 @@ cli_listen(struct cli_config *cf)
   s->type = SK_UNIX_PASSIVE;
   s->rx_hook = cli_connect;
   s->err_hook = cli_connect_err;
-  s->data = cf;
+  s->data = l;
   s->rbsize = 1024;
   s->fast_rx = 1;
 

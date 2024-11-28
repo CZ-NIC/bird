@@ -272,7 +272,7 @@ cli_event(void *data)
 }
 
 cli *
-cli_new(struct birdsock *sock)
+cli_new(struct birdsock *sock, struct cli_config *cf)
 {
   pool *p = rp_new(cli_pool, the_bird_domain.the_bird, "CLI");
   cli *c = mb_alloc(p, sizeof(cli));
@@ -286,6 +286,10 @@ cli_new(struct birdsock *sock)
   c->cont = cli_hello;
   c->parser_pool = lp_new_default(c->pool);
   c->rx_buf = mb_alloc(c->pool, CLI_RX_BUF_SIZE);
+
+  if (cf->restricted)
+    c->restricted = 1;
+
   ev_schedule(c->event);
   return c;
 }
