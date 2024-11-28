@@ -400,9 +400,12 @@ cmd_reconfig_status(void)
  *	Command-Line Interface
  */
 
-static sock *cli_sk;
 static char *path_control_socket = PATH_CONTROL_SOCKET;
-
+static struct cli_config *main_control_socket_config = NULL;
+static struct cli_listener {
+  sock *s;
+  struct cli_config *config;
+} *main_control_socket = NULL;
 
 static void
 cli_write(cli *c)
@@ -531,32 +534,64 @@ cli_connect(sock *s, uint size UNUSED)
   return 1;
 }
 
-static void
-cli_init_unix(uid_t use_uid, gid_t use_gid)
+static struct cli_listener *
+cli_listener(struct cli_config *cf)
 {
-  sock *s;
-
-  cli_init();
-  s = cli_sk = sk_new(cli_pool);
+  struct cli_listener *l = mb_allocz(cli_pool, sizeof *l);
+  l->config = cf;
+  sock *s = l->s = sk_new(cli_pool);
   s->type = SK_UNIX_PASSIVE;
   s->rx_hook = cli_connect;
   s->err_hook = cli_connect_err;
+  s->data = cf;
   s->rbsize = 1024;
   s->fast_rx = 1;
 
   /* Return value intentionally ignored */
-  unlink(path_control_socket);
+  unlink(cf->name);
 
-  if (sk_open_unix(s, &main_birdloop, path_control_socket) < 0)
-    die("Cannot create control socket %s: %m", path_control_socket);
+  if (sk_open_unix(s, &main_birdloop, cf->name) < 0)
+  {
+    log(L_ERR "Cannot create control socket %s: %m", cf->name);
+    return NULL;
+  }
 
-  if (use_uid || use_gid)
-    if (chown(path_control_socket, use_uid, use_gid) < 0)
-      die("chown: %m");
+  if (cf->uid || cf->gid)
+    if (chown(cf->name, cf->uid, cf->gid) < 0)
+    {
+      log(L_ERR "Cannot chown control socket %s: %m", cf->name);
+      return NULL;
+    }
 
-  if (chmod(path_control_socket, 0660) < 0)
-    die("chmod: %m");
+  if (chmod(cf->name, cf->mode) < 0)
+  {
+    log(L_ERR "Cannot chmod control socket %s: %m", cf->name);
+    return NULL;
+  }
+
+  return l;
 }
+
+static void
+cli_init_unix(uid_t use_uid, gid_t use_gid)
+{
+  ASSERT_DIE(main_control_socket_config == NULL);
+
+  main_control_socket_config = mb_alloc(&root_pool, sizeof *main_control_socket_config);
+  *main_control_socket_config = (struct cli_config) {
+    .name = path_control_socket,
+    .uid = use_uid,
+    .gid = use_gid,
+    .mode = 0660,
+  };
+
+  ASSERT_DIE(main_control_socket == NULL);
+  cli_init();
+  main_control_socket = cli_listener(main_control_socket_config);
+  if (!main_control_socket)
+    die("Won't run without control socket");
+}
+
 
 /*
  *	PID file

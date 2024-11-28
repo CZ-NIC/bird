@@ -1684,7 +1684,7 @@ err:
 }
 
 int
-sk_open_unix(sock *s, struct birdloop *loop, char *name)
+sk_open_unix(sock *s, struct birdloop *loop, const char *name)
 {
   struct sockaddr_un sa;
   int fd;

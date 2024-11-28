@@ -12,6 +12,8 @@
 #include "lib/resource.h"
 #include "lib/lists.h"
 #include "lib/event.h"
+#include "lib/tlists.h"
+#include "conf/conf.h"
 
 #define CLI_RX_BUF_SIZE 4096
 #define CLI_TX_BUF_SIZE 4096
@@ -44,6 +46,18 @@ typedef struct cli {
   uint log_threshold;			/* When free < log_threshold, store only important messages */
   uint async_msg_size;			/* Total size of async messages queued in tx_buf */
 } cli;
+
+struct cli_config {
+#define TLIST_PREFIX cli_config
+#define TLIST_TYPE struct cli_config
+#define TLIST_ITEM n
+#define TLIST_DEFINED_BEFORE
+#define TLIST_WANT_ADD_TAIL
+  TLIST_DEFAULT_NODE;
+  const char *name;
+  uint uid, gid, mode;
+};
+#include "lib/tlists.h"
 
 extern pool *cli_pool;
 extern struct cli *this_cli;		/* Used during parsing */
