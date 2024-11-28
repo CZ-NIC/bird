@@ -558,6 +558,10 @@ static inline int rte_dest(const rte *r)
   return nhea_dest(ea_find(r->attrs, &ea_gen_nexthop));
 }
 
+/* ASPA Providers eattr */
+extern struct ea_class ea_gen_aspa_providers;
+
+
 void rta_init(void);
 
 ea_list *ea_lookup_slow(ea_list *r, u32 squash_upto, enum ea_stored oid);

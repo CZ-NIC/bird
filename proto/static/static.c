@@ -112,6 +112,26 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
   else if (r->dest)
     ea_set_dest(&ea, 0, r->dest);
 
+  if (r->net->type == NET_ASPA)
+  {
+    if (r->dest != RTD_NONE)
+    {
+      log(L_WARN "%s: ASPA %u configured with nexthop, ignoring the nexthop",
+	p->p.name, ((struct net_addr_aspa *) r->net)->asn);
+      r->dest = RTD_NONE;
+    }
+
+    if (!r->aspa)
+    {
+      log(L_WARN "%s: ASPA %u configured with no provider list, ignoring the whole rule",
+	p->p.name, ((struct net_addr_aspa *) r->net)->asn);
+      goto withdraw;
+    }
+
+    ea_set_attr(&ea, EA_LITERAL_DIRECT_ADATA(
+	&ea_gen_aspa_providers, 0, r->aspa));
+  }
+
   if (p->p.mpls_channel)
   {
     struct mpls_channel *mc = (void *) p->p.mpls_channel;
