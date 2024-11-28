@@ -309,3 +309,9 @@ sk_set_freebind(sock *s)
 {
   ERR_MSG("Freebind is not supported");
 }
+
+static inline int
+sk_set_udp6_no_csum_rx(sock *s)
+{
+  ERR_MSG("UDPv6 zero checksum is not supported");
+}

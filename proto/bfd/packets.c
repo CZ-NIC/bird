@@ -416,6 +416,8 @@ bfd_err_hook(sock *sk, int err)
 sock *
 bfd_open_rx_sk(struct bfd_proto *p, int multihop, int af)
 {
+  struct bfd_config *cf = (struct bfd_config *) (p->p.cf);
+
   sock *sk = sk_new(p->p.pool);
   sk->type = SK_UDP;
   sk->subtype = af;
@@ -432,6 +434,9 @@ bfd_open_rx_sk(struct bfd_proto *p, int multihop, int af)
   sk->priority = sk_priority_control;
   sk->flags = SKF_LADDR_RX | (!multihop ? SKF_TTL_RX : 0);
 
+  if (cf->zero_udp6_checksum_rx)
+    sk->flags |= SKF_UDP6_NO_CSUM_RX;
+
   if (sk_open(sk, p->p.loop) < 0)
     goto err;
 
@@ -446,6 +451,8 @@ err:
 sock *
 bfd_open_rx_sk_bound(struct bfd_proto *p, ip_addr local, struct iface *ifa)
 {
+  struct bfd_config *cf = (struct bfd_config *) (p->p.cf);
+
   sock *sk = sk_new(p->tpool);
   sk->type = SK_UDP;
   sk->saddr = local;
@@ -462,6 +469,9 @@ bfd_open_rx_sk_bound(struct bfd_proto *p, ip_addr local, struct iface *ifa)
   sk->tos = IP_PREC_INTERNET_CONTROL;
   sk->priority = sk_priority_control;
   sk->flags = SKF_BIND | (ifa ? SKF_TTL_RX : 0);
+
+  if (cf->zero_udp6_checksum_rx)
+    sk->flags |= SKF_UDP6_NO_CSUM_RX;
 
   if (sk_open(sk, p->p.loop) < 0)
     goto err;

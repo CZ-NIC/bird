@@ -48,6 +48,7 @@ struct bfd_config
   u8 accept_direct;
   u8 accept_multihop;
   u8 strict_bind;
+  u8 zero_udp6_checksum_rx;
 };
 
 struct bfd_iface_config

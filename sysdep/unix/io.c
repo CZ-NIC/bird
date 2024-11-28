@@ -1183,6 +1183,10 @@ sk_setup(sock *s)
     if (s->tos >= 0)
       if (sk_set_tos6(s, s->tos) < 0)
 	return -1;
+
+    if ((s->flags & SKF_UDP6_NO_CSUM_RX) && (s->type == SK_UDP))
+      if (sk_set_udp6_no_csum_rx(s) < 0)
+	return -1;
   }
 
   /* Must be after sk_set_tos4() as setting ToS on Linux also mangles priority */

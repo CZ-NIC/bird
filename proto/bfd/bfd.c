@@ -1189,7 +1189,8 @@ bfd_reconfigure(struct proto *P, struct proto_config *c)
       (new->accept_ipv6 != old->accept_ipv6) ||
       (new->accept_direct != old->accept_direct) ||
       (new->accept_multihop != old->accept_multihop) ||
-      (new->strict_bind != old->strict_bind))
+      (new->strict_bind != old->strict_bind) ||
+      (new->zero_udp6_checksum_rx != old->zero_udp6_checksum_rx))
     return 0;
 
   birdloop_mask_wakeups(p->p.loop);
