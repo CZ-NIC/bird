@@ -252,6 +252,7 @@ struct ospf_proto
   u32 last_vlink_id;		/* Interface IDs for vlinks (starts at 0x80000000) */
   struct tbf log_pkt_tbf;	/* TBF for packet messages */
   struct tbf log_lsa_tbf;	/* TBF for LSA messages */
+  ip_addr loopback_addr;	/* IP address used as common next hop (in OSPFv3-IPv4) */
 };
 
 struct ospf_area
@@ -331,6 +332,7 @@ struct ospf_iface
   struct top_hash_entry **flood_queue;	/* LSAs queued for LSUPD */
   u8 update_link_lsa;
   u8 update_net_lsa;
+  u8 loopback_addr_used;	/* The Link-LSA depends on p->loopback_addr */
   u16 flood_queue_used;		/* The current number of LSAs in flood_queue */
   u16 flood_queue_size;		/* The maximum number of LSAs in flood_queue */
   int fadj;			/* Number of fully adjacent neighbors */
