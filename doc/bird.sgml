@@ -1702,7 +1702,7 @@ in the foot).
 	Route Distinguisher (<rfc id="4364">). They support the same special
 	operators as IP prefixes, and also <cf/.rd/ which extracts the Route
 	Distinguisher. Their literals are written
-	as <cf><m/vpnrd/ <m/ipprefix/</cf>
+	as <cf><m/rd/ <m/ipprefix/</cf>
 
 	<cf/NET_ROA4/ and <cf/NET_ROA6/ prefixes hold an IP prefix range
 	together with an ASN. They support the same special operators as IP
@@ -1717,9 +1717,9 @@ in the foot).
 	<cf/NET_MPLS/ holds a single MPLS label and its handling is currently
 	not implemented.
 
-	<tag><label id="type-vpnrd">vpnrd</tag>
+	<tag><label id="type-rd"><label id="type-vpnrd">rd</tag>
 	This is a route distinguisher according to <rfc id="4364">. There are
-	three kinds of RD's: <cf><m/asn/:<m/32bit int/</cf>, <cf><m/asn4/:<m/16bit int/</cf>
+	three kinds of RDs: <cf><m/asn/:<m/32bit int/</cf>, <cf><m/asn4/:<m/16bit int/</cf>
 	and <cf><m/IPv4 address/:<m/32bit int/</cf>
 
 	<tag><label id="type-ec">ec</tag>
@@ -1746,9 +1746,9 @@ in the foot).
 	to extract corresponding components of LCs:
 	<cf>(<m/asn/, <m/data1/, <m/data2/)</cf>.
 
-	<tag><label id="type-set">int|pair|quad|ip|prefix|ec|lc|enum set</tag>
-	Filters recognize four types of sets. Sets are similar to strings: you
-	can pass them around but you can't modify them. Literals of type <cf>int
+	<tag><label id="type-set">int|pair|quad|ip|prefix|ec|lc|rd|enum set</tag>
+	Filters recognize several types of sets. Sets are similar to strings: you
+	can pass them around but you cannot modify them. Literals of type <cf>int
 	set</cf> look like <cf> [ 1, 2, 5..7 ]</cf>. As you can see, both simple
 	values and ranges are permitted in sets.
 
@@ -1771,9 +1771,11 @@ in the foot).
 	is valid, while <cf/(10, *, 20..30)/ or <cf/(10, 20..30, 40)/ is not
 	valid.
 
-	You can also use expressions for int, pair, EC and LC set values.
-	However, it must be possible to evaluate these expressions before daemon
-	boots. So you can use only constants inside them. E.g.
+	You can also use named constants or compound expressions for non-prefix
+	set values. However, it must be possible to evaluate these expressions
+	before daemon boots. So you can use only constants inside them. Also,
+	in case of compound expressions, they require parentheses around them.
+	E.g.
 
 	<code>
 	 define one=1;
@@ -1782,7 +1784,7 @@ in the foot).
 	 pair set ps;
 	 ec set es;
 
-	 odds = [ one, 2+1, 6-one, 2*2*2-1, 9, 11 ];
+	 odds = [ one, (2+1), (6-one), (2*2*2-1), 9, 11 ];
 	 ps = [ (1,one+one), (3,4)..(4,8), (5,*), (6,3..6), (7..9,*) ];
 	 es = [ (rt, myas, 3*10), (rt, myas+one, 0..16*16*16-1), (ro, myas+2, *) ];
 	</code>
@@ -1995,13 +1997,16 @@ may be an existing one (when just name is used) or a locally defined (when type
 and name is used). In both cases, it must have the same type as elements.
 
 <p>The <cf>case</cf> is similar to case from Pascal. Syntax is <cf>case
-<m/expr/ { else: | <m/num_or_prefix [ .. num_or_prefix]/: <m/statement/ ; [
-... ] }</cf>. The expression after <cf>case</cf> can be of any type which can be
-on the left side of the &tilde; operator and anything that could be a member of
-a set is allowed before <cf/:/. Multiple commands must be grouped by <cf/{}/.
-If <cf><m/expr/</cf> matches one of the <cf/:/ clauses, statements
-between it and next <cf/:/ statement are executed. If <cf><m/expr/</cf> matches
-neither of the <cf/:/ clauses, the statements after <cf/else:/ are executed.
+<m/expr/ { else: | <m/set_body_expr/ /: <m/statement/ ; [... ] }</cf>.
+
+The expression after <cf>case</cf> can be of any type that could be a member of
+a set, while the <m/set_body_expr/ before <cf/:/ can be anything (constants,
+intervals, expressions) that could be a part of a set literal. One exception is
+prefix type, which can be used in sets bud not in <cf/case/ structure. Multiple
+commands must be grouped by <cf/{}/. If <cf><m/expr/</cf> matches one
+of the <cf/:/ clauses, the statement or block after it is
+executed. If <cf><m/expr/</cf> matches neither of the <cf/:/ clauses, the
+statement or block after <cf/else:/ is executed.
 
 <p>Here is example that uses <cf/if/ and <cf/case/ structures:
 
@@ -4120,11 +4125,11 @@ could have up to 5 channels: <cf/ipv4/, <cf/ipv6/, <cf/vpn4/, <cf/vpn6/, and
 <cf/mpls/.
 
 <p><descrip>
-	<tag><label id="l3vpn-route-distinguisher">route distinguisher <m/vpnrd/</tag>
+	<tag><label id="l3vpn-route-distinguisher">route distinguisher <m/rd/</tag>
 	The route distinguisher that is attached to routes in the export
 	direction. Mandatory.
 
-	<tag><label id="l3vpn-rd">rd <m/vpnrd/</tag>
+	<tag><label id="l3vpn-rd">rd <m/rd/</tag>
 	A shorthand for the option <cf/route distinguisher/.
 
 	<tag><label id="l3vpn-import-target">import target <m/ec/|<m/ec-set/</tag>
