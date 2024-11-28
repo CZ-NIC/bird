@@ -125,11 +125,11 @@ Anyway, it will probably work well also on older systems.
 and Perl, installing BIRD should be as easy as:
 
 <code>
-	./configure
-	make
-	make install
-	vi /usr/local/etc/bird.conf
-	bird
+./configure
+make
+make install
+vi /usr/local/etc/bird.conf
+bird
 </code>
 
 <p>You can use <tt>./configure --help</tt> to get a list of configure
@@ -1651,9 +1651,9 @@ in the foot).
 	a shell pattern (represented also as a string).
 
 	<tag><label id="type-bytestring">bytestring</tag>
-	This is a sequences of arbitrary bytes. There are no ways to modify
-	bytestrings in filters. You can pass them between function, assign
-	them to variables of type <cf/bytestring/, print such values,
+	This is a sequence of arbitrary bytes. There are no ways to modify
+	bytestrings in filters. You can pass them between functions, assign
+	them to variables of type <cf/bytestring/, print such values, and
 	compare bytestings (<cf/=, !=/).
 
 	Bytestring literals are written as a sequence of hexadecimal digit
@@ -1777,17 +1777,14 @@ in the foot).
 	in case of compound expressions, they require parentheses around them.
 	E.g.
 
-	<code>
-	 define one=1;
-	 define myas=64500;
-	 int set odds;
-	 pair set ps;
-	 ec set es;
+<code>
+define one=1;
+define myas=64500;
 
-	 odds = [ one, (2+1), (6-one), (2*2*2-1), 9, 11 ];
-	 ps = [ (1,one+one), (3,4)..(4,8), (5,*), (6,3..6), (7..9,*) ];
-	 es = [ (rt, myas, 3*10), (rt, myas+one, 0..16*16*16-1), (ro, myas+2, *) ];
-	</code>
+int set odds = [ one, (2+1), (6-one), (2*2*2-1), 9, 11 ];
+pair set ps = [ (1,one+one), (3,4)..(4,8), (5,*), (6,3..6), (7..9,*) ];
+ec set es = [ (rt, myas, *), (rt, myas+2, 0..16*16*16-1) ];
+</code>
 
 	Sets of prefixes are special: their literals does not allow ranges, but
 	allows prefix patterns that are written
@@ -1949,21 +1946,31 @@ in the foot).
 <label id="operators">
 
 <p>The filter language supports common integer operators <cf>(+,-,*,/)</cf>,
-parentheses <cf/(a*(b+c))/, comparison <cf/(a=b, a!=b, a&lt;b, a&gt;=b)/.
-Logical operations include unary not (<cf/!/), and (<cf/&amp;&amp;/), and or
-(<cf/&verbar;&verbar;/). Special operators include (<cf/&tilde;/,
-<cf/!&tilde;/) for "is (not) element of a set" operation - it can be used on
-element and set of elements of the same type (returning true if element is
-contained in the given set), or on two strings (returning true if first string
-matches a shell-like pattern stored in second string) or on IP and prefix
-(returning true if IP is within the range defined by that prefix), or on prefix
-and prefix (returning true if first prefix is more specific than second one) or
-on bgppath and bgpmask (returning true if the path matches the mask) or on
-number and bgppath (returning true if the number is in the path) or on bgppath
-and int (number) set (returning true if any ASN from the path is in the set) or
-on pair/quad and clist (returning true if the pair/quad is element of the
-clist) or on clist and pair/quad set (returning true if there is an element of
-the clist that is also a member of the pair/quad set).
+parentheses <cf/(a*(b+c))/, comparison <cf/(a=b, a!=b, a&lt;b, a&gt;=b)/.</p>
+
+<p>Logical operations include unary not (<cf/!/), and (<cf/&amp;&amp;/), and or
+(<cf/&verbar;&verbar;/).</p>
+
+<p>Special operators include (<cf/&tilde;/, <cf/!&tilde;/) for "is (not) element
+of a set" operation - it can be used on:
+<itemize>
+  <item>element and set of elements of the same type (returning true if
+    element is contained in the given set)
+  <item>two strings (returning true if the first string matches a shell-like
+    pattern stored in the second string)
+  <item>IP and prefix (returning true if IP is within the range defined by
+    that prefix)
+  <item>prefix and prefix (returning true if the first prefix is more specific
+    than the second one)
+  <item>bgppath and bgpmask (returning true if the path matches the mask)
+  <item>number and bgppath (returning true if the number is in the path)
+  <item>bgppath and int (number) set (returning true if any ASN from the
+    path is in the set)
+  <item>pair/quad and clist (returning true if the pair/quad is element of
+    the clist)
+  <item>clist and pair/quad set (returning true if there is an element of the
+    clist that is also a member of the pair/quad set).
+</itemize>
 
 <p>There is one operator related to ROA infrastructure - <cf/roa_check()/. It
 examines a ROA table and does <rfc id="6483"> route origin validation for a
@@ -1998,7 +2005,6 @@ and name is used). In both cases, it must have the same type as elements.
 
 <p>The <cf>case</cf> is similar to case from Pascal. Syntax is <cf>case
 <m/expr/ { else: | <m/set_body_expr/ /: <m/statement/ ; [... ] }</cf>.
-
 The expression after <cf>case</cf> can be of any type that could be a member of
 a set, while the <m/set_body_expr/ before <cf/:/ can be anything (constants,
 intervals, expressions) that could be a part of a set literal. One exception is
