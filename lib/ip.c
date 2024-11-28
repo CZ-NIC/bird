@@ -156,6 +156,54 @@ ip6_classify(ip6_addr *a)
 }
 
 
+/*
+ *	IPv6 bit shifting
+ */
+
+ip6_addr
+ip6_shift_left(ip6_addr a, uint bits)
+{
+  if (bits == 0)
+    return a;
+
+  if (bits > 127)
+    return IP6_NONE;
+
+  int words = bits / 32;
+  int rem = bits % 32;
+
+  for (int i = 0; i < 3 - words; i++)
+    a.addr[i] = (a.addr[i + words] << rem) |
+      (rem ? (a.addr[i + words + 1] >> (32 - rem)) : 0);
+
+  a.addr[3 - words] = a.addr[3] << rem;
+  memset(&a.addr[4 - words], 0, words * 4);
+
+  return a;
+}
+
+ip6_addr
+ip6_shift_right(ip6_addr a, uint bits)
+{
+  if (bits == 0)
+    return a;
+
+  if (bits > 127)
+    return IP6_NONE;
+
+  int words = bits / 32;
+  int rem = bits % 32;
+
+  for (int i = 3; i > words; i--)
+    a.addr[i] = (a.addr[i - words] >> rem) |
+      (rem ? (a.addr[i - words - 1] << (32 - rem)) : 0);
+
+  a.addr[words] = a.addr[0] >> rem;
+  memset(&a.addr[0], 0, words * 4);
+
+  return a;
+}
+
 
 /*
  *  Conversion of IPv6 address to presentation format and vice versa.

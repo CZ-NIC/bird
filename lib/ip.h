@@ -354,6 +354,9 @@ static inline ip4_addr ip4_setbits(ip4_addr a, uint pos, uint val)
 static inline ip6_addr ip6_setbits(ip6_addr a, uint pos, uint val)
 { a.addr[pos / 32] |= val << (31 - pos % 32); return a; }
 
+ip6_addr ip6_shift_left(ip6_addr a, uint bits);
+ip6_addr ip6_shift_right(ip6_addr a, uint bits);
+
 
 static inline ip4_addr ip4_opposite_m1(ip4_addr a)
 { return _MI4(_I(a) ^ 1); }
