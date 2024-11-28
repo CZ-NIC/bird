@@ -69,6 +69,8 @@ struct bfd_session_config
   u32 idle_tx_int;
   u8 multiplier;
   u8 passive;
+  u8 auth_type;				/* Authentication type (BFD_AUTH_*) */
+  list *passwords;			/* Passwords for authentication */
 };
 
 struct bfd_neighbor

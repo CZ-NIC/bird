@@ -181,6 +181,8 @@ bfd_merge_options(const struct bfd_iface_config *cf, const struct bfd_options *o
     .idle_tx_int = opts->idle_tx_int ?: cf->idle_tx_int,
     .multiplier = opts->multiplier ?: cf->multiplier,
     .passive = opts->passive_set ? opts->passive : cf->passive,
+    .auth_type = opts->auth_type ?: cf->auth_type,
+    .passwords = opts->passwords ?: cf->passwords,
   };
 }
 
@@ -1235,7 +1237,7 @@ bfd_show_session(struct bfd_session *s, int details)
   const char *ifname = (s->ifa && s->ifa->iface) ? s->ifa->iface->name : "---";
   btime tx_int = s->last_tx ? MAX(s->des_min_tx_int, s->rem_min_rx_int) : 0;
   btime timeout = (btime) MAX(s->req_min_rx_int, s->rem_min_tx_int) * s->rem_detect_mult;
-  u8 auth_type = s->ifa->cf->auth_type;
+  u8 auth_type = s->cf.auth_type;
 
   loc_state = (loc_state < 4) ? loc_state : 0;
   rem_state = (rem_state < 4) ? rem_state : 0;

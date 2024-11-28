@@ -162,7 +162,6 @@ CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION)
 CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, CLASS, DSCP, PARTIAL)
 CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, AS)
-CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
 CF_KEYWORDS(CHECK, LINK)
 CF_KEYWORDS(CORK, SORTED, TRIE, MIN, MAX, ROA, DIGEST, ROUTE, REFRESH, SETTLE, TIME, GC, THRESHOLD, PERIOD)
 CF_KEYWORDS(MPLS_LABEL, MPLS_POLICY, MPLS_CLASS)
@@ -665,26 +664,9 @@ password_item_end:
 };
 
 
-/* BFD options */
+/* BFD options - just dummy rule, rest in proto/bfd/config.Y */
+bfd_opts: '{' INVALID_TOKEN '}';
 
-bfd_item:
-   INTERVAL expr_us { this_bfd_opts->min_rx_int = this_bfd_opts->min_tx_int = $2; }
- | MIN RX INTERVAL expr_us { this_bfd_opts->min_rx_int = $4; }
- | MIN TX INTERVAL expr_us { this_bfd_opts->min_tx_int = $4; }
- | IDLE TX INTERVAL expr_us { this_bfd_opts->idle_tx_int = $4; }
- | MULTIPLIER expr { this_bfd_opts->multiplier = $2; }
- | PASSIVE bool { this_bfd_opts->passive = $2; this_bfd_opts->passive_set = 1; }
- | GRACEFUL { this_bfd_opts->mode = BGP_BFD_GRACEFUL; }
- ;
-
-bfd_items:
-   /* empty */
- | bfd_items bfd_item ';'
- ;
-
-bfd_opts:
-   '{' bfd_items '}'
- ;
 
 /* Core commands */
 CF_CLI_HELP(SHOW, ..., [[Show status information]])

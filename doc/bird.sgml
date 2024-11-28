@@ -992,7 +992,7 @@ agreement").
 
 	<tag><label id="proto-pass-gen-from">generate from "<m/time/"</tag>
 	The start time of the usage of the password for packet signing.
-	The format of <cf><m/time/</cf> is <tt>dd-mm-yyyy HH:MM:SS</tt>.
+	The format of <cf><m/time/</cf> is <tt>YYYY-MM-DD [hh:mm:ss[.sss]]</tt>.
 
 	<tag><label id="proto-pass-gen-to">generate to "<m/time/"</tag>
 	The last time of the usage of the password for packet signing.
@@ -2915,10 +2915,9 @@ using the following configuration parameters:
 	restarted. Optionally, it can be configured (by <cf/graceful/ argument)
 	to trigger graceful restart instead of regular restart. It is also
 	possible to specify section with per-peer BFD session options instead of
-	just switch argument. Most BFD session specific options are allowed here
-	with the exception of authentication options. here Note that BFD
-	protocol also has to be configured, see <ref id="bfd" name="BFD">
-	section for details. Default: disabled.
+	just the switch argument. All BFD session-specific options are allowed
+	here. Note that BFD protocol also has to be configured, see
+	<ref id="bfd" name="BFD"> section for details. Default: disabled.
 
 	<tag><label id="bgp-ttl-security">ttl security <m/switch/</tag>
 	Use GTSM (<rfc id="5082"> - the generalized TTL security mechanism). GTSM
@@ -4846,14 +4845,14 @@ protocol ospf MyOSPF {
 			authentication cryptographic;
 			password "abc" {
 				id 1;
-				generate to "22-04-2003 11:00:06";
-				accept from "17-01-2001 12:01:05";
+				generate to "2023-04-22 11:00:06";
+				accept from "2021-01-17 12:01:05";
 				algorithm hmac sha384;
 			};
 			password "def" {
 				id 2;
-				generate to "22-07-2005 17:03:21";
-				accept from "22-02-2001 11:34:06";
+				generate to "2025-07-22";
+				accept from "2021-02-22";
 				algorithm hmac sha512;
 			};
 		};
