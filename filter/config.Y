@@ -368,7 +368,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	FOR, IN, DO,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
 	FROM, GW, NET, PROTO, SCOPE, DEST, IFNAME, IFINDEX, WEIGHT, GW_MPLS,
-	ROA_CHECK,
+	ROA_CHECK, ASPA_CHECK,
 	DEFINED,
 	ADD, DELETE, RESET,
 	PREPEND,
@@ -954,6 +954,7 @@ term:
 
  | ROA_CHECK '(' rtable ')' { $$ = f_implicit_roa_check($3); }
  | ROA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_new_inst(FI_ROA_CHECK, $5, $7, $3); }
+ | ASPA_CHECK '(' rtable ',' term ')' { $$ = f_new_inst(FI_ASPA_CHECK_EXPLICIT, $5, $3); }
 
  | FORMAT '(' term ')' {  $$ = f_new_inst(FI_FORMAT, $3); }
 

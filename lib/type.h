@@ -91,6 +91,7 @@ enum btype {
   T_ENUM_LO = 0x12,
   T_ENUM_HI = 0x3f,
 
+  T_ENUM_ASPA = 0x2f,		/* ASPA validation result */
   T_ENUM_RTS = 0x31,
   T_ENUM_SCOPE = 0x33,
   T_ENUM_MPLS_POLICY = 0x35,
