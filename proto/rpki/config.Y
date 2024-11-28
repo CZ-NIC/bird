@@ -13,6 +13,7 @@ CF_HDR
 CF_DEFINES
 
 #define RPKI_CFG ((struct rpki_config *) this_proto)
+#define RPKI_TR_TCP_CFG ((struct rpki_tr_tcp_config *) RPKI_CFG->tr_config.spec)
 #define RPKI_TR_SSH_CFG ((struct rpki_tr_ssh_config *) RPKI_CFG->tr_config.spec)
 
 static void
@@ -32,7 +33,8 @@ rpki_check_unused_transport(void)
 CF_DECLS
 
 CF_KEYWORDS(RPKI, REMOTE, BIRD, PRIVATE, PUBLIC, KEY, TCP, SSH, TRANSPORT, USER,
-	    RETRY, REFRESH, EXPIRE, KEEP, IGNORE, MAX, LENGTH, LOCAL, ADDRESS)
+	    RETRY, REFRESH, EXPIRE, KEEP, IGNORE, MAX, LENGTH, LOCAL, ADDRESS,
+	    AUTHENTICATION, NONE, MD5, PASSWORD)
 
 %type <i> rpki_keep_interval
 
@@ -109,7 +111,7 @@ rpki_cache_addr: text_or_ipa
 };
 
 rpki_transport:
-   TCP rpki_transport_tcp_init
+   TCP rpki_transport_tcp_init rpki_transport_tcp_opts_list rpki_transport_tcp_check
  | SSH rpki_transport_ssh_init '{' rpki_transport_ssh_opts '}' rpki_transport_ssh_check
  ;
 
@@ -118,6 +120,28 @@ rpki_transport_tcp_init:
   rpki_check_unused_transport();
   RPKI_CFG->tr_config.spec = cfg_allocz(sizeof(struct rpki_tr_tcp_config));
   RPKI_CFG->tr_config.type = RPKI_TR_TCP;
+};
+
+rpki_transport_tcp_opts_list:
+    /* empty */
+  | '{' rpki_transport_tcp_opts '}'
+  ;
+
+rpki_transport_tcp_opts:
+   /* empty */
+ | rpki_transport_tcp_opts rpki_transport_tcp_item ';'
+ ;
+
+rpki_transport_tcp_item:
+   AUTHENTICATION NONE	{ RPKI_TR_TCP_CFG->auth_type = RPKI_TCP_AUTH_NONE; }
+ | AUTHENTICATION MD5	{ RPKI_TR_TCP_CFG->auth_type = RPKI_TCP_AUTH_MD5; }
+ | PASSWORD text	{ RPKI_TR_TCP_CFG->password = $2; }
+ ;
+
+rpki_transport_tcp_check:
+{
+  if (!RPKI_TR_TCP_CFG->auth_type != !RPKI_TR_TCP_CFG->password)
+    cf_error("Authentication and password options should be used together");
 };
 
 rpki_transport_ssh_init:

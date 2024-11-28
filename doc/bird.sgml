@@ -5729,7 +5729,10 @@ protocol rpki [&lt;name&gt;] {
         refresh [keep] &lt;num&gt;;
         retry [keep] &lt;num&gt;;
         expire [keep] &lt;num&gt;;
-        transport tcp;
+        transport tcp {
+                authentication none|md5;
+                password "&lt;text&gt;";
+        };
         transport ssh {
                 bird private key "&lt;/path/to/id_rsa&gt;";
                 remote public key "&lt;/path/to/known_host&gt;";
@@ -5785,13 +5788,25 @@ specify both channels.
 	instead. This may be useful for implementing loose RPKI check for
 	blackholes. Default: disabled.
 
-        <tag>transport tcp</tag> Unprotected transport over TCP. It's a default
-        transport. Should be used only on secure private networks.
-        Default: tcp
+        <tag>transport tcp { <m/TCP transport options.../ }</tag> Transport over
+        TCP, it's the default transport. Cannot be combined with a SSH transport.
+        Default: TCP, no authentication.
 
         <tag>transport ssh { <m/SSH transport options.../ }</tag> It enables a
         SSHv2 transport encryption. Cannot be combined with a TCP transport.
         Default: off
+</descrip>
+
+<sect3>TCP transport options
+<p>
+<descrip>
+	<tag>authentication none|md5</tag>
+	Select authentication method to be used. <cf/none/ means no
+	authentication, <cf/md5/ is TCP-MD5 authentication (<rfc id="2385">).
+	Default: no authentication.
+
+	<tag>password "<m>text</m>"</tag>
+	Use this password for TCP-MD5 authentication of the RPKI-To-Router session.
 </descrip>
 
 <sect3>SSH transport options
