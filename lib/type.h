@@ -97,7 +97,7 @@ enum btype {
   T_ENUM_MPLS_POLICY = 0x35,
   T_ENUM_RTD = 0x37,
   T_ENUM_ROA = 0x39,
-  T_ENUM_NETTYPE = 0x3b,
+  T_ENUM_NET_TYPE = 0x3b,
   T_ENUM_AF = 0x3d,
 
 /* new enums go here */

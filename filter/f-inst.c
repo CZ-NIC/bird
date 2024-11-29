@@ -503,7 +503,7 @@
     RESULT(T_BOOL, i, (v1.type != T_VOID) && !val_is_undefined(v1));
   }
 
-  METHOD_R(T_NET, type, T_ENUM_NETTYPE, i, v1.val.net->type);
+  METHOD_R(T_NET, type, T_ENUM_NET_TYPE, i, v1.val.net->type);
   METHOD_R(T_IP, is_v4, T_BOOL, i, ipa_is_ip4(v1.val.ip));
 
   /* Add initialized variable */
