@@ -724,51 +724,45 @@ net_roa_check(rtable *tp, const net_addr *n, u32 asn)
  *
  * Implements draft-ietf-sidrops-aspa-verification-16.
  */
-int aspa_check(rtable *tab, const adata *path)
+enum aspa_result aspa_check(rtable *tab, const adata *path, bool force_upstream)
 {
   /* Restore tmp linpool state after this check */
   CLEANUP(lp_saved_cleanup) struct lp_state *_lps = lp_save(tmp_linpool);
 
   /* No support for confed paths */
   if (as_path_contains_confed(path))
-    return ASPA_CONTAINS_CONFED;
+    return ASPA_INVALID_CONFED;
+
+  /* Check path length */
+  uint len = as_path_getlen(path);
+  if (len == 0)
+    return ASPA_INVALID_EMPTY;
 
   /* Normalize the AS Path: drop stuffings */
-  uint len = as_path_getlen(path);
   u32 *asns = alloca(sizeof(u32) * len);
   uint ppos = 0;
-  int nsz = 0;
+  uint nsz = 0;
   while (as_path_walk(path, &ppos, &asns[nsz]))
     if ((nsz == 0) || (asns[nsz] != asns[nsz-1]))
       nsz++;
 
   /* Find the provider blocks for every AS on the path
    * and check allowed directions */
-  bool *up = alloca(sizeof(bool) * nsz);
-  bool *down = alloca(sizeof(bool) * nsz);
-  bool unknown_flag = false;
+  uint max_up = 0, min_up = 0, max_down = 0, min_down = 0;
 
   RT_READ(tab, tr);
 
-  for (int ap=0; ap<nsz; ap++)
+  for (uint ap=0; ap<nsz; ap++)
   {
     net_addr_union nau = { .aspa = NET_ADDR_ASPA(asns[ap]), };
-    bool seen = false;
 
     /* Find some ASPAs */
     struct netindex *ni = net_find_index(tr->t->netindex, &nau.n);
     net *n = ni ? net_find(tr, ni) : NULL;
 
-    if (!n)
-    {
-      unknown_flag = up[ap] = down[ap] = true;
-      continue;
-    }
+    bool found = false, down = false, up = false;
 
-    up[ap] = down[ap] = false;
-
-    /* Walk the existing records */
-    NET_READ_WALK_ROUTES(tr, n, ep, e)
+    if (n) NET_READ_WALK_ROUTES(tr, n, ep, e)
     {
       if (!rte_is_valid(&e->rte))
 	continue;
@@ -777,48 +771,80 @@ int aspa_check(rtable *tab, const adata *path)
       if (!ea)
 	continue;
 
-      seen = true;
+      /* Actually found some ASPA */
+      found = true;
 
       for (uint i=0; i * sizeof(u32) < ea->u.ptr->length; i++)
       {
 	if ((ap > 0) && ((u32 *) ea->u.ptr->data)[i] == asns[ap-1])
-	  down[ap] = true;
+	  up = true;
 	if ((ap + 1 < nsz) && ((u32 *) ea->u.ptr->data)[i] == asns[ap+1])
-	  up[ap] = true;
+	  down = true;
 
-	if (down[ap] && up[ap])
-	  break;
+	if (down && up)
+	  /* Both peers found */
+	  goto end_of_aspa;
       }
+    }
+end_of_aspa:;
 
-      if (down[ap] && up[ap])
-	break;
+    /* Fast path for the upstream check */
+    if (force_upstream)
+    {
+      if (!found)
+	/* Move min-upstream */
+	min_up = ap;
+      else if (ap && !up)
+	/* Exists but doesn't allow this upstream */
+	return ASPA_INVALID_LEAK;
     }
 
-    /* No ASPA for this ASN, therefore UNKNOWN */
-    if (!seen)
-      unknown_flag = up[ap] = down[ap] = true;
+    /* Fast path for no ASPA here */
+    else if (!found)
+    {
+      /* Extend max-downstream (min-downstream is stopped by unknown) */
+      max_down = ap+1;
+
+      /* Move min-upstream (can't include unknown) */
+      min_up = ap;
+    }
+
+    /* ASPA exists and downstream may be extended */
+    else if (down)
+    {
+      /* Extending max-downstream always */
+      max_down = ap+1;
+
+      /* Extending min-downstream unless unknown seen */
+      if (min_down == ap)
+	min_down = ap+1;
+
+      /* Downstream only */
+      if (!up)
+	min_up = max_up = ap;
+    }
+
+    /* No extension for downstream, force upstream only from now */
+    else
+    {
+      force_upstream = 1;
+
+      /* Not even upstream, move the ending here */
+      if (!up)
+	min_up = max_up = ap;
+    }
   }
 
-  /* Check whether the topology is first ramp up and then ramp down. */
-  int up_end = 0;
-  while (up_end < nsz && up[up_end])
-    up_end++;
+  /* Is the path surely valid? */
+  if (min_up <= min_down)
+    return ASPA_VALID;
 
-  int down_end = nsz - 1;
-  while (down_end > 0 && down[down_end])
-    down_end--;
-
-  /* A significant overlap of obvious unknowns or misconfigured ASPAs. */
-  if (up_end - down_end >= 2)
+  /* Is the path maybe valid? */
+  if (max_up <= max_down)
     return ASPA_UNKNOWN;
 
-  /* The path has either a single transit provider, or a peering pair on top */
-  else if (up_end - down_end >= 0)
-    return unknown_flag ? ASPA_UNKNOWN : ASPA_VALID;
-
-  /* There is a gap between valid ramp up and valid ramp down */
-  else
-    return ASPA_INVALID;
+  /* Now there is surely a valley there. */
+  return ASPA_INVALID_LEAK;
 }
 
 struct rte_storage *

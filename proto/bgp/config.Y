@@ -40,7 +40,7 @@ CF_ENUM(T_ENUM_BGP_ORIGIN, ORIGIN_, IGP, EGP, INCOMPLETE)
 
 CF_KEYWORDS(CEASE, PREFIX, LIMIT, HIT, ADMINISTRATIVE, SHUTDOWN, RESET, PEER,
 	CONFIGURATION, CHANGE, DECONFIGURED, CONNECTION, REJECTED, COLLISION,
-	OUT, OF, RESOURCES)
+	OUT, OF, RESOURCES, ASPA_CHECK_CUSTOMER)
 
 %type<i> bgp_cease_mask bgp_cease_list bgp_cease_flag bgp_role_name
 
@@ -381,6 +381,29 @@ CF_CLI(RELOAD BGP IN, proto_patt, [<name>], [[Request route refresh from neighbo
 CF_CLI(RELOAD BGP OUT, proto_patt, [<name>], [[Refresh routes to neighbor]])
 {
   proto_apply_cmd($4, bgp_reload_out, 1, 0);
+}
+
+/* ASPA shortcuts */
+term: ASPA_CHECK '(' rtable ')' { $$ =
+  f_new_inst(FI_ASPA_CHECK_EXPLICIT,
+      f_new_inst(FI_EA_GET,
+	f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL, }),
+	ea_class_find_by_name("bgp_path")
+	),
+      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 0, }),
+      $3
+  );
+}
+
+term: ASPA_CHECK_CUSTOMER '(' rtable ')' { $$ =
+  f_new_inst(FI_ASPA_CHECK_EXPLICIT,
+      f_new_inst(FI_EA_GET,
+	f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL, }),
+	ea_class_find_by_name("bgp_path")
+	),
+      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 1, }),
+      $3
+  );
 }
 
 CF_CODE

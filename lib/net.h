@@ -214,9 +214,6 @@ extern const u16 net_max_text_length[];
 #define NET_ADDR_ASPA(asn) \
   ((net_addr_aspa) { NET_ASPA, 32, sizeof(net_addr_aspa), asn })
 
-#define NET_ADDR_ASPA_EXISTS(asn) NET_ADDR_ASPA(asn, asn)
-#define NET_ADDR_ASPA_TRANSIT(asn) NET_ADDR_ASPA(asn, 0)
-
 #define NET_ADDR_MPLS(label) \
   ((net_addr_mpls) { NET_MPLS, 20, sizeof(net_addr_mpls), label })
 
