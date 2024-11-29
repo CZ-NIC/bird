@@ -708,6 +708,58 @@ check_ancestors_after_aggregation(const struct trie_node *node)
 }
 
 static void
+trie_receive_update(struct aggregator_proto *p, struct aggregator_route *old, struct aggregator_route *new)
+{
+  assert(p != NULL);
+  assert(new != NULL);
+
+  union net_addr_union *new_uptr = (net_addr_union *)new->rte.net->n.addr;
+
+  if (old && new)
+  {
+    assert(old->rte.net == new->rte.net);
+
+    union net_addr_union *old_uptr = (net_addr_union *)old->rte.net->n.addr;
+
+    if (NET_IP4 == new_uptr->n.type)
+    {
+      struct net_addr_ip4 *old_addr = &old_uptr->ip4;
+      struct net_addr_ip4 *new_addr = &new_uptr->ip4;
+      assert(net_equal_ip4(old_addr, new_addr));
+    }
+    else if (NET_IP6 == new_uptr->n.type)
+    {
+      struct net_addr_ip6 *old_addr = &old_uptr->ip6;
+      struct net_addr_ip6 *new_addr = &new_uptr->ip6;
+      assert(net_equal_ip6(old_addr, new_addr));
+    }
+    else
+      bug("Unknown node status");
+  }
+
+  struct trie_node *updated_node = NULL;
+
+  if (NET_IP4 == new_uptr->n.type)
+  {
+    struct net_addr_ip4 *addr = &new_uptr->ip4;
+    updated_node = trie_insert_prefix_ip4(p->root, addr, new->bucket, p->trie_pool);
+
+    assert(updated_node != NULL);
+    assert(updated_node->original_bucket != NULL);
+    assert(updated_node->status == IN_FIB);
+  }
+  else if (NET_IP6 == new_uptr->n.type)
+  {
+    struct net_addr_ip6 *addr = &new_uptr->ip6;
+    updated_node = trie_insert_prefix_ip6(p->root, addr, new->bucket, p->trie_pool);
+
+    assert(updated_node != NULL);
+    assert(updated_node->original_bucket != NULL);
+    assert(updated_node->status == IN_FIB);
+  }
+}
+
+static void
 get_trie_prefix_count_helper(const struct trie_node *node, int *count)
 {
   if (is_leaf(node))
