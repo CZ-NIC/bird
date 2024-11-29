@@ -170,6 +170,17 @@ get_bucket_ptr(const struct aggregator_proto *p, u32 id)
   return p->bucket_list[id];
 }
 
+/*
+ * Allocate unique ID for bucket
+ */
+static inline u32
+get_new_bucket_id(struct aggregator_proto *p)
+{
+  u32 id = hmap_first_zero(&p->bucket_id_map);
+  hmap_set(&p->bucket_id_map, id);
+  return id;
+}
+
 static inline int
 popcount32(u32 x)
 {
@@ -357,20 +368,6 @@ trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
   node->status = IN_FIB;
 
   return node;
-}
-
-/*
- * Assign unique ID to @bucket
- */
-static void
-assign_bucket_id(struct aggregator_proto *p, struct aggregator_bucket *bucket)
-{
-  assert(p != NULL);
-  assert(bucket != NULL);
-  assert(bucket->id == 0);
-
-  bucket->id = hmap_first_zero(&p->bucket_id_map);
-  hmap_set(&p->bucket_id_map, bucket->id);
 }
 
 static void
@@ -1665,7 +1662,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
       memcpy(new_bucket, tmp_bucket, sizeof(*new_bucket) + sizeof(new_bucket->aggr_data[0]) * p->aggr_on_count);
       HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 
-      assign_bucket_id(p, new_bucket);
+      new_bucket->id = get_new_bucket_id(p);
       proto_insert_bucket(p, new_bucket);
     }
 
@@ -1833,7 +1830,7 @@ trie_init(struct aggregator_proto *p)
   new_bucket->hash = mem_hash_value(&haux);
 
   /* Assign ID to root node */
-  assign_bucket_id(p, new_bucket);
+  new_bucket->id = get_new_bucket_id(p);
   proto_insert_bucket(p, new_bucket);
   assert(get_bucket_ptr(p, new_bucket->id) == new_bucket);
 
