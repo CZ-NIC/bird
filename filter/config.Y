@@ -515,10 +515,10 @@ type:
 	}
    }
  | ENUM
-   <i>{ $$ = cf_maybe_exit_filters(); }
+   { $<i>$ = cf_maybe_exit_filters(); }
    enum_type
    {
-     if ($2) cf_enter_filters();
+     if ($<i>2) cf_enter_filters();
      $$ = $3;
    }
  ;
