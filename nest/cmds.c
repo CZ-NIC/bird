@@ -22,11 +22,10 @@ extern int configuring;
 void
 cmd_show_status(void)
 {
-  byte tim[TM_DATETIME_BUFFER_SIZE];
-
   rcu_read_lock();
   struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_acquire);
-  struct timeformat *tf = &gr->tf_base;
+  struct timeformat *tf = this_cli->tf ?: &gr->tf_base;
+  byte tim[TM_DATETIME_BUFFER_SIZE];
 
   cli_msg(-1000, "BIRD " BIRD_VERSION);
   tm_format_time(tim, tf, current_time());

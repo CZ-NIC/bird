@@ -25,7 +25,6 @@ CF_KEYWORDS(GRACEFUL, RESTART, FIXED)
 
 %type <i> log_mask log_mask_list log_cat cfg_timeout debug_unix latency_debug_mask latency_debug_flag latency_debug_list
 %type <t> cfg_name
-%type <tf> timeformat_which
 %type <t> syslog_name
 
 CF_GRAMMAR

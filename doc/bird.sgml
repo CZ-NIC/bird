@@ -1489,6 +1489,13 @@ This argument can be omitted if there exists only a single instance.
 	pipe protocol, both directions are always reloaded together (<cf/in/ or
 	<cf/out/ options are ignored in that case).
 
+	<tag><label id="cli-timeformat">timeformat "<m/format1/" [<m/limit/ "<m/format2/"]</tag>
+	Override format of date/time used by BIRD in this CLI session.
+
+	Meaning of "<m/format1/", <m/limit/, and "<m/format2/" is the same as in the
+	<ref id="opt-timeformat" name="timeformat"> configuration option. Also, the
+	same <cf/iso .../ shorthands may be used.
+
 	<tag><label id="cli-down">down</tag>
 	Shut BIRD down.
 

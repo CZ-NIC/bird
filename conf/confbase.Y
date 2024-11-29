@@ -100,7 +100,8 @@ CF_DECLS
   struct f_prefix px;
   struct proto_spec ps;
   struct channel_limit cl;
-  struct timeformat *tf;
+  struct timeformat tf;
+  struct timeformat *tfp;
   struct settle_config settle;
   struct adata *ad;
   const struct adata *bs;

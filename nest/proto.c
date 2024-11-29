@@ -2610,7 +2610,7 @@ proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
     p->proto->get_status(p, buf);
 
   rcu_read_lock();
-  tm_format_time(tbuf, &atomic_load_explicit(&global_runtime, memory_order_acquire)->tf_proto, p->last_state_change);
+  tm_format_time(tbuf, this_cli->tf ?: &atomic_load_explicit(&global_runtime, memory_order_acquire)->tf_proto, p->last_state_change);
   rcu_read_unlock();
   cli_msg(-1002, "%-10s %-10s %-10s %-6s %-12s  %s",
 	  p->name,
