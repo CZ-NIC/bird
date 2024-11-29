@@ -2816,6 +2816,7 @@ avoid routing loops.
 <item> <rfc id="9072"> - Extended Optional Parameters Length for BGP OPEN Message
 <item> <rfc id="9117"> - Revised Validation Procedure for BGP Flow Specifications
 <item> <rfc id="9234"> - Route Leak Prevention and Detection Using Roles
+<item> <rfc id="9687"> - Send Hold Timer
 </itemize>
 
 <sect1>Route selection rules
@@ -3254,8 +3255,7 @@ using the following configuration parameters:
 	Send hold timer drops the session if the neighbor is sending keepalives,
 	but does not receive our messages, causing the TCP connection to stall.
 	This may happen due to malfunctioning or overwhelmed neighbor. See
-	<HTMLURL URL="https://datatracker.ietf.org/doc/draft-ietf-idr-bgp-sendholdtimer/"
-	name="draft-ietf-idr-bgp-sendholdtimer"> for more details.
+	<rfc id="9687"> for more details.
 
 	Like the option <cf/keepalive time/, the effective value depends on the
 	negotiated hold time, as it is scaled to maintain proportion between the
