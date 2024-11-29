@@ -51,7 +51,7 @@ static struct log_channel * _Atomic global_logs;
 /* Logging flags to validly prepare logging messages */
 
 static _Atomic uint logging_flags;
-static _Atomic uint logging_mask;
+static _Atomic uint logging_mask = ~0U;
 
 #ifdef HAVE_SYSLOG_H
 #include <sys/syslog.h>
@@ -189,9 +189,20 @@ log_commit(log_buffer *buf)
     memcpy(buf->buf.end - sizeof TOO_LONG, TOO_LONG, sizeof TOO_LONG);
 #undef TOO_LONG
 
+  struct log_channel *glogs = atomic_load_explicit(&global_logs, memory_order_acquire);
+  if (!glogs)
+  {
+    static struct log_channel initial_stderr_log = {
+      .rf = &rf_stderr,
+      .mask = ~0,
+      .prepare = BIT32_ALL(LBPP_TERMINAL, LBP_CLASS, LBP_MSG),
+    };
+
+    glogs = &initial_stderr_log;
+  }
+
   for (
-      struct log_channel *l = atomic_load_explicit(&global_logs, memory_order_acquire);
-      l;
+      struct log_channel *l = glogs; l;
       l = atomic_load_explicit(&l->next, memory_order_acquire)
       )
     {
