@@ -29,6 +29,8 @@ m4_define(CF_END, `m4_divert(-1)')
 m4_define(CF_itera, `m4_ifelse($#, 1, [[CF_iter($1)]], [[CF_iter($1)[[]]CF_itera(m4_shift($@))]])')
 m4_define(CF_iterate, `m4_define([[CF_iter]], m4_defn([[$1]]))CF_itera($2)')
 
+m4_define(CF_append, `m4_define([[$1]], m4_ifdef([[$1]], m4_defn([[$1]])[[$3]])[[$2]])')
+
 # Keywords act as untyped %token
 m4_define(CF_keywd, `m4_ifdef([[CF_tok_$1]],,[[m4_define([[CF_tok_$1]],1)m4_define([[CF_toks]],CF_toks $1)]])')
 m4_define(CF_KEYWORDS, `m4_define([[CF_toks]],[[]])CF_iterate([[CF_keywd]], [[$@]])m4_ifelse(CF_toks,,,%token<s>[[]]CF_toks
@@ -46,8 +48,10 @@ m4_define(CF_CLI_OPT, `')
 m4_define(CF_CLI_HELP, `')
 
 # ENUM declarations are ignored
-m4_define(CF_ENUM, `')
-m4_define(CF_ENUM_PX, `')
+m4_define(CF_token, `m4_ifdef([[CF_tok_$1]],,[[m4_define([[CF_tok_$1]],1)%token<s> $1]])')
+m4_define(CF_enum, `CF_append([[CF_enum_type]],[[$1 { $$ = $2; }]],[[ | ]])CF_token($1)')
+m4_define(CF_ENUM,    `CF_enum(m4_substr($1, 7), $1)')
+m4_define(CF_ENUM_PX, `CF_enum(m4_substr($1, 7), $1)')
 
 # After all configuration templates end, we finally generate the grammar file.
 m4_m4wrap(`
@@ -58,7 +62,11 @@ m4_undivert(1)DNL
 
 m4_undivert(2)DNL
 
+%type <i> enum_type
+
 %%
+enum_type: CF_enum_type;
+
 m4_undivert(3)DNL
 
 %%

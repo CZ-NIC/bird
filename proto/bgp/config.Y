@@ -33,6 +33,8 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	FIRST, FREE, VALIDATE, BASE, ROLE, ROLES, PEER, PROVIDER, CUSTOMER,
 	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL, SEND)
 
+CF_ENUM(T_ENUM_BGP_ORIGIN, ORIGIN_, IGP, EGP, INCOMPLETE)
+
 %type <i> bgp_nh
 %type <i32> bgp_afi
 
@@ -364,8 +366,6 @@ custom_attr: ATTRIBUTE BGP NUM type symbol ';' {
   ea_ref_class(new_config->pool, ac);
   cf_define_symbol(new_config, $5, SYM_ATTRIBUTE, attribute, ac);
 };
-
-CF_ENUM(T_ENUM_BGP_ORIGIN, ORIGIN_, IGP, EGP, INCOMPLETE)
 
 CF_CLI(RELOAD BGP, proto_patt, [<name>], [[Send and request route refresh to/from neighbor]])
 {
