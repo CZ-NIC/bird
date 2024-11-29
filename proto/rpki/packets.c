@@ -311,26 +311,22 @@ rpki_pdu_to_network_byte_order(struct pdu_header *pdu)
 static void
 rpki_pdu_to_host_byte_order(struct pdu_header *pdu)
 {
-  /* The Router Key PDU has two one-byte fields instead of one two-bytes field. */
-  if (pdu->type != ROUTER_KEY)
-    pdu->reserved = ntohs(pdu->reserved);
-
   pdu->len = ntohl(pdu->len);
 
   switch (pdu->type)
   {
   case SERIAL_NOTIFY:
   {
-    /* Note that a session_id is converted using converting header->reserved */
     struct pdu_serial_notify *sn_pdu = (void *) pdu;
+    sn_pdu->session_id = ntohs(sn_pdu->session_id);
     sn_pdu->serial_num = ntohl(sn_pdu->serial_num);
     break;
   }
 
   case END_OF_DATA:
   {
-    /* Note that a session_id is converted using converting header->reserved */
     struct pdu_end_of_data_v0 *eod0 = (void *) pdu;
+    eod0->session_id = ntohs(eod0->session_id);
     eod0->serial_num = ntohl(eod0->serial_num); /* Same either for version 1 */
 
     if (pdu->ver > RPKI_VERSION_0)
@@ -361,8 +357,8 @@ rpki_pdu_to_host_byte_order(struct pdu_header *pdu)
 
   case ERROR:
   {
-    /* Note that a error_code is converted using converting header->reserved */
     struct pdu_error *err = (void *) pdu;
+    err->error_code = ntohs(err->error_code);
     err->len_enc_pdu = ntohl(err->len_enc_pdu);
     u32 *err_text_len = (u32 *)(err->rest + err->len_enc_pdu);
     *err_text_len = htonl(*err_text_len);
@@ -393,8 +389,14 @@ rpki_pdu_to_host_byte_order(struct pdu_header *pdu)
      * We don't care here. */
 
   case CACHE_RESPONSE:
+  {
+    struct pdu_cache_response *cr = (void *) pdu;
+    cr->session_id = ntohs(cr->session_id);
+    break;
+  }
+
   case CACHE_RESET:
-    /* Converted with pdu->reserved */
+    /* Nothing to convert */
     break;
   }
 }
