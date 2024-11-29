@@ -932,9 +932,7 @@ void ea_show_nexthop_list(struct cli *c, struct nexthop_adata *nhad);
 enum aspa_result {
   ASPA_UNKNOWN = 0,
   ASPA_VALID,
-  ASPA_INVALID_EMPTY,
-  ASPA_INVALID_CONFED,
-  ASPA_INVALID_LEAK,
+  ASPA_INVALID,
 };
 
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
