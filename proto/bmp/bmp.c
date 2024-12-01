@@ -159,6 +159,15 @@ enum bmp_peer_down_notif_reason {
   BMP_PEER_DOWN_REASON_PEER_DE_CONFIGURED = 5
 };
 
+struct bmp_peer_down_info {
+  u8 reason;
+  u8 fsm_code;
+  u8 err_code;
+  u8 err_subcode;
+  const byte *data;
+  int length;
+};
+
 /* BMP Termination Message [RFC 7854 - Section 4.5] */
 #define BMP_TERM_INFO_TYPE_SIZE 2
 enum bmp_term_info_type {
@@ -190,21 +199,6 @@ enum bmp_term_reason {
 
 #define IP4_MAX_TTL 255
 
-
-#define IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(expr, msg, rv...)     \
-  do {                                                                      \
-    if ((expr))                                                             \
-    {                                                                       \
-      log(L_WARN "[BMP] " msg);                                             \
-      return rv;                                                            \
-    }                                                                       \
-  } while (0)
-
-
-#define IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(p, msg, rv...)	\
-  do {									\
-    IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(!(p), msg, rv);	\
-  } while (0)
 
 #define bmp_buffer_need(b, sz)  ASSERT_DIE((b)->pos + (sz) <= (b)->end)
 
@@ -324,8 +318,7 @@ bmp_init_msg_serialize(buffer *stream, const char *sys_descr, const char *sys_na
   // allocated 2x BMP_INFO_TLV_FIX_SIZE memory pool size
   const size_t data_size = (2 * BMP_INFO_TLV_FIX_SIZE) + sys_descr_len + sys_name_len;
 
-  bmp_buffer_need(stream, data_size);
-
+  bmp_buffer_need(stream, BMP_COMMON_HDR_SIZE + data_size);
   bmp_common_hdr_serialize(stream, BMP_INIT_MSG, data_size);
   bmp_info_tlv_hdr_serialize(stream, BMP_INFO_TLV_TYPE_SYS_DESCR, sys_descr);
   bmp_info_tlv_hdr_serialize(stream, BMP_INFO_TLV_TYPE_SYS_NAME, sys_name);
@@ -340,7 +333,7 @@ bmp_schedule_tx_packet(struct bmp_proto *p, const byte *payload, size_t size)
   {
     if (!p->tx_last || !bmp_tx_remains(p->tx_last))
     {
-      if (p->tx_pending_count > p->tx_pending_limit)
+      if (p->tx_pending_count >= p->tx_pending_limit)
 	return ev_schedule(p->tx_overflow_event);
 
       p->tx_pending_count++;
@@ -561,6 +554,7 @@ bmp_peer_up_notif_msg_serialize(buffer *stream, const bool is_peer_global,
   bmp_per_peer_hdr_serialize(stream, is_peer_global,
     false /* TODO: Hardcoded pre-policy Adj-RIB-In */, as4_support, remote_addr,
     peer_as, peer_bgp_id, 0, 0); // 0, 0 - No timestamp provided
+
   bmp_put_ipa(stream, local_addr);
   bmp_put_u16(stream, local_port);
   bmp_put_u16(stream, remote_port);
@@ -573,15 +567,37 @@ bmp_peer_up_notif_msg_serialize(buffer *stream, const bool is_peer_global,
 static void
 bmp_peer_down_notif_msg_serialize(buffer *stream, const bool is_peer_global,
   const u32 peer_as, const u32 peer_bgp_id, const bool as4_support,
-  const ip_addr remote_addr, const byte *data, const size_t data_size)
+  const ip_addr remote_addr, const struct bmp_peer_down_info *info)
 {
-  const size_t payload_size = BMP_PER_PEER_HDR_SIZE + data_size;
-  bmp_buffer_need(stream, BMP_COMMON_HDR_SIZE + payload_size);
-  bmp_common_hdr_serialize(stream, BMP_PEER_DOWN_NOTIF, payload_size);
+  const size_t data_size = BMP_PER_PEER_HDR_SIZE + 1 +
+    (((info->reason == BMP_PEER_DOWN_REASON_LOCAL_BGP_NOTIFICATION) ||
+      (info->reason == BMP_PEER_DOWN_REASON_REMOTE_BGP_NOTIFICATION)) ? (BGP_HEADER_LENGTH + 2 + info->length) :
+     (info->reason == BMP_PEER_DOWN_REASON_LOCAL_NO_NOTIFICATION) ? 2 : 0);
+
+  bmp_buffer_need(stream, BMP_COMMON_HDR_SIZE + data_size);
+  bmp_common_hdr_serialize(stream, BMP_PEER_DOWN_NOTIF, data_size);
   bmp_per_peer_hdr_serialize(stream, is_peer_global,
     false /* TODO: Hardcoded pre-policy adj RIB IN */,  as4_support, remote_addr,
     peer_as, peer_bgp_id, 0, 0); // 0, 0 - No timestamp provided
-  bmp_put_data(stream, data, data_size);
+
+  bmp_put_u8(stream, info->reason);
+
+  switch (info->reason)
+  {
+  case BMP_PEER_DOWN_REASON_LOCAL_BGP_NOTIFICATION:
+  case BMP_PEER_DOWN_REASON_REMOTE_BGP_NOTIFICATION:
+    uint bgp_msg_length = BGP_HEADER_LENGTH + 2 + info->length;
+    bmp_buffer_need(stream, bgp_msg_length);
+    bmp_put_bgp_hdr(stream, bgp_msg_length, PKT_NOTIFICATION);
+    bmp_put_u8(stream, info->err_code);
+    bmp_put_u8(stream, info->err_subcode);
+    bmp_put_data(stream, info->data, info->length);
+    break;
+
+  case BMP_PEER_DOWN_REASON_LOCAL_NO_NOTIFICATION:
+    bmp_put_u16(stream, info->fsm_code);
+    break;
+  }
 }
 
 
@@ -873,10 +889,11 @@ bmp_send_peer_up_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
   ASSERT(p->started);
 
   const struct birdsock *sk = bmp_get_birdsock_ext(bgp);
-  IF_PTR_IS_NULL_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    sk,
-    "[BMP] No BGP socket"
-  );
+  if (!sk)
+  {
+    log(L_WARN "%s: No BGP socket", p->p.name);
+    return;
+  }
 
   const bool is_global_instance_peer = bmp_is_peer_global_instance(bgp);
   buffer payload = bmp_default_buffer(p);
@@ -940,7 +957,7 @@ bmp_route_monitor_end_of_rib(struct bmp_proto *p, struct bmp_stream *bs)
 
 static void
 bmp_send_peer_down_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
-  const byte *data, const size_t data_size)
+			     const struct bmp_peer_down_info *info)
 {
   ASSERT(p->started);
 
@@ -950,7 +967,7 @@ bmp_send_peer_down_notif_msg(struct bmp_proto *p, const struct bgp_proto *bgp,
   bmp_peer_down_notif_msg_serialize(&payload, is_global_instance_peer,
     bgp->remote_as, bgp->remote_id,
     remote_caps ? remote_caps->as4_support : bgp->as4_session,
-    bgp->remote_ip, data, data_size);
+    bgp->remote_ip, info);
   bmp_schedule_tx_packet(p, payload.start, payload.pos - payload.start);
 }
 
@@ -967,47 +984,32 @@ bmp_peer_down_(struct bmp_proto *p, const struct bgp_proto *bgp,
 
   TRACE(D_STATES, "Peer down for %s", bgp->p.name);
 
-  uint bmp_code = 0;
-  uint fsm_code = 0;
+  struct bmp_peer_down_info info = {
+    .err_code = err_code,
+    .err_subcode = err_subcode,
+    .data = data,
+    .length = length,
+  };
 
   switch (err_class)
   {
   case BE_BGP_RX:
-    bmp_code = BMP_PEER_DOWN_REASON_REMOTE_BGP_NOTIFICATION;
+    info.reason = BMP_PEER_DOWN_REASON_REMOTE_BGP_NOTIFICATION;
     break;
 
   case BE_BGP_TX:
   case BE_AUTO_DOWN:
   case BE_MAN_DOWN:
-    bmp_code = BMP_PEER_DOWN_REASON_LOCAL_BGP_NOTIFICATION;
+    info.reason = BMP_PEER_DOWN_REASON_LOCAL_BGP_NOTIFICATION;
     break;
 
   default:
-    bmp_code = BMP_PEER_DOWN_REASON_REMOTE_NO_NOTIFICATION;
-    length = 0;
+    info.reason = BMP_PEER_DOWN_REASON_REMOTE_NO_NOTIFICATION;
+    info.length = 0;
     break;
   }
 
-  buffer payload = bmp_default_buffer(p);
-  bmp_buffer_need(&payload, 1 + BGP_HEADER_LENGTH + 2 + length);
-  bmp_put_u8(&payload, bmp_code);
-
-  switch (bmp_code)
-  {
-  case BMP_PEER_DOWN_REASON_LOCAL_BGP_NOTIFICATION:
-  case BMP_PEER_DOWN_REASON_REMOTE_BGP_NOTIFICATION:
-    bmp_put_bgp_hdr(&payload, BGP_HEADER_LENGTH + 2 + length, PKT_NOTIFICATION);
-    bmp_put_u8(&payload, err_code);
-    bmp_put_u8(&payload, err_subcode);
-    bmp_put_data(&payload, data, length);
-    break;
-
-  case BMP_PEER_DOWN_REASON_LOCAL_NO_NOTIFICATION:
-    bmp_put_u16(&payload, fsm_code);
-    break;
-  }
-
-  bmp_send_peer_down_notif_msg(p, bgp, payload.start, payload.pos - payload.start);
+  bmp_send_peer_down_notif_msg(p, bgp, &info);
 
   bmp_remove_peer(p, bp);
 }
@@ -1041,11 +1043,8 @@ bmp_send_termination_msg(struct bmp_proto *p,
     bmp_tx_buffer_free(p, SKIP_BACK(struct bmp_tx_buffer, data, p->sk->tbuf));
 
   p->sk->tbuf = stream.start;
-  IF_COND_TRUE_PRINT_ERR_MSG_AND_RETURN_OPT_VAL(
-    sk_send(p->sk, stream.pos - stream.start) < 0,
-    "Failed to send BMP termination message"
-    );
-
+  if (sk_send(p->sk, stream.pos - stream.start) < 0)
+    log(L_WARN "%s: Cannot send BMP termination message", p->p.name);
   p->sk->tbuf = NULL;
 }
 
@@ -1361,7 +1360,8 @@ bmp_start(struct proto *P)
   p->connect_retry_timer = tm_new_init(p->p.pool, bmp_connection_retry, p, 0, 0);
   p->sk = NULL;
 
-  SKIP_BACK(struct bmp_tx_resource, r, ralloc(P->pool, &bmp_tx_resource_class))->p = p;
+  resource *r = ralloc(P->pool, &bmp_tx_resource_class);
+  SKIP_BACK(struct bmp_tx_resource, r, r)->p = p;
 
   HASH_INIT(p->peer_map, P->pool, 4);
   HASH_INIT(p->stream_map, P->pool, 4);
@@ -1457,8 +1457,8 @@ bmp_show_proto_info(struct proto *P)
       cli_msg(-1006, "  %-19s %M", "Last error:", p->sock_err);
 
     cli_msg(-1006, "  %-19s % 9sB (limit %sB)", "Pending TX:",
-	fmt_order(p->tx_pending_count * page_size, 1, 10000),
-	fmt_order(p->tx_pending_limit * page_size, 1, 10000));
+	fmt_order(p->tx_pending_count * (u64) page_size, 1, 10000),
+	fmt_order(p->tx_pending_limit * (u64) page_size, 1, 10000));
 
     cli_msg(-1006, "  %-19s % 9sB", "Session TX:", fmt_order(p->tx_sent, 1, 10000));
     cli_msg(-1006, "  %-19s % 9sB", "Total TX:", fmt_order(p->tx_sent_total, 1, 10000));

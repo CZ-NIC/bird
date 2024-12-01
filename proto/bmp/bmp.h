@@ -112,6 +112,7 @@ struct bmp_table {
   u32 uc;
 };
 
+
 #ifdef CONFIG_BMP
 
 /**
