@@ -1579,8 +1579,9 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
 {
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
   ASSERT_DIE(src_ch == p->src);
+
   struct aggregator_bucket *new_bucket = NULL, *old_bucket = NULL;
-  struct aggregator_route *old_route = NULL;
+  struct aggregator_route  *new_route  = NULL, *old_route  = NULL;
 
   /* Ignore all updates if protocol is not up */
   if (p->p.proto_state != PS_UP)
@@ -1738,6 +1739,10 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     new_bucket->count++;
     HASH_INSERT2(p->routes, AGGR_RTE, p->p.pool, arte);
 
+    /* New route */
+    new_route = arte;
+    assert(new_route != NULL);
+
     if (p->logging)
       log("Inserting rte: %p, arte: %p, net: %p, src: %p, hash: %x", &arte->rte, arte, arte->rte.net, arte->rte.src, aggr_route_hash(&arte->rte));
   }
@@ -1766,6 +1771,28 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
 
     if (new_bucket && (new_bucket != old_bucket))
       aggregator_bucket_update(p, new_bucket, net);
+  }
+  else if (PREFIX_AGGR == p->aggr_mode)
+  {
+    // old => old_route, new => arte
+    if (p->root)
+    {
+      if ((old && new) || (!old && new))
+      {
+        assert(new_route != NULL);
+
+        if (old && new)
+          log("rt notify: update");
+        else if (!old && new)
+          log("rt notify: announce");
+
+        trie_receive_update(p, old_route, new_route);
+      }
+      else if (old && !new)
+      {
+        log("rt notify: withdraw");
+      }
+    }
   }
 
   /* Cleanup the old bucket if empty */
