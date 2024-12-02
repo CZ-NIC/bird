@@ -559,6 +559,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
   if (is_bucket_potential(node, inherited_bucket))
   {
     /* Selected bucket is NULL as it has never been assigned */
+    node->selected_bucket = NULL;
     node->status = NON_FIB;
   }
   else
@@ -586,7 +587,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
   const struct trie_node * const left  = node->child[0];
   const struct trie_node * const right = node->child[1];
 
-  /* Nodes with exactly one child */
+  /* Nodes with only one child */
   if ((left && !right) || (!left && right))
   {
     /*
@@ -643,7 +644,10 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
 
   /* Leaves with no assigned bucket are removed */
   if (NON_FIB == node->status && is_leaf(node))
+  {
+    assert(node->selected_bucket == NULL);
     remove_node(node);
+  }
 }
 
 /*
@@ -1981,6 +1985,7 @@ trie_init(struct aggregator_proto *p)
   /* Assign default route to the root */
   p->root->original_bucket = new_bucket;
   p->root->status = IN_FIB;
+  log("Root prefix %N with default bucket %p", p->root->original_bucket->rte->net->n.addr, p->root->original_bucket);
 }
 
 static int
