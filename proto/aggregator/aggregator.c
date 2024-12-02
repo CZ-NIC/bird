@@ -757,6 +757,54 @@ trie_receive_update(struct aggregator_proto *p, struct aggregator_route *old, st
     assert(updated_node->original_bucket != NULL);
     assert(updated_node->status == IN_FIB);
   }
+
+static void
+dump_trie_helper(const struct trie_node *node, struct net_addr_ip4 *addr, int depth)
+{
+  assert(node != NULL);
+  assert(addr != NULL);
+
+  char *spaces = allocz(2 * depth + 1);
+  memset(spaces, ' ', 2 * depth);
+  spaces[2 * depth] = 0;
+
+  char *bucket = allocz(16);
+
+  if (IN_FIB == node->status)
+  {
+    assert(node->selected_bucket != NULL);
+    bsnprintf(bucket, 16, " [%u]", node->selected_bucket->id);
+  }
+
+  log("%s%s%N%s", spaces, IN_FIB == node->status ? "@" : " ", addr, bucket);
+
+  if (node->child[0])
+  {
+    ip4_clrbit(&addr->prefix, node->depth);
+    addr->pxlen = depth + 1;
+    dump_trie_helper(node->child[0], addr, depth + 1);
+  }
+
+  if (node->child[1])
+  {
+    ip4_setbit(&addr->prefix, node->depth);
+    addr->pxlen = depth + 1;
+    dump_trie_helper(node->child[1], addr, depth + 1);
+    ip4_clrbit(&addr->prefix, node->depth);
+  }
+}
+
+static void
+dump_trie(const struct trie_node *root)
+{
+  assert(root != NULL);
+
+  struct net_addr_ip4 addr = { 0 };
+  net_fill_ip4((net_addr *)&addr, IP4_NONE, 0);
+
+  log("==== TRIE BEGIN ====");
+  dump_trie_helper(root, &addr, 0);
+  log("==== TRIE   END ====");
 }
 
 static void
