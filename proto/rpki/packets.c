@@ -1141,7 +1141,7 @@ rpki_connected_hook(sock *sk)
  * This function prepares Error PDU and sends it to a cache server.
  */
 static int
-rpki_send_error_pdu(struct rpki_cache *cache, const enum pdu_error_type error_code, const u32 err_pdu_len, const struct pdu_header *erroneous_pdu, const char *fmt, ...)
+rpki_send_error_pdu(struct rpki_cache *cache, const enum pdu_error_type error_code, u32 err_pdu_len, const struct pdu_header *erroneous_pdu, const char *fmt, ...)
 {
   va_list args;
   char msg[128];
@@ -1162,6 +1162,9 @@ rpki_send_error_pdu(struct rpki_cache *cache, const enum pdu_error_type error_co
     msg_len = bvsnprintf(msg, sizeof(msg), fmt, args) + 1;
     va_end(args);
   }
+
+  u32 err_pdu_max_len = ROUND_DOWN_POW2(RPKI_TX_BUFFER_SIZE - (16 + msg_len), 4);
+  err_pdu_len = MIN(err_pdu_len, err_pdu_max_len);
 
   u32 pdu_size = 16 + err_pdu_len + msg_len;
   byte pdu[pdu_size];

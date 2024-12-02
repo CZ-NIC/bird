@@ -25,12 +25,12 @@
  * 	------------
  * 	= 848 bytes (Maximal expected PDU size)
  *
- * Received ASPA PDU can have any size, so let's start with 4k */
-#define RPKI_PDU_MAX_LEN	4096
+ * Received ASPA PDU can have any size, so let's start with 64k */
+#define RPKI_PDU_MAX_LEN	65536
 
 /* RX buffer size has a great impact to scheduler granularity */
-#define RPKI_RX_BUFFER_SIZE	4096
-#define RPKI_TX_BUFFER_SIZE	RPKI_PDU_MAX_LEN
+#define RPKI_RX_BUFFER_SIZE	65536
+#define RPKI_TX_BUFFER_SIZE	4096
 
 /* Return values */
 enum rpki_rtvals {
