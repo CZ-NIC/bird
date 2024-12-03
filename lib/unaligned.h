@@ -113,4 +113,19 @@ put_u32s(void *p, const u32 *x, int n)
 }
 
 
+static inline u32
+get_u32he(const void *p)
+{
+  u32 x;
+  memcpy(&x, p, 4);
+  return x;
+}
+
+static inline void
+put_u32he(void *p, u32 x)
+{
+  memcpy(p, &x, 4);
+}
+
+
 #endif
