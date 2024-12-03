@@ -48,6 +48,7 @@ struct bfd_config
   u8 accept_direct;
   u8 accept_multihop;
   u8 strict_bind;
+  u8 zero_udp6_checksum_rx;
 };
 
 struct bfd_iface_config
@@ -69,6 +70,8 @@ struct bfd_session_config
   u32 idle_tx_int;
   u8 multiplier;
   u8 passive;
+  u8 auth_type;				/* Authentication type (BFD_AUTH_*) */
+  list *passwords;			/* Passwords for authentication */
 };
 
 struct bfd_neighbor

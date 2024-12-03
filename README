@@ -68,11 +68,22 @@ User support
 If you want to help us debugging, enhancing and porting BIRD or just lurk
 around to see what's going to develop, feel free to subscribe to the BIRD
 users mailing list bird-users@network.cz, just send `subscribe' to
-bird-request@network.cz. Bug reports, suggestions, feature requests and
-code are welcome! We don't use gitlab issues for reporting, sorry.
+bird-request@network.cz.
 
 Subscribe:	http://bird.network.cz/mailman/listinfo/bird-users/
 Archive:	http://bird.network.cz/pipermail/bird-users/
+
+Please don't send security issues to the mailing-list, contact us instead at
+bird-support@network.cz which is a private e-mail address where you also can
+get commercial support for your BIRD deployment.
+
+We don't use our gitlab issues for reporting but we're partially tracking
+the core developent team's work there publicly.
+
+Contributing
+============
+
+Please see the CONTRIBUTING.md file to find how to contribute to BIRD.
 
 Licence
 =======

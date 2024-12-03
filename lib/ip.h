@@ -354,6 +354,9 @@ static inline ip4_addr ip4_setbits(ip4_addr a, uint pos, uint val)
 static inline ip6_addr ip6_setbits(ip6_addr a, uint pos, uint val)
 { a.addr[pos / 32] |= val << (31 - pos % 32); return a; }
 
+ip6_addr ip6_shift_left(ip6_addr a, uint bits);
+ip6_addr ip6_shift_right(ip6_addr a, uint bits);
+
 
 static inline ip4_addr ip4_opposite_m1(ip4_addr a)
 { return _MI4(_I(a) ^ 1); }
@@ -398,7 +401,7 @@ typedef struct mpls_label_stack {
   u32 stack[MPLS_MAX_LABEL_STACK];
 } mpls_label_stack;
 
-static inline int
+static inline int ACCESS_READ(1, 2)
 mpls_get(const char *buf, int buflen, u32 *stack)
 {
   for (int i=0; (i<MPLS_MAX_LABEL_STACK) && (i*4+3 < buflen); i++)
@@ -454,8 +457,13 @@ static inline void * put_ip6(void *buf, ip6_addr a)
  *	Binary/text form conversions
  */
 
+#define IP4_BUFFER_SIZE		16	/* Required buffer for ip4_ntop() */
+#define IP4_PX_BUFFER_SIZE	20	/* Required buffer for ip4_ntop_px() */
+
 char *ip4_ntop(ip4_addr a, char *b);
 char *ip6_ntop(ip6_addr a, char *b);
+
+char *ip4_px_ntop(ip4_addr a, int len, char *b);
 
 static inline char * ip4_ntox(ip4_addr a, char *b)
 { return b + bsprintf(b, "%08x", _I(a)); }

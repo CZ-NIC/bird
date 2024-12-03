@@ -43,9 +43,11 @@ static const char * const f_type_str[] = {
   [T_ENUM_SCOPE] = "enum scope",
   [T_ENUM_RTD]	= "enum rtd",
   [T_ENUM_ROA]	= "enum roa",
-  [T_ENUM_NETTYPE] = "enum nettype",
+  [T_ENUM_ASPA] = "enum aspa",
+  [T_ENUM_NET_TYPE] = "enum net_type",
   [T_ENUM_RA_PREFERENCE] = "enum ra_preference",
   [T_ENUM_AF]	= "enum af",
+  [T_ENUM_MPLS_POLICY] = "enum mpls_policy",
 
   [T_IP]	= "ip",
   [T_NET]	= "prefix",

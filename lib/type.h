@@ -91,12 +91,13 @@ enum btype {
   T_ENUM_LO = 0x12,
   T_ENUM_HI = 0x3f,
 
+  T_ENUM_ASPA = 0x2f,		/* ASPA validation result */
   T_ENUM_RTS = 0x31,
   T_ENUM_SCOPE = 0x33,
   T_ENUM_MPLS_POLICY = 0x35,
   T_ENUM_RTD = 0x37,
   T_ENUM_ROA = 0x39,
-  T_ENUM_NETTYPE = 0x3b,
+  T_ENUM_NET_TYPE = 0x3b,
   T_ENUM_AF = 0x3d,
 
 /* new enums go here */

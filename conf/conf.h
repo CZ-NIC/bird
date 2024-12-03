@@ -15,6 +15,7 @@
 #include "lib/resource.h"
 #include "lib/obstacle.h"
 #include "lib/timer.h"
+#include "lib/tlists.h"
 
 /* Configuration structure */
 struct config {
@@ -26,6 +27,7 @@ struct config {
   list logfiles;			/* Configured log files (sysdep) */
   list tests;				/* Configured unit tests (f_bt_test_suite) */
   list symbols;				/* Configured symbols in config order */
+  TLIST_STRUCT_DEF(cli_config, struct cli_config) cli; /* Configured CLI sockets */
 
   struct rfile *mrtdump_file;		/* Configured MRTDump file */
   const char *syslog_name;		/* Name used for syslog (NULL -> no syslog) */

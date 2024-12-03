@@ -153,7 +153,7 @@ CF_DECLS
 
 CF_KEYWORDS(ROUTER, ID, HOSTNAME, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT, PIPE)
 CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, VRF, DEFAULT, TABLE, TABLES, STATES, ROUTES, FILTERS)
-CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS)
+CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS, ASPA)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED, RPKI)
 CF_KEYWORDS(PASSWORD, KEY, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, CHANNELS, INTERFACES)
 CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512, BLAKE2S128, BLAKE2S256, BLAKE2B256, BLAKE2B512)
@@ -162,20 +162,22 @@ CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION)
 CF_KEYWORDS(RELOAD, IN, OUT, MRTDUMP, MESSAGES, RESTRICT, MEMORY, CLASS, DSCP, PARTIAL)
 CF_KEYWORDS(TIMEFORMAT, ISO, SHORT, LONG, ROUTE, PROTOCOL, BASE, LOG, S, MS, US)
 CF_KEYWORDS(GRACEFUL, RESTART, WAIT, MAX, AS)
-CF_KEYWORDS(MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE)
 CF_KEYWORDS(CHECK, LINK)
 CF_KEYWORDS(CORK, SORTED, TRIE, MIN, MAX, ROA, DIGEST, ROUTE, REFRESH, SETTLE, TIME, GC, THRESHOLD, PERIOD)
 CF_KEYWORDS(MPLS_LABEL, MPLS_POLICY, MPLS_CLASS)
+CF_KEYWORDS(ASPA_PROVIDERS)
 
 /* For r_args_channel */
-CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC)
+CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC, ASPA)
 
+CF_ENUM(T_ENUM_NET_TYPE, NET_, IP4, IP6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, IP6_SADR, MPLS, ASPA)
 CF_ENUM(T_ENUM_RTS, RTS_, STATIC, INHERIT, DEVICE, STATIC_DEVICE, REDIRECT,
 	RIP, OSPF, OSPF_IA, OSPF_EXT1, OSPF_EXT2, BGP, PIPE, BABEL, RPKI, L3VPN,
 	AGGREGATED)
 CF_ENUM(T_ENUM_SCOPE, SCOPE_, HOST, LINK, SITE, ORGANIZATION, UNIVERSE, UNDEFINED)
 CF_ENUM(T_ENUM_RTD, RTD_, UNICAST, BLACKHOLE, UNREACHABLE, PROHIBIT)
 CF_ENUM(T_ENUM_ROA, ROA_, UNKNOWN, VALID, INVALID)
+CF_ENUM(T_ENUM_ASPA, ASPA_, UNKNOWN, VALID, INVALID)
 CF_ENUM_PX(T_ENUM_AF, AF_, AFI_, IPV4, IPV6)
 CF_ENUM(T_ENUM_MPLS_POLICY, MPLS_POLICY_, NONE, STATIC, PREFIX, AGGREGATE, VRF)
 
@@ -189,6 +191,8 @@ CF_ENUM(T_ENUM_MPLS_POLICY, MPLS_POLICY_, NONE, STATIC, PREFIX, AGGREGATE, VRF)
 %type <ps> proto_patt proto_patt2
 %type <cc> channel_start proto_channel
 %type <cl> limit_spec
+%type <tf> timeformat_spec
+%type <tfp> timeformat_which
 %type <net> r_args_for_val
 %type <net_ptr> r_args_for
 %type <t> channel_sym
@@ -241,14 +245,13 @@ net_type_base:
  | ROA6 { $$ = NET_ROA6; }
  | FLOW4{ $$ = NET_FLOW4; }
  | FLOW6{ $$ = NET_FLOW6; }
+ | ASPA { $$ = NET_ASPA; }
  ;
 
 net_type:
    net_type_base
  | MPLS { $$ = NET_MPLS; }
  ;
-
-CF_ENUM(T_ENUM_NETTYPE, NET_, IP4, IP6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, IP6_SADR, MPLS)
 
 
 /* Creation of routing tables */
@@ -452,6 +455,10 @@ debug_default:
 
 conf: timeformat_base ;
 
+timeformat_base:
+   TIMEFORMAT timeformat_which timeformat_spec ';' { *$2 = $3; }
+ ;
+
 timeformat_which:
    ROUTE { $$ = &new_config->tf_route; }
  | PROTOCOL { $$ = &new_config->tf_proto; }
@@ -460,18 +467,14 @@ timeformat_which:
  ;
 
 timeformat_spec:
-   timeformat_which TEXT { *$1 = (struct timeformat){$2, NULL, 0}; }
- | timeformat_which TEXT expr TEXT { *$1 = (struct timeformat){$2, $4, (s64) $3 S_}; }
- | timeformat_which ISO SHORT    { *$1 = TM_ISO_SHORT_S; }
- | timeformat_which ISO SHORT MS { *$1 = TM_ISO_SHORT_MS; }
- | timeformat_which ISO SHORT US { *$1 = TM_ISO_SHORT_US; }
- | timeformat_which ISO LONG    { *$1 = TM_ISO_LONG_S; }
- | timeformat_which ISO LONG MS { *$1 = TM_ISO_LONG_MS; }
- | timeformat_which ISO LONG US { *$1 = TM_ISO_LONG_US; }
- ;
-
-timeformat_base:
-   TIMEFORMAT timeformat_spec ';'
+   TEXT { $$ = (struct timeformat){$1, NULL, 0}; }
+ | TEXT expr TEXT { $$ = (struct timeformat){$1, $3, (s64) $2 S_}; }
+ | ISO SHORT	{ $$ = TM_ISO_SHORT_S; }
+ | ISO SHORT MS	{ $$ = TM_ISO_SHORT_MS; }
+ | ISO SHORT US	{ $$ = TM_ISO_SHORT_US; }
+ | ISO LONG	{ $$ = TM_ISO_LONG_S; }
+ | ISO LONG MS	{ $$ = TM_ISO_LONG_MS; }
+ | ISO LONG US	{ $$ = TM_ISO_LONG_US; }
  ;
 
 /* Interface patterns */
@@ -662,26 +665,9 @@ password_item_end:
 };
 
 
-/* BFD options */
+/* BFD options - just dummy rule, rest in proto/bfd/config.Y */
+bfd_opts: '{' INVALID_TOKEN '}';
 
-bfd_item:
-   INTERVAL expr_us { this_bfd_opts->min_rx_int = this_bfd_opts->min_tx_int = $2; }
- | MIN RX INTERVAL expr_us { this_bfd_opts->min_rx_int = $4; }
- | MIN TX INTERVAL expr_us { this_bfd_opts->min_tx_int = $4; }
- | IDLE TX INTERVAL expr_us { this_bfd_opts->idle_tx_int = $4; }
- | MULTIPLIER expr { this_bfd_opts->multiplier = $2; }
- | PASSIVE bool { this_bfd_opts->passive = $2; this_bfd_opts->passive_set = 1; }
- | GRACEFUL { this_bfd_opts->mode = BGP_BFD_GRACEFUL; }
- ;
-
-bfd_items:
-   /* empty */
- | bfd_items bfd_item ';'
- ;
-
-bfd_opts:
-   '{' bfd_items '}'
- ;
 
 /* Core commands */
 CF_CLI_HELP(SHOW, ..., [[Show status information]])
@@ -908,6 +894,7 @@ channel_sym:
  | FLOW4	{ $$ = "flow4"; }
  | FLOW6	{ $$ = "flow6"; }
  | MPLS		{ $$ = "mpls"; }
+ | ASPA		{ $$ = "aspa"; }
  | PRI		{ $$ = "pri"; }
  | SEC		{ $$ = "sec"; }
  ;
@@ -1018,6 +1005,16 @@ CF_CLI(MRTDUMP, proto_patt mrtdump_mask, (<protocol> | \"<pattern>\" | all) (all
 
 CF_CLI(RESTRICT,,,[[Restrict current CLI session to safe commands]])
 { this_cli->restricted = 1; cli_msg(16, "Access restricted"); } ;
+
+CF_CLI_HELP(TIMEFORMAT, ..., [[Set time format for this CLI session]])
+CF_CLI(TIMEFORMAT, timeformat_spec, \"<format1>\" [limit \"format2\"] | iso (short | long) [ ms | us ], [[Set time format for this CLI session]])
+{ cli_set_timeformat(this_cli, $2); } ;
+
+CF_CLI_OPT(TIMEFORMAT ISO)
+CF_CLI_OPT(TIMEFORMAT SHORT)
+CF_CLI_OPT(TIMEFORMAT LONG)
+CF_CLI_OPT(TIMEFORMAT MS)
+CF_CLI_OPT(TIMEFORMAT US)
 
 proto_patt:
    CF_SYM_KNOWN { cf_assert_symbol($1, SYM_PROTO); $$.ptr = $1; $$.patt = 0; }

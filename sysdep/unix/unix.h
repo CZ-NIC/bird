@@ -114,7 +114,7 @@ extern volatile sig_atomic_t async_shutdown_flag;
 void io_init(void);
 void io_loop(void);
 void io_log_dump(void);
-int sk_open_unix(struct birdsock *s, struct birdloop *, char *name);
+int sk_open_unix(struct birdsock *s, struct birdloop *, const char *name);
 
 enum rf_mode {
   RF_APPEND = 1,
@@ -130,7 +130,7 @@ int rf_fileno(struct rfile *f);
 
 extern struct rfile rf_stderr;
 
-void test_old_bird(char *path);
+void test_old_bird(const char *path);
 ip_addr resolve_hostname(const char *host, int type, const char **err_msg);
 
 /* krt.c bits */

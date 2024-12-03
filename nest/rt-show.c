@@ -50,7 +50,7 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   int dest = nhad ? (NEXTHOP_IS_REACHABLE(nhad) ? RTD_UNICAST : nhad->dest) : RTD_NONE;
   int flowspec_valid = net_is_flow(e->net) ? rt_get_flowspec_valid(e) : FLOWSPEC_UNKNOWN;
 
-  tm_format_time(tm, &d->tf_route, e->lastmod);
+  tm_format_time(tm, c->tf ?: &d->tf_route, e->lastmod);
   ip_addr a_from = ea_get_ip(a, &ea_gen_from, IPA_NONE);
   if (ipa_nonzero(a_from) && (!nhad || !ipa_equal(a_from, nhad->nh.gw)))
     bsprintf(from, " from %I", a_from);

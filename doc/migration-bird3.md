@@ -60,6 +60,11 @@ the given prefix. Experimental.
 
 Reload of filters is now done by `reload filters` command, contrary to just `reload` in BIRD 2.
 
+## Filters
+
+We have removed the exception for `case` where multiple commands could be written
+after the case label without braces. This caused unneeded complexity in the parser.
+
 ## Route attributes
 
 All protocol attributes have been renamed in CLI to align with the filter language tokens.
@@ -71,6 +76,11 @@ The `onlink` route attribute has been temporarily disabled until we find out
 how to implement it properly.
 
 The `scope` route attribute has been removed. Use custom route attributes instead.
+
+## Protocols common
+
+There is now a guard against too frequent restarts due to limits, called
+`restart time`, set by default to 5 seconds. To disable, set this to 1 us.
 
 ## Pipe
 

@@ -33,12 +33,14 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	FIRST, FREE, VALIDATE, BASE, ROLE, ROLES, PEER, PROVIDER, CUSTOMER,
 	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL, SEND)
 
+CF_ENUM(T_ENUM_BGP_ORIGIN, ORIGIN_, IGP, EGP, INCOMPLETE)
+
 %type <i> bgp_nh
 %type <i32> bgp_afi
 
 CF_KEYWORDS(CEASE, PREFIX, LIMIT, HIT, ADMINISTRATIVE, SHUTDOWN, RESET, PEER,
 	CONFIGURATION, CHANGE, DECONFIGURED, CONNECTION, REJECTED, COLLISION,
-	OUT, OF, RESOURCES)
+	OUT, OF, RESOURCES, ASPA_CHECK_UPSTREAM, ASPA_CHECK_DOWNSTREAM)
 
 %type<i> bgp_cease_mask bgp_cease_list bgp_cease_flag bgp_role_name
 
@@ -365,8 +367,6 @@ custom_attr: ATTRIBUTE BGP NUM type symbol ';' {
   cf_define_symbol(new_config, $5, SYM_ATTRIBUTE, attribute, ac);
 };
 
-CF_ENUM(T_ENUM_BGP_ORIGIN, ORIGIN_, IGP, EGP, INCOMPLETE)
-
 CF_CLI(RELOAD BGP, proto_patt, [<name>], [[Send and request route refresh to/from neighbor]])
 {
   proto_apply_cmd($3, bgp_reload_in, 1, 0);
@@ -381,6 +381,29 @@ CF_CLI(RELOAD BGP IN, proto_patt, [<name>], [[Request route refresh from neighbo
 CF_CLI(RELOAD BGP OUT, proto_patt, [<name>], [[Refresh routes to neighbor]])
 {
   proto_apply_cmd($4, bgp_reload_out, 1, 0);
+}
+
+/* ASPA shortcuts */
+term: ASPA_CHECK_DOWNSTREAM '(' rtable ')' { $$ =
+  f_new_inst(FI_ASPA_CHECK_EXPLICIT,
+      f_new_inst(FI_EA_GET,
+	f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL, }),
+	ea_class_find_by_name("bgp_path")
+      ),
+      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 0, }),
+      $3
+  );
+}
+
+term: ASPA_CHECK_UPSTREAM '(' rtable ')' { $$ =
+  f_new_inst(FI_ASPA_CHECK_EXPLICIT,
+      f_new_inst(FI_EA_GET,
+	f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL, }),
+	ea_class_find_by_name("bgp_path")
+      ),
+      f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 1, }),
+      $3
+  );
 }
 
 CF_CODE

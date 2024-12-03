@@ -285,3 +285,14 @@ sk_set_freebind(sock *s)
 
   return 0;
 }
+
+static inline int
+sk_set_udp6_no_csum_rx(sock *s)
+{
+  int y = 1;
+
+  if (setsockopt(s->fd, SOL_UDP, UDP_NO_CHECK6_RX, &y, sizeof(y)) < 0)
+    ERR("UDP_NO_CHECK6_RX");
+
+  return 0;
+}

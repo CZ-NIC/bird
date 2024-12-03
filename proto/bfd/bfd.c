@@ -181,6 +181,8 @@ bfd_merge_options(const struct bfd_iface_config *cf, const struct bfd_options *o
     .idle_tx_int = opts->idle_tx_int ?: cf->idle_tx_int,
     .multiplier = opts->multiplier ?: cf->multiplier,
     .passive = opts->passive_set ? opts->passive : cf->passive,
+    .auth_type = opts->auth_type ?: cf->auth_type,
+    .passwords = opts->passwords ?: cf->passwords,
   };
 }
 
@@ -1187,7 +1189,8 @@ bfd_reconfigure(struct proto *P, struct proto_config *c)
       (new->accept_ipv6 != old->accept_ipv6) ||
       (new->accept_direct != old->accept_direct) ||
       (new->accept_multihop != old->accept_multihop) ||
-      (new->strict_bind != old->strict_bind))
+      (new->strict_bind != old->strict_bind) ||
+      (new->zero_udp6_checksum_rx != old->zero_udp6_checksum_rx))
     return 0;
 
   birdloop_mask_wakeups(p->p.loop);
@@ -1235,7 +1238,7 @@ bfd_show_session(struct bfd_session *s, int details)
   const char *ifname = (s->ifa && s->ifa->iface) ? s->ifa->iface->name : "---";
   btime tx_int = s->last_tx ? MAX(s->des_min_tx_int, s->rem_min_rx_int) : 0;
   btime timeout = (btime) MAX(s->req_min_rx_int, s->rem_min_tx_int) * s->rem_detect_mult;
-  u8 auth_type = s->ifa->cf->auth_type;
+  u8 auth_type = s->cf.auth_type;
 
   loc_state = (loc_state < 4) ? loc_state : 0;
   rem_state = (rem_state < 4) ? rem_state : 0;
@@ -1245,7 +1248,7 @@ bfd_show_session(struct bfd_session *s, int details)
 
   rcu_read_lock();
   struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
-  tm_format_time(tbuf, &gr->tf_proto, s->last_state_change);
+  tm_format_time(tbuf, this_cli->tf ?: &gr->tf_proto, s->last_state_change);
   rcu_read_unlock();
 
   if (!details)

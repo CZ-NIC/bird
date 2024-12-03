@@ -81,9 +81,9 @@ static inline pool *resource_parent(resource *r)
 
 /* Normal memory blocks */
 
-void *mb_alloc(pool *, unsigned size);
-void *mb_allocz(pool *, unsigned size);
-void *mb_realloc(void *m, unsigned size);
+void *mb_alloc(pool *, unsigned size) ALLOC_SIZE(2);
+void *mb_allocz(pool *, unsigned size) ALLOC_SIZE(2);
+void *mb_realloc(void *m, unsigned size) ALLOC_SIZE(2);
 void mb_free(void *);
 
 /* Memory pools with linear allocation */
@@ -97,9 +97,9 @@ typedef struct lp_state {
 } lp_state;
 
 linpool *lp_new(pool *);
-void *lp_alloc(linpool *, unsigned size);	/* Aligned */
-void *lp_allocu(linpool *, unsigned size);	/* Unaligned */
-void *lp_allocz(linpool *, unsigned size);	/* With clear */
+void *lp_alloc(linpool *, unsigned size) ALLOC_SIZE(2);		/* Aligned */
+void *lp_allocu(linpool *, unsigned size) ALLOC_SIZE(2);	/* Unaligned */
+void *lp_allocz(linpool *, unsigned size) ALLOC_SIZE(2);	/* With clear */
 void lp_flush(linpool *);			/* Free everything, but leave linpool */
 lp_state *lp_save(linpool *m);			/* Save state */
 void lp_restore(linpool *m, lp_state *p);	/* Restore state */

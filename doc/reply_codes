@@ -77,3 +77,4 @@ Reply codes of BIRD command-line interface
 9000	Command too long
 9001	Parse error
 9002	Invalid symbol type
+9003	Argument too long

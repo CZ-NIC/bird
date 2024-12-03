@@ -362,13 +362,13 @@ CF_DECLS
 
 CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	ACCEPT, REJECT, ERROR,
-	INT, BOOL, IP, PREFIX, RD, PAIR, QUAD, EC, LC,
+	INT, BOOL, IP, PREFIX, RD, PAIR, QUAD, EC, LC, ENUM,
 	SET, STRING, BYTESTRING, BGPMASK, BGPPATH, CLIST, ECLIST, LCLIST,
 	IF, THEN, ELSE, CASE,
 	FOR, IN, DO,
 	TRUE, FALSE, RT, RO, UNKNOWN, GENERIC,
 	FROM, GW, NET, PROTO, SCOPE, DEST, IFNAME, IFINDEX, WEIGHT, GW_MPLS,
-	ROA_CHECK,
+	ROA_CHECK, ASPA_CHECK,
 	DEFINED,
 	ADD, DELETE, RESET,
 	PREPEND,
@@ -381,7 +381,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %nonassoc ELSE
 
 %type <xp> cmds_int cmd_prep
-%type <x> term term_bs cmd cmd_var cmds cmds_scoped constant constructor var var_list var_list_r function_call bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
+%type <x> term term_bs cmd cmd_var cmds constant constructor var var_list var_list_r function_call bgp_path_expr bgp_path bgp_path_tail term_dot_method method_name_cont
 %type <fsa> static_attr
 %type <f> filter where_filter
 %type <fl> filter_body function_body
@@ -393,7 +393,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %type <i32> cnum
 %type <e> pair_item ec_item lc_item set_item switch_item ec_items set_items switch_items switch_body
 %type <trie> fprefix_set
-%type <v> set_atom switch_atom fipa
+%type <v> set_atom0 set_atom switch_atom fipa
 %type <px> fprefix
 %type <t> get_cf_position
 %type <s> for_var
@@ -498,6 +498,7 @@ type:
 	  case T_INT:
 	  case T_PAIR:
 	  case T_QUAD:
+	  case T_ENUM:
 	  case T_EC:
 	  case T_LC:
 	  case T_RD:
@@ -512,6 +513,13 @@ type:
 	  default:
 		cf_error( "You can't create sets of this type." );
 	}
+   }
+ | ENUM
+   { $<i>$ = cf_maybe_exit_filters(); }
+   enum_type
+   {
+     if ($<i>2) cf_enter_filters();
+     $$ = $3;
    }
  ;
 
@@ -625,8 +633,6 @@ cmds: /* EMPTY */ { $$ = NULL; }
  | cmds_int { $$ = $1.begin; }
  ;
 
-cmds_scoped: { cf_push_soft_scope(new_config); } cmds { cf_pop_soft_scope(new_config); $$ = $2; } ;
-
 cmd_var: var | cmd ;
 
 cmd_prep: cmd_var {
@@ -668,27 +674,30 @@ fipa:
  * as a function call in switch case cmds.
  */
 
-set_atom:
+set_atom0:
    NUM    { $$.type = T_INT; $$.val.i = $1; }
  | fipa   { $$ = $1; }
  | VPN_RD { $$.type = T_RD; $$.val.ec = $1; }
- | ENUM   { $$.type = pair_a($1); $$.val.i = pair_b($1); }
+ | ENUM_TOKEN { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  | '(' term ')' {
      $$ = cf_eval_tmp($2, T_VOID);
-     if (!f_valid_set_type($$.type)) cf_error("Set-incompatible type");
+     if (!f_valid_set_type($$.type))
+       cf_error("Set-incompatible type (%s)", f_type_name($$.type));
    }
+ ;
+
+set_atom:
+   set_atom0
  | CF_SYM_KNOWN {
      cf_assert_symbol($1, SYM_CONSTANT);
-     if (!f_valid_set_type(SYM_TYPE($1))) cf_error("%s: set-incompatible type", $1->name);
+     if (!f_valid_set_type(SYM_TYPE($1)))
+       cf_error("%s: Set-incompatible type (%s)", $1->name, f_type_name(SYM_TYPE($1)));
      $$ = *$1->val;
    }
  ;
 
 switch_atom:
-   NUM   { $$.type = T_INT; $$.val.i = $1; }
- | '(' term ')' { $$ = cf_eval_tmp($2, T_INT); }
- | fipa  { $$ = $1; }
- | ENUM  { $$.type = pair_a($1); $$.val.i = pair_b($1); }
+   set_atom0
  ;
 
 cnum:
@@ -781,14 +790,14 @@ fprefix_set:
  ;
 
 switch_body: /* EMPTY */ { $$ = NULL; }
- | switch_body switch_items ':' cmds_scoped  {
+ | switch_body switch_items ':' cmd {
      /* Fill data fields */
      struct f_tree *t;
      for (t = $2; t; t = t->left)
        t->data = $4;
      $$ = f_merge_items($1, $2);
    }
- | switch_body ELSECOL cmds_scoped {
+ | switch_body ELSECOL cmd {
      struct f_tree *t = f_new_tree();
      t->from.type = t->to.type = T_VOID;
      t->right = t;
@@ -837,7 +846,7 @@ constant:
      DBG( "ook\n" );
  }
  | '[' fprefix_set ']' { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PREFIX_SET, .val.ti = $2, }); }
- | ENUM	  { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = $1 >> 16, .val.i = $1 & 0xffff, }); }
+ | ENUM_TOKEN { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = $1 >> 16, .val.i = $1 & 0xffff, }); }
  ;
 
 constructor:
@@ -956,6 +965,7 @@ term:
 
  | ROA_CHECK '(' rtable ')' { $$ = f_implicit_roa_check($3); }
  | ROA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_new_inst(FI_ROA_CHECK, $5, $7, $3); }
+ | ASPA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_new_inst(FI_ASPA_CHECK_EXPLICIT, $5, $7, $3); }
 
  | FORMAT '(' term ')' {  $$ = f_new_inst(FI_FORMAT, $3); }
 
@@ -990,9 +1000,7 @@ for_var:
  ;
 
 cmd:
-   '{' cmds_scoped '}' {
-     $$ = $2;
-   }
+   '{' { cf_push_soft_scope(new_config); } cmds { cf_pop_soft_scope(new_config); } '}' { $$ = $3; }
  | IF term THEN cmd {
      $$ = f_new_inst(FI_CONDITION, $2, $4, NULL);
    }

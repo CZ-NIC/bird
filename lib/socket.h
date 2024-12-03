@@ -139,6 +139,8 @@ extern int sk_priority_control;		/* Suggested priority for control traffic, shou
 #define SKF_HDRINCL	0x400	/* Used internally */
 #define SKF_PKTINFO	0x800	/* Used internally */
 
+#define SKF_UDP6_NO_CSUM_RX	0x1000	/* Accept zero checksums for received UDPv6 packets */
+
 /*
  *	Socket types		     SA SP DA DP IF  TTL SendTo	(?=may, -=must not, *=must)
  */

@@ -188,6 +188,18 @@ const char * flowspec_valid_names[FLOWSPEC__MAX] = {
   [FLOWSPEC_INVALID]	= "invalid",
 };
 
+static void
+ea_gen_aspa_providers_format(const eattr *a, byte *buf, uint size)
+{
+  int_set_format(a->u.ad, ISF_NUMBERS, -1, buf, size - 5);
+}
+
+struct ea_class ea_gen_aspa_providers = {
+  .name = "aspa_providers",
+  .type = T_CLIST,
+  .format = ea_gen_aspa_providers_format,
+};
+
 DOMAIN(attrs) attrs_domain;
 
 pool *rta_pool;
@@ -1454,7 +1466,7 @@ ea_show(struct cli *c, const eattr *e)
 	  as_path_format(ad, pos, end - pos);
 	  break;
 	case T_CLIST:
-	  ea_show_int_set(c, cls->name, ad, 1, buf);
+	  ea_show_int_set(c, cls->name, ad, ISF_COMMUNITY_LIST, buf);
 	  return;
 	case T_ECLIST:
 	  ea_show_ec_set(c, cls->name, ad, buf);
@@ -1876,6 +1888,9 @@ rta_init(void)
   ea_register_init(&ea_gen_mpls_policy);
   ea_register_init(&ea_gen_mpls_class);
   ea_register_init(&ea_gen_mpls_label);
+
+  /* ASPA providers */
+  ea_register_init(&ea_gen_aspa_providers);
 }
 
 /*

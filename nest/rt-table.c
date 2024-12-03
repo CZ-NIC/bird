@@ -717,6 +717,136 @@ net_roa_check(rtable *tp, const net_addr *n, u32 asn)
 #undef TW
 }
 
+/**
+ * aspa_check - check validity of AS Path in an ASPA table
+ * @tab: ASPA table
+ * @path: AS Path to check
+ *
+ * Implements draft-ietf-sidrops-aspa-verification-16.
+ */
+enum aspa_result aspa_check(rtable *tab, const adata *path, bool force_upstream)
+{
+  /* Restore tmp linpool state after this check */
+  CLEANUP(lp_saved_cleanup) struct lp_state *_lps = lp_save(tmp_linpool);
+
+  /* No support for confed paths */
+  if (as_path_contains_confed(path))
+    return ASPA_INVALID;
+
+  /* Check path length */
+  uint len = as_path_getlen(path);
+  if (len == 0)
+    return ASPA_INVALID;
+
+  /* Normalize the AS Path: drop stuffings */
+  u32 *asns = alloca(sizeof(u32) * len);
+  uint ppos = 0;
+  uint nsz = 0;
+  while (as_path_walk(path, &ppos, &asns[nsz]))
+    if ((nsz == 0) || (asns[nsz] != asns[nsz-1]))
+      nsz++;
+
+  /* Find the provider blocks for every AS on the path
+   * and check allowed directions */
+  uint max_up = 0, min_up = 0, max_down = 0, min_down = 0;
+
+  RT_READ(tab, tr);
+
+  for (uint ap=0; ap<nsz; ap++)
+  {
+    net_addr_union nau = { .aspa = NET_ADDR_ASPA(asns[ap]), };
+
+    /* Find some ASPAs */
+    struct netindex *ni = net_find_index(tr->t->netindex, &nau.n);
+    net *n = ni ? net_find(tr, ni) : NULL;
+
+    bool found = false, down = false, up = false;
+
+    if (n) NET_READ_WALK_ROUTES(tr, n, ep, e)
+    {
+      if (!rte_is_valid(&e->rte))
+	continue;
+
+      eattr *ea = ea_find(e->rte.attrs, &ea_gen_aspa_providers);
+      if (!ea)
+	continue;
+
+      /* Actually found some ASPA */
+      found = true;
+
+      for (uint i=0; i * sizeof(u32) < ea->u.ptr->length; i++)
+      {
+	if ((ap > 0) && ((u32 *) ea->u.ptr->data)[i] == asns[ap-1])
+	  up = true;
+	if ((ap + 1 < nsz) && ((u32 *) ea->u.ptr->data)[i] == asns[ap+1])
+	  down = true;
+
+	if (down && up)
+	  /* Both peers found */
+	  goto end_of_aspa;
+      }
+    }
+end_of_aspa:;
+
+    /* Fast path for the upstream check */
+    if (force_upstream)
+    {
+      if (!found)
+	/* Move min-upstream */
+	min_up = ap;
+      else if (ap && !up)
+	/* Exists but doesn't allow this upstream */
+	return ASPA_INVALID;
+    }
+
+    /* Fast path for no ASPA here */
+    else if (!found)
+    {
+      /* Extend max-downstream (min-downstream is stopped by unknown) */
+      max_down = ap+1;
+
+      /* Move min-upstream (can't include unknown) */
+      min_up = ap;
+    }
+
+    /* ASPA exists and downstream may be extended */
+    else if (down)
+    {
+      /* Extending max-downstream always */
+      max_down = ap+1;
+
+      /* Extending min-downstream unless unknown seen */
+      if (min_down == ap)
+	min_down = ap+1;
+
+      /* Downstream only */
+      if (!up)
+	min_up = max_up = ap;
+    }
+
+    /* No extension for downstream, force upstream only from now */
+    else
+    {
+      force_upstream = 1;
+
+      /* Not even upstream, move the ending here */
+      if (!up)
+	min_up = max_up = ap;
+    }
+  }
+
+  /* Is the path surely valid? */
+  if (min_up <= min_down)
+    return ASPA_VALID;
+
+  /* Is the path maybe valid? */
+  if (max_up <= max_down)
+    return ASPA_UNKNOWN;
+
+  /* Now there is surely a valley there. */
+  return ASPA_INVALID;
+}
+
 struct rte_storage *
 rte_store(const rte *r, struct netindex *i, struct rtable_private *tab)
 {

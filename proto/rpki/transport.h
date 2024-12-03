@@ -56,6 +56,12 @@ enum rpki_tr_type {
 #endif
 };
 
+/* TCP authentication types */
+enum rpki_tcp_auth {
+  RPKI_TCP_AUTH_NONE,
+  RPKI_TCP_AUTH_MD5
+};
+
 /* Common configure structure for transports */
 struct rpki_tr_config {
   enum rpki_tr_type type;		/* RPKI_TR_TCP or RPKI_TR_SSH */
@@ -63,7 +69,8 @@ struct rpki_tr_config {
 };
 
 struct rpki_tr_tcp_config {
-  /* No internal configuration data */
+  enum rpki_tcp_auth auth_type;		/* Authentication type */
+  const char *password;			/* Password used for authentication */
 };
 
 struct rpki_tr_ssh_config {

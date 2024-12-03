@@ -24,7 +24,7 @@ CF_DECLS
 CF_KEYWORDS(BFD, MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE,
 	INTERFACE, MULTIHOP, NEIGHBOR, DEV, LOCAL, AUTHENTICATION,
 	NONE, SIMPLE, METICULOUS, KEYED, MD5, SHA1, IPV4, IPV6, DIRECT,
-	STRICT, BIND)
+	STRICT, BIND, ZERO, UDP6, CHECKSUM, RX)
 
 %type <iface> bfd_neigh_iface
 %type <a> bfd_neigh_local
@@ -53,6 +53,7 @@ bfd_proto_item:
  | MULTIHOP bfd_multihop
  | NEIGHBOR bfd_neighbor
  | STRICT BIND bool { BFD_CFG->strict_bind = $3; }
+ | ZERO UDP6 CHECKSUM RX bool { BFD_CFG->zero_udp6_checksum_rx = $5; }
  ;
 
 bfd_proto_opts:
@@ -183,6 +184,52 @@ bfd_neighbor: ipa bfd_neigh_iface bfd_neigh_local bfd_neigh_multihop
   if ($4 && ipa_zero($3))
     cf_error("Multihop neighbor requires specified local address");
 };
+
+
+/* BFD options */
+
+bfd_item:
+   INTERVAL expr_us { this_bfd_opts->min_rx_int = this_bfd_opts->min_tx_int = $2; }
+ | MIN RX INTERVAL expr_us { this_bfd_opts->min_rx_int = $4; }
+ | MIN TX INTERVAL expr_us { this_bfd_opts->min_tx_int = $4; }
+ | IDLE TX INTERVAL expr_us { this_bfd_opts->idle_tx_int = $4; }
+ | MULTIPLIER expr { this_bfd_opts->multiplier = $2; }
+ | PASSIVE bool { this_bfd_opts->passive = $2; this_bfd_opts->passive_set = 1; }
+ | GRACEFUL { this_bfd_opts->mode = BGP_BFD_GRACEFUL; }
+ | AUTHENTICATION bfd_auth_type { this_bfd_opts->auth_type = $2; }
+ | password_list {}
+ ;
+
+bfd_items:
+   /* empty */
+ | bfd_items bfd_item ';'
+ ;
+
+bfd_opts_start:
+{ reset_passwords(); } ;
+
+bfd_opts_end:
+{
+  this_bfd_opts->passwords = get_passwords();
+
+  if (!this_bfd_opts->auth_type != !this_bfd_opts->passwords)
+    cf_warn("Authentication and password options should be used together");
+
+  if (this_bfd_opts->passwords)
+  {
+    struct password_item *pass;
+    WALK_LIST(pass, *this_bfd_opts->passwords)
+    {
+      if (pass->alg)
+        cf_error("Password algorithm option not available in BFD protocol");
+
+      pass->alg = bfd_auth_type_to_hash_alg[this_bfd_opts->auth_type];
+    }
+  }
+};
+
+bfd_opts:
+  '{' bfd_opts_start bfd_items '}' bfd_opts_end;
 
 
 CF_CLI_HELP(SHOW BFD, ..., [[Show information about BFD protocol]]);

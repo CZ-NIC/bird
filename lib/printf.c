@@ -73,10 +73,25 @@ static char * number(char * str, u64 num, uint base, int size, int precision,
 	i = 0;
 	if (num == 0)
 		tmp[i++]='0';
-	else while (num != 0) {
-		uint res = num % base;
-		num = num / base;
-		tmp[i++] = digits[res];
+	else if (base == 10) {
+		/* Separate cases to have fixed divisors */
+		while (num != 0) {
+			uint res = num % 10;
+			num = num / 10;
+			tmp[i++] = digits[res];
+		}
+	} else if (base == 16) {
+		while (num != 0) {
+			uint res = num % 16;
+			num = num / 16;
+			tmp[i++] = digits[res];
+		}
+	} else {
+		while (num != 0) {
+			uint res = num % base;
+			num = num / base;
+			tmp[i++] = digits[res];
+		}
 	}
 	if (i > precision)
 		precision = i;

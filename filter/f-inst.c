@@ -503,7 +503,7 @@
     RESULT(T_BOOL, i, (v1.type != T_VOID) && !val_is_undefined(v1));
   }
 
-  METHOD_R(T_NET, type, T_ENUM_NETTYPE, i, v1.val.net->type);
+  METHOD_R(T_NET, type, T_ENUM_NET_TYPE, i, v1.val.net->type);
   METHOD_R(T_IP, is_v4, T_BOOL, i, ipa_is_ip4(v1.val.ip));
 
   /* Add initialized variable */
@@ -886,6 +886,8 @@
 		}]]);
 	}
       }
+      else if (da->empty)
+	RESULT_VAL(da->empty(da));
       else if ((empty = f_get_empty(da->type)).type != T_VOID)
 	RESULT_VAL(empty);
       else
@@ -1518,6 +1520,22 @@
     else
       RESULT(T_ENUM_ROA, i, [[ net_roa_check(table, v1.val.net, as) ]]);
 
+  }
+
+  INST(FI_ASPA_CHECK_EXPLICIT, 2, 1) {	/* ASPA Check */
+    NEVER_CONSTANT;
+    ARG(1, T_PATH);
+    ARG(2, T_BOOL);
+    RTC(3);
+    rtable *table = rtc->table;
+
+    if (!table)
+      runtime("Missing ASPA table");
+
+    if (table->addr_type != NET_ASPA)
+      runtime("Table type must be ASPA");
+
+    RESULT(T_ENUM_ASPA, i, [[ aspa_check(table, v1.val.ad, v2.val.i) ]]);
   }
 
   INST(FI_FROM_HEX, 1, 1) {	/* Convert hex text to bytestring */

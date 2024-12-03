@@ -125,11 +125,11 @@ Anyway, it will probably work well also on older systems.
 and Perl, installing BIRD should be as easy as:
 
 <code>
-	./configure
-	make
-	make install
-	vi /usr/local/etc/bird.conf
-	bird
+./configure
+make
+make install
+vi /usr/local/etc/bird.conf
+bird
 </code>
 
 <p>You can use <tt>./configure --help</tt> to get a list of configure
@@ -992,7 +992,7 @@ agreement").
 
 	<tag><label id="proto-pass-gen-from">generate from "<m/time/"</tag>
 	The start time of the usage of the password for packet signing.
-	The format of <cf><m/time/</cf> is <tt>dd-mm-yyyy HH:MM:SS</tt>.
+	The format of <cf><m/time/</cf> is <tt>YYYY-MM-DD [hh:mm:ss[.sss]]</tt>.
 
 	<tag><label id="proto-pass-gen-to">generate to "<m/time/"</tag>
 	The last time of the usage of the password for packet signing.
@@ -1068,14 +1068,15 @@ inherited from templates can be updated by new definitions.
 
 	<tag><label id="proto-rpki-reload">rpki reload <m/switch/</tag>
 	Import or export filters may depend on route RPKI status (using
-	<cf/roa_check()/ operator). In contrast to to other filter operators,
-	this status for the same route may change as the content of ROA tables
-	changes. When this option is active, BIRD activates automatic reload of
-	the appropriate subset of prefixes imported or exported by the channels
-	whenever ROA tables are updated (after a short settle
-	time). When disabled, route reloads have to be requested manually. The
-	option is ignored if <cf/roa_check()/ is not used in channel filters.
-	Note that for BGP channels, automatic reload requires
+	<cf/roa_check()/ or <cf/aspa_check()/ operators). In contrast to other
+	filter operators, this status for the same route may change as the
+	content of ROA and ASPA tables changes. When this option is active, BIRD
+	activates automatic reload of the appropriate subset of prefixes imported
+	or exported by the channels whenever ROA and ASPA
+	tables are updated (after a short settle time). When disabled, route
+	reloads have to be requested manually. The option is ignored if neither
+	<cf/roa_check()/ nor <cf/aspa_check()/ is used in channel filters. Note
+	that for BGP channels, automatic reload requires
 	<ref id="bgp-import-table" name="import table"> or
 	<ref id="bgp-export-table" name="export table"> (for respective
 	direction). Default: on.
@@ -1264,9 +1265,11 @@ protocol bgp {
 <chapt>Remote control
 <label id="remote-control">
 
+<sect>Overview
+<label id="remote-control-overview">
+
 <p>You can use the command-line client <file>birdc</file> to talk with a running
-BIRD. Communication is done using a <file/bird.ctl/ UNIX domain socket (unless
-changed with the <tt/-s/ option given to both the server and the client). The
+BIRD. Communication is done using the appropriate UNIX domain socket. The
 commands can perform simple actions such as enabling/disabling of protocols,
 telling BIRD to show various information, telling it to show routing table
 filtered by filter, or asking BIRD to reconfigure. Press <tt/?/ at any time to
@@ -1282,10 +1285,32 @@ does not support command line editing and history and has minimal dependencies.
 This is useful for running BIRD in resource constrained environments, where
 Readline library (required for regular BIRD client) is not available.
 
-<p>Many commands have the <m/name/ of the protocol instance as an argument.
-This argument can be omitted if there exists only a single instance.
+<sect>Configuration
+<label id="remote-control-configuration">
 
-<p>Here is a brief list of supported functions:
+<p>By default, BIRD opens <file/bird.ctl/ UNIX domain socket and the CLI tool
+connects to it. If changed on the command line by the <tt/-s/ option,
+BIRD or the CLI tool connects there instead.
+
+<p>It's also possible to configure additional remote control sockets in the
+configuration file by <cf/cli "name";/ and you can open how many
+sockets you wish. There are no checks whether the user configured the same
+socket multiple times and BIRD may behave weirdly if this happens. On shutdown,
+the additional sockets get removed immediately and only the main socket stays
+until the very end.
+
+<p>The remote control socket can be also set as restricted by
+<cf/cli "name" { restrict; };/ instead of sending the <cf/restrict/ command
+after connecting. The user may still overload the daemon by requesting insanely
+complex filters so you shouldn't expose this socket to public anyway.
+
+<sect>Usage
+<label id="remote-control-usage">
+
+<p>Here is a brief list of supported functions.
+
+<p>Note: Many commands have the <m/name/ of the protocol instance as an argument.
+This argument can be omitted if there exists only a single instance.
 
 <descrip>
 	<tag><label id="cli-show-status">show status</tag>
@@ -1465,6 +1490,13 @@ This argument can be omitted if there exists only a single instance.
 	pipe protocol, both directions are always reloaded together (<cf/in/ or
 	<cf/out/ options are ignored in that case).
 
+	<tag><label id="cli-timeformat">timeformat "<m/format1/" [<m/limit/ "<m/format2/"]</tag>
+	Override format of date/time used by BIRD in this CLI session.
+
+	Meaning of "<m/format1/", <m/limit/, and "<m/format2/" is the same as in the
+	<ref id="opt-timeformat" name="timeformat"> configuration option. Also, the
+	same <cf/iso .../ shorthands may be used.
+
 	<tag><label id="cli-down">down</tag>
 	Shut BIRD down.
 
@@ -1627,9 +1659,9 @@ in the foot).
 	a shell pattern (represented also as a string).
 
 	<tag><label id="type-bytestring">bytestring</tag>
-	This is a sequences of arbitrary bytes. There are no ways to modify
-	bytestrings in filters. You can pass them between function, assign
-	them to variables of type <cf/bytestring/, print such values,
+	This is a sequence of arbitrary bytes. There are no ways to modify
+	bytestrings in filters. You can pass them between functions, assign
+	them to variables of type <cf/bytestring/, print such values, and
 	compare bytestings (<cf/=, !=/).
 
 	Bytestring literals are written as a sequence of hexadecimal digit
@@ -1678,7 +1710,7 @@ in the foot).
 	Route Distinguisher (<rfc id="4364">). They support the same special
 	operators as IP prefixes, and also <cf/.rd/ which extracts the Route
 	Distinguisher. Their literals are written
-	as <cf><m/vpnrd/ <m/ipprefix/</cf>
+	as <cf><m/rd/ <m/ipprefix/</cf>
 
 	<cf/NET_ROA4/ and <cf/NET_ROA6/ prefixes hold an IP prefix range
 	together with an ASN. They support the same special operators as IP
@@ -1693,9 +1725,9 @@ in the foot).
 	<cf/NET_MPLS/ holds a single MPLS label and its handling is currently
 	not implemented.
 
-	<tag><label id="type-vpnrd">vpnrd</tag>
+	<tag><label id="type-rd"><label id="type-vpnrd">rd</tag>
 	This is a route distinguisher according to <rfc id="4364">. There are
-	three kinds of RD's: <cf><m/asn/:<m/32bit int/</cf>, <cf><m/asn4/:<m/16bit int/</cf>
+	three kinds of RDs: <cf><m/asn/:<m/32bit int/</cf>, <cf><m/asn4/:<m/16bit int/</cf>
 	and <cf><m/IPv4 address/:<m/32bit int/</cf>
 
 	<tag><label id="type-ec">ec</tag>
@@ -1722,9 +1754,9 @@ in the foot).
 	to extract corresponding components of LCs:
 	<cf>(<m/asn/, <m/data1/, <m/data2/)</cf>.
 
-	<tag><label id="type-set">int|pair|quad|ip|prefix|ec|lc|enum set</tag>
-	Filters recognize four types of sets. Sets are similar to strings: you
-	can pass them around but you can't modify them. Literals of type <cf>int
+	<tag><label id="type-set">int|pair|quad|ip|prefix|ec|lc|rd|enum set</tag>
+	Filters recognize several types of sets. Sets are similar to strings: you
+	can pass them around but you cannot modify them. Literals of type <cf>int
 	set</cf> look like <cf> [ 1, 2, 5..7 ]</cf>. As you can see, both simple
 	values and ranges are permitted in sets.
 
@@ -1747,21 +1779,20 @@ in the foot).
 	is valid, while <cf/(10, *, 20..30)/ or <cf/(10, 20..30, 40)/ is not
 	valid.
 
-	You can also use expressions for int, pair, EC and LC set values.
-	However, it must be possible to evaluate these expressions before daemon
-	boots. So you can use only constants inside them. E.g.
+	You can also use named constants or compound expressions for non-prefix
+	set values. However, it must be possible to evaluate these expressions
+	before daemon boots. So you can use only constants inside them. Also,
+	in case of compound expressions, they require parentheses around them.
+	E.g.
 
-	<code>
-	 define one=1;
-	 define myas=64500;
-	 int set odds;
-	 pair set ps;
-	 ec set es;
+<code>
+define one=1;
+define myas=64500;
 
-	 odds = [ one, 2+1, 6-one, 2*2*2-1, 9, 11 ];
-	 ps = [ (1,one+one), (3,4)..(4,8), (5,*), (6,3..6), (7..9,*) ];
-	 es = [ (rt, myas, 3*10), (rt, myas+one, 0..16*16*16-1), (ro, myas+2, *) ];
-	</code>
+int set odds = [ one, (2+1), (6-one), (2*2*2-1), 9, 11 ];
+pair set ps = [ (1,one+one), (3,4)..(4,8), (5,*), (6,3..6), (7..9,*) ];
+ec set es = [ (rt, myas, *), (rt, myas+2, 0..16*16*16-1) ];
+</code>
 
 	Sets of prefixes are special: their literals does not allow ranges, but
 	allows prefix patterns that are written
@@ -1923,32 +1954,93 @@ in the foot).
 <label id="operators">
 
 <p>The filter language supports common integer operators <cf>(+,-,*,/)</cf>,
-parentheses <cf/(a*(b+c))/, comparison <cf/(a=b, a!=b, a&lt;b, a&gt;=b)/.
-Logical operations include unary not (<cf/!/), and (<cf/&amp;&amp;/), and or
-(<cf/&verbar;&verbar;/). Special operators include (<cf/&tilde;/,
-<cf/!&tilde;/) for "is (not) element of a set" operation - it can be used on
-element and set of elements of the same type (returning true if element is
-contained in the given set), or on two strings (returning true if first string
-matches a shell-like pattern stored in second string) or on IP and prefix
-(returning true if IP is within the range defined by that prefix), or on prefix
-and prefix (returning true if first prefix is more specific than second one) or
-on bgppath and bgpmask (returning true if the path matches the mask) or on
-number and bgppath (returning true if the number is in the path) or on bgppath
-and int (number) set (returning true if any ASN from the path is in the set) or
-on pair/quad and clist (returning true if the pair/quad is element of the
-clist) or on clist and pair/quad set (returning true if there is an element of
-the clist that is also a member of the pair/quad set).
+parentheses <cf/(a*(b+c))/, comparison <cf/(a=b, a!=b, a&lt;b, a&gt;=b)/.</p>
 
-<p>There is one operator related to ROA infrastructure - <cf/roa_check()/. It
-examines a ROA table and does <rfc id="6483"> route origin validation for a
-given network prefix. The basic usage is <cf>roa_check(<m/table/)</cf>, which
-checks the current route (which should be from BGP to have AS_PATH argument) in
-the specified ROA table and returns ROA_UNKNOWN if there is no relevant ROA,
-ROA_VALID if there is a matching ROA, or ROA_INVALID if there are some relevant
-ROAs but none of them match. There is also an extended variant
-<cf>roa_check(<m/table/, <m/prefix/, <m/asn/)</cf>, which allows to specify a
-prefix and an ASN as arguments.
+<p>Logical operations include unary not (<cf/!/), and (<cf/&amp;&amp;/), and or
+(<cf/&verbar;&verbar;/).</p>
 
+<p>Special operators include (<cf/&tilde;/, <cf/!&tilde;/) for "is (not) element
+of a set" operation - it can be used on:
+<itemize>
+  <item>element and set of elements of the same type (returning true if
+    element is contained in the given set)
+  <item>two strings (returning true if the first string matches a shell-like
+    pattern stored in the second string)
+  <item>IP and prefix (returning true if IP is within the range defined by
+    that prefix)
+  <item>prefix and prefix (returning true if the first prefix is more specific
+    than the second one)
+  <item>bgppath and bgpmask (returning true if the path matches the mask)
+  <item>number and bgppath (returning true if the number is in the path)
+  <item>bgppath and int (number) set (returning true if any ASN from the
+    path is in the set)
+  <item>pair/quad and clist (returning true if the pair/quad is element of
+    the clist)
+  <item>clist and pair/quad set (returning true if there is an element of the
+    clist that is also a member of the pair/quad set).
+</itemize>
+
+<p>There are also operators related to RPKI infrastructure used to run
+<rfc id="6483"> route origin validation and (draft) AS path validation.
+
+<itemize>
+  <item><cf>roa_check(<m/table/)</cf> checks the current route in the specified
+  ROA table and returns <cf>ROA_UNKNOWN</cf>, <cf>ROA_INVALID</cf> or <cf>ROA_VALID</cf>,
+  if the validation result is unknown, invalid, or valid, respectively. The result is
+  valid if there is a matching ROA, it is invalid if there is either matching ROA
+  with a different ASN, or any covering ROA with shorter maximal prefix length.
+
+  <item><cf>roa_check(<m/table/, <m/prefix/, <m/asn/)</cf> is an explicit version
+  of the ROA check if the user for whatever reason needs to check a different prefix
+  or different ASN than the default one. The equivalent call of the short variant
+  is <cf>roa_check(<m/table/, net, bgp_path.last)</cf> and it is faster
+  to call the short variant.
+
+  <item><cf>aspa_check_downstream(<m/table/)</cf> checks the current route
+  in the specified ASPA table and returns <cf>ASPA_UNKNOWN</cf>, <cf>ASPA_INVALID</cf>,
+  or <cf>ASPA_VALID</cf> if the validation result is unknown, invalid, or valid,
+  respectively. The result is valid if there is a full coverage of matching
+  ASPA records according to the Algorithm for Downstream Paths by the (draft).
+  This operator is not present if BGP is not compiled in.
+
+  <item><cf>aspa_check_upstream(<m/table/)</cf> checks the current route
+  in the specified ASPA table as the former operator, but it applies the
+  (stricter) Algorithm for Upstream Paths by the (draft).
+  This operator is not present if BGP is not compiled in.
+
+  <item><cf>aspa_check(<m/table/, <m/path/, <m/is_upstream/)</cf> is
+  an explicit version of the former two ASPA check operators. The equivalent
+  of <cf>aspa_check_downstream</cf> is <cf>aspa_check(<m/table/, bgp_path, false)</cf>
+  and for <cf>aspa_check_upstream</cf> it is
+  <cf>aspa_check(<m/table/, bgp_path, true)</cf>.
+  Note: the ASPA check does not include the local ASN in the AS path.
+  Also, <cf>ASPA_INVALID</cf> is returned for an empty AS path
+  or for AS path containing <cf>CONFED_SET</cf> or <cf>CONFED_SEQUENCE</cf> blocks,
+  as the (draft) stipulates.
+</itemize>
+
+<p>The following example checks for ROA and ASPA on routes from a customer:
+
+<code>
+roa6 table r6;
+aspa table at;
+attribute int valid_roa;
+attribute int valid_aspa;
+
+filter customer_check {
+  case roa_check(r6) {
+    ROA_INVALID: reject "Invalid ROA";
+    ROA_VALID: valid_roa = 1;
+  }
+
+  case aspa_check_upstream(at) {
+    ASPA_INVALID: reject "Invalid ASPA";
+    ASPA_VALID: valid_aspa = 1;
+  }
+
+  accept;
+}
+</code>
 
 <sect>Control structures
 <label id="control-structures">
@@ -1971,13 +2063,15 @@ may be an existing one (when just name is used) or a locally defined (when type
 and name is used). In both cases, it must have the same type as elements.
 
 <p>The <cf>case</cf> is similar to case from Pascal. Syntax is <cf>case
-<m/expr/ { else: | <m/num_or_prefix [ .. num_or_prefix]/: <m/statement/ ; [
-... ] }</cf>. The expression after <cf>case</cf> can be of any type which can be
-on the left side of the &tilde; operator and anything that could be a member of
-a set is allowed before <cf/:/. Multiple commands are allowed without <cf/{}/
-grouping. If <cf><m/expr/</cf> matches one of the <cf/:/ clauses, statements
-between it and next <cf/:/ statement are executed. If <cf><m/expr/</cf> matches
-neither of the <cf/:/ clauses, the statements after <cf/else:/ are executed.
+<m/expr/ { else: | <m/set_body_expr/ /: <m/statement/ ; [... ] }</cf>.
+The expression after <cf>case</cf> can be of any type that could be a member of
+a set, while the <m/set_body_expr/ before <cf/:/ can be anything (constants,
+intervals, expressions) that could be a part of a set literal. One exception is
+prefix type, which can be used in sets bud not in <cf/case/ structure. Multiple
+commands must be grouped by <cf/{}/. If <cf><m/expr/</cf> matches one
+of the <cf/:/ clauses, the statement or block after it is
+executed. If <cf><m/expr/</cf> matches neither of the <cf/:/ clauses, the
+statement or block after <cf/else:/ is executed.
 
 <p>Here is example that uses <cf/if/ and <cf/case/ structures:
 
@@ -1993,7 +2087,7 @@ for int asn in bgp_path do {
 }
 
 case arg1 {
-	2: print "two"; print "I can do more commands without {}";
+	2: { print "two"; print "Multiple commands must brace themselves."; }
 	3 .. 5: print "three to five";
 	else: print "something else";
 }
@@ -2492,9 +2586,9 @@ protocols are notified and act accordingly (e.g. break an OSPF adjacency when
 the BFD session went down).
 
 <p>BIRD implements basic BFD behavior as defined in <rfc id="5880"> (some
-advanced features like the echo mode or authentication are not implemented), IP
-transport for BFD as defined in <rfc id="5881"> and <rfc id="5883"> and
-interaction with client protocols as defined in <rfc id="5882">.
+advanced features like the echo mode are not implemented), IP transport for BFD
+as defined in <rfc id="5881"> and <rfc id="5883"> and interaction with client
+protocols as defined in <rfc id="5882">.
 
 <p>BFD packets are sent with a dynamic source port number. Linux systems use by
 default a bit different dynamic port range than the IANA approved one
@@ -2534,6 +2628,8 @@ milliseconds.
 <code>
 protocol bfd [&lt;name&gt;] {
 	accept [ipv4|ipv6] [direct|multihop];
+	strict bind &lt;switch&gt;;
+	zero udp6 checksum rx &lt;switch&gt;;
 	interface &lt;interface pattern&gt; {
 		interval &lt;time&gt;;
 		min rx interval &lt;time&gt;;
@@ -2582,6 +2678,14 @@ protocol bfd [&lt;name&gt;] {
 	accepting all addresses. Binding to a specific address could be useful
 	in cases like running multiple BIRD instances on a machine, each
 	handling a different set of interfaces. Default: disabled.
+
+	<tag><label id="bfd-zero-udp6-checksum-rx">zero udp6 checksum rx <m/switch/</tag>
+	UDP checksum computation is optional in IPv4 while it is mandatory in
+	IPv6. Some BFD implementations send UDP datagrams with zero (blank)
+	checksum even in IPv6 case. This option configures BFD listening sockets
+	to accept such datagrams. It is available only on platforms that support
+	the relevant socket option (e.g. <cf/UDP_NO_CHECK6_RX/ on Linux).
+	Default: disabled.
 
 	<tag><label id="bfd-iface">interface <m/pattern/ [, <m/.../] { <m/options/ }</tag>
 	Interface definitions allow to specify options for sessions associated
@@ -2771,6 +2875,7 @@ avoid routing loops.
 <item> <rfc id="9072"> - Extended Optional Parameters Length for BGP OPEN Message
 <item> <rfc id="9117"> - Revised Validation Procedure for BGP Flow Specifications
 <item> <rfc id="9234"> - Route Leak Prevention and Detection Using Roles
+<item> <rfc id="9687"> - Send Hold Timer
 </itemize>
 
 <sect1>Route selection rules
@@ -2915,10 +3020,9 @@ using the following configuration parameters:
 	restarted. Optionally, it can be configured (by <cf/graceful/ argument)
 	to trigger graceful restart instead of regular restart. It is also
 	possible to specify section with per-peer BFD session options instead of
-	just switch argument. Most BFD session specific options are allowed here
-	with the exception of authentication options. here Note that BFD
-	protocol also has to be configured, see <ref id="bfd" name="BFD">
-	section for details. Default: disabled.
+	just the switch argument. All BFD session-specific options are allowed
+	here. Note that BFD protocol also has to be configured, see
+	<ref id="bfd" name="BFD"> section for details. Default: disabled.
 
 	<tag><label id="bgp-ttl-security">ttl security <m/switch/</tag>
 	Use GTSM (<rfc id="5082"> - the generalized TTL security mechanism). GTSM
@@ -3113,7 +3217,7 @@ using the following configuration parameters:
 	<tag><label id="bgp-interpret-communities">interpret communities <m/switch/</tag>
 	<rfc id="1997"> demands that BGP speaker should process well-known
 	communities like no-export (65535, 65281) or no-advertise (65535,
-	65282). For example, received route carrying a no-adverise community
+	65282). For example, received route carrying a no-advertise community
 	should not be advertised to any of its neighbors. If this option is
 	enabled (which is by default), BIRD has such behavior automatically (it
 	is evaluated when a route is exported to the BGP protocol just before
@@ -3210,8 +3314,7 @@ using the following configuration parameters:
 	Send hold timer drops the session if the neighbor is sending keepalives,
 	but does not receive our messages, causing the TCP connection to stall.
 	This may happen due to malfunctioning or overwhelmed neighbor. See
-	<HTMLURL URL="https://datatracker.ietf.org/doc/draft-ietf-idr-bgp-sendholdtimer/"
-	name="draft-ietf-idr-bgp-sendholdtimer"> for more details.
+	<rfc id="9687"> for more details.
 
 	Like the option <cf/keepalive time/, the effective value depends on the
 	negotiated hold time, as it is scaled to maintain proportion between the
@@ -4087,11 +4190,11 @@ could have up to 5 channels: <cf/ipv4/, <cf/ipv6/, <cf/vpn4/, <cf/vpn6/, and
 <cf/mpls/.
 
 <p><descrip>
-	<tag><label id="l3vpn-route-distinguisher">route distinguisher <m/vpnrd/</tag>
+	<tag><label id="l3vpn-route-distinguisher">route distinguisher <m/rd/</tag>
 	The route distinguisher that is attached to routes in the export
 	direction. Mandatory.
 
-	<tag><label id="l3vpn-rd">rd <m/vpnrd/</tag>
+	<tag><label id="l3vpn-rd">rd <m/rd/</tag>
 	A shorthand for the option <cf/route distinguisher/.
 
 	<tag><label id="l3vpn-import-target">import target <m/ec/|<m/ec-set/</tag>
@@ -4846,14 +4949,14 @@ protocol ospf MyOSPF {
 			authentication cryptographic;
 			password "abc" {
 				id 1;
-				generate to "22-04-2003 11:00:06";
-				accept from "17-01-2001 12:01:05";
+				generate to "2023-04-22 11:00:06";
+				accept from "2021-01-17 12:01:05";
 				algorithm hmac sha384;
 			};
 			password "def" {
 				id 2;
-				generate to "22-07-2005 17:03:21";
-				accept from "22-02-2001 11:34:06";
+				generate to "2025-07-22";
+				accept from "2021-02-22";
 				algorithm hmac sha512;
 			};
 		};
@@ -5671,6 +5774,10 @@ affected routes after RPKI update, see option <ref id="proto-rpki-reload"
 name="rpki reload">. Or you can use a BIRD client command <cf>reload in
 <m/bgp_protocol_name/</cf> for manual call of revalidation of all routes.
 
+<p>The same protocol, since version 2, also receives and maintains a set
+of ASPAs. You can then validate AS paths using function <cf/aspa_check()/
+in (import) filters.
+
 <sect1>Supported transports
 <p>
 <itemize>
@@ -5690,22 +5797,28 @@ define more RPKI protocols generally.
 protocol rpki [&lt;name&gt;] {
         roa4 { table &lt;tab&gt;; };
         roa6 { table &lt;tab&gt;; };
+	aspa { table &lt;tab&gt;; };
         remote &lt;ip&gt; | "&lt;domain&gt;" [port &lt;num&gt;];
         port &lt;num&gt;;
         local address &lt;ip&gt;;
         refresh [keep] &lt;num&gt;;
         retry [keep] &lt;num&gt;;
         expire [keep] &lt;num&gt;;
-        transport tcp;
+        transport tcp {
+                authentication none|md5;
+                password "&lt;text&gt;";
+        };
         transport ssh {
                 bird private key "&lt;/path/to/id_rsa&gt;";
                 remote public key "&lt;/path/to/known_host&gt;";
                 user "&lt;name&gt;";
         };
+	max version 2;
+	min version 2;
 }
 </code>
 
-<p>Alse note that you have to specify the ROA channel. If you want to import
+<p>Alse note that you have to specify the ROA and ASPA channels. If you want to import
 only IPv4 prefixes you have to specify only roa4 channel. Similarly with IPv6
 prefixes only. If you want to fetch both IPv4 and even IPv6 ROAs you have to
 specify both channels.
@@ -5752,13 +5865,35 @@ specify both channels.
 	instead. This may be useful for implementing loose RPKI check for
 	blackholes. Default: disabled.
 
-        <tag>transport tcp</tag> Unprotected transport over TCP. It's a default
-        transport. Should be used only on secure private networks.
-        Default: tcp
+	<tag>min version <m/num/</tag>
+	Minimal allowed version of the RTR protocol. BIRD will refuse to
+	downgrade a connection below this version and drop the session instead.
+	Default: 0
+
+	<tag>max version <m/num/</tag>
+	Maximal allowed version of the RTR protocol. BIRD will start with this
+        version. Use this option if sending version 2 to your cache causes
+        problems. Default: 2
+
+        <tag>transport tcp { <m/TCP transport options.../ }</tag> Transport over
+        TCP, it's the default transport. Cannot be combined with a SSH transport.
+        Default: TCP, no authentication.
 
         <tag>transport ssh { <m/SSH transport options.../ }</tag> It enables a
         SSHv2 transport encryption. Cannot be combined with a TCP transport.
         Default: off
+</descrip>
+
+<sect3>TCP transport options
+<p>
+<descrip>
+	<tag>authentication none|md5</tag>
+	Select authentication method to be used. <cf/none/ means no
+	authentication, <cf/md5/ is TCP-MD5 authentication (<rfc id="2385">).
+	Default: no authentication.
+
+	<tag>password "<m>text</m>"</tag>
+	Use this password for TCP-MD5 authentication of the RPKI-To-Router session.
 </descrip>
 
 <sect3>SSH transport options
@@ -5965,6 +6100,13 @@ options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 <sect1>Route Origin Authorization
 
 <p>The ROA config is just <cf>route <m/prefix/ max <m/int/ as <m/int/</cf> with no nexthop.
+
+<sect1>Autonomous System Provider Authorization
+
+<p>The ASPA config is <cf>route aspa <m/int/ providers <m/int/ [, <m/int/ ...]</cf> with no nexthop.
+  The first ASN is client and the following are a list of providers.
+  For a transit, you can also write <cf>route aspa <m/int/ transit</cf> to get
+  the no-provider ASPA.
 
 <sect1>Flowspec
 <label id="flowspec-network-type">

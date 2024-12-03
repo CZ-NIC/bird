@@ -9,21 +9,37 @@
 #include "test/birdtest.h"
 #include "lib/flowspec.h"
 
-#define NET_ADDR_FLOW4_(what,prefix,pxlen,data_)	\
-  do 							\
-  { 							\
-    what = alloca(sizeof(net_addr_flow4) + 128);	\
-    *what = NET_ADDR_FLOW4(prefix, pxlen, sizeof(data_)); \
-    memcpy(what->data, &(data_), sizeof(data_));	\
-  } while(0)
+#define NET_ADDR_FLOW4_(prefix,pxlen,nlri)				\
+  ({									\
+    uint _len = sizeof(nlri);						\
+    net_addr_flow4 *_n = tmp_alloc(sizeof(net_addr_flow4) + _len);	\
+    *_n = NET_ADDR_FLOW4(prefix, pxlen, _len);				\
+    memcpy(_n->data, &(nlri), _len);					\
+    if (_n->data[0] == 0) _n->data[0] = _len - 1;			\
+    _n;									\
+  })
 
-#define NET_ADDR_FLOW6_(what,prefix,pxlen,data_)	\
-  do							\
-  {							\
-    what = alloca(sizeof(net_addr_flow6) + 128);	\
-    *what = NET_ADDR_FLOW6(prefix, pxlen, sizeof(data_)); \
-    memcpy(what->data, &(data_), sizeof(data_));	\
-  } while(0)
+#define NET_ADDR_FLOW4_NLRI(...)					\
+  ({									\
+    const byte _nlri[] = { __VA_ARGS__ };				\
+    NET_ADDR_FLOW4_(flow_read_ip4_part(_nlri + 1), _nlri[2], _nlri);	\
+  })
+
+#define NET_ADDR_FLOW6_(prefix,pxlen,nlri)				\
+  ({									\
+    uint _len = sizeof(nlri);						\
+    net_addr_flow6 *_n = tmp_alloc(sizeof(net_addr_flow6) + _len);	\
+    *_n = NET_ADDR_FLOW6(prefix, pxlen, _len);				\
+    memcpy(_n->data, &(nlri), _len);					\
+    if (_n->data[0] == 0) _n->data[0] = _len - 1;			\
+    _n;									\
+  })
+
+#define NET_ADDR_FLOW6_NLRI(...)					\
+  ({									\
+    const byte _nlri[] = { __VA_ARGS__ };				\
+    NET_ADDR_FLOW6_(flow_read_ip6_part(_nlri + 1), _nlri[2], _nlri);	\
+  })
 
 static int
 t_read_length(void)
@@ -67,13 +83,13 @@ t_write_length(void)
 static int
 t_first_part(void)
 {
-  net_addr_flow4 *f;
-  NET_ADDR_FLOW4_(f, ip4_build(10,0,0,1), 24, ((byte[]) { 0x00, 0x00, 0xab }));
+  net_addr_flow4 *f = NET_ADDR_FLOW4_(IP4_NONE, 0, ((byte[]) { 0x00, 0x00, 0xab }));
 
   const byte *under240 = &f->data[1];
   const byte *above240 = &f->data[2];
 
   /* Case 0x00 0x00 */
+  f->data[0] = 0x00;
   bt_assert(flow4_first_part(f) == NULL);
 
   /* Case 0x01 0x00 */
@@ -103,15 +119,14 @@ t_first_part(void)
 static int
 t_iterators4(void)
 {
-  net_addr_flow4 *f;
-  NET_ADDR_FLOW4_(f, ip4_build(5,6,7,0), 24, ((byte[]) {
+  const net_addr_flow4 *f = NET_ADDR_FLOW4_NLRI(
     25, /* Length */
     FLOW_TYPE_DST_PREFIX, 24, 5, 6, 7,
     FLOW_TYPE_SRC_PREFIX, 32, 10, 11, 12, 13,
     FLOW_TYPE_IP_PROTOCOL, 0x81, 0x06,
     FLOW_TYPE_PORT, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
     FLOW_TYPE_TCP_FLAGS, 0x80, 0x55,
-  }));
+  );
 
   const byte *start		= f->data;
   const byte *p1_dst_pfx	= &f->data[1];
@@ -136,15 +151,14 @@ t_iterators4(void)
 static int
 t_iterators6(void)
 {
-  net_addr_flow6 *f;
-  NET_ADDR_FLOW6_(f, ip6_build(0,0,0x12345678,0x9a000000), 0x68, ((byte[]) {
+  const net_addr_flow6 *f = NET_ADDR_FLOW6_NLRI(
     26, /* Length */
     FLOW_TYPE_DST_PREFIX, 0x68, 0x40, 0x12, 0x34, 0x56, 0x78, 0x9a,
     FLOW_TYPE_SRC_PREFIX, 0x08, 0x0, 0xc0,
     FLOW_TYPE_NEXT_HEADER, 0x81, 0x06,
     FLOW_TYPE_PORT, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
     FLOW_TYPE_LABEL, 0x80, 0x55,
-  }));
+  );
 
   const byte *start		= f->data;
   const byte *p1_dst_pfx	= &f->data[1];
@@ -169,15 +183,14 @@ t_iterators6(void)
 static int
 t_accessors4(void)
 {
-  net_addr_flow4 *f;
-  NET_ADDR_FLOW4_(f, ip4_build(5,6,7,0), 24, ((byte[]) {
+  const net_addr_flow4 *f = NET_ADDR_FLOW4_NLRI(
     25, /* Length */
     FLOW_TYPE_DST_PREFIX, 24, 5, 6, 7,
     FLOW_TYPE_SRC_PREFIX, 32, 10, 11, 12, 13,
     FLOW_TYPE_IP_PROTOCOL, 0x81, 0x06,
     FLOW_TYPE_PORT, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
     FLOW_TYPE_TCP_FLAGS, 0x80, 0x55,
-  }));
+  );
 
   const byte *p1_dst_px		= &f->data[1];
   const ip4_addr p1_dst_addr	= ip4_build(5,6,7,0);
@@ -194,15 +207,14 @@ t_accessors4(void)
 static int
 t_accessors6(void)
 {
-  net_addr_flow6 *f;
-  NET_ADDR_FLOW6_(f, ip6_build(0,0,0x12345678,0x9a000000), 0x68, ((byte[]) {
+  const net_addr_flow6 *f = NET_ADDR_FLOW6_NLRI(
     26, /* Length */
     FLOW_TYPE_DST_PREFIX, 0x68, 0x40, 0x12, 0x34, 0x56, 0x78, 0x9a,
     FLOW_TYPE_SRC_PREFIX, 0x08, 0x0, 0xc0,
     FLOW_TYPE_NEXT_HEADER, 0x81, 0x06,
     FLOW_TYPE_PORT, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
     FLOW_TYPE_LABEL, 0x80, 0x55,
-  }));
+  );
 
   const byte *p1_dst_px		= &f->data[1];
   const ip6_addr p1_dst_addr	= ip6_build(0,0,0x12345678,0x9a000000);
@@ -450,17 +462,14 @@ t_builder4(void)
 
   /* Expectation */
 
-  static byte nlri[] = {
-    25,
+  const net_addr_flow4 *expect = NET_ADDR_FLOW4_NLRI(
+    0,
     FLOW_TYPE_DST_PREFIX, 24, 5, 6, 7,
     FLOW_TYPE_SRC_PREFIX, 32, 10, 11, 12, 13,
     FLOW_TYPE_IP_PROTOCOL, 0x80, 0x06,
     FLOW_TYPE_PORT, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
-    FLOW_TYPE_TCP_FLAGS, 0x80, 0x55
-  };
-
-  net_addr_flow4 *expect;
-  NET_ADDR_FLOW4_(expect, ip4_build(5, 6, 7, 0), 24, nlri);
+    FLOW_TYPE_TCP_FLAGS, 0x80, 0x55,
+  );
 
   /* Normal order */
 
@@ -531,17 +540,14 @@ t_builder6(void)
 
   /* Expectation */
 
-  byte nlri[] = {
-    27,
-    FLOW_TYPE_DST_PREFIX, 103, 61, 0x01, 0x12, 0x34, 0x56, 0x78, 0x98,
+  const net_addr_flow6 *expect = NET_ADDR_FLOW6_NLRI(
+    0,
+    FLOW_TYPE_DST_PREFIX, 103, 61, 0x22, 0x46, 0x8a, 0xcf, 0x13, 0x00,
     FLOW_TYPE_SRC_PREFIX, 8, 0, 0xc0,
     FLOW_TYPE_NEXT_HEADER, 0x80, 0x06,
     FLOW_TYPE_PORT, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
     FLOW_TYPE_LABEL, 0x80, 0x55,
-  };
-
-  net_addr_flow6 *expect;
-  NET_ADDR_FLOW6_(expect, ip6_build(0, 1, 0x12345678, 0x98000000), 103, nlri);
+  );
 
   /* Normal order */
 
@@ -605,9 +611,11 @@ t_builder6(void)
 static int
 t_formatting4(void)
 {
-  char b[1024];
+  const net_addr_flow4 *input[4];
+  const char *expect[4];
 
-  byte nlri[] = {
+  expect[0] = "flow4 { dst 10.0.0.0/8; proto 23; dport > 24 && < 30 || 40..50,60..70,80 && >= 90; sport > 24 && < 30 || 40,50,60..70,80; icmp type 80; icmp code 90; tcp flags 0x3/0x3 && 0x0/0xc; length 0..65535; dscp 63; fragment dont_fragment || !is_fragment; }";
+  input[0] = NET_ADDR_FLOW4_NLRI(
     0,
     FLOW_TYPE_DST_PREFIX, 0x08, 10,
     FLOW_TYPE_IP_PROTOCOL, 0x81, 23,
@@ -618,18 +626,44 @@ t_formatting4(void)
     FLOW_TYPE_TCP_FLAGS, 0x01, 0x03, 0xc2, 0x0c,
     FLOW_TYPE_PACKET_LENGTH, 0x03, 0, 0xd5, 0xff, 0xff,
     FLOW_TYPE_DSCP, 0x81, 63,
-    FLOW_TYPE_FRAGMENT, 0x01, 0x01, 0x82, 0x02
-  };
-  *nlri = (u8) sizeof(nlri);
+    FLOW_TYPE_FRAGMENT, 0x01, 0x01, 0x82, 0x02,
+  );
 
-  net_addr_flow4 *input;
-  NET_ADDR_FLOW4_(input, ip4_build(5, 6, 7, 0), 24, nlri);
+  /* RFC 8955 4.3.1 Example 1 */
+  expect[1] = "flow4 { dst 192.0.2.0/24; proto 6; port 25; }";
+  input[1] = NET_ADDR_FLOW4_NLRI(
+    0x0b,
+    0x01, 0x18, 0xc0, 0x00, 0x02,
+    0x03, 0x81, 0x06,
+    0x04, 0x81, 0x19,
+  );
 
-  const char *expect = "flow4 { dst 10.0.0.0/8; proto 23; dport > 24 && < 30 || 40..50,60..70,80 && >= 90; sport > 24 && < 30 || 40,50,60..70,80; icmp type 80; icmp code 90; tcp flags 0x3/0x3 && 0x0/0xc; length 0..65535; dscp 63; fragment dont_fragment || !is_fragment; }";
+  /* RFC 8955 4.3.2 Example 2 */
+  expect[2] = "flow4 { dst 192.0.2.0/24; src 203.0.113.0/24; port 137..139,8080; }";
+  input[2] = NET_ADDR_FLOW4_NLRI(
+    0x12,
+    0x01, 0x18, 0xc0, 0x00, 0x02,
+    0x02, 0x18, 0xcb, 0x00, 0x71,
+    0x04, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
+  );
 
-  bt_assert(flow4_net_format(b, sizeof(b), input) == strlen(expect));
-  bt_debug(" expect: '%s',\n output: '%s'\n", expect, b);
-  bt_assert(strcmp(b, expect) == 0);
+  /* RFC 8955 4.3.3 Example 3 */
+  expect[3] = "flow4 { dst 192.0.2.1/32; fragment !0x0/0x5; }";
+  input[3] = NET_ADDR_FLOW4_NLRI(
+    0x09,
+    0x01, 0x20, 0xc0, 0x00, 0x02, 0x01,
+    0x0c, 0x80, 0x05,
+  );
+
+  /* Run the tests */
+  for (uint i = 0; i < ARRAY_SIZE(input); i++)
+  {
+    char buf[1024];
+    uint len = flow4_net_format(buf, sizeof(buf), input[i]);
+    bt_debug(" expect: '%s',\n output: '%s'\n", expect[i], buf);
+    bt_assert(!strcmp(buf, expect[i]));
+    bt_assert(len == strlen(expect[i]));
+  }
 
   return 1;
 }
@@ -637,26 +671,46 @@ t_formatting4(void)
 static int
 t_formatting6(void)
 {
-  char b[1024];
+  const net_addr_flow6 *input[3];
+  const char *expect[3];
 
-  byte nlri[] = {
+//  (ip6_build(0, 1, 0x12345678, 0x98000000), 103, nlri0);
+  expect[0] = "flow6 { dst ::1:1234:5678:9800:0/103 offset 61; src c000::/8; next header 6; port 20..40,273; label < 500000; }";
+  input[0] = NET_ADDR_FLOW6_NLRI(
     0,
-    FLOW_TYPE_DST_PREFIX, 103, 61, 0x01, 0x12, 0x34, 0x56, 0x78, 0x98,
+    FLOW_TYPE_DST_PREFIX, 103, 61, 0x22, 0x46, 0x8a, 0xcf, 0x13, 0x00,
     FLOW_TYPE_SRC_PREFIX, 8, 0, 0xc0,
     FLOW_TYPE_NEXT_HEADER, 0x81, 0x06,
     FLOW_TYPE_PORT, 0x03, 20, 0x45, 40, 0x91, 0x01, 0x11,
     FLOW_TYPE_LABEL, 0xa4, 0x00, 0x07, 0xa1, 0x20,
-  };
-  *nlri = (u8) sizeof(nlri);
+  );
 
-  net_addr_flow6 *input;
-  NET_ADDR_FLOW6_(input, ip6_build(0, 1, 0x12345678, 0x98000000), 103, nlri);
+  /* RFC 8956 3.8.1 Example 1 */
+  expect[1] = "flow6 { dst 2001:db8::/32; src ::1234:5678:9a00:0/104 offset 64; next header 6; }";
+  input[1] = NET_ADDR_FLOW6_(ip6_build(0x20010db8, 0, 0, 0), 32, ((const byte[]) {
+    0x12,
+    0x01, 0x20, 0x00, 0x20, 0x01, 0x0d, 0xb8,
+    0x02, 0x68, 0x40, 0x12, 0x34, 0x56, 0x78, 0x9a,
+    0x03, 0x81, 0x06,
+  }));
 
-  const char *expect = "flow6 { dst ::1:1234:5678:9800:0/103 offset 61; src c000::/8; next header 6; port 20..40,273; label < 500000; }";
+  /* RFC 8956 3.8.2 Example 2 */
+  expect[2] = "flow6 { dst 2001:db8::/32; src ::1234:5678:9a00:0/104 offset 65; }";
+  input[2] = NET_ADDR_FLOW6_(ip6_build(0x20010db8, 0, 0, 0), 32, ((const byte[]) {
+    0x0f,
+    0x01, 0x20, 0x00, 0x20, 0x01, 0x0d, 0xb8,
+    0x02, 0x68, 0x41, 0x24, 0x68, 0xac, 0xf1, 0x34,
+  }));
 
-  bt_assert(flow6_net_format(b, sizeof(b), input) == strlen(expect));
-  bt_debug(" expect: '%s',\n output: '%s'\n", expect, b);
-  bt_assert(strcmp(b, expect) == 0);
+  /* Run the tests */
+  for (uint i = 0; i < ARRAY_SIZE(input); i++)
+  {
+    char buf[1024];
+    uint len = flow6_net_format(buf, sizeof(buf), input[i]);
+    bt_debug(" expect: '%s',\n output: '%s'\n", expect[i], buf);
+    bt_assert(!strcmp(buf, expect[i]));
+    bt_assert(len == strlen(expect[i]));
+  }
 
   return 1;
 }

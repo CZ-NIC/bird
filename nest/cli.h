@@ -12,6 +12,9 @@
 #include "lib/resource.h"
 #include "lib/lists.h"
 #include "lib/event.h"
+#include "lib/timer.h"
+#include "lib/tlists.h"
+#include "conf/conf.h"
 
 #define CLI_RX_BUF_SIZE 4096
 #define CLI_TX_BUF_SIZE 4096
@@ -39,11 +42,29 @@ typedef struct cli {
   struct config *main_config;		/* Main config currently in use */
   int last_reply;
   int restricted;			/* CLI is restricted to read-only commands */
+  struct timeformat *tf;		/* Time format override */
   struct linpool *parser_pool;		/* Pool used during parsing */
   uint log_mask;			/* Mask of allowed message levels */
   uint log_threshold;			/* When free < log_threshold, store only important messages */
   uint async_msg_size;			/* Total size of async messages queued in tx_buf */
 } cli;
+
+struct cli_config {
+#define TLIST_PREFIX cli_config
+#define TLIST_TYPE struct cli_config
+#define TLIST_ITEM n
+#define TLIST_DEFINED_BEFORE
+#define TLIST_WANT_ADD_TAIL
+#define TLIST_WANT_WALK
+  TLIST_DEFAULT_NODE;
+  const char *name;
+  struct config *config;
+  uint uid, gid, mode;
+  _Bool restricted;
+};
+#include "lib/tlists.h"
+
+void cli_config_listen(struct cli_config *, const char *);
 
 extern pool *cli_pool;
 extern struct cli *this_cli;		/* Used during parsing */
@@ -54,13 +75,14 @@ extern struct cli *this_cli;		/* Used during parsing */
 
 void cli_printf(cli *, int, char *, ...);
 #define cli_msg(x...) cli_printf(this_cli, x)
+void cli_set_timeformat(cli *c, const struct timeformat tf);
 
 static inline void cli_separator(cli *c)
 { if (c->last_reply) cli_printf(c, -c->last_reply, ""); };
 
 /* Functions provided to sysdep layer */
 
-cli *cli_new(struct birdsock *);
+cli *cli_new(struct birdsock *, struct cli_config *);
 void cli_init(void);
 void cli_free(cli *);
 void cli_kick(cli *);

@@ -30,6 +30,7 @@
 #include "lib/event.h"
 #include "lib/locking.h"
 #include "lib/timer.h"
+#include "lib/tlists.h"
 #include "lib/string.h"
 #include "nest/route.h"
 #include "nest/protocol.h"
@@ -186,6 +187,8 @@ cf_read(byte *dest, uint len, int fd)
   return l;
 }
 
+static void cli_preconfig(struct config *c);
+
 void
 sysdep_preconfig(struct config *c)
 {
@@ -200,7 +203,11 @@ sysdep_preconfig(struct config *c)
   read_iproute_table(c, PATH_IPROUTE_DIR "/rt_scopes", "ips_", 255);
   read_iproute_table(c, PATH_IPROUTE_DIR "/rt_tables", "ipt_", 0xffffffff);
 #endif
+
+  cli_preconfig(c);
 }
+
+static void cli_commit(struct config *new, struct config *old);
 
 void
 sysdep_commit(struct config *new, struct config *old)
@@ -208,6 +215,7 @@ sysdep_commit(struct config *new, struct config *old)
   if (!new->shutdown)
     log_switch(0, &new->logfiles, new->syslog_name);
 
+  cli_commit(new, old);
   bird_thread_commit(new, old);
 }
 
@@ -400,9 +408,28 @@ cmd_reconfig_status(void)
  *	Command-Line Interface
  */
 
-static sock *cli_sk;
-static char *path_control_socket = PATH_CONTROL_SOCKET;
+static struct cli_config initial_control_socket_config = {
+  .name = PATH_CONTROL_SOCKET,
+  .mode = 0660,
+};
+#define path_control_socket initial_control_socket_config.name
 
+static struct cli_config *main_control_socket_config = NULL;
+
+#define TLIST_PREFIX cli_listener
+#define TLIST_TYPE struct cli_listener
+#define TLIST_ITEM n
+#define TLIST_WANT_ADD_TAIL
+#define TLIST_WANT_WALK
+static struct cli_listener {
+  TLIST_DEFAULT_NODE;
+  sock *s;
+  struct cli_config *config;
+} *main_control_socket = NULL;
+
+#include "lib/tlists.h"
+
+static TLIST_LIST(cli_listener) cli_listeners;
 
 static void
 cli_write(cli *c)
@@ -523,7 +550,7 @@ cli_connect(sock *s, uint size UNUSED)
   s->rx_hook = cli_rx;
   s->tx_hook = cli_tx;
   s->err_hook = cli_err;
-  s->data = c = cli_new(s);
+  s->data = c = cli_new(s, ((struct cli_listener *) s->data)->config);
   s->pool = c->pool;		/* We need to have all the socket buffers allocated in the cli pool */
   s->fast_rx = 1;
   c->rx_pos = c->rx_buf;
@@ -531,32 +558,115 @@ cli_connect(sock *s, uint size UNUSED)
   return 1;
 }
 
-static void
-cli_init_unix(uid_t use_uid, gid_t use_gid)
+static struct cli_listener *
+cli_listen(struct cli_config *cf)
 {
-  sock *s;
-
-  cli_init();
-  s = cli_sk = sk_new(cli_pool);
+  struct cli_listener *l = mb_allocz(cli_pool, sizeof *l);
+  l->config = cf;
+  sock *s = l->s = sk_new(cli_pool);
   s->type = SK_UNIX_PASSIVE;
   s->rx_hook = cli_connect;
   s->err_hook = cli_connect_err;
+  s->data = l;
   s->rbsize = 1024;
   s->fast_rx = 1;
 
   /* Return value intentionally ignored */
-  unlink(path_control_socket);
+  unlink(cf->name);
 
-  if (sk_open_unix(s, &main_birdloop, path_control_socket) < 0)
-    die("Cannot create control socket %s: %m", path_control_socket);
+  if (sk_open_unix(s, &main_birdloop, cf->name) < 0)
+  {
+    log(L_ERR "Cannot create control socket %s: %m", cf->name);
+    return NULL;
+  }
 
-  if (use_uid || use_gid)
-    if (chown(path_control_socket, use_uid, use_gid) < 0)
-      die("chown: %m");
+  if (cf->uid || cf->gid)
+    if (chown(cf->name, cf->uid, cf->gid) < 0)
+    {
+      log(L_ERR "Cannot chown control socket %s: %m", cf->name);
+      return NULL;
+    }
 
-  if (chmod(path_control_socket, 0660) < 0)
-    die("chmod: %m");
+  if (chmod(cf->name, cf->mode) < 0)
+  {
+    log(L_ERR "Cannot chmod control socket %s: %m", cf->name);
+    return NULL;
+  }
+
+  cli_listener_add_tail(&cli_listeners, l);
+
+  return l;
 }
+
+static void
+cli_deafen(struct cli_listener *l)
+{
+  rfree(l->s);
+  unlink(l->config->name);
+  cli_listener_rem_node(&cli_listeners, l);
+  mb_free(l);
+}
+
+static void
+cli_init_unix(uid_t use_uid, gid_t use_gid)
+{
+  ASSERT_DIE(main_control_socket_config == NULL);
+
+  main_control_socket_config = &initial_control_socket_config;
+  main_control_socket_config->uid = use_uid;
+  main_control_socket_config->gid = use_gid;
+
+  ASSERT_DIE(main_control_socket == NULL);
+  main_control_socket = cli_listen(main_control_socket_config);
+  if (!main_control_socket)
+    die("Won't run without control socket");
+}
+
+static void
+cli_preconfig(struct config *c)
+{
+  if (!main_control_socket_config)
+    return;
+
+  struct cli_config *ccf = mb_alloc(cli_pool, sizeof *ccf);
+  memcpy(ccf, main_control_socket_config, sizeof *ccf);
+  ccf->n = (struct cli_config_node) {};
+  ccf->config = c;
+  cli_config_add_tail(&c->cli, ccf);
+}
+
+static void
+cli_commit(struct config *new, struct config *old)
+{
+  if (new->shutdown)
+  {
+    /* Keep the main CLI throughout the shutdown */
+    initial_control_socket_config.config = new;
+    main_control_socket->config = &initial_control_socket_config;
+  }
+
+  WALK_TLIST(cli_config, c, &new->cli)
+  {
+    _Bool seen = 0;
+    WALK_TLIST(cli_listener, l, &cli_listeners)
+      if (l->config->config != new)
+	if (!strcmp(l->config->name, c->name))
+	{
+	  ASSERT_DIE(l->config->config == old);
+	  l->config = c;
+	  seen = 1;
+	  break;
+	}
+
+    if (!seen)
+      cli_listen(c);
+  }
+
+  WALK_TLIST_DELSAFE(cli_listener, l, &cli_listeners)
+    if (l->config->config != new)
+      cli_deafen(l);
+}
+
 
 /*
  *	PID file
@@ -635,7 +745,7 @@ void
 sysdep_shutdown_done(void)
 {
   unlink_pid_file();
-  unlink(path_control_socket);
+  cli_deafen(main_control_socket);
   log_msg(L_FATAL "Shutdown completed");
   exit(0);
 }
@@ -919,6 +1029,8 @@ main(int argc, char **argv)
 
   uid_t use_uid = get_uid(use_user);
   gid_t use_gid = get_gid(use_group);
+
+  cli_init();
 
   if (!parse_and_exit)
   {

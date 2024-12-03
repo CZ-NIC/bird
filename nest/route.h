@@ -33,6 +33,7 @@
 #include <stdatomic.h>
 
 struct ea_list;
+struct adata;
 struct protocol;
 struct proto;
 struct channel;
@@ -928,6 +929,13 @@ void ea_show_nexthop_list(struct cli *c, struct nexthop_adata *nhad);
 #define ROA_VALID	1
 #define ROA_INVALID	2
 
+enum aspa_result {
+  ASPA_UNKNOWN = 0,
+  ASPA_VALID,
+  ASPA_INVALID,
+};
+
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
+enum aspa_result aspa_check(rtable *tab, const struct adata *path, bool force_upstream);
 
 #endif
