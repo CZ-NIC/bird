@@ -64,7 +64,6 @@ struct bmp_proto {
   // Below fields are for internal use
   // struct bmp_peer_map bgp_peers;   // Stores 'bgp_proto' structure per BGP peer
   pool *buffer_mpool;              // Memory pool used for BMP buffer allocations
-  pool *map_mem_pool;              // Memory pool used for BMP map allocations
   pool *tx_mem_pool;               // Memory pool used for packet allocations designated to BMP collector
   pool *update_msg_mem_pool;       // Memory pool used for BPG UPDATE MSG allocations
   list tx_queue;                   // Stores queued packets going to be sent

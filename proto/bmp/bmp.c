@@ -1393,7 +1393,6 @@ bmp_start(struct proto *P)
   struct bmp_proto *p = (void *) P;
 
   p->buffer_mpool = rp_new(P->pool, proto_domain(&p->p), "BMP Buffer");
-  p->map_mem_pool = rp_new(P->pool, proto_domain(&p->p), "BMP Map");
   p->tx_mem_pool = rp_new(P->pool, proto_domain(&p->p), "BMP Tx");
   p->update_msg_mem_pool = rp_new(P->pool, proto_domain(&p->p), "BMP Update");
   p->tx_ev = ev_new_init(p->p.pool, bmp_fire_tx, p);
