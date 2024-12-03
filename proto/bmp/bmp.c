@@ -301,8 +301,11 @@ bmp_init_msg_serialize(buffer *stream, const char *sys_descr, const char *sys_na
 }
 
 static void
-bmp_schedule_tx_packet(struct bmp_proto *p, const byte *payload, size_t size)
+bmp_schedule_tx_packet(struct bmp_proto *p, buffer *msg)
 {
+  const byte *payload = msg->start;
+  size_t size = msg->pos - msg->start;
+
   ASSERT(p->started);
 
   while (size)
@@ -475,28 +478,6 @@ bmp_put_per_peer_hdr(buffer *stream, const struct bmp_peer_hdr_info *peer)
   bmp_put_u32(stream, peer->id);
   bmp_put_u32(stream, ts_sec);
   bmp_put_u32(stream, ts_usec);
-}
-
-/* [4.6] Route Monitoring */
-static byte *
-bmp_route_monitor_msg_serialize(struct bmp_proto *p, const struct bmp_peer_hdr_info *peer,
-				byte *update_msg, size_t update_msg_length)
-{
-  ASSERT_DIE(update_msg < &p->msgbuf[sizeof p->msgbuf]);
-
-  buffer stream;
-  STACK_BUFFER_INIT(stream, BMP_PER_PEER_HDR_SIZE + BMP_COMMON_HDR_SIZE);
-
-  const size_t data_size = BMP_PER_PEER_HDR_SIZE + update_msg_length;
-  bmp_put_common_hdr(&stream, BMP_ROUTE_MONITOR, BMP_COMMON_HDR_SIZE + data_size);
-  bmp_put_per_peer_hdr(&stream, peer);
-
-  size_t hdr_sz = stream.pos - stream.start;
-  ASSERT_DIE(update_msg >= &p->msgbuf[hdr_sz]);
-
-  byte *begin = &update_msg[-hdr_sz];
-  memcpy(begin, stream.start, hdr_sz);
-  return begin;
 }
 
 static void
@@ -886,25 +867,7 @@ bmp_send_peer_up_notif_msg(struct bmp_proto *p, ea_list *bgp,
 
   buffer payload = bmp_default_buffer(p);
   bmp_peer_up_notif_msg_serialize(&payload, &peer, sk->saddr, sk->sport, sk->dport, tx_data, rx_data);
-  bmp_schedule_tx_packet(p, payload.start, payload.pos - payload.start);
-}
-
-static void
-bmp_route_monitor_put_update(struct bmp_proto *p, struct bmp_stream *bs, byte *data, size_t length, btime timestamp)
-{
-  ea_list *bgp = bs->bgp;
-
-  struct bmp_peer_hdr_info peer = {
-    .address = ea_get_ip(bgp, &ea_bgp_rem_ip, IPA_NONE),
-    .as = ea_get_int(bgp, &ea_bgp_rem_as, 0),
-    .id = ea_get_int(bgp, &ea_bgp_rem_id, 0),
-    .global = bmp_is_peer_global_instance(bgp),
-    .policy = bmp_stream_policy(bs),
-    .timestamp = timestamp,
-  };
-
-  const byte *start = bmp_route_monitor_msg_serialize(p, &peer, data, length);
-  bmp_schedule_tx_packet(p, start, (data - start) + length);
+  bmp_schedule_tx_packet(p, &payload);
 }
 
 static void
@@ -919,32 +882,66 @@ bmp_route_monitor_notify(struct bmp_proto *p, struct bgp_proto *bgp_p, u32 afi, 
   if (!bs)
     return;
 
-  byte *bufend = &p->msgbuf[sizeof p->msgbuf];
-  byte *begin = bufend - BGP_MAX_EXT_MSG_LENGTH;
-  byte *end = bgp_bmp_encode_rte(bs->sender, bgp_p, begin, bufend, new);
+  ea_list *bgp = bs->bgp;
+  ea_list *c = bs->sender;
 
-  btime delta_t = new->attrs ? current_time() - new->lastmod : 0;
-  btime timestamp = current_real_time() - delta_t;
+  btime delta_t = new ? current_time() - new->lastmod : 0;
 
-  if (end)
-    bmp_route_monitor_put_update(p, bs, begin, end - begin, timestamp);
-  else
+  struct bmp_peer_hdr_info peer = {
+    .address = ea_get_ip(bgp, &ea_bgp_rem_ip, IPA_NONE),
+    .as = ea_get_int(bgp, &ea_bgp_rem_as, 0),
+    .id = ea_get_int(bgp, &ea_bgp_rem_id, 0),
+    .global = bmp_is_peer_global_instance(bgp),
+    .policy = bmp_stream_policy(bs),
+    .timestamp = current_real_time() - delta_t,
+  };
+
+  buffer msg = bmp_default_buffer(p);
+  bmp_put_common_hdr(&msg, BMP_ROUTE_MONITOR, 0);
+  bmp_put_per_peer_hdr(&msg, &peer);
+
+  bmp_buffer_need(&msg, BGP_MAX_EXT_MSG_LENGTH);
+  byte *pos = bgp_bmp_encode_rte(c, bgp_p, msg.pos + BGP_HEADER_LENGTH, msg.end, new);
+  if (!pos)
+  {
     log(L_WARN "%s: Cannot encode update for %N", p->p.name, new->net);
+    return;
+  }
+  bmp_put_bgp_hdr(&msg, PKT_UPDATE, pos - msg.pos);
+  msg.pos = pos;
+
+  bmp_fix_common_hdr(&msg);
+  bmp_schedule_tx_packet(p, &msg);
 }
 
 static void
 bmp_route_monitor_end_of_rib(struct bmp_proto *p, struct bmp_stream *bs)
 {
-  TRACE(D_PACKETS, "Sending END-OF-RIB for %s.%s", ea_get_adata(bs->bgp, &ea_name)->data, ea_get_adata(bs->sender, &ea_name)->data);
+  ea_list *bgp = bs->bgp;
+  ea_list *c = bs->sender;
 
-  byte *rx_end_payload = p->msgbuf + BMP_PER_PEER_HDR_SIZE + BMP_COMMON_HDR_SIZE;
-  byte *pos = bgp_create_end_mark_ea_(bs->sender, rx_end_payload + BGP_HEADER_LENGTH);
-  memset(rx_end_payload + BGP_MSG_HDR_MARKER_POS, 0xff,
-	 BGP_MSG_HDR_MARKER_SIZE); // BGP UPDATE MSG marker
-  put_u16(rx_end_payload + BGP_MSG_HDR_LENGTH_POS, pos - rx_end_payload);
-  put_u8(rx_end_payload + BGP_MSG_HDR_TYPE_POS, PKT_UPDATE);
+  struct bmp_peer_hdr_info peer = {
+    .address = ea_get_ip(bgp, &ea_bgp_rem_ip, IPA_NONE),
+    .as = ea_get_int(bgp, &ea_bgp_rem_as, 0),
+    .id = ea_get_int(bgp, &ea_bgp_rem_id, 0),
+    .global = bmp_is_peer_global_instance(bgp),
+    .policy = bmp_stream_policy(bs),
+    .timestamp = current_real_time(),
+  };
 
-  bmp_route_monitor_put_update(p, bs, rx_end_payload, pos - rx_end_payload, current_real_time());
+  TRACE(D_PACKETS, "Sending END-OF-RIB for %s.%s", ea_get_adata(bgp, &ea_name)->data, ea_get_adata(c, &ea_name)->data);
+
+  buffer msg = bmp_default_buffer(p);
+  bmp_put_common_hdr(&msg, BMP_ROUTE_MONITOR, 0);
+  bmp_put_per_peer_hdr(&msg, &peer);
+
+  bmp_buffer_need(&msg, BGP_MAX_EXT_MSG_LENGTH);
+  byte *pos = bgp_create_end_mark_ea_(c, msg.pos + BGP_HEADER_LENGTH);
+  bmp_put_bgp_hdr(&msg, PKT_UPDATE, pos - msg.pos);
+  msg.pos = pos;
+
+  bmp_fix_common_hdr(&msg);
+  bmp_schedule_tx_packet(p, &msg);
 }
 
 static void
@@ -976,7 +973,7 @@ bmp_send_peer_down_notif_msg(struct bmp_proto *p, ea_list *bgp,
 
   buffer payload = bmp_default_buffer(p);
   bmp_peer_down_notif_msg_serialize(&payload, &peer, info);
-  bmp_schedule_tx_packet(p, payload.start, payload.pos - payload.start);
+  bmp_schedule_tx_packet(p, &payload);
 }
 
 static void
@@ -1161,7 +1158,7 @@ bmp_startup(struct bmp_proto *p)
   /* Send initiation message */
   buffer payload = bmp_default_buffer(p);
   bmp_init_msg_serialize(&payload, p->sys_descr, p->sys_name);
-  bmp_schedule_tx_packet(p, payload.start, payload.pos - payload.start);
+  bmp_schedule_tx_packet(p, &payload);
 
   /* Send Peer Up messages */
   u32 length;

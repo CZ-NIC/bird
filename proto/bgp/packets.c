@@ -2525,21 +2525,9 @@ bgp_create_update_bmp(ea_list *channel_ea, struct bgp_proto *bgp_p, byte *buf, b
   return res;
 }
 
-static byte *
-bgp_bmp_prepare_bgp_hdr(byte *buf, const u16 msg_size, const u8 msg_type)
-{
-  memset(buf + BGP_MSG_HDR_MARKER_POS, 0xff, BGP_MSG_HDR_MARKER_SIZE);
-  put_u16(buf + BGP_MSG_HDR_LENGTH_POS, msg_size);
-  put_u8(buf + BGP_MSG_HDR_TYPE_POS, msg_type);
-
-  return buf + BGP_MSG_HDR_TYPE_POS + BGP_MSG_HDR_TYPE_SIZE;
-}
-
 byte *
 bgp_bmp_encode_rte(ea_list *c, struct bgp_proto *bgp_p, byte *buf, byte *end, const struct rte *new)
 {
-  byte *pkt = buf + BGP_HEADER_LENGTH;
-
   uint ea_size = new->attrs ? (sizeof(ea_list) + new->attrs->count * sizeof(eattr)) : 0;
   uint prefix_size = sizeof(struct bgp_prefix) + new->net->length;
 
@@ -2560,10 +2548,7 @@ bgp_bmp_encode_rte(ea_list *c, struct bgp_proto *bgp_p, byte *buf, byte *end, co
   px->ni = NET_TO_INDEX(new->net);
   add_tail(&b->prefixes, &px->buck_node);
 
-  end = bgp_create_update_bmp(c, bgp_p, pkt, end, b, !!new->attrs);
-
-  if (end)
-    bgp_bmp_prepare_bgp_hdr(buf, end - buf, PKT_UPDATE);
+  end = bgp_create_update_bmp(c, bgp_p, buf, end, b, !!new->attrs);
 
   lp_restore(tmp_linpool, tmpp);
 
