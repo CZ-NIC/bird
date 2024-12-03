@@ -862,7 +862,7 @@ bgp_conn_enter_close_state(struct bgp_conn *conn)
 
   bgp_conn_set_state(conn, BS_CLOSE);
   tm_stop(conn->keepalive_timer);
-  conn->sk->rx_hook = NULL;
+  //conn->sk->rx_hook = NULL;  // deleting rx_hook here may cause problems with pool listening
 
   /* Timeout for CLOSE state, if we cannot send notification soon then we just hangup */
   bgp_start_timer(p, conn->hold_timer, 10);

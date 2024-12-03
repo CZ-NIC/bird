@@ -3094,6 +3094,8 @@ bgp_send(struct bgp_conn *conn, uint type, uint len)
   int success = sk_send(sk, len);
   if (success && ((conn->state == BS_ESTABLISHED) || (conn->state == BS_OPENCONFIRM)))
     bgp_start_timer(conn->bgp, conn->send_hold_timer, conn->send_hold_time);
+  struct bgp_proto *p = conn->bgp;
+  BGP_TRACE(D_PACKETS, "Scheduled packet type %d %s", type, success ? "succesfuly" : "unsuccesfully");
 
   return success;
 }
@@ -3234,12 +3236,11 @@ bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type)
   ASSERT(conn->sk);
 
   struct bgp_proto *p = conn->bgp;
+  bool wont_ping = conn->channels_to_send || conn->packets_to_send || (conn->sk->tpos != conn->sk->tbuf);
   if (c)
-    BGP_TRACE(D_PACKETS, "Scheduling packet type %d for channel %s", type, c->c.name);
+    BGP_TRACE(D_PACKETS, "Scheduling packet type %d for channel %s%s", type, c->c.name, wont_ping ? " (TX already scheduled)" : "");
   else
-    BGP_TRACE(D_PACKETS, "Scheduling packet type %d", type);
-
-  bool was_active = conn->channels_to_send || conn->packets_to_send;
+    BGP_TRACE(D_PACKETS, "Scheduling packet type %d %s", type, wont_ping ? " (TX already scheduled)" : "");
 
   if (c)
   {
@@ -3255,7 +3256,7 @@ bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type)
   else
     conn->packets_to_send |= 1 << type;
 
-  if (was_active || (conn->sk->tpos != conn->sk->tbuf))
+  if (wont_ping && (type != PKT_SCHEDULE_CLOSE))
     return;
   else if ((type == PKT_KEEPALIVE) || (this_birdloop != p->p.loop))
     while (bgp_fire_tx(conn) > 0)
@@ -3572,7 +3573,10 @@ bgp_rx(sock *sk, uint size)
   while (end >= pkt_start + BGP_HEADER_LENGTH)
     {
       if ((conn->state == BS_CLOSE) || (conn->sk != sk))
-	return 0;
+      {
+        BGP_TRACE(D_PACKETS,"Packet arrived after closing");
+        return 0;
+      }
       if ((conn->state == BS_ESTABLISHED) && rt_cork_check(&conn->bgp->uncork))
       {
 	sk_pause_rx(p->p.loop, sk);

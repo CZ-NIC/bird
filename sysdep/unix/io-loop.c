@@ -535,8 +535,16 @@ sockets_fire(struct birdloop *loop, bool read, bool write)
       if (write && (rev & POLLOUT))
       {
 	/* Write until task limit is up */
-	while ((s == loop->sock_active) && (e = sk_write(s)) && task_still_in_limit())
-	  ;
+       while (s == loop->sock_active)
+       {
+         int fd = s->fd; /* The socket may disappear after sk_write! */
+         e = sk_write(s);
+         bool allowed = task_still_in_limit();
+         LOOP_TRACE(loop, DL_SOCKETS, "Writing to fd %d: %s%s", fd, e ? "again" : "done", (e && !allowed) ? " (out of time)" : "");
+
+         if (!e || !allowed)
+           break;
+       }
 
 	if (s != loop->sock_active)
 	  continue;
@@ -547,11 +555,21 @@ sockets_fire(struct birdloop *loop, bool read, bool write)
 
       /* Read until task limit is up */
       if (read && (rev & POLLIN))
-	while ((s == loop->sock_active) && s->rx_hook && sk_read(s, rev) && (s->fast_rx || task_still_in_limit()))
-	  ;
+      {
 
-      if (s != loop->sock_active)
-	continue;
+        while (s == loop->sock_active && s->rx_hook )
+	{
+	  int fd = s->fd; /* The socket may disappear after sk_write! */
+          e = sk_read(s, rev);
+          bool allowed = task_still_in_limit();
+          LOOP_TRACE(loop, DL_SOCKETS, "Read from fd %d: %s%s", fd, e ? "again" : "done", (e && !allowed) ? " (out of time)" : "");
+
+          if (!e || !allowed)
+            break;
+	}
+        if (s != loop->sock_active)
+	  continue;
+      }
 
       if (!(rev & (POLLOUT | POLLIN)) && (rev & POLLERR))
 	sk_err(s, rev);
@@ -914,7 +932,15 @@ bird_thread_main(void *arg)
     account_to(&this_thread->idle);
     birdloop_leave(thr->meta);
 poll_retry:;
+    for (uint i=0; i<pfd.pfd.used; i++)
+    {
+      if (pfd.loop.data[i])
+        LOOP_TRACE(pfd.loop.data[i], DL_SOCKETS, "Polling fd %d with events 0x%x (timeout %i)",
+	  pfd.pfd.data[i].fd, pfd.pfd.data[i].events, timeout);
+    }
+
     int rv = poll(pfd.pfd.data, pfd.pfd.used, timeout);
+    THREAD_TRACE(DL_SOCKETS, "Returned %d from poll", rv);
     if (rv < 0)
     {
       if (errno == EINTR || errno == EAGAIN)
