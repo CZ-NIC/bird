@@ -2480,7 +2480,7 @@ bgp_create_mp_unreach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
 #ifdef CONFIG_BMP
 
 static byte *
-bgp_create_update_bmp(ea_list *channel_ea, struct bgp_proto *bgp_p, byte *buf, struct bgp_bucket *buck, bool update)
+bgp_create_update_bmp(ea_list *channel_ea, struct bgp_proto *bgp_p, byte *buf, byte *end, struct bgp_bucket *buck, bool update)
 {
   struct bgp_channel *c;
   u32 c_id = ea_get_int(channel_ea, &ea_channel_id, 0);
@@ -2488,9 +2488,7 @@ bgp_create_update_bmp(ea_list *channel_ea, struct bgp_proto *bgp_p, byte *buf, s
     if (c->c.id == c_id)
       break;
 
-  byte *end = buf + (BGP_MAX_EXT_MSG_LENGTH - BGP_HEADER_LENGTH);
   byte *res = NULL;
-  /* FIXME: must be a bit shorter */
 
   struct bgp_caps *peer = bgp_p->conn->remote_caps;
   const struct bgp_af_caps *rem = bgp_find_af_caps(peer, c->afi);
@@ -2538,7 +2536,7 @@ bgp_bmp_prepare_bgp_hdr(byte *buf, const u16 msg_size, const u8 msg_type)
 }
 
 byte *
-bgp_bmp_encode_rte(ea_list *c, struct bgp_proto *bgp_p, byte *buf, const struct rte *new)
+bgp_bmp_encode_rte(ea_list *c, struct bgp_proto *bgp_p, byte *buf, byte *end, const struct rte *new)
 {
   byte *pkt = buf + BGP_HEADER_LENGTH;
 
@@ -2562,7 +2560,7 @@ bgp_bmp_encode_rte(ea_list *c, struct bgp_proto *bgp_p, byte *buf, const struct 
   px->ni = NET_TO_INDEX(new->net);
   add_tail(&b->prefixes, &px->buck_node);
 
-  byte *end = bgp_create_update_bmp(c, bgp_p, pkt, b, !!new->attrs);
+  end = bgp_create_update_bmp(c, bgp_p, pkt, end, b, !!new->attrs);
 
   if (end)
     bgp_bmp_prepare_bgp_hdr(buf, end - buf, PKT_UPDATE);

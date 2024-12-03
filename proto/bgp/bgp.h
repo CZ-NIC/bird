@@ -703,7 +703,7 @@ static inline struct bgp_proto *bgp_rte_proto(const rte *rte)
     SKIP_BACK(struct bgp_proto, p.sources, rte->src->owner) : NULL;
 }
 
-byte * bgp_bmp_encode_rte(ea_list *c, struct bgp_proto *bgp_p, byte *buf, const struct rte *new);
+byte * bgp_bmp_encode_rte(ea_list *c, struct bgp_proto *bgp_p, byte *buf, byte *end, const struct rte *new);
 
 #define BGP_AIGP_METRIC		1
 #define BGP_AIGP_MAX		U64(0xffffffffffffffff)
