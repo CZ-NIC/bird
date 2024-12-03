@@ -92,10 +92,6 @@ enum bmp_message_type {
   BMP_ROUTE_MIRROR_MSG = 6 // Route Mirroring Message
 };
 
-// Defines size of padding when IPv4 address is going to be put into field
-// which can accept also IPv6 address
-#define BMP_PADDING_IP4_ADDR_SIZE 12
-
 enum bmp_peer_type {
   BMP_PEER_TYPE_GLOBAL_INSTANCE = 0,
   BMP_PEER_TYPE_RD_INSTANCE = 1,
@@ -115,12 +111,6 @@ struct bmp_peer_hdr_info {
   bool no_as4;
   btime timestamp;
 };
-
-
-/* BMP Information TLV header [RFC 7854 - Section 4.4] */
-// Total size of Type and Length fields of Information TLV Header without
-// variable part
-#define BMP_INFO_TLV_FIX_SIZE 4
 
 enum bmp_info_tlv_type {
   BMP_INFO_TLV_TYPE_STRING = 0,    // String
@@ -156,14 +146,12 @@ struct bmp_peer_down_info {
 };
 
 /* BMP Termination Message [RFC 7854 - Section 4.5] */
-#define BMP_TERM_INFO_TYPE_SIZE 2
 enum bmp_term_info_type {
   BMP_TERM_INFO_STRING = 0, // The Information field contains string
   BMP_TERM_INFO_REASON = 1, // The Information field contains 2-byte reason code
 };
 
 // 2-byte code in the Information field
-#define BMP_TERM_REASON_CODE_SIZE 2
 enum bmp_term_reason {
   BMP_TERM_REASON_ADM = 0,  // Session administratively closed
   BMP_TERM_REASON_UNK = 1,  // Unspecified reason
@@ -171,12 +159,6 @@ enum bmp_term_reason {
   BMP_TERM_REASON_DUP = 3,  // Redundant connection
   BMP_TERM_REASON_PERM = 4, // Session permanently administratively closed
 };
-
-// Size of Information Length field in Termination Message header
-#define BMP_TERM_INFO_LEN_FIELD_SIZE 2
-
-// Default chunk size request when memory allocation
-#define DEFAULT_MEM_BLOCK_SIZE 4096
 
 // Initial delay for connection to the BMP collector
 #define CONNECT_INIT_TIME (200 MS)
@@ -281,20 +263,28 @@ static struct resclass bmp_tx_resource_class = {
 };
 
 static void
-bmp_common_hdr_serialize(buffer *stream, const enum bmp_message_type type, const u32 data_size)
+bmp_put_common_hdr(buffer *stream, enum bmp_message_type type, u32 length)
 {
+  bmp_buffer_need(stream, BMP_COMMON_HDR_SIZE);
   bmp_put_u8(stream, BMP_VERSION_3);
-  bmp_put_u32(stream, BMP_COMMON_HDR_SIZE + data_size);
+  bmp_put_u32(stream, length);
   bmp_put_u8(stream, type);
 }
 
 static void
-bmp_info_tlv_hdr_serialize(buffer *stream, const enum bmp_info_tlv_type type,
-  const char *str)
+bmp_fix_common_hdr(buffer *stream)
+{
+  uint length = stream->pos - stream->start;
+  put_u32(stream->start + 1, length);
+}
+
+static void
+bmp_put_info_tlv(buffer *stream, enum bmp_info_tlv_type type, const char *str)
 {
   size_t str_len = strlen(str);
   str_len = MIN(str_len, MIB_II_STR_LEN);
 
+  bmp_buffer_need(stream, 4 + str_len);
   bmp_put_u16(stream, type);
   bmp_put_u16(stream, str_len);
   bmp_put_data(stream, str, str_len);
@@ -304,16 +294,10 @@ bmp_info_tlv_hdr_serialize(buffer *stream, const enum bmp_info_tlv_type type,
 static void
 bmp_init_msg_serialize(buffer *stream, const char *sys_descr, const char *sys_name)
 {
-  const size_t sys_descr_len = strlen(sys_descr);
-  const size_t sys_name_len = strlen(sys_name);
-  // We include MIB-II sysDescr and sysName in BMP INIT MSG so that's why
-  // allocated 2x BMP_INFO_TLV_FIX_SIZE memory pool size
-  const size_t data_size = (2 * BMP_INFO_TLV_FIX_SIZE) + sys_descr_len + sys_name_len;
-
-  bmp_buffer_need(stream, BMP_COMMON_HDR_SIZE + data_size);
-  bmp_common_hdr_serialize(stream, BMP_INIT_MSG, data_size);
-  bmp_info_tlv_hdr_serialize(stream, BMP_INFO_TLV_TYPE_SYS_DESCR, sys_descr);
-  bmp_info_tlv_hdr_serialize(stream, BMP_INFO_TLV_TYPE_SYS_NAME, sys_name);
+  bmp_put_common_hdr(stream, BMP_INIT_MSG, 0);
+  bmp_put_info_tlv(stream, BMP_INFO_TLV_TYPE_SYS_DESCR, sys_descr);
+  bmp_put_info_tlv(stream, BMP_INFO_TLV_TYPE_SYS_NAME, sys_name);
+  bmp_fix_common_hdr(stream);
 }
 
 static void
@@ -457,7 +441,7 @@ bmp_put_bgp_hdr(buffer *stream, const u8 msg_type, const u16 msg_length)
 }
 
 /**
- * bmp_per_peer_hdr_serialize - serializes Per-Peer Header
+ * bmp_put_per_peer_hdr - serializes Per-Peer Header
  *
  * @is_post_policy: indicate the message reflects the post-policy Adj-RIB-In
  * @peer_addr: the remote IP address associated with the TCP session
@@ -467,7 +451,7 @@ bmp_put_bgp_hdr(buffer *stream, const u8 msg_type, const u16 msg_length)
  * @ts_usec: the time in microseconds when the encapsulated routes were received
  */
 static void
-bmp_per_peer_hdr_serialize(buffer *stream, const struct bmp_peer_hdr_info *peer)
+bmp_put_per_peer_hdr(buffer *stream, const struct bmp_peer_hdr_info *peer)
 {
   // TODO: ATM we do not support BMP_PEER_TYPE_RD_INSTANCE
   u8 peer_type = peer->global ?
@@ -482,6 +466,7 @@ bmp_per_peer_hdr_serialize(buffer *stream, const struct bmp_peer_hdr_info *peer)
   u32 ts_sec = peer->timestamp TO_S;
   u32 ts_usec = peer->timestamp - (ts_sec S);
 
+  bmp_buffer_need(stream, BMP_PER_PEER_HDR_SIZE);
   bmp_put_u8(stream, peer_type);
   bmp_put_u8(stream, peer_flags);
   bmp_put_u64(stream, 0); // Not supported peer distinguisher
@@ -503,8 +488,8 @@ bmp_route_monitor_msg_serialize(struct bmp_proto *p, const struct bmp_peer_hdr_i
   STACK_BUFFER_INIT(stream, BMP_PER_PEER_HDR_SIZE + BMP_COMMON_HDR_SIZE);
 
   const size_t data_size = BMP_PER_PEER_HDR_SIZE + update_msg_length;
-  bmp_common_hdr_serialize(&stream, BMP_ROUTE_MONITOR, data_size);
-  bmp_per_peer_hdr_serialize(&stream, peer);
+  bmp_put_common_hdr(&stream, BMP_ROUTE_MONITOR, BMP_COMMON_HDR_SIZE + data_size);
+  bmp_put_per_peer_hdr(&stream, peer);
 
   size_t hdr_sz = stream.pos - stream.start;
   ASSERT_DIE(update_msg >= &p->msgbuf[hdr_sz]);
@@ -519,14 +504,10 @@ bmp_peer_up_notif_msg_serialize(buffer *stream, const struct bmp_peer_hdr_info *
 				const ip_addr local_addr, const u16 local_port, const u16 remote_port,
 				const adata *sent_msg, const adata *recv_msg)
 {
-  const size_t data_size =
-    BMP_PER_PEER_HDR_SIZE + BMP_PEER_UP_NOTIF_MSG_FIX_SIZE +
-    BGP_HEADER_LENGTH + sent_msg->length + BGP_HEADER_LENGTH + recv_msg->length;
+  bmp_put_common_hdr(stream, BMP_PEER_UP_NOTIF, 0);
+  bmp_put_per_peer_hdr(stream, peer);
 
-  bmp_buffer_need(stream, BMP_COMMON_HDR_SIZE + data_size);
-  bmp_common_hdr_serialize(stream, BMP_PEER_UP_NOTIF, data_size);
-  bmp_per_peer_hdr_serialize(stream, peer);
-
+  bmp_buffer_need(stream, BMP_PEER_UP_NOTIF_MSG_FIX_SIZE);
   bmp_put_ipa(stream, local_addr);
   bmp_put_u16(stream, local_port);
   bmp_put_u16(stream, remote_port);
@@ -534,20 +515,16 @@ bmp_peer_up_notif_msg_serialize(buffer *stream, const struct bmp_peer_hdr_info *
   bmp_put_data(stream, sent_msg->data, sent_msg->length);
   bmp_put_bgp_hdr(stream, PKT_OPEN, BGP_HEADER_LENGTH + recv_msg->length);
   bmp_put_data(stream, recv_msg->data, recv_msg->length);
+
+  bmp_fix_common_hdr(stream);
 }
 
 static void
 bmp_peer_down_notif_msg_serialize(buffer *stream, const struct bmp_peer_hdr_info *peer,
 				  const struct bmp_peer_down_info *info)
 {
-  const size_t data_size = BMP_PER_PEER_HDR_SIZE + 1 +
-    (((info->reason == BMP_PEER_DOWN_REASON_LOCAL_BGP_NOTIFICATION) ||
-      (info->reason == BMP_PEER_DOWN_REASON_REMOTE_BGP_NOTIFICATION)) ? (BGP_HEADER_LENGTH + 2 + info->length) :
-     (info->reason == BMP_PEER_DOWN_REASON_LOCAL_NO_NOTIFICATION) ? 2 : 0);
-
-  bmp_buffer_need(stream, BMP_COMMON_HDR_SIZE + data_size);
-  bmp_common_hdr_serialize(stream, BMP_PEER_DOWN_NOTIF, data_size);
-  bmp_per_peer_hdr_serialize(stream, peer);
+  bmp_put_common_hdr(stream, BMP_PEER_DOWN_NOTIF, 0);
+  bmp_put_per_peer_hdr(stream, peer);
 
   bmp_put_u8(stream, info->reason);
 
@@ -557,7 +534,7 @@ bmp_peer_down_notif_msg_serialize(buffer *stream, const struct bmp_peer_hdr_info
   case BMP_PEER_DOWN_REASON_REMOTE_BGP_NOTIFICATION:;
     uint bgp_msg_length = BGP_HEADER_LENGTH + 2 + info->length;
     bmp_buffer_need(stream, bgp_msg_length);
-    bmp_put_bgp_hdr(stream, bgp_msg_length, PKT_NOTIFICATION);
+    bmp_put_bgp_hdr(stream, PKT_NOTIFICATION, bgp_msg_length);
     bmp_put_u8(stream, info->err_code);
     bmp_put_u8(stream, info->err_subcode);
     bmp_put_data(stream, info->data, info->length);
@@ -567,6 +544,8 @@ bmp_peer_down_notif_msg_serialize(buffer *stream, const struct bmp_peer_hdr_info
     bmp_put_u16(stream, info->fsm_code);
     break;
   }
+
+  bmp_fix_common_hdr(stream);
 }
 
 
@@ -1044,20 +1023,16 @@ bmp_peer_down_(struct bmp_proto *p, ea_list *bgp, struct bgp_session_close_ad *b
 
 
 static void
-bmp_send_termination_msg(struct bmp_proto *p,
-  const enum bmp_term_reason reason)
+bmp_send_termination_msg(struct bmp_proto *p, enum bmp_term_reason reason)
 {
-  const size_t term_msg_hdr_size = BMP_TERM_INFO_TYPE_SIZE
-                                     + BMP_TERM_INFO_LEN_FIELD_SIZE
-                                     + BMP_TERM_REASON_CODE_SIZE;
-  const size_t term_msg_size = BMP_COMMON_HDR_SIZE + term_msg_hdr_size;
   buffer stream = bmp_default_buffer(p);
-  bmp_buffer_need(&stream, term_msg_size);
 
-  bmp_common_hdr_serialize(&stream, BMP_TERM_MSG, term_msg_hdr_size);
+  bmp_put_common_hdr(&stream, BMP_TERM_MSG, 0);
+  bmp_buffer_need(&stream, 6);
   bmp_put_u16(&stream, BMP_TERM_INFO_REASON);
-  bmp_put_u16(&stream, BMP_TERM_REASON_CODE_SIZE); // 2-byte code indication the reason
+  bmp_put_u16(&stream, 2); // Length of the reason
   bmp_put_u16(&stream, reason);
+  bmp_fix_common_hdr(&stream);
 
   if (p->sk->tbuf)
     bmp_tx_buffer_free(p, SKIP_BACK(struct bmp_tx_buffer, data, p->sk->tbuf));
