@@ -150,7 +150,7 @@ stat_route:
  | stat_route0 BLACKHOLE	{ this_srt->dest = RTD_BLACKHOLE; }
  | stat_route0 UNREACHABLE	{ this_srt->dest = RTD_UNREACHABLE; }
  | stat_route0 PROHIBIT		{ this_srt->dest = RTD_PROHIBIT; }
- | stat_route0 PROVIDER {
+ | stat_route0 PROVIDERS {
     if (this_srt->net->type != NET_ASPA) cf_error("Provider settings available only for ASPA");
     this_srt->aspa = cfg_alloc(sizeof (adata) + (this_srt_aspa_max = 8) * sizeof (u32));
     this_srt->aspa->length = 0;
