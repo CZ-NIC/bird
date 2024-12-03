@@ -20,8 +20,8 @@
 #define ARGip6_BOTH(x,i) ARGip6_HIGH(x,i), ARGip6_LOW(x,i)
 #define ARGip6(x) ARGip6_BOTH((x), 0), ARGip6_BOTH((x), 1), ARGip6_BOTH((x), 2), ARGip6_BOTH((x), 3)
 
-#define BT_CONFIG_PARSE_ROUTER_ID	"router id 1.1.1.1; \n"
-#define BT_CONFIG_PARSE_STATIC_PROTO	"protocol static { ipv4; } \n"
+#define BT_CONFIG_PARSE_ROUTER_ID	"router id 42; \n"
+#define BT_CONFIG_PARSE_STATIC_PROTO	"protocol device {} \n"
 #define BT_CONFIG_SIMPLE		BT_CONFIG_PARSE_ROUTER_ID BT_CONFIG_PARSE_STATIC_PROTO
 
 uint bt_naive_pow(uint base, uint power);
