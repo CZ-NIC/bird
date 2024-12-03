@@ -102,32 +102,20 @@ enum bmp_peer_type {
   BMP_PEER_TYPE_LOCAL_INSTANCE = 2
 };
 
-#define BMP_PEER_HDR_FLAG_V_SHIFT 7
-enum bmp_peer_flag_v_t {
-  // The Peer address is an IPv4 address
-  BMP_PEER_HDR_FLAG_V_IP4 = (0 << BMP_PEER_HDR_FLAG_V_SHIFT),
-  // The Peer address is an IPv6 address
-  BMP_PEER_HDR_FLAG_V_IP6 = (1 << BMP_PEER_HDR_FLAG_V_SHIFT)
+#define BMP_PEER_FLAG_V_IPV6		(1 << 7)
+#define BMP_PEER_FLAG_L_POLICY		(1 << 6)
+#define BMP_PEER_FLAG_A_NO_AS4		(1 << 5)
+
+struct bmp_peer_hdr_info {
+  ip_addr address;
+  u32 as;
+  u32 id;
+  bool global;
+  bool policy;
+  bool no_as4;
+  btime timestamp;
 };
 
-#define BMP_PEER_HDR_FLAG_L_SHIFT 6
-enum bmp_peer_flag_l {
-  BMP_PEER_HDR_FLAG_L_PRE_POLICY_ADJ_RIB_IN = (0 << BMP_PEER_HDR_FLAG_L_SHIFT),
-  BMP_PEER_HDR_FLAG_L_POST_POLICY_ADJ_RIB_IN = (1 << BMP_PEER_HDR_FLAG_L_SHIFT)
-};
-
-#define BMP_PEER_HDR_FLAG_A_SHIFT 5
-enum bmp_peer_flag_a {
-  // The 4-byte AS_PATH format
-  BMP_PEER_HDR_FLAG_A_AS_PATH_4B = (0 << BMP_PEER_HDR_FLAG_A_SHIFT),
-  // The legacy 2-byte AS_PATH format
-  BMP_PEER_HDR_FLAG_A_AS_PATH_2B = (1 << BMP_PEER_HDR_FLAG_A_SHIFT)
-};
-
-#define BMP_PEER_HDR_FLAGS_INIT(flags) \
-  (flags) = 0
-#define BMP_PEER_HDR_FLAGS_SET(flags, bit_mask) \
-  (flags) |= (bit_mask)
 
 /* BMP Information TLV header [RFC 7854 - Section 4.4] */
 // Total size of Type and Length fields of Information TLV Header without
@@ -479,60 +467,44 @@ bmp_put_bgp_hdr(buffer *stream, const u8 msg_type, const u16 msg_length)
  * @ts_usec: the time in microseconds when the encapsulated routes were received
  */
 static void
-bmp_per_peer_hdr_serialize(buffer *stream, const bool is_global_instance_peer,
-  const bool is_post_policy, const bool is_as_path_4bytes,
-  const ip_addr peer_addr, const u32 peer_as, const u32 peer_bgp_id,
-  const u32 ts_sec, const u32 ts_usec)
+bmp_per_peer_hdr_serialize(buffer *stream, const struct bmp_peer_hdr_info *peer)
 {
-  // TODO: ATM we don't support BMP_PEER_TYPE_RD_INSTANCE
-  const enum bmp_peer_type peer_type = is_global_instance_peer
-                                      ? BMP_PEER_TYPE_GLOBAL_INSTANCE
-                                      : BMP_PEER_TYPE_LOCAL_INSTANCE;
-  const u8 peer_flag_v = ipa_is_ip4(peer_addr)
-                           ? BMP_PEER_HDR_FLAG_V_IP4
-                           : BMP_PEER_HDR_FLAG_V_IP6;
-  const u8 peer_flag_l = is_post_policy
-                           ? BMP_PEER_HDR_FLAG_L_POST_POLICY_ADJ_RIB_IN
-                           : BMP_PEER_HDR_FLAG_L_PRE_POLICY_ADJ_RIB_IN;
-  const u8 peer_flag_a = is_as_path_4bytes
-                           ? BMP_PEER_HDR_FLAG_A_AS_PATH_4B
-                           : BMP_PEER_HDR_FLAG_A_AS_PATH_2B;
-  u8 peer_flags;
-  BMP_PEER_HDR_FLAGS_INIT(peer_flags);
-  BMP_PEER_HDR_FLAGS_SET(peer_flags, peer_flag_v);
-  BMP_PEER_HDR_FLAGS_SET(peer_flags, peer_flag_l);
-  BMP_PEER_HDR_FLAGS_SET(peer_flags, peer_flag_a);
+  // TODO: ATM we do not support BMP_PEER_TYPE_RD_INSTANCE
+  u8 peer_type = peer->global ?
+    BMP_PEER_TYPE_GLOBAL_INSTANCE :
+    BMP_PEER_TYPE_LOCAL_INSTANCE;
+
+  u8 peer_flags =
+    (ipa_is_ip6(peer->address) ? BMP_PEER_FLAG_V_IPV6 : 0) |
+    (peer->policy ? BMP_PEER_FLAG_L_POLICY : 0) |
+    (peer->no_as4 ? BMP_PEER_FLAG_A_NO_AS4 : 0);
+
+  u32 ts_sec = peer->timestamp TO_S;
+  u32 ts_usec = peer->timestamp - (ts_sec S);
 
   bmp_put_u8(stream, peer_type);
   bmp_put_u8(stream, peer_flags);
-  // TODO: Provide appropriate peer Route Distinguisher if applicable
-  bmp_put_u64(stream, 0x00); // 0x00 - Not supported peer distinguisher
-  bmp_put_ipa(stream, peer_addr);
-  bmp_put_u32(stream, peer_as);
-  bmp_put_u32(stream, peer_bgp_id);
+  bmp_put_u64(stream, 0); // Not supported peer distinguisher
+  bmp_put_ipa(stream, peer->address);
+  bmp_put_u32(stream, peer->as);
+  bmp_put_u32(stream, peer->id);
   bmp_put_u32(stream, ts_sec);
   bmp_put_u32(stream, ts_usec);
 }
 
 /* [4.6] Route Monitoring */
 static byte *
-bmp_route_monitor_msg_serialize(struct bmp_proto *p, const bool is_peer_global,
-  const bool table_in_post_policy, const u32 peer_as, const u32 peer_bgp_id,
-  const bool as4_support, const ip_addr remote_addr, byte *update_msg,
-  const size_t update_msg_size, btime timestamp)
+bmp_route_monitor_msg_serialize(struct bmp_proto *p, const struct bmp_peer_hdr_info *peer,
+				byte *update_msg, size_t update_msg_length)
 {
   ASSERT_DIE(update_msg < &p->msgbuf[sizeof p->msgbuf]);
 
   buffer stream;
   STACK_BUFFER_INIT(stream, BMP_PER_PEER_HDR_SIZE + BMP_COMMON_HDR_SIZE);
 
-  const size_t data_size = BMP_PER_PEER_HDR_SIZE + update_msg_size;
-  u32 ts_sec = timestamp TO_S;
-  u32 ts_usec = timestamp - (ts_sec S);
-
+  const size_t data_size = BMP_PER_PEER_HDR_SIZE + update_msg_length;
   bmp_common_hdr_serialize(&stream, BMP_ROUTE_MONITOR, data_size);
-  bmp_per_peer_hdr_serialize(&stream, is_peer_global, table_in_post_policy,
-    as4_support, remote_addr, peer_as, peer_bgp_id, ts_sec, ts_usec);
+  bmp_per_peer_hdr_serialize(&stream, peer);
 
   size_t hdr_sz = stream.pos - stream.start;
   ASSERT_DIE(update_msg >= &p->msgbuf[hdr_sz]);
@@ -543,10 +515,9 @@ bmp_route_monitor_msg_serialize(struct bmp_proto *p, const bool is_peer_global,
 }
 
 static void
-bmp_peer_up_notif_msg_serialize(buffer *stream, const bool is_peer_global,
-  const u32 peer_as, const u32 peer_bgp_id, const bool as4_support,
-  const ip_addr local_addr, const ip_addr remote_addr, const u16 local_port,
-  const u16 remote_port, const adata *sent_msg, const adata *recv_msg)
+bmp_peer_up_notif_msg_serialize(buffer *stream, const struct bmp_peer_hdr_info *peer,
+				const ip_addr local_addr, const u16 local_port, const u16 remote_port,
+				const adata *sent_msg, const adata *recv_msg)
 {
   const size_t data_size =
     BMP_PER_PEER_HDR_SIZE + BMP_PEER_UP_NOTIF_MSG_FIX_SIZE +
@@ -554,9 +525,7 @@ bmp_peer_up_notif_msg_serialize(buffer *stream, const bool is_peer_global,
 
   bmp_buffer_need(stream, BMP_COMMON_HDR_SIZE + data_size);
   bmp_common_hdr_serialize(stream, BMP_PEER_UP_NOTIF, data_size);
-  bmp_per_peer_hdr_serialize(stream, is_peer_global,
-    false /* TODO: Hardcoded pre-policy Adj-RIB-In */, as4_support, remote_addr,
-    peer_as, peer_bgp_id, 0, 0); // 0, 0 - No timestamp provided
+  bmp_per_peer_hdr_serialize(stream, peer);
 
   bmp_put_ipa(stream, local_addr);
   bmp_put_u16(stream, local_port);
@@ -568,9 +537,8 @@ bmp_peer_up_notif_msg_serialize(buffer *stream, const bool is_peer_global,
 }
 
 static void
-bmp_peer_down_notif_msg_serialize(buffer *stream, const bool is_peer_global,
-  const u32 peer_as, const u32 peer_bgp_id, const bool as4_support,
-  const ip_addr remote_addr, const struct bmp_peer_down_info *info)
+bmp_peer_down_notif_msg_serialize(buffer *stream, const struct bmp_peer_hdr_info *peer,
+				  const struct bmp_peer_down_info *info)
 {
   const size_t data_size = BMP_PER_PEER_HDR_SIZE + 1 +
     (((info->reason == BMP_PEER_DOWN_REASON_LOCAL_BGP_NOTIFICATION) ||
@@ -579,9 +547,7 @@ bmp_peer_down_notif_msg_serialize(buffer *stream, const bool is_peer_global,
 
   bmp_buffer_need(stream, BMP_COMMON_HDR_SIZE + data_size);
   bmp_common_hdr_serialize(stream, BMP_PEER_DOWN_NOTIF, data_size);
-  bmp_per_peer_hdr_serialize(stream, is_peer_global,
-    false /* TODO: Hardcoded pre-policy adj RIB IN */,  as4_support, remote_addr,
-    peer_as, peer_bgp_id, 0, 0); // 0, 0 - No timestamp provided
+  bmp_per_peer_hdr_serialize(stream, peer);
 
   bmp_put_u8(stream, info->reason);
 
@@ -930,14 +896,17 @@ bmp_send_peer_up_notif_msg(struct bmp_proto *p, ea_list *bgp,
 {
   ASSERT(p->started);
 
-  const int rem_as = ea_get_int(bgp, &ea_bgp_rem_as, 0);
-  const int rem_id = ea_get_int(bgp, &ea_bgp_rem_id, 0);
-  const bool is_global_instance_peer = bmp_is_peer_global_instance(bgp);
+  struct bmp_peer_hdr_info peer = {
+    .address = ea_get_ip(bgp, &ea_bgp_rem_ip, IPA_NONE),
+    .as = ea_get_int(bgp, &ea_bgp_rem_as, 0),
+    .id = ea_get_int(bgp, &ea_bgp_rem_id, 0),
+    .global = bmp_is_peer_global_instance(bgp),
+    .policy = false,		// Hardcoded pre-policy Adj-RIB-In
+    .timestamp = 0,		// No timestamp provided
+  };
 
   buffer payload = bmp_default_buffer(p);
-  bmp_peer_up_notif_msg_serialize(&payload, is_global_instance_peer,
-    rem_as, rem_id, 1,
-    sk->saddr, sk->daddr, sk->sport, sk->dport, tx_data, rx_data);
+  bmp_peer_up_notif_msg_serialize(&payload, &peer, sk->saddr, sk->sport, sk->dport, tx_data, rx_data);
   bmp_schedule_tx_packet(p, payload.start, payload.pos - payload.start);
 }
 
@@ -945,18 +914,17 @@ static void
 bmp_route_monitor_put_update(struct bmp_proto *p, struct bmp_stream *bs, byte *data, size_t length, btime timestamp)
 {
   ea_list *bgp = bs->bgp;
-  const byte *start = bmp_route_monitor_msg_serialize(p,
-      bmp_is_peer_global_instance(bgp),
-      bmp_stream_policy(bs),
-      ea_get_int(bgp, &ea_bgp_rem_as, 0),
-      ea_get_int(bgp, &ea_bgp_rem_id, 0),
-      true,
-      ea_get_ip(bgp, &ea_bgp_rem_ip, IPA_NONE),
-      data,
-      length,
-      timestamp
-      );
 
+  struct bmp_peer_hdr_info peer = {
+    .address = ea_get_ip(bgp, &ea_bgp_rem_ip, IPA_NONE),
+    .as = ea_get_int(bgp, &ea_bgp_rem_as, 0),
+    .id = ea_get_int(bgp, &ea_bgp_rem_id, 0),
+    .global = bmp_is_peer_global_instance(bgp),
+    .policy = bmp_stream_policy(bs),
+    .timestamp = timestamp,
+  };
+
+  const byte *start = bmp_route_monitor_msg_serialize(p, &peer, data, length);
   bmp_schedule_tx_packet(p, start, (data - start) + length);
 }
 
@@ -1006,29 +974,29 @@ bmp_send_peer_down_notif_msg(struct bmp_proto *p, ea_list *bgp,
 {
   ASSERT(p->started);
 
-  //const struct bgp_caps *remote_caps = bmp_get_bgp_remote_caps_ext(bgp);
-  int remote_caps = ea_get_int(bgp, &ea_bgp_as4_session, 0);
+  int as4_session = ea_get_int(bgp, &ea_bgp_as4_session, 0);
   int in_state = ea_get_int(bgp, &ea_bgp_in_conn_state, 0);
   int out_state = ea_get_int(bgp, &ea_bgp_out_conn_state, 0);
   int in_as4 = ea_get_int(bgp, &ea_bgp_as4_in_conn, 0);
   int out_as4 = ea_get_int(bgp, &ea_bgp_as4_out_conn, 0);
 
   if (in_state && in_as4)
-    remote_caps = in_as4;
+    as4_session = in_as4;
   else if (out_state && out_as4)
-    remote_caps = out_as4;
+    as4_session = out_as4;
 
-  bool is_global_instance_peer = bmp_is_peer_global_instance(bgp);
+  struct bmp_peer_hdr_info peer = {
+    .address = ea_get_ip(bgp, &ea_bgp_rem_ip, IPA_NONE),
+    .as = ea_get_int(bgp, &ea_bgp_rem_as, 0),
+    .id = ea_get_int(bgp, &ea_bgp_rem_id, 0),
+    .global = bmp_is_peer_global_instance(bgp),
+    .policy = false,		// Hardcoded pre-policy Adj-RIB-In
+    .no_as4 = !as4_session,
+    .timestamp = 0,		// No timestamp provided
+  };
+
   buffer payload = bmp_default_buffer(p);
-  bmp_peer_down_notif_msg_serialize(
-      &payload,
-      is_global_instance_peer,
-      ea_get_int(bgp, &ea_bgp_rem_as, 0),
-      ea_get_int(bgp, &ea_bgp_rem_id, 0),
-      remote_caps,
-      *((ip_addr *) ea_get_adata(bgp, &ea_bgp_rem_ip)->data),
-      info
-      );
+  bmp_peer_down_notif_msg_serialize(&payload, &peer, info);
   bmp_schedule_tx_packet(p, payload.start, payload.pos - payload.start);
 }
 
