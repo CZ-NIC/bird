@@ -1,3 +1,17 @@
+Version 2.16 (2024-12-04)
+  o BFD: Set password per session
+  o BFD: Accept zero checksum for IPv6-UDP
+  o BMP: Refactoring and optimizations
+  o OSPF: Allow loopback nexthop in OSPFv3-IPv4
+  o RPKI: TCP-MD5 authentication option
+  o Filters: Add enum types to filter grammar
+  o CLI: Configurable additional control sockets
+  o CLI: Timeformat command
+  o CLI: Dump commands need a target file
+  o ASPA support in filters, Static and RPKI
+  o Formalized contributions and credits policy
+  o Many bugfixes and improvements
+
 Version 2.15.1 (2024-03-22)
   o OSPF: Fix regression in handling PtP links
   o RPKI: Handle connection resets properly
