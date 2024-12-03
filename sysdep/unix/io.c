@@ -217,7 +217,7 @@ void
 dump_to_file_run(struct dump_request *dr, const char *file, const char *what, void (*dump)(struct dump_request *))
 {
   struct dump_request_file *req = SKIP_BACK(struct dump_request_file, dr, dr);
-  req->fd = open(file, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR);
+  req->fd = open(file, O_CREAT | O_WRONLY | O_EXCL, S_IRUSR);
 
   if (req->fd < 0)
   {
