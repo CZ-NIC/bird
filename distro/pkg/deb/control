@@ -2,6 +2,7 @@ Source: bird2
 Section: net
 Priority: optional
 Build-Depends: bison,
+               ca-certificates,
                debhelper,
                docbook-xsl,
                flex,
