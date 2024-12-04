@@ -407,7 +407,7 @@ bmp_tx(struct birdsock *sk)
 {
   struct bmp_proto *p = sk->data;
 
-  struct bmp_tx_buffer *btb = SKIP_BACK(struct bmp_tx_buffer, data, sk->tbuf);
+  struct bmp_tx_buffer *btb = SKIP_BACK(struct bmp_tx_buffer, data[0], sk->tbuf);
   bmp_tx_buffer_free(p, btb);
 
   sk->tbuf = NULL;
@@ -1032,7 +1032,7 @@ bmp_send_termination_msg(struct bmp_proto *p, enum bmp_term_reason reason)
   bmp_fix_common_hdr(&stream);
 
   if (p->sk->tbuf)
-    bmp_tx_buffer_free(p, SKIP_BACK(struct bmp_tx_buffer, data, p->sk->tbuf));
+    bmp_tx_buffer_free(p, SKIP_BACK(struct bmp_tx_buffer, data[0], p->sk->tbuf));
 
   p->sk->tbuf = stream.start;
   if (sk_send(p->sk, stream.pos - stream.start) < 0)
@@ -1335,7 +1335,7 @@ static void
 bmp_close_socket(struct bmp_proto *p)
 {
   if (p->sk && p->sk->tbuf)
-    bmp_tx_buffer_free(p, SKIP_BACK(struct bmp_tx_buffer, data, p->sk->tbuf));
+    bmp_tx_buffer_free(p, SKIP_BACK(struct bmp_tx_buffer, data[0], p->sk->tbuf));
 
   struct bmp_tx_buffer *btb = p->tx_pending;
   while (btb)
