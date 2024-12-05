@@ -27,7 +27,6 @@ Rules-Requires-Root: no
 Package: bird3
 Architecture: linux-any kfreebsd-any
 Pre-Depends:
- init-system-helpers,
  ${misc:Pre-Depends},
 Depends:
  adduser,
