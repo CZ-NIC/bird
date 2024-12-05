@@ -763,37 +763,56 @@ trie_receive_update(struct aggregator_proto *p, struct aggregator_route *old, st
   }
 
 static void
-dump_trie_helper(const struct trie_node *node, struct net_addr_ip4 *addr, int depth)
+dump_trie_helper(const struct trie_node *node, struct net_addr_ip4 *addr, struct buffer *buf)
 {
   assert(node != NULL);
   assert(addr != NULL);
 
-  char *spaces = allocz(2 * depth + 1);
-  memset(spaces, ' ', 2 * depth);
-  spaces[2 * depth] = 0;
+  memset(buf->start, 0, buf->pos - buf->start);
+  buf->pos = buf->start;
 
-  char *bucket = allocz(16);
+  buffer_print(buf, "%*s%s%N ", 2 * node->depth, "", IN_FIB == node->status ? "@" : " ", addr);
 
-  if (IN_FIB == node->status)
+  if (node->original_bucket)
+    buffer_print(buf, "[%u] ", node->original_bucket->id);
+  else
+    buffer_print(buf, "[] ");
+
+  buffer_print(buf, "{");
+
+  int j = 0;
+
+  for (size_t i = 0; i < MAX_POTENTIAL_BUCKETS_COUNT; i++)
   {
-    assert(node->selected_bucket != NULL);
-    bsnprintf(bucket, 16, " [%u]", node->selected_bucket->id);
+    if (BIT32R_TEST(node->potential_buckets, i))
+    {
+      buffer_print(buf, "%u", i);
+      j++;
+
+      if (j < node->potential_buckets_count)
+        buffer_print(buf, ", ");
+    }
   }
 
-  log("%s%s%N%s", spaces, IN_FIB == node->status ? "@" : " ", addr, bucket);
+  buffer_print(buf, "}");
+
+  if (node->selected_bucket)
+    buffer_print(buf, " -> [[%u]]", node->selected_bucket->id);
+
+  log("%s", buf->start);
 
   if (node->child[0])
   {
     ip4_clrbit(&addr->prefix, node->depth);
-    addr->pxlen = depth + 1;
-    dump_trie_helper(node->child[0], addr, depth + 1);
+    addr->pxlen = node->depth + 1;
+    dump_trie_helper(node->child[0], addr, buf);
   }
 
   if (node->child[1])
   {
     ip4_setbit(&addr->prefix, node->depth);
-    addr->pxlen = depth + 1;
-    dump_trie_helper(node->child[1], addr, depth + 1);
+    addr->pxlen = node->depth + 1;
+    dump_trie_helper(node->child[1], addr, buf);
     ip4_clrbit(&addr->prefix, node->depth);
   }
 }
@@ -803,11 +822,14 @@ dump_trie(const struct trie_node *root)
 {
   assert(root != NULL);
 
+  struct buffer buf = { 0 };
+  LOG_BUFFER_INIT(buf);
+
   struct net_addr_ip4 addr = { 0 };
   net_fill_ip4((net_addr *)&addr, IP4_NONE, 0);
 
   log("==== TRIE BEGIN ====");
-  dump_trie_helper(root, &addr, 0);
+  dump_trie_helper(root, &addr, &buf);
   log("==== TRIE   END ====");
 }
 
