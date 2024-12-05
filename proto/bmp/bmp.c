@@ -647,18 +647,24 @@ static struct bmp_stream *
 bmp_find_stream(struct bmp_proto *p, const struct bgp_proto *bgp, u32 afi, bool policy)
 {
   ea_list *bgp_attr = proto_get_state(bgp->p.id);
-  struct bmp_stream *s = HASH_FIND(p->stream_map, HASH_STREAM, bgp_attr, bmp_stream_key(afi, policy));
 
-  while (s == NULL)
+  while (1)
   {
+    /* Is there a stream? */
+    struct bmp_stream *s = HASH_FIND(p->stream_map, HASH_STREAM, bgp_attr, bmp_stream_key(afi, policy));
+    if (s)
+      return s;
+
+    /* Maybe it emerged recently? */
     struct lfjour_item *li = lfjour_get(&p->proto_state_reader);
     if (!li)
       return NULL;
 
     bmp_process_proto_state_change(p, li);
-    s = HASH_FIND(p->stream_map, HASH_STREAM, bgp_attr, bmp_stream_key(afi, policy));
+    lfjour_release(&p->proto_state_reader, li);
+
+    /* Try again. */
   }
-  return s;
 }
 
 static struct bmp_stream *
@@ -767,17 +773,17 @@ bmp_remove_peer(struct bmp_proto *p, struct bmp_peer *bp)
   mb_free(bp);
 }
 
-static void
-bmp_peer_up_(struct bmp_proto *p, ea_list *bgp_attr, bool sync,
+static struct bmp_peer *
+bmp_peer_up_(struct bmp_proto *p, ea_list *bgp_attr,
 	     const adata *tx_open_msg, const adata *rx_open_msg,
 	     struct bgp_conn_sk_ad *sk)
 {
   if (!p->started)
-    return;
+    return NULL;
 
   struct bmp_peer *bp = bmp_find_peer(p, bgp_attr);
   if (bp)
-    return;
+    return bp;
 
   const char *name = ea_get_adata(bgp_attr, &ea_name)->data;
   TRACE(D_STATES, "Peer up for %s", name);
@@ -785,25 +791,11 @@ bmp_peer_up_(struct bmp_proto *p, ea_list *bgp_attr, bool sync,
   bp = bmp_add_peer(p, bgp_attr);
 
   bmp_send_peer_up_notif_msg(p, bgp_attr, tx_open_msg, rx_open_msg, sk);
-
-  /*
-   * We asssume peer_up() notifications are received before any route
-   * notifications from that peer. Therefore, peers established after BMP
-   * session coould be considered synced with empty RIB.
-   */
-  if (sync)
-  {
-    struct bmp_stream *bs;
-    WALK_LIST(bs, bp->streams)
-    {
-      bmp_route_monitor_end_of_rib(p, bs);
-      bs->sync = true;
-    }
-  }
+  return bp;
 }
 
-static bool
-bmp_peer_up_inout(struct bmp_proto *p, ea_list *bgp_attr, bool sync)
+static struct bmp_peer *
+bmp_peer_up_inout(struct bmp_proto *p, ea_list *bgp_attr)
 {
   int in_state = ea_get_int(bgp_attr, &ea_bgp_in_conn_state, 0);
   int out_state = ea_get_int(bgp_attr, &ea_bgp_out_conn_state, 0);
@@ -817,9 +809,7 @@ bmp_peer_up_inout(struct bmp_proto *p, ea_list *bgp_attr, bool sync)
     SKIP_BACK_DECLARE(struct bgp_conn_sk_ad, sk, ad, ea_get_adata(bgp_attr, &ea_bgp_in_conn_sk));
 
     ASSERT_DIE(loc_open && rem_open);
-    bmp_peer_up_(p, bgp_attr, sync, loc_open, rem_open, sk);
-
-    return true;
+    return bmp_peer_up_(p, bgp_attr, loc_open, rem_open, sk);
   }
 
   if (out_state == BS_ESTABLISHED)
@@ -829,12 +819,10 @@ bmp_peer_up_inout(struct bmp_proto *p, ea_list *bgp_attr, bool sync)
     SKIP_BACK_DECLARE(struct bgp_conn_sk_ad, sk, ad, ea_get_adata(bgp_attr, &ea_bgp_out_conn_sk));
 
     ASSERT_DIE(loc_open && rem_open);
-    bmp_peer_up_(p, bgp_attr, sync, loc_open, rem_open, sk);
-
-    return true;
+    return bmp_peer_up_(p, bgp_attr, loc_open, rem_open, sk);
   }
 
-  return false;
+  return NULL;
 }
 
 static bool
@@ -1191,7 +1179,7 @@ bmp_startup(struct bmp_proto *p)
     if (proto != &proto_bgp || state != PS_UP)
       continue;
 
-    bmp_peer_up_inout(p, proto_attr, false);
+    bmp_peer_up_inout(p, proto_attr);
   }
 }
 
@@ -1381,18 +1369,28 @@ bmp_process_proto_state_change(struct bmp_proto *p, struct lfjour_item *last_up)
   if (!ppu)
     return;
 
-  if (bmp_peer_up_inout(p, ppu->new, true))
-    goto done;
-
-  SKIP_BACK_DECLARE(struct bgp_session_close_ad, bscad, ad, ea_get_adata(ppu->new, &ea_bgp_close_bmp));
-  if (bscad)
+  struct bmp_peer *bp = bmp_peer_up_inout(p, ppu->new);
+  if (bp)
   {
-    bmp_peer_down_(p, ppu->new, bscad);
-    goto done;
+    /*
+     * All the peer up notifications are required to arrive before any route
+     * notifications from that peer. Therefore, peers established after BMP
+     * session are considered synced with empty RIB.
+     */
+    struct bmp_stream *bs;
+    WALK_LIST(bs, bp->streams)
+    {
+      bmp_route_monitor_end_of_rib(p, bs);
+      bs->sync = true;
+    }
+
+    return;
   }
 
-done:
-  lfjour_release(&p->proto_state_reader, last_up);
+  /* This was not a peer-up notification. It may be peer down tho. */
+  const adata *bscad = ea_get_adata(ppu->new, &ea_bgp_close_bmp);
+  if (bscad)
+    bmp_peer_down_(p, ppu->new, SKIP_BACK(struct bgp_session_close_ad, ad, bscad));
 }
 
 static void
@@ -1402,8 +1400,11 @@ bmp_proto_state_changed(void *_p)
 
   ASSERT_DIE(birdloop_inside(p->p.loop));
 
-  struct lfjour_item *last_up;
-  while (last_up = lfjour_get(&p->proto_state_reader))
+  for (
+      struct lfjour_item *last_up;
+      last_up = lfjour_get(&p->proto_state_reader);
+      lfjour_release(&p->proto_state_reader, last_up)
+      )
     bmp_process_proto_state_change(p, last_up);
 }
 
