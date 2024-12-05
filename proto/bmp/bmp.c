@@ -540,15 +540,12 @@ bmp_find_table(struct bmp_proto *p, rtable *tab)
   return HASH_FIND(p->table_map, HASH_TABLE, tab);
 }
 
-const struct channel_class channel_bmp = {
-  .channel_size =	sizeof(struct channel),
-  .config_size =	sizeof(struct channel_config),
-  /*.init =		
-  .start =		
-  .shutdown =		
-  .cleanup =		
-  .reconfigure =	*/
-};
+static void
+bmp_dump_export_req(struct rt_export_request *req)
+{
+  SKIP_BACK_DECLARE(struct bmp_table, bt, out_req, req);
+  debug("  BMP %s exporter %p\n", bt->p->p.name, req);
+}
 
 static struct bmp_table *
 bmp_add_table(struct bmp_proto *p, rtable *tab)
@@ -561,8 +558,8 @@ bmp_add_table(struct bmp_proto *p, rtable *tab)
   HASH_INSERT(p->table_map, HASH_TABLE, bt);
 
   bt->event.data = bt;
-
   bt->event.hook = bmp_check_routes;
+
   bt->out_req = (struct rt_export_request) {
     .name = mb_sprintf(p->p.pool, "%s.export", p->p.name),
     .r = (struct lfjour_recipient) {
@@ -571,7 +568,7 @@ bmp_add_table(struct bmp_proto *p, rtable *tab)
     },
     .pool = p->p.pool,
     .trace_routes = p->p.debug,
-    //.dump = channel_dump_export_req, TODO: this will crash on `dump tables` from CLI
+    .dump = bmp_dump_export_req,
     .fed = bmp_feed_end,
   };
 
