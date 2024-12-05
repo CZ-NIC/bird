@@ -12,6 +12,7 @@
 #include "nest/bird.h"
 #include "nest/protocol.h"
 #include "lib/lists.h"
+#include "lib/tlists.h"
 #include "nest/route.h"
 #include "lib/event.h"
 #include "lib/hash.h"
@@ -91,33 +92,46 @@ struct bmp_proto {
   byte msgbuf[BMP_MSGBUF_LEN];     // Buffer for preparing the messages before sending them out
 };
 
-struct bmp_peer {
-  ea_list *bgp;
-  struct bmp_peer *next;
-  list streams;
-};
-
 struct bmp_stream {
-  node n;
+  TLIST_NODE(bmp_peer_stream, struct bmp_stream) peer_node;
+  TLIST_NODE(bmp_table_stream, struct bmp_stream) table_node;
   ea_list *bgp;
   u32 key;
   bool sync;
   bool shutting_down;
   struct bmp_stream *next;
-  struct bmp_table *table;
   ea_list *sender;
   int in_pre_policy;
+};
+
+#define TLIST_PREFIX bmp_peer_stream
+#define TLIST_TYPE struct bmp_stream
+#define TLIST_ITEM peer_node
+#define TLIST_WANT_ADD_TAIL
+
+#include "lib/tlists.h"
+
+#define TLIST_PREFIX bmp_table_stream
+#define TLIST_TYPE struct bmp_stream
+#define TLIST_ITEM table_node
+#define TLIST_WANT_ADD_TAIL
+
+#include "lib/tlists.h"
+
+struct bmp_peer {
+  ea_list *bgp;
+  struct bmp_peer *next;
+  TLIST_LIST(bmp_peer_stream) streams;
 };
 
 struct bmp_table {
   rtable *table;
   struct bmp_table *next;
-  struct channel *channel;
   struct rt_export_request out_req;
   struct bmp_proto *p;
   struct rt_export_feeder in_req;
   event event;
-  atomic_int uc;
+  TLIST_LIST(bmp_table_stream) streams;
 };
 
 

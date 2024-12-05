@@ -583,12 +583,7 @@ bmp_add_table(struct bmp_proto *p, rtable *tab)
 static void
 bmp_remove_table(struct bmp_proto *p, struct bmp_table *bt)
 {
-  if (bt->channel)
-  {
-    channel_set_state(bt->channel, CS_STOP);
-    channel_set_state(bt->channel, CS_DOWN);
-  }
-    rt_export_unsubscribe(all, &bt->out_req);
+  rt_export_unsubscribe(all, &bt->out_req);
 
   HASH_REMOVE(p->table_map, HASH_TABLE, bt);
 
@@ -598,38 +593,10 @@ bmp_remove_table(struct bmp_proto *p, struct bmp_table *bt)
   mb_free(bt);
 }
 
-static inline void bmp_lock_table(struct bmp_proto *p UNUSED, struct bmp_table *bt)
-{ bt->uc++; }
-
-struct bmp_table *
+static inline struct bmp_table *
 bmp_get_table(struct bmp_proto *p, rtable *tab)
 {
-  struct bmp_table *bt = bmp_find_table(p, tab);
-  if (bt)
-  {
-   while (true) {
-      atomic_int i = bt->uc;
-      if (i == 0)
-      {
-        struct bmp_table *new = bmp_add_table(p, tab);
-        bmp_lock_table(p, new);
-        return new;
-      }
-      if (atomic_compare_exchange_strong_explicit(&bt->uc, &i, i+1, memory_order_acq_rel, memory_order_relaxed))
-        return bt;
-    }
-  }
-  struct bmp_table *new = bmp_add_table(p, tab);
-  bmp_lock_table(p, new);
-  return new;
-}
-
-static inline void bmp_unlock_table(struct bmp_proto *p, struct bmp_table *bt)
-{ atomic_int i = 1;
-  if (atomic_compare_exchange_strong_explicit(&bt->uc, &i, 0, memory_order_acq_rel, memory_order_relaxed))
-    bmp_remove_table(p, bt);
-  else
-    bt->uc--;
+  return bmp_find_table(p, tab) ?: bmp_add_table(p, tab);
 }
 
 
@@ -674,10 +641,11 @@ bmp_add_stream(struct bmp_proto *p, struct bmp_peer *bp, u32 afi, bool policy, r
   bs->bgp = bp->bgp;
   bs->key = bmp_stream_key(afi, policy);
 
-  add_tail(&bp->streams, &bs->n);
+  bmp_peer_stream_add_tail(&bp->streams, bs);
   HASH_INSERT(p->stream_map, HASH_STREAM, bs);
 
-  bs->table = bmp_get_table(p, tab);
+  struct bmp_table *bt = bmp_get_table(p, tab);
+  bmp_table_stream_add_tail(&bt->streams, bs);
 
   bs->sender = sender;
   bs->sync = false;
@@ -689,11 +657,13 @@ bmp_add_stream(struct bmp_proto *p, struct bmp_peer *bp, u32 afi, bool policy, r
 static void
 bmp_remove_stream(struct bmp_proto *p, struct bmp_stream *bs)
 {
-  rem_node(&bs->n);
+  bmp_peer_stream_rem_node(bmp_peer_stream_enlisted(bs), bs);
   HASH_REMOVE(p->stream_map, HASH_STREAM, bs);
 
-  bmp_unlock_table(p, bs->table);
-  bs->table = NULL;
+  SKIP_BACK_DECLARE(struct bmp_table, bt, streams, bmp_table_stream_enlisted(bs));
+  bmp_table_stream_rem_node(&bt->streams, bs);
+  if (EMPTY_TLIST(bmp_table_stream, &bt->streams))
+    bmp_remove_table(p, bt);
 
   mb_free(bs);
 }
@@ -723,7 +693,7 @@ bmp_add_peer(struct bmp_proto *p, ea_list *bgp_attr)
   }
   bp->bgp = bgp_attr;
 
-  init_list(&bp->streams);
+  bp->streams = (TLIST_LIST(bmp_peer_stream)) {};
 
   HASH_INSERT(p->peer_map, HASH_PEER, bp);
 
@@ -764,8 +734,7 @@ bmp_add_peer(struct bmp_proto *p, ea_list *bgp_attr)
 static void
 bmp_remove_peer(struct bmp_proto *p, struct bmp_peer *bp)
 {
-  struct bmp_stream *bs, *bs_next;
-  WALK_LIST_DELSAFE(bs, bs_next, bp->streams)
+  WALK_TLIST_DELSAFE(bmp_peer_stream, bs, &bp->streams)
     bmp_remove_stream(p, bs);
 
   HASH_REMOVE(p->peer_map, HASH_PEER, bp);
@@ -1115,7 +1084,7 @@ bmp_feed_end(struct rt_export_request *req)
 
   HASH_WALK(p->stream_map, next, bs)
   {
-    if ((bs->table == bt) && !bs->sync)
+    if ((bmp_table_stream_enlisted(bs) == &bt->streams) && !bs->sync)
     {
       bmp_route_monitor_end_of_rib(p, bs);
       bs->sync = true;
@@ -1377,8 +1346,7 @@ bmp_process_proto_state_change(struct bmp_proto *p, struct lfjour_item *last_up)
      * notifications from that peer. Therefore, peers established after BMP
      * session are considered synced with empty RIB.
      */
-    struct bmp_stream *bs;
-    WALK_LIST(bs, bp->streams)
+    WALK_TLIST(bmp_peer_stream, bs, &bp->streams)
     {
       bmp_route_monitor_end_of_rib(p, bs);
       bs->sync = true;
