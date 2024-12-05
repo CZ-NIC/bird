@@ -146,7 +146,7 @@ struct bgp_config {
   int require_extended_messages;	/* Require remote support for extended messages [RFC 8654] */
   int require_hostname;			/* Require remote support for hostname [draft] */
   int require_gr;			/* Require remote support for graceful restart [RFC 4724] */
-  int require_llgr;			/* Require remote support for long-lived graceful restart [draft] */
+  int require_llgr;			/* Require remote support for long-lived graceful restart [RFC 9494] */
   struct bfd_options *bfd;		/* Use BFD for liveness detection */
 };
 
@@ -241,7 +241,7 @@ struct bgp_af_caps {
   u8 ready;				/* Multiprotocol capability, RFC 4760 */
   u8 gr_able;				/* Graceful restart support, RFC 4724 */
   u8 gr_af_flags;			/* Graceful restart per-AF flags */
-  u8 llgr_able;				/* Long-lived GR, RFC draft */
+  u8 llgr_able;				/* Long-lived GR, RFC 9494 */
   u32 llgr_time;			/* Long-lived GR stale time */
   u8 llgr_flags;			/* Long-lived GR per-AF flags */
   u8 ext_next_hop;			/* Extended IPv6 next hop,   RFC 8950 */
@@ -261,7 +261,7 @@ struct bgp_caps {
   u8 gr_flags;				/* Graceful restart flags */
   u16 gr_time;				/* Graceful restart time in seconds */
 
-  u8 llgr_aware;			/* Long-lived GR capability, RFC draft */
+  u8 llgr_aware;			/* Long-lived GR capability, RFC 9494 */
   u8 any_ext_next_hop;			/* Bitwise OR of per-AF ext_next_hop */
   u8 any_add_path;			/* Bitwise OR of per-AF add_path */
 

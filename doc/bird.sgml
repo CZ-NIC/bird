@@ -2844,6 +2844,7 @@ avoid routing loops.
 <item> <rfc id="9072"> - Extended Optional Parameters Length for BGP OPEN Message
 <item> <rfc id="9117"> - Revised Validation Procedure for BGP Flow Specifications
 <item> <rfc id="9234"> - Route Leak Prevention and Detection Using Roles
+<item> <rfc id="9494"> - Long-Lived Graceful Restart for BGP
 <item> <rfc id="9687"> - Send Hold Timer
 </itemize>
 
@@ -3179,7 +3180,7 @@ using the following configuration parameters:
 	routes are removed. Default: 3600 seconds.
 
 	<tag><label id="bgp-require-long-lived-graceful-restart">require long lived graceful restart <m/switch/</tag>
-	If enabled, the BGP Long-lived Graceful Restart capability (draft)
+	If enabled, the BGP Long-lived Graceful Restart capability (<rfc id="9494">)
 	must be announced by the BGP neighbor, otherwise the BGP session
 	will not be established. Default: off.
 
