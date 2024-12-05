@@ -1,4 +1,4 @@
-bird2 ({{ version }}-cznic.{{ release }}) unstable; urgency=medium
+bird3 ({{ version }}-cznic.{{ release }}) unstable; urgency=medium
 
   * upstream package
 
