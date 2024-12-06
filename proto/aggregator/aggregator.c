@@ -328,6 +328,7 @@ trie_insert_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 
   /* Assign bucket to the last node */
   node->original_bucket = bucket;
   node->status = IN_FIB;
+  node->px_origin = ORIGINAL;
 
   return node;
 }
@@ -366,6 +367,7 @@ trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
   /* Assign bucket to the last node */
   node->original_bucket = bucket;
   node->status = IN_FIB;
+  node->px_origin = ORIGINAL;
 
   return node;
 }
