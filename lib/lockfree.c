@@ -42,10 +42,11 @@ void lfuc_unlock_deferred(struct deferred_call *dc)
 void
 lfjour_last_runner_do_ping(struct lfjour *j)
 {
+  /* decreases the number of lfjour_wait_lastrunners_num. If lfjour_wait_lastrunners_num is zero, calls cleanup hook */
   u64 pings = atomic_fetch_sub_explicit(&j->lfjour_wait_lastrunners_num, 1, memory_order_acq_rel);
   if (pings == 1)
   {
-    // there will be no more pings, we have to call the cleanup
+    /* There will be no more pings, we have to call the cleanup */
     lfjour_schedule_cleanup(j);
   }
 }
@@ -315,8 +316,7 @@ lfjour_register(struct lfjour *j, struct lfjour_recipient *r)
 
   if (j->lfjour_wait_lastrunners_num < j->lfjour_expected_ping_num)
   {
-    /* Cleanup hook does not run, so we are sure j->lfjour_wait_lastrunners_num is not increasing
-     */
+    /* Cleanup hook does not run, so we are sure j->lfjour_wait_lastrunners_num is not increasing */
     atomic_fetch_add_explicit(&j->lfjour_wait_lastrunners_num, 1, memory_order_acq_rel);
     atomic_fetch_or_explicit(&r->recipient_flags, LFJOUR_R_LAST_RUNNER, memory_order_acq_rel);
   }
@@ -583,5 +583,5 @@ lfjour_init(struct lfjour *j, struct settle_config *scf)
     .hook = lfjour_cleanup_hook,
     .data = j,
   };
-  j->lfjour_expected_ping_num = 10;
+  j->lfjour_expected_ping_num = 5;
 }
