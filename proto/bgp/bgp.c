@@ -622,7 +622,8 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
     p->llgr_ready = p->llgr_ready || llgr_ready;
 
     /* Remember last LLGR stale time */
-    c->stale_time = local->llgr_aware ? rem->llgr_time : 0;
+    c->stale_time = local->llgr_aware ?
+      CLAMP(rem->llgr_time, c->cf->min_llgr_time, c->cf->max_llgr_time) : 0;
 
     /* Channels not able to recover gracefully */
     if (p->p.gr_recovery && (!active || !peer_gr_ready))
@@ -805,8 +806,11 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
   /* p->gr_ready -> at least one active channel is c->gr_ready */
   ASSERT(p->gr_active_num > 0);
 
+  uint gr_time = CLAMP(p->conn->remote_caps->gr_time,
+		       p->cf->min_gr_time, p->cf->max_gr_time);
+
   proto_notify_state(&p->p, PS_START);
-  tm_start(p->gr_timer, p->conn->remote_caps->gr_time S);
+  tm_start(p->gr_timer, gr_time S);
 }
 
 /**
@@ -2089,6 +2093,14 @@ bgp_postconfig(struct proto_config *CF)
     cf_error("Min keepalive time (%u) exceeds keepalive time (%u)",
 	     cf->min_keepalive_time, keepalive_time);
 
+  if (cf->min_gr_time > cf->max_gr_time)
+    cf_error("Min graceful restart time (%u) exceeds max graceful restart time (%u)",
+	     cf->min_gr_time, cf->max_gr_time);
+
+  if (cf->min_llgr_time > cf->max_llgr_time)
+    cf_error("Min long-lived stale time (%u) exceeds max long-lived stale time (%u)",
+	     cf->min_llgr_time, cf->max_llgr_time);
+
 
   struct bgp_channel_config *cc;
   BGP_CF_WALK_CHANNELS(cf, cc)
@@ -2132,6 +2144,12 @@ bgp_postconfig(struct proto_config *CF)
 
     if (cc->llgr_time == ~0U)
       cc->llgr_time = cf->llgr_time;
+
+    if (cc->min_llgr_time == ~0U)
+      cc->min_llgr_time = cf->min_llgr_time;
+
+    if (cc->max_llgr_time == ~0U)
+      cc->max_llgr_time = cf->max_llgr_time;
 
     /* AIGP enabled by default on interior sessions */
     if (cc->aigp == 0xff)
@@ -2178,6 +2196,11 @@ bgp_postconfig(struct proto_config *CF)
 
     if (cc->require_add_path && !cc->add_path)
       cf_warn("ADD-PATH required but not enabled");
+
+    if (cc->min_llgr_time > cc->max_llgr_time)
+      cf_error("Min long-lived stale time (%u) exceeds max long-lived stale time (%u)",
+	       cc->min_llgr_time, cc->max_llgr_time);
+
   }
 }
 
@@ -2270,6 +2293,10 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
       (TABLE(new, igp_table_ip4) != TABLE(old, igp_table_ip4)) ||
       (TABLE(new, igp_table_ip6) != TABLE(old, igp_table_ip6)) ||
       (TABLE(new, base_table) != TABLE(old, base_table)))
+    return 0;
+
+  if (c->stale_time && ((new->min_llgr_time > c->stale_time) ||
+			(new->max_llgr_time < c->stale_time)))
     return 0;
 
   if (new->mandatory && !old->mandatory && (C->channel_state != CS_UP))

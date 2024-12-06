@@ -122,6 +122,10 @@ struct bgp_config {
   /* Times below are in seconds */
   unsigned gr_time;			/* Graceful restart timeout */
   unsigned llgr_time;			/* Long-lived graceful restart stale time */
+  unsigned min_gr_time;			/* Minimum GR timeout */
+  unsigned max_gr_time;			/* Maximum GR timeout */
+  unsigned min_llgr_time;		/* Minimum LLGR stale time */
+  unsigned max_llgr_time;		/* Maximum LLGR stale time */
   unsigned connect_delay_time;		/* Minimum delay between connect attempts */
   unsigned connect_retry_time;		/* Timeout for connect attempts */
   unsigned hold_time;
@@ -167,6 +171,8 @@ struct bgp_channel_config {
   u8 gr_able;				/* Allow full graceful restart for the channel */
   u8 llgr_able;				/* Allow full long-lived GR for the channel */
   uint llgr_time;			/* Long-lived graceful restart stale time */
+  uint min_llgr_time;			/* Minimum LLGR stale time */
+  uint max_llgr_time;			/* Maximum LLGR stale time */
   u8 ext_next_hop;			/* Allow both IPv4 and IPv6 next hops */
   u8 require_ext_next_hop;		/* Require remote support of IPv4 NLRI with IPv6 next hops [RFC 8950] */
   u8 add_path;				/* Use ADD-PATH extension [RFC 7911] */

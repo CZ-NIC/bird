@@ -25,6 +25,7 @@ struct align_probe { char x; long int y; };
 
 #define MIN_(a,b) (((a)<(b))?(a):(b))
 #define MAX_(a,b) (((a)>(b))?(a):(b))
+#define CLAMP(a,l,h) (((a)<(l)) ? (l) : (((a)>(h)) ? (h) : (a)))
 
 #ifndef PARSER
 #undef MIN
