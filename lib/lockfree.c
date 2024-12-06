@@ -353,29 +353,31 @@ lfjour_try_set_last_runner(struct lfjour_recipient* rec, u64 seq_max)
     return 0;
 
   if (atomic_fetch_or_explicit(&rec->recipient_flags, LFJOUR_R_LAST_RUNNER, memory_order_acq_rel) & LFJOUR_R_LAST_RUNNER)
-    // this might happen if newcomer recipient grab flag when cleanup hook is settled but not called
+    /* this might happen if newcomer recipient grab flag when cleanup hook is settled but not called */
     return 0;
 
   if (atomic_load_explicit(&rec->last, memory_order_acquire) && atomic_load_explicit(&rec->last, memory_order_acquire)->seq == seq_max)
   {
-    // we set the last runner flag, but this recipient is on end. If it does not managed to ping, it might not ping until next update
-    // lets try to take the flag back
+    /* we set the last runner flag, but this recipient is on end. If it does not managed to ping, it might not ping until next update */
+    /* lets try to take the flag back */
     if (atomic_fetch_and_explicit(&rec->recipient_flags, ~LFJOUR_R_LAST_RUNNER, memory_order_acq_rel) & LFJOUR_R_LAST_RUNNER)
     {
-      // the flag was still set. We lost the race, num of pings did not increased and num of given flags should not increase too.
-      return 0; // not success
+      /* the flag was still set. We lost the race, num of pings did not increased and num of given flags should not increase too. */
+      return 0;
     }
-    // the recipient was quick, manages to finish task, grab flag and turn the flag into ping. Not what we wanted or expected,
-    // but number of pings has already increased, so the number of given flags must be increased too.
+    /* the recipient was quick, manages to finish task, grab flag and turn the flag into ping. Not what we wanted or expected,
+     * but number of pings has already increased, so the number of given flags must be increased too.
+     */
     return 1;
   }
-  // this is our favourite option. flag was set and it waites, until the recipient pings. Returning success, we can increment number of given flags.
+  /* this is our favourite option. flag was set and it waites, until the recipient pings. Returning success, we can increment number of given flags. */
   return 1;
 }
 
 static void
 lfjour_clenup_exit(struct lfjour *j)
 {
+  /* before leaving cleanup hook, we need to make sure someone will call it later */
   u64 pings = atomic_fetch_sub_explicit(&j->lfjour_wait_lastrunners_num, 1, memory_order_acq_rel);
   if (pings == 1) // this is the 1 for this cleanup hook
   {
@@ -398,7 +400,8 @@ lfjour_clenup_exit(struct lfjour *j)
         return;
       }
 
-      atomic_fetch_add_explicit(&j->lfjour_wait_lastrunners_num, 1, memory_order_acq_rel); // this is for the first recipient we will find, or for cleanup hook if recipient not found
+      /* this is for the first recipient we will find */
+      atomic_fetch_add_explicit(&j->lfjour_wait_lastrunners_num, 1, memory_order_acq_rel);
 
       WALK_TLIST(lfjour_recipient, r, &j->recipients)
       {
@@ -407,8 +410,9 @@ lfjour_clenup_exit(struct lfjour *j)
           return;
       }
 
+      /* recipient not found */
       atomic_fetch_sub_explicit(&j->lfjour_wait_lastrunners_num, 1, memory_order_acq_rel);
-      // nobody needs anything, but the journal is not full. This needs cleanup
+      /* nobody needs anything, but the journal is not empty. This needs cleanup */
       lfjour_schedule_cleanup(j);
     }
   }
@@ -419,7 +423,7 @@ lfjour_cleanup_hook(void *_j)
 {
   struct lfjour *j = _j;
 
-  // because we do not want to be called again before finish (and solve the edgecases)
+  /* increase lfjour_wait_lastrunners_num artifically, because we do not want to be called again before finish (and solve the edgecases) */
   atomic_fetch_add_explicit(&j->lfjour_wait_lastrunners_num, 1, memory_order_acq_rel);
 
   CLEANUP(lfjour_cleanup_unlock_helper) struct domain_generic *_locked = j->domain;
