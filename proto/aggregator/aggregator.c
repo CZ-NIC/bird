@@ -544,9 +544,6 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
   assert(node != NULL);
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
-  assert(node->ancestor == NULL);
-  assert(node->selected_bucket == NULL);
-
   assert(node->original_bucket != NULL);
   assert(node->parent->ancestor != NULL);
   assert(node->parent->ancestor->selected_bucket != NULL);
@@ -571,6 +568,9 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
     /* Assign bucket with the lowest ID to the node */
     node->selected_bucket = choose_lowest_id_bucket(p, node);
     node->status = IN_FIB;
+
+    /* If prefix was original it stays original */
+    node->px_origin = ORIGINAL == node->px_origin ? ORIGINAL : AGGREGATED;
     assert(node->selected_bucket != NULL);
   }
 
@@ -648,7 +648,6 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
   if (NON_FIB == node->status && is_leaf(node))
   {
     assert(node->selected_bucket == NULL);
-    remove_node(node);
   }
 }
 
@@ -711,6 +710,78 @@ check_ancestors_after_aggregation(const struct trie_node *node)
 
   if (node->child[1])
     check_ancestors_after_aggregation(node->child[1]);
+}
+
+/*
+ * Recover trie to the state before aggregation
+ */
+static void
+deaggregate(struct trie_node *node)
+{
+  assert(node != NULL);
+
+  node->status = NON_FIB;
+  node->selected_bucket = NULL;
+  node->ancestor = NULL;
+  node->potential_buckets_count = 0;
+  memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
+
+  if (ORIGINAL == node->px_origin)
+  {
+    assert(node->original_bucket != NULL);
+    node->status = IN_FIB;
+  }
+  else
+  {
+    /*
+     * Delete the original bucket as it is inherited from the closest
+     * ancestor and will be set during first pass
+     */
+    assert(node->original_bucket != NULL);
+    node->original_bucket = NULL;
+  }
+
+  if (node->child[0])
+    deaggregate(node->child[0]);
+
+  if (node->child[1])
+    deaggregate(node->child[1]);
+}
+
+/*
+ * Merge sets of potential buckets from @node upwards.
+ * Stop when sets do not change and return the last updated node.
+ */
+static struct trie_node *
+merge_buckets_above(struct trie_node *node)
+{
+  assert(node != NULL);
+
+  struct trie_node *parent = node->parent;
+
+  while (parent)
+  {
+    const struct trie_node *left  = parent->child[0];
+    const struct trie_node *right = parent->child[1];
+
+    struct trie_node imaginary_node = { 0 };
+    node_insert_potential_bucket(&imaginary_node, parent->original_bucket);
+
+    if (left && !right)
+      right = &imaginary_node;
+    else if (!left && right)
+      left = &imaginary_node;
+
+    assert(left != NULL && right != NULL);
+
+    if (merge_potential_buckets(parent, left, right) == 0)
+      return node;
+
+    node = parent;
+    parent = node->parent;
+  }
+
+  return node;
 }
 
 static void
