@@ -38,6 +38,22 @@ void lfuc_unlock_deferred(struct deferred_call *dc)
     off / s; \
     })
 
+u64 lfjour_expected_ping_num;
+_Atomic u64 lfjour_wait_lastrunners_num;
+_Atomic u64 lfjour_cleanup_hook_called;
+
+void
+lfjour_last_runner_do_ping(struct lfjour *j)
+{
+  u64 pings = atomic_fetch_sub_explicit(&lfjour_wait_lastrunners_num, 1, memory_order_acq_rel);
+  if (pings == 1)
+  {
+    // there will be no more pings, we have to call the cleanup
+    lfjour_schedule_cleanup(j);
+  }
+  log("lfjour_last_runner_do_ping -1 (%i)", lfjour_wait_lastrunners_num);
+}
+
 struct lfjour_item *
 lfjour_push_prepare(struct lfjour *j)
 {
@@ -242,7 +258,11 @@ void lfjour_release(struct lfjour_recipient *r, const struct lfjour_item *it)
 
   /* The last block may be available to free */
   if ((pos + 1 == end) || last && (last_block != block))
-    lfjour_schedule_cleanup(j);
+    if (atomic_fetch_and_explicit(&r->recipient_flags, ~LFJOUR_R_LAST_RUNNER, memory_order_acq_rel) & LFJOUR_R_LAST_RUNNER)
+    {
+      log("flag down %x assert %i", r, r->recipient_flags & LFJOUR_R_LAST_RUNNER);
+      lfjour_last_runner_do_ping(j);
+    }
 
   r->first_holding_seq = 0;
   r->cur = NULL;
@@ -292,6 +312,7 @@ lfjour_pending_items(struct lfjour *j)
 void
 lfjour_register(struct lfjour *j, struct lfjour_recipient *r)
 {
+  log("register");
   ASSERT_DIE(!j->domain || DG_IS_LOCKED(j->domain));
   ASSERT_DIE(!r->event == !r->target);
 
@@ -299,11 +320,22 @@ lfjour_register(struct lfjour *j, struct lfjour_recipient *r)
   ASSERT_DIE(!r->cur);
 
   lfjour_recipient_add_tail(&j->recipients, r);
+
+  if (lfjour_wait_lastrunners_num < lfjour_expected_ping_num)
+  {
+    /* Cleanup hook does not run, so we are sure lfjour_wait_lastrunners_num is not increasing
+     */
+     log("register %x before %i", r, lfjour_wait_lastrunners_num);
+    atomic_fetch_add_explicit(&lfjour_wait_lastrunners_num, 1, memory_order_acq_rel);
+    atomic_fetch_or_explicit(&r->recipient_flags, LFJOUR_R_LAST_RUNNER, memory_order_acq_rel);
+    log("register after %i", lfjour_wait_lastrunners_num);
+  }
 }
 
 void
 lfjour_unregister(struct lfjour_recipient *r)
 {
+  log("unregister %x", r);
   struct lfjour *j = lfjour_of_recipient(r);
   ASSERT_DIE(!j->domain || DG_IS_LOCKED(j->domain));
 
@@ -311,7 +343,9 @@ lfjour_unregister(struct lfjour_recipient *r)
     lfjour_release(r, r->cur);
 
   lfjour_recipient_rem_node(&j->recipients, r);
-  lfjour_schedule_cleanup(j);
+
+  if (atomic_fetch_and_explicit(&r->recipient_flags, ~LFJOUR_R_LAST_RUNNER, memory_order_acq_rel) & LFJOUR_R_LAST_RUNNER)
+    lfjour_last_runner_do_ping(j);
 }
 
 static inline void lfjour_cleanup_unlock_helper(struct domain_generic **dg)
@@ -320,10 +354,106 @@ static inline void lfjour_cleanup_unlock_helper(struct domain_generic **dg)
   DG_UNLOCK(*dg);
 }
 
+
+int
+lfjour_try_set_last_runner(struct lfjour_recipient* rec, u64 seq_max)
+{
+  /* returns 1 if success, 0 otherwise (success means last runner flag was set) */
+  if (atomic_load_explicit(&rec->last, memory_order_acquire) && atomic_load_explicit(&rec->last, memory_order_acquire)->seq == seq_max){
+    /* this is no last runner, it is on seq_max! */
+    log("seq max");
+    return 0;}
+
+  if (atomic_fetch_or_explicit(&rec->recipient_flags, LFJOUR_R_LAST_RUNNER, memory_order_acq_rel) & LFJOUR_R_LAST_RUNNER){
+    // this might happen if newcomer recipient grab flag when cleanup hook is settled but not called
+    log("flag already");
+    return 0;}
+
+  if (atomic_load_explicit(&rec->last, memory_order_acquire) && atomic_load_explicit(&rec->last, memory_order_acquire)->seq == seq_max)
+  {
+    // we set the last runner flag, but this recipient is on end. If it does not managed to ping, it might not ping until next update
+    // lets try to take the flag back
+    if (atomic_fetch_and_explicit(&rec->recipient_flags, ~LFJOUR_R_LAST_RUNNER, memory_order_acq_rel) & LFJOUR_R_LAST_RUNNER)
+    {
+      // the flag was still set. We lost the race, num of pings did not increased and num of given flags should not increase too.
+      log("put flag down");
+      return 0; // not success
+    }
+    // the recipient was quick, manages to finish task, grab flag and turn the flag into ping. Not what we wanted or expected,
+    // but number of pings has already increased, so the number of given flags must be increased too.
+    log("quick");
+    return 1;
+  }
+  // this is our favourite option. flag was set and it waites, until the recipient pings. Returning success, we can increment number of given flags.
+  log("set ok");
+  return 1;
+}
+
+static void
+lfjour_clenup_exit(struct lfjour *j)
+{
+  log("waiting for %i", lfjour_wait_lastrunners_num);
+  u64 pings = atomic_fetch_sub_explicit(&lfjour_wait_lastrunners_num, 1, memory_order_acq_rel);
+  if (pings == 1) // this is the 1 for this cleanup hook
+  {
+   log("nobody");
+    if (! EMPTY_TLIST(lfjour_recipient, &j->recipients))
+    {
+      log("nonempty list");
+      struct lfjour_item *first = atomic_load_explicit(&j->first, memory_order_acquire);
+      if (!first) // journal is empty, just select a volunteers to wake up us
+      {
+        log("empty journal");
+        WALK_TLIST(lfjour_recipient, r, &j->recipients)
+        {
+          log("what we load %x %x", atomic_load_explicit(&r->recipient_flags, memory_order_acquire), LFJOUR_R_LAST_RUNNER);
+          if (! (atomic_load_explicit(&r->recipient_flags, memory_order_acquire) & LFJOUR_R_LAST_RUNNER))
+          {
+            atomic_fetch_add_explicit(&lfjour_wait_lastrunners_num, 1, memory_order_acq_rel);
+            ASSERT_DIE(lfjour_try_set_last_runner(r, j->next_seq + 1)); // this must pass
+            log("set flag to %x", r);
+            if (lfjour_wait_lastrunners_num >= lfjour_expected_ping_num)
+              return;
+          } else
+            log("flag already set %x", r);
+        }
+        return;
+      }
+
+      atomic_fetch_add_explicit(&lfjour_wait_lastrunners_num, 1, memory_order_acq_rel); // this is for the first recipient we will find, or for cleanup hook if recipient not found
+
+      WALK_TLIST(lfjour_recipient, r, &j->recipients)
+      {
+        int success = lfjour_try_set_last_runner(r, j->next_seq);
+        if (success){
+          log("somebody needs something %x", r);
+          return;
+          }
+      }
+
+      atomic_fetch_sub_explicit(&lfjour_wait_lastrunners_num, 1, memory_order_acq_rel);
+      // nobody needs anything, but the journal is not full. This needs cleanup
+      log("everybody has everything, but cleanup needed");
+      lfjour_schedule_cleanup(j);
+    }
+  }
+  WALK_TLIST(lfjour_recipient, r, &j->recipients)
+  {
+    if (r->recipient_flags & LFJOUR_R_LAST_RUNNER)
+      log("has flag %x", r);
+  }
+
+  log("waiting for %i", lfjour_wait_lastrunners_num);
+}
+
 static void
 lfjour_cleanup_hook(void *_j)
 {
+  log("lfjour_cleanup_hook");
   struct lfjour *j = _j;
+
+  // because we do not want to be called again before finish (and solve the edgecases)
+  atomic_fetch_add_explicit(&lfjour_wait_lastrunners_num, 1, memory_order_acq_rel);
 
   CLEANUP(lfjour_cleanup_unlock_helper) struct domain_generic *_locked = j->domain;
   if (_locked) DG_LOCK(_locked);
@@ -337,6 +467,8 @@ lfjour_cleanup_hook(void *_j)
     /* Nothing to cleanup, actually, just call the done callback */
     ASSERT_DIE(EMPTY_TLIST(lfjour_block, &j->pending));
     CALL(j->cleanup_done, j, 0, ~((u64) 0));
+
+    lfjour_clenup_exit(j);
     return;
   }
 
@@ -345,14 +477,39 @@ lfjour_cleanup_hook(void *_j)
     const struct lfjour_item *last = atomic_load_explicit(&r->last, memory_order_acquire);
 
     if (!last)
+    {
       /* No last export means that the channel has exported nothing since last cleanup */
-      return;
+      atomic_fetch_add_explicit(&lfjour_wait_lastrunners_num, 1, memory_order_acq_rel); // if we dont increase in advance, the recipient might be super fast and decrease before we increase
+
+      if (lfjour_try_set_last_runner(r, j->next_seq))
+      {
+        if (lfjour_wait_lastrunners_num > lfjour_expected_ping_num) { // lfjour_wait_lastrunners_num is increased by one for this cleanup, no one else can increase it now
+        /* We have set the maximum number of flags. Nothing to do here. */
+          lfjour_clenup_exit(j);
+          return;
+        }
+      } else
+      {
+        atomic_fetch_sub_explicit(&lfjour_wait_lastrunners_num, 1, memory_order_acq_rel);
+        log("not succ -1 (%i)", lfjour_wait_lastrunners_num);
+      }
+    }
 
     else if (min_seq > last->seq)
     {
       min_seq = last->seq;
       last_item_to_free = last;
     }
+  }
+
+  if (atomic_load_explicit(&lfjour_wait_lastrunners_num, memory_order_acquire) > 1) // lfjour_wait_lastrunners_num is increased by one for this cleanup
+  {
+    /* We set at least one last_runner flag.
+     * But, we did no set the maximum number of flags (in that case we would already returned).
+     * That means, we need to increase the number of the pings artifically.
+     */
+    lfjour_clenup_exit(j);
+    return;
   }
 
   /* Here we're sure that no receiver is going to use the first pointer soon.
@@ -373,6 +530,17 @@ lfjour_cleanup_hook(void *_j)
 	  memory_order_acq_rel, memory_order_acquire))
     {
       lfjour_debug("lfjour(%p)_cleanup(recipient=%p): store last=NULL", j, r);
+
+      if (lfjour_wait_lastrunners_num < lfjour_expected_ping_num) // lfjour_wait_lastrunners_num is increased by one for this cleanup
+      {
+        atomic_fetch_add_explicit(&lfjour_wait_lastrunners_num, 1, memory_order_acq_rel);
+
+        if (! lfjour_try_set_last_runner(r, j->next_seq))
+        {
+          atomic_fetch_sub_explicit(&lfjour_wait_lastrunners_num, 1, memory_order_acq_rel);
+          log("not succ 2, -1 (%i)", lfjour_wait_lastrunners_num);
+        }
+      }
     }
     else
     {
@@ -429,6 +597,8 @@ lfjour_cleanup_hook(void *_j)
     first = next;
   }
 
+  lfjour_clenup_exit(j);
+
   CALL(j->cleanup_done, j, orig_first_seq, first ? first->seq : ~((u64) 0));
 }
 
@@ -452,4 +622,5 @@ lfjour_init(struct lfjour *j, struct settle_config *scf)
     .hook = lfjour_cleanup_hook,
     .data = j,
   };
+  lfjour_expected_ping_num = 10;
 }

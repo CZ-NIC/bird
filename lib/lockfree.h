@@ -219,6 +219,7 @@ struct lfjour_recipient {
 
 enum lfjour_recipient_flags {
   LFJOUR_R_SEQ_RESET = 1,			/* Signalling of sequence number reset */
+  LFJOUR_R_LAST_RUNNER = 2,                     /* Set if this recipient is supposed to ping cleanup hook */
 };
 
 /* Defines lfjour_recipient_list */
