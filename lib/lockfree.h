@@ -238,6 +238,8 @@ struct lfjour {
   event announce_kick_event;			/* Kicks announce_timer */
   struct settle announce_timer;			/* Announces changes to recipients */
   event cleanup_event;				/* Runs the journal cleanup routine */
+  u64 lfjour_expected_ping_num;
+  _Atomic u64 lfjour_wait_lastrunners_num;
 
   /* Callback on item removal from journal */
   void (*item_done)(struct lfjour *, struct lfjour_item *);
