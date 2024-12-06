@@ -200,7 +200,7 @@ rpki_stop_refresh(struct rpki_proto *p)
 static const char *str_cache_states[] = {
   [RPKI_CS_CONNECTING] 		= "Connecting",
   [RPKI_CS_ESTABLISHED] 	= "Established",
-  [RPKI_CS_RESET] 		= "Reseting",
+  [RPKI_CS_RESET] 		= "Resetting",
   [RPKI_CS_SYNC_START] 		= "Sync-Start",
   [RPKI_CS_SYNC_RUNNING] 	= "Sync-Running",
   [RPKI_CS_FAST_RECONNECT] 	= "Fast-Reconnect",
