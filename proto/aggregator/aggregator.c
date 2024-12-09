@@ -784,6 +784,9 @@ merge_buckets_above(struct trie_node *node)
   return node;
 }
 
+static void dump_trie(const struct trie_node *);
+static void print_prefixes(const struct trie_node *, int);
+
 static void
 trie_receive_update(struct aggregator_proto *p, struct aggregator_route *old, struct aggregator_route *new)
 {
@@ -834,6 +837,30 @@ trie_receive_update(struct aggregator_proto *p, struct aggregator_route *old, st
     assert(updated_node->original_bucket != NULL);
     assert(updated_node->status == IN_FIB);
   }
+
+  dump_trie(p->root);
+
+  log("deaggregate");
+  deaggregate(updated_node);
+  dump_trie(p->root);
+
+  log("first pass");
+  first_pass(updated_node);
+  dump_trie(p->root);
+
+  log("second pass");
+  second_pass(updated_node);
+  dump_trie(p->root);
+
+  log("merge buckets above");
+  struct trie_node *highest_node = merge_buckets_above(updated_node);
+  dump_trie(p->root);
+
+  log("third pass");
+  assert(highest_node->parent != NULL);
+  third_pass(p, highest_node->parent);
+  dump_trie(p->root);
+}
 
 static void
 dump_trie_helper(const struct trie_node *node, struct net_addr_ip4 *addr, struct buffer *buf)
