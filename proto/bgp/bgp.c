@@ -2025,9 +2025,9 @@ bgp_channel_init(struct channel *C, struct channel_config *CF)
 
   PST_LOCKED(ts)
   {
-    ea_list *eal = ea_free_later(ts->channels[c->c.id]);
+    ea_list *eal = ea_free_later(ts->channel_states[c->c.id]);
     ea_set_attr(&eal, EA_LITERAL_EMBEDDED(&ea_bgp_afi, 0, c->afi));
-    ts->channels[c->c.id] = ea_lookup_slow(eal, 0, EALS_IN_TABLE);
+    ts->channel_states[c->c.id] = ea_lookup_slow(eal, 0, EALS_IN_TABLE);
   }
 
 }

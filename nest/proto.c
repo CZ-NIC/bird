@@ -260,21 +260,21 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
     hmap_set(&ts->channel_id_map, c->id);
 
     /* The current channel state table may be too small */
-    if (c->id >= ts->length_channels)
+    if (c->id >= ts->channels_len)
     {
-      ea_list **l = mb_allocz(ts->pool, sizeof(ea_list*) * ts->length_channels * 2);
-      memcpy(l, ts->channels, sizeof(ea_list*) * ts->length_channels);
-      mb_free(ts->channels);
+      ea_list **l = mb_allocz(ts->pool, sizeof(ea_list*) * ts->channels_len * 2);
+      memcpy(l, ts->channel_states, sizeof(ea_list*) * ts->channels_len);
+      mb_free(ts->channel_states);
 
-      ts->channels = l;
-      ts->length_channels = ts->length_channels * 2;
+      ts->channel_states = l;
+      ts->channels_len = ts->channels_len * 2;
     }
 
-    ASSERT_DIE(c->id < ts->length_channels);
-    ASSERT_DIE(ts->channels[c->id] == NULL);
+    ASSERT_DIE(c->id < ts->channels_len);
+    ASSERT_DIE(ts->channel_states[c->id] == NULL);
 
     /* Set the channel info */
-    ts->channels[c->id] = ea_lookup_slow(ca, 0, EALS_IN_TABLE);
+    ts->channel_states[c->id] = ea_lookup_slow(ca, 0, EALS_IN_TABLE);
   }
 
   /* Update channel list in protocol state */
@@ -317,9 +317,9 @@ proto_remove_channel(struct proto *p UNUSED, struct channel *c)
    */
   PST_LOCKED(ts)
   {
-    ASSERT_DIE(c->id < ts->length_channels);
-    ea_free_later(ts->channels[c->id]);
-    ts->channels[c->id] = NULL;
+    ASSERT_DIE(c->id < ts->channels_len);
+    ea_free_later(ts->channel_states[c->id]);
+    ts->channel_states[c->id] = NULL;
     hmap_clear(&ts->channel_id_map, c->id);
   }
 
@@ -1348,15 +1348,15 @@ proto_new(struct proto_config *cf)
     p->id = hmap_first_zero(&tp->proto_id_map);
     hmap_set(&tp->proto_id_map, p->id);
 
-    if (p->id >= tp->length_states)
+    if (p->id >= tp->proto_len)
     {
       /* Grow the states array */
-      ea_list **new_states = mb_allocz(tp->pool, sizeof *new_states * tp->length_states * 2);
-      memcpy(new_states, tp->states, tp->length_states * sizeof *new_states);
+      ea_list **new_states = mb_allocz(tp->pool, sizeof *new_states * tp->proto_len * 2);
+      memcpy(new_states, tp->proto_states, tp->proto_len * sizeof *new_states);
 
-      mb_free(tp->states);
-      tp->states = new_states;
-      tp->length_states *= 2;
+      mb_free(tp->proto_states);
+      tp->proto_states = new_states;
+      tp->proto_len *= 2;
     }
   }
 
@@ -2140,15 +2140,15 @@ protos_build(void)
 
   PST_LOCKED(ts)
   {
-    ts->length_channels = 64;
-    ts->length_states = 32;
+    ts->channels_len = 64;
+    ts->proto_len = 32;
 
-    hmap_init(&ts->proto_id_map, p, ts->length_states); /* for proto ids. Value of proto id is the same as index of that proto in ptoto_state_table->attrs */
-    hmap_init(&ts->channel_id_map, p, ts->length_channels);
+    hmap_init(&ts->proto_id_map, p, ts->proto_len); /* for proto ids. Value of proto id is the same as index of that proto in ptoto_state_table->attrs */
+    hmap_init(&ts->channel_id_map, p, ts->channels_len);
 
     ts->pool = p;
-    ts->states = mb_allocz(p, sizeof(ea_list *) * ts->length_states);
-    ts->channels = mb_allocz(p, sizeof(ea_list *) * ts->length_channels * 2);
+    ts->proto_states = mb_allocz(p, sizeof(ea_list *) * ts->proto_len);
+    ts->channel_states = mb_allocz(p, sizeof(ea_list *) * ts->channels_len * 2);
   }
 
   /* Init proto state journal */
@@ -2939,7 +2939,7 @@ proto_journal_item_cleanup_(bool withdrawal, ea_list *old_attr)
   {
     u32 id = ea_get_int(old_attr, &ea_proto_id, 0);
     ASSERT_DIE(id);
-    ASSERT_DIE(tp->states[id] == NULL);
+    ASSERT_DIE(tp->proto_states[id] == NULL);
     hmap_clear(&tp->proto_id_map, id);
   }
 }
@@ -2955,7 +2955,7 @@ proto_journal_item_cleanup(struct lfjour * journal UNUSED, struct lfjour_item *i
 /*
  * Protocol state announcement.
  *
- * The authoritative protocol state is always stored in ts->states[p->id]
+ * The authoritative protocol state is always stored in ts->proto_states[p->id]
  * and it holds a reference. But sometimes it's too clumsy to announce all
  * protocol changes happening in a fast succession, so there is a
  * state-to-be-announced stored in the protocol itself, in p->ea_state.
@@ -3014,15 +3014,15 @@ proto_announce_state_locked(struct proto_state_table_private* ts, struct proto *
   }
 
   /* Then we check the public state */
-  ASSERT_DIE(p->id < ts->length_states);
-  ea_list *old_state = ts->states[p->id];
+  ASSERT_DIE(p->id < ts->proto_len);
+  ea_list *old_state = ts->proto_states[p->id];
 
   /* Nothing has changed? */
   if (p->ea_state == old_state)
     return;
 
   /* Set the new state */
-  ts->states[p->id] = p->ea_state ? ea_ref(p->ea_state) : NULL;
+  ts->proto_states[p->id] = p->ea_state ? ea_ref(p->ea_state) : NULL;
 
   /* Announce the new state */
   struct lfjour_item *li = lfjour_push_prepare(&proto_state_table_pub.journal);
@@ -3094,9 +3094,9 @@ channel_get_state(int id)
 {
   PST_LOCKED(ts)
   {
-    ASSERT_DIE((u32) id < ts->length_channels);
-    if (ts->channels[id])
-      return ea_ref_tmp(ts->channels[id]);
+    ASSERT_DIE((u32) id < ts->channels_len);
+    if (ts->channel_states[id])
+      return ea_ref_tmp(ts->channel_states[id]);
   }
   return NULL;
 }
@@ -3107,8 +3107,8 @@ proto_get_state(int id)
   ea_list *eal;
   PST_LOCKED(ts)
   {
-    ASSERT_DIE((u32)id < ts->length_states);
-    eal = ts->states[id];
+    ASSERT_DIE((u32)id < ts->proto_len);
+    eal = ts->proto_states[id];
   }
   if (eal)
     return ea_ref_tmp(eal);

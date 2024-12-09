@@ -412,10 +412,10 @@ struct proto_state_table_private {
     PROTO_STATE_TABLE_PUBLIC;
   };
   struct proto_state_table_private **locked_at;
-  ea_list ** states;
-  ea_list ** channels;
-  u32 length_states;
-  u32 length_channels;
+  ea_list ** proto_states;
+  ea_list ** channel_states;
+  u32 proto_len;
+  u32 channels_len;
   struct hmap proto_id_map;
   struct hmap channel_id_map;
   pool *pool;

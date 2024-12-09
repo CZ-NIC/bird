@@ -702,7 +702,7 @@ bmp_add_peer(struct bmp_proto *p, ea_list *bgp_attr)
   {
     ea_list *chan_attr;
     PST_LOCKED(ts)
-      chan_attr = ts->channels[chann_ids[i]];
+      chan_attr = ts->channel_states[chann_ids[i]];
 
     if (chan_attr == NULL)
       continue;
@@ -1117,7 +1117,7 @@ bmp_startup(struct bmp_proto *p)
   /* Send Peer Up messages */
   u32 length;
   PST_LOCKED(ts) /* The size of protos field will never decrease, the inconsistency caused by growing is not important */
-    length = ts->length_states;
+    length = ts->proto_len;
 
   /* Subscribe to protocol state changes */
   p->proto_state_reader = (struct lfjour_recipient) {
