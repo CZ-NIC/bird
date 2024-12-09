@@ -801,6 +801,24 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
       c->c.ra_mode = RA_ACCEPTED;
     else
       c->c.ra_mode = RA_OPTIMAL;
+
+    ea_list *state = NULL;
+    if (c->ext_next_hop)
+      ea_set_attr_u32(&state, &ea_bgp_extended_next_hop, 0, 1);
+    if (c->add_path_rx)
+      ea_set_attr_u32(&state, &ea_bgp_add_path_rx, 0, 1);
+
+    if (state)
+    {
+      ea_list *sb = state;
+      while (sb->next)
+	sb = sb->next;
+
+      PST_LOCKED(ts) {
+	sb->next = ea_free_later(ts->channel_states[c->c.id]);
+	ts->channel_states[c->c.id] = ea_lookup_slow(state, 0, EALS_IN_TABLE);
+      }
+    }
   }
 
   p->afi_map = mb_alloc(p->p.pool, num * sizeof(u32));

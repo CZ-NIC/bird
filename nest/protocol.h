@@ -442,9 +442,7 @@ struct proto_pending_update {
   ea_list *new, *old;
 };
 
-void proto_announce_state_locked(struct proto_state_table_private *ts, struct proto *p, ea_list *attr);
 void proto_announce_state(struct proto *p, ea_list *attr);
-
 void proto_announce_state_later_internal(struct proto *p, ea_list *attr);
 #if 0
 #define proto_announce_state_later(p, a) ( log(L_INFO "proto_announce_state_later(%s (%p), %p) at %s:%d", (p)->name, (p), (a), __FILE__, __LINE__), proto_announce_state_later_internal((p), (a)) )

@@ -508,7 +508,6 @@ struct bgp_export_state {
 };
 
 struct bgp_write_state {
-  struct bgp_proto *proto;
   struct bgp_ptx_private *ptx;
   struct linpool *pool;
 
@@ -703,7 +702,7 @@ static inline struct bgp_proto *bgp_rte_proto(const rte *rte)
     SKIP_BACK(struct bgp_proto, p.sources, rte->src->owner) : NULL;
 }
 
-byte * bgp_bmp_encode_rte(ea_list *c, struct bgp_proto *bgp_p, byte *buf, byte *end, const struct rte *new);
+byte * bgp_bmp_encode_rte(ea_list *channel_state, byte *buf, byte *end, const struct rte *new);
 
 #define BGP_AIGP_METRIC		1
 #define BGP_AIGP_MAX		U64(0xffffffffffffffff)
@@ -722,6 +721,7 @@ bgp_total_aigp_metric(const rte *e)
 extern struct ea_class ea_bgp_rem_id, ea_bgp_rem_as, ea_bgp_loc_as, ea_bgp_rem_ip, ea_bgp_peer_type, ea_bgp_afi,
       ea_bgp_in_conn_local_open_msg, ea_bgp_out_conn_local_open_msg, ea_bgp_in_conn_remote_open_msg,
       ea_bgp_out_conn_remote_open_msg, ea_bgp_close_bmp, ea_bgp_close_bmp_set, ea_bgp_as4_session,
+      ea_bgp_extended_next_hop, ea_bgp_add_path_rx,
       ea_bgp_state_startup, ea_bgp_in_conn_state, ea_bgp_out_conn_state,
       ea_bgp_in_conn_sk, ea_bgp_out_conn_sk, ea_bgp_as4_out_conn, ea_bgp_as4_in_conn;
 

@@ -2146,6 +2146,10 @@ protos_build(void)
     hmap_init(&ts->proto_id_map, p, ts->proto_len); /* for proto ids. Value of proto id is the same as index of that proto in ptoto_state_table->attrs */
     hmap_init(&ts->channel_id_map, p, ts->channels_len);
 
+    /* Zeros should be reserved for easier undef manipulation */
+    hmap_set(&ts->proto_id_map, 0);
+    hmap_set(&ts->channel_id_map, 0);
+
     ts->pool = p;
     ts->proto_states = mb_allocz(p, sizeof(ea_list *) * ts->proto_len);
     ts->channel_states = mb_allocz(p, sizeof(ea_list *) * ts->channels_len * 2);
@@ -2992,7 +2996,7 @@ struct proto_announce_state_deferred {
   struct proto *p;
 };
 
-void
+static void
 proto_announce_state_locked(struct proto_state_table_private* ts, struct proto *p, ea_list *new_state)
 {
   ASSERT_DIE(birdloop_inside(p->loop));

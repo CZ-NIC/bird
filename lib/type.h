@@ -24,7 +24,7 @@ union bval {
   };											\
   const struct adata *ptr;	/* Generic attribute data inherited from eattrs */	\
   const struct adata *ad;     	/* Generic attribute data inherited from filters */	\
-  const void * v_ptr;       /* Stored pointer */ \
+  void * v_ptr;			/* Stored pointer */ \
 
   BVAL_ITEMS;
 };

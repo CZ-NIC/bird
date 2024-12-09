@@ -1318,6 +1318,16 @@ struct ea_class ea_bgp_as4_out_conn = {
   .type = T_INT,
 };
 
+struct ea_class ea_bgp_extended_next_hop = {
+  .name = "bgp_extended_next_hop",
+  .type = T_INT,
+};
+
+struct ea_class ea_bgp_add_path_rx = {
+  .name = "bgp_add_path_rx",
+  .type = T_INT,
+};
+
 void
 bgp_register_attrs(void)
 {
@@ -1340,6 +1350,7 @@ bgp_register_attrs(void)
 
   EA_REGISTER_ALL(
       &ea_bgp_rem_id, &ea_bgp_rem_as, &ea_bgp_loc_as, &ea_bgp_rem_ip, &ea_bgp_peer_type, &ea_bgp_afi,
+      &ea_bgp_extended_next_hop, &ea_bgp_add_path_rx,
       &ea_bgp_in_conn_local_open_msg, &ea_bgp_out_conn_local_open_msg, &ea_bgp_in_conn_remote_open_msg,
       &ea_bgp_out_conn_remote_open_msg, &ea_bgp_close_bmp, &ea_bgp_as4_session,
       &ea_bgp_state_startup, &ea_bgp_in_conn_state, &ea_bgp_out_conn_state,

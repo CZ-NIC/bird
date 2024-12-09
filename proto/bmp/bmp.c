@@ -29,7 +29,6 @@
  */
 
 #include "proto/bmp/bmp.h"
-#include "proto/bmp/map.h"
 
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -57,17 +56,15 @@
 #include "nest/iface.h"
 #include "nest/route.h"
 
-#define HASH_PEER_KEY(n)		n->bgp
+#define HASH_PEER_KEY(n)		n->info.proto_id
 #define HASH_PEER_NEXT(n)		n->next
 #define HASH_PEER_EQ(b1,b2)		b1 == b2
-#define HASH_PEER_FN(b)			ptr_hash(b)
+#define HASH_PEER_FN(b)			u32_hash(b)
 
-#define BMP_STREAM_KEY_POLICY		0x100
-
-#define HASH_STREAM_KEY(n)		n->bgp, n->key
+#define HASH_STREAM_KEY(n)		&n->info
 #define HASH_STREAM_NEXT(n)		n->next
-#define HASH_STREAM_EQ(b1,k1,b2,k2)	b1 == b2 && k1 == k2
-#define HASH_STREAM_FN(b,k)		ptr_hash(b) ^ u32_hash(k)
+#define HASH_STREAM_EQ(k1,k2)		((k1)->channel_id == (k2)->channel_id) && ((k1)->afi == (k2)->afi) && ((k1)->mode == (k2)->mode)
+#define HASH_STREAM_FN(k)		u32_hash((k)->channel_id) ^ u32_hash((k)->afi) ^ u32_hash((k)->mode)
 
 #define HASH_TABLE_KEY(n)		n->table
 #define HASH_TABLE_NEXT(n)		n->next
@@ -107,7 +104,7 @@ struct bmp_peer_hdr_info {
   u32 as;
   u32 id;
   bool global;
-  bool policy;
+  enum bmp_stream_policy policy;
   bool no_as4;
   btime timestamp;
 };
@@ -219,8 +216,6 @@ static void bmp_proto_state_changed(void *_p);
 static void
 bmp_send_peer_up_notif_msg(struct bmp_proto *p, ea_list *bgp,
     const adata *tx_data, const adata *rx_data, struct bgp_conn_sk_ad *sk);
-
-static void bmp_route_monitor_end_of_rib(struct bmp_proto *p, struct bmp_stream *bs);
 
 // Stores TX data
 struct bmp_tx_buffer {
@@ -463,7 +458,7 @@ bmp_put_per_peer_hdr(buffer *stream, const struct bmp_peer_hdr_info *peer)
 
   u8 peer_flags =
     (ipa_is_ip6(peer->address) ? BMP_PEER_FLAG_V_IPV6 : 0) |
-    (peer->policy ? BMP_PEER_FLAG_L_POLICY : 0) |
+    ((peer->policy == BMP_STREAM_POST_POLICY) ? BMP_PEER_FLAG_L_POLICY : 0) |
     (peer->no_as4 ? BMP_PEER_FLAG_A_NO_AS4 : 0);
 
   u32 ts_sec = peer->timestamp TO_S;
@@ -601,21 +596,13 @@ bmp_get_table(struct bmp_proto *p, rtable *tab)
  *	BMP streams
  */
 
-static inline u32 bmp_stream_key(u32 afi, bool policy)
-{ return afi ^ (policy ? BMP_STREAM_KEY_POLICY : 0); }
-
-static inline bool bmp_stream_policy(struct bmp_stream *bs)
-{ return !!(bs->key & BMP_STREAM_KEY_POLICY); }
-
 static struct bmp_stream *
-bmp_find_stream(struct bmp_proto *p, const struct bgp_proto *bgp, u32 afi, bool policy)
+bmp_find_stream(struct bmp_proto *p, struct bmp_stream_info *bsi)
 {
-  ea_list *bgp_attr = proto_get_state(bgp->p.id);
-
-  while (1)
+  while (true)
   {
     /* Is there a stream? */
-    struct bmp_stream *s = HASH_FIND(p->stream_map, HASH_STREAM, bgp_attr, bmp_stream_key(afi, policy));
+    struct bmp_stream *s = HASH_FIND(p->stream_map, HASH_STREAM, bsi);
     if (s)
       return s;
 
@@ -632,21 +619,14 @@ bmp_find_stream(struct bmp_proto *p, const struct bgp_proto *bgp, u32 afi, bool 
 }
 
 static struct bmp_stream *
-bmp_add_stream(struct bmp_proto *p, struct bmp_peer *bp, u32 afi, bool policy, rtable *tab, ea_list *sender, int in_pre_policy)
+bmp_add_stream(struct bmp_proto *p, struct bmp_peer *bp, struct bmp_table *bt, const struct bmp_stream_info *bsi)
 {
   struct bmp_stream *bs = mb_allocz(p->p.pool, sizeof(struct bmp_stream));
-  bs->bgp = bp->bgp;
-  bs->key = bmp_stream_key(afi, policy);
+  bs->info = *bsi;
 
+  bmp_table_stream_add_tail(&bt->streams, bs);
   bmp_peer_stream_add_tail(&bp->streams, bs);
   HASH_INSERT(p->stream_map, HASH_STREAM, bs);
-
-  struct bmp_table *bt = bmp_get_table(p, tab);
-  bmp_table_stream_add_tail(&bt->streams, bs);
-
-  bs->sender = sender;
-  bs->sync = false;
-  bs->in_pre_policy = in_pre_policy;
 
   return bs;
 }
@@ -671,58 +651,63 @@ bmp_remove_stream(struct bmp_proto *p, struct bmp_stream *bs)
  */
 
 static struct bmp_peer *
-bmp_find_peer(struct bmp_proto *p, ea_list *bgp_attr)
+bmp_find_peer(struct bmp_proto *p, const struct bmp_peer_info *bpi)
 {
-  return HASH_FIND(p->peer_map, HASH_PEER, bgp_attr);
+  return HASH_FIND(p->peer_map, HASH_PEER, bpi->proto_id);
 }
 
 static struct bmp_peer *
-bmp_add_peer(struct bmp_proto *p, ea_list *bgp_attr)
+bmp_add_peer(struct bmp_proto *p, struct bmp_peer_info *bpi, ea_list **cached_channels)
 {
-  struct bmp_peer *bp;
-  if (DG_IS_LOCKED(p->p.pool->domain))
-    bp = mb_allocz(p->p.pool, sizeof(struct bmp_peer));
-  else
-  {
-    DG_LOCK(p->p.pool->domain);
-    bp = mb_allocz(p->p.pool, sizeof(struct bmp_peer));
-    DG_UNLOCK(p->p.pool->domain);
-  }
-  bp->bgp = bgp_attr;
-
-  bp->streams = (TLIST_LIST(bmp_peer_stream)) {};
-
+  struct bmp_peer *bp = mb_allocz(p->p.pool, sizeof(struct bmp_peer));
+  bp->info = *bpi;
+  ea_ref(bpi->proto_state);
   HASH_INSERT(p->peer_map, HASH_PEER, bp);
 
-  const adata *channels_adata = ea_get_adata(bgp_attr, &ea_proto_channel_list);
-  int id_count = channels_adata->length / sizeof(u32);
-  u32 *chann_ids = (u32 *) channels_adata->data;
+  const adata *channels_adata = ea_get_adata(bpi->proto_state, &ea_proto_channel_list);
 
-  for (int i = 0; i < id_count; i++)
+  if (!cached_channels)
   {
-    ea_list *chan_attr;
-    PST_LOCKED(ts)
-      chan_attr = ts->channel_states[chann_ids[i]];
+    u32 max_channel_id;
+    ASSERT_DIE(int_set_max(channels_adata, &max_channel_id));
+    cached_channels = tmp_alloc((max_channel_id + 1) * sizeof(ea_list *));
 
-    if (chan_attr == NULL)
+    PST_LOCKED(ts)
+      for (u32 pos = 0, val; int_set_walk(channels_adata, &pos, &val); )
+      {
+	ASSERT_DIE(val < ts->channels_len);
+	cached_channels[val] = ts->channel_states[val] ? ea_ref_tmp(ts->channel_states[val]) : NULL;
+      }
+  }
+
+  struct bmp_stream_info bsi;
+  for (u32 pos = 0; int_set_walk(channels_adata, &pos, &bsi.channel_id); )
+  {
+    if (!(bsi.channel_state = cached_channels[bsi.channel_id]))
       continue;
 
-    rtable *ch_table = (rtable *) ea_get_ptr(chan_attr, &ea_rtable, 0);
-    int in_keep = ea_get_int(chan_attr, &ea_in_keep, 0);
+    bsi.afi = ea_get_int(bsi.channel_state, &ea_bgp_afi, 0);
+    bsi.channel_name = ea_get_adata(bsi.channel_state, &ea_name)->data;
 
-    if (p->monitoring_rib.in_pre_policy && ch_table)
+    struct bmp_table *bt = bmp_get_table(p, ea_get_ptr(bsi.channel_state, &ea_rtable, NULL));
+ 
+    if (p->monitoring_rib.in_pre_policy)
     {
-      if (in_keep == RIK_PREFILTER)
-        bmp_add_stream(p, bp, ea_get_int(chan_attr, &ea_bgp_afi, 0), false, ch_table, chan_attr, 1);
+      bsi.mode = BMP_STREAM_PRE_POLICY;
+      if ((ea_get_int(bsi.channel_state, &ea_in_keep, 0) & RIK_PREFILTER) == RIK_PREFILTER)
+        bmp_add_stream(p, bp, bt, &bsi);
       else
         log(L_WARN "%s: Failed to request pre-policy for %s.%s, import table disabled",
 	    p->p.name,
-	    ea_get_adata(bgp_attr, &ea_name)->data,
-	    ea_get_adata(chan_attr, &ea_name)->data);
+	    bpi->proto_name,
+	    bsi.channel_name);
     }
 
-    if (p->monitoring_rib.in_post_policy && ch_table)
-      bmp_add_stream(p, bp, ea_get_int(chan_attr, &ea_bgp_afi, 0), true, ch_table, chan_attr, 0);
+    if (p->monitoring_rib.in_post_policy)
+    {
+      bsi.mode = BMP_STREAM_POST_POLICY;
+      bmp_add_stream(p, bp, bt, &bsi);
+    }
   }
 
   return bp;
@@ -735,57 +720,62 @@ bmp_remove_peer(struct bmp_proto *p, struct bmp_peer *bp)
     bmp_remove_stream(p, bs);
 
   HASH_REMOVE(p->peer_map, HASH_PEER, bp);
+  ea_free_later(bp->info.proto_state);
 
   mb_free(bp);
 }
 
 static struct bmp_peer *
-bmp_peer_up_(struct bmp_proto *p, ea_list *bgp_attr,
+bmp_peer_up_(struct bmp_proto *p, struct bmp_peer_info *bpi, ea_list **cached_channels,
 	     const adata *tx_open_msg, const adata *rx_open_msg,
 	     struct bgp_conn_sk_ad *sk)
 {
   if (!p->started)
     return NULL;
 
-  struct bmp_peer *bp = bmp_find_peer(p, bgp_attr);
+  struct bmp_peer *bp = bmp_find_peer(p, bpi);
   if (bp)
+  {
+    /* Update the locally cached proto_state */
+    ea_free_later(bp->info.proto_state);
+    bp->info.proto_state = ea_ref(bpi->proto_state);
     return bp;
+  }
 
-  const char *name = ea_get_adata(bgp_attr, &ea_name)->data;
-  TRACE(D_STATES, "Peer up for %s", name);
+  TRACE(D_STATES, "Peer up for %s", bpi->proto_name);
 
-  bp = bmp_add_peer(p, bgp_attr);
+  bp = bmp_add_peer(p, bpi, cached_channels);
 
-  bmp_send_peer_up_notif_msg(p, bgp_attr, tx_open_msg, rx_open_msg, sk);
+  bmp_send_peer_up_notif_msg(p, bpi->proto_state, tx_open_msg, rx_open_msg, sk);
   return bp;
 }
 
 static struct bmp_peer *
-bmp_peer_up_inout(struct bmp_proto *p, ea_list *bgp_attr)
+bmp_peer_up_inout(struct bmp_proto *p, struct bmp_peer_info *bpi, ea_list **cached_channels)
 {
-  int in_state = ea_get_int(bgp_attr, &ea_bgp_in_conn_state, 0);
-  int out_state = ea_get_int(bgp_attr, &ea_bgp_out_conn_state, 0);
+  int in_state = ea_get_int(bpi->proto_state, &ea_bgp_in_conn_state, 0);
+  int out_state = ea_get_int(bpi->proto_state, &ea_bgp_out_conn_state, 0);
 
   if (in_state == BS_ESTABLISHED)
   {
     ASSERT_DIE(out_state != BS_ESTABLISHED);
 
-    const adata *loc_open = ea_get_adata(bgp_attr, &ea_bgp_in_conn_local_open_msg);
-    const adata *rem_open = ea_get_adata(bgp_attr, &ea_bgp_in_conn_remote_open_msg);
-    SKIP_BACK_DECLARE(struct bgp_conn_sk_ad, sk, ad, ea_get_adata(bgp_attr, &ea_bgp_in_conn_sk));
+    const adata *loc_open = ea_get_adata(bpi->proto_state, &ea_bgp_in_conn_local_open_msg);
+    const adata *rem_open = ea_get_adata(bpi->proto_state, &ea_bgp_in_conn_remote_open_msg);
+    SKIP_BACK_DECLARE(struct bgp_conn_sk_ad, sk, ad, ea_get_adata(bpi->proto_state, &ea_bgp_in_conn_sk));
 
     ASSERT_DIE(loc_open && rem_open);
-    return bmp_peer_up_(p, bgp_attr, loc_open, rem_open, sk);
+    return bmp_peer_up_(p, bpi, cached_channels, loc_open, rem_open, sk);
   }
 
   if (out_state == BS_ESTABLISHED)
   {
-    const adata *loc_open = ea_get_adata(bgp_attr, &ea_bgp_out_conn_local_open_msg);
-    const adata *rem_open = ea_get_adata(bgp_attr, &ea_bgp_out_conn_remote_open_msg);
-    SKIP_BACK_DECLARE(struct bgp_conn_sk_ad, sk, ad, ea_get_adata(bgp_attr, &ea_bgp_out_conn_sk));
+    const adata *loc_open = ea_get_adata(bpi->proto_state, &ea_bgp_out_conn_local_open_msg);
+    const adata *rem_open = ea_get_adata(bpi->proto_state, &ea_bgp_out_conn_remote_open_msg);
+    SKIP_BACK_DECLARE(struct bgp_conn_sk_ad, sk, ad, ea_get_adata(bpi->proto_state, &ea_bgp_out_conn_sk));
 
     ASSERT_DIE(loc_open && rem_open);
-    return bmp_peer_up_(p, bgp_attr, loc_open, rem_open, sk);
+    return bmp_peer_up_(p, bpi, cached_channels, loc_open, rem_open, sk);
   }
 
   return NULL;
@@ -825,19 +815,14 @@ bmp_send_peer_up_notif_msg(struct bmp_proto *p, ea_list *bgp,
 }
 
 static void
-bmp_route_monitor_notify(struct bmp_proto *p, struct bgp_proto *bgp_p, u32 afi, bool policy, const rte *new, ea_list *old)
+bmp_route_monitor_notify(struct bmp_proto *p, struct bmp_peer *bp, struct bmp_stream *bs, const rte *new, ea_list *old)
 {
   /* Idempotent update */
   if ((old == new->attrs) || old && new->attrs && ea_same(old, new->attrs))
     return;
 
-  /* No stream, probably flushed already */
-  struct bmp_stream *bs = bmp_find_stream(p, bgp_p, afi, policy);
-  if (!bs)
-    return;
-
-  ea_list *bgp = bs->bgp;
-  ea_list *c = bs->sender;
+  ea_list *bgp = bp->info.proto_state;
+  ea_list *c = bs->info.channel_state;
 
   btime delta_t = new ? current_time() - new->lastmod : 0;
 
@@ -846,7 +831,7 @@ bmp_route_monitor_notify(struct bmp_proto *p, struct bgp_proto *bgp_p, u32 afi, 
     .as = ea_get_int(bgp, &ea_bgp_rem_as, 0),
     .id = ea_get_int(bgp, &ea_bgp_rem_id, 0),
     .global = bmp_is_peer_global_instance(bgp),
-    .policy = bmp_stream_policy(bs),
+    .policy = bs->info.mode,
     .timestamp = current_real_time() - delta_t,
   };
 
@@ -855,7 +840,7 @@ bmp_route_monitor_notify(struct bmp_proto *p, struct bgp_proto *bgp_p, u32 afi, 
   bmp_put_per_peer_hdr(&msg, &peer);
 
   bmp_buffer_need(&msg, BGP_MAX_EXT_MSG_LENGTH);
-  byte *pos = bgp_bmp_encode_rte(c, bgp_p, msg.pos + BGP_HEADER_LENGTH, msg.end, new);
+  byte *pos = bgp_bmp_encode_rte(c, msg.pos + BGP_HEADER_LENGTH, msg.end, new);
   if (!pos)
   {
     log(L_WARN "%s: Cannot encode update for %N", p->p.name, new->net);
@@ -869,17 +854,17 @@ bmp_route_monitor_notify(struct bmp_proto *p, struct bgp_proto *bgp_p, u32 afi, 
 }
 
 static void
-bmp_route_monitor_end_of_rib(struct bmp_proto *p, struct bmp_stream *bs)
+bmp_route_monitor_end_of_rib(struct bmp_proto *p, struct bmp_peer *bp, struct bmp_stream *bs)
 {
-  ea_list *bgp = bs->bgp;
-  ea_list *c = bs->sender;
+  ea_list *bgp = bp->info.proto_state;
+  ea_list *c = bs->info.channel_state;
 
   struct bmp_peer_hdr_info peer = {
     .address = ea_get_ip(bgp, &ea_bgp_rem_ip, IPA_NONE),
     .as = ea_get_int(bgp, &ea_bgp_rem_as, 0),
     .id = ea_get_int(bgp, &ea_bgp_rem_id, 0),
     .global = bmp_is_peer_global_instance(bgp),
-    .policy = bmp_stream_policy(bs),
+    .policy = bs->info.mode,
     .timestamp = current_real_time(),
   };
 
@@ -920,7 +905,7 @@ bmp_send_peer_down_notif_msg(struct bmp_proto *p, ea_list *bgp,
     .as = ea_get_int(bgp, &ea_bgp_rem_as, 0),
     .id = ea_get_int(bgp, &ea_bgp_rem_id, 0),
     .global = bmp_is_peer_global_instance(bgp),
-    .policy = false,		// Hardcoded pre-policy Adj-RIB-In
+    .policy = BMP_STREAM_PRE_POLICY,		// Hardcoded pre-policy Adj-RIB-In
     .no_as4 = !as4_session,
     .timestamp = 0,		// No timestamp provided
   };
@@ -931,16 +916,16 @@ bmp_send_peer_down_notif_msg(struct bmp_proto *p, ea_list *bgp,
 }
 
 static void
-bmp_peer_down_(struct bmp_proto *p, ea_list *bgp, struct bgp_session_close_ad *bscad)
+bmp_peer_down_(struct bmp_proto *p, struct bmp_peer_info *bpi, struct bgp_session_close_ad *bscad)
 {
   if (!p->started)
     return;
 
-  struct bmp_peer *bp = bmp_find_peer(p, bgp);
+  struct bmp_peer *bp = bmp_find_peer(p, bpi);
   if (!bp)
     return;
 
-  TRACE(D_STATES, "Peer down for %s", ea_find(bgp, &ea_name)->u.ad->data);
+  TRACE(D_STATES, "Peer down for %s", bpi->proto_name);
 
   struct bmp_peer_down_info info = {
     .err_code = bscad->notify_code,
@@ -967,7 +952,7 @@ bmp_peer_down_(struct bmp_proto *p, ea_list *bgp, struct bgp_session_close_ad *b
     break;
   }
 
-  bmp_send_peer_down_notif_msg(p, bgp, &info);
+  bmp_send_peer_down_notif_msg(p, bpi->proto_state, &info);
 
   bmp_remove_peer(p, bp);
 }
@@ -999,26 +984,39 @@ bmp_split_policy(struct bmp_proto *p, const rte *new, const rte *old)
 {
   rte loc = *(new ?: old);
 
-  struct proto *rte_proto = (struct proto*) SKIP_BACK(struct proto, sources, loc.src->owner);
-  struct bgp_proto *bgp = (struct bgp_proto *) rte_proto;
-  struct bgp_channel *src_ch = SKIP_BACK(struct bgp_channel, c.in_req, loc.sender->req);
-
   /* Ignore piped routes */
-  if (src_ch->c.proto != rte_proto)
+  if (loc.generation)
     return;
 
   /* Ignore non-BGP routes */
-  if (rte_proto->proto != &proto_bgp)
+  if (rt_get_source_attr(&loc) != RTS_BGP)
     return;
+
+  /* Get the protocol and channel information. Here we _can_ access
+   * the protocol and channel structures but only to read the ID. */
+  SKIP_BACK_DECLARE(struct channel, c, in_req, loc.sender->req);
+  struct bmp_peer_info bpi = {
+    .proto_id = c->proto->id,
+  };
+  struct bmp_peer *bp = bmp_find_peer(p, &bpi);
+
+  struct bmp_stream_info bsi = {
+    .channel_id = c->id,
+  };
 
   /* Checking the pre policy */
   if (p->monitoring_rib.in_pre_policy)
   {
-    /* Compute the pre policy attributes */
+    /* Compute the pre policy route attributes */
     loc.attrs = new ? ea_strip_to(new->attrs, BIT32_ALL(EALS_PREIMPORT)) : NULL;
     ea_list *old_attrs = old ? ea_strip_to(old->attrs, BIT32_ALL(EALS_PREIMPORT)) : NULL;
 
-    bmp_route_monitor_notify(p, bgp, src_ch->afi, false, &loc, old_attrs);
+    bsi.mode = BMP_STREAM_PRE_POLICY;
+    struct bmp_stream *bs = bmp_find_stream(p, &bsi);
+    if (!bs)
+      return;
+
+    bmp_route_monitor_notify(p, bp, bs, &loc, old_attrs);
   }
 
   /* Checking the post policy */
@@ -1028,7 +1026,12 @@ bmp_split_policy(struct bmp_proto *p, const rte *new, const rte *old)
     loc.attrs = new ? ea_normalize(new->attrs, 0) : NULL;
     ea_list *old_attrs = old ? ea_normalize(old->attrs, 0) : NULL;
 
-    bmp_route_monitor_notify(p, bgp, src_ch->afi, true, &loc, old_attrs);
+    bsi.mode = BMP_STREAM_POST_POLICY;
+    struct bmp_stream *bs = bmp_find_stream(p, &bsi);
+    if (!bs)
+      return;
+
+    bmp_route_monitor_notify(p, bp, bs, &loc, old_attrs);
   }
 }
 
@@ -1075,19 +1078,17 @@ bmp_feed_end(struct rt_export_request *req)
    * Unsynced streams are added in one moment during BMP session establishment,
    * therefore we can assume that all unsynced streams (for given channel)
    * already received full feed now and are synced.
-   *
-   * TODO: Use more efficent way to find bmp_stream from bmp_table
    */
 
-  HASH_WALK(p->stream_map, next, bs)
+  WALK_TLIST(bmp_table_stream, bs, &bt->streams)
   {
-    if ((bmp_table_stream_enlisted(bs) == &bt->streams) && !bs->sync)
+    if (!bs->sync)
     {
-      bmp_route_monitor_end_of_rib(p, bs);
+      SKIP_BACK_DECLARE(struct bmp_peer, bp, streams, bmp_peer_stream_enlisted(bs));
+      bmp_route_monitor_end_of_rib(p, bp, bs);
       bs->sync = true;
     }
   }
-  HASH_WALK_END;
 }
 
 
@@ -1114,11 +1115,6 @@ bmp_startup(struct bmp_proto *p)
   bmp_init_msg_serialize(&payload, p->sys_descr, p->sys_name);
   bmp_schedule_tx_packet(p, &payload);
 
-  /* Send Peer Up messages */
-  u32 length;
-  PST_LOCKED(ts) /* The size of protos field will never decrease, the inconsistency caused by growing is not important */
-    length = ts->proto_len;
-
   /* Subscribe to protocol state changes */
   p->proto_state_reader = (struct lfjour_recipient) {
     .event = &p->proto_state_changed,
@@ -1133,19 +1129,55 @@ bmp_startup(struct bmp_proto *p)
   proto_states_subscribe(&p->proto_state_reader);
 
   /* Load protocol states */
-  for (u32 i = 0; i < length; i++)
+  u32 max_proto_id, max_channel_id;
+  PST_LOCKED(tp)
   {
-    ea_list *proto_attr = proto_get_state(i);
-    if (proto_attr == NULL)
-      continue;
+    max_proto_id = tp->proto_len;
+    max_channel_id = tp->channels_len;
+  }
 
-    struct protocol *proto = (struct protocol *) ea_get_ptr(proto_attr, &ea_protocol_type, 0);
-    const int state = ea_get_int(proto_attr, &ea_state, 0);
+  /* We can unlock here as the states array never shrinks
+   * and growing will be resolved by reading the journal. */
 
-    if (proto != &proto_bgp || state != PS_UP)
-      continue;
+  u32 *protos_picked = tmp_allocz(BIRD_ALIGN(max_proto_id, 32) * sizeof *protos_picked);
 
-    bmp_peer_up_inout(p, proto_attr);
+  /* Copy relevant protocol states */
+  ea_list **pst = tmp_alloc(max_proto_id * sizeof *pst);
+  uint *proto_ids = tmp_alloc(max_proto_id * sizeof *proto_ids);
+  u32 pst_count = 0;
+
+  ea_list **cst = tmp_alloc(max_channel_id * sizeof *cst);
+
+  PST_LOCKED(ts)
+  {
+    for (u32 i = 0; i < max_proto_id; i++)
+      if (ea_get_ptr(ts->proto_states[i], &ea_protocol_type, NULL) == &proto_bgp)
+      {
+	BIT32_SET(protos_picked, i);
+	pst[pst_count] = ea_ref_tmp(ts->proto_states[i]);
+	proto_ids[pst_count] = i;
+	pst_count++;
+      }
+    for (u32 i = 0; i < max_channel_id; i++)
+    {
+      u32 proto_id = ea_get_int(ts->channel_states[i], &ea_proto_id, 0);
+      if (BIT32_TEST(protos_picked, proto_id))
+	cst[i] = ea_ref_tmp(ts->channel_states[i]);
+      else
+	cst[i] = NULL;
+    }
+  }
+
+  /* Send Peer Up messages */
+  for (u32 i = 0; i < pst_count; i++)
+  {
+    struct bmp_peer_info bpi = {
+      .proto_state = pst[i],
+      .proto_id = proto_ids[i],
+      .proto_name = ea_get_adata(pst[i], &ea_name)->data,
+    };
+
+    bmp_peer_up_inout(p, &bpi, cst);
   }
 }
 
@@ -1331,11 +1363,18 @@ bmp_postconfig(struct proto_config *CF)
 static void
 bmp_process_proto_state_change(struct bmp_proto *p, struct lfjour_item *last_up)
 {
-  struct proto_pending_update *ppu = SKIP_BACK(struct proto_pending_update, li, last_up);
-  if (!ppu)
+  if (!last_up)
     return;
 
-  struct bmp_peer *bp = bmp_peer_up_inout(p, ppu->new);
+  SKIP_BACK_DECLARE(struct proto_pending_update, ppu, li, last_up);
+
+  struct bmp_peer_info bpi = {
+    .proto_state = ppu->new,
+    .proto_id = ea_get_int(ppu->new, &ea_proto_id, 0),
+    .proto_name = ea_get_adata(ppu->new, &ea_name)->data,
+  };
+
+  struct bmp_peer *bp = bmp_peer_up_inout(p, &bpi, NULL);
   if (bp)
   {
     /*
@@ -1345,7 +1384,7 @@ bmp_process_proto_state_change(struct bmp_proto *p, struct lfjour_item *last_up)
      */
     WALK_TLIST(bmp_peer_stream, bs, &bp->streams)
     {
-      bmp_route_monitor_end_of_rib(p, bs);
+      bmp_route_monitor_end_of_rib(p, bp, bs);
       bs->sync = true;
     }
 
@@ -1355,7 +1394,7 @@ bmp_process_proto_state_change(struct bmp_proto *p, struct lfjour_item *last_up)
   /* This was not a peer-up notification. It may be peer down tho. */
   const adata *bscad = ea_get_adata(ppu->new, &ea_bgp_close_bmp);
   if (bscad)
-    bmp_peer_down_(p, ppu->new, SKIP_BACK(struct bgp_session_close_ad, ad, bscad));
+    bmp_peer_down_(p, &bpi, SKIP_BACK(struct bgp_session_close_ad, ad, bscad));
 }
 
 static void
