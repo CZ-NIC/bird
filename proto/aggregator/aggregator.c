@@ -118,7 +118,7 @@ create_new_node(linpool *trie_pool)
 }
 
 /*
- * Mark appropriate child of parent node as NULL
+ * Unlink node from the trie by setting appropriate child of parent node to NULL
  */
 static inline void
 remove_node(struct trie_node *node)
@@ -179,6 +179,26 @@ get_new_bucket_id(struct aggregator_proto *p)
   u32 id = hmap_first_zero(&p->bucket_id_map);
   hmap_set(&p->bucket_id_map, id);
   return id;
+}
+
+static inline struct aggregator_bucket *
+choose_lowest_id_bucket(const struct aggregator_proto *p, const struct trie_node *node)
+{
+  assert(p != NULL);
+  assert(node != NULL);
+
+  for (u32 i = 0; i < MAX_POTENTIAL_BUCKETS_COUNT; i++)
+  {
+    if (BIT32R_TEST(node->potential_buckets, i))
+    {
+      struct aggregator_bucket *bucket = get_bucket_ptr(p, i);
+      assert(bucket != NULL);
+      assert(bucket->id == i);
+      return bucket;
+    }
+  }
+
+  bug("No bucket to choose from");
 }
 
 static inline int
@@ -387,26 +407,6 @@ before_check(const struct trie_node *node)
 
   if (node->child[1])
     before_check(node->child[1]);
-}
-
-static struct aggregator_bucket *
-choose_lowest_id_bucket(const struct aggregator_proto *p, const struct trie_node *node)
-{
-  assert(p != NULL);
-  assert(node != NULL);
-
-  for (u32 i = 0; i < MAX_POTENTIAL_BUCKETS_COUNT; i++)
-  {
-    if (BIT32R_TEST(node->potential_buckets, i))
-    {
-      struct aggregator_bucket *bucket = get_bucket_ptr(p, i);
-      assert(bucket != NULL);
-      assert(bucket->id == i);
-      return bucket;
-    }
-  }
-
-  bug("No bucket to choose from");
 }
 
 /*
@@ -750,7 +750,7 @@ deaggregate(struct trie_node *node)
 
 /*
  * Merge sets of potential buckets from @node upwards.
- * Stop when sets do not change and return the last updated node.
+ * Stop when sets don't change and return the last updated node.
  */
 static struct trie_node *
 merge_buckets_above(struct trie_node *node)
