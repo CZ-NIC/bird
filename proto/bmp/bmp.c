@@ -576,6 +576,7 @@ static void
 bmp_remove_table(struct bmp_proto *p, struct bmp_table *bt)
 {
   rt_export_unsubscribe(all, &bt->out_req);
+  ev_postpone(&bt->event);
 
   HASH_REMOVE(p->table_map, HASH_TABLE, bt);
 
@@ -597,7 +598,7 @@ bmp_get_table(struct bmp_proto *p, rtable *tab)
  */
 
 static struct bmp_stream *
-bmp_find_stream(struct bmp_proto *p, struct bmp_stream_info *bsi)
+bmp_get_stream(struct bmp_proto *p, struct bmp_stream_info *bsi)
 {
   while (true)
   {
@@ -639,7 +640,9 @@ bmp_remove_stream(struct bmp_proto *p, struct bmp_stream *bs)
 
   SKIP_BACK_DECLARE(struct bmp_table, bt, streams, bmp_table_stream_enlisted(bs));
   bmp_table_stream_rem_node(&bt->streams, bs);
-  if (EMPTY_TLIST(bmp_table_stream, &bt->streams))
+  if (EMPTY_TLIST(bmp_table_stream, &bt->streams) && !bt->out_req.cur)
+    /* If out_req.cur, then we are called from bmp_check_routes()
+     * and therefore the table will be removed in the tail position there. */
     bmp_remove_table(p, bt);
 
   mb_free(bs);
@@ -654,6 +657,28 @@ static struct bmp_peer *
 bmp_find_peer(struct bmp_proto *p, const struct bmp_peer_info *bpi)
 {
   return HASH_FIND(p->peer_map, HASH_PEER, bpi->proto_id);
+}
+
+static struct bmp_peer *
+bmp_get_peer(struct bmp_proto *p, const struct bmp_peer_info *bpi)
+{
+  while (true)
+  {
+    /* Is there a peer? */
+    struct bmp_peer *bp = bmp_find_peer(p, bpi);
+    if (bp)
+      return bp;
+
+    /* Maybe it emerged recently? */
+    struct lfjour_item *li = lfjour_get(&p->proto_state_reader);
+    if (!li)
+      return NULL;
+
+    bmp_process_proto_state_change(p, li);
+    lfjour_release(&p->proto_state_reader, li);
+
+    /* Try again. */
+  }
 }
 
 static struct bmp_peer *
@@ -998,7 +1023,7 @@ bmp_split_policy(struct bmp_proto *p, const rte *new, const rte *old)
   struct bmp_peer_info bpi = {
     .proto_id = c->proto->id,
   };
-  struct bmp_peer *bp = bmp_find_peer(p, &bpi);
+  struct bmp_peer *bp = bmp_get_peer(p, &bpi);
 
   struct bmp_stream_info bsi = {
     .channel_id = c->id,
@@ -1012,7 +1037,7 @@ bmp_split_policy(struct bmp_proto *p, const rte *new, const rte *old)
     ea_list *old_attrs = old ? ea_strip_to(old->attrs, BIT32_ALL(EALS_PREIMPORT)) : NULL;
 
     bsi.mode = BMP_STREAM_PRE_POLICY;
-    struct bmp_stream *bs = bmp_find_stream(p, &bsi);
+    struct bmp_stream *bs = bmp_get_stream(p, &bsi);
     if (!bs)
       return;
 
@@ -1027,7 +1052,7 @@ bmp_split_policy(struct bmp_proto *p, const rte *new, const rte *old)
     ea_list *old_attrs = old ? ea_normalize(old->attrs, 0) : NULL;
 
     bsi.mode = BMP_STREAM_POST_POLICY;
-    struct bmp_stream *bs = bmp_find_stream(p, &bsi);
+    struct bmp_stream *bs = bmp_get_stream(p, &bsi);
     if (!bs)
       return;
 
@@ -1065,6 +1090,10 @@ bmp_check_routes(void *bt_)
 	break;
     }
   }
+
+  /* Remove if deleted */
+  if (EMPTY_TLIST(bmp_table_stream, &bt->streams))
+    bmp_remove_table(p, bt);
 }
 
 static void
@@ -1363,9 +1392,6 @@ bmp_postconfig(struct proto_config *CF)
 static void
 bmp_process_proto_state_change(struct bmp_proto *p, struct lfjour_item *last_up)
 {
-  if (!last_up)
-    return;
-
   SKIP_BACK_DECLARE(struct proto_pending_update, ppu, li, last_up);
 
   struct bmp_peer_info bpi = {
@@ -1477,9 +1503,9 @@ bmp_shutdown(struct proto *P)
   {
     bmp_send_termination_msg(p, BMP_TERM_REASON_ADM);
     bmp_down(p);
-    bmp_close_socket(p);
   }
 
+  bmp_close_socket(p);
   p->sock_err = 0;
 
   return PS_FLUSH;

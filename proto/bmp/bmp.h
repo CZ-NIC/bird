@@ -129,11 +129,10 @@ struct bmp_peer {
 };
 
 struct bmp_table {
-  rtable *table;
   struct bmp_table *next;
-  struct rt_export_request out_req;
   struct bmp_proto *p;
-  struct rt_export_feeder in_req;
+  rtable *table;
+  struct rt_export_request out_req;
   event event;
   TLIST_LIST(bmp_table_stream) streams;
 };
