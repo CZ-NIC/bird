@@ -169,9 +169,9 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 	int qualifier;		/* 'h' or 'l' for integer fields */
 
 	for (start=str=buf ; *fmt ; ++fmt, size-=(str-start), start=str) {
+		if (!size)
+			return -1;
 		if (*fmt != '%') {
-			if (!size)
-				return -1;
 			*str++ = *fmt;
 			continue;
 		}
@@ -272,7 +272,7 @@ int bvsnprintf(char *buf, int size, const char *fmt, va_list args)
 			len = strlen(s);
 			if (precision >= 0 && len > precision)
 				len = precision;
-			if (len > size)
+			if ((len > size) || (field_width > size))
 				return -1;
 
 			if (!(flags & LEFT))
