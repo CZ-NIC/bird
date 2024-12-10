@@ -16,6 +16,8 @@
 #include "lib/alloca.h"
 #include "lib/macro.h"
 
+#include <stdarg.h>
+
 /* Ugly structure offset handling macros */
 
 #define SAME_TYPE(a, b)	({ int _ = ((a) != (b)); !_; })
@@ -211,6 +213,7 @@ void log_msg(const char *msg, ...);
 void log_rl(struct tbf *rl, const char *msg, ...);
 void die(const char *msg, ...) NORET;
 void bug(const char *msg, ...) NORET;
+void vlog(int class, const char *msg, va_list args);
 
 #define L_DEBUG "\001"			/* Debugging messages */
 #define L_TRACE "\002"			/* Protocol tracing */

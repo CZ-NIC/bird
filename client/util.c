@@ -17,7 +17,7 @@
 /* Client versions of logging functions */
 
 static void
-vlog(const char *msg, va_list args)
+vlog_cli(const char *msg, va_list args)
 {
   char buf[1024];
 
@@ -38,7 +38,7 @@ bug(const char *msg, ...)
   va_start(args, msg);
   cleanup();
   fputs("Internal error: ", stderr);
-  vlog(msg, args);
+  vlog_cli(msg, args);
   vfprintf(stderr, msg, args);
   va_end(args);
   exit(1);
@@ -51,7 +51,7 @@ die(const char *msg, ...)
 
   va_start(args, msg);
   cleanup();
-  vlog(msg, args);
+  vlog_cli(msg, args);
   va_end(args);
   exit(1);
 }

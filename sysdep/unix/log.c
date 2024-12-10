@@ -337,7 +337,7 @@ log_prepare(log_buffer *buf, int class)
   buf->pos[LBP_MSG] = buf->buf.pos;
 }
 
-static void
+void
 vlog(int class, const char *msg, va_list args)
 {
   static _Thread_local log_buffer buf;
