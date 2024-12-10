@@ -1964,10 +1964,8 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
     }
 
   /* We need to add a spinlock sentinel to the beginning */
-  struct rte_storage local_sentinel = {
-    .flags = REF_OBSOLETE,
-    .next = old_best_stored,
-  };
+  _Thread_local static struct rte_storage local_sentinel = { .flags = REF_OBSOLETE, };
+  atomic_store_explicit(&local_sentinel.next, old_best_stored, memory_order_release);
   atomic_store_explicit(&net->routes, &local_sentinel, memory_order_release);
 
   /* Mark also the old route as obsolete. */
