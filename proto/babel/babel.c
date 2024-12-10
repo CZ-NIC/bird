@@ -1015,7 +1015,7 @@ babel_send_update_(struct babel_iface *ifa, btime changed, struct fib *rtable)
 
     /* Our own seqno might have changed, in which case we update the routes we
        originate. */
-    if ((e->router_id == p->router_id) && (e->seqno < p->update_seqno))
+    if ((e->router_id == p->router_id) && gt_mod64k(p->update_seqno, e->seqno))
     {
       e->seqno = p->update_seqno;
       e->updated = current_time();
