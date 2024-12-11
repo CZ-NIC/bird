@@ -682,13 +682,6 @@ check_ancestors_after_aggregation(const struct trie_node *node)
   assert(node != NULL);
   assert(node->ancestor != NULL);
 
-  if (is_leaf(node))
-  {
-    assert(node->selected_bucket != NULL && node->status == IN_FIB);
-    assert(node->ancestor == node);
-    return;
-  }
-
   if (IN_FIB == node->status)
   {
     assert(node->selected_bucket != NULL);
@@ -1125,13 +1118,9 @@ collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *add
 
   if (is_leaf(node))
   {
-    assert(node->original_bucket != NULL);
-    assert(node->selected_bucket != NULL);
-    assert(IN_FIB == node->status);
+    if (IN_FIB == node->status)
+      p->leaves++;
 
-    create_route_ip4(p, node->selected_bucket, addr);
-    *count += 1;
-    p->leaves++;
     return;
   }
 
@@ -1170,13 +1159,9 @@ collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *add
 
   if (is_leaf(node))
   {
-    assert(node->original_bucket != NULL);
-    assert(node->selected_bucket != NULL);
-    assert(IN_FIB == node->status);
+    if (IN_FIB == node->status)
+      p->leaves++;
 
-    create_route_ip6(p, node->original_bucket, addr);
-    *count += 1;
-    p->leaves++;
     return;
   }
 
