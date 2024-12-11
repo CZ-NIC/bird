@@ -136,6 +136,7 @@ cmd_show_memory(void)
   struct size_args cold = get_size_args(atomic_load_explicit(&pages_kept_cold, memory_order_relaxed) * page_size);
   cli_msg(-1018, "%-23s " SIZE_FORMAT, "Cold memory:", SIZE_ARGS(cold));
 #endif
+  cli_msg(-1028, "Failed to use cold memory: %i times", atomic_load_explicit(&cold_memory_failed_to_use, memory_order_relaxed));
   cli_msg(0, "");
 }
 

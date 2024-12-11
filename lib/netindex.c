@@ -302,6 +302,8 @@ void net_unlock_index(netindex_hash *h, struct netindex *i)
 struct netindex *
 net_find_index(netindex_hash *h, const net_addr *n)
 {
+  lfuc_unlock_expected(1);
+
   RCU_ANCHOR(u);
   struct netindex *ni = net_find_index_fragile(h, n);
   return (ni && net_validate_index(h, ni)) ? net_lock_revive_unlock(h, ni) : NULL;

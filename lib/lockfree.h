@@ -130,6 +130,11 @@ static inline void lfuc_unlock(struct lfuc *c, event_list *el, event *ev)
   defer_call(&luqi.dc, sizeof luqi);
 }
 
+static inline void lfuc_unlock_expected(uint count)
+{
+  defer_expect(count * sizeof (struct lfuc_unlock_queue_item));
+}
+
 /**
  * lfuc_finished - auxiliary routine for prune event
  * @c: usecount structure

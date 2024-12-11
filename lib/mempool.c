@@ -141,6 +141,23 @@ lp_alloc_slow(linpool *m, uint size)
       return c->data;
     }
 
+void
+lp_prealloc(linpool *m, uint size)
+{
+  ASSERT_DIE(DG_IS_LOCKED(resource_parent(&m->r)->domain));
+
+  if (size > LP_DATA_SIZE)
+    bug("Requested block size is too big to prealloc");
+
+  byte *a = (byte *) BIRD_ALIGN((unsigned long) m->ptr, CPU_STRUCT_ALIGN);
+  byte *e = a + size;
+
+  if (e <= m->end)
+    return;
+
+  lp_alloc_slow(m, size);
+}
+
 /**
  * lp_allocu - allocate unaligned memory from a &linpool
  * @m: linear memory pool

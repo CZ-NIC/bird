@@ -103,6 +103,7 @@ void *lp_allocz(linpool *, unsigned size) ALLOC_SIZE(2);	/* With clear */
 void lp_flush(linpool *);			/* Free everything, but leave linpool */
 lp_state *lp_save(linpool *m);			/* Save state */
 void lp_restore(linpool *m, lp_state *p);	/* Restore state */
+void lp_prealloc(linpool *m, uint size);        /* Make sure we will be able to allocate the memory without requesting new blocks */
 
 static inline void lp_saved_cleanup(struct lp_state **lps)
 {
@@ -150,6 +151,7 @@ extern _Atomic int pages_kept;
 extern _Atomic int pages_kept_locally;
 extern _Atomic int pages_kept_cold;
 extern _Atomic int pages_kept_cold_index;
+extern _Atomic int cold_memory_failed_to_use;
 void *alloc_page(void);
 void free_page(void *);
 void flush_local_pages(void);

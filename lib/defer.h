@@ -54,4 +54,10 @@ defer_call(struct deferred_call *call, size_t actual_size)
   return a;
 }
 
+static inline void
+defer_expect(size_t size)
+{
+  lp_prealloc(local_deferred.lp, size);
+}
+
 #endif

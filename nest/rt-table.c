@@ -750,6 +750,8 @@ enum aspa_result aspa_check(rtable *tab, const adata *path, bool force_upstream)
    * and check allowed directions */
   uint max_up = 0, min_up = 0, max_down = 0, min_down = 0;
 
+  lfuc_unlock_expected(5); /* Deferring linpool memory reservation to avoid skipping cold memory */
+
   RT_READ(tab, tr);
 
   for (uint ap=0; ap<nsz; ap++)
@@ -2269,6 +2271,8 @@ rte_import(struct rt_import_request *req, const net_addr *n, rte *new, struct rt
     return;
   }
 
+  lfuc_unlock_expected(5); /* Deferring linpool memory reservation to avoid skipping cold memory */
+
   RT_LOCKED(hook->table, tab)
   {
     u32 bs = atomic_load_explicit(&tab->routes_block_size, memory_order_acquire);
@@ -2481,6 +2485,8 @@ rt_net_feed_internal(struct rtable_reading *tr, u32 index, bool (*prefilter)(str
 struct rt_export_feed *
 rt_net_feed(rtable *t, const net_addr *a, const struct rt_pending_export *first)
 {
+  lfuc_unlock_expected(5); /* Deferring linpool memory reservation to avoid skipping cold memory */
+
   RT_READ(t, tr);
   const struct netindex *ni = net_find_index(tr->t->netindex, a);
   return ni ? rt_net_feed_internal(tr, ni->index, NULL, NULL, first) : NULL;
@@ -2497,6 +2503,8 @@ rte
 rt_net_best(rtable *t, const net_addr *a)
 {
   rte rt = {};
+
+  lfuc_unlock_expected(5); /* Deferring linpool memory reservation to avoid skipping cold memory */
 
   RT_READ(t, tr);
 
