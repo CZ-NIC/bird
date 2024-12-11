@@ -118,7 +118,7 @@ enum fib_status {
 };
 
 enum prefix_origin {
-  SOURCELESS = 0,
+  FILLER = 0,
   ORIGINAL = 1,
   AGGREGATED = 2,
 };
