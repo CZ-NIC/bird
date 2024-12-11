@@ -336,6 +336,7 @@ trie_insert_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 
       *new = (struct trie_node) {
         .parent = node,
         .status = NON_FIB,
+        .px_origin = FILLER,
         .depth = node->depth + 1,
       };
 
@@ -375,6 +376,7 @@ trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
       *new = (struct trie_node) {
         .parent = node,
         .status = NON_FIB,
+        .px_origin = FILLER,
         .depth = node->depth + 1,
       };
 
@@ -600,6 +602,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
     struct trie_node imaginary_node = {
       .parent = node,
       .original_bucket = node->original_bucket,
+      .px_origin = AGGREGATED,
       .depth = node->depth + 1,
     };
 
