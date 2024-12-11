@@ -171,6 +171,8 @@ struct sl_head {
 struct sl_alignment {			/* Magic structure for testing of alignment */
   byte data;
   int x[0];
+  _Atomic u64 y[0];
+  void *z[0];
 };
 
 #define TLIST_PREFIX sl_head
