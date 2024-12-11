@@ -138,6 +138,7 @@ remove_node(struct trie_node *node)
       bug("Invalid child pointer");
   }
 
+  node->parent = NULL;
   removed_nodes++;
 }
 
