@@ -412,10 +412,10 @@ struct proto_state_table_private {
     PROTO_STATE_TABLE_PUBLIC;
   };
   struct proto_state_table_private **locked_at;
-  ea_list ** states;
-  ea_list ** channels;
-  u32 length_states;
-  u32 length_channels;
+  ea_list ** proto_states;
+  ea_list ** channel_states;
+  u32 proto_len;
+  u32 channels_len;
   struct hmap proto_id_map;
   struct hmap channel_id_map;
   pool *pool;
@@ -442,9 +442,7 @@ struct proto_pending_update {
   ea_list *new, *old;
 };
 
-void proto_announce_state_locked(struct proto_state_table_private *ts, struct proto *p, ea_list *attr);
 void proto_announce_state(struct proto *p, ea_list *attr);
-
 void proto_announce_state_later_internal(struct proto *p, ea_list *attr);
 #if 0
 #define proto_announce_state_later(p, a) ( log(L_INFO "proto_announce_state_later(%s (%p), %p) at %s:%d", (p)->name, (p), (a), __FILE__, __LINE__), proto_announce_state_later_internal((p), (a)) )

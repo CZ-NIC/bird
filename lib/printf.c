@@ -8,7 +8,8 @@
  */
 
 #include "nest/bird.h"
-#include "string.h"
+#include "lib/macro.h"
+#include "lib/string.h"
 
 #include <errno.h>
 
@@ -630,4 +631,122 @@ char *lp_sprintf(linpool *p, const char *fmt, ...)
   out = lp_vsprintf(p, fmt, args);
   va_end(args);
   return out;
+}
+
+static const u64 decadic_multiplier[] = {
+		  1,		     10,		 100,		      1000,
+	      10000,		 100000,	     1000000,		  10000000,
+#if 0
+	  100000000,	     1000000000,	 10000000000,	      100000000000,
+      1000000000000,	 10000000000000,     100000000000000,	  1000000000000000,
+  10000000000000000, 100000000000000000, 1000000000000000000,
+#endif
+};
+
+static const u64 decmul_limit[] = {
+  ~0ULL /		    1, ~0ULL /		       10,
+  ~0ULL /		  100, ~0ULL /		     1000,
+  ~0ULL /		10000, ~0ULL /		   100000,
+  ~0ULL /	      1000000, ~0ULL /		 10000000,
+#if 0
+  ~0ULL /	    100000000, ~0ULL /         1000000000,
+  ~0ULL /	  10000000000, ~0ULL /	     100000000000,
+  ~0ULL /	1000000000000, ~0ULL /     10000000000000,
+  ~0ULL /     100000000000000, ~0ULL /   1000000000000000,
+  ~0ULL /   10000000000000000, ~0ULL / 100000000000000000,
+  ~0ULL / 1000000000000000000,
+#endif
+};
+
+STATIC_ASSERT(sizeof decadic_multiplier == sizeof decmul_limit);
+
+char *fmt_order(u64 value, uint decimals, u64 kb_threshold)
+{
+  bool too_big = (value + 512 < 512ULL);
+
+  u64 mv = value;
+  uint magnitude = 0;
+  while (mv > kb_threshold)
+  {
+    magnitude++;
+    mv = (mv + (too_big ? 0 : 512)) / 1024;
+  }
+
+  uint shift = magnitude * 10;
+
+  /* The trivial case */
+  if (magnitude == 0)
+    return tmp_sprintf("%lu  ", value);
+
+  /* Now we can find the suffix and the main divisor */
+  ASSERT_DIE(magnitude < 7);
+  char suffix = " kMGTPE"[magnitude];
+
+  /* The value before the dot is available just by dividing */
+  u64 before_dot = value >> shift;
+
+  /* Remainder is more tricky. First we need to know it. */
+  u64 remainder = value - (before_dot << shift);
+
+  /* We would like to compute (remainder * decmul) / divisor
+   * in integers but it's tricky because of u64 limits. */
+  ASSERT_DIE(decimals < ARRAY_SIZE(decadic_multiplier));
+  u64 decmul = decadic_multiplier[decimals];
+  u64 product;
+
+  if (remainder < decmul_limit[decimals])
+  {
+    /* The easier version: Everything fits into u64 */
+    product = remainder * decmul;
+    product >>= shift - 1;
+    product++;
+    product >>= 1;
+  }
+  else
+  {
+    /* Harder version: We have to multiply by parts.
+     * Fortunately, decmul always fits into 32 bits. */
+    /* After this, product = lower + (upper << 32). */
+    u64 lower = (remainder & ((1ULL << 32) - 1)) * decmul;
+    u64 upper = (remainder >> 32) * decmul;
+
+    if (shift < 33)
+    {
+      /* Divide lower */
+      lower >>= shift - 1;
+
+      /* Add the full upper part, not shifted enough to lose any bits */
+      lower += upper << (33 - shift);
+    }
+    else
+    {
+      /* First move the shifted-out bits from upper to lower */
+      lower += (upper & ((1ULL << (shift - 32)) - 1)) << 32;
+
+      /* Then we can divide */
+      lower >>= shift - 1;
+
+      /* And add the shifted upper part */
+      lower += upper >> (shift - 33);
+    }
+
+    /* Now we finish the division by rounding */
+    product = (lower + 1) >> 1;
+  }
+
+  if (product == decmul)
+  {
+    product = 0;
+    before_dot++;
+  }
+
+  ASSERT_DIE(product < decmul);
+
+  /* And now we finally have all the numbers to print! */
+  if (decimals)
+    return tmp_sprintf("%lu.%0*lu %c",
+	before_dot, decimals, product, suffix
+	);
+  else
+    return tmp_sprintf("%lu %c", before_dot, suffix);
 }

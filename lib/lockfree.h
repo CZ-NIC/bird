@@ -219,6 +219,7 @@ struct lfjour_recipient {
 
 enum lfjour_recipient_flags {
   LFJOUR_R_SEQ_RESET = 1,			/* Signalling of sequence number reset */
+  LFJOUR_R_LAST_RUNNER = 2,                     /* Set if this recipient is supposed to ping cleanup hook */
 };
 
 /* Defines lfjour_recipient_list */
@@ -237,6 +238,8 @@ struct lfjour {
   event announce_kick_event;			/* Kicks announce_timer */
   struct settle announce_timer;			/* Announces changes to recipients */
   event cleanup_event;				/* Runs the journal cleanup routine */
+  u64 max_tokens;				/* Maximum number of cleanup tokens to issue */
+  _Atomic u64 issued_tokens;			/* Current count of issued tokens */
 
   /* Callback on item removal from journal */
   void (*item_done)(struct lfjour *, struct lfjour_item *);

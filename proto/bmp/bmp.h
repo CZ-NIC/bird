@@ -12,14 +12,25 @@
 #include "nest/bird.h"
 #include "nest/protocol.h"
 #include "lib/lists.h"
+#include "lib/tlists.h"
 #include "nest/route.h"
 #include "lib/event.h"
 #include "lib/hash.h"
 #include "lib/socket.h"
-#include "proto/bmp/map.h"
+#include "proto/bgp/bgp.h"
 
 // Max length of MIB-II description object
 #define MIB_II_STR_LEN 255
+
+// Total size of Common Header
+#define BMP_COMMON_HDR_SIZE 6
+
+/* BMP Per-Peer Header [RFC 7854 - Section 4.2] */
+// Total size of Per-Peer Header
+#define BMP_PER_PEER_HDR_SIZE 42
+
+// Maximum length of BMP message altogether
+#define BMP_MSGBUF_LEN (BGP_MAX_EXT_MSG_LENGTH + BMP_PER_PEER_HDR_SIZE + BMP_COMMON_HDR_SIZE + 1)
 
 // The following fields of this structure controls whether there will be put
 // specific routes into Route Monitoring message and send to BMP collector
@@ -38,11 +49,8 @@ struct bmp_config {
   u16 station_port;                   // Monitoring station TCP port
   bool monitoring_rib_in_pre_policy;  // Route monitoring pre-policy Adj-Rib-In
   bool monitoring_rib_in_post_policy;  // Route monitoring post-policy Adj-Rib-In
+  uint tx_pending_limit;	      // Maximum on pending TX buffer count
 };
-
-/* Forward declarations */
-struct bgp_proto;
-struct bmp_proto;
 
 struct bmp_proto {
   struct proto p;                  // Parent proto
@@ -62,74 +70,71 @@ struct bmp_proto {
   u16 station_port;                // Monitoring station TCP port
   struct monitoring_rib monitoring_rib;
   // Below fields are for internal use
-  // struct bmp_peer_map bgp_peers;   // Stores 'bgp_proto' structure per BGP peer
-  pool *buffer_mpool;              // Memory pool used for BMP buffer allocations
-  pool *map_mem_pool;              // Memory pool used for BMP map allocations
-  pool *tx_mem_pool;               // Memory pool used for packet allocations designated to BMP collector
-  pool *update_msg_mem_pool;       // Memory pool used for BPG UPDATE MSG allocations
-  list tx_queue;                   // Stores queued packets going to be sent
+  struct bmp_tx_buffer *tx_pending;// This buffer waits for socket to flush
+  struct bmp_tx_buffer *tx_last;   // This buffer is the last to flush 
+  uint tx_pending_count;	   // How many buffers waiting for flush
+  uint tx_pending_limit;	   // Maximum on buffer count
+  u64 tx_sent;			   // Amount of data sent
+  u64 tx_sent_total;		   // Amount of data sent accumulated over reconnections
+  event *tx_overflow_event;	   // Too many buffers waiting for flush
   timer *connect_retry_timer;      // Timer for retrying connection to the BMP collector
-  list update_msg_queue;           // Stores all composed BGP UPDATE MSGs
   bool started;                    // Flag that stores running status of BMP instance
   int sock_err;                    // Last socket error code
 
   struct lfjour_recipient proto_state_reader; // Reader of protocol states
   event proto_state_changed;
-};
-
-struct bmp_peer {
-  ea_list *bgp;
-  struct bmp_peer *next;
-  list streams;
+  byte msgbuf[BMP_MSGBUF_LEN];     // Buffer for preparing the messages before sending them out
 };
 
 struct bmp_stream {
-  node n;
-  ea_list *bgp;
-  u32 key;
+  TLIST_NODE(bmp_peer_stream, struct bmp_stream) peer_node;
+  TLIST_NODE(bmp_table_stream, struct bmp_stream) table_node;
   bool sync;
   bool shutting_down;
   struct bmp_stream *next;
-  struct bmp_table *table;
-  ea_list *sender;
-  int in_pre_policy;
+  struct bmp_stream_info {
+    u32 channel_id;
+    ea_list *channel_state;
+    const char *channel_name;
+    u32 afi;
+    enum bmp_stream_policy {
+      BMP_STREAM_PRE_POLICY = 1,
+      BMP_STREAM_POST_POLICY,
+    } mode;
+  } info;
+};
+
+#define TLIST_PREFIX bmp_peer_stream
+#define TLIST_TYPE struct bmp_stream
+#define TLIST_ITEM peer_node
+#define TLIST_WANT_ADD_TAIL
+
+#include "lib/tlists.h"
+
+#define TLIST_PREFIX bmp_table_stream
+#define TLIST_TYPE struct bmp_stream
+#define TLIST_ITEM table_node
+#define TLIST_WANT_ADD_TAIL
+
+#include "lib/tlists.h"
+
+struct bmp_peer {
+  struct bmp_peer *next;
+  struct bmp_peer_info {
+    u32 proto_id;
+    ea_list *proto_state;
+    const char *proto_name;
+  } info;
+  TLIST_LIST(bmp_peer_stream) streams;
 };
 
 struct bmp_table {
-  rtable *table;
   struct bmp_table *next;
-  struct channel *channel;
-  struct rt_export_request out_req;
   struct bmp_proto *p;
-  struct rt_export_feeder in_req;
+  rtable *table;
+  struct rt_export_request out_req;
   event event;
-  atomic_int uc;
+  TLIST_LIST(bmp_table_stream) streams;
 };
-
-
-#ifdef CONFIG_BMP
-
-/**
- * bmp_peer_up - send notification that BGP peer connection is established
- */
-void
-bmp_peer_up(struct ea_list *bgp,
-	    const byte *tx_open_msg, uint tx_open_length,
-	    const byte *rx_open_msg, uint rx_open_length);
-
-/**
- * bmp_peer_down - send notification that BGP peer connection is not in
- * established state
- */
-void
-bmp_peer_down(const struct bgp_proto *bgp, int err_class, int code, int subcode, const byte *data, int length);
-
-
-#else /* BMP build disabled */
-
-static inline void bmp_peer_up(struct bgp_proto *bgp UNUSED, const byte *tx_open_msg UNUSED, uint tx_open_length UNUSED, const byte *rx_open_msg UNUSED, uint rx_open_length UNUSED) { }
-static inline void bmp_peer_down(const struct bgp_proto *bgp UNUSED, const int err_class UNUSED, int code UNUSED, int subcode UNUSED, const byte *data UNUSED, int length UNUSED) { }
-
-#endif /* CONFIG_BMP */
 
 #endif /* _BIRD_BMP_H_ */

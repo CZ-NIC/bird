@@ -335,9 +335,9 @@ mrt_peer_table_dump(struct mrt_table_dump_state *s)
 #ifdef CONFIG_BGP
   PST_LOCKED(ts)
   {
-    for(u32 i = 0; i < ts->length_states; i++)
+    for(u32 i = 0; i < ts->proto_len; i++)
     {
-      ea_list *eal = ts->states[i];
+      ea_list *eal = ts->proto_states[i];
       if (eal)
         ea_free_later(ea_ref(eal));
       else

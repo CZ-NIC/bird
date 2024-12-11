@@ -2480,34 +2480,27 @@ bgp_create_mp_unreach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
 #ifdef CONFIG_BMP
 
 static byte *
-bgp_create_update_bmp(ea_list *channel_ea, struct bgp_proto *bgp_p, byte *buf, struct bgp_bucket *buck, bool update)
+bgp_create_update_bmp(ea_list *channel_ea, byte *buf, byte *end, struct bgp_bucket *buck, bool update)
 {
-  struct bgp_channel *c;
-  u32 c_id = ea_get_int(channel_ea, &ea_channel_id, 0);
-  BGP_WALK_CHANNELS(bgp_p, c)
-    if (c->c.id == c_id)
-      break;
-
-  byte *end = buf + (BGP_MAX_EXT_MSG_LENGTH - BGP_HEADER_LENGTH);
   byte *res = NULL;
-  /* FIXME: must be a bit shorter */
-
-  struct bgp_caps *peer = bgp_p->conn->remote_caps;
-  const struct bgp_af_caps *rem = bgp_find_af_caps(peer, c->afi);
 
   struct bgp_ptx_private ptx = {
     .bmp = 1,
-    .c = c,
   };
 
+  u32 afi = ea_get_int(channel_ea, &ea_bgp_afi, 0);
+  ASSERT_DIE(afi);
+
+  const struct bgp_af_desc *desc = bgp_get_af_desc(afi);
+  ASSERT_DIE(desc);
+
   struct bgp_write_state s = {
-    .proto = bgp_p,
     .ptx = &ptx,
     .pool = tmp_linpool,
-    .mp_reach = (c->afi != BGP_AF_IPV4) || rem->ext_next_hop,
+    .mp_reach = (afi != BGP_AF_IPV4) || ea_get_int(channel_ea, &ea_bgp_extended_next_hop, 0),
     .as4_session = 1,
-    .add_path = c->add_path_rx,
-    .mpls = c->desc->mpls,
+    .add_path = ea_get_int(channel_ea, &ea_bgp_add_path_rx, 0),
+    .mpls = desc->mpls,
     .ignore_non_bgp_attrs = 1,
   };
 
@@ -2527,21 +2520,9 @@ bgp_create_update_bmp(ea_list *channel_ea, struct bgp_proto *bgp_p, byte *buf, s
   return res;
 }
 
-static byte *
-bgp_bmp_prepare_bgp_hdr(byte *buf, const u16 msg_size, const u8 msg_type)
-{
-  memset(buf + BGP_MSG_HDR_MARKER_POS, 0xff, BGP_MSG_HDR_MARKER_SIZE);
-  put_u16(buf + BGP_MSG_HDR_LENGTH_POS, msg_size);
-  put_u8(buf + BGP_MSG_HDR_TYPE_POS, msg_type);
-
-  return buf + BGP_MSG_HDR_TYPE_POS + BGP_MSG_HDR_TYPE_SIZE;
-}
-
 byte *
-bgp_bmp_encode_rte(ea_list *c, struct bgp_proto *bgp_p, byte *buf, const struct rte *new)
+bgp_bmp_encode_rte(ea_list *c, byte *buf, byte *end, const struct rte *new)
 {
-  byte *pkt = buf + BGP_HEADER_LENGTH;
-
   uint ea_size = new->attrs ? (sizeof(ea_list) + new->attrs->count * sizeof(eattr)) : 0;
   uint prefix_size = sizeof(struct bgp_prefix) + new->net->length;
 
@@ -2562,10 +2543,7 @@ bgp_bmp_encode_rte(ea_list *c, struct bgp_proto *bgp_p, byte *buf, const struct 
   px->ni = NET_TO_INDEX(new->net);
   add_tail(&b->prefixes, &px->buck_node);
 
-  byte *end = bgp_create_update_bmp(c, bgp_p, pkt, b, !!new->attrs);
-
-  if (end)
-    bgp_bmp_prepare_bgp_hdr(buf, end - buf, PKT_UPDATE);
+  end = bgp_create_update_bmp(c, buf, end, b, !!new->attrs);
 
   lp_restore(tmp_linpool, tmpp);
 
@@ -2594,7 +2572,6 @@ again:
 
   /* Initialize write state */
   struct bgp_write_state s = {
-    .proto = p,
     .ptx = ptx,
     .pool = tmp_linpool,
     .mp_reach = (c->afi != BGP_AF_IPV4) || c->ext_next_hop,

@@ -423,7 +423,7 @@ ea_set_attr_u32(ea_list **to, const struct ea_class *def, uint flags, u64 data)
 { ea_set_attr(to, EA_LITERAL_EMBEDDED(def, flags, data)); }
 
 static inline void
-ea_set_attr_ptr(ea_list **to, const struct ea_class *def, uint flags, const void *data)
+ea_set_attr_ptr(ea_list **to, const struct ea_class *def, uint flags, void *data)
 { ea_set_attr(to, EA_LITERAL_STORE_PTR(def, flags, data)); }
 
 static inline void
