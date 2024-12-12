@@ -760,11 +760,12 @@ mrt_dump_cont(struct cli *c)
   return mrt_table_dump_step(c->rover);
 }
 
-void
+static bool
 mrt_dump_cleanup(struct cli *c)
 {
   mrt_table_dump_free(c->rover);
   c->rover = NULL;
+  return true;
 }
 
 void

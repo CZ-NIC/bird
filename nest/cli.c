@@ -337,12 +337,18 @@ extern cli *cmd_reconfig_stored_cli;
 void
 cli_free(cli *c)
 {
-  CALL(c->cleanup, c);
+  bool done = c->cleanup ? c->cleanup(c) : true;
 
   if (c == cmd_reconfig_stored_cli)
     cmd_reconfig_stored_cli = NULL;
 
-  rp_free(c->pool);
+  if (done)
+    rp_free(c->pool);
+  else
+  {
+    sk_close(c->sock);
+    c->sock = NULL;
+  }
 }
 
 /**

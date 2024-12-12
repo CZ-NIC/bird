@@ -225,7 +225,7 @@ rt_show_net(struct rt_show_data *d, const struct rt_export_feed *feed)
   }
 }
 
-static void
+static bool
 rt_show_cleanup(struct cli *c)
 {
   struct rt_show_data *d = c->rover;
@@ -241,6 +241,9 @@ rt_show_cleanup(struct cli *c)
 
   /* Unreference the config */
   OBSREF_CLEAR(d->running_on_config);
+
+  /* Everything cleaned up */
+  return true;
 }
 
 static void

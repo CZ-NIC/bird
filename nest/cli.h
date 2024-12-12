@@ -37,7 +37,9 @@ typedef struct cli {
   struct cli_out *tx_buf, *tx_pos, *tx_write;
   event *event;
   void (*cont)(struct cli *c);
-  void (*cleanup)(struct cli *c);	/* The CLI has closed prematurely */
+  bool (*cleanup)(struct cli *c);	/* The CLI has closed prematurely; if done, return true,
+					   otherwise return false and call rp_free(c->pool) later yourself.
+					   The socket is closed anyway, tho. */
   void *rover;				/* Private to continuation routine */
   struct config *main_config;		/* Main config currently in use */
   int last_reply;

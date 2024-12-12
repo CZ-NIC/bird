@@ -1259,10 +1259,11 @@ bird_thread_show_cli_cont(struct cli *c UNUSED)
   /* Explicitly do nothing to prevent CLI from trying to parse another command. */
 }
 
-static int
+static bool
 bird_thread_show_cli_cleanup(struct cli *c UNUSED)
 {
-  return 1; /* Defer the cleanup until the writeout is finished. */
+  /* Defer the cleanup until the writeout is finished. */
+  return false;
 }
 
 static void
@@ -1327,6 +1328,14 @@ cmd_show_threads_done(struct bird_thread_syncer *sync)
 {
   SKIP_BACK_DECLARE(struct bird_thread_show_data, tsd, sync, sync);
   ASSERT_DIE(birdloop_inside(&main_birdloop));
+
+  /* The client lost their patience and dropped the session early. */
+  if (!tsd->cli->sock)
+  {
+    mb_free(tsd);
+    rp_free(tsd->cli->pool);
+    return;
+  }
 
   tsd->cli->cont = NULL;
   tsd->cli->cleanup = NULL;
