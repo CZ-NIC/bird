@@ -1962,6 +1962,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   if (old_bucket && (!old_bucket->rte || !old_bucket->count))
   {
     ASSERT_DIE(!old_bucket->rte && !old_bucket->count);
+    hmap_clear(&p->bucket_id_map, old_bucket->id);
     HASH_REMOVE2(p->buckets, AGGR_BUCK, p->p.pool, old_bucket);
   }
 }
