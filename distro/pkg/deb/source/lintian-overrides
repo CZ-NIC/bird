@@ -1,0 +1,9 @@
+# UPSTREAM: not relevant for upstream package
+source: maintainer-upload-has-incorrect-version-number
+# UPSTREAM: we package cross-distro, this always differs
+source: newer-standards-version
+# UPSTREAM: we package cross-distro, use the default debhelper available
+source: no-versioned-debhelper-prerequisite
+source: package-uses-old-debhelper-compat-version
+# UPSTREAM: we package cross-distro, this is for old distro compat
+source: uses-debhelper-compat-file
