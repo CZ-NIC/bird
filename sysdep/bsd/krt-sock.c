@@ -394,30 +394,6 @@ krt_replace_rte(struct krt_proto *p, net *n UNUSED, rte *new, rte *old)
   }
 }
 
-/**
- * krt_assume_onlink - check if routes on interface are considered onlink
- * @iface: The interface of the next hop
- * @ipv6: Switch to only consider IPv6 or IPv4 addresses.
- *
- * The BSD kernel does not support an onlink flag. If the interface has only
- * host addresses configured, all routes should be considered as onlink and
- * the function returns 1.
- */
-static int
-krt_assume_onlink(struct iface *iface, int ipv6)
-{
-  const u8 type = ipv6 ? NET_IP6 : NET_IP4;
-
-  struct ifa *ifa;
-  WALK_LIST(ifa, iface->addrs)
-  {
-    if ((ifa->prefix.type == type) && !(ifa->flags & IA_HOST))
-      return 0;
-  }
-
-  return 1;
-}
-
 #define SKIP(ARG...) do { DBG("KRT: Ignoring route - " ARG); return; } while(0)
 
 static void
