@@ -170,6 +170,7 @@ struct proto {
   u32 hash_key;				/* Random key used for hashing of neighbors */
   btime last_state_change;		/* Time of last state transition */
   btime last_restart;			/* Time of last restart */
+  btime last_reconfiguration;		/* Time of last hard reconfiguration */
   btime restart_limit;			/* Minimum allowed time between limit restarts */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
   char *message;			/* State-change message, allocated from proto_pool */

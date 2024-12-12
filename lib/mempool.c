@@ -29,6 +29,7 @@ struct lp_chunk {
   struct lp_chunk *next;
   struct linpool *lp;
   uintptr_t data_align[0];
+  _Atomic u64 data_align_atomic[0];
   byte data[0];
 };
 

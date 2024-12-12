@@ -1334,6 +1334,7 @@ proto_new(struct proto_config *cf)
   p->proto = cf->protocol;
   p->proto_state = PS_DOWN_XX;
   p->last_state_change = current_time();
+  p->last_reconfiguration = current_time();
 
   p->net_type = cf->net_type;
   p->disabled = cf->disabled;
@@ -2183,14 +2184,17 @@ proto_restart_event_hook(void *_p)
   proto_rethink_goal(p);
 
   if (proto_restart)
-    if (current_time_now() - p->last_restart < p->restart_limit)
-      log(L_ERR "%s: too frequent restarts, disabling", p->name);
-    else
-      p->disabled = 0;
+  {
+    /* Store the last restart time */
+    p->last_restart = current_time();
+
+    /* Allow the protocol back again */
+    p->disabled = 0;
 
     /* No need to call proto_rethink_goal() here again as the proto_cleanup() routine will
      * call it after the protocol stops ... and both these routines are fixed to main_birdloop.
      */
+  }
 }
 
 static inline void
@@ -2306,8 +2310,16 @@ channel_limit_down(struct limit *l, void *data)
 
   channel_activate_limit(c, l, dir);
 
+  bool restart = (c->limit_actions[dir] == PLA_RESTART);
+
+  if (restart && (current_time_now() - p->last_restart < p->restart_limit))
+  {
+    log(L_ERR "%s: too frequent restarts, disabling", p->name);
+    restart = false;
+  }
+
   if (p->proto_state == PS_UP)
-    proto_schedule_down(p, c->limit_actions[dir] == PLA_RESTART, chl_dir_down[dir]);
+    proto_schedule_down(p, restart, chl_dir_down[dir]);
 
   return 1;
 }
@@ -2619,8 +2631,10 @@ proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
     p->proto->get_status(p, buf);
 
   rcu_read_lock();
-  tm_format_time(tbuf, this_cli->tf ?: &atomic_load_explicit(&global_runtime, memory_order_acquire)->tf_proto, p->last_state_change);
+  struct timeformat *tf = this_cli->tf ?: &atomic_load_explicit(&global_runtime, memory_order_acquire)->tf_proto;
   rcu_read_unlock();
+
+  tm_format_time(tbuf, tf, p->last_state_change);
   cli_msg(-1002, "%-10s %-10s %-10s %-6s %-12s  %s",
 	  p->name,
 	  p->proto->name,
@@ -2632,13 +2646,20 @@ proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
   if (verbose)
   {
     if (p->cf->dsc)
-      cli_msg(-1006, "  Description:    %s", p->cf->dsc);
+      cli_msg(-1006, "  Description:        %s", p->cf->dsc);
     if (p->message)
-      cli_msg(-1006, "  Message:        %s", p->message);
+      cli_msg(-1006, "  Message:            %s", p->message);
+    tm_format_time(tbuf, tf, p->last_reconfiguration);
+    cli_msg(-1006, "  Created:            %s", tbuf);
+    if (p->last_restart > p->last_reconfiguration)
+    {
+      tm_format_time(tbuf, tf, p->last_restart);
+      cli_msg(-1006, "  Last autorestart:   %s", tbuf);
+    }
     if (p->cf->router_id)
-      cli_msg(-1006, "  Router ID:      %R", p->cf->router_id);
+      cli_msg(-1006, "  Router ID:          %R", p->cf->router_id);
     if (p->vrf)
-      cli_msg(-1006, "  VRF:            %s", p->vrf->name);
+      cli_msg(-1006, "  VRF:                %s", p->vrf->name);
 
     if (p->proto->show_proto_info)
       p->proto->show_proto_info(p);
