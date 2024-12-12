@@ -2010,9 +2010,9 @@ bgp_out_item_done(struct lfjour *j UNUSED, struct lfjour_item *i UNUSED)
 {}
 
 static struct rt_export_feed *
-bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, UNUSED const struct rt_export_item *_first)
+bgp_out_feed_net(struct rt_exporter *e, struct rt_feed_retry *ur, u32 index, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, UNUSED const struct rt_export_item *_first)
 {
-  ASSERT_DIE(u == NULL);
+  ASSERT_DIE(ur->u == NULL);
   SKIP_BACK_DECLARE(struct bgp_ptx_private, c, exporter, e);
   ASSERT_DIE(DOMAIN_IS_LOCKED(rtable, c->lock));
 
@@ -2038,7 +2038,7 @@ bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool 
 
   if (count)
   {
-    feed = rt_alloc_feed(count, 0);
+    feed = rt_alloc_feed(NULL, count, 0);
     feed->ni = ni;
 
     uint pos = 0;

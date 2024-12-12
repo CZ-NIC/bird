@@ -215,6 +215,13 @@ struct rt_export_union {
   struct rt_export_request *req;
 };
 
+struct rt_feed_retry {
+  struct rcu_unwinder *u;
+  void *feed_block;
+  u32 feed_size;
+  u32 feed_request;
+};
+
 struct rt_exporter {
   struct lfjour journal;			/* Journal for update keeping */
   TLIST_LIST(rt_export_feeder) feeders;		/* List of active feeder structures */
@@ -227,7 +234,7 @@ struct rt_exporter {
   netindex_hash *netindex;			/* Table for net <-> id conversion */
   void (*stopped)(struct rt_exporter *);	/* Callback when exporter can stop */
   void (*cleanup_done)(struct rt_exporter *, u64 end);	/* Callback when cleanup has been done */
-  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rcu_unwinder *, u32, bool (*)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *, const struct rt_export_item *first);
+  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rt_feed_retry *, u32, bool (*)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *, const struct rt_export_item *first);
   void (*feed_cleanup)(struct rt_exporter *, struct rt_export_feeder *);
 };
 
@@ -236,7 +243,7 @@ extern struct rt_export_feed rt_feed_index_out_of_range;
 /* Exporter API */
 void rt_exporter_init(struct rt_exporter *, struct settle_config *);
 struct rt_export_item *rt_exporter_push(struct rt_exporter *, const struct rt_export_item *);
-struct rt_export_feed *rt_alloc_feed(uint routes, uint exports);
+struct rt_export_feed *rt_alloc_feed(struct rt_feed_retry *ur, uint routes, uint exports);
 void rt_exporter_shutdown(struct rt_exporter *, void (*stopped)(struct rt_exporter *));
 
 /* Standalone feeds */
@@ -296,6 +303,22 @@ static inline void rt_export_walk_cleanup(const struct rt_export_union **up)
     rtex_export_unsubscribe(_f); \
     rt_unlock_table(_tp); \
   }} while (0) \
+
+#define RT_EXPORT_RETRY_ANCHOR(ur, u) \
+    struct rt_feed_retry ur = { \
+      .feed_block = tmp_alloc(512), \
+      .feed_size = 512, \
+    }; \
+    RCU_ANCHOR(u); \
+    ur.u = u; \
+    if (ur.feed_request > ur.feed_size) \
+    { \
+      rcu_read_unlock(); \
+      ur.feed_size = ur.feed_request; \
+      /* allocate a little bit more just for good measure */ \
+      ur.feed_block = tmp_alloc((ur.feed_request * 3) / 2); \
+      rcu_read_lock(); \
+    } \
 
 static inline int rt_prefilter_net(const struct rt_prefilter *p, const net_addr *n)
 {

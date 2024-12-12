@@ -152,8 +152,8 @@ rt_export_get(struct rt_export_request *r)
       }
       else
       {
-	RCU_ANCHOR(u);
-	feed = e->feed_net(e, u, ni->index, NULL, NULL, update);
+	RT_EXPORT_RETRY_ANCHOR(ur, u);
+	feed = e->feed_net(e, &ur, ni->index, NULL, NULL, update);
       }
 
       ASSERT_DIE(feed && (feed != &rt_feed_index_out_of_range));
@@ -228,14 +228,25 @@ rt_export_processed(struct rt_export_request *r, u64 seq)
 }
 
 struct rt_export_feed *
-rt_alloc_feed(uint routes, uint exports)
+rt_alloc_feed(struct rt_feed_retry *ur, uint routes, uint exports)
 {
   struct rt_export_feed *feed;
   uint size = sizeof *feed
     + routes * sizeof *feed->block + _Alignof(typeof(*feed->block))
     + exports * sizeof *feed->exports + _Alignof(typeof(*feed->exports));
 
-  feed = tmp_alloc(size);
+  if (ur)
+  {
+    if (size > ur->feed_size)
+    {
+      ur->feed_request = size;
+      RCU_RETRY(ur->u);
+    }
+
+    feed = ur->feed_block;
+  }
+  else
+    feed = tmp_alloc(size);
 
   feed->count_routes = routes;
   feed->count_exports = exports;
@@ -249,11 +260,11 @@ rt_alloc_feed(uint routes, uint exports)
 }
 
 static struct rt_export_feed *
-rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u)
+rt_export_get_next_feed(struct rt_export_feeder *f, struct rt_feed_retry *ur)
 {
-  for (uint retry = 0; retry < (u ? 1024 : ~0U); retry++)
+  for (uint retry = 0; retry < (ur ? 1024 : ~0U); retry++)
   {
-    ASSERT_DIE(u || DOMAIN_IS_LOCKED(rtable, f->domain));
+    ASSERT_DIE(ur->u || DOMAIN_IS_LOCKED(rtable, f->domain));
 
     struct rt_exporter *e = atomic_load_explicit(&f->exporter, memory_order_acquire);
     if (!e)
@@ -262,7 +273,7 @@ rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u)
       return NULL;
     }
 
-    struct rt_export_feed *feed = e->feed_net(e, u, f->feed_index,
+    struct rt_export_feed *feed = e->feed_net(e, ur, f->feed_index,
 	rt_net_is_feeding_feeder, f, NULL);
     if (feed == &rt_feed_index_out_of_range)
     {
@@ -286,7 +297,7 @@ rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u)
     return feed;
   }
 
-  RCU_RETRY_FAST(u);
+  RCU_RETRY_FAST(ur->u);
 }
 
 struct rt_export_feed *
@@ -303,8 +314,9 @@ rt_export_next_feed(struct rt_export_feeder *f)
   }
   else
   {
-    RCU_ANCHOR(u);
-    feed = rt_export_get_next_feed(f, u);
+    RT_EXPORT_RETRY_ANCHOR(ur, u);
+
+    feed = rt_export_get_next_feed(f, &ur);
   }
 
   if (feed)

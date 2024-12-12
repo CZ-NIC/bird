@@ -205,6 +205,7 @@ static inline rtable *rt_pub_to_pub(rtable *tab) { return tab; }
 struct rtable_reading {
   rtable *t;
   struct rcu_unwinder *u;
+  struct rt_export_feeder f;
 };
 
 #define RT_READ_ANCHORED(_o, _i, _u)  \
@@ -2431,10 +2432,16 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, bool (*prefilter)(struct rt
     if (!ecnt && prefilter && !prefilter(f, NET_READ_BEST_ROUTE(tr, n)->rte.net))
       return NULL;
 
-    feed = rt_alloc_feed(rcnt+ocnt, ecnt);
+    feed = rt_alloc_feed(NULL, rcnt+ocnt, ecnt);
 
     if (rcnt)
+    {
+      rcu_read_unlock();
+      defer_expect(rcnt * sizeof (rte));
+      rcu_read_lock();
+
       rte_feed_obtain_copy(tr, n, feed->block, rcnt);
+    }
 
     if (ecnt)
     {
@@ -2493,9 +2500,9 @@ rt_net_feed(rtable *t, const net_addr *a, const struct rt_pending_export *first)
 }
 
 static struct rt_export_feed *
-rt_feed_net_all(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
+rt_feed_net_all(struct rt_exporter *e, struct rt_feed_retry *ur, u32 index, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
 {
-  RT_READ_ANCHORED(SKIP_BACK(rtable, export_all, e), tr, u);
+  RT_READ_ANCHORED(SKIP_BACK(rtable, export_all, e), tr, ur->u);
   return rt_net_feed_internal(tr, index, prefilter, f, SKIP_BACK(const struct rt_pending_export, it, _first));
 }
 
@@ -2523,12 +2530,12 @@ rt_net_best(rtable *t, const net_addr *a)
 }
 
 static struct rt_export_feed *
-rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
+rt_feed_net_best(struct rt_exporter *e, struct rt_feed_retry *ur, u32 index, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
 {
   SKIP_BACK_DECLARE(rtable, t, export_best, e);
   SKIP_BACK_DECLARE(const struct rt_pending_export, first, it, _first);
 
-  RT_READ_ANCHORED(t, tr, u);
+  RT_READ_ANCHORED(t, tr, ur->u);
 
   net *n = rt_net_feed_get_net(tr, index);
   if (!n)
@@ -2556,7 +2563,7 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool 
   if (!ecnt && (!best || prefilter && !prefilter(f, best->rte.net)))
     return NULL;
 
-  struct rt_export_feed *feed = rt_alloc_feed(!!best, ecnt);
+  struct rt_export_feed *feed = rt_alloc_feed(ur, !!best, ecnt);
   if (best)
   {
     feed->block[0] = best->rte;

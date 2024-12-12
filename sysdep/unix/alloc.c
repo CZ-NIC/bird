@@ -221,6 +221,7 @@ alloc_page(void)
     /* We can't lock and we actually shouldn't alloc either when rcu is active
      * but that's a quest for another day. */
     atomic_fetch_add_explicit(&cold_memory_failed_to_use, 1, memory_order_relaxed);
+    bug("bug");
   }
   else
   {
