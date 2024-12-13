@@ -150,6 +150,7 @@ extern _Atomic int pages_kept;
 extern _Atomic int pages_kept_locally;
 extern _Atomic int pages_kept_cold;
 extern _Atomic int pages_kept_cold_index;
+extern _Atomic int allocated_pages_with_rc_lock;
 void *alloc_page(void);
 void free_page(void *);
 void flush_local_pages(void);

@@ -106,7 +106,7 @@ void do_lock(struct domain_generic *dg, struct domain_generic **lsp)
   memcpy(&stack_copy, &locking_stack, sizeof(stack_copy));
   struct domain_generic **lll = last_locked;
 
-  if (rcu_read_active())
+  if (rcu_read_active() && (dg->order < DOMAIN_ORDER(resource)))
     bug("Locking forbidden while RCU reader is active");
 
   if ((char *) lsp - (char *) &locking_stack != dg->order)

@@ -136,6 +136,7 @@ cmd_show_memory(void)
   struct size_args cold = get_size_args(atomic_load_explicit(&pages_kept_cold, memory_order_relaxed) * page_size);
   cli_msg(-1018, "%-23s " SIZE_FORMAT, "Cold memory:", SIZE_ARGS(cold));
 #endif
+  cli_msg(-1028, "Attempt to allocate page with rc lock: %i times", atomic_load_explicit(&allocated_pages_with_rc_lock, memory_order_relaxed));
   cli_msg(0, "");
 }
 

@@ -126,6 +126,7 @@ long page_size = 0;
   static struct empty_pages *empty_pages = NULL;
   _Atomic int pages_kept_cold = 0;
   _Atomic int pages_kept_cold_index = 0;
+  _Atomic int allocated_pages_with_rc_lock = 0;
 
   static struct free_page * _Atomic page_stack = NULL;
   static _Thread_local struct free_page * local_page_stack = NULL;
@@ -167,6 +168,27 @@ long page_size = 0;
 #define ALLOC_TRACE(fmt...) do { \
   if (atomic_load_explicit(&global_runtime, memory_order_relaxed)->latency_debug & DL_ALLOCATOR) log(L_TRACE "Allocator: " fmt, ##fmt); } while (0)
 
+
+static void *
+return_page_if_in_stack(struct free_page *fp) {
+  if (fp = PAGE_STACK_GET)
+  {
+    /* Reinstate the stack with the next page in list */
+    PAGE_STACK_PUT(atomic_load_explicit(&fp->next, memory_order_relaxed));
+
+    /* Update the counters */
+    UNUSED uint pk = atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
+
+    /* Release the page */
+    UNPROTECT_PAGE(fp);
+    ajlog(fp, atomic_load_explicit(&fp->next, memory_order_relaxed), pk, AJT_ALLOC_GLOBAL_HOT);
+    return fp;
+  }
+  /* Reinstate the stack with zero */
+  PAGE_STACK_PUT(NULL);
+  return NULL;
+}
+
 void *
 alloc_page(void)
 {
@@ -198,61 +220,54 @@ alloc_page(void)
   ASSERT_DIE(pages_kept_here == 0);
 
   /* If there is any free page kept hot in global storage, we use it. */
-  if (fp = PAGE_STACK_GET)
-  {
-    /* Reinstate the stack with the next page in list */
-    PAGE_STACK_PUT(atomic_load_explicit(&fp->next, memory_order_relaxed));
-
-    /* Update the counters */
-    UNUSED uint pk = atomic_fetch_sub_explicit(&pages_kept, 1, memory_order_relaxed);
-
-    /* Release the page */
-    UNPROTECT_PAGE(fp);
-    ajlog(fp, atomic_load_explicit(&fp->next, memory_order_relaxed), pk, AJT_ALLOC_GLOBAL_HOT);
+  if (fp = return_page_if_in_stack(fp))
     return fp;
-  }
-
-  /* Reinstate the stack with zero */
-  PAGE_STACK_PUT(NULL);
 
   if (rcu_read_active())
   {
     /* We can't lock and we actually shouldn't alloc either when rcu is active
      * but that's a quest for another day. */
+    atomic_fetch_add_explicit(&allocated_pages_with_rc_lock, 1, memory_order_relaxed);
   }
-  else
-  {
 
   /* If there is any free page kept cold, we use that. */
   LOCK_DOMAIN(resource, empty_pages_domain);
+
+  /* Threads were serialized on lock, the first one might prepare some blocks for the rest of threads */
+  if (fp = return_page_if_in_stack(fp))
+    return fp;
+
   if (empty_pages) {
     UNPROTECT_PAGE(empty_pages);
     if (empty_pages->pos)
     {
       /* Either the keeper page contains at least one cold page pointer, return that */
-      fp = empty_pages->pages[--empty_pages->pos];
       PROTECT_PAGE(empty_pages);
-      UNPROTECT_PAGE(fp);
+      for (uint i = 0; i < empty_pages->pos - 1; i++)
+      {
+        struct empty_pages *page = (struct empty_pages *) empty_pages->pages[i];
+        page->next = empty_pages->pages[i + 1];
+      }
+      struct empty_pages *page = (struct empty_pages *) empty_pages->pages[empty_pages->pos - 1];
+      page->next = NULL;
+
       ajlog(fp, empty_pages, empty_pages->pos, AJT_ALLOC_COLD_STD);
-      atomic_fetch_sub_explicit(&pages_kept_cold, 1, memory_order_relaxed);
+      atomic_fetch_sub_explicit(&pages_kept_cold, empty_pages->pos, memory_order_relaxed);
+      PAGE_STACK_GET;
+      PAGE_STACK_PUT(empty_pages->pages[0]);
     }
-    else
-    {
-      /* Or the keeper page has no more cold page pointer, return the keeper page */
-      fp = (struct free_page *) empty_pages;
-      empty_pages = empty_pages->next;
-      ajlog(fp, empty_pages, 0, AJT_ALLOC_COLD_KEEPER);
-      atomic_fetch_sub_explicit(&pages_kept_cold_index, 1, memory_order_relaxed);
-      if (!empty_pages)
-	ALLOC_TRACE("Taken last page from cold storage");
-    }
+    /* Or the keeper page has no more cold page pointer, return the keeper page */
+    fp = (struct free_page *) empty_pages;
+    empty_pages = empty_pages->next;
+    ajlog(fp, empty_pages, 0, AJT_ALLOC_COLD_KEEPER);
+    atomic_fetch_sub_explicit(&pages_kept_cold_index, 1, memory_order_relaxed);
+    if (!empty_pages)
+      ALLOC_TRACE("Taken last page from cold storage");
   }
   UNLOCK_DOMAIN(resource, empty_pages_domain);
 
   if (fp)
     return fp;
-
-  }
 
   /* And in the worst case, allocate some new pages by mmap() */
   void *ptr = alloc_sys_page();
