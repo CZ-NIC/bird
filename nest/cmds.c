@@ -147,6 +147,7 @@ cmd_show_memory(void)
   cli_msg(-1018, "%-17s " SIZE_FORMAT, "Cold free pages:", SIZE_ARGS(cold));
 
 #endif
+  cli_msg(-1028, "Hot page cache depleted while in RCU: %d", atomic_load_explicit(&alloc_locking_in_rcu, memory_order_relaxed));
   cli_msg(0, "");
 }
 
