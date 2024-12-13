@@ -38,7 +38,7 @@ enum pdu_error_type {
   PDU_TOO_BIG 			= 32
 };
 
-static const char *str_pdu_error_type[] = {
+static const char *str_pdu_error_type_[] = {
   [CORRUPT_DATA] 		= "Corrupt-Data",
   [INTERNAL_ERROR] 		= "Internal-Error",
   [NO_DATA_AVAIL] 		= "No-Data-Available",
@@ -49,6 +49,13 @@ static const char *str_pdu_error_type[] = {
   [DUPLICATE_ANNOUNCEMENT] 	= "Duplicate-Announcement",
   [PDU_TOO_BIG] 		= "PDU-Too-Big",
 };
+
+static const char *
+str_pdu_error_type(uint type)
+{
+  return (type < ARRAY_SIZE(str_pdu_error_type_)) ?
+    str_pdu_error_type_[type] : "Unknown error type";
+}
 
 enum pdu_type {
   SERIAL_NOTIFY 		= 0,
@@ -294,8 +301,8 @@ rpki_pdu_to_network_byte_order(struct pdu_header *pdu)
   case ERROR:
   {
     struct pdu_error *err = (void *) pdu;
-    u32 *err_text_len = (u32 *)(err->rest + err->len_enc_pdu);
-    *err_text_len = htonl(*err_text_len);
+    byte *err_text_len = err->rest + err->len_enc_pdu;
+    put_u32(err_text_len, get_u32he(err_text_len));
     err->len_enc_pdu = htonl(err->len_enc_pdu);
     break;
   }
@@ -360,8 +367,13 @@ rpki_pdu_to_host_byte_order(struct pdu_header *pdu)
     struct pdu_error *err = (void *) pdu;
     err->error_code = ntohs(err->error_code);
     err->len_enc_pdu = ntohl(err->len_enc_pdu);
-    u32 *err_text_len = (u32 *)(err->rest + err->len_enc_pdu);
-    *err_text_len = htonl(*err_text_len);
+
+    /* Check if len_enc_pdu is sane */
+    if (err->len_enc_pdu > pdu->len - 16)
+      break;
+
+    byte *err_text_len = err->rest + err->len_enc_pdu;
+    put_u32he(err_text_len, get_u32(err_text_len));
     break;
   }
 
@@ -480,19 +492,31 @@ rpki_log_packet(struct rpki_cache *cache, const struct pdu_header *pdu, const en
   case ERROR:
   {
     const struct pdu_error *err = (void *) pdu;
-    SAVE(bsnprintf(detail, sizeof(detail), "(%s", str_pdu_error_type[err->error_code]));
+    SAVE(bsnprintf(detail, sizeof(detail), "(%s", str_pdu_error_type(err->error_code)));
+
+    if (err->len_enc_pdu > err->len - 16)
+    {
+      SAVE(bsnprintf(detail + strlen(detail), sizeof(detail) - strlen(detail), ", malformed encapsulated PDU length)"));
+      break;
+    }
 
     /* Optional description of error */
-    const u32 len_err_txt = *((u32 *) (err->rest + err->len_enc_pdu));
+    const u32 len_err_txt = get_u32he(err->rest + err->len_enc_pdu);
     if (len_err_txt > 0)
     {
       size_t expected_len = err->len_enc_pdu + len_err_txt + 16;
       if (expected_len == err->len)
       {
-        char txt[len_err_txt + 1];
-        char *pdu_txt = (char *) err->rest + err->len_enc_pdu + 4;
-        bsnprintf(txt, sizeof(txt), "%s", pdu_txt); /* it's ensured that txt is ended with a null byte */
-        SAVE(bsnprintf(detail + strlen(detail), sizeof(detail) - strlen(detail), ": '%s'", txt));
+	char *msg = tmp_alloc(len_err_txt + 1);
+	memcpy(msg, err->rest + err->len_enc_pdu + 4, len_err_txt);
+	msg[len_err_txt] = 0;
+
+	/* Some elementary cleanup */
+	for (int i = 0; i < (int) len_err_txt; i++)
+	  if (msg[i] < ' ')
+	    msg[i] = ' ';
+
+        SAVE(bsnprintf(detail + strlen(detail), sizeof(detail) - strlen(detail), ": '%s'", msg));
       }
       else
       {
@@ -504,11 +528,8 @@ rpki_log_packet(struct rpki_cache *cache, const struct pdu_header *pdu, const en
     if (err->len_enc_pdu)
     {
       SAVE(bsnprintf(detail + strlen(detail), sizeof(detail) - strlen(detail), ", %s packet:", str_pdu_type(((struct pdu_header *) err->rest)->type)));
-      if (err->rest + err->len_enc_pdu <= (byte *)err + err->len)
-      {
-	for (const byte *c = err->rest; c != err->rest + err->len_enc_pdu; c++)
-	  SAVE(bsnprintf(detail + strlen(detail), sizeof(detail) - strlen(detail), " %02X", *c));
-      }
+      for (const byte *c = err->rest; c != err->rest + err->len_enc_pdu; c++)
+	SAVE(bsnprintf(detail + strlen(detail), sizeof(detail) - strlen(detail), " %02X", *c));
     }
 
     SAVE(bsnprintf(detail + strlen(detail), sizeof(detail) - strlen(detail), ")"));
@@ -1135,7 +1156,7 @@ rpki_connected_hook(sock *sk)
  * This function prepares Error PDU and sends it to a cache server.
  */
 static int
-rpki_send_error_pdu_(struct rpki_cache *cache, const enum pdu_error_type error_code, const u32 err_pdu_len, const struct pdu_header *erroneous_pdu, const char *fmt, ...)
+rpki_send_error_pdu_(struct rpki_cache *cache, const enum pdu_error_type error_code, u32 err_pdu_len, const struct pdu_header *erroneous_pdu, const char *fmt, ...)
 {
   va_list args;
   char msg[128];
@@ -1157,6 +1178,9 @@ rpki_send_error_pdu_(struct rpki_cache *cache, const enum pdu_error_type error_c
     va_end(args);
   }
 
+  u32 err_pdu_max_len = ROUND_DOWN_POW2(RPKI_TX_BUFFER_SIZE - (16 + msg_len), 4);
+  err_pdu_len = MIN(err_pdu_len, err_pdu_max_len);
+
   u32 pdu_size = 16 + err_pdu_len + msg_len;
   byte pdu[pdu_size];
   memset(pdu, 0, sizeof(pdu));
@@ -1171,7 +1195,7 @@ rpki_send_error_pdu_(struct rpki_cache *cache, const enum pdu_error_type error_c
   if (err_pdu_len > 0)
     memcpy(e->rest, erroneous_pdu, err_pdu_len);
 
-  *((u32 *)(e->rest + err_pdu_len)) = msg_len;
+  put_u32he(e->rest + err_pdu_len, msg_len);
   if (msg_len > 0)
     memcpy(e->rest + err_pdu_len + 4, msg, msg_len);
 
