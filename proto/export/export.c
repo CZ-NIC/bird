@@ -174,11 +174,14 @@ export_rt_notify(struct proto *P, struct channel *src_ch UNUSED,
 		export_type = 2;
 	}
 
-	if (route->sender->proto == NULL ||
-	    route->sender->proto->proto == NULL ||
-	    route->sender->proto->proto->class != PROTOCOL_BGP)
-		return;
-	struct bgp_proto *peer = (struct bgp_proto *)route->sender->proto;
+	ip_addr peer_addr = IPA_NONE;
+
+	if (route->sender->proto != NULL ||
+	    route->sender->proto->proto != NULL ||
+	    route->sender->proto->proto->class == PROTOCOL_BGP) {
+		struct bgp_proto *peer = (struct bgp_proto *)route->sender->proto;
+		peer_addr = peer->remote_ip;
+	}
 
 	if (write_buf->tpos + export_route_size(route) > write_buf->tbuf + write_buf->size) {
 		struct export_buf *sock_buf = p->send_buf + (1 - p->send_buf_index);
@@ -203,7 +206,7 @@ export_rt_notify(struct proto *P, struct channel *src_ch UNUSED,
 	*(uint32_t *)wptr = export_type;
 	wptr += 4;
 
-	*(ip_addr *)wptr = peer->remote_ip;
+	*(ip_addr *)wptr = peer_addr;
 	wptr += sizeof(ip_addr);
 
 	wptr = dump_route_attrs(wptr, route);
