@@ -236,7 +236,7 @@ static void
 bmp_tx_resource_free(resource *r UNUSED) {}
 
 static void
-bmp_tx_resource_dump(resource *r UNUSED, uint indent UNUSED) {}
+bmp_tx_resource_dump(struct dump_request *dreq UNUSED, resource *r UNUSED) {}
 
 static struct resmem
 bmp_tx_resource_memsize(resource *r)

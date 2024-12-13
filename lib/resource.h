@@ -42,7 +42,7 @@ struct resclass {
   char *name;				/* Resource class name */
   unsigned size;			/* Standard size of single resource */
   void (*free)(resource *);		/* Freeing function */
-  void (*dump)(resource *, unsigned indent);		/* Dump to debug output */
+  void (*dump)(struct dump_request *, resource *);	/* Dump to debug output */
   resource *(*lookup)(resource *, unsigned long);	/* Look up address (only for debugging) */
   struct resmem (*memsize)(resource *);	/* Return size of memory used by the resource, may be NULL */
 };
@@ -62,7 +62,10 @@ typedef struct pool {
 
 void resource_init(void);
 void rfree(void *);			/* Free single resource */
-void rdump(void *, unsigned indent);	/* Dump to debug output */
+
+struct dump_request;
+void rdump(struct dump_request *, void *);	/* Dump to debug output */
+void resource_dump(struct dump_request *);	/* Dump the root pool */
 struct resmem rmemsize(void *res);		/* Return size of memory used by the resource */
 void rlookup(unsigned long);		/* Look up address (only for debugging) */
 void rmove(void *, pool *);		/* Move to a different pool */

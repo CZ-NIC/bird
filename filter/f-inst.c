@@ -181,11 +181,11 @@
  *	m4_dnl	This structure is returned from the linearizer (105).
  *	m4_dnl	For writing directly to this structure, use FID_LINE_IN.
  *
- *	m4_dnl		f_dump_line_item_FI_EXAMPLE(const struct f_line_item *item, const int indent)
+ *	m4_dnl		f_dump_line_item_FI_EXAMPLE(struct dump_request *dreq, const struct f_line_item *item, const int indent)
  *	m4_dnl		{
  *	m4_dnl	(104)	  [[ put it here ]]
  *	m4_dnl		}
- *	m4_dnl	This code dumps the instruction on debug. Note that the argument
+ *	m4_dnl	This code dumps the instruction via RDUMP. Note that the argument
  *	m4_dnl	is the linearized instruction; if the instruction has arguments,
  *	m4_dnl	their code has already been linearized and their value is taken
  *	m4_dnl	from the value stack.

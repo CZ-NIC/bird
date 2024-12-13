@@ -49,21 +49,38 @@
  *	Debugging
  */
 
+static void
+async_dump_report(struct dump_request *dr UNUSED, int state, const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+  vlog(((state > 1000) ? L_ERR : L_INFO)[0], fmt, args);
+  va_end(args);
+}
+
+static void
+async_dump_run(struct dump_request *dreq)
+{
+  RDUMP("ASYNC STATE DUMP\n");
+
+  rdump(dreq, &root_pool);
+  sk_dump_all(dreq);
+  // XXXX tm_dump_all();
+  if_dump_all(dreq);
+  neigh_dump_all(dreq);
+  ea_dump_all(dreq);
+  rt_dump_all(dreq);
+  protos_dump_all(dreq);
+
+  debug("\n");
+}
+
 void
 async_dump(void)
 {
-  debug("INTERNAL STATE DUMP\n\n");
-
-  rdump(&root_pool, 0);
-  sk_dump_all();
-  // XXXX tm_dump_all();
-  if_dump_all();
-  neigh_dump_all();
-  ea_dump_all();
-  rt_dump_all();
-  protos_dump_all();
-
-  debug("\n");
+  struct dump_request *dr = dump_to_file_init(0);
+  dr->report = async_dump_report;
+  dump_to_file_run(dr, "bird.dump", "async dump", async_dump_run);
 }
 
 /*

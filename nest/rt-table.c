@@ -2749,15 +2749,15 @@ rt_refresh_trace(struct rtable_private *tab, struct rt_import_hook *ih, const ch
  * This functions dumps contents of a &rte to debug output.
  */
 void
-rte_dump(struct rte_storage *e)
+rte_dump(struct dump_request *dreq, struct rte_storage *e)
 {
-  debug("(%u) %-1N", NET_TO_INDEX(e->rte.net)->index, e->rte.net);
-  debug("ID=%d ", e->rte.id);
-  debug("SENDER=%s ", e->rte.sender->req->name);
-  debug("PF=%02x ", e->rte.pflags);
-  debug("SRC=%uG ", e->rte.src->global_id);
-  ea_dump(e->rte.attrs);
-  debug("\n");
+  RDUMP("(%u) %-1N", NET_TO_INDEX(e->rte.net)->index, e->rte.net);
+  RDUMP("ID=%d ", e->rte.id);
+  RDUMP("SENDER=%s ", e->rte.sender->req->name);
+  RDUMP("PF=%02x ", e->rte.pflags);
+  RDUMP("SRC=%uG ", e->rte.src->global_id);
+  ea_dump(dreq, e->rte.attrs);
+  RDUMP("\n");
 }
 
 /**
@@ -2767,20 +2767,20 @@ rte_dump(struct rte_storage *e)
  * This function dumps contents of a given routing table to debug output.
  */
 void
-rt_dump(rtable *tab)
+rt_dump(struct dump_request *dreq, rtable *tab)
 {
   RT_READ(tab, tp);
 
   /* Looking at priv.deleted is technically unsafe but we don't care */
-  debug("Dump of routing table <%s>%s\n", tab->name, OBSREF_GET(tab->priv.deleted) ? " (deleted)" : "");
+  RDUMP("Dump of routing table <%s>%s\n", tab->name, OBSREF_GET(tab->priv.deleted) ? " (deleted)" : "");
 
   u32 bs = atomic_load_explicit(&tp->t->routes_block_size, memory_order_relaxed);
   net *routes = atomic_load_explicit(&tp->t->routes, memory_order_relaxed);
   for (u32 i = 0; i < bs; i++)
     NET_READ_WALK_ROUTES(tp, &routes[i], ep, e)
-      rte_dump(e);
+      rte_dump(dreq, e);
 
-  debug("\n");
+  RDUMP("\n");
 }
 
 /**
@@ -2789,35 +2789,35 @@ rt_dump(rtable *tab)
  * This function dumps contents of all routing tables to debug output.
  */
 void
-rt_dump_all(void)
+rt_dump_all(struct dump_request *dreq)
 {
   rtable *t;
   node *n;
 
   WALK_LIST2(t, n, routing_tables, n)
-    rt_dump(t);
+    rt_dump(dreq, t);
 
   WALK_LIST2(t, n, deleted_routing_tables, n)
-    rt_dump(t);
+    rt_dump(dreq, t);
 }
 
 void
-rt_dump_hooks(rtable *tp)
+rt_dump_hooks(struct dump_request *dreq, rtable *tp)
 {
   RT_LOCKED(tp, tab)
   {
 
-  debug("Dump of hooks in routing table <%s>%s\n", tab->name, OBSREF_GET(tab->deleted) ? " (deleted)" : "");
-  debug("  nhu_state=%u use_count=%d rt_count=%u\n",
+  RDUMP("Dump of hooks in routing table <%s>%s\n", tab->name, OBSREF_GET(tab->deleted) ? " (deleted)" : "");
+  RDUMP("  nhu_state=%u use_count=%d rt_count=%u\n",
       tab->nhu_state, tab->use_count, tab->rt_count);
-  debug("  last_rt_change=%t gc_time=%t gc_counter=%d prune_state=%u\n",
+  RDUMP("  last_rt_change=%t gc_time=%t gc_counter=%d prune_state=%u\n",
       tab->last_rt_change, tab->gc_time, tab->gc_counter, tab->prune_state);
 
   struct rt_import_hook *ih;
   WALK_LIST(ih, tab->imports)
   {
     ih->req->dump_req(ih->req);
-    debug("  Import hook %p requested by %p: pref=%u"
+    RDUMP("  Import hook %p requested by %p: pref=%u"
        " last_state_change=%t import_state=%u stopped=%p\n",
        ih, ih->req, ih->stats.pref,
        ih->last_state_change, ih->import_state, ih->stopped);
@@ -2829,30 +2829,30 @@ rt_dump_hooks(rtable *tp)
   {
     SKIP_BACK_DECLARE(struct rt_export_hook, eh, recipient, r);
     eh->req->dump_req(eh->req);
-    debug("  Export hook %p requested by %p:"
+    RDUMP("  Export hook %p requested by %p:"
        " refeed_pending=%u last_state_change=%t export_state=%u\n",
        eh, eh->req, eh->refeed_pending, eh->last_state_change,
        atomic_load_explicit(&eh->export_state, memory_order_relaxed));
   }
 #endif
-  debug("\n");
+  RDUMP("\n");
 
   }
 }
 
 void
-rt_dump_hooks_all(void)
+rt_dump_hooks_all(struct dump_request *dreq)
 {
   rtable *t;
   node *n;
 
-  debug("Dump of all table hooks\n");
+  RDUMP("Dump of all table hooks\n");
 
   WALK_LIST2(t, n, routing_tables, n)
-    rt_dump_hooks(t);
+    rt_dump_hooks(dreq, t);
 
   WALK_LIST2(t, n, deleted_routing_tables, n)
-    rt_dump_hooks(t);
+    rt_dump_hooks(dreq, t);
 }
 
 static inline void
@@ -3209,11 +3209,11 @@ rt_free(resource *_r)
 }
 
 static void
-rt_res_dump(resource *_r, unsigned indent UNUSED)
+rt_res_dump(struct dump_request *dreq, resource *_r)
 {
   SKIP_BACK_DECLARE(struct rtable_private, r, r, _r);
 
-  debug("name \"%s\", addr_type=%s, rt_count=%u, use_count=%d\n",
+  RDUMP("name \"%s\", addr_type=%s, rt_count=%u, use_count=%d\n",
       r->name, net_label[r->addr_type], r->rt_count, r->use_count);
 
 #if 0

@@ -929,11 +929,11 @@ bfd_request_free(resource *r)
 }
 
 static void
-bfd_request_dump(resource *r, unsigned indent UNUSED)
+bfd_request_dump(struct dump_request *dreq, resource *r)
 {
   struct bfd_request *req = (struct bfd_request *) r;
 
-  debug("(code %p, data %p)\n", req->hook, req->data);
+  RDUMP("(code %p, data %p)\n", req->hook, req->data);
 }
 
 static struct resclass bfd_request_class = {

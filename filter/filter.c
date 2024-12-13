@@ -144,11 +144,6 @@ interpret(struct filter_state *fs, const struct f_line *line, uint argc, const s
 #define curline fstk->estk[fstk->ecnt-1]
 #define prevline fstk->estk[fstk->ecnt-2]
 
-#ifdef LOCAL_DEBUG
-  debug("Interpreting line.");
-  f_dump_line(line, 1);
-#endif
-
   while (fstk->ecnt > 0) {
     while (curline.pos < curline.line->len) {
       const struct f_line_item *what = &(curline.line->items[curline.pos++]);
@@ -393,46 +388,46 @@ filter_commit(struct config *new, struct config *old)
     }
 }
 
-void channel_filter_dump(const struct filter *f)
+void channel_filter_dump(struct dump_request *dreq, const struct filter *f)
 {
   if (f == FILTER_ACCEPT)
-    debug(" ALL");
+    RDUMP(" ALL");
   else if (f == FILTER_REJECT)
-    debug(" NONE");
+    RDUMP(" NONE");
   else if (f == FILTER_UNDEF)
-    debug(" UNDEF");
+    RDUMP(" UNDEF");
   else if (f->sym) {
     ASSERT(f->sym->filter == f);
-    debug(" named filter %s", f->sym->name);
+    RDUMP(" named filter %s", f->sym->name);
   } else {
-    debug("\n");
-    f_dump_line(f->root, 2);
+    RDUMP("\n");
+    f_dump_line(dreq, f->root, 2);
   }
 }
 
-void filters_dump_all(void)
+void filters_dump_all(struct dump_request *dreq)
 {
   struct symbol *sym;
   WALK_LIST(sym, OBSREF_GET(config)->symbols) {
     switch (sym->class) {
       case SYM_FILTER:
-	debug("Named filter %s:\n", sym->name);
-	f_dump_line(sym->filter->root, 1);
+	RDUMP("Named filter %s:\n", sym->name);
+	f_dump_line(dreq, sym->filter->root, 1);
 	break;
       case SYM_FUNCTION:
-	debug("Function %s:\n", sym->name);
-	f_dump_line(sym->function, 1);
+	RDUMP("Function %s:\n", sym->name);
+	f_dump_line(dreq, sym->function, 1);
 	break;
       case SYM_PROTO:
 	{
-	  debug("Protocol %s:\n", sym->name);
+	  RDUMP("Protocol %s:\n", sym->name);
 	  struct channel *c;
 	  WALK_LIST(c, sym->proto->proto->channels) {
-	    debug(" Channel %s (%s) IMPORT", c->name, net_label[c->net_type]);
-	    channel_filter_dump(c->in_filter);
-	    debug(" EXPORT", c->name, net_label[c->net_type]);
-	    channel_filter_dump(c->out_filter);
-	    debug("\n");
+	    RDUMP(" Channel %s (%s) IMPORT", c->name, net_label[c->net_type]);
+	    channel_filter_dump(dreq, c->in_filter);
+	    RDUMP(" EXPORT", c->name, net_label[c->net_type]);
+	    channel_filter_dump(dreq, c->out_filter);
+	    RDUMP("\n");
 	  }
 	}
     }

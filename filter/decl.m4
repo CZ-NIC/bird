@@ -97,7 +97,7 @@ if ($3) return 0;
 ]])
 m4_ifelse($4,,,[[
 FID_DUMP_BODY()m4_dnl
-debug("%s" $4 "\n", INDENT, $5);
+RDUMP("%s" $4 "\n", INDENT, $5);
 ]])
 FID_INTERPRET_EXEC()m4_dnl
 $1 $2 = whati->$2
@@ -168,7 +168,7 @@ FID_LINEARIZE_BODY()m4_dnl
   pos = linearize(dest, whati->fvar, pos);
   item->varcount = whati->varcount;
 FID_DUMP_BODY()m4_dnl
-  debug("%snumber of varargs %u\n", INDENT, item->varcount);
+  RDUMP("%snumber of varargs %u\n", INDENT, item->varcount);
 FID_SAME_BODY()m4_dnl
   if (f1->varcount != f2->varcount) return 0;
 FID_INTERPRET_BODY()
@@ -241,7 +241,7 @@ FID_NEW_METHOD()m4_dnl
   args = NULL; /* The rest is the line itself */
 FID_METHOD_CALL()    , arg$1
 FID_DUMP_BODY()m4_dnl
-f_dump_line(item->fl$1, indent + 1);
+f_dump_line(dreq, item->fl$1, indent + 1);
 FID_LINEARIZE_BODY()m4_dnl
 item->fl$1 = f_linearize(whati->f$1, $2);
 FID_SAME_BODY()m4_dnl
@@ -434,13 +434,13 @@ m4_undivert(113)
 
 ]])m4_dnl
 
-FID_DUMP_CALLER()m4_dnl			 Case in another big switch used in instruction dumping (debug)
-case INST_NAME(): f_dump_line_item_]]INST_NAME()[[(item, indent + 1); break;
+FID_DUMP_CALLER()m4_dnl			 Case in another big switch used in instruction dumping
+case INST_NAME(): f_dump_line_item_]]INST_NAME()[[(dreq, item, indent + 1); break;
 
 FID_DUMP()m4_dnl			 The dumper itself
 m4_ifdef([[FID_DUMP_BODY_EXISTS]],
-[[static inline void f_dump_line_item_]]INST_NAME()[[(const struct f_line_item *item_, const int indent)]],
-[[static inline void f_dump_line_item_]]INST_NAME()[[(const struct f_line_item *item UNUSED, const int indent UNUSED)]])
+[[static inline void f_dump_line_item_]]INST_NAME()[[(struct dump_request *dreq, const struct f_line_item *item_, const int indent)]],
+[[static inline void f_dump_line_item_]]INST_NAME()[[(struct dump_request *dreq UNUSED, const struct f_line_item *item UNUSED, const int indent UNUSED)]])
 m4_undefine([[FID_DUMP_BODY_EXISTS]])
 {
 #define item (&(item_->i_]]INST_NAME()[[))
@@ -681,22 +681,22 @@ static const char f_dump_line_indent_str[] = "                                ";
 
 FID_WR_PUT(6)
 
-void f_dump_line(const struct f_line *dest, uint indent)
+void f_dump_line(struct dump_request *dreq, const struct f_line *dest, uint indent)
 {
   if (!dest) {
-    debug("%sNo filter line (NULL)\n", INDENT);
+    RDUMP("%sNo filter line (NULL)\n", INDENT);
     return;
   }
-  debug("%sFilter line %p (len=%u)\n", INDENT, dest, dest->len);
+  RDUMP("%sFilter line %p (len=%u)\n", INDENT, dest, dest->len);
   for (uint i=0; i<dest->len; i++) {
     const struct f_line_item *item = &dest->items[i];
-    debug("%sInstruction %s at line %u\n", INDENT, f_instruction_name_(item->fi_code), item->lineno);
+    RDUMP("%sInstruction %s at line %u\n", INDENT, f_instruction_name_(item->fi_code), item->lineno);
     switch (item->fi_code) {
 FID_WR_PUT(7)
       default: bug("Unknown instruction %x in f_dump_line", item->fi_code);
     }
   }
-  debug("%sFilter line %p dump done\n", INDENT, dest);
+  RDUMP("%sFilter line %p dump done\n", INDENT, dest);
 }
 
 /* Linearize */
@@ -726,10 +726,6 @@ f_linearize_concat(const struct f_inst * const inst[], uint count, uint results)
     out->len = linearize(out, inst[i], out->len);
 
   out->results = results;
-
-#ifdef LOCAL_DEBUG
-  f_dump_line(out, 0);
-#endif
   return out;
 }
 

@@ -46,7 +46,7 @@ struct linpool {
 
 static void *lp_alloc_slow(struct linpool *, uint);
 static void lp_free(resource *);
-static void lp_dump(resource *, unsigned);
+static void lp_dump(struct dump_request *, resource *);
 static resource *lp_lookup(resource *, unsigned long);
 static struct resmem lp_memsize(resource *r);
 
@@ -278,30 +278,27 @@ lp_free(resource *r)
 }
 
 static void
-lp_dump(resource *r, unsigned indent)
+lp_dump(struct dump_request *dreq, resource *r)
 {
   linpool *m = (linpool *) r;
-  struct lp_chunk *c;
-  int cnt, cntl;
-  char x[32];
 
-  for(cnt=0, c=m->first; c; c=c->next, cnt++)
-    ;
-  for(cntl=0, c=m->first_large; c; c=c->next, cntl++)
-    ;
-  debug("(count=%d+%d total=%d+%d)\n",
-	cnt,
-	cntl,
-	m->total,
-	m->total_large);
+  int chunks = 0, large = 0;
 
-  bsprintf(x, "%%%dschunk %%p\n", indent + 2);
-  for (c=m->first; c; c=c->next)
-    debug(x, "", c);
+  RDUMP("\n%*schunks:\n", dreq->indent+3, "");
+  for (struct lp_chunk *c = m->first; c; c = c->next)
+  {
+    RDUMP("%*s%p\n", dreq->indent+6, "", c);
+    chunks++;
+  }
+  RDUMP("%*scount=%d total=%d\n", dreq->indent+3, "", chunks, m->total);
 
-  bsprintf(x, "%%%dslarge %%p\n", indent + 2);
-  for (c=m->first_large; c; c=c->next)
-    debug(x, "", c);
+  RDUMP("%*slarge:\n", dreq->indent+3, "");
+  for (struct lp_chunk *c = m->first_large; c; c = c->next)
+  {
+    RDUMP("%*s%p\n", dreq->indent+6, "", c);
+    large++;
+  }
+  RDUMP("%*scount=%d total=%d\n", dreq->indent+3, "", large, m->total_large);
 }
 
 static struct resmem

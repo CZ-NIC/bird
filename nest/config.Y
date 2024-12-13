@@ -932,28 +932,27 @@ sym_args:
  | sym_args CF_SYM_KNOWN { $$ = $1; $$->sym = $2; }
  ;
 
-
-CF_CLI_HELP(DUMP, ..., [[Dump debugging information]])
-CF_CLI(DUMP RESOURCES,,, [[Dump all allocated resource]])
-{ rdump(&root_pool, 0); cli_msg(0, ""); } ;
-CF_CLI(DUMP SOCKETS,,, [[Dump open sockets]])
-{ sk_dump_all(); cli_msg(0, ""); } ;
-CF_CLI(DUMP EVENTS,,, [[Dump event log]])
-{ io_log_dump(); cli_msg(0, ""); } ;
-CF_CLI(DUMP INTERFACES,,, [[Dump interface information]])
-{ if_dump_all(); cli_msg(0, ""); } ;
-CF_CLI(DUMP NEIGHBORS,,, [[Dump neighbor cache]])
-{ neigh_dump_all(); cli_msg(0, ""); } ;
-CF_CLI(DUMP ATTRIBUTES,,, [[Dump attribute cache]])
-{ ea_dump_all(); cli_msg(0, ""); } ;
-CF_CLI(DUMP ROUTES,,, [[Dump routes]])
-{ rt_dump_all(); cli_msg(0, ""); } ;
-CF_CLI(DUMP TABLES,,, [[Dump table connections]])
-{ rt_dump_hooks_all(); cli_msg(0, ""); } ;
-CF_CLI(DUMP PROTOCOLS,,, [[Dump protocol information]])
-{ protos_dump_all(); cli_msg(0, ""); } ;
-CF_CLI(DUMP FILTER ALL,,, [[Dump all filters in linearized form]])
-{ filters_dump_all(); cli_msg(0, ""); } ;
+CF_CLI_HELP(DUMP, ..., [[Dump debugging information to the given file]])
+CF_CLI(DUMP RESOURCES, text,, [[Dump all allocated resource]])
+{ cmd_dump_file(this_cli, $3, "resources", resource_dump); } ;
+CF_CLI(DUMP SOCKETS, text,, [[Dump open sockets]])
+{ cmd_dump_file(this_cli, $3, "sockets", sk_dump_all); } ;
+CF_CLI(DUMP EVENTS, text,, [[Dump event log]])
+{ cmd_dump_file(this_cli, $3, "event log", io_log_dump); } ;
+CF_CLI(DUMP INTERFACES, text,, [[Dump interface information]])
+{ cmd_dump_file(this_cli, $3, "interfaces", if_dump_all); } ;
+CF_CLI(DUMP NEIGHBORS, text,, [[Dump neighbor cache]])
+{ cmd_dump_file(this_cli, $3, "neighbor cache", neigh_dump_all); } ;
+CF_CLI(DUMP ATTRIBUTES, text,, [[Dump attribute cache]])
+{ cmd_dump_file(this_cli, $3, "attribute cache", ea_dump_all); } ;
+CF_CLI(DUMP ROUTES, text,, [[Dump routes]])
+{ cmd_dump_file(this_cli, $3, "routing tables", rt_dump_all); } ;
+CF_CLI(DUMP TABLES, text,, [[Dump table connections]])
+{ cmd_dump_file(this_cli, $3, "table connections", rt_dump_hooks_all); } ;
+CF_CLI(DUMP PROTOCOLS, text,, [[Dump protocol information]])
+{ cmd_dump_file(this_cli, $3, "protocols", protos_dump_all); } ;
+CF_CLI(DUMP FILTER ALL, text,, [[Dump all filters in linearized form]])
+{ cmd_dump_file(this_cli, $4, "filter bytecode", filters_dump_all); } ;
 
 CF_CLI(EVAL, term, <expr>, [[Evaluate an expression]])
 { cmd_eval(f_linearize($2, 1)); } ;

@@ -30,7 +30,7 @@
  * is freed upon shutdown of the module.
  */
 
-static void pool_dump(resource *, unsigned);
+static void pool_dump(struct dump_request *, resource *);
 static void pool_free(resource *);
 static resource *pool_lookup(resource *, unsigned long);
 static struct resmem pool_memsize(resource *P);
@@ -135,17 +135,18 @@ pool_free(resource *P)
   POOL_UNLOCK;
 }
 
-
 static void
-pool_dump(resource *P, unsigned indent)
+pool_dump(struct dump_request *dreq, resource *P)
 {
   pool *p = (pool *) P;
 
   POOL_LOCK;
 
-  debug("%s\n", p->name);
+  RDUMP("%s\n", p->name);
+  dreq->indent += 3;
   WALK_TLIST_DELSAFE(resource, r, &p->inside)
-    rdump(r, indent + 3);
+    rdump(dreq, r);
+  dreq->indent -= 3;
 
   POOL_UNLOCK;
 }
@@ -246,20 +247,28 @@ rfree(void *res)
  * It works by calling a class-specific dump function.
  */
 void
-rdump(void *res, unsigned indent)
+rdump(struct dump_request *dreq, void *res)
 {
   char x[16];
   resource *r = res;
 
-  bsprintf(x, "%%%ds%%p ", indent);
-  debug(x, "", r);
+  bsprintf(x, "%%%ds%%p ", dreq->indent);
+  RDUMP(x, "", r);
   if (r)
     {
-      debug("%s ", r->class->name);
-      r->class->dump(r, indent);
+      RDUMP("%s ", r->class->name);
+      r->class->dump(dreq, r);
     }
   else
-    debug("NULL\n");
+    RDUMP("NULL\n");
+}
+
+void page_dump(struct dump_request *req);
+
+void resource_dump(struct dump_request *req)
+{
+  rdump(req, &root_pool);
+  page_dump(req);
 }
 
 struct resmem
@@ -300,6 +309,7 @@ ralloc(pool *p, struct resclass *c)
   return r;
 }
 
+#if 0
 /**
  * rlookup - look up a memory location
  * @a: memory address
@@ -322,6 +332,7 @@ rlookup(unsigned long a)
   else
     debug("Not found.\n");
 }
+#endif
 
 /**
  * resource_init - initialize the resource manager
@@ -384,11 +395,11 @@ static void mbl_free(resource *r UNUSED)
 {
 }
 
-static void mbl_debug(resource *r, unsigned indent UNUSED)
+static void mbl_debug(struct dump_request *dreq, resource *r)
 {
   struct mblock *m = (struct mblock *) r;
 
-  debug("(size=%d)\n", m->size);
+  RDUMP("(size=%d)\n", m->size);
 }
 
 static resource *

@@ -134,7 +134,7 @@ static inline void rt_unlock_source(struct rte_src *src)
 void rt_init_sources(struct rte_owner *, const char *name, event_list *list);
 void rt_destroy_sources(struct rte_owner *, event *);
 
-void rt_dump_sources(struct rte_owner *);
+void rt_dump_sources(struct dump_request *, struct rte_owner *);
 
 /*
  *	Route Attributes
@@ -350,7 +350,6 @@ static inline eattr *ea_find_by_name(ea_list *l, const char *name)
     })
 
 eattr *ea_walk(struct ea_walk_state *s, uint id, uint max);
-void ea_dump(ea_list *);
 int ea_same(ea_list *x, ea_list *y);	/* Test whether two ea_lists are identical */
 uint ea_hash(ea_list *e);		/* Calculate attributes hash value */
 ea_list *ea_append(ea_list *to, ea_list *what);
@@ -639,8 +638,8 @@ static inline ea_list *ea_strip_to(ea_list *r, u32 strip_to)
   return r;
 }
 
-void ea_dump(ea_list *);
-void ea_dump_all(void);
+void ea_dump(struct dump_request *, ea_list *);
+void ea_dump_all(struct dump_request *);
 void ea_show_list(struct cli *, ea_list *);
 
 #endif

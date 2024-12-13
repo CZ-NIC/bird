@@ -390,18 +390,18 @@ rt_prune_sources(void *data)
 }
 
 void
-rt_dump_sources(struct rte_owner *o)
+rt_dump_sources(struct dump_request *dreq, struct rte_owner *o)
 {
-  debug("\t%s: hord=%u, uc=%u, cnt=%u prune=%p, stop=%p\n",
+  RDUMP("\t%s: hord=%u, uc=%u, cnt=%u prune=%p, stop=%p\n",
       o->name, o->hash.order, o->uc, o->hash.count, o->prune, o->stop);
-  debug("\tget_route_info=%p, better=%p, mergable=%p, igp_metric=%p, recalculate=%p",
+  RDUMP("\tget_route_info=%p, better=%p, mergable=%p, igp_metric=%p, recalculate=%p",
       o->class->get_route_info, o->class->rte_better, o->class->rte_mergable,
       o->class->rte_igp_metric, o->rte_recalculate);
 
   int splitting = 0;
   HASH_WALK(o->hash, next, src)
   {
-    debug("%c%c%uL %uG %luU",
+    RDUMP("%c%c%uL %uG %luU",
 	(splitting % 8) ? ',' : '\n',
 	(splitting % 8) ? ' ' : '\t',
 	src->private_id, src->global_id,
@@ -410,7 +410,7 @@ rt_dump_sources(struct rte_owner *o)
     splitting++;
   }
   HASH_WALK_END;
-  debug("\n");
+  RDUMP("\n");
 }
 
 static struct rte_owner_class default_rte_owner_class;
@@ -653,10 +653,10 @@ ea_class_ref_free(resource *r)
 }
 
 static void
-ea_class_ref_dump(resource *r, unsigned indent UNUSED)
+ea_class_ref_dump(struct dump_request *dreq, resource *r)
 {
   SKIP_BACK_DECLARE(struct ea_class_ref, ref, r, r);
-  debug("name \"%s\", type=%d\n", ref->class->name, ref->class->type);
+  RDUMP("name \"%s\", type=%d\n", ref->class->name, ref->class->type);
 }
 
 static struct resclass ea_class_ref_class = {
@@ -1348,27 +1348,27 @@ ea_show(struct cli *c, const eattr *e)
 }
 
 static void
-nexthop_dump(const struct adata *ad)
+nexthop_dump(struct dump_request *dreq, const struct adata *ad)
 {
   struct nexthop_adata *nhad = (struct nexthop_adata *) ad;
 
-  debug(":");
+  RDUMP(":");
 
   if (!NEXTHOP_IS_REACHABLE(nhad))
   {
     const char *name = rta_dest_name(nhad->dest);
     if (name)
-      debug(" %s", name);
+      RDUMP(" %s", name);
     else
-      debug(" D%d", nhad->dest);
+      RDUMP(" D%d", nhad->dest);
   }
   else NEXTHOP_WALK(nh, nhad)
     {
-      if (ipa_nonzero(nh->gw)) debug(" ->%I", nh->gw);
-      if (nh->labels) debug(" L %d", nh->label[0]);
+      if (ipa_nonzero(nh->gw)) RDUMP(" ->%I", nh->gw);
+      if (nh->labels) RDUMP(" L %d", nh->label[0]);
       for (int i=1; i<nh->labels; i++)
-	debug("/%d", nh->label[i]);
-      debug(" [%s]", nh->iface ? nh->iface->name : "???");
+	RDUMP("/%d", nh->label[i]);
+      RDUMP(" [%s]", nh->iface ? nh->iface->name : "???");
     }
 }
 
@@ -1380,19 +1380,19 @@ nexthop_dump(const struct adata *ad)
  * the debug output.
  */
 void
-ea_dump(ea_list *e)
+ea_dump(struct dump_request *dreq, ea_list *e)
 {
   int i;
 
   if (!e)
     {
-      debug("NONE");
+      RDUMP("NONE");
       return;
     }
   while (e)
     {
       struct ea_storage *s = e->stored ? ea_get_storage(e) : NULL;
-      debug("[%c%c] overlay=%d uc=%d h=%08x",
+      RDUMP("[%c%c] overlay=%d uc=%d h=%08x",
 	    (e->flags & EALF_SORTED) ? 'S' : 's',
 	    (e->flags & EALF_BISECT) ? 'B' : 'b',
 	    e->stored,
@@ -1403,34 +1403,34 @@ ea_dump(ea_list *e)
 	  eattr *a = &e->attrs[i];
 	  struct ea_class *clp = (a->id < ea_class_max) ? ea_class_global[a->id] : NULL;
 	  if (clp)
-	    debug(" %s", clp->name);
+	    RDUMP(" %s", clp->name);
 	  else
-	    debug(" 0x%x", a->id);
+	    RDUMP(" 0x%x", a->id);
 
-	  debug(".%02x", a->flags);
-	  debug("=%c",
+	  RDUMP(".%02x", a->flags);
+	  RDUMP("=%c",
 	      "?iO?IRP???S??pE?"
 	      "??L???N?????????"
 	      "?o???r??????????" [a->type]);
 	  if (a->originated)
-	    debug("o");
+	    RDUMP("o");
 	  if (a->undef)
-	    debug(":undef");
+	    RDUMP(":undef");
 	  else if (a->type & EAF_EMBEDDED)
-	    debug(":%08x", a->u.data);
+	    RDUMP(":%08x", a->u.data);
 	  else if (a->id == ea_gen_nexthop.id)
-	    nexthop_dump(a->u.ptr);
+	    nexthop_dump(dreq, a->u.ptr);
 	  else
 	    {
 	      int j, len = a->u.ptr->length;
-	      debug("[%d]:", len);
+	      RDUMP("[%d]:", len);
 	      for(j=0; j<len; j++)
-		debug("%02x", a->u.ptr->data[j]);
+		RDUMP("%02x", a->u.ptr->data[j]);
 	    }
-	  debug(" ");
+	  RDUMP(" ");
 	}
       if (e = e->next)
-	debug(" | ");
+	RDUMP(" | ");
     }
 }
 
@@ -1681,20 +1681,20 @@ ea_free_deferred(struct deferred_call *dc)
  * to the debug output.
  */
 void
-ea_dump_all(void)
+ea_dump_all(struct dump_request *dreq)
 {
-  debug("Route attribute cache (%d entries, order %d):\n",
+  RDUMP("Route attribute cache (%d entries, order %d):\n",
       atomic_load_explicit(&rta_hash_table.count, memory_order_relaxed),
       atomic_load_explicit(&rta_hash_table.cur, memory_order_relaxed)->order);
 
   SPINHASH_WALK(rta_hash_table, RTAH, a)
       {
-	debug("%p ", a);
-	ea_dump(a->l);
-	debug("\n");
+	RDUMP("%p ", a);
+	ea_dump(dreq, a->l);
+	RDUMP("\n");
       }
   SPINHASH_WALK_END;
-  debug("\n");
+  RDUMP("\n");
 }
 
 void

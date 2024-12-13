@@ -2053,14 +2053,14 @@ channel_graceful_restart_unlock(struct channel *c)
  * the internals.
  */
 void
-protos_dump_all(void)
+protos_dump_all(struct dump_request *dreq)
 {
-  debug("Protocols:\n");
+  RDUMP("Protocols:\n");
 
   WALK_TLIST(proto, p, &global_proto_list) PROTO_LOCKED_FROM_MAIN(p)
   {
 #define DPF(x)	(p->x ? " " #x : "")
-    debug("  protocol %s (%p) state %s with %d active channels flags: %s%s%s\n",
+    RDUMP("  protocol %s (%p) state %s with %d active channels flags: %s%s%s\n",
 	p->name, p, p_states[p->proto_state], p->active_channels,
 	DPF(disabled), DPF(do_stop), DPF(reconfiguring));
 #undef DPF
@@ -2068,23 +2068,24 @@ protos_dump_all(void)
     struct channel *c;
     WALK_LIST(c, p->channels)
     {
-      debug("\tTABLE %s\n", c->table->name);
+      RDUMP("\tTABLE %s\n", c->table->name);
       if (c->in_filter)
-	debug("\tInput filter: %s\n", filter_name(c->in_filter));
+	RDUMP("\tInput filter: %s\n", filter_name(c->in_filter));
       if (c->out_filter)
-	debug("\tOutput filter: %s\n", filter_name(c->out_filter));
-      debug("\tChannel state: %s/%s/%s\n", c_states[c->channel_state],
+	RDUMP("\tOutput filter: %s\n", filter_name(c->out_filter));
+      RDUMP("\tChannel state: %s/%s/%s\n", c_states[c->channel_state],
 	  c->in_req.hook ? rt_import_state_name(rt_import_get_state(c->in_req.hook)) : "-",
 	  rt_export_state_name(rt_export_get_state(&c->out_req)));
     }
 
-    debug("\tSOURCES\n");
-    rt_dump_sources(&p->sources);
+    RDUMP("\tSOURCES\n");
+    if (p->proto_state != PS_DOWN_XX)
+      rt_dump_sources(dreq, &p->sources);
 
     if (p->proto->dump &&
 	(p->proto_state != PS_DOWN_XX) &&
 	(p->proto_state != PS_FLUSH))
-      p->proto->dump(p);
+      p->proto->dump(p, dreq);
   }
 }
 

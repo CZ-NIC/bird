@@ -21,6 +21,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/uio.h>
 #include <sys/un.h>
 #include <poll.h>
@@ -43,6 +44,7 @@
 #include "lib/timer.h"
 #include "lib/string.h"
 #include "nest/iface.h"
+#include "nest/cli.h"
 #include "conf/conf.h"
 
 #include "sysdep/unix/unix.h"
@@ -90,11 +92,11 @@ rf_free(resource *r)
 }
 
 static void
-rf_dump(resource *r, unsigned indent UNUSED)
+rf_dump(struct dump_request *dreq, resource *r)
 {
   struct rfile *a = (struct rfile *) r;
 
-  debug("(fd %d)\n", a->fd);
+  RDUMP("(fd %d)\n", a->fd);
 }
 
 static struct resclass rf_class = {
@@ -283,6 +285,147 @@ rf_writev(struct rfile *r, struct iovec *iov, int iov_count)
 
     return 1;
   }
+}
+
+/*
+ *	Dumping to files
+ */
+
+struct dump_request_file {
+  struct dump_request dr;
+  uint pos, max; int fd;
+  uint last_progress_info;
+  char data[0];
+};
+
+static void
+dump_to_file_flush(struct dump_request_file *req)
+{
+  if (req->fd < 0)
+    return;
+
+  for (uint sent = 0; sent < req->pos; )
+  {
+    int e = write(req->fd, &req->data[sent], req->pos - sent);
+    if (e <= 0)
+    {
+      req->dr.report(&req->dr, 8009, "Failed to write data: %m");
+      close(req->fd);
+      req->fd = -1;
+      return;
+    }
+    sent += e;
+  }
+
+  req->dr.size += req->pos;
+  req->pos = 0;
+
+  for (uint reported = 0; req->dr.size >> req->last_progress_info; req->last_progress_info++)
+    if (!reported++)
+      req->dr.report(&req->dr, -13, "... dumped %lu bytes in %t s",
+	  req->dr.size, current_time_now() - req->dr.begin);
+}
+
+static void
+dump_to_file_write(struct dump_request *dr, const char *fmt, ...)
+{
+  struct dump_request_file *req = SKIP_BACK(struct dump_request_file, dr, dr);
+
+  for (uint phase = 0; (req->fd >= 0) && (phase < 2); phase++)
+  {
+    va_list args;
+    va_start(args, fmt);
+    int i = bvsnprintf(&req->data[req->pos], req->max - req->pos, fmt, args);
+    va_end(args);
+
+    if (i >= 0)
+    {
+      req->pos += i;
+      return;
+    }
+    else
+      dump_to_file_flush(req);
+  }
+
+  bug("Too long dump call");
+}
+
+struct dump_request *
+dump_to_file_init(off_t offset)
+{
+  ASSERT_DIE(offset + sizeof(struct dump_request_file) + 1024 < (unsigned long) page_size);
+
+  struct dump_request_file *req = alloc_page() + offset;
+  *req = (struct dump_request_file) {
+    .dr = {
+      .write = dump_to_file_write,
+      .begin = current_time_now(),
+      .offset = offset,
+    },
+    .max = page_size - offset - OFFSETOF(struct dump_request_file, data[0]),
+    .fd = -1,
+  };
+
+  return &req->dr;
+}
+
+void
+dump_to_file_run(struct dump_request *dr, const char *file, const char *what, void (*dump)(struct dump_request *))
+{
+  struct dump_request_file *req = SKIP_BACK(struct dump_request_file, dr, dr);
+  req->fd = open(file, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR);
+
+  if (req->fd < 0)
+  {
+    dr->report(dr, 8009, "Failed to open file %s: %m", file);
+    goto cleanup;
+  }
+
+  dr->report(dr, -13, "Dumping %s to %s", what, file);
+
+  dump(dr);
+
+  if (req->fd >= 0)
+  {
+    dump_to_file_flush(req);
+    close(req->fd);
+  }
+
+  btime end = current_time_now();
+  dr->report(dr, 13, "Dumped %lu bytes in %t s", dr->size, end - dr->begin);
+
+cleanup:
+  free_page(((void *) req) - dr->offset);
+}
+
+struct dump_request_cli {
+  cli *cli;
+  struct dump_request dr;
+};
+
+static void
+cmd_dump_report(struct dump_request *dr, int state, const char *fmt, ...)
+{
+  struct dump_request_cli *req = SKIP_BACK(struct dump_request_cli, dr, dr);
+  va_list args;
+  va_start(args, fmt);
+  cli_vprintf(req->cli, state, fmt, args);
+  va_end(args);
+}
+
+void
+cmd_dump_file(struct cli *cli, const char *file, const char *what, void (*dump)(struct dump_request *))
+{
+  if (cli->restricted)
+    return cli_printf(cli, 8007, "Access denied");
+
+  struct dump_request_cli *req = SKIP_BACK(struct dump_request_cli, dr,
+      dump_to_file_init(OFFSETOF(struct dump_request_cli, dr)));
+
+  req->cli = cli;
+  req->dr.report = cmd_dump_report;
+
+  dump_to_file_run(&req->dr, file, what, dump);
 }
 
 
@@ -1069,12 +1212,12 @@ sk_reallocate(sock *s)
 }
 
 static void
-sk_dump(resource *r, unsigned indent UNUSED)
+sk_dump(struct dump_request *dreq, resource *r)
 {
   sock *s = (sock *) r;
   static char *sk_type_names[] = { "TCP<", "TCP>", "TCP", "UDP", NULL, "IP", NULL, "MAGIC", "UNIX<", "UNIX", "SSH>", "SSH", "DEL!" };
 
-  debug("(%s, ud=%p, sa=%I, sp=%d, da=%I, dp=%d, tos=%d, ttl=%d, if=%s)\n",
+  RDUMP("(%s, ud=%p, sa=%I, sp=%d, da=%I, dp=%d, tos=%d, ttl=%d, if=%s)\n",
 	sk_type_names[s->type],
 	s->data,
 	s->saddr,
@@ -2253,19 +2396,21 @@ sk_err(sock *s, int revents)
 }
 
 void
-sk_dump_all(void)
+sk_dump_all(struct dump_request *dreq)
 {
   node *n;
   sock *s;
 
-  debug("Open sockets:\n");
+  RDUMP("Open sockets:\n");
+  dreq->indent += 3;
   WALK_LIST(n, main_birdloop.sock_list)
   {
     s = SKIP_BACK(sock, n, n);
-    debug("%p ", s);
-    sk_dump(&s->r, 3);
+    RDUMP("%p ", s);
+    sk_dump(dreq, &s->r);
   }
-  debug("\n");
+  dreq->indent -= 3;
+  RDUMP("\n");
 }
 
 
@@ -2345,16 +2490,16 @@ io_close_event(void)
 }
 
 void
-io_log_dump(void)
+io_log_dump(struct dump_request *dreq)
 {
   int i;
 
-  log(L_DEBUG "Event log:");
+  RDUMP("Event log:\n");
   for (i = 0; i < EVENT_LOG_LENGTH; i++)
   {
     struct event_log_entry *en = event_log + (event_log_pos + i) % EVENT_LOG_LENGTH;
     if (en->hook)
-      log(L_DEBUG "  Event 0x%p 0x%p at %8d for %d ms", en->hook, en->data,
+      RDUMP("  Event 0x%p 0x%p at %8d for %d ms\n", en->hook, en->data,
 	  (int) ((last_io_time - en->timestamp) TO_MS), (int) (en->duration TO_MS));
   }
 }

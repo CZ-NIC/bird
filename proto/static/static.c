@@ -606,27 +606,27 @@ static_cleanup(struct proto *P)
 }
 
 static void
-static_dump_rte(struct static_route *r)
+static_dump_rte(struct dump_request *dreq, struct static_route *r)
 {
-  debug("%-1N (%u): ", r->net, r->index);
+  RDUMP("%-1N (%u): ", r->net, r->index);
   if (r->dest == RTD_UNICAST)
     if (r->iface && ipa_zero(r->via))
-      debug("dev %s\n", r->iface->name);
+      RDUMP("dev %s\n", r->iface->name);
     else
-      debug("via %I%J\n", r->via, r->iface);
+      RDUMP("via %I%J\n", r->via, r->iface);
   else
-    debug("rtd %d\n", r->dest);
+    RDUMP("rtd %d\n", r->dest);
 }
 
 static void
-static_dump(struct proto *P)
+static_dump(struct proto *P, struct dump_request *dreq)
 {
   struct static_config *c = (void *) P->cf;
   struct static_route *r;
 
-  debug("Static routes:\n");
+  RDUMP("Static routes:\n");
   WALK_LIST(r, c->routes)
-    static_dump_rte(r);
+    static_dump_rte(dreq, r);
 }
 
 #define IGP_TABLE(cf, sym) ((cf)->igp_table_##sym ? (cf)->igp_table_##sym ->table : NULL )

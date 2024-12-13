@@ -302,17 +302,17 @@ bad:
  * This functions dumps the contents of a given neighbor entry to debug output.
  */
 static void
-neigh_dump(neighbor *n)
+neigh_dump(struct dump_request *dreq, neighbor *n)
 {
-  debug("%p %I %s %s ", n, n->addr,
+  RDUMP("%p %I %s %s ", n, n->addr,
 	n->iface ? n->iface->name : "[]",
 	n->ifreq ? n->ifreq->name : "[]");
-  debug("%s %p %08x scope %s", n->proto->name, n->data, n->aux, ip_scope_text(n->scope));
+  RDUMP("%s %p %08x scope %s", n->proto->name, n->data, n->aux, ip_scope_text(n->scope));
   if (n->flags & NEF_STICKY)
-    debug(" STICKY");
+    RDUMP(" STICKY");
   if (n->flags & NEF_ONLINK)
-    debug(" ONLINK");
-  debug("\n");
+    RDUMP(" ONLINK");
+  RDUMP("\n");
 }
 
 /**
@@ -321,18 +321,18 @@ neigh_dump(neighbor *n)
  * This function dumps the contents of the neighbor cache to debug output.
  */
 void
-neigh_dump_all(void)
+neigh_dump_all(struct dump_request *dreq)
 {
   IFACE_LOCK;
 
   neighbor *n;
   int i;
 
-  debug("Known neighbors:\n");
+  RDUMP("Known neighbors:\n");
   for(i=0; i<NEIGH_HASH_SIZE; i++)
     WALK_LIST(n, neigh_hash_table[i])
-      neigh_dump(n);
-  debug("\n");
+      neigh_dump(dreq, n);
+  RDUMP("\n");
 
   IFACE_UNLOCK;
 }

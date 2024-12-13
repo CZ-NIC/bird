@@ -809,11 +809,11 @@ rte *rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linp
 void rt_refresh_begin(struct rt_import_request *);
 void rt_refresh_end(struct rt_import_request *);
 void rt_schedule_prune(struct rtable_private *t);
-void rte_dump(struct rte_storage *);
-void rt_dump(rtable *);
-void rt_dump_all(void);
-void rt_dump_hooks(rtable *);
-void rt_dump_hooks_all(void);
+void rte_dump(struct dump_request *, struct rte_storage *);
+void rt_dump(struct dump_request *, rtable *);
+void rt_dump_all(struct dump_request *);
+void rt_dump_hooks(struct dump_request *, rtable *);
+void rt_dump_hooks_all(struct dump_request *);
 int rt_reload_channel(struct channel *c);
 void rt_reload_channel_abort(struct channel *c);
 void rt_prune_sync(rtable *t, int all);

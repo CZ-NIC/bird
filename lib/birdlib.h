@@ -310,4 +310,15 @@ static inline u32 u64_hash(u64 v)
 void birdloop_yield(void);
 
 
+/* Dumping */
+struct dump_request {
+  u64 size;
+  btime begin;
+  uint indent, offset;
+  void (*write)(struct dump_request *, const char *fmt, ...);
+  void (*report)(struct dump_request *, int state, const char *fmt, ...);
+};
+
+#define RDUMP(...)  dreq->write(dreq, __VA_ARGS__)
+
 #endif

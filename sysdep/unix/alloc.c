@@ -432,6 +432,30 @@ page_cleanup(void *_ UNUSED)
 #endif
 
 void
+page_dump(struct dump_request *dreq)
+{
+#ifdef HAVE_MMAP
+  RDUMP("Hot pages:\n");
+  struct free_page *fptop = PAGE_STACK_GET;
+  for (struct free_page *fp = fptop; fp; fp = atomic_load_explicit(&fp->next, memory_order_relaxed))
+    RDUMP("  %p\n", fp);
+
+  PAGE_STACK_PUT(fptop);
+
+  RDUMP("Cold pages:\n");
+
+  LOCK_DOMAIN(resource, empty_pages_domain);
+  for (struct empty_pages *ep = empty_pages; ep; ep = ep->next)
+  {
+    RDUMP("  %p (index)\n", ep);
+    for (uint i=0; i<ep->pos; i++)
+      RDUMP("    %p\n", ep->pages[i]);
+  }
+  UNLOCK_DOMAIN(resource, empty_pages_domain);
+#endif
+}
+
+void
 resource_sys_init(void)
 {
 #ifdef CONFIG_DISABLE_THP

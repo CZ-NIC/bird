@@ -52,8 +52,8 @@ static void if_recalc_preferred(struct iface *i);
 
 static void ifa_delete_locked(struct ifa *a);
 
-static void ifa_dump_locked(struct ifa *);
-static void if_dump_locked(struct iface *);
+static void ifa_dump_locked(struct dump_request *, struct ifa *);
+static void if_dump_locked(struct dump_request *, struct iface *);
 
 struct iface *
 if_walk_first(void)
@@ -85,17 +85,17 @@ if_walk_done(void)
  * This function dumps contents of an &ifa to the debug output.
  */
 void
-ifa_dump(struct ifa *a)
+ifa_dump(struct dump_request *dreq, struct ifa *a)
 {
   IFACE_LOCK;
-  ifa_dump_locked(a);
+  ifa_dump_locked(dreq, a);
   IFACE_UNLOCK;
 }
 
 static void
-ifa_dump_locked(struct ifa *a)
+ifa_dump_locked(struct dump_request *dreq, struct ifa *a)
 {
-  debug("\t%I, net %N bc %I -> %I%s%s%s%s\n", a->ip, &a->prefix, a->brd, a->opposite,
+  RDUMP("\t%I, net %N bc %I -> %I%s%s%s%s\n", a->ip, &a->prefix, a->brd, a->opposite,
 	(a->flags & IA_PRIMARY) ? " PRIMARY" : "",
 	(a->flags & IA_SECONDARY) ? " SEC" : "",
 	(a->flags & IA_HOST) ? " HOST" : "",
@@ -110,43 +110,43 @@ ifa_dump_locked(struct ifa *a)
  * network interface to the debug output.
  */
 void
-if_dump(struct iface *i)
+if_dump(struct dump_request *dreq, struct iface *i)
 {
   IFACE_LOCK;
-  if_dump_locked(i);
+  if_dump_locked(dreq, i);
   IFACE_UNLOCK;
 }
 
 static void
-if_dump_locked(struct iface *i)
+if_dump_locked(struct dump_request *dreq, struct iface *i)
 {
   struct ifa *a;
 
-  debug("IF%d: %s", i->index, i->name);
+  RDUMP("IF%d: %s", i->index, i->name);
   if (i->flags & IF_SHUTDOWN)
-    debug(" SHUTDOWN");
+    RDUMP(" SHUTDOWN");
   if (i->flags & IF_UP)
-    debug(" UP");
+    RDUMP(" UP");
   else
-    debug(" DOWN");
+    RDUMP(" DOWN");
   if (i->flags & IF_ADMIN_UP)
-    debug(" LINK-UP");
+    RDUMP(" LINK-UP");
   if (i->flags & IF_MULTIACCESS)
-    debug(" MA");
+    RDUMP(" MA");
   if (i->flags & IF_BROADCAST)
-    debug(" BC");
+    RDUMP(" BC");
   if (i->flags & IF_MULTICAST)
-    debug(" MC");
+    RDUMP(" MC");
   if (i->flags & IF_LOOPBACK)
-    debug(" LOOP");
+    RDUMP(" LOOP");
   if (i->flags & IF_IGNORE)
-    debug(" IGN");
+    RDUMP(" IGN");
   if (i->flags & IF_TMP_DOWN)
-    debug(" TDOWN");
-  debug(" MTU=%d\n", i->mtu);
+    RDUMP(" TDOWN");
+  RDUMP(" MTU=%d\n", i->mtu);
   WALK_LIST(a, i->addrs)
     {
-      ifa_dump_locked(a);
+      ifa_dump_locked(dreq, a);
       ASSERT(!!(a->flags & IA_PRIMARY) ==
 	     ((a == i->addr4) || (a == i->addr6) || (a == i->llv6)));
     }
@@ -159,13 +159,13 @@ if_dump_locked(struct iface *i)
  * interfaces to the debug output.
  */
 void
-if_dump_all(void)
+if_dump_all(struct dump_request *dreq)
 {
-  debug("Known network interfaces:\n");
+  RDUMP("Known network interfaces:\n");
   IFACE_WALK(i)
-    if_dump(i);
+    if_dump_locked(dreq, i);
   rcu_read_lock();
-  debug("Router ID: %08x\n", atomic_load_explicit(&global_runtime, memory_order_relaxed)->router_id);
+  RDUMP("Router ID: %08x\n", atomic_load_explicit(&global_runtime, memory_order_relaxed)->router_id);
   rcu_read_unlock();
 }
 

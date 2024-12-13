@@ -20,6 +20,7 @@ struct pool;
 struct iface;
 struct birdsock;
 struct rfile;
+struct cli;
 struct config;
 
 /* main.c */
@@ -113,7 +114,7 @@ extern volatile sig_atomic_t async_shutdown_flag;
 
 void io_init(void);
 void io_loop(void);
-void io_log_dump(void);
+void io_log_dump(struct dump_request *);
 int sk_open_unix(struct birdsock *s, struct birdloop *, const char *name);
 
 enum rf_mode {
@@ -132,6 +133,11 @@ extern struct rfile rf_stderr;
 
 void test_old_bird(const char *path);
 ip_addr resolve_hostname(const char *host, int type, const char **err_msg);
+
+struct dump_request *dump_to_file_init(off_t offset);
+void dump_to_file_run(struct dump_request *dr, const char *file, const char *what, void (*dump)(struct dump_request *));
+
+void cmd_dump_file(struct cli *cli, const char *file, const char *what, void (*dump)(struct dump_request *));
 
 /* krt.c bits */
 

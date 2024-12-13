@@ -63,7 +63,7 @@ struct protocol {
   void (*postconfig)(struct proto_config *);			/* After configuring each instance */
   struct proto * (*init)(struct proto_config *);		/* Create new instance */
   int (*reconfigure)(struct proto *, struct proto_config *);	/* Try to reconfigure instance, returns success */
-  void (*dump)(struct proto *);			/* Debugging dump */
+  void (*dump)(struct proto *, struct dump_request *);		/* Debugging dump */
   int (*start)(struct proto *);			/* Start the instance */
   int (*shutdown)(struct proto *);		/* Stop the instance */
   void (*cleanup)(struct proto *);		/* Cleanup the instance right before tearing it all down */
@@ -78,7 +78,7 @@ void proto_build(struct protocol *);	/* Called from protocol to register itself 
 void protos_preconfig(struct config *);
 void protos_commit(struct config *new, struct config *old, int type);
 struct proto * proto_spawn(struct proto_config *cf, uint disabled);
-void protos_dump_all(void);
+void protos_dump_all(struct dump_request *);
 
 #define GA_UNKNOWN	0		/* Attribute not recognized */
 #define GA_NAME		1		/* Result = name */
