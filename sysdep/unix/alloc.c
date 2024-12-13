@@ -126,6 +126,7 @@ long page_size = 0;
   static struct empty_pages *empty_pages = NULL;
   _Atomic int pages_kept_cold = 0;
   _Atomic int pages_kept_cold_index = 0;
+  _Atomic int pages_total = 0;
 
   static struct free_page * _Atomic page_stack = NULL;
   static _Thread_local struct free_page * local_page_stack = NULL;
@@ -155,6 +156,7 @@ long page_size = 0;
     if (ptr == MAP_FAILED)
       die("mmap(%ld) failed: %m", (s64) page_size);
 
+    atomic_fetch_add_explicit(&pages_total, ALLOC_PAGES_AT_ONCE, memory_order_acq_rel);
     return ptr;
   }
 
@@ -173,6 +175,7 @@ alloc_page(void)
   /* If the system page allocator is goofy, we use posix_memalign to get aligned blocks of memory. */
   if (use_fake)
   {
+    atomic_fetch_add_explicit(&pages_total, 1, memory_order_acq_rel);
     void *ptr = NULL;
     int err = posix_memalign(&ptr, page_size, page_size);
 
@@ -271,6 +274,7 @@ free_page(void *ptr)
   /* If the system page allocator is goofy, we just free the block and care no more. */
   if (use_fake)
   {
+    atomic_fetch_sub_explicit(&pages_total, 1, memory_order_acq_rel);
     free(ptr);
     return;
   }
@@ -452,6 +456,7 @@ page_dump(struct dump_request *dreq)
       RDUMP("    %p\n", ep->pages[i]);
   }
   UNLOCK_DOMAIN(resource, empty_pages_domain);
+  RDUMP("This request: %p\n", dreq);
 #endif
 }
 

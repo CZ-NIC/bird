@@ -123,18 +123,29 @@ cmd_show_memory(void)
   print_size("Current config:", rmemsize(config_pool));
   struct resmem total = rmemsize(&root_pool);
 #ifdef HAVE_MMAP
-  int pk  = atomic_load_explicit(&pages_kept, memory_order_relaxed)
-	  + atomic_load_explicit(&pages_kept_locally, memory_order_relaxed)
-	  + atomic_load_explicit(&pages_kept_cold_index, memory_order_relaxed);
-  print_size("Standby memory:", (struct resmem) { .overhead = page_size * pk });
-  total.overhead += page_size * pk;
+  uint hot_pages = atomic_load_explicit(&pages_kept, memory_order_relaxed)
+		+ atomic_load_explicit(&pages_kept_locally, memory_order_relaxed);
+  uint cold_pages_index = atomic_load_explicit(&pages_kept_cold_index, memory_order_relaxed);
+  print_size("Standby memory:", (struct resmem) { .overhead = page_size * (hot_pages + cold_pages_index) });
+  total.overhead += page_size * (hot_pages + cold_pages_index);
 #endif
 
   print_size("Total:", total);
+  cli_msg(-1018, "");
 
 #ifdef HAVE_MMAP
-  struct size_args cold = get_size_args(atomic_load_explicit(&pages_kept_cold, memory_order_relaxed) * page_size);
-  cli_msg(-1018, "%-23s " SIZE_FORMAT, "Cold memory:", SIZE_ARGS(cold));
+  uint cold_pages = atomic_load_explicit(&pages_kept_cold, memory_order_relaxed);
+  uint pages_total_loc = atomic_load_explicit(&pages_total, memory_order_relaxed);
+  uint pages_active = pages_total_loc - hot_pages - cold_pages_index - cold_pages;
+  
+  struct size_args active = get_size_args(page_size * pages_active);
+  struct size_args kept = get_size_args(page_size * (hot_pages + cold_pages_index));
+  struct size_args cold = get_size_args(page_size * cold_pages);
+
+  cli_msg(-1018, "%-17s " SIZE_FORMAT, "Active pages:", SIZE_ARGS(active));
+  cli_msg(-1018, "%-17s " SIZE_FORMAT, "Kept free pages:", SIZE_ARGS(kept));
+  cli_msg(-1018, "%-17s " SIZE_FORMAT, "Cold free pages:", SIZE_ARGS(cold));
+
 #endif
   cli_msg(0, "");
 }
