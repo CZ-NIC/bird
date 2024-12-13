@@ -342,6 +342,9 @@ rt_find_source_global(u32 id)
 static inline void
 rt_done_sources(struct rte_owner *o)
 {
+  RTA_LOCK;
+  HASH_FREE(o->hash);
+  RTA_UNLOCK;
   ev_send(o->list, o->stop);
 }
 
