@@ -69,7 +69,6 @@ long page_size = 0;
 
 #   define AJT_ALLOC_LOCAL_HOT		1
 #   define AJT_ALLOC_GLOBAL_HOT		2
-#   define AJT_ALLOC_COLD_STD		3
 #   define AJT_ALLOC_COLD_KEEPER	4
 #   define AJT_ALLOC_MMAP		5
 
@@ -82,6 +81,7 @@ long page_size = 0;
 #   define AJT_CLEANUP_BEGIN		0xcb
 #   define AJT_CLEANUP_END		0xce
 
+#   define AJT_FLUSH_COLD		0xfc
 #   define AJT_FLUSH_LOCAL_BEGIN	0xfb
 #   define AJT_FLUSH_LOCAL_END		0xfe
 #   define AJT_SCHEDULE_CLEANUP		0xff
@@ -96,6 +96,14 @@ long page_size = 0;
 	.type = type,
 	.thread_id = THIS_THREAD_ID,
       };
+
+#if 0
+      log(L_TRACE "ajlog %s: %p, %p, %u, %u",
+	  (type < 0x10) ? "alloc" : (type < 0x20) ? "free" :
+	  (type < 0xcf) ? "cleanup" : "flush",
+	  fp, next, pos, type);
+#endif
+
     }
 
     struct free_page {
@@ -248,15 +256,17 @@ alloc_page(void)
 
     /* We flush all the pages in this block to the hot page cache
      * and return the keeper page as allocated. */
-    ajlog(fp, empty_pages, empty_pages->pos, AJT_ALLOC_COLD_STD);
     if (empty_pages->pos)
     {
       /* Link one after another */
       for (uint i = 0; i < empty_pages->pos - 1; i++)
+      {
+	ajlog(empty_pages->pages[i], empty_pages, empty_pages->pos, AJT_FLUSH_COLD);
 	atomic_store_explicit(
 	    &((struct free_page *) empty_pages->pages[i])->next,
 	    empty_pages->pages[i+1],
 	    memory_order_relaxed);
+      }
 
       /* And put into the hot page cache */
       atomic_store_explicit(
