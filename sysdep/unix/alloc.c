@@ -18,6 +18,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#ifdef HAVE_MALLOC_H
+# include <malloc.h>
+#endif
+
 #ifdef HAVE_MMAP
 # include <sys/mman.h>
 #endif
@@ -501,6 +505,11 @@ page_dump(struct dump_request *dreq)
 void
 resource_sys_init(void)
 {
+#ifdef HAVE_MALLOC_H
+  if (!mallopt(M_ARENA_MAX, 1))
+    log(L_WARN "Failed to disable multiple malloc arenas, memory consumption may skyrocket.");
+#endif
+
 #ifdef CONFIG_DISABLE_THP
   /* Disable transparent huge pages, they do not work properly with madvice(MADV_DONTNEED) */
   if (prctl(PR_SET_THP_DISABLE,  (unsigned long) 1,  (unsigned long) 0,  (unsigned long) 0,  (unsigned long) 0) < 0)
