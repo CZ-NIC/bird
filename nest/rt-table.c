@@ -2881,7 +2881,34 @@ rt_schedule_prune(struct rtable_private *tab)
 {
   /* state change 0->1, 2->3 */
   tab->prune_state |= 1;
-  ev_send_loop(tab->loop, tab->prune_event);
+  if (!tab->reconf_end)
+    ev_send_loop(tab->loop, tab->prune_event);
+
+  /* If reconfiguring, we explicitly activate the prune after done
+   * to stop expensive operations from happening too early. */
+}
+
+struct rt_reconf_finished_deferred_call {
+  struct deferred_call dc;
+  rtable *tab;
+};
+
+static void
+rt_reconf_finished(struct deferred_call *dc)
+{
+  /* Reconfiguration ended, let's reinstate prune events */
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+  RT_LOCKED(SKIP_BACK(struct rt_reconf_finished_deferred_call, dc, dc)->tab, tab)
+  {
+    rt_unlock_table(tab);
+    if (dc == tab->reconf_end)
+    {
+      tab->reconf_end = NULL;
+
+      if (tab->prune_state & 1)
+	ev_send_loop(tab->loop, tab->prune_event);
+    }
+  }
 }
 
 static void
@@ -3569,8 +3596,10 @@ rt_prune_table(void *_tab)
   lfjour_announce_now(&tab->export_all.journal);
   lfjour_announce_now(&tab->export_best.journal);
 
-  /* state change 2->0, 3->1 */
-  if (tab->prune_state &= 1)
+  /* state change 2->0, 3->1
+   * pausing expensive prune while reconfiguring to allow for
+   * the imports to settle */
+  if ((tab->prune_state &= 1) && !tab->reconf_end)
     ev_send_loop(tab->loop, tab->prune_event);
 
   struct f_trie *trie = atomic_load_explicit(&tab->trie, memory_order_relaxed);
@@ -4652,6 +4681,14 @@ rt_reconfigure(struct rtable_private *tab, struct rtable_config *new, struct rta
     ||  (new->digest_settle.max != tab->export_digest->settle.cf.max)))
     tab->export_digest->settle.cf = new->digest_settle;
 
+  rt_lock_table(tab); /* Unlocked in rt_reconf_finished() */
+  struct rt_reconf_finished_deferred_call rrfdc = {
+    .dc.hook = rt_reconf_finished,
+    .tab = RT_PUB(tab),
+  };
+
+  tab->reconf_end = defer_call(&rrfdc.dc, sizeof rrfdc);
+
   return 1;
 }
 
@@ -4702,7 +4739,15 @@ rt_commit(struct config *new, struct config *old)
 	  OBSREF_SET(tab->deleted, old);
 	  rt_check_cork_low(tab);
 	  rt_lock_table(tab);
-	  rt_unlock_table(tab);
+
+	  /* No actual table stopping before reconfiguring the rest.
+	   * Table unlocked in the deferred call. */
+	  struct rt_reconf_finished_deferred_call rrfdc = {
+	    .dc.hook = rt_reconf_finished,
+	    .tab = RT_PUB(tab),
+	  };
+
+	  tab->reconf_end = defer_call(&rrfdc.dc, sizeof rrfdc);
 	}
 
 	CALL(o->table->config->master.stop, o->table);

@@ -413,6 +413,8 @@ struct rtable_private {
 					 * delete as soon as use_count becomes 0 and remove
 					 * obstacle from this routing table.
 					 */
+
+  struct deferred_call *reconf_end;	/* Reconfiguration done callback */
   struct rt_export_request best_req;	/* Internal request from best route announcement cleanup */
   struct rt_uncork_callback nhu_uncork;	/* Helper event to schedule NHU on uncork */
   struct rt_uncork_callback hcu_uncork;	/* Helper event to schedule HCU on uncork */
