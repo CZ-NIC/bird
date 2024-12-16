@@ -604,3 +604,45 @@ lfjour_init(struct lfjour *j, struct settle_config *scf)
   };
   j->max_tokens = 20;
 }
+
+void
+lfjour_dump(struct dump_request *dreq, struct lfjour *j)
+{
+  RDUMP("item_size=%u, item_count=%u\n", j->item_size, j->item_count);
+
+  struct lfjour_item *first = atomic_load_explicit(&j->first, memory_order_relaxed);
+  RDUMP("first=%p", first);
+  if (first)
+    RDUMP(" (seq %lu)", first->seq);
+  RDUMP(", next_seq=%lu", j->next_seq);
+
+  RDUMP("max_tokens=%lu, issued_tokens=%lu",
+      j->max_tokens, atomic_load_explicit(&j->issued_tokens, memory_order_relaxed));
+
+  RDUMP("Blocks:\n");
+  dreq->indent += 3;
+  WALK_TLIST(lfjour_block, block, &j->pending)
+    RDUMP("%p: end=%u, not_last=%u\n", block,
+	atomic_load_explicit(&block->end, memory_order_relaxed),
+	atomic_load_explicit(&block->not_last, memory_order_relaxed)
+	);
+  dreq->indent -= 3;
+}
+
+struct resmem lfjour_memsize(struct lfjour *j)
+{
+  u64 blocks = 0;
+  WALK_TLIST(lfjour_block, block, &j->pending)
+    blocks++;
+
+  struct lfjour_item *first = atomic_load_explicit(&j->first, memory_order_relaxed);
+
+  if (!first)
+    return (struct resmem) { .overhead = blocks * page_size, };
+
+  struct resmem out;
+  out.effective = (j->next_seq - first->seq) * j->item_size;
+  out.overhead = blocks * page_size - out.effective;
+
+  return out;
+}

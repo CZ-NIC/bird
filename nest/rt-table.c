@@ -3243,15 +3243,28 @@ rt_res_dump(struct dump_request *dreq, resource *_r)
   RDUMP("name \"%s\", addr_type=%s, rt_count=%u, use_count=%d\n",
       r->name, net_label[r->addr_type], r->rt_count, r->use_count);
 
-#if 0
-  /* TODO: rethink this completely */
-  /* TODO: move this to lfjour */
-  char x[32];
-  bsprintf(x, "%%%dspending export %%p\n", indent + 2);
+  RDUMP("Exporter ALL:\n");
+  dreq->indent += 3;
+  rt_exporter_dump(dreq, &r->export_all);
+  dreq->indent -= 3;
+  RDUMP("Exporter BEST:\n");
+  dreq->indent += 3;
+  rt_exporter_dump(dreq, &r->export_best);
+  dreq->indent -= 3;
+}
 
-  WALK_TLIST(lfjour_block, n, &r->journal.pending)
-    debug(x, "", n);
-#endif
+static struct resmem
+rt_res_memsize(resource *_r)
+{
+  SKIP_BACK_DECLARE(struct rtable_private, r, r, _r);
+
+  struct resmem amem = rt_exporter_memsize(&r->export_all);
+  struct resmem bmem = rt_exporter_memsize(&r->export_best);
+
+  return (struct resmem) {
+    .effective = amem.effective + bmem.effective,
+    .overhead = amem.overhead + bmem.overhead,
+  };
 }
 
 static struct resclass rt_class = {
@@ -3260,7 +3273,7 @@ static struct resclass rt_class = {
   .free = rt_free,
   .dump = rt_res_dump,
   .lookup = NULL,
-  .memsize = NULL,
+  .memsize = rt_res_memsize,
 };
 
 static struct idm rtable_idm;
