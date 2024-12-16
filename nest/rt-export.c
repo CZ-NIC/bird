@@ -581,7 +581,8 @@ rt_exporter_dump(struct dump_request *dreq, struct rt_exporter *e)
       atomic_load_explicit(&e->max_feed_index, memory_order_relaxed));
   dreq->indent += 3;
   WALK_TLIST(rt_export_feeder, f, &e->feeders)
-    RDUMP("%p (%s), index %u\n");
+    RDUMP("%p (%s), index %u\n",
+	f, f->name, f->feed_index);
   dreq->indent -= 3;
 
   RDUMP("Journal:\n");
