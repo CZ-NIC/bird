@@ -51,7 +51,7 @@ typedef struct net_addr {
   u8 pxlen;
   u16 length;
   u8 data[20];
-  u64 align[0];
+  u32 align[0];
 } net_addr;
 
 typedef struct net_addr_ip4 {

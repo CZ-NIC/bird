@@ -11,6 +11,7 @@
 
 #include "lib/alloca.h"
 #include <stdarg.h>
+#include <stdalign.h>
 
 /* Ugly structure offset handling macros */
 
