@@ -75,6 +75,21 @@ STATIC_ASSERT(sizeof(net_addr_ip6_sadr)	== 40);
 STATIC_ASSERT(sizeof(net_addr_mpls)	==  8);
 STATIC_ASSERT(sizeof(net_addr_aspa)	==  8);
 
+/* Ensure that all net_addr structures have the same alignment */
+STATIC_ASSERT(alignof(net_addr_ip4)	== alignof(net_addr));
+STATIC_ASSERT(alignof(net_addr_ip6)	== alignof(net_addr));
+STATIC_ASSERT(alignof(net_addr_vpn4)	== alignof(net_addr));
+STATIC_ASSERT(alignof(net_addr_vpn6)	== alignof(net_addr));
+STATIC_ASSERT(alignof(net_addr_roa4)	== alignof(net_addr));
+STATIC_ASSERT(alignof(net_addr_roa6)	== alignof(net_addr));
+STATIC_ASSERT(alignof(net_addr_flow4)	== alignof(net_addr));
+STATIC_ASSERT(alignof(net_addr_flow6)	== alignof(net_addr));
+STATIC_ASSERT(alignof(net_addr_flow4)	== alignof(net_addr));
+STATIC_ASSERT(alignof(net_addr_flow6)	== alignof(net_addr));
+STATIC_ASSERT(alignof(net_addr_ip6_sadr) == alignof(net_addr));
+STATIC_ASSERT(alignof(net_addr_mpls)	== alignof(net_addr));
+STATIC_ASSERT(alignof(net_addr_aspa)	== alignof(net_addr));
+
 
 int
 rd_format(const vpn_rd rd_, char *buf, int buflen)
