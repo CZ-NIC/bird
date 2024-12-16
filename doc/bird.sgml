@@ -3420,7 +3420,7 @@ using the following configuration parameters:
 	in <rfc id="9234"> as "strict mode" and is used to enforce corresponding
 	configuration at your conterpart side. Default: disabled.
 
-        <tag><label id="bgp-tx_size_warning">tx_size warning <m/switch/</tag>
+        <tag><label id="bgp-tx_size_warning">tx size warning <m/number/</tag>
         If this option is set, the bgp protocol prints warning when it consumes at least
         given size of memory.
 </descrip>
