@@ -633,7 +633,7 @@ val_format(const struct f_val *v, buffer *buf)
   case T_QUAD:	buffer_print(buf, "%R", v->val.i); return;
   case T_EC:	ec_format(buf2, v->val.ec); buffer_print(buf, "%s", buf2); return;
   case T_LC:	lc_format(buf2, v->val.lc); buffer_print(buf, "%s", buf2); return;
-  case T_RD:	rd_format(v->val.ec, buf2, 1024); buffer_print(buf, "%s", buf2); return;
+  case T_RD:	rd_format(v->val.rd, buf2, 1024); buffer_print(buf, "%s", buf2); return;
   case T_PREFIX_SET: trie_format(v->val.ti, buf); return;
   case T_SET:	tree_format(v->val.t, buf); return;
   case T_ENUM:	buffer_print(buf, "(enum %x)%u", v->type, v->val.i); return;

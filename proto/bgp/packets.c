@@ -1807,7 +1807,7 @@ bgp_encode_nlri_vpn4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
       bgp_encode_mpls_labels(s, s->mpls_labels, &pos, &size, pos - 1);
 
     /* Encode route distinguisher */
-    put_u64(pos, net->rd);
+    put_rd(pos, net->rd);
     ADVANCE(pos, size, 8);
 
     /* Encode prefix body */
@@ -1858,7 +1858,7 @@ bgp_decode_nlri_vpn4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     if (l < 64)
       bgp_parse_error(s, 1);
 
-    u64 rd = get_u64(pos);
+    vpn_rd rd = get_rd(pos);
     ADVANCE(pos, len, 8);
     l -= 64;
 
@@ -1907,7 +1907,7 @@ bgp_encode_nlri_vpn6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *b
       bgp_encode_mpls_labels(s, s->mpls_labels, &pos, &size, pos - 1);
 
     /* Encode route distinguisher */
-    put_u64(pos, net->rd);
+    put_rd(pos, net->rd);
     ADVANCE(pos, size, 8);
 
     /* Encode prefix body */
@@ -1958,7 +1958,7 @@ bgp_decode_nlri_vpn6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     if (l < 64)
       bgp_parse_error(s, 1);
 
-    u64 rd = get_u64(pos);
+    vpn_rd rd = get_rd(pos);
     ADVANCE(pos, len, 8);
     l -= 64;
 
