@@ -4469,8 +4469,8 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->addr_type = addr_type;
   c->gc_threshold = 1000;
   c->gc_period = (uint) -1;	/* set in rt_postconfig() */
-  c->cork_threshold.low = 333300;
-  c->cork_threshold.high = 1011010;
+  c->cork_threshold.low = 32768;
+  c->cork_threshold.high = 98304;
   c->export_settle = (struct settle_config) {
     .min = 1 MS,
     .max = 100 MS,
