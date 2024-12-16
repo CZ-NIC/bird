@@ -277,7 +277,8 @@ static inline uint lfjour_count_recipients(struct lfjour *j)
 { return TLIST_LENGTH(lfjour_recipient, &j->recipients); }
 
 void lfjour_init(struct lfjour *, struct settle_config *);
-
+void lfjour_dump(struct dump_request *, struct lfjour *);
+struct resmem lfjour_memsize(struct lfjour *);
 
 static inline struct lfjour *lfjour_of_recipient(struct lfjour_recipient *r)
 {

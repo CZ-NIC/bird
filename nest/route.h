@@ -164,11 +164,6 @@ struct rt_export_request {
       struct rt_feeding_request *next;		/* Next in request chain */
       void (*done)(struct rt_feeding_request *);/* Called when this refeed finishes */
       struct rt_prefilter prefilter;		/* Reload only matching nets */
-      PACKED enum {
-	RFRS_INACTIVE = 0,	/* Inactive request */
-	RFRS_PENDING,		/* Request enqueued, do not touch */
-	RFRS_RUNNING,		/* Request active, do not touch */
-      } state;
     } *feeding, *feed_pending;
     TLIST_DEFAULT_NODE;
     u8 trace_routes;
@@ -238,6 +233,10 @@ void rt_exporter_init(struct rt_exporter *, struct settle_config *);
 struct rt_export_item *rt_exporter_push(struct rt_exporter *, const struct rt_export_item *);
 struct rt_export_feed *rt_alloc_feed(uint routes, uint exports);
 void rt_exporter_shutdown(struct rt_exporter *, void (*stopped)(struct rt_exporter *));
+
+void rt_exporter_dump(struct dump_request *, struct rt_exporter *);
+static inline struct resmem rt_exporter_memsize(struct rt_exporter *e)
+{ return lfjour_memsize(&e->journal); }
 
 /* Standalone feeds */
 void rt_feeder_subscribe(struct rt_exporter *, struct rt_export_feeder *);
