@@ -1124,8 +1124,6 @@ collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *add
   {
     if (IN_FIB == node->status)
       p->leaves++;
-
-    return;
   }
 
   /* Internal node with assigned bucket */
@@ -1165,8 +1163,6 @@ collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *add
   {
     if (IN_FIB == node->status)
       p->leaves++;
-
-    return;
   }
 
   /* Internal node with assigned bucket */
