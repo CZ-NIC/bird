@@ -2413,6 +2413,13 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
   /* And queue the notification */
   if (bgp_update_prefix(c, bgp_get_prefix(c, NET_TO_INDEX(n), path, bc->add_path_tx), buck))
     bgp_schedule_packet(p->conn, bc, PKT_UPDATE);
+
+  if ((p->cf->tx_size_warning > 0) )
+  {
+    struct resmem mem = rmemsize(P->pool);
+    if (mem.effective + mem.overhead >= p->cf->tx_size_warning)
+      log_rl(&p->tbf_mem, L_WARN "%s: Used %lu memory", P->name, mem.effective + mem.overhead);
+  }
 }
 
 

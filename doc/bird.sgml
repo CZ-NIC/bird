@@ -3419,6 +3419,11 @@ using the following configuration parameters:
 	otherwise the session will not be established. This behavior is defined
 	in <rfc id="9234"> as "strict mode" and is used to enforce corresponding
 	configuration at your conterpart side. Default: disabled.
+
+        <tag><label id="bgp-tx_size_warning">tx size warning <m/number/</tag>
+        If this option is set, the bgp protocol prints warning when it consumes at least
+        given size of memory. This includes also the memory consumed
+	by any export table. Zero means disabled. Default: disabled.
 </descrip>
 
 <sect1>Channel configuration
