@@ -2019,6 +2019,8 @@ bgp_init(struct proto_config *CF)
   ea_set_attr(&pes, EA_LITERAL_EMBEDDED(&ea_bgp_rem_as, 0, cf->remote_as));
 
   proto_announce_state_later(&p->p, pes);
+
+  p->tbf_mem = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
   return P;
 }
 

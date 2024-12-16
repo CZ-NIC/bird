@@ -31,7 +31,7 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY, INTERNAL, EXTERNAL, SETS,
 	DYNAMIC, RANGE, NAME, DIGITS, AIGP, ORIGINATE, COST, ENFORCE,
 	FIRST, FREE, VALIDATE, BASE, ROLE, ROLES, PEER, PROVIDER, CUSTOMER,
-	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL, SEND)
+	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL, SEND, TX_SIZE, WARNING)
 
 CF_ENUM(T_ENUM_BGP_ORIGIN, ORIGIN_, IGP, EGP, INCOMPLETE)
 
@@ -80,6 +80,7 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->dynamic_name = "dynbgp";
      BGP_CFG->check_link = -1;
      BGP_CFG->send_hold_time = -1;
+     BGP_CFG->tx_size_warning = -1;
    }
  ;
 
@@ -227,6 +228,7 @@ bgp_proto:
  | bgp_proto LOCAL ROLE bgp_role_name ';' { BGP_CFG->local_role = $4; }
  | bgp_proto REQUIRE ROLES bool ';' { BGP_CFG->require_roles = $4; }
  | bgp_proto DISABLE RX bool ';' { BGP_CFG->disable_rx = $4; }
+ | bgp_proto TX_SIZE WARNING expr ';' { BGP_CFG->tx_size_warning = $4; }
  ;
 
 bgp_afi:
