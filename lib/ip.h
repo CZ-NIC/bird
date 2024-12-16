@@ -392,36 +392,6 @@ static inline ip6_addr ip6_hton(ip6_addr a)
 static inline ip6_addr ip6_ntoh(ip6_addr a)
 { return _MI6(ntohl(_I0(a)), ntohl(_I1(a)), ntohl(_I2(a)), ntohl(_I3(a))); }
 
-#define MPLS_MAX_LABEL 0x100000
-
-#define MPLS_MAX_LABEL_STACK 8
-#define MPLS_MAX_LABEL_STRING MPLS_MAX_LABEL_STACK*12 + 5
-typedef struct mpls_label_stack {
-  uint len;
-  u32 stack[MPLS_MAX_LABEL_STACK];
-} mpls_label_stack;
-
-static inline int ACCESS_READ(1, 2)
-mpls_get(const char *buf, int buflen, u32 *stack)
-{
-  for (int i=0; (i<MPLS_MAX_LABEL_STACK) && (i*4+3 < buflen); i++)
-  {
-    u32 s = get_u32(buf + i*4);
-    stack[i] = s >> 12;
-    if (s & 0x100)
-      return i+1;
-  }
-  return -1;
-}
-
-static inline int
-mpls_put(char *buf, int len, u32 *stack)
-{
-  for (int i=0; i<len; i++)
-    put_u32(buf + i*4, stack[i] << 12 | (i+1 == len ? 0x100 : 0));
-
-  return len*4;
-}
 
 /*
  *	Unaligned data access (in network order)
@@ -480,5 +450,85 @@ int ip6_pton(const char *a, ip6_addr *o);
  */
 
 char *ip_scope_text(uint);
+
+
+/*
+ *	MPLS labels
+ */
+
+#define MPLS_MAX_LABEL 0x100000
+
+#define MPLS_MAX_LABEL_STACK 8
+#define MPLS_MAX_LABEL_STRING MPLS_MAX_LABEL_STACK*12 + 5
+typedef struct mpls_label_stack {
+  uint len;
+  u32 stack[MPLS_MAX_LABEL_STACK];
+} mpls_label_stack;
+
+static inline int ACCESS_READ(1, 2)
+mpls_get(const char *buf, int buflen, u32 *stack)
+{
+  for (int i=0; (i<MPLS_MAX_LABEL_STACK) && (i*4+3 < buflen); i++)
+  {
+    u32 s = get_u32(buf + i*4);
+    stack[i] = s >> 12;
+    if (s & 0x100)
+      return i+1;
+  }
+  return -1;
+}
+
+static inline int
+mpls_put(char *buf, int len, u32 *stack)
+{
+  for (int i=0; i<len; i++)
+    put_u32(buf + i*4, stack[i] << 12 | (i+1 == len ? 0x100 : 0));
+
+  return len*4;
+}
+
+
+/*
+ *	VPN route distinguishers
+ */
+
+/* Using 2x u32 to avoid u64 alignment */
+typedef struct vpn_rd {
+  u32 hi;
+  u32 lo;
+} vpn_rd;
+
+#define RD_NONE		(vpn_rd){}
+
+static inline vpn_rd rd_from_u64(u64 val)
+{ return (vpn_rd){.hi = val >> 32, .lo = val }; }
+
+static inline u64 rd_to_u64(vpn_rd rd)
+{ return (((u64) rd.hi) << 32) | rd.lo; }
+
+static inline int rd_equal(vpn_rd a, vpn_rd b)
+{ return a.hi == b.hi && a.lo == b.lo; }
+
+static inline int rd_zero(vpn_rd a)
+{ return !a.hi && !a.lo; }
+
+static inline int rd_nonzero(vpn_rd a)
+{ return a.hi || a.lo; }
+
+static inline int rd_compare(vpn_rd a, vpn_rd b)
+{ return uint_cmp(a.hi, b.hi) ?: uint_cmp(a.lo, b.lo); }
+
+static inline u64 rd_hash0(vpn_rd rd, u32 p, u64 acc)
+{ return u32_hash0(rd.hi, p, u32_hash0(rd.lo, p, acc)); }
+
+static inline vpn_rd get_rd(const void *buf)
+{ return (vpn_rd) { .hi = get_u32(buf), .lo = get_u32(buf + 4) }; }
+
+static inline void * put_rd(void *buf, vpn_rd rd)
+{
+  put_u32(buf, rd.hi);
+  put_u32(buf+4, rd.lo);
+  return buf+8;
+}
 
 #endif

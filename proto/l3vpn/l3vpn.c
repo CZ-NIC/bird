@@ -177,14 +177,14 @@ l3vpn_rt_notify(struct proto *P, struct channel *c0, net *net, rte *new, rte *ol
 
   case NET_VPN4:
     net_fill_ip4(n, net4_prefix(n0), net4_pxlen(n0));
-    src = rt_get_source(&p->p, ((const net_addr_vpn4 *) n0)->rd);
+    src = rt_get_source(&p->p, rd_to_u64(((const net_addr_vpn4 *) n0)->rd));
     dst = p->ip4_channel;
     export = 0;
     break;
 
   case NET_VPN6:
     net_fill_ip6(n, net6_prefix(n0), net6_pxlen(n0));
-    src = rt_get_source(&p->p, ((const net_addr_vpn6 *) n0)->rd);
+    src = rt_get_source(&p->p, rd_to_u64(((const net_addr_vpn6 *) n0)->rd));
     dst = p->ip6_channel;
     export = 0;
     break;
@@ -331,7 +331,7 @@ l3vpn_postconfig(struct proto_config *CF)
   if (!proto_cf_find_channel(CF, NET_MPLS))
     cf_error("MPLS channel not specified");
 
-  if (!cf->rd)
+  if (rd_zero(cf->rd))
     cf_error("Route distinguisher not specified");
 
   if (!cf->import_target && !cf->export_target)
@@ -410,7 +410,7 @@ l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
       !proto_configure_channel(P, &P->mpls_channel, proto_cf_find_channel(CF, NET_MPLS)))
     return 0;
 
-  if (p->rd != cf->rd)
+  if (!rd_equal(p->rd, cf->rd))
     return 0;
 
   int import_changed = !same_tree(p->import_target, cf->import_target);

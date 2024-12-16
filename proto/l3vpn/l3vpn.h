@@ -13,7 +13,7 @@
 struct l3vpn_config {
   struct proto_config c;
 
-  u64 rd;
+  vpn_rd rd;
   struct f_tree *import_target;
   struct f_tree *export_target;
 };
@@ -25,7 +25,7 @@ struct l3vpn_proto {
   struct channel *vpn4_channel;
   struct channel *vpn6_channel;
 
-  u64 rd;
+  vpn_rd rd;
   struct f_tree *import_target;
   struct f_tree *export_target;
   u32 *export_target_data;

@@ -1102,7 +1102,7 @@
     METHOD_CONSTRUCTOR("rd");
     if (!net_is_vpn(v1.val.net))
       runtime( "VPN address expected" );
-    RESULT(T_RD, ec, net_rd(v1.val.net));
+    RESULT(T_RD, rd, net_rd(v1.val.net));
   }
 
   /* Get first ASN from AS PATH */

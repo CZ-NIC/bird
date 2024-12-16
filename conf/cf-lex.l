@@ -151,7 +151,7 @@ WHITE [ \t]
 
 {DIGIT}+:{DIGIT}+ {
   uint len1 UNUSED, len2;
-  u64 l;
+  u64 l, v;
   char *e;
 
   errno = 0;
@@ -163,76 +163,80 @@ WHITE [ \t]
   {
     len1 = 32;
     len2 = 16;
-    cf_lval.i64 = (2ULL << 48) | (((u64) l) << len2);
+    v = (2ULL << 48) | (((u64) l) << len2);
   }
   else
   {
     len1 = 16;
     len2 = 32;
-    cf_lval.i64 = 0 | (((u64) l) << len2);
+    v = 0 | (((u64) l) << len2);
   }
 
   errno = 0;
   l = bstrtoul10(e+1, &e);
   if (!e || *e || (errno == ERANGE) || (l >> len2))
     cf_error("Number out of range");
-  cf_lval.i64 |= l;
+  v |= l;
 
+  cf_lval.rd = rd_from_u64(v);
   return VPN_RD;
 }
 
 [02]:{DIGIT}+:{DIGIT}+ {
   uint len1, len2;
-  u64 l;
+  u64 l, v;
   char *e;
 
   if (yytext[0] == '0')
   {
-    cf_lval.i64 = 0;
     len1 = 16;
     len2 = 32;
+    v = 0;
   }
   else
   {
-    cf_lval.i64 = 2ULL << 48;
     len1 = 32;
     len2 = 16;
+    v = 2ULL << 48;
   }
 
   errno = 0;
   l = bstrtoul10(yytext+2, &e);
   if (!e || (*e != ':') || (errno == ERANGE) || (l >> len1))
     cf_error("ASN out of range");
-  cf_lval.i64 |= ((u64) l) << len2;
+  v |= ((u64) l) << len2;
 
   errno = 0;
   l = bstrtoul10(e+1, &e);
   if (!e || *e || (errno == ERANGE) || (l >> len2))
     cf_error("Number out of range");
-  cf_lval.i64 |= l;
+  v |= l;
 
+  cf_lval.rd = rd_from_u64(v);
   return VPN_RD;
 }
 
 {DIGIT}+\.{DIGIT}+\.{DIGIT}+\.{DIGIT}+:{DIGIT}+ {
   unsigned long int l;
   ip4_addr ip4;
+  u64 v;
   char *e;
 
-  cf_lval.i64 = 1ULL << 48;
+  v = 1ULL << 48;
 
   e = strchr(yytext, ':');
   *e++ = '\0';
   if (!ip4_pton(yytext, &ip4))
     cf_error("Invalid IPv4 address %s in Route Distinguisher", yytext);
-  cf_lval.i64 |= ((u64) ip4_to_u32(ip4)) << 16;
+  v |= ((u64) ip4_to_u32(ip4)) << 16;
 
   errno = 0;
   l = bstrtoul10(e, &e);
   if (!e || *e || (errno == ERANGE) || (l >> 16))
     cf_error("Number out of range");
-  cf_lval.i64 |= l;
+  v |= l;
 
+  cf_lval.rd = rd_from_u64(v);
   return VPN_RD;
 }
 

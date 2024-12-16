@@ -85,6 +85,7 @@ struct f_val {
     uint i;
     u64 ec;
     lcomm lc;
+    vpn_rd rd;
     ip_addr ip;
     const net_addr *net;
     const char *s;

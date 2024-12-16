@@ -57,6 +57,7 @@ CF_DECLS
   uint i;
   u32 i32;
   u64 i64;
+  vpn_rd rd;
   ip_addr a;
   ip4_addr ip4;
   ip6_addr ip6;
@@ -109,7 +110,7 @@ CF_DECLS
 %token <i> NUM ENUM_TOKEN
 %token <ip4> IP4
 %token <ip6> IP6
-%token <i64> VPN_RD
+%token <rd> VPN_RD
 %token <s> CF_SYM_KNOWN CF_SYM_UNDEFINED CF_SYM_METHOD_BARE CF_SYM_METHOD_ARGS
 %token <t> TEXT
 %token <bs> BYTETEXT

@@ -77,8 +77,10 @@ STATIC_ASSERT(sizeof(net_addr_aspa)	==  8);
 
 
 int
-rd_format(const u64 rd, char *buf, int buflen)
+rd_format(const vpn_rd rd_, char *buf, int buflen)
 {
+  u64 rd = rd_to_u64(rd_);
+
   switch (rd >> 48)
   {
     case 0: return bsnprintf(buf, buflen, "%u:%u", (u32) (rd >> 32), (u32) rd);

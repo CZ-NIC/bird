@@ -641,7 +641,7 @@ fipa:
 set_atom0:
    NUM    { $$.type = T_INT; $$.val.i = $1; }
  | fipa   { $$ = $1; }
- | VPN_RD { $$.type = T_RD; $$.val.ec = $1; }
+ | VPN_RD { $$.type = T_RD; $$.val.rd = $1; }
  | ENUM_TOKEN { $$.type = pair_a($1); $$.val.i = pair_b($1); }
  | '(' term ')' {
      $$ = cf_eval($2, T_VOID);
@@ -801,7 +801,7 @@ constant:
  | TEXT     { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_STRING, .val.s = $1, }); }
  | BYTETEXT { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BYTESTRING, .val.bs = $1, }); }
  | fipa     { $$ = f_new_inst(FI_CONSTANT, $1); }
- | VPN_RD   { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_RD, .val.ec = $1, }); }
+ | VPN_RD   { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_RD, .val.rd = $1, }); }
  | net_     { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_NET, .val.net = $1, }); }
  | '[' ']' { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_SET, .val.t = NULL, }); }
  | '[' set_items ']' {
