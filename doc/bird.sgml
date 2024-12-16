@@ -1455,8 +1455,8 @@ This argument can be omitted if there exists only a single instance.
 	Control protocol debugging.
 
 	<tag><label id="cli-dump">dump resources|sockets|interfaces|neighbors|attributes|routes|protocols "<m/file/"</tag>
-        Creates the given file (it must not exist) and dumps contents of
-        internal data structures there. By sending SIGUSR1, you get all of
+	Creates the given file (it must not exist) and dumps contents of
+	internal data structures there. By sending SIGUSR1, you get all of
 	these concatenated to <cf/bird.dump/ in the current directory.
 	The file is only readable for the user running the daemon.
 	The format of dump files is internal and could change in the future
@@ -1833,7 +1833,7 @@ ec set es = [ (rt, myas, *), (rt, myas+2, 0..16*16*16-1) ];
 	as used by UNIX shells. Autonomous system numbers match themselves,
 	<cf/*/ matches any (even empty) sequence of arbitrary AS numbers and
 	<cf/?/ matches one arbitrary AS number. For example, if <cf>bgp_path</cf>
- 	is 4 3 2 1, then: <tt>bgp_path &tilde; [= * 4 3 * =]</tt> is true,
+	is 4 3 2 1, then: <tt>bgp_path &tilde; [= * 4 3 * =]</tt> is true,
 	but <tt>bgp_path &tilde; [= * 4 5 * =]</tt> is false. There is also
 	<cf/+/ operator which matches one or multiple instances of previous
 	expression, e.g. <tt>[= 1 2+ 3 =]</tt> matches both path 1 2 3 and path
@@ -2231,8 +2231,8 @@ protocol sections.
 	<tag><label id="aggregator-rule">aggregate on <m/expr/ | <m/attribute/ [<m/, .../]</tag>
 	All the given filter expressions and route attributes are evaluated for each route. Then routes
 	are sorted into buckets where <em/all/ values are the same. Note: due to performance reasons,
-        all filter expressions must return a compact type, e.g. integer, a BGP
-        (standard, extended, large) community or an IP address. If you need to compare e.g. modified
+	all filter expressions must return a compact type, e.g. integer, a BGP
+	(standard, extended, large) community or an IP address. If you need to compare e.g. modified
 	AS Paths in the aggregation rule, you can define a custom route attribute and set this attribute
 	in the export filter. For now, it's mandatory to say <cf/net/ here, we can't merge prefixes yet.
 
@@ -2307,7 +2307,7 @@ supports the following per-interface configuration options:
 protocol babel [<name>] {
 	ipv4 { <channel config> };
 	ipv6 [sadr] { <channel config> };
-        randomize router id <switch>;
+	randomize router id <switch>;
 	interface <interface pattern> {
 		type <wired|wireless|tunnel>;
 		rxcost <number>;
@@ -4270,28 +4270,28 @@ ipv4 table vrf0v4;
 ipv6 table vrf0v6;
 
 protocol kernel kernel0v4 {
-        vrf "vrf0";
-        ipv4 { table vrf0v4; export all; };
-        kernel table 100;
+	vrf "vrf0";
+	ipv4 { table vrf0v4; export all; };
+	kernel table 100;
 }
 
 protocol kernel kernel0v6 {
-        vrf "vrf0";
-        ipv6 { table vrf0v6; export all; };
-        kernel table 100;
+	vrf "vrf0";
+	ipv6 { table vrf0v6; export all; };
+	kernel table 100;
 }
 
 protocol l3vpn l3vpn0 {
-        vrf "vrf0";
-        ipv4 { table vrf0v4; };
-        ipv6 { table vrf0v6; };
-        vpn4 { table vpntab4; };
-        vpn6 { table vpntab6; };
-        mpls { label policy vrf; };
+	vrf "vrf0";
+	ipv4 { table vrf0v4; };
+	ipv6 { table vrf0v6; };
+	vpn4 { table vpntab4; };
+	vpn6 { table vpntab6; };
+	mpls { label policy vrf; };
 
-        rd 10:12;
-        import target [(rt, 10, 32..40)];
-        export target [(rt, 10, 30), (rt, 10, 31)];
+	rd 10:12;
+	import target [(rt, 10, 32..40)];
+	export target [(rt, 10, 30), (rt, 10, 31)];
 }
 </code>
 
@@ -4446,11 +4446,11 @@ protocol ospf [v2|v3] &lt;name&gt; {
 		translator &lt;switch&gt;;
 		translator stability &lt;num&gt;;
 
-                networks {
+		networks {
 			&lt;prefix&gt;;
 			&lt;prefix&gt; hidden;
 		};
-                external {
+		external {
 			&lt;prefix&gt;;
 			&lt;prefix&gt; hidden;
 			&lt;prefix&gt; tag &lt;num&gt;;
@@ -5850,26 +5850,27 @@ define more RPKI protocols generally.
 
 <code>
 protocol rpki [&lt;name&gt;] {
-        roa4 { table &lt;tab&gt;; };
-        roa6 { table &lt;tab&gt;; };
+	roa4 { table &lt;tab&gt;; };
+	roa6 { table &lt;tab&gt;; };
 	aspa { table &lt;tab&gt;; };
-        remote &lt;ip&gt; | "&lt;domain&gt;" [port &lt;num&gt;];
-        port &lt;num&gt;;
-        local address &lt;ip&gt;;
-        refresh [keep] &lt;num&gt;;
-        retry [keep] &lt;num&gt;;
-        expire [keep] &lt;num&gt;;
-        transport tcp {
-                authentication none|md5;
-                password "&lt;text&gt;";
-        };
-        transport ssh {
-                bird private key "&lt;/path/to/id_rsa&gt;";
-                remote public key "&lt;/path/to/known_host&gt;";
-                user "&lt;name&gt;";
-        };
-	max version 2;
-	min version 2;
+	remote &lt;ip&gt; | "&lt;domain&gt;" [port &lt;num&gt;];
+	port &lt;num&gt;;
+	local address &lt;ip&gt;;
+	refresh [keep] &lt;num&gt;;
+	retry [keep] &lt;num&gt;;
+	expire [keep] &lt;num&gt;;
+	ignore max length &lt;switch&gt;;
+	min version &lt;num&gt;;
+	max version &lt;num&gt;;
+	transport tcp {
+		authentication none|md5;
+		password "&lt;text&gt;";
+	};
+	transport ssh {
+		bird private key "&lt;/path/to/id_rsa&gt;";
+		remote public key "&lt;/path/to/known_host&gt;";
+		user "&lt;name&gt;";
+	};
 }
 </code>
 
