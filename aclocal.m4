@@ -86,6 +86,30 @@ AC_DEFUN([BIRD_CHECK_PTHREADS],
   CFLAGS="$bird_tmp_cflags"
 ])
 
+AC_DEFUN([BIRD_CHECK_MALLOPT],
+[
+  AC_CACHE_CHECK(
+    [for mallopt],
+    [bird_cv_mallopt],
+    [
+      AC_COMPILE_IFELSE(
+	[
+	  AC_LANG_PROGRAM(
+	    [
+	      #include <malloc.h>
+	    ],
+	    [
+	      mallopt(M_ARENA_MAX, 1);
+	    ]
+	  )
+	],
+	[bird_cv_mallopt=yes],
+	[bird_cv_mallopt=no]
+      )
+    ]
+  )
+])
+
 AC_DEFUN([BIRD_CHECK_MPLS_KERNEL],
 [
   AC_CACHE_CHECK(

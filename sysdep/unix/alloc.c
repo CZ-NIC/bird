@@ -18,7 +18,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#ifdef HAVE_MALLOC_H
+#ifdef HAVE_MALLOPT
 # include <malloc.h>
 #endif
 
@@ -505,7 +505,7 @@ page_dump(struct dump_request *dreq)
 void
 resource_sys_init(void)
 {
-#ifdef HAVE_MALLOC_H
+#ifdef HAVE_MALLOPT
   if (!mallopt(M_ARENA_MAX, 1))
     log(L_WARN "Failed to disable multiple malloc arenas, memory consumption may skyrocket.");
 #endif
