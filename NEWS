@@ -1,3 +1,20 @@
+Version 3.0.0 (2024-12-17)
+  - from 2.16
+    o Multithreaded execution
+    o Decoupled exports from imports
+    o Unified route attribute names
+    o Slightly different log format
+    o Separate reload command for filters and protocols
+    o BGP: Export tables show the state as on wire
+    o Lots of internal changes
+  - from 3.0alpha3
+    o Merged changes from 2.16
+    o BMP and MRT converted to the new API and working
+    o Internal protocol state journal
+    o Optimized table journal cleanup
+    o Fixed "show route export"
+    o Fixed minor bugs
+
 Version 3.0alpha3 (2024-07-01)
   o Merged 2.15.1
   o Fixed major issues with channel reloads
