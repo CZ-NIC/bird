@@ -411,19 +411,22 @@ pkg-opensuse-15.3-amd64:
 
 build-netlab:
   stage: build
+  variables:
+    BDIR: build-netlab
   tags:
     - netlab
     - amd64
   script:
-    - DIR=$(pwd)
     - autoreconf
-    - ./configure
+    - mkdir $BDIR
+    - cd $BDIR
+    - ../configure
     - make
-    - cd $TOOLS_DIR
-    - sudo git clean -fx
-    - git pull --ff-only
-    - mv $DIR/bird $DIR/birdc netlab/common
-    - ln -s $STAYRTR_BINARY netlab/common/stayrtr
+  artifacts:
+    paths:
+      - $BDIR/bird
+      - $BDIR/birdc
+    expire_in: 2 hours
 
 .test: &test-base
   stage: test
@@ -432,7 +435,13 @@ build-netlab:
     - netlab
     - amd64
   script:
-    - cd $TOOLS_DIR/netlab
+    - DIR=$(pwd)
+    - cd $TOOLS_DIR
+    - sudo git clean -fx
+    - git pull --ff-only
+    - mv $DIR/build-netlab/* netlab/common/
+    - ln -s $STAYRTR_BINARY netlab/common/stayrtr
+    - cd netlab
     - sudo ./stop
     - sudo ./runtest -s v2 -m check $TEST_NAME
 
