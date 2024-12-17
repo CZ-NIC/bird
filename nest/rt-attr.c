@@ -124,13 +124,13 @@ rte_src_init(void)
 HASH_DEFINE_REHASH_FN(RSH, struct rte_src)
 
 struct rte_src *
-rt_find_source(struct proto *p, u32 id)
+rt_find_source(struct proto *p, u64 id)
 {
   return HASH_FIND(src_hash, RSH, p, id);
 }
 
 struct rte_src *
-rt_get_source(struct proto *p, u32 id)
+rt_get_source(struct proto *p, u64 id)
 {
   struct rte_src *src = rt_find_source(p, id);
 

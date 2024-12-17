@@ -593,8 +593,8 @@ typedef struct ea_list {
 #define EALF_BISECT 2			/* Use interval bisection for searching */
 #define EALF_CACHED 4			/* Attributes belonging to cached rta */
 
-struct rte_src *rt_find_source(struct proto *p, u32 id);
-struct rte_src *rt_get_source(struct proto *p, u32 id);
+struct rte_src *rt_find_source(struct proto *p, u64 id);
+struct rte_src *rt_get_source(struct proto *p, u64 id);
 static inline void rt_lock_source(struct rte_src *src) { src->uc++; }
 static inline void rt_unlock_source(struct rte_src *src) { src->uc--; }
 void rt_prune_sources(void);
