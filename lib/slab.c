@@ -34,7 +34,6 @@
 #include "lib/string.h"
 #include "lib/tlists.h"
 
-#undef FAKE_SLAB	/* Turn on if you want to debug memory allocations */
 
 #ifdef DEBUGGING
 #define POISON		/* Poison all regions after they are freed */
@@ -45,108 +44,6 @@ static void slab_dump(struct dump_request *dreq, resource *r);
 static resource *slab_lookup(resource *r, unsigned long addr);
 static struct resmem slab_memsize(resource *r);
 
-#ifdef FAKE_SLAB
-
-/*
- *  Fake version used for debugging.
- */
-
-struct slab {
-  resource r;
-  uint size;
-  list objs;
-};
-
-static struct resclass sl_class = {
-  "FakeSlab",
-  sizeof(struct slab),
-  slab_free,
-  slab_dump,
-  NULL,
-  slab_memsize
-};
-
-struct sl_obj {
-  node n;
-  max_align_t data_align[0];
-  byte data[0];
-};
-
-slab *
-sl_new(pool *p, uint size)
-{
-  slab *s = ralloc(p, &sl_class);
-  s->size = size;
-  init_list(&s->objs);
-  return s;
-}
-
-void *
-sl_alloc(slab *s)
-{
-  struct sl_obj *o = xmalloc(sizeof(struct sl_obj) + s->size);
-
-  add_tail(&s->objs, &o->n);
-  return o->data;
-}
-
-void *
-sl_allocz(slab *s)
-{
-  void *obj = sl_alloc(s);
-  memset(obj, 0, s->size);
-  return obj;
-}
-
-void
-sl_free(void *oo)
-{
-  SKIP_BACK_DECLARE(struct sl_obj, o, data, oo);
-
-  rem_node(&o->n);
-  xfree(o);
-}
-
-static void
-slab_free(resource *r)
-{
-  slab *s = (slab *) r;
-  struct sl_obj *o, *p;
-
-  for(o = HEAD(s->objs); p = (struct sl_obj *) o->n.next; o = p)
-    xfree(o);
-}
-
-static void
-slab_dump(resource *r, unsigned indent UNUSED)
-{
-  slab *s = (slab *) r;
-  int cnt = 0;
-  struct sl_obj *o;
-
-  WALK_LIST(o, s->objs)
-    cnt++;
-  debug("(%d objects per %d bytes)\n", cnt, s->size);
-}
-
-static struct resmem
-slab_memsize(resource *r)
-{
-  slab *s = (slab *) r;
-  size_t cnt = 0;
-  struct sl_obj *o;
-
-  WALK_LIST(o, s->objs)
-    cnt++;
-
-  return (struct resmem) {
-    .effective = cnt * s->size,
-    .overhead = ALLOC_OVERHEAD + sizeof(struct slab) + cnt * ALLOC_OVERHEAD,
-  };
-}
-
-
-#else
 
 /*
  *  Real efficient version.
@@ -459,5 +356,3 @@ slab_lookup(resource *r, unsigned long a)
       return r;
   return NULL;
 }
-
-#endif
