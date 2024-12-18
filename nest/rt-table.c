@@ -3588,7 +3588,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   t->loop = loop;
   t->lock = dom;
 
-  t->rte_slab = sl_new(p, sizeof(struct rte_storage));
+  t->rte_slab = sl_new(p, birdloop_event_list(t->loop), sizeof(struct rte_storage));
 
   t->name = cf->name;
   t->config = cf;
@@ -5285,7 +5285,7 @@ rt_init_hostcache(struct rtable_private *tab)
 
   hc->hash_items = 0;
   hc_alloc_table(hc, tab->rp, HC_DEF_ORDER);
-  hc->slab = sl_new(tab->rp, sizeof(struct hostentry));
+  hc->slab = sl_new(tab->rp, birdloop_event_list(tab->loop), sizeof(struct hostentry));
 
   hc->lp = lp_new(tab->rp);
   hc->trie = f_new_trie(hc->lp, 0);

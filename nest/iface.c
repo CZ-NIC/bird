@@ -1035,9 +1035,9 @@ if_init(void)
   IFACE_LOCK;
   if_pool = rp_new(&root_pool, iface_domain.attrs, "Interfaces");
   init_list(&global_iface_list);
-  iface_sub_slab = sl_new(if_pool, sizeof(struct iface_notification));
+  iface_sub_slab = sl_new(if_pool, birdloop_event_list(&main_birdloop), sizeof(struct iface_notification));
   strcpy(default_vrf.name, "default");
-  neigh_init(if_pool);
+  neigh_init(if_pool, birdloop_event_list(&main_birdloop));
   IFACE_UNLOCK;
 }
 

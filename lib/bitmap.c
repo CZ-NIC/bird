@@ -204,9 +204,9 @@ hmap_check(struct hmap *b)
  */
 
 void
-lmap_init(struct lmap *b, pool *p)
+lmap_init(struct lmap *b, pool *p, struct event_list *ev_l)
 {
-  b->slab = sl_new(p, 128);
+  b->slab = sl_new(p, ev_l, 128);
   b->size = 8;
   b->data = mb_allocz(p, b->size * sizeof(u32 *));
   b->root = sl_allocz(b->slab);

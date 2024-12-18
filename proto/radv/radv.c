@@ -597,7 +597,7 @@ radv_set_fib(struct radv_proto *p, int up)
 
   if (up)
     fib_init(&p->routes, p->p.pool, NET_IP6, sizeof(struct radv_route),
-	     OFFSETOF(struct radv_route, n), 4, NULL);
+	     OFFSETOF(struct radv_route, n), 4, NULL, birdloop_event_list(p->p.loop));
   else
     fib_free(&p->routes);
 

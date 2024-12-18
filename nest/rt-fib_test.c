@@ -41,7 +41,7 @@ t_match_random_net(void)
 
     /* Make FIB structure */
     struct fib f;
-    fib_init(&f, &root_pool, type, sizeof(struct test_node), OFFSETOF(struct test_node, n), 4, NULL);
+    fib_init(&f, &root_pool, type, sizeof(struct test_node), OFFSETOF(struct test_node, n), 4, NULL, birdloop_event_list(&main_birdloop));
 
     for (int i = 0; i < PREFIXES_NUM; i++)
     {
@@ -91,7 +91,7 @@ t_fib_walk(void)
 
     /* Make FIB structure */
     struct fib f;
-    fib_init(&f, p, type, sizeof(struct test_node), OFFSETOF(struct test_node, n), 4, NULL);
+    fib_init(&f, p, type, sizeof(struct test_node), OFFSETOF(struct test_node, n), 4, NULL, birdloop_event_list(&main_birdloop));
 
     for (int i = 1; i < PREFIXES_NUM; i++)
     {
@@ -143,7 +143,7 @@ benchmark_fib_dataset(const char *filename, int type)
 
   /* Make FIB structure */
   struct fib f;
-  fib_init(&f, p, type, sizeof(struct test_node), OFFSETOF(struct test_node, n), 0, NULL);
+  fib_init(&f, p, type, sizeof(struct test_node), OFFSETOF(struct test_node, n), 0, NULL, birdloop_event_list(&main_birdloop));
 
   for (int i = 0; i < (int) n; i++)
   {
