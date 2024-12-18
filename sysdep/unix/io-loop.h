@@ -96,6 +96,7 @@ struct bird_thread
 #define TLIST_WANT_WALK
 #define TLIST_WANT_ADD_TAIL
   TLIST_DEFAULT_NODE;
+  uint id;
 
   struct pipe wakeup;
   event_list priority_events;
