@@ -24,6 +24,7 @@
 #include "lib/event.h"
 #include "lib/timer.h"
 #include "lib/socket.h"
+#include "lib/bitmap.h"
 
 #include "lib/io-loop.h"
 #include "sysdep/unix/io-loop.h"
@@ -840,10 +841,13 @@ bird_thread_busy_set(struct bird_thread *thr, int val)
   UNLOCK_DOMAIN(attrs, thr->group->domain);
 }
 
+struct hmap hmap_thread_ids;
+
 static void *
 bird_thread_main(void *arg)
 {
   struct bird_thread *thr = this_thread = arg;
+  this_thread_id = thr->id;
 
   rcu_thread_start();
 
@@ -1013,6 +1017,9 @@ bird_thread_cleanup(void *_thr)
   thr->meta->thread = NULL;
   thr->meta = NULL;
   birdloop_free(meta);
+
+  /* Return the thread ID */
+  hmap_clear(&hmap_thread_ids, thr->id);
 }
 
 static struct bird_thread *
@@ -1033,6 +1040,10 @@ bird_thread_start(struct birdloop_pickup_group *group)
   thr->max_latency_ns = (group->max_latency ?: 5 S) TO_NS;
   thr->meta = meta;
   thr->meta->thread = thr;
+
+  thr->id = hmap_first_zero(&hmap_thread_ids);
+  hmap_set(&hmap_thread_ids, thr->id);
+  thr->id++;
 
   wakeup_init(thr);
   ev_init_list(&thr->priority_events, NULL, "Thread direct event list");
@@ -1504,6 +1515,8 @@ birdloop_init(void)
   birdloop_enter_locked(&main_birdloop);
   this_birdloop = &main_birdloop;
   this_thread = &main_thread;
+
+  hmap_init(&hmap_thread_ids, &root_pool, 1024);
 
   defer_init(lp_new(&root_pool));
 }

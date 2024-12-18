@@ -17,6 +17,8 @@
 
 extern struct birdloop main_birdloop;
 
+#define MAX_THREADS 256
+
 /* Currently running birdloop */
 extern _Thread_local struct birdloop *this_birdloop;
 

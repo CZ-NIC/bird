@@ -76,6 +76,7 @@ struct birdloop
 struct bird_thread
 {
   node n;
+  uint id;
 
   struct pipe wakeup;
   event_list priority_events;
