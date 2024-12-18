@@ -24,6 +24,7 @@
 #include "lib/event.h"
 #include "lib/timer.h"
 #include "lib/socket.h"
+#include "lib/bitmap.h"
 
 #include "lib/io-loop.h"
 #include "sysdep/unix/io-loop.h"
@@ -969,10 +970,13 @@ bird_thread_busy_set(struct thread_group_private *group, int val)
   ASSERT_DIE(group->thread_busy_count <= group->thread_count);
 }
 
+struct hmap hmap_thread_ids;
+
 static void *
 bird_thread_main(void *arg)
 {
   struct bird_thread *thr = this_thread = arg;
+  this_thread_id = thr->id;
 
   rcu_thread_start();
 
@@ -1193,21 +1197,9 @@ bird_thread_cleanup(void *_thr)
   if (leftover_loops)
     /* Happens only with the last thread */
     bird_thread_group_done(gpub, leftover_loops);
-}
 
-static void bird_thread_start(thread_group *);
-static void
-bird_thread_start_event(void *_data)
-{
-  thread_group *group = _data;
-  bird_thread_start(group);
-}
-
-static void
-bird_thread_start_indirect(struct thread_group_private *group)
-{
-  group->thread_dropper.event.hook = bird_thread_start_event;
-  ev_send(&global_event_list, &group->thread_dropper.event);
+  /* Return the thread ID */
+  hmap_clear(&hmap_thread_ids, thr->id);
 }
 
 static void
@@ -1237,6 +1229,10 @@ bird_thread_start(thread_group *gpub)
       thr->meta = meta;
       thr->meta->thread = thr;
 
+      thr->id = hmap_first_zero(&hmap_thread_ids);
+      hmap_set(&hmap_thread_ids, thr->id);
+      thr->id++;
+
       wakeup_init(thr);
       ev_init_list(&thr->priority_events, NULL, "Thread direct event list");
 
@@ -1264,6 +1260,20 @@ bird_thread_start(thread_group *gpub)
 
     birdloop_leave(meta);
   }
+}
+
+static void
+bird_thread_start_event(void *_data)
+{
+  thread_group *group = _data;
+  bird_thread_start(group);
+}
+
+static void
+bird_thread_start_indirect(struct thread_group_private *group)
+{
+  group->thread_dropper.event.hook = bird_thread_start_event;
+  ev_send(&global_event_list, &group->thread_dropper.event);
 }
 
 static void
@@ -1985,6 +1995,8 @@ birdloop_init(void)
   birdloop_enter_locked(&main_birdloop);
   this_birdloop = &main_birdloop;
   this_thread = &main_thread;
+
+  hmap_init(&hmap_thread_ids, &root_pool, 1024);
 
   defer_init(lp_new(&root_pool));
 }
