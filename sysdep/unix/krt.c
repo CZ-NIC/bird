@@ -1014,11 +1014,13 @@ krt_copy_config(struct proto_config *dest, struct proto_config *src)
 
 struct ea_class ea_krt_source = {
   .name = "krt_source",
+  .legacy_name = "Kernel.source",
   .type = T_INT,
 };
 
 struct ea_class ea_krt_metric = {
   .name = "krt_metric",
+  .legacy_name = "Kernel.metric",
   .type = T_INT,
 };
 

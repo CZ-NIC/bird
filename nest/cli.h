@@ -43,6 +43,7 @@ typedef struct cli {
   struct config *main_config;		/* Main config currently in use */
   int last_reply;
   int restricted;			/* CLI is restricted to read-only commands */
+  bool v2attributes;			/* Route attributes are mimicking BIRD 2 */
   struct timeformat *tf;		/* Time format override */
   struct linpool *parser_pool;		/* Pool used during parsing */
   uint log_mask;			/* Mask of allowed message levels */
@@ -63,6 +64,7 @@ struct cli_config {
   struct config *config;
   uint uid, gid, mode;
   _Bool restricted;
+  _Bool v2attributes;
 };
 #include "lib/tlists.h"
 

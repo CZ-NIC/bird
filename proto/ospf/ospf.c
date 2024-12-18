@@ -1527,22 +1527,26 @@ struct protocol proto_ospf = {
 
 struct ea_class ea_ospf_metric1 = {
   .name = "ospf_metric1",
+  .legacy_name = "OSPF.metric1",
   .type = T_INT,
 };
 
 struct ea_class ea_ospf_metric2 = {
   .name = "ospf_metric2",
+  .legacy_name = "OSPF.metric2",
   .type = T_INT,
 };
 
 struct ea_class ea_ospf_tag = {
   .name = "ospf_tag",
+  .legacy_name = "OSPF.tag",
   .type = T_INT,
   .format = ospf_tag_format,
 };
 
 struct ea_class ea_ospf_router_id = {
   .name = "ospf_router_id",
+  .legacy_name = "OSPF.router_id",
   .type = T_QUAD,
 };
 

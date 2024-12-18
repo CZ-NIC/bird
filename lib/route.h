@@ -267,6 +267,7 @@ struct ea_storage {
 struct ea_class {
 #define EA_CLASS_INSIDE \
   const char *name;			/* Name (both print and filter) */ \
+  const char *legacy_name;		/* Name for printing in v2 sockets */ \
   struct symbol *sym;			/* Symbol to export to configs */ \
   uint id;				/* Autoassigned attribute ID */ \
   uint uc;				/* Reference count */ \

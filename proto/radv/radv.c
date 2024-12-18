@@ -754,12 +754,14 @@ radv_preference_format(const eattr *a, byte *buf, uint buflen)
 
 static struct ea_class ea_radv_preference = {
   .name = "radv_preference",
+  .legacy_name = "RAdv.preference",
   .type = T_ENUM_RA_PREFERENCE,
   .format = radv_preference_format,
 };
 
 static struct ea_class ea_radv_lifetime = {
   .name = "radv_lifetime",
+  .legacy_name = "RAdv.lifetime",
   .type = T_INT,
 };
 

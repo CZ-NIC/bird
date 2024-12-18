@@ -1362,16 +1362,25 @@ connects to it. If changed on the command line by the <tt/-s/ option,
 BIRD or the CLI tool connects there instead.
 
 <p>It's also possible to configure additional remote control sockets in the
-configuration file by <cf/cli "name";/ and you can open how many
+configuration file by <cf/cli "name" { <m/options/ };/ and you can open how many
 sockets you wish. There are no checks whether the user configured the same
 socket multiple times and BIRD may behave weirdly if this happens. On shutdown,
 the additional sockets get removed immediately and only the main socket stays
-until the very end.
+until the very end. If there are no options, the braces may be omitted.
 
-<p>The remote control socket can be also set as restricted by
-<cf/cli "name" { restrict; };/ instead of sending the <cf/restrict/ command
-after connecting. The user may still overload the daemon by requesting insanely
-complex filters so you shouldn't expose this socket to public anyway.
+<p>Options:
+
+<descrip>
+	<tag><label id="cli-conf-restrict">restrict</tag>
+	Set the socket to be restricted as if the user always sent the
+	<cf/restrict/ command after connecting. The user may still overload
+	the daemon by requesting insanely complex filters so you shouldn't
+	expose this socket to public even if restricted.
+
+	<tag><label id="cli-conf-v2-attributes">v2 attributes</tag>
+	Display the names and composition of route attributes the same way as BIRD 2 does.
+	This is a compatibility option for easier transition from BIRD 2 to BIRD 3.
+</descrip>
 
 <sect>Usage
 <label id="remote-control-usage">
