@@ -9,6 +9,8 @@
 #include "test/birdtest.h"
 #include "lib/resource.h"
 #include "lib/bitops.h"
+#include "lib/event.h"
+#include "lib/io-loop.h"
 
 static const int sizes[] = {
   8, 12, 18, 27, 41, 75, 131, 269,
@@ -44,8 +46,11 @@ static inline byte *test_alloc(slab *s, int sz, struct resmem *sliz)
     out[p] = p & 0xff;
 
   struct resmem ns = rmemsize((resource *) s);
-
+  if (sliz->effective + sz != ns.effective)
+    bug("bt_assert(sliz->effective + sz == ns.effective) %i %i %i", sliz->effective, sz, ns.effective);
   bt_assert(sliz->effective + sz == ns.effective);
+  if ((sliz->overhead - sz - ns.overhead) % page_size)
+    bug("(sliz->overhead - sz - ns.overhead) mod page_size %i %i %i %i", sliz->overhead, sz, ns.overhead, page_size);
   bt_assert((sliz->overhead - sz - ns.overhead) % page_size == 0);
 
   *sliz = ns;
@@ -65,7 +70,11 @@ static inline void test_free(slab *s, byte *block, int sz, struct resmem *sliz)
 
   struct resmem ns = rmemsize((resource *) s);
 
+  if (sliz->effective - sz != ns.effective)
+    bug("bt_assert(sliz->effective - sz == ns.effective) %i %i %i", sliz->effective, sz, ns.effective);
   bt_assert(sliz->effective - sz == ns.effective);
+  if ((sliz->overhead + sz - ns.overhead) % page_size)
+    bug("(sliz->overhead + sz - ns.overhead) mod page_size %i %i %i %i", sliz->overhead, sz, ns.overhead, page_size);
   bt_assert((sliz->overhead + sz - ns.overhead) % page_size == 0);
 
   *sliz = ns;
@@ -84,7 +93,7 @@ t_slab(const void *data)
   const struct test_request *tr = data;
   int sz = tr->size;
 
-  slab *s = sl_new(&root_pool, sz);
+  slab *s = sl_new(&root_pool, birdloop_event_list(&main_birdloop), sz);
   struct resmem sliz = get_memsize(s);
 
   int n = ITEMS(sz);
@@ -156,7 +165,7 @@ int main(int argc, char *argv[])
 
   struct test_request tr;
 
-  for (uint i = 0; i < sizeof(sizes) / sizeof(*sizes); i++)
+  for (uint i = 0; i < sizeof(sizes) / sizeof(*sizes); i++){
       for (uint strategy = TEST_FORWARDS; strategy < TEST__MAX; strategy++)
       {
 	tr = (struct test_request) {
@@ -165,6 +174,7 @@ int main(int argc, char *argv[])
 	};
 	bt_test_suite_arg(t_slab, &tr, "Slab allocator test, size=%d, strategy=%s",
 	    tr.size, strategy_name[strategy]);
+      }
       }
 
   return bt_exit_value();

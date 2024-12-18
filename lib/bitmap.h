@@ -11,6 +11,7 @@
 #define _BIRD_BITMAP_H_
 
 #include "lib/resource.h"
+#include "lib/io-loop.h"
 
 struct bmap
 {
@@ -75,7 +76,7 @@ struct lmap
 static inline uint lmap_max(struct lmap *b)
 { return b->size << 10; }
 
-void lmap_init(struct lmap *b, pool *p);
+void lmap_init(struct lmap *b, pool *p, struct event_list *ev_l);
 void lmap_free(struct lmap *b);
 int lmap_test(struct lmap *b, uint n);
 void lmap_set(struct lmap *b, uint n);

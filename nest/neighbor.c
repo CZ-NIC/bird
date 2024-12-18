@@ -619,9 +619,9 @@ neigh_ifa_down(struct ifa *a)
  * the neighbor cache module.
  */
 void
-neigh_init(pool *if_pool)
+neigh_init(pool *if_pool, struct event_list *ev_l)
 {
-  neigh_slab = sl_new(if_pool, sizeof(neighbor));
+  neigh_slab = sl_new(if_pool, ev_l, sizeof(neighbor));
 
   for(int i = 0; i < NEIGH_HASH_SIZE; i++)
     init_list(&neigh_hash_table[i]);
