@@ -174,7 +174,7 @@ void neigh_if_down(struct iface *);
 void neigh_if_link(struct iface *);
 void neigh_ifa_up(struct ifa *a);
 void neigh_ifa_down(struct ifa *a);
-void neigh_init(struct pool *);
+void neigh_init(struct pool *, struct event_list *ev_l);
 
 void neigh_link(neighbor *);
 void neigh_unlink(neighbor *);

@@ -175,7 +175,7 @@ t_lmap_set_clear_fill(void)
 {
   struct lmap b;
 
-  lmap_init(&b, &root_pool);
+  lmap_init(&b, &root_pool, birdloop_event_list(&main_birdloop));
 
   char expected[MAX_NUM] = {};
   uint i, j, n;

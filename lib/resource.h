@@ -132,8 +132,9 @@ void tmp_flush(void);
 /* Slabs */
 
 typedef struct slab slab;
+struct event_list;
 
-slab *sl_new(pool *, unsigned size);
+struct slab *sl_new(pool *p, struct event_list *cleanup_ev_list, uint size);
 void *sl_alloc(slab *);
 void *sl_allocz(slab *);
 void sl_free(void *);
