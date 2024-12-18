@@ -227,9 +227,9 @@ static struct rte_src * _Atomic * _Atomic rte_src_global;
 static _Atomic uint rte_src_global_max;
 
 static void
-rte_src_init(void)
+rte_src_init(struct event_list *ev)
 {
-  rte_src_slab = sl_new(rta_pool, sizeof(struct rte_src));
+  rte_src_slab = sl_new(rta_pool, ev, sizeof(struct rte_src));
 
   uint gmax = SRC_ID_INIT_SIZE * 32;
   struct rte_src * _Atomic *g = mb_alloc(rta_pool, sizeof(struct rte_src * _Atomic) * gmax);
@@ -269,10 +269,11 @@ rt_get_source_o(struct rte_owner *p, u64 id)
     return src;
   }
 
-  RTA_LOCK;
   src = sl_allocz(rte_src_slab);
   src->owner = p;
   src->private_id = id;
+
+  RTA_LOCK;
   src->global_id = idm_alloc(&src_ids);
 
   lfuc_init(&src->uc);
@@ -1734,11 +1735,11 @@ rta_init(void)
   rta_pool = rp_new(&root_pool, attrs_domain.attrs, "Attributes");
 
   for (uint i=0; i<ARRAY_SIZE(ea_slab_sizes); i++)
-    ea_slab[i] = sl_new(rta_pool, ea_slab_sizes[i]);
+    ea_slab[i] = sl_new(rta_pool, birdloop_event_list(&main_birdloop), ea_slab_sizes[i]);
 
   SPINHASH_INIT(rta_hash_table, RTAH, rta_pool, &global_work_list);
 
-  rte_src_init();
+  rte_src_init(birdloop_event_list(&main_birdloop));
   ea_class_init();
 
   RTA_UNLOCK;

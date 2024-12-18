@@ -1124,7 +1124,7 @@ bfd_start(struct proto *P)
 
   p->tpool = birdloop_pool(P->loop);
 
-  p->session_slab = sl_new(P->pool, sizeof(struct bfd_session));
+  p->session_slab = sl_new(P->pool, birdloop_event_list(P->loop), sizeof(struct bfd_session));
   HASH_INIT(p->session_hash_id, P->pool, 8);
   HASH_INIT(p->session_hash_ip, P->pool, 8);
 

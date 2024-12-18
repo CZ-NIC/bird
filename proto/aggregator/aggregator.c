@@ -379,10 +379,10 @@ aggregator_start(struct proto *P)
 {
   SKIP_BACK_DECLARE(struct aggregator_proto, p, p, P);
 
-  p->bucket_slab = sl_new(P->pool, sizeof(struct aggregator_bucket) + AGGR_DATA_MEMSIZE);
+  p->bucket_slab = sl_new(P->pool, birdloop_event_list(P->loop), sizeof(struct aggregator_bucket) + AGGR_DATA_MEMSIZE);
   HASH_INIT(p->buckets, P->pool, AGGR_BUCK_ORDER);
 
-  p->route_slab = sl_new(P->pool, sizeof(struct aggregator_route));
+  p->route_slab = sl_new(P->pool, birdloop_event_list(P->loop), sizeof(struct aggregator_route));
   HASH_INIT(p->routes, P->pool, AGGR_RTE_ORDER);
 
   p->reload_buckets = (event) {

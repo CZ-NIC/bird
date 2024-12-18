@@ -1986,7 +1986,7 @@ ospf_top_new(struct ospf_proto *p, pool *pool)
 
   f = mb_allocz(pool, sizeof(struct top_graph));
   f->pool = pool;
-  f->hash_slab = sl_new(f->pool, sizeof(struct top_hash_entry));
+  f->hash_slab = sl_new(f->pool, birdloop_event_list(p->p.loop), sizeof(struct top_hash_entry));
   f->hash_order = HASH_DEF_ORDER;
   ospf_top_ht_alloc(f);
   f->hash_entries = 0;

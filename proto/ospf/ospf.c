@@ -123,9 +123,9 @@ add_area_nets(struct ospf_area *oa, struct ospf_area_config *ac)
   struct area_net *an;
 
   fib_init(&oa->net_fib,  p->p.pool, ospf_get_af(p),
-	   sizeof(struct area_net), OFFSETOF(struct area_net, fn), 0, NULL);
+	   sizeof(struct area_net), OFFSETOF(struct area_net, fn), 0, NULL, birdloop_event_list(p->p.loop));
   fib_init(&oa->enet_fib, p->p.pool, ospf_get_af(p),
-	   sizeof(struct area_net), OFFSETOF(struct area_net, fn), 0, NULL);
+	   sizeof(struct area_net), OFFSETOF(struct area_net, fn), 0, NULL, birdloop_event_list(p->p.loop));
 
   WALK_LIST(anc, ac->net_list)
   {
@@ -166,7 +166,7 @@ ospf_area_add(struct ospf_proto *p, struct ospf_area_config *ac)
   oa->areaid = ac->areaid;
   oa->rt = NULL;
   oa->po = p;
-  fib_init(&oa->rtr, p->p.pool, NET_IP4, sizeof(ort), OFFSETOF(ort, fn), 0, NULL);
+  fib_init(&oa->rtr, p->p.pool, NET_IP4, sizeof(ort), OFFSETOF(ort, fn), 0, NULL, birdloop_event_list(p->p.loop));
   add_area_nets(oa, ac);
 
   if (oa->areaid == 0)
@@ -303,7 +303,7 @@ ospf_start(struct proto *P)
   p->nhpool = lp_new(P->pool);
   init_list(&(p->iface_list));
   init_list(&(p->area_list));
-  fib_init(&p->rtf, P->pool, ospf_get_af(p), sizeof(ort), OFFSETOF(ort, fn), 0, NULL);
+  fib_init(&p->rtf, P->pool, ospf_get_af(p), sizeof(ort), OFFSETOF(ort, fn), 0, NULL, birdloop_event_list(P->loop));
   if (ospf_is_v3(p))
     idm_init(&p->idm, P->pool, 16);
   p->areano = 0;

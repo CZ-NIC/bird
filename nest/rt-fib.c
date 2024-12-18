@@ -148,14 +148,14 @@ static inline u32 fib_hash(struct fib *f, const net_addr *a);
  * This function initializes a newly allocated FIB and prepares it for use.
  */
 void
-fib_init(struct fib *f, pool *p, uint addr_type, uint node_size, uint node_offset, uint hash_order, fib_init_fn init)
+fib_init(struct fib *f, pool *p, uint addr_type, uint node_size, uint node_offset, uint hash_order, fib_init_fn init, struct event_list *ev_l)
 {
   uint addr_length = net_addr_length[addr_type];
 
   if (!hash_order)
     hash_order = HASH_DEF_ORDER;
   f->fib_pool = p;
-  f->fib_slab = addr_length ? sl_new(p, node_size + addr_length) : NULL;
+  f->fib_slab = addr_length ? sl_new(p, ev_l, node_size + addr_length) : NULL;
   f->addr_type = addr_type;
   f->node_size = node_size;
   f->node_offset = node_offset;
@@ -730,7 +730,7 @@ int main(void)
 
   log_init_debug(NULL);
   resource_init();
-  fib_init(&f, &root_pool, sizeof(struct fib_node), 4, init);
+  fib_init(&f, &root_pool, sizeof(struct fib_node), 4, init, birdloop_event_list(&bird_loop));
   dump("init");
 
   a = ipa_from_u32(0x01020304); n = fib_get(&f, &a, 32);

@@ -2584,9 +2584,9 @@ babel_start(struct proto *P)
   u8 ip6_type = cf->ip6_channel ? cf->ip6_channel->net_type : NET_IP6;
 
   fib_init(&p->ip4_rtable, P->pool, NET_IP4, sizeof(struct babel_entry),
-	   OFFSETOF(struct babel_entry, n), 0, babel_init_entry);
+	   OFFSETOF(struct babel_entry, n), 0, babel_init_entry, birdloop_event_list(P->loop));
   fib_init(&p->ip6_rtable, P->pool, ip6_type, sizeof(struct babel_entry),
-	   OFFSETOF(struct babel_entry, n), 0, babel_init_entry);
+	   OFFSETOF(struct babel_entry, n), 0, babel_init_entry, birdloop_event_list(P->loop));
 
   init_list(&p->interfaces);
   p->timer = tm_new_init(P->pool, babel_timer, p, 1 S, 0);
@@ -2597,10 +2597,10 @@ babel_start(struct proto *P)
   if (cf->randomize_router_id)
     babel_randomize_router_id(p);
 
-  p->route_slab = sl_new(P->pool, sizeof(struct babel_route));
-  p->source_slab = sl_new(P->pool, sizeof(struct babel_source));
-  p->msg_slab = sl_new(P->pool, sizeof(struct babel_msg_node));
-  p->seqno_slab = sl_new(P->pool, sizeof(struct babel_seqno_request));
+  p->route_slab = sl_new(P->pool, birdloop_event_list(P->loop), sizeof(struct babel_route));
+  p->source_slab = sl_new(P->pool, birdloop_event_list(P->loop), sizeof(struct babel_source));
+  p->msg_slab = sl_new(P->pool, birdloop_event_list(P->loop), sizeof(struct babel_msg_node));
+  p->seqno_slab = sl_new(P->pool, birdloop_event_list(P->loop), sizeof(struct babel_seqno_request));
 
   p->log_pkt_tbf = (struct tbf){ .rate = 1, .burst = 5 };
 
