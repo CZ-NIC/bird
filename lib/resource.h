@@ -139,6 +139,15 @@ void *sl_allocz(slab *);
 void sl_free(void *);
 void sl_delete(slab *);
 
+typedef struct mslab mslab;
+struct event_list;
+
+mslab *msl_new(pool *p, struct event_list *cleanup_ev_list, uint size);
+void *msl_alloc(mslab *);
+void *msl_allocz(mslab *);
+void msl_free(void *);
+void msl_delete(mslab *);
+
 uint sl_obj_count(const uint total_size, const uint fixed_overhead, const uint obj_size, const uint bits);
 
 /*
