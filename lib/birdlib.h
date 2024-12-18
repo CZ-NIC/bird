@@ -235,6 +235,7 @@ void debug_safe(const char *msg);	/* Printf to debug output, async-safe */
 /* Internal thread ID, useful for logging */
 extern _Atomic uint max_thread_id;
 extern _Thread_local uint this_thread_id;
+extern _Thread_local struct pool *this_thread_pool;
 #define THIS_THREAD_ID  this_thread_id
 
 
