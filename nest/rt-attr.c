@@ -196,6 +196,7 @@ ea_gen_aspa_providers_format(const eattr *a, byte *buf, uint size)
 
 struct ea_class ea_gen_aspa_providers = {
   .name = "aspa_providers",
+  .legacy_name = "aspa_providers",
   .type = T_CLIST,
   .format = ea_gen_aspa_providers_format,
 };
@@ -1311,7 +1312,12 @@ ea_show(struct cli *c, const eattr *e)
 
   if (e->undef || cls->hidden)
     return;
-  else if (cls->format)
+
+  const char *name = (c->v2attributes && !cls->conf) ? cls->legacy_name : cls->name;
+  if (!name)
+    return;
+
+  if (cls->format)
     cls->format(e, buf, end - buf);
   else
     switch (e->type)
@@ -1356,7 +1362,7 @@ ea_show(struct cli *c, const eattr *e)
 	  bsprintf(pos, "<type %02x>", e->type);
       }
 
-  cli_printf(c, -1012, "\t%s: %s", cls->name, buf);
+  cli_printf(c, -1012, "\t%s: %s", name, buf);
 }
 
 static void

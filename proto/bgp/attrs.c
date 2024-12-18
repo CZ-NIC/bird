@@ -1058,6 +1058,7 @@ bgp_format_unknown(const eattr *a, byte *buf, uint size)
 static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   [BA_ORIGIN] = {
     .name = "bgp_origin",
+    .legacy_name = "BGP.origin",
     .type = T_ENUM_BGP_ORIGIN,
     .flags = BAF_TRANSITIVE,
     .export = bgp_export_origin,
@@ -1067,6 +1068,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_AS_PATH] = {
     .name = "bgp_path",
+    .legacy_name = "BGP.as_path",
     .type = T_PATH,
     .flags = BAF_TRANSITIVE,
     .encode = bgp_encode_as_path,
@@ -1074,6 +1076,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_NEXT_HOP] = {
     .name = "bgp_next_hop",
+    .legacy_name = "BGP.next_hop",
     .type = T_IP,
     .flags = BAF_TRANSITIVE,
     .encode = bgp_encode_next_hop,
@@ -1082,6 +1085,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_MULTI_EXIT_DISC] = {
     .name = "bgp_med",
+    .legacy_name = "BGP.med",
     .type = T_INT,
     .flags = BAF_OPTIONAL,
     .encode = bgp_encode_u32,
@@ -1089,6 +1093,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_LOCAL_PREF] = {
     .name = "bgp_local_pref",
+    .legacy_name = "BGP.local_pref",
     .type = T_INT,
     .flags = BAF_TRANSITIVE,
     .export = bgp_export_local_pref,
@@ -1097,6 +1102,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_ATOMIC_AGGR] = {
     .name = "bgp_atomic_aggr",
+    .legacy_name = "BGP.atomic_aggr",
     .type = T_OPAQUE,
     .flags = BAF_TRANSITIVE,
     .encode = bgp_encode_raw,
@@ -1104,6 +1110,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_AGGREGATOR] = {
     .name = "bgp_aggregator",
+    .legacy_name = "BGP.aggregator",
     .type = T_OPAQUE,
     .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
     .encode = bgp_encode_aggregator,
@@ -1112,6 +1119,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_COMMUNITY] = {
     .name = "bgp_community",
+    .legacy_name = "BGP.community",
     .type = T_CLIST,
     .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
     .export = bgp_export_community,
@@ -1120,6 +1128,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_ORIGINATOR_ID] = {
     .name = "bgp_originator_id",
+    .legacy_name = "BGP.originator_id",
     .type = T_QUAD,
     .flags = BAF_OPTIONAL,
     .export = bgp_export_originator_id,
@@ -1128,6 +1137,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_CLUSTER_LIST] = {
     .name = "bgp_cluster_list",
+    .legacy_name = "BGP.cluster_list",
     .type = T_CLIST,
     .flags = BAF_OPTIONAL,
     .export = bgp_export_cluster_list,
@@ -1137,6 +1147,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_MP_REACH_NLRI] = {
     .name = "bgp_mp_reach_nlri",
+    .legacy_name = "BGP.mp_reach_nlri",
     .type = T_OPAQUE,
     .hidden = 1,
     .flags = BAF_OPTIONAL,
@@ -1144,6 +1155,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_MP_UNREACH_NLRI] = {
     .name = "bgp_mp_unreach_nlri",
+    .legacy_name = "BGP.mp_unreach_nlri",
     .type = T_OPAQUE,
     .hidden = 1,
     .flags = BAF_OPTIONAL,
@@ -1151,6 +1163,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_EXT_COMMUNITY] = {
     .name = "bgp_ext_community",
+    .legacy_name = "BGP.ext_community",
     .type = T_ECLIST,
     .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
     .export = bgp_export_ext_community,
@@ -1159,6 +1172,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_AS4_PATH] = {
     .name = "bgp_as4_path",
+    .legacy_name = "BGP.as4_path",
     .type = T_PATH,
     .hidden = 1,
     .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
@@ -1167,6 +1181,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_AS4_AGGREGATOR] = {
     .name = "bgp_as4_aggregator",
+    .legacy_name = "BGP.as4_aggregator",
     .type = T_OPAQUE,
     .hidden = 1,
     .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
@@ -1176,6 +1191,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_AIGP] = {
     .name = "bgp_aigp",
+    .legacy_name = "BGP.aigp",
     .type = T_OPAQUE,
     .flags = BAF_OPTIONAL | BAF_DECODE_FLAGS,
     .export = bgp_export_aigp,
@@ -1185,6 +1201,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_LARGE_COMMUNITY] = {
     .name = "bgp_large_community",
+    .legacy_name = "BGP.large_community",
     .type = T_LCLIST,
     .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
     .export = bgp_export_large_community,
@@ -1193,6 +1210,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_ONLY_TO_CUSTOMER] = {
     .name = "bgp_otc",
+    .legacy_name = "BGP.otc",
     .type = T_INT,
     .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
     .encode = bgp_encode_u32,
@@ -1200,6 +1218,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
   },
   [BA_MPLS_LABEL_STACK] = {
     .name = "bgp_mpls_label_stack",
+    .legacy_name = "BGP.mpls_label_stack",
     .type = T_CLIST,
     .readonly = 1,
     .export = bgp_export_mpls_label_stack,

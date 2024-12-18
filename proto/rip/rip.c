@@ -1265,11 +1265,13 @@ rip_tag_format(const eattr *a, byte *buf, uint buflen)
 
 static struct ea_class ea_rip_metric = {
   .name = "rip_metric",
+  .legacy_name = "RIP.metric",
   .type = T_INT,
 };
 
 static struct ea_class ea_rip_tag = {
   .name = "rip_tag",
+  .legacy_name = "RIP.tag",
   .type = T_INT,
   .format = rip_tag_format,
 };

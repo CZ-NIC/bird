@@ -57,50 +57,56 @@ static struct f_val krt_bitfield_empty(const struct ea_class *cls UNUSED)
 static struct ea_class
   ea_krt_prefsrc = {
     .name = "krt_prefsrc",
+    .legacy_name = "Kernel.prefsrc",
     .type = T_IP,
   },
   ea_krt_realm = {
     .name = "krt_realm",
+    .legacy_name = "Kernel.realm",
     .type = T_INT,
   },
   ea_krt_scope = {
     .name = "krt_scope",
+    .legacy_name = "Kernel.scope",
     .type = T_INT,
   };
 
 static struct ea_class ea_krt_metrics[] = {
   [RTAX_LOCK] = {
     .name = "krt_lock",
+    .legacy_name = "Kernel.lock",
     .type = T_INT,
     .format = krt_bitfield_format,
     .empty = krt_bitfield_empty,
   },
   [RTAX_FEATURES] = {
     .name = "krt_features",
+    .legacy_name = "Kernel.features",
     .type = T_INT,
     .format = krt_bitfield_format,
     .empty = krt_bitfield_empty,
   },
   [RTAX_CC_ALGO] = {
     .name = "krt_congctl",
+    .legacy_name = "Kernel.congctl",
     .type = T_STRING,
   },
-#define KRT_METRIC_INT(_rtax, _name)	[_rtax] = { .name = _name, .type = T_INT }
-  KRT_METRIC_INT(RTAX_MTU, "krt_mtu"),
-  KRT_METRIC_INT(RTAX_WINDOW, "krt_window"),
-  KRT_METRIC_INT(RTAX_RTT, "krt_rtt"),
-  KRT_METRIC_INT(RTAX_RTTVAR, "krt_rttvar"),
-  KRT_METRIC_INT(RTAX_SSTHRESH, "krt_ssthresh"),
-  KRT_METRIC_INT(RTAX_CWND, "krt_cwnd"),
-  KRT_METRIC_INT(RTAX_ADVMSS, "krt_advmss"),
-  KRT_METRIC_INT(RTAX_REORDERING, "krt_reordering"),
-  KRT_METRIC_INT(RTAX_HOPLIMIT, "krt_hoplimit"),
-  KRT_METRIC_INT(RTAX_INITCWND, "krt_initcwnd"),
-  KRT_METRIC_INT(RTAX_RTO_MIN, "krt_rto_min"),
-  KRT_METRIC_INT(RTAX_INITRWND, "krt_initrwnd"),
-  KRT_METRIC_INT(RTAX_QUICKACK, "krt_quickack"),
+#define KRT_METRIC_INT(_rtax, _name)	[_rtax] = { .name = "krt_" _name, .legacy_name = "Kernel." _name, .type = T_INT }
+  KRT_METRIC_INT(RTAX_MTU, "mtu"),
+  KRT_METRIC_INT(RTAX_WINDOW, "window"),
+  KRT_METRIC_INT(RTAX_RTT, "rtt"),
+  KRT_METRIC_INT(RTAX_RTTVAR, "rttvar"),
+  KRT_METRIC_INT(RTAX_SSTHRESH, "ssthresh"),
+  KRT_METRIC_INT(RTAX_CWND, "cwnd"),
+  KRT_METRIC_INT(RTAX_ADVMSS, "advmss"),
+  KRT_METRIC_INT(RTAX_REORDERING, "reordering"),
+  KRT_METRIC_INT(RTAX_HOPLIMIT, "hoplimit"),
+  KRT_METRIC_INT(RTAX_INITCWND, "initcwnd"),
+  KRT_METRIC_INT(RTAX_RTO_MIN, "rto_min"),
+  KRT_METRIC_INT(RTAX_INITRWND, "initrwnd"),
+  KRT_METRIC_INT(RTAX_QUICKACK, "quickack"),
 #ifdef RTAX_FASTOPEN_NO_COOKIE
-  KRT_METRIC_INT(RTAX_FASTOPEN_NO_COOKIE, "krt_fastopen_no_cookie"),
+  KRT_METRIC_INT(RTAX_FASTOPEN_NO_COOKIE, "fastopen_no_cookie"),
 #else
 #warning "Definition of RTAX_FASTOPEN_NO_COOKIE not found"
 #endif

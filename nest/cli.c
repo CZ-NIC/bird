@@ -320,6 +320,8 @@ cli_new(struct birdsock *sock, struct cli_config *cf)
   if (cf->restricted)
     c->restricted = 1;
 
+  c->v2attributes = cf->v2attributes;
+
   ev_schedule(c->event);
   return c;
 }

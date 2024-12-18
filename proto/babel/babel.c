@@ -2206,11 +2206,13 @@ babel_router_id_format(const eattr *a, byte *buf, uint len)
 
 static struct ea_class ea_babel_metric = {
   .name = "babel_metric",
+  .legacy_name = "Babel.metric",
   .type = T_INT,
 };
 
 static struct ea_class ea_babel_router_id = {
   .name = "babel_router_id",
+  .legacy_name = "Babel.router_id",
   .type = T_OPAQUE,
   .readonly = 1,
   .format = babel_router_id_format,
@@ -2218,6 +2220,7 @@ static struct ea_class ea_babel_router_id = {
 
 static struct ea_class ea_babel_seqno = {
   .name = "babel_seqno",
+  .legacy_name = "Babel.seqno",
   .type = T_INT,
   .readonly = 1,
   .hidden = 1,

@@ -21,6 +21,8 @@
 static void rt_show_cont(struct cli *c);
 static void rt_show_done(struct rt_show_data *d);
 
+extern const char * const rta_src_names[RTS_MAX];
+
 static void
 rt_show_table(struct rt_show_data *d)
 {
@@ -81,9 +83,19 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
 
   if (d->verbose)
   {
+    if (c->v2attributes)
+    {
+      ea_show_nexthop_list(c, nhad);
+
+      uint src = ea_get_int(a, &ea_gen_source, 0);
+      cli_printf(c, -1008, "\tType: %s univ", rta_src_names[src]);
+    }
+
     ea_show_list(c, a);
-    cli_printf(c, -1008, "\tInternal route handling values: %luL %uG %uS id %u",
-	e->src->private_id, e->src->global_id, e->stale_cycle, e->id);
+
+    if (!c->v2attributes)
+      cli_printf(c, -1008, "\tInternal route handling values: %luL %uG %uS id %u",
+	  e->src->private_id, e->src->global_id, e->stale_cycle, e->id);
   }
   else if (dest == RTD_UNICAST)
     ea_show_nexthop_list(c, nhad);
