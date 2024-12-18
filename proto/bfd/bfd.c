@@ -1109,7 +1109,7 @@ bfd_start(struct proto *P)
   p->tpool = birdloop_pool(P->loop);
   p->eloop = birdloop_new(P->pool, DOMAIN_ORDER(service), cf->express_thread_group->group, "BFD Express %s", P->name);
 
-  p->session_slab = sl_new(P->pool, sizeof(struct bfd_session));
+  p->session_slab = sl_new(P->pool, birdloop_event_list(P->loop), sizeof(struct bfd_session));
   HASH_INIT(p->session_hash_id, P->pool, 8);
   HASH_INIT(p->session_hash_ip, P->pool, 8);
 
@@ -1362,6 +1362,6 @@ bfd_build(void)
   BFD_LOCKED(g)
   {
     g->request_pool = rp_new(&root_pool, g->lock.rtable, "BFD Global");
-    g->request_slab = sl_new(g->request_pool, sizeof(struct bfd_request));
+    g->request_slab = sl_new(g->request_pool, &global_event_list, sizeof(struct bfd_request));
   }
 }

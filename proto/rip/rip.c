@@ -1193,8 +1193,8 @@ rip_start(struct proto *P)
 
   init_list(&p->iface_list);
   fib_init(&p->rtable, P->pool, cf->rip2 ? NET_IP4 : NET_IP6,
-	   sizeof(struct rip_entry), OFFSETOF(struct rip_entry, n), 0, NULL);
-  p->rte_slab = sl_new(P->pool, sizeof(struct rip_rte));
+	   sizeof(struct rip_entry), OFFSETOF(struct rip_entry, n), 0, NULL, birdloop_event_list(P->loop));
+  p->rte_slab = sl_new(P->pool, birdloop_event_list(P->loop), sizeof(struct rip_rte));
   p->timer = tm_new_init(P->pool_up, rip_timer, p, 0, 0);
 
   p->rip2 = cf->rip2;
