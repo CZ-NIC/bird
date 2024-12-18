@@ -1,0 +1,1141 @@
+/*
+ *	BIRD Resource Manager -- A mslab-like Memory Allocator
+ *
+ *	Heavily inspired by the original mslab paper by Jeff Bonwick.
+ *
+ *	(c) 1998--2000 Martin Mares <mj@ucw.cz>
+ *	(c) 2020       Maria Matejka <mq@jmq.cz>
+ *	(c) 2025       Katerina Kubecova <katerina.kubecova@nic.cz>
+ *
+ *	Can be freely distributed and used under the terms of the GNU GPL.
+ */
+
+/**
+ * DOC: Multithread mslab
+ *
+ * mslabs are collections of memory blocks of a fixed size.
+ *
+ * When the |DEBUGGING| switch is turned on, we automatically fill all
+ * newly allocated and freed blocks with special patterns to easier detect
+ * uninitialized or already freed memory use.
+ *
+ * mslabs support very fast allocation and freeing of such blocks, prevent memory
+ * fragmentation and optimize L2 cache usage. mslabs have been invented by Jeff Bonwick
+ * and published in USENIX proceedings as `The mslab Allocator: An Object-Caching Kernel
+ * Memory Allocator'. Our original implementation followed this article except that we
+ * didn't use constructors and destructors. Yet now, it's a little bit more complicated.
+ *
+ * The mslab allocates system memory pages and partitions them to allocate the blocks.
+ * Every page has its head (struct msl_head) with some basic information,
+ * a bitfield for marking allocated blocks, and then the data, aligned to the
+ * maximum requred alignment to avoid unaligned access.
+ *
+ * To allocate a block, every thread has its own page (we call them heads, actually)
+ * assigned to allocate from. It finds a free block in the head, marks it and returns it.
+ *
+ * The thread may be unable to allocate from its own page because it's full. In such cases,
+ * the thread pushes that page to the full_heads list. Then, it needs a new one, which it gets
+ * primarily from the partial_heads list (see below), and if that list is empty, it requests
+ * a new page from the kernel.
+ *
+ * The threads' own heads are arranged in an array in struct mslab.
+ *
+ * To free a block, we always know that it's allocated from a page which is
+ * aligned to its size. (That's an invariant we are enforcing in the page
+ * allocation subsystem and we heavily rely on that.) With that, we can calculate
+ * the head pointer from the block pointer by zeroing the least significant (usually) 13 bits.
+ *
+ * With the head pointer in hand, we can unset the appropriate bit in the head.
+ * But there are several cases to consider with the head.
+ *
+ * (1) The head is some thread's head, indicated by slh_thread
+ *     -> no need to do anything, the block is going to be reused soon
+ * (2) The head is in the partial_heads list and there are some more blocks
+ *     in the head still allocated
+ *     -> no need to do anything, the block is going to be reused (not so) soon
+ *        but it's gonna be taken care of
+ * (3) The head is in the full_heads list and its state is slh_pre_partial.
+ *     -> no need to do anything, the help is on the way already (see below why)
+ * (4) The head is in the partial_heads list and this is the last block to free.
+ *     Note that there is no thread which could be allocating from this block
+ *     right now. -> Removing the head from the list and freeing it safely
+ *     is hard, we need to hire a specialist (schedule an event) to do it.
+ * (5) The head is in the full_heads list and its state is slh_full. This means
+ *     that it is no longer full and we need to move it to the partial_heads list
+ *     for a possible reuse. -> Removing the head from the list is hard. We
+ *     need to hire a specialist (schedule an event) to do it. We also change
+ *     the head's state to slh_pre_partial to indicate this fact.
+ *
+ * And that's all. Or is it?
+ *
+ * The Hired Specialist(TM) is an event doing the cleanup operations on the mslab.
+ *
+ * (1) It walks over the full_heads list and:
+ *     (1A) if the head is slh_full, it keeps it there,
+ *     (1B) if the head is completely empty, it frees it,
+ *     (1C) if the head is slh_pre_partial, it changes its state to slh_partial
+ *	    and moves it to another (local) list for further processing.
+ * (2) It exchanges the locally gathered partial list and the partial_heads list.
+ * (3) It walks over the local list (formerly partial_heads!) and:
+ *     (3A) if the head still has some allocated blocks, it pushes it back to partial_heads,
+ *     (3B) if the head is completely empty, it frees it.
+ *
+ * The last part to mention are mslab_dump and mslab_memsize. But these are simple.
+ * They just walk over the full_heads, partial_heads and the thread-array, and
+ * dump or calculate the effective / overhead memory usage.
+ *
+ * And that's all. Or is it?
+ *
+ * The block allocation and free are lockless.
+ * (Are you scared already? We surely are. But we are brave.)
+ *
+ * Please read the comments in the msl_alloc and msl_free code to see the analysis
+ * why this is actually safe.
+ *
+ * And don't worry. The Hired Specialist, as well as mslab_dump and mslab_memsize,
+ * are locking, therefore these can't collide with themselves. Yet msl_alloc and
+ * msl_free may collide and we are catering for that.
+ */
+
+#include <stdlib.h>
+#include <stdint.h>
+
+#include "nest/bird.h"
+#include "lib/resource.h"
+#include "lib/io-loop.h"
+#include "lib/timer.h"
+#include "sysdep/unix/io-loop.h"
+
+
+#ifdef DEBUGGING
+#define POISON		/* Poison all regions after they are freed */
+#endif
+
+static void mslab_free(resource *r);
+static void mslab_dump(struct dump_request *dreq, resource *r);
+//static resource *mslab_lookup(resource *r, unsigned long addr);
+static struct resmem mslab_memsize(resource *r);
+static void msl_cleanup(void *sp);
+static void msl_thread_end(struct bird_thread_end_callback *);
+
+
+/*
+ * Head state life cycle
+ ***********************
+ *
+ *             (new head)               (all blocks allocated)
+ * Alloc page     --->     slh_thread           --->            slh_full
+ *                              ^                                  |
+ *	                        |                          (some blocks freed)
+ *			   (pickup a head)			   |
+ *				|				   v
+ * Free page	  <---     slh_partial		<--------------
+ *     (cleanup: empty head)
+ */
+
+enum msl_head_state {
+  slh_new = 0,
+  slh_thread = 1,
+  slh_full = 2,
+  slh_pre_partial = 3,
+  slh_partial = 4,
+  slh_dummy = 0xd0,
+} PACKED;
+
+struct msl_head {
+  struct mslab *mslab;
+  struct msl_head *_Atomic next;
+  _Atomic u16 num_full;
+  _Atomic enum msl_head_state state;
+  _Atomic u32 used_bits[0];
+};
+
+struct msl_per_thread_info {
+  u16 used_bits_ptr; /* Pointer to used_bits_local - helps find free memory a bit faster */
+  u16 still_free; /*Number of certainly free chunks of memory */
+  struct msl_head * _Atomic head; /* Head from which is the thread allocating right now. */
+  _Atomic long allocated_heads;
+  _Atomic long allocated_objs;
+  u32 used_bits_local[0]; /* Zero bits mean certainly NOT used memory, one bits mean MAYBE used memory. */
+};
+
+
+/* These nodes must be the last nodes of full_heads and partial_heads linked lists, respectively.
+ * We need these for sanity checks and for detecting collisions of alloc/free and cleanup. */
+static struct msl_head slh_dummy_last_full = {
+    .state = slh_dummy,
+};
+static struct msl_head  slh_dummy_last_partial = {
+    .state = slh_dummy,
+};
+
+struct mslab {
+  resource r;
+  uint obj_size, head_size, head_bitfield_len;
+  uint objs_per_mslab, data_size;
+  struct msl_head * _Atomic partial_heads;		/* Heads available for grabbing, list ended by &msl_dummy_last_partial */
+  struct msl_head * _Atomic full_heads;			/* Full heads, list ended by &msl_dummy_last_full */
+  event event_clean;					/* Cleanup event (The Hired Specialist TM) */
+  struct event_list *cleanup_ev_list;			/* Schedule event_clean here */
+  struct bird_thread_end_callback thread_end;		/* Gets called on thread end */
+  struct msl_per_thread_info * _Atomic *thread_head_info; /* Originally there used to be just one head per thread. The rest is just a speedup hack. */
+  _Atomic long freed_heads;
+  _Atomic long freed_objs;
+};
+
+static struct resclass msl_class = {
+  .name = "mslab",
+  .size = sizeof(struct mslab),
+  .free = mslab_free,
+  .dump = mslab_dump,
+  .memsize = mslab_memsize,
+};
+
+#define msl_GET_HEAD(x)	PAGE_HEAD(x)
+#define msl_GET_STATE(head) atomic_load_explicit(&head->state, memory_order_acquire)
+#define msl_SET_STATE(head, expected_state, new_state) \
+    ASSERT_DIE(atomic_exchange_explicit(&head->state, new_state, memory_order_acq_rel) == expected_state)
+#define msl_MAYBE_SET_STATE(head, expected_state, new_state) \
+    ({ enum msl_head_state orig = expected_state; atomic_compare_exchange_strong_explicit(&head->state, &orig, new_state, memory_order_acq_rel, memory_order_acquire); })
+
+#if 0
+/* Please do not read this. This is awful and awfully expensive way of debugging. */
+static void
+mslab_asserts(struct mslab *s)
+{
+return;
+struct msl_head *c = s->full_heads;
+    while (c!= &slh_dummy_last_full)
+    {
+      ASSERT_DIE(c->mslab == s);
+      enum msl_head_state state = msl_GET_STATE(c);
+      if(!(state == slh_full || state == slh_pre_partial)){
+        struct msl_head *cc = s->full_heads;
+          while (cc!= &slh_dummy_last_full)
+          {
+            state = msl_GET_STATE(cc);
+            log("cc %x state %i, s %x", cc, state, s);
+            if(!(state == slh_full || state == slh_pre_partial)){
+              bug("cc wrong full");
+            }
+            cc = cc->next;
+          }
+       }
+      c = c->next;
+    }
+  c = s->partial_heads;
+  if (c == &slh_dummy_last_partial)
+    log("no partial");
+  while (c!= &slh_dummy_last_partial)
+    {
+      ASSERT_DIE(c->mslab == s);
+      enum msl_head_state state = msl_GET_STATE(c);
+      log("cc %x state %i, s %x", c, state, s);
+      if(state != slh_partial){
+        bug("cc wrong part");
+        struct msl_head *cc = s->full_heads;
+          while (cc!= &slh_dummy_last_partial)
+          {
+            state = msl_GET_STATE(cc);
+            log("cc %x state %i, s %x", cc, state, s);
+            if(state != slh_partial){
+              bug("cc wrong part");
+            }
+            cc = cc->next;
+          }
+       }
+      c = c->next;
+    }
+}
+#endif
+
+/**
+ * msl_new - create a new mslab
+ * @p: resource pool
+ * @size: block size
+ *
+ * This function creates a new mslab resource from which
+ * objects of size @size can be allocated.
+ */
+mslab *
+msl_new(pool *p, struct event_list *cleanup_ev_list, uint size)
+{
+  mslab *s = ralloc(p, &msl_class);
+
+  /* We have first to calculate how big the allocates objects actually should
+   * be because of alignment constrants, and also the more objects, the bigger
+   * the bitfield has to be. */
+
+  /* First, round the size up to the alignment but keep the actual requested
+   * size for memory consumption reports. */
+  uint align = CPU_STRUCT_ALIGN;
+  s->data_size = size;
+  size = (size + align - 1) / align * align;
+  s->obj_size = size;
+  atomic_store_explicit(&s->freed_heads, 0, memory_order_relaxed);
+  atomic_store_explicit(&s->freed_objs, 0, memory_order_relaxed);
+
+  /* Calculate how many objects fit into a head. */
+  s->head_size = sizeof(struct msl_head);
+
+  do {
+    /* Try just dividing the size by the size of the aligned object
+     * and hope that the remainder gives us enough space to actually fit the bitmap.
+     */
+    s->objs_per_mslab = (page_size - s->head_size) / size;
+    s->head_bitfield_len = (s->objs_per_mslab + 31) / 32;
+    s->head_size = (
+	sizeof(struct msl_head)
+      + sizeof(u32) * s->head_bitfield_len
+      + align - 1)
+    / align * align;
+
+    /* But if the overall size doesn't fit into the page, we are sure now
+     * that s->head_size is larger than at the beginning of the loop, thus
+     * s->objs_per_mslab is going to decrease. After (at most) several iterations,
+     * this will converge. (Maria claims it, please believe her.) */
+  } while (s->objs_per_mslab * size + s->head_size > (size_t) page_size);
+
+  /* But it may converge to zero which is kinda stupid because we want to
+   * allocate some blocks, not just juggle empty pages. But that's definitely
+   * the user's fault and we won't bother. */
+  if (!s->objs_per_mslab)
+    bug("mslab: object too large");
+
+  /* We need a block holding the active head pointer for every thread separately.
+   * In order to be able to avoid write detele conflicts, the heads are stored in thread_head_info. */
+  ASSERT_DIE(MAX_THREADS * sizeof (struct msl_per_thread_info * _Atomic) <= (unsigned long) page_size);
+  void *page = alloc_page();
+  memset(page, 0, page_size);
+  s->thread_head_info = page;
+
+  /* Initialize the partial_heads and full_heads lists by the dummy heads */
+  atomic_store_explicit(&s->partial_heads, &slh_dummy_last_partial, memory_order_relaxed);
+  atomic_store_explicit(&s->full_heads, &slh_dummy_last_full, memory_order_relaxed);
+
+  /* Initialize the cleanup routine */
+  s->event_clean = (event) {
+    .hook = msl_cleanup,
+    .data = s,
+  };
+
+  s->cleanup_ev_list = cleanup_ev_list;
+
+  /* Hook the thread end to get rid of active heads linked to that thread */
+  s->thread_end = (struct bird_thread_end_callback) {
+    .hook = msl_thread_end,
+  };
+  bird_thread_end_register(&s->thread_end);
+
+  return s;
+}
+
+/**
+ * msl_delete - destroy an existing mslab
+ * @s: mslab
+ *
+ * This function destroys the given mslab. Just a public wrapper over rfree. This calls mslab_free() back internally.
+ */
+void msl_delete(mslab *s)
+{
+  rfree(&s->r);
+}
+
+/**
+ * msl_alloc_from_page - allocate a block from the given mslab page
+ * @s: mslab
+ * @h: mslab head (page)
+ *
+ * Allocates and returns. May return NULL if the head is actually full, sorry. Deal with it.
+ */
+static void *
+msl_alloc_from_page(mslab *s, struct msl_head *h)
+{
+  ASSERT_DIE(msl_GET_STATE(h) == slh_thread);
+  struct msl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[THIS_THREAD_ID], memory_order_relaxed);
+
+  /* This routine must never collide with itself. It's expected to run
+   * only on the head assigned to the current thread.
+   *
+   * To avoid colisions with msl_free(), actively used heads have two
+   * bit fields marking used memory.
+   *  - One regular stored in head itself. This bit field is allways
+   *    present and it is used by msl_free(). If its head does not belong to
+   *    a thread, this field is accurate, eg. Zero bit allways stands for
+   *    free memory and set bit for allocated.
+   *
+   *    If the head does belong to a thread, only zero bits can be trusted.
+   *    When the thread get the head, it sets all relevant bits in bitfield to ones.
+   *    The memory in the head belongs to that thread anyway, so the thread marks
+   *    the memory as used in advance.
+   *
+   *  - The other bitfield is represented by used_bits_local. Only the owning
+   *    thread should access it (the only exception is freeing the mslab). This field
+   *    starts by copying the regular field and then it is filled with ones from the beginning
+   *    to the end. It has no information about freed objects, only zero bits
+   *    represent free memory for sure.
+   *
+   * If no object could be allocated, we return NULL. Yet, some block
+   * could have been freed inbetween nevertheless. The caller is responsible
+   * for checking this and behaving appropriately.
+   * */
+
+  /* Looking for a zero bit in a variable-long almost-atomic bitfield */
+  for (; ti->used_bits_ptr < s->head_bitfield_len; ti->used_bits_ptr++)
+  {
+    u32 used_bits = ti->used_bits_local[ti->used_bits_ptr];
+    if (~used_bits)
+    {
+      /* There are some zero bits in this part of the bitfield. */
+      uint pos = u32_ctz(~used_bits);
+      if (ti->used_bits_ptr * 32 + pos >= s->objs_per_mslab)
+	/* But too far, we don't have those objects! */
+	    return NULL;
+
+      /* Set the one, claim the block */
+      ti->used_bits_local[ti->used_bits_ptr] = ti->used_bits_local[ti->used_bits_ptr] | (1 << pos);
+
+      /* Update allocation count */
+      /* Well, prove me wrong, but we do not need this.
+       * The actual size is not needed until we reach the end -
+       * at the exact moment, when num full counted by deleting threads become true. */
+      //atomic_fetch_add_explicit(&h->num_full, 1, memory_order_acquire);
+
+      /* Take the pointer and go away */
+      void *out = ((void *) h) + s->head_size + (ti->used_bits_ptr * 32 + pos) * s->obj_size;
+#ifdef POISON
+      memset(out, 0xcd, s->data_size);
+#endif
+      ti->still_free--;
+      atomic_fetch_add_explicit(&ti->allocated_objs, 1, memory_order_relaxed);
+      return out;
+    }
+  }
+  /* Looks like everything is full, we need to update the used_bits_local field.  */
+  return NULL;
+}
+
+static int
+msl_count_free_bits(u32 n)
+{
+  int ret = 0;
+  for (int i = 0; i < 32; i++)
+    ret = ret + !(n & (1<<i));
+  return ret;
+}
+
+
+/* Used memory of a head belonging to a thread is tracked by two bitfields
+ * as described in msl_alloc_from_page. The one stored in head itself tracks
+ * freed memory and in msl_per_thread_info tracks not allocated memory.
+ *
+ * When there is no more not allocated memory but there is some freed memory,
+ * the bitfield in msl_per_thread_info needs to load the unset bits.
+ * That is done by this function. The bitefield in msl_per_thread_info is expected
+ * to be all set to ones.
+ *
+ * This function is used to set up msl_per_thread_info struct for thread when it
+ * gets new partial head as well.
+ *
+ * The bitfield in head is atomicaly set to ones. The fetched version of the field
+ * is copied to msl_per_thread_info field. The number of flipped bits is added to
+ * head used bits. It can not be just set to max value, because of race conflicts with msl_free().
+ */
+
+static void
+msl_refresh_partial(struct mslab *s, struct msl_head *head)
+{
+  struct msl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[THIS_THREAD_ID], memory_order_relaxed);
+  u32 mask = ~0;
+  int free_bits = 0; /* number of bits we manage to flip. */
+
+  for (uint i = 0; i < head->mslab->head_bitfield_len; i++)
+  {
+    u32 used = atomic_fetch_or_explicit(&head->used_bits[i], mask, memory_order_acq_rel);
+    ti->used_bits_local[i] = used;
+    free_bits += msl_count_free_bits(used);
+  }
+
+  ti->used_bits_ptr = 0;
+  atomic_fetch_add_explicit(&head->num_full, free_bits, memory_order_acquire); // reserve gained memory
+  ti->still_free = free_bits;
+}
+
+static struct msl_head *
+msl_get_partial_head(struct mslab *s)
+{
+  /* The cleanup must wait until we end */
+  rcu_read_lock();
+
+  /* Actual remove the first head */
+  struct msl_head *cur_head = atomic_load_explicit(&s->partial_heads, memory_order_acquire),
+		 *new_partial;
+
+  /* This runs concurrently with adding heads from partial_heads (msl_cleanup).
+   * It is safe, because we only read partial_head (it is always valid or at least dummy),
+   * read its next pointer and do atomic exchange.
+   *
+   * The exchange says -- we try to remove the first head which is cur_head,
+   * and we store cur_head->next as the new head. If it happened that somebody
+   * else has grabbed the head inbetween, we restart the process.
+   *
+   * Or the cleanup is running and it pushed a new head there.
+   *
+   * Well, a hypothetical problem.
+   *
+   * (1) thread A grabs cur_head, reads cur_head->next,
+   *	   and then gets scheduled out for a long long sleep
+   * (2) thread B picks cur_head successfully
+   * (3) thread B fills the head completely and pushes the head to full_heads
+   * (4) anybody frees something from the head
+   * (5) cleanup runs and pushes the head back to cur_head ...
+   *
+   * ... but it does not happen because the cleanup gets stuck, waiting for
+   * RCU to synchronize. And sooner or later, thread A finds out
+   * that it's screwed, it won't make any mess, and humbly takes another head.
+   */
+  do {
+    if (msl_GET_STATE(cur_head) == slh_dummy)
+    {
+      /* At the end */
+      ASSERT_DIE(cur_head == &slh_dummy_last_partial);
+      rcu_read_unlock();
+      return NULL;
+    }
+    else
+    {
+      /* Another partial found */
+      new_partial = atomic_load_explicit(&cur_head->next, memory_order_acquire);
+      ASSERT_DIE(new_partial != NULL);
+    }
+  } while (!atomic_compare_exchange_strong_explicit(
+	&s->partial_heads, &cur_head, new_partial,
+	memory_order_acq_rel, memory_order_acquire));
+
+  /* Indicate that the head now belongs to a thread */
+  msl_SET_STATE(cur_head, slh_partial, slh_thread);
+
+  /* The next pointer of cur_head is not changed here. We keep it for counting and dumping memory */
+
+  /* Out of critical section, now the cleanup may continue */
+  rcu_read_unlock();
+
+  msl_refresh_partial(s, cur_head);
+  return cur_head;
+}
+
+/**
+ * msl_alloc - allocate an object from mslab
+ * @s: mslab
+ *
+ * msl_alloc() allocates space for a single object from the
+ * mslab and returns a pointer to the object.
+ */
+void *
+msl_alloc(mslab *s)
+{
+  struct msl_head *h = NULL;
+
+  struct msl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[THIS_THREAD_ID], memory_order_relaxed);
+
+  if (!ti) /* Have we seen this thread before? */
+  {
+    ASSERT_DIE(this_thread_pool);
+    ti = mb_allocz(this_thread_pool,
+	sizeof(struct msl_per_thread_info) + sizeof(u32) * s->head_bitfield_len);
+
+    atomic_store_explicit(
+	&s->thread_head_info[THIS_THREAD_ID],
+	ti, memory_order_relaxed);
+  }
+
+   /* Try to use head owned by this thread */
+  if (h = atomic_load_explicit(&ti->head, memory_order_acquire))
+  {
+    void *ret = msl_alloc_from_page(s, h);
+
+    if (ret)
+      return ret;
+
+    if (atomic_load(&h->num_full) < s->objs_per_mslab)
+    {
+      /* The head is not truly full, someone did free some space */
+      msl_refresh_partial(s, h);
+      ret = msl_alloc_from_page(s, h);
+      ASSERT_DIE(ret);
+      memset(ret, 0, s->data_size);
+      return ret;
+    }
+
+    /* This thread has a head, but it is already full, put the head to full heads.
+     * We did not put the head to full heads right after we used up the last space,
+     * because someone might clean some our space. It may have been us, actually,
+     * as in many cases these allocations end up being released quite soon. */
+    atomic_store_explicit(&ti->head, NULL, memory_order_relaxed);
+
+    /* First of all, we mark the head as being full, not belonging to a thread.
+     * This creates a window of race conditions with msl_free() where we still think
+     * that the head is full but in the meantime the head may become even completely
+     * empty.
+     *
+     * There is no other race condition for now, as the cleanup routine can not see
+     * this head yet, and no other thread may pick it from the partial heads. Remember,
+     * it's not in full_heads yet, how could it get to partials? */
+    msl_SET_STATE(h, slh_thread, slh_full);
+
+    /* We may want to detect the race condition here. In some extremely rare cases,
+     * the complete free race may have already happened now, and in such case,
+     * nobody would ever run the cleanup. But remember, this is allocation.
+     * There is definitely going to be some cleanup in the future anyway.
+     *
+     * So we don't worry and just go ahead, the cleanup routine will take care.
+     *
+     * Put the head to full heads linked list.
+     *
+     * The head->next pointer was intentionally kept set when grabbed from partial heads.
+     * It makes it much easier to dump and count memory, yet we can't now
+     * assert it to be NULL. */
+    struct msl_head *next = atomic_load_explicit(&s->full_heads, memory_order_acquire);
+    do atomic_store_explicit(&h->next, next, memory_order_release);
+    while (!atomic_compare_exchange_strong_explicit(
+	  &s->full_heads, &next, h,
+	  memory_order_acq_rel, memory_order_acquire));
+
+    /* After putting the head into full_heads, we can't even expect that it exists anymore.
+     * DO NOT TOUCH IT! */
+  }
+
+  /* This thread has no page head. Try to get one from partial heads */
+  h = msl_get_partial_head(s);
+  if (!h)
+  {
+    /* There are no partial heads, we need to allocate a new page */
+    h = alloc_page();
+    ASSERT_DIE(msl_GET_HEAD(h) == h);
+
+#ifdef POISON
+    memset(h, 0xba, page_size);
+#endif
+
+    /* Set the thread head info */
+    memset(ti->used_bits_local, 0, s->head_bitfield_len * sizeof(u32));
+    ti->still_free = s->objs_per_mslab;
+    ti->used_bits_ptr = 0;
+
+
+    h->mslab = s;
+    h->next = NULL;
+
+    /* Reserve the memory we will use */
+    memset(h->used_bits, 0xff, s->head_bitfield_len * sizeof(u32));
+    atomic_store_explicit(&h->num_full, s->objs_per_mslab, memory_order_relaxed);
+    atomic_store_explicit(&h->state, slh_thread, memory_order_relaxed);
+    atomic_fetch_add_explicit(&ti->allocated_heads, 1, memory_order_relaxed);
+  }
+  ASSERT_DIE(h->mslab == s);
+
+  atomic_store_explicit(&ti->head, h, memory_order_relaxed);
+  void *ret = msl_alloc_from_page(s, h);
+  ASSERT_DIE(ret); /* Since the head is new or partial, there must be a space for allocation. */
+  return ret;
+}
+
+/**
+ * msl_allocz - allocate an object from mslab and zero it
+ * @s: mslab
+ *
+ * msl_allocz() allocates space for a single object from the
+ * mslab and returns a pointer to the object after zeroing out
+ * the object memory.
+ */
+void *
+msl_allocz(mslab *s)
+{
+  void *obj = msl_alloc(s);
+  memset(obj, 0, s->data_size);
+  return obj;
+}
+
+static void
+msl_free_page(struct msl_head *h)
+{
+#ifdef POISON
+  memset(h, 0xde, page_size);
+#endif
+  free_page(h);
+}
+
+/* Cleaning of a mslab consists of two parts. This is the Hired Specialist(TM) mentioned
+ * in the algorithm overview.
+ *
+ * First, we walk over full_heads and find all heads with free blocks.
+ * These are put to a new_partials list, or if the head is completely empty,
+ * it's freed immediately.
+ *
+ * This function does this part.
+ */
+static struct msl_head *
+msl_cleanup_full_heads(struct mslab *s)
+{
+  /* Prepare the end of the new partial list */
+  struct msl_head *new_partials = &slh_dummy_last_partial;
+
+  /* The topmost full head is ignored to avoid collisions with allocations.
+   * This may cause a little bit of inefficiency but we don't care so much. */
+  struct msl_head *fh = atomic_load_explicit(&s->full_heads, memory_order_acquire);
+
+  /* The topmost head is never NULL, it is always either valid, or slh_dummy_last_full. */
+  ASSERT_DIE(fh);
+  struct msl_head *next = atomic_load_explicit(&fh->next, memory_order_relaxed);
+
+  /* Avoid possible problems with very rare race conditions with msl_get_partial_head(),
+   * basically wait for everybody who still may have a pointer to any of these heads,
+   * to end. */
+  synchronize_rcu();
+
+  while (next && (msl_GET_STATE(next) != slh_dummy))
+  {
+    /* We need to store the next_next pointer now in case we free the page */
+    struct msl_head *next_next = atomic_load_explicit(&next->next, memory_order_relaxed);
+
+    /* Find out how many blocks are allocated from this mslab head.
+     *
+     * Transitions between these three variants are covered in msl_free(),
+     * so that if we run the wrong variant now, somebody is already scheduling
+     * the cleanup routine again.
+     * */
+    u16 num_full = atomic_load_explicit(&next->num_full, memory_order_acquire);
+    if (num_full == 0)
+    {
+      /* Already completely empty! */
+
+      /* Remove head from the list */
+      ASSERT_DIE(atomic_exchange_explicit(&fh->next, next_next, memory_order_acq_rel) == next);
+
+      /* Free the page completely */
+      msl_free_page(next);
+      atomic_fetch_add_explicit(&s->freed_heads, 1, memory_order_relaxed);
+    }
+    else if (num_full < s->objs_per_mslab)
+    {
+      /* Somebody freed some blocks from here. */
+
+      /* Remove head from the list */
+      ASSERT_DIE(atomic_exchange_explicit(&fh->next, next_next, memory_order_acq_rel) == next);
+
+      /* We change the head's state to slh_partial to indicate where it is intended to be stored. */
+      msl_SET_STATE(next, slh_full, slh_partial);
+
+      /* Put the head into new_partials */
+      atomic_store_explicit(&next->next, new_partials, memory_order_relaxed);
+      new_partials = next;
+    }
+    else
+    {
+      /* This block is kept here. It's still full. */
+      ASSERT_DIE(num_full == s->objs_per_mslab);
+      fh = next;
+    }
+
+    /* Next head, let's go! */
+    next = next_next;
+  }
+
+  return new_partials;
+}
+
+/* mslab cleanup, second part. The Hired Specialist(TM) still on the scene.
+ *
+ * Here partial_heads are cleaned. Since other threads may remove heads from partial_heads,
+ * the original partial_heads linked_list is first replaced by "new_partials" linked list
+ * and then worked on.
+ *
+ * Empty heads are freed and the rest is then put back to partial_heads one-by-one
+ * to ensure other threads always have as many partial heads as possible for grabs.
+ *
+ * The swap at the beginning might collide with another thread grabbing a head from partial_heads,
+ * hence we employ a simple read-write spinlock to temporarily block allocations.
+ *
+*/
+static void
+msl_cleanup_partial_heads(struct mslab *s, struct msl_head *new_partials)
+{
+  /* Exchange the partial heads for the supplied list */
+  struct msl_head *ph = atomic_exchange_explicit(&s->partial_heads, new_partials, memory_order_acq_rel);
+  ASSERT_DIE(ph);
+
+  /* Wait for readers to realize */
+  synchronize_rcu();
+
+  /* Now nobody else sees ph and we can happily free anything we come across. Almost.
+   * And we can walk over the list and do the cleanup in peace. */
+  while (ph != &slh_dummy_last_partial)
+  {
+    ASSERT_DIE(msl_GET_STATE(ph) == slh_partial);
+    struct msl_head *next_head = atomic_load_explicit(&ph->next, memory_order_relaxed);
+    ASSERT_DIE(next_head);
+
+    if (!atomic_load_explicit(&ph->num_full, memory_order_relaxed))
+    {
+      /* The head is empty, free it. */
+      msl_free_page(ph);
+      atomic_fetch_add_explicit(&s->freed_heads, 1, memory_order_relaxed);
+    }
+    else
+    {
+      /* Insert the head into the partial heads list.
+       * This runs concurrently with removing heads from partial_heads (msl_get_partial_head),
+       * but we are the only one pushing heads there, so any pointer we see there is unique
+       * and no heads are going to be recycled during the race condition.
+       *
+       * Thus, we can't run into the ominous race condition of colliding with both
+       * addition and removal at the same time. At least by unanimous voting of two people,
+       * we consider this safe.
+       *
+       * No, seriously. The only weird case is that msl_get_partial_head picks a head,
+       * then we push another one, then another msl_get_partial_head picks a head,
+       * then we push another one ... but in the end, they either find out that this
+       * is not the topmost one, or they serialize in the right order and everything works. */
+      struct msl_head *head = atomic_load_explicit(&s->partial_heads, memory_order_acquire);
+      do atomic_store_explicit(&ph->next, head, memory_order_release);
+      while (!atomic_compare_exchange_strong_explicit(
+          &s->partial_heads, &head, ph,
+	  memory_order_acq_rel, memory_order_acquire));
+    }
+    ph = next_head;
+  }
+}
+
+static void
+msl_cleanup(void *sp)
+{
+  struct mslab *s = (struct mslab*) sp;
+
+  /* Cleanup does weird things and should therefore not collide
+   * with memsize and dump calls. We need to lock the pool's domain explicitly. */
+  struct domain_generic *dom = resource_parent(&s->r)->domain;
+  int locking = !DG_IS_LOCKED(dom);
+  if (locking)
+    DG_LOCK(dom);
+
+  /* Get the heads transitioning from full to partial */
+  struct msl_head *new_partials = msl_cleanup_full_heads(s);
+
+  /* And merge them with partials */
+  msl_cleanup_partial_heads(s, new_partials);
+
+  /* If we were locking, we have to unlock! */
+  if (locking)
+    DG_UNLOCK(dom);
+}
+
+static void msl_thread_end(struct bird_thread_end_callback *btec)
+{
+  SKIP_BACK_DECLARE(mslab, s, thread_end, btec);
+
+  /* Passing statistic to mslab struct */
+  struct msl_per_thread_info *ti = atomic_exchange_explicit(&s->thread_head_info[THIS_THREAD_ID], NULL, memory_order_release);
+  if (ti)
+  {
+    atomic_fetch_sub_explicit(&s->freed_heads,
+      atomic_load_explicit(&ti->allocated_heads, memory_order_relaxed), memory_order_relaxed);
+    atomic_store_explicit(&ti->allocated_heads, 0, memory_order_relaxed);
+    atomic_fetch_sub_explicit(&s->freed_objs,
+      atomic_load_explicit(&ti->allocated_objs, memory_order_relaxed), memory_order_relaxed);
+    atomic_store_explicit(&ti->allocated_objs, 0, memory_order_relaxed);
+  }
+
+  /* Getting rid of an active head of a stopping thread.
+   * We first pick the head from its place. */
+  struct msl_head *h = atomic_load_explicit(&ti->head, memory_order_relaxed);
+  atomic_store_explicit(&ti->head, NULL, memory_order_relaxed);
+
+  /* No such head, yay! */
+  if (h == NULL)
+    return;
+
+  /* How many items are still allocated from that head? */
+  uint num_full = atomic_load_explicit(&h->num_full, memory_order_acquire);
+  if (num_full - ti->still_free == 0)
+    /* The page is empty, just throw it away */
+    msl_free_page(h);
+  else
+  {
+    /* There are some, let's put the head into the full heads list */
+    msl_SET_STATE(h, slh_thread, slh_full);
+
+    /* Put the head to full heads linked list */
+    struct msl_head *next = atomic_load_explicit(&s->full_heads, memory_order_acquire);
+    do atomic_store_explicit(&h->next, next, memory_order_release);
+    while (!atomic_compare_exchange_strong_explicit(
+	  &s->full_heads, &next, h,
+	  memory_order_acq_rel, memory_order_acquire));
+
+    /* And if it actually should be partial, the cleanup will take care */
+    if (num_full < s->objs_per_mslab)
+      ev_send(s->cleanup_ev_list, &s->event_clean);
+  }
+}
+
+
+/**
+ * msl_free - return a free object back to a mslab
+ * @s: mslab
+ * @oo: object returned by msl_alloc()
+ *
+ * This function frees memory associated with the object @oo
+ * and returns it back to the mslab @s.
+ */
+void
+msl_free(void *oo)
+{
+  struct msl_head *h = msl_GET_HEAD(oo);
+  struct mslab *s = h->mslab;
+
+#ifdef POISON
+  memset(oo, 0xdb, s->data_size);
+#endif
+
+  /* Find the position of the object in page */
+  uint offset = oo - ((void *) h) - s->head_size;
+  ASSERT_DIE(offset % s->obj_size == 0);
+  uint pos = offset / s->obj_size;
+  ASSERT_DIE(pos < s->objs_per_mslab);
+
+  /* Remove the corresponding bit from bitfield */
+  u32 mask = ~0;
+  mask -= 1 << (pos % 32);
+  u32 check = atomic_fetch_and_explicit(&h->used_bits[pos / 32], mask, memory_order_acq_rel);
+  ASSERT_DIE(check & (1 << (pos % 32)));
+
+  u16 num_full_before = atomic_fetch_sub_explicit(&h->num_full, 1, memory_order_acq_rel);
+
+  if ((num_full_before == s->objs_per_mslab) || (num_full_before == 1))
+    ev_send(s->cleanup_ev_list, &s->event_clean);
+
+  atomic_fetch_add_explicit(&s->freed_objs, 1, memory_order_relaxed);
+}
+
+void
+msl_check_empty(resource *r)
+{
+  mslab *s = (mslab *) r;
+  struct msl_head *h = atomic_load_explicit(&s->full_heads, memory_order_relaxed);
+
+  /* Assert there is only the skipped full head (msl_cleanup never cleans the first head) */
+  if (h !=  &slh_dummy_last_full)
+  {
+    ASSERT_DIE(atomic_load_explicit(&h->next, memory_order_relaxed) == &slh_dummy_last_full);
+    ASSERT_DIE(atomic_load_explicit(&h->num_full, memory_order_relaxed) == 0);
+  }
+
+  /* Assert there are no partial heads */
+  ASSERT_DIE(atomic_load_explicit(&s->partial_heads, memory_order_relaxed) == &slh_dummy_last_partial);
+
+  /* Assert there are no thread heads */
+  for (long unsigned int i = 0; i < page_size / (sizeof(struct msl_head *_Atomic)); i++)
+  {
+    struct msl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[i], memory_order_relaxed);
+    struct msl_head *h = atomic_load_explicit(&ti->head, memory_order_relaxed);
+    if (h)
+      ASSERT_DIE(atomic_load_explicit(&h->num_full, memory_order_relaxed) == ti->still_free);
+  }
+}
+
+static void
+mslab_free(resource *r)
+{
+  /* At this point, only one thread manipulating the mslab is expected */
+  mslab *s = (mslab *) r;
+  ev_postpone(&s->event_clean);
+
+  /* No more thread ends are relevant, we are ending anyway */
+  bird_thread_end_unregister(&s->thread_end);
+
+  /* Free partial heads */
+  struct msl_head *h = atomic_load_explicit(&s->partial_heads, memory_order_relaxed);
+  while (msl_GET_STATE(h) != slh_dummy)
+  {
+    struct msl_head *nh = atomic_load_explicit(&h->next, memory_order_relaxed);
+    msl_free_page(h);
+    h = nh;
+  }
+  atomic_store_explicit(&s->partial_heads, &slh_dummy_last_partial, memory_order_relaxed);
+
+  /* Free full heads */
+  h = atomic_load_explicit(&s->full_heads, memory_order_relaxed);
+  while (msl_GET_STATE(h) != slh_dummy)
+  {
+    struct msl_head *nh = atomic_load_explicit(&h->next, memory_order_relaxed);
+    msl_free_page(h);
+    h = nh;
+  }
+  atomic_store_explicit(&s->full_heads, &slh_dummy_last_full, memory_order_relaxed);
+
+  /* Free thread heads */
+  if (s->thread_head_info)
+  {
+    for (long unsigned int i = 0; i < page_size / (sizeof(struct msl_head *_Atomic)); i++)
+    {
+      struct msl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[i], memory_order_relaxed);
+
+      if (ti)
+      {
+        struct msl_head *th = atomic_load_explicit(&ti->head, memory_order_relaxed);
+        if (th)
+          msl_free_page(th);
+
+        //mb_free(ti); TODO: Hopefully this will be freed automatically with the tread, because we do not have locked the right domains
+      }
+    }
+    free_page(s->thread_head_info);
+  }
+}
+
+static void
+mslab_dump(struct dump_request *dreq, resource *r)
+{
+  /* This is expected to run from the same loop as msl_cleanup */
+  mslab *s = (mslab *) r;
+  int ec=0, pc=0, fc=0;
+
+  RDUMP("(%d objs per %d bytes in page)\n",
+      s->objs_per_mslab, s->obj_size);
+
+  /* Dump threads */
+  RDUMP("%*sthreads:\n", dreq->indent+3, "");
+  for (long unsigned int i = 0; i < (page_size / sizeof(struct msl_head * _Atomic)); i++)
+  {
+    struct msl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[i], memory_order_relaxed);
+    if (ti)
+    {
+      struct msl_head *th = atomic_load_explicit(&ti->head, memory_order_relaxed);
+      if (th)
+      {
+        /* There is no guarantee the head remains slh_thread, but it won't be freed. */
+        RDUMP("%*s%p (", dreq->indent+6, "", th);
+        for (uint i=1; i<=s->head_bitfield_len; i++)
+          RDUMP("%08x", atomic_load_explicit(&th->used_bits[s->head_bitfield_len-i], memory_order_relaxed));
+        RDUMP(")\n");
+        pc++;
+      }
+    }
+  }
+
+  /* Dump full heads */
+  RDUMP("%*sfull:\n", dreq->indent+3, "");
+  struct msl_head *h = atomic_load_explicit(&s->full_heads, memory_order_relaxed);
+  while (h!= &slh_dummy_last_full)
+  {
+    RDUMP("%*s%p (", dreq->indent+6, "", h);
+    for (uint i=1; i<=s->head_bitfield_len; i++)
+      RDUMP("%08x", atomic_load_explicit(&h->used_bits[s->head_bitfield_len-i], memory_order_relaxed));
+    RDUMP(")\n");
+    pc++;
+    h = atomic_load_explicit(&h->next, memory_order_relaxed);
+  }
+
+  /* Dump partial heads */
+  RDUMP("%*spartial:\n", dreq->indent+3, "");
+  h = atomic_load_explicit(&s->partial_heads, memory_order_relaxed);
+  while (h!= &slh_dummy_last_partial)
+  {
+    RDUMP("%*s%p (", dreq->indent+6, "", h);
+    for (uint i=1; i<=s->head_bitfield_len; i++)
+      RDUMP("%08x", atomic_load_explicit(&h->used_bits[s->head_bitfield_len-i], memory_order_relaxed));
+    RDUMP(")\n");
+    pc++;
+
+    h = atomic_load_explicit(&h->next, memory_order_relaxed);
+    enum msl_head_state a = msl_GET_STATE(h);
+
+    if (h != &slh_dummy_last_partial && a == slh_dummy)
+      /* This is ugly. A head may have changed its state, but could not disappear.
+       * The next pointer is never nulled or made invalid. If the head has changed
+       * its state, it must be because of it was grabbed from partial_heads linked list.
+       * That is why we can be sure in partial_heads linked list are only
+       * heads we did not yet see in this loop. */
+      h = atomic_load_explicit(&s->partial_heads, memory_order_relaxed);
+  }
+
+  RDUMP("%*spartial=%d full=%d total=%d\n", dreq->indent+3, "", ec, pc, fc);
+}
+
+_Atomic long global_slab_overhead = 0;
+_Atomic long global_slab_eff = 0;
+
+static struct resmem
+mslab_memsize(resource *r)
+{
+  /* This must be called from main_birdloop. Main_birdloop is the only loop freeing
+   * thread pools where msl_per_thread_info structs are allocated. Calling mslab_memsize
+   * from anywhere else might result in conflict with msl_thread_end. */
+  ASSERT_DIE(birdloop_current == &main_birdloop);
+  mslab *s = (mslab *) r;
+  long heads = 0;
+  long items = 0;
+
+  struct msl_per_thread_info *ti;
+  for (int i = 0; i < MAX_THREADS; i++)
+  {
+    ti = atomic_load_explicit(&s->thread_head_info[i], memory_order_relaxed);
+    if (ti)
+    {
+      items += atomic_load_explicit(&ti->allocated_objs, memory_order_relaxed);
+      heads += atomic_load_explicit(&ti->allocated_heads, memory_order_relaxed);
+      int ite = atomic_load_explicit(&ti->allocated_objs, memory_order_relaxed);
+      log("thr %i, items %li heads %li, item size %li", i, ite, atomic_load_explicit(&ti->allocated_heads, memory_order_relaxed), ite*s->obj_size);
+    }
+  }
+
+  long oheads = heads;
+  long oitems = items;
+  heads -= atomic_load_explicit(&s->freed_heads, memory_order_relaxed);
+  items -= atomic_load_explicit(&s->freed_objs, memory_order_relaxed);
+  size_t eff = items * s->data_size;
+
+  global_slab_eff += eff;
+  global_slab_overhead += ALLOC_OVERHEAD + sizeof(struct mslab) + heads * page_size - eff;
+  log("sl %p eff %li, over %li, items %li, heads %li, freed i %li, freed heads %li, max pp %i (glob e %li o %li)", s, eff, ALLOC_OVERHEAD + sizeof(struct mslab) + heads * page_size - eff,
+oitems, oheads, atomic_load_explicit(&s->freed_objs, memory_order_relaxed), atomic_load_explicit(&s->freed_heads, memory_order_relaxed), s->objs_per_mslab, global_slab_eff, global_slab_overhead);
+
+  return (struct resmem) {
+    .effective = eff,
+    .overhead = ALLOC_OVERHEAD + sizeof(struct mslab) + heads * page_size - eff,
+  };
+}
+
+#if 0
+/* The lookup function is almost impossible to write well and actually
+ * we should look for different methods of debug, this is too clumsy.
+ * Probably an extension for GDB or so. --Maria */
+static resource *
+mslab_lookup(resource *r, unsigned long a)
+{
+  mslab *s = (mslab *) r;
+
+  struct msl_head *h = s->full_heads;
+  while (h!= &slh_dummy_last_full)
+  {
+    if ((unsigned long) h < a && (unsigned long) h + page_size < a)
+      return r;
+    h = h->next;
+  }
+
+  h = s->partial_heads;
+  while (h!= &slh_dummy_last_partial)
+  {
+    if ((unsigned long) h < a && (unsigned long) h + page_size < a)
+      return r;
+    h = h->next;
+  }
+
+  for (long unsigned int i = 0; i < (page_size / sizeof(struct msl_head * _Atomic)); i++)
+  {
+    if (s->threads_active_heads[i])
+      if ((unsigned long) h < a && (unsigned long) h + page_size < a)
+        return r;
+  }
+  return NULL;
+}
+#endif
