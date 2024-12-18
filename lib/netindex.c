@@ -62,7 +62,7 @@ netindex_hash_new(pool *sp, event_list *cleanup_target, u8 type)
   nh->pool = p;
   nh->net_type = type;
 
-  nh->slab = net_addr_length[type] ? sl_new(nh->pool, sizeof (struct netindex) + net_addr_length[type]) : NULL;
+  nh->slab = net_addr_length[type] ? sl_new(nh->pool, cleanup_target, sizeof (struct netindex) + net_addr_length[type]) : NULL;
 
   SPINHASH_INIT(nh->hash, NETINDEX, nh->pool, cleanup_target);
   atomic_store_explicit(&nh->block_size, NETINDEX_INIT_BLOCK_SIZE, memory_order_release);

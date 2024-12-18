@@ -218,7 +218,7 @@ mpls_new_domain(struct mpls_domain_config *cf)
   m->name = cf->name;
   m->pool = p;
 
-  lmap_init(&m->labels, p);
+  lmap_init(&m->labels, p, birdloop_event_list(&main_birdloop));
   lmap_set(&m->labels, 0);
 
   init_list(&m->ranges);
@@ -950,7 +950,7 @@ mpls_slab(struct mpls_fec_map *m, uint type)
   int pos = type ? (type - 1) : 0;
 
   if (!m->slabs[pos])
-    m->slabs[pos] = sl_new(m->pool, sizeof(struct mpls_fec) + net_addr_length[pos + 1]);
+    m->slabs[pos] = sl_new(m->pool, birdloop_event_list(m->loop), sizeof(struct mpls_fec) + net_addr_length[pos + 1]);
 
   return m->slabs[pos];
 }

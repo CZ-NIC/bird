@@ -1841,10 +1841,10 @@ bgp_withdraw_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b)
 HASH_DEFINE_REHASH_FN(PXH, struct bgp_prefix);
 
 static void
-bgp_init_prefix_table(struct bgp_ptx_private *c)
+bgp_init_prefix_table(struct bgp_ptx_private *c, struct event_list *ev_l)
 {
   ASSERT_DIE(!c->prefix_slab);
-  c->prefix_slab = sl_new(c->pool, sizeof(struct bgp_prefix));
+  c->prefix_slab = sl_new(c->pool, ev_l, sizeof(struct bgp_prefix));
 
   HASH_INIT(c->prefix_hash, c->pool, 8);
 }
@@ -2144,7 +2144,7 @@ bgp_init_pending_tx(struct bgp_channel *c)
   bpp->c = c;
 
   bgp_init_bucket_table(bpp);
-  bgp_init_prefix_table(bpp);
+  bgp_init_prefix_table(bpp, birdloop_event_list(c->c.proto->loop));
 
   bpp->exporter = (struct rt_exporter) {
     .journal = {
