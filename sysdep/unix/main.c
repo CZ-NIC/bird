@@ -41,6 +41,7 @@
 #include "conf/conf.h"
 #include "filter/filter.h"
 #include "filter/data.h"
+#include "lib/io-loop.h"
 
 #include "unix.h"
 #include "krt.h"
