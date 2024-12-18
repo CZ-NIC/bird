@@ -1347,7 +1347,30 @@ ea_show(struct cli *c, const eattr *e)
 	  bsprintf(pos, "<type %02x>", e->type);
       }
 
-  cli_printf(c, -1012, "\t%s: %s", cls->name, buf);
+  const char *name = cls->name;
+  char v2n[64];
+
+  if (c->v2mode && !cls->conf)
+    if (strcmp(cls->name, "bgp_path") == 0)
+      name = "BGP.as_path";
+    else
+    {
+      strncpy(v2n, name, sizeof v2n - 1);
+      for (char *p = &v2n[0]; *p; p++)
+	if (*p == '_')
+	{
+	  *p = '.';
+	  break;
+	}
+	else
+	{
+	  ASSERT_DIE((*p >= 'a') && (*p <= 'z'));
+	  *p -= 'a' - 'A';
+	}
+      name = &v2n;
+    }
+
+  cli_printf(c, -1012, "\t%s: %s", name, buf);
 }
 
 static void

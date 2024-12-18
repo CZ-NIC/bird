@@ -287,6 +287,8 @@ cli_new(struct birdsock *sock, struct cli_config *cf)
   if (cf->restricted)
     c->restricted = 1;
 
+  c->v2mode = cf->v2mode;
+
   ev_schedule(c->event);
   return c;
 }
