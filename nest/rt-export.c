@@ -357,8 +357,16 @@ rt_export_refeed_feeder(struct rt_export_feeder *f, struct rt_feeding_request *r
   if (!rfr)
     return;
 
-  rfr->next = f->feed_pending;
-  f->feed_pending = rfr;
+  if (f->feeding)
+  {
+    rfr->next = f->feed_pending;
+    f->feed_pending = rfr;
+  }
+  else
+  {
+    rfr->next = NULL;
+    f->feeding = rfr;
+  }
 }
 
 void rt_export_refeed_request(struct rt_export_request *rer, struct rt_feeding_request *rfr)
