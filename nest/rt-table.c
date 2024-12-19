@@ -5265,14 +5265,14 @@ krt_export_net(struct channel *c, const net_addr *a, linpool *lp)
   if (c->ra_mode == RA_MERGED)
   {
     struct rt_export_feed *feed = rt_net_feed(c->table, a, NULL);
-    if (!feed->count_routes)
+    if (!feed || !feed->count_routes)
       return NULL;
 
     if (!bmap_test(&c->export_accepted_map, feed->block[0].id))
       return NULL;
 
     return rt_export_merged(c, feed, lp, 1);
-    }
+  }
 
   static _Thread_local rte best;
   best = rt_net_best(c->table, a);
