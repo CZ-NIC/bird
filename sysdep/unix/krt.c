@@ -672,7 +672,7 @@ krt_preexport(struct channel *C, rte *e)
 }
 
 static void
-krt_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net,
+krt_rt_notify(struct proto *P, struct channel *ch, const net_addr *net,
 	      rte *new, const rte *old)
 {
   struct krt_proto *p = (struct krt_proto *) P;
@@ -688,13 +688,21 @@ krt_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net,
     case KPS_IDLE:
     case KPS_PRUNING:
       if (new && bmap_test(&p->seen_map, new->id))
-	/* Already installed and seen in the kernel dump */
-	return;
+	if (ch->debug & D_ROUTES)
+	{
+	  /* Already installed and seen in the kernel dump */
+	  log(L_TRACE "%s.%s: %N already in kernel",
+	      P->name, ch->name, net);
+	  return;
+	}
 
       /* fall through */
     case KPS_SCANNING:
       /* Actually replace the route */
       krt_replace_rte(p, net, new, old);
+      if (ch->debug & D_ROUTES)
+	log(L_TRACE "%s.%s: %N %s kernel",
+	    P->name, ch->name, net, old ? "replaced in" : "added to");
       break;
 
   }
