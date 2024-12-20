@@ -378,8 +378,6 @@ bgp_startup(struct bgp_proto *p)
   if (p->postponed_sk)
   {
     /* Apply postponed incoming connection */
-    sk_reloop(p->postponed_sk, p->p.loop);
-
     bgp_setup_conn(p, &p->incoming_conn);
     bgp_setup_sk(&p->incoming_conn, p->postponed_sk);
     bgp_send_open(&p->incoming_conn);
@@ -583,6 +581,9 @@ bgp_graceful_close_conn(struct bgp_conn *conn, int subcode, byte *data, uint len
 static void
 bgp_down(struct bgp_proto *p)
 {
+  /* Check that the dynamic BGP socket has been picked up */
+  ASSERT_DIE(p->postponed_sk == NULL);
+
   if (bgp_start_state(p) > BSS_PREPARE)
   {
     bgp_setup_auth(p, 0);
@@ -617,8 +618,8 @@ bgp_decision(void *vp)
     bgp_down(p);
 }
 
-static struct bgp_proto *
-bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip)
+static void
+bgp_spawn(struct bgp_proto *pp, struct birdsock *sk)
 {
   struct symbol *sym;
   char fmt[SYM_MAX_LEN];
@@ -635,9 +636,16 @@ bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip)
   cfg_mem = NULL;
 
   /* Just pass remote_ip to bgp_init() */
-  ((struct bgp_config *) sym->proto)->remote_ip = remote_ip;
+  ((struct bgp_config *) sym->proto)->remote_ip = sk->daddr;
 
-  return (void *) proto_spawn(sym->proto, 0);
+  /* Create the protocol disabled initially */
+  SKIP_BACK_DECLARE(struct bgp_proto, p, p, proto_spawn(sym->proto, 1));
+
+  /* Pass the socket */
+  p->postponed_sk = sk;
+
+  /* And enable the protocol */
+  proto_enable(&p->p);
 }
 
 void
@@ -1489,10 +1497,15 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
   /* For dynamic BGP, spawn new instance and postpone the socket */
   if (bgp_is_dynamic(p))
   {
-    p = bgp_spawn(p, sk->daddr);
-    p->postponed_sk = sk;
-    rmove(sk, p->p.pool);
-    goto leave;
+    UNLOCK_DOMAIN(rtable, bgp_listen_domain);
+
+    /* The dynamic protocol must be in the START state */
+    ASSERT_DIE(p->p.proto_state == PS_START);
+    birdloop_leave(p->p.loop);
+
+    /* Now we have a clean mainloop */
+    bgp_spawn(p, sk);
+    return 0;
   }
 
   rmove(sk, p->p.pool);
@@ -1806,7 +1819,6 @@ bgp_start(struct proto *P)
   p->incoming_conn.state = BS_IDLE;
   p->neigh = NULL;
   p->bfd_req = NULL;
-  p->postponed_sk = NULL;
   p->gr_ready = 0;
   p->gr_active_num = 0;
 
@@ -1846,6 +1858,16 @@ bgp_start(struct proto *P)
     struct bgp_channel *c;
     BGP_WALK_CHANNELS(p, c)
       channel_graceful_restart_lock(&c->c);
+  }
+
+  /* Now it's the last chance to move the postponed socket to this BGP,
+   * as bgp_start is the only hook running from main loop. */
+  if (p->postponed_sk)
+  {
+    LOCK_DOMAIN(rtable, bgp_listen_domain);
+    rmove(p->postponed_sk, p->p.pool);
+    sk_reloop(p->postponed_sk, p->p.loop);
+    UNLOCK_DOMAIN(rtable, bgp_listen_domain);
   }
 
   /*
@@ -1998,6 +2020,8 @@ bgp_init(struct proto_config *CF)
 
   p->remote_ip = cf->remote_ip;
   p->remote_as = cf->remote_as;
+
+  p->postponed_sk = NULL;
 
   /* Hack: We use cf->remote_ip just to pass remote_ip from bgp_spawn() */
   if (cf->c.parent)

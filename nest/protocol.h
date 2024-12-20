@@ -78,6 +78,8 @@ void proto_build(struct protocol *);	/* Called from protocol to register itself 
 void protos_preconfig(struct config *);
 void protos_commit(struct config *new, struct config *old, int type);
 struct proto * proto_spawn(struct proto_config *cf, uint disabled);
+bool proto_disable(struct proto *p);
+bool proto_enable(struct proto *p);
 void protos_dump_all(struct dump_request *);
 
 #define GA_UNKNOWN	0		/* Attribute not recognized */

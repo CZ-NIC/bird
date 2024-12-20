@@ -1867,6 +1867,25 @@ proto_spawn(struct proto_config *cf, uint disabled)
   return p;
 }
 
+bool
+proto_disable(struct proto *p)
+{
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+  bool changed = !p->disabled;
+  p->disabled = 1;
+  proto_rethink_goal(p);
+  return changed;
+}
+
+bool
+proto_enable(struct proto *p)
+{
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+  bool changed = p->disabled;
+  p->disabled = 0;
+  proto_rethink_goal(p);
+  return changed;
+}
 
 /**
  * DOC: Graceful restart recovery
