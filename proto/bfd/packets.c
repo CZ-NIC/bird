@@ -109,7 +109,7 @@ const u8 bfd_auth_type_to_hash_alg[] = {
 static void
 bfd_fill_authentication(struct bfd_proto *p, struct bfd_session *s, struct bfd_ctl_packet *pkt)
 {
-  struct bfd_session_config *cf = &s->cf;
+  struct bfd_options *cf = &s->cf;
   struct password_item *pass = password_find(cf->passwords, 0);
   uint meticulous = 0;
 
@@ -179,7 +179,7 @@ bfd_fill_authentication(struct bfd_proto *p, struct bfd_session *s, struct bfd_c
 static int
 bfd_check_authentication(struct bfd_proto *p, struct bfd_session *s, struct bfd_ctl_packet *pkt)
 {
-  struct bfd_session_config *cf = &s->cf;
+  struct bfd_options *cf = &s->cf;
   const char *err_dsc = NULL;
   uint err_val = 0;
   uint auth_type = 0;

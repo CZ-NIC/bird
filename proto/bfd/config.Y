@@ -86,44 +86,37 @@ bfd_iface_start:
   add_tail(&BFD_CFG->patt_list, NODE this_ipatt);
   init_list(&this_ipatt->ipn_list);
 
-  BFD_IFACE->min_rx_int = BFD_DEFAULT_MIN_RX_INT;
-  BFD_IFACE->min_tx_int = BFD_DEFAULT_MIN_TX_INT;
-  BFD_IFACE->idle_tx_int = BFD_DEFAULT_IDLE_TX_INT;
-  BFD_IFACE->multiplier = BFD_DEFAULT_MULTIPLIER;
+  this_bfd_opts = &BFD_IFACE->opts;
+
+  this_bfd_opts->min_rx_int = BFD_DEFAULT_MIN_RX_INT;
+  this_bfd_opts->min_tx_int = BFD_DEFAULT_MIN_TX_INT;
+  this_bfd_opts->idle_tx_int = BFD_DEFAULT_IDLE_TX_INT;
+  this_bfd_opts->multiplier = BFD_DEFAULT_MULTIPLIER;
 
   reset_passwords();
 };
 
 bfd_iface_finish:
 {
-  BFD_IFACE->passwords = get_passwords();
+  this_bfd_opts->passwords = get_passwords();
 
-  if (!BFD_IFACE->auth_type != !BFD_IFACE->passwords)
+  if (!this_bfd_opts->auth_type != !this_bfd_opts->passwords)
     cf_warn("Authentication and password options should be used together");
 
-  if (BFD_IFACE->passwords)
+  if (this_bfd_opts->passwords)
   {
     struct password_item *pass;
-    WALK_LIST(pass, *BFD_IFACE->passwords)
+    WALK_LIST(pass, *this_bfd_opts->passwords)
     {
       if (pass->alg)
         cf_error("Password algorithm option not available in BFD protocol");
 
-      pass->alg = bfd_auth_type_to_hash_alg[BFD_IFACE->auth_type];
+      pass->alg = bfd_auth_type_to_hash_alg[this_bfd_opts->auth_type];
     }
   }
-};
 
-bfd_iface_item:
-   INTERVAL expr_us { BFD_IFACE->min_rx_int = BFD_IFACE->min_tx_int = $2; }
- | MIN RX INTERVAL expr_us { BFD_IFACE->min_rx_int = $4; }
- | MIN TX INTERVAL expr_us { BFD_IFACE->min_tx_int = $4; }
- | IDLE TX INTERVAL expr_us { BFD_IFACE->idle_tx_int = $4; }
- | MULTIPLIER expr { BFD_IFACE->multiplier = $2; }
- | PASSIVE bool { BFD_IFACE->passive = $2; }
- | AUTHENTICATION bfd_auth_type { BFD_IFACE->auth_type = $2; }
- | password_list {}
- ;
+  this_bfd_opts = NULL;
+};
 
 bfd_auth_type:
    NONE			 { $$ = BFD_AUTH_NONE; }
@@ -134,14 +127,9 @@ bfd_auth_type:
  | METICULOUS KEYED SHA1 { $$ = BFD_AUTH_METICULOUS_KEYED_SHA1; }
  ;
 
-bfd_iface_opts:
-   /* empty */
- | bfd_iface_opts bfd_iface_item ';'
- ;
-
 bfd_iface_opt_list:
    /* empty */
- | '{' bfd_iface_opts '}'
+ | '{' bfd_items '}'
  ;
 
 bfd_iface:
@@ -194,7 +182,7 @@ bfd_item:
  | MIN TX INTERVAL expr_us { this_bfd_opts->min_tx_int = $4; }
  | IDLE TX INTERVAL expr_us { this_bfd_opts->idle_tx_int = $4; }
  | MULTIPLIER expr { this_bfd_opts->multiplier = $2; }
- | PASSIVE bool { this_bfd_opts->passive = $2; this_bfd_opts->passive_set = 1; }
+ | PASSIVE bool { this_bfd_opts->passive = $2 ? BFD_OPT_PASSIVE : BFD_OPT_NOT_PASSIVE; }
  | GRACEFUL { this_bfd_opts->mode = BGP_BFD_GRACEFUL; }
  | AUTHENTICATION bfd_auth_type { this_bfd_opts->auth_type = $2; }
  | password_list {}

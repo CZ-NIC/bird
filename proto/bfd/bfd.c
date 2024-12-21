@@ -172,17 +172,17 @@ static void bfd_free_iface(struct bfd_iface *ifa);
  *	BFD sessions
  */
 
-static inline struct bfd_session_config
-bfd_merge_options(const struct bfd_iface_config *cf, const struct bfd_options *opts)
+static inline struct bfd_options
+bfd_merge_options(const struct bfd_options *bottom, const struct bfd_options *top)
 {
-  return (struct bfd_session_config) {
-    .min_rx_int = opts->min_rx_int ?: cf->min_rx_int,
-    .min_tx_int = opts->min_tx_int ?: cf->min_tx_int,
-    .idle_tx_int = opts->idle_tx_int ?: cf->idle_tx_int,
-    .multiplier = opts->multiplier ?: cf->multiplier,
-    .passive = opts->passive_set ? opts->passive : cf->passive,
-    .auth_type = opts->auth_type ?: cf->auth_type,
-    .passwords = opts->passwords ?: cf->passwords,
+  return (struct bfd_options) {
+    .min_rx_int = top->min_rx_int ?: bottom->min_rx_int,
+    .min_tx_int = top->min_tx_int ?: bottom->min_tx_int,
+    .idle_tx_int = top->idle_tx_int ?: bottom->idle_tx_int,
+    .multiplier = top->multiplier ?: bottom->multiplier,
+    .passive = top->passive ?: bottom->passive,
+    .auth_type = top->auth_type ?: bottom->auth_type,
+    .passwords = top->passwords ?: bottom->passwords,
   };
 }
 
@@ -478,7 +478,7 @@ bfd_add_session(struct bfd_proto *p, ip_addr addr, ip_addr local, struct iface *
   HASH_INSERT(p->session_hash_id, HASH_ID, s);
   HASH_INSERT(p->session_hash_ip, HASH_IP, s);
 
-  s->cf = bfd_merge_options(ifa->cf, opts);
+  s->cf = bfd_merge_options(&ifa->cf->opts, opts);
 
   /* Initialization of state variables - see RFC 5880 6.8.1 */
   s->loc_state = BFD_STATE_DOWN;
@@ -561,26 +561,58 @@ bfd_remove_session(struct bfd_proto *p, struct bfd_session *s)
   birdloop_leave(p->p.loop);
 }
 
+struct bfd_reconfigure_sessions_deferred_call {
+  struct deferred_call dc;
+  struct bfd_proto *p;
+  config_ref old_config;
+};
+
 static void
-bfd_reconfigure_session(struct bfd_proto *p, struct bfd_session *s)
+bfd_reconfigure_sessions(struct deferred_call *dc)
 {
-  if (EMPTY_LIST(s->request_list))
-    return;
+  SKIP_BACK_DECLARE(struct bfd_reconfigure_sessions_deferred_call,
+      brsdc, dc, dc);
 
-  ASSERT_DIE(birdloop_inside(p->p.loop));
+  struct bfd_proto *p = brsdc->p;
+  birdloop_enter(p->p.loop);
 
-  SKIP_BACK_DECLARE(struct bfd_request, req, n, HEAD(s->request_list));
-  s->cf = bfd_merge_options(s->ifa->cf, &req->opts);
+  HASH_WALK(p->session_hash_id, next_id, s)
+  {
+    if (!EMPTY_LIST(s->request_list))
+    {
+      SKIP_BACK_DECLARE(struct bfd_request, req, n, HEAD(s->request_list));
+      struct bfd_options opts = bfd_merge_options(&s->ifa->cf->opts, &req->opts);
 
-  u32 tx = (s->loc_state == BFD_STATE_UP) ? s->cf.min_tx_int : s->cf.idle_tx_int;
-  bfd_session_set_min_tx(s, tx);
-  bfd_session_set_min_rx(s, s->cf.min_rx_int);
-  s->detect_mult = s->cf.multiplier;
-  s->passive = s->cf.passive;
+#define CHK(x)	(opts.x != s->cf.x) ||
+      bool reload = MACRO_FOREACH(CHK,
+	  min_rx_int,
+	  min_tx_int,
+	  idle_tx_int,
+	  multiplier,
+	  passive) false; /* terminating the || chain */
+#undef CHK
 
-  bfd_session_control_tx_timer(s, 0);
+      s->cf = opts;
 
-  TRACE(D_EVENTS, "Session to %I reconfigured", s->addr);
+      if (reload)
+      {
+	u32 tx = (s->loc_state == BFD_STATE_UP) ? s->cf.min_tx_int : s->cf.idle_tx_int;
+	bfd_session_set_min_tx(s, tx);
+	bfd_session_set_min_rx(s, s->cf.min_rx_int);
+	s->detect_mult = s->cf.multiplier;
+	s->passive = s->cf.passive;
+
+	bfd_session_control_tx_timer(s, 0);
+
+	TRACE(D_EVENTS, "Session to %I reconfigured", s->addr);
+      }
+    }
+  }
+  HASH_WALK_END;
+  birdloop_leave(p->p.loop);
+
+  /* Now the config is clean */
+  OBSREF_CLEAR(brsdc->old_config);
 }
 
 
@@ -589,10 +621,12 @@ bfd_reconfigure_session(struct bfd_proto *p, struct bfd_session *s)
  */
 
 static struct bfd_iface_config bfd_default_iface = {
-  .min_rx_int = BFD_DEFAULT_MIN_RX_INT,
-  .min_tx_int = BFD_DEFAULT_MIN_TX_INT,
-  .idle_tx_int = BFD_DEFAULT_IDLE_TX_INT,
-  .multiplier = BFD_DEFAULT_MULTIPLIER,
+  .opts = {
+    .min_rx_int = BFD_DEFAULT_MIN_RX_INT,
+    .min_tx_int = BFD_DEFAULT_MIN_TX_INT,
+    .idle_tx_int = BFD_DEFAULT_IDLE_TX_INT,
+    .multiplier = BFD_DEFAULT_MULTIPLIER,
+  },
 };
 
 static inline struct bfd_iface_config *
@@ -648,24 +682,6 @@ bfd_free_iface(struct bfd_iface *ifa)
 
   rem_node(&ifa->n);
   mb_free(ifa);
-}
-
-static void
-bfd_reconfigure_iface(struct bfd_proto *p UNUSED, struct bfd_iface *ifa, struct bfd_config *nc)
-{
-  struct bfd_iface_config *new = bfd_find_iface_config(nc, ifa->iface);
-  struct bfd_iface_config *old = ifa->cf;
-
-  /* Check options that are handled in bfd_reconfigure_session() */
-  ifa->changed =
-    (new->min_rx_int != old->min_rx_int) ||
-    (new->min_tx_int != old->min_tx_int) ||
-    (new->idle_tx_int != old->idle_tx_int) ||
-    (new->multiplier != old->multiplier) ||
-    (new->passive != old->passive);
-
-  /* This should be probably changed to not access ifa->cf from the BFD thread */
-  ifa->cf = new;
 }
 
 
@@ -900,20 +916,7 @@ bfd_request_session(pool *p, ip_addr addr, ip_addr local,
 void
 bfd_update_request(struct bfd_request *req, const struct bfd_options *opts)
 {
-  struct bfd_session *s = req->session;
-
-  if (!memcmp(opts, &req->opts, sizeof(const struct bfd_options)))
-    return;
-
   req->opts = *opts;
-
-  if (s)
-  {
-    struct bfd_proto *p = s->ifa->bfd;
-    birdloop_enter(p->p.loop);
-    bfd_reconfigure_session(p, s);
-    birdloop_leave(p->p.loop);
-  }
 }
 
 static void
@@ -1193,21 +1196,22 @@ bfd_reconfigure(struct proto *P, struct proto_config *c)
       (new->zero_udp6_checksum_rx != old->zero_udp6_checksum_rx))
     return 0;
 
-  birdloop_mask_wakeups(p->p.loop);
-
   WALK_LIST(ifa, p->iface_list)
-    bfd_reconfigure_iface(p, ifa, new);
-
-  HASH_WALK(p->session_hash_id, next_id, s)
-  {
-    if (s->ifa->changed)
-      bfd_reconfigure_session(p, s);
-  }
-  HASH_WALK_END;
+    ifa->cf = bfd_find_iface_config(new, ifa->iface);
 
   bfd_reconfigure_neighbors(p, new);
 
-  birdloop_unmask_wakeups(p->p.loop);
+  /* Sessions get reconfigured after all the config is applied */
+  struct bfd_reconfigure_sessions_deferred_call brsdc = {
+    .dc.hook = bfd_reconfigure_sessions,
+    .p = p,
+  };
+  SKIP_BACK_DECLARE(struct bfd_reconfigure_sessions_deferred_call,
+      brsdcp, dc, defer_call(&brsdc.dc, sizeof brsdc));
+
+  /* We need to keep the old config alive until all the sessions get
+   * reconfigured */
+  OBSREF_SET(brsdcp->old_config, P->cf->global);
 
   return 1;
 }

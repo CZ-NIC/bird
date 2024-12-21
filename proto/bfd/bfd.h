@@ -54,24 +54,7 @@ struct bfd_config
 struct bfd_iface_config
 {
   struct iface_patt i;
-  u32 min_rx_int;
-  u32 min_tx_int;
-  u32 idle_tx_int;
-  u8 multiplier;
-  u8 passive;
-  u8 auth_type;				/* Authentication type (BFD_AUTH_*) */
-  list *passwords;			/* Passwords for authentication */
-};
-
-struct bfd_session_config
-{
-  u32 min_rx_int;
-  u32 min_tx_int;
-  u32 idle_tx_int;
-  u8 multiplier;
-  u8 passive;
-  u8 auth_type;				/* Authentication type (BFD_AUTH_*) */
-  list *passwords;			/* Passwords for authentication */
+  struct bfd_options opts;
 };
 
 struct bfd_neighbor
@@ -146,7 +129,7 @@ struct bfd_session
   u32 loc_id;				/* Local session ID (local discriminator) */
   u32 rem_id;				/* Remote session ID (remote discriminator) */
 
-  struct bfd_session_config cf;		/* Static configuration parameters */
+  struct bfd_options cf;		/* Static configuration parameters */
 
   u32 des_min_tx_int;			/* Desired min rx interval, local option */
   u32 des_min_tx_new;			/* Used for des_min_tx_int change */

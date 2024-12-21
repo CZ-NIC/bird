@@ -18,8 +18,11 @@ struct bfd_options {
   u32 min_tx_int;
   u32 idle_tx_int;
   u8 multiplier;
-  u8 passive;
-  u8 passive_set;
+  PACKED enum bfd_opt_passive {
+    BFD_OPT_PASSIVE_UNKNOWN = 0,
+    BFD_OPT_PASSIVE,
+    BFD_OPT_NOT_PASSIVE,
+  } passive;
   u8 mode;
   u8 auth_type;				/* Authentication type (BFD_AUTH_*) */
   list *passwords;			/* Passwords for authentication */
