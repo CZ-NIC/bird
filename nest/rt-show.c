@@ -282,8 +282,9 @@ rt_show_cont(struct cli *c)
     rt_show_table(d);
 
   RT_FEED_WALK(&d->tab->req, f)
-    if (f->count_routes)
-      rt_show_net(d, f);
+    TMP_SAVED
+      if (f->count_routes)
+	rt_show_net(d, f);
 
   if (rt_export_feed_active(&d->tab->req))
     rt_feeder_unsubscribe(&d->tab->req);
