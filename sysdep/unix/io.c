@@ -53,14 +53,15 @@
 
 /* Maximum number of calls of tx handler for one socket in one
  * poll iteration. Should be small enough to not monopolize CPU by
- * one protocol instance.
+ * one protocol instance. But as most of the problems are now offloaded
+ * to worker threads, too low values may actually bring problems with
+ * latency.
  */
-#define MAX_STEPS 4
+#define MAX_STEPS 2048
 
 /* Maximum number of calls of rx handler for all sockets in one poll
-   iteration. RX callbacks are often much more costly so we limit
-   this to gen small latencies */
-#define MAX_RX_STEPS 4
+   iteration. RX callbacks are often a little bit more costly. */
+#define MAX_RX_STEPS 512
 
 
 /*
@@ -2581,8 +2582,6 @@ io_init(void)
   srandom((uint) (now ^ (now >> 32)));
 }
 
-static int short_loops = 0;
-#define SHORT_LOOP_MAX 10
 #define WORK_EVENTS_MAX 10
 
 sock *stored_sock;
@@ -2670,10 +2669,9 @@ io_loop(void)
 	{
 	  if (pfd.pfd.data[0].revents & POLLIN)
 	  {
-	    /* IO loop reload requested */
+	    /* Somebody sent an event to mainloop */
 	    pipe_drain(&main_birdloop.thread->wakeup);
 	    atomic_fetch_and_explicit(&main_birdloop.thread_transition, ~LTT_PING, memory_order_acq_rel);
-	    continue;
 	  }
 
 	  times_update();
@@ -2718,11 +2716,6 @@ io_loop(void)
 
 	    main_birdloop.sock_active = sk_next(s);
 	  }
-
-	  short_loops++;
-	  if (events && (short_loops < SHORT_LOOP_MAX))
-	    continue;
-	  short_loops = 0;
 
 	  int count = 0;
 	  main_birdloop.sock_active = stored_sock;

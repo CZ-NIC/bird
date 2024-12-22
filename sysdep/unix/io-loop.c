@@ -1403,7 +1403,7 @@ bool task_still_in_limit(void)
 {
   static u64 main_counter = 0;
   if (this_birdloop == &main_birdloop)
-    return (++main_counter % 2048);	/* This is a hack because of no accounting in mainloop */
+    return (++main_counter % 512);	/* This is a hack because of no accounting in mainloop */
   else
     return ns_now() < account_last + this_thread->max_loop_time_ns;
 }
