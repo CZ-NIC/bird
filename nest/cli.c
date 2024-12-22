@@ -81,13 +81,14 @@ cli_alloc_out(cli *c, int size)
 	o = c->tx_buf;
       else
 	{
-	  o = mb_alloc(c->pool, sizeof(struct cli_out) + CLI_TX_BUF_SIZE);
+	  o = alloc_page();
+	  c->tx_pending_count++;
 	  if (c->tx_write)
 	    c->tx_write->next = o;
 	  else
 	    c->tx_buf = o;
 	  o->wpos = o->outpos = o->buf;
-	  o->end = o->buf + CLI_TX_BUF_SIZE;
+	  o->end = (void *) o + page_size;
 	}
       c->tx_write = o;
       if (!c->tx_pos)
@@ -167,19 +168,18 @@ cli_hello(cli *c)
 static void
 cli_free_out(cli *c)
 {
-  struct cli_out *o, *p;
+  for (struct cli_out *o = c->tx_buf, *n; o; o = n)
+  {
+    n = o->next;
+    free_page(o);
+    c->tx_pending_count--;
+  }
 
-  if (o = c->tx_buf)
-    {
-      o->wpos = o->outpos = o->buf;
-      while (p = o->next)
-	{
-	  o->next = p->next;
-	  mb_free(p);
-	}
-    }
+  c->tx_buf = NULL;
   c->tx_write = c->tx_pos = NULL;
   c->async_msg_size = 0;
+
+  ASSERT_DIE(c->tx_pending_count == 0);
 }
 
 void
@@ -188,6 +188,38 @@ cli_written(cli *c)
   cli_free_out(c);
   ev_schedule(c->event);
 }
+
+/* A dummy resource to show and free memory pages allocated for pending TX */
+struct cli_tx_resource {
+  resource r;
+  struct cli *c;
+};
+
+static void
+cli_tx_resource_free(resource *r)
+{
+  cli_free_out(SKIP_BACK(struct cli_tx_resource, r, r)->c);
+}
+
+static void
+cli_tx_resource_dump(struct dump_request *dreq UNUSED, resource *r UNUSED) {}
+
+static struct resmem
+cli_tx_resource_memsize(resource *r)
+{
+  return (struct resmem) {
+    .effective = SKIP_BACK(struct cli_tx_resource, r, r)->c->tx_pending_count * page_size,
+    .overhead = sizeof(struct cli_tx_resource),
+  };
+}
+
+static struct resclass cli_tx_resource_class = {
+  .name = "CLI TX buffers",
+  .size = sizeof (struct cli_tx_resource),
+  .free = cli_tx_resource_free,
+  .dump = cli_tx_resource_dump,
+  .memsize = cli_tx_resource_memsize,
+};
 
 
 static byte *cli_rh_pos;
@@ -272,7 +304,8 @@ cli *
 cli_new(struct birdsock *sock, struct cli_config *cf)
 {
   pool *p = rp_new(cli_pool, the_bird_domain.the_bird, "CLI");
-  cli *c = mb_alloc(p, sizeof(cli));
+  struct cli_tx_resource *ctr = ralloc(p, &cli_tx_resource_class);
+  cli *c = ctr->c = mb_alloc(p, sizeof(cli));
 
   bzero(c, sizeof(cli));
   c->pool = p;

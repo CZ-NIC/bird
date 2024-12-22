@@ -17,7 +17,6 @@
 #include "conf/conf.h"
 
 #define CLI_RX_BUF_SIZE 4096
-#define CLI_TX_BUF_SIZE 4096
 #define CLI_MAX_ASYNC_QUEUE 4096
 
 #define CLI_MSG_SIZE 500
@@ -49,6 +48,7 @@ typedef struct cli {
   uint log_mask;			/* Mask of allowed message levels */
   uint log_threshold;			/* When free < log_threshold, store only important messages */
   uint async_msg_size;			/* Total size of async messages queued in tx_buf */
+  uint tx_pending_count;		/* How many blocks are pending */
 } cli;
 
 struct cli_config {
