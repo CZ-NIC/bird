@@ -659,7 +659,7 @@ struct channel {
 
   u8 channel_state;
   u8 reloadable;			/* Hook reload_routes() is allowed on the channel */
-  u8 gr_lock;				/* Graceful restart mechanism should wait for this channel */
+  OBSREF(struct graceful_recovery_context) gr_lock;	/* Graceful restart mechanism should wait for this channel */
   u8 gr_wait;				/* Route export to channel is postponed until graceful restart */
 
   u32 obstacles;			/* External obstacles remaining before cleanup */
@@ -762,5 +762,17 @@ void channel_request_full_refeed(struct channel *c);
 void *channel_config_new(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 void *channel_config_get(const struct channel_class *cc, const char *name, uint net_type, struct proto_config *proto);
 int channel_reconfigure(struct channel *c, struct channel_config *cf);
+
+struct graceful_recovery_context {
+  struct obstacle_target obstacles;
+  struct callback obstacles_cleared;
+  enum {
+    GRS_NONE,
+    GRS_INIT,
+    GRS_ACTIVE,
+    GRS_DONE,
+  } grc_state;
+  timer wait_timer;
+};
 
 #endif
