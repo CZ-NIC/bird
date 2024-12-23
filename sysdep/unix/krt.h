@@ -59,10 +59,9 @@ struct krt_proto {
   struct bmap seen_map;		/* Routes seen during last periodic scan */
   node krt_node;		/* Node in krt_proto_list */
   byte af;			/* Kernel address family (AF_*) */
-  byte ready;			/* Initial feed has been finished */
-  byte initialized;		/* First scan has been finished */
-  byte reload;			/* Next scan is doing reload */
   PACKED enum krt_prune_state {
+    KPS_INIT,
+    KPS_FIRST_SCAN,
     KPS_IDLE,
     KPS_SCANNING,
     KPS_PRUNING,
