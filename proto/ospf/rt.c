@@ -2068,9 +2068,14 @@ again1:
 	.pref = p->p.main_channel->preference,
       };
 
+      struct {
+	ea_list l;
+	eattr a[4];
+      } eal;
+
       if (reload || ort_changed(nf, &a0))
       {
-	a0.eattrs = alloca(sizeof(ea_list) + 4 * sizeof(eattr));
+	a0.eattrs = &eal.l;
 	memset(a0.eattrs, 0, sizeof(ea_list));
 
 	nf->old_metric1 = nf->n.metric1;
