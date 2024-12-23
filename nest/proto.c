@@ -676,9 +676,11 @@ void channel_notify_basic(void *);
 void channel_notify_accepted(void *);
 void channel_notify_merged(void *);
 
-static void
+void
 channel_start_export(struct channel *c)
 {
+  ASSERT_DIE(birdloop_inside(c->proto->loop));
+
   if (rt_export_get_state(&c->out_req) != TES_DOWN)
     bug("%s.%s: Attempted to start channel's already started export", c->proto->name, c->name);
 

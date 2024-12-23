@@ -747,6 +747,8 @@ int proto_configure_channel(struct proto *p, struct channel **c, struct channel_
 
 void channel_set_state(struct channel *c, uint state);
 
+void channel_start_export(struct channel *c);
+
 void channel_add_obstacle(struct channel *c);
 void channel_del_obstacle(struct channel *c);
 
