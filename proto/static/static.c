@@ -373,6 +373,9 @@ static_same_dest(struct static_route *x, struct static_route *y)
   if (x->dest != y->dest)
     return 0;
 
+  if (x->net->type == NET_ASPA)
+    return adata_same(x->aspa, y->aspa);
+
   switch (x->dest)
   {
   case RTD_UNICAST:
