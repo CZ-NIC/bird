@@ -1131,7 +1131,7 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
   if (!old && new)
     if (CHANNEL_LIMIT_PUSH(c, OUT))
     {
-      stats->updates_rejected++;
+      stats->updates_limited++;
       channel_rte_trace_out(D_FILTERS, c, new, "rejected [limit]");
       return;
     }
@@ -1165,6 +1165,10 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old)
 {
   const rte *trte = new ?: old;
 
+  /* Have we exported the old route? */
+  if (old && !bmap_test(&c->export_accepted_map, old->id))
+    old = NULL;
+
   /* Ignore invalid routes */
   if (!rte_is_valid(new))
     new = NULL;
@@ -1175,6 +1179,7 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old)
   if (!new && !old)
   {
     channel_rte_trace_out(D_ROUTES, c, trte, "idempotent withdraw (filtered on import)");
+    c->export_stats.withdraws_ignored++;
     return;
   }
 
@@ -1196,14 +1201,11 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old)
     np = export_filter(c, &n0, 0);
   }
 
-  /* Have we exported the old route? */
-  if (old && !bmap_test(&c->export_accepted_map, old->id))
-    old = NULL;
-
   /* Withdraw to withdraw. */
   if (!np && !old)
   {
     channel_rte_trace_out(D_ROUTES, c, trte, "idempotent withdraw (filtered on export)");
+    /* No stats update, done in export_filter() */
     return;
   }
 
@@ -1554,6 +1556,18 @@ channel_notify_basic(void *_channel)
 	     */
 	    if ((rpe->it.old == new) && (new || src && (src == rpe->it.new->src)))
 	    {
+	      /* Fix the stats: the old item is squashed (ignored) */
+	      if (new)
+		c->export_stats.updates_ignored++;
+	      else
+		c->export_stats.withdraws_ignored++;
+
+	      /* Fix the stats: the new update is received */
+	      if (rpe->it.new)
+		c->out_req.stats.updates_received++;
+	      else
+		c->out_req.stats.withdraws_received++;
+
 	      new = rpe->it.new;
 	      rt_export_processed(&c->out_req, rpe->it.seq);
 	    }
@@ -1579,7 +1593,10 @@ channel_notify_basic(void *_channel)
 		bug("Withdrawn route never seen before");
 	  }
 	  else if (!new && !old)
+	  {
 	    channel_rte_trace_out(D_ROUTES, c, u->update->new, "idempotent withdraw (squash)");
+	    c->export_stats.withdraws_ignored++;
+	  }
 	  else
 	    rt_notify_basic(c, new, old);
 
@@ -2199,7 +2216,10 @@ channel_preimport(struct rt_import_request *req, rte *new, const rte *old)
 
   if (new && !old)
     if (CHANNEL_LIMIT_PUSH(c, RX))
+    {
+      c->import_stats.updates_limited_rx++;
       return 0;
+    }
 
   if (!new && old)
     CHANNEL_LIMIT_POP(c, RX);
@@ -2214,7 +2234,10 @@ channel_preimport(struct rt_import_request *req, rte *new, const rte *old)
       if (c->in_keep & RIK_REJECTED)
 	new->flags |= REF_FILTERED;
       else
+      {
+	c->import_stats.updates_limited_in++;
 	verdict = 0;
+      }
 
   if (!new_in && old_in)
     CHANNEL_LIMIT_POP(c, IN);

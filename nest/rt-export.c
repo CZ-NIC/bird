@@ -104,6 +104,7 @@ rt_export_get(struct rt_export_request *r)
       {
 	/* Feeding more */
 	rtex_trace(r, D_ROUTES, "Feeding %N", feed->ni->addr);
+	r->stats.updates_received += feed->count_routes;
 	EXPORT_FOUND(RT_EXPORT_FEED);
       }
       else if (rt_export_get_state(r) == TES_DOWN)
@@ -158,11 +159,17 @@ rt_export_get(struct rt_export_request *r)
 
       ASSERT_DIE(feed && (feed != &rt_feed_index_out_of_range));
 
+      r->stats.updates_received += feed->count_routes;
       EXPORT_FOUND(RT_EXPORT_FEED);
     }
 
     /* OK, now this actually is an update, thank you for your patience */
     rtex_trace(r, D_ROUTES, "Updating %N, seq %lu", n, update->seq);
+
+    if (update->new)
+      r->stats.updates_received++;
+    else
+      r->stats.withdraws_received++;
 
     EXPORT_FOUND(RT_EXPORT_UPDATE);
   }

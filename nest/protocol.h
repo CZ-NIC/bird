@@ -637,10 +637,12 @@ struct channel {
 
   struct channel_export_stats {
     /* Export - from core to protocol */
+    u32 updates_ignored;		/* Number of route updates ignored (squashed) by channel */
     u32 updates_rejected;		/* Number of route updates rejected by protocol */
     u32 updates_filtered;		/* Number of route updates rejected by filters */
     u32 updates_accepted;		/* Number of route updates accepted and exported */
     u32 updates_limited;		/* Number of route updates exceeding the out_limit */
+    u32 withdraws_ignored;		/* Number of route withdraws ignored (squashed) by channel */
     u32 withdraws_accepted;		/* Number of route withdraws accepted and processed */
   } export_stats;
 
