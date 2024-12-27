@@ -176,8 +176,8 @@ export_rt_notify(struct proto *P, struct channel *src_ch UNUSED,
 
 	ip_addr peer_addr = IPA_NONE;
 
-	if (route->sender->proto != NULL ||
-	    route->sender->proto->proto != NULL ||
+	if (route->sender->proto != NULL &&
+	    route->sender->proto->proto != NULL &&
 	    route->sender->proto->proto->class == PROTOCOL_BGP) {
 		struct bgp_proto *peer = (struct bgp_proto *)route->sender->proto;
 		peer_addr = peer->remote_ip;
