@@ -1192,7 +1192,7 @@ static union bgp_attr_desc bgp_attr_table[BGP_ATTR_MAX] = {
     .decode = bgp_decode_large_community,
   },
   [BA_ONLY_TO_CUSTOMER] = {
-    .name = "otc",
+    .name = "bgp_otc",
     .type = T_INT,
     .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
     .encode = bgp_encode_u32,
