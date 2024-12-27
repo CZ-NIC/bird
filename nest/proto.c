@@ -2595,20 +2595,20 @@ channel_show_stats(struct channel *c)
     cli_msg(-1006, "    Routes:         %u imported, %u exported, %u preferred",
 	    in_routes, out_routes, SRI(pref));
 
-  cli_msg(-1006, "    Route change stats:     received   rejected   filtered    ignored   RX limit   IN limit   accepted");
+  cli_msg(-1006, "    Route change stats:     received   rejected   filtered    ignored   RX limit      limit   accepted");
   cli_msg(-1006, "      Import updates:     %10u %10u %10u %10u %10u %10u %10u",
 	  SCI(updates_received), SCI(updates_invalid),
 	  SCI(updates_filtered), SRI(updates_ignored),
 	  SCI(updates_limited_rx), SCI(updates_limited_in),
 	  SRI(updates_accepted));
-  cli_msg(-1006, "      Import withdraws:   %10u %10u        --- %10u        --- %10u",
+  cli_msg(-1006, "      Import withdraws:   %10u %10u        --- %10u        ---        --- %10u",
 	  SCI(withdraws_received), SCI(withdraws_invalid),
 	  SRI(withdraws_ignored), SRI(withdraws_accepted));
-  cli_msg(-1006, "      Export updates:     %10u %10u %10u        --- %10u %10u",
-	  SRE(updates_received), SCE(updates_rejected),
-	  SCE(updates_filtered), SCE(updates_limited), SCE(updates_accepted));
-  cli_msg(-1006, "      Export withdraws:   %10u        ---        ---        ---         ---%10u",
-	  SRE(withdraws_received), SCE(withdraws_accepted));
+  cli_msg(-1006, "      Export updates:     %10u %10u %10u %10u        --- %10u %10u",
+	  SRE(updates_received), SCE(updates_rejected),	SCE(updates_filtered),
+	  SCE(updates_ignored), SCE(updates_limited), SCE(updates_accepted));
+  cli_msg(-1006, "      Export withdraws:   %10u        ---        --- %10u        ---        --- %10u",
+	  SRE(withdraws_received), SCE(withdraws_ignored), SCE(withdraws_accepted));
 
 #undef SRI
 #undef SRE
