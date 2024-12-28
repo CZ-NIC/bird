@@ -25,6 +25,7 @@
 #include "lib/lists.h"
 
 #include "proto/bgp/bgp.h"
+#include "proto/static/static.h"
 
 #include <stdio.h>
 #include <fcntl.h>
@@ -84,6 +85,19 @@ dump_route_attrs(char *wptr, rte *route)
 {
 	char *attr_start = wptr;
 	wptr += 4;
+
+	struct eattr attr;
+	attr.id = EA_CODE(PROTOCOL_BGP, BA_NEXT_HOP);
+
+	struct {
+		uint length;
+		ip_addr addr;
+	} data;
+	data.length = sizeof(ip_addr);
+	data.addr = route->attrs->nh.gw;
+	attr.u.ptr = (const struct adata *)&data;
+	wptr = dump_attr_plain_data(wptr, &attr);
+
 	struct ea_list *ea = route->attrs->eattrs;
 	while (ea) {
 		for (int idx = 0; idx < ea->count; ++idx) {
@@ -110,7 +124,8 @@ dump_route_attrs(char *wptr, rte *route)
 		}
 		ea = ea->next;
 	}
-	*(uint32_t *)attr_start = (uint32_t)(wptr - attr_start);
+
+	*(uint32_t *)attr_start = (uint32_t)(wptr - attr_start) - 4;
 	return wptr;
 }
 
@@ -148,6 +163,13 @@ export_route_size(rte *route)
 		ea = ea->next;
 	}
 
+	if (route->sender->proto != NULL &&
+	    route->sender->proto->proto != NULL &&
+	    route->sender->proto->proto->class == PROTOCOL_STATIC) {
+
+		size += 4 + 4 + sizeof(ip_addr);
+	}
+
 	return size;
 }
 
@@ -181,7 +203,7 @@ export_rt_notify(struct proto *P, struct channel *src_ch UNUSED,
 	    route->sender->proto->proto->class == PROTOCOL_BGP) {
 		struct bgp_proto *peer = (struct bgp_proto *)route->sender->proto;
 		peer_addr = peer->remote_ip;
-	}
+	} // TODO: maybe check other protocols for peer_addr
 
 	if (write_buf->tpos + export_route_size(route) > write_buf->tbuf + write_buf->size) {
 		struct export_buf *sock_buf = p->send_buf + (1 - p->send_buf_index);
@@ -211,7 +233,7 @@ export_rt_notify(struct proto *P, struct channel *src_ch UNUSED,
 
 	wptr = dump_route_attrs(wptr, route);
 
-	*(uint32_t *)write_buf->tpos = wptr - write_buf->tpos;
+	*(uint32_t *)write_buf->tpos = wptr - write_buf->tpos - 4;
 	write_buf->tpos = wptr;
 
 	struct export_buf *sock_buf = p->send_buf + (1 - p->send_buf_index);
