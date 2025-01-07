@@ -1485,10 +1485,17 @@ channel_notify_basic(void *_channel)
 	    rte *new = &u->feed->block[i];
 	    rte *old = NULL;
 	    for (uint o = oldpos; o < u->feed->count_routes; o++)
-	      if (new->src == u->feed->block[o].src)
+	      if ((c->ra_mode == RA_ANY) && (new->src == u->feed->block[o].src))
 	      {
 		old = &u->feed->block[o];
 		break;
+	      }
+	      else if ((c->ra_mode == RA_OPTIMAL) && (
+		    bmap_test(&c->export_accepted_map, u->feed->block[o].id) || 
+		    bmap_test(&c->export_rejected_map, u->feed->block[o].id)))
+	      {
+		ASSERT_DIE(!old);
+		old = &u->feed->block[o];
 	      }
 
 	    rt_notify_basic(c, new, old);
@@ -2542,10 +2549,14 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool 
   last_in_net = atomic_load_explicit(&n->best.last, memory_order_acquire);
   first = rt_net_feed_validate_first(tr, first_in_net, last_in_net, first);
 
-  uint ecnt = 0;
+  uint ecnt = 0, ocnt = 0;
   for (const struct rt_pending_export *rpe = first; rpe;
       rpe = atomic_load_explicit(&rpe->next, memory_order_acquire))
+  {
     ecnt++;
+    if (rpe->it.old)
+      ocnt++;
+  }
 
   if (ecnt) {
     const net_addr *a = (first->it.new ?: first->it.old)->net;
@@ -2558,10 +2569,11 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool 
   if (!ecnt && (!best || prefilter && !prefilter(f, best->rte.net)))
     return NULL;
 
-  struct rt_export_feed *feed = rt_alloc_feed(!!best, ecnt);
+  struct rt_export_feed *feed = rt_alloc_feed(!!best + ocnt, ecnt);
+  uint bpos = 0;
   if (best)
   {
-    feed->block[0] = best->rte;
+    feed->block[bpos++] = best->rte;
     feed->ni = NET_TO_INDEX(best->rte.net);
   }
   else
@@ -2575,8 +2587,18 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool 
       if (e >= ecnt)
 	RT_READ_RETRY(tr);
       else
+      {
 	feed->exports[e++] = rpe->it.seq;
+	if (rpe->it.old)
+	{
+	  ASSERT_DIE(bpos < !!best + ocnt);
+	  feed->block[bpos] = *rpe->it.old;
+	  feed->block[bpos].flags |= REF_OBSOLETE;
+	  bpos++;
+	}
+      }
 
+    ASSERT_DIE(bpos == !!best + ocnt);
     ASSERT_DIE(e == ecnt);
   }
 
