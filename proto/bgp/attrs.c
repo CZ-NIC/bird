@@ -2689,10 +2689,10 @@ bgp_rte_recalculate(struct rtable_private *table, net *net,
     struct rte_storage *new_stored, struct rte_storage *old_stored, struct rte_storage *old_best_stored)
 {
   struct rte_storage *key_stored = new_stored ? new_stored : old_stored;
-  const struct rte *new = &new_stored->rte,
-		   *old = &old_stored->rte,
-		   *old_best = &old_best_stored->rte,
-		   *key = &key_stored->rte;
+  const struct rte *new = RTE_OR_NULL(new_stored),
+		   *old = RTE_OR_NULL(old_stored),
+		   *old_best = RTE_OR_NULL(old_best_stored),
+		   *key = RTE_OR_NULL(key_stored);
 
   u32 lpref = rt_get_preference(key);
   u32 lasn = bgp_get_neighbor(key);
