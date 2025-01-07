@@ -2024,12 +2024,22 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
 	do_recalculate:
 	  /* Add the new route to the list right behind the old one */
 	  if (new_stored)
+	  {
+	    /* There is the same piece of code several lines farther. Needs refactoring.
+	     * The old_stored check is needed because of the possible jump from deterministic med */
+	    if (old_stored)
 	    {
 	      atomic_store_explicit(&new_stored->next, atomic_load_explicit(&old_stored->next, memory_order_relaxed), memory_order_release);
 	      atomic_store_explicit(&old_stored->next, new_stored, memory_order_release);
-
-	      table->rt_count++;
 	    }
+	    else
+	    {
+	      atomic_store_explicit(&new_stored->next, NULL, memory_order_release);
+	      atomic_store_explicit(last_ptr, new_stored, memory_order_release);
+	    }
+
+	    table->rt_count++;
+	  }
 
 	  /* Find a new optimal route (if there is any) */
 	  struct rte_storage * _Atomic *bp = &local_sentinel.next;
