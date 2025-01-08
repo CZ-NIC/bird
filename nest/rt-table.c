@@ -4743,6 +4743,9 @@ rt_reconfigure(struct rtable_private *tab, struct rtable_config *new, struct rta
   tab->config = new;
   tab->debug = new->debug;
   tab->export_all.trace_routes = tab->export_best.trace_routes = new->debug;
+  tab->best_req.trace_routes = new->debug;
+  if (tab->export_digest)
+    tab->export_digest->req.trace_routes = new->debug;
 
   if (tab->hostcache)
     tab->hostcache->req.trace_routes = new->debug;
