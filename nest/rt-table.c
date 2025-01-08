@@ -1479,9 +1479,14 @@ channel_notify_basic(void *_channel)
 	  while ((oldpos < u->feed->count_routes) && !(u->feed->block[oldpos].flags & REF_OBSOLETE))
 	    oldpos++;
 
+	  uint notify_count = 0;
+
 	  /* Send updates one after another */
 	  for (uint i = 0; i < oldpos; i++)
 	  {
+	    if (c->ra_mode == RA_OPTIMAL)
+	      ASSERT_DIE(notify_count == 0);
+
 	    rte *new = &u->feed->block[i];
 	    rte *old = NULL;
 	    for (uint o = oldpos; o < u->feed->count_routes; o++)
@@ -1490,15 +1495,25 @@ channel_notify_basic(void *_channel)
 		old = &u->feed->block[o];
 		break;
 	      }
-	      else if ((c->ra_mode == RA_OPTIMAL) && (
+	      /* The export best refeed is tricky, there may be a repeated
+	       * obsolete route in case of flaps */
+	      else if (c->ra_mode == RA_OPTIMAL)
+		/* Duplicate obsolete route check */
+		if (old && (u->feed->block[o].id == old->id))
+		  u->feed->block[o].src = NULL;
+		else if (
 		    bmap_test(&c->export_accepted_map, u->feed->block[o].id) || 
-		    bmap_test(&c->export_rejected_map, u->feed->block[o].id)))
-	      {
-		ASSERT_DIE(!old);
-		old = &u->feed->block[o];
-	      }
+		    bmap_test(&c->export_rejected_map, u->feed->block[o].id)
+		    )
+		{
+		  /* But we expect that there was only one route previously exported */
+		  ASSERT_DIE(!old);
+		  old = &u->feed->block[o];
+		}
 
+	    /* This is the distilled notification */
 	    rt_notify_basic(c, new, old);
+	    notify_count++;
 
 	    /* Mark old processed */
 	    if (old)
@@ -1507,8 +1522,17 @@ channel_notify_basic(void *_channel)
 
 	  /* Send withdraws */
 	  for (uint o = oldpos; o < u->feed->count_routes; o++)
-	    if (u->feed->block[o].src)
+	    if (u->feed->block[o].src && (
+		    bmap_test(&c->export_accepted_map, u->feed->block[o].id) ||
+		    bmap_test(&c->export_rejected_map, u->feed->block[o].id)
+		    ))
+	    {
+	      if (c->ra_mode == RA_OPTIMAL)
+		ASSERT_DIE(notify_count == 0);
+
 	      rt_notify_basic(c, NULL, &u->feed->block[o]);
+	      notify_count++;
+	    }
 	}
 	break;
 
@@ -1538,11 +1562,21 @@ channel_notify_basic(void *_channel)
 	  {
 	    channel_rte_trace_out(D_ROUTES, c, new, "already exported");
 
-	    if ((new->id != old->id) && bmap_test(&c->export_accepted_map, old->id))
-	    {
-	      bmap_set(&c->export_accepted_map, new->id);
-	      bmap_clear(&c->export_accepted_map, old->id);
-	    }
+	    if (new->id != old->id)
+	      if (bmap_test(&c->export_accepted_map, old->id))
+	      {
+		bmap_set(&c->export_accepted_map, new->id);
+		bmap_clear(&c->export_accepted_map, old->id);
+
+		ASSERT_DIE(!bmap_test(&c->export_rejected_map, old->id));
+	      }
+	      else if (bmap_test(&c->export_rejected_map, old->id))
+	      {
+		bmap_set(&c->export_rejected_map, new->id);
+		bmap_clear(&c->export_rejected_map, old->id);
+	      }
+	      else
+		bug("Withdrawn route never seen before");
 	  }
 	  else if (!new && !old)
 	    channel_rte_trace_out(D_ROUTES, c, u->update->new, "idempotent withdraw (squash)");
@@ -1628,7 +1662,8 @@ rte_announce(struct rtable_private *tab, const struct netindex *i UNUSED, net *n
   if (all_rpe)
   {
     /* Also best may have changed */
-    best_rpe = rte_announce_to(&tab->export_best, &net->best, new_best, old_best);
+    best_rpe = rte_announce_to(&tab->export_best, &net->best,
+	new_best_valid ? new_best : NULL, old_best_valid ? old_best : NULL);
     if (best_rpe)
       /* Announced best, need an anchor to all */
       best_rpe->seq_all = all_rpe->it.seq;
@@ -2549,12 +2584,16 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool 
   last_in_net = atomic_load_explicit(&n->best.last, memory_order_acquire);
   first = rt_net_feed_validate_first(tr, first_in_net, last_in_net, first);
 
+  struct rte_storage *best = NET_READ_BEST_ROUTE(tr, n);
+  if (best && !rte_is_valid(&best->rte))
+    best = NULL;
+
   uint ecnt = 0, ocnt = 0;
   for (const struct rt_pending_export *rpe = first; rpe;
       rpe = atomic_load_explicit(&rpe->next, memory_order_acquire))
   {
     ecnt++;
-    if (rpe->it.old)
+    if (rpe->it.old && (!best || (rpe->it.old != &best->rte)))
       ocnt++;
   }
 
@@ -2563,8 +2602,6 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool 
     if (prefilter && !prefilter(f, a))
       return NULL;
   }
-
-  struct rte_storage *best = NET_READ_BEST_ROUTE(tr, n);
 
   if (!ecnt && (!best || prefilter && !prefilter(f, best->rte.net)))
     return NULL;
@@ -2589,7 +2626,7 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool 
       else
       {
 	feed->exports[e++] = rpe->it.seq;
-	if (rpe->it.old)
+	if (rpe->it.old && (!best || (rpe->it.old != &best->rte)))
 	{
 	  ASSERT_DIE(bpos < !!best + ocnt);
 	  feed->block[bpos] = *rpe->it.old;
