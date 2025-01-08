@@ -203,60 +203,35 @@ build-only-babel:
   variables:
     CONFIGURE_OPTIONS: --with-protocols=babel
 
+build-only-bfd:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=bfd
+
 build-only-bgp:
   <<: *build-only
   variables:
     CONFIGURE_OPTIONS: --with-protocols=bgp
-
-build-only-bgp-bfd:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=bgp,bfd
 
 build-only-bgp-bmp:
   <<: *build-only
   variables:
     CONFIGURE_OPTIONS: --with-protocols=bgp,bmp
 
-build-only-bgp-bmp-bfd:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=bgp,bmp,bfd
-
 build-only-l3vpn:
   <<: *build-only
   variables:
     CONFIGURE_OPTIONS: --with-protocols=l3vpn
 
-build-only-bgp-mrt:
+build-only-mrt:
   <<: *build-only
   variables:
-    CONFIGURE_OPTIONS: --with-protocols=bgp,mrt
-
-build-only-bgp-mrt-bfd:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=bgp,mrt,bfd
-
-build-only-bgp-mrt-bmp:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=bgp,mrt,bmp
-
-build-only-bgp-mrt-bmp-bfd:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=bgp,mrt,bmp,bfd
+    CONFIGURE_OPTIONS: --with-protocols=mrt
 
 build-only-ospf:
   <<: *build-only
   variables:
     CONFIGURE_OPTIONS: --with-protocols=ospf
-
-build-only-ospf-bfd:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=ospf,bfd
 
 build-only-pipe:
   <<: *build-only
@@ -272,11 +247,6 @@ build-only-rip:
   <<: *build-only
   variables:
     CONFIGURE_OPTIONS: --with-protocols=rip
-
-build-only-rip-bfd:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=rip,bfd
 
 build-only-rpki:
   <<: *build-only
