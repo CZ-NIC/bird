@@ -17,6 +17,7 @@
 #include "lib/macro.h"
 
 #include <stdarg.h>
+#include <stdalign.h>
 
 /* Ugly structure offset handling macros */
 

@@ -915,6 +915,11 @@ nl_parse_multipath(struct nl_parse_state *s, struct krt_proto *p, const net_addr
 
       if (ipa_nonzero(rv->gw))
 	{
+#ifdef CONFIG_ASSUME_ONLINK
+	  if (krt_assume_onlink(rv->iface, ipa_is_ip6(rv->gw)))
+	    rv->flags |= RNF_ONLINK;
+#endif
+
 	  neighbor *nbr;
 	  nbr = neigh_find(&p->p, rv->gw, rv->iface,
 			   (rv->flags & RNF_ONLINK) ? NEF_ONLINK : 0);
@@ -1857,6 +1862,11 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	  const net_addr_ip6 sit = NET_ADDR_IP6(IP6_NONE, 96);
 	  if ((i->rtm_family == AF_INET6) && ipa_in_netX(nhad.nh.gw, (net_addr *) &sit))
 	    return;
+
+#ifdef CONFIG_ASSUME_ONLINK
+	  if (krt_assume_onlink(ra->nh.iface, ipa_is_ip6(ra->nh.gw)))
+	    ra->nh.flags |= RNF_ONLINK;
+#endif
 
 	  neighbor *nbr;
 	  nbr = neigh_find(&p->p, nhad.nh.gw, nhad.nh.iface,
