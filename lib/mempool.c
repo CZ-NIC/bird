@@ -27,7 +27,7 @@
 
 struct lp_chunk {
   struct lp_chunk *next;
-  uintptr_t data_align[0];
+  max_align_t data_align[0];
   byte data[0];
 };
 
