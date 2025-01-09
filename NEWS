@@ -1,3 +1,11 @@
+Version 2.16.1 (2025-01-10)
+  o ASPA: fixed parser bug in static protocol
+  o ASPA: fixed static protocol reconfiguration
+  o Babel: fixed seqno comparison
+  o BSD: fixed onlink flag assumption with Netlink
+  o Fixed memory alignment issues
+  o Fixed possible rte src collisions in L3VPN
+
 Version 2.16 (2024-12-04)
   o BFD: Set password per session
   o BFD: Accept zero checksum for IPv6-UDP
