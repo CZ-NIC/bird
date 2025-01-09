@@ -1,3 +1,18 @@
+Version 3.0.1 (2025-01-10)
+  o BGP: Fixed crash in dynamic spawn
+  o BGP: Fixed crash in graceful recovery
+  o BGP: Fixed crash with deterministic med
+  o BGP: Renamed the otc attribute to bgp_otc
+  o BFD: Fixed crash in session reconfiguration
+  o Kernel: Fixed crash with merged paths
+  o Kernel: Simplified initial scan
+  o Tables: Fixed old best route propagation
+  o Tables: Fixed debug configuration propagation
+  o Tables: Fixed initial feeds
+  o CLI: Fixed buffer allocation heap bloating
+  o Reduced route attribute normalization heap bloating
+  o Merged 2.16.1
+
 Version 2.16.1 (2025-01-10)
   o ASPA: fixed parser bug in static protocol
   o ASPA: fixed static protocol reconfiguration
