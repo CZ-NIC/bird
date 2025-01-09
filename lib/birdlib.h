@@ -41,7 +41,7 @@
   size_t _alignment = _Alignof(typeof(*ptr)); \
   ptr = (typeof(ptr)) BIRD_ALIGN((uintptr_t)(val), _alignment); \
 } while (0)
-#define CPU_STRUCT_ALIGN  (MAX_(_Alignof(void*), _Alignof(u64)))
+#define CPU_STRUCT_ALIGN (alignof(max_align_t))
 #define BIRD_CPU_ALIGN(s) BIRD_ALIGN((s), CPU_STRUCT_ALIGN)
 
 /* Structure item alignment macros */

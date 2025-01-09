@@ -384,10 +384,7 @@ tmp_flush(void)
 struct mblock {
   resource r;
   unsigned size;
-  union {
-    uintptr_t bigint;
-    _Atomic u64 atom;
-  } _align[0];
+  max_align_t data_align[0];
   byte data[0];
 };
 
