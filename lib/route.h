@@ -103,7 +103,7 @@ extern DOMAIN(attrs) attrs_domain;
 
 /* Get a route source. This also locks the source, therefore the caller has to
  * unlock the source after the route has been propagated. */
-struct rte_src *rt_get_source_o(struct rte_owner *o, u32 id);
+struct rte_src *rt_get_source_o(struct rte_owner *o, u64 id);
 #define rt_get_source(p, id)  rt_get_source_o(&(p)->sources, (id))
 
 struct rte_src *rt_find_source_global(u32 id);

@@ -243,13 +243,13 @@ rte_src_init(void)
 HASH_DEFINE_REHASH_FN(RSH, struct rte_src)
 
 static struct rte_src *
-rt_find_source(struct rte_owner *p, u32 id)
+rt_find_source(struct rte_owner *p, u64 id)
 {
   return HASH_FIND(p->hash, RSH, id);
 }
 
 struct rte_src *
-rt_get_source_o(struct rte_owner *p, u32 id)
+rt_get_source_o(struct rte_owner *p, u64 id)
 {
   if (p->stop)
     bug("Stopping route owner asked for another source.");
