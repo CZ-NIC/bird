@@ -68,7 +68,7 @@ static struct resclass sl_class = {
 
 struct sl_obj {
   node n;
-  uintptr_t data_align[0];
+  max_align_t data_align[0];
   byte data[0];
 };
 
@@ -168,11 +168,6 @@ struct sl_head {
   u32 used_bits[0];
 };
 
-struct sl_alignment {			/* Magic structure for testing of alignment */
-  byte data;
-  int x[0];
-};
-
 #define TLIST_PREFIX sl_head
 #define TLIST_TYPE   struct sl_head
 #define TLIST_ITEM   n
@@ -219,9 +214,7 @@ slab *
 sl_new(pool *p, uint size)
 {
   slab *s = ralloc(p, &sl_class);
-  uint align = sizeof(struct sl_alignment);
-  if (align < sizeof(void *))
-    align = sizeof(void *);
+  uint align = CPU_STRUCT_ALIGN;
   s->data_size = size;
   size = (size + align - 1) / align * align;
   s->obj_size = size;
