@@ -335,7 +335,7 @@ Configuration keywords are <cf/flow4/ and <cf/flow6/.
 <itemize>
 	<item>(PK) IP prefix together with its length
 	<item>(PK) Flow definition data
-	<item>Flow action (encoded internally as BGP communities according to <rfc id="5575">)
+	<item>Flow action (encoded internally as BGP communities according to <rfc id="8955">)
 </itemize>
 
 <sect1>MPLS switching rules
@@ -2826,7 +2826,8 @@ avoid routing loops.
 <item> <rfc id="5065"> - AS confederations for BGP
 <item> <rfc id="5082"> - Generalized TTL Security Mechanism
 <item> <rfc id="5492"> - Capabilities Advertisement with BGP
-<item> <rfc id="5575"> - Dissemination of Flow Specification Rules
+<item> <rfc id="8955"> - Dissemination of Flow Specification Rules for IPv4
+<item> <rfc id="8956"> - Dissemination of Flow Specification Rules for IPv6
 <item> <rfc id="5668"> - 4-Octet AS Specific BGP Extended Community
 <item> <rfc id="6286"> - AS-Wide Unique BGP Identifier
 <item> <rfc id="6608"> - Subcodes for BGP Finite State Machine Error
@@ -6168,7 +6169,7 @@ options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 <label id="flowspec-network-type">
 
 <p>The flow specification are rules for routers and firewalls for filtering
-purpose. It is described by <rfc id="5575">. There are 3 types of arguments:
+purpose. It is described by <rfc id="8955"> and <rfc id="8956">. There are 3 types of arguments:
 <m/inet4/ or <m/inet6/ prefixes, numeric matching expressions and bitmask
 matching expressions.
 
