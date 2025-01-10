@@ -16,7 +16,6 @@ stages:
 
 .docker: &docker_build
   stage: image
-  allow_failure: true
   script:
   - $DOCKER_CMD login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.nic.cz
   # Make sure we refresh the base image if it updates (eg. security updates, etc)
@@ -48,11 +47,160 @@ docker-docbuilder:
     IMG_NAME: "docbuilder"
   <<: *docker_build
 
-# Docker build example
-#docker_debian-11-amd64:
-#  variables:
-#    IMG_NAME: "debian-11-amd64"
-#  <<: *docker_build
+docker-debian-9-amd64:
+  variables:
+    IMG_NAME: "debian-9-amd64"
+  <<: *docker_build
+
+docker-debian-9-i386:
+  variables:
+    IMG_NAME: "debian-9-i386"
+  <<: *docker_build
+
+docker-debian-10-amd64:
+  variables:
+    IMG_NAME: "debian-10-amd64"
+  <<: *docker_build
+
+docker-debian-10-i386:
+  variables:
+    IMG_NAME: "debian-10-i386"
+  <<: *docker_build
+
+docker-debian-11-amd64:
+  variables:
+    IMG_NAME: "debian-11-amd64"
+  <<: *docker_build
+
+docker-debian-11-i386:
+  variables:
+    IMG_NAME: "debian-11-i386"
+  <<: *docker_build
+
+docker-debian-12-amd64:
+  variables:
+    IMG_NAME: "debian-12-amd64"
+  <<: *docker_build
+
+docker-debian-12-i386:
+  variables:
+    IMG_NAME: "debian-12-i386"
+  <<: *docker_build
+
+docker-debian-testing-amd64:
+  variables:
+    IMG_NAME: "debian-testing-amd64"
+  <<: *docker_build
+
+docker-debian-testing-i386:
+  variables:
+    IMG_NAME: "debian-testing-i386"
+  <<: *docker_build
+
+docker-fedora-32-amd64:
+  variables:
+    IMG_NAME: "fedora-32-amd64"
+  <<: *docker_build
+
+docker-fedora-33-amd64:
+  variables:
+    IMG_NAME: "fedora-33-amd64"
+  <<: *docker_build
+
+docker-fedora-34-amd64:
+  variables:
+    IMG_NAME: "fedora-34-amd64"
+  <<: *docker_build
+
+docker-fedora-35-amd64:
+  variables:
+    IMG_NAME: "fedora-35-amd64"
+  <<: *docker_build
+
+docker-fedora-36-amd64:
+  variables:
+    IMG_NAME: "fedora-36-amd64"
+  <<: *docker_build
+
+docker-fedora-37-amd64:
+  variables:
+    IMG_NAME: "fedora-37-amd64"
+  <<: *docker_build
+
+docker-fedora-38-amd64:
+  variables:
+    IMG_NAME: "fedora-38-amd64"
+  <<: *docker_build
+
+docker-fedora-39-amd64:
+  variables:
+    IMG_NAME: "fedora-39-amd64"
+  <<: *docker_build
+
+docker-fedora-40-amd64:
+  variables:
+    IMG_NAME: "fedora-40-amd64"
+  <<: *docker_build
+
+docker-fedora-41-amd64:
+  variables:
+    IMG_NAME: "fedora-41-amd64"
+  <<: *docker_build
+
+docker-centos-8-amd64:
+  variables:
+    IMG_NAME: "centos-8-amd64"
+  <<: *docker_build
+
+docker-ubuntu-16_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-16.04-amd64"
+  <<: *docker_build
+
+docker-ubuntu-18_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-18.04-amd64"
+  <<: *docker_build
+
+docker-ubuntu-20_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-20.04-amd64"
+  <<: *docker_build
+
+docker-ubuntu-22_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-22.04-amd64"
+  <<: *docker_build
+
+docker-ubuntu-24_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-24.04-amd64"
+  <<: *docker_build
+
+docker-ubuntu-24_10-amd64:
+  variables:
+    IMG_NAME: "ubuntu-24.10-amd64"
+  <<: *docker_build
+
+docker-opensuse-15.0-amd64:
+  variables:
+    IMG_NAME: "opensuse-15.0-amd64"
+  <<: *docker_build
+
+docker-opensuse-15.1-amd64:
+  variables:
+    IMG_NAME: "opensuse-15.1-amd64"
+  <<: *docker_build
+
+docker-opensuse-15.2-amd64:
+  variables:
+    IMG_NAME: "opensuse-15.2-amd64"
+  <<: *docker_build
+
+docker-opensuse-15.3-amd64:
+  variables:
+    IMG_NAME: "opensuse-15.3-amd64"
+  <<: *docker_build
 
 
 .build: &build-base
@@ -112,45 +260,25 @@ build-debian-11-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:debian-11-amd64
 
-#build-debian-11-i386:
-#  <<: *build-linux
-#  image: registry.nic.cz/labs/bird:debian-11-i386
+build-debian-11-i386:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:debian-11-i386
+
+build-debian-12-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:debian-12-amd64
+
+build-debian-12-i386:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:debian-12-i386
 
 build-debian-testing-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:debian-testing-amd64
 
-#build-debian-testing-i386:
-#  <<: *build-linux
-#  image: registry.nic.cz/labs/bird:debian-testing-i386
-
-build-fedora-25-amd64:
+build-debian-testing-i386:
   <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-25-amd64
-
-build-fedora-26-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-26-amd64
-
-build-fedora-27-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-27-amd64
-
-build-fedora-28-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-28-amd64
-
-build-fedora-29-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-29-amd64
-
-build-fedora-30-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-30-amd64
-
-build-fedora-31-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-31-amd64
+  image: registry.nic.cz/labs/bird:debian-testing-i386
 
 build-fedora-32-amd64:
   <<: *build-linux
@@ -162,11 +290,35 @@ build-fedora-33-amd64:
 
 build-fedora-34-amd64:
   <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-33-amd64
+  image: registry.nic.cz/labs/bird:fedora-34-amd64
 
-#build-centos-7-amd64:
-#  <<: *build-linux
-#  image: registry.nic.cz/labs/bird:centos-7-amd64
+build-fedora-35-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:fedora-35-amd64
+
+build-fedora-36-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:fedora-36-amd64
+
+build-fedora-37-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:fedora-37-amd64
+
+build-fedora-38-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:fedora-38-amd64
+
+build-fedora-39-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:fedora-39-amd64
+
+build-fedora-40-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:fedora-40-amd64
+
+build-fedora-41-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:fedora-41-amd64
 
 build-centos-8-amd64:
   <<: *build-linux
@@ -184,13 +336,17 @@ build-ubuntu-20_04-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:ubuntu-20.04-amd64
 
-build-ubuntu-21_10-amd64:
+build-ubuntu-22_04-amd64:
   <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-21.10-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
 
-#build-ubuntu-21_04-amd64:
-#  <<: *build-linux
-#  image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
+build-ubuntu-24_04-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+
+build-ubuntu-24_10-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
 
 build-opensuse-15.0-amd64:
   <<: *build-linux
@@ -267,15 +423,20 @@ pkg-debian-11-amd64:
   needs: [build-debian-11-amd64]
   image: registry.nic.cz/labs/bird:debian-11-amd64
 
-pkg-fedora-30-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-fedora-30-amd64]
-  image: registry.nic.cz/labs/bird:fedora-30-amd64
+pkg-debian-11-i386:
+  <<: *pkg-deb
+  needs: [build-debian-11-i386]
+  image: registry.nic.cz/labs/bird:debian-11-i386
 
-pkg-fedora-31-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-fedora-31-amd64]
-  image: registry.nic.cz/labs/bird:fedora-31-amd64
+pkg-debian-12-amd64:
+  <<: *pkg-deb
+  needs: [build-debian-12-amd64]
+  image: registry.nic.cz/labs/bird:debian-12-amd64
+
+pkg-debian-12-i386:
+  <<: *pkg-deb
+  needs: [build-debian-12-i386]
+  image: registry.nic.cz/labs/bird:debian-12-i386
 
 pkg-fedora-32-amd64:
   <<: *pkg-rpm-wa
@@ -291,6 +452,41 @@ pkg-fedora-34-amd64:
   <<: *pkg-rpm
   needs: [build-fedora-34-amd64]
   image: registry.nic.cz/labs/bird:fedora-34-amd64
+
+pkg-fedora-35-amd64:
+  <<: *pkg-rpm
+  needs: [build-fedora-35-amd64]
+  image: registry.nic.cz/labs/bird:fedora-35-amd64
+
+pkg-fedora-36-amd64:
+  <<: *pkg-rpm
+  needs: [build-fedora-36-amd64]
+  image: registry.nic.cz/labs/bird:fedora-36-amd64
+
+pkg-fedora-37-amd64:
+  <<: *pkg-rpm
+  needs: [build-fedora-37-amd64]
+  image: registry.nic.cz/labs/bird:fedora-37-amd64
+
+pkg-fedora-38-amd64:
+  <<: *pkg-rpm
+  needs: [build-fedora-38-amd64]
+  image: registry.nic.cz/labs/bird:fedora-38-amd64
+
+pkg-fedora-39-amd64:
+  <<: *pkg-rpm
+  needs: [build-fedora-39-amd64]
+  image: registry.nic.cz/labs/bird:fedora-39-amd64
+
+pkg-fedora-40-amd64:
+  <<: *pkg-rpm
+  needs: [build-fedora-40-amd64]
+  image: registry.nic.cz/labs/bird:fedora-40-amd64
+
+pkg-fedora-41-amd64:
+  <<: *pkg-rpm
+  needs: [build-fedora-41-amd64]
+  image: registry.nic.cz/labs/bird:fedora-41-amd64
 
 #pkg-centos-7-amd64:
 #  <<: *pkg-rpm-wa
@@ -314,16 +510,20 @@ pkg-ubuntu-20.04-amd64:
   needs: [build-ubuntu-20_04-amd64]
   image: registry.nic.cz/labs/bird:ubuntu-20.04-amd64
 
-
-pkg-ubuntu-21.10-amd64:
+pkg-ubuntu-22.04-amd64:
   <<: *pkg-deb
-  needs: [build-ubuntu-21_10-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-21.10-amd64
+  needs: [build-ubuntu-22_04-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
 
-#pkg-ubuntu-21.04-amd64:
-#  <<: *pkg-deb
-#  needs: [build-ubuntu-21_04-amd64]
-#  image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
+pkg-ubuntu-24.04-amd64:
+  <<: *pkg-deb
+  needs: [build-ubuntu-24_04-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+
+pkg-ubuntu-24.10-amd64:
+  <<: *pkg-deb
+  needs: [build-ubuntu-24_10-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
 
 pkg-opensuse-15.1-amd64:
   <<: *pkg-rpm-wa
