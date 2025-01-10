@@ -6276,9 +6276,9 @@ protocol static {
 	<tag><label id="flow6-next-header">next header <m/numbers-match/</tag>
 	Set a matching IP protocol numbers (e.g. <cf>next header != 6</cf>).
 
-	<tag><label id="flow6-label">label <m/bitmask-match/</tag>
-	Set a 20-bit bitmask for matching Flow Label field in IPv6 packets
-	(e.g. <cf>label 0x8e5/0x8e5</cf>).
+	<tag><label id="flow6-label">label <m/numbers-match/</tag>
+	Set numbers for matching the 20-bit Flow Label field in IPv6 packets
+	(e.g. <cf>label != 1234</cf>).
 </descrip>
 
 <p><code>
@@ -6293,7 +6293,7 @@ protocol static {
 		dport = 50;
 		tcp flags 0x03/0x0f && !0/0xff || 0x33/0x33;
 		fragment !is_fragment || !first_fragment;
-		label 0xaaaa/0xaaaa && 0x33/0x33;
+		label > 1111 && != 1234;
 	};
 }
 </code>
