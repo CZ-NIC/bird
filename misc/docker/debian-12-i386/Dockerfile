@@ -1,5 +1,5 @@
 # bump number for image rebuild: 1
-FROM i386/debian:bullseye-slim
+FROM i386/debian:bookworm-slim
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get -y update && apt-get -y upgrade
 RUN apt-get -y --no-install-recommends install \
