@@ -869,6 +869,8 @@ CF_CLI(DUMP RESOURCES, text,, [[Dump all allocated resource]])
 { cmd_dump_file(this_cli, $3, "resources", resource_dump); } ;
 CF_CLI(DUMP SOCKETS, text,, [[Dump open sockets]])
 { cmd_dump_file(this_cli, $3, "sockets", sk_dump_all); } ;
+CF_CLI(DUMP AO KEYS, text,, [[Dump TCP-AO keys on sockets ]])
+{ cmd_dump_file(this_cli, $4, "AO keys", sk_dump_ao_all); } ;
 CF_CLI(DUMP EVENTS, text,, [[Dump event log]])
 { cmd_dump_file(this_cli, $3, "event log", io_log_dump); } ;
 CF_CLI(DUMP INTERFACES, text,, [[Dump interface information]])

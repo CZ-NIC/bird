@@ -1457,7 +1457,7 @@ This argument can be omitted if there exists only a single instance.
 	<tag><label id="cli-debug">debug <m/protocol/|<m/pattern/|all all|off|{ states|routes|filters|events|packets [, <m/.../] }</tag>
 	Control protocol debugging.
 
-	<tag><label id="cli-dump">dump resources|sockets|interfaces|neighbors|attributes|routes|protocols "<m/file/"</tag>
+	<tag><label id="cli-dump">dump resources|sockets|ao keys|events|interfaces|neighbors|attributes|routes|protocols "<m/file/"</tag>
 	Creates the given file (it must not exist) and dumps contents of
 	internal data structures there. By sending SIGUSR1, you get all of
 	these concatenated to <cf/bird.dump/ in the current directory.
@@ -2842,6 +2842,7 @@ avoid routing loops.
 <item> <rfc id="8955"> - Dissemination of Flow Specification Rules for IPv4
 <item> <rfc id="8956"> - Dissemination of Flow Specification Rules for IPv6
 <item> <rfc id="5668"> - 4-Octet AS Specific BGP Extended Community
+<item> <rfc id="5925"> - TCP Authentication Option
 <item> <rfc id="6286"> - AS-Wide Unique BGP Identifier
 <item> <rfc id="6608"> - Subcodes for BGP Finite State Machine Error
 <item> <rfc id="6793"> - BGP Support for 4-Octet AS Numbers
@@ -2942,7 +2943,21 @@ protocol bgp [<name>] {
 	check link <switch>;
 	bfd <switch>|graceful| { <bfd-options> };
 	ttl security <switch>;
+	authentication none|md5|ao;
 	password "<text>";
+	keys {
+		key {
+			id <number>;
+			send id <number>;
+			recv id <number>;
+			secret "<text>"|<bytestring>;
+			algorithm ( hmac md5 | hmac sha1 | hmac sha224 | hmac sha256 |
+				    hmac sha384 | hmac sha512 | cmac aes128 );
+			preferred;
+			deprecated;
+		};
+		...
+	};
 	setkey <switch>;
 	passive <switch>;
 	confederation <number>;
@@ -3120,6 +3135,16 @@ protocol bgp [<name>] {
 	Note that full (ICMP protection, for example) <rfc id="5082"> support is
 	provided by Linux only. Default: disabled.
 
+	<tag><label id="bgp-authentication">authentication none|md5|ao</tag>
+	Selects authentication method to be used. <cf/none/ means that the BGP
+	session is not authenticated at all. <cf/md5/ means that the TCP MD5
+	authentication of BGP sessions (<rfc id="2385">) is used, in that case
+	the option <ref id="bgp-password" name="password"> is used to specify
+	the (single) password. Finally, <cf/ao/ means to use TCP Authentication
+	Option (TCP-AO, <rfc id="5925">), allowing multiple keys and different
+	cryptographic algorithms. These are specified using the option
+	<ref id="bgp-keys" name="keys">. Default: none.
+
 	<tag><label id="bgp-password">password "<m/text/"</tag>
 	Use this password for MD5 authentication of BGP sessions (<rfc id="2385">). When
 	used on BSD systems, see also <cf/setkey/ option below. Default: no
@@ -3136,37 +3161,53 @@ protocol bgp [<name>] {
 	set manually by an external utility on NetBSD and OpenBSD. Default:
 	enabled (ignored on non-FreeBSD).
 
-	<tag><label id="bgp-tcp-ao">authentication keyed tcp AO</tag>
-	This authentication is similar to md5, but enables changing keys on living connection.
-	Key change is done via reconfiguring.
+	<tag><label id="bgp-keys">keys { key { [<m/.../] }; [<m/.../] }</tag>
+	Define a set of cryptographic keys that are used for TCP-AO
+	authentication of BGP sessions (<rfc id="5925">). Each key has a
+	configuration block with its own sub-options ([<cf/send/ | <cf/recv/]
+	<cf/id/, <cf/secret/, <cf/algorithm/, <cf/preferred/, <cf/deprecated/).
 
-	Key configuration of one key consists of two ids - one for local and one for remote machine.
-	The ids may, but does not have to be the same and must be in range 0 - 255. Among keys
-	on one protocol the local ids must be unique and the remote ids must be unique.
+	TCP-AO key has two IDs - for outgoing and incoming direction (Send /
+	Recv ID). Among keys on one protocol all Send IDs must be unique and all
+	Recv IDs must be unique. They must be in range 0-255 and they can be set
+	independently with key options <cf/send id/ and <cf/recv id/, or
+	together with option <cf/id/. Note that specifying these IDs is
+	mandatory.
 
-	Used cryphtographic algorithm must be specified for each key.
-	Possible ciphers are "cmac(aes128)", "hmac(md5)" "hmac(sha1)", "hmac(sha224)",
-	"hmac(sha256)", "hmac(sha384)" and "hmac(sha512)". And, of course, there must
-	be specified a string password.
+	Of course, TCP-AO key contains a shared secret key. It is specified by
+	the option <cf/secret/ as a text string or as a sequence of hexadecimal
+	digit pairs (<ref id="type-bytestring" name="bytestring">).
 
-	One key must be marked as "required". This key will be send as rnext key.
-	If the other site knows the required key, it uses the key for next packet.
+	Used cryptographic algorithm can be specified for each key with the
+	option <cf/algorithm/. Possible values are: <cf/hmac md5/, <cf/hmac sha1/,
+	<cf/hmac sha224/, <cf/hmac sha256/, <cf/hmac sha384/, <cf/hmac sha512/,
+	and <cf/cmac aes128/. Default value is <cf/hmac sha1/.
 
-	In order to delete a currently used key (key which is required by the other site),
-	it is possible to mark the key as "deprecated". This key will be deleted first time
-	the other site requires another key.
+	When multiple keys are available, BIRD selects one to advertise as RNext
+	key (the key it prefers to be used to sign incoming traffic). Keys
+	marked as <cf/preferred/ are selected before unmarked keys, while keys
+	marked as <cf/deprecated/ are never selected (but still could be used
+	when the other side asks for them). Therefore, there must be always at
+	least one non-deprecated key.
 
-	Deleting a currently used key in config causes restart of the protocol.
-	The problem of directly deleting current key is, that we could treat such deleted key as deprecated,
-	but only until the protocol restarts. If it restarts, key is lost.
-	For example, connection is established. Then one side decides to remove current key and requires a newly added key.
-	The other side does not know the new key yet. For now, this is not problem, they still use the old key.
-	But, at this moment, some unexpected error occures at the first site.
-	It restarts, but it does not have the old key in config. One site does not have old key,
-	the other new key and trying other keys than required ones is not supported.
+	Currently, only the selected key is used during the initial handshake of
+	session establishment (and therefore must be known by the other side).
+	This may change in the future.
 
-	Editing existing keys (except of marking them "required" or "deprecated")
-	is not recommended and leads to restarting protocol.
+	It is possible to add, remove, or modify keys during reconfiguration
+	without breaking the BGP session. The recommended way is to refrain from
+	removing a key that is in active use (as reported by <cf/Current key/
+	and <cf/RNext key/ in <cf/show protocols all/), instead marking the key
+	as <cf/deprecated/ on both sides of the session. It is possible to
+	remove an active key directly, BIRD would forcibly switch to another key
+	(as long as there is a non-deprecated key that is not added, removed or
+	modified during this reconfiguration). This is not recommended as it
+	skips the proper key change mechanism and may switch to a key that is
+	not available to the other side.
+
+	Modification of existing keys (except of marking them <cf/preferred/ or
+	<cf/deprecated/) is equivalent to removing and then adding them, with
+	the same issues related to removing of active keys.
 
 	<tag><label id="bgp-passive">passive <m/switch/</tag>
 	Standard BGP behavior is both initiating outgoing connections and
@@ -4049,20 +4090,21 @@ protocol bgp {
 	local 198.51.100.14 as 65000;	     # Use a private AS number
 	neighbor 198.51.100.130 as 64496;    # Our neighbor ...
 	multihop;			     # ... which is connected indirectly
-	authenticate manual {
+	authentication ao;		     # We use TCP-AO authentication
+	keys {
 		key {
-			local id 2;
-			remote id 1;
-			cipher "cmac(aes128)";
-			master key "hello321";
-			required;
-		}key {
-			local id 3;
-			remote id 3;
-			cipher "cmac(aes128)";
-			master key "bye123";
-		}
-	}
+			id 0;
+			secret "hello321";
+			algorithm hmac sha256;
+			preferred;
+		};
+		key {
+			send id 2;
+			recv id 1;
+			secret "bye123";
+			algorithm cmac aes128;
+		};
+	};
 	ipv4 {
 		export filter {			     # We use non-trivial export rules
 			if source = RTS_STATIC then { # Export only static routes

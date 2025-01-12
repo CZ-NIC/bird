@@ -1,3 +1,15 @@
+/*
+ *	BIRD Internet Routing Daemon -- Linux TCP-AO API
+ *
+ *	Based on Linux kernel header include/uapi/linux/tcp.h
+ *
+ *	Author:	Fred N. van Kempen <waltje@uWalt.NL.Mugnet.ORG>
+ *
+ *	Can be freely distributed and used under the terms of the GNU GPL.
+ */
+
+#ifndef _BIRD_LINUX_TCP_AO_H_
+#define _BIRD_LINUX_TCP_AO_H_
 
 #ifndef TCP_AO_ADD_KEY
 #define TCP_AO_ADD_KEY		38	/* Add/Set MKT */
@@ -7,19 +19,13 @@
 #define TCP_AO_REPAIR		42	/* Get/Set SNEs and ISNs */
 #endif
 
-
-#ifndef TCP_AO_STRUCTS
-#define TCP_AO_STRUCTS
-
 #define TCP_AO_MAXKEYLEN_	80
-
-#define DEFAULT_TEST_ALGO	"cmac(aes128)"
 
 struct tcp_ao_add_ext { /* setsockopt(TCP_AO_ADD_KEY) */
 	struct sockaddr_storage addr;	/* peer's address for the key */
 	char	alg_name[64];		/* crypto hash algorithm to use */
 	s32	ifindex;		/* L3 dev index for VRF */
-	u32   set_current	:1,	/* set key as Current_key at once */
+	u32     set_current	:1,	/* set key as Current_key at once */
 		set_rnext	:1,	/* request it from peer with RNext_key */
 		reserved	:30;	/* must be 0 */
 	u16	reserved2;		/* padding, must be 0 */
@@ -35,7 +41,7 @@ struct tcp_ao_add_ext { /* setsockopt(TCP_AO_ADD_KEY) */
 struct tcp_ao_del_ext { /* setsockopt(TCP_AO_DEL_KEY) */
 	struct sockaddr_storage addr;	/* peer's address for the key */
 	s32	ifindex;		/* L3 dev index for VRF */
-	u32   set_current	:1,	/* corresponding ::current_key */
+	u32     set_current	:1,	/* corresponding ::current_key */
 		set_rnext	:1,	/* corresponding ::rnext */
 		del_async	:1,	/* only valid for listen sockets */
 		reserved	:29;	/* must be 0 */
@@ -50,7 +56,7 @@ struct tcp_ao_del_ext { /* setsockopt(TCP_AO_DEL_KEY) */
 
 struct tcp_ao_info_opt_ext { /* setsockopt(TCP_AO_INFO), getsockopt(TCP_AO_INFO) */
 	/* Here 'in' is for setsockopt(), 'out' is for getsockopt() */
-	u32   set_current	:1,	/* in/out: corresponding ::current_key */
+	u32     set_current	:1,	/* in/out: corresponding ::current_key */
 		set_rnext	:1,	/* in/out: corresponding ::rnext */
 		ao_required	:1,	/* in/out: don't accept non-AO connects */
 		set_counters	:1,	/* in: set/clear ::pkt_* counters */
@@ -77,7 +83,7 @@ struct tcp_ao_getsockopt_ext { /* getsockopt(TCP_AO_GET_KEYS) */
 					 * sizeof(struct tcp_ao_getsockopt)
 					 * out: number of keys that matched
 					 */
-	u16   is_current	:1,	/* in: match and dump Current_key,
+	u16     is_current	:1,	/* in: match and dump Current_key,
 					 * out: the dumped key is Current_key
 					 */
 
@@ -106,4 +112,4 @@ struct tcp_ao_repair_ext { /* {s,g}etsockopt(TCP_AO_REPAIR) */
 	u32			rcv_sne;
 } __attribute__((aligned(8)));
 
-#endif /* TCP_AO_STRUCTS*/
+#endif
