@@ -26,6 +26,7 @@
 #define ALG_BLAKE2S_256		0x08
 #define ALG_BLAKE2B_256		0x09
 #define ALG_BLAKE2B_512		0x0A
+#define ALG_CMAC_AES128_AO	0x0B	/* Not implemented, just for TCP-AO */
 #define ALG_HMAC		0x10
 #define ALG_HMAC_MD5		0x11
 #define ALG_HMAC_SHA1		0x12

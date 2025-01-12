@@ -40,6 +40,7 @@
 #include "lib/event.h"
 #include "lib/timer.h"
 #include "lib/string.h"
+#include "lib/mac.h"
 #include "nest/iface.h"
 #include "nest/cli.h"
 #include "conf/conf.h"
@@ -1668,18 +1669,14 @@ sk_open(sock *s)
       ERR2("bind");
   }
 
-  if (s->ao_key_init)
+  if (s->ao_keys_init)
   {
-    struct bgp_ao_key *key = s->ao_key_init;
-    do {
-      if (sk_set_ao_auth(s, s->saddr, s->daddr, -1, s->iface, key->key.master_key, key->key.local_id, key->key.remote_id, key->key.cipher, key->key.required == 1) < 0)
+    for (int i = 0; i < s->ao_keys_num; i++)
+    {
+      const struct ao_key *key = s->ao_keys_init[i];
+      if (sk_add_ao_key(s, s->daddr, -1, s->iface, key, !i, !i) < 0)
         goto err;
-      if (s->type == SK_TCP_ACTIVE)
-        key->activ_alive = 1;
-      else
-        key->passiv_alive = 1;
-      key = key->next_key;
-    } while (key);
+    }
   }
   else if (s->password)
   {
