@@ -50,6 +50,7 @@ typedef union list {			/* In fact two overlayed nodes */
 #define NODE_NEXT(n) ((void *)((NODE (n))->next))
 #define NODE_VALID(n) ((NODE (n))->next)
 #define WALK_LIST(n,list) for(n=HEAD(list); NODE_VALID(n); n=NODE_NEXT(n))
+#define WALK_LIST_(t,n,list) for(t *n=HEAD(list); NODE_VALID(n); n=NODE_NEXT(n))
 #define WALK_LIST2(n,nn,list,pos) \
   for(nn=(list).head; NODE_VALID(nn) && (n=SKIP_BACK(typeof(*n),pos,nn)); nn=nn->next)
 #define WALK_LIST_DELSAFE(n,nxt,list) \

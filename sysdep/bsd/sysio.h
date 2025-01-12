@@ -225,6 +225,69 @@ sk_prepare_ip_header(sock *s, void *hdr, int dlen)
 
 
 /*
+ *	TCP-AO (not supported)
+ */
+
+int
+sk_get_ao_info(sock *s, struct ao_info *val)
+{
+  ERR_MSG("TCP-AO not supported");
+}
+
+int
+sk_get_active_ao_keys(sock *s, int *current_key, int *rnext_key)
+{
+  ERR_MSG("TCP-AO not supported");
+}
+
+bool
+tcp_ao_alg_known(int algorithm)
+{
+  return 0;
+}
+
+int
+sk_add_ao_key(sock *s, ip_addr prefix, int pxlen, struct iface *ifa, const struct ao_key *key, bool current, bool rnext)
+{
+  ERR_MSG("TCP-AO not supported");
+}
+
+int
+sk_delete_ao_key(sock *s, ip_addr prefix, int pxlen, struct iface *ifa, const struct ao_key *key, const struct ao_key *current, const struct ao_key *rnext)
+{
+  ERR_MSG("TCP-AO not supported");
+}
+
+int
+sk_set_rnext_ao_key(sock *s, const struct ao_key *key)
+{
+  ERR_MSG("TCP-AO not supported");
+}
+
+int
+sk_check_ao_keys(sock *s, const struct ao_key **keys, int num, const char *name)
+{
+  errno = 0;
+  s->err = "TCP-AO not supported";
+  sk_log_error(s, name);
+
+  return -1;
+}
+
+void
+sk_dump_ao_info(sock *s, struct dump_request *dreq)
+{
+  RDUMP("TCP-AO not supported\n");
+}
+
+void
+sk_dump_ao_keys(sock *s, struct dump_request *dreq)
+{
+  RDUMP("TCP-AO not supported\n");
+}
+
+
+/*
  *	Miscellaneous BSD socket syscalls
  */
 
