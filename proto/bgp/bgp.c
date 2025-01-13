@@ -581,8 +581,10 @@ bgp_graceful_close_conn(struct bgp_conn *conn, int subcode, byte *data, uint len
 static void
 bgp_down(struct bgp_proto *p)
 {
-  /* Check that the dynamic BGP socket has been picked up */
-  ASSERT_DIE(p->postponed_sk == NULL);
+  /* Close the possibly unpicked dynamic BGP socket */
+  if (p->postponed_sk)
+    sk_close(p->postponed_sk);
+  p->postponed_sk = NULL;
 
   if (bgp_start_state(p) > BSS_PREPARE)
   {
