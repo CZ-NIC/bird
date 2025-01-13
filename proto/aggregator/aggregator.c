@@ -244,6 +244,7 @@ merge_potential_buckets(struct trie_node *target, const struct trie_node *left, 
     /* Save current bitmap values */
     old[i] = target->potential_buckets[i];
 
+    /* Compute intersection */
     has_intersection |= !!(target->potential_buckets[i] = left->potential_buckets[i] & right->potential_buckets[i]);
     bucket_count += popcount32(target->potential_buckets[i]);
 
@@ -746,7 +747,7 @@ deaggregate(struct trie_node *node)
 }
 
 /*
- * Merge sets of potential buckets from @node upwards.
+ * Merge sets of potential buckets going from @node upwards.
  * Stop when sets don't change and return the last updated node.
  */
 static struct trie_node *
