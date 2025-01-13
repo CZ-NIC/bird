@@ -1,7 +1,6 @@
 # bump number for image rebuild: 1
 FROM i386/debian:bullseye-slim
 ENV DEBIAN_FRONTEND=noninteractive
-RUN sed -i 's/deb.debian.org/ftp.cz.debian.org/' /etc/apt/sources.list
 RUN apt-get -y update && apt-get -y upgrade
 RUN apt-get -y --no-install-recommends install \
 	build-essential \
