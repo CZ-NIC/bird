@@ -1,5 +1,5 @@
-FROM fedora:31
-RUN dnf -y update
+FROM fedora:39
+RUN dnf -y upgrade
 RUN dnf -y install \
 	gcc \
 	make \
