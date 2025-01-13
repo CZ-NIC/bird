@@ -354,6 +354,8 @@ build-opensuse-15.3-amd64:
 .pkg-deb: &pkg-deb
   stage: pkg
   script:
+    # create venv only if it's installed
+    - if python3 -m venv venv; then . venv/bin/activate; fi
     - pip3 install apkg
     - apkg build
     #- apkg install -y pkg/pkgs/*/*/*.deb
