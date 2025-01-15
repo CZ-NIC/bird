@@ -2038,7 +2038,6 @@ static void
 trie_init(struct aggregator_proto *p)
 {
   p->root = create_new_node(p->trie_pool);
-  p->root->depth = 0;
 
   struct network *default_net = NULL;
 
@@ -2069,7 +2068,7 @@ trie_init(struct aggregator_proto *p)
   mem_hash_init(&haux);
   new_bucket->hash = mem_hash_value(&haux);
 
-  /* Assign ID to root node */
+  /* Assign ID to the root node bucket */
   new_bucket->id = get_new_bucket_id(p);
   proto_insert_bucket(p, new_bucket);
   assert(get_bucket_ptr(p, new_bucket->id) == new_bucket);
@@ -2091,9 +2090,14 @@ trie_init(struct aggregator_proto *p)
   HASH_INSERT2(p->routes, AGGR_RTE, p->p.pool, arte);
   HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 
-  /* Assign default route to the root */
-  p->root->original_bucket = new_bucket;
-  p->root->status = IN_FIB;
+  /* Initialize root node with default route */
+  *p->root = (struct trie_node) {
+    .original_bucket = new_bucket,
+    .status = IN_FIB,
+    .px_origin = ORIGINAL,
+    .depth = 0,
+  };
+
   log("Root prefix %N with default bucket %p", p->root->original_bucket->rte->net->n.addr, p->root->original_bucket);
 }
 
