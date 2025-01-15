@@ -1401,6 +1401,10 @@ This argument can be omitted if there exists only a single instance.
 	Show router status, that is BIRD version, uptime and time from last
 	reconfiguration.
 
+        <tag><label id="cli-show-status">show memory</tag>
+	Show BIRD memory. BIRD does not stop other computations in order to measure
+	the used memory, hence the measured memory usage may differ from the real memory usage.
+
 	<tag><label id="cli-show-interfaces">show interfaces [summary]</tag>
 	Show the list of interfaces. For each interface, print its type, state,
 	MTU and addresses assigned.
