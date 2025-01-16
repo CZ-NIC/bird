@@ -3325,7 +3325,7 @@ using the following configuration parameters:
 
 	<tag><label id="bgp-error-wait-time">error wait time <m/number/,<m/number/</tag>
 	Minimum and maximum delay in seconds between a protocol failure (either
-	local or reported by the peer) and automatic restart. Doesn not apply
+	local or reported by the peer) and automatic restart. Does not apply
 	when <cf/disable after error/ is configured. If consecutive errors
 	happen, the delay is increased exponentially until it reaches the
 	maximum. Default: 60, 300.
