@@ -897,6 +897,13 @@ dump_trie_helper(const struct trie_node *node, struct net_addr_ip4 *addr, struct
   if (node->selected_bucket)
     buffer_print(buf, " -> [[%u]]", node->selected_bucket->id);
 
+  static const char *origin_str[] = {
+    [ORIGINAL]   = "original",
+    [AGGREGATED] = "aggregated",
+    [FILLER]     = "filler",
+  };
+
+  buffer_print(buf, " %p %s", node, origin_str[node->px_origin]);
   log("%s", buf->start);
 
   if (node->child[0])
@@ -1008,16 +1015,8 @@ print_prefixes_ip4_helper(struct net_addr_ip4 *addr, const struct trie_node *nod
 {
   assert(node != NULL);
 
-  if (is_leaf(node))
-  {
-    log("%N -> %p", addr, node->original_bucket);
-    return;
-  }
-
   if (IN_FIB == node->status)
-  {
-    log("%N -> %p", addr, node->original_bucket);
-  }
+    log("%N %p selected bucket: %p [[%u]]", addr, node, node->selected_bucket, node->selected_bucket->id);
 
   if (node->child[0])
   {
@@ -1040,16 +1039,8 @@ print_prefixes_ip6_helper(struct net_addr_ip6 *addr, const struct trie_node *nod
 {
   assert(node != NULL);
 
-  if (is_leaf(node))
-  {
-    log("%N -> %p", addr, node->original_bucket);
-    return;
-  }
-
   if (IN_FIB == node->status)
-  {
-    log("%N -> %p", addr, node->original_bucket);
-  }
+    log("%N %p selected bucket: %p [[%u]]", addr, node, node->selected_bucket, node->selected_bucket->id);
 
   if (node->child[0])
   {
