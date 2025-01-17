@@ -396,6 +396,80 @@ trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
   return node;
 }
 
+static struct trie_node *
+trie_remove_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 *addr)
+{
+  assert(root != NULL);
+  assert(addr != NULL);
+
+  struct trie_node *node = root;
+
+  for (u32 i = 0; i < addr->pxlen; i++)
+  {
+    u32 bit = ip4_getbit(addr->prefix, i);
+    node = node->child[bit];
+    assert(node != NULL);
+  }
+
+  assert(node->px_origin == ORIGINAL);
+  log("Removing prefix %N", addr);
+
+  node->status = NON_FIB;
+  node->px_origin = FILLER;
+  node->ancestor = NULL;
+  node->original_bucket = NULL;
+  node->selected_bucket = NULL;
+  node->potential_buckets_count = 0;
+  memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
+
+  /*
+   * If prefix node is a leaf, delete it along with the branch
+   * it resides on, until a non-leaf or prefix node is reached.
+   */
+  for (struct trie_node *parent = node->parent; parent; node = parent, parent = node->parent)
+  {
+    if (is_leaf(node) && FILLER == node->px_origin)
+      remove_node(node);
+    else
+      break;
+  }
+
+  return node;
+}
+
+static struct trie_node *
+trie_remove_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 *addr)
+{
+  struct trie_node *node = root;
+
+  for (u32 i = 0; i < addr->pxlen; i++)
+  {
+    u32 bit = ip6_getbit(addr->prefix, i);
+    node = node->child[bit];
+    assert(node != NULL);
+  }
+
+  assert(node->px_origin == ORIGINAL);
+
+  node->status = NON_FIB;
+  node->px_origin = FILLER;
+  node->ancestor = NULL;
+  node->original_bucket = NULL;
+  node->selected_bucket = NULL;
+  node->potential_buckets_count = 0;
+  memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
+
+  for (struct trie_node *parent = node->parent; parent; node = parent, parent = node->parent)
+  {
+    if (is_leaf(node) && FILLER == node->px_origin)
+      remove_node(node);
+    else
+      break;
+  }
+
+  return node;
+}
+
 static void
 before_check(const struct trie_node *node)
 {
