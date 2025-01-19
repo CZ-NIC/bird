@@ -786,8 +786,8 @@ to set options.
 	server setups, running GC on hundreds of full BGP routing tables can
 	take significant amount of time, therefore they should use higher GC
 	periods. Default: adaptive, based on number of routing tables in the
-	configuration. From 10 s (with <= 25 routing tables) up to 600 s (with
-	>= 1500 routing tables).
+	configuration. From 10 s (with &lt;= 25 routing tables) up to 600 s (with
+	&gt;= 1500 routing tables).
 </descrip>
 
 
@@ -2726,14 +2726,14 @@ protocol bfd [&lt;name&gt;] {
 	passive mode, which means that the router does not send BFD packets
 	until it has received one from the other side. Default: disabled.
 
-	<tag>authentication none</tag>
+	<tag><label id="bfd-authentication-none">authentication none</tag>
 	No passwords are sent in BFD packets. This is the default value.
 
-	<tag>authentication simple</tag>
+	<tag><label id="bfd-authentication-simple">authentication simple</tag>
 	Every packet carries 16 bytes of password. Received packets lacking this
 	password are ignored. This authentication mechanism is very weak.
 
-	<tag>authentication [meticulous] keyed md5|sha1</tag>
+	<tag><label id="bfd-authentication-keyed">authentication [meticulous] keyed md5|sha1</tag>
 	An authentication code is appended to each packet. The cryptographic
 	algorithm is keyed MD5 or keyed SHA-1. Note that the algorithm is common
 	for all keys (on one interface), in contrast to OSPF or RIP, where it
@@ -2745,7 +2745,7 @@ protocol bfd [&lt;name&gt;] {
 	offers better resistance to replay attacks but may require more
 	computation.
 
-	<tag>password "<M>text</M>"</tag>
+	<tag><label id="bfd-password">password "<M>text</M>"</tag>
 	Specifies a password used for authentication. See <ref id="proto-pass"
 	name="password"> common option for detailed description. Note that
 	password option <cf/algorithm/ is not available in BFD protocol. The
@@ -2809,43 +2809,43 @@ avoid routing loops.
 
 <p>
 <itemize>
-<item> <rfc id="4271"> - Border Gateway Protocol 4 (BGP)
-<item> <rfc id="1997"> - BGP Communities Attribute
-<item> <rfc id="2385"> - Protection of BGP Sessions via TCP MD5 Signature
-<item> <rfc id="2545"> - Use of BGP Multiprotocol Extensions for IPv6
-<item> <rfc id="2918"> - Route Refresh Capability
-<item> <rfc id="3107"> - Carrying Label Information in BGP
-<item> <rfc id="4360"> - BGP Extended Communities Attribute
-<item> <rfc id="4364"> - BGP/MPLS IPv4 Virtual Private Networks
-<item> <rfc id="4456"> - BGP Route Reflection
-<item> <rfc id="4486"> - Subcodes for BGP Cease Notification Message
-<item> <rfc id="4659"> - BGP/MPLS IPv6 Virtual Private Networks
-<item> <rfc id="4724"> - Graceful Restart Mechanism for BGP
-<item> <rfc id="4760"> - Multiprotocol extensions for BGP
-<item> <rfc id="4798"> - Connecting IPv6 Islands over IPv4 MPLS
-<item> <rfc id="5065"> - AS confederations for BGP
-<item> <rfc id="5082"> - Generalized TTL Security Mechanism
-<item> <rfc id="5492"> - Capabilities Advertisement with BGP
-<item> <rfc id="5575"> - Dissemination of Flow Specification Rules
-<item> <rfc id="5668"> - 4-Octet AS Specific BGP Extended Community
-<item> <rfc id="6286"> - AS-Wide Unique BGP Identifier
-<item> <rfc id="6608"> - Subcodes for BGP Finite State Machine Error
-<item> <rfc id="6793"> - BGP Support for 4-Octet AS Numbers
-<item> <rfc id="7311"> - Accumulated IGP Metric Attribute for BGP
-<item> <rfc id="7313"> - Enhanced Route Refresh Capability for BGP
-<item> <rfc id="7606"> - Revised Error Handling for BGP UPDATE Messages
-<item> <rfc id="7911"> - Advertisement of Multiple Paths in BGP
-<item> <rfc id="7947"> - Internet Exchange BGP Route Server
-<item> <rfc id="8092"> - BGP Large Communities Attribute
-<item> <rfc id="8203"> - BGP Administrative Shutdown Communication
-<item> <rfc id="8212"> - Default EBGP Route Propagation Behavior without Policies
-<item> <rfc id="8654"> - Extended Message Support for BGP
-<item> <rfc id="8950"> - Advertising IPv4 NLRI with an IPv6 Next Hop
-<item> <rfc id="9072"> - Extended Optional Parameters Length for BGP OPEN Message
-<item> <rfc id="9117"> - Revised Validation Procedure for BGP Flow Specifications
-<item> <rfc id="9234"> - Route Leak Prevention and Detection Using Roles
-<item> <rfc id="9494"> - Long-Lived Graceful Restart for BGP
-<item> <rfc id="9687"> - Send Hold Timer
+<item> <rfc id="4271"> &ndash; Border Gateway Protocol 4 (BGP)
+<item> <rfc id="1997"> &ndash; BGP Communities Attribute
+<item> <rfc id="2385"> &ndash; Protection of BGP Sessions via TCP MD5 Signature
+<item> <rfc id="2545"> &ndash; Use of BGP Multiprotocol Extensions for IPv6
+<item> <rfc id="2918"> &ndash; Route Refresh Capability
+<item> <rfc id="3107"> &ndash; Carrying Label Information in BGP
+<item> <rfc id="4360"> &ndash; BGP Extended Communities Attribute
+<item> <rfc id="4364"> &ndash; BGP/MPLS IPv4 Virtual Private Networks
+<item> <rfc id="4456"> &ndash; BGP Route Reflection
+<item> <rfc id="4486"> &ndash; Subcodes for BGP Cease Notification Message
+<item> <rfc id="4659"> &ndash; BGP/MPLS IPv6 Virtual Private Networks
+<item> <rfc id="4724"> &ndash; Graceful Restart Mechanism for BGP
+<item> <rfc id="4760"> &ndash; Multiprotocol extensions for BGP
+<item> <rfc id="4798"> &ndash; Connecting IPv6 Islands over IPv4 MPLS
+<item> <rfc id="5065"> &ndash; AS confederations for BGP
+<item> <rfc id="5082"> &ndash; Generalized TTL Security Mechanism
+<item> <rfc id="5492"> &ndash; Capabilities Advertisement with BGP
+<item> <rfc id="5575"> &ndash; Dissemination of Flow Specification Rules
+<item> <rfc id="5668"> &ndash; 4-Octet AS Specific BGP Extended Community
+<item> <rfc id="6286"> &ndash; AS-Wide Unique BGP Identifier
+<item> <rfc id="6608"> &ndash; Subcodes for BGP Finite State Machine Error
+<item> <rfc id="6793"> &ndash; BGP Support for 4-Octet AS Numbers
+<item> <rfc id="7311"> &ndash; Accumulated IGP Metric Attribute for BGP
+<item> <rfc id="7313"> &ndash; Enhanced Route Refresh Capability for BGP
+<item> <rfc id="7606"> &ndash; Revised Error Handling for BGP UPDATE Messages
+<item> <rfc id="7911"> &ndash; Advertisement of Multiple Paths in BGP
+<item> <rfc id="7947"> &ndash; Internet Exchange BGP Route Server
+<item> <rfc id="8092"> &ndash; BGP Large Communities Attribute
+<item> <rfc id="8203"> &ndash; BGP Administrative Shutdown Communication
+<item> <rfc id="8212"> &ndash; Default EBGP Route Propagation Behavior without Policies
+<item> <rfc id="8654"> &ndash; Extended Message Support for BGP
+<item> <rfc id="8950"> &ndash; Advertising IPv4 NLRI with an IPv6 Next Hop
+<item> <rfc id="9072"> &ndash; Extended Optional Parameters Length for BGP OPEN Message
+<item> <rfc id="9117"> &ndash; Revised Validation Procedure for BGP Flow Specifications
+<item> <rfc id="9234"> &ndash; Route Leak Prevention and Detection Using Roles
+<item> <rfc id="9494"> &ndash; Long-Lived Graceful Restart for BGP
+<item> <rfc id="9687"> &ndash; Send Hold Timer
 </itemize>
 
 <sect1>Route selection rules
@@ -3787,7 +3787,7 @@ nothing about it.
 as one known by BIRD, therefore use of this statement carries a risk of
 incompatibility with future BIRD versions.
 
-<tt><label id="bgp-attribute-custom">attribute bgp <m/number/ bytestring <m/name/;</tt>
+<p><cf><label id="bgp-attribute-custom">attribute bgp <m/number/ bytestring <m/name/;</cf>
 
 <sect1>Example
 <label id="bgp-exam">
@@ -5811,6 +5811,7 @@ protocol rip {
 <label id="rpki">
 
 <sect1>Introduction
+<label id="rpki-introduction">
 
 <p>The Resource Public Key Infrastructure (RPKI) is mechanism for origin
 validation of BGP routes (<rfc id="6480">). BIRD supports only so-called
@@ -5834,8 +5835,8 @@ of ASPAs. You can then validate AS paths using function <cf/aspa_check()/
 in (import) filters.
 
 <sect1>Supported transports
-<p>
-<itemize>
+<label id="rpki-transport">
+<p><itemize>
         <item>Unprotected transport over TCP uses a port 323. The cache server
         and BIRD router should be on the same trusted and controlled network
         for security reasons.
@@ -5843,7 +5844,8 @@ in (import) filters.
         22.
 </itemize>
 
-<sect1>Configuration
+<sect1>Configuration overview
+<label id="rpki-configuration">
 
 <p>We currently support just one cache server per protocol. However you can
 define more RPKI protocols generally.
@@ -5879,22 +5881,23 @@ only IPv4 prefixes you have to specify only roa4 channel. Similarly with IPv6
 prefixes only. If you want to fetch both IPv4 and even IPv6 ROAs you have to
 specify both channels.
 
-<sect2>RPKI protocol options
+<sect1>RPKI protocol options
+<label id="rpki-common-options">
 <p>
 <descrip>
-        <tag>remote <m/ip/ | "<m/hostname/" [port <m/num/]</tag> Specifies
+        <tag><label id="rpki-remote">remote <m/ip/ | "<m/hostname/" [port <m/num/]</tag> Specifies
         a destination address of the cache server.  Can be specified by an IP
         address or by full domain name string.  Only one cache can be specified
         per protocol. This option is required.
 
-        <tag>port <m/num/</tag> Specifies the port number. The default port
+        <tag><label id="rpki-port">port <m/num/</tag> Specifies the port number. The default port
         number is 323 for transport without any encryption and 22 for transport
         with SSH encryption.
 
-        <tag>local address <m/ip/</tag>
+        <tag><label id="rpki-local-address">local address <m/ip/</tag>
         Define local address we should use as a source address for the RTR session.
 
-        <tag>refresh [keep] <m/num/</tag> Time period in seconds. Tells how
+        <tag><label id="rpki-refresh">refresh [keep] <m/num/</tag> Time period in seconds. Tells how
         long to wait before next attempting to poll the cache using a Serial
         Query or a Reset Query packet. Must be lower than 86400 seconds (one
         day). Too low value can caused a false positive detection of
@@ -5902,74 +5905,75 @@ specify both channels.
         this value by a cache server.
         Default: 3600 seconds
 
-        <tag>retry [keep] <m/num/</tag> Time period in seconds between a failed
+        <tag><label id="rpki-retry">retry [keep] <m/num/</tag> Time period in seconds between a failed
         Serial/Reset Query and a next attempt.  Maximum allowed value is 7200
         seconds (two hours). Too low value can caused a false positive
         detection of network connection problems.  A keyword <cf/keep/
         suppresses updating this value by a cache server.
         Default: 600 seconds
 
-        <tag>expire [keep] <m/num/</tag> Time period in seconds. Received
+        <tag><label id="rpki-expire">expire [keep] <m/num/</tag> Time period in seconds. Received
         records are deleted if the client was unable to successfully refresh
         data for this time period.  Must be in range from 600 seconds (ten
         minutes) to 172800 seconds (two days).  A keyword <cf/keep/
         suppresses updating this value by a cache server.
         Default: 7200 seconds
 
-	<tag>ignore max length <m/switch/</tag>
+	<tag><label id="rpki-ignore-max-length">ignore max length <m/switch/</tag>
 	Ignore received max length in ROA records and use max value (32 or 128)
 	instead. This may be useful for implementing loose RPKI check for
 	blackholes. Default: disabled.
 
-	<tag>min version <m/num/</tag>
+	<tag><label id="rpki-min-version">min version <m/num/</tag>
 	Minimal allowed version of the RTR protocol. BIRD will refuse to
 	downgrade a connection below this version and drop the session instead.
 	Default: 0
 
-	<tag>max version <m/num/</tag>
+	<tag><label id="rpki-max-version">max version <m/num/</tag>
 	Maximal allowed version of the RTR protocol. BIRD will start with this
         version. Use this option if sending version 2 to your cache causes
         problems. Default: 2
 
-        <tag>transport tcp { <m/TCP transport options.../ }</tag> Transport over
+        <tag><label id="rpki-transport-tcp">transport tcp { <m/TCP transport options.../ }</tag> Transport over
         TCP, it's the default transport. Cannot be combined with a SSH transport.
         Default: TCP, no authentication.
 
-        <tag>transport ssh { <m/SSH transport options.../ }</tag> It enables a
+        <tag><label id="rpki-transport-ssh">transport ssh { <m/SSH transport options.../ }</tag> It enables a
         SSHv2 transport encryption. Cannot be combined with a TCP transport.
         Default: off
 </descrip>
 
-<sect3>TCP transport options
-<p>
-<descrip>
-	<tag>authentication none|md5</tag>
+<sect1>TCP transport options
+<label id="rpki-tcp-transport-options">
+<p><descrip>
+	<tag><label id="rpki-tcp-authentication">authentication none|md5</tag>
 	Select authentication method to be used. <cf/none/ means no
 	authentication, <cf/md5/ is TCP-MD5 authentication (<rfc id="2385">).
 	Default: no authentication.
 
-	<tag>password "<m>text</m>"</tag>
+	<tag><label id="rpki-tcp-password">password "<m>text</m>"</tag>
 	Use this password for TCP-MD5 authentication of the RPKI-To-Router session.
 </descrip>
 
-<sect3>SSH transport options
-<p>
-<descrip>
-	<tag>bird private key "<m>/path/to/id_rsa</m>"</tag>
+<sect1>SSH transport options
+<label id="ssh-tcp-transport-options">
+<p><descrip>
+	<tag><label id="rpki-ssh-private-key">bird private key "<m>/path/to/id_rsa</m>"</tag>
 	A path to the BIRD's private SSH key for authentication.
 	It can be a <cf><m>id_rsa</m></cf> file.
 
-	<tag>remote public key "<m>/path/to/known_host</m>"</tag>
+	<tag><label id="rpki-ssh-remote-public-key">remote public key "<m>/path/to/known_host</m>"</tag>
 	A path to the cache's public SSH key for verification identity
 	of the cache server. It could be a path to <cf><m>known_host</m></cf> file.
 
-	<tag>user "<m/name/"</tag>
-	A SSH user name for authentication. This option is a required.
+	<tag><label id="rpki-ssh-user">user "<m/name/"</tag>
+	A SSH user name for authentication. This option is required.
 </descrip>
 
 <sect1>Examples
-<sect2>BGP origin validation
-<p>Policy: Don't import <cf/ROA_INVALID/ routes.
+<label id="rpki-examples">
+
+<p>BGP origin validation. Policy: Don't import <cf/ROA_INVALID/ routes.
 <code>
 roa4 table r4;
 roa6 table r6;
@@ -6008,8 +6012,7 @@ protocol bgp {
 }
 </code>
 
-<sect2>SSHv2 transport encryption
-<p>
+<p>SSHv2 transport encryption
 <code>
 roa4 table r4;
 roa6 table r6;
@@ -6078,12 +6081,13 @@ each labeled route.
 <p>Route definitions (each may also contain a block of per-route options):
 
 <sect1>Regular routes; MPLS switching rules
+<label id="static-mpls-rules">
 
 <p>There exist several types of routes; keep in mind that <m/prefix/ syntax is
 <ref id="type-prefix" name="dependent on network type">.
 
 <descrip>
-	<tag>route <m/prefix/ [mpls <m/number/] via <m/ip/|<m/"interface"/ [<m/per-nexthop options/] [via ...]</tag>
+	<tag><label id="static-route-regular">route <m/prefix/ [mpls <m/number/] via <m/ip/|<m/"interface"/ [<m/per-nexthop options/] [via ...]</tag>
 	Regular routes may bear one or more <ref id="route-next-hop" name="next
 	hops">. Every next hop is preceded by <cf/via/ and configured as shown.
 
@@ -6091,12 +6095,12 @@ each labeled route.
 	after <m/prefix/ specifies a static label for the labeled route, instead
 	of using dynamically allocated label.
 
-	<tag>route <m/prefix/ [mpls <m/number/] recursive <m/ip/ [mpls <m/num/[/<m/num/[/<m/num/[...]]]]</tag>
+	<tag><label id="static-route-recursive">route <m/prefix/ [mpls <m/number/] recursive <m/ip/ [mpls <m/num/[/<m/num/[/<m/num/[...]]]]</tag>
 	Recursive nexthop resolves the given IP in the configured IGP table and
 	uses that route's next hop. The MPLS stacks are concatenated; on top is
 	the IGP's nexthop stack and on bottom is this route's stack.
 
-	<tag>route <m/prefix/ [mpls <m/number/] blackhole|unreachable|prohibit</tag>
+	<tag><label id="static-route-special">route <m/prefix/ [mpls <m/number/] blackhole|unreachable|prohibit</tag>
 	Special routes specifying to silently drop the packet, return it as
 	unreachable or return it as administratively prohibited. First two
 	targets are also known as <cf/drop/ and <cf/reject/.
@@ -6107,7 +6111,8 @@ the next hop of the route is not a neighbor at the moment), Static just
 uninstalls the route from the table it is connected to and adds it again as soon
 as the destination becomes adjacent again.
 
-<sect2>Per-nexthop options
+<sect1>Per-nexthop options
+<label id="static-per-nexthop-options">
 
 <p>There are several options that in a case of multipath route are per-nexthop
 (i.e., they can be used multiple times for a route, one time for each nexthop).
@@ -6154,39 +6159,42 @@ options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 </descrip>
 
 <sect1>Route Origin Authorization
+<label id="static-route-origin-authorization">
 
 <p>The ROA config is just <cf>route <m/prefix/ max <m/int/ as <m/int/</cf> with no nexthop.
 
 <sect1>Autonomous System Provider Authorization
+<label id="static-autonomous-system-provider-authorization">
 
 <p>The ASPA config is <cf>route aspa <m/int/ providers <m/int/ [, <m/int/ ...]</cf> with no nexthop.
   The first ASN is client and the following are a list of providers.
   For a transit, you can also write <cf>route aspa <m/int/ transit</cf> to get
   the no-provider ASPA.
 
-<sect1>Flowspec
-<label id="flowspec-network-type">
+<sect1>Flowspec Network Type
+<label id="static-flowspec-network-type">
 
 <p>The flow specification are rules for routers and firewalls for filtering
 purpose. It is described by <rfc id="5575">. There are 3 types of arguments:
 <m/inet4/ or <m/inet6/ prefixes, numeric matching expressions and bitmask
 matching expressions.
 
-Numeric matching is a matching sequence of numbers and ranges separeted by a
+<p>Numeric matching is a matching sequence of numbers and ranges separeted by a
 commas (<cf/,/) (e.g. <cf/10,20,30/). Ranges can be written using double dots
 <cf/../ notation (e.g. <cf/80..90,120..124/). An alternative notation are
 sequence of one or more pairs of relational operators and values separated by
 logical operators <cf/&&/ or <cf/||/. Allowed relational operators are <cf/=/,
 <cf/!=/, <cf/</, <cf/<=/, <cf/>/, <cf/>=/, <cf/true/ and <cf/false/.
 
-Bitmask matching is written using <m/value/<cf>/</cf><m/mask/ or
+<p>Bitmask matching is written using <m/value/<cf>/</cf><m/mask/ or
 <cf/!/<m/value/<cf>/</cf><m/mask/ pairs. It means that <cf/(/<m/data/ <cf/&/
 <m/mask/<cf/)/ is or is not equal to <m/value/. It is also possible to use
-multiple value/mask pairs connected by logical operators <cf/&&/ or <cf/||/.
+multiple value/mask pairs connected by logical operators <cf/&amp;&amp;/ or <cf/||/.
 Note that for negated matches, value must be either zero or equal to bitmask
-(e.g. !0x0/0xf or !0xf/0xf, but not !0x3/0xf).
+(e.g. <cf>!0x0/0xf</cf> or <cf>!0xf/0xf</cf>, but not <cf>!0x3/0xf</cf>).
 
-<sect2>IPv4 Flowspec
+<sect1>IPv4 Flowspec
+<label id="static-flowspec-ipv4">
 
 <p><descrip>
 	<tag><label id="flow-dst">dst <m/inet4/</tag>
@@ -6231,7 +6239,7 @@ Note that for negated matches, value must be either zero or equal to bitmask
 	<tag><label id="flow-fragment">fragment <m/fragmentation-type/</tag>
 	Set a matching type of packet fragmentation. Allowed fragmentation
 	types are <cf/dont_fragment/, <cf/is_fragment/, <cf/first_fragment/,
-	<cf/last_fragment/ (e.g. <cf>fragment is_fragment &&
+	<cf/last_fragment/ (e.g. <cf>fragment is_fragment &amp;&amp;
 	!dont_fragment</cf>).
 </descrip>
 
@@ -6250,7 +6258,8 @@ protocol static {
 }
 </code>
 
-<sect2>Differences for IPv6 Flowspec
+<sect1>Differences for IPv6 Flowspec
+<label id="static-flowspec-ipv6">
 
 <p>Flowspec IPv6 are same as Flowspec IPv4 with a few exceptions.
 <itemize>
@@ -6299,6 +6308,7 @@ protocol static {
 </code>
 
 <sect1>Per-route options
+<label id="static-per-route-options">
 <p>
 <descrip>
 	<tag><label id="static-route-filter"><m/filter expression/</tag>
