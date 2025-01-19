@@ -25,6 +25,20 @@ $(o)%.sgml: $(s)%.sgml $(objdir)/.dir-stamp
 $(o)%.html: $(o)%.sgml
 	cd $(dir $@) && $(toolsdir)/linuxdoc -B html $(notdir $<)
 
+ifeq ($(PANDOC),)
+$(o)%.md: $(s)%.sgml
+	@echo "ERROR: No pandoc available, install pandoc to build documentation"
+	@false
+else
+LINUXDOC_PANDOC_PARSER := $(srcdir)/tools/linuxdoc.lua
+$(o)%.md: $(s)%.sgml $(LINUXDOC_PANDOC_PARSER) $(objdir)/.dir-stamp
+	$(PANDOC) -f $(LINUXDOC_PANDOC_PARSER) -s -t markdown -o $@ $<
+
+$(o)%-singlepage.html: $(o)%.md
+	$(PANDOC) -f markdown -t html5 -s -o $@ $<
+
+endif
+
 $(o)%.tex: $(o)%.sgml
 	cd $(dir $@) && $(toolsdir)/linuxdoc -B latex --output=tex $(notdir $<)
 
