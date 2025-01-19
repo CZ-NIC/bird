@@ -83,6 +83,7 @@ AC_ARG_WITH([iproutedir],
 AC_ARG_VAR([FLEX], [location of the Flex program])
 AC_ARG_VAR([BISON], [location of the Bison program])
 AC_ARG_VAR([M4], [location of the M4 program])
+AC_ARG_VAR([PANDOC], [location of the Pandoc program])
 
 if test "$enable_debug_expensive" = yes; then
   enable_debug=yes
@@ -188,6 +189,7 @@ AC_PROG_RANLIB
 AC_CHECK_PROG([FLEX], [flex], [flex])
 AC_CHECK_PROG([BISON], [bison], [bison])
 AC_CHECK_PROGS([M4], [gm4 m4])
+AC_CHECK_PROG([PANDOC], [pandoc], [pandoc])
 
 test -z "$FLEX"	 && AC_MSG_ERROR([Flex is missing.])
 test -z "$BISON" && AC_MSG_ERROR([Bison is missing.])
