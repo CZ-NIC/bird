@@ -8,7 +8,7 @@ variables:
   STAYRTR_BINARY: /usr/bin/stayrtr
 
 stages:
-#  - image
+  - image
   - build
   - pkg
   - test
@@ -32,6 +32,17 @@ stages:
   tags:
   # That's Docker in Docker
   - dind
+ rules:
+  - changes:
+    # Do any change in Dockerfile (e.g. change a comment) to rebuild the image
+    - misc/docker/$IMG_NAME/Dockerfile
+    when: always
+  - when: never
+
+docker-docbuilder:
+  variables:
+    IMG_NAME: "docbuilder"
+  <<: *docker_build
 
 # Docker build example
 #docker_debian-11-amd64:
@@ -52,6 +63,22 @@ stages:
   - $MAKE check
   # Build docs when tools are available
   - if which linuxdoc pdflatex >/dev/null ; then $MAKE docs ; fi
+
+build-only-doc:
+  image: registry.nic.cz/labs/bird:docbuilder
+  stage: build
+  tags:
+    - docker
+    - linux
+    - documentation
+  script:
+    - autoreconf
+    - ./configure --with-protocols=
+    - make obj/doc/bird-singlepage.html
+  artifacts:
+    paths: 
+      - obj/doc/bird-singlepage.html
+    expire_in: 1 month
 
 .build-linux: &build-linux
   <<: *build-base
@@ -257,7 +284,6 @@ build-only-static:
   <<: *build-only
   variables:
     CONFIGURE_OPTIONS: --with-protocols=static
-
 
 .pkg-deb: &pkg-deb
   stage: pkg
