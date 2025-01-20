@@ -8,7 +8,7 @@ variables:
   STAYRTR_BINARY: /usr/bin/stayrtr
 
 stages:
-#  - image
+  - image
   - build
   - pkg
   - test
@@ -17,7 +17,7 @@ stages:
   stage: image
   allow_failure: true
   script:
-  - $DOCKER_CMD login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.nic.cz
+  - $DOCKER_CMD login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.nic.cz
   # Make sure we refresh the base image if it updates (eg. security updates, etc)
   # If we do just the build, cache is always reused and the freshness of the
   # base image is never checked. However, pull always asks and updates the
@@ -32,6 +32,20 @@ stages:
   tags:
   # That's Docker in Docker
   - dind
+  rules:
+  - if: '$CI_COMMIT_TAG'
+    # Never rebuild for tags
+    when: never
+  - changes:
+    # Do any change in Dockerfile (e.g. change a comment) to rebuild the image
+    - misc/docker/$IMG_NAME/Dockerfile
+    when: always
+  - when: never
+
+docker-docbuilder:
+  variables:
+    IMG_NAME: "docbuilder"
+  <<: *docker_build
 
 # Docker build example
 #docker_debian-11-amd64:
@@ -51,7 +65,22 @@ stages:
   - $MAKE
   - $MAKE check
   # Build docs when tools are available
-  - if which linuxdoc pdflatex >/dev/null ; then $MAKE docs ; fi
+  - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
+
+build-only-doc:
+  image: registry.nic.cz/labs/bird:docbuilder
+  stage: build
+  tags:
+    - docker
+    - linux
+  script:
+    - autoreconf
+    - ./configure --with-protocols= --disable-client
+    - make obj/doc/bird-singlepage.html
+  artifacts:
+    paths: 
+      - obj/doc/bird-singlepage.html
+    expire_in: 1 month
 
 .build-linux: &build-linux
   <<: *build-base
