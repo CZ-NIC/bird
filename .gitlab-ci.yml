@@ -626,7 +626,7 @@ build-birdlab-openbsd-71:
 confirm-release:
   stage: release
   script:
-  - true
+  - "true"
   rules:
   - if: '$CI_COMMIT_TAG'
     when: manual
