@@ -13,6 +13,7 @@
 #include "lib/resource.h"
 #include "lib/event.h"
 #include "lib/socket.h"
+#include "lib/tlists.h"
 
 extern struct birdloop main_birdloop;
 
@@ -100,5 +101,17 @@ struct thread_group_config {
 extern const struct thread_group_config thread_group_config_default_worker, thread_group_config_default_express;
 
 void thread_group_finalize_config(void);
+
+/* What if a thread ends */
+struct bird_thread_end_callback {
+  TLIST_NODE(bird_thread_end, struct bird_thread_end_callback) n;
+
+  /* The hook runs locked on the resource level. DO NOT LOCK ANYTHING FROM THERE.
+   * If you need to lock, schedule an event from this hook. */
+  void (*hook)(struct bird_thread_end_callback *);
+};
+
+void bird_thread_end_register(struct bird_thread_end_callback *);
+void bird_thread_end_unregister(struct bird_thread_end_callback *);
 
 #endif /* _BIRD_IO_LOOP_H_ */
