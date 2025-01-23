@@ -158,6 +158,19 @@ node_insert_potential_bucket(struct trie_node *node, const struct aggregator_buc
 }
 
 /*
+ * Check if @bucket is one of potential buckets in @node
+ */
+static int
+is_bucket_potential(const struct trie_node *node, const struct aggregator_bucket *bucket)
+{
+  assert(node != NULL);
+  assert(bucket != NULL);
+
+  ASSERT_DIE(bucket->id < MAX_POTENTIAL_BUCKETS_COUNT);
+  return BIT32R_TEST(node->potential_buckets, bucket->id);
+}
+
+/*
  * Return pointer to bucket with ID @id.
  * Protocol contains list of pointers to all buckets. Every pointer
  * lies at position equal to bucket ID to enable fast lookup.
@@ -593,27 +606,6 @@ second_pass(struct trie_node *node)
   merge_potential_buckets(node, left, right);
 
   assert(node->selected_bucket == NULL);
-}
-
-/*
- * Check if @bucket is one of potential buckets in @node
- */
-static int
-is_bucket_potential(const struct trie_node *node, const struct aggregator_bucket *bucket)
-{
-  assert(node != NULL);
-  assert(bucket != NULL);
-
-  ASSERT_DIE(bucket->id < MAX_POTENTIAL_BUCKETS_COUNT);
-  return BIT32R_TEST(node->potential_buckets, bucket->id);
-}
-
-static void
-remove_potential_buckets(struct trie_node *node)
-{
-  assert(node != NULL);
-  node->potential_buckets_count = 0;
-  memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
 }
 
 static void
