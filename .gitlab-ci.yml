@@ -72,7 +72,7 @@ build-only-doc:
     - linux
   script:
     - autoreconf
-    - ./configure --with-protocols=
+    - ./configure --with-protocols= --disable-client
     - make obj/doc/bird-singlepage.html
   artifacts:
     paths: 
