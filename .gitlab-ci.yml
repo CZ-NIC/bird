@@ -70,7 +70,6 @@ build-only-doc:
   tags:
     - docker
     - linux
-    - documentation
   script:
     - autoreconf
     - ./configure --with-protocols=
