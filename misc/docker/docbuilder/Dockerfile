@@ -1,3 +1,4 @@
+# bump this to recreate the image: 1
 FROM debian:bookworm-slim
 ENV DEBIAN_FRONTEND noninteractive
 RUN sed -i 's/deb.debian.org/ftp.cz.debian.org/' /etc/apt/sources.list
