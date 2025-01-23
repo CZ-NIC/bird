@@ -595,6 +595,43 @@ struct birdloop_pickup_group {
 
 static _Thread_local struct bird_thread *this_thread;
 
+#define TLIST_PREFIX bird_thread_end
+#define TLIST_TYPE struct bird_thread_end_callback
+#define TLIST_ITEM n
+#define TLIST_WANT_ADD_TAIL
+#define TLIST_WALK
+#include "lib/tlists.h"
+
+struct bird_thread_end_private {
+  DOMAIN(resource) lock;
+  struct bird_thread_end_private **locked_at;
+  TLIST_LIST(bird_thread_end) cbs;
+};
+
+typedef union bird_thread_end {
+  DOMAIN(resource) lock;
+  struct bird_thread_end_private priv;
+} bird_thread_end;
+
+static bird_thread_end bird_thread_end_public;
+
+LOBJ_UNLOCK_CLEANUP(bird_thread_end, resource);
+#define BIRD_THREAD_END_LOCKED(p)	LOBJ_LOCKED(&bird_thread_end_public, p, bird_thread_end, resource)
+
+void
+bird_thread_end_register(struct bird_thread_end_callback *btec)
+{
+  BIRD_THREAD_END_LOCKED(p)
+    bird_thread_end_add_tail(&p->cbs, btec);
+}
+
+void
+bird_thread_end_unregister(struct bird_thread_end_callback *btec)
+{
+  BIRD_THREAD_END_LOCKED(p)
+    bird_thread_end_rem_node(&p->cbs, btec);
+}
+
 static void
 birdloop_set_thread(struct birdloop *loop, struct bird_thread *thr, struct birdloop_pickup_group *group)
 {
@@ -1087,6 +1124,11 @@ bird_thread_shutdown(void * _ UNUSED)
   ev_run_list(&this_thread->priority_events);
   memset(&this_thread->priority_events, 0xa5, sizeof(this_thread->priority_events));
 
+  /* Run thread-stop hooks */
+  BIRD_THREAD_END_LOCKED(p)
+    WALK_TLIST(bird_thread_end, n, &p->cbs)
+      n->hook(n);
+
   /* Drop loops including the thread dropper itself */
   while (!EMPTY_LIST(thr->loops))
   {
@@ -1446,6 +1488,10 @@ birdloop_init(void)
     init_list(&group->loops);
     init_list(&group->threads);
   }
+
+  bird_thread_end_public = (bird_thread_end) {
+    .lock = DOMAIN_NEW(resource),
+  };
 
   wakeup_init(main_birdloop.thread);
 
