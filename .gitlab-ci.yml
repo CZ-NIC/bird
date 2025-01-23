@@ -17,7 +17,7 @@ stages:
   stage: image
   allow_failure: true
   script:
-  - $DOCKER_CMD login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.nic.cz
+  - $DOCKER_CMD login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.nic.cz
   # Make sure we refresh the base image if it updates (eg. security updates, etc)
   # If we do just the build, cache is always reused and the freshness of the
   # base image is never checked. However, pull always asks and updates the
