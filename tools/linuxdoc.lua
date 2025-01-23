@@ -143,6 +143,26 @@ G = P{ "Pandoc",
     })
   end;
   Sect1Inside =
+    V"Sect2" +
+    V"Sect2Inside";
+
+  Sect2 = P"<sect2>" * inelement * V"Label" * Ct((V"Sect2Inside" - P"<sect1>" - P"<sect2>")^0) / function (name, label, inside)
+    return mergetables({
+      pandoc.Header(4, name, { id = label });
+      mergetables(inside);
+    })
+  end;
+  Sect2Inside =
+    V"Sect3" +
+    V"Sect3Inside";
+
+  Sect3 = P"<sect3>" * inelement * V"Label" * Ct((V"Sect3Inside" - P"<sect1>" - P"<sect2>" - P"<sect3>")^0) / function (name, label, inside)
+    return mergetables({
+      pandoc.Header(5, name, { id = label });
+      mergetables(inside);
+    })
+  end;
+  Sect3Inside =
     V"Para" +
     V"ItemList" +
     V"DescripList" +

@@ -5881,7 +5881,7 @@ only IPv4 prefixes you have to specify only roa4 channel. Similarly with IPv6
 prefixes only. If you want to fetch both IPv4 and even IPv6 ROAs you have to
 specify both channels.
 
-<sect1>RPKI protocol options
+<sect2>RPKI protocol options
 <label id="rpki-common-options">
 <p>
 <descrip>
@@ -5943,7 +5943,7 @@ specify both channels.
         Default: off
 </descrip>
 
-<sect1>TCP transport options
+<sect3>TCP transport options
 <label id="rpki-tcp-transport-options">
 <p><descrip>
 	<tag><label id="rpki-tcp-authentication">authentication none|md5</tag>
@@ -5955,7 +5955,7 @@ specify both channels.
 	Use this password for TCP-MD5 authentication of the RPKI-To-Router session.
 </descrip>
 
-<sect1>SSH transport options
+<sect3>SSH transport options
 <label id="ssh-tcp-transport-options">
 <p><descrip>
 	<tag><label id="rpki-ssh-private-key">bird private key "<m>/path/to/id_rsa</m>"</tag>
@@ -5973,7 +5973,10 @@ specify both channels.
 <sect1>Examples
 <label id="rpki-examples">
 
-<p>BGP origin validation. Policy: Don't import <cf/ROA_INVALID/ routes.
+<sect2>BGP origin validation
+<label id="rpki-example-bgp-origin-validation">
+
+<p>Policy: Don't import <cf/ROA_INVALID/ routes.
 <code>
 roa4 table r4;
 roa6 table r6;
@@ -6012,7 +6015,10 @@ protocol bgp {
 }
 </code>
 
-<p>SSHv2 transport encryption
+<sect2>SSHv2 transport encryption
+<label id="rpki-example-sshv2-transport-encryption">
+
+<p>
 <code>
 roa4 table r4;
 roa6 table r6;
@@ -6111,7 +6117,7 @@ the next hop of the route is not a neighbor at the moment), Static just
 uninstalls the route from the table it is connected to and adds it again as soon
 as the destination becomes adjacent again.
 
-<sect1>Per-nexthop options
+<sect2>Per-nexthop options
 <label id="static-per-nexthop-options">
 
 <p>There are several options that in a case of multipath route are per-nexthop
@@ -6193,7 +6199,7 @@ multiple value/mask pairs connected by logical operators <cf/&amp;&amp;/ or <cf/
 Note that for negated matches, value must be either zero or equal to bitmask
 (e.g. <cf>!0x0/0xf</cf> or <cf>!0xf/0xf</cf>, but not <cf>!0x3/0xf</cf>).
 
-<sect1>IPv4 Flowspec
+<sect2>IPv4 Flowspec
 <label id="static-flowspec-ipv4">
 
 <p><descrip>
@@ -6258,7 +6264,7 @@ protocol static {
 }
 </code>
 
-<sect1>Differences for IPv6 Flowspec
+<sect2>Differences for IPv6 Flowspec
 <label id="static-flowspec-ipv6">
 
 <p>Flowspec IPv6 are same as Flowspec IPv4 with a few exceptions.
