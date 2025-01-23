@@ -630,6 +630,9 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
     /* Selected bucket is NULL as it has never been assigned */
     node->selected_bucket = NULL;
     node->status = NON_FIB;
+
+    /* Original prefix stays original */
+    node->px_origin = ORIGINAL == node->px_origin ? ORIGINAL : FILLER;
   }
   else
   {
@@ -639,7 +642,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
     node->selected_bucket = choose_lowest_id_bucket(p, node);
     node->status = IN_FIB;
 
-    /* If prefix was original it stays original */
+    /* Original prefix stays original */
     node->px_origin = ORIGINAL == node->px_origin ? ORIGINAL : AGGREGATED;
     assert(node->selected_bucket != NULL);
   }
