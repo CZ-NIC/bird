@@ -899,6 +899,12 @@ dump_trie_helper(const struct trie_node *node, struct net_addr_ip4 *addr, struct
   assert(node != NULL);
   assert(addr != NULL);
 
+  static const char *px_origin_str[] = {
+    [ORIGINAL]   = "original",
+    [AGGREGATED] = "aggregated",
+    [FILLER]     = "filler",
+  };
+
   memset(buf->start, 0, buf->pos - buf->start);
   buf->pos = buf->start;
 
@@ -930,13 +936,7 @@ dump_trie_helper(const struct trie_node *node, struct net_addr_ip4 *addr, struct
   if (node->selected_bucket)
     buffer_print(buf, " -> [[%u]]", node->selected_bucket->id);
 
-  static const char *origin_str[] = {
-    [ORIGINAL]   = "original",
-    [AGGREGATED] = "aggregated",
-    [FILLER]     = "filler",
-  };
-
-  buffer_print(buf, " %p %s", node, origin_str[node->px_origin]);
+  buffer_print(buf, " %p %s", node, px_origin_str[node->px_origin]);
   log("%s", buf->start);
 
   if (node->child[0])
