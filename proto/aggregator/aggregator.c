@@ -139,6 +139,7 @@ remove_node(struct trie_node *node)
   }
 
   node->parent = NULL;
+  memset(node, 0xfe, sizeof(*node));
   removed_nodes++;
 }
 
