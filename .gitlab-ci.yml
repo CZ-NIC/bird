@@ -68,7 +68,7 @@ docker-docbuilder:
   # Build docs when tools are available
   - if which linuxdoc pdflatex >/dev/null ; then $MAKE docs ; fi
 
-build-only-doc:
+build-release:
   image: registry.nic.cz/labs/bird:docbuilder
   stage: build
   tags:
@@ -78,10 +78,12 @@ build-only-doc:
     - autoreconf
     - ./configure --with-protocols= --disable-client
     - make obj/doc/bird-singlepage.html
+    - make release
   artifacts:
     paths: 
       - obj/doc/bird-singlepage.html
-    expire_in: 1 month
+      - bird-*.tar.gz
+    expire_in: 1 day
 
 .build-linux: &build-linux
   <<: *build-base

@@ -1,0 +1,76 @@
+#!/bin/bash
+#
+#	Generate BIRD distribution tgz
+#
+#	(c) 2025 CZ.NIC
+#
+#	Based on an older script by Martin Mares and Ondrej Filip
+
+set -e
+
+# Gather all required information
+VERSION="$1"
+
+SRCPKG="bird-$VERSION"
+DOCPKG="bird-doc-$VERSION"
+
+export GIT_DIR=$(git rev-parse --absolute-git-dir)
+ORIG=$(readlink -f .)
+
+# Perform everything in a temporary directory
+T=$(mktemp -d)
+function cleanup_tmpdir() {
+  rm -rf $T
+}
+
+trap cleanup_tmpdir ERR
+
+pushd $T
+mkdir $SRCPKG $DOCPKG{,/doc}
+
+# Generate changelog
+git log > ${SRCPKG}/ChangeLog
+
+# Continue in a clean Git worktree
+git worktree add --detach bird
+
+function cleanup_worktree() {
+  git worktree remove -f $T/bird
+}
+
+trap cleanup_worktree ERR
+
+pushd bird
+
+# Copy the actual sources
+cp -a . ../${SRCPKG}
+
+# Autoreconf to prepare the configure script
+autoreconf -i
+cp configure ../${SRCPKG}
+cp sysdep/autoconf.h.in ../${SRCPKG}/sysdep/
+
+# Create documentation
+./configure --with-protocols= --disable-client
+make docs
+
+# Copy documentation to the package
+cp obj/doc/*.{pdf,html} ../${DOCPKG}/doc
+
+popd
+
+# Drop the .git file from the source package
+rm ${SRCPKG}/.git
+
+# Cleanup other do-not-package things
+rm -rf ${SRCPKG}/{misc,rfc,doc/slides,doc/slt2001,doc/old}
+
+# Package everything
+tar czvvf ${SRCPKG}.tar.gz ${SRCPKG}
+tar czvvf ${DOCPKG}.tar.gz ${DOCPKG}
+
+# Cleanup and shipout
+cleanup_worktree
+popd
+mv $T/*.tar.gz ./
+cleanup_tmpdir

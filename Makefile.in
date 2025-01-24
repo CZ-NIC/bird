@@ -168,6 +168,10 @@ $(objdir)/sysdep/paths.h: Makefile
 	$(Q)echo >>$@ "#define PATH_CONTROL_SOCKET \"@CONTROL_SOCKET@\""
 	$(Q)if test -n "@iproutedir@" ; then echo >>$@ "#define PATH_IPROUTE_DIR \"@iproutedir@\"" ; fi
 
+# Release rules
+release:
+	tools/gendist2 $(git-label)
+
 # Unit tests rules
 
 tests_targets_ok = $(addsuffix .ok,$(tests_targets))
