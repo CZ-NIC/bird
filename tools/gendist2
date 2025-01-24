@@ -65,6 +65,9 @@ rm ${SRCPKG}/.git
 # Cleanup other do-not-package things
 rm -rf ${SRCPKG}/{misc,rfc,doc/slides,doc/slt2001,doc/old}
 
+# Fix the build version
+sed -i "s#^VERSION := .*\$#VERSION := ${VERSION}#" ${SRCPKG}/Makefile.in
+
 # Package everything
 tar czvvf ${SRCPKG}.tar.gz ${SRCPKG}
 tar czvvf ${DOCPKG}.tar.gz ${DOCPKG}
