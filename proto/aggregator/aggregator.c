@@ -798,14 +798,9 @@ assert_trie(const struct trie_node *node)
  * computed by ORTC algorithm, and perform first pass on this subtree.
  */
 static void
-deaggregate_helper(struct trie_node * const node, const struct trie_node * const target)
+deaggregate(struct trie_node * const node)
 {
   assert(node != NULL);
-  assert(target != NULL);
-
-  /* Stop when subtree is already covered by another IN_FIB prefix */
-  if (IN_FIB == node->status && node != target)
-    return;
 
   /* Delete information computed by aggregation */
   node->selected_bucket = NULL;
@@ -844,17 +839,10 @@ deaggregate_helper(struct trie_node * const node, const struct trie_node * const
   assert(node->ancestor == NULL);
 
   if (node->child[0])
-    deaggregate_helper(node->child[0], target);
+    deaggregate(node->child[0]);
 
   if (node->child[1])
-    deaggregate_helper(node->child[1], target);
-}
-
-static void
-deaggregate(struct trie_node *node)
-{
-  assert(node != NULL);
-  deaggregate_helper(node, node);
+    deaggregate(node->child[1]);
 }
 
 /*
