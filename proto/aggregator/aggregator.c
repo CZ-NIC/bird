@@ -975,6 +975,62 @@ trie_receive_update(struct aggregator_proto *p, struct aggregator_route *old, st
 }
 
 static void
+trie_receive_withdraw(struct aggregator_proto *p, struct aggregator_route *old)
+{
+  assert(p != NULL);
+  assert(old != NULL);
+
+  log("before update");
+  dump_trie(p->root);
+
+  union net_addr_union *uptr = (net_addr_union *)old->rte.net->n.addr;
+  struct trie_node *updated_node = NULL;
+
+  if (NET_IP4 == uptr->n.type)
+  {
+    struct net_addr_ip4 *addr = &uptr->ip4;
+    updated_node = trie_remove_prefix_ip4(p->root, addr);
+  }
+  else if (NET_IP6 == uptr->n.type)
+  {
+    struct net_addr_ip6 *addr = &uptr->ip6;
+    updated_node = trie_remove_prefix_ip6(p->root, addr);
+  }
+
+  assert(updated_node != NULL);
+  dump_trie(p->root);
+
+  struct trie_node *node = updated_node;
+
+  while (1)
+  {
+    if (IN_FIB == node->status)
+      break;
+
+    node = node->parent;
+  }
+
+  log("deaggregate");
+  deaggregate(node);
+  dump_trie(p->root);
+
+  log("second pass");
+  second_pass(node);
+  dump_trie(p->root);
+
+  log("merge buckets above");
+  struct trie_node *highest_node = merge_buckets_above(node);
+  dump_trie(p->root);
+  assert(highest_node != NULL);
+
+  log("third pass");
+  third_pass(p, highest_node);
+  dump_trie(p->root);
+
+  print_prefixes(p->root, uptr->n.type);
+}
+
+static void
 dump_trie_helper(const struct trie_node *node, struct net_addr_ip4 *addr, struct buffer *buf)
 {
   assert(node != NULL);
@@ -2056,6 +2112,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
       else if (old && !new)
       {
         log("rt notify: withdraw");
+        trie_receive_withdraw(p, old_route);
       }
     }
   }
