@@ -780,42 +780,6 @@ check_ancestors_after_aggregation(const struct trie_node *node)
 }
 
 /*
- * Recover trie to the state before aggregation
- */
-static void
-deaggregate(struct trie_node *node)
-{
-  assert(node != NULL);
-
-  node->status = NON_FIB;
-  node->selected_bucket = NULL;
-  node->ancestor = NULL;
-  node->potential_buckets_count = 0;
-  memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
-
-  if (ORIGINAL == node->px_origin)
-  {
-    assert(node->original_bucket != NULL);
-    node->status = IN_FIB;
-  }
-  else
-  {
-    /*
-     * Delete the original bucket as it is inherited from the closest
-     * ancestor and will be set during first pass
-     */
-    assert(node->original_bucket != NULL);
-    node->original_bucket = NULL;
-  }
-
-  if (node->child[0])
-    deaggregate(node->child[0]);
-
-  if (node->child[1])
-    deaggregate(node->child[1]);
-}
-
-/*
  * Merge sets of potential buckets going from @node upwards.
  * Stop when sets don't change and return the last updated node.
  */
