@@ -779,6 +779,19 @@ check_ancestors_after_aggregation(const struct trie_node *node)
     check_ancestors_after_aggregation(node->child[1]);
 }
 
+static void
+assert_trie(const struct trie_node *node)
+{
+  assert(node != NULL);
+  assert(node->original_bucket != NULL);
+
+  if (node->child[0])
+    assert_trie(node->child[0]);
+
+  if (node->child[1])
+    assert_trie(node->child[1]);
+}
+
 /*
  * Merge sets of potential buckets going from @node upwards.
  * Stop when sets don't change and return the last updated node.
