@@ -794,6 +794,70 @@ assert_trie(const struct trie_node *node)
 }
 
 /*
+ * Deaggregate subtree rooted at @target, which deletes all information
+ * computed by ORTC algorithm, and perform first pass on this subtree.
+ */
+static void
+deaggregate_helper(struct trie_node * const node, const struct trie_node * const target)
+{
+  assert(node != NULL);
+  assert(target != NULL);
+
+  /* Stop when subtree is already covered by another IN_FIB prefix */
+  if (IN_FIB == node->status && node != target)
+    return;
+
+  /* Delete information computed by aggregation */
+  node->selected_bucket = NULL;
+  node->ancestor = NULL;
+  node->potential_buckets_count = 0;
+  memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
+
+  /*
+   * Original prefixes are IN_FIB and already have their original bucket,
+   * otherwise they inherit it from their parents.
+   */
+  if (ORIGINAL == node->px_origin)
+  {
+    assert(node->original_bucket != NULL);
+    node->status = IN_FIB;
+  }
+  else
+  {
+    node->status = NON_FIB;
+    node->original_bucket = node->parent->original_bucket;
+    assert(node->original_bucket != NULL);
+  }
+
+  assert(node->potential_buckets_count == 0);
+
+  /* As in the first pass, leaves get one potential bucket */
+  if (is_leaf(node))
+  {
+    assert(node->px_origin == ORIGINAL);
+    assert(node->potential_buckets_count == 0);
+    node_insert_potential_bucket(node, node->original_bucket);
+  }
+
+  assert(node->original_bucket != NULL);
+  assert(node->selected_bucket == NULL);
+  assert(node->ancestor == NULL);
+
+  if (node->child[0])
+    deaggregate_helper(node->child[0], target);
+
+  if (node->child[1])
+    deaggregate_helper(node->child[1], target);
+}
+
+static void
+deaggregate(struct trie_node *node)
+{
+  assert(node != NULL);
+  deaggregate_helper(node, node);
+}
+
+/*
  * Merge sets of potential buckets going from @node upwards.
  * Stop when sets don't change and return the last updated node.
  */
