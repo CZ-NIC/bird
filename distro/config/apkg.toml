@@ -1,7 +1,7 @@
 [project]
 name = "bird"
 # needed for make-archive
-make_archive_script = "tools/make-dev-archive"
+make_archive_script = "tools/make-archive"
 
 [upstream]
 # needed for get-archive
