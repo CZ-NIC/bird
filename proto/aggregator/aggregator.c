@@ -931,44 +931,59 @@ trie_receive_update(struct aggregator_proto *p, struct aggregator_route *old, st
   if (NET_IP4 == new_uptr->n.type)
   {
     struct net_addr_ip4 *addr = &new_uptr->ip4;
+    log("Adding new prefix %N", addr);
     updated_node = trie_insert_prefix_ip4(p->root, addr, new->bucket, p->trie_pool);
-
-    assert(updated_node != NULL);
-    assert(updated_node->original_bucket != NULL);
-    assert(updated_node->status == IN_FIB);
   }
   else if (NET_IP6 == new_uptr->n.type)
   {
     struct net_addr_ip6 *addr = &new_uptr->ip6;
+    log("Adding new prefix %N", addr);
     updated_node = trie_insert_prefix_ip6(p->root, addr, new->bucket, p->trie_pool);
-
-    assert(updated_node != NULL);
-    assert(updated_node->original_bucket != NULL);
-    assert(updated_node->status == IN_FIB);
   }
 
+  assert(updated_node != NULL);
+  assert(updated_node->original_bucket != NULL);
+  assert(updated_node->status == IN_FIB);
+
+  /* Insert original bucket to the set of potential buckets */
+  if (is_leaf(updated_node))
+    node_insert_potential_bucket(updated_node, updated_node->original_bucket);
+
+  log("before update");
   dump_trie(p->root);
+
+  struct trie_node *node = updated_node;
+
+  /* Find the closest IN_FIB ancestor */
+  while (1)
+  {
+    if (IN_FIB == node->status && node != updated_node)
+      break;
+
+    node = node->parent;
+  }
 
   log("deaggregate");
-  deaggregate(updated_node);
+  deaggregate(node);
   dump_trie(p->root);
 
-  log("first pass");
-  first_pass(updated_node);
-  dump_trie(p->root);
+  assert_trie(p->root);
 
   log("second pass");
-  second_pass(updated_node);
+  second_pass(node);
   dump_trie(p->root);
 
   log("merge buckets above");
-  struct trie_node *highest_node = merge_buckets_above(updated_node);
+  struct trie_node *highest_node = merge_buckets_above(node);
+  log("highest changed node %p", highest_node);
   dump_trie(p->root);
 
   log("third pass");
-  assert(highest_node->parent != NULL);
-  third_pass(p, highest_node->parent);
+  assert(highest_node != NULL);
+  third_pass(p, highest_node);
   dump_trie(p->root);
+
+  print_prefixes(p->root, new_uptr->n.type);
 }
 
 static void
