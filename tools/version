@@ -1,0 +1,32 @@
+#!/bin/bash
+
+TAG=$(git tag --merged | sed -n 's/^v//p' | tail -n1)
+
+# Pack with zeros if needed
+TM=$TAG
+while [ -n "${TM/*.*.*/}" ]; do
+  TM="${TM}.0"
+done
+
+if [ "$(git rev-parse HEAD)" == "$(git rev-parse v${TAG})" ]; then
+  echo $TM
+  exit 0
+fi
+
+HASH=$(git rev-parse --short=12 HEAD)
+
+# Add branch info if not passed via command line
+if [ -z "${BRANCH}" ]; then
+  # There is also --show-current but it's too new to be portable.
+  BRANCH=$(git branch | sed -n 's/^[*] //p' | grep -v 'HEAD detached')
+fi
+
+# Found a branch
+if [ -n "$BRANCH" ]; then
+  LENGTH=$(git log --oneline v$TAG..HEAD | wc -l)
+  echo $TM+branch.$(echo $BRANCH | sed 's/[^a-zA-Z0-9]/./g').${HASH}
+  exit 0
+fi
+
+echo $TM+detached.${HASH}
+exit 0
