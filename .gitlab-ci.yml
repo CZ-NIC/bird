@@ -8,16 +8,17 @@ variables:
   STAYRTR_BINARY: /usr/bin/stayrtr
 
 stages:
-#  - image
+  - image
   - build
   - pkg
   - test
+  - release
 
 .docker: &docker_build
   stage: image
   allow_failure: true
   script:
-  - $DOCKER_CMD login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.nic.cz
+  - $DOCKER_CMD login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.nic.cz
   # Make sure we refresh the base image if it updates (eg. security updates, etc)
   # If we do just the build, cache is always reused and the freshness of the
   # base image is never checked. However, pull always asks and updates the
@@ -32,6 +33,20 @@ stages:
   tags:
   # That's Docker in Docker
   - dind
+  rules:
+  - if: '$CI_COMMIT_TAG'
+    # Never rebuild for tags
+    when: never
+  - changes:
+    # Do any change in Dockerfile (e.g. change a comment) to rebuild the image
+    - misc/docker/$IMG_NAME/Dockerfile
+    when: always
+  - when: never
+
+docker-docbuilder:
+  variables:
+    IMG_NAME: "docbuilder"
+  <<: *docker_build
 
 # Docker build example
 #docker_debian-11-amd64:
@@ -48,10 +63,27 @@ stages:
   # Detect which make is available
   - MAKE=make
   - which gmake 2>/dev/null >/dev/null && MAKE=gmake
-  - $MAKE
+  - BRANCH=$CI_COMMIT_BRANCH $MAKE
   - $MAKE check
   # Build docs when tools are available
-  - if which linuxdoc pdflatex >/dev/null ; then $MAKE docs ; fi
+  - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
+
+build-release:
+  image: registry.nic.cz/labs/bird:docbuilder
+  stage: build
+  tags:
+    - docker
+    - linux
+  script:
+    - autoreconf
+    - ./configure --with-protocols= --disable-client
+    - make obj/doc/bird-singlepage.html
+    - BRANCH=$CI_COMMIT_BRANCH tools/make-archive
+  artifacts:
+    paths: 
+      - obj/doc/bird-singlepage.html
+      - bird-*.tar.gz
+    expire_in: 1 day
 
 .build-linux: &build-linux
   <<: *build-base
@@ -189,7 +221,7 @@ build-opensuse-15.3-amd64:
   stage: pkg
   script:
     - pip3 install apkg
-    - apkg build
+    - BRANCH=$CI_COMMIT_BRANCH ARCHIVE_DOCS=false apkg build
     #- apkg install -y pkg/pkgs/*/*/*.deb
   artifacts:
     paths:
@@ -199,7 +231,7 @@ build-opensuse-15.3-amd64:
   stage: pkg
   script:
     - pip3 install apkg
-    - apkg build
+    - BRANCH=$CI_COMMIT_BRANCH ARCHIVE_DOCS=false apkg build
     #- apkg install -y pkg/pkgs/*/*/*.rpm
   artifacts:
     paths:
@@ -210,7 +242,7 @@ build-opensuse-15.3-amd64:
   script:
     - sed -i "s/runstatedir/with-runtimedir/" distro/pkg/rpm/bird.spec
     - pip3 install apkg
-    - apkg build
+    - BRANCH=$CI_COMMIT_BRANCH ARCHIVE_DOCS=false apkg build
     #- apkg install -y pkg/pkgs/*/*/*.rpm
   artifacts:
     paths:
@@ -307,7 +339,7 @@ build-netlab:
     - DIR=$(pwd)
     - autoreconf
     - ./configure
-    - make
+    - BRANCH=$CI_COMMIT_BRANCH make
     - cd $TOOLS_DIR
     - sudo git clean -fx
     - git pull --ff-only
@@ -484,17 +516,17 @@ test-mpls-bgp-l3vpn:
     - gmake
     - gmake check
 
-build-birdlab-debian-11:
-  <<: *build-birdlab-base
-  tags:
-    - birdlab-debian-11
-    - amd64
-
-build-birdlab-centos-08:
-  <<: *build-birdlab-base
-  tags:
-    - birdlab-centos-08
-    - amd64
+#build-birdlab-debian-11:
+#  <<: *build-birdlab-base
+#  tags:
+#    - birdlab-debian-11
+#    - amd64
+#
+#build-birdlab-centos-08:
+#  <<: *build-birdlab-base
+#  tags:
+#    - birdlab-centos-08
+#    - amd64
 
 build-birdlab-fedora-37:
   <<: *build-birdlab-base
@@ -502,11 +534,11 @@ build-birdlab-fedora-37:
     - birdlab-fedora-37
     - amd64
 
-build-birdlab-freebsd-13:
-  <<: *build-birdlab-base
-  tags:
-    - birdlab-freebsd-13
-    - amd64
+#build-birdlab-freebsd-13:
+#  <<: *build-birdlab-base
+#  tags:
+#    - birdlab-freebsd-13
+#    - amd64
 
 build-birdlab-openbsd-71:
   <<: *build-birdlab-base
@@ -515,3 +547,12 @@ build-birdlab-openbsd-71:
   tags:
     - birdlab-openbsd-71
     - amd64
+
+confirm-release:
+  stage: release
+  script:
+  - "true"
+  rules:
+  - if: '$CI_COMMIT_TAG'
+    when: manual
+  - when: never

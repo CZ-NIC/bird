@@ -1,6 +1,6 @@
 # Makefile for the BIRD Internet Routing Daemon
 # (c) 1999--2000 Martin Mares <mj@ucw.cz>
-# (c) 2016       Jan Moskyto Matejka <mq@ucw.cz>
+# (c) 2016--2025 Maria Matejka <mq@ucw.cz>
 
 # Disable build-in rules
 MAKEFLAGS += -r
@@ -22,6 +22,7 @@ RANLIB=@RANLIB@
 INSTALL=@INSTALL@
 INSTALL_PROGRAM=@INSTALL_PROGRAM@
 INSTALL_DATA=@INSTALL_DATA@
+PANDOC=@PANDOC@
 
 client=$(addprefix $(exedir)/,@CLIENT@)
 daemon=$(exedir)/bird
@@ -41,10 +42,9 @@ srcdir := @srcdir@
 objdir := @objdir@
 exedir := @exedir@
 
-git-label:=$(strip $(shell cd $(srcdir) && [ "$$(git rev-parse --show-toplevel)" = "$$(readlink -f .)" ] && git describe --always --dirty=-x 2>/dev/null))
-ifneq ($(git-label),)
-        CFLAGS += -DGIT_LABEL="$(git-label)"
-endif
+# Find out which version we are actually building
+VERSION := $(strip $(shell bash tools/version))
+CFLAGS += -DBIRD_VERSION='"$(VERSION)"'
 
 ifeq ($(objdir),.)
   objdir := $(realpath .)

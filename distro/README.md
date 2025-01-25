@@ -25,7 +25,7 @@ or in case of disposable VM/container you can use faster direct host build
 
     apkg build -Hi
 
-tools/make-dev-archive script is in charge of creating archive from source.
+tools/make-archive script is in charge of creating archive from source.
 
 
 ## Create (source) package from upstream release
