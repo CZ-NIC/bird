@@ -1,0 +1,58 @@
+{%- set title = "$pagetitle$" %}
+{%- set is_docs = True %}
+{%- set template_part = "header" %}
+{%- set authors = [ $for(author-meta)$ "$author-meta$", $endfor$ ] %}
+{%- set meta_additional = { "author": authors, } %}
+{%- include "main.html.j2" %}
+<!--<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>-->
+      <section class="bg-light bird-documentation">
+	<div class="pt-60 container">
+	  <div class="row">
+	    <div class="col d-none d-lg-block"></div>
+	    <div class='col-12 col-xl-3 col-lg-4'></div>
+	    <div class="col-12 col-xl-6 col-lg-7">
+	      <h1 class="title">{{ title }}</h1>
+	      <div class="version-info pb-20 mb-20 border-bottom border-primary">
+		<h4>Version $bird_version$ | <a href="/download/bird-doc-$bird_version$.tar.gz">TGZ</a></h4>
+		Available versions:
+		{% for v in releases | reverse -%}
+		  {% if (v.type == 'current') or 'show_doc' in v %}
+		    <a href="
+		      {%- if "$bird_version$" == v.version -%}
+		      #
+		      {%- else -%}
+		      /doc/bird-{{ v.version }}.html
+		      {%- endif -%}
+		      " style="{% if v.type == 'current' %}font-weight: bold;{% endif %}">
+		      {{- v.version -}}
+		    </a>
+		    {%- if not loop.last %} | {% endif -%}
+		  {%- endif -%}
+		{%- endfor %}
+	      </div>
+	      <p class="authors">Authors: 
+	      {%- for a in authors %}
+	      <a href="mailto:{{ a.split('&lt;')[1][:-4] }}">{{ a.split('&lt;')[0][:-1] }}</a>{% if not loop.last %}, {% endif %}
+	      {%- endfor %}
+	      </p>
+	      <p class="abstract">$abstract$</p>
+	    </div>
+	    <div class="col d-none d-lg-block"></div>
+	  </div>
+	  <div class="row">
+	    <div class="col d-none d-lg-block"></div>
+	    <aside class='col-12 col-xl-3 col-lg-4'>
+	      <nav class='pt-lg-120 pb-lg-20 sticky-lg-top overflow-scroll' >
+		$table-of-contents$
+		{# TODO: make the TOC collapsible #}
+	      </nav>
+	    </aside>
+	    <div class="col-12 col-xl-6 col-lg-7">
+	      $body$
+	    </div>
+	    <div class="col d-none d-lg-block"></div>
+	  </div>
+	</div>
+      </section>
+{% set template_part = "footer" %}
+{% include "main.html.j2" %}
