@@ -31,11 +31,12 @@ $(o)%.md: $(s)%.sgml
 	@false
 else
 LINUXDOC_PANDOC_PARSER := $(srcdir)/tools/linuxdoc.lua
+SINGLEPAGE_HTML_TEMPLATE := $(srcdir)/tools/doc-template.html
 $(o)%.md: $(s)%.sgml $(LINUXDOC_PANDOC_PARSER) $(objdir)/.dir-stamp
 	$(PANDOC) -f $(LINUXDOC_PANDOC_PARSER) -s -t markdown -o $@ $<
 
-$(o)%-singlepage.html: $(o)%.md
-	$(PANDOC) -f markdown -t html5 -s -o $@ $<
+$(o)%-singlepage.html: $(o)%.sgml $(SINGLEPAGE_HTML_TEMPLATE) $(LINUXDOC_PANDOC_PARSER) $(objdir)/.dir-stamp
+	$(PANDOC) -f $(LINUXDOC_PANDOC_PARSER) -t html5 --shift-heading-level-by=1 --section-divs --table-of-contents --toc-depth=3 -M bird_version="$(VERSION)" --template=$(SINGLEPAGE_HTML_TEMPLATE) -o $@ $<
 
 endif
 
