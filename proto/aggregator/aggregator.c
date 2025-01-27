@@ -99,6 +99,12 @@ static int removed_nodes;
 static int one_child_nodes_1;
 static int one_child_nodes_2;
 
+static const char *px_origin_str[] = {
+  [FILLER]     = "filler",
+  [ORIGINAL]   = "original",
+  [AGGREGATED] = "aggregated",
+};
+
 static inline int
 is_leaf(const struct trie_node *node)
 {
@@ -1035,12 +1041,6 @@ dump_trie_helper(const struct trie_node *node, struct net_addr_ip4 *addr, struct
 {
   assert(node != NULL);
   assert(addr != NULL);
-
-  static const char *px_origin_str[] = {
-    [ORIGINAL]   = "original",
-    [AGGREGATED] = "aggregated",
-    [FILLER]     = "filler",
-  };
 
   memset(buf->start, 0, buf->pos - buf->start);
   buf->pos = buf->start;
