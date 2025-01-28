@@ -657,7 +657,7 @@ second_pass(struct trie_node *node)
 }
 
 static void
-third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
+third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net_addr_ip4 *addr)
 {
   assert(node != NULL);
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
@@ -761,10 +761,19 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
 
   /* Preorder traversal */
   if (node->child[0])
-    third_pass_helper(p, node->child[0]);
+  {
+    ip4_clrbit(&addr->prefix, node->depth);
+    addr->pxlen = node->depth + 1;
+    third_pass_helper(p, node->child[0], addr);
+  }
 
   if (node->child[1])
-    third_pass_helper(p, node->child[1]);
+  {
+    ip4_setbit(&addr->prefix, node->depth);
+    addr->pxlen = node->depth + 1;
+    third_pass_helper(p, node->child[1], addr);
+    ip4_clrbit(&addr->prefix, node->depth);
+  }
 
   /* Leaves with no assigned bucket are removed */
   if (NON_FIB == node->status && is_leaf(node))
@@ -791,12 +800,29 @@ third_pass(struct aggregator_proto *p, struct trie_node *node)
   /* The closest ancestor of the root node with a non-null bucket is the root itself */
   node->ancestor = node;
 
+  struct net_addr_ip4 addr = { 0 };
+  net_fill_ip4((net_addr *)&addr, IP4_NONE, 0);
+
+  /*
+   * If third pass runs from the subtree and not from the root,
+   * find prefix of this subtree.
+   */
+  find_subtree_prefix(node, &addr);
 
   if (node->child[0])
-    third_pass_helper(p, node->child[0]);
+  {
+    ip4_clrbit(&addr.prefix, node->depth);
+    addr.pxlen = node->depth + 1;
+    third_pass_helper(p, node->child[0], &addr);
+  }
 
   if (node->child[1])
-    third_pass_helper(p, node->child[1]);
+  {
+    ip4_setbit(&addr.prefix, node->depth);
+    addr.pxlen = node->depth + 1;
+    third_pass_helper(p, node->child[1], &addr);
+    ip4_clrbit(&addr.prefix, node->depth);
+  }
 }
 
 static void
