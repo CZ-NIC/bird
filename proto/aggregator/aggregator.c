@@ -507,6 +507,47 @@ before_check(const struct trie_node *node)
     before_check(node->child[1]);
 }
 
+static void
+find_subtree_prefix(const struct trie_node *target, struct net_addr_ip4 *addr)
+{
+  assert(target != NULL);
+  assert(addr != NULL);
+
+  int path[128] = { 0 };
+  int pos = 0;
+
+  const struct trie_node *node = target;
+  const struct trie_node *parent = node->parent;
+
+  while (parent)
+  {
+    if (node == parent->child[0])
+      path[pos++] = 0;
+    else if (node == parent->child[1])
+      path[pos++] = 1;
+    else
+      bug("Impossible");
+
+    node = parent;
+    parent = node->parent;
+  }
+
+  assert(node->parent == NULL);
+
+  for (int i = pos - 1; i >= 0; i--)
+  {
+    if (path[i] == 0)
+      ip4_clrbit(&addr->prefix, node->depth);
+    else if (path[i] == 1)
+      ip4_setbit(&addr->prefix, node->depth);
+
+    addr->pxlen = node->depth + 1;
+    node = node->child[path[i]];
+  }
+
+  assert(node == target);
+}
+
 /*
  * First pass of Optimal Route Table Construction (ORTC) algorithm
  */
