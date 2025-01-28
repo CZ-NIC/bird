@@ -736,25 +736,26 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node)
  * Third pass of Optimal Route Table Construction (ORTC) algorithm
  */
 static void
-third_pass(struct aggregator_proto *p, struct trie_node *root)
+third_pass(struct aggregator_proto *p, struct trie_node *node)
 {
-  assert(root != NULL);
-  assert(root->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
-  assert(root->potential_buckets_count > 0);
+  assert(node != NULL);
+  assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
+  assert(node->potential_buckets_count > 0);
 
-  /* Assign bucket with the lowest ID to root */
-  root->selected_bucket = choose_lowest_id_bucket(p, root);
-  root->status = IN_FIB;
-  assert(root->selected_bucket != NULL);
+  /* Assign bucket with the lowest ID to the node */
+  node->selected_bucket = choose_lowest_id_bucket(p, node);
+  node->status = IN_FIB;
+  assert(node->selected_bucket != NULL);
 
   /* The closest ancestor of the root node with a non-null bucket is the root itself */
-  root->ancestor = root;
+  node->ancestor = node;
 
-  if (root->child[0])
-    third_pass_helper(p, root->child[0]);
 
-  if (root->child[1])
-    third_pass_helper(p, root->child[1]);
+  if (node->child[0])
+    third_pass_helper(p, node->child[0]);
+
+  if (node->child[1])
+    third_pass_helper(p, node->child[1]);
 }
 
 static void
