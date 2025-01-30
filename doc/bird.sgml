@@ -3977,7 +3977,7 @@ announce local networks.
 protocol direct {
 	ipv4;
 	ipv6;
-	interface "-arc*", "*";		# Exclude the ARCnets
+	interface -"arc*", "*";		# Exclude the ARCnets
 }
 </code>
 
