@@ -253,7 +253,7 @@ enum ea_stored {
 };
 
 struct ea_storage {
-  struct ea_storage *next_hash;		/* Next in hash chain */
+  struct ea_storage *_Atomic next_hash;	/* Next in hash chain */
   _Atomic u64 uc;			/* Use count */
   u32 hash_key;				/* List hash */
   PADDING(unused, 0, 4);		/* Sorry, we need u64 for the usecount */
@@ -573,7 +573,7 @@ static inline struct ea_storage *ea_get_storage(ea_list *r)
 
 static inline ea_list *ea_ref(ea_list *r)
 {
-  ASSERT_DIE(0 < atomic_fetch_add_explicit(&ea_get_storage(r)->uc, 1, memory_order_acq_rel));
+  ASSERT_DIE(0 < atomic_fetch_add_explicit(&ea_get_storage(r)->uc, 1, memory_order_acq_rel)); //TODO Is this ok? Are we sure no one will decrease the count?
   return r;
 }
 
@@ -585,6 +585,12 @@ static inline ea_list *ea_lookup(ea_list *r, u32 squash_upto, enum ea_stored oid
   else
     return ea_lookup_slow(r, squash_upto, oid);
 }
+
+struct ea_finally_free_deferred_call {
+  struct deferred_call dc;
+  struct rcu_stored_phase phase;
+  struct ea_storage *attrs;
+};
 
 struct ea_free_deferred {
   struct deferred_call dc;
