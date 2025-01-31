@@ -56,4 +56,6 @@ defer_call(struct deferred_call *call, size_t actual_size)
   return a;
 }
 
+#define DEFER_CALL(_s)	SKIP_BACK(typeof(_s), dc, defer_call(&(_s).dc, sizeof (_s)))
+
 #endif
