@@ -2399,7 +2399,7 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
   return bgp_export_attrs(&s, attrs);
 }
 
-void
+void NONNULL(3)
 bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, const rte *old)
 {
   struct bgp_proto *p = (void *) P;
