@@ -147,6 +147,11 @@ docker-fedora-41-amd64:
     IMG_NAME: "fedora-41-amd64"
   <<: *docker_build
 
+docker-centos-7-amd64:
+  variables:
+    IMG_NAME: "centos-7-amd64"
+  <<: *docker_build
+
 docker-centos-8-amd64:
   variables:
     IMG_NAME: "centos-8-amd64"
@@ -319,6 +324,14 @@ build-fedora-40-amd64:
 build-fedora-41-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:fedora-41-amd64
+
+build-centos-7-amd64:
+  <<: *build-linux
+  variables:
+    # export path to devtoolset-8-gcc
+    CC: /opt/rh/devtoolset-8/root/usr/bin/gcc
+    LC_ALL: en_US.UTF-8
+  image: registry.nic.cz/labs/bird:centos-7-amd64
 
 build-centos-8-amd64:
   <<: *build-linux
@@ -560,12 +573,14 @@ pkg-fedora-41-amd64:
   needs: [build-fedora-41-amd64]
   image: registry.nic.cz/labs/bird:fedora-41-amd64
 
-#pkg-centos-7-amd64:
-#  <<: *pkg-rpm-wa
-#  variables:
-#    LC_ALL: en_US.UTF-8
-#  needs: [build-centos-7-amd64]
-#  image: registry.nic.cz/labs/bird:centos-7-amd64
+pkg-centos-7-amd64:
+  <<: *pkg-rpm-wa
+  variables:
+    # export path to devtoolset-8-gcc
+    CC: /opt/rh/devtoolset-8/root/usr/bin/gcc
+    LC_ALL: en_US.UTF-8
+  needs: [build-centos-7-amd64]
+  image: registry.nic.cz/labs/bird:centos-7-amd64
 
 # Removed due to apkg breakage
 #pkg-centos-8-amd64:
