@@ -21,65 +21,71 @@ _Thread_local struct rcu_thread this_rcu_thread;
 
 static struct rcu_thread * _Atomic rcu_thread_list = NULL;
 
-static _Atomic uint rcu_thread_spinlock = 0;
-
-static int
-rcu_critical(struct rcu_thread *t, u64 phase)
+bool
+rcu_end_sync(struct rcu_stored_phase phase)
 {
-  uint val = atomic_load_explicit(&t->ctl, memory_order_acquire);
-  return
-    (val & RCU_NEST_MASK) /* Active */
-    && ((val & ~RCU_NEST_MASK) <= phase); /* In an older phase */
-}
+  _Thread_local static u64 rcu_last_cleared_phase = 0;
 
-void
-synchronize_rcu(void)
-{
-  /* Increment phase */
-  u64 phase = atomic_fetch_add_explicit(&rcu_global_phase, RCU_GP_PHASE, memory_order_acq_rel);
+  /* First check local cache */
+  if ((rcu_last_cleared_phase - phase.phase) < (1ULL << 63))
+    return true;
 
-  while (1) {
-    /* Spinlock */
-    while (atomic_exchange_explicit(&rcu_thread_spinlock, 1, memory_order_acq_rel))
-      birdloop_yield();
+  /* We read the thread list */
+  rcu_read_lock();
 
-    /* Check all threads */
-    bool critical = 0;
-    for (struct rcu_thread * _Atomic *tp = &rcu_thread_list, *t;
-	t = atomic_load_explicit(tp, memory_order_acquire);
-	tp = &t->next)
-      /* Found a critical */
-      if (critical = rcu_critical(t, phase))
-	break;
+  /* Check all threads */
+  u64 least = atomic_load_explicit(&rcu_global_phase, memory_order_acquire);
 
-    /* Unlock */
-    ASSERT_DIE(atomic_exchange_explicit(&rcu_thread_spinlock, 0, memory_order_acq_rel));
+  for (struct rcu_thread * _Atomic *tp = &rcu_thread_list, *t;
+      t = atomic_load_explicit(tp, memory_order_acquire);
+      tp = &t->next)
+  {
+    /* Load the phase */
+    u64 val = atomic_load_explicit(&t->ctl, memory_order_acquire);
+    if (val & RCU_NEST_MASK) /* Active */
+    {
+      /* Too old phase */
+      if ((phase.phase - val) < (1ULL << 63))
+      {
+	rcu_read_unlock();
+	return false;
+      }
 
-    /* Done if no critical */
-    if (!critical)
-      return;
-
-    /* Wait and retry if critical */
-    birdloop_yield();
+      /* New enough, find oldest */
+      if ((least - val) < (1ULL << 63))
+	least = val & ~RCU_NEST_MASK;
+    }
   }
+
+  rcu_read_unlock();
+
+  /* Store oldest */
+  rcu_last_cleared_phase = least - RCU_GP_PHASE;
+  return true;
 }
 
+static _Atomic int rcu_thread_list_writelock = 0;
 void
 rcu_thread_start(void)
 {
-  /* Insert this thread to the thread list, no spinlock is needed */
+  while (atomic_exchange_explicit(&rcu_thread_list_writelock, 1, memory_order_acq_rel))
+    birdloop_yield();
+
+  /* Insert this thread to the beginning of the thread list, no spinlock is needed */
   struct rcu_thread *next = atomic_load_explicit(&rcu_thread_list, memory_order_acquire);
   do atomic_store_explicit(&this_rcu_thread.next, next, memory_order_relaxed);
   while (!atomic_compare_exchange_strong_explicit(
 	&rcu_thread_list, &next, &this_rcu_thread,
 	memory_order_acq_rel, memory_order_acquire));
+
+  ASSERT_DIE(atomic_exchange_explicit(&rcu_thread_list_writelock, 0, memory_order_acq_rel));
 }
 
 void
 rcu_thread_stop(void)
 {
-  /* Spinlock */
-  while (atomic_exchange_explicit(&rcu_thread_spinlock, 1, memory_order_acq_rel))
+  /* Assuring only one thread stopper at a time */
+  while (atomic_exchange_explicit(&rcu_thread_list_writelock, 1, memory_order_acq_rel))
     birdloop_yield();
 
   /* Find this thread */
@@ -91,8 +97,13 @@ rcu_thread_stop(void)
       /* Remove this thread */
       atomic_store_explicit(tp, atomic_load_explicit(&t->next, memory_order_acquire), memory_order_release);
 
-      /* Unlock and go */
-      ASSERT_DIE(atomic_exchange_explicit(&rcu_thread_spinlock, 0, memory_order_acq_rel));
+      /* Unlock */
+      ASSERT_DIE(atomic_exchange_explicit(&rcu_thread_list_writelock, 0, memory_order_acq_rel));
+
+      /* Wait for readers */
+      synchronize_rcu();
+
+      /* Done */
       return;
     }
 

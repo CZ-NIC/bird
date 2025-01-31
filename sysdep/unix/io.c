@@ -2660,6 +2660,10 @@ io_loop(void)
       birdloop_enter(&main_birdloop);
       watchdog_start();
 
+      /* Refresh the local RCU counter. This has to run at least once a century or so. */
+      rcu_read_lock();
+      rcu_read_unlock();
+
       if (pout < 0)
 	{
 	  if (errno == EINTR || errno == EAGAIN)
