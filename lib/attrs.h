@@ -33,7 +33,8 @@ static inline struct adata *
 lp_store_adata(struct linpool *pool, const void *buf, uint len)
 {
   struct adata *ad = lp_alloc_adata(pool, len);
-  memcpy(ad->data, buf, len);
+  if (len)
+    memcpy(ad->data, buf, len);
   return ad;
 }
 
