@@ -27,6 +27,11 @@ struct rcu_thread {
   _Atomic u64 ctl;
 };
 
+/* A structure to syntactically ensure that no other u64 gets mixed up with this. */
+struct rcu_stored_phase {
+  u64 phase; /* The first acceptable phase to end */
+};
+
 extern _Thread_local struct rcu_thread this_rcu_thread;
 
 static inline void rcu_read_lock(void)
@@ -36,6 +41,8 @@ static inline void rcu_read_lock(void)
 
   /* Just nested */
   u64 local_nest = this_rcu_thread.local_ctl & RCU_NEST_MASK;
+  if (!local_nest)
+    bug("RCU overnested!");
   if (local_nest > RCU_NEST_CNT)
     return;
 
@@ -50,7 +57,7 @@ static inline void rcu_read_lock(void)
 static inline void rcu_read_unlock(void)
 {
   /* Just decrement the nesting counter; when unlocked, nobody cares */
-  atomic_fetch_sub_explicit(&this_rcu_thread.ctl, RCU_NEST_CNT, memory_order_acq_rel);
+  ASSERT_DIE(atomic_fetch_sub_explicit(&this_rcu_thread.ctl, RCU_NEST_CNT, memory_order_acq_rel) & RCU_NEST_MASK);
   this_rcu_thread.local_ctl--;
 }
 
@@ -59,7 +66,30 @@ static inline bool rcu_read_active(void)
   return !!(this_rcu_thread.local_ctl & RCU_NEST_MASK);
 }
 
-void synchronize_rcu(void);
+/* Begin asynchronous synchronization. */
+static inline struct rcu_stored_phase rcu_begin_sync(void)
+{
+  return (struct rcu_stored_phase) { .phase = RCU_GP_PHASE + atomic_fetch_add_explicit(&rcu_global_phase, RCU_GP_PHASE, memory_order_acq_rel), };
+}
+
+/* End asynchronous synchronization.
+ *
+ * phase: what you got from rcu_begin_sync()
+ * wait: true to wait
+ *
+ * Returns true if the synchronization is actually done. May be retried multiple times, until true.
+ */
+bool rcu_end_sync(struct rcu_stored_phase phase);
+
+/* Synchronous synchronization. */
+static inline void
+synchronize_rcu(void)
+{
+  struct rcu_stored_phase phase = rcu_begin_sync();
+  while (!rcu_end_sync(phase))
+    birdloop_yield();
+}
+
 
 /* Registering and unregistering a birdloop. To be called from birdloop implementation */
 void rcu_thread_start(void);
