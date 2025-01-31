@@ -283,7 +283,7 @@ enum ea_stored {
 };
 
 struct ea_storage {
-  struct ea_storage *next_hash;		/* Next in hash chain */
+  struct ea_storage *_Atomic next_hash;	/* Next in hash chain */
   _Atomic u64 uc;			/* Use count */
   u32 hash_key;				/* List hash */
   PADDING(unused, 0, 4);		/* Sorry, we need u64 for the usecount */
@@ -300,7 +300,7 @@ struct ea_class {
   const char *legacy_name;		/* Name for printing in v2 sockets */ \
   struct symbol *sym;			/* Symbol to export to configs */ \
   uint id;				/* Autoassigned attribute ID */ \
-  uint uc;				/* Reference count */ \
+  _Atomic uint uc;				/* Reference count */ \
   btype type;				/* Data type ID */ \
   u16 flags;				/* Protocol-dependent flags */ \
   uint readonly:1;			/* This attribute can't be changed by filters */ \
