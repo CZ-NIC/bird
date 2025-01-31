@@ -910,7 +910,7 @@ poll_timeout(struct birdloop *loop)
   if (!t)
   {
     THREAD_TRACE(DL_SCHEDULING, "No timers, no events in meta");
-    return -1;
+    return 86400 * 1000; /* Wake up at least once a day for maintenance */
   }
 
   btime remains = tm_remains(t);
@@ -1049,6 +1049,10 @@ poll_retry:;
 	goto poll_retry;
       bug("poll in %p: %m", thr);
     }
+
+    /* Refresh the local RCU counter. This has to run at least once a century or so. */
+    rcu_read_lock();
+    rcu_read_unlock();
 
     account_to(&this_thread->overhead);
     birdloop_enter(thr->meta);
@@ -1253,6 +1257,7 @@ bird_thread_shutdown(void * _ UNUSED)
     }
   }
 
+
   THREAD_TRACE(DL_SCHEDULING, "Thread pickup size differs from dropper goal by %d%s", dif, tdl_stop ? ", stopping" : "");
 
   if (tdl_stop)
@@ -1305,6 +1310,9 @@ bird_thread_shutdown(void * _ UNUSED)
   /* Request thread cleanup from main loop */
   ev_send_loop(&main_birdloop, &thr->cleanup_event);
 
+  /* Inform about the thread actually stopped */
+  THREAD_TRACE(DL_SCHEDULING, "Stopped");
+
   /* Local pages not needed anymore */
   flush_local_pages();
 
@@ -1312,10 +1320,10 @@ bird_thread_shutdown(void * _ UNUSED)
   rcu_thread_stop();
 
   /* Now we can be cleaned up */
+  thr->meta->ping_pending = 0;
   birdloop_leave(thr->meta);
 
   /* Exit! */
-  THREAD_TRACE(DL_SCHEDULING, "Stopped");
   pthread_exit(NULL);
 }
 
