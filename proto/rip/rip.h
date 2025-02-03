@@ -149,7 +149,8 @@ struct rip_neighbor
   node n;
   struct rip_iface *ifa;		/* Associated interface, may be NULL if stale */
   struct neighbor *nbr;			/* Associaded core neighbor, may be NULL if stale */
-  struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
+  struct bfd_request_ref *bfd_req;	/* BFD request, if BFD is used */
+  callback bfd_notify;			/* Callback for BFD notifications */
   btime last_seen;			/* Time of last received and accepted message */
   u32 uc;				/* Use count, number of routes linking the neighbor */
   u32 csn;				/* Last received crypto sequence number */
