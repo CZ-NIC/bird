@@ -973,7 +973,7 @@ static void dump_trie(const struct trie_node *);
 static void print_prefixes(const struct trie_node *, int);
 
 static void
-trie_receive_update(struct aggregator_proto *p, struct aggregator_route *old, struct aggregator_route *new)
+trie_process_update(struct aggregator_proto *p, struct aggregator_route *old, struct aggregator_route *new)
 {
   assert(p != NULL);
   assert(new != NULL);
@@ -1043,7 +1043,7 @@ trie_receive_update(struct aggregator_proto *p, struct aggregator_route *old, st
 }
 
 static void
-trie_receive_withdraw(struct aggregator_proto *p, struct aggregator_route *old)
+trie_process_withdraw(struct aggregator_proto *p, struct aggregator_route *old)
 {
   assert(p != NULL);
   assert(old != NULL);
@@ -2174,12 +2174,12 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
         else if (!old && new)
           log("rt notify: announce");
 
-        trie_receive_update(p, old_route, new_route);
+        trie_process_update(p, old_route, new_route);
       }
       else if (old && !new)
       {
         log("rt notify: withdraw");
-        trie_receive_withdraw(p, old_route);
+        trie_process_withdraw(p, old_route);
       }
     }
   }
