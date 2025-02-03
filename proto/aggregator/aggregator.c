@@ -433,6 +433,7 @@ trie_remove_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 
 
   assert(node->px_origin == ORIGINAL);
   log("Removing prefix %N", addr);
+  assert(node->selected_bucket != NULL);
 
   node->status = NON_FIB;
   node->px_origin = FILLER;
@@ -470,6 +471,7 @@ trie_remove_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
   }
 
   assert(node->px_origin == ORIGINAL);
+  assert(node->selected_bucket != NULL);
 
   node->status = NON_FIB;
   node->px_origin = FILLER;
@@ -529,6 +531,7 @@ find_subtree_prefix(const struct trie_node *target, struct net_addr_ip4 *addr)
     else
       bug("Impossible");
 
+    assert(pos < 128);
     node = parent;
     parent = node->parent;
   }
@@ -679,6 +682,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net
   if (is_bucket_potential(node, inherited_bucket))
   {
     /* Selected bucket is NULL as it has never been assigned */
+    assert(node->selected_bucket == NULL);
     node->selected_bucket = NULL;
     node->status = NON_FIB;
 
@@ -911,6 +915,7 @@ deaggregate(struct trie_node * const node)
   /* As in the first pass, leaves get one potential bucket */
   if (is_leaf(node))
   {
+    assert(node->status == IN_FIB);
     assert(node->px_origin == ORIGINAL);
     assert(node->potential_buckets_count == 0);
     node_insert_potential_bucket(node, node->original_bucket);
@@ -942,6 +947,7 @@ merge_buckets_above(struct trie_node *node)
   {
     const struct trie_node *left  = parent->child[0];
     const struct trie_node *right = parent->child[1];
+    assert(left == node || right == node);
 
     struct trie_node imaginary_node = { 0 };
     node_insert_potential_bucket(&imaginary_node, parent->original_bucket);
@@ -1015,12 +1021,8 @@ trie_receive_update(struct aggregator_proto *p, struct aggregator_route *old, st
   assert(updated_node->original_bucket != NULL);
   assert(updated_node->status == IN_FIB);
 
-  /* Insert original bucket to the set of potential buckets */
-  if (is_leaf(updated_node))
-    node_insert_potential_bucket(updated_node, updated_node->original_bucket);
-
-  log("before update");
-  dump_trie(p->root);
+  assert(updated_node->potential_buckets_count == 1);
+  assert(BIT32R_TEST(updated_node->potential_buckets, updated_node->original_bucket->id));
 
   struct trie_node *node = updated_node;
 
