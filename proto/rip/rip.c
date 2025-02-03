@@ -82,6 +82,7 @@
 #include "lib/macro.h"
 
 
+static void rip_bfd_notify(callback *cb);
 static inline void rip_lock_neighbor(struct rip_neighbor *n);
 static inline void rip_unlock_neighbor(struct rip_neighbor *n);
 static inline int rip_iface_link_up(struct rip_iface *ifa);
@@ -459,6 +460,8 @@ rip_get_neighbor(struct rip_proto *p, ip_addr *a, struct rip_iface *ifa)
   nbr->data = n;
   n->csn = nbr->aux;
 
+  callback_init(&n->bfd_notify, rip_bfd_notify, p->p.loop);
+
   add_tail(&ifa->neigh_list, NODE n);
 
   return n;
@@ -525,10 +528,11 @@ rip_neigh_notify(struct neighbor *nbr)
 }
 
 static void
-rip_bfd_notify(struct bfd_request *req)
+rip_bfd_notify(callback *cb)
 {
-  struct rip_neighbor *n = req->data;
+  SKIP_BACK_DECLARE(struct rip_neighbor, n, bfd_notify, cb);
   struct rip_proto *p = n->ifa->rip;
+  struct bfd_request *req = n->bfd_req->req;
 
   if (req->down)
   {
@@ -551,9 +555,9 @@ rip_update_bfd(struct rip_proto *p, struct rip_neighbor *n)
      * may cause problems if two link-local addresses are assigned to one iface.
      */
     ip_addr saddr = rip_is_v2(p) ? n->ifa->sk->saddr : n->nbr->ifa->ip;
-    n->bfd_req = bfd_request_session(p->p.pool, n->nbr->addr, saddr,
+    n->bfd_req = bfd_request_session(p->p.pool_up, n->nbr->addr, saddr,
 				     n->nbr->iface, p->p.vrf,
-				     rip_bfd_notify, n, p->p.loop, NULL);
+				     &n->bfd_notify, NULL);
   }
 
   if (!use_bfd && n->bfd_req)

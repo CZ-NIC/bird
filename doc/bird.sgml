@@ -2699,6 +2699,11 @@ with the appropriate unit: <m/number/ <cf/s/|<cf/ms/|<cf/us/. Although microseco
 are allowed as units, practical minimum values are usually in order of tens of
 milliseconds.
 
+<p>Beware, all BFD instances pick up requests and sessions asynchronously, and
+any instance can pick up any matching request, regardless of the order in the
+configuration file. There may be a future update, allowing for strict matching,
+yet for now, we do not have such an option.
+
 <code>
 protocol bfd [&lt;name&gt;] {
 	accept [ipv4|ipv6] [direct|multihop];

@@ -21,7 +21,7 @@ extern struct bfd_config *bfd_cf;
 
 CF_DECLS
 
-CF_KEYWORDS(BFD, MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE, ADDRESS,
+CF_KEYWORDS(BFD, MIN, IDLE, RX, TX, INTERVAL, MULTIPLIER, PASSIVE, ADDRESS, EXPRESS,
 	INTERFACE, MULTIHOP, NEIGHBOR, DEV, ALL, LOCAL, AUTHENTICATION,
 	NONE, SIMPLE, METICULOUS, KEYED, MD5, SHA1, IPV4, IPV6, DIRECT,
 	STRICT, BIND, ZERO, UDP6, CHECKSUM, RX)
@@ -40,24 +40,28 @@ bfd_proto_start: proto_start BFD
   this_proto = proto_config_new(&proto_bfd, $1);
   this_proto->loop_order = DOMAIN_ORDER(proto);
   if (new_config->thread_group_simple)
-    this_proto->thread_group = TTAIL(thread_group, &new_config->thread_group);
+    BFD_CFG->express_thread_group = TTAIL(thread_group, &new_config->thread_group);
   else
   {
     struct symbol *sym = cf_find_symbol(new_config, "express");
     if (sym && sym->class == SYM_THREAD_GROUP)
-      this_proto->thread_group = sym->thread_group;
+      BFD_CFG->express_thread_group = sym->thread_group;
     else
-      this_proto->thread_group = NULL;
+      BFD_CFG->express_thread_group = NULL;
   }
 
   init_list(&BFD_CFG->patt_list);
-  init_list(&BFD_CFG->neigh_list);
   BFD_CFG->accept_ipv4 = BFD_CFG->accept_ipv6 = 1;
   BFD_CFG->accept_direct = BFD_CFG->accept_multihop = 1;
 };
 
 bfd_proto_item:
    proto_item
+ | EXPRESS THREAD GROUP symbol {
+    if ($4->class != SYM_THREAD_GROUP)
+      cf_error("Unexpected symbol %s as a thread group name", $4->name);
+    BFD_CFG->express_thread_group = $4->thread_group;
+ }
  | ACCEPT bfd_accept
  | INTERFACE bfd_iface
  | MULTIHOP bfd_multihop
@@ -73,8 +77,8 @@ bfd_proto_opts:
 
 bfd_proto:
    bfd_proto_start proto_name '{' bfd_proto_opts '}' {
-  if (!this_proto->thread_group)
-    cf_error("Thread group not configured and \"express\" not found.");
+  if (!BFD_CFG->express_thread_group)
+    cf_error("Express thread group not configured and \"express\" not found.");
 } ;
 
 
@@ -172,7 +176,9 @@ bfd_neigh_multihop:
 bfd_neighbor: ipa bfd_neigh_iface bfd_neigh_local bfd_neigh_multihop
 {
   this_bfd_neighbor = cfg_allocz(sizeof(struct bfd_neighbor));
-  add_tail(&BFD_CFG->neigh_list, NODE this_bfd_neighbor);
+  bfd_neighbor_add_tail(&BFD_CFG->neigh_list, this_bfd_neighbor);
+
+  callback_init(&BFD_NEIGHBOR->notify, bfd_neighbor_notify, &main_birdloop);
 
   BFD_NEIGHBOR->addr = $1;
   BFD_NEIGHBOR->local = $3;

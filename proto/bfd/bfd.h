@@ -21,6 +21,7 @@
 #include "lib/resource.h"
 #include "lib/socket.h"
 #include "lib/string.h"
+#include "lib/tlists.h"
 
 #include "nest/bfd.h"
 
@@ -34,14 +35,39 @@
 #define BFD_DEFAULT_IDLE_TX_INT	(1 S_)
 #define BFD_DEFAULT_MULTIPLIER	5
 
+struct bfd_iface_config
+{
+  struct iface_patt i;			/* contains list node (!) */
+  struct bfd_options opts;
+};
 
-struct bfd_iface_config;
+#define TLIST_PREFIX bfd_neighbor
+#define TLIST_TYPE struct bfd_neighbor
+#define TLIST_ITEM n
+#define TLIST_WANT_ADD_TAIL
+struct bfd_neighbor
+{
+  TLIST_DEFAULT_NODE;
+  ip_addr addr;
+  ip_addr local;
+  struct iface *iface;
+
+  struct neighbor *neigh;
+  struct bfd_request_ref *req;
+
+  callback notify;
+
+  u8 multihop;
+  u8 active;
+};
+#include "lib/tlists.h"
 
 struct bfd_config
 {
   struct proto_config c;
-  list patt_list;		/* List of iface configs (struct bfd_iface_config) */
-  list neigh_list;		/* List of configured neighbors (struct bfd_neighbor) */
+  struct thread_group_config *express_thread_group;
+  list patt_list;	/* List of iface configs (struct bfd_iface_config) */
+  TLIST_LIST(bfd_neighbor) neigh_list;		/* List of configured neighbors */
   struct bfd_iface_config *multihop; /* Multihop pseudoiface config */
   u8 accept_ipv4;
   u8 accept_ipv6;
@@ -51,25 +77,6 @@ struct bfd_config
   u8 zero_udp6_checksum_rx;
 };
 
-struct bfd_iface_config
-{
-  struct iface_patt i;
-  struct bfd_options opts;
-};
-
-struct bfd_neighbor
-{
-  node n;
-  ip_addr addr;
-  ip_addr local;
-  struct iface *iface;
-
-  struct neighbor *neigh;
-  struct bfd_request *req;
-
-  u8 multihop;
-  u8 active;
-};
 
 struct bfd_proto
 {
@@ -79,14 +86,16 @@ struct bfd_proto
 
   pool *tpool;
 
-  node bfd_node;
+  struct birdloop *eloop;
+
+  TLIST_NODE(bfd_proto, struct bfd_proto) bfd_node;
 
   slab *session_slab;
   HASH(struct bfd_session) session_hash_id;
   HASH(struct bfd_session) session_hash_ip;
 
-  event notify_event;
-  list notify_list;
+  callback pickup;
+  callback cleanup;
 
   sock *rx4_1;
   sock *rx6_1;
@@ -94,6 +103,12 @@ struct bfd_proto
   sock *rx6_m;
   list iface_list;
 };
+
+#define TLIST_PREFIX bfd_proto
+#define TLIST_TYPE struct bfd_proto
+#define TLIST_ITEM bfd_node
+#define TLIST_WANT_ADD_TAIL
+#include "lib/tlists.h"
 
 struct bfd_iface
 {
@@ -122,10 +137,7 @@ struct bfd_session
   u8 poll_active;
   u8 poll_scheduled;
 
-  u8 loc_state;
-  u8 rem_state;
-  u8 loc_diag;
-  u8 rem_diag;
+  struct bfd_state_pair _Atomic state;
   u32 loc_id;				/* Local session ID (local discriminator) */
   u32 rem_id;				/* Remote session ID (remote discriminator) */
 
@@ -149,8 +161,10 @@ struct bfd_session
   timer *tx_timer;			/* Periodic control packet timer */
   timer *hold_timer;			/* Timer for session down detection time */
 
-  list request_list;			/* List of client requests (struct bfd_request) */
-  btime last_state_change;		/* Time of last state change */
+  TLIST_LIST(bfd_request) request_list;	/* List of client requests (struct bfd_request) */
+  _Atomic btime last_state_change;	/* Time of last state change */
+
+  callback notify;			/* Sent to the main protocol loop */
 
   u8 rx_csn_known;			/* Received crypto sequence number is known */
   u32 rx_csn;				/* Last received crypto sequence number */
@@ -207,15 +221,12 @@ extern const char *bfd_state_names[];
 
 extern const u8 bfd_auth_type_to_hash_alg[];
 
-
-static inline void bfd_lock_sessions(struct bfd_proto *p) { pthread_spin_lock(&p->lock); }
-static inline void bfd_unlock_sessions(struct bfd_proto *p) { pthread_spin_unlock(&p->lock); }
-
 /* bfd.c */
 struct bfd_session * bfd_find_session_by_id(struct bfd_proto *p, u32 id);
 struct bfd_session * bfd_find_session_by_addr(struct bfd_proto *p, ip_addr addr, uint ifindex);
-void bfd_session_process_ctl(struct bfd_session *s, u8 flags, u32 old_tx_int, u32 old_rx_int);
+void bfd_session_process_ctl(struct bfd_session *s, struct bfd_state_pair sp, u8 flags, u32 old_tx_int, u32 old_rx_int);
 void bfd_show_sessions(struct proto *P, struct bfd_show_sessions_cmd *args);
+void bfd_neighbor_notify(callback *);
 
 /* packets.c */
 void bfd_send_ctl(struct bfd_proto *p, struct bfd_session *s, int final);

@@ -49,7 +49,8 @@ struct static_route {
   byte weight;				/* Multipath next hop weight */
   byte use_bfd;				/* Configured to use BFD */
   uint mpls_label;			/* Local MPLS label, -1 if unused */
-  struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
+  struct bfd_request_ref *bfd_req;	/* BFD request, if BFD is used */
+  callback bfd_notify;			/* Notifier for BFD */
   union {
     adata *mls;				/* MPLS label stack; may be NULL */
     adata *aspa;			/* ASPA provider list; may be NULL */
