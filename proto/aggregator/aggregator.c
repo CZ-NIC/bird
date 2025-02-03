@@ -519,6 +519,7 @@ find_subtree_prefix(const struct trie_node *target, struct net_addr_ip4 *addr)
   const struct trie_node *node = target;
   const struct trie_node *parent = node->parent;
 
+  /* Go from the target node to the root node and save the path taken */
   while (parent)
   {
     if (node == parent->child[0])
@@ -534,6 +535,7 @@ find_subtree_prefix(const struct trie_node *target, struct net_addr_ip4 *addr)
 
   assert(node->parent == NULL);
 
+  /* Descend from the root node to the target node */
   for (int i = pos - 1; i >= 0; i--)
   {
     if (path[i] == 0)
@@ -670,8 +672,9 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net
   const struct aggregator_bucket * const inherited_bucket = node->parent->ancestor->selected_bucket;
 
   /*
-   * If bucket inherited from ancestor is one of potential buckets of this node,
-   * then this node doesn't need a bucket because it inherits one.
+   * If the bucket inherited from the ancestor is one of the potential buckets
+   * of this node, then this node doesn't need a bucket because it inherits
+   * one, and is not needed in FIB.
    */
   if (is_bucket_potential(node, inherited_bucket))
   {
@@ -679,7 +682,11 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net
     node->selected_bucket = NULL;
     node->status = NON_FIB;
 
-    /* Original prefix stays original */
+    /*
+     * We have to keep information whether this prefix was original to enable
+     * processing of incremental updates. If it's not original, then it is
+     * a filler because it's not going to FIB.
+     */
     node->px_origin = ORIGINAL == node->px_origin ? ORIGINAL : FILLER;
   }
   else
@@ -690,7 +697,10 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net
     node->selected_bucket = choose_lowest_id_bucket(p, node);
     node->status = IN_FIB;
 
-    /* Original prefix stays original */
+    /*
+     * Keep information whether this prefix was original. If not, then its origin
+     * is changed to aggregated, because it's going to FIB.
+     */
     node->px_origin = ORIGINAL == node->px_origin ? ORIGINAL : AGGREGATED;
     assert(node->selected_bucket != NULL);
   }
@@ -775,11 +785,8 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net
     ip4_clrbit(&addr->prefix, node->depth);
   }
 
-  /* Leaves with no assigned bucket are removed */
   if (NON_FIB == node->status && is_leaf(node))
-  {
     assert(node->selected_bucket == NULL);
-  }
 }
 
 /*
@@ -804,8 +811,8 @@ third_pass(struct aggregator_proto *p, struct trie_node *node)
   net_fill_ip4((net_addr *)&addr, IP4_NONE, 0);
 
   /*
-   * If third pass runs from the subtree and not from the root,
-   * find prefix of this subtree.
+   * If third pass runs on a subtree and not the whole trie,
+   * find prefix that covers this subtree.
    */
   find_subtree_prefix(node, &addr);
 
@@ -876,15 +883,16 @@ deaggregate(struct trie_node * const node)
 {
   assert(node != NULL);
 
-  /* Delete information computed by aggregation */
+  /* Delete results computed by aggregation algorithm */
   node->selected_bucket = NULL;
   node->ancestor = NULL;
   node->potential_buckets_count = 0;
   memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
 
   /*
-   * Original prefixes are IN_FIB and already have their original bucket,
-   * otherwise they inherit it from their parents.
+   * Original prefixes are IN_FIB and already have their original bucket
+   * set by trie_insert_prefix(). Otherwise they inherit it from their
+   * parents.
    */
   if (ORIGINAL == node->px_origin)
   {
@@ -920,8 +928,8 @@ deaggregate(struct trie_node * const node)
 }
 
 /*
- * Merge sets of potential buckets going from @node upwards.
- * Stop when sets don't change and return the last updated node.
+ * Merge sets of potential buckets of node's children going from @node upwards.
+ * Stop when the target set doesn't change and return the last updated node.
  */
 static struct trie_node *
 merge_buckets_above(struct trie_node *node)
@@ -1016,7 +1024,11 @@ trie_receive_update(struct aggregator_proto *p, struct aggregator_route *old, st
 
   struct trie_node *node = updated_node;
 
-  /* Find the closest IN_FIB ancestor */
+  /*
+   * Find the closest IN_FIB ancestor of the updated node and
+   * deaggregate the whole subtree rooted at this node.
+   * Then aggegate it once again, this time with received update.
+   */
   while (1)
   {
     if (IN_FIB == node->status && node != updated_node)
@@ -1076,6 +1088,11 @@ trie_receive_withdraw(struct aggregator_proto *p, struct aggregator_route *old)
 
   struct trie_node *node = updated_node;
 
+  /*
+   * Find the closest IN_FIB ancestor of the updated node and
+   * deaggregate the whole subtree rooted at this node.
+   * Then aggegate it once again, this time with received update.
+   */
   while (1)
   {
     if (IN_FIB == node->status)
