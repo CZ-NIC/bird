@@ -407,7 +407,8 @@ struct ospf_neighbor
 #define ACKL_DELAY 1
   timer *ackd_timer;		/* Delayed ack timer */
   timer *gr_timer;		/* Graceful restart timer, non-NULL only if gr_active */
-  struct bfd_request *bfd_req;	/* BFD request, if BFD is used */
+  struct bfd_request_ref *bfd_req;	/* BFD request, if BFD is used */
+  callback bfd_notify;		/* BFD notification callback */
   void *ldd_buffer;		/* Last database description packet */
   u32 ldd_bsize;		/* Buffer size for ldd_buffer */
   u32 csn;			/* OSPFv2: Last received crypt seq number */

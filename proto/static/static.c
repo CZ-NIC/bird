@@ -252,7 +252,7 @@ static_announce_marked(void *P)
 }
 
 static void
-static_bfd_notify(struct bfd_request *req);
+static_bfd_notify(callback *cb);
 
 static void
 static_update_bfd(struct static_proto *p, struct static_route *r)
@@ -265,9 +265,10 @@ static_update_bfd(struct static_proto *p, struct static_route *r)
   if (bfd_up && !r->bfd_req)
   {
     // ip_addr local = ipa_nonzero(r->local) ? r->local : nb->ifa->ip;
-    r->bfd_req = bfd_request_session(p->p.pool, r->via, nb->ifa->ip,
+    callback_init(&r->bfd_notify, static_bfd_notify, p->p.loop);
+    r->bfd_req = bfd_request_session(p->p.pool_up, r->via, nb->ifa->ip,
 				     nb->iface, p->p.vrf,
-				     static_bfd_notify, r, p->p.loop, NULL);
+				     &r->bfd_notify, NULL);
   }
 
   if (!bfd_up && r->bfd_req)
@@ -291,8 +292,12 @@ static_decide(struct static_proto *p, struct static_route *r)
   if (cf->check_link && !(r->neigh->iface->flags & IF_LINK_UP))
     goto fail;
 
-  if (r->bfd_req && (r->bfd_req->state != BFD_STATE_UP))
-    goto fail;
+  if (r->bfd_req)
+  {
+    bfd_request_update_state(r->bfd_req->req);
+    if (r->bfd_req->req->cur.loc.state != BFD_STATE_UP)
+      goto fail;
+  }
 
   r->active = 1;
   return !old_active;
@@ -449,9 +454,9 @@ static_neigh_notify(struct neighbor *n)
 }
 
 static void
-static_bfd_notify(struct bfd_request *req)
+static_bfd_notify(callback *cb)
 {
-  struct static_route *r = req->data;
+  SKIP_BACK_DECLARE(struct static_route, r, bfd_notify, cb);
   struct static_proto *p = (void *) r->neigh->proto;
 
   // if (req->down) TRACE(D_EVENTS, "BFD session down for nbr %I on %s", XXXX);

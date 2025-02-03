@@ -24,6 +24,7 @@ const char *ospf_inm_names[] = {
 
 static int can_do_adj(struct ospf_neighbor *n);
 static void inactivity_timer_hook(timer * timer);
+static void ospf_neigh_bfd_hook(callback *cb);
 static void dbdes_timer_hook(timer *t);
 static void lsrq_timer_hook(timer *t);
 static void lsrt_timer_hook(timer *t);
@@ -99,6 +100,8 @@ ospf_neighbor_new(struct ospf_iface *ifa)
   n->lsrq_timer = tm_new_init(pool, lsrq_timer_hook, n, ifa->rxmtint S, 0);
   n->lsrt_timer = tm_new_init(pool, lsrt_timer_hook, n, ifa->rxmtint S, 0);
   n->ackd_timer = tm_new_init(pool, ackd_timer_hook, n, ifa->rxmtint S / 2, 0);
+
+  callback_init(&n->bfd_notify, ospf_neigh_bfd_hook, p->p.loop);
 
   return (n);
 }
@@ -756,9 +759,12 @@ inactivity_timer_hook(timer * timer)
 }
 
 static void
-ospf_neigh_bfd_hook(struct bfd_request *req)
+ospf_neigh_bfd_hook(callback *cb)
 {
-  struct ospf_neighbor *n = req->data;
+  SKIP_BACK_DECLARE(struct ospf_neighbor, n, bfd_notify, cb);
+  struct bfd_request *req = n->bfd_req->req;
+  bfd_request_update_state(req);
+
   struct ospf_proto *p = n->ifa->oa->po;
 
   if (req->down)
@@ -777,7 +783,7 @@ ospf_neigh_update_bfd(struct ospf_neighbor *n, int use_bfd)
   if (use_bfd && !n->bfd_req)
     n->bfd_req = bfd_request_session(n->pool, n->ip, n->ifa->addr->ip,
 				     n->ifa->iface, p->p.vrf,
-				     ospf_neigh_bfd_hook, n, p->p.loop, NULL);
+				     &n->bfd_notify, NULL);
 
   if (!use_bfd && n->bfd_req)
   {

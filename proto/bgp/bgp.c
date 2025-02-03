@@ -1608,10 +1608,14 @@ bgp_neigh_notify(neighbor *n)
 }
 
 static void
-bgp_bfd_notify(struct bfd_request *req)
+bgp_bfd_notify(callback *cb)
 {
-  struct bgp_proto *p = req->data;
+  SKIP_BACK_DECLARE(struct bgp_proto, p, bfd_notify, cb);
+  ASSERT_DIE(birdloop_inside(p->p.loop));
+
   int ps = p->p.proto_state;
+  struct bfd_request *req = p->bfd_req->req;
+  bfd_request_update_state(req);
 
   if (req->down && ((ps == PS_START) || (ps == PS_UP)))
   {
@@ -1654,9 +1658,9 @@ bgp_update_bfd(struct bgp_proto *p, const struct bfd_options *bfd)
 
   if (bfd && !p->bfd_req && !bgp_is_dynamic(p))
   {
-    p->bfd_req = bfd_request_session(p->p.pool, p->remote_ip, p->local_ip,
+    p->bfd_req = bfd_request_session(p->p.pool_up, p->remote_ip, p->local_ip,
 				     p->cf->multihop ? NULL : p->neigh->iface,
-				     p->p.vrf, bgp_bfd_notify, p, p->p.loop, bfd);
+				     p->p.vrf, &p->bfd_notify, bfd);
     BGP_TRACE(D_EVENTS, "Requesting a new BFD session");
   }
 
@@ -1821,6 +1825,7 @@ bgp_start(struct proto *P)
   p->incoming_conn.state = BS_IDLE;
   p->neigh = NULL;
   p->bfd_req = NULL;
+  callback_init(&p->bfd_notify, bgp_bfd_notify, p->p.loop);
   p->gr_ready = 0;
   p->gr_active_num = 0;
 

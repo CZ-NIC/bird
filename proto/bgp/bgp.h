@@ -377,7 +377,8 @@ struct bgp_proto {
   struct object_lock *lock;		/* Lock for neighbor connection */
   struct neighbor *neigh;		/* Neighbor entry corresponding to remote ip, NULL if multihop */
   struct bgp_listen_request listen;	/* Shared listening socket */
-  struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
+  struct bfd_request_ref *bfd_req;	/* BFD request, if BFD is used */
+  callback bfd_notify;			/* BFD notification callback */
   struct birdsock *postponed_sk;	/* Postponed incoming socket for dynamic BGP */
   struct rt_uncork_callback uncork;	/* Uncork hook */
   struct bgp_stats stats;		/* BGP statistics */

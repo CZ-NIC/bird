@@ -290,9 +290,11 @@ bfd_send_ctl(struct bfd_proto *p, struct bfd_session *s, int final)
   if (!sk)
     return;
 
+  struct bfd_state_pair sp = atomic_load_explicit(&s->state, memory_order_relaxed);
+
   pkt = (struct bfd_ctl_packet *) sk->tbuf;
-  pkt->vdiag = bfd_pack_vdiag(1, s->loc_diag);
-  pkt->flags = bfd_pack_flags(s->loc_state, 0);
+  pkt->vdiag = bfd_pack_vdiag(1, sp.loc.diag);
+  pkt->flags = bfd_pack_flags(sp.loc.state, 0);
   pkt->detect_mult = s->detect_mult;
   pkt->length = BFD_BASE_LEN;
   pkt->snd_id = htonl(s->loc_id);
@@ -313,7 +315,7 @@ bfd_send_ctl(struct bfd_proto *p, struct bfd_session *s, int final)
     log(L_WARN "%s: Old packet overwritten in TX buffer", p->p.name);
 
   TRACE(D_PACKETS, "Sending CTL to %I [%s%s]", s->addr,
-	bfd_state_names[s->loc_state], bfd_format_flags(pkt->flags, fb));
+	bfd_state_names[sp.loc.state], bfd_format_flags(pkt->flags, fb));
 
   sk_send_to(sk, pkt->length, s->addr, sk->dport);
 }
@@ -351,6 +353,7 @@ bfd_rx_hook(sock *sk, uint len)
     DROP("invalid my discriminator", 0);
 
   struct bfd_session *s;
+  struct bfd_state_pair sp;
   u32 id = ntohl(pkt->rcv_id);
 
   if (id)
@@ -359,6 +362,8 @@ bfd_rx_hook(sock *sk, uint len)
 
     if (!s)
       DROP("unknown session id", id);
+
+    sp = atomic_load_explicit(&s->state, memory_order_relaxed);
   }
   else
   {
@@ -375,8 +380,10 @@ bfd_rx_hook(sock *sk, uint len)
     if (!s)
       return 1;
 
+    sp = atomic_load_explicit(&s->state, memory_order_relaxed);
+
     /* For active sessions we require matching remote id */
-    if ((s->loc_state == BFD_STATE_UP) && (ntohl(pkt->snd_id) != s->rem_id))
+    if ((sp.loc.state == BFD_STATE_UP) && (ntohl(pkt->snd_id) != s->rem_id))
       DROP("mismatched remote id", ntohl(pkt->snd_id));
   }
 
@@ -388,17 +395,17 @@ bfd_rx_hook(sock *sk, uint len)
   u32 old_rx_int = s->rem_min_rx_int;
 
   s->rem_id = ntohl(pkt->snd_id);
-  s->rem_state = bfd_pkt_get_state(pkt);
-  s->rem_diag = bfd_pkt_get_diag(pkt);
+  sp.rem.state = bfd_pkt_get_state(pkt);
+  sp.rem.diag = bfd_pkt_get_diag(pkt);
   s->rem_demand_mode = pkt->flags & BFD_FLAG_DEMAND;
   s->rem_min_tx_int = ntohl(pkt->des_min_tx_int);
   s->rem_min_rx_int = ntohl(pkt->req_min_rx_int);
   s->rem_detect_mult = pkt->detect_mult;
 
   TRACE(D_PACKETS, "CTL received from %I [%s%s]", sk->faddr,
-	bfd_state_names[s->rem_state], bfd_format_flags(pkt->flags, fb));
+	bfd_state_names[sp.rem.state], bfd_format_flags(pkt->flags, fb));
 
-  bfd_session_process_ctl(s, pkt->flags, old_tx_int, old_rx_int);
+  bfd_session_process_ctl(s, sp, pkt->flags, old_tx_int, old_rx_int);
   return 1;
 
 drop:
@@ -437,7 +444,7 @@ bfd_open_rx_sk(struct bfd_proto *p, int multihop, int af)
   if (cf->zero_udp6_checksum_rx)
     sk->flags |= SKF_UDP6_NO_CSUM_RX;
 
-  if (sk_open(sk, p->p.loop) < 0)
+  if (sk_open(sk, p->eloop) < 0)
     goto err;
 
   return sk;
@@ -473,7 +480,7 @@ bfd_open_rx_sk_bound(struct bfd_proto *p, ip_addr local, struct iface *ifa)
   if (cf->zero_udp6_checksum_rx)
     sk->flags |= SKF_UDP6_NO_CSUM_RX;
 
-  if (sk_open(sk, p->p.loop) < 0)
+  if (sk_open(sk, p->eloop) < 0)
     goto err;
 
   return sk;
@@ -504,7 +511,7 @@ bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa)
   sk->ttl = ifa ? 255 : -1;
   sk->flags = SKF_BIND | SKF_HIGH_PORT;
 
-  if (sk_open(sk, p->p.loop) < 0)
+  if (sk_open(sk, p->eloop) < 0)
     goto err;
 
   return sk;
