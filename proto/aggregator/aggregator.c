@@ -978,30 +978,10 @@ trie_receive_update(struct aggregator_proto *p, struct aggregator_route *old, st
   assert(p != NULL);
   assert(new != NULL);
 
+  log("before update");
+  dump_trie(p->root);
+
   union net_addr_union *new_uptr = (net_addr_union *)new->rte.net->n.addr;
-
-  if (old && new)
-  {
-    assert(old->rte.net == new->rte.net);
-
-    union net_addr_union *old_uptr = (net_addr_union *)old->rte.net->n.addr;
-
-    if (NET_IP4 == new_uptr->n.type)
-    {
-      struct net_addr_ip4 *old_addr = &old_uptr->ip4;
-      struct net_addr_ip4 *new_addr = &new_uptr->ip4;
-      assert(net_equal_ip4(old_addr, new_addr));
-    }
-    else if (NET_IP6 == new_uptr->n.type)
-    {
-      struct net_addr_ip6 *old_addr = &old_uptr->ip6;
-      struct net_addr_ip6 *new_addr = &new_uptr->ip6;
-      assert(net_equal_ip6(old_addr, new_addr));
-    }
-    else
-      bug("Unknown node status");
-  }
-
   struct trie_node *updated_node = NULL;
 
   if (NET_IP4 == new_uptr->n.type)
