@@ -287,6 +287,11 @@ table_opt:
  | EXPORT SETTLE TIME settle { this_table->export_settle = $4; }
  | ROUTE REFRESH EXPORT SETTLE TIME settle { this_table->export_rr_settle = $6; }
  | DIGEST SETTLE TIME settle { this_table->digest_settle = $4; }
+ | THREAD GROUP symbol {
+    if ($3->class != SYM_THREAD_GROUP)
+      cf_error("Unexpected symbol %s as a thread group name", $3->name);
+    this_table->thread_group = $3->thread_group;
+ }
  ;
 
 table_opts:
@@ -350,6 +355,11 @@ proto_item:
  | DESCRIPTION text { this_proto->dsc = $2; }
  | VRF text { this_proto->vrf = if_get_by_name($2); }
  | VRF DEFAULT { this_proto->vrf = &default_vrf; }
+ | THREAD GROUP symbol {
+    if ($3->class != SYM_THREAD_GROUP)
+      cf_error("Unexpected symbol %s as a thread group name", $3->name);
+    this_proto->thread_group = $3->thread_group;
+ }
  ;
 
 
