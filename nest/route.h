@@ -81,6 +81,7 @@ struct rtable_config {
     void (*setup)(union rtable *);
     void (*stop)(union rtable *);
   } master;				/* Data source (this table is aux) */
+  struct thread_group_config *thread_group;	/* Thread group to assign loops to */
 };
 
 /*

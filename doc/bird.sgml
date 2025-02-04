@@ -607,12 +607,6 @@ include "tablename.conf";;
 	killed by abort signal. The timeout has effective granularity of
 	seconds, zero means disabled. Default: disabled (0).
 
-	<tag><label id="opt-threads">threads <m/number/</tag>
-	Set how many worker threads should BIRD spawn. Tests show that every
-        thread can utilize one complete CPU core, therefore you probably want to
-        keep at least one free core. The maximum feasible thread count heavily
-        depends on the actual workload and must be determined by testing or estimation. Default: 1
-
 	<tag><label id="opt-mrtdump">mrtdump "<m/filename/"</tag>
 	Set MRTdump file name. This option must be specified to allow MRTdump
 	feature. Default: no dump file.
@@ -721,6 +715,70 @@ include "tablename.conf";;
 	Evaluates given filter expression. It is used by the developers for testing of filters.
 </descrip>
 
+<sect1>Thread setup
+<label id="global-thread-setup">
+
+<p>BIRD runs in several threads. There is one main thread, taking care about startup,
+shutdown, (re)configuration, CLI and several protocols which have not yet been updated
+to run in other threads. Then there are several thread groups, running the rest.
+
+<p>Default thread group is <cf/worker/. This group runs (by default) BGP, BMP, MRT,
+Pipe and RPKI. Also the routing table maintenance routines run in these threads.
+For BFD, there is another thread group called
+<cf/express/, with minimal latency, expecting all tasks to be extremely fast.
+The threads are started as soon as some work is required from them, therefore
+if you don't configure BFD, the express thread won't start.
+
+<p>Any configuration of thread groups must be strictly placed before any table
+or protocol configuration, as these depend on the thread group existence.
+
+<p>Thread groups are configured by writing <cf>thread group <m/name/ {}</cf> blocks,
+which contain the following options:
+
+<p><descrip>
+	<tag><label id="thread-group-threads">threads <m/number/</tag>
+	Set how many threads should BIRD spawn in this thread group.
+	Every thread can utilize one complete CPU core. You probably want to
+        keep at least one free core for other processes. The maximum feasible
+	thread count heavily depends on the actual workload and must be determined
+	by testing or estimation. Default: 1
+
+	<tag><label id="thread-group-default">default <m/bool/</tag>
+	Mark this thread group as default. There must be exactly one thread group
+	marked as default. Default default thread group: <cf/worker/
+
+	<tag><label id="thread-max-latency">max latency <m/time/</tag>
+	Set maximum latency for the thread group. The group tries to dispatch every
+	event before this time elapses. Setting this too low causes BIRD
+	to spend lots of time on overhead and fill logs with reports.
+	Setting this too high causes BIRD to hold locks for long times.
+	Do not change unless you know what you are doing.
+	Default: 1 s for worker, 10 ms for express.
+
+	<tag><label id="thread-min-time">min time <m/time/</tag>
+	Set minimum awarded loop execution time for the thread group.
+	This is an internal performance tuning knob which may change between
+	minor versions. Do not change unless you know what you are doing.
+	Default: 10 ms for worker, 1 ms for express.
+
+	<tag><label id="thread-min-time">max time <m/time/</tag>
+	Set maximum awarded loop execution time for the thread group. This is
+	an internal performance tuning knob which may change between
+	minor versions. Do not change unless you know what you are doing.
+	Default: 300 ms for worker, 10 ms for express.
+
+	<tag><label id="thread-wakeup-time">wakeup time <m/time/</tag>
+	Set maximum sleep time for the thread group. Every thread will wake up
+	after this time even if no work is requested. This is an internal
+	IO loop knob which may change between minor versions.
+	Do not change unless you know what you are doing.
+	Default: 31415 s for worker, 60 s for express.
+</descrip>
+
+<p>There is also a "simple" thread group setting. If you write
+<cf>threads <m/number/</cf> on top level, it is equivalent to setting
+the worker group thread count to that number, and the express group thread count
+to one. This setting is deprecated and may disappear in some future version.
 
 <sect>Routing table options
 <label id="rtable-opts">
@@ -816,6 +874,9 @@ to set options.
 	debug. See also <ref id="channel-debug" name="channel debugging option">.
 	Default: off.
 
+	<tag><label id="proto-thread-group">thread group <m/name/</tag>
+	Assign this table's maintenance tasks to this thread group.
+	Default: <cf/worker/.
 </descrip>
 
 
@@ -904,6 +965,11 @@ agreement").
 	configuration for the list of supported channel names. See the
 	<ref id="channel-opts" name="channel configuration section"> for channel
 	definition.
+
+	<tag><label id="proto-thread-group">thread group <m/name/</tag>
+	Assign this protocol's tasks to this thread group. Ignored in protocols
+	not yet updated for the multithreaded execution model.
+	Default: <cf/worker/.
 </descrip>
 
 <p>There are several options that give sense only with certain protocols:

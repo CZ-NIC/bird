@@ -482,7 +482,6 @@ static inline void locking_unwind(struct lock_order *desired)
 #define LOBJ_PRIV(_obj, _level) \
   ({ ASSERT_DIE(DOMAIN_IS_LOCKED(_level, (_obj)->lock)); &(_obj)->priv; })
 
-
 /*
  * RCU retry unwinder
  *

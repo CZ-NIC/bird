@@ -15,6 +15,7 @@ CF_DEFINES
 
 static struct log_config *this_log;
 static struct cli_config *this_cli_config;
+static struct thread_group_config *this_thread_group;
 
 CF_DECLS
 
@@ -22,6 +23,7 @@ CF_KEYWORDS(LOG, SYSLOG, ALL, DEBUG, TRACE, INFO, REMOTE, WARNING, ERROR, AUTH, 
 CF_KEYWORDS(NAME, CONFIRM, UNDO, CHECK, TIMEOUT, DEBUG, LATENCY, LIMIT, WATCHDOG, WARNING, STATUS)
 CF_KEYWORDS(PING, WAKEUP, SOCKETS, SCHEDULING, EVENTS, TIMERS, ALLOCATOR)
 CF_KEYWORDS(GRACEFUL, RESTART, FIXED)
+CF_KEYWORDS(THREAD, THREADS, GROUP, MIN, MAX, TIME, LATENCY, DEFAULT)
 
 %type <i> log_mask log_mask_list log_cat cfg_timeout debug_unix latency_debug_mask latency_debug_flag latency_debug_list
 %type <t> cfg_name
@@ -145,10 +147,58 @@ cli_opts_block:
   cli_opts_block RESTRICT { this_cli_config->restricted = 1; }
 ;
 
-conf: THREADS expr {
-    if ($2 < 1) cf_error("Number of threads must be at least one.");
-    new_config->thread_count = $2;
-}
+conf: THREADS NUM {
+  if ($2 < 1) cf_error("Number of threads must be at least one.");
+  if (!new_config->thread_group_simple &&
+      !EMPTY_TLIST(thread_group_config, &new_config->thread_group))
+    cf_error("Mixing of `threads NUM` and `threads worker {}` is not allowed.");
+
+  if (new_config->thread_group_simple == -1)
+    THEAD(thread_group_config, &new_config->thread_group)->thread_count = $2;
+
+  new_config->thread_group_simple = $2;
+};
+
+conf: THREAD GROUP symbol {
+  switch (new_config->thread_group_simple) {
+    case -1: cf_error("Put `threads` block before any protocol or table definition.");
+    case 0: break;
+    default: cf_error("Mixing of `threads NUM` and `threads worker {}` is not allowed.");
+  }
+
+  this_thread_group = cfg_alloc(sizeof *this_thread_group);
+  *this_thread_group = strcmp($3->name, "express") ?
+    thread_group_config_default_worker :
+    thread_group_config_default_express;
+} '{' thread_group_opts '}' {
+  if (this_thread_group->params.max_time > 60 S_)
+    cf_error("Loop time maximum is 60 seconds, got %t", this_thread_group->params.max_time);
+  if (this_thread_group->params.max_latency < this_thread_group->params.max_time)
+    cf_error("Loop time maximum can't be higher than its latency limit");
+  if (this_thread_group->params.min_time > this_thread_group->params.max_time)
+    cf_error("Loop time minimm can't be higher than maximum");
+  if (this_thread_group->params.wakeup_time < 1 S_)
+    cf_error("Too low idle wakeup time, expected at least 1 second");
+
+  this_thread_group->symbol = cf_define_symbol(new_config, $3, SYM_THREAD_GROUP, thread_group, this_thread_group);
+  thread_group_config_add_tail(&new_config->thread_group, this_thread_group);
+  this_thread_group = NULL;
+};
+
+thread_group_opts: MAX TIME expr_us ';' { this_thread_group->params.max_time = $3; } ;
+thread_group_opts: MIN TIME expr_us ';' { this_thread_group->params.min_time = $3; } ;
+thread_group_opts: MAX LATENCY expr_us ';' { this_thread_group->params.max_latency = $3; } ;
+thread_group_opts: THREADS expr ';' { this_thread_group->thread_count = $2; } ;
+thread_group_opts: WAKEUP TIME expr_us ';' { this_thread_group->params.wakeup_time = $3; } ;
+thread_group_opts: DEFAULT bool ';' {
+  if ($2) {
+    if (new_config->default_thread_group &&
+	new_config->default_thread_group != this_thread_group)
+      cf_error("Too many default thread groups, already have %s",
+	  new_config->default_thread_group->symbol->name);
+    new_config->default_thread_group = this_thread_group;
+  }
+};
 
 
 conf: debug_unix ;

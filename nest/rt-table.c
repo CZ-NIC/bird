@@ -3383,7 +3383,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   ASSERT_DIE(birdloop_inside(&main_birdloop));
 
   /* Start the service thread */
-  struct birdloop *loop = birdloop_new(pp, DOMAIN_ORDER(service), 0, "Routing table service %s", cf->name);
+  struct birdloop *loop = birdloop_new(pp, DOMAIN_ORDER(service), cf->thread_group->group, "Routing table service %s", cf->name);
   birdloop_enter(loop);
   pool *sp = birdloop_pool(loop);
 
@@ -4625,6 +4625,9 @@ rt_new_table(struct symbol *s, uint addr_type)
       break;
   }
 
+  thread_group_finalize_config();
+  c->thread_group = new_config->default_thread_group;
+
   return c;
 }
 
@@ -4803,6 +4806,8 @@ rt_reconfigure(struct rtable_private *tab, struct rtable_config *new, struct rta
 
   tab->reconf_end = defer_call(&rrfdc.dc, sizeof rrfdc);
 
+  birdloop_transfer(tab->loop, old->thread_group->group, new->thread_group->group);
+
   return 1;
 }
 
@@ -4837,11 +4842,13 @@ rt_commit(struct config *new, struct config *old)
       WALK_LIST(o, old->tables)
       {
 	bool ok;
+	birdloop_enter(o->table->loop);
 	RT_LOCKED(o->table, tab)
 	{
 	  r = OBSREF_GET(tab->deleted) ? NULL : rt_find_table_config(new, o->name);
 	  ok = r && !new->shutdown && rt_reconfigure(tab, r, o);
 	}
+	birdloop_leave(o->table->loop);
 
 	if (ok)
 	  continue;

@@ -41,6 +41,7 @@ void cmd_graceful_restart(void);
 void cmd_show_threads(int);
 void bird_thread_commit(struct config *new, struct config *old);
 
+
 #define UNIX_DEFAULT_CONFIGURE_TIMEOUT	300
 
 #define UNIX_DEFAULT_LATENCY_LIMIT	(1 S_)

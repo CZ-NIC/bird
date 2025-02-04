@@ -568,59 +568,91 @@ sockets_fire(struct birdloop *loop, bool read, bool write)
  *	Threads
  */
 
-static void bird_thread_start_event(void *_data);
+#define TLIST_PREFIX thread_group
+#define TLIST_TYPE union thread_group_public
+#define TLIST_ITEM n
+#define TLIST_WANT_ADD_TAIL
+TLIST_DEFAULT_NODE;
+
+#define THREAD_GROUP_PUBLIC	\
+  DOMAIN(attrs) lock;		\
+  const char *name;		\
+  struct thread_group_node n;	\
 
 struct thread_group_private {
-  DOMAIN(attrs) lock;
+  THREAD_GROUP_PUBLIC;
+
   struct thread_group_private **locked_at;
   TLIST_LIST(birdloop) loops;
   TLIST_LIST(thread) threads;
+
   uint thread_count;
   uint thread_busy_count;
   uint loop_count;
   uint loop_unassigned_count;
-  btime max_latency;
-  event start_threads;
+  struct thread_params params;
   struct thread_dropper {
     struct birdloop *loop;
-    event *event;
-    uint goal;
+    event event;
+    OBSREF(struct config) conflock;
   } thread_dropper;
+  const struct thread_group_config *cf;
 };
 
 typedef union thread_group_public {
-  struct {
-    DOMAIN(attrs) lock;
-  };
+  struct { THREAD_GROUP_PUBLIC; };
   struct thread_group_private priv;
 } thread_group;
 
+#include "lib/tlists.h"
+
 #define TG_LOCKED(gpub, gpriv)	LOBJ_LOCKED(gpub, gpriv, thread_group, attrs)
 #define TG_LOCK(gpub, gpriv)	LOBJ_LOCK(gpub, gpriv, thread_group, attrs)
+#define TG_LOCKED_EXPR(gpub, gpriv, expr) ({ TG_LOCK(gpub, gpriv); expr; })
 
 LOBJ_UNLOCK_CLEANUP(thread_group, attrs);
 
-static thread_group pickup_groups[2] = {
-  {
-    /* all zeroes */
+static thread_group *default_thread_group;
+static TLIST_LIST(thread_group) global_thread_group_list;
+
+const struct thread_group_config
+thread_group_config_default_worker = {
+  .params = {
+    .max_time		= 300 MS_,
+    .min_time		= 10 MS_,
+    .max_latency	= 1 S_,
+    /* 8 hours, 43 minutes and 35 seconds to not conincide with anything */
+    .wakeup_time	= 31415 S_,
   },
-  { .priv = {
-    /* FIXME: make this dynamic, now it copies the loop_max_latency value from proto/bfd/config.Y */
-    .max_latency = 10 MS,
-    .start_threads.hook = bird_thread_start_event,
-    .start_threads.data = &pickup_groups[1],
-  }},
-};
+  .thread_count	= 1,
+},
+thread_group_config_default_express = {
+  .params = {
+    .max_time		= 10 MS_,
+    .min_time		= 1 MS_,
+    .max_latency	= 10 MS_,
+    .wakeup_time	= 60 S_,
+  },
+  .thread_count	= 1,
+},
+thread_group_shutdown = {};
+
 
 static _Thread_local struct bird_thread *this_thread;
 
 static void bird_thread_busy_set(struct thread_group_private *, int val);
 
 static void
-birdloop_set_thread(struct birdloop *loop, struct bird_thread *thr, thread_group *gpub)
+birdloop_set_thread(struct birdloop *loop, struct bird_thread *thr)
 {
   struct bird_thread *old = loop->thread;
-  ASSERT_DIE(!thr != !old);
+
+  /* We don't support direct reassignment from one thread to another */
+  ASSERT_DIE(!thr || !old);
+
+  /* We have to be in the thread we are trying to leave, for sure */
+  if (old)
+    ASSERT_DIE(birdloop_inside(old->meta));
 
   /* Signal our moving effort */
   u32 ltt = atomic_fetch_or_explicit(&loop->thread_transition, LTT_MOVE, memory_order_acq_rel);
@@ -635,7 +667,7 @@ birdloop_set_thread(struct birdloop *loop, struct bird_thread *thr, thread_group
   }
   /* Now we are free of running pings */
 
-  if (!thr)
+  if (old)
   {
     /* Unschedule from Meta */
     ev_postpone(&loop->event);
@@ -662,12 +694,12 @@ birdloop_set_thread(struct birdloop *loop, struct bird_thread *thr, thread_group
     ev_send_loop(loop->thread->meta, &loop->event);
   }
   else
-  {
-    /* Put into pickup list */
-    TG_LOCK(gpub, group);
-    birdloop_add_tail(&group->loops, loop);
-    group->loop_unassigned_count++;
-  }
+    TG_LOCKED(loop->thread_group, group)
+    {
+      /* Put into pickup list */
+      birdloop_add_tail(&group->loops, loop);
+      group->loop_unassigned_count++;
+    }
 
   loop->last_transition_ns = ns_now();
 }
@@ -734,6 +766,10 @@ birdloop_balancer(void)
 
   TG_LOCKED(this_thread->group, group)
   {
+    /* Update timing parameters */
+    this_thread->params = group->params;
+
+    /* Check drop */
     drop_needed =
       this_thread->busy_active &&
       (group->thread_busy_count < group->thread_count) &&
@@ -769,7 +805,7 @@ birdloop_balancer(void)
 	LOOP_TRACE(loop, DL_SCHEDULING, "Dropping from thread, remaining %u loops here", this_thread->loop_count);
 
 	/* This also unschedules the loop from Meta */
-	birdloop_set_thread(loop, NULL, this_thread->group);
+	birdloop_set_thread(loop, NULL);
 
 	dropped++;
 	if ((dropped * dropped) / 2 > this_thread->loop_count)
@@ -809,12 +845,19 @@ birdloop_balancer(void)
     struct birdloop *loop = pick_this;
 
     birdloop_enter(loop);
-    birdloop_set_thread(loop, this_thread, this_thread->group);
-    LOOP_TRACE(loop, DL_SCHEDULING, "Picked up by thread");
 
-    node *n;
-    WALK_LIST(n, loop->sock_list)
-      SKIP_BACK(sock, n, n)->index = -1;
+    if (loop->thread_group == this_thread->group)
+    {
+      birdloop_set_thread(loop, this_thread);
+      LOOP_TRACE(loop, DL_SCHEDULING, "Picked up by thread");
+
+      node *n;
+      WALK_LIST(n, loop->sock_list)
+	SKIP_BACK(sock, n, n)->index = -1;
+    }
+    else
+      /* Transfer required, drop immediately */
+      birdloop_set_thread(loop, NULL);
 
     birdloop_leave(loop);
 
@@ -897,9 +940,12 @@ bird_thread_main(void *arg)
     u64 thr_before_run = ns_now();
     if (thr->loop_count > 0)
     {
-      thr->max_loop_time_ns = (thr->max_latency_ns / 2 - (thr_before_run - thr_loop_start)) / (u64) thr->loop_count;
-      if (thr->max_loop_time_ns NS > 300 MS)
-	thr->max_loop_time_ns = 300 MS TO_NS;
+      thr->max_loop_time_ns = ((thr->params.max_latency TO_NS) / 2 - (thr_before_run - thr_loop_start)) / (u64) thr->loop_count;
+      if (thr->max_loop_time_ns NS > (u64) thr->params.max_time)
+	thr->max_loop_time_ns = thr->params.max_time TO_NS;
+      if (thr->max_loop_time_ns NS < (u64) thr->params.min_time)
+	thr->max_loop_time_ns = thr->params.min_time TO_NS;
+	/* TODO: put a warning about possible overload here */
     }
 
     /* Run all scheduled loops */
@@ -1001,10 +1047,40 @@ poll_retry:;
 }
 
 static void
+bird_thread_group_done(thread_group *gpub, TLIST_LIST(birdloop) *leftover_loops)
+{
+  /* Sanity checks */
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+  TG_LOCKED(gpub, group)
+    ASSERT_DIE(EMPTY_TLIST(thread, &group->threads));
+
+  /* Transfer loops left here to the default group */
+  while (!EMPTY_TLIST(birdloop, leftover_loops))
+  {
+    struct birdloop *loop = THEAD(birdloop, leftover_loops);
+    birdloop_enter(loop);
+    if (loop->thread_group == gpub)
+    {
+      birdloop_transfer(loop, gpub, default_thread_group);
+    }
+
+    birdloop_rem_node(leftover_loops, loop);
+    birdloop_set_thread(loop, NULL);
+    birdloop_leave(loop);
+  }
+
+  thread_group_rem_node(&global_thread_group_list, gpub);
+  DOMAIN_FREE(attrs, gpub->lock);
+  mb_free(gpub);
+}
+
+static void
 bird_thread_cleanup(void *_thr)
 {
   struct bird_thread *thr = _thr;
   struct birdloop *meta = thr->meta;
+  thread_group *gpub = thr->group;
+
   ASSERT_DIE(birdloop_inside(&main_birdloop));
 
   /* Wait until the thread actually finishes */
@@ -1022,63 +1098,99 @@ bird_thread_cleanup(void *_thr)
   thr->meta->thread = NULL;
   thr->meta = NULL;
   birdloop_free(meta);
-}
 
-static struct bird_thread *
-bird_thread_start(thread_group *gpub)
-{
-  ASSERT_DIE(birdloop_inside(&main_birdloop));
+  TLIST_LIST(birdloop) *leftover_loops = NULL;
+  struct birdloop *tdf = NULL;
 
-  struct birdloop *meta = birdloop_new_no_pickup(&root_pool, DOMAIN_ORDER(meta), "Thread Meta");
-  pool *p = birdloop_pool(meta);
-
-  birdloop_enter(meta);
-  struct bird_thread *thr = mb_allocz(p, sizeof(*thr));
-  thr->pool = p;
-
-  TG_LOCKED(gpub, group)
-  {
-
-  thr->cleanup_event = (event) { .hook = bird_thread_cleanup, .data = thr, };
-  thr->group = gpub;
-  thr->max_latency_ns = (group->max_latency ?: 5 S) TO_NS;
-  thr->meta = meta;
-  thr->meta->thread = thr;
-
-  wakeup_init(thr);
-  ev_init_list(&thr->priority_events, NULL, "Thread direct event list");
-
-  thread_add_tail(&group->threads, thr);
-
-  int e = 0;
-
-  if (e = pthread_attr_init(&thr->thread_attr))
-    die("pthread_attr_init() failed: %M", e);
-
-  /* We don't have to worry about thread stack size so much.
-  if (e = pthread_attr_setstacksize(&thr->thread_attr, THREAD_STACK_SIZE))
-    die("pthread_attr_setstacksize(%u) failed: %M", THREAD_STACK_SIZE, e);
-    */
-
-  if (e = pthread_attr_setdetachstate(&thr->thread_attr, PTHREAD_CREATE_DETACHED))
-    die("pthread_attr_setdetachstate(PTHREAD_CREATE_DETACHED) failed: %M", e);
-
-  if (e = pthread_create(&thr->thread_id, &thr->thread_attr, bird_thread_main, thr))
-    die("pthread_create() failed: %M", e);
-
-  group->thread_count++;
-
+  TG_LOCKED(gpub, group) {
+    if ((group->cf == &thread_group_shutdown) && EMPTY_TLIST(thread, &group->threads))
+    {
+      OBSREF_CLEAR(group->thread_dropper.conflock);
+      tdf = group->thread_dropper.loop;
+      birdloop_rem_node(&group->loops, tdf);
+      group->thread_dropper.loop = NULL;
+      group->thread_dropper.event = (event) {};
+      leftover_loops = &group->loops;
+    }
   }
 
-  birdloop_leave(meta);
-  return thr;
+  if (tdf)
+    birdloop_free(tdf);
+
+  if (leftover_loops)
+    /* Happens only with the last thread */
+    bird_thread_group_done(gpub, leftover_loops);
 }
 
+static void bird_thread_start(thread_group *);
 static void
 bird_thread_start_event(void *_data)
 {
   thread_group *group = _data;
   bird_thread_start(group);
+}
+
+static void
+bird_thread_start_indirect(struct thread_group_private *group)
+{
+  group->thread_dropper.event.hook = bird_thread_start_event;
+  ev_send(&global_event_list, &group->thread_dropper.event);
+}
+
+static void
+bird_thread_start(thread_group *gpub)
+{
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+
+  while (true)
+  {
+    /* Already enough threads */
+    TG_LOCKED(gpub, group)
+      if (group->thread_count >= group->cf->thread_count)
+	return;
+
+    struct birdloop *meta = birdloop_new_no_pickup(&root_pool, DOMAIN_ORDER(meta), "Thread Meta");
+    pool *p = birdloop_pool(meta);
+
+    birdloop_enter(meta);
+    struct bird_thread *thr = mb_allocz(p, sizeof(*thr));
+    thr->pool = p;
+
+    TG_LOCKED(gpub, group)
+    {
+      thr->cleanup_event = (event) { .hook = bird_thread_cleanup, .data = thr, };
+      thr->group = gpub;
+      thr->params = group->params;
+      thr->meta = meta;
+      thr->meta->thread = thr;
+
+      wakeup_init(thr);
+      ev_init_list(&thr->priority_events, NULL, "Thread direct event list");
+
+      thread_add_tail(&group->threads, thr);
+
+      int e = 0;
+
+      if (e = pthread_attr_init(&thr->thread_attr))
+	die("pthread_attr_init() failed: %M", e);
+
+      /* We don't have to worry about thread stack size so much.
+	 if (e = pthread_attr_setstacksize(&thr->thread_attr, THREAD_STACK_SIZE))
+	 die("pthread_attr_setstacksize(%u) failed: %M", THREAD_STACK_SIZE, e);
+	 */
+
+      if (e = pthread_attr_setdetachstate(&thr->thread_attr, PTHREAD_CREATE_DETACHED))
+	die("pthread_attr_setdetachstate(PTHREAD_CREATE_DETACHED) failed: %M", e);
+
+      if (e = pthread_create(&thr->thread_id, &thr->thread_attr, bird_thread_main, thr))
+	die("pthread_create() failed: %M", e);
+
+      group->thread_count++;
+
+    }
+
+    birdloop_leave(meta);
+  }
 }
 
 static void
@@ -1096,14 +1208,16 @@ bird_thread_shutdown(void * _ UNUSED)
 
   TG_LOCKED(this_thread->group, group)
   {
-    dif = group->thread_count - group->thread_dropper.goal;
+    dif = group->thread_count - group->cf->thread_count;
 
     if (dif > 0)
-      ev_send_loop(group->thread_dropper.loop, group->thread_dropper.event);
+      ev_send_loop(group->thread_dropper.loop, &group->thread_dropper.event);
     else
     {
+      ASSERT_DIE(dif == 0);
       tdl_stop = group->thread_dropper.loop;
       group->thread_dropper.loop = NULL;
+      OBSREF_CLEAR(group->thread_dropper.conflock);
     }
   }
 
@@ -1147,12 +1261,13 @@ bird_thread_shutdown(void * _ UNUSED)
     birdloop_rem_node(&thr->loops, loop);
 
     /* Unset loop's thread */
-    birdloop_set_thread(loop, NULL, thr->group);
+    birdloop_set_thread(loop, NULL);
   }
 
   /* Let others know about new loops */
   TG_LOCKED(this_thread->group, group)
-    if (!EMPTY_TLIST(birdloop, &group->loops))
+    if (!EMPTY_TLIST(birdloop, &group->loops)
+	&& !EMPTY_TLIST(thread, &group->threads))
       wakeup_do_kick(THEAD(thread, &group->threads));
 
   /* Request thread cleanup from main loop */
@@ -1172,55 +1287,167 @@ bird_thread_shutdown(void * _ UNUSED)
   pthread_exit(NULL);
 }
 
+static void
+bird_thread_stop(thread_group *gpub, struct config *old_config)
+{
+  struct birdloop *tdl = birdloop_new(&root_pool, DOMAIN_ORDER(control), gpub, "Thread dropper");
+  birdloop_enter(tdl);
+
+  TG_LOCKED(gpub, group)
+  {
+    group->thread_dropper = (struct thread_dropper) {
+      .loop = tdl,
+      .event.hook = bird_thread_shutdown,
+    };
+    OBSREF_SET(group->thread_dropper.conflock, old_config);
+    ev_send_loop(tdl, &group->thread_dropper.event);
+  }
+
+  birdloop_leave(tdl);
+}
+
 void
-bird_thread_commit(struct config *new, struct config *old UNUSED)
+bird_thread_commit(struct config *new, struct config *old)
 {
   ASSERT_DIE(birdloop_inside(&main_birdloop));
 
   if (new->shutdown)
     return;
 
-  if (!new->thread_count)
-    new->thread_count = 1;
-
-  while (1)
+  /* First, we match the new config to the existing groups */
+  WALK_TLIST(thread_group_config, tgc, &new->thread_group)
   {
-    int dif;
-    bool thread_dropper_running;
+    thread_group *found = NULL;
+    int dif = -tgc->thread_count;
+    bool thread_dropper_running = false;
 
-    TG_LOCKED(&pickup_groups[0], group)
+    WALK_TLIST(thread_group, gpub, &global_thread_group_list)
     {
-      dif = group->thread_count - new->thread_count;
-      thread_dropper_running = !!group->thread_dropper.loop;
+      TG_LOCKED(gpub, group)
+	if (!strcmp(group->name, tgc->symbol->name))
+	{
+	  ASSERT_DIE(thread_group_config_enlisted(group->cf) == &old->thread_group);
+	  found = gpub;
+	  group->cf = tgc;
+	  tgc->group = gpub;
+	  group->name = tgc->symbol->name;
+	  /* Do not start threads for empty groups */
+	  if ((group->thread_count == 0) && EMPTY_TLIST(birdloop, &group->loops))
+	    dif = 0;
+	  else
+	    dif = group->thread_count - tgc->thread_count;
+	  thread_dropper_running = !!group->thread_dropper.loop;
+	  group->params = tgc->params;
+	}
+
+      if (found)
+	break;
     }
 
-    if (dif < 0)
+    if (found)
     {
-      bird_thread_start(&pickup_groups[0]);
-      continue;
+      if (dif < 0)
+	bird_thread_start(found);
+      else if ((dif > 0) && !thread_dropper_running)
+	bird_thread_stop(found, old);
     }
-
-    if ((dif > 0) && !thread_dropper_running)
+    else
     {
-      struct birdloop *tdl = birdloop_new(&root_pool, DOMAIN_ORDER(control), pickup_groups[0].priv.max_latency, "Thread dropper");
-      birdloop_enter(tdl);
-      event *tde = ev_new_init(tdl->pool, bird_thread_shutdown, NULL);
+      struct thread_group_private *group = mb_allocz(&root_pool, sizeof *group);
+      SKIP_BACK_DECLARE(thread_group, gpub, priv, group);
+      group->lock = DOMAIN_NEW(attrs);
+      DOMAIN_SETUP(attrs, group->lock, "Thread Group", NULL);
+      group->cf = tgc;
+      tgc->group = gpub;
+      group->params = tgc->params;
+      group->name = tgc->symbol->name;
+      group->thread_dropper.event = (event) { .data = group, };
 
-      TG_LOCKED(&pickup_groups[0], group)
-      {
-	group->thread_dropper = (struct thread_dropper) {
-	  .loop = tdl,
-	  .event = tde,
-	  .goal = new->thread_count,
-	};
-      }
-
-      ev_send_loop(tdl, tde);
-      birdloop_leave(tdl);
+      thread_group_add_tail(&global_thread_group_list, gpub);
+      /* Will start threads when some loop emerges, not now. */
     }
-
-    return;
   }
+
+  ASSERT_DIE(new->default_thread_group);
+  default_thread_group = new->default_thread_group->group;
+
+  WALK_TLIST(thread_group, gpub, &global_thread_group_list)
+  {
+    bool run_thread_dropper = false;
+    TLIST_LIST(birdloop) *leftover_loops = NULL;
+
+    TG_LOCKED(gpub, group)
+    {
+      if (group->cf && (thread_group_config_enlisted(group->cf) == &new->thread_group))
+	break; /* Unlock, group already reconfigured */
+
+      /* All shutting-down groups are expected to be finished
+       * before another config commit */
+      ASSERT_DIE(group->cf != &thread_group_shutdown);
+
+      /* The thread dropper should not be running now,
+       * it blocks config completion */
+      ASSERT_DIE(!group->thread_dropper.loop);
+
+      /* The only case the thread_dropper event runs,
+       * is when it was recently summonned to start some new threads */
+      ev_postpone(&group->thread_dropper.event);
+
+      /* Needa stop the group */
+      ASSERT_DIE(!group->cf || (thread_group_config_enlisted(group->cf) == &old->thread_group));
+      group->cf = &thread_group_shutdown;
+
+      if (EMPTY_TLIST(thread, &group->threads))
+	leftover_loops = &group->loops;
+      else
+	run_thread_dropper = true;
+    }
+
+    /* Drop loops immediately, no thread to kill */
+    if (leftover_loops)
+      bird_thread_group_done(gpub, leftover_loops);
+
+    /* Kill threads, loops get dropped later */
+    if (run_thread_dropper)
+      bird_thread_stop(gpub, old);
+  }
+
+  /* after bird_thread_stop(), the old config reference is blocked
+   * until the threads have finished thread stopping. */
+}
+
+void
+thread_group_finalize_config(void)
+{
+  if (EMPTY_TLIST(thread_group_config, &new_config->thread_group))
+  {
+    if (!new_config->thread_group_simple)
+      new_config->thread_group_simple = -1;
+
+    /* Default worker thread group */
+    struct thread_group_config *tgc = cfg_alloc(sizeof *tgc);
+    *tgc = thread_group_config_default_worker;
+    tgc->thread_count = (new_config->thread_group_simple > 0) ?
+      new_config->thread_group_simple : 1;
+    thread_group_config_add_tail(&new_config->thread_group, tgc);
+    new_config->default_thread_group = tgc;
+
+    tgc->symbol = cf_define_symbol(
+	new_config, cf_get_symbol(new_config, "worker"),
+	SYM_THREAD_GROUP, thread_group, tgc);
+
+    /* Default express thread group */
+    tgc = cfg_alloc(sizeof *tgc);
+    *tgc = thread_group_config_default_express;
+    thread_group_config_add_tail(&new_config->thread_group, tgc);
+
+    tgc->symbol = cf_define_symbol(
+	new_config, cf_get_symbol(new_config, "express"),
+	SYM_THREAD_GROUP, thread_group, tgc);
+  }
+
+  if (!new_config->default_thread_group)
+    cf_error("No default thread group configured");
 }
 
 /* Cleanup after last thread */
@@ -1263,6 +1490,8 @@ bird_thread_sync_all(struct bird_thread_syncer *sync,
     void (*hook)(struct bird_thread_syncer *),
     void (*done)(struct bird_thread_syncer *), const char *name)
 {
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+
   sync->lock = DOMAIN_NEW(control);
   LOCK_DOMAIN(control, sync->lock);
 
@@ -1270,8 +1499,8 @@ bird_thread_sync_all(struct bird_thread_syncer *sync,
   sync->hook = hook;
   sync->finish = done;
 
-  for (int i=0; i<2; i++)
-    TG_LOCKED(&pickup_groups[i], group)
+  WALK_TLIST(thread_group, gpub, &global_thread_group_list)
+    TG_LOCKED(gpub, group)
       WALK_TLIST(thread, thr, &group->threads)
       {
 	sync->total++;
@@ -1388,14 +1617,15 @@ cmd_show_threads_done(struct bird_thread_syncer *sync)
   tsd->cli->cont = NULL;
   tsd->cli->cleanup = NULL;
 
-  for (int i=0; i<2; i++) TG_LOCKED(&pickup_groups[i], group)
+  WALK_TLIST(thread_group, gpub, &global_thread_group_list)
+  TG_LOCKED(gpub, group)
   {
     uint count = 0;
     u64 total_time_ns = 0;
     if (!EMPTY_TLIST(birdloop, &group->loops))
     {
       if (tsd->show_loops)
-	tsd_append("Unassigned loops in group %d:", i);
+	tsd_append("Unassigned loops in group %s:", group->name);
 
       WALK_TLIST(birdloop, loop, &group->loops)
       {
@@ -1409,10 +1639,10 @@ cmd_show_threads_done(struct bird_thread_syncer *sync)
       if (tsd->show_loops)
 	tsd_append("  Total working time: %t", total_time_ns NS);
       else
-	tsd_append("Unassigned %d loops in group %d, total time %t", count, i, total_time_ns NS);
+	tsd_append("Unassigned %d loops in group %s, total time %t", count, group->name, total_time_ns NS);
     }
     else
-      tsd_append("All loops in group %d are assigned.", i);
+      tsd_append("All loops in group %s are assigned.", group->name);
   }
 
   if (!tsd->show_loops)
@@ -1471,13 +1701,18 @@ birdloop_init(void)
 {
   ns_init();
 
-  for (int i=0; i<2; i++)
-  {
-    struct thread_group_private *group = &pickup_groups[i].priv;
-
-    group->lock = DOMAIN_NEW(attrs);
-    DOMAIN_SETUP(attrs, group->lock, "Loop Pickup", NULL);
-  }
+  default_thread_group = mb_allocz(&root_pool, sizeof *default_thread_group);
+  *default_thread_group = (thread_group) {
+    .priv = {
+      .name = "startup",
+      .lock = DOMAIN_NEW(attrs),
+      .thread_dropper.event = {
+	.data = default_thread_group,
+      },
+    },
+  };
+  DOMAIN_SETUP(attrs, default_thread_group->priv.lock, "Startup Thread Group", NULL);
+  thread_group_add_tail(&global_thread_group_list, default_thread_group);
 
   wakeup_init(main_birdloop.thread);
 
@@ -1568,6 +1803,13 @@ birdloop_run(void *_loop)
     birdloop_yield();
   }
 
+  if (loop->thread_group != this_thread->group)
+  {
+    birdloop_rem_node(&this_thread->loops, loop);
+    birdloop_set_thread(loop, NULL);
+    goto leave;
+  }
+
   /* Now we can actually do some work */
   u64 dif = account_to(&loop->working);
 
@@ -1618,6 +1860,7 @@ birdloop_run(void *_loop)
   this_thread->sock_changed |= loop->sock_changed;
   loop->sock_changed = 0;
 
+leave:
   account_to(&this_thread->overhead);
   this_birdloop = this_thread->meta;
   birdloop_leave(loop);
@@ -1644,6 +1887,8 @@ birdloop_vnew_internal(pool *pp, uint order, thread_group *gpub, const char *nam
   loop->time.domain = dg;
   loop->time.loop = loop;
 
+  loop->thread_group = gpub;
+
   atomic_store_explicit(&loop->thread_transition, 0, memory_order_relaxed);
 
   birdloop_enter_locked(loop);
@@ -1658,14 +1903,17 @@ birdloop_vnew_internal(pool *pp, uint order, thread_group *gpub, const char *nam
   LOOP_TRACE(loop, DL_SCHEDULING, "New loop: %s", p->name);
 
   if (gpub)
+    /* Send the loop to the requested thread group for execution */
     TG_LOCKED(gpub, group)
     {
       group->loop_count++;
       group->loop_unassigned_count++;
       birdloop_add_tail(&group->loops, loop);
       if (EMPTY_TLIST(thread, &group->threads))
-	ev_send(&global_event_list, &group->start_threads);
+	/* If no threads are there for the loop, request them to start */
+	bird_thread_start_indirect(group);
       else
+	/* Just wakeup the first one thread to pick us up */
 	wakeup_do_kick(THEAD(thread, &group->threads));
     }
 
@@ -1685,13 +1933,49 @@ birdloop_new_no_pickup(pool *pp, uint order, const char *name, ...)
 }
 
 struct birdloop *
-birdloop_new(pool *pp, uint order, btime max_latency, const char *name, ...)
+birdloop_new(pool *pp, uint order, thread_group *group, const char *name, ...)
 {
+  if (!group)
+    group = default_thread_group;
+
   va_list args;
   va_start(args, name);
-  struct birdloop *loop = birdloop_vnew_internal(pp, order, max_latency ? &pickup_groups[1] : &pickup_groups[0], name, args);
+  struct birdloop *loop = birdloop_vnew_internal(pp, order, group, name, args);
   va_end(args);
   return loop;
+}
+
+static void
+birdloop_transfer_dummy_event(void *_data)
+{
+  rfree(_data);
+}
+
+void
+birdloop_transfer(struct birdloop *loop, thread_group *from, thread_group *to)
+{
+  ASSERT_DIE(birdloop_inside(loop));
+  if (loop->thread_group != from)
+  {
+    log(L_WARN "Failed to transfer loop %s from group %s to %s, now in %s",
+	LOOP_NAME(loop), from->name, to->name, loop->thread->group->name);
+    birdloop_leave(loop);
+    return;
+  }
+
+  /* Set the new group, actually */
+  loop->thread_group = to;
+
+  /* Request the loop to actually do something to get scheduled */
+  event *e = ev_new(loop->pool);
+  e->hook = birdloop_transfer_dummy_event;
+  e->data = e;
+  ev_send_loop(loop, e);
+
+  /* Possibly start threads in that group */
+  TG_LOCKED(to, group)
+    if (EMPTY_TLIST(thread, &group->threads))
+      bird_thread_start_indirect(group);
 }
 
 static void
