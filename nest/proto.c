@@ -1405,7 +1405,9 @@ proto_start(struct proto *p)
 
   if (p->cf->loop_order != DOMAIN_ORDER(the_bird))
   {
-    p->loop = birdloop_new(proto_pool, p->cf->loop_order, p->cf->loop_max_latency, "Protocol %s", p->cf->name);
+    p->loop = birdloop_new(proto_pool, p->cf->loop_order,
+	p->cf->thread_group ? p->cf->thread_group->group : NULL,
+	"Protocol %s", p->cf->name);
     p->pool = birdloop_pool(p->loop);
   }
   else
@@ -1457,6 +1459,9 @@ proto_config_new(struct protocol *pr, int class)
   cf->debug = new_config->proto_default_debug;
   cf->mrtdump = new_config->proto_default_mrtdump;
   cf->loop_order = DOMAIN_ORDER(the_bird);
+
+  thread_group_finalize_config();
+  cf->thread_group = new_config->default_thread_group;
 
   cf->restart_limit = 5 S;
 
@@ -1590,6 +1595,9 @@ proto_reconfigure(struct proto *p, struct proto_config *oc, struct proto_config 
   DBG("\t%s: same\n", oc->name);
   PD(p, "Reconfigured");
   p->cf = nc;
+
+  if (p->loop != &main_birdloop)
+    birdloop_transfer(p->loop, oc->thread_group->group, nc->thread_group->group);
 
   return 1;
 }
@@ -2198,7 +2206,7 @@ protos_build(void)
   struct settle_config cf = {.min = 0, .max = 0};
   proto_state_table_pub.journal.item_done = proto_journal_item_cleanup;
   proto_state_table_pub.journal.item_size = sizeof(struct proto_pending_update);
-  proto_state_table_pub.journal.loop = birdloop_new(&root_pool, DOMAIN_ORDER(service), 1, "proto journal loop");
+  proto_state_table_pub.journal.loop = birdloop_new(&root_pool, DOMAIN_ORDER(service), NULL, "proto journal loop");
   proto_state_table_pub.journal.domain = proto_state_table_pub.lock.rtable;
 
   lfjour_init(&proto_state_table_pub.journal, &cf);
