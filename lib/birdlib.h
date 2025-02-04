@@ -21,8 +21,9 @@
 
 /* Ugly structure offset handling macros */
 
+extern char invalid_nonzero_pointer[0];
 #define SAME_TYPE(a, b)	({ int _ = ((a) != (b)); !_; })
-#define TYPE_CAST(from, to, what) ( SAME_TYPE(((from) NULL), (what)), ((to) (what)))
+#define TYPE_CAST(from, to, what) ( SAME_TYPE(((from) invalid_nonzero_pointer), (what)), ((to) (what)))
 
 #ifdef offsetof
 #define OFFSETOF offsetof
