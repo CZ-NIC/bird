@@ -8,7 +8,7 @@
 #define _BIRD_SYSDEP_UNIX_IO_LOOP_H_
 
 #include "lib/rcu.h"
-
+#include "lib/tlists.h"
 #include <pthread.h>
 
 struct pipe
@@ -39,7 +39,12 @@ struct spent_time {
 
 struct birdloop
 {
-  node n;
+#define TLIST_PREFIX birdloop
+#define TLIST_TYPE struct birdloop
+#define TLIST_ITEM n
+#define TLIST_WANT_WALK
+#define TLIST_WANT_ADD_TAIL
+  TLIST_DEFAULT_NODE;
 
   event event;
   timer timer;
@@ -73,9 +78,16 @@ struct birdloop
   struct spent_time working, locking;
 };
 
+#include "lib/tlists.h"
+
 struct bird_thread
 {
-  node n;
+#define TLIST_PREFIX thread
+#define TLIST_TYPE struct bird_thread
+#define TLIST_ITEM n
+#define TLIST_WANT_WALK
+#define TLIST_WANT_ADD_TAIL
+  TLIST_DEFAULT_NODE;
 
   struct pipe wakeup;
   event_list priority_events;
@@ -85,7 +97,7 @@ struct bird_thread
   pthread_t thread_id;
   pthread_attr_t thread_attr;
 
-  list loops;
+  TLIST_LIST(birdloop) loops;
   struct birdloop_pickup_group *group;
   pool *pool;
   struct pfd *pfd;
@@ -102,6 +114,7 @@ struct bird_thread
 
   struct spent_time overhead, idle;
 };
+#include "lib/tlists.h"
 
 
 struct bird_thread_syncer {
