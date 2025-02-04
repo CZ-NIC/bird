@@ -34,7 +34,11 @@ bool task_before_halftime(void);
   } } while (0)
 
 /* Start a new birdloop owned by given pool and domain */
-struct birdloop *birdloop_new(pool *p, uint order, btime max_latency, const char *fmt, ...);
+typedef union thread_group_public thread_group;
+struct birdloop *birdloop_new(pool *p, uint order, thread_group *tg, const char *fmt, ...);
+
+/* Transfer the loop to a different thread group */
+void birdloop_transfer(struct birdloop *, thread_group *from, thread_group *to);
 
 /* Stop the loop. At the end, the @stopped callback is called unlocked in tail
  * position to finish cleanup. Run birdloop_free() from that callback to free
@@ -72,5 +76,29 @@ void birdloop_add_socket(struct birdloop *, struct birdsock *);
 void birdloop_remove_socket(struct birdloop *, struct birdsock *);
 
 void birdloop_init(void);
+
+/* Configure threads */
+struct thread_group_config {
+#define TLIST_PREFIX thread_group_config
+#define TLIST_TYPE struct thread_group_config
+#define TLIST_ITEM n
+#define TLIST_WANT_ADD_TAIL
+#define TLIST_WANT_WALK
+  TLIST_DEFAULT_NODE;
+  thread_group *group;
+  struct symbol *symbol;
+  struct thread_params {
+    btime max_time;
+    btime min_time;
+    btime max_latency;
+    btime wakeup_time;
+  } params;
+  uint thread_count;
+};
+#include "lib/tlists.h"
+
+extern const struct thread_group_config thread_group_config_default_worker, thread_group_config_default_express;
+
+void thread_group_finalize_config(void);
 
 #endif /* _BIRD_IO_LOOP_H_ */

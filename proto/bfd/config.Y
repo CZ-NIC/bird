@@ -39,7 +39,17 @@ bfd_proto_start: proto_start BFD
 {
   this_proto = proto_config_new(&proto_bfd, $1);
   this_proto->loop_order = DOMAIN_ORDER(proto);
-  this_proto->loop_max_latency = 10 MS_;
+  if (new_config->thread_group_simple)
+    this_proto->thread_group = TTAIL(thread_group, &new_config->thread_group);
+  else
+  {
+    struct symbol *sym = cf_find_symbol(new_config, "express");
+    if (sym && sym->class == SYM_THREAD_GROUP)
+      this_proto->thread_group = sym->thread_group;
+    else
+      this_proto->thread_group = NULL;
+  }
+
   init_list(&BFD_CFG->patt_list);
   init_list(&BFD_CFG->neigh_list);
   BFD_CFG->accept_ipv4 = BFD_CFG->accept_ipv6 = 1;
@@ -62,7 +72,10 @@ bfd_proto_opts:
  ;
 
 bfd_proto:
-   bfd_proto_start proto_name '{' bfd_proto_opts '}';
+   bfd_proto_start proto_name '{' bfd_proto_opts '}' {
+  if (!this_proto->thread_group)
+    cf_error("Thread group not configured and \"express\" not found.");
+} ;
 
 
 bfd_accept_item:

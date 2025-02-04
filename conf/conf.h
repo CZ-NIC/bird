@@ -67,7 +67,9 @@ struct config {
   char *err_file_name;			/* File name containing error */
   char *file_name;			/* Name of main configuration file */
   int file_fd;				/* File descriptor of main configuration file */
-  int thread_count;			/* How many worker threads to prefork */
+  int thread_group_simple;		/* Simple variant of thread configuration */
+  TLIST_LIST(thread_group_config) thread_group; /* Configured thread groups */
+  struct thread_group_config *default_thread_group;
 
   struct sym_scope *root_scope;		/* Scope for root symbols */
   struct sym_scope *current_scope;	/* Current scope where we are actually in while parsing */
@@ -95,6 +97,8 @@ struct global_runtime {
   u32 latency_limit;			/* Events with longer duration are logged (us) */
   u32 watchdog_warning;			/* I/O loop watchdog limit for warning (us) */
   u32 watchdog_timeout;			/* Watchdog timeout (in seconds, 0 = disabled) */
+
+  struct thread_group *default_thread_group;	/* Default thread group if not specified otherwise */
 };
 
 extern struct global_runtime * _Atomic global_runtime;
@@ -180,6 +184,7 @@ struct symbol {
     uint offset;			/* For SYM_VARIABLE */
     const struct keyword *keyword;	/* For SYM_KEYWORD */
     const struct f_method *method;	/* For SYM_METHOD */
+    struct thread_group_config *thread_group;	/* For SYM_THREAD_GROUP */
   };
 
   char name[0];
@@ -220,6 +225,7 @@ extern linpool *global_root_scope_linpool;
 #define SYM_METHOD 8
 #define SYM_MPLS_DOMAIN 9
 #define SYM_MPLS_RANGE 10
+#define SYM_THREAD_GROUP 11
 
 #define SYM_VARIABLE 0x100	/* 0x100-0x1ff are variable types */
 #define SYM_VARIABLE_RANGE SYM_VARIABLE ... (SYM_VARIABLE | 0xff)
