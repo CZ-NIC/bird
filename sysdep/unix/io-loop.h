@@ -73,6 +73,7 @@ struct birdloop
   struct birdloop *prev_loop;
 
   struct bird_thread *thread;
+  thread_group *thread_group;
 
 #define TIME_BY_SEC_SIZE	16
   struct spent_time working, locking;
@@ -110,7 +111,7 @@ struct bird_thread
   u16 busy_counter;
   uint loop_count;
 
-  u64 max_latency_ns;
+  struct thread_params params;
   u64 max_loop_time_ns;
 
   struct spent_time overhead, idle;
