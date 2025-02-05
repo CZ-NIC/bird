@@ -444,13 +444,17 @@ trie_remove_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 
   memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
 
   /*
-   * If prefix node is a leaf, delete it along with the branch
-   * it resides on, until a non-leaf or prefix node is reached.
+   * If prefix node is a leaf, remove it along with the branch
+   * it resides on, until non-leaf or prefix node is reached.
    */
   for (struct trie_node *parent = node->parent; parent; node = parent, parent = node->parent)
   {
-    if (is_leaf(node) && FILLER == node->px_origin)
+    if (FILLER == node->px_origin && is_leaf(node))
+    {
       remove_node(node);
+      assert(node != NULL);
+      assert(parent != NULL);
+    }
     else
       break;
   }
@@ -483,8 +487,12 @@ trie_remove_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
 
   for (struct trie_node *parent = node->parent; parent; node = parent, parent = node->parent)
   {
-    if (is_leaf(node) && FILLER == node->px_origin)
+    if (FILLER == node->px_origin && is_leaf(node))
+    {
       remove_node(node);
+      assert(node != NULL);
+      assert(parent != NULL);
+    }
     else
       break;
   }
