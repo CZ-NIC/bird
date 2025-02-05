@@ -78,7 +78,7 @@
 TLIST_STRUCT_DEF(TLIST_PREFIX, TLIST_TYPE);
 #endif
 
-static inline TLIST_LIST_STRUCT * TLIST_NAME(enlisted)(TLIST_TYPE *node)
+static inline TLIST_LIST_STRUCT * TLIST_NAME(enlisted)(const TLIST_TYPE *node)
 {
   return node->TLIST_ITEM.list;
 }
