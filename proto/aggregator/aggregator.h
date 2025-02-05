@@ -21,6 +21,9 @@
 #define POTENTIAL_BUCKETS_BITMAP_SIZE 8
 #define MAX_POTENTIAL_BUCKETS_COUNT   ((int)(sizeof(u32) * 8 * POTENTIAL_BUCKETS_BITMAP_SIZE))
 
+#define IP4_WITHDRAWAL_LIMIT 100
+#define IP6_WITHDRAWAL_LIMIT 200
+
 enum aggregation_mode {
   NET_AGGR, PREFIX_AGGR,
 };
@@ -50,6 +53,12 @@ struct aggregator_bucket {
   u32 hash;
   u32 id;
   struct f_val aggr_data[0];
+};
+
+struct rte_withdrawal {
+  struct rte_withdrawal *next;
+  struct aggregator_bucket *bucket;
+  struct net_addr_ip4 addr;
 };
 
 struct aggregator_proto {
@@ -90,6 +99,10 @@ struct aggregator_proto {
   size_t bucket_list_count;
 
   struct hmap bucket_id_map;
+
+  linpool *rte_withdrawal_pool;
+  struct rte_withdrawal *rte_withdrawal_stack;
+  int rte_withdrawal_count;
 };
 
 enum aggr_item_type {
