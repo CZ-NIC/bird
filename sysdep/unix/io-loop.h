@@ -77,9 +77,10 @@ struct birdloop
 #define TIME_BY_SEC_SIZE	16
   struct spent_time working, locking;
 };
-
 #include "lib/tlists.h"
 
+
+typedef union thread_group_public thread_group;
 struct bird_thread
 {
 #define TLIST_PREFIX thread
@@ -98,7 +99,7 @@ struct bird_thread
   pthread_attr_t thread_attr;
 
   TLIST_LIST(birdloop) loops;
-  struct birdloop_pickup_group *group;
+  thread_group *group;
   pool *pool;
   struct pfd *pfd;
 
