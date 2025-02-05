@@ -333,6 +333,58 @@ proto_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket
 }
 
 /*
+ * Each route which is to be withdrawed is pushed on the stack.
+ */
+static void
+push_rte_withdraw_ip4(struct aggregator_proto *p, const struct net_addr_ip4 *addr, struct aggregator_bucket *bucket)
+{
+  assert(p != NULL);
+  assert(addr != NULL);
+  assert(bucket != NULL);
+
+  struct rte_withdrawal *node = lp_allocz(p->rte_withdrawal_pool, sizeof(*node));
+
+  *node = (struct rte_withdrawal) {
+    .next = p->rte_withdrawal_stack,
+    .addr = *addr,
+    .bucket = bucket,
+  };
+
+  p->rte_withdrawal_stack = node;
+  p->rte_withdrawal_count++;
+
+  assert(p->rte_withdrawal_stack != NULL);
+}
+
+/*
+ * Withdraw all routes that are on the stack.
+ */
+static void
+aggregator_withdraw_rte(struct aggregator_proto *p)
+{
+  if ((NET_IP4 == p->addr_type && p->rte_withdrawal_count > IP4_WITHDRAWAL_LIMIT) ||
+      (NET_IP6 == p->addr_type && p->rte_withdrawal_count > IP6_WITHDRAWAL_LIMIT))
+    log(L_WARN "This number of updates was not expected."
+               "They will be processed, but please, contact the developers.");
+
+  struct rte_withdrawal *node = p->rte_withdrawal_stack;
+
+  while (node)
+  {
+    assert(node != NULL);
+    rte_update2(p->dst, (net_addr *)&node->addr, NULL, node->bucket->last_src);
+    node = node->next;
+    p->rte_withdrawal_stack = node;
+    p->rte_withdrawal_count--;
+  }
+
+  assert(p->rte_withdrawal_stack == NULL);
+  assert(p->rte_withdrawal_count == 0);
+
+  lp_flush(p->rte_withdrawal_pool);
+}
+
+/*
  * Insert prefix in @addr to prefix trie with beginning at @root and assign @bucket to this prefix.
  * If the prefix is already in the trie, update its bucket to @bucket and return updated node.
  */
@@ -2376,6 +2428,9 @@ aggregator_start(struct proto *P)
   hmap_init(&p->bucket_id_map, p->p.pool, 1024);
   hmap_set(&p->bucket_id_map, 0);       /* 0 is default value, do not use it as ID */
 
+  p->rte_withdrawal_pool = lp_new(P->pool);
+  p->rte_withdrawal_count = 0;
+
   times_update(&main_timeloop);
   log("==== FEED START ====");
 
@@ -2400,6 +2455,7 @@ aggregator_cleanup(struct proto *P)
   p->bucket_pool = NULL;
   p->route_pool = NULL;
   p->trie_pool = NULL;
+  p->rte_withdrawal_pool = NULL;
 
   p->root = NULL;
 
@@ -2411,6 +2467,8 @@ aggregator_cleanup(struct proto *P)
   p->bucket_list = NULL;
   p->bucket_list_size = 0;
   p->bucket_list_count = 0;
+
+  p->rte_withdrawal_count = 0;
 
   p->bucket_id_map = (struct hmap) { 0 };
 }
