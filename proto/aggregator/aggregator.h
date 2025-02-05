@@ -113,14 +113,15 @@ struct aggr_item_node {
 };
 
 enum fib_status {
-  IN_FIB = 1,
-  NON_FIB = 2,
+  UNASSIGNED_STATUS,
+  IN_FIB,
+  NON_FIB,
 };
 
 enum prefix_origin {
-  FILLER = 0,
-  ORIGINAL = 1,
-  AGGREGATED = 2,
+  FILLER,
+  ORIGINAL,
+  AGGREGATED,
 };
 
 struct trie_node {
@@ -129,9 +130,9 @@ struct trie_node {
   struct trie_node *ancestor;
   struct aggregator_bucket *original_bucket;
   struct aggregator_bucket *selected_bucket;
-  u32 potential_buckets[POTENTIAL_BUCKETS_BITMAP_SIZE];
   enum fib_status status;
   enum prefix_origin px_origin;
+  u32 potential_buckets[POTENTIAL_BUCKETS_BITMAP_SIZE];
   int potential_buckets_count;
   int depth;
 };
