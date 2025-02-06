@@ -2247,6 +2247,9 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
         log("rt notify: withdraw");
         trie_process_withdraw(p, old_route);
       }
+
+      /* Process all route withdrawals which were caused by the update */
+      aggregator_withdraw_rte(p);
     }
   }
 
