@@ -422,7 +422,6 @@ trie_insert_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 
 
   /* Assign bucket to the last node */
   node->original_bucket = bucket;
-  node->status = IN_FIB;
   node->px_origin = ORIGINAL;
 
   return node;
@@ -462,7 +461,6 @@ trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
 
   /* Assign bucket to the last node */
   node->original_bucket = bucket;
-  node->status = IN_FIB;
   node->px_origin = ORIGINAL;
 
   return node;
@@ -631,7 +629,7 @@ first_pass(struct trie_node *node)
   {
     assert(node->original_bucket != NULL);
     assert(node->potential_buckets_count == 0);
-    assert(IN_FIB == node->status);
+    assert(NON_FIB == node->status);
     node_insert_potential_bucket(node, node->original_bucket);
     return;
   }
@@ -747,8 +745,19 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net
    */
   if (is_bucket_potential(node, inherited_bucket))
   {
-    /* Selected bucket is NULL as it has never been assigned */
-    assert(node->selected_bucket == NULL);
+    /*
+     * Prefix status is changing from IN_FIB to NON_FIB, thus its route
+     * must be removed from the routing table.
+     */
+    if (IN_FIB == node->status)
+    {
+      assert(node->px_origin == ORIGINAL || node->px_origin == AGGREGATED);
+      assert(node->selected_bucket != NULL);
+
+      log("Planning to remove %s route for %N", px_origin_str[node->px_origin], addr);
+      push_rte_withdraw_ip4(p, addr, node->selected_bucket);
+    }
+
     node->selected_bucket = NULL;
     node->status = NON_FIB;
 
@@ -765,6 +774,18 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net
 
     /* Assign bucket with the lowest ID to the node */
     node->selected_bucket = choose_lowest_id_bucket(p, node);
+    assert(node->selected_bucket != NULL);
+
+    /*
+     * Prefix status is changing from NON_FIB to IN_FIB, thus its route
+     * must be exported to the routing table.
+     */
+    if (NON_FIB == node->status)
+    {
+      log("Exporting %s route for %N", px_origin_str[node->px_origin], addr);
+      create_route_ip4(p, node->selected_bucket, addr);
+    }
+
     node->status = IN_FIB;
 
     /*
@@ -772,7 +793,6 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net
      * is changed to aggregated, because it's going to FIB.
      */
     node->px_origin = ORIGINAL == node->px_origin ? ORIGINAL : AGGREGATED;
-    assert(node->selected_bucket != NULL);
   }
 
   assert((node->selected_bucket != NULL && node->status == IN_FIB) || (node->selected_bucket == NULL && node->status == NON_FIB));
@@ -967,11 +987,9 @@ deaggregate(struct trie_node * const node)
   if (ORIGINAL == node->px_origin)
   {
     assert(node->original_bucket != NULL);
-    node->status = IN_FIB;
   }
   else
   {
-    node->status = NON_FIB;
     node->original_bucket = node->parent->original_bucket;
     assert(node->original_bucket != NULL);
   }
@@ -981,7 +999,6 @@ deaggregate(struct trie_node * const node)
   /* As in the first pass, leaves get one potential bucket */
   if (is_leaf(node))
   {
-    assert(node->status == IN_FIB);
     assert(node->px_origin == ORIGINAL);
     assert(node->potential_buckets_count == 0);
     node_insert_potential_bucket(node, node->original_bucket);
@@ -1065,10 +1082,9 @@ trie_process_update(struct aggregator_proto *p, struct aggregator_route *old, st
 
   assert(updated_node != NULL);
   assert(updated_node->original_bucket != NULL);
-  assert(updated_node->status == IN_FIB);
-
   assert(updated_node->potential_buckets_count == 1);
   assert(BIT32R_TEST(updated_node->potential_buckets, updated_node->original_bucket->id));
+  assert(updated_node->status == NON_FIB);
 
   struct trie_node *node = updated_node;
 
