@@ -469,7 +469,7 @@ trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
 }
 
 static struct trie_node *
-trie_remove_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 *addr)
+trie_remove_prefix_ip4(struct aggregator_proto *p, struct trie_node * const root, const struct net_addr_ip4 *addr)
 {
   assert(root != NULL);
   assert(addr != NULL);
@@ -484,8 +484,14 @@ trie_remove_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 
   }
 
   assert(node->px_origin == ORIGINAL);
-  log("Removing prefix %N", addr);
   assert(node->selected_bucket != NULL);
+
+  /* Remove route for this prefix */
+  if (IN_FIB == node->status)
+  {
+    log("Removing %s route %N", px_origin_str[node->px_origin], addr);
+    push_rte_withdraw_ip4(p, addr, node->selected_bucket);
+  }
 
   node->status = NON_FIB;
   node->px_origin = FILLER;
@@ -515,7 +521,7 @@ trie_remove_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 
 }
 
 static struct trie_node *
-trie_remove_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 *addr)
+trie_remove_prefix_ip6(struct aggregator_proto *p, struct trie_node * const root, const struct net_addr_ip6 *addr)
 {
   struct trie_node *node = root;
 
@@ -1117,12 +1123,12 @@ trie_process_withdraw(struct aggregator_proto *p, struct aggregator_route *old)
   if (NET_IP4 == uptr->n.type)
   {
     struct net_addr_ip4 *addr = &uptr->ip4;
-    updated_node = trie_remove_prefix_ip4(p->root, addr);
+    updated_node = trie_remove_prefix_ip4(p, p->root, addr);
   }
   else if (NET_IP6 == uptr->n.type)
   {
     struct net_addr_ip6 *addr = &uptr->ip6;
-    updated_node = trie_remove_prefix_ip6(p->root, addr);
+    updated_node = trie_remove_prefix_ip6(p, p->root, addr);
   }
 
   assert(updated_node != NULL);
