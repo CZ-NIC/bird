@@ -336,9 +336,10 @@ push_rte_withdraw_ip4(struct aggregator_proto *p, const struct net_addr_ip4 *add
 
   *node = (struct rte_withdrawal) {
     .next = p->rte_withdrawal_stack,
-    .addr = *addr,
     .bucket = bucket,
   };
+
+  net_copy(&node->addr, (net_addr *)addr);
 
   p->rte_withdrawal_stack = node;
   p->rte_withdrawal_count++;
@@ -362,7 +363,7 @@ aggregator_withdraw_rte(struct aggregator_proto *p)
   while (node)
   {
     assert(node != NULL);
-    rte_update2(p->dst, (net_addr *)&node->addr, NULL, node->bucket->last_src);
+    rte_update2(p->dst, &node->addr, NULL, node->bucket->last_src);
     node = node->next;
     p->rte_withdrawal_stack = node;
     p->rte_withdrawal_count--;
@@ -1043,7 +1044,7 @@ static void dump_trie(const struct trie_node *);
 static void print_prefixes(const struct trie_node *, int);
 
 static void
-trie_process_update(struct aggregator_proto *p, struct aggregator_route *old, struct aggregator_route *new)
+trie_process_update(struct aggregator_proto *p, struct aggregator_route *old UNUSED, struct aggregator_route *new)
 {
   assert(p != NULL);
   assert(new != NULL);
@@ -1069,9 +1070,8 @@ trie_process_update(struct aggregator_proto *p, struct aggregator_route *old, st
 
   assert(updated_node != NULL);
   assert(updated_node->original_bucket != NULL);
-  assert(updated_node->potential_buckets_count == 1);
-  assert(BIT32R_TEST(updated_node->potential_buckets, updated_node->original_bucket->id));
   assert(updated_node->status == NON_FIB);
+  assert(updated_node->px_origin == ORIGINAL);
 
   struct trie_node *node = updated_node;
 

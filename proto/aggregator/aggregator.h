@@ -58,7 +58,7 @@ struct aggregator_bucket {
 struct rte_withdrawal {
   struct rte_withdrawal *next;
   struct aggregator_bucket *bucket;
-  struct net_addr_ip4 addr;
+  struct net_addr addr;
 };
 
 struct aggregator_proto {
