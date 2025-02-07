@@ -91,14 +91,6 @@
 
 extern linpool *rte_update_pool;
 
-static int total_nodes;
-static int prefix_nodes;
-static int imaginary_nodes;
-static int additional_nodes;
-static int removed_nodes;
-static int one_child_nodes_1;
-static int one_child_nodes_2;
-
 static const char *px_origin_str[] = {
   [FILLER]     = "filler",
   [ORIGINAL]   = "original",
@@ -119,7 +111,6 @@ static inline struct trie_node *
 create_new_node(linpool *trie_pool)
 {
   struct trie_node *node = lp_allocz(trie_pool, sizeof(*node));
-  total_nodes++;
   return node;
 }
 
@@ -146,7 +137,6 @@ remove_node(struct trie_node *node)
 
   node->parent = NULL;
   memset(node, 0xfe, sizeof(*node));
-  removed_nodes++;
 }
 
 /*
@@ -414,7 +404,6 @@ trie_insert_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 
       };
 
       node->child[bit] = new;
-      prefix_nodes++;
     }
 
     node = node->child[bit];
@@ -453,7 +442,6 @@ trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 
       };
 
       node->child[bit] = new;
-      prefix_nodes++;
     }
 
     node = node->child[bit];
@@ -557,23 +545,6 @@ trie_remove_prefix_ip6(struct aggregator_proto *p, struct trie_node * const root
 }
 
 static void
-before_check(const struct trie_node *node)
-{
-  assert(node != NULL);
-
-  if (node->original_bucket)
-    assert(IN_FIB == node->status);
-  else
-    assert(NON_FIB == node->status);
-
-  if (node->child[0])
-    before_check(node->child[0]);
-
-  if (node->child[1])
-    before_check(node->child[1]);
-}
-
-static void
 find_subtree_prefix(const struct trie_node *target, struct net_addr_ip4 *addr)
 {
   assert(target != NULL);
@@ -642,12 +613,6 @@ first_pass(struct trie_node *node)
   if (!node->original_bucket)
     node->original_bucket = node->parent->original_bucket;
 
-  for (int i = 0; i < 2; i++)
-  {
-    if (!node->child[i])
-      imaginary_nodes++;
-  }
-
   if (node->child[0])
     first_pass(node->child[0]);
 
@@ -708,8 +673,6 @@ second_pass(struct trie_node *node)
       left = &imaginary_node;
     else
       bug("Node does not have only one child");
-
-    one_child_nodes_1++;
   }
 
   assert(left != NULL && right != NULL);
@@ -852,11 +815,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net
         node->child[0] = new;
       else
         bug("Node does not have only one child");
-
-      additional_nodes++;
     }
-
-    one_child_nodes_2++;
   }
 
   /* Preorder traversal */
@@ -1258,78 +1217,6 @@ dump_trie(const struct trie_node *root)
 }
 
 static void
-get_trie_prefix_count_helper(const struct trie_node *node, int *count)
-{
-  if (is_leaf(node))
-  {
-    *count += 1;
-    return;
-  }
-
-  if (node->child[0])
-    get_trie_prefix_count_helper(node->child[0], count);
- 
-  if (node->child[1])
-    get_trie_prefix_count_helper(node->child[1], count);
-}
-
-static int
-get_trie_prefix_count(const struct trie_node *node)
-{
-  int count = 0;
-  get_trie_prefix_count_helper(node, &count);
-
-  return count;
-}
-
-static void
-get_trie_depth_helper(const struct trie_node *node, int *result, int depth)
-{
-  if (is_leaf(node))
-  {
-    if (depth > *result)
-      *result = depth;
-
-    return;
-  }
-
-  if (node->child[0])
-    get_trie_depth_helper(node->child[0], result, depth + 1);
-
-  if (node->child[1])
-    get_trie_depth_helper(node->child[1], result, depth + 1);
-}
-
-static int
-get_trie_depth(const struct trie_node *node)
-{
-  int result = 0;
-  get_trie_depth_helper(node, &result, 0);
-
-  return result;
-}
-
-static void
-get_trie_node_count_helper(const struct trie_node *node, int *count)
-{
-  *count += 1;
-
-  if (node->child[0])
-    get_trie_node_count_helper(node->child[0], count);
-
-  if (node->child[1])
-    get_trie_node_count_helper(node->child[1], count);
-}
-
-static int
-get_trie_node_count(const struct trie_node *root)
-{
-  int count = 0;
-  get_trie_node_count_helper(root, &count);
-  return count;
-}
-
-static void
 print_prefixes_ip4_helper(struct net_addr_ip4 *addr, const struct trie_node *node, int depth)
 {
   assert(node != NULL);
@@ -1431,12 +1318,6 @@ collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *add
   assert(node != NULL);
   assert(node->status == IN_FIB || node->status == NON_FIB);
 
-  if (is_leaf(node))
-  {
-    if (IN_FIB == node->status)
-      p->leaves++;
-  }
-
   /* Internal node with assigned bucket */
   if (IN_FIB == node->status)
   {
@@ -1445,7 +1326,6 @@ collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *add
 
     create_route_ip4(p, node->selected_bucket, addr);
     *count += 1;
-    p->internal_nodes++;
   }
 
   if (node->child[0])
@@ -1470,12 +1350,6 @@ collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *add
   assert(node != NULL);
   assert(node->status == IN_FIB || node->status == NON_FIB);
 
-  if (is_leaf(node))
-  {
-    if (IN_FIB == node->status)
-      p->leaves++;
-  }
-
   /* Internal node with assigned bucket */
   if (IN_FIB == node->status)
   {
@@ -1484,7 +1358,6 @@ collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *add
 
     create_route_ip6(p, node->selected_bucket, addr);
     *count += 1;
-    p->internal_nodes++;
   }
 
   if (node->child[0])
@@ -1575,8 +1448,6 @@ calculate_trie(struct aggregator_proto *p)
     print_prefixes(p->root, p->addr_type);
   }
 
-  before_check(p->root);
-
   times_update(&main_timeloop);
   log("==== FIRST PASS ====");
   first_pass(p->root);
@@ -1643,20 +1514,6 @@ run_aggregation(struct aggregator_proto *p)
 
   log("%d prefixes before aggregation", p->before_count);
   log("%d prefixes after aggregation", p->after_count);
-  log("%d internal nodes with bucket", p->internal_nodes);
-  log("%d leaves with bucket", p->leaves);
-
-  log("");
-  log("%d nodes in total", total_nodes);
-  log("%d prefix nodes", prefix_nodes);
-  log("%d imaginary nodes", imaginary_nodes);
-  log("%d nodes added in the third pass", additional_nodes);
-  log("%d nodes removed", removed_nodes);
-  log("%d nodes left", get_trie_node_count(p->root));
-  log("%d one-child nodes in the second pass", one_child_nodes_1);
-  log("%d one-child nodes in the third  pass", one_child_nodes_2);
-
-  total_nodes = prefix_nodes = imaginary_nodes = additional_nodes = removed_nodes = one_child_nodes_1 = one_child_nodes_2 = 0;
   log("---- AGGREGATION DONE ----");
 }
 
@@ -1681,8 +1538,6 @@ aggregate_on_feed_end(struct channel *C)
 
   p->before_count = 0;
   p->after_count = 0;
-  p->internal_nodes = 0;
-  p->leaves = 0;
 }
 
 /*
@@ -2486,8 +2341,6 @@ aggregator_cleanup(struct proto *P)
 
   p->before_count = 0;
   p->after_count = 0;
-  p->internal_nodes = 0;
-  p->leaves = 0;
 
   p->bucket_list = NULL;
   p->bucket_list_size = 0;
