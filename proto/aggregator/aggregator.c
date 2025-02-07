@@ -374,6 +374,34 @@ aggregator_withdraw_rte(struct aggregator_proto *p)
   lp_flush(p->rte_withdrawal_pool);
 }
 
+static void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net);
+
+static void
+create_route_ip4(struct aggregator_proto *p, const struct net_addr_ip4 *addr, struct aggregator_bucket *bucket)
+{
+  struct {
+    struct network net;
+    union net_addr_union u;
+  } net_placeholder;
+
+  assert(addr->type == NET_IP4);
+  net_copy_ip4((struct net_addr_ip4 *)&net_placeholder.net.n.addr, addr);
+  aggregator_bucket_update(p, bucket, &net_placeholder.net);
+}
+
+static void
+create_route_ip6(struct aggregator_proto *p, const struct net_addr_ip6 *addr, struct aggregator_bucket *bucket)
+{
+  struct {
+    struct network n;
+    union net_addr_union u;
+  } net_placeholder;
+
+  assert(addr->type == NET_IP6);
+  net_copy_ip6((struct net_addr_ip6 *)&net_placeholder.n.n.addr, addr);
+  aggregator_bucket_update(p, bucket, &net_placeholder.n);
+}
+
 /*
  * Insert prefix in @addr to prefix trie with beginning at @root and assign @bucket to this prefix.
  * If the prefix is already in the trie, update its bucket to @bucket and return updated node.
@@ -746,7 +774,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net
     if (NON_FIB == node->status)
     {
       log("Exporting %s route for %N", px_origin_str[node->px_origin], addr);
-      create_route_ip4(p, node->selected_bucket, addr);
+      create_route_ip4(p, addr, node->selected_bucket);
     }
 
     node->status = IN_FIB;
@@ -1281,37 +1309,6 @@ print_prefixes(const struct trie_node *node, int type)
   }
 }
 
-static void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net);
-
-/*
- * Create route for aggregated prefix
- */
-static void
-create_route_ip4(struct aggregator_proto *p, struct aggregator_bucket *bucket, const struct net_addr_ip4 *addr)
-{
-  struct {
-    struct network net;
-    union net_addr_union u;
-  } net_placeholder;
-
-  assert(addr->type == NET_IP4);
-  net_copy_ip4((struct net_addr_ip4 *)&net_placeholder.net.n.addr, addr);
-  aggregator_bucket_update(p, bucket, &net_placeholder.net);
-}
-
-static void
-create_route_ip6(struct aggregator_proto *p, struct aggregator_bucket *bucket, const struct net_addr_ip6 *addr)
-{
-  struct {
-    struct network n;
-    union net_addr_union u;
-  } net_placeholder;
-
-  assert(addr->type == NET_IP6);
-  net_copy_ip6((struct net_addr_ip6 *)&net_placeholder.n.n.addr, addr);
-  aggregator_bucket_update(p, bucket, &net_placeholder.n);
-}
-
 static void
 collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *addr, const struct trie_node *node, int *count, int depth)
 {
@@ -1324,7 +1321,7 @@ collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *add
     assert(node->original_bucket != NULL);
     assert(node->selected_bucket != NULL);
 
-    create_route_ip4(p, node->selected_bucket, addr);
+    create_route_ip4(p, addr, node->selected_bucket);
     *count += 1;
   }
 
@@ -1356,7 +1353,7 @@ collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *add
     assert(node->original_bucket != NULL);
     assert(node->selected_bucket != NULL);
 
-    create_route_ip6(p, node->selected_bucket, addr);
+    create_route_ip6(p, addr, node->selected_bucket);
     *count += 1;
   }
 
