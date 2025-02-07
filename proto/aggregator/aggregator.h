@@ -89,8 +89,6 @@ struct aggregator_proto {
   struct trie_node *root;
   int before_count;
   int after_count;
-  int internal_nodes;
-  int leaves;
   int logging;
 
   /* List of bucket pointers */
