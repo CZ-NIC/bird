@@ -2203,8 +2203,6 @@ aggregator_init(struct proto_config *CF)
 static void
 trie_init(struct aggregator_proto *p)
 {
-  p->root = create_new_node(p->trie_pool);
-
   struct network *default_net = NULL;
 
   if (p->addr_type == NET_IP4)
@@ -2223,6 +2221,9 @@ trie_init(struct aggregator_proto *p)
     if (p->logging)
       log("Creating net %p for default route %N", default_net, default_net->n.addr);
   }
+
+  /* Create root node */
+  p->root = create_new_node(p->trie_pool);
 
   /* Create route attributes with zero nexthop */
   struct rta rta = { 0 };
@@ -2256,10 +2257,13 @@ trie_init(struct aggregator_proto *p)
   HASH_INSERT2(p->routes, AGGR_RTE, p->p.pool, arte);
   HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 
-  /* Initialize root node with default route */
+  /*
+   * Root node is initialized with NON_FIB status.
+   * Default route will be created duing third pass.
+   */
   *p->root = (struct trie_node) {
     .original_bucket = new_bucket,
-    .status = IN_FIB,
+    .status = NON_FIB,
     .px_origin = ORIGINAL,
     .depth = 0,
   };
