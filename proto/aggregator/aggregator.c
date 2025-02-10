@@ -772,7 +772,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net
      * Prefix status is changing from NON_FIB to IN_FIB, thus its route
      * must be exported to the routing table.
      */
-    if (NON_FIB == node->status)
+    if (NON_FIB == node->status || UNASSIGNED_STATUS == node->status)
     {
       log("Exporting %s route for %N", px_origin_str[node->px_origin], addr);
       create_route_ip4(p, addr, node->selected_bucket);
