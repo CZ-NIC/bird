@@ -225,8 +225,11 @@ config_free_old(void)
   tm_stop(config_timer);
   undo_available = 0;
 
-  config_free(old_config);
-  old_config = NULL;
+  if (!configuring)
+  {
+    config_free(old_config);
+    old_config = NULL;
+  }
 }
 
 struct global_runtime global_runtime_internal[2] = {{
