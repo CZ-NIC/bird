@@ -877,14 +877,6 @@ third_pass(struct aggregator_proto *p, struct trie_node *node)
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
   assert(node->potential_buckets_count > 0);
 
-  /* Assign bucket with the lowest ID to the node */
-  node->selected_bucket = choose_lowest_id_bucket(p, node);
-  node->status = IN_FIB;
-  assert(node->selected_bucket != NULL);
-
-  /* The closest ancestor of the root node with a non-null bucket is the root itself */
-  node->ancestor = node;
-
   struct net_addr_ip4 addr = { 0 };
   net_fill_ip4((net_addr *)&addr, IP4_NONE, 0);
 
@@ -893,6 +885,24 @@ third_pass(struct aggregator_proto *p, struct trie_node *node)
    * find prefix that covers this subtree.
    */
   find_subtree_prefix(node, &addr);
+
+  /* Select bucket with the lowest ID */
+  node->selected_bucket = choose_lowest_id_bucket(p, node);
+  assert(node->selected_bucket != NULL);
+
+  /*
+   * Export new route if node status is changing from NON_FIB
+   * or UNASSIGNED to IN_FIB.
+   */
+  if (IN_FIB != node->status)
+  {
+    create_route_ip4(p, &addr, node->selected_bucket);
+    exported++;
+  }
+
+  /* The closest ancestor of the IN_FIB node with a non-null bucket is the node itself */
+  node->ancestor = node;
+  node->status = IN_FIB;
 
   if (node->child[0])
   {
