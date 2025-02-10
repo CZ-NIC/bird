@@ -956,7 +956,7 @@ channel_set_state(struct channel *c, uint state)
     break;
 
   case CS_UP:
-    ASSERT(cs == CS_DOWN || cs == CS_START);
+    ASSERT(cs == CS_DOWN || cs == CS_START || cs == CS_PAUSE);
 
     if (cs == CS_DOWN)
       channel_do_start(c);
