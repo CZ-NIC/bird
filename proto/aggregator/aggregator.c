@@ -769,22 +769,21 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net
     assert(node->selected_bucket != NULL);
 
     /*
-     * Prefix status is changing from NON_FIB to IN_FIB, thus its route
-     * must be exported to the routing table.
+     * Prefix status is changing from NON_FIB or UNASSIGNED (at newly created nodes)
+     * to IN_FIB, thus its route is exported to the routing table.
      */
-    if (NON_FIB == node->status || UNASSIGNED_STATUS == node->status)
+    if (IN_FIB != node->status)
     {
       log("Exporting %s route for %N", px_origin_str[node->px_origin], addr);
       create_route_ip4(p, addr, node->selected_bucket);
     }
-
-    node->status = IN_FIB;
 
     /*
      * Keep information whether this prefix was original. If not, then its origin
      * is changed to aggregated, because it's going to FIB.
      */
     node->px_origin = ORIGINAL == node->px_origin ? ORIGINAL : AGGREGATED;
+    node->status = IN_FIB;
   }
 
   assert((node->selected_bucket != NULL && node->status == IN_FIB) || (node->selected_bucket == NULL && node->status == NON_FIB));
