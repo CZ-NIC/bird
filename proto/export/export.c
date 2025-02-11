@@ -86,17 +86,22 @@ dump_route_attrs(char *wptr, rte *route)
 	char *attr_start = wptr;
 	wptr += 4;
 
-	struct eattr attr;
-	attr.id = EA_CODE(PROTOCOL_BGP, BA_NEXT_HOP);
+	if (route->sender->proto != NULL &&
+	    route->sender->proto->proto != NULL &&
+	    route->sender->proto->proto->class == PROTOCOL_STATIC) {
 
-	struct {
-		uint length;
-		ip_addr addr;
-	} data;
-	data.length = sizeof(ip_addr);
-	data.addr = route->attrs->nh.gw;
-	attr.u.ptr = (const struct adata *)&data;
-	wptr = dump_attr_plain_data(wptr, &attr);
+		struct eattr attr;
+		attr.id = EA_CODE(PROTOCOL_BGP, BA_NEXT_HOP);
+
+		struct {
+			uint length;
+			ip_addr addr;
+		} data;
+		data.length = sizeof(ip_addr);
+		data.addr = route->attrs->nh.gw;
+		attr.u.ptr = (const struct adata *)&data;
+		wptr = dump_attr_plain_data(wptr, &attr);
+	}
 
 	struct ea_list *ea = route->attrs->eattrs;
 	while (ea) {
