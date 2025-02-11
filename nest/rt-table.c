@@ -3101,6 +3101,7 @@ rt_flowspec_find_link(struct rtable_private *src, rtable *dst)
       {
 	case TES_FEEDING:
 	case TES_READY:
+	case TES_PARTIAL:
 	  return ln;
 
 	default:
