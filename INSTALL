@@ -1,8 +1,17 @@
 How to install BIRD
 ===================
 
+There are packages available for most of the existing distributions, and it is
+possibly a cleaner way to install BIRD than manually.
+
+To install BIRD manually from the source tarball, you need to first build it.
+
 $ ./configure
 $ make
+
+After this, you get binaries bird, birdc and birdcl which will run perfectly
+from wherever you put them. You can install them to the system paths if you want.
+
 # make install
 
 Default location for configuration file is /usr/local/etc/bird.conf and
@@ -20,6 +29,10 @@ $ cd bird
 $ autoreconf
 
 Then continue as in usual installation above.
+
+For debugging and development, it's recommended to use the -l flag for BIRD
+binaries to use bird.conf and bird.ctl in the current directory, instead of
+system-wide installation of an unstable version.
 
 
 Requirements
