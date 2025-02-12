@@ -1226,29 +1226,12 @@ construct_trie(struct aggregator_proto *p)
   {
     for (const struct rte *rte = bucket->rte; rte; rte = rte->next)
     {
-      union net_addr_union *uptr = (net_addr_union *)rte->net->n.addr;
-      assert(uptr->n.type == NET_IP4 || uptr->n.type == NET_IP6);
+      struct net_addr *addr = rte->net->n.addr;
 
-      if (NET_IP4 == uptr->n.type)
-      {
-        const struct net_addr_ip4 *addr = &uptr->ip4;
-        trie_insert_prefix_ip4(p->root, addr, bucket, p->trie_pool);
-        p->before_count++;
+      const ip_addr prefix = net_prefix(addr);
+      const u32 pxlen = net_pxlen(addr);
 
-        if (p->logging)
-          log("Insert %N", addr);
-      }
-      else if (NET_IP6 == uptr->n.type)
-      {
-        const struct net_addr_ip6 *addr = &uptr->ip6;
-        trie_insert_prefix_ip6(p->root, addr, bucket, p->trie_pool);
-        p->before_count++;
-
-        if (p->logging)
-          log("Insert %N", addr);
-      }
-      else
-        bug("Invalid NET type");
+      trie_insert_prefix(p->root, prefix, pxlen, bucket, p->trie_pool);
     }
   }
   HASH_WALK_END;
