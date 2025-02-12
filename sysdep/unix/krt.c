@@ -900,6 +900,10 @@ krt_start(struct proto *P)
   bmap_init(&p->seen_map, p->p.pool, 1024);
   add_tail(&krt_proto_list, &p->krt_node);
 
+  /* Disable exports until initial scan is done.
+   * This is needed if somebody happens to restart the kernel protocol. */
+  p->p.rt_notify = NULL;
+
   if (!krt_sys_start(p))
   {
     rem_node(&p->krt_node);
