@@ -328,14 +328,16 @@ proto_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket
 }
 
 /*
- * Each route which is to be withdrawed is pushed on the stack.
+ * Push routewhich is to be withdrawed on the stack
  */
 static void
-push_rte_withdraw_ip4(struct aggregator_proto *p, const struct net_addr_ip4 *addr, struct aggregator_bucket *bucket)
+prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket)
 {
   assert(p != NULL);
-  assert(addr != NULL);
   assert(bucket != NULL);
+
+  struct net_addr addr = { 0 };
+  net_fill_ipa(&addr, prefix, pxlen);
 
   struct rte_withdrawal *node = lp_allocz(p->rte_withdrawal_pool, sizeof(*node));
 
@@ -344,7 +346,7 @@ push_rte_withdraw_ip4(struct aggregator_proto *p, const struct net_addr_ip4 *add
     .bucket = bucket,
   };
 
-  net_copy(&node->addr, (net_addr *)addr);
+  net_copy(&node->addr, addr);
 
   p->rte_withdrawal_stack = node;
   p->rte_withdrawal_count++;
