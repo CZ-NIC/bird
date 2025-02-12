@@ -97,6 +97,11 @@ static const char *px_origin_str[] = {
   [AGGREGATED] = "aggregated",
 };
 
+static const u32 ipa_shift[] = {
+  [NET_IP4] = IP6_MAX_PREFIX_LENGTH - IP4_MAX_PREFIX_LENGTH,
+  [NET_IP6] = 0,
+};
+
 static inline int
 is_leaf(const struct trie_node *node)
 {
