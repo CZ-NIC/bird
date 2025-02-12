@@ -1843,7 +1843,17 @@ bgp_get_prefix(struct bgp_ptx_private *c, struct netindex *ni, struct rte_src *s
   /* Find existing */
   struct bgp_prefix *px = bgp_find_prefix(c, ni, src, add_path_tx);
   if (px)
+  {
+    /* If sending only best path, we have to exchange the stored src */
+    if (px->src != src)
+    {
+      rt_unlock_source(px->src);
+      rt_lock_source(src);
+      px->src = src;
+    }
+
     return px;
+  }
 
   /* Allocate new prefix */
   px = sl_alloc(c->prefix_slab);
