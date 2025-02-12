@@ -368,6 +368,10 @@ ip4_addr ip4_class_mask(ip4_addr ad);
 #define ipa_opposite_m1(x) ip6_opposite_m1(x)
 #define ipa_opposite_m2(x) ip6_opposite_m2(x)
 
+#define ipa_getbit(a, pos) ip6_getbit(a, pos)
+#define ipa_setbit(a, pos) ip6_setbit(a, pos)
+#define ipa_clrbit(a, pos) ip6_clrbit(a, pos)
+
 
 /*
  *	Host/network order conversions

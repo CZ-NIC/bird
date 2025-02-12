@@ -126,7 +126,6 @@
 #define ipa_mkmask(x) ip6_mkmask(x)
 #define ipa_masklen(x) ip6_masklen(&x)
 #define ipa_pxlen(x,y) ip6_pxlen(x,y)
-#define ipa_getbit(a,p) ip6_getbit(a,p)
 #define ipa_getbits(a,p,n) ip6_getbits(a,p,n)
 #define ipa_setbits(a,p,n) ip6_setbits(a,p,n)
 #define trie_local_mask(a,b,c) trie_local_mask6(a,b,c)
