@@ -1599,6 +1599,8 @@ bgp_start(struct proto *P)
   p->startup_timer = tm_new_init(p->p.pool, bgp_startup_timeout, p, 0, 0);
   p->gr_timer = tm_new_init(p->p.pool, bgp_graceful_restart_timeout, p, 0, 0);
 
+  p->hostname = proto_get_hostname(P->cf);
+
   p->local_id = proto_get_router_id(P->cf);
   if (p->rr_client)
     p->rr_cluster_id = p->cf->rr_cluster_id ? p->cf->rr_cluster_id : p->local_id;
@@ -2213,6 +2215,9 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   const struct bgp_config *old = p->cf;
 
   if (proto_get_router_id(CF) != p->local_id)
+    return 0;
+
+  if (proto_get_hostname(CF) != p->hostname)
     return 0;
 
   int same = !memcmp(((byte *) old) + sizeof(struct proto_config),
