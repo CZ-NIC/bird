@@ -1319,93 +1319,6 @@ print_prefixes(const struct trie_node *node, int type)
 }
 
 static void
-collect_prefixes_ip4_helper(struct aggregator_proto *p, struct net_addr_ip4 *addr, const struct trie_node *node, int *count, int depth)
-{
-  assert(node != NULL);
-  assert(node->status == IN_FIB || node->status == NON_FIB);
-
-  /* Internal node with assigned bucket */
-  if (IN_FIB == node->status)
-  {
-    assert(node->original_bucket != NULL);
-    assert(node->selected_bucket != NULL);
-
-    create_route_ip4(p, addr, node->selected_bucket);
-    *count += 1;
-  }
-
-  if (node->child[0])
-  {
-    ip4_clrbit(&addr->prefix, depth);
-    addr->pxlen = depth + 1;
-    collect_prefixes_ip4_helper(p, addr, node->child[0], count, depth + 1);
-  }
-
-  if (node->child[1])
-  {
-    ip4_setbit(&addr->prefix, depth);
-    addr->pxlen = depth + 1;
-    collect_prefixes_ip4_helper(p, addr, node->child[1], count, depth + 1);
-    ip4_clrbit(&addr->prefix, depth);
-  }
-}
-
-static void
-collect_prefixes_ip6_helper(struct aggregator_proto *p, struct net_addr_ip6 *addr, const struct trie_node *node, int *count, int depth)
-{
-  assert(node != NULL);
-  assert(node->status == IN_FIB || node->status == NON_FIB);
-
-  /* Internal node with assigned bucket */
-  if (IN_FIB == node->status)
-  {
-    assert(node->original_bucket != NULL);
-    assert(node->selected_bucket != NULL);
-
-    create_route_ip6(p, addr, node->selected_bucket);
-    *count += 1;
-  }
-
-  if (node->child[0])
-  {
-    ip6_clrbit(&addr->prefix, depth);
-    addr->pxlen = depth + 1;
-    collect_prefixes_ip6_helper(p, addr, node->child[0], count, depth + 1);
-  }
-
-  if (node->child[1])
-  {
-    ip6_setbit(&addr->prefix, depth);
-    addr->pxlen = depth + 1;
-    collect_prefixes_ip6_helper(p, addr, node->child[1], count, depth + 1);
-    ip6_clrbit(&addr->prefix, depth);
-  }
-}
-
-static void
-collect_prefixes(struct aggregator_proto *p)
-{
-  int count = 0;
-
-  if (NET_IP4 == p->addr_type)
-  {
-    struct net_addr_ip4 addr = { 0 };
-    net_fill_ip4((net_addr *)&addr, IP4_NONE, 0);
-    collect_prefixes_ip4_helper(p, &addr, p->root, &count, 0);
-  }
-  else if (NET_IP6 == p->addr_type)
-  {
-    struct net_addr_ip6 addr = { 0 };
-    net_fill_ip6((net_addr *)&addr, IP6_NONE, 0);
-    collect_prefixes_ip6_helper(p, &addr, p->root, &count, 0);
-  }
-  else
-    bug("Invalid NET type");
-
-  p->after_count = count;
-}
-
-static void
 construct_trie(struct aggregator_proto *p)
 {
   HASH_WALK(p->buckets, next_hash, bucket)
@@ -1512,7 +1425,6 @@ run_aggregation(struct aggregator_proto *p)
 
   times_update(&main_timeloop);
   log("==== COLLECTING PREFIXES ====");
-  collect_prefixes(p);
   times_update(&main_timeloop);
   log("==== COLLECTING PREFIXES DONE ====");
 
