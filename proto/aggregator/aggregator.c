@@ -378,29 +378,15 @@ aggregator_withdraw_rte(struct aggregator_proto *p)
 static void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net);
 
 static void
-create_route_ip4(struct aggregator_proto *p, const struct net_addr_ip4 *addr, struct aggregator_bucket *bucket)
+create_route(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket)
 {
-  struct {
-    struct network net;
-    union net_addr_union u;
-  } net_placeholder;
+  struct net_addr addr = { 0 };
+  net_fill_ipa(&addr, prefix, pxlen);
 
-  assert(addr->type == NET_IP4);
-  net_copy_ip4((struct net_addr_ip4 *)&net_placeholder.net.n.addr, addr);
-  aggregator_bucket_update(p, bucket, &net_placeholder.net);
-}
+  struct network *n = allocz(sizeof(*n) + sizeof(struct net_addr));
+  net_copy(n->n.addr, &addr);
 
-static void
-create_route_ip6(struct aggregator_proto *p, const struct net_addr_ip6 *addr, struct aggregator_bucket *bucket)
-{
-  struct {
-    struct network n;
-    union net_addr_union u;
-  } net_placeholder;
-
-  assert(addr->type == NET_IP6);
-  net_copy_ip6((struct net_addr_ip6 *)&net_placeholder.n.n.addr, addr);
-  aggregator_bucket_update(p, bucket, &net_placeholder.n);
+  aggregator_bucket_update(p, bucket, n);
 }
 
 /*
