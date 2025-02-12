@@ -398,57 +398,27 @@ create_route(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggre
  * Insert prefix in @addr to prefix trie with beginning at @root and assign @bucket to this prefix.
  * If the prefix is already in the trie, update its bucket to @bucket and return updated node.
  */
+
+
+
+
+
+
+
+
+
 static struct trie_node *
-trie_insert_prefix_ip4(struct trie_node * const root, const struct net_addr_ip4 *addr, struct aggregator_bucket *bucket, linpool *trie_pool)
+trie_insert_prefix(struct trie_node * const root, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket, linpool *trie_pool)
 {
-  assert(addr != NULL);
-  assert(bucket != NULL);
   assert(root != NULL);
+  assert(bucket != NULL);
   assert(trie_pool != NULL);
 
   struct trie_node *node = root;
 
-  for (u32 i = 0; i < addr->pxlen; i++)
+  for (u32 i = 0; i < pxlen; i++)
   {
-    u32 bit = ip4_getbit(addr->prefix, i);
-
-    if (!node->child[bit])
-    {
-      struct trie_node *new = create_new_node(trie_pool);
-
-      *new = (struct trie_node) {
-        .parent = node,
-        .status = NON_FIB,
-        .px_origin = FILLER,
-        .depth = node->depth + 1,
-      };
-
-      node->child[bit] = new;
-    }
-
-    node = node->child[bit];
-  }
-
-  /* Assign bucket to the last node */
-  node->original_bucket = bucket;
-  node->px_origin = ORIGINAL;
-
-  return node;
-}
-
-static struct trie_node *
-trie_insert_prefix_ip6(struct trie_node * const root, const struct net_addr_ip6 *addr, struct aggregator_bucket *bucket, linpool *trie_pool)
-{
-  assert(addr != NULL);
-  assert(bucket != NULL);
-  assert(root != NULL);
-  assert(trie_pool != NULL);
-
-  struct trie_node *node = root;
-
-  for (u32 i = 0; i < addr->pxlen; i++)
-  {
-    u32 bit = ip6_getbit(addr->prefix, i);
+    u32 bit = ipa_getbit(prefix, i + ipa_shift[p->addr_type]);
 
     if (!node->child[bit])
     {
