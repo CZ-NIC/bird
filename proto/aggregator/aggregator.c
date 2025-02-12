@@ -1083,7 +1083,7 @@ trie_process_withdraw(struct aggregator_proto *p, struct aggregator_route *old)
 }
 
 static void
-dump_trie_helper(const struct trie_node *node, struct net_addr_ip4 *addr, struct buffer *buf)
+dump_trie_helper(const struct aggregator_proto *p, const struct trie_node *node, ip_addr *prefix, u32 pxlen, struct buffer *buf)
 {
   assert(node != NULL);
   assert(addr != NULL);
@@ -1124,33 +1124,30 @@ dump_trie_helper(const struct trie_node *node, struct net_addr_ip4 *addr, struct
 
   if (node->child[0])
   {
-    ip4_clrbit(&addr->prefix, node->depth);
-    addr->pxlen = node->depth + 1;
-    dump_trie_helper(node->child[0], addr, buf);
+    ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
+    dump_trie_helper(p, node->child[0], prefix, pxlen + 1, buf);
   }
 
   if (node->child[1])
   {
-    ip4_setbit(&addr->prefix, node->depth);
-    addr->pxlen = node->depth + 1;
-    dump_trie_helper(node->child[1], addr, buf);
-    ip4_clrbit(&addr->prefix, node->depth);
+    ipa_setbit(prefix, node->depth + ipa_shift[p->addr_type]);
+    dump_trie_helper(p, node->child[1], prefix, pxlen + 1, buf);
+    ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
   }
 }
 
 static void
-dump_trie(const struct trie_node *root)
+dump_trie(const struct aggregator_proto *p)
 {
   assert(root != NULL);
+
+  ip_addr prefix = (NET_IP4 == p->addr_type) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
 
   struct buffer buf = { 0 };
   LOG_BUFFER_INIT(buf);
 
-  struct net_addr_ip4 addr = { 0 };
-  net_fill_ip4((net_addr *)&addr, IP4_NONE, 0);
-
   log("==== TRIE BEGIN ====");
-  dump_trie_helper(root, &addr, &buf);
+  dump_trie_helper(p, root, &prefix, 0, &buf);
   log("==== TRIE   END ====");
 }
 
