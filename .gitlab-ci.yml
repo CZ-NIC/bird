@@ -80,6 +80,10 @@ build-debian-11-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:debian-11-amd64
 
+build-debian-12-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:debian-12-amd64
+
 #build-debian-11-i386:
 #  <<: *build-linux
 #  image: registry.nic.cz/labs/bird:debian-11-i386
@@ -188,6 +192,8 @@ build-opensuse-15.3-amd64:
 .pkg-deb: &pkg-deb
   stage: pkg
   script:
+    # create venv only if it's installed
+    - if python3 -m venv venv; then . venv/bin/activate; fi
     - pip3 install apkg
     - apkg build
     #- apkg install -y pkg/pkgs/*/*/*.deb
@@ -230,6 +236,11 @@ pkg-debian-11-amd64:
   <<: *pkg-deb
   needs: [build-debian-11-amd64]
   image: registry.nic.cz/labs/bird:debian-11-amd64
+
+pkg-debian-12-amd64:
+  <<: *pkg-deb
+  needs: [build-debian-12-amd64]
+  image: registry.nic.cz/labs/bird:debian-12-amd64
 
 pkg-fedora-30-amd64:
   <<: *pkg-rpm-wa
