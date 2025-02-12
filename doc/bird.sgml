@@ -836,6 +836,10 @@ agreement").
 	This option can be used to override global router id for a given
 	protocol. Default: uses global router id.
 
+	<tag><label id="proto-hostname">hostname "<m/name/"</tag>
+	This option can be used to override global hostname for a given
+	protocol. Default: uses global hostname.
+
 	<tag><label id="proto-description">description "<m/text/"</tag>
 	This is an optional description of the protocol. It is displayed as a
 	part of the output of 'show protocols all' command.

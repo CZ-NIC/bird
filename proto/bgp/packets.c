@@ -281,11 +281,11 @@ bgp_prepare_capabilities(struct bgp_conn *conn)
   if (p->cf->llgr_mode)
     caps->llgr_aware = 1;
 
-  if (p->cf->enable_hostname && config->hostname)
+  if (p->cf->enable_hostname && p->hostname)
   {
-    size_t length = strlen(config->hostname);
+    size_t length = strlen(p->hostname);
     char *hostname = mb_allocz(p->p.pool, length+1);
-    memcpy(hostname, config->hostname, length+1);
+    memcpy(hostname, p->hostname, length+1);
     caps->hostname = hostname;
   }
 

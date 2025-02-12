@@ -127,6 +127,7 @@ struct proto_config {
   u8 vrf_set;				/* Related VRF instance (below) is defined */
   u32 debug, mrtdump;			/* Debugging bitfields, both use D_* constants */
   u32 router_id;			/* Protocol specific router ID */
+  const char *hostname;			/* Protocol specific hostname */
 
   list channels;			/* List of channel configs (struct channel_config) */
   struct iface *vrf;			/* Related VRF instance, NULL if global */
@@ -309,6 +310,12 @@ static inline u32
 proto_get_router_id(struct proto_config *pc)
 {
   return pc->router_id ? pc->router_id : pc->global->router_id;
+}
+
+static inline const char*
+proto_get_hostname(struct proto_config *pc)
+{
+  return pc->hostname ? pc->hostname : pc->global->hostname;
 }
 
 
