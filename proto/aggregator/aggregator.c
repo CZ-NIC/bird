@@ -447,29 +447,26 @@ trie_insert_prefix(struct trie_node * const root, ip_addr prefix, u32 pxlen, str
 }
 
 static struct trie_node *
-trie_remove_prefix_ip4(struct aggregator_proto *p, struct trie_node * const root, const struct net_addr_ip4 *addr)
+trie_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
 {
   assert(root != NULL);
-  assert(addr != NULL);
 
-  struct trie_node *node = root;
+  struct trie_node *node = p->root;
 
-  for (u32 i = 0; i < addr->pxlen; i++)
+  for (u32 i = 0; i < pxlen; i++)
   {
-    u32 bit = ip4_getbit(addr->prefix, i);
+    u32 bit = ipa_getbit(prefix, i + ipa_shift[p->addr_type]);
     node = node->child[bit];
     assert(node != NULL);
   }
 
   assert(node->px_origin == ORIGINAL);
   assert(node->selected_bucket != NULL);
+  assert(node->depth + 1 == pxlen);
 
-  /* Remove route for this prefix */
+  /* If this prefix was IN_FIB, remove its route */
   if (IN_FIB == node->status)
-  {
-    log("Removing %s route %N", px_origin_str[node->px_origin], addr);
-    push_rte_withdraw_ip4(p, addr, node->selected_bucket);
-  }
+    prepare_rte_withdrawal(p, prefix, pxlen, node->selected_bucket);
 
   node->status = NON_FIB;
   node->px_origin = FILLER;
@@ -480,47 +477,9 @@ trie_remove_prefix_ip4(struct aggregator_proto *p, struct trie_node * const root
   memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
 
   /*
-   * If prefix node is a leaf, remove it along with the branch
-   * it resides on, until non-leaf or prefix node is reached.
+   * If prefix node is a leaf, remove it with the branch it resides on,
+   * until non-leaf or prefix node is reached.
    */
-  for (struct trie_node *parent = node->parent; parent; node = parent, parent = node->parent)
-  {
-    if (FILLER == node->px_origin && is_leaf(node))
-    {
-      remove_node(node);
-      assert(node != NULL);
-      assert(parent != NULL);
-    }
-    else
-      break;
-  }
-
-  return node;
-}
-
-static struct trie_node *
-trie_remove_prefix_ip6(struct aggregator_proto *p, struct trie_node * const root, const struct net_addr_ip6 *addr)
-{
-  struct trie_node *node = root;
-
-  for (u32 i = 0; i < addr->pxlen; i++)
-  {
-    u32 bit = ip6_getbit(addr->prefix, i);
-    node = node->child[bit];
-    assert(node != NULL);
-  }
-
-  assert(node->px_origin == ORIGINAL);
-  assert(node->selected_bucket != NULL);
-
-  node->status = NON_FIB;
-  node->px_origin = FILLER;
-  node->ancestor = NULL;
-  node->original_bucket = NULL;
-  node->selected_bucket = NULL;
-  node->potential_buckets_count = 0;
-  memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
-
   for (struct trie_node *parent = node->parent; parent; node = parent, parent = node->parent)
   {
     if (FILLER == node->px_origin && is_leaf(node))
