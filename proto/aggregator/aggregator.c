@@ -495,19 +495,25 @@ trie_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
   return node;
 }
 
+/*
+ * Find prefix corresponding to the position of @target in the trie.
+ * Save result in @prefix and @pxlen.
+ */
 static void
-find_subtree_prefix(const struct trie_node *target, struct net_addr_ip4 *addr)
+find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, u32 *pxlen, u32 type)
 {
   assert(target != NULL);
-  assert(addr != NULL);
+  assert(prefix != NULL);
+  assert(pxlen != NULL);
 
-  int path[128] = { 0 };
+  int path[IP6_MAX_PREFIX_LENGTH] = { 0 };
   int pos = 0;
+  u32 len = 0;
 
   const struct trie_node *node = target;
   const struct trie_node *parent = node->parent;
 
-  /* Go from the target node to the root node and save the path taken */
+  /* Ascend to the root node */
   while (parent)
   {
     if (node == parent->child[0])
@@ -515,27 +521,29 @@ find_subtree_prefix(const struct trie_node *target, struct net_addr_ip4 *addr)
     else if (node == parent->child[1])
       path[pos++] = 1;
     else
-      bug("Impossible");
+      bug("Fatal error");
 
-    assert(pos < 128);
+    assert(pos < IP6_MAX_PREFIX_LENGTH);
     node = parent;
     parent = node->parent;
   }
 
   assert(node->parent == NULL);
 
-  /* Descend from the root node to the target node */
+  /* Descend to the target node */
   for (int i = pos - 1; i >= 0; i--)
   {
     if (path[i] == 0)
-      ip4_clrbit(&addr->prefix, node->depth);
-    else if (path[i] == 1)
-      ip4_setbit(&addr->prefix, node->depth);
+      ipa_clrbit(prefix, node->depth + ipa_shift[type]);
+    else
+      ipa_setbit(prefix, node->depth + ipa_shift[type]);
 
-    addr->pxlen = node->depth + 1;
+    len++;
     node = node->child[path[i]];
+    assert(node->depth + 1 == len);
   }
 
+  *pxlen = len;
   assert(node == target);
 }
 
