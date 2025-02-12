@@ -648,7 +648,7 @@ second_pass(struct trie_node *node)
 }
 
 static void
-third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net_addr_ip4 *addr)
+third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *prefix, u32 pxlen)
 {
   assert(node != NULL);
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
@@ -676,8 +676,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net
       assert(node->px_origin == ORIGINAL || node->px_origin == AGGREGATED);
       assert(node->selected_bucket != NULL);
 
-      log("Planning to remove %s route for %N", px_origin_str[node->px_origin], addr);
-      push_rte_withdraw_ip4(p, addr, node->selected_bucket);
+      prepare_rte_withdrawal(p, *prefix, pxlen, node->selected_bucket);
     }
 
     node->selected_bucket = NULL;
@@ -703,10 +702,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net
      * to IN_FIB, thus its route is exported to the routing table.
      */
     if (IN_FIB != node->status)
-    {
-      log("Exporting %s route for %N", px_origin_str[node->px_origin], addr);
-      create_route_ip4(p, addr, node->selected_bucket);
-    }
+      create_route(p, *prefix, pxlen, node->selected_bucket);
 
     /*
      * Keep information whether this prefix was original. If not, then its origin
@@ -779,17 +775,15 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, struct net
   /* Preorder traversal */
   if (node->child[0])
   {
-    ip4_clrbit(&addr->prefix, node->depth);
-    addr->pxlen = node->depth + 1;
-    third_pass_helper(p, node->child[0], addr);
+    ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
+    third_pass_helper(p, node->child[0], prefix, pxlen + 1);
   }
 
   if (node->child[1])
   {
-    ip4_setbit(&addr->prefix, node->depth);
-    addr->pxlen = node->depth + 1;
-    third_pass_helper(p, node->child[1], addr);
-    ip4_clrbit(&addr->prefix, node->depth);
+    ip6_setbit(prefix, node->depth + ipa_shift[p->addr_type]);
+    third_pass_helper(p, node->child[1], prefix, pxlen + 1);
+    ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
   }
 
   if (NON_FIB == node->status && is_leaf(node))
@@ -806,14 +800,14 @@ third_pass(struct aggregator_proto *p, struct trie_node *node)
   assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
   assert(node->potential_buckets_count > 0);
 
-  struct net_addr_ip4 addr = { 0 };
-  net_fill_ip4((net_addr *)&addr, IP4_NONE, 0);
+  ip_addr prefix = (NET_IP4 == p->addr_type) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
+  u32 pxlen = 0;
 
   /*
    * If third pass runs on a subtree and not the whole trie,
    * find prefix that covers this subtree.
    */
-  find_subtree_prefix(node, &addr);
+  find_subtree_prefix(node, &prefix, &pxlen, p->addr_type);
 
   /* Select bucket with the lowest ID */
   node->selected_bucket = choose_lowest_id_bucket(p, node);
@@ -824,10 +818,7 @@ third_pass(struct aggregator_proto *p, struct trie_node *node)
    * or UNASSIGNED to IN_FIB.
    */
   if (IN_FIB != node->status)
-  {
-    create_route_ip4(p, &addr, node->selected_bucket);
-    exported++;
-  }
+    create_route(p, prefix, pxlen, node->selected_bucket);
 
   /* The closest ancestor of the IN_FIB node with a non-null bucket is the node itself */
   node->ancestor = node;
@@ -835,17 +826,15 @@ third_pass(struct aggregator_proto *p, struct trie_node *node)
 
   if (node->child[0])
   {
-    ip4_clrbit(&addr.prefix, node->depth);
-    addr.pxlen = node->depth + 1;
-    third_pass_helper(p, node->child[0], &addr);
+    ipa_clrbit(&prefix, node->depth + ipa_shift[p->addr_type]);
+    third_pass_helper(p, node->child[0], &prefix, pxlen + 1);
   }
 
   if (node->child[1])
   {
-    ip4_setbit(&addr.prefix, node->depth);
-    addr.pxlen = node->depth + 1;
-    third_pass_helper(p, node->child[1], &addr);
-    ip4_clrbit(&addr.prefix, node->depth);
+    ipa_setbit(&prefix, node->depth + ipa_shift[p->addr_type]);
+    third_pass_helper(p, node->child[1], &prefix, pxlen + 1);
+    ipa_clrbit(&prefix, node->depth + ipa_shift[p->addr_type]);
   }
 }
 
