@@ -980,22 +980,12 @@ trie_process_update(struct aggregator_proto *p, struct aggregator_route *old UNU
   log("before update");
   dump_trie(p->root);
 
-  union net_addr_union *new_uptr = (net_addr_union *)new->rte.net->n.addr;
-  struct trie_node *updated_node = NULL;
+  struct net_addr *addr = new->rte.net->n.addr;
 
-  if (NET_IP4 == new_uptr->n.type)
-  {
-    struct net_addr_ip4 *addr = &new_uptr->ip4;
-    log("Adding new prefix %N", addr);
-    updated_node = trie_insert_prefix_ip4(p->root, addr, new->bucket, p->trie_pool);
-  }
-  else if (NET_IP6 == new_uptr->n.type)
-  {
-    struct net_addr_ip6 *addr = &new_uptr->ip6;
-    log("Adding new prefix %N", addr);
-    updated_node = trie_insert_prefix_ip6(p->root, addr, new->bucket, p->trie_pool);
-  }
+  const ip_addr prefix = net_prefix(addr);
+  const u32 pxlen = net_pxlen(addr);
 
+  struct trie_node *updated_node = trie_insert_prefix(p->root, prefix, pxlen, new->bucket, p->trie_pool);
   assert(updated_node != NULL);
   assert(updated_node->original_bucket != NULL);
   assert(updated_node->status == NON_FIB);
@@ -1048,20 +1038,12 @@ trie_process_withdraw(struct aggregator_proto *p, struct aggregator_route *old)
   log("before update");
   dump_trie(p->root);
 
-  union net_addr_union *uptr = (net_addr_union *)old->rte.net->n.addr;
-  struct trie_node *updated_node = NULL;
+  struct net_addr *addr = old->rte.net->n.addr;
 
-  if (NET_IP4 == uptr->n.type)
-  {
-    struct net_addr_ip4 *addr = &uptr->ip4;
-    updated_node = trie_remove_prefix_ip4(p, p->root, addr);
-  }
-  else if (NET_IP6 == uptr->n.type)
-  {
-    struct net_addr_ip6 *addr = &uptr->ip6;
-    updated_node = trie_remove_prefix_ip6(p, p->root, addr);
-  }
+  const ip_addr prefix = net_prefix(addr);
+  const u32 pxlen = net_pxlen(addr);
 
+  struct trie_node *updated_node = trie_remove_prefix(p, prefix, pxlen);
   assert(updated_node != NULL);
   dump_trie(p->root);
 
