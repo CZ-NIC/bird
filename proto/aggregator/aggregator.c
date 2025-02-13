@@ -1152,68 +1152,39 @@ dump_trie(const struct aggregator_proto *p)
 }
 
 static void
-print_prefixes_ip4_helper(struct net_addr_ip4 *addr, const struct trie_node *node, int depth)
+print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, int type)
 {
   assert(node != NULL);
+  assert(prefix != NULL);
 
   if (IN_FIB == node->status)
-    log("%N %p selected bucket: %p [[%u]]", addr, node, node->selected_bucket, node->selected_bucket->id);
+  {
+    struct net_addr addr = { 0 };
+    net_fill_ipa(&addr, *prefix, pxlen);
+    log("%N %p selected bucket: %p [[%u]]", &addr, node, node->selected_bucket, node->selected_bucket->id);
+  }
 
   if (node->child[0])
   {
-    ip4_clrbit(&addr->prefix, depth);
-    addr->pxlen = depth + 1;
-    print_prefixes_ip4_helper(addr, node->child[0], depth + 1);
+    ipa_clrbit(prefix, node->depth + ipa_shift[type]);
+    print_prefixes_helper(node->child[0], prefix, pxlen + 1, type);
   }
 
   if (node->child[1])
   {
-    ip4_setbit(&addr->prefix, depth);
-    addr->pxlen = depth + 1;
-    print_prefixes_ip4_helper(addr, node->child[1], depth + 1);
-    ip4_clrbit(&addr->prefix, depth);
-  }
-}
-
-static void
-print_prefixes_ip6_helper(struct net_addr_ip6 *addr, const struct trie_node *node, int depth)
-{
-  assert(node != NULL);
-
-  if (IN_FIB == node->status)
-    log("%N %p selected bucket: %p [[%u]]", addr, node, node->selected_bucket, node->selected_bucket->id);
-
-  if (node->child[0])
-  {
-    ip6_clrbit(&addr->prefix, depth);
-    addr->pxlen = depth + 1;
-    print_prefixes_ip6_helper(addr, node->child[0], depth + 1);
-  }
-
-  if (node->child[1])
-  {
-    ip6_setbit(&addr->prefix, depth);
-    addr->pxlen = depth + 1;
-    print_prefixes_ip6_helper(addr, node->child[1], depth + 1);
-    ip6_clrbit(&addr->prefix, depth);
+    ipa_setbit(prefix, node->depth + ipa_shift[type]);
+    print_prefixes_helper(node->child[1], prefix, pxlen + 1, type);
+    ipa_clrbit(prefix, node->depth + ipa_shift[type]);
   }
 }
 
 static void
 print_prefixes(const struct trie_node *node, int type)
 {
-  if (NET_IP4 == type)
-  {
-    struct net_addr_ip4 addr = { 0 };
-    net_fill_ip4((net_addr *)&addr, IP4_NONE, 0);
-    print_prefixes_ip4_helper(&addr, node, 0);
-  }
-  else if (NET_IP6 == type)
-  {
-    struct net_addr_ip6 addr = { 0 };
-    net_fill_ip6((net_addr *)&addr, IP6_NONE, 0);
-    print_prefixes_ip6_helper(&addr, node, 0);
-  }
+  assert(node != NULL);
+
+  ip_addr prefix = (NET_IP4 == type) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
+  print_prefixes_helper(node, &prefix, 0, type);
 }
 
 static void
