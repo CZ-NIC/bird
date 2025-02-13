@@ -853,6 +853,10 @@ mpls_fec_map_reconfigure(struct mpls_fec_map *m, struct channel *C)
     if ((fec->handle == m->handle) || (fec->handle == m->static_handle))
       continue;
 
+    /* Consistency check: static policy requires static handle to exist */
+    if (!m->static_handle)
+      ASSERT_DIE(fec->policy != MPLS_POLICY_STATIC);
+
     /* Try new handle for the FEC */
     struct mpls_handle_pub *new_pub = (fec->policy != MPLS_POLICY_STATIC) ? m->handle : m->static_handle;
     struct mpls_handle *new = MPLS_HANDLE_PRIV(new_pub);
