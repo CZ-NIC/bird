@@ -641,7 +641,7 @@ trie_match_longest_ip4(const struct f_trie *t, const net_addr_ip4 *net, net_addr
       if (len > pxlen)
 	goto done;
 
-      if (ip4_getbit(n->accept, len - 1))
+      if ((len > 0) && ip4_getbit(n->accept, len - 1))
       {
 	/* len is always < 32 due to len < n->plen */
 	ip4_setbit(&found, len);
@@ -735,7 +735,7 @@ trie_match_longest_ip6(const struct f_trie *t, const net_addr_ip6 *net, net_addr
       if (len > pxlen)
 	goto done;
 
-      if (ip6_getbit(n->accept, len - 1))
+      if ((len > 0) && ip6_getbit(n->accept, len - 1))
       {
 	/* len is always < 128 due to len < n->plen */
 	ip6_setbit(&found, len);
