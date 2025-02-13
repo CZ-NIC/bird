@@ -400,14 +400,112 @@ create_route(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggre
  * Insert prefix in @addr to prefix trie with beginning at @root and assign @bucket to this prefix.
  * If the prefix is already in the trie, update its bucket to @bucket and return updated node.
  */
+static void
+print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, int type)
+{
+  assert(node != NULL);
+  assert(prefix != NULL);
 
+  if (IN_FIB == node->status)
+  {
+    struct net_addr addr = { 0 };
+    net_fill_ipa(&addr, *prefix, pxlen);
+    log("%N %p selected bucket: %p [[%u]]", &addr, node, node->selected_bucket, node->selected_bucket->id);
+  }
 
+  if (node->child[0])
+  {
+    ipa_clrbit(prefix, node->depth + ipa_shift[type]);
+    print_prefixes_helper(node->child[0], prefix, pxlen + 1, type);
+  }
 
+  if (node->child[1])
+  {
+    ipa_setbit(prefix, node->depth + ipa_shift[type]);
+    print_prefixes_helper(node->child[1], prefix, pxlen + 1, type);
+    ipa_clrbit(prefix, node->depth + ipa_shift[type]);
+  }
+}
 
+static void
+print_prefixes(const struct trie_node *node, int type)
+{
+  assert(node != NULL);
 
+  ip_addr prefix = (NET_IP4 == type) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
+  print_prefixes_helper(node, &prefix, 0, type);
+}
 
+static void
+dump_trie_helper(const struct aggregator_proto *p, const struct trie_node *node, ip_addr *prefix, u32 pxlen, struct buffer *buf)
+{
+  assert(p != NULL);
+  assert(node != NULL);
+  assert(prefix != NULL);
 
+  memset(buf->start, 0, buf->pos - buf->start);
+  buf->pos = buf->start;
 
+  struct net_addr addr = { 0 };
+  net_fill_ipa(&addr, *prefix, pxlen);
+
+  buffer_print(buf, "%*s%s%N ", 2 * node->depth, "", IN_FIB == node->status ? "@" : " ", &addr);
+
+  if (node->original_bucket)
+    buffer_print(buf, "[%u] ", node->original_bucket->id);
+  else
+    buffer_print(buf, "[] ");
+
+  buffer_print(buf, "{");
+
+  int j = 0;
+
+  for (size_t i = 0; i < MAX_POTENTIAL_BUCKETS_COUNT; i++)
+  {
+    if (BIT32R_TEST(node->potential_buckets, i))
+    {
+      buffer_print(buf, "%u", i);
+      j++;
+
+      if (j < node->potential_buckets_count)
+        buffer_print(buf, ", ");
+    }
+  }
+
+  buffer_print(buf, "}");
+
+  if (node->selected_bucket)
+    buffer_print(buf, " -> [[%u]]", node->selected_bucket->id);
+
+  buffer_print(buf, " %p %s", node, px_origin_str[node->px_origin]);
+  log("%s", buf->start);
+
+  if (node->child[0])
+  {
+    ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
+    dump_trie_helper(p, node->child[0], prefix, pxlen + 1, buf);
+  }
+
+  if (node->child[1])
+  {
+    ipa_setbit(prefix, node->depth + ipa_shift[p->addr_type]);
+    dump_trie_helper(p, node->child[1], prefix, pxlen + 1, buf);
+    ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
+  }
+}
+
+static void
+dump_trie(const struct aggregator_proto *p)
+{
+  ip_addr prefix = (NET_IP4 == p->addr_type) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
+
+  struct buffer buf = { 0 };
+  LOG_BUFFER_INIT(buf);
+
+  log("==== TRIE BEGIN ====");
+  dump_trie_helper(p, p->root, &prefix, 0, &buf);
+  log("==== TRIE   END ====");
+}
 
 static struct trie_node *
 trie_insert_prefix(struct trie_node * const root, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket, linpool *trie_pool, u32 type)
@@ -966,9 +1064,6 @@ merge_buckets_above(struct trie_node *node)
   return node;
 }
 
-static void dump_trie(const struct aggregator_proto *);
-static void print_prefixes(const struct trie_node *, int);
-
 static void
 trie_process_update(struct aggregator_proto *p, struct aggregator_route *old UNUSED, struct aggregator_route *new)
 {
@@ -1078,113 +1173,6 @@ trie_process_withdraw(struct aggregator_proto *p, struct aggregator_route *old)
   dump_trie(p);
 
   print_prefixes(p->root, addr->type);
-}
-
-static void
-dump_trie_helper(const struct aggregator_proto *p, const struct trie_node *node, ip_addr *prefix, u32 pxlen, struct buffer *buf)
-{
-  assert(p != NULL);
-  assert(node != NULL);
-  assert(prefix != NULL);
-
-  memset(buf->start, 0, buf->pos - buf->start);
-  buf->pos = buf->start;
-
-  struct net_addr addr = { 0 };
-  net_fill_ipa(&addr, *prefix, pxlen);
-
-  buffer_print(buf, "%*s%s%N ", 2 * node->depth, "", IN_FIB == node->status ? "@" : " ", &addr);
-
-  if (node->original_bucket)
-    buffer_print(buf, "[%u] ", node->original_bucket->id);
-  else
-    buffer_print(buf, "[] ");
-
-  buffer_print(buf, "{");
-
-  int j = 0;
-
-  for (size_t i = 0; i < MAX_POTENTIAL_BUCKETS_COUNT; i++)
-  {
-    if (BIT32R_TEST(node->potential_buckets, i))
-    {
-      buffer_print(buf, "%u", i);
-      j++;
-
-      if (j < node->potential_buckets_count)
-        buffer_print(buf, ", ");
-    }
-  }
-
-  buffer_print(buf, "}");
-
-  if (node->selected_bucket)
-    buffer_print(buf, " -> [[%u]]", node->selected_bucket->id);
-
-  buffer_print(buf, " %p %s", node, px_origin_str[node->px_origin]);
-  log("%s", buf->start);
-
-  if (node->child[0])
-  {
-    ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
-    dump_trie_helper(p, node->child[0], prefix, pxlen + 1, buf);
-  }
-
-  if (node->child[1])
-  {
-    ipa_setbit(prefix, node->depth + ipa_shift[p->addr_type]);
-    dump_trie_helper(p, node->child[1], prefix, pxlen + 1, buf);
-    ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
-  }
-}
-
-static void
-dump_trie(const struct aggregator_proto *p)
-{
-  ip_addr prefix = (NET_IP4 == p->addr_type) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
-
-  struct buffer buf = { 0 };
-  LOG_BUFFER_INIT(buf);
-
-  log("==== TRIE BEGIN ====");
-  dump_trie_helper(p, p->root, &prefix, 0, &buf);
-  log("==== TRIE   END ====");
-}
-
-static void
-print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, int type)
-{
-  assert(node != NULL);
-  assert(prefix != NULL);
-
-  if (IN_FIB == node->status)
-  {
-    struct net_addr addr = { 0 };
-    net_fill_ipa(&addr, *prefix, pxlen);
-    log("%N %p selected bucket: %p [[%u]]", &addr, node, node->selected_bucket, node->selected_bucket->id);
-  }
-
-  if (node->child[0])
-  {
-    ipa_clrbit(prefix, node->depth + ipa_shift[type]);
-    print_prefixes_helper(node->child[0], prefix, pxlen + 1, type);
-  }
-
-  if (node->child[1])
-  {
-    ipa_setbit(prefix, node->depth + ipa_shift[type]);
-    print_prefixes_helper(node->child[1], prefix, pxlen + 1, type);
-    ipa_clrbit(prefix, node->depth + ipa_shift[type]);
-  }
-}
-
-static void
-print_prefixes(const struct trie_node *node, int type)
-{
-  assert(node != NULL);
-
-  ip_addr prefix = (NET_IP4 == type) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
-  print_prefixes_helper(node, &prefix, 0, type);
 }
 
 static void
