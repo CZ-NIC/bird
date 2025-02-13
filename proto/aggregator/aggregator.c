@@ -217,24 +217,6 @@ choose_lowest_id_bucket(const struct aggregator_proto *p, const struct trie_node
   bug("No bucket to choose from");
 }
 
-static inline int
-popcount32(u32 x)
-{
-  static const u32 m1  = 0x55555555;
-  static const u32 m2  = 0x33333333;
-  static const u32 m4  = 0x0f0f0f0f;
-  static const u32 m8  = 0x00ff00ff;
-  static const u32 m16 = 0x0000ffff;
-
-  x = (x & m1)  + ((x >> 1)  &  m1);
-  x = (x & m2)  + ((x >> 2)  &  m2);
-  x = (x & m4)  + ((x >> 4)  &  m4);
-  x = (x & m8)  + ((x >> 8)  &  m8);
-  x = (x & m16) + ((x >> 16) & m16);
-
-  return (int)x;
-}
-
 /*
  * If sets of potential buckets in @left and @right have non-empty intersection,
  * computed as bitwise AND, save it to the target bucket. Otherwise compute
@@ -261,7 +243,7 @@ merge_potential_buckets(struct trie_node *target, const struct trie_node *left, 
 
     /* Compute intersection */
     has_intersection |= !!(target->potential_buckets[i] = left->potential_buckets[i] & right->potential_buckets[i]);
-    bucket_count += popcount32(target->potential_buckets[i]);
+    bucket_count += u32_popcount(target->potential_buckets[i]);
 
     /*
      * If old and new values are different, the result of their XOR will be
@@ -279,8 +261,8 @@ merge_potential_buckets(struct trie_node *target, const struct trie_node *left, 
     for (int i = 0; i < POTENTIAL_BUCKETS_BITMAP_SIZE; i++)
     {
       target->potential_buckets[i] = left->potential_buckets[i] | right->potential_buckets[i];
-      bucket_count += popcount32(target->potential_buckets[i]);
       changed |= !!(old[i] ^ target->potential_buckets[i]);
+      bucket_count += u32_popcount(target->potential_buckets[i]);
     }
   }
 
