@@ -609,6 +609,7 @@ flow6_validate(const byte *nlri, uint len)
 void
 flow4_validate_cf(net_addr_flow4 *f)
 {
+  ASSERT_DIE(f && f->data);
   enum flow_validated_state r = flow4_validate(flow4_first_part(f), flow_read_length(f->data));
 
   if (r != FLOW_ST_VALID)
@@ -625,6 +626,7 @@ flow4_validate_cf(net_addr_flow4 *f)
 void
 flow6_validate_cf(net_addr_flow6 *f)
 {
+  ASSERT_DIE(f && f->data);
   enum flow_validated_state r = flow6_validate(flow6_first_part(f), flow_read_length(f->data));
 
   if (r != FLOW_ST_VALID)
