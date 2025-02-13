@@ -163,7 +163,7 @@ node_insert_potential_bucket(struct trie_node *node, const struct aggregator_buc
  * Check if @bucket is one of potential buckets in @node
  */
 static int
-is_bucket_potential(const struct trie_node *node, const struct aggregator_bucket *bucket)
+node_is_bucket_potential(const struct trie_node *node, const struct aggregator_bucket *bucket)
 {
   assert(node != NULL);
   assert(bucket != NULL);
@@ -276,7 +276,7 @@ merge_potential_buckets(struct trie_node *target, const struct trie_node *left, 
  * Insert @bucket to the list of bucket pointers in @p to position @bucket-ID
  */
 static void
-proto_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket)
+agregator_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket)
 {
   assert(p != NULL);
   assert(p->bucket_list != NULL);
@@ -313,7 +313,7 @@ proto_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket
  * Push routewhich is to be withdrawed on the stack
  */
 static void
-prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket)
+aggregator_prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket)
 {
   assert(p != NULL);
   assert(bucket != NULL);
@@ -526,7 +526,7 @@ aggregator_insert_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, 
 }
 
 static struct trie_node *
-trie_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
+aggregator_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
 {
   struct trie_node *node = p->root;
 
@@ -543,7 +543,7 @@ trie_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
 
   /* If this prefix was IN_FIB, remove its route */
   if (IN_FIB == node->status)
-    prepare_rte_withdrawal(p, prefix, pxlen, node->selected_bucket);
+    aggregator_prepare_rte_withdrawal(p, prefix, pxlen, node->selected_bucket);
 
   node->status = NON_FIB;
   node->px_origin = FILLER;
@@ -742,7 +742,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
    * of this node, then this node doesn't need a bucket because it inherits
    * one, and is not needed in FIB.
    */
-  if (is_bucket_potential(node, inherited_bucket))
+  if (node_is_bucket_potential(node, inherited_bucket))
   {
     /*
      * Prefix status is changing from IN_FIB to NON_FIB, thus its route
@@ -753,7 +753,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
       assert(node->px_origin == ORIGINAL || node->px_origin == AGGREGATED);
       assert(node->selected_bucket != NULL);
 
-      prepare_rte_withdrawal(p, *prefix, pxlen, node->selected_bucket);
+      aggregator_prepare_rte_withdrawal(p, *prefix, pxlen, node->selected_bucket);
     }
 
     node->selected_bucket = NULL;
@@ -835,7 +835,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
      * If this condition is met, we need to allocate these nodes and
      * connect them to the trie.
      */
-    if (!is_bucket_potential(&imaginary_node, imaginary_node_inherited_bucket))
+    if (!node_is_bucket_potential(&imaginary_node, imaginary_node_inherited_bucket))
     {
       struct trie_node *new = create_new_node(p->trie_pool);
       *new = imaginary_node;
@@ -1117,7 +1117,7 @@ trie_process_withdraw(struct aggregator_proto *p, struct aggregator_route *old)
   const ip_addr prefix = net_prefix(addr);
   const u32 pxlen = net_pxlen(addr);
 
-  struct trie_node *updated_node = trie_remove_prefix(p, prefix, pxlen);
+  struct trie_node *updated_node = aggregator_remove_prefix(p, prefix, pxlen);
   assert(updated_node != NULL);
   dump_trie(p);
 
@@ -1780,7 +1780,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
       HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 
       new_bucket->id = get_new_bucket_id(p);
-      proto_insert_bucket(p, new_bucket);
+      agregator_insert_bucket(p, new_bucket);
     }
 
     /* Store the route attributes */
@@ -1979,7 +1979,7 @@ trie_init(struct aggregator_proto *p)
 
   /* Assign ID to the root node bucket */
   new_bucket->id = get_new_bucket_id(p);
-  proto_insert_bucket(p, new_bucket);
+  agregator_insert_bucket(p, new_bucket);
   assert(get_bucket_ptr(p, new_bucket->id) == new_bucket);
 
   struct aggregator_route *arte = lp_allocz(p->route_pool, sizeof(*arte));
