@@ -346,7 +346,7 @@ prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, st
     .bucket = bucket,
   };
 
-  net_copy(&node->addr, addr);
+  net_copy(&node->addr, &addr);
 
   p->rte_withdrawal_stack = node;
   p->rte_withdrawal_count++;
@@ -410,7 +410,7 @@ create_route(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggre
 
 
 static struct trie_node *
-trie_insert_prefix(struct trie_node * const root, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket, linpool *trie_pool)
+trie_insert_prefix(struct trie_node * const root, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket, linpool *trie_pool, u32 type)
 {
   assert(root != NULL);
   assert(bucket != NULL);
@@ -420,7 +420,7 @@ trie_insert_prefix(struct trie_node * const root, ip_addr prefix, u32 pxlen, str
 
   for (u32 i = 0; i < pxlen; i++)
   {
-    u32 bit = ipa_getbit(prefix, i + ipa_shift[p->addr_type]);
+    u32 bit = ipa_getbit(prefix, i + ipa_shift[type]);
 
     if (!node->child[bit])
     {
@@ -449,8 +449,6 @@ trie_insert_prefix(struct trie_node * const root, ip_addr prefix, u32 pxlen, str
 static struct trie_node *
 trie_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
 {
-  assert(root != NULL);
-
   struct trie_node *node = p->root;
 
   for (u32 i = 0; i < pxlen; i++)
@@ -462,7 +460,7 @@ trie_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
 
   assert(node->px_origin == ORIGINAL);
   assert(node->selected_bucket != NULL);
-  assert(node->depth + 1 == pxlen);
+  assert(node->depth == pxlen);
 
   /* If this prefix was IN_FIB, remove its route */
   if (IN_FIB == node->status)
@@ -540,7 +538,7 @@ find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, u32 *pxlen,
 
     len++;
     node = node->child[path[i]];
-    assert(node->depth + 1 == len);
+    assert(node->depth == len);
   }
 
   *pxlen = len;
@@ -968,7 +966,7 @@ merge_buckets_above(struct trie_node *node)
   return node;
 }
 
-static void dump_trie(const struct trie_node *);
+static void dump_trie(const struct aggregator_proto *);
 static void print_prefixes(const struct trie_node *, int);
 
 static void
@@ -978,14 +976,14 @@ trie_process_update(struct aggregator_proto *p, struct aggregator_route *old UNU
   assert(new != NULL);
 
   log("before update");
-  dump_trie(p->root);
+  dump_trie(p);
 
   struct net_addr *addr = new->rte.net->n.addr;
 
   const ip_addr prefix = net_prefix(addr);
   const u32 pxlen = net_pxlen(addr);
 
-  struct trie_node *updated_node = trie_insert_prefix(p->root, prefix, pxlen, new->bucket, p->trie_pool);
+  struct trie_node *updated_node = trie_insert_prefix(p->root, prefix, pxlen, new->bucket, p->trie_pool, p->addr_type);
   assert(updated_node != NULL);
   assert(updated_node->original_bucket != NULL);
   assert(updated_node->status == NON_FIB);
@@ -1008,25 +1006,25 @@ trie_process_update(struct aggregator_proto *p, struct aggregator_route *old UNU
 
   log("deaggregate");
   deaggregate(node);
-  dump_trie(p->root);
+  dump_trie(p);
 
   assert_trie(p->root);
 
   log("second pass");
   second_pass(node);
-  dump_trie(p->root);
+  dump_trie(p);
 
   log("merge buckets above");
   struct trie_node *highest_node = merge_buckets_above(node);
   log("highest changed node %p", highest_node);
-  dump_trie(p->root);
+  dump_trie(p);
 
   log("third pass");
   assert(highest_node != NULL);
   third_pass(p, highest_node);
-  dump_trie(p->root);
+  dump_trie(p);
 
-  print_prefixes(p->root, new_uptr->n.type);
+  print_prefixes(p->root, addr->type);
 }
 
 static void
@@ -1036,7 +1034,7 @@ trie_process_withdraw(struct aggregator_proto *p, struct aggregator_route *old)
   assert(old != NULL);
 
   log("before update");
-  dump_trie(p->root);
+  dump_trie(p);
 
   struct net_addr *addr = old->rte.net->n.addr;
 
@@ -1045,7 +1043,7 @@ trie_process_withdraw(struct aggregator_proto *p, struct aggregator_route *old)
 
   struct trie_node *updated_node = trie_remove_prefix(p, prefix, pxlen);
   assert(updated_node != NULL);
-  dump_trie(p->root);
+  dump_trie(p);
 
   struct trie_node *node = updated_node;
 
@@ -1064,34 +1062,38 @@ trie_process_withdraw(struct aggregator_proto *p, struct aggregator_route *old)
 
   log("deaggregate");
   deaggregate(node);
-  dump_trie(p->root);
+  dump_trie(p);
 
   log("second pass");
   second_pass(node);
-  dump_trie(p->root);
+  dump_trie(p);
 
   log("merge buckets above");
   struct trie_node *highest_node = merge_buckets_above(node);
-  dump_trie(p->root);
+  dump_trie(p);
   assert(highest_node != NULL);
 
   log("third pass");
   third_pass(p, highest_node);
-  dump_trie(p->root);
+  dump_trie(p);
 
-  print_prefixes(p->root, uptr->n.type);
+  print_prefixes(p->root, addr->type);
 }
 
 static void
 dump_trie_helper(const struct aggregator_proto *p, const struct trie_node *node, ip_addr *prefix, u32 pxlen, struct buffer *buf)
 {
+  assert(p != NULL);
   assert(node != NULL);
-  assert(addr != NULL);
+  assert(prefix != NULL);
 
   memset(buf->start, 0, buf->pos - buf->start);
   buf->pos = buf->start;
 
-  buffer_print(buf, "%*s%s%N ", 2 * node->depth, "", IN_FIB == node->status ? "@" : " ", addr);
+  struct net_addr addr = { 0 };
+  net_fill_ipa(&addr, *prefix, pxlen);
+
+  buffer_print(buf, "%*s%s%N ", 2 * node->depth, "", IN_FIB == node->status ? "@" : " ", &addr);
 
   if (node->original_bucket)
     buffer_print(buf, "[%u] ", node->original_bucket->id);
@@ -1139,15 +1141,13 @@ dump_trie_helper(const struct aggregator_proto *p, const struct trie_node *node,
 static void
 dump_trie(const struct aggregator_proto *p)
 {
-  assert(root != NULL);
-
   ip_addr prefix = (NET_IP4 == p->addr_type) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
 
   struct buffer buf = { 0 };
   LOG_BUFFER_INIT(buf);
 
   log("==== TRIE BEGIN ====");
-  dump_trie_helper(p, root, &prefix, 0, &buf);
+  dump_trie_helper(p, p->root, &prefix, 0, &buf);
   log("==== TRIE   END ====");
 }
 
@@ -1199,7 +1199,7 @@ construct_trie(struct aggregator_proto *p)
       const ip_addr prefix = net_prefix(addr);
       const u32 pxlen = net_pxlen(addr);
 
-      trie_insert_prefix(p->root, prefix, pxlen, bucket, p->trie_pool);
+      trie_insert_prefix(p->root, prefix, pxlen, bucket, p->trie_pool, p->addr_type);
     }
   }
   HASH_WALK_END;
