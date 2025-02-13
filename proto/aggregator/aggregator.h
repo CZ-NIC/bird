@@ -87,8 +87,6 @@ struct aggregator_proto {
   uint addr_type;
   linpool *trie_pool;
   struct trie_node *root;
-  int before_count;
-  int after_count;
   int logging;
 
   /* List of bucket pointers */

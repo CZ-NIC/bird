@@ -1232,28 +1232,8 @@ run_aggregation(struct aggregator_proto *p)
 {
   assert(p->root != NULL);
 
-  times_update(&main_timeloop);
-
-  log("---- AGGREGATION START ----");
-
-  times_update(&main_timeloop);
-  log("==== BUILDING TRIE ====");
   construct_trie(p);
-  times_update(&main_timeloop);
-  log("==== BUILDING TRIE DONE  ====");
-
   calculate_trie(p);
-
-  times_update(&main_timeloop);
-  log("==== COLLECTING PREFIXES ====");
-  times_update(&main_timeloop);
-  log("==== COLLECTING PREFIXES DONE ====");
-
-  times_update(&main_timeloop);
-
-  log("%d prefixes before aggregation", p->before_count);
-  log("%d prefixes after aggregation", p->after_count);
-  log("---- AGGREGATION DONE ----");
 }
 
 static void trie_init(struct aggregator_proto *p);
@@ -1274,9 +1254,6 @@ aggregate_on_feed_end(struct channel *C)
 
   trie_init(p);
   run_aggregation(p);
-
-  p->before_count = 0;
-  p->after_count = 0;
 }
 
 /*
@@ -2081,9 +2058,6 @@ aggregator_cleanup(struct proto *P)
   p->rte_withdrawal_pool = NULL;
 
   p->root = NULL;
-
-  p->before_count = 0;
-  p->after_count = 0;
 
   p->bucket_list = NULL;
   p->bucket_list_size = 0;
