@@ -231,8 +231,8 @@ merge_potential_buckets(struct trie_node *target, const struct trie_node *left, 
   assert(right != NULL);
 
   int has_intersection = 0;
-  int bucket_count = 0;
-  int changed = 0;
+  int has_changed = 0;
+  int buckets_count = 0;
 
   u32 old[ARRAY_SIZE(target->potential_buckets)] = { 0 };
 
@@ -243,33 +243,33 @@ merge_potential_buckets(struct trie_node *target, const struct trie_node *left, 
 
     /* Compute intersection */
     has_intersection |= !!(target->potential_buckets[i] = left->potential_buckets[i] & right->potential_buckets[i]);
-    bucket_count += u32_popcount(target->potential_buckets[i]);
+    buckets_count += u32_popcount(target->potential_buckets[i]);
 
     /*
      * If old and new values are different, the result of their XOR will be
      * non-zero, thus @changed will be set to non-zero - true, as well.
      */
-    changed |= !!(old[i] ^ target->potential_buckets[i]);
+    has_changed |= !!(old[i] ^ target->potential_buckets[i]);
   }
 
   /* Sets have an empty intersection, compute their union instead */
   if (!has_intersection)
   {
-    bucket_count = 0;
-    changed = 0;
+    buckets_count = 0;
+    has_changed = 0;
 
     for (int i = 0; i < POTENTIAL_BUCKETS_BITMAP_SIZE; i++)
     {
       target->potential_buckets[i] = left->potential_buckets[i] | right->potential_buckets[i];
-      changed |= !!(old[i] ^ target->potential_buckets[i]);
-      bucket_count += u32_popcount(target->potential_buckets[i]);
+      buckets_count += u32_popcount(target->potential_buckets[i]);
+      has_changed |= !!(old[i] ^ target->potential_buckets[i]);
     }
   }
 
   /* Update number of potential buckets */
-  target->potential_buckets_count = bucket_count;
+  target->potential_buckets_count = buckets_count;
 
-  return changed;
+  return has_changed;
 }
 
 /*
