@@ -378,10 +378,6 @@ create_route(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggre
   aggregator_bucket_update(p, bucket, n);
 }
 
-/*
- * Insert prefix in @addr to prefix trie with beginning at @root and assign @bucket to this prefix.
- * If the prefix is already in the trie, update its bucket to @bucket and return updated node.
- */
 static void
 print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, int type)
 {
@@ -489,22 +485,25 @@ dump_trie(const struct aggregator_proto *p)
   log("==== TRIE   END ====");
 }
 
+/*
+ * Insert prefix in @addr to prefix trie with beginning at @root and assign @bucket to this prefix.
+ * If the prefix is already in the trie, update its bucket to @bucket and return updated node.
+ */
 static struct trie_node *
-trie_insert_prefix(struct trie_node * const root, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket, linpool *trie_pool, u32 type)
+aggregator_insert_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket)
 {
-  assert(root != NULL);
+  assert(p != NULL);
   assert(bucket != NULL);
-  assert(trie_pool != NULL);
 
-  struct trie_node *node = root;
+  struct trie_node *node = p->root;
 
   for (u32 i = 0; i < pxlen; i++)
   {
-    u32 bit = ipa_getbit(prefix, i + ipa_shift[type]);
+    u32 bit = ipa_getbit(prefix, i + ipa_shift[p->addr_type]);
 
     if (!node->child[bit])
     {
-      struct trie_node *new = create_new_node(trie_pool);
+      struct trie_node *new = create_new_node(p->trie_pool);
 
       *new = (struct trie_node) {
         .parent = node,
@@ -1060,7 +1059,7 @@ trie_process_update(struct aggregator_proto *p, struct aggregator_route *old UNU
   const ip_addr prefix = net_prefix(addr);
   const u32 pxlen = net_pxlen(addr);
 
-  struct trie_node *updated_node = trie_insert_prefix(p->root, prefix, pxlen, new->bucket, p->trie_pool, p->addr_type);
+  struct trie_node *updated_node = aggregator_insert_prefix(p, prefix, pxlen, new->bucket);
   assert(updated_node != NULL);
   assert(updated_node->original_bucket != NULL);
   assert(updated_node->status == NON_FIB);
@@ -1169,7 +1168,7 @@ construct_trie(struct aggregator_proto *p)
       const ip_addr prefix = net_prefix(addr);
       const u32 pxlen = net_pxlen(addr);
 
-      trie_insert_prefix(p->root, prefix, pxlen, bucket, p->trie_pool, p->addr_type);
+      aggregator_insert_prefix(p, prefix, pxlen, bucket);
     }
   }
   HASH_WALK_END;
