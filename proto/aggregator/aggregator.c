@@ -1054,7 +1054,7 @@ merge_buckets_above(struct trie_node *node)
 }
 
 static void
-trie_process_update(struct aggregator_proto *p, struct aggregator_route *old UNUSED, struct aggregator_route *new)
+aggregator_process_update(struct aggregator_proto *p, struct aggregator_route *old UNUSED, struct aggregator_route *new)
 {
   assert(p != NULL);
   assert(new != NULL);
@@ -1112,7 +1112,7 @@ trie_process_update(struct aggregator_proto *p, struct aggregator_route *old UNU
 }
 
 static void
-trie_process_withdraw(struct aggregator_proto *p, struct aggregator_route *old)
+aggregator_process_withdraw(struct aggregator_proto *p, struct aggregator_route *old)
 {
   assert(p != NULL);
   assert(old != NULL);
@@ -1835,12 +1835,12 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
         else if (!old && new)
           log("rt notify: announce");
 
-        trie_process_update(p, old_route, new_route);
+        aggregator_process_update(p, old_route, new_route);
       }
       else if (old && !new)
       {
         log("rt notify: withdraw");
-        trie_process_withdraw(p, old_route);
+        aggregator_process_withdraw(p, old_route);
       }
 
       /* Process all route withdrawals which were caused by the update */
