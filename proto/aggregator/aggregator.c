@@ -1771,25 +1771,12 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   }
   else if (PREFIX_AGGR == p->aggr_mode)
   {
-    // old => old_route, new => arte
     if (p->root)
     {
-      if ((old && new) || (!old && new))
-      {
-        assert(new_route != NULL);
-
-        if (old && new)
-          log("rt notify: update");
-        else if (!old && new)
-          log("rt notify: announce");
-
-        aggregator_process_update(p, old_route, new_route);
-      }
-      else if (old && !new)
-      {
-        log("rt notify: withdraw");
+      if (old && !new)
         aggregator_process_withdraw(p, old_route);
-      }
+      else
+        aggregator_process_update(p, old_route, new_route);
 
       /* Process all route withdrawals which were caused by the update */
       aggregator_withdraw_rte(p);
@@ -2014,6 +2001,7 @@ aggregator_cleanup(struct proto *P)
   p->bucket_list_size = 0;
   p->bucket_list_count = 0;
 
+  p->rte_withdrawal_stack = NULL;
   p->rte_withdrawal_count = 0;
 
   p->bucket_id_map = (struct hmap) { 0 };
