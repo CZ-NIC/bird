@@ -1501,15 +1501,15 @@ channel_notify_basic(void *_channel)
 		/* Duplicate obsolete route check */
 		if (old && (u->feed->block[o].id == old->id))
 		  u->feed->block[o].src = NULL;
-		else if (bmap_test(&c->export_accepted_map, u->feed->block[o].id))
+		else if (
+		    bmap_test(&c->export_accepted_map, u->feed->block[o].id) || 
+		    bmap_test(&c->export_rejected_map, u->feed->block[o].id)
+		    )
 		{
-		  /* We expect that there was only one route previously exported */
+		  /* But we expect that there was only one route previously exported */
 		  ASSERT_DIE(!old);
 		  old = &u->feed->block[o];
 		}
-		/* There may be multiple rejected records, just clear them */
-		else if (bmap_test(&c->export_rejected_map, u->feed->block[o].id))
-		  bmap_clear(&c->export_rejected_map, u->feed->block[o].id);
 
 	    /* This is the distilled notification */
 	    rt_notify_basic(c, new, old);
