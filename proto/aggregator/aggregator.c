@@ -393,12 +393,14 @@ print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, 
 
   if (node->child[0])
   {
+    assert((u32)node->depth == pxlen);
     ipa_clrbit(prefix, node->depth + ipa_shift[type]);
     print_prefixes_helper(node->child[0], prefix, pxlen + 1, type);
   }
 
   if (node->child[1])
   {
+    assert((u32)node->depth == pxlen);
     ipa_setbit(prefix, node->depth + ipa_shift[type]);
     print_prefixes_helper(node->child[1], prefix, pxlen + 1, type);
     ipa_clrbit(prefix, node->depth + ipa_shift[type]);
@@ -460,12 +462,14 @@ dump_trie_helper(const struct aggregator_proto *p, const struct trie_node *node,
 
   if (node->child[0])
   {
+    assert((u32)node->depth == pxlen);
     ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
     dump_trie_helper(p, node->child[0], prefix, pxlen + 1, buf);
   }
 
   if (node->child[1])
   {
+    assert((u32)node->depth == pxlen);
     ipa_setbit(prefix, node->depth + ipa_shift[p->addr_type]);
     dump_trie_helper(p, node->child[1], prefix, pxlen + 1, buf);
     ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
@@ -539,7 +543,7 @@ aggregator_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
 
   assert(node->px_origin == ORIGINAL);
   assert(node->selected_bucket != NULL);
-  assert(node->depth == pxlen);
+  assert((u32)node->depth == pxlen);
 
   /* If this prefix was IN_FIB, remove its route */
   if (IN_FIB == node->status)
@@ -617,11 +621,11 @@ find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, u32 *pxlen,
 
     len++;
     node = node->child[path[i]];
-    assert(node->depth == len);
+    assert((u32)node->depth == len);
   }
 
-  *pxlen = len;
   assert(node == target);
+  *pxlen = len;
 }
 
 /*
@@ -852,12 +856,14 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
   /* Preorder traversal */
   if (node->child[0])
   {
+    assert((u32)node->depth == pxlen);
     ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
     third_pass_helper(p, node->child[0], prefix, pxlen + 1);
   }
 
   if (node->child[1])
   {
+    assert((u32)node->depth == pxlen);
     ip6_setbit(prefix, node->depth + ipa_shift[p->addr_type]);
     third_pass_helper(p, node->child[1], prefix, pxlen + 1);
     ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
@@ -903,12 +909,14 @@ third_pass(struct aggregator_proto *p, struct trie_node *node)
 
   if (node->child[0])
   {
+    assert((u32)node->depth == pxlen);
     ipa_clrbit(&prefix, node->depth + ipa_shift[p->addr_type]);
     third_pass_helper(p, node->child[0], &prefix, pxlen + 1);
   }
 
   if (node->child[1])
   {
+    assert((u32)node->depth == pxlen);
     ipa_setbit(&prefix, node->depth + ipa_shift[p->addr_type]);
     third_pass_helper(p, node->child[1], &prefix, pxlen + 1);
     ipa_clrbit(&prefix, node->depth + ipa_shift[p->addr_type]);
