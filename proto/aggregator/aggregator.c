@@ -952,19 +952,6 @@ check_ancestors_after_aggregation(const struct trie_node *node)
     check_ancestors_after_aggregation(node->child[1]);
 }
 
-static void
-assert_trie(const struct trie_node *node)
-{
-  assert(node != NULL);
-  assert(node->original_bucket != NULL);
-
-  if (node->child[0])
-    assert_trie(node->child[0]);
-
-  if (node->child[1])
-    assert_trie(node->child[1]);
-}
-
 /*
  * Deaggregate subtree rooted at @target, which deletes all information
  * computed by ORTC algorithm, and perform first pass on this subtree.
@@ -1059,9 +1046,6 @@ aggregator_process_update(struct aggregator_proto *p, struct aggregator_route *o
   assert(p != NULL);
   assert(new != NULL);
 
-  log("before update");
-  dump_trie(p);
-
   struct net_addr *addr = new->rte.net->n.addr;
 
   const ip_addr prefix = net_prefix(addr);
@@ -1088,27 +1072,11 @@ aggregator_process_update(struct aggregator_proto *p, struct aggregator_route *o
     node = node->parent;
   }
 
-  log("deaggregate");
   deaggregate(node);
-  dump_trie(p);
-
-  assert_trie(p->root);
-
-  log("second pass");
   second_pass(node);
-  dump_trie(p);
-
-  log("merge buckets above");
   struct trie_node *highest_node = merge_buckets_above(node);
-  log("highest changed node %p", highest_node);
-  dump_trie(p);
-
-  log("third pass");
   assert(highest_node != NULL);
   third_pass(p, highest_node);
-  dump_trie(p);
-
-  print_prefixes(p->root, addr->type);
 }
 
 static void
@@ -1117,9 +1085,6 @@ aggregator_process_withdraw(struct aggregator_proto *p, struct aggregator_route 
   assert(p != NULL);
   assert(old != NULL);
 
-  log("before update");
-  dump_trie(p);
-
   struct net_addr *addr = old->rte.net->n.addr;
 
   const ip_addr prefix = net_prefix(addr);
@@ -1127,7 +1092,6 @@ aggregator_process_withdraw(struct aggregator_proto *p, struct aggregator_route 
 
   struct trie_node *updated_node = aggregator_remove_prefix(p, prefix, pxlen);
   assert(updated_node != NULL);
-  dump_trie(p);
 
   struct trie_node *node = updated_node;
 
@@ -1144,24 +1108,11 @@ aggregator_process_withdraw(struct aggregator_proto *p, struct aggregator_route 
     node = node->parent;
   }
 
-  log("deaggregate");
   deaggregate(node);
-  dump_trie(p);
-
-  log("second pass");
   second_pass(node);
-  dump_trie(p);
-
-  log("merge buckets above");
   struct trie_node *highest_node = merge_buckets_above(node);
-  dump_trie(p);
   assert(highest_node != NULL);
-
-  log("third pass");
   third_pass(p, highest_node);
-  dump_trie(p);
-
-  print_prefixes(p->root, addr->type);
 }
 
 static void
@@ -1256,9 +1207,6 @@ aggregate_on_feed_end(struct channel *C)
 
   assert(PREFIX_AGGR == p->aggr_mode);
   assert(p->root == NULL);
-
-  times_update(&main_timeloop);
-  log("==== FEED END ====");
 
   trie_init(p);
   run_aggregation(p);
@@ -1994,8 +1942,6 @@ trie_init(struct aggregator_proto *p)
     .px_origin = ORIGINAL,
     .depth = 0,
   };
-
-  log("Root prefix %N with default bucket %p", p->root->original_bucket->rte->net->n.addr, p->root->original_bucket);
 }
 
 static int
@@ -2038,9 +1984,6 @@ aggregator_start(struct proto *P)
 
   p->rte_withdrawal_pool = lp_new(P->pool);
   p->rte_withdrawal_count = 0;
-
-  times_update(&main_timeloop);
-  log("==== FEED START ====");
 
   return PS_UP;
 }
