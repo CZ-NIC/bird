@@ -747,6 +747,9 @@ birdloop_take_count(struct thread_group_private *group)
 static struct birdloop *
 birdloop_take_one(struct thread_group_private *group)
 {
+  if (EMPTY_TLIST(birdloop, &group->loops))
+    return NULL;
+
   struct birdloop *loop = THEAD(birdloop, &group->loops);
   birdloop_rem_node(&group->loops, loop);
   group->loop_unassigned_count--;
@@ -862,11 +865,10 @@ birdloop_balancer(void)
       TG_LOCKED(this_thread->group, group)
 	pick_this = birdloop_take_one(group);
     else
-    {
-      this_thread->meta->last_transition_ns = ns_now();
-      return;
-    }
+      break;
   }
+
+  this_thread->meta->last_transition_ns = ns_now();
 }
 
 static int
