@@ -100,7 +100,7 @@ rt_export_get(struct rt_export_request *r)
 	rtex_trace(r, D_ROUTES, "Export drained");
 	return NULL;
       }
-      else if (feed = rt_export_next_feed(&r->feeder))
+      else if (feed = rt_export_next_feed(&r->feeder, &r->seq_map))
       {
 	/* Feeding more */
 	rtex_trace(r, D_ROUTES, "Feeding %N", feed->ni->addr);
@@ -147,13 +147,13 @@ rt_export_get(struct rt_export_request *r)
       if (r->feeder.domain.rtable)
       {
 	LOCK_DOMAIN(rtable, r->feeder.domain);
-	feed = e->feed_net(e, NULL, ni->index, NULL, NULL, update);
+	feed = e->feed_net(e, NULL, ni->index, &r->seq_map, NULL, NULL, update);
 	UNLOCK_DOMAIN(rtable, r->feeder.domain);
       }
       else
       {
 	RCU_ANCHOR(u);
-	feed = e->feed_net(e, u, ni->index, NULL, NULL, update);
+	feed = e->feed_net(e, u, ni->index, &r->seq_map, NULL, NULL, update);
       }
 
       ASSERT_DIE(feed && (feed != &rt_feed_index_out_of_range));
@@ -249,7 +249,7 @@ rt_alloc_feed(uint routes, uint exports)
 }
 
 static struct rt_export_feed *
-rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u)
+rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u, struct bmap *seen)
 {
   for (uint retry = 0; retry < (u ? 1024 : ~0U); retry++)
   {
@@ -262,7 +262,7 @@ rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u)
       return NULL;
     }
 
-    struct rt_export_feed *feed = e->feed_net(e, u, f->feed_index,
+    struct rt_export_feed *feed = e->feed_net(e, u, f->feed_index, seen,
 	rt_net_is_feeding_feeder, f, NULL);
     if (feed == &rt_feed_index_out_of_range)
     {
@@ -290,7 +290,7 @@ rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u)
 }
 
 struct rt_export_feed *
-rt_export_next_feed(struct rt_export_feeder *f)
+rt_export_next_feed(struct rt_export_feeder *f, struct bmap *seen)
 {
   ASSERT_DIE(f);
 
@@ -298,13 +298,13 @@ rt_export_next_feed(struct rt_export_feeder *f)
   if (f->domain.rtable)
   {
     LOCK_DOMAIN(rtable, f->domain);
-    feed = rt_export_get_next_feed(f, NULL);
+    feed = rt_export_get_next_feed(f, NULL, seen);
     UNLOCK_DOMAIN(rtable, f->domain);
   }
   else
   {
     RCU_ANCHOR(u);
-    feed = rt_export_get_next_feed(f, u);
+    feed = rt_export_get_next_feed(f, u, seen);
   }
 
   if (feed)
@@ -342,7 +342,7 @@ rt_export_next_feed(struct rt_export_feeder *f)
 
   f->feeding = f->feed_pending;
   f->feed_pending = NULL;
-  return rt_export_next_feed(f);
+  return rt_export_next_feed(f, seen);
 }
 
 static void
