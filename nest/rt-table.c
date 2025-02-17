@@ -2445,7 +2445,7 @@ rt_net_feed_validate_first(
 }
 
 static struct rt_export_feed *
-rt_net_feed_index(struct rtable_reading *tr, net *n, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_pending_export *first)
+rt_net_feed_index(struct rtable_reading *tr, net *n, struct bmap *seen, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_pending_export *first)
 {
   /* Get the feed itself. It may change under our hands tho. */
   struct rt_pending_export *first_in_net, *last_in_net;
@@ -2460,11 +2460,12 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, bool (*prefilter)(struct rt
   uint ocnt = 0;
   for (const struct rt_pending_export *rpe = first; rpe;
       rpe = atomic_load_explicit(&rpe->next, memory_order_acquire))
-  {
-    ecnt++;
-    if (rpe->it.old)
-      ocnt++;
-  }
+    if (!seen || !bmap_test(seen, rpe->it.seq))
+    {
+      ecnt++;
+      if (rpe->it.old)
+	ocnt++;
+    }
 
   if (ecnt) {
     const net_addr *a = (first->it.new ?: first->it.old)->net;
@@ -2492,7 +2493,7 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, bool (*prefilter)(struct rt
 	  rpe = atomic_load_explicit(&rpe->next, memory_order_acquire))
 	if (e >= ecnt)
 	  RT_READ_RETRY(tr);
-	else
+	else if (!seen || !bmap_test(seen, rpe->it.seq))
 	{
 	  feed->exports[e++] = rpe->it.seq;
 
@@ -2521,13 +2522,13 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, bool (*prefilter)(struct rt
 }
 
 static struct rt_export_feed *
-rt_net_feed_internal(struct rtable_reading *tr, u32 index, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_pending_export *first)
+rt_net_feed_internal(struct rtable_reading *tr, u32 index, struct bmap *seen, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_pending_export *first)
 {
   net *n = rt_net_feed_get_net(tr, index);
   if (!n)
     return &rt_feed_index_out_of_range;
 
-  return rt_net_feed_index(tr, n, prefilter, f, first);
+  return rt_net_feed_index(tr, n, seen, prefilter, f, first);
 }
 
 struct rt_export_feed *
@@ -2535,14 +2536,14 @@ rt_net_feed(rtable *t, const net_addr *a, const struct rt_pending_export *first)
 {
   RT_READ(t, tr);
   const struct netindex *ni = net_find_index(tr->t->netindex, a);
-  return ni ? rt_net_feed_internal(tr, ni->index, NULL, NULL, first) : NULL;
+  return ni ? rt_net_feed_internal(tr, ni->index, NULL, NULL, NULL, first) : NULL;
 }
 
 static struct rt_export_feed *
-rt_feed_net_all(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
+rt_feed_net_all(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, struct bmap *seen, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
 {
   RT_READ_ANCHORED(SKIP_BACK(rtable, export_all, e), tr, u);
-  return rt_net_feed_internal(tr, index, prefilter, f, SKIP_BACK(const struct rt_pending_export, it, _first));
+  return rt_net_feed_internal(tr, index, seen, prefilter, f, SKIP_BACK(const struct rt_pending_export, it, _first));
 }
 
 rte
@@ -2567,7 +2568,7 @@ rt_net_best(rtable *t, const net_addr *a)
 }
 
 static struct rt_export_feed *
-rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
+rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, struct bmap *seen, bool (*prefilter)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *f, const struct rt_export_item *_first)
 {
   SKIP_BACK_DECLARE(rtable, t, export_best, e);
   SKIP_BACK_DECLARE(const struct rt_pending_export, first, it, _first);
@@ -2591,11 +2592,12 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool 
   uint ecnt = 0, ocnt = 0;
   for (const struct rt_pending_export *rpe = first; rpe;
       rpe = atomic_load_explicit(&rpe->next, memory_order_acquire))
-  {
-    ecnt++;
-    if (rpe->it.old && (!best || (rpe->it.old != &best->rte)))
-      ocnt++;
-  }
+    if (!seen || !bmap_test(seen, rpe->it.seq))
+    {
+      ecnt++;
+      if (rpe->it.old && (!best || (rpe->it.old != &best->rte)))
+	ocnt++;
+    }
 
   if (ecnt) {
     const net_addr *a = (first->it.new ?: first->it.old)->net;
@@ -2623,7 +2625,7 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, bool 
 	rpe = atomic_load_explicit(&rpe->next, memory_order_acquire))
       if (e >= ecnt)
 	RT_READ_RETRY(tr);
-      else
+      else if (!seen || !bmap_test(seen, rpe->it.seq))
       {
 	feed->exports[e++] = rpe->it.seq;
 	if (rpe->it.old && (!best || (rpe->it.old != &best->rte)))

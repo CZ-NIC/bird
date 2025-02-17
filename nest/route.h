@@ -222,7 +222,7 @@ struct rt_exporter {
   netindex_hash *netindex;			/* Table for net <-> id conversion */
   void (*stopped)(struct rt_exporter *);	/* Callback when exporter can stop */
   void (*cleanup_done)(struct rt_exporter *, u64 end);	/* Callback when cleanup has been done */
-  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rcu_unwinder *, u32, bool (*)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *, const struct rt_export_item *first);
+  struct rt_export_feed *(*feed_net)(struct rt_exporter *, struct rcu_unwinder *, u32, struct bmap *, bool (*)(struct rt_export_feeder *, const net_addr *), struct rt_export_feeder *, const struct rt_export_item *first);
   void (*feed_cleanup)(struct rt_exporter *, struct rt_export_feeder *);
 };
 
@@ -243,9 +243,9 @@ void rt_feeder_subscribe(struct rt_exporter *, struct rt_export_feeder *);
 void rt_feeder_unsubscribe(struct rt_export_feeder *);
 void rt_export_refeed_feeder(struct rt_export_feeder *, struct rt_feeding_request *);
 
-struct rt_export_feed *rt_export_next_feed(struct rt_export_feeder *);
+struct rt_export_feed *rt_export_next_feed(struct rt_export_feeder *, struct bmap *seen);
 #define RT_FEED_WALK(_feeder, _f)	\
-  for (const struct rt_export_feed *_f; _f = rt_export_next_feed(_feeder); ) \
+  for (const struct rt_export_feed *_f; _f = rt_export_next_feed(_feeder, NULL); ) \
 
 static inline bool rt_export_feed_active(struct rt_export_feeder *f)
 { return !!atomic_load_explicit(&f->exporter, memory_order_acquire); }
