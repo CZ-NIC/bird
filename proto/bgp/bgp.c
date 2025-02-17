@@ -2623,7 +2623,7 @@ bgp_show_capabilities(struct bgp_proto *p UNUSED, struct bgp_caps *caps)
   }
 
   if (caps->hostname)
-    cli_msg(-1006, "      Hostname: %s", caps->hostname);
+    cli_msg(-1006, "      Hostname: %s", caps->hostname); //TODO: check
 
   if (caps->role != BGP_ROLE_UNDEFINED)
     cli_msg(-1006, "      Role: %s", bgp_format_role_name(caps->role));
