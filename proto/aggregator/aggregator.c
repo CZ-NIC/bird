@@ -1044,7 +1044,7 @@ aggregator_process_update(struct aggregator_proto *p, struct aggregator_route *o
   assert(p != NULL);
   assert(new != NULL);
 
-  struct net_addr *addr = new->rte.net->n.addr;
+  const struct net_addr *addr = new->rte.net->n.addr;
 
   const ip_addr prefix = net_prefix(addr);
   const u32 pxlen = net_pxlen(addr);
@@ -1083,7 +1083,7 @@ aggregator_process_withdrawal(struct aggregator_proto *p, struct aggregator_rout
   assert(p != NULL);
   assert(old != NULL);
 
-  struct net_addr *addr = old->rte.net->n.addr;
+  const struct net_addr *addr = old->rte.net->n.addr;
 
   const ip_addr prefix = net_prefix(addr);
   const u32 pxlen = net_pxlen(addr);
@@ -1120,7 +1120,7 @@ construct_trie(struct aggregator_proto *p)
   {
     for (const struct rte *rte = bucket->rte; rte; rte = rte->next)
     {
-      struct net_addr *addr = rte->net->n.addr;
+      const struct net_addr *addr = rte->net->n.addr;
 
       const ip_addr prefix = net_prefix(addr);
       const u32 pxlen = net_pxlen(addr);
