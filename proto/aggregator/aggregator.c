@@ -148,7 +148,7 @@ remove_node(struct trie_node *node)
  * Insert @bucket to the set of potential buckets in @node
  */
 static inline void
-node_insert_potential_bucket(struct trie_node *node, const struct aggregator_bucket *bucket)
+node_add_potential_bucket(struct trie_node *node, const struct aggregator_bucket *bucket)
 {
   assert(node->potential_buckets_count < MAX_POTENTIAL_BUCKETS_COUNT);
 
@@ -639,7 +639,7 @@ first_pass(struct trie_node *node)
     assert(node->original_bucket != NULL);
     assert(node->potential_buckets_count == 0);
     assert(NON_FIB == node->status);
-    node_insert_potential_bucket(node, node->original_bucket);
+    node_add_potential_bucket(node, node->original_bucket);
     return;
   }
 
@@ -700,7 +700,7 @@ second_pass(struct trie_node *node)
    * Imaginary node is used only for computing sets of potential buckets
    * of its parent node.
    */
-  node_insert_potential_bucket(&imaginary_node, node->original_bucket);
+  node_add_potential_bucket(&imaginary_node, node->original_bucket);
 
   /* Nodes with exactly one child */
   if ((left && !right) || (!left && right))
@@ -820,7 +820,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
       .depth = node->depth + 1,
     };
 
-    node_insert_potential_bucket(&imaginary_node, node->original_bucket);
+    node_add_potential_bucket(&imaginary_node, node->original_bucket);
 
     /*
      * If the current node (parent of the imaginary node) has a bucket,
@@ -987,7 +987,7 @@ deaggregate(struct trie_node * const node)
   {
     assert(node->px_origin == ORIGINAL);
     assert(node->potential_buckets_count == 0);
-    node_insert_potential_bucket(node, node->original_bucket);
+    node_add_potential_bucket(node, node->original_bucket);
   }
 
   assert(node->original_bucket != NULL);
@@ -1019,7 +1019,7 @@ merge_buckets_above(struct trie_node *node)
     assert(left == node || right == node);
 
     struct trie_node imaginary_node = { 0 };
-    node_insert_potential_bucket(&imaginary_node, parent->original_bucket);
+    node_add_potential_bucket(&imaginary_node, parent->original_bucket);
 
     if (left && !right)
       right = &imaginary_node;
