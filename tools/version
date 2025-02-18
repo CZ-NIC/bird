@@ -2,7 +2,7 @@
 
 # Check if on older distro
 GIT_VERSION=$(git --version)
-if [["$GIT_VERSION" > "git version 2.7.6" ]]; then
+if [[ "$GIT_VERSION" > "git version 2.7.6" ]]; then
   TAG=$(git tag -l --merged | sed -n 's/^v//p' | tail -n1)
 else
   TAG=$(git tag -l | sed -n 's/^v//p' | tail -n1)
