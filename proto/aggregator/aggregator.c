@@ -1078,7 +1078,7 @@ aggregator_process_update(struct aggregator_proto *p, struct aggregator_route *o
 }
 
 static void
-aggregator_process_withdraw(struct aggregator_proto *p, struct aggregator_route *old)
+aggregator_process_withdrawal(struct aggregator_proto *p, struct aggregator_route *old)
 {
   assert(p != NULL);
   assert(old != NULL);
@@ -1772,7 +1772,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     if (p->root)
     {
       if (old && !new)
-        aggregator_process_withdraw(p, old_route);
+        aggregator_process_withdrawal(p, old_route);
       else
         aggregator_process_update(p, old_route, new_route);
 
