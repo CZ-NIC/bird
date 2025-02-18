@@ -617,8 +617,8 @@ find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, u32 *pxlen,
     else
       ipa_setbit(prefix, node->depth + ipa_shift[type]);
 
-    len++;
     node = node->child[path[i]];
+    len++;
     assert((u32)node->depth == len);
   }
 
@@ -690,6 +690,7 @@ second_pass(struct trie_node *node)
     second_pass(right);
 
   assert(node->original_bucket != NULL);
+  assert(node->selected_bucket == NULL);
 
   /* Imaginary node if this was a complete binary tree */
   struct trie_node imaginary_node = {
@@ -720,8 +721,6 @@ second_pass(struct trie_node *node)
    * children's buckets.
    */
   merge_potential_buckets(node, left, right);
-
-  assert(node->selected_bucket == NULL);
 }
 
 static void
