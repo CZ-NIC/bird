@@ -966,20 +966,16 @@ deaggregate(struct trie_node * const node)
   memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
 
   /*
-   * Original prefixes are IN_FIB and already have their original bucket
-   * set by trie_insert_prefix(). Otherwise they inherit it from their
-   * parents.
+   * Original prefixes already have their original bucket set,
+   * others inherit it from their parents.
    */
-  if (ORIGINAL == node->px_origin)
+  if (ORIGINAL != node->px_origin)
   {
-    assert(node->original_bucket != NULL);
-  }
-  else
-  {
+    assert(node->original_bucket == NULL);
     node->original_bucket = node->parent->original_bucket;
-    assert(node->original_bucket != NULL);
   }
 
+  assert(node->original_bucket != NULL);
   assert(node->potential_buckets_count == 0);
 
   /* As in the first pass, leaves get one potential bucket */
@@ -989,10 +985,6 @@ deaggregate(struct trie_node * const node)
     assert(node->potential_buckets_count == 0);
     node_add_potential_bucket(node, node->original_bucket);
   }
-
-  assert(node->original_bucket != NULL);
-  assert(node->selected_bucket == NULL);
-  assert(node->ancestor == NULL);
 
   if (node->child[0])
     deaggregate(node->child[0]);
