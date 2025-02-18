@@ -198,7 +198,7 @@ get_new_bucket_id(struct aggregator_proto *p)
 }
 
 static inline struct aggregator_bucket *
-choose_lowest_id_bucket(const struct aggregator_proto *p, const struct trie_node *node)
+select_lowest_id_bucket(const struct aggregator_proto *p, const struct trie_node *node)
 {
   assert(p != NULL);
   assert(node != NULL);
@@ -773,7 +773,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
     assert(node->potential_buckets_count > 0);
 
     /* Assign bucket with the lowest ID to the node */
-    node->selected_bucket = choose_lowest_id_bucket(p, node);
+    node->selected_bucket = select_lowest_id_bucket(p, node);
     assert(node->selected_bucket != NULL);
 
     /*
@@ -891,7 +891,7 @@ third_pass(struct aggregator_proto *p, struct trie_node *node)
   find_subtree_prefix(node, &prefix, &pxlen, p->addr_type);
 
   /* Select bucket with the lowest ID */
-  node->selected_bucket = choose_lowest_id_bucket(p, node);
+  node->selected_bucket = select_lowest_id_bucket(p, node);
   assert(node->selected_bucket != NULL);
 
   /*
