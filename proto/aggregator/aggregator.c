@@ -862,7 +862,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
   if (node->child[1])
   {
     assert((u32)node->depth == pxlen);
-    ip6_setbit(prefix, node->depth + ipa_shift[p->addr_type]);
+    ipa_setbit(prefix, node->depth + ipa_shift[p->addr_type]);
     third_pass_helper(p, node->child[1], prefix, pxlen + 1);
     ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
   }
