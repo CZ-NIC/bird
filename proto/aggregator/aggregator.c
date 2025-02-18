@@ -386,7 +386,7 @@ print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, 
   {
     struct net_addr addr = { 0 };
     net_fill_ipa(&addr, *prefix, pxlen);
-    log("%N %p selected bucket: %p [[%u]]", &addr, node, node->selected_bucket, node->selected_bucket->id);
+    log("%N selected bucket: %u", &addr, node->selected_bucket->id);
   }
 
   if (node->child[0])
