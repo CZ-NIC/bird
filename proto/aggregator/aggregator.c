@@ -709,8 +709,6 @@ second_pass(struct trie_node *node)
       right = &imaginary_node;
     else if (!left && right)
       left = &imaginary_node;
-    else
-      bug("Node does not have only one child");
   }
 
   assert(left != NULL && right != NULL);
@@ -846,8 +844,6 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
         node->child[1] = new;
       else if (!left && right)
         node->child[0] = new;
-      else
-        bug("Node does not have only one child");
     }
   }
 
