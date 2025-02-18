@@ -321,9 +321,9 @@ aggregator_prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u3
   struct net_addr addr = { 0 };
   net_fill_ipa(&addr, prefix, pxlen);
 
-  struct rte_withdrawal *node = lp_allocz(p->rte_withdrawal_pool, sizeof(*node));
+  struct rte_withdrawal_item *node = lp_allocz(p->rte_withdrawal_pool, sizeof(*node));
 
-  *node = (struct rte_withdrawal) {
+  *node = (struct rte_withdrawal_item) {
     .next = p->rte_withdrawal_stack,
     .bucket = bucket,
   };
@@ -347,14 +347,12 @@ aggregator_withdraw_rte(struct aggregator_proto *p)
     log(L_WARN "This number of updates was not expected."
                "They will be processed, but please, contact the developers.");
 
-  struct rte_withdrawal *node = p->rte_withdrawal_stack;
+  struct rte_withdrawal_item *node = NULL;
 
-  while (node)
+  while (node = p->rte_withdrawal_stack)
   {
-    assert(node != NULL);
     rte_update2(p->dst, &node->addr, NULL, node->bucket->last_src);
-    node = node->next;
-    p->rte_withdrawal_stack = node;
+    p->rte_withdrawal_stack = node->next;
     p->rte_withdrawal_count--;
   }
 

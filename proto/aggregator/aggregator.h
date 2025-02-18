@@ -55,8 +55,9 @@ struct aggregator_bucket {
   struct f_val aggr_data[0];
 };
 
-struct rte_withdrawal {
-  struct rte_withdrawal *next;
+/* Structure containing information needed for route withdrawal */
+struct rte_withdrawal_item {
+  struct rte_withdrawal_item *next;
   struct aggregator_bucket *bucket;
   struct net_addr addr;
 };
@@ -97,7 +98,7 @@ struct aggregator_proto {
   struct hmap bucket_id_map;
 
   linpool *rte_withdrawal_pool;
-  struct rte_withdrawal *rte_withdrawal_stack;
+  struct rte_withdrawal_item *rte_withdrawal_stack;
   int rte_withdrawal_count;
 };
 
