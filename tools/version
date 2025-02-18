@@ -1,6 +1,11 @@
 #!/bin/bash
 
-TAG=$(git tag --merged | sed -n 's/^v//p' | tail -n1)
+# Get version tag
+# Uses 'git log ...' insted of 'git tag --merged' to support older distros
+TAG=$(git log --oneline --pretty=format:"%d" \
+    | grep -Eo '^ \(tag:\ v[[:digit:]]+.*(,|\))' \
+    | head -n 1 \
+    | sed -n 's/^ (tag:\ v//p' | sed -n 's/\(,.*\|)\)//p')
 
 # Pack with zeros if needed
 TM=$TAG
