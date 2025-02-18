@@ -137,7 +137,7 @@ remove_node(struct trie_node *node)
     else if (node->parent->child[1] == node)
       node->parent->child[1] = NULL;
     else
-      bug("Invalid child pointer");
+      bug("Corrupted memory (node is not its parent's child)");
   }
 
   node->parent = NULL;
@@ -214,7 +214,7 @@ select_lowest_id_bucket(const struct aggregator_proto *p, const struct trie_node
     }
   }
 
-  bug("No bucket to choose from");
+  bug("No potential buckets to choose from");
 }
 
 /*
@@ -427,7 +427,7 @@ dump_trie_helper(const struct aggregator_proto *p, const struct trie_node *node,
   struct net_addr addr = { 0 };
   net_fill_ipa(&addr, *prefix, pxlen);
 
-  buffer_print(buf, "%*s%s%N ", 2 * node->depth, "", IN_FIB == node->status ? "@" : " ", &addr);
+  buffer_print(buf, "%*s%s%N ", 2 * node->depth, "", (IN_FIB == node->status) ? "@" : " ", &addr);
 
   if (node->original_bucket)
     buffer_print(buf, "[%u] ", node->original_bucket->id);
@@ -600,7 +600,7 @@ find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, u32 *pxlen,
     else if (node == parent->child[1])
       path[pos++] = 1;
     else
-      bug("Fatal error");
+      bug("Corrupted memory (node is not its parent's child)");
 
     assert(pos < IP6_MAX_PREFIX_LENGTH);
     node = parent;
@@ -766,7 +766,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
      * processing of incremental updates. If it's not original, then it is
      * a filler because it's not going to FIB.
      */
-    node->px_origin = ORIGINAL == node->px_origin ? ORIGINAL : FILLER;
+    node->px_origin = (ORIGINAL == node->px_origin) ? ORIGINAL : FILLER;
   }
   else
   {
@@ -787,7 +787,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
      * Keep information whether this prefix was original. If not, then its origin
      * is changed to aggregated, because it's going to FIB.
      */
-    node->px_origin = ORIGINAL == node->px_origin ? ORIGINAL : AGGREGATED;
+    node->px_origin = (ORIGINAL == node->px_origin) ? ORIGINAL : AGGREGATED;
     node->status = IN_FIB;
   }
 
