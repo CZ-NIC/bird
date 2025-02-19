@@ -1753,16 +1753,13 @@ bgp_get_bucket(struct bgp_ptx_private *c, ea_list *new)
   uint size = sizeof(struct bgp_bucket) + ea_size;
 
   /* Allocate the bucket */
-  sth_block blk = sth_alloc(c->sth, size);
-  b = blk.block;
+  b = mb_alloc(c->pool, size);
   *b = (struct bgp_bucket) { };
   init_list(&b->prefixes);
   b->hash = hash;
 
   /* Copy the ea_list */
   ea_list_copy(b->eattrs, new, ea_size);
-  if (blk.large)
-    b->eattrs->flags |= EALF_HUGE;
 
   /* Insert the bucket to bucket hash */
   HASH_INSERT2(c->bucket_hash, RBH, c->pool, b);
@@ -1786,7 +1783,7 @@ static void
 bgp_free_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b)
 {
   HASH_REMOVE2(c->bucket_hash, RBH, c->pool, b);
-  sth_free((sth_block) { b, !!(b->eattrs->flags & EALF_HUGE) });
+  mb_free(b);
 }
 
 int
@@ -2132,7 +2129,6 @@ bgp_init_pending_tx(struct bgp_channel *c)
 
   bpp->lock = dom;
   bpp->pool = p;
-  bpp->sth = sth_new(p);
   bpp->c = c;
 
   bgp_init_bucket_table(bpp);
@@ -2208,7 +2204,8 @@ bgp_free_pending_tx(struct bgp_channel *bc)
   HASH_WALK_END;
 
   HASH_FREE(c->bucket_hash);
-  sth_delete(c->sth);
+  sl_delete(c->bucket_slab);
+  c->bucket_slab = NULL;
 
   rp_free(c->pool);
 
