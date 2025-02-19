@@ -139,20 +139,6 @@ void *sl_allocz(slab *);
 void sl_free(void *);
 void sl_delete(slab *);
 
-/* A whole stonehenge of slabs */
-
-typedef struct stonehenge stonehenge;
-typedef struct sth_block {
-  void *block;
-  bool large;
-} sth_block;
-
-stonehenge *sth_new(pool *);
-sth_block sth_alloc(stonehenge *, uint size);
-sth_block sth_allocz(stonehenge *, uint size);
-void sth_free(sth_block);
-void sth_delete(stonehenge *);
-
 /*
  * Low-level memory allocation functions, please don't use
  * outside resource manager and possibly sysdep code.
