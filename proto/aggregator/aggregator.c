@@ -714,7 +714,7 @@ second_pass(struct trie_node *node)
   {
     if (left && !right)
       right = &imaginary_node;
-    else if (!left && right)
+    else
       left = &imaginary_node;
   }
 
@@ -852,7 +852,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
       /* Connect new node to the trie */
       if (left && !right)
         node->child[1] = new;
-      else if (!left && right)
+      else
         node->child[0] = new;
     }
   }
