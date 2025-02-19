@@ -1145,47 +1145,9 @@ calculate_trie(struct aggregator_proto *p)
 {
   assert(p->addr_type == NET_IP4 || p->addr_type == NET_IP6);
 
-  if (p->logging)
-  {
-    log("==== PREFIXES BEFORE ====");
-    print_prefixes(p->root, p->addr_type);
-  }
-
-  times_update(&main_timeloop);
-  log("==== FIRST PASS ====");
   first_pass(p->root);
-  times_update(&main_timeloop);
-  log("==== FIRST PASS DONE ====");
-
-  if (p->logging)
-  {
-    log("==== FIRST PASS ====");
-    print_prefixes(p->root, p->addr_type);
-  }
-
-  times_update(&main_timeloop);
-  log("==== SECOND PASS ====");
   second_pass(p->root);
-  times_update(&main_timeloop);
-  log("==== SECOND PASS DONE");
-
-  if (p->logging)
-  {
-    log("==== SECOND PASS ====");
-    print_prefixes(p->root, p->addr_type);
-  }
-
-  times_update(&main_timeloop);
-  log("==== THIRD PASS ====");
   third_pass(p, p->root);
-  times_update(&main_timeloop);
-  log("==== THIRD PASS DONE ====");
-
-  if (p->logging)
-  {
-    log("==== THIRD PASS ====");
-    print_prefixes(p->root, p->addr_type);
-  }
 
   check_ancestors_after_aggregation(p->root);
 }
