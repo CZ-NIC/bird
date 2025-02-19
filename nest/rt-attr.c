@@ -204,7 +204,9 @@ DOMAIN(attrs) attrs_domain;
 
 pool *rta_pool;
 
-static stonehenge *ea_sth;
+/* Assuming page size of 4096, these are magic values for slab allocation */
+static const uint ea_slab_sizes[] = { 56, 112, 168, 288, 448, 800, 1344 };
+static slab *ea_slab[ARRAY_SIZE(ea_slab_sizes)];
 
 static slab *rte_src_slab;
 
@@ -1592,18 +1594,24 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
     return rr;
   }
 
+  struct ea_storage *r = NULL;
   uint elen = ea_list_size(o);
   uint sz = elen + sizeof(struct ea_storage);
-  sth_block b = sth_alloc(ea_sth, sz);
+  for (uint i=0; i<ARRAY_SIZE(ea_slab_sizes); i++)
+    if (sz <= ea_slab_sizes[i])
+    {
+      r = sl_alloc(ea_slab[i]);
+      break;
+    }
 
-  struct ea_storage *r = b.block;
+  int huge = r ? 0 : EALF_HUGE;;
+  if (huge)
+    r = mb_alloc(rta_pool, sz);
 
   ea_list_copy(r->l, o, elen);
   ea_list_ref(r->l);
 
-  if (b.large)
-    r->l->flags |= EALF_HUGE;
-
+  r->l->flags |= huge;
   r->l->stored = oid;
   r->hash_key = h;
   atomic_store_explicit(&r->uc, 1, memory_order_release);
@@ -1671,7 +1679,10 @@ ea_free_deferred(struct deferred_call *dc)
 
   /* And now we can free the object, finally */
   ea_list_unref(r->l);
-  sth_free((sth_block) { r, !!(r->l->flags & EALF_HUGE) });
+  if (r->l->flags & EALF_HUGE)
+    mb_free(r);
+  else
+    sl_free(r);
 
   RTA_UNLOCK;
 }
@@ -1722,7 +1733,9 @@ rta_init(void)
   RTA_LOCK;
   rta_pool = rp_new(&root_pool, attrs_domain.attrs, "Attributes");
 
-  ea_sth = sth_new(rta_pool);
+  for (uint i=0; i<ARRAY_SIZE(ea_slab_sizes); i++)
+    ea_slab[i] = sl_new(rta_pool, ea_slab_sizes[i]);
+
   SPINHASH_INIT(rta_hash_table, RTAH, rta_pool, &global_work_list);
 
   rte_src_init();
