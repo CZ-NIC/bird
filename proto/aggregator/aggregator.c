@@ -763,6 +763,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
 
     node->selected_bucket = NULL;
     node->status = NON_FIB;
+    node->ancestor = node->parent->ancestor;
 
     /*
      * We have to keep information whether this prefix was original to enable
@@ -792,16 +793,10 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
      */
     node->px_origin = (ORIGINAL == node->px_origin) ? ORIGINAL : AGGREGATED;
     node->status = IN_FIB;
+    node->ancestor = node;
   }
 
   assert((node->selected_bucket != NULL && node->status == IN_FIB) || (node->selected_bucket == NULL && node->status == NON_FIB));
-
-  /*
-   * Node with a bucket is the closest ancestor for all his descendants.
-   * Its closest ancestor is its parent's ancestor otherwise.
-   */
-  node->ancestor = node->selected_bucket ? node : node->parent->ancestor;
-
   assert(node->ancestor != NULL);
   assert(node->ancestor->original_bucket != NULL);
   assert(node->ancestor->selected_bucket != NULL);
