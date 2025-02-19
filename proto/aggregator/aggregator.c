@@ -160,7 +160,7 @@ node_add_potential_bucket(struct trie_node *node, const struct aggregator_bucket
 }
 
 /*
- * Check if @bucket is one of potential buckets in @node
+ * Check if @bucket is one of potential buckets of @node
  */
 static int
 node_is_bucket_potential(const struct trie_node *node, const struct aggregator_bucket *bucket)
@@ -197,6 +197,9 @@ get_new_bucket_id(struct aggregator_proto *p)
   return id;
 }
 
+/*
+ * Select bucket with the lowest ID from the set of node's potential buckets
+ */
 static inline struct aggregator_bucket *
 select_lowest_id_bucket(const struct aggregator_proto *p, const struct trie_node *node)
 {
@@ -310,7 +313,7 @@ agregator_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bu
 }
 
 /*
- * Push routewhich is to be withdrawed on the stack
+ * Prepare route withdrawal for @prefix
  */
 static void
 aggregator_prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket)
@@ -337,7 +340,7 @@ aggregator_prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u3
 }
 
 /*
- * Withdraw all routes that are on the stack.
+ * Withdraw all routes that are on the stack
  */
 static void
 aggregator_withdraw_rte(struct aggregator_proto *p)
@@ -488,8 +491,8 @@ dump_trie(const struct aggregator_proto *p)
 }
 
 /*
- * Insert prefix in @addr to prefix trie with beginning at @root and assign @bucket to this prefix.
- * If the prefix is already in the trie, update its bucket to @bucket and return updated node.
+ * Insert @prefix to the trie and assign @bucket to this prefix. If the prefix
+ * is already in the trie, update its bucket to @bucket and return updated node.
  */
 static struct trie_node *
 aggregator_insert_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket)
@@ -527,6 +530,9 @@ aggregator_insert_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, 
   return node;
 }
 
+/*
+ * Remove @prefix from the trie and return the last affected node
+ */
 static struct trie_node *
 aggregator_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
 {
@@ -575,8 +581,8 @@ aggregator_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
 }
 
 /*
- * Find prefix corresponding to the position of @target in the trie.
- * Save result in @prefix and @pxlen.
+ * Find prefix corresponding to the position of @target node in the trie
+ * and save result into @prefix and @pxlen.
  */
 static void
 find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, u32 *pxlen, u32 type)
@@ -699,7 +705,7 @@ second_pass(struct trie_node *node)
 
   /*
    * Imaginary node is used only for computing sets of potential buckets
-   * of its parent node.
+   * of its parent node. It inherits parent's potential bucket.
    */
   node_add_potential_bucket(&imaginary_node, node->original_bucket);
 
@@ -807,7 +813,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
   if ((left && !right) || (!left && right))
   {
     /*
-     * Imaginary node that would have been added in the first pass.
+     * Imaginary node that would have been added during first pass.
      * This node inherits bucket from its parent (current node).
      */
     struct trie_node imaginary_node = {
@@ -828,17 +834,22 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
     const struct aggregator_bucket * const imaginary_node_inherited_bucket = node->selected_bucket ? node->selected_bucket : inherited_bucket;
 
     /*
-     * Nodes that would have been added during first pass are not removed only
-     * if they have a bucket. And they have a bucket only if their potential
-     * bucket is different from the bucket they inherit from their ancestor.
-     * If this condition is met, we need to allocate these nodes and
-     * connect them to the trie.
+     * Original algorithm would normalize the trie during first pass, so that
+     * every node has either zero or two children. We skip this step to save
+     * both time and memory.
+     * On the other hand, nodes may be removed from the trie during third pass,
+     * if they do not have bucket on their own and inherit one from their
+     * ancestors (and thus are not needed in FIB).
+     * Nodes do get bucket if the bucket inherited from their ancestors is NOT
+     * one of their potential buckets. In this case, we need to add these nodes
+     * to the trie.
      */
     if (!node_is_bucket_potential(&imaginary_node, imaginary_node_inherited_bucket))
     {
       struct trie_node *new = create_new_node(p->trie_pool);
       *new = imaginary_node;
 
+      /* Connect new node to the trie */
       if (left && !right)
         node->child[1] = new;
       else if (!left && right)
@@ -946,8 +957,8 @@ check_ancestors_after_aggregation(const struct trie_node *node)
 }
 
 /*
- * Deaggregate subtree rooted at @target, which deletes all information
- * computed by ORTC algorithm, and perform first pass on this subtree.
+ * Delete all information computed by aggregation algorithm in the subtree
+ * rooted at @node and propagate original buckets in the subtree.
  */
 static void
 deaggregate(struct trie_node * const node)
@@ -973,7 +984,7 @@ deaggregate(struct trie_node * const node)
   assert(node->original_bucket != NULL);
   assert(node->potential_buckets_count == 0);
 
-  /* As in the first pass, leaves get one potential bucket */
+  /* As during the first pass, leaves get one potential bucket */
   if (is_leaf(node))
   {
     assert(node->px_origin == ORIGINAL);
@@ -990,7 +1001,7 @@ deaggregate(struct trie_node * const node)
 
 /*
  * Merge sets of potential buckets of node's children going from @node upwards.
- * Stop when the target set doesn't change and return the last updated node.
+ * Stop when the node's set doesn't change and return the last updated node.
  */
 static struct trie_node *
 merge_buckets_above(struct trie_node *node)
@@ -1008,6 +1019,7 @@ merge_buckets_above(struct trie_node *node)
     struct trie_node imaginary_node = { 0 };
     node_add_potential_bucket(&imaginary_node, parent->original_bucket);
 
+    /* Nodes with only one child */
     if (left && !right)
       right = &imaginary_node;
     else if (!left && right)
@@ -1015,6 +1027,7 @@ merge_buckets_above(struct trie_node *node)
 
     assert(left != NULL && right != NULL);
 
+    /* The parent's set wasn't affected by merging, stop here */
     if (merge_potential_buckets(parent, left, right) == 0)
       return node;
 
@@ -1025,6 +1038,9 @@ merge_buckets_above(struct trie_node *node)
   return node;
 }
 
+/*
+ * Incorporate announcement of new prefix into the trie
+ */
 static void
 aggregator_process_update(struct aggregator_proto *p, struct aggregator_route *old UNUSED, struct aggregator_route *new)
 {
@@ -1047,7 +1063,7 @@ aggregator_process_update(struct aggregator_proto *p, struct aggregator_route *o
   /*
    * Find the closest IN_FIB ancestor of the updated node and
    * deaggregate the whole subtree rooted at this node.
-   * Then aggegate it once again, this time with received update.
+   * Then aggregate it once again, this time with incorporated update.
    */
   while (1)
   {
@@ -1064,6 +1080,9 @@ aggregator_process_update(struct aggregator_proto *p, struct aggregator_route *o
   third_pass(p, highest_node);
 }
 
+/*
+ * Incorporate prefix withdrawal to the trie
+ */
 static void
 aggregator_process_withdrawal(struct aggregator_proto *p, struct aggregator_route *old)
 {
@@ -1906,7 +1925,7 @@ trie_init(struct aggregator_proto *p)
 
   /*
    * Root node is initialized with NON_FIB status.
-   * Default route will be created duing third pass.
+   * Default route will be created during third pass.
    */
   *p->root = (struct trie_node) {
     .original_bucket = new_bucket,
@@ -1972,8 +1991,8 @@ aggregator_cleanup(struct proto *P)
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
 
   /*
-   * Linpools will be freed with other protocol resources but pointers
-   * have to be erased because protocol may be started again
+   * Linpools will be freed along with other protocol resources but pointers
+   * have to be set to NULL because protocol may be started again.
    */
   p->bucket_pool = NULL;
   p->route_pool = NULL;
