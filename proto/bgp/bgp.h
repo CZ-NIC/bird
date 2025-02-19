@@ -529,8 +529,7 @@ struct bgp_ptx_private {
   struct { BGP_PTX_PUBLIC; };
   struct bgp_ptx_private **locked_at;
 
-  pool *pool;				/* Pool for infrequent long-term blocks */
-  stonehenge *sth;			/* Bucket allocator */
+  pool *pool;				/* Resource pool for TX related allocations */
 
   HASH(struct bgp_bucket) bucket_hash;	/* Hash table of route buckets */
   struct bgp_bucket *withdraw_bucket;	/* Withdrawn routes */
@@ -539,6 +538,7 @@ struct bgp_ptx_private {
   HASH(struct bgp_prefix) prefix_hash;	/* Hash table of pending prefices */
 
   slab *prefix_slab;			/* Slab holding prefix nodes */
+  slab *bucket_slab;			/* Slab holding buckets to send */
 
   char bmp;                            /* This is a fake ptx for BMP encoding */
 };
