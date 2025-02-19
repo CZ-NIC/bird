@@ -380,7 +380,7 @@ create_route(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggre
 }
 
 static void
-print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, int type)
+print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, u32 type)
 {
   assert(node != NULL);
   assert(prefix != NULL);
@@ -409,7 +409,7 @@ print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, 
 }
 
 static void
-print_prefixes(const struct trie_node *node, int type)
+print_prefixes(const struct trie_node *node, u32 type)
 {
   assert(node != NULL);
 
@@ -1042,7 +1042,7 @@ merge_buckets_above(struct trie_node *node)
  * Incorporate announcement of new prefix into the trie
  */
 static void
-aggregator_process_update(struct aggregator_proto *p, struct aggregator_route *old UNUSED, struct aggregator_route *new)
+aggregator_update_prefix(struct aggregator_proto *p, struct aggregator_route *old UNUSED, struct aggregator_route *new)
 {
   assert(p != NULL);
   assert(new != NULL);
@@ -1084,7 +1084,7 @@ aggregator_process_update(struct aggregator_proto *p, struct aggregator_route *o
  * Incorporate prefix withdrawal to the trie
  */
 static void
-aggregator_process_withdrawal(struct aggregator_proto *p, struct aggregator_route *old)
+aggregator_withdraw_prefix(struct aggregator_proto *p, struct aggregator_route *old)
 {
   assert(p != NULL);
   assert(old != NULL);
@@ -1199,7 +1199,7 @@ run_aggregation(struct aggregator_proto *p)
   calculate_trie(p);
 }
 
-static void trie_init(struct aggregator_proto *p);
+static void aggregator_initialize_trie(struct aggregator_proto *p);
 
 static void
 aggregate_on_feed_end(struct channel *C)
@@ -1212,7 +1212,7 @@ aggregate_on_feed_end(struct channel *C)
   assert(PREFIX_AGGR == p->aggr_mode);
   assert(p->root == NULL);
 
-  trie_init(p);
+  aggregator_initialize_trie(p);
   run_aggregation(p);
 }
 
@@ -1778,9 +1778,9 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     if (p->root)
     {
       if (old && !new)
-        aggregator_process_withdrawal(p, old_route);
+        aggregator_withdraw_prefix(p, old_route);
       else
-        aggregator_process_update(p, old_route, new_route);
+        aggregator_update_prefix(p, old_route, new_route);
 
       /* Process all route withdrawals which were caused by the update */
       aggregator_withdraw_rte(p);
@@ -1867,7 +1867,7 @@ aggregator_init(struct proto_config *CF)
  * Initialize hash table and create default route
  */
 static void
-trie_init(struct aggregator_proto *p)
+aggregator_initialize_trie(struct aggregator_proto *p)
 {
   struct network *default_net = NULL;
 
