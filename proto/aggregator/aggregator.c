@@ -649,37 +649,11 @@ find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, u32 *pxlen,
   *pxlen = len;
 }
 
-/*
- * First pass of Optimal Route Table Construction (ORTC) algorithm
- */
-static void
-first_pass(struct trie_node *node)
-{
-  assert(node != NULL);
 
-  if (is_leaf(node))
-  {
-    assert(node->original_bucket != NULL);
-    assert(node->potential_buckets_count == 0);
-    assert(NON_FIB == node->status);
-    node_add_potential_bucket(node, node->original_bucket);
-    return;
-  }
 
-  /* Root node */
-  if (!node->parent)
-    assert(node->original_bucket != NULL);
 
-  /* Initialize bucket from the nearest ancestor that has a bucket */
-  if (!node->original_bucket)
-    node->original_bucket = node->parent->original_bucket;
 
-  if (node->child[0])
-    first_pass(node->child[0]);
 
-  if (node->child[1])
-    first_pass(node->child[1]);
-}
 
 /*
  * Second pass of Optimal Route Table Construction (ORTC) algorithm
@@ -692,12 +666,16 @@ second_pass(struct trie_node *node)
 
   if (is_leaf(node))
   {
-    assert(node->potential_buckets_count == 1);
-
-    /* The only potential bucket so far is the assigned bucket of the current node */
-    assert(BIT32R_TEST(node->potential_buckets, node->original_bucket->id));
+    assert(node->original_bucket != NULL);
+    assert(node->status == NON_FIB);
+    assert(node->potential_buckets_count == 0);
+    node_add_potential_bucket(node, node->original_bucket);
     return;
   }
+
+  /* Propagate original buckets */
+  if (!node->original_bucket)
+    node->original_bucket = node->parent->original_bucket;
 
   /* Internal node */
   assert(node->potential_buckets_count == 0);
@@ -1157,7 +1135,6 @@ calculate_trie(struct aggregator_proto *p)
 {
   assert(p->addr_type == NET_IP4 || p->addr_type == NET_IP6);
 
-  first_pass(p->root);
   second_pass(p->root);
   third_pass(p, p->root);
 
