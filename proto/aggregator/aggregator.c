@@ -140,8 +140,7 @@ remove_node(struct trie_node *node)
       bug("Corrupted memory (node is not its parent's child)");
   }
 
-  node->parent = NULL;
-  memset(node, 0xfe, sizeof(*node));
+  memset(node, 0, sizeof(*node));
 }
 
 /*
@@ -162,7 +161,7 @@ node_add_potential_bucket(struct trie_node *node, const struct aggregator_bucket
 /*
  * Check if @bucket is one of potential buckets of @node
  */
-static int
+static inline int
 node_is_bucket_potential(const struct trie_node *node, const struct aggregator_bucket *bucket)
 {
   assert(node != NULL);
@@ -1047,7 +1046,7 @@ aggregator_update_prefix(struct aggregator_proto *p, struct aggregator_route *ol
   const ip_addr prefix = net_prefix(addr);
   const u32 pxlen = net_pxlen(addr);
 
-  struct trie_node *updated_node = aggregator_insert_prefix(p, prefix, pxlen, new->bucket);
+  struct trie_node * const updated_node = aggregator_insert_prefix(p, prefix, pxlen, new->bucket);
   assert(updated_node != NULL);
   assert(updated_node->original_bucket != NULL);
   assert(updated_node->status == NON_FIB);
@@ -1089,7 +1088,7 @@ aggregator_withdraw_prefix(struct aggregator_proto *p, struct aggregator_route *
   const ip_addr prefix = net_prefix(addr);
   const u32 pxlen = net_pxlen(addr);
 
-  struct trie_node *updated_node = aggregator_remove_prefix(p, prefix, pxlen);
+  struct trie_node * const updated_node = aggregator_remove_prefix(p, prefix, pxlen);
   assert(updated_node != NULL);
 
   struct trie_node *node = updated_node;
