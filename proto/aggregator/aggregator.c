@@ -151,9 +151,27 @@ node_add_potential_bucket(struct trie_node *node, const struct aggregator_bucket
 {
   assert(node->potential_buckets_count < MAX_POTENTIAL_BUCKETS_COUNT);
 
+  /*
   if (BIT32R_TEST(node->potential_buckets, bucket->id))
     return;
 
+  BIT32R_SET(node->potential_buckets, bucket->id);
+  node->potential_buckets_count++;
+  */
+
+  /*
+   * If the bit is set, the result of TEST is 1 and is subtracted from
+   * the bucket count, decreasing it by one.
+   * Second statement has no effect since the bit is already set.
+   * Third statement increases count by one, returning it to its previous
+   * value. Nothing changed.
+   *
+   * If the bit is not set, the result of TEST is 0 and subtracting it
+   * from the total count doesn't change its value.
+   * Second statement sets the bit and third statement increases count by one.
+   * Bit is now set and the total count was increased by one.
+   */
+  node->potential_buckets_count -= BIT32R_TEST(node->potential_buckets, bucket->id);
   BIT32R_SET(node->potential_buckets, bucket->id);
   node->potential_buckets_count++;
 }
