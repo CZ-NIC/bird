@@ -1,8 +1,8 @@
 /*
  *	BIRD Internet Routing Daemon -- Route aggregation
  *
- *	(c) 2023--2024 Igor Putovny <igor.putovny@nic.cz>
- *	(c) 2024       CZ.NIC, z.s.p.o.
+ *	(c) 2023--2025 Igor Putovny <igor.putovny@nic.cz>
+ *	(c) 2025       CZ.NIC, z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -17,7 +17,7 @@
  * Aggregation of routes for networks means that for each destination, routes
  * with the same values of attributes will be aggregated into a single
  * multi-path route. Aggregation is performed by inserting routes into a hash
- * table based on values of their attributes and egenrating new routes from
+ * table based on values of their attributes and generating new routes from
  * the routes in th same bucket. Buckets are represented by @aggregator_bucket,
  * which contains linked list of @aggregator_route.
  *
@@ -29,7 +29,7 @@
  * algorithm. This algorithm uses a binary tree representation of the routing
  * table. An edge from the parent node to its left child represents bit 0, and
  * an edge from the parent node to its right child represents bit 1 as the
- * prefix is traversed from the most to the least significant bit. Leaf node
+ * prefix is traversed from the most to the least significant bit. Last node
  * of every prefix contains pointer to @aggregator_bucket where the route for
  * this prefix belongs.
  *
@@ -45,27 +45,16 @@
  * are carried to the parent node. Otherwise, all of children's buckets are
  * carried to the parent node.
  *
- * The third pass moves down the tree, selecting a bucket for the prefix and
- * removing redundant routes. The node inherits a bucket from the closest
- * ancestor node that has a bucket (except for the root node). If the inherited
- * bucket is a member of the node's set of potential buckets, then the node
- * does not need a bucket. Otherwise, the node does need a bucket and any of
- * its potential buckets can be chosen. All leaves which have not been assigned
- * a bucket are removed.
+ * The third pass moves down the trie while deciding which prefixes will be
+ * exported to the FIB. The node inherits a bucket from the closest ancestor
+ * that has a bucket. If the inherited bucket is one of potential buckets of
+ * this node, then this node does not need a bucket and its prefix will not
+ * be in FIB. Otherwise the node does need a bucket and any of its potential
+ * buckets can be chosen. We always choose the bucket with the lowest ID, but
+ * other options are possible.
  *
- * The algorithm works on the assumption that there is a default route, that is,
- * the null prefix at the root node has a bucket. This route is created before
- * the aggregation starts.
- *
- * Incorporation of incremental updates of routes has not been implemented yet.
- * The whole trie is rebuilt and aggregation runs all over again when enough
- * updates are collected. To achieve this, the aggregator uses a settle timer
- * configured with two intervals, @min and @max. User can specify these
- * intervals in the configuration file. After receiving an update, settle timer
- * is kicked. If no update is received for interval @min or if @max interval is
- * exceeded, timer triggers and refeed of the source channel is requested. When
- * the refeed ends, all prefixes are inserted into the trie and aggregation
- * algorithm proceeds.
+ * The algorithm works with the assumption that there is a default route, that is,
+ * the null prefix at the root node has a bucket.
  *
  * Memory for the aggregator is allocated from three linpools: one for buckets,
  * one for routes and one for trie used in prefix aggregation. Obviously, trie
@@ -73,6 +62,31 @@
  * after prefix aggregation is finished, thus destroying all data structures
  * used.
  *
+ * Aggregator is capable of processing incremental updates. After receiving
+ * an update, which can be either announce or withdraw, corresponding node
+ * is found in the trie and its original bucket is updated.
+ * The trie now needs to be recomputed to reflect this update. We go from
+ * updated node upwards until we find its closest IN_FIB ancestor.
+ * This is the prefix node that covers an address space which is affected
+ * by received update. The whole subtree rooted at this node is deaggregated,
+ * which means deleting all information computed by aggregation algorithm.
+ * This is followed by second pass which propagates potential buckets from
+ * the leaves upwards. Merging of sets of potential buckets continues upwards
+ * until the node's set is not changed by this operation. Then, third pass is
+ * run from this node, finishing the aggregation. During third pass, any change
+ * in prefix FIB status is detected and based on this, new route is exported
+ * or is removed from the routing table, respectively. All new routes are
+ * exported immmediately, however, all routes to be withdrawed are pushed on
+ * the stack and are removed after recomputing the trie.
+ *
+ * From a practical point of view, our implementation differs a little bit from
+ * the algorithm as it was described in the original paper.
+ * During first pass, the trie is normalized by adding new nodes so that every
+ * node has either zero or two children. These nodes are used only for
+ * computing of node's set of potential buckets from the sets of its children.
+ * We can therefore afford to not add these nodes to save both time and memory.
+ * Another change is performing the work previously done in the first pass
+ * during second pass, saving one trie traversal.
  */
 
 #undef LOCAL_DEBUG
@@ -330,7 +344,7 @@ agregator_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bu
 }
 
 /*
- * Prepare route withdrawal for @prefix
+ * Prepare to withdraw route for @prefix
  */
 static void
 aggregator_prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket)
@@ -649,12 +663,6 @@ find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, u32 *pxlen,
   *pxlen = len;
 }
 
-
-
-
-
-
-
 /*
  * Second pass of Optimal Route Table Construction (ORTC) algorithm
  */
@@ -784,7 +792,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
 
     /*
      * Keep information whether this prefix was original. If not, then its origin
-     * is changed to aggregated, because it's going to FIB.
+     * is changed to aggregated, because algorithm decided it's going to FIB.
      */
     node->px_origin = (ORIGINAL == node->px_origin) ? ORIGINAL : AGGREGATED;
     node->status = IN_FIB;
@@ -829,8 +837,8 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
      * both time and memory.
      * On the other hand, nodes may be removed from the trie during third pass,
      * if they do not have bucket on their own and inherit one from their
-     * ancestors (and thus are not needed in FIB).
-     * Nodes do get bucket if the bucket inherited from their ancestors is NOT
+     * ancestors instead (and thus are not needed in FIB).
+     * Nodes get bucket if the bucket inherited from their ancestors is NOT
      * one of their potential buckets. In this case, we need to add these nodes
      * to the trie.
      */
@@ -1885,7 +1893,7 @@ aggregator_initialize_trie(struct aggregator_proto *p)
 
   /*
    * Root node is initialized with NON_FIB status.
-   * Default route will be created during third pass.
+   * Default route will be exported during first aggregation run.
    */
   *p->root = (struct trie_node) {
     .original_bucket = new_bucket,
