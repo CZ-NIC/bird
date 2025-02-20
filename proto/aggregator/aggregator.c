@@ -1328,7 +1328,7 @@ aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *b
     /* We actually don't want this route */
     case F_REJECT:
       if (bucket->last_src)
-	rte_update2(p->dst, net->n.addr, NULL, bucket->last_src);
+        rte_update2(p->dst, net->n.addr, NULL, bucket->last_src);
       break;
   }
 
@@ -1337,6 +1337,7 @@ aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *b
   {
     if (new_src)
       rt_lock_source(new_src);
+
     if (bucket->last_src)
       rt_unlock_source(bucket->last_src);
 
@@ -1380,18 +1381,18 @@ eval_static_attr(const struct rte *rt1, struct f_static_attr sa, struct f_val *p
 
   switch (sa.sa_code)
   {
-    case SA_NET:	RESULT(sa.f_type, net, rt1->net->n.addr); break;
-    case SA_FROM:       RESULT(sa.f_type, ip, rta->from); break;
-    case SA_GW:	        RESULT(sa.f_type, ip, rta->nh.gw); break;
-    case SA_PROTO:	    RESULT(sa.f_type, s, rt1->src->proto->name); break;
-    case SA_SOURCE:	    RESULT(sa.f_type, i, rta->source); break;
-    case SA_SCOPE:	    RESULT(sa.f_type, i, rta->scope); break;
-    case SA_DEST:	    RESULT(sa.f_type, i, rta->dest); break;
-    case SA_IFNAME:	    RESULT(sa.f_type, s, rta->nh.iface ? rta->nh.iface->name : ""); break;
-    case SA_IFINDEX:	RESULT(sa.f_type, i, rta->nh.iface ? rta->nh.iface->index : 0); break;
-    case SA_WEIGHT:	    RESULT(sa.f_type, i, rta->nh.weight + 1); break;
-    case SA_PREF:	    RESULT(sa.f_type, i, rta->pref); break;
-    case SA_GW_MPLS:    RESULT(sa.f_type, i, rta->nh.labels ? rta->nh.label[0] : MPLS_NULL); break;
+    case SA_NET:        RESULT(sa.f_type, net, rt1->net->n.addr);                               break;
+    case SA_FROM:       RESULT(sa.f_type, ip, rta->from);                                       break;
+    case SA_GW:         RESULT(sa.f_type, ip, rta->nh.gw);                                      break;
+    case SA_PROTO:      RESULT(sa.f_type, s, rt1->src->proto->name);                            break;
+    case SA_SOURCE:     RESULT(sa.f_type, i, rta->source);                                      break;
+    case SA_SCOPE:      RESULT(sa.f_type, i, rta->scope);                                       break;
+    case SA_DEST:       RESULT(sa.f_type, i, rta->dest);                                        break;
+    case SA_IFNAME:     RESULT(sa.f_type, s, rta->nh.iface ? rta->nh.iface->name : "");         break;
+    case SA_IFINDEX:    RESULT(sa.f_type, i, rta->nh.iface ? rta->nh.iface->index : 0);         break;
+    case SA_WEIGHT:     RESULT(sa.f_type, i, rta->nh.weight + 1);                               break;
+    case SA_PREF:       RESULT(sa.f_type, i, rta->pref);                                        break;
+    case SA_GW_MPLS:    RESULT(sa.f_type, i, rta->nh.labels ? rta->nh.label[0] : MPLS_NULL);    break;
     default:
       bug("Invalid static attribute access (%u/%u)", sa.f_type, sa.sa_code);
   }
@@ -1492,7 +1493,8 @@ eval_dynamic_attr(const struct rte *rt1, struct f_dynamic_attr da, struct f_val 
 #undef RESULT_VOID
 }
 
-static inline u32 aggr_route_hash(const rte *e)
+static inline u32
+aggr_route_hash(const rte *e)
 {
   struct {
     net *net;
@@ -1605,6 +1607,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     /* Compute the hash */
     u64 haux;
     mem_hash_init(&haux);
+
     for (uint i = 0; i < p->aggr_on_count; i++)
     {
       mem_hash_mix_num(&haux, tmp_bucket->aggr_data[i].type);
@@ -1614,50 +1617,50 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
 
       switch (tmp_bucket->aggr_data[i].type)
       {
-	case T_VOID:
-	  break;
-	case T_INT:
-	case T_BOOL:
-	case T_PAIR:
-	case T_QUAD:
-	case T_ENUM:
-	  MX(i);
-	  break;
-	case T_EC:
-	case T_RD:
-	  MX(ec);
-	  break;
-	case T_LC:
-	  MX(lc);
-	  break;
-	case T_IP:
-	  MX(ip);
-	  break;
-	case T_NET:
-	  mem_hash_mix_num(&haux, net_hash(IT(net)));
-	  break;
-	case T_STRING:
-	  mem_hash_mix_str(&haux, IT(s));
-	  break;
-	case T_PATH_MASK:
-	  mem_hash_mix(&haux, IT(path_mask), sizeof(*IT(path_mask)) + IT(path_mask)->len * sizeof (IT(path_mask)->item));
-	  break;
-	case T_PATH:
-	case T_CLIST:
-	case T_ECLIST:
-	case T_LCLIST:
-	  mem_hash_mix(&haux, IT(ad)->data, IT(ad)->length);
-	  break;
-	case T_PATH_MASK_ITEM:
-	case T_ROUTE:
-	case T_ROUTES_BLOCK:
-	  bug("Invalid type %s in hashing", f_type_name(tmp_bucket->aggr_data[i].type));
-	case T_SET:
-	  MX(t);
-	  break;
-	case T_PREFIX_SET:
-	  MX(ti);
-	  break;
+        case T_VOID:
+          break;
+        case T_INT:
+        case T_BOOL:
+        case T_PAIR:
+        case T_QUAD:
+        case T_ENUM:
+          MX(i);
+          break;
+        case T_EC:
+        case T_RD:
+          MX(ec);
+          break;
+        case T_LC:
+          MX(lc);
+          break;
+        case T_IP:
+          MX(ip);
+          break;
+        case T_NET:
+          mem_hash_mix_num(&haux, net_hash(IT(net)));
+          break;
+        case T_STRING:
+          mem_hash_mix_str(&haux, IT(s));
+          break;
+        case T_PATH_MASK:
+          mem_hash_mix(&haux, IT(path_mask), sizeof(*IT(path_mask)) + IT(path_mask)->len * sizeof (IT(path_mask)->item));
+          break;
+        case T_PATH:
+        case T_CLIST:
+        case T_ECLIST:
+        case T_LCLIST:
+          mem_hash_mix(&haux, IT(ad)->data, IT(ad)->length);
+          break;
+        case T_PATH_MASK_ITEM:
+        case T_ROUTE:
+        case T_ROUTES_BLOCK:
+          bug("Invalid type %s in hashing", f_type_name(tmp_bucket->aggr_data[i].type));
+        case T_SET:
+          MX(t);
+          break;
+        case T_PREFIX_SET:
+          MX(ti);
+          break;
       }
     }
 
@@ -1687,10 +1690,12 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
 
     /* Insert the new route into the bucket */
     struct aggregator_route *arte = lp_allocz(p->route_pool, sizeof(*arte));
+
     *arte = (struct aggregator_route) {
       .bucket = new_bucket,
       .rte = *new,
     };
+
     arte->rte.next = new_bucket->rte,
     new_bucket->rte = &arte->rte;
     new_bucket->count++;
@@ -1708,11 +1713,13 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   if (old_bucket)
   {
     for (struct rte **k = &old_bucket->rte; *k; k = &(*k)->next)
+    {
       if (*k == &old_route->rte)
       {
-	*k = (*k)->next;
-	break;
+        *k = (*k)->next;
+        break;
       }
+    }
 
     old_bucket->count--;
     HASH_REMOVE2(p->routes, AGGR_RTE, p->p.pool, old_route);
@@ -1756,6 +1763,7 @@ static int
 aggregator_preexport(struct channel *C, struct rte *new)
 {
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, C->proto);
+
   /* Reject our own routes */
   if (new->sender == p->dst)
     return -1;
@@ -1853,6 +1861,7 @@ aggregator_initialize_trie(struct aggregator_proto *p)
   /* Allocate bucket for root node */
   struct aggregator_bucket *new_bucket = lp_allocz(p->bucket_pool, sizeof(*new_bucket));
   assert(new_bucket->id == 0);
+
   u64 haux = 0;
   mem_hash_init(&haux);
   new_bucket->hash = mem_hash_value(&haux);
@@ -1984,23 +1993,25 @@ aggregator_reconfigure(struct proto *P, struct proto_config *CF)
 
   /* Compare aggregator rule */
   for (uint i = 0; i < p->aggr_on_count; i++)
+  {
     switch (cf->aggr_on[i].type)
     {
       case AGGR_ITEM_TERM:
-	if (!f_same(cf->aggr_on[i].line, p->aggr_on[i].line))
-	  return 0;
-	break;
+        if (!f_same(cf->aggr_on[i].line, p->aggr_on[i].line))
+          return 0;
+        break;
       case AGGR_ITEM_STATIC_ATTR:
-	if (memcmp(&cf->aggr_on[i].sa, &p->aggr_on[i].sa, sizeof(struct f_static_attr)) != 0)
-	  return 0;
-	break;
+        if (memcmp(&cf->aggr_on[i].sa, &p->aggr_on[i].sa, sizeof(struct f_static_attr)) != 0)
+          return 0;
+        break;
       case AGGR_ITEM_DYNAMIC_ATTR:
-	if (memcmp(&cf->aggr_on[i].da, &p->aggr_on[i].da, sizeof(struct f_dynamic_attr)) != 0)
-	  return 0;
-	break;
+        if (memcmp(&cf->aggr_on[i].da, &p->aggr_on[i].da, sizeof(struct f_dynamic_attr)) != 0)
+          return 0;
+        break;
       default:
-	bug("Broken aggregator rule");
+        bug("Broken aggregator rule");
     }
+  }
 
   /* Compare merge filter */
   if (!f_same(cf->merge_by, p->merge_by))
