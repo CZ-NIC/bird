@@ -123,7 +123,7 @@ struct aggr_item_node {
 };
 
 enum fib_status {
-  UNASSIGNED_STATUS,
+  UNASSIGNED_FIB,
   IN_FIB,
   NON_FIB,
 };
