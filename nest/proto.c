@@ -1443,7 +1443,6 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
       die("Cannot determine router ID, please configure it manually");
   }
 
-
   /* Start all new protocols */
   WALK_LIST_DELSAFE(p, n, proto_list)
     proto_rethink_goal(p);
