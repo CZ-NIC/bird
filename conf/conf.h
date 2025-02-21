@@ -14,6 +14,7 @@
 #include "lib/hash.h"
 #include "lib/resource.h"
 #include "lib/timer.h"
+#include "lib/settle.h"
 
 /* Configuration structure */
 struct config {
