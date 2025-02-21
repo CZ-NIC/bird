@@ -1497,7 +1497,7 @@ eval_dynamic_attr(const struct rte *rt1, struct f_dynamic_attr da, struct f_val 
 }
 
 static inline u32
-aggr_route_hash(const rte *e)
+aggregator_route_hash(const rte *e)
 {
   struct {
     net *net;
@@ -1513,7 +1513,7 @@ aggr_route_hash(const rte *e)
 #define AGGR_RTE_KEY(n)			(&(n)->rte)
 #define AGGR_RTE_NEXT(n)		((n)->next_hash)
 #define AGGR_RTE_EQ(a,b)		(((a)->src == (b)->src) && ((a)->net == (b)->net))
-#define AGGR_RTE_FN(_n)			aggr_route_hash(_n)
+#define AGGR_RTE_FN(_n)			aggregator_route_hash(_n)
 #define AGGR_RTE_ORDER			4 /* Initial */
 
 #define AGGR_RTE_REHASH			aggr_rte_rehash
@@ -1689,7 +1689,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
       new->attrs = rta_lookup(new->attrs);
 
     if (p->logging)
-      log("New rte: %p, net: %p, src: %p, hash: %x", new, new->net, new->src, aggr_route_hash(new));
+      log("New rte: %p, net: %p, src: %p, hash: %x", new, new->net, new->src, aggregator_route_hash(new));
 
     /* Insert the new route into the bucket */
     struct aggregator_route *arte = lp_allocz(p->route_pool, sizeof(*arte));
@@ -1709,7 +1709,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     ASSERT_DIE(new_route != NULL);
 
     if (p->logging)
-      log("Inserting rte: %p, arte: %p, net: %p, src: %p, hash: %x", &arte->rte, arte, arte->rte.net, arte->rte.src, aggr_route_hash(&arte->rte));
+      log("Inserting rte: %p, arte: %p, net: %p, src: %p, hash: %x", &arte->rte, arte, arte->rte.net, arte->rte.src, aggregator_route_hash(&arte->rte));
   }
 
   /* Remove the old route from its bucket */
