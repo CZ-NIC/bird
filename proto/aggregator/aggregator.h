@@ -24,10 +24,6 @@
 #define IP4_WITHDRAWAL_LIMIT 100
 #define IP6_WITHDRAWAL_LIMIT 200
 
-#define ipa_getbit(a,p) ip6_getbit(a,p)
-#define ipa_setbit(a,p) ip6_setbit(a,p)
-#define ipa_clrbit(a,p) ip6_clrbit(a,p)
-
 enum aggregation_mode {
   NET_AGGR, PREFIX_AGGR,
 };
@@ -150,5 +146,12 @@ struct trie_node {
   int potential_buckets_count;
   int depth;
 };
+
+void aggregator_aggregate(struct aggregator_proto *p);
+void aggregator_update_prefix(struct aggregator_proto *p, struct aggregator_route *old, struct aggregator_route *new);
+void aggregator_withdraw_prefix(struct aggregator_proto *p, struct aggregator_route *old);
+void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net);
+
+struct trie_node *create_new_node(linpool *trie_pool);
 
 #endif
