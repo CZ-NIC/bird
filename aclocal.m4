@@ -173,7 +173,6 @@ AC_DEFUN([BIRD_CHECK_LTO],
   LDFLAGS="$bird_tmp_ldflags"
 ])
 
-
 AC_DEFUN([BIRD_CHECK_GCC_OPTION],
 [
   bird_tmp_cflags="$CFLAGS"
@@ -205,6 +204,40 @@ AC_DEFUN([BIRD_CHECK_AND_ADD_GCC_OPTION],
 [
   BIRD_CHECK_GCC_OPTION($@)
   BIRD_ADD_GCC_OPTION($1,$2)
+])
+
+AC_DEFUN([BIRD_CHECK_GCC_OPTION_LINK],
+[
+  bird_tmp_cflags="$CFLAGS"
+  CFLAGS="$3 $2"
+
+  AC_CACHE_CHECK(
+    [whether CC supports $2],
+    [$1],
+    [
+      AC_LINK_IFELSE(
+	[AC_LANG_PROGRAM()],
+	[$1=yes],
+	[$1=no]
+      )
+    ]
+  )
+
+  CFLAGS="$bird_tmp_cflags"
+])
+
+AC_DEFUN([BIRD_ADD_GCC_OPTION_LINK],
+[
+  if test "$$1" = yes ; then
+    CFLAGS="$CFLAGS $2"
+    LDFLAGS="$LDFLAGS $2"
+  fi
+])
+
+AC_DEFUN([BIRD_CHECK_AND_ADD_GCC_OPTION_LINK],
+[
+  BIRD_CHECK_GCC_OPTION_LINK($@)
+  BIRD_ADD_GCC_OPTION_LINK($1,$2)
 ])
 
 # BIRD_CHECK_PROG_FLAVOR_GNU(PROGRAM-PATH, IF-SUCCESS, [IF-FAILURE])

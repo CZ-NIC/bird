@@ -36,6 +36,12 @@ AC_ARG_ENABLE([memcheck],
   [enable_memcheck=yes]
 )
 
+AC_ARG_ENABLE([satan],
+  [AS_HELP_STRING([--enable-satan], [enable memory and undefined bahaviour sanitization @<:@no@:>@])],
+  [],
+  [enable_satan=no]
+)
+
 AC_ARG_ENABLE([compact-tries],
   [AS_HELP_STRING([--enable-compact-tries], [use 4-way tries instead of 16-way ones @<:@no@:>@])],
   [],
@@ -423,6 +429,13 @@ if test "$enable_debug" = yes ; then
     AC_DEFINE([ENABLE_EXPENSIVE_CHECKS], [1], [Define to 1 if you want to run expensive consistency checks.])
   fi
 fi
+
+if test "$enable_satan" = yes; then
+  BIRD_CHECK_AND_ADD_GCC_OPTION_LINK([bird_cv_c_option_satan_address], [-fsanitize=address], [])
+  BIRD_CHECK_AND_ADD_GCC_OPTION_LINK([bird_cv_c_option_satan_undefined], [-fsanitize=undefined], [])
+  BIRD_CHECK_AND_ADD_GCC_OPTION_LINK([bird_cv_c_option_satan_memory], [-fsanitize=memory], [])
+fi
+
 
 if test "$enable_compact_tries" = yes ; then
   AC_DEFINE([ENABLE_COMPACT_TRIES], [1], [Define to 1 if you want 4-way tries instead of 16-way ones.])
