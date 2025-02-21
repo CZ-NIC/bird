@@ -119,7 +119,7 @@ static const u32 ipa_shift[] = {
 static inline int
 is_leaf(const struct trie_node *node)
 {
-  assert(node != NULL);
+  ASSERT_DIE(node != NULL);
   return !node->child[0] && !node->child[1];
 }
 
@@ -139,8 +139,8 @@ create_new_node(linpool *trie_pool)
 static inline void
 remove_node(struct trie_node *node)
 {
-  assert(node != NULL);
-  assert(node->child[0] == NULL && node->child[1] == NULL);
+  ASSERT_DIE(node != NULL);
+  ASSERT_DIE(node->child[0] == NULL && node->child[1] == NULL);
 
   if (!node->parent)
     ;
@@ -163,7 +163,7 @@ remove_node(struct trie_node *node)
 static inline void
 node_add_potential_bucket(struct trie_node *node, const struct aggregator_bucket *bucket)
 {
-  assert(node->potential_buckets_count < MAX_POTENTIAL_BUCKETS_COUNT);
+  ASSERT_DIE(node->potential_buckets_count < MAX_POTENTIAL_BUCKETS_COUNT);
 
   /*
   if (BIT32R_TEST(node->potential_buckets, bucket->id))
@@ -196,8 +196,8 @@ node_add_potential_bucket(struct trie_node *node, const struct aggregator_bucket
 static inline int
 node_is_bucket_potential(const struct trie_node *node, const struct aggregator_bucket *bucket)
 {
-  assert(node != NULL);
-  assert(bucket != NULL);
+  ASSERT_DIE(node != NULL);
+  ASSERT_DIE(bucket != NULL);
 
   ASSERT_DIE(bucket->id < MAX_POTENTIAL_BUCKETS_COUNT);
   return BIT32R_TEST(node->potential_buckets, bucket->id);
@@ -234,16 +234,16 @@ get_new_bucket_id(struct aggregator_proto *p)
 static inline struct aggregator_bucket *
 select_lowest_id_bucket(const struct aggregator_proto *p, const struct trie_node *node)
 {
-  assert(p != NULL);
-  assert(node != NULL);
+  ASSERT_DIE(p != NULL);
+  ASSERT_DIE(node != NULL);
 
   for (u32 i = 0; i < MAX_POTENTIAL_BUCKETS_COUNT; i++)
   {
     if (BIT32R_TEST(node->potential_buckets, i))
     {
       struct aggregator_bucket *bucket = get_bucket_ptr(p, i);
-      assert(bucket != NULL);
-      assert(bucket->id == i);
+      ASSERT_DIE(bucket != NULL);
+      ASSERT_DIE(bucket->id == i);
       return bucket;
     }
   }
@@ -260,9 +260,9 @@ select_lowest_id_bucket(const struct aggregator_proto *p, const struct trie_node
 static int
 merge_potential_buckets(struct trie_node *target, const struct trie_node *left, const struct trie_node *right)
 {
-  assert(target != NULL);
-  assert(left != NULL);
-  assert(right != NULL);
+  ASSERT_DIE(target != NULL);
+  ASSERT_DIE(left != NULL);
+  ASSERT_DIE(right != NULL);
 
   int has_intersection = 0;
   int has_changed = 0;
@@ -312,9 +312,9 @@ merge_potential_buckets(struct trie_node *target, const struct trie_node *left, 
 static void
 agregator_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket)
 {
-  assert(p != NULL);
-  assert(p->bucket_list != NULL);
-  assert(bucket != NULL);
+  ASSERT_DIE(p != NULL);
+  ASSERT_DIE(p->bucket_list != NULL);
+  ASSERT_DIE(bucket != NULL);
 
   /* Bucket is already in the list */
   if (bucket->id < p->bucket_list_size && p->bucket_list[bucket->id])
@@ -328,19 +328,19 @@ agregator_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bu
     while (bucket->id >= p->bucket_list_size)
       p->bucket_list_size *= 2;
 
-    assert(old_size < p->bucket_list_size);
+    ASSERT_DIE(old_size < p->bucket_list_size);
 
     p->bucket_list = mb_realloc(p->bucket_list, sizeof(p->bucket_list[0]) * p->bucket_list_size);
     memset(&p->bucket_list[old_size], 0, sizeof(p->bucket_list[0]) * (p->bucket_list_size - old_size));
   }
 
-  assert(bucket->id < p->bucket_list_size);
-  assert(p->bucket_list[bucket->id] == NULL);
+  ASSERT_DIE(bucket->id < p->bucket_list_size);
+  ASSERT_DIE(p->bucket_list[bucket->id] == NULL);
 
   p->bucket_list[bucket->id] = bucket;
   p->bucket_list_count++;
 
-  assert(get_bucket_ptr(p, bucket->id) == bucket);
+  ASSERT_DIE(get_bucket_ptr(p, bucket->id) == bucket);
 }
 
 /*
@@ -349,8 +349,8 @@ agregator_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bu
 static void
 aggregator_prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket)
 {
-  assert(p != NULL);
-  assert(bucket != NULL);
+  ASSERT_DIE(p != NULL);
+  ASSERT_DIE(bucket != NULL);
 
   struct net_addr addr = { 0 };
   net_fill_ipa(&addr, prefix, pxlen);
@@ -367,7 +367,7 @@ aggregator_prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u3
   p->rte_withdrawal_stack = node;
   p->rte_withdrawal_count++;
 
-  assert(p->rte_withdrawal_stack != NULL);
+  ASSERT_DIE(p->rte_withdrawal_stack != NULL);
 }
 
 /*
@@ -390,8 +390,8 @@ aggregator_withdraw_rte(struct aggregator_proto *p)
     p->rte_withdrawal_count--;
   }
 
-  assert(p->rte_withdrawal_stack == NULL);
-  assert(p->rte_withdrawal_count == 0);
+  ASSERT_DIE(p->rte_withdrawal_stack == NULL);
+  ASSERT_DIE(p->rte_withdrawal_count == 0);
 
   lp_flush(p->rte_withdrawal_pool);
 }
@@ -413,8 +413,8 @@ create_route(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggre
 static void
 print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, u32 type)
 {
-  assert(node != NULL);
-  assert(prefix != NULL);
+  ASSERT_DIE(node != NULL);
+  ASSERT_DIE(prefix != NULL);
 
   if (IN_FIB == node->status)
   {
@@ -425,14 +425,14 @@ print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, 
 
   if (node->child[0])
   {
-    assert((u32)node->depth == pxlen);
+    ASSERT_DIE((u32)node->depth == pxlen);
     ipa_clrbit(prefix, node->depth + ipa_shift[type]);
     print_prefixes_helper(node->child[0], prefix, pxlen + 1, type);
   }
 
   if (node->child[1])
   {
-    assert((u32)node->depth == pxlen);
+    ASSERT_DIE((u32)node->depth == pxlen);
     ipa_setbit(prefix, node->depth + ipa_shift[type]);
     print_prefixes_helper(node->child[1], prefix, pxlen + 1, type);
     ipa_clrbit(prefix, node->depth + ipa_shift[type]);
@@ -442,7 +442,7 @@ print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, 
 static void
 print_prefixes(const struct trie_node *node, u32 type)
 {
-  assert(node != NULL);
+  ASSERT_DIE(node != NULL);
 
   ip_addr prefix = (NET_IP4 == type) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
   print_prefixes_helper(node, &prefix, 0, type);
@@ -451,9 +451,9 @@ print_prefixes(const struct trie_node *node, u32 type)
 static void
 dump_trie_helper(const struct aggregator_proto *p, const struct trie_node *node, ip_addr *prefix, u32 pxlen, struct buffer *buf)
 {
-  assert(p != NULL);
-  assert(node != NULL);
-  assert(prefix != NULL);
+  ASSERT_DIE(p != NULL);
+  ASSERT_DIE(node != NULL);
+  ASSERT_DIE(prefix != NULL);
 
   memset(buf->start, 0, buf->pos - buf->start);
   buf->pos = buf->start;
@@ -494,14 +494,14 @@ dump_trie_helper(const struct aggregator_proto *p, const struct trie_node *node,
 
   if (node->child[0])
   {
-    assert((u32)node->depth == pxlen);
+    ASSERT_DIE((u32)node->depth == pxlen);
     ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
     dump_trie_helper(p, node->child[0], prefix, pxlen + 1, buf);
   }
 
   if (node->child[1])
   {
-    assert((u32)node->depth == pxlen);
+    ASSERT_DIE((u32)node->depth == pxlen);
     ipa_setbit(prefix, node->depth + ipa_shift[p->addr_type]);
     dump_trie_helper(p, node->child[1], prefix, pxlen + 1, buf);
     ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
@@ -528,8 +528,8 @@ dump_trie(const struct aggregator_proto *p)
 static struct trie_node *
 aggregator_insert_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket)
 {
-  assert(p != NULL);
-  assert(bucket != NULL);
+  ASSERT_DIE(p != NULL);
+  ASSERT_DIE(bucket != NULL);
 
   struct trie_node *node = p->root;
 
@@ -573,12 +573,12 @@ aggregator_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
   {
     u32 bit = ipa_getbit(prefix, i + ipa_shift[p->addr_type]);
     node = node->child[bit];
-    assert(node != NULL);
+    ASSERT_DIE(node != NULL);
   }
 
-  assert(node->px_origin == ORIGINAL);
-  assert(node->selected_bucket != NULL);
-  assert((u32)node->depth == pxlen);
+  ASSERT_DIE(node->px_origin == ORIGINAL);
+  ASSERT_DIE(node->selected_bucket != NULL);
+  ASSERT_DIE((u32)node->depth == pxlen);
 
   /* If this prefix was IN_FIB, remove its route */
   if (IN_FIB == node->status)
@@ -601,8 +601,8 @@ aggregator_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
     if (FILLER == node->px_origin && is_leaf(node))
     {
       remove_node(node);
-      assert(node != NULL);
-      assert(parent != NULL);
+      ASSERT_DIE(node != NULL);
+      ASSERT_DIE(parent != NULL);
     }
     else
       break;
@@ -618,9 +618,9 @@ aggregator_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
 static void
 find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, u32 *pxlen, u32 type)
 {
-  assert(target != NULL);
-  assert(prefix != NULL);
-  assert(pxlen != NULL);
+  ASSERT_DIE(target != NULL);
+  ASSERT_DIE(prefix != NULL);
+  ASSERT_DIE(pxlen != NULL);
 
   int path[IP6_MAX_PREFIX_LENGTH] = { 0 };
   int pos = 0;
@@ -639,12 +639,12 @@ find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, u32 *pxlen,
     else
       bug("Corrupted memory (node is not its parent's child)");
 
-    assert(pos < IP6_MAX_PREFIX_LENGTH);
+    ASSERT_DIE(pos < IP6_MAX_PREFIX_LENGTH);
     node = parent;
     parent = node->parent;
   }
 
-  assert(node->parent == NULL);
+  ASSERT_DIE(node->parent == NULL);
 
   /* Descend to the target node */
   for (int i = pos - 1; i >= 0; i--)
@@ -656,10 +656,10 @@ find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, u32 *pxlen,
 
     node = node->child[path[i]];
     len++;
-    assert((u32)node->depth == len);
+    ASSERT_DIE((u32)node->depth == len);
   }
 
-  assert(node == target);
+  ASSERT_DIE(node == target);
   *pxlen = len;
 }
 
@@ -669,14 +669,14 @@ find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, u32 *pxlen,
 static void
 second_pass(struct trie_node *node)
 {
-  assert(node != NULL);
-  assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
+  ASSERT_DIE(node != NULL);
+  ASSERT_DIE(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
   if (is_leaf(node))
   {
-    assert(node->original_bucket != NULL);
-    assert(node->status == NON_FIB);
-    assert(node->potential_buckets_count == 0);
+    ASSERT_DIE(node->original_bucket != NULL);
+    ASSERT_DIE(node->status == NON_FIB);
+    ASSERT_DIE(node->potential_buckets_count == 0);
     node_add_potential_bucket(node, node->original_bucket);
     return;
   }
@@ -686,7 +686,7 @@ second_pass(struct trie_node *node)
     node->original_bucket = node->parent->original_bucket;
 
   /* Internal node */
-  assert(node->potential_buckets_count == 0);
+  ASSERT_DIE(node->potential_buckets_count == 0);
 
   struct trie_node *left  = node->child[0];
   struct trie_node *right = node->child[1];
@@ -698,8 +698,8 @@ second_pass(struct trie_node *node)
   if (right)
     second_pass(right);
 
-  assert(node->original_bucket != NULL);
-  assert(node->selected_bucket == NULL);
+  ASSERT_DIE(node->original_bucket != NULL);
+  ASSERT_DIE(node->selected_bucket == NULL);
 
   /* Imaginary node if this was a complete binary tree */
   struct trie_node imaginary_node = {
@@ -721,7 +721,7 @@ second_pass(struct trie_node *node)
       left = &imaginary_node;
   }
 
-  assert(left != NULL && right != NULL);
+  ASSERT_DIE(left != NULL && right != NULL);
 
   /*
    * If there are no common buckets among children's buckets, parent's
@@ -735,12 +735,12 @@ second_pass(struct trie_node *node)
 static void
 third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *prefix, u32 pxlen)
 {
-  assert(node != NULL);
-  assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
+  ASSERT_DIE(node != NULL);
+  ASSERT_DIE(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
-  assert(node->original_bucket != NULL);
-  assert(node->parent->ancestor != NULL);
-  assert(node->parent->ancestor->selected_bucket != NULL);
+  ASSERT_DIE(node->original_bucket != NULL);
+  ASSERT_DIE(node->parent->ancestor != NULL);
+  ASSERT_DIE(node->parent->ancestor->selected_bucket != NULL);
 
   /* Bucket inherited from the closest ancestor with a non-null selected bucket */
   const struct aggregator_bucket * const inherited_bucket = node->parent->ancestor->selected_bucket;
@@ -758,8 +758,8 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
      */
     if (IN_FIB == node->status)
     {
-      assert(node->px_origin == ORIGINAL || node->px_origin == AGGREGATED);
-      assert(node->selected_bucket != NULL);
+      ASSERT_DIE(node->px_origin == ORIGINAL || node->px_origin == AGGREGATED);
+      ASSERT_DIE(node->selected_bucket != NULL);
 
       aggregator_prepare_rte_withdrawal(p, *prefix, pxlen, node->selected_bucket);
     }
@@ -777,11 +777,11 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
   }
   else
   {
-    assert(node->potential_buckets_count > 0);
+    ASSERT_DIE(node->potential_buckets_count > 0);
 
     /* Assign bucket with the lowest ID to the node */
     node->selected_bucket = select_lowest_id_bucket(p, node);
-    assert(node->selected_bucket != NULL);
+    ASSERT_DIE(node->selected_bucket != NULL);
 
     /*
      * Prefix status is changing from NON_FIB or UNASSIGNED (at newly created nodes)
@@ -799,10 +799,10 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
     node->ancestor = node;
   }
 
-  assert((node->selected_bucket != NULL && node->status == IN_FIB) || (node->selected_bucket == NULL && node->status == NON_FIB));
-  assert(node->ancestor != NULL);
-  assert(node->ancestor->original_bucket != NULL);
-  assert(node->ancestor->selected_bucket != NULL);
+  ASSERT_DIE((node->selected_bucket != NULL && node->status == IN_FIB) || (node->selected_bucket == NULL && node->status == NON_FIB));
+  ASSERT_DIE(node->ancestor != NULL);
+  ASSERT_DIE(node->ancestor->original_bucket != NULL);
+  ASSERT_DIE(node->ancestor->selected_bucket != NULL);
 
   const struct trie_node * const left  = node->child[0];
   const struct trie_node * const right = node->child[1];
@@ -858,21 +858,21 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
   /* Preorder traversal */
   if (node->child[0])
   {
-    assert((u32)node->depth == pxlen);
+    ASSERT_DIE((u32)node->depth == pxlen);
     ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
     third_pass_helper(p, node->child[0], prefix, pxlen + 1);
   }
 
   if (node->child[1])
   {
-    assert((u32)node->depth == pxlen);
+    ASSERT_DIE((u32)node->depth == pxlen);
     ipa_setbit(prefix, node->depth + ipa_shift[p->addr_type]);
     third_pass_helper(p, node->child[1], prefix, pxlen + 1);
     ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
   }
 
   if (NON_FIB == node->status && is_leaf(node))
-    assert(node->selected_bucket == NULL);
+    ASSERT_DIE(node->selected_bucket == NULL);
 }
 
 /*
@@ -881,9 +881,9 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
 static void
 third_pass(struct aggregator_proto *p, struct trie_node *node)
 {
-  assert(node != NULL);
-  assert(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
-  assert(node->potential_buckets_count > 0);
+  ASSERT_DIE(node != NULL);
+  ASSERT_DIE(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
+  ASSERT_DIE(node->potential_buckets_count > 0);
 
   ip_addr prefix = (NET_IP4 == p->addr_type) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
   u32 pxlen = 0;
@@ -896,7 +896,7 @@ third_pass(struct aggregator_proto *p, struct trie_node *node)
 
   /* Select bucket with the lowest ID */
   node->selected_bucket = select_lowest_id_bucket(p, node);
-  assert(node->selected_bucket != NULL);
+  ASSERT_DIE(node->selected_bucket != NULL);
 
   /*
    * Export new route if node status is changing from NON_FIB
@@ -911,14 +911,14 @@ third_pass(struct aggregator_proto *p, struct trie_node *node)
 
   if (node->child[0])
   {
-    assert((u32)node->depth == pxlen);
+    ASSERT_DIE((u32)node->depth == pxlen);
     ipa_clrbit(&prefix, node->depth + ipa_shift[p->addr_type]);
     third_pass_helper(p, node->child[0], &prefix, pxlen + 1);
   }
 
   if (node->child[1])
   {
-    assert((u32)node->depth == pxlen);
+    ASSERT_DIE((u32)node->depth == pxlen);
     ipa_setbit(&prefix, node->depth + ipa_shift[p->addr_type]);
     third_pass_helper(p, node->child[1], &prefix, pxlen + 1);
     ipa_clrbit(&prefix, node->depth + ipa_shift[p->addr_type]);
@@ -928,21 +928,21 @@ third_pass(struct aggregator_proto *p, struct trie_node *node)
 static void
 check_ancestors_after_aggregation(const struct trie_node *node)
 {
-  assert(node != NULL);
-  assert(node->ancestor != NULL);
+  ASSERT_DIE(node != NULL);
+  ASSERT_DIE(node->ancestor != NULL);
 
   if (IN_FIB == node->status)
   {
-    assert(node->selected_bucket != NULL);
-    assert(node->ancestor != NULL);
-    assert(node->ancestor == node);
+    ASSERT_DIE(node->selected_bucket != NULL);
+    ASSERT_DIE(node->ancestor != NULL);
+    ASSERT_DIE(node->ancestor == node);
   }
   else if (NON_FIB == node->status)
   {
-    assert(node->selected_bucket == NULL);
-    assert(node->ancestor != NULL);
-    assert(node->ancestor != node);
-    assert(node->ancestor == node->parent->ancestor);
+    ASSERT_DIE(node->selected_bucket == NULL);
+    ASSERT_DIE(node->ancestor != NULL);
+    ASSERT_DIE(node->ancestor != node);
+    ASSERT_DIE(node->ancestor == node->parent->ancestor);
   }
   else
     bug("Unknown node status");
@@ -961,7 +961,7 @@ check_ancestors_after_aggregation(const struct trie_node *node)
 static void
 deaggregate(struct trie_node * const node)
 {
-  assert(node != NULL);
+  ASSERT_DIE(node != NULL);
 
   /* Delete results computed by aggregation algorithm */
   node->selected_bucket = NULL;
@@ -975,18 +975,18 @@ deaggregate(struct trie_node * const node)
    */
   if (ORIGINAL != node->px_origin)
   {
-    assert(node->original_bucket == NULL);
+    ASSERT_DIE(node->original_bucket == NULL);
     node->original_bucket = node->parent->original_bucket;
   }
 
-  assert(node->original_bucket != NULL);
-  assert(node->potential_buckets_count == 0);
+  ASSERT_DIE(node->original_bucket != NULL);
+  ASSERT_DIE(node->potential_buckets_count == 0);
 
   /* As during the first pass, leaves get one potential bucket */
   if (is_leaf(node))
   {
-    assert(node->px_origin == ORIGINAL);
-    assert(node->potential_buckets_count == 0);
+    ASSERT_DIE(node->px_origin == ORIGINAL);
+    ASSERT_DIE(node->potential_buckets_count == 0);
     node_add_potential_bucket(node, node->original_bucket);
   }
 
@@ -1004,7 +1004,7 @@ deaggregate(struct trie_node * const node)
 static struct trie_node *
 merge_buckets_above(struct trie_node *node)
 {
-  assert(node != NULL);
+  ASSERT_DIE(node != NULL);
 
   struct trie_node *parent = node->parent;
 
@@ -1012,7 +1012,7 @@ merge_buckets_above(struct trie_node *node)
   {
     const struct trie_node *left  = parent->child[0];
     const struct trie_node *right = parent->child[1];
-    assert(left == node || right == node);
+    ASSERT_DIE(left == node || right == node);
 
     struct trie_node imaginary_node = { 0 };
     node_add_potential_bucket(&imaginary_node, parent->original_bucket);
@@ -1023,7 +1023,7 @@ merge_buckets_above(struct trie_node *node)
     else if (!left && right)
       left = &imaginary_node;
 
-    assert(left != NULL && right != NULL);
+    ASSERT_DIE(left != NULL && right != NULL);
 
     /* The parent's set wasn't affected by merging, stop here */
     if (merge_potential_buckets(parent, left, right) == 0)
@@ -1042,8 +1042,8 @@ merge_buckets_above(struct trie_node *node)
 static void
 aggregator_update_prefix(struct aggregator_proto *p, struct aggregator_route *old UNUSED, struct aggregator_route *new)
 {
-  assert(p != NULL);
-  assert(new != NULL);
+  ASSERT_DIE(p != NULL);
+  ASSERT_DIE(new != NULL);
 
   const struct net_addr *addr = new->rte.net->n.addr;
 
@@ -1051,10 +1051,10 @@ aggregator_update_prefix(struct aggregator_proto *p, struct aggregator_route *ol
   const u32 pxlen = net_pxlen(addr);
 
   struct trie_node * const updated_node = aggregator_insert_prefix(p, prefix, pxlen, new->bucket);
-  assert(updated_node != NULL);
-  assert(updated_node->original_bucket != NULL);
-  assert(updated_node->status == NON_FIB);
-  assert(updated_node->px_origin == ORIGINAL);
+  ASSERT_DIE(updated_node != NULL);
+  ASSERT_DIE(updated_node->original_bucket != NULL);
+  ASSERT_DIE(updated_node->status == NON_FIB);
+  ASSERT_DIE(updated_node->px_origin == ORIGINAL);
 
   struct trie_node *node = updated_node;
 
@@ -1074,7 +1074,7 @@ aggregator_update_prefix(struct aggregator_proto *p, struct aggregator_route *ol
   deaggregate(node);
   second_pass(node);
   struct trie_node *highest_node = merge_buckets_above(node);
-  assert(highest_node != NULL);
+  ASSERT_DIE(highest_node != NULL);
   third_pass(p, highest_node);
 }
 
@@ -1084,8 +1084,8 @@ aggregator_update_prefix(struct aggregator_proto *p, struct aggregator_route *ol
 static void
 aggregator_withdraw_prefix(struct aggregator_proto *p, struct aggregator_route *old)
 {
-  assert(p != NULL);
-  assert(old != NULL);
+  ASSERT_DIE(p != NULL);
+  ASSERT_DIE(old != NULL);
 
   const struct net_addr *addr = old->rte.net->n.addr;
 
@@ -1093,7 +1093,7 @@ aggregator_withdraw_prefix(struct aggregator_proto *p, struct aggregator_route *
   const u32 pxlen = net_pxlen(addr);
 
   struct trie_node * const updated_node = aggregator_remove_prefix(p, prefix, pxlen);
-  assert(updated_node != NULL);
+  ASSERT_DIE(updated_node != NULL);
 
   struct trie_node *node = updated_node;
 
@@ -1113,7 +1113,7 @@ aggregator_withdraw_prefix(struct aggregator_proto *p, struct aggregator_route *
   deaggregate(node);
   second_pass(node);
   struct trie_node *highest_node = merge_buckets_above(node);
-  assert(highest_node != NULL);
+  ASSERT_DIE(highest_node != NULL);
   third_pass(p, highest_node);
 }
 
@@ -1141,7 +1141,7 @@ construct_trie(struct aggregator_proto *p)
 static void
 calculate_trie(struct aggregator_proto *p)
 {
-  assert(p->addr_type == NET_IP4 || p->addr_type == NET_IP6);
+  ASSERT_DIE(p->addr_type == NET_IP4 || p->addr_type == NET_IP6);
 
   second_pass(p->root);
   third_pass(p, p->root);
@@ -1152,7 +1152,7 @@ calculate_trie(struct aggregator_proto *p)
 static void
 run_aggregation(struct aggregator_proto *p)
 {
-  assert(p->root != NULL);
+  ASSERT_DIE(p->root != NULL);
 
   construct_trie(p);
   calculate_trie(p);
@@ -1168,8 +1168,8 @@ aggregate_on_feed_end(struct channel *C)
   if (C != p->src)
     return;
 
-  assert(PREFIX_AGGR == p->aggr_mode);
-  assert(p->root == NULL);
+  ASSERT_DIE(PREFIX_AGGR == p->aggr_mode);
+  ASSERT_DIE(p->root == NULL);
 
   aggregator_initialize_trie(p);
   run_aggregation(p);
@@ -1565,7 +1565,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
 
     /* Evaluate route attributes. */
     struct aggregator_bucket *tmp_bucket = allocz(sizeof(*tmp_bucket) + sizeof(tmp_bucket->aggr_data[0]) * p->aggr_on_count);
-    assert(tmp_bucket->id == 0);
+    ASSERT_DIE(tmp_bucket->id == 0);
 
     for (uint val_idx = 0; val_idx < p->aggr_on_count; val_idx++)
     {
@@ -1706,7 +1706,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
 
     /* New route */
     new_route = arte;
-    assert(new_route != NULL);
+    ASSERT_DIE(new_route != NULL);
 
     if (p->logging)
       log("Inserting rte: %p, arte: %p, net: %p, src: %p, hash: %x", &arte->rte, arte, arte->rte.net, arte->rte.src, aggr_route_hash(&arte->rte));
@@ -1863,7 +1863,7 @@ aggregator_initialize_trie(struct aggregator_proto *p)
 
   /* Allocate bucket for root node */
   struct aggregator_bucket *new_bucket = lp_allocz(p->bucket_pool, sizeof(*new_bucket));
-  assert(new_bucket->id == 0);
+  ASSERT_DIE(new_bucket->id == 0);
 
   u64 haux = 0;
   mem_hash_init(&haux);
@@ -1872,7 +1872,7 @@ aggregator_initialize_trie(struct aggregator_proto *p)
   /* Assign ID to the root node bucket */
   new_bucket->id = get_new_bucket_id(p);
   agregator_insert_bucket(p, new_bucket);
-  assert(get_bucket_ptr(p, new_bucket->id) == new_bucket);
+  ASSERT_DIE(get_bucket_ptr(p, new_bucket->id) == new_bucket);
 
   struct aggregator_route *arte = lp_allocz(p->route_pool, sizeof(*arte));
 
@@ -1908,10 +1908,10 @@ aggregator_start(struct proto *P)
 {
   struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
 
-  assert(p->bucket_pool == NULL);
-  assert(p->route_pool == NULL);
-  assert(p->trie_pool == NULL);
-  assert(p->root == NULL);
+  ASSERT_DIE(p->bucket_pool == NULL);
+  ASSERT_DIE(p->route_pool == NULL);
+  ASSERT_DIE(p->trie_pool == NULL);
+  ASSERT_DIE(p->root == NULL);
 
   p->addr_type = p->src->table->addr_type;
 
@@ -1928,12 +1928,12 @@ aggregator_start(struct proto *P)
 
   if (PREFIX_AGGR == p->aggr_mode)
   {
-    assert(p->trie_pool == NULL);
+    ASSERT_DIE(p->trie_pool == NULL);
     p->trie_pool = lp_new(P->pool);
 
-    assert(p->bucket_list == NULL);
-    assert(p->bucket_list_size == 0);
-    assert(p->bucket_list_count == 0);
+    ASSERT_DIE(p->bucket_list == NULL);
+    ASSERT_DIE(p->bucket_list_size == 0);
+    ASSERT_DIE(p->bucket_list_count == 0);
     p->bucket_list_size = BUCKET_LIST_INIT_SIZE;
     p->bucket_list = mb_allocz(p->p.pool, sizeof(p->bucket_list[0]) * p->bucket_list_size);
   }
