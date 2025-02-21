@@ -376,8 +376,8 @@ aggregator_prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u3
 static void
 aggregator_withdraw_rte(struct aggregator_proto *p)
 {
-  if ((NET_IP4 == p->addr_type && p->rte_withdrawal_count > IP4_WITHDRAWAL_LIMIT) ||
-      (NET_IP6 == p->addr_type && p->rte_withdrawal_count > IP6_WITHDRAWAL_LIMIT))
+  if ((p->addr_type == NET_IP4 && p->rte_withdrawal_count > IP4_WITHDRAWAL_LIMIT) ||
+      (p->addr_type == NET_IP6 && p->rte_withdrawal_count > IP6_WITHDRAWAL_LIMIT))
     log(L_WARN "This number of updates was not expected."
                "They will be processed, but please, contact the developers.");
 
@@ -416,7 +416,7 @@ print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, 
   ASSERT_DIE(node != NULL);
   ASSERT_DIE(prefix != NULL);
 
-  if (IN_FIB == node->status)
+  if (node->status == IN_FIB)
   {
     struct net_addr addr = { 0 };
     net_fill_ipa(&addr, *prefix, pxlen);
@@ -444,7 +444,7 @@ print_prefixes(const struct trie_node *node, u32 type)
 {
   ASSERT_DIE(node != NULL);
 
-  ip_addr prefix = (NET_IP4 == type) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
+  ip_addr prefix = (type == NET_IP4) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
   print_prefixes_helper(node, &prefix, 0, type);
 }
 
@@ -461,7 +461,7 @@ dump_trie_helper(const struct aggregator_proto *p, const struct trie_node *node,
   struct net_addr addr = { 0 };
   net_fill_ipa(&addr, *prefix, pxlen);
 
-  buffer_print(buf, "%*s%s%N ", 2 * node->depth, "", (IN_FIB == node->status) ? "@" : " ", &addr);
+  buffer_print(buf, "%*s%s%N ", 2 * node->depth, "", (node->status == IN_FIB) ? "@" : " ", &addr);
 
   if (node->original_bucket)
     buffer_print(buf, "[%u] ", node->original_bucket->id);
@@ -511,7 +511,7 @@ dump_trie_helper(const struct aggregator_proto *p, const struct trie_node *node,
 static void
 dump_trie(const struct aggregator_proto *p)
 {
-  ip_addr prefix = (NET_IP4 == p->addr_type) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
+  ip_addr prefix = (p->addr_type == NET_IP4) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
 
   struct buffer buf = { 0 };
   LOG_BUFFER_INIT(buf);
@@ -581,7 +581,7 @@ aggregator_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
   ASSERT_DIE((u32)node->depth == pxlen);
 
   /* If this prefix was IN_FIB, remove its route */
-  if (IN_FIB == node->status)
+  if (node->status == IN_FIB)
     aggregator_prepare_rte_withdrawal(p, prefix, pxlen, node->selected_bucket);
 
   node->status = NON_FIB;
@@ -598,7 +598,7 @@ aggregator_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
    */
   for (struct trie_node *parent = node->parent; parent; node = parent, parent = node->parent)
   {
-    if (FILLER == node->px_origin && is_leaf(node))
+    if (node->px_origin == FILLER && is_leaf(node))
     {
       remove_node(node);
       ASSERT_DIE(node != NULL);
@@ -756,7 +756,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
      * Prefix status is changing from IN_FIB to NON_FIB, thus its route
      * must be removed from the routing table.
      */
-    if (IN_FIB == node->status)
+    if (node->status == IN_FIB)
     {
       ASSERT_DIE(node->px_origin == ORIGINAL || node->px_origin == AGGREGATED);
       ASSERT_DIE(node->selected_bucket != NULL);
@@ -773,7 +773,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
      * processing of incremental updates. If it's not original, then it is
      * a filler because it's not going to FIB.
      */
-    node->px_origin = (ORIGINAL == node->px_origin) ? ORIGINAL : FILLER;
+    node->px_origin = (node->px_origin == ORIGINAL) ? ORIGINAL : FILLER;
   }
   else
   {
@@ -787,14 +787,14 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
      * Prefix status is changing from NON_FIB or UNASSIGNED (at newly created nodes)
      * to IN_FIB, thus its route is exported to the routing table.
      */
-    if (IN_FIB != node->status)
+    if (node->status != IN_FIB)
       create_route(p, *prefix, pxlen, node->selected_bucket);
 
     /*
      * Keep information whether this prefix was original. If not, then its origin
      * is changed to aggregated, because algorithm decided it's going to FIB.
      */
-    node->px_origin = (ORIGINAL == node->px_origin) ? ORIGINAL : AGGREGATED;
+    node->px_origin = (node->px_origin == ORIGINAL) ? ORIGINAL : AGGREGATED;
     node->status = IN_FIB;
     node->ancestor = node;
   }
@@ -871,7 +871,7 @@ third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *p
     ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
   }
 
-  if (NON_FIB == node->status && is_leaf(node))
+  if (node->status == NON_FIB && is_leaf(node))
     ASSERT_DIE(node->selected_bucket == NULL);
 }
 
@@ -885,7 +885,7 @@ third_pass(struct aggregator_proto *p, struct trie_node *node)
   ASSERT_DIE(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
   ASSERT_DIE(node->potential_buckets_count > 0);
 
-  ip_addr prefix = (NET_IP4 == p->addr_type) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
+  ip_addr prefix = (p->addr_type == NET_IP4) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
   u32 pxlen = 0;
 
   /*
@@ -902,7 +902,7 @@ third_pass(struct aggregator_proto *p, struct trie_node *node)
    * Export new route if node status is changing from NON_FIB
    * or UNASSIGNED to IN_FIB.
    */
-  if (IN_FIB != node->status)
+  if (node->status != IN_FIB)
     create_route(p, prefix, pxlen, node->selected_bucket);
 
   /* The closest ancestor of the IN_FIB node with a non-null bucket is the node itself */
@@ -931,13 +931,13 @@ check_ancestors_after_aggregation(const struct trie_node *node)
   ASSERT_DIE(node != NULL);
   ASSERT_DIE(node->ancestor != NULL);
 
-  if (IN_FIB == node->status)
+  if (node->status == IN_FIB)
   {
     ASSERT_DIE(node->selected_bucket != NULL);
     ASSERT_DIE(node->ancestor != NULL);
     ASSERT_DIE(node->ancestor == node);
   }
-  else if (NON_FIB == node->status)
+  else if (node->status == NON_FIB)
   {
     ASSERT_DIE(node->selected_bucket == NULL);
     ASSERT_DIE(node->ancestor != NULL);
@@ -973,7 +973,7 @@ deaggregate(struct trie_node * const node)
    * Original prefixes already have their original bucket set,
    * others inherit it from their parents.
    */
-  if (ORIGINAL != node->px_origin)
+  if (node->px_origin != ORIGINAL)
   {
     ASSERT_DIE(node->original_bucket == NULL);
     node->original_bucket = node->parent->original_bucket;
@@ -1065,7 +1065,7 @@ aggregator_update_prefix(struct aggregator_proto *p, struct aggregator_route *ol
    */
   while (1)
   {
-    if (IN_FIB == node->status && node != updated_node)
+    if (node->status == IN_FIB && node != updated_node)
       break;
 
     node = node->parent;
@@ -1104,7 +1104,7 @@ aggregator_withdraw_prefix(struct aggregator_proto *p, struct aggregator_route *
    */
   while (1)
   {
-    if (IN_FIB == node->status)
+    if (node->status == IN_FIB)
       break;
 
     node = node->parent;
@@ -1168,7 +1168,7 @@ aggregate_on_feed_end(struct channel *C)
   if (C != p->src)
     return;
 
-  ASSERT_DIE(PREFIX_AGGR == p->aggr_mode);
+  ASSERT_DIE(p->aggr_mode == PREFIX_AGGR);
   ASSERT_DIE(p->root == NULL);
 
   aggregator_initialize_trie(p);
@@ -1730,7 +1730,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   }
 
   /* Aggregation within nets allows incremental updates */
-  if (NET_AGGR == p->aggr_mode)
+  if (p->aggr_mode == NET_AGGR)
   {
     /* Announce changes */
     if (old_bucket)
@@ -1739,7 +1739,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     if (new_bucket && (new_bucket != old_bucket))
       aggregator_bucket_update(p, new_bucket, net);
   }
-  else if (PREFIX_AGGR == p->aggr_mode)
+  else if (p->aggr_mode == PREFIX_AGGR)
   {
     if (p->root)
     {
@@ -1926,7 +1926,7 @@ aggregator_start(struct proto *P)
     .data = p,
   };
 
-  if (PREFIX_AGGR == p->aggr_mode)
+  if (p->aggr_mode == PREFIX_AGGR)
   {
     ASSERT_DIE(p->trie_pool == NULL);
     p->trie_pool = lp_new(P->pool);
@@ -2035,7 +2035,7 @@ aggregator_get_status(struct proto *P, byte *buf)
     buf[0] = 0;
   else
   {
-    if (PREFIX_AGGR == p->aggr_mode)
+    if (p->aggr_mode == PREFIX_AGGR)
       strcpy(buf, "prefix aggregation");
     else
       strcpy(buf, "net aggregation");
