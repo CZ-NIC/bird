@@ -147,4 +147,11 @@ struct trie_node {
   int depth;
 };
 
+void aggregator_aggregate(struct aggregator_proto *p);
+void aggregator_update_prefix(struct aggregator_proto *p, struct aggregator_route *old, struct aggregator_route *new);
+void aggregator_withdraw_prefix(struct aggregator_proto *p, struct aggregator_route *old);
+void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net);
+
+struct trie_node *create_new_node(linpool *trie_pool);
+
 #endif
