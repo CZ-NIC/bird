@@ -1104,7 +1104,7 @@ aggregator_withdraw_prefix(struct aggregator_proto *p, struct aggregator_route *
    */
   while (1)
   {
-    if (IN_FIB == node->status)
+    if (IN_FIB == node->status && node != updated_node)
       break;
 
     node = node->parent;
