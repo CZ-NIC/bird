@@ -61,6 +61,11 @@ void birdloop_leave(struct birdloop *loop);
 
 bool birdloop_inside(struct birdloop *loop);
 
+#define BIRDLOOP_INSIDE(_loop)	for ( \
+    struct birdloop *_loop_inside = (birdloop_inside(_loop) ? (struct birdloop *) 1 : (birdloop_enter(_loop), _loop)); \
+    _loop_inside; \
+    _loop_inside = ((_loop_inside == _loop) ? (birdloop_leave(_loop_inside), NULL) : NULL))
+
 void birdloop_mask_wakeups(struct birdloop *loop);
 void birdloop_unmask_wakeups(struct birdloop *loop);
 
