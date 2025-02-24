@@ -829,19 +829,21 @@ aggregator_third_pass(struct aggregator_proto *p, struct trie_node *node)
 }
 
 static void
-check_ancestors_after_aggregation(const struct trie_node *node)
+check_trie_after_aggregation(const struct trie_node *node)
 {
   ASSERT_DIE(node != NULL);
   ASSERT_DIE(node->ancestor != NULL);
 
   if (node->status == IN_FIB)
   {
+    ASSERT_DIE(node->px_origin == ORIGINAL || node->px_origin == AGGREGATED);
     ASSERT_DIE(node->selected_bucket != NULL);
     ASSERT_DIE(node->ancestor != NULL);
     ASSERT_DIE(node->ancestor == node);
   }
   else if (node->status == NON_FIB)
   {
+    ASSERT_DIE(node->px_origin == ORIGINAL || node->px_origin == FILLER);
     ASSERT_DIE(node->selected_bucket == NULL);
     ASSERT_DIE(node->ancestor != NULL);
     ASSERT_DIE(node->ancestor != node);
@@ -851,10 +853,10 @@ check_ancestors_after_aggregation(const struct trie_node *node)
     bug("Unknown node status");
 
   if (node->child[0])
-    check_ancestors_after_aggregation(node->child[0]);
+    check_trie_after_aggregation(node->child[0]);
 
   if (node->child[1])
-    check_ancestors_after_aggregation(node->child[1]);
+    check_trie_after_aggregation(node->child[1]);
 }
 
 /*
@@ -971,6 +973,8 @@ aggregator_update_prefix(struct aggregator_proto *p, struct aggregator_route *ol
   struct trie_node *highest_node = aggregator_merge_buckets_above(node);
   ASSERT_DIE(highest_node != NULL);
   aggregator_third_pass(p, highest_node);
+
+  check_trie_after_aggregation(highest_node);
 }
 
 /*
@@ -1011,6 +1015,8 @@ aggregator_withdraw_prefix(struct aggregator_proto *p, struct aggregator_route *
   struct trie_node *highest_node = aggregator_merge_buckets_above(node);
   ASSERT_DIE(highest_node != NULL);
   aggregator_third_pass(p, highest_node);
+
+  check_trie_after_aggregation(highest_node);
 }
 
 static void
@@ -1042,7 +1048,7 @@ aggregator_calculate_trie(struct aggregator_proto *p)
   aggregator_second_pass(p->root);
   aggregator_third_pass(p, p->root);
 
-  check_ancestors_after_aggregation(p->root);
+  check_trie_after_aggregation(p->root);
 }
 
 void
