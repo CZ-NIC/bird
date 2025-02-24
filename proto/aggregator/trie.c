@@ -35,11 +35,10 @@
  * that has a bucket. If the inherited bucket is one of potential buckets of
  * this node, then this node does not need a bucket and its prefix will not
  * be in FIB. Otherwise the node does need a bucket and any of its potential
- * buckets can be chosen. We always choose the bucket with the lowest ID, but
- * other options are possible.
+ * buckets can be chosen. We always choose the bucket with the lowest ID.
  *
- * The algorithm works with the assumption that there is a default route, that is,
- * the null prefix at the root node has a bucket.
+ * The algorithm works with the assumption that there is a default route,
+ * that is, the null prefix at the root node has a bucket.
  *
  * Aggregator is capable of processing incremental updates. After receiving
  * an update, which can be either announce or withdraw, corresponding node
@@ -51,19 +50,20 @@
  * which means deleting all information computed by aggregation algorithm.
  * This is followed by second pass which propagates potential buckets from
  * the leaves upwards. Merging of sets of potential buckets continues upwards
- * until the node's set is not changed by this operation. Then, third pass is
- * run from this node, finishing the aggregation. During third pass, any change
- * in prefix FIB status is detected and based on this, new route is exported
- * or is removed from the routing table, respectively. All new routes are
- * exported immmediately, however, all routes to be withdrawed are pushed on
- * the stack and are removed after recomputing the trie.
+ * until the node's set is not changed by this operation. Finally, third pass
+ * runs from this node, finishing the aggregation. During third pass, changes in
+ * prefix FIB status are detected and routes are exported or removed from the
+ * routing table accordingly. All new routes are exported immmediately, however,
+ * all routes that are to be withdrawed are pushed on the stack and removed
+ * after recomputing the trie.
  *
  * From a practical point of view, our implementation differs a little bit from
  * the algorithm as it was described in the original paper.
  * During first pass, the trie is normalized by adding new nodes so that every
  * node has either zero or two children. We do not add these nodes to save both
- * time and memory. Another difference is that work previously done in the first
- * pass is now done during second pass, saving one traversal through the trie.
+ * time and memory. Another difference is that the propagation of original
+ * buckets, which was previously done in the first pass, is now done in the
+ * second pass, saving one traversal through the trie.
  */
 
 #undef LOCAL_DEBUG
