@@ -650,10 +650,9 @@ include "tablename.conf";;
 	in import filters for export filtering purposes instead of locally
 	assigned BGP communities which have to be deleted in export filters.
 
-	<tag><label id="opt-router-id">router id <m/IPv4 address/</tag>
-	Set BIRD's router ID. It's a world-wide unique identification of your
-	router, usually one of router's IPv4 addresses. Default: the lowest
-	IPv4 address of a non-loopback interface.
+	<tag><label id="opt-router-id">router id <m/number/ | <m/IPv4 address/</tag>
+	Set BIRD's router ID. It's a 4-byte non-zero integer that should be unique
+	within an AS. Default: the lowest IPv4 address of the router.
 
 	<tag><label id="opt-router-id-from">router id from [-] [ "<m/mask/" ] [ <m/prefix/ ] [, <m/.../]</tag>
 	Set BIRD's router ID based on an IPv4 address of an interface specified by
@@ -833,7 +832,7 @@ agreement").
 	BGP protocol, <cf/states/ logs BGP state changes and <cf/messages/ logs
 	received BGP messages. Other protocols does not support MRTdump yet.
 
-	<tag><label id="proto-router-id">router id <m/IPv4 address/</tag>
+	<tag><label id="proto-router-id">router id <m/number/ | <m/IPv4 address/</tag>
 	This option can be used to override global router id for a given
 	protocol. Default: uses global router id.
 
@@ -3046,7 +3045,7 @@ using the following configuration parameters:
 	Be a route reflector and treat the neighbor as a route reflection
 	client. Default: disabled.
 
-	<tag><label id="bgp-rr-cluster-id">rr cluster id <m/IPv4 address/</tag>
+	<tag><label id="bgp-rr-cluster-id">rr cluster id <m/number/ | <m/IPv4 address/</tag>
 	Route reflectors use cluster id to avoid route reflection loops. When
 	there is one route reflector in a cluster it usually uses its router id
 	as a cluster id, but when there are more route reflectors in a cluster,
