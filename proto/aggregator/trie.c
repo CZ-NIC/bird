@@ -953,8 +953,9 @@ aggregator_update_prefix(struct aggregator_proto *p, struct aggregator_route *ol
   struct trie_node *node = updated_node;
 
   /*
-   * Find the closest IN_FIB ancestor of the updated node and
-   * deaggregate the whole subtree rooted at this node.
+   * Find the closest IN_FIB ancestor of the updated node and deaggregate
+   * the whole subtree rooted at this node. Since updated node has IN_FIB
+   * status, we need to find node which is different from this node.
    * Then aggregate it once again, this time with incorporated update.
    */
   while (1)
@@ -992,9 +993,10 @@ aggregator_withdraw_prefix(struct aggregator_proto *p, struct aggregator_route *
   struct trie_node *node = updated_node;
 
   /*
-   * Find the closest IN_FIB ancestor of the updated node and
-   * deaggregate the whole subtree rooted at this node.
-   * Then aggegate it once again, this time with received update.
+   * Find the closest IN_FIB ancestor of the updated node and deaggregate
+   * the whole subtree rooted at this node. Since updated node does not have
+   * IN_FIB status, the next node with this status will be its ancestor we are
+   * seeking. Then aggregate it again, this time with incorporated update.
    */
   while (1)
   {
