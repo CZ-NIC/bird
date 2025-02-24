@@ -917,7 +917,7 @@ aggregator_merge_buckets_above(struct trie_node *node)
     ASSERT_DIE(left == node || right == node);
 
     struct trie_node imaginary_node = { 0 };
-    node_add_potential_bucket(&imaginary_node, parent->original_bucket);
+    aggregator_node_add_potential_bucket(&imaginary_node, parent->original_bucket);
 
     /* Nodes with only one child */
     if (left && !right)
