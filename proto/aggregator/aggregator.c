@@ -23,7 +23,8 @@
  *
  * Aggregation of prefixes aggregates a given set of prefixes into another set
  * of prefixes. It offers a reduction in number of prefixes without changing
- * the routing semantics.
+ * the routing semantics. Aggregator is capable of processing incremental
+ * updates.
  *
  * The algorithm works with the assumption that there is a default route, that is,
  * the null prefix at the root node has a bucket.
@@ -63,7 +64,7 @@ aggregator_get_new_bucket_id(struct aggregator_proto *p)
 }
 
 /*
- * Insert @bucket to the list of bucket pointers in @p to position @bucket-ID
+ * Insert @bucket to the list of bucket pointers in @p to position @bucket.id
  */
 static void
 agregator_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket)
