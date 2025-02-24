@@ -97,14 +97,14 @@ static const u32 ipa_shift[] = {
  * Allocate new node in protocol linpool
  */
 struct trie_node *
-create_new_node(linpool *trie_pool)
+aggregator_create_new_node(linpool *trie_pool)
 {
   struct trie_node *node = lp_allocz(trie_pool, sizeof(*node));
   return node;
 }
 
 static inline int
-is_leaf(const struct trie_node *node)
+aggregator_is_leaf(const struct trie_node *node)
 {
   ASSERT_DIE(node != NULL);
   return !node->child[0] && !node->child[1];
@@ -114,7 +114,7 @@ is_leaf(const struct trie_node *node)
  * Unlink node from the trie by setting appropriate child of parent node to NULL
  */
 static inline void
-remove_node(struct trie_node *node)
+aggregator_remove_node(struct trie_node *node)
 {
   ASSERT_DIE(node != NULL);
   ASSERT_DIE(node->child[0] == NULL && node->child[1] == NULL);
@@ -138,7 +138,7 @@ remove_node(struct trie_node *node)
  * Insert @bucket to the set of potential buckets in @node
  */
 static inline void
-node_add_potential_bucket(struct trie_node *node, const struct aggregator_bucket *bucket)
+aggregator_node_add_potential_bucket(struct trie_node *node, const struct aggregator_bucket *bucket)
 {
   ASSERT_DIE(node->potential_buckets_count < MAX_POTENTIAL_BUCKETS_COUNT);
 
@@ -171,7 +171,7 @@ node_add_potential_bucket(struct trie_node *node, const struct aggregator_bucket
  * Check if @bucket is one of potential buckets of @node
  */
 static inline int
-node_is_bucket_potential(const struct trie_node *node, const struct aggregator_bucket *bucket)
+aggregator_is_bucket_potential(const struct trie_node *node, const struct aggregator_bucket *bucket)
 {
   ASSERT_DIE(node != NULL);
   ASSERT_DIE(bucket != NULL);
@@ -186,7 +186,7 @@ node_is_bucket_potential(const struct trie_node *node, const struct aggregator_b
  * lies at position equal to bucket ID to enable fast lookup.
  */
 static inline struct aggregator_bucket *
-get_bucket_from_id(const struct aggregator_proto *p, u32 id)
+aggregator_get_bucket_from_id(const struct aggregator_proto *p, u32 id)
 {
   ASSERT_DIE(id < p->bucket_list_size);
   ASSERT_DIE(p->bucket_list[id] != NULL);
@@ -198,7 +198,7 @@ get_bucket_from_id(const struct aggregator_proto *p, u32 id)
  * Select bucket with the lowest ID from the set of node's potential buckets
  */
 static inline struct aggregator_bucket *
-select_lowest_id_bucket(const struct aggregator_proto *p, const struct trie_node *node)
+aggregator_select_lowest_id_bucket(const struct aggregator_proto *p, const struct trie_node *node)
 {
   ASSERT_DIE(p != NULL);
   ASSERT_DIE(node != NULL);
@@ -207,7 +207,7 @@ select_lowest_id_bucket(const struct aggregator_proto *p, const struct trie_node
   {
     if (BIT32R_TEST(node->potential_buckets, i))
     {
-      struct aggregator_bucket *bucket = get_bucket_from_id(p, i);
+      struct aggregator_bucket *bucket = aggregator_get_bucket_from_id(p, i);
       ASSERT_DIE(bucket != NULL);
       ASSERT_DIE(bucket->id == i);
       return bucket;
@@ -443,7 +443,7 @@ aggregator_insert_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, 
 
     if (!node->child[bit])
     {
-      struct trie_node *new = create_new_node(p->trie_pool);
+      struct trie_node *new = aggregator_create_new_node(p->trie_pool);
 
       *new = (struct trie_node) {
         .parent = node,
@@ -502,9 +502,9 @@ aggregator_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
    */
   for (struct trie_node *parent = node->parent; parent; node = parent, parent = node->parent)
   {
-    if (node->px_origin == FILLER && is_leaf(node))
+    if (node->px_origin == FILLER && aggregator_is_leaf(node))
     {
-      remove_node(node);
+      aggregator_remove_node(node);
       ASSERT_DIE(node != NULL);
       ASSERT_DIE(parent != NULL);
     }
@@ -576,12 +576,12 @@ aggregator_second_pass(struct trie_node *node)
   ASSERT_DIE(node != NULL);
   ASSERT_DIE(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
-  if (is_leaf(node))
+  if (aggregator_is_leaf(node))
   {
     ASSERT_DIE(node->original_bucket != NULL);
     ASSERT_DIE(node->status == NON_FIB);
     ASSERT_DIE(node->potential_buckets_count == 0);
-    node_add_potential_bucket(node, node->original_bucket);
+    aggregator_node_add_potential_bucket(node, node->original_bucket);
     return;
   }
 
@@ -614,7 +614,7 @@ aggregator_second_pass(struct trie_node *node)
    * Imaginary node is used only for computing sets of potential buckets
    * of its parent node. It inherits parent's potential bucket.
    */
-  node_add_potential_bucket(&imaginary_node, node->original_bucket);
+  aggregator_node_add_potential_bucket(&imaginary_node, node->original_bucket);
 
   /* Nodes with exactly one child */
   if ((left && !right) || (!left && right))
@@ -654,7 +654,7 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
    * of this node, then this node doesn't need a bucket because it inherits
    * one, and is not needed in FIB.
    */
-  if (node_is_bucket_potential(node, inherited_bucket))
+  if (aggregator_is_bucket_potential(node, inherited_bucket))
   {
     /*
      * Prefix status is changing from IN_FIB to NON_FIB, thus its route
@@ -684,7 +684,7 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
     ASSERT_DIE(node->potential_buckets_count > 0);
 
     /* Assign bucket with the lowest ID to the node */
-    node->selected_bucket = select_lowest_id_bucket(p, node);
+    node->selected_bucket = aggregator_select_lowest_id_bucket(p, node);
     ASSERT_DIE(node->selected_bucket != NULL);
 
     /*
@@ -725,7 +725,7 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
       .depth = node->depth + 1,
     };
 
-    node_add_potential_bucket(&imaginary_node, node->original_bucket);
+    aggregator_node_add_potential_bucket(&imaginary_node, node->original_bucket);
 
     /*
      * If the current node (parent of the imaginary node) has a bucket,
@@ -746,9 +746,9 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
      * one of their potential buckets. In this case, we need to add these nodes
      * to the trie.
      */
-    if (!node_is_bucket_potential(&imaginary_node, imaginary_node_inherited_bucket))
+    if (!aggregator_is_bucket_potential(&imaginary_node, imaginary_node_inherited_bucket))
     {
-      struct trie_node *new = create_new_node(p->trie_pool);
+      struct trie_node *new = aggregator_create_new_node(p->trie_pool);
       *new = imaginary_node;
 
       /* Connect new node to the trie */
@@ -775,7 +775,7 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
     ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
   }
 
-  if (node->status == NON_FIB && is_leaf(node))
+  if (node->status == NON_FIB && aggregator_is_leaf(node))
     ASSERT_DIE(node->selected_bucket == NULL);
 }
 
@@ -799,7 +799,7 @@ aggregator_third_pass(struct aggregator_proto *p, struct trie_node *node)
   aggregator_find_subtree_prefix(node, &prefix, &pxlen, p->addr_type);
 
   /* Select bucket with the lowest ID */
-  node->selected_bucket = select_lowest_id_bucket(p, node);
+  node->selected_bucket = aggregator_select_lowest_id_bucket(p, node);
   ASSERT_DIE(node->selected_bucket != NULL);
 
   /*
@@ -887,11 +887,11 @@ aggregator_deaggregate(struct trie_node * const node)
   ASSERT_DIE(node->potential_buckets_count == 0);
 
   /* As during the first pass, leaves get one potential bucket */
-  if (is_leaf(node))
+  if (aggregator_is_leaf(node))
   {
     ASSERT_DIE(node->px_origin == ORIGINAL);
     ASSERT_DIE(node->potential_buckets_count == 0);
-    node_add_potential_bucket(node, node->original_bucket);
+    aggregator_node_add_potential_bucket(node, node->original_bucket);
   }
 
   if (node->child[0])

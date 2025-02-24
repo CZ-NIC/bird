@@ -103,8 +103,8 @@ agregator_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bu
 static void
 aggregator_withdraw_rte(struct aggregator_proto *p)
 {
-  if ((p->addr_type == NET_IP4 && p->rte_withdrawal_count > IP4_WITHDRAWAL_LIMIT) ||
-      (p->addr_type == NET_IP6 && p->rte_withdrawal_count > IP6_WITHDRAWAL_LIMIT))
+  if ((p->addr_type == NET_IP4 && p->rte_withdrawal_count > IP4_WITHDRAWAL_MAX_EXPECTED_LIMIT) ||
+      (p->addr_type == NET_IP6 && p->rte_withdrawal_count > IP6_WITHDRAWAL_MAX_EXPECTED_LIMIT))
     log(L_WARN "This number of updates was not expected."
                "They will be processed, but please, contact the developers.");
 
@@ -674,7 +674,8 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     ASSERT_DIE(new_route != NULL);
 
     if (p->logging)
-      log("Inserting rte: %p, arte: %p, net: %p, src: %p, hash: %x", &arte->rte, arte, arte->rte.net, arte->rte.src, aggregator_route_hash(&arte->rte));
+      log("Inserting rte: %p, arte: %p, net: %p, src: %p, hash: %x",
+          &arte->rte, arte, arte->rte.net, arte->rte.src, aggregator_route_hash(&arte->rte));
   }
 
   /* Remove the old route from its bucket */
@@ -820,9 +821,6 @@ aggregator_init_trie(struct aggregator_proto *p)
       log("Creating net %p for default route %N", default_net, default_net->n.addr);
   }
 
-  /* Create root node */
-  p->root = create_new_node(p->trie_pool);
-
   /* Create route attributes with zero nexthop */
   struct rta rta = { 0 };
 
@@ -854,6 +852,9 @@ aggregator_init_trie(struct aggregator_proto *p)
 
   HASH_INSERT2(p->routes, AGGR_RTE, p->p.pool, arte);
   HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
+
+  /* Create root node */
+  p->root = aggregator_create_new_node(p->trie_pool);
 
   /*
    * Root node is initialized with NON_FIB status.
