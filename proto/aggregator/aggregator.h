@@ -21,8 +21,8 @@
 #define POTENTIAL_BUCKETS_BITMAP_SIZE 8
 #define MAX_POTENTIAL_BUCKETS_COUNT   ((int)(sizeof(u32) * 8 * POTENTIAL_BUCKETS_BITMAP_SIZE))
 
-#define IP4_WITHDRAWAL_LIMIT 100
-#define IP6_WITHDRAWAL_LIMIT 200
+#define IP4_WITHDRAWAL_MAX_EXPECTED_LIMIT 100
+#define IP6_WITHDRAWAL_MAX_EXPECTED_LIMIT 200
 
 enum aggregation_mode {
   NET_AGGR, PREFIX_AGGR,
@@ -152,6 +152,6 @@ void aggregator_update_prefix(struct aggregator_proto *p, struct aggregator_rout
 void aggregator_withdraw_prefix(struct aggregator_proto *p, struct aggregator_route *old);
 void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net);
 
-struct trie_node *create_new_node(linpool *trie_pool);
+struct trie_node *aggregator_create_new_node(linpool *trie_pool);
 
 #endif
