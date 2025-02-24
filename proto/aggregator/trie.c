@@ -61,11 +61,9 @@
  * From a practical point of view, our implementation differs a little bit from
  * the algorithm as it was described in the original paper.
  * During first pass, the trie is normalized by adding new nodes so that every
- * node has either zero or two children. These nodes are used only for
- * computing of node's set of potential buckets from the sets of its children.
- * We can therefore afford to not add these nodes to save both time and memory.
- * Another change is performing the work previously done in the first pass
- * during second pass, saving one trie traversal.
+ * node has either zero or two children. We do not add these nodes to save both
+ * time and memory. Another difference is that work previously done in the first
+ * pass is now done during second pass, saving one traversal through the trie.
  */
 
 #undef LOCAL_DEBUG

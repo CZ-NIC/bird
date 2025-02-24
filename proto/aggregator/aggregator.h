@@ -1,9 +1,9 @@
 /*
  *	BIRD -- Aggregator Pseudoprotocol
  *
- *	(c) 2023--2024 Igor Putovny <igor.putovny@nic.cz>
- *	(c) 2023--2024 Maria Matejka <mq@ucw.cz>
- *	(c) 2024       CZ.NIC z.s.p.o.
+ *	(c) 2023--2025 Igor Putovny <igor.putovny@nic.cz>
+ *	(c) 2023--2025 Maria Matejka <mq@ucw.cz>
+ *	(c) 2025       CZ.NIC z.s.p.o.
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  *
@@ -47,15 +47,15 @@ struct aggregator_route {
 
 struct aggregator_bucket {
   struct aggregator_bucket *next_hash;
-  struct rte *rte;			/* Pointer to struct aggregator_route.rte */
-  struct rte_src *last_src;		/* Which src we announced the bucket last with */
+  struct rte *rte;                      /* Pointer to struct aggregator_route.rte */
+  struct rte_src *last_src;             /* Which src we announced the bucket last with */
   u32 count;
   u32 hash;
   u32 id;
   struct f_val aggr_data[0];
 };
 
-/* Structure containing information needed for route withdrawal */
+/* Information needed for route withdrawal */
 struct rte_withdrawal_item {
   struct rte_withdrawal_item *next;
   struct aggregator_bucket *bucket;
@@ -97,6 +97,7 @@ struct aggregator_proto {
 
   struct hmap bucket_id_map;
 
+  /* Route withdrawal */
   linpool *rte_withdrawal_pool;
   struct rte_withdrawal_item *rte_withdrawal_stack;
   int rte_withdrawal_count;
