@@ -578,6 +578,7 @@ aggregator_second_pass(struct trie_node *node)
   {
     ASSERT_DIE(node->original_bucket != NULL);
     ASSERT_DIE(node->status == NON_FIB);
+    ASSERT_DIE(node->px_origin == ORIGINAL);
     ASSERT_DIE(node->potential_buckets_count == 0);
     aggregator_node_add_potential_bucket(node, node->original_bucket);
     return;
@@ -861,7 +862,7 @@ check_ancestors_after_aggregation(const struct trie_node *node)
  * rooted at @node and propagate original buckets in the subtree.
  */
 static void
-aggregator_deaggregate(struct trie_node * const node)
+aggregator_deaggregate(struct trie_node *node)
 {
   ASSERT_DIE(node != NULL);
 
@@ -877,20 +878,11 @@ aggregator_deaggregate(struct trie_node * const node)
    */
   if (node->px_origin != ORIGINAL)
   {
-    ASSERT_DIE(node->original_bucket == NULL);
     node->original_bucket = node->parent->original_bucket;
+    node->px_origin = FILLER;
   }
 
   ASSERT_DIE(node->original_bucket != NULL);
-  ASSERT_DIE(node->potential_buckets_count == 0);
-
-  /* As during the first pass, leaves get one potential bucket */
-  if (aggregator_is_leaf(node))
-  {
-    ASSERT_DIE(node->px_origin == ORIGINAL);
-    ASSERT_DIE(node->potential_buckets_count == 0);
-    aggregator_node_add_potential_bucket(node, node->original_bucket);
-  }
 
   if (node->child[0])
     aggregator_deaggregate(node->child[0]);
