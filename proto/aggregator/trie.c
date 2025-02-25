@@ -428,7 +428,7 @@ aggregator_prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u3
  * is already in the trie, update its bucket to @bucket and return updated node.
  */
 static struct trie_node *
-aggregator_insert_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket)
+aggregator_trie_insert_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, struct aggregator_bucket *bucket)
 {
   ASSERT_DIE(p != NULL);
   ASSERT_DIE(bucket != NULL);
@@ -467,7 +467,7 @@ aggregator_insert_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, 
  * Remove @prefix from the trie and return the last affected node
  */
 static struct trie_node *
-aggregator_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
+aggregator_trie_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 pxlen)
 {
   struct trie_node *node = p->root;
 
@@ -949,7 +949,7 @@ aggregator_update_prefix(struct aggregator_proto *p, struct aggregator_route *ol
   const ip_addr prefix = net_prefix(addr);
   const u32 pxlen = net_pxlen(addr);
 
-  struct trie_node * const updated_node = aggregator_insert_prefix(p, prefix, pxlen, new->bucket);
+  struct trie_node * const updated_node = aggregator_trie_insert_prefix(p, prefix, pxlen, new->bucket);
   ASSERT_DIE(updated_node != NULL);
   ASSERT_DIE(updated_node->original_bucket != NULL);
   ASSERT_DIE(updated_node->status == NON_FIB);
@@ -994,7 +994,7 @@ aggregator_withdraw_prefix(struct aggregator_proto *p, struct aggregator_route *
   const ip_addr prefix = net_prefix(addr);
   const u32 pxlen = net_pxlen(addr);
 
-  struct trie_node * const updated_node = aggregator_remove_prefix(p, prefix, pxlen);
+  struct trie_node * const updated_node = aggregator_trie_remove_prefix(p, prefix, pxlen);
   ASSERT_DIE(updated_node != NULL);
 
   struct trie_node *node = updated_node;
@@ -1034,7 +1034,7 @@ aggregator_construct_trie(struct aggregator_proto *p)
       const ip_addr prefix = net_prefix(addr);
       const u32 pxlen = net_pxlen(addr);
 
-      aggregator_insert_prefix(p, prefix, pxlen, bucket);
+      aggregator_trie_insert_prefix(p, prefix, pxlen, bucket);
     }
   }
   HASH_WALK_END;
