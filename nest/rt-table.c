@@ -1197,8 +1197,18 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old)
   }
 
   /* Have we exported the old route? */
-  if (old && !bmap_test(&c->export_accepted_map, old->id))
-    old = NULL;
+  if (old)
+    /* If the old route exists, it is either in rejected or in accepted map.
+     * If it is in rejcted map, we clear it right now, if it is in accepted map,
+     * we get rid of it in do_rt_notify. */
+    if (bmap_test(&c->export_rejected_map, old->id))
+    {
+      ASSERT_DIE(!bmap_test(&c->export_accepted_map, old->id));
+      bmap_clear(&c->export_rejected_map, old->id);
+      old = NULL;
+    }
+    else
+      ASSERT_DIE(bmap_test(&c->export_accepted_map, old->id));
 
   /* Withdraw to withdraw. */
   if (!np && !old)
