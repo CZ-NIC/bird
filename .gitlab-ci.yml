@@ -511,6 +511,11 @@ test-ebgp-import-limit:
   variables:
     TEST_NAME: cf-ebgp-import-limit
 
+test-ebgp-hostname:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-hostname
+
 test-ibgp-loop:
   <<: *test-base
   variables:
