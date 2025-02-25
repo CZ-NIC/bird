@@ -1494,7 +1494,7 @@ nl_send_route(struct krt_proto *p, const rte *e, int op)
     /* Add source address for IPv6 SADR routes */
     if (e->net->type == NET_IP6_SADR)
     {
-      net_addr_ip6_sadr *a = (void *) &e->net;
+      net_addr_ip6_sadr *a = TYPE_CAST(net_addr *, net_addr_ip6_sadr *, e->net);
       nl_add_attr_ip6(&r->h, rsize, RTA_SRC, a->src_prefix);
       r->r.rtm_src_len = a->src_pxlen;
     }
