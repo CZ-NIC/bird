@@ -855,6 +855,9 @@
 
       a->originated = 1;
       a->fresh = 1;
+
+      if (a->id == ea_gen_nexthop.id)
+	ea_unset_attr(&fs->rte->attrs, 1, &ea_gen_hostentry);
     }
   }
 
