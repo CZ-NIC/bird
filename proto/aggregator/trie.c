@@ -479,36 +479,13 @@ aggregator_trie_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 px
   }
 
   ASSERT_DIE(node->px_origin == ORIGINAL);
-  ASSERT_DIE(node->selected_bucket != NULL);
   ASSERT_DIE((u32)node->depth == pxlen);
 
-  /* If this prefix was IN_FIB, remove its route */
-  if (node->status == IN_FIB)
-    aggregator_prepare_rte_withdrawal(p, prefix, pxlen, node->selected_bucket);
-
-  node->status = NON_FIB;
   node->px_origin = FILLER;
   node->ancestor = NULL;
   node->original_bucket = NULL;
-  node->selected_bucket = NULL;
   node->potential_buckets_count = 0;
   memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
-
-  /*
-   * If prefix node is a leaf, remove it with the branch it resides on,
-   * until non-leaf or prefix node is reached.
-   */
-  for (struct trie_node *parent = node->parent; parent; node = parent, parent = node->parent)
-  {
-    if (node->px_origin == FILLER && aggregator_is_leaf(node))
-    {
-      aggregator_remove_node(node);
-      ASSERT_DIE(node != NULL);
-      ASSERT_DIE(parent != NULL);
-    }
-    else
-      break;
-  }
 
   return node;
 }
