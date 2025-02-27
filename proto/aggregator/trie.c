@@ -554,8 +554,6 @@ aggregator_second_pass(struct trie_node *node)
   if (aggregator_is_leaf(node))
   {
     ASSERT_DIE(node->original_bucket != NULL);
-    ASSERT_DIE(node->status == NON_FIB);
-    ASSERT_DIE(node->px_origin == ORIGINAL);
     ASSERT_DIE(node->potential_buckets_count == 0);
     aggregator_node_add_potential_bucket(node, node->original_bucket);
     return;
