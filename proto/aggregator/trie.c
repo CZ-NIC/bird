@@ -636,9 +636,7 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
      */
     if (node->status == IN_FIB)
     {
-      ASSERT_DIE(node->px_origin == ORIGINAL || node->px_origin == AGGREGATED);
       ASSERT_DIE(node->selected_bucket != NULL);
-
       aggregator_prepare_rte_withdrawal(p, *prefix, pxlen, node->selected_bucket);
     }
 
