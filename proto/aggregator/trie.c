@@ -577,7 +577,6 @@ aggregator_second_pass(struct trie_node *node)
     aggregator_second_pass(right);
 
   ASSERT_DIE(node->original_bucket != NULL);
-  ASSERT_DIE(node->selected_bucket == NULL);
 
   /* Imaginary node if this was a complete binary tree */
   struct trie_node imaginary_node = {
