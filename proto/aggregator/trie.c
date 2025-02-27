@@ -845,7 +845,6 @@ aggregator_deaggregate(struct trie_node *node)
   ASSERT_DIE(node != NULL);
 
   /* Delete results computed by aggregation algorithm */
-  node->selected_bucket = NULL;
   node->ancestor = NULL;
   node->potential_buckets_count = 0;
   memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
