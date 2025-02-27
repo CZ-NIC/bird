@@ -977,7 +977,7 @@ aggregator_update_prefix(struct aggregator_proto *p, struct aggregator_route *ol
   ASSERT_DIE(highest_node != NULL);
   aggregator_third_pass(p, highest_node);
 
-  check_trie_after_aggregation(highest_node);
+  check_trie_after_aggregation(p->root);
 }
 
 /*
@@ -1019,7 +1019,7 @@ aggregator_withdraw_prefix(struct aggregator_proto *p, struct aggregator_route *
   ASSERT_DIE(highest_node != NULL);
   aggregator_third_pass(p, highest_node);
 
-  check_trie_after_aggregation(highest_node);
+  check_trie_after_aggregation(p->root);
 }
 
 static void
