@@ -769,8 +769,6 @@ aggregator_third_pass(struct aggregator_proto *p, struct trie_node *node)
    */
   aggregator_find_subtree_prefix(node, &prefix, &pxlen, p->addr_type);
 
-  ASSERT_DIE(node->selected_bucket == NULL);
-
   /* Select bucket with the lowest ID */
   node->selected_bucket = aggregator_select_lowest_id_bucket(p, node);
   ASSERT_DIE(node->selected_bucket != NULL);
