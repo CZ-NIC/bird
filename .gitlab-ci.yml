@@ -201,6 +201,20 @@ build-opensuse-15.3-amd64:
     paths:
       - pkg/pkgs/*
 
+.pkg-deb-legacy: &pkg-deb-legacy
+  stage: pkg
+  script:
+    # create venv only if it's installed
+    - if python3 -m venv venv; then . venv/bin/activate; fi
+    # install older version of bs4 that does not use python version >= 3.6
+    - pip3 install beautifulsoup4==4.11.2 
+    - pip3 install apkg
+    - BRANCH=$CI_COMMIT_BRANCH ARCHIVE_DOCS=false apkg build
+    #- apkg install -y pkg/pkgs/*/*/*.deb
+  artifacts:
+    paths:
+      - pkg/pkgs/*
+
 .pkg-rpm: &pkg-rpm
   stage: pkg
   script:
@@ -215,6 +229,8 @@ build-opensuse-15.3-amd64:
   stage: pkg
   script:
     - sed -i "s/runstatedir/with-runtimedir/" distro/pkg/rpm/bird.spec
+    # install older version of bs4 that does not use python version >= 3.6
+    - pip3 install beautifulsoup4==4.11.2
     - pip3 install apkg
     - apkg build
     #- apkg install -y pkg/pkgs/*/*/*.rpm
@@ -273,7 +289,7 @@ pkg-centos-8-amd64:
   image: registry.nic.cz/labs/bird:centos-8-amd64
 
 pkg-ubuntu-18.04-amd64:
-  <<: *pkg-deb
+  <<: *pkg-deb-legacy
   needs: [build-ubuntu-18_04-amd64]
   image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
 
