@@ -283,7 +283,7 @@ aggregator_print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, 
   {
     struct net_addr addr = { 0 };
     net_fill_ipa(&addr, *prefix, pxlen);
-    log("%N selected bucket: %u", &addr, node->selected_bucket->id);
+    log("%N\t[%u]", &addr, node->selected_bucket->id);
   }
 
   if (node->child[0])
@@ -303,12 +303,10 @@ aggregator_print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, 
 }
 
 static void
-aggregator_print_prefixes(const struct trie_node *node, u32 type)
+aggregator_print_prefixes(const struct aggregator_proto *p)
 {
-  ASSERT_DIE(node != NULL);
-
-  ip_addr prefix = (type == NET_IP4) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
-  aggregator_print_prefixes_helper(node, &prefix, 0, type);
+  ip_addr prefix = (p->addr_type == NET_IP4) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
+  aggregator_print_prefixes_helper(p->root, &prefix, 0, p->addr_type);
 }
 
 static void
