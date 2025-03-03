@@ -902,93 +902,6 @@ aggregator_merge_buckets_above(struct trie_node *node)
   return node;
 }
 
-/*
- * Incorporate announcement of new prefix into the trie
- */
-void
-aggregator_update_prefix(struct aggregator_proto *p, struct aggregator_route *old UNUSED, struct aggregator_route *new)
-{
-  ASSERT_DIE(p != NULL);
-  ASSERT_DIE(new != NULL);
-
-  const struct net_addr *addr = new->rte.net->n.addr;
-
-  const ip_addr prefix = net_prefix(addr);
-  const u32 pxlen = net_pxlen(addr);
-
-  struct trie_node * const updated_node = aggregator_trie_insert_prefix(p, prefix, pxlen, new->bucket);
-  ASSERT_DIE(updated_node != NULL);
-  ASSERT_DIE(updated_node->original_bucket != NULL);
-  ASSERT_DIE(updated_node->status == NON_FIB);
-  ASSERT_DIE(updated_node->px_origin == ORIGINAL);
-
-  struct trie_node *node = updated_node;
-
-  /*
-   * Find the closest IN_FIB ancestor of the updated node and deaggregate
-   * the whole subtree rooted at this node. Since updated node has IN_FIB
-   * status, we need to find node which is different from this node.
-   * Then aggregate it once again, this time with incorporated update.
-   */
-  while (1)
-  {
-    if (node->status == IN_FIB && node != updated_node)
-      break;
-
-    node = node->parent;
-  }
-
-  aggregator_deaggregate(node);
-  aggregator_second_pass(node);
-  struct trie_node *highest_node = aggregator_merge_buckets_above(node);
-  ASSERT_DIE(highest_node != NULL);
-  aggregator_third_pass(p, highest_node);
-
-  check_trie_after_aggregation(p->root);
-}
-
-/*
- * Incorporate prefix withdrawal to the trie
- */
-void
-aggregator_withdraw_prefix(struct aggregator_proto *p, struct aggregator_route *old)
-{
-  ASSERT_DIE(p != NULL);
-  ASSERT_DIE(old != NULL);
-
-  const struct net_addr *addr = old->rte.net->n.addr;
-
-  const ip_addr prefix = net_prefix(addr);
-  const u32 pxlen = net_pxlen(addr);
-
-  struct trie_node * const updated_node = aggregator_trie_remove_prefix(p, prefix, pxlen);
-  ASSERT_DIE(updated_node != NULL);
-
-  struct trie_node *node = updated_node;
-
-  /*
-   * Find the closest IN_FIB ancestor of the updated node and deaggregate
-   * the whole subtree rooted at this node. Since updated node does not have
-   * IN_FIB status, the next node with this status will be its ancestor we are
-   * seeking. Then aggregate it again, this time with incorporated update.
-   */
-  while (1)
-  {
-    if (node->status == IN_FIB && node != updated_node)
-      break;
-
-    node = node->parent;
-  }
-
-  aggregator_deaggregate(node);
-  aggregator_second_pass(node);
-  struct trie_node *highest_node = aggregator_merge_buckets_above(node);
-  ASSERT_DIE(highest_node != NULL);
-  aggregator_third_pass(p, highest_node);
-
-  check_trie_after_aggregation(p->root);
-}
-
 static void
 aggregator_construct_trie(struct aggregator_proto *p)
 {
@@ -1028,4 +941,77 @@ aggregator_aggregate(struct aggregator_proto *p)
 
   aggregator_construct_trie(p);
   aggregator_calculate_trie(p);
+}
+
+/*
+ * Incorporate prefix change into the trie and reaggregate
+ */
+void
+aggregator_recalculate(struct aggregator_proto *p, struct aggregator_route *old, struct aggregator_route *new)
+{
+  struct trie_node *updated_node = NULL;
+
+  /* Withdraw */
+  if (old && !new)
+  {
+    const struct net_addr *addr = old->rte.net->n.addr;
+
+    const ip_addr prefix = net_prefix(addr);
+    const u32 pxlen = net_pxlen(addr);
+
+    updated_node = aggregator_trie_remove_prefix(p, prefix, pxlen);
+
+    ASSERT_DIE(updated_node != NULL);
+    ASSERT_DIE(updated_node->px_origin == FILLER);
+    ASSERT_DIE(updated_node->original_bucket == NULL);
+  }
+  else /* Announce or update */
+  {
+    const struct net_addr *addr = new->rte.net->n.addr;
+
+    const ip_addr prefix = net_prefix(addr);
+    const u32 pxlen = net_pxlen(addr);
+
+    updated_node = aggregator_trie_insert_prefix(p, prefix, pxlen, new->bucket);
+
+    ASSERT_DIE(updated_node != NULL);
+    ASSERT_DIE(updated_node->px_origin == ORIGINAL);
+    ASSERT_DIE(updated_node->original_bucket != NULL);
+  }
+
+  struct trie_node *ancestor = updated_node;
+
+  /* Find the closest IN_FIB ancestor of the updated node */
+  // TODO: use node ancestor pointer instead of traversing
+  while (1)
+  {
+    if ((ancestor->status == IN_FIB && ancestor != updated_node) || !ancestor->parent)
+      break;
+
+    ancestor = ancestor->parent;
+  }
+
+  /*
+  while (ancestor = ancestor->parent)
+  {
+    ASSERT_DIE(ancestor != updated_node);
+
+    if (ancestor->status == IN_FIB || !ancestor->parent)
+      break;
+  }
+  */
+
+  ASSERT_DIE(ancestor != NULL);
+  ASSERT_DIE(ancestor != updated_node);
+  ASSERT_DIE(ancestor->status == IN_FIB);
+
+  /* Deaggregate and then aggregate again, this time with incorporated update */
+  aggregator_deaggregate(ancestor);
+  aggregator_second_pass(ancestor);
+
+  struct trie_node *highest_node = aggregator_merge_buckets_above(ancestor);
+  ASSERT_DIE(highest_node != NULL);
+
+  aggregator_third_pass(p, highest_node);
+  check_trie_after_aggregation(p->root);
 }

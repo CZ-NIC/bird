@@ -710,10 +710,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   {
     if (p->root)
     {
-      if (old && !new)
-        aggregator_withdraw_prefix(p, old_route);
-      else
-        aggregator_update_prefix(p, old_route, new_route);
+      aggregator_recalculate(p, old_route, new_route);
 
       /* Process all route withdrawals which were caused by the update */
       aggregator_withdraw_rte(p);
