@@ -1178,37 +1178,34 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old)
     return;
   }
 
-  /* If this is a refeed, we may need to copy the new route to the old one */
-  if (!old && bmap_test(&c->export_accepted_map, new->id))
+  /* Have we exported the old route? */
+  if (old)
   {
-    if (rt_export_get_state(&c->out_req) == TES_PARTIAL)
-      old = new;
-    else
-      log(L_WARN "%s.%s: Got new route for %N (id %u) which is already marked accepted, weird",
-	  c->proto->name, c->name, new->net, new->id);
+    /* If the old route exists, it is either in rejected or in accepted map. */
+    int rejected = bmap_test(&c->export_rejected_map, old->id);
+    int accepted = bmap_test(&c->export_accepted_map, old->id);
+    ASSERT_DIE(rejected != accepted);
+
+    if (rejected)
+    {
+      /* Drop the old rejected bit from the map, the old route id
+       * gets released after exports. */
+      bmap_clear(&c->export_rejected_map, old->id);
+
+      /* Treat old rejected as never seen. */
+      old = NULL;
+    }
+
+    /* Accepted bit is dropped in do_rt_notify() */
   }
 
-  /* Run the filters, actually */
+  /* Run the filters for the new route */
   rte n0, *np = NULL;
   if (new)
   {
     n0 = *new;
     np = export_filter(c, &n0, 0);
   }
-
-  /* Have we exported the old route? */
-  if (old)
-    /* If the old route exists, it is either in rejected or in accepted map.
-     * If it is in rejcted map, we clear it right now, if it is in accepted map,
-     * we get rid of it in do_rt_notify. */
-    if (bmap_test(&c->export_rejected_map, old->id))
-    {
-      ASSERT_DIE(!bmap_test(&c->export_accepted_map, old->id));
-      bmap_clear(&c->export_rejected_map, old->id);
-      old = NULL;
-    }
-    else
-      ASSERT_DIE(bmap_test(&c->export_accepted_map, old->id));
 
   /* Withdraw to withdraw. */
   if (!np && !old)
@@ -1520,6 +1517,21 @@ channel_notify_basic(void *_channel)
 		  ASSERT_DIE(!old);
 		  old = &u->feed->block[o];
 		}
+
+	    /* Check new flags */
+	    int nacc = bmap_test(&c->export_accepted_map, new->id);
+	    int nrej = bmap_test(&c->export_rejected_map, new->id);
+
+	    if (old)
+	      ASSERT_DIE(!nacc && !nrej);
+
+	    else if (nacc || nrej)
+	    {
+	      /* In case of refeed, the new route may actually have already
+	       * been processed and thus it's also old */
+	      old = new;
+	      ASSERT_DIE(!nacc != !nrej);
+	    }
 
 	    /* This is the distilled notification */
 	    rt_notify_basic(c, new, old);
