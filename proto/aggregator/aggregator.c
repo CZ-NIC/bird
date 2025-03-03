@@ -67,7 +67,7 @@ aggregator_get_new_bucket_id(struct aggregator_proto *p)
  * Insert @bucket to the list of bucket pointers in @p to position @bucket.id
  */
 static void
-agregator_insert_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket)
+aggregator_add_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket)
 {
   ASSERT_DIE(p != NULL);
   ASSERT_DIE(p->bucket_list != NULL);
@@ -645,7 +645,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
       HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 
       new_bucket->id = aggregator_get_new_bucket_id(p);
-      agregator_insert_bucket(p, new_bucket);
+      aggregator_add_bucket(p, new_bucket);
     }
 
     /* Store the route attributes */
@@ -834,7 +834,7 @@ aggregator_init_trie(struct aggregator_proto *p)
 
   /* Assign ID to the root node bucket */
   new_bucket->id = aggregator_get_new_bucket_id(p);
-  agregator_insert_bucket(p, new_bucket);
+  aggregator_add_bucket(p, new_bucket);
 
   struct aggregator_route *arte = lp_allocz(p->route_pool, sizeof(*arte));
 
