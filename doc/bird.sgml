@@ -2807,6 +2807,85 @@ table it wishes to export along with complete path information (a list of AS'es
 the packet will travel through if it uses the particular route) in order to
 avoid routing loops.
 
+<code>
+protocol bgp [&lt;name&gt;] {
+	local [<ip>] [port <num>] [as <num>];
+	neighbor [<ip>|range <prefix>] [port <num>] [as <num>] [internal|external];
+	interface "<text>";
+	direct;
+	multihop [<num>];
+	source address <ip>;
+	dynamic name "<text>";
+	dynamic name digits <num>;
+	strict bind <switch>;
+	free bind <switch>;
+	check link <switch>;
+	bfd <switch>|graceful|{<options>};
+	bfd {
+		authentication none|simple|cryptographic;
+		password "<text>"; 
+		...
+	};
+	ttl security <switch>;
+	password "<text>";
+	setkey <switch>;
+	passive <switch>;
+	confederation <num>;
+	confederation member <switch>;
+	rr client;
+	rr cluster id <num>|<IPv4 address>;
+	rs client;
+	allow bgp_local_pref <switch>;
+	allow bgp_med <switch>;
+	allow local as [<num>];
+	allow as sets [<switch>];
+	enforce first as [<switch>];
+	enable route refresh <switch>;
+	require route refresh <switch>;
+	enable enhanced route refresh <switch>;
+	require enhanced route refresh <switch>;
+	graceful restart <switch>|aware;
+	graceful restart time <num>;
+	min graceful restart time <num>;
+	max graceful restart time <num>;
+	require graceful restart <switch>;
+	long lived graceful restart <switch>|aware;
+	long lived stale time <num>;
+	min long lived stale time <num>;
+	max long lived stale time <num>;
+	require long lived graceful restart <switch>;
+	interpret communities <switch>;
+	enable as4 <switch>;
+	require as4 <switch>;
+	enable extended messages <switch>;
+	require extended messages <switch>;
+	capabilities <switch>;
+	advertise hostname <switch>;
+	require hostname <switch>;
+	disable after error <switch>;
+	disable after cease <switch>|<set of flags>;
+	hold time <num>;
+	min hold time <num>;
+	startup hold time <num>;
+	keepalive time <num>;
+	min keepalive time <num>;
+	send hold time <num>;
+	connect delay time <num>;
+	connect retry time <num>;
+	error wait time <num>,<num>;
+	error forget time <num>;
+	path metric <switch>;
+	med metric <switch>;
+	deterministic med <switch>;
+	igp metric <switch>;
+	prefer older <switch>;
+	default bgp med <num>;
+	default bgp local pref <num>;
+	local role <role name>;
+	require roles <switch>;
+}
+</code>
+
 <sect1>Supported standards
 <label id="bgp-standards">
 
