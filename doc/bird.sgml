@@ -3788,6 +3788,71 @@ be used in explicit configuration.
 	option.
 </descrip>
 
+<sect1>BGP restart
+<label id="bgp-flap">
+
+<p>BGP protocol restart is mostly triggered by a change in the options setup.
+With the command <cf/configure soft/ some changes do not trigger a restart, but only 
+a reload with a message to inform about optional manual restart of the protocol.
+(See <ref id="cli-configure" name="configure"> command for more information.)
+
+	When <cf/soft/ option is not used, change in these channel options cause reload:
+
+		reload for import:
+			general:
+				import filter
+				preference
+			bgp:
+				gateway mode
+				next hop prefer
+				aigp
+				cost
+
+	Note: Reload for import would trigger restart instead of import reload in case of both 
+	import table disabled and route refresh not negotiated (Does not apply for export).
+
+		reload for export:
+			general:
+				export filter
+			bgp:
+				next hop address
+				next hop self
+				next hop keep
+				aigp
+				aigp originate
+
+	And here are the options that trigger a restart regardless of the "soft" option:
+
+		all bgp specific protocol options cause restart except for:
+			check link
+			require route refresh
+			require enhanced route refresh
+			require AS4
+			require extended messages
+			require hostname
+			require gracefull restart
+			require long lived gracefull restart
+			any BFD options
+
+		bgp channel options which cause restart:
+			secondary
+			validate
+			graceful restart
+			long lived gracefull restart
+			long lived stale time
+			extended next hop
+			add paths
+			import table
+			export table
+			igp table
+			base table
+
+		general protocol options restart for:
+			vrf
+
+		general channel options restart for:
+			table
+
 <sect1>Attributes
 <label id="bgp-attr">
 
