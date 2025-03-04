@@ -472,8 +472,11 @@ aggregator_trie_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 px
   for (u32 i = 0; i < pxlen; i++)
   {
     u32 bit = ipa_getbit(prefix, i + ipa_shift[p->addr_type]);
-    node = node->child[bit];
-    ASSERT_DIE(node != NULL);
+
+    if (node->child[bit])
+      node = node->child[bit];
+    else
+      return node;
   }
 
   ASSERT_DIE(node->px_origin == ORIGINAL);
