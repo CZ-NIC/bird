@@ -2812,7 +2812,7 @@ protocol bgp [&lt;name&gt;] {
 	local [<ip>] [port <num>] [as <num>];
 	neighbor [<ip>|range <prefix>] [port <num>] [as <num>] [internal|external];
 	interface "<text>";
-	direct;
+	direct <switch>;
 	multihop [<num>];
 	source address <ip>;
 	dynamic name "<text>";
@@ -2832,14 +2832,14 @@ protocol bgp [&lt;name&gt;] {
 	passive <switch>;
 	confederation <num>;
 	confederation member <switch>;
-	rr client;
+	rr client <switch>;
 	rr cluster id <num>|<IPv4 address>;
-	rs client;
+	rs client <switch>;
 	allow bgp_local_pref <switch>;
 	allow bgp_med <switch>;
 	allow local as [<num>];
-	allow as sets [<switch>];
-	enforce first as [<switch>];
+	allow as sets <switch>;
+	enforce first as <switch>;
 	enable route refresh <switch>;
 	require route refresh <switch>;
 	enable enhanced route refresh <switch>;
@@ -3007,7 +3007,7 @@ using the following configuration parameters:
 	used for non link-local sessions when it is necessary to explicitly
 	specify an interface, but only for direct (not multihop) sessions.
 
-	<tag><label id="bgp-direct">direct</tag>
+	<tag><label id="bgp-direct">direct <m/switch/</tag>
 	Specify that the neighbor is directly connected. The IP address of the
 	neighbor must be from a directly reachable IP range (i.e. associated
 	with one of your router's interfaces), otherwise the BGP session
@@ -3124,7 +3124,7 @@ using the following configuration parameters:
 	speaker. The option is unnecessary (and ignored) for IBGP sessions, as
 	the same AS number implies the same confederation. Default: no.
 
-	<tag><label id="bgp-rr-client">rr client</tag>
+	<tag><label id="bgp-rr-client">rr client <m/switch/</tag>
 	Be a route reflector and treat the neighbor as a route reflection
 	client. Default: disabled.
 
@@ -3136,7 +3136,7 @@ using the following configuration parameters:
 	id. Clients in a cluster need not know their cluster id and this option
 	is not allowed for them. Default: the same as router id.
 
-	<tag><label id="bgp-rs-client">rs client</tag>
+	<tag><label id="bgp-rs-client">rs client <m/switch/</tag>
 	Be a route server and treat the neighbor as a route server client.
 	A route server is used as a replacement for full mesh EBGP routing in
 	Internet exchange points in a similar way to route reflectors used in
@@ -3170,7 +3170,7 @@ using the following configuration parameters:
 	completely disabled and you should ensure loop-free behavior by some
 	other means. Default: 0 (no local AS number allowed).
 
-	<tag><label id="bgp-allow-as-sets">allow as sets [<m/switch/]</tag>
+	<tag><label id="bgp-allow-as-sets">allow as sets <m/switch/</tag>
 	AS path attribute received with BGP routes may contain not only
 	sequences of AS numbers, but also sets of AS numbers. These rarely used
 	artifacts are results of inter-AS route aggregation. AS sets are
@@ -3180,7 +3180,7 @@ using the following configuration parameters:
 	malformed and corresponding BGP updates are treated as withdraws.
 	Default: on.
 
-	<tag><label id="bgp-enforce-first-as">enforce first as [<m/switch/]</tag>
+	<tag><label id="bgp-enforce-first-as">enforce first as <m/switch/</tag>
 	Routes received from an EBGP neighbor are generally expected to have the
 	first (leftmost) AS number in their AS path equal to the neighbor AS
 	number. This is not enforced by default as there are legitimate cases
