@@ -92,13 +92,12 @@ static const u32 ipa_shift[] = {
 };
 
 /*
- * Allocate new node in protocol linpool
+ * Allocate new node in trie slab
  */
 struct trie_node *
-aggregator_create_new_node(linpool *trie_pool)
+aggregator_create_new_node(struct slab *trie_slab)
 {
-  struct trie_node *node = lp_allocz(trie_pool, sizeof(*node));
-  return node;
+  return sl_allocz(trie_slab);
 }
 
 static inline int
@@ -130,6 +129,7 @@ aggregator_remove_node(struct trie_node *node)
   }
 
   memset(node, 0, sizeof(*node));
+  sl_free(node);
 }
 
 /*
@@ -439,7 +439,7 @@ aggregator_trie_insert_prefix(struct aggregator_proto *p, ip_addr prefix, u32 px
 
     if (!node->child[bit])
     {
-      struct trie_node *new = aggregator_create_new_node(p->trie_pool);
+      struct trie_node *new = aggregator_create_new_node(p->trie_slab);
 
       *new = (struct trie_node) {
         .parent = node,
@@ -720,7 +720,7 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
      */
     if (!aggregator_is_bucket_potential(&imaginary_node, imaginary_node_inherited_bucket))
     {
-      struct trie_node *new = aggregator_create_new_node(p->trie_pool);
+      struct trie_node *new = aggregator_create_new_node(p->trie_slab);
       *new = imaginary_node;
 
       /* Connect new node to the trie */

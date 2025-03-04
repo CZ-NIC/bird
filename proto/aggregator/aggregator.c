@@ -851,7 +851,7 @@ aggregator_init_trie(struct aggregator_proto *p)
   HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 
   /* Create root node */
-  p->root = aggregator_create_new_node(p->trie_pool);
+  p->root = aggregator_create_new_node(p->trie_slab);
 
   /*
    * Root node is initialized with NON_FIB status.
@@ -872,7 +872,7 @@ aggregator_start(struct proto *P)
 
   ASSERT_DIE(p->bucket_pool == NULL);
   ASSERT_DIE(p->route_pool == NULL);
-  ASSERT_DIE(p->trie_pool == NULL);
+  ASSERT_DIE(p->trie_slab == NULL);
   ASSERT_DIE(p->root == NULL);
 
   p->addr_type = p->src->table->addr_type;
@@ -890,8 +890,8 @@ aggregator_start(struct proto *P)
 
   if (p->aggr_mode == PREFIX_AGGR)
   {
-    ASSERT_DIE(p->trie_pool == NULL);
-    p->trie_pool = lp_new(P->pool);
+    ASSERT_DIE(p->trie_slab == NULL);
+    p->trie_slab = sl_new(P->pool, sizeof(struct trie_node));
 
     ASSERT_DIE(p->bucket_list == NULL);
     ASSERT_DIE(p->bucket_list_size == 0);
@@ -926,7 +926,7 @@ aggregator_cleanup(struct proto *P)
    */
   p->bucket_pool = NULL;
   p->route_pool = NULL;
-  p->trie_pool = NULL;
+  p->trie_slab = NULL;
   p->rte_withdrawal_pool = NULL;
 
   p->root = NULL;
