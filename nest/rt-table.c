@@ -3894,6 +3894,8 @@ ea_set_hostentry(ea_list **to, rtable *dep, rtable *src, ip_addr gw, ip_addr ll,
   RT_LOCKED(src, tab)
     h->head.he = rt_get_hostentry(tab, gw, ll, dep);
 
+  // It would be nice to set the igp_mertic here, but it looks like we do not have it here or yet
+
   memcpy(h->head.labels, labels, lnum * sizeof(u32));
 
   ea_set_attr_data(to, &ea_gen_hostentry, 0, h->head.ad.data, (byte *) &h->head.labels[lnum] - h->head.ad.data);
@@ -4050,8 +4052,15 @@ static inline void
 rt_next_hop_resolve_rte(rte *r)
 {
   eattr *heea = ea_find(r->attrs, &ea_gen_hostentry);
+
   if (!heea)
     return;
+
+  struct hostentry_adata *head = (struct hostentry_adata *) heea->u.ptr;
+  eattr * igp = ea_find_by_class(r->attrs, &ea_gen_igp_metric);
+
+  if (igp)
+    head->he->igp_metric = igp->u.data;
 
   rta_apply_hostentry(&r->attrs, (struct hostentry_adata *) heea->u.ptr);
 }
