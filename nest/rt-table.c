@@ -2612,10 +2612,14 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, struc
     best = NULL;
 
   uint ecnt = 0, ocnt = 0;
+  bool export_in_map = true;
   for (const struct rt_pending_export *rpe = first; rpe;
       rpe = atomic_load_explicit(&rpe->next, memory_order_acquire))
-    if (!seen || !bmap_test(seen, rpe->it.seq))
+    if (seen && bmap_test(seen, rpe->it.seq))
+      ASSERT_DIE(export_in_map);
+    else
     {
+      export_in_map = false;
       ecnt++;
       if (rpe->it.old && (!best || (rpe->it.old != &best->rte)))
 	ocnt++;
