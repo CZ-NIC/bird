@@ -5673,7 +5673,8 @@ protocol rip [ng] [&lt;name&gt;] {
 			accept to "&lt;date&gt;";
 			from "&lt;date&gt;";
 			to "&lt;date&gt;";
-			algorithm ( keyed md5 | keyed sha1 | hmac sha1 | hmac sha256 | hmac sha384 | hmac sha512 );
+			algorithm ( keyed md5 | keyed sha1 | hmac sha1 | 
+				hmac sha256 | hmac sha384 | hmac sha512 );
 		};
 	};
 }
