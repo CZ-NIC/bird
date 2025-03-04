@@ -2809,6 +2809,31 @@ avoid routing loops.
 
 <code>
 protocol bgp [&lt;name&gt;] {
+	ipv4|ipv6|flow4|flow6|... { 
+		mandatory <switch>;
+		next hop keep <switch>|ibgp|ebgp;
+		next hop self <switch>|ibgp|ebgp;
+		next hop address <ip>;
+		next hop prefer global <switch>;
+		gateway direct|recursive;
+		igp table <name>;
+		import table <switch>;
+		export table <switch>;
+		secondary <switch>;
+		validate <switch>;
+		base table <name>;
+		extended next hop <switch>;
+		require extended next hop <switch>;
+		add paths <switch>|rx|tx;
+		require add paths <switch>;
+		aigp <switch>|originate;
+		cost <num>;
+		graceful restart <switch>;
+		long lived graceful restart <switch>;
+		long lived stale time <num>;
+		min long lived stale time <num>;
+		max long lived stale time <num>;
+	}
 	local [<ip>] [port <num>] [as <num>];
 	neighbor [<ip> | range <prefix>] [port <num>] [as <num>] [internal|external];
 	interface "<text>";
@@ -3569,7 +3594,7 @@ be used in explicit configuration.
 	BGP session (if acceptable), or the preferred address of an associated
 	interface.
 
-	<tag><label id="bgp-next-hop-prefer">next hop prefer global</tag>
+	<tag><label id="bgp-next-hop-prefer">next hop prefer global <m/switch/</tag>
 	Prefer global IPv6 address to link-local IPv6 address for immediate next
 	hops of received routes. For IPv6 routes, the Next Hop attribute may
 	contain both a global IP address and a link-local IP address. For IBGP
