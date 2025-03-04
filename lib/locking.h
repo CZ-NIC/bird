@@ -493,6 +493,8 @@ static inline void locking_unwind(struct lock_order *desired)
 
 struct rcu_unwinder {
   struct lock_order locking_stack;
+  const char *file;
+  u32 line;
   u32 retry;
   u8 fast;
   jmp_buf buf;
@@ -522,7 +524,7 @@ static inline void _rcu_unwinder_unlock_(struct rcu_unwinder *o UNUSED)
   _i->locking_stack = locking_stack;					\
   rcu_read_lock();							\
 
-#define RCU_RETRY(_i) do { if (_i) longjmp(_i->buf, 1); else bug("No rcu retry allowed here"); } while (0)
+#define RCU_RETRY(_i) do { if (_i) { _i->file = __FILE__; _i->line = __LINE__; longjmp(_i->buf, 1); } else bug("No rcu retry allowed here"); } while (0)
 
 #define RCU_RETRY_FAST(_i) do { (_i)->fast++; RCU_RETRY(_i); } while (0)
 
