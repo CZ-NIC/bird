@@ -744,8 +744,12 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
     ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
   }
 
+  /* Prune the trie */
   if (node->status == NON_FIB && aggregator_is_leaf(node))
+  {
     ASSERT_DIE(node->selected_bucket == NULL);
+    aggregator_remove_node(node);
+  }
 }
 
 /*
