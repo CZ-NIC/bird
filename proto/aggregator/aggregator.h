@@ -86,7 +86,7 @@ struct aggregator_proto {
 
   /* Aggregation trie */
   uint addr_type;
-  linpool *trie_pool;
+  struct slab *trie_slab;
   struct trie_node *root;
   int logging;
 
@@ -152,6 +152,6 @@ void aggregator_aggregate(struct aggregator_proto *p);
 void aggregator_recalculate(struct aggregator_proto *p, struct aggregator_route *old, struct aggregator_route *new);
 void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net);
 
-struct trie_node *aggregator_create_new_node(linpool *trie_pool);
+struct trie_node *aggregator_create_new_node(struct slab *trie_slab);
 
 #endif
