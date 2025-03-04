@@ -2810,7 +2810,7 @@ avoid routing loops.
 <code>
 protocol bgp [&lt;name&gt;] {
 	local [<ip>] [port <num>] [as <num>];
-	neighbor [<ip>|range <prefix>] [port <num>] [as <num>] [internal|external];
+	neighbor [<ip> | range <prefix>] [port <num>] [as <num>] [internal|external];
 	interface "<text>";
 	direct <switch>;
 	multihop [<num>];
