@@ -3788,6 +3788,98 @@ be used in explicit configuration.
 	option.
 </descrip>
 
+<sect1>BGP reconfiguration
+<label id="bgp-flap">
+
+<p>Running the <cf/configure/ command with a changed configuration file
+will trigger a reconfiguration. This may cause a reload or a restart of
+the BGP protocol. With the command <cf/configure soft/ some changes do
+not trigger the reload, but only suggests a manual reload of the protocol.
+See <ref id="cli-configure" name="configure"> and <ref id="cli-reload"
+name="reload"> commands for more details.
+<newline>
+
+<p> When <cf/soft/ option is not used, change in these channel options cause a reload:
+<newline>
+
+<p> Reload for import:
+<itemize>
+	<item> General:
+	<itemize>
+		<item> import filter
+		<item> preference
+	</itemize>
+	<item> BGP:
+	<itemize>
+		<item> gateway mode
+		<item> next hop prefer
+		<item> aigp
+		<item> cost
+	</itemize>
+</itemize>
+
+<p> Note: Reload for import would trigger restart instead of import reload
+in case of both <cf/import table/ disabled and <cf/route refresh/ not negotiated.
+This does not apply for export.
+<newline>
+
+<p>Reload for export:
+<itemize>
+	<item> General:
+	<itemize>
+		<item> export filter
+	</itemize>
+	<item> BGP:
+	<itemize>
+		<item> next hop address
+		<item> next hop self
+		<item> next hop keep
+		<item> aigp
+		<item> aigp originate
+	</itemize>
+</itemize>
+
+<p> Here are the options that trigger a restart regardless of the <cf/soft/ option.
+<newline>
+
+<p> All BGP specific protocol options cause restart except for:
+<itemize>
+	<item> check link
+	<item> require route refresh
+	<item> require enhanced route refresh
+	<item> require AS4
+	<item> require extended messages
+	<item> require hostname
+	<item> require gracefull restart
+	<item> require long lived gracefull restart
+	<item> any BFD options
+</itemize>
+
+<p> BGP channel options which cause restart:
+<itemize>
+	<item> secondary
+	<item> validate
+	<item> graceful restart
+	<item> long lived gracefull restart
+	<item> long lived stale time
+	<item> extended next hop
+	<item> add paths
+	<item> import table
+	<item> export table
+	<item> igp table
+	<item> base table
+</itemize>
+
+<p> General protocol options restart for:
+<itemize>
+	<item> vrf
+</itemize>
+
+<p> General channel options restart for:
+<itemize>
+	<item> table
+</itemize>
+
 <sect1>Attributes
 <label id="bgp-attr">
 
