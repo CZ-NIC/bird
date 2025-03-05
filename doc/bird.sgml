@@ -3021,7 +3021,7 @@ protocol bgp [<name>] {
 	with dynamic BGP instances and have multiple dynamic BGP instances with
 	different ranges.
 
-	<tag><label id="bgp-iface">interface <m/string/</tag>
+	<tag><label id="bgp-iface">interface "<m/text/"</tag>
 	Define interface we should use for link-local BGP IPv6 sessions.
 	Interface can also be specified as a part of <cf/neighbor address/
 	(e.g., <cf/neighbor fe80::1234%eth0 as 65000;/). The option may also be
@@ -3109,7 +3109,7 @@ protocol bgp [<name>] {
 	Note that full (ICMP protection, for example) <rfc id="5082"> support is
 	provided by Linux only. Default: disabled.
 
-	<tag><label id="bgp-password">password <m/string/</tag>
+	<tag><label id="bgp-password">password "<m/text/"</tag>
 	Use this password for MD5 authentication of BGP sessions (<rfc id="2385">). When
 	used on BSD systems, see also <cf/setkey/ option below. Default: no
 	authentication.
@@ -3145,7 +3145,7 @@ protocol bgp [<name>] {
 	speaker. The option is unnecessary (and ignored) for IBGP sessions, as
 	the same AS number implies the same confederation. Default: no.
 
-	<tag><label id="bgp-rr-client">rr client</tag>
+	<tag><label id="bgp-rr-client">rr client <m/switch/</tag>
 	Be a route reflector and treat the neighbor as a route reflection
 	client. Default: disabled.
 
@@ -3157,7 +3157,7 @@ protocol bgp [<name>] {
 	id. Clients in a cluster need not know their cluster id and this option
 	is not allowed for them. Default: the same as router id.
 
-	<tag><label id="bgp-rs-client">rs client</tag>
+	<tag><label id="bgp-rs-client">rs client <m/switch/</tag>
 	Be a route server and treat the neighbor as a route server client.
 	A route server is used as a replacement for full mesh EBGP routing in
 	Internet exchange points in a similar way to route reflectors used in
@@ -3191,7 +3191,7 @@ protocol bgp [<name>] {
 	completely disabled and you should ensure loop-free behavior by some
 	other means. Default: 0 (no local AS number allowed).
 
-	<tag><label id="bgp-allow-as-sets">allow as sets [<m/switch/]</tag>
+	<tag><label id="bgp-allow-as-sets">allow as sets <m/switch/</tag>
 	AS path attribute received with BGP routes may contain not only
 	sequences of AS numbers, but also sets of AS numbers. These rarely used
 	artifacts are results of inter-AS route aggregation. AS sets are
@@ -3201,7 +3201,7 @@ protocol bgp [<name>] {
 	malformed and corresponding BGP updates are treated as withdraws.
 	Default: on.
 
-	<tag><label id="bgp-enforce-first-as">enforce first as [<m/switch/]</tag>
+	<tag><label id="bgp-enforce-first-as">enforce first as <m/switch/</tag>
 	Routes received from an EBGP neighbor are generally expected to have the
 	first (leftmost) AS number in their AS path equal to the neighbor AS
 	number. This is not enforced by default as there are legitimate cases
@@ -3427,7 +3427,7 @@ protocol bgp [<name>] {
 	Time in seconds to wait before retrying a failed attempt to connect.
 	Default: 120 seconds.
 
-	<tag><label id="bgp-error-wait-time">error wait time <m/number/,<m/number/</tag>
+	<tag><label id="bgp-error-wait-time">error wait time <m/number/, <m/number/</tag>
 	Minimum and maximum delay in seconds between a protocol failure (either
 	local or reported by the peer) and automatic restart. Does not apply
 	when <cf/disable after error/ is configured. If consecutive errors
@@ -5694,7 +5694,8 @@ protocol rip [ng] [&lt;name&gt;] {
 			accept to "&lt;date&gt;";
 			from "&lt;date&gt;";
 			to "&lt;date&gt;";
-			algorithm ( keyed md5 | keyed sha1 | hmac sha1 | hmac sha256 | hmac sha384 | hmac sha512 );
+			algorithm ( keyed md5 | keyed sha1 | hmac sha1 |
+				hmac sha256 | hmac sha384 | hmac sha512 );
 		};
 	};
 }
