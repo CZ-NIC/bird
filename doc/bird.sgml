@@ -3784,6 +3784,98 @@ be used in explicit configuration.
 	option.
 </descrip>
 
+<sect1>Reconfiguration
+<label id="bgp-reconfiguration">
+
+<p>Running the <cf/configure/ command with a changed configuration file will
+trigger a reconfiguration. This may cause a reload of the affected channel or
+a restart of the BGP protocol. A change in options that just affect route
+processing generally causes a reload, while a change in setting of BGP
+capabilities or other properties negotiated during session establishment always
+leads to a restart.
+
+<p>With the <cf/configure soft/ command, configuration changes do not trigger
+a reload, but instead just log a message about the change, suggesting manual
+reload of the channel. However, changes demanding restart still trigger a
+restart of the protocol. See <ref id="cli-configure" name="configure"> and
+<ref id="cli-reload" name="reload"> commands for more details. In the rest of
+the section, we assume the usage of the <cf/configure/ command without the
+<cf/soft/ option.
+
+<p>Changes in these channel options cause a reload of the channel in the import
+direction (re-import of routes from the BGP neighbor):
+
+<itemize>
+	<item><cf/import/
+	<item><cf/preference/
+	<item><cf/gateway/
+	<item><cf/next hop prefer/
+	<item><cf/aigp/
+	<item><cf/cost/
+</itemize>
+
+<p>Note: Reload in the import direction requires either the <cf/route refresh/
+capability negotiated or the <cf/import table/ option enabled. If neither one is
+available, the reconfiguration will trigger a restart instead of a reload. This
+does not apply for export direction.
+
+<p>Changes in these channel options cause a reload of the channel in the export
+direction (re-export of routes to the BGP neighbor):
+
+<itemize>
+	<item><cf/export/
+	<item><cf/next hop address/
+	<item><cf/next hop self/
+	<item><cf/next hop keep/
+	<item><cf/aigp/
+	<item><cf/aigp originate/
+</itemize>
+
+
+<p>Protocol options that cause a restart when changed:
+<itemize>
+	<item><cf/router id/
+	<item><cf/hostname/
+	<item><cf/vrf/
+</itemize>
+
+<p><bf/All/ BGP-specific protocol options cause a restart when changed <bf/except/ for these:
+<itemize>
+	<item><cf/bfd/
+	<item><cf/check link/
+	<item><cf/require route refresh/
+	<item><cf/require enhanced route refresh/
+	<item><cf/require AS4/
+	<item><cf/require extended messages/
+	<item><cf/require hostname/
+	<item><cf/require graceful restart/
+	<item><cf/require long lived graceful restart/
+</itemize>
+
+<p>Channel options that cause a restart when changed:
+<itemize>
+	<item><cf/table/
+	<item><cf/secondary/
+	<item><cf/validate/
+	<item><cf/graceful restart/
+	<item><cf/long lived graceful restart/
+	<item><cf/long lived stale time/
+	<item><cf/extended next hop/
+	<item><cf/add paths/
+	<item><cf/import table/
+	<item><cf/export table/
+	<item><cf/igp table/
+	<item><cf/base table/
+</itemize>
+
+<p>Channel options that may cause a restart (when changed to a value
+incompatible with the current protocol state):
+<itemize>
+	<item><cf/mandatory/
+	<item><cf/min long lived stale time/
+	<item><cf/max long lived stale time/
+</itemize>
+
 <sect1>Attributes
 <label id="bgp-attr">
 
