@@ -2890,6 +2890,106 @@ usually one routing table used for both IGP routes and BGP routes.
 to set routing policy and all the other parameters differently for each neighbor
 using the following configuration parameters:
 
+<code>
+protocol bgp [<name>] {
+	ipv4|ipv6|... {
+		<channel-options>
+		mandatory <switch>;
+		next hop keep <switch>|ibgp|ebgp;
+		next hop self <switch>|ibgp|ebgp;
+		next hop address <ip>;
+		next hop prefer global;
+		gateway direct|recursive;
+		igp table <name>;
+		import table <switch>;
+		export table <switch>;
+		secondary <switch>;
+		validate <switch>;
+		base table <name>;
+		extended next hop <switch>;
+		require extended next hop <switch>;
+		add paths <switch>|rx|tx;
+		require add paths <switch>;
+		aigp <switch>|originate;
+		cost <number>;
+		graceful restart <switch>;
+		long lived graceful restart <switch>;
+		long lived stale time <number>;
+		min long lived stale time <number>;
+		max long lived stale time <number>;
+	};
+	local [<ip>] [port <number>] [as <number>];
+	neighbor [<ip> | range <prefix>] [port <number>] [as <number>] [internal|external];
+	interface "<text>";
+	direct;
+	multihop [<number>];
+	source address <ip>;
+	dynamic name "<text>";
+	dynamic name digits <number>;
+	strict bind <switch>;
+	free bind <switch>;
+	check link <switch>;
+	bfd <switch>|graceful| { <bfd-options> };
+	ttl security <switch>;
+	password "<text>";
+	setkey <switch>;
+	passive <switch>;
+	confederation <number>;
+	confederation member <switch>;
+	rr client <switch>;
+	rr cluster id <number>|<IPv4 address>;
+	rs client <switch>;
+	allow bgp_local_pref <switch>;
+	allow bgp_med <switch>;
+	allow local as [<number>];
+	allow as sets <switch>;
+	enforce first as <switch>;
+	enable route refresh <switch>;
+	require route refresh <switch>;
+	enable enhanced route refresh <switch>;
+	require enhanced route refresh <switch>;
+	graceful restart <switch>|aware;
+	graceful restart time <number>;
+	min graceful restart time <number>;
+	max graceful restart time <number>;
+	require graceful restart <switch>;
+	long lived graceful restart <switch>|aware;
+	long lived stale time <number>;
+	min long lived stale time <number>;
+	max long lived stale time <number>;
+	require long lived graceful restart <switch>;
+	interpret communities <switch>;
+	enable as4 <switch>;
+	require as4 <switch>;
+	enable extended messages <switch>;
+	require extended messages <switch>;
+	capabilities <switch>;
+	advertise hostname <switch>;
+	require hostname <switch>;
+	disable after error <switch>;
+	disable after cease <switch>|<set-of-flags>;
+	hold time <number>;
+	min hold time <number>;
+	startup hold time <number>;
+	keepalive time <number>;
+	min keepalive time <number>;
+	send hold time <number>;
+	connect delay time <number>;
+	connect retry time <number>;
+	error wait time <number>, <number>;
+	error forget time <number>;
+	path metric <switch>;
+	med metric <switch>;
+	deterministic med <switch>;
+	igp metric <switch>;
+	prefer older <switch>;
+	default bgp_med <number>;
+	default bgp_local_pref <number>;
+	local role <role-name>;
+	require roles <switch>;
+}
+</code>
+
 <descrip>
 	<tag><label id="bgp-local">local [<m/ip/] [port <m/number/] [as <m/number/]</tag>
 	Define which AS we are part of. (Note that contrary to other IP routers,
