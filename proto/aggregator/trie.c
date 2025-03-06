@@ -547,11 +547,28 @@ aggregator_find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, 
  * Second pass of Optimal Route Table Construction (ORTC) algorithm
  */
 static void
-aggregator_second_pass(struct trie_node *node)
+aggregator_second_pass(struct trie_node *node, int recomputing)
 {
   ASSERT_DIE(node != NULL);
   ASSERT_DIE(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
+  if (recomputing)
+  {
+    // TODO: it is not necessary to clear sets of all nodes, only leaves. Sets
+    // of internal nodes will be overwritten by merging.
+    node->ancestor = NULL;
+    node->potential_buckets_count = 0;
+    memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
+
+    if (node->px_origin != ORIGINAL)
+    {
+      ASSERT_DIE(node->parent != NULL);
+      node->original_bucket = node->parent->original_bucket;
+      node->px_origin = FILLER;
+    }
+  }
+
+  /* Leaves get original bucket as their potential bucket */
   if (aggregator_is_leaf(node))
   {
     ASSERT_DIE(node->original_bucket != NULL);
@@ -562,7 +579,12 @@ aggregator_second_pass(struct trie_node *node)
 
   /* Propagate original buckets */
   if (!node->original_bucket)
+  {
+    if (recomputing)
+      bug("Should not happen");
+
     node->original_bucket = node->parent->original_bucket;
+  }
 
   /* Internal node */
   ASSERT_DIE(node->potential_buckets_count == 0);
@@ -572,10 +594,10 @@ aggregator_second_pass(struct trie_node *node)
 
   /* Postorder traversal */
   if (left)
-    aggregator_second_pass(left);
+    aggregator_second_pass(left, recomputing);
 
   if (right)
-    aggregator_second_pass(right);
+    aggregator_second_pass(right, recomputing);
 
   ASSERT_DIE(node->original_bucket != NULL);
 
@@ -838,39 +860,6 @@ check_trie_after_aggregation(const struct trie_node *node)
 }
 
 /*
- * Delete all information computed by aggregation algorithm in the subtree
- * rooted at @node and propagate original buckets in the subtree.
- */
-static void
-aggregator_deaggregate(struct trie_node *node)
-{
-  ASSERT_DIE(node != NULL);
-
-  /* Delete results computed by aggregation algorithm */
-  node->ancestor = NULL;
-  node->potential_buckets_count = 0;
-  memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
-
-  /*
-   * Original prefixes already have their original bucket set,
-   * others inherit it from their parents.
-   */
-  if (node->px_origin != ORIGINAL)
-  {
-    node->original_bucket = node->parent->original_bucket;
-    node->px_origin = FILLER;
-  }
-
-  ASSERT_DIE(node->original_bucket != NULL);
-
-  if (node->child[0])
-    aggregator_deaggregate(node->child[0]);
-
-  if (node->child[1])
-    aggregator_deaggregate(node->child[1]);
-}
-
-/*
  * Merge sets of potential buckets of node's children going from @node upwards.
  * Stop when the node's set doesn't change and return the last updated node.
  */
@@ -935,7 +924,7 @@ aggregator_calculate_trie(struct aggregator_proto *p)
 {
   ASSERT_DIE(p->addr_type == NET_IP4 || p->addr_type == NET_IP6);
 
-  aggregator_second_pass(p->root);
+  aggregator_second_pass(p->root, 0);
   aggregator_third_pass(p, p->root);
 
   check_trie_after_aggregation(p->root);
@@ -1012,9 +1001,8 @@ aggregator_recalculate(struct aggregator_proto *p, struct aggregator_route *old,
   ASSERT_DIE(ancestor != updated_node);
   ASSERT_DIE(ancestor->status == IN_FIB);
 
-  /* Deaggregate and then aggregate again, this time with incorporated update */
-  aggregator_deaggregate(ancestor);
-  aggregator_second_pass(ancestor);
+  /* Reaggregate trie with incorporated update */
+  aggregator_second_pass(ancestor, 1);
 
   struct trie_node *highest_node = aggregator_merge_buckets_above(ancestor);
   ASSERT_DIE(highest_node != NULL);
