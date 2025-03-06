@@ -2700,14 +2700,18 @@ bgp_show_proto_info(struct proto *P)
 	  cli_msg(-1006, "    BGP Next hop:   %I %I", c->next_hop_addr, c->link_addr);
       }
 
-      if (c->igp_table_ip4)
-	cli_msg(-1006, "    IGP IPv4 table: %s", c->igp_table_ip4->name);
+      /* After channel is deconfigured, these pointers are no longer valid */
+      if (!p->p.reconfiguring || (c->c.channel_state != CS_DOWN))
+      {
+	if (c->igp_table_ip4)
+	  cli_msg(-1006, "    IGP IPv4 table: %s", c->igp_table_ip4->name);
 
-      if (c->igp_table_ip6)
-	cli_msg(-1006, "    IGP IPv6 table: %s", c->igp_table_ip6->name);
+	if (c->igp_table_ip6)
+	  cli_msg(-1006, "    IGP IPv6 table: %s", c->igp_table_ip6->name);
 
-      if (c->base_table)
-	cli_msg(-1006, "    Base table:     %s", c->base_table->name);
+	if (c->base_table)
+	  cli_msg(-1006, "    Base table:     %s", c->base_table->name);
+      }
     }
   }
 }

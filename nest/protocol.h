@@ -571,7 +571,7 @@ struct channel {
  *
  * CS_DOWN - The initial and the final state of a channel. There is no route
  * exchange between the protocol and the table. Channel is not counted as
- * active. Channel keeps a ptr to the table, but do not lock the table and is
+ * active. Channel keeps a ptr to the table, keeps the table locked, but is
  * not linked in the table. Generally, new closed channels are created in
  * protocols' init() hooks. The protocol is expected to explicitly activate its
  * channels (by calling channel_init() or channel_open()).
@@ -595,8 +595,8 @@ struct channel {
  * channel. The channel is still initialized, but no route exchange is allowed.
  * Instead, the associated table is running flush loop to remove routes imported
  * through the channel. After that, the channel changes state to CS_DOWN and
- * is detached from the table (the table is unlocked and the channel is unlinked
- * from it). Unlike other states, the CS_FLUSHING state is not explicitly
+ * is detached from the table (the channel is unlinked from it, but keeps the
+ * table locked). Unlike other states, the CS_FLUSHING state is not explicitly
  * entered or left by the protocol. A protocol may request to close a channel
  * (by calling channel_close()), which causes the channel to change state to
  * CS_FLUSHING and later to CS_DOWN. Also note that channels are closed

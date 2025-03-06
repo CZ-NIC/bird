@@ -165,6 +165,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
   c->channel = cf->channel;
   c->proto = p;
   c->table = cf->table->table;
+  rt_lock_table(c->table);
 
   c->in_filter = cf->in_filter;
   c->out_filter = cf->out_filter;
@@ -204,6 +205,7 @@ proto_remove_channel(struct proto *p UNUSED, struct channel *c)
 
   CD(c, "Removed", c->name);
 
+  rt_unlock_table(c->table);
   rem_node(&c->n);
   mb_free(c);
 }
@@ -550,7 +552,6 @@ channel_setup_out_table(struct channel *c)
 static void
 channel_do_start(struct channel *c)
 {
-  rt_lock_table(c->table);
   add_tail(&c->table->channels, &c->table_node);
   c->proto->active_channels++;
 
@@ -604,7 +605,6 @@ channel_do_down(struct channel *c)
   ASSERT(!c->feed_active && !c->reload_active);
 
   rem_node(&c->table_node);
-  rt_unlock_table(c->table);
   c->proto->active_channels--;
 
   if ((c->stats.imp_routes + c->stats.filt_routes) != 0)
