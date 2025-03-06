@@ -47,9 +47,6 @@
 #include "filter/filter.h"
 #include "proto/aggregator/aggregator.h"
 
-#include <stdlib.h>
-#include <assert.h>
-
 extern linpool *rte_update_pool;
 
 /*
@@ -64,8 +61,9 @@ aggregator_get_new_bucket_id(struct aggregator_proto *p)
 }
 
 /*
- * Insert @bucket to the list of bucket pointers in @p to position @bucket.id
+ * Add @bucket to the list of bucket pointers in @p to position @bucket.id
  */
+// TODO: enable to reset bucket ptr?
 static void
 aggregator_add_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket)
 {
@@ -712,7 +710,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     {
       aggregator_recalculate(p, old_route, new_route);
 
-      /* Process all route withdrawals which were caused by the update */
+      /* Process route withdrawals triggered by recalculation */
       aggregator_withdraw_rte(p);
     }
   }
@@ -766,6 +764,7 @@ aggregator_postconfig(struct proto_config *CF)
   cf->dst->debug = cf->src->debug;
 }
 
+// TODO: set pools to NULL?
 static struct proto *
 aggregator_init(struct proto_config *CF)
 {

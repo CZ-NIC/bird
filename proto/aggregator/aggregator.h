@@ -55,7 +55,6 @@ struct aggregator_bucket {
   struct f_val aggr_data[0];
 };
 
-/* Information needed for route withdrawal */
 struct rte_withdrawal_item {
   struct rte_withdrawal_item *next;
   struct aggregator_bucket *bucket;
