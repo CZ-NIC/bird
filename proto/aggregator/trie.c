@@ -956,10 +956,7 @@ aggregator_recalculate(struct aggregator_proto *p, struct aggregator_route *old,
     const u32 pxlen = net_pxlen(addr);
 
     updated_node = aggregator_trie_remove_prefix(p, prefix, pxlen);
-
     ASSERT_DIE(updated_node != NULL);
-    ASSERT_DIE(updated_node->px_origin == FILLER);
-    ASSERT_DIE(updated_node->original_bucket == NULL);
   }
   else /* Announce or update */
   {
