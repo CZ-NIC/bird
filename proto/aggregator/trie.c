@@ -77,9 +77,6 @@
 #include "filter/filter.h"
 #include "proto/aggregator/aggregator.h"
 
-#include <stdlib.h>
-#include <assert.h>
-
 #define ipa_getbit(a,p) ip6_getbit(a,p)
 #define ipa_setbit(a,p) ip6_setbit(a,p)
 #define ipa_clrbit(a,p) ip6_clrbit(a,p)
@@ -98,6 +95,7 @@ static const u32 ipa_shift[] = {
 /*
  * Allocate new node in trie slab
  */
+// TODO: inline in aggregator.h?
 struct trie_node *
 aggregator_create_new_node(struct slab *trie_slab)
 {
@@ -113,6 +111,7 @@ aggregator_is_leaf(const struct trie_node *node)
 
 /*
  * Unlink node from the trie by setting appropriate child of parent node to NULL
+ * and free memory.
  */
 static inline void
 aggregator_remove_node(struct trie_node *node)
@@ -252,7 +251,7 @@ aggregator_merge_potential_buckets(struct trie_node *target, const struct trie_n
 
     /*
      * If old and new values are different, the result of their XOR will be
-     * non-zero, thus @changed will be set to non-zero - true, as well.
+     * non-zero, thus @has_changed will be set to non-zero -- true, as well.
      */
     has_changed |= !!(old[i] ^ target->potential_buckets[i]);
   }
@@ -538,7 +537,9 @@ aggregator_find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, 
     else
       ipa_setbit(prefix, node->depth + ipa_shift[type]);
 
+    // TODO: remove after testing, traversing back to target node is not neccessary
     node = node->child[path[i]];
+
     len++;
     ASSERT_DIE((u32)node->depth == len);
   }
@@ -616,7 +617,7 @@ aggregator_second_pass(struct trie_node *node, int recomputing)
    */
   aggregator_node_add_potential_bucket(&imaginary_node, node->original_bucket);
 
-  /* Nodes with exactly one child */
+  /* Nodes with only one child */
   if ((left && !right) || (!left && right))
   {
     if (left && !right)
@@ -891,7 +892,7 @@ aggregator_merge_buckets_above(struct trie_node *node)
 
     ASSERT_DIE(left != NULL && right != NULL);
 
-    /* The parent's set wasn't affected by merging, stop here */
+    /* The parent's set didn't change by merging, stop here */
     if (aggregator_merge_potential_buckets(parent, left, right) == 0)
       return node;
 
@@ -998,6 +999,7 @@ aggregator_recalculate(struct aggregator_proto *p, struct aggregator_route *old,
   }
   */
 
+  // TODO: root should never get here
   ASSERT_DIE(ancestor != NULL);
   ASSERT_DIE(ancestor != updated_node);
   ASSERT_DIE(ancestor->status == IN_FIB);
