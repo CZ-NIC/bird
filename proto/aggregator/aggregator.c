@@ -775,15 +775,15 @@ aggregator_init(struct proto_config *CF)
   proto_configure_channel(P, &p->src, cf->src);
   proto_configure_channel(P, &p->dst, cf->dst);
 
-  p->aggr_mode = cf->aggr_mode;
-  p->aggr_on_count = cf->aggr_on_count;
-  p->aggr_on_da_count = cf->aggr_on_da_count;
-  p->aggr_on = cf->aggr_on;
-  p->merge_by = cf->merge_by;
-  p->logging = cf->logging;
-  p->bucket_list = NULL;
-  p->bucket_list_size = 0;
-  p->bucket_list_count = 0;
+  p->aggr_mode          = cf->aggr_mode;
+  p->aggr_on_count      = cf->aggr_on_count;
+  p->aggr_on_da_count   = cf->aggr_on_da_count;
+  p->aggr_on            = cf->aggr_on;
+  p->merge_by           = cf->merge_by;
+  p->logging            = cf->logging;
+  p->bucket_list        = NULL;
+  p->bucket_list_size   = 0;
+  p->bucket_list_count  = 0;
 
   P->rt_notify = aggregator_rt_notify;
   P->preexport = aggregator_preexport;
@@ -993,20 +993,20 @@ aggregator_get_status(struct proto *P, byte *buf)
 }
 
 struct protocol proto_aggregator = {
-  .name =           "Aggregator",
-  .template =       "aggregator%d",
-  .class =          PROTOCOL_AGGREGATOR,
-  .preference =     1,
-  .channel_mask =   NB_ANY,
-  .proto_size =     sizeof(struct aggregator_proto),
-  .config_size =    sizeof(struct aggregator_config),
-  .postconfig =     aggregator_postconfig,
-  .init =           aggregator_init,
-  .start =          aggregator_start,
-  .shutdown =       aggregator_shutdown,
-  .cleanup =        aggregator_cleanup,
-  .reconfigure =    aggregator_reconfigure,
-  .get_status =     aggregator_get_status,
+  .name             = "Aggregator",
+  .template         = "aggregator%d",
+  .class            = PROTOCOL_AGGREGATOR,
+  .preference       = 1,
+  .channel_mask     = NB_ANY,
+  .proto_size       = sizeof(struct aggregator_proto),
+  .config_size      = sizeof(struct aggregator_config),
+  .postconfig       = aggregator_postconfig,
+  .init             = aggregator_init,
+  .start            = aggregator_start,
+  .shutdown         = aggregator_shutdown,
+  .cleanup          = aggregator_cleanup,
+  .reconfigure      = aggregator_reconfigure,
+  .get_status       = aggregator_get_status,
 };
 
 void
