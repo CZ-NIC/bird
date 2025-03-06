@@ -17,6 +17,7 @@ extern struct birdloop main_birdloop;
 #include "lib/event.h"
 #include "lib/timer.h"
 #include "lib/socket.h"
+//#include "conf/conf.h"
 
 /* Currently running birdloop */
 extern _Thread_local struct birdloop *this_birdloop;
@@ -108,7 +109,7 @@ struct thread_config {
   uint count;
 };
 
-void bird_thread_commit(struct thread_config *new);
+//void bird_thread_commit(struct thread_config *new, struct config *old);
 
 /* Minimalist main */
 void birdloop_minimalist_main(void) NORET;

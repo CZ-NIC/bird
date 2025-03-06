@@ -29,7 +29,6 @@
 
 #include "lib/io-loop.h"
 #include "sysdep/unix/io-loop.h"
-#include "conf/conf.h"
 
 #define THREAD_STACK_SIZE	65536	/* To be lowered in near future */
 
@@ -622,6 +621,8 @@ struct thread_group_private {
   } thread_dropper;
   const struct thread_group_config *cf;
 };
+
+static void bird_thread_start_event(void *_data);
 
 struct birdloop_pickup_group pickup_groups[2] = {
   {
