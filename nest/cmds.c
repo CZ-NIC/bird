@@ -23,7 +23,7 @@ void
 cmd_show_status(void)
 {
   rcu_read_lock();
-  struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_acquire);
+  union bird_global_runtime *gr = BIRD_GLOBAL_RUNTIME;
   struct timeformat *tf = this_cli->tf ?: &gr->tf_base;
   byte tim[TM_DATETIME_BUFFER_SIZE];
 

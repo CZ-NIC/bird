@@ -211,8 +211,10 @@ sysdep_preconfig(struct config *c)
 {
   init_list(&c->logfiles);
 
-  c->latency_limit = UNIX_DEFAULT_LATENCY_LIMIT;
-  c->watchdog_warning = UNIX_DEFAULT_WATCHDOG_WARNING;
+  c->runtime.latency_limit = UNIX_DEFAULT_LATENCY_LIMIT;
+  c->runtime.watchdog_warning = UNIX_DEFAULT_WATCHDOG_WARNING;
+
+  alloc_preconfig(&c->runtime.alloc);
 
 #ifdef PATH_IPROUTE_DIR
   read_iproute_table(c, PATH_IPROUTE_DIR "/rt_protos", "ipp_", 255);
@@ -227,13 +229,14 @@ sysdep_preconfig(struct config *c)
 static void cli_commit(struct config *new, struct config *old);
 
 void
-sysdep_commit(struct config *new, struct config *old)
+sysdep_commit(struct config *new, struct config *old UNUSED)
 {
   if (!new->shutdown)
+  {
     log_switch(0, &new->logfiles, new->syslog_name);
-
-  cli_commit(new, old);
-  bird_thread_commit(new, old);
+    cli_commit(new, old);
+    bird_thread_commit(&new->threads);
+  }
 }
 
 static int
@@ -533,7 +536,7 @@ cli_rx(sock *s, uint size UNUSED)
   return 0;
 }
 
-#define GLOBAL_CLI_DEBUG (atomic_load_explicit(&global_runtime, memory_order_relaxed)->cli_debug)
+#define GLOBAL_CLI_DEBUG (BIRD_GLOBAL_RUNTIME->cli_debug)
 
 static void
 cli_err(sock *s, int err)
@@ -836,7 +839,6 @@ signal_init(void)
 
 static char *opt_list = "bc:dD:ps:P:u:g:flRh";
 int parse_and_exit;
-char *bird_name;
 static char *use_user;
 static char *use_group;
 static int run_in_foreground = 0;
@@ -879,20 +881,6 @@ display_version(void)
 {
   fprintf(stderr, "BIRD version " BIRD_VERSION "\n");
   exit(0);
-}
-
-static inline char *
-get_bird_name(char *s, char *def)
-{
-  char *t;
-  if (!s)
-    return def;
-  t = strrchr(s, '/');
-  if (!t)
-    return s;
-  if (!t[1])
-    return def;
-  return t+1;
 }
 
 static inline uid_t
@@ -948,7 +936,8 @@ parse_args(int argc, char **argv)
   int socket_changed = 0;
   int c;
 
-  bird_name = get_bird_name(argv[0], "bird");
+  set_daemon_name(argv[0], "bird");
+
   if (argc == 2)
     {
       if (!strcmp(argv[1], "--version"))

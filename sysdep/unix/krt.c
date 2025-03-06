@@ -89,13 +89,13 @@ static struct kif_config *kif_cf;
 static timer *kif_scan_timer;
 static btime kif_last_shot;
 
-static struct kif_iface_config kif_default_iface = {};
+static struct iface_config kif_default_iface = {};
 
-struct kif_iface_config *
+struct iface_config *
 kif_get_iface_config(struct iface *iface)
 {
   struct kif_config *cf = (void *) (kif_proto->p.cf);
-  struct kif_iface_config *ic = (void *) iface_patt_find(&cf->iface_list, iface, NULL);
+  struct iface_config *ic = (void *) iface_patt_find(&cf->iface_list, iface, NULL);
   return ic ?: &kif_default_iface;
 }
 
@@ -232,7 +232,7 @@ kif_copy_config(struct proto_config *dest, struct proto_config *src)
   struct kif_config *s = (struct kif_config *) src;
 
   /* Copy interface config list */
-  cfg_copy_list(&d->iface_list, &s->iface_list, sizeof(struct kif_iface_config));
+  cfg_copy_list(&d->iface_list, &s->iface_list, sizeof(struct iface_config));
 
   /* Fix sysdep parts */
   kif_sys_copy_config(d, s);

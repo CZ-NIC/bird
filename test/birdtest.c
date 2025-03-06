@@ -76,6 +76,8 @@ bt_init(int argc, char *argv[])
   bt_test_id = NULL;
   is_terminal = isatty(fileno(stdout));
 
+  set_daemon_name(argv[0], "birdtest");
+
   while ((c = getopt(argc, argv, "lcdftv")) >= 0)
     switch (c)
     {
@@ -539,7 +541,6 @@ bt_is_char(byte c)
  */
 
 int parse_and_exit;
-char *bird_name;
 void async_config(void) {}
 void async_dump(void) {}
 void async_shutdown(void) {}
@@ -556,12 +557,14 @@ void cmd_reconfig_undo_notify(void) {}
 #include "nest/bird.h"
 #include "lib/net.h"
 #include "conf/conf.h"
-void sysdep_preconfig(struct config *c UNUSED) {}
+void sysdep_preconfig(struct config *c) {
+  alloc_preconfig(&c->runtime.alloc);
+}
 
-void bird_thread_commit(struct config *new, struct config *old);
-void sysdep_commit(struct config *new, struct config *old)
+void bird_thread_commit(struct thread_config *new);
+void sysdep_commit(struct config *new, struct config *old UNUSED)
 {
-  bird_thread_commit(new, old);
+  bird_thread_commit(&new->threads);
 }
 
 void sysdep_shutdown_done(void) {}

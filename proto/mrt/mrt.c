@@ -327,7 +327,10 @@ static void
 mrt_peer_table_dump(struct mrt_table_dump_state *s)
 {
   mrt_init_message(&s->buf, MRT_TABLE_DUMP_V2, MRT_PEER_INDEX_TABLE);
-  mrt_peer_table_header(s, OBSREF_GET(config)->router_id, s->table_open->name);
+
+  rcu_read_lock();
+  mrt_peer_table_header(s, BIRD_GLOBAL_RUNTIME->router_id, s->table_open->name);
+  rcu_read_unlock();
 
   /* 0 is fake peer for non-BGP routes */
   mrt_peer_table_entry(s, 0, 0, IPA_NONE);

@@ -7,14 +7,16 @@
 #ifndef _BIRD_IO_LOOP_H_
 #define _BIRD_IO_LOOP_H_
 
+extern struct birdloop main_birdloop;
+
 #include "nest/bird.h"
 #include "lib/lists.h"
 #include "lib/locking.h"
 #include "lib/resource.h"
+#include "lib/buffer.h"
 #include "lib/event.h"
+#include "lib/timer.h"
 #include "lib/socket.h"
-
-extern struct birdloop main_birdloop;
 
 /* Currently running birdloop */
 extern _Thread_local struct birdloop *this_birdloop;
@@ -75,6 +77,7 @@ void birdloop_ping(struct birdloop *loop);
 void birdloop_add_socket(struct birdloop *, struct birdsock *);
 void birdloop_remove_socket(struct birdloop *, struct birdsock *);
 
+/* Initializations */
 void birdloop_init(void);
 
 /* Configure threads */
@@ -100,5 +103,14 @@ struct thread_group_config {
 extern const struct thread_group_config thread_group_config_default_worker, thread_group_config_default_express;
 
 void thread_group_finalize_config(void);
+
+struct thread_config {
+  uint count;
+};
+
+void bird_thread_commit(struct thread_config *new);
+
+/* Minimalist main */
+void birdloop_minimalist_main(void) NORET;
 
 #endif /* _BIRD_IO_LOOP_H_ */

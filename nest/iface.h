@@ -46,9 +46,13 @@ struct iface {
   struct ifa *addr6;			/* Primary address for IPv6 */
   struct ifa *llv6;			/* Primary link-local address for IPv6 */
   ip4_addr sysdep;			/* Arbitrary IPv4 address for internal sysdep use */
+  struct iface_config *cf;		/* Attached configuration */
   list neighbors;			/* All neighbors on this interface */
   unsigned uc;				/* Use (link) count */
 };
+
+/* Sysdep address updater */
+extern int (*kif_update_sysdep_addr)(struct iface *);
 
 #define IF_UP 1				/* Currently just IF_ADMIN_UP */
 #define IF_MULTIACCESS 2
@@ -283,6 +287,15 @@ struct iface_patt {
 int iface_patt_match(struct iface_patt *ifp, struct iface *i, struct ifa *a);
 struct iface_patt *iface_patt_find(list *l, struct iface *i, struct ifa *a);
 int iface_patts_equal(list *, list *, int (*)(struct iface_patt *, struct iface_patt *));
+
+/* Basic interface configuration */
+struct iface_config {
+  struct iface_patt i;
+
+  ip_addr pref_v4;
+  ip_addr pref_v6;
+  ip_addr pref_ll;
+};
 
 
 u32 if_choose_router_id(struct iface_patt *mask, u32 old_id);

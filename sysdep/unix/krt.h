@@ -105,16 +105,8 @@ struct kif_config {
   struct proto_config c;
   struct kif_params sys;	/* Sysdep params */
 
-  list iface_list;		/* List of iface configs (struct kif_iface_config) */
+  list iface_list;		/* List of iface configs (struct iface_config) */
   btime scan_time;		/* How often we re-scan interfaces */
-};
-
-struct kif_iface_config {
-  struct iface_patt i;
-
-  ip_addr pref_v4;
-  ip_addr pref_v6;
-  ip_addr pref_ll;
 };
 
 struct kif_proto {
@@ -126,7 +118,7 @@ extern struct kif_proto *kif_proto;
 
 #define KIF_CF ((struct kif_config *)p->p.cf)
 
-struct kif_iface_config * kif_get_iface_config(struct iface *iface);
+struct iface_config * kif_get_iface_config(struct iface *iface);
 struct proto_config * krt_init_config(int class);
 
 
@@ -160,7 +152,5 @@ void kif_sys_init_config(struct kif_config *);
 void kif_sys_copy_config(struct kif_config *, struct kif_config *);
 
 void kif_do_scan(struct kif_proto *);
-
-int kif_update_sysdep_addr(struct iface *i);
 
 #endif

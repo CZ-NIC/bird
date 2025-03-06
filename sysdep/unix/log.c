@@ -15,10 +15,13 @@
  * user's manual.
  */
 
+#include <netdb.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
 #include <errno.h>
@@ -36,6 +39,7 @@ static pool *log_pool;
 
 static struct rfile *dbg_rf;
 static char *current_syslog_name = NULL; /* NULL -> syslog closed */
+const char *bird_name = NULL;
 
 _Atomic uint max_thread_id = 1;
 _Thread_local uint this_thread_id;
@@ -712,7 +716,7 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
 
 	if (ipa_zero(lc->udp_ip))
 	{
-	  cf_warn("Cannot resolve hostname '%s': %s", l->udp_host, err_msg);
+	  log(L_WARN "Cannot resolve hostname '%s': %s", l->udp_host, err_msg);
 	  goto resolve_fail;
 	}
       }
@@ -727,7 +731,7 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
 
       if (sk_open(sk, &main_birdloop) < 0)
       {
-	cf_warn("Cannot open UDP log socket: %s%#m", sk->err);
+	log(L_WARN "Cannot open UDP log socket: %s%#m", sk->err);
 	rfree(sk);
 resolve_fail:
 	log_lock();
@@ -837,6 +841,7 @@ resolve_fail:
 void
 log_init_debug(char *f)
 {
+  ASSERT_DIE(bird_name);
   clock_gettime(CLOCK_MONOTONIC, &dbg_time_start);
 
   if (dbg_rf && dbg_rf != &rf_stderr)
@@ -852,4 +857,59 @@ log_init_debug(char *f)
     fprintf(stderr, "bird: Unable to open debug file %s: %s\n", f, strerror(errno));
     exit(1);
   }
+}
+
+/*
+ *	Setting BIRD name
+ */
+
+static inline char *
+get_bird_name(char *s, char *def)
+{
+  char *t;
+  if (!s)
+    return def;
+  t = strrchr(s, '/');
+  if (!t)
+    return s;
+  if (!t[1])
+    return def;
+  return t+1;
+}
+
+void set_daemon_name(char *path, char *def)
+{
+  bird_name = get_bird_name(path, def);
+}
+
+/*
+ *	DNS resolver
+ */
+
+ip_addr
+resolve_hostname(const char *host, int type, const char **err_msg)
+{
+  struct addrinfo *res;
+  struct addrinfo hints = {
+    .ai_family = AF_UNSPEC,
+    .ai_socktype = (type == SK_UDP) ? SOCK_DGRAM : SOCK_STREAM,
+    .ai_flags = AI_ADDRCONFIG,
+  };
+
+  *err_msg = NULL;
+
+  int err_code = getaddrinfo(host, NULL, &hints, &res);
+  if (err_code != 0)
+  {
+    *err_msg = gai_strerror(err_code);
+    return IPA_NONE;
+  }
+
+  ip_addr addr = IPA_NONE;
+  uint unused;
+
+  sockaddr_read((sockaddr *) res->ai_addr, res->ai_family, &addr, NULL, &unused);
+  freeaddrinfo(res);
+
+  return addr;
 }

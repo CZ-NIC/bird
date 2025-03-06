@@ -18,6 +18,93 @@ CF_DEFINES
 
 struct flow_builder *this_flow;
 
+/**
+ * flow_check_cf_value_length - check value by flowspec component type
+ * @fb: flow builder instance
+ * @val: value
+ *
+ * This function checks if the value is in range of component's type support.
+ * If some problem will appear, the function calls cf_error() function with
+ * a textual description of reason to failing of validation.
+ */
+static void
+flow_check_cf_value_length(struct flow_builder *fb, u32 val)
+{
+  enum flow_type t = fb->this_type;
+  u8 max = flow_max_value_length(t, fb->ipv6);
+
+  if (t == FLOW_TYPE_DSCP && val > 0x3f)
+    cf_error("%s value %u out of range (0-63)", flow_type_str(t, fb->ipv6), val);
+
+  if (max == 1 && (val > 0xff))
+    cf_error("%s value %u out of range (0-255)", flow_type_str(t, fb->ipv6), val);
+
+  if (max == 2 && (val > 0xffff))
+    cf_error("%s value %u out of range (0-65535)", flow_type_str(t, fb->ipv6), val);
+}
+
+/**
+ * flow_check_cf_bmk_values - check value/bitmask part of flowspec component
+ * @fb: flow builder instance
+ * @neg: negation operand
+ * @val: value from value/mask pair
+ * @mask: bitmap mask from value/mask pair
+ *
+ * This function checks value/bitmask pair. If some problem will appear, the
+ * function calls cf_error() function with a textual description of reason
+ * to failing of validation.
+ */
+static void
+flow_check_cf_bmk_values(struct flow_builder *fb, u8 neg, u32 val, u32 mask)
+{
+  flow_check_cf_value_length(fb, val);
+  flow_check_cf_value_length(fb, mask);
+
+  if (neg && !(val == 0 || val == mask))
+    cf_error("For negation, value must be zero or bitmask");
+
+  if ((fb->this_type == FLOW_TYPE_TCP_FLAGS) && (mask & 0xf000))
+    cf_error("Invalid mask 0x%x, must not exceed 0xfff", mask);
+
+  if ((fb->this_type == FLOW_TYPE_FRAGMENT) && fb->ipv6 && (mask & 0x01))
+    cf_error("Invalid mask 0x%x, bit 0 must be 0", mask);
+
+  if (val & ~mask)
+    cf_error("Value 0x%x outside bitmask 0x%x", val, mask);
+}
+
+/**
+ * flow4_validate_cf - validate flowspec data structure &net_addr_flow4 in parsing time
+ * @f: flowspec data structure &net_addr_flow4
+ *
+ * Check if @f is valid flowspec data structure. Can call cf_error() function
+ * with a textual description of reason to failing of validation.
+ */
+static void
+flow4_validate_cf(net_addr_flow4 *f)
+{
+  enum flow_validated_state r = flow4_validate(flow4_first_part(f), flow_read_length(f->data));
+
+  if (r != FLOW_ST_VALID)
+    cf_error("Invalid flow route: %s", flow_validated_state_str(r));
+}
+
+/**
+ * flow6_validate_cf - validate flowspec data structure &net_addr_flow6 in parsing time
+ * @f: flowspec data structure &net_addr_flow6
+ *
+ * Check if @f is valid flowspec data structure. Can call cf_error() function
+ * with a textual description of reason to failing of validation.
+ */
+static void
+flow6_validate_cf(net_addr_flow6 *f)
+{
+  enum flow_validated_state r = flow6_validate(flow6_first_part(f), flow_read_length(f->data));
+
+  if (r != FLOW_ST_VALID)
+    cf_error("Invalid flow route: %s", flow_validated_state_str(r));
+}
+
 
 CF_DECLS
 

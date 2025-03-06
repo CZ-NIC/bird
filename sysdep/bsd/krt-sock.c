@@ -721,6 +721,8 @@ krt_read_ifinfo(struct ks_msg *msg, int scan)
   if (fl & IFF_MULTICAST)
     f.flags |= IF_MULTICAST;
 
+  f.cf = kif_get_iface_config(&f);
+
   iface = if_update(&f);
 
   if (!scan)
@@ -1197,18 +1199,13 @@ void krt_sys_copy_config(struct krt_config *d, struct krt_config *s)
 /* KIF misc code */
 
 void
-kif_sys_start(struct kif_proto *p UNUSED)
-{
-}
-
-void
 kif_sys_shutdown(struct kif_proto *p)
 {
   krt_buffer_release(&p->p);
 }
 
-int
-kif_update_sysdep_addr(struct iface *i)
+static int
+kif_update_sysdep_addr_(struct iface *i)
 {
   static int fd = -1;
 
@@ -1227,4 +1224,11 @@ kif_update_sysdep_addr(struct iface *i)
   i->sysdep = ipa_to_ip4(ipa_from_sa4(&ifr.ifr_addr));
 
   return !ip4_equal(i->sysdep, old);
+}
+
+void
+kif_sys_start(struct kif_proto *p UNUSED)
+{
+  /* Setup sysdep address updater */
+  kif_update_sysdep_addr = kif_update_sysdep_addr_;
 }

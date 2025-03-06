@@ -30,6 +30,12 @@ AC_ARG_ENABLE([debug-expensive],
   [enable_debug_expensive=no]
 )
 
+AC_ARG_ENABLE([debug-allocator],
+  [AS_HELP_STRING([--enable-debug-allocator], [enable internal memory allocator journal (implies --enable-debug) @<:@no@:>@])],
+  [],
+  [enable_debug_expensive=no]
+)
+
 AC_ARG_ENABLE([memcheck],
   [AS_HELP_STRING([--enable-memcheck], [check memory allocations when debugging @<:@yes@:>@])],
   [],
@@ -78,6 +84,10 @@ AC_ARG_VAR([FLEX], [location of the Flex program])
 AC_ARG_VAR([BISON], [location of the Bison program])
 AC_ARG_VAR([M4], [location of the M4 program])
 
+if test "$enable_debug_allocator" = yes; then
+  enable_debug=yes
+fi
+
 if test "$enable_debug_expensive" = yes; then
   enable_debug=yes
 fi
@@ -124,6 +134,8 @@ if test -z "$GCC" ; then
   AC_MSG_ERROR([This program requires the GNU C Compiler.])
 fi
 
+BIRD_COMPILER_VENDOR
+
 BIRD_CHECK_THREAD_LOCAL
 if test "$bird_cv_thread_local" = no ; then
   AC_MSG_ERROR([This program requires thread local storage.])
@@ -135,7 +147,7 @@ BIRD_CHECK_PTHREADS
 
 if test "$bird_cv_lib_pthreads" = yes ; then
   CFLAGS="$CFLAGS -pthread"
-  LDFLAGS="$LDFLAGS -pthread"
+  COMMON_LIBS="$COMMON_LIBS -pthread"
 else
   AC_MSG_ERROR([POSIX threads not available.])
 fi
@@ -150,12 +162,18 @@ if test "$bird_cflags_default" = yes ; then
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_werror_implicit_function_declaration], [-Werror=implicit-function-declaration], [-Wall -Wextra])
 
   if test "$enable_debug" = no; then
-    BIRD_CHECK_LTO
+    LTO_CFLAGS=-flto
+    AS_CASE(${bird_cv_compiler_vendor},
+	    gnu,LTO_LDFLAGS="-flto=jobserver",
+	    llvm,LTO_LDFLAGS="-flto",
+	    unknown,LTO_LDFLAGS="-flto",
+	    AC_MSG_ERROR([Compiler vendor check failed for LTO: got ${bird_cv_compiler_vendor}]))
+    BIRD_CHECK_LTO(${LTO_CFLAGS}, ${LTO_LDFLAGS})
   fi
 
   if test "$bird_cv_c_lto" = yes; then
-    CFLAGS="$CFLAGS -flto"
-    LDFLAGS="$LDFLAGS -flto=4 -g"
+    CFLAGS="$CFLAGS $LTO_CFLAGS"
+    LDFLAGS="$LDFLAGS $LTO_LDFLAGS -g"
   else
     LDFLAGS="$LDFLAGS -g"
   fi
@@ -174,9 +192,13 @@ AC_MSG_RESULT([$CFLAGS])
 AC_MSG_CHECKING([LDFLAGS])
 AC_MSG_RESULT([$LDFLAGS])
 
+DAEMON_LIBS="${DAEMON_LIBS} ${LIBS}"
+AC_SUBST(DAEMON_LIBS)
+AC_SUBST(COMMON_LIBS)
+
 AC_PROG_CPP
 AC_PROG_INSTALL
-AC_PROG_RANLIB
+
 AC_CHECK_PROG([FLEX], [flex], [flex])
 AC_CHECK_PROG([BISON], [bison], [bison])
 AC_CHECK_PROGS([M4], [gm4 m4])
@@ -261,6 +283,8 @@ sysdep_dirs="`sed <$sysdesc '/^Link: /!d;s/^Link: \(.*\)$/\1/' | tr '\012' ' '`"
 AC_MSG_RESULT([$sysdep_dirs])
 AC_SUBST([sysdep_dirs])
 
+AC_CHECK_FUNCS([pipe2])
+
 if test "$with_iproutedir" = no ; then with_iproutedir= ; fi
 
 if test -n "$given_iproutedir"
@@ -270,16 +294,13 @@ fi
 
 AC_SUBST([iproutedir])
 
-DAEMON_LIBS=
-AC_SUBST(DAEMON_LIBS)
-
 if test "$enable_libssh" != no ; then
   AC_CHECK_HEADER([libssh/libssh.h], [true], [fail=yes], [ ])
   AC_CHECK_LIB([ssh], [ssh_connect], [true], [fail=yes])
 
   if test "$fail" != yes ; then
     AC_DEFINE([HAVE_LIBSSH], [1], [Define to 1 if you have the `ssh' library (-lssh).])
-    DAEMON_LIBS="-lssh $DAEMON_LIBS"
+    COMMON_LIBS="-lssh $COMMON_LIBS"
     enable_libssh=yes
   else
     if test "$enable_libssh" = yes ; then
@@ -441,6 +462,10 @@ if test "$enable_debug" = yes ; then
 
   if test "$enable_debug_expensive" = yes ; then
     AC_DEFINE([ENABLE_EXPENSIVE_CHECKS], [1], [Define to 1 if you want to run expensive consistency checks.])
+  fi
+
+  if test "$enable_debug_allocator" = yes; then
+    AC_DEFINE([DEBUG_ALLOCATOR], [1], [Define to 1 if you want to store journals from memory allocations.])
   fi
 fi
 

@@ -28,12 +28,10 @@
 #include "nest/bird.h"
 #include "nest/iface.h"
 #include "nest/protocol.h"
-#include "nest/cli.h"
 #include "lib/resource.h"
 #include "lib/string.h"
 #include "lib/locking.h"
 #include "conf/conf.h"
-#include "sysdep/unix/krt.h"
 
 DOMAIN(attrs) iface_domain;
 
@@ -165,7 +163,7 @@ if_dump_all(struct dump_request *dreq)
   IFACE_WALK(i)
     if_dump_locked(dreq, i);
   rcu_read_lock();
-  RDUMP("Router ID: %08x\n", atomic_load_explicit(&global_runtime, memory_order_relaxed)->router_id);
+  RDUMP("Router ID: %08x\n", BIRD_GLOBAL_RUNTIME->router_id);
   rcu_read_unlock();
 }
 
@@ -785,6 +783,8 @@ if_set_preferred(struct ifa **pos, struct ifa *new)
   *pos = new;
 }
 
+int (*kif_update_sysdep_addr)(struct iface *) = NULL;
+
 static void
 if_recalc_preferred(struct iface *i)
 {
@@ -794,14 +794,14 @@ if_recalc_preferred(struct iface *i)
    * 2) Sysdep IPv4 address (BSD)
    * 3) Old preferred address
    * 4) First address in list
-   */
+  */
 
-  struct kif_iface_config *ic = kif_get_iface_config(i);
+  struct iface_config *ic = i->cf;
   struct ifa *a4 = i->addr4, *a6 = i->addr6, *ll = i->llv6;
   ip_addr pref_v4 = ic->pref_v4;
   uint change = 0;
 
-  if (kif_update_sysdep_addr(i))
+  if (kif_update_sysdep_addr && kif_update_sysdep_addr(i))
     change |= IF_CHANGE_SYSDEP;
 
   /* BSD sysdep address */
@@ -1135,95 +1135,4 @@ iface_patts_equal(list *a, list *b, int (*comp)(struct iface_patt *, struct ifac
       y = (void *) y->n.next;
     }
   return (!x->n.next && !y->n.next);
-}
-
-/*
- *  CLI commands.
- */
-
-static void
-if_show_addr(struct ifa *a)
-{
-  byte *flg, opp[IPA_MAX_TEXT_LENGTH + 16];
-
-  flg = (a->flags & IA_PRIMARY) ? "Preferred, " : (a->flags & IA_SECONDARY) ? "Secondary, " : "";
-
-  if (ipa_nonzero(a->opposite))
-    bsprintf(opp, "opposite %I, ", a->opposite);
-  else
-    opp[0] = 0;
-
-  cli_msg(-1003, "\t%I/%d (%s%sscope %s)",
-	  a->ip, a->prefix.pxlen, flg, opp, ip_scope_text(a->scope));
-}
-
-void
-if_show(void)
-{
-  struct ifa *a;
-  char *type;
-
-  IFACE_WALK(i)
-    {
-      if (i->flags & IF_SHUTDOWN)
-	continue;
-
-      char mbuf[16 + sizeof(i->name)] = {};
-      if (i->master != &default_vrf)
-	bsprintf(mbuf, " master=%s", i->master->name);
-      else if (i->master_index)
-	bsprintf(mbuf, " master=#%u", i->master_index);
-
-      cli_msg(-1001, "%s %s (index=%d%s)", i->name, (i->flags & IF_UP) ? "up" : "down", i->index, mbuf);
-      if (!(i->flags & IF_MULTIACCESS))
-	type = "PtP";
-      else
-	type = "MultiAccess";
-      cli_msg(-1004, "\t%s%s%s Admin%s Link%s%s%s MTU=%d",
-	      type,
-	      (i->flags & IF_BROADCAST) ? " Broadcast" : "",
-	      (i->flags & IF_MULTICAST) ? " Multicast" : "",
-	      (i->flags & IF_ADMIN_UP) ? "Up" : "Down",
-	      (i->flags & IF_LINK_UP) ? "Up" : "Down",
-	      (i->flags & IF_LOOPBACK) ? " Loopback" : "",
-	      (i->flags & IF_IGNORE) ? " Ignored" : "",
-	      i->mtu);
-
-      WALK_LIST(a, i->addrs)
-	if (a->prefix.type == NET_IP4)
-	  if_show_addr(a);
-
-      WALK_LIST(a, i->addrs)
-	if (a->prefix.type == NET_IP6)
-	  if_show_addr(a);
-    }
-  cli_msg(0, "");
-}
-
-void
-if_show_summary(void)
-{
-  cli_msg(-2005, "%-10s %-6s %-18s %s", "Interface", "State", "IPv4 address", "IPv6 address");
-  IFACE_WALK(i)
-    {
-      byte a4[IPA_MAX_TEXT_LENGTH + 17];
-      byte a6[IPA_MAX_TEXT_LENGTH + 17];
-
-      if (i->flags & IF_SHUTDOWN)
-	continue;
-
-      if (i->addr4)
-	bsprintf(a4, "%I/%d", i->addr4->ip, i->addr4->prefix.pxlen);
-      else
-	a4[0] = 0;
-
-      if (i->addr6)
-	bsprintf(a6, "%I/%d", i->addr6->ip, i->addr6->prefix.pxlen);
-      else
-	a6[0] = 0;
-
-      cli_msg(-1005, "%-10s %-6s %-18s %s",
-	      i->name, (i->flags & IF_UP) ? "up" : "down", a4, a6);
-    }
-  cli_msg(0, "");
 }

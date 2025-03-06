@@ -1244,7 +1244,7 @@ bfd_show_session(struct bfd_session *s, int details)
 
   rcu_read_lock();
   struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
-  tm_format_time(tbuf, this_cli->tf ?: &gr->tf_proto,
+  tm_format_time(tbuf, this_cli->tf ?: &gr->tf_log,
       atomic_load_explicit(&s->last_state_change, memory_order_relaxed));
   rcu_read_unlock();
 

@@ -14,7 +14,7 @@
 
 #ifndef HAVE_LIBDMALLOC
 
-#if DEBUGGING
+#if DEBUG_ALLOCATOR
 struct minfo {
   void *ptr;
   uint size;

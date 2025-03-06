@@ -11,6 +11,7 @@
 
 #include <errno.h>
 
+#include "lib/ip.h"
 #include "lib/resource.h"
 #include "lib/event.h"
 #ifdef HAVE_LIBSSH
@@ -57,6 +58,7 @@ typedef struct birdsock {
   uint fast_rx;				/* RX has higher priority in event loop */
   uint rbsize;
   int (*rx_hook)(struct birdsock *, uint size); /* NULL=receiving turned off, returns 1 to clear rx buffer */
+  int (*rx_paused)(struct birdsock *, uint size); /* stored rx_hook when paused */
 
   byte *tbuf, *tpos;			/* NULL=allocate automatically */
   byte *ttx;				/* Internal */
@@ -64,6 +66,7 @@ typedef struct birdsock {
   void (*tx_hook)(struct birdsock *);
 
   void (*err_hook)(struct birdsock *, int); /* errno or zero if EOF */
+  void (*err_paused)(struct birdsock *, int); /* called first when paused */
 
   /* Information about received datagrams (UDP, RAW), valid in rx_hook */
   ip_addr faddr, laddr;			/* src (From) and dst (Local) address of the datagram */
@@ -87,6 +90,7 @@ sock *sock_new(pool *);			/* Allocate new socket */
 #define sk_new(X) sock_new(X)		/* Wrapper to avoid name collision with OpenSSL */
 
 int sk_open(sock *, struct birdloop *);		/* Open socket */
+int sk_open_unix(struct birdsock *s, struct birdloop *, const char *name);  /* Open UNIX socket */
 void sk_reloop(sock *, struct birdloop *);	/* Move socket to another loop. Both loops must be locked. */
 static inline void sk_close(sock *s) { rfree(&s->r); }	/* Explicitly close socket */
 
@@ -96,7 +100,7 @@ int sk_send(sock *, uint len);		/* Send data, <0=err, >0=ok, 0=sleep */
 int sk_send_to(sock *, uint len, ip_addr to, uint port); /* sk_send to given destination */
 void sk_reallocate(sock *);		/* Free and allocate tbuf & rbuf */
 void sk_pause_rx(struct birdloop *loop, sock *s);
-void sk_resume_rx(struct birdloop *loop, sock *s, int (*hook)(sock *, uint));
+void sk_resume_rx(struct birdloop *loop, sock *s);
 void sk_set_rbsize(sock *s, uint val);	/* Resize RX buffer */
 void sk_set_tbsize(sock *s, uint val);	/* Resize TX buffer, keeping content */
 void sk_set_tbuf(sock *s, void *tbuf);	/* Switch TX buffer, NULL-> return to internal */

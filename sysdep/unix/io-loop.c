@@ -4,6 +4,8 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -28,7 +30,6 @@
 #include "lib/io-loop.h"
 #include "sysdep/unix/io-loop.h"
 #include "conf/conf.h"
-#include "nest/cli.h"
 
 #define THREAD_STACK_SIZE	65536	/* To be lowered in near future */
 
@@ -54,8 +55,6 @@ static void ns_init(void)
     bug("clock_gettime: %m");
 }
 
-#define NSEC_IN_SEC	((u64) (1000 * 1000 * 1000))
-
 u64 ns_now(void)
 {
   struct timespec ts;
@@ -64,9 +63,6 @@ u64 ns_now(void)
 
   return (u64) (ts.tv_sec - ns_begin.tv_sec) * NSEC_IN_SEC + ts.tv_nsec - ns_begin.tv_nsec;
 }
-
-#define NSEC_TO_SEC(x)	((x) / NSEC_IN_SEC)
-#define CURRENT_SEC	NSEC_TO_SEC(ns_now())
 
 static _Thread_local struct spent_time *account_target_spent_time;
 static _Thread_local u64 *account_target_total;
@@ -201,15 +197,22 @@ birdloop_in_this_thread(struct birdloop *loop)
 void
 pipe_new(struct pipe *p)
 {
+  int flags = O_NONBLOCK | O_CLOEXEC;
+#if HAVE_PIPE2
+  int rv = pipe2(p->fd, flags);
+  if (rv < 0)
+    die("pipe2: %m");
+#else
   int rv = pipe(p->fd);
   if (rv < 0)
     die("pipe: %m");
 
-  if (fcntl(p->fd[0], F_SETFL, O_NONBLOCK) < 0)
+  if (fcntl(p->fd[0], F_SETFL, flags) < 0)
     die("fcntl(O_NONBLOCK): %m");
 
-  if (fcntl(p->fd[1], F_SETFL, O_NONBLOCK) < 0)
+  if (fcntl(p->fd[1], F_SETFL, flags) < 0)
     die("fcntl(O_NONBLOCK): %m");
+#endif
 }
 
 void
@@ -301,6 +304,22 @@ static inline void
 wakeup_free(struct bird_thread *loop)
 {
   pipe_free(&loop->wakeup);
+}
+
+static inline void
+wakeup_forked(struct bird_thread *thr)
+{
+  struct pipe new;
+  pipe_new(&new);
+
+  /* This is kinda sketchy but there is probably
+   * no actual architecture where copying an int
+   * would create an invalid inbetween value */
+  struct pipe old = thr->wakeup;
+  thr->wakeup = new;
+  synchronize_rcu();
+
+  pipe_free(&old);
 }
 
 static inline bool
@@ -418,7 +437,7 @@ birdloop_add_socket(struct birdloop *loop, sock *s)
   socket_changed(s);
 }
 
-extern sock *stored_sock; /* mainloop hack */
+sock *stored_sock; /* mainloop hack */
 
 void
 birdloop_remove_socket(struct birdloop *loop, sock *s)
@@ -466,16 +485,21 @@ void
 sk_pause_rx(struct birdloop *loop, sock *s)
 {
   ASSERT_DIE(birdloop_inside(loop));
+  ASSERT_DIE(!s->rx_paused);
+  ASSERT_DIE(s->rx_hook);
+  s->rx_paused = s->rx_hook;
   s->rx_hook = NULL;
   socket_changed(s);
 }
 
 void
-sk_resume_rx(struct birdloop *loop, sock *s, int (*hook)(sock *, uint))
+sk_resume_rx(struct birdloop *loop, sock *s)
 {
   ASSERT_DIE(birdloop_inside(loop));
-  ASSERT_DIE(hook);
-  s->rx_hook = hook;
+  ASSERT_DIE(s->rx_paused);
+  ASSERT_DIE(!s->rx_hook);
+  s->rx_hook = s->rx_paused;
+  s->rx_paused = NULL;
   socket_changed(s);
 }
 
@@ -599,6 +623,19 @@ struct thread_group_private {
   const struct thread_group_config *cf;
 };
 
+struct birdloop_pickup_group pickup_groups[2] = {
+  {
+    /* all zeroes */
+    .start_threads.hook = bird_thread_start_event,
+  },
+  {
+    /* FIXME: make this dynamic, now it copies the loop_max_latency value from proto/bfd/config.Y */
+    .max_latency = 10 MS,
+    .start_threads.hook = bird_thread_start_event,
+    .start_threads.data = &pickup_groups[1],
+  },
+};
+
 typedef union thread_group_public {
   struct { THREAD_GROUP_PUBLIC; };
   struct thread_group_private priv;
@@ -638,7 +675,7 @@ thread_group_config_default_express = {
 thread_group_shutdown = {};
 
 
-static _Thread_local struct bird_thread *this_thread;
+_Thread_local struct bird_thread *this_thread;
 
 static void bird_thread_busy_set(struct thread_group_private *, int val);
 
@@ -931,7 +968,7 @@ bird_thread_main(void *arg)
     int timeout;
 
     /* Schedule all loops with timed out timers */
-    timers_fire(&thr->meta->time, 0);
+    timers_fire(&thr->meta->time);
 
     /* Pickup new loops */
     birdloop_balancer();
@@ -1313,6 +1350,9 @@ bird_thread_commit(struct config *new, struct config *old)
 
   if (new->shutdown)
     return;
+
+  if (!new->thread_count)
+    new->thread_count = 1;
 
   /* First, we match the new config to the existing groups */
   WALK_TLIST(thread_group_config, tgc, &new->thread_group)
@@ -1830,7 +1870,7 @@ birdloop_run(void *_loop)
     sockets_fire(loop, 0, 1);
 
     /* Run timers */
-    timers_fire(&loop->time, 0);
+    timers_fire(&loop->time);
 
     /* Run events */
     repeat = ev_run_list(&loop->event_list);
@@ -2094,4 +2134,58 @@ ev_send_defer(event *e)
     ev_send_loop(&main_birdloop, e);
   else
     ev_send(&this_birdloop->defer_list, e);
+}
+
+/*
+ * Minimalist mainloop with no sockets
+ */
+
+void
+birdloop_minimalist_main(void)
+{
+  /* In case we got forked (hack for Flock) */
+  wakeup_forked(&main_thread);
+
+  while (1)
+  {
+    /* Unset ping information */
+    atomic_fetch_and_explicit(&main_birdloop.thread_transition, ~LTT_PING, memory_order_acq_rel);
+
+    times_update();
+    ev_run_list(&global_event_list);
+    ev_run_list(&global_work_list);
+    ev_run_list(&main_birdloop.event_list);
+    timers_fire(&main_birdloop.time);
+
+    bool events =
+      !ev_list_empty(&global_event_list) ||
+      !ev_list_empty(&global_work_list) ||
+      !ev_list_empty(&main_birdloop.event_list);
+
+    int poll_tout = (events ? 0 : 3000); /* Time in milliseconds */
+    timer *t;
+    if (t = timers_first(&main_birdloop.time))
+    {
+      times_update();
+      int timeout = (tm_remains(t) TO_MS) + 1;
+      poll_tout = MIN(poll_tout, timeout);
+    }
+
+    struct pollfd pfd = {
+      .fd = main_birdloop.thread->wakeup.fd[0],
+      .events = POLLIN,
+    };
+
+    int rv = poll(&pfd, 1, poll_tout);
+    if ((rv < 0) && (errno != EINTR) && (errno != EAGAIN))
+      bug("poll in main birdloop: %m");
+
+    /* Drain wakeup fd */
+    if (pfd.revents & POLLIN)
+    {
+      THREAD_TRACE(DL_WAKEUP, "Ping received");
+      ASSERT_DIE(rv == 1);
+      wakeup_drain(main_birdloop.thread);
+    }
+  }
 }
