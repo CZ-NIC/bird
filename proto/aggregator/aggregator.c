@@ -799,24 +799,13 @@ aggregator_init(struct proto_config *CF)
 static void
 aggregator_init_trie(struct aggregator_proto *p)
 {
-  struct network *default_net = NULL;
+  ip_addr prefix = (p->addr_type == NET_IP4) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
 
-  if (p->addr_type == NET_IP4)
-  {
-    default_net = mb_allocz(p->p.pool, sizeof(*default_net) + sizeof(struct net_addr_ip4));
-    net_fill_ip4(default_net->n.addr, IP4_NONE, 0);
+  struct net_addr addr = { 0 };
+  net_fill_ipa(&addr, prefix, 0);
 
-    if (p->logging)
-      log("Creating net %p for default route %N", default_net, default_net->n.addr);
-  }
-  else if (p->addr_type == NET_IP6)
-  {
-    default_net = mb_allocz(p->p.pool, sizeof(*default_net) + sizeof(struct net_addr_ip6));
-    net_fill_ip6(default_net->n.addr, IP6_NONE, 0);
-
-    if (p->logging)
-      log("Creating net %p for default route %N", default_net, default_net->n.addr);
-  }
+  struct network *default_net = mb_allocz(p->p.pool, sizeof(*default_net) + sizeof(addr));
+  net_copy(default_net->n.addr, &addr);
 
   /* Create route attributes with zero nexthop */
   struct rta rta = { 0 };
