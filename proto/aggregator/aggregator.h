@@ -32,8 +32,8 @@ struct aggregator_config {
   struct proto_config c;
   struct channel_config *src, *dst;
   enum aggregation_mode aggr_mode;
-  uint aggr_on_count;
-  uint aggr_on_da_count;
+  u32 aggr_on_count;
+  u32 aggr_on_da_count;
   struct aggr_item *aggr_on;
   const struct f_line *merge_by;
   int logging;
@@ -75,8 +75,8 @@ struct aggregator_proto {
   linpool *route_pool;
 
   /* Aggregator rule */
-  uint aggr_on_count;
-  uint aggr_on_da_count;
+  u32 aggr_on_count;
+  u32 aggr_on_da_count;
   struct aggr_item *aggr_on;
 
   /* Merge filter */
@@ -84,7 +84,7 @@ struct aggregator_proto {
   event reload_buckets;
 
   /* Aggregation trie */
-  uint addr_type;
+  u32 addr_type;
   struct slab *trie_slab;
   struct trie_node *root;
   int logging;

@@ -210,7 +210,7 @@ aggregator_rta_set_static_attr(struct rta *rta, const struct rta *old, struct f_
 static int
 same_val_list(const struct f_val *v1, const struct f_val *v2, uint len)
 {
-  for (uint i = 0; i < len; i++)
+  for (u32 i = 0; i < len; i++)
     if (!val_same(&v1[i], &v2[i]))
       return 0;
 
@@ -243,7 +243,7 @@ aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *b
   rta->eattrs = eal;
 
   /* Seed the attributes from aggregator rule */
-  for (uint i = 0; i < p->aggr_on_count; i++)
+  for (u32 i = 0; i < p->aggr_on_count; i++)
   {
     if (p->aggr_on[i].type == AGGR_ITEM_DYNAMIC_ATTR)
     {
@@ -531,7 +531,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     struct aggregator_bucket *tmp_bucket = allocz(sizeof(*tmp_bucket) + sizeof(tmp_bucket->aggr_data[0]) * p->aggr_on_count);
     ASSERT_DIE(tmp_bucket->id == 0);
 
-    for (uint val_idx = 0; val_idx < p->aggr_on_count; val_idx++)
+    for (u32 val_idx = 0; val_idx < p->aggr_on_count; val_idx++)
     {
       int type = p->aggr_on[val_idx].type;
 
@@ -575,7 +575,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     u64 haux;
     mem_hash_init(&haux);
 
-    for (uint i = 0; i < p->aggr_on_count; i++)
+    for (u32 i = 0; i < p->aggr_on_count; i++)
     {
       mem_hash_mix_num(&haux, tmp_bucket->aggr_data[i].type);
 
@@ -945,7 +945,7 @@ aggregator_reconfigure(struct proto *P, struct proto_config *CF)
     return 0;
 
   /* Compare aggregator rule */
-  for (uint i = 0; i < p->aggr_on_count; i++)
+  for (u32 i = 0; i < p->aggr_on_count; i++)
   {
     switch (cf->aggr_on[i].type)
     {
