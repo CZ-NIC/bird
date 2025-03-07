@@ -208,7 +208,7 @@ aggregator_rta_set_static_attr(struct rta *rta, const struct rta *old, struct f_
  * @count: number of &f_val entries
  */
 static int
-aggregator_same_val_list(const struct f_val *v1, const struct f_val *v2, uint len)
+aggregator_same_val_list(const struct f_val *v1, const struct f_val *v2, u32 len)
 {
   for (u32 i = 0; i < len; i++)
     if (!val_same(&v1[i], &v2[i]))
@@ -858,7 +858,7 @@ aggregator_init_trie(struct aggregator_proto *p)
   HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 
   /* Create root node */
-  p->root = aggregator_create_new_node(p->trie_slab);
+  p->root = aggregator_alloc_node(p->trie_slab);
 
   /*
    * Root node is initialized with NON_FIB status.
