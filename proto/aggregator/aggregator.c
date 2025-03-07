@@ -708,7 +708,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   {
     if (p->root)
     {
-      aggregator_recalculate(p, old_route, new_route);
+      aggregator_recompute(p, old_route, new_route);
 
       /* Process route withdrawals triggered by recalculation */
       aggregator_withdraw_rte(p);

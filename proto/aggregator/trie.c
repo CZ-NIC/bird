@@ -921,7 +921,7 @@ aggregator_construct_trie(struct aggregator_proto *p)
  * Run Optimal Routing Table Constructor (ORTC) algorithm
  */
 static void
-aggregator_calculate_trie(struct aggregator_proto *p)
+aggregator_compute_trie(struct aggregator_proto *p)
 {
   ASSERT_DIE(p->addr_type == NET_IP4 || p->addr_type == NET_IP6);
 
@@ -937,14 +937,14 @@ aggregator_aggregate(struct aggregator_proto *p)
   ASSERT_DIE(p->root != NULL);
 
   aggregator_construct_trie(p);
-  aggregator_calculate_trie(p);
+  aggregator_compute_trie(p);
 }
 
 /*
  * Incorporate prefix change into the trie and reaggregate
  */
 void
-aggregator_recalculate(struct aggregator_proto *p, struct aggregator_route *old, struct aggregator_route *new)
+aggregator_recompute(struct aggregator_proto *p, struct aggregator_route *old, struct aggregator_route *new)
 {
   struct trie_node *updated_node = NULL;
 
