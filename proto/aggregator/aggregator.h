@@ -68,11 +68,11 @@ struct aggregator_proto {
 
   /* Buckets by aggregator rule */
   HASH(struct aggregator_bucket) buckets;
-  linpool *bucket_pool;
+  struct linpool *bucket_pool;
 
   /* Routes by net and src */
   HASH(struct aggregator_route) routes;
-  linpool *route_pool;
+  struct linpool *route_pool;
 
   /* Aggregator rule */
   u32 aggr_on_count;
@@ -97,7 +97,7 @@ struct aggregator_proto {
   struct hmap bucket_id_map;
 
   /* Route withdrawal */
-  linpool *rte_withdrawal_pool;
+  struct linpool *rte_withdrawal_pool;
   struct rte_withdrawal_item *rte_withdrawal_stack;
   int rte_withdrawal_count;
 };
@@ -151,6 +151,6 @@ void aggregator_aggregate(struct aggregator_proto *p);
 void aggregator_recompute(struct aggregator_proto *p, struct aggregator_route *old, struct aggregator_route *new);
 void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net);
 
-struct trie_node *aggregator_create_new_node(struct slab *trie_slab);
+struct trie_node *aggregator_alloc_node(struct slab *trie_slab);
 
 #endif

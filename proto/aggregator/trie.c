@@ -93,7 +93,7 @@ static const u32 ipa_shift[] = {
  */
 // TODO: inline in aggregator.h?
 struct trie_node *
-aggregator_create_new_node(struct slab *trie_slab)
+aggregator_alloc_node(struct slab *trie_slab)
 {
   return sl_allocz(trie_slab);
 }
@@ -234,12 +234,12 @@ aggregator_merge_potential_buckets(struct trie_node *target, const struct trie_n
   int has_changed = 0;
   int buckets_count = 0;
 
-  u32 old[ARRAY_SIZE(target->potential_buckets)] = { 0 };
+  u32 before[ARRAY_SIZE(target->potential_buckets)] = { 0 };
 
   for (int i = 0; i < POTENTIAL_BUCKETS_BITMAP_SIZE; i++)
   {
     /* Save current bitmap values */
-    old[i] = target->potential_buckets[i];
+    before[i] = target->potential_buckets[i];
 
     /* Compute intersection */
     has_intersection |= !!(target->potential_buckets[i] = left->potential_buckets[i] & right->potential_buckets[i]);
@@ -249,7 +249,7 @@ aggregator_merge_potential_buckets(struct trie_node *target, const struct trie_n
      * If old and new values are different, the result of their XOR will be
      * non-zero, thus @has_changed will be set to non-zero -- true, as well.
      */
-    has_changed |= !!(old[i] ^ target->potential_buckets[i]);
+    has_changed |= !!(before[i] ^ target->potential_buckets[i]);
   }
 
   /* Sets have an empty intersection, compute their union instead */
@@ -262,7 +262,7 @@ aggregator_merge_potential_buckets(struct trie_node *target, const struct trie_n
     {
       target->potential_buckets[i] = left->potential_buckets[i] | right->potential_buckets[i];
       buckets_count += u32_popcount(target->potential_buckets[i]);
-      has_changed |= !!(old[i] ^ target->potential_buckets[i]);
+      has_changed |= !!(before[i] ^ target->potential_buckets[i]);
     }
   }
 
@@ -438,7 +438,7 @@ aggregator_trie_insert_prefix(struct aggregator_proto *p, ip_addr prefix, u32 px
 
     if (!node->child[bit])
     {
-      struct trie_node *new = aggregator_create_new_node(p->trie_slab);
+      struct trie_node *new = aggregator_alloc_node(p->trie_slab);
 
       *new = (struct trie_node) {
         .parent = node,
@@ -743,7 +743,7 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
      */
     if (!aggregator_is_bucket_potential(&imaginary_node, imaginary_node_inherited_bucket))
     {
-      struct trie_node *new = aggregator_create_new_node(p->trie_slab);
+      struct trie_node *new = aggregator_alloc_node(p->trie_slab);
       *new = imaginary_node;
 
       /* Connect new node to the trie */
