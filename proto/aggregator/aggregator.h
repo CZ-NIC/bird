@@ -148,7 +148,7 @@ struct trie_node {
 };
 
 void aggregator_aggregate(struct aggregator_proto *p);
-void aggregator_recalculate(struct aggregator_proto *p, struct aggregator_route *old, struct aggregator_route *new);
+void aggregator_recompute(struct aggregator_proto *p, struct aggregator_route *old, struct aggregator_route *new);
 void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net);
 
 struct trie_node *aggregator_create_new_node(struct slab *trie_slab);
