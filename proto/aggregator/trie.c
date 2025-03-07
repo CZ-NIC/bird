@@ -551,6 +551,7 @@ static void
 aggregator_second_pass(struct trie_node *node, int recomputing)
 {
   ASSERT_DIE(node != NULL);
+  ASSERT_DIE(node->status != UNASSIGNED_FIB);
   ASSERT_DIE(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
   if (recomputing)
@@ -637,6 +638,7 @@ static void
 aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node, ip_addr *prefix, u32 pxlen)
 {
   ASSERT_DIE(node != NULL);
+  ASSERT_DIE(node->status != UNASSIGNED_FIB);
   ASSERT_DIE(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
   ASSERT_DIE(node->original_bucket != NULL);
@@ -716,6 +718,7 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
     struct trie_node imaginary_node = {
       .parent = node,
       .original_bucket = node->original_bucket,
+      .status = NON_FIB,
       .px_origin = AGGREGATED,
       .depth = node->depth + 1,
     };
