@@ -199,6 +199,7 @@ rt_export_release(const struct rt_export_union *u)
 
     case RT_EXPORT_UPDATE:
       rtex_trace(r, D_ROUTES, "Export %lu released", u->update->seq);
+      bmap_set(&r->seq_map, u->update->seq);
       lfjour_release(&r->r, &u->update->li);
 
       break;
