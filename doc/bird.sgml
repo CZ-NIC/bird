@@ -3427,7 +3427,7 @@ protocol bgp [<name>] {
 	Time in seconds to wait before retrying a failed attempt to connect.
 	Default: 120 seconds.
 
-	<tag><label id="bgp-error-wait-time">error wait time <m/number/,<m/number/</tag>
+	<tag><label id="bgp-error-wait-time">error wait time <m/number/, <m/number/</tag>
 	Minimum and maximum delay in seconds between a protocol failure (either
 	local or reported by the peer) and automatic restart. Does not apply
 	when <cf/disable after error/ is configured. If consecutive errors
