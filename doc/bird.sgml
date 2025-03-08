@@ -2892,7 +2892,8 @@ using the following configuration parameters:
 
 <code>
 protocol bgp [<name>] {
-	ipv4|ipv6|flow4|flow6|... {
+	ipv4|ipv6|... {
+		<channel-options>
 		mandatory <switch>;
 		next hop keep <switch>|ibgp|ebgp;
 		next hop self <switch>|ibgp|ebgp;
@@ -2928,12 +2929,7 @@ protocol bgp [<name>] {
 	strict bind <switch>;
 	free bind <switch>;
 	check link <switch>;
-	bfd <switch>|graceful|{<options>};
-	bfd {
-		authentication none|simple|cryptographic;
-		password "<text>";
-		...
-	};
+	bfd <switch>|graceful| { <bfd-options> };
 	ttl security <switch>;
 	password "<text>";
 	setkey <switch>;
@@ -2971,7 +2967,7 @@ protocol bgp [<name>] {
 	advertise hostname <switch>;
 	require hostname <switch>;
 	disable after error <switch>;
-	disable after cease <switch>|<set of flags>;
+	disable after cease <switch>|<set-of-flags>;
 	hold time <number>;
 	min hold time <number>;
 	startup hold time <number>;
@@ -2980,16 +2976,16 @@ protocol bgp [<name>] {
 	send hold time <number>;
 	connect delay time <number>;
 	connect retry time <number>;
-	error wait time <number>,<number>;
+	error wait time <number>, <number>;
 	error forget time <number>;
 	path metric <switch>;
 	med metric <switch>;
 	deterministic med <switch>;
 	igp metric <switch>;
 	prefer older <switch>;
-	default bgp med <number>;
-	default bgp local pref <number>;
-	local role <role name>;
+	default bgp_med <number>;
+	default bgp_local_pref <number>;
+	local role <role-name>;
 	require roles <switch>;
 }
 </code>
