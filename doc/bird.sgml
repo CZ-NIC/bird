@@ -3784,79 +3784,81 @@ be used in explicit configuration.
 	option.
 </descrip>
 
-<sect1>BGP reconfiguration
-<label id="bgp-flap">
+<sect1>Reconfiguration
+<label id="bgp-reconfiguration">
 
-<p>Running the <cf/configure/ command with a changed configuration file
-will trigger a reconfiguration. This may cause a reload or a restart of
-the BGP protocol. With the command <cf/configure soft/ some changes do
-not trigger the reload, but only suggests a manual reload of the protocol.
-See <ref id="cli-configure" name="configure"> and <ref id="cli-reload"
-name="reload"> commands for more details.
-<newline>
+<p>Running the <cf/configure/ command with a changed configuration file will
+trigger a reconfiguration. This may cause a reload of the affected channel or
+a restart of the BGP protocol. A change in options that just affect route
+processing generally causes a reload, while a change in setting of BGP
+capabilities or other properties negotiated during session establishment always
+leads to a restart.
 
-<p> When <cf/soft/ option is not used, change in these channel options cause a reload:
-<newline>
+<p>With the <cf/configure soft/ command, configuration changes do not trigger
+a reload, but instead just log a message about the change, suggesting manual
+reload of the channel. However, changes demanding restart still trigger a
+restart of the protocol. See <ref id="cli-configure" name="configure"> and
+<ref id="cli-reload" name="reload"> commands for more details. In the rest of
+the section, we assume the usage of the <cf/configure/ command without the
+<cf/soft/ option.
 
-<p> Reload for import:
+<p>Changes in these channel options cause a reload of the channel in the import
+direction (re-import of routes from the BGP neighbor):
+
 <itemize>
-	<item> General:
-	<itemize>
-		<item> import filter
-		<item> preference
-	</itemize>
-	<item> BGP:
-	<itemize>
-		<item> gateway mode
-		<item> next hop prefer
-		<item> aigp
-		<item> cost
-	</itemize>
+	<item>import
+	<item>preference
+	<item>gateway
+	<item>next hop prefer
+	<item>aigp
+	<item>cost
 </itemize>
 
-<p> Note: Reload for import would trigger restart instead of import reload
-in case of both <cf/import table/ disabled and <cf/route refresh/ not negotiated.
-This does not apply for export.
-<newline>
+<p>Note: Reload in the import direction requires either the <cf/route refresh/
+capability negotiated or the <cf/import table/ option enabled. If neither one is
+available, the reconfiguration will trigger a restart instead of a reload. This
+does not apply for export direction.
 
-<p>Reload for export:
+<p>Changes in these channel options cause a reload of the channel in the export
+direction (re-export of routes to the BGP neighbor):
+
 <itemize>
-	<item> General:
-	<itemize>
-		<item> export filter
-	</itemize>
-	<item> BGP:
-	<itemize>
-		<item> next hop address
-		<item> next hop self
-		<item> next hop keep
-		<item> aigp
-		<item> aigp originate
-	</itemize>
+	<item>export
+	<item>next hop address
+	<item>next hop self
+	<item>next hop keep
+	<item>aigp
+	<item>aigp originate
 </itemize>
 
-<p> Here are the options that trigger a restart regardless of the <cf/soft/ option.
-<newline>
 
-<p> All BGP specific protocol options cause restart except for:
+<p>Protocol options that cause restart when changed:
 <itemize>
+	<item> router id
+	<item> hostname
+	<item> vrf
+</itemize>
+
+<p><bf/All/ BGP-specific protocol options cause restart when changed <bf/except/ for these:
+<itemize>
+  	<item> bfd
 	<item> check link
 	<item> require route refresh
 	<item> require enhanced route refresh
 	<item> require AS4
 	<item> require extended messages
 	<item> require hostname
-	<item> require gracefull restart
-	<item> require long lived gracefull restart
-	<item> any BFD options
+	<item> require graceful restart
+	<item> require long lived graceful restart
 </itemize>
 
-<p> BGP channel options which cause restart:
+<p>Channel options that cause restart when changed:
 <itemize>
+	<item> table
 	<item> secondary
 	<item> validate
 	<item> graceful restart
-	<item> long lived gracefull restart
+	<item> long lived graceful restart
 	<item> long lived stale time
 	<item> extended next hop
 	<item> add paths
@@ -3866,14 +3868,12 @@ This does not apply for export.
 	<item> base table
 </itemize>
 
-<p> General protocol options restart for:
+<p>Channel options that may cause restart (when changed to a value
+incompatible with the current protocol state):
 <itemize>
-	<item> vrf
-</itemize>
-
-<p> General channel options restart for:
-<itemize>
-	<item> table
+	<item> mandatory
+	<item> min long lived stale time
+	<item> max long lived stale time
 </itemize>
 
 <sect1>Attributes
