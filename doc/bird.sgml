@@ -916,7 +916,7 @@ agreement").
 	<cf>interface "eth*" 192.168.1.0/24;</cf> - start the protocol on all
 	ethernet interfaces that have address from 192.168.1.0/24.
 
-	<tag><label id="proto-tx-class">tx class|dscp <m/num/</tag>
+	<tag><label id="proto-tx-class">tx class|dscp <m/number/</tag>
 	This option specifies the value of ToS/DS/Class field in IP headers of
 	the outgoing protocol packets. This may affect how the protocol packets
 	are processed by the network relative to the other network traffic. With
@@ -925,7 +925,7 @@ agreement").
 	keyword, the value (0-63) is used just for the DS field in the octet.
 	Default value is 0xc0 (DSCP 0x30 - CS6).
 
-	<tag><label id="proto-tx-priority">tx priority <m/num/</tag>
+	<tag><label id="proto-tx-priority">tx priority <m/number/</tag>
 	This option specifies the local packet priority. This may affect how the
 	protocol packets are processed in the local TX queues. This option is
 	Linux specific. Default value is 7 (highest priority, privileged traffic).
@@ -1302,7 +1302,7 @@ This argument can be omitted if there exists only a single instance.
 	Show a topology of OSPF areas based on a content of the link-state
 	database. It is just a stripped-down version of 'show ospf state'.
 
-	<tag><label id="cli-show-ospf-lsadb">show ospf lsadb [global | area <m/id/ | link] [type <m/num/] [lsid <m/id/] [self | router <m/id/] [<m/name/] </tag>
+	<tag><label id="cli-show-ospf-lsadb">show ospf lsadb [global | area <m/id/ | link] [type <m/number/] [lsid <m/id/] [self | router <m/id/] [<m/name/] </tag>
 	Show contents of an OSPF LSA database. Options could be used to filter
 	entries.
 
@@ -1379,7 +1379,7 @@ This argument can be omitted if there exists only a single instance.
 	Dump content of a routing table to a specified file in MRT table dump
 	format. See <ref id="mrt" name="MRT protocol"> for details.
 
-	<tag><label id="cli-configure">configure [soft] ["<m/config file/"] [timeout [<m/num/]]</tag>
+	<tag><label id="cli-configure">configure [soft] ["<m/config file/"] [timeout [<m/number/]]</tag>
 	Reload configuration from a given file. BIRD will smoothly switch itself
 	to the new configuration, protocols are reconfigured if possible,
 	restarted otherwise. Changes in filters usually lead to restart of
@@ -2372,7 +2372,7 @@ protocol babel [<name>] {
       wired interface, but turns on RTT-based metrics with a default cost of 96.
       Default: <cf/wired/.
 
-      <tag><label id="babel-rxcost">rxcost <m/num/</tag>
+      <tag><label id="babel-rxcost">rxcost <m/number/</tag>
       This option specifies the nominal RX cost of the interface. The effective
       neighbor costs for route metrics will be computed from this value with a
       mechanism determined by the interface <cf/type/. Note that in contrast to
@@ -2381,7 +2381,7 @@ protocol babel [<name>] {
       selection and not local route selection. Default: 96 for wired interfaces,
       256 for wireless.
 
-      <tag><label id="babel-limit">limit <m/num/</tag>
+      <tag><label id="babel-limit">limit <m/number/</tag>
       BIRD keeps track of received Hello messages from each neighbor to
       establish neighbor reachability. For wired type interfaces, this option
       specifies how many of last 16 hellos have to be correctly received in
@@ -2593,7 +2593,7 @@ Each BFD instance associated with a VRF (regular or default) only handles
 session requests from protocols in the same VRF.
 
 <p>Some of BFD session options require <m/time/ value, which has to be specified
-with the appropriate unit: <m/num/ <cf/s/|<cf/ms/|<cf/us/. Although microseconds
+with the appropriate unit: <m/number/ <cf/s/|<cf/ms/|<cf/us/. Although microseconds
 are allowed as units, practical minimum values are usually in order of tens of
 milliseconds.
 
@@ -2715,7 +2715,7 @@ protocol bfd [&lt;name&gt;] {
 	desired TX interval in such cases instead of <cf/min tx interval/.
 	Default: 1 s.
 
-	<tag><label id="bfd-multiplier">multiplier <m/num/</tag>
+	<tag><label id="bfd-multiplier">multiplier <m/number/</tag>
 	Failure detection time for BFD sessions is based on established rate of
 	BFD control packets (<cf>min rx/tx interval</cf>) multiplied by this
 	multiplier, which is essentially (ignoring jitter) a number of missed
@@ -4735,7 +4735,7 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	disabled if necessary, as it restricts the range of available instance
 	IDs. Default value is yes.
 
-	<tag><label id="ospf-instance-id">instance id <m/num/</tag>
+	<tag><label id="ospf-instance-id">instance id <m/number/</tag>
 	When multiple OSPF protocol instances are active on the same links, they
 	should use different instance IDs to distinguish their packets. Although
 	it could be done on per-interface basis, it is often preferred to set
@@ -4757,7 +4757,7 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	<tag><label id="ospf-tick">tick <M>num</M></tag>
 	The routing table calculation and clean-up of areas' databases is not
 	performed when a single link state change arrives. To lower the CPU
-	utilization, it's processed later at periodical intervals of <m/num/
+	utilization, it's processed later at periodical intervals of <m/number/
 	seconds. The default value is 1.
 
 	<tag><label id="ospf-ecmp">ecmp <M>switch</M> [limit <M>number</M>]</tag>
@@ -4796,7 +4796,7 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	proper support for local graceful restart requires also configuration of
 	other protocols. Default: aware.
 
-	<tag><label id="ospf-graceful-restart-time">graceful restart time <m/num/</tag>
+	<tag><label id="ospf-graceful-restart-time">graceful restart time <m/number/</tag>
 	The restart time is announced in the Grace-LSA and specifies how long
 	neighbors should wait for proper end of the graceful restart before
 	exiting helper mode prematurely. Default: 120 seconds.
@@ -4880,7 +4880,7 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	that are subnetworks of given stub network are suppressed. This might be
 	used, for example, to aggregate generated stub networks.
 
-	<tag><label id="ospf-iface">interface <M>pattern</M> [instance <m/num/]</tag>
+	<tag><label id="ospf-iface">interface <M>pattern</M> [instance <m/number/]</tag>
 	Defines that the specified interfaces belong to the area being defined.
 	See <ref id="proto-iface" name="interface"> common option for detailed
 	description. In OSPFv2, extended interface clauses are used, because
@@ -4892,7 +4892,7 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	ID support is an extension (<rfc id="6549">) and is supposed to be set
 	per-protocol. For OSPFv3, it is an integral feature.
 
-	<tag><label id="ospf-virtual-link">virtual link <M>id</M> [instance <m/num/]</tag>
+	<tag><label id="ospf-virtual-link">virtual link <M>id</M> [instance <m/number/]</tag>
 	Virtual link to router with the router id. Virtual link acts as a
 	point-to-point interface belonging to backbone. The actual area is used
 	as a transport area. This item cannot be in the backbone. Like with
@@ -5065,7 +5065,7 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	set to <cf/tx only/, TTL 255 is used for sent packets, but is not
 	checked for received packets. Default value is no.
 
-	<tag><label id="ospf-tx-class">tx class|dscp|priority <m/num/</tag>
+	<tag><label id="ospf-tx-class">tx class|dscp|priority <m/number/</tag>
 	These options specify the ToS/DiffServ/Traffic class/Priority of the
 	outgoing OSPF packets. See <ref id="proto-tx-class" name="tx class"> common
 	option for detailed description.
@@ -5816,7 +5816,7 @@ protocol rip [ng] [&lt;name&gt;] {
 <p>Interface specific options:
 
 <descrip>
-	<tag><label id="rip-iface-metric">metric <m/num/</tag>
+	<tag><label id="rip-iface-metric">metric <m/number/</tag>
 	This option specifies the metric of the interface. When a route is
 	received from the interface, its metric is increased by this value
 	before further processing. Valid values are 1-255, but values higher
@@ -6079,19 +6079,19 @@ specify both channels.
 <sect2>RPKI protocol options
 <p>
 <descrip>
-        <tag>remote <m/ip/ | "<m/hostname/" [port <m/num/]</tag> Specifies
+        <tag>remote <m/ip/ | "<m/hostname/" [port <m/number/]</tag> Specifies
         a destination address of the cache server.  Can be specified by an IP
         address or by full domain name string.  Only one cache can be specified
         per protocol. This option is required.
 
-        <tag>port <m/num/</tag> Specifies the port number. The default port
+        <tag>port <m/number/</tag> Specifies the port number. The default port
         number is 323 for transport without any encryption and 22 for transport
         with SSH encryption.
 
         <tag>local address <m/ip/</tag>
         Define local address we should use as a source address for the RTR session.
 
-        <tag>refresh [keep] <m/num/</tag> Time period in seconds. Tells how
+        <tag>refresh [keep] <m/number/</tag> Time period in seconds. Tells how
         long to wait before next attempting to poll the cache using a Serial
         Query or a Reset Query packet. Must be lower than 86400 seconds (one
         day). Too low value can caused a false positive detection of
@@ -6099,14 +6099,14 @@ specify both channels.
         this value by a cache server.
         Default: 3600 seconds
 
-        <tag>retry [keep] <m/num/</tag> Time period in seconds between a failed
+        <tag>retry [keep] <m/number/</tag> Time period in seconds between a failed
         Serial/Reset Query and a next attempt.  Maximum allowed value is 7200
         seconds (two hours). Too low value can caused a false positive
         detection of network connection problems.  A keyword <cf/keep/
         suppresses updating this value by a cache server.
         Default: 600 seconds
 
-        <tag>expire [keep] <m/num/</tag> Time period in seconds. Received
+        <tag>expire [keep] <m/number/</tag> Time period in seconds. Received
         records are deleted if the client was unable to successfully refresh
         data for this time period.  Must be in range from 600 seconds (ten
         minutes) to 172800 seconds (two days).  A keyword <cf/keep/
@@ -6118,12 +6118,12 @@ specify both channels.
 	instead. This may be useful for implementing loose RPKI check for
 	blackholes. Default: disabled.
 
-	<tag>min version <m/num/</tag>
+	<tag>min version <m/number/</tag>
 	Minimal allowed version of the RTR protocol. BIRD will refuse to
 	downgrade a connection below this version and drop the session instead.
 	Default: 0
 
-	<tag>max version <m/num/</tag>
+	<tag>max version <m/number/</tag>
 	Maximal allowed version of the RTR protocol. BIRD will start with this
         version. Use this option if sending version 2 to your cache causes
         problems. Default: 2
@@ -6288,7 +6288,7 @@ each labeled route.
 	after <m/prefix/ specifies a static label for the labeled route, instead
 	of using dynamically allocated label.
 
-	<tag>route <m/prefix/ [mpls <m/number/] recursive <m/ip/ [mpls <m/num/[/<m/num/[/<m/num/[...]]]]</tag>
+	<tag>route <m/prefix/ [mpls <m/number/] recursive <m/ip/ [mpls <m/number/[/<m/number/[/<m/number/[...]]]]</tag>
 	Recursive nexthop resolves the given IP in the configured IGP table and
 	uses that route's next hop. The MPLS stacks are concatenated; on top is
 	the IGP's nexthop stack and on bottom is this route's stack.
@@ -6333,7 +6333,7 @@ options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 	network prefix. By default, the outgoing interface is resolved from the
 	nexthop address.
 
-	<tag><label id="static-route-mpls">mpls <m/num/[/<m/num/[/<m/num/[...]]]</tag>
+	<tag><label id="static-route-mpls">mpls <m/number/[/<m/number/[/<m/number/[...]]]</tag>
 	MPLS labels that should be pushed to packets forwarded by the route.
 	The option could be used for both IP routes (on MPLS ingress routers)
 	and MPLS switching rules (on MPLS transit routers). Default value is
@@ -6452,9 +6452,9 @@ protocol static {
 <p>Flowspec IPv6 are same as Flowspec IPv4 with a few exceptions.
 <itemize>
 	<item>Prefixes <m/inet6/ can be specified not only with prefix length,
-	but with prefix <cf/offset/ <m/num/ too (e.g.
+	but with prefix <cf/offset/ <m/number/ too (e.g.
 	<cf>::1234:5678:9800:0000/101 offset 64</cf>). Offset means to don't
-	care of <m/num/ first bits.
+	care of <m/number/ first bits.
 	<item>IPv6 Flowspec hasn't mandatory any flowspec component.
 	<item>In IPv6 packets, there is a matching the last next header value
 	for a matching IP protocol number (e.g. <cf>next header 6</cf>).
@@ -6463,11 +6463,11 @@ protocol static {
 </itemize>
 
 <p><descrip>
-	<tag><label id="flow6-dst">dst <m/inet6/ [offset <m/num/]</tag>
+	<tag><label id="flow6-dst">dst <m/inet6/ [offset <m/number/]</tag>
 	Set a matching destination IPv6 prefix (e.g. <cf>dst
 	::1c77:3769:27ad:a11a/128 offset 64</cf>).
 
-	<tag><label id="flow6-src">src <m/inet6/ [offset <m/num/]</tag>
+	<tag><label id="flow6-src">src <m/inet6/ [offset <m/number/]</tag>
 	Set a matching source IPv6 prefix (e.g. <cf>src fe80::/64</cf>).
 
 	<tag><label id="flow6-next-header">next header <m/numbers-match/</tag>
