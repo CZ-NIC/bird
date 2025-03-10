@@ -391,7 +391,7 @@ aggregator_create_route(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, s
   struct net_addr addr = { 0 };
   net_fill_ipa(&addr, prefix, pxlen);
 
-  struct network *n = allocz(sizeof(*n) + sizeof(struct net_addr));
+  struct network *n = allocz(sizeof(*n) + sizeof(addr));
   net_copy(n->n.addr, &addr);
 
   aggregator_bucket_update(p, bucket, n);
@@ -608,9 +608,7 @@ aggregator_second_pass(struct trie_node *node, int recomputing)
   ASSERT_DIE(node->original_bucket != NULL);
 
   /* Imaginary node if this was a complete binary tree */
-  struct trie_node imaginary_node = {
-    .parent = node,
-  };
+  struct trie_node imaginary_node = { 0 };
 
   /*
    * Imaginary node is used only for computing sets of potential buckets
@@ -984,6 +982,7 @@ aggregator_recompute(struct aggregator_proto *p, struct aggregator_route *old, s
 
   /* Find the closest IN_FIB ancestor of the updated node */
   // TODO: use node ancestor pointer instead of traversing
+  /*
   while (1)
   {
     if ((ancestor->status == IN_FIB && ancestor != updated_node) || !ancestor->parent)
@@ -991,8 +990,8 @@ aggregator_recompute(struct aggregator_proto *p, struct aggregator_route *old, s
 
     ancestor = ancestor->parent;
   }
+  */
 
-  /*
   while (ancestor = ancestor->parent)
   {
     ASSERT_DIE(ancestor != updated_node);
@@ -1000,7 +999,6 @@ aggregator_recompute(struct aggregator_proto *p, struct aggregator_route *old, s
     if (ancestor->status == IN_FIB || !ancestor->parent)
       break;
   }
-  */
 
   // TODO: root should never get here
   ASSERT_DIE(ancestor != NULL);
@@ -1014,5 +1012,5 @@ aggregator_recompute(struct aggregator_proto *p, struct aggregator_route *old, s
   ASSERT_DIE(highest_node != NULL);
 
   aggregator_third_pass(p, highest_node);
-  check_trie_after_aggregation(p->root);
+  check_trie_after_aggregation(highest_node);
 }
