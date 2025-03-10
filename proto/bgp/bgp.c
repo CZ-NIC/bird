@@ -2499,7 +2499,7 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   if (proto_get_router_id(CF) != p->local_id)
     return 0;
 
-  if (proto_get_hostname(CF) != p->hostname)
+  if (bstrcmp(proto_get_hostname(CF), p->hostname))
     return 0;
 
   int same = !memcmp(((byte *) old) + sizeof(struct proto_config),
@@ -2541,6 +2541,7 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 
   /* We should update our copy of configuration ptr as old configuration will be freed */
   p->cf = new;
+  p->hostname = proto_get_hostname(CF);
 
   /* Check whether existing connections are compatible with required capabilities */
   struct bgp_conn *ci = &p->incoming_conn;
