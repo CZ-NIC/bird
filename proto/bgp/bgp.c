@@ -1841,6 +1841,8 @@ bgp_start(struct proto *P)
   p->startup_timer = tm_new_init(p->p.pool, bgp_startup_timeout, p, 0, 0);
   p->gr_timer = tm_new_init(p->p.pool, bgp_graceful_restart_timeout, p, 0, 0);
 
+  p->hostname = proto_get_hostname(P->cf);
+
   p->local_id = proto_get_router_id(P->cf);
   if (p->rr_client)
     p->rr_cluster_id = p->cf->rr_cluster_id ? p->cf->rr_cluster_id : p->local_id;
@@ -2497,6 +2499,9 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   if (proto_get_router_id(CF) != p->local_id)
     return 0;
 
+  if (proto_get_hostname(CF) != p->hostname)
+    return 0;
+
   int same = !memcmp(((byte *) old) + sizeof(struct proto_config),
 		     ((byte *) new) + sizeof(struct proto_config),
 		     // password item is last and must be checked separately
@@ -3018,14 +3023,18 @@ bgp_show_proto_info(struct proto *P)
 	  cli_msg(-1006, "    BGP Next hop:   %I %I", c->next_hop_addr, c->link_addr);
       }
 
-      if (c->igp_table_ip4)
-	cli_msg(-1006, "    IGP IPv4 table: %s", c->igp_table_ip4->name);
+      /* After channel is deconfigured, these pointers are no longer valid */
+      if (!p->p.reconfiguring || (c->c.channel_state != CS_DOWN))
+      {
+	if (c->igp_table_ip4)
+	  cli_msg(-1006, "    IGP IPv4 table: %s", c->igp_table_ip4->name);
 
-      if (c->igp_table_ip6)
-	cli_msg(-1006, "    IGP IPv6 table: %s", c->igp_table_ip6->name);
+	if (c->igp_table_ip6)
+	  cli_msg(-1006, "    IGP IPv6 table: %s", c->igp_table_ip6->name);
 
-      if (c->base_table)
-	cli_msg(-1006, "    Base table:     %s", c->base_table->name);
+	if (c->base_table)
+	  cli_msg(-1006, "    Base table:     %s", c->base_table->name);
+      }
 
       if (!c->tx)
 	continue;

@@ -113,6 +113,7 @@ struct proto_config {
   u8 late_if_feed;			/* Delay interface feed after channels are up */
   u32 debug, mrtdump;			/* Debugging bitfields, both use D_* constants */
   u32 router_id;			/* Protocol specific router ID */
+  const char *hostname;			/* Protocol specific hostname */
   uint loop_order;			/* Launch a birdloop on this locking level; use DOMAIN_ORDER(the_bird) for mainloop */
   btime loop_max_latency;		/* Request this specific maximum latency of loop; zero to default */
   btime restart_limit;			/* Minimum allowed time between limit restarts */
@@ -310,6 +311,12 @@ static inline u32
 proto_get_router_id(struct proto_config *pc)
 {
   return pc->router_id ?: atomic_load_explicit(&global_runtime, memory_order_relaxed)->router_id;
+}
+
+static inline const char*
+proto_get_hostname(struct proto_config *pc)
+{
+  return pc->hostname ? pc->hostname : pc->global->hostname;
 }
 
 
@@ -684,7 +691,7 @@ struct channel {
  *
  * CS_DOWN - The initial and the final state of a channel. There is no route
  * exchange between the protocol and the table. Channel is not counted as
- * active. Channel keeps a ptr to the table, but do not lock the table and is
+ * active. Channel keeps a ptr to the table, keeps the table locked, but is
  * not linked in the table. Generally, new closed channels are created in
  * protocols' init() hooks. The protocol is expected to explicitly activate its
  * channels (by calling channel_init() or channel_open()).

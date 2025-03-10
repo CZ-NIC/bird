@@ -347,6 +347,7 @@ proto_item:
  | DEBUG debug_mask { this_proto->debug = $2; }
  | MRTDUMP mrtdump_mask { this_proto->mrtdump = $2; }
  | ROUTER ID idval { this_proto->router_id = $3; }
+ | HOSTNAME text { this_proto->hostname = $2; }
  | DESCRIPTION text { this_proto->dsc = $2; }
  | VRF text { this_proto->vrf = if_get_by_name($2); }
  | VRF DEFAULT { this_proto->vrf = &default_vrf; }

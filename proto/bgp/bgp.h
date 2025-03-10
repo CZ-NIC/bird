@@ -355,6 +355,7 @@ struct bgp_listen_request {
 struct bgp_proto {
   struct proto p;
   const struct bgp_config *cf;		/* Shortcut to BGP configuration */
+  const char *hostname;      /* Hostname for this BGP protocol */
   ip_addr local_ip, remote_ip;
   u32 local_as, remote_as;
   u32 public_as;			/* Externally visible ASN (local_as or confederation id) */

@@ -35,6 +35,7 @@ struct config {
   struct iface_patt *router_id_from;	/* Configured list of router ID iface patterns */
 
   u32 router_id;			/* Our Router ID */
+  const char *hostname;			/* Hostname */
   u32 proto_default_debug;		/* Default protocol debug mask */
   u32 proto_default_mrtdump;		/* Default protocol mrtdump mask */
   u32 channel_default_debug;		/* Default channel debug mask */
@@ -46,7 +47,6 @@ struct config {
   struct timeformat tf_log;		/* Time format for the logfile */
   struct timeformat tf_base;		/* Time format for other purposes */
   u32 gr_wait;				/* Graceful restart wait timeout (sec) */
-  const char *hostname;			/* Hostname */
 
   int cli_debug;			/* Tracing of CLI connections and commands */
   enum latency_debug_flags {
