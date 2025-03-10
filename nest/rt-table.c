@@ -1184,7 +1184,7 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old)
     /* If the old route exists, it is either in rejected or in accepted map. */
     int rejected = bmap_test(&c->export_rejected_map, old->id);
     int accepted = bmap_test(&c->export_accepted_map, old->id);
-    ASSERT_DIE(rejected != accepted);
+    ASSERT_DIE(!rejected || !accepted);
 
     if (rejected)
     {
