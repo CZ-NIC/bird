@@ -26,14 +26,11 @@
  * the routing semantics. Aggregator is capable of processing incremental
  * updates.
  *
- * The algorithm works with the assumption that there is a default route, that is,
- * the null prefix at the root node has a bucket.
+ * The algorithm works with the assumption that there is a default route, that
+ * is, the null prefix at the root node has a bucket.
  *
- * Memory for the aggregator is allocated from three linpools: one for buckets,
- * one for routes and one for trie used in prefix aggregation. Obviously, trie
- * linpool is allocated only when aggregating prefixes. Linpools are flushed
- * after prefix aggregation is finished, thus destroying all data structures
- * used.
+ * Memory for buckets and routes is allocated from linpools, whereas memory for
+ * trie is allocated from slab.
  */
 
 #undef LOCAL_DEBUG
@@ -710,7 +707,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     {
       aggregator_recompute(p, old_route, new_route);
 
-      /* Process route withdrawals triggered by recalculation */
+      /* Process route withdrawals triggered by recomputation */
       aggregator_withdraw_rte(p);
     }
   }
@@ -798,11 +795,13 @@ aggregator_init(struct proto_config *CF)
 static void
 aggregator_init_trie(struct aggregator_proto *p)
 {
+  /* Zero prefix for default route */
   ip_addr prefix = (p->addr_type == NET_IP4) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
 
   struct net_addr addr = { 0 };
   net_fill_ipa(&addr, prefix, 0);
 
+  /* Create net for zero prefix */
   struct network *default_net = mb_allocz(p->p.pool, sizeof(*default_net) + sizeof(addr));
   net_copy(default_net->n.addr, &addr);
 
@@ -827,6 +826,7 @@ aggregator_init_trie(struct aggregator_proto *p)
     .rte = { .attrs = rta_lookup(&rta) },
   };
 
+  /* Put route into bucket */
   arte->rte.next = new_bucket->rte;
   new_bucket->rte = &arte->rte;
   new_bucket->count++;
@@ -837,13 +837,9 @@ aggregator_init_trie(struct aggregator_proto *p)
   HASH_INSERT2(p->routes, AGGR_RTE, p->p.pool, arte);
   HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 
-  /* Create root node */
+  /* Initialize root node */
   p->root = aggregator_alloc_node(p->trie_slab);
 
-  /*
-   * Root node is initialized with NON_FIB status.
-   * Default route will be exported during first aggregation run.
-   */
   *p->root = (struct trie_node) {
     .original_bucket = new_bucket,
     .status = NON_FIB,

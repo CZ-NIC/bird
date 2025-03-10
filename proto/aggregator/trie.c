@@ -36,6 +36,7 @@
  * this node, then this node does not need a bucket and its prefix will not
  * be in FIB. Otherwise the node does need a bucket and any of its potential
  * buckets can be chosen. We always choose the bucket with the lowest ID.
+ * This prefix will go to FIB.
  *
  * The algorithm works with the assumption that there is a default route,
  * that is, the null prefix at the root node has a bucket.
@@ -43,26 +44,23 @@
  * Aggregator is capable of processing incremental updates. After receiving
  * an update, which can be either announce or withdraw, corresponding node
  * is found in the trie and its original bucket is updated.
- * The trie now needs to be recomputed to reflect this update. We go from
- * updated node upwards until we find its closest IN_FIB ancestor.
- * This is the prefix node that covers an address space which is affected
- * by received update. The whole subtree rooted at this node is deaggregated,
- * which means deleting all information computed by aggregation algorithm.
- * This is followed by second pass which propagates potential buckets from
- * the leaves upwards. Merging of sets of potential buckets continues upwards
- * until the node's set is not changed by this operation. Finally, third pass
- * runs from this node, finishing the aggregation. During third pass, changes in
- * prefix FIB status are detected and routes are exported or removed from the
- * routing table accordingly. All new routes are exported immmediately, however,
- * all routes that are to be withdrawed are pushed on the stack and removed
- * after recomputing the trie.
+ * The trie now needs to be recomputed to reflect this update. Trie is traversed
+ * from the updated node upwards until its closest IN_FIB ancestor is found.
+ * This is the prefix node that covers an address space which will be affected
+ * by received update. This is followed by the second pass which propagates
+ * potential buckets from the leaves upwards. Merging of sets of potential
+ * buckets continues upwards until the node's set is not changed by this
+ * operation. Finally, the third pass runs from this node, finishing the
+ * aggregation. During the third pass, changes in prefix FIB status are detected
+ * and routes are exported or removed from the routing table accordingly. All
+ * new routes are exported immmediately, whereas routes that are to be
+ * withdrawed are pushed on the stack and removed after recomputing the trie.
  *
- * From a practical point of view, our implementation differs a little bit from
- * the algorithm as it was described in the original paper.
- * During first pass, the trie is normalized by adding new nodes so that every
- * node has either zero or two children. We do not add these nodes to save both
+ * From a practical point of view, our implementation differs from the algorithm
+ * as it was described in the original paper.
+ * We do not add nodes to normalize the trie in the first pass to save both
  * time and memory. Another difference is that the propagation of original
- * buckets, which was previously done in the first pass, is now done in the
+ * buckets, which was originally done in the first pass, is now done in the
  * second pass, saving one traversal through the trie.
  */
 
@@ -653,10 +651,7 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
    */
   if (aggregator_is_bucket_potential(node, inherited_bucket))
   {
-    /*
-     * Prefix status is changing from IN_FIB to NON_FIB, thus its route
-     * must be removed from the routing table.
-     */
+    /* Prefix status is changing from IN_FIB to NON_FIB, withdraw its route */
     if (node->status == IN_FIB)
     {
       ASSERT_DIE(node->selected_bucket != NULL);
@@ -668,9 +663,9 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
     node->ancestor = node->parent->ancestor;
 
     /*
-     * We have to keep information whether this prefix was original to enable
-     * processing of incremental updates. If it's not original, then it is
-     * a filler because it's not going to FIB.
+     * Keep information whether this prefix is original to enable processing
+     * of incremental updates. If it's not original, then it is a filler
+     * because it's not in FIB.
      */
     node->px_origin = (node->px_origin == ORIGINAL) ? ORIGINAL : FILLER;
   }
@@ -682,16 +677,13 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
     node->selected_bucket = aggregator_select_lowest_id_bucket(p, node);
     ASSERT_DIE(node->selected_bucket != NULL);
 
-    /*
-     * Prefix status is changing from NON_FIB or UNASSIGNED (at newly created nodes)
-     * to IN_FIB, thus its route is exported to the routing table.
-     */
+    /* Prefix status is changing from NON_FIB to IN_FIB, export its route */
     if (node->status != IN_FIB)
       aggregator_create_route(p, *prefix, pxlen, node->selected_bucket);
 
     /*
-     * Keep information whether this prefix was original. If not, then its origin
-     * is changed to aggregated, because algorithm decided it's going to FIB.
+     * If prefix is not original, then its origin is changed to aggregated,
+     * because algorithm decided it's going to FIB.
      */
     node->px_origin = (node->px_origin == ORIGINAL) ? ORIGINAL : AGGREGATED;
     node->status = IN_FIB;
@@ -711,7 +703,7 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
   {
     /*
      * Imaginary node that would have been added during first pass.
-     * This node inherits bucket from its parent (current node).
+     * It inherits bucket from its parent -- current node.
      */
     struct trie_node imaginary_node = {
       .parent = node,
@@ -802,10 +794,7 @@ aggregator_third_pass(struct aggregator_proto *p, struct trie_node *node)
   node->selected_bucket = aggregator_select_lowest_id_bucket(p, node);
   ASSERT_DIE(node->selected_bucket != NULL);
 
-  /*
-   * Export new route if node status is changing from NON_FIB
-   * or UNASSIGNED to IN_FIB.
-   */
+  /* Export new route if node status is changing from NON_FIB to IN_FIB */
   if (node->status != IN_FIB)
     aggregator_create_route(p, prefix, pxlen, node->selected_bucket);
 
