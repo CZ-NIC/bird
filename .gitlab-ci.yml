@@ -44,7 +44,7 @@ stages:
   stage: build
   script:
   - autoreconf
-  - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
+  - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" $CONFIGURE_OPTIONS
   # Detect which make is available
   - MAKE=make
   - which gmake 2>/dev/null >/dev/null && MAKE=gmake
@@ -187,6 +187,76 @@ build-opensuse-15.3-amd64:
 #  tags:
 #    - freebsd
 #    - i386
+
+
+.build-only: &build-only
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:debian-11-amd64
+
+build-only-aggregator:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=aggregator
+
+build-only-babel:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=babel
+
+build-only-bfd:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=bfd
+
+build-only-bgp:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=bgp
+
+build-only-bgp-bmp:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=bgp,bmp
+
+build-only-l3vpn:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=l3vpn
+
+build-only-mrt:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=mrt
+
+build-only-ospf:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=ospf
+
+build-only-pipe:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=pipe
+
+build-only-radv:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=radv
+
+build-only-rip:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=rip
+
+build-only-rpki:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=rpki
+
+build-only-static:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=static
 
 
 .pkg-deb: &pkg-deb
