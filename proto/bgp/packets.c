@@ -632,7 +632,7 @@ bgp_read_capabilities(struct bgp_conn *conn, byte *pos, int len)
       caps->enhanced_refresh = 1;
       break;
 
-    case 71: /* Long lived graceful restart capability, RFC draft */
+    case 71: /* Long lived graceful restart capability, RFC 9494 */
       if (cl % 7)
 	goto err;
 

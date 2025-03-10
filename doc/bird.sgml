@@ -2880,6 +2880,7 @@ avoid routing loops.
 <item> <rfc id="9072"> - Extended Optional Parameters Length for BGP OPEN Message
 <item> <rfc id="9117"> - Revised Validation Procedure for BGP Flow Specifications
 <item> <rfc id="9234"> - Route Leak Prevention and Detection Using Roles
+<item> <rfc id="9494"> - Long-Lived Graceful Restart for BGP
 <item> <rfc id="9687"> - Send Hold Timer
 </itemize>
 
@@ -3190,6 +3191,16 @@ using the following configuration parameters:
 	re-establish after a restart before deleting stale routes. Default:
 	120 seconds.
 
+	<tag><label id="bgp-min-graceful-restart-time">min graceful restart time <m/number/</tag>
+	The lower bound for the graceful restart time to override the value
+	received in the BGP Graceful Restart capability announced by the
+	neighbor. Default: no lower bound.
+
+	<tag><label id="bgp-max-graceful-restart-time">max graceful restart time <m/number/</tag>
+	The upper bound for the graceful restart time to override the value
+	received in the BGP Graceful Restart capability announced by the
+	neighbor. Default: no upper bound.
+
 	<tag><label id="bgp-require-graceful-restart">require graceful restart <m/switch/</tag>
 	If enabled, the BGP Graceful Restart capability (<rfc id="4724">)
 	must be announced by the BGP neighbor, otherwise the BGP session
@@ -3214,8 +3225,18 @@ using the following configuration parameters:
 	session is re-stablished and synchronized or the stale time expires and
 	routes are removed. Default: 3600 seconds.
 
+	<tag><label id="bgp-min-long-lived-stale-time">min long lived stale time <m/number/</tag>
+	The lower bound for the long-lived stale time to override the value
+	received in the BGP Long-lived Graceful Restart capability announced
+	by the neighbor. Default: no lower bound.
+
+	<tag><label id="bgp-max-long-lived-stale-time">max long lived stale time <m/number/</tag>
+	The upper bound for the long-lived stale time to override the value
+	received in the BGP Long-lived Graceful Restart capability announced
+	by the neighbor. Default: no upper bound.
+
 	<tag><label id="bgp-require-long-lived-graceful-restart">require long lived graceful restart <m/switch/</tag>
-	If enabled, the BGP Long-lived Graceful Restart capability (draft)
+	If enabled, the BGP Long-lived Graceful Restart capability (<rfc id="9494">)
 	must be announced by the BGP neighbor, otherwise the BGP session
 	will not be established. Default: off.
 
@@ -3684,6 +3705,18 @@ be used in explicit configuration.
 	<tag><label id="bgp-long-lived-stale-time-c">long lived stale time <m/number/</tag>
 	Like previous graceful restart channel options, this option allows to
 	set <ref id="bgp-long-lived-stale-time" name="long lived stale time">
+	per AFI/SAFI pair instead of per protocol. Default: set by protocol-wide
+	option.
+
+	<tag><label id="bgp-min-long-lived-stale-time-c">min long lived stale time <m/number/</tag>
+	Like previous graceful restart channel options, this option allows to
+	set <ref id="bgp-min-long-lived-stale-time" name="min long lived stale time">
+	per AFI/SAFI pair instead of per protocol. Default: set by protocol-wide
+	option.
+
+	<tag><label id="bgp-max-long-lived-stale-time-c">max long lived stale time <m/number/</tag>
+	Like previous graceful restart channel options, this option allows to
+	set <ref id="bgp-max-long-lived-stale-time" name="max long lived stale time">
 	per AFI/SAFI pair instead of per protocol. Default: set by protocol-wide
 	option.
 </descrip>
