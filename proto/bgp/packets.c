@@ -1523,7 +1523,7 @@ bgp_decode_next_hop_none(struct bgp_parse_state *s UNUSED, byte *data UNUSED, ui
   /*
    * Although we expect no next hop and RFC 7606 7.11 states that attribute
    * MP_REACH_NLRI with unexpected next hop length is considered malformed,
-   * FlowSpec RFC 5575 4 states that next hop shall be ignored on receipt.
+   * FlowSpec RFC 8955 4 states that next hop shall be ignored on receipt.
    */
 
   return;

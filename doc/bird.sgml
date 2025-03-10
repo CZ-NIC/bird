@@ -335,7 +335,7 @@ Configuration keywords are <cf/flow4/ and <cf/flow6/.
 <itemize>
 	<item>(PK) IP prefix together with its length
 	<item>(PK) Flow definition data
-	<item>Flow action (encoded internally as BGP communities according to <rfc id="5575">)
+	<item>Flow action (encoded internally as BGP communities according to <rfc id="8955">)
 </itemize>
 
 <sect1>MPLS switching rules
@@ -2862,7 +2862,8 @@ avoid routing loops.
 <item> <rfc id="5065"> - AS confederations for BGP
 <item> <rfc id="5082"> - Generalized TTL Security Mechanism
 <item> <rfc id="5492"> - Capabilities Advertisement with BGP
-<item> <rfc id="5575"> - Dissemination of Flow Specification Rules
+<item> <rfc id="8955"> - Dissemination of Flow Specification Rules for IPv4
+<item> <rfc id="8956"> - Dissemination of Flow Specification Rules for IPv6
 <item> <rfc id="5668"> - 4-Octet AS Specific BGP Extended Community
 <item> <rfc id="6286"> - AS-Wide Unique BGP Identifier
 <item> <rfc id="6608"> - Subcodes for BGP Finite State Machine Error
@@ -3361,7 +3362,7 @@ using the following configuration parameters:
 
 	<tag><label id="bgp-error-wait-time">error wait time <m/number/,<m/number/</tag>
 	Minimum and maximum delay in seconds between a protocol failure (either
-	local or reported by the peer) and automatic restart. Doesn not apply
+	local or reported by the peer) and automatic restart. Does not apply
 	when <cf/disable after error/ is configured. If consecutive errors
 	happen, the delay is increased exponentially until it reaches the
 	maximum. Default: 60, 300.
@@ -4018,7 +4019,7 @@ announce local networks.
 protocol direct {
 	ipv4;
 	ipv6;
-	interface "-arc*", "*";		# Exclude the ARCnets
+	interface -"arc*", "*";		# Exclude the ARCnets
 }
 </code>
 
@@ -6168,7 +6169,7 @@ options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 <label id="flowspec-network-type">
 
 <p>The flow specification are rules for routers and firewalls for filtering
-purpose. It is described by <rfc id="5575">. There are 3 types of arguments:
+purpose. It is described by <rfc id="8955"> and <rfc id="8956">. There are 3 types of arguments:
 <m/inet4/ or <m/inet6/ prefixes, numeric matching expressions and bitmask
 matching expressions.
 
@@ -6276,9 +6277,9 @@ protocol static {
 	<tag><label id="flow6-next-header">next header <m/numbers-match/</tag>
 	Set a matching IP protocol numbers (e.g. <cf>next header != 6</cf>).
 
-	<tag><label id="flow6-label">label <m/bitmask-match/</tag>
-	Set a 20-bit bitmask for matching Flow Label field in IPv6 packets
-	(e.g. <cf>label 0x8e5/0x8e5</cf>).
+	<tag><label id="flow6-label">label <m/numbers-match/</tag>
+	Set numbers for matching the 20-bit Flow Label field in IPv6 packets
+	(e.g. <cf>label != 1234</cf>).
 </descrip>
 
 <p><code>
@@ -6293,7 +6294,7 @@ protocol static {
 		dport = 50;
 		tcp flags 0x03/0x0f && !0/0xff || 0x33/0x33;
 		fragment !is_fragment || !first_fragment;
-		label 0xaaaa/0xaaaa && 0x33/0x33;
+		label > 1111 && != 1234;
 	};
 }
 </code>
