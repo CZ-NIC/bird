@@ -811,7 +811,6 @@ aggregator_init_trie(struct aggregator_proto *p)
 
   /* Allocate bucket for root node */
   struct aggregator_bucket *new_bucket = lp_allocz(p->bucket_pool, sizeof(*new_bucket));
-  ASSERT_DIE(new_bucket->id == 0);
 
   u64 haux = 0;
   mem_hash_init(&haux);

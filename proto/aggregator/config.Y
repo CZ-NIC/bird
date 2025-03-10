@@ -57,8 +57,6 @@ aggregator_proto_item:
     int count = 0;
 
     for (const struct aggr_item_node *item = $3; item; item = item->next) {
-      log(L_WARN "type %d sacode %d", item->i.type, item->i.sa.sa_code);
-
       /*
        * If NET attribute is present, aggregate routes within the same net
        * and receive updates with any routes.
@@ -74,6 +72,7 @@ aggregator_proto_item:
    AGGREGATOR_CFG->aggr_on = cfg_alloc(sizeof(struct aggr_item) * count);
 
    int pos = 0;
+
    for (const struct aggr_item_node *item = $3; item; item = item->next) {
      if (item->i.type == AGGR_ITEM_DYNAMIC_ATTR)
        AGGREGATOR_CFG->aggr_on_da_count++;
