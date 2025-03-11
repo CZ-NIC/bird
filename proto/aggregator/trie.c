@@ -469,11 +469,8 @@ aggregator_trie_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 px
   for (u32 i = 0; i < pxlen; i++)
   {
     u32 bit = ipa_getbit(prefix, i + ipa_shift[p->addr_type]);
-
-    if (node->child[bit])
-      node = node->child[bit];
-    else
-      return node;
+    node = node->child[bit];
+    ASSERT_DIE(node != NULL);
   }
 
   ASSERT_DIE(node->px_origin == ORIGINAL);
@@ -767,7 +764,7 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
   }
 
   /* Prune the trie */
-  if (node->status == NON_FIB && aggregator_is_leaf(node))
+  if (node->status == NON_FIB && node->px_origin != ORIGINAL && aggregator_is_leaf(node))
   {
     ASSERT_DIE(node->selected_bucket == NULL);
     aggregator_remove_node(node);
