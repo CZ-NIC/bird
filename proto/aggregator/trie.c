@@ -552,38 +552,41 @@ aggregator_second_pass(struct trie_node *node, int recomputing)
   ASSERT_DIE(node->status != UNASSIGNED_FIB);
   ASSERT_DIE(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
-  if (recomputing)
-  {
-    // TODO: it is not necessary to clear sets of all nodes, only leaves. Sets
-    // of internal nodes will be overwritten by merging.
-    node->ancestor = NULL;
-    node->potential_buckets_count = 0;
-    memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
+  if (!recomputing)
+    ASSERT_DIE(node->px_origin == ORIGINAL || node->px_origin == FILLER);
 
-    if (node->px_origin != ORIGINAL)
+  /* Propagate original buckets */
+  if (node->px_origin != ORIGINAL)
+  {
+    if (!recomputing)
     {
-      ASSERT_DIE(node->parent != NULL);
-      node->original_bucket = node->parent->original_bucket;
-      node->px_origin = FILLER;
+      ASSERT_DIE(node->px_origin == FILLER);
+      ASSERT_DIE(node->original_bucket == NULL);
     }
+
+    node->original_bucket = node->parent->original_bucket;
+
+    /* When recomputing, aggregated nodes become fillers */
+    node->px_origin = FILLER;
+  }
+  else
+  {
+    ASSERT_DIE(node->original_bucket != NULL);
   }
 
-  /* Leaves get original bucket as their potential bucket */
+  /* Clear sets */
+  if (recomputing)
+  {
+    node->potential_buckets_count = 0;
+    memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
+  }
+
   if (aggregator_is_leaf(node))
   {
     ASSERT_DIE(node->original_bucket != NULL);
     ASSERT_DIE(node->potential_buckets_count == 0);
     aggregator_node_add_potential_bucket(node, node->original_bucket);
     return;
-  }
-
-  /* Propagate original buckets */
-  if (!node->original_bucket)
-  {
-    if (recomputing)
-      bug("Should not happen");
-
-    node->original_bucket = node->parent->original_bucket;
   }
 
   /* Internal node */
