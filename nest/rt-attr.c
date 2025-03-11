@@ -1879,7 +1879,7 @@ ea_storage_free(struct ea_storage *r)
 
     rcu_read_unlock();
 
-    if ((cur_success || next_success) && !next_to_free)
+    if ((cur_success || next_success) && r != next_to_free)
     {
       /* Consider if rehash is needed */
       int count = atomic_fetch_sub_explicit(&rta_hash_table.count, 1, memory_order_relaxed);
