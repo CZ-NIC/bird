@@ -1892,7 +1892,7 @@ ea_storage_free(struct ea_storage *r)
       int count = atomic_fetch_sub_explicit(&rta_hash_table.count, 1, memory_order_relaxed);
 
       u64 order = atomic_load_explicit(&cur->order, memory_order_relaxed);
-      if (count < 1 << (order - 1) && order > 5)//28)
+      if (count < 1 << (order - 1) && order > 28)
         ev_send(rta_hash_table.ev_list, &rta_hash_table.rehash_event);
 
       /* Schedule actual free of the storage */
@@ -1996,7 +1996,7 @@ ea_rehash(void * u UNUSED)
 
   while (count > 1 << (next_order + 1))
     next_order++;
-  while (count < 1 << (next_order - 1) && next_order > 5)//28)
+  while (count < 1 << (next_order - 1) && next_order > 28)
     next_order--;
 
   //log("rehash");
