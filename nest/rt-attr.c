@@ -639,7 +639,6 @@ void ea_lex_register(struct ea_class *def);
 static void
 ea_class_free(struct ea_class *cl)
 {
-  bug("ea_class_free");
   RTA_LOCK;
 
   /* No more ea class references. Unregister the attribute. */
@@ -655,7 +654,6 @@ ea_class_free(struct ea_class *cl)
 static void
 ea_class_ref_free(resource *r)
 {
-  bug("ref free");
   SKIP_BACK_DECLARE(struct ea_class_ref, ref, r, r);
   if (atomic_fetch_sub_explicit(&ref->class->uc, 1, memory_order_acquire) == 1)
     ea_class_free(ref->class);
@@ -1579,7 +1577,7 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
     if (sz <= ea_slab_sizes[i])
     {
       r_new = sl_alloc(ea_slab[i]);
-      log("alloc %x", r_new);
+      //log("alloc %x", r_new);
       break;
     }
 
@@ -1590,7 +1588,7 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
     RTA_LOCK;
     r_new = mb_alloc(rta_pool, sz);
     RTA_UNLOCK;
-    log("mb alloc %i", r_new);
+    //log("mb alloc %i", r_new);
   }
 
   ea_list_copy(r_new->l, o, elen);
@@ -1650,7 +1648,7 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
           memory_order_acq_rel, memory_order_acquire));
       /* we succesfully increased count, ea_storrage is ours */
       /* free ea_storage we allocated earlier */
-      log("i free %x", r_new);
+      //log("i free %x", r_new);
       if (huge)
       {
         RTA_LOCK;
@@ -1721,11 +1719,11 @@ ea_finally_free(struct deferred_call *dc)
     RTA_LOCK;
     mb_free(r);
     RTA_UNLOCK;
-      log("mb finally freeing %x", r);
+      //log("mb finally freeing %x", r);
   }
-  else{
+  else//{
     sl_free(r);
-    log("slab finally freeing %x", r);}
+    //log("slab finally freeing %x", r);}
 }
 
 static struct ea_storage *
@@ -1885,8 +1883,8 @@ ea_storage_free(struct ea_storage *r)
 
     rcu_read_unlock();
     
-    if (next_to_free && next_to_free != r)
-      log("next_to_free        %x", next_to_free);
+    //if (next_to_free && next_to_free != r)
+      //log("next_to_free        %x", next_to_free);
 
     if ((cur_success || next_success) && r != next_to_free)
     {
@@ -2001,7 +1999,7 @@ ea_rehash(void * u UNUSED)
   while (count < 1 << (next_order - 1) && next_order > 5)//28)
     next_order--;
 
-  log("rehash");
+  //log("rehash");
   if (next_order == cur_order)
     return;
 
