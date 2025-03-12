@@ -270,7 +270,7 @@ struct ea_class {
   const char *legacy_name;		/* Name for printing in v2 sockets */ \
   struct symbol *sym;			/* Symbol to export to configs */ \
   uint id;				/* Autoassigned attribute ID */ \
-  uint uc;				/* Reference count */ \
+  _Atomic uint uc;				/* Reference count */ \
   btype type;				/* Data type ID */ \
   u16 flags;				/* Protocol-dependent flags */ \
   uint readonly:1;			/* This attribute can't be changed by filters */ \

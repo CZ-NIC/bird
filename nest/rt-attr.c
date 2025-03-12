@@ -639,6 +639,7 @@ void ea_lex_register(struct ea_class *def);
 static void
 ea_class_free(struct ea_class *cl)
 {
+  bug("ea_class_free");
   RTA_LOCK;
 
   /* No more ea class references. Unregister the attribute. */
@@ -654,8 +655,9 @@ ea_class_free(struct ea_class *cl)
 static void
 ea_class_ref_free(resource *r)
 {
+  bug("ref free");
   SKIP_BACK_DECLARE(struct ea_class_ref, ref, r, r);
-  if (!--ref->class->uc)
+  if (atomic_fetch_sub_explicit(&ref->class->uc, 1, memory_order_acquire) == 1)
     ea_class_free(ref->class);
 }
 
@@ -688,7 +690,7 @@ ea_class_init(void)
 struct ea_class_ref *
 ea_ref_class(pool *p, struct ea_class *def)
 {
-  def->uc++;
+  atomic_fetch_add_explicit(&def->uc, 1, memory_order_acquire);
   struct ea_class_ref *ref = ralloc(p, &ea_class_ref_class);
   ref->class = def;
   return ref;
@@ -1110,10 +1112,10 @@ ea_list_ref(ea_list *l)
 	continue;
 
       struct ea_class *cl = ea_class_global[a->id];
-      ASSERT_DIE(cl && cl->uc);
+      ASSERT_DIE(cl && atomic_load_explicit(&cl->uc, memory_order_relaxed));
 
       CALL(cl->stored, a);
-      cl->uc++;
+      atomic_fetch_add_explicit(&cl->uc, 1, memory_order_release);
     }
 
   if (l->next)
@@ -1132,10 +1134,10 @@ ea_list_unref(ea_list *l)
 	continue;
 
       struct ea_class *cl = ea_class_global[a->id];
-      ASSERT_DIE(cl && cl->uc);
+      ASSERT_DIE(cl && atomic_load_explicit(&cl->uc, memory_order_relaxed));
 
       CALL(cl->freed, a);
-      if (!--cl->uc)
+      if (atomic_fetch_sub_explicit(&cl->uc, 1, memory_order_release) == 1)
 	ea_class_free(cl);
     }
 
@@ -1577,6 +1579,7 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
     if (sz <= ea_slab_sizes[i])
     {
       r_new = sl_alloc(ea_slab[i]);
+      log("alloc %x", r_new);
       break;
     }
 
@@ -1587,6 +1590,7 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
     RTA_LOCK;
     r_new = mb_alloc(rta_pool, sz);
     RTA_UNLOCK;
+    log("mb alloc %i", r_new);
   }
 
   ea_list_copy(r_new->l, o, elen);
@@ -1646,6 +1650,7 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
           memory_order_acq_rel, memory_order_acquire));
       /* we succesfully increased count, ea_storrage is ours */
       /* free ea_storage we allocated earlier */
+      log("i free %x", r_new);
       if (huge)
       {
         RTA_LOCK;
@@ -1716,9 +1721,11 @@ ea_finally_free(struct deferred_call *dc)
     RTA_LOCK;
     mb_free(r);
     RTA_UNLOCK;
+      log("mb finally freeing %x", r);
   }
-  else
+  else{
     sl_free(r);
+    log("slab finally freeing %x", r);}
 }
 
 static struct ea_storage *
@@ -1769,11 +1776,10 @@ ea_free_prepare(struct ea_stor_array *esa, struct ea_storage *r, uint order, boo
       } else
       {
         u64 uc_prev;
+        /* Try to increase use count of the previous ea_storage (rule 2) */
+        uc_prev = atomic_load_explicit(&ea_old->uc, memory_order_acquire);
         do
         {
-          /* Try to increase use count of the previous ea_storage (rule 2) */
-          uc_prev = atomic_load_explicit(&ea_old->uc, memory_order_acquire);
-
           if (uc_prev == 0)
           {
             success[0] = false;
@@ -1790,7 +1796,7 @@ ea_free_prepare(struct ea_stor_array *esa, struct ea_storage *r, uint order, boo
         if (uc_prev == 1)
         {
           /* This was the last reference, we ned to remove the previous storage as well. */
-          //log("return previous to free");
+          //log("return previous to free %x", ea_old);
           success[0] = true;
           ASSERT_DIE(ea_next == atomic_load_explicit(&r->next_hash, memory_order_acquire));
           return ea_old;
@@ -1821,7 +1827,6 @@ ea_storage_free(struct ea_storage *r)
 
   do
   {
-    //log("free      r %x", r);
     ASSERT_DIE(atomic_load_explicit(&r->uc, memory_order_acquire) == 0);
     rcu_read_lock();
       /* Find the storage in one of the stor arrays and remove it, so nobody will found it again */
@@ -1868,7 +1873,8 @@ ea_storage_free(struct ea_storage *r)
               do-while loop. We need to repeat all the steps, because reentering loop means refreshing rcu_read_lock.
               (Not refreshing rcu_read_lock might cause deadlocks.)
       */
-      bool cur_success, next_success = false; // two return values needed and creating new structure makes no sence
+      bool cur_success = false;
+      bool next_success = false;
       struct ea_storage *next_to_free = NULL;
 
       if (cur_order)
@@ -1878,6 +1884,9 @@ ea_storage_free(struct ea_storage *r)
         next_to_free = ea_free_prepare(next, r, next_order, &next_success);
 
     rcu_read_unlock();
+    
+    if (next_to_free && next_to_free != r)
+      log("next_to_free        %x", next_to_free);
 
     if ((cur_success || next_success) && r != next_to_free)
     {
@@ -1885,7 +1894,7 @@ ea_storage_free(struct ea_storage *r)
       int count = atomic_fetch_sub_explicit(&rta_hash_table.count, 1, memory_order_relaxed);
 
       u64 order = atomic_load_explicit(&cur->order, memory_order_relaxed);
-      if (count < 1 << (order - 1) && order > 28)
+      if (count < 1 << (order - 1) && order > 5)//28)
         ev_send(rta_hash_table.ev_list, &rta_hash_table.rehash_event);
 
       /* Schedule actual free of the storage */
@@ -1989,9 +1998,10 @@ ea_rehash(void * u UNUSED)
 
   while (count > 1 << (next_order + 1))
     next_order++;
-  while (count < 1 << (next_order - 1) && next_order > 28)
+  while (count < 1 << (next_order - 1) && next_order > 5)//28)
     next_order--;
 
+  log("rehash");
   if (next_order == cur_order)
     return;
 
