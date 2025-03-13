@@ -787,11 +787,37 @@ sl_free(void *oo)
     ev_send(s->cleanup_ev_list, &s->event_clean);
 }
 
+void
+sl_check_empty(resource *r)
+{
+  slab *s = (slab *) r;
+  struct sl_head *h = atomic_load_explicit(&s->full_heads, memory_order_relaxed);
+
+  /* Assert there is only the skipped full head (sl_cleanup never cleans the first head) */
+  if (h !=  &slh_dummy_last_full)
+  {
+    ASSERT_DIE(atomic_load_explicit(&h->next, memory_order_relaxed) == &slh_dummy_last_full);
+    ASSERT_DIE(atomic_load_explicit(&h->num_full, memory_order_relaxed) == 0);
+  }
+
+  /* Assert there are no partial heads */
+  ASSERT_DIE(atomic_load_explicit(&s->partial_heads, memory_order_relaxed) == &slh_dummy_last_partial);
+
+  /* Assert there are no thread heads */
+  for (long unsigned int i = 0; i < page_size / (sizeof(struct sl_head *_Atomic)); i++)
+  {
+    struct sl_head *th = atomic_load_explicit(&s->threads_active_heads[i], memory_order_relaxed);
+    if (th)
+      ASSERT_DIE(atomic_load_explicit(&th->num_full, memory_order_relaxed) == 0);
+  }
+}
+
 static void
 slab_free(resource *r)
 {
   /* At this point, only one thread manipulating the slab is expected */
   slab *s = (slab *) r;
+  ev_postpone(&s->event_clean);
 
   /* No more thread ends are relevant, we are ending anyway */
   bird_thread_end_unregister(&s->thread_end);
