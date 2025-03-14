@@ -171,6 +171,7 @@ void vlog(int class, const char *msg, va_list args);
 #define L_AUTH "\007"			/* Authorization failed etc. */
 #define L_FATAL "\010"			/* Fatal errors */
 #define L_BUG "\011"			/* BIRD bugs */
+#define L_MAX 10
 
 void debug(const char *msg, ...);	/* Printf to debug output */
 void debug_safe(const char *msg);	/* Printf to debug output, async-safe */
