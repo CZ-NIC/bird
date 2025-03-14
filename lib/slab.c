@@ -787,33 +787,59 @@ sl_free(void *oo)
     ev_send(s->cleanup_ev_list, &s->event_clean);
 }
 
+void
+sl_check_empty(resource *r)
+{
+  slab *s = (slab *) r;
+  struct sl_head *h = atomic_load_explicit(&s->full_heads, memory_order_relaxed);
+
+  /* Assert there is only the skipped full head (sl_cleanup never cleans the first head) */
+  if (h !=  &slh_dummy_last_full)
+  {
+    ASSERT_DIE(atomic_load_explicit(&h->next, memory_order_relaxed) == &slh_dummy_last_full);
+    ASSERT_DIE(atomic_load_explicit(&h->num_full, memory_order_relaxed) == 0);
+  }
+
+  /* Assert there are no partial heads */
+  ASSERT_DIE(atomic_load_explicit(&s->partial_heads, memory_order_relaxed) == &slh_dummy_last_partial);
+
+  /* Assert there are no thread heads */
+  for (long unsigned int i = 0; i < page_size / (sizeof(struct sl_head *_Atomic)); i++)
+  {
+    struct sl_head *th = atomic_load_explicit(&s->threads_active_heads[i], memory_order_relaxed);
+    if (th)
+      ASSERT_DIE(atomic_load_explicit(&th->num_full, memory_order_relaxed) == 0);
+  }
+}
+
 static void
 slab_free(resource *r)
 {
   /* At this point, only one thread manipulating the slab is expected */
   slab *s = (slab *) r;
 
-  struct sl_head *new_partials = sl_cleanup_full_heads(s);
-  ASSERT_DIE(new_partials == &slh_dummy_last_partial);
-  sl_cleanup_partial_heads(s, new_partials);
-
-  ev_postpone(&s->event_clean);
-
   /* No more thread ends are relevant, we are ending anyway */
   bird_thread_end_unregister(&s->thread_end);
 
-  /* Assert there are no partial heads */
-  ASSERT_DIE(atomic_load_explicit(&s->partial_heads, memory_order_relaxed) == &slh_dummy_last_partial);
-
-  /* Assert there is only the skipped full head */
-  struct sl_head *h = atomic_load_explicit(&s->full_heads, memory_order_relaxed);
-  if (h !=  &slh_dummy_last_full)
+  /* Free partial heads */
+  struct sl_head *h = atomic_load_explicit(&s->partial_heads, memory_order_relaxed);
+  while (SL_GET_STATE(h) != slh_dummy)
   {
-    ASSERT_DIE(atomic_load_explicit(&h->next, memory_order_relaxed) == &slh_dummy_last_full);
-    ASSERT_DIE(atomic_load_explicit(&h->num_full, memory_order_relaxed) == 0);
+    struct sl_head *nh = atomic_load_explicit(&h->next, memory_order_relaxed);
     sl_free_page(h);
-    atomic_store_explicit(&s->full_heads, &slh_dummy_last_full, memory_order_relaxed);
+    h = nh;
   }
+  atomic_store_explicit(&s->partial_heads, &slh_dummy_last_partial, memory_order_relaxed);
+
+  /* Free full heads */
+  h = atomic_load_explicit(&s->full_heads, memory_order_relaxed);
+  while (SL_GET_STATE(h) != slh_dummy)
+  {
+    struct sl_head *nh = atomic_load_explicit(&h->next, memory_order_relaxed);
+    sl_free_page(h);
+    h = nh;
+  }
+  atomic_store_explicit(&s->full_heads, &slh_dummy_last_full, memory_order_relaxed);
 
   /* Free thread heads */
   for (long unsigned int i = 0; i < page_size / (sizeof(struct sl_head *_Atomic)); i++)
