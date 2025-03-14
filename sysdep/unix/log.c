@@ -63,7 +63,7 @@ static int main_thread_self(void) { return 1; }
 #ifdef HAVE_SYSLOG_H
 #include <sys/syslog.h>
 
-static int syslog_priorities[] = {
+static int syslog_priorities[L_MAX] = {
   LOG_DEBUG,
   LOG_DEBUG,
   LOG_DEBUG,
@@ -77,7 +77,7 @@ static int syslog_priorities[] = {
 };
 #endif
 
-static char *class_names[] = {
+static char *class_names[L_MAX] = {
   "???",
   "DBG",
   "TRACE",
@@ -302,7 +302,7 @@ log_msg(const char *msg, ...)
   va_list args;
 
   va_start(args, msg);
-  if (*msg >= 1 && *msg <= 8)
+  if (*msg >= 1 && *msg < L_MAX)
     class = *msg++;
   vlog(class, msg, args);
   va_end(args);
@@ -318,7 +318,7 @@ log_rl(struct tbf *f, const char *msg, ...)
   if (tbf_limit(f) && (f->drop > 1))
     return;
 
-  if (*msg >= 1 && *msg <= 8)
+  if (*msg >= 1 && *msg < L_MAX)
     class = *msg++;
 
   va_start(args, msg);
