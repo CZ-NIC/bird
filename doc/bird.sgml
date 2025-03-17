@@ -2332,15 +2332,15 @@ protocol babel [<name>] {
 		rtt decay <number>;
 		send timestamps <switch>;
 		authentication none|mac [permissive];
-		password "&lt;text&gt;";
-		password "&lt;text&gt;" {
-			id &lt;number&gt;;
-			generate from "&lt;date&gt;";
-			generate to "&lt;date&gt;";
-			accept from "&lt;date&gt;";
-			accept to "&lt;date&gt;";
-			from "&lt;date&gt;";
-			to "&lt;date&gt;";
+		password "<text>";
+		password "<text>" {
+			id <number>;
+			generate from "<date>";
+			generate to "<date>";
+			accept from "<date>";
+			accept to "<date>";
+			from "<date>";
+			to "<date>";
 			algorithm ( hmac sha1 | hmac sha256 | hmac sha384 |
 	hmac sha512 | blake2s128 | blake2s256 | blake2b256 | blake2b512 );
 		};
@@ -2598,40 +2598,40 @@ are allowed as units, practical minimum values are usually in order of tens of
 milliseconds.
 
 <code>
-protocol bfd [&lt;name&gt;] {
+protocol bfd [<name>] {
 	accept [ipv4|ipv6] [direct|multihop];
-	strict bind &lt;switch&gt;;
-	zero udp6 checksum rx &lt;switch&gt;;
-	interface &lt;interface pattern&gt; {
-		interval &lt;time&gt;;
-		min rx interval &lt;time&gt;;
-		min tx interval &lt;time&gt;;
-		idle tx interval &lt;time&gt;;
-		multiplier &lt;number&gt;;
-		passive &lt;switch&gt;;
+	strict bind <switch>;
+	zero udp6 checksum rx <switch>;
+	interface <interface pattern> {
+		interval <time>;
+		min rx interval <time>;
+		min tx interval <time>;
+		idle tx interval <time>;
+		multiplier <number>;
+		passive <switch>;
 		authentication none;
 		authentication simple;
 		authentication [meticulous] keyed md5|sha1;
-		password "&lt;text&gt;";
-		password "&lt;text&gt;" {
-			id &lt;number&gt;;
-			generate from "&lt;date&gt;";
-			generate to "&lt;date&gt;";
-			accept from "&lt;date&gt;";
-			accept to "&lt;date&gt;";
-			from "&lt;date&gt;";
-			to "&lt;date&gt;";
+		password "<text>";
+		password "<text>" {
+			id <number>;
+			generate from "<date>";
+			generate to "<date>";
+			accept from "<date>";
+			accept to "<date>";
+			from "<date>";
+			to "<date>";
 		};
 	};
 	multihop {
-		interval &lt;time&gt;;
-		min rx interval &lt;time&gt;;
-		min tx interval &lt;time&gt;;
-		idle tx interval &lt;time&gt;;
-		multiplier &lt;number&gt;;
-		passive &lt;switch&gt;;
+		interval <time>;
+		min rx interval <time>;
+		min tx interval <time>;
+		idle tx interval <time>;
+		multiplier <number>;
+		passive <switch>;
 	};
-	neighbor &lt;ip&gt; [dev "&lt;interface&gt;"] [local &lt;ip&gt;] [multihop &lt;switch&gt;];
+	neighbor <ip> [dev "<interface>"] [local <ip>] [multihop <switch>];
 }
 </code>
 
@@ -4622,100 +4622,100 @@ If no channel is configured, appropriate channel is defined with default
 parameters.
 
 <code>
-protocol ospf [v2|v3] &lt;name&gt; {
-	rfc1583compat &lt;switch&gt;;
-	rfc5838 &lt;switch&gt;;
-	instance id &lt;number&gt;;
-	stub router &lt;switch&gt;;
-	tick &lt;number&gt;;
-	ecmp &lt;switch&gt; [limit &lt;number&gt;];
-	merge external &lt;switch&gt;;
-	graceful restart &lt;switch&gt;|aware;
-	graceful restart time &lt;number&gt;;
-	area &lt;id&gt; {
+protocol ospf [v2|v3] <name> {
+	rfc1583compat <switch>;
+	rfc5838 <switch>;
+	instance id <number>;
+	stub router <switch>;
+	tick <number>;
+	ecmp <switch> [limit <number>];
+	merge external <switch>;
+	graceful restart <switch>|aware;
+	graceful restart time <number>;
+	area <id> {
 		stub;
 		nssa;
-		summary &lt;switch&gt;;
-		default nssa &lt;switch&gt;;
-		default cost &lt;number&gt;;
-		default cost2 &lt;number&gt;;
-		translator &lt;switch&gt;;
-		translator stability &lt;number&gt;;
+		summary <switch>;
+		default nssa <switch>;
+		default cost <number>;
+		default cost2 <number>;
+		translator <switch>;
+		translator stability <number>;
 
 		networks {
-			&lt;prefix&gt;;
-			&lt;prefix&gt; hidden;
+			<prefix>;
+			<prefix> hidden;
 		};
 		external {
-			&lt;prefix&gt;;
-			&lt;prefix&gt; hidden;
-			&lt;prefix&gt; tag &lt;number&gt;;
+			<prefix>;
+			<prefix> hidden;
+			<prefix> tag <number>;
 		};
-		stubnet &lt;prefix&gt;;
-		stubnet &lt;prefix&gt; {
-			hidden &lt;switch&gt;;
-			summary &lt;switch&gt;;
-			cost &lt;number&gt;;
+		stubnet <prefix>;
+		stubnet <prefix> {
+			hidden <switch>;
+			summary <switch>;
+			cost <number>;
 		};
-		interface &lt;interface pattern&gt; [instance &lt;number&gt;] {
-			cost &lt;number&gt;;
-			stub &lt;switch&gt;;
-			hello &lt;number&gt;;
-			poll &lt;number&gt;;
-			retransmit &lt;number&gt;;
-			priority &lt;number&gt;;
-			wait &lt;number&gt;;
-			dead count &lt;number&gt;;
-			dead &lt;number&gt;;
-			secondary &lt;switch&gt;;
-			rx buffer [normal|large|&lt;number&gt;];
-			tx length &lt;number&gt;;
+		interface <interface pattern> [instance <number>] {
+			cost <number>;
+			stub <switch>;
+			hello <number>;
+			poll <number>;
+			retransmit <number>;
+			priority <number>;
+			wait <number>;
+			dead count <number>;
+			dead <number>;
+			secondary <switch>;
+			rx buffer [normal|large|<number>];
+			tx length <number>;
 			type [broadcast|bcast|pointopoint|ptp|
 				nonbroadcast|nbma|pointomultipoint|ptmp];
-			link lsa suppression &lt;switch&gt;;
-			strict nonbroadcast &lt;switch&gt;;
-			real broadcast &lt;switch&gt;;
-			ptp netmask &lt;switch&gt;;
-			ptp address &lt;switch&gt;;
-			check link &lt;switch&gt;;
-			bfd &lt;switch&gt;;
-			ecmp weight &lt;number&gt;;
-			ttl security [&lt;switch&gt;; | tx only]
-			tx class|dscp &lt;number&gt;;
-			tx priority &lt;number&gt;;
+			link lsa suppression <switch>;
+			strict nonbroadcast <switch>;
+			real broadcast <switch>;
+			ptp netmask <switch>;
+			ptp address <switch>;
+			check link <switch>;
+			bfd <switch>;
+			ecmp weight <number>;
+			ttl security [<switch>; | tx only]
+			tx class|dscp <number>;
+			tx priority <number>;
 			authentication none|simple|cryptographic;
-			password "&lt;text&gt;";
-			password "&lt;text&gt;" {
-				id &lt;number&gt;;
-				generate from "&lt;date&gt;";
-				generate to "&lt;date&gt;";
-				accept from "&lt;date&gt;";
-				accept to "&lt;date&gt;";
-				from "&lt;date&gt;";
-				to "&lt;date&gt;";
+			password "<text>";
+			password "<text>" {
+				id <number>;
+				generate from "<date>";
+				generate to "<date>";
+				accept from "<date>";
+				accept to "<date>";
+				from "<date>";
+				to "<date>";
 				algorithm ( keyed md5 | keyed sha1 | hmac sha1 | hmac sha256 | hmac sha384 | hmac sha512 );
 			};
 			neighbors {
-				&lt;ip&gt;;
-				&lt;ip&gt; eligible;
+				<ip>;
+				<ip> eligible;
 			};
 		};
-		virtual link &lt;id&gt; [instance &lt;number&gt;] {
-			hello &lt;number&gt;;
-			retransmit &lt;number&gt;;
-			wait &lt;number&gt;;
-			dead count &lt;number&gt;;
-			dead &lt;number&gt;;
+		virtual link <id> [instance <number>] {
+			hello <number>;
+			retransmit <number>;
+			wait <number>;
+			dead count <number>;
+			dead <number>;
 			authentication none|simple|cryptographic;
-			password "&lt;text&gt;";
-			password "&lt;text&gt;" {
-				id &lt;number&gt;;
-				generate from "&lt;date&gt;";
-				generate to "&lt;date&gt;";
-				accept from "&lt;date&gt;";
-				accept to "&lt;date&gt;";
-				from "&lt;date&gt;";
-				to "&lt;date&gt;";
+			password "<text>";
+			password "<text>" {
+				id <number>;
+				generate from "<date>";
+				generate to "<date>";
+				accept from "<date>";
+				accept to "<date>";
+				from "<date>";
+				to "<date>";
 				algorithm ( keyed md5 | keyed sha1 | hmac sha1 | hmac sha256 | hmac sha384 | hmac sha512 );
 			};
 		};
@@ -5752,40 +5752,40 @@ protocol instance can be configured by using <cf/rip ng/ instead of just
 configured, appropriate channel is defined with default parameters.
 
 <code>
-protocol rip [ng] [&lt;name&gt;] {
-	infinity &lt;number&gt;;
-	ecmp &lt;switch&gt; [limit &lt;number&gt;];
-	interface &lt;interface pattern&gt; {
-		metric &lt;number&gt;;
+protocol rip [ng] [<name>] {
+	infinity <number>;
+	ecmp <switch> [limit <number>];
+	interface <interface pattern> {
+		metric <number>;
 		mode multicast|broadcast;
-		passive &lt;switch&gt;;
-		address &lt;ip&gt;;
-		port &lt;number&gt;;
+		passive <switch>;
+		address <ip>;
+		port <number>;
 		version 1|2;
-		split horizon &lt;switch&gt;;
-		poison reverse &lt;switch&gt;;
-		demand circuit &lt;switch&gt;;
-		check zero &lt;switch&gt;;
-		update time &lt;number&gt;;
-		timeout time &lt;number&gt;;
-		garbage time &lt;number&gt;;
-		ecmp weight &lt;number&gt;;
-		ttl security &lt;switch&gt;; | tx only;
-		tx class|dscp &lt;number&gt;;
-		tx priority &lt;number&gt;;
-		rx buffer &lt;number&gt;;
-		tx length &lt;number&gt;;
-		check link &lt;switch&gt;;
+		split horizon <switch>;
+		poison reverse <switch>;
+		demand circuit <switch>;
+		check zero <switch>;
+		update time <number>;
+		timeout time <number>;
+		garbage time <number>;
+		ecmp weight <number>;
+		ttl security <switch>; | tx only;
+		tx class|dscp <number>;
+		tx priority <number>;
+		rx buffer <number>;
+		tx length <number>;
+		check link <switch>;
 		authentication none|plaintext|cryptographic;
-		password "&lt;text&gt;";
-		password "&lt;text&gt;" {
-			id &lt;number&gt;;
-			generate from "&lt;date&gt;";
-			generate to "&lt;date&gt;";
-			accept from "&lt;date&gt;";
-			accept to "&lt;date&gt;";
-			from "&lt;date&gt;";
-			to "&lt;date&gt;";
+		password "<text>";
+		password "<text>" {
+			id <number>;
+			generate from "<date>";
+			generate to "<date>";
+			accept from "<date>";
+			accept to "<date>";
+			from "<date>";
+			to "<date>";
 			algorithm ( keyed md5 | keyed sha1 | hmac sha1 |
 				hmac sha256 | hmac sha384 | hmac sha512 );
 		};
@@ -6046,27 +6046,27 @@ in (import) filters.
 define more RPKI protocols generally.
 
 <code>
-protocol rpki [&lt;name&gt;] {
-	roa4 { table &lt;tab&gt;; };
-	roa6 { table &lt;tab&gt;; };
-	aspa { table &lt;tab&gt;; };
-	remote &lt;ip&gt; | "&lt;domain&gt;" [port &lt;number&gt;];
-	port &lt;number&gt;;
-	local address &lt;ip&gt;;
-	refresh [keep] &lt;number&gt;;
-	retry [keep] &lt;number&gt;;
-	expire [keep] &lt;number&gt;;
-	ignore max length &lt;switch&gt;;
-	min version &lt;number&gt;;
-	max version &lt;number&gt;;
+protocol rpki [<name>] {
+	roa4 { table <tab>; };
+	roa6 { table <tab>; };
+	aspa { table <tab>; };
+	remote <ip> | "<domain>" [port <number>];
+	port <number>;
+	local address <ip>;
+	refresh [keep] <number>;
+	retry [keep] <number>;
+	expire [keep] <number>;
+	ignore max length <switch>;
+	min version <number>;
+	max version <number>;
 	transport tcp {
 		authentication none|md5;
-		password "&lt;text&gt;";
+		password "<text>";
 	};
 	transport ssh {
 		bird private key "&lt;/path/to/id_rsa&gt;";
 		remote public key "&lt;/path/to/known_host&gt;";
-		user "&lt;name&gt;";
+		user "<name>";
 	};
 }
 </code>
