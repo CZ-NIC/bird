@@ -442,7 +442,7 @@ name="mpls_label">) and outgoing MPLS label (as a part of the next hop). They
 are stored in regular IP routing tables.
 
 Labeled routes are used for exchange of routing information between routing
-protocols and for ingress (IP -&gt; MPLS) forwarding, but they are not directly
+protocols and for ingress (IP -> MPLS) forwarding, but they are not directly
 used for MPLS forwarding. For that purpose <ref id="mpls-routes" name="MPLS
 routes"> are used. These are routes that have local MPLS label as a primary key
 and they are stored in the MPLS routing table.
@@ -617,7 +617,7 @@ include "tablename.conf";;
 	Define a filter. You can learn more about filters in the following
 	chapter.
 
-	<tag><label id="opt-function">function <m/name/ (<m/parameters/) [ -&gt; <m/return type/ ] <m/local variables/ { <m/commands/ }</tag>
+	<tag><label id="opt-function">function <m/name/ (<m/parameters/) [ -> <m/return type/ ] <m/local variables/ { <m/commands/ }</tag>
 	Define a function. You can learn more about functions in the following chapter.
 
 	<tag><label id="opt-protocol">protocol rip|ospf|bgp|<m/.../ [<m/name/ [from <m/name2/]] { <m>protocol options</m> }</tag>
@@ -1502,7 +1502,7 @@ filter not_too_far
 		var = 1;
 		rip_metric = 1;
 	}
-	if rip_metric &gt; 10 then
+	if rip_metric > 10 then
 		reject "RIP metric is too big";
 	else
 		accept "ok";
@@ -1607,7 +1607,7 @@ in the foot).
 	This is a string of characters. There are no ways to modify strings in
 	filters. You can pass them between functions, assign them to variables
 	of type <cf/string/, print such variables, use standard string
-	comparison operations (e.g. <cf/=, !=, &lt;, &gt;, &lt;=, &gt;=/), but
+	comparison operations (e.g. <cf/=, !=, <, >, <=, >=/), but
 	you can't concatenate two strings. String literals are written as
 	<cf/"This is a string constant"/. Additionally matching (<cf/&tilde;,
 	!&tilde;/) operators could be used to match a string value against
@@ -1755,8 +1755,8 @@ ec set es = [ (rt, myas, *), (rt, myas+2, 0..16*16*16-1) ];
 	Prefix <cf><m>ip1</m>/<m>len1</m></cf> matches prefix
 	pattern <cf><m>ip2</m>/<m>len2</m>{<m>l</m>,<m>h</m>}</cf> if the
 	first <cf>min(len1, len2)</cf> bits of <cf/ip1/ and <cf/ip2/ are
-	identical and <cf>l &lt;= len1 &lt;= h</cf>. A valid prefix pattern
-	has to satisfy <cf>low &lt;= high</cf>, but <cf/pxlen/ is not
+	identical and <cf>l <= len1 <= h</cf>. A valid prefix pattern
+	has to satisfy <cf>low <= high</cf>, but <cf/pxlen/ is not
 	constrained by <cf/low/ or <cf/high/. Obviously, a prefix matches a
 	prefix set literal if it matches any prefix pattern in the prefix set
 	literal.
@@ -4366,9 +4366,9 @@ protocol kernel {		# Secondary routing table
 
 <p>The L3VPN protocol serves as a translator between IP routes and VPN
 routes. It is a component for BGP/MPLS IP VPNs (<rfc id="4364">) and implements
-policies defined there. In import direction (VPN -&gt; IP), VPN routes matching
+policies defined there. In import direction (VPN -> IP), VPN routes matching
 import target specification are stripped of route distinguisher and MPLS labels
-and announced as IP routes, In export direction (IP -&gt; VPN), IP routes are
+and announced as IP routes, In export direction (IP -> VPN), IP routes are
 expanded with specific route distinguisher, export target communities and MPLS
 label and announced as labeled VPN routes. Unlike the Pipe protocol, the L3VPN
 protocol propagates just the best route for each network.
@@ -6064,8 +6064,8 @@ protocol rpki [<name>] {
 		password "<text>";
 	};
 	transport ssh {
-		bird private key "&lt;/path/to/id_rsa&gt;";
-		remote public key "&lt;/path/to/known_host&gt;";
+		bird private key "<//path//to//id_rsa>";
+		remote public key "<//path//to//known_host>";
 		user "<name>";
 	};
 }
