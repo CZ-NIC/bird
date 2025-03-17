@@ -2334,7 +2334,7 @@ protocol babel [<name>] {
 		authentication none|mac [permissive];
 		password "&lt;text&gt;";
 		password "&lt;text&gt;" {
-			id &lt;num&gt;;
+			id &lt;number&gt;;
 			generate from "&lt;date&gt;";
 			generate to "&lt;date&gt;";
 			accept from "&lt;date&gt;";
@@ -2607,14 +2607,14 @@ protocol bfd [&lt;name&gt;] {
 		min rx interval &lt;time&gt;;
 		min tx interval &lt;time&gt;;
 		idle tx interval &lt;time&gt;;
-		multiplier &lt;num&gt;;
+		multiplier &lt;number&gt;;
 		passive &lt;switch&gt;;
 		authentication none;
 		authentication simple;
 		authentication [meticulous] keyed md5|sha1;
 		password "&lt;text&gt;";
 		password "&lt;text&gt;" {
-			id &lt;num&gt;;
+			id &lt;number&gt;;
 			generate from "&lt;date&gt;";
 			generate to "&lt;date&gt;";
 			accept from "&lt;date&gt;";
@@ -2628,7 +2628,7 @@ protocol bfd [&lt;name&gt;] {
 		min rx interval &lt;time&gt;;
 		min tx interval &lt;time&gt;;
 		idle tx interval &lt;time&gt;;
-		multiplier &lt;num&gt;;
+		multiplier &lt;number&gt;;
 		passive &lt;switch&gt;;
 	};
 	neighbor &lt;ip&gt; [dev "&lt;interface&gt;"] [local &lt;ip&gt;] [multihop &lt;switch&gt;];
@@ -4625,22 +4625,22 @@ parameters.
 protocol ospf [v2|v3] &lt;name&gt; {
 	rfc1583compat &lt;switch&gt;;
 	rfc5838 &lt;switch&gt;;
-	instance id &lt;num&gt;;
+	instance id &lt;number&gt;;
 	stub router &lt;switch&gt;;
-	tick &lt;num&gt;;
-	ecmp &lt;switch&gt; [limit &lt;num&gt;];
+	tick &lt;number&gt;;
+	ecmp &lt;switch&gt; [limit &lt;number&gt;];
 	merge external &lt;switch&gt;;
 	graceful restart &lt;switch&gt;|aware;
-	graceful restart time &lt;num&gt;;
+	graceful restart time &lt;number&gt;;
 	area &lt;id&gt; {
 		stub;
 		nssa;
 		summary &lt;switch&gt;;
 		default nssa &lt;switch&gt;;
-		default cost &lt;num&gt;;
-		default cost2 &lt;num&gt;;
+		default cost &lt;number&gt;;
+		default cost2 &lt;number&gt;;
 		translator &lt;switch&gt;;
-		translator stability &lt;num&gt;;
+		translator stability &lt;number&gt;;
 
 		networks {
 			&lt;prefix&gt;;
@@ -4649,27 +4649,27 @@ protocol ospf [v2|v3] &lt;name&gt; {
 		external {
 			&lt;prefix&gt;;
 			&lt;prefix&gt; hidden;
-			&lt;prefix&gt; tag &lt;num&gt;;
+			&lt;prefix&gt; tag &lt;number&gt;;
 		};
 		stubnet &lt;prefix&gt;;
 		stubnet &lt;prefix&gt; {
 			hidden &lt;switch&gt;;
 			summary &lt;switch&gt;;
-			cost &lt;num&gt;;
+			cost &lt;number&gt;;
 		};
-		interface &lt;interface pattern&gt; [instance &lt;num&gt;] {
-			cost &lt;num&gt;;
+		interface &lt;interface pattern&gt; [instance &lt;number&gt;] {
+			cost &lt;number&gt;;
 			stub &lt;switch&gt;;
-			hello &lt;num&gt;;
-			poll &lt;num&gt;;
-			retransmit &lt;num&gt;;
-			priority &lt;num&gt;;
-			wait &lt;num&gt;;
-			dead count &lt;num&gt;;
-			dead &lt;num&gt;;
+			hello &lt;number&gt;;
+			poll &lt;number&gt;;
+			retransmit &lt;number&gt;;
+			priority &lt;number&gt;;
+			wait &lt;number&gt;;
+			dead count &lt;number&gt;;
+			dead &lt;number&gt;;
 			secondary &lt;switch&gt;;
-			rx buffer [normal|large|&lt;num&gt;];
-			tx length &lt;num&gt;;
+			rx buffer [normal|large|&lt;number&gt;];
+			tx length &lt;number&gt;;
 			type [broadcast|bcast|pointopoint|ptp|
 				nonbroadcast|nbma|pointomultipoint|ptmp];
 			link lsa suppression &lt;switch&gt;;
@@ -4679,14 +4679,14 @@ protocol ospf [v2|v3] &lt;name&gt; {
 			ptp address &lt;switch&gt;;
 			check link &lt;switch&gt;;
 			bfd &lt;switch&gt;;
-			ecmp weight &lt;num&gt;;
+			ecmp weight &lt;number&gt;;
 			ttl security [&lt;switch&gt;; | tx only]
-			tx class|dscp &lt;num&gt;;
-			tx priority &lt;num&gt;;
+			tx class|dscp &lt;number&gt;;
+			tx priority &lt;number&gt;;
 			authentication none|simple|cryptographic;
 			password "&lt;text&gt;";
 			password "&lt;text&gt;" {
-				id &lt;num&gt;;
+				id &lt;number&gt;;
 				generate from "&lt;date&gt;";
 				generate to "&lt;date&gt;";
 				accept from "&lt;date&gt;";
@@ -4700,16 +4700,16 @@ protocol ospf [v2|v3] &lt;name&gt; {
 				&lt;ip&gt; eligible;
 			};
 		};
-		virtual link &lt;id&gt; [instance &lt;num&gt;] {
-			hello &lt;num&gt;;
-			retransmit &lt;num&gt;;
-			wait &lt;num&gt;;
-			dead count &lt;num&gt;;
-			dead &lt;num&gt;;
+		virtual link &lt;id&gt; [instance &lt;number&gt;] {
+			hello &lt;number&gt;;
+			retransmit &lt;number&gt;;
+			wait &lt;number&gt;;
+			dead count &lt;number&gt;;
+			dead &lt;number&gt;;
 			authentication none|simple|cryptographic;
 			password "&lt;text&gt;";
 			password "&lt;text&gt;" {
-				id &lt;num&gt;;
+				id &lt;number&gt;;
 				generate from "&lt;date&gt;";
 				generate to "&lt;date&gt;";
 				accept from "&lt;date&gt;";
@@ -5779,7 +5779,7 @@ protocol rip [ng] [&lt;name&gt;] {
 		authentication none|plaintext|cryptographic;
 		password "&lt;text&gt;";
 		password "&lt;text&gt;" {
-			id &lt;num&gt;;
+			id &lt;number&gt;;
 			generate from "&lt;date&gt;";
 			generate to "&lt;date&gt;";
 			accept from "&lt;date&gt;";
@@ -6050,15 +6050,15 @@ protocol rpki [&lt;name&gt;] {
 	roa4 { table &lt;tab&gt;; };
 	roa6 { table &lt;tab&gt;; };
 	aspa { table &lt;tab&gt;; };
-	remote &lt;ip&gt; | "&lt;domain&gt;" [port &lt;num&gt;];
-	port &lt;num&gt;;
+	remote &lt;ip&gt; | "&lt;domain&gt;" [port &lt;number&gt;];
+	port &lt;number&gt;;
 	local address &lt;ip&gt;;
-	refresh [keep] &lt;num&gt;;
-	retry [keep] &lt;num&gt;;
-	expire [keep] &lt;num&gt;;
+	refresh [keep] &lt;number&gt;;
+	retry [keep] &lt;number&gt;;
+	expire [keep] &lt;number&gt;;
 	ignore max length &lt;switch&gt;;
-	min version &lt;num&gt;;
-	max version &lt;num&gt;;
+	min version &lt;number&gt;;
+	max version &lt;number&gt;;
 	transport tcp {
 		authentication none|md5;
 		password "&lt;text&gt;";
