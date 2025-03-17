@@ -1909,7 +1909,7 @@ ec set es = [ (rt, myas, *), (rt, myas+2, 0..16*16*16-1) ];
 <label id="operators">
 
 <p>The filter language supports common integer operators <cf>(+,-,*,/)</cf>,
-parentheses <cf/(a*(b+c))/, comparison <cf/(a=b, a!=b, a&lt;b, a&gt;=b)/.</p>
+parentheses <cf/(a*(b+c))/, comparison <cf/(a=b, a!=b, a>b, a<=b)/.</p>
 
 <p>Logical operations include unary not (<cf/!/), and (<cf/&amp;&amp;/), and or
 (<cf/&verbar;&verbar;/).</p>
