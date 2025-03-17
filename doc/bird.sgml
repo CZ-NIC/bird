@@ -949,7 +949,7 @@ agreement").
 <p>Password option can contain section with some (not necessary all) password sub-options:
 
 <descrip>
-	<tag><label id="proto-pass-id">id <M>num</M></tag>
+	<tag><label id="proto-pass-id">id <M>number</M></tag>
 	ID of the password, (0-255). If it is not specified, BIRD will choose ID
 	based on an order of the password item in the interface, starting from
 	1. For example, second password item in one interface will have default
@@ -1636,8 +1636,8 @@ in the foot).
 	Whether the address is IPv4 or not may be checked by <cf>.is_v4</cf>
 	which returns a <cf/bool/. IP addresses are written in the standard
 	notation (<cf/10.20.30.40/ or <cf/fec0:3:4::1/). You can apply special
-	operator <cf>.mask(<M>num</M>)</cf> on values of type ip. It masks out
-	all but first <cf><M>num</M></cf> bits from the IP address. So
+	operator <cf>.mask(<M>number</M>)</cf> on values of type ip. It masks out
+	all but first <cf><M>number</M></cf> bits from the IP address. So
 	<cf/1.2.3.4.mask(8) = 1.0.0.0/ is true.
 
 	<tag><label id="type-prefix">prefix</tag>
@@ -4754,7 +4754,7 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	clearing the R-bit in the router LSA. See <rfc id="6987"> for details.
 	Default value is no.
 
-	<tag><label id="ospf-tick">tick <M>num</M></tag>
+	<tag><label id="ospf-tick">tick <M>number</M></tag>
 	The routing table calculation and clean-up of areas' databases is not
 	performed when a single link state change arrives. To lower the CPU
 	utilization, it's processed later at periodical intervals of <m/number/
@@ -4833,11 +4833,11 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	propagated to the NSSA. In that case, this option allows to originate
 	default route as NSSA-LSA to the NSSA. Default value is no.
 
-	<tag><label id="ospf-default-cost">default cost <M>num</M></tag>
+	<tag><label id="ospf-default-cost">default cost <M>number</M></tag>
 	This option controls the cost of a default route propagated to stub and
 	NSSA areas. Default value is 1000.
 
-	<tag><label id="ospf-default-cost2">default cost2 <M>num</M></tag>
+	<tag><label id="ospf-default-cost2">default cost2 <M>number</M></tag>
 	When a default route is originated as NSSA-LSA, its cost can use either
 	type 1 or type 2 metric. This option allows to specify the cost of a
 	default route in type 2 metric. By default, type 1 metric (option
@@ -4850,7 +4850,7 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	unconditionally translate all NSSA-LSAs regardless of translator
 	election. Default value is no.
 
-	<tag><label id="ospf-translator-stability">translator stability <M>num</M></tag>
+	<tag><label id="ospf-translator-stability">translator stability <M>number</M></tag>
 	This option controls the translator stability interval (in seconds).
 	When the new translator is elected, the old one keeps translating until
 	the interval is over. Default value is 40.
@@ -4899,59 +4899,59 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	<cf/interface/ option, you could also use several virtual links to one
 	destination with different instance IDs.
 
-	<tag><label id="ospf-cost">cost <M>num</M></tag>
+	<tag><label id="ospf-cost">cost <M>number</M></tag>
 	Specifies output cost (metric) of an interface. Default value is 10.
 
 	<tag><label id="ospf-stub-iface">stub <M>switch</M></tag>
 	If set to interface it does not listen to any packet and does not send
 	any hello. Default value is no.
 
-	<tag><label id="ospf-hello">hello <M>num</M></tag>
+	<tag><label id="ospf-hello">hello <M>number</M></tag>
 	Specifies interval in seconds between sending of Hello messages. Beware,
 	all routers on the same network need to have the same hello interval.
 	Default value is 10.
 
-	<tag><label id="ospf-poll">poll <M>num</M></tag>
+	<tag><label id="ospf-poll">poll <M>number</M></tag>
 	Specifies interval in seconds between sending of Hello messages for some
 	neighbors on NBMA network. Default value is 20.
 
-	<tag><label id="ospf-retransmit">retransmit <M>num</M></tag>
+	<tag><label id="ospf-retransmit">retransmit <M>number</M></tag>
 	Specifies interval in seconds between retransmissions of unacknowledged
 	updates. Default value is 5.
 
-	<tag><label id="ospf-transmit-delay">transmit delay <M>num</M></tag>
+	<tag><label id="ospf-transmit-delay">transmit delay <M>number</M></tag>
 	Specifies estimated transmission delay of link state updates send over
 	the interface. The value is added to LSA age of LSAs propagated through
 	it. Default value is 1.
 
-	<tag><label id="ospf-priority">priority <M>num</M></tag>
+	<tag><label id="ospf-priority">priority <M>number</M></tag>
 	On every multiple access network (e.g., the Ethernet) Designated Router
 	and Backup Designated router are elected. These routers have some special
 	functions in the flooding process. Higher priority increases preferences
 	in this election. Routers with priority 0 are not eligible. Default
 	value is 1.
 
-	<tag><label id="ospf-wait">wait <M>num</M></tag>
+	<tag><label id="ospf-wait">wait <M>number</M></tag>
 	After start, router waits for the specified number of seconds between
 	starting election and building adjacency. Default value is 4*<m/hello/.
 
-	<tag><label id="ospf-dead-count">dead count <M>num</M></tag>
+	<tag><label id="ospf-dead-count">dead count <M>number</M></tag>
 	When the router does not receive any messages from a neighbor in
 	<m/dead count/*<m/hello/ seconds, it will consider the neighbor down.
 
-	<tag><label id="ospf-dead">dead <M>num</M></tag>
+	<tag><label id="ospf-dead">dead <M>number</M></tag>
 	When the router does not receive any messages from a neighbor in
 	<m/dead/ seconds, it will consider the neighbor down. If both directives
 	<cf/dead count/ and <cf/dead/ are used, <cf/dead/ has precedence.
 
-	<tag><label id="ospf-rx-buffer">rx buffer <M>num</M></tag>
+	<tag><label id="ospf-rx-buffer">rx buffer <M>number</M></tag>
 	This option allows to specify the size of buffers used for packet
 	processing. The buffer size should be bigger than maximal size of any
 	packets. By default, buffers are dynamically resized as needed, but a
 	fixed value could be specified. Value <cf/large/ means maximal allowed
 	packet size - 65535.
 
-	<tag><label id="ospf-tx-length">tx length <M>num</M></tag>
+	<tag><label id="ospf-tx-length">tx length <M>number</M></tag>
 	Transmitted OSPF messages that contain large amount of information are
 	segmented to separate OSPF packets to avoid IP fragmentation. This
 	option specifies the soft ceiling for the length of generated OSPF
@@ -5070,7 +5070,7 @@ protocol ospf [v2|v3] &lt;name&gt; {
 	outgoing OSPF packets. See <ref id="proto-tx-class" name="tx class"> common
 	option for detailed description.
 
-	<tag><label id="ospf-ecmp-weight">ecmp weight <M>num</M></tag>
+	<tag><label id="ospf-ecmp-weight">ecmp weight <M>number</M></tag>
 	When ECMP (multipath) routes are allowed, this value specifies a
 	relative weight used for nexthops going through the iface. Allowed
 	values are 1-256. Default value is 1.
