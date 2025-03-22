@@ -337,15 +337,17 @@ pkg-fedora-34-amd64:
 #  needs: [build-centos-7-amd64]
 #  image: registry.nic.cz/labs/bird:centos-7-amd64
 
-pkg-centos-8-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-centos-8-amd64]
-  image: registry.nic.cz/labs/bird:centos-8-amd64
+# Removed due to apkg breakage
+#pkg-centos-8-amd64:
+#  <<: *pkg-rpm-wa
+#  needs: [build-centos-8-amd64]
+#  image: registry.nic.cz/labs/bird:centos-8-amd64
 
-pkg-ubuntu-18.04-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-18_04-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
+# Removed due to apkg breakage
+#pkg-ubuntu-18.04-amd64:
+#  <<: *pkg-deb
+#  needs: [build-ubuntu-18_04-amd64]
+#  image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
 
 pkg-ubuntu-20.04-amd64:
   <<: *pkg-deb
@@ -363,15 +365,17 @@ pkg-ubuntu-21.10-amd64:
 #  needs: [build-ubuntu-21_04-amd64]
 #  image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
 
-pkg-opensuse-15.1-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-opensuse-15.1-amd64]
-  image: registry.nic.cz/labs/bird:opensuse-15.1-amd64
+# Removed due to apkg breakage
+#pkg-opensuse-15.1-amd64:
+#  <<: *pkg-rpm-wa
+#  needs: [build-opensuse-15.1-amd64]
+#  image: registry.nic.cz/labs/bird:opensuse-15.1-amd64
 
-pkg-opensuse-15.2-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-opensuse-15.2-amd64]
-  image: registry.nic.cz/labs/bird:opensuse-15.2-amd64
+# Removed due to apkg breakage
+#pkg-opensuse-15.2-amd64:
+#  <<: *pkg-rpm-wa
+#  needs: [build-opensuse-15.2-amd64]
+#  image: registry.nic.cz/labs/bird:opensuse-15.2-amd64
 
 pkg-opensuse-15.3-amd64:
   <<: *pkg-rpm-wa
