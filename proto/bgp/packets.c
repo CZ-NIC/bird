@@ -1487,6 +1487,9 @@ bgp_decode_next_hop_vpn(struct bgp_parse_state *s, byte *data, uint len, ea_list
     nh[0] = ipa_from_ip6(get_ip6(data+8));
     nh[1] = ipa_from_ip6(get_ip6(data+32));
 
+    if (ipa_is_link_local(nh[0]))
+    { nh[1] = nh[0]; nh[0] = IPA_NONE; }
+
     if (ipa_is_ip4(nh[0]) || !ip6_is_link_local(nh[1]))
       nh[1] = IPA_NONE;
   }
