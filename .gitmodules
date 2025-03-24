@@ -1,0 +1,3 @@
+[submodule "tools/flock"]
+	path = tools/flock
+	url = https://gitlab.nic.cz/labs/flock.git
