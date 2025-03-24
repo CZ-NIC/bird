@@ -6,27 +6,35 @@ possibly a cleaner way to install BIRD than manually.
 
 To install BIRD manually from the source tarball, you need to first build it.
 
+<code>
 $ ./configure
 $ make
+</code>
 
 After this, you get binaries bird, birdc and birdcl which will run perfectly
 from wherever you put them. You can install them to the system paths if you want.
 
+<code>
 # make install
+</code>
 
 Default location for configuration file is /usr/local/etc/bird.conf and
 for control socket is /usr/local/var/run/bird.ctl . You can change that
 by --prefix, --sysconfdir and --runstatedir configure options, e.g.:
 
+<code>
 $ ./configure --prefix=/usr --sysconfdir=/etc --runstatedir=/run
+</code>
 
 To compile current development BIRD source code from Git repository, you
 also need Git (to download the source code) and Autoconf (to generate
 the configure script and associated files using 'autoreconf' tool):
 
+<code>
 $ git clone https://gitlab.labs.nic.cz/labs/bird/
 $ cd bird
 $ autoreconf
+</code>
 
 Then continue as in usual installation above.
 
@@ -55,4 +63,6 @@ For compiling BIRD documentation you also need:
  - LinuxDoc-Tools-LaTeX
  - TeXLive-LaTeX-Extra
 
+<code>
 $ make docs
+</code>
