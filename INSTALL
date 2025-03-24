@@ -54,3 +54,5 @@ For compiling BIRD documentation you also need:
 
  - LinuxDoc-Tools-LaTeX
  - TeXLive-LaTeX-Extra
+
+$ make docs
