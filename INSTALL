@@ -52,5 +52,5 @@ For compiling BIRD you need these programs and libraries:
 
 For compiling BIRD documentation you also need:
 
- - Linuxdoc-Tools
- - LaTeX
+ - LinuxDoc-Tools-LaTeX
+ - TeXLive-LaTeX-Extra
