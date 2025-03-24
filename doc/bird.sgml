@@ -3604,6 +3604,18 @@ be used in explicit configuration.
 	enabled a route may end with a link-local immediate next hop when the
 	IGP route has one. Default: disabled.
 
+	<tag><label id="bgp-link-local-next-hop-format">link local next hop format native|single|double</tag>
+	For IPv6 routes, BGP assumes that the Next Hop attribute contains a
+	global IPv6 address (in the first position) and an optional link-local
+	IPv6 address (in the second position): [<m/global/, <m/link-local/].
+	When a BGP session is established using just link-local addresses, there
+	may be no global IPv6 address for the next hop. BGP implementations
+	differ on how to encode such next hops. BIRD <cf/native/ format is to
+	send [zero, <m/link-local/], <cf/single/ format is [<m/link-local/],
+	<cf/double/ format is [<m/link-local/, <m/link-local/]. BIRD accepts all
+	these variants when decoding received routes, but this option controls
+	which one it uses to encode such next hops. Default: native.
+
 	<tag><label id="bgp-gateway">gateway direct|recursive</tag>
 	For received routes, their <cf/gw/ (immediate next hop) attribute is
 	computed from received <cf/bgp_next_hop/ attribute. This option
@@ -3827,6 +3839,7 @@ direction (re-export of routes to the BGP neighbor):
 	<item><cf/next hop address/
 	<item><cf/next hop self/
 	<item><cf/next hop keep/
+	<item><cf/link local next hop format/
 	<item><cf/aigp/
 	<item><cf/aigp originate/
 </itemize>

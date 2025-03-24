@@ -1314,6 +1314,37 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
 }
 
 static uint
+bgp_prepare_link_local_next_hop(struct bgp_write_state *s, ip_addr *nh)
+{
+  /*
+   * We have link-local next-hop in nh[1]
+   *
+   * Possible variants:
+   * [ ::, fe80::XX ] - BIRD's default/internal (LLNH_NATIVE)
+   * [ fe80::XX ] - draft-white-linklocal-capability (LLNH_SINGLE)
+   * [ fe80::XX, fe80::XX ] - Used in JunoOS (LLNH_DOUBLE)
+   */
+
+  switch (s->llnh_format)
+  {
+  case LLNH_NATIVE:
+    return 32;
+
+  case LLNH_SINGLE:
+    nh[0] = nh[1];
+    return 16;
+
+  case LLNH_DOUBLE:
+    nh[0] = nh[1];
+    return 32;
+
+  default:
+    ASSERT(0);
+    return 32;
+  }
+}
+
+static uint
 bgp_encode_next_hop_ip(struct bgp_write_state *s, eattr *a, byte *buf, uint size UNUSED)
 {
   /* This function is used only for MP-BGP, see bgp_encode_next_hop() for IPv4 BGP */
@@ -1333,6 +1364,13 @@ bgp_encode_next_hop_ip(struct bgp_write_state *s, eattr *a, byte *buf, uint size
   {
     put_ip4(buf, ipa_to_ip4(nh[0]));
     return 4;
+  }
+
+  /* Handle variants of link-local-only next hop */
+  if (ipa_zero(nh[0]) && (len == 32))
+  {
+    nh = alloca_copy(nh, 32);
+    len = bgp_prepare_link_local_next_hop(s, nh);
   }
 
   put_ip6(buf, ipa_to_ip6(nh[0]));
@@ -1409,6 +1447,13 @@ bgp_encode_next_hop_vpn(struct bgp_write_state *s, eattr *a, byte *buf, uint siz
     put_u64(buf, 0); /* VPN RD is 0 */
     put_ip4(buf+8, ipa_to_ip4(nh[0]));
     return 12;
+  }
+
+  /* Handle variants of link-local-only next hop */
+  if (ipa_zero(nh[0]) && (len == 32))
+  {
+    nh = alloca_copy(nh, 32);
+    len = bgp_prepare_link_local_next_hop(s, nh);
   }
 
   put_u64(buf, 0); /* VPN RD is 0 */
@@ -2577,6 +2622,7 @@ again: ;
     .mp_reach = (c->afi != BGP_AF_IPV4) || c->ext_next_hop,
     .as4_session = p->as4_session,
     .add_path = c->add_path_tx,
+    .llnh_format = c->cf->llnh_format,
     .mpls = c->desc->mpls,
   };
 

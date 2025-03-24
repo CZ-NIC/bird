@@ -17,4 +17,6 @@
 
 #define allocz(len) ({ void *_x = alloca(len); memset(_x, 0, len); _x; })
 
+#define alloca_copy(src,len) ({ void *_x = alloca(len); memcpy(_x, src, len); })
+
 #endif
