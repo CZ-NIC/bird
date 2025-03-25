@@ -2899,6 +2899,7 @@ protocol bgp [<name>] {
 		next hop self <switch>|ibgp|ebgp;
 		next hop address <ip>;
 		next hop prefer global;
+		link local next hop format native|single|double;
 		gateway direct|recursive;
 		igp table <name>;
 		import table <switch>;
