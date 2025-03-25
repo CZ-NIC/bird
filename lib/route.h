@@ -157,6 +157,7 @@ struct nexthop {
 /* For packing one into eattrs */
 struct nexthop_adata {
   struct adata ad;
+  PADDING(unused, 0, 4);
   /* There is either a set of nexthops or a special destination (RTD_*) */
   union {
     struct nexthop nh;
