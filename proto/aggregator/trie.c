@@ -79,20 +79,11 @@
 #include "filter/filter.h"
 #include "proto/aggregator/aggregator.h"
 
-#define ipa_getbit(a,p) ip6_getbit(a,p)
-#define ipa_setbit(a,p) ip6_setbit(a,p)
-#define ipa_clrbit(a,p) ip6_clrbit(a,p)
-
 /* TODO: comment what purpose this array has */
 static const char *px_origin_str[] = {
   [FILLER]     = "filler",
   [ORIGINAL]   = "original",
   [AGGREGATED] = "aggregated",
-};
-
-static const u32 ipa_shift[] = {
-  [NET_IP4] = IP6_MAX_PREFIX_LENGTH - IP4_MAX_PREFIX_LENGTH,
-  [NET_IP6] = 0,
 };
 
 static inline int
@@ -188,6 +179,12 @@ aggregator_select_lowest_id_bucket(const struct aggregator_proto *p, const struc
 
   for (u32 i = 0; i < MAX_POTENTIAL_BUCKETS_COUNT; i++)
   {
+    /* todo: tohle umíme rychlejc a hezčejc */
+    if (!node->potential_buckets[...])
+      continue;
+
+    ((x ^ (x - 1)) >> 1) + 1
+
     if (BIT32R_TEST(node->potential_buckets, i))
     {
       struct aggregator_bucket *bucket = aggregator_get_bucket_from_id(p, i);
@@ -204,60 +201,68 @@ aggregator_select_lowest_id_bucket(const struct aggregator_proto *p, const struc
  * @target: node we are computing set of potential buckets for
  * @left, @right: left and right children of @target
  *
- * If sets of potential buckets in @left and @right have non-empty intersection,
- * computed as bitwise AND, save it to the target bucket. Otherwise compute
- * their union as bitwise OR. Return whether the set of potential buckets in the
- * target node has changed.
+ * The resulting set is an intersection of bucket sets of @left and @right.
+ * If this intersection happens to be empty, we can choose any of the buckets,
+ * thus we compute an union instead.
+ *
+ * Returns: whether the set of potential buckets in the target node has changed.
  */
-static int
+static bool
 aggregator_merge_potential_buckets(struct trie_node *target, const struct trie_node *left, const struct trie_node *right)
 {
   ASSERT_DIE(target != NULL);
   ASSERT_DIE(left != NULL);
   ASSERT_DIE(right != NULL);
 
-  int has_intersection = 0;
-  int has_changed = 0;
-  int buckets_count = 0;
+  bool has_intersection = false;
+  bool has_changed = false;
 
   u32 before[ARRAY_SIZE(target->potential_buckets)] = { 0 };
 
+  target->potential_buckets_count = 0;
+
+  /* First we try to compute intersection. If it exists, we want to keep it. */
   for (int i = 0; i < POTENTIAL_BUCKETS_BITMAP_SIZE; i++)
   {
     /* Save current bitmap values */
     before[i] = target->potential_buckets[i];
 
     /* Compute intersection */
-    has_intersection |= !!(target->potential_buckets[i] = left->potential_buckets[i] & right->potential_buckets[i]);
-    buckets_count += u32_popcount(target->potential_buckets[i]);
+    target->potential_buckets[i] = left->potential_buckets[i] & right->potential_buckets[i];
+    target->potential_buckets_count += u32_popcount(target->potential_buckets[i]);
+
+    if (target->potential_buckets[i])
+      has_intersection = true;
 
     /*
      * If old and new values are different, the result of their XOR will be
      * non-zero, thus @has_changed will be set to non-zero -- true, as well.
      */
-    has_changed |= !!(before[i] ^ target->potential_buckets[i]);
+    if (before[i] ^ target->potential_buckets[i])
+      has_changed = true;
   }
+
+  /* Intersection found */
+  if (has_intersection)
+    return has_changed;
 
   /* Sets have an empty intersection, compute their union instead */
-  if (!has_intersection)
+  target->potential_buckets_count = 0;
+  has_changed = false;
+
+  for (int i = 0; i < POTENTIAL_BUCKETS_BITMAP_SIZE; i++)
   {
-    buckets_count = 0;
-    has_changed = 0;
+    target->potential_buckets[i] = left->potential_buckets[i] | right->potential_buckets[i];
+    buckets_count += u32_popcount(target->potential_buckets[i]);
 
-    for (int i = 0; i < POTENTIAL_BUCKETS_BITMAP_SIZE; i++)
-    {
-      target->potential_buckets[i] = left->potential_buckets[i] | right->potential_buckets[i];
-      buckets_count += u32_popcount(target->potential_buckets[i]);
-      has_changed |= !!(before[i] ^ target->potential_buckets[i]);
-    }
+    if (before[i] ^ target->potential_buckets[i])
+      has_changed = true;
   }
-
-  /* Update number of potential buckets */
-  target->potential_buckets_count = buckets_count;
 
   return has_changed;
 }
 
+/* TODO: sloučit s dumpem celé trie */
 static void
 aggregator_print_prefixes_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, u32 type)
 {
@@ -388,22 +393,20 @@ aggregator_prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u3
   ASSERT_DIE(p != NULL);
   ASSERT_DIE(bucket != NULL);
 
-  struct net_addr addr = { 0 };
-  net_fill_ipa(&addr, prefix, pxlen);
-
+  /* Allocate the item */
   struct rte_withdrawal_item *node = lp_allocz(p->rte_withdrawal_pool, sizeof(*node));
 
-  *node = (struct rte_withdrawal_item) {
-    .next = p->rte_withdrawal_stack,
-    .bucket = bucket,
-  };
-
+  /* Fill the item information */
+  struct net_addr addr = { 0 };
+  net_fill_ipa(&addr, prefix, pxlen);
   net_copy(&node->addr, &addr);
 
+  node->bucket = bucket;
+
+  /* Push item onto stack */
+  node->next = p->rte_withdrawal_stack,
   p->rte_withdrawal_stack = node;
   p->rte_withdrawal_count++;
-
-  ASSERT_DIE(p->rte_withdrawal_stack != NULL);
 }
 
 /*
@@ -418,10 +421,12 @@ aggregator_trie_insert_prefix(struct aggregator_proto *p, ip_addr prefix, u32 px
 
   struct trie_node *node = p->root;
 
-  for (u32 i = 0; i < pxlen; i++)
+  /* tohle je možná lepší nazpátek skrz ipa_shift */
+  for (u32 i = ((p->addr_type == NET_IP4) ? 96 : 0); i < pxlen; i++)
   {
-    u32 bit = ipa_getbit(prefix, i + ipa_shift[p->addr_type]);
+    u32 bit = ip6_getbit(prefix, i);
 
+    /* Add filler trie nodes onto the path to the actual inserted node */
     if (!node->child[bit])
     {
       struct trie_node *new = sl_allocz(p->trie_slab);
@@ -461,6 +466,8 @@ aggregator_trie_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 px
     ASSERT_DIE(node != NULL);
   }
 
+  /* TODO: okomentovat, proč tady ještě nesmíme uklízet směrem nahoru */
+
   ASSERT_DIE(node->px_origin == ORIGINAL);
   ASSERT_DIE((u32)node->depth == pxlen);
 
@@ -486,7 +493,6 @@ aggregator_find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, 
 
   int path[IP6_MAX_PREFIX_LENGTH] = { 0 };
   int pos = 0;
-  u32 len = 0;
 
   const struct trie_node *node = target;
   const struct trie_node *parent = node->parent;
@@ -494,10 +500,12 @@ aggregator_find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, 
   /* Ascend to the root node */
   while (parent)
   {
+    ASSERT_DIE(parent->depth + 1 == node->depth);
+
     if (node == parent->child[0])
-      path[pos++] = 0;
+      ipa_clrbit(prefix, node->depth + ipa_shift[type]);
     else if (node == parent->child[1])
-      path[pos++] = 1;
+      ipa_setbit(prefix, node->depth + ipa_shift[type]);
     else
       bug("Corrupted memory (node is not its parent's child)");
 
@@ -506,29 +514,16 @@ aggregator_find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, 
     parent = node->parent;
   }
 
-  ASSERT_DIE(node->parent == NULL);
-
-  /* Descend to the target node */
-  for (int i = pos - 1; i >= 0; i--)
-  {
-    if (path[i] == 0)
-      ipa_clrbit(prefix, node->depth + ipa_shift[type]);
-    else
-      ipa_setbit(prefix, node->depth + ipa_shift[type]);
-
-    // TODO: remove after testing, traversing back to target node is not neccessary
-    node = node->child[path[i]];
-
-    len++;
-    ASSERT_DIE((u32)node->depth == len);
-  }
-
-  ASSERT_DIE(node == target);
-  *pxlen = len;
+  *pxlen = node->depth;
 }
 
 /*
  * Second pass of Optimal Route Table Construction (ORTC) algorithm
+ *
+ * TODO:
+ * - okomentovat (radši víc)
+ * - přejmenovat (aggregator_propagate_update?)
+ * - zrušit `recomputing`
  */
 static void
 aggregator_second_pass(struct trie_node *node, int recomputing)
