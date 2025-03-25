@@ -95,17 +95,6 @@ static const u32 ipa_shift[] = {
   [NET_IP6] = 0,
 };
 
-/*
- * Allocate new node in trie slab
- */
-// TODO: inline in aggregator.h?
-// ... ne, zrušit úplně, volat jen zde sl_allocz přímo
-struct trie_node *
-aggregator_alloc_node(struct slab *trie_slab)
-{
-  return sl_allocz(trie_slab);
-}
-
 static inline int
 aggregator_is_leaf(const struct trie_node *node)
 {
@@ -133,7 +122,10 @@ aggregator_remove_node(struct trie_node *node)
       ASSERT_DIE(node->parent->child[1] != node);
     }
     else if (node->parent->child[1] == node)
+    {
       node->parent->child[1] = NULL;
+      ASSERT_DIE(node->parent->child[0] != node);
+    }
     else
       bug("Corrupted memory (node is not its parent's child)");
   }
@@ -149,29 +141,9 @@ aggregator_node_add_potential_bucket(struct trie_node *node, const struct aggreg
 {
   ASSERT_DIE(node->potential_buckets_count < MAX_POTENTIAL_BUCKETS_COUNT);
 
-  /* radši tu první verzi pls */
-
-  /*
   if (BIT32R_TEST(node->potential_buckets, bucket->id))
     return;
 
-  BIT32R_SET(node->potential_buckets, bucket->id);
-  node->potential_buckets_count++;
-  */
-
-  /*
-   * If the bit is set, the result of TEST is 1 and is subtracted from
-   * the bucket count, decreasing it by one.
-   * Second statement has no effect since the bit is already set.
-   * Third statement increases count by one, returning it to its previous
-   * value. Nothing changed.
-   *
-   * If the bit is not set, the result of TEST is 0 and subtracting it
-   * from the total count doesn't change its value.
-   * Second statement sets the bit and third statement increases count by one.
-   * Bit is now set and the total count was increased by one.
-   */
-  node->potential_buckets_count -= BIT32R_TEST(node->potential_buckets, bucket->id);
   BIT32R_SET(node->potential_buckets, bucket->id);
   node->potential_buckets_count++;
 }
@@ -452,7 +424,7 @@ aggregator_trie_insert_prefix(struct aggregator_proto *p, ip_addr prefix, u32 px
 
     if (!node->child[bit])
     {
-      struct trie_node *new = aggregator_alloc_node(p->trie_slab);
+      struct trie_node *new = sl_allocz(p->trie_slab);
 
       *new = (struct trie_node) {
         .parent = node,
@@ -752,7 +724,7 @@ aggregator_third_pass_helper(struct aggregator_proto *p, struct trie_node *node,
      */
     if (!aggregator_is_bucket_potential(&imaginary_node, imaginary_node_inherited_bucket))
     {
-      struct trie_node *new = aggregator_alloc_node(p->trie_slab);
+      struct trie_node *new = sl_allocz(p->trie_slab);
       *new = imaginary_node;
 
       /* Connect new node to the trie */

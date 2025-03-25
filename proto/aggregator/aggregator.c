@@ -119,8 +119,6 @@ aggregator_withdraw_rte(struct aggregator_proto *p)
   lp_flush(p->rte_withdrawal_pool);
 }
 
-static void aggregator_init_trie(struct aggregator_proto *p);
-
 static void
 aggregator_aggregate_on_feed_end(struct channel *C)
 {
@@ -130,9 +128,8 @@ aggregator_aggregate_on_feed_end(struct channel *C)
     return;
 
   ASSERT_DIE(p->aggr_mode == PREFIX_AGGR);
-  ASSERT_DIE(p->root == NULL);
+  ASSERT_DIE(p->root != NULL);
 
-  aggregator_init_trie(p);
   aggregator_aggregate(p);
 }
 
@@ -860,17 +857,7 @@ aggregator_init_trie(struct aggregator_proto *p)
   HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 
   /* Initialize root node */
-
-#if 0 /* this belongs to trie.c, call that from here */
-  p->root = aggregator_alloc_node(p->trie_slab);
-
-  *p->root = (struct trie_node) {
-    .original_bucket = new_bucket,
-    .status = NON_FIB,
-    .px_origin = ORIGINAL,
-    .depth = 0,
-  };
-#endif
+  p->root = sl_allocz(p->trie_slab);
 }
 
 static int
@@ -913,6 +900,8 @@ aggregator_start(struct proto *P)
 
     p->rte_withdrawal_pool = lp_new(P->pool);
     p->rte_withdrawal_count = 0;
+
+    aggregator_init_trie(p);
   }
 
   return PS_UP;
