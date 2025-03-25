@@ -11,12 +11,16 @@
  * DOC: Aggregator protocol trie
  *
  * Prefix aggregation implements the ORTC (Optimal Route Table Construction)
- * algorithm. This algorithm uses a binary tree representation of the routing
+ * algorithm. TODO: zdroje, odkazy na literaturu
+ *
+ * This algorithm uses a binary tree representation of the routing
  * table. An edge from the parent node to its left child represents bit 0, and
  * an edge from the parent node to its right child represents bit 1 as the
  * prefix is traversed from the most to the least significant bit. Last node
  * of every prefix contains pointer to @aggregator_bucket where the route for
  * this prefix belongs.
+ *
+ * TODO: popis originálního algoritmu zřetelně odlišit od toho, co tady skutečně děláme
  *
  * ORTC algorithm consists of three passes through the trie.
  *
@@ -79,6 +83,7 @@
 #define ipa_setbit(a,p) ip6_setbit(a,p)
 #define ipa_clrbit(a,p) ip6_clrbit(a,p)
 
+/* TODO: comment what purpose this array has */
 static const char *px_origin_str[] = {
   [FILLER]     = "filler",
   [ORIGINAL]   = "original",
@@ -94,6 +99,7 @@ static const u32 ipa_shift[] = {
  * Allocate new node in trie slab
  */
 // TODO: inline in aggregator.h?
+// ... ne, zrušit úplně, volat jen zde sl_allocz přímo
 struct trie_node *
 aggregator_alloc_node(struct slab *trie_slab)
 {
@@ -122,14 +128,16 @@ aggregator_remove_node(struct trie_node *node)
   else
   {
     if (node->parent->child[0] == node)
+    {
       node->parent->child[0] = NULL;
+      ASSERT_DIE(node->parent->child[1] != node);
+    }
     else if (node->parent->child[1] == node)
       node->parent->child[1] = NULL;
     else
       bug("Corrupted memory (node is not its parent's child)");
   }
 
-  memset(node, 0, sizeof(*node));
   sl_free(node);
 }
 
@@ -140,6 +148,8 @@ static inline void
 aggregator_node_add_potential_bucket(struct trie_node *node, const struct aggregator_bucket *bucket)
 {
   ASSERT_DIE(node->potential_buckets_count < MAX_POTENTIAL_BUCKETS_COUNT);
+
+  /* radši tu první verzi pls */
 
   /*
   if (BIT32R_TEST(node->potential_buckets, bucket->id))
@@ -172,6 +182,8 @@ aggregator_node_add_potential_bucket(struct trie_node *node, const struct aggreg
 static inline int
 aggregator_is_bucket_potential(const struct trie_node *node, const struct aggregator_bucket *bucket)
 {
+  /* TODO: obecná otázka: musíme do těchto funkcí předávat  bucket, nebo by stačilo bucket id? */
+
   ASSERT_DIE(node != NULL);
   ASSERT_DIE(bucket != NULL);
 

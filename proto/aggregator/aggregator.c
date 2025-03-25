@@ -810,6 +810,9 @@ aggregator_init(struct proto_config *CF)
 
 /*
  * Initialize hash table and create default route
+ *
+ * TODO: tohle asi máme zavolat při startu protokolu
+ * a uklidit při vypnutí, ne?
  */
 static void
 aggregator_init_trie(struct aggregator_proto *p)
@@ -857,6 +860,8 @@ aggregator_init_trie(struct aggregator_proto *p)
   HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 
   /* Initialize root node */
+
+#if 0 /* this belongs to trie.c, call that from here */
   p->root = aggregator_alloc_node(p->trie_slab);
 
   *p->root = (struct trie_node) {
@@ -865,6 +870,7 @@ aggregator_init_trie(struct aggregator_proto *p)
     .px_origin = ORIGINAL,
     .depth = 0,
   };
+#endif
 }
 
 static int
