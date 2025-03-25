@@ -490,6 +490,11 @@ test-bgp-rs-multitab:
   variables:
     TEST_NAME: cf-bgp-rs-multitab
 
+test-bgp-rs-singletab:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-rs-singletab
+
 test-ebgp-loop:
   <<: *test-base
   variables:
