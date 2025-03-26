@@ -1,3 +1,6 @@
 [submodule "tools/flock"]
 	path = tools/flock
 	url = https://gitlab.nic.cz/labs/flock.git
+[submodule "tools/bird-tools"]
+	path = tools/bird-tools
+	url = https://gitlab.nic.cz/labs/bird-tools.git

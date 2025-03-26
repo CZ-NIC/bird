@@ -14,3 +14,4 @@
 /sysdep/autoconf.h.in~
 /cscope.*
 *.tar.gz
+__pycache__
