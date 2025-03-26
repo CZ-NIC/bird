@@ -60,14 +60,6 @@ stages:
     - linux
     - amd64
 
-build-debian-9-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:debian-9-amd64
-
-build-debian-9-i386:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:debian-9-i386
-
 build-debian-10-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:debian-10-amd64
@@ -80,17 +72,25 @@ build-debian-11-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:debian-11-amd64
 
-#build-debian-11-i386:
-#  <<: *build-linux
-#  image: registry.nic.cz/labs/bird:debian-11-i386
+build-debian-11-i386:
+ <<: *build-linux
+ image: registry.nic.cz/labs/bird:debian-11-i386
+
+build-debian-12-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:debian-12-amd64
+
+build-debian-12-i386:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:debian-12-i386
 
 build-debian-testing-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:debian-testing-amd64
 
-#build-debian-testing-i386:
-#  <<: *build-linux
-#  image: registry.nic.cz/labs/bird:debian-testing-i386
+build-debian-testing-i386:
+ <<: *build-linux
+ image: registry.nic.cz/labs/bird:debian-testing-i386
 
 build-fedora-32-amd64:
   <<: *build-linux
@@ -308,6 +308,31 @@ pkg-debian-11-amd64:
   <<: *pkg-deb
   needs: [build-debian-11-amd64]
   image: registry.nic.cz/labs/bird:debian-11-amd64
+
+pkg-debian-11-i386:
+  <<: *pkg-deb
+  needs: [build-debian-11-i386]
+  image: registry.nic.cz/labs/bird:debian-11-i386
+
+pkg-debian-12-amd64:
+  <<: *pkg-deb
+  needs: [build-debian-12-amd64]
+  image: registry.nic.cz/labs/bird:debian-12-amd64
+
+pkg-debian-12-i386:
+  <<: *pkg-deb
+  needs: [build-debian-12-i386]
+  image: registry.nic.cz/labs/bird:debian-12-i386
+
+pkg-debian-testing-amd64:
+  <<: *pkg-deb
+  needs: [build-debian-testing-amd64]
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
+
+pkg-debian-testing-i386:
+  <<: *pkg-deb
+  needs: [build-debian-testing-i386]
+  image: registry.nic.cz/labs/bird:debian-testing-i386
 
 pkg-fedora-32-amd64:
   <<: *pkg-rpm-wa
