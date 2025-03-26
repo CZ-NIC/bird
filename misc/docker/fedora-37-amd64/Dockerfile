@@ -1,4 +1,4 @@
-FROM fedora:28
+FROM fedora:37
 RUN dnf -y upgrade
 RUN dnf -y install \
 	make \

@@ -1,4 +1,4 @@
-FROM fedora:31
+FROM fedora:40
 RUN dnf -y update
 RUN dnf -y install \
 	gcc \

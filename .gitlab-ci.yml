@@ -92,34 +92,6 @@ build-debian-testing-amd64:
 #  <<: *build-linux
 #  image: registry.nic.cz/labs/bird:debian-testing-i386
 
-build-fedora-25-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-25-amd64
-
-build-fedora-26-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-26-amd64
-
-build-fedora-27-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-27-amd64
-
-build-fedora-28-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-28-amd64
-
-build-fedora-29-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-29-amd64
-
-build-fedora-30-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-30-amd64
-
-build-fedora-31-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-31-amd64
-
 build-fedora-32-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:fedora-32-amd64
@@ -130,15 +102,39 @@ build-fedora-33-amd64:
 
 build-fedora-34-amd64:
   <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-33-amd64
+  image: registry.nic.cz/labs/bird:fedora-34-amd64
+
+build-fedora-35-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:fedora-35-amd64
+
+build-fedora-36-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:fedora-36-amd64
+
+build-fedora-37-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:fedora-37-amd64
+
+build-fedora-38-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:fedora-38-amd64
+
+build-fedora-39-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:fedora-39-amd64
+
+build-fedora-40-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:fedora-40-amd64
 
 build-fedora-41-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:fedora-41-amd64
 
-build-fedora-42-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:fedora-42-amd64
+# build-fedora-42-amd64:
+#   <<: *build-linux
+#   image: registry.nic.cz/labs/bird:fedora-42-amd64
 
 #build-centos-7-amd64:
 #  <<: *build-linux
@@ -313,16 +309,6 @@ pkg-debian-11-amd64:
   needs: [build-debian-11-amd64]
   image: registry.nic.cz/labs/bird:debian-11-amd64
 
-pkg-fedora-30-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-fedora-30-amd64]
-  image: registry.nic.cz/labs/bird:fedora-30-amd64
-
-pkg-fedora-31-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-fedora-31-amd64]
-  image: registry.nic.cz/labs/bird:fedora-31-amd64
-
 pkg-fedora-32-amd64:
   <<: *pkg-rpm-wa
   needs: [build-fedora-32-amd64]
@@ -338,15 +324,45 @@ pkg-fedora-34-amd64:
   needs: [build-fedora-34-amd64]
   image: registry.nic.cz/labs/bird:fedora-34-amd64
 
+pkg-fedora-35-amd64:
+  <<: *pkg-rpm-wa
+  needs: [build-fedora-35-amd64]
+  image: registry.nic.cz/labs/bird:fedora-35-amd64
+
+pkg-fedora-36-amd64:
+  <<: *pkg-rpm-wa
+  needs: [build-fedora-36-amd64]
+  image: registry.nic.cz/labs/bird:fedora-36-amd64
+
+pkg-fedora-37-amd64:
+  <<: *pkg-rpm
+  needs: [build-fedora-37-amd64]
+  image: registry.nic.cz/labs/bird:fedora-37-amd64
+
+pkg-fedora-38-amd64:
+  <<: *pkg-rpm-wa
+  needs: [build-fedora-38-amd64]
+  image: registry.nic.cz/labs/bird:fedora-38-amd64
+
+pkg-fedora-39-amd64:
+  <<: *pkg-rpm-wa
+  needs: [build-fedora-39-amd64]
+  image: registry.nic.cz/labs/bird:fedora-39-amd64
+
+pkg-fedora-40-amd64:
+  <<: *pkg-rpm
+  needs: [build-fedora-40-amd64]
+  image: registry.nic.cz/labs/bird:fedora-40-amd64
+
 pkg-fedora-41-amd64:
   <<: *pkg-rpm
   needs: [build-fedora-41-amd64]
   image: registry.nic.cz/labs/bird:fedora-41-amd64
 
-pkg-fedora-42-amd64:
-  <<: *pkg-rpm
-  needs: [build-fedora-42-amd64]
-  image: registry.nic.cz/labs/bird:fedora-42-amd64
+# pkg-fedora-42-amd64:
+#   <<: *pkg-rpm
+#   needs: [build-fedora-42-amd64]
+#   image: registry.nic.cz/labs/bird:fedora-42-amd64
 
 #pkg-centos-7-amd64:
 #  <<: *pkg-rpm-wa
