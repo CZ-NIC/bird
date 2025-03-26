@@ -9,4 +9,4 @@ if __name__ == "__main__":
     except ValueError as e:
         Suite.help(*sys.argv[1:])
 
-    asyncio.run(Suite(suite).exec(cmd, *args))
+    asyncio.run(Suite.Suite(suite).exec(cmd, *args))
