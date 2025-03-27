@@ -32,6 +32,7 @@ class Suite:
         # Load config
         commands = []
         mach_setup = {}
+        mach_ifcmds = {}
 
         with open(self.dir / "config") as cf:
             fixed = re.sub("\\\\\n", "", cf.read())
@@ -51,6 +52,7 @@ class Suite:
                     for m in self.machines:
                         ms = TaskTreeNode(self.machine_setup)
                         mach_setup[m] = ms
+                        mach_ifcmds[m] = []
                         commands.append(ms.run(m))
                     continue
 
@@ -61,9 +63,13 @@ class Suite:
 
                 cmd, *args = cmd.split()
                 if cmd == "if_dummy":
-                    commands.append(TaskTreeNode(self.if_dummy, mach_setup[args[0]].done).run(*args))
+                    node = TaskTreeNode(self.if_dummy, mach_setup[args[0]].done)
+                    mach_ifcmds[m].append(node)
+                    commands.append(node.run(*args))
                 elif cmd == "if_veth":
-                    commands.append(TaskTreeNode(self.if_veth, mach_setup[args[0]].done, mach_setup[args[2]].done).run(*args))
+                    node = TaskTreeNode(self.if_veth, mach_setup[args[0]].done, mach_setup[args[2]].done)
+                    mach_ifcmds[m].append(node)
+                    commands.append(node.run(*args))
                 elif cmd == "netlab_start":
                     pass
                 else:
@@ -72,14 +78,14 @@ class Suite:
         assert(netlab_init_seen)
 
         # Prepare Flock simulation
-        flock.create(self.targetdir)
+        await flock.create(self.targetdir)
 
         await asyncio.gather(*commands)
 
 
     async def stop(self):
         print("stop", self.targetdir)
-        flock.delete(self.targetdir)
+        await flock.delete(self.targetdir)
 
     async def save(self):
         ...
@@ -103,10 +109,15 @@ class Suite:
                 "check": self.check,
                 }[cmd]()
 
-    async def machine_setup(self, machine: str):
-        # TODO: do this async
-        print(f"Start {machine}")
-        flock.start(self.targetdir, machine)
+    async def print_shell(self, machine: str, *cmds: str):
+        out, err = await self.run_shell(machine, *cmds)
+        if len(out) > 0:
+            print(out.decode())
+
+        if len(err) > 0:
+            print(err.decode())
+
+    async def run_shell(self, machine: str, *cmds: str):
         sp = await asyncio.create_subprocess_exec(
                 str(NetlabFlock.toolsdir / "flock" / "box" / "flock-shell"),
                 stdin=asyncio.subprocess.PIPE,
@@ -114,18 +125,29 @@ class Suite:
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(self.targetdir / machine))
 
-        out, err = await sp.communicate("""
-sysctl net.ipv4.ip_forward=1
-sysctl net.ipv4.tcp_l3mdev_accept=0
-sysctl net.ipv6.conf.all.forwarding=1
-sysctl net.mpls.platform_labels=16384
-ip link set lo up
-""".encode())
+        return await sp.communicate("\n".join(cmds).encode())
 
-        return (out, err)
+    async def machine_setup(self, machine: str):
+        # TODO: do this async
+        print(f"Start {machine}")
+        await flock.start(self.targetdir, machine)
+        await self.print_shell(
+                machine,
+                "sysctl net.ipv4.ip_forward=1",
+                "sysctl net.ipv4.tcp_l3mdev_accept=0",
+                "sysctl net.ipv6.conf.all.forwarding=1",
+                "sysctl net.mpls.platform_labels=16384",
+                "ip link set lo up",
+                )
 
     async def if_dummy(self, machine: str, name: str, ip4pref: str, ip6pref: str):
-        ...
+        await flock.commands["dummy"](self.targetdir, machine, name)
+        await self.print_shell(
+                machine,
+                f"ip link set {name} up",
+                f"ip addr add {ip6pref}::1/64 dev {name}",
+                f"ip addr add {ip4pref}.1/24 dev {name}",
+                )
 
     async def if_veth(self, m1: str, n1: str, m2: str, n2: str, ip4pref: str, ip6pref: str = None):
         ...
