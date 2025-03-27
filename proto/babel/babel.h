@@ -118,6 +118,11 @@ enum babel_iface_type {
   BABEL_IFACE_TYPE_MAX
 };
 
+enum babel_next_hop_prefer {
+  BABEL_NHP_NATIVE		= 0,
+  BABEL_NHP_IP6			= 1,
+};
+
 enum babel_ae_type {
   BABEL_AE_WILDCARD		= 0,
   BABEL_AE_IP4			= 1,
@@ -163,6 +168,7 @@ struct babel_iface_config {
 
   ip_addr next_hop_ip4;
   ip_addr next_hop_ip6;
+  u8 next_hop_prefer;			/* Prefer native or IPv6 nexthop */
   u8 ext_next_hop;			/* Enable IPv4 via IPv6 */
 
   u8 auth_type;				/* Authentication type (BABEL_AUTH_*) */
