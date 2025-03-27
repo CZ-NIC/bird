@@ -589,6 +589,8 @@ bfd_reconfigure_sessions(struct deferred_call *dc)
 	  min_tx_int,
 	  idle_tx_int,
 	  multiplier,
+	  auth_type,
+	  passwords,
 	  passive) false; /* terminating the || chain */
 #undef CHK
 
