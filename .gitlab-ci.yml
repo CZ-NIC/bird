@@ -161,9 +161,10 @@ build-ubuntu-20_10-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:ubuntu-20.10-amd64 
 
-build-ubuntu-21_04-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
+#installation not available
+# build-ubuntu-21_04-amd64:
+#   <<: *build-linux
+#   image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
 
 build-ubuntu-21_10-amd64:
   <<: *build-linux
@@ -173,17 +174,20 @@ build-ubuntu-22_04-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
 
-build-ubuntu-22_10-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
+#installation not available
+# build-ubuntu-22_10-amd64:
+#   <<: *build-linux
+#   image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
 
-build-ubuntu-23_04-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
+#installation not available
+# build-ubuntu-23_04-amd64:
+#   <<: *build-linux
+#   image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
 
-build-ubuntu-23_10-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
+#installation not available
+# build-ubuntu-23_10-amd64:
+#   <<: *build-linux
+#   image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
 
 build-ubuntu-24_04-amd64:
   <<: *build-linux
@@ -446,10 +450,11 @@ pkg-fedora-41-amd64:
 #  needs: [build-centos-8-amd64]
 #  image: registry.nic.cz/labs/bird:centos-8-amd64
 
-pkg-ubuntu-16.04-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-16_04-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-16.04-amd64
+# Removed due to apkg breakage
+# pkg-ubuntu-16.04-amd64:
+#   <<: *pkg-deb
+#   needs: [build-ubuntu-16_04-amd64]
+#   image: registry.nic.cz/labs/bird:ubuntu-16.04-amd64
 
 # Removed due to apkg breakage
 #pkg-ubuntu-18.04-amd64:
@@ -467,10 +472,11 @@ pkg-ubuntu-20.10-amd64:
   needs: [build-ubuntu-20_10-amd64]
   image: registry.nic.cz/labs/bird:ubuntu-20.10-amd64
 
-pkg-ubuntu-21.04-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-21_04-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
+#Installation not available
+# pkg-ubuntu-21.04-amd64:
+#   <<: *pkg-deb
+#   needs: [build-ubuntu-21_04-amd64]
+#   image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
 
 pkg-ubuntu-21.10-amd64:
   <<: *pkg-deb
@@ -482,30 +488,35 @@ pkg-ubuntu-22.04-amd64:
   needs: [build-ubuntu-22_04-amd64]
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
 
-pkg-ubuntu-22.10-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-22_10-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
+#Installation not available
+# pkg-ubuntu-22.10-amd64:
+#   <<: *pkg-deb
+#   needs: [build-ubuntu-22_10-amd64]
+#   image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
 
-pkg-ubuntu-23.04-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-23_04-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
+#Installation not available
+# pkg-ubuntu-23.04-amd64:
+#   <<: *pkg-deb
+#   needs: [build-ubuntu-23_04-amd64]
+#   image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
 
-pkg-ubuntu-23.10-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-23_10-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
+#Installation not available
+# pkg-ubuntu-23.10-amd64:
+#   <<: *pkg-deb
+#   needs: [build-ubuntu-23_10-amd64]
+#   image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
 
-pkg-ubuntu-24.04-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-24_04-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+# Removed due to apkg breakage
+# pkg-ubuntu-24.04-amd64:
+#   <<: *pkg-deb
+#   needs: [build-ubuntu-24_04-amd64]
+#   image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
 
-pkg-ubuntu-24.10-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-24_10-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
+# Removed due to apkg breakage
+# pkg-ubuntu-24.10-amd64:
+#   <<: *pkg-deb
+#   needs: [build-ubuntu-24_10-amd64]
+#   image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
 
 # Removed due to apkg breakage
 #pkg-opensuse-15.1-amd64:
