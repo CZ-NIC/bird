@@ -2,6 +2,7 @@ from . import NetlabFlock
 from . import flock
 
 import asyncio
+import hashlib
 import os
 import pathlib
 import re
@@ -127,6 +128,15 @@ class Suite:
 
         return await sp.communicate("\n".join(cmds).encode())
 
+    def if_mac(self, machine: str, name: str):
+        m = hashlib.sha1(usedforsecurity=False)
+        m.update(machine.encode())
+        m.update(b"-")
+        m.update(name.encode())
+        m.update(b"\n")
+        d = m.hexdigest()
+        return f"{d[0]}a:{d[1:3]}:{d[3:5]}:{d[5:7]}:{d[7:9]}:{d[9:11]}"
+
     async def machine_setup(self, machine: str):
         # TODO: do this async
         print(f"Start {machine}")
@@ -144,10 +154,27 @@ class Suite:
         await flock.commands["dummy"](self.targetdir, machine, name)
         await self.print_shell(
                 machine,
+                f"ip link set {name} address {self.if_mac(machine, name)}",
                 f"ip link set {name} up",
                 f"ip addr add {ip6pref}::1/64 dev {name}",
                 f"ip addr add {ip4pref}.1/24 dev {name}",
                 )
 
     async def if_veth(self, m1: str, n1: str, m2: str, n2: str, ip4pref: str, ip6pref: str = None):
-        ...
+        await flock.commands["ptp"](self.targetdir, m1, n1, m2, n2)
+        await asyncio.gather(
+                self.print_shell(
+                    m1,
+                    f"ip link set {n1} address {self.if_mac(m1, n1)}",
+                    f"ip link set {n1} up",
+                    f"ip addr add {ip6pref}::1/64 dev {n1}",
+                    f"ip addr add {ip4pref}.1/24 dev {n1}",
+                    ),
+                self.print_shell(
+                    m2,
+                    f"ip link set {n2} address {self.if_mac(m2, n2)}",
+                    f"ip link set {n2} up",
+                    f"ip addr add {ip6pref}::2/64 dev {n2}",
+                    f"ip addr add {ip4pref}.2/24 dev {n2}",
+                    ),
+                )
