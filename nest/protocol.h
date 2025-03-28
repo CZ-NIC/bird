@@ -127,6 +127,7 @@ struct proto_config {
   u8 vrf_set;				/* Related VRF instance (below) is defined */
   u32 debug, mrtdump;			/* Debugging bitfields, both use D_* constants */
   u32 router_id;			/* Protocol specific router ID */
+  const char *hostname;			/* Protocol specific hostname */
 
   list channels;			/* List of channel configs (struct channel_config) */
   struct iface *vrf;			/* Related VRF instance, NULL if global */
@@ -309,6 +310,12 @@ static inline u32
 proto_get_router_id(struct proto_config *pc)
 {
   return pc->router_id ? pc->router_id : pc->global->router_id;
+}
+
+static inline const char*
+proto_get_hostname(struct proto_config *pc)
+{
+  return pc->hostname ? pc->hostname : pc->global->hostname;
 }
 
 
@@ -571,7 +578,7 @@ struct channel {
  *
  * CS_DOWN - The initial and the final state of a channel. There is no route
  * exchange between the protocol and the table. Channel is not counted as
- * active. Channel keeps a ptr to the table, but do not lock the table and is
+ * active. Channel keeps a ptr to the table, keeps the table locked, but is
  * not linked in the table. Generally, new closed channels are created in
  * protocols' init() hooks. The protocol is expected to explicitly activate its
  * channels (by calling channel_init() or channel_open()).
@@ -595,8 +602,8 @@ struct channel {
  * channel. The channel is still initialized, but no route exchange is allowed.
  * Instead, the associated table is running flush loop to remove routes imported
  * through the channel. After that, the channel changes state to CS_DOWN and
- * is detached from the table (the table is unlocked and the channel is unlinked
- * from it). Unlike other states, the CS_FLUSHING state is not explicitly
+ * is detached from the table (the channel is unlinked from it, but keeps the
+ * table locked). Unlike other states, the CS_FLUSHING state is not explicitly
  * entered or left by the protocol. A protocol may request to close a channel
  * (by calling channel_close()), which causes the channel to change state to
  * CS_FLUSHING and later to CS_DOWN. Also note that channels are closed

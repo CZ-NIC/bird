@@ -86,7 +86,6 @@
  * RFC 5065 - AS confederations for BGP
  * RFC 5082 - Generalized TTL Security Mechanism
  * RFC 5492 - Capabilities Advertisement with BGP
- * RFC 5575 - Dissemination of Flow Specification Rules
  * RFC 5668 - 4-Octet AS Specific BGP Extended Community
  * RFC 6286 - AS-Wide Unique BGP Identifier
  * RFC 6608 - Subcodes for BGP Finite State Machine Error
@@ -101,11 +100,13 @@
  * RFC 8212 - Default EBGP Route Propagation Behavior without Policies
  * RFC 8654 - Extended Message Support for BGP
  * RFC 8950 - Advertising IPv4 NLRI with an IPv6 Next Hop
+ * RFC 8955 - Dissemination of Flow Specification Rules
+ * RFC 8956 - Dissemination of Flow Specification Rules for IPv6
  * RFC 9072 - Extended Optional Parameters Length for BGP OPEN Message
  * RFC 9117 - Revised Validation Procedure for BGP Flow Specifications
  * RFC 9234 - Route Leak Prevention and Detection Using Roles
+ * RFC 9494 - Long-Lived Graceful Restart for BGP
  * RFC 9687 - Send Hold Timer
- * draft-uttaro-idr-bgp-persistence-04
  * draft-walton-bgp-hostname-capability-02
  */
 
@@ -622,7 +623,8 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
     p->llgr_ready = p->llgr_ready || llgr_ready;
 
     /* Remember last LLGR stale time */
-    c->stale_time = local->llgr_aware ? rem->llgr_time : 0;
+    c->stale_time = local->llgr_aware ?
+      CLAMP(rem->llgr_time, c->cf->min_llgr_time, c->cf->max_llgr_time) : 0;
 
     /* Channels not able to recover gracefully */
     if (p->p.gr_recovery && (!active || !peer_gr_ready))
@@ -805,8 +807,11 @@ bgp_handle_graceful_restart(struct bgp_proto *p)
   /* p->gr_ready -> at least one active channel is c->gr_ready */
   ASSERT(p->gr_active_num > 0);
 
+  uint gr_time = CLAMP(p->conn->remote_caps->gr_time,
+		       p->cf->min_gr_time, p->cf->max_gr_time);
+
   proto_notify_state(&p->p, PS_START);
-  tm_start(p->gr_timer, p->conn->remote_caps->gr_time S);
+  tm_start(p->gr_timer, gr_time S);
 }
 
 /**
@@ -1594,6 +1599,8 @@ bgp_start(struct proto *P)
   p->startup_timer = tm_new_init(p->p.pool, bgp_startup_timeout, p, 0, 0);
   p->gr_timer = tm_new_init(p->p.pool, bgp_graceful_restart_timeout, p, 0, 0);
 
+  p->hostname = proto_get_hostname(P->cf);
+
   p->local_id = proto_get_router_id(P->cf);
   if (p->rr_client)
     p->rr_cluster_id = p->cf->rr_cluster_id ? p->cf->rr_cluster_id : p->local_id;
@@ -2089,6 +2096,14 @@ bgp_postconfig(struct proto_config *CF)
     cf_error("Min keepalive time (%u) exceeds keepalive time (%u)",
 	     cf->min_keepalive_time, keepalive_time);
 
+  if (cf->min_gr_time > cf->max_gr_time)
+    cf_error("Min graceful restart time (%u) exceeds max graceful restart time (%u)",
+	     cf->min_gr_time, cf->max_gr_time);
+
+  if (cf->min_llgr_time > cf->max_llgr_time)
+    cf_error("Min long-lived stale time (%u) exceeds max long-lived stale time (%u)",
+	     cf->min_llgr_time, cf->max_llgr_time);
+
 
   struct bgp_channel_config *cc;
   BGP_CF_WALK_CHANNELS(cf, cc)
@@ -2132,6 +2147,12 @@ bgp_postconfig(struct proto_config *CF)
 
     if (cc->llgr_time == ~0U)
       cc->llgr_time = cf->llgr_time;
+
+    if (cc->min_llgr_time == ~0U)
+      cc->min_llgr_time = cf->min_llgr_time;
+
+    if (cc->max_llgr_time == ~0U)
+      cc->max_llgr_time = cf->max_llgr_time;
 
     /* AIGP enabled by default on interior sessions */
     if (cc->aigp == 0xff)
@@ -2178,6 +2199,11 @@ bgp_postconfig(struct proto_config *CF)
 
     if (cc->require_add_path && !cc->add_path)
       cf_warn("ADD-PATH required but not enabled");
+
+    if (cc->min_llgr_time > cc->max_llgr_time)
+      cf_error("Min long-lived stale time (%u) exceeds max long-lived stale time (%u)",
+	       cc->min_llgr_time, cc->max_llgr_time);
+
   }
 }
 
@@ -2189,6 +2215,9 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   const struct bgp_config *old = p->cf;
 
   if (proto_get_router_id(CF) != p->local_id)
+    return 0;
+
+  if (bstrcmp(proto_get_hostname(CF), p->hostname))
     return 0;
 
   int same = !memcmp(((byte *) old) + sizeof(struct proto_config),
@@ -2230,6 +2259,7 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 
   /* We should update our copy of configuration ptr as old configuration will be freed */
   p->cf = new;
+  p->hostname = proto_get_hostname(CF);
 
   /* Check whether existing connections are compatible with required capabilities */
   struct bgp_conn *ci = &p->incoming_conn;
@@ -2272,6 +2302,10 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
       (TABLE(new, base_table) != TABLE(old, base_table)))
     return 0;
 
+  if (c->stale_time && ((new->min_llgr_time > c->stale_time) ||
+			(new->max_llgr_time < c->stale_time)))
+    return 0;
+
   if (new->mandatory && !old->mandatory && (C->channel_state != CS_UP))
     return 0;
 
@@ -2290,6 +2324,7 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
   if (!ipa_equal(new->next_hop_addr, old->next_hop_addr) ||
       (new->next_hop_self != old->next_hop_self) ||
       (new->next_hop_keep != old->next_hop_keep) ||
+      (new->llnh_format != old->llnh_format) ||
       (new->aigp != old->aigp) ||
       (new->aigp_originate != old->aigp_originate))
     *export_changed = 1;
@@ -2700,14 +2735,18 @@ bgp_show_proto_info(struct proto *P)
 	  cli_msg(-1006, "    BGP Next hop:   %I %I", c->next_hop_addr, c->link_addr);
       }
 
-      if (c->igp_table_ip4)
-	cli_msg(-1006, "    IGP IPv4 table: %s", c->igp_table_ip4->name);
+      /* After channel is deconfigured, these pointers are no longer valid */
+      if (!p->p.reconfiguring || (c->c.channel_state != CS_DOWN))
+      {
+	if (c->igp_table_ip4)
+	  cli_msg(-1006, "    IGP IPv4 table: %s", c->igp_table_ip4->name);
 
-      if (c->igp_table_ip6)
-	cli_msg(-1006, "    IGP IPv6 table: %s", c->igp_table_ip6->name);
+	if (c->igp_table_ip6)
+	  cli_msg(-1006, "    IGP IPv6 table: %s", c->igp_table_ip6->name);
 
-      if (c->base_table)
-	cli_msg(-1006, "    Base table:     %s", c->base_table->name);
+	if (c->base_table)
+	  cli_msg(-1006, "    Base table:     %s", c->base_table->name);
+      }
     }
   }
 }

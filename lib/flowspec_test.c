@@ -1,5 +1,5 @@
 /*
- *	BIRD Library -- Flow specification (RFC 5575) Tests
+ *	BIRD Library -- Flow specification (RFC 8955) Tests
  *
  *	(c) 2016 CZ.NIC z.s.p.o.
  *

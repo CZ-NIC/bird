@@ -32,9 +32,10 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY, INTERNAL, EXTERNAL, SETS,
 	DYNAMIC, RANGE, NAME, DIGITS, BGP_AIGP, AIGP, ORIGINATE, COST, ENFORCE,
 	FIRST, FREE, VALIDATE, BASE, ROLE, ROLES, PEER, PROVIDER, CUSTOMER,
-	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL, SEND)
+	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL, SEND, MIN, MAX,
+	FORMAT, NATIVE, SINGLE, DOUBLE)
 
-%type <i> bgp_nh
+%type <i> bgp_nh bgp_llnh
 %type <i32> bgp_afi
 
 CF_KEYWORDS(CEASE, PREFIX, LIMIT, HIT, ADMINISTRATIVE, SHUTDOWN, RESET, PEER,
@@ -71,8 +72,12 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->default_local_pref = 100;
      BGP_CFG->gr_mode = BGP_GR_AWARE;
      BGP_CFG->gr_time = 120;
+     BGP_CFG->min_gr_time = 0;
+     BGP_CFG->max_gr_time = ~0U;
      BGP_CFG->llgr_mode = -1;
      BGP_CFG->llgr_time = 3600;
+     BGP_CFG->min_llgr_time = 0;
+     BGP_CFG->max_llgr_time = ~0U;
      BGP_CFG->setkey = 1;
      BGP_CFG->local_role = BGP_ROLE_UNDEFINED;
      BGP_CFG->dynamic_name = "dynbgp";
@@ -212,10 +217,14 @@ bgp_proto:
  | bgp_proto ALLOW AS SETS bool ';' { BGP_CFG->allow_as_sets = $5; }
  | bgp_proto GRACEFUL RESTART bool ';' { BGP_CFG->gr_mode = $4; }
  | bgp_proto GRACEFUL RESTART AWARE ';' { BGP_CFG->gr_mode = BGP_GR_AWARE; }
- | bgp_proto GRACEFUL RESTART TIME expr ';' { BGP_CFG->gr_time = $5; }
+ | bgp_proto GRACEFUL RESTART TIME expr ';' { BGP_CFG->gr_time = $5; if ($5 >= (1 << 12)) cf_error("Graceful restart time must be less than 4096"); }
+ | bgp_proto MIN GRACEFUL RESTART TIME expr ';' { BGP_CFG->min_gr_time = $6; if ($6 >= (1 << 12)) cf_error("Min graceful restart time must be less than 4096"); }
+ | bgp_proto MAX GRACEFUL RESTART TIME expr ';' { BGP_CFG->max_gr_time = $6; if ($6 >= (1 << 12)) cf_error("Max graceful restart time must be less than 4096"); }
  | bgp_proto LONG LIVED GRACEFUL RESTART bool ';' { BGP_CFG->llgr_mode = $6; }
  | bgp_proto LONG LIVED GRACEFUL RESTART AWARE ';' { BGP_CFG->llgr_mode = BGP_LLGR_AWARE; }
- | bgp_proto LONG LIVED STALE TIME expr ';' { BGP_CFG->llgr_time = $6; }
+ | bgp_proto LONG LIVED STALE TIME expr ';' { BGP_CFG->llgr_time = $6; if ($6 >= (1 << 24)) cf_error("Long-lived stale time must be less than 2^24"); }
+ | bgp_proto MIN LONG LIVED STALE TIME expr ';' { BGP_CFG->min_llgr_time = $7; if ($7 >= (1 << 24)) cf_error("Min long-lived stale time must be less than 2^24"); }
+ | bgp_proto MAX LONG LIVED STALE TIME expr ';' { BGP_CFG->max_llgr_time = $7; if ($7 >= (1 << 24)) cf_error("Max long-lived stale time must be less than 2^24"); }
  | bgp_proto TTL SECURITY bool ';' { BGP_CFG->ttl_security = $4; }
  | bgp_proto CHECK LINK bool ';' { BGP_CFG->check_link = $4; }
  | bgp_proto BFD bool ';' { if ($3) init_bfd_opts(&BGP_CFG->bfd); else BGP_CFG->bfd = NULL; }
@@ -263,6 +272,8 @@ bgp_channel_start: bgp_afi
     BGP_CC->gr_able = 0xff;	/* undefined */
     BGP_CC->llgr_able = 0xff;	/* undefined */
     BGP_CC->llgr_time = ~0U;	/* undefined */
+    BGP_CC->min_llgr_time = ~0U; /* undefined */
+    BGP_CC->max_llgr_time = ~0U; /* undefined */
     BGP_CC->aigp = 0xff;	/* undefined */
   }
 };
@@ -271,6 +282,13 @@ bgp_nh:
    bool { $$ = $1; }
  | IBGP { $$ = NH_IBGP; }
  | EBGP { $$ = NH_EBGP; }
+ ;
+
+bgp_llnh:
+   NATIVE { $$ = LLNH_NATIVE; }
+ | SINGLE { $$ = LLNH_SINGLE; }
+ | DOUBLE { $$ = LLNH_DOUBLE; }
+ ;
 
 bgp_lladdr: SELF | DROP | IGNORE;
 
@@ -280,6 +298,7 @@ bgp_channel_item:
  | NEXT HOP SELF bgp_nh { BGP_CC->next_hop_self = $4; }
  | NEXT HOP KEEP bgp_nh { BGP_CC->next_hop_keep = $4; }
  | NEXT HOP PREFER GLOBAL { BGP_CC->next_hop_prefer = NHP_GLOBAL; }
+ | LINK LOCAL NEXT HOP FORMAT bgp_llnh { BGP_CC->llnh_format = $6; }
  | MANDATORY bool { BGP_CC->mandatory = $2; }
  | MISSING LLADDR bgp_lladdr { cf_warn("%s.%s: Missing lladdr option is deprecated and ignored, remove it", this_proto->name, this_channel->name); }
  | GATEWAY DIRECT { BGP_CC->gw_mode = GW_DIRECT; }
@@ -292,7 +311,9 @@ bgp_channel_item:
    }
  | GRACEFUL RESTART bool { BGP_CC->gr_able = $3; }
  | LONG LIVED GRACEFUL RESTART bool { BGP_CC->llgr_able = $5; }
- | LONG LIVED STALE TIME expr { BGP_CC->llgr_time = $5; }
+ | LONG LIVED STALE TIME expr { BGP_CC->llgr_time = $5; if ($5 >= (1 << 24)) cf_error("Long-lived stale time must be less than 2^24"); }
+ | MIN LONG LIVED STALE TIME expr { BGP_CC->min_llgr_time = $6; if ($6 >= (1 << 24)) cf_error("Min long-lived stale time must be less than 2^24"); }
+ | MAX LONG LIVED STALE TIME expr { BGP_CC->max_llgr_time = $6; if ($6 >= (1 << 24)) cf_error("Max long-lived stale time must be less than 2^24"); }
  | EXTENDED NEXT HOP bool { BGP_CC->ext_next_hop = $4; }
  | REQUIRE EXTENDED NEXT HOP bool { BGP_CC->require_ext_next_hop = $5;  if (BGP_AFI(BGP_CC->afi) != BGP_AFI_IPV4) cf_warn("Require extended next hop option ignored for non-IPv4 channels"); }
  | ADD PATHS RX { BGP_CC->add_path = BGP_ADD_PATH_RX; }

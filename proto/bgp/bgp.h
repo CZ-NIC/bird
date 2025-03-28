@@ -122,6 +122,10 @@ struct bgp_config {
   /* Times below are in seconds */
   unsigned gr_time;			/* Graceful restart timeout */
   unsigned llgr_time;			/* Long-lived graceful restart stale time */
+  unsigned min_gr_time;			/* Minimum GR timeout */
+  unsigned max_gr_time;			/* Maximum GR timeout */
+  unsigned min_llgr_time;		/* Minimum LLGR stale time */
+  unsigned max_llgr_time;		/* Maximum LLGR stale time */
   unsigned connect_delay_time;		/* Minimum delay between connect attempts */
   unsigned connect_retry_time;		/* Timeout for connect attempts */
   unsigned hold_time;
@@ -146,7 +150,7 @@ struct bgp_config {
   int require_extended_messages;	/* Require remote support for extended messages [RFC 8654] */
   int require_hostname;			/* Require remote support for hostname [draft] */
   int require_gr;			/* Require remote support for graceful restart [RFC 4724] */
-  int require_llgr;			/* Require remote support for long-lived graceful restart [draft] */
+  int require_llgr;			/* Require remote support for long-lived graceful restart [RFC 9494] */
   struct bfd_options *bfd;		/* Use BFD for liveness detection */
 };
 
@@ -160,6 +164,7 @@ struct bgp_channel_config {
   u8 next_hop_self;			/* Always set next hop to local IP address (NH_*) */
   u8 next_hop_keep;			/* Do not modify next hop attribute (NH_*) */
   u8 next_hop_prefer;			/* Prefer global or link-local next hop (NHP_*) */
+  u8 llnh_format;			/* Requested link-local next hop format (LLNH_*) */
   u8 mandatory;				/* Channel is mandatory in capability negotiation */
   u8 gw_mode;				/* How we compute route gateway from next_hop attr, see GW_* */
   u8 secondary;				/* Accept also non-best routes (i.e. RA_ACCEPTED) */
@@ -167,6 +172,8 @@ struct bgp_channel_config {
   u8 gr_able;				/* Allow full graceful restart for the channel */
   u8 llgr_able;				/* Allow full long-lived GR for the channel */
   uint llgr_time;			/* Long-lived graceful restart stale time */
+  uint min_llgr_time;			/* Minimum LLGR stale time */
+  uint max_llgr_time;			/* Maximum LLGR stale time */
   u8 ext_next_hop;			/* Allow both IPv4 and IPv6 next hops */
   u8 require_ext_next_hop;		/* Require remote support of IPv4 NLRI with IPv6 next hops [RFC 8950] */
   u8 add_path;				/* Use ADD-PATH extension [RFC 7911] */
@@ -200,6 +207,10 @@ struct bgp_channel_config {
 #define MLL_SELF		1
 #define MLL_DROP		2
 #define MLL_IGNORE		3
+
+#define LLNH_NATIVE		0
+#define LLNH_SINGLE		1
+#define LLNH_DOUBLE		2
 
 #define GW_DIRECT		1
 #define GW_RECURSIVE		2
@@ -241,7 +252,7 @@ struct bgp_af_caps {
   u8 ready;				/* Multiprotocol capability, RFC 4760 */
   u8 gr_able;				/* Graceful restart support, RFC 4724 */
   u8 gr_af_flags;			/* Graceful restart per-AF flags */
-  u8 llgr_able;				/* Long-lived GR, RFC draft */
+  u8 llgr_able;				/* Long-lived GR, RFC 9494 */
   u32 llgr_time;			/* Long-lived GR stale time */
   u8 llgr_flags;			/* Long-lived GR per-AF flags */
   u8 ext_next_hop;			/* Extended IPv6 next hop,   RFC 8950 */
@@ -261,7 +272,7 @@ struct bgp_caps {
   u8 gr_flags;				/* Graceful restart flags */
   u16 gr_time;				/* Graceful restart time in seconds */
 
-  u8 llgr_aware;			/* Long-lived GR capability, RFC draft */
+  u8 llgr_aware;			/* Long-lived GR capability, RFC 9494 */
   u8 any_ext_next_hop;			/* Bitwise OR of per-AF ext_next_hop */
   u8 any_add_path;			/* Bitwise OR of per-AF add_path */
 
@@ -324,6 +335,7 @@ struct bgp_conn {
 struct bgp_proto {
   struct proto p;
   const struct bgp_config *cf;		/* Shortcut to BGP configuration */
+  const char *hostname;      /* Hostname for this BGP protocol */
   ip_addr local_ip, remote_ip;
   u32 local_as, remote_as;
   u32 public_as;			/* Externally visible ASN (local_as or confederation id) */
@@ -451,6 +463,7 @@ struct bgp_write_state {
   int mp_reach;
   int as4_session;
   int add_path;
+  int llnh_format;
   int mpls;
   int sham;
   int ignore_non_bgp_attrs;

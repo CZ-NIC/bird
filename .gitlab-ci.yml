@@ -212,7 +212,7 @@ docker-opensuse-15.3-amd64:
   stage: build
   script:
   - autoreconf
-  - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS"
+  - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" $CONFIGURE_OPTIONS
   # Detect which make is available
   - MAKE=make
   - which gmake 2>/dev/null >/dev/null && MAKE=gmake
@@ -390,6 +390,76 @@ build-opensuse-15.3-amd64:
 #    - i386
 
 
+.build-only: &build-only
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:debian-11-amd64
+
+build-only-aggregator:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=aggregator
+
+build-only-babel:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=babel
+
+build-only-bfd:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=bfd
+
+build-only-bgp:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=bgp
+
+build-only-bgp-bmp:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=bgp,bmp
+
+build-only-l3vpn:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=l3vpn
+
+build-only-mrt:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=mrt
+
+build-only-ospf:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=ospf
+
+build-only-pipe:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=pipe
+
+build-only-radv:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=radv
+
+build-only-rip:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=rip
+
+build-only-rpki:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=rpki
+
+build-only-static:
+  <<: *build-only
+  variables:
+    CONFIGURE_OPTIONS: --with-protocols=static
+
+
 .pkg-deb: &pkg-deb
   stage: pkg
   script:
@@ -528,15 +598,17 @@ pkg-centos-7-amd64:
   needs: [build-centos-7-amd64]
   image: registry.nic.cz/labs/bird:centos-7-amd64
 
-pkg-centos-8-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-centos-8-amd64]
-  image: registry.nic.cz/labs/bird:centos-8-amd64
+# Removed due to apkg breakage
+#pkg-centos-8-amd64:
+#  <<: *pkg-rpm-wa
+#  needs: [build-centos-8-amd64]
+#  image: registry.nic.cz/labs/bird:centos-8-amd64
 
-pkg-ubuntu-18.04-amd64:
-  <<: *pkg-deb-legacy
-  needs: [build-ubuntu-18_04-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
+# Removed due to apkg breakage
+#pkg-ubuntu-18.04-amd64:
+#  <<: *pkg-deb
+#  needs: [build-ubuntu-18_04-amd64]
+#  image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
 
 pkg-ubuntu-20.04-amd64:
   <<: *pkg-deb
@@ -558,15 +630,17 @@ pkg-ubuntu-24.10-amd64:
   needs: [build-ubuntu-24_10-amd64]
   image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
 
-pkg-opensuse-15.1-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-opensuse-15.1-amd64]
-  image: registry.nic.cz/labs/bird:opensuse-15.1-amd64
+# Removed due to apkg breakage
+#pkg-opensuse-15.1-amd64:
+#  <<: *pkg-rpm-wa
+#  needs: [build-opensuse-15.1-amd64]
+#  image: registry.nic.cz/labs/bird:opensuse-15.1-amd64
 
-pkg-opensuse-15.2-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-opensuse-15.2-amd64]
-  image: registry.nic.cz/labs/bird:opensuse-15.2-amd64
+# Removed due to apkg breakage
+#pkg-opensuse-15.2-amd64:
+#  <<: *pkg-rpm-wa
+#  needs: [build-opensuse-15.2-amd64]
+#  image: registry.nic.cz/labs/bird:opensuse-15.2-amd64
 
 pkg-opensuse-15.3-amd64:
   <<: *pkg-rpm-wa
@@ -681,6 +755,11 @@ test-bgp-rs-multitab:
   variables:
     TEST_NAME: cf-bgp-rs-multitab
 
+test-bgp-rs-singletab:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-rs-singletab
+
 test-ebgp-loop:
   <<: *test-base
   variables:
@@ -705,6 +784,11 @@ test-ebgp-import-limit:
   <<: *test-base
   variables:
     TEST_NAME: cf-ebgp-import-limit
+
+test-ebgp-hostname:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-hostname
 
 test-ibgp-loop:
   <<: *test-base

@@ -1,5 +1,5 @@
 /*
- *	BIRD -- Flow specification (RFC 5575) grammar
+ *	BIRD -- Flow specification (RFC 8955) grammar
  *
  *	(c) 2016 CZ.NIC z.s.p.o.
  *

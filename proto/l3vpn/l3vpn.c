@@ -221,7 +221,7 @@ l3vpn_rt_notify(struct proto *P, struct channel *c0, net *net, rte *new, rte *ol
       ea_set_attr_u32(&a->eattrs, tmp_linpool, EA_MPLS_POLICY, 0, EAF_TYPE_INT, mc->label_policy);
 
       struct adata *ad = l3vpn_export_targets(p, ea_get_adata(a0->eattrs, EA_BGP_EXT_COMMUNITY));
-      ea_set_attr_ptr(&a->eattrs, tmp_linpool, EA_BGP_EXT_COMMUNITY, 0, EAF_TYPE_EC_SET, ad);
+      ea_set_attr_ptr(&a->eattrs, tmp_linpool, EA_BGP_EXT_COMMUNITY, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_EC_SET, ad);
 
       /* Replace MPLS-incompatible nexthop with lookup in VRF table */
       if (!mpls_valid_nexthop(a) && p->p.vrf)

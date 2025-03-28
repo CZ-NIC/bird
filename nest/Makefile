@@ -6,7 +6,7 @@ $(conf-y-targets): $(s)mpls.Y
 
 $(o)proto-build.c: Makefile $(lastword $(MAKEFILE_LIST)) $(objdir)/.dir-stamp
 	$(E)echo GEN $@
-	$(Q)echo "$(patsubst %,void %_build(void); ,$(PROTO_BUILD)) void protos_build_gen(void) { $(patsubst %,  %_build(); ,$(PROTO_BUILD))}" > $@
+	$(Q)( P='$(PROTO_BUILD)' && printf "void %s_build(void);\n" $$P && printf "\nvoid\nprotos_build_gen(void)\n{\n" && printf "  %s_build();\n" $$P && printf "}\n" ) > $@
 
 prepare: $(o)proto-build.c
 

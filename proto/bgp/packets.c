@@ -281,11 +281,11 @@ bgp_prepare_capabilities(struct bgp_conn *conn)
   if (p->cf->llgr_mode)
     caps->llgr_aware = 1;
 
-  if (p->cf->enable_hostname && config->hostname)
+  if (p->cf->enable_hostname && p->hostname)
   {
-    size_t length = strlen(config->hostname);
+    size_t length = strlen(p->hostname);
     char *hostname = mb_allocz(p->p.pool, length+1);
-    memcpy(hostname, config->hostname, length+1);
+    memcpy(hostname, p->hostname, length+1);
     caps->hostname = hostname;
   }
 
@@ -627,7 +627,7 @@ bgp_read_capabilities(struct bgp_conn *conn, byte *pos, int len)
       caps->enhanced_refresh = 1;
       break;
 
-    case 71: /* Long lived graceful restart capability, RFC draft */
+    case 71: /* Long lived graceful restart capability, RFC 9494 */
       if (cl % 7)
 	goto err;
 
@@ -1314,6 +1314,37 @@ bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
 }
 
 static uint
+bgp_prepare_link_local_next_hop(struct bgp_write_state *s, ip_addr *nh)
+{
+  /*
+   * We have link-local next-hop in nh[1]
+   *
+   * Possible variants:
+   * [ ::, fe80::XX ] - BIRD's default/internal (LLNH_NATIVE)
+   * [ fe80::XX ] - draft-white-linklocal-capability (LLNH_SINGLE)
+   * [ fe80::XX, fe80::XX ] - Used in JunoOS (LLNH_DOUBLE)
+   */
+
+  switch (s->llnh_format)
+  {
+  case LLNH_NATIVE:
+    return 32;
+
+  case LLNH_SINGLE:
+    nh[0] = nh[1];
+    return 16;
+
+  case LLNH_DOUBLE:
+    nh[0] = nh[1];
+    return 32;
+
+  default:
+    ASSERT(0);
+    return 32;
+  }
+}
+
+static uint
 bgp_encode_next_hop_ip(struct bgp_write_state *s, eattr *a, byte *buf, uint size UNUSED)
 {
   /* This function is used only for MP-BGP, see bgp_encode_next_hop() for IPv4 BGP */
@@ -1333,6 +1364,13 @@ bgp_encode_next_hop_ip(struct bgp_write_state *s, eattr *a, byte *buf, uint size
   {
     put_ip4(buf, ipa_to_ip4(nh[0]));
     return 4;
+  }
+
+  /* Handle variants of link-local-only next hop */
+  if (ipa_zero(nh[0]) && (len == 32))
+  {
+    nh = alloca_copy(nh, 32);
+    len = bgp_prepare_link_local_next_hop(s, nh);
   }
 
   put_ip6(buf, ipa_to_ip6(nh[0]));
@@ -1411,6 +1449,13 @@ bgp_encode_next_hop_vpn(struct bgp_write_state *s, eattr *a, byte *buf, uint siz
     return 12;
   }
 
+  /* Handle variants of link-local-only next hop */
+  if (ipa_zero(nh[0]) && (len == 32))
+  {
+    nh = alloca_copy(nh, 32);
+    len = bgp_prepare_link_local_next_hop(s, nh);
+  }
+
   put_u64(buf, 0); /* VPN RD is 0 */
   put_ip6(buf+8, ipa_to_ip6(nh[0]));
 
@@ -1448,6 +1493,9 @@ bgp_decode_next_hop_vpn(struct bgp_parse_state *s, byte *data, uint len, rta *a)
     nh[0] = ipa_from_ip6(get_ip6(data+8));
     nh[1] = ipa_from_ip6(get_ip6(data+32));
 
+    if (ipa_is_link_local(nh[0]))
+    { nh[1] = nh[0]; nh[0] = IPA_NONE; }
+
     if (ipa_is_ip4(nh[0]) || !ip6_is_link_local(nh[1]))
       nh[1] = IPA_NONE;
   }
@@ -1484,7 +1532,7 @@ bgp_decode_next_hop_none(struct bgp_parse_state *s UNUSED, byte *data UNUSED, ui
   /*
    * Although we expect no next hop and RFC 7606 7.11 states that attribute
    * MP_REACH_NLRI with unexpected next hop length is considered malformed,
-   * FlowSpec RFC 5575 4 states that next hop shall be ignored on receipt.
+   * FlowSpec RFC 8955 4 states that next hop shall be ignored on receipt.
    */
 
   return;
@@ -2574,6 +2622,7 @@ again: ;
     .mp_reach = (c->afi != BGP_AF_IPV4) || c->ext_next_hop,
     .as4_session = p->as4_session,
     .add_path = c->add_path_tx,
+    .llnh_format = c->cf->llnh_format,
     .mpls = c->desc->mpls,
   };
 

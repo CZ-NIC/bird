@@ -78,7 +78,7 @@ protocol static statvpn6 {
 	route 10:20 2001:db8:20:11::/64 via 2001:db8:1:1::10 mpls 200/220;
 }
 
-# RFC 5575 flow specification
+# RFC 8955 flow specification
 protocol static flowstat4 {
 	flow4;
 
@@ -124,6 +124,7 @@ protocol static flowstat4 {
 	};
 }
 
+# RFC 8956 flow specification
 protocol static flowstat6 {
 	flow6;
 
@@ -135,7 +136,7 @@ protocol static flowstat6 {
 		dport = 50;
 		tcp flags 0x03/0x0f, !0/0xff || 0x33/0x33;
 		fragment !is_fragment || !first_fragment;
-		label 0xaaaa/0xaaaa && 0x33/0x33;
+		label > 1111 && != 1234;
 	};
 
 	route flow6 {

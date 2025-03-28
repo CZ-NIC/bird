@@ -2035,7 +2035,7 @@ bgp_rte_better(rte *new, rte *old)
   if (n < o)
     return 0;
 
-  /* LLGR draft - depreference stale routes */
+  /* LLGR 9494 - depreference stale routes */
   n = rte_stale(new);
   o = rte_stale(old);
   if (n > o)
@@ -2172,7 +2172,7 @@ bgp_rte_mergable(rte *pri, rte *sec)
   if (rte_resolvable(pri) != rte_resolvable(sec))
     return 0;
 
-  /* LLGR draft - depreference stale routes */
+  /* LLGR 9494 - depreference stale routes */
   if (rte_stale(pri) != rte_stale(sec))
     return 0;
 

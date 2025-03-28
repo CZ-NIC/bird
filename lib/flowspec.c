@@ -1,5 +1,5 @@
 /*
- *	BIRD Library -- Flow specification (RFC 5575)
+ *	BIRD Library -- Flow specification (RFC 8955)
  *
  *	(c) 2016 CZ.NIC z.s.p.o.
  *
@@ -9,7 +9,7 @@
 /**
  * DOC: Flow specification (flowspec)
  *
- * Flowspec are rules (RFC 5575) for firewalls disseminated using BGP protocol.
+ * Flowspec are rules (RFC 8955) for firewalls disseminated using BGP protocol.
  * The |flowspec.c| is a library for handling flowspec binary streams and
  * flowspec data structures. You will find there functions for validation
  * incoming flowspec binary streams, iterators for jumping over components,

@@ -551,7 +551,7 @@ const char *ea_custom_name(uint ea);
 #define EAF_TYPE_INT 0x01		/* 32-bit unsigned integer number */
 #define EAF_TYPE_OPAQUE 0x02		/* Opaque byte string (not filterable) */
 #define EAF_TYPE_IP_ADDRESS 0x04	/* IP address */
-#define EAF_TYPE_ROUTER_ID 0x05		/* Router ID (IPv4 address) */
+#define EAF_TYPE_ROUTER_ID 0x05		/* Router ID (4-octet positive integer) */
 #define EAF_TYPE_AS_PATH 0x06		/* BGP AS path (encoding per RFC 1771:4.3) */
 #define EAF_TYPE_BITFIELD 0x09		/* 32-bit embedded bitfield */
 #define EAF_TYPE_INT_SET 0x0a		/* Set of u32's (e.g., a community list) */
