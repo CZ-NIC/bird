@@ -48,14 +48,14 @@ docker-docbuilder:
     IMG_NAME: "docbuilder"
   <<: *docker_build
 
-docker-debian-9-amd64:
+docker-centos-7-amd64:
   variables:
-    IMG_NAME: "debian-9-amd64"
+    IMG_NAME: "centos-7-amd64"
   <<: *docker_build
 
-docker-debian-9-i386:
+docker-centos-8-amd64:
   variables:
-    IMG_NAME: "debian-9-i386"
+    IMG_NAME: "centos-8-amd64"
   <<: *docker_build
 
 docker-debian-10-amd64:
@@ -148,45 +148,11 @@ docker-fedora-41-amd64:
     IMG_NAME: "fedora-41-amd64"
   <<: *docker_build
 
-docker-centos-7-amd64:
-  variables:
-    IMG_NAME: "centos-7-amd64"
-  <<: *docker_build
-
-docker-centos-8-amd64:
-  variables:
-    IMG_NAME: "centos-8-amd64"
-  <<: *docker_build
-
-docker-ubuntu-16_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-16.04-amd64"
-  <<: *docker_build
-
-docker-ubuntu-18_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-18.04-amd64"
-  <<: *docker_build
-
-docker-ubuntu-20_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-20.04-amd64"
-  <<: *docker_build
-
-docker-ubuntu-22_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-22.04-amd64"
-  <<: *docker_build
-
-docker-ubuntu-24_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-24.04-amd64"
-  <<: *docker_build
-
-docker-ubuntu-24_10-amd64:
-  variables:
-    IMG_NAME: "ubuntu-24.10-amd64"
-  <<: *docker_build
+#planned release 4/2025
+# docker-fedora-41-amd64:
+#   variables:
+#     IMG_NAME: "fedora-41-amd64"
+#   <<: *docker_build
 
 docker-opensuse-15.0-amd64:
   variables:
@@ -208,6 +174,65 @@ docker-opensuse-15.3-amd64:
     IMG_NAME: "opensuse-15.3-amd64"
   <<: *docker_build
 
+docker-opensuse-15.4-amd64:
+  variables:
+    IMG_NAME: "opensuse-15.4-amd64"
+  <<: *docker_build
+
+docker-opensuse-15.5-amd64:
+  variables:
+    IMG_NAME: "opensuse-15.5-amd64"
+  <<: *docker_build
+
+docker-ubuntu-16_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-16.04-amd64"
+  <<: *docker_build
+
+docker-ubuntu-18_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-18.04-amd64"
+  <<: *docker_build
+
+docker-ubuntu-20_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-20.04-amd64"
+  <<: *docker_build
+
+docker-ubuntu-20_10-amd64:
+  variables:
+    IMG_NAME: "ubuntu-20.10-amd64"
+  <<: *docker_build
+
+docker-ubuntu-22_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-22.04-amd64"
+  <<: *docker_build
+
+docker-ubuntu-22_10-amd64:
+  variables:
+    IMG_NAME: "ubuntu-22.10-amd64"
+  <<: *docker_build
+
+docker-ubuntu-23_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-23.04-amd64"
+  <<: *docker_build
+
+docker-ubuntu-23_10-amd64:
+  variables:
+    IMG_NAME: "ubuntu-23.10-amd64"
+  <<: *docker_build
+
+docker-ubuntu-24_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-24.04-amd64"
+  <<: *docker_build
+
+docker-ubuntu-24_10-amd64:
+  variables:
+    IMG_NAME: "ubuntu-24.10-amd64"
+  <<: *docker_build
 
 .build: &build-base
   stage: build
