@@ -16,6 +16,7 @@ stages:
 
 .docker: &docker_build
   stage: image
+  allow_failure: true
   script:
   - $DOCKER_CMD login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.nic.cz
   # Make sure we refresh the base image if it updates (eg. security updates, etc)
