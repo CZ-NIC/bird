@@ -1,3 +1,4 @@
+# bump number for image rebuild: 0
 FROM fedora:40
 RUN dnf -y upgrade
 #RUN dnf -y update

@@ -1,3 +1,4 @@
+# bump number for image rebuild: 0
 FROM amd64/debian:bullseye-slim
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get -y update

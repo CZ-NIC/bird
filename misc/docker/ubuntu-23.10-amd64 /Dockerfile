@@ -1,3 +1,4 @@
+# bump number for image rebuild: 0
 FROM ubuntu:23.10
 ENV DEBIAN_FRONTEND=noninteractive
 RUN sed -i 's/deb.debian.org/ftp.cz.debian.org/' /etc/apt/sources.list

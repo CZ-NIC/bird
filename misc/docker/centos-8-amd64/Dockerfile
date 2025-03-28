@@ -1,3 +1,4 @@
+# bump number for image rebuild: 0
 FROM centos:8
 
 # Has to be done for yum to work properly. CentOS 8 is EOL.
