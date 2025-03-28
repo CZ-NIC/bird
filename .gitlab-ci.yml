@@ -204,6 +204,16 @@ docker-ubuntu-20_10-amd64:
     IMG_NAME: "ubuntu-20.10-amd64"
   <<: *docker_build
 
+docker-ubuntu-21_04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-21.04-amd64"
+  <<: *docker_build
+
+docker-ubuntu-21_10-amd64:
+  variables:
+    IMG_NAME: "ubuntu-21.10-amd64"
+  <<: *docker_build
+
 docker-ubuntu-22_04-amd64:
   variables:
     IMG_NAME: "ubuntu-22.04-amd64"
