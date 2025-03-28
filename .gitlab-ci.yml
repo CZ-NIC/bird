@@ -957,17 +957,17 @@ test-mpls-bgp-l3vpn:
     - gmake
     - gmake check
 
-#build-birdlab-debian-11:
-#  <<: *build-birdlab-base
-#  tags:
-#    - birdlab-debian-11
-#    - amd64
-#
-#build-birdlab-centos-08:
-#  <<: *build-birdlab-base
-#  tags:
-#    - birdlab-centos-08
-#    - amd64
+build-birdlab-debian-11:
+  <<: *build-birdlab-base
+  tags:
+    - birdlab-debian-11
+    - amd64
+
+build-birdlab-centos-08:
+  <<: *build-birdlab-base
+  tags:
+    - birdlab-centos-08
+    - amd64
 
 build-birdlab-fedora-37:
   <<: *build-birdlab-base
@@ -975,11 +975,11 @@ build-birdlab-fedora-37:
     - birdlab-fedora-37
     - amd64
 
-#build-birdlab-freebsd-13:
-#  <<: *build-birdlab-base
-#  tags:
-#    - birdlab-freebsd-13
-#    - amd64
+build-birdlab-freebsd-13:
+  <<: *build-birdlab-base
+  tags:
+    - birdlab-freebsd-13
+    - amd64
 
 build-birdlab-openbsd-71:
   <<: *build-birdlab-base
