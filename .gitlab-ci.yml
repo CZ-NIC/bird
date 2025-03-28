@@ -384,7 +384,7 @@ build-ubuntu-21_04-amd64:
 
 build-ubuntu-21_10-amd64:
   <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-21.10-amd64
 
 build-ubuntu-22_04-amd64:
   <<: *build-linux
@@ -703,8 +703,8 @@ pkg-ubuntu-21.04-amd64:
 
 pkg-ubuntu-21.10-amd64:
   <<: *pkg-deb
-  needs: [build-ubuntu-22_04-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
+  needs: [build-ubuntu-21_10-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-21.10-amd64
 
 pkg-ubuntu-22.04-amd64:
   <<: *pkg-deb
