@@ -378,10 +378,9 @@ build-ubuntu-20_10-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:ubuntu-20.10-amd64 
 
-#installation not available
-# build-ubuntu-21_04-amd64:
-#   <<: *build-linux
-#   image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
+build-ubuntu-21_04-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
 
 build-ubuntu-21_10-amd64:
   <<: *build-linux
@@ -391,20 +390,17 @@ build-ubuntu-22_04-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
 
-#installation not available
-# build-ubuntu-22_10-amd64:
-#   <<: *build-linux
-#   image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
+build-ubuntu-22_10-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
 
-#installation not available
-# build-ubuntu-23_04-amd64:
-#   <<: *build-linux
-#   image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
+build-ubuntu-23_04-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
 
-#installation not available
-# build-ubuntu-23_10-amd64:
-#   <<: *build-linux
-#   image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
+build-ubuntu-23_10-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
 
 build-ubuntu-24_04-amd64:
   <<: *build-linux
@@ -430,15 +426,13 @@ build-opensuse-15.3-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
 
-#installation not available
-# build-opensuse-15.4-amd64:
-#   <<: *build-linux
-#   image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
+build-opensuse-15.4-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
 
-#installation not available
-# build-opensuse-15.5-amd64:
-#   <<: *build-linux
-#   image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
+build-opensuse-15.5-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
 
 #build-freebsd-11-amd64:
 #  <<: *build-base
@@ -592,29 +586,25 @@ pkg-debian-11-i386:
   needs: [build-debian-11-i386]
   image: registry.nic.cz/labs/bird:debian-11-i386
 
-# Removed due to apkg breakage
-# pkg-debian-12-amd64:
-#   <<: *pkg-deb
-#   needs: [build-debian-12-amd64]
-#   image: registry.nic.cz/labs/bird:debian-12-amd64
+pkg-debian-12-amd64:
+  <<: *pkg-deb
+  needs: [build-debian-12-amd64]
+  image: registry.nic.cz/labs/bird:debian-12-amd64
 
-# Removed due to apkg breakage
-# pkg-debian-12-i386:
-#   <<: *pkg-deb
-#   needs: [build-debian-12-i386]
-#   image: registry.nic.cz/labs/bird:debian-12-i386
+pkg-debian-12-i386:
+  <<: *pkg-deb
+  needs: [build-debian-12-i386]
+  image: registry.nic.cz/labs/bird:debian-12-i386
 
-# Removed due to apkg breakage
-# pkg-debian-testing-amd64:
-#   <<: *pkg-deb
-#   needs: [build-debian-testing-amd64]
-#   image: registry.nic.cz/labs/bird:debian-testing-amd64
+pkg-debian-testing-amd64:
+  <<: *pkg-deb
+  needs: [build-debian-testing-amd64]
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
 
-# Removed due to apkg breakage
-# pkg-debian-testing-i386:
-#   <<: *pkg-deb
-#   needs: [build-debian-testing-i386]
-#   image: registry.nic.cz/labs/bird:debian-testing-i386
+pkg-debian-testing-i386:
+  <<: *pkg-deb
+  needs: [build-debian-testing-i386]
+  image: registry.nic.cz/labs/bird:debian-testing-i386
 
 pkg-fedora-32-amd64:
   <<: *pkg-rpm-wa
@@ -632,14 +622,12 @@ pkg-fedora-34-amd64:
   image: registry.nic.cz/labs/bird:fedora-34-amd64
 
 pkg-fedora-35-amd64:
-  <<: *pkg-rpm
-  #<<: *pkg-rpm-wa
+  <<: *pkg-rpm-wa
   needs: [build-fedora-35-amd64]
   image: registry.nic.cz/labs/bird:fedora-35-amd64
 
 pkg-fedora-36-amd64:
-  <<: *pkg-rpm
-  #<<: *pkg-rpm-wa
+  <<: *pkg-rpm-wa
   needs: [build-fedora-36-amd64]
   image: registry.nic.cz/labs/bird:fedora-36-amd64
 
@@ -649,14 +637,12 @@ pkg-fedora-37-amd64:
   image: registry.nic.cz/labs/bird:fedora-37-amd64
 
 pkg-fedora-38-amd64:
-  <<: *pkg-rpm
-  #<<: *pkg-rpm-wa
+  <<: *pkg-rpm-wa
   needs: [build-fedora-38-amd64]
   image: registry.nic.cz/labs/bird:fedora-38-amd64
 
 pkg-fedora-39-amd64:
-  <<: *pkg-rpm
-  #<<: *pkg-rpm-wa
+  <<: *pkg-rpm-wa
   needs: [build-fedora-39-amd64]
   image: registry.nic.cz/labs/bird:fedora-39-amd64
 
@@ -685,23 +671,20 @@ pkg-centos-7-amd64:
   needs: [build-centos-7-amd64]
   image: registry.nic.cz/labs/bird:centos-7-amd64
 
-# Removed due to apkg breakage
-#pkg-centos-8-amd64:
-#  <<: *pkg-rpm-wa
-#  needs: [build-centos-8-amd64]
-#  image: registry.nic.cz/labs/bird:centos-8-amd64
+pkg-centos-8-amd64:
+ <<: *pkg-rpm-wa
+ needs: [build-centos-8-amd64]
+ image: registry.nic.cz/labs/bird:centos-8-amd64
 
-# Removed due to apkg breakage
-# pkg-ubuntu-16.04-amd64:
-#   <<: *pkg-deb
-#   needs: [build-ubuntu-16_04-amd64]
-#   image: registry.nic.cz/labs/bird:ubuntu-16.04-amd64
+pkg-ubuntu-16.04-amd64:
+  <<: *pkg-deb
+  needs: [build-ubuntu-16_04-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-16.04-amd64
 
-# Removed due to apkg breakage
-#pkg-ubuntu-18.04-amd64:
-#  <<: *pkg-deb
-#  needs: [build-ubuntu-18_04-amd64]
-#  image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
+pkg-ubuntu-18.04-amd64:
+ <<: *pkg-deb
+ needs: [build-ubuntu-18_04-amd64]
+ image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
 
 pkg-ubuntu-20.04-amd64:
   <<: *pkg-deb
@@ -713,11 +696,10 @@ pkg-ubuntu-20.10-amd64:
   needs: [build-ubuntu-20_10-amd64]
   image: registry.nic.cz/labs/bird:ubuntu-20.10-amd64
 
-#Installation not available
-# pkg-ubuntu-21.04-amd64:
-#   <<: *pkg-deb
-#   needs: [build-ubuntu-21_04-amd64]
-#   image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
+pkg-ubuntu-21.04-amd64:
+  <<: *pkg-deb
+  needs: [build-ubuntu-21_04-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
 
 pkg-ubuntu-21.10-amd64:
   <<: *pkg-deb
@@ -729,64 +711,55 @@ pkg-ubuntu-22.04-amd64:
   needs: [build-ubuntu-22_04-amd64]
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
 
-#Installation not available
-# pkg-ubuntu-22.10-amd64:
-#   <<: *pkg-deb
-#   needs: [build-ubuntu-22_10-amd64]
-#   image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
+pkg-ubuntu-22.10-amd64:
+  <<: *pkg-deb
+  needs: [build-ubuntu-22_10-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
 
-#Installation not available
-# pkg-ubuntu-23.04-amd64:
-#   <<: *pkg-deb
-#   needs: [build-ubuntu-23_04-amd64]
-#   image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
+pkg-ubuntu-23.04-amd64:
+  <<: *pkg-deb
+  needs: [build-ubuntu-23_04-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
 
-#Installation not available
-# pkg-ubuntu-23.10-amd64:
-#   <<: *pkg-deb
-#   needs: [build-ubuntu-23_10-amd64]
-#   image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
+pkg-ubuntu-23.10-amd64:
+  <<: *pkg-deb
+  needs: [build-ubuntu-23_10-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
 
-# Removed due to apkg breakage
-# pkg-ubuntu-24.04-amd64:
-#   <<: *pkg-deb
-#   needs: [build-ubuntu-24_04-amd64]
-#   image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+pkg-ubuntu-24.04-amd64:
+  <<: *pkg-deb
+  needs: [build-ubuntu-24_04-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
 
-# Removed due to apkg breakage
-# pkg-ubuntu-24.10-amd64:
-#   <<: *pkg-deb
-#   needs: [build-ubuntu-24_10-amd64]
-#   image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
+pkg-ubuntu-24.10-amd64:
+  <<: *pkg-deb
+  needs: [build-ubuntu-24_10-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
 
-# Removed due to apkg breakage
-#pkg-opensuse-15.1-amd64:
-#  <<: *pkg-rpm-wa
-#  needs: [build-opensuse-15.1-amd64]
-#  image: registry.nic.cz/labs/bird:opensuse-15.1-amd64
+pkg-opensuse-15.1-amd64:
+ <<: *pkg-rpm-wa
+ needs: [build-opensuse-15.1-amd64]
+ image: registry.nic.cz/labs/bird:opensuse-15.1-amd64
 
-# Removed due to apkg breakage
-#pkg-opensuse-15.2-amd64:
-#  <<: *pkg-rpm-wa
-#  needs: [build-opensuse-15.2-amd64]
-#  image: registry.nic.cz/labs/bird:opensuse-15.2-amd64
+pkg-opensuse-15.2-amd64:
+ <<: *pkg-rpm-wa
+ needs: [build-opensuse-15.2-amd64]
+ image: registry.nic.cz/labs/bird:opensuse-15.2-amd64
 
 pkg-opensuse-15.3-amd64:
   <<: *pkg-rpm-wa
   needs: [build-opensuse-15.3-amd64]
   image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
 
-#installation not available
-# pkg-opensuse-15.4-amd64:
-#   <<: *pkg-rpm-wa
-#   needs: [build-opensuse-15.4-amd64]
-#   image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
+pkg-opensuse-15.4-amd64:
+  <<: *pkg-rpm-wa
+  needs: [build-opensuse-15.4-amd64]
+  image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
 
-#installation not available
-# pkg-opensuse-15.5-amd64:
-#   <<: *pkg-rpm-wa
-#   needs: [build-opensuse-15.5-amd64]
-#   image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
+pkg-opensuse-15.5-amd64:
+  <<: *pkg-rpm-wa
+  needs: [build-opensuse-15.5-amd64]
+  image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
 
 build-netlab:
   stage: build
