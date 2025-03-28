@@ -5,6 +5,9 @@ RUN dnf -y install \
 	make \
 	flex \
 	bison \
+	# pkgconfig \
+	# 'readline-devel' \
+	# 'pkgconfig(ncurses)' \
 	autoconf \
 	libssh-devel \
 	ncurses-devel \

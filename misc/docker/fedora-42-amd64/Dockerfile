@@ -1,4 +1,4 @@
-FROM fedora:38
+FROM fedora:42
 RUN dnf -y upgrade
 RUN dnf -y install \
 	gcc \
@@ -6,9 +6,6 @@ RUN dnf -y install \
 	flex \
 	bison \
 	autoconf \
-	# pkgconfig \
-	# 'readline-devel' \
-	# 'pkgconfig(ncurses)' \
 	libssh-devel \
 	ncurses-devel \
 	readline-devel

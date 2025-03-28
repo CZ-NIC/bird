@@ -1,20 +1,18 @@
-FROM fedora:38
-RUN dnf -y upgrade
-RUN dnf -y install \
+FROM opensuse/leap:15.5
+RUN zypper -n up
+RUN zypper -n install \
 	gcc \
 	make \
 	flex \
 	bison \
 	autoconf \
-	# pkgconfig \
-	# 'readline-devel' \
-	# 'pkgconfig(ncurses)' \
 	libssh-devel \
 	ncurses-devel \
 	readline-devel
-RUN dnf -y install \
+RUN zypper -n install \
 	git \
 	rpm-build \
+	systemd \
 	systemd-rpm-macros \
 	python3 \
 	python3-pip \

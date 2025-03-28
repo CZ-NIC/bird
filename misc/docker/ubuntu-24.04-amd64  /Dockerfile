@@ -1,9 +1,7 @@
-# bump this to refresh the image: 1
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 RUN apt-get -y update
 RUN apt-get -y upgrade
-RUN apt-get -y install \
-#RUN apt-get -y --no-install-recommends install \
+RUN apt-get -y --no-install-recommends install \
 	tzdata \
 	build-essential \
 	flex \
@@ -25,5 +23,4 @@ RUN apt-get -y install \
 	quilt \
 	python3 \
 	python3-pip \
-	python3-setuptools \
-	python3-venv
+	python3-setuptools
