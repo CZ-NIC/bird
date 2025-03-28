@@ -1,3 +1,4 @@
+# bump number for image rebuild: 1
 FROM i386/debian:bookworm-slim
 ENV DEBIAN_FRONTEND=noninteractive
 RUN sed -i 's/deb.debian.org/ftp.cz.debian.org/' /etc/apt/sources.list

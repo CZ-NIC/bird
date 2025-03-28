@@ -1,3 +1,4 @@
+# bump this to refresh the image: 1
 FROM ubuntu:24.10
 ENV DEBIAN_FRONTEND=noninteractive
 RUN sed -i 's/deb.debian.org/ftp.cz.debian.org/' /etc/apt/sources.list

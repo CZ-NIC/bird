@@ -1,3 +1,4 @@
+# bump number for image rebuild: 1
 FROM i386/debian:bullseye-slim
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get -y update && apt-get -y upgrade
