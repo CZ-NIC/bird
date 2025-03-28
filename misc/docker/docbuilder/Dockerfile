@@ -1,4 +1,3 @@
-# bump this to recreate the image: 2
 FROM debian:bookworm-slim
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get -y update
