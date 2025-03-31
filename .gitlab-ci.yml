@@ -630,12 +630,12 @@ pkg-fedora-34-amd64:
   image: registry.nic.cz/labs/bird:fedora-34-amd64
 
 pkg-fedora-35-amd64:
-  <<: *pkg-rpm-wa
+  <<: *pkg-rpm
   needs: [build-fedora-35-amd64]
   image: registry.nic.cz/labs/bird:fedora-35-amd64
 
 pkg-fedora-36-amd64:
-  <<: *pkg-rpm-wa
+  <<: *pkg-rpm
   needs: [build-fedora-36-amd64]
   image: registry.nic.cz/labs/bird:fedora-36-amd64
 
@@ -645,12 +645,12 @@ pkg-fedora-37-amd64:
   image: registry.nic.cz/labs/bird:fedora-37-amd64
 
 pkg-fedora-38-amd64:
-  <<: *pkg-rpm-wa
+  <<: *pkg-rpm
   needs: [build-fedora-38-amd64]
   image: registry.nic.cz/labs/bird:fedora-38-amd64
 
 pkg-fedora-39-amd64:
-  <<: *pkg-rpm-wa
+  <<: *pkg-rpm
   needs: [build-fedora-39-amd64]
   image: registry.nic.cz/labs/bird:fedora-39-amd64
 
