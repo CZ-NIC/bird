@@ -1,4 +1,4 @@
-# bump number for image rebuild: 0
+# bump number for image rebuild: 1
 FROM opensuse/leap:15.4
 RUN zypper -n up
 RUN zypper -n install \
