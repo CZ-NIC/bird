@@ -574,6 +574,20 @@ build-only-static:
     paths:
       - pkg/pkgs/*
 
+pkg-centos-7-amd64:
+  <<: *pkg-rpm-wa
+  variables:
+    # export path to devtoolset-8-gcc
+    CC: /opt/rh/devtoolset-8/root/usr/bin/gcc
+    LC_ALL: en_US.UTF-8
+  needs: [build-centos-7-amd64]
+  image: registry.nic.cz/labs/bird:centos-7-amd64
+
+pkg-centos-8-amd64:
+  <<: *pkg-rpm-wa
+  needs: [build-centos-8-amd64]
+  image: registry.nic.cz/labs/bird:centos-8-amd64
+
 pkg-debian-10-amd64:
   <<: *pkg-deb
   needs: [build-debian-10-amd64]
@@ -670,19 +684,35 @@ pkg-fedora-41-amd64:
 #   needs: [build-fedora-42-amd64]
 #   image: registry.nic.cz/labs/bird:fedora-42-amd64
 
-pkg-centos-7-amd64:
-  <<: *pkg-rpm-wa
-  variables:
-    # export path to devtoolset-8-gcc
-    CC: /opt/rh/devtoolset-8/root/usr/bin/gcc
-    LC_ALL: en_US.UTF-8
-  needs: [build-centos-7-amd64]
-  image: registry.nic.cz/labs/bird:centos-7-amd64
+pkg-opensuse-15.0-amd64:
+ <<: *pkg-rpm-wa
+ needs: [build-opensuse-15.0-amd64]
+ image: registry.nic.cz/labs/bird:opensuse-15.0-amd64
 
-pkg-centos-8-amd64:
+pkg-opensuse-15.1-amd64:
+ <<: *pkg-rpm-wa
+ needs: [build-opensuse-15.1-amd64]
+ image: registry.nic.cz/labs/bird:opensuse-15.1-amd64
+
+pkg-opensuse-15.2-amd64:
+ <<: *pkg-rpm-wa
+ needs: [build-opensuse-15.2-amd64]
+ image: registry.nic.cz/labs/bird:opensuse-15.2-amd64
+
+pkg-opensuse-15.3-amd64:
   <<: *pkg-rpm-wa
-  needs: [build-centos-8-amd64]
-  image: registry.nic.cz/labs/bird:centos-8-amd64
+  needs: [build-opensuse-15.3-amd64]
+  image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
+
+pkg-opensuse-15.4-amd64:
+  <<: *pkg-rpm-wa
+  needs: [build-opensuse-15.4-amd64]
+  image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
+
+pkg-opensuse-15.5-amd64:
+  <<: *pkg-rpm-wa
+  needs: [build-opensuse-15.5-amd64]
+  image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
 
 pkg-ubuntu-16.04-amd64:
   <<: *pkg-deb
@@ -743,36 +773,6 @@ pkg-ubuntu-24.10-amd64:
   <<: *pkg-deb
   needs: [build-ubuntu-24_10-amd64]
   image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
-
-pkg-opensuse-15.0-amd64:
- <<: *pkg-rpm-wa
- needs: [build-opensuse-15.0-amd64]
- image: registry.nic.cz/labs/bird:opensuse-15.0-amd64
-
-pkg-opensuse-15.1-amd64:
- <<: *pkg-rpm-wa
- needs: [build-opensuse-15.1-amd64]
- image: registry.nic.cz/labs/bird:opensuse-15.1-amd64
-
-pkg-opensuse-15.2-amd64:
- <<: *pkg-rpm-wa
- needs: [build-opensuse-15.2-amd64]
- image: registry.nic.cz/labs/bird:opensuse-15.2-amd64
-
-pkg-opensuse-15.3-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-opensuse-15.3-amd64]
-  image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
-
-pkg-opensuse-15.4-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-opensuse-15.4-amd64]
-  image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
-
-pkg-opensuse-15.5-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-opensuse-15.5-amd64]
-  image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
 
 build-netlab:
   stage: build
