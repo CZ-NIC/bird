@@ -1,3 +1,4 @@
+# bump number for image rebuild: 0
 FROM fedora:39
 RUN dnf -y upgrade
 RUN dnf -y install \
@@ -5,10 +6,8 @@ RUN dnf -y install \
 	make \
 	flex \
 	bison \
-	# pkgconfig \
-	# 'readline-devel' \
-	# 'pkgconfig(ncurses)' \
 	autoconf \
+	pkgconfig \
 	libssh-devel \
 	ncurses-devel \
 	readline-devel

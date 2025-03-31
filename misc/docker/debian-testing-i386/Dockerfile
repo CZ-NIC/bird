@@ -1,3 +1,4 @@
+# bump number for image rebuild: 0
 FROM i386/debian:testing-slim
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get -y update

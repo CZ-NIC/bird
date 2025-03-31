@@ -1,9 +1,11 @@
-# bump this to refresh the image: 1
-FROM ubuntu:24.10
+# bump number for image rebuild: 0
+FROM ubuntu:21.10
 ENV DEBIAN_FRONTEND=noninteractive
+RUN sed -i 's/deb.debian.org/ftp.cz.debian.org/' /etc/apt/sources.list
 RUN apt-get -y update
 RUN apt-get -y upgrade
-RUN apt-get -y install \
+RUN apt-get -y --no-install-recommends install \
+	tzdata \
 	build-essential \
 	flex \
 	bison \
@@ -16,7 +18,7 @@ RUN apt-get -y install \
 	opensp \
 	docbook-xsl \
 	xsltproc
-RUN apt-get -y install \
+RUN apt-get -y --no-install-recommends install \
 	git \
 	dpkg-dev \
 	debhelper \
