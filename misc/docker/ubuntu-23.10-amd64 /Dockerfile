@@ -18,7 +18,7 @@ RUN apt-get -y --no-install-recommends install \
 	opensp \
 	docbook-xsl \
 	xsltproc
-RUN apt-get -y install \
+RUN apt-get -y --no-install-recommends install \
 	git \
 	dpkg-dev \
 	debhelper \
@@ -26,4 +26,5 @@ RUN apt-get -y install \
 	quilt \
 	python3 \
 	python3-pip \
-	python3-setuptools
+	python3-setuptools \
+	python3-venv
