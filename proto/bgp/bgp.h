@@ -114,6 +114,7 @@ struct bgp_config {
   int enforce_first_as;			/* Enable check for neighbor AS as first AS in AS_PATH */
   int gr_mode;				/* Graceful restart mode (BGP_GR_*) */
   int llgr_mode;			/* Long-lived graceful restart mode (BGP_LLGR_*) */
+  int auth_type;			/* Authentication type (BGP_AUTH_*) */
   int setkey;				/* Set MD5 password to system SA/SP database */
   u8  local_role;			/* Set peering role with neighbor [RFC 9234] */
   int require_roles;			/* Require configured roles on both sides */
@@ -139,7 +140,9 @@ struct bgp_config {
   unsigned disable_after_error;		/* Disable the protocol when error is detected */
   u32 disable_after_cease;		/* Disable it when cease is received, bitfield */
 
+  /* Options below must be compared separately in bgp_reconfigure() */
   const char *password;			/* Password used for MD5 authentication */
+  struct ao_config *ao_keys;		/* Keys for TCP-AO authentication */
   net_addr *remote_range;		/* Allowed neighbor range for dynamic BGP */
   const char *dynamic_name;		/* Name pattern for dynamic BGP */
   int dynamic_name_digits;		/* Minimum number of digits for dynamic names */
@@ -191,6 +194,10 @@ struct bgp_channel_config {
 
 #define BGP_PT_INTERNAL		1
 #define BGP_PT_EXTERNAL		2
+
+#define BGP_AUTH_NONE		0
+#define BGP_AUTH_MD5		1
+#define BGP_AUTH_AO		2
 
 #define BGP_ROLE_UNDEFINED 	255
 #define BGP_ROLE_PROVIDER 	0
@@ -288,6 +295,18 @@ struct bgp_caps {
   for (ac = caps->af_data; ac < &caps->af_data[caps->af_count]; ac++)
 
 
+struct bgp_ao_key {
+  node n;				/* Node in bgp_ao_state.keys */
+  struct ao_key key;
+  u32 active:1;
+  u32 failed:1;
+};
+
+struct bgp_ao_state {
+  list keys;				/* List of TCP-AO keys (struct bgp_ao_key) */
+  struct bgp_ao_key *best_key;
+};
+
 struct bgp_socket {
   node n;				/* Node in global bgp_sockets */
   sock *sk;				/* Real listening socket */
@@ -367,6 +386,7 @@ struct bgp_proto {
   struct bgp_socket *sock;		/* Shared listening socket */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
   struct birdsock *postponed_sk;	/* Postponed incoming socket for dynamic BGP */
+  struct bgp_ao_state ao;
   struct bgp_stats stats;		/* BGP statistics */
   btime last_established;		/* Last time of enter/leave of established state */
   btime last_rx_update;			/* Last time of RX update */
@@ -805,7 +825,7 @@ byte *bgp_create_end_mark_(struct bgp_channel *c, byte *buf);
 
 #define BEM_NEIGHBOR_LOST	1
 #define BEM_INVALID_NEXT_HOP	2
-#define BEM_INVALID_MD5		3	/* MD5 authentication kernel request failed (possibly not supported) */
+#define BEM_INVALID_AUTH	3	/* Authentication kernel request failed (possibly not supported) */
 #define BEM_NO_SOCKET		4
 #define BEM_LINK_DOWN		5
 #define BEM_BFD_DOWN		6

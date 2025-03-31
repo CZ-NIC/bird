@@ -36,6 +36,32 @@ struct ssh_sock {
 };
 #endif
 
+struct ao_key
+{
+  int send_id;
+  int recv_id;
+  const char *key;
+  uint keylen;
+  int algorithm;
+  int preference;
+};
+
+struct ao_config
+{
+  struct ao_key key;
+  struct ao_config *next;
+};
+
+struct ao_info
+{
+  int current_key;
+  int rnext_key;
+  u64 pkt_good;
+  u64 pkt_bad;
+};
+
+#define AO_MAX_KEY_LENGTH	80	/* See sysdep/linux/tcp-ao.h */
+
 typedef struct birdsock {
   resource r;
   pool *pool;				/* Pool where incoming connections should be allocated (for SK_xxx_PASSIVE) */
@@ -76,7 +102,10 @@ typedef struct birdsock {
   int rcv_ttl;				/* TTL of last received datagram */
   node n;
   void *rbuf_alloc, *tbuf_alloc;
-  const char *password;			/* Password for MD5 authentication */
+  const char *password;			/* Password for MD5 authentication (for SK_TCP_ACTIVE) */
+  const struct ao_key **ao_keys_init;	/* Keys for TCP-AO authentication (for SK_TCP_ACTIVE) */
+  int ao_keys_num;			/* Number of keys in ao_keys_init */
+  // int use_ao;			/* This is the only reliable flag saying whether the socket uses TCP-AO */
   const char *err;			/* Error message */
   struct ssh_sock *ssh;			/* Used in SK_SSH */
 } sock;
@@ -93,6 +122,7 @@ void sk_set_rbsize(sock *s, uint val);	/* Resize RX buffer */
 void sk_set_tbsize(sock *s, uint val);	/* Resize TX buffer, keeping content */
 void sk_set_tbuf(sock *s, void *tbuf);	/* Switch TX buffer, NULL-> return to internal */
 void sk_dump_all(struct dump_request *);
+void sk_dump_ao_all(struct dump_request *);
 
 int sk_is_ipv4(sock *s);		/* True if socket is IPv4 */
 int sk_is_ipv6(sock *s);		/* True if socket is IPv6 */
@@ -107,6 +137,17 @@ int sk_setup_broadcast(sock *s);
 int sk_set_ttl(sock *s, int ttl);	/* Set transmit TTL for given socket */
 int sk_set_min_ttl(sock *s, int ttl);	/* Set minimal accepted TTL for given socket */
 int sk_set_md5_auth(sock *s, ip_addr local, ip_addr remote, int pxlen, struct iface *ifa, const char *passwd, int setkey);
+
+bool tcp_ao_alg_known(int algorithm);
+int sk_get_ao_info(sock *s, struct ao_info *val);
+int sk_get_active_ao_keys(sock *s, int *current_key, int *rnext_key);
+int sk_add_ao_key(sock *s, ip_addr prefix, int pxlen, struct iface *ifa, const struct ao_key *key, bool current, bool rnext);
+int sk_delete_ao_key(sock *s, ip_addr prefix, int pxlen, struct iface *ifa, const struct ao_key *key, const struct ao_key *current, const struct ao_key *rnext);
+int sk_set_rnext_ao_key(sock *s, const struct ao_key *key);
+int sk_check_ao_keys(sock *s, const struct ao_key **keys, int num, const char *name);
+void sk_dump_ao_info(sock *s, struct dump_request *dreq);
+void sk_dump_ao_keys(sock *s, struct dump_request *dreq);
+
 int sk_set_ipv6_checksum(sock *s, int offset);
 int sk_set_icmp6_filter(sock *s, int p1, int p2);
 void sk_log_error(sock *s, const char *p);

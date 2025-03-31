@@ -15,6 +15,9 @@ CF_DEFINES
 #define BGP_CFG ((struct bgp_config *) this_proto)
 #define BGP_CC ((struct bgp_channel_config *) this_channel)
 
+static struct ao_config *this_ao_key;
+static struct ao_config **next_ao_key;
+
 CF_DECLS
 
 CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
@@ -32,17 +35,19 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	LIVED, STALE, IMPORT, IBGP, EBGP, MANDATORY, INTERNAL, EXTERNAL, SETS,
 	DYNAMIC, RANGE, NAME, DIGITS, BGP_AIGP, AIGP, ORIGINATE, COST, ENFORCE,
 	FIRST, FREE, VALIDATE, BASE, ROLE, ROLES, PEER, PROVIDER, CUSTOMER,
-	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL, SEND, MIN, MAX,
-	FORMAT, NATIVE, SINGLE, DOUBLE)
+	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL, SEND, RECV, MIN, MAX,
+	AUTHENTICATION, NONE, MD5, AO, FORMAT, NATIVE, SINGLE, DOUBLE)
 
-%type <i> bgp_nh bgp_llnh
+CF_KEYWORDS(KEY, KEYS, SECRET, DEPRECATED, PREFERRED, ALGORITHM, CMAC, AES128)
+
+%type <i> bgp_nh bgp_llnh bgp_auth_type bgp_role_name tcp_ao_algorithm
 %type <i32> bgp_afi
 
 CF_KEYWORDS(CEASE, PREFIX, LIMIT, HIT, ADMINISTRATIVE, SHUTDOWN, RESET, PEER,
 	CONFIGURATION, CHANGE, DECONFIGURED, CONNECTION, REJECTED, COLLISION,
 	OUT, OF, RESOURCES, ASPA_CHECK_UPSTREAM, ASPA_CHECK_DOWNSTREAM)
 
-%type<i> bgp_cease_mask bgp_cease_list bgp_cease_flag bgp_role_name
+%type<i> bgp_cease_mask bgp_cease_list bgp_cease_flag
 
 CF_GRAMMAR
 
@@ -121,6 +126,12 @@ bgp_cease_flag:
  | CONFIGURATION CHANGE		{ $$ = 1 << 6; }
  | CONNECTION COLLISION		{ $$ = 1 << 7; }
  | OUT OF RESOURCES		{ $$ = 1 << 8; }
+ ;
+
+bgp_auth_type:
+   NONE		{ $$ = BGP_AUTH_NONE; }
+ | MD5		{ $$ = BGP_AUTH_MD5; }
+ | AO		{ $$ = BGP_AUTH_AO; }
  ;
 
 bgp_role_name:
@@ -206,6 +217,8 @@ bgp_proto:
  | bgp_proto REQUIRE GRACEFUL RESTART bool ';' { BGP_CFG->require_gr = $5; }
  | bgp_proto REQUIRE LONG LIVED GRACEFUL RESTART bool ';' { BGP_CFG->require_llgr = $7; }
  | bgp_proto CAPABILITIES bool ';' { BGP_CFG->capabilities = $3; }
+ | bgp_proto AUTHENTICATION bgp_auth_type ';' { BGP_CFG->auth_type = $3; }
+ | bgp_proto KEYS tcp_ao_key_list ';' tcp_ao_end
  | bgp_proto PASSWORD text ';' { BGP_CFG->password = $3; }
  | bgp_proto SETKEY bool ';' { BGP_CFG->setkey = $3; }
  | bgp_proto PASSIVE bool ';' { BGP_CFG->passive = $3; }
@@ -250,6 +263,118 @@ bgp_afi:
  | FLOW4		{ $$ = BGP_AF_FLOW4; }
  | FLOW6		{ $$ = BGP_AF_FLOW6; }
  ;
+
+tcp_ao_key_start: KEY {
+  this_ao_key = cfg_allocz(sizeof(struct ao_config));
+  *next_ao_key = this_ao_key;
+  next_ao_key = &(this_ao_key->next);
+
+  this_ao_key->key.send_id = -1;
+  this_ao_key->key.recv_id = -1;
+  this_ao_key->key.algorithm = ALG_HMAC_SHA1;
+}
+
+tcp_ao_key_opt:
+   ID expr ';' {
+     if ($2 > 255)
+       cf_error("Key ID must be in range 0-255");
+     this_ao_key->key.send_id = $2;
+     this_ao_key->key.recv_id = $2;
+   }
+ | SEND ID expr ';' {
+     if ($3 > 255)
+       cf_error("Send ID must be in range 0-255");
+     this_ao_key->key.send_id = $3;
+   }
+ | RECV ID expr ';' {
+     if ($3 > 255)
+       cf_error("Recv ID must be in range 0-255");
+     this_ao_key->key.recv_id = $3;
+   }
+ | ALGORITHM tcp_ao_algorithm ';' {
+     if (!tcp_ao_alg_known($2))
+       cf_error("Unknown algorithm for TCP-AO");
+     this_ao_key->key.algorithm = $2;
+   }
+ | SECRET bytestring_text ';' {
+     if ($2.type == T_BYTESTRING)
+     {
+       this_ao_key->key.key = $2.val.bs->data;
+       this_ao_key->key.keylen = $2.val.bs->length;
+     }
+     else if ($2.type == T_STRING)
+     {
+       this_ao_key->key.key = $2.val.s;
+       this_ao_key->key.keylen = strlen($2.val.s);
+     }
+     else bug("Bad bytestring_text");
+
+     if (this_ao_key->key.keylen > AO_MAX_KEY_LENGTH)
+       cf_error("TCP-AO secret too long");
+   }
+ | DEPRECATED ';' {
+     if (this_ao_key->key.preference > 0)
+       cf_error("Key cannot be both preferred and deprecated");
+     this_ao_key->key.preference = -1;
+   }
+ | PREFERRED ';' {
+     if (this_ao_key->key.preference < 0)
+       cf_error("Key cannot be both preferred and deprecated");
+     this_ao_key->key.preference = 1;
+   }
+ ;
+
+tcp_ao_algorithm:
+   password_algorithm { $$ = $1; }
+ | CMAC AES128 { $$ = ALG_CMAC_AES128_AO; }
+ ;
+
+tcp_ao_key_opts:
+   /* empty */
+ | tcp_ao_key_opts tcp_ao_key_opt
+ ;
+
+tcp_ao_key_end: {
+  struct ao_config *key = this_ao_key;
+  this_ao_key = NULL;
+
+  if (key->key.send_id == -1)
+    cf_error("No key Send ID");
+  if (key->key.recv_id == -1)
+    cf_error("No key Recv ID");
+  if (!key->key.key || !key->key.keylen)
+    cf_error("No secret defined for key %i/%i", key->key.send_id, key->key.recv_id);
+}
+
+tcp_ao_key: tcp_ao_key_start '{' tcp_ao_key_opts '}' tcp_ao_key_end;
+
+tcp_ao_keys:
+   /* empty */
+ | tcp_ao_keys tcp_ao_key ';' { }
+ ;
+
+tcp_ao_key_list:
+   '{' { next_ao_key = &(BGP_CFG->ao_keys); } tcp_ao_keys '}' { next_ao_key = NULL; };
+ ;
+
+tcp_ao_end:
+{
+  char used_aos_id_send[256];
+  char used_aos_id_recv[256];
+  memset(used_aos_id_send, 0, sizeof(char)*256);
+  memset(used_aos_id_recv, 0, sizeof(char)*256);
+
+  for (struct ao_config *key = BGP_CFG->ao_keys; key; key = key->next)
+  {
+    if (used_aos_id_send[key->key.send_id])
+      cf_error("Multiple keys with Send ID %i", key->key.send_id);
+    used_aos_id_send[key->key.send_id] = 1;
+
+    if (used_aos_id_recv[key->key.recv_id])
+      cf_error("Multiple keys with Recv ID %i", key->key.recv_id);
+    used_aos_id_recv[key->key.recv_id] = 1;
+  }
+}
 
 bgp_channel_start: bgp_afi
 {

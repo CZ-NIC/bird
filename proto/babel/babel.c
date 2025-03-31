@@ -1038,13 +1038,18 @@ babel_send_update_(struct babel_iface *ifa, btime changed, struct fib *rtable)
 
     if (e->n.addr->type == NET_IP4)
     {
-      /* Always prefer IPv4 nexthop if set */
-      if (ipa_nonzero(ifa->next_hop_ip4))
+      /* Use IPv4 nexthop if available and preferred */
+      if (ipa_nonzero(ifa->next_hop_ip4) &&
+	  (ifa->cf->next_hop_prefer == BABEL_NHP_NATIVE))
         msg.update.next_hop = ifa->next_hop_ip4;
 
       /* Only send IPv6 nexthop if enabled */
       else if (ifa->cf->ext_next_hop)
         msg.update.next_hop = ifa->next_hop_ip6;
+
+      /* Fallback (prefer IPv6 but !ext_next_hop) */
+      else
+	msg.update.next_hop = ifa->next_hop_ip4;
     }
     else
       msg.update.next_hop = ifa->next_hop_ip6;

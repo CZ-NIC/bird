@@ -3521,6 +3521,7 @@ int
 bgp_rx(sock *sk, uint size)
 {
   struct bgp_conn *conn = sk->data;
+
   byte *pkt_start = sk->rbuf;
   byte *end = pkt_start + size;
   uint i, len;

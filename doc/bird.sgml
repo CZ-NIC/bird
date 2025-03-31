@@ -1457,7 +1457,7 @@ This argument can be omitted if there exists only a single instance.
 	<tag><label id="cli-debug">debug <m/protocol/|<m/pattern/|all all|off|{ states|routes|filters|events|packets [, <m/.../] }</tag>
 	Control protocol debugging.
 
-	<tag><label id="cli-dump">dump resources|sockets|interfaces|neighbors|attributes|routes|protocols "<m/file/"</tag>
+	<tag><label id="cli-dump">dump resources|sockets|ao keys|events|interfaces|neighbors|attributes|routes|protocols "<m/file/"</tag>
 	Creates the given file (it must not exist) and dumps contents of
 	internal data structures there. By sending SIGUSR1, you get all of
 	these concatenated to <cf/bird.dump/ in the current directory.
@@ -2312,7 +2312,7 @@ protocol babel [<name>] {
 	ipv6 [sadr] { <channel config> };
 	randomize router id <switch>;
 	interface <interface pattern> {
-		type <wired|wireless|tunnel>;
+		type wired|wireless|tunnel;
 		rxcost <number>;
 		limit <number>;
 		hello interval <time>;
@@ -2325,6 +2325,7 @@ protocol babel [<name>] {
 		check link <switch>;
 		next hop ipv4 <address>;
 		next hop ipv6 <address>;
+		next hop prefer native|ipv6;
 		extended next hop <switch>;
 		rtt cost <number>;
 		rtt min <time>;
@@ -2427,19 +2428,28 @@ protocol babel [<name>] {
       yes.
 
       <tag><label id="babel-next-hop-ipv4">next hop ipv4 <m/address/</tag>
-      Set the next hop address advertised for IPv4 routes advertised on this
-      interface. Default: the preferred IPv4 address of the interface.
+      Set the IPv4 next hop address advertised for (IPv4) routes advertised on
+      this interface. Default: the preferred IPv4 address of the interface.
 
       <tag><label id="babel-next-hop-ipv6">next hop ipv6 <m/address/</tag>
-      Set the next hop address advertised for IPv6 routes advertised on this
+      Set the IPv6 next hop address advertised for routes advertised on this
       interface. If not set, the same link-local address that is used as the
       source for Babel packets will be used. In normal operation, it should not
       be necessary to set this option.
 
+      <tag><label id="babel-next-hop-prefer">next hop prefer native|ipv6</tag>
+      By default, BIRD prefers to advertise IPv4 routes with an IPv4 next hop
+      address, using an IPv6 next hop address only when IPv4 addresses are
+      absent from the interface. When set to <cf/ipv6/, BIRD will advertise IPv4
+      routes with an IPv6 next hop address even when IPv4 addresses are present
+      on the interface (assuming the option <ref id="babel-extended-next-hop"
+      name="extended next hop"> is enabled). Default: native.
+
       <tag><label id="babel-extended-next-hop">extended next hop <m/switch/</tag>
-      If enabled, BIRD will accept and emit IPv4 routes with an IPv6 next
-      hop when IPv4 addresses are absent from the interface as described in
-      <rfc id="9229">. Default: yes.
+      Specify whether BIRD should allow IPv4 routes with an IPv6 next hop, as
+      described in <rfc id="9229">. Note that when both IPv4 and IPv6 next hops
+      are available, the option <ref id="babel-next-hop-prefer"
+      name="next hop prefer"> controls which one is advertised. Default: yes.
 
       <tag><label id="babel-rtt-cost">rtt cost <m/number/</tag>
       The RTT-based cost that will be applied to all routes from each neighbour
@@ -2812,42 +2822,45 @@ avoid routing loops.
 
 <p>
 <itemize>
-<item> <rfc id="4271"> &ndash; Border Gateway Protocol 4 (BGP)
-<item> <rfc id="1997"> &ndash; BGP Communities Attribute
-<item> <rfc id="2385"> &ndash; Protection of BGP Sessions via TCP MD5 Signature
-<item> <rfc id="2545"> &ndash; Use of BGP Multiprotocol Extensions for IPv6
-<item> <rfc id="2918"> &ndash; Route Refresh Capability
-<item> <rfc id="3107"> &ndash; Carrying Label Information in BGP
-<item> <rfc id="4360"> &ndash; BGP Extended Communities Attribute
-<item> <rfc id="4364"> &ndash; BGP/MPLS IPv4 Virtual Private Networks
-<item> <rfc id="4456"> &ndash; BGP Route Reflection
-<item> <rfc id="4486"> &ndash; Subcodes for BGP Cease Notification Message
-<item> <rfc id="4659"> &ndash; BGP/MPLS IPv6 Virtual Private Networks
-<item> <rfc id="4724"> &ndash; Graceful Restart Mechanism for BGP
-<item> <rfc id="4760"> &ndash; Multiprotocol extensions for BGP
-<item> <rfc id="4798"> &ndash; Connecting IPv6 Islands over IPv4 MPLS
-<item> <rfc id="5065"> &ndash; AS confederations for BGP
-<item> <rfc id="5082"> &ndash; Generalized TTL Security Mechanism
-<item> <rfc id="5492"> &ndash; Capabilities Advertisement with BGP
-<item> <rfc id="5575"> &ndash; Dissemination of Flow Specification Rules
-<item> <rfc id="5668"> &ndash; 4-Octet AS Specific BGP Extended Community
-<item> <rfc id="6286"> &ndash; AS-Wide Unique BGP Identifier
-<item> <rfc id="6608"> &ndash; Subcodes for BGP Finite State Machine Error
-<item> <rfc id="6793"> &ndash; BGP Support for 4-Octet AS Numbers
-<item> <rfc id="7311"> &ndash; Accumulated IGP Metric Attribute for BGP
-<item> <rfc id="7313"> &ndash; Enhanced Route Refresh Capability for BGP
-<item> <rfc id="7606"> &ndash; Revised Error Handling for BGP UPDATE Messages
-<item> <rfc id="7911"> &ndash; Advertisement of Multiple Paths in BGP
-<item> <rfc id="7947"> &ndash; Internet Exchange BGP Route Server
-<item> <rfc id="8092"> &ndash; BGP Large Communities Attribute
-<item> <rfc id="8203"> &ndash; BGP Administrative Shutdown Communication
-<item> <rfc id="8212"> &ndash; Default EBGP Route Propagation Behavior without Policies
-<item> <rfc id="8654"> &ndash; Extended Message Support for BGP
-<item> <rfc id="8950"> &ndash; Advertising IPv4 NLRI with an IPv6 Next Hop
-<item> <rfc id="9072"> &ndash; Extended Optional Parameters Length for BGP OPEN Message
-<item> <rfc id="9117"> &ndash; Revised Validation Procedure for BGP Flow Specifications
-<item> <rfc id="9234"> &ndash; Route Leak Prevention and Detection Using Roles
-<item> <rfc id="9687"> &ndash; Send Hold Timer
+<item> <rfc id="4271"> - Border Gateway Protocol 4 (BGP)
+<item> <rfc id="1997"> - BGP Communities Attribute
+<item> <rfc id="2385"> - Protection of BGP Sessions via TCP MD5 Signature
+<item> <rfc id="2545"> - Use of BGP Multiprotocol Extensions for IPv6
+<item> <rfc id="2918"> - Route Refresh Capability
+<item> <rfc id="3107"> - Carrying Label Information in BGP
+<item> <rfc id="4360"> - BGP Extended Communities Attribute
+<item> <rfc id="4364"> - BGP/MPLS IPv4 Virtual Private Networks
+<item> <rfc id="4456"> - BGP Route Reflection
+<item> <rfc id="4486"> - Subcodes for BGP Cease Notification Message
+<item> <rfc id="4659"> - BGP/MPLS IPv6 Virtual Private Networks
+<item> <rfc id="4724"> - Graceful Restart Mechanism for BGP
+<item> <rfc id="4760"> - Multiprotocol extensions for BGP
+<item> <rfc id="4798"> - Connecting IPv6 Islands over IPv4 MPLS
+<item> <rfc id="5065"> - AS confederations for BGP
+<item> <rfc id="5082"> - Generalized TTL Security Mechanism
+<item> <rfc id="5492"> - Capabilities Advertisement with BGP
+<item> <rfc id="8955"> - Dissemination of Flow Specification Rules for IPv4
+<item> <rfc id="8956"> - Dissemination of Flow Specification Rules for IPv6
+<item> <rfc id="5668"> - 4-Octet AS Specific BGP Extended Community
+<item> <rfc id="5925"> - TCP Authentication Option
+<item> <rfc id="6286"> - AS-Wide Unique BGP Identifier
+<item> <rfc id="6608"> - Subcodes for BGP Finite State Machine Error
+<item> <rfc id="6793"> - BGP Support for 4-Octet AS Numbers
+<item> <rfc id="7311"> - Accumulated IGP Metric Attribute for BGP
+<item> <rfc id="7313"> - Enhanced Route Refresh Capability for BGP
+<item> <rfc id="7606"> - Revised Error Handling for BGP UPDATE Messages
+<item> <rfc id="7911"> - Advertisement of Multiple Paths in BGP
+<item> <rfc id="7947"> - Internet Exchange BGP Route Server
+<item> <rfc id="8092"> - BGP Large Communities Attribute
+<item> <rfc id="8203"> - BGP Administrative Shutdown Communication
+<item> <rfc id="8212"> - Default EBGP Route Propagation Behavior without Policies
+<item> <rfc id="8654"> - Extended Message Support for BGP
+<item> <rfc id="8950"> - Advertising IPv4 NLRI with an IPv6 Next Hop
+<item> <rfc id="9072"> - Extended Optional Parameters Length for BGP OPEN Message
+<item> <rfc id="9117"> - Revised Validation Procedure for BGP Flow Specifications
+<item> <rfc id="9234"> - Route Leak Prevention and Detection Using Roles
+<item> <rfc id="9494"> - Long-Lived Graceful Restart for BGP
+<item> <rfc id="9687"> - Send Hold Timer
 </itemize>
 
 <sect1>Route selection rules
@@ -2930,7 +2943,21 @@ protocol bgp [<name>] {
 	check link <switch>;
 	bfd <switch>|graceful| { <bfd-options> };
 	ttl security <switch>;
+	authentication none|md5|ao;
 	password "<text>";
+	keys {
+		key {
+			id <number>;
+			send id <number>;
+			recv id <number>;
+			secret "<text>"|<bytestring>;
+			algorithm ( hmac md5 | hmac sha1 | hmac sha224 | hmac sha256 |
+				    hmac sha384 | hmac sha512 | cmac aes128 );
+			preferred;
+			deprecated;
+		};
+		...
+	};
 	setkey <switch>;
 	passive <switch>;
 	confederation <number>;
@@ -3108,6 +3135,17 @@ protocol bgp [<name>] {
 	Note that full (ICMP protection, for example) <rfc id="5082"> support is
 	provided by Linux only. Default: disabled.
 
+	<tag><label id="bgp-authentication">authentication none|md5|ao</tag>
+	Selects authentication method to be used. <cf/none/ means that the BGP
+	session is not authenticated at all. <cf/md5/ means that the TCP MD5
+	authentication of BGP sessions (<rfc id="2385">) is used, in that case
+	the option <ref id="bgp-password" name="password"> is used to specify
+	the (single) password. Finally, <cf/ao/ means to use TCP Authentication
+	Option (TCP-AO, <rfc id="5925">), allowing multiple keys and different
+	cryptographic algorithms. These are specified using the option
+	<ref id="bgp-keys" name="keys">. Note that TCP-AO authentication is not
+	supported on dynamic BGP sessions. Default: none.
+
 	<tag><label id="bgp-password">password "<m/text/"</tag>
 	Use this password for MD5 authentication of BGP sessions (<rfc id="2385">). When
 	used on BSD systems, see also <cf/setkey/ option below. Default: no
@@ -3123,6 +3161,54 @@ protocol bgp [<name>] {
 	updates are currently implemented only for FreeBSD. Passwords have to be
 	set manually by an external utility on NetBSD and OpenBSD. Default:
 	enabled (ignored on non-FreeBSD).
+
+	<tag><label id="bgp-keys">keys { key { [<m/.../] }; [<m/.../] }</tag>
+	Define a set of cryptographic keys that are used for TCP-AO
+	authentication of BGP sessions (<rfc id="5925">). Each key has a
+	configuration block with its own sub-options ([<cf/send/ | <cf/recv/]
+	<cf/id/, <cf/secret/, <cf/algorithm/, <cf/preferred/, <cf/deprecated/).
+
+	TCP-AO key has two IDs - for outgoing and incoming direction (Send /
+	Recv ID). Among keys on one protocol all Send IDs must be unique and all
+	Recv IDs must be unique. They must be in range 0-255 and they can be set
+	independently with key options <cf/send id/ and <cf/recv id/, or
+	together with option <cf/id/. Note that specifying these IDs is
+	mandatory.
+
+	Of course, TCP-AO key contains a shared secret key. It is specified by
+	the option <cf/secret/ as a text string or as a sequence of hexadecimal
+	digit pairs (<ref id="type-bytestring" name="bytestring">).
+
+	Used cryptographic algorithm can be specified for each key with the
+	option <cf/algorithm/. Possible values are: <cf/hmac md5/, <cf/hmac sha1/,
+	<cf/hmac sha224/, <cf/hmac sha256/, <cf/hmac sha384/, <cf/hmac sha512/,
+	and <cf/cmac aes128/. Default value is <cf/hmac sha1/.
+
+	When multiple keys are available, BIRD selects one to advertise as RNext
+	key (the key it prefers to be used to sign incoming traffic). Keys
+	marked as <cf/preferred/ are selected before unmarked keys, while keys
+	marked as <cf/deprecated/ are never selected (but still could be used
+	when the other side asks for them). Therefore, there must be always at
+	least one non-deprecated key.
+
+	Currently, only the selected key is used during the initial handshake of
+	session establishment (and therefore must be known by the other side).
+	This may change in the future.
+
+	It is possible to add, remove, or modify keys during reconfiguration
+	without breaking the BGP session. The recommended way is to refrain from
+	removing a key that is in active use (as reported by <cf/Current key/
+	and <cf/RNext key/ in <cf/show protocols all/), instead marking the key
+	as <cf/deprecated/ on both sides of the session. It is possible to
+	remove an active key directly, BIRD would forcibly switch to another key
+	(as long as there is a non-deprecated key that is not added, removed or
+	modified during this reconfiguration). This is not recommended as it
+	skips the proper key change mechanism and may switch to a key that is
+	not available to the other side.
+
+	Modification of existing keys (except of marking them <cf/preferred/ or
+	<cf/deprecated/) is equivalent to removing and then adding them, with
+	the same issues related to removing of active keys.
 
 	<tag><label id="bgp-passive">passive <m/switch/</tag>
 	Standard BGP behavior is both initiating outgoing connections and
@@ -4005,6 +4091,21 @@ protocol bgp {
 	local 198.51.100.14 as 65000;	     # Use a private AS number
 	neighbor 198.51.100.130 as 64496;    # Our neighbor ...
 	multihop;			     # ... which is connected indirectly
+	authentication ao;		     # We use TCP-AO authentication
+	keys {
+		key {
+			id 0;
+			secret "hello321";
+			algorithm hmac sha256;
+			preferred;
+		};
+		key {
+			send id 2;
+			recv id 1;
+			secret "bye123";
+			algorithm cmac aes128;
+		};
+	};
 	ipv4 {
 		export filter {			     # We use non-trivial export rules
 			if source = RTS_STATIC then { # Export only static routes

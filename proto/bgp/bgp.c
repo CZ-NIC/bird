@@ -87,6 +87,7 @@
  * RFC 5082 - Generalized TTL Security Mechanism
  * RFC 5492 - Capabilities Advertisement with BGP
  * RFC 5668 - 4-Octet AS Specific BGP Extended Community
+ * RFC 5925 - TCP Authentication Option
  * RFC 6286 - AS-Wide Unique BGP Identifier
  * RFC 6608 - Subcodes for BGP Finite State Machine Error
  * RFC 6793 - BGP Support for 4-Octet AS Numbers
@@ -140,6 +141,7 @@ static void bgp_setup_sk(struct bgp_conn *conn, sock *s);
 static void bgp_send_open(struct bgp_conn *conn);
 static void bgp_update_bfd(struct bgp_proto *p, const struct bfd_options *bfd);
 
+static int bgp_disable_ao_keys(struct bgp_proto *p);
 static int bgp_incoming_connection(sock *sk, uint dummy UNUSED);
 static void bgp_listen_sock_err(sock *sk UNUSED, int err);
 
@@ -232,10 +234,462 @@ bgp_close(struct bgp_proto *p)
   mb_free(bs);
 }
 
+
+/*
+ *	TCP-AO keys
+ */
+
+static struct bgp_ao_key *
+bgp_new_ao_key(struct bgp_proto *p, struct ao_config *cf)
+{
+  struct bgp_ao_key *key = mb_allocz(p->p.pool, sizeof(struct bgp_ao_key));
+
+  key->key = cf->key;
+  add_tail(&p->ao.keys, &key->n);
+
+  return key;
+}
+
+static struct bgp_ao_key *
+bgp_find_ao_key_(list *l, int send_id, int recv_id)
+{
+  WALK_LIST_(struct bgp_ao_key, key, *l)
+    if ((key->key.send_id == send_id) && (key->key.recv_id == recv_id))
+      return key;
+
+  return NULL;
+}
+
+static inline struct bgp_ao_key *
+bgp_find_ao_key(struct bgp_proto *p, int send_id, int recv_id)
+{ return bgp_find_ao_key_(&p->ao.keys, send_id, recv_id); }
+
+static int
+bgp_same_ao_key(struct ao_key *a, struct ao_key *b)
+{
+  return
+    (a->send_id == b->send_id) &&
+    (a->recv_id == b->recv_id) &&
+    (a->algorithm == b->algorithm) &&
+    (a->keylen == b->keylen) &&
+    !memcmp(a->key, b->key, a->keylen);
+}
+
 static inline int
+bgp_sk_add_ao_key(struct bgp_proto *p, sock *sk, struct bgp_ao_key *key)
+{
+  ip_addr prefix = p->cf->remote_ip;
+  int pxlen = -1;
+
+  int rv = sk_add_ao_key(sk, prefix, pxlen, p->cf->iface, &key->key, false, false);
+  if (rv < 0)
+  {
+    sk_log_error(sk, p->p.name);
+    log(L_ERR "%s: Cannot add TCP-AO key %d/%d to BGP %s socket",
+	p->p.name, key->key.send_id, key->key.recv_id,
+	((sk == p->sock->sk) ? "listening" : "session"));
+  }
+
+  return rv;
+}
+
+static int
+bgp_enable_ao_key(struct bgp_proto *p, struct bgp_ao_key *key)
+{
+  ASSERT(!key->active);
+
+  BGP_TRACE(D_EVENTS, "Adding TCP-AO key %d/%d", key->key.send_id, key->key.recv_id);
+
+  /* Handle listening socket */
+  if (bgp_sk_add_ao_key(p, p->sock->sk, key) < 0)
+  {
+    key->failed = 1;
+    return -1;
+  }
+
+  key->active = 1;
+
+  /* Handle incoming socket */
+  if (p->incoming_conn.sk)
+    if (bgp_sk_add_ao_key(p, p->incoming_conn.sk, key) < 0)
+      return -1;
+
+  /* Handle outgoing socket */
+  if (p->outgoing_conn.sk)
+    if (bgp_sk_add_ao_key(p, p->outgoing_conn.sk, key) < 0)
+      return -1;
+
+  return 0;
+}
+
+struct bgp_active_keys {
+  int in_current, in_rnext;
+  int out_current, out_rnext;
+  struct bgp_ao_key *backup;
+};
+
+static int
+bgp_sk_delete_ao_key(struct bgp_proto *p, sock *sk, struct bgp_ao_key *key,
+		     struct bgp_ao_key *backup, int current_key_id, int rnext_key_id)
+{
+  struct ao_key *set_current = NULL, *set_rnext = NULL;
+
+  if ((key->key.send_id == current_key_id) && backup)
+  {
+    log(L_WARN "%s: Deleting TCP-AO Current key %d/%d, setting Current key to %d/%d",
+	p->p.name, key->key.send_id, key->key.recv_id, backup->key.send_id, backup->key.recv_id);
+
+    set_current = &backup->key;
+  }
+
+  if ((key->key.recv_id == rnext_key_id) && backup)
+  {
+    log(L_WARN "%s: Deleting TCP-AO RNext key %d/%d, setting RNext key to %d/%d",
+	p->p.name, key->key.send_id, key->key.recv_id, backup->key.send_id, backup->key.recv_id);
+
+    set_rnext = &backup->key;
+  }
+
+  ip_addr prefix = p->cf->remote_ip;
+  int pxlen = -1;
+
+  int rv = sk_delete_ao_key(sk, prefix, pxlen, p->cf->iface, &key->key, set_current, set_rnext);
+  if (rv < 0)
+  {
+    sk_log_error(sk, p->p.name);
+    log(L_ERR "%s: Cannot delete TCP-AO key %d/%d from BGP %s socket",
+	p->p.name, key->key.send_id, key->key.recv_id,
+	((sk == p->sock->sk) ? "listening" : "session"));
+  }
+
+  return rv;
+}
+
+static int
+bgp_disable_ao_key(struct bgp_proto *p, struct bgp_ao_key *key, struct bgp_active_keys *info)
+{
+  ASSERT(key->active);
+
+  BGP_TRACE(D_EVENTS, "Deleting TCP-AO key %d/%d", key->key.send_id, key->key.recv_id);
+
+  /* Handle listening socket */
+  if (bgp_sk_delete_ao_key(p, p->sock->sk, key, NULL, -1, -1) < 0)
+    return -1;
+
+  key->active = 0;
+
+  /* Handle incoming socket */
+  if (p->incoming_conn.sk && info)
+    if (bgp_sk_delete_ao_key(p, p->incoming_conn.sk, key, info->backup, info->in_current, info->in_rnext) < 0)
+      return -1;
+
+  /* Handle outgoing socket */
+  if (p->outgoing_conn.sk && info)
+    if (bgp_sk_delete_ao_key(p, p->outgoing_conn.sk, key, info->backup, info->out_current, info->out_rnext) < 0)
+      return -1;
+
+  return 0;
+}
+
+static int
+bgp_remove_ao_key(struct bgp_proto *p, struct bgp_ao_key *key, struct bgp_active_keys *info)
+{
+  ASSERT(key != p->ao.best_key);
+
+  if (key->active)
+    if (bgp_disable_ao_key(p, key, info) < 0)
+      return -1;
+
+  rem_node(&key->n);
+  mb_free(key);
+  return 0;
+}
+
+
+static struct bgp_ao_key *
+bgp_select_best_ao_key(struct bgp_proto *p)
+{
+  struct bgp_ao_key *best = NULL;
+
+  WALK_LIST_(struct bgp_ao_key, key, p->ao.keys)
+  {
+    if (!key->active)
+      continue;
+
+    /* Never select deprecated keys */
+    if (key->key.preference < 0)
+      continue;
+
+    if (!best || (best->key.preference < key->key.preference))
+      best = key;
+  }
+
+  return best;
+}
+
+static int
+bgp_sk_set_rnext_ao_key(struct bgp_proto *p, sock *sk, struct bgp_ao_key *key)
+{
+  int rv = sk_set_rnext_ao_key(sk, &key->key);
+  if (rv < 0)
+  {
+    sk_log_error(sk, p->p.name);
+    log(L_ERR "%s: Cannot set TCP-AO key %d/%d as RNext key",
+	p->p.name, key->key.send_id, key->key.recv_id);
+  }
+
+  return rv;
+}
+
+static int
+bgp_update_rnext_ao_key(struct bgp_proto *p)
+{
+  struct bgp_ao_key *best = bgp_select_best_ao_key(p);
+
+  if (!best)
+  {
+    log(L_ERR "%s: No usable TCP-AO key", p->p.name);
+    return -1;
+  }
+
+  if (best == p->ao.best_key)
+    return 0;
+
+  BGP_TRACE(D_EVENTS, "Setting TCP-AO key %d/%d as RNext key", best->key.send_id, best->key.recv_id);
+
+  p->ao.best_key = best;
+
+  /* Handle incoming socket */
+  if (p->incoming_conn.sk)
+    if (bgp_sk_set_rnext_ao_key(p, p->incoming_conn.sk, best) < 0)
+      return -1;
+
+  /* Handle outgoing socket */
+  if (p->outgoing_conn.sk)
+    if (bgp_sk_set_rnext_ao_key(p, p->outgoing_conn.sk, best) < 0)
+      return -1;
+
+  /* Schedule Keepalive to trigger RNext ID exchange */
+  if (p->conn)
+    bgp_schedule_packet(p->conn, NULL, PKT_KEEPALIVE);
+
+  /* RFC 4271 4.4 says that Keepalive messages MUST NOT be sent more frequently
+     than one per second, but since key change is rare, this is harmless. */
+
+  return 0;
+}
+
+
+/**
+ * bgp_enable_ao_keys - Enable TCP-AO keys
+ * @p: BGP instance
+ *
+ * Enable all TCP-AO keys for the listening socket. We accept if some fail in
+ * non-fatal way (e.g. kernel does not support specific algorithm), but there
+ * must be at least one usable (non-deprecated) active key. In case of failure,
+ * we remove all keys, so there is no lasting effect on the listening socket.
+ * Returns: 0 for okay, -1 for failure.
+ */
+static int
+bgp_enable_ao_keys(struct bgp_proto *p)
+{
+  ASSERT(!p->incoming_conn.sk && !p->outgoing_conn.sk);
+
+  WALK_LIST_(struct bgp_ao_key, key, p->ao.keys)
+    if (bgp_enable_ao_key(p, key) < 0)
+      goto fail;
+
+  p->ao.best_key = bgp_select_best_ao_key(p);
+
+  if (!p->ao.best_key)
+  {
+    log(L_ERR "%s: No usable TCP-AO key", p->p.name);
+    goto fail;
+  }
+
+  return 0;
+
+fail:
+  bgp_disable_ao_keys(p);
+  return -1;
+}
+
+/**
+ * bgp_disable_ao_keys - Disable TCP-AO keys
+ * @p: BGP instance
+ *
+ * Disable all TCP-AO keys for the listening socket. We assume there are no
+ * active connection, so no issue with removal of the current key. Errors are
+ * ignored.
+ */
+static int
+bgp_disable_ao_keys(struct bgp_proto *p)
+{
+  ASSERT(!p->incoming_conn.sk && !p->outgoing_conn.sk);
+
+  WALK_LIST_(struct bgp_ao_key, key, p->ao.keys)
+    if (key->active)
+      bgp_disable_ao_key(p, key, NULL);
+
+  return 0;
+}
+
+static int
+bgp_reconfigure_ao_keys(struct bgp_proto *p, const struct bgp_config *cf)
+{
+  /* TCP-AO not used */
+  if (EMPTY_LIST(p->ao.keys) && !cf->ao_keys)
+    return 1;
+
+  /* Cannot enable/disable TCP-AO */
+  if (EMPTY_LIST(p->ao.keys) || !cf->ao_keys)
+    return 0;
+
+  /* Too early, TCP-AO not yet enabled */
+  if (p->start_state == BSS_PREPARE)
+    return 0;
+
+  /* Move existing keys to temporary list */
+  list old_keys;
+  init_list(&old_keys);
+  add_tail_list(&old_keys, &p->ao.keys);
+  init_list(&p->ao.keys);
+
+  /* Clean up the best key */
+  struct bgp_ao_key *old_best = p->ao.best_key;
+  p->ao.best_key = NULL;
+
+  /* Prepare new set of keys */
+  for (struct ao_config *key_cf = cf->ao_keys; key_cf; key_cf = key_cf->next)
+  {
+    struct bgp_ao_key *key = bgp_find_ao_key_(&old_keys, key_cf->key.send_id, key_cf->key.recv_id);
+
+    if (key && bgp_same_ao_key(&key->key, &key_cf->key))
+    {
+      /* Update key ptr and preference */
+      key->key = key_cf->key;
+
+      rem_node(&key->n);
+      add_tail(&p->ao.keys, &key->n);
+
+      if (key == old_best)
+	p->ao.best_key = key;
+
+      continue;
+    }
+
+    bgp_new_ao_key(p, key_cf);
+  }
+
+  /* Remove old keys */
+  if (!EMPTY_LIST(old_keys))
+  {
+    struct bgp_active_keys info = { -1, -1, -1, -1, NULL};
+
+    /* Find current/rnext keys on incoming connection */
+    if (p->incoming_conn.sk)
+      if (sk_get_active_ao_keys(p->incoming_conn.sk, &info.in_current, &info.in_rnext) < -1)
+	sk_log_error(p->incoming_conn.sk, p->p.name);
+
+    /* Find current/rnext keys on outgoing connection */
+    if (p->outgoing_conn.sk)
+      if (sk_get_active_ao_keys(p->outgoing_conn.sk, &info.out_current, &info.out_rnext) < -1)
+	sk_log_error(p->outgoing_conn.sk, p->p.name);
+
+    /*
+     * Select backup key in case of removal of current/rnext key.
+     *
+     * It is possible that we cannot select an intermediate best key (e.g. when
+     * the reconfiguration deprecates the old best key and adds the new one).
+     * That is not necessary bad, we may not even need the backup key anyways.
+     * In this case we use the old best key (ao.best_key) instead even if it may
+     * be deprecated (but not removed).
+     *
+     * If neither one is available, that means we are going to remove rnext key
+     * and we have no intermediate best key to switch to, therefore we fail
+     * later during bgp_remove_ao_key().
+     */
+    info.backup = bgp_select_best_ao_key(p) ?: p->ao.best_key;
+    if (!info.backup)
+      log(L_WARN "%s: No usable backup key", p->p.name);
+
+    struct bgp_ao_key *key, *key2;
+    WALK_LIST_DELSAFE(key, key2, old_keys)
+      bgp_remove_ao_key(p, key, &info);
+
+    /* If some key removals failed */
+    if (!EMPTY_LIST(old_keys))
+      return 0;
+  }
+
+  /* Enable new keys */
+  WALK_LIST_(struct bgp_ao_key, key, p->ao.keys)
+    if (!key->active && !key->failed)
+      if (bgp_enable_ao_key(p, key) < 0)
+	return 0;
+
+  /* Update RNext key */
+  if (bgp_update_rnext_ao_key(p) < 0)
+    return 0;
+
+  return 1;
+}
+
+/**
+ * bgp_list_ao_keys - List active TCP-AO keys
+ * @p: BGP instance
+ * @ao_keys: Returns array of keys
+ * @ao_keys_num: Returns number of keys
+ *
+ * Returns an array of pointers to active TCP-AO keys, for usage with socket
+ * functions. The best key is at the first position. The array is allocated from
+ * the temporary linpool. If there are no keys (or just no best key), the error
+ * is logged and the function fails. Returns: 0 for success, -1 for failure.
+ */
+static int
+bgp_list_ao_keys(struct bgp_proto *p, const struct ao_key ***ao_keys, int *ao_keys_num)
+{
+  int num = 0;
+  WALK_LIST_(const struct bgp_ao_key, key, p->ao.keys)
+    if (key->active)
+      num++;
+
+  const struct bgp_ao_key *best = p->ao.best_key;
+
+  if (!num || !best)
+  {
+    log(L_ERR "%s: No usable TCP-AO key", p->p.name);
+    return -1;
+  }
+
+  const struct ao_key **keys = tmp_alloc(num * sizeof(const struct ao_key *));
+  int i = 0;
+
+  keys[i++] = &best->key;
+  WALK_LIST_(const struct bgp_ao_key, key, p->ao.keys)
+    if (key->active && (key != best) && (i < num))
+      keys[i++] = &key->key;
+
+  *ao_keys = keys;
+  *ao_keys_num = i;
+  return 0;
+}
+
+
+
+
+static int
 bgp_setup_auth(struct bgp_proto *p, int enable)
 {
-  if (p->cf->password)
+  if (p->cf->auth_type == BGP_AUTH_AO)
+  {
+    if (enable)
+      return bgp_enable_ao_keys(p);
+    else
+      return bgp_disable_ao_keys(p);
+  }
+
+  if (p->cf->auth_type == BGP_AUTH_MD5)
   {
     ip_addr prefix = p->cf->remote_ip;
     int pxlen = -1;
@@ -255,8 +709,8 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
 
     return rv;
   }
-  else
-    return 0;
+
+  return 0;
 }
 
 static inline struct bgp_channel *
@@ -305,7 +759,7 @@ bgp_initiate(struct bgp_proto *p)
   { err_val = BEM_NO_SOCKET; goto err1; }
 
   if (bgp_setup_auth(p, 1) < 0)
-  { err_val = BEM_INVALID_MD5; goto err2; }
+  { err_val = BEM_INVALID_AUTH; goto err2; }
 
   if (p->cf->bfd)
     bgp_update_bfd(p, p->cf->bfd);
@@ -1147,7 +1601,6 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   s->rbsize = p->cf->enable_extended_messages ? BGP_RX_BUFFER_EXT_SIZE : BGP_RX_BUFFER_SIZE;
   s->tbsize = p->cf->enable_extended_messages ? BGP_TX_BUFFER_EXT_SIZE : BGP_TX_BUFFER_SIZE;
   s->tos = IP_PREC_INTERNET_CONTROL;
-  s->password = p->cf->password;
   s->tx_hook = bgp_connected;
   s->flags = p->cf->free_bind ? SKF_FREEBIND : 0;
   BGP_TRACE(D_EVENTS, "Connecting to %I%J from local address %I%J",
@@ -1157,6 +1610,13 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
   bgp_setup_sk(conn, s);
   bgp_conn_set_state(conn, BS_CONNECT);
 
+  if (p->cf->auth_type == BGP_AUTH_MD5)
+    s->password = p->cf->password;
+
+  if (p->cf->auth_type == BGP_AUTH_AO)
+    if (bgp_list_ao_keys(p, &s->ao_keys_init, &s->ao_keys_num) < 0)
+      goto err2;
+
   if (sk_open(s) < 0)
     goto err;
 
@@ -1165,12 +1625,16 @@ bgp_connect(struct bgp_proto *p)	/* Enter Connect state and start establishing c
     if (sk_set_min_ttl(s, 256 - hops) < 0)
       goto err;
 
+  s->ao_keys_num = 0;
+  s->ao_keys_init = NULL;
+
   DBG("BGP: Waiting for connect success\n");
   bgp_start_timer(conn->connect_timer, p->cf->connect_retry_time);
   return;
 
 err:
   sk_log_error(s, p->p.name);
+err2:
   bgp_sock_err(s, 0);
   return;
 }
@@ -1238,6 +1702,20 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     return 0;
   }
 
+  if (!EMPTY_LIST(p->ao.keys))
+  {
+    int current = -1, rnext = -1;
+    sk_get_active_ao_keys(sk, &current, &rnext);
+
+    if (current < 0)
+    {
+      log(L_WARN "%s: Connection from address %I%J (port %d) has no TCP-AO key",
+          p->p.name, sk->daddr, ipa_is_link_local(sk->daddr) ? sk->iface : NULL, sk->dport);
+      rfree(sk);
+      return 0;
+    }
+  }
+
   /*
    * BIRD should keep multiple incoming connections in OpenSent state (for
    * details RFC 4271 8.2.1 par 3), but it keeps just one. Duplicate incoming
@@ -1279,6 +1757,21 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     if (sk_set_min_ttl(sk, 256 - hops) < 0)
       goto err;
 
+  if (!EMPTY_LIST(p->ao.keys))
+  {
+    const struct ao_key **ao_keys;
+    int ao_keys_num;
+
+    if (bgp_list_ao_keys(p, &ao_keys, &ao_keys_num) < 0)
+      goto err2;
+
+    if (sk_check_ao_keys(sk, ao_keys, ao_keys_num, p->p.name) < 0)
+      goto err2;
+
+    if (sk_set_rnext_ao_key(sk, ao_keys[0]) < 0)
+      goto err;
+  }
+
   if (p->cf->enable_extended_messages)
   {
     sk->rbsize = BGP_RX_BUFFER_EXT_SIZE;
@@ -1303,6 +1796,7 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
 
 err:
   sk_log_error(sk, p->p.name);
+err2:
   log(L_ERR "%s: Incoming connection aborted", p->p.name);
   rfree(sk);
   return 0;
@@ -1607,6 +2101,12 @@ bgp_start(struct proto *P)
 
   p->remote_id = 0;
   p->link_addr = IPA_NONE;
+
+  /* Initialize TCP-AO keys */
+  init_list(&p->ao.keys);
+  if (cf->auth_type == BGP_AUTH_AO)
+    for (struct ao_config *key_cf = cf->ao_keys; key_cf; key_cf = key_cf->next)
+      bgp_new_ao_key(p, key_cf);
 
   proto_setup_mpls_map(P, RTS_BGP, 1);
 
@@ -2104,6 +2604,21 @@ bgp_postconfig(struct proto_config *CF)
     cf_error("Min long-lived stale time (%u) exceeds max long-lived stale time (%u)",
 	     cf->min_llgr_time, cf->max_llgr_time);
 
+  /* Legacy case: password option without authentication option */
+  if ((cf->auth_type == BGP_AUTH_NONE) && cf->password && !cf->ao_keys)
+  {
+    cf_warn("Missing authentication option, assuming MD5");
+    cf->auth_type = BGP_AUTH_MD5;
+  }
+
+  if ((cf->auth_type == BGP_AUTH_MD5) != !!cf->password)
+    cf_error("MD5 authentication and password option should be used together");
+
+  if ((cf->auth_type == BGP_AUTH_AO) != !!cf->ao_keys)
+    cf_error("AO authentication and keys option should be used together");
+
+  if ((cf->auth_type == BGP_AUTH_AO) && cf->remote_range)
+    cf_error("AO authentication not supported on dynamic BGP sessions");
 
   struct bgp_channel_config *cc;
   BGP_CF_WALK_CHANNELS(cf, cc)
@@ -2229,6 +2744,9 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 	|| (old->remote_range && new->remote_range && net_equal(old->remote_range, new->remote_range)))
     && !bstrcmp(old->dynamic_name, new->dynamic_name)
     && (old->dynamic_name_digits == new->dynamic_name_digits);
+
+  /* Reconfigure TCP-AP */
+  same = same && bgp_reconfigure_ao_keys(p, new);
 
   /* FIXME: Move channel reconfiguration to generic protocol code ? */
   struct channel *C, *C2;
@@ -2416,7 +2934,7 @@ bgp_store_error(struct bgp_proto *p, struct bgp_conn *c, u8 class, u32 code)
 
 static char *bgp_state_names[] = { "Idle", "Connect", "Active", "OpenSent", "OpenConfirm", "Established", "Close" };
 static char *bgp_err_classes[] = { "", "Error: ", "Socket: ", "Received: ", "BGP Error: ", "Automatic shutdown: ", "" };
-static char *bgp_misc_errors[] = { "", "Neighbor lost", "Invalid next hop", "Kernel MD5 auth failed", "No listening socket", "Link down", "BFD session down", "Graceful restart" };
+static char *bgp_misc_errors[] = { "", "Neighbor lost", "Invalid next hop", "Authentication failed", "No listening socket", "Link down", "BFD session down", "Graceful restart" };
 static char *bgp_auto_errors[] = { "", "Route limit exceeded" };
 static char *bgp_gr_states[] = { "None", "Regular", "Long-lived" };
 
@@ -2690,7 +3208,19 @@ bgp_show_proto_info(struct proto *P)
 	    tm_remains(p->conn->keepalive_timer), p->conn->keepalive_time);
     cli_msg(-1006, "    Send hold timer:  %t/%u",
 	    tm_remains(p->conn->send_hold_timer), p->conn->send_hold_time);
-}
+
+    if (!EMPTY_LIST(p->ao.keys))
+    {
+      struct ao_info info;
+      sk_get_ao_info(p->conn->sk, &info);
+
+      cli_msg(-1006, "    TCP-AO:");
+      cli_msg(-1006, "      Current key:    %i", info.current_key);
+      cli_msg(-1006, "      RNext key:      %i", info.rnext_key);
+      cli_msg(-1006, "      Good packets:   %lu", info.pkt_good);
+      cli_msg(-1006, "      Bad packets:    %lu", info.pkt_bad);
+    }
+  }
 
 #if 0
   struct bgp_stats *s = &p->stats;

@@ -657,13 +657,15 @@ bfd_reconfigure_iface(struct bfd_proto *p, struct bfd_iface *ifa, struct bfd_con
   struct bfd_iface_config *new = bfd_find_iface_config(nc, ifa->iface);
   struct bfd_iface_config *old = ifa->cf;
 
-  /* Check options that are handled in bfd_reconfigure_session() */
+  /* Any configuration change should trigger bfd_reconfigure_session() */
   ifa->changed =
     (new->min_rx_int != old->min_rx_int) ||
     (new->min_tx_int != old->min_tx_int) ||
     (new->idle_tx_int != old->idle_tx_int) ||
     (new->multiplier != old->multiplier) ||
-    (new->passive != old->passive);
+    (new->passive != old->passive) ||
+    (new->auth_type != old->auth_type) ||
+    (new->passwords != old->passwords);
 
   /* This should be probably changed to not access ifa->cf from the BFD thread */
   birdloop_enter(p->loop);
