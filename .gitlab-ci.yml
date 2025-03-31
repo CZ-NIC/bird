@@ -704,10 +704,10 @@ pkg-opensuse-15.3-amd64:
   needs: [build-opensuse-15.3-amd64]
   image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
 
-pkg-opensuse-15.4-amd64:
-  <<: *pkg-rpm-wa
-  needs: [build-opensuse-15.4-amd64]
-  image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
+# pkg-opensuse-15.4-amd64:
+#   <<: *pkg-rpm-wa
+#   needs: [build-opensuse-15.4-amd64]
+#   image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
 
 pkg-opensuse-15.5-amd64:
   <<: *pkg-rpm-wa
