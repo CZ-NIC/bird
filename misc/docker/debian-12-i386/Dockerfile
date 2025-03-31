@@ -1,7 +1,8 @@
 # bump number for image rebuild: 1
 FROM i386/debian:bookworm-slim
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get -y update && apt-get -y upgrade
+RUN apt-get -y update
+RUN apt-get -y upgrade
 RUN apt-get -y --no-install-recommends install \
 	build-essential \
 	flex \
@@ -19,6 +20,7 @@ RUN apt-get -y --no-install-recommends install \
 	git \
 	dpkg-dev \
 	debhelper \
+	apt-utils \
 	quilt \
 	python3 \
 	python3-pip \
