@@ -1,6 +1,6 @@
 # bump number for image rebuild: 0
 FROM fedora:32
-RUN dnf -y update
+RUN dnf -y upgrade
 RUN dnf -y install \
 	gcc \
 	make \
