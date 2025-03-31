@@ -3143,7 +3143,8 @@ protocol bgp [<name>] {
 	the (single) password. Finally, <cf/ao/ means to use TCP Authentication
 	Option (TCP-AO, <rfc id="5925">), allowing multiple keys and different
 	cryptographic algorithms. These are specified using the option
-	<ref id="bgp-keys" name="keys">. Default: none.
+	<ref id="bgp-keys" name="keys">. Note that TCP-AO authentication is not
+	supported on dynamic BGP sessions. Default: none.
 
 	<tag><label id="bgp-password">password "<m/text/"</tag>
 	Use this password for MD5 authentication of BGP sessions (<rfc id="2385">). When

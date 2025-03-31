@@ -2617,6 +2617,9 @@ bgp_postconfig(struct proto_config *CF)
   if ((cf->auth_type == BGP_AUTH_AO) != !!cf->ao_keys)
     cf_error("AO authentication and keys option should be used together");
 
+  if ((cf->auth_type == BGP_AUTH_AO) && cf->remote_range)
+    cf_error("AO authentication not supported on dynamic BGP sessions");
+
   struct bgp_channel_config *cc;
   BGP_CF_WALK_CHANNELS(cf, cc)
   {
