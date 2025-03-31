@@ -714,15 +714,15 @@ pkg-opensuse-15.5-amd64:
   needs: [build-opensuse-15.5-amd64]
   image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
 
-pkg-ubuntu-16.04-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-16_04-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-16.04-amd64
+# pkg-ubuntu-16.04-amd64:
+#   <<: *pkg-deb
+#   needs: [build-ubuntu-16_04-amd64]
+#   image: registry.nic.cz/labs/bird:ubuntu-16.04-amd64
 
-pkg-ubuntu-18.04-amd64:
- <<: *pkg-deb
- needs: [build-ubuntu-18_04-amd64]
- image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
+# pkg-ubuntu-18.04-amd64:
+#  <<: *pkg-deb
+#  needs: [build-ubuntu-18_04-amd64]
+#  image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
 
 pkg-ubuntu-20.04-amd64:
   <<: *pkg-deb
