@@ -317,13 +317,13 @@ build-debian-12-i386:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:debian-12-i386
 
-build-debian-testing-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:debian-testing-amd64
+# build-debian-testing-amd64:
+#   <<: *build-linux
+#   image: registry.nic.cz/labs/bird:debian-testing-amd64
 
-build-debian-testing-i386:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:debian-testing-i386
+# build-debian-testing-i386:
+#   <<: *build-linux
+#   image: registry.nic.cz/labs/bird:debian-testing-i386
 
 build-fedora-32-amd64:
   <<: *build-linux
@@ -386,9 +386,9 @@ build-opensuse-15.3-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
 
-build-opensuse-15.4-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
+# build-opensuse-15.4-amd64:
+#   <<: *build-linux
+#   image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
 
 build-opensuse-15.5-amd64:
   <<: *build-linux
@@ -410,9 +410,9 @@ build-ubuntu-20_10-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:ubuntu-20.10-amd64 
 
-build-ubuntu-21_04-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
+# build-ubuntu-21_04-amd64:
+#   <<: *build-linux
+#   image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
 
 build-ubuntu-21_10-amd64:
   <<: *build-linux
@@ -422,17 +422,17 @@ build-ubuntu-22_04-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
 
-build-ubuntu-22_10-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
+# build-ubuntu-22_10-amd64:
+#   <<: *build-linux
+#   image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
 
-build-ubuntu-23_04-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
+# build-ubuntu-23_04-amd64:
+#   <<: *build-linux
+#   image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
 
-build-ubuntu-23_10-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
+# build-ubuntu-23_10-amd64:
+#   <<: *build-linux
+#   image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
 
 build-ubuntu-24_04-amd64:
   <<: *build-linux
@@ -618,15 +618,15 @@ pkg-debian-12-i386:
   needs: [build-debian-12-i386]
   image: registry.nic.cz/labs/bird:debian-12-i386
 
-pkg-debian-testing-amd64:
-  <<: *pkg-deb
-  needs: [build-debian-testing-amd64]
-  image: registry.nic.cz/labs/bird:debian-testing-amd64
+# pkg-debian-testing-amd64:
+#   <<: *pkg-deb
+#   needs: [build-debian-testing-amd64]
+#   image: registry.nic.cz/labs/bird:debian-testing-amd64
 
-pkg-debian-testing-i386:
-  <<: *pkg-deb
-  needs: [build-debian-testing-i386]
-  image: registry.nic.cz/labs/bird:debian-testing-i386
+# pkg-debian-testing-i386:
+#   <<: *pkg-deb
+#   needs: [build-debian-testing-i386]
+#   image: registry.nic.cz/labs/bird:debian-testing-i386
 
 pkg-fedora-32-amd64:
   <<: *pkg-rpm-wa
@@ -734,10 +734,10 @@ pkg-ubuntu-20.10-amd64:
   needs: [build-ubuntu-20_10-amd64]
   image: registry.nic.cz/labs/bird:ubuntu-20.10-amd64
 
-pkg-ubuntu-21.04-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-21_04-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
+# pkg-ubuntu-21.04-amd64:
+#   <<: *pkg-deb
+#   needs: [build-ubuntu-21_04-amd64]
+#   image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
 
 pkg-ubuntu-21.10-amd64:
   <<: *pkg-deb
@@ -749,20 +749,20 @@ pkg-ubuntu-22.04-amd64:
   needs: [build-ubuntu-22_04-amd64]
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
 
-pkg-ubuntu-22.10-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-22_10-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
+# pkg-ubuntu-22.10-amd64:
+#   <<: *pkg-deb
+#   needs: [build-ubuntu-22_10-amd64]
+#   image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
 
-pkg-ubuntu-23.04-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-23_04-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
+# pkg-ubuntu-23.04-amd64:
+#   <<: *pkg-deb
+#   needs: [build-ubuntu-23_04-amd64]
+#   image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
 
-pkg-ubuntu-23.10-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-23_10-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
+# pkg-ubuntu-23.10-amd64:
+#   <<: *pkg-deb
+#   needs: [build-ubuntu-23_10-amd64]
+#   image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
 
 pkg-ubuntu-24.04-amd64:
   <<: *pkg-deb
