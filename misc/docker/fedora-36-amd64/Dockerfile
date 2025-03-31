@@ -7,6 +7,7 @@ RUN dnf -y install \
 	flex \
 	bison \
 	autoconf \
+	pkgconfig \
 	libssh-devel \
 	ncurses-devel \
 	readline-devel
