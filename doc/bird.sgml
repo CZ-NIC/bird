@@ -2414,7 +2414,7 @@ protocol babel [<name>] {
 	ipv6 [sadr] { <channel config> };
 	randomize router id <switch>;
 	interface <interface pattern> {
-		type <wired|wireless|tunnel>;
+		type wired|wireless|tunnel;
 		rxcost <number>;
 		limit <number>;
 		hello interval <time>;
@@ -2427,6 +2427,7 @@ protocol babel [<name>] {
 		check link <switch>;
 		next hop ipv4 <address>;
 		next hop ipv6 <address>;
+		next hop prefer native|ipv6;
 		extended next hop <switch>;
 		rtt cost <number>;
 		rtt min <time>;
@@ -2529,19 +2530,28 @@ protocol babel [<name>] {
       yes.
 
       <tag><label id="babel-next-hop-ipv4">next hop ipv4 <m/address/</tag>
-      Set the next hop address advertised for IPv4 routes advertised on this
-      interface. Default: the preferred IPv4 address of the interface.
+      Set the IPv4 next hop address advertised for (IPv4) routes advertised on
+      this interface. Default: the preferred IPv4 address of the interface.
 
       <tag><label id="babel-next-hop-ipv6">next hop ipv6 <m/address/</tag>
-      Set the next hop address advertised for IPv6 routes advertised on this
+      Set the IPv6 next hop address advertised for routes advertised on this
       interface. If not set, the same link-local address that is used as the
       source for Babel packets will be used. In normal operation, it should not
       be necessary to set this option.
 
+      <tag><label id="babel-next-hop-prefer">next hop prefer native|ipv6</tag>
+      By default, BIRD prefers to advertise IPv4 routes with an IPv4 next hop
+      address, using an IPv6 next hop address only when IPv4 addresses are
+      absent from the interface. When set to <cf/ipv6/, BIRD will advertise IPv4
+      routes with an IPv6 next hop address even when IPv4 addresses are present
+      on the interface (assuming the option <ref id="babel-extended-next-hop"
+      name="extended next hop"> is enabled). Default: native.
+
       <tag><label id="babel-extended-next-hop">extended next hop <m/switch/</tag>
-      If enabled, BIRD will accept and emit IPv4 routes with an IPv6 next
-      hop when IPv4 addresses are absent from the interface as described in
-      <rfc id="9229">. Default: yes.
+      Specify whether BIRD should allow IPv4 routes with an IPv6 next hop, as
+      described in <rfc id="9229">. Note that when both IPv4 and IPv6 next hops
+      are available, the option <ref id="babel-next-hop-prefer"
+      name="next hop prefer"> controls which one is advertised. Default: yes.
 
       <tag><label id="babel-rtt-cost">rtt cost <m/number/</tag>
       The RTT-based cost that will be applied to all routes from each neighbour
@@ -3006,6 +3016,7 @@ protocol bgp [<name>] {
 		next hop self <switch>|ibgp|ebgp;
 		next hop address <ip>;
 		next hop prefer global;
+		link local next hop format native|single|double;
 		gateway direct|recursive;
 		igp table <name>;
 		import table <switch>;
