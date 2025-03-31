@@ -32,11 +32,11 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	DYNAMIC, RANGE, NAME, DIGITS, AIGP, ORIGINATE, COST, ENFORCE,
 	FIRST, FREE, VALIDATE, BASE, ROLE, ROLES, PEER, PROVIDER, CUSTOMER,
 	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL, SEND, TX, SIZE, WARNING,
-	MIN, MAX)
+	MIN, MAX, FORMAT, NATIVE, SINGLE, DOUBLE)
 
 CF_ENUM(T_ENUM_BGP_ORIGIN, ORIGIN_, IGP, EGP, INCOMPLETE)
 
-%type <i> bgp_nh
+%type <i> bgp_nh bgp_llnh
 %type <i32> bgp_afi
 
 CF_KEYWORDS(CEASE, PREFIX, LIMIT, HIT, ADMINISTRATIVE, SHUTDOWN, RESET, PEER,
@@ -287,6 +287,13 @@ bgp_nh:
    bool { $$ = $1; }
  | IBGP { $$ = NH_IBGP; }
  | EBGP { $$ = NH_EBGP; }
+ ;
+
+bgp_llnh:
+   NATIVE { $$ = LLNH_NATIVE; }
+ | SINGLE { $$ = LLNH_SINGLE; }
+ | DOUBLE { $$ = LLNH_DOUBLE; }
+ ;
 
 bgp_lladdr: SELF | DROP | IGNORE;
 
@@ -296,6 +303,7 @@ bgp_channel_item:
  | NEXT HOP SELF bgp_nh { BGP_CC->next_hop_self = $4; }
  | NEXT HOP KEEP bgp_nh { BGP_CC->next_hop_keep = $4; }
  | NEXT HOP PREFER GLOBAL { BGP_CC->next_hop_prefer = NHP_GLOBAL; }
+ | LINK LOCAL NEXT HOP FORMAT bgp_llnh { BGP_CC->llnh_format = $6; }
  | MANDATORY bool { BGP_CC->mandatory = $2; }
  | MISSING LLADDR bgp_lladdr { cf_warn("%s.%s: Missing lladdr option is deprecated and ignored, remove it", this_proto->name, this_channel->name); }
  | GATEWAY DIRECT { BGP_CC->gw_mode = GW_DIRECT; }

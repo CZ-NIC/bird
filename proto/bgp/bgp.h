@@ -164,6 +164,7 @@ struct bgp_channel_config {
   u8 next_hop_self;			/* Always set next hop to local IP address (NH_*) */
   u8 next_hop_keep;			/* Do not modify next hop attribute (NH_*) */
   u8 next_hop_prefer;			/* Prefer global or link-local next hop (NHP_*) */
+  u8 llnh_format;			/* Requested link-local next hop format (LLNH_*) */
   u8 mandatory;				/* Channel is mandatory in capability negotiation */
   u8 gw_mode;				/* How we compute route gateway from next_hop attr, see GW_* */
   u8 secondary;				/* Accept also non-best routes (i.e. RA_ACCEPTED) */
@@ -208,6 +209,10 @@ struct bgp_channel_config {
 #define MLL_SELF		1
 #define MLL_DROP		2
 #define MLL_IGNORE		3
+
+#define LLNH_NATIVE		0
+#define LLNH_SINGLE		1
+#define LLNH_DOUBLE		2
 
 #define GW_DIRECT		1
 #define GW_RECURSIVE		2
@@ -524,6 +529,7 @@ struct bgp_write_state {
   int mp_reach;
   int as4_session;
   int add_path;
+  int llnh_format;
   int mpls;
   int ignore_non_bgp_attrs;
 

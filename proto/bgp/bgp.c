@@ -2610,6 +2610,7 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
   if (!ipa_equal(new->next_hop_addr, old->next_hop_addr) ||
       (new->next_hop_self != old->next_hop_self) ||
       (new->next_hop_keep != old->next_hop_keep) ||
+      (new->llnh_format != old->llnh_format) ||
       (new->aigp != old->aigp) ||
       (new->aigp_originate != old->aigp_originate))
     *export_changed = 1;
