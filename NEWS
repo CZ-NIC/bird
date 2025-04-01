@@ -1,3 +1,9 @@
+Version 2.16.2 (2025-04-01)
+  o BFD: password reconfiguration crash fix
+  o L3VPN attribute fix
+  o Table removal rare crash fix
+  o Logging minor fix
+
 Version 2.16.1 (2025-01-10)
   o ASPA: fixed parser bug in static protocol
   o ASPA: fixed static protocol reconfiguration
