@@ -43,6 +43,7 @@
 #include "lib/locking.h"
 #include "lib/timer.h"
 #include "lib/string.h"
+#include "lib/mac.h"
 #include "nest/iface.h"
 #include "nest/cli.h"
 #include "conf/conf.h"
@@ -1823,9 +1824,20 @@ sk_open(sock *s, struct birdloop *loop)
       ERR2("bind");
   }
 
-  if (s->password)
+  if (s->ao_keys_init)
+  {
+    for (int i = 0; i < s->ao_keys_num; i++)
+    {
+      const struct ao_key *key = s->ao_keys_init[i];
+      if (sk_add_ao_key(s, s->daddr, -1, s->iface, key, !i, !i) < 0)
+        goto err;
+    }
+  }
+  else if (s->password)
+  {
     if (sk_set_md5_auth(s, s->saddr, s->daddr, -1, s->iface, s->password, 0) < 0)
       goto err;
+  }
 
   switch (s->type)
   {
@@ -2395,6 +2407,10 @@ sk_err(sock *s, int revents)
   tmp_flush();
 }
 
+
+/* FIXME: these two functions should actually call bird_thread_sync_all()
+ * to get threads from all loops. Now they dump just mainloop. */
+
 void
 sk_dump_all(struct dump_request *dreq)
 {
@@ -2411,6 +2427,25 @@ sk_dump_all(struct dump_request *dreq)
   }
   dreq->indent -= 3;
   RDUMP("\n");
+}
+
+void
+sk_dump_ao_all(struct dump_request *dreq)
+{
+  RDUMP("TCP-AO listening sockets:\n");
+  WALK_LIST_(node, n, main_birdloop.sock_list)
+  {
+    sock *s = SKIP_BACK(sock, n, n);
+
+    /* Skip non TCP-AO sockets / not supported */
+    if (sk_get_ao_info(s, &(struct ao_info){}) < 0)
+      continue;
+
+    RDUMP("\n%p", s);
+    sk_dump(dreq, &s->r);
+    sk_dump_ao_info(s, dreq);
+    sk_dump_ao_keys(s, dreq);
+  }
 }
 
 
