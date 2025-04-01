@@ -10,7 +10,7 @@ RUN apt-get -y --no-install-recommends install \
 	autoconf \
 	ncurses-dev \
 	libreadline-dev \
-	libssh-gcrypt-dev \
+	libssh-dev \
 	linuxdoc-tools-latex \
 	texlive-latex-extra \
 	opensp \
