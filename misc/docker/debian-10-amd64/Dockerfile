@@ -1,5 +1,6 @@
+# bump number for image rebuild: 0
 FROM debian:buster-slim
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get -y update
 RUN apt-get -y upgrade
 RUN apt-get -y --no-install-recommends install \
@@ -22,4 +23,5 @@ RUN apt-get -y --no-install-recommends install \
 	quilt \
 	python3 \
 	python3-pip \
-	python3-setuptools
+	python3-setuptools \
+	python3-venv
