@@ -1,3 +1,8 @@
+## TODO: find out how to generate this file by another yaml file.
+## Gitlab can do it but it is a stupid idea to mess with this
+## when releasing 4 versions at once. See ya later!
+##                                              -- Maria, April 2025
+
 variables:
   DEBIAN_FRONTEND: noninteractive
   LC_ALL: C.UTF-8
@@ -13,6 +18,12 @@ stages:
   - pkg
   - test
   - release
+
+## Docker Image Rules
+#
+# We are running all the build / packaging tests in Dockers (unless otherwise)
+# and these are rules to build these docker images. These are expensive to run
+# and should run only if needed.
 
 .docker: &docker_build
   stage: image
@@ -149,9 +160,9 @@ docker-fedora-41-amd64:
   <<: *docker_build
 
 #planned release 4/2025
-# docker-fedora-41-amd64:
+# docker-fedora-42-amd64:
 #   variables:
-#     IMG_NAME: "fedora-41-amd64"
+#     IMG_NAME: "fedora-42-amd64"
 #   <<: *docker_build
 
 docker-opensuse-15.0-amd64:
@@ -199,21 +210,6 @@ docker-ubuntu-20_04-amd64:
     IMG_NAME: "ubuntu-20.04-amd64"
   <<: *docker_build
 
-docker-ubuntu-20_10-amd64:
-  variables:
-    IMG_NAME: "ubuntu-20.10-amd64"
-  <<: *docker_build
-
-docker-ubuntu-21_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-21.04-amd64"
-  <<: *docker_build
-
-docker-ubuntu-21_10-amd64:
-  variables:
-    IMG_NAME: "ubuntu-21.10-amd64"
-  <<: *docker_build
-
 docker-ubuntu-22_04-amd64:
   variables:
     IMG_NAME: "ubuntu-22.04-amd64"
@@ -244,6 +240,11 @@ docker-ubuntu-24_10-amd64:
     IMG_NAME: "ubuntu-24.10-amd64"
   <<: *docker_build
 
+## Build stage
+#
+# Now we compile and run unit tests ... in every single distribution.
+# Every task needs its docker, see above.
+
 .build: &build-base
   stage: build
   script:
@@ -257,6 +258,7 @@ docker-ubuntu-24_10-amd64:
   # Build docs when tools are available
   - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
 
+# A special task for preparing the release archives
 build-release:
   image: registry.nic.cz/labs/bird:docbuilder
   stage: build
@@ -269,7 +271,7 @@ build-release:
     - make obj/doc/bird-singlepage.html
     - BRANCH=$CI_COMMIT_BRANCH tools/make-archive
   artifacts:
-    paths: 
+    paths:
       - obj/doc/bird-singlepage.html
       - bird-*.tar.gz
     expire_in: 1 day
@@ -317,13 +319,13 @@ build-debian-12-i386:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:debian-12-i386
 
-# build-debian-testing-amd64:
-#   <<: *build-linux
-#   image: registry.nic.cz/labs/bird:debian-testing-amd64
+build-debian-testing-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
 
-# build-debian-testing-i386:
-#   <<: *build-linux
-#   image: registry.nic.cz/labs/bird:debian-testing-i386
+build-debian-testing-i386:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:debian-testing-i386
 
 build-fedora-32-amd64:
   <<: *build-linux
@@ -386,9 +388,9 @@ build-opensuse-15.3-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
 
-# build-opensuse-15.4-amd64:
-#   <<: *build-linux
-#   image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
+build-opensuse-15.4-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
 
 build-opensuse-15.5-amd64:
   <<: *build-linux
@@ -406,33 +408,21 @@ build-ubuntu-20_04-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:ubuntu-20.04-amd64
 
-build-ubuntu-20_10-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-20.10-amd64 
-
-# build-ubuntu-21_04-amd64:
-#   <<: *build-linux
-#   image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
-
-build-ubuntu-21_10-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-21.10-amd64
-
 build-ubuntu-22_04-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
 
-# build-ubuntu-22_10-amd64:
-#   <<: *build-linux
-#   image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
+build-ubuntu-22_10-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
 
-# build-ubuntu-23_04-amd64:
-#   <<: *build-linux
-#   image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
+build-ubuntu-23_04-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
 
-# build-ubuntu-23_10-amd64:
-#   <<: *build-linux
-#   image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
+build-ubuntu-23_10-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
 
 build-ubuntu-24_04-amd64:
   <<: *build-linux
@@ -442,22 +432,11 @@ build-ubuntu-24_10-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
 
-#build-freebsd-11-amd64:
-#  <<: *build-base
-#  tags:
-#    - freebsd
-#    - amd64
-
-#build-freebsd-11-i386:
-#  <<: *build-base
-#  tags:
-#    - freebsd
-#    - i386
-
+# Testing builds for just a single protocol each time
 
 .build-only: &build-only
   <<: *build-linux
-  image: registry.nic.cz/labs/bird:debian-11-amd64
+  image: registry.nic.cz/labs/bird:debian-12-amd64
 
 build-only-aggregator:
   <<: *build-only
@@ -524,6 +503,12 @@ build-only-static:
   variables:
     CONFIGURE_OPTIONS: --with-protocols=static
 
+# Packaging rules
+# As we support some ancient versions of different distributions,
+# we need to keep several different machineries. It's not so bad
+# but it's bad nevertheless.
+#
+# We do NOT build separate documentation packages in these rules.
 
 .pkg-deb: &pkg-deb
   stage: pkg
@@ -543,7 +528,9 @@ build-only-static:
     # create venv only if it's installed
     - if python3 -m venv venv; then . venv/bin/activate; fi
     # install older version of bs4 that does not use python version >= 3.6
-    - pip3 install beautifulsoup4==4.11.2 
+    # apkg depends on bs4, and unless we want to backport python 3.6
+    # to ancient distros, we need to do this workaround
+    - pip3 install beautifulsoup4==4.11.2
     - pip3 install apkg
     - BRANCH=$CI_COMMIT_BRANCH ARCHIVE_DOCS=false apkg build
     #- apkg install -y pkg/pkgs/*/*/*.deb
@@ -618,15 +605,15 @@ pkg-debian-12-i386:
   needs: [build-debian-12-i386]
   image: registry.nic.cz/labs/bird:debian-12-i386
 
-# pkg-debian-testing-amd64:
-#   <<: *pkg-deb
-#   needs: [build-debian-testing-amd64]
-#   image: registry.nic.cz/labs/bird:debian-testing-amd64
+pkg-debian-testing-amd64:
+  <<: *pkg-deb
+  needs: [build-debian-testing-amd64]
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
 
-# pkg-debian-testing-i386:
-#   <<: *pkg-deb
-#   needs: [build-debian-testing-i386]
-#   image: registry.nic.cz/labs/bird:debian-testing-i386
+pkg-debian-testing-i386:
+  <<: *pkg-deb
+  needs: [build-debian-testing-i386]
+  image: registry.nic.cz/labs/bird:debian-testing-i386
 
 pkg-fedora-32-amd64:
   <<: *pkg-rpm-wa
@@ -704,65 +691,50 @@ pkg-opensuse-15.3-amd64:
   needs: [build-opensuse-15.3-amd64]
   image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
 
-# pkg-opensuse-15.4-amd64:
-#   <<: *pkg-rpm-wa
-#   needs: [build-opensuse-15.4-amd64]
-#   image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
+pkg-opensuse-15.4-amd64:
+  <<: *pkg-rpm-wa
+  needs: [build-opensuse-15.4-amd64]
+  image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
 
 pkg-opensuse-15.5-amd64:
   <<: *pkg-rpm-wa
   needs: [build-opensuse-15.5-amd64]
   image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
 
-# pkg-ubuntu-16.04-amd64:
-#   <<: *pkg-deb
-#   needs: [build-ubuntu-16_04-amd64]
-#   image: registry.nic.cz/labs/bird:ubuntu-16.04-amd64
+pkg-ubuntu-16.04-amd64:
+  <<: *pkg-deb-legacy
+  needs: [build-ubuntu-16_04-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-16.04-amd64
 
-# pkg-ubuntu-18.04-amd64:
-#  <<: *pkg-deb
-#  needs: [build-ubuntu-18_04-amd64]
-#  image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
+pkg-ubuntu-18.04-amd64:
+  <<: *pkg-deb-legacy
+  needs: [build-ubuntu-18_04-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
 
 pkg-ubuntu-20.04-amd64:
   <<: *pkg-deb
   needs: [build-ubuntu-20_04-amd64]
   image: registry.nic.cz/labs/bird:ubuntu-20.04-amd64
 
-pkg-ubuntu-20.10-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-20_10-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-20.10-amd64
-
-# pkg-ubuntu-21.04-amd64:
-#   <<: *pkg-deb
-#   needs: [build-ubuntu-21_04-amd64]
-#   image: registry.nic.cz/labs/bird:ubuntu-21.04-amd64
-
-pkg-ubuntu-21.10-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-21_10-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-21.10-amd64
-
 pkg-ubuntu-22.04-amd64:
   <<: *pkg-deb
   needs: [build-ubuntu-22_04-amd64]
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
 
-# pkg-ubuntu-22.10-amd64:
-#   <<: *pkg-deb
-#   needs: [build-ubuntu-22_10-amd64]
-#   image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
+pkg-ubuntu-22.10-amd64:
+  <<: *pkg-deb
+  needs: [build-ubuntu-22_10-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
 
-# pkg-ubuntu-23.04-amd64:
-#   <<: *pkg-deb
-#   needs: [build-ubuntu-23_04-amd64]
-#   image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
+pkg-ubuntu-23.04-amd64:
+  <<: *pkg-deb
+  needs: [build-ubuntu-23_04-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
 
-# pkg-ubuntu-23.10-amd64:
-#   <<: *pkg-deb
-#   needs: [build-ubuntu-23_10-amd64]
-#   image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
+pkg-ubuntu-23.10-amd64:
+  <<: *pkg-deb
+  needs: [build-ubuntu-23_10-amd64]
+  image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
 
 pkg-ubuntu-24.04-amd64:
   <<: *pkg-deb
@@ -970,6 +942,23 @@ test-mpls-bgp-l3vpn:
     - gmake
     - gmake check
 
+# There is no docker for BSD's, these are proper virtuals in QEMU.
+build-birdlab-freebsd-13:
+  <<: *build-birdlab-base
+  tags:
+    - birdlab-freebsd-13
+    - amd64
+
+build-birdlab-openbsd-71:
+  <<: *build-birdlab-base
+  variables:
+     AUTOCONF_VERSION: "2.71"
+  tags:
+    - birdlab-openbsd-71
+    - amd64
+
+# We have also some virtuals for these but there are working dockers as well
+# so no need to bother again
 #build-birdlab-debian-11:
 #  <<: *build-birdlab-base
 #  tags:
@@ -981,28 +970,20 @@ test-mpls-bgp-l3vpn:
 #  tags:
 #    - birdlab-centos-08
 #    - amd64
-
-build-birdlab-fedora-37:
-  <<: *build-birdlab-base
-  tags:
-    - birdlab-fedora-37
-    - amd64
-
-#build-birdlab-freebsd-13:
+#
+#build-birdlab-fedora-37:
 #  <<: *build-birdlab-base
 #  tags:
-#    - birdlab-freebsd-13
+#    - birdlab-fedora-37
 #    - amd64
 
-build-birdlab-openbsd-71:
-  <<: *build-birdlab-base
-  variables:
-     AUTOCONF_VERSION: "2.71"
-  tags:
-    - birdlab-openbsd-71
-    - amd64
+# Release confirmation job for tag pushing. As soon as we finish our web
+# deployment automatic machinery, clicking the button is expected to
+# publish the release info on our website.
+#
+# We are not there yet tho, too many other fish to fry.
 
-confirm-release:
+publish-release:
   stage: release
   script:
   - "true"
