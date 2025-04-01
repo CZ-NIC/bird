@@ -24,6 +24,10 @@
 #define TCP_MD5SIG_FLAG_PREFIX 1
 #endif
 
+/* Used for legacy system builds (e.g. CentOS 7) */
+#ifndef UDP_NO_CHECK6_RX
+#define UDP_NO_CHECK6_RX 102
+#endif
 
 /* We redefine the tcp_md5sig structure with different name to avoid collision with older headers */
 struct tcp_md5sig_ext {
