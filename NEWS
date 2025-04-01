@@ -1,3 +1,10 @@
+Version 3.0.2 (2025-04-01)
+  o Multiple route propagation crash fixes
+  o BGP export table route source leak
+  o Kernel export of source.specific routes fix
+  o Filter gw setting fix
+  o Merged 2.16.2
+
 Version 3.0.1 (2025-01-10)
   o BGP: Fixed crash in dynamic spawn
   o BGP: Fixed crash in graceful recovery
