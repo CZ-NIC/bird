@@ -194,11 +194,6 @@ docker-opensuse-15.5-amd64:
     IMG_NAME: "opensuse-15.5-amd64"
   <<: *docker_build
 
-docker-ubuntu-16_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-16.04-amd64"
-  <<: *docker_build
-
 docker-ubuntu-18_04-amd64:
   variables:
     IMG_NAME: "ubuntu-18.04-amd64"
@@ -379,10 +374,6 @@ build-opensuse-15.4-amd64:
 build-opensuse-15.5-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
-
-build-ubuntu-16_04-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-16.04-amd64
 
 build-ubuntu-18_04-amd64:
   <<: *build-linux
@@ -672,11 +663,6 @@ pkg-opensuse-15.5-amd64:
   <<: *pkg-rpm-wa
   needs: [build-opensuse-15.5-amd64]
   image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
-
-pkg-ubuntu-16.04-amd64:
-  <<: *pkg-deb-legacy
-  needs: [build-ubuntu-16_04-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-16.04-amd64
 
 pkg-ubuntu-18.04-amd64:
   <<: *pkg-deb-legacy
