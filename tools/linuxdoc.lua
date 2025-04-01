@@ -177,6 +177,7 @@ G = P{ "Pandoc",
 
   InParaItems =
       V"Emph" +
+      V"Bold" +
       V"It" +
       V"HTMLURL" +
       V"InlineCodeLong" +
@@ -272,6 +273,7 @@ G = P{ "Pandoc",
   end;
 
   Emph = P"<em/" * ininline * P"/" / pandoc.Strong;
+  Bold = P"<bf/" * ininline * P"/" / pandoc.Strong;
   It = P"<it/" * ininline * P"/" / pandoc.Emph;
   InlineCodeIt = (P"<m/" + P"<M/") * ininline * P"/" / function (e)
     return pandoc.Emph(e, { class = "code" })
