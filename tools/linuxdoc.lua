@@ -72,7 +72,7 @@ G = P{ "Pandoc",
     for _, v in ipairs(t) do
       -- Split out meta blocks
       if pandoc.utils.type(v) == "Meta" then
-	for mk,mv in pairs(v) do 
+	for mk,mv in pairs(v) do
 	  meta[mk] = mv
 	end
       else
@@ -175,7 +175,7 @@ G = P{ "Pandoc",
     return pandoc.Para(mergetables(t))
   end;
 
-  InParaItems = 
+  InParaItems =
       V"Emph" +
       V"It" +
       V"HTMLURL" +
