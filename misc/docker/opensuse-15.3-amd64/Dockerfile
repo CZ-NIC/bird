@@ -1,3 +1,4 @@
+# bump number for image rebuild: 0
 FROM opensuse/leap:15.3
 RUN zypper -n up
 RUN zypper -n install \
@@ -6,6 +7,7 @@ RUN zypper -n install \
 	flex \
 	bison \
 	autoconf \
+	pkgconfig \
 	libssh-devel \
 	ncurses-devel \
 	readline-devel
