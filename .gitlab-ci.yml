@@ -215,21 +215,6 @@ docker-ubuntu-22_04-amd64:
     IMG_NAME: "ubuntu-22.04-amd64"
   <<: *docker_build
 
-docker-ubuntu-22_10-amd64:
-  variables:
-    IMG_NAME: "ubuntu-22.10-amd64"
-  <<: *docker_build
-
-docker-ubuntu-23_04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-23.04-amd64"
-  <<: *docker_build
-
-docker-ubuntu-23_10-amd64:
-  variables:
-    IMG_NAME: "ubuntu-23.10-amd64"
-  <<: *docker_build
-
 docker-ubuntu-24_04-amd64:
   variables:
     IMG_NAME: "ubuntu-24.04-amd64"
@@ -411,18 +396,6 @@ build-ubuntu-20_04-amd64:
 build-ubuntu-22_04-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
-
-build-ubuntu-22_10-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
-
-build-ubuntu-23_04-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
-
-build-ubuntu-23_10-amd64:
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
 
 build-ubuntu-24_04-amd64:
   <<: *build-linux
@@ -720,21 +693,6 @@ pkg-ubuntu-22.04-amd64:
   <<: *pkg-deb
   needs: [build-ubuntu-22_04-amd64]
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
-
-pkg-ubuntu-22.10-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-22_10-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-22.10-amd64
-
-pkg-ubuntu-23.04-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-23_04-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-23.04-amd64
-
-pkg-ubuntu-23.10-amd64:
-  <<: *pkg-deb
-  needs: [build-ubuntu-23_10-amd64]
-  image: registry.nic.cz/labs/bird:ubuntu-23.10-amd64
 
 pkg-ubuntu-24.04-amd64:
   <<: *pkg-deb
