@@ -2758,7 +2758,7 @@ protocol bfd [<name>] {
 	offers better resistance to replay attacks but may require more
 	computation.
 
-	<tag><label id="bfd-password">password "<M>text</M>"</tag>
+	<tag><label id="bfd-password">password "<m>text</m>"</tag>
 	Specifies a password used for authentication. See <ref id="proto-pass"
 	name="password"> common option for detailed description. Note that
 	password option <cf/algorithm/ is not available in BFD protocol. The
