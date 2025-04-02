@@ -217,8 +217,9 @@ pipe_show_stats(struct pipe_proto *p)
   struct rt_import_stats *rs2i = p->sec->in_req.hook ? &p->sec->in_req.hook->stats : NULL;
   struct rt_export_stats *rs2e = &p->sec->out_req.stats;
 
-  u32 pri_routes = p->pri->in_limit.count;
-  u32 sec_routes = p->sec->in_limit.count;
+  u32 pri_routes, sec_routes;
+  LIMIT_LOCKED(&p->pri->in_limit, l) pri_routes = l->count;
+  LIMIT_LOCKED(&p->sec->in_limit, l) sec_routes = l->count;
 
   /*
    * Pipe stats (as anything related to pipes) are a bit tricky. There

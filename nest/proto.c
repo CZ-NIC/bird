@@ -44,9 +44,9 @@ extern struct protocol proto_unix_iface;
 static void proto_rethink_goal(struct proto *p);
 static char *proto_state_name(struct proto *p);
 void proto_journal_item_cleanup(struct lfjour * journal UNUSED, struct lfjour_item *i);
-static void channel_init_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf);
-static void channel_update_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf);
-static void channel_reset_limit(struct channel *c, struct limit *l, int dir);
+static void channel_init_limit(struct channel *c, limit *l, int dir, struct channel_limit *cf);
+static void channel_update_limit(struct channel *c, limit *l, int dir, struct channel_limit *cf);
+static void channel_reset_limit(struct channel *c, limit *l, int dir);
 static void channel_stop_export(struct channel *c);
 static void channel_check_stopped(struct channel *c);
 static inline void channel_reimport(struct channel *c, struct rt_feeding_request *rfr)
@@ -90,14 +90,18 @@ channel_export_fed(struct rt_export_request *req)
 {
   SKIP_BACK_DECLARE(struct channel, c, out_req, req);
 
-  struct limit *l = &c->out_limit;
-  if ((c->limit_active & (1 << PLD_OUT)) && (l->count <= l->max))
+  limit *limit = &c->out_limit;
+
+  LIMIT_LOCKED(limit, lim)
   {
-    c->limit_active &= ~(1 << PLD_OUT);
-    channel_request_full_refeed(c);
+    if ((c->limit_active & (1 << PLD_OUT)) && (lim->count <= lim->max))
+    {
+      c->limit_active &= ~(1 << PLD_OUT);
+      channel_request_full_refeed(c);
+    }
+    else
+      CALL(c->proto->export_fed, c);
   }
-  else
-    CALL(c->proto->export_fed, c);
 }
 
 void
@@ -2295,7 +2299,7 @@ static const char * channel_limit_name[] = {
 
 
 static void
-channel_log_limit(struct channel *c, struct limit *l, int dir)
+channel_log_limit(struct channel *c, struct limit_private *l, int dir)
 {
   const char *dir_name[PLD_MAX] = { "receive", "import" , "export" };
   log(L_WARN "Channel %s.%s hits route %s limit (%d), action: %s",
@@ -2303,7 +2307,7 @@ channel_log_limit(struct channel *c, struct limit *l, int dir)
 }
 
 static void
-channel_activate_limit(struct channel *c, struct limit *l, int dir)
+channel_activate_limit(struct channel *c, struct limit_private *l, int dir)
 {
   if (c->limit_active & (1 << dir))
     return;
@@ -2313,7 +2317,7 @@ channel_activate_limit(struct channel *c, struct limit *l, int dir)
 }
 
 static int
-channel_limit_warn(struct limit *l, void *data)
+channel_limit_warn(struct limit_private *l, void *data)
 {
   struct channel_limit_data *cld = data;
   struct channel *c = cld->c;
@@ -2325,7 +2329,7 @@ channel_limit_warn(struct limit *l, void *data)
 }
 
 static int
-channel_limit_block(struct limit *l, void *data)
+channel_limit_block(struct limit_private *l, void *data)
 {
   struct channel_limit_data *cld = data;
   struct channel *c = cld->c;
@@ -2339,7 +2343,7 @@ channel_limit_block(struct limit *l, void *data)
 static const byte chl_dir_down[PLD_MAX] = { PDC_RX_LIMIT_HIT, PDC_IN_LIMIT_HIT, PDC_OUT_LIMIT_HIT };
 
 static int
-channel_limit_down(struct limit *l, void *data)
+channel_limit_down(struct limit_private *l, void *data)
 {
   struct channel_limit_data *cld = data;
   struct channel *c = cld->c;
@@ -2362,7 +2366,7 @@ channel_limit_down(struct limit *l, void *data)
   return 1;
 }
 
-static int (*channel_limit_action[])(struct limit *, void *) = {
+static int (*channel_limit_action[])(struct limit_private *, void *) = {
   [PLA_NONE] = NULL,
   [PLA_WARN] = channel_limit_warn,
   [PLA_BLOCK] = channel_limit_block,
@@ -2371,27 +2375,32 @@ static int (*channel_limit_action[])(struct limit *, void *) = {
 };
 
 static void
-channel_update_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf)
+channel_update_limit(struct channel *c, limit *lim, int dir, struct channel_limit *cf)
 {
-  l->action = channel_limit_action[cf->action];
+  lim->action = channel_limit_action[cf->action];
   c->limit_actions[dir] = cf->action;
 
   struct channel_limit_data cld = { .c = c, .dir = dir };
-  limit_update(l, &cld, cf->action ? cf->limit : ~((u32) 0));
+  LIMIT_LOCKED(lim, l)
+      limit_update(l, &cld, cf->action ? cf->limit : ~((u32) 0));
 }
 
 static void
-channel_init_limit(struct channel *c, struct limit *l, int dir, struct channel_limit *cf)
+channel_init_limit(struct channel *c, limit *lim, int dir, struct channel_limit *cf)
 {
-  channel_reset_limit(c, l, dir);
-  channel_update_limit(c, l, dir, cf);
+  lim->lock = DOMAIN_NEW(attrs);
+  channel_reset_limit(c, lim, dir);
+  channel_update_limit(c, lim, dir, cf);
 }
 
 static void
-channel_reset_limit(struct channel *c, struct limit *l, int dir)
+channel_reset_limit(struct channel *c, limit *lim, int dir)
 {
-  limit_reset(l);
-  c->limit_active &= ~(1 << dir);
+  LIMIT_LOCKED(lim, l)
+  {
+    limit_reset(l);
+    c->limit_active &= ~(1 << dir);
+  }
 }
 
 static inline void
@@ -2576,9 +2585,10 @@ channel_show_stats(struct channel *c)
 #define SRI(item) SON(rt_is, item)
 #define SRE(item) SON(rt_es, item)
 
-  u32 rx_routes = c->rx_limit.count;
-  u32 in_routes = c->in_limit.count;
-  u32 out_routes = c->out_limit.count;
+  u32 rx_routes, in_routes, out_routes;
+  LIMIT_LOCKED((&c->rx_limit), l) rx_routes = l->count;
+  LIMIT_LOCKED((&c->in_limit), l) in_routes = l->count;
+  LIMIT_LOCKED((&c->out_limit), l) out_routes = l->count;
 
   if (c->in_keep)
     cli_msg(-1006, "    Routes:         %u imported, %u filtered, %u exported, %u preferred",
@@ -2610,12 +2620,14 @@ channel_show_stats(struct channel *c)
 }
 
 void
-channel_show_limit(struct limit *l, const char *dsc, int active, int action)
+channel_show_limit(limit *lim, const char *dsc, int active, int action)
 {
-  if (!l->action)
+  if (!lim->action)
     return;
 
-  cli_msg(-1006, "    %-16s%d%s", dsc, l->max, active ? " [HIT]" : "");
+  LIMIT_LOCKED(lim, l)
+      cli_msg(-1006, "    %-16s%d%s", dsc, l->max, active ? " [HIT]" : "");
+
   cli_msg(-1006, "      Action:       %s", channel_limit_name[action]);
 }
 

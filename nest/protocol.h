@@ -262,7 +262,7 @@ static inline event_list *proto_work_list(struct proto *p)
 static inline void proto_send_event(struct proto *p, event *e)
 { ev_send(proto_event_list(p), e); }
 
-void channel_show_limit(struct limit *l, const char *dsc, int active, int action);
+void channel_show_limit(limit *l, const char *dsc, int active, int action);
 void channel_show_info(struct channel *c);
 void channel_cmd_debug(struct channel *c, uint mask);
 
@@ -539,8 +539,8 @@ struct channel_limit_data {
 #define CHANNEL_LIMIT_LOG(_c, _dir, _op)
 #endif
 
-#define CHANNEL_LIMIT_PUSH(_c, _dir)  ({ CHANNEL_LIMIT_LOG(_c, _dir, "push from"); struct channel_limit_data cld = { .c = (_c), .dir = PLD_##_dir }; limit_push(CLP__##_dir(_c), &cld); })
-#define CHANNEL_LIMIT_POP(_c, _dir)   ({ limit_pop(CLP__##_dir(_c)); CHANNEL_LIMIT_LOG(_c, _dir, "pop to"); })
+#define CHANNEL_LIMIT_PUSH(_c, _dir)  ({ CHANNEL_LIMIT_LOG(_c, _dir, "push from"); struct channel_limit_data cld = { .c = (_c), .dir = PLD_##_dir }; limit_lock_push(CLP__##_dir(_c), &cld); })
+#define CHANNEL_LIMIT_POP(_c, _dir)   ({ LIMIT_LOCKED(CLP__##_dir(_c), l) limit_pop(l); CHANNEL_LIMIT_LOG(_c, _dir, "pop to"); })
 
 /*
  *	Channels
@@ -617,9 +617,9 @@ struct channel {
   struct bmap export_accepted_map;	/* Keeps track which routes were really exported */
   struct bmap export_rejected_map;	/* Keeps track which routes were rejected by export filter */
 
-  struct limit rx_limit;		/* Receive limit (for in_keep & RIK_REJECTED) */
-  struct limit in_limit;		/* Input limit */
-  struct limit out_limit;		/* Output limit */
+  limit rx_limit;		/* Receive limit (for in_keep & RIK_REJECTED) */
+  limit in_limit;		/* Input limit */
+  limit out_limit;		/* Output limit */
 
   u8 limit_actions[PLD_MAX];		/* Limit actions enum */
   u8 limit_active;			/* Flags for active limits */
