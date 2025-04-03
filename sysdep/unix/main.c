@@ -1001,6 +1001,20 @@ parse_args(int argc, char **argv)
    }
 }
 
+static void
+send_systemd_ready()
+{
+  const char *addrstr = getenv("NOTIFY_SOCKET");
+  if (addrstr) {
+      int fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+      struct sockaddr_un addr = { .sun_family = AF_UNIX };
+      strncpy(addr.sun_path, sizeof(addr.sun_path), addrstr);
+      connect(fd, (struct sockaddr*) &addr);
+      write(fd, "READY=1");
+      close(fd);
+  }
+}
+
 /*
  *	Hic Est main()
  */
@@ -1068,6 +1082,8 @@ main(int argc, char **argv)
       dup2(0, 1);
       dup2(0, 2);
     }
+
+  send_systemd_ready();
 
   main_thread_init();
 
