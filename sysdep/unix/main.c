@@ -1007,12 +1007,13 @@ send_systemd_ready()
 {
   const char *addrstr = getenv("NOTIFY_SOCKET");
   if (addrstr) {
-      int fd = socket(AF_UNIX, SOCK_DGRAM, 0);
-      struct sockaddr_un addr = { .sun_family = AF_UNIX };
-      strncpy(addr.sun_path, sizeof(addr.sun_path), addrstr);
-      connect(fd, (struct sockaddr*) &addr);
-      write(fd, "READY=1");
-      close(fd);
+    const char* msg_ready = "READY=1";
+    int fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    struct sockaddr_un addr = { .sun_family = AF_UNIX };
+    strncpy(addr.sun_path, sizeof(addr.sun_path), addrstr);
+    connect(fd, (struct sockaddr*) &addr, sizeof(addr));
+    write(fd, msg_ready, sizeof(msg_ready));
+    close(fd);
   }
 }
 
