@@ -16,18 +16,76 @@
 struct domain_generic;
 struct pool;
 
-#define LOCK_ORDER \
-  the_bird, \
-  meta, \
-  control, \
-  proto, \
-  service, \
-  rtable, \
-  attrs, \
-  logging, \
-  resource, \
+/*
+ * Locking in BIRD in general is facilitated by augmented mutexes, which are
+ * called domains for some weird historical reasons, causing minor confusion.
+ *
+ * In BIRD 2, the code may call various components, and the synchronous
+ * character of many such implementations is a reason why we chose the
+ * hierarchical strutrure of multiple locking levels.
+ *
+ * Therefore, the concept is like this:
+ *
+ * - every part of BIRD should have its domain
+ * - every domain has its order
+ * - when locked, you may lock any domain with a latter order
+ * - locking a domain of the same or former order triggers a crash
+ * - unlocking must be always in order from latest to first
+ *
+ * With that, many of the original calls could have stayed as they were,
+ * just adding a layer of locking.
+ *
+ * If you need to call something with an unlocked former order domain,
+ * you have several different options:
+ *
+ * - assign that task and data structure to a new sub-domain with an order late
+ *   enough to lock from this one
+ * - if performance is of a concern, create a lockless globally accessible
+ *   structure (but this is a hard task)
+ * - use defer_call() to run the task from a half-clean context
+ * - send an event by ev_send() to run the task from another context
+ * - give up and find another way
+ *
+ * Working with a domain is quite simple:
+ *
+ * - instantiate it by DOMAIN_NEW(level)
+ * - store it in DOMAIN(level)
+ * - set its name and possibly pool by DOMAIN_SETUP(level, domain, name, pool)
+ * - lock it by LOCK_DOMAIN(level, domain)
+ * - unlock it by UNLOCK_DOMAIN(level, domain)
+ * - get rid of it by DOMAIN_FREE(level, domain)
+ *
+ * Every DOMAIN(level) is actually a single-item structure, where the item
+ * is named by the level, and the structure is named struct domain__level,
+ * containing a generic domain pointer. If you get weird syntax errors
+ * including this kind of name, you are doing something bad with your domains.
+ *
+ * To get the generic domain from DOMAIN(level), simply refer to the
+ * structure's named item, e.g. domain.rtable if level is rtable. Some calls,
+ * most notably resource pool creation, require generic domains to be passed.
+ * (This may change in future.)
+ *
+ * The lock order should not be expanded unless there is a real need to do it,
+ * as every new layer adds quite some complexity to what one has to think about
+ * when implementing non-trivial concepts. And it's hard enough even now.
+ *
+ * If BIRD crashes on domain inconsistency, or locking should be questioned,
+ * you should definitely check the thread-local variable locking_stack, which
+ * stores every domain currently locked in the thread.
+ */
 
 /* Here define the global lock order; first to last. */
+#define LOCK_ORDER \
+  the_bird /* reserved for the main loop and legacy stuff running there */, \
+  meta /* toplevel domain for worker threads */, \
+  control /* special domain for thread control and CLI */, \
+  proto /* protocols */, \
+  service /* anything which needs a loop but is not a protocol */, \
+  rtable /* tables and similar complex structures */, \
+  attrs /* auxiliary structures needed to be locked from rtable */, \
+  logging /* may get locked from any log-like call */, \
+  resource /* very special internal things, memory management */, \
+
 struct lock_order {
 #define LOCK_ORDER_EXPAND(p)	struct domain_generic *p;
   MACRO_FOREACH(LOCK_ORDER_EXPAND, LOCK_ORDER)
@@ -74,7 +132,7 @@ uint dg_order(struct domain_generic *dg);
 #define DG_LOCK(d)	do_lock(d, DG_LSP(d))
 #define DG_UNLOCK(d)	do_unlock(d, DG_LSP(d))
 
-/* Use with care. To be removed in near future. */
+/* Main loop handlers. Handle with great care. */
 extern DOMAIN(the_bird) the_bird_domain;
 
 #define the_bird_lock()		LOCK_DOMAIN(the_bird, the_bird_domain)
