@@ -1071,21 +1071,21 @@ main(int argc, char **argv)
     exit(0);
 
   if (!run_in_foreground)
-    {
-      pid_t pid = fork();
-      if (pid < 0)
-        die("fork: %m");
-      if (pid)
-        return 0;
-      setsid();
-      close(0);
-      if (open("/dev/null", O_RDWR) < 0)
-        die("Cannot open /dev/null: %m");
-      dup2(0, 1);
-      dup2(0, 2);
-    }
-
-  send_systemd_ready();
+  {
+    pid_t pid = fork();
+    if (pid < 0)
+      die("fork: %m");
+    if (pid)
+      return 0;
+    setsid();
+    close(0);
+    if (open("/dev/null", O_RDWR) < 0)
+      die("Cannot open /dev/null: %m");
+    dup2(0, 1);
+    dup2(0, 2);
+  }
+  else
+    send_systemd_ready();
 
   main_thread_init();
 
