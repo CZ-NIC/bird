@@ -10,10 +10,10 @@
 set -e
 
 # Gather all required information
-VERSION="$($(dirname $0)/version)"
+VERSION="$($(dirname $0)/version | sed 's/^v//')"
 
-SRCPKG="bird-$VERSION"
-DOCPKG="bird-doc-$VERSION"
+SRCPKG="bird-${VERSION}"
+DOCPKG="bird-doc-${VERSION}"
 
 if [ -z "$ARCHIVE_DOCS" ]; then
   ARCHIVE_DOCS=true
