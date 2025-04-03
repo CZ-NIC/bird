@@ -28,6 +28,7 @@ void pipe_new(struct pipe *);
 void pipe_pollin(struct pipe *, struct pfd *);
 void pipe_drain(struct pipe *);
 void pipe_kick(struct pipe *);
+void sk_dump(struct dump_request *dreq, resource *r);
 
 #define TIME_BY_SEC_SIZE	16
 

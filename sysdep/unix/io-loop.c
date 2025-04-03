@@ -1511,7 +1511,6 @@ bird_thread_sync_all(struct bird_thread_syncer *sync,
   UNLOCK_DOMAIN(control, sync->lock);
 }
 
-
 struct bird_thread_show_data {
   struct bird_thread_syncer sync;
   cli *cli;
@@ -1670,6 +1669,128 @@ cmd_show_threads(int show_loops)
 
   bird_thread_sync_all(&tsd->sync, bird_thread_show, cmd_show_threads_done, "Show Threads");
 }
+
+struct bird_thread_show_socket {
+  struct bird_thread_syncer sync;
+  struct dump_request *dreq;
+};
+
+static void
+_sk_dump_for_thread(struct dump_request *dreq, list sock_list)
+{
+  node *n;
+  sock *s;
+
+  WALK_LIST(n, sock_list)
+  {
+    s = SKIP_BACK(sock, n, n);
+    RDUMP("%p ", s);
+    sk_dump(dreq, &s->r);
+  }
+}
+
+static void
+sk_dump_for_thread(struct bird_thread_syncer *sync)
+{
+  SKIP_BACK_DECLARE(struct bird_thread_show_socket, tss, sync, sync);
+  struct dump_request *dreq = tss->dreq;
+
+  WALK_TLIST(birdloop, loop, &this_thread->loops)
+  {
+    birdloop_enter(loop);
+    _sk_dump_for_thread(dreq, loop->sock_list);
+    birdloop_leave(loop);
+  }
+}
+
+static void
+sk_dump_for_thread_done(struct bird_thread_syncer *sync)
+{
+  SKIP_BACK_DECLARE(struct bird_thread_show_socket, tss, sync, sync);
+  struct dump_request *dreq = tss->dreq;
+
+  dreq->indent -= 3;
+  RDUMP("\n");
+}
+
+void
+sk_dump_all(struct dump_request *dreq)
+{
+  struct bird_thread_show_socket *tss = mb_allocz(&root_pool, sizeof(struct bird_thread_show_socket));
+  tss->dreq = dreq;
+
+  RDUMP("Open sockets:\n");
+  dreq->indent += 3;
+  _sk_dump_for_thread(dreq, main_birdloop.sock_list);
+
+  WALK_TLIST(thread_group, gpub, &global_thread_group_list)
+  TG_LOCKED(gpub, group)
+  {
+    WALK_TLIST(birdloop, loop, &group->loops)
+    {
+      birdloop_enter(loop);
+      _sk_dump_for_thread(dreq, loop->sock_list);
+      birdloop_leave(loop);
+    }
+  }
+
+  bird_thread_sync_all(&tss->sync, sk_dump_for_thread, sk_dump_for_thread_done, "Show sockets");
+}
+
+static void
+_sk_dump_ao_for_thread(struct dump_request *dreq, list sock_list)
+{
+  WALK_LIST_(node, n, sock_list)
+  {
+    sock *s = SKIP_BACK(sock, n, n);
+
+    /* Skip non TCP-AO sockets / not supported */
+    if (sk_get_ao_info(s, &(struct ao_info){}) < 0)
+      continue;
+
+    RDUMP("\n%p", s);
+    sk_dump(dreq, &s->r);
+    sk_dump_ao_info(s, dreq);
+    sk_dump_ao_keys(s, dreq);
+  }
+}
+
+static void
+sk_dump_ao_for_thread(struct bird_thread_syncer *sync)
+{
+  SKIP_BACK_DECLARE(struct bird_thread_show_socket, tss, sync, sync);
+  struct dump_request *dreq = tss->dreq;
+
+  WALK_TLIST(birdloop, loop, &this_thread->loops)
+  {
+    birdloop_enter(loop);
+    _sk_dump_ao_for_thread(dreq, loop->sock_list);
+    birdloop_leave(loop);
+  }
+}
+
+void
+sk_dump_ao_all(struct dump_request *dreq)
+{
+  struct bird_thread_show_socket *tss = mb_allocz(&root_pool, sizeof(struct bird_thread_show_socket));
+  tss->dreq = dreq;
+
+  RDUMP("TCP-AO listening sockets:\n");
+  _sk_dump_ao_for_thread(dreq, main_birdloop.sock_list);
+
+  WALK_TLIST(thread_group, gpub, &global_thread_group_list)
+  TG_LOCKED(gpub, group)
+  {
+    WALK_TLIST(birdloop, loop, &group->loops)
+    {
+      birdloop_enter(loop);
+      _sk_dump_ao_for_thread(dreq, loop->sock_list);
+      birdloop_leave(loop);
+    }
+  }
+  bird_thread_sync_all(&tss->sync, sk_dump_ao_for_thread, NULL, "Show ao sockets");
+}
+
 
 bool task_still_in_limit(void)
 {

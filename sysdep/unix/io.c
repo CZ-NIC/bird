@@ -1212,7 +1212,7 @@ sk_reallocate(sock *s)
   sk_alloc_bufs(s);
 }
 
-static void
+void
 sk_dump(struct dump_request *dreq, resource *r)
 {
   sock *s = (sock *) r;
@@ -2406,48 +2406,6 @@ sk_err(sock *s, int revents)
   s->err_hook(s, se);
   tmp_flush();
 }
-
-
-/* FIXME: these two functions should actually call bird_thread_sync_all()
- * to get threads from all loops. Now they dump just mainloop. */
-
-void
-sk_dump_all(struct dump_request *dreq)
-{
-  node *n;
-  sock *s;
-
-  RDUMP("Open sockets:\n");
-  dreq->indent += 3;
-  WALK_LIST(n, main_birdloop.sock_list)
-  {
-    s = SKIP_BACK(sock, n, n);
-    RDUMP("%p ", s);
-    sk_dump(dreq, &s->r);
-  }
-  dreq->indent -= 3;
-  RDUMP("\n");
-}
-
-void
-sk_dump_ao_all(struct dump_request *dreq)
-{
-  RDUMP("TCP-AO listening sockets:\n");
-  WALK_LIST_(node, n, main_birdloop.sock_list)
-  {
-    sock *s = SKIP_BACK(sock, n, n);
-
-    /* Skip non TCP-AO sockets / not supported */
-    if (sk_get_ao_info(s, &(struct ao_info){}) < 0)
-      continue;
-
-    RDUMP("\n%p", s);
-    sk_dump(dreq, &s->r);
-    sk_dump_ao_info(s, dreq);
-    sk_dump_ao_keys(s, dreq);
-  }
-}
-
 
 /*
  *	Internal event log and watchdog
