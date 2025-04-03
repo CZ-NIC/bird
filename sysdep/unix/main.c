@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include <sys/utsname.h>
 #include <libgen.h>
+#include <sys/un.h>
 
 #include "nest/bird.h"
 #include "lib/lists.h"
