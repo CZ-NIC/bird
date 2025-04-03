@@ -348,6 +348,9 @@ dump_to_file_write(struct dump_request *dr, const char *fmt, ...)
       dump_to_file_flush(req);
   }
 
+  if (req->fd < 0)
+    return;
+
   bug("Too long dump call");
 }
 
@@ -1212,13 +1215,43 @@ sk_reallocate(sock *s)
   sk_alloc_bufs(s);
 }
 
-static void
+void
 sk_dump(struct dump_request *dreq, resource *r)
 {
   sock *s = (sock *) r;
   static char *sk_type_names[] = { "TCP<", "TCP>", "TCP", "UDP", NULL, "IP", NULL, "MAGIC", "UNIX<", "UNIX", "SSH>", "SSH", "DEL!" };
 
   RDUMP("(%s, ud=%p, sa=%I, sp=%d, da=%I, dp=%d, tos=%d, ttl=%d, if=%s)\n",
+	sk_type_names[s->type],
+	s->data,
+	s->saddr,
+	s->sport,
+	s->daddr,
+	s->dport,
+	s->tos,
+	s->ttl,
+	s->iface ? s->iface->name : "none");
+}
+
+uint
+sk_max_dump_len(void)
+{
+  uint ret = strlen("(%s, ud=%p, sa=%I, sp=%d, da=%I, dp=%d, tos=%d, ttl=%d, if=%s)\n");
+  ret += 3; // max sk_type_name = 5
+  ret += 14; // looks like %p size is 16
+  ret += (IP6_MAX_TEXT_LENGTH -2) * 2;
+  ret += 14 * 4; // %d
+  ret += IFNAMSIZ - 2;
+  ret++; // terminating zero
+  return ret;
+}
+
+void
+sk_dump_to_buffer(buffer *buf, sock *s)
+{
+  static char *sk_type_names[] = { "TCP<", "TCP>", "TCP", "UDP", NULL, "IP", NULL, "MAGIC", "UNIX<", "UNIX", "SSH>", "SSH", "DEL!" };
+
+  buffer_print(buf, "(%s, ud=%p, sa=%I, sp=%d, da=%I, dp=%d, tos=%d, ttl=%d, if=%s)\n",
 	sk_type_names[s->type],
 	s->data,
 	s->saddr,
@@ -2158,7 +2191,7 @@ sk_send(sock *s, unsigned len)
 
   int e = sk_maybe_write(s);
   if (e == 0) /* Trigger thread poll reload to poll this socket's write. */
-    socket_changed(s);
+    socket_changed(s, false);
 
   return e;
 }
@@ -2406,48 +2439,6 @@ sk_err(sock *s, int revents)
   s->err_hook(s, se);
   tmp_flush();
 }
-
-
-/* FIXME: these two functions should actually call bird_thread_sync_all()
- * to get threads from all loops. Now they dump just mainloop. */
-
-void
-sk_dump_all(struct dump_request *dreq)
-{
-  node *n;
-  sock *s;
-
-  RDUMP("Open sockets:\n");
-  dreq->indent += 3;
-  WALK_LIST(n, main_birdloop.sock_list)
-  {
-    s = SKIP_BACK(sock, n, n);
-    RDUMP("%p ", s);
-    sk_dump(dreq, &s->r);
-  }
-  dreq->indent -= 3;
-  RDUMP("\n");
-}
-
-void
-sk_dump_ao_all(struct dump_request *dreq)
-{
-  RDUMP("TCP-AO listening sockets:\n");
-  WALK_LIST_(node, n, main_birdloop.sock_list)
-  {
-    sock *s = SKIP_BACK(sock, n, n);
-
-    /* Skip non TCP-AO sockets / not supported */
-    if (sk_get_ao_info(s, &(struct ao_info){}) < 0)
-      continue;
-
-    RDUMP("\n%p", s);
-    sk_dump(dreq, &s->r);
-    sk_dump_ao_info(s, dreq);
-    sk_dump_ao_keys(s, dreq);
-  }
-}
-
 
 /*
  *	Internal event log and watchdog
