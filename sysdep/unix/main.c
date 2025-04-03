@@ -1,9 +1,9 @@
 /*
- *	BIRD Internet Routing Daemon -- Unix Entry Point
+ *  BIRD Internet Routing Daemon -- Unix Entry Point
  *
- *	(c) 1998--2000 Martin Mares <mj@ucw.cz>
+ *  (c) 1998--2000 Martin Mares <mj@ucw.cz>
  *
- *	Can be freely distributed and used under the terms of the GNU GPL.
+ *  Can be freely distributed and used under the terms of the GNU GPL.
  */
 
 #undef LOCAL_DEBUG
@@ -46,7 +46,7 @@
 #include "krt.h"
 
 /*
- *	Debugging
+ *  Debugging
  */
 
 static void
@@ -84,7 +84,7 @@ async_dump(void)
 }
 
 /*
- *	Dropping privileges
+ *  Dropping privileges
  */
 
 #ifdef CONFIG_RESTRICTED_PRIVILEGES
@@ -110,7 +110,7 @@ drop_gid(gid_t gid)
 }
 
 /*
- *	Hostname
+ *  Hostname
  */
 
 char *
@@ -125,7 +125,7 @@ get_hostname(linpool *lp)
 }
 
 /*
- *	Reading the Configuration
+ *  Reading the Configuration
  */
 
 #ifdef PATH_IPROUTE_DIR
@@ -170,9 +170,9 @@ read_iproute_table(struct config *conf, char *file, char *prefix, uint max)
       continue;
 
     if (sscanf(p, "0x%x %s\n", &val, name) != 2 &&
-	sscanf(p, "0x%x %s #", &val, name) != 2 &&
-	sscanf(p, "%u %s\n", &val, name) != 2 &&
-	sscanf(p, "%u %s #", &val, name) != 2)
+        sscanf(p, "0x%x %s #", &val, name) != 2 &&
+        sscanf(p, "%u %s\n", &val, name) != 2 &&
+        sscanf(p, "%u %s #", &val, name) != 2)
       continue;
 
     if (val > max)
@@ -180,7 +180,7 @@ read_iproute_table(struct config *conf, char *file, char *prefix, uint max)
 
     for(p = name; *p; p++)
       if ((*p < 'a' || *p > 'z') && (*p < 'A' || *p > 'Z') && (*p < '0' || *p > '9') && (*p != '_'))
-	*p = '_';
+    *p = '_';
 
     add_num_const(conf, namebuf, val, file, line);
   }
@@ -256,9 +256,9 @@ read_config(void)
   if (!unix_read_config(&conf, config_name))
     {
       if (conf->err_msg)
-	die("%s:%d:%d %s", conf->err_file_name, conf->err_lino, conf->err_chno, conf->err_msg);
+        die("%s:%d:%d %s", conf->err_file_name, conf->err_lino, conf->err_chno, conf->err_msg);
       else
-	die("Unable to open configuration file %s: %m", config_name);
+        die("Unable to open configuration file %s: %m", config_name);
     }
 
   return conf;
@@ -275,9 +275,9 @@ async_config(void)
   if (!unix_read_config(&conf, config_name))
     {
       if (conf->err_msg)
-	log(L_ERR "%s:%d:%d %s", conf->err_file_name, conf->err_lino, conf->err_chno, conf->err_msg);
+        log(L_ERR "%s:%d:%d %s", conf->err_file_name, conf->err_lino, conf->err_chno, conf->err_msg);
       else
-	log(L_ERR "Unable to open configuration file %s: %m", config_name);
+        log(L_ERR "Unable to open configuration file %s: %m", config_name);
       config_free(conf);
     }
   else
@@ -296,9 +296,9 @@ cmd_read_config(const char *name)
   if (!unix_read_config(&conf, name))
     {
       if (conf->err_msg)
-	cli_msg(8002, "%s:%d:%d %s", conf->err_file_name, conf->err_lino, conf->err_chno, conf->err_msg);
+        cli_msg(8002, "%s:%d:%d %s", conf->err_file_name, conf->err_lino, conf->err_chno, conf->err_msg);
       else
-	cli_msg(8002, "%s: %m", name);
+        cli_msg(8002, "%s: %m", name);
       config_free(conf);
       conf = NULL;
     }
@@ -325,14 +325,14 @@ cmd_reconfig_msg(int r)
 {
   switch (r)
     {
-    case CONF_DONE:	cli_msg( 3, "Reconfigured"); break;
+    case CONF_DONE:  cli_msg( 3, "Reconfigured"); break;
     case CONF_PROGRESS: cli_msg( 4, "Reconfiguration in progress"); break;
-    case CONF_QUEUED:	cli_msg( 5, "Reconfiguration already in progress, queueing new config"); break;
-    case CONF_UNQUEUED:	cli_msg(17, "Reconfiguration already in progress, removing queued config"); break;
-    case CONF_CONFIRM:	cli_msg(18, "Reconfiguration confirmed"); break;
-    case CONF_SHUTDOWN:	cli_msg( 6, "Reconfiguration ignored, shutting down"); break;
-    case CONF_NOTHING:	cli_msg(19, "Nothing to do"); break;
-    default:		break;
+    case CONF_QUEUED:  cli_msg( 5, "Reconfiguration already in progress, queueing new config"); break;
+    case CONF_UNQUEUED:  cli_msg(17, "Reconfiguration already in progress, removing queued config"); break;
+    case CONF_CONFIRM:  cli_msg(18, "Reconfiguration confirmed"); break;
+    case CONF_SHUTDOWN:  cli_msg( 6, "Reconfiguration ignored, shutting down"); break;
+    case CONF_NOTHING:  cli_msg(19, "Nothing to do"); break;
+    default:    break;
     }
 }
 
@@ -403,11 +403,11 @@ cmd_reconfig_status(void)
 
   switch (s)
   {
-  case CONF_DONE:	cli_msg(-3, "Daemon is up and running"); break;
-  case CONF_PROGRESS:	cli_msg(-4, "Reconfiguration in progress"); break;
-  case CONF_QUEUED:	cli_msg(-5, "Reconfiguration in progress, next one enqueued"); break;
-  case CONF_SHUTDOWN:	cli_msg(-6, "Shutdown in progress"); break;
-  default:		break;
+  case CONF_DONE:  cli_msg(-3, "Daemon is up and running"); break;
+  case CONF_PROGRESS:  cli_msg(-4, "Reconfiguration in progress"); break;
+  case CONF_QUEUED:  cli_msg(-5, "Reconfiguration in progress, next one enqueued"); break;
+  case CONF_SHUTDOWN:  cli_msg(-6, "Shutdown in progress"); break;
+  default:    break;
   }
 
   if (t >= 0)
@@ -418,7 +418,7 @@ cmd_reconfig_status(void)
 
 
 /*
- *	Command-Line Interface
+ *  Command-Line Interface
  */
 
 static struct cli_config initial_control_socket_config = {
@@ -458,7 +458,7 @@ cli_write(cli *c)
       o->outpos = o->wpos;
 
       if (sk_send(s, len) <= 0)
-	return;
+        return;
 
       c->tx_pos = o->next;
     }
@@ -495,22 +495,22 @@ cli_get_command(cli *c)
   while (t < tend)
     {
       if (*t == '\r')
-	t++;
+        t++;
       else if (*t == '\n')
-	{
-	  *d = 0;
-	  t++;
+      {
+        *d = 0;
+        t++;
 
-	  /* Move remaining data and reset pointers */
-	  uint rest = (t < tend) ? (tend - t) : 0;
-	  memmove(s->rbuf, t, rest);
-	  s->rpos = s->rbuf + rest;
-	  c->rx_pos = c->rx_buf;
+        /* Move remaining data and reset pointers */
+        uint rest = (t < tend) ? (tend - t) : 0;
+        memmove(s->rbuf, t, rest);
+        s->rpos = s->rbuf + rest;
+        c->rx_pos = c->rx_buf;
 
-	  return (d < dend) ? 1 : -1;
-	}
+        return (d < dend) ? 1 : -1;
+      }
       else if (d < dend)
-	*d++ = *t++;
+        *d++ = *t++;
     }
 
   s->rpos = s->rbuf;
@@ -531,9 +531,9 @@ cli_err(sock *s, int err)
   if (config->cli_debug)
     {
       if (err)
-	log(L_INFO "CLI connection dropped: %s", strerror(err));
+        log(L_INFO "CLI connection dropped: %s", strerror(err));
       else
-	log(L_INFO "CLI connection closed");
+        log(L_INFO "CLI connection closed");
     }
   cli_free(s->data);
 }
@@ -557,7 +557,7 @@ cli_connect(sock *s, uint size UNUSED)
   s->tx_hook = cli_tx;
   s->err_hook = cli_err;
   s->data = c = cli_new(s, ((struct cli_listener *) s->data)->config);
-  s->pool = c->pool;		/* We need to have all the socket buffers allocated in the cli pool */
+  s->pool = c->pool;    /* We need to have all the socket buffers allocated in the cli pool */
   s->fast_rx = 1;
   c->rx_pos = c->rx_buf;
   rmove(s, c->pool);
@@ -656,13 +656,13 @@ cli_commit(struct config *new, struct config *old)
     _Bool seen = 0;
     WALK_TLIST(cli_listener, l, &cli_listeners)
       if (l->config->config != new)
-	if (!strcmp(l->config->name, c->name))
-	{
-	  ASSERT_DIE(l->config->config == old);
-	  l->config = c;
-	  seen = 1;
-	  break;
-	}
+        if (!strcmp(l->config->name, c->name))
+        {
+          ASSERT_DIE(l->config->config == old);
+          l->config = c;
+          seen = 1;
+          break;
+        }
 
     if (!seen)
       cli_listen(c);
@@ -675,7 +675,7 @@ cli_commit(struct config *new, struct config *old)
 
 
 /*
- *	PID file
+ *  PID file
  */
 
 static char *pid_file;
@@ -727,7 +727,7 @@ unlink_pid_file(void)
 
 
 /*
- *	Shutdown
+ *  Shutdown
  */
 
 void
@@ -768,7 +768,7 @@ cmd_graceful_restart(void)
 
 
 /*
- *	Signals
+ *  Signals
  */
 
 volatile sig_atomic_t async_config_flag;
@@ -820,7 +820,7 @@ signal_init(void)
 }
 
 /*
- *	Parsing of command-line arguments
+ *  Parsing of command-line arguments
  */
 
 static char *opt_list = "bc:dD:ps:P:u:g:flRh";
@@ -941,59 +941,59 @@ parse_args(int argc, char **argv)
   if (argc == 2)
     {
       if (!strcmp(argv[1], "--version"))
-	display_version();
+        display_version();
       if (!strcmp(argv[1], "--help"))
-	display_help();
+        display_help();
     }
   while ((c = getopt(argc, argv, opt_list)) >= 0)
     switch (c)
       {
       case 'c':
-	config_name = optarg;
-	config_changed = 1;
-	break;
+        config_name = optarg;
+        config_changed = 1;
+        break;
       case 'd':
-	log_init_debug("");
-	run_in_foreground = 1;
-	break;
+        log_init_debug("");
+        run_in_foreground = 1;
+        break;
       case 'D':
-	log_init_debug(optarg);
-	break;
+        log_init_debug(optarg);
+        break;
       case 'p':
-	parse_and_exit = 1;
-	break;
+        parse_and_exit = 1;
+        break;
       case 's':
-	path_control_socket = optarg;
-	socket_changed = 1;
-	break;
+        path_control_socket = optarg;
+        socket_changed = 1;
+        break;
       case 'P':
-	pid_file = optarg;
-	break;
+        pid_file = optarg;
+        break;
       case 'u':
-	use_user = optarg;
-	break;
+        use_user = optarg;
+        break;
       case 'g':
-	use_group = optarg;
-	break;
+        use_group = optarg;
+        break;
       case 'f':
-	run_in_foreground = 1;
-	break;
+        run_in_foreground = 1;
+        break;
       case 'l':
-	if (!config_changed)
-	  config_name = xbasename(config_name);
-	if (!socket_changed)
-	  path_control_socket = xbasename(path_control_socket);
-	break;
+        if (!config_changed)
+          config_name = xbasename(config_name);
+        if (!socket_changed)
+          path_control_socket = xbasename(path_control_socket);
+        break;
       case 'R':
-	graceful_restart_recovery();
-	break;
+        graceful_restart_recovery();
+        break;
       case 'h':
-	display_help();
-	break;
+        display_help();
+        break;
       default:
-	fputc('\n', stderr);
-	display_usage();
-	exit(1);
+        fputc('\n', stderr);
+        display_usage();
+        exit(1);
       }
   if (optind < argc)
    {
@@ -1018,7 +1018,7 @@ send_systemd_ready()
 }
 
 /*
- *	Hic Est main()
+ *  Hic Est main()
  */
 
 int
@@ -1074,13 +1074,13 @@ main(int argc, char **argv)
     {
       pid_t pid = fork();
       if (pid < 0)
-	die("fork: %m");
+        die("fork: %m");
       if (pid)
-	return 0;
+        return 0;
       setsid();
       close(0);
       if (open("/dev/null", O_RDWR) < 0)
-	die("Cannot open /dev/null: %m");
+        die("Cannot open /dev/null: %m");
       dup2(0, 1);
       dup2(0, 2);
     }
