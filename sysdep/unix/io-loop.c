@@ -1723,7 +1723,7 @@ sk_dump_all(struct dump_request *dreq)
   dreq->indent += 3;
   _sk_dump_for_thread(dreq, main_birdloop.sock_list);
 
-  WALK_TLIST(thread_group, gpub, &global_thread_group_list)
+  /*WALK_TLIST(thread_group, gpub, &global_thread_group_list)
   TG_LOCKED(gpub, group)
   {
     WALK_TLIST(birdloop, loop, &group->loops)
@@ -1732,7 +1732,7 @@ sk_dump_all(struct dump_request *dreq)
       _sk_dump_for_thread(dreq, loop->sock_list);
       birdloop_leave(loop);
     }
-  }
+  }*/
 
   bird_thread_sync_all(&tss->sync, sk_dump_for_thread, sk_dump_for_thread_done, "Show sockets");
 }
