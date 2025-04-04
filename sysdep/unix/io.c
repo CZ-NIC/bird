@@ -348,6 +348,9 @@ dump_to_file_write(struct dump_request *dr, const char *fmt, ...)
       dump_to_file_flush(req);
   }
 
+  if (req->fd < 0)
+    return;
+
   bug("Too long dump call");
 }
 
