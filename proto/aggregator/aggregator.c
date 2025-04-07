@@ -248,7 +248,12 @@ aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *b
   }
 
   struct rte *new = rte_get_temp(rta, p->p.main_source);
+  /* Here we need _some_ net to run the filters properly
+   * TODO: use a temporary local net instead of a real one to avoid confusion */
   new->net = net;
+  //struct network *n = allocz(sizeof(*n) + sizeof(addr));
+  //net_copy(n->n.addr, &addr);
+
 
   if (p->logging)
   {

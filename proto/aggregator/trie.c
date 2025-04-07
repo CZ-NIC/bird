@@ -12,7 +12,6 @@
  *
  * Prefix aggregation implements the ORTC (Optimal Route Table Construction)
  * algorithm [1].
- * TODO: zdroje, odkazy na literaturu
  *
  * This algorithm uses a binary tree representation of the routing table.
  * An edge from the parent node to its left child represents bit 0, and
@@ -24,10 +23,10 @@
  * Prefixes are therefore represented as a path through the trie, beginning at
  * the root node. The last node on this path is called prefix node.
  *
- * TODO: popis originálního algoritmu zřetelně odlišit od toho, co tady skutečně děláme
+ *** The Original Algorithm ***
  *
  * ORTC algorithm as described in the original paper consists of three passes
- * through the trie.
+ * through the trie. (This is not exactly how this is implemented here.)
  *
  * The first pass adds new nodes to the trie so that every node has either two
  * or zero children. During this pass, routing information is propagated to the
@@ -49,58 +48,75 @@
  *
  * Algorithm works with the assumption that there is a default route.
  *
- * The following is a description of this implementation.
+ *** Our Implementation ***
+ *
+ * Description of this implementation follows.
+ *
+ * Route attributes are represented as buckets. All routes with the same set of
+ * attributes matched by the "aggregate on" config clause get the same bucket.
  *
  * The trie contains three different kinds of nodes: original, aggregated and
- * fillers. Original nodes represent prefixes from the original (import)
- * routing table. Aggregated nodes represent prefixes that do not exist in the
- * original table but exist in the aggregated (export) table, as they are result
- * of the aggregation. Filler nodes are neither, they exist in the trie but do
- * not represent any prefixes in original or aggregated table.
+ * fillers.
+ *
+ * - Original nodes represent prefixes from the original (import) routing table.
+ * - Aggregated nodes represent prefixes that do not exist in the original table
+ *   but do exist in the aggregated (export) table.
+ * - Filler nodes exist neither in original or aggregated table, they represent
+ *   prefixes "on the way" to the original or aggregated nodes.
  *
  * Each node has a FIB status flag signalling whether this prefix was exported
  * to the FIB (IN_FIB) or not (NON_FIB). It is clear that IN_FIB nodes can be
  * either original or aggregated, whereas NON_FIB nodes can be either original
  * or fillers.
  *
- * Every node contains pointer to its closest IN_FIB ancestor.
+ * Every node contains pointer to its closest IN_FIB ancestor. If the node is
+ * IN_FIB, the ancestor pointer points to itself.
  *
  * After every aggregation, following invariants are always satisfied:
- * 1. No original bucket can be null.
- * 2. No ancestor pointer can be null.
- * 3. If a node is IN_FIB, then
- *      a) its selected bucket must not be null,
- *      b) its ancestor pointer must point to itself,
- *      c) its origin must be ORIGINAL or AGGREGATED.
- * 4. If a node is NON_FIB, then
- *      a) its selected bucket must be null,
- *      b) its ancestor pointer must point to the nearest IN_FIB ancestor,
- *      c) its origin must be ORIGINAL or FILLER.
+ *
+ *   1. All nodes have some bucket.
+ *   2. All nodes have the IN_FIB ancestor pointer set.
+ *   3. If a node is IN_FIB, then
+ *        a) its selected bucket must not be null,
+ *        b) its ancestor pointer must point to itself,
+ *        c) it must be ORIGINAL or AGGREGATED.
+ *   4. If a node is NON_FIB, then
+ *        a) its selected bucket must be null,
+ *        b) its ancestor pointer must point to the closest IN_FIB ancestor,
+ *        c) it must be ORIGINAL or FILLER.
  *
  * Our implementation differs from the algorithm as described in the original
- * paper in several aspects. First, we do not normalize the trie by adding new
- * nodes so that every node has either zero or two children. Second, propagation
- * of original buckets, which was formerly done during first pass, is now done
- * in the second pass. First pass is completely omitted.
- * The two phases of aggregation are named propagate_and_merge() for first and
- * second pass and group_prefixes() for third pass.
+ * paper in several aspects:
  *
- * Aggregator is capable of processing incremental updates. After receiving
- * an update, which can be either announce or withdraw, corresponding node
- * is found in the trie and its original bucket is updated. Trie now needs to
- * be recomputed to reflect this update.
- * Trie is traversed from the updated node upwards until its closest IN_FIB
- * ancestor is found. This is the prefix node that covers an address space which
- * is affected by received update. This is followed by propagate_and_merge(),
- * which propagates potential buckets from the leaves upwards. Merging of sets
- * of potential buckets continues upwards until the node's set is not changed by
- * this operation. Finally, the third pass runs from this node, finishing the
- * aggregation. During the third pass, changes in prefix FIB status are detected
- * and routes are exported or removed from the routing table accordingly. All
- * new routes are exported immmediately, whereas routes that are to be
- * withdrawed are pushed on the stack and removed after recomputing the trie.
+ * - We do not normalize the trie by adding new nodes. This way, nodes may
+ *   have one child (not only zero or two).
+ * - The first pass is merged with the second pass. These two passes together
+ *   are named propagate_and_merge().
+ * - The third pass is called group_prefixes().
+ *
+ * The Aggregator is capable of processing incremental updates in the following
+ * way. After receiving an update, which can be either announce or withdraw:
+ *
+ *    1. The corresponding node is found in the trie and its original bucket
+ *       is updated. The trie now needs to be recomputed to reflect this update.
+ *    2. The trie is traversed from the updated node upwards until its closest
+ *	 IN_FIB ancestor is found. This is the prefix node that covers an
+ *	 address space which is directly affected by the received update.
+ *    3. The propagate_and_merge() pass is started for the subtree rooted in
+ *	 the node found in the previous step. This pass propagates buckets
+ *	 eligible for selection from the leaves upwards.
+ *    4. Merging of sets of eligible buckets may leak from the subtree upwards
+ *       by computing a different eligible bucket set for the node selected in
+ *       step 2. In this case, we continue upwards until the computed set is equal
+ *       with the previous one.
+ *    5. From the last node changed in the last step, the group_prefixes()
+ *	 is started downwards.
+ *    6. When this function decides to change IN_FIB status or exchange the
+ *       selected bucket, either route update is done immediately, or route
+ *       retraction is scheduled for later to avoid short-term misroutings.
  *
  * References:
+ *
  * [1] R. P. Draves, C. King, S. Venkatachary and B. D. Zill. Constructing
  *     Optimal IP Routing Tables. In Proceedings of IEEE INFOCOM, volume 1,
  *     pages 88-97, 1999.
@@ -128,13 +144,6 @@
 
 #include <stdbool.h>
 
-/* TODO: comment what purpose this array has */
-/*
- * Nodes in the trie can be either original, representing input prefixes;
- * aggregated, representing prefixes created by aggregation; or fillers,
- * which are neither. This array maps these values to strings which are
- * printed when dumping the contents of the trie.
- */
 static const char *px_origin_str[] = {
   [FILLER]     = "filler",
   [ORIGINAL]   = "original",
@@ -168,13 +177,6 @@ aggregator_root_init(struct aggregator_bucket *bucket, struct slab *trie_slab)
   };
 
   return root;
-}
-
-static inline int
-aggregator_is_leaf(const struct trie_node *node)
-{
-  ASSERT_DIE(node != NULL);
-  return !node->child[0] && !node->child[1];
 }
 
 /*
@@ -229,8 +231,6 @@ aggregator_node_add_potential_bucket(struct trie_node *node, const struct aggreg
 static inline int
 aggregator_is_bucket_potential(const struct trie_node *node, u32 id)
 {
-  /* TODO: obecná otázka: musíme do těchto funkcí předávat  bucket, nebo by stačilo bucket id? */
-
   ASSERT_DIE(node != NULL);
 
   ASSERT_DIE(id < MAX_POTENTIAL_BUCKETS_COUNT);
@@ -270,6 +270,9 @@ aggregator_select_lowest_id_bucket(const struct aggregator_proto *p, const struc
      * Compute its position from the beginning of the array.
      */
     u32 id = u32_clz(node->potential_buckets[i]) + i * 32;
+
+    /* We would love if this got optimized out */
+    ASSERT_DIE(BIT32R_TEST(node->potential_buckets, id));
 
     struct aggregator_bucket *bucket = aggregator_get_bucket_from_id(p, id);
     ASSERT_DIE(bucket != NULL);
@@ -436,9 +439,7 @@ aggregator_create_route(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, s
   struct net_addr addr = { 0 };
   net_fill_ipa(&addr, prefix, pxlen);
 
-  struct network *n = allocz(sizeof(*n) + sizeof(addr));
-  net_copy(n->n.addr, &addr);
-
+  /* TODO: Proč sem vlastně předáváme struct network? Mělo by nám stačit net_addr. */
   aggregator_bucket_update(p, bucket, n);
 }
 
@@ -455,14 +456,17 @@ aggregator_prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u3
   struct rte_withdrawal_item *item = lp_allocz(p->rte_withdrawal_pool, sizeof(*item));
 
   /* Fill in net and bucket */
+  net_fill_ipa(&item->addr, prefix, pxlen);
+#if 0 // TODO
   struct net_addr addr = { 0 };
   net_fill_ipa(&addr, prefix, pxlen);
   net_copy(&item->addr, &addr);
+#endif 
 
   item->bucket = bucket;
 
   /* Push item onto stack */
-  item->next = p->rte_withdrawal_stack,
+  item->next = p->rte_withdrawal_stack;
   p->rte_withdrawal_stack = item;
   p->rte_withdrawal_count++;
 }
@@ -526,7 +530,6 @@ aggregator_trie_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 px
   ASSERT_DIE(node->px_origin == ORIGINAL);
   ASSERT_DIE((u32)node->depth == pxlen);
 
-  /* TODO: okomentovat, proč tady ještě nesmíme uklízet směrem nahoru */
   /*
    * Even though this function is called to remove prefix from the trie, we
    * can only change its origin from original to filler. Node itself cannot be
@@ -599,18 +602,21 @@ aggregator_find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, 
 }
 
 /*
- * TODO:
- * - okomentovat (radši víc)
- * - přejmenovat (aggregator_propagate_update?)
- * - zrušit `recomputing`
- *
  * First and second pass of Optimal Route Table Construction (ORTC) algorithm
  *
- * This function performs two tasks. First, it propagates original buckets from
- * target node to the leaves. Original bucket from prefix node is assigned to
- * all his descendants in a downward direction until another original node is
- * reached. Second, it merges sets of potential buckets from leaves upward to
- * the target node.
+ * This function is called after the trie is changed. This function is called recursively.
+ *
+ * First, this function propagates original bucket information from the node's
+ * parent to the current one. (This is basically the first pass in the original algorithm.)
+ *
+ * Then this function calls itself to its children.
+ *
+ * After the recursion returns, sets of potential buckets from the children are merged
+ * to form the potential_buckets bitmap.
+ *
+ * With this, the function both propagates changes down and up during one pass.
+ * 
+ * The argument is the node from which to descend.
  */
 static void
 aggregator_propagate_and_merge(struct trie_node *node)
@@ -619,74 +625,58 @@ aggregator_propagate_and_merge(struct trie_node *node)
   ASSERT_DIE(node->status != UNASSIGNED_FIB);
   ASSERT_DIE(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
 
-  /* Propagate original buckets from original nodes to their descendants */
-  if (node->px_origin != ORIGINAL)
+  if (node->px_origin == ORIGINAL)
+    ASSERT_DIE(node->original_bucket != NULL);
+  else
   {
+    /* Non-original node needs to get the original bucket from its parent. */
+    ASSERT_DIE(node->parent->original_bucket != NULL);
     node->original_bucket = node->parent->original_bucket;
 
-    /*
-     * During initial aggregation, there are only original and filler nodes,
-     * thus this statement has no effect. When recomputing, aggregated nodes
-     * become fillers.
-     */
+    /* This node will be recalculated anyway, therefore for now we indicate
+     * by FILLER that the trie state is not consistent with the routes
+     * in the target routing table. */
     node->px_origin = FILLER;
   }
 
-  ASSERT_DIE(node->original_bucket != NULL);
-
-  if (aggregator_is_leaf(node))
-  {
-    /*
-     * When running aggregation for the first time, erasing sets is not
-     * necessary, because they are empty. However, when recomputing, sets
-     * of the leaf nodes must be cleared. Sets in internal nodes don't have
-     * to, because they will be overwritten by merging operation.
-     */
-    node->potential_buckets_count = 0;
-    memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
-
-    ASSERT_DIE(node->potential_buckets_count == 0);
-
-    /* Original bucket of leaf nodes is their potential bucket */
-    aggregator_node_add_potential_bucket(node, node->original_bucket);
-    return;
-  }
-
+  /* Get children for traversal */
   struct trie_node *left  = node->child[0];
   struct trie_node *right = node->child[1];
 
-  /* Postorder traversal */
+  /* Special case for leaf nodes */
+  if (!left && !right)
+  {
+    /* Reset the bucket bitmap to cleanup possible old bucket information */
+    node->potential_buckets_count = 0;
+    memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
+
+    /* For the leaf node, by definition, the only bucket in the bitmap is the
+     * original bucket. */
+    aggregator_node_add_potential_bucket(node, node->original_bucket);
+
+    /* No children, no further work. Done! */
+    return;
+  }
+
+  /* Prepare an imaginary node in case some children are missing.
+   * This node's potential buckets is just this node's original bucket
+   * and nothing else. This fixes the (kinda) missing first pass
+   * when comparing our algorithm to the original one. */
+  struct trie_node imaginary_node = { 0 };
+  aggregator_node_add_potential_bucket(&imaginary_node, node->original_bucket);
+
+  /* Process children */
   if (left)
     aggregator_propagate_and_merge(left);
+  else
+    left = &imaginary_node;
 
   if (right)
     aggregator_propagate_and_merge(right);
-
-  /*
-   * Merging sets of potential buckets obviously require node's two children as
-   * arguments. Since our implementation doesn't normalize the trie and therefore
-   * some nodes may have only one child, we simulate missing node by creating
-   * temporary node on stack and using it as an argument for merging.
-   */
-  struct trie_node imaginary_node = { 0 };
-
-  /* Imaginary node inherits potential bucket from its parent */
-  aggregator_node_add_potential_bucket(&imaginary_node, node->original_bucket);
-
-  /* Nodes with only one child */
-  if (left && !right)
+  else
     right = &imaginary_node;
-  else if (!left && right)
-    left = &imaginary_node;
 
-  ASSERT_DIE(left != NULL && right != NULL);
-
-  /*
-   * If there are no common buckets among children's buckets, parent's
-   * buckets are computed as union of its children's buckets.
-   * Otherwise, parent's buckets are computed as intersection of its
-   * children's buckets.
-   */
+  /* Merge sets of potential buckets */
   aggregator_merge_potential_buckets(node, left, right);
 }
 
@@ -867,7 +857,7 @@ aggregator_group_prefixes_helper(struct aggregator_proto *p, struct trie_node *n
     aggregator_process_one_child_nodes(node, inherited_bucket, p->trie_slab);
 
   /* Preorder traversal */
-  if (node->child[0])
+  if (node->child[0]) /* TODO: nestačí tady left a right? Takhle to vypadá, že se left a right pod rukama můžou přepsat. */
   {
     ASSERT_DIE((u32)node->depth == pxlen);
     ip6_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
