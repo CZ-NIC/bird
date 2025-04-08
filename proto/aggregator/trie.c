@@ -348,9 +348,8 @@ aggregator_merge_potential_buckets(struct trie_node *target, const struct trie_n
  * Dump aggregation trie
  */
 static void
-aggregator_dump_trie_helper(const struct aggregator_proto *p, const struct trie_node *node, ip_addr *prefix, u32 pxlen, struct buffer *buf)
+aggregator_dump_trie_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, u32 addr_type, struct buffer *buf)
 {
-  ASSERT_DIE(p != NULL);
   ASSERT_DIE(node != NULL);
   ASSERT_DIE(prefix != NULL);
 
@@ -407,16 +406,16 @@ aggregator_dump_trie_helper(const struct aggregator_proto *p, const struct trie_
   if (node->child[0])
   {
     ASSERT_DIE((u32)node->depth == pxlen);
-    ip6_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
-    aggregator_dump_trie_helper(p, node->child[0], prefix, pxlen + 1, buf);
+    ip6_clrbit(prefix, node->depth + ipa_shift[addr_type]);
+    aggregator_dump_trie_helper(node->child[0], prefix, pxlen + 1, addr_type, buf);
   }
 
   if (node->child[1])
   {
     ASSERT_DIE((u32)node->depth == pxlen);
-    ip6_setbit(prefix, node->depth + ipa_shift[p->addr_type]);
-    aggregator_dump_trie_helper(p, node->child[1], prefix, pxlen + 1, buf);
-    ip6_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
+    ip6_setbit(prefix, node->depth + ipa_shift[addr_type]);
+    aggregator_dump_trie_helper(node->child[1], prefix, pxlen + 1, addr_type, buf);
+    ip6_clrbit(prefix, node->depth + ipa_shift[addr_type]);
   }
 }
 
@@ -429,7 +428,7 @@ aggregator_dump_trie(const struct aggregator_proto *p)
   LOG_BUFFER_INIT(buf);
 
   log("==== TRIE BEGIN ====");
-  aggregator_dump_trie_helper(p, p->root, &prefix, 0, &buf);
+  aggregator_dump_trie_helper(p->root, &prefix, 0, p->addr_type, &buf);
   log("==== TRIE   END ====");
 }
 
