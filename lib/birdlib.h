@@ -248,10 +248,13 @@ static inline u32 u64_hash(u64 v)
 { return hash_value(u64_hash0(v, HASH_PARAM, 0)); }
 
 /* Dumping */
+struct dump_request_target {};
+
 struct dump_request {
   u64 size;
   btime begin;
   uint indent, offset;
+  struct dump_request_target *target;
   void (*write)(struct dump_request *, const char *fmt, ...);
   void (*report)(struct dump_request *, int state, const char *fmt, ...);
 };

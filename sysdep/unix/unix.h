@@ -119,7 +119,7 @@ ip_addr resolve_hostname(const char *host, int type, const char **err_msg);
 struct dump_request *dump_to_file_init(off_t offset);
 void dump_to_file_run(struct dump_request *dr, const char *file, const char *what, void (*dump)(struct dump_request *));
 
-void cmd_dump_file(struct cli *cli, const char *file, const char *what, void (*dump)(struct dump_request *));
+void cmd_dump_file(struct cli *cli, const char *file, const char *what, void (*dump)(struct dump_request *), struct dump_request_target *target);
 
 /* krt.c bits */
 

@@ -259,7 +259,7 @@ cmd_dump_report(struct dump_request *dr, int state, const char *fmt, ...)
 }
 
 void
-cmd_dump_file(struct cli *cli, const char *file, const char *what, void (*dump)(struct dump_request *))
+cmd_dump_file(struct cli *cli, const char *file, const char *what, void (*dump)(struct dump_request *), struct dump_request_target *target)
 {
   if (cli->restricted)
     return cli_printf(cli, 8007, "Access denied");
@@ -269,6 +269,7 @@ cmd_dump_file(struct cli *cli, const char *file, const char *what, void (*dump)(
 
   req->cli = cli;
   req->dr.report = cmd_dump_report;
+  req->dr.target = target;
 
   dump_to_file_run(&req->dr, file, what, dump);
 }
