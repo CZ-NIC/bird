@@ -43,7 +43,7 @@ objdir := @objdir@
 exedir := @exedir@
 
 # Find out which version we are actually building
-VERSION := $(strip $(shell bash tools/version))
+VERSION := $(strip $(shell bash $(srcdir)/tools/version))
 CFLAGS += -DBIRD_VERSION='"$(VERSION)"'
 
 ifeq ($(objdir),.)
