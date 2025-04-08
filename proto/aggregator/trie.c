@@ -439,6 +439,9 @@ aggregator_create_route(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, s
   struct net_addr addr = { 0 };
   net_fill_ipa(&addr, prefix, pxlen);
 
+  struct network *n = allocz(sizeof(*n) + sizeof(addr));
+  net_copy(n->n.addr, &addr);
+
   /* TODO: Proč sem vlastně předáváme struct network? Mělo by nám stačit net_addr. */
   aggregator_bucket_update(p, bucket, n);
 }
@@ -461,7 +464,7 @@ aggregator_prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u3
   struct net_addr addr = { 0 };
   net_fill_ipa(&addr, prefix, pxlen);
   net_copy(&item->addr, &addr);
-#endif 
+#endif
 
   item->bucket = bucket;
 
@@ -873,7 +876,7 @@ aggregator_group_prefixes_helper(struct aggregator_proto *p, struct trie_node *n
   }
 
   /* Prune the trie */
-  if (node->status == NON_FIB && node->px_origin != ORIGINAL && aggregator_is_leaf(node))
+  if (node->status == NON_FIB && node->px_origin != ORIGINAL && !node->child[0] && !node->child[1])
   {
     ASSERT_DIE(node->selected_bucket == NULL);
     aggregator_remove_node(node);
