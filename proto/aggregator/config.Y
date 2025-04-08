@@ -26,6 +26,18 @@ CF_KEYWORDS(AGGREGATOR, PEER, AGGREGATE, ON, MERGE, BY, RELOAD, AFTER, LOG, ALL)
 
 CF_GRAMMAR
 
+CF_CLI(DUMP AGGREGATOR TRIE, CF_SYM_KNOWN text,, [[Dump prefix aggregation trie]])
+{
+  cf_assert_symbol($4, SYM_PROTO);
+
+  struct proto_config *cfg = $4->proto;
+  struct proto *P = cfg->proto;
+  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, p, P);
+  struct dump_request_target *dump_request_target = &p->dump_request_target;
+
+  cmd_dump_file(this_cli, $5, "Prefix aggregation trie", aggregator_trie_dump, dump_request_target);
+};
+
 proto: aggregator_proto ;
 
 aggregator_proto_start: proto_start AGGREGATOR

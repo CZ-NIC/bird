@@ -100,6 +100,9 @@ struct aggregator_proto {
   struct rte_withdrawal_item *rte_withdrawal_stack;
   struct linpool *rte_withdrawal_pool;
   int rte_withdrawal_count;
+
+  /* This may be requested as a dump target */
+  struct dump_request_target dump_request_target;
 };
 
 enum aggr_item_type {
@@ -152,5 +155,7 @@ void aggregator_recompute(struct aggregator_proto *p, struct aggregator_route *o
 void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net);
 
 struct trie_node *aggregator_root_init(struct aggregator_bucket *bucket, struct slab *trie_slab);
+
+void aggregator_trie_dump(struct dump_request *dreq);
 
 #endif

@@ -348,7 +348,7 @@ aggregator_merge_potential_buckets(struct trie_node *target, const struct trie_n
  * Dump aggregation trie
  */
 static void
-aggregator_dump_trie_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, u32 addr_type, struct buffer *buf)
+aggregator_trie_dump_helper(const struct trie_node *node, ip_addr *prefix, u32 pxlen, u32 addr_type, struct buffer *buf, struct dump_request *dreq)
 {
   ASSERT_DIE(node != NULL);
   ASSERT_DIE(prefix != NULL);
@@ -401,35 +401,37 @@ aggregator_dump_trie_helper(const struct trie_node *node, ip_addr *prefix, u32 p
     buffer_print(buf, " -> [[%u]]", node->selected_bucket->id);
 
   buffer_print(buf, " %p %s", node, px_origin_str[node->px_origin]);
-  log("%s", buf->start);
+  RDUMP("%s\n", buf->start);
 
   if (node->child[0])
   {
     ASSERT_DIE((u32)node->depth == pxlen);
     ip6_clrbit(prefix, node->depth + ipa_shift[addr_type]);
-    aggregator_dump_trie_helper(node->child[0], prefix, pxlen + 1, addr_type, buf);
+    aggregator_trie_dump_helper(node->child[0], prefix, pxlen + 1, addr_type, buf, dreq);
   }
 
   if (node->child[1])
   {
     ASSERT_DIE((u32)node->depth == pxlen);
     ip6_setbit(prefix, node->depth + ipa_shift[addr_type]);
-    aggregator_dump_trie_helper(node->child[1], prefix, pxlen + 1, addr_type, buf);
+    aggregator_trie_dump_helper(node->child[1], prefix, pxlen + 1, addr_type, buf, dreq);
     ip6_clrbit(prefix, node->depth + ipa_shift[addr_type]);
   }
 }
 
-static void
-aggregator_dump_trie(const struct aggregator_proto *p)
+void
+aggregator_trie_dump(struct dump_request *dreq)
 {
+  struct aggregator_proto *p = SKIP_BACK(struct aggregator_proto, dump_request_target, dreq->target);
+
   ip_addr prefix = (p->addr_type == NET_IP4) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
 
   struct buffer buf = { 0 };
   LOG_BUFFER_INIT(buf);
 
-  log("==== TRIE BEGIN ====");
-  aggregator_dump_trie_helper(p->root, &prefix, 0, p->addr_type, &buf);
-  log("==== TRIE   END ====");
+  RDUMP("======== TRIE BEGIN ========\n");
+  aggregator_trie_dump_helper(p->root, &prefix, 0, p->addr_type, &buf, dreq);
+  RDUMP("======== TRIE   END ========\n");
 }
 
 static inline void
