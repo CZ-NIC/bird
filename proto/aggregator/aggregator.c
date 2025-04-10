@@ -42,17 +42,6 @@
 extern linpool *rte_update_pool;
 
 /*
- * Allocate unique ID for bucket
- */
-static inline u32
-aggregator_get_new_bucket_id(struct aggregator_proto *p)
-{
-  u32 id = hmap_first_zero(&p->bucket_id_map);
-  hmap_set(&p->bucket_id_map, id);
-  return id;
-}
-
-/*
  * Add @bucket to the list of bucket pointers in @p to position @bucket.id
  */
 // TODO: enable to reset bucket ptr?
@@ -658,7 +647,9 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
       memcpy(new_bucket, tmp_bucket, sizeof(*new_bucket) + sizeof(new_bucket->aggr_data[0]) * p->aggr_on_count);
       HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 
-      new_bucket->id = aggregator_get_new_bucket_id(p);
+      new_bucket->id = hmap_first_zero(&p->bucket_id_map);
+      hmap_set(&p->bucket_id_map, new_bucket->id);
+
       aggregator_add_bucket(p, new_bucket);
     }
 
@@ -838,7 +829,9 @@ aggregator_trie_init(struct aggregator_proto *p)
   new_bucket->hash = mem_hash_value(&haux);
 
   /* Assign ID to the root node bucket */
-  new_bucket->id = aggregator_get_new_bucket_id(p);
+  new_bucket->id = hmap_first_zero(&p->bucket_id_map);
+  hmap_set(&p->bucket_id_map, new_bucket->id);
+
   aggregator_add_bucket(p, new_bucket);
 
   struct aggregator_route *arte = lp_allocz(p->route_pool, sizeof(*arte));
