@@ -53,7 +53,7 @@ aggregator_proto_start: proto_start AGGREGATOR
   AGGREGATOR_CFG->aggr_mode = PREFIX_AGGR;
   AGGREGATOR_CFG->src->ra_mode = RA_OPTIMAL;
   AGGREGATOR_CFG->dst->ra_mode = RA_ANY;
-  AGGREGATOR_CFG->logging = 0;
+  AGGREGATOR_CFG->logging = false;
 };
 
 aggregator_proto_item:
@@ -100,7 +100,7 @@ aggregator_proto_item:
    $4->args++;
    AGGREGATOR_CFG->merge_by = $4;
  }
- | LOG ALL { AGGREGATOR_CFG->logging = 1; }
+ | LOG ALL { AGGREGATOR_CFG->logging = true; }
 ;
 
 aggregator_proto_opts: /* empty */ | aggregator_proto_opts aggregator_proto_item ';' ;

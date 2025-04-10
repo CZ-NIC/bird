@@ -125,8 +125,8 @@ aggregator_aggregate_on_feed_end(struct channel *C)
   ASSERT_DIE(p->aggr_mode == PREFIX_AGGR);
   ASSERT_DIE(p->root != NULL);
 
-  p->initial_feed = 0;
   aggregator_aggregate(p);
+  p->initial_feed = false;
 }
 
 /*
@@ -886,10 +886,10 @@ aggregator_start(struct proto *P)
     .data = p,
   };
 
-  p->initial_feed = 1;
-
-  hmap_init(&p->bucket_id_map, p->p.pool, 1024);
+  hmap_init(&p->bucket_id_map, P->pool, 1024);
   hmap_set(&p->bucket_id_map, 0);       /* 0 is default value, do not use it as ID */
+
+  p->initial_feed = true;
 
   if (p->aggr_mode == PREFIX_AGGR)
   {
@@ -901,7 +901,7 @@ aggregator_start(struct proto *P)
     ASSERT_DIE(p->bucket_list_count == 0);
 
     p->bucket_list_size = BUCKET_LIST_INIT_SIZE;
-    p->bucket_list = mb_allocz(p->p.pool, sizeof(p->bucket_list[0]) * p->bucket_list_size);
+    p->bucket_list = mb_allocz(P->pool, sizeof(p->bucket_list[0]) * p->bucket_list_size);
 
     p->rte_withdrawal_pool = lp_new(P->pool);
     p->rte_withdrawal_count = 0;
@@ -943,7 +943,7 @@ aggregator_cleanup(struct proto *P)
 
   p->bucket_id_map = (struct hmap) { 0 };
 
-  p->initial_feed = 1;
+  p->initial_feed = true;
 }
 
 static int

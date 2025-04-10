@@ -72,29 +72,29 @@ struct aggregator_proto {
   HASH(struct aggregator_route) routes;
   struct linpool *route_pool;
 
+  /* Bucket IDs */
+  struct hmap bucket_id_map;
+
   /* Aggregator rule */
+  struct aggr_item *aggr_on;
   u32 aggr_on_count;
   u32 aggr_on_da_count;
-  struct aggr_item *aggr_on;
 
   /* Merge filter */
   const struct f_line *merge_by;
   event reload_buckets;
 
   /* Aggregation trie */
-  u32 addr_type;
   struct trie_node *root;
   struct slab *trie_slab;
-  int initial_feed;
-  int logging;
+  u32 addr_type;
+  bool initial_feed;
+  bool logging;
 
   /* Array of bucket pointers */
   struct aggregator_bucket **bucket_list;
-  size_t bucket_list_size;
-  size_t bucket_list_count;
-
-  /* Bucket IDs */
-  struct hmap bucket_id_map;
+  uint bucket_list_size;
+  int bucket_list_count;
 
   /* Route withdrawal */
   struct rte_withdrawal_item *rte_withdrawal_stack;

@@ -142,8 +142,6 @@
 #include "filter/filter.h"
 #include "proto/aggregator/aggregator.h"
 
-#include <stdbool.h>
-
 static const char *px_origin_str[] = {
   [FILLER]     = "filler",
   [ORIGINAL]   = "original",
