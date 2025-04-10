@@ -440,11 +440,8 @@ aggregator_create_route(struct aggregator_proto *p, ip_addr prefix, u32 pxlen, s
   struct net_addr addr = { 0 };
   net_fill_ipa(&addr, prefix, pxlen);
 
-  struct network *n = allocz(sizeof(*n) + sizeof(addr));
-  net_copy(n->n.addr, &addr);
-
   /* TODO: Proč sem vlastně předáváme struct network? Mělo by nám stačit net_addr. */
-  aggregator_bucket_update(p, bucket, n);
+  aggregator_bucket_update(p, bucket, &addr);
 }
 
 /*

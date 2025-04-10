@@ -211,12 +211,12 @@ aggregator_same_val_list(const struct f_val *v1, const struct f_val *v2, u32 len
  * Create and export new merged route
  */
 void
-aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, struct network *net)
+aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, const struct net_addr *addr)
 {
   /* Empty bucket */
   if (!bucket->rte)
   {
-    rte_update2(p->dst, net->n.addr, NULL, bucket->last_src);
+    rte_update2(p->dst, addr, NULL, bucket->last_src);
     bucket->last_src = NULL;
     return;
   }
@@ -247,18 +247,20 @@ aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *b
       aggregator_rta_set_static_attr(rta, bucket->rte->attrs, p->aggr_on[i].sa);
   }
 
-  struct rte *new = rte_get_temp(rta, p->p.main_source);
-  /* Here we need _some_ net to run the filters properly
-   * TODO: use a temporary local net instead of a real one to avoid confusion */
-  new->net = net;
-  //struct network *n = allocz(sizeof(*n) + sizeof(addr));
-  //net_copy(n->n.addr, &addr);
+  struct network *net = allocz(sizeof(*net) + sizeof(*addr));
+  net_copy(net->n.addr, addr);
 
+  /*
+   * Here we need _some_ net to run the filters properly
+   * TODO: use a temporary local net instead of a real one to avoid confusion
+   */
+  struct rte *new_rte = rte_get_temp(rta, p->p.main_source);
+  new_rte->net = net;
 
   if (p->logging)
   {
     log("=============== CREATE MERGED ROUTE ===============");
-    log("New route created: id = %d, protocol: %s", new->src->global_id, new->src->proto->name);
+    log("New route created: id = %d, protocol: %s", new_rte->src->global_id, new_rte->src->proto->name);
     log("===================================================");
   }
 
@@ -269,17 +271,17 @@ aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *b
   };
 
   /* Actually run the filter */
-  enum filter_return fret = f_eval_rte(p->merge_by, &new, rte_update_pool, 1, &val, 0);
+  enum filter_return fret = f_eval_rte(p->merge_by, &new_rte, rte_update_pool, 1, &val, 0);
 
   /* Src must be stored now, rte_update2() may return new */
-  struct rte_src *new_src = new ? new->src : NULL;
+  struct rte_src *new_src = new_rte ? new_rte->src : NULL;
 
   /* Finally import the route */
   switch (fret)
   {
     /* Pass the route to the protocol */
     case F_ACCEPT:
-      rte_update2(p->dst, net->n.addr, new, bucket->last_src ?: new->src);
+      rte_update2(p->dst, net->n.addr, new_rte, bucket->last_src ?: new_rte->src);
       break;
 
     /* Something bad happened */
@@ -319,7 +321,7 @@ aggregator_reload_buckets(void *data)
   HASH_WALK(p->buckets, next_hash, b)
     if (b->rte)
     {
-      aggregator_bucket_update(p, b, b->rte->net);
+      aggregator_bucket_update(p, b, b->rte->net->n.addr);
       lp_flush(rte_update_pool);
     }
   HASH_WALK_END;
@@ -713,10 +715,10 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   {
     /* Announce changes */
     if (old_bucket)
-      aggregator_bucket_update(p, old_bucket, net);
+      aggregator_bucket_update(p, old_bucket, net->n.addr);
 
     if (new_bucket && (new_bucket != old_bucket))
-      aggregator_bucket_update(p, new_bucket, net);
+      aggregator_bucket_update(p, new_bucket, net->n.addr);
   }
   else if (p->aggr_mode == PREFIX_AGGR)
   {
