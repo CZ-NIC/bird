@@ -21,8 +21,10 @@ struct pfd {
   BUFFER(struct birdloop *) loop;
 };
 
+uint sk_max_dump_len(void);
+void sk_dump_to_buffer(buffer *buf, sock *s);
 void sockets_prepare(struct birdloop *, struct pfd *);
-void socket_changed(struct birdsock *);
+void socket_changed(struct birdsock *, bool recalculate_sk_info);
 
 void pipe_new(struct pipe *);
 void pipe_pollin(struct pipe *, struct pfd *);
@@ -59,6 +61,7 @@ struct birdloop
   struct birdsock *sock_active;
   int sock_num;
   uint sock_changed:1;
+  char *_Atomic sockets_info;
 
   uint ping_pending;
 

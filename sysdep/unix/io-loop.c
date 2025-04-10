@@ -392,7 +392,7 @@ sockets_init(struct birdloop *loop)
 }
 
 void
-socket_changed(sock *s)
+socket_changed(struct birdsock *s, bool recalculate_sk_info)
 {
   struct birdloop *loop = s->loop;
   ASSERT_DIE(birdloop_inside(loop));
@@ -400,6 +400,38 @@ socket_changed(sock *s)
   LOOP_TRACE(loop, DL_SOCKETS, "socket %p changed", s);
   loop->sock_changed = 1;
   birdloop_ping(loop);
+
+  if (loop != &main_birdloop && recalculate_sk_info)
+  {
+    int size = loop->sock_num * sk_max_dump_len() + 17;
+    char *new_info = mb_alloc(loop->pool, size);
+
+    node *n;
+    buffer buf = {
+      .start = new_info,
+      .pos = new_info,
+      .end = new_info + size,
+    };
+
+    buffer_print(&buf, "%p ", s);
+
+    WALK_LIST(n, loop->sock_list)
+    {
+      SKIP_BACK_DECLARE(sock, s, n, n);
+      sk_dump_to_buffer(&buf, s);
+    }
+    buf.pos[0] = '\0';
+
+    char *old_info = NULL;
+    if (loop->sockets_info)
+      old_info = atomic_load_explicit(&loop->sockets_info, memory_order_relaxed);
+    atomic_store_explicit(&loop->sockets_info, new_info, memory_order_relaxed);
+
+    synchronize_rcu();
+
+    if (old_info)
+      mb_free(old_info);
+  }
 }
 
 void
@@ -415,7 +447,7 @@ birdloop_add_socket(struct birdloop *loop, sock *s)
   s->loop = loop;
   s->index = -1;
 
-  socket_changed(s);
+  socket_changed(s, true);
 }
 
 extern sock *stored_sock; /* mainloop hack */
@@ -443,7 +475,7 @@ birdloop_remove_socket(struct birdloop *loop, sock *s)
   rem_node(&s->n);
   loop->sock_num--;
 
-  socket_changed(s);
+  socket_changed(s, true);
 
   s->loop = NULL;
   s->index = -1;
@@ -467,7 +499,7 @@ sk_pause_rx(struct birdloop *loop, sock *s)
 {
   ASSERT_DIE(birdloop_inside(loop));
   s->rx_hook = NULL;
-  socket_changed(s);
+  socket_changed(s, false);
 }
 
 void
@@ -476,7 +508,7 @@ sk_resume_rx(struct birdloop *loop, sock *s, int (*hook)(sock *, uint))
   ASSERT_DIE(birdloop_inside(loop));
   ASSERT_DIE(hook);
   s->rx_hook = hook;
-  socket_changed(s);
+  socket_changed(s, false);
 }
 
 static inline uint sk_want_events(sock *s)
@@ -1675,66 +1707,49 @@ struct bird_thread_show_socket {
   struct dump_request *dreq;
 };
 
-static void
-_sk_dump_for_thread(struct dump_request *dreq, list sock_list)
+void
+sk_dump_all(struct dump_request *dreq)
 {
+  RDUMP("Open sockets:\n");
+  dreq->indent += 3;
+
   node *n;
   sock *s;
 
-  WALK_LIST(n, sock_list)
+  /* Dump sockets in main_birdloop */
+  WALK_LIST(n, main_birdloop.sock_list)
   {
     s = SKIP_BACK(sock, n, n);
     RDUMP("%p ", s);
     sk_dump(dreq, &s->r);
   }
-}
 
-static void
-sk_dump_for_thread(struct bird_thread_syncer *sync)
-{
-  SKIP_BACK_DECLARE(struct bird_thread_show_socket, tss, sync, sync);
-  struct dump_request *dreq = tss->dreq;
-
-  WALK_TLIST(birdloop, loop, &this_thread->loops)
-  {
-    birdloop_enter(loop);
-    _sk_dump_for_thread(dreq, loop->sock_list);
-    birdloop_leave(loop);
-  }
-}
-
-static void
-sk_dump_for_thread_done(struct bird_thread_syncer *sync)
-{
-  SKIP_BACK_DECLARE(struct bird_thread_show_socket, tss, sync, sync);
-  struct dump_request *dreq = tss->dreq;
-
-  dreq->indent -= 3;
-  RDUMP("\n");
-}
-
-void
-sk_dump_all(struct dump_request *dreq)
-{
-  struct bird_thread_show_socket *tss = mb_allocz(&root_pool, sizeof(struct bird_thread_show_socket));
-  tss->dreq = dreq;
-
-  RDUMP("Open sockets:\n");
-  dreq->indent += 3;
-  _sk_dump_for_thread(dreq, main_birdloop.sock_list);
+  /* The rest of birdloops have the socket info cached */
+  WALK_TLIST(thread_group, gpub, &global_thread_group_list)
+    TG_LOCKED(gpub, group)
+      WALK_TLIST(thread, thr, &group->threads)
+        WALK_TLIST(birdloop, loop, &thr->loops)
+        {
+          rcu_read_lock();
+            char *info = atomic_load_explicit(&loop->sockets_info, memory_order_relaxed);
+          rcu_read_unlock();
+          if (info)
+            RDUMP(info);
+        }
 
   WALK_TLIST_DELSAFE(thread_group, gpub, &global_thread_group_list)
   TG_LOCKED(gpub, group)
   {
-    WALK_TLIST_DELSAFE(birdloop, loop, &group->loops)
-    {
-      birdloop_enter(loop);
-      _sk_dump_for_thread(dreq, loop->sock_list);
-      birdloop_leave(loop);
+    WALK_TLIST_DELSAFE(birdloop, loop, &group->loops){
+      rcu_read_lock();
+        char *info = atomic_load_explicit(&loop->sockets_info, memory_order_relaxed);
+      rcu_read_unlock();
+      if (info)
+        RDUMP(info);
     }
   }
-
-  bird_thread_sync_all(&tss->sync, sk_dump_for_thread, sk_dump_for_thread_done, "Show sockets");
+  dreq->indent -= 3;
+  RDUMP("\n");
 }
 
 static void

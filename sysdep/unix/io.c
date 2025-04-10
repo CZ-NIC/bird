@@ -1233,6 +1233,36 @@ sk_dump(struct dump_request *dreq, resource *r)
 	s->iface ? s->iface->name : "none");
 }
 
+uint
+sk_max_dump_len(void)
+{
+  uint ret = strlen("(%s, ud=%p, sa=%I, sp=%d, da=%I, dp=%d, tos=%d, ttl=%d, if=%s)\n");
+  ret += 3; // max sk_type_name = 5
+  ret += 14; // looks like %p size is 16
+  ret += (IP6_MAX_TEXT_LENGTH -2) * 2;
+  ret += 14 * 4; // %d
+  ret += IFNAMSIZ - 2;
+  ret++; // terminating zero
+  return ret;
+}
+
+void
+sk_dump_to_buffer(buffer *buf, sock *s)
+{
+  static char *sk_type_names[] = { "TCP<", "TCP>", "TCP", "UDP", NULL, "IP", NULL, "MAGIC", "UNIX<", "UNIX", "SSH>", "SSH", "DEL!" };
+
+  buffer_print(buf, "(%s, ud=%p, sa=%I, sp=%d, da=%I, dp=%d, tos=%d, ttl=%d, if=%s)\n",
+	sk_type_names[s->type],
+	s->data,
+	s->saddr,
+	s->sport,
+	s->daddr,
+	s->dport,
+	s->tos,
+	s->ttl,
+	s->iface ? s->iface->name : "none");
+}
+
 static struct resclass sk_class = {
   "Socket",
   sizeof(sock),
@@ -2161,7 +2191,7 @@ sk_send(sock *s, unsigned len)
 
   int e = sk_maybe_write(s);
   if (e == 0) /* Trigger thread poll reload to poll this socket's write. */
-    socket_changed(s);
+    socket_changed(s, false);
 
   return e;
 }
