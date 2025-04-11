@@ -19,6 +19,12 @@ stages:
   - test
   - release
 
+## Common rules
+.never_wip: &never_wip
+  # Ignore WIP commits
+  if: $CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/
+  when: never
+
 ## Docker Image Rules
 #
 # We are running all the build / packaging tests in Dockers (unless otherwise)
@@ -44,6 +50,7 @@ stages:
   # That's Docker in Docker
   - dind
   rules:
+  - *never_wip
   - if: '$CI_COMMIT_TAG'
     # Never rebuild for tags
     when: never
@@ -236,6 +243,9 @@ docker-ubuntu-24_10-amd64:
   - $MAKE check
   # Build docs when tools are available
   - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
+  rules:
+  - *never_wip
+  - when: always
 
 # A special task for preparing the release archives
 build-release:
@@ -254,6 +264,9 @@ build-release:
       - obj/doc/bird-singlepage.html
       - bird-*.tar.gz
     expire_in: 1 day
+  rules:
+  - *never_wip
+  - when: always
 
 .build-linux: &build-linux
   <<: *build-base
@@ -484,6 +497,9 @@ build-only-static:
   artifacts:
     paths:
       - pkg/pkgs/*
+  rules:
+  - *never_wip
+  - when: always
 
 .pkg-deb-legacy: &pkg-deb-legacy
   stage: pkg
@@ -500,6 +516,9 @@ build-only-static:
   artifacts:
     paths:
       - pkg/pkgs/*
+  rules:
+  - *never_wip
+  - when: always
 
 .pkg-rpm: &pkg-rpm
   stage: pkg
@@ -510,6 +529,9 @@ build-only-static:
   artifacts:
     paths:
       - pkg/pkgs/*
+  rules:
+  - *never_wip
+  - when: always
 
 .pkg-rpm-wa: &pkg-rpm-wa
   stage: pkg
@@ -523,6 +545,9 @@ build-only-static:
   artifacts:
     paths:
       - pkg/pkgs/*
+  rules:
+  - *never_wip
+  - when: always
 
 pkg-centos-7-amd64:
   <<: *pkg-rpm-wa
@@ -707,6 +732,9 @@ build-netlab:
       - $BDIR/bird
       - $BDIR/birdc
     expire_in: 2 hours
+  rules:
+  - *never_wip
+  - when: always
 
 .test: &test-base
   stage: test
@@ -724,6 +752,9 @@ build-netlab:
     - cd netlab
     - sudo ./stop
     - sudo ./runtest -s v2 -m check $TEST_NAME
+  rules:
+  - *never_wip
+  - when: always
 
 test-ospf-base:
   <<: *test-base
@@ -893,6 +924,9 @@ test-mpls-bgp-l3vpn:
     - ./configure
     - gmake
     - gmake check
+  rules:
+  - *never_wip
+  - when: always
 
 # There is no docker for BSD's, these are proper virtuals in QEMU.
 build-birdlab-freebsd-13:
