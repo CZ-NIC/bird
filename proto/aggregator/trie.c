@@ -209,17 +209,17 @@ aggregator_remove_node(struct trie_node *node)
 }
 
 /*
- * Insert @bucket to the set of potential buckets in @node
+ * Insert @bucket_id to the set of potential buckets in @node
  */
 static inline void
-aggregator_node_add_potential_bucket(struct trie_node *node, const struct aggregator_bucket *bucket)
+aggregator_node_add_potential_bucket(struct trie_node *node, u32 bucket_id)
 {
   ASSERT_DIE(node->potential_buckets_count < MAX_POTENTIAL_BUCKETS_COUNT);
 
-  if (BIT32R_TEST(node->potential_buckets, bucket->id))
+  if (BIT32R_TEST(node->potential_buckets, bucket_id))
     return;
 
-  BIT32R_SET(node->potential_buckets, bucket->id);
+  BIT32R_SET(node->potential_buckets, bucket_id);
   node->potential_buckets_count++;
 }
 
@@ -651,7 +651,7 @@ aggregator_propagate_and_merge(struct trie_node *node)
 
     /* For the leaf node, by definition, the only bucket in the bitmap is the
      * original bucket. */
-    aggregator_node_add_potential_bucket(node, node->original_bucket);
+    aggregator_node_add_potential_bucket(node, node->original_bucket->id);
 
     /* No children, no further work. Done! */
     return;
@@ -662,7 +662,7 @@ aggregator_propagate_and_merge(struct trie_node *node)
    * and nothing else. This fixes the (kinda) missing first pass
    * when comparing our algorithm to the original one. */
   struct trie_node imaginary_node = { 0 };
-  aggregator_node_add_potential_bucket(&imaginary_node, node->original_bucket);
+  aggregator_node_add_potential_bucket(&imaginary_node, node->original_bucket->id);
 
   /* Process children */
   if (left)
@@ -706,7 +706,7 @@ aggregator_process_one_child_nodes(struct trie_node *node, const struct aggregat
   };
 
   /* Imaginary node inherits bucket from its parent - current node */
-  aggregator_node_add_potential_bucket(&imaginary_node, node->original_bucket);
+  aggregator_node_add_potential_bucket(&imaginary_node, node->original_bucket->id);
 
   /*
    * If the current node (parent of the imaginary node) has a bucket, then
@@ -975,7 +975,7 @@ aggregator_merge_buckets_above(struct trie_node *node)
     ASSERT_DIE(left == node || right == node);
 
     struct trie_node imaginary_node = { 0 };
-    aggregator_node_add_potential_bucket(&imaginary_node, parent->original_bucket);
+    aggregator_node_add_potential_bucket(&imaginary_node, parent->original_bucket->id);
 
     /* Nodes with only one child */
     if (left && !right)
