@@ -13,6 +13,7 @@ variables:
   STAYRTR_BINARY: /usr/bin/stayrtr
 
 stages:
+  - consistency
   - image
   - build
   - pkg
@@ -20,10 +21,23 @@ stages:
   - release
 
 ## Common rules
+# Ignore WIP commits
 .never_wip: &never_wip
-  # Ignore WIP commits
   if: $CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/
   when: never
+# Run for stable branches
+.if_stable: &if_stable
+  if: $CI_COMMIT_BRANCH =~ /^(stable-.*|thread-next|master)$/
+  when: always
+
+## Consistency checks for stable branches
+.commit-messages:
+  stage: consistency
+  script:
+  - tools/git-check-commits
+  rules:
+  - *if_stable
+  - when: never
 
 ## Docker Image Rules
 #
