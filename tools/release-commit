@@ -1,0 +1,84 @@
+#!/bin/bash
+
+set -e
+
+toplevel=$(readlink -f $(dirname $0)/..)
+current_version=$(<$toplevel/VERSION)
+
+pushd $toplevel > /dev/null
+
+# Enforce clean repository (we are going to commit!)
+if [ $(git status --porcelain -uno | wc -l) != "0" ]; then
+  echo "Dirty repository, commit or stash!"
+  exit 1
+fi
+
+# Enforce no fixups and no WIPs
+tools/git-check-commits
+
+# Compute the new version
+case $1 in
+  patch)
+    new_version=$(awk -F. 'OFS="." { $3+=1; print; }' <<<"$current_version")
+    ;;
+  minor)
+    new_version=$(awk -F. 'OFS="." { $2+=1; if ($1 < 3) print $1,$2; else print $1,$2,0; }' <<<"$current_version")
+    ;;
+  *)
+    echo "Usage: $0 (minor|patch)"
+    echo "Commits the version update commit"
+    exit 2
+esac
+
+file=$(mktemp)
+news=$(mktemp)
+function cleanup() {
+  rm -f $file $news
+}
+trap cleanup EXIT ERR
+
+# Prepare the NEWS file
+echo "## Releasing version $new_version ##" >> $file
+echo -n "########################" >> $file
+sed 's/./#/g' <<<"$new_version" >> $file
+echo >> $file
+news_headline="Version $new_version ($(date +%F))"
+echo $news_headline >> $file
+git log --oneline v$current_version..HEAD | sed -r 's/^([^ ]+) (.*)/# commit \1\n  o \2/' >> $file
+echo >> $file
+echo "# Empty the file to cancel the commit." >> $file
+echo "# Do not change the Version header." >> $file
+
+# Edit the NEWS file
+$(git var GIT_EDITOR) $file
+
+# Collect the result
+if ! egrep -v '^(#.*)?$' $file > $news; then
+  echo "Release canceled"
+  exit 1
+fi
+
+# Check whether the result is correct
+if [ "$news_headline" != "$(head -n1 $news)" ]; then
+  echo "Garbled headline, got $(head -n1 $news)"
+  exit 1
+fi
+
+badlines=$(tail -n+2 $news | grep -v '^  [o ] ' | wc -l)
+if [ "$badlines" != 0 ]; then
+  echo "Garbled news file, offending lines:"
+  tail -n+2 $news | grep -v '^  [o ] '
+  exit 1
+fi
+
+# Do the changes in the repository: NEWS, bird.spec and VERSION
+echo >> $news
+cat NEWS >> $news
+mv $news NEWS
+
+sed -i "s/^Version: $current_version\$/Version: $new_version/" misc/bird.spec
+
+echo $new_version > VERSION
+
+# Commit!
+git commit -m "NEWS and version update" -- NEWS VERSION misc/bird.spec
