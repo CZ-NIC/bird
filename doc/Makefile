@@ -20,7 +20,7 @@ $(o)prog.sgml: $(srcdir)/tools/progdoc $(objdir)/.dir-stamp
 	$(srcdir)/tools/progdoc $(srcdir) $@
 
 $(o)%.sgml: $(s)%.sgml $(objdir)/.dir-stamp
-	cp $< $@
+	sed 's#{{ VERSION }}#$(VERSION)#' <$< >$@
 
 $(o)%.html: $(o)%.sgml
 	cd $(dir $@) && $(toolsdir)/linuxdoc -B html $(notdir $<)
