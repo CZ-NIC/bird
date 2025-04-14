@@ -1,20 +1,48 @@
-#!/bin/bash
+#!/bin/sh
 
-# Aren't we directly at version?
-TAG=$(git tag | grep -F $(git describe))
-if [ -n "$TAG" ]; then
-  echo $TAG
+set -e
+
+# Get the release version
+toplevel="$(readlink -f $(dirname $0)/../)"
+RELEASE_VERSION=$(cat "$toplevel/VERSION")
+
+# Not in a git repo, or no git installed.
+if ! git status --porcelain > /dev/null; then
+  echo $RELEASE_VERSION
   exit 0
 fi
 
-# Get version tag
-# Uses 'git log ...' insted of 'git tag --merged' to support older distros
-TAG=$(git log --oneline --pretty=format:"%d" \
-    | grep -Eo '^ \(tag:\ v[[:digit:]]+.*(,|\))' \
-    | head -n 1 \
-    | sed -n 's/^ (tag:\ v//p' | sed -n 's/\(,.*\|)\)//p')
+# Check VERSION file updates in uncommitted changes
+if git status --porcelain | grep -q '^...VERSION$'; then
+  echo "WARNING: Version file changed and not committed" >&2
+  echo $RELEASE_VERSION
+  exit 0
+fi
 
+# If clean, check VERSION file updates in the current commit
+if [ $(git status --porcelain -uno | wc -l) = "0" ] && [ $(git show -- VERSION | wc -l) != "0" ]; then
+  echo $RELEASE_VERSION
+  exit 0
+fi
+
+# We'll create a development version number, get the hash
 HASH=$(git rev-parse --short=12 HEAD)
+
+# Find the release
+case "$(git tag -l | grep "^v$RELEASE_VERSION\$" | wc -l | sed -r 's/^ *//;s/ +-//')" in
+  "1") # Already tagged
+    RELEASE_COMMIT=v$RELEASE_VERSION
+    ;;
+  "0") # Not yet tagged
+    RELEASE_COMMIT=$(git log --oneline -- VERSION | sed 's/ .*//')
+    ;;
+  *)
+    echo "ERROR: There are too many matching tags in the repository"
+    git tag -l | grep "^v$RELEASE_VERSION\$"
+    git tag -l | grep "^v$RELEASE_VERSION\$" | wc -l
+    exit 1
+    ;;
+esac
 
 # Add branch info if not passed via command line
 if [ -z "${BRANCH}" ]; then
@@ -24,10 +52,10 @@ fi
 
 # Found a branch
 if [ -n "$BRANCH" ]; then
-  LENGTH=$(git log --oneline v$TAG..HEAD | wc -l)
-  echo $TAG+branch.$(echo $BRANCH | sed 's/[^a-zA-Z0-9]/./g').${HASH}
+  LENGTH=$(git log --oneline $RELEASE_COMMIT..HEAD | wc -l)
+  echo $RELEASE_VERSION+branch.$(echo $BRANCH | sed 's/[^a-zA-Z0-9]/./g').${HASH}
   exit 0
 fi
 
-echo $TAG+detached.${HASH}
+echo $RELEASE_VERSION+detached.${HASH}
 exit 0

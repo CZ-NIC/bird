@@ -6,7 +6,7 @@
 #
 
 #VERSION=`grep 'BIRD_VERSION \"' sysdep/config.h | sed '/BIRD_VERSION/!d;s/^.*"\(.*\)"$/\1/'`
-VERSION=`tools/version | sed 's/^v//'`
+VERSION=`tools/version`
 REL=bird-$VERSION
 DREL=bird-doc-$VERSION
 T=/tmp/bird

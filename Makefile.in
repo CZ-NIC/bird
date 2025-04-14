@@ -43,7 +43,9 @@ objdir := @objdir@
 exedir := @exedir@
 
 # Find out which version we are actually building
+# This is rewritten by the release tools by hardcoded version
 VERSION := $(strip $(shell bash $(srcdir)/tools/version))
+
 CFLAGS += -DBIRD_VERSION='"$(VERSION)"'
 
 ifeq ($(objdir),.)
