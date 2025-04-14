@@ -84,7 +84,7 @@ aggregator_withdraw_rte(struct aggregator_proto *p)
   if ((p->addr_type == NET_IP4 && p->rte_withdrawal_count > IP4_WITHDRAWAL_MAX_EXPECTED_LIMIT) ||
       (p->addr_type == NET_IP6 && p->rte_withdrawal_count > IP6_WITHDRAWAL_MAX_EXPECTED_LIMIT))
     log(L_WARN "This number of updates was not expected."
-               "They will be processed, but please, contact the developers.");
+               "They will be processed. Please, report this to developers.");
 
   struct rte_withdrawal_item *node = NULL;
 
@@ -711,8 +711,10 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   }
   else if (p->aggr_mode == PREFIX_AGGR)
   {
+    /* When receiving initial feed, whole trie is aggregated at once */
     if (!p->initial_feed)
     {
+      /* After initial feed, recompute after receiving incremental update */
       aggregator_recompute(p, old_route, new_route);
 
       /* Process route withdrawals triggered by recomputation */
@@ -829,6 +831,7 @@ aggregator_trie_init(struct aggregator_proto *p)
   new_bucket->id = hmap_first_zero(&p->bucket_id_map);
   hmap_set(&p->bucket_id_map, new_bucket->id);
 
+  /* Add bucket pointer to the list of pointers */
   aggregator_add_bucket(p, new_bucket);
 
   struct aggregator_route *arte = lp_allocz(p->route_pool, sizeof(*arte));
@@ -846,6 +849,7 @@ aggregator_trie_init(struct aggregator_proto *p)
   arte->rte.net = default_net;
   default_net->routes = &arte->rte;
 
+  /* Insert bucket and route into their hash chains */
   HASH_INSERT2(p->routes, AGGR_RTE, p->p.pool, arte);
   HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 

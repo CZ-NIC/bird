@@ -1,10 +1,10 @@
 /*
- *	BIRD Internet Routing Daemon -- Prefix aggregation
+ *  BIRD Internet Routing Daemon -- Prefix aggregation
  *
- *	(c) 2023--2025 Igor Putovny <igor.putovny@nic.cz>
- *	(c) 2025       CZ.NIC, z.s.p.o.
+ *  (c) 2023--2025 Igor Putovny <igor.putovny@nic.cz>
+ *  (c) 2025       CZ.NIC, z.s.p.o.
  *
- *	Can be freely distributed and used under the terms of the GNU GPL.
+ *  Can be freely distributed and used under the terms of the GNU GPL.
  */
 
 /**
@@ -52,8 +52,10 @@
  *
  * Description of this implementation follows.
  *
+ * Routes are put in the hash table based on their attributes.
  * Route attributes are represented as buckets. All routes with the same set of
- * attributes matched by the "aggregate on" config clause get the same bucket.
+ * attributes matched by the "aggregate on" config clause are put in the same
+ * bucket.
  *
  * The trie contains three different kinds of nodes: original, aggregated and
  * fillers.
@@ -100,17 +102,17 @@
  *    1. The corresponding node is found in the trie and its original bucket
  *       is updated. The trie now needs to be recomputed to reflect this update.
  *    2. The trie is traversed from the updated node upwards until its closest
- *	 IN_FIB ancestor is found. This is the prefix node that covers an
- *	 address space which is directly affected by the received update.
+ *       IN_FIB ancestor is found. This is the prefix node that covers an
+ *       address space which is directly affected by the received update.
  *    3. The propagate_and_merge() pass is started for the subtree rooted in
- *	 the node found in the previous step. This pass propagates buckets
- *	 eligible for selection from the leaves upwards.
+ *       the node found in the previous step. This pass propagates buckets
+ *       eligible for selection from the leaves upwards.
  *    4. Merging of sets of eligible buckets may leak from the subtree upwards
  *       by computing a different eligible bucket set for the node selected in
- *       step 2. In this case, we continue upwards until the computed set is equal
- *       with the previous one.
+ *       step 2. In this case, we continue upwards until the computed set is
+ *       equal to previous one.
  *    5. From the last node changed in the last step, the group_prefixes()
- *	 is started downwards.
+ *       is started downwards.
  *    6. When this function decides to change IN_FIB status or exchange the
  *       selected bucket, either route update is done immediately, or route
  *       retraction is scheduled for later to avoid short-term misroutings.
@@ -603,19 +605,22 @@ aggregator_find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, 
 /*
  * First and second pass of Optimal Route Table Construction (ORTC) algorithm
  *
- * This function is called after the trie is changed. This function is called recursively.
+ * This function is called after the trie is changed. This function is called
+ * recursively.
  *
  * First, this function propagates original bucket information from the node's
- * parent to the current one. (This is basically the first pass in the original algorithm.)
+ * parent to the current one. (This is basically the first pass in the original
+ * algorithm.)
  *
  * Then this function calls itself to its children.
  *
- * After the recursion returns, sets of potential buckets from the children are merged
- * to form the potential_buckets bitmap.
+ * After the recursion returns, sets of potential buckets from the children are
+ * merged to form the potential_buckets bitmap of the current node.
  *
  * With this, the function both propagates changes down and up during one pass.
- * 
+ *
  * The argument is the node from which to descend.
+ * @node: node from which to descend
  */
 static void
 aggregator_propagate_and_merge(struct trie_node *node)
@@ -632,9 +637,11 @@ aggregator_propagate_and_merge(struct trie_node *node)
     ASSERT_DIE(node->parent->original_bucket != NULL);
     node->original_bucket = node->parent->original_bucket;
 
-    /* This node will be recalculated anyway, therefore for now we indicate
+    /*
+     * This node will be recalculated anyway, therefore for now we indicate
      * by FILLER that the trie state is not consistent with the routes
-     * in the target routing table. */
+     * in the target routing table.
+     */
     node->px_origin = FILLER;
   }
 
@@ -649,18 +656,22 @@ aggregator_propagate_and_merge(struct trie_node *node)
     node->potential_buckets_count = 0;
     memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
 
-    /* For the leaf node, by definition, the only bucket in the bitmap is the
-     * original bucket. */
+    /*
+     * For the leaf node, by definition, the only bucket in the bitmap is the
+     * original bucket.
+     */
     aggregator_node_add_potential_bucket(node, node->original_bucket->id);
 
     /* No children, no further work. Done! */
     return;
   }
 
-  /* Prepare an imaginary node in case some children are missing.
-   * This node's potential buckets is just this node's original bucket
-   * and nothing else. This fixes the (kinda) missing first pass
-   * when comparing our algorithm to the original one. */
+  /*
+   * Prepare an imaginary node in case some children are missing. This node's
+   * potential buckets is just this node's original bucket and nothing else.
+   * This fixes the (kinda) missing first pass when comparing our algorithm
+   * to the original one.
+   */
   struct trie_node imaginary_node = { 0 };
   aggregator_node_add_potential_bucket(&imaginary_node, node->original_bucket->id);
 
@@ -745,7 +756,7 @@ aggregator_process_one_child_nodes(struct trie_node *node, const struct aggregat
 }
 
 /*
- * Export prefix of the current node to FIB and mark node as IN_FIB
+ * Export prefix of the current node to FIB and set node status to IN_FIB
  */
 static void
 aggregator_export_node_prefix(struct aggregator_proto *p, struct trie_node *node, ip_addr prefix, u32 pxlen)
@@ -768,7 +779,7 @@ aggregator_export_node_prefix(struct aggregator_proto *p, struct trie_node *node
   {
     ASSERT_DIE(old_bucket != NULL);
 
-    /* Node's bucket has changed, remove old route */
+    /* Node's bucket has changed, remove old route before exporting new */
     if (old_bucket && old_bucket != node->selected_bucket)
     {
       aggregator_prepare_rte_withdrawal(p, prefix, pxlen, old_bucket);
@@ -784,7 +795,7 @@ aggregator_export_node_prefix(struct aggregator_proto *p, struct trie_node *node
 }
 
 /*
- * Remove prefix of the current node from FIB and mark node as NON_FIB
+ * Remove prefix of the current node from FIB and set node status to NON_FIB
  */
 static void
 aggregator_remove_node_prefix(struct aggregator_proto *p, struct trie_node *node, ip_addr prefix, u32 pxlen)
@@ -802,7 +813,7 @@ aggregator_remove_node_prefix(struct aggregator_proto *p, struct trie_node *node
 
   /*
    * Original prefix stays original, otherwise it was aggregated and becomes
-   * a filler
+   * a filler.
    */
   node->px_origin = (node->px_origin == ORIGINAL) ? ORIGINAL : FILLER;
 }
