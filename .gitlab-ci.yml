@@ -893,7 +893,7 @@ test-mpls-bgp-l3vpn:
   stage: build
   script:
     - autoreconf
-    - ./configure
+    - ./configure $CONFIGURE_OPTIONS
     - gmake
     - gmake check
 
@@ -904,10 +904,32 @@ build-birdlab-freebsd-13:
     - birdlab-freebsd-13
     - amd64
 
+build-birdlab-freebsd-13-netlink:
+  <<: *build-birdlab-base
+  variables:
+    CONFIGURE_OPTIONS: --with-sysconfig=bsd-netlink --disable-client
+  tags:
+    - birdlab-freebsd-13
+    - amd64
+
+build-birdlab-freebsd-14:
+  <<: *build-birdlab-base
+  tags:
+    - birdlab-freebsd-14
+    - amd64
+
+build-birdlab-freebsd-14-netlink:
+  <<: *build-birdlab-base
+  variables:
+    CONFIGURE_OPTIONS: --with-sysconfig=bsd-netlink --disable-client
+  tags:
+    - birdlab-freebsd-14
+    - amd64
+
 build-birdlab-openbsd-71:
   <<: *build-birdlab-base
   variables:
-     AUTOCONF_VERSION: "2.71"
+    AUTOCONF_VERSION: "2.71"
   tags:
     - birdlab-openbsd-71
     - amd64
