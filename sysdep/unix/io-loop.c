@@ -403,7 +403,7 @@ socket_changed(struct birdsock *s, bool recalculate_sk_info)
 
   if (loop != &main_birdloop && recalculate_sk_info)
   {
-    int size = loop->sock_num * sk_max_dump_len() + 17;
+    int size = loop->sock_num * sk_max_dump_len + 17;
     char *new_info = mb_alloc(loop->pool, size);
 
     node *n;
@@ -427,7 +427,7 @@ socket_changed(struct birdsock *s, bool recalculate_sk_info)
       old_info = atomic_load_explicit(&loop->sockets_info, memory_order_relaxed);
     atomic_store_explicit(&loop->sockets_info, new_info, memory_order_relaxed);
 
-    synchronize_rcu();
+    synchronize_rcu(); // We are about to free old_info, which might be in use in dumping right now
 
     if (old_info)
       mb_free(old_info);
@@ -1702,10 +1702,16 @@ cmd_show_threads(int show_loops)
   bird_thread_sync_all(&tsd->sync, bird_thread_show, cmd_show_threads_done, "Show Threads");
 }
 
-struct bird_thread_show_socket {
-  struct bird_thread_syncer sync;
-  struct dump_request *dreq;
-};
+
+/*
+  sk_dump_all uses cached info, because we need the dupms quickly and locking
+  (especially for thread_group loops) would be too complicated and slow.
+
+  sk_dump_ao_all has a different approach - in each thread we send an event to each loop
+  and dump from the loops. We do this because ao dump changes much more often and caching
+  would be too frequent. This means ao dump is slower than basic socket dump
+  and the basic socket dump should be used for quick debugging.
+*/
 
 void
 sk_dump_all(struct dump_request *dreq)
@@ -1730,17 +1736,20 @@ sk_dump_all(struct dump_request *dreq)
       WALK_TLIST(thread, thr, &group->threads)
         WALK_TLIST(birdloop, loop, &thr->loops)
         {
+          /* The socket_info might be about to change (and free previous version) right now */
           rcu_read_lock();
             char *info = atomic_load_explicit(&loop->sockets_info, memory_order_relaxed);
+
+            if (info)
+              RDUMP(info);
           rcu_read_unlock();
-          if (info)
-            RDUMP(info);
         }
 
   WALK_TLIST_DELSAFE(thread_group, gpub, &global_thread_group_list)
   TG_LOCKED(gpub, group)
   {
-    WALK_TLIST_DELSAFE(birdloop, loop, &group->loops){
+    WALK_TLIST_DELSAFE(birdloop, loop, &group->loops)
+    {
       rcu_read_lock();
         char *info = atomic_load_explicit(&loop->sockets_info, memory_order_relaxed);
       rcu_read_unlock();
@@ -1752,9 +1761,26 @@ sk_dump_all(struct dump_request *dreq)
   RDUMP("\n");
 }
 
+
+struct bird_show_ao_socket {
+  struct bird_thread_syncer sync;
+  struct dump_request *dreq;
+  DOMAIN(rtable) lock;
+  struct pool *pool;
+
+  _Atomic int dump_finished; // the dump is finished when reached zero
+};
+
+struct sk_dump_ao_event {
+  event event;
+  struct bird_show_ao_socket *bsas;
+};
+
 static void
-_sk_dump_ao_for_thread(struct dump_request *dreq, list sock_list)
+_sk_dump_ao_for_loop(struct bird_show_ao_socket *bsas, list sock_list)
 {
+  struct dump_request *dreq = bsas->dreq;
+
   WALK_LIST_(node, n, sock_list)
   {
     sock *s = SKIP_BACK(sock, n, n);
@@ -1768,42 +1794,86 @@ _sk_dump_ao_for_thread(struct dump_request *dreq, list sock_list)
     sk_dump_ao_info(s, dreq);
     sk_dump_ao_keys(s, dreq);
   }
+
+  if (atomic_fetch_sub_explicit(&bsas->dump_finished, 1, memory_order_relaxed) == 1)
+  {
+    RDUMP("\n");
+    mb_free(bsas);
+  }
 }
 
 static void
-sk_dump_ao_for_thread(struct bird_thread_syncer *sync)
+sk_dump_ao_for_loop(void *data)
 {
-  SKIP_BACK_DECLARE(struct bird_thread_show_socket, tss, sync, sync);
-  struct dump_request *dreq = tss->dreq;
+  struct sk_dump_ao_event *sdae = (struct sk_dump_ao_event*) data;
+  _sk_dump_ao_for_loop(sdae->bsas, birdloop_current->sock_list);
+}
 
+static void
+_sk_dump_ao_send_event(struct bird_show_ao_socket *bsas)
+{
   WALK_TLIST(birdloop, loop, &this_thread->loops)
   {
-    birdloop_enter(loop);
-    _sk_dump_ao_for_thread(dreq, loop->sock_list);
-    birdloop_leave(loop);
+    struct sk_dump_ao_event *sdae = mb_allocz(bsas->pool, sizeof(struct sk_dump_ao_event));
+    sdae->event.hook = sk_dump_ao_for_loop;
+    sdae->event.data = sdae;
+    sdae->bsas = bsas;
+    ev_send_loop(loop, &sdae->event);
+  }
+}
+
+static void
+sk_dump_ao_send_event(struct bird_thread_syncer *sync)
+{
+  SKIP_BACK_DECLARE(struct bird_show_ao_socket, bsas, sync, sync);
+  LOCK_DOMAIN(rtable, bsas->lock);
+  _sk_dump_ao_send_event(bsas);
+  UNLOCK_DOMAIN(rtable, bsas->lock);
+}
+
+static void
+sk_dump_ao_thread_sync_done(struct bird_thread_syncer *sync)
+{
+  SKIP_BACK_DECLARE(struct bird_show_ao_socket, bsas, sync, sync);
+
+  if (atomic_fetch_sub_explicit(&bsas->dump_finished, 1, memory_order_relaxed) == 1)
+  {
+    struct dump_request *dreq = bsas->dreq;
+    RDUMP("\n");
+    DOMAIN(rtable) lock = bsas->lock;
+    LOCK_DOMAIN(rtable, lock);
+    mb_free(bsas->pool);
+    UNLOCK_DOMAIN(rtable, lock);
   }
 }
 
 void
 sk_dump_ao_all(struct dump_request *dreq)
 {
-  struct bird_thread_show_socket *tss = mb_allocz(&root_pool, sizeof(struct bird_thread_show_socket));
-  tss->dreq = dreq;
+  DOMAIN(rtable) lock = DOMAIN_NEW(rtable);
+  LOCK_DOMAIN(rtable, lock);
+
+  pool *pool = rp_new(&root_pool, lock.rtable, "Dump socket TCP-AO");
+
+  struct bird_show_ao_socket *bsas = mb_allocz(pool, sizeof(struct bird_show_ao_socket));
+  bsas->dreq = dreq;
+  bsas->lock = lock;
+  bsas->pool = pool;
+  atomic_store_explicit(&bsas->dump_finished, 1, memory_order_relaxed);
 
   RDUMP("TCP-AO listening sockets:\n");
-  _sk_dump_ao_for_thread(dreq, main_birdloop.sock_list);
+  _sk_dump_ao_for_loop(bsas, main_birdloop.sock_list);
 
   WALK_TLIST(thread_group, gpub, &global_thread_group_list)
   TG_LOCKED(gpub, group)
   {
     WALK_TLIST(birdloop, loop, &group->loops)
-    {
-      birdloop_enter(loop);
-      _sk_dump_ao_for_thread(dreq, loop->sock_list);
-      birdloop_leave(loop);
-    }
+      _sk_dump_ao_send_event(bsas);
   }
-  bird_thread_sync_all(&tss->sync, sk_dump_ao_for_thread, NULL, "Show ao sockets");
+
+  UNLOCK_DOMAIN(rtable, lock);
+
+  bird_thread_sync_all(&bsas->sync, sk_dump_ao_send_event, sk_dump_ao_thread_sync_done, "Show ao sockets");
 }
 
 

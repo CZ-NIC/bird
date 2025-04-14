@@ -1233,18 +1233,12 @@ sk_dump(struct dump_request *dreq, resource *r)
 	s->iface ? s->iface->name : "none");
 }
 
-uint
-sk_max_dump_len(void)
-{
-  uint ret = strlen("(%s, ud=%p, sa=%I, sp=%d, da=%I, dp=%d, tos=%d, ttl=%d, if=%s)\n");
-  ret += 3; // max sk_type_name = 5
-  ret += 14; // looks like %p size is 16
-  ret += (IP6_MAX_TEXT_LENGTH -2) * 2;
-  ret += 14 * 4; // %d
-  ret += IFNAMSIZ - 2;
-  ret++; // terminating zero
-  return ret;
-}
+int sk_max_dump_len = sizeof("(%s, ud=%p, sa=%I, sp=%d, da=%I, dp=%d, tos=%d, ttl=%d, if=%s)\n") \
+  + 3 /* max sk_type_name = 5 */ \
+  + 14 /* looks like %p size is 16 */ \
+  + (IP6_MAX_TEXT_LENGTH -2) * 2 \
+  + 14 * 4 /* %d lengths */ \
+  + IFNAMSIZ - 2;
 
 void
 sk_dump_to_buffer(buffer *buf, sock *s)
