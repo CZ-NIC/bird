@@ -1702,11 +1702,6 @@ cmd_show_threads(int show_loops)
   bird_thread_sync_all(&tsd->sync, bird_thread_show, cmd_show_threads_done, "Show Threads");
 }
 
-struct bird_thread_show_socket {
-  struct bird_thread_syncer sync;
-  struct dump_request *dreq;
-};
-
 void
 sk_dump_all(struct dump_request *dreq)
 {
@@ -1752,9 +1747,24 @@ sk_dump_all(struct dump_request *dreq)
   RDUMP("\n");
 }
 
+
+struct bird_show_ao_socket {
+  struct bird_thread_syncer sync;
+  struct dump_request *dreq;
+  rw_spinlock lock;
+  _Atomic int dump_finished; // the dump is finished when reached zero
+};
+
+struct sk_dump_ao_event {
+  event event;
+  struct bird_show_ao_socket *bsas;
+};
+
 static void
-_sk_dump_ao_for_thread(struct dump_request *dreq, list sock_list)
+_sk_dump_ao_for_loop(struct bird_show_ao_socket *bsas, list sock_list)
 {
+  struct dump_request *dreq = bsas->dreq;
+  rws_write_lock(&bsas->lock);
   WALK_LIST_(node, n, sock_list)
   {
     sock *s = SKIP_BACK(sock, n, n);
@@ -1768,42 +1778,78 @@ _sk_dump_ao_for_thread(struct dump_request *dreq, list sock_list)
     sk_dump_ao_info(s, dreq);
     sk_dump_ao_keys(s, dreq);
   }
+
+  rws_write_unlock(&bsas->lock);
+
+  if (atomic_fetch_sub_explicit(&bsas->dump_finished, 1, memory_order_relaxed) == 1)
+  {
+    RDUMP("\n");
+    mb_free(bsas);
+  }
 }
 
 static void
-sk_dump_ao_for_thread(struct bird_thread_syncer *sync)
+sk_dump_ao_for_loop(void *data)
 {
-  SKIP_BACK_DECLARE(struct bird_thread_show_socket, tss, sync, sync);
-  struct dump_request *dreq = tss->dreq;
+  struct sk_dump_ao_event *sdae = (struct sk_dump_ao_event*) data;
+  _sk_dump_ao_for_loop(sdae->bsas, birdloop_current->sock_list);
+  mb_free(sdae);
+}
 
+static void
+_sk_dump_ao_send_event(struct bird_show_ao_socket *bsas)
+{
   WALK_TLIST(birdloop, loop, &this_thread->loops)
   {
     birdloop_enter(loop);
-    _sk_dump_ao_for_thread(dreq, loop->sock_list);
+    struct sk_dump_ao_event *sdae = mb_allocz(loop->pool, sizeof(struct sk_dump_ao_event));
+    sdae->event.hook = sk_dump_ao_for_loop;
+    sdae->event.data = sdae;
+    sdae->bsas = bsas;
+    ev_send_loop(loop, &sdae->event);
     birdloop_leave(loop);
+  }
+}
+
+static void
+sk_dump_ao_send_event(struct bird_thread_syncer *sync)
+{
+  SKIP_BACK_DECLARE(struct bird_show_ao_socket, bsas, sync, sync);
+  _sk_dump_ao_send_event(bsas);
+}
+
+static void
+sk_dump_ao_thread_sync_done(struct bird_thread_syncer *sync)
+{
+  SKIP_BACK_DECLARE(struct bird_show_ao_socket, bsas, sync, sync);
+
+  if (atomic_fetch_sub_explicit(&bsas->dump_finished, 1, memory_order_relaxed) == 1)
+  {
+    struct dump_request *dreq = bsas->dreq;
+    RDUMP("\n");
+    mb_free(bsas);
   }
 }
 
 void
 sk_dump_ao_all(struct dump_request *dreq)
 {
-  struct bird_thread_show_socket *tss = mb_allocz(&root_pool, sizeof(struct bird_thread_show_socket));
-  tss->dreq = dreq;
+  struct bird_show_ao_socket *bsas = mb_allocz(&root_pool, sizeof(struct bird_show_ao_socket));
+  bsas->dreq = dreq;
+  rws_init(&bsas->lock);
+  atomic_store_explicit(&bsas->dump_finished, 1, memory_order_relaxed);
 
   RDUMP("TCP-AO listening sockets:\n");
-  _sk_dump_ao_for_thread(dreq, main_birdloop.sock_list);
+  _sk_dump_ao_for_loop(bsas, main_birdloop.sock_list);
 
   WALK_TLIST(thread_group, gpub, &global_thread_group_list)
   TG_LOCKED(gpub, group)
   {
     WALK_TLIST(birdloop, loop, &group->loops)
-    {
-      birdloop_enter(loop);
-      _sk_dump_ao_for_thread(dreq, loop->sock_list);
-      birdloop_leave(loop);
-    }
+      _sk_dump_ao_send_event(bsas);
   }
-  bird_thread_sync_all(&tss->sync, sk_dump_ao_for_thread, NULL, "Show ao sockets");
+
+  bird_thread_sync_all(&bsas->sync, sk_dump_ao_send_event, sk_dump_ao_thread_sync_done, "Show ao sockets");
 }
 
 

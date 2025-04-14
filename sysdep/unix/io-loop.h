@@ -62,6 +62,7 @@ struct birdloop
   int sock_num;
   uint sock_changed:1;
   char *_Atomic sockets_info;
+  char *_Atomic ao_sockets_info;
 
   uint ping_pending;
 
