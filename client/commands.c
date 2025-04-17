@@ -56,6 +56,8 @@ cmd_build_tree(void)
       new = &cmd_root;
       while (*c)
 	{
+	  /* Walk through the keywords in the command from start of the command
+	   * to its end */
 	  char *d = c;
 	  while (*c && !isspace_(*c))
 	    c++;
@@ -65,9 +67,12 @@ cmd_build_tree(void)
 	      break;
 	  if (!new)
 	    {
+	      /* If new keyword is not stored yet */
 	      int size = sizeof(struct cmd_node) + c-d;
 	      new = malloc(size);
 	      bzero(new, size);
+	      /* Making this keyword child of the previons
+	       * keyword in the command */
 	      *old->plastson = new;
 	      old->plastson = &new->sibling;
 	      new->plastson = &new->son;
@@ -79,6 +84,8 @@ cmd_build_tree(void)
 	    c++;
 	}
 
+      /* In new there is now stored the last keyword in command.
+       * Only this command is going to contain cmd and help */
       if (cmd->is_real_cmd)
 	new->cmd = cmd;
       else
@@ -99,12 +106,23 @@ cmd_do_display_help(struct cmd_info *c)
 }
 
 static void
-cmd_display_help(struct cmd_info *c1, struct cmd_info *c2)
+cmd_display_help(struct cmd_node *m)
 {
-  if (c1)
-    cmd_do_display_help(c1);
-  else if (c2)
-    cmd_do_display_help(c2);
+  /* Go through children of the base keyword. Each keyword has its own node. */
+  for (struct cmd_node *mm = m->son; mm; mm = mm->sibling)
+  {
+    /* Print hints for all of the children of given keyword. */
+    if (mm->help)
+      cmd_do_display_help(mm->help);
+    else if (mm->cmd)
+      cmd_do_display_help(mm->cmd);
+    else
+    {
+      /* This child does not contain hint, let's try its children instead
+       * (this child might be first part of multi keyword command) */
+      cmd_display_help(mm);
+    }
+  }
 }
 
 static struct cmd_node *
@@ -141,7 +159,7 @@ cmd_list_ambiguous(struct cmd_node *root, char *cmd, int len)
 
   for(m=root->son; m; m=m->sibling)
     if (m->len > len && !memcmp(m->token, cmd, len))
-      cmd_display_help(m->help, m->cmd);
+      cmd_display_help(m);
 }
 
 void
@@ -173,14 +191,15 @@ cmd_help(char *cmd, int len)
 	break;
       n = m;
     }
-  cmd_display_help(n->cmd, NULL);
+
+  if (n && n->cmd)
+    cmd_do_display_help(n->cmd);
 
   /* Currently no help for options */
   if (n->final)
     return;
 
-  for (m=n->son; m; m=m->sibling)
-    cmd_display_help(m->help, m->cmd);
+  cmd_display_help(n);
 }
 
 static int
