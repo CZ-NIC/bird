@@ -158,11 +158,10 @@ docker-fedora-41-amd64:
     IMG_NAME: "fedora-41-amd64"
   <<: *docker_build
 
-#planned release 4/2025
-# docker-fedora-42-amd64:
-#   variables:
-#     IMG_NAME: "fedora-42-amd64"
-#   <<: *docker_build
+docker-fedora-42-amd64:
+  variables:
+    IMG_NAME: "fedora-42-amd64"
+  <<: *docker_build
 
 docker-opensuse-15.0-amd64:
   variables:
@@ -350,10 +349,9 @@ build-fedora-41-amd64:
   <<: *build-linux
   image: registry.nic.cz/labs/bird:fedora-41-amd64
 
-#planned release 4/2025
-# build-fedora-42-amd64:
-#   <<: *build-linux
-#   image: registry.nic.cz/labs/bird:fedora-42-amd64
+build-fedora-42-amd64:
+  <<: *build-linux
+  image: registry.nic.cz/labs/bird:fedora-42-amd64
 
 build-opensuse-15.0-amd64:
   <<: *build-linux
@@ -637,11 +635,10 @@ pkg-fedora-41-amd64:
   needs: [build-fedora-41-amd64]
   image: registry.nic.cz/labs/bird:fedora-41-amd64
 
-#planned release 4/2025
-# pkg-fedora-42-amd64:
-#   <<: *pkg-rpm
-#   needs: [build-fedora-42-amd64]
-#   image: registry.nic.cz/labs/bird:fedora-42-amd64
+pkg-fedora-42-amd64:
+  <<: *pkg-rpm
+  needs: [build-fedora-42-amd64]
+  image: registry.nic.cz/labs/bird:fedora-42-amd64
 
 pkg-opensuse-15.0-amd64:
  <<: *pkg-rpm-wa
@@ -700,19 +697,22 @@ pkg-ubuntu-24.10-amd64:
 
 build-netlab:
   stage: build
+  variables:
+    BDIR: build-netlab
   tags:
     - netlab
     - amd64
   script:
-    - DIR=$(pwd)
     - autoreconf
-    - ./configure
+    - mkdir $BDIR
+    - cd $BDIR
+    - ../configure
     - BRANCH=$CI_COMMIT_BRANCH make
-    - cd $TOOLS_DIR
-    - sudo git clean -fx
-    - git pull --ff-only
-    - mv $DIR/bird $DIR/birdc netlab/common
-    - ln -s $STAYRTR_BINARY netlab/common/stayrtr
+  artifacts:
+    paths:
+      - $BDIR/bird
+      - $BDIR/birdc
+    expire_in: 2 hours
 
 .test: &test-base
   stage: test
@@ -721,7 +721,13 @@ build-netlab:
     - netlab
     - amd64
   script:
-    - cd $TOOLS_DIR/netlab
+    - DIR=$(pwd)
+    - cd $TOOLS_DIR
+    - sudo git clean -fx
+    - git pull --ff-only
+    - mv $DIR/build-netlab/* netlab/common/
+    - ln -s $STAYRTR_BINARY netlab/common/stayrtr
+    - cd netlab
     - sudo ./stop
     - sudo ./runtest -s v3 -m check $TEST_NAME
 
