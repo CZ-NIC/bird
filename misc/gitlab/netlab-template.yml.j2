@@ -1,0 +1,16 @@
+test-{{ name }}:
+  stage: test
+  needs: [build-netlab]
+  tags:
+    - netlab
+    - amd64
+  script:
+    - DIR=$(pwd)
+    - cd $TOOLS_DIR
+    - sudo git clean -fx
+    - git pull --ff-only
+    - mv $DIR/build-netlab/* netlab/common/
+    - ln -s $STAYRTR_BINARY netlab/common/stayrtr
+    - cd netlab
+    - sudo ./stop
+    - sudo ./runtest -s v2 -m check cf-{{ name }}

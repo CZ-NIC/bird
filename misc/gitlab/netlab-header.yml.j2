@@ -1,0 +1,24 @@
+{% include 'common-header.yml.j2' %}
+
+build-netlab:
+  stage: build
+  variables:
+    BDIR: build-netlab
+  tags:
+    - netlab
+    - amd64
+  script:
+    - autoreconf
+    - mkdir $BDIR
+    - cd $BDIR
+    - ../configure
+    - BRANCH=$CI_COMMIT_BRANCH make
+  artifacts:
+    paths:
+      - $BDIR/bird
+      - $BDIR/birdc
+    expire_in: 2 hours
+  rules:
+  - *never_wip
+  - when: always
+
