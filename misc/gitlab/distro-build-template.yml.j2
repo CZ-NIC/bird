@@ -13,6 +13,9 @@ build-{{ name }}:
   needs: [ docker-{{ name }} ]
   {%- endif %}
   script:
+    {% if name == "centos-7-amd64" -%}
+    - export LC_ALL=en_US.UTF-8
+    {%- endif %}
     - export BRANCH=$CI_COMMIT_BRANCH
     - autoreconf
     - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" $CONFIGURE_OPTIONS

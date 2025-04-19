@@ -1,3 +1,4 @@
+# CentOS 7 with quite some hacks
 - name: centos-7-amd64
   before_2019: true
   rpm: true
@@ -5,6 +6,8 @@
     LC_ALL: en_US.UTF-8
     CC: /opt/rh/devtoolset-8/root/usr/bin/gcc
 
+# CentOS 8, Fedora 32 and 33 need older Python packages
+# to get proper build
 {% for name in (
   'centos-8',
   'fedora-32',
@@ -15,19 +18,32 @@
   rpm: true
 {% endfor %}
 
-{% for num in range(0,5) -%}
+# For some unknown reason we also require older Python packages
+# for OpenSUSE even with the recent versions.
+{% for num in (0,1,2,3,4,5) -%}
 - name: opensuse-15.{{ num }}-amd64
   before_2019: true
   rpm: true
 {% endfor %}
 
-{% for num in range(34,42) -%}
+# Fedora regular builds
+{% for num in (34, 35, 36, 37, 38, 39, 40, 41, 42) -%}
 - name: fedora-{{ num }}-amd64
   rpm: true
 {% endfor %}
 
+# Debian regular builds
 {% for num in (10, 11, 12, 'testing') -%}
 {% for arch in ('amd64', 'i386') -%}
 - name: debian-{{num}}-{{arch}}
 {% endfor %}
+{% endfor %}
+
+# Ubuntu legacy build
+- name: ubuntu-18.04-amd64
+  before_2019: true
+
+# Ubuntu regular builds
+{% for num in ('20.04', '22.04', '24.04', '24.10') -%}
+- name: ubuntu-{{ num }}-amd64
 {% endfor %}
