@@ -68,7 +68,7 @@ endif
 docgoals := docs userdocs progdocs
 testgoals := check test tests tests_run
 cleangoals := clean distclean testsclean
-.PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags cscope prepare
+.PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags cscope prepare gitlab
 
 all: daemon cli
 
@@ -202,6 +202,18 @@ tags:
 
 cscope:
 	cd $(srcdir) ; find $(dirs) -name '*.[chY]' > cscope.files ; cscope -b
+
+# Gitlab CI tests
+gitlab: .gitlab-ci.yml
+.gitlab-ci.yml: $(addprefix misc/gitlab/,pipeline.py data.yml.j2 template.yml.j2)
+	( \
+		VENV=$$(mktemp -d); \
+		python3 -m venv $$VENV; \
+		. $$VENV/bin/activate; \
+		pip3 install jinja2 pyaml; \
+		python3 misc/gitlab/pipeline.py > $@ \
+		rm -rf $$VENV \
+		)
 
 # Install
 
