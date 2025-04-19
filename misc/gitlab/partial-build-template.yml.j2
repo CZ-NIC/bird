@@ -1,6 +1,7 @@
 #### Rules for {{ name }} (release rules)
 
 partial-build-linux-{{ protocols }}:
+  stage: build
   # There should be a dependency on image rebuild in case it is happening
   image: registry.nic.cz/labs/bird:debian-12-amd64
   script:
