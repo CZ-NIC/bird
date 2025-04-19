@@ -13,8 +13,6 @@ build-{{ name }}:
   needs: [ docker-{{ name }} ]
   {%- endif %}
   script:
-    - echo CC $CC \$CC
-    - echo LC_ALL $LC_ALL \$LC_ALL
     - export BRANCH=$CI_COMMIT_BRANCH
     - autoreconf
     - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" $CONFIGURE_OPTIONS
@@ -44,8 +42,9 @@ pkg-{{ name }}:
   stage: pkg
   needs: [ build-{{ name }} ]
   script:
-    - echo CC $CC \$CC
-    - echo LC_ALL $LC_ALL \$LC_ALL
+    {% if name == "centos-7-amd64 -%}
+    - export LC_ALL=en_US.UTF-8
+    {%- endif %}
     - export BRANCH=$CI_COMMIT_BRANCH
     # create venv only if it's installed
     - if python3 -m venv venv; then . venv/bin/activate; fi
