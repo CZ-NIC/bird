@@ -1,0 +1,32 @@
+{% if rebuild_image %}
+## Docker Image
+#
+# We are running all the build / packaging tests in Dockers (unless otherwise)
+# and these are rules to build these docker images. These are expensive to run
+# and should run only if needed.
+
+# only if misc/docker/{{ name }}/Dockerfile changed
+docker-{{ name }}:
+  stage: image
+  script:
+    - $DOCKER_CMD login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.nic.cz
+    # Make sure we refresh the base image if it updates (eg. security updates, etc)
+    # If we do just the build, cache is always reused and the freshness of the
+    # base image is never checked. However, pull always asks and updates the
+    # image only if it changed ‒ therefore, the cache is used unless there's a
+    # change.
+    - $DOCKER_CMD pull `sed -ne 's/^FROM //p' "misc/docker/$IMG_NAME/Dockerfile"`
+    - $DOCKER_CMD build -t "bird:$IMG_NAME" "misc/docker/$IMG_NAME"
+    - $DOCKER_CMD tag "bird:$IMG_NAME" "$IMG_BASE:$IMG_NAME"
+    - $DOCKER_CMD push "$IMG_BASE:$IMG_NAME"
+  after_script:
+    - rm -f "$HOME/.docker/$CI_JOB_ID/" # cleanup the credentials
+  tags:
+    # That's Docker in Docker
+    - dind
+  variables:
+    IMG_NAME: "{{ name }}"
+{% else %}
+## Not rebuilding Docker image
+{% endif %}
+

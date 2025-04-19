@@ -1,0 +1,22 @@
+#### Rules for {{ name }} (release rules)
+
+{% include 'docker-template.yml.j2' %}
+
+# A special task for preparing the release archives
+build-release:
+  image: registry.nic.cz/labs/bird:docbuilder
+  stage: build
+  tags:
+    - docker
+    - linux
+  script:
+    - export BRANCH=$CI_COMMIT_BRANCH
+    - autoreconf
+    - ./configure --with-protocols= --disable-client
+    - make obj/doc/bird-singlepage.html
+    - tools/make-archive
+  artifacts:
+    paths:
+      - obj/doc/bird-singlepage.html
+      - bird-*.tar.gz
+    expire_in: 1 day

@@ -1,0 +1,65 @@
+#### Rules for {{ name }}
+
+{% include 'docker-template.yml.j2' %}
+
+## Build stage
+#
+# Now we compile and run unit tests ... in every single distribution.
+# Every task needs its docker, see above.
+
+build-{{ name }}:
+  stage: build
+  {% if rebuild_image -%}
+  needs: [ docker-{{ name }} ]
+  {%- endif %}
+  script:
+    - export BRANCH=$CI_COMMIT_BRANCH
+    - autoreconf
+    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" $CONFIGURE_OPTIONS
+    # Detect which make is available
+    - MAKE=make
+    - which gmake 2>/dev/null >/dev/null && MAKE=gmake
+    - $MAKE
+    - $MAKE check
+    # Build docs when tools are available
+    - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
+  image: registry.nic.cz/labs/bird:{{ name }}
+  variables:
+    {{ variables }}
+  tags:
+    - docker
+    - linux
+    - amd64
+
+# Packaging rules
+# As we support some ancient versions of different distributions,
+# we need to keep several different machineries. It's not so bad
+# but it's bad nevertheless.
+#
+# We do NOT build separate documentation packages in these rules.
+
+pkg-{{ name }}:
+  stage: pkg
+  needs: [ build-{{ name }} ]
+  script:
+    - export BRANCH=$CI_COMMIT_BRANCH
+    # create venv only if it's installed
+    - if python3 -m venv venv; then . venv/bin/activate; fi
+    {% if before_2019 -%}
+    {% if rpm -%}
+    - sed -i "s/runstatedir/with-runtimedir/" distro/pkg/rpm/bird.spec
+    {%- endif %}
+    - pip3 install beautifulsoup4==4.11.2
+    {%- endif %}
+    - pip3 install apkg
+    - ARCHIVE_DOCS=false apkg build
+    #- apkg install -y pkg/pkgs/*/*/*.deb
+  artifacts:
+    paths:
+      - pkg/pkgs/*
+      - pkg/srcpkgs/*
+  image: registry.nic.cz/labs/bird:{{ name }}
+  variables:
+    {{ variables }}
+
+#### End of {{ name }}

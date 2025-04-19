@@ -1,0 +1,33 @@
+- name: centos-7-amd64
+  before_2019: true
+  rpm: true
+  variables:
+    CC: /opt/rh/devtoolset-8/root/usr/bin/gcc
+    LC_ALL: en_US.UTF-8
+
+{% for name in (
+  'centos-8',
+  'fedora-32',
+  'fedora-33',
+) -%}
+- name: {{ name }}-amd64
+  before_2019: true
+  rpm: true
+{% endfor %}
+
+{% for num in range(0,5) -%}
+- name: opensuse-15.{{ num }}-amd64
+  before_2019: true
+  rpm: true
+{% endfor %}
+
+{% for num in range(34,42) -%}
+- name: fedora-{{ num }}-amd64
+  rpm: true
+{% endfor %}
+
+{% for num in (10, 11, 12, 'testing') -%}
+{% for arch in ('amd64', 'i386') -%}
+- name: debian-{{num}}-{{arch}}
+{% endfor %}
+{% endfor %}
