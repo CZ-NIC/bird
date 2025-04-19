@@ -13,6 +13,8 @@ build-{{ name }}:
   needs: [ docker-{{ name }} ]
   {%- endif %}
   script:
+    - echo CC $CC \$CC
+    - echo LC_ALL $LC_ALL \$LC_ALL
     - export BRANCH=$CI_COMMIT_BRANCH
     - autoreconf
     - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" $CONFIGURE_OPTIONS
