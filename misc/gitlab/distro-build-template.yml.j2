@@ -44,6 +44,8 @@ pkg-{{ name }}:
   stage: pkg
   needs: [ build-{{ name }} ]
   script:
+    - echo CC $CC \$CC
+    - echo LC_ALL $LC_ALL \$LC_ALL
     - export BRANCH=$CI_COMMIT_BRANCH
     # create venv only if it's installed
     - if python3 -m venv venv; then . venv/bin/activate; fi
