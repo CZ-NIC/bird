@@ -1,0 +1,20 @@
+#### Rules for {{ name }} (release rules)
+
+partial-build-linux-{{ protocols }}:
+  # There should be a dependency on image rebuild in case it is happening
+  image: registry.nic.cz/labs/bird:debian-12-amd64
+  script:
+    - export BRANCH=$CI_COMMIT_BRANCH
+    - autoreconf
+    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" --with-protocols={{ protocols }}
+    # Detect which make is available
+    - MAKE=make
+    - which gmake 2>/dev/null >/dev/null && MAKE=gmake
+    - $MAKE
+    - $MAKE check
+    # Build docs when tools are available
+    - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
+  tags:
+    - docker
+    - linux
+    - amd64

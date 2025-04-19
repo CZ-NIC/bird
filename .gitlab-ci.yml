@@ -58,6 +58,7 @@ commit-messages:
     - linux
     - docker
 
+## Pipeline for builds in various Linux distributions (in Docker images)
 distro-build-prepare:
   <<: *child-prepare
   variables:
@@ -71,6 +72,21 @@ distro-build-run:
         job: distro-build-prepare
     strategy: depend
 
+## Pipeline for partial builds (now only in Linux but should be also done in BSDs)
+partial-build-prepare:
+  <<: *child-prepare
+  variables:
+    TARGET: partial-build
+
+partial-build-run:
+  stage: build
+  trigger:
+    include:
+      - artifact: obj/gitlab/partial-build.yml
+        job: partial-build-prepare
+    strategy: depend
+
+## Pipeline for release scripts
 release-prepare:
   <<: *child-prepare
   variables:
@@ -89,101 +105,6 @@ release-run:
 #
 # Now we compile and run unit tests ... in every single distribution.
 # Every task needs its docker, see above.
-
-.build: &build-base
-  stage: build
-  script:
-  - export BRANCH=$CI_COMMIT_BRANCH
-  - autoreconf
-  - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" $CONFIGURE_OPTIONS
-  # Detect which make is available
-  - MAKE=make
-  - which gmake 2>/dev/null >/dev/null && MAKE=gmake
-  - $MAKE
-  - $MAKE check
-  # Build docs when tools are available
-  - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
-  rules:
-  - *never_wip
-  - when: always
-
-.build-linux: &build-linux
-  <<: *build-base
-  tags:
-    - docker
-    - linux
-    - amd64
-
-# Testing builds for just a single protocol each time
-
-.build-only: &build-only
-  <<: *build-linux
-  image: registry.nic.cz/labs/bird:debian-12-amd64
-
-build-only-aggregator:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=aggregator
-
-build-only-babel:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=babel
-
-build-only-bfd:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=bfd
-
-build-only-bgp:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=bgp
-
-build-only-bgp-bmp:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=bgp,bmp
-
-build-only-l3vpn:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=l3vpn
-
-build-only-mrt:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=mrt
-
-build-only-ospf:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=ospf
-
-build-only-pipe:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=pipe
-
-build-only-radv:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=radv
-
-build-only-rip:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=rip
-
-build-only-rpki:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=rpki
-
-build-only-static:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=static
 
 build-netlab:
   stage: build
