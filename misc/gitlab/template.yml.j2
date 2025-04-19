@@ -1,0 +1,240 @@
+variables:
+  DEBIAN_FRONTEND: noninteractive
+  LC_ALL: C.UTF-8
+  GIT_STRATEGY: fetch
+  DOCKER_CMD: docker --config="$HOME/.docker/$CI_JOB_ID/"
+  IMG_BASE: registry.nic.cz/labs/bird
+  TOOLS_DIR: /home/gitlab-runner/bird-tools
+  STAYRTR_BINARY: /usr/bin/stayrtr
+
+stages:
+  - image
+  - build
+  - pkg
+  - test
+
+############################
+## Docker builder rebuild ##
+############################
+# We are running all the build / packaging tests in Dockers (unless otherwise)
+# and these are rules to build these docker images. These are expensive to run
+# and should run only if needed.
+#
+# Modify the appropriate dockerfile to rebuild these images
+
+{% macro docker_rebuild(name) -%}
+{%- if "misc/docker/{{ name }}/Dockerfile" in git["last_commit"]["files"] %}
+{{ caller() }}
+{% endif -%}
+{%- endmacro %}
+
+{% for docker in [ { "name": "docbuilder" } ] + distros %}
+{%- call docker_rebuild(docker["name"]) %}
+docker-{{ docker["name"] }}:
+  stage: image
+  script:
+    - $DOCKER_CMD login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.nic.cz
+    # Make sure we refresh the base image if it updates (eg. security updates, etc)
+    # If we do just the build, cache is always reused and the freshness of the
+    # base image is never checked. However, pull always asks and updates the
+    # image only if it changed ‒ therefore, the cache is used unless there's a
+    # change.
+    - $DOCKER_CMD pull `sed -ne 's/^FROM //p' "misc/docker/$IMG_NAME/Dockerfile"`
+    - $DOCKER_CMD build -t "bird:$IMG_NAME" "misc/docker/$IMG_NAME"
+    - $DOCKER_CMD tag "bird:$IMG_NAME" "$IMG_BASE:$IMG_NAME"
+    - $DOCKER_CMD push "$IMG_BASE:$IMG_NAME"
+  after_script:
+    - rm -f "$HOME/.docker/$CI_JOB_ID/" # cleanup the credentials
+  tags:
+    # That's Docker in Docker
+    - dind
+  variables:
+    IMG_NAME: "{{ docker["name"] }}"
+{% endcall -%}
+{% endfor %}
+
+#####################################################
+## Linux distro build tests inside Docker builders ##
+#####################################################
+{% for dist in distros %}
+
+## Build stage
+#
+# Now we compile and run unit tests ... in every single distribution.
+# Every task needs its docker, see above.
+
+build-{{ dist["name"] }}:
+  stage: build
+  needs: [ {% call docker_rebuild(dist["name"]) -%} docker-{{ dist["name"] }} {%- endcall %} ]
+  script:
+    {% if dist["name"] == "centos-7-amd64" -%}
+    - export LC_ALL=en_US.UTF-8
+    {%- endif %}
+    - export BRANCH=$CI_COMMIT_BRANCH
+    - autoreconf
+    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" $CONFIGURE_OPTIONS
+    # Detect which make is available
+    - MAKE=make
+    - which gmake 2>/dev/null >/dev/null && MAKE=gmake
+    - $MAKE
+    - $MAKE check
+    # Build docs when tools are available
+    - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
+  image: registry.nic.cz/labs/bird:{{ dist["name"] }}
+  variables:
+{{ dist["variables"] | to_yaml | indent(4, true) }}
+  tags:
+    - docker
+    - linux
+    - amd64
+
+# Packaging rules
+# As we support some ancient versions of different distributions,
+# we need to keep several different machineries. It's not so bad
+# but it's bad nevertheless.
+#
+# We do NOT build separate documentation packages in these rules.
+
+pkg-{{ dist["name"] }}:
+  stage: pkg
+  needs: [ build-{{ dist["name"] }} ]
+  script:
+    {% if dist["name"] == "centos-7-amd64" -%}
+    - export LC_ALL=en_US.UTF-8
+    {%- endif %}
+    - export BRANCH=$CI_COMMIT_BRANCH
+    # create venv only if it's installed
+    - if python3 -m venv venv; then . venv/bin/activate; fi
+    {% if dist["before_2019"] -%}
+    {% if dist["rpm"] -%}
+    - sed -i "s/runstatedir/with-runtimedir/" distro/pkg/rpm/bird.spec
+    {%- endif %}
+    - pip3 install beautifulsoup4==4.11.2
+    {%- endif %}
+    - pip3 install apkg
+    - ARCHIVE_DOCS=false apkg build
+    #- apkg install -y pkg/pkgs/*/*/*.deb
+  artifacts:
+    paths:
+      - "pkg/pkgs/*"
+      - "pkg/srcpkgs/*"
+  image: registry.nic.cz/labs/bird:{{ dist["name"] }}
+  variables:
+{{ dist["variables"] | to_yaml | indent(4, true) }}
+
+#### End of {{ dist["name"] }}
+{% endfor %}
+
+###################################
+## Non-linux build tests in QEMU ##
+###################################
+{% for dist in birdlab %}
+{% for config in [ { "name": "regular" } ] + ( dist['config'] if 'config' in dist else [] ) %}
+build-birdlab-{{ dist['name'] }}-{{ config['name'] }}:
+  stage: build
+  script:
+    - export BRANCH=$CI_COMMIT_BRANCH
+    - autoreconf
+    - ./configure {{ config['opts'] }}
+    - gmake
+    - gmake check
+  tags:
+    - birdlab-{{ dist['name'] }}
+    - amd64
+  variables:
+{{ dist['variables'] | to_yaml | indent(4, true) }}
+{{ config['variables'] | to_yaml | indent(4, true) }}
+{% endfor %}
+{% endfor %}
+
+#########################
+## Partial build tests ##
+#########################
+
+{% for test in partial_build %}
+partial-build-linux-{{ test["protocols"] }}:
+  stage: build
+  # There should be a dependency on image rebuild in case it is happening
+  image: registry.nic.cz/labs/bird:{{ partial_build_image["name"] }}
+
+  needs: [ {% call docker_rebuild(partial_build_image["name"]) -%} docker-{{ partial_build_image["name"] }} {%- endcall %} ]
+  script:
+    - export BRANCH=$CI_COMMIT_BRANCH
+    - autoreconf
+    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" --with-protocols={{ test["protocols"] }}
+    # Detect which make is available
+    - MAKE=make
+    - which gmake 2>/dev/null >/dev/null && MAKE=gmake
+    - $MAKE
+    - $MAKE check
+    # Build docs when tools are available
+    - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
+  tags:
+    - docker
+    - linux
+    - amd64
+{% endfor %}
+
+################################
+## Netlab functionality tests ##
+################################
+
+build-netlab:
+  stage: build
+  variables:
+    BDIR: build-netlab
+  tags:
+    - netlab
+    - amd64
+  script:
+    - autoreconf
+    - mkdir $BDIR
+    - cd $BDIR
+    - ../configure
+    - BRANCH=$CI_COMMIT_BRANCH make
+  artifacts:
+    paths:
+      - $BDIR/bird
+      - $BDIR/birdc
+    expire_in: 2 hours
+
+{% for test in netlab %}
+test-{{ test["name"] }}:
+  stage: test
+  needs: [build-netlab]
+  tags:
+    - netlab
+    - amd64
+  script:
+    - DIR=$(pwd)
+    - cd $TOOLS_DIR
+    - sudo git clean -fx
+    - git pull --ff-only
+    - "mv $DIR/build-netlab/* netlab/common/"
+    - ln -s $STAYRTR_BINARY netlab/common/stayrtr
+    - cd netlab
+    - sudo ./stop
+    - sudo ./runtest -s v2 -m check cf-{{ test["name"] }}
+{% endfor %}
+
+#######################################################
+## A special task for preparing the release archives ##
+#######################################################
+build-release:
+  image: registry.nic.cz/labs/bird:docbuilder
+  needs: [ {% call docker_rebuild("docbuilder") -%} docker-docbuilder {%- endcall %} ]
+  stage: build
+  tags:
+    - docker
+    - linux
+  script:
+    - export BRANCH=$CI_COMMIT_BRANCH
+    - autoreconf
+    - ./configure --with-protocols= --disable-client
+    - make obj/doc/bird-singlepage.html
+    - tools/make-archive
+  artifacts:
+    paths:
+      - obj/doc/bird-singlepage.html
+      - bird-*.tar.gz
+    expire_in: 1 day
