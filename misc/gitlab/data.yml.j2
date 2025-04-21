@@ -58,7 +58,7 @@ birdlab:
   - name: freebsd-{{ num }}
     config:
       - name: netlink
-        opts: --with-sysconfig=bsd-netlink --disable-client
+        opts: --with-sysconfig=bsd-netlink CPPFLAGS="$CPPFLAGS -I/usr/local/include" LDFLAGS="$LDFLAGS -L/usr/local/lib"
   {% endfor %}
 
 partial_build_image:
