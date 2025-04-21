@@ -1,8 +1,3 @@
-## TODO: find out how to generate this file by another yaml file.
-## Gitlab can do it but it is a stupid idea to mess with this
-## when releasing 4 versions at once. See ya later!
-##                                              -- Maria, April 2025
-
 variables:
   DEBIAN_FRONTEND: noninteractive
   LC_ALL: C.UTF-8
@@ -17,33 +12,29 @@ stages:
   - test
   - release
 
-.minimal: &minimal
-  before_script:
+## Child pipelines for autotests
+prepare:
+  stage: prepare
+  script:
     - apk add --update --no-cache python3 git bash
     - python3 -m venv venv
     - . venv/bin/activate
     - python3 -m ensurepip
-    - pip3 install --no-cache --upgrade jinja2 pyyaml
-  tags:
-    - linux
-    - docker
-
-## Child pipelines for autotests
-prepare:
-  <<: *minimal
-  stage: prepare
-  script:
-    - if bash ./tools/git-is-stable-branch $CI_COMMIT_BRANCH; then ./tools/git-check-commits; fi
-    - 'cd misc/gitlab && python3 pipeline.py > pipeline.yml'
+    - pip3 install --no-cache --upgrade jinja2 pyyaml requests
+    - if ./tools/git-is-stable-branch $CI_COMMIT_BRANCH; then ./tools/git-check-commits; fi
+    - cd misc/gitlab && if python3 dependent.py $CI_COMMIT_SHA $CI_PIPELINE_ID > pipeline.yml || [ "$CI_JOB_MANUAL" == "true" ]; then python3 pipeline.py > pipeline.yml; fi
   artifacts:
     paths:
       - misc/gitlab/pipeline.yml
+  tags:
+    - linux
+    - docker
   rules:
-  - if: $CI_COMMIT_BRANCH =~ /^(stable-.*|thread-next|master)$/
-    when: always
-  - if: $CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/
-    when: never
-  - when: always
+    - if: $CI_COMMIT_BRANCH =~ /^(stable-.*|thread-next|master)$/
+      when: always
+    - if: $CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/
+      when: never
+    - when: always
 
 child-run:
   stage: test
