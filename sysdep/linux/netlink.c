@@ -1870,8 +1870,8 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	    return;
 
 #ifdef CONFIG_ASSUME_ONLINK
-	  if (krt_assume_onlink(ra->nh.iface, ipa_is_ip6(ra->nh.gw)))
-	    ra->nh.flags |= RNF_ONLINK;
+	  if (krt_assume_onlink(nhad->nh.iface, ipa_is_ip6(nhad->nh.gw)))
+	    nhad->nh.flags |= RNF_ONLINK;
 #endif
 
 	  neighbor *nbr;
