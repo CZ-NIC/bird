@@ -926,12 +926,20 @@ build-birdlab-freebsd-14-netlink:
     - birdlab-freebsd-14
     - amd64
 
-build-birdlab-openbsd-71:
+build-birdlab-openbsd-75:
   <<: *build-birdlab-base
   variables:
     AUTOCONF_VERSION: "2.71"
   tags:
-    - birdlab-openbsd-71
+    - birdlab-openbsd-75
+    - amd64
+
+build-birdlab-openbsd-76:
+  <<: *build-birdlab-base
+  variables:
+    AUTOCONF_VERSION: "2.72"
+  tags:
+    - birdlab-openbsd-76
     - amd64
 
 # We have also some virtuals for these but there are working dockers as well
