@@ -728,6 +728,16 @@ build-netlab:
     - sudo ./stop
     - sudo ./runtest -s v2 -m check $TEST_NAME
 
+test-babel-base:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-babel-base
+
+test-babel-auth:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-babel-auth
+
 test-ospf-base:
   <<: *test-base
   variables:
@@ -857,16 +867,6 @@ test-ibgp-flat:
   <<: *test-base
   variables:
     TEST_NAME: cf-ibgp-flat
-
-test-babel-base:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-babel-base
-
-test-babel-auth:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-babel-auth
 
 test-rip-base:
   <<: *test-base
