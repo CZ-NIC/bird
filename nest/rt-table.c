@@ -1580,10 +1580,6 @@ channel_notify_basic(void *_channel)
 	      rt_export_processed(&c->out_req, rpe->it.seq);
 	    }
 
-          /* Have we exported the old route? */
-          if (old && !bmap_test(&c->export_accepted_map, old->id))
-            old = NULL;
-
 	  /* Ignore invalid routes */
 	  if (!rte_is_valid(new))
 	    new = NULL;
