@@ -1702,7 +1702,7 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     return 0;
   }
 
-  if (!EMPTY_LIST(p->ao.keys))
+  if ((p->p.proto_state != PS_DOWN) && !EMPTY_LIST(p->ao.keys))
   {
     int current = -1, rnext = -1;
     sk_get_active_ao_keys(sk, &current, &rnext);
