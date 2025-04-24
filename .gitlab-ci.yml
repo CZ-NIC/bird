@@ -942,6 +942,18 @@ build-birdlab-openbsd-76:
     - birdlab-openbsd-76
     - amd64
 
+build-birdlab-netbsd-09:
+  <<: *build-birdlab-base
+  tags:
+    - birdlab-netbsd-09
+    - amd64
+
+build-birdlab-netbsd-10:
+  <<: *build-birdlab-base
+  tags:
+    - birdlab-netbsd-10
+    - amd64
+
 # We have also some virtuals for these but there are working dockers as well
 # so no need to bother again
 #build-birdlab-debian-11:
