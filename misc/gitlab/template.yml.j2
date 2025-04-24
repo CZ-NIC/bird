@@ -188,11 +188,12 @@ build-release:
     # create venv only if it's installed
     - if python3 -m venv venv; then . venv/bin/activate; fi
     - pip3 install apkg
-    - BRANCH=$CI_COMMIT_BRANCH ARCHIVE_DOCS=false apkg build
+    - apkg build -a bird-$(cat VERSION)*.tar.gz
     #- apkg install -y pkg/pkgs/*/*/*.deb
   artifacts:
     paths:
       - pkg/pkgs/*
+      - pkg/srcpkgs/*
 
 .pkg-deb-legacy: &pkg-deb-legacy
   <<: *test-job
@@ -205,22 +206,24 @@ build-release:
     # to ancient distros, we need to do this workaround
     - pip3 install beautifulsoup4==4.11.2
     - pip3 install apkg
-    - BRANCH=$CI_COMMIT_BRANCH ARCHIVE_DOCS=false apkg build
+    - apkg build -a bird-$(cat VERSION)*.tar.gz
     #- apkg install -y pkg/pkgs/*/*/*.deb
   artifacts:
     paths:
       - pkg/pkgs/*
+      - pkg/srcpkgs/*
 
 .pkg-rpm: &pkg-rpm
   <<: *test-job
   stage: pkg
   script:
     - pip3 install apkg
-    - BRANCH=$CI_COMMIT_BRANCH ARCHIVE_DOCS=false apkg build
+    - apkg build -a bird-$(cat VERSION)*.tar.gz
     #- apkg install -y pkg/pkgs/*/*/*.rpm
   artifacts:
     paths:
       - pkg/pkgs/*
+      - pkg/srcpkgs/*
 
 .pkg-rpm-wa: &pkg-rpm-wa
   <<: *test-job
@@ -230,17 +233,21 @@ build-release:
     # install older version of bs4 that does not use python version >= 3.6
     - pip3 install beautifulsoup4==4.11.2
     - pip3 install apkg
-    - BRANCH=$CI_COMMIT_BRANCH ARCHIVE_DOCS=false apkg build
+    - apkg build -a bird-$(cat VERSION)*.tar.gz
     #- apkg install -y pkg/pkgs/*/*/*.rpm
   artifacts:
     paths:
       - pkg/pkgs/*
+      - pkg/srcpkgs/*
 
 
 {% for dist in distros %}
 pkg-{{ dist["name"] }}:
   <<: *{{ dist["type"] }}
-  needs: [ build-{{ dist["name"] }} ]
+  needs:
+    - job: build-{{ dist["name"] }}
+      artifacts: false
+    - job: build-release
   image: registry.nic.cz/labs/bird:{{ dist["name"] }}
 {%- if 'variables' in dist %}
   variables:
