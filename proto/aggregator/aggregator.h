@@ -94,7 +94,6 @@ struct aggregator_proto {
   /* Array of bucket pointers */
   struct aggregator_bucket **bucket_list;
   uint bucket_list_size;
-  int bucket_list_count;
 
   /* Route withdrawal */
   struct rte_withdrawal_item *rte_withdrawal_stack;

@@ -44,7 +44,6 @@ extern linpool *rte_update_pool;
 /*
  * Add @bucket to the list of bucket pointers in @p to position @bucket.id
  */
-// TODO: enable to reset bucket ptr?
 static void
 aggregator_add_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket)
 {
@@ -52,29 +51,28 @@ aggregator_add_bucket(struct aggregator_proto *p, struct aggregator_bucket *buck
   ASSERT_DIE(p->bucket_list != NULL);
   ASSERT_DIE(bucket != NULL);
 
-  /* Bucket is already in the list */
-  if (bucket->id < p->bucket_list_size && p->bucket_list[bucket->id])
+  /* Save bucket pointer */
+  if (bucket->id < p->bucket_list_size)
+  {
+    p->bucket_list[bucket->id] = bucket;
     return;
-
-  const size_t old_size = p->bucket_list_size;
+  }
 
   /* Reallocate if more space is needed */
-  if (bucket->id >= p->bucket_list_size)
-  {
-    while (bucket->id >= p->bucket_list_size)
-      p->bucket_list_size *= 2;
+  const size_t old_size = p->bucket_list_size;
 
-    ASSERT_DIE(old_size < p->bucket_list_size);
+  while (bucket->id >= p->bucket_list_size)
+    p->bucket_list_size *= 2;
 
-    p->bucket_list = mb_realloc(p->bucket_list, sizeof(p->bucket_list[0]) * p->bucket_list_size);
-    memset(&p->bucket_list[old_size], 0, sizeof(p->bucket_list[0]) * (p->bucket_list_size - old_size));
-  }
+  ASSERT_DIE(old_size < p->bucket_list_size);
+
+  p->bucket_list = mb_realloc(p->bucket_list, sizeof(p->bucket_list[0]) * p->bucket_list_size);
+  memset(&p->bucket_list[old_size], 0, sizeof(p->bucket_list[0]) * (p->bucket_list_size - old_size));
 
   ASSERT_DIE(bucket->id < p->bucket_list_size);
   ASSERT_DIE(p->bucket_list[bucket->id] == NULL);
 
   p->bucket_list[bucket->id] = bucket;
-  p->bucket_list_count++;
 }
 
 /*
@@ -790,7 +788,6 @@ aggregator_init(struct proto_config *CF)
   p->logging            = cf->logging;
   p->bucket_list        = NULL;
   p->bucket_list_size   = 0;
-  p->bucket_list_count  = 0;
 
   P->rt_notify = aggregator_rt_notify;
   P->preexport = aggregator_preexport;
@@ -891,7 +888,6 @@ aggregator_start(struct proto *P)
 
     ASSERT_DIE(p->bucket_list == NULL);
     ASSERT_DIE(p->bucket_list_size == 0);
-    ASSERT_DIE(p->bucket_list_count == 0);
 
     p->bucket_list_size = BUCKET_LIST_INIT_SIZE;
     p->bucket_list = mb_allocz(P->pool, sizeof(p->bucket_list[0]) * p->bucket_list_size);
@@ -929,7 +925,6 @@ aggregator_cleanup(struct proto *P)
 
   p->bucket_list = NULL;
   p->bucket_list_size = 0;
-  p->bucket_list_count = 0;
 
   p->rte_withdrawal_stack = NULL;
   p->rte_withdrawal_count = 0;
