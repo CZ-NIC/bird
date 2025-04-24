@@ -71,8 +71,9 @@ struct aggregator_proto {
   HASH(struct aggregator_route) routes;
   struct linpool *route_pool;
 
-  /* Bucket IDs */
+  /* Bucket IDs and count */
   struct hmap bucket_id_map;
+  int buckets_count;
 
   /* Aggregator rule */
   struct aggr_item *aggr_on;
