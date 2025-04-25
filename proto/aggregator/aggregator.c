@@ -128,6 +128,9 @@ aggregator_resize_slab(struct aggregator_proto *p, u32 id)
   p->root = aggregator_root_init(default_rte_bucket, p->trie_slab);
 }
 
+/*
+ * Build and aggregate trie after initial feed ends
+ */
 static void
 aggregator_aggregate_on_feed_end(struct channel *C)
 {
@@ -278,7 +281,7 @@ aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *b
     log("===================================================");
   }
 
-  /* merge filter needs one argument called "routes" */
+  /* Merge filter needs one argument called "routes" */
   struct f_val val = {
     .type = T_ROUTES_BLOCK,
     .val.rte = bucket->rte,
@@ -538,7 +541,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     if (old_route && rte_same(&old_route->rte, new))
       return;
 
-    /* Evaluate route attributes. */
+    /* Evaluate route attributes */
     struct aggregator_bucket *tmp_bucket = allocz(sizeof(*tmp_bucket) + sizeof(tmp_bucket->aggr_data[0]) * p->aggr_on_count);
     ASSERT_DIE(tmp_bucket->id == 0);
 
@@ -760,10 +763,9 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
   }
   else if (p->aggr_mode == PREFIX_AGGR)
   {
-    /* When receiving initial feed, whole trie is aggregated at once */
+    /* After initial feed, recompute trie after receiving incremental update */
     if (!p->initial_feed)
     {
-      /* After initial feed, recompute after receiving incremental update */
       aggregator_recompute(p, old_route, new_route);
 
       /* Process route withdrawals triggered by recomputation */
@@ -877,14 +879,15 @@ aggregator_trie_init(struct aggregator_proto *p)
   mem_hash_init(&haux);
   new_bucket->hash = mem_hash_value(&haux);
 
-  /* Assign ID to the root node bucket */
+  /* Assign ID to the bucket */
   new_bucket->id = hmap_first_zero(&p->bucket_id_map);
   hmap_set(&p->bucket_id_map, new_bucket->id);
 
-  /* Add bucket pointer to the list of pointers */
+  /* Save bucket pointer */
   aggregator_add_bucket(p, new_bucket);
   p->buckets_count++;
 
+  /* Prepare route */
   struct aggregator_route *arte = lp_allocz(p->route_pool, sizeof(*arte));
 
   *arte = (struct aggregator_route) {

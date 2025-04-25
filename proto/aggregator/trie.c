@@ -76,7 +76,7 @@
  *
  * After every aggregation, following invariants are always satisfied:
  *
- *   1. All nodes have some bucket.
+ *   1. All nodes have original bucket set.
  *   2. All nodes have the IN_FIB ancestor pointer set.
  *   3. If a node is IN_FIB, then
  *        a) its selected bucket must not be null,
@@ -705,9 +705,9 @@ aggregator_process_one_child_nodes(struct trie_node *node, const struct aggregat
 {
   ASSERT_DIE(node != NULL);
 
-  /* Imaginary node that would have been added during normalization of the trie */
   const size_t node_size = sizeof(*node) + sizeof(node->potential_buckets[0]) * bitmap_size;
 
+  /* Imaginary node that would have been added during normalization of the trie */
   struct trie_node *imaginary_node = allocz(node_size);
 
   *imaginary_node = (struct trie_node) {
@@ -781,7 +781,7 @@ aggregator_export_node_prefix(struct aggregator_proto *p, struct trie_node *node
   {
     ASSERT_DIE(old_bucket != NULL);
 
-    /* Node's bucket has changed, remove old route before exporting new */
+    /* Node's bucket has changed, remove old route and export new */
     if (old_bucket && old_bucket != node->selected_bucket)
     {
       aggregator_prepare_rte_withdrawal(p, prefix, pxlen, old_bucket);
@@ -1088,7 +1088,6 @@ aggregator_recompute(struct aggregator_proto *p, struct aggregator_route *old, s
   struct trie_node *ancestor = updated_node;
 
   /* Find the closest IN_FIB ancestor of the updated node */
-  // TODO: use node ancestor pointer instead of traversing
   while (ancestor = ancestor->parent)
   {
     ASSERT_DIE(ancestor != updated_node);
