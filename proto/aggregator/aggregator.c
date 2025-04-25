@@ -83,8 +83,8 @@ aggregator_withdraw_rte(struct aggregator_proto *p)
 {
   if ((p->addr_type == NET_IP4 && p->rte_withdrawal_count > IP4_WITHDRAWAL_MAX_EXPECTED_LIMIT) ||
       (p->addr_type == NET_IP6 && p->rte_withdrawal_count > IP6_WITHDRAWAL_MAX_EXPECTED_LIMIT))
-    log(L_WARN "This number of updates was not expected."
-               "They will be processed. Please, report this to developers.");
+    log(L_WARN "This number of updates was not expected. "
+               "Please, report this to developers.");
 
   struct rte_withdrawal_item *node = NULL;
 
@@ -139,8 +139,8 @@ aggregator_aggregate_on_feed_end(struct channel *C)
   ASSERT_DIE(p->aggr_mode == PREFIX_AGGR);
   ASSERT_DIE(p->root != NULL);
 
-  aggregator_aggregate(p);
   p->initial_feed = false;
+  aggregator_aggregate(p);
 }
 
 /*
@@ -212,7 +212,7 @@ aggregator_rta_set_static_attr(struct rta *rta, const struct rta *old, struct f_
  * @count: number of &f_val entries
  */
 static int
-aggregator_same_val_list(const struct f_val *v1, const struct f_val *v2, u32 len)
+aggregator_same_val_list(const struct f_val *v1, const struct f_val *v2, uint len)
 {
   for (u32 i = 0; i < len; i++)
     if (!val_same(&v1[i], &v2[i]))
@@ -600,7 +600,7 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     }
 
     /* Compute the hash */
-    u64 haux;
+    u64 haux = 0;
     mem_hash_init(&haux);
 
     for (u32 i = 0; i < p->aggr_on_count; i++)
@@ -827,7 +827,6 @@ aggregator_postconfig(struct proto_config *CF)
   cf->dst->debug = cf->src->debug;
 }
 
-// TODO: set pools to NULL?
 static struct proto *
 aggregator_init(struct proto_config *CF)
 {
@@ -844,13 +843,10 @@ aggregator_init(struct proto_config *CF)
   p->aggr_on            = cf->aggr_on;
   p->merge_by           = cf->merge_by;
   p->logging            = cf->logging;
-  p->bucket_list        = NULL;
-  p->bucket_list_size   = 0;
-  p->buckets_count      = 0;
 
   P->rt_notify = aggregator_rt_notify;
   P->preexport = aggregator_preexport;
-  P->feed_end = aggregator_aggregate_on_feed_end;
+  P->feed_end  = aggregator_aggregate_on_feed_end;
 
   return P;
 }
@@ -867,12 +863,9 @@ aggregator_trie_init(struct aggregator_proto *p)
   /* Zero prefix for default route */
   ip_addr prefix = (p->addr_type == NET_IP4) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
 
-  struct net_addr addr = { 0 };
-  net_fill_ipa(&addr, prefix, 0);
-
   /* Create net for zero prefix */
-  struct network *default_net = mb_allocz(p->p.pool, sizeof(*default_net) + sizeof(addr));
-  net_copy(default_net->n.addr, &addr);
+  struct network *default_net = mb_allocz(p->p.pool, sizeof(*default_net) + sizeof(struct net_addr));
+  net_fill_ipa(default_net->n.addr, prefix, 0);
 
   /* Create route attributes with zero nexthop */
   struct rta rta = { 0 };
@@ -987,20 +980,18 @@ aggregator_cleanup(struct proto *P)
   p->trie_slab = NULL;
   p->rte_withdrawal_pool = NULL;
 
+  p->bucket_id_map = (struct hmap) { 0 };
+  p->buckets_count = 0;
+
   p->root = NULL;
+  p->bitmap_size = 0;
+  p->initial_feed = true;
 
   p->bucket_list = NULL;
   p->bucket_list_size = 0;
-  p->buckets_count = 0;
 
   p->rte_withdrawal_stack = NULL;
   p->rte_withdrawal_count = 0;
-
-  p->bucket_id_map = (struct hmap) { 0 };
-
-  p->initial_feed = true;
-
-  p->bitmap_size = 0;
 }
 
 static int

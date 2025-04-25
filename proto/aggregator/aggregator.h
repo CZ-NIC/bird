@@ -28,12 +28,12 @@ enum aggregation_mode {
 struct aggregator_config {
   struct proto_config c;
   struct channel_config *src, *dst;
-  enum aggregation_mode aggr_mode;
+  struct aggr_item *aggr_on;
   u32 aggr_on_count;
   u32 aggr_on_da_count;
-  struct aggr_item *aggr_on;
   const struct f_line *merge_by;
-  int logging;
+  enum aggregation_mode aggr_mode;
+  bool logging;
 };
 
 struct aggregator_route {
@@ -49,7 +49,7 @@ struct aggregator_bucket {
   u32 count;
   u32 hash;
   u32 id;
-  struct f_val aggr_data[0];
+  struct f_val aggr_data[];
 };
 
 struct rte_withdrawal_item {

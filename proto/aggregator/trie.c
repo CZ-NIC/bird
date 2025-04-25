@@ -144,6 +144,9 @@
 #include "filter/filter.h"
 #include "proto/aggregator/aggregator.h"
 
+/* Only u32 is allowed to use in bitmap because of use of BIT32 macros */
+STATIC_ASSERT(sizeof(((struct trie_node *)0)->potential_buckets[0]) == sizeof(u32));
+
 static const char *px_origin_str[] = {
   [FILLER]     = "filler",
   [ORIGINAL]   = "original",
@@ -456,12 +459,6 @@ aggregator_prepare_rte_withdrawal(struct aggregator_proto *p, ip_addr prefix, u3
 
   /* Fill in net and bucket */
   net_fill_ipa(&item->addr, prefix, pxlen);
-#if 0 // TODO
-  struct net_addr addr = { 0 };
-  net_fill_ipa(&addr, prefix, pxlen);
-  net_copy(&item->addr, &addr);
-#endif
-
   item->bucket = bucket;
 
   /* Push item onto stack */
@@ -774,7 +771,6 @@ aggregator_export_node_prefix(struct aggregator_proto *p, struct trie_node *node
 
   /* Select bucket with the lowest ID */
   node->selected_bucket = aggregator_select_lowest_id_bucket(p, node);
-  ASSERT_DIE(node->selected_bucket != NULL);
 
   /* Node status is changing from NON_FIB to IN_FIB, export its route */
   if (node->status != IN_FIB)
@@ -804,7 +800,7 @@ aggregator_export_node_prefix(struct aggregator_proto *p, struct trie_node *node
  * Remove prefix of the current node from FIB and set node status to NON_FIB
  */
 static void
-aggregator_remove_node_prefix(struct aggregator_proto *p, struct trie_node *node, ip_addr prefix, u32 pxlen)
+aggregator_withdraw_node_prefix(struct aggregator_proto *p, struct trie_node *node, ip_addr prefix, u32 pxlen)
 {
   /* Node status is changing from IN_FIB to NON_FIB, withdraw its route */
   if (node->status == IN_FIB)
@@ -856,7 +852,7 @@ aggregator_group_prefixes_helper(struct aggregator_proto *p, struct trie_node *n
    * inherits one, and its prefix is thus not needed in FIB.
    */
   if (aggregator_is_bucket_potential(node, inherited_bucket->id, p->bitmap_size))
-    aggregator_remove_node_prefix(p, node, *prefix, pxlen);
+    aggregator_withdraw_node_prefix(p, node, *prefix, pxlen);
   else
     aggregator_export_node_prefix(p, node, *prefix, pxlen);
 
@@ -1024,8 +1020,8 @@ aggregator_construct_trie(struct aggregator_proto *p)
     {
       const struct net_addr *addr = rte->net->n.addr;
 
-      const ip_addr prefix = net_prefix(addr);
-      const u32 pxlen = net_pxlen(addr);
+      ip_addr prefix = net_prefix(addr);
+      u32 pxlen = net_pxlen(addr);
 
       aggregator_trie_insert_prefix(p, prefix, pxlen, bucket);
     }
@@ -1069,8 +1065,8 @@ aggregator_recompute(struct aggregator_proto *p, struct aggregator_route *old, s
   {
     const struct net_addr *addr = old->rte.net->n.addr;
 
-    const ip_addr prefix = net_prefix(addr);
-    const u32 pxlen = net_pxlen(addr);
+    ip_addr prefix = net_prefix(addr);
+    u32 pxlen = net_pxlen(addr);
 
     updated_node = aggregator_trie_remove_prefix(p, prefix, pxlen);
     ASSERT_DIE(updated_node != NULL);
@@ -1079,8 +1075,8 @@ aggregator_recompute(struct aggregator_proto *p, struct aggregator_route *old, s
   {
     const struct net_addr *addr = new->rte.net->n.addr;
 
-    const ip_addr prefix = net_prefix(addr);
-    const u32 pxlen = net_pxlen(addr);
+    ip_addr prefix = net_prefix(addr);
+    u32 pxlen = net_pxlen(addr);
 
     updated_node = aggregator_trie_insert_prefix(p, prefix, pxlen, new->bucket);
 
