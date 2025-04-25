@@ -431,8 +431,17 @@ krt_read_route(struct ks_msg *msg, struct krt_proto *p, int scan)
   if (!(flags & RTF_DONE) && !scan)
     SKIP("not done in async\n");
 
+#ifdef RTF_LLINFO
+  /* Obsolete in FreeBSD and NetBSD, still used in OpenBSD */
   if (flags & RTF_LLINFO)
     SKIP("link-local\n");
+#endif
+
+#ifdef RTF_LLDATA
+  /* Reported by NetBSD */
+  if (flags & RTF_LLDATA)
+    SKIP("link-local\n");
+#endif
 
   GETADDR(&dst, RTA_DST);
   GETADDR(&gate, RTA_GATEWAY);
