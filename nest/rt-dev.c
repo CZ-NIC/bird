@@ -191,6 +191,7 @@ struct protocol proto_device = {
   .channel_mask =	NB_IP | NB_IP6_SADR,
   .proto_size =		sizeof(struct rt_dev_proto),
   .config_size =	sizeof(struct rt_dev_config),
+  .startup =		PROTOCOL_STARTUP_GENERATOR,
   .postconfig =		dev_postconfig,
   .init =		dev_init,
   .reconfigure =	dev_reconfigure,
