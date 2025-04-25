@@ -318,7 +318,7 @@ krt_send_route(struct krt_proto *p, int cmd, rte *e)
       msg.rtm.rtm_flags |= RTF_GATEWAY;
       msg.rtm.rtm_addrs |= RTA_GATEWAY;
       break;
-    }
+    } /* fallthrough */
 
 #ifdef RTF_REJECT
   case RTD_UNREACHABLE:
@@ -852,7 +852,8 @@ krt_read_msg(struct proto *p, struct ks_msg *msg, int scan)
   switch (msg->rtm.rtm_type)
   {
     case RTM_GET:
-      if(!scan) return;
+      if (!scan) return;
+      /* fallthrough */
     case RTM_ADD:
     case RTM_DELETE:
     case RTM_CHANGE:
