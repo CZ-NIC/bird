@@ -1520,6 +1520,7 @@ void
 babel_send_queue(void *arg)
 {
   struct babel_iface *ifa = arg;
+  ASSERT_DIE(birdloop_inside(ifa->proto->p.loop));
   while ((babel_write_queue(ifa, &ifa->msg_queue) > 0) &&
 	 (babel_send_to(ifa, IP6_BABEL_ROUTERS) > 0));
 }
@@ -1533,7 +1534,7 @@ babel_kick_queue(struct babel_iface *ifa)
    */
 
   if ((ifa->sk->tpos == ifa->sk->tbuf) && !ev_active(ifa->send_event))
-    ev_schedule(ifa->send_event);
+    ev_send(proto_event_list(&ifa->proto->p), ifa->send_event);
 }
 
 /**
@@ -1550,6 +1551,7 @@ void
 babel_send_unicast(union babel_msg *msg, struct babel_iface *ifa, ip_addr dest)
 {
   struct babel_proto *p = ifa->proto;
+  ASSERT_DIE(birdloop_inside(p->p.loop));
   struct babel_msg_node *msgn = sl_alloc(p->msg_slab);
   list queue;
 
@@ -1579,6 +1581,7 @@ void
 babel_enqueue(union babel_msg *msg, struct babel_iface *ifa)
 {
   struct babel_proto *p = ifa->proto;
+  ASSERT_DIE(birdloop_inside(p->p.loop));
   struct babel_msg_node *msgn = sl_alloc(p->msg_slab);
 
   *msgn = (struct babel_msg_node) { .msg = *msg };
@@ -1764,6 +1767,7 @@ int
 babel_open_socket(struct babel_iface *ifa)
 {
   struct babel_proto *p = ifa->proto;
+  ASSERT_DIE(birdloop_inside(p->p.loop));
 
   sock *sk;
   sk = sk_new(ifa->pool);
@@ -2030,6 +2034,7 @@ babel_auth_check(struct babel_iface *ifa,
 {
   uint frame_err UNUSED = 0;
   struct babel_proto *p = ifa->proto;
+  ASSERT_DIE(birdloop_inside(p->p.loop));
   struct babel_tlv *tlv;
 
   struct babel_parse_state state = {
@@ -2099,6 +2104,7 @@ int
 babel_auth_add_tlvs(struct babel_iface *ifa, struct babel_tlv *hdr, uint max_len)
 {
   struct babel_proto *p = ifa->proto;
+  ASSERT_DIE(birdloop_inside(p->p.loop));
   struct babel_tlv_pc *tlv;
   uint len;
 
@@ -2139,6 +2145,7 @@ int
 babel_auth_sign(struct babel_iface *ifa, ip_addr dest)
 {
   struct babel_proto *p = ifa->proto;
+  ASSERT_DIE(birdloop_inside(p->p.loop));
   sock *sk = ifa->sk;
 
   if (ifa->cf->auth_type == BABEL_AUTH_NONE)
@@ -2193,6 +2200,7 @@ babel_auth_sign(struct babel_iface *ifa, ip_addr dest)
 void
 babel_auth_set_tx_overhead(struct babel_iface *ifa)
 {
+  ASSERT_DIE(birdloop_inside(ifa->proto->p.loop));
   if (ifa->cf->auth_type == BABEL_AUTH_NONE)
   {
     ifa->auth_tx_overhead = 0;

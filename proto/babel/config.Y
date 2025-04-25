@@ -63,6 +63,7 @@ babel_iface_start:
   init_list(&this_ipatt->ipn_list);
   reset_passwords();
 
+  this_proto->loop_order = DOMAIN_ORDER(proto);
   BABEL_IFACE->port = BABEL_PORT;
   BABEL_IFACE->type = BABEL_IFACE_TYPE_WIRED;
   BABEL_IFACE->limit = BABEL_HELLO_LIMIT;

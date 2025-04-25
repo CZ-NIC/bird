@@ -311,6 +311,7 @@ babel_add_seqno_request(struct babel_proto *p, struct babel_entry *e,
 			u64 router_id, u16 seqno, u8 hop_count,
 			struct babel_neighbor *target)
 {
+  ASSERT_DIE(birdloop_inside(p->p.loop));
   struct babel_seqno_request *sr;
   btime now_ = current_time();
 
@@ -1214,6 +1215,7 @@ babel_handle_ack_req(union babel_msg *m, struct babel_iface *ifa)
 {
   struct babel_proto *p = ifa->proto;
   struct babel_msg_ack_req *msg = &m->ack_req;
+  ASSERT_DIE(birdloop_inside(p->p.loop));
 
   TRACE(D_PACKETS, "Handling ACK request nonce %d interval %t",
 	msg->nonce, (btime) msg->interval);
@@ -1226,6 +1228,7 @@ babel_handle_hello(union babel_msg *m, struct babel_iface *ifa)
 {
   struct babel_proto *p = ifa->proto;
   struct babel_msg_hello *msg = &m->hello;
+  ASSERT_DIE(birdloop_inside(p->p.loop));
 
   TRACE(D_PACKETS, "Handling hello seqno %d interval %t",
 	msg->seqno, (btime) msg->interval);
@@ -1258,6 +1261,7 @@ babel_handle_ihu(union babel_msg *m, struct babel_iface *ifa)
 {
   struct babel_proto *p = ifa->proto;
   struct babel_msg_ihu *msg = &m->ihu;
+  ASSERT_DIE(birdloop_inside(p->p.loop));
 
   /* Ignore IHUs that are not about us */
   if ((msg->ae != BABEL_AE_WILDCARD) && !ipa_equal(msg->addr, ifa->addr))
@@ -1321,6 +1325,7 @@ babel_handle_update(union babel_msg *m, struct babel_iface *ifa)
 {
   struct babel_proto *p = ifa->proto;
   struct babel_msg_update *msg = &m->update;
+  ASSERT_DIE(birdloop_inside(p->p.loop));
 
   struct babel_neighbor *nbr;
   struct babel_entry *e;
@@ -1451,6 +1456,7 @@ babel_handle_route_request(union babel_msg *m, struct babel_iface *ifa)
 {
   struct babel_proto *p = ifa->proto;
   struct babel_msg_route_request *msg = &m->route_request;
+  ASSERT_DIE(birdloop_inside(p->p.loop));
 
   /* RFC 8966 3.8.1.1 */
 
@@ -1509,6 +1515,7 @@ babel_handle_seqno_request(union babel_msg *m, struct babel_iface *ifa)
 {
   struct babel_proto *p = ifa->proto;
   struct babel_msg_seqno_request *msg = &m->seqno_request;
+  ASSERT_DIE(birdloop_inside(p->p.loop));
 
   /* RFC 8966 3.8.1.2 */
 
@@ -1573,6 +1580,7 @@ babel_handle_seqno_request(union babel_msg *m, struct babel_iface *ifa)
 void
 babel_auth_reset_index(struct babel_iface *ifa)
 {
+  ASSERT_DIE(birdloop_inside(ifa->proto->p.loop));
   random_bytes(ifa->auth_index, BABEL_AUTH_INDEX_LEN);
   ifa->auth_pc = 1;
 }
@@ -1620,6 +1628,7 @@ babel_auth_check_pc(struct babel_iface *ifa, struct babel_msg_auth *msg)
 {
   struct babel_proto *p = ifa->proto;
   struct babel_neighbor *n;
+  ASSERT_DIE(birdloop_inside(p->p.loop));
 
   /*
    * We create the neighbour entry at this point because it makes it easier to
@@ -1757,14 +1766,14 @@ babel_iface_timer(timer *t)
 
   btime next_event = MIN(ifa->next_hello, ifa->next_regular);
   if (ifa->want_triggered) next_event = MIN(next_event, ifa->next_triggered);
-  tm_set(ifa->timer, next_event);
+  tm_set_in(ifa->timer, next_event, ifa->proto->p.loop);
 }
 
 static inline void
 babel_iface_kick_timer(struct babel_iface *ifa)
 {
   if (ifa->timer->expires > (current_time() + 100 MS))
-    tm_start(ifa->timer, 100 MS);
+    tm_start_in(ifa->timer, 100 MS, ifa->proto->p.loop);
 }
 
 static void
@@ -1778,7 +1787,7 @@ babel_iface_start(struct babel_iface *ifa)
   ifa->next_regular = current_time() + (random() % ifa->cf->update_interval);
   ifa->next_triggered = current_time() + MIN(1 S, ifa->cf->update_interval / 2);
   ifa->want_triggered = 0;	/* We send an immediate update (below) */
-  tm_start(ifa->timer, 100 MS);
+  tm_start_in(ifa->timer, 100 MS, p->p.loop);
   ifa->up = 1;
 
   babel_send_hello(ifa, 0);
@@ -1943,7 +1952,7 @@ babel_add_iface(struct babel_proto *p, struct iface *new, struct babel_iface_con
     .hook = babel_iface_locked,
     .data = ifa,
   };
-  lock->target = &global_event_list;
+  lock->target = proto_event_list(&p->p);
 
   olock_acquire(lock);
 }
@@ -2415,6 +2424,7 @@ static void
 babel_timer(timer *t)
 {
   struct babel_proto *p = t->data;
+  ASSERT_DIE(birdloop_inside(p->p.loop));
 
   babel_expire_routes(p);
   babel_expire_neighbors(p);
@@ -2424,7 +2434,7 @@ static inline void
 babel_kick_timer(struct babel_proto *p)
 {
   if (p->timer->expires > (current_time() + 100 MS))
-    tm_start(p->timer, 100 MS);
+    tm_start_in(p->timer, 100 MS, p->p.loop);
 }
 
 
@@ -2605,7 +2615,7 @@ babel_start(struct proto *P)
 
   init_list(&p->interfaces);
   p->timer = tm_new_init(P->pool, babel_timer, p, 1 S, 0);
-  tm_start(p->timer, 1 S);
+  tm_start_in(p->timer, 1 S, P->loop);
   p->update_seqno = 1;
   p->router_id = proto_get_router_id(&cf->c);
 
