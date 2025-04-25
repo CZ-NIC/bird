@@ -101,6 +101,33 @@ aggregator_withdraw_rte(struct aggregator_proto *p)
   lp_flush(p->rte_withdrawal_pool);
 }
 
+/*
+ * Change size of trie node so that @id fits into node's bitmap, allocate
+ * new slab configured with this size and initialize root node there.
+ */
+static void
+aggregator_resize_slab(struct aggregator_proto *p, u32 id)
+{
+  ASSERT_DIE(p->trie_slab != NULL);
+
+  /* Calculate sufficient bitmap size */
+  while (id >= (p->bitmap_size * sizeof(p->root->potential_buckets[0]) * 8))
+    p->bitmap_size *= 2;
+
+  /* Save bucket with default route */
+  struct aggregator_bucket *default_rte_bucket = p->root->original_bucket;
+
+  /* Calculate size of trie node with bigger bitmap */
+  const size_t node_size = sizeof(*p->root) + sizeof(p->root->potential_buckets[0]) * p->bitmap_size;
+
+  /* Free old slab and create new */
+  rfree(p->trie_slab);
+  p->trie_slab = sl_new(p->p.pool, node_size);
+
+  /* Initialize root node in new slab */
+  p->root = aggregator_root_init(default_rte_bucket, p->trie_slab);
+}
+
 static void
 aggregator_aggregate_on_feed_end(struct channel *C)
 {
@@ -649,6 +676,22 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
       hmap_set(&p->bucket_id_map, new_bucket->id);
 
       aggregator_add_bucket(p, new_bucket);
+
+      if (p->aggr_mode == PREFIX_AGGR)
+      {
+        /*
+         * If ID of new bucket doesn't fit into bitmap in trie nodes, we have to
+         * create new slab and build whole trie all over again.
+         */
+        if (new_bucket->id >= (p->bitmap_size * sizeof(p->root->potential_buckets[0]) * 8))
+        {
+          aggregator_resize_slab(p, new_bucket->id);
+
+          /* Trie already exists after initial feed, build it again in the new slab */
+          if (!p->initial_feed)
+            aggregator_aggregate(p);
+        }
+      }
     }
 
     /* Store the route attributes */
@@ -888,10 +931,13 @@ aggregator_start(struct proto *P)
   if (p->aggr_mode == PREFIX_AGGR)
   {
     ASSERT_DIE(p->trie_slab == NULL);
-    p->trie_slab = sl_new(P->pool, sizeof(struct trie_node));
-
     ASSERT_DIE(p->bucket_list == NULL);
     ASSERT_DIE(p->bucket_list_size == 0);
+
+    p->bitmap_size = POTENTIAL_BUCKETS_BITMAP_INIT_SIZE;
+
+    const size_t node_size = sizeof(*p->root) + sizeof(p->root->potential_buckets[0]) * p->bitmap_size;
+    p->trie_slab = sl_new(P->pool, node_size);
 
     p->bucket_list_size = BUCKET_LIST_INIT_SIZE;
     p->bucket_list = mb_allocz(P->pool, sizeof(p->bucket_list[0]) * p->bucket_list_size);
@@ -936,6 +982,8 @@ aggregator_cleanup(struct proto *P)
   p->bucket_id_map = (struct hmap) { 0 };
 
   p->initial_feed = true;
+
+  p->bitmap_size = 0;
 }
 
 static int

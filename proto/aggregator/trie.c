@@ -216,8 +216,6 @@ aggregator_remove_node(struct trie_node *node)
 static inline void
 aggregator_node_add_potential_bucket(struct trie_node *node, u32 bucket_id)
 {
-  ASSERT_DIE(node->potential_buckets_count < MAX_POTENTIAL_BUCKETS_COUNT);
-
   if (BIT32R_TEST(node->potential_buckets, bucket_id))
     return;
 
@@ -229,11 +227,11 @@ aggregator_node_add_potential_bucket(struct trie_node *node, u32 bucket_id)
  * Check if @bucket is one of potential buckets of @node
  */
 static inline int
-aggregator_is_bucket_potential(const struct trie_node *node, u32 id)
+aggregator_is_bucket_potential(const struct trie_node *node, u32 id, int bitmap_size)
 {
   ASSERT_DIE(node != NULL);
 
-  ASSERT_DIE(id < MAX_POTENTIAL_BUCKETS_COUNT);
+  ASSERT_DIE(id < (sizeof(node->potential_buckets[0]) * bitmap_size * 8));
   return BIT32R_TEST(node->potential_buckets, id);
 }
 
@@ -260,7 +258,7 @@ aggregator_select_lowest_id_bucket(const struct aggregator_proto *p, const struc
   ASSERT_DIE(p != NULL);
   ASSERT_DIE(node != NULL);
 
-  for (int i = 0; i < POTENTIAL_BUCKETS_BITMAP_SIZE; i++)
+  for (int i = 0; i < p->bitmap_size; i++)
   {
     if (node->potential_buckets[i] == 0)
       continue;
@@ -294,7 +292,7 @@ aggregator_select_lowest_id_bucket(const struct aggregator_proto *p, const struc
  * Returns: whether the set of potential buckets in the target node has changed.
  */
 static bool
-aggregator_merge_potential_buckets(struct trie_node *target, const struct trie_node *left, const struct trie_node *right)
+aggregator_merge_potential_buckets(struct trie_node *target, const struct trie_node *left, const struct trie_node *right, int bitmap_size)
 {
   ASSERT_DIE(target != NULL);
   ASSERT_DIE(left != NULL);
@@ -303,12 +301,12 @@ aggregator_merge_potential_buckets(struct trie_node *target, const struct trie_n
   bool has_intersection = false;
   bool has_changed = false;
 
-  u32 before[ARRAY_SIZE(target->potential_buckets)] = { 0 };
+  u32 *before = allocz(sizeof(*before) * bitmap_size);
 
   target->potential_buckets_count = 0;
 
   /* First we try to compute intersection. If it exists, we want to keep it. */
-  for (int i = 0; i < POTENTIAL_BUCKETS_BITMAP_SIZE; i++)
+  for (int i = 0; i < bitmap_size; i++)
   {
     /* Save current bitmap values */
     before[i] = target->potential_buckets[i];
@@ -332,7 +330,7 @@ aggregator_merge_potential_buckets(struct trie_node *target, const struct trie_n
   target->potential_buckets_count = 0;
   has_changed = false;
 
-  for (int i = 0; i < POTENTIAL_BUCKETS_BITMAP_SIZE; i++)
+  for (int i = 0; i < bitmap_size; i++)
   {
     target->potential_buckets[i] = left->potential_buckets[i] | right->potential_buckets[i];
     target->potential_buckets_count += u32_popcount(target->potential_buckets[i]);
@@ -368,7 +366,7 @@ aggregator_trie_dump_helper(const struct aggregator_proto *p, const struct trie_
 
   buffer_print(buf, "{");
 
-  for (int i = 0, j = 0; i < POTENTIAL_BUCKETS_BITMAP_SIZE; i++)
+  for (int i = 0, j = 0; i < p->bitmap_size; i++)
   {
     if (node->potential_buckets[i] == 0)
       continue;
@@ -543,7 +541,7 @@ aggregator_trie_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 px
   node->ancestor = NULL;
   node->original_bucket = NULL;
   node->potential_buckets_count = 0;
-  memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
+  memset(node->potential_buckets, 0, sizeof(node->potential_buckets[0]) * p->bitmap_size);
 
   return node;
 }
@@ -623,11 +621,11 @@ aggregator_find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, 
  * @node: node from which to descend
  */
 static void
-aggregator_propagate_and_merge(struct trie_node *node)
+aggregator_propagate_and_merge(struct trie_node *node, int bitmap_size)
 {
   ASSERT_DIE(node != NULL);
   ASSERT_DIE(node->status != UNASSIGNED_FIB);
-  ASSERT_DIE(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
+  ASSERT_DIE(node->potential_buckets_count <= (int)(bitmap_size * sizeof(node->potential_buckets[0]) * 8));
 
   if (node->px_origin == ORIGINAL)
     ASSERT_DIE(node->original_bucket != NULL);
@@ -654,12 +652,13 @@ aggregator_propagate_and_merge(struct trie_node *node)
   {
     /* Reset the bucket bitmap to cleanup possible old bucket information */
     node->potential_buckets_count = 0;
-    memset(node->potential_buckets, 0, sizeof(node->potential_buckets));
+    memset(node->potential_buckets, 0, sizeof(node->potential_buckets[0]) * bitmap_size);
 
     /*
      * For the leaf node, by definition, the only bucket in the bitmap is the
      * original bucket.
      */
+    ASSERT_DIE(node->original_bucket->id < (bitmap_size * sizeof(node->potential_buckets[0]) * 8));
     aggregator_node_add_potential_bucket(node, node->original_bucket->id);
 
     /* No children, no further work. Done! */
@@ -672,22 +671,24 @@ aggregator_propagate_and_merge(struct trie_node *node)
    * This fixes the (kinda) missing first pass when comparing our algorithm
    * to the original one.
    */
-  struct trie_node imaginary_node = { 0 };
-  aggregator_node_add_potential_bucket(&imaginary_node, node->original_bucket->id);
+  struct trie_node *imaginary_node = allocz(sizeof(*imaginary_node) + sizeof(imaginary_node->potential_buckets[0]) * bitmap_size);
+
+  ASSERT_DIE(node->original_bucket->id < (bitmap_size * sizeof(imaginary_node->potential_buckets[0]) * 8));
+  aggregator_node_add_potential_bucket(imaginary_node, node->original_bucket->id);
 
   /* Process children */
   if (left)
-    aggregator_propagate_and_merge(left);
+    aggregator_propagate_and_merge(left, bitmap_size);
   else
-    left = &imaginary_node;
+    left = imaginary_node;
 
   if (right)
-    aggregator_propagate_and_merge(right);
+    aggregator_propagate_and_merge(right, bitmap_size);
   else
-    right = &imaginary_node;
+    right = imaginary_node;
 
   /* Merge sets of potential buckets */
-  aggregator_merge_potential_buckets(node, left, right);
+  aggregator_merge_potential_buckets(node, left, right, bitmap_size);
 }
 
 /*
@@ -703,12 +704,16 @@ aggregator_propagate_and_merge(struct trie_node *node)
  * the trie.
  */
 static void
-aggregator_process_one_child_nodes(struct trie_node *node, const struct aggregator_bucket *inherited_bucket, struct slab *trie_slab)
+aggregator_process_one_child_nodes(struct trie_node *node, const struct aggregator_bucket *inherited_bucket, struct slab *trie_slab, int bitmap_size)
 {
   ASSERT_DIE(node != NULL);
 
   /* Imaginary node that would have been added during normalization of the trie */
-  struct trie_node imaginary_node = {
+  const size_t node_size = sizeof(*node) + sizeof(node->potential_buckets[0]) * bitmap_size;
+
+  struct trie_node *imaginary_node = allocz(node_size);
+
+  *imaginary_node = (struct trie_node) {
     .parent = node,
     .original_bucket = node->original_bucket,
     .status = NON_FIB,
@@ -717,7 +722,8 @@ aggregator_process_one_child_nodes(struct trie_node *node, const struct aggregat
   };
 
   /* Imaginary node inherits bucket from its parent - current node */
-  aggregator_node_add_potential_bucket(&imaginary_node, node->original_bucket->id);
+  ASSERT_DIE(node->original_bucket->id < (bitmap_size * sizeof(node->potential_buckets[0]) * 8));
+  aggregator_node_add_potential_bucket(imaginary_node, node->original_bucket->id);
 
   /*
    * If the current node (parent of the imaginary node) has a bucket, then
@@ -738,11 +744,11 @@ aggregator_process_one_child_nodes(struct trie_node *node, const struct aggregat
    * imaginary node needs to be added to the trie because it's not covered
    * by its ancestor.
    */
-  if (!aggregator_is_bucket_potential(&imaginary_node, imaginary_node_inherited_bucket->id))
+  if (!aggregator_is_bucket_potential(imaginary_node, imaginary_node_inherited_bucket->id, bitmap_size))
   {
     /* Allocate new node and copy imaginary node into it */
     struct trie_node *new = sl_allocz(trie_slab);
-    *new = imaginary_node;
+    memcpy(new, imaginary_node, node_size);
 
     const struct trie_node * const left  = node->child[0];
     const struct trie_node * const right = node->child[1];
@@ -835,7 +841,7 @@ aggregator_group_prefixes_helper(struct aggregator_proto *p, struct trie_node *n
 {
   ASSERT_DIE(node != NULL);
   ASSERT_DIE(node->status != UNASSIGNED_FIB);
-  ASSERT_DIE(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
+  ASSERT_DIE(node->potential_buckets_count <= (int)(p->bitmap_size * sizeof(node->potential_buckets[0]) * 8));
 
   ASSERT_DIE(node->original_bucket != NULL);
   ASSERT_DIE(node->parent->ancestor != NULL);
@@ -849,7 +855,7 @@ aggregator_group_prefixes_helper(struct aggregator_proto *p, struct trie_node *n
    * of the current node, then this node doesn't need a bucket because it
    * inherits one, and its prefix is thus not needed in FIB.
    */
-  if (aggregator_is_bucket_potential(node, inherited_bucket->id))
+  if (aggregator_is_bucket_potential(node, inherited_bucket->id, p->bitmap_size))
     aggregator_remove_node_prefix(p, node, *prefix, pxlen);
   else
     aggregator_export_node_prefix(p, node, *prefix, pxlen);
@@ -864,7 +870,7 @@ aggregator_group_prefixes_helper(struct aggregator_proto *p, struct trie_node *n
 
   /* Process nodes with only one child */
   if ((left && !right) || (!left && right))
-    aggregator_process_one_child_nodes(node, inherited_bucket, p->trie_slab);
+    aggregator_process_one_child_nodes(node, inherited_bucket, p->trie_slab, p->bitmap_size);
 
   /* Preorder traversal */
   if (node->child[0]) /* TODO: nestačí tady left a right? Takhle to vypadá, že se left a right pod rukama můžou přepsat. */
@@ -903,8 +909,8 @@ static void
 aggregator_group_prefixes(struct aggregator_proto *p, struct trie_node *node)
 {
   ASSERT_DIE(node != NULL);
-  ASSERT_DIE(node->potential_buckets_count <= MAX_POTENTIAL_BUCKETS_COUNT);
   ASSERT_DIE(node->potential_buckets_count > 0);
+  ASSERT_DIE(node->potential_buckets_count <= (int)(p->bitmap_size * sizeof(node->potential_buckets[0]) * 8));
 
   ip_addr prefix = (p->addr_type == NET_IP4) ? ipa_from_ip4(IP4_NONE) : ipa_from_ip6(IP6_NONE);
   u32 pxlen = 0;
@@ -973,7 +979,7 @@ check_trie_after_aggregation(const struct trie_node *node)
  * Stop when the node's set doesn't change and return the last updated node.
  */
 static struct trie_node *
-aggregator_merge_buckets_above(struct trie_node *node)
+aggregator_merge_buckets_above(struct trie_node *node, int bitmap_size)
 {
   ASSERT_DIE(node != NULL);
 
@@ -985,19 +991,21 @@ aggregator_merge_buckets_above(struct trie_node *node)
     const struct trie_node *right = parent->child[1];
     ASSERT_DIE(left == node || right == node);
 
-    struct trie_node imaginary_node = { 0 };
-    aggregator_node_add_potential_bucket(&imaginary_node, parent->original_bucket->id);
+    struct trie_node *imaginary_node = allocz(sizeof(*imaginary_node) + sizeof(imaginary_node->potential_buckets[0]) * bitmap_size);
+
+    ASSERT_DIE(parent->original_bucket->id < (bitmap_size * sizeof(imaginary_node->potential_buckets[0]) * 8));
+    aggregator_node_add_potential_bucket(imaginary_node, parent->original_bucket->id);
 
     /* Nodes with only one child */
     if (left && !right)
-      right = &imaginary_node;
+      right = imaginary_node;
     else if (!left && right)
-      left = &imaginary_node;
+      left = imaginary_node;
 
     ASSERT_DIE(left != NULL && right != NULL);
 
     /* The parent's set didn't change by merging, stop here */
-    if (!aggregator_merge_potential_buckets(parent, left, right))
+    if (!aggregator_merge_potential_buckets(parent, left, right, bitmap_size))
       return node;
 
     node = parent;
@@ -1033,7 +1041,7 @@ aggregator_compute_trie(struct aggregator_proto *p)
 {
   ASSERT_DIE(p->addr_type == NET_IP4 || p->addr_type == NET_IP6);
 
-  aggregator_propagate_and_merge(p->root);
+  aggregator_propagate_and_merge(p->root, p->bitmap_size);
   aggregator_group_prefixes(p, p->root);
 
   check_trie_after_aggregation(p->root);
@@ -1099,10 +1107,10 @@ aggregator_recompute(struct aggregator_proto *p, struct aggregator_route *old, s
   ASSERT_DIE(ancestor->status == IN_FIB);
 
   /* Reaggregate trie with incorporated update */
-  aggregator_propagate_and_merge(ancestor);
+  aggregator_propagate_and_merge(ancestor, p->bitmap_size);
 
   /* Merge buckets upwards until they change, return last updated node */
-  struct trie_node *highest_node = aggregator_merge_buckets_above(ancestor);
+  struct trie_node *highest_node = aggregator_merge_buckets_above(ancestor, p->bitmap_size);
   ASSERT_DIE(highest_node != NULL);
 
   aggregator_group_prefixes(p, highest_node);

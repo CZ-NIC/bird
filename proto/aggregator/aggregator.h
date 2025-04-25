@@ -15,9 +15,8 @@
 #include "nest/protocol.h"
 #include "lib/hash.h"
 
-#define BUCKET_LIST_INIT_SIZE         16
-#define POTENTIAL_BUCKETS_BITMAP_SIZE 8
-#define MAX_POTENTIAL_BUCKETS_COUNT   ((int)(sizeof(u32) * 8 * POTENTIAL_BUCKETS_BITMAP_SIZE))
+#define BUCKET_LIST_INIT_SIZE              16
+#define POTENTIAL_BUCKETS_BITMAP_INIT_SIZE  8
 
 #define IP4_WITHDRAWAL_MAX_EXPECTED_LIMIT 100
 #define IP6_WITHDRAWAL_MAX_EXPECTED_LIMIT 200
@@ -88,6 +87,7 @@ struct aggregator_proto {
   struct trie_node *root;
   struct slab *trie_slab;
   u32 addr_type;
+  int bitmap_size;
   bool initial_feed;
   bool logging;
 
@@ -144,9 +144,9 @@ struct trie_node {
   struct aggregator_bucket *selected_bucket;
   enum fib_status status;
   enum prefix_origin px_origin;
-  u32 potential_buckets[POTENTIAL_BUCKETS_BITMAP_SIZE];
   int potential_buckets_count;
   int depth;
+  u32 potential_buckets[];
 };
 
 void aggregator_aggregate(struct aggregator_proto *p);
