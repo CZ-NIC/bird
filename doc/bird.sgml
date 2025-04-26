@@ -2852,10 +2852,10 @@ avoid routing loops.
 <item> <rfc id="7911"> &ndash; Advertisement of Multiple Paths in BGP
 <item> <rfc id="7947"> &ndash; Internet Exchange BGP Route Server
 <item> <rfc id="8092"> &ndash; BGP Large Communities Attribute
-<item> <rfc id="8203"> &ndash; BGP Administrative Shutdown Communication
 <item> <rfc id="8212"> &ndash; Default EBGP Route Propagation Behavior without Policies
 <item> <rfc id="8654"> &ndash; Extended Message Support for BGP
 <item> <rfc id="8950"> &ndash; Advertising IPv4 NLRI with an IPv6 Next Hop
+<item> <rfc id="9003"> &ndash; Extended BGP Administrative Shutdown Communication
 <item> <rfc id="9072"> &ndash; Extended Optional Parameters Length for BGP OPEN Message
 <item> <rfc id="9117"> &ndash; Revised Validation Procedure for BGP Flow Specifications
 <item> <rfc id="9234"> &ndash; Route Leak Prevention and Detection Using Roles

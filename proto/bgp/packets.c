@@ -3345,7 +3345,7 @@ bgp_error_dsc(uint code, uint subcode)
   return buff;
 }
 
-/* RFC 8203 - shutdown communication message */
+/* RFC 9003 - shutdown communication message */
 static int
 bgp_handle_message(struct bgp_proto *p, byte *data, uint len, byte **bp)
 {
@@ -3400,7 +3400,7 @@ bgp_log_error(struct bgp_proto *p, u8 class, char *msg, uint code, uint subcode,
 	  goto done;
         }
 
-      /* RFC 8203 - shutdown communication */
+      /* RFC 9003 - shutdown communication */
       if (((code == 6) && ((subcode == 2) || (subcode == 4))))
 	if (bgp_handle_message(p, data, len, &t))
 	  goto done;
