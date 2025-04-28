@@ -548,49 +548,38 @@ aggregator_trie_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 px
  * and save result into @prefix and @pxlen.
  */
 static void
-aggregator_find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, u32 *pxlen, u32 type)
+aggregator_find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, u32 *pxlen, u32 addr_type)
 {
   ASSERT_DIE(target != NULL);
   ASSERT_DIE(prefix != NULL);
   ASSERT_DIE(pxlen != NULL);
 
-  int path[IP6_MAX_PREFIX_LENGTH] = { 0 };
-  int pos = 0;
-  u32 len = 0;
-
   const struct trie_node *node = target;
   const struct trie_node *parent = node->parent;
+
+  u32 len = 0;
 
   /* Ascend to the root node */
   while (parent)
   {
     if (node == node->parent->child[0])
-      path[pos++] = 0;
+      ip6_clrbit(prefix, node->depth + ipa_shift[addr_type] - 1);
     else if (node == node->parent->child[1])
-      path[pos++] = 1;
+      ip6_setbit(prefix, node->depth + ipa_shift[addr_type] - 1);
     else
       bug("Corrupted memory (node is not its parent's child)");
 
-    ASSERT_DIE(pos < IP6_MAX_PREFIX_LENGTH);
     node = parent;
     parent = node->parent;
+    len++;
   }
 
-  ASSERT_DIE(node->parent == NULL);
-
-  /* Descend to the target node */
-  for (int i = pos - 1; i >= 0; i--)
+  /* Descend back to target node */
+  for (u32 i = 0; i < len; i++)
   {
-    if (path[i] == 0)
-      ip6_clrbit(prefix, node->depth + ipa_shift[type]);
-    else if (path[i] == 1)
-      ip6_setbit(prefix, node->depth + ipa_shift[type]);
-
-    ASSERT_DIE(node->child[path[i]] != NULL);
-    node = node->child[path[i]];
-
-    len++;
-    ASSERT_DIE((u32)node->depth == len);
+    u32 bit = ip6_getbit(*prefix, node->depth + ipa_shift[addr_type]);
+    node = node->child[bit];
+    ASSERT_DIE(node != NULL);
   }
 
   ASSERT_DIE(node == target);
