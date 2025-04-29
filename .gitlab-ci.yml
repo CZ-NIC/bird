@@ -34,20 +34,50 @@ stages:
 .if-stable: &if-stable
   if: $CI_COMMIT_BRANCH =~ /^(stable-.*|thread-next|master)$/
   when: always
+# Do run for tags
+.if-tag: &if-tag
+  if: $CI_COMMIT_TAG
+  when: always
+# Never run for tags
+.never-tag: &never-tag
+  if: $CI_COMMIT_TAG
+  when: never
 
 ## Consistency checks for stable branches
 commit-messages:
   stage: consistency
+  image: registry.nic.cz/labs/bird:docbuilder
   script:
   - tools/git-check-commits
   rules:
   - *if-stable
   - when: never
 
+## Tag check
+tag-collect:
+  stage: consistency
+  image: registry.nic.cz/labs/bird:docbuilder
+  script:
+  - python3 -m venv venv
+  - . venv/bin/activate
+  - pip3 install requests
+  - tools/git-check-tag-local $CI_COMMIT_TAG
+  - tools/git-check-tag-ci $CI_COMMIT_SHA
+  artifacts:
+    paths:
+      - obj/doc/bird-singlepage.html
+      - bird-*.tar.gz
+      - pkg/pkgs/*
+      - pkg/srcpkgs/*
+  rules:
+  - *if-tag
+  - when: never
+
 ## Default test job rules
 .test-job: &test-job
   rules:
   - *never-wip
+  - *never-tag
   - when: always
 
 ############################
