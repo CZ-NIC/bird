@@ -29,8 +29,8 @@ struct aggregator_config {
   struct proto_config c;
   struct channel_config *src, *dst;
   struct aggr_item *aggr_on;
-  u32 aggr_on_count;
-  u32 aggr_on_da_count;
+  uint aggr_on_count;
+  uint aggr_on_da_count;
   const struct f_line *merge_by;
   enum aggregation_mode aggr_mode;
   bool logging;
@@ -77,8 +77,8 @@ struct aggregator_proto {
 
   /* Aggregator rule */
   struct aggr_item *aggr_on;
-  u32 aggr_on_count;
-  u32 aggr_on_da_count;
+  uint aggr_on_count;
+  uint aggr_on_da_count;
 
   /* Merge filter */
   const struct f_line *merge_by;
@@ -87,7 +87,7 @@ struct aggregator_proto {
   /* Aggregation trie */
   struct trie_node *root;
   struct slab *trie_slab;
-  u32 addr_type;
+  uint addr_type;
   int bitmap_size;
   bool initial_feed;
   bool logging;
