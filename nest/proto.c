@@ -57,6 +57,7 @@ static inline void channel_reimport(struct channel *c, struct rt_feeding_request
 
 static inline void channel_refeed(struct channel *c, struct rt_feeding_request *rfr)
 {
+  CALL(c->proto->refeed_begin, c, rfr);
   rt_export_refeed(&c->out_req, rfr);
 }
 
@@ -1209,7 +1210,7 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
     channel_request_reload(c, NULL);
 
   if (export_changed)
-    channel_request_full_refeed(c);
+    channel_refeed(c, NULL);
 
 done:
   CD(c, "Reconfigured");
@@ -2836,7 +2837,7 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
 
       if (prr->dir & CMD_RELOAD_OUT)
 	if (c->out_req.name)
-	  rt_export_refeed(&c->out_req, channel_create_reload_request(prr));
+	  channel_refeed(c, channel_create_reload_request(prr));
     }
 
   cli_msg(-15, "%s: reloading", p->name);

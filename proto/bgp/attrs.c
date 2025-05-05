@@ -1981,9 +1981,15 @@ bgp_done_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_buc
   bgp_free_prefix(c, px);
 }
 
-void
+const char *
 bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *bc)
 {
+  if (p->enhanced_refresh)
+  {
+    bc->feed_state = BFS_REFRESHING;
+    bgp_schedule_packet(p->conn, bc, PKT_BEGIN_REFRESH);
+  }
+
   uint seen = 0;
   {
     BGP_PTX_LOCK(bc->tx, c);
@@ -2012,8 +2018,14 @@ bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *bc)
 	  bc->c.proto->name, bc->c.name, seen);
 
   }
-  if (seen)
+
+  if (p->enhanced_refresh)
+    bc->feed_state = BFS_REFRESHED;
+
+  if (seen || p->enhanced_refresh)
     bgp_schedule_packet(p->conn, bc, PKT_UPDATE);
+
+  return p->enhanced_refresh ? "from export table by enhanced route refresh" : "from export table by simple refeed";
 }
 
 /*
