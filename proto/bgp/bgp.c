@@ -658,6 +658,8 @@ bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len)
   bgp_graceful_close_conn(&p->outgoing_conn, subcode, data, len);
   bgp_graceful_close_conn(&p->incoming_conn, subcode, data, len);
 
+  p->p.reload_routes = NULL;
+
   struct bgp_channel *c;
   BGP_WALK_CHANNELS(p, c)
     bgp_free_pending_tx(c);
@@ -753,7 +755,7 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
 
     int active = loc->ready && rem->ready;
     c->c.disabled = !active;
-    c->c.reloadable = p->route_refresh || ((c->c.in_keep & RIK_PREFILTER) == RIK_PREFILTER);
+    c->c.reloadable = p->route_refresh;
 
     c->index = active ? num++ : 0;
 
@@ -1687,37 +1689,12 @@ bgp_reload_in(struct proto *P, uintptr_t _ UNUSED, int __ UNUSED)
     cli_msg(-8006, "%s: not reloading, not up", P->name);
 }
 
-void
-bgp_reload_out(struct proto *P, uintptr_t _ UNUSED, int __ UNUSED)
-{
-  SKIP_BACK_DECLARE(struct bgp_proto, p, p, P);
-
-  if (P->proto_state == PS_UP)
-  {
-    struct bgp_channel *c;
-    BGP_WALK_CHANNELS(p, c)
-      if (&c->c != P->mpls_channel)
-	if (c->tx_keep)
-	{
-	  bgp_tx_resend(p, c);
-	  cli_msg(-15, "%s.%s: reloading", P->name, c->c.name);
-	}
-	else
-	{
-	  rt_export_refeed(&c->c.out_req, NULL);
-	  cli_msg(-15, "%s.%s: reloading by table refeed", P->name, c->c.name);
-	}
-  }
-  else
-    cli_msg(-8006, "%s: not reloading, not up", P->name);
-}
-
 struct bgp_enhanced_refresh_request {
   struct rt_feeding_request rfr;
   struct bgp_channel *c;
 };
 
-void
+static void
 bgp_done_route_refresh(struct rt_feeding_request *rfr)
 {
   SKIP_BACK_DECLARE(struct bgp_enhanced_refresh_request, berr, rfr, rfr);
@@ -1733,6 +1710,95 @@ bgp_done_route_refresh(struct rt_feeding_request *rfr)
   mb_free(berr);
 }
 
+const char *
+bgp_begin_route_refresh(struct bgp_proto *p, struct bgp_channel *c)
+{
+  if (c->tx_keep)
+    return bgp_tx_resend(p, c);
+
+  if (!p->enhanced_refresh) {
+    rt_export_refeed(&c->c.out_req, NULL);
+    return "from table by simple refeed";
+  }
+
+  struct bgp_enhanced_refresh_request *berr = mb_alloc(p->p.pool, sizeof *berr);
+  *berr = (struct bgp_enhanced_refresh_request) {
+    .c = c,
+    .rfr.done = bgp_done_route_refresh,
+  };
+
+  c->feed_state = BFS_REFRESHING;
+  bgp_schedule_packet(p->conn, c, PKT_BEGIN_REFRESH);
+
+  rt_export_refeed(&c->c.out_req, &berr->rfr);
+  return "from table by enhanced route refresh";
+}
+
+void
+bgp_reload_out(struct proto *P, uintptr_t _ UNUSED, int __ UNUSED)
+{
+  SKIP_BACK_DECLARE(struct bgp_proto, p, p, P);
+
+  if (P->proto_state == PS_UP)
+  {
+    struct bgp_channel *c;
+    BGP_WALK_CHANNELS(p, c)
+      if (&c->c != P->mpls_channel)
+      {
+	const char *info = bgp_begin_route_refresh(p, c);
+	cli_msg(-15, "%s.%s: reloading %s", P->name, c->c.name, info);
+      }
+  }
+  else
+    cli_msg(-8006, "%s: not reloading, not up", P->name);
+}
+
+static int
+bgp_reload_routes(struct channel *C, struct rt_feeding_request *rfr)
+{
+  /* Can't reload partially */
+  if (rfr && rfr->prefilter.mode)
+    return 0;
+
+  struct bgp_proto *p = SKIP_BACK(struct bgp_proto, p, C->proto);
+
+  if (p->p.proto_state == PS_UP)
+  {
+    struct bgp_channel *c;
+    BGP_WALK_CHANNELS(p, c)
+      if (&c->c != p->p.mpls_channel)
+      {
+	log("%s.%s: reloading", p->p.name, c->c.name);
+	bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
+      }
+  }
+  else
+    log("%s: not reloading, not up", p->p.name);
+
+  if (rfr)
+    CALL(rfr->done, rfr);
+
+  return 1;
+}
+
+static void
+bgp_refeed_begin(struct channel *C, struct rt_feeding_request *rfr)
+{
+  struct bgp_channel *c = SKIP_BACK(struct bgp_channel, c, C);
+  struct bgp_proto *p = SKIP_BACK(struct bgp_proto, p, C->proto);
+
+  /* Do not announce partial refeed */
+  if (rfr && rfr->prefilter.mode)
+    return;
+
+  /* Run the enhanced refresh if available */
+  if (p->enhanced_refresh && !c->tx_keep)
+  {
+    c->feed_state = BFS_REFRESHING;
+    bgp_schedule_packet(p->conn, c, PKT_BEGIN_REFRESH);
+  }
+}
+
 static void
 bgp_export_fed(struct channel *C)
 {
@@ -1740,10 +1806,17 @@ bgp_export_fed(struct channel *C)
   SKIP_BACK_DECLARE(struct bgp_proto, p, p, c->c.proto);
 
   /* Schedule End-of-RIB packet */
-  if (c->feed_state == BFS_LOADING)
+  switch (c->feed_state)
   {
-    c->feed_state = BFS_LOADED;
-    bgp_schedule_packet(p->conn, c, PKT_UPDATE);
+    case BFS_LOADING:
+      c->feed_state = BFS_LOADED;
+      bgp_schedule_packet(p->conn, c, PKT_UPDATE);
+      break;
+
+    case BFS_REFRESHING:
+      c->feed_state = BFS_REFRESHED;
+      bgp_schedule_packet(p->conn, c, PKT_UPDATE);
+      break;
   }
 }
 
@@ -2005,7 +2078,9 @@ bgp_init(struct proto_config *CF)
   P->rt_notify = bgp_rt_notify;
   P->preexport = bgp_preexport;
   P->iface_sub.neigh_notify = bgp_neigh_notify;
+  P->refeed_begin = bgp_refeed_begin;
   P->export_fed = bgp_export_fed;
+  P->reload_routes = bgp_reload_routes;
 
   P->sources.class = &bgp_rte_owner_class;
   P->sources.rte_recalculate = cf->deterministic_med ? bgp_rte_recalculate : NULL;
