@@ -668,6 +668,8 @@ const char *bgp_format_role_name(u8 role);
 void bgp_reload_in(struct proto *P, uintptr_t, int);
 void bgp_reload_out(struct proto *P, uintptr_t, int);
 
+const char *bgp_begin_route_refresh(struct bgp_proto *p, struct bgp_channel *c);
+
 static inline int
 rte_resolvable(const rte *rt)
 {
@@ -715,7 +717,7 @@ void bgp_setup_out_table(struct bgp_channel *c);
 
 void bgp_init_pending_tx(struct bgp_channel *c);
 void bgp_free_pending_tx(struct bgp_channel *c);
-void bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *c);
+const char *bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *c);
 
 void bgp_withdraw_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b);
 int bgp_done_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b);
