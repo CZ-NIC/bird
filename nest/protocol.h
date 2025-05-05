@@ -201,6 +201,7 @@ struct proto {
   void (*rt_notify)(struct proto *, struct channel *, const net_addr *net, struct rte *new, const struct rte *old);
   int (*preexport)(struct channel *, struct rte *rt);
   void (*export_fed)(struct channel *);
+  void (*refeed_begin)(struct channel *, struct rt_feeding_request *rfr);
   int (*reload_routes)(struct channel *, struct rt_feeding_request *cir);
 
   /*
