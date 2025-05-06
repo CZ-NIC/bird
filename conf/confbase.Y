@@ -426,8 +426,8 @@ text_or_ipa:
    }
  | '(' term ')' {
      $$ = cf_eval($2, T_VOID);
-     if (($$.type != T_BYTESTRING) && ($$.type != T_STRING))
-       cf_error("Bytestring or string value expected");
+     if (($$.type != T_STRING) && ($$.type != T_IP))
+       cf_error("String or IP value expected");
    }
  ;
 
