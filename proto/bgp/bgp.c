@@ -3112,11 +3112,20 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
       (new->aigp != old->aigp) ||
       (new->cost != old->cost))
   {
-    /* If import table is active and route refresh is possible, we just ask for route refresh */
-    if ((c->c.in_keep & RIK_PREFILTER) && (c->c.channel_state == CS_UP) && p->route_refresh)
-      bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
+    /* If import table is active we have to flush it */
+    if ((c->c.in_keep & RIK_PREFILTER) == RIK_PREFILTER)
+    {
+      if (p->route_refresh)
+      {
+	if (c->c.channel_state == CS_UP)
+	  bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
+      }
+      else
+	/* Route refresh not possible, restart needed */
+	return 0;
+    }
 
-    /* Otherwise we do complete reload */
+    /* Otherwise we just do complete reload */
     else
       *import_changed = 1;
   }
