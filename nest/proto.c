@@ -563,8 +563,6 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
 static void
 channel_roa_unsubscribe(struct roa_subscription *s)
 {
-  struct channel *c = s->c;
-
   RT_LOCKED(s->tab, t)
   {
     lfjour_unregister(&s->digest_recipient);
@@ -575,8 +573,6 @@ channel_roa_unsubscribe(struct roa_subscription *s)
 
   rem_node(&s->roa_node);
   mb_free(s);
-
-  channel_check_stopped(c);
 }
 
 static void
@@ -748,12 +744,12 @@ channel_check_stopped(struct channel *c)
       proto_send_event(c->proto, c->proto->event);
 
       break;
+
     case CS_PAUSE:
       if (c->obstacles || !EMPTY_LIST(c->roa_subscriptions))
 	return;
 
       ASSERT_DIE(rt_export_get_state(&c->out_req) == TES_DOWN);
-      ASSERT_DIE(!rt_export_feed_active(&c->reimporter));
 
       channel_set_state(c, CS_START);
       break;
@@ -972,6 +968,8 @@ channel_set_state(struct channel *c, uint state)
 
     if (cs == CS_UP)
       channel_do_pause(c);
+
+    channel_check_stopped(c);
     break;
 
   case CS_STOP:
@@ -981,6 +979,7 @@ channel_set_state(struct channel *c, uint state)
       channel_do_pause(c);
 
     channel_do_stop(c);
+    channel_check_stopped(c);
     break;
 
   case CS_DOWN:

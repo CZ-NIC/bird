@@ -1166,24 +1166,6 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old)
   const rte *trte = new ?: old;
 
   /* Have we exported the old route? */
-  if (old && !bmap_test(&c->export_accepted_map, old->id))
-    old = NULL;
-
-  /* Ignore invalid routes */
-  if (!rte_is_valid(new))
-    new = NULL;
-
-  if (!rte_is_valid(old))
-    old = NULL;
-
-  if (!new && !old)
-  {
-    channel_rte_trace_out(D_ROUTES, c, trte, "idempotent withdraw (filtered on import)");
-    c->export_stats.withdraws_ignored++;
-    return;
-  }
-
-  /* Have we exported the old route? */
   if (old)
   {
     /* If the old route exists, it is either in rejected or in accepted map. */
@@ -1191,7 +1173,7 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old)
     int accepted = bmap_test(&c->export_accepted_map, old->id);
     ASSERT_DIE(!rejected || !accepted);
 
-    if (rejected)
+    if (!accepted)
     {
       /* Drop the old rejected bit from the map, the old route id
        * gets released after exports. */
@@ -1598,6 +1580,14 @@ channel_notify_basic(void *_channel)
 	      rt_export_processed(&c->out_req, rpe->it.seq);
 	    }
 
+	  /* Ignore invalid routes */
+	  if (!rte_is_valid(new))
+	    new = NULL;
+
+	  if (!rte_is_valid(old))
+	    old = NULL;
+
+	  /* Update status map flags for id-only updates */
 	  if (new && old && rte_same(new, old))
 	  {
 	    channel_rte_trace_out(D_ROUTES, c, new, "already exported");
@@ -1620,7 +1610,7 @@ channel_notify_basic(void *_channel)
 	  }
 	  else if (!new && !old)
 	  {
-	    channel_rte_trace_out(D_ROUTES, c, u->update->new, "idempotent withdraw (squash)");
+	    channel_rte_trace_out(D_ROUTES, c, u->update->new, "idempotent withdraw");
 	    c->export_stats.withdraws_ignored++;
 	  }
 	  else
