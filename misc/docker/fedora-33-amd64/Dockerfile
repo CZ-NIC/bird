@@ -14,6 +14,7 @@ RUN dnf -y install \
 RUN dnf -y install \
 	git \
 	rpm-build \
+	systemd \
 	systemd-rpm-macros \
 	python3 \
 	python3-pip \

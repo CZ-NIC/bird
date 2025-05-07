@@ -2,6 +2,9 @@
 %global _without_doc 1
 %{!?_rundir:%global _rundir %%{_localstatedir}/run}
 
+%define bird_user bird
+%define bird_group bird
+
 Name:             bird
 Version:          {{ version }}
 Release:          cznic.{{ release }}%{?dist}
@@ -89,7 +92,14 @@ install -D -p -m 0644 %{SOURCE3} %{buildroot}%{_sysusersdir}/bird.conf
 make test
 
 %pre
+%if 0%{?suse_version} || ( 0%{?rhel} && 0%{?rhel} <= 8 )
+# Create bird user/group manually
+getent group %{bird_group} >/dev/null || groupadd -r %{bird_group}
+getent passwd %{bird_user} >/dev/null || useradd -r -g %{bird_group} -d /var/lib/bird -s /sbin/nologin -c "BIRD daemon user" %{bird_user}
+%else
 %sysusers_create_compat %{SOURCE3}
+%endif
+
 
 %post
 %systemd_post bird.service
