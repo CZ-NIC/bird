@@ -1,0 +1,61 @@
+#!/bin/sh
+
+STABLE_VERSION=$(cat VERSION)
+CI_COMMIT_MESSAGE=$(echo "$1" | sed '$s/\r\{0,1\}$//') # trimming new line  
+
+bird --version 2>&1 | grep -F "$STABLE_VERSION"
+bird --version 2>version-reported
+
+if [ "$CI_COMMIT_MESSAGE" = "NEWS and version update" ]; then
+  echo "Processing a release commit"
+
+  echo "BIRD version ${STABLE_VERSION}" > version-expected
+  diff version-reported version-expected
+else
+  echo "Processing a non-release commit"
+
+  if ! grep -qF "BIRD version ${STABLE_VERSION}+branch" version-reported; then
+    echo "Error: Version mismatch!"
+    ( echo "Reported: "; cat version-reported )
+    ( echo "Expected: "; echo "BIRD version ${STABLE_VERSION}+branch.<branch-name>.<commit-hash>" )
+    exit 1
+  fi
+fi
+
+# Run BIRD with minimal config and test with simple birdc commands
+mkdir -p /run/bird
+echo "protocol device {}" > minimal.conf
+bird -c minimal.conf
+
+birdcl show proto > show-proto-out 2>&1
+birdcl down > down-out 2>&1
+birdcl show proto > show-proto-after-down-out 2>&1
+
+if ! grep -qE "BIRD .* ready\." show-proto-out || ! grep -qE "BIRD .* ready\." down-out; then
+  echo "Error: BIRD did not start correctly"
+  echo "Output:"
+  cat show-proto-out down-out
+  exit 1
+fi
+
+if ! grep -qE "device1\s*Device\s*---\s*up" show-proto-out; then
+  echo "Error: BIRD did not show protocols correcly"
+  echo "Output:"
+  cat show-proto-out
+  exit 1
+fi
+
+if ! grep -qF "Shutdown requested" down-out; then
+  echo "Error: BIRD did not shutdown correctly after DOWN command."
+  echo "Output:"
+  cat down-out
+  exit 1
+fi
+
+if ! grep -qF "Unable to connect to server control socket" show-proto-after-down-out; then
+  echo "Error: BIRD did not shutdown correctly after DOWN command."
+  echo "Output:"
+  cat show-proto-after-down-out
+  exit 1
+fi
+
