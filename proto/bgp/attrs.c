@@ -1821,8 +1821,10 @@ bgp_withdraw_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b)
     struct bgp_prefix *px = HEAD(b->prefixes);
 
     log(L_ERR "%s: - withdrawing %N", p->p.name, px->ni->addr);
+    ASSERT_DIE(px->cur == b);
     rem_node(&px->buck_node);
     add_tail(&wb->prefixes, &px->buck_node);
+    px->cur = wb;
   }
 }
 
