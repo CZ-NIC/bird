@@ -1,7 +1,7 @@
 <!doctype birddoc system>
 
 <!--
-	BIRD 3.0 documentation
+	BIRD documentation
 
 This documentation can have 4 forms: sgml (this is master copy), html, ASCII
 text and dvi/postscript (generated from sgml using sgmltools). You should always
@@ -20,7 +20,7 @@ configuration - something in config which is not keyword.
 
 <book>
 
-<title>BIRD 3.0 User's Guide
+<title>BIRD {{ VERSION }} User's Guide
 <author>
 Ondrej Filip <it/&lt;feela@network.cz&gt;/,
 Martin Mares <it/&lt;mj@ucw.cz&gt;/,

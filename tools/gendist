@@ -5,7 +5,8 @@
 #  (c) 2005--2022 Ondrej Filip <feela@network.cz>
 #
 
-VERSION=`grep 'BIRD_VERSION \"' sysdep/config.h | sed '/BIRD_VERSION/!d;s/^.*"\(.*\)"$/\1/'`
+#VERSION=`grep 'BIRD_VERSION \"' sysdep/config.h | sed '/BIRD_VERSION/!d;s/^.*"\(.*\)"$/\1/'`
+VERSION=`tools/version`
 REL=bird-$VERSION
 DREL=bird-doc-$VERSION
 T=/tmp/bird
@@ -24,6 +25,7 @@ $AC
 rm -rf autom4te*cache
 echo Building $REL
 cp -a . $T/$REL
+sed -i 's/^VERSION := .*/VERSION := '${VERSION}'/' $T/$REL/Makefile.in
 echo Generating ChangeLog
 git log  >$T/$REL/ChangeLog
 rm -f $T/$REL/bird.conf*

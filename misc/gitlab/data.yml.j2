@@ -1,0 +1,119 @@
+distros:
+  # CentOS 7 with quite some hacks
+  - name: centos-7-amd64
+    variables:
+      LC_ALL: en_US.UTF-8
+      CC: /opt/rh/devtoolset-8/root/usr/bin/gcc
+    type: pkg-rpm-wa
+
+  {% for name in (
+    'centos-8',
+    'fedora-32',
+    'fedora-33',
+  ) -%}
+  - name: {{ name }}-amd64
+    type: pkg-rpm-wa
+  {% endfor %}
+
+  # For some unknown reason we also require older Python packages
+  # for OpenSUSE even with the recent versions.
+  {% for num in (0,1,2,3,4,5) -%}
+  - name: opensuse-15.{{ num }}-amd64
+    type: pkg-rpm-wa
+  {% endfor %}
+
+  # Fedora regular builds
+  {% for num in (34, 35, 36, 37, 38, 39, 40, 41, 42) -%}
+  - name: fedora-{{ num }}-amd64
+    type: pkg-rpm
+  {% endfor %}
+
+  # Ubuntu legacy build
+  - name: ubuntu-18.04-amd64
+    type: pkg-deb-legacy
+
+  # Debian regular builds
+  {% for num in (10, 11, 12, 'testing') -%}
+  {% for arch in ('amd64', 'i386') -%}
+  - name: debian-{{num}}-{{arch}}
+    type: pkg-deb
+  {% endfor %}
+  {% endfor %}
+
+  # Ubuntu regular builds
+  {% for num in ('20.04', '22.04', '24.04', '24.10') -%}
+  - name: ubuntu-{{ num }}-amd64
+    type: pkg-deb
+  {% endfor %}
+
+birdlab:
+  - name: openbsd-75
+    variables:
+      AUTOCONF_VERSION: "2.71"
+
+  - name: openbsd-76
+    variables:
+      AUTOCONF_VERSION: "2.72"
+
+  {% for num in ("09", "10") -%}
+  - name: netbsd-{{ num }}
+  {% endfor %}
+
+  {% for num in (13, 14) -%}
+  - name: freebsd-{{ num }}
+  - name: freebsd-{{ num }}-netlink
+    dist: freebsd-{{ num }}
+    variables:
+      CONFIGURE_OPTIONS: --with-sysconfig=bsd-netlink --disable-client
+  {% endfor %}
+
+partial_build_image:
+  name: debian-12-amd64
+
+partial_build:
+  - protocols: aggregator
+  - protocols: babel
+  - protocols: bfd
+  - protocols: bgp
+  - protocols: bgp,bmp
+  - protocols: l3vpn
+  - protocols: mrt
+  - protocols: ospf
+  - protocols: pipe
+  - protocols: radv
+  - protocols: rip
+  - protocols: rpki
+  - protocols: static
+
+netlab:
+  - name: babel-base
+  - name: babel-auth
+  - name: ospf-base
+  - name: ospf-default
+  - name: ospf-priority
+  - name: ospf-nbma
+  - name: ospf-ptmp
+  - name: ospf-authentication
+  - name: ospf-bfd
+  - name: ospf-custom
+  - name: ospf-area
+  - name: ospf-vrf
+  - name: bgp-base
+  - name: bgp-auth
+  - name: bgp-int
+  - name: bgp-merged
+  - name: bgp-flowspec
+  - name: bgp-rs-multitab
+  - name: bgp-rs-singletab
+  - name: ebgp-graceful
+  - name: ebgp-loop
+  - name: ebgp-star
+  - name: ebgp-role
+  - name: ebgp-import-limit
+  - name: ibgp-loop
+  - name: ibgp-loop-big
+  - name: ibgp-flat
+  - name: rip-base
+  - name: kernel-learn
+  - name: mpls-bgp
+  - name: mpls-bgp-l3vpn
