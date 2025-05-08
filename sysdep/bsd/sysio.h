@@ -229,43 +229,43 @@ sk_prepare_ip_header(sock *s, void *hdr, int dlen)
  */
 
 int
-sk_get_ao_info(sock *s, struct ao_info *val)
+sk_get_ao_info(sock *s UNUSED, struct ao_info *val UNUSED)
 {
   ERR_MSG("TCP-AO not supported");
 }
 
 int
-sk_get_active_ao_keys(sock *s, int *current_key, int *rnext_key)
+sk_get_active_ao_keys(sock *s UNUSED, int *current_key UNUSED, int *rnext_key UNUSED)
 {
   ERR_MSG("TCP-AO not supported");
 }
 
 bool
-tcp_ao_alg_known(int algorithm)
+tcp_ao_alg_known(int algorithm UNUSED)
 {
   return 0;
 }
 
 int
-sk_add_ao_key(sock *s, ip_addr prefix, int pxlen, struct iface *ifa, const struct ao_key *key, bool current, bool rnext)
+sk_add_ao_key(sock *s UNUSED, ip_addr prefix UNUSED, int pxlen UNUSED, struct iface *ifa UNUSED, const struct ao_key *key UNUSED, bool current UNUSED, bool rnext UNUSED)
 {
   ERR_MSG("TCP-AO not supported");
 }
 
 int
-sk_delete_ao_key(sock *s, ip_addr prefix, int pxlen, struct iface *ifa, const struct ao_key *key, const struct ao_key *current, const struct ao_key *rnext)
+sk_delete_ao_key(sock *s UNUSED, ip_addr prefix UNUSED, int pxlen UNUSED, struct iface *ifa UNUSED, const struct ao_key *key UNUSED, const struct ao_key *current UNUSED, const struct ao_key *rnext UNUSED)
 {
   ERR_MSG("TCP-AO not supported");
 }
 
 int
-sk_set_rnext_ao_key(sock *s, const struct ao_key *key)
+sk_set_rnext_ao_key(sock *s UNUSED, const struct ao_key *key UNUSED)
 {
   ERR_MSG("TCP-AO not supported");
 }
 
 int
-sk_check_ao_keys(sock *s, const struct ao_key **keys, int num, const char *name)
+sk_check_ao_keys(sock *s UNUSED, const struct ao_key **keys UNUSED, int num UNUSED, const char *name UNUSED)
 {
   errno = 0;
   s->err = "TCP-AO not supported";
@@ -275,13 +275,13 @@ sk_check_ao_keys(sock *s, const struct ao_key **keys, int num, const char *name)
 }
 
 void
-sk_dump_ao_info(sock *s, struct dump_request *dreq)
+sk_dump_ao_info(sock *s UNUSED, struct dump_request *dreq UNUSED)
 {
   RDUMP("TCP-AO not supported\n");
 }
 
 void
-sk_dump_ao_keys(sock *s, struct dump_request *dreq)
+sk_dump_ao_keys(sock *s UNUSED, struct dump_request *dreq UNUSED)
 {
   RDUMP("TCP-AO not supported\n");
 }

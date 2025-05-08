@@ -182,7 +182,7 @@ bgp_find_ao_key_(list *l, int send_id, int recv_id)
   return NULL;
 }
 
-static inline struct bgp_ao_key *
+static inline struct bgp_ao_key * UNUSED
 bgp_find_ao_key(struct bgp_proto *p, int send_id, int recv_id)
 { return bgp_find_ao_key_(&p->ao.keys, send_id, recv_id); }
 
