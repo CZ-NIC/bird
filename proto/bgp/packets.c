@@ -3170,6 +3170,9 @@ bgp_fire_tx(struct bgp_conn *conn)
 
       if (c->feed_state == BFS_LOADED)
       {
+	if (c->enhanced_rr_again)
+	  ev_send_loop(p->p.loop, &c->enhanced_rr_restart);
+
 	c->feed_state = BFS_NONE;
 	end = bgp_create_end_mark(c, pkt);
 	return bgp_send(conn, PKT_UPDATE, end - buf);
@@ -3177,6 +3180,9 @@ bgp_fire_tx(struct bgp_conn *conn)
 
       else if (c->feed_state == BFS_REFRESHED)
       {
+	if (c->enhanced_rr_again)
+	  ev_send_loop(p->p.loop, &c->enhanced_rr_restart);
+
 	c->feed_state = BFS_NONE;
 	end = bgp_create_end_refresh(c, pkt);
 	return bgp_send(conn, PKT_ROUTE_REFRESH, end - buf);

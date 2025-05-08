@@ -436,6 +436,10 @@ struct bgp_channel {
   struct rt_export_feeder stale_feed;	/* Feeder request for stale route modification */
   event stale_event;			/* Feeder event for stale route modification */
 
+  struct rt_feeding_request enhanced_rr_request; /* Refeed request for enhanced route refresh */
+  event enhanced_rr_restart;		/* Event to restart enhanced route request */
+  u8 enhanced_rr_again;			/* Another refeed requested while refeeding */
+
   u8 add_path_rx;			/* Session expects receive of ADD-PATH extended NLRI */
   u8 add_path_tx;			/* Session expects transmit of ADD-PATH extended NLRI */
 

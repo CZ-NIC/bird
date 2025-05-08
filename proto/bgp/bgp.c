@@ -152,6 +152,7 @@ static void bgp_listen_sock_err(sock *sk UNUSED, int err);
 static void bgp_initiate_disable(struct bgp_proto *p, int err_val);
 
 static void bgp_graceful_restart_feed(struct bgp_channel *c);
+static void bgp_restart_route_refresh(void *_bc);
 
 
 static inline int
@@ -761,6 +762,11 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
 
     c->feed_state = BFS_NONE;
     c->load_state = BFS_NONE;
+
+    c->enhanced_rr_restart = (event) {
+      .hook = bgp_restart_route_refresh,
+      .data = c,
+    };
 
     /* Channels where peer may do GR */
     uint gr_ready = active && local->gr_aware && rem->gr_able;
@@ -1689,16 +1695,10 @@ bgp_reload_in(struct proto *P, uintptr_t _ UNUSED, int __ UNUSED)
     cli_msg(-8006, "%s: not reloading, not up", P->name);
 }
 
-struct bgp_enhanced_refresh_request {
-  struct rt_feeding_request rfr;
-  struct bgp_channel *c;
-};
-
 static void
 bgp_done_route_refresh(struct rt_feeding_request *rfr)
 {
-  SKIP_BACK_DECLARE(struct bgp_enhanced_refresh_request, berr, rfr, rfr);
-  struct bgp_channel *c = berr->c;
+  SKIP_BACK_DECLARE(struct bgp_channel, c, enhanced_rr_request, rfr);
   SKIP_BACK_DECLARE(struct bgp_proto, p, p, c->c.proto);
 
   /* Schedule EoRR packet */
@@ -1706,8 +1706,6 @@ bgp_done_route_refresh(struct rt_feeding_request *rfr)
 
   c->feed_state = BFS_REFRESHED;
   bgp_schedule_packet(p->conn, c, PKT_UPDATE);
-
-  mb_free(berr);
 }
 
 const char *
@@ -1721,17 +1719,40 @@ bgp_begin_route_refresh(struct bgp_proto *p, struct bgp_channel *c)
     return "from table by simple refeed";
   }
 
-  struct bgp_enhanced_refresh_request *berr = mb_alloc(p->p.pool, sizeof *berr);
-  *berr = (struct bgp_enhanced_refresh_request) {
-    .c = c,
-    .rfr.done = bgp_done_route_refresh,
-  };
+  switch (c->feed_state)
+  {
+    case BFS_NONE:
+      break;
 
+    case BFS_REFRESHING:
+    case BFS_REFRESHED:
+      return c->enhanced_rr_again ? "already queued" : "again";
+
+    default:
+      return "requested before End-Of-RIB sent";
+  }
+
+  c->enhanced_rr_request.done = bgp_done_route_refresh;
   c->feed_state = BFS_REFRESHING;
   bgp_schedule_packet(p->conn, c, PKT_BEGIN_REFRESH);
 
-  rt_export_refeed(&c->c.out_req, &berr->rfr);
+  rt_export_refeed(&c->c.out_req, &c->enhanced_rr_request);
   return "from table by enhanced route refresh";
+}
+
+static void
+bgp_restart_route_refresh(void *_bc)
+{
+  struct bgp_channel *c = _bc;
+  SKIP_BACK_DECLARE(struct bgp_proto, p, p, c->c.proto);
+
+  if ((c->feed_state != BFS_NONE) || (!c->enhanced_rr_again))
+    return;
+
+  c->enhanced_rr_again = 0;
+
+  const char *info = bgp_begin_route_refresh(p, c);
+  BGP_TRACE(D_EVENTS, "Restarting route refresh on %s %s", c->c.name, info);
 }
 
 void
