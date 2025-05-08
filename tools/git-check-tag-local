@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# Enforce clean repository (it's release time)
+if [ $(git status --porcelain -uno | wc -l) != "0" ]; then
+  echo "Dirty repository, commit or stash!"
+  exit 1
+fi
+
+# Is the current commit a release commit?
+read COMMIT MESSAGE <<< "$(git show -s --oneline --no-decorate --no-abbrev-commit)"
+
+if [ "$MESSAGE" != "NEWS and version update" ]; then
+  echo "This is not a release commit: $COMMIT $MESSAGE"
+  exit 1
+fi
+
+# Are we checking an existing tag?
+if [ -n "$1" ]; then
+  read TAG_COMMIT _ <<< "$(git show -s --oneline --no-abbrev-commit "$1" | grep NEWS)"
+  if [ "$TAG_COMMIT" != "$COMMIT" ]; then
+    echo "Tag $1 not checked out"
+    exit 1
+  fi
+
+  if [ "v$(<VERSION)" != "$1" ]; then
+    echo "Version discrepancy"
+    echo -n "VERSION file: "; cat VERSION
+    echo "Tag: $1"
+    exit 1
+  fi
+fi
+
+# Locally done, report
+echo "Tag locally OK"

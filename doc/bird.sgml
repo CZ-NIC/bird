@@ -1,7 +1,7 @@
 <!doctype birddoc system>
 
 <!--
-	BIRD 3.1 documentation
+	BIRD documentation
 
 This documentation can have 4 forms: sgml (this is master copy), html, ASCII
 text and dvi/postscript (generated from sgml using sgmltools). You should always
@@ -20,7 +20,7 @@ configuration - something in config which is not keyword.
 
 <book>
 
-<title>BIRD 3.1 User's Guide
+<title>BIRD {{ VERSION }} User's Guide
 <author>
 Ondrej Filip <it/&lt;feela@network.cz&gt;/,
 Martin Mares <it/&lt;mj@ucw.cz&gt;/,
@@ -2968,10 +2968,10 @@ avoid routing loops.
 <item> <rfc id="7911"> &ndash; Advertisement of Multiple Paths in BGP
 <item> <rfc id="7947"> &ndash; Internet Exchange BGP Route Server
 <item> <rfc id="8092"> &ndash; BGP Large Communities Attribute
-<item> <rfc id="8203"> &ndash; BGP Administrative Shutdown Communication
 <item> <rfc id="8212"> &ndash; Default EBGP Route Propagation Behavior without Policies
 <item> <rfc id="8654"> &ndash; Extended Message Support for BGP
 <item> <rfc id="8950"> &ndash; Advertising IPv4 NLRI with an IPv6 Next Hop
+<item> <rfc id="9003"> &ndash; Extended BGP Administrative Shutdown Communication
 <item> <rfc id="9072"> &ndash; Extended Optional Parameters Length for BGP OPEN Message
 <item> <rfc id="9117"> &ndash; Revised Validation Procedure for BGP Flow Specifications
 <item> <rfc id="9234"> &ndash; Route Leak Prevention and Detection Using Roles

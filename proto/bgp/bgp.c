@@ -97,12 +97,12 @@
  * RFC 7911 - Advertisement of Multiple Paths in BGP
  * RFC 7947 - Internet Exchange BGP Route Server
  * RFC 8092 - BGP Large Communities Attribute
- * RFC 8203 - BGP Administrative Shutdown Communication
  * RFC 8212 - Default EBGP Route Propagation Behavior without Policies
  * RFC 8654 - Extended Message Support for BGP
  * RFC 8950 - Advertising IPv4 NLRI with an IPv6 Next Hop
  * RFC 8955 - Dissemination of Flow Specification Rules
  * RFC 8956 - Dissemination of Flow Specification Rules for IPv6
+ * RFC 9003 - Extended BGP Administrative Shutdown Communication
  * RFC 9072 - Extended Optional Parameters Length for BGP OPEN Message
  * RFC 9117 - Revised Validation Procedure for BGP Flow Specifications
  * RFC 9234 - Route Leak Prevention and Detection Using Roles
@@ -2477,7 +2477,7 @@ bgp_shutdown(struct proto *P)
   bgp_store_error(p, NULL, BE_MAN_DOWN, 0);
   p->startup_delay = 0;
 
-  /* RFC 8203 - shutdown communication */
+  /* RFC 9003 - shutdown communication */
   if (message)
   {
     uint msg_len = strlen(message);

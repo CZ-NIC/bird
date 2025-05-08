@@ -47,7 +47,7 @@ pushd $T
   pushd $SRCPKG
 
     # Omit historical documents
-    rm -rf misc rfc doc/slides doc/slt2001 doc/old bird.conf
+    rm -rf rfc doc/slides doc/slt2001 doc/old bird.conf
 
     # Fix the version string
     sed -i 's/^VERSION := .*/VERSION := '${VERSION}'/' Makefile.in

@@ -1,0 +1,19 @@
+#!/bin/sh
+
+git log --oneline | awk \
+  '{
+    # Ignore two fixups deeply buried inside the history
+    if (index("a54f75f454b7ed8c8ff2c1787a506528f22cbae7", $1) == 1)
+      next;
+    if (index("bea582cbb53e30dd32a5b6829c7443e0e5558d11", $1) == 1)
+      next;
+
+    # Complain about fixups and WIPs
+    if ((index($2, "fixup!") == 1) || (index($2, "WIP") == 1))
+    {
+      if (!bad) print "Branch contains unfinished work!"
+      bad = 1
+      print
+    }
+  }
+  END { if (bad) exit 1 }'
