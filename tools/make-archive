@@ -1,0 +1,97 @@
+#!/bin/bash
+#
+#	Generate BIRD distribution tgz
+#
+#	(c) 2025 CZ.NIC
+#
+#	Based on an older script by Martin Mares and Ondrej Filip
+#	and another one by Jakub Ruzicka and Ondrej Zajicek
+
+set -e
+
+# Gather all required information
+VERSION="$($(dirname $0)/version | sed 's/^v//')"
+
+SRCPKG="bird-${VERSION}"
+DOCPKG="bird-doc-${VERSION}"
+
+if [ -z "$ARCHIVE_DOCS" ]; then
+  ARCHIVE_DOCS=true
+fi
+
+# Check that we are running on a clean repository
+if ! git diff-index --quiet HEAD || ! git diff-index --cached --quiet HEAD; then
+  echo 'WARNING: git index has uncommitted changes!'
+fi
+
+# Prepare a tempdir
+T=$(mktemp -d)
+function cleanup_tmpdir() {
+  rm -rf $T
+}
+
+trap cleanup_tmpdir EXIT
+
+# Create a preliminary archive
+echo "Building $VERSION"
+git archive --format=tar --prefix="$SRCPKG/" HEAD -o $T/initial.tgz
+
+# Generate changelog
+echo "Generating changelog"
+mkdir $T/$SRCPKG
+git log > $T/$SRCPKG/ChangeLog
+
+# Unpack the archive
+pushd $T
+  tar xf initial.tgz
+  pushd $SRCPKG
+
+    # Omit historical documents
+    rm -rf rfc doc/slides doc/slt2001 doc/old bird.conf
+
+    # Fix the version string
+    sed -i 's/^VERSION := .*/VERSION := '${VERSION}'/' Makefile.in
+
+    # Run autoconf
+    echo "Running autoreconf"
+    autoreconf -i
+    rm -rf autom4te*cache
+
+  popd
+
+  # Pack sources
+  echo "Packing source package"
+  tar czf $SRCPKG.tar.gz $SRCPKG
+
+  if $ARCHIVE_DOCS; then
+    # Generate documentation
+    pushd $SRCPKG
+      echo "Creating documentation"
+      (./configure --with-protocols= --disable-client && make docs) > build.log 2>build.err || (
+	echo "======== Build log ========"
+	cat build.log
+	echo "======== Error log ========"
+	cat build.err
+	echo "If you wish to not build documentation, set env ARCHIVE_DOCS=false"
+	false
+      )
+    popd
+
+    mkdir ${DOCPKG}{,/doc}
+    cp $SRCPKG/obj/doc/*.{html,pdf} ${DOCPKG}/doc
+
+    # Pack sources
+    echo "Packing docs package"
+    tar czf $DOCPKG.tar.gz $DOCPKG
+  else
+    echo "Skipping documentation build"
+  fi
+
+popd
+
+if $ARCHIVE_DOCS; then
+  mv $T/$DOCPKG.tar.gz .
+fi
+
+mv $T/$SRCPKG.tar.gz .
+echo $SRCPKG.tar.gz

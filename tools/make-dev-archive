@@ -3,7 +3,7 @@
 # This a modified version of gendist script which generates development
 # archive (tarball) without docs from current sources.
 
-BIRD_VERSION=`grep 'BIRD_VERSION \"' sysdep/config.h | sed '/BIRD_VERSION/!d;s/^.*"\(.*\)"$/\1/'`
+BIRD_VERSION=$(bash tools/version)
 # differentiate dev tarballs from upstream ones
 GIT_HASH=$(git rev-parse --short HEAD )
 TIMESTAMP=$(date -u +'%s' 2>/dev/null)

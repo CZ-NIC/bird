@@ -1,0 +1,61 @@
+#!/bin/sh
+
+set -e
+
+# Get the release version
+toplevel="$(readlink -f $(dirname $0)/../)"
+RELEASE_VERSION=$(cat "$toplevel/VERSION")
+
+# Not in a git repo, or no git installed.
+if ! git status --porcelain > /dev/null; then
+  echo $RELEASE_VERSION
+  exit 0
+fi
+
+# Check VERSION file updates in uncommitted changes
+if git status --porcelain | grep -q '^...VERSION$'; then
+  echo "WARNING: Version file changed and not committed" >&2
+  echo $RELEASE_VERSION
+  exit 0
+fi
+
+# If clean, check VERSION file updates in the current commit
+if [ $(git status --porcelain -uno | wc -l) = "0" ] && [ $(git show -- VERSION | wc -l) != "0" ]; then
+  echo $RELEASE_VERSION
+  exit 0
+fi
+
+# We'll create a development version number, get the hash
+HASH=$(git rev-parse --short=12 HEAD)
+
+# Find the release
+case "$(git tag -l | grep "^v$RELEASE_VERSION\$" | wc -l | sed -r 's/^ *//;s/ +-//')" in
+  "1") # Already tagged
+    RELEASE_COMMIT=v$RELEASE_VERSION
+    ;;
+  "0") # Not yet tagged
+    RELEASE_COMMIT=$(git log --oneline -- VERSION | sed 's/ .*//')
+    ;;
+  *)
+    echo "ERROR: There are too many matching tags in the repository"
+    git tag -l | grep "^v$RELEASE_VERSION\$"
+    git tag -l | grep "^v$RELEASE_VERSION\$" | wc -l
+    exit 1
+    ;;
+esac
+
+# Add branch info if not passed via command line
+if [ -z "${BRANCH}" ]; then
+  # There is also --show-current but it's too new to be portable.
+  BRANCH=$(git branch | sed -n 's/^[*] //p' | grep -v 'HEAD detached' || true)
+fi
+
+# Found a branch
+if [ -n "$BRANCH" ]; then
+  LENGTH=$(git log --oneline $RELEASE_COMMIT..HEAD | wc -l)
+  echo $RELEASE_VERSION+branch.$(echo $BRANCH | sed 's/[^a-zA-Z0-9]/./g').${HASH}
+  exit 0
+fi
+
+echo $RELEASE_VERSION+detached.${HASH}
+exit 0

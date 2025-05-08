@@ -1,6 +1,6 @@
 # Makefile for the BIRD Internet Routing Daemon
 # (c) 1999--2000 Martin Mares <mj@ucw.cz>
-# (c) 2016       Jan Moskyto Matejka <mq@ucw.cz>
+# (c) 2016--2025 Maria Matejka <mq@ucw.cz>
 
 # Disable build-in rules
 MAKEFLAGS += -r
@@ -42,10 +42,11 @@ srcdir := @srcdir@
 objdir := @objdir@
 exedir := @exedir@
 
-git-label:=$(strip $(shell cd $(srcdir) && [ "$$(git rev-parse --show-toplevel)" = "$$(readlink -f .)" ] && git describe --always --dirty=-x 2>/dev/null))
-ifneq ($(git-label),)
-        CFLAGS += -DGIT_LABEL="$(git-label)"
-endif
+# Find out which version we are actually building
+# This is rewritten by the release tools by hardcoded version
+VERSION := $(strip $(shell $(srcdir)/tools/version))
+
+CFLAGS += -DBIRD_VERSION='"$(VERSION)"'
 
 ifeq ($(objdir),.)
   objdir := $(realpath .)
@@ -67,7 +68,7 @@ endif
 docgoals := docs userdocs progdocs
 testgoals := check test tests tests_run
 cleangoals := clean distclean testsclean
-.PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags cscope prepare
+.PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags cscope prepare gitlab
 
 all: daemon cli
 
@@ -159,7 +160,7 @@ $(objdir)/.dir-stamp: Makefile
 
 $(client) $(daemon):
 	$(E)echo LD $(LDFLAGS) -o $@ $^ $(LIBS)
-	$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+	+$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 $(objdir)/sysdep/paths.h: Makefile
 	$(E)echo GEN $@
@@ -174,7 +175,7 @@ tests_targets_ok = $(addsuffix .ok,$(tests_targets))
 
 $(tests_targets): %: %.o $(tests_objs) | prepare
 	$(E)echo LD $(LDFLAGS) -o $@ $< "..." $(LIBS)
-	$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+	+$(Q)$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 # Hack to avoid problems with tests linking everything
 $(tests_targets): LIBS += $(DAEMON_LIBS)
@@ -201,6 +202,18 @@ tags:
 
 cscope:
 	cd $(srcdir) ; find $(dirs) -name '*.[chY]' > cscope.files ; cscope -b
+
+# Gitlab CI tests
+gitlab: .gitlab-ci.yml
+.gitlab-ci.yml: $(addprefix misc/gitlab/,pipeline.py data.yml.j2 template.yml.j2)
+	( \
+		VENV=$$(mktemp -d); \
+		python3 -m venv $$VENV; \
+		. $$VENV/bin/activate; \
+		pip3 install jinja2 pyaml; \
+		python3 misc/gitlab/pipeline.py > $@ \
+		rm -rf $$VENV \
+		)
 
 # Install
 

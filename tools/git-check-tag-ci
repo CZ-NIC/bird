@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+
+import io
+import json
+import requests
+import sys
+import zipfile
+
+def load_api_request(name, query):
+    timeout = 5
+    while True:
+        resp = requests.get("https://gitlab.nic.cz/api/v4/projects/labs%2Fbird/" + query)
+        if resp.status_code == 200:
+            return resp.content
+
+        if resp.status_code == 429:
+            print(f"Too many requests for {name}, waiting {timeout} sec")
+            time.sleep(timeout)
+            timeout = int(1.6 * timeout)
+            continue
+
+        raise Exception(f"Failed to load {name} at {query} with code {resp.status_code}: {resp.content}")
+
+def load_paginated(name, query, per_page=100):
+    if query[-1] in "?&":
+        joiner = ""
+    elif "?" in query:
+        joiner = "&"
+    else:
+        joiner = "?"
+
+    output = []
+    pageno = 1
+    while True:
+        p = load_api_request(f"{name} page {pageno}", f"{query}{joiner}per_page={per_page}&page={pageno}")
+        output += (new := json.loads(p))
+        if len(new) < per_page:
+            return output
+
+        pageno += 1
+
+def load_pipelines(sha):
+    return load_paginated("pipelines", f"/pipelines/?sha={sha}")
+
+def load_jobs(pipeline):
+    return load_paginated("jobs", f"/pipelines/{pipeline}/jobs/")
+
+for p in load_pipelines(sys.argv[1]):
+    if p['status'] in ("failed", "cancelled"):
+        print(f"Pipeline {p['id']} {p['status']} at {p['web_url']}")
+        failed = [ job for job in load_jobs(p['id']) if job['status'] == "failed" ]
+        if len(failed) > 0:
+            print(f"\tFailed jobs:")
+            for job in failed:
+                print(f"\t\t{job['name']}")
+        else:
+            print(f"\tNo failed jobs, check gitlab")
+        print()
+        continue
+
+    if p['status'] in ("created", "pending", "running"):
+        print(f"Pipeline {p['id']} has not finished yet: {p['status']}")
+        states = {}
+
+        for job in load_jobs(p['id']):
+            if job['status'] not in states:
+                states[job['status']] = []
+            states[job['status']].append(job)
+
+        for s in states:
+            print(f"\tJobs {s}:")
+            for j in states[s]:
+                print(f"\t\t{j['name']} ({j['id']})")
+
+        continue
+
+    if p['status'] == "success":
+        print(f"Pipeline {p['id']} successful, collecting artifacts")
+        for job in load_jobs(p['id']):
+            if len(job['artifacts']) > 0:
+                print(f"\t{ job['name'] }:")
+            for f in job['artifacts']:
+                if f['file_type'] == 'archive':
+                    with zipfile.ZipFile(io.BytesIO(load_api_request("metadata", f"/jobs/{job['id']}/artifacts/"))) as z:
+                        z.extractall()
+        exit(0)
+
+print("No suitable pipeline found, tag not OK")
+exit(1)

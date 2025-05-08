@@ -20,7 +20,7 @@ $(o)prog.sgml: $(srcdir)/tools/progdoc $(objdir)/.dir-stamp
 	$(srcdir)/tools/progdoc $(srcdir) $@
 
 $(o)%.sgml: $(s)%.sgml $(objdir)/.dir-stamp
-	cp $< $@
+	sed 's#{{ VERSION }}#$(VERSION)#' <$< >$@
 
 $(o)%.html: $(o)%.sgml
 	cd $(dir $@) && $(toolsdir)/linuxdoc -B html $(notdir $<)
@@ -36,7 +36,7 @@ $(o)%.md: $(o)%.sgml $(LINUXDOC_PANDOC_PARSER) $(objdir)/.dir-stamp
 	$(PANDOC) -f $(LINUXDOC_PANDOC_PARSER) -s -t markdown -o $@ $<
 
 $(o)%-singlepage.html: $(o)%.sgml $(SINGLEPAGE_HTML_TEMPLATE) $(LINUXDOC_PANDOC_PARSER) $(objdir)/.dir-stamp
-	$(PANDOC) -f $(LINUXDOC_PANDOC_PARSER) -t html5 --shift-heading-level-by=1 --section-divs --table-of-contents --toc-depth=3 -M bird_version="3.0.2" --template=$(SINGLEPAGE_HTML_TEMPLATE) -o $@ $<
+	$(PANDOC) -f $(LINUXDOC_PANDOC_PARSER) -t html5 --shift-heading-level-by=1 --section-divs --table-of-contents --toc-depth=3 -M bird_version="$(VERSION)" --template=$(SINGLEPAGE_HTML_TEMPLATE) -o $@ $<
 
 endif
 

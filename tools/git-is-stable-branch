@@ -1,0 +1,8 @@
+#!/bin/bash
+
+case "$1" in
+  master | thread-next | stable-* )
+    exit 0;
+esac
+
+exit 1
