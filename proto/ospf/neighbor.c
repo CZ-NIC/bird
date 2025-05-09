@@ -189,8 +189,8 @@ ospf_neigh_chstate(struct ospf_neighbor *n, u8 state)
     n->myimms = DBDES_IMMS;
     n->got_my_rt_lsa = 0;
 
-    tm_start(n->dbdes_timer, 0);
-    tm_start(n->ackd_timer, ifa->rxmtint S / 2);
+    tm_start_in(n->dbdes_timer, 0, p->p.loop);
+    tm_start_in(n->ackd_timer, ifa->rxmtint S / 2, p->p.loop);
   }
 
   if (state > NEIGHBOR_EXSTART)
@@ -235,7 +235,7 @@ ospf_neigh_sm(struct ospf_neighbor *n, int event)
       ospf_neigh_chstate(n, NEIGHBOR_INIT);
 
     /* Restart inactivity timer */
-    tm_start(n->inactim, n->ifa->deadint S);
+    tm_start_in(n->inactim, n->ifa->deadint S, p->p.loop);
     break;
 
   case INM_2WAYREC:
@@ -385,7 +385,7 @@ ospf_neigh_start_graceful_restart(struct ospf_neighbor *n, uint gr_time)
   p->gr_count++;
 
   n->gr_timer = tm_new_init(n->pool, graceful_restart_timeout, n, 0, 0);
-  tm_start(n->gr_timer, gr_time S);
+  tm_start_in(n->gr_timer, gr_time S, p->p.loop);
 }
 
 static void
@@ -496,7 +496,7 @@ ospf_neigh_notify_grace_lsa(struct ospf_neighbor *n, struct top_hash_entry *en)
     /* Exception for updating grace period */
     if (n->gr_active)
     {
-      tm_start(n->gr_timer, (period S) - (en->lsa.age S));
+      tm_start_in(n->gr_timer, (period S) - (en->lsa.age S), p->p.loop);
       return;
     }
 
