@@ -582,7 +582,7 @@ rip_iface_start(struct rip_iface *ifa)
   if (! ifa->cf->demand_circuit)
   {
     ifa->next_regular = current_time() + (random() % ifa->cf->update_time) + 100 MS;
-    tm_set(ifa->timer, ifa->next_regular);
+    tm_set_in(ifa->timer, ifa->next_regular, ifa->rip->p.loop);
   }
   else
   {
@@ -749,7 +749,7 @@ rip_add_iface(struct rip_proto *p, struct iface *iface, struct rip_iface_config 
     .hook = rip_iface_locked,
     .data = ifa,
   };
-  lock->target = &global_event_list;
+  lock->target = proto_event_list(&p->p);
   ifa->lock = lock;
 
   olock_acquire(lock);
@@ -1015,14 +1015,14 @@ rip_timer(timer *t)
       }
   }
 
-  tm_start(p->timer, MAX(next - now_, 100 MS));
+  tm_start_in(p->timer, MAX(next - now_, 100 MS), p->p.loop);
 }
 
 static inline void
 rip_kick_timer(struct rip_proto *p)
 {
   if ((p->timer->expires > (current_time() + 100 MS)))
-    tm_start(p->timer, 100 MS);
+    tm_start_in(p->timer, 100 MS, p->p.loop);
 }
 
 /**
@@ -1050,7 +1050,7 @@ rip_iface_timer(timer *t)
 
   if (ifa->tx_active)
   {
-    tm_start(ifa->timer, 100 MS);
+    tm_start_in(ifa->timer, 100 MS, p->p.loop);
     return;
   }
 
@@ -1074,9 +1074,9 @@ rip_iface_timer(timer *t)
   }
 
   if (ifa->want_triggered && (ifa->next_triggered < ifa->next_regular))
-    tm_set(ifa->timer, ifa->next_triggered);
+    tm_set_in(ifa->timer, ifa->next_triggered, ifa->rip->p.loop);
   else if (ifa->next_regular != TIME_INFINITY)
-    tm_set(ifa->timer, ifa->next_regular);
+    tm_set_in(ifa->timer, ifa->next_regular, ifa->rip->p.loop);
 }
 
 
@@ -1084,7 +1084,7 @@ static inline void
 rip_iface_kick_timer(struct rip_iface *ifa)
 {
   if ((! tm_active(ifa->timer)) || (ifa->timer->expires > (current_time() + 100 MS)))
-    tm_start(ifa->timer, 100 MS);
+    tm_start_in(ifa->timer, 100 MS, ifa->rip->p.loop);
 }
 
 static void
@@ -1201,7 +1201,7 @@ rip_start(struct proto *P)
   p->log_pkt_tbf = (struct tbf){ .rate = 1, .burst = 5 };
   p->log_rte_tbf = (struct tbf){ .rate = 4, .burst = 20 };
 
-  tm_start(p->timer, MIN(cf->min_timeout_time, cf->max_garbage_time));
+  tm_start_in(p->timer, MIN(cf->min_timeout_time, cf->max_garbage_time), P->loop);
 
   return PS_UP;
 }

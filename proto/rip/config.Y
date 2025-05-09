@@ -88,6 +88,7 @@ rip_iface_start:
   init_list(&this_ipatt->ipn_list);
   reset_passwords();
 
+  this_proto->loop_order = DOMAIN_ORDER(proto);
   RIP_IFACE->metric = 1;
   RIP_IFACE->port = rip_cfg_is_v2() ? RIP_PORT : RIP_NG_PORT;
   RIP_IFACE->version = rip_cfg_is_v2() ? RIP_V2 : RIP_V1;

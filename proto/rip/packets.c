@@ -436,7 +436,7 @@ static inline void
 rip_kick_rxmt_timer(struct rip_iface *ifa)
 {
   if (! tm_active(ifa->rxmt_timer))
-    tm_start(ifa->rxmt_timer, ifa->cf->rxmt_time);
+    tm_start_in(ifa->rxmt_timer, ifa->cf->rxmt_time, ifa->rip->p.loop);
 }
 
 
@@ -989,6 +989,8 @@ drop:
 int
 rip_open_socket(struct rip_iface *ifa)
 {
+  ASSERT_DIE(birdloop_inside(ifa->rip->p.loop));
+
   struct rip_proto *p = ifa->rip;
 
   sock *sk = sk_new(p->p.pool);
