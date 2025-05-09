@@ -244,12 +244,23 @@ expr_us:
 /* Switches */
 
 bool:
-   expr { $$ = !!$1; }
- | ON { $$ = 1; }
+   ON { $$ = 1; }
  | YES { $$ = 1; }
+ | TRUE { $$ = 1; }
  | OFF { $$ = 0; }
  | NO { $$ = 0; }
+ | FALSE { $$ = 0; }
  | /* Silence means agreement */ { $$ = 1; }
+ | NUM { $$ = !!$1; cf_warn("Number argument for switch option deprecated"); }
+ | conf_expr {
+     if (($1.type != T_BOOL) && ($1.type != T_INT))
+       cf_error("Switch value expected");
+
+     if ($1.type == T_INT)
+       cf_warn("Number argument for switch option deprecated");
+
+     $$ = !!$1.val.i;
+   }
  ;
 
 
