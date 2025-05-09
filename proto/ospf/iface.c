@@ -386,6 +386,7 @@ ospf_iface_sm(struct ospf_iface *ifa, int event)
   case ISM_UP:
     if (ifa->state <= OSPF_IS_LOOP)
     {
+      struct ospf_proto *p = ifa->oa->po;
       /* Now, nothing should be adjacent */
       if ((ifa->type == OSPF_IT_PTP) ||
 	  (ifa->type == OSPF_IT_PTMP) ||
@@ -401,15 +402,15 @@ ospf_iface_sm(struct ospf_iface *ifa, int event)
 	{
 	  ospf_iface_chstate(ifa, OSPF_IS_WAITING);
 	  if (ifa->wait_timer)
-	    tm_start(ifa->wait_timer, ifa->waitint S);
+	    tm_start_in(ifa->wait_timer, ifa->waitint S, p->p.loop);
 	}
       }
 
       if (ifa->hello_timer)
-	tm_start(ifa->hello_timer, ifa->helloint S);
+	tm_start_in(ifa->hello_timer, ifa->helloint S, p->p.loop);
 
       if (ifa->poll_timer)
-	tm_start(ifa->poll_timer, ifa->pollint S);
+	tm_start_in(ifa->poll_timer, ifa->pollint S, p->p.loop);
 
       ospf_send_hello(ifa, OHS_HELLO, NULL);
     }
@@ -672,7 +673,7 @@ ospf_iface_new(struct ospf_area *oa, struct ifa *addr, struct ospf_iface_patt *i
     .hook = ospf_iface_add,
     .data = ifa,
   };
-  lock->target = &global_event_list;
+  lock->target = proto_event_list(&p->p);
 
   olock_acquire(lock);
 }
@@ -734,7 +735,7 @@ ospf_iface_new_vlink(struct ospf_proto *p, struct ospf_iface_patt *ip)
 }
 
 static void
-ospf_iface_change_timer(timer *tm, uint val)
+ospf_iface_change_timer(timer *tm, uint val, struct birdloop *loop)
 {
   if (!tm)
     return;
@@ -742,7 +743,7 @@ ospf_iface_change_timer(timer *tm, uint val)
   tm->recurrent = val S;
 
   if (tm_active(tm))
-    tm_start(tm, val S);
+    tm_start_in(tm, val S, loop);
 }
 
 static inline void
@@ -803,7 +804,7 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
 	       ifname, ifa->helloint, new->helloint);
 
     ifa->helloint = new->helloint;
-    ospf_iface_change_timer(ifa->hello_timer, ifa->helloint);
+    ospf_iface_change_timer(ifa->hello_timer, ifa->helloint, p->p.loop);
   }
 
   /* RXMT TIMER */
@@ -823,7 +824,7 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
 	       ifname, ifa->pollint, new->pollint);
 
     ifa->pollint = new->pollint;
-    ospf_iface_change_timer(ifa->poll_timer, ifa->pollint);
+    ospf_iface_change_timer(ifa->poll_timer, ifa->pollint, p->p.loop);
   }
 
   /* WAIT TIMER */
@@ -834,7 +835,7 @@ ospf_iface_reconfigure(struct ospf_iface *ifa, struct ospf_iface_patt *new)
 
     ifa->waitint = new->waitint;
     if (ifa->wait_timer && tm_active(ifa->wait_timer))
-      tm_start(ifa->wait_timer, ifa->waitint S);
+      tm_start_in(ifa->wait_timer, ifa->waitint S, p->p.loop);
   }
 
   /* DEAD TIMER */

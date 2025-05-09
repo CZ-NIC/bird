@@ -1350,7 +1350,7 @@ ospf_rt_abr2(struct ospf_proto *p)
 	  oa->translator_timer = tm_new_init(p->p.pool, translator_timer_hook, oa, 0, 0);
 
 	/* Schedule the end of translation */
-	tm_start(oa->translator_timer, oa->ac->transint S);
+	tm_start_in(oa->translator_timer, oa->ac->transint S, p->p.loop);
 	oa->translate = TRANS_WAIT;
       }
     }

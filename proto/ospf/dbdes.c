@@ -300,7 +300,7 @@ ospf_process_dbdes(struct ospf_proto *p, struct ospf_packet *pkt, struct ospf_ne
       req->lsa_body = LSA_BODY_DUMMY;
 
       if (!tm_active(n->lsrq_timer))
-	tm_start(n->lsrq_timer, 0);
+	tm_start_in(n->lsrq_timer, 0, p->p.loop);
     }
   }
 
@@ -453,7 +453,7 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
       }
 
       ospf_send_dbdes(p, n);
-      tm_start(n->dbdes_timer, n->ifa->rxmtint S);
+      tm_start_in(n->dbdes_timer, n->ifa->rxmtint S, p->p.loop);
     }
     else
     {
@@ -473,7 +473,7 @@ ospf_receive_dbdes(struct ospf_packet *pkt, struct ospf_iface *ifa,
       if (!(n->myimms & DBDES_M) && !(n->imms & DBDES_M))
       {
 	/* Use dbdes timer to postpone freeing of Last DBDES packet buffer */
-	tm_start(n->dbdes_timer, n->ifa->deadint S);
+	tm_start_in(n->dbdes_timer, n->ifa->deadint S, p->p.loop);
 	ospf_neigh_sm(n, INM_EXDONE);
       }
     }

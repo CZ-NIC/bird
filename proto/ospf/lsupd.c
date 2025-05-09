@@ -137,7 +137,10 @@ ospf_lsa_lsrt_up(struct top_hash_entry *en, struct ospf_neighbor *n)
   ret->lsa_body = LSA_BODY_DUMMY;
 
   if (!tm_active(n->lsrt_timer))
-    tm_start(n->lsrt_timer, n->ifa->rxmtint S);
+  {
+    struct ospf_proto *p = n->ifa->oa->po;
+    tm_start_in(n->lsrt_timer, n->ifa->rxmtint S, p->p.loop);
+  }
 }
 
 void
@@ -177,7 +180,7 @@ ospf_add_flushed_to_lsrt(struct ospf_proto *p, struct ospf_neighbor *n)
 
   /* If we found any flushed LSA, we send them ASAP */
   if (tm_active(n->lsrt_timer))
-    tm_start(n->lsrt_timer, 0);
+    tm_start_in(n->lsrt_timer, 0, p->p.loop);
 }
 
 static int ospf_flood_lsupd(struct ospf_proto *p, struct top_hash_entry **lsa_list, uint lsa_count, uint lsa_min_count, struct ospf_iface *ifa);
@@ -185,6 +188,8 @@ static int ospf_flood_lsupd(struct ospf_proto *p, struct top_hash_entry **lsa_li
 static void
 ospf_enqueue_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_iface *ifa)
 {
+  ASSERT_DIE(birdloop_inside(p->p.loop));
+
   /* Exception for local Grace-LSA, they are flooded synchronously */
   if ((en->lsa_type == LSA_T_GR) && (en->lsa.rt == p->router_id))
   {
@@ -211,7 +216,7 @@ ospf_enqueue_lsa(struct ospf_proto *p, struct top_hash_entry *en, struct ospf_if
   ifa->flood_queue_used++;
 
   if (!ev_active(p->flood_event))
-    ev_schedule(p->flood_event);
+    ev_send(proto_event_list(&p->p), p->flood_event);
 }
 
 void
@@ -709,7 +714,7 @@ ospf_receive_lsupd(struct ospf_packet *pkt, struct ospf_iface *ifa,
   if (!EMPTY_SLIST(n->lsrql) && (n->lsrqi == SHEAD(n->lsrql)))
   {
     ospf_send_lsreq(p, n);
-    tm_start(n->lsrq_timer, n->ifa->rxmtint S);
+    tm_start_in(n->lsrq_timer, n->ifa->rxmtint S, p->p.loop);
   }
 
   return;

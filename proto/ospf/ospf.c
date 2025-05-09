@@ -296,7 +296,7 @@ ospf_start(struct proto *P)
   p->gr_time = c->gr_time;
   p->tick = c->tick;
   p->disp_timer = tm_new_init(P->pool_up, ospf_disp, p, p->tick S, 0);
-  tm_start(p->disp_timer, 100 MS);
+  tm_start_in(p->disp_timer, 100 MS, P->loop);
   p->lsab_size = 256;
   p->lsab_used = 0;
   p->lsab = mb_alloc(P->pool, p->lsab_size);
@@ -715,7 +715,7 @@ ospf_reconfigure(struct proto *P, struct proto_config *CF)
   p->gr_time = new->gr_time;
   p->tick = new->tick;
   p->disp_timer->recurrent = p->tick S;
-  tm_start(p->disp_timer, 10 MS);
+  tm_start_in(p->disp_timer, 10 MS, P->loop);
 
   /* Mark all areas and ifaces */
   WALK_LIST(oa, p->area_list)

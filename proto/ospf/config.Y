@@ -461,6 +461,7 @@ nbma_item: ipa nbma_eligible ';'
 
 ospf_iface_start:
  {
+  this_proto->loop_order = DOMAIN_ORDER(proto);
   this_ipatt = cfg_allocz(sizeof(struct ospf_iface_patt));
   add_tail(&this_area->patt_list, NODE this_ipatt);
   init_list(&this_ipatt->ipn_list);
