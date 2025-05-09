@@ -18,6 +18,12 @@ AC_ARG_ENABLE([debug],
   [enable_debug=no]
 )
 
+AC_ARG_ENABLE([lto],
+  [AS_HELP_STRING([--enable-lto], [enable link-time optimization @<:@no@:>@])],
+  [],
+  [enable_lto=auto]
+)
+
 AC_ARG_ENABLE([debug-generated],
   [AS_HELP_STRING([--enable-debug-generated], [enable this to abstain from generating #line @<:@no@:>@])],
   [],
@@ -152,14 +158,22 @@ if test "$bird_cflags_default" = yes ; then
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_watomic_implicit_seq_cst], [-Watomic-implicit-seq-cst], [-Wall -Wextra])
   BIRD_CHECK_GCC_OPTION([bird_cv_c_option_werror_implicit_function_declaration], [-Werror=implicit-function-declaration], [-Wall -Wextra])
 
-  if test "$enable_debug" = no; then
+  if test "$enable_lto" = no || (test "$enable_debug" = yes && test "$enable_lto" = auto); then
+    # LTO is not configured at all
+    true
+  else
     LTO_CFLAGS=-flto
+
     AS_CASE(${bird_cv_compiler_vendor},
 	    gnu,LTO_LDFLAGS="-flto=jobserver",
 	    llvm,LTO_LDFLAGS="-flto",
 	    unknown,LTO_LDFLAGS="-flto",
 	    AC_MSG_ERROR([Compiler vendor check failed for LTO: got ${bird_cv_compiler_vendor}]))
     BIRD_CHECK_LTO(${LTO_CFLAGS}, ${LTO_LDFLAGS})
+
+    if test "$enable_lto" = yes && test "$bird_cv_c_lto" = no; then
+      AC_MSG_ERROR([LTO not available.])
+    fi
   fi
 
   if test "$bird_cv_c_lto" = yes; then
@@ -518,6 +532,7 @@ AC_MSG_RESULT([        Object directory:	$objdir])
 AC_MSG_RESULT([        Iproute2 directory:	$iproutedir])
 AC_MSG_RESULT([        System configuration:	$sysdesc])
 AC_MSG_RESULT([        Debugging:		$enable_debug])
+AC_MSG_RESULT([        Link-time optimization: $enable_lto])
 AC_MSG_RESULT([        Compact tries:		$enable_compact_tries])
 AC_MSG_RESULT([        Routing protocols:	$protocols])
 AC_MSG_RESULT([        LibSSH support in RPKI:	$enable_libssh])
