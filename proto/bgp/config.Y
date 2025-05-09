@@ -296,7 +296,7 @@ tcp_ao_key_opt:
        cf_error("Unknown algorithm for TCP-AO");
      this_ao_key->key.algorithm = $2;
    }
- | SECRET bytestring_text ';' {
+ | SECRET bytestring_or_text ';' {
      if ($2.type == T_BYTESTRING)
      {
        this_ao_key->key.key = $2.val.bs->data;
@@ -307,7 +307,7 @@ tcp_ao_key_opt:
        this_ao_key->key.key = $2.val.s;
        this_ao_key->key.keylen = strlen($2.val.s);
      }
-     else bug("Bad bytestring_text");
+     else bug("Bad bytestring_or_text");
 
      if (this_ao_key->key.keylen > AO_MAX_KEY_LENGTH)
        cf_error("TCP-AO secret too long");
