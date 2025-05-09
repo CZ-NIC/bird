@@ -166,7 +166,7 @@ bgp_proto:
      net_copy(n, &($4));
      BGP_CFG->remote_range = n;
    }
- | bgp_proto INTERFACE TEXT ';' { BGP_CFG->iface = if_get_by_name($3); }
+ | bgp_proto INTERFACE text ';' { BGP_CFG->iface = if_get_by_name($3); }
  | bgp_proto RR CLUSTER ID idval ';' { BGP_CFG->rr_cluster_id = $5; }
  | bgp_proto RR CLIENT bool ';' { BGP_CFG->rr_client = $4; }
  | bgp_proto RS CLIENT bool ';' { BGP_CFG->rs_client = $4; }

@@ -293,7 +293,7 @@ radv_rdnss:
  ;
 
 
-radv_dnssl_node: TEXT
+radv_dnssl_node: text
 {
   struct radv_dnssl_config *cf = cfg_allocz(sizeof(struct radv_dnssl_config));
   add_tail(&radv_dns_list, NODE cf);

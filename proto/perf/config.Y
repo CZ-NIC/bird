@@ -44,12 +44,12 @@ perf_proto:
 
 perf_proto_item:
    proto_channel { this_proto->net_type = $1->net_type; }
- | EXP FROM NUM { PERF_CFG->from = $3; }
- | EXP TO NUM { PERF_CFG->to = $3; }
- | REPEAT NUM { PERF_CFG->repeat = $2; }
+ | EXP FROM expr { PERF_CFG->from = $3; }
+ | EXP TO expr { PERF_CFG->to = $3; }
+ | REPEAT expr { PERF_CFG->repeat = $2; }
  | THRESHOLD MIN expr_us { PERF_CFG->threshold_min = $3; }
  | THRESHOLD MAX expr_us { PERF_CFG->threshold_max = $3; }
- | ATTRIBUTES NUM { PERF_CFG->attrs_per_rte = $2; }
+ | ATTRIBUTES expr { PERF_CFG->attrs_per_rte = $2; }
  | KEEP bool { PERF_CFG->keep = $2; }
  | MODE IMPORT { PERF_CFG->mode = PERF_MODE_IMPORT; }
  | MODE EXPORT { PERF_CFG->mode = PERF_MODE_EXPORT; }

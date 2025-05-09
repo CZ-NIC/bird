@@ -83,7 +83,7 @@ log_udp_host: text_or_ipa
 
 log_udp_port:
     /* empty */ { this_log->port = 514; }
-  | PORT NUM { check_u16($2); this_log->port = $2; }
+  | PORT expr { check_u16($2); this_log->port = $2; }
   ;
 
 log_mask:
@@ -193,7 +193,7 @@ CF_CLI(GRACEFUL RESTART,,, [[Shut the daemon down for graceful restart]])
 
 cfg_name:
    /* empty */ { $$ = NULL; }
- | TEXT
+ | text
  ;
 
 cfg_timeout:

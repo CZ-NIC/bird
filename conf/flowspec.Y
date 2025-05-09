@@ -156,7 +156,7 @@ flow6_item:
      flow_builder_set_type(this_flow, $1);
      flow_builder6_add_pfx(this_flow, (net_addr_ip6 *) &($2), 0);
    }
- | flow_srcdst net_ip6 OFFSET NUM {
+ | flow_srcdst net_ip6 OFFSET expr {
      if ($4 > $2.pxlen)
        cf_error("Prefix offset is higher than prefix length");
      flow_builder_set_type(this_flow, $1);
