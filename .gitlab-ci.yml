@@ -963,12 +963,16 @@ build-birdlab-openbsd-76:
 
 build-birdlab-netbsd-09:
   <<: *build-birdlab-base
+  variables:
+    CONFIGURE_OPTIONS: --disable-lto
   tags:
     - birdlab-netbsd-09
     - amd64
 
 build-birdlab-netbsd-10:
   <<: *build-birdlab-base
+  variables:
+    CONFIGURE_OPTIONS: --disable-lto
   tags:
     - birdlab-netbsd-10
     - amd64
