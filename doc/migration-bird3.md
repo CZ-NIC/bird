@@ -93,3 +93,7 @@ internal attribute, and when it is too high, the route is discarded.
 The export table now shows the state immediately before sending on the wire,
 thus without custom attributes and after all updates done by BGP. This should
 help with performance a little, while also being more accurate.
+
+When changing the export filter the export table is used in BIRD 3, but ignored in BIRD 2.
+This means that BIRD 2 sends all routes again, regardless of having export table enabled. 
+BIRD 3 is smarter and uses the export table to filter out routes when export filter has changed.
