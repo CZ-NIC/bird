@@ -437,7 +437,7 @@ bt_test_suite:
 
 conf: bt_test_same ;
 bt_test_same:
- BT_TEST_SAME '(' symbol_known ',' symbol_known ',' NUM ')' {
+ BT_TEST_SAME '(' symbol_known ',' symbol_known ',' expr ')' {
   cf_assert_symbol($3, SYM_FUNCTION);
   cf_assert_symbol($5, SYM_FUNCTION);
   struct f_bt_test_suite *t = cfg_allocz(sizeof(struct f_bt_test_suite));

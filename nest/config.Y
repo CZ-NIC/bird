@@ -390,8 +390,8 @@ timeformat_which:
  ;
 
 timeformat_spec:
-   TEXT { $$ = (struct timeformat){$1, NULL, 0}; }
- | TEXT expr TEXT { $$ = (struct timeformat){$1, $3, (s64) $2 S_}; }
+   text { $$ = (struct timeformat){$1, NULL, 0}; }
+ | text expr text { $$ = (struct timeformat){$1, $3, (s64) $2 S_}; }
  | ISO SHORT	{ $$ = TM_ISO_SHORT_S; }
  | ISO SHORT MS	{ $$ = TM_ISO_SHORT_MS; }
  | ISO SHORT US	{ $$ = TM_ISO_SHORT_US; }
@@ -888,7 +888,7 @@ echo_mask:
 
 echo_size:
    /* empty */ { $$ = 4096; }
- | NUM {
+ | expr {
      if ($1 < 256 || $1 > 65536) cf_error("Invalid log buffer size");
      $$ = $1;
    }
