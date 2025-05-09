@@ -1403,7 +1403,7 @@ bird_thread_commit(struct config *new, struct config *old)
   ASSERT_DIE(new->default_thread_group);
   default_thread_group = new->default_thread_group->group;
 
-  WALK_TLIST(thread_group, gpub, &global_thread_group_list)
+  WALK_TLIST_DELSAFE(thread_group, gpub, &global_thread_group_list)
   {
     bool run_thread_dropper = false;
     TLIST_LIST(birdloop) *leftover_loops = NULL;
