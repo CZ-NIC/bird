@@ -500,6 +500,12 @@ followed by any combination of letters, numbers and underscores (e.g. <cf/R123/,
 and than you can use any combination of numbers, letters, underscores, hyphens,
 dots and colons (e.g.  <cf/'1:strange-name'/, <cf/'-NAME-'/, <cf/'cool::name'/).
 
+<p>In most cases where options use an argument that is a basic data type (e.g.
+number, string, IP address) it is possible to use a named constant (defined
+by <ref id="opt-define" name="define"> statement), or a constant expression
+enclosed in parenthesis (e.g. <cf/(2 + 2)/). These expressions use
+<ref id="filters" name="the BIRD filter language">.
+
 <p>Here is an example of a simple config file. It enables synchronization of
 routing tables with OS kernel, learns network interfaces and runs RIP on all
 network interfaces found.

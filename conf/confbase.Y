@@ -51,6 +51,31 @@ static inline void cf_assert_symbol(const struct symbol *sym, uint class) {
   }
 }
 
+static inline const char *
+cf_type_name(enum f_type type)
+{
+  /* There is already f_type_name(), but this uses names more suited
+     to configuration error messages */
+  switch (type)
+  {
+  case T_INT:		return "Number";
+  case T_BOOL:		return "Boolean";
+  case T_IP:		return "IP address";
+  case T_NET:		return "Network";
+  case T_STRING:	return "String";
+  case T_BYTESTRING:	return "Bytestring";
+  default:		return "???";
+  }
+}
+
+static inline void
+cf_assert_type(const struct f_val val, enum f_type type)
+{
+  if (val.type != type)
+    cf_error("%s expected", cf_type_name(type));
+}
+
+
 CF_DECLS
 
 %union {
@@ -117,6 +142,7 @@ CF_DECLS
 %type <iface> ipa_scope
 
 %type <i> expr bool pxlen4
+%type <i32> idval
 %type <time> expr_us time
 %type <a> ipa
 %type <net> net_ip4_ net_ip4 net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
@@ -127,8 +153,7 @@ CF_DECLS
 %type <bs> bytestring
 %type <s> symbol symbol_known
 
-%type <v> bytestring_text text_or_ipa
-%type <x> bytestring_expr
+%type <v> conf_expr bytestring_expr text_or_ipa bytestring_or_text
 
 %nonassoc PREFIX_DUMMY
 %left AND OR
@@ -143,6 +168,26 @@ CF_DECLS
 CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS, FROM, MAX, AS)
 
 CF_GRAMMAR
+
+/*
+ * There are several basic configuration datatypes
+ * (regular parser rule name, raw lexer token name):
+ *  - bool (bool)
+ *  - number (expr, NUM)
+ *  - string (text, TEXT)
+ *  - bytestring (bytestring, BYTETEXT)
+ *  - IP address (ipa, IP4/IP6)
+ *  - Network address (net_*)
+ *
+ * Regular parser grammar rules for these datatypes should include lexer token,
+ * symbol (to resolve constants) and term (to evaluate expression). But that
+ * makes them uncomposable, as e.g. 'text | ipa' leads to parser conflict.
+ * Therefore, we have rules like text_or_ipa that combines more lexer tokens.
+ *
+ * In general, configuration grammar should use regular parser rules for these
+ * datatypes and avoid raw lexer tokens. When raw lexer tokens must be used,
+ * 'conf_expr' grammar rule should be added to handle constants and expressions.
+ */
 
 /* Basic config file structure */
 
@@ -170,12 +215,23 @@ definition:
    }
  ;
 
+conf_expr:
+   symbol_known {
+     /* If the symbol is not a constant, we pass empty f_val and fail later on type check */
+     $$ = (($1->class & ~0xff) == SYM_CONSTANT) ? *$1->val : (struct f_val) {};
+   }
+ | '(' term ')' { $$ = cf_eval($2, T_VOID); }
+ ;
+
+symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN | KEYWORD ;
+symbol_known: CF_SYM_KNOWN ;
+
+
+/* Numbers */
+
 expr:
    NUM
- | '(' term ')' { $$ = cf_eval_int($2); }
- | symbol_known {
-     if ($1->class != (SYM_CONSTANT | T_INT)) cf_error("Number constant expected");
-     $$ = SYM_VAL($1).i; }
+ | conf_expr { cf_assert_type($1, T_INT); $$ = $1.val.i; }
  ;
 
 expr_us:
@@ -184,8 +240,6 @@ expr_us:
  | expr US { $$ = $1 US_; }
  ;
 
-symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN | KEYWORD ;
-symbol_known: CF_SYM_KNOWN ;
 
 /* Switches */
 
@@ -204,10 +258,7 @@ bool:
 ipa:
    IP4 { $$ = ipa_from_ip4($1); }
  | IP6 { $$ = ipa_from_ip6($1); }
- | CF_SYM_KNOWN {
-     if ($1->class != (SYM_CONSTANT | T_IP)) cf_error("IP address constant expected");
-     $$ = SYM_VAL($1).ip;
-   }
+ | conf_expr { cf_assert_type($1, T_IP); $$ = $1.val.ip; }
  ;
 
 ipa_scope:
@@ -326,28 +377,28 @@ net_:
 
 net_ip4:
    net_ip4_
- | CF_SYM_KNOWN {
-     if (($1->class != (SYM_CONSTANT | T_NET)) || (SYM_VAL($1).net->type != NET_IP4))
-       cf_error("IPv4 network constant expected");
-     $$ = * SYM_VAL($1).net;
+ | conf_expr {
+     if (($1.type != T_NET) || ($1.val.net->type != NET_IP4))
+       cf_error("IPv4 network expected");
+     $$ = * $1.val.net;
    }
  ;
 
 net_ip6:
    net_ip6_
- | CF_SYM_KNOWN {
-     if (($1->class != (SYM_CONSTANT | T_NET)) || (SYM_VAL($1).net->type != NET_IP6))
-       cf_error("IPv6 network constant expected");
-     $$ = * SYM_VAL($1).net;
+ | conf_expr {
+     if (($1.type != T_NET) || ($1.val.net->type != NET_IP6))
+       cf_error("IPv6 network expected");
+     $$ = * $1.val.net;
    }
  ;
 
 net_ip:
    net_ip_
- | CF_SYM_KNOWN {
-     if (($1->class != (SYM_CONSTANT | T_NET)) || !net_is_ip(SYM_VAL($1).net))
-       cf_error("IP network constant expected");
-     $$ = * SYM_VAL($1).net;
+ | conf_expr {
+     if (($1.type != T_NET) || !net_is_ip($1.val.net))
+       cf_error("IP network expected");
+     $$ = * $1.val.net;
    }
  ;
 
@@ -355,23 +406,8 @@ net_any:
    net_
  | CF_SYM_KNOWN {
      if ($1->class != (SYM_CONSTANT | T_NET))
-       cf_error("Network constant expected");
+       cf_error("Network expected");
      $$ = (net_addr *) SYM_VAL($1).net; /* Avoid const warning */
-   }
- ;
-
-net_or_ipa:
-   net_ip4_
- | net_ip6_
- | IP4 { net_fill_ip4(&($$), $1, IP4_MAX_PREFIX_LENGTH); }
- | IP6 { net_fill_ip6(&($$), $1, IP6_MAX_PREFIX_LENGTH); }
- | CF_SYM_KNOWN {
-     if ($1->class == (SYM_CONSTANT | T_IP))
-       net_fill_ip_host(&($$), SYM_VAL($1).ip);
-     else if (($1->class == (SYM_CONSTANT | T_NET)) && net_is_ip(SYM_VAL($1).net))
-       $$ = * SYM_VAL($1).net;
-     else
-       cf_error("IP address or network constant expected");
    }
  ;
 
@@ -392,20 +428,12 @@ label_stack:
   }
 ;
 
-time:
-   TEXT {
-     $$ = tm_parse_time($1);
-     if (!$$)
-       cf_error("Invalid date/time");
-   }
- ;
+
+/* Strings */
 
 text:
    TEXT
- | CF_SYM_KNOWN {
-     if ($1->class != (SYM_CONSTANT | T_STRING)) cf_error("String constant expected");
-     $$ = SYM_VAL($1).s;
-   }
+ | conf_expr { cf_assert_type($1, T_STRING); $$ = $1.val.s; }
  ;
 
 opttext:
@@ -413,43 +441,81 @@ opttext:
  | /* empty */ { $$ = NULL; }
  ;
 
+time:
+   text {
+     $$ = tm_parse_time($1);
+     if (!$$)
+       cf_error("Invalid date/time");
+   }
+ ;
+
+
+/* Bytestrings */
+
+bytestring:
+   BYTETEXT
+ | bytestring_expr { cf_assert_type($1, T_BYTESTRING); $$ = $1.val.bs; }
+ ;
+
+bytestring_expr:
+   conf_expr
+ | term_bs { $$ = cf_eval($1, T_VOID); }
+ ;
+
+
+/* Mixed ones */
+
+/* number | IPv4 -> number */
+idval:
+   NUM { $$ = $1; }
+ | IP4 { $$ = ip4_to_u32($1); }
+ | conf_expr {
+     if (($1.type == T_INT) || ($1.type == T_QUAD))
+       $$ = $1.val.i;
+     else if (($1.type == T_IP) && ipa_is_ip4($1.val.ip))
+       $$ = ipa_to_u32($1.val.ip);
+     else
+       cf_error("Number or IPv4 address expected");
+   }
+ ;
+
+/* net | ipa -> net */
+net_or_ipa:
+   net_ip4_
+ | net_ip6_
+ | IP4 { net_fill_ip4(&($$), $1, IP4_MAX_PREFIX_LENGTH); }
+ | IP6 { net_fill_ip6(&($$), $1, IP6_MAX_PREFIX_LENGTH); }
+ | conf_expr {
+     if ($1.type == T_IP)
+       net_fill_ip_host(&($$), $1.val.ip);
+     else if (($1.type == T_NET) && net_is_ip($1.val.net))
+       $$ = * $1.val.net;
+     else
+       cf_error("IP address/prefix expected");
+   }
+ ;
+
+/* text | ipa -> f_val */
 text_or_ipa:
    TEXT { $$.type = T_STRING; $$.val.s = $1; }
  | IP4 { $$.type = T_IP; $$.val.ip = ipa_from_ip4($1); }
  | IP6 { $$.type = T_IP; $$.val.ip = ipa_from_ip6($1); }
- | CF_SYM_KNOWN {
-     if (($1->class == (SYM_CONSTANT | T_STRING)) ||
-	 ($1->class == (SYM_CONSTANT | T_IP)))
-       $$ = *($1->val);
-     else
-       cf_error("String or IP constant expected");
-   }
- | '(' term ')' {
-     $$ = cf_eval($2, T_VOID);
-     if (($$.type != T_STRING) && ($$.type != T_IP))
-       cf_error("String or IP value expected");
+ | conf_expr {
+     if (($1.type != T_STRING) && ($1.type != T_IP))
+       cf_error("String or IP address expected");
+     $$ = $1;
    }
  ;
 
-bytestring:
-   BYTETEXT
- | bytestring_expr { $$ = cf_eval($1, T_BYTESTRING).val.bs; }
- ;
-
-bytestring_text:
+/* bytestring | text -> f_val */
+bytestring_or_text:
    BYTETEXT { $$.type = T_BYTESTRING; $$.val.bs = $1; }
  | TEXT { $$.type = T_STRING; $$.val.s = $1; }
  | bytestring_expr {
-     $$ = cf_eval($1, T_VOID);
-     if (($$.type != T_BYTESTRING) && ($$.type != T_STRING))
-       cf_error("Bytestring or string value expected");
+     if (($1.type != T_BYTESTRING) && ($1.type != T_STRING))
+       cf_error("Bytestring or string expected");
+     $$ = $1;
    }
- ;
-
-bytestring_expr:
-   symbol_value
- | term_bs
- | '(' term ')' { $$ = $2; }
  ;
 
 
