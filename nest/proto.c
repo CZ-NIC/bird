@@ -1204,7 +1204,7 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
     return 0;
 
   if (import_changed || export_changed)
-    log(L_INFO "Reloading channel %s.%s (%d %d)", c->proto->name, c->name, import_changed, export_changed);
+    log(L_INFO "Reloading channel %s.%s", c->proto->name, c->name);
 
   if (import_changed)
     channel_request_reload(c, NULL);
