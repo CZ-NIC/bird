@@ -47,7 +47,7 @@ esac
 # Add branch info if not passed via command line
 if [ -z "${BRANCH}" ]; then
   # There is also --show-current but it's too new to be portable.
-  BRANCH=$(git branch | sed -n 's/^[*] //p' | grep -v 'HEAD detached')
+  BRANCH=$(git branch | sed -n 's/^[*] //p' | grep -v 'HEAD detached' || true)
 fi
 
 # Found a branch
