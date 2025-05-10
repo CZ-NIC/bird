@@ -412,8 +412,21 @@ iface_patt_node_init:
  ;
 
 iface_patt_node_body:
-   TEXT { this_ipn->pattern = $1; /* this_ipn->prefix stays zero */ }
- | opttext net_or_ipa { this_ipn->pattern = $1; this_ipn->prefix = $2; }
+   TEXT { this_ipn->pattern = $1; }
+ | net_ip_ { this_ipn->prefix = $1; }
+ | IP4 { net_fill_ip4(&(this_ipn->prefix), $1, IP4_MAX_PREFIX_LENGTH); }
+ | IP6 { net_fill_ip6(&(this_ipn->prefix), $1, IP6_MAX_PREFIX_LENGTH); }
+ | conf_expr {
+     if ($1.type == T_STRING)
+       this_ipn->pattern = $1.val.s;
+     else if ($1.type == T_IP)
+       net_fill_ip_host(&(this_ipn->prefix), $1.val.ip);
+     else if (($1.type == T_NET) && net_is_ip($1.val.net))
+       this_ipn->prefix = * $1.val.net;
+     else
+       cf_error("String or IP address/prefix expected");
+ }
+ | text net_or_ipa { this_ipn->pattern = $1; this_ipn->prefix = $2; }
  ;
 
 iface_negate:
