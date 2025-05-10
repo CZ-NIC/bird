@@ -1711,6 +1711,8 @@ bgp_done_route_refresh(struct rt_feeding_request *rfr)
 const char *
 bgp_begin_route_refresh(struct bgp_proto *p, struct bgp_channel *c)
 {
+  ASSERT_DIE(&c->c != p->p.mpls_channel);
+
   if (c->tx_keep)
     return bgp_tx_resend(p, c);
 
@@ -1823,10 +1825,12 @@ bgp_refeed_begin(struct channel *C, struct rt_feeding_request *rfr)
 static void
 bgp_export_fed(struct channel *C)
 {
-  SKIP_BACK_DECLARE(struct bgp_channel, c, c, C);
-  SKIP_BACK_DECLARE(struct bgp_proto, p, p, c->c.proto);
+  SKIP_BACK_DECLARE(struct bgp_proto, p, p, C->proto);
+  if (C == p->p.mpls_channel)
+    return;
 
   /* Schedule End-of-RIB packet */
+  SKIP_BACK_DECLARE(struct bgp_channel, c, c, C);
   switch (c->feed_state)
   {
     case BFS_LOADING:
