@@ -1121,6 +1121,11 @@ build-netlab:
     - cd netlab
     - sudo ./stop
     - sudo ./runtest -s v2 -m check $TEST_NAME
+  after_script:
+    - sudo ./stop
+  artifacts:
+    when: on_failure
+    untracked: true
 
 
 test-babel-base:
