@@ -57,6 +57,8 @@ birdlab:
 
   {% for num in ("09", "10") -%}
   - name: netbsd-{{ num }}
+    variables:
+      CONFIGURE_OPTIONS: --disable-lto
   {% endfor %}
 
   {% for num in (13, 14) -%}
