@@ -3270,6 +3270,8 @@ bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type)
 
   if (c)
   {
+    ASSERT_DIE(c->index < p->channel_count);
+
     if (! conn->channels_to_send)
     {
       conn->last_channel = c->index;
