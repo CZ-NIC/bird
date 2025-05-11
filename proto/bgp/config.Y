@@ -170,7 +170,7 @@ bgp_proto:
      net_copy(n, &($4));
      BGP_CFG->remote_range = n;
    }
- | bgp_proto INTERFACE TEXT ';' { BGP_CFG->iface = if_get_by_name($3); }
+ | bgp_proto INTERFACE text ';' { BGP_CFG->iface = if_get_by_name($3); }
  | bgp_proto RR CLUSTER ID idval ';' { BGP_CFG->rr_cluster_id = $5; }
  | bgp_proto RR CLIENT bool ';' { BGP_CFG->rr_client = $4; }
  | bgp_proto RS CLIENT bool ';' { BGP_CFG->rs_client = $4; }
@@ -301,7 +301,7 @@ tcp_ao_key_opt:
        cf_error("Unknown algorithm for TCP-AO");
      this_ao_key->key.algorithm = $2;
    }
- | SECRET bytestring_text ';' {
+ | SECRET bytestring_or_text ';' {
      if ($2.type == T_BYTESTRING)
      {
        this_ao_key->key.key = $2.val.bs->data;
@@ -312,7 +312,7 @@ tcp_ao_key_opt:
        this_ao_key->key.key = $2.val.s;
        this_ao_key->key.keylen = strlen($2.val.s);
      }
-     else bug("Bad bytestring_text");
+     else bug("Bad bytestring_or_text");
 
      if (this_ao_key->key.keylen > AO_MAX_KEY_LENGTH)
        cf_error("TCP-AO secret too long");

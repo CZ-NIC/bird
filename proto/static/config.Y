@@ -79,17 +79,19 @@ static_proto:
  ;
 
 stat_nexthop:
-    VIA ipa ipa_scope {
+    VIA text_or_ipa {
       this_snh = static_nexthop_new();
-      this_snh->via = $2;
-      this_snh->iface = $3;
+      if ($2.type == T_IP)
+        this_snh->via = $2.val.ip;
+      else if ($2.type == T_STRING)
+        this_snh->iface = if_get_by_name($2.val.s);
+    } ipa_scope {
+      if ($2.type == T_IP)
+        this_snh->iface = $4;
+      else if ($4)
+        cf_error("syntax error, unexpected '%'");
     }
-  | VIA TEXT {
-      this_snh = static_nexthop_new();
-      this_snh->via = IPA_NONE;
-      this_snh->iface = if_get_by_name($2);
-    }
-  | stat_nexthop DEV TEXT {
+  | stat_nexthop DEV text {
       this_snh->iface = if_get_by_name($3);
     }
   | stat_nexthop MPLS label_stack {
@@ -164,7 +166,7 @@ stat_route:
    }
  ;
 
-stat_aspa_provider: NUM {
+stat_aspa_provider: expr {
   if (this_srt->aspa->length == this_srt_aspa_max * sizeof(u32))
   {
     adata *new = cfg_alloc(sizeof (adata) + (this_srt_aspa_max * 2) * sizeof (u32));

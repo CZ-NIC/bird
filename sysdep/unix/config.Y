@@ -84,7 +84,7 @@ log_udp_host: text_or_ipa
 
 log_udp_port:
     /* empty */ { this_log->udp_port = 514; }
-  | PORT NUM { check_u16($2); this_log->udp_port = $2; }
+  | PORT expr { check_u16($2); this_log->udp_port = $2; }
   ;
 
 log_mask:
@@ -148,7 +148,7 @@ cli_opts_block:
   | cli_opts_block V2 ATTRIBUTES ';' { this_cli_config->v2attributes = 1; }
 ;
 
-conf: THREADS NUM {
+conf: THREADS expr {
   if ($2 < 1) cf_error("Number of threads must be at least one.");
   if (!new_config->thread_group_simple &&
       !EMPTY_TLIST(thread_group_config, &new_config->thread_group))
@@ -272,7 +272,7 @@ CF_CLI(SHOW THREADS ALL,,, [[Write out thread and IO loop information]])
 
 cfg_name:
    /* empty */ { $$ = NULL; }
- | TEXT
+ | text
  ;
 
 cfg_timeout:

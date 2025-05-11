@@ -181,7 +181,6 @@ CF_ENUM(T_ENUM_ASPA, ASPA_, UNKNOWN, VALID, INVALID)
 CF_ENUM_PX(T_ENUM_AF, AF_, AFI_, IPV4, IPV6)
 CF_ENUM(T_ENUM_MPLS_POLICY, MPLS_POLICY_, NONE, STATIC, PREFIX, AGGREGATE, VRF)
 
-%type <i32> idval
 %type <f> imexport
 %type <r> rtable
 %type <s> optproto
@@ -208,20 +207,6 @@ conf: rtrid ;
 rtrid:
    ROUTER ID idval ';' { new_config->router_id = $3; }
  | ROUTER ID FROM iface_patt ';' { new_config->router_id_from = this_ipatt; }
- ;
-
-idval:
-   NUM { $$ = $1; }
- | '(' term ')' { $$ = cf_eval_int($2); }
- | IP4 { $$ = ip4_to_u32($1); }
- | CF_SYM_KNOWN {
-     if ($1->class == (SYM_CONSTANT | T_INT) || $1->class == (SYM_CONSTANT | T_QUAD))
-       $$ = SYM_VAL($1).i;
-     else if (($1->class == (SYM_CONSTANT | T_IP)) && ipa_is_ip4(SYM_VAL($1).ip))
-       $$ = ipa_to_u32(SYM_VAL($1).ip);
-     else
-       cf_error("Number or IPv4 address constant expected");
-   }
  ;
 
 conf: hostname_override ;
@@ -478,8 +463,8 @@ timeformat_which:
  ;
 
 timeformat_spec:
-   TEXT { $$ = (struct timeformat){$1, NULL, 0}; }
- | TEXT expr TEXT { $$ = (struct timeformat){$1, $3, (s64) $2 S_}; }
+   text { $$ = (struct timeformat){$1, NULL, 0}; }
+ | text expr text { $$ = (struct timeformat){$1, $3, (s64) $2 S_}; }
  | ISO SHORT	{ $$ = TM_ISO_SHORT_S; }
  | ISO SHORT MS	{ $$ = TM_ISO_SHORT_MS; }
  | ISO SHORT US	{ $$ = TM_ISO_SHORT_US; }
@@ -499,8 +484,21 @@ iface_patt_node_init:
  ;
 
 iface_patt_node_body:
-   TEXT { this_ipn->pattern = $1; /* this_ipn->prefix stays zero */ }
- | opttext net_or_ipa { this_ipn->pattern = $1; this_ipn->prefix = $2; }
+   TEXT { this_ipn->pattern = $1; }
+ | net_ip_ { this_ipn->prefix = $1; }
+ | IP4 { net_fill_ip4(&(this_ipn->prefix), $1, IP4_MAX_PREFIX_LENGTH); }
+ | IP6 { net_fill_ip6(&(this_ipn->prefix), $1, IP6_MAX_PREFIX_LENGTH); }
+ | conf_expr {
+     if ($1.type == T_STRING)
+       this_ipn->pattern = $1.val.s;
+     else if ($1.type == T_IP)
+       net_fill_ip_host(&(this_ipn->prefix), $1.val.ip);
+     else if (($1.type == T_NET) && net_is_ip($1.val.net))
+       this_ipn->prefix = * $1.val.net;
+     else
+       cf_error("String or IP address/prefix expected");
+ }
+ | text net_or_ipa { this_ipn->pattern = $1; this_ipn->prefix = $2; }
  ;
 
 iface_negate:
@@ -631,14 +629,14 @@ password_item:
 
 pass_key: PASSWORD | KEY;
 
-password_item_begin: pass_key bytestring_text
+password_item_begin: pass_key bytestring_or_text
 {
   init_password_list();
   if ($2.type == T_BYTESTRING)
     init_password($2.val.bs->data, $2.val.bs->length, password_id++);
   else if ($2.type == T_STRING)
     init_password($2.val.s, strlen($2.val.s), password_id++);
-  else bug("Bad bytestring_text");
+  else bug("Bad bytestring_or_text");
 };
 
 password_item_params:
