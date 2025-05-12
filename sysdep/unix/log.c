@@ -528,6 +528,13 @@ default_log_list(int initial, const char **syslog_name)
 void
 log_switch(int initial, list *logs, const char *new_syslog_name)
 {
+  if (logs)
+  {
+    struct log_config *l;
+    WALK_LIST(l, *logs)
+      l->found_old = 0;
+  }
+
   if (initial)
   {
     log_domain = DOMAIN_NEW(logging);
