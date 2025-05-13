@@ -1,3 +1,16 @@
+Version 3.1.1 (2025-05-13)
+  o Makefile: Fix accidentally added dry-run markers
+  o BGP: Fix route refresh behavior
+  o BGP: Fix reconfiguration of import behavior modifiers
+  o BGP: Fix crash on too long export
+  o Conf: Fix invalid check in text_or_ipa grammar
+  o Netlink: Fix FreeBSD build error
+  o Fix use-after-free in thread group reconfiguration
+  o Fix CentOS 7 and NetBSD build
+  o Fix several crashes in table export (already fixed in 3.0.2)
+  o Fix crash on graceful restart of a channel with ROA subscription
+  o Lots of internal tooling and CI updates
+
 Version 3.1.0 (2025-04-01)
   o CLI v2 compatibility layer for show route
   o Thread configuration rework
