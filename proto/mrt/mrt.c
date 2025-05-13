@@ -745,7 +745,7 @@ static void
 mrt_cli_dump_done(struct mrt_table_dump_state *s)
 {
   struct cli *c = s->cli;
-  ASSERT_DIE(c->rover == c);
+  ASSERT_DIE(c->rover == s);
 
   cli_printf(c, 0, "");
   mrt_table_dump_free(s);
