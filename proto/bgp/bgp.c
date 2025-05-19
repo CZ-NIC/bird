@@ -2883,7 +2883,6 @@ void
 bgp_error(struct bgp_conn *c, uint code, uint subcode, byte *data, int len)
 {
   struct bgp_proto *p = c->bgp;
-  ASSERT_DIE(p->conn == c); // selze
 
   if (c->state == BS_CLOSE)
     return;
