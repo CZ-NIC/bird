@@ -944,7 +944,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 
   /* RFC 5492 5 - check for required capabilities */
   if (p->cf->capabilities && !bgp_check_capabilities(conn))
-  { bgp_error(conn, 2, 7, NULL, 0); return; }
+  { bgp_error(conn, 2, 7, NULL, 0); return; } // len je 0, tudiz se nikdy nezavola kod uvnitr if (len) v bgp_log_error()
 
   struct bgp_caps *caps = conn->remote_caps;
 
@@ -3404,6 +3404,40 @@ bgp_log_error(struct bgp_proto *p, u8 class, char *msg, uint code, uint subcode,
 	if (bgp_handle_message(p, data, len, &t))
 	  goto done;
 
+      /* RFC 5492 - capabilities negotiation */
+      // kod se nezavola protoze len je 0
+      // pokud se kod vytahne ven z if (len) { ... } tak spadne na to ze p->conn == NULL
+      if ((code == 2) && (subcode == 7))
+      {
+        ASSERT_DIE(p->conn != NULL);
+
+        const struct bgp_caps *local  = p->conn->local_caps;
+        const struct bgp_caps *remote = p->conn->remote_caps;
+
+        const struct bgp_af_caps *local_ac  = NULL;
+        const struct bgp_af_caps *remote_ac = NULL;
+
+        t += bsprintf(t, "AFI/SAFI mismatch: local has:");
+
+        WALK_AF_CAPS(local, local_ac)
+        {
+          const struct bgp_af_desc *desc = bgp_get_af_desc(local_ac->afi);
+          ASSERT_DIE(desc != NULL);
+          t += bsprintf(t, " %s", desc->name);
+        }
+
+        t += bsprintf(t, ", remote has:");
+
+        WALK_AF_CAPS(remote, remote_ac)
+        {
+          const struct bgp_af_desc *desc = bgp_get_af_desc(remote_ac->afi);
+          ASSERT_DIE(desc != NULL);
+          t += bsprintf(t, " %s", desc->name);
+        }
+
+        goto done;
+      }
+
       *t++ = ':';
       *t++ = ' ';
       if (len > 128)
@@ -3544,6 +3578,7 @@ bgp_rx(sock *sk, uint size)
 	}
       if (end < pkt_start + len)
 	break;
+      ASSERT_DIE(conn->bgp->conn == conn); // selze
       bgp_rx_packet(conn, pkt_start, len);
       pkt_start += len;
     }
