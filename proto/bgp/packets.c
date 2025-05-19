@@ -944,7 +944,48 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 
   /* RFC 5492 5 - check for required capabilities */
   if (p->cf->capabilities && !bgp_check_capabilities(conn))
-  { bgp_error(conn, 2, 7, NULL, 0); return; }
+  {
+    char buf[256] = { 0 };
+    char *t = buf;
+
+    const struct bgp_caps *local  = conn->local_caps;
+    const struct bgp_caps *remote = conn->remote_caps;
+
+    const struct bgp_af_caps *local_ac = NULL, *remote_ac = NULL;
+
+    t += bsprintf(t, "AFI/SAFI mismatch: local has: ");
+    int i = 0;
+
+    WALK_AF_CAPS(local, local_ac)
+    {
+      const struct bgp_af_desc *desc = bgp_get_af_desc(local_ac->afi);
+      t += bsprintf(t, "%s", desc->name);
+
+      if (i < local->af_count - 1)
+        t += bsprintf(t, ", ");
+
+      i++;
+    }
+
+    t += bsprintf(t, "; remote has: ");
+    i = 0;
+
+    WALK_AF_CAPS(remote, remote_ac)
+    {
+      const struct bgp_af_desc *desc = bgp_get_af_desc(remote_ac->afi);
+      t += bsprintf(t, "%s", desc->name);
+
+      if (i < remote->af_count - 1)
+        t += bsprintf(t, ", ");
+
+      i++;
+    }
+
+    *t = 0;
+    const char *dsc = bgp_error_dsc(2, 7);
+    log(L_REMOTE "%s: %s: %s: %s", p->p.name, "Error", dsc, buf);
+    return;
+  }
 
   struct bgp_caps *caps = conn->remote_caps;
 
