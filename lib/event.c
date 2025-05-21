@@ -236,7 +236,9 @@ ev_run(event *e)
 inline void
 ev_send(event_list *l, event *e)
 {
+  ASSERT_DIE(e->hook);
   edlog(l, e, NULL, 1, EDL_SEND);
+
   /* Set the target list */
   event_list *ol = NULL;
   if (!atomic_compare_exchange_strong_explicit(
