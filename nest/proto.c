@@ -55,6 +55,22 @@ static inline void channel_reimport(struct channel *c, struct rt_feeding_request
   ev_send(proto_event_list(c->proto), &c->reimport_event);
 }
 
+static inline bool channel_reload(struct channel *c, struct rt_feeding_request *rfr)
+{
+  if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
+  {
+    channel_reimport(c, rfr);
+    return true;
+  }
+  else
+    return c->proto->reload_routes(c, rfr);
+}
+
+static inline void channel_reload_roa(struct channel *c, struct rt_feeding_request *rfr)
+{
+  ASSERT_DIE(channel_reload(c, rfr));
+}
+
 static inline void channel_refeed(struct channel *c, struct rt_feeding_request *rfr)
 {
   CALL(c->proto->refeed_begin, c, rfr);
@@ -67,10 +83,18 @@ static inline int proto_is_done(struct proto *p)
 static inline int channel_is_active(struct channel *c)
 { return (c->channel_state != CS_DOWN); }
 
-static inline int channel_reloadable(struct channel *c)
+static inline enum channel_reloadable channel_reloadable(struct channel *c)
 {
-  return c->reloadable && c->proto->reload_routes
-      || ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER);
+  /* Import table always reloads locally */
+  if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
+    return CHANNEL_RELOADABLE_LOCALLY;
+
+  /* The protocol should indicate how the reload actually works */
+  if (c->proto->reload_routes)
+    return c->reloadable;
+
+  /* No reload possible */
+  return CHANNEL_RELOADABLE_NEVER;
 }
 
 static inline void
@@ -232,7 +256,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
 
   c->channel_state = CS_DOWN;
   c->last_state_change = current_time();
-  c->reloadable = 1;
+  c->reloadable = CHANNEL_RELOADABLE_LOCALLY;
 
   init_list(&c->roa_subscriptions);
 
@@ -514,7 +538,7 @@ channel_roa_changed(void *_s)
 
 static inline void (*channel_roa_reload_hook(int dir))(struct channel *, struct rt_feeding_request *)
 {
-  return dir ? channel_reimport : channel_refeed;
+  return dir ? channel_reload_roa : channel_refeed;
 }
 
 static int
@@ -587,7 +611,7 @@ channel_roa_subscribe_filter(struct channel *c, int dir)
     return;
 
   /* No automatic reload for non-reloadable channels */
-  if (dir && !channel_reloadable(c))
+  if (dir && (channel_reloadable(c) != CHANNEL_RELOADABLE_LOCALLY))
     valid = 0;
 
   struct filter_iterator fit;
@@ -1040,10 +1064,11 @@ channel_request_reload(struct channel *c, struct rt_feeding_request *cir)
   else
     CD(c, "Full import reload requested");
 
-  if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
-    channel_reimport(c, cir);
-  else if (! c->proto->reload_routes(c, cir))
-    cli_msg(-15, "%s.%s: partial reload refused, please run full reload instead", c->proto->name, c->name);
+  if (!channel_reload(c, cir))
+    if (cir && cir->prefilter.mode)
+      cli_msg(-15, "%s.%s: partial reload refused, please run full reload instead", c->proto->name, c->name);
+    else
+      bug("%s.%s: full reload refused");
 }
 
 const struct channel_class channel_basic = {

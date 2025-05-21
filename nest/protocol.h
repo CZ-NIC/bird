@@ -659,7 +659,12 @@ struct channel {
   u8 stale;				/* Used in reconfiguration */
 
   u8 channel_state;
-  u8 reloadable;			/* Hook reload_routes() is allowed on the channel */
+  PACKED enum channel_reloadable {
+    CHANNEL_RELOADABLE_NEVER = 0,	/* Never reload */
+    CHANNEL_RELOADABLE_REMOTELY = 1,	/* Hook reload_routes() causes remote actions */
+    CHANNEL_RELOADABLE_LOCALLY = 2,	/* Hook reload_routes() reloads routes locally */
+  } reloadable;
+
   OBSREF(struct graceful_recovery_context) gr_lock;	/* Graceful restart mechanism should wait for this channel */
   u8 gr_wait;				/* Route export to channel is postponed until graceful restart */
 
