@@ -67,10 +67,18 @@ static inline int proto_is_done(struct proto *p)
 static inline int channel_is_active(struct channel *c)
 { return (c->channel_state != CS_DOWN); }
 
-static inline int channel_reloadable(struct channel *c)
+static inline enum channel_reloadable channel_reloadable(struct channel *c)
 {
-  return c->reloadable && c->proto->reload_routes
-      || ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER);
+  /* Import table always reloads locally */
+  if ((c->in_keep & RIK_PREFILTER) == RIK_PREFILTER)
+    return CHANNEL_RELOADABLE_LOCALLY;
+
+  /* The protocol should indicate how the reload actually works */
+  if (c->proto->reload_routes)
+    return c->reloadable;
+
+  /* No reload possible */
+  return CHANNEL_RELOADABLE_NEVER;
 }
 
 static inline void
@@ -232,7 +240,7 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
 
   c->channel_state = CS_DOWN;
   c->last_state_change = current_time();
-  c->reloadable = 1;
+  c->reloadable = CHANNEL_RELOADABLE_LOCALLY;
 
   init_list(&c->roa_subscriptions);
 
@@ -587,7 +595,7 @@ channel_roa_subscribe_filter(struct channel *c, int dir)
     return;
 
   /* No automatic reload for non-reloadable channels */
-  if (dir && !channel_reloadable(c))
+  if (dir && (channel_reloadable(c) != CHANNEL_RELOADABLE_LOCALLY))
     valid = 0;
 
   struct filter_iterator fit;
