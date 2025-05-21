@@ -1,4 +1,4 @@
-src := mrt.c
+src := mrt.c mrt_parse.c
 obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)

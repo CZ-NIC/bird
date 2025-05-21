@@ -2788,9 +2788,56 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
   s->cached_rta = NULL;
 }
 
+int
+bgp_parse_update(struct bgp_parse_state *s, byte *pkt, uint len, ea_list **ea, void (*parse_error)(struct bgp_parse_state *, uint))
+{
+  /*
+   *	UPDATE message format
+   *
+   *	2 B	IPv4 Withdrawn Routes Length
+   *	var	IPv4 Withdrawn Routes NLRI
+   *	2 B	Total Path Attribute Length
+   *	var	Path Attributes
+   *	var	IPv4 Reachable Routes NLRI
+   */
+  log("in parse update, len %i", len);
+  uint pos = 0;
+  s->ip_unreach_len = get_u16(pkt + pos);
+  log("s->ip_unreach_len %i", s->ip_unreach_len);
+  s->ip_unreach_nlri = pkt + pos + 2;
+  pos += 2 + s->ip_unreach_len;
+
+  if (pos + 2 > len)
+  {
+    parse_error(s, 1);
+    return 0;
+  }
+
+  s->attr_len = get_u16(pkt + pos);
+  log("s->attr_len %i", s->attr_len);
+  s->attrs = pkt + pos + 2;
+  pos += 2 + s->attr_len;
+
+  if (pos > len)
+  {
+    parse_error(s, 1);
+    return 0;
+  }
+
+  s->ip_reach_len = len - pos;
+  s->ip_reach_nlri = pkt + pos;
+
+  if (s->attr_len)
+    *ea = bgp_decode_attrs(s, s->attrs, s->attr_len, parse_error);
+  else
+    *ea = NULL;
+  return 1;
+}
+
 static void
 bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 {
+  log("bgp_rx_update");
   struct bgp_proto *p = conn->bgp;
   ea_list *ea = NULL;
 
@@ -2828,40 +2875,8 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
   if (len < 23)
   { bgp_error(conn, 1, 2, pkt+16, 2); return; }
 
-  /* Skip fixed header */
-  uint pos = 19;
-
-  /*
-   *	UPDATE message format
-   *
-   *	2 B	IPv4 Withdrawn Routes Length
-   *	var	IPv4 Withdrawn Routes NLRI
-   *	2 B	Total Path Attribute Length
-   *	var	Path Attributes
-   *	var	IPv4 Reachable Routes NLRI
-   */
-
-  s.ip_unreach_len = get_u16(pkt + pos);
-  s.ip_unreach_nlri = pkt + pos + 2;
-  pos += 2 + s.ip_unreach_len;
-
-  if (pos + 2 > len)
-    bgp_parse_error(&s, 1);
-
-  s.attr_len = get_u16(pkt + pos);
-  s.attrs = pkt + pos + 2;
-  pos += 2 + s.attr_len;
-
-  if (pos > len)
-    bgp_parse_error(&s, 1);
-
-  s.ip_reach_len = len - pos;
-  s.ip_reach_nlri = pkt + pos;
-
-  if (s.attr_len)
-    ea = bgp_decode_attrs(&s, s.attrs, s.attr_len);
-  else
-    ea = NULL;
+  bgp_parse_update(&s, pkt + 19, len - 19, &ea, bgp_parse_error); /* add 19 to skip fixed header */
+  log("yay update parsed");
 
   /* Check for End-of-RIB marker */
   if (!s.attr_len && !s.ip_unreach_len && !s.ip_reach_len)
@@ -3489,9 +3504,11 @@ bgp_rx_packet(struct bgp_conn *conn, byte *pkt, uint len)
   byte type = pkt[18];
 
   DBG("BGP: Got packet %02x (%d bytes)\n", type, len);
+  log("BGP: Got packet %02x (%d bytes)        !!!!!!!!!!!!!!!!!!\n", type, len);
   conn->bgp->stats.rx_messages++;
   conn->bgp->stats.rx_bytes += len;
 
+  log("do we want to do mrt dump ? conn->bgp->p.mrtdump %x & MD_MESSAGES %x", conn->bgp->p.mrtdump, MD_MESSAGES);
   if (conn->bgp->p.mrtdump & MD_MESSAGES)
     bgp_dump_message(conn, pkt, len);
 
