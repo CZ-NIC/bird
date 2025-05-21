@@ -497,6 +497,9 @@ struct bgp_parse_state {
   struct bgp_channel *channel;
   struct linpool *pool;
 
+, void (*parse_error)(struct bgp_parse_state *, uint);
+  void (*rte_update)(struct bgp_parse_state *, ...);
+
   int as4_session;
   int add_path;
   int mpls;
@@ -661,6 +664,7 @@ int bgp_encode_mp_reach_mrt(struct bgp_write_state *s, eattr *a, byte *buf, uint
 const char * bgp_attr_name(uint code);
 int bgp_encode_attrs(struct bgp_write_state *s, ea_list *attrs, byte *buf, byte *end);
 ea_list * bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len);
+int bgp_parse_update(struct bgp_parse_state *s, byte *pkt, uint len, ea_list **ea);
 void bgp_finish_attrs(struct bgp_parse_state *s, rta *a);
 
 void bgp_init_bucket_table(struct bgp_channel *c);

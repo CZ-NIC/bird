@@ -710,6 +710,10 @@ mrt_dump_cont(struct cli *c)
   cli_printf(c, 0, "");
   mrt_table_dump_free(c->rover);
   c->cont = c->cleanup = c->rover = NULL;
+  mrt_load("mrt_dump.txt");
+  log("____________________________");
+  mrt_load("dump.mrt");
+  mrt_load("dump_bgp.mrt");
 }
 
 static void
@@ -796,6 +800,7 @@ mrt_bgp_header(buffer *b, struct mrt_bgp_data *d)
 void
 mrt_dump_bgp_message(struct mrt_bgp_data *d)
 {
+  log("mrt_dump_bgp_message");
   const u16 subtypes[] = {
     MRT_BGP4MP_MESSAGE,			MRT_BGP4MP_MESSAGE_AS4,
     MRT_BGP4MP_MESSAGE_LOCAL,		MRT_BGP4MP_MESSAGE_AS4_LOCAL,

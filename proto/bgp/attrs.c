@@ -1366,7 +1366,7 @@ bgp_decode_attr(struct bgp_parse_state *s, uint code, uint flags, byte *data, ui
  * by an (uncached) &rta.
  */
 ea_list *
-bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len)
+bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len, void (*parse_error)(struct bgp_parse_state *, uint))
 {
   struct bgp_proto *p = s->proto;
   ea_list *attrs = NULL;
@@ -1464,7 +1464,7 @@ framing_error:
 withdraw:
   /* RFC 7606 5.2 - handle missing NLRI during errors */
   if (!s->ip_reach_len && !s->mp_reach_len)
-    bgp_parse_error(s, 1);
+    parse_error(s, 1);
 
   s->err_withdraw = 1;
   return NULL;
