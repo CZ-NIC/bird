@@ -478,6 +478,7 @@ struct roa_subscription {
   void (*refeed_hook)(struct channel *, struct rt_feeding_request *);
   struct lfjour_recipient digest_recipient;
   event update_event;
+  struct settle aspa_settle;
 };
 
 struct roa_reload_request {
@@ -536,6 +537,30 @@ channel_roa_changed(void *_s)
 	  s->c->proto->name, s->c->name);
 }
 
+static void
+channel_aspa_settle_hook(struct settle *set)
+{
+  SKIP_BACK_DECLARE(struct roa_subscription, s, aspa_settle, set);
+  s->refeed_hook(s->c, NULL);
+}
+
+static void
+channel_aspa_changed(void *_s)
+{
+  struct roa_subscription *s = _s;
+
+  bool seen = false;
+  for (
+      struct lfjour_item *it;
+      it = lfjour_get(&s->digest_recipient);
+      lfjour_release(&s->digest_recipient, it)
+      )
+    seen = true;
+
+  if (seen)
+    settle_kick(&s->aspa_settle, s->c->proto->loop);
+}
+
 static inline void (*channel_roa_reload_hook(int dir))(struct channel *, struct rt_feeding_request *)
 {
   return dir ? channel_reload_roa : channel_refeed;
@@ -560,29 +585,62 @@ channel_roa_subscribe(struct channel *c, rtable *tab, int dir)
   if (channel_roa_is_subscribed(c, tab, dir))
     return;
 
-  rtable *aux = tab->config->roa_aux_table->table;
+  /* The ROA auxiliary table has the base type */
+  ASSERT_DIE((tab->addr_type == NET_IP4) || (tab->addr_type == NET_IP6));
 
   struct roa_subscription *s = mb_allocz(c->proto->pool, sizeof(struct roa_subscription));
   *s = (struct roa_subscription) {
     .c = c,
-    .tab = aux,
+    .tab = tab,
     .refeed_hook = channel_roa_reload_hook(dir),
     .digest_recipient = {
       .target = proto_work_list(c->proto),
       .event = &s->update_event,
     },
     .update_event = {
-      .hook = channel_roa_changed,
       .data = s,
+      .hook = channel_roa_changed,
     },
   };
 
   add_tail(&c->roa_subscriptions, &s->roa_node);
 
-  RT_LOCK(aux, t);
+  RT_LOCK(tab, t);
   rt_lock_table(t);
   rt_setup_digestor(t);
   lfjour_register(&t->export_digest->digest, &s->digest_recipient);
+}
+
+static void
+channel_aspa_subscribe(struct channel *c, rtable *tab, int dir)
+{
+  if (channel_roa_is_subscribed(c, tab, dir))
+    return;
+
+  ASSERT_DIE(tab->addr_type == NET_ASPA);
+
+  struct settle_config sc = { .min = 300 MS, .max = 10 S, };
+  struct roa_subscription *s = mb_allocz(c->proto->pool, sizeof(struct roa_subscription));
+  *s = (struct roa_subscription) {
+    .c = c,
+    .tab = tab,
+    .refeed_hook = channel_roa_reload_hook(dir),
+    .digest_recipient = {
+      .target = proto_work_list(c->proto),
+      .event = &s->update_event,
+    },
+    .update_event = {
+      .data = s,
+      .hook = channel_aspa_changed,
+    },
+    .aspa_settle = SETTLE_INIT(&sc, channel_aspa_settle_hook, NULL),
+  };
+
+  add_tail(&c->roa_subscriptions, &s->roa_node);
+
+  RT_LOCK(tab, t);
+  rt_lock_table(t);
+  lfjour_register(&t->export_all.journal, &s->digest_recipient);
 }
 
 static void
@@ -595,16 +653,17 @@ channel_roa_unsubscribe(struct roa_subscription *s)
   }
 
   ev_postpone(&s->update_event);
+  settle_cancel(&s->aspa_settle);
 
   rem_node(&s->roa_node);
   mb_free(s);
 }
 
+
 static void
 channel_roa_subscribe_filter(struct channel *c, int dir)
 {
   const struct filter *f = dir ? c->in_filter : c->out_filter;
-  rtable *tab;
   int valid = 1, found = 0;
 
   if ((f == FILTER_ACCEPT) || (f == FILTER_REJECT))
@@ -622,16 +681,17 @@ channel_roa_subscribe_filter(struct channel *c, int dir)
     switch (fi->fi_code)
     {
     case FI_ROA_CHECK:
-      tab = fi->i_FI_ROA_CHECK.rtc->table;
-      if (valid) channel_roa_subscribe(c, tab, dir);
+      if (valid)
+	channel_roa_subscribe(c, fi->i_FI_ROA_CHECK.rtc->roa_aux_table->table, dir);
       found = 1;
       break;
 
     case FI_ASPA_CHECK_EXPLICIT:
-      tab = fi->i_FI_ASPA_CHECK_EXPLICIT.rtc->table;
-      if (valid) channel_roa_subscribe(c, tab, dir);
+      if (valid)
+	channel_aspa_subscribe(c, fi->i_FI_ASPA_CHECK_EXPLICIT.rtc->table, dir);
       found = 1;
       break;
+
     default:
       break;
     }
