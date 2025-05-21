@@ -389,7 +389,7 @@ CF_CLI(RELOAD BGP OUT, proto_patt, [<name>], [[Refresh routes to neighbor]])
 term: ASPA_CHECK_DOWNSTREAM '(' rtable ')' { $$ =
   f_new_inst(FI_ASPA_CHECK_EXPLICIT,
       f_new_inst(FI_EA_GET,
-	f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL, }),
+	f_new_inst(FI_CURRENT_ROUTE),
 	ea_class_find_by_name("bgp_path")
       ),
       f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 0, }),
@@ -400,7 +400,7 @@ term: ASPA_CHECK_DOWNSTREAM '(' rtable ')' { $$ =
 term: ASPA_CHECK_UPSTREAM '(' rtable ')' { $$ =
   f_new_inst(FI_ASPA_CHECK_EXPLICIT,
       f_new_inst(FI_EA_GET,
-	f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_ROUTE, .val.rte = NULL, }),
+	f_new_inst(FI_CURRENT_ROUTE),
 	ea_class_find_by_name("bgp_path")
       ),
       f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_BOOL, .val.i = 1, }),
