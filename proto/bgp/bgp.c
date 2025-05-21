@@ -1207,7 +1207,11 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
 
     int active = loc->ready && rem->ready;
     c->c.disabled = !active;
-    c->c.reloadable = p->route_refresh;
+
+    if (p->route_refresh)
+      c->c.reloadable = CHANNEL_RELOADABLE_REMOTELY;
+    else
+      c->c.reloadable = CHANNEL_RELOADABLE_NEVER;
 
     c->index = active ? num++ : 0;
 
