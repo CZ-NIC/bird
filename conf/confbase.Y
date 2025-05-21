@@ -165,6 +165,9 @@ CF_DECLS
 
 %start config
 
+/* See r_args */
+%expect 2
+
 CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS, FROM, MAX, AS)
 
 CF_GRAMMAR

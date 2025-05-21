@@ -622,7 +622,12 @@ cmds_int: cmd_prep
  ;
 
 /*
- * Complex types, their bison value is struct f_val
+ * IP prefixes, their value is struct f_val
+ *
+ * Note that there is an ambiquity as 192.0.2.0/24 can be parsed either as an IP
+ * prefix (net_ip4_), or as an IP address divided by a number (term). We force
+ * the first interpretation by setting IP4 -> fipa reduction as lower priority
+ * than the token '/' (in net_ip4_).
  */
 fipa:
    IP4 %prec PREFIX_DUMMY { $$.type = T_IP; $$.val.ip = ipa_from_ip4($1); }
