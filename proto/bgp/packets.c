@@ -1057,7 +1057,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
  */
 
 #define REPORT(msg, args...) \
-  ({ log(L_REMOTE "%s: " msg, s->proto->p.name, ## args); })
+  ({ log(L_REMOTE "%s: " msg, s->p->p.name, ## args); })
 
 #define DISCARD(msg, args...) \
   ({ REPORT(msg, ## args); return; })
@@ -1078,7 +1078,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 static void
 bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
 {
-  struct bgp_proto *p = s->proto;
+  struct bgp_proto *p = s->p;
   struct bgp_channel *c = s->channel;
 
   if (c->cf->gw_mode == GW_DIRECT)
@@ -1555,7 +1555,7 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
 {
   if (path_id != s->last_id)
   {
-    s->last_src = rt_get_source(&s->proto->p, path_id);
+    s->last_src = rt_get_source(&s->p->p, path_id);
     s->last_id = path_id;
 
     rta_free(s->cached_rta);
@@ -2095,7 +2095,7 @@ bgp_decode_nlri_flow4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     enum flow_validated_state r = flow4_validate(data, dlen);
     if (r != FLOW_ST_VALID)
     {
-      log(L_REMOTE "%s: Invalid flow route: %s", s->proto->p.name, flow_validated_state_str(r));
+      log(L_REMOTE "%s: Invalid flow route: %s", s->proto_name, flow_validated_state_str(r));
       bgp_parse_error(s, 1);
     }
 
@@ -2190,7 +2190,7 @@ bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     enum flow_validated_state r = flow6_validate(data, dlen);
     if (r != FLOW_ST_VALID)
     {
-      log(L_REMOTE "%s: Invalid flow route: %s", s->proto->p.name, flow_validated_state_str(r));
+      log(L_REMOTE "%s: Invalid flow route: %s", s->proto_name, flow_validated_state_str(r));
       bgp_parse_error(s, 1);
     }
 
@@ -2720,6 +2720,7 @@ bgp_create_end_mark(struct bgp_channel *c, byte *buf)
   return bgp_create_end_mark_(c, buf);
 }
 
+/* Tohle má být další hook v bgp_parse_state, stejně jako rte_update(), tak bude end_mark() */
 static inline void
 bgp_rx_end_mark(struct bgp_parse_state *s, u32 afi)
 {
@@ -2744,7 +2745,8 @@ bgp_rx_end_mark(struct bgp_parse_state *s, u32 afi)
 static inline void
 bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_list *ea, byte *nh, uint nh_len)
 {
-  struct bgp_channel *c = bgp_get_channel(s->proto, afi);
+  ASSERT_DIE(s->p);
+  struct bgp_channel *c = bgp_get_channel(s->p, afi);
   rta *a = NULL;
 
   if (!c)
@@ -2755,7 +2757,7 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
   s->mpls = c->desc->mpls;
 
   s->last_id = 0;
-  s->last_src = s->proto->p.main_source;
+  s->last_src = s->p->p.main_source;
 
   /*
    * IPv4 BGP and MP-BGP may be used together in one update, therefore we do not
@@ -2859,7 +2861,32 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 
   /* Initialize parse state */
   struct bgp_parse_state s = {
-    .proto = p,
+    .p = &p->p,
+    .error_msg = bgp_parse_error,
+    .rte_update = bgp_rte_update,
+    .end_mark = bgp_rx_end_mark,
+
+    .local_as = p->local_as,
+    .public_as = p->public_as,
+    .remote_as = p->remote_as,
+    .rr_cluster_id = p->rr_cluster_id,
+    .local_id = p->local_id,
+    .is_interior = p->is_interior,
+    .is_internal = p->is_internal,
+    .proto_name = p->p.name,
+    .debug = p->p.debug,
+    .mpls_channel = p->p.mpls_channel,
+
+    // from config
+    .default_local_pref = p->cf->default_local_pref,
+    .allow_local_pref = p->cf->allow_local_pref,
+    .allow_as_sets = p->cf->allow_as_sets,
+    .allow_local_as = p->cf->allow_local_as,
+    .confederation = p->cf->confederation,
+    .enforce_first_as = p->cf->enforce_first_as,
+    .local_role = p->cf->local_role,
+    .rr_client = p->cf->rr_client,
+
     .pool = tmp_linpool,
     .as4_session = p->as4_session,
   };
@@ -2880,12 +2907,12 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
 
   /* Check for End-of-RIB marker */
   if (!s.attr_len && !s.ip_unreach_len && !s.ip_reach_len)
-  { bgp_rx_end_mark(&s, BGP_AF_IPV4); goto done; }
+  { bgp_rx_end_mark(&s, p, BGP_AF_IPV4); goto done; }
 
   /* Check for MP End-of-RIB marker */
   if ((s.attr_len < 8) && !s.ip_unreach_len && !s.ip_reach_len &&
       !s.mp_reach_len && !s.mp_unreach_len && s.mp_unreach_af)
-  { bgp_rx_end_mark(&s, s.mp_unreach_af); goto done; }
+  { bgp_rx_end_mark(&s, p, s.mp_unreach_af); goto done; }
 
   if (s.ip_unreach_len)
     bgp_decode_nlri(&s, BGP_AF_IPV4, s.ip_unreach_nlri, s.ip_unreach_len, NULL, NULL, 0);

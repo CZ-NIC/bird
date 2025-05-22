@@ -493,7 +493,31 @@ struct bgp_write_state {
 };
 
 struct bgp_parse_state {
-  struct bgp_proto *proto;
+  // instead of struct bgp_proto *proto;
+  struct bgp_proto *p;
+  u32 local_as;
+  u32 public_as;
+  u32 remote_as;
+  u32 rr_cluster_id;
+  u32 local_id;
+  u8 is_interior;
+  u8 is_internal;
+  const char *proto_name;
+  u32 debug;				/* Debugging flags */
+  struct channel *mpls_channel;
+
+  // from config
+  int allow_as_sets;
+  int allow_local_pref;
+  int allow_local_as;
+  int enforce_first_as;
+  u32 default_local_pref;
+  u32 confederation;
+  u8 local_role;
+  int rr_client;
+  
+  
+  //
   struct bgp_channel *channel;
   struct linpool *pool;
 
