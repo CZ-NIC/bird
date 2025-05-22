@@ -1078,6 +1078,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 static void
 bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
 {
+  ASSERT_DIE(s->p);
   struct bgp_proto *p = s->p;
   struct bgp_channel *c = s->channel;
 
@@ -1553,6 +1554,8 @@ bgp_update_next_hop_none(struct bgp_export_state *s, eattr *a, ea_list **to)
 static void
 bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a0)
 {
+  ASSERT_DIE(s->p);
+
   if (path_id != s->last_id)
   {
     s->last_src = rt_get_source(&s->p->p, path_id);
