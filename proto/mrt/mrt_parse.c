@@ -13,6 +13,7 @@ mrt_load_one(FILE *fp, u64 *remains)
 void
 mrt_load_n_octet(FILE *fp, u64 *remains, byte *buff, int n)
 {
+  log("mrt_load_n_octet %i %i", *remains, n);
   for (int i = 0; i < n; i++)
     buff[i] = fgetc(fp);
   remains[0] = remains[0] - n;
@@ -250,7 +251,7 @@ mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4)
     fgetc(fp);
 
   remains[0] = remains[0] - 16;
-  int length = mrt_load_two_octet(fp, remains);
+  u64 length = mrt_load_two_octet(fp, remains) - 16 - 2 -1; // length without header (marker, length, type)
   int type = mrt_load_one(fp, remains);
   log("message type %i", type);
 
@@ -264,6 +265,7 @@ mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4)
     .pool = lp_new(&root_pool),
   };
   byte buf[length];
+  ASSERT_DIE(length <= remains[0]);
   mrt_load_n_octet(fp, remains, buf, length);
   ea_list *ea = NULL;
   log("try to parse bgp update");
