@@ -98,7 +98,11 @@ bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintp
 
 
 #define REPORT(msg, args...) \
-  ({ log(L_REMOTE "%s: " msg, s->proto->p.name, ## args); })
+  ({ log(L_REMOTE "%s: " msg, s->proto_name, ## args); })
+
+#define RTRACE(msg, args...) \
+  ({ if (s->debug & D_ROUTES) \
+   log(L_TRACE "%s: " msg, s->proto_name, ## args); })
 
 #define DISCARD(msg, args...) \
   ({ REPORT(msg, ## args); return; })
@@ -444,10 +448,9 @@ bgp_encode_as_path(struct bgp_write_state *s, eattr *a, byte *buf, uint size)
 static void
 bgp_decode_as_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
 {
-  struct bgp_proto *p = s->proto;
   int as_length = s->as4_session ? 4 : 2;
-  int as_sets = p->cf->allow_as_sets;
-  int as_confed = p->cf->confederation && p->is_interior;
+  int as_sets = s->allow_as_sets;
+  int as_confed = s->confederation && s->is_interior;
   char err[128];
 
   if (!as_path_valid(data, len, as_length, as_sets, as_confed, err, sizeof(err)))
@@ -462,13 +465,13 @@ bgp_decode_as_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte
   }
 
   /* In some circumstances check for initial AS_CONFED_SEQUENCE; RFC 5065 5.0 */
-  if (p->is_interior && !p->is_internal &&
+  if (s->is_interior && !s->is_internal &&
       ((len < 2) || (data[0] != AS_PATH_CONFED_SEQUENCE)))
     WITHDRAW("Malformed AS_PATH attribute - %s", "missing initial AS_CONFED_SEQUENCE");
 
   /* Reject routes with first AS in AS_PATH not matching neighbor AS; RFC 4271 6.3 */
-  if (!p->is_internal && p->cf->enforce_first_as &&
-      !bgp_as_path_first_as_equal(data, len, p->remote_as))
+  if (!s->is_internal && s->enforce_first_as &&
+      !bgp_as_path_first_as_equal(data, len, s->remote_as))
     WITHDRAW("Malformed AS_PATH attribute - %s", "First AS differs from neigbor AS");
 
   bgp_set_attr_data(to, s->pool, BA_AS_PATH, flags, data, len);
@@ -557,7 +560,7 @@ bgp_export_local_pref(struct bgp_export_state *s, eattr *a)
 static void
 bgp_decode_local_pref(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
 {
-  if (!s->proto->is_interior && !s->proto->cf->allow_local_pref)
+  if (!s->is_interior && !s->allow_local_pref)
     DISCARD(BAD_EBGP, "LOCAL_PREF");
 
   if (len != 4)
@@ -651,7 +654,7 @@ bgp_export_originator_id(struct bgp_export_state *s, eattr *a)
 static void
 bgp_decode_originator_id(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
 {
-  if (!s->proto->is_internal)
+  if (!s->is_internal)
     DISCARD(BAD_EBGP, "ORIGINATOR_ID");
 
   if (len != 4)
@@ -675,7 +678,7 @@ bgp_export_cluster_list(struct bgp_export_state *s UNUSED, eattr *a)
 static void
 bgp_decode_cluster_list(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
 {
-  if (!s->proto->is_internal)
+  if (!s->is_internal)
     DISCARD(BAD_EBGP, "CLUSTER_LIST");
 
   if (!len || (len % 4))
@@ -821,8 +824,7 @@ bgp_decode_as4_aggregator(struct bgp_parse_state *s, uint code UNUSED, uint flag
 static void
 bgp_decode_as4_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
 {
-  struct bgp_proto *p = s->proto;
-  int sets = p->cf->allow_as_sets;
+  int sets = s->allow_as_sets;
 
   char err[128];
 
@@ -1301,25 +1303,25 @@ bgp_encode_attrs(struct bgp_write_state *s, ea_list *attrs, byte *buf, byte *end
 static void bgp_process_as4_attrs(ea_list **attrs, struct linpool *pool);
 
 static inline int
-bgp_as_path_loopy(struct bgp_proto *p, ea_list *attrs, u32 asn)
+bgp_as_path_loopy(struct bgp_parse_state *s, ea_list *attrs, u32 asn)
 {
   eattr *e = bgp_find_attr(attrs, BA_AS_PATH);
-  int num = p->cf->allow_local_as + 1;
+  int num = s->allow_local_as + 1;
   return (e && (num > 0) && as_path_contains(e->u.ptr, asn, num));
 }
 
 static inline int
-bgp_originator_id_loopy(struct bgp_proto *p, ea_list *attrs)
+bgp_originator_id_loopy(struct bgp_parse_state *s, ea_list *attrs)
 {
   eattr *e = bgp_find_attr(attrs, BA_ORIGINATOR_ID);
-  return (e && (e->u.data == p->local_id));
+  return (e && (e->u.data == s->local_id));
 }
 
 static inline int
-bgp_cluster_list_loopy(struct bgp_proto *p, ea_list *attrs)
+bgp_cluster_list_loopy(u32 rr_cluster_id, ea_list *attrs)
 {
   eattr *e = bgp_find_attr(attrs, BA_CLUSTER_LIST);
-  return (e && int_set_contains(e->u.ptr, p->rr_cluster_id));
+  return (e && int_set_contains(e->u.ptr, rr_cluster_id));
 }
 
 static inline void
@@ -1329,7 +1331,7 @@ bgp_decode_attr(struct bgp_parse_state *s, uint code, uint flags, byte *data, ui
   if (BIT32_TEST(s->attrs_seen, code))
   {
     if ((code == BA_MP_REACH_NLRI) || (code == BA_MP_UNREACH_NLRI))
-      bgp_parse_error(s, 1);
+      s->parse_error(s, 1);
     else
       DISCARD("Discarding duplicate attribute (code %u)", code);
   }
@@ -1366,9 +1368,8 @@ bgp_decode_attr(struct bgp_parse_state *s, uint code, uint flags, byte *data, ui
  * by an (uncached) &rta.
  */
 ea_list *
-bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len, void (*parse_error)(struct bgp_parse_state *, uint))
+bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len)
 {
-  struct bgp_proto *p = s->proto;
   ea_list *attrs = NULL;
   uint code, flags, alen;
   byte *pos = data;
@@ -1430,28 +1431,30 @@ bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len, void (*parse_e
 
   /* When receiving attributes from non-AS4-aware BGP speaker, we have to
      reconstruct AS_PATH and AGGREGATOR attributes; RFC 6793 4.2.3 */
-  if (!p->as4_session)
+  if (!s->as4_session)
     bgp_process_as4_attrs(&attrs, s->pool);
 
+#define IS_LOOP(msg, args...)  { RTRACE("update is loop (" msg "), treating as withdraw", ##args); goto loop; }
+
   /* Reject routes with our ASN in AS_PATH attribute */
-  if (bgp_as_path_loopy(p, attrs, p->local_as))
+  if (bgp_as_path_loopy(s, attrs, s->local_as))
     goto loop;
 
   /* Reject routes with our Confederation ID in AS_PATH attribute; RFC 5065 4.0 */
-  if ((p->public_as != p->local_as) && bgp_as_path_loopy(p, attrs, p->public_as))
+  if ((s->public_as != s->local_as) && bgp_as_path_loopy(s, attrs, s->public_as))
     goto loop;
 
   /* Reject routes with our Router ID in ORIGINATOR_ID attribute; RFC 4456 8 */
-  if (p->is_internal && bgp_originator_id_loopy(p, attrs))
+  if (s->is_internal && bgp_originator_id_loopy(s, attrs))
     goto loop;
 
   /* Reject routes with our Cluster ID in CLUSTER_LIST attribute; RFC 4456 8 */
-  if (p->rr_client && bgp_cluster_list_loopy(p, attrs))
+  if (s->rr_client && bgp_cluster_list_loopy(s->rr_cluster_id, attrs))
     goto loop;
 
   /* If there is no local preference, define one */
   if (!BIT32_TEST(s->attrs_seen, BA_LOCAL_PREF))
-    bgp_set_attr_u32(&attrs, s->pool, BA_LOCAL_PREF, 0, p->cf->default_local_pref);
+    bgp_set_attr_u32(&attrs, s->pool, BA_LOCAL_PREF, 0, s->default_local_pref);
 
   return attrs;
 
@@ -1464,7 +1467,7 @@ framing_error:
 withdraw:
   /* RFC 7606 5.2 - handle missing NLRI during errors */
   if (!s->ip_reach_len && !s->mp_reach_len)
-    parse_error(s, 1);
+    s->parse_error(s, 1);
 
   s->err_withdraw = 1;
   return NULL;
@@ -1478,39 +1481,39 @@ void
 bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
 {
   /* AIGP test here instead of in bgp_decode_aigp() - we need to know channel */
-  if (BIT32_TEST(s->attrs_seen, BA_AIGP) && !s->channel->cf->aigp)
+  struct bgp_channel *c = SKIP_BACK(struct bgp_channel, c, s->channel);
+  if (BIT32_TEST(s->attrs_seen, BA_AIGP) && !c->cf->aigp)
   {
     REPORT("Discarding AIGP attribute received on non-AIGP session");
     bgp_unset_attr(&a->eattrs, s->pool, BA_AIGP);
   }
 
   /* Handle OTC ingress procedure, RFC 9234 */
-  if (bgp_channel_is_role_applicable(s->channel))
+  if (bgp_channel_is_role_applicable(c))
   {
-    struct bgp_proto *p = s->proto;
     eattr *e = bgp_find_attr(a->eattrs, BA_ONLY_TO_CUSTOMER);
 
     /* Reject routes from downstream if they are leaked */
-    if (e && (p->cf->local_role == BGP_ROLE_PROVIDER ||
-	      p->cf->local_role == BGP_ROLE_RS_SERVER))
+    if (e && (s->local_role == BGP_ROLE_PROVIDER ||
+	      s->local_role == BGP_ROLE_RS_SERVER))
       WITHDRAW("Route leak detected - OTC attribute from downstream");
 
     /* Reject routes from peers if they are leaked */
-    if (e && (p->cf->local_role == BGP_ROLE_PEER) && (e->u.data != p->cf->remote_as))
+    if (e && (s->local_role == BGP_ROLE_PEER) && (e->u.data != s->remote_as))
       WITHDRAW("Route leak detected - OTC attribute with mismatched ASN (%u)",
 	       (uint) e->u.data);
 
     /* Mark routes from upstream if it did not happened before */
-    if (!e && (p->cf->local_role == BGP_ROLE_CUSTOMER ||
-	       p->cf->local_role == BGP_ROLE_PEER ||
-	       p->cf->local_role == BGP_ROLE_RS_CLIENT))
-      bgp_set_attr_u32(&a->eattrs, s->pool, BA_ONLY_TO_CUSTOMER, 0, p->cf->remote_as);
+    if (!e && (s->local_role == BGP_ROLE_CUSTOMER ||
+	       s->local_role == BGP_ROLE_PEER ||
+	       s->local_role == BGP_ROLE_RS_CLIENT))
+      bgp_set_attr_u32(&a->eattrs, s->pool, BA_ONLY_TO_CUSTOMER, 0, s->remote_as);
   }
 
   /* Apply MPLS policy for labeled SAFIs */
-  if (s->mpls && s->proto->p.mpls_channel)
+  if (s->mpls && s->mpls_channel)
   {
-    struct mpls_channel *mc = (void *) s->proto->p.mpls_channel;
+    struct mpls_channel *mc = (void *) s->mpls_channel;
     ea_set_attr_u32(&a->eattrs, s->pool, EA_MPLS_POLICY, 0, EAF_TYPE_INT, mc->label_policy);
   }
 }
@@ -1769,7 +1772,7 @@ bgp_preexport(struct channel *C, rte *e)
 
     /* Generally, this should be handled when path is received, but we check it
        also here as rr_cluster_id may be undefined or different in src. */
-    if (p->rr_cluster_id && bgp_cluster_list_loopy(p, e->attrs->eattrs))
+    if (p->rr_cluster_id && bgp_cluster_list_loopy(p->rr_cluster_id, e->attrs->eattrs))
       return -1;
   }
 
