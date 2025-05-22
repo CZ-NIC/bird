@@ -1331,7 +1331,7 @@ bgp_decode_attr(struct bgp_parse_state *s, uint code, uint flags, byte *data, ui
   if (BIT32_TEST(s->attrs_seen, code))
   {
     if ((code == BA_MP_REACH_NLRI) || (code == BA_MP_UNREACH_NLRI))
-      bgp_parse_error(s, 1);
+      s->parse_error(s, 1);
     else
       DISCARD("Discarding duplicate attribute (code %u)", code);
   }
@@ -1368,7 +1368,7 @@ bgp_decode_attr(struct bgp_parse_state *s, uint code, uint flags, byte *data, ui
  * by an (uncached) &rta.
  */
 ea_list *
-bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len, void (*parse_error)(struct bgp_parse_state *, uint))
+bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len)
 {
   ea_list *attrs = NULL;
   uint code, flags, alen;
@@ -1467,7 +1467,7 @@ framing_error:
 withdraw:
   /* RFC 7606 5.2 - handle missing NLRI during errors */
   if (!s->ip_reach_len && !s->mp_reach_len)
-    parse_error(s, 1);
+    s->parse_error(s, 1);
 
   s->err_withdraw = 1;
   return NULL;
@@ -1481,14 +1481,15 @@ void
 bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
 {
   /* AIGP test here instead of in bgp_decode_aigp() - we need to know channel */
-  if (BIT32_TEST(s->attrs_seen, BA_AIGP) && !s->channel->cf->aigp)
+  struct bgp_channel *c = SKIP_BACK(struct bgp_channel, c, s->channel);
+  if (BIT32_TEST(s->attrs_seen, BA_AIGP) && !c->cf->aigp)
   {
     REPORT("Discarding AIGP attribute received on non-AIGP session");
     bgp_unset_attr(&a->eattrs, s->pool, BA_AIGP);
   }
 
   /* Handle OTC ingress procedure, RFC 9234 */
-  if (bgp_channel_is_role_applicable(s->channel))
+  if (bgp_channel_is_role_applicable(c))
   {
     eattr *e = bgp_find_attr(a->eattrs, BA_ONLY_TO_CUSTOMER);
 
@@ -1771,7 +1772,7 @@ bgp_preexport(struct channel *C, rte *e)
 
     /* Generally, this should be handled when path is received, but we check it
        also here as rr_cluster_id may be undefined or different in src. */
-    if (p->rr_cluster_id && bgp_cluster_list_loopy(p, e->attrs->eattrs))
+    if (p->rr_cluster_id && bgp_cluster_list_loopy(p->rr_cluster_id, e->attrs->eattrs))
       return -1;
   }
 

@@ -2278,7 +2278,7 @@ bgp_init(struct proto_config *CF)
   return P;
 }
 
-static void
+void
 bgp_channel_init(struct channel *C, struct channel_config *CF)
 {
   struct bgp_channel *c = (void *) C;
@@ -2380,7 +2380,7 @@ bgp_channel_start(struct channel *C)
   return 0; /* XXXX: Currently undefined */
 }
 
-static void
+void
 bgp_channel_shutdown(struct channel *C)
 {
   struct bgp_channel *c = (void *) C;
@@ -2390,7 +2390,7 @@ bgp_channel_shutdown(struct channel *C)
   c->packets_to_send = 0;
 }
 
-static void
+void
 bgp_channel_cleanup(struct channel *C)
 {
   struct bgp_channel *c = (void *) C;

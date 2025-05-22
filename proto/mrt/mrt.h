@@ -16,7 +16,6 @@
 #include "nest/route.h"
 #include "lib/event.h"
 #include "lib/hash.h"
-#include "proto/bgp/bgp.h"
 
 
 struct mrt_config {
@@ -155,7 +154,5 @@ void mrt_check_config(struct proto_config *C);
 static inline void mrt_dump_bgp_message(struct mrt_bgp_data *d UNUSED) { }
 static inline void mrt_dump_bgp_state_change(struct mrt_bgp_data *d UNUSED) { }
 #endif
-
-void mrt_load(char *file);
 
 #endif	/* _BIRD_MRT_H_ */

@@ -3445,7 +3445,7 @@ rt_free_hostcache(rtable *tab)
       rta_free(he->src);
 
       if (he->uc)
-	log(L_ERR "Hostcache is not empty in table %s", tab->name);
+	log(L_ERR "Hostcache is not empty in table %s, count %i", tab->name, he->uc);
     }
 
   /* Freed automagically by the resource pool

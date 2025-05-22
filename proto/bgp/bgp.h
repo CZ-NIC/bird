@@ -494,12 +494,13 @@ struct bgp_write_state {
 
 struct bgp_parse_state {
   // instead of struct bgp_proto *proto;
-  struct bgp_proto *p;
+  struct proto *p;
   u32 local_as;
   u32 public_as;
   u32 remote_as;
   u32 rr_cluster_id;
   u32 local_id;
+  u8 is_mrt_parse;
   u8 is_interior;
   u8 is_internal;
   const char *proto_name;
@@ -515,19 +516,24 @@ struct bgp_parse_state {
   u32 confederation;
   u8 local_role;
   int rr_client;
-  
-  
-  //
-  struct bgp_channel *channel;
+  ip_addr remote_ip;
+
+  struct channel *channel;
   struct linpool *pool;
 
-, void (*parse_error)(struct bgp_parse_state *, uint);
-  void (*rte_update)(struct bgp_parse_state *, ...);
+  void (*parse_error)(struct bgp_parse_state *, uint);
+  void (*rte_update)(struct bgp_parse_state *, const net_addr *, u32, rta *);
+  void (*bgp_apply_next_hop)(struct bgp_parse_state *, rta *, ip_addr, ip_addr);
+  bool (*get_channel)(struct bgp_parse_state *, u32);
+  void (*apply_mpls_labels)(struct bgp_parse_state *, rta *, u32 *, uint);
+  void (*end_mark)(struct bgp_parse_state *, u32);
 
   int as4_session;
   int add_path;
   int mpls;
   int reach_nlri_step;
+  const struct bgp_af_desc *desc;
+  u16 preference;
 
   u32 attrs_seen[256/32];
 
@@ -630,6 +636,11 @@ void bgp_refresh_end(struct bgp_channel *c);
 void bgp_store_error(struct bgp_proto *p, struct bgp_conn *c, u8 class, u32 code);
 void bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len);
 const char *bgp_format_role_name(u8 role);
+void bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a0);
+
+void bgp_channel_init(struct channel *C, struct channel_config *CF);
+void bgp_channel_shutdown(struct channel *C);
+void bgp_channel_cleanup(struct channel *C);
 
 void bgp_fix_attr_flags(ea_list *attrs);
 
@@ -688,7 +699,7 @@ int bgp_encode_mp_reach_mrt(struct bgp_write_state *s, eattr *a, byte *buf, uint
 const char * bgp_attr_name(uint code);
 int bgp_encode_attrs(struct bgp_write_state *s, ea_list *attrs, byte *buf, byte *end);
 ea_list * bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len);
-int bgp_parse_update(struct bgp_parse_state *s, byte *pkt, uint len, ea_list **ea);
+void bgp_parse_update(struct bgp_parse_state *s, byte *pkt, uint len, ea_list **ea);
 void bgp_finish_attrs(struct bgp_parse_state *s, rta *a);
 
 void bgp_init_bucket_table(struct bgp_channel *c);
