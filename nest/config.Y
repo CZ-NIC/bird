@@ -725,6 +725,20 @@ CF_CLI_OPT(SHOW ROUTE PROTOCOL, <p>)
 CF_CLI_OPT(SHOW ROUTE STATS)
 CF_CLI_OPT(SHOW ROUTE COUNT)
 
+/*
+ * Note that there is an ambiguity in show route grammar, as:
+ *   show route where xyz = 10:10 192.0.2.0/24
+ * can be parsed in these two ways:
+ *   show route where xyz = (10:10 192.0.2.0/24)
+ *   show route where (xyz = 10:10) 192.0.2.0/24
+ * The parser defaults to the first way.
+ *
+ * We cannot really do much with this (outside of changing the grammar) as Bison
+ * precendence mechanisms that would require to define global precedence of IP4
+ * / IP6 terminals, which could have plenty of unexpected effects, including
+ * masking of other grammar ambiquities. So we just silence it with %expect.
+ */
+
 r_args:
    /* empty */ {
      $$ = cfg_allocz(sizeof(struct rt_show_data));

@@ -265,6 +265,7 @@ bgp_prepare_capabilities(struct bgp_conn *conn)
   conn->local_caps = caps;
 
   caps->as4_support = p->cf->enable_as4;
+  caps->as4_number = p->public_as;
   caps->ext_messages = p->cf->enable_extended_messages;
   caps->route_refresh = p->cf->enable_refresh;
   caps->enhanced_refresh = p->cf->enable_refresh && p->cf->enable_enhanced_refresh;
@@ -327,10 +328,8 @@ bgp_prepare_capabilities(struct bgp_conn *conn)
 }
 
 static byte *
-bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
+bgp_write_capabilities(struct bgp_caps *caps, byte *buf)
 {
-  struct bgp_proto *p = conn->bgp;
-  struct bgp_caps *caps = conn->local_caps;
   struct bgp_af_caps *ac;
   byte *buf_head = buf;
   byte *data;
@@ -413,7 +412,7 @@ bgp_write_capabilities(struct bgp_conn *conn, byte *buf)
   {
     *buf++ = 65;		/* Capability 65: Support for 4-octet AS number */
     *buf++ = 4;			/* Capability data length */
-    put_u32(buf, p->public_as);
+    put_u32(buf, caps->as4_number);
     buf += 4;
   }
 
@@ -855,7 +854,7 @@ bgp_create_open(struct bgp_conn *conn, byte *buf)
   {
     /* Prepare local_caps and write capabilities to buffer */
     byte *pos = buf+12;
-    byte *end = bgp_write_capabilities(conn, pos);
+    byte *end = bgp_write_capabilities(conn->local_caps, pos);
     uint len = end - pos;
 
     if (len < 254)
