@@ -906,14 +906,17 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   if (import_changed && !channel_reloadable(c))
     return 0;
 
-  if (import_changed || export_changed)
-    log(L_INFO "Reloading channel %s.%s", c->proto->name, c->name);
-
   if (import_changed)
+  {
+    log(L_INFO "Reloading channel %s.%s for import", c->proto->name, c->name);
     channel_request_reload(c);
+  }
 
   if (export_changed)
+  {
+    log(L_INFO "Reloading channel %s.%s for export", c->proto->name, c->name);
     channel_request_feeding(c);
+  }
 
 done:
   CD(c, "Reconfigured");
