@@ -392,6 +392,7 @@ build-netlab:
     - sudo ./stop
     - sudo ./runtest -s v2 -m check $TEST_NAME
   after_script:
+    - cd $TOOLS_DIR/netlab
     - sudo ./stop
   artifacts:
     when: on_failure
