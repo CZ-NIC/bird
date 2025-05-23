@@ -1941,7 +1941,7 @@ proto_rethink_goal(struct proto *p)
     proto_start(p);
 
 done:
-  if (goal_pending && !--proto_rethink_goal_pending)
+  if (goal_pending && !--proto_rethink_goal_pending && protos_commit_request.new)
     protos_do_commit(
 	protos_commit_request.new,
 	protos_commit_request.old,
