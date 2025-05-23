@@ -95,7 +95,11 @@ struct global_runtime {
   u32 latency_limit;			/* Events with longer duration are logged (us) */
   u32 watchdog_warning;			/* I/O loop watchdog limit for warning (us) */
   u32 watchdog_timeout;			/* Watchdog timeout (in seconds, 0 = disabled) */
+
+  int shutdown;				/* Shutdown in progress */
 };
+
+#define SHUTTING_DOWN	atomic_load_explicit(&global_runtime, memory_order_acquire)->shutdown
 
 extern struct global_runtime * _Atomic global_runtime;
 

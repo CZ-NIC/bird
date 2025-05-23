@@ -2423,6 +2423,9 @@ babel_kick_timer(struct babel_proto *p)
 static int
 babel_preexport(struct channel *C, struct rte *new)
 {
+  if (SHUTTING_DOWN)
+    return -1;
+
   if (new->src->owner != &C->proto->sources)
     return 0;
 
@@ -2454,6 +2457,10 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *net,
 {
   struct babel_proto *p = (void *) P;
   struct babel_entry *e;
+
+  /* Ignore everything on shutdown */
+  if (SHUTTING_DOWN)
+    return;
 
   if (new)
   {

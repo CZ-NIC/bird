@@ -489,6 +489,10 @@ ospf_disp(timer * timer)
 static int
 ospf_preexport(struct channel *C, rte *e)
 {
+  /* Reject everything on shutdown */
+  if (SHUTTING_DOWN)
+    return -1;
+
   struct ospf_proto *p = (struct ospf_proto *) C->proto;
   struct ospf_area *oa = ospf_main_area(p);
 
