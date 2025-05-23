@@ -1883,7 +1883,7 @@ protos_do_commit(struct config *new, struct config *old, int type)
     protos_commit_request.phase--;
 
   /* If something is pending, the next round will be called asynchronously from proto_rethink_goal(). */
-  if (!proto_rethink_goal_pending)
+  if (new->shutdown || !proto_rethink_goal_pending)
     protos_do_commit(new, old, type);
 }
 
