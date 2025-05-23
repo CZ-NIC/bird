@@ -1282,6 +1282,10 @@ ospf_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *n, rt
   struct ospf_area *oa = NULL;	/* non-NULL for NSSA-LSA */
   ort *nf;
 
+  /* Reject everything on shutdown */
+  if (SHUTTING_DOWN)
+    return;
+
   /*
    * There are several posibilities:
    * 1) router in regular area - originate external LSA with global scope
