@@ -99,7 +99,11 @@ struct global_runtime {
   u32 watchdog_timeout;			/* Watchdog timeout (in seconds, 0 = disabled) */
 
   struct thread_group *default_thread_group;	/* Default thread group if not specified otherwise */
+
+  int shutdown;				/* Shutdown in progress */
 };
+
+#define SHUTTING_DOWN	atomic_load_explicit(&global_runtime, memory_order_acquire)->shutdown
 
 extern struct global_runtime * _Atomic global_runtime;
 

@@ -259,7 +259,8 @@ global_commit(struct config *new, struct config *old)
       watchdog_warning,
       watchdog_timeout,
       gr_wait,
-      hostname
+      hostname,
+      shutdown
       );
 #undef COPY
 

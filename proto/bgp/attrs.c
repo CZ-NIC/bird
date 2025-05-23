@@ -2229,6 +2229,10 @@ bgp_preexport(struct channel *C, rte *e)
   struct bgp_proto *src = bgp_rte_proto(e);
   struct bgp_channel *c = (struct bgp_channel *) C;
 
+  /* Reject everything on shutdown */
+  if (SHUTTING_DOWN)
+    return -1;
+
   /* Ignore non-BGP channels */
   if (C->class != &channel_bgp)
     return -1;
@@ -2439,6 +2443,10 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
   struct bgp_channel *bc = (void *) C;
   struct bgp_bucket *buck;
   struct rte_src *path;
+
+  /* Reject everything on shutdown */
+  if (SHUTTING_DOWN)
+    return;
 
   /* Ignore non-BGP channels */
   if (C->class != &channel_bgp)
