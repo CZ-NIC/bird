@@ -1639,3 +1639,13 @@ test-mpls-bgp-l3vpn:
   variables:
     TEST_NAME: cf-mpls-bgp-l3vpn
 
+test-bgp-aspa:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-aspa
+
+test-aspa-filter:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-aspa-filter
+
