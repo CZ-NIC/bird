@@ -150,6 +150,9 @@ l3vpn_prepare_export_targets(struct l3vpn_proto *p)
 static void
 l3vpn_rt_notify(struct proto *P, struct channel *c0, const net_addr *n0, rte *new, const rte *old UNUSED)
 {
+  if (SHUTTING_DOWN)
+    return;
+
   struct l3vpn_proto *p = (void *) P;
   struct rte_src *src = NULL;
   struct channel *dst = NULL;
@@ -249,6 +252,10 @@ l3vpn_rt_notify(struct proto *P, struct channel *c0, const net_addr *n0, rte *ne
 static int
 l3vpn_preexport(struct channel *C, rte *e)
 {
+  /* Reject everything on shutdown */
+  if (SHUTTING_DOWN)
+    return -1;
+
   struct l3vpn_proto *p = (void *) C->proto;
 
   if (&C->in_req == e->sender->req)

@@ -349,6 +349,9 @@ static void
 rip_rt_notify(struct proto *P, struct channel *ch UNUSED, const net_addr *net, struct rte *new,
 	      const struct rte *old UNUSED)
 {
+  if (SHUTTING_DOWN)
+    return;
+
   struct rip_proto *p = (struct rip_proto *) P;
   struct rip_entry *en;
   int old_metric;

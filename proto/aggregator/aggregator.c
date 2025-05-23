@@ -210,6 +210,10 @@ HASH_DEFINE_REHASH_FN(AGGR_BUCK, struct aggregator_bucket);
 static void
 aggregator_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *net, rte *new, const rte *old)
 {
+  /* Ignore everything on shutdown */
+  if (SHUTTING_DOWN)
+    return;
+
   SKIP_BACK_DECLARE(struct aggregator_proto, p, p, P);
   ASSERT_DIE(src_ch == p->src);
   struct aggregator_bucket *new_bucket = NULL, *old_bucket = NULL;
@@ -316,6 +320,10 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *ne
 static int
 aggregator_preexport(struct channel *C, struct rte *new)
 {
+  /* Reject everything on shutdown */
+  if (SHUTTING_DOWN)
+    return -1;
+
   SKIP_BACK_DECLARE(struct aggregator_proto, p, p, C->proto);
   /* Reject our own routes */
   if (new->sender == p->dst->in_req.hook)
