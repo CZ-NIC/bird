@@ -2530,10 +2530,11 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, struct bmap *seen, bool (*p
       uint rpos = rcnt;
       for (const struct rt_pending_export *rpe = first; rpe;
 	  rpe = atomic_load_explicit(&rpe->next, memory_order_acquire))
-	if (e >= ecnt)
-	  RT_READ_RETRY(tr);
-	else if (!seen || !bmap_test(seen, rpe->it.seq))
+	if (!seen || !bmap_test(seen, rpe->it.seq))
 	{
+	  if (e >= ecnt)
+	    RT_READ_RETRY(tr);
+
 	  feed->exports[e++] = rpe->it.seq;
 
 	  /* Copy also obsolete routes */
@@ -2666,10 +2667,11 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, struc
     uint e = 0;
     for (const struct rt_pending_export *rpe = first; rpe;
 	rpe = atomic_load_explicit(&rpe->next, memory_order_acquire))
-      if (e >= ecnt)
-	RT_READ_RETRY(tr);
-      else if (!seen || !bmap_test(seen, rpe->it.seq))
+      if (!seen || !bmap_test(seen, rpe->it.seq))
       {
+	if (e >= ecnt)
+	  RT_READ_RETRY(tr);
+
 	feed->exports[e++] = rpe->it.seq;
 	if (rpe->it.old && (!best || (rpe->it.old != &best->rte)))
 	{
