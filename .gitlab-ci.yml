@@ -1126,6 +1126,7 @@ build-netlab:
     - sudo ./stop
     - sudo ./runtest -s v3 -m check $TEST_NAME
   after_script:
+    - cd $TOOLS_DIR/netlab
     - sudo ./stop
   artifacts:
     when: on_failure
@@ -1291,4 +1292,14 @@ test-mpls-bgp-l3vpn:
   <<: *test-base
   variables:
     TEST_NAME: cf-mpls-bgp-l3vpn
+
+test-bgp-aspa:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-aspa
+
+test-aspa-filter:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-aspa-filter
 
