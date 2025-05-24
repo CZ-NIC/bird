@@ -2122,6 +2122,7 @@ bgp_init_pending_tx(struct bgp_channel *c)
   bpp->exporter = (struct rt_exporter) {
     .journal = {
       .loop = c->c.proto->loop,
+      .domain = dom.rtable,
       .item_size = sizeof(struct rt_export_item),
       .item_done = bgp_out_item_done,
     },

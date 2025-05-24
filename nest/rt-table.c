@@ -2973,6 +2973,10 @@ rt_schedule_nhu(struct rtable_private *tab)
 void
 rt_schedule_prune(struct rtable_private *tab)
 {
+  /* The table is empty if there are no imports */
+  if (EMPTY_LIST(tab->imports))
+    return;
+
   /* state change 0->1, 2->3 */
   tab->prune_state |= 1;
   if (!tab->reconf_end)
@@ -4670,6 +4674,15 @@ rt_shutdown(void *tab_)
 {
   rtable *t = tab_;
   RT_LOCK(t, tab);
+  ASSERT_DIE(birdloop_inside(tab->loop));
+
+  /* Check that the table is indeed pruned */
+  tab->prune_state = 0;
+  ASSERT_DIE(EMPTY_LIST(tab->imports));
+  u32 bs = atomic_load_explicit(&tab->routes_block_size, memory_order_relaxed);
+  net *routes = atomic_load_explicit(&tab->routes, memory_order_relaxed);
+  for (u32 i = 0; i < bs; i++)
+    ASSERT_DIE(atomic_load_explicit(&routes[i].routes, memory_order_relaxed) == NULL);
 
   if (tab->export_digest)
   {
