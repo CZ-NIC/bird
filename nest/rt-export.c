@@ -455,6 +455,7 @@ void
 rt_exporter_init(struct rt_exporter *e, struct settle_config *scf)
 {
   rtex_trace(e, D_STATES, "Exporter init");
+  ASSERT_DIE(e->journal.domain);
   e->journal.cleanup_done = rt_exporter_cleanup_done;
   lfjour_init(&e->journal, scf);
   ASSERT_DIE(e->feed_net);
@@ -547,10 +548,7 @@ rt_exporter_shutdown(struct rt_exporter *e, void (*stopped)(struct rt_exporter *
   rtex_trace(e, D_STATES, "Exporter shutdown");
 
   /* Last lock check before dropping the domain reference */
-  if (e->journal.domain)
-    ASSERT_DIE(DG_IS_LOCKED(e->journal.domain));
-
-  e->journal.domain = NULL;
+  ASSERT_DIE(DG_IS_LOCKED(e->journal.domain));
 
   /* We have to tell every receiver to stop */
   bool done = 1;
@@ -576,13 +574,22 @@ rt_exporter_shutdown(struct rt_exporter *e, void (*stopped)(struct rt_exporter *
   /* Wait for feeders to finish */
   synchronize_rcu();
 
-  /* The rest is done via the cleanup routine */
-  lfjour_do_cleanup_now(&e->journal);
-
   if (done)
   {
+    /* Inhibit locking in cleanup */
+    e->journal.domain = NULL;
+
+    /* The rest is done via the cleanup routine */
+    lfjour_do_cleanup_now(&e->journal);
+
+    /* Invalidate the cleanup event */
+    e->journal.cleanup_event.hook = NULL;
     ev_postpone(&e->journal.cleanup_event);
+
+    /* No announcement timer either */
     settle_cancel(&e->journal.announce_timer);
+
+    /* Done! */
     CALL(stopped, e);
   }
   else
