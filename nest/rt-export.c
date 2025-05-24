@@ -574,16 +574,23 @@ rt_exporter_shutdown(struct rt_exporter *e, void (*stopped)(struct rt_exporter *
   /* Wait for feeders to finish */
   synchronize_rcu();
 
-  /* The rest is done via the cleanup routine */
-  lfjour_do_cleanup_now(&e->journal);
-
   if (done)
   {
-    ev_postpone(&e->journal.cleanup_event);
-    settle_cancel(&e->journal.announce_timer);
-    CALL(stopped, e);
-
+    /* Inhibit locking in cleanup */
     e->journal.domain = NULL;
+
+    /* The rest is done via the cleanup routine */
+    lfjour_do_cleanup_now(&e->journal);
+
+    /* Invalidate the cleanup event */
+    e->journal.cleanup_event.hook = NULL;
+    ev_postpone(&e->journal.cleanup_event);
+
+    /* No announcement timer either */
+    settle_cancel(&e->journal.announce_timer);
+
+    /* Done! */
+    CALL(stopped, e);
   }
   else
 //  e->stopped = stopped;
