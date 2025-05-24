@@ -4695,6 +4695,7 @@ rt_shutdown(void *tab_)
 {
   rtable *t = tab_;
   RT_LOCK(t, tab);
+  ASSERT_DIE(birdloop_inside(tab->loop));
 
   if (tab->export_digest)
   {
