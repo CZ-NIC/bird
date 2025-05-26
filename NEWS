@@ -1,3 +1,12 @@
+Version 3.0.4 (2025-05-26)
+  o BGP: Fix warnings for roa_check
+  o MRT: Fix typo in assert
+  o ASPA: Fix table subscriptions
+  o ASPA: Fix filter parse crash
+  o Table: Fix several race conditions
+  o Shutdown: Do not export routes
+  o Logs: Fix logs reopening on configure undo
+
 Version 3.0.3 (2025-05-13)
   o Makefile: Fix accidentally added dry-run markers
   o BGP: Fix route refresh behavior
