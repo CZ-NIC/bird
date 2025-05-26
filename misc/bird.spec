@@ -1,6 +1,6 @@
 Summary: BIRD Internet Routing Daemon
 Name: bird
-Version: 3.1.1
+Version: 3.1.2
 Release: 1
 Copyright: GPL
 Group: Networking/Daemons
