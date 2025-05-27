@@ -145,6 +145,16 @@ docker-centos-8-amd64:
     IMG_NAME: "centos-8-amd64"
   <<: *docker-build
 
+docker-rocky-08-amd64:
+  variables:
+    IMG_NAME: "rocky-08-amd64"
+  <<: *docker-build
+
+docker-rocky-09-amd64:
+  variables:
+    IMG_NAME: "rocky-09-amd64"
+  <<: *docker-build
+
 docker-fedora-32-amd64:
   variables:
     IMG_NAME: "fedora-32-amd64"
@@ -367,6 +377,20 @@ build-centos-8-amd64:
     - job: docker-centos-8-amd64
       optional: true
   image: registry.nic.cz/labs/bird:centos-8-amd64
+
+build-rocky-08-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-rocky-08-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:rocky-08-amd64
+
+build-rocky-09-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-rocky-09-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:rocky-09-amd64
 
 build-fedora-32-amd64:
   <<: *build-docker-linux-amd64
@@ -687,6 +711,22 @@ pkg-centos-8-amd64:
     - job: build-release
   image: registry.nic.cz/labs/bird:centos-8-amd64
 
+pkg-rocky-08-amd64:
+  <<: *pkg-rpm-wa
+  needs:
+    - job: build-rocky-08-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:rocky-08-amd64
+
+pkg-rocky-09-amd64:
+  <<: *pkg-rpm-wa
+  needs:
+    - job: build-rocky-09-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:rocky-09-amd64
+
 pkg-fedora-32-amd64:
   <<: *pkg-rpm-wa
   needs:
@@ -972,6 +1012,18 @@ install-centos-8-amd64:
   needs:
     - job: pkg-centos-8-amd64
   image: registry.nic.cz/labs/bird:centos-8-amd64
+
+install-rocky-08-amd64:
+  <<: *install-rpm
+  needs:
+    - job: pkg-rocky-08-amd64
+  image: registry.nic.cz/labs/bird:rocky-08-amd64
+
+install-rocky-09-amd64:
+  <<: *install-rpm
+  needs:
+    - job: pkg-rocky-09-amd64
+  image: registry.nic.cz/labs/bird:rocky-09-amd64
 
 install-fedora-32-amd64:
   <<: *install-rpm
