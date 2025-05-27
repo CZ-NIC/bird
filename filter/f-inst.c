@@ -769,10 +769,11 @@
       case SA_GW:
 	{
 	  struct eattr *nh_ea = ea_find(fs->rte->attrs, &ea_gen_nexthop);
+	  SKIP_BACK_DECLARE(struct nexthop_adata, nhad, ad, nh_ea ? nh_ea->u.ptr : NULL);
+	  struct nexthop *first = NEXTHOP_IS_REACHABLE(nhad) ? &(nhad->nh) : NULL;
 
 	  ip_addr ip = v1.val.ip;
-	  struct iface *ifa = (ipa_is_link_local(ip) && nh_ea) ?
-	    ((struct nexthop_adata *) nh_ea->u.ptr)->nh.iface : NULL;
+	  struct iface *ifa = (ipa_is_link_local(ip) && first) ? first->iface : NULL;
 	  
 	  /* XXX this code supposes that every owner is a protocol XXX */
 	  neighbor *n = neigh_find(SKIP_BACK(struct proto, sources, fs->rte->src->owner), ip, ifa, 0);
