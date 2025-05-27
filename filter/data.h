@@ -39,6 +39,7 @@ enum f_sa_code {
   SA_IFINDEX,
   SA_WEIGHT,
   SA_GW_MPLS,
+  SA_ONLINK,
 } PACKED;
 
 /* Static attribute definition (members of struct rta) */
