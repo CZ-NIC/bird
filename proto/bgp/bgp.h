@@ -349,6 +349,8 @@ struct bgp_conn {
   byte *notify_data;
 
   uint hold_time, keepalive_time, send_hold_time;	/* Times calculated from my and neighbor's requirements */
+
+  byte buf[8];                          /* Buffer for missing capabilities message */
 };
 
 struct bgp_proto {
