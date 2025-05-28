@@ -1,3 +1,8 @@
+# Note: 
+# If you change a dockerfile as a first commit on a new branch, 
+# it will not trigger the image rebuild on a push. 
+# For that you need to push another commit. Have fun!
+
 distros:
   # CentOS 7 with quite some hacks
   - name: centos-7-amd64
@@ -8,6 +13,8 @@ distros:
 
   {% for name in (
     'centos-8',
+    'rocky-08',
+    'rocky-09',
     'fedora-32',
     'fedora-33',
   ) -%}
