@@ -995,7 +995,21 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 
   /* RFC 5492 5 - check for required capabilities */
   if (p->cf->capabilities && !bgp_check_capabilities(conn, failed_caps))
-  { bgp_error(conn, 2, 7, NULL, 0); return; }
+  {
+    byte buf[32] = { 0 };
+    byte *end = bgp_write_capabilities(failed_caps, buf);
+
+    /* Send empty message if conn->buf has insufficient size or when write buffer is empty */
+    if (end > buf + sizeof(conn->buf) || end == buf)
+      bgp_error(conn, 2, 7, NULL, 0);
+    else
+    {
+      memcpy(conn->buf, buf, end - buf);
+      bgp_error(conn, 2, 7, conn->buf, end - buf);
+    }
+
+    return;
+  }
 
   struct bgp_caps *caps = conn->remote_caps;
 
