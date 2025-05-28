@@ -3435,6 +3435,45 @@ bgp_handle_message(struct bgp_proto *p, byte *data, uint len, byte **bp)
   return 1;
 }
 
+static int
+bgp_format_capabilities(byte *data, uint len, byte *buf)
+{
+  switch (data[0])
+  {
+    case 1: {   /* Multiprotocol capability, RFC 4760 */
+      /* Capability length */
+      if ((len >= 1 && data[1] != 4) || len < 6)
+        return bsprintf(buf, "multiprotocol capability");
+
+      u32 afi = get_af4(data + 2);
+      const struct bgp_af_desc *desc = bgp_get_af_desc(afi);
+      return bsprintf(buf, "multiprotocol capability: %s", desc->name);
+    }
+    case 2:     /* Route refresh capability, RFC 2918 */
+      return bsprintf(buf, "route refresh capability");
+    case 5:     /* Extended nexthop encoding capability, RFC 8950 */
+      return bsprintf(buf, "extended nexthop encoding capability");
+    case 6:     /* Extended message length capability, RFC 8654 */
+      return bsprintf(buf, "extended message length capability");
+    case 9:     /* BGP role capability, RFC 9234 */
+      return bsprintf(buf, "BGP role capability");
+    case 64:    /* Graceful restart capability, RFC 4724 */
+      return bsprintf(buf, "graceful restart capability");
+    case 65:    /* AS4 capability, RFC 6793 */
+      return bsprintf(buf, "AS4 capability");
+    case 69:    /* ADD-PATH capability, RFC 7911 */
+      return bsprintf(buf, "ADD-PATH capability");
+    case 70:    /* Enhanced route refresh capability, RFC 7313 */
+      return bsprintf(buf, "enhanced route refresh capability");
+    case 71:    /* Long-lived graceful restart capability, RFC 9494 */
+      return bsprintf(buf, "long-lived graceful restart capability");
+    case 73:    /* Hostaname, RFC draft */
+      return bsprintf(buf, "hostname");
+    default:
+      return bsprintf(buf, "unrecognized capability");
+  }
+}
+
 void
 bgp_log_error(struct bgp_proto *p, u8 class, char *msg, uint code, uint subcode, byte *data, uint len)
 {
@@ -3458,6 +3497,12 @@ bgp_log_error(struct bgp_proto *p, u8 class, char *msg, uint code, uint subcode,
 	  goto done;
 	}
 
+      if ((code == 2) && (subcode == 7))
+      {
+        t += bgp_format_capabilities(data, len, t);
+        goto done;
+      }
+
       if ((code == 2) && (subcode == 11) && (len == 1))
         {
 	  t += bsprintf(t, " (%s)", bgp_format_role_name(get_u8(data)));
@@ -3480,7 +3525,7 @@ bgp_log_error(struct bgp_proto *p, u8 class, char *msg, uint code, uint subcode,
 done:
   *t = 0;
   const byte *dsc = bgp_error_dsc(code, subcode);
-  log(L_REMOTE "%s: %s: %s%s", p->p.name, msg, dsc, argbuf);
+  log(L_REMOTE "%s: %s: %s: %s", p->p.name, msg, dsc, argbuf);
 }
 
 static void
