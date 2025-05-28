@@ -2781,11 +2781,11 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 
   /* Check whether existing connections are compatible with required capabilities */
   struct bgp_conn *ci = &p->incoming_conn;
-  if (((ci->state == BS_OPENCONFIRM) || (ci->state == BS_ESTABLISHED)) && !bgp_check_capabilities(ci))
+  if (((ci->state == BS_OPENCONFIRM) || (ci->state == BS_ESTABLISHED)) && !bgp_check_capabilities(ci, NULL))
     return 0;
 
   struct bgp_conn *co = &p->outgoing_conn;
-  if (((co->state == BS_OPENCONFIRM) || (co->state == BS_ESTABLISHED)) && !bgp_check_capabilities(co))
+  if (((co->state == BS_OPENCONFIRM) || (co->state == BS_ESTABLISHED)) && !bgp_check_capabilities(co, NULL))
     return 0;
 
   proto_setup_mpls_map(P, RTS_BGP, 1);
