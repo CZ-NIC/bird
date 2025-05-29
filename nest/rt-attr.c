@@ -1182,6 +1182,7 @@ rta_same(rta *x, rta *y)
   return (x->source == y->source &&
 	  x->scope == y->scope &&
 	  x->dest == y->dest &&
+	  x->pref == y->pref &&
 	  x->igp_metric == y->igp_metric &&
 	  ipa_equal(x->from, y->from) &&
 	  x->hostentry == y->hostentry &&
