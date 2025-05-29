@@ -423,6 +423,7 @@ bgp_channel_item:
  | NEXT HOP SELF bgp_nh { BGP_CC->next_hop_self = $4; }
  | NEXT HOP KEEP bgp_nh { BGP_CC->next_hop_keep = $4; }
  | NEXT HOP PREFER GLOBAL { BGP_CC->next_hop_prefer = NHP_GLOBAL; }
+ | NEXT HOP PREFER LOCAL  { BGP_CC->next_hop_prefer = NHP_LOCAL;  }
  | LINK LOCAL NEXT HOP FORMAT bgp_llnh { BGP_CC->llnh_format = $6; }
  | MANDATORY bool { BGP_CC->mandatory = $2; }
  | MISSING LLADDR bgp_lladdr { cf_warn("%s.%s: Missing lladdr option is deprecated and ignored, remove it", this_proto->name, this_channel->name); }

@@ -1086,10 +1086,12 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
     neighbor *nbr = NULL;
 
     /* GW_DIRECT -> single_hop -> p->neigh != NULL */
-    if (ipa_nonzero2(gw))
+    if ((c->cf->next_hop_prefer == NHP_GLOBAL) && ipa_nonzero2(gw))
       nbr = neigh_find(&p->p, gw, NULL, 0);
     else if (ipa_nonzero(ll))
       nbr = neigh_find(&p->p, ll, p->neigh->iface, 0);
+    else if (ipa_nonzero2(gw))
+      nbr = neigh_find(&p->p, gw, NULL, 0);
     else
       WITHDRAW(BAD_NEXT_HOP " - zero address");
 
