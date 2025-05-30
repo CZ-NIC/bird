@@ -3682,19 +3682,23 @@ be used in explicit configuration.
 	BGP session (if acceptable), or the preferred address of an associated
 	interface.
 
-	<tag><label id="bgp-next-hop-prefer">next hop prefer global</tag>
-	Prefer global IPv6 address to link-local IPv6 address for immediate next
-	hops of received routes. For IPv6 routes, the Next Hop attribute may
-	contain both a global IP address and a link-local IP address. For IBGP
-	sessions, the global IP address is resolved (<ref id="bgp-gateway"
-	name="gateway recursive">) through an IGP routing table
-	(<ref id="bgp-igp-table" name="igp table">) to get an immediate next
-	hop. If the resulting IGP route is a direct route (i.e., the next hop is
-	a direct neighbor), then the link-local IP address from the Next Hop
-	attribute is used as the immediate next hop. This option change it to
-	use the global IP address instead. Note that even with this option
-	enabled a route may end with a link-local immediate next hop when the
-	IGP route has one. Default: disabled.
+	<tag><label id="bgp-next-hop-prefer">next hop prefer global|local</tag>
+	For IPv6 routes, the Next Hop attribute may contain both a global IP
+	address and a link-local IP address. For IBGP sessions, the global IP
+	address is resolved (<ref id="bgp-gateway" name="gateway recursive">)
+	through an IGP routing table (<ref id="bgp-igp-table" name="igp table">)
+	to get an immediate next hop. If the resulting IGP route is a direct
+	route (i.e., the next hop is a direct neighbor), then the link-local
+	IP address from the Next Hop attribute is used as the immediate next hop.
+	This option changes it to prefer global or link-local IP address,
+	respectively. Note that even with this option set to global, route may
+	end with a link-local immediate next hop when the IGP route has one.
+
+	When set to <cf/local/, prefer link-local IPv6 addresses over global
+	addresses for immediate next hops of received routes. When set to
+	<cf/global/, prefer global IPv6 address to link-local IPv6 address for
+	immediate next hops of received routes. Default: global in direct mode
+	(EBGP), local in recursive mode (IBGP).
 
 	<tag><label id="bgp-link-local-next-hop-format">link local next hop format native|single|double</tag>
 	For IPv6 routes, BGP assumes that the Next Hop attribute contains a
