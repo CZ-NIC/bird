@@ -3290,7 +3290,7 @@ protocol bgp [<name>] {
 	as they complicate security features like RPKI validation. When this
 	option is disabled, then received AS paths with AS sets are rejected as
 	malformed and corresponding BGP updates are treated as withdraws.
-	Default: on.
+	Default: off.
 
 	<tag><label id="bgp-enforce-first-as">enforce first as <m/switch/</tag>
 	Routes received from an EBGP neighbor are generally expected to have the

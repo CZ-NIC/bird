@@ -73,7 +73,7 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->enable_hostname = 0;
      BGP_CFG->capabilities = 2;
      BGP_CFG->interpret_communities = 1;
-     BGP_CFG->allow_as_sets = 1;
+     BGP_CFG->allow_as_sets = 0;
      BGP_CFG->default_local_pref = 100;
      BGP_CFG->gr_mode = BGP_GR_AWARE;
      BGP_CFG->gr_time = 120;
