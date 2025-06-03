@@ -3223,7 +3223,8 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
   if ((new->gw_mode != old->gw_mode) ||
       (new->next_hop_prefer != old->next_hop_prefer) ||
       (new->aigp != old->aigp) ||
-      (new->cost != old->cost))
+      (new->cost != old->cost) ||
+      (new->c.preference != old->c.preference))
   {
     /* If import table is active we have to flush it */
     if ((c->c.in_keep & RIK_PREFILTER) == RIK_PREFILTER)
@@ -3237,6 +3238,9 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
 	/* Route refresh not possible, restart needed */
 	return 0;
     }
+
+    /* Note that preference is already handled in channel_reconfigure(),
+       but we need it handle again here for the ROUTE_REFRESH trigger */
 
     /* Otherwise we just do complete reload */
     else
