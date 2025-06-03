@@ -368,6 +368,7 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 	DEFINED,
 	ADD, DELETE, RESET,
 	PREPEND,
+	APPEND,
 	EMPTY,
 	FILTER, WHERE, EVAL, ATTRIBUTE,
 	FROM_HEX,
@@ -950,9 +951,12 @@ term:
  | '-' '-' '-' EMPTY '-' '-' '-' { $$ = f_new_inst(FI_CONSTANT, val_empty(T_LCLIST)); }
 
  | PREPEND '(' term ',' term ')' { $$ = f_dispatch_method_x("prepend", $3->type, $3, $5); }
+ | APPEND '(' term ',' term ')' { $$ = f_dispatch_method_x("append", $3->type, $3, $5); }
  | ADD '(' term ',' term ')' { $$ = f_dispatch_method_x("add", $3->type, $3, $5); }
  | DELETE '(' term ',' term ')' { $$ = f_dispatch_method_x("delete", $3->type, $3, $5); }
  | FILTER '(' term ',' term ')' { $$ = f_dispatch_method_x("filter", $3->type, $3, $5); }
+
+ | term PP term { $$ = f_dispatch_method_x("append", $1->type, $1, $3); }
 
  | ROA_CHECK '(' rtable ')' { $$ = f_new_inst(FI_ROA_CHECK_IMPLICIT, $3); }
  | ROA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_new_inst(FI_ROA_CHECK_EXPLICIT, $5, $7, $3); }

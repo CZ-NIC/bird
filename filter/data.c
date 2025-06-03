@@ -668,3 +668,15 @@ val_dump(const struct f_val *v) {
   val_format(v, &b);
   return val_dump_buffer;
 }
+
+const struct adata *
+bytestring_append(struct linpool *pool, const struct adata *v1, const struct adata *v2)
+{
+  if (!v1 || !v2)
+    return v1 ?: v2;
+
+  struct adata *res = lp_alloc_adata(pool, v1->length + v2->length);
+  memcpy(res->data, v1->data, v1->length);
+  memcpy(res->data + v1->length, v2->data, v2->length);
+  return res;
+}
