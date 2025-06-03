@@ -378,6 +378,7 @@ tcp_ao_end:
 
 bgp_channel_start: bgp_afi
 {
+  log("bgp %x", $1);
   const struct bgp_af_desc *desc = bgp_get_af_desc($1);
 
   if (!desc)

@@ -1501,6 +1501,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   rte_update_lock();
   if (new)
     {
+      log("new route");
       /* Create a temporary table node */
       nn = alloca(sizeof(net) + n->length);
       memset(nn, 0, sizeof(net) + n->length);
@@ -1563,6 +1564,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
     }
   else
     {
+      log("old");
       stats->imp_withdraws_received++;
 
       if (!(nn = net_find(c->table, n)) || !src)
@@ -1575,6 +1577,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
  recalc:
   /* And recalculate the best route */
+  log("rte recalculate");
   rte_recalculate(c, nn, new, src);
 
   if (p->mpls_map)
@@ -1584,6 +1587,7 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
   return;
 
  drop:
+  log("droping");
   rte_free(new);
   new = NULL;
   if (nn = net_find(c->table, n))
@@ -3444,8 +3448,9 @@ rt_free_hostcache(rtable *tab)
       struct hostentry *he = SKIP_BACK(struct hostentry, ln, n);
       rta_free(he->src);
 
-      if (he->uc)
-	log(L_ERR "Hostcache is not empty in table %s", tab->name);
+      if (he->uc){
+	log(L_ERR "Hostcache is not empty in table %s, count %i", tab->name, he->uc);
+	bug("pleeaaase stooop");}
     }
 
   /* Freed automagically by the resource pool

@@ -392,6 +392,7 @@ mrt_rib_table_header(struct mrt_table_dump_state *s, net_addr *n)
 
   /* Sequence Number */
   mrt_put_u32(b, s->seqnum);
+  log("seq %x", s->seqnum);
 
   /* Network Prefix */
   if (s->ipv4)
@@ -401,6 +402,7 @@ mrt_rib_table_header(struct mrt_table_dump_state *s, net_addr *n)
     uint len = net4_pxlen(n);
 
     mrt_put_u8(b, len);
+    log("len %x b %I %x", len, a, a);
     mrt_put_data(b, &a, BYTES(len));
   }
   else
@@ -536,6 +538,7 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
 
   /* Fix Entry Count */
   put_u16(s->buf.start + s->entry_count_offset, s->entry_count);
+  log("entry count %x", s->entry_count);
 
   /* Update max counter */
   s->max -= 1 + s->entry_count;
@@ -710,10 +713,6 @@ mrt_dump_cont(struct cli *c)
   cli_printf(c, 0, "");
   mrt_table_dump_free(c->rover);
   c->cont = c->cleanup = c->rover = NULL;
-  mrt_load("mrt_dump.txt");
-  log("____________________________");
-  mrt_load("dump.mrt");
-  mrt_load("dump_bgp.mrt");
 }
 
 static void
@@ -797,6 +796,8 @@ mrt_bgp_header(buffer *b, struct mrt_bgp_data *d)
   }
 }
 
+// TODO What if logfile is configured from mrt load, but user tries to use it as dump file?
+
 void
 mrt_dump_bgp_message(struct mrt_bgp_data *d)
 {
@@ -809,6 +810,7 @@ mrt_dump_bgp_message(struct mrt_bgp_data *d)
   };
 
   buffer *b = mrt_bgp_buffer();
+  log("MRT_BGP4MP %i", MRT_BGP4MP);
   mrt_init_message(b, MRT_BGP4MP, subtypes[d->as4 + 4*d->add_path]);
   mrt_bgp_header(b, d);
   mrt_put_data(b, d->message, d->msg_len);
@@ -855,6 +857,24 @@ mrt_check_config(struct proto_config *CF)
     cf_error("Period not specified");
 }
 
+void
+mrt_load_check_config(struct proto_config *CF, struct bgp_channel_config *CC)
+{
+  struct mrt_config *cf = (void *) CF;
+
+  if (!cf->table_cf)
+    cf_error("Table not specified");
+
+  if (!cf->filename)
+    cf_error("File not specified");
+
+  if (cf->period)
+    cf_error("Specified period for loading");
+
+  if (!CC->desc)
+    cf_error("Afi not specified.");
+}
+
 static struct proto *
 mrt_init(struct proto_config *CF)
 {
@@ -869,10 +889,27 @@ mrt_start(struct proto *P)
   struct mrt_proto *p = (void *) P;
   struct mrt_config *cf = (void *) (P->cf);
 
-  p->timer = tm_new_init(P->pool, mrt_timer, p, cf->period S, 0);
-  p->event = ev_new_init(P->pool, mrt_event, p);
+  if (cf->period)
+  {
+    p->timer = tm_new_init(P->pool, mrt_timer, p, cf->period S, 0);
+    p->event = ev_new_init(P->pool, mrt_event, p);
 
-  tm_start(p->timer, cf->period S);
+    tm_start(p->timer, cf->period S);
+  } else
+  {
+    p->channel.cf = cf->channel_cf;
+    p->channel.afi = cf->channel_cf->afi;
+    p->channel.desc = cf->channel_cf->desc;
+    p->channel.c.channel = &channel_mrt;
+    p->channel.c.table = cf->table_cf->table;
+    if (cf->channel_cf->igp_table_ip4)
+      p->channel.igp_table_ip4 = cf->channel_cf->igp_table_ip4->table;
+
+    if (cf->channel_cf->igp_table_ip6)
+      p->channel.igp_table_ip6 = cf->channel_cf->igp_table_ip6->table;
+
+    mrt_load(P);
+  }
 
   return PS_UP;
 }
@@ -881,6 +918,12 @@ static int
 mrt_shutdown(struct proto *P)
 {
   struct mrt_proto *p = (void *) P;
+
+  if (!p->timer) /* it is mrt load */
+  {
+    //rt_refresh_begin(p->channel.c.table, &p->channel.c);
+    rt_refresh_end(p->channel.c.table, &p->channel.c);
+  }
 
   return p->table_dump ? PS_STOP : PS_DOWN;
 }
@@ -911,6 +954,32 @@ mrt_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNUSE
   /* Do nothing */
 }
 
+static int
+mrt_channel_start(struct channel *C)
+{
+  struct mrt_proto *p = (void *) C->proto;
+  struct bgp_channel *c = (void *) C;
+  c->pool = p->p.pool;
+  return 0;
+}
+
+static int
+mrt_channel_reconfigure(struct channel *C UNUSED, struct channel_config *CC UNUSED,
+    int *import_changed UNUSED, int *export_changed UNUSED)
+{
+  // TODO ?
+  return 0;
+}
+
+const struct channel_class channel_mrt = {
+  .channel_size =	sizeof(struct bgp_channel),
+  .config_size =	sizeof(struct bgp_channel_config),
+  .init =		bgp_channel_init,
+  .start =		mrt_channel_start,
+  .shutdown =		bgp_channel_shutdown,
+  .cleanup =		bgp_channel_cleanup,
+  .reconfigure =	mrt_channel_reconfigure,
+};
 
 struct protocol proto_mrt = {
   .name =		"MRT",
@@ -923,6 +992,7 @@ struct protocol proto_mrt = {
   .shutdown =		mrt_shutdown,
   .reconfigure =	mrt_reconfigure,
   .copy_config =	mrt_copy_config,
+  .channel_mask =	NB_IP | NB_VPN | NB_FLOW | NB_MPLS,
 };
 
 void

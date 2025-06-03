@@ -177,10 +177,12 @@ mrt_parse_rib4_unicast(FILE *fp, u64 *remains, bool add_path)
 {
   u64 seq_num = mrt_load_four_octet(fp, remains);
   int pref_len = mrt_load_one(fp, remains);
-  byte prefix[pref_len/8];
-  mrt_load_n_octet(fp, remains, prefix, pref_len/8);
+  byte prefix[(pref_len+7)/8];
+  log("pref len %x", (pref_len+7)/8);
+  mrt_load_n_octet(fp, remains, prefix, (pref_len+7)/8);
+  log("pref[0] %x", prefix[0]);
   int entry_count = mrt_load_two_octet(fp, remains);
-  log("seq %lx, pref len %i, enties %i", seq_num, pref_len, entry_count);
+  log("seq %lx, pref len %x, enties %x", seq_num, pref_len, entry_count);
 
   for (int i = 0; i < entry_count; i++)
     mrt_parse_rib_entry(fp, remains, add_path);
@@ -234,14 +236,44 @@ mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4)
   log("peer as %lx local as %lx interface %x add fam %i peer %I loc %I", peer_as, local_as, interface_id, addr_fam, peer_addr, local_addr);
 }
 
+static void
+mrt_rx_end_mark(struct bgp_parse_state *s UNUSED, u32 afi UNUSED)
+{
+  /* Do nothing */
+}
 
-void
-mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4)
+bool
+mrt_get_channel_to_parse(struct bgp_parse_state *s UNUSED, u32 afi UNUSED)
+{
+  struct mrt_proto *p = SKIP_BACK(struct mrt_proto, p, s->p);
+  s->channel = &p->channel.c;
+  s->last_id = 0;
+  s->last_src = s->p->main_source;
+  s->desc = p->channel.desc; //afi num for ipv4. should be settable by user
+  //s->channel->table = p->channel.igp_table_ip4 ? p->channel.igp_table_ip4 : p->channel.igp_table_ip6;
+  log("s->channel->table %x", s->channel->table);
+  s->channel->proto = s->p;
+  channel_set_state(s->channel, CS_START);
+  channel_set_state(s->channel, CS_UP);
+  return true;
+}
+
+//maybe TODO mrt version bgp_finish_attrs
+
+static void
+mrt_apply_mpls_labels(struct bgp_parse_state *s UNUSED, rta *a UNUSED, u32 *labels UNUSED, uint lnum UNUSED)
+{
+  /* Do nothing */
+}
+
+static void
+mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct proto *P)
 {
   log("hereeeee bgp message");
+
   mrt_parse_bgp_message(fp, remains, as4);
 
-  if (*remains < 23)
+  if (*remains < 19)
   {
     log(L_WARN "MRT parse BGP message: BGP message is too short (%i)", *remains);
     return;
@@ -261,15 +293,26 @@ mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4)
     return;
   }
 
+  /* This is usually done in proto_do_up, but the protocol will be used immediately */
+  P->main_source = rt_get_source(P, 0);
+  rt_lock_source(P->main_source);
+
   struct bgp_parse_state s = {
-    .pool = lp_new(&root_pool),
+    .pool = lp_new(P->pool),
+    .parse_error = mrt_parse_error,
+    .end_mark = mrt_rx_end_mark,
+    .get_channel = mrt_get_channel_to_parse,
+    .apply_mpls_labels = mrt_apply_mpls_labels,
+    .is_mrt_parse = 1,
+    .p = P,
   };
+
   byte buf[length];
   ASSERT_DIE(length <= remains[0]);
   mrt_load_n_octet(fp, remains, buf, length);
   ea_list *ea = NULL;
   log("try to parse bgp update");
-  bgp_parse_update(&s, buf, length, &ea, bgp_parse_error);
+  bgp_parse_update(&s, buf, length, &ea);
   log("ok, seems parsed?");
 }
 
@@ -283,9 +326,8 @@ mrt_parse_bgp4mp_change_state(FILE *fp, u64 *remains, bool as4)
   log("old state %i new state %i", old_state, new_state);
 }
 
-
 int
-mrt_parse_general_header(FILE *fp)
+mrt_parse_general_header(FILE *fp, struct proto *P)
 {
   char is_eof = fgetc(fp);
   u64 timestamp = is_eof;
@@ -351,7 +393,7 @@ mrt_parse_general_header(FILE *fp)
       case (MRT_BGP4MP_MESSAGE):
       case (MRT_BGP4MP_MESSAGE_LOCAL):
       case (MRT_BGP4MP_MESSAGE_ADDPATH):
-        mrt_parse_bgp4mp_message(fp, &remains, false);
+        mrt_parse_bgp4mp_message(fp, &remains, false, P);
         break;
       case (MRT_BGP4MP_STATE_CHANGE_AS4):
         mrt_parse_bgp4mp_change_state(fp, &remains, true);
@@ -360,7 +402,7 @@ mrt_parse_general_header(FILE *fp)
       case (MRT_BGP4MP_MESSAGE_AS4_LOCAL):
       case (MRT_BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH):
       case (MRT_BGP4MP_MESSAGE_AS4_ADDPATH):
-        mrt_parse_bgp4mp_message(fp, &remains, true);
+        mrt_parse_bgp4mp_message(fp, &remains, true,  P);
         break;
     }
   }
@@ -375,9 +417,10 @@ mrt_parse_general_header(FILE *fp)
 
 
 void
-mrt_load(char *file)
+mrt_load(struct proto *P)
 {
-  FILE *fp = fopen(file, "r");
+  struct mrt_config *cf = SKIP_BACK(struct mrt_config, c, P->cf);
+  FILE *fp = fopen(cf->filename, "r");
 
   if (fp == NULL)
   {
@@ -385,5 +428,5 @@ mrt_load(char *file)
     return;
   }
   
-  while (mrt_parse_general_header(fp));
+  while (mrt_parse_general_header(fp, P));
 }

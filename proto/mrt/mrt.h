@@ -19,6 +19,8 @@
 #include "proto/bgp/bgp.h"
 
 
+extern const struct channel_class channel_mrt;
+
 struct mrt_config {
   struct proto_config c;
 
@@ -28,6 +30,8 @@ struct mrt_config {
   const char *filename;
   uint period;
   int always_add_path;
+  struct bgp_channel_config *channel_cf;
+  const struct bgp_af_desc *desc;
 };
 
 struct mrt_proto {
@@ -37,6 +41,7 @@ struct mrt_proto {
 
   struct mrt_target *file;
   struct mrt_table_dump_state *table_dump;
+  struct bgp_channel channel;
 };
 
 struct mrt_dump_data {
@@ -151,11 +156,12 @@ void mrt_dump_cmd(struct mrt_dump_data *d);
 void mrt_dump_bgp_message(struct mrt_bgp_data *d);
 void mrt_dump_bgp_state_change(struct mrt_bgp_data *d);
 void mrt_check_config(struct proto_config *C);
+void mrt_load_check_config(struct proto_config *CF, struct bgp_channel_config *CC);
 #else
 static inline void mrt_dump_bgp_message(struct mrt_bgp_data *d UNUSED) { }
 static inline void mrt_dump_bgp_state_change(struct mrt_bgp_data *d UNUSED) { }
 #endif
 
-void mrt_load(char *file);
+void mrt_load(struct proto *P);
 
 #endif	/* _BIRD_MRT_H_ */
