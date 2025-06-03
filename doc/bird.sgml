@@ -3681,7 +3681,7 @@ be used in explicit configuration.
 	BGP session (if acceptable), or the preferred address of an associated
 	interface.
 
-	<tag><label id="bgp-next-hop-prefer">next hop prefer global</tag>
+	<tag><label id="bgp-next-hop-prefer">next hop prefer global <m/switch/</tag>
 	Prefer global IPv6 address to link-local IPv6 address for immediate next
 	hops of received routes. For IPv6 routes, the Next Hop attribute may
 	contain both a global IP address and a link-local IP address. For IBGP
@@ -3909,12 +3909,12 @@ the section, we assume the usage of the <cf/configure/ command without the
 direction (re-import of routes from the BGP neighbor):
 
 <itemize>
-	<item><cf/import/
-	<item><cf/preference/
-	<item><cf/gateway/
-	<item><cf/next hop prefer/
-	<item><cf/aigp/
-	<item><cf/cost/
+	<item><cf/<ref id="proto-import" name="import">/
+	<item><cf/<ref id="proto-preference" name="preference">/
+	<item><cf/<ref id="bgp-gateway" name="gateway">/
+	<item><cf/<ref id="bgp-next-hop-prefer" name="next hop prefer global">/
+	<item><cf/<ref id="bgp-aigp" name="aigp">/
+	<item><cf/<ref id="bgp-cost" name="cost">/
 </itemize>
 
 <p>Note: Reload in the import direction requires either the <cf/route refresh/
@@ -3926,58 +3926,57 @@ does not apply for export direction.
 direction (re-export of routes to the BGP neighbor):
 
 <itemize>
-	<item><cf/export/
-	<item><cf/next hop address/
-	<item><cf/next hop self/
-	<item><cf/next hop keep/
-	<item><cf/link local next hop format/
-	<item><cf/aigp/
-	<item><cf/aigp originate/
+	<item><cf/<ref id="proto-export" name="export">/
+	<item><cf/<ref id="bgp-next-hop-address" name="next hop address">/
+	<item><cf/<ref id="bgp-next-hop-self" name="next hop self">/
+	<item><cf/<ref id="bgp-next-hop-keep" name="next hop keep">/
+	<item><cf/<ref id="bgp-link-local-next-hop-format" name="link local next hop format">/
+	<item><cf/<ref id="bgp-aigp" name="aigp">/
 </itemize>
 
 
 <p>Protocol options that cause a restart when changed:
 <itemize>
-	<item><cf/router id/
-	<item><cf/hostname/
-	<item><cf/vrf/
+	<item><cf/<ref id="proto-router-id" name="router id">/
+	<item><cf/<ref id="proto-hostname" name="hostname">/
+	<item><cf/<ref id="proto-vrf" name="vrf">/
 </itemize>
 
 <p><bf/All/ BGP-specific protocol options cause a restart when changed <bf/except/ for these:
 <itemize>
-	<item><cf/bfd/
-	<item><cf/check link/
-	<item><cf/require route refresh/
-	<item><cf/require enhanced route refresh/
-	<item><cf/require AS4/
-	<item><cf/require extended messages/
-	<item><cf/require hostname/
-	<item><cf/require graceful restart/
-	<item><cf/require long lived graceful restart/
+	<item><cf/<ref id="bgp-bfd" name="bfd">/
+	<item><cf/<ref id="bgp-check-link" name="check link">/
+	<item><cf/<ref id="bgp-require-route-refresh" name="require route refresh">/
+	<item><cf/<ref id="bgp-require-enhanced-route-refresh" name="require enhanced route refresh">/
+	<item><cf/<ref id="bgp-require-as4" name="require AS4">/
+	<item><cf/<ref id="bgp-require-extended-messages" name="require extended messages">/
+	<item><cf/<ref id="bgp-require-hostname" name="require hostname">/
+	<item><cf/<ref id="bgp-require-graceful-restart" name="require graceful restart">/
+	<item><cf/<ref id="bgp-require-long-lived-graceful-restart" name="require long lived graceful restart">/
 </itemize>
 
 <p>Channel options that cause a restart when changed:
 <itemize>
-	<item><cf/table/
-	<item><cf/secondary/
-	<item><cf/validate/
-	<item><cf/graceful restart/
-	<item><cf/long lived graceful restart/
-	<item><cf/long lived stale time/
-	<item><cf/extended next hop/
-	<item><cf/add paths/
-	<item><cf/import table/
-	<item><cf/export table/
-	<item><cf/igp table/
-	<item><cf/base table/
+	<item><cf/<ref id="proto-table" name="table">/
+	<item><cf/<ref id="bgp-secondary" name="secondary">/
+	<item><cf/<ref id="bgp-validate" name="validate">/
+	<item><cf/<ref id="bgp-graceful-restart-c" name="graceful restart">/
+	<item><cf/<ref id="bgp-long-lived-graceful-restart-c" name="long lived graceful restart">/
+	<item><cf/<ref id="bgp-long-lived-stale-time-c" name="long lived stale time">/
+	<item><cf/<ref id="bgp-extended-next-hop" name="extended next hop">/
+	<item><cf/<ref id="bgp-add-paths" name="add paths">/
+	<item><cf/<ref id="bgp-import-table" name="import table">/
+	<item><cf/<ref id="bgp-export-table" name="export table">/
+	<item><cf/<ref id="bgp-igp-table" name="igp table">/
+	<item><cf/<ref id="bgp-base-table" name="base table">/
 </itemize>
 
 <p>Channel options that may cause a restart (when changed to a value
 incompatible with the current protocol state):
 <itemize>
-	<item><cf/mandatory/
-	<item><cf/min long lived stale time/
-	<item><cf/max long lived stale time/
+	<item><cf/<ref id="bgp-mandatory" name="mandatory">/
+	<item><cf/<ref id="bgp-min-long-lived-stale-time-c" name="min long lived stale time">/
+	<item><cf/<ref id="bgp-max-long-lived-stale-time-c" name="max long lived stale time">/
 </itemize>
 
 <sect1>Attributes
@@ -6656,7 +6655,7 @@ protocol static {
 		via 192.0.2.1;
 	route 203.0.113.0/24 blackhole; # Sink route
 	route 10.2.0.0/24 via "arc0";	# Direct route
-	route 10.2.2.0/24 via 192.0.2.1 dev "eth0" onlink; # Route with both nexthop and iface
+	route 10.2.2.0/24 via 192.0.2.1 dev "eth0" onlink; # Route with nexthop and iface
 	route 192.168.10.0/24 via 198.51.100.100 {
 		ospf_metric1 = 20;	# Set extended attribute
 	};
