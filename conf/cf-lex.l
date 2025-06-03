@@ -380,6 +380,7 @@ else: {
 \&\& return AND;
 \|\| return OR;
 \-\> return IMP;
+\+\+ return PP;
 
 \[\= return PO;
 \=\] return PC;
