@@ -2833,7 +2833,15 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
       (new->cost != old->cost) ||
       (new->c.preference != old->c.preference))
   {
-    /* import_changed itself does not force ROUTE_REFRESH when import_table is active */
+    /* Route refresh needed, these attributes are set by BGP itself
+     * and even if import table exists, we can't use it */
+
+    /* Route refresh impossible, restart is needed */
+    if ((c->c.channel_state == CS_UP) && !p->route_refresh)
+      return 0;
+
+    /* Force ROUTE_REFRESH with import table; otherwise
+     * it will be forced by import_changed set to 1 later */
     if (c->c.in_table && (c->c.channel_state == CS_UP))
       bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
 
