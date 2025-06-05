@@ -1579,3 +1579,58 @@ test-ibgp-refresh/gen/nono-none-nono-enhanced:
   variables:
     TEST_NAME: cf-ibgp-refresh/gen/nono-none-nono-enhanced
 
+test-ibgp-refresh/gen/nono-basic-nono-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ibgp-refresh/gen/nono-basic-nono-enhanced
+
+test-ibgp-refresh/gen/nono-enhanced-nono-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ibgp-refresh/gen/nono-enhanced-nono-enhanced
+
+test-ibgp-refresh/gen/nono-none-noex-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ibgp-refresh/gen/nono-none-noex-enhanced
+
+test-ibgp-refresh/gen/nono-basic-noex-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ibgp-refresh/gen/nono-basic-noex-enhanced
+
+test-ibgp-refresh/gen/nono-enhanced-noex-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ibgp-refresh/gen/nono-enhanced-noex-enhanced
+
+test-ibgp-refresh/gen/nono-none-imno-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ibgp-refresh/gen/nono-none-imno-enhanced
+
+test-ibgp-refresh/gen/nono-basic-imno-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ibgp-refresh/gen/nono-basic-imno-enhanced
+
+test-ibgp-refresh/gen/nono-enhanced-imno-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ibgp-refresh/gen/nono-enhanced-imno-enhanced
+
+test-ibgp-refresh/gen/nono-none-imex-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ibgp-refresh/gen/nono-none-imex-enhanced
+
+test-ibgp-refresh/gen/nono-basic-imex-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ibgp-refresh/gen/nono-basic-imex-enhanced
+
+test-ibgp-refresh/gen/nono-enhanced-imex-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ibgp-refresh/gen/nono-enhanced-imex-enhanced
+
