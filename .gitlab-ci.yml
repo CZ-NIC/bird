@@ -1529,6 +1529,11 @@ test-ebgp-hostname:
   variables:
     TEST_NAME: cf-ebgp-hostname
 
+test-ebgp-bfd-auth:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-bfd-auth
+
 test-ibgp-loop:
   <<: *test-base
   variables:
@@ -1544,10 +1549,20 @@ test-ibgp-flat:
   variables:
     TEST_NAME: cf-ibgp-flat
 
+test-ibgp-bfd-auth:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ibgp-bfd-auth
+
 test-rip-base:
   <<: *test-base
   variables:
     TEST_NAME: cf-rip-base
+
+test-rip-vrf:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-rip-vrf
 
 test-kernel-learn:
   <<: *test-base
