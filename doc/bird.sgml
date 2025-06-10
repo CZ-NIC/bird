@@ -512,7 +512,7 @@ network interfaces found.
 
 <code>
 protocol kernel {
-	ipv4 {
+	ipv6 {
 		export all;	# Default is export none
 	};
 	persist;		# Don't remove routes on BIRD shutdown
@@ -521,8 +521,8 @@ protocol kernel {
 protocol device {
 }
 
-protocol rip {
-	ipv4 {
+protocol rip ng {
+	ipv6 {
 		import all;
 		export all;
 	};
@@ -915,9 +915,16 @@ agreement").
 	<cf>interface "eth1", "eth4", "eth5" { type ptp; };</cf> - start the
 	protocol on enumerated interfaces with <cf>type ptp</cf> option.
 
+	<cf>interface -2001:db8:cafe::/48, 2001:db8::/32;</cf> - start the protocol
+	on all interfaces that have address from 2001:db8::/32, but not from
+	2001:db8:cafe::/48.
+
 	<cf>interface -192.168.1.0/24, 192.168.0.0/16;</cf> - start the protocol
 	on all interfaces that have address from 192.168.0.0/16, but not from
 	192.168.1.0/24.
+
+	<cf>interface "eth*" 2001:db8:cafe::/48;</cf> - start the protocol on all
+	ethernet interfaces that have address from 2001:db8:cafe::/48.
 
 	<cf>interface "eth*" 192.168.1.0/24;</cf> - start the protocol on all
 	ethernet interfaces that have address from 192.168.1.0/24.
@@ -1105,7 +1112,7 @@ protocol rip ng {
 <p>And this is even more complicated example using templates.
 <code>
 template bgp {
-	local 198.51.100.14 as 65000;
+	local 2001:db8::beef as 65000;
 
 	ipv4 {
 		table mytable4;
@@ -1120,7 +1127,7 @@ template bgp {
 }
 
 protocol bgp from  {
-	neighbor 198.51.100.130 as 64496;
+	neighbor 2001:db8::cafe as 64496;
 
 	# IPv4 channel is inherited as-is, while IPv6
 	# channel is adjusted by export filter option
@@ -1567,13 +1574,24 @@ from the command line client. An example session might look like:
 pavel@bug:~/bird$ ./birdc -s bird.ctl
 BIRD 0.0.0 ready.
 bird> show route
-10.0.0.0/8         dev eth0 [direct1 23:21] (240)
-195.113.30.2/32    dev tunl1 [direct1 23:21] (240)
-127.0.0.0/8        dev lo [direct1 23:21] (240)
+Table master4:
+10.0.0.0/8           unicast [direct1 23:21] (240)
+	dev eth0
+195.113.30.2/32      unicast [direct1 23:21] (240)
+	dev tunl1
+
+Table master6:
+2001:db8::/64        unicast [direct1 23:21] (240)
+	dev eth0
+2001:db8:0:1::/64    unicast [direct1 23:21] (240)
+	dev tunl1
+
 bird> show route ?
-show route [<prefix>] [table <t>] [filter <f>] [all] [primary]...
-bird> show route filter { if 127.0.0.5 &tilde; net then accept; }
-127.0.0.0/8        dev lo [direct1 23:21] (240)
+show route [<prefix>|...] [table <t>] ... [filter <f>|where <cond>] [all] [primary]...
+bird> show route filter { if 2001:db8:: &tilde; net then accept; }
+Table master6:
+2001:db8::/64        unicast [direct1 23:21] (240)
+	dev eth0
 bird>
 </code>
 
@@ -1644,7 +1662,7 @@ in the foot).
 	notation (<cf/10.20.30.40/ or <cf/fec0:3:4::1/). You can apply special
 	operator <cf>.mask(<m>number</m>)</cf> on values of type ip. It masks out
 	all but first <cf><m>number</m></cf> bits from the IP address. So
-	<cf/1.2.3.4.mask(8) = 1.0.0.0/ is true.
+	<cf/2001:db8:dead:beef::.mask(32) = 2001:db8::/ is true.
 
 	<tag><label id="type-prefix">prefix</tag>
 	This type can hold a network prefix consisting of IP address, prefix
@@ -1657,7 +1675,7 @@ in the foot).
 	are written as <cf><m/ipaddress//<m/pxlen/</cf>. There are two special
 	operators on these: <cf/.ip/ which extracts the IP address from the
 	pair, and <cf/.len/, which separates prefix length from the pair.
-	So <cf>1.2.0.0/16.len = 16</cf> is true.
+	So <cf>2001:db8:cafe::/48.len = 48</cf> is true.
 
 	<cf/NET_IP6_SADR/ nettype holds both destination and source IPv6
 	prefix. The literals are written as <cf><m/ipaddress//<m/pxlen/ from
@@ -1776,19 +1794,19 @@ ec set es = [ (rt, myas, *), (rt, myas+2, 0..16*16*16-1) ];
 	<cf><m/address//<m/len/</cf> and all its supernets (network prefixes
 	that contain it).
 
-	For example, <cf>[ 1.0.0.0/8, 2.0.0.0/8+, 3.0.0.0/8-, 4.0.0.0/8{16,24}
-	]</cf> matches prefix <cf>1.0.0.0/8</cf>, all subprefixes of
-	<cf>2.0.0.0/8</cf>, all superprefixes of <cf>3.0.0.0/8</cf> and prefixes
-	<cf/4.X.X.X/ whose prefix length is 16 to 24. <cf>[ 0.0.0.0/0{20,24} ]</cf>
+	For example, <cf>[ 2001:db8:1::/48, 200a:db8:2::/48+, 3fff:1::/32-, 3fff:2::/{32,48}
+	]</cf> matches prefix <cf>2001:db8:1::/48</cf>, all subprefixes of
+	<cf>200a:db8:2::/48</cf>, all superprefixes of <cf>3fff:1::/32</cf> and prefixes
+	<cf/3fff:2:XXXX::/ whose prefix length is 32 to 48. <cf>[ ::/0{48,64} ]</cf>
 	matches all prefixes (regardless of IP address) whose prefix length is
-	20 to 24, <cf>[ 1.2.3.4/32- ]</cf> matches any prefix that contains IP
-	address <cf>1.2.3.4</cf>. <cf>1.2.0.0/16 &tilde; [ 1.0.0.0/8{15,17} ]</cf>
-	is true, but <cf>1.0.0.0/16 &tilde; [ 1.0.0.0/8- ]</cf> is false.
+	48 to 64, <cf>[ 2001:db8::dead:beef/128- ]</cf> matches any prefix that contains IP
+	address <cf>2001:db8::dead:beef</cf>. <cf>2001:db8:0:100::/56 &tilde; [ 2001:db8::/32{48,64} ]</cf>
+	is true, but <cf>2001:db8::/48 &tilde; [ 2001:db8::/32- ]</cf> is false.
 
-	Cisco-style patterns like <cf>10.0.0.0/8 ge 16 le 24</cf> can be expressed
-	in BIRD as <cf>10.0.0.0/8{16,24}</cf>, <cf>192.168.0.0/16 le 24</cf> as
-	<cf>192.168.0.0/16{16,24}</cf> and <cf>192.168.0.0/16 ge 24</cf> as
-	<cf>192.168.0.0/16{24,32}</cf>.
+	Cisco-style patterns like <cf>2001:db8::/32 ge 48 le 64</cf> can be expressed
+	in BIRD as <cf>2001:db8::/32{48,64}</cf>, <cf>2001:db8::/32 le 48</cf> as
+	<cf>2001:db8::/32{32,48}</cf> and <cf>2001:db8::/48 ge 64</cf> as
+	<cf>2001:db8::/48{64,128}</cf>.
 
 	It is not possible to mix IPv4 and IPv6 prefixes in a prefix set. It is
 	currently possible to mix IPv4 and IPv6 addresses in an ip set, but that
@@ -2792,6 +2810,10 @@ protocol bfd {
 		multiplier 10;
 	};
 
+	neighbor fe80::1;
+	neighbor fe80::2 dev "eth2";
+	neighbor 2001:db8::cafe local 2001:db8::beef multihop;
+
 	neighbor 192.168.1.10;
 	neighbor 192.168.2.2 dev "eth2";
 	neighbor 192.168.10.1 local 192.168.1.1 multihop;
@@ -3031,8 +3053,8 @@ protocol bgp [<name>] {
 	address, equivalent to the <cf/source address/ option (see below).
 	Optional <cf/port/ argument specifies the local BGP port instead of
 	standard port 179. The parameter may be used multiple times with
-	different sub-options (e.g., both <cf/local 10.0.0.1 as 65000;/ and
-	<cf/local 10.0.0.1; local as 65000;/ are valid). This parameter is
+	different sub-options (e.g., both <cf/local 2001:db8::cafe as 65000;/ and
+	<cf/local 2001:db8::cafe; local as 65000;/ are valid). This parameter is
 	mandatory.
 
 	<tag><label id="bgp-neighbor">neighbor [<m/ip/ | range <m/prefix/] [port <m/number/] [as <m/number/] [internal|external]</tag>
@@ -4094,8 +4116,8 @@ incompatibility with future BIRD versions.
 
 <p><code>
 protocol bgp {
-	local 198.51.100.14 as 65000;	     # Use a private AS number
-	neighbor 198.51.100.130 as 64496;    # Our neighbor ...
+	local 2001:db8::cafe as 65000;	     # Use a private AS number
+	neighbor 2001:db8::beef as 64496;    # Our neighbor ...
 	multihop;			     # ... which is connected indirectly
 	authentication ao;		     # We use TCP-AO authentication
 	keys {
@@ -4176,7 +4198,7 @@ routes (in regular routing tables). All BGP protocols are monitored automaticall
 <p><code>
 protocol bmp {
 	# The monitoring station to connect to
-	station address ip 198.51.100.10 port 1790;
+	station address ip 2001:db8::cafe port 1790;
 
 	# Monitor received routes (in import table)
 	monitoring rib in pre_policy;
@@ -4461,7 +4483,7 @@ protocol kernel {		# Primary routing table
 	learn;			# Learn alien routes from the kernel
 	persist;		# Do not remove routes on bird shutdown
 	scan time 10;		# Scan kernel routing table every 10 seconds
-	ipv4 {
+	ipv6 {
 		import all;
 		export all;
 	};
@@ -4469,7 +4491,7 @@ protocol kernel {		# Primary routing table
 
 protocol kernel {		# Secondary routing table
 	kernel table 100;
-	ipv4 {
+	ipv6 {
 		table auxtable;
 		export all;
 	};
@@ -4576,8 +4598,8 @@ protocol bgp {
 	vpn4 { table vpntab4; import all; export all; };
 	vpn6 { table vpntab6; import all; export all; };
 	mpls { label policy aggregate; };
-	local 10.0.0.1 as 10;
-	neighbor 10.0.0.2 as 10;
+	local 2001:db8::cafe as 10;
+	neighbor 2001:db8::beef as 10;
 }
 
 # VRF 0
@@ -5254,8 +5276,8 @@ network. This attribute is read-only. Default is <cf/ospf_metric2 = 10000/ and
 <label id="ospf-exam">
 
 <p><code>
-protocol ospf MyOSPF {
-	ipv4 {
+protocol ospf v3 MyOSPF {
+	ipv6 {
 		export filter {
 			if source = RTS_BGP then {
 				ospf_metric1 = 100;
@@ -5298,8 +5320,8 @@ protocol ospf MyOSPF {
 	area 120 {
 		stub yes;
 		networks {
-			172.16.1.0/24;
-			172.16.2.0/24 hidden;
+			2001:db8:1::/48;
+			2001:db8:2::/48 hidden;
 		};
 		interface "-arc0" , "arc*" {
 			type nonbroadcast;
@@ -5309,9 +5331,9 @@ protocol ospf MyOSPF {
 			poll 40;
 			dead count 8;
 			neighbors {
-				192.168.120.1 eligible;
-				192.168.120.2;
-				192.168.120.10;
+				2001:db8::1 eligible;
+				2001:db8::2;
+				2001:db8::a;
 			};
 		};
 	};
@@ -5434,36 +5456,36 @@ Pipe protocol while decreasing their preferences and correcting their BGP paths
 to reflect the AS boundary crossing.
 
 <code>
-ipv4 table as1;				# Define the tables
-ipv4 table as2;
+ipv6 table as1;				# Define the tables
+ipv6 table as2;
 
 protocol kernel kern1 {			# Synchronize them with the kernel
-	ipv4 { table as1; export all; };
+	ipv6 { table as1; export all; };
 	kernel table 1;
 }
 
 protocol kernel kern2 {
-	ipv4 { table as2; export all; };
+	ipv6 { table as2; export all; };
 	kernel table 2;
 }
 
 protocol bgp bgp1 {			# The outside connections
-	ipv4 { table as1; import all; export all; };
+	ipv6 { table as1; import all; export all; };
 	local as 1;
-	neighbor 192.168.0.1 as 1001;
+	neighbor 2001:db8::cafe as 1001;
 }
 
 protocol bgp bgp2 {
-	ipv4 { table as2; import all; export all; };
+	ipv6 { table as2; import all; export all; };
 	local as 2;
-	neighbor 10.0.0.1 as 1002;
+	neighbor 2001:db8::beef as 1002;
 }
 
 protocol pipe {				# The Pipe
 	table as1;
 	peer table as2;
 	export filter {
-		if net ~ [ 1.0.0.0/8+] then {	# Only AS1 networks
+		if net ~ [ 3fff:1:/32+ ] then {	# Only AS1 networks
 			if preference>10 then preference = preference-10;
 			if source=RTS_BGP then bgp_path.prepend(1);
 			accept;
@@ -5471,7 +5493,7 @@ protocol pipe {				# The Pipe
 		reject;
 	};
 	import filter {
-		if net ~ [ 2.0.0.0/8+] then {	# Only AS2 networks
+		if net ~ [ 3fff:2:/32+ ] then {	# Only AS2 networks
 			if preference>10 then preference = preference-10;
 			if source=RTS_BGP then bgp_path.prepend(2);
 			accept;
@@ -6105,8 +6127,8 @@ protocol rip [ng] [<name>] {
 <label id="rip-exam">
 
 <p><code>
-protocol rip {
-	ipv4 {
+protocol rip ng {
+	ipv6 {
 		import all;
 		export all;
 	};
@@ -6311,8 +6333,8 @@ protocol rpki {
 	expire 600;
 }
 
-filter peer_in_v4 {
-	if (roa_check(r4, net, bgp_path.last) = ROA_INVALID) then
+filter peer_in_v6 {
+	if (roa_check(r6, net, bgp_path.last) = ROA_INVALID) then
 	{
 		print "Ignore RPKI invalid ", net, " for ASN ", bgp_path.last;
 		reject;
@@ -6323,9 +6345,9 @@ filter peer_in_v4 {
 protocol bgp {
 	debug all;
 	local as 65000;
-	neighbor 192.168.2.1 as 65001;
-	ipv4 {
-		import filter peer_in_v4;
+	neighbor 2001:db8::cafe as 65001;
+	ipv6 {
+		import filter peer_in_v6;
 		export none;
 	};
 }
@@ -6345,7 +6367,7 @@ protocol rpki {
 	roa4 { table r4; };
 	roa6 { table r6; };
 
-	remote 127.0.0.1 port 2345;
+	remote ::1 port 2345;
 	transport ssh {
 		bird private key "/home/birdgeek/.ssh/id_rsa";
 		remote public key "/home/birdgeek/.ssh/known_hosts";
@@ -6440,7 +6462,7 @@ as the destination becomes adjacent again.
 (i.e., they can be used multiple times for a route, one time for each nexthop).
 Syntactically, they are not separate options but just parts of <cf/route/
 statement after each <cf/via/ statement, not separated by semicolons. E.g.,
-statement <cf>route 10.0.0.0/8 via 192.0.2.1 bfd weight 1 via 192.0.2.2 weight
+statement <cf>route 3fff:0:1::/48 via 2001:db8::1 bfd weight 1 via 2001:db8::2 weight
 2;</cf> describes a route with two nexthops, the first nexthop has two per-nexthop
 options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 
@@ -6473,7 +6495,7 @@ options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 	Onlink flag means that the specified nexthop is accessible on the
 	(specified) interface regardless of IP prefixes of the interface. The
 	interface must be attached to nexthop IP address using link-local-scope
-	format (e.g. <cf/192.0.2.1%eth0/). Default value is no.
+	format (e.g. <cf/2001:db8::cafe%eth0/). Default value is no.
 
 	<tag><label id="static-route-weight">weight <m/switch/</tag>
 	For multipath routes, this value specifies a relative weight of the
