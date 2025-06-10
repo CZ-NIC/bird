@@ -515,6 +515,9 @@ protocol kernel {
 	ipv6 {
 		export all;	# Default is export none
 	};
+	ipv4 {
+		export all;	# Default is export none
+	};
 	persist;		# Don't remove routes on BIRD shutdown
 }
 
@@ -528,6 +531,13 @@ protocol rip ng {
 	};
 	interface "*";
 }
+
+protocol rip {
+	ipv4 {
+		import all;
+		export all;
+	};
+	interface "*";
 </code>
 
 
@@ -1135,6 +1145,31 @@ protocol bgp from  {
 		export filter { ... };
 	};
 }
+
+template bgp {
+	local 198.51.100.14 as 65000;
+
+	ipv4 {
+		table mytable4;
+		import filter { ... };
+		export none;
+	};
+	ipv6 {
+		table mytable6;
+		import filter { ... };
+		export none;
+	};
+}
+
+protocol bgp from  {
+	neighbor 198.51.100.130 as 64496;
+
+	# IPv4 channel is inherited as-is, while IPv6
+	# channel is adjusted by export filter option
+	ipv6 {
+		export filter { ... };
+	};
+}
 </code>
 
 
@@ -1573,6 +1608,17 @@ from the command line client. An example session might look like:
 <code>
 pavel@bug:~/bird$ ./birdc -s bird.ctl
 BIRD 0.0.0 ready.
+
+bird> show route
+10.0.0.0/8         dev eth0 [direct1 23:21] (240)
+195.113.30.2/32    dev tunl1 [direct1 23:21] (240)
+127.0.0.0/8        dev lo [direct1 23:21] (240)
+bird> show route ?
+show route [<prefix>] [table <t>] [filter <f>] [all] [primary]...
+bird> show route filter { if 127.0.0.5 &tilde; net then accept; }
+127.0.0.0/8        dev lo [direct1 23:21] (240)
+bird>
+
 bird> show route
 Table master4:
 10.0.0.0/8           unicast [direct1 23:21] (240)
@@ -1662,7 +1708,8 @@ in the foot).
 	notation (<cf/10.20.30.40/ or <cf/fec0:3:4::1/). You can apply special
 	operator <cf>.mask(<m>number</m>)</cf> on values of type ip. It masks out
 	all but first <cf><m>number</m></cf> bits from the IP address. So
-	<cf/2001:db8:dead:beef::.mask(32) = 2001:db8::/ is true.
+	<cf/2001:db8:dead:beef::.mask(32) = 2001:db8::/ (IPv6) or
+	<cf/1.2.3.4.mask(8) = 1.0.0.0/ (IPv4) is true.
 
 	<tag><label id="type-prefix">prefix</tag>
 	This type can hold a network prefix consisting of IP address, prefix
@@ -1675,7 +1722,8 @@ in the foot).
 	are written as <cf><m/ipaddress//<m/pxlen/</cf>. There are two special
 	operators on these: <cf/.ip/ which extracts the IP address from the
 	pair, and <cf/.len/, which separates prefix length from the pair.
-	So <cf>2001:db8:cafe::/48.len = 48</cf> is true.
+	So <cf>2001:db8:cafe::/48.len = 48</cf> (IPv6) or
+	<cf>1.2.0.0/16.len = 16</cf> (IPv4) is true.
 
 	<cf/NET_IP6_SADR/ nettype holds both destination and source IPv6
 	prefix. The literals are written as <cf><m/ipaddress//<m/pxlen/ from
@@ -1794,7 +1842,7 @@ ec set es = [ (rt, myas, *), (rt, myas+2, 0..16*16*16-1) ];
 	<cf><m/address//<m/len/</cf> and all its supernets (network prefixes
 	that contain it).
 
-	For example, <cf>[ 2001:db8:1::/48, 200a:db8:2::/48+, 3fff:1::/32-, 3fff:2::/{32,48}
+	For example (IPv6), <cf>[ 2001:db8:1::/48, 200a:db8:2::/48+, 3fff:1::/32-, 3fff:2::/{32,48}
 	]</cf> matches prefix <cf>2001:db8:1::/48</cf>, all subprefixes of
 	<cf>200a:db8:2::/48</cf>, all superprefixes of <cf>3fff:1::/32</cf> and prefixes
 	<cf/3fff:2:XXXX::/ whose prefix length is 32 to 48. <cf>[ ::/0{48,64} ]</cf>
@@ -1807,6 +1855,20 @@ ec set es = [ (rt, myas, *), (rt, myas+2, 0..16*16*16-1) ];
 	in BIRD as <cf>2001:db8::/32{48,64}</cf>, <cf>2001:db8::/32 le 48</cf> as
 	<cf>2001:db8::/32{32,48}</cf> and <cf>2001:db8::/48 ge 64</cf> as
 	<cf>2001:db8::/48{64,128}</cf>.
+
+	For example (IPv4), <cf>[ 1.0.0.0/8, 2.0.0.0/8+, 3.0.0.0/8-, 4.0.0.0/8{16,24}
+	]</cf> matches prefix <cf>1.0.0.0/8</cf>, all subprefixes of
+	<cf>2.0.0.0/8</cf>, all superprefixes of <cf>3.0.0.0/8</cf> and prefixes
+	<cf/4.X.X.X/ whose prefix length is 16 to 24. <cf>[ 0.0.0.0/0{20,24} ]</cf>
+	matches all prefixes (regardless of IP address) whose prefix length is
+	20 to 24, <cf>[ 1.2.3.4/32- ]</cf> matches any prefix that contains IP
+	address <cf>1.2.3.4</cf>. <cf>1.2.0.0/16 &tilde; [ 1.0.0.0/8{15,17} ]</cf>
+	is true, but <cf>1.0.0.0/16 &tilde; [ 1.0.0.0/8- ]</cf> is false.
+
+	Cisco-style patterns like <cf>10.0.0.0/8 ge 16 le 24</cf> can be expressed
+	in BIRD as <cf>10.0.0.0/8{16,24}</cf>, <cf>192.168.0.0/16 le 24</cf> as
+	<cf>192.168.0.0/16{16,24}</cf> and <cf>192.168.0.0/16 ge 24</cf> as
+	<cf>192.168.0.0/16{24,32}</cf>.
 
 	It is not possible to mix IPv4 and IPv6 prefixes in a prefix set. It is
 	currently possible to mix IPv4 and IPv6 addresses in an ip set, but that
@@ -3054,7 +3116,8 @@ protocol bgp [<name>] {
 	Optional <cf/port/ argument specifies the local BGP port instead of
 	standard port 179. The parameter may be used multiple times with
 	different sub-options (e.g., both <cf/local 2001:db8::cafe as 65000;/ and
-	<cf/local 2001:db8::cafe; local as 65000;/ are valid). This parameter is
+	<cf/local 2001:db8::cafe; local as 65000;/ (IPv6) or both <cf/local 10.0.0.1 as 65000;/
+	and <cf/local 10.0.0.1; local as 65000;/ (IPv4) are valid). This parameter is
 	mandatory.
 
 	<tag><label id="bgp-neighbor">neighbor [<m/ip/ | range <m/prefix/] [port <m/number/] [as <m/number/] [internal|external]</tag>
@@ -6461,9 +6524,11 @@ as the destination becomes adjacent again.
 <p>There are several options that in a case of multipath route are per-nexthop
 (i.e., they can be used multiple times for a route, one time for each nexthop).
 Syntactically, they are not separate options but just parts of <cf/route/
-statement after each <cf/via/ statement, not separated by semicolons. E.g.,
-statement <cf>route 3fff:0:1::/48 via 2001:db8::1 bfd weight 1 via 2001:db8::2 weight
-2;</cf> describes a route with two nexthops, the first nexthop has two per-nexthop
+statement after each <cf/via/ statement, not separated by semicolons.
+E.g., statement
+<cf>route 3fff:0:1::/48 via 2001:db8::1 bfd weight 1 via 2001:db8::2 weight 2;</cf> (IPv6) or
+<cf>route 10.0.0.0/8 via 192.0.2.1 bfd weight 1 via 192.0.2.2 weight 2;</cf> (IPv4)
+describes a route with two nexthops, the first nexthop has two per-nexthop
 options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 
 <descrip>
@@ -6495,7 +6560,8 @@ options (<cf/bfd/ and <cf/weight 1/), the second nexthop has just <cf/weight 2/.
 	Onlink flag means that the specified nexthop is accessible on the
 	(specified) interface regardless of IP prefixes of the interface. The
 	interface must be attached to nexthop IP address using link-local-scope
-	format (e.g. <cf/2001:db8::cafe%eth0/). Default value is no.
+	format (e.g. <cf/2001:db8::cafe%eth0/ (IPv6) or <cf/192.0.2.1%eth0/ (IPv4)).
+	Default value is no.
 
 	<tag><label id="static-route-weight">weight <m/switch/</tag>
 	For multipath routes, this value specifies a relative weight of the
