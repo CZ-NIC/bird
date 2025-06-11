@@ -165,10 +165,11 @@
 #define HASH_WALK(v,next,n)						\
   do {									\
     HASH_TYPE(v) *n;							\
+    const uint _count = v.count;					\
     uint _i;								\
     uint _s = HASH_SIZE(v);						\
     for (_i = 0; _i < _s; _i++)						\
-      for (n = (v).data[_i]; n; n = n->next)
+      for (n = (v).data[_i]; ({ ASSERT_DIE(v.count == _count); }), n; n = n->next)
 
 #define HASH_WALK_END } while (0)
 
