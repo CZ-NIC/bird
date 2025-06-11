@@ -37,10 +37,9 @@ struct test_node nodes[MAX_NUM];
 static void
 print_rate_of_fulfilment(void)
 {
-  int i;
   int num_stacked_items = 0;
 
-  for (i = 0; i < MAX_NUM; i++)
+  for (size_t i = 0; i < HASH_SIZE(hash); i++)
     if (!hash.data[i])
       num_stacked_items++;
 
