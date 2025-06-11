@@ -177,10 +177,12 @@
 #define HASH_WALK(v,next,n)						\
   do {									\
     HASH_TYPE(v) *n;							\
+    const uint _count = (v).count;					\
     uint _i;								\
     uint _s = HASH_SIZE(v);						\
     for (_i = 0; _i < _s; _i++)						\
-      for (n = (v).data[_i]; n; n = n->next)
+      for (n = (v).data[_i]; n;						\
+	  ({ASSERT_DIE(v.count == _count);}), n = n->next)
 
 #define HASH_WALK_END } while (0)
 
@@ -188,10 +190,12 @@
 #define HASH_WALK_DELSAFE(v,next,n)					\
   do {									\
     HASH_TYPE(v) *n, *_next;						\
+    const uint _order = (v).order;					\
     uint _i;								\
     uint _s = HASH_SIZE(v);						\
     for (_i = 0; _i < _s; _i++)						\
-      for (n = (v).data[_i]; n && (_next = n->next, 1); n = _next)
+      for (n = (v).data[_i]; n && (_next = n->next, 1);			\
+	 ({ASSERT_DIE((v).order == _order);}), n = _next)
 
 #define HASH_WALK_DELSAFE_END } while (0)
 
@@ -199,10 +203,13 @@
 #define HASH_WALK_FILTER(v,next,n,nn)					\
   do {									\
     HASH_TYPE(v) *n, **nn;						\
+    const uint _order = (v).order;					\
     uint _i;								\
     uint _s = HASH_SIZE(v);						\
     for (_i = 0; _i < _s; _i++)						\
-      for (nn = (v).data + _i; n = *nn; (*nn == n) ? (nn = &n->next) : NULL)
+      for (nn = (v).data + _i; n = *nn;					\
+	  ({ASSERT_DIE((v).order == _order);}),				\
+	  (*nn == n) ? (nn = &n->next) : NULL)
 
 #define HASH_WALK_FILTER_END } while (0)
 
