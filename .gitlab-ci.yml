@@ -1387,6 +1387,7 @@ build-netlab:
     - netlab
     - amd64
   script:
+    - sudo rm -rf netlab-failure
     - DIR=$(pwd)
     - cd $TOOLS_DIR
     - sudo git clean -fx
@@ -1397,8 +1398,12 @@ build-netlab:
     - sudo ./stop
     - sudo ./runtest -s v2 -m check $TEST_NAME
   after_script:
+    - DIR=$(pwd)
     - cd $TOOLS_DIR/netlab
     - sudo ./stop
+    - "mkdir $DIR/netlab-failure"
+    - git status --porcelain > $DIR/netlab-failure.log
+    - for f in $(git status --porcelain | sed -rn 's#^.[^DRT] netlab/##p'); do mkdir -p $DIR/netlab-failure/$(dirname $f); sudo chmod a+rw $f; sudo mv $f $DIR/netlab-failure/$(dirname $f); done
   artifacts:
     when: on_failure
     untracked: true
