@@ -648,7 +648,7 @@ include "tablename.conf";;
 	Define a constant. You can use it later in every place you could use a
 	value of the same type. Besides, there are some predefined numeric
 	constants based on /etc/iproute2/rt_* files. A list of defined constants
-	can be seen (together with other symbols) using <cf/show symbols/ command.
+	can be seen (together with other symbols) using <cf/<ref id="cli-show-symbols" name="show symbols">/ command.
 
 	<tag><label id="opt-attribute">attribute <m/type/ <m/name/</tag>
 	Declare a custom route attribute. You can set and get it in filters like
@@ -663,7 +663,7 @@ include "tablename.conf";;
 	<tag><label id="opt-router-id-from">router id from [-] [ "<m/mask/" ] [ <m/prefix/ ] [, <m/.../]</tag>
 	Set BIRD's router ID based on an IPv4 address of an interface specified by
 	an interface pattern.
-	See <ref id="proto-iface" name="interface"> section for detailed
+	See <cf/<ref id="proto-iface" name="interface">/ section for detailed
 	description of interface patterns with extended clauses.
 
 	<tag><label id="opt-hostname">hostname "<m/name/"</tag>
@@ -678,8 +678,8 @@ include "tablename.conf";;
 	<tag><label id="opt-timeformat">timeformat route|protocol|base|log "<m/format1/" [<m/limit/ "<m/format2/"]</tag>
 	This option allows to specify a format of date/time used by BIRD. The
 	first argument specifies for which purpose such format is used.
-	<cf/route/ is a format used in <cf/show route/ command output,
-	<cf/protocol/ is used in <cf/show protocols/ command output, <cf/base/ is
+	<cf/route/ is a format used in <cf/<ref id="cli-show-route" name="show route">/ command output,
+	<cf/protocol/ is used in <cf/<ref id="cli-show-protocols" name="show protocols">/ command output, <cf/base/ is
 	used for other commands and <cf/log/ is used in a log file.
 
 	"<m/format1/" is a format string using <it/strftime(3)/ notation (see
@@ -848,7 +848,7 @@ agreement").
 
 	<tag><label id="proto-description">description "<m/text/"</tag>
 	This is an optional description of the protocol. It is displayed as a
-	part of the output of <cf/show protocols all/ command.
+	part of the output of <cf/<ref id="cli-show-protocols" name="show protocols all">/ command.
 
 	<tag><label id="proto-vrf">vrf "<m/text/"|default</tag>
 	Associate the protocol with specific VRF. The protocol will be
@@ -867,7 +867,7 @@ agreement").
 	version at least 4.14, older versions have limited VRF implementation.
 	Before Linux kernel 5.0, a socket bound to a port in default VRF collide
 	with others in regular VRFs. In BGP, this can be avoided by using
-	<ref id="bgp-strict-bind" name="strict bind"> option.
+	<cf/<ref id="bgp-strict-bind" name="strict bind">/ option.
 
 	<tag><label id="proto-channel"><m/channel name/ [{<m/channel config/}]</tag>
 	Every channel must be explicitly stated. See the protocol-specific
@@ -3900,8 +3900,8 @@ leads to a restart.
 <p>With the <cf/configure soft/ command, configuration changes do not trigger
 a reload, but instead just log a message about the change, suggesting manual
 reload of the channel. However, changes demanding restart still trigger a
-restart of the protocol. See <ref id="cli-configure" name="configure"> and
-<ref id="cli-reload" name="reload"> commands for more details. In the rest of
+restart of the protocol. See <cf/<ref id="cli-configure" name="configure">/ and
+<cf/<ref id="cli-reload" name="reload">/ commands for more details. In the rest of
 the section, we assume the usage of the <cf/configure/ command without the
 <cf/soft/ option.
 
