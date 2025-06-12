@@ -253,7 +253,7 @@ The global best route selection algorithm is (roughly) as follows:
 <p><label id="dsc-table-sorted">Usually, a routing table just chooses a selected
 route from a list of entries for one network. Optionally, these lists of entries
 are kept completely sorted (according to preference or some protocol-dependent
-metric). See <ref id="rtable-sorted" name="sorted"> table option for details.
+metric). See <cf/<ref id="rtable-sorted" name="sorted">/ table option for details.
 
 <sect>Routes and network types
 <label id="routes">
@@ -397,8 +397,8 @@ particular boot by option <cf/-R/.
 <p>Some protocols (e.g. BGP) could be restarted gracefully after both
 intentional outage and crash, while others (e.g. OSPF) after intentional outage
 only. For planned graceful restart, BIRD must be shut down by
-<ref id="cli-graceful-restart" name="graceful restart"> command instead of
-regular <ref id="cli-down" name="down"> command. In this way routing neighbors
+<cf/<ref id="cli-graceful-restart" name="graceful restart">/ command instead of
+regular <cf/<ref id="cli-down" name="down">/ command. In this way routing neighbors
 are notified about planned graceful restart and routes are kept in kernel table
 after shutdown.
 
@@ -437,8 +437,8 @@ MPLS-aware routing protocols not only distribute IP routing information, but
 they also distribute labels. Therefore, they produce labeled routes - routes
 representing label switched paths (LSPs) through the MPLS domain. Such routes
 have IP prefix and next hop address like regular (non-labeled) routes, but they
-also have local MPLS label (in route attribute <ref id="rta-mpls-label"
-name="mpls_label">) and outgoing MPLS label (as a part of the next hop). They
+also have local MPLS label (in route attribute <cf/<ref id="rta-mpls-label"
+name="mpls_label">/) and outgoing MPLS label (as a part of the next hop). They
 are stored in regular IP routing tables.
 
 Labeled routes are used for exchange of routing information between routing
@@ -449,8 +449,8 @@ and they are stored in the MPLS routing table.
 
 In BIRD, the whole process generally works this way: A MPLS-aware routing
 protocol (say BGP) receives routing information including remote label. It
-produces a route with attribute <ref id="rta-mpls-policy" name="mpls_policy">
-specifying desired <ref id="mpls-channel-label-policy" name="MPLS label policy">.
+produces a route with attribute <cf/<ref id="rta-mpls-policy" name="mpls_policy">/
+specifying desired MPLS <cf/<ref id="mpls-channel-label-policy" name="label policy">/.
 Such route then passes the import filter (which could modify the MPLS label
 policy or perhaps assign a static label) and when it is accepted, a local MPLS
 label is selected (according to the label policy) and attached to the route,
@@ -502,7 +502,7 @@ dots and colons (e.g.  <cf/'1:strange-name'/, <cf/'-NAME-'/, <cf/'cool::name'/).
 
 <p>In most cases where options use an argument that is a basic data type (e.g.
 number, string, IP address) it is possible to use a named constant (defined
-by <ref id="opt-define" name="define"> statement), or a constant expression
+by <cf/<ref id="opt-define" name="define">/ statement), or a constant expression
 enclosed in parenthesis (e.g. <cf/(2 + 2)/). These expressions use
 <ref id="filters" name="the BIRD filter language">.
 
@@ -576,17 +576,17 @@ include "tablename.conf";;
 
 	<tag><label id="opt-debug-protocols">debug protocols all|off|{ states|routes|filters|interfaces|events|packets [, <m/.../] }</tag>
 	Set global defaults of protocol debugging options.
-	See <ref id="proto-debug" name="debug"> in the following section.
+	See <cf/<ref id="proto-debug" name="debug">/ in the following section.
 	Default: off.
 
 	<tag><label id="opt-debug-channels">debug channels all|off|{ states|routes|filters|events [, <m/.../] }</tag>
 	Set global defaults of channel debugging options.
-	See <ref id="channel-debug" name="debug"> in the channel section.
+	See <cf/<ref id="channel-debug" name="debug">/ in the channel section.
 	Default: off.
 
 	<tag><label id="opt-debug-tables">debug tables all|off|{ states|routes|filters|events [, <m/.../] }</tag>
 	Set global defaults of table debugging options.
-	See <ref id="table-debug" name="debug"> in the table section.
+	See <cf/<ref id="table-debug" name="debug">/ in the table section.
 	Default: off.
 
 	<tag><label id="opt-debug-commands">debug commands <m/number/</tag>
@@ -767,13 +767,13 @@ to set options.
 
 	<tag><label id="rtable-min-settle-time">min settle time <m/time/</tag>
 	Specify a minimum value of the settle time. When a ROA table changes,
-	automatic <ref id="proto-rpki-reload" name="RPKI reload"> may be
+	automatic <cf/<ref id="proto-rpki-reload" name="rpki reload">/ may be
 	triggered, after a short settle time. Minimum settle time is a delay
 	from the last ROA table change to wait for more updates. Default: 1 s.
 
 	<tag><label id="rtable-max-settle-time">max settle time <m/time/</tag>
 	Specify a maximum value of the settle time. When a ROA table changes,
-	automatic <ref id="proto-rpki-reload" name="RPKI reload"> may be
+	automatic <cf/<ref id="proto-rpki-reload" name="rpki reload">/ may be
 	triggered, after a short settle time. Maximum settle time is an upper
 	limit to the settle time from the initial ROA table change even if
 	there are consecutive updates gradually renewing the settle time.
@@ -945,7 +945,7 @@ agreement").
 	protocol-dependent <cf/authentication/ option.
 
 	A password can be specified as a string or as a sequence of hexadecimal
-	digit pairs (<ref id="type-bytestring" name="bytestring">).
+	digit pairs (<cf/<ref id="type-bytestring" name="bytestring">/).
 
 	This option is allowed in BFD, OSPF, RIP, and Babel protocols. BGP has
 	also <cf/password/ option, but it is slightly different and described
@@ -1047,8 +1047,8 @@ inherited from templates can be updated by new definitions.
 	reloads have to be requested manually. The option is ignored if neither
 	<cf/roa_check()/ nor <cf/aspa_check()/ is used in channel filters. Note
 	that for BGP channels, automatic reload requires
-	<ref id="bgp-import-table" name="import table"> or
-	<ref id="bgp-export-table" name="export table"> (for respective
+	<cf/<ref id="bgp-import-table" name="import table">/ or
+	<cf/<ref id="bgp-export-table" name="export table">/ (for respective
 	direction). Default: on.
 
 	<tag><label id="proto-import-limit">import limit [<m/number/ | off ] [action warn | block | restart | disable]</tag>
@@ -1173,7 +1173,7 @@ name="channel options">, MPLS channels have some specific options:
 
 	The policy <cf/static/ means no dynamic label allocation is done, and
 	static labels must be set in import filters using the route attribute
-	<ref id="rta-mpls-label" name="mpls_label">.
+	<cf/<ref id="rta-mpls-label" name="mpls_label">/.
 
 	The policy <cf/prefix/ means each prefix uses separate label associated
 	with that prefix. When a labeled route is updated, it keeps the label.
@@ -1392,7 +1392,7 @@ This argument can be omitted if there exists only a single instance.
 	affected protocols.
 
 	The previous configuration is saved and the user can switch back to it
-	with <ref id="cli-configure-undo" name="configure undo"> command. The
+	with <cf/<ref id="cli-configure-undo" name="configure undo">/ command. The
 	old saved configuration is released (even if the reconfiguration attempt
 	fails due to e.g. a syntax error).
 
@@ -1450,7 +1450,7 @@ This argument can be omitted if there exists only a single instance.
 	Override format of date/time used by BIRD in this CLI session.
 
 	Meaning of "<m/format1/", <m/limit/, and "<m/format2/" is the same as in the
-	<ref id="opt-timeformat" name="timeformat"> configuration option. Also, the
+	<cf/<ref id="opt-timeformat" name="timeformat">/ configuration option. Also, the
 	same <cf/iso .../ shorthands may be used.
 
 	<tag><label id="cli-down">down</tag>
@@ -2068,7 +2068,7 @@ exception to this rule are attributes of bgppath and *clist types, where
 undefined value is regarded as empty bgppath/*clist for most purposes.
 
 Attributes can be defined by just setting them in filters. Custom attributes
-have to be first declared by <ref id="opt-attribute" name="attribute"> global
+have to be first declared by <cf/<ref id="opt-attribute" name="attribute">/ global
 option. You can also undefine optional attribute back to non-existence by using
 the <cf>unset( <m/attribute/ )</cf> operator.
 
@@ -2146,7 +2146,7 @@ Common route attributes are:
 	useful for manipulating individual next hops of an ECMP route, but can
 	be used in BGP multipath setup to set weights of individual routes that
 	are merged to one ECMP route during export to the Kernel protocol
-	(with active <ref id="krt-merge-paths" name="marge paths"> option).
+	(with active <cf/<ref id="krt-merge-paths" name="merge paths">/ option).
 
 	<tag><label id="rta-gw-mpls"><m/int/ gw_mpls</tag>
 	Outgoing MPLS label attached to route (i.e., incoming MPLS label on the
@@ -2171,16 +2171,16 @@ Common route attributes are:
 
 	<tag><label id="rta-mpls-policy"><m/enum/ mpls_policy</tag>
 	For MPLS-aware protocols, this attribute defines which
-	<ref id="mpls-channel-label-policy" name="MPLS label policy"> will be
+	MPLS <cf/<ref id="mpls-channel-label-policy" name="label policy">/ will be
 	used for the route. It can be set in import filters to change it on
 	per-route basis. Valid values are <cf/MPLS_POLICY_NONE/ (no label),
 	<cf/MPLS_POLICY_STATIC/ (static label), <cf/MPLS_POLICY_PREFIX/
 	(per-prefix label), <cf/MPLS_POLICY_AGGREGATE/ (aggregated label),
-	and <cf/MPLS_POLICY_VRF/ (per-VRF label). See <ref
-	id="mpls-channel-label-policy" name="MPLS label policy"> for details.
+	and <cf/MPLS_POLICY_VRF/ (per-VRF label). See MPLS <cf/<ref
+	id="mpls-channel-label-policy" name="label policy">/ for details.
 
 	<tag><label id="rta-mpls-class"><m/int/ mpls_class</tag>
-	When <ref id="mpls-channel-label-policy" name="MPLS label policy"> is
+	When MPLS <cf/<ref id="mpls-channel-label-policy" name="label policy">/ is
 	set to <cf/aggregate/, it may be useful to apply more fine-grained
 	aggregation than just one based on next hops. When routes have different
 	value of this attribute, they will not be aggregated under one local
@@ -2410,7 +2410,7 @@ protocol babel [<name>] {
 
       <tag><label id="babel-tx-class">tx class|dscp|priority <m/number/</tag>
       These options specify the ToS/DiffServ/Traffic class/Priority of the
-      outgoing Babel packets. See <ref id="proto-tx-class" name="tx class"> common
+      outgoing Babel packets. See <cf/<ref id="proto-tx-class" name="tx class">/ common
       option for detailed description.
 
       <tag><label id="babel-rx-buffer">rx buffer <m/number/</tag>
@@ -2448,14 +2448,14 @@ protocol babel [<name>] {
       address, using an IPv6 next hop address only when IPv4 addresses are
       absent from the interface. When set to <cf/ipv6/, BIRD will advertise IPv4
       routes with an IPv6 next hop address even when IPv4 addresses are present
-      on the interface (assuming the option <ref id="babel-extended-next-hop"
-      name="extended next hop"> is enabled). Default: native.
+      on the interface (assuming the option <cf/<ref id="babel-extended-next-hop"
+      name="extended next hop">/ is enabled). Default: native.
 
       <tag><label id="babel-extended-next-hop">extended next hop <m/switch/</tag>
       Specify whether BIRD should allow IPv4 routes with an IPv6 next hop, as
       described in <rfc id="9229">. Note that when both IPv4 and IPv6 next hops
-      are available, the option <ref id="babel-next-hop-prefer"
-      name="next hop prefer"> controls which one is advertised. Default: yes.
+      are available, the option <cf/<ref id="babel-next-hop-prefer"
+      name="next hop prefer">/ controls which one is advertised. Default: yes.
 
       <tag><label id="babel-rtt-cost">rtt cost <m/number/</tag>
       The RTT-based cost that will be applied to all routes from each neighbour
@@ -2463,11 +2463,11 @@ protocol babel [<name>] {
       timestamps will be included in generated Babel Hello and IHU messages, and
       (if the neighbours also have timestamps enabled), the RTT to each
       neighbour will be computed. An additional cost is added to a neighbour if
-      its RTT is above the <ref id="babel-rtt-min" name="rtt min"> value
+      its RTT is above the <cf/<ref id="babel-rtt-min" name="rtt min">/ value
       configured on the interface. The added cost scales linearly from 0 up to
       the RTT cost configured in this option; the full cost is applied if the
-      neighbour RTT reaches the RTT configured in the <ref id="babel-rtt-max"
-      name="rtt max"> option (and for all RTTs above this value). Default: 0
+      neighbour RTT reaches the RTT configured in the <cf/<ref id="babel-rtt-max"
+      name="rtt max">/ option (and for all RTTs above this value). Default: 0
       (disabled), except for tunnel interfaces, where it is 96.
 
       <tag><label id="babel-rtt-min">rtt min <m/time/ s|ms</tag>
@@ -2500,8 +2500,8 @@ protocol babel [<name>] {
       <cf/password/ configuration option. Default: none.
 
       <tag><label id="babel-password">password "<m/text/"</tag>
-      Specifies a password used for authentication. See the <ref id="proto-pass"
-      name="password"> common option for a detailed description. The Babel
+      Specifies a password used for authentication. See the <cf/<ref id="proto-pass"
+      name="password">/ common option for a detailed description. The Babel
       protocol will only accept HMAC-based algorithms or one of the Blake
       algorithms, and the length of the supplied password string must match the
       key size used by the selected algorithm.
@@ -2678,7 +2678,7 @@ protocol bfd [<name>] {
 	<tag><label id="bfd-iface">interface <m/pattern/ [, <m/.../] { <m/options/ }</tag>
 	Interface definitions allow to specify options for sessions associated
 	with such interfaces and also may contain interface specific options.
-	See <ref id="proto-iface" name="interface"> common option for a detailed
+	See <cf/<ref id="proto-iface" name="interface">/ common option for a detailed
 	description of interface patterns. Note that contrary to the behavior of
 	<cf/interface/ definitions of other protocols, BFD protocol would accept
 	sessions (in default configuration) even on interfaces not covered by
@@ -2765,8 +2765,8 @@ protocol bfd [<name>] {
 	computation.
 
 	<tag><label id="bfd-password">password "<m>text</m>"</tag>
-	Specifies a password used for authentication. See <ref id="proto-pass"
-	name="password"> common option for detailed description. Note that
+	Specifies a password used for authentication. See <cf/<ref id="proto-pass"
+	name="password">/ common option for detailed description. Note that
 	password option <cf/algorithm/ is not available in BFD protocol. The
 	algorithm is selected by <cf/authentication/ option for all passwords.
 
@@ -3145,11 +3145,11 @@ protocol bgp [<name>] {
 	Selects authentication method to be used. <cf/none/ means that the BGP
 	session is not authenticated at all. <cf/md5/ means that the TCP MD5
 	authentication of BGP sessions (<rfc id="2385">) is used, in that case
-	the option <ref id="bgp-password" name="password"> is used to specify
+	the option <cf/<ref id="bgp-password" name="password">/ is used to specify
 	the (single) password. Finally, <cf/ao/ means to use TCP Authentication
 	Option (TCP-AO, <rfc id="5925">), allowing multiple keys and different
 	cryptographic algorithms. These are specified using the option
-	<ref id="bgp-keys" name="keys">. Note that TCP-AO authentication is not
+	<cf/<ref id="bgp-keys" name="keys">/. Note that TCP-AO authentication is not
 	supported on dynamic BGP sessions. Default: none.
 
 	<tag><label id="bgp-password">password "<m/text/"</tag>
@@ -3183,7 +3183,7 @@ protocol bgp [<name>] {
 
 	Of course, TCP-AO key contains a shared secret key. It is specified by
 	the option <cf/secret/ as a text string or as a sequence of hexadecimal
-	digit pairs (<ref id="type-bytestring" name="bytestring">).
+	digit pairs (<cf/<ref id="type-bytestring" name="bytestring">/).
 
 	Used cryptographic algorithm can be specified for each key with the
 	option <cf/algorithm/. Possible values are: <cf/hmac md5/, <cf/hmac sha1/,
@@ -3367,7 +3367,7 @@ protocol bgp [<name>] {
 
 	<tag><label id="bgp-long-lived-graceful-restart">long lived graceful restart <m/switch/|aware</tag>
 	The long-lived graceful restart is an extension of the traditional
-	<ref id="bgp-graceful-restart" name="BGP graceful restart">, where stale
+	BGP <cf/<ref id="bgp-graceful-restart" name="graceful restart">/, where stale
 	routes are kept even after the <ref id="bgp-graceful-restart-time"
 	name="restart time"> expires for additional long-lived stale time, but
 	they are marked with the LLGR_STALE community, depreferenced, and
@@ -3685,9 +3685,9 @@ be used in explicit configuration.
 	Prefer global IPv6 address to link-local IPv6 address for immediate next
 	hops of received routes. For IPv6 routes, the Next Hop attribute may
 	contain both a global IP address and a link-local IP address. For IBGP
-	sessions, the global IP address is resolved (<ref id="bgp-gateway"
-	name="gateway recursive">) through an IGP routing table
-	(<ref id="bgp-igp-table" name="igp table">) to get an immediate next
+	sessions, the global IP address is resolved (<cf/<ref id="bgp-gateway"
+	name="gateway recursive">/) through an IGP routing table
+	(<cf/<ref id="bgp-igp-table" name="igp table">/) to get an immediate next
 	hop. If the resulting IGP route is a direct route (i.e., the next hop is
 	a direct neighbor), then the link-local IP address from the Next Hop
 	attribute is used as the immediate next hop. This option change it to
@@ -3741,8 +3741,8 @@ be used in explicit configuration.
 	import filters without full route refresh. Default: off.
 
 	Note that currently the import table breaks routes with recursive
-	nexthops (e.g. ones from IBGP, see <ref id="bgp-gateway" name="gateway
-	recursive">), they are not properly updated after next hop change. For
+	nexthops (e.g. ones from IBGP, see <cf/<ref id="bgp-gateway" name="gateway
+	recursive">/), they are not properly updated after next hop change. For
 	the same reason, it also breaks re-evaluation of flowspec routes with
 	<ref id="bgp-validate" name="flowspec validation"> option enabled on
 	flowspec channels.
@@ -3774,12 +3774,12 @@ be used in explicit configuration.
 	to prevent injection of malicious flowspec rules from outside, but it
 	should also be used for IBGP to ensure that selected flowspec rules are
 	consistent with selected IP routes. The validation procedure uses an IP
-	routing table (<ref id="bgp-base-table" name="base table">, see below)
+	routing table (<cf/<ref id="bgp-base-table" name="base table">/, see below)
 	against which flowspec rules are validated. This option is limited to
 	flowspec channels. Default: off (for compatibility reasons).
 
 	Note that currently the flowspec validation does not work reliably
-	together with <ref id="bgp-import-table" name="import table"> option
+	together with <cf/<ref id="bgp-import-table" name="import table">/ option
 	enabled on flowspec channels.
 
 	<tag><label id="bgp-base-table">base table <m/name/</tag>
@@ -3848,7 +3848,7 @@ be used in explicit configuration.
 	EBGP.
 
 	<tag><label id="bgp-cost">cost <m/number/</tag>
-	When BGP <ref id="bgp-gateway" name="gateway mode"> is <cf/recursive/
+	When BGP <cf/<ref id="bgp-gateway" name="gateway">/ mode is <cf/recursive/
 	(mainly multihop IBGP sessions), then the distance to BGP next hop is
 	based on underlying IGP metric. This option specifies the distance to
 	BGP next hop for BGP sessions in direct gateway mode (mainly direct
@@ -3863,26 +3863,26 @@ be used in explicit configuration.
 
 	<tag><label id="bgp-long-lived-graceful-restart-c">long lived graceful restart <m/switch/</tag>
 	BGP long-lived graceful restart is configured mainly by protocol-wide
-	<ref id="bgp-long-lived-graceful-restart" name="options">, but the
+	<cf/<ref id="bgp-long-lived-graceful-restart" name="options">/, but the
 	restarting role can be set per AFI/SAFI pair by this channel option.
 	The option is ignored if long-lived graceful restart is disabled by
 	protocol-wide option. Default: off in aware mode, on in full mode.
 
 	<tag><label id="bgp-long-lived-stale-time-c">long lived stale time <m/number/</tag>
 	Like previous graceful restart channel options, this option allows to
-	set <ref id="bgp-long-lived-stale-time" name="long lived stale time">
+	set <cf/<ref id="bgp-long-lived-stale-time" name="long lived stale time">/
 	per AFI/SAFI pair instead of per protocol. Default: set by protocol-wide
 	option.
 
 	<tag><label id="bgp-min-long-lived-stale-time-c">min long lived stale time <m/number/</tag>
 	Like previous graceful restart channel options, this option allows to
-	set <ref id="bgp-min-long-lived-stale-time" name="min long lived stale time">
+	set <cf/<ref id="bgp-min-long-lived-stale-time" name="min long lived stale time">/
 	per AFI/SAFI pair instead of per protocol. Default: set by protocol-wide
 	option.
 
 	<tag><label id="bgp-max-long-lived-stale-time-c">max long lived stale time <m/number/</tag>
 	Like previous graceful restart channel options, this option allows to
-	set <ref id="bgp-max-long-lived-stale-time" name="max long lived stale time">
+	set <cf/<ref id="bgp-max-long-lived-stale-time" name="max long lived stale time">/
 	per AFI/SAFI pair instead of per protocol. Default: set by protocol-wide
 	option.
 </descrip>
@@ -4073,8 +4073,8 @@ some of them (marked with `<tt/O/') are optional.
 
 	<tag><label id="bgp-otc">int bgp_otc [O]</tag>
 	This attribute is defined in <rfc id="9234">. OTC is a flag that marks
-	routes that should be sent only to customers. If <ref id="bgp-local-role"
-	name="local role"> is configured it set automatically.
+	routes that should be sent only to customers. If <cf/<ref id="bgp-local-role"
+	name="local role">/ is configured it set automatically.
 </descrip>
 
 <p>For attributes unknown by BIRD, the user can assign a name (on top level) to
@@ -4157,7 +4157,7 @@ by default and have to be enabled during installation by the configure option
 <tt/--with-protocols=/.
 
 <p>The implementation supports monitoring protocol state changes, pre-policy
-routes (in <ref id="bgp-import-table" name="BGP import tables">) and post-policy
+routes (in BGP <cf/<ref id="bgp-import-table" name="import table">/) and post-policy
 routes (in regular routing tables). All BGP protocols are monitored automatically.
 
 <sect1>Configuration (incomplete)
@@ -4214,8 +4214,8 @@ interfaces to be defined for them to work with.
 	<tag><label id="device-iface">interface <m/pattern/ [, <m/.../]</tag>
 	By default, the Device protocol handles all interfaces without any
 	configuration. Interface definitions allow to specify optional
-	parameters for specific interfaces. See <ref id="proto-iface"
-	name="interface"> common option for detailed description. Currently only
+	parameters for specific interfaces. See <cf/<ref id="proto-iface"
+	name="interface">/ common option for detailed description. Currently only
 	one interface option is available:
 
 	<tag><label id="device-preferred">preferred <m/ip/</tag>
@@ -4272,7 +4272,7 @@ announce local networks.
 	interfaces available. If you want to restrict it to some subset of
 	interfaces or addresses (e.g. if you're using multiple routing tables
 	for policy routing and some of the policy domains don't contain all
-	interfaces), just use this clause. See <ref id="proto-iface" name="interface">
+	interfaces), just use this clause. See <cf/<ref id="proto-iface" name="interface">/
 	common option for detailed description. The Direct protocol uses
 	extended interface clauses.
 
@@ -4494,7 +4494,7 @@ protocol propagates just the best route for each network.
 <p>In BGP/MPLS IP VPNs, route distribution is controlled by Route Targets (RT).
 VRFs are associated with one or more RTs. Routes are also associated with one or
 more RTs, which are encoded as route target extended communities
-in <ref id="rta-bgp-ext-community" name="bgp_ext_community">. A route is then
+in <cf/<ref id="rta-bgp-ext-community" name="bgp_ext_community">/. A route is then
 imported into each VRF that shares an associated Route Target. The L3VPN
 protocol implements this mechanism through mandatory <cf/import target/ and
 <cf/export target/ protocol options.
@@ -4622,8 +4622,8 @@ for collecting and analyzing of routing information from BGP routers. The MRT
 protocol can be configured to do periodic dumps of routing tables, created MRT
 files can be analyzed later by other tools. Independent MRT table dumps can also
 be requested from BIRD client. There is also a feature to save incoming BGP
-messages in MRT files, but it is controlled by <ref id="proto-mrtdump"
-name="mrtdump"> options independently of MRT protocol, although that might
+messages in MRT files, but it is controlled by <cf/<ref id="proto-mrtdump"
+name="mrtdump">/ options independently of MRT protocol, although that might
 change in the future.
 
 BIRD implements the main MRT format specification as defined in <rfc id="6396">
@@ -5000,7 +5000,7 @@ protocol ospf [v2|v3] <name> {
 
 	<tag><label id="ospf-iface">interface <m>pattern</m> [instance <m/number/]</tag>
 	Defines that the specified interfaces belong to the area being defined.
-	See <ref id="proto-iface" name="interface"> common option for detailed
+	See <cf/<ref id="proto-iface" name="interface">/ common option for detailed
 	description. In OSPFv2, extended interface clauses are used, because
 	each network prefix is handled as a separate virtual interface.
 
@@ -5185,7 +5185,7 @@ protocol ospf [v2|v3] <name> {
 
 	<tag><label id="ospf-tx-class">tx class|dscp|priority <m/number/</tag>
 	These options specify the ToS/DiffServ/Traffic class/Priority of the
-	outgoing OSPF packets. See <ref id="proto-tx-class" name="tx class"> common
+	outgoing OSPF packets. See <cf/<ref id="proto-tx-class" name="tx class">/ common
 	option for detailed description.
 
 	<tag><label id="ospf-ecmp-weight">ecmp weight <m>number</m></tag>
@@ -5211,7 +5211,7 @@ protocol ospf [v2|v3] <name> {
 
 	<tag><label id="ospf-pass">password "<m>text</m>"</tag>
 	Specifies a password used for authentication. See
-	<ref id="proto-pass" name="password"> common option for detailed
+	<cf/<ref id="proto-pass" name="password">/ common option for detailed
 	description.
 
 	<tag><label id="ospf-neighbors">neighbors { <m/set/ } </tag>
@@ -5508,7 +5508,7 @@ definitions, prefix definitions and DNS definitions:
 	<tag><label id="radv-iface">interface <m/pattern/ [, <m/.../] { <m/options/ }</tag>
 	Interface definitions specify a set of interfaces on which the
 	protocol is activated and contain interface specific options.
-	See <ref id="proto-iface" name="interface"> common options for
+	See <cf/<ref id="proto-iface" name="interface">/ common options for
 	detailed description.
 
 	<tag><label id="radv-prefix">prefix <m/prefix/ { <m/options/ }</tag>
@@ -5639,7 +5639,7 @@ custom option type 38 value hex:0e:10:20:01:0d:b8:00:0a:00:0b:00:00:00:00;
 	<tag><label id="radv-iface-default-lifetime">default lifetime <m/expr/ [sensitive <m/switch/]</tag>
 	This option specifies the time (in seconds) how long (since the receipt
 	of RA) hosts may use the router as a default router. 0 means do not use
-	as a default router. For <cf/sensitive/ option, see <ref id="radv-trigger" name="trigger">.
+	as a default router. For <cf/sensitive/ option, see <cf/<ref id="radv-trigger" name="trigger">/.
 	Default: 3 * <cf/max ra	interval/, <cf/sensitive/ yes.
 
 	<tag><label id="radv-iface-default-preference">default preference low|medium|high</tag>
@@ -5654,14 +5654,14 @@ custom option type 38 value hex:0e:10:20:01:0d:b8:00:0a:00:0b:00:00:00:00;
 	route basis by the <ref id="rta-ra-lifetime" name="ra_lifetime"> route
 	attribute. Default: 3 * <cf/max ra interval/, <cf/sensitive/ no.
 
-	For the <cf/sensitive/ option, see <ref id="radv-trigger" name="trigger">.
+	For the <cf/sensitive/ option, see <cf/<ref id="radv-trigger" name="trigger">/.
 	If <cf/sensitive/ is enabled, even the routes with the <cf/ra_lifetime/
 	attribute become sensitive to the trigger.
 
 	<tag><label id="radv-iface-route-preference">route preference low|medium|high</tag>
 	This option specifies the default value of advertised route preference
 	for specific routes. The value can be overriden on a per route basis by
-	the <ref id="rta-ra-preference" name="ra_preference"> route attribute.
+	the <cf/<ref id="rta-ra-preference" name="ra_preference">/ route attribute.
 	Default: medium.
 
 	<tag><label id="radv-prefix-linger-time">prefix linger time <m/expr/</tag>
@@ -5714,14 +5714,14 @@ custom option type 38 value hex:0e:10:20:01:0d:b8:00:0a:00:0b:00:00:00:00;
 	receipt of RA) the prefix information is valid, i.e., autoconfigured
 	IP addresses can be assigned and hosts with that IP addresses are
 	considered directly reachable. 0 means the prefix is no longer
-	valid. For <cf/sensitive/ option, see <ref id="radv-trigger" name="trigger">.
+	valid. For <cf/sensitive/ option, see <cf/<ref id="radv-trigger" name="trigger">/.
 	Default: 86400 (1 day), <cf/sensitive/ no.
 
 	<tag><label id="radv-prefix-preferred-lifetime">preferred lifetime <m/expr/ [sensitive <m/switch/]</tag>
 	This option specifies the time (in seconds) how long (after the
 	receipt of RA) IP addresses generated from the prefix using stateless
 	autoconfiguration remain preferred. For <cf/sensitive/ option,
-	see <ref id="radv-trigger" name="trigger">. Default: 14400 (4 hours),
+	see <cf/<ref id="radv-trigger" name="trigger">/. Default: 14400 (4 hours),
 	<cf/sensitive/ no.
 </descrip>
 
@@ -5765,13 +5765,13 @@ custom option type 38 value hex:0e:10:20:01:0d:b8:00:0a:00:0b:00:00:00:00;
 	<tag><label id="rta-ra-preference">enum ra_preference</tag>
 	The preference of the route. The value can be <it/RA_PREF_LOW/,
 	<it/RA_PREF_MEDIUM/ or <it/RA_PREF_HIGH/. If the attribute is not set,
-	the <ref id="radv-iface-route-preference" name="route preference">
+	the <cf/<ref id="radv-iface-route-preference" name="route preference">/
 	option is used.
 
 	<tag><label id="rta-ra-lifetime">int ra_lifetime</tag>
 	The advertised lifetime of the route, in seconds. The special value of
 	0xffffffff represents infinity. If the attribute is not set, the
-	<ref id="radv-iface-route-lifetime" name="route lifetime">
+	<cf/<ref id="radv-iface-route-lifetime" name="route lifetime">/
 	option is used.
 </descrip>
 
@@ -5927,7 +5927,7 @@ protocol rip [ng] [<name>] {
 	<tag><label id="rip-iface">interface <m/pattern/ [, <m/.../] { <m/options/ }</tag>
 	Interface definitions specify a set of interfaces on which the
 	protocol is activated and contain interface specific options.
-	See <ref id="proto-iface" name="interface"> common options for
+	See <cf/<ref id="proto-iface" name="interface">/ common options for
 	detailed description.
 </descrip>
 
@@ -6036,8 +6036,8 @@ protocol rip [ng] [<name>] {
 	section. Default: none.
 
 	<tag><label id="rip-iface-pass">password "<m/text/"</tag>
-	Specifies a password used for authentication. See <ref id="proto-pass"
-	name="password"> common option for detailed description.
+	Specifies a password used for authentication. See <cf/<ref id="proto-pass"
+	name="password">/ common option for detailed description.
 
 	<tag><label id="rip-iface-ttl-security">ttl security [<m/switch/ | tx only]</tag>
 	TTL security is a feature that protects routing protocols from remote
@@ -6059,7 +6059,7 @@ protocol rip [ng] [<name>] {
 
 	<tag><label id="rip-iface-tx-class">tx class|dscp|priority <m/number/</tag>
 	These options specify the ToS/DiffServ/Traffic class/Priority of the
-	outgoing RIP packets. See <ref id="proto-tx-class" name="tx class"> common
+	outgoing RIP packets. See <cf/<ref id="proto-tx-class" name="tx class">/ common
 	option for detailed description.
 
 	<tag><label id="rip-iface-rx-buffer">rx buffer <m/number/</tag>
@@ -6141,8 +6141,8 @@ e.g. the famous Pakistani accidental announcement of YouTube's address space.
 server (also called validator). You can validate routes (<rfc id="6483">,
 <rfc id="6811">) using function <cf/roa_check()/ in filter and set it as import
 filter at the BGP protocol. BIRD offers crude automatic re-validating of
-affected routes after RPKI update, see option <ref id="proto-rpki-reload"
-name="rpki reload">. Or you can use a BIRD client command <cf>reload in
+affected routes after RPKI update, see option <cf/<ref id="proto-rpki-reload"
+name="rpki reload">/. Or you can use a BIRD client command <cf>reload in
 <m/bgp_protocol_name/</cf> for manual call of revalidation of all routes.
 
 <p>The same protocol, since version 2, also receives and maintains a set
@@ -6370,7 +6370,7 @@ default route to prevent routing loops).
 <p>There are three classes of definitions in Static protocol configuration --
 global options, static route definitions, and per-route options. Usually, the
 definition of the protocol contains mainly a list of static routes. Static
-routes have no specific attributes, but <ref id="rta-igp-metric" name="igp_metric">
+routes have no specific attributes, but <cf/<ref id="rta-igp-metric" name="igp_metric">/
 attribute is used to compare static routes with the same preference.
 
 <p>The list of static routes may contain multiple routes for the same network
