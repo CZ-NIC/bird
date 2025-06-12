@@ -648,7 +648,7 @@ include "tablename.conf";;
 	Define a constant. You can use it later in every place you could use a
 	value of the same type. Besides, there are some predefined numeric
 	constants based on /etc/iproute2/rt_* files. A list of defined constants
-	can be seen (together with other symbols) using 'show symbols' command.
+	can be seen (together with other symbols) using <cf/show symbols/ command.
 
 	<tag><label id="opt-attribute">attribute <m/type/ <m/name/</tag>
 	Declare a custom route attribute. You can set and get it in filters like
@@ -678,8 +678,8 @@ include "tablename.conf";;
 	<tag><label id="opt-timeformat">timeformat route|protocol|base|log "<m/format1/" [<m/limit/ "<m/format2/"]</tag>
 	This option allows to specify a format of date/time used by BIRD. The
 	first argument specifies for which purpose such format is used.
-	<cf/route/ is a format used in 'show route' command output,
-	<cf/protocol/ is used in 'show protocols' command output, <cf/base/ is
+	<cf/route/ is a format used in <cf/show route/ command output,
+	<cf/protocol/ is used in <cf/show protocols/ command output, <cf/base/ is
 	used for other commands and <cf/log/ is used in a log file.
 
 	"<m/format1/" is a format string using <it/strftime(3)/ notation (see
@@ -848,7 +848,7 @@ agreement").
 
 	<tag><label id="proto-description">description "<m/text/"</tag>
 	This is an optional description of the protocol. It is displayed as a
-	part of the output of 'show protocols all' command.
+	part of the output of <cf/show protocols all/ command.
 
 	<tag><label id="proto-vrf">vrf "<m/text/"|default</tag>
 	Associate the protocol with specific VRF. The protocol will be
@@ -1306,7 +1306,7 @@ This argument can be omitted if there exists only a single instance.
 
 	<tag><label id="cli-show-ospf-topology">show ospf topology [all] [<m/name/]</tag>
 	Show a topology of OSPF areas based on a content of the link-state
-	database. It is just a stripped-down version of 'show ospf state'.
+	database. It is just a stripped-down version of <cf/show ospf state/.
 
 	<tag><label id="cli-show-ospf-lsadb">show ospf lsadb [global | area <m/id/ | link] [type <m/number/] [lsid <m/id/] [self | router <m/id/] [<m/name/] </tag>
 	Show contents of an OSPF LSA database. Options could be used to filter
