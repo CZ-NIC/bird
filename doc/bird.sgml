@@ -3283,14 +3283,15 @@ protocol bgp [<name>] {
 	other means. Default: 0 (no local AS number allowed).
 
 	<tag><label id="bgp-allow-as-sets">allow as sets <m/switch/</tag>
-	AS path attribute received with BGP routes may contain not only
-	sequences of AS numbers, but also sets of AS numbers. These rarely used
-	artifacts are results of inter-AS route aggregation. AS sets are
-	deprecated (<rfc id="6472">), and likely to be rejected in the future,
-	as they complicate security features like RPKI validation. When this
-	option is disabled, then received AS paths with AS sets are rejected as
-	malformed and corresponding BGP updates are treated as withdraws.
-	Default: on.
+	Historically, AS path attribute received with BGP routes may have
+	contained not only sequences of AS numbers, but also sets of AS numbers.
+	These rarely used artifacts were results of inter-AS route aggregation.
+	AS sets are deprecated (<rfc id="6472">, <rfc id="9774">) and AS paths
+	containing them (or AS confed sets) are considered malformed.
+	Corresponding BGP updates are therefore treated as withdraws.
+        When this option is enabled, then received AS paths containing these
+        deprecated AS sets or AS confed sets are accepted.
+	Default: off (since 2.18 and 3.2).
 
 	<tag><label id="bgp-enforce-first-as">enforce first as <m/switch/</tag>
 	Routes received from an EBGP neighbor are generally expected to have the
