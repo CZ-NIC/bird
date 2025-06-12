@@ -72,10 +72,11 @@ All protocol attributes have been renamed in CLI to align with the filter langua
 Output of `show route all` also shows more information, including some internal
 data for easier debugging and route tracing.
 
-The `onlink` route attribute has been temporarily disabled until we find out
-how to implement it properly.
-
 The `scope` route attribute has been removed. Use custom route attributes instead.
+
+The `from` route attribute is set only if it's relevant, therefore some of
+the filters may refuse to process routes if relying on the default zero value.
+Now it's possible to check for `defined(from)` in filters before using it.
 
 ## Protocols common
 
