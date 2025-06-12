@@ -33,7 +33,7 @@ stages:
   when: never
 # Run for stable branches
 .if-stable: &if-stable
-  if: $CI_COMMIT_BRANCH =~ /^(stable-.*|thread-next|master)$/
+  if: ($CI_COMMIT_BRANCH =~ /^(stable-.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")
   when: always
 # Do run for tags
 .if-tag: &if-tag
@@ -149,7 +149,7 @@ docker-{{ docker["name"] }}:
   <<: *test-job
   stage: build
   script:
-    - export BRANCH=$CI_COMMIT_BRANCH
+    - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
     - tools/version && ( echo -n "BIRD version "; tools/version ) > version-expected
     - |
       STABLE_VERSION="`cat VERSION`"
@@ -217,7 +217,7 @@ build-release:
     - docker
     - linux
   script:
-    - export BRANCH=$CI_COMMIT_BRANCH
+    - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
     - autoreconf
     - ./configure --with-protocols= --disable-client
     - make obj/doc/bird-singlepage.html
@@ -405,11 +405,12 @@ build-netlab:
     - netlab
     - amd64
   script:
+    - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
     - autoreconf
     - mkdir $BDIR
     - cd $BDIR
     - ../configure
-    - BRANCH=$CI_COMMIT_BRANCH make
+    - make
   artifacts:
     paths:
       - $BDIR/bird
