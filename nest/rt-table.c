@@ -1978,6 +1978,14 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
 
 	  log_rl(&table->rl_pipe, L_ERR "Route source collision in table %s: %N %s/%u:%u",
 		c->table->name, i->addr, old->src->owner->name, old->src->private_id, old->src->global_id);
+
+	  /* Ignore the whole update */
+	  if (new)
+	  {
+	    rt_rte_trace_in(D_ROUTES, req, new, "collided");
+	    rte_free(new_stored, table);
+	    return;
+	  }
 	}
 
 	  if (new && rte_same(old, &new_stored->rte))
