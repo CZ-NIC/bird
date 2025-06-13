@@ -3443,34 +3443,34 @@ bgp_format_capabilities(byte *data, uint len, byte *buf)
     case 1: {   /* Multiprotocol capability, RFC 4760 */
       /* Capability length */
       if ((len >= 1 && data[1] != 4) || len < 6)
-        return bsprintf(buf, "multiprotocol capability");
+        return bsprintf(buf, "multiprotocol");
 
       u32 afi = get_af4(data + 2);
       const struct bgp_af_desc *desc = bgp_get_af_desc(afi);
-      return bsprintf(buf, "multiprotocol capability: %s", desc->name);
+      return bsprintf(buf, "multiprotocol: %s", desc->name);
     }
     case 2:     /* Route refresh capability, RFC 2918 */
-      return bsprintf(buf, "route refresh capability");
+      return bsprintf(buf, "route refresh");
     case 5:     /* Extended nexthop encoding capability, RFC 8950 */
-      return bsprintf(buf, "extended nexthop encoding capability");
+      return bsprintf(buf, "extended nexthop encoding");
     case 6:     /* Extended message length capability, RFC 8654 */
-      return bsprintf(buf, "extended message length capability");
+      return bsprintf(buf, "extended message length");
     case 9:     /* BGP role capability, RFC 9234 */
-      return bsprintf(buf, "BGP role capability");
+      return bsprintf(buf, "BGP role");
     case 64:    /* Graceful restart capability, RFC 4724 */
-      return bsprintf(buf, "graceful restart capability");
+      return bsprintf(buf, "graceful restart");
     case 65:    /* AS4 capability, RFC 6793 */
-      return bsprintf(buf, "AS4 capability");
+      return bsprintf(buf, "AS4");
     case 69:    /* ADD-PATH capability, RFC 7911 */
-      return bsprintf(buf, "ADD-PATH capability");
+      return bsprintf(buf, "ADD-PATH");
     case 70:    /* Enhanced route refresh capability, RFC 7313 */
-      return bsprintf(buf, "enhanced route refresh capability");
+      return bsprintf(buf, "enhanced route refresh");
     case 71:    /* Long-lived graceful restart capability, RFC 9494 */
-      return bsprintf(buf, "long-lived graceful restart capability");
+      return bsprintf(buf, "long-lived graceful restart");
     case 73:    /* Hostaname, RFC draft */
       return bsprintf(buf, "hostname");
     default:
-      return bsprintf(buf, "unrecognized capability");
+      return bsprintf(buf, "unrecognized");
   }
 }
 
