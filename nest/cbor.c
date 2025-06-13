@@ -58,6 +58,11 @@ void cbor_add_int(struct cbor_writer *writer, int item) {
     write_item(writer, 1, item);
   }
 }
+
+void cbor_add_tag(struct cbor_writer *writer, int item) {
+  write_item(writer, 6, item);
+}
+
 void cbor_add_string(struct cbor_writer *writer, char *string) {
   int length = strlen(string);
   write_item(writer, 3, length);  // 3 is major, then goes length of string and string
@@ -92,7 +97,7 @@ void write_item(struct cbor_writer *writer, int8_t major, int num) {
     return;
   }
   if (num > 23) { // byte is enough, but aditional value would be too big
-    major += 0x18; // reserving those bytes
+    major += 0x18; // reserving that byte
     writer->cbor[writer->pt] = major;
     writer->pt++;
     uint8_t to_write = num & 0xff;

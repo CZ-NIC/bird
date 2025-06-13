@@ -19,6 +19,12 @@
 	"namespace": "https://bird.nic.cz/yang/v2.15/cli-debug",
         "revision": "",
         "conformance-type": "implement"
+      },
+      {
+        "name": "command",
+	"namespace": "https://bird.nic.cz/yang/v2.15/cli-debug",
+        "revision": "",
+        "conformance-type": "implement"
       }
     ]
   }

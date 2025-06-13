@@ -664,6 +664,7 @@ yi_cli_listen(struct cli_config *cf)
   // The listener is NOT added in the cli_listeners list
 
   return l;
+
 }
 
 static void
@@ -1122,6 +1123,18 @@ parse_args(int argc, char **argv)
    }
 }
 
+static void
+yi_init_file(void)
+{
+  FILE *write_ptr;  // this block is for testing purposes and should be deleted
+  write_ptr = fopen("in.cbor", "wb");
+  fwrite("mem", 3, 1, write_ptr);
+  fclose(write_ptr);
+  write_ptr = fopen("out.cbor", "wb");
+  fwrite("", 0, 1, write_ptr);
+  fclose(write_ptr);
+}
+
 /*
  *	Hic Est main()
  */
@@ -1157,6 +1170,7 @@ main(int argc, char **argv)
   {
     test_old_bird(path_control_socket);
     cli_init_unix(use_uid, use_gid);
+    yi_init_file();
     if (path_control_socket_yi)
     {
       yi_init_unix(use_uid, use_gid);
