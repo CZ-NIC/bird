@@ -1655,3 +1655,8 @@ test-mpls-bgp-l3vpn:
   variables:
     TEST_NAME: cf-mpls-bgp-l3vpn
 
+test-pipe-collision:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-pipe-collision
+
