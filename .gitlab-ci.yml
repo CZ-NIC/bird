@@ -1595,3 +1595,8 @@ test-aspa-filter:
   variables:
     TEST_NAME: cf-aspa-filter
 
+test-pipe-collision:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-pipe-collision
+
