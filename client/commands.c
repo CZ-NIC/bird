@@ -105,33 +105,30 @@ cmd_do_display_help(struct cmd_info *c)
   printf("%-45s  %s\n", buf, c->help);
 }
 
+#define CMD_WALK_CHILDREN(_par, _chi) for (struct cmd_node *_chi = _par->son; _chi; _chi = _chi->sibling)
+
 static void
-cmd_display_help(struct cmd_node *m)
+cmd_display_help(struct cmd_node *mm)
 {
-  /* Go through children of the base keyword. Each keyword has its own node. */
-  for (struct cmd_node *mm = m->son; mm; mm = mm->sibling)
-  {
-    /* Print hints for all of the children of given keyword. */
-    if (mm->help)
-      cmd_do_display_help(mm->help);
-    else if (mm->cmd)
-      cmd_do_display_help(mm->cmd);
-    else
-    {
-      /* This child does not contain hint, let's try its children instead
-       * (this child might be first part of multi keyword command) */
-      cmd_display_help(mm);
-    }
-  }
+  /* Print hints for all of the children of given keyword. */
+  if (mm->help)
+    cmd_do_display_help(mm->help);
+  else if (mm->cmd)
+    cmd_do_display_help(mm->cmd);
+  else
+    /* This child does not contain hint, let's try its children instead
+     * (this child might be first part of multi keyword command) */
+    CMD_WALK_CHILDREN(mm, mc)
+      cmd_display_help(mc);
 }
 
 static struct cmd_node *
 cmd_find_abbrev(struct cmd_node *root, char *cmd, int len, int *pambiguous)
 {
-  struct cmd_node *m, *best = NULL, *best2 = NULL;
+  struct cmd_node *best = NULL, *best2 = NULL;
 
   *pambiguous = 0;
-  for(m=root->son; m; m=m->sibling)
+  CMD_WALK_CHILDREN(root, m)
     {
       if (m->len == len && !memcmp(m->token, cmd, len))
 	return m;
@@ -155,9 +152,7 @@ cmd_find_abbrev(struct cmd_node *root, char *cmd, int len, int *pambiguous)
 static void
 cmd_list_ambiguous(struct cmd_node *root, char *cmd, int len)
 {
-  struct cmd_node *m;
-
-  for(m=root->son; m; m=m->sibling)
+  CMD_WALK_CHILDREN(root, m)
     if (m->len > len && !memcmp(m->token, cmd, len))
       cmd_display_help(m);
 }
@@ -199,19 +194,20 @@ cmd_help(char *cmd, int len)
   if (n->final)
     return;
 
-  cmd_display_help(n);
+  /* Go through children of the base keyword. Each keyword has its own node. */
+  CMD_WALK_CHILDREN(n, mm)
+    cmd_display_help(mm);
 }
 
 static int
 cmd_find_common_match(struct cmd_node *root, char *cmd, int len, int *pcount, char *buf)
 {
-  struct cmd_node *m;
   int best, best_prio, i;
 
   *pcount = 0;
   best = -1;
   best_prio = -1;
-  for(m=root->son; m; m=m->sibling)
+  CMD_WALK_CHILDREN(root, m)
     {
       if (m->len < len || memcmp(m->token, cmd, len))
 	continue;
