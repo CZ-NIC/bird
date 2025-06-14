@@ -13,7 +13,8 @@ that to fix some historically inaccurate concepts.
 
 Number of working threads is now configured by `threads <num>;` on toplevel.
 By default, this is 1, which actually means 2 running threads. The main one and
-the worker one. When BFD is configured, you get another one for BFD.
+the worker one. When BFD is configured, you get another one for BFD. This option
+is also available in BIRD 2 with no effect so that you may downgrade easier if you need.
 
 Every instance of BGP, BFD, Pipe and RPKI gets its own *loop* which is a packed
 unit transferrable between the working threads.
@@ -32,7 +33,9 @@ Also this option is by far the fastest one.
 ## Tables
 
 It's now possible to set the `debug` option to trace events happening directly
-inside the table.
+inside the table, and there is a global `debug tables` option similar to `debug
+protocols`. This global option is also available in BIRD 2 with no effect
+for downgrade compatibility.
 
 Also settle timers were changed; there is a configurable idle-state timeout
 before any route export is announced after import is done. This helps to
