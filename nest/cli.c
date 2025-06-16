@@ -372,7 +372,7 @@ cli_new(void *priv, struct cli_config *cf)
 }
 
 cli *
-yi_cli_new(void *priv, struct cli_config *cf)
+cli_yi_new(void *priv, struct cli_config *cf)
 {
   pool *p = rp_new(cli_pool, "YI");
   cli *c = mb_alloc(p, sizeof(cli));

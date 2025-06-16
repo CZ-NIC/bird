@@ -113,6 +113,9 @@ AC_SUBST([CONFIG_FILE])
 CONTROL_SOCKET="\$(runstatedir)/bird.ctl"
 AC_SUBST([CONTROL_SOCKET])
 
+YI_CONTROL_SOCKET="\$(runstatedir)/bird_yi.ctl"
+AC_SUBST([YI_CONTROL_SOCKET])
+
 AC_SEARCH_LIBS([clock_gettime], [rt posix4],
   [],
   [AC_MSG_ERROR([Function clock_gettime not available.])]

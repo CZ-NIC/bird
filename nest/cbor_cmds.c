@@ -171,8 +171,9 @@ cmd_show_status_cbor(byte *tbuf, uint capacity, struct linpool *lp)
   cbor_open_block(w);
   cbor_string_ipv4(w, "router_id", config->router_id);
   cbor_string_string(w, "hostname", config->hostname);
-  cbor_string_epoch_time(w, "server_time", tm_get_real_time(current_time()), -6);
-  cbor_string_epoch_time(w, "last_reboot", tm_get_real_time(boot_time), -6);
+  // TODO cbor_string_epoch_time(), the CBOR TAG 1 does NOT allow decimal
+  //cbor_string_epoch_time(w, "server_time", tm_get_real_time(current_time()), -6);
+  //cbor_string_epoch_time(w, "last_reboot", tm_get_real_time(boot_time), -6);
   cbor_string_epoch_time(w, "last_reconfiguration", tm_get_real_time(config->load_time), -6);
   if (is_gr_active())
   {
