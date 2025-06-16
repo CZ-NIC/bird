@@ -450,7 +450,8 @@ bgp_decode_as_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte
 {
   int as_length = s->as4_session ? 4 : 2;
   int as_sets = s->allow_as_sets;
-  int as_confed = s->confederation && s->is_interior;
+  struct bgp_proto_attributes *proto_attrs = s->proto_attrs;
+  int as_confed = proto_attrs->confederation && proto_attrs->is_interior;
   char err[128];
 
   if (!as_path_valid(data, len, as_length, as_sets, as_confed, err, sizeof(err)))
@@ -465,13 +466,13 @@ bgp_decode_as_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte
   }
 
   /* In some circumstances check for initial AS_CONFED_SEQUENCE; RFC 5065 5.0 */
-  if (s->is_interior && !s->is_internal &&
+  if (proto_attrs->is_interior && !proto_attrs->is_internal &&
       ((len < 2) || (data[0] != AS_PATH_CONFED_SEQUENCE)))
     WITHDRAW("Malformed AS_PATH attribute - %s", "missing initial AS_CONFED_SEQUENCE");
 
   /* Reject routes with first AS in AS_PATH not matching neighbor AS; RFC 4271 6.3 */
-  if (!s->is_internal && s->enforce_first_as &&
-      !bgp_as_path_first_as_equal(data, len, s->remote_as))
+  if (!proto_attrs->is_internal && s->enforce_first_as &&
+      !bgp_as_path_first_as_equal(data, len, proto_attrs->remote_as))
     WITHDRAW("Malformed AS_PATH attribute - %s", "First AS differs from neigbor AS");
 
   bgp_set_attr_data(to, s->pool, BA_AS_PATH, flags, data, len);
@@ -560,7 +561,7 @@ bgp_export_local_pref(struct bgp_export_state *s, eattr *a)
 static void
 bgp_decode_local_pref(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
 {
-  if (!s->is_interior && !s->allow_local_pref)
+  if (!s->proto_attrs->is_interior && !s->allow_local_pref)
     DISCARD(BAD_EBGP, "LOCAL_PREF");
 
   if (len != 4)
@@ -654,7 +655,7 @@ bgp_export_originator_id(struct bgp_export_state *s, eattr *a)
 static void
 bgp_decode_originator_id(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
 {
-  if (!s->is_internal)
+  if (!s->proto_attrs->is_internal)
     DISCARD(BAD_EBGP, "ORIGINATOR_ID");
 
   if (len != 4)
@@ -678,7 +679,7 @@ bgp_export_cluster_list(struct bgp_export_state *s UNUSED, eattr *a)
 static void
 bgp_decode_cluster_list(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte *data, uint len, ea_list **to)
 {
-  if (!s->is_internal)
+  if (!s->proto_attrs->is_internal)
     DISCARD(BAD_EBGP, "CLUSTER_LIST");
 
   if (!len || (len % 4))
@@ -958,6 +959,18 @@ bgp_encode_mpls_label_stack(struct bgp_write_state *s, eattr *a, byte *buf UNUSE
   return 0;
 }
 
+static int
+bgp_encode_proto_attrs(struct bgp_write_state *s UNUSED, eattr *a UNUSED, byte *buf UNUSED, uint size UNUSED)
+{
+  return 0;
+}
+
+static void
+bgp_decode_proto_attrs(struct bgp_parse_state *s UNUSED, uint code UNUSED, uint flags UNUSED, byte *data UNUSED, uint len UNUSED, ea_list **to UNUSED)
+{
+  return;
+}
+
 static void
 bgp_decode_mpls_label_stack(struct bgp_parse_state *s, uint code UNUSED, uint flags UNUSED, byte *data UNUSED, uint len UNUSED, ea_list **to UNUSED)
 {
@@ -1138,6 +1151,13 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
     .encode = bgp_encode_u32,
     .decode = bgp_decode_otc,
   },
+  [BA_PROTO_ATTRS] = {
+    .name = "bgp proto attrs",
+    .type = EAF_PROTO_ATTR_PTR,
+    .flags = BAF_OPERATIONAL,
+    .encode = bgp_encode_proto_attrs,
+    .decode = bgp_decode_proto_attrs,
+  },
   [BA_MPLS_LABEL_STACK] = {
     .name = "mpls_label_stack",
     .type = EAF_TYPE_INT_SET,
@@ -1314,7 +1334,7 @@ static inline int
 bgp_originator_id_loopy(struct bgp_parse_state *s, ea_list *attrs)
 {
   eattr *e = bgp_find_attr(attrs, BA_ORIGINATOR_ID);
-  return (e && (e->u.data == s->local_id));
+  return (e && (e->u.data == s->proto_attrs->local_id));
 }
 
 static inline int
@@ -1437,24 +1457,24 @@ bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len)
 #define IS_LOOP(msg, args...)  { RTRACE("update is loop (" msg "), treating as withdraw", ##args); goto loop; }
 
   /* Reject routes with our ASN in AS_PATH attribute */
-  if (bgp_as_path_loopy(s, attrs, s->local_as))
+  if (bgp_as_path_loopy(s, attrs, s->proto_attrs->local_as))
     goto loop;
 
   /* Reject routes with our Confederation ID in AS_PATH attribute; RFC 5065 4.0 */
-  if ((s->public_as != s->local_as) && bgp_as_path_loopy(s, attrs, s->public_as))
+  if ((s->public_as != s->proto_attrs->local_as) && bgp_as_path_loopy(s, attrs, s->public_as))
     goto loop;
 
   /* Reject routes with our Router ID in ORIGINATOR_ID attribute; RFC 4456 8 */
-  if (s->is_internal && bgp_originator_id_loopy(s, attrs))
+  if (s->proto_attrs->is_internal && bgp_originator_id_loopy(s, attrs))
     goto loop;
 
   /* Reject routes with our Cluster ID in CLUSTER_LIST attribute; RFC 4456 8 */
-  if (s->rr_client && bgp_cluster_list_loopy(s->rr_cluster_id, attrs))
+  if (s->rr_client && bgp_cluster_list_loopy(s->proto_attrs->rr_cluster_id, attrs))
     goto loop;
 
   /* If there is no local preference, define one */
   if (!BIT32_TEST(s->attrs_seen, BA_LOCAL_PREF))
-    bgp_set_attr_u32(&attrs, s->pool, BA_LOCAL_PREF, 0, s->default_local_pref);
+    bgp_set_attr_u32(&attrs, s->pool, BA_LOCAL_PREF, 0, s->proto_attrs->default_local_pref);
 
   return attrs;
 
@@ -1499,7 +1519,7 @@ bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
       WITHDRAW("Route leak detected - OTC attribute from downstream");
 
     /* Reject routes from peers if they are leaked */
-    if (e && (s->local_role == BGP_ROLE_PEER) && (e->u.data != s->remote_as))
+    if (e && (s->local_role == BGP_ROLE_PEER) && (e->u.data != s->proto_attrs->remote_as))
       WITHDRAW("Route leak detected - OTC attribute with mismatched ASN (%u)",
 	       (uint) e->u.data);
 
@@ -1507,7 +1527,7 @@ bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
     if (!e && (s->local_role == BGP_ROLE_CUSTOMER ||
 	       s->local_role == BGP_ROLE_PEER ||
 	       s->local_role == BGP_ROLE_RS_CLIENT))
-      bgp_set_attr_u32(&a->eattrs, s->pool, BA_ONLY_TO_CUSTOMER, 0, s->remote_as);
+      bgp_set_attr_u32(&a->eattrs, s->pool, BA_ONLY_TO_CUSTOMER, 0, s->proto_attrs->remote_as);
   }
 
   /* Apply MPLS policy for labeled SAFIs */
@@ -1987,8 +2007,8 @@ bgp_get_neighbor(rte *r)
     return as;
 
   /* If AS_PATH is not defined, we treat rte as locally originated */
-  struct bgp_proto *p = (void *) r->src->proto;
-  return p->cf->confederation ?: p->local_as;
+  struct bgp_proto_attributes *p = (struct bgp_proto_attributes *) ea_find(r->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_PROTO_ATTRS))->u.ptr;
+  return p->confederation ?: p->local_as;
 }
 
 static inline int
@@ -2017,8 +2037,8 @@ rte_stale(rte *r)
 int
 bgp_rte_better(rte *new, rte *old)
 {
-  struct bgp_proto *new_bgp = (struct bgp_proto *) new->src->proto;
-  struct bgp_proto *old_bgp = (struct bgp_proto *) old->src->proto;
+  struct bgp_proto_attributes *new_bgp = (struct bgp_proto_attributes *) ea_find(new->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_PROTO_ATTRS))->u.ptr;
+  struct bgp_proto_attributes *old_bgp = (struct bgp_proto_attributes *) ea_find(old->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_PROTO_ATTRS))->u.ptr;
   eattr *x, *y;
   u32 n, o;
 
@@ -2049,8 +2069,8 @@ bgp_rte_better(rte *new, rte *old)
  /* Start with local preferences */
   x = ea_find(new->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_LOCAL_PREF));
   y = ea_find(old->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_LOCAL_PREF));
-  n = x ? x->u.data : new_bgp->cf->default_local_pref;
-  o = y ? y->u.data : old_bgp->cf->default_local_pref;
+  n = x ? x->u.data : new_bgp->default_local_pref;
+  o = y ? y->u.data : old_bgp->default_local_pref;
   if (n > o)
     return 1;
   if (n < o)
@@ -2065,7 +2085,7 @@ bgp_rte_better(rte *new, rte *old)
     return 0;
 
   /* RFC 4271 9.1.2.2. a)  Use AS path lengths */
-  if (new_bgp->cf->compare_path_lengths || old_bgp->cf->compare_path_lengths)
+  if (new_bgp->compare_path_lengths || old_bgp->compare_path_lengths)
   {
     x = ea_find(new->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));
     y = ea_find(old->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));
@@ -2098,13 +2118,13 @@ bgp_rte_better(rte *new, rte *old)
    * same behavior as used by default in Cisco routers, so it is
    * probably not a big issue.
    */
-  if (new_bgp->cf->med_metric || old_bgp->cf->med_metric ||
+  if (new_bgp->med_metric || old_bgp->med_metric ||
       (bgp_get_neighbor(new) == bgp_get_neighbor(old)))
   {
     x = ea_find(new->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_MULTI_EXIT_DISC));
     y = ea_find(old->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_MULTI_EXIT_DISC));
-    n = x ? x->u.data : new_bgp->cf->default_med;
-    o = y ? y->u.data : old_bgp->cf->default_med;
+    n = x ? x->u.data : new_bgp->default_med;
+    o = y ? y->u.data : old_bgp->default_med;
     if (n < o)
       return 1;
     if (n > o)
@@ -2118,8 +2138,8 @@ bgp_rte_better(rte *new, rte *old)
     return 1;
 
   /* RFC 4271 9.1.2.2. e) Compare IGP metrics */
-  n = new_bgp->cf->igp_metric ? new->attrs->igp_metric : 0;
-  o = old_bgp->cf->igp_metric ? old->attrs->igp_metric : 0;
+  n = new_bgp->igp_metric ? new->attrs->igp_metric : 0;
+  o = old_bgp->igp_metric ? old->attrs->igp_metric : 0;
   if (n < o)
     return 1;
   if (n > o)
@@ -2134,7 +2154,7 @@ bgp_rte_better(rte *new, rte *old)
 
   /* RFC 5004 - prefer older routes */
   /* (if both are external and from different peer) */
-  if ((new_bgp->cf->prefer_older || old_bgp->cf->prefer_older) &&
+  if ((new_bgp->prefer_older || old_bgp->prefer_older) &&
       !new_bgp->is_internal && n != o)
     return 0;
 
@@ -2162,8 +2182,8 @@ bgp_rte_better(rte *new, rte *old)
 int
 bgp_rte_mergable(rte *pri, rte *sec)
 {
-  struct bgp_proto *pri_bgp = (struct bgp_proto *) pri->src->proto;
-  struct bgp_proto *sec_bgp = (struct bgp_proto *) sec->src->proto;
+  struct bgp_proto_attributes *pri_bgp = (struct bgp_proto_attributes *) ea_find(pri->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_PROTO_ATTRS))->u.ptr;
+  struct bgp_proto_attributes *sec_bgp = (struct bgp_proto_attributes *) ea_find(sec->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_PROTO_ATTRS))->u.ptr;
   eattr *x, *y;
   u32 p, s;
 
@@ -2182,13 +2202,13 @@ bgp_rte_mergable(rte *pri, rte *sec)
   /* Start with local preferences */
   x = ea_find(pri->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_LOCAL_PREF));
   y = ea_find(sec->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_LOCAL_PREF));
-  p = x ? x->u.data : pri_bgp->cf->default_local_pref;
-  s = y ? y->u.data : sec_bgp->cf->default_local_pref;
+  p = x ? x->u.data : pri_bgp->default_local_pref;
+  s = y ? y->u.data : sec_bgp->default_local_pref;
   if (p != s)
     return 0;
 
   /* RFC 4271 9.1.2.2. a)  Use AS path lengths */
-  if (pri_bgp->cf->compare_path_lengths || sec_bgp->cf->compare_path_lengths)
+  if (pri_bgp->compare_path_lengths || sec_bgp->compare_path_lengths)
   {
     x = ea_find(pri->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));
     y = ea_find(sec->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_AS_PATH));
@@ -2211,13 +2231,13 @@ bgp_rte_mergable(rte *pri, rte *sec)
     return 0;
 
   /* RFC 4271 9.1.2.2. c) Compare MED's */
-  if (pri_bgp->cf->med_metric || sec_bgp->cf->med_metric ||
+  if (pri_bgp->med_metric || sec_bgp->med_metric ||
       (bgp_get_neighbor(pri) == bgp_get_neighbor(sec)))
   {
     x = ea_find(pri->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_MULTI_EXIT_DISC));
     y = ea_find(sec->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_MULTI_EXIT_DISC));
-    p = x ? x->u.data : pri_bgp->cf->default_med;
-    s = y ? y->u.data : sec_bgp->cf->default_med;
+    p = x ? x->u.data : pri_bgp->default_med;
+    s = y ? y->u.data : sec_bgp->default_med;
     if (p != s)
       return 0;
   }
@@ -2227,8 +2247,8 @@ bgp_rte_mergable(rte *pri, rte *sec)
     return 0;
 
   /* RFC 4271 9.1.2.2. e) Compare IGP metrics */
-  p = pri_bgp->cf->igp_metric ? pri->attrs->igp_metric : 0;
-  s = sec_bgp->cf->igp_metric ? sec->attrs->igp_metric : 0;
+  p = pri_bgp->igp_metric ? pri->attrs->igp_metric : 0;
+  s = sec_bgp->igp_metric ? sec->attrs->igp_metric : 0;
   if (p != s)
     return 0;
 
@@ -2247,8 +2267,8 @@ same_group(rte *r, u32 lpref, u32 lasn)
 static inline int
 use_deterministic_med(rte *r)
 {
-  struct proto *P = r->src->proto;
-  return (P->proto == &proto_bgp) && ((struct bgp_proto *) P)->cf->deterministic_med;
+  struct bgp_proto_attributes *pa = (struct bgp_proto_attributes *) ea_find(r->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_PROTO_ATTRS))->u.ptr;
+  return (pa->routes_proto == BGP_ROUTE) && pa->deterministic_med;
 }
 
 int

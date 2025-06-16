@@ -21,6 +21,7 @@ proto: mrtload_proto;
 mrtload_proto_start: proto_start MRTLOAD
 {
   this_proto = proto_config_new(&proto_mrtload, $1);
+  BGP_RT_CFG = &MRTLOAD_CFG->rte_class;
 };
 
 
@@ -86,6 +87,7 @@ mrtload_proto_opts:
    /* empty */
  | mrtload_proto_opts mrt_get_bgp_channel mrtload_tab ';'
  | mrtload_proto_opts mrtload_proto_item ';'
+ | mrtload_proto_opts bgp_attr_for_route
  ;
 
 

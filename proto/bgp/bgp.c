@@ -2064,6 +2064,14 @@ bgp_start(struct proto *P)
   p->remote_as = cf->remote_as;
   p->public_as = cf->local_as;
 
+  p->deterministic_med = cf->deterministic_med;
+  p->default_local_pref = cf->default_local_pref;
+  p->compare_path_lengths = cf->compare_path_lengths;
+  p->confederation = cf->confederation;
+  p->med_metric = cf->med_metric;
+  p->default_med = cf->default_med;
+  p->igp_metric = cf->igp_metric;
+  p->prefer_older = cf->prefer_older;
   /* For dynamic BGP childs, remote_ip is already set */
   if (ipa_nonzero(cf->remote_ip))
     p->remote_ip = cf->remote_ip;
@@ -2251,6 +2259,7 @@ bgp_init(struct proto_config *CF)
   P->rte_igp_metric = bgp_rte_igp_metric;
 
   p->cf = cf;
+  p->routes_proto = BGP_ROUTE;
   p->is_internal = (cf->local_as == cf->remote_as);
   p->is_interior = p->is_internal || cf->confederation_member;
   p->rs_client = cf->rs_client;
@@ -2744,6 +2753,19 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 	|| (old->remote_range && new->remote_range && net_equal(old->remote_range, new->remote_range)))
     && !bstrcmp(old->dynamic_name, new->dynamic_name)
     && (old->dynamic_name_digits == new->dynamic_name_digits);
+ 
+    /* Options influencing best route selection; for now, restarting, in future
+   * we should just recalculate the tables */
+  same = same && p->deterministic_med == new->deterministic_med
+              && p->compare_path_lengths == new->compare_path_lengths
+              && p->med_metric == new->med_metric
+              && p->default_med == new->default_med
+              && p->igp_metric == new->igp_metric
+              && p->prefer_older == new->prefer_older;
+
+  /* looks like this does not affect best route selection */
+  p->default_local_pref = new->default_local_pref;
+  p->confederation = new->confederation;
 
   /* Reconfigure TCP-AP */
   same = same && bgp_reconfigure_ao_keys(p, new);

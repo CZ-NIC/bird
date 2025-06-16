@@ -351,6 +351,7 @@ mrt_peer_table_entry(struct mrt_table_dump_state *s, u32 peer_id, u32 peer_as, i
 static void
 mrt_peer_table_dump(struct mrt_table_dump_state *s)
 {
+  log("mrt_peer_table_dump");
   mrt_init_message(&s->buf, MRT_TABLE_DUMP_V2, MRT_PEER_INDEX_TABLE);
   mrt_peer_table_header(s, config->router_id, s->table->name);
 

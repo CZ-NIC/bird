@@ -83,6 +83,7 @@ mrt_parse_error(struct bgp_parse_state * ps UNUSED, uint e UNUSED)
 void
 mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4)
 {
+  log("mrt_parse_bgp_message");
   u64 peer_as, local_as;
   if (as4)
   {
@@ -97,6 +98,7 @@ mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4)
   int interface_id = mrtload_two_octet(fp, remains);
   int addr_fam = mrtload_two_octet(fp, remains);
 
+  log("peer as %i", peer_as);
   ip_addr peer_addr, local_addr;
   mrtload_ip(fp, remains, &peer_addr, addr_fam == 2);
   mrtload_ip(fp, remains, &local_addr, addr_fam == 2);
@@ -133,6 +135,7 @@ mrt_apply_mpls_labels(struct bgp_parse_state *s UNUSED, rta *a UNUSED, u32 *labe
 static void
 mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct proto *P)
 {
+  log("here");
   mrt_parse_bgp_message(fp, remains, as4);
 
   if (*remains < 19)
@@ -201,8 +204,10 @@ mrt_parse_general_header(FILE *fp, struct proto *P)
   u64 remains = length;
 
   /* We do not load MRT_TABLE_DUMP_V2 type and MRT_BGP4MP_STATE_CHANGE_AS4. */
+  log("type %i subtype %i", type, subtype);
   if (type == MRT_BGP4MP)
   {
+    log("yeah?");
     switch (subtype)
     {
       case (MRT_BGP4MP_MESSAGE):
@@ -232,12 +237,12 @@ mrt_parse_general_header(FILE *fp, struct proto *P)
 void
 mrtload(struct proto *P)
 {
-  struct mrt_config *cf = SKIP_BACK(struct mrt_config, c, P->cf);
+  struct mrtload_config *cf = (void *) (P->cf);
   FILE *fp = fopen(cf->filename, "r");
 
   if (fp == NULL)
   {
-    log(L_WARN "Can not open file %s", fp);
+    log(L_WARN "Can not open file %s", cf->filename);
     return;
   }
 
@@ -255,6 +260,8 @@ mrtload_check_config(struct proto_config *CF, struct bgp_channel_config *CC)
 
   if (!cf->filename)
     cf_error("File not specified");
+  else
+    log("%s", cf->filename);
 
   if (!CC->desc)
     cf_error("Afi not specified.");
@@ -276,6 +283,14 @@ mrtload_start(struct proto *P)
   struct mrtload_proto *p = (void *) P;
   struct mrtload_config *cf = (void *) (P->cf);
 
+  p->deterministic_med = cf->deterministic_med;
+  p->default_local_pref = cf->default_local_pref;
+  p->compare_path_lengths = cf->compare_path_lengths;
+  p->confederation = cf->confederation;
+  p->med_metric = cf->med_metric;
+  p->default_med = cf->default_med;
+  p->igp_metric = cf->igp_metric;
+  p->prefer_older = cf->prefer_older;
   p->channel = (void *) proto_add_channel(P, &cf->channel_cf->c);
 
   p->channel->afi = cf->channel_cf->afi;

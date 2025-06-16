@@ -561,6 +561,7 @@ const char *ea_custom_name(uint ea);
 #define EAF_TYPE_STRING 0x16		/* Text string */
 #define EAF_EMBEDDED 0x01		/* Data stored in eattr.u.data (part of type spec) */
 #define EAF_VAR_LENGTH 0x02		/* Attribute length is variable (part of type spec) */
+#define EAF_PROTO_ATTR_PTR 0x18 /* Pointer to bgp_proto_attributes */
 
 typedef struct adata {
   uint length;				/* Length of data */

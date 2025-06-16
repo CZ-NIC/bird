@@ -1177,7 +1177,7 @@ static void
 bgp_apply_flow_validation(struct bgp_parse_state *s, const net_addr *n, rta *a)
 {
   struct bgp_channel *c = SKIP_BACK(struct bgp_channel, c, s->channel);
-  int valid = rt_flowspec_check(c->base_table, c->c.table, n, a, s->is_interior);
+  int valid = rt_flowspec_check(c->base_table, c->c.table, n, a, s->proto_attrs->is_interior);
   a->dest = valid ? RTD_NONE : RTD_UNREACHABLE;
 
   /* Invalidate cached rta if dest changes */
@@ -2861,6 +2861,8 @@ bgp_parse_update(struct bgp_parse_state *s, byte *pkt, uint len, ea_list **ea)
   else
     *ea = NULL;
 
+  bgp_set_attr_ptr(ea, s->pool, BA_PROTO_ATTRS, 0, (adata*) s->proto_attrs);
+
   /* Check for End-of-RIB marker */
   if (!s->attr_len && !s->ip_unreach_len && !s->ip_reach_len)
   { s->end_mark(s, BGP_AF_IPV4); return; }
@@ -2917,25 +2919,18 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
     .get_channel = bgp_get_channel_to_parse,
     .apply_mpls_labels = bgp_apply_mpls_labels,
 
-    .local_as = p->local_as,
+    .proto_attrs = &p->proto_attrs,
     .remote_ip = p->remote_ip,
     .public_as = p->public_as,
-    .remote_as = p->remote_as,
-    .rr_cluster_id = p->rr_cluster_id,
-    .local_id = p->local_id,
-    .is_interior = p->is_interior,
-    .is_internal = p->is_internal,
     .proto_name = p->p.name,
     .is_mrt_parse = 0,
     .debug = p->p.debug,
     .mpls_channel = p->p.mpls_channel,
 
     // from config
-    .default_local_pref = p->cf->default_local_pref,
     .allow_local_pref = p->cf->allow_local_pref,
     .allow_as_sets = p->cf->allow_as_sets,
     .allow_local_as = p->cf->allow_local_as,
-    .confederation = p->cf->confederation,
     .enforce_first_as = p->cf->enforce_first_as,
     .local_role = p->cf->local_role,
     .rr_client = p->cf->rr_client,

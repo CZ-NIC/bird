@@ -14,9 +14,12 @@ CF_DEFINES
 
 #define BGP_CFG ((struct bgp_config *) this_proto)
 #define BGP_CC ((struct bgp_channel_config *) this_channel)
+#define BGP_RT_CF BGP_CFG->route_attrs;
 
 static struct ao_config *this_ao_key;
 static struct ao_config **next_ao_key;
+
+static struct rte_class_config *BGP_RT_CFG;
 
 CF_DECLS
 
@@ -55,6 +58,7 @@ proto: bgp_proto '}'  ;
 
 bgp_proto_start: proto_start BGP {
      this_proto = proto_config_new(&proto_bgp, $1);
+     BGP_RT_CFG = &BGP_CFG->rte_class;
      BGP_CFG->local_port = BGP_PORT;
      BGP_CFG->remote_port = BGP_PORT;
      BGP_CFG->multihop = -1;	/* undefined */
@@ -142,8 +146,19 @@ bgp_role_name:
  | RS_CLIENT { $$ = BGP_ROLE_RS_CLIENT; }
  ;
 
+bgp_attr_for_route:
+   DETERMINISTIC MED bool ';' { BGP_RT_CFG->deterministic_med = $3; }
+ | DEFAULT BGP_LOCAL_PREF expr ';' { BGP_RT_CFG->default_local_pref = $3; }
+ | PATH METRIC bool ';' { BGP_RT_CFG->compare_path_lengths = $3; }
+ | CONFEDERATION expr ';' { BGP_RT_CFG->confederation = $2; }
+ | MED METRIC bool ';' { BGP_RT_CFG->med_metric = $3; }
+ | DEFAULT BGP_MED expr ';' { BGP_RT_CFG->default_med = $3; }
+ | IGP METRIC bool ';' { BGP_RT_CFG->igp_metric = $3; }
+ | PREFER OLDER bool ';' { BGP_RT_CFG->prefer_older = $3; }
+
 bgp_proto:
-   bgp_proto_start proto_name '{'
+   bgp_proto bgp_attr_for_route
+ | bgp_proto_start proto_name '{'
  | bgp_proto proto_item ';'
  | bgp_proto bgp_proto_channel ';'
  | bgp_proto mpls_channel ';'
@@ -170,7 +185,6 @@ bgp_proto:
  | bgp_proto RR CLUSTER ID idval ';' { BGP_CFG->rr_cluster_id = $5; }
  | bgp_proto RR CLIENT bool ';' { BGP_CFG->rr_client = $4; }
  | bgp_proto RS CLIENT bool ';' { BGP_CFG->rs_client = $4; }
- | bgp_proto CONFEDERATION expr ';' { BGP_CFG->confederation = $3; }
  | bgp_proto CONFEDERATION MEMBER bool ';' { BGP_CFG->confederation_member = $4; }
  | bgp_proto HOLD TIME expr ';' { BGP_CFG->hold_time = $4; if (($4 && $4<3) || ($4>65535)) cf_error("Hold time must be in range 3-65535 or zero"); }
  | bgp_proto MIN HOLD TIME expr ';' { BGP_CFG->min_hold_time = $5; }
@@ -186,13 +200,6 @@ bgp_proto:
  | bgp_proto DYNAMIC NAME DIGITS expr ';' { BGP_CFG->dynamic_name_digits = $5; if ($5>10) cf_error("Dynamic name digits must be at most 10"); }
  | bgp_proto STRICT BIND bool ';' { BGP_CFG->strict_bind = $4; }
  | bgp_proto FREE BIND bool ';' { BGP_CFG->free_bind = $4; }
- | bgp_proto PATH METRIC bool ';' { BGP_CFG->compare_path_lengths = $4; }
- | bgp_proto MED METRIC bool ';' { BGP_CFG->med_metric = $4; }
- | bgp_proto IGP METRIC bool ';' { BGP_CFG->igp_metric = $4; }
- | bgp_proto PREFER OLDER bool ';' { BGP_CFG->prefer_older = $4; }
- | bgp_proto DETERMINISTIC MED bool ';' { BGP_CFG->deterministic_med = $4; }
- | bgp_proto DEFAULT BGP_MED expr ';' { BGP_CFG->default_med = $4; }
- | bgp_proto DEFAULT BGP_LOCAL_PREF expr ';' { BGP_CFG->default_local_pref = $4; }
  | bgp_proto SOURCE ADDRESS ipa ';' { BGP_CFG->local_ip = $4; }
  | bgp_proto START DELAY TIME expr ';' { BGP_CFG->connect_delay_time = $5; cf_warn("%s: Start delay time option is deprecated, use connect delay time", this_proto->name); }
  | bgp_proto CONNECT DELAY TIME expr ';' { BGP_CFG->connect_delay_time = $5; }

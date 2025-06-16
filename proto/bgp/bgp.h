@@ -74,8 +74,24 @@ struct bgp_af_desc {
 };
 
 
+#define BGP_ROUTE_ATTRIBUTES \
+  int deterministic_med;		/* Use more complicated algo to have strict RFC 4271 MED comparison */ \
+  u32 default_local_pref;		/* Default value for LOCAL_PREF attribute */ \
+  int compare_path_lengths;		/* Use path lengths when selecting best route */ \
+  u32 confederation;			/* Confederation ID, or zero if confeds not active */ \
+  int med_metric;			/* Compare MULTI_EXIT_DISC even between routes from differen ASes */ \
+  u32 default_med;			/* Default value for MULTI_EXIT_DISC attribute */ \
+  int igp_metric;			/* Use IGP metrics when selecting best route */ \
+  int prefer_older;			/* Prefer older routes according to RFC 5004 */ \
+
+struct rte_class_config { BGP_ROUTE_ATTRIBUTES };
+
 struct bgp_config {
   struct proto_config c;
+  union {
+    struct rte_class_config rte_class;
+    struct { BGP_ROUTE_ATTRIBUTES; };
+  };
   u32 local_as, remote_as;
   ip_addr local_ip;			/* Source address to use */
   ip_addr remote_ip;
@@ -87,13 +103,6 @@ struct bgp_config {
   int strict_bind;			/* Bind listening socket to local address */
   int free_bind;			/* Bind listening socket with SKF_FREEBIND */
   int ttl_security;			/* Enable TTL security [RFC 5082] */
-  int compare_path_lengths;		/* Use path lengths when selecting best route */
-  int med_metric;			/* Compare MULTI_EXIT_DISC even between routes from differen ASes */
-  int igp_metric;			/* Use IGP metrics when selecting best route */
-  int prefer_older;			/* Prefer older routes according to RFC 5004 */
-  int deterministic_med;		/* Use more complicated algo to have strict RFC 4271 MED comparison */
-  u32 default_local_pref;		/* Default value for LOCAL_PREF attribute */
-  u32 default_med;			/* Default value for MULTI_EXIT_DISC attribute */
   int capabilities;			/* Enable capability handshake [RFC 5492] */
   int enable_refresh;			/* Enable local support for route refresh [RFC 2918] */
   int enable_enhanced_refresh;		/* Enable local support for enhanced route refresh [RFC 7313] */
@@ -103,7 +112,6 @@ struct bgp_config {
   u32 rr_cluster_id;			/* Route reflector cluster ID, if different from local ID */
   int rr_client;			/* Whether neighbor is RR client of me */
   int rs_client;			/* Whether neighbor is RS client of me */
-  u32 confederation;			/* Confederation ID, or zero if confeds not active */
   int confederation_member;		/* Whether neighbor AS is member of our confederation */
   int passive;				/* Do not initiate outgoing connection */
   int interpret_communities;		/* Hardwired handling of well-known communities */
@@ -351,22 +359,38 @@ struct bgp_conn {
   uint hold_time, keepalive_time, send_hold_time;	/* Times calculated from my and neighbor's requirements */
 };
 
+enum route_proto {
+  BGP_ROUTE = 1,
+};
+
+#define BGP_PROTO_ATTRIBUTES \
+  enum route_proto routes_proto; /* protocol enum (pointer to bgp_proto_attributes is given to route eattrs) */ \
+  u32 local_as, remote_as; \
+  ip_addr local_ip, remote_ip; \
+  u32 local_id;				/* BGP identifier of this router */ \
+  u32 remote_id;	   	/* BGP identifier of the neighbor */ \
+  u32 rr_cluster_id;	/* Route reflector cluster ID */ \
+  u8 rr_client;       /* Whether neighbor is RR client of me */ \
+  u8 rs_client;				/* Whether neighbor is RS client of me */ \
+  u8 is_internal;			/* Internal BGP session (local_as == remote_as) */ \
+  u8 is_interior;			/* Internal or intra-confederation BGP session */ \
+  \
+  /* from conf */ \
+  BGP_ROUTE_ATTRIBUTES\
+
+struct bgp_proto_attributes { BGP_PROTO_ATTRIBUTES };
+
 struct bgp_proto {
   struct proto p;
   const struct bgp_config *cf;		/* Shortcut to BGP configuration */
   const char *hostname;      /* Hostname for this BGP protocol */
-  ip_addr local_ip, remote_ip;
-  u32 local_as, remote_as;
+  union {
+    struct bgp_proto_attributes proto_attrs;
+    struct { BGP_PROTO_ATTRIBUTES; };
+  };
   u32 public_as;			/* Externally visible ASN (local_as or confederation id) */
-  u32 local_id;				/* BGP identifier of this router */
-  u32 remote_id;			/* BGP identifier of the neighbor */
-  u32 rr_cluster_id;			/* Route reflector cluster ID */
   u8 start_state;			/* Substates that partitions BS_START */
-  u8 is_internal;			/* Internal BGP session (local_as == remote_as) */
-  u8 is_interior;			/* Internal or intra-confederation BGP session */
   u8 as4_session;			/* Session uses 4B AS numbers in AS_PATH (both sides support it) */
-  u8 rr_client;				/* Whether neighbor is RR client of me */
-  u8 rs_client;				/* Whether neighbor is RS client of me */
   u8 ipv4;				/* Use IPv4 connection, i.e. remote_ip is IPv4 */
   u8 passive;				/* Do not initiate outgoing connection */
   u8 route_refresh;			/* Route refresh allowed to send [RFC 2918] */
@@ -494,15 +518,10 @@ struct bgp_write_state {
 
 struct bgp_parse_state {
   // instead of struct bgp_proto *proto;
+  struct bgp_proto_attributes *proto_attrs;
   struct proto *p;
-  u32 local_as;
   u32 public_as;
-  u32 remote_as;
-  u32 rr_cluster_id;
-  u32 local_id;
   u8 is_mrt_parse;
-  u8 is_interior;
-  u8 is_internal;
   const char *proto_name;
   u32 debug;				/* Debugging flags */
   struct channel *mpls_channel;
@@ -512,8 +531,6 @@ struct bgp_parse_state {
   int allow_local_pref;
   int allow_local_as;
   int enforce_first_as;
-  u32 default_local_pref;
-  u32 confederation;
   u8 local_role;
   int rr_client;
   ip_addr remote_ip;
@@ -773,6 +790,7 @@ byte *bgp_create_end_mark_(struct bgp_channel *c, byte *buf);
 #define BAF_TRANSITIVE		0x40
 #define BAF_PARTIAL		0x20
 #define BAF_EXT_LEN		0x10
+#define BAF_OPERATIONAL 0x100
 
 #define BAF_DECODE_FLAGS	0x0100	/* Private flag - attribute flags are handled by the decode hook */
 
@@ -794,6 +812,7 @@ byte *bgp_create_end_mark_(struct bgp_channel *c, byte *buf);
 #define BA_AIGP			0x1a	/* RFC 7311 */
 #define BA_LARGE_COMMUNITY	0x20	/* RFC 8092 */
 #define BA_ONLY_TO_CUSTOMER	0x23	/* RFC 9234 */
+#define BA_PROTO_ATTRS 0x24 /* BGP_PROTO_ATTRIBUTES */
 
 /* Bird's private internal BGP attributes */
 #define BA_MPLS_LABEL_STACK	0xfe	/* MPLS label stack transfer attribute */

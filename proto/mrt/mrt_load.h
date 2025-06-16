@@ -13,6 +13,10 @@ extern const struct channel_class channel_mrtload;
 
 struct mrtload_config {
   struct proto_config c;
+  union {
+    struct rte_class_config rte_class;
+    struct { BGP_ROUTE_ATTRIBUTES };
+  };
 
   struct rtable_config *table_cf;
   const char *table_expr;
@@ -25,6 +29,10 @@ struct mrtload_config {
 
 struct mrtload_proto {
   struct proto p;
+    union {
+    struct rte_class_config rte_class;
+    struct { BGP_PROTO_ATTRIBUTES };
+  };
 
   struct mrt_table_dump_state *table_dump;
   struct bgp_channel *channel;

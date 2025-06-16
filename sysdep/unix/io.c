@@ -922,7 +922,7 @@ sk_set_icmp6_filter(sock *s, int p1, int p2)
 void
 sk_log_error(sock *s, const char *p)
 {
-  log(L_ERR "%s: Socket error: %s%#m", p, s->err);
+  bug("%s: Socket error: %s%#m", p, s->err);
 }
 
 
@@ -1665,7 +1665,8 @@ sk_open(sock *s)
         log(L_WARN "Socket error: %s%#m", s->err);
 
     sockaddr_fill(&sa, s->af, bind_addr, s->iface, bind_port);
-    if (bind(fd, &sa.sa, SA_LEN(sa)) < 0)
+    int i = bind(fd, &sa.sa, SA_LEN(sa));
+    if (i < 0)
       ERR2("bind");
   }
 
