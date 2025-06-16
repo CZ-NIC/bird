@@ -10,8 +10,8 @@ $(o)proto-build.c: Makefile $(lastword $(MAKEFILE_LIST)) $(objdir)/.dir-stamp
 
 prepare: $(o)proto-build.c
 
-$(exedir)/birdc: $(obj)
-$(exedir)/birdcl: $(obj)
+$(exedir)/birdc: $(o)cbor.o $(o)cbor_shortcuts.o
+$(exedir)/birdcl: $(o)cbor.o $(o)cbor_shortcuts.o
 #$(exedir)/birdc: $(o)cbor.o $(o)cbor_parse.o $(o)cbor_cmds.o $(o)rt-fib.o \
 #  $(o)rt-attr.o $(o)rt-table.o $(o)cli.o $(o)locks.o $(o)iface.o $(o)mpls.o \
 #  $(o)proto.o $(o)neighbor.o

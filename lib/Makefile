@@ -6,8 +6,8 @@ src += event.c timer.c tbf.c
 obj := $(src-o-files)
 $(all-daemon)
 
-$(exedir)/birdc: $(obj)
-$(exedir)/birdcl: $(obj)
+#$(exedir)/birdc: $(filter-out $(o)event.o, $(obj))
+#$(exedir)/birdcl: $(filter-out $(o)event.o, $(obj))
 #$(exedir)/birdc: $(o)timer.o $(o)tbf.o $(o)event.o
 #$(exedir)/birdcl: $(o)timer.o $(o)tbf.o $(o)event.o
 

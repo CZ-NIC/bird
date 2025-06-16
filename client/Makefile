@@ -6,9 +6,9 @@ $(conf-y-targets): $(s)cmds.Y
 
 $(exedir)/birdc: $(o)birdc.o
 # see file nest/Makefile for more $(exedir)/birdc deps
-# these are: cbor.o cbor_parse.o cbor_cmds.o
+# these are: cbor.o cbor_shortcuts.o
 $(exedir)/birdc: LIBS += $(CLIENT_LIBS)
 
 $(exedir)/birdcl: $(o)birdcl.o
 # see file nest/Makefile for more $(exedir)/birdcl deps
-# these are: cbor.o cbor_parse.o cbor_cmds.o
+# these are: cbor.o cbor_shortcuts.o

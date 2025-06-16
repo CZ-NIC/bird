@@ -4,6 +4,17 @@
 #include "nest/bird.h"
 #include "lib/ip.h"
 
+enum cbor_majors {
+  CBOR_UINT = 0,
+  CBOR_NEG_INT = 1,
+  CBOR_BYTE_STR = 2,
+  CBOR_TEXT = 3,
+  CBOR_ARRAY = 4,
+  CBOR_BLOCK = 5,
+  CBOR_TAG = 6,
+  CBOR_FLOAT = 7,
+};
+
 struct cbor_writer {
   int pt; // where will next byte go
   int capacity;
@@ -54,5 +65,20 @@ void write_item(struct cbor_writer *writer, uint8_t major, uint64_t num);
 void cbor_write_item_with_constant_val_length_4(struct cbor_writer *writer, uint8_t major, uint64_t num);
 
 void rewrite_4bytes_int(struct cbor_writer *writer, int pt, int num);
+
+struct buff_reader {
+  byte *buff;
+  uint pt;
+  uint size;
+};
+
+struct value {
+  int major;
+  int64_t val;
+};
+
+struct value get_value(struct buff_reader *reader);
+uint compare_buff_str(struct buff_reader *buf_read, uint length, char *string);
+int val_is_break(struct value val);
 
 #endif

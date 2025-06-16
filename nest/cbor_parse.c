@@ -2,69 +2,8 @@
 #include "nest/cbor_parse.h"
 #include "nest/cbor_cmds.h"
 
-uint compare_buff_str(struct buff_reader *buf_read, uint length, char *string) {
-  if (length != strlen(string)) {
-    return 0;
-  }
-  for (size_t i = 0; i < strlen(string); i++) {
-    if (buf_read->buff[i+buf_read->pt]!=string[i]) {
-      return 0;
-    }
-  }
-  return 1;
-};
-
-struct value
-get_value(struct buff_reader *reader)
-{
-  struct value val;
-  byte *buff = reader->buff;
-  val.major = buff[reader->pt]>>5;
-  int first_byte_val = buff[reader->pt] - (val.major<<5);
-  if (first_byte_val <=23) {
-    val.val = first_byte_val;
-    reader->pt++;
-  } else if (first_byte_val == 0x18)
-  {
-    val.val = buff[reader->pt+1];
-    reader->pt+=2;
-  } else if (first_byte_val == 0x19)
-  {
-    val.val = buff[reader->pt+1];
-    val.val = val.val << 8;
-    val.val += buff[reader->pt+2];
-    reader->pt += 3;
-  } else if (first_byte_val == 0x1a)
-  {
-    val.val = 0;
-    for (int i = 1; i < 4; i++)
-    {
-      val.val += buff[reader->pt+i];
-      val.val = val.val << 8;
-    }
-    val.val += buff[reader->pt+4];
-    reader->pt+=5;
-  } else if (first_byte_val == 0x1b)
-  {
-    for(int i = 1; i < 8; i++) {
-      val.val += buff[reader->pt+i];
-      val.val = val.val << 8;
-    }
-    val.val += buff[reader->pt+8];
-    reader->pt+=9;
-  } else if (first_byte_val == 0x1f)
-  {
-    val.val = -1;
-    reader->pt++;
-  }
-  return val;
-}
 
 
-int val_is_break(struct value val)
-{
-  return val.major == FLOAT && val.val == -1; // break code is 0xff, so the major is same for float and break
-}
 
 void skip_optional_args(struct buff_reader *rbuf_read, int items_in_block)
 {
@@ -74,12 +13,12 @@ void skip_optional_args(struct buff_reader *rbuf_read, int items_in_block)
     return;
   }
   struct value val = get_value(rbuf_read);
-  if (val.major == TEXT)
+  if (val.major == CBOR_TEXT)
   {  //Since the list args is optional, we need to know if it is here and check if it is empty.
     ASSERT(compare_buff_str(rbuf_read, val.val, "args"));
     rbuf_read->pt+=val.val;
     val = get_value(rbuf_read);
-    ASSERT(val.major == ARRAY);
+    ASSERT(val.major == CBOR_ARRAY);
     ASSERT(val.val <=0);
     if (val.val ==-1)
     { // list open with unspecified size, but we know there should be none for show memory (but, of course, we know it because of the show memory function, not because of yang)
@@ -106,14 +45,14 @@ struct arg_list *parse_arguments(struct buff_reader *rbuf_read, int items_in_blo
     return arguments;
   }
   struct value val = get_value(rbuf_read);
-  if (val.major == TEXT)
+  if (val.major == CBOR_TEXT)
   {
     log("text");
     ASSERT(compare_buff_str(rbuf_read, val.val, "args"));
     log("args");
     rbuf_read->pt+=val.val;
     val = get_value(rbuf_read);
-    ASSERT(val.major == ARRAY);
+    ASSERT(val.major == CBOR_ARRAY);
     int num_array_items = val.val;
     log("num arr items %i", num_array_items);
     if (num_array_items > 0)
@@ -135,7 +74,7 @@ struct arg_list *parse_arguments(struct buff_reader *rbuf_read, int items_in_blo
         rbuf_read->pt--;
         return arguments;
       }
-      else if (val.major == BLOCK)
+      else if (val.major == CBOR_BLOCK)
       {
         int wait_close = val.val == -1;
         if (!wait_close)
@@ -147,7 +86,7 @@ struct arg_list *parse_arguments(struct buff_reader *rbuf_read, int items_in_blo
         rbuf_read->pt+=val.val;
 
         val = get_value(rbuf_read);
-        ASSERT(val.major == TEXT); // Now we have an argument in val
+        ASSERT(val.major == CBOR_TEXT); // Now we have an argument in val
         if (num_array_items == -1 && arguments->capacity == arguments->pt)
         {
           struct argument *a = arguments->args;
@@ -177,40 +116,6 @@ struct arg_list *parse_arguments(struct buff_reader *rbuf_read, int items_in_blo
     rbuf_read->pt--; // we read one byte from future, we need to shift pointer back
   }
   return arguments;
-}
-
-uint
-do_command(struct buff_reader *rbuf_read, struct buff_reader *tbuf_read, int items_in_block, struct linpool *lp)
-{
-  log("val from %i", rbuf_read->buff[rbuf_read->pt]);
-  struct value val = get_value(rbuf_read);
-  ASSERT(val.major == UINT);
-  struct arg_list * args;
-  log("command %li, major %i", val.val, val.major);
-  switch (val.val)
-  {
-    case SHOW_MEMORY:
-      skip_optional_args(rbuf_read, items_in_block);
-      return cmd_show_memory_cbor(&tbuf_read->buff[tbuf_read->pt], tbuf_read->size, lp);
-    case SHOW_STATUS:
-      log("show status");
-      skip_optional_args(rbuf_read, items_in_block);
-      return cmd_show_status_cbor(&tbuf_read->buff[tbuf_read->pt], tbuf_read->size, lp);
-    case SHOW_SYMBOLS:
-      args = parse_arguments(rbuf_read, items_in_block, lp);
-      return cmd_show_symbols_cbor(&tbuf_read->buff[tbuf_read->pt], tbuf_read->size, args, lp);
-    case SHOW_OSPF:
-      args = parse_arguments(rbuf_read, items_in_block, lp);
-      log("args %i, pt %i", args, args->pt);
-      return cmd_show_ospf_cbor(&tbuf_read->buff[tbuf_read->pt], tbuf_read->size, args, lp);
-    case SHOW_PROTOCOLS:
-      args = parse_arguments(rbuf_read, items_in_block, lp);
-      log("args %i, pt %i", args, args->pt);
-      return cmd_show_protocols_cbor(&tbuf_read->buff[tbuf_read->pt], tbuf_read->size, args, lp);
-    default:
-      bug("command %li not found", val.val);
-      return 0;
-  }
 }
 
 uint
@@ -246,12 +151,46 @@ detect_down(uint size, byte *rbuf)
   rbuf_read.pt = 0;
   read_head(&rbuf_read);
   struct value val = get_value(&rbuf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
   val = get_value(&rbuf_read);
   ASSERT(compare_buff_str(&rbuf_read, val.val, "command:do"));
   rbuf_read.pt+=val.val;
   val = get_value(&rbuf_read);
-  return (val.major = TEXT && compare_buff_str(&rbuf_read, val.val, "down"));
+  return (val.major = CBOR_TEXT && compare_buff_str(&rbuf_read, val.val, "down"));
+}
+
+uint
+do_command(struct buff_reader *rbuf_read, struct buff_reader *tbuf_read, int items_in_block, struct linpool *lp)
+{
+  log("val from %i", rbuf_read->buff[rbuf_read->pt]);
+  struct value val = get_value(rbuf_read);
+  ASSERT(val.major == CBOR_UINT);
+  struct arg_list * args;
+  log("command %li, major %i", val.val, val.major);
+  switch (val.val)
+  {
+    case SHOW_MEMORY:
+      skip_optional_args(rbuf_read, items_in_block);
+      return cmd_show_memory_cbor(&tbuf_read->buff[tbuf_read->pt], tbuf_read->size, lp);
+    case SHOW_STATUS:
+      log("show status");
+      skip_optional_args(rbuf_read, items_in_block);
+      return cmd_show_status_cbor(&tbuf_read->buff[tbuf_read->pt], tbuf_read->size, lp);
+    case SHOW_SYMBOLS:
+      args = parse_arguments(rbuf_read, items_in_block, lp);
+      return cmd_show_symbols_cbor(&tbuf_read->buff[tbuf_read->pt], tbuf_read->size, args, lp);
+    case SHOW_OSPF:
+      args = parse_arguments(rbuf_read, items_in_block, lp);
+      log("args %i, pt %i", args, args->pt);
+      return cmd_show_ospf_cbor(&tbuf_read->buff[tbuf_read->pt], tbuf_read->size, args, lp);
+    case SHOW_PROTOCOLS:
+      args = parse_arguments(rbuf_read, items_in_block, lp);
+      log("args %i, pt %i", args, args->pt);
+      return cmd_show_protocols_cbor(&tbuf_read->buff[tbuf_read->pt], tbuf_read->size, args, lp);
+    default:
+      bug("command %li not found", val.val);
+      return 0;
+  }
 }
 
 uint
@@ -280,7 +219,7 @@ parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize, struct linpool* lp)
   tbuf_read.size = tbsize - tbuf_read.pt;
 
   struct value val = get_value(&rbuf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
   ASSERT(val.val <=1);
   int wait_for_end_main_block = val.val == -1;
   if (val.val != 0)
@@ -288,17 +227,17 @@ parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize, struct linpool* lp)
     val = get_value(&rbuf_read);
     if ( !( wait_for_end_main_block == -1 && val_is_break(val) ))
     {
-      ASSERT(val.major == TEXT);
+      ASSERT(val.major == CBOR_TEXT);
       ASSERT(compare_buff_str(&rbuf_read, val.val, "command:do")); // this should be mandatory in yang, but when i marked it mandatory, it destroyed all other yangs (required command in all other modules)
       rbuf_read.pt+=val.val;
 
       val = get_value(&rbuf_read);
-      ASSERT(val.major == BLOCK);
+      ASSERT(val.major == CBOR_BLOCK);
       ASSERT(val.val == 1 || val.val == 2 || val.val == -1);
       int items_in_block = val.val;
 
       val = get_value(&rbuf_read);
-      ASSERT(val.major == TEXT);
+      ASSERT(val.major == CBOR_TEXT);
       if (items_in_block!=-1)
         items_in_block--;
       ASSERT(compare_buff_str(&rbuf_read, val.val, "command"));
@@ -309,7 +248,7 @@ parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize, struct linpool* lp)
       {
         val = get_value(&rbuf_read);
         log("val before fall %i %li", val.major, val.val);
-        ASSERT(val.major == FLOAT && val.val == -1);
+        ASSERT(val.major == CBOR_FLOAT && val.val == -1);
       }
     }
   }
@@ -323,5 +262,6 @@ parse_cbor(uint size, byte *rbuf, byte *tbuf, uint tbsize, struct linpool* lp)
   log("parsed");
   return tbuf_read.pt;
 }
+
 
 

@@ -12,7 +12,6 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
-#if 0
 int shutting_down;
 void write_msg(va_list args, const char *msg, const char *type)
 {
@@ -53,6 +52,5 @@ void debug(const char *msg, ...)
 
 /* Ignore all events for now */
 struct event;
-void ev_schedule(struct event *e UNUSED) 
+void ev_schedule(struct event *e UNUSED)
 { }
-#endif

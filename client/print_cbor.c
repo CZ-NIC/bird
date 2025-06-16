@@ -145,12 +145,12 @@ void print_distance(struct buff_reader *buf_read)
   ASSERT(compare_buff_str(buf_read, val.val, "distance"));
   buf_read->pt+=val.val;
   val = get_value(buf_read);
-  if (val.major == UINT)
+  if (val.major == CBOR_UINT)
   {
     printf("\t\tdistance %li\n", val.val);
     return;
   }
-  else if (val.major == TEXT)
+  else if (val.major == CBOR_TEXT)
   {
     printf("\t\tdistance ");
     print_with_size_(&buf_read->buff[buf_read->pt], val.val);
@@ -164,7 +164,7 @@ void print_distance(struct buff_reader *buf_read)
 void discard_key(struct buff_reader *buf_read)
 {
   struct value val = get_value(buf_read);
-  if(!(val.major == TEXT))
+  if(!(val.major == CBOR_TEXT))
   {
     bug("key is not text but %i, pt is %i", val.major, buf_read->pt);
   }
@@ -185,7 +185,7 @@ void print_string_string(struct buff_reader *buf_read, char *str)
 void print_lsa_router(struct buff_reader *buf_read)
 {
   struct value val = get_value(buf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
   discard_key(buf_read);
   printf("\trouter ");
   print_ip_addr(buf_read);
@@ -193,7 +193,7 @@ void print_lsa_router(struct buff_reader *buf_read)
   print_distance(buf_read);
   discard_key(buf_read);  // vlink
   val = get_value(buf_read);
-  ASSERT(val.major == ARRAY);
+  ASSERT(val.major == CBOR_ARRAY);
   val = get_value(buf_read);
   while (!val_is_break(val))
   {
@@ -208,7 +208,7 @@ void print_lsa_router(struct buff_reader *buf_read)
 
   discard_key(buf_read);  // router metric
   val = get_value(buf_read);
-  ASSERT(val.major == ARRAY);
+  ASSERT(val.major == CBOR_ARRAY);
   val = get_value(buf_read);
   while (!val_is_break(val))
   {
@@ -224,11 +224,11 @@ void print_lsa_router(struct buff_reader *buf_read)
 
   discard_key(buf_read);  // network
   val = get_value(buf_read);
-  ASSERT(val.major == ARRAY);
+  ASSERT(val.major == CBOR_ARRAY);
   val = get_value(buf_read);
   while (!val_is_break(val))
   {
-    ASSERT(val.major == BLOCK);
+    ASSERT(val.major == CBOR_BLOCK);
     int block_len = val.val;
     discard_key(buf_read); // dummy id
     val = get_value(buf_read); //id num
@@ -287,14 +287,14 @@ void print_lsa_router(struct buff_reader *buf_read)
 void print_lsa_network(struct buff_reader *buf_read)
 {
   struct value val = get_value(buf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
   val = get_value(buf_read);
-  ASSERT(val.major == TEXT);
+  ASSERT(val.major == CBOR_TEXT);
   if (compare_buff_str(buf_read, val.val, "ospf2"))
   {
     buf_read->pt+=val.val;
     val = get_value(buf_read);
-    ASSERT(val.major == BLOCK);
+    ASSERT(val.major == CBOR_BLOCK);
     discard_key(buf_read); // network
     printf("\tnetwork ");
     print_ip_addr(buf_read);
@@ -312,7 +312,7 @@ void print_lsa_network(struct buff_reader *buf_read)
   {
     buf_read->pt+=val.val;
     val = get_value(buf_read);
-    ASSERT(val.major == BLOCK);
+    ASSERT(val.major == CBOR_BLOCK);
     discard_key(buf_read); // network
     printf("\tnetwork ");
     print_ip_addr(buf_read);
@@ -323,7 +323,7 @@ void print_lsa_network(struct buff_reader *buf_read)
   print_distance(buf_read);
   discard_key(buf_read); // routers
   val = get_value(buf_read);
-  ASSERT(val.major == ARRAY);
+  ASSERT(val.major == CBOR_ARRAY);
   val = get_value(buf_read);
   while (!val_is_break(val))
   {
@@ -339,7 +339,7 @@ void print_lsa_network(struct buff_reader *buf_read)
 void print_lsa_sum_net(struct buff_reader *buf_read)
 {
   struct value val = get_value(buf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
   discard_key(buf_read);
   printf("\t\txnetwork ");
   print_ip_prefix(buf_read);
@@ -352,7 +352,7 @@ void print_lsa_sum_net(struct buff_reader *buf_read)
 void print_lsa_sum_rt(struct buff_reader *buf_read)
 {
   struct value val = get_value(buf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
   discard_key(buf_read);
   printf("\t\txrouter ");
   print_ip_addr(buf_read);
@@ -365,7 +365,7 @@ void print_lsa_sum_rt(struct buff_reader *buf_read)
 void print_lsa_external(struct buff_reader *buf_read)
 {
   struct value val = get_value(buf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
   val = get_value(buf_read);
   int via = 0;
   if (compare_buff_str(buf_read, val.val, "via"))
@@ -425,7 +425,7 @@ void print_lsa_external(struct buff_reader *buf_read)
 void print_lsa_prefix(struct buff_reader *buf_read)
 {
   struct value val = get_value(buf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
   val = get_value(buf_read);
   if (val_is_break(val))
     return;
@@ -460,7 +460,7 @@ void print_lsa_prefix(struct buff_reader *buf_read)
 void print_show_ospf(struct buff_reader *buf_read)
 {
   struct value val = get_value(buf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
   val = get_value(buf_read);
   printf("\n");
   if (compare_buff_str(buf_read, val.val, "error"))
@@ -483,15 +483,15 @@ void print_show_ospf(struct buff_reader *buf_read)
   }
   buf_read->pt+=val.val;
   val = get_value(buf_read); // list
-  ASSERT(val.major == ARRAY);
+  ASSERT(val.major == CBOR_ARRAY);
   int j = val.val;
   for (int i = 0; i < j; i++)
   {
     val = get_value(buf_read); // open block
-    ASSERT(val.major == BLOCK);
+    ASSERT(val.major == CBOR_BLOCK);
     discard_key(buf_read); // dummy id
     val = get_value(buf_read);
-    ASSERT(val.major == UINT);
+    ASSERT(val.major == CBOR_UINT);
     val = get_value(buf_read);
     if (compare_buff_str(buf_read, val.val, "area"))
     {
@@ -568,21 +568,21 @@ void print_show_memory(struct buff_reader *buf_read)
   printf("BIRD memory usage\n");
   printf("                  Effective   Overhead\n");
   struct value val = get_value(buf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
   val = get_value(buf_read); // header, may be it should be deleted
-  ASSERT(val.major == TEXT);
+  ASSERT(val.major == CBOR_TEXT);
   buf_read->pt+=val.val;
   val = get_value(buf_read);
-  ASSERT(val.major == TEXT);
+  ASSERT(val.major == CBOR_TEXT);
   buf_read->pt+=val.val;
   val = get_value(buf_read); // body
-  ASSERT(val.major == TEXT);
+  ASSERT(val.major == CBOR_TEXT);
   buf_read->pt+=val.val;
   val = get_value(buf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
 
   val = get_value(buf_read);
-  while (val.major == TEXT && buf_read->pt < buf_read->size)
+  while (val.major == CBOR_TEXT && buf_read->pt < buf_read->size)
   {
     print_with_size(&buf_read->buff[buf_read->pt], val.val);
     for (unsigned long i = 0; i < strlen("                  ") - val.val; i++)
@@ -592,16 +592,16 @@ void print_show_memory(struct buff_reader *buf_read)
     buf_read->pt+=val.val;
     val = get_value(buf_read); // block open
     val = get_value(buf_read);
-    ASSERT(val.major == TEXT);
+    ASSERT(val.major == CBOR_TEXT);
     buf_read->pt+=val.val;
     val = get_value(buf_read);
-    ASSERT(val.major == UINT);
+    ASSERT(val.major == CBOR_UINT);
     printf("%7li B  ", val.val);
     val = get_value(buf_read);
-    ASSERT(val.major == TEXT);
+    ASSERT(val.major == CBOR_TEXT);
     buf_read->pt+=val.val;
     val = get_value(buf_read);
-    ASSERT(val.major == UINT);
+    ASSERT(val.major == CBOR_UINT);
     printf("%7li B\n", val.val);
     val = get_value(buf_read);
   }
@@ -610,34 +610,34 @@ void print_show_memory(struct buff_reader *buf_read)
 void print_show_status(struct buff_reader *buf_read)
 {
   struct value val = get_value(buf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
   val = get_value(buf_read);
-  ASSERT(val.major == TEXT);
+  ASSERT(val.major == CBOR_TEXT);
   buf_read->pt+=val.val;
   val = get_value(buf_read);
-  ASSERT(val.major == TEXT);
+  ASSERT(val.major == CBOR_TEXT);
   printf("BIRD ");
   print_with_size(&buf_read->buff[buf_read->pt], val.val);
   printf("\n");
   buf_read->pt+=val.val;
   val = get_value(buf_read);
-  ASSERT(val.major == TEXT); // body
+  ASSERT(val.major == CBOR_TEXT); // body
   buf_read->pt+=val.val;
   val = get_value(buf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
   val = get_value(buf_read);
-  ASSERT(val.major == TEXT); // router id
+  ASSERT(val.major == CBOR_TEXT); // router id
   buf_read->pt+=val.val;
   printf("router id: ");
   print_ip_addr(buf_read);
   printf("\n");
   
   val = get_value(buf_read);
-  ASSERT(val.major == TEXT); // hostname
+  ASSERT(val.major == CBOR_TEXT); // hostname
   buf_read->pt+=val.val;
   printf("hostname:  ");
   val = get_value(buf_read);
-  ASSERT(val.major == TEXT);
+  ASSERT(val.major == CBOR_TEXT);
   print_with_size(&buf_read->buff[buf_read->pt], val.val);
   printf("\n");
   buf_read->pt+=val.val;
@@ -645,7 +645,7 @@ void print_show_status(struct buff_reader *buf_read)
   for (int i =0; i<3; i++)
   {
     val = get_value(buf_read);
-    ASSERT(val.major == TEXT); // server time, last rebooot, last reconfiguration
+    ASSERT(val.major == CBOR_TEXT); // server time, last rebooot, last reconfiguration
     print_with_size(&buf_read->buff[buf_read->pt], val.val);
     buf_read->pt+=val.val;
     printf(":  ");
@@ -653,7 +653,7 @@ void print_show_status(struct buff_reader *buf_read)
     printf("\n");
   }
   val = get_value(buf_read);
-  if (val.major == TEXT)
+  if (val.major == CBOR_TEXT)
   {
     buf_read->pt+=val.val;
     printf("Graceful restart recovery in progress\n");
@@ -671,11 +671,11 @@ void print_show_status(struct buff_reader *buf_read)
     printf("/%lu", val.val);
   }
   val = get_value(buf_read);
-  ASSERT(val.major == TEXT); // state
+  ASSERT(val.major == CBOR_TEXT); // state
   printf("state: ");
   buf_read->pt+=val.val;
   val = get_value(buf_read);
-  ASSERT(val.major == TEXT);
+  ASSERT(val.major == CBOR_TEXT);
   print_with_size(&buf_read->buff[buf_read->pt], val.val);
   printf("\n");
   buf_read->pt+=val.val;
@@ -684,7 +684,7 @@ void print_show_status(struct buff_reader *buf_read)
 void print_show_symbols(struct buff_reader *buf_read)
 {
   struct value val = get_value(buf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
   discard_key(buf_read);
   val = get_value(buf_read);
   int one_item = 0;
@@ -699,7 +699,7 @@ void print_show_symbols(struct buff_reader *buf_read)
     return;
   }
   val = get_value(buf_read);
-  while (val.major == TEXT)
+  while (val.major == CBOR_TEXT)
   {
     buf_read->pt+=val.val; //name
     val = get_value(buf_read);
@@ -730,7 +730,7 @@ void print_route_change_line(struct buff_reader *buf_read)
   for (int i = 0; i < 5; i++)
   {
     struct value val = get_value(buf_read);
-    if (val.major == UINT)
+    if (val.major == CBOR_UINT)
       printf(" %10lu", val.val);
     else
       printf("        ---");
@@ -947,7 +947,7 @@ void print_show_protocols_rpki(struct buff_reader *buf_read)
   discard_key(buf_read);
   printf("  Session ID:       ");
   val = get_value(buf_read);
-  if (val.major == TEXT)
+  if (val.major == CBOR_TEXT)
   {
     printf("---\n");
     buf_read->pt += val.val;
@@ -1326,7 +1326,7 @@ void print_show_protocols_bgp(struct buff_reader *buf_read)
   {
     buf_read->pt += val.val;
     val = get_value(buf_read); //open block
-    ASSERT(val.major == BLOCK);
+    ASSERT(val.major == CBOR_BLOCK);
 
     print_channel_show_info(buf_read);
     val = get_value(buf_read);
@@ -1405,16 +1405,16 @@ void print_show_protocols_bgp(struct buff_reader *buf_read)
 void print_show_protocols(struct buff_reader *buf_read)
 {
   struct value val = get_value(buf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
   discard_key(buf_read); //table
   val = get_value(buf_read);
-  ASSERT(val.major == ARRAY);
+  ASSERT(val.major == CBOR_ARRAY);
   val = get_value(buf_read);
   printf("%-10s %-10s %-10s %-6s %-18s  %s\n",
 	    "Name", "Proto", "Table", "State", "Since", "Info");
   while (!val_is_break(val))
   {
-    ASSERT(val.major == BLOCK);
+    ASSERT(val.major == CBOR_BLOCK);
     discard_key(buf_read); //name
     val = get_value(buf_read);
     print_with_size_add_space(&buf_read->buff[buf_read->pt], val.val, 11);
@@ -1484,7 +1484,7 @@ void print_show_protocols(struct buff_reader *buf_read)
       {
         return;
       }
-      ASSERT(val.major == TEXT);
+      ASSERT(val.major == CBOR_TEXT);
 
       if (compare_buff_str(buf_read, val.val, "rpki"))
       {
@@ -1532,7 +1532,7 @@ void print_show_protocols(struct buff_reader *buf_read)
         {
           print_channel_show_info(buf_read);
           val = get_value(buf_read);
-          if (val.major == TEXT)
+          if (val.major == CBOR_TEXT)
           {
             buf_read->pt += val.val;
             val = get_value(buf_read);
@@ -1560,10 +1560,10 @@ void print_cbor_response(byte *cbor, int len)
   buf_read.size = len;
   buf_read.pt = 0;
   struct value val = get_value(&buf_read);
-  ASSERT(val.major == BLOCK);
+  ASSERT(val.major == CBOR_BLOCK);
   ASSERT(val.val <=1);
   val = get_value(&buf_read);
-  ASSERT(val.major == TEXT);
+  ASSERT(val.major == CBOR_TEXT);
   printf("\n");
 
   if (compare_buff_str(&buf_read, val.val, "show_memory:message"))
