@@ -143,7 +143,7 @@ cli_opts_begin: {
 
 cli_opts_block:
   /* EMPTY */ |
-  cli_opts_block RESTRICT { this_cli_config->restricted = 1; }
+  cli_opts_block RESTRICT ';' { this_cli_config->restricted = 1; }
 ;
 
 conf: debug_unix ;
