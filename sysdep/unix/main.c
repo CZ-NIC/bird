@@ -582,25 +582,30 @@ cli_listen(struct cli_config *cf)
   if (sk_open_unix(s, cf->name) < 0)
   {
     log(L_ERR "Cannot create control socket %s: %m", cf->name);
-    return NULL;
+    goto err;
   }
 
   if (cf->uid || cf->gid)
     if (chown(cf->name, cf->uid, cf->gid) < 0)
     {
       log(L_ERR "Cannot chown control socket %s: %m", cf->name);
-      return NULL;
+      goto err;
     }
 
   if (chmod(cf->name, cf->mode) < 0)
   {
     log(L_ERR "Cannot chmod control socket %s: %m", cf->name);
-    return NULL;
+    goto err;
   }
 
   cli_listener_add_tail(&cli_listeners, l);
 
   return l;
+
+err:
+  rfree(s);
+  mb_free(l);
+  return NULL;
 }
 
 static void
