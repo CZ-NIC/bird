@@ -179,6 +179,7 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
 	if (rip_valid_rte(rt))
 	  num++;
 
+      ASSERT_DIE(num > 0);
       struct nexthop_adata *nhad = (struct nexthop_adata *) tmp_alloc_adata((num+1) * sizeof(struct nexthop));
       struct nexthop *nh = &nhad->nh;
 
@@ -193,9 +194,6 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
 	  .weight = rt->from->ifa->cf->ecmp_weight,
 	};
 
-	if (!rt_from)
-	  rt_from = rt->from->ifa->iface;
-
 	nh = NEXTHOP_NEXT(nh);
 
 	if (rt->tag != rt_tag)
@@ -203,10 +201,13 @@ rip_announce_rte(struct rip_proto *p, struct rip_entry *en)
       }
 
       nhad->ad.length = ((void *) nh - (void *) nhad->ad.data);
-
+      nhad = nexthop_sort(nhad, tmp_linpool);
       ea_set_attr(&ea,
 	  EA_LITERAL_DIRECT_ADATA(&ea_gen_nexthop, 0,
-	    &(nexthop_sort(nhad, tmp_linpool)->ad)));
+	    &(nhad->ad)));
+
+      /* Set from as the first interface in the sorted nexthop list for stable results. */
+      rt_from = nhad->nh.iface;
     }
     else
     {
