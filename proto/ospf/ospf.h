@@ -213,6 +213,7 @@ struct ospf_iface_patt
 struct ospf_proto
 {
   struct proto p;
+  struct rte_context rte_ctx;
   timer *disp_timer;		/* OSPF proto dispatcher */
   uint tick;
   struct top_graph *gr;		/* LSA graph */

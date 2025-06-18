@@ -238,8 +238,6 @@ struct proto {
    *	   rte_remove	Called whenever a rte is removed from the routing table.
    */
 
-  int (*rte_recalculate)(struct rtable *, struct network *, struct rte *, struct rte *, struct rte *);
-  int (*rte_better)(struct rte *, struct rte *);
   int (*rte_mergable)(struct rte *, struct rte *);
   struct rte * (*rte_modify)(struct rte *, struct linpool *);
   void (*rte_insert)(struct network *, struct rte *);

@@ -2861,7 +2861,10 @@ bgp_parse_update(struct bgp_parse_state *s, byte *pkt, uint len, ea_list **ea)
   else
     *ea = NULL;
 
-  bgp_set_attr_ptr(ea, s->pool, BA_PROTO_ATTRS, 0, (adata*) s->proto_attrs);
+  struct rte_ctx_adata *rcad = lp_allocz(s->pool, sizeof *rcad);
+  rcad->ad.length = sizeof *rcad - sizeof rcad->ad;
+  rcad->ctx = &s->proto_attrs->bgp_rte_ctx;
+  ea_set_attr_ptr(ea, s->pool, EA_ROUTE_CONTEXT, 0, EAF_TYPE_OPAQUE, &rcad->ad);
 
   /* Check for End-of-RIB marker */
   if (!s->attr_len && !s->ip_unreach_len && !s->ip_reach_len)

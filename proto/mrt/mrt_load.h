@@ -31,7 +31,7 @@ struct mrtload_proto {
   struct proto p;
     union {
     struct rte_class_config rte_class;
-    struct { BGP_PROTO_ATTRIBUTES };
+    struct { BGP_ROUTE_CONTEXT };
   };
 
   struct mrt_table_dump_state *table_dump;

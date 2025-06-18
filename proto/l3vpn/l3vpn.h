@@ -20,6 +20,7 @@ struct l3vpn_config {
 
 struct l3vpn_proto {
   struct proto p;
+  struct rte_context rte_ctx;
   struct channel *ip4_channel;
   struct channel *ip6_channel;
   struct channel *vpn4_channel;

@@ -311,7 +311,7 @@ l3vpn_metric(rte *e)
 }
 
 static int
-l3vpn_rte_better(rte *new, rte *old)
+l3vpn_rte_better(const struct rte_context * rtx UNUSED, rte *new, rte *old)
 {
   /* This is hack, we should have full BGP-style comparison */
   return l3vpn_metric(new) < l3vpn_metric(old);
@@ -360,7 +360,7 @@ l3vpn_init(struct proto_config *CF)
   P->rt_notify = l3vpn_rt_notify;
   P->preexport = l3vpn_preexport;
   P->reload_routes = l3vpn_reload_routes;
-  P->rte_better = l3vpn_rte_better;
+  p->rte_ctx.rte_better = l3vpn_rte_better;
 
   return P;
 }

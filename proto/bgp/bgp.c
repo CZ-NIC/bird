@@ -2252,14 +2252,15 @@ bgp_init(struct proto_config *CF)
   P->reload_routes = bgp_reload_routes;
   P->feed_begin = bgp_feed_begin;
   P->feed_end = bgp_feed_end;
-  P->rte_better = bgp_rte_better;
   P->rte_mergable = bgp_rte_mergable;
-  P->rte_recalculate = cf->deterministic_med ? bgp_rte_recalculate : NULL;
   P->rte_modify = bgp_rte_modify_stale;
   P->rte_igp_metric = bgp_rte_igp_metric;
 
+  p->proto_attrs.bgp_rte_ctx.proto_class = PROTOCOL_BGP;
+  p->proto_attrs.bgp_rte_ctx.rte_better = bgp_rte_better;
+  p->proto_attrs.bgp_rte_ctx.rte_recalculate = cf->deterministic_med ? bgp_rte_recalculate : NULL;
+
   p->cf = cf;
-  p->routes_proto = BGP_ROUTE;
   p->is_internal = (cf->local_as == cf->remote_as);
   p->is_interior = p->is_internal || cf->confederation_member;
   p->rs_client = cf->rs_client;

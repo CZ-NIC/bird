@@ -478,7 +478,7 @@ static_reload_routes(struct channel *C)
 }
 
 static int
-static_rte_better(rte *new, rte *old)
+static_rte_better(const struct rte_context * rtx UNUSED, rte *new, rte *old)
 {
   u32 n = ea_get_int(new->attrs->eattrs, EA_GEN_IGP_METRIC, IGP_METRIC_UNKNOWN);
   u32 o = ea_get_int(old->attrs->eattrs, EA_GEN_IGP_METRIC, IGP_METRIC_UNKNOWN);
@@ -544,7 +544,7 @@ static_init(struct proto_config *CF)
 
   P->neigh_notify = static_neigh_notify;
   P->reload_routes = static_reload_routes;
-  P->rte_better = static_rte_better;
+  p->rte_ctx.rte_better = static_rte_better;
   P->rte_mergable = static_rte_mergable;
 
   if (cf->igp_table_ip4)

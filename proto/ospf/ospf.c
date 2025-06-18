@@ -109,7 +109,7 @@
 
 static int ospf_preexport(struct channel *P, rte *new);
 static void ospf_reload_routes(struct channel *C);
-static int ospf_rte_better(struct rte *new, struct rte *old);
+static int ospf_rte_better(const struct rte_context * rcx UNUSED, struct rte *new, struct rte *old);
 static u32 ospf_rte_igp_metric(struct rte *rt);
 static void ospf_disp(timer *timer);
 
@@ -375,15 +375,16 @@ ospf_init(struct proto_config *CF)
   P->reload_routes = ospf_reload_routes;
   P->feed_begin = ospf_feed_begin;
   P->feed_end = ospf_feed_end;
-  P->rte_better = ospf_rte_better;
   P->rte_igp_metric = ospf_rte_igp_metric;
+  struct ospf_proto *p = (void *) P;
+  p->rte_ctx.rte_better = ospf_rte_better;
 
   return P;
 }
 
 /* If new is better return 1 */
 static int
-ospf_rte_better(struct rte *new, struct rte *old)
+ospf_rte_better(const struct rte_context * rcx UNUSED, struct rte *new, struct rte *old)
 {
   u32 new_metric1 = ea_get_int(new->attrs->eattrs, EA_OSPF_METRIC1, LSINFINITY);
 

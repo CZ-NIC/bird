@@ -558,8 +558,6 @@ rte_cow_rta(rte *r, linpool *lp)
 static int				/* Actually better or at least as good as */
 rte_better(rte *new, rte *old)
 {
-  int (*better)(rte *, rte *);
-
   if (!rte_is_valid(old))
     return 1;
   if (!rte_is_valid(new))
@@ -578,8 +576,11 @@ rte_better(rte *new, rte *old)
        */
       return new->src->proto->proto > old->src->proto->proto;
     }
-  if (better = new->src->proto->rte_better)
-    return better(new, old);
+
+  const struct rte_context *ctx = rte_get_context(new);
+  if (ctx && ctx->rte_better)
+    return ctx->rte_better(ctx, new, old);
+
   return 0;
 }
 
@@ -1319,10 +1320,11 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
       /* If routes are not sorted, find the best route and move it on
 	 the first position. There are several optimized cases. */
 
-      if (src->proto->rte_recalculate && src->proto->rte_recalculate(table, net, new, old, old_best))
+      const struct rte_context *ctx = rte_get_context(new);
+      if (ctx && ctx->rte_recalculate && ctx->rte_recalculate(ctx, table, net, new, old, old_best))
 	goto do_recalculate;
 
-      if (new && rte_better(new, old_best))
+       if (new && rte_better(new, old_best))
 	{
 	  /* The first case - the new route is cleary optimal,
 	     we link it at the first position */
@@ -2692,8 +2694,9 @@ rt_next_hop_update_net(rtable *tab, net *n)
 
 	/* Call a pre-comparison hook */
 	/* Not really an efficient way to compute this */
-	if (e->src->proto->rte_recalculate)
-	  e->src->proto->rte_recalculate(tab, n, new, e, NULL);
+	const struct rte_context *ctx = rte_get_context(e);
+	if (ctx && ctx->rte_recalculate)
+	  ctx->rte_recalculate(ctx, tab, n, new, e, NULL);
 
 	if (e != old_best)
 	  rte_free_quick(e);
@@ -3493,6 +3496,17 @@ rt_get_igp_metric(rte *rt)
     return rt->src->proto->rte_igp_metric(rt);
 
   return IGP_METRIC_UNKNOWN;
+}
+
+const struct rte_context *
+rte_get_context(const rte *r)
+{
+  if (r == NULL)
+    return NULL;
+  const eattr *a = ea_find(r->attrs->eattrs, EA_ROUTE_CONTEXT);
+  const adata *ad = a ? a->u.ptr : NULL;
+  const struct rte_ctx_adata *rca = ad ? SKIP_BACK(const struct rte_ctx_adata, ad, ad) : NULL;
+  return rca ? rca->ctx : NULL;
 }
 
 static int

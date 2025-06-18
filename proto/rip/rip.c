@@ -1112,7 +1112,7 @@ rip_rte_igp_metric(struct rte *rt)
 }
 
 static int
-rip_rte_better(struct rte *new, struct rte *old)
+rip_rte_better(const struct rte_context * rtx UNUSED, struct rte *new, struct rte *old)
 {
   return rip_rte_igp_metric(new) < rip_rte_igp_metric(old);
 }
@@ -1138,8 +1138,9 @@ rip_init(struct proto_config *CF)
   P->rt_notify = rip_rt_notify;
   P->neigh_notify = rip_neigh_notify;
   P->reload_routes = rip_reload_routes;
-  P->rte_better = rip_rte_better;
   P->rte_igp_metric = rip_rte_igp_metric;
+  struct rip_proto *p = (void *) P;
+  p->rte_ctx.rte_better = rip_rte_better;
 
   return P;
 }

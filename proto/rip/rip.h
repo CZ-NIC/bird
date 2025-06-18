@@ -90,6 +90,7 @@ struct rip_iface_config
 struct rip_proto
 {
   struct proto p;
+  struct rte_context rte_ctx;
   struct fib rtable;			/* Internal routing table */
   list iface_list;			/* List of interfaces (struct rip_iface) */
   slab *rte_slab;			/* Slab for internal routes (struct rip_rte) */

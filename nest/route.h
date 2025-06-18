@@ -539,6 +539,7 @@ const char *ea_custom_name(uint ea);
 #define EA_MPLS_POLICY		EA_CODE(PROTOCOL_NONE, 2)
 #define EA_MPLS_CLASS		EA_CODE(PROTOCOL_NONE, 3)
 #define EA_ASPA_PROVIDERS	EA_CODE(PROTOCOL_NONE, 4)
+#define EA_ROUTE_CONTEXT	EA_CODE(PROTOCOL_NONE, 5)
 
 #define EA_CODE_MASK 0xffff
 #define EA_CUSTOM_BIT 0x8000
@@ -561,7 +562,6 @@ const char *ea_custom_name(uint ea);
 #define EAF_TYPE_STRING 0x16		/* Text string */
 #define EAF_EMBEDDED 0x01		/* Data stored in eattr.u.data (part of type spec) */
 #define EAF_VAR_LENGTH 0x02		/* Attribute length is variable (part of type spec) */
-#define EAF_PROTO_ATTR_PTR 0x18 /* Pointer to bgp_proto_attributes */
 
 typedef struct adata {
   uint length;				/* Length of data */
@@ -691,6 +691,19 @@ ea_set_attr_data(ea_list **to, struct linpool *pool, uint id, uint flags, uint t
   ea_set_attr(to, pool, id, flags, type, (uintptr_t) a);
 }
 
+struct rte_context {
+  uint proto_class;	/* Actually enum protocol_class but we can't refer to it here */
+  uint (*format)(const struct rte_context *, byte *buf);
+  int (*rte_recalculate)(const struct rte_context *, struct rtable *, struct network *, struct rte *, struct rte *, struct rte *);
+  int (*rte_better)(const struct rte_context *, struct rte *, struct rte *);
+};
+
+struct rte_ctx_adata {
+  adata ad;
+  struct rte_context *ctx;
+};
+
+const struct rte_context *rte_get_context(const rte *r);
 
 #define NEXTHOP_MAX_SIZE (sizeof(struct nexthop) + sizeof(u32)*MPLS_MAX_LABEL_STACK)
 

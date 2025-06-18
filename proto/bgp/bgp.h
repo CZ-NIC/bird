@@ -359,12 +359,8 @@ struct bgp_conn {
   uint hold_time, keepalive_time, send_hold_time;	/* Times calculated from my and neighbor's requirements */
 };
 
-enum route_proto {
-  BGP_ROUTE = 1,
-};
-
-#define BGP_PROTO_ATTRIBUTES \
-  enum route_proto routes_proto; /* protocol enum (pointer to bgp_proto_attributes is given to route eattrs) */ \
+#define BGP_ROUTE_CONTEXT \
+  struct rte_context bgp_rte_ctx;	/* Type common header */ \
   u32 local_as, remote_as; \
   ip_addr local_ip, remote_ip; \
   u32 local_id;				/* BGP identifier of this router */ \
@@ -378,7 +374,7 @@ enum route_proto {
   /* from conf */ \
   BGP_ROUTE_ATTRIBUTES\
 
-struct bgp_proto_attributes { BGP_PROTO_ATTRIBUTES };
+struct bgp_proto_attributes { BGP_ROUTE_CONTEXT };
 
 struct bgp_proto {
   struct proto p;
@@ -386,7 +382,7 @@ struct bgp_proto {
   const char *hostname;      /* Hostname for this BGP protocol */
   union {
     struct bgp_proto_attributes proto_attrs;
-    struct { BGP_PROTO_ATTRIBUTES; };
+    struct { BGP_ROUTE_CONTEXT; };
   };
   u32 public_as;			/* Externally visible ASN (local_as or confederation id) */
   u8 start_state;			/* Substates that partitions BS_START */
@@ -682,6 +678,14 @@ rte_resolvable(rte *rt)
 
 /* attrs.c */
 
+static inline const struct bgp_proto_attributes *
+bgp_get_route_context(const rte *r)
+{
+  const struct rte_context *ctx = rte_get_context(r);
+  return (ctx && (ctx->proto_class == PROTOCOL_BGP)) ?
+    SKIP_BACK(struct bgp_proto_attributes, bgp_rte_ctx, ctx) : NULL;
+}
+
 static inline eattr *
 bgp_find_attr(ea_list *attrs, uint code)
 {
@@ -729,9 +733,9 @@ void bgp_init_prefix_table(struct bgp_channel *c);
 void bgp_free_prefix_table(struct bgp_channel *c);
 void bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *bp);
 
-int bgp_rte_better(struct rte *, struct rte *);
+int bgp_rte_better(const struct rte_context *, struct rte *, struct rte *);
 int bgp_rte_mergable(rte *pri, rte *sec);
-int bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best);
+int bgp_rte_recalculate(const struct rte_context *, rtable *table, net *net, rte *new, rte *old, rte *old_best);
 struct rte *bgp_rte_modify_stale(struct rte *r, struct linpool *pool);
 u32 bgp_rte_igp_metric(struct rte *);
 void bgp_rt_notify(struct proto *P, struct channel *C, net *n, rte *new, rte *old);
@@ -790,7 +794,6 @@ byte *bgp_create_end_mark_(struct bgp_channel *c, byte *buf);
 #define BAF_TRANSITIVE		0x40
 #define BAF_PARTIAL		0x20
 #define BAF_EXT_LEN		0x10
-#define BAF_OPERATIONAL 0x100
 
 #define BAF_DECODE_FLAGS	0x0100	/* Private flag - attribute flags are handled by the decode hook */
 
@@ -812,7 +815,6 @@ byte *bgp_create_end_mark_(struct bgp_channel *c, byte *buf);
 #define BA_AIGP			0x1a	/* RFC 7311 */
 #define BA_LARGE_COMMUNITY	0x20	/* RFC 8092 */
 #define BA_ONLY_TO_CUSTOMER	0x23	/* RFC 9234 */
-#define BA_PROTO_ATTRS 0x24 /* BGP_PROTO_ATTRIBUTES */
 
 /* Bird's private internal BGP attributes */
 #define BA_MPLS_LABEL_STACK	0xfe	/* MPLS label stack transfer attribute */

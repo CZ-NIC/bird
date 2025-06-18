@@ -852,6 +852,19 @@ get_generic_attr(const eattr *a, byte **buf, int buflen)
     *buf += int_set_format(a->u.ptr, ISF_NUMBERS, -1, *buf, end - *buf);
     return GA_FULL;
 
+  case EA_ROUTE_CONTEXT:
+    {
+      struct rte_ctx_adata *rcad = SKIP_BACK(struct rte_ctx_adata, ad, a->u.ptr);
+      if (!rcad->ctx->format)
+	return GA_HIDDEN;
+
+      *buf += bsprintf(*buf, "route_context");
+      *(*buf)++ = ':';
+      *(*buf)++ = ' ';
+      *buf += rcad->ctx->format(rcad->ctx, *buf);
+      return GA_FULL;
+    }
+
   default:
     return GA_UNKNOWN;
   }

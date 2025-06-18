@@ -180,6 +180,8 @@ struct babel_iface_config {
 
 struct babel_proto {
   struct proto p;
+  struct rte_context rte_ctx;
+
   timer *timer;
   struct fib ip4_rtable;
   struct fib ip6_rtable;

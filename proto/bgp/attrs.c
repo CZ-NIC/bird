@@ -451,6 +451,9 @@ bgp_decode_as_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte
   int as_length = s->as4_session ? 4 : 2;
   int as_sets = s->allow_as_sets;
   struct bgp_proto_attributes *proto_attrs = s->proto_attrs;
+  if (!proto_attrs)
+    return;
+
   int as_confed = proto_attrs->confederation && proto_attrs->is_interior;
   char err[128];
 
@@ -959,18 +962,6 @@ bgp_encode_mpls_label_stack(struct bgp_write_state *s, eattr *a, byte *buf UNUSE
   return 0;
 }
 
-static int
-bgp_encode_proto_attrs(struct bgp_write_state *s UNUSED, eattr *a UNUSED, byte *buf UNUSED, uint size UNUSED)
-{
-  return 0;
-}
-
-static void
-bgp_decode_proto_attrs(struct bgp_parse_state *s UNUSED, uint code UNUSED, uint flags UNUSED, byte *data UNUSED, uint len UNUSED, ea_list **to UNUSED)
-{
-  return;
-}
-
 static void
 bgp_decode_mpls_label_stack(struct bgp_parse_state *s, uint code UNUSED, uint flags UNUSED, byte *data UNUSED, uint len UNUSED, ea_list **to UNUSED)
 {
@@ -1150,13 +1141,6 @@ static const struct bgp_attr_desc bgp_attr_table[] = {
     .flags = BAF_OPTIONAL | BAF_TRANSITIVE,
     .encode = bgp_encode_u32,
     .decode = bgp_decode_otc,
-  },
-  [BA_PROTO_ATTRS] = {
-    .name = "bgp proto attrs",
-    .type = EAF_PROTO_ATTR_PTR,
-    .flags = BAF_OPERATIONAL,
-    .encode = bgp_encode_proto_attrs,
-    .decode = bgp_decode_proto_attrs,
   },
   [BA_MPLS_LABEL_STACK] = {
     .name = "mpls_label_stack",
@@ -2007,7 +1991,7 @@ bgp_get_neighbor(rte *r)
     return as;
 
   /* If AS_PATH is not defined, we treat rte as locally originated */
-  struct bgp_proto_attributes *p = (struct bgp_proto_attributes *) ea_find(r->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_PROTO_ATTRS))->u.ptr;
+  struct bgp_proto_attributes *p = (struct bgp_proto_attributes *) ea_find(r->attrs->eattrs, EA_ROUTE_CONTEXT)->u.ptr;
   return p->confederation ?: p->local_as;
 }
 
@@ -2035,10 +2019,13 @@ rte_stale(rte *r)
 }
 
 int
-bgp_rte_better(rte *new, rte *old)
+bgp_rte_better(const struct rte_context *ctx, rte *new, rte *old)
 {
-  struct bgp_proto_attributes *new_bgp = (struct bgp_proto_attributes *) ea_find(new->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_PROTO_ATTRS))->u.ptr;
-  struct bgp_proto_attributes *old_bgp = (struct bgp_proto_attributes *) ea_find(old->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_PROTO_ATTRS))->u.ptr;
+  const struct bgp_proto_attributes *new_bgp = SKIP_BACK(const struct bgp_proto_attributes, bgp_rte_ctx, ctx);
+  const struct bgp_proto_attributes *old_bgp = bgp_get_route_context(old);
+
+  ASSERT_DIE(old_bgp); /* This means that old is actually really a bgp route */
+
   eattr *x, *y;
   u32 n, o;
 
@@ -2182,8 +2169,8 @@ bgp_rte_better(rte *new, rte *old)
 int
 bgp_rte_mergable(rte *pri, rte *sec)
 {
-  struct bgp_proto_attributes *pri_bgp = (struct bgp_proto_attributes *) ea_find(pri->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_PROTO_ATTRS))->u.ptr;
-  struct bgp_proto_attributes *sec_bgp = (struct bgp_proto_attributes *) ea_find(sec->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_PROTO_ATTRS))->u.ptr;
+  struct bgp_proto_attributes *pri_bgp = (struct bgp_proto_attributes *) ea_find(pri->attrs->eattrs, EA_ROUTE_CONTEXT)->u.ptr;
+  struct bgp_proto_attributes *sec_bgp = (struct bgp_proto_attributes *) ea_find(sec->attrs->eattrs, EA_ROUTE_CONTEXT)->u.ptr;
   eattr *x, *y;
   u32 p, s;
 
@@ -2265,14 +2252,14 @@ same_group(rte *r, u32 lpref, u32 lasn)
 }
 
 static inline int
-use_deterministic_med(rte *r)
+use_deterministic_med(const rte *r)
 {
-  struct bgp_proto_attributes *pa = (struct bgp_proto_attributes *) ea_find(r->attrs->eattrs, EA_CODE(PROTOCOL_BGP, BA_PROTO_ATTRS))->u.ptr;
-  return (pa->routes_proto == BGP_ROUTE) && pa->deterministic_med;
+  const struct bgp_proto_attributes *pa = bgp_get_route_context(r);
+  return pa && pa->deterministic_med;
 }
 
 int
-bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
+bgp_rte_recalculate(const struct rte_context *ctx, rtable *table, net *net, rte *new, rte *old, rte *old_best)
 {
   rte *r, *s;
   rte *key = new ? new : old;
@@ -2316,8 +2303,8 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
   if (new && old && !same_group(old, lpref, lasn))
   {
     int i1, i2;
-    i1 = bgp_rte_recalculate(table, net, NULL, old, old_best);
-    i2 = bgp_rte_recalculate(table, net, new, NULL, old_best);
+    i1 = bgp_rte_recalculate(ctx, table, net, NULL, old, old_best);
+    i2 = bgp_rte_recalculate(ctx, table, net, new, NULL, old_best);
     return i1 || i2;
   }
 
@@ -2337,7 +2324,7 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
     old->pflags |= BGP_REF_SUPPRESSED;
 
     /* The fast case - replace not best with worse (or remove not best) */
-    if (old_suppressed && !(new && bgp_rte_better(new, old)))
+    if (old_suppressed && !(new && bgp_rte_better(ctx, new, old)))
       return 0;
   }
 
@@ -2347,7 +2334,7 @@ bgp_rte_recalculate(rtable *table, net *net, rte *new, rte *old, rte *old_best)
     if (use_deterministic_med(s) && same_group(s, lpref, lasn))
     {
       s->pflags |= BGP_REF_SUPPRESSED;
-      if (!r || bgp_rte_better(s, r))
+      if (!r || bgp_rte_better(ctx, s, r))
 	r = s;
     }
 

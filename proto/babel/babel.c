@@ -2502,7 +2502,7 @@ babel_rt_notify(struct proto *P, struct channel *c UNUSED, struct network *net,
 }
 
 static int
-babel_rte_better(struct rte *new, struct rte *old)
+babel_rte_better(const struct rte_context *ctx UNUSED, struct rte *new, struct rte *old)
 {
   uint new_metric = ea_get_int(new->attrs->eattrs, EA_BABEL_METRIC, BABEL_INFINITY);
   uint old_metric = ea_get_int(old->attrs->eattrs, EA_BABEL_METRIC, BABEL_INFINITY);
@@ -2547,8 +2547,10 @@ babel_init(struct proto_config *CF)
   P->if_notify = babel_if_notify;
   P->rt_notify = babel_rt_notify;
   P->preexport = babel_preexport;
-  P->rte_better = babel_rte_better;
   P->rte_igp_metric = babel_rte_igp_metric;
+
+  p->rte_ctx.proto_class = PROTOCOL_BABEL;
+  p->rte_ctx.rte_better = babel_rte_better;
 
   return P;
 }

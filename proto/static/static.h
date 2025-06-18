@@ -24,6 +24,7 @@ struct static_config {
 struct static_proto {
   struct proto p;
 
+  struct rte_context rte_ctx;
   struct event *event;			/* Event for announcing updated routes */
   BUFFER_(struct static_route *) marked; /* Routes marked for reannouncement */
   int marked_all;			/* All routes are marked */
