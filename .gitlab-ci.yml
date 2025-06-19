@@ -17,6 +17,7 @@ variables:
   IMG_BASE: registry.nic.cz/labs/bird
   TOOLS_DIR: /home/gitlab-runner/bird-tools
   STAYRTR_BINARY: /usr/local/bin/stayrtr
+  APKG_VERSION: 0.5.1
 
 stages:
   - consistency
@@ -641,7 +642,7 @@ build-release:
   script:
     # create venv only if it's installed
     - if python3 -m venv venv; then . venv/bin/activate; fi
-    - pip3 install apkg
+    - pip3 install apkg==$APKG_VERSION
     - apkg build -a bird-$(cat VERSION)*.tar.gz
   artifacts:
     paths:
@@ -658,7 +659,7 @@ build-release:
     # apkg depends on bs4, and unless we want to backport python 3.6
     # to ancient distros, we need to do this workaround
     - pip3 install beautifulsoup4==4.11.2
-    - pip3 install apkg
+    - pip3 install apkg==$APKG_VERSION
     - apkg build -a bird-$(cat VERSION)*.tar.gz
   artifacts:
     paths:
@@ -669,7 +670,7 @@ build-release:
   <<: *test-job
   stage: pkg
   script:
-    - pip3 install apkg
+    - pip3 install apkg==$APKG_VERSION
     - apkg build -a bird-$(cat VERSION)*.tar.gz
   artifacts:
     paths:
@@ -683,7 +684,7 @@ build-release:
     - sed -i "s/runstatedir/with-runtimedir/" distro/pkg/rpm/bird.spec
     # install older version of bs4 that does not use python version >= 3.6
     - pip3 install beautifulsoup4==4.11.2
-    - pip3 install apkg
+    - pip3 install apkg==$APKG_VERSION
     - apkg build -a bird-$(cat VERSION)*.tar.gz
   artifacts:
     paths:
