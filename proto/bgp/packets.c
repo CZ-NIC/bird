@@ -1084,14 +1084,16 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
   if (c->cf->gw_mode == GW_DIRECT)
   {
     neighbor *nbr = NULL;
+    uint nb_flags = p->cf->onlink ? NEF_ONLINK : 0;
+    struct iface *default_iface = p->cf->onlink ? p->neigh->iface : NULL;
 
     /* GW_DIRECT -> single_hop -> p->neigh != NULL */
     if ((c->cf->next_hop_prefer == NHP_GLOBAL) && ipa_nonzero2(gw))
-      nbr = neigh_find(&p->p, gw, NULL, 0);
+      nbr = neigh_find(&p->p, gw, default_iface, nb_flags);
     else if (ipa_nonzero(ll))
-      nbr = neigh_find(&p->p, ll, p->neigh->iface, 0);
+      nbr = neigh_find(&p->p, ll, p->neigh->iface, nb_flags);
     else if (ipa_nonzero2(gw))
-      nbr = neigh_find(&p->p, gw, NULL, 0);
+      nbr = neigh_find(&p->p, gw, default_iface, nb_flags);
     else
       WITHDRAW(BAD_NEXT_HOP " - zero address");
 
@@ -1104,6 +1106,7 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
     a->dest = RTD_UNICAST;
     a->nh.gw = nbr->addr;
     a->nh.iface = nbr->iface;
+    a->nh.flags = nbr->flags & NEF_ONLINK ? RNF_ONLINK : 0;
     a->igp_metric = c->cf->cost;
   }
   else /* GW_RECURSIVE */
