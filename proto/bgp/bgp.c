@@ -2239,6 +2239,28 @@ done:
   return p->p.proto_state;
 }
 
+static uint
+bgp_format_rte_ctx(const struct rte_context *ctx, byte *buf)
+{
+  struct bgp_proto_attributes *pa = SKIP_BACK(struct bgp_proto_attributes, bgp_rte_ctx, ctx);
+  uint buf_shift;
+  buf_shift = bsprintf(buf, "loc=%I %u; ", pa->local_ip, pa->local_as);
+  buf_shift += bsprintf(buf + buf_shift, "loc ID %R; ", pa->local_id);
+  buf_shift += bsprintf(buf + buf_shift, "rem=%I %u; ", pa->remote_ip, pa->remote_as);
+  buf_shift += bsprintf(buf + buf_shift, "rem ID %R; ", pa->remote_id);
+  buf_shift += bsprintf(buf + buf_shift, "RR cluster ID %R; ", pa->rr_cluster_id);
+
+  if (pa->rr_client)
+    buf_shift += bsprintf(buf + buf_shift, "RR client; ");
+  if (pa->rs_client)
+    buf_shift += bsprintf(buf + buf_shift, "RS client; ");
+  if (pa->is_internal)
+    buf_shift += bsprintf(buf + buf_shift, "internal; ");
+  if (pa->is_interior)
+    buf_shift += bsprintf(buf + buf_shift, "interior; ");
+  return buf_shift;
+}
+
 static struct proto *
 bgp_init(struct proto_config *CF)
 {
@@ -2259,6 +2281,7 @@ bgp_init(struct proto_config *CF)
   p->proto_attrs.bgp_rte_ctx.proto_class = PROTOCOL_BGP;
   p->proto_attrs.bgp_rte_ctx.rte_better = bgp_rte_better;
   p->proto_attrs.bgp_rte_ctx.rte_recalculate = cf->deterministic_med ? bgp_rte_recalculate : NULL;
+  p->proto_attrs.bgp_rte_ctx.format = bgp_format_rte_ctx;
 
   p->cf = cf;
   p->is_internal = (cf->local_as == cf->remote_as);
