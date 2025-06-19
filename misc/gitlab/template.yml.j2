@@ -434,6 +434,7 @@ build-netlab:
     - ln -s $STAYRTR_BINARY netlab/common/stayrtr
     - cd netlab
     - sudo ./stop
+    - ulimit -f 1048576 # Protect the filesystem from overflowing by log bloat
     - sudo ./runtest -s v2 -m check $TEST_NAME
   after_script:
     - DIR=$(pwd)
