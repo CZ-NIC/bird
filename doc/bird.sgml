@@ -2937,8 +2937,9 @@ protocol bgp [<name>] {
 		max long lived stale time <number>;
 	};
 	local [<ip>] [port <number>] [as <number>];
-	neighbor [<ip> | range <prefix>] [port <number>] [as <number>] [internal|external];
+	neighbor [<ip> | range <prefix>] [onlink] [port <number>] [as <number>] [internal|external];
 	interface "<text>";
+	onlink <switch>;
 	direct;
 	multihop [<number>];
 	source address <ip>;
@@ -3059,6 +3060,25 @@ protocol bgp [<name>] {
 	(e.g., <cf/neighbor fe80::1234%eth0 as 65000;/). The option may also be
 	used for non link-local sessions when it is necessary to explicitly
 	specify an interface, but only for direct (not multihop) sessions.
+
+	<tag><label id="bgp-onlink">onlink <m/switch/</tag>
+	For a direct neighbor, the BGP session starts immediately without
+	waiting for the neighbor's address to appear on any interface.
+	This option requires an interface to be configured. Next hops
+	of all routes from this session also have the <cf/onlink/ attribute.
+
+	This option may generally lead to weird behavior without other
+	configuration in place. One may e.g. need to insert a working route
+	for the given neighbor manually to allow for ACKs from the incoming
+	connection to be routed back correctly. That route may also need to
+	be announced via IGP, or <cf/next hop self/ in iBGP may be needed.
+
+	When trying setups with no neighbor route in containerized environments,
+	we got some results with <cf/strict bind/. As of Linux 6.12, we can't
+	recommend running that setup though.
+
+	Onlink behavior may also be specified inside the <cf/neighbor/ option.
+	Default: disabled.
 
 	<tag><label id="bgp-direct">direct</tag>
 	Specify that the neighbor is directly connected. The IP address of the
