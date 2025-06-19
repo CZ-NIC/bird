@@ -2657,7 +2657,7 @@ bgp_postconfig(struct proto_config *CF)
 
     /* Different default for next_hop_prefer */
     if (!cc->next_hop_prefer)
-      cc->next_hop_prefer = (cc->gw_mode == GW_DIRECT) ? NHP_GLOBAL : NHP_LOCAL;
+      cc->next_hop_prefer = (cc->gw_mode == GW_DIRECT) && !cf->onlink ? NHP_GLOBAL : NHP_LOCAL;
 
     /* Defaults based on proto config */
     if (cc->gr_able == 0xff)
