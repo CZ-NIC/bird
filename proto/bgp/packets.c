@@ -716,6 +716,17 @@ bgp_check_capabilities(struct bgp_conn *conn, struct bgp_caps *failed_caps)
     return 0;                                           \
   } while (0)
 
+#define AF_CAPS_CHECK_FAIL_ANY(_afi,any_capability,capability,value)	\
+  do {									\
+    if (failed_caps) {							\
+      failed_caps->af_data[0].afi = _afi;				\
+      failed_caps->af_data[0].capability = value;			\
+      failed_caps->af_count = 1;					\
+      failed_caps->any_capability = 1;					\
+    }									\
+    return 0;								\
+} while (0)
+
   struct bgp_proto *p = conn->bgp;
   struct bgp_caps *local = conn->local_caps;
   struct bgp_caps *remote = conn->remote_caps;
@@ -738,7 +749,7 @@ bgp_check_capabilities(struct bgp_conn *conn, struct bgp_caps *failed_caps)
     CAPS_CHECK_FAIL(ext_messages, 1);
 
   if (p->cf->require_hostname && !remote->hostname)
-    CAPS_CHECK_FAIL(hostname, NULL);
+    CAPS_CHECK_FAIL(hostname, "");
 
   if (p->cf->require_gr && !remote->gr_aware)
     CAPS_CHECK_FAIL(gr_aware, 1);
@@ -773,7 +784,7 @@ bgp_check_capabilities(struct bgp_conn *conn, struct bgp_caps *failed_caps)
     if (active)
     {
       if (c->cf->require_ext_next_hop && !rem->ext_next_hop)
-        AF_CAPS_CHECK_FAIL(c->afi, ext_next_hop, 1);
+        AF_CAPS_CHECK_FAIL_ANY(c->afi, any_ext_next_hop, ext_next_hop, 1);
 
       u32 missing = 0;
 
@@ -787,7 +798,7 @@ bgp_check_capabilities(struct bgp_conn *conn, struct bgp_caps *failed_caps)
       }
 
       if (missing != 0)
-        AF_CAPS_CHECK_FAIL(c->afi, add_path, missing);
+        AF_CAPS_CHECK_FAIL_ANY(c->afi, any_add_path, add_path, missing);
 
       count++;
     }
@@ -807,6 +818,7 @@ bgp_check_capabilities(struct bgp_conn *conn, struct bgp_caps *failed_caps)
 
 #undef CAPS_CHECK_FAIL
 #undef AF_CAPS_CHECK_FAIL
+#undef AF_CAPS_CHECK_FAIL_ANY
 }
 
 static int
