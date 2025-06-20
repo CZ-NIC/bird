@@ -3442,7 +3442,7 @@ bgp_format_capabilities(byte *data, uint len, byte *buf)
   {
     case 1: {   /* Multiprotocol capability, RFC 4760 */
       /* Capability length */
-      if ((len >= 1 && data[1] != 4) || len < 6)
+      if ((len >= 1 && data[1] != 4) || len != 6)
         return bsprintf(buf, "multiprotocol");
 
       u32 afi = get_af4(data + 2);
