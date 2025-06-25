@@ -450,7 +450,7 @@ bgp_decode_as_path(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte
 {
   int as_length = s->as4_session ? 4 : 2;
   int as_sets = s->allow_as_sets;
-  struct bgp_proto_attributes *proto_attrs = s->proto_attrs;
+  struct bgp_route_ctx *proto_attrs = s->proto_attrs;
   if (!proto_attrs)
     return;
 
@@ -1438,6 +1438,8 @@ bgp_decode_attrs(struct bgp_parse_state *s, byte *data, uint len)
   if (!s->as4_session)
     bgp_process_as4_attrs(&attrs, s->pool);
 
+  if (!s->proto_attrs)
+    return attrs;
 #define IS_LOOP(msg, args...)  { RTRACE("update is loop (" msg "), treating as withdraw", ##args); goto loop; }
 
   /* Reject routes with our ASN in AS_PATH attribute */
@@ -1991,7 +1993,7 @@ bgp_get_neighbor(rte *r)
     return as;
 
   /* If AS_PATH is not defined, we treat rte as locally originated */
-  struct bgp_proto_attributes *p = (struct bgp_proto_attributes *) ea_find(r->attrs->eattrs, EA_ROUTE_CONTEXT)->u.ptr;
+  struct bgp_route_ctx *p = (struct bgp_route_ctx *) ea_find(r->attrs->eattrs, EA_ROUTE_CONTEXT)->u.ptr;
   return p->confederation ?: p->local_as;
 }
 
@@ -2021,8 +2023,8 @@ rte_stale(rte *r)
 int
 bgp_rte_better(const struct rte_context *ctx, rte *new, rte *old)
 {
-  const struct bgp_proto_attributes *new_bgp = SKIP_BACK(const struct bgp_proto_attributes, bgp_rte_ctx, ctx);
-  const struct bgp_proto_attributes *old_bgp = bgp_get_route_context(old);
+  const struct bgp_route_ctx *new_bgp = SKIP_BACK(const struct bgp_route_ctx, bgp_rte_ctx, ctx);
+  const struct bgp_route_ctx *old_bgp = bgp_get_route_context(old);
 
   ASSERT_DIE(old_bgp); /* This means that old is actually really a bgp route */
 
@@ -2169,8 +2171,8 @@ bgp_rte_better(const struct rte_context *ctx, rte *new, rte *old)
 int
 bgp_rte_mergable(rte *pri, rte *sec)
 {
-  struct bgp_proto_attributes *pri_bgp = (struct bgp_proto_attributes *) ea_find(pri->attrs->eattrs, EA_ROUTE_CONTEXT)->u.ptr;
-  struct bgp_proto_attributes *sec_bgp = (struct bgp_proto_attributes *) ea_find(sec->attrs->eattrs, EA_ROUTE_CONTEXT)->u.ptr;
+  struct bgp_route_ctx *pri_bgp = (struct bgp_route_ctx *) ea_find(pri->attrs->eattrs, EA_ROUTE_CONTEXT)->u.ptr;
+  struct bgp_route_ctx *sec_bgp = (struct bgp_route_ctx *) ea_find(sec->attrs->eattrs, EA_ROUTE_CONTEXT)->u.ptr;
   eattr *x, *y;
   u32 p, s;
 
@@ -2254,7 +2256,7 @@ same_group(rte *r, u32 lpref, u32 lasn)
 static inline int
 use_deterministic_med(const rte *r)
 {
-  const struct bgp_proto_attributes *pa = bgp_get_route_context(r);
+  const struct bgp_route_ctx *pa = bgp_get_route_context(r);
   return pa && pa->deterministic_med;
 }
 

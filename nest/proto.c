@@ -1085,6 +1085,7 @@ proto_new(struct proto_config *cf)
 
   p->cf = cf;
   p->debug = cf->debug;
+  log("cf->mrtdump %x cf->name %s", cf->mrtdump, cf->name);
   p->mrtdump = cf->mrtdump;
   p->name = cf->name;
   p->proto = cf->protocol;

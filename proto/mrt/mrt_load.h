@@ -9,6 +9,16 @@
 #include "filter/filter.h"
 #include "proto/mrt/mrt.h"
 
+#define MRTLOAD_CTX_KEY(n)		n->ctx.remote_as, n->ctx.local_as, \
+  n->ctx.is_internal
+#define MRTLOAD_CTX_NEXT(n)		n->next
+#define MRTLOAD_CTX_EQ(p1,n1,p2,n2)	p1 == p2 && n1 == n2
+#define MRTLOAD_CTX_FN(pas, las, iin)	 u64_hash(pas) + u64_hash(las) + iin
+#define MRTLOAD_CTX_REHASH		mrtload_ctx_rehash
+#define MRTLOAD_CTX_PARAMS		/2, *2, 1, 1, 8, 20
+#define MRTLOAD_CTX_INIT_ORDER		6
+
+
 extern const struct channel_class channel_mrtload;
 
 struct mrtload_config {
@@ -27,6 +37,11 @@ struct mrtload_config {
   const struct bgp_af_desc *desc;
 };
 
+struct mrtload_route_ctx {
+  struct bgp_route_ctx ctx;
+  struct mrtload_route_ctx *next;
+};
+
 struct mrtload_proto {
   struct proto p;
     union {
@@ -34,8 +49,11 @@ struct mrtload_proto {
     struct { BGP_ROUTE_CONTEXT };
   };
 
+  int addr_fam;
   struct mrt_table_dump_state *table_dump;
   struct bgp_channel *channel;
+  pool *ctx_pool;
+  HASH(struct mrtload_route_ctx) ctx_hash;   // TODO : maybe it should be stored somewhere else
 };
 
 

@@ -1097,8 +1097,8 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 static void
 bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
 {
-  ASSERT_DIE(s->p);
-  struct bgp_proto *p = (struct bgp_proto *) s->p;
+  log("bgp_apply_next_hop");
+
   struct bgp_channel *c = SKIP_BACK(struct bgp_channel, c, s->channel);
 
   if (c->cf->gw_mode == GW_DIRECT)
@@ -1107,16 +1107,16 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
 
     /* GW_DIRECT -> single_hop -> p->neigh != NULL */
     if (ipa_nonzero2(gw))
-      nbr = neigh_find(&p->p, gw, NULL, 0);
-    else if (ipa_nonzero(ll))
-      nbr = neigh_find(&p->p, ll, p->neigh->iface, 0);
+      nbr = neigh_find(s->p, gw, NULL, 0);
+    //else if (ipa_nonzero(ll)) //TODO
+    //  nbr = neigh_find(&s->p, ll, p->neigh->iface, 0);
     else
-      WITHDRAW(BAD_NEXT_HOP " - zero address");
+      WITHDRAW(BAD_NEXT_HOP " - zero address FIX ME LINK LOCAL NEXTHOP ONLY");
 
     if (!nbr)
       WITHDRAW(BAD_NEXT_HOP " - address %I not directly reachable", ipa_nonzero(gw) ? gw : ll);
 
-    if (nbr->scope == SCOPE_HOST)
+    if (nbr && nbr->scope == SCOPE_HOST)
       WITHDRAW(BAD_NEXT_HOP " - address %I is local", nbr->addr);
 
     a->dest = RTD_UNICAST;
@@ -1138,6 +1138,7 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
 
     /* With MPLS, hostentry is applied later in bgp_apply_mpls_labels() */
   }
+  log("bgp_apply_next_hop  end");
 }
 
 static void
@@ -1752,8 +1753,9 @@ bgp_decode_nlri_ip4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     if (s->mpls)
       bgp_decode_mpls_labels(s, &pos, &len, &l, a);
 
-    if (l > IP4_MAX_PREFIX_LENGTH)
-      bgp_parse_error(s, 10);
+    if (l > IP4_MAX_PREFIX_LENGTH){
+      bug("parse error");
+      bgp_parse_error(s, 10);}
 
     /* Decode prefix body */
     ip4_addr addr = IP4_NONE;
@@ -2784,6 +2786,7 @@ bgp_rx_end_mark(struct bgp_parse_state *s, u32 afi)
 static inline void
 bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_list *ea, byte *nh, uint nh_len)
 {
+  log("bgp_decode_nlri");
   if (!s->get_channel(s, afi))
     DISCARD(BAD_AFI, BGP_AFI(afi), BGP_SAFI(afi));
 
@@ -2798,6 +2801,7 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
   if (ea)
   {
+    log("ea %x", ea);
     a = allocz(RTA_MAX_SIZE);
 
     a->source = RTS_BGP;
@@ -2814,10 +2818,14 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
       a = NULL;
   }
 
+  log("jump %s %x (desc %x)", s->desc->name, s->desc->decode_nlri, s->desc);
+  log("true desc %x, name %s fce %x", &bgp_af_table[0], bgp_af_table[0].name, bgp_af_table[0].decode_nlri );
   s->desc->decode_nlri(s, nlri, len, a);
+  log("jumped");
 
   rta_free(s->cached_rta);
   s->cached_rta = NULL;
+  log("bgp_decode_nlri end");
 }
 
 void
@@ -2864,6 +2872,8 @@ bgp_parse_update(struct bgp_parse_state *s, byte *pkt, uint len, ea_list **ea)
   struct rte_ctx_adata *rcad = lp_allocz(s->pool, sizeof *rcad);
   rcad->ad.length = sizeof *rcad - sizeof rcad->ad;
   rcad->ctx = &s->proto_attrs->bgp_rte_ctx;
+  log("ctx %x, fc ptr %x (%s)", rcad->ctx, rcad->ctx->rte_recalculate, s->proto_name);
+  ASSERT_DIE(s->proto_name);
   ea_set_attr_ptr(ea, s->pool, EA_ROUTE_CONTEXT, 0, EAF_TYPE_OPAQUE, &rcad->ad);
 
   /* Check for End-of-RIB marker */
@@ -3559,6 +3569,7 @@ bgp_rx_packet(struct bgp_conn *conn, byte *pkt, uint len)
   conn->bgp->stats.rx_messages++;
   conn->bgp->stats.rx_bytes += len;
 
+  log("if (conn->bgp->p.mrtdump & MD_MESSAGES) %x %x", conn->bgp->p.mrtdump, MD_MESSAGES);
   if (conn->bgp->p.mrtdump & MD_MESSAGES)
     bgp_dump_message(conn, pkt, len);
 

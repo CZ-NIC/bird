@@ -2239,10 +2239,10 @@ done:
   return p->p.proto_state;
 }
 
-static uint
+uint
 bgp_format_rte_ctx(const struct rte_context *ctx, byte *buf)
 {
-  struct bgp_proto_attributes *pa = SKIP_BACK(struct bgp_proto_attributes, bgp_rte_ctx, ctx);
+  struct bgp_route_ctx *pa = SKIP_BACK(struct bgp_route_ctx, bgp_rte_ctx, ctx);
   uint buf_shift;
   buf_shift = bsprintf(buf, "loc=%I %u; ", pa->local_ip, pa->local_as);
   buf_shift += bsprintf(buf + buf_shift, "loc ID %R; ", pa->local_id);

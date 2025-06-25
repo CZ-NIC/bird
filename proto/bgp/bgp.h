@@ -374,14 +374,14 @@ struct bgp_conn {
   /* from conf */ \
   BGP_ROUTE_ATTRIBUTES\
 
-struct bgp_proto_attributes { BGP_ROUTE_CONTEXT };
+struct bgp_route_ctx { BGP_ROUTE_CONTEXT };
 
 struct bgp_proto {
   struct proto p;
   const struct bgp_config *cf;		/* Shortcut to BGP configuration */
   const char *hostname;      /* Hostname for this BGP protocol */
   union {
-    struct bgp_proto_attributes proto_attrs;
+    struct bgp_route_ctx proto_attrs;
     struct { BGP_ROUTE_CONTEXT; };
   };
   u32 public_as;			/* Externally visible ASN (local_as or confederation id) */
@@ -514,7 +514,7 @@ struct bgp_write_state {
 
 struct bgp_parse_state {
   // instead of struct bgp_proto *proto;
-  struct bgp_proto_attributes *proto_attrs;
+  struct bgp_route_ctx *proto_attrs;
   struct proto *p;
   u32 public_as;
   u8 is_mrt_parse;
@@ -678,12 +678,12 @@ rte_resolvable(rte *rt)
 
 /* attrs.c */
 
-static inline const struct bgp_proto_attributes *
+static inline const struct bgp_route_ctx *
 bgp_get_route_context(const rte *r)
 {
   const struct rte_context *ctx = rte_get_context(r);
   return (ctx && (ctx->proto_class == PROTOCOL_BGP)) ?
-    SKIP_BACK(struct bgp_proto_attributes, bgp_rte_ctx, ctx) : NULL;
+    SKIP_BACK(struct bgp_route_ctx, bgp_rte_ctx, ctx) : NULL;
 }
 
 static inline eattr *
@@ -776,6 +776,7 @@ void bgp_log_error(struct bgp_proto *p, u8 class, char *msg, unsigned code, unsi
 
 void bgp_update_next_hop(struct bgp_export_state *s, eattr *a, ea_list **to);
 byte *bgp_create_end_mark_(struct bgp_channel *c, byte *buf);
+uint bgp_format_rte_ctx(const struct rte_context *ctx, byte *buf);
 
 
 /* Packet types */

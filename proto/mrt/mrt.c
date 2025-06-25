@@ -372,6 +372,7 @@ mrt_peer_table_dump(struct mrt_table_dump_state *s)
   put_u16(s->buf.start + s->peer_count_offset, s->peer_count);
 
   mrt_dump_message(&s->buf, s->fd);
+  log("mrt_peer_table_dump ok");
 }
 
 static void
