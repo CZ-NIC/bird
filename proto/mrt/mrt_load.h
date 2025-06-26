@@ -10,10 +10,10 @@
 #include "proto/mrt/mrt.h"
 
 #define MRTLOAD_CTX_KEY(n)		n->ctx.remote_as, n->ctx.local_as, \
-  n->ctx.is_internal
+  n->ctx.remote_ip, n->ctx.local_ip
 #define MRTLOAD_CTX_NEXT(n)		n->next
-#define MRTLOAD_CTX_EQ(p1,n1,p2,n2)	p1 == p2 && n1 == n2
-#define MRTLOAD_CTX_FN(pas, las, iin)	 u64_hash(pas) + u64_hash(las) + iin
+#define MRTLOAD_CTX_EQ(p1, n1, r_ip, l_ip, p2, n2, r_ip1, l_ip1)	p1 == p2 && n1 == n2 && ipa_equal(r_ip, r_ip1) + ipa_equal(l_ip, l_ip1)
+#define MRTLOAD_CTX_FN(pas, las, r_ip, l_ip)	 u64_hash(pas) + u64_hash(las) + ipa_hash(r_ip) + ipa_hash(l_ip)
 #define MRTLOAD_CTX_REHASH		mrtload_ctx_rehash
 #define MRTLOAD_CTX_PARAMS		/2, *2, 1, 1, 8, 20
 #define MRTLOAD_CTX_INIT_ORDER		6
@@ -39,6 +39,7 @@ struct mrtload_config {
 
 struct mrtload_route_ctx {
   struct bgp_route_ctx ctx;
+  int addr_fam;
   struct mrtload_route_ctx *next;
 };
 

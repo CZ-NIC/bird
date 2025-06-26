@@ -80,10 +80,12 @@ mrt_parse_error(struct bgp_parse_state * ps UNUSED, uint e UNUSED)
 
                      Figure 12: BGP4MP_MESSAGE Subtype
 */
-int
-mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4, struct bgp_route_ctx *proto_attrs)
+struct mrtload_route_ctx *
+mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4, struct mrtload_proto *p)
 {
   u64 peer_as, local_as;
+  ip_addr remote_ip, local_ip;
+
   if (as4)
   {
     peer_as = mrtload_four_octet(fp, remains);
@@ -93,18 +95,43 @@ mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4, struct bgp_route_ctx *pr
     peer_as = mrtload_two_octet(fp, remains);
     local_as = mrtload_two_octet(fp, remains);
   }
-  proto_attrs->is_internal = peer_as == local_as;
+  int is_internal = peer_as == local_as;
 
   int interface_id = mrtload_two_octet(fp, remains);
   int addr_fam = mrtload_two_octet(fp, remains);
 
   log("peer as %i", peer_as);
 
-  mrtload_ip(fp, remains, &proto_attrs->remote_ip, addr_fam == 2);
-  mrtload_ip(fp, remains, &proto_attrs->local_ip, addr_fam == 2);
+  mrtload_ip(fp, remains, &remote_ip, addr_fam == 2);
+  mrtload_ip(fp, remains, &local_ip, addr_fam == 2);
 
-  log("peer as %lx local as %lx interface %x add fam %i peer %I loc %I", peer_as, local_as, interface_id, addr_fam, proto_attrs->remote_ip, proto_attrs->local_ip);
-  return addr_fam;
+  struct mrtload_route_ctx *route_attrs = HASH_FIND(p->ctx_hash, MRTLOAD_CTX, peer_as, local_as, remote_ip, local_ip);
+  if (!route_attrs)
+  {
+    route_attrs = (struct mrtload_route_ctx *) mb_allocz(p->ctx_pool, sizeof(struct mrtload_route_ctx));
+    route_attrs->addr_fam = addr_fam;
+    route_attrs->ctx.local_as = local_as;
+    route_attrs->ctx.local_as = peer_as;
+    route_attrs->ctx.local_ip = local_ip;
+    route_attrs->ctx.remote_ip = remote_ip;
+    route_attrs->ctx.is_internal = is_internal;
+
+    route_attrs->ctx.bgp_rte_ctx.proto_class = PROTOCOL_BGP;
+    route_attrs->ctx.bgp_rte_ctx.rte_better = bgp_rte_better;
+    route_attrs->ctx.bgp_rte_ctx.rte_recalculate = NULL; //cf->deterministic_med ? bgp_rte_recalculate
+    route_attrs->ctx.bgp_rte_ctx.format = bgp_format_rte_ctx;
+
+    // TODO: this is not the correct setting
+    route_attrs->ctx.local_id = proto_get_router_id(p->p.cf);
+    route_attrs->ctx.remote_id = 0;
+    route_attrs->ctx.rr_client = 0;
+    route_attrs->ctx.rs_client = 0;
+    route_attrs->ctx.is_interior = route_attrs->ctx.is_internal;  //TODO this should be loaded from somewhere
+
+    HASH_INSERT(p->ctx_hash, MRTLOAD_CTX, route_attrs);
+  }
+  log("peer as %lx local as %lx interface %x add fam %i peer %I loc %I", peer_as, local_as, interface_id, addr_fam, route_attrs->ctx.remote_ip, route_attrs->ctx.local_ip);
+  return route_attrs;
 }
 
 static void
@@ -137,10 +164,9 @@ static void
 mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct proto *P)
 {
   struct mrtload_proto *p = (void *) P;
-  struct mrtload_route_ctx *proto_attrs = (struct mrtload_route_ctx *) mb_alloc(p->ctx_pool, sizeof(struct mrtload_route_ctx));
-  int addr_fam = mrt_parse_bgp_message(fp, remains, as4, &proto_attrs->ctx);
-  log("addr fam %x", addr_fam);
-  if (addr_fam != p->addr_fam)
+  struct mrtload_route_ctx *proto_attrs = mrt_parse_bgp_message(fp, remains, as4, p);
+  log("addr fam %x", proto_attrs->addr_fam);
+  if (proto_attrs->addr_fam != p->addr_fam)
     return;
   log("continue");
 
@@ -159,6 +185,8 @@ mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct proto *P)
   int type = mrtload_one(fp, remains);
 
   log("type %i (pkt update %i)", type, PKT_UPDATE);
+  /* in case of new peer, the peer has already been added to hash table 
+   * (TODO: it was added to hash table without considering the PKT type) */
   if (type != PKT_UPDATE)
     return;
 
@@ -176,20 +204,6 @@ mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct proto *P)
     .is_mrt_parse = 1,
     .p = P,
   };
-
-  proto_attrs->ctx.bgp_rte_ctx.proto_class = PROTOCOL_BGP;
-  proto_attrs->ctx.bgp_rte_ctx.rte_better = bgp_rte_better;
-  proto_attrs->ctx.bgp_rte_ctx.rte_recalculate = NULL; //cf->deterministic_med ? bgp_rte_recalculate
-  proto_attrs->ctx.bgp_rte_ctx.format = bgp_format_rte_ctx;
-
-  // TODO: this is not the correct setting
-  proto_attrs->ctx.local_id = proto_get_router_id(P->cf);
-  proto_attrs->ctx.remote_id = 0;
-  proto_attrs->ctx.rr_client = 0;
-  proto_attrs->ctx.rs_client = 0;
-  proto_attrs->ctx.is_interior = proto_attrs->ctx.is_internal;
-
-  HASH_INSERT(p->ctx_hash, MRTLOAD_CTX, proto_attrs);
 
   s.proto_attrs = &proto_attrs->ctx;
 
@@ -271,7 +285,8 @@ mrtload(struct proto *P)
   }
 
   /* Parsing mrt headers in loop. MRT_BGP4MP messages are loaded, the rest is skipped. */
-  while (mrt_parse_general_header(fp, P));
+  int temporary = 0; //TODO REMOVE!!! THIS IS FOR TESTING PURPOSES ONLY!
+  while (mrt_parse_general_header(fp, P)){if (temporary++>2000) break; log("%i temporary",temporary);}
 }
 
 void

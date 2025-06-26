@@ -1753,6 +1753,7 @@ bgp_decode_nlri_ip4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     if (s->mpls)
       bgp_decode_mpls_labels(s, &pos, &len, &l, a);
 
+    log("debug the bug l %i, s->mpls %i, len %i pos %i", l, s->mpls, len, pos);
     if (l > IP4_MAX_PREFIX_LENGTH){
       bug("parse error");
       bgp_parse_error(s, 10);}
