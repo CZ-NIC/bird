@@ -2372,7 +2372,7 @@ bgp_start_locked(void *_p)
     return;
   }
 
-  neighbor *n = neigh_find(&p->p, p->remote_ip, cf->iface, NEF_STICKY);
+  neighbor *n = neigh_find(&p->p, p->remote_ip, cf->iface, NEF_STICKY | (cf->onlink ? NEF_ONLINK : 0));
   if (!n)
   {
     log(L_ERR "%s: Invalid remote address %I%J", p->p.name, p->remote_ip, cf->iface);
@@ -2961,6 +2961,12 @@ bgp_postconfig(struct proto_config *CF)
 
   if (cf->multihop && cf->bfd && ipa_zero(cf->local_ip))
     cf_error("Multihop BGP with BFD requires specified local address");
+
+  if (cf->multihop && cf->onlink)
+    cf_error("Multihop BGP cannot be configured onlink");
+
+  if (cf->onlink && !cf->iface)
+    cf_error("Onlink BGP must have interface configured");
 
   if (!cf->gr_mode && cf->llgr_mode)
     cf_error("Long-lived graceful restart requires basic graceful restart");

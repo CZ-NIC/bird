@@ -107,6 +107,7 @@ bgp_nbr_opts:
  | bgp_nbr_opts AS expr { BGP_CFG->remote_as = $3; }
  | bgp_nbr_opts INTERNAL { BGP_CFG->peer_type = BGP_PT_INTERNAL; }
  | bgp_nbr_opts EXTERNAL { BGP_CFG->peer_type = BGP_PT_EXTERNAL; }
+ | bgp_nbr_opts ONLINK { BGP_CFG->onlink = 1; }
  ;
 
 bgp_cease_mask:
@@ -171,6 +172,7 @@ bgp_proto:
      BGP_CFG->remote_range = n;
    }
  | bgp_proto INTERFACE text ';' { BGP_CFG->iface = if_get_by_name($3); }
+ | bgp_proto ONLINK bool ';' { BGP_CFG->onlink = $3; }
  | bgp_proto RR CLUSTER ID idval ';' { BGP_CFG->rr_cluster_id = $5; }
  | bgp_proto RR CLIENT bool ';' { BGP_CFG->rr_client = $4; }
  | bgp_proto RS CLIENT bool ';' { BGP_CFG->rs_client = $4; }

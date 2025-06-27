@@ -85,6 +85,7 @@ struct bgp_config {
   int multihop;				/* Number of hops if multihop */
   int strict_bind;			/* Bind listening socket to local address */
   int free_bind;			/* Bind listening socket with SKF_FREEBIND */
+  int onlink;				/* Enable direct connection to a host not configured on any iface */
   int ttl_security;			/* Enable TTL security [RFC 5082] */
   int compare_path_lengths;		/* Use path lengths when selecting best route */
   int med_metric;			/* Compare MULTI_EXIT_DISC even between routes from differen ASes */
