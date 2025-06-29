@@ -876,6 +876,7 @@ bgp_initiate_disable(struct bgp_proto *p, int err_val)
 	p->p.disabled = 1;
 	bgp_store_error(p, NULL, BE_MISC, err_val);
 	bgp_stop(p, err_val, NULL, 0);
+	proto_announce_state(&p->p, p->p.ea_state);
     }
   }
 }
