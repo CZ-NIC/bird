@@ -1606,3 +1606,13 @@ test-pipe-collision:
   variables:
     TEST_NAME: cf-pipe-collision
 
+test-bgp-unnumbered:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-unnumbered
+
+test-bgp-error-states:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-error-states
+
