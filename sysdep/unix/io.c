@@ -429,7 +429,12 @@ sockaddr_read6(struct sockaddr_in6 *sa, ip_addr *a, struct iface **ifa, uint *po
   *a = ipa_from_in6(sa->sin6_addr);
 
   if (ifa && ipa_is_link_local(*a))
+  {
     *ifa = if_find_by_index(sa->sin6_scope_id);
+    if (!*ifa)
+      log(L_WARN "SOCK: Failed to resolve interface ID %d of link-local address %I",
+	  sa->sin6_scope_id, *a);
+  }
 }
 
 int
@@ -1312,12 +1317,27 @@ sk_passive_connected(sock *s, int type)
 
   if (type == SK_TCP)
   {
+    struct iface *sifa = NULL, *difa = NULL;
     if ((getsockname(fd, &loc_sa.sa, &loc_sa_len) < 0) ||
-	(sockaddr_read(&loc_sa, s->af, &t->saddr, &t->iface, &t->sport) < 0))
+	(sockaddr_read(&loc_sa, s->af, &t->saddr, &sifa, &t->sport) < 0))
       log(L_WARN "SOCK: Cannot get local IP address for TCP<");
 
-    if (sockaddr_read(&rem_sa, s->af, &t->daddr, &t->iface, &t->dport) < 0)
+    if (sockaddr_read(&rem_sa, s->af, &t->daddr, &difa, &t->dport) < 0)
       log(L_WARN "SOCK: Cannot get remote IP address for TCP<");
+
+    if (sifa && difa && (sifa != difa))
+      log(L_WARN "SOCK: Interface collision for TCP<, got src %I%J, dst %I%J",
+	  t->saddr, sifa, t->daddr, difa);
+
+    if (s->iface && sifa && (sifa != s->iface))
+      log(L_WARN "SOCK: Interface collision for TCP<%J, got src %I%J",
+	  s->iface, t->saddr, sifa);
+
+    if (s->iface && difa && (difa != s->iface))
+      log(L_WARN "SOCK: Interface collision for TCP<%J, got dst %I%J",
+	  s->iface, t->daddr, difa);
+
+    t->iface = s->iface ?: difa ?: sifa;
   }
 
   if (sk_setup(t) < 0)
