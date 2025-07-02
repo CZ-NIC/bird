@@ -166,9 +166,6 @@ mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct proto *P)
   struct mrtload_proto *p = (void *) P;
   struct mrtload_route_ctx *proto_attrs = mrt_parse_bgp_message(fp, remains, as4, p);
   log("addr fam %x", proto_attrs->addr_fam);
-  if (proto_attrs->addr_fam != p->addr_fam)
-    return;
-  log("continue");
 
   if (*remains < 19)
   {
@@ -203,6 +200,8 @@ mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct proto *P)
     .apply_mpls_labels = mrt_apply_mpls_labels,
     .is_mrt_parse = 1,
     .p = P,
+    .as4_session = as4,
+    .desc = p->channel->desc, // desc is set later in bgp, but we need afi to compare
   };
 
   s.proto_attrs = &proto_attrs->ctx;
@@ -286,7 +285,7 @@ mrtload(struct proto *P)
 
   /* Parsing mrt headers in loop. MRT_BGP4MP messages are loaded, the rest is skipped. */
   int temporary = 0; //TODO REMOVE!!! THIS IS FOR TESTING PURPOSES ONLY!
-  while (mrt_parse_general_header(fp, P)){if (temporary++>2000) break; log("%i temporary",temporary);}
+  while (mrt_parse_general_header(fp, P)){if (temporary++>400) break; log("%i temporary",temporary);}
 }
 
 void

@@ -2870,10 +2870,27 @@ bgp_parse_update(struct bgp_parse_state *s, byte *pkt, uint len, ea_list **ea)
   else
     *ea = NULL;
 
+  if (s->is_mrt_parse)
+  {
+    /* filter afis which are not channel afi */
+    if (s->mp_reach_af)
+    {
+      if (s->mp_reach_af !=  s->desc->afi)
+        return;
+    }
+    else if (s->mp_unreach_af)
+    {
+      if (s->mp_unreach_af !=  s->desc->afi)
+        return;
+    }
+    else
+      if (s->desc->afi >> 16 != BGP_AFI_IPV4)
+        return;
+  }
+
   struct rte_ctx_adata *rcad = lp_allocz(s->pool, sizeof *rcad);
   rcad->ad.length = sizeof *rcad - sizeof rcad->ad;
   rcad->ctx = &s->proto_attrs->bgp_rte_ctx;
-  log("ctx %x, fc ptr %x (%s)", rcad->ctx, rcad->ctx->rte_recalculate, s->proto_name);
   ASSERT_DIE(s->proto_name);
   ea_set_attr_ptr(ea, s->pool, EA_ROUTE_CONTEXT, 0, EAF_TYPE_OPAQUE, &rcad->ad);
 
