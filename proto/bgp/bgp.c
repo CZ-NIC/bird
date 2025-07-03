@@ -3178,9 +3178,9 @@ bgp_show_proto_info(struct proto *P)
   cli_msg(-1006, "  BGP state:          %s", bgp_state_dsc(p));
 
   if (bgp_is_dynamic(p) && p->cf->remote_range)
-    cli_msg(-1006, "    Neighbor range:   %N", p->cf->remote_range);
+    cli_msg(-1006, "    Neighbor range:   %N%s", p->cf->remote_range, p->cf->onlink ? " onlink" : "");
   else
-    cli_msg(-1006, "    Neighbor address: %I%J", p->remote_ip, p->cf->iface);
+    cli_msg(-1006, "    Neighbor address: %I%J%s", p->remote_ip, p->cf->iface, p->cf->onlink ? " onlink" : "");
 
   if ((p->conn == &p->outgoing_conn) && (p->cf->remote_port != BGP_PORT))
     cli_msg(-1006, "    Neighbor port:    %u", p->cf->remote_port);
