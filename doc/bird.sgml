@@ -2945,6 +2945,7 @@ protocol bgp [<name>] {
 	local [<ip>] [port <number>] [as <number>];
 	neighbor [<ip> | range <prefix>] [onlink] [port <number>] [as <number>] [internal|external];
 	interface "<text>";
+	interface range <interface pattern>;
 	onlink <switch>;
 	direct;
 	multihop [<number>];
@@ -3066,6 +3067,17 @@ protocol bgp [<name>] {
 	(e.g., <cf/neighbor fe80::1234%eth0 as 65000;/). The option may also be
 	used for non link-local sessions when it is necessary to explicitly
 	specify an interface, but only for direct (not multihop) sessions.
+
+	<tag><label id="bgp-iface-range">interface range <m/interface pattern/</tag>
+	Set interface pattern to which the connection will be bound. This is
+	mostly useful with the <cf/neighbor range/ option and either link-local
+	addresses or with the <cf/onlink/ option where it's not known up front
+	which interface the connection comes on but it needs to stay there.
+
+	This option requires <cf/strict bind/ to be on and creates a separate
+	listening socket for every single interface matching the pattern. If the
+	local address is set, it also requires this exact address to be set
+	on that interface to create a listening socket.
 
 	<tag><label id="bgp-onlink">onlink <m/switch/</tag>
 	For a direct neighbor, the BGP session starts immediately without
