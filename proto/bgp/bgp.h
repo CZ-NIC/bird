@@ -80,6 +80,7 @@ struct bgp_config {
   ip_addr local_ip;			/* Source address to use */
   ip_addr remote_ip;
   struct iface *iface;			/* Interface for link-local addresses */
+  struct iface_patt *ipatt;		/* Interface pattern for dynamic strict bind */
   u16 local_port;			/* Local listening port */
   u16 remote_port; 			/* Neighbor destination port */
   int peer_type;			/* Internal or external BGP (BGP_PT_*, optional) */
