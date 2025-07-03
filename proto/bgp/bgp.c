@@ -144,6 +144,8 @@ static void bgp_update_bfd(struct bgp_proto *p, const struct bfd_options *bfd);
 static int bgp_disable_ao_keys(struct bgp_proto *p);
 static int bgp_incoming_connection(sock *sk, uint dummy UNUSED);
 static void bgp_listen_sock_err(sock *sk UNUSED, int err);
+static int bgp_listen_open(struct bgp_proto *, struct bgp_listen_request *);
+static void bgp_listen_close(struct bgp_proto *, struct bgp_listen_request *);
 
 /**
  * bgp_open - open a BGP instance
@@ -157,36 +159,56 @@ static void bgp_listen_sock_err(sock *sk UNUSED, int err);
 static int
 bgp_open(struct bgp_proto *p)
 {
-  struct bgp_socket *bs = NULL;
-  struct iface *ifa = p->cf->strict_bind ? p->cf->iface : NULL;
-  ip_addr addr = p->cf->strict_bind ? p->cf->local_ip :
-    (p->ipv4 ? IPA_NONE4 : IPA_NONE6);
-  uint port = p->cf->local_port;
-  uint flags = p->cf->free_bind ? SKF_FREEBIND : 0;
-  uint flag_mask = SKF_FREEBIND;
-
   /* We assume that cf->iface is defined iff cf->local_ip is link-local */
+  struct bgp_listen_request *req = mb_allocz(p->p.pool, sizeof *req);
+  req->params = (struct bgp_socket_params) {
+    .iface = p->cf->strict_bind ? p->cf->iface : NULL,
+    .vrf = p->p.vrf,
+    .addr = p->cf->strict_bind ? p->cf->local_ip :
+      (p->ipv4 ? IPA_NONE4 : IPA_NONE6),
+    .port = p->cf->local_port,
+    .flags = p->cf->free_bind ? SKF_FREEBIND : 0,
+  };
 
+  return bgp_listen_open(p, req);
+}
+
+static int
+bgp_socket_match(const struct bgp_socket_params *a, const struct bgp_socket_params *b)
+{
+  return
+    ipa_equal(a->addr, b->addr) &&
+    a->iface == b->iface &&
+    a->vrf == b->vrf &&
+    a->port == b->port &&
+    a->flags == b->flags &&
+    1;
+}
+
+static int
+bgp_listen_open(struct bgp_proto *p, struct bgp_listen_request *req)
+{
+  ASSERT_DIE(!NODE_VALID(&req->pn));
+  ASSERT_DIE(!NODE_VALID(&req->sn));
+
+  struct bgp_socket *bs;
   WALK_LIST(bs, bgp_sockets)
-    if (ipa_equal(bs->sk->saddr, addr) &&
-	(bs->sk->sport == port) &&
-	(bs->sk->iface == ifa) &&
-	(bs->sk->vrf == p->p.vrf) &&
-	((bs->sk->flags & flag_mask) == flags))
+    if (bgp_socket_match(&bs->params, &req->params))
     {
-      bs->uc++;
-      p->sock = bs;
+      add_tail(&p->listen, &req->pn);
+      add_tail(&bs->requests, &req->sn);
+      req->sock = bs;
       return 0;
     }
 
   sock *sk = sk_new(proto_pool);
   sk->type = SK_TCP_PASSIVE;
   sk->ttl = 255;
-  sk->saddr = addr;
-  sk->sport = port;
-  sk->iface = ifa;
-  sk->vrf = p->p.vrf;
-  sk->flags = flags;
+  sk->saddr = req->params.addr;
+  sk->sport = req->params.port;
+  sk->iface = req->params.iface;
+  sk->vrf = req->params.vrf;
+  sk->flags = req->params.flags;
   sk->tos = IP_PREC_INTERNET_CONTROL;
   sk->rbsize = BGP_RX_BUFFER_SIZE;
   sk->tbsize = BGP_TX_BUFFER_SIZE;
@@ -197,11 +219,15 @@ bgp_open(struct bgp_proto *p)
     goto err;
 
   bs = mb_allocz(proto_pool, sizeof(struct bgp_socket));
+  memcpy(&bs->params, &req->params, sizeof bs->params);
   bs->sk = sk;
-  bs->uc = 1;
-  p->sock = bs;
   sk->data = bs;
+  req->sock = bs;
 
+  init_list(&bs->requests);
+  add_tail(&bs->requests, &req->sn);
+
+  add_tail(&p->listen, &req->pn);
   add_tail(&bgp_sockets, &bs->n);
 
   return 0;
@@ -213,6 +239,22 @@ err:
   return -1;
 }
 
+static void
+bgp_listen_close(struct bgp_proto *p UNUSED, struct bgp_listen_request *req)
+{
+  struct bgp_socket *bs = req->sock;
+  ASSERT(bs);
+
+  rem_node(&req->pn);
+  rem_node(&req->sn);
+  if (!EMPTY_LIST(bs->requests))
+    return;
+
+  rfree(bs->sk);
+  rem_node(&bs->n);
+  mb_free(bs);
+}
+
 /**
  * bgp_close - close a BGP instance
  * @p: BGP instance
@@ -222,16 +264,11 @@ err:
 static void
 bgp_close(struct bgp_proto *p)
 {
-  struct bgp_socket *bs = p->sock;
+  struct bgp_listen_request *req;
+  WALK_LIST_FIRST2(req, pn, p->listen)
+    bgp_listen_close(p, req);
 
-  ASSERT(bs && bs->uc);
-
-  if (--bs->uc)
-    return;
-
-  rfree(bs->sk);
-  rem_node(&bs->n);
-  mb_free(bs);
+  ASSERT_DIE(EMPTY_LIST(p->listen));
 }
 
 
@@ -276,7 +313,7 @@ bgp_same_ao_key(struct ao_key *a, struct ao_key *b)
 }
 
 static inline int
-bgp_sk_add_ao_key(struct bgp_proto *p, sock *sk, struct bgp_ao_key *key)
+bgp_sk_add_ao_key(struct bgp_proto *p, sock *sk, struct bgp_ao_key *key, const char *kind)
 {
   ip_addr prefix = p->cf->remote_ip;
   int pxlen = -1;
@@ -286,8 +323,7 @@ bgp_sk_add_ao_key(struct bgp_proto *p, sock *sk, struct bgp_ao_key *key)
   {
     sk_log_error(sk, p->p.name);
     log(L_ERR "%s: Cannot add TCP-AO key %d/%d to BGP %s socket",
-	p->p.name, key->key.send_id, key->key.recv_id,
-	((sk == p->sock->sk) ? "listening" : "session"));
+	p->p.name, key->key.send_id, key->key.recv_id, kind);
   }
 
   return rv;
@@ -300,23 +336,25 @@ bgp_enable_ao_key(struct bgp_proto *p, struct bgp_ao_key *key)
 
   BGP_TRACE(D_EVENTS, "Adding TCP-AO key %d/%d", key->key.send_id, key->key.recv_id);
 
-  /* Handle listening socket */
-  if (bgp_sk_add_ao_key(p, p->sock->sk, key) < 0)
-  {
-    key->failed = 1;
-    return -1;
-  }
+  /* Handle listening sockets */
+  struct bgp_listen_request *blr; node *nxt;
+  WALK_LIST2(blr, nxt, p->listen, pn)
+    if (bgp_sk_add_ao_key(p, blr->sock->sk, key, "listening") < 0)
+    {
+      key->failed = 1;
+      return -1;
+    }
 
   key->active = 1;
 
   /* Handle incoming socket */
   if (p->incoming_conn.sk)
-    if (bgp_sk_add_ao_key(p, p->incoming_conn.sk, key) < 0)
+    if (bgp_sk_add_ao_key(p, p->incoming_conn.sk, key, "session (in)") < 0)
       return -1;
 
   /* Handle outgoing socket */
   if (p->outgoing_conn.sk)
-    if (bgp_sk_add_ao_key(p, p->outgoing_conn.sk, key) < 0)
+    if (bgp_sk_add_ao_key(p, p->outgoing_conn.sk, key, "session (out)") < 0)
       return -1;
 
   return 0;
@@ -330,7 +368,8 @@ struct bgp_active_keys {
 
 static int
 bgp_sk_delete_ao_key(struct bgp_proto *p, sock *sk, struct bgp_ao_key *key,
-		     struct bgp_ao_key *backup, int current_key_id, int rnext_key_id)
+		     struct bgp_ao_key *backup, int current_key_id, int rnext_key_id,
+		     const char *kind)
 {
   struct ao_key *set_current = NULL, *set_rnext = NULL;
 
@@ -358,8 +397,7 @@ bgp_sk_delete_ao_key(struct bgp_proto *p, sock *sk, struct bgp_ao_key *key,
   {
     sk_log_error(sk, p->p.name);
     log(L_ERR "%s: Cannot delete TCP-AO key %d/%d from BGP %s socket",
-	p->p.name, key->key.send_id, key->key.recv_id,
-	((sk == p->sock->sk) ? "listening" : "session"));
+	p->p.name, key->key.send_id, key->key.recv_id, kind);
   }
 
   return rv;
@@ -373,19 +411,21 @@ bgp_disable_ao_key(struct bgp_proto *p, struct bgp_ao_key *key, struct bgp_activ
   BGP_TRACE(D_EVENTS, "Deleting TCP-AO key %d/%d", key->key.send_id, key->key.recv_id);
 
   /* Handle listening socket */
-  if (bgp_sk_delete_ao_key(p, p->sock->sk, key, NULL, -1, -1) < 0)
-    return -1;
+  struct bgp_listen_request *blr; node *nxt;
+  WALK_LIST2(blr, nxt, p->listen, pn)
+    if (bgp_sk_delete_ao_key(p, blr->sock->sk, key, NULL, -1, -1, "listening") < 0)
+      return -1;
 
   key->active = 0;
 
   /* Handle incoming socket */
   if (p->incoming_conn.sk && info)
-    if (bgp_sk_delete_ao_key(p, p->incoming_conn.sk, key, info->backup, info->in_current, info->in_rnext) < 0)
+    if (bgp_sk_delete_ao_key(p, p->incoming_conn.sk, key, info->backup, info->in_current, info->in_rnext, "session (in)") < 0)
       return -1;
 
   /* Handle outgoing socket */
   if (p->outgoing_conn.sk && info)
-    if (bgp_sk_delete_ao_key(p, p->outgoing_conn.sk, key, info->backup, info->out_current, info->out_rnext) < 0)
+    if (bgp_sk_delete_ao_key(p, p->outgoing_conn.sk, key, info->backup, info->out_current, info->out_rnext, "session (out)") < 0)
       return -1;
 
   return 0;
@@ -700,12 +740,17 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
       pxlen = net_pxlen(p->cf->remote_range);
     }
 
-    int rv = sk_set_md5_auth(p->sock->sk,
-			     p->cf->local_ip, prefix, pxlen, p->cf->iface,
-			     enable ? p->cf->password : NULL, p->cf->setkey);
+    int rv = 0;
+    struct bgp_listen_request *blr; node *nxt;
+    WALK_LIST2(blr, nxt, p->listen, pn)
+    {
+      rv = sk_set_md5_auth(blr->sock->sk,
+	  p->cf->local_ip, prefix, pxlen, p->cf->iface,
+	  enable ? p->cf->password : NULL, p->cf->setkey);
 
-    if (rv < 0)
-      sk_log_error(p->sock->sk, p->p.name);
+      if (rv < 0)
+	sk_log_error(blr->sock->sk, p->p.name);
+    }
 
     return rv;
   }
@@ -2274,6 +2319,8 @@ bgp_init(struct proto_config *CF)
 
   /* Add MPLS channel */
   proto_configure_channel(P, &P->mpls_channel, proto_cf_mpls_channel(CF));
+
+  init_list(&p->listen);
 
   return P;
 }
