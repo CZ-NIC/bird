@@ -134,6 +134,38 @@ mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4, struct mrtload_proto *p)
   return route_attrs;
 }
 
+void
+mrt_parse_bgp4mp_change_state(FILE *fp, u64 *remains, bool as4, struct proto *P)
+{
+  struct mrtload_proto *p = SKIP_BACK(struct mrtload_proto, p, P);
+  struct mrtload_route_ctx *ra = mrt_parse_bgp_message(fp, remains, as4, p);
+  int old_state = mrtload_two_octet(fp, remains);
+  int new_state = mrtload_two_octet(fp, remains);
+  log("old state %i new state %i", old_state, new_state);
+
+  log("new_state %i == BS_CLOSE && ra->addr_fam %i == p->channel->afi >> 16  %i", new_state, ra->addr_fam, p->channel->afi >> 16);
+  if (new_state == BS_CLOSE && ra->addr_fam == (int)(p->channel->afi >> 16))
+  {
+    FIB_WALK(&p->channel->c.table->fib, net, n)
+    {
+      rte *e = n->routes;
+      while(e)
+      {
+        rte *next = e->next;
+        if (e->sender == &p->channel->c && e->src == P->main_source)
+        {
+          rte_update2(&p->channel->c, e->net->n.addr, NULL, P->main_source);
+        }
+        e = next;
+      }
+    }
+    FIB_WALK_END;
+    HASH_DO_REMOVE(p->ctx_hash, MRTLOAD_CTX, &ra);
+    mb_free(ra);
+  }
+}
+
+
 static void
 mrt_rx_end_mark(struct bgp_parse_state *s UNUSED, u32 afi UNUSED)
 {
@@ -248,11 +280,14 @@ mrt_parse_general_header(FILE *fp, struct proto *P)
     switch (subtype)
     {
       case (MRT_BGP4MP_MESSAGE):
+        mrt_parse_bgp4mp_change_state(fp, &remains, false, P);
+        break;
       case (MRT_BGP4MP_MESSAGE_LOCAL):
       case (MRT_BGP4MP_MESSAGE_ADDPATH):
         mrt_parse_bgp4mp_message(fp, &remains, false, P);
         break;
       case (MRT_BGP4MP_STATE_CHANGE_AS4):
+        mrt_parse_bgp4mp_change_state(fp, &remains, true, P);
         break;
       case (MRT_BGP4MP_MESSAGE_AS4):
       case (MRT_BGP4MP_MESSAGE_AS4_LOCAL):
