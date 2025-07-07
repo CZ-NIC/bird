@@ -186,6 +186,16 @@ static inline u64 ec_ip4(enum ec_subtype kind, u64 key, u64 val)
 static inline u64 ec_generic(u64 key, u64 val)
 { return (key << 32) | val; }
 
+#define EC_SET_WALK(ec,ad)					\
+  do {								\
+    const u32 *_set = int_set_get_data(ad);			\
+    const int _len  = int_set_get_size(ad);			\
+    u64 ec = 0;							\
+    for (int _i = 0; (_i < _len) && (ec = ec_get(_set, _i), 1); _i += 2)
+
+#define EC_SET_WALK_END } while (0)
+
+
 /* Large community value */
 typedef struct lcomm {
   u32 asn;
