@@ -10,6 +10,20 @@
 #ifndef _BIRD_EVPN_H_
 #define _BIRD_EVPN_H_
 
+#include "nest/bird.h"
+#include "lib/lists.h"
+#include "lib/hash.h"
+#include "filter/data.h"
+
+
+/* BGP Tunnel Encapsulation Attribute Tunnel Types (RFC 8365) */
+
+enum evpn_encap_type {
+  EVPN_ENCAP_TYPE_VXLAN = 8,
+  EVPN_ENCAP_TYPE_MAX,
+};
+
+
 struct evpn_config {
   struct proto_config c;
 
@@ -17,13 +31,21 @@ struct evpn_config {
   struct f_tree *import_target;
   struct f_tree *export_target;
 
-  struct iface *tunnel_dev;
-  ip_addr router_addr;
   u32 vni;
   u32 vid;
   u32 tagX;
 
+  list encaps;				/* List of encapsulations (struct evpn_encap_config) */
   list vlans;				/* List of VLANs (struct evpn_vlan_config) */
+};
+
+struct evpn_encap_config {
+  node n;				/* Node in evpn_config.encaps */
+
+  enum evpn_encap_type type;
+  bool is_default;
+  struct iface *tunnel_dev;
+  ip_addr router_addr;
 };
 
 struct evpn_vlan_config {
@@ -49,15 +71,24 @@ struct evpn_proto {
   bool eth_refreshing;
   bool evpn_refreshing;
 
-  struct iface *tunnel_dev;
-  ip_addr router_addr;
   u32 vni;
   u32 vid;
   u32 tagX;
 
+  list encaps;				/* List of encapsulations (struct evpn_encap) */
   list vlans;				/* List of VLANs (struct evpn_vlan) */
+
   HASH(struct evpn_vlan) vlan_tag_hash;
   HASH(struct evpn_vlan) vlan_vid_hash;
+};
+
+struct evpn_encap {
+  node n;				/* Node in evpn_proto.encaps */
+
+  enum evpn_encap_type type;
+  bool is_default;
+  struct iface *tunnel_dev;
+  ip_addr router_addr;
 };
 
 struct evpn_vlan {
@@ -70,6 +101,5 @@ struct evpn_vlan {
   struct evpn_vlan *next_tag;
   struct evpn_vlan *next_vid;
 };
-
 
 #endif
