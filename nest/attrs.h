@@ -185,7 +185,7 @@ static inline u64 ec_ip4(enum ec_subtype kind, u64 key, u64 val)
 static inline u64 ec_generic(u64 key, u64 val)
 { return (key << 32) | val; }
 
-#define EC_SET_WALK_BEGIN(ad)					\
+#define EC_SET_WALK_BEGIN(ec,ad)				\
   do {								\
     const u32 *_z = int_set_get_data(ad);			\
     const int _len = ec_set_get_size(ad);			\
