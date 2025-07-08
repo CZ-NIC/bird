@@ -425,6 +425,8 @@ mrtload_shutdown(struct proto *P)
   }
   FIB_WALK_END;
 
+  HASH_FREE(p->ctx_hash);
+
   proto_notify_state(&p->p, PS_DOWN);
   return PS_DOWN;
 }
