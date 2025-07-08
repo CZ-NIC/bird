@@ -17,13 +17,20 @@ struct evpn_config {
   struct f_tree *import_target;
   struct f_tree *export_target;
 
-  struct iface *tunnel_dev;
-  ip_addr router_addr;
   u32 vni;
   u32 vid;
   u32 tagX;
 
   list vlans;				/* List of VLANs (struct evpn_vlan_config) */
+  list encaps;				/* List of encapsulations (struct evpn_encap_config) */
+};
+
+/*
+ * BGP Tunnel Encapsulation Attribute Tunnel Types (RFC 8365)
+ */
+enum evpn_encap_type {
+  EVPN_ENCAP_TYPE_VXLAN = 8,
+  EVPN_ENCAP_TYPE_MAX,
 };
 
 struct evpn_vlan_config {
@@ -33,6 +40,15 @@ struct evpn_vlan_config {
   u32 range;
   u32 vni;
   u32 vid;
+};
+
+struct evpn_encap_config {
+  node n;
+
+  enum evpn_encap_type type;
+  bool is_default;
+  struct iface *tunnel_dev;
+  ip_addr router_addr;
 };
 
 struct evpn_proto {
@@ -49,13 +65,13 @@ struct evpn_proto {
   bool eth_refreshing;
   bool evpn_refreshing;
 
-  struct iface *tunnel_dev;
-  ip_addr router_addr;
   u32 vni;
   u32 vid;
   u32 tagX;
 
   list vlans;				/* List of VLANs (struct evpn_vlan) */
+  list encaps;				/* List of encapsulations (struct evpn_encap) */
+
   HASH(struct evpn_vlan) vlan_tag_hash;
   HASH(struct evpn_vlan) vlan_vid_hash;
 };
@@ -71,5 +87,13 @@ struct evpn_vlan {
   struct evpn_vlan *next_vid;
 };
 
+struct evpn_encap {
+  node n;				/* Node in evpn_proto.encaps */
+
+  enum evpn_encap_type type;
+  bool is_default;
+  struct iface *tunnel_dev;
+  ip_addr router_addr;
+};
 
 #endif

@@ -65,6 +65,8 @@
 #define EA_BGP_PMSI_TUNNEL	EA_CODE(PROTOCOL_BGP, BA_PMSI_TUNNEL)
 #define EA_BGP_MPLS_LABEL_STACK	EA_CODE(PROTOCOL_BGP, BA_MPLS_LABEL_STACK)
 
+#define ENCAP_EXT_COMM_HEADER	0x030cU
+
 static inline const struct adata * ea_get_adata(ea_list *e, uint id)
 { eattr *a = ea_find(e, id); return a ? a->u.ptr : &null_adata; }
 
@@ -149,6 +151,28 @@ evpn_prepare_export_targets(struct evpn_proto *p)
   ASSERT(p->export_target_length == len);
 }
 
+static struct adata *
+evpn_export_encap_ext_comm(struct evpn_proto *p)
+{
+  size_t len = list_length(&p->encaps) * (sizeof(u32) * 2);
+
+  struct adata *ad = lp_allocz(tmp_linpool, sizeof(*ad) + len);
+  ad->length = len;
+
+  struct evpn_encap *encap;
+  int pos = 0;
+
+  WALK_LIST(encap, p->encaps)
+  {
+    u32 hi = ENCAP_EXT_COMM_HEADER << 16;
+    u32 lo = encap->type;
+    ec_put(int_set_get_data(ad), pos, ec_generic(hi, lo));
+    pos += 2;
+  }
+
+  return ad;
+}
+
 static void
 evpn_announce_mac(struct evpn_proto *p, const net_addr_eth *n0, rte *new)
 {
@@ -167,7 +191,8 @@ evpn_announce_mac(struct evpn_proto *p, const net_addr_eth *n0, rte *new)
       .pref = c->preference,
     };
 
-    struct adata *ad = evpn_export_targets(p, &null_adata);
+    struct adata *ec = evpn_export_encap_ext_comm(p);
+    struct adata *ad = evpn_export_targets(p, ec);
     ea_set_attr_ptr(&a->eattrs, tmp_linpool, EA_BGP_EXT_COMMUNITY, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_EC_SET, ad);
 
     ea_set_attr_u32(&a->eattrs, tmp_linpool, EA_MPLS_LABEL, 0, EAF_TYPE_INT, v->vni);
@@ -181,13 +206,32 @@ evpn_announce_mac(struct evpn_proto *p, const net_addr_eth *n0, rte *new)
   }
 }
 
+/*
+ * Since only one type of encapsulation is currently supported, return first
+ * (and only) encapsulation. If there were more encapsulation types, we would
+ * have to choose one here.
+ */
+static struct evpn_encap *
+evpn_get_encap(struct evpn_proto *p)
+{
+  ASSERT_DIE(list_length(&p->encaps) == 1);
+  struct evpn_encap *first = SKIP_BACK(struct evpn_encap, n, HEAD(p->encaps));
+
+  return first;
+}
+
 static void
 evpn_announce_imet(struct evpn_proto *p, struct evpn_vlan *v, int new)
 {
   struct channel *c = p->evpn_channel;
+  struct evpn_encap *first_encap = evpn_get_encap(p);
 
+  /*
+   * Since only one type of encapsulation is currently supported, router address
+   * from this encapsulation is used.
+   */
   net_addr *n = alloca(sizeof(net_addr_evpn_imet));
-  net_fill_evpn_imet(n, p->rd, v->tag, p->router_addr);
+  net_fill_evpn_imet(n, p->rd, v->tag, first_encap->router_addr);
 
   if (new)
   {
@@ -198,10 +242,11 @@ evpn_announce_imet(struct evpn_proto *p, struct evpn_vlan *v, int new)
       .pref = c->preference,
     };
 
-    struct adata *ad = evpn_export_targets(p, &null_adata);
+    struct adata *ext_comm = evpn_export_encap_ext_comm(p);
+    struct adata *ad = evpn_export_targets(p, ext_comm);
     ea_set_attr_ptr(&a->eattrs, tmp_linpool, EA_BGP_EXT_COMMUNITY, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_EC_SET, ad);
 
-    ad = bgp_pmsi_new_ingress_replication(tmp_linpool, p->router_addr, v->vni);
+    ad = bgp_pmsi_new_ingress_replication(tmp_linpool, first_encap->router_addr, v->vni);
     ea_set_attr_ptr(&a->eattrs, tmp_linpool, EA_BGP_PMSI_TUNNEL, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_OPAQUE, ad);
 
     rte *e = rte_get_temp(a, p->p.main_source);
@@ -213,9 +258,46 @@ evpn_announce_imet(struct evpn_proto *p, struct evpn_vlan *v, int new)
   }
 }
 
+static struct evpn_encap *
+evpn_check_encap_ext_comm(struct evpn_proto *p, const struct adata *ad, const char **msg)
+{
+#define ENCAP_EXT_COMM_HEADER_64	(((u64)ENCAP_EXT_COMM_HEADER) << 48)
+
+  struct evpn_encap *encap;
+  bool has_any_encap = false;
+
+  EC_SET_WALK_BEGIN(ad)
+  {
+    if ((ec & ENCAP_EXT_COMM_HEADER_64) != ENCAP_EXT_COMM_HEADER_64)
+      continue;
+
+    has_any_encap = true;
+
+    WALK_LIST(encap, p->encaps)
+      if (encap->type == (ec & 0xff))
+	return encap; /* Match */
+  }
+  EC_SET_WALK_END;
+
+  /* If there is any encapsulation, just not matching one, treat it as error */
+  if (has_any_encap)
+    goto error;
+
+  /* If there is no encapsulation, use default one */
+  WALK_LIST(encap, p->encaps)
+    if (encap->is_default)
+      return encap;
+
+  /* If there is no default encapsulation, treat it as error */
+error:
+  *msg = "No matching encapsulation found";
+  return NULL;
+
+#undef ENCAP_EXT_COMM_HEADER_64
+}
+
 #define BAD(msg, args...) \
   ({ log(L_ERR "%s: " msg, p->p.name, ## args); goto withdraw; })
-
 
 static void
 evpn_receive_mac(struct evpn_proto *p, const net_addr_evpn_mac *n0, rte *new)
@@ -236,6 +318,13 @@ evpn_receive_mac(struct evpn_proto *p, const net_addr_evpn_mac *n0, rte *new)
     if (!ms)
       BAD("Missing MPLS label stack in %N", n0);
 
+    const struct adata *ad = ea_get_adata(new->attrs->eattrs, EA_BGP_EXT_COMMUNITY);
+    const char *msg = "";
+    struct evpn_encap *encap = evpn_check_encap_ext_comm(p, ad, &msg);
+
+    if (!encap)
+      BAD("%s in %N", msg, n0);
+
     rta *a = alloca(RTA_MAX_SIZE);
     *a = (rta) {
       .source = RTS_EVPN,
@@ -243,7 +332,7 @@ evpn_receive_mac(struct evpn_proto *p, const net_addr_evpn_mac *n0, rte *new)
       .dest = RTD_UNICAST,
       .pref = c->preference,
       .nh.gw = *((ip_addr *) nh->u.ptr->data),
-      .nh.iface = p->tunnel_dev,
+      .nh.iface = encap->tunnel_dev,
     };
 
     a->nh.labels = MIN(ms->u.ptr->length / 4, MPLS_MAX_LABEL_STACK);
@@ -282,6 +371,13 @@ evpn_receive_imet(struct evpn_proto *p, const net_addr_evpn_imet *n0, rte *new)
     if (pmsi_type != BGP_PMSI_TYPE_INGRESS_REPLICATION)
       BAD("Unsupported PMSI_TUNNEL type %u in %N", pmsi_type, n0);
 
+    const struct adata *ad = ea_get_adata(new->attrs->eattrs, EA_BGP_EXT_COMMUNITY);
+    const char *msg = "";
+    struct evpn_encap *encap = evpn_check_encap_ext_comm(p, ad, &msg);
+
+    if (!encap)
+      BAD("%s in %N", msg, n0);
+
     rta *a = alloca(RTA_MAX_SIZE);
     *a = (rta) {
       .source = RTS_EVPN,
@@ -289,7 +385,7 @@ evpn_receive_imet(struct evpn_proto *p, const net_addr_evpn_imet *n0, rte *new)
       .dest = RTD_UNICAST,
       .pref = c->preference,
       .nh.gw = bgp_pmsi_ir_get_endpoint(pt->u.ptr),
-      .nh.iface = p->tunnel_dev,
+      .nh.iface = encap->tunnel_dev,
     };
 
     a->nh.labels = 1;
@@ -307,7 +403,6 @@ evpn_receive_imet(struct evpn_proto *p, const net_addr_evpn_imet *n0, rte *new)
     rte_update2(c, n, NULL, s);
   }
 }
-
 
 static void
 evpn_rt_notify(struct proto *P, struct channel *c0 UNUSED, net *net, rte *new, rte *old UNUSED)
@@ -661,6 +756,66 @@ evpn_postconfig_vlans(struct evpn_config *cf)
   evpn_check_intersections(vlans, num_vlans, "VID", OFFSETOF(struct evpn_vlan_config, vid));
 }
 
+static void
+evpn_postconfig_encaps(struct evpn_config *cf)
+{
+  bool types[EVPN_ENCAP_TYPE_MAX] = { 0 };
+  bool has_encap = false;
+
+  struct evpn_encap_config *ec;
+
+  WALK_LIST(ec, cf->encaps)
+  {
+    if (!types[ec->type])
+      cf_error("Only one encapsulation of each type is allowed");
+
+    types[ec->type] = true;
+    has_encap = true;
+  }
+
+  if (!has_encap)
+    cf_error("There must be at least one encapsulation");
+}
+
+static inline int
+evpn_reconfigure_encap(struct evpn_proto *p UNUSED, struct evpn_encap *e, struct evpn_encap_config *ec)
+{
+  if ((e->type != ec->type)		||
+      (e->tunnel_dev != ec->tunnel_dev)	||
+      (!ipa_equal(e->router_addr, ec->router_addr)))
+    return 0;
+
+  return 1;
+}
+
+static int
+evpn_reconfigure_encaps(struct evpn_proto *p, struct evpn_config *cf)
+{
+  int encap_length = list_length(&p->encaps);
+  int encap_cf_length = list_length(&cf->encaps);
+
+  ASSERT_DIE(encap_length == 0 || encap_length == 1);
+  ASSERT_DIE(encap_cf_length == 0 || encap_cf_length == 1);
+
+  struct evpn_encap *e = evpn_get_encap(p);
+  struct evpn_encap_config *ec = SKIP_BACK(struct evpn_encap_config, n, HEAD(cf->encaps));
+
+  if (ec)
+  {
+    if (e)
+      return evpn_reconfigure_encap(p, e, ec);
+    else /* New capability appeared */
+      return 0;
+  }
+  else
+  {
+    if (e) /* Capability disappeared */
+      return 0;
+    else   /* Nothing changed */
+      return 1;
+  }
+}
+
 
 /*
  *	EVPN protocol glue
@@ -693,6 +848,7 @@ evpn_postconfig(struct proto_config *CF)
     cf_error("Export target not specified");
 
   evpn_postconfig_vlans(cf);
+  evpn_postconfig_encaps(cf);
 }
 
 static struct proto *
@@ -726,8 +882,6 @@ evpn_start(struct proto *P)
   p->export_target = cf->export_target;
   p->export_target_data = NULL;
 
-  p->tunnel_dev = cf->tunnel_dev;
-  p->router_addr = cf->router_addr;
   p->vni = cf->vni;
   p->vid = cf->vid;
   p->tagX = cf->tagX;
@@ -740,6 +894,21 @@ evpn_start(struct proto *P)
   WALK_LIST(vc, cf->vlans)
     for (uint i = 0; i < vc->range; i++)
       evpn_new_vlan(p, vc, i);
+
+  init_list(&p->encaps);
+
+  WALK_LIST_(struct evpn_encap_config, ec, cf->encaps)
+  {
+    struct evpn_encap *e = mb_allocz(p->p.pool, sizeof(*e));
+
+    *e = (struct evpn_encap) {
+      .tunnel_dev    = ec->tunnel_dev,
+      .router_addr   = ec->router_addr,
+      .is_default    = ec->is_default,
+    };
+
+    add_tail(&p->encaps, &e->n);
+  }
 
   evpn_prepare_import_targets(p);
   evpn_prepare_export_targets(p);
@@ -783,10 +952,11 @@ evpn_reconfigure(struct proto *P, struct proto_config *CF)
     return 0;
 
   if (!rd_equal(p->rd, cf->rd) ||
-      (p->tunnel_dev != cf->tunnel_dev) ||
-      (!ipa_equal(p->router_addr, cf->router_addr)) ||
       (p->vni != cf->vni) ||
       (p->vid != cf->vid))
+    return 0;
+
+  if (!evpn_reconfigure_encaps(p, cf))
     return 0;
 
   int import_changed = !same_tree(p->import_target, cf->import_target);
@@ -825,9 +995,27 @@ evpn_reconfigure(struct proto *P, struct proto_config *CF)
 }
 
 static void
-evpn_copy_config(struct proto_config *dest UNUSED, struct proto_config *src UNUSED)
+evpn_copy_config(struct proto_config *dest, struct proto_config *src)
 {
   /* Just a shallow copy, not many items here */
+  struct evpn_config *from = SKIP_BACK(struct evpn_config, c, src);
+  struct evpn_config *to = SKIP_BACK(struct evpn_config, c, dest);
+
+  init_list(&to->encaps);
+
+  WALK_LIST_(struct evpn_encap_config, ec, from->encaps)
+  {
+    struct evpn_encap_config *new = cfg_allocz(sizeof(*new));
+
+    *new = (struct evpn_encap_config) {
+      .type        = ec->type,
+      .tunnel_dev  = ec->tunnel_dev,
+      .router_addr = ec->router_addr,
+      .is_default  = ec->is_default,
+    };
+
+    add_tail(&to->encaps, &new->n);
+  }
 }
 
 /*
