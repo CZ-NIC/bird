@@ -41,10 +41,13 @@ void
 mrtload_ip(FILE *fp, u64 *remains, ip_addr *addr, bool is_ip6)
 {
   if (is_ip6)
+  {
     for (int i = 0; i < 4; i++)
       addr->addr[i] = mrtload_four_octet(fp, remains);
+  }
   else
   {
+    log("is 4");
     addr->addr[0] = addr->addr[1] = addr->addr[2] = 0;
     addr->addr[3] = mrtload_four_octet(fp, remains);
   }
@@ -81,10 +84,12 @@ mrt_parse_error(struct bgp_parse_state * ps UNUSED, uint e UNUSED)
                      Figure 12: BGP4MP_MESSAGE Subtype
 */
 struct mrtload_route_ctx *
-mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4, struct mrtload_proto *p)
+mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4, bool insert_hash, struct mrtload_proto *p)
 {
-  u64 peer_as, local_as;
-  ip_addr remote_ip, local_ip;
+  u64 peer_as;
+  u64 local_as;
+  ip_addr remote_ip;
+  ip_addr local_ip;
 
   if (as4)
   {
@@ -95,23 +100,32 @@ mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4, struct mrtload_proto *p)
     peer_as = mrtload_two_octet(fp, remains);
     local_as = mrtload_two_octet(fp, remains);
   }
-  int is_internal = peer_as == local_as;
+  int is_internal = (peer_as == local_as);
 
   int interface_id = mrtload_two_octet(fp, remains);
   int addr_fam = mrtload_two_octet(fp, remains);
 
-  log("peer as %i", peer_as);
+  log("interface id %i, addr_fam %i", interface_id, addr_fam);
 
   mrtload_ip(fp, remains, &remote_ip, addr_fam == 2);
   mrtload_ip(fp, remains, &local_ip, addr_fam == 2);
 
+  log("remote_ip %I, local_ip %I", remote_ip, local_ip);
+  log("as; %x %x",peer_as, local_as );
   struct mrtload_route_ctx *route_attrs = HASH_FIND(p->ctx_hash, MRTLOAD_CTX, peer_as, local_as, remote_ip, local_ip);
-  if (!route_attrs)
+  log("log found? %x", route_attrs);
+  if (!route_attrs && insert_hash)
   {
+    log("inserting");
     route_attrs = (struct mrtload_route_ctx *) mb_allocz(p->ctx_pool, sizeof(struct mrtload_route_ctx));
+ 
+    route_attrs->src = rt_get_source(&p->p, p->source_cnt);
+    rt_lock_source(route_attrs->src);
+    p->source_cnt++;
+ 
     route_attrs->addr_fam = addr_fam;
     route_attrs->ctx.local_as = local_as;
-    route_attrs->ctx.local_as = peer_as;
+    route_attrs->ctx.remote_as = peer_as;
     route_attrs->ctx.local_ip = local_ip;
     route_attrs->ctx.remote_ip = remote_ip;
     route_attrs->ctx.is_internal = is_internal;
@@ -130,7 +144,6 @@ mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4, struct mrtload_proto *p)
 
     HASH_INSERT(p->ctx_hash, MRTLOAD_CTX, route_attrs);
   }
-  log("peer as %lx local as %lx interface %x add fam %i peer %I loc %I", peer_as, local_as, interface_id, addr_fam, route_attrs->ctx.remote_ip, route_attrs->ctx.local_ip);
   return route_attrs;
 }
 
@@ -138,13 +151,13 @@ void
 mrt_parse_bgp4mp_change_state(FILE *fp, u64 *remains, bool as4, struct proto *P)
 {
   struct mrtload_proto *p = SKIP_BACK(struct mrtload_proto, p, P);
-  struct mrtload_route_ctx *ra = mrt_parse_bgp_message(fp, remains, as4, p);
+  struct mrtload_route_ctx *ra = mrt_parse_bgp_message(fp, remains, as4, false, p);
   int old_state = mrtload_two_octet(fp, remains);
   int new_state = mrtload_two_octet(fp, remains);
   log("old state %i new state %i", old_state, new_state);
 
-  log("new_state %i == BS_CLOSE && ra->addr_fam %i == p->channel->afi >> 16  %i", new_state, ra->addr_fam, p->channel->afi >> 16);
-  if (new_state == BS_CLOSE && ra->addr_fam == (int)(p->channel->afi >> 16))
+  log("new_state %i == BS_CLOSE && ra->addr_fam == p->channel->afi >> 16  %i", new_state, p->channel->afi >> 16);
+  if (new_state == 1 && ra && ra->addr_fam == (int)(p->channel->afi >> 16)) // state 1 - Idle (rfc 1771)
   {
     FIB_WALK(&p->channel->c.table->fib, net, n)
     {
@@ -152,9 +165,11 @@ mrt_parse_bgp4mp_change_state(FILE *fp, u64 *remains, bool as4, struct proto *P)
       while(e)
       {
         rte *next = e->next;
-        if (e->sender == &p->channel->c && e->src == P->main_source)
+        log("ra src %x e src %x", ra->src, e->src);
+        if (e->sender == &p->channel->c && e->src == ra->src)
         {
           rte_update2(&p->channel->c, e->net->n.addr, NULL, P->main_source);
+          log("removed");
         }
         e = next;
       }
@@ -178,7 +193,6 @@ mrt_get_channel_to_parse(struct bgp_parse_state *s UNUSED, u32 afi UNUSED)
   struct mrtload_proto *p = SKIP_BACK(struct mrtload_proto, p, s->p);
   s->channel = &p->channel->c;
   s->last_id = 0;
-  s->last_src = s->p->main_source;
   s->desc = p->channel->desc;
   s->channel->proto = s->p;
   channel_set_state(s->channel, CS_START);
@@ -196,7 +210,7 @@ static void
 mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct proto *P)
 {
   struct mrtload_proto *p = (void *) P;
-  struct mrtload_route_ctx *proto_attrs = mrt_parse_bgp_message(fp, remains, as4, p);
+  struct mrtload_route_ctx *proto_attrs = mrt_parse_bgp_message(fp, remains, true, as4, p);
   log("addr fam %x", proto_attrs->addr_fam);
 
   if (*remains < 19)
@@ -219,10 +233,6 @@ mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct proto *P)
   if (type != PKT_UPDATE)
     return;
 
-  /* This is usually done in proto_do_up, but the protocol will be used immediately */
-  P->main_source = rt_get_source(P, 0);
-  rt_lock_source(P->main_source);
-
   struct bgp_parse_state s = {
     .proto_name = P->name,
     .pool = lp_new(P->pool),
@@ -233,6 +243,7 @@ mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct proto *P)
     .is_mrt_parse = 1,
     .p = P,
     .as4_session = as4,
+    .last_src = proto_attrs->src,
     .desc = p->channel->desc, // desc is set later in bgp, but we need afi to compare
   };
 
@@ -274,7 +285,7 @@ mrt_parse_general_header(FILE *fp, struct proto *P)
   u64 remains = length;
 
   /* We do not load MRT_TABLE_DUMP_V2 type and MRT_BGP4MP_STATE_CHANGE_AS4. */
-  log("type %i subtype %i", type, subtype);
+  log("type %i subtype %i, timestamp %li", type, subtype, timestamp);
   if (type == MRT_BGP4MP)
   {
     switch (subtype)
@@ -372,6 +383,7 @@ mrtload_start(struct proto *P)
   p->channel->c.table = cf->table_cf->table;
   p->addr_fam = cf->table_cf->table->addr_type;
   p->ctx_pool = rp_new(P->pool, "Mrtload route ctx");
+  p->source_cnt = 0;
   HASH_INIT(p->ctx_hash, p->ctx_pool, 10);
 
   ASSERT_DIE(cf->table_cf->table);
@@ -400,6 +412,19 @@ static int
 mrtload_shutdown(struct proto *P)
 {
   struct mrtload_proto *p = (void *) P;
+
+  FIB_WALK(&p->channel->c.table->fib, net, n)
+  {
+    rte *e = n->routes;
+    while(e)
+    {
+      rte *next = e->next;
+      rte_update2(&p->channel->c, e->net->n.addr, NULL, P->main_source);
+      e = next;
+    }
+  }
+  FIB_WALK_END;
+
   proto_notify_state(&p->p, PS_DOWN);
   return PS_DOWN;
 }

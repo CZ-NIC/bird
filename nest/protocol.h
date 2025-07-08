@@ -661,6 +661,7 @@ static inline void rte_update(struct proto *p, const net_addr *n, rte *new) { rt
 static inline void
 rte_update3(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
+  log("rte_update3 src %x", src);
   if (c->in_table && !rte_update_in(c, n, new, src))
     return;
 
