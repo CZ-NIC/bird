@@ -160,8 +160,11 @@ static int
 bgp_open(struct bgp_proto *p)
 {
   /* Interface-patterned listening sockets are created from the
-   * interface notifier. By default, listen to nothing. */
-  if (p->cf->ipatt)
+   * interface notifier. By default, listen to nothing.
+   *
+   * Also dynamically spawned protocol do not need a listening socket,
+   * they already have their parent's one. */
+  if (p->cf->ipatt || p->cf->c.parent)
     return 0;
 
   /* We assume that cf->iface is defined iff cf->local_ip is link-local */
@@ -169,7 +172,7 @@ bgp_open(struct bgp_proto *p)
   req->params = (struct bgp_socket_params) {
     .iface = p->cf->strict_bind ? p->cf->iface : NULL,
     .vrf = p->p.vrf,
-    .addr = p->cf->strict_bind ? p->cf->local_ip :
+    .addr = p->cf->strict_bind && ipa_nonzero(p->cf->local_ip) ? p->cf->local_ip :
       (p->ipv4 ? IPA_NONE4 : IPA_NONE6),
     .port = p->cf->local_port,
     .flags = p->cf->free_bind ? SKF_FREEBIND : 0,
@@ -1038,7 +1041,9 @@ bgp_spawn(struct bgp_proto *pp, sock *sk)
   /* Just pass remote_ip to bgp_init() */
   struct bgp_config *cf = SKIP_BACK(struct bgp_config, c, sym->proto);
   cf->remote_ip = sk->daddr;
+  cf->local_ip = sk->saddr;
   cf->iface = sk->iface;
+  cf->ipatt = NULL;
 
   struct bgp_proto *p = SKIP_BACK(struct bgp_proto, p, proto_spawn(sym->proto, 0));
   p->postponed_sk = sk;
@@ -1909,7 +1914,7 @@ bgp_iface_update(struct bgp_proto *p, uint flags, struct iface *i)
   struct bgp_socket_params params = {
     .iface = i,
     .vrf = p->p.vrf,
-    .addr = p->cf->local_ip,
+    .addr = ipa_nonzero(p->cf->local_ip) ? p->cf->local_ip : (p->ipv4 ? IPA_NONE4 : IPA_NONE6),
     .port = p->cf->local_port,
     .flags = p->cf->free_bind ? SKF_FREEBIND : 0,
   };
@@ -2381,9 +2386,7 @@ bgp_init(struct proto_config *CF)
   p->rs_client = cf->rs_client;
   p->rr_client = cf->rr_client;
 
-  p->ipv4 = ipa_nonzero(cf->remote_ip) ?
-    ipa_is_ip4(cf->remote_ip) :
-    (cf->remote_range && (cf->remote_range->type == NET_IP4));
+  p->ipv4 = cf->ipv4;
 
   p->remote_ip = cf->remote_ip;
   p->remote_as = cf->remote_as;
@@ -2633,6 +2636,10 @@ bgp_postconfig(struct proto_config *CF)
   if (cf->check_link < 0)
     cf->check_link = !cf->multihop;
 
+  /* Detect IPv4 */
+  cf->ipv4 = ipa_nonzero(cf->remote_ip) ?
+    ipa_is_ip4(cf->remote_ip) :
+    (cf->remote_range && (cf->remote_range->type == NET_IP4));
 
   if (!cf->local_as)
     cf_error("Local AS number must be set");

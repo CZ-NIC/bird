@@ -105,6 +105,7 @@ struct bgp_config {
   u32 rr_cluster_id;			/* Route reflector cluster ID, if different from local ID */
   int rr_client;			/* Whether neighbor is RR client of me */
   int rs_client;			/* Whether neighbor is RS client of me */
+  int ipv4;				/* Use IPv4 connection, i.e. remote_ip is IPv4 */
   u32 confederation;			/* Confederation ID, or zero if confeds not active */
   int confederation_member;		/* Whether neighbor AS is member of our confederation */
   int passive;				/* Do not initiate outgoing connection */
