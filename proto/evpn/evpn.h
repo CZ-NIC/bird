@@ -33,6 +33,15 @@ enum evpn_encap_type {
   EVPN_ENCAP_TYPE_MAX,
 };
 
+struct evpn_encap_config {
+  node n;				/* Node in evpn_config.encaps */
+
+  enum evpn_encap_type type;
+  bool is_default;
+  struct iface *tunnel_dev;
+  ip_addr router_addr;
+};
+
 struct evpn_vlan_config {
   node n;				/* Node in evpn_config.vlans */
 
@@ -40,15 +49,6 @@ struct evpn_vlan_config {
   u32 range;
   u32 vni;
   u32 vid;
-};
-
-struct evpn_encap_config {
-  node n;
-
-  enum evpn_encap_type type;
-  bool is_default;
-  struct iface *tunnel_dev;
-  ip_addr router_addr;
 };
 
 struct evpn_proto {
@@ -76,6 +76,15 @@ struct evpn_proto {
   HASH(struct evpn_vlan) vlan_vid_hash;
 };
 
+struct evpn_encap {
+  node n;				/* Node in evpn_proto.encaps */
+
+  enum evpn_encap_type type;
+  bool is_default;
+  struct iface *tunnel_dev;
+  ip_addr router_addr;
+};
+
 struct evpn_vlan {
   node n;				/* Node in evpn_proto.vlans */
 
@@ -85,15 +94,6 @@ struct evpn_vlan {
 
   struct evpn_vlan *next_tag;
   struct evpn_vlan *next_vid;
-};
-
-struct evpn_encap {
-  node n;				/* Node in evpn_proto.encaps */
-
-  enum evpn_encap_type type;
-  bool is_default;
-  struct iface *tunnel_dev;
-  ip_addr router_addr;
 };
 
 #endif

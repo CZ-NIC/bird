@@ -155,14 +155,11 @@ static struct adata *
 evpn_export_encap_ext_comm(struct evpn_proto *p)
 {
   size_t len = list_length(&p->encaps) * (sizeof(u32) * 2);
+  struct adata *ad = lp_alloc_adata(tmp_linpool, len);
 
-  struct adata *ad = lp_allocz(tmp_linpool, sizeof(*ad) + len);
-  ad->length = len;
-
-  struct evpn_encap *encap;
   int pos = 0;
 
-  WALK_LIST(encap, p->encaps)
+  WALK_LIST_(struct evpn_encap, encap, p->encaps)
   {
     u32 hi = ENCAP_EXT_COMM_HEADER << 16;
     u32 lo = encap->type;
@@ -214,10 +211,10 @@ evpn_announce_mac(struct evpn_proto *p, const net_addr_eth *n0, rte *new)
 static struct evpn_encap *
 evpn_get_encap(struct evpn_proto *p)
 {
-  ASSERT_DIE(list_length(&p->encaps) == 1);
-  struct evpn_encap *first = SKIP_BACK(struct evpn_encap, n, HEAD(p->encaps));
+  ASSERT(list_length(&p->encaps) == 1);
+  struct evpn_encap *encap = SKIP_BACK(struct evpn_encap, n, HEAD(p->encaps));
 
-  return first;
+  return encap;
 }
 
 static void
@@ -261,7 +258,6 @@ evpn_announce_imet(struct evpn_proto *p, struct evpn_vlan *v, int new)
 static struct evpn_encap *
 evpn_check_encap_ext_comm(struct evpn_proto *p, const struct adata *ad)
 {
-  struct evpn_encap *encap;
   bool has_any_encap = false;
 
   EC_SET_WALK_BEGIN(ec, ad)
@@ -273,9 +269,9 @@ evpn_check_encap_ext_comm(struct evpn_proto *p, const struct adata *ad)
 
     has_any_encap = true;
 
-    WALK_LIST(encap, p->encaps)
-      if (encap->type == (ec & 0xff))
-	return encap; /* Match */
+    WALK_LIST_(struct evpn_encap, encap, p->encaps)
+      if (encap->type == (ec & 0xff)) /* Match in encapsulation type */
+	return encap;
   }
   EC_SET_WALK_END;
 
@@ -284,7 +280,7 @@ evpn_check_encap_ext_comm(struct evpn_proto *p, const struct adata *ad)
     return NULL;
 
   /* If there is no encapsulation, use default one */
-  WALK_LIST(encap, p->encaps)
+  WALK_LIST_(struct evpn_encap, encap, p->encaps)
     if (encap->is_default)
       return encap;
 
@@ -542,21 +538,18 @@ evpn_rte_better(rte *new, rte *old)
  */
 
 static void
-evpn_prepare_encaps(struct evpn_proto *p, struct evpn_config *cf)
+evpn_prepare_encap(struct evpn_proto *p, const struct evpn_encap_config *ec)
 {
-  WALK_LIST_(struct evpn_encap_config, ec, cf->encaps)
-  {
-    struct evpn_encap *e = mb_allocz(p->p.pool, sizeof(*e));
+  struct evpn_encap *e = mb_allocz(p->p.pool, sizeof(*e));
 
-    *e = (struct evpn_encap) {
-      .type        = ec->type,
-      .tunnel_dev  = ec->tunnel_dev,
-      .router_addr = ec->router_addr,
-      .is_default  = ec->is_default,
-    };
+  *e = (struct evpn_encap) {
+    .type        = ec->type,
+    .tunnel_dev  = ec->tunnel_dev,
+    .router_addr = ec->router_addr,
+    .is_default  = ec->is_default,
+  };
 
-    add_tail(&p->encaps, &e->n);
-  }
+  add_tail(&p->encaps, &e->n);
 }
 
 static void
@@ -889,7 +882,9 @@ evpn_start(struct proto *P)
   p->tagX = cf->tagX;
 
   init_list(&p->encaps);
-  evpn_prepare_encaps(p, cf);
+
+  WALK_LIST_(struct evpn_encap_config, ec, cf->encaps)
+    evpn_prepare_encap(p, ec);
 
   init_list(&p->vlans);
   memset(&p->vlan_tag_hash, 0, sizeof(p->vlan_tag_hash));
@@ -987,25 +982,12 @@ evpn_reconfigure(struct proto *P, struct proto_config *CF)
 static void
 evpn_copy_config(struct proto_config *dest, struct proto_config *src)
 {
-  /* Just a shallow copy, not many items here */
-  struct evpn_config *from = SKIP_BACK(struct evpn_config, c, src);
-  struct evpn_config *to = SKIP_BACK(struct evpn_config, c, dest);
+  struct evpn_config *d = SKIP_BACK(struct evpn_config, c, dest);
+  struct evpn_config *s = SKIP_BACK(struct evpn_config, c, src);
 
-  init_list(&to->encaps);
+  init_list(&d->encaps);
 
-  WALK_LIST_(struct evpn_encap_config, ec, from->encaps)
-  {
-    struct evpn_encap_config *new = cfg_allocz(sizeof(*new));
-
-    *new = (struct evpn_encap_config) {
-      .type        = ec->type,
-      .tunnel_dev  = ec->tunnel_dev,
-      .router_addr = ec->router_addr,
-      .is_default  = ec->is_default,
-    };
-
-    add_tail(&to->encaps, &new->n);
-  }
+  cfg_copy_list(&d->encaps, &s->encaps, sizeof(struct evpn_encap_config));
 }
 
 /*
