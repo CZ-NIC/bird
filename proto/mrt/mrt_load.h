@@ -1,6 +1,8 @@
 #ifndef _BIRD_MRT_LOAD_H_
 #define _BIRD_MRT_LOAD_H_
 
+#include <stdio.h>
+
 #include "nest/bird.h"
 #include "nest/protocol.h"
 #include "lib/lists.h"
@@ -33,6 +35,7 @@ struct mrtload_config {
   const struct filter *filter;
   const char *filename;
   int always_add_path;
+  int time_replay;
   struct bgp_channel_config *channel_cf;
   const struct bgp_af_desc *desc;
 };
@@ -57,6 +60,12 @@ struct mrtload_proto {
   struct bgp_channel *channel;
   pool *ctx_pool;
   HASH(struct mrtload_route_ctx) ctx_hash;   // TODO : maybe it should be stored somewhere else
+  timer *load_timer;
+  int time_replay;
+  btime start_time;
+  s64 zero_time;
+  s64 next_time;
+  FILE *parsed_file;
 };
 
 

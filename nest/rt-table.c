@@ -2695,8 +2695,8 @@ rt_next_hop_update_net(rtable *tab, net *n)
 	/* Call a pre-comparison hook */
 	/* Not really an efficient way to compute this */
 	const struct rte_context *ctx = rte_get_context(e);
-  log("nexthop update ctx %x, fc ptr %x", ctx, ctx->rte_recalculate);
-	if (ctx && ctx->rte_recalculate)
+
+  if (ctx && ctx->rte_recalculate)
 	  ctx->rte_recalculate(ctx, tab, n, new, e, NULL);
 
 	if (e != old_best)

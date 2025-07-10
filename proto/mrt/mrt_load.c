@@ -1,6 +1,4 @@
 
-#include <stdio.h>
-
 #include "mrt.h"
 #include "mrt_load.h"
 
@@ -47,7 +45,6 @@ mrtload_ip(FILE *fp, u64 *remains, ip_addr *addr, bool is_ip6)
   }
   else
   {
-    log("is 4");
     addr->addr[0] = addr->addr[1] = addr->addr[2] = 0;
     addr->addr[3] = mrtload_four_octet(fp, remains);
   }
@@ -100,23 +97,21 @@ mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4, bool insert_hash, struct
     peer_as = mrtload_two_octet(fp, remains);
     local_as = mrtload_two_octet(fp, remains);
   }
-  int is_internal = (peer_as == local_as);
 
+  int is_internal = (peer_as == local_as);
   int interface_id = mrtload_two_octet(fp, remains);
   int addr_fam = mrtload_two_octet(fp, remains);
-
-  log("interface id %i, addr_fam %i", interface_id, addr_fam);
 
   mrtload_ip(fp, remains, &remote_ip, addr_fam == 2);
   mrtload_ip(fp, remains, &local_ip, addr_fam == 2);
 
-  log("remote_ip %I, local_ip %I", remote_ip, local_ip);
-  log("as; %x %x",peer_as, local_as );
+  //log("remote_ip %I, local_ip %I", remote_ip, local_ip);
+  //log("as; %x %x",peer_as, local_as );
   struct mrtload_route_ctx *route_attrs = HASH_FIND(p->ctx_hash, MRTLOAD_CTX, peer_as, local_as, remote_ip, local_ip);
-  log("log found? %x", route_attrs);
+  //log("log found? %x", route_attrs);
+
   if (!route_attrs && insert_hash)
   {
-    log("inserting");
     route_attrs = (struct mrtload_route_ctx *) mb_allocz(p->ctx_pool, sizeof(struct mrtload_route_ctx));
  
     route_attrs->src = rt_get_source(&p->p, p->source_cnt);
@@ -148,33 +143,31 @@ mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4, bool insert_hash, struct
 }
 
 void
-mrt_parse_bgp4mp_change_state(FILE *fp, u64 *remains, bool as4, struct proto *P)
+mrt_parse_bgp4mp_change_state(FILE *fp, u64 *remains, bool as4, struct mrtload_proto *p)
 {
-  struct mrtload_proto *p = SKIP_BACK(struct mrtload_proto, p, P);
   struct mrtload_route_ctx *ra = mrt_parse_bgp_message(fp, remains, as4, false, p);
   int old_state = mrtload_two_octet(fp, remains);
   int new_state = mrtload_two_octet(fp, remains);
-  log("old state %i new state %i", old_state, new_state);
+  //log("old state %i new state %i", old_state, new_state);
 
-  log("new_state %i == BS_CLOSE && ra->addr_fam == p->channel->afi >> 16  %i", new_state, p->channel->afi >> 16);
   if (new_state == 1 && ra && ra->addr_fam == (int)(p->channel->afi >> 16)) // state 1 - Idle (rfc 1771)
   {
     FIB_WALK(&p->channel->c.table->fib, net, n)
     {
       rte *e = n->routes;
+ 
       while(e)
       {
         rte *next = e->next;
-        log("ra src %x e src %x", ra->src, e->src);
+
         if (e->sender == &p->channel->c && e->src == ra->src)
-        {
-          rte_update2(&p->channel->c, e->net->n.addr, NULL, P->main_source);
-          log("removed");
-        }
+          rte_update2(&p->channel->c, e->net->n.addr, NULL, p->p.main_source);
+
         e = next;
       }
     }
     FIB_WALK_END;
+  
     HASH_DO_REMOVE(p->ctx_hash, MRTLOAD_CTX, &ra);
     mb_free(ra);
   }
@@ -197,6 +190,7 @@ mrt_get_channel_to_parse(struct bgp_parse_state *s UNUSED, u32 afi UNUSED)
   s->channel->proto = s->p;
   channel_set_state(s->channel, CS_START);
   channel_set_state(s->channel, CS_UP);
+
   return true;
 }
 
@@ -207,11 +201,9 @@ mrt_apply_mpls_labels(struct bgp_parse_state *s UNUSED, rta *a UNUSED, u32 *labe
 }
 
 static void
-mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct proto *P)
+mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct mrtload_proto *p)
 {
-  struct mrtload_proto *p = (void *) P;
   struct mrtload_route_ctx *proto_attrs = mrt_parse_bgp_message(fp, remains, true, as4, p);
-  log("addr fam %x", proto_attrs->addr_fam);
 
   if (*remains < 19)
   {
@@ -224,24 +216,22 @@ mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct proto *P)
 
   remains[0] = remains[0] - 16;
   u64 length = mrtload_two_octet(fp, remains) - 16 - 2 -1; /* length without header (marker, length, type) */
-  log("length %i", length);
   int type = mrtload_one(fp, remains);
 
-  log("type %i (pkt update %i)", type, PKT_UPDATE);
   /* in case of new peer, the peer has already been added to hash table 
    * (TODO: it was added to hash table without considering the PKT type) */
   if (type != PKT_UPDATE)
     return;
 
   struct bgp_parse_state s = {
-    .proto_name = P->name,
-    .pool = lp_new(P->pool),
+    .proto_name = p->p.name,
+    .pool = lp_new(p->p.pool),
     .parse_error = mrt_parse_error,
     .end_mark = mrt_rx_end_mark,
     .get_channel = mrt_get_channel_to_parse,
     .apply_mpls_labels = mrt_apply_mpls_labels,
     .is_mrt_parse = 1,
-    .p = P,
+    .p = &p->p,
     .as4_session = as4,
     .last_src = proto_attrs->src,
     .desc = p->channel->desc, // desc is set later in bgp, but we need afi to compare
@@ -256,8 +246,8 @@ mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct proto *P)
   bgp_parse_update(&s, buf, length, &ea);
 }
 
-int
-mrt_parse_general_header(FILE *fp, struct proto *P)
+u64
+mrt_parse_timestamp(FILE *fp)
 {
   char is_eof = fgetc(fp);
   u64 timestamp = is_eof;
@@ -272,7 +262,12 @@ mrt_parse_general_header(FILE *fp, struct proto *P)
       timestamp += fgetc(fp);
     }
   }
+  return timestamp;
+}
 
+int
+mrt_parse_general_header(FILE *fp, struct mrtload_proto *p)
+{
   int type = (fgetc(fp) << 8) + fgetc(fp);
   int subtype = (fgetc(fp) << 8) + fgetc(fp);
   u64 length = 0;
@@ -285,26 +280,26 @@ mrt_parse_general_header(FILE *fp, struct proto *P)
   u64 remains = length;
 
   /* We do not load MRT_TABLE_DUMP_V2 type and MRT_BGP4MP_STATE_CHANGE_AS4. */
-  log("type %i subtype %i, timestamp %li", type, subtype, timestamp);
+  //log("type %i subtype %i, timestamp %li", type, subtype, timestamp);
   if (type == MRT_BGP4MP)
   {
     switch (subtype)
     {
       case (MRT_BGP4MP_MESSAGE):
-        mrt_parse_bgp4mp_change_state(fp, &remains, false, P);
+        mrt_parse_bgp4mp_change_state(fp, &remains, false, p);
         break;
       case (MRT_BGP4MP_MESSAGE_LOCAL):
       case (MRT_BGP4MP_MESSAGE_ADDPATH):
-        mrt_parse_bgp4mp_message(fp, &remains, false, P);
+        mrt_parse_bgp4mp_message(fp, &remains, false, p);
         break;
       case (MRT_BGP4MP_STATE_CHANGE_AS4):
-        mrt_parse_bgp4mp_change_state(fp, &remains, true, P);
+        mrt_parse_bgp4mp_change_state(fp, &remains, true, p);
         break;
       case (MRT_BGP4MP_MESSAGE_AS4):
       case (MRT_BGP4MP_MESSAGE_AS4_LOCAL):
       case (MRT_BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH):
       case (MRT_BGP4MP_MESSAGE_AS4_ADDPATH):
-        mrt_parse_bgp4mp_message(fp, &remains, true,  P);
+        mrt_parse_bgp4mp_message(fp, &remains, true,  p);
         break;
     }
   }
@@ -314,24 +309,81 @@ mrt_parse_general_header(FILE *fp, struct proto *P)
   for (u64 i = 0; i < remains; i++)
     fgetc(fp);
 
-  return 1;
+  return length;
 }
 
 void
-mrtload(struct proto *P)
+mrtload_hook(timer *tm)
 {
-  struct mrtload_config *cf = (void *) (P->cf);
-  FILE *fp = fopen(cf->filename, "r");
+  struct mrtload_proto *p = tm->data;
+  int loaded = 0;
+  btime stamp;
 
-  if (fp == NULL)
+  while (loaded < 1<<14)
+  {
+    loaded += mrt_parse_general_header(p->parsed_file, p);
+    stamp = mrt_parse_timestamp(p->parsed_file);
+ 
+    if (stamp == 0)
+      return;
+  }
+
+  tm_start(p->load_timer, 10000);
+}
+
+void
+mrtload_hook_replay(timer *tm)
+{
+  struct mrtload_proto *p = tm->data;
+  int loaded = 0;
+  s64 time = p->next_time;
+
+  while (time == p->next_time && loaded < 1<<14)
+  {
+    loaded += mrt_parse_general_header(p->parsed_file, p);
+    time = mrt_parse_timestamp(p->parsed_file);
+  }
+
+  // mrt time is in seconds, bird count in microseconds
+  s64 shift_from_start = ((time - p->zero_time) * 1000000) / p->time_replay;
+  s64 wait_time = shift_from_start + p->start_time - current_time();
+  p->next_time = time;
+  //log("next time is %li wait %li shift %li", p->next_time, wait_time, shift_from_start);
+
+  tm_start(p->load_timer, wait_time);
+}
+
+void
+mrtload(struct mrtload_proto *p)
+{
+  struct mrtload_config *cf = (void *) (p->p.cf);
+  p->parsed_file = fopen(cf->filename, "r");
+
+  if (p->parsed_file == NULL)
   {
     log(L_WARN "Can not open file %s", cf->filename);
     return;
   }
 
-  /* Parsing mrt headers in loop. MRT_BGP4MP messages are loaded, the rest is skipped. */
-  int temporary = 0; //TODO REMOVE!!! THIS IS FOR TESTING PURPOSES ONLY!
-  while (mrt_parse_general_header(fp, P)){if (temporary++>400) break; log("%i temporary",temporary);}
+  p->load_timer->data = p;
+ 
+  if (!cf->time_replay)
+  {
+    p->load_timer->hook = mrtload_hook;
+
+    if (mrt_parse_timestamp(p->parsed_file))
+      tm_start(p->load_timer, 0);
+    return;
+  }
+
+  p->load_timer->hook = mrtload_hook_replay;
+  p->time_replay = cf->time_replay;
+  p->start_time = current_time();
+  p->zero_time = mrt_parse_timestamp(p->parsed_file);
+  p->next_time = p->zero_time;
+
+  if (p->zero_time)
+    tm_start(p->load_timer, 0);
 }
 
 void
@@ -344,8 +396,6 @@ mrtload_check_config(struct proto_config *CF, struct bgp_channel_config *CC)
 
   if (!cf->filename)
     cf_error("File not specified");
-  else
-    log("%s", cf->filename);
 
   if (!CC->desc)
     cf_error("Afi not specified.");
@@ -384,10 +434,12 @@ mrtload_start(struct proto *P)
   p->addr_fam = cf->table_cf->table->addr_type;
   p->ctx_pool = rp_new(P->pool, "Mrtload route ctx");
   p->source_cnt = 0;
+  p->load_timer = tm_new(P->pool);
   HASH_INIT(p->ctx_hash, p->ctx_pool, 10);
 
   ASSERT_DIE(cf->table_cf->table);
   struct rtable_config **def_tables = cf->c.global->def_tables;
+
   if (cf->table_cf->table->addr_type == NET_IP4)
   {
     p->channel->igp_table_ip4 = cf->table_cf->table;
@@ -402,7 +454,7 @@ mrtload_start(struct proto *P)
 
   ASSERT_DIE(p->channel->igp_table_ip6 || p->channel->igp_table_ip4);
 
-  mrtload(P);
+  mrtload(p);
 
   return PS_UP;
 }
@@ -436,7 +488,8 @@ mrtload_reconfigure(struct proto *P, struct proto_config *CF)
 {
   //TODO where do we want reload mrt ?
   P->cf = CF;
-  mrtload(P);
+  struct mrtload_proto *p = (void *) P;
+  mrtload(p);
 
   return 1;
 }

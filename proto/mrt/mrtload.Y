@@ -10,7 +10,7 @@ CF_DEFINES
 
 CF_DECLS
 
-CF_KEYWORDS(TABLE, FILTER, FILENAME, ADD, MRTLOAD,
+CF_KEYWORDS(TABLE, FILTER, FILENAME, ADD, MRTLOAD, TIME, REPLAY,
             IPV4, IPV6, MULTICAST, MPLS, VPN4, VPN6, FLOW4, FLOW6)
 
 
@@ -29,6 +29,7 @@ mrtload_proto_item:
    proto_item
  | TABLE rtable		{ MRTLOAD_CFG->table_cf = $2; }
  | FILENAME text	{ MRTLOAD_CFG->filename = $2; }
+ | TIME REPLAY expr	{ MRTLOAD_CFG->time_replay = $3; }
  ;
 
 
