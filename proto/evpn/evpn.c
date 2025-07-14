@@ -424,6 +424,26 @@ evpn_rt_notify(struct proto *P, struct channel *c0 UNUSED, net *net, rte *new, r
   }
 }
 
+static void
+evpn_if_notify(struct proto *P, unsigned flags, struct iface *iface)
+{
+  struct evpn_proto *p = SKIP_BACK(struct evpn_proto, p, P);
+  struct evpn_encap *encap = evpn_get_encap(p);
+
+  if (flags & IF_IGNORE)
+    return;
+
+  if (!(flags & (IF_CHANGE_UP | IF_CHANGE_DOWN)))
+    return;
+
+  if (iface != encap->tunnel_dev)
+    return;
+
+  if (flags & IF_CHANGE_UP)
+    proto_notify_state(&p->p, PS_UP);
+  else if (flags & IF_CHANGE_DOWN)
+    proto_notify_state(&p->p, PS_STOP);
+}
 
 static int
 evpn_preexport(struct channel *C, rte *e)
@@ -858,12 +878,24 @@ evpn_init(struct proto_config *CF)
   proto_configure_channel(P, &P->mpls_channel, proto_cf_find_channel(CF, NET_MPLS));
 
   P->rt_notify = evpn_rt_notify;
+  P->if_notify = evpn_if_notify;
   P->preexport = evpn_preexport;
   P->reload_routes = evpn_reload_routes;
   P->feed_end = evpn_feed_end;
   P->rte_better = evpn_rte_better;
 
   return P;
+}
+
+static void
+evpn_started(struct evpn_proto *p)
+{
+  proto_notify_state(&p->p, PS_START);
+
+  evpn_announce_imet(p, EVPN_ROOT_VLAN(p), 1);
+
+  WALK_LIST_(struct evpn_vlan, v, p->vlans)
+    evpn_announce_imet(p, v, 1);
 }
 
 static int
@@ -904,15 +936,9 @@ evpn_start(struct proto *P)
   if (P->vrf_set)
     P->mpls_map->vrf_iface = P->vrf;
 
-  proto_notify_state(P, PS_UP);
+  evpn_started(p);
 
-  evpn_announce_imet(p, EVPN_ROOT_VLAN(p), 1);
-
-  struct evpn_vlan *v;
-  WALK_LIST(v, p->vlans)
-    evpn_announce_imet(p, v, 1);
-
-  return PS_UP;
+  return PS_START;
 }
 
 static int
