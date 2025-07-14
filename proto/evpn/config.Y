@@ -53,6 +53,8 @@ evpn_proto_start: proto_start EVPN
   this_proto = proto_config_new(&proto_evpn, $1);
   init_list(&EVPN_CFG->encaps);
   init_list(&EVPN_CFG->vlans);
+
+  EVPN_CFG->vni = U32_UNDEF;
 };
 
 

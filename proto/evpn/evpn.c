@@ -54,6 +54,7 @@
 #include "filter/filter.h"
 #include "filter/data.h"
 #include "lib/string.h"
+#include "sysdep/unix/krt.h"
 
 #include "evpn.h"
 
@@ -420,6 +421,65 @@ evpn_rt_notify(struct proto *P, struct channel *c0 UNUSED, net *net, rte *new, r
   }
 }
 
+static int
+evpn_validate_iface_attrs(struct evpn_proto *p, const struct iface *i)
+{
+  if (!i->attrs || !i->attrs->eattrs)
+    return 0;
+
+  struct evpn_encap *encap = evpn_get_encap(p);
+
+  if (encap->tunnel_dev != i)
+    return 0;
+
+  const eattr *ipa = ea_find(i->attrs->eattrs, EA_IFACE_VXLAN_IP_ADDR);
+
+  u32 type = ea_get_int(i->attrs->eattrs, EA_IFACE_TYPE, IF_TYPE_UNDEF);
+  u32 if_vni = ea_get_int(i->attrs->eattrs, EA_IFACE_VXLAN_ID, U32_UNDEF);
+
+  if (type != IF_TYPE_VXLAN || !ipa)
+    return 0;
+
+  ip_addr rt_addr;
+  ASSERT(sizeof(rt_addr) == ipa->u.ptr->length);
+  memcpy(&rt_addr, ipa->u.ptr->data, ipa->u.ptr->length);
+
+  struct evpn_config *cf = SKIP_BACK(struct evpn_config, c, p->p.cf);
+
+
+  if ((cf->vni == U32_UNDEF) && (if_vni == U32_UNDEF))
+  {
+    log(L_ERR "%s: Unknown VNI", p->p.name);
+    return 0;
+  }
+
+  if ((cf->vni != U32_UNDEF) && (if_vni != U32_UNDEF) && (cf->vni != if_vni))
+  {
+    log(L_ERR "%s: VNI mismatch", p->p.name);
+    return 0;
+  }
+
+  if ((cf->vni == U32_UNDEF) && (if_vni != U32_UNDEF))
+    p->vni = if_vni;
+
+
+  if (ipa_zero(encap->router_addr) && ipa_zero(rt_addr))
+  {
+    log(L_ERR "%s: Unknown router IP", p->p.name);
+    return 0;
+  }
+
+  if (!ipa_zero(encap->router_addr) && !ipa_zero(rt_addr) && !ipa_equal(encap->router_addr, rt_addr))
+  {
+    log(L_ERR "%s: Router IP mismatch", p->p.name);
+    return 0;
+  }
+
+  if (ipa_zero(encap->router_addr) && !ipa_zero(rt_addr))
+    encap->router_addr = rt_addr;
+
+  return 1;
+}
 
 static int
 evpn_preexport(struct channel *C, rte *e)
@@ -814,6 +874,27 @@ evpn_postconfig_vlans(struct evpn_config *cf)
  *	EVPN protocol glue
  */
 
+static void evpn_started(struct evpn_proto *p, struct iface *i);
+static int evpn_shutdown(struct proto *P);
+
+static void
+evpn_if_notify(struct proto *P, unsigned flags, struct iface *iface)
+{
+  struct evpn_proto *p = SKIP_BACK(struct evpn_proto, p, P);
+  struct evpn_encap *encap = evpn_get_encap(p);
+
+  if (flags & IF_IGNORE)
+    return;
+
+  if (iface != encap->tunnel_dev)
+    return;
+
+  if ((p->p.proto_state == PS_START) && (flags & IF_CHANGE_UP))
+    evpn_started(p, iface);
+  else if (flags & IF_CHANGE_DOWN)
+    proto_notify_state(&p->p, evpn_shutdown(&p->p));
+}
+
 static void
 evpn_postconfig(struct proto_config *CF)
 {
@@ -856,6 +937,7 @@ evpn_init(struct proto_config *CF)
   proto_configure_channel(P, &P->mpls_channel, proto_cf_find_channel(CF, NET_MPLS));
 
   P->rt_notify = evpn_rt_notify;
+  P->if_notify = evpn_if_notify;
   P->preexport = evpn_preexport;
   P->reload_routes = evpn_reload_routes;
   P->feed_end = evpn_feed_end;
@@ -901,15 +983,23 @@ evpn_start(struct proto *P)
   if (P->vrf_set)
     P->mpls_map->vrf_iface = P->vrf;
 
-  proto_notify_state(P, PS_UP);
+  /* Wait for VXLAN interfaces to be up */
+
+  return PS_START;
+}
+
+static void
+evpn_started(struct evpn_proto *p, struct iface *i)
+{
+  if (!evpn_validate_iface_attrs(p, i))
+    return;
+
+  proto_notify_state(&p->p, PS_UP);
 
   evpn_announce_imet(p, EVPN_ROOT_VLAN(p), 1);
 
-  struct evpn_vlan *v;
-  WALK_LIST(v, p->vlans)
+  WALK_LIST_(struct evpn_vlan, v, p->vlans)
     evpn_announce_imet(p, v, 1);
-
-  return PS_UP;
 }
 
 static int
