@@ -814,6 +814,27 @@ evpn_postconfig_vlans(struct evpn_config *cf)
  *	EVPN protocol glue
  */
 
+static void evpn_started(struct evpn_proto *p);
+static int evpn_shutdown(struct proto *P);
+
+static void
+evpn_if_notify(struct proto *P, unsigned flags, struct iface *iface)
+{
+  struct evpn_proto *p = SKIP_BACK(struct evpn_proto, p, P);
+  struct evpn_encap *encap = evpn_get_encap(p);
+
+  if (flags & IF_IGNORE)
+    return;
+
+  if (iface != encap->tunnel_dev)
+    return;
+
+  if ((p->p.proto_state == PS_START) && (flags & IF_CHANGE_UP))
+    evpn_started(p);
+  else if (flags & IF_CHANGE_DOWN)
+    proto_notify_state(&p->p, evpn_shutdown(&p->p));
+}
+
 static void
 evpn_postconfig(struct proto_config *CF)
 {
@@ -856,6 +877,7 @@ evpn_init(struct proto_config *CF)
   proto_configure_channel(P, &P->mpls_channel, proto_cf_find_channel(CF, NET_MPLS));
 
   P->rt_notify = evpn_rt_notify;
+  P->if_notify = evpn_if_notify;
   P->preexport = evpn_preexport;
   P->reload_routes = evpn_reload_routes;
   P->feed_end = evpn_feed_end;
@@ -901,15 +923,20 @@ evpn_start(struct proto *P)
   if (P->vrf_set)
     P->mpls_map->vrf_iface = P->vrf;
 
-  proto_notify_state(P, PS_UP);
+  /* Wait for VXLAN interfaces to be up */
+
+  return PS_START;
+}
+
+static void
+evpn_started(struct evpn_proto *p)
+{
+  proto_notify_state(&p->p, PS_UP);
 
   evpn_announce_imet(p, EVPN_ROOT_VLAN(p), 1);
 
-  struct evpn_vlan *v;
-  WALK_LIST(v, p->vlans)
+  WALK_LIST_(struct evpn_vlan, v, p->vlans)
     evpn_announce_imet(p, v, 1);
-
-  return PS_UP;
 }
 
 static int
