@@ -95,6 +95,32 @@ kbr_rt_notify(struct proto *P, struct channel *c0 UNUSED, net *net, rte *new, rt
   kbr_replace_fdb(net->n.addr, new_gw, old_gw, 1);
 }
 
+static void
+kbr_started(struct kbr_proto *p)
+{
+  proto_notify_state(&p->p, PS_UP);
+}
+
+static void
+kbr_if_notify(struct proto *P, unsigned flags, struct iface *iface)
+{
+  struct kbr_proto *p = SKIP_BACK(struct kbr_proto, p, P);
+
+  if (flags & IF_IGNORE)
+    return;
+
+  if (!(flags & (IF_CHANGED_UP | IF_CHANGED_DOWN)))
+    return;
+
+  if (iface != p->bridge_dev)
+    return;
+
+  if (flags & IF_CHANGED_UP)
+    kbr_started(p);
+  else if (flags & IF_CHANGED_DOWN)
+    proto_notify_state(&p->p, PS_STOP);
+}
+
 static inline int
 kbr_is_installed(struct channel *c, net *n)
 {
@@ -172,6 +198,7 @@ kbr_init(struct proto_config *CF)
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
 
   P->rt_notify = kbr_rt_notify;
+  P->if_notify = kbr_if_notify;
   P->preexport = kbr_preexport;
   P->reload_routes = kbr_reload_routes;
   P->rte_better = kbr_rte_better;
@@ -193,7 +220,7 @@ kbr_start(struct proto *P)
 
   kbr_sys_start(p);
 
-  return PS_UP;
+  return PS_START;
 }
 
 static int
