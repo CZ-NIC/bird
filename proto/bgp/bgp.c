@@ -1737,7 +1737,7 @@ bgp_find_proto(sock *sk)
 	(!p->cf->remote_range || ipa_in_netX(sk->daddr, p->cf->remote_range)) &&
 	(p->p.vrf == sk->vrf) &&
 	(p->cf->local_port == sk->sport) &&
-	(!link || (p->cf->iface == sk->iface)) &&
+	(!link || (p->cf->iface == sk->iface) || p->cf->ipatt && sk->iface && iface_patt_match(p->cf->ipatt, sk->iface, NULL)) &&
 	(ipa_zero(p->cf->local_ip) || ipa_equal(p->cf->local_ip, sk->saddr)))
     {
       best = p;
