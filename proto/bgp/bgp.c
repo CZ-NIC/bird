@@ -3230,7 +3230,10 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
       if (p->route_refresh)
       {
 	if (c->c.channel_state == CS_UP)
+	{
 	  bgp_schedule_packet(p->conn, c, PKT_ROUTE_REFRESH);
+	  log(L_INFO "Reloading channel %s.%s for import by route refresh", p->p.name, c->c.name);
+	}
       }
       else
 	/* Route refresh not possible, restart needed */
