@@ -425,6 +425,17 @@ evpn_rt_notify(struct proto *P, struct channel *c0 UNUSED, net *net, rte *new, r
 }
 
 static void
+evpn_started(struct evpn_proto *p)
+{
+  proto_notify_state(&p->p, PS_UP);
+
+  evpn_announce_imet(p, EVPN_ROOT_VLAN(p), 1);
+
+  WALK_LIST_(struct evpn_vlan, v, p->vlans)
+    evpn_announce_imet(p, v, 1);
+}
+
+static void
 evpn_if_notify(struct proto *P, unsigned flags, struct iface *iface)
 {
   struct evpn_proto *p = SKIP_BACK(struct evpn_proto, p, P);
@@ -440,7 +451,7 @@ evpn_if_notify(struct proto *P, unsigned flags, struct iface *iface)
     return;
 
   if (flags & IF_CHANGE_UP)
-    proto_notify_state(&p->p, PS_UP);
+    evpn_started(p);
   else if (flags & IF_CHANGE_DOWN)
     proto_notify_state(&p->p, PS_STOP);
 }
@@ -887,17 +898,6 @@ evpn_init(struct proto_config *CF)
   return P;
 }
 
-static void
-evpn_started(struct evpn_proto *p)
-{
-  proto_notify_state(&p->p, PS_START);
-
-  evpn_announce_imet(p, EVPN_ROOT_VLAN(p), 1);
-
-  WALK_LIST_(struct evpn_vlan, v, p->vlans)
-    evpn_announce_imet(p, v, 1);
-}
-
 static int
 evpn_start(struct proto *P)
 {
@@ -935,8 +935,6 @@ evpn_start(struct proto *P)
   // XXX ?
   if (P->vrf_set)
     P->mpls_map->vrf_iface = P->vrf;
-
-  evpn_started(p);
 
   return PS_START;
 }
