@@ -1616,3 +1616,63 @@ test-bgp-error-states:
   variables:
     TEST_NAME: cf-bgp-error-states
 
+test-ebgp-refresh/gen/imno-basic-imex-basic:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imno-basic-imex-basic
+
+test-ebgp-refresh/gen/noex-basic-imno-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/noex-basic-imno-enhanced
+
+test-ebgp-refresh/gen/imex-basic-noex-none:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imex-basic-noex-none
+
+test-ebgp-refresh/gen/nono-enhanced-nono-basic:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/nono-enhanced-nono-basic
+
+test-ebgp-refresh/gen/imno-none-imex-basic:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imno-none-imex-basic
+
+test-ebgp-refresh/gen/noex-none-imno-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/noex-none-imno-enhanced
+
+test-ebgp-refresh/gen/imex-none-noex-none:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imex-none-noex-none
+
+test-ebgp-refresh/gen/nono-none-nono-basic:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/nono-none-nono-basic
+
+test-ebgp-refresh/gen/imno-enhanced-imex-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imno-enhanced-imex-enhanced
+
+test-ebgp-refresh/gen/noex-enhanced-imno-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/noex-enhanced-imno-enhanced
+
+test-ebgp-refresh/gen/imex-enhanced-noex-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/imex-enhanced-noex-enhanced
+
+test-ebgp-refresh/gen/nono-enhanced-nono-enhanced:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-ebgp-refresh/gen/nono-enhanced-nono-enhanced
+
