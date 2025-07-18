@@ -47,6 +47,14 @@ struct mrtload_route_ctx {
   struct mrtload_route_ctx *next;
 };
 
+struct mrtload_peer_entry {
+  struct mrtload_route_ctx *route_attrs;
+  u32 peer_id;
+  u32 peer_as;
+  u32 afi;
+  ip_addr peer_ip;
+};
+
 struct mrtload_proto {
   struct proto p;
     union {
@@ -54,7 +62,7 @@ struct mrtload_proto {
     struct { BGP_ROUTE_CONTEXT };
   };
 
-  int addr_fam;
+  u32 addr_fam;
   u64 source_cnt;
   struct mrt_table_dump_state *table_dump;
   struct bgp_channel *channel;
@@ -65,6 +73,8 @@ struct mrtload_proto {
   btime start_time;
   s64 zero_time;
   s64 next_time;
+  int table_peers_count;
+  struct mrtload_peer_entry *table_peers;
   FILE *parsed_file;
 };
 

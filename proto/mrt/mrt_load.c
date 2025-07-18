@@ -60,7 +60,257 @@ mrtload_two_octet(FILE *fp, u64 *remains)
 void
 mrt_parse_error(struct bgp_parse_state * ps UNUSED, uint e UNUSED)
 {
-  log(L_WARN "mrt load: run into a parsing error");
+  bug(L_WARN "mrt load: run into a parsing error");
+}
+
+static void
+mrt_rx_end_mark(struct bgp_parse_state *s UNUSED, u32 afi UNUSED)
+{
+  /* Do nothing */
+}
+
+bool
+mrt_get_channel_to_parse(struct bgp_parse_state *s UNUSED, u32 afi UNUSED)
+{
+  struct mrtload_proto *p = SKIP_BACK(struct mrtload_proto, p, s->p);
+  s->channel = &p->channel->c;
+  s->last_id = 0;
+  s->desc = p->channel->desc;
+  s->channel->proto = s->p;
+  channel_set_state(s->channel, CS_START);
+  channel_set_state(s->channel, CS_UP);
+
+  return true;
+}
+
+static void
+mrt_apply_mpls_labels(struct bgp_parse_state *s UNUSED, rta *a UNUSED, u32 *labels UNUSED, uint lnum UNUSED)
+{
+  /* Do nothing */
+}
+
+static void
+mrtload_fill_parse_state(struct mrtload_proto *p, struct bgp_parse_state *s)
+{
+  s->proto_name = p->p.name;
+  s->pool = lp_new(p->p.pool);
+  s->parse_error = mrt_parse_error;
+  s->end_mark = mrt_rx_end_mark;
+  s->get_channel = mrt_get_channel_to_parse;
+  s->apply_mpls_labels = mrt_apply_mpls_labels;
+  s->is_mrt_parse = 1;
+  s->p = &p->p;
+  s->desc = p->channel->desc; // desc is set later in bgp, but we need afi to compare
+}
+
+struct mrtload_route_ctx *
+mrtload_create_ctx(struct mrtload_proto *p, int addr_fam, int local_as, int peer_as, ip_addr local_ip, ip_addr remote_ip, u8 is_internal)
+{
+  struct mrtload_route_ctx *route_attrs = (struct mrtload_route_ctx *) mb_allocz(p->ctx_pool, sizeof(struct mrtload_route_ctx));
+ 
+  route_attrs->src = rt_get_source(&p->p, p->source_cnt);
+  rt_lock_source(route_attrs->src);
+  p->source_cnt++;
+ 
+  route_attrs->addr_fam = addr_fam;
+  route_attrs->ctx.local_as = local_as;
+  route_attrs->ctx.remote_as = peer_as;
+  route_attrs->ctx.local_ip = local_ip;
+  route_attrs->ctx.remote_ip = remote_ip;
+  route_attrs->ctx.is_internal = is_internal;
+
+  route_attrs->ctx.bgp_rte_ctx.proto_class = PROTOCOL_BGP;
+  route_attrs->ctx.bgp_rte_ctx.rte_better = bgp_rte_better;
+  route_attrs->ctx.bgp_rte_ctx.rte_recalculate = NULL; //cf->deterministic_med ? bgp_rte_recalculate
+  route_attrs->ctx.bgp_rte_ctx.format = bgp_format_rte_ctx;
+
+    // TODO: this is not the correct setting
+  route_attrs->ctx.local_id = proto_get_router_id(p->p.cf);
+  route_attrs->ctx.remote_id = 0;
+  route_attrs->ctx.rr_client = 0;
+  route_attrs->ctx.rs_client = 0;
+  route_attrs->ctx.is_interior = route_attrs->ctx.is_internal;  //TODO this should be loaded from somewhere
+
+  return route_attrs;
+}
+
+/*
+0                   1                   2                   3
+        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |         Peer Index            |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                         Originated Time                       |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |      Attribute Length         |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                    BGP Attributes... (variable)
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+
+void
+mrt_parse_rib_entry(struct mrtload_proto *p, FILE *fp, byte *prefix_data, uint prefix_data_len, u64 *remains, bool add_path)
+{
+  struct bgp_parse_state s;
+  memset(&s, 0, sizeof(struct bgp_parse_state));
+  mrtload_fill_parse_state(p, &s);
+  s.last_src = p->p.main_source;
+  /* All AS numbers in the AS_PATH attribute MUST be encoded as 4-byte AS numbers. */
+  s.as4_session = 1;
+  s.allow_as_sets = 1; /* If not set to 1 and there is an as_set, bird will crash */
+  s.channel = p->channel;
+
+  int peer_index = mrtload_two_octet(fp, remains);
+  mrtload_four_octet(fp, remains); /* originated time - but for table load time is not relevant */
+  ASSERT_DIE(peer_index <= p->table_peers_count);
+  struct mrtload_peer_entry *peer = &p->table_peers[peer_index];
+  s.proto_attrs = &peer->route_attrs->ctx;
+  u32 afi = peer->afi;
+  u64 path_id;
+
+  if (add_path)
+    path_id = mrtload_four_octet(fp, remains);
+
+  u64 attr_len = mrtload_two_octet(fp, remains);
+  byte data[attr_len];
+  mrtload_n_octet(fp, remains, data, attr_len);
+
+  log("afi %i != p->addr_fam %i", afi, p->addr_fam);
+  if (afi != p->addr_fam)
+    return;
+
+  ea_list *ea = bgp_decode_attrs(&s, data, attr_len);
+
+  if ((s.ip_next_hop_len == 4 && p->addr_fam == NET_IP6) || (s.ip_next_hop_len > 4 && p->addr_fam == NET_IP4))
+    return;
+  /* 
+   * In order to reuse bgp functions, prefix is parsed peer_count times.
+   * It is not the fastest way, but it is much safer and comfortable way.
+   */
+  rta *a = allocz(RTA_MAX_SIZE);
+
+  a->source = RTS_BGP;
+  a->scope = SCOPE_UNIVERSE;
+  a->from = s.remote_ip;
+  a->eattrs = ea;
+  a->pref = s.channel->preference;
+  a->dest = RTD_UNICAST; //todo?
+
+  s.desc->decode_next_hop(&s, s.ip_next_hop_data, s.ip_next_hop_len, a);
+  //log("nexthop %x", a->nh);
+  bgp_finish_attrs(&s, a);
+   //    log("nh_._ %x, %x", a->nh, a->nh.iface);
+
+  s.desc->decode_nlri(&s, prefix_data, prefix_data_len, a);
+    log("nh__ %x, %x", a->nh, a->nh.iface);
+
+  rta_free(a);
+}
+
+void
+mrt_parse_rib_generic(FILE *fp, u64 *remains)
+{
+  u64 seq_num = mrtload_four_octet(fp, remains);
+  int addr_fam_id = mrtload_two_octet(fp, remains);
+  int subs_afi = mrtload_one(fp, remains);
+  //TODO length of Network layer reachebility
+}
+
+/*
+        0                   1                   2                   3
+        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                         Sequence Number                       |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       | Prefix Length |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                        Prefix (variable)                      |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |         Entry Count           |  RIB Entries (variable)
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
+*/
+void
+mrt_parse_rib4_unicast(struct mrtload_proto *p, FILE *fp, u64 *remains, bool add_path)
+{
+  u64 seq_num = mrtload_four_octet(fp, remains);
+  u8 pref_len = mrtload_one(fp, remains);
+  byte prefix[(pref_len + 7)/8 +1];
+  prefix[0] = pref_len;
+  pref_len = (pref_len + 7)/8;
+  mrtload_n_octet(fp, remains, &(prefix[1]), pref_len);
+  pref_len ++; // include the lenght od pref_len itself
+  int entry_count = mrtload_two_octet(fp, remains);
+  //bug(".");
+
+  for (int i = 0; i < entry_count; i++)
+    mrt_parse_rib_entry(p, fp, prefix, pref_len, remains, add_path);
+}
+
+/*
+        0                   1                   2                   3
+        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |   Peer Type   |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                         Peer BGP ID                           |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                   Peer IP Address (variable)                  |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                        Peer AS (variable)                     |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+                          Figure 6: Peer Entries
+*/
+
+void
+mrt_parse_peer(struct mrtload_proto *p, FILE *fp, u64 *remains, struct mrtload_peer_entry *peer)
+{
+  int peer_type = mrtload_one(fp, remains);
+  peer->afi = (peer_type & 1) ? AFI_IPV6 : AFI_IPV4;
+  peer->peer_id = mrtload_four_octet(fp, remains);
+  mrtload_ip(fp, remains, &peer->peer_ip, peer_type & MRT_PEER_TYPE_IPV6);
+
+  if (peer_type & MRT_PEER_TYPE_32BIT_ASN)
+    peer->peer_as = mrtload_four_octet(fp,remains);
+  else
+    peer->peer_as = mrtload_two_octet(fp, remains);
+  peer->route_attrs = mrtload_create_ctx(p, p->addr_fam, p->local_as, peer->peer_as, p->local_ip, peer->peer_ip, p->is_internal);
+  //log("peer %x peer type %i, bgp id %li addr %I as %li", peer, peer_type, peer->peer_id, peer->peer_ip, peer->peer_as);
+}
+
+
+/*
+        0                   1                   2                   3
+        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                      Collector BGP ID                         |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |       View Name Length        |     View Name (variable)      |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |          Peer Count           |    Peer Entries (variable)
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+                    Figure 5: PEER_INDEX_TABLE Subtype
+*/
+
+void
+mrt_parse_peer_index_table(struct mrtload_proto *p, FILE *fp, u64 *remains)
+{
+  u64 collector = mrtload_four_octet(fp, remains);
+  int name_len = mrtload_two_octet(fp, remains);
+  char name[name_len + 1];
+  name[name_len] = 0;
+  mrtload_n_octet(fp, remains, name, name_len);
+  int peer_count = mrtload_two_octet(fp, remains);
+
+  if (p->table_peers)
+    mb_free(p->table_peers);
+
+  p->table_peers = mb_alloc(p->p.pool, sizeof(struct mrtload_peer_entry) * peer_count);
+  p->table_peers_count = peer_count;
+
+  for (int i = 0; i < peer_count; i++)
+    mrt_parse_peer(p, fp, remains, &p->table_peers[i]);
 }
 
 /*
@@ -76,7 +326,7 @@ mrt_parse_error(struct bgp_parse_state * ps UNUSED, uint e UNUSED)
        |                      Local IP Address (variable)              |
        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
        |                    BGP Message... (variable)
-       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
 
                      Figure 12: BGP4MP_MESSAGE Subtype
 */
@@ -112,30 +362,7 @@ mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4, bool insert_hash, struct
 
   if (!route_attrs && insert_hash)
   {
-    route_attrs = (struct mrtload_route_ctx *) mb_allocz(p->ctx_pool, sizeof(struct mrtload_route_ctx));
- 
-    route_attrs->src = rt_get_source(&p->p, p->source_cnt);
-    rt_lock_source(route_attrs->src);
-    p->source_cnt++;
- 
-    route_attrs->addr_fam = addr_fam;
-    route_attrs->ctx.local_as = local_as;
-    route_attrs->ctx.remote_as = peer_as;
-    route_attrs->ctx.local_ip = local_ip;
-    route_attrs->ctx.remote_ip = remote_ip;
-    route_attrs->ctx.is_internal = is_internal;
-
-    route_attrs->ctx.bgp_rte_ctx.proto_class = PROTOCOL_BGP;
-    route_attrs->ctx.bgp_rte_ctx.rte_better = bgp_rte_better;
-    route_attrs->ctx.bgp_rte_ctx.rte_recalculate = NULL; //cf->deterministic_med ? bgp_rte_recalculate
-    route_attrs->ctx.bgp_rte_ctx.format = bgp_format_rte_ctx;
-
-    // TODO: this is not the correct setting
-    route_attrs->ctx.local_id = proto_get_router_id(p->p.cf);
-    route_attrs->ctx.remote_id = 0;
-    route_attrs->ctx.rr_client = 0;
-    route_attrs->ctx.rs_client = 0;
-    route_attrs->ctx.is_interior = route_attrs->ctx.is_internal;  //TODO this should be loaded from somewhere
+    route_attrs = mrtload_create_ctx(p, addr_fam, local_as, peer_as, local_ip, remote_ip, is_internal);
 
     HASH_INSERT(p->ctx_hash, MRTLOAD_CTX, route_attrs);
   }
@@ -143,7 +370,7 @@ mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4, bool insert_hash, struct
 }
 
 void
-mrt_parse_bgp4mp_change_state(FILE *fp, u64 *remains, bool as4, struct mrtload_proto *p)
+mrt_parse_bgp4mp_change_state(struct mrtload_proto *p, FILE *fp, u64 *remains, bool as4)
 {
   struct mrtload_route_ctx *ra = mrt_parse_bgp_message(fp, remains, as4, false, p);
   int old_state = mrtload_two_octet(fp, remains);
@@ -173,35 +400,8 @@ mrt_parse_bgp4mp_change_state(FILE *fp, u64 *remains, bool as4, struct mrtload_p
   }
 }
 
-
 static void
-mrt_rx_end_mark(struct bgp_parse_state *s UNUSED, u32 afi UNUSED)
-{
-  /* Do nothing */
-}
-
-bool
-mrt_get_channel_to_parse(struct bgp_parse_state *s UNUSED, u32 afi UNUSED)
-{
-  struct mrtload_proto *p = SKIP_BACK(struct mrtload_proto, p, s->p);
-  s->channel = &p->channel->c;
-  s->last_id = 0;
-  s->desc = p->channel->desc;
-  s->channel->proto = s->p;
-  channel_set_state(s->channel, CS_START);
-  channel_set_state(s->channel, CS_UP);
-
-  return true;
-}
-
-static void
-mrt_apply_mpls_labels(struct bgp_parse_state *s UNUSED, rta *a UNUSED, u32 *labels UNUSED, uint lnum UNUSED)
-{
-  /* Do nothing */
-}
-
-static void
-mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct mrtload_proto *p)
+mrt_parse_bgp4mp_message(struct mrtload_proto *p, FILE *fp, u64 *remains, bool as4)
 {
   struct mrtload_route_ctx *proto_attrs = mrt_parse_bgp_message(fp, remains, true, as4, p);
 
@@ -224,20 +424,12 @@ mrt_parse_bgp4mp_message(FILE *fp, u64 *remains, bool as4, struct mrtload_proto 
     return;
 
   struct bgp_parse_state s = {
-    .proto_name = p->p.name,
-    .pool = lp_new(p->p.pool),
-    .parse_error = mrt_parse_error,
-    .end_mark = mrt_rx_end_mark,
-    .get_channel = mrt_get_channel_to_parse,
-    .apply_mpls_labels = mrt_apply_mpls_labels,
-    .is_mrt_parse = 1,
-    .p = &p->p,
     .as4_session = as4,
     .last_src = proto_attrs->src,
-    .desc = p->channel->desc, // desc is set later in bgp, but we need afi to compare
+    .proto_attrs = &proto_attrs->ctx,
   };
-
-  s.proto_attrs = &proto_attrs->ctx;
+ 
+  mrtload_fill_parse_state(p, &s);
 
   byte buf[length];
   ASSERT_DIE(length <= remains[0]);
@@ -286,23 +478,53 @@ mrt_parse_general_header(FILE *fp, struct mrtload_proto *p)
     switch (subtype)
     {
       case (MRT_BGP4MP_MESSAGE):
-        mrt_parse_bgp4mp_change_state(fp, &remains, false, p);
+        mrt_parse_bgp4mp_change_state(p, fp, &remains, false);
         break;
       case (MRT_BGP4MP_MESSAGE_LOCAL):
       case (MRT_BGP4MP_MESSAGE_ADDPATH):
-        mrt_parse_bgp4mp_message(fp, &remains, false, p);
+        mrt_parse_bgp4mp_message(p, fp, &remains, false);
         break;
       case (MRT_BGP4MP_STATE_CHANGE_AS4):
-        mrt_parse_bgp4mp_change_state(fp, &remains, true, p);
+        mrt_parse_bgp4mp_change_state(p, fp, &remains, true);
         break;
       case (MRT_BGP4MP_MESSAGE_AS4):
       case (MRT_BGP4MP_MESSAGE_AS4_LOCAL):
       case (MRT_BGP4MP_MESSAGE_AS4_LOCAL_ADDPATH):
       case (MRT_BGP4MP_MESSAGE_AS4_ADDPATH):
-        mrt_parse_bgp4mp_message(fp, &remains, true,  p);
+        mrt_parse_bgp4mp_message(p, fp, &remains, true);
         break;
+      default:
+        log(L_WARN "mrtload: unknown mrt table dump subtype %i", subtype);
     }
-  }
+  } else if (type == MRT_TABLE_DUMP_V2)
+  {
+    switch (subtype)
+    {
+      case (MRT_PEER_INDEX_TABLE):
+        mrt_parse_peer_index_table(p, fp, &remains);
+        break;
+      case (MRT_RIB_IPV4_UNICAST):
+      case (MRT_RIB_IPV6_UNICAST):
+      case (MRT_RIB_IPV4_MULTICAST):
+      case (MRT_RIB_IPV6_MULTICAST):
+        mrt_parse_rib4_unicast(p, fp, &remains, false);
+        break;
+      case (MRT_RIB_IPV4_UNICAST_ADDPATH):
+      case (MRT_RIB_IPV6_UNICAST_ADDPATH):
+      case (MRT_RIB_IPV4_MULTICAST_ADDPATH):
+      case (MRT_RIB_IPV6_MULTICAST_ADDPATH):
+        mrt_parse_rib4_unicast(p, fp, &remains, true);
+        break;
+      case (MRT_RIB_GENERIC):
+      case (MRT_RIB_GENERIC_ADDPATH):
+        mrt_parse_rib_generic(fp, &remains);
+        break;
+      default:
+        log(L_WARN "mrtload: unknown mrt table dump subtype %i", subtype);
+    }
+  } else
+    log(L_WARN "mrtload: unknown mrt table type %i", type);
+
 
   ASSERT_DIE(remains <= length);
 
@@ -478,6 +700,13 @@ mrtload_shutdown(struct proto *P)
   FIB_WALK_END;
 
   HASH_FREE(p->ctx_hash);
+
+  if (p->table_peers)
+  {
+    for (int i = 0; i < p->table_peers_count; i++)
+      mb_free(p->table_peers[i].route_attrs);
+    mb_free(p->table_peers);
+  }
 
   proto_notify_state(&p->p, PS_DOWN);
   return PS_DOWN;
