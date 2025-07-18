@@ -80,6 +80,19 @@ mb_strdup(pool *p, const char *c)
   return z;
 }
 
+static inline char *
+lp_strcat(linpool *lp, const char *s1, const char *s2)
+{
+  size_t l1 = strlen(s1);
+  size_t l2 = strlen(s2);
+  char *z = lp_allocu(lp, l1 + l2 + 1);
+  memcpy(z, s1, l1);
+  memcpy(z + l1, s2, l2 + 1);
+  return z;
+}
+
+#define tmp_strcat(x, y) lp_strcat(tmp_linpool, (x), (y))
+
 static inline void
 memset32(void *D, u32 val, uint n)
 {

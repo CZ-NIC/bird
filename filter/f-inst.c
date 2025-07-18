@@ -1291,6 +1291,22 @@
     RESULT(T_PATH, ad, [[ as_path_prepend(fpool, v1.val.ad, v2.val.i) ]]);
   }
 
+  /* String append */
+  INST(FI_STRING_APPEND, 2, 1) {
+    ARG(1, T_STRING);
+    ARG(2, T_STRING);
+    METHOD_CONSTRUCTOR("append");
+    RESULT(T_STRING, s, [[ lp_strcat(fpool, v1.val.s, v2.val.s) ]]);
+  }
+
+  /* Bytestring append */
+  INST(FI_BYTESTRING_APPEND, 2, 1) {
+    ARG(1, T_BYTESTRING);
+    ARG(2, T_BYTESTRING);
+    METHOD_CONSTRUCTOR("append");
+    RESULT(T_BYTESTRING, ad, [[ bytestring_append(fpool, v1.val.ad, v2.val.ad) ]]);
+  }
+
   /* Community list add */
   INST(FI_CLIST_ADD_PAIR, 2, 1) {
     ARG(1, T_CLIST);

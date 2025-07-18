@@ -256,6 +256,8 @@ const struct adata *clist_filter(struct linpool *pool, const struct adata *list,
 const struct adata *eclist_filter(struct linpool *pool, const struct adata *list, const struct f_val *set, int pos);
 const struct adata *lclist_filter(struct linpool *pool, const struct adata *list, const struct f_val *set, int pos);
 
+const struct adata *bytestring_append(struct linpool *pool, const struct adata *v1, const struct adata *v2);
+
 
 /* Special undef value for paths and clists */
 
