@@ -976,9 +976,9 @@ rte_mergable(const rte *pri, const rte *sec)
 }
 
 static void
-rte_trace(const char *name, const rte *e, int dir, const char *msg)
+rte_trace(const char *name, const rte *e, const char *dir, const char *msg)
 {
-  log(L_TRACE "%s %c %s %N ptr %p (%u) src %luL %uG %uS id %u %s",
+  log(L_TRACE "%s %s %s %N ptr %p (%u) src %luL %uG %uS id %u %s",
       name, dir, msg, e->net, e, NET_TO_INDEX(e->net)->index,
       e->src->private_id, e->src->global_id, e->stale_cycle, e->id,
       rta_dest_name(rte_dest(e)));
@@ -998,14 +998,14 @@ static inline void
 channel_rte_trace_out(uint flag, struct channel *c, const rte *e, const char *msg)
 {
   if ((c->debug & flag) || (c->proto->debug & flag))
-    rte_trace(c->out_req.name, e, '<', msg);
+    rte_trace(c->out_req.name, e, "<", msg);
 }
 
 static inline void
 rt_rte_trace_in(uint flag, struct rt_import_request *req, const rte *e, const char *msg)
 {
   if (req->trace_routes & flag)
-    rte_trace(req->name, e, '>', msg);
+    rte_trace(req->name, e, ">", msg);
 }
 
 #if 0
@@ -1014,9 +1014,97 @@ static inline void
 rt_rte_trace_out(uint flag, struct rt_export_request *req, const rte *e, const char *msg)
 {
   if (req->trace_routes & flag)
-    rte_trace(req->name, e, '<', msg);
+    rte_trace(req->name, e, "<", msg);
 }
 #endif
+
+#if 0
+#define RT_NOTIFY_DEBUG(fmt...)	log(L_TRACE "rt_notify_accepted: " fmt, ##fmt)
+#else
+#define RT_NOTIFY_DEBUG(...)
+#endif
+
+struct channel_export_log {
+  struct channel_export_log *next;
+  uint cur;
+  uint last;
+  struct channel_export_log_item {
+    u32 rt_id;			/* Route id */
+    u32 net_id;			/* Network in-table id */
+    enum {
+      CELI_F_ACCEPT = 2,		/* Set = accepted_map, clear = rejected_map */
+      CELI_F_SET = 4,			/* Set = bmap_set, clear = bmap_clear */
+      CELI_F_TEST = 8,		/* Set = bmap_test -> CELI_F_SET shows result */
+    } flags;
+  } item[0];
+};
+
+static inline void
+channel_rte_mark_trace(struct channel *c, const rte *e, const char *reason, const char *msg)
+{
+  if ((c->debug & D_ROUTES_DETAILED) || (c->proto->debug & D_ROUTES_DETAILED))
+    rte_trace(c->out_req.name, e, reason, msg);
+}
+
+static inline void
+channel_rte_mark_rejected(struct channel *c, const rte *e, const char *msg)
+{
+  bmap_set(&c->export_rejected_map, e->id);
+  channel_rte_mark_trace(c, e, "<D+rej", msg);
+  ASSERT_DIE(!bmap_test(&c->export_accepted_map, e->id));
+}
+
+static inline void
+channel_rte_mark_accepted(struct channel *c, const rte *e, const char *msg)
+{
+  bmap_set(&c->export_accepted_map, e->id);
+  channel_rte_mark_trace(c, e, "<D+acc", msg);
+  ASSERT_DIE(!bmap_test(&c->export_rejected_map, e->id));
+}
+
+static inline void
+channel_rte_clear_rejected(struct channel *c, const rte *e, const char *msg)
+{
+  bmap_clear(&c->export_rejected_map, e->id);
+  channel_rte_mark_trace(c, e, "<D-rej", msg);
+  ASSERT_DIE(!bmap_test(&c->export_accepted_map, e->id));
+}
+
+static inline void
+channel_rte_clear_accepted(struct channel *c, const rte *e, const char *msg)
+{
+  bmap_clear(&c->export_accepted_map, e->id);
+  channel_rte_mark_trace(c, e, "<D-acc", msg);
+  ASSERT_DIE(!bmap_test(&c->export_rejected_map, e->id));
+}
+
+static inline bool
+channel_rte_check_rejected(struct channel *c, const rte *e, const char *msg)
+{
+  bool out = bmap_test(&c->export_rejected_map, e->id);
+  if (out)
+  {
+    channel_rte_mark_trace(c, e, "<D=rej", msg);
+    ASSERT_DIE(!bmap_test(&c->export_accepted_map, e->id));
+  }
+  else
+    channel_rte_mark_trace(c, e, "<D!rej", msg);
+  return out;
+}
+
+static inline bool
+channel_rte_check_accepted(struct channel *c, const rte *e, const char *msg)
+{
+  bool out = bmap_test(&c->export_accepted_map, e->id);
+  if (out)
+  {
+    channel_rte_mark_trace(c, e, "<D=acc", msg);
+    ASSERT_DIE(!bmap_test(&c->export_rejected_map, e->id));
+  }
+  else
+    channel_rte_mark_trace(c, e, "<D!acc", msg);
+  return out;
+}
 
 static uint
 rte_feed_count(struct rtable_reading *tr, net *n)
@@ -1071,7 +1159,7 @@ export_filter(struct channel *c, rte *rt, int silent)
   struct channel_export_stats *stats = &c->export_stats;
 
   /* Do nothing if we have already rejected the route */
-  if (silent && bmap_test(&c->export_rejected_map, rt->id))
+  if (silent && channel_rte_check_rejected(c, rt, "silent filter"))
     goto reject_noset;
 
   int v = p->preexport ? p->preexport(c, rt) : 0;
@@ -1108,12 +1196,12 @@ export_filter(struct channel *c, rte *rt, int silent)
 
  accept:
   /* We have accepted the route */
-  bmap_clear(&c->export_rejected_map, rt->id);
+  channel_rte_clear_rejected(c, rt, "filter");
   return rt;
 
  reject:
   /* We have rejected the route by filter */
-  bmap_set(&c->export_rejected_map, rt->id);
+  channel_rte_mark_rejected(c, rt, "filter");
 
 reject_noset:
   /* Discard temporary rte */
@@ -1145,10 +1233,10 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
     stats->withdraws_accepted++;
 
   if (old)
-    bmap_clear(&c->export_accepted_map, old->id);
+    channel_rte_clear_accepted(c, old, "old");
 
   if (new)
-    bmap_set(&c->export_accepted_map, new->id);
+    channel_rte_mark_accepted(c, new, "new");
 
   if (new && old)
     channel_rte_trace_out(D_ROUTES, c, new, "replaced");
@@ -1164,20 +1252,28 @@ static void
 rt_notify_basic(struct channel *c, const rte *new, const rte *old)
 {
   const rte *trte = new ?: old;
+  bool orej = 0, oacc = 0;
 
   /* Have we exported the old route? */
   if (old)
   {
     /* If the old route exists, it is either in rejected or in accepted map. */
-    int rejected = bmap_test(&c->export_rejected_map, old->id);
-    int accepted = bmap_test(&c->export_accepted_map, old->id);
-    ASSERT_DIE(!rejected || !accepted);
+    orej = channel_rte_check_rejected(c, old, "old-basic");
+    oacc = channel_rte_check_accepted(c, old, "old-basic");
+    ASSERT_DIE(!orej || !oacc);
 
-    if (!accepted)
+    /* Is this a same-route refeed? Unmark to let it be marked again. */
+    if (old == new)
+      if (orej)
+	channel_rte_clear_rejected(c, old, "refeed");
+      else if (oacc)
+	channel_rte_clear_accepted(c, old, "refeed");
+
+    if (!oacc)
     {
       /* Drop the old rejected bit from the map, the old route id
        * gets released after exports. */
-      bmap_clear(&c->export_rejected_map, old->id);
+      channel_rte_clear_rejected(c, old, "old-basic");
 
       /* Treat old rejected as never seen. */
       old = NULL;
@@ -1206,12 +1302,6 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old)
   do_rt_notify(c, np ? np->net : old->net, np, old);
 }
 
-#if 0
-#define RT_NOTIFY_DEBUG(fmt...)	log(L_TRACE "rt_notify_accepted: " fmt, ##fmt)
-#else
-#define RT_NOTIFY_DEBUG(...)
-#endif
-
 static void
 rt_notify_accepted(struct channel *c, const struct rt_export_feed *feed)
 {
@@ -1226,7 +1316,7 @@ rt_notify_accepted(struct channel *c, const struct rt_export_feed *feed)
     rte *r = &feed->block[i];
 
     /* Previously exported */
-    if (!old_best && bmap_test(&c->export_accepted_map, r->id))
+    if (!old_best && channel_rte_check_accepted(c, r, "accepted"))
     {
       RT_NOTIFY_DEBUG("route %u id %u previously exported, is old best", i, r->id);
       old_best = r;
@@ -1246,20 +1336,14 @@ rt_notify_accepted(struct channel *c, const struct rt_export_feed *feed)
 
     /* Unflag obsolete routes */
     else if (r->flags & REF_OBSOLETE)
-    {
-      RT_NOTIFY_DEBUG("route %u id %u is obsolete", i, r->id);
-      bmap_clear(&c->export_rejected_map, r->id);
-    }
+      channel_rte_clear_rejected(c, r, "obsolete");
 
     /* Mark invalid as rejected */
     else if (!rte_is_valid(r))
-    {
-      RT_NOTIFY_DEBUG("route %u id %u is invalid", i, r->id);
-      bmap_set(&c->export_rejected_map, r->id);
-    }
+      channel_rte_mark_rejected(c, r, "invalid");
 
     /* Already rejected */
-    else if (!feeding && bmap_test(&c->export_rejected_map, r->id))
+    else if (!feeding && channel_rte_check_rejected(c, r, "accepted"))
       RT_NOTIFY_DEBUG("route %u id %u has been rejected before", i, r->id);
 
     /* No new best route yet and this is a valid candidate */
@@ -1341,7 +1425,7 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
     return NULL;
 
   /* Already rejected, no need to re-run the filter */
-  if (!feeding && bmap_test(&c->export_rejected_map, best0->id))
+  if (!feeding && channel_rte_check_rejected(c, best0, "merged-best0"))
     return NULL;
 
   best = export_filter(c, best0, silent);
@@ -1367,7 +1451,7 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
       continue;
 
     /* Already rejected by filters */
-    if (!feeding && bmap_test(&c->export_rejected_map, r->id))
+    if (!feeding && channel_rte_check_rejected(c, r, "merged"))
       continue;
 
     /* Running export filter on new or accepted route */
@@ -1408,7 +1492,7 @@ rt_notify_merged(struct channel *c, const struct rt_export_feed *f)
   const rte *old_best = NULL;
   /* Find old best route */
   for (uint i = 0; i < f->count_routes; i++)
-    if (bmap_test(&c->export_accepted_map, f->block[i].id))
+    if (channel_rte_check_accepted(c, &f->block[i], "merged"))
     {
       old_best = &f->block[i];
       break;
@@ -1484,6 +1568,7 @@ channel_notify_basic(void *_channel)
 
 	    rte *new = &u->feed->block[i];
 	    rte *old = NULL;
+	    /* First check old routes */
 	    for (uint o = oldpos; o < u->feed->count_routes; o++)
 	      if ((c->ra_mode == RA_ANY) && (new->src == u->feed->block[o].src))
 	      {
@@ -1497,8 +1582,8 @@ channel_notify_basic(void *_channel)
 		if (old && (u->feed->block[o].id == old->id))
 		  u->feed->block[o].src = NULL;
 		else if (
-		    bmap_test(&c->export_accepted_map, u->feed->block[o].id) || 
-		    bmap_test(&c->export_rejected_map, u->feed->block[o].id)
+		    channel_rte_check_accepted(c, &u->feed->block[o], "old-basic-ff") ||
+		    channel_rte_check_rejected(c, &u->feed->block[o], "old-basic-ff")
 		    )
 		{
 		  /* But we expect that there was only one route previously exported */
@@ -1507,8 +1592,8 @@ channel_notify_basic(void *_channel)
 		}
 
 	    /* Check new flags */
-	    int nacc = bmap_test(&c->export_accepted_map, new->id);
-	    int nrej = bmap_test(&c->export_rejected_map, new->id);
+	    int nacc = channel_rte_check_accepted(c, new, "new-basic");
+	    int nrej = channel_rte_check_rejected(c, new, "new-basic");
 
 	    if (old)
 	      ASSERT_DIE(!nacc && !nrej);
@@ -1533,8 +1618,8 @@ channel_notify_basic(void *_channel)
 	  /* Send withdraws */
 	  for (uint o = oldpos; o < u->feed->count_routes; o++)
 	    if (u->feed->block[o].src && (
-		    bmap_test(&c->export_accepted_map, u->feed->block[o].id) ||
-		    bmap_test(&c->export_rejected_map, u->feed->block[o].id)
+		    channel_rte_check_accepted(c, &u->feed->block[o], "old-basic-fw") ||
+		    channel_rte_check_rejected(c, &u->feed->block[o], "old-basic-fw")
 		    ))
 	    {
 	      if (c->ra_mode == RA_OPTIMAL)
@@ -1593,17 +1678,15 @@ channel_notify_basic(void *_channel)
 	    channel_rte_trace_out(D_ROUTES, c, new, "already exported");
 
 	    if (new->id != old->id)
-	      if (bmap_test(&c->export_accepted_map, old->id))
+	      if (channel_rte_check_accepted(c, old, "same"))
 	      {
-		bmap_set(&c->export_accepted_map, new->id);
-		bmap_clear(&c->export_accepted_map, old->id);
-
-		ASSERT_DIE(!bmap_test(&c->export_rejected_map, old->id));
+		channel_rte_mark_accepted(c, new, "same");
+		channel_rte_clear_accepted(c, new, "same");
 	      }
-	      else if (bmap_test(&c->export_rejected_map, old->id))
+	      else if (channel_rte_check_rejected(c, old, "same"))
 	      {
-		bmap_set(&c->export_rejected_map, new->id);
-		bmap_clear(&c->export_rejected_map, old->id);
+		channel_rte_mark_rejected(c, new, "same");
+		channel_rte_clear_rejected(c, new, "same");
 	      }
 	      else
 		bug("Withdrawn route never seen before");
@@ -5416,7 +5499,7 @@ krt_export_net(struct channel *c, const net_addr *a, linpool *lp)
     if (!feed || !feed->count_routes)
       return NULL;
 
-    if (!bmap_test(&c->export_accepted_map, feed->block[0].id))
+    if (!channel_rte_check_accepted(c, &feed->block[0], "krt_export"))
       return NULL;
 
     return rt_export_merged(c, feed, lp, 1);

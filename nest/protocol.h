@@ -490,6 +490,7 @@ extern struct ea_class ea_name, ea_protocol_name, ea_protocol_type,
 #define D_IFACES 8		/* [core] Interface events */
 #define D_EVENTS 16		/* Protocol events */
 #define D_PACKETS 32		/* Packets sent/received */
+#define D_ROUTES_DETAILED 64	/* Routes and filters but very detailed */
 
 #ifndef PARSER
 #define TRACE(flags, msg, args...) \
@@ -624,6 +625,8 @@ struct channel {
   struct bmap imported_map;		/* Which nets were touched by our import */
   struct bmap export_accepted_map;	/* Keeps track which routes were really exported */
   struct bmap export_rejected_map;	/* Keeps track which routes were rejected by export filter */
+  event export_consistency_event;	/* Clears the export_log and checks the consistency
+					   of export_rejected_map and export_accepted_map */
 
   struct limit rx_limit;		/* Receive limit (for in_keep & RIK_REJECTED) */
   struct limit in_limit;		/* Input limit */
