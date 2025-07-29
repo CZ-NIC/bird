@@ -31,6 +31,12 @@ struct kif_proto;
 #define KRT_LEARN_ALIEN	1	/* Learn KRT_SRC_ALIEN routes */
 #define KRT_LEARN_ALL	2	/* Learn both KRT_SRC_ALIEN and KRT_SRC_KERNEL routes */
 
+
+#define EA_DEVICE_IF_VXLAN_ID		EA_CODE(PROTOCOL_DEVICE, 0)
+#define EA_DEVICE_IF_VXLAN_LEARNING	EA_CODE(PROTOCOL_DEVICE, 1)
+#define EA_DEVICE_IF_VXLAN_IP_ADDR	EA_CODE(PROTOCOL_DEVICE, 2)
+
+
 /* Whenever we recognize our own routes, we allow learing of foreign routes */
 
 #ifdef CONFIG_SELF_CONSCIOUS

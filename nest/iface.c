@@ -130,6 +130,8 @@ if_what_changed(struct iface *i, struct iface *j)
     c |= IF_CHANGE_LINK;
   if (i->mtu != j->mtu)
     c |= IF_CHANGE_MTU;
+  if (i->attrs != j->attrs)
+    c |= IF_CHANGE_ATTRS;
   return c;
 }
 
@@ -140,6 +142,7 @@ if_copy(struct iface *to, struct iface *from)
   to->mtu = from->mtu;
   to->master_index = from->master_index;
   to->master = from->master;
+  to->attrs = from->attrs;
 }
 
 static inline void
@@ -300,6 +303,8 @@ if_update(struct iface *new)
 {
   struct iface *i;
   unsigned c;
+
+  new->attrs = new->attrs->eattrs ? rta_lookup(new->attrs) : NULL;
 
   WALK_LIST(i, iface_list)
     if (!strcmp(new->name, i->name))
