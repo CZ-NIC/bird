@@ -951,7 +951,8 @@ nl_parse_link(struct nlmsghdr *h, int scan)
   struct ifinfomsg *i;
   struct rtattr *a[BIRD_IFLA_MAX];
   int new = h->nlmsg_type == RTM_NEWLINK;
-  struct iface f = {};
+  struct rta rta = { 0 };
+  struct iface f = { .attrs = &rta };
   struct iface *ifi;
   const char *name, *kind = NULL;
   u32 mtu, master = 0;
