@@ -1026,8 +1026,9 @@ rt_rte_trace_out(uint flag, struct rt_export_request *req, const rte *e, const c
 
 struct channel_export_log {
   struct channel_export_log *prev;
-  uint cur;
-  uint total;
+  u16 cur;
+  u16 total;
+  u32 block_id;
   struct channel_export_log_item {
     u32 rt_id;			/* Route id */
     u32 net_id;			/* Network in-table id */
@@ -1056,6 +1057,7 @@ channel_rte_mark_trace(struct channel *c, const rte *e, enum channel_export_log_
   {
     cel = alloc_page();
     cel->prev = c->export_log;
+    cel->block_id = cel->prev ? (cel->prev->block_id + 1) : 0;
     cel->cur = 0;
     cel->total = (page_size - sizeof *cel) / sizeof cel->item[0];
     ASSERT_DIE(cel->total > 0);
@@ -1076,21 +1078,23 @@ channel_rte_mark_trace(struct channel *c, const rte *e, enum channel_export_log_
 static inline void
 channel_rte_assert_dump(struct channel *c)
 {
-  uint count = 0;
-  for (struct channel_export_log *cel = c->export_log; cel; cel = cel->prev)
-    count++;
-
+  uint count = c->export_log ? (c->export_log->block_id + 1) : 0;
   struct channel_export_log **celb = mb_allocz(c->proto->pool, count * sizeof *celb);
-
-  uint pos = count-1;
   for (struct channel_export_log *cel = c->export_log; cel; cel = cel->prev)
-    celb[pos--] = cel;
+  {
+    ASSERT_DIE(cel->block_id < count);
+    ASSERT_DIE(!celb[cel->block_id]);
+    celb[cel->block_id] = cel;
+  }
 
   for (uint pos = 0; pos < count; pos++)
+  {
+    ASSERT_DIE(celb[pos]);
     for (uint i = 0; i < celb[pos]->cur; i++)
       log(L_BUG "%s: net %u rte %u %s %s",
 	  c->out_req.name, celb[pos]->item[i].net_id, celb[pos]->item[i].rt_id,
 	  channel_export_log_flags_str[celb[pos]->item[i].flags], celb[pos]->item[i].msg);
+  }
 }
 
 static inline void
