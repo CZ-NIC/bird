@@ -45,6 +45,11 @@ struct iface {
   struct rta *attrs;
 };
 
+enum iface_type {
+  IFACE_TYPE_VXLAN,
+  IFACE_TYPE_BRIDGE,
+};
+
 #define IF_UP 1				/* Currently just IF_ADMIN_UP */
 #define IF_MULTIACCESS 2
 #define IF_BROADCAST 4
