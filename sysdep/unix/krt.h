@@ -37,6 +37,10 @@ struct kif_proto;
 #define EA_IFACE_VXLAN_LEARNING		EA_CODE(PROTOCOL_DEVICE, 2)
 #define EA_IFACE_VXLAN_IP_ADDR		EA_CODE(PROTOCOL_DEVICE, 3)
 
+#define EA_IFACE_BRIDGE_TYPE		EA_CODE(PROTOCOL_DEVICE, 0)
+#define EA_IFACE_BRIDGE_NAME		EA_CODE(PROTOCOL_DEVICE, 1)
+#define EA_IFACE_BRIDGE_VLAN_FILTERING	EA_CODE(PROTOCOL_DEVICE, 2)
+
 /* Whenever we recognize our own routes, we allow learing of foreign routes */
 
 #ifdef CONFIG_SELF_CONSCIOUS

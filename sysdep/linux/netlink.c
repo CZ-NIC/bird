@@ -390,6 +390,12 @@ static struct nl_want_attrs ifla_vxlan_attr_want[BIRD_IFLA_VXLAN_MAX] = {
   [IFLA_VXLAN_LOCAL6]	= { 1, 1, sizeof(ip6_addr) },
 };
 
+#define BIRD_IFLA_BR_MAX (IFLA_BR_VLAN_FILTERING+1)
+
+static struct nl_want_attrs ifla_br_attr_want[BIRD_IFLA_BR_MAX] = {
+  [IFLA_BR_VLAN_FILTERING] = { 1, 1, sizeof(u8) },
+};
+
 #define BIRD_IFA_MAX  (IFA_FLAGS+1)
 
 static struct nl_want_attrs ifa_attr_want4[BIRD_IFA_MAX] = {
@@ -1026,6 +1032,21 @@ nl_parse_link(struct nlmsghdr *h, int scan)
 	struct rtattr *attr = data[IFLA_VXLAN_LOCAL] ? data[IFLA_VXLAN_LOCAL] : data[IFLA_VXLAN_LOCAL6];
 	ip_addr addr = rta_get_ipa(attr);
 	ea_set_attr_data(&f.attrs->eattrs, tmp_linpool, EA_IFACE_VXLAN_IP_ADDR, 0, EAF_TYPE_IP_ADDRESS, &addr, sizeof(addr));
+      }
+    }
+    else if (!strcmp(kind, "bridge") && li[IFLA_INFO_DATA])
+    {
+      struct rtattr *data[BIRD_IFLA_BR_MAX];
+      nl_attr_len = RTA_PAYLOAD(li[IFLA_INFO_DATA]);
+      nl_parse_attrs(RTA_DATA(li[IFLA_INFO_DATA]), ifla_br_attr_want, data, sizeof(data));
+
+      /* Save device type (bridge) into attributes */
+      ea_set_attr_u32(&f.attrs->eattrs, tmp_linpool, EA_IFACE_BRIDGE_TYPE, 0, EAF_TYPE_INT, IFACE_TYPE_BRIDGE);
+
+      if (data[IFLA_BR_VLAN_FILTERING])
+      {
+	u8 vlan_filtering = rta_get_u32(data[IFLA_BR_VLAN_FILTERING]);
+	ea_set_attr_u32(&f.attrs->eattrs, tmp_linpool, EA_IFACE_BRIDGE_VLAN_FILTERING, 0, EAF_TYPE_INT, vlan_filtering);
       }
     }
   }
