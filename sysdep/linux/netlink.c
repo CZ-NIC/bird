@@ -1006,23 +1006,26 @@ nl_parse_link(struct nlmsghdr *h, int scan)
       nl_attr_len = RTA_PAYLOAD(li[IFLA_INFO_DATA]);
       nl_parse_attrs(RTA_DATA(li[IFLA_INFO_DATA]), ifla_vxlan_attr_want, data, sizeof(data));
 
+      /* Save device type (vxlan) into attributes */
+      ea_set_attr_u32(&f.attrs->eattrs, tmp_linpool, EA_IFACE_VXLAN_TYPE, 0, EAF_TYPE_INT, IFACE_TYPE_VXLAN);
+
       if (data[IFLA_VXLAN_ID])
       {
 	u32 id = rta_get_u32(data[IFLA_VXLAN_ID]);
-	ea_set_attr(&f.attrs->eattrs, tmp_linpool, EA_DEVICE_IF_VXLAN_ID, 0, EAF_TYPE_INT, id);
+	ea_set_attr_u32(&f.attrs->eattrs, tmp_linpool, EA_IFACE_VXLAN_ID, 0, EAF_TYPE_INT, id);
       }
 
       if (data[IFLA_VXLAN_LEARNING])
       {
 	u8 learning = rta_get_u8(data[IFLA_VXLAN_LEARNING]);
-	ea_set_attr(&f.attrs->eattrs, tmp_linpool, EA_DEVICE_IF_VXLAN_LEARNING, 0, EAF_TYPE_INT, learning);
+	ea_set_attr_u32(&f.attrs->eattrs, tmp_linpool, EA_IFACE_VXLAN_LEARNING, 0, EAF_TYPE_INT, learning);
       }
 
       if (data[IFLA_VXLAN_LOCAL] || data[IFLA_VXLAN_LOCAL6])
       {
 	struct rtattr *attr = data[IFLA_VXLAN_LOCAL] ? data[IFLA_VXLAN_LOCAL] : data[IFLA_VXLAN_LOCAL6];
 	ip_addr addr = rta_get_ipa(attr);
-	ea_set_attr_data(&f.attrs->eattrs, tmp_linpool, EA_DEVICE_IF_VXLAN_IP_ADDR, 0, EAF_TYPE_IP_ADDRESS, &addr, sizeof(addr));
+	ea_set_attr_data(&f.attrs->eattrs, tmp_linpool, EA_IFACE_VXLAN_IP_ADDR, 0, EAF_TYPE_IP_ADDRESS, &addr, sizeof(addr));
       }
     }
   }
