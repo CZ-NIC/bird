@@ -54,6 +54,7 @@
 #include "filter/filter.h"
 #include "filter/data.h"
 #include "lib/string.h"
+#include "sysdep/unix/krt.h"
 
 #include "evpn.h"
 
@@ -420,6 +421,63 @@ evpn_rt_notify(struct proto *P, struct channel *c0 UNUSED, net *net, rte *new, r
   }
 }
 
+static int
+evpn_validate_iface_attrs(struct evpn_proto *p, const struct iface *i)
+{
+  if (!i->attrs || !i->attrs->eattrs)
+    return 0;
+
+  struct evpn_encap *encap = evpn_get_encap(p);
+
+  if (encap->tunnel_dev != i)
+    return 0;
+
+  const struct adata *addr = ea_get_adata(i->attrs->eattrs, EA_IFACE_VXLAN_IP_ADDR);
+
+  u32 type = ea_get_int(i->attrs->eattrs, EA_IFACE_VXLAN_TYPE, (u32)-1);
+  u32 if_vni = ea_get_int(i->attrs->eattrs, EA_IFACE_VXLAN_ID, EVPN_VNI_NOT_SET);
+
+  if (type != IFACE_TYPE_VXLAN || addr == &null_adata)
+    return 0;
+
+  ip_addr if_addr;
+  ASSERT(sizeof(if_addr) == addr->length);
+  memcpy(&if_addr, addr->data, addr->length);
+
+  struct evpn_config *cf = SKIP_BACK(struct evpn_config, c, p->p.cf);
+
+  if (cf->vni != EVPN_VNI_NOT_SET && if_vni != EVPN_VNI_NOT_SET && cf->vni != if_vni)
+  {
+    log(L_ERR "%s: VNI mismatch", p->p.name);
+    return 0;
+  }
+
+  if (cf->vni == EVPN_VNI_NOT_SET && if_vni != EVPN_VNI_NOT_SET)
+    p->vni = if_vni;
+
+  if (cf->vni == EVPN_VNI_NOT_SET && if_vni == EVPN_VNI_NOT_SET)
+  {
+    log(L_ERR "%s: Unknown VNI", p->p.name);
+    return 0;
+  }
+
+  if (ipa_zero(encap->router_addr) && ipa_zero(if_addr))
+  {
+    log(L_ERR "%s: Unknown router IP", p->p.name);
+    return 0;
+  }
+
+  if (!ipa_zero(encap->router_addr) && !ipa_zero(if_addr) && !ipa_equal(encap->router_addr, if_addr))
+  {
+    log(L_ERR "%s: Router IP mismatch", p->p.name);
+    return 0;
+  }
+
+  if (ipa_zero(encap->router_addr) && !ipa_zero(if_addr))
+    encap->router_addr = if_addr;
+
+  return 1;
+}
 
 static int
 evpn_preexport(struct channel *C, rte *e)
@@ -931,6 +989,9 @@ evpn_start(struct proto *P)
 static void
 evpn_started(struct evpn_proto *p)
 {
+  if (!evpn_validate_iface_attrs(p, i))
+    return;
+
   proto_notify_state(&p->p, PS_UP);
 
   evpn_announce_imet(p, EVPN_ROOT_VLAN(p), 1);
