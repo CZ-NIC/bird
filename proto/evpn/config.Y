@@ -53,6 +53,8 @@ evpn_proto_start: proto_start EVPN
   this_proto = proto_config_new(&proto_evpn, $1);
   init_list(&EVPN_CFG->vlans);
   init_list(&EVPN_CFG->encaps);
+
+  EVPN_CFG->vni = EVPN_VNI_NOT_SET;
 };
 
 
@@ -95,7 +97,7 @@ evpn_encap_start: ENCAPSULATION VXLAN
   add_tail(&EVPN_CFG->encaps, &this_evpn_encap->n);
 
   this_evpn_encap->type        = EVPN_ENCAP_TYPE_VXLAN;
-  this_evpn_encap->router_addr = IP6_NONE;
+  this_evpn_encap->router_addr = IPA_NONE;
   this_evpn_encap->is_default  = false;
 }
 

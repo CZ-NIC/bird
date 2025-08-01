@@ -208,7 +208,7 @@ evpn_announce_mac(struct evpn_proto *p, const net_addr_eth *n0, rte *new)
  * (and only) encapsulation. If there were more encapsulation types, we would
  * have to choose one here.
  */
-static struct evpn_encap *
+static inline struct evpn_encap *
 evpn_get_encap(struct evpn_proto *p)
 {
   ASSERT(list_length(&p->encaps) == 1);

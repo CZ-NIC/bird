@@ -10,6 +10,8 @@
 #ifndef _BIRD_EVPN_H_
 #define _BIRD_EVPN_H_
 
+#define EVPN_VNI_NOT_SET  (u32)-1
+
 struct evpn_config {
   struct proto_config c;
 
