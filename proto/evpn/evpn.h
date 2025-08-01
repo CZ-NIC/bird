@@ -16,6 +16,8 @@
 #include "filter/data.h"
 
 
+#define EVPN_VNI_NOT_SET	((u32) -1)
+
 /* BGP Tunnel Encapsulation Attribute Tunnel Types (RFC 8365) */
 
 enum evpn_encap_type {
