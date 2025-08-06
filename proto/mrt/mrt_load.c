@@ -158,7 +158,7 @@ mrt_parse_rib_entry(struct mrtload_proto *p, FILE *fp, byte *prefix_data, uint p
   /* All AS numbers in the AS_PATH attribute MUST be encoded as 4-byte AS numbers. */
   s.as4_session = 1;
   s.allow_as_sets = 1; /* If not set to 1 and there is an as_set, bird will crash */
-  s.channel = p->channel;
+  s.channel = &p->channel->c;
 
   int peer_index = mrtload_two_octet(fp, remains);
   mrtload_four_octet(fp, remains); /* originated time - but for table load time is not relevant */
@@ -175,14 +175,11 @@ mrt_parse_rib_entry(struct mrtload_proto *p, FILE *fp, byte *prefix_data, uint p
   byte data[attr_len];
   mrtload_n_octet(fp, remains, data, attr_len);
 
-  log("afi %i != p->addr_fam %i", afi, p->addr_fam);
   if (afi != p->addr_fam)
     return;
 
   ea_list *ea = bgp_decode_attrs(&s, data, attr_len);
 
-  if ((s.ip_next_hop_len == 4 && p->addr_fam == NET_IP6) || (s.ip_next_hop_len > 4 && p->addr_fam == NET_IP4))
-    return;
   /* 
    * In order to reuse bgp functions, prefix is parsed peer_count times.
    * It is not the fastest way, but it is much safer and comfortable way.
@@ -194,15 +191,12 @@ mrt_parse_rib_entry(struct mrtload_proto *p, FILE *fp, byte *prefix_data, uint p
   a->from = s.remote_ip;
   a->eattrs = ea;
   a->pref = s.channel->preference;
-  a->dest = RTD_UNICAST; //todo?
+  a->dest = RTD_UNREACHABLE;
 
   s.desc->decode_next_hop(&s, s.ip_next_hop_data, s.ip_next_hop_len, a);
-  //log("nexthop %x", a->nh);
   bgp_finish_attrs(&s, a);
-   //    log("nh_._ %x, %x", a->nh, a->nh.iface);
 
   s.desc->decode_nlri(&s, prefix_data, prefix_data_len, a);
-    log("nh__ %x, %x", a->nh, a->nh.iface);
 
   rta_free(a);
 }
@@ -240,7 +234,6 @@ mrt_parse_rib4_unicast(struct mrtload_proto *p, FILE *fp, u64 *remains, bool add
   mrtload_n_octet(fp, remains, &(prefix[1]), pref_len);
   pref_len ++; // include the lenght od pref_len itself
   int entry_count = mrtload_two_octet(fp, remains);
-  //bug(".");
 
   for (int i = 0; i < entry_count; i++)
     mrt_parse_rib_entry(p, fp, prefix, pref_len, remains, add_path);
