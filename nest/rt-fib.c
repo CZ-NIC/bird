@@ -277,6 +277,7 @@ fib_find(struct fib *f, const net_addr *a)
   case NET_ROA6: return FIB_FIND(f, a, roa6);
   case NET_FLOW4: return FIB_FIND(f, a, flow4);
   case NET_FLOW6: return FIB_FIND(f, a, flow6);
+  case NET_RTFILTER: return FIB_FIND(f, a, rtfilter);
   case NET_IP6_SADR: return FIB_FIND(f, a, ip6_sadr);
   case NET_MPLS: return FIB_FIND(f, a, mpls);
   case NET_ASPA: return FIB_FIND(f, a, aspa);
@@ -299,6 +300,7 @@ fib_insert(struct fib *f, const net_addr *a, struct fib_node *e)
   case NET_ROA6: FIB_INSERT(f, a, e, roa6); return;
   case NET_FLOW4: FIB_INSERT(f, a, e, flow4); return;
   case NET_FLOW6: FIB_INSERT(f, a, e, flow6); return;
+  case NET_RTFILTER: FIB_INSERT(f, a, e, rtfilter); return;
   case NET_IP6_SADR: FIB_INSERT(f, a, e, ip6_sadr); return;
   case NET_MPLS: FIB_INSERT(f, a, e, mpls); return;
   case NET_ASPA: FIB_INSERT(f, a, e, aspa); return;

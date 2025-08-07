@@ -192,6 +192,7 @@ net_type_base:
  | FLOW4{ $$ = NET_FLOW4; }
  | FLOW6{ $$ = NET_FLOW6; }
  | ASPA { $$ = NET_ASPA; }
+ | RTFILTER { $$ = NET_RTFILTER; }
  ;
 
 net_type:
