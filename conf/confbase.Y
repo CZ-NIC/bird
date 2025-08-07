@@ -83,6 +83,7 @@ CF_DECLS
   u32 i32;
   u64 i64;
   vpn_rd rd;
+  vpn_rt rt;
   ip_addr a;
   ip4_addr ip4;
   ip6_addr ip6;
@@ -147,6 +148,7 @@ CF_DECLS
 %type <a> ipa
 %type <net> net_ip4_ net_ip4 net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
 %type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_ net_aspa_
+%type <net_ptr> net_rt_filter_
 %type <mls> label_stack_start label_stack
 
 %type <t> text opttext
@@ -169,6 +171,7 @@ CF_DECLS
 %expect 2
 
 CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS, FROM, MAX, AS)
+CF_KEYWORDS(RT_FILTER)
 
 CF_GRAMMAR
 
@@ -372,6 +375,17 @@ net_aspa_: ASPA expr
   net_fill_aspa($$, $2);
 }
 
+net_rt_filter_ : RT_FILTER NUM VPN_RD '/' NUM
+{
+  struct vpn_rt rt = {
+    .hi = $3.hi,
+    .lo = $3.lo,
+  };
+
+  $$ = cfg_alloc(sizeof(net_addr_rt_filter));
+  net_fill_rt_filter($$, $2, rt, $5);
+}
+
 net_ip_: net_ip4_ | net_ip6_ ;
 net_vpn_: net_vpn4_ | net_vpn6_ ;
 net_roa_: net_roa4_ | net_roa6_ ;
@@ -381,6 +395,7 @@ net_:
  | net_vpn_
  | net_roa_
  | net_flow_
+ | net_rt_filter_
  | net_ip6_sadr_
  | net_mpls_
  | net_aspa_
