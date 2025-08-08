@@ -149,7 +149,7 @@ mrtload_create_ctx(struct mrtload_proto *p, int addr_fam, int local_as, int peer
 */
 
 void
-mrt_parse_rib_entry(struct mrtload_proto *p, FILE *fp, byte *prefix_data, uint prefix_data_len, u64 *remains, bool add_path)
+mrt_parse_rib_entry(struct mrtload_proto *p, FILE *fp, byte *prefix_data, uint prefix_data_len, u64 *remains, bool add_path, u32 afi)
 {
   struct bgp_parse_state s;
   memset(&s, 0, sizeof(struct bgp_parse_state));
@@ -165,11 +165,16 @@ mrt_parse_rib_entry(struct mrtload_proto *p, FILE *fp, byte *prefix_data, uint p
   ASSERT_DIE(peer_index <= p->table_peers_count);
   struct mrtload_peer_entry *peer = &p->table_peers[peer_index];
   s.proto_attrs = &peer->route_attrs->ctx;
-  u32 afi = peer->afi;
-  u64 path_id;
+ 
+  if (afi != 0)
+  {
+    if (afi != peer->afi)
+      return;
+  } else
+    afi = peer->afi;
 
   if (add_path)
-    path_id = mrtload_four_octet(fp, remains);
+    s.add_path = mrtload_four_octet(fp, remains);
 
   u64 attr_len = mrtload_two_octet(fp, remains);
   byte data[attr_len];
@@ -201,13 +206,38 @@ mrt_parse_rib_entry(struct mrtload_proto *p, FILE *fp, byte *prefix_data, uint p
   rta_free(a);
 }
 
+/*
+
+        0                   1                   2                   3
+        0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |                         Sequence Number                       |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |    Address Family Identifier  |Subsequent AFI |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |     Network Layer Reachability Information (variable)         |
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+       |         Entry Count           |  RIB Entries (variable)
+       +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+                    Figure 9: RIB_GENERIC Entry Header
+*/
+
 void
-mrt_parse_rib_generic(FILE *fp, u64 *remains)
+mrt_parse_rib_generic(struct mrtload_proto *p, FILE *fp, u64 *remains, bool add_path)
 {
-  u64 seq_num = mrtload_four_octet(fp, remains);
-  int addr_fam_id = mrtload_two_octet(fp, remains);
-  int subs_afi = mrtload_one(fp, remains);
-  //TODO length of Network layer reachebility
+  mrtload_four_octet(fp, remains); /* sequence number */
+  int afi = mrtload_two_octet(fp, remains);
+  mrtload_one(fp, remains); /* safi */
+
+  u8 nlri_len = mrtload_one(fp, remains);
+  nlri_len = (nlri_len + 7)/8;
+  byte prefix[nlri_len];
+  mrtload_n_octet(fp, remains, prefix, nlri_len);
+  u16 entry_count = mrtload_two_octet(fp, remains);
+
+  for (int i = 0; i < entry_count; i++)
+    mrt_parse_rib_entry(p, fp, prefix, nlri_len, remains, add_path, afi);
 }
 
 /*
@@ -226,17 +256,17 @@ mrt_parse_rib_generic(FILE *fp, u64 *remains)
 void
 mrt_parse_rib4_unicast(struct mrtload_proto *p, FILE *fp, u64 *remains, bool add_path)
 {
-  u64 seq_num = mrtload_four_octet(fp, remains);
+  mrtload_four_octet(fp, remains); /* sequence number */
   u8 pref_len = mrtload_one(fp, remains);
   byte prefix[(pref_len + 7)/8 +1];
   prefix[0] = pref_len;
   pref_len = (pref_len + 7)/8;
   mrtload_n_octet(fp, remains, &(prefix[1]), pref_len);
-  pref_len ++; // include the lenght od pref_len itself
+  pref_len ++; /* include the lenght od pref_len itself */
   int entry_count = mrtload_two_octet(fp, remains);
 
   for (int i = 0; i < entry_count; i++)
-    mrt_parse_rib_entry(p, fp, prefix, pref_len, remains, add_path);
+    mrt_parse_rib_entry(p, fp, prefix, pref_len, remains, add_path, 0);
 }
 
 /*
@@ -267,8 +297,8 @@ mrt_parse_peer(struct mrtload_proto *p, FILE *fp, u64 *remains, struct mrtload_p
     peer->peer_as = mrtload_four_octet(fp,remains);
   else
     peer->peer_as = mrtload_two_octet(fp, remains);
+
   peer->route_attrs = mrtload_create_ctx(p, p->addr_fam, p->local_as, peer->peer_as, p->local_ip, peer->peer_ip, p->is_internal);
-  //log("peer %x peer type %i, bgp id %li addr %I as %li", peer, peer_type, peer->peer_id, peer->peer_ip, peer->peer_as);
 }
 
 
@@ -289,7 +319,7 @@ mrt_parse_peer(struct mrtload_proto *p, FILE *fp, u64 *remains, struct mrtload_p
 void
 mrt_parse_peer_index_table(struct mrtload_proto *p, FILE *fp, u64 *remains)
 {
-  u64 collector = mrtload_four_octet(fp, remains);
+  mrtload_four_octet(fp, remains); /* Collector BGP ID, in mrt.c config->router_id */
   int name_len = mrtload_two_octet(fp, remains);
   char name[name_len + 1];
   name[name_len] = 0;
@@ -342,16 +372,14 @@ mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4, bool insert_hash, struct
   }
 
   int is_internal = (peer_as == local_as);
-  int interface_id = mrtload_two_octet(fp, remains);
+  mrtload_two_octet(fp, remains); /* Interface index. It might be usefull,
+      but "is OPTIONAL and MAY be zero" */
   int addr_fam = mrtload_two_octet(fp, remains);
 
   mrtload_ip(fp, remains, &remote_ip, addr_fam == 2);
   mrtload_ip(fp, remains, &local_ip, addr_fam == 2);
 
-  //log("remote_ip %I, local_ip %I", remote_ip, local_ip);
-  //log("as; %x %x",peer_as, local_as );
   struct mrtload_route_ctx *route_attrs = HASH_FIND(p->ctx_hash, MRTLOAD_CTX, peer_as, local_as, remote_ip, local_ip);
-  //log("log found? %x", route_attrs);
 
   if (!route_attrs && insert_hash)
   {
@@ -366,11 +394,10 @@ void
 mrt_parse_bgp4mp_change_state(struct mrtload_proto *p, FILE *fp, u64 *remains, bool as4)
 {
   struct mrtload_route_ctx *ra = mrt_parse_bgp_message(fp, remains, as4, false, p);
-  int old_state = mrtload_two_octet(fp, remains);
+  mrtload_two_octet(fp, remains); /* old state */
   int new_state = mrtload_two_octet(fp, remains);
-  //log("old state %i new state %i", old_state, new_state);
 
-  if (new_state == 1 && ra && ra->addr_fam == (int)(p->channel->afi >> 16)) // state 1 - Idle (rfc 1771)
+  if (new_state == 1 && ra && ra->addr_fam == (int)(p->channel->afi >> 16)) /* state 1 - Idle (rfc 1771) */
   {
     FIB_WALK(&p->channel->c.table->fib, net, n)
     {
@@ -465,7 +492,6 @@ mrt_parse_general_header(FILE *fp, struct mrtload_proto *p)
   u64 remains = length;
 
   /* We do not load MRT_TABLE_DUMP_V2 type and MRT_BGP4MP_STATE_CHANGE_AS4. */
-  //log("type %i subtype %i, timestamp %li", type, subtype, timestamp);
   if (type == MRT_BGP4MP)
   {
     switch (subtype)
@@ -509,8 +535,10 @@ mrt_parse_general_header(FILE *fp, struct mrtload_proto *p)
         mrt_parse_rib4_unicast(p, fp, &remains, true);
         break;
       case (MRT_RIB_GENERIC):
+        mrt_parse_rib_generic(p, fp, &remains, false);
+        break;
       case (MRT_RIB_GENERIC_ADDPATH):
-        mrt_parse_rib_generic(fp, &remains);
+        mrt_parse_rib_generic(p, fp, &remains, true);
         break;
       default:
         log(L_WARN "mrtload: unknown mrt table dump subtype %i", subtype);
@@ -537,7 +565,7 @@ mrtload_hook(timer *tm)
   while (loaded < 1<<14)
   {
     loaded += mrt_parse_general_header(p->parsed_file, p);
-    stamp = mrt_parse_timestamp(p->parsed_file);
+    stamp = mrt_parse_timestamp(p->parsed_file); /* timestamp from next header */
  
     if (stamp == 0)
       return;
@@ -556,14 +584,13 @@ mrtload_hook_replay(timer *tm)
   while (time == p->next_time && loaded < 1<<14)
   {
     loaded += mrt_parse_general_header(p->parsed_file, p);
-    time = mrt_parse_timestamp(p->parsed_file);
+    time = mrt_parse_timestamp(p->parsed_file); /* timestamp from next header */
   }
 
-  // mrt time is in seconds, bird count in microseconds
+  /* mrt time is in seconds, bird count in microseconds */
   s64 shift_from_start = ((time - p->zero_time) * 1000000) / p->time_replay;
   s64 wait_time = shift_from_start + p->start_time - current_time();
   p->next_time = time;
-  //log("next time is %li wait %li shift %li", p->next_time, wait_time, shift_from_start);
 
   tm_start(p->load_timer, wait_time);
 }
@@ -708,7 +735,6 @@ mrtload_shutdown(struct proto *P)
 static int
 mrtload_reconfigure(struct proto *P, struct proto_config *CF)
 {
-  //TODO where do we want reload mrt ?
   P->cf = CF;
   struct mrtload_proto *p = (void *) P;
   mrtload(p);
