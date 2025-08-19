@@ -276,6 +276,16 @@ docker-debian-12-i386:
     IMG_NAME: "debian-12-i386"
   <<: *docker-build
 
+docker-debian-13-amd64:
+  variables:
+    IMG_NAME: "debian-13-amd64"
+  <<: *docker-build
+
+docker-debian-13-i386:
+  variables:
+    IMG_NAME: "debian-13-i386"
+  <<: *docker-build
+
 docker-debian-testing-amd64:
   variables:
     IMG_NAME: "debian-testing-amd64"
@@ -560,6 +570,20 @@ build-debian-12-i386:
     - job: docker-debian-12-i386
       optional: true
   image: registry.nic.cz/labs/bird:debian-12-i386
+
+build-debian-13-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-13-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+
+build-debian-13-i386:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-13-i386
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-13-i386
 
 build-debian-testing-amd64:
   <<: *build-docker-linux-amd64
@@ -920,6 +944,22 @@ pkg-debian-12-i386:
     - job: build-release
   image: registry.nic.cz/labs/bird:debian-12-i386
 
+pkg-debian-13-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: build-debian-13-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+
+pkg-debian-13-i386:
+  <<: *pkg-deb
+  needs:
+    - job: build-debian-13-i386
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-13-i386
+
 pkg-debian-testing-amd64:
   <<: *pkg-deb
   needs:
@@ -1169,6 +1209,18 @@ install-debian-12-i386:
   needs:
     - job: pkg-debian-12-i386
   image: registry.nic.cz/labs/bird:debian-12-i386
+
+install-debian-13-amd64:
+  <<: *install-deb
+  needs:
+    - job: pkg-debian-13-amd64
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+
+install-debian-13-i386:
+  <<: *install-deb
+  needs:
+    - job: pkg-debian-13-i386
+  image: registry.nic.cz/labs/bird:debian-13-i386
 
 install-debian-testing-amd64:
   <<: *install-deb
