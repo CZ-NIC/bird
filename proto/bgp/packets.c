@@ -2222,6 +2222,105 @@ bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
   }
 }
 
+static uint
+bgp_encode_nlri_rtfilter(struct bgp_write_state *s, struct bgp_bucket *bucket, byte *buf, uint size)
+{
+  byte *pos = buf;
+
+  while (!EMPTY_LIST(bucket->prefixes) && (size >= BGP_NLRI_MAX))
+  {
+    struct bgp_prefix *px = HEAD(bucket->prefixes);
+    struct net_addr_rtfilter *net = (void *) px->net;
+
+    /* Encode path ID */
+    if (s->add_path)
+    {
+      put_u32(pos, px->path_id);
+      ADVANCE(pos, size, 4);
+    }
+
+    /* Encode prefix length */
+    if (net->pxlen == 0)
+    {
+      *pos = net->pxlen;
+      ADVANCE(pos, size, 1);
+    }
+    else if ((net->pxlen > 0) && (net->pxlen <= 64))
+    {
+      /* Encode prefix length */
+      *pos = net->pxlen + 32;
+      ADVANCE(pos, size, 1);
+
+      /* Encode ASN */
+      put_u32(pos, net->asn);
+      ADVANCE(pos, size, 4);
+
+      /* Encode route target */
+      uint b = (net->pxlen + 7) / 8;
+      put_rt(pos, net->rt);
+      ADVANCE(pos, size, b);
+    }
+
+    if (!s->sham)
+      bgp_free_prefix(s->channel, px);
+    else
+      rem_node(&px->buck_node);
+  }
+
+  return pos - buf;
+}
+
+static void
+bgp_decode_nlri_rtfilter(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
+{
+  while (len)
+  {
+    net_addr_rtfilter net;
+    u32 path_id = 0;
+
+    /* Decode path ID */
+    if (s->add_path)
+    {
+      if (len < 5)
+	bgp_parse_error(s, 1);
+
+      path_id = get_u32(pos);
+      ADVANCE(pos, len, 4);
+    }
+
+    /* Decode prefix length */
+    uint l = *pos;
+    ADVANCE(pos, len, 1);
+
+    if (len < ((l + 7) / 8))
+      bgp_parse_error(s, 1);
+
+    if (l == 0)
+      net = NET_ADDR_RTFILTER(0, (struct vpn_rt) { 0 }, l);
+    else if ((l >= 32) && (l <= 96))
+    {
+      /* Decode ASN */
+      u32 asn = get_u32(pos);
+      ADVANCE(pos, len, 4);
+
+      uint length = l - 32;
+
+      /* Decode route target */
+      u8 buf[8] = { 0 };
+      uint b = (length + 7) / 8;
+      memcpy(buf, pos, b);
+      ADVANCE(pos, len, b);
+
+      struct vpn_rt rt = get_rt(buf);
+
+      net = NET_ADDR_RTFILTER(asn, rt, length);
+    }
+    else
+      bgp_parse_error(s, 10);
+
+    bgp_rte_update(s, (net_addr *) &net, path_id, a);
+  }
+}
 
 static const struct bgp_af_desc bgp_af_table[] = {
   {
@@ -2346,6 +2445,17 @@ static const struct bgp_af_desc bgp_af_table[] = {
     .name = "flow6",
     .encode_nlri = bgp_encode_nlri_flow6,
     .decode_nlri = bgp_decode_nlri_flow6,
+    .encode_next_hop = bgp_encode_next_hop_none,
+    .decode_next_hop = bgp_decode_next_hop_none,
+    .update_next_hop = bgp_update_next_hop_none,
+  },
+  {
+    .afi = BGP_AF_RTFILTER,
+    .net = NET_RTFILTER,
+    .no_igp = 1,
+    .name = "rt-filter",
+    .encode_nlri = bgp_encode_nlri_rtfilter,
+    .decode_nlri = bgp_decode_nlri_rtfilter,
     .encode_next_hop = bgp_encode_next_hop_none,
     .decode_next_hop = bgp_decode_next_hop_none,
     .update_next_hop = bgp_update_next_hop_none,
