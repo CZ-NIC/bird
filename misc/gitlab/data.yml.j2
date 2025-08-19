@@ -40,7 +40,7 @@ distros:
     type: pkg-deb-legacy
 
   # Debian regular builds
-  {% for num in (10, 11, 12, 'testing') -%}
+  {% for num in (10, 11, 12, 13, 'testing') -%}
   {% for arch in ('amd64', 'i386') -%}
   - name: debian-{{num}}-{{arch}}
     type: pkg-deb
