@@ -1,0 +1,29 @@
+# bump number for image rebuild: 3
+FROM amd64/debian:trixie-slim
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get -y update
+RUN apt-get -y upgrade
+RUN apt-get -y --no-install-recommends install \
+	build-essential \
+	flex \
+	bison \
+	autoconf \
+	ncurses-dev \
+	libreadline-dev \
+	libssh-dev \
+	linuxdoc-tools-latex \
+	texlive-latex-extra \
+	opensp \
+	docbook-xsl \
+	xsltproc \
+	adduser
+RUN apt-get -y --no-install-recommends install \
+	git \
+	dpkg-dev \
+	debhelper \
+	apt-utils \
+	quilt \
+	python3 \
+	python3-pip \
+	python3-setuptools \
+	python3-venv
