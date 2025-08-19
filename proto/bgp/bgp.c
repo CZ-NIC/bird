@@ -762,6 +762,7 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
       pxlen = net_pxlen(p->cf->remote_range);
     }
 
+    /* Set/reset the MD5 password at all listening sockets */
     int rv = 0;
     struct bgp_listen_request *blr; node *nxt;
     WALK_LIST2(blr, nxt, p->listen, pn)
@@ -771,10 +772,41 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
 	  enable ? p->cf->password : NULL, p->cf->setkey);
 
       if (rv < 0)
+      {
 	sk_log_error(blr->sock->sk, p->p.name);
-    }
 
-    return rv;
+	/* When disabling, just continue, there is nothing to salvage */
+	if (!enable)
+	  continue;
+
+	/* Trying to rewind from the listening sockets */
+	struct bgp_listen_request *failed = blr;
+	bool emsg = false;
+	WALK_LIST2(blr, nxt, p->listen, pn)
+	{
+	  if (blr == failed)
+	    break;
+
+	  int rrv = sk_set_md5_auth(blr->sock->sk,
+	      p->cf->local_ip, prefix, pxlen, p->cf->iface,
+	      NULL, p->cf->setkey);
+
+	  if (rrv < 0)
+	  {
+	    if (!emsg)
+	    {
+	      log(L_ERR "%s: Trying to rewind MD5 auth failed as well.");
+	      emsg = true;
+	    }
+
+	    sk_log_error(blr->sock->sk, p->p.name);
+	  }
+	}
+
+	/* One socket failed while enabling, the whole protocol failed. */
+	return rv;
+      }
+    }
   }
 
   return 0;
@@ -2232,6 +2264,9 @@ bgp_start(struct proto *P)
   p->remote_id = 0;
   p->link_addr = IPA_NONE;
 
+  /* Initialize listening socket list */
+  init_list(&p->listen);
+
   /* Initialize TCP-AO keys */
   init_list(&p->ao.keys);
   if (cf->auth_type == BGP_AUTH_AO)
@@ -2405,8 +2440,6 @@ bgp_init(struct proto_config *CF)
 
   /* Add MPLS channel */
   proto_configure_channel(P, &P->mpls_channel, proto_cf_mpls_channel(CF));
-
-  init_list(&p->listen);
 
   return P;
 }
