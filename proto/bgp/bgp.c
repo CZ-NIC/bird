@@ -1760,23 +1760,48 @@ bgp_find_proto(sock *sk)
   struct bgp_proto *best = NULL;
   struct bgp_proto *p;
 
-  /* sk->iface is valid only if src or dst address is link-local */
-  int link = ipa_is_link_local(sk->saddr) || ipa_is_link_local(sk->daddr);
+  /* sk->iface is valid only if src or dst address is link-local or if strict bind on interface is set */
+  bool link = ipa_is_link_local(sk->saddr) || ipa_is_link_local(sk->daddr);
 
   WALK_LIST(p, proto_list)
-    if ((p->p.proto == &proto_bgp) &&
-	(ipa_equal(p->remote_ip, sk->daddr) || bgp_is_dynamic(p)) &&
-	(!p->cf->remote_range || ipa_in_netX(sk->daddr, p->cf->remote_range)) &&
-	(p->p.vrf == sk->vrf) &&
-	(p->cf->local_port == sk->sport) &&
-	(!link || (p->cf->iface == sk->iface) || p->cf->ipatt && sk->iface && iface_patt_match(p->cf->ipatt, sk->iface, NULL)) &&
-	(ipa_zero(p->cf->local_ip) || ipa_equal(p->cf->local_ip, sk->saddr)))
-    {
-      best = p;
+  {
+    /* Not a BGP */
+    if (p->p.proto != &proto_bgp)
+      continue;
 
-      if (!bgp_is_dynamic(p))
-	break;
-    }
+    /* Remote address configured but not the right one */
+    if (!ipa_equal(p->remote_ip, sk->daddr) && !bgp_is_dynamic(p))
+      continue;
+
+    /* Remote range configured but the remote address is not in it */
+    if (p->cf->remote_range && !ipa_in_netX(sk->daddr, p->cf->remote_range))
+      continue;
+
+    /* Not the right VRF */
+    if (p->p.vrf != sk->vrf)
+      continue;
+
+    /* Not the right local port */
+    if (p->cf->local_port != sk->sport)
+      continue;
+
+    /* Local address set but not matching */
+    if (!ipa_zero(p->cf->local_ip) && !ipa_equal(p->cf->local_ip, sk->saddr))
+      continue;
+
+    /* The interface set but not matching */
+    if ((link || p->cf->strict_bind) && p->cf->iface && (p->cf->iface != sk->iface))
+      continue;
+
+    /* Interface pattern configured and not matching */
+    if ((link || p->cf->strict_bind) && p->cf->ipatt && !iface_patt_match(p->cf->ipatt, sk->iface, NULL))
+      continue;
+
+    best = p;
+
+    if (!bgp_is_dynamic(p))
+      break;
+  }
 
   return best;
 }
