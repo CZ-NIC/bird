@@ -15,7 +15,8 @@ RUN apt-get -y --no-install-recommends install \
 	texlive-latex-extra \
 	opensp \
 	docbook-xsl \
-	xsltproc
+	xsltproc \
+	adduser
 RUN apt-get -y --no-install-recommends install \
 	git \
 	dpkg-dev \
