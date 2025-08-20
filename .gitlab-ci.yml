@@ -1015,30 +1015,46 @@ pkg-ubuntu-24.10-amd64:
   <<: *test-job
   stage: install
   script:
-    # check that bird is _not_ installed now
+    # check that bird is _not_ installed now and no user or group bird exists
     - |
       if bird --version >/dev/null 2>&1; then
-        echo "Error: bird unexpectedly installed"
+        echo "Error: BIRD unexpectedly installed"
+        exit 1
+      fi
+      if id -g bird >/dev/null 2>&1; then
+        echo "Error: User group 'bird' unexpectedly exist before installation"
+        exit 1
+      fi
+      if id -u bird >/dev/null 2>&1; then
+        echo "Error: User 'bird' unexpectedly exist before installation"
         exit 1
       fi
     # install packages
     - find pkg/pkgs/ -type f -name '*.deb' '(' -ls -exec dpkg -i '{}' ';' ')'
-    # test that install is correct
+    # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
 
 .install-rpm: &install-rpm
   <<: *test-job
   stage: install
   script:
-    # check that bird is _not_ installed now
+    # check that bird is _not_ installed now and no user or group bird exists
     - |
       if bird --version >/dev/null 2>&1; then
-        echo "Error: bird unexpectedly installed"
+        echo "Error: BIRD unexpectedly installed"
+        exit 1
+      fi
+      if id -g bird >/dev/null 2>&1; then
+        echo "Error: User group 'bird' exist before installation"
+        exit 1
+      fi
+      if id -u bird >/dev/null 2>&1; then
+        echo "Error: User 'bird' exist before installation"
         exit 1
       fi
     # install packages
     - find pkg/pkgs/ -type f -name '*.rpm' '(' -ls -exec rpm -i '{}' ';' ')'
-    # test that install is correct
+    # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
 
 
