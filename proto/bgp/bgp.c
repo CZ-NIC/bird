@@ -163,7 +163,8 @@ bgp_open(struct bgp_proto *p)
    * interface notifier. By default, listen to nothing.
    *
    * Also dynamically spawned protocol do not need a listening socket,
-   * they already have their parent's one. */
+   * they already have their parent's one and the requests are actually
+   * ignored when looking for the accepting protocol. */
   if (p->cf->ipatt || p->cf->c.parent)
     return 0;
 
@@ -352,6 +353,11 @@ bgp_sk_add_ao_key(struct bgp_proto *p, sock *sk, struct bgp_ao_key *key, const c
 }
 
 static int
+bgp_sk_delete_ao_key(struct bgp_proto *p, sock *sk, struct bgp_ao_key *key,
+		     struct bgp_ao_key *backup, int current_key_id, int rnext_key_id,
+		     const char *kind);
+
+static int
 bgp_enable_ao_key(struct bgp_proto *p, struct bgp_ao_key *key)
 {
   ASSERT(!key->active);
@@ -359,27 +365,45 @@ bgp_enable_ao_key(struct bgp_proto *p, struct bgp_ao_key *key)
   BGP_TRACE(D_EVENTS, "Adding TCP-AO key %d/%d", key->key.send_id, key->key.recv_id);
 
   /* Handle listening sockets */
-  struct bgp_listen_request *blr; node *nxt;
+  struct bgp_listen_request *blr, *failed = NULL; node *nxt;
   WALK_LIST2(blr, nxt, p->listen, pn)
     if (bgp_sk_add_ao_key(p, blr->sock->sk, key, "listening") < 0)
     {
-      key->failed = 1;
-      return -1;
+      failed = blr;
+      goto failA;
     }
-
-  key->active = 1;
 
   /* Handle incoming socket */
   if (p->incoming_conn.sk)
     if (bgp_sk_add_ao_key(p, p->incoming_conn.sk, key, "session (in)") < 0)
-      return -1;
+      goto failA;
 
   /* Handle outgoing socket */
   if (p->outgoing_conn.sk)
     if (bgp_sk_add_ao_key(p, p->outgoing_conn.sk, key, "session (out)") < 0)
-      return -1;
+      goto failB;
 
+  key->active = 1;
   return 0;
+
+failB:
+  /* Cleanup incoming socket */
+  if (p->incoming_conn.sk)
+    bgp_sk_delete_ao_key(p, p->incoming_conn.sk, key, NULL, -1, -1, "session (in)");
+
+failA:
+  /* Cleanup listening sockets */
+  WALK_LIST2(blr, nxt, p->listen, pn)
+  {
+    if (blr == failed)
+      break;
+
+    bgp_sk_delete_ao_key(p, blr->sock->sk, key, NULL, -1, -1, "listening");
+  }
+
+  /* Mark as failed */
+  key->failed = 1;
+  return -1;
 }
 
 struct bgp_active_keys {
@@ -432,25 +456,28 @@ bgp_disable_ao_key(struct bgp_proto *p, struct bgp_ao_key *key, struct bgp_activ
 
   BGP_TRACE(D_EVENTS, "Deleting TCP-AO key %d/%d", key->key.send_id, key->key.recv_id);
 
+  /* Try to disable everywhere even if first fails */
+  int rv = 0;
+
   /* Handle listening socket */
   struct bgp_listen_request *blr; node *nxt;
   WALK_LIST2(blr, nxt, p->listen, pn)
     if (bgp_sk_delete_ao_key(p, blr->sock->sk, key, NULL, -1, -1, "listening") < 0)
-      return -1;
+      rv = -1;
 
   key->active = 0;
 
   /* Handle incoming socket */
   if (p->incoming_conn.sk && info)
     if (bgp_sk_delete_ao_key(p, p->incoming_conn.sk, key, info->backup, info->in_current, info->in_rnext, "session (in)") < 0)
-      return -1;
+      rv = -1;
 
   /* Handle outgoing socket */
   if (p->outgoing_conn.sk && info)
     if (bgp_sk_delete_ao_key(p, p->outgoing_conn.sk, key, info->backup, info->out_current, info->out_rnext, "session (out)") < 0)
-      return -1;
+      rv = -1;
 
-  return 0;
+  return rv;
 }
 
 static int
@@ -558,8 +585,7 @@ bgp_enable_ao_keys(struct bgp_proto *p)
   ASSERT(!p->incoming_conn.sk && !p->outgoing_conn.sk);
 
   WALK_LIST_(struct bgp_ao_key, key, p->ao.keys)
-    if (bgp_enable_ao_key(p, key) < 0)
-      goto fail;
+    bgp_enable_ao_key(p, key);
 
   p->ao.best_key = bgp_select_best_ao_key(p);
 
@@ -679,7 +705,7 @@ bgp_reconfigure_ao_keys(struct bgp_proto *p, const struct bgp_config *cf)
     WALK_LIST_DELSAFE(key, key2, old_keys)
       bgp_remove_ao_key(p, key, &info);
 
-    /* If some key removals failed */
+    /* If some key removals failed, restart */
     if (!EMPTY_LIST(old_keys))
       return 0;
   }
@@ -687,8 +713,7 @@ bgp_reconfigure_ao_keys(struct bgp_proto *p, const struct bgp_config *cf)
   /* Enable new keys */
   WALK_LIST_(struct bgp_ao_key, key, p->ao.keys)
     if (!key->active && !key->failed)
-      if (bgp_enable_ao_key(p, key) < 0)
-	return 0;
+      bgp_enable_ao_key(p, key);
 
   /* Update RNext key */
   if (bgp_update_rnext_ao_key(p) < 0)
