@@ -3059,7 +3059,14 @@ protocol bgp [<name>] {
 	instances are spawned for incoming BGP connections (if source address
 	matches the network prefix). It is possible to mix regular BGP instances
 	with dynamic BGP instances and have multiple dynamic BGP instances with
-	different ranges.
+        different ranges. These spawned dynamic BGP instances share the parent
+        configuration, therefore by reconfiguring the parent protocol forces
+        reconfiguration of the spawned protocols.
+
+        When the neighbor range is changed, all the spawned dynamic instances
+        shut down. Reconfiguration clears all dynamic instances which were
+        previously disabled by the <cf/disable/ CLI command. This may re-enable
+	connection of some clients otherwise blocked by the disabled instance.
 
 	<tag><label id="bgp-iface">interface "<m/text/"</tag>
 	Define interface we should use for link-local BGP IPv6 sessions.
@@ -3996,6 +4003,7 @@ direction (re-export of routes to the BGP neighbor):
 	<item><cf/require hostname/
 	<item><cf/require graceful restart/
 	<item><cf/require long lived graceful restart/
+	<item><cf/interface range/ if the already existing option is updated to another value.
 </itemize>
 
 <p>Channel options that cause a restart when changed:
@@ -4022,6 +4030,10 @@ incompatible with the current protocol state):
 	<item><cf/min long lived stale time/
 	<item><cf/max long lived stale time/
 </itemize>
+
+<p>All these configuration changes apply also to the spawned dynamic BGP sessions
+and therefore reconfiguring the parent protocol may lead to shutdown of some or all
+of the dynamic BGP sessions.
 
 <sect1>Attributes
 <label id="bgp-attr">

@@ -76,11 +76,12 @@ struct bgp_af_desc {
 
 struct bgp_config {
   struct proto_config c;
+  /* Beginning here, all options must be comparable by memcmp().
+   * Do not add anything above unless you want this comment to become futile. */
   u32 local_as, remote_as;
   ip_addr local_ip;			/* Source address to use */
   ip_addr remote_ip;
   struct iface *iface;			/* Interface for link-local addresses */
-  struct iface_patt *ipatt;		/* Interface pattern for dynamic strict bind */
   u16 local_port;			/* Local listening port */
   u16 remote_port; 			/* Neighbor destination port */
   int peer_type;			/* Internal or external BGP (BGP_PT_*, optional) */
@@ -147,6 +148,7 @@ struct bgp_config {
   const char *password;			/* Password used for MD5 authentication */
   struct ao_config *ao_keys;		/* Keys for TCP-AO authentication */
   net_addr *remote_range;		/* Allowed neighbor range for dynamic BGP */
+  struct iface_patt *ipatt;		/* Interface patterns for dynamic strict bind */
   const char *dynamic_name;		/* Name pattern for dynamic BGP */
   int dynamic_name_digits;		/* Minimum number of digits for dynamic names */
   int check_link;			/* Use iface link state for liveness detection */

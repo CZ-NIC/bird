@@ -168,7 +168,7 @@ bgp_proto:
      BGP_CFG->remote_range = n;
    }
  | bgp_proto INTERFACE text ';' { BGP_CFG->iface = if_get_by_name($3); }
- | bgp_proto INTERFACE RANGE iface_patt ';' { BGP_CFG->ipatt = this_ipatt; }
+ | bgp_proto INTERFACE RANGE iface_patt ';' { BGP_CFG->ipatt =  this_ipatt; }
  | bgp_proto ONLINK bool ';' { BGP_CFG->onlink = $3; }
  | bgp_proto RR CLUSTER ID idval ';' { BGP_CFG->rr_cluster_id = $5; }
  | bgp_proto RR CLIENT bool ';' { BGP_CFG->rr_client = $4; }

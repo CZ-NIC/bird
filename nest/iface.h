@@ -178,6 +178,7 @@ struct iface_patt {
 
 int iface_patt_match(struct iface_patt *ifp, struct iface *i, struct ifa *a);
 struct iface_patt *iface_patt_find(list *l, struct iface *i, struct ifa *a);
+int iface_plists_equal(struct iface_patt *pa, struct iface_patt *pb);
 int iface_patts_equal(list *, list *, int (*)(struct iface_patt *, struct iface_patt *));
 
 

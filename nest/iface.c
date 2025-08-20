@@ -771,7 +771,7 @@ iface_patt_find(list *l, struct iface *i, struct ifa *a)
   return NULL;
 }
 
-static int
+int
 iface_plists_equal(struct iface_patt *pa, struct iface_patt *pb)
 {
   struct iface_patt_node *x, *y;
