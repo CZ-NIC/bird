@@ -1,3 +1,12 @@
+/*
+ *	BIRD -- Multi-Threaded Routing Toolkit (MRT) Route Loader
+ *
+ *	(c) 2025       Katerina Kubecova <katerina.kubecova@nic.cz>
+ *	(c) 2025       CZ.NIC z.s.p.o.
+ *
+ *	Can be freely distributed and used under the terms of the GNU GPL.
+ */
+
 #ifndef _BIRD_MRT_LOAD_H_
 #define _BIRD_MRT_LOAD_H_
 
