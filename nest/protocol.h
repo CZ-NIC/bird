@@ -625,8 +625,6 @@ struct channel {
   struct bmap imported_map;		/* Which nets were touched by our import */
   struct bmap export_accepted_map;	/* Keeps track which routes were really exported */
   struct bmap export_rejected_map;	/* Keeps track which routes were rejected by export filter */
-  event export_consistency_event;	/* Clears the export_log and checks the consistency
-					   of export_rejected_map and export_accepted_map */
   struct channel_export_log *export_log;/* Keeps track what happened since last export_consistency_event */
 
   struct limit rx_limit;		/* Receive limit (for in_keep & RIK_REJECTED) */

@@ -1097,6 +1097,69 @@ channel_rte_assert_dump(struct channel *c)
   }
 }
 
+static inline bool
+channel_check_export_consistency(struct channel *c)
+{
+  bool seen = 0;
+  if (!c->export_log || c->export_log->block_id < 20)
+    return 0;
+
+  struct rt_export_feeder cref = {
+    .name = tmp_sprintf("%s-consistency", c->out_req.name),
+    .trace_routes = c->out_req.trace_routes,
+  };
+
+  struct rt_exporter *rex = atomic_load_explicit(&c->out_req.feeder.exporter, memory_order_relaxed);
+  rt_feeder_subscribe(rex, &cref);
+
+  struct bmap seen, unseen;
+  bmap_init(&seen, c->proto->pool, 8);
+  bmap_init(&unseen, c->proto->pool, 8);
+
+  u32 failed_id = 0;
+
+  RT_FEED_WALK(&c->export_consistency_feeder, f)
+  {
+    for (uint i=0; i<f->count_routes; i++)
+    {
+      bool found =
+	bmap_test(&c->export_accepted_map, &f->block[i].id) ||
+	bmap_test(&c->export_rejected_map, &f->block[i].id);
+
+      if (found)
+	if (!bmap_test(&unseen, f->block[i].id) && !bmap_test(&seen, f->block[i].id))
+	{
+	  bmap_set(&seen, f->block[i].id);
+	  continue;
+	}
+	  goto fail;
+	else
+      else
+	if (bmap_test(&seen, f->block[i].id))
+	  goto fail;
+	else
+	  bmap_set(&unseen, f->block[i].id);
+    }
+  }
+
+  for (uint max = MAX(
+	MAX(bmap_max(&seen), bmap_max(&unseen)), 
+	MAX(bmap_max(&c->export_accepted_map), bmap_max(&c->export_rejected_map))
+	), i = 0; i < max; i++)
+    if (bmap_test(&c->export_accepted_map, &f->block[i].id
+
+cleanup:
+  bmap_free(&seen);
+  bmap_free(&unseen);
+  rt_feeder_unsubscribe(rex, &cref);
+  return 0;
+
+fail:
+  channel_rte_assert_dump(c);
+  bug("%s: Consistency check failed, duplicate route id %d in table",
+      c->out_req.name, f->block[i].id);
+}
+
 static inline void
 channel_rte_assert_rejected(struct channel *c, const rte *e, bool expected)
 {
