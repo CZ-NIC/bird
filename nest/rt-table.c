@@ -1063,7 +1063,17 @@ rte_feed_obtain_copy(struct rtable_reading *tr, net *n, rte *feed, uint count)
     RT_READ_RETRY(tr);
 }
 
-static rte *
+/**
+ * export_filter - evaluate export filters
+ * @c: related channel
+ * @rt: route to evaluate; mutable, may be modified by the filters (!)
+ * @silent: no logging, reuse old results
+ *
+ * Evaluate the filters on the export, including the preexport hook
+ * of the exporting protocol. Returns the result of the filter, i.e.
+ * true if accept, false if reject.
+ */
+static bool
 export_filter(struct channel *c, rte *rt, int silent)
 {
   struct proto *p = c->proto;
@@ -1072,54 +1082,64 @@ export_filter(struct channel *c, rte *rt, int silent)
 
   /* Do nothing if we have already rejected the route */
   if (silent && bmap_test(&c->export_rejected_map, rt->id))
-    goto reject_noset;
+    return false;
 
+  /* Check protocol's preferences */
   int v = p->preexport ? p->preexport(c, rt) : 0;
   if (v < 0)
     {
       if (silent)
-	goto reject_noset;
+	return false;
 
       stats->updates_rejected++;
       if (v == RIC_REJECT)
 	channel_rte_trace_out(D_FILTERS, c, rt, "rejected by protocol");
-      goto reject;
+      return false;
 
     }
   if (v > 0)
     {
       if (!silent)
 	channel_rte_trace_out(D_FILTERS, c, rt, "forced accept by protocol");
-      goto accept;
+      return true;
     }
 
+  /* Evaluate actual filters */
   v = filter && ((filter == FILTER_REJECT) ||
 		 (f_run(filter, rt,
 			(silent ? FF_SILENT : 0)) > F_ACCEPT));
   if (v)
     {
       if (silent)
-	goto reject;
+	return false;
 
       stats->updates_filtered++;
       channel_rte_trace_out(D_FILTERS, c, rt, "filtered out");
-      goto reject;
+      return false;
     }
 
- accept:
-  /* We have accepted the route */
-  bmap_clear(&c->export_rejected_map, rt->id);
-  return rt;
-
- reject:
-  /* We have rejected the route by filter */
-  bmap_set(&c->export_rejected_map, rt->id);
-
-reject_noset:
-  /* Discard temporary rte */
-  return NULL;
+  return true;
 }
 
+#define EXPORT_FLAG_BAD(c, e)  log(L_ERR "%s.%s: Export flag inconsistency at %s:%d, route id %u. If frequent, please tell the developers.", (c)->proto->name, (c)->name, __FILE__, __LINE__, (e)->id);
+#define EXPORT_FLAG_EXPECT(c, e, kind, state)	do { \
+  if (bmap_test(&(c)->export_##kind##_map, (e)->id) == (state)) break; \
+  EXPORT_FLAG_BAD((c), (e)); \
+  if (state) bmap_set(&(c)->export_##kind##_map, (e)->id); \
+  else bmap_clear(&(c)->export_##kind##_map, (e)->id); \
+} while (0)
+
+/**
+ * do_rt_notify - actually export the route to the protocol
+ * @c: channel to use
+ * @net: related network
+ * @new: announced route
+ * @old: withdrawn route
+ *
+ * This function does all the common things which must happen before the
+ * protocol's rt_notify() hook is called, most notably channel limit checks,
+ * stats update and logging.
+ */
 static void
 do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
 {
@@ -1128,6 +1148,7 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
 
   ASSERT_DIE(old || new);
 
+  /* One more route, push to the limit */
   if (!old && new)
     if (CHANNEL_LIMIT_PUSH(c, OUT))
     {
@@ -1136,20 +1157,25 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
       return;
     }
 
+  /* One less route, pop from the limit */
   if (!new && old)
     CHANNEL_LIMIT_POP(c, OUT);
 
+  /* Count statistics */
   if (new)
     stats->updates_accepted++;
   else
     stats->withdraws_accepted++;
 
+  /* Update accepted map to keep track whether this route needs to be
+   * withdrawn in future. */
   if (old)
     bmap_clear(&c->export_accepted_map, old->id);
 
   if (new)
     bmap_set(&c->export_accepted_map, new->id);
 
+  /* Logging */
   if (new && old)
     channel_rte_trace_out(D_ROUTES, c, new, "replaced");
   else if (new)
@@ -1157,24 +1183,54 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
   else if (old)
     channel_rte_trace_out(D_ROUTES, c, old, "removed");
 
+  /* Call the protocol hook */
   p->rt_notify(p, c, net, new, old);
 }
 
+/**
+ * rt_notify_basic - common route exporter for RA_OPTIMAL and RA_ANY
+ * @c: channel to use
+ * @new: announced route
+ * @old: withdrawn route
+ *
+ * This function expects to get refined pairs of announced and withdrawn route
+ * which have already been selected so that the old route has been seen before.
+ */
 static void
-rt_notify_basic(struct channel *c, const rte *new, const rte *old)
+rt_notify_basic(struct channel *c, const rte *new, const rte *old, const rte *trte)
 {
-  const rte *trte = new ?: old;
+  /* Ignore idempotent withdraws */
+  if (!new && !old)
+  {
+    channel_rte_trace_out(D_ROUTES, c, trte, "idempotent withdraw");
+    c->export_stats.withdraws_ignored++;
+    return;
+  }
+
+  /* Refeed consideration: old may be NULL if refeeding after filter change. */
+  if (!old && new)
+  {
+    int nacc = bmap_test(&c->export_accepted_map, new->id);
+    int nrej = bmap_test(&c->export_rejected_map, new->id);
+
+    /* Has indeed been seen, thus old = new. */
+    if (nacc || nrej)
+    {
+      old = new;
+      if (nacc && nrej)
+	EXPORT_FLAG_BAD(c, new);
+    }
+  }
 
   /* Have we exported the old route? */
   if (old)
   {
     /* If the old route exists, it is either in rejected or in accepted map. */
-    int rejected = bmap_test(&c->export_rejected_map, old->id);
-    int accepted = bmap_test(&c->export_accepted_map, old->id);
-    ASSERT_DIE(!rejected || !accepted);
-
-    if (!accepted)
+    if (bmap_test(&c->export_rejected_map, old->id))
     {
+      /* Consistency check, complain and clean up. */
+      EXPORT_FLAG_EXPECT(c, old, accepted, 0);
+
       /* Drop the old rejected bit from the map, the old route id
        * gets released after exports. */
       bmap_clear(&c->export_rejected_map, old->id);
@@ -1190,8 +1246,18 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old)
   rte n0, *np = NULL;
   if (new)
   {
+    /* Consistency check of the new route, if really new */
+    if (new != old)
+    {
+      EXPORT_FLAG_EXPECT(c, new, accepted, 0);
+      EXPORT_FLAG_EXPECT(c, new, rejected, 0);
+    }
+
     n0 = *new;
-    np = export_filter(c, &n0, 0);
+    if (export_filter(c, &n0, 0))
+      np = &n0;
+    else
+      bmap_set(&c->export_rejected_map, new->id);
   }
 
   /* Withdraw to withdraw. */
@@ -1203,7 +1269,259 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old)
   }
 
   /* OK, notify. */
-  do_rt_notify(c, np ? np->net : old->net, np, old);
+  do_rt_notify(c, trte->net, np, old);
+}
+
+/**
+ * channel_notify_optimal - process the export queue for RA_OPTIMAL
+ * @_channel: channel to use
+ *
+ * Actually an event hook. Walks the export journal and distills pairs of
+ * announced and withdrawn routes for rt_notify_basic(). Scheduled when the
+ * journal gets some new items.
+ */
+void
+channel_notify_optimal(void *_channel)
+{
+  struct channel *c = _channel;
+
+  RT_EXPORT_WALK(&c->out_req, u)
+  {
+    switch (u->kind)
+    {
+      case RT_EXPORT_STOP:
+	bug("Main table export stopped");
+
+      case RT_EXPORT_FEED:
+	{
+	  /* There is either zero or one new route, and if one, it's first */
+	  uint oldpos = (u->feed->block[0].flags & REF_OBSOLETE) ? 0 : 1;
+	  rte *new = oldpos ? &u->feed->block[0] : NULL;
+
+	  /* The feed _only_ puts here the unprocessed exports, and the first one
+	   * is the first one unprocessed which contains a route possibly exported
+	   * before. All the others should never be seen. */
+	  rte *old = (oldpos < u->feed->count_routes) ? &u->feed->block[oldpos] : NULL;
+
+	  /* Check whether it was actually seen because the best route may also be flapping
+	   * up-down. Therefore the first unseen export may actually have no old route
+	   * and we would falsely accuse the next one to be seen. */
+	  bool oacc = old && bmap_test(&c->export_accepted_map, old->id);
+	  bool orej = old && bmap_test(&c->export_rejected_map, old->id);
+
+	  /* Not seen */
+	  if (!oacc && !orej)
+	    old = NULL;
+
+	  /* Consistency check of the following exports */
+	  for (uint o = oldpos + 1; o < u->feed->count_routes; o++)
+	  {
+	    rte *oo = &u->feed->block[o];
+	    if (old && (oo->id == old->id))
+	      continue;
+
+	    /* This is a route not yet seen, no accepted/rejected flags should be there. */
+	    EXPORT_FLAG_EXPECT(c, oo, accepted, 0);
+	    EXPORT_FLAG_EXPECT(c, oo, rejected, 0);
+	  }
+
+	  ASSERT_DIE(!new || rte_is_valid(new));
+	  ASSERT_DIE(!old || rte_is_valid(old));
+
+	  /* And announce */
+	  rt_notify_basic(c, new, old, &u->feed->block[0]);
+	}
+	break;
+
+      case RT_EXPORT_UPDATE:
+	{
+	  /* Basic: the first update */
+	  const rte *new = u->update->new;
+	  const rte *old = u->update->old;
+	  const rte *trte = new ?: old;
+
+	  /* Update the stats */
+	  if (new)
+	    c->out_req.stats.updates_received++;
+	  else
+	    c->out_req.stats.withdraws_received++;
+
+	  /* Squashing subsequent updates */
+	  for (SKIP_BACK_DECLARE(const struct rt_pending_export, rpe, it, u->update);
+	      rpe = atomic_load_explicit(&rpe->next, memory_order_acquire) ;)
+	    /* For RA_OPTIMAL, all updates would be used */
+	  {
+	    /* Fix the stats: the old item is squashed (ignored) */
+	    if (new)
+	      c->export_stats.updates_ignored++;
+	    else
+	      c->export_stats.withdraws_ignored++;
+
+	    /* Squash the item */
+	    new = rpe->it.new;
+	    rt_export_processed(&c->out_req, rpe->it.seq);
+
+	    /* Fix the stats: the new update is received */
+	    if (new)
+	      c->out_req.stats.updates_received++;
+	    else
+	      c->out_req.stats.withdraws_received++;
+	  }
+
+	  /* No invalid routes allowed in the best export */
+	  ASSERT_DIE(!new || rte_is_valid(new));
+	  ASSERT_DIE(!old || rte_is_valid(old));
+
+	  /* And announce */
+	  rt_notify_basic(c, new, old, trte);
+
+	}
+	break;
+    }
+
+    MAYBE_DEFER_TASK(c->out_req.r.target, c->out_req.r.event,
+	"export to %s.%s (regular)", c->proto->name, c->name);
+  }
+}
+
+
+void
+channel_notify_any(void *_channel)
+{
+  struct channel *c = _channel;
+
+  RT_EXPORT_WALK(&c->out_req, u)
+  {
+    switch (u->kind)
+    {
+      case RT_EXPORT_STOP:
+	bug("Main table export stopped");
+
+      case RT_EXPORT_FEED:
+	{
+	  /* Find where the old route block begins */
+	  uint oldpos = 0;
+	  while ((oldpos < u->feed->count_routes) && !(u->feed->block[oldpos].flags & REF_OBSOLETE))
+	    oldpos++;
+
+	  /* Send updates one after another */
+	  for (uint i = 0; i < oldpos; i++)
+	  {
+	    rte *new = &u->feed->block[i];
+	    rte *old = NULL;
+
+	    /* Find the old route for this src (if exists) */
+	    for (uint o = oldpos; o < u->feed->count_routes; o++)
+	    {
+	      rte *oo = &u->feed->block[o];
+	      if (new->src != oo->src)
+		continue;
+
+	      if (old)
+	      {
+		EXPORT_FLAG_EXPECT(c, oo, accepted, 0);
+		EXPORT_FLAG_EXPECT(c, oo, rejected, 0);
+		oo->src = NULL;
+	      }
+	      else
+		old = oo;
+	    }
+
+	    /* Invalid routes become withdraws */
+	    if (!rte_is_valid(new))
+	      new = NULL;
+
+	    if (!rte_is_valid(old))
+	      old = NULL;
+
+	    /* And notify. */
+	    rt_notify_basic(c, new, old, &u->feed->block[i]);
+
+	    /* Mark old processed */
+	    if (old)
+	      old->src = NULL;
+	  }
+
+	  /* Send withdraws if we saw updates before */
+	  for (uint o = oldpos; o < u->feed->count_routes; o++)
+	  {
+	    rte *oo = &u->feed->block[o];
+	    if (oo->src && rte_is_valid(oo))
+	    {
+	      bool oacc = bmap_test(&c->export_accepted_map, oo->id);
+	      bool orej = bmap_test(&c->export_rejected_map, oo->id);
+
+	      if (oacc || orej)
+		rt_notify_basic(c, NULL, oo, oo);
+	    }
+	  }
+
+	}
+	break;
+
+      case RT_EXPORT_UPDATE:
+	{
+	  const rte *new = u->update->new;
+	  const rte *old = u->update->old;
+	  const rte *trte = new ?: old;
+	  struct rte_src *src = trte->src;
+
+	  /* Update the stats */
+	  if (new)
+	    c->out_req.stats.updates_received++;
+	  else
+	    c->out_req.stats.withdraws_received++;
+
+	  /* Squashing subsequent updates */
+	  for (SKIP_BACK_DECLARE(const struct rt_pending_export, rpe, it, u->update);
+	      rpe = atomic_load_explicit(&rpe->next, memory_order_acquire) ;)
+	  {
+	    /* Either new is the same as this update's "old". Then the squash
+	     * is obvious.
+	     *
+	     * Or we're squashing an update-from-nothing upon a withdrawal,
+	     * and then src must match.
+	     */
+	    if (rpe->it.old != new)
+	      continue;
+
+	    if (!new && (rpe->it.new->src != src))
+	      continue;
+
+	    /* Fix the stats: the old item is squashed (ignored) */
+	    if (new)
+	      c->export_stats.updates_ignored++;
+	    else
+	      c->export_stats.withdraws_ignored++;
+
+	    /* Squash the item */
+	    new = rpe->it.new;
+	    rt_export_processed(&c->out_req, rpe->it.seq);
+
+	    /* Fix the stats: the new update is received */
+	    if (new)
+	      c->out_req.stats.updates_received++;
+	    else
+	      c->out_req.stats.withdraws_received++;
+	  }
+
+	  /* Invalid routes become withdraws */
+	  if (!rte_is_valid(new))
+	    new = NULL;
+
+	  if (!rte_is_valid(old))
+	    old = NULL;
+
+	  /* And announce */
+	  rt_notify_basic(c, new, old, trte);
+
+	}
+	break;
+    }
+
+    MAYBE_DEFER_TASK(c->out_req.r.target, c->out_req.r.event,
+	"export to %s.%s (regular)", c->proto->name, c->name);
+  }
 }
 
 #if 0
@@ -1269,7 +1587,11 @@ rt_notify_accepted(struct channel *c, const struct rt_export_feed *feed)
       ASSERT_DIE(feeding || (r != old_best));
 
       /* Have no new best route yet, try this route not seen before */
-      new_best = export_filter(c, r, 0);
+      if (export_filter(c, r, 0))
+        new_best = r;
+      else
+	bmap_set(&c->export_rejected_map, r->id);
+
       RT_NOTIFY_DEBUG("route %u id %u is a new_best candidate %s", i, r->id,
 	  new_best ? "and is accepted" : "but got rejected");
     }
@@ -1329,26 +1651,27 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
 
   // struct proto *p = c->proto;
   struct nexthop_adata *nhs = NULL;
-  rte *best0 = &feed->block[0];
-  rte *best = NULL;
+  rte *best = &feed->block[0];
 
   /* First route is obsolete */
-  if (best0->flags & REF_OBSOLETE)
+  if (best->flags & REF_OBSOLETE)
     return NULL;
 
   /* First route is invalid */
-  if (!rte_is_valid(best0))
+  if (!rte_is_valid(best))
     return NULL;
 
   /* Already rejected, no need to re-run the filter */
-  if (!feeding && bmap_test(&c->export_rejected_map, best0->id))
+  if (!feeding && bmap_test(&c->export_rejected_map, best->id))
     return NULL;
-
-  best = export_filter(c, best0, silent);
 
   /* Best route doesn't pass the filter */
-  if (!best)
+  if (!export_filter(c, best, silent))
+  {
+    if (!silent)
+      bmap_set(&c->export_rejected_map, best->id);
     return NULL;
+  }
 
   /* Unreachable routes can't be merged */
   if (!rte_is_reachable(best))
@@ -1363,22 +1686,27 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
       break;
 
     /* Failed to pass mergable test */
-    if (!rte_mergable(best0, r))
+    if (!rte_mergable(best, r))
       continue;
 
     /* Already rejected by filters */
     if (!feeding && bmap_test(&c->export_rejected_map, r->id))
       continue;
 
-    /* Running export filter on new or accepted route */
-    rte *tmp = export_filter(c, r, silent);
+    /* New route rejected */
+    if (!export_filter(c, r, silent))
+    {
+      if (!silent)
+	bmap_set(&c->export_rejected_map, r->id);
+      continue;
+    }
 
-    /* New route rejected or unreachable */
-    if (!tmp || !rte_is_reachable(tmp))
+    /* New route unreachable */
+    if (!rte_is_reachable(r))
       continue;
 
     /* Merging next hops */
-    eattr *nhea = ea_find(tmp->attrs, &ea_gen_nexthop);
+    eattr *nhea = ea_find(r->attrs, &ea_gen_nexthop);
     ASSERT_DIE(nhea);
 
     if (nhs)
@@ -1452,176 +1780,6 @@ channel_notify_merged(void *_channel)
 
     MAYBE_DEFER_TASK(c->out_req.r.target, c->out_req.r.event,
 	"export to %s.%s (merged)", c->proto->name, c->name);
-  }
-}
-
-void
-channel_notify_basic(void *_channel)
-{
-  struct channel *c = _channel;
-
-  RT_EXPORT_WALK(&c->out_req, u)
-  {
-    switch (u->kind)
-    {
-      case RT_EXPORT_STOP:
-	bug("Main table export stopped");
-
-      case RT_EXPORT_FEED:
-	{
-	  /* Find where the old route block begins */
-	  uint oldpos = 0;
-	  while ((oldpos < u->feed->count_routes) && !(u->feed->block[oldpos].flags & REF_OBSOLETE))
-	    oldpos++;
-
-	  uint notify_count = 0;
-
-	  /* Send updates one after another */
-	  for (uint i = 0; i < oldpos; i++)
-	  {
-	    if (c->ra_mode == RA_OPTIMAL)
-	      ASSERT_DIE(notify_count == 0);
-
-	    rte *new = &u->feed->block[i];
-	    rte *old = NULL;
-	    for (uint o = oldpos; o < u->feed->count_routes; o++)
-	      if ((c->ra_mode == RA_ANY) && (new->src == u->feed->block[o].src))
-	      {
-		old = &u->feed->block[o];
-		break;
-	      }
-	      /* The export best refeed is tricky, there may be a repeated
-	       * obsolete route in case of flaps */
-	      else if (c->ra_mode == RA_OPTIMAL)
-		/* Duplicate obsolete route check */
-		if (old && (u->feed->block[o].id == old->id))
-		  u->feed->block[o].src = NULL;
-		else if (
-		    bmap_test(&c->export_accepted_map, u->feed->block[o].id) || 
-		    bmap_test(&c->export_rejected_map, u->feed->block[o].id)
-		    )
-		{
-		  /* But we expect that there was only one route previously exported */
-		  ASSERT_DIE(!old);
-		  old = &u->feed->block[o];
-		}
-
-	    /* Check new flags */
-	    int nacc = bmap_test(&c->export_accepted_map, new->id);
-	    int nrej = bmap_test(&c->export_rejected_map, new->id);
-
-	    if (old)
-	      ASSERT_DIE(!nacc && !nrej);
-
-	    else if (nacc || nrej)
-	    {
-	      /* In case of refeed, the new route may actually have already
-	       * been processed and thus it's also old */
-	      old = new;
-	      ASSERT_DIE(!nacc != !nrej);
-	    }
-
-	    /* This is the distilled notification */
-	    rt_notify_basic(c, new, old);
-	    notify_count++;
-
-	    /* Mark old processed */
-	    if (old)
-	      old->src = NULL;
-	  }
-
-	  /* Send withdraws */
-	  for (uint o = oldpos; o < u->feed->count_routes; o++)
-	    if (u->feed->block[o].src && (
-		    bmap_test(&c->export_accepted_map, u->feed->block[o].id) ||
-		    bmap_test(&c->export_rejected_map, u->feed->block[o].id)
-		    ))
-	    {
-	      if (c->ra_mode == RA_OPTIMAL)
-		ASSERT_DIE(notify_count == 0);
-
-	      rt_notify_basic(c, NULL, &u->feed->block[o]);
-	      notify_count++;
-	    }
-	}
-	break;
-
-      case RT_EXPORT_UPDATE:
-	{
-	  const rte *new = u->update->new;
-	  const rte *old = u->update->old;
-	  struct rte_src *src = (c->ra_mode == RA_ANY) ? (new ? new->src : old->src) : NULL;
-
-	  /* Squashing subsequent updates */
-	  for (SKIP_BACK_DECLARE(const struct rt_pending_export, rpe, it, u->update);
-	      rpe = atomic_load_explicit(&rpe->next, memory_order_acquire) ;)
-	    /* Either new is the same as this update's "old". Then the squash
-	     * is obvious.
-	     *
-	     * Or we're squashing an update-from-nothing with a withdrawal,
-	     * and then either src is set because it must match (RA_ANY)
-	     * or it doesn't matter at all (RA_OPTIMAL).
-	     */
-	    if ((rpe->it.old == new) && (new || src && (src == rpe->it.new->src)))
-	    {
-	      /* Fix the stats: the old item is squashed (ignored) */
-	      if (new)
-		c->export_stats.updates_ignored++;
-	      else
-		c->export_stats.withdraws_ignored++;
-
-	      /* Fix the stats: the new update is received */
-	      if (rpe->it.new)
-		c->out_req.stats.updates_received++;
-	      else
-		c->out_req.stats.withdraws_received++;
-
-	      new = rpe->it.new;
-	      rt_export_processed(&c->out_req, rpe->it.seq);
-	    }
-
-	  /* Ignore invalid routes */
-	  if (!rte_is_valid(new))
-	    new = NULL;
-
-	  if (!rte_is_valid(old))
-	    old = NULL;
-
-	  /* Update status map flags for id-only updates */
-	  if (new && old && rte_same(new, old))
-	  {
-	    channel_rte_trace_out(D_ROUTES, c, new, "already exported");
-
-	    if (new->id != old->id)
-	      if (bmap_test(&c->export_accepted_map, old->id))
-	      {
-		bmap_set(&c->export_accepted_map, new->id);
-		bmap_clear(&c->export_accepted_map, old->id);
-
-		ASSERT_DIE(!bmap_test(&c->export_rejected_map, old->id));
-	      }
-	      else if (bmap_test(&c->export_rejected_map, old->id))
-	      {
-		bmap_set(&c->export_rejected_map, new->id);
-		bmap_clear(&c->export_rejected_map, old->id);
-	      }
-	      else
-		bug("Withdrawn route never seen before");
-	  }
-	  else if (!new && !old)
-	  {
-	    channel_rte_trace_out(D_ROUTES, c, u->update->new, "idempotent withdraw");
-	    c->export_stats.withdraws_ignored++;
-	  }
-	  else
-	    rt_notify_basic(c, new, old);
-
-	  break;
-	}
-    }
-
-    MAYBE_DEFER_TASK(c->out_req.r.target, c->out_req.r.event,
-	"export to %s.%s (regular)", c->proto->name, c->name);
   }
 }
 
