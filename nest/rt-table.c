@@ -1317,7 +1317,7 @@ channel_notify_optimal(void *_channel)
 	  for (uint o = oldpos + 1; o < u->feed->count_routes; o++)
 	  {
 	    rte *oo = &u->feed->block[o];
-	    if (oo->id == old->id)
+	    if (old && (oo->id == old->id))
 	      continue;
 
 	    /* This is a route not yet seen, no accepted/rejected flags should be there. */
