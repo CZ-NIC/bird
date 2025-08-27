@@ -160,7 +160,11 @@ conf: THREADS expr {
   new_config->thread_group_simple = $2;
 };
 
-conf: THREAD GROUP symbol {
+conf: thread_group ;
+
+thread_group: thread_group_start thread_group_opt_list thread_group_end ;
+
+thread_group_start: THREAD GROUP symbol {
   switch (new_config->thread_group_simple) {
     case -1: cf_error("Put `threads` block before any protocol or table definition.");
     case 0: break;
@@ -171,7 +175,37 @@ conf: THREAD GROUP symbol {
   *this_thread_group = strcmp($3->name, "express") ?
     thread_group_config_default_worker :
     thread_group_config_default_express;
-} '{' thread_group_opts '}' {
+  this_thread_group->symbol = cf_define_symbol(new_config, $3, SYM_THREAD_GROUP, thread_group, this_thread_group);
+};
+
+thread_group_opt:
+   MAX TIME expr_us { this_thread_group->params.max_time = $3; }
+ | MIN TIME expr_us { this_thread_group->params.min_time = $3; }
+ | MAX LATENCY expr_us { this_thread_group->params.max_latency = $3; }
+ | THREADS expr { this_thread_group->thread_count = $2; }
+ | WAKEUP TIME expr_us { this_thread_group->params.wakeup_time = $3; }
+ | DEFAULT bool {
+    if ($2) {
+      if (new_config->default_thread_group && new_config->default_thread_group != this_thread_group) {
+        cf_error("Too many default thread groups, already have %s",
+          new_config->default_thread_group->symbol->name);
+      }
+      new_config->default_thread_group = this_thread_group;
+    }
+  }
+ ;
+
+thread_group_opts:
+   /* empty */
+  | thread_group_opts thread_group_opt ';'
+  ;
+
+thread_group_opt_list:
+   /* empty */
+ | '{' thread_group_opts '}'
+ ;
+
+thread_group_end: {
   if (this_thread_group->params.max_time > 60 S_)
     cf_error("Loop time maximum is 60 seconds, got %t", this_thread_group->params.max_time);
   if (this_thread_group->params.max_latency < this_thread_group->params.max_time)
@@ -181,24 +215,8 @@ conf: THREAD GROUP symbol {
   if (this_thread_group->params.wakeup_time < 1 S_)
     cf_error("Too low idle wakeup time, expected at least 1 second");
 
-  this_thread_group->symbol = cf_define_symbol(new_config, $3, SYM_THREAD_GROUP, thread_group, this_thread_group);
   thread_group_config_add_tail(&new_config->thread_group, this_thread_group);
   this_thread_group = NULL;
-};
-
-thread_group_opts: MAX TIME expr_us ';' { this_thread_group->params.max_time = $3; } ;
-thread_group_opts: MIN TIME expr_us ';' { this_thread_group->params.min_time = $3; } ;
-thread_group_opts: MAX LATENCY expr_us ';' { this_thread_group->params.max_latency = $3; } ;
-thread_group_opts: THREADS expr ';' { this_thread_group->thread_count = $2; } ;
-thread_group_opts: WAKEUP TIME expr_us ';' { this_thread_group->params.wakeup_time = $3; } ;
-thread_group_opts: DEFAULT bool ';' {
-  if ($2) {
-    if (new_config->default_thread_group &&
-	new_config->default_thread_group != this_thread_group)
-      cf_error("Too many default thread groups, already have %s",
-	  new_config->default_thread_group->symbol->name);
-    new_config->default_thread_group = this_thread_group;
-  }
 };
 
 
