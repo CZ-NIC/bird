@@ -1,17 +1,16 @@
-# bump this to refresh the image: 1
-FROM ubuntu:24.10
+# bump number for image rebuild: 3
+FROM amd64/debian:trixie-slim
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get -y update
 RUN apt-get -y upgrade
 RUN apt-get -y --no-install-recommends install \
-	tzdata \
 	build-essential \
 	flex \
 	bison \
 	autoconf \
 	ncurses-dev \
 	libreadline-dev \
-	libssh-gcrypt-dev \
+	libssh-dev \
 	linuxdoc-tools-latex \
 	texlive-latex-extra \
 	opensp \

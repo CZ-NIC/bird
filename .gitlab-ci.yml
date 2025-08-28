@@ -276,6 +276,16 @@ docker-debian-12-i386:
     IMG_NAME: "debian-12-i386"
   <<: *docker-build
 
+docker-debian-13-amd64:
+  variables:
+    IMG_NAME: "debian-13-amd64"
+  <<: *docker-build
+
+docker-debian-13-i386:
+  variables:
+    IMG_NAME: "debian-13-i386"
+  <<: *docker-build
+
 docker-debian-testing-amd64:
   variables:
     IMG_NAME: "debian-testing-amd64"
@@ -560,6 +570,20 @@ build-debian-12-i386:
     - job: docker-debian-12-i386
       optional: true
   image: registry.nic.cz/labs/bird:debian-12-i386
+
+build-debian-13-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-13-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+
+build-debian-13-i386:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-13-i386
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-13-i386
 
 build-debian-testing-amd64:
   <<: *build-docker-linux-amd64
@@ -920,6 +944,22 @@ pkg-debian-12-i386:
     - job: build-release
   image: registry.nic.cz/labs/bird:debian-12-i386
 
+pkg-debian-13-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: build-debian-13-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+
+pkg-debian-13-i386:
+  <<: *pkg-deb
+  needs:
+    - job: build-debian-13-i386
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-13-i386
+
 pkg-debian-testing-amd64:
   <<: *pkg-deb
   needs:
@@ -975,30 +1015,46 @@ pkg-ubuntu-24.10-amd64:
   <<: *test-job
   stage: install
   script:
-    # check that bird is _not_ installed now
+    # check that bird is _not_ installed now and no user or group bird exists
     - |
       if bird --version >/dev/null 2>&1; then
-        echo "Error: bird unexpectedly installed"
+        echo "Error: BIRD unexpectedly installed"
+        exit 1
+      fi
+      if id -g bird >/dev/null 2>&1; then
+        echo "Error: User group 'bird' unexpectedly exist before installation"
+        exit 1
+      fi
+      if id -u bird >/dev/null 2>&1; then
+        echo "Error: User 'bird' unexpectedly exist before installation"
         exit 1
       fi
     # install packages
     - find pkg/pkgs/ -type f -name '*.deb' '(' -ls -exec dpkg -i '{}' ';' ')'
-    # test that install is correct
+    # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
 
 .install-rpm: &install-rpm
   <<: *test-job
   stage: install
   script:
-    # check that bird is _not_ installed now
+    # check that bird is _not_ installed now and no user or group bird exists
     - |
       if bird --version >/dev/null 2>&1; then
-        echo "Error: bird unexpectedly installed"
+        echo "Error: BIRD unexpectedly installed"
+        exit 1
+      fi
+      if id -g bird >/dev/null 2>&1; then
+        echo "Error: User group 'bird' exist before installation"
+        exit 1
+      fi
+      if id -u bird >/dev/null 2>&1; then
+        echo "Error: User 'bird' exist before installation"
         exit 1
       fi
     # install packages
     - find pkg/pkgs/ -type f -name '*.rpm' '(' -ls -exec rpm -i '{}' ';' ')'
-    # test that install is correct
+    # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
 
 
@@ -1169,6 +1225,18 @@ install-debian-12-i386:
   needs:
     - job: pkg-debian-12-i386
   image: registry.nic.cz/labs/bird:debian-12-i386
+
+install-debian-13-amd64:
+  <<: *install-deb
+  needs:
+    - job: pkg-debian-13-amd64
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+
+install-debian-13-i386:
+  <<: *install-deb
+  needs:
+    - job: pkg-debian-13-i386
+  image: registry.nic.cz/labs/bird:debian-13-i386
 
 install-debian-testing-amd64:
   <<: *install-deb

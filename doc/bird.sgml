@@ -4079,7 +4079,6 @@ direction (re-export of routes to the BGP neighbor):
 
 <itemize>
 	<item><cf/export/
-	<item><cf/next hop address/
 	<item><cf/next hop self/
 	<item><cf/next hop keep/
 	<item><cf/link local next hop format/
@@ -4116,6 +4115,7 @@ direction (re-export of routes to the BGP neighbor):
 	<item><cf/graceful restart/
 	<item><cf/long lived graceful restart/
 	<item><cf/long lived stale time/
+	<item><cf/next hop address/
 	<item><cf/extended next hop/
 	<item><cf/add paths/
 	<item><cf/import table/

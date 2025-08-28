@@ -3246,12 +3246,12 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
   }
 
   /* Outgoing next hop setting is too complex to update, forcing restart. */
-  if (!ipa_equal(new->next_hop_addr, old->next_hop_addr) ||
-      (new->next_hop_self != old->next_hop_self) ||
-      (new->next_hop_keep != old->next_hop_keep))
+  if (!ipa_equal(new->next_hop_addr, old->next_hop_addr))
     return 0;
 
-  if ((new->llnh_format != old->llnh_format) ||
+  if ((new->next_hop_self != old->next_hop_self) ||
+      (new->next_hop_keep != old->next_hop_keep) ||
+      (new->llnh_format != old->llnh_format) ||
       (new->aigp != old->aigp) ||
       (new->aigp_originate != old->aigp_originate))
     *export_changed = 1;
