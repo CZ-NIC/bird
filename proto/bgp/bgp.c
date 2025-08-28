@@ -2059,7 +2059,7 @@ bgp_if_reload(struct bgp_proto *p, struct iface_patt *patt)
     if (old == new)
       continue;
 
-    if (ipa_zero(p->cf->local_ip))
+    if (ipa_zero(p->cf->local_ip) || p->cf->free_bind)
       bgp_iface_update(p, old ? IF_CHANGE_DOWN : IF_CHANGE_UP, iface);
     else
       WALK_LIST(a, iface->addrs)
@@ -2347,8 +2347,14 @@ bgp_start(struct proto *P)
   init_list(&p->listen);
 
   /* Setup interface notification hooks */
-  P->if_notify = (cf->ipatt && ipa_zero(cf->local_ip)) ? bgp_if_notify : NULL;
-  P->ifa_notify = (cf->ipatt && !ipa_zero(cf->local_ip)) ? bgp_ifa_notify : NULL;
+  P->if_notify = NULL;
+  P->ifa_notify = NULL;
+  if (cf->ipatt) {
+    if (ipa_zero(cf->local_ip) || cf->free_bind)
+      P->if_notify = bgp_if_notify;
+    else
+      P->ifa_notify = bgp_ifa_notify;
+  }
 
   /* Initialize TCP-AO keys */
   init_list(&p->ao.keys);

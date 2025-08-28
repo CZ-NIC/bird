@@ -3083,8 +3083,10 @@ protocol bgp [<name>] {
 
 	This option requires <cf/strict bind/ to be on and creates a separate
 	listening socket for every single interface matching the pattern. If the
-	local address is set, it also requires this exact address to be set
-	on that interface to create a listening socket.
+        local address is set, it also requires this exact address to be set on
+        that interface to create a listening socket.
+
+	Also see <cf/strict bind/ and <cf/free bind/.
 
 	<tag><label id="bgp-onlink">onlink <m/switch/</tag>
 	For a direct neighbor, the BGP session starts immediately without
@@ -3141,19 +3143,33 @@ protocol bgp [<name>] {
 
 	<tag><label id="bgp-strict-bind">strict bind <m/switch/</tag>
 	Specify whether BGP listening socket should be bound to a specific local
-	address (the same as the <cf/source address/) and associated interface,
+	address (the same as the <cf/source address/) and associated interface
 	or to all addresses. Binding to a specific address could be useful in
 	cases like running multiple BIRD instances on a machine, each using its
-	IP address. Note that listening sockets bound to a specific address and
-	to all addresses collide, therefore either all BGP protocols (of the
-	same address family and using the same local port) should have set
-	<cf/strict bind/, or none of them. Default: disabled.
+	IP address.
+
+	Note that listening sockets bound to a specific address and
+	to all addresses collide. Also listening sockets bound
+	to a specific interface and to all interfaces may behave weirdly.
+	Therefore, all BGP protocols (of the same address family and using
+	the same local port) should have set <cf/strict bind/, or none of them,
+	and in the same way, all should have a <cf/interface/ or <cf/interface range/
+	or none of them.
+
+	Default: disabled.
 
 	<tag><label id="bgp-free-bind">free bind <m/switch/</tag>
 	Use IP_FREEBIND socket option for the listening socket, which allows
 	binding to an IP address not (yet) assigned to an interface. Note that
 	all BGP instances that share a listening socket should have the same
-	value of the <cf/freebind/ option. Default: disabled.
+	value of the <cf/free bind/ option.
+
+	If <cf/interface range/ is set together with a local address
+	and <cf/free bind/ as well, it creates a free-bind listening socket
+	for every interface regardless of the assigned address. This is
+	an experimental feature.
+
+	Default: disabled.
 
 	<tag><label id="bgp-check-link">check link <m>switch</m></tag>
 	BGP could use hardware link state into consideration.  If enabled,
