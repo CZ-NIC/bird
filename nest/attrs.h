@@ -36,6 +36,7 @@ int as_path_16to32(byte *dst, const byte *src, uint len);
 int as_path_32to16(byte *dst, const byte *src, uint len);
 int as_path_contains_as4(const struct adata *path);
 int as_path_contains_confed(const struct adata *path);
+int as_path_contains_set(const struct adata *path);
 struct adata *as_path_strip_confed(struct linpool *pool, const struct adata *op);
 struct adata *as_path_prepend2(struct linpool *pool, const struct adata *op, int seq, u32 as);
 struct adata *as_path_to_old(struct linpool *pool, const struct adata *path);
