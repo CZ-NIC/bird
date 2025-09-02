@@ -733,7 +733,12 @@ enum aspa_result aspa_check(rtable *tab, const adata *path, bool force_upstream)
   if (as_path_contains_confed(path))
     return ASPA_INVALID;
 
-  /* Check path length */
+  /* No support for AS_SET */
+  /* See draft-ietf-sidrops-aspa-verification section 6 */
+  if (as_path_contains_set(path))
+    return ASPA_INVALID;
+
+  /* Check path length; we assume just AS_SEQUENCE segments */
   uint len = as_path_getlen(path);
   if (len == 0)
     return ASPA_INVALID;
