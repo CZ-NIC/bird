@@ -177,6 +177,27 @@ as_path_contains_confed(const struct adata *path)
   return 0;
 }
 
+int
+as_path_contains_set(const struct adata *path)
+{
+  const byte *pos = path->data;
+  const byte *end = pos + path->length;
+
+  while (pos < end)
+  {
+    uint type = pos[0];
+    uint slen = 2 + BS * pos[1];
+
+    if ((type == AS_PATH_SET) ||
+	(type == AS_PATH_CONFED_SET))
+      return 1;
+
+    pos += slen;
+  }
+
+  return 0;
+}
+
 struct adata *
 as_path_strip_confed(struct linpool *pool, const struct adata *path)
 {
