@@ -33,6 +33,9 @@ static inline u8 u64_popcount(u64 v) { return __builtin_popcountll(v); }
 static inline int u32_clz(u32 v) { return __builtin_clz(v); }
 static inline int u32_ctz(u32 v) { return __builtin_ctz(v); }
 
+static inline int u64_clz(u64 v) { return __builtin_clz(v); }
+static inline int u64_ctz(u64 v) { return __builtin_ctz(v); }
+
 static inline int uint_is_pow2(uint n) { return n && !(n & (n-1)); }
 
 #endif
