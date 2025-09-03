@@ -4628,7 +4628,7 @@ name="mrtdump"> options independently of MRT protocol, although that might
 change in the future.
 
 Saved MRT files can be loaded to BIRD. Unlike MRT save, MRT load uses channels
-and it loads to ipv4 or ipv6 table. All routes loaded from MRT files have
+and loads to ipv4 or ipv6 table. All routes loaded from MRT files have
 MRT as their source and they are unreachable. 
 
 BIRD implements the main MRT format specification as defined in <rfc id="6396">
@@ -4695,17 +4695,17 @@ protocol mrt {
 <label id="mrt-load-config">
 
 <p>MRT load configuration consists of name of the file to load and
-the table where the loaded routes will be stored. BGP messages are 
-loaded according to the time they arrived whith REPLAY ACCELERATE parameter.
+the table where the loaded routes will be stored. Speed of loading
+can be changed with REPLAY ACCELERATE parameter.
 
 <descrip>
-	<tag><label id="mrt-table">table <m/name/ | "<m/pattern/"</tag>
+	<tag><label id="mrt-table">table <m/name/</tag>
 	Specify a routing table where the routes from loaded file should be stored.
 
 	<tag><label id="mrt-filename">filename "<m/filename/"</tag>
 	Specify a filename of the loaded MRT file. Mandatory, see example below.
 
-	<tag><label id="mrt-replay-accelerate">replay accelerate"<m/mrt-replay-accelerate/"</tag>
+	<tag><label id="mrt-replay-accelerate">replay accelerate <m/replay accelerate/</tag>
 	MRT files with BGP messages will be loaded N-times quicker than they were arriving to BGP.
 	However, it can be slower if there are too much of the messages. Without this parameter
 	set, messages will be loaded regularly.

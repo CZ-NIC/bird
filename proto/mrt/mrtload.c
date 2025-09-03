@@ -632,7 +632,7 @@ mrtload_hook(timer *tm)
       return;
   }
 
-  tm_start(p->load_timer, 10000);
+  tm_start(p->load_timer, 10000); //TODO: this constant was found with a heuristic for my computer
 }
 
 static void
@@ -779,7 +779,9 @@ mrtload_shutdown(struct proto *P)
   {
     for (int i = 0; i < p->table_peers_count; i++)
       mb_free(p->table_peers[i].route_attrs);
+
     mb_free(p->table_peers);
+    p->table_peers = NULL;
   }
 
   return PS_DOWN;
@@ -788,7 +790,6 @@ mrtload_shutdown(struct proto *P)
 static int
 mrtload_reconfigure(struct proto *P, struct proto_config *CF UNUSED)
 {
-  log("mrtload_reconfigure");
   struct mrtload_proto *p = (void *) P;
 
   FIB_WALK(&p->channel->c.table->fib, net, n)
@@ -841,8 +842,8 @@ static int
 mrtload_channel_reconfigure(struct channel *C UNUSED, struct channel_config *CC UNUSED,
     int *import_changed UNUSED, int *export_changed UNUSED)
 {
-  log("mrtload_channel_reconfigure");
-  return 0; // Even if no variable was changed, the content of MRT file might be changed
+  /* Even if no variable was changed, the content of MRT file might be changed */
+  return 0;
 }
 
 const struct channel_class channel_mrtload = {

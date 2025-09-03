@@ -28,39 +28,28 @@ mrtload_proto_start: proto_start MRTLOAD
 mrt_channel_start: bgp_afi
 {
   const struct bgp_af_desc *desc = bgp_get_af_desc($1);
-  log("hereee in afiiiii");
 
   if (!desc)
     cf_error("Unknown AFI/SAFI");
 
   this_channel = channel_config_get(&channel_mrtload, desc->name, desc->net, this_proto);
   MRTLOAD_CFG->channel_cf = MRTLOAD_BGP_CC;
-  log("this channel %x %x", this_channel, MRTLOAD_BGP_CC);
 
-  /* New channel */
-  if (!MRTLOAD_BGP_CC->desc)
-  {
-    MRTLOAD_BGP_CC->c.in_filter = FILTER_ACCEPT;
-    MRTLOAD_BGP_CC->c.out_filter = FILTER_REJECT;
-    MRTLOAD_BGP_CC->c.ra_mode = RA_UNDEF;
-    MRTLOAD_BGP_CC->afi = $1;
-    MRTLOAD_BGP_CC->desc = desc;
-    MRTLOAD_BGP_CC->next_hop_keep = 0xff; /* undefined */
-    MRTLOAD_BGP_CC->gr_able = 0xff;	/* undefined */
-    MRTLOAD_BGP_CC->llgr_able = 0xff;	/* undefined */
-    MRTLOAD_BGP_CC->llgr_time = ~0U;	/* undefined */
-    MRTLOAD_BGP_CC->min_llgr_time = ~0U; /* undefined */
-    MRTLOAD_BGP_CC->max_llgr_time = ~0U; /* undefined */
-    MRTLOAD_BGP_CC->aigp = 0xff;	/* undefined */
-  }
+  MRTLOAD_BGP_CC->c.in_filter = FILTER_ACCEPT;
+  MRTLOAD_BGP_CC->c.out_filter = FILTER_REJECT;
+  MRTLOAD_BGP_CC->c.ra_mode = RA_UNDEF;
+  MRTLOAD_BGP_CC->afi = $1;
+  MRTLOAD_BGP_CC->desc = desc;
+  MRTLOAD_BGP_CC->next_hop_keep = 0xff; /* undefined */
+  MRTLOAD_BGP_CC->gr_able = 0xff;	/* undefined */
+  MRTLOAD_BGP_CC->llgr_able = 0xff;	/* undefined */
+  MRTLOAD_BGP_CC->llgr_time = ~0U;	/* undefined */
+  MRTLOAD_BGP_CC->min_llgr_time = ~0U; /* undefined */
+  MRTLOAD_BGP_CC->max_llgr_time = ~0U; /* undefined */
+  MRTLOAD_BGP_CC->aigp = 0xff;	/* undefined */
 };
 
-mrt_channel_item:
- /* empty */
- | channel_item ';'
- ;
-
-mrt_proto_channel: mrt_channel_start //mrt_channel_item;
+mrt_proto_channel: mrt_channel_start;
 
 mrtload_proto_opts:
    /* empty */
@@ -69,17 +58,14 @@ mrtload_proto_opts:
 
  mrtload_proto_item:
    proto_item
- | FILENAME text	{ MRTLOAD_CFG->filename = $2; log("file %s", $2);}
+ | FILENAME text { MRTLOAD_CFG->filename = $2; }
  | REPLAY ACCELERATE expr	{ MRTLOAD_CFG->replay_accel = $3; }
  | TABLE rtable {
     MRTLOAD_CFG->table_cf = $2;
-    log("table_cf %x, MRTLOAD_BGP_CC %x", $2, MRTLOAD_BGP_CC);
-    if ($2->addr_type == NET_IP4){
+    if ($2->addr_type == NET_IP4)
       MRTLOAD_BGP_CC->igp_table_ip4 = $2;
-      log("MRTLOAD_BGP_CC->igp_table_ip4");}
-    else if ($2->addr_type == NET_IP6){
+    else if ($2->addr_type == NET_IP6)
       MRTLOAD_BGP_CC->igp_table_ip6 = $2;
-      log("MRTLOAD_BGP_CC->igp_table_ip6");}
     else
       cf_error("Mismatched IGP table type");
     }
