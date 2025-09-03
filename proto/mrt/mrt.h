@@ -134,6 +134,7 @@ struct mrt_bgp_data {
 #define MRT_RIB_GENERIC_ADDPATH		12
 
 /* MRT BGP4MP Subtypes */
+#define MRT_BGP4MP_STATE_CHANGE		0
 #define MRT_BGP4MP_MESSAGE		1
 #define MRT_BGP4MP_MESSAGE_AS4		4
 #define MRT_BGP4MP_STATE_CHANGE_AS4	5

@@ -1125,7 +1125,11 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
   else /* GW_RECURSIVE */
   {
     if (ipa_zero2(gw))
-      WITHDRAW(BAD_NEXT_HOP " - zero address");
+    {
+      if (s->is_mrt_parse)
+        return;
+      WITHDRAW(BAD_NEXT_HOP " - zero address here");
+    }
 
     rtable *tab = ipa_is_ip4(gw) ? c->igp_table_ip4 : c->igp_table_ip6;
     ip_addr lla = (c->cf->next_hop_prefer == NHP_LOCAL) ? ll : IPA_NONE;

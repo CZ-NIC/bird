@@ -64,10 +64,6 @@
  *	Tracked Files
  */
 
-struct rfile {
-  resource r;
-  FILE *f;
-};
 
 static void
 rf_free(resource *r)

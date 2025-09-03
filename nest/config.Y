@@ -256,10 +256,14 @@ proto_name:
      s->class = this_proto->class;
      s->proto = this_proto;
      this_proto->name = s->name;
+     log("/* EMPTY */ , name %s, this %x next %x, prev %x", s->name, s, s->next, s->n.prev);
      }
  | symbol {
-     cf_define_symbol(new_config, $1, this_proto->class, proto, this_proto);
+     struct symbol *s = cf_define_symbol(new_config, $1, this_proto->class, proto, this_proto);
      this_proto->name = $1->name;
+     log("symbol , name %s, next = %x, prev %x", this_proto->name, s->next, s->n.prev);
+     if (s->n.prev)
+       log("s->n.prev->next %x", s->n.prev->next);
    }
  | FROM CF_SYM_KNOWN {
      if (($2->class != SYM_TEMPLATE) && ($2->class != SYM_PROTO)) cf_error("Template or protocol name expected");
@@ -268,10 +272,12 @@ proto_name:
      s->class = this_proto->class;
      s->proto = this_proto;
      this_proto->name = s->name;
+     log("CF_SYM_KNOWN , name %s", this_proto->name);
 
      proto_copy_config(this_proto, $2->proto);
    }
  | symbol FROM CF_SYM_KNOWN {
+     log("CF_SYM_KNOWN, %s", $1->name);
      if (($3->class != SYM_TEMPLATE) && ($3->class != SYM_PROTO)) cf_error("Template or protocol name expected");
 
      cf_define_symbol(new_config, $1, this_proto->class, proto, this_proto);
@@ -283,14 +289,14 @@ proto_name:
 
 proto_item:
    /* EMPTY */
- | DISABLED bool { this_proto->disabled = $2; }
- | DEBUG debug_mask { this_proto->debug = $2; }
- | MRTDUMP mrtdump_mask { this_proto->mrtdump = $2; }
- | ROUTER ID idval { this_proto->router_id = $3; }
- | HOSTNAME text { this_proto->hostname = $2; }
- | DESCRIPTION text { this_proto->dsc = $2; }
- | VRF text { this_proto->vrf = if_get_by_name($2); this_proto->vrf_set = 1; }
- | VRF DEFAULT { this_proto->vrf = NULL; this_proto->vrf_set = 1; }
+ | DISABLED bool { this_proto->disabled = $2; log("proto item");}
+ | DEBUG debug_mask { this_proto->debug = $2; log("proto item"); }
+ | MRTDUMP mrtdump_mask { this_proto->mrtdump = $2; log("proto item"); }
+ | ROUTER ID idval { this_proto->router_id = $3; log("proto item"); }
+ | HOSTNAME text { this_proto->hostname = $2; log("proto item"); }
+ | DESCRIPTION text { this_proto->dsc = $2; log("proto item"); }
+ | VRF text { this_proto->vrf = if_get_by_name($2); this_proto->vrf_set = 1; log("proto item"); }
+ | VRF DEFAULT { this_proto->vrf = NULL; this_proto->vrf_set = 1; log("proto item"); }
  ;
 
 
@@ -478,7 +484,7 @@ dev_proto:
  | dev_proto proto_item ';'
  | dev_proto proto_channel ';'
  | dev_proto dev_iface_patt ';'
- | dev_proto CHECK LINK bool ';' { DIRECT_CFG->check_link = $4; }
+ | dev_proto CHECK LINK bool ';' { DIRECT_CFG->check_link = $4; log("check link");}
  ;
 
 dev_iface_init:

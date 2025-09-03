@@ -7,35 +7,80 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
+ /**
+ * DOC: Multi-Threaded Routing Toolkit (MRT) loading protocol
+ *
+ * There is separate MRT protocol for loading saved routes from MRT file
+ * back to BIRD. Unlike dumping MRT, MRT load uses channels. The main table
+ * is mandatory to set in config, but both ipv4 and ipv6 tables are needed,
+ * so the other is taken from global tables.
+ *
+ * There are two types of MRT dumps - MRT_BGP4MP for BGP messages and
+ * MRT_TABLE_DUMP_V2 for table dumps. Each of them uses different set of functions,
+ * because they have different subtypes and subheaders.
+ * 
+ * The loading runs in a loop - the header of the data is read, structures are set,
+ * and then the data is sent to BGP, where it is treated as (almost normal) BGP
+ * route data.
+ * 
+ * The basic loading loop is the same for MRT_BGP4MP and MRT_TABLE_DUMP_V2.
+ * This loop just loads certain amount of data, sets timer for a constant time
+ * and continues when it is called by the timer again.
+ * 
+ * There is alternative loading loop for MRT_BGP4MP. This loop loads N-times
+ * quicker than the original data were sent. If there is too much of data,
+ * the loading will be slower.
+ * 
+ * If the alternative loop is set for MRT_TABLE_DUMP_V2, warning is printed
+ * and the loop is changed.
+ * 
+ *
+ * Supported standards:
+ * - RFC 6396 - MRT format standard
+ * - RFC 8050 - ADD_PATH extension
+ */
+
 #include "mrt.h"
-#include "mrt_load.h"
+#include "mrtload.h"
+#include "sysdep/unix/unix.h"
 
+#define MRTLOAD_CTX_KEY(n)		n->ctx.remote_as, n->ctx.local_as, \
+  n->ctx.remote_ip, n->ctx.local_ip
+#define MRTLOAD_CTX_NEXT(n)		n->next
+#define MRTLOAD_CTX_EQ(p1, n1, r_ip, l_ip, p2, n2, r_ip1, l_ip1)	ipa_equal(l_ip, l_ip1) && ipa_equal(r_ip, r_ip1) && n1 == n2 && p1 == p2
+#define MRTLOAD_CTX_FN(pas, las, r_ip, l_ip)	 u64_hash(pas) + u64_hash(las) + ipa_hash(r_ip) + ipa_hash(l_ip)
+#define MRTLOAD_CTX_REHASH		mrtload_ctx_rehash
+#define MRTLOAD_CTX_PARAMS		/2, *2, 1, 1, 8, 20
+#define MRTLOAD_CTX_INIT_ORDER		6
 
-byte
-mrtload_one(FILE *fp, u64 *remains)
+static void mrtload_hook(timer *tm);
+static void mrtload_hook_accel(timer *tm);
+
+static byte
+mrtload_one(struct rfile *fp, u64 *remains)
 {
   remains[0]--;
-  return fgetc(fp);
+  return fgetc(fp->f);
 }
 
-void
-mrtload_n_octet(FILE *fp, u64 *remains, byte *buff, int n)
+static void
+mrtload_n_octet(struct rfile *fp, u64 *remains, byte *buff, int n)
 {
   for (int i = 0; i < n; i++)
-    buff[i] = fgetc(fp);
+    buff[i] = fgetc(fp->f);
 
   remains[0] = remains[0] - n;
 }
 
-u64
-mrtload_four_octet(FILE *fp, u64 *remains)
+static u64
+mrtload_four_octet(struct rfile *fp, u64 *remains)
 {
   u64 ret = 0;
 
   for (int i = 0; i < 4; i++)
   {
     ret = ret << 8;
-    ret += fgetc(fp);
+    ret += fgetc(fp->f);
   }
 
   remains[0] = remains[0] - 4;
@@ -43,8 +88,8 @@ mrtload_four_octet(FILE *fp, u64 *remains)
   return ret;
 }
 
-void
-mrtload_ip(FILE *fp, u64 *remains, ip_addr *addr, bool is_ip6)
+static void
+mrtload_ip(struct rfile *fp, u64 *remains, ip_addr *addr, bool is_ip6)
 {
   if (is_ip6)
   {
@@ -58,11 +103,11 @@ mrtload_ip(FILE *fp, u64 *remains, ip_addr *addr, bool is_ip6)
   }
 }
 
-u32
-mrtload_two_octet(FILE *fp, u64 *remains)
+static u32
+mrtload_two_octet(struct rfile *fp, u64 *remains)
 {
   remains[0] = remains[0] - 2;
-  return (fgetc(fp) << 8) + fgetc(fp);
+  return (fgetc(fp->f) << 8) + fgetc(fp->f);
 }
 
 void
@@ -77,7 +122,7 @@ mrt_rx_end_mark(struct bgp_parse_state *s UNUSED, u32 afi UNUSED)
   /* Do nothing */
 }
 
-bool
+static bool
 mrt_get_channel_to_parse(struct bgp_parse_state *s UNUSED, u32 afi UNUSED)
 {
   struct mrtload_proto *p = SKIP_BACK(struct mrtload_proto, p, s->p);
@@ -112,7 +157,7 @@ mrtload_fill_parse_state(struct mrtload_proto *p, struct bgp_parse_state *s)
 }
 
 struct mrtload_route_ctx *
-mrtload_create_ctx(struct mrtload_proto *p, int addr_fam, int local_as, int peer_as, ip_addr local_ip, ip_addr remote_ip, u8 is_internal)
+mrtload_create_ctx(struct mrtload_proto *p, int afi, int local_as, int peer_as, ip_addr local_ip, ip_addr remote_ip, u8 is_internal)
 {
   struct mrtload_route_ctx *route_attrs = (struct mrtload_route_ctx *) mb_allocz(p->ctx_pool, sizeof(struct mrtload_route_ctx));
  
@@ -120,7 +165,7 @@ mrtload_create_ctx(struct mrtload_proto *p, int addr_fam, int local_as, int peer
   rt_lock_source(route_attrs->src);
   p->source_cnt++;
  
-  route_attrs->addr_fam = addr_fam;
+  route_attrs->afi = afi;
   route_attrs->ctx.local_as = local_as;
   route_attrs->ctx.remote_as = peer_as;
   route_attrs->ctx.local_ip = local_ip;
@@ -156,8 +201,8 @@ mrtload_create_ctx(struct mrtload_proto *p, int addr_fam, int local_as, int peer
        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 
-void
-mrt_parse_rib_entry(struct mrtload_proto *p, FILE *fp, byte *prefix_data, uint prefix_data_len, u64 *remains, bool add_path, u32 afi)
+static void
+mrt_parse_rib_entry(struct mrtload_proto *p, struct rfile *fp, byte *prefix_data, uint prefix_data_len, u64 *remains, bool add_path, u32 afi)
 {
   struct bgp_parse_state s;
   memset(&s, 0, sizeof(struct bgp_parse_state));
@@ -188,7 +233,7 @@ mrt_parse_rib_entry(struct mrtload_proto *p, FILE *fp, byte *prefix_data, uint p
   byte data[attr_len];
   mrtload_n_octet(fp, remains, data, attr_len);
 
-  if (afi != p->addr_fam)
+  if (afi != p->afi)
     return;
 
   ea_list *ea = bgp_decode_attrs(&s, data, attr_len);
@@ -231,8 +276,8 @@ mrt_parse_rib_entry(struct mrtload_proto *p, FILE *fp, byte *prefix_data, uint p
                     Figure 9: RIB_GENERIC Entry Header
 */
 
-void
-mrt_parse_rib_generic(struct mrtload_proto *p, FILE *fp, u64 *remains, bool add_path)
+static void
+mrt_parse_rib_generic(struct mrtload_proto *p, struct rfile *fp, u64 *remains, bool add_path)
 {
   mrtload_four_octet(fp, remains); /* sequence number */
   int afi = mrtload_two_octet(fp, remains);
@@ -261,8 +306,8 @@ mrt_parse_rib_generic(struct mrtload_proto *p, FILE *fp, u64 *remains, bool add_
        |         Entry Count           |  RIB Entries (variable)
        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
 */
-void
-mrt_parse_rib4_unicast(struct mrtload_proto *p, FILE *fp, u64 *remains, bool add_path)
+static void
+mrt_parse_rib4_unicast(struct mrtload_proto *p, struct rfile *fp, u64 *remains, bool add_path)
 {
   mrtload_four_octet(fp, remains); /* sequence number */
   u8 pref_len = mrtload_one(fp, remains);
@@ -293,8 +338,8 @@ mrt_parse_rib4_unicast(struct mrtload_proto *p, FILE *fp, u64 *remains, bool add
                           Figure 6: Peer Entries
 */
 
-void
-mrt_parse_peer(struct mrtload_proto *p, FILE *fp, u64 *remains, struct mrtload_peer_entry *peer)
+static void
+mrt_parse_peer(struct mrtload_proto *p, struct rfile *fp, u64 *remains, struct mrtload_peer_entry *peer)
 {
   int peer_type = mrtload_one(fp, remains);
   peer->afi = (peer_type & 1) ? AFI_IPV6 : AFI_IPV4;
@@ -306,7 +351,7 @@ mrt_parse_peer(struct mrtload_proto *p, FILE *fp, u64 *remains, struct mrtload_p
   else
     peer->peer_as = mrtload_two_octet(fp, remains);
 
-  peer->route_attrs = mrtload_create_ctx(p, p->addr_fam, p->local_as, peer->peer_as, p->local_ip, peer->peer_ip, p->is_internal);
+  peer->route_attrs = mrtload_create_ctx(p, p->afi, p->local_as, peer->peer_as, p->local_ip, peer->peer_ip, p->is_internal);
 }
 
 
@@ -324,8 +369,8 @@ mrt_parse_peer(struct mrtload_proto *p, FILE *fp, u64 *remains, struct mrtload_p
                     Figure 5: PEER_INDEX_TABLE Subtype
 */
 
-void
-mrt_parse_peer_index_table(struct mrtload_proto *p, FILE *fp, u64 *remains)
+static void
+mrt_parse_peer_index_table(struct mrtload_proto *p, struct rfile *fp, u64 *remains)
 {
   mrtload_four_octet(fp, remains); /* Collector BGP ID, in mrt.c config->router_id */
   int name_len = mrtload_two_octet(fp, remains);
@@ -361,8 +406,8 @@ mrt_parse_peer_index_table(struct mrtload_proto *p, FILE *fp, u64 *remains)
 
                      Figure 12: BGP4MP_MESSAGE Subtype
 */
-struct mrtload_route_ctx *
-mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4, bool insert_hash, struct mrtload_proto *p)
+static struct mrtload_route_ctx *
+mrt_parse_bgp_message(struct rfile *fp, u64 *remains, bool as4, bool insert_hash, struct mrtload_proto *p)
 {
   u64 peer_as;
   u64 local_as;
@@ -382,30 +427,30 @@ mrt_parse_bgp_message(FILE *fp, u64 *remains, bool as4, bool insert_hash, struct
   int is_internal = (peer_as == local_as);
   mrtload_two_octet(fp, remains); /* Interface index. It might be usefull,
       but "is OPTIONAL and MAY be zero" */
-  int addr_fam = mrtload_two_octet(fp, remains);
+  int afi = mrtload_two_octet(fp, remains);
 
-  mrtload_ip(fp, remains, &remote_ip, addr_fam == 2);
-  mrtload_ip(fp, remains, &local_ip, addr_fam == 2);
+  mrtload_ip(fp, remains, &remote_ip, afi == 2);
+  mrtload_ip(fp, remains, &local_ip, afi == 2);
 
   struct mrtload_route_ctx *route_attrs = HASH_FIND(p->ctx_hash, MRTLOAD_CTX, peer_as, local_as, remote_ip, local_ip);
 
   if (!route_attrs && insert_hash)
   {
-    route_attrs = mrtload_create_ctx(p, addr_fam, local_as, peer_as, local_ip, remote_ip, is_internal);
+    route_attrs = mrtload_create_ctx(p, afi, local_as, peer_as, local_ip, remote_ip, is_internal);
 
     HASH_INSERT(p->ctx_hash, MRTLOAD_CTX, route_attrs);
   }
   return route_attrs;
 }
 
-void
-mrt_parse_bgp4mp_change_state(struct mrtload_proto *p, FILE *fp, u64 *remains, bool as4)
+static void
+mrt_parse_bgp4mp_change_state(struct mrtload_proto *p, struct rfile *fp, u64 *remains, bool as4)
 {
   struct mrtload_route_ctx *ra = mrt_parse_bgp_message(fp, remains, as4, false, p);
   mrtload_two_octet(fp, remains); /* old state */
   int new_state = mrtload_two_octet(fp, remains);
 
-  if (new_state == 1 && ra && ra->addr_fam == (int)(p->channel->afi >> 16)) /* state 1 - Idle (rfc 1771) */
+  if (new_state == 1 && ra && ra->afi == (int)(p->channel->afi)) /* state 1 - Idle (rfc 1771) */
   {
     FIB_WALK(&p->channel->c.table->fib, net, n)
     {
@@ -429,7 +474,7 @@ mrt_parse_bgp4mp_change_state(struct mrtload_proto *p, FILE *fp, u64 *remains, b
 }
 
 static void
-mrt_parse_bgp4mp_message(struct mrtload_proto *p, FILE *fp, u64 *remains, bool as4)
+mrt_parse_bgp4mp_message(struct mrtload_proto *p, struct rfile *fp, u64 *remains, bool as4)
 {
   struct mrtload_route_ctx *proto_attrs = mrt_parse_bgp_message(fp, remains, true, as4, p);
 
@@ -440,7 +485,7 @@ mrt_parse_bgp4mp_message(struct mrtload_proto *p, FILE *fp, u64 *remains, bool a
   }
 
   for (int i = 0; i < 16; i++) /* skip marker */
-    fgetc(fp);
+    fgetc(fp->f);
 
   remains[0] = remains[0] - 16;
   u64 length = mrtload_two_octet(fp, remains) - 16 - 2 -1; /* length without header (marker, length, type) */
@@ -466,10 +511,10 @@ mrt_parse_bgp4mp_message(struct mrtload_proto *p, FILE *fp, u64 *remains, bool a
   bgp_parse_update(&s, buf, length, &ea);
 }
 
-u64
-mrt_parse_timestamp(FILE *fp)
+static u64
+mrt_parse_timestamp(struct rfile *fp)
 {
-  char is_eof = fgetc(fp);
+  char is_eof = fgetc(fp->f);
   u64 timestamp = is_eof;
 
   if (is_eof == EOF)
@@ -479,23 +524,23 @@ mrt_parse_timestamp(FILE *fp)
     for (int i = 0; i < 3; i++)
     {
       timestamp = timestamp << 8;
-      timestamp += fgetc(fp);
+      timestamp += fgetc(fp->f);
     }
   }
   return timestamp;
 }
 
-int
-mrt_parse_general_header(FILE *fp, struct mrtload_proto *p)
+static int
+mrt_parse_general_header(struct rfile *fp, struct mrtload_proto *p)
 {
-  int type = (fgetc(fp) << 8) + fgetc(fp);
-  int subtype = (fgetc(fp) << 8) + fgetc(fp);
+  int type = (fgetc(fp->f) << 8) + fgetc(fp->f);
+  int subtype = (fgetc(fp->f) << 8) + fgetc(fp->f);
   u64 length = 0;
 
   for (int i = 0; i < 4; i++)
   {
     length = length << 8;
-    length += fgetc(fp);
+    length += fgetc(fp->f);
   }
   u64 remains = length;
 
@@ -504,6 +549,7 @@ mrt_parse_general_header(FILE *fp, struct mrtload_proto *p)
   {
     switch (subtype)
     {
+      case (MRT_BGP4MP_STATE_CHANGE):
       case (MRT_BGP4MP_MESSAGE):
         mrt_parse_bgp4mp_change_state(p, fp, &remains, false);
         break;
@@ -551,6 +597,13 @@ mrt_parse_general_header(FILE *fp, struct mrtload_proto *p)
       default:
         log(L_WARN "mrtload: unknown mrt table dump subtype %i", subtype);
     }
+
+    if (p->load_timer->hook == mrtload_hook_accel) //TODO: This should be done earlier by looking forward into loaded data
+      {
+        p->load_timer->hook = mrtload_hook;
+        p->next_time--; //dirty trick to stop the loading loop (will disappear after todo solved)
+        log(L_WARN "MRT load: Attempt to load table dump with replay accel. Acceleration has been canceled.");
+      }
   } else
     log(L_WARN "mrtload: unknown mrt table type %i", type);
 
@@ -558,19 +611,19 @@ mrt_parse_general_header(FILE *fp, struct mrtload_proto *p)
   ASSERT_DIE(remains <= length);
 
   for (u64 i = 0; i < remains; i++)
-    fgetc(fp);
+    fgetc(fp->f);
 
   return length;
 }
 
-void
+static void
 mrtload_hook(timer *tm)
 {
   struct mrtload_proto *p = tm->data;
   int loaded = 0;
   btime stamp;
 
-  while (loaded < 1<<14)
+  while (loaded < 1<<14) /* Interruption after some amount of data to prevent BIRD from freezing here */
   {
     loaded += mrt_parse_general_header(p->parsed_file, p);
     stamp = mrt_parse_timestamp(p->parsed_file); /* timestamp from next header */
@@ -582,13 +635,14 @@ mrtload_hook(timer *tm)
   tm_start(p->load_timer, 10000);
 }
 
-void
-mrtload_hook_replay(timer *tm)
+static void
+mrtload_hook_accel(timer *tm)
 {
   struct mrtload_proto *p = tm->data;
   int loaded = 0;
   s64 time = p->next_time;
 
+  /* An interruption must come at least after some amount of data to prevent BIRD from freezing here */
   while (time == p->next_time && loaded < 1<<14)
   {
     loaded += mrt_parse_general_header(p->parsed_file, p);
@@ -596,28 +650,32 @@ mrtload_hook_replay(timer *tm)
   }
 
   /* mrt time is in seconds, bird count in microseconds */
-  s64 shift_from_start = ((time - p->zero_time) * 1000000) / p->time_replay;
-  s64 wait_time = shift_from_start + p->start_time - current_time();
+  s64 wait_time = (time - p->next_time) * 1000000;
+
+  if (loaded <= 1<< 14)
+    wait_time = MAX(wait_time, 1000); // add at least minimal delay
+
   p->next_time = time;
 
   tm_start(p->load_timer, wait_time);
 }
 
-void
-mrtload(struct mrtload_proto *p)
+static void
+mrtload_start_loading(struct mrtload_proto *p)
 {
   struct mrtload_config *cf = (void *) (p->p.cf);
-  p->parsed_file = fopen(cf->filename, "r");
+  p->parsed_file = rf_open(p->ctx_pool, cf->filename, "r");
 
   if (p->parsed_file == NULL)
   {
+    log("proto %s:", p->p.name);
     log(L_WARN "Can not open file %s", cf->filename);
     return;
   }
 
   p->load_timer->data = p;
  
-  if (!cf->time_replay)
+  if (!cf->replay_accel)
   {
     p->load_timer->hook = mrtload_hook;
 
@@ -626,13 +684,11 @@ mrtload(struct mrtload_proto *p)
     return;
   }
 
-  p->load_timer->hook = mrtload_hook_replay;
-  p->time_replay = cf->time_replay;
-  p->start_time = current_time();
-  p->zero_time = mrt_parse_timestamp(p->parsed_file);
-  p->next_time = p->zero_time;
+  p->load_timer->hook = mrtload_hook_accel;
+  p->replay_accel = cf->replay_accel;
+  p->next_time = mrt_parse_timestamp(p->parsed_file);
 
-  if (p->zero_time)
+  if (p->next_time)
     tm_start(p->load_timer, 0);
 }
 
@@ -640,6 +696,7 @@ void
 mrtload_check_config(struct proto_config *CF, struct bgp_channel_config *CC)
 {
   struct mrtload_config *cf = (void *) CF;
+  return;
 
   if (!cf->table_cf)
     cf_error("Table not specified");
@@ -655,6 +712,7 @@ static struct proto *
 mrtload_init(struct proto_config *CF)
 {
   struct proto *P = proto_new(CF);
+  return P;
   struct mrtload_config *mlc = (struct mrtload_config *) CF;
   proto_add_channel(P, &mlc->channel_cf->c);
 
@@ -681,7 +739,7 @@ mrtload_start(struct proto *P)
   p->channel->desc = cf->channel_cf->desc;
   p->channel->c.channel = &channel_mrtload;
   p->channel->c.table = cf->table_cf->table;
-  p->addr_fam = cf->table_cf->table->addr_type;
+  p->afi = BGP_AFI(cf->channel_cf->afi);
   p->ctx_pool = rp_new(P->pool, "Mrtload route ctx");
   p->source_cnt = 0;
   p->load_timer = tm_new(P->pool);
@@ -704,7 +762,7 @@ mrtload_start(struct proto *P)
 
   ASSERT_DIE(p->channel->igp_table_ip6 || p->channel->igp_table_ip4);
 
-  mrtload(p);
+  mrtload_start_loading(p);
 
   return PS_UP;
 }
@@ -713,6 +771,24 @@ mrtload_start(struct proto *P)
 static int
 mrtload_shutdown(struct proto *P)
 {
+  struct mrtload_proto *p = (void *) P;
+
+  HASH_FREE(p->ctx_hash);
+
+  if (p->table_peers)
+  {
+    for (int i = 0; i < p->table_peers_count; i++)
+      mb_free(p->table_peers[i].route_attrs);
+    mb_free(p->table_peers);
+  }
+
+  return PS_DOWN;
+}
+
+static int
+mrtload_reconfigure(struct proto *P, struct proto_config *CF UNUSED)
+{
+  log("mrtload_reconfigure");
   struct mrtload_proto *p = (void *) P;
 
   FIB_WALK(&p->channel->c.table->fib, net, n)
@@ -727,25 +803,8 @@ mrtload_shutdown(struct proto *P)
   }
   FIB_WALK_END;
 
-  HASH_FREE(p->ctx_hash);
-
-  if (p->table_peers)
-  {
-    for (int i = 0; i < p->table_peers_count; i++)
-      mb_free(p->table_peers[i].route_attrs);
-    mb_free(p->table_peers);
-  }
-
-  proto_notify_state(&p->p, PS_DOWN);
-  return PS_DOWN;
-}
-
-static int
-mrtload_reconfigure(struct proto *P, struct proto_config *CF)
-{
-  P->cf = CF;
-  struct mrtload_proto *p = (void *) P;
-  mrtload(p);
+  mrtload_shutdown(P);
+  mrtload_start(P);
 
   return 1;
 }
@@ -782,27 +841,8 @@ static int
 mrtload_channel_reconfigure(struct channel *C UNUSED, struct channel_config *CC UNUSED,
     int *import_changed UNUSED, int *export_changed UNUSED)
 {
- struct bgp_channel *c = (void *) C;
- struct bgp_channel_config *new = (void *) CC;
- struct bgp_channel_config *old = c->cf;
-
- if (old->afi != new->afi)
-   return 0;
- if (old->desc != new->desc)
-   return 0;
- if (old->c.table != new->c.table)
-   return 0;
-
- if (old->igp_table_ip4)
-   if (!new->igp_table_ip4 || old->igp_table_ip4->table != new->igp_table_ip4->table)
-     return 0;
-
- if (old->igp_table_ip6)
-   if (!new->igp_table_ip6 || old->igp_table_ip6->table != new->igp_table_ip6->table)
-     return 0;
-
-  c->cf = new;
-  return 1;
+  log("mrtload_channel_reconfigure");
+  return 0; // Even if no variable was changed, the content of MRT file might be changed
 }
 
 const struct channel_class channel_mrtload = {
@@ -818,7 +858,7 @@ const struct channel_class channel_mrtload = {
 
 struct protocol proto_mrtload = {
   .name =		"mrtload",
-  .template =		"mrt%d",
+  .template =		"mrtload%d",
   .class =		PROTOCOL_MRTLOAD,
   .proto_size =		sizeof(struct mrtload_proto),
   .config_size =	sizeof(struct mrt_config),

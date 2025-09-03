@@ -9,14 +9,19 @@
 #ifndef _BIRD_UNIX_H_
 #define _BIRD_UNIX_H_
 
+#include <stdio.h>
 #include <sys/socket.h>
 #include <signal.h>
 
 struct pool;
 struct iface;
 struct birdsock;
-struct rfile;
 struct cli;
+
+struct rfile {
+  resource r;
+  FILE *f;
+};
 
 /* main.c */
 
