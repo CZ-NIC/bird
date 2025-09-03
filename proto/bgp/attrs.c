@@ -1993,7 +1993,7 @@ bgp_get_neighbor(rte *r)
     return as;
 
   /* If AS_PATH is not defined, we treat rte as locally originated */
-  struct bgp_route_ctx *p = (struct bgp_route_ctx *) ea_find(r->attrs->eattrs, EA_ROUTE_CONTEXT)->u.ptr;
+  struct bgp_route_ctx *p = SKIP_BACK(struct bgp_route_ctx, bgp_rte_ctx, rte_get_context(r));
   return p->confederation ?: p->local_as;
 }
 
