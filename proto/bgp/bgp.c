@@ -1174,6 +1174,15 @@ bgp_connect_timeout(timer *t)
   if (p->p.proto_state == PS_START)
   {
     bgp_close_conn(conn);
+
+    LOCK_DOMAIN(rtable, bgp_listen_domain);
+    if (p->listen.sock->sk == NULL)
+    {
+      log(L_WARN "%s: Creating listening socket takes suspiciously long. Reentering connect timeout.");
+      bgp_start_timer(p, conn->connect_timer, p->cf->connect_delay_time);
+    }
+    UNLOCK_DOMAIN(rtable, bgp_listen_domain);
+
     bgp_connect(p);
   }
   else
