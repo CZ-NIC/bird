@@ -695,6 +695,10 @@ bgp_open(struct bgp_proto *p)
     (p->ipv4 ? IPA_NONE4 : IPA_NONE6);
   req->params.port = p->cf->local_port;
   req->params.flags = p->cf->free_bind ? SKF_FREEBIND : 0;
+  req->proto = p->p.proto;
+  req->cf = p->cf;
+  req->remote_ip = p->remote_ip;
+  req->p = p;
 
   BGP_TRACE(D_EVENTS, "Requesting listen socket at %I%J port %u", req->params.addr, req->params.iface, req->params.port);
 
@@ -1870,18 +1874,17 @@ bgp_find_proto(sock *sk)
 
   WALK_LIST(req, bs->requests)
   {
-    SKIP_BACK_DECLARE(struct bgp_proto, p, listen, req);
-    if ((p->p.proto == &proto_bgp) &&
-	(ipa_equal(p->remote_ip, sk->daddr) || bgp_is_dynamic(p)) &&
-	(!p->cf->remote_range || ipa_in_netX(sk->daddr, p->cf->remote_range)) &&
-	(p->p.vrf == sk->vrf) &&
-	(p->cf->local_port == sk->sport) &&
-	(!link || (p->cf->iface == sk->iface)) &&
-	(ipa_zero(p->cf->local_ip) || ipa_equal(p->cf->local_ip, sk->saddr)))
+    if ((req->proto == &proto_bgp) &&
+	(ipa_equal(req->remote_ip, sk->daddr) || ipa_zero(req->remote_ip)) &&
+	(!req->cf->remote_range || ipa_in_netX(sk->daddr, req->cf->remote_range)) &&
+	(req->params.vrf == sk->vrf) &&
+	(req->cf->local_port == sk->sport) &&
+	(!link || (req->cf->iface == sk->iface)) &&
+	(ipa_zero(req->cf->local_ip) || ipa_equal(req->cf->local_ip, sk->saddr)))
     {
-      best = p;
+      best = req->p;
 
-      if (!bgp_is_dynamic(p))
+      if (!bgp_is_dynamic(req->p))
 	break;
     }
   }
