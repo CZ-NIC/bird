@@ -3176,6 +3176,10 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   p->cf = new;
   p->hostname = proto_get_hostname(CF);
 
+  p->listen.cf = p->cf;
+  p->listen.bgp_is_dynamic = bgp_is_dynamic(p);
+  p->listen.remote_ip = p->remote_ip;
+
   /* Check whether existing connections are compatible with required capabilities */
   struct bgp_conn *ci = &p->incoming_conn;
   if (((ci->state == BS_OPENCONFIRM) || (ci->state == BS_ESTABLISHED)) && !bgp_check_capabilities(ci))
