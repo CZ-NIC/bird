@@ -312,6 +312,13 @@ struct bgp_socket {
   node n;				/* Node in global bgp_sockets */
   list requests;			/* Listen requests */
   sock *sk;				/* Real listening socket */
+  struct bgp_socket_params {
+    ip_addr addr;			/* Local address to bind to */
+    struct iface *iface;		/* Local interface to bind to */
+    struct iface *vrf;			/* VRF to bind to */
+    uint port;				/* Local port to bind to (mandatory) */
+    uint flags;				/* Additional SKF_* flags */
+  } params;
 };
 
 struct bgp_stats {
@@ -370,11 +377,7 @@ struct bgp_session_close_ad {
 struct bgp_listen_request {
   node n;				/* Node in bgp_socket / pending list */
   struct bgp_socket *sock;		/* Assigned socket */
-  ip_addr addr;
-  struct iface *iface;
-  struct iface *vrf;
-  uint port;
-  uint flags;
+  struct bgp_socket_params params;
 };
 
 struct bgp_proto {
