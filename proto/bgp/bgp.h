@@ -377,7 +377,14 @@ struct bgp_session_close_ad {
 struct bgp_listen_request {
   node n;				/* Node in bgp_socket / pending list */
   struct bgp_socket *sock;		/* Assigned socket */
-  struct bgp_socket_params params;
+  struct bgp_socket_params params;	/* Listening socket parameters */
+  struct protocol *proto;		/* Requesting protocol */
+  ip_addr local_ip;			/* Local IP address to match */
+  struct iface *iface;			/* Local interface to match */
+  ip_addr remote_ip;			/* Remote IP address to match */
+  const net_addr *remote_range;		/* Remote IP range to match */
+  struct bgp_proto *p;
+
 };
 
 struct bgp_proto {
