@@ -654,10 +654,10 @@ bgp_close(struct bgp_proto *p)
   struct bgp_listen_request *req = &p->listen;
   struct bgp_socket *bs = req->sock;
 
-  if (enlisted(&req->n))
+  if (enlisted(&req->sn))
   {
     /* Remove listen request from listen socket or pending list */
-    rem_node(&req->n);
+    rem_node(&req->sn);
 
     if (bs)
     {
@@ -689,16 +689,16 @@ bgp_open(struct bgp_proto *p)
 
   struct bgp_listen_request *req = &p->listen;
   /* We assume that cf->iface is defined iff cf->local_ip is link-local */
-  req->iface = p->cf->strict_bind ? p->cf->iface : NULL;
-  req->vrf = p->p.vrf;
-  req->addr = p->cf->strict_bind ? p->cf->local_ip :
+  req->params.iface = p->cf->strict_bind ? p->cf->iface : NULL;
+  req->params.vrf = p->p.vrf;
+  req->params.addr = p->cf->strict_bind ? p->cf->local_ip :
     (p->ipv4 ? IPA_NONE4 : IPA_NONE6);
-  req->port = p->cf->local_port;
-  req->flags = p->cf->free_bind ? SKF_FREEBIND : 0;
+  req->params.port = p->cf->local_port;
+  req->params.flags = p->cf->free_bind ? SKF_FREEBIND : 0;
 
-  BGP_TRACE(D_EVENTS, "Requesting listen socket at %I%J port %u", req->addr, req->iface, req->port);
+  BGP_TRACE(D_EVENTS, "Requesting listen socket at %I%J port %u", req->params.addr, req->params.iface, req->params.port);
 
-  add_tail(&bgp_listen_pending, &req->n);
+  add_tail(&bgp_listen_pending, &req->sn);
   ev_send(&global_event_list, &bgp_listen_event);
 
   UNLOCK_DOMAIN(rtable, bgp_listen_domain);
@@ -722,16 +722,16 @@ bgp_listen_create(void *_ UNUSED)
     /* Get the first request to match */
     struct bgp_listen_request *req = HEAD(bgp_listen_pending);
     SKIP_BACK_DECLARE(struct bgp_proto, p, listen, req);
-    rem_node(&req->n);
+    rem_node(&req->sn);
 
     /* First try to find existing socket */
     struct bgp_socket *bs;
     WALK_LIST(bs, bgp_sockets)
-      if (ipa_equal(bs->sk->saddr, req->addr) &&
-	  (bs->sk->sport == req->port) &&
-	  (bs->sk->iface == req->iface) &&
-	  (bs->sk->vrf == req->vrf) &&
-	  ((bs->sk->flags & flag_mask) == req->flags))
+      if (ipa_equal(bs->sk->saddr, req->params.addr) &&
+	  (bs->sk->sport == req->params.port) &&
+	  (bs->sk->iface == req->params.iface) &&
+	  (bs->sk->vrf == req->params.vrf) &&
+	  ((bs->sk->flags & flag_mask) == req->params.flags))
 	break;
 
     /* Not found any */
@@ -744,11 +744,11 @@ bgp_listen_create(void *_ UNUSED)
       sock *sk = sk_new(bgp_listen_pool);
       sk->type = SK_TCP_PASSIVE;
       sk->ttl = 255;
-      sk->saddr = req->addr;
-      sk->sport = req->port;
-      sk->iface = req->iface;
-      sk->vrf = req->vrf;
-      sk->flags = req->flags;
+      sk->saddr = req->params.addr;
+      sk->sport = req->params.port;
+      sk->iface = req->params.iface;
+      sk->vrf = req->params.vrf;
+      sk->flags = req->params.flags;
       sk->tos = IP_PREC_INTERNET_CONTROL;
       sk->rbsize = BGP_RX_BUFFER_SIZE;
       sk->tbsize = BGP_TX_BUFFER_SIZE;
@@ -777,11 +777,11 @@ bgp_listen_create(void *_ UNUSED)
     }
 
     req->sock = bs;
-    add_tail(&bs->requests, &req->n);
+    add_tail(&bs->requests, &req->sn);
 
     if (bgp_setup_auth(p, 1) < 0)
     {
-      rem_node(&req->n);
+      rem_node(&req->sn);
       req->sock = NULL;
 
       UNLOCK_DOMAIN(rtable, bgp_listen_domain);
