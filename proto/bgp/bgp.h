@@ -379,6 +379,11 @@ struct bgp_listen_request {
   node pn;				/* Node in bgp_proto list */
   struct bgp_socket *sock;		/* Assigned socket */
   struct bgp_socket_params params;
+  /* proto parameters */
+  struct protocol *proto;
+  ip_addr remote_ip;
+  const struct bgp_config *cf;
+  struct bgp_proto *p;
 };
 
 struct bgp_proto {
