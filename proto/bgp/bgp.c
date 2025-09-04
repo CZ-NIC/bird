@@ -1884,7 +1884,7 @@ bgp_find_proto(sock *sk)
     {
       best = req->p;
 
-      if (!bgp_is_dynamic(req->p))
+      if (! ipa_zero(req->remote_ip))
 	break;
     }
   }
@@ -3177,7 +3177,6 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   p->hostname = proto_get_hostname(CF);
 
   p->listen.cf = p->cf;
-  p->listen.bgp_is_dynamic = bgp_is_dynamic(p);
   p->listen.remote_ip = p->remote_ip;
 
   /* Check whether existing connections are compatible with required capabilities */
