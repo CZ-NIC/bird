@@ -374,6 +374,13 @@ struct bgp_session_close_ad {
   byte data[0];
 };
 
+struct bgp_incoming_socket {
+  node n;
+  event event;
+  sock *sk;
+  struct bgp_proto *p;
+};
+
 struct bgp_listen_request {
   node sn;				/* Node in bgp_socket list */
   node pn;				/* Node in bgp_proto list */
@@ -383,6 +390,8 @@ struct bgp_listen_request {
   struct protocol *proto;
   ip_addr remote_ip;
   const struct bgp_config *cf;
+  int bgp_is_dynamic;
+  list incoming_sk;
   struct bgp_proto *p;
 };
 
