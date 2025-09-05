@@ -147,6 +147,8 @@ static void bgp_active(struct bgp_proto *p);
 static void bgp_setup_conn(struct bgp_proto *p, struct bgp_conn *conn);
 static void bgp_setup_sk(struct bgp_conn *conn, sock *s);
 static void bgp_send_open(struct bgp_conn *conn);
+static inline int bgp_is_dynamic(struct bgp_proto *p);
+static void bgp_incoming_soc_dyn(void *_bgp_incoming_socket);
 static void bgp_update_bfd(struct bgp_proto *p, const struct bfd_options *bfd);
 
 static int bgp_disable_ao_keys(struct bgp_proto *p);
@@ -698,6 +700,8 @@ bgp_open(struct bgp_proto *p)
   req->proto = p->p.proto;
   req->cf = p->cf;
   req->remote_ip = p->remote_ip;
+  req->bgp_is_dynamic = bgp_is_dynamic(p);
+  init_list(&p->listen.incoming_sk);
   req->p = p;
 
   BGP_TRACE(D_EVENTS, "Requesting listen socket at %I%J port %u", req->params.addr, req->params.iface, req->params.port);
@@ -1875,7 +1879,7 @@ bgp_find_proto(sock *sk)
   WALK_LIST(req, bs->requests)
   {
     if ((req->proto == &proto_bgp) &&
-	(ipa_equal(req->remote_ip, sk->daddr) || ipa_zero(req->remote_ip)) &&
+	(ipa_equal(req->remote_ip, sk->daddr) || req->bgp_is_dynamic) &&
 	(!req->cf->remote_range || ipa_in_netX(sk->daddr, req->cf->remote_range)) &&
 	(req->params.vrf == sk->vrf) &&
 	(req->cf->local_port == sk->sport) &&
@@ -1884,13 +1888,25 @@ bgp_find_proto(sock *sk)
     {
       best = req->p;
 
-      if (! ipa_zero(req->remote_ip))
+      if (!req->bgp_is_dynamic)
 	break;
     }
   }
 
   UNLOCK_DOMAIN(rtable, bgp_listen_domain);
   return best;
+}
+
+static void
+bgp_incoming_soc_dyn(void *_bgp_incoming_socket)
+{
+  struct bgp_incoming_socket *bis = (struct bgp_incoming_socket*) _bgp_incoming_socket;
+  /* The dynamic protocol must be in the START state */
+  ASSERT_DIE(bis->p->p.proto_state == PS_START);
+
+  bgp_spawn(bis->p, bis->sk);
+  rem_node(&bis->n);
+  free(bis);
 }
 
 /**
@@ -2013,10 +2029,12 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
 
     /* The dynamic protocol must be in the START state */
     ASSERT_DIE(p->p.proto_state == PS_START);
-    birdloop_leave(p->p.loop);
-
-    /* Now we have a clean mainloop */
-    bgp_spawn(p, sk);
+    struct bgp_incoming_socket* bis = mb_alloc(sk->pool, sizeof(struct bgp_incoming_socket));
+    bis->event = (event) { .hook = bgp_incoming_soc_dyn, .data = bis };
+    bis->p = p;
+    bis->sk = sk;
+    add_tail(&p->listen.incoming_sk, &bis->n);
+    ev_send_loop(&main_birdloop, &bis->event);
     return 0;
   }
 
@@ -2599,6 +2617,7 @@ bgp_shutdown(struct proto *P)
 
 done:
   bgp_stop(p, subcode, data, len);
+  ASSERT_DIE(!bgp_is_dynamic(p) || list_length(&p->listen.incoming_sk) == 0);
   return p->p.proto_state;
 }
 
@@ -3178,6 +3197,7 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 
   p->listen.cf = p->cf;
   p->listen.remote_ip = p->remote_ip;
+  p->listen.bgp_is_dynamic = bgp_is_dynamic(p);
 
   /* Check whether existing connections are compatible with required capabilities */
   struct bgp_conn *ci = &p->incoming_conn;
