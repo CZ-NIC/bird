@@ -170,6 +170,12 @@ static void bgp_initiate_disable(struct bgp_proto *p, int err_val);
 static void bgp_graceful_restart_feed(struct bgp_channel *c);
 static void bgp_restart_route_refresh(void *_bc);
 
+/* Dynamic BGP detection */
+#define bgp_is_dynamic(x) (_Generic((x),			\
+    struct bgp_proto *: ipa_zero((x)->remote_ip),		\
+    struct bgp_config *: ipa_zero((x)->remote_ip),		\
+    struct bgp_listen_request *: ipa_zero((x)->remote_ip)))
+
 
 /*
  *	TCP-AO keys
@@ -698,24 +704,30 @@ bgp_open(struct bgp_proto *p)
 {
   BGP_LISTEN_LOCK(bl);
 
-  struct bgp_listen_request *req = &p->listen;
-
-  /* If strict_bind is set, we need local_ip and maybe also iface. Mandatory if
+  /* Set parameters of the listening socket
+   *
+   * If strict_bind is set, we need local_ip and maybe also iface. Mandatory if
    * local_ip is link-local. If strict_bind is not set, we bind to all addresses
    * of that family and match the local IP later when accepting the connection. */
-
-  req->params.iface = p->cf->strict_bind ? p->cf->iface : NULL;
-  req->params.vrf = p->p.vrf;
-  req->params.addr = p->cf->strict_bind ? p->cf->local_ip :
+  struct bgp_socket_params *par = &p->listen.params;
+  par->iface = p->cf->strict_bind ? p->cf->iface : NULL;
+  par->vrf = p->p.vrf;
+  par->addr = p->cf->strict_bind ? p->cf->local_ip :
     (p->ipv4 ? IPA_NONE4 : IPA_NONE6);
-  req->params.port = p->cf->local_port;
-  req->params.flags = p->cf->free_bind ? SKF_FREEBIND : 0;
-  req->proto = p->p.proto;
+  par->port = p->cf->local_port;
+  par->flags = p->cf->free_bind ? SKF_FREEBIND : 0;
+
+  /* Set parameters of the accepted socket */
+  struct bgp_listen_request *req = &p->listen;
   req->local_ip = p->cf->local_ip;
   req->iface = p->cf->iface;
   req->remote_ip = p->remote_ip;
   req->remote_range = p->cf->remote_range;
+
   req->p = p;
+
+  /* Initialize the incoming socket queue */
+  init_list(&p->listen.incoming_sockets);
 
   BGP_TRACE(D_EVENTS, "Requesting listen socket at %I%J port %u", req->params.addr, req->params.iface, req->params.port);
 
@@ -1861,30 +1873,24 @@ err2:
   return;
 }
 
-static inline int bgp_is_dynamic(struct bgp_proto *p)
-{ return ipa_zero(p->remote_ip); }
-
 /**
  * bgp_find_proto - find existing proto for incoming connection
  * @sk: TCP socket
  *
  */
-static struct bgp_proto *
-bgp_find_proto(sock *sk)
+static struct bgp_listen_request *
+bgp_find_proto(struct bgp_listen_private *bl UNUSED, sock *sk)
 {
-  struct bgp_proto *best = NULL;
+  struct bgp_listen_request *best = NULL;
   struct bgp_socket *bs = sk->data;
   struct bgp_listen_request *req;
 
   /* sk->iface is valid only if src or dst address is link-local */
   int link = ipa_is_link_local(sk->saddr) || ipa_is_link_local(sk->daddr);
 
-  BGP_LISTEN_LOCK(bl);
-
   WALK_LIST(req, bs->requests)
   {
-    if ((req->proto == &proto_bgp) &&
-	(ipa_equal(req->remote_ip, sk->daddr) || ipa_zero(req->remote_ip)) &&
+    if ((ipa_equal(req->remote_ip, sk->daddr) || bgp_is_dynamic(req)) &&
 	(!req->remote_range || ipa_in_netX(sk->daddr, req->remote_range)) &&
 	(req->params.vrf == sk->vrf) &&
 	(req->params.port == sk->sport) &&
@@ -1892,10 +1898,10 @@ bgp_find_proto(sock *sk)
 	(ipa_zero(req->local_ip) || ipa_equal(req->local_ip, sk->saddr)))
     {
       /* Non-dynamic protocol instance matched */
-      if (!ipa_zero(req->remote_ip))
-	return req->p;
+      if (!bgp_is_dynamic(req))
+	return req;
 
-      best = req->p;
+      best = req;
     }
   }
 
@@ -1919,22 +1925,87 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
 {
   ASSERT_DIE(birdloop_inside(&main_birdloop));
 
-  struct bgp_proto *p;
-  int acc, hops;
-
   DBG("BGP: Incoming connection from %I port %d\n", sk->daddr, sk->dport);
-  p = bgp_find_proto(sk);
-  if (!p)
+  BGP_LISTEN_LOCK(bl);
+
+  struct bgp_listen_request *req = bgp_find_proto(bl, sk);
+  if (req)
+  {
+    struct bgp_proto *p = req->p;
+    struct bgp_incoming_socket* bis = mb_allocz(sk->pool, sizeof(struct bgp_incoming_socket));
+    bis->sk = sk;
+    add_tail(&p->listen.incoming_sockets, &bis->n);
+
+    rmove(sk, birdloop_pool(bl->loop));
+    sk_reloop(sk, bl->loop);
+
+    callback_activate(&p->incoming_connection);
+  }
+  else
   {
     log(L_WARN "BGP: Unexpected connect from unknown address %I%J (port %d)",
 	sk->daddr, ipa_is_link_local(sk->daddr) ? sk->iface : NULL, sk->dport);
-    BGP_LISTEN_LOCK(bl);
     sk_close(sk);
-    return 0;
   }
 
-  birdloop_enter(p->p.loop);
+  return 0;
+}
 
+static void
+bgp_incoming_connection_dynamic(struct callback *cb)
+{
+  SKIP_BACK_DECLARE(struct bgp_proto, p, incoming_connection, cb);
+
+  while (true)
+  {
+    sock *sk = NULL;
+    BGP_LISTEN_LOCKED(bl)
+    {
+      /* Pop the first incoming socket from the queue */
+      if (EMPTY_LIST(p->listen.incoming_sockets))
+	return;
+
+      struct bgp_incoming_socket *bis = HEAD(p->listen.incoming_sockets);
+      sk = bis->sk;
+      ASSERT_DIE(sk);
+      rem_node(&bis->n);
+      mb_free(bis);
+    }
+
+    /* Ending up here means that there is no pre-existing explicit BGP session,
+     * and therefore the socket was matched by a dynamic entry instead.
+     * We need to spawn a new BGP session. */
+    bgp_spawn(p, sk);
+  }
+}
+
+static void
+bgp_incoming_connection_single(struct callback *cb)
+{
+  SKIP_BACK_DECLARE(struct bgp_proto, p, incoming_connection, cb);
+  BGP_LISTEN_LOCK(bl);
+
+  /* Called again by race condition, ignore */
+  if (EMPTY_LIST(p->listen.incoming_sockets))
+    return;
+
+  /* Use the last socket in the queue, superseding the previous ones */
+  struct bgp_incoming_socket *bis = TAIL(p->listen.incoming_sockets);
+  sock *sk = bis->sk;
+  ASSERT_DIE(sk);
+  rem_node(&bis->n);
+  mb_free(bis);
+
+  /* Flush the queue */
+  WALK_LIST_FIRST(bis, p->listen.incoming_sockets)
+  {
+    ASSERT_DIE(bis->sk);
+    sk_close(bis->sk);
+    rem_node(&bis->n);
+    mb_free(bis);
+  }
+
+  /* Check AO keys */
   if (!EMPTY_LIST(p->ao.keys))
   {
     int current = -1, rnext = -1;
@@ -1944,15 +2015,9 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     {
       log(L_WARN "%s: Connection from address %I%J (port %d) has no TCP-AO key",
           p->p.name, sk->daddr, ipa_is_link_local(sk->daddr) ? sk->iface : NULL, sk->dport);
-      BGP_LISTEN_LOCKED(bl)
-	sk_close(sk);
 
-      /* We need to announce possible state changes immediately before
-       * leaving the protocol's loop, otherwise we're gonna access the protocol
-       * without having it locked from proto_announce_state_later(). */
-      proto_announce_state(&p->p, p->p.ea_state);
-      birdloop_leave(p->p.loop);
-      return 0;
+      sk_close(sk);
+      return;
     }
   }
 
@@ -1963,7 +2028,7 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
    * incoming connection triggers a graceful restart.
    */
 
-  acc = (p->p.proto_state == PS_START || p->p.proto_state == PS_UP) &&
+  bool acc = (p->p.proto_state == PS_START || p->p.proto_state == PS_UP) &&
     (bgp_start_state(p) >= BSS_CONNECT) && (!p->incoming_conn.sk);
 
   if (p->conn && (p->conn->state == BS_ESTABLISHED) && p->gr_ready)
@@ -1971,14 +2036,12 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     bgp_store_error(p, NULL, BE_MISC, BEM_GRACEFUL_RESTART);
     bgp_handle_graceful_restart(p);
     bgp_conn_enter_idle_state(p->conn);
-    acc = 1;
+    acc = true;
 
     /* There might be separate incoming connection in OpenSent state */
     if (p->incoming_conn.state > BS_ACTIVE)
       bgp_close_conn(&p->incoming_conn);
   }
-
-  BGP_LISTEN_LOCK(bl);
 
   BGP_TRACE(D_EVENTS, "Incoming connection from %I%J (port %d) %s",
 	    sk->daddr, ipa_is_link_local(sk->daddr) ? sk->iface : NULL,
@@ -1987,10 +2050,10 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
   if (!acc)
   {
     sk_close(sk);
-    goto leave;
+    return;
   }
 
-  hops = p->cf->multihop ?: 1;
+  uint hops = p->cf->multihop ?: 1;
 
   if (sk_set_ttl(sk, p->cf->ttl_security ? 255 : hops) < 0)
     goto err;
@@ -2021,43 +2084,22 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     sk_reallocate(sk);
   }
 
-  /* For dynamic BGP, spawn new instance and postpone the socket */
-  if (bgp_is_dynamic(p))
-  {
-    BGP_LISTEN_UNLOCK(bl);
-
-    /* The dynamic protocol must be in the START state */
-    ASSERT_DIE(p->p.proto_state == PS_START);
-    birdloop_leave(p->p.loop);
-
-    /* Now we have a clean mainloop */
-    bgp_spawn(p, sk);
-    return 0;
-  }
-
+  /* Continue locally */
   rmove(sk, p->p.pool);
   sk_reloop(sk, p->p.loop);
 
   bgp_setup_conn(p, &p->incoming_conn);
   bgp_setup_sk(&p->incoming_conn, sk);
   bgp_send_open(&p->incoming_conn);
-  goto leave;
 
+  return;
+
+  /* Common error handling */
 err:
   sk_log_error(sk, p->p.name);
 err2:
   log(L_ERR "%s: Incoming connection aborted", p->p.name);
   sk_close(sk);
-
-leave:
-  BGP_LISTEN_UNLOCK(bl);
-
-  /* We need to announce possible state changes immediately before
-   * leaving the protocol's loop, otherwise we're gonna access the protocol
-   * without having it locked from proto_announce_state_later(). */
-  proto_announce_state(&p->p, p->p.ea_state);
-  birdloop_leave(p->p.loop);
-  return 0;
 }
 
 static void
@@ -2451,8 +2493,14 @@ bgp_start(struct proto *P)
   p->stats.rx_bytes = p->stats.tx_bytes = 0;
   p->last_rx_update = 0;
 
+  /* Initialize state change events */
   p->event = ev_new_init(p->p.pool, bgp_decision, p);
   callback_init(&p->uncork.cb, bgp_do_uncork, p->p.loop);
+
+  if (bgp_is_dynamic(p))
+    callback_init(&p->incoming_connection, bgp_incoming_connection_dynamic, &main_birdloop);
+  else
+    callback_init(&p->incoming_connection, bgp_incoming_connection_single, p->p.loop);
 
   p->startup_timer = tm_new_init(p->p.pool, bgp_startup_timeout, p, 0, 0);
   p->gr_timer = tm_new_init(p->p.pool, bgp_graceful_restart_timeout, p, 0, 0);
@@ -2613,6 +2661,7 @@ bgp_shutdown(struct proto *P)
 
 done:
   bgp_stop(p, subcode, data, len);
+  ASSERT_DIE(!bgp_is_dynamic(p) || list_length(&p->listen.incoming_sockets) == 0);
   return p->p.proto_state;
 }
 

@@ -374,17 +374,21 @@ struct bgp_session_close_ad {
   byte data[0];
 };
 
+struct bgp_incoming_socket {
+  node n;		/* Node in bgp_listen_request -> incoming_sockets */
+  sock *sk;		/* The actual socket */
+};
+
 struct bgp_listen_request {
   node n;				/* Node in bgp_socket / pending list */
   struct bgp_socket *sock;		/* Assigned socket */
   struct bgp_socket_params params;	/* Listening socket parameters */
-  struct protocol *proto;		/* Requesting protocol */
   ip_addr local_ip;			/* Local IP address to match */
   struct iface *iface;			/* Local interface to match */
   ip_addr remote_ip;			/* Remote IP address to match */
   const net_addr *remote_range;		/* Remote IP range to match */
-  struct bgp_proto *p;
-
+  list incoming_sockets;		/* Accepted sockets matched to this request */
+  struct bgp_proto *p;			/* Requesting protocol */
 };
 
 struct bgp_proto {
@@ -429,6 +433,7 @@ struct bgp_proto {
   btime last_rx_update;			/* Last time of RX update */
   ip_addr link_addr;			/* Link-local version of local_ip */
   event *event;				/* Event for respawning and shutting process */
+  callback incoming_connection;		/* Callback for incoming connection */
   timer *startup_timer;			/* Timer used to delay protocol startup due to previous errors (startup_delay) */
   timer *gr_timer;			/* Timer waiting for reestablishment after graceful restart */
   int dynamic_name_counter;		/* Counter for dynamic BGP names */
