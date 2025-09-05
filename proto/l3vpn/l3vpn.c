@@ -85,6 +85,48 @@ const struct f_tree l3vpn_rt_all = {
   .to = { .type = T_EC, .val.ec = ~0 },
 };
 
+static void
+l3vpn_generate_route(struct l3vpn_proto *p, const struct net_addr_rtfilter *addr)
+{
+  struct rta rta = { 0 };
+  struct rte *e = rte_get_temp(&rta, p->p.main_source);
+  rte_update2(p->rtfilter_channel, (net_addr *)addr, e, p->p.main_source);
+}
+
+static void
+l3vpn_split_interval(struct l3vpn_proto *p, const struct f_tree *node)
+{
+  u64 start = node->from.val.ec;
+  u64 end = node->to.val.ec;
+
+  u64 current = start;
+
+  while (current <= end)
+  {
+    ASSERT_DIE(current != 0);
+    u64 order = u64_ctz(current);
+
+    /*
+     * Order can never be zero because if it was, (1U << order) - 1 would be
+     * zero too, meaning current > end which cannot be true because we know
+     * that current <= end.
+     */
+    while (current + (1U << order) - 1 > end)
+      order--;
+
+    struct net_addr_rtfilter addr = NET_ADDR_RTFILTER(0, rt_from_u64(current), 64 - order);
+    l3vpn_generate_route(p, &addr);
+
+    current = current + (1U << order);
+  }
+
+  if (node->left)
+    l3vpn_split_interval(p, node->left);
+
+  if (node->right)
+    l3vpn_split_interval(p, node->right);
+}
+
 static int
 l3vpn_import_targets(struct l3vpn_proto *p, const struct adata *list)
 {
@@ -275,6 +317,7 @@ l3vpn_preexport(struct channel *C, rte *e)
     return l3vpn_import_targets(p, ea_get_adata(e->attrs->eattrs, EA_BGP_EXT_COMMUNITY)) ? 0 : -1;
 
   case NET_MPLS:
+  case NET_RTFILTER:
     return -1;
 
   default:
@@ -366,6 +409,7 @@ l3vpn_init(struct proto_config *CF)
   proto_configure_channel(P, &p->vpn4_channel, proto_cf_find_channel(CF, NET_VPN4));
   proto_configure_channel(P, &p->vpn6_channel, proto_cf_find_channel(CF, NET_VPN6));
   proto_configure_channel(P, &P->mpls_channel, proto_cf_find_channel(CF, NET_MPLS));
+  proto_configure_channel(P, &p->rtfilter_channel, proto_cf_find_channel(CF, NET_RTFILTER));
 
   P->rt_notify = l3vpn_rt_notify;
   P->preexport = l3vpn_preexport;
@@ -394,6 +438,9 @@ l3vpn_start(struct proto *P)
   if (P->vrf_set)
     P->mpls_map->vrf_iface = P->vrf;
 
+  proto_notify_state(&p->p, PS_UP);
+  l3vpn_split_interval(p, p->import_target);
+
   return PS_UP;
 }
 
@@ -417,7 +464,8 @@ l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
       !proto_configure_channel(P, &p->ip6_channel, proto_cf_find_channel(CF, NET_IP6)) ||
       !proto_configure_channel(P, &p->vpn4_channel, proto_cf_find_channel(CF, NET_VPN4)) ||
       !proto_configure_channel(P, &p->vpn6_channel, proto_cf_find_channel(CF, NET_VPN6)) ||
-      !proto_configure_channel(P, &P->mpls_channel, proto_cf_find_channel(CF, NET_MPLS)))
+      !proto_configure_channel(P, &P->mpls_channel, proto_cf_find_channel(CF, NET_MPLS)) ||
+      !proto_configure_channel(P, &p->rtfilter_channel, proto_cf_find_channel(CF, NET_RTFILTER)))
     return 0;
 
   if (!rd_equal(p->rd, cf->rd))
@@ -437,6 +485,13 @@ l3vpn_reconfigure(struct proto *P, struct proto_config *CF)
     TRACE(D_EVENTS, "Import target changed");
 
     l3vpn_prepare_import_targets(p);
+
+    if (p->rtfilter_channel)
+    {
+      rt_refresh_begin(p->rtfilter_channel->table, p->rtfilter_channel);
+      l3vpn_split_interval(p, p->import_target);
+      rt_refresh_end(p->rtfilter_channel->table, p->rtfilter_channel);
+    }
 
     if (p->vpn4_channel && (p->vpn4_channel->channel_state == CS_UP))
       channel_request_feeding(p->vpn4_channel);
@@ -482,7 +537,7 @@ struct protocol proto_l3vpn = {
   .name =		"L3VPN",
   .template =		"l3vpn%d",
   .class =		PROTOCOL_L3VPN,
-  .channel_mask =	NB_IP | NB_VPN | NB_MPLS,
+  .channel_mask =	NB_IP | NB_VPN | NB_MPLS | NB_RTFILTER,
   .proto_size =		sizeof(struct l3vpn_proto),
   .config_size =	sizeof(struct l3vpn_config),
   .postconfig =		l3vpn_postconfig,
