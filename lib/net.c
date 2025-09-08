@@ -3,6 +3,7 @@
 #include "lib/ip.h"
 #include "lib/net.h"
 #include "lib/flowspec.h"
+#include "nest/attrs.h"
 
 
 const char * const net_label[] = {
@@ -149,12 +150,7 @@ net_format(const net_addr *N, char *buf, int buflen)
     return flow6_net_format(buf, buflen, &n->flow6);
   case NET_RTFILTER:
     {
-    struct vpn_rd rd = {
-      .hi = n->rtfilter.rt.hi,
-      .lo = n->rtfilter.rt.lo,
-    };
-
-    int c = rd_format(rd, buf, buflen);
+    int c = ec_format(buf, rt_to_u64(n->rtfilter.rt));
     ADVANCE(buf, buflen, c);
     return bsnprintf(buf, buflen, "/%u AS%u", n->rtfilter.pxlen, n->rtfilter.asn);
     }
