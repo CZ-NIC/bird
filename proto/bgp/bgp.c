@@ -1909,6 +1909,22 @@ bgp_incoming_soc_dyn(void *_bgp_incoming_socket)
   free(bis);
 }
 
+static void
+bgp_incoming_soc(void *_bgp_incoming_socket)
+{
+  struct bgp_incoming_socket *bis = (struct bgp_incoming_socket*) _bgp_incoming_socket;
+  rmove(bis->sk, bis->p->p.pool);
+
+  bgp_setup_conn(bis->p, &bis->p->incoming_conn);
+  bgp_setup_sk(&bis->p->incoming_conn, bis->sk);
+  bgp_send_open(&bis->p->incoming_conn);
+
+  /* We need to announce possible state changes immediately before
+   * leaving the protocol's loop, otherwise we're gonna access the protocol
+   * without having it locked from proto_announce_state_later(). */
+  proto_announce_state(&bis->p->p, bis->p->p.ea_state);
+}
+
 /**
  * bgp_incoming_connection - handle an incoming connection
  * @sk: TCP socket
@@ -1924,6 +1940,7 @@ bgp_incoming_soc_dyn(void *_bgp_incoming_socket)
 static int
 bgp_incoming_connection(sock *sk, uint dummy UNUSED)
 {
+        log("incoming");
   ASSERT_DIE(birdloop_inside(&main_birdloop));
 
   struct bgp_proto *p;
@@ -2023,10 +2040,10 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
   }
 
   /* For dynamic BGP, spawn new instance and postpone the socket */
+  log("heree");
   if (bgp_is_dynamic(p))
   {
-    UNLOCK_DOMAIN(rtable, bgp_listen_domain);
-
+        log("is dynamic");
     /* The dynamic protocol must be in the START state */
     ASSERT_DIE(p->p.proto_state == PS_START);
     struct bgp_incoming_socket* bis = mb_alloc(sk->pool, sizeof(struct bgp_incoming_socket));
@@ -2034,17 +2051,25 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     bis->p = p;
     bis->sk = sk;
     add_tail(&p->listen.incoming_sk, &bis->n);
+    log("before send");
     ev_send_loop(&main_birdloop, &bis->event);
+    log("before unlock");
+    UNLOCK_DOMAIN(rtable, bgp_listen_domain);
     return 0;
   }
-
-  rmove(sk, p->p.pool);
-  sk_reloop(sk, p->p.loop);
-
-  bgp_setup_conn(p, &p->incoming_conn);
-  bgp_setup_sk(&p->incoming_conn, sk);
-  bgp_send_open(&p->incoming_conn);
-  goto leave;
+  else {
+        log("else");
+    struct bgp_incoming_socket* bis = mb_alloc(sk->pool, sizeof(struct bgp_incoming_socket));
+    bis->event = (event) { .hook = bgp_incoming_soc, .data = bis };
+    bis->p = p;
+    bis->sk = sk;
+    log("before unlock");
+    UNLOCK_DOMAIN(rtable, bgp_listen_domain);
+    log("after unlock");
+    ev_send_loop(p->p.loop, &bis->event);
+    log("after send");
+    return 0;
+  }
 
 err:
   sk_log_error(sk, p->p.name);
