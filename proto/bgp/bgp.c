@@ -1900,6 +1900,7 @@ bgp_find_proto(sock *sk)
 static void
 bgp_incoming_soc_dyn(void *_bgp_incoming_socket)
 {
+   log("bgp_incoming_soc_dyn");
   struct bgp_incoming_socket *bis = (struct bgp_incoming_socket*) _bgp_incoming_socket;
   /* The dynamic protocol must be in the START state */
   ASSERT_DIE(bis->p->p.proto_state == PS_START);
@@ -1913,16 +1914,27 @@ static void
 bgp_incoming_soc(void *_bgp_incoming_socket)
 {
   struct bgp_incoming_socket *bis = (struct bgp_incoming_socket*) _bgp_incoming_socket;
+  log("DOMAIN_IS_LOCKED(rtable, bgp_listen_domain) %i", DOMAIN_IS_LOCKED(rtable, bgp_listen_domain));
+  if (!DOMAIN_IS_LOCKED(rtable, bgp_listen_domain))
+    LOCK_DOMAIN(rtable, bgp_listen_domain);
   rmove(bis->sk, bis->p->p.pool);
+  log("moved");
 
   bgp_setup_conn(bis->p, &bis->p->incoming_conn);
   bgp_setup_sk(&bis->p->incoming_conn, bis->sk);
   bgp_send_open(&bis->p->incoming_conn);
+  log("before unlock");
+  UNLOCK_DOMAIN(rtable, bgp_listen_domain);
+  log("unlocked");
 
   /* We need to announce possible state changes immediately before
    * leaving the protocol's loop, otherwise we're gonna access the protocol
    * without having it locked from proto_announce_state_later(). */
+  ASSERT_DIE(birdloop_inside(bis->p->p.loop));
   proto_announce_state(&bis->p->p, bis->p->p.ea_state);
+  log("announced");
+  birdloop_leave(bis->p->p.loop);
+  log("the end");
 }
 
 /**
@@ -2047,26 +2059,26 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     /* The dynamic protocol must be in the START state */
     ASSERT_DIE(p->p.proto_state == PS_START);
     struct bgp_incoming_socket* bis = mb_alloc(sk->pool, sizeof(struct bgp_incoming_socket));
-    bis->event = (event) { .hook = bgp_incoming_soc_dyn, .data = bis };
+    bis->event = ev_new_init(p->p.pool, bgp_incoming_soc_dyn, bis);
     bis->p = p;
     bis->sk = sk;
     add_tail(&p->listen.incoming_sk, &bis->n);
-    log("before send");
-    ev_send_loop(&main_birdloop, &bis->event);
-    log("before unlock");
     UNLOCK_DOMAIN(rtable, bgp_listen_domain);
+    log("before send");
+    ev_send_loop(&main_birdloop, bis->event);
+    log("before unlock");
     return 0;
   }
   else {
         log("else");
     struct bgp_incoming_socket* bis = mb_alloc(sk->pool, sizeof(struct bgp_incoming_socket));
-    bis->event = (event) { .hook = bgp_incoming_soc, .data = bis };
+    bis->event = ev_new_init(p->p.pool, bgp_incoming_soc, bis);
     bis->p = p;
     bis->sk = sk;
-    log("before unlock");
     UNLOCK_DOMAIN(rtable, bgp_listen_domain);
-    log("after unlock");
-    ev_send_loop(p->p.loop, &bis->event);
+    birdloop_leave(p->p.loop);
+    log("after unlock current loop %x, p loop %x", birdloop_current, p->p.loop);
+    ev_send(proto_event_list(&p->p), bis->event);
     log("after send");
     return 0;
   }

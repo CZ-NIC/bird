@@ -376,7 +376,7 @@ struct bgp_session_close_ad {
 
 struct bgp_incoming_socket {
   node n;
-  event event;
+  event *event;
   sock *sk;
   struct bgp_proto *p;
 };
