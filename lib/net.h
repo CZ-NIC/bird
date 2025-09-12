@@ -645,7 +645,10 @@ static inline int net_validate_aspa(const net_addr_aspa *n)
 { return n->asn > 0; }
 
 static inline int net_validate_rtfilter(const net_addr_rtfilter *n)
-{ return n->asn > 0 && (n->pxlen == 0 || n->pxlen >= 32); }
+{
+  return (n->asn > 0 || n->asn == 0) && (n->pxlen <= 64) &&
+      ((rt_to_u64(n->rt) & ~u64_mkmask(n->pxlen)) == 0);
+}
 
 static inline int net_validate_ip6_sadr(const net_addr_ip6_sadr *n)
 { return net_validate_px6(n->dst_prefix, n->dst_pxlen) && net_validate_px6(n->src_prefix, n->src_pxlen); }
