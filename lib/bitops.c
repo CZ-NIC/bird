@@ -23,6 +23,19 @@ u32_mkmask(uint n)
 }
 
 /**
+ * u64_mkmask - create a bit mask
+ * @n: number of bits
+ *
+ * u64_mkmask() returns an unsigned 64-bit integer which binary
+ * representation consists of @n ones followed by zeroes.
+ */
+u64
+u64_mkmask(uint n)
+{
+  return n ? ~((1 << (64 - n)) - 1) : 0;
+}
+
+/**
  * u32_masklen - calculate length of a bit mask
  * @x: bit mask
  *
