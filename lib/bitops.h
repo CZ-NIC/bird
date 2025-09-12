@@ -23,6 +23,8 @@
 u32 u32_mkmask(uint n);
 uint u32_masklen(u32 x);
 
+u64 u64_mkmask(uint n);
+
 u32 u32_log2(u32 v);
 
 static inline u32 u32_hash(u32 v) { return v * 2902958171u; }
