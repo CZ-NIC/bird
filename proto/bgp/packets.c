@@ -3290,15 +3290,20 @@ bgp_schedule_packet(struct bgp_conn *conn, struct bgp_channel *c, int type)
 
   if (was_active || (conn->sk->tpos != conn->sk->tbuf))
     return;
-  else if ((type == PKT_KEEPALIVE) || (this_birdloop != p->p.loop))
+  else if ((type == PKT_KEEPALIVE) || (this_birdloop != p->p.loop)){ log("(type %i == PKT_KEEPALIVE) %i|| (this_birdloop %x != p->p.loop %x)", type, PKT_KEEPALIVE, this_birdloop, p->p.loop);
+        log("birdloop_inside(p->p.loop) %i birdloop_inside(main) %i pool locked %i", birdloop_inside(p->p.loop), birdloop_inside(&main_birdloop), DG_IS_LOCKED(p->p.pool->domain));
     while (bgp_fire_tx(conn) > 0)
       ;
+  }
   else
   {
+        log("(type %i == PKT_KEEPALIVE) %i|| (this_birdloop %x != p->p.loop %x current %x)", type, PKT_KEEPALIVE, this_birdloop, p->p.loop, birdloop_current);
+        log("birdloop_inside(p->p.loop %x) %i birdloop_inside(main %x) %i", p->p.loop, birdloop_inside(p->p.loop), &main_birdloop, birdloop_inside(&main_birdloop));
     struct bgp_tx_deferred_call btdc = {
       .dc.hook = bgp_tx_deferred,
       .conn = conn,
     };
+    log("struct bgp_tx_deferred_call btdc = { locked %i", DG_IS_LOCKED(p->p.pool->domain));
     defer_call(&btdc.dc, sizeof btdc);
   }
 }
@@ -3308,8 +3313,11 @@ bgp_tx_deferred(struct deferred_call *dc)
 {
   struct bgp_conn *conn = SKIP_BACK(struct bgp_tx_deferred_call, dc, dc)->conn;
   DBG("BGP: kicking TX\n");
+  log("bgp_tx_deferred locked %i, current %x this %x", DG_IS_LOCKED(conn->bgp->p.pool->domain), birdloop_current, this_birdloop);
+  log("def birdloop_inside(p->p.loop %x) %i birdloop_inside(main %x) %i", conn->bgp->p.loop, birdloop_inside(conn->bgp->p.loop), &main_birdloop, birdloop_inside(&main_birdloop));
+  ASSERT_DIE( birdloop_inside(conn->bgp->p.loop));
   while (bgp_fire_tx(conn) > 0)
-    ;
+    log("while locked %i", DG_IS_LOCKED(conn->bgp->p.pool->domain));;
 }
 
 void

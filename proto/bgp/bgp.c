@@ -1913,12 +1913,14 @@ bgp_incoming_soc_dyn(void *_bgp_incoming_socket)
 static void
 bgp_incoming_soc(void *_bgp_incoming_socket)
 {
+  log("bgp_incoming_soc %x this %x", birdloop_current, this_birdloop);
   struct bgp_incoming_socket *bis = (struct bgp_incoming_socket*) _bgp_incoming_socket;
   log("DOMAIN_IS_LOCKED(rtable, bgp_listen_domain) %i", DOMAIN_IS_LOCKED(rtable, bgp_listen_domain));
+
   if (!DOMAIN_IS_LOCKED(rtable, bgp_listen_domain))
     LOCK_DOMAIN(rtable, bgp_listen_domain);
-  rmove(bis->sk, bis->p->p.pool);
-  log("moved");
+
+  log("bgp_incoming_soc is locked? %i", DG_IS_LOCKED(bis->p->p.pool->domain));
 
   bgp_setup_conn(bis->p, &bis->p->incoming_conn);
   bgp_setup_sk(&bis->p->incoming_conn, bis->sk);
@@ -1933,8 +1935,10 @@ bgp_incoming_soc(void *_bgp_incoming_socket)
   ASSERT_DIE(birdloop_inside(bis->p->p.loop));
   proto_announce_state(&bis->p->p, bis->p->p.ea_state);
   log("announced");
+  log("bgp_incoming_soc skoro end is locked? %i", DG_IS_LOCKED(bis->p->p.pool->domain));
   birdloop_leave(bis->p->p.loop);
   log("the end");
+  log("bgp_incoming_soc end is locked? %i", DG_IS_LOCKED(bis->p->p.pool->domain));
 }
 
 /**
@@ -2071,10 +2075,15 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
   }
   else {
         log("else");
+        log("is locked? %i", DG_IS_LOCKED(p->p.pool->domain));
+          rmove(sk, p->p.pool);
+  sk_reloop(sk, p->p.loop);
+    
     struct bgp_incoming_socket* bis = mb_alloc(sk->pool, sizeof(struct bgp_incoming_socket));
     bis->event = ev_new_init(p->p.pool, bgp_incoming_soc, bis);
     bis->p = p;
     bis->sk = sk;
+    //add_tail(&p->listen.incoming_sk, &bis->n);
     UNLOCK_DOMAIN(rtable, bgp_listen_domain);
     birdloop_leave(p->p.loop);
     log("after unlock current loop %x, p loop %x", birdloop_current, p->p.loop);
