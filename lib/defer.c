@@ -18,6 +18,7 @@ defer_execute(void *_ld)
   ASSERT_DIE(_ld == &local_deferred);
 
   /* Run */
+  log("current defer_ex %x %x", birdloop_current, this_birdloop);
   for (struct deferred_call *call = local_deferred.first; call; call = call->next)
     call->hook(call);
 
