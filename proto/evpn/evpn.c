@@ -32,7 +32,6 @@
  * - Review preference handling
  * - Wait for existence (and active state) of the tunnel device
  * - Learn VNI / router address from the tunnel device
- * - Improved VLAN handling
  * - MPLS encapsulation mode
  */
 
@@ -53,6 +52,7 @@
 #include "conf/conf.h"
 #include "filter/filter.h"
 #include "filter/data.h"
+#include "lib/pubsub.h"
 #include "lib/string.h"
 #include "sysdep/unix/krt.h"
 
@@ -726,6 +726,73 @@ evpn_remove_vlan(struct evpn_proto *p, struct evpn_vlan *v)
   mb_free(v);
 }
 
+static void
+evpn_publish_vlan_request(struct evpn_proto *p, struct vlan_request *req, bool update, int vlan_count)
+{
+  struct evpn_encap *encap = evpn_get_encap(p);
+
+  /* Fill header */
+  *req = (struct vlan_request) {
+    .bridge = encap->tunnel_dev->master,
+    .iface = encap->tunnel_dev,
+    .owner = (uintptr_t) p,
+    .update = update,
+    .vlan_count = vlan_count,
+  };
+
+  TRACE(D_EVENTS, "VLAN %s published for %d VLANs on %s",
+	(update ? "request" : "withdraw"), vlan_count, req->iface->name);
+
+  ps_publish(p->vlan_pub, req, VLAN_REQUEST_LENGTH(vlan_count));
+}
+
+static void
+evpn_request_vlan(struct evpn_proto *p, struct evpn_vlan *v, bool update)
+{
+  struct vlan_request *req = alloca(VLAN_REQUEST_LENGTH(1));
+
+  req->vlans[0].vid = v->vid;
+  req->vlans[0].vni = v->vni;
+
+  evpn_publish_vlan_request(p, req, update, 1);
+}
+
+static void
+evpn_request_vlans(struct evpn_proto *p)
+{
+  struct vlan_request *req = alloca(VLAN_REQUEST_LENGTH(32));
+
+  int i = 0;
+  WALK_LIST_(struct evpn_vlan, v, p->vlans)
+  {
+    req->vlans[i].vid = v->vid;
+    req->vlans[i].vni = v->vni;
+    i++;
+
+    if (i == 32)
+    {
+      evpn_publish_vlan_request(p, req, true, i);
+      i = 0;
+    }
+  }
+
+  if (i > 0)
+    evpn_publish_vlan_request(p, req, true, i);
+}
+
+static void
+evpn_withdraw_vlans(struct evpn_proto *p)
+{
+  struct vlan_request req;
+  evpn_publish_vlan_request(p, &req, false, 0);
+}
+
+static void
+evpn_vlan_subscribe_hook(ps_publisher *pub)
+{
+  evpn_request_vlans(pub->data);
+}
+
 static inline int
 evpn_reconfigure_vlan(struct evpn_proto *p UNUSED, struct evpn_vlan *v, struct evpn_vlan_config *cf, uint index)
 {
@@ -757,9 +824,13 @@ evpn_reconfigure_vlans(struct evpn_proto *p, struct evpn_config *cf)
       }
 
       if (v)
+      {
+	evpn_request_vlan(p, v, false);
 	evpn_remove_vlan(p, v);
+      }
 
       v = evpn_new_vlan(p, vc, i);
+      evpn_request_vlan(p, v, true);
       // evpn_announce_imet(p, v, 1);
       changed = 1;
     }
@@ -768,6 +839,7 @@ evpn_reconfigure_vlans(struct evpn_proto *p, struct evpn_config *cf)
   WALK_LIST_DELSAFE(v, v2, old_vlans)
   {
     // evpn_announce_imet(p, v, 0);
+    evpn_request_vlan(p, v, false);
     evpn_remove_vlan(p, v);
     changed = 1;
   }
@@ -965,6 +1037,10 @@ evpn_start(struct proto *P)
   WALK_LIST_(struct evpn_encap_config, ec, cf->encaps)
     evpn_new_encap(p, ec);
 
+  struct evpn_encap *encap = evpn_get_encap(p);
+  p->vlan_pub = ps_publisher_new(p->p.pool, evpn_vlan_subscribe_hook, p);
+  ps_attach_topic(p->vlan_pub, &vlan_requests, encap->tunnel_dev->master->name);
+
   init_list(&p->vlans);
   memset(&p->vlan_tag_hash, 0, sizeof(p->vlan_tag_hash));
   memset(&p->vlan_vid_hash, 0, sizeof(p->vlan_vid_hash));
@@ -974,14 +1050,18 @@ evpn_start(struct proto *P)
     for (uint i = 0; i < vc->range; i++)
       evpn_new_vlan(p, vc, i);
 
+  evpn_request_vlans(p);
+
   evpn_prepare_import_targets(p);
   evpn_prepare_export_targets(p);
 
+  /*
   proto_setup_mpls_map(P, RTS_EVPN, 1);
 
   // XXX ?
   if (P->vrf_set)
     P->mpls_map->vrf_iface = P->vrf;
+  */
 
   /* Wait for VXLAN interfaces to be up */
 
@@ -1005,8 +1085,9 @@ evpn_started(struct evpn_proto *p, struct iface *i)
 static int
 evpn_shutdown(struct proto *P)
 {
-  // struct evpn_proto *p = (void *) P;
+  struct evpn_proto *p = (void *) P;
 
+  evpn_withdraw_vlans(p);
   proto_shutdown_mpls_map(P, 1);
 
   return PS_DOWN;

@@ -80,6 +80,7 @@ struct evpn_proto {
 
   HASH(struct evpn_vlan) vlan_tag_hash;
   HASH(struct evpn_vlan) vlan_vid_hash;
+  ps_publisher *vlan_pub;
 };
 
 struct evpn_encap {
