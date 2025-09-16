@@ -562,7 +562,10 @@ rt_aggregate_roa(void *_rag)
 	if (rad->u[p].max_pxlen > max_pxlen)
 	  break;
 	else if (rad->u[p].max_pxlen == max_pxlen)
+	{
 	  found = true;
+	  break;
+	}
 
     /* Found, no withdraw, nothing to do */
     if (found && !withdraw)
@@ -576,13 +579,15 @@ rt_aggregate_roa(void *_rag)
     }
 
     /* Allocate the new list. We expect it to be short. */
-    struct rt_roa_aggregated_adata *rad_new = tmp_alloc(sizeof *rad_new + (count + !withdraw) * sizeof rad_new->u[0]);
+    struct rt_roa_aggregated_adata *rad_new = tmp_alloc(sizeof *rad_new + (count + 1) * sizeof rad_new->u[0]);
 
     if (found && withdraw)
     {
       /* Found, withdraw */
+      count--;
+
       memcpy(&rad_new->u[0], &rad->u[0], p * sizeof rad->u[0]);
-      memcpy(&rad_new->u[p], &rad->u[p+1], (count - p - 1) * sizeof rad->u[0]);
+      memcpy(&rad_new->u[p], &rad->u[p+1], (count - p) * sizeof rad->u[0]);
     }
     else
     {
@@ -593,6 +598,8 @@ rt_aggregate_roa(void *_rag)
 
       rad_new->u[p].asn = asn;
       rad_new->u[p].max_pxlen = max_pxlen;
+
+      count++;
     }
 
     /* Finalize the adata */
