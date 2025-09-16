@@ -981,7 +981,6 @@ bird_thread_main(void *arg)
     }
 
     /* Run all scheduled loops */
-    log("current ioloop %x this %x", birdloop_current, this_birdloop);
     int more_events = ev_run_list(&thr->meta->event_list);
     if (more_events)
     {
@@ -2025,11 +2024,9 @@ birdloop_run(void *_loop)
     LOOP_WARN(loop, "locked %lu us after its scheduled end time", dif NS TO_US);
 
   uint repeat, loop_runs = 0;
-  log("before do loop %x run curr %x this %x", loop, birdloop_current, this_birdloop);
   do {
     LOOP_TRACE(loop, DL_SCHEDULING, "Regular run (%d)", loop_runs);
     loop_runs++;
-    log("loop %x run curr %x this %x", loop, birdloop_current, this_birdloop);
 
     if (loop->stopped)
       /* Birdloop left inside the helper function */
@@ -2048,7 +2045,6 @@ birdloop_run(void *_loop)
     sockets_fire(loop, 1, 0);
 
     /* Flush deferred events */
-    log("run curr %x this %x", birdloop_current, this_birdloop);
     while (ev_run_list(&loop->defer_list))
       repeat++;
 
@@ -2300,9 +2296,8 @@ birdloop_yield(void)
 void
 ev_send_defer(event *e)
 {
-  if (this_thread == &main_thread){ log("ooops");
-    ev_send_loop(&main_birdloop, e);}
-  else{
-    //log("here this_birdloop %x", this_birdloop);
-    ev_send(&this_birdloop->defer_list, e);}
+  if (this_thread == &main_thread)
+    ev_send_loop(&main_birdloop, e);
+  else
+    ev_send(&this_birdloop->defer_list, e);
 }

@@ -283,7 +283,6 @@ int
 ev_run_list_limited(event_list *l, uint limit)
 {
   event * _Atomic *ep = &l->_executor;
-  log("-2 current ev_run %x this %x", birdloop_current, this_birdloop);
   edlog(l, NULL, NULL, 1, EDL_RUN_LIST);
 
   /* No pending events, refill the queue. */
@@ -319,7 +318,6 @@ ev_run_list_limited(event_list *l, uint limit)
   while (e = atomic_load_explicit(ep, memory_order_acquire))
     {
       edlog(l, e, NULL, 5, EDL_RUN_LIST);
-      log("1 current ev_run %x this %x", birdloop_current, this_birdloop);
       /* Check limit */
       if (!--limit)
 	return 1;
@@ -329,7 +327,6 @@ ev_run_list_limited(event_list *l, uint limit)
 	io_log_event(e->hook, e->data, DL_EVENTS);
 
       edlog(l, e, NULL, 6, EDL_RUN_LIST);
-      log("2 current ev_run %x this %x", birdloop_current, this_birdloop);
       /* Inactivate the event */
       event *next = atomic_load_explicit(&e->next, memory_order_relaxed);
       ASSERT_DIE(e == atomic_exchange_explicit(ep, next, memory_order_acq_rel));
@@ -338,7 +335,6 @@ ev_run_list_limited(event_list *l, uint limit)
       edlog(l, e, next, 7, EDL_RUN_LIST);
 
       /* Run the event */
-      log("current ev_run %x this %x", birdloop_current, this_birdloop);
       e->hook(e->data);
       tmp_flush();
 
