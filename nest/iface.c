@@ -38,6 +38,8 @@ static pool *if_pool;
 
 list iface_list;
 
+ps_queue vlan_requests;
+
 static void if_recalc_preferred(struct iface *i);
 
 /**
@@ -720,6 +722,8 @@ if_init(void)
   if_pool = rp_new(&root_pool, "Interfaces");
   init_list(&iface_list);
   neigh_init(if_pool);
+
+  ps_init_queue(&vlan_requests, &root_pool, "VLAN bus");
 }
 
 /*
