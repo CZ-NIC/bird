@@ -21,6 +21,7 @@ struct pool;
   meta, \
   control, \
   proto, \
+  subproto, \
   service, \
   rtable, \
   attrs, \
