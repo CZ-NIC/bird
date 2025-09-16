@@ -9,4 +9,5 @@ S resource.c
 S mempool.c
 S slab.c
 S event.c
+S pubsub.c
 S ../sysdep/unix/io.c
