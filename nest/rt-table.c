@@ -473,6 +473,14 @@ static struct ea_class ea_roa_aggregated = {
   .format = ea_roa_aggregate_format,
 };
 
+/*
+ * In the main ROA table, there are separate ROAs. To make it possible to fetch
+ * all the relevant ROA records for a given prefix in a reasonable amount of time,
+ * we aggregate all the ROAs with the same minimal prefix to one record.
+ *
+ * With that, there may be one loop traversing the ROA trie upwards, where the
+ * total number of table access is always capped by 128, or 32 for legacy IP.
+ */
 
 static void
 rt_aggregate_roa(void *_rag)
@@ -481,6 +489,9 @@ rt_aggregate_roa(void *_rag)
 
   RT_EXPORT_WALK(&rag->src, u) TMP_SAVED
   {
+    /* Watch updates in the main ROA table on the best feed. These should
+     * provide us with an information whether there is or isn't some record
+     * with that prefix, maxlen and ASN. */
     bool withdraw = 0;
     const net_addr *nroa = NULL;
     switch (u->kind)
@@ -490,16 +501,18 @@ rt_aggregate_roa(void *_rag)
 	break;
 
       case RT_EXPORT_FEED:
-	nroa = u->feed->ni->addr;
-	withdraw = (u->feed->count_routes == 0);
+	bug("Somebody tried to refeed the ROA aggregator, that should be impossible");
 	break;
 
       case RT_EXPORT_UPDATE:
 	nroa = u->update->new ? u->update->new->net : u->update->old->net;
 	withdraw = !u->update->new;
+	ASSUME(!u->update->new || !u->update->old || (u->update->new->net == u->update->old->net));
 	break;
     }
 
+    /* We have to split the record to the prefix which is stored in @nip,
+     * and ASN and max_pxlen which get stored in the aggregated list. */
     net_addr_union nip;
     net_copy(&nip.n, nroa);
 
@@ -520,56 +533,72 @@ rt_aggregate_roa(void *_rag)
       default: bug("exported garbage from ROA table");
     }
 
+    /* What is the current state in the aggregated table? */
     rte prev = rt_net_best(rag->stream.dst_tab, &nip.n);
+    const struct rt_roa_aggregated_adata rad0 = {}, *rad = &rad0;
+    uint count = 0;
 
-    struct rt_roa_aggregated_adata *rad_new;
-    uint count;
-
+    /* Fetch the aggregated list if exists */
     if (prev.attrs)
     {
       eattr *ea = ea_find(prev.attrs, &ea_roa_aggregated);
-      SKIP_BACK_DECLARE(struct rt_roa_aggregated_adata, rad, ad, ea->u.ptr);
-
+      rad = SKIP_BACK(struct rt_roa_aggregated_adata, ad, ea->u.ptr);
       count = ROA_AGGR_COUNT(rad);
-      rad_new = tmp_alloc(sizeof *rad_new + (count + 1) * sizeof rad_new->u[0]);
+    }
 
-      /* Insertion into a sorted list */
-      uint p = 0;
-      for (p = 0; p < count; p++)
-	if ((rad->u[p].asn < asn) || (rad->u[p].asn == asn) && (rad->u[p].max_pxlen < max_pxlen))
-	  rad_new->u[p] = rad->u[p];
-	else
+    /* Find where the item belongs; we expect the count to be low so we don't bother
+     * with interval bisection. If this ever becomes a performance problem,
+     * it's easy to update.
+     *
+     * After this block, if found, then p is the pointer, otherwise p is the position
+     * where to insert.
+     * */
+    bool found = false;
+    uint p = 0;
+    for (p = 0; p < count; p++)
+      if (rad->u[p].asn > asn)
+	break;
+      else if (rad->u[p].asn == asn)
+	if (rad->u[p].max_pxlen > max_pxlen)
 	  break;
+	else if (rad->u[p].max_pxlen == max_pxlen)
+	  found = true;
 
-      if ((rad->u[p].asn == asn) && (rad->u[p].max_pxlen))
-	/* Found */
-	if (withdraw)
-	  memcpy(&rad_new->u[p], &rad->u[p+1], (--count - p) * sizeof rad->u[p]);
-	else
-	  continue;
-      else
-	/* Not found */
-	if (withdraw)
-	  continue;
-	else
-	{
-	  rad_new->u[p].asn = asn;
-	  rad_new->u[p].max_pxlen = max_pxlen;
-	  memcpy(&rad_new->u[p+1], &rad->u[p], (count++ - p) * sizeof rad->u[p]);
-	}
-    }
-    else if (!withdraw)
-    {
-      count = 1;
-      rad_new = tmp_alloc(sizeof *rad_new + sizeof rad_new->u[0]);
-      rad_new->u[0].asn = asn;
-      rad_new->u[0].max_pxlen = max_pxlen;
-    }
-    else
+    /* Found, no withdraw, nothing to do */
+    if (found && !withdraw)
       continue;
 
+    /* Not found, withdraw, nothing to do but weird */
+    if (withdraw && !found)
+    {
+      log(L_WARN "%s: ROA Aggregator ignored withdraw of %N, not found", rag->src.name, nroa);
+      continue;
+    }
+
+    /* Allocate the new list. We expect it to be short. */
+    struct rt_roa_aggregated_adata *rad_new = tmp_alloc(sizeof *rad_new + (count + !withdraw) * sizeof rad_new->u[0]);
+
+    if (found && withdraw)
+    {
+      /* Found, withdraw */
+      memcpy(&rad_new->u[0], &rad->u[0], p * sizeof rad->u[0]);
+      memcpy(&rad_new->u[p], &rad->u[p+1], (count - p - 1) * sizeof rad->u[0]);
+    }
+    else
+    {
+      /* Not found, insert */
+      ASSUME(!found && !withdraw);
+      memcpy(&rad_new->u[0], &rad->u[0], p * sizeof rad->u[0]);
+      memcpy(&rad_new->u[p+1], &rad->u[p], (count - p) * sizeof rad->u[0]);
+
+      rad_new->u[p].asn = asn;
+      rad_new->u[p].max_pxlen = max_pxlen;
+    }
+
+    /* Finalize the adata */
     rad_new->ad.length = (byte *) &rad_new->u[count] - rad_new->ad.data;
 
+    /* Import the aggregated record */
     rte r = {
       .src = rag->main_source,
     };
@@ -630,6 +659,9 @@ rt_setup_roa_aggregator(rtable *t)
 
   rt_request_import(t, &rag->stream.dst);
   rt_export_subscribe(src, best, &rag->src);
+
+  /* Process the (empty) feed immediately. */
+  rt_aggregate_roa(rag);
 }
 
 static void
