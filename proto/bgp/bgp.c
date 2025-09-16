@@ -1900,45 +1900,37 @@ bgp_find_proto(sock *sk)
 static void
 bgp_incoming_soc_dyn(void *_bgp_incoming_socket)
 {
-   log("bgp_incoming_soc_dyn");
   struct bgp_incoming_socket *bis = (struct bgp_incoming_socket*) _bgp_incoming_socket;
   /* The dynamic protocol must be in the START state */
   ASSERT_DIE(bis->p->p.proto_state == PS_START);
 
   bgp_spawn(bis->p, bis->sk);
   rem_node(&bis->n);
-  free(bis);
+  mb_free(bis);
 }
 
 static void
 bgp_incoming_soc(void *_bgp_incoming_socket)
 {
-  log("bgp_incoming_soc %x this %x", birdloop_current, this_birdloop);
   struct bgp_incoming_socket *bis = (struct bgp_incoming_socket*) _bgp_incoming_socket;
-  log("DOMAIN_IS_LOCKED(rtable, bgp_listen_domain) %i", DOMAIN_IS_LOCKED(rtable, bgp_listen_domain));
 
   if (!DOMAIN_IS_LOCKED(rtable, bgp_listen_domain))
     LOCK_DOMAIN(rtable, bgp_listen_domain);
 
-  log("bgp_incoming_soc is locked? %i", DG_IS_LOCKED(bis->p->p.pool->domain));
-
   bgp_setup_conn(bis->p, &bis->p->incoming_conn);
   bgp_setup_sk(&bis->p->incoming_conn, bis->sk);
   bgp_send_open(&bis->p->incoming_conn);
-  log("before unlock");
-  UNLOCK_DOMAIN(rtable, bgp_listen_domain);
-  log("unlocked");
 
   /* We need to announce possible state changes immediately before
    * leaving the protocol's loop, otherwise we're gonna access the protocol
    * without having it locked from proto_announce_state_later(). */
-  ASSERT_DIE(birdloop_inside(bis->p->p.loop));
-  proto_announce_state(&bis->p->p, bis->p->p.ea_state);
-  log("announced");
-  log("bgp_incoming_soc skoro end is locked? %i", DG_IS_LOCKED(bis->p->p.pool->domain));
-  birdloop_leave(bis->p->p.loop);
-  log("the end");
-  log("bgp_incoming_soc end is locked? %i", DG_IS_LOCKED(bis->p->p.pool->domain));
+  struct bgp_proto *p = bis->p;
+  rem_node(&bis->n);
+  mb_free(bis);
+  UNLOCK_DOMAIN(rtable, bgp_listen_domain);
+
+  ASSERT_DIE(birdloop_inside(p->p.loop));
+  proto_announce_state(&p->p, bis->p->p.ea_state);
 }
 
 /**
@@ -1956,7 +1948,6 @@ bgp_incoming_soc(void *_bgp_incoming_socket)
 static int
 bgp_incoming_connection(sock *sk, uint dummy UNUSED)
 {
-        log("incoming");
   ASSERT_DIE(birdloop_inside(&main_birdloop));
 
   struct bgp_proto *p;
@@ -2056,39 +2047,31 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
   }
 
   /* For dynamic BGP, spawn new instance and postpone the socket */
-  log("heree");
   if (bgp_is_dynamic(p))
   {
-        log("is dynamic");
     /* The dynamic protocol must be in the START state */
     ASSERT_DIE(p->p.proto_state == PS_START);
-    struct bgp_incoming_socket* bis = mb_alloc(sk->pool, sizeof(struct bgp_incoming_socket));
+    struct bgp_incoming_socket* bis = mb_allocz(sk->pool, sizeof(struct bgp_incoming_socket));
     bis->event = ev_new_init(p->p.pool, bgp_incoming_soc_dyn, bis);
     bis->p = p;
     bis->sk = sk;
     add_tail(&p->listen.incoming_sk, &bis->n);
     UNLOCK_DOMAIN(rtable, bgp_listen_domain);
-    log("before send");
     ev_send_loop(&main_birdloop, bis->event);
-    log("before unlock");
     return 0;
   }
   else {
-        log("else");
-        log("is locked? %i", DG_IS_LOCKED(p->p.pool->domain));
-          rmove(sk, p->p.pool);
-  sk_reloop(sk, p->p.loop);
-    
-    struct bgp_incoming_socket* bis = mb_alloc(sk->pool, sizeof(struct bgp_incoming_socket));
+    rmove(sk, p->p.pool);
+    sk_reloop(sk, p->p.loop);
+
+    struct bgp_incoming_socket* bis = mb_allocz(sk->pool, sizeof(struct bgp_incoming_socket));
     bis->event = ev_new_init(p->p.pool, bgp_incoming_soc, bis);
     bis->p = p;
     bis->sk = sk;
-    //add_tail(&p->listen.incoming_sk, &bis->n);
+    add_tail(&p->listen.incoming_sk, &bis->n);
     UNLOCK_DOMAIN(rtable, bgp_listen_domain);
     birdloop_leave(p->p.loop);
-    log("after unlock current loop %x, p loop %x", birdloop_current, p->p.loop);
     ev_send(proto_event_list(&p->p), bis->event);
-    log("after send");
     return 0;
   }
 
@@ -2663,7 +2646,20 @@ bgp_shutdown(struct proto *P)
 
 done:
   bgp_stop(p, subcode, data, len);
-  ASSERT_DIE(!bgp_is_dynamic(p) || list_length(&p->listen.incoming_sk) == 0);
+  /* This is barrier for socket. If new sockets were created up to now, we can close them.
+   *  No new sockets will be created.
+   */
+  if (list_length(&p->listen.incoming_sk) > 0)
+  {
+    log(L_INFO "Closing remaining sockets");
+    struct bgp_incoming_socket *n, *next;
+
+    WALK_LIST_DELSAFE(n, next, p->listen.incoming_sk)
+    {
+      sk_close(n->sk);
+      mb_free(n);
+    }
+  }
   return p->p.proto_state;
 }
 
