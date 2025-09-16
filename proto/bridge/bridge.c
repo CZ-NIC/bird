@@ -23,7 +23,6 @@
  * - Wait for existence (and active state) of the bridge device
  * - Check for consistency of vlan_filtering flag
  * - Channel should be R_ANY for BUM routes, but RA_OPTIMAL for others
- * - Configuration of VIDs?
  */
 
 #undef LOCAL_DEBUG
@@ -40,6 +39,15 @@
 #include "lib/string.h"
 
 #include "bridge.h"
+
+static struct kbr_vlan * kbr_find_vlan(struct kbr_proto *p, uint ifi, uint vid);
+static void kbr_prune_vlans0(struct kbr_proto *p);
+static void kbr_prune_vlans1(struct kbr_proto *p);
+
+
+/*
+ *	Bridge entries
+ */
 
 void
 kbr_got_route(struct kbr_proto *p, const net_addr *n, rte *e, int src UNUSED, int scan UNUSED)
@@ -58,18 +66,47 @@ kbr_scan(timer *t)
 
   TRACE(D_EVENTS, "Scanning bridge table");
 
+  if (p->vlan_filtering)
+  {
+    kbr_do_vlan_scan(p);
+    kbr_prune_vlans0(p);
+  }
+
   rt_refresh_begin(c->table, c);
-  kbr_do_scan(p);
+  kbr_do_fdb_scan(p);
   rt_refresh_end(c->table, c);
+
+  if (p->vlan_filtering)
+    kbr_prune_vlans1(p);
+
+  /* XXX: Temporary workaround for missing bidirectional sync */
+  channel_request_feeding(c);
 }
 
 static void
 kbr_rt_notify(struct proto *P, struct channel *c0 UNUSED, net *net, rte *new, rte *old)
 {
-  struct kbr_proto *p UNUSED = (void *) P;
+  struct kbr_proto *p = (void *) P;
+  const net_addr *n = net->n.addr;
 
+  rte *r = (new ?: old);
   rte *new_gw = (new && ipa_nonzero(new->attrs->nh.gw)) ? new : NULL;
   rte *old_gw = (old && ipa_nonzero(old->attrs->nh.gw)) ? old : NULL;
+
+  /* For managed interfaces we ignore FDB entries when VLAN not active */
+  /* For now, we assume EVPN FDB entry <-> direct to managed iface */
+  if (p->vlan_filtering && (r->attrs->source == RTS_EVPN))
+  {
+    struct iface *i = r->attrs->nh.iface;
+    struct kbr_vlan *v = kbr_find_vlan(p, i->index, net_vlan_id(n));
+
+    if (!v || !v->active)
+    {
+      TRACE(D_ROUTES, "%N %s ignored - vlan %u not active on %s",
+	    n, (new ? "update" : "withdraw"), net_vlan_id(n), i->name);
+      return;
+    }
+  }
 
   /*
    * This code handles peculiarities of Linux bridge behavior, where the bridge
@@ -83,16 +120,16 @@ kbr_rt_notify(struct proto *P, struct channel *c0 UNUSED, net *net, rte *new, rt
    * tunnel forwarding entry for each destination.
    */
 
-  if (mac_zero(net_mac_addr(net->n.addr)))
+  if (mac_zero(net_mac_addr(n)))
   {
     /* For BUM routes, we have multiple tunnel entries, but no bridge entry */
-    kbr_update_fdb(net->n.addr, new_gw, old_gw, 1);
+    kbr_update_fdb(n, new_gw, old_gw, 1);
     return;
   }
 
   /* For regular routes, we have one bridge entry, perhaps also one tunnel entry */
-  kbr_replace_fdb(net->n.addr, new, old, 0);
-  kbr_replace_fdb(net->n.addr, new_gw, old_gw, 1);
+  kbr_replace_fdb(n, new, old, 0);
+  kbr_replace_fdb(n, new_gw, old_gw, 1);
 }
 
 static inline int
@@ -150,6 +187,196 @@ kbr_rte_better(rte *new, rte *old)
   return kbr_metric(new) < kbr_metric(old);
 }
 
+
+/*
+ *	Bridge VLANs
+ */
+
+#define VLAN_KEY(v)		v->ifi, v->vid
+#define VLAN_NEXT(v)		v->next
+#define VLAN_EQ(i1,v1,i2,v2)	i1 == i2 && v1 == v2
+#define VLAN_FN(i,v)		hash_value(u32_hash0(v, HASH_PARAM, u32_hash0(i, HASH_PARAM, 0)))
+
+#define VLAN_REHASH		bridge_vlan_rehash
+#define VLAN_PARAMS		/8, *2, 2, 2, 4, 16
+
+
+HASH_DEFINE_REHASH_FN(VLAN, struct kbr_vlan)
+
+static struct kbr_vlan *
+kbr_find_vlan(struct kbr_proto *p, uint ifi, uint vid)
+{
+  return  HASH_FIND(p->vlan_hash, VLAN, ifi, vid);
+}
+
+static struct kbr_vlan *
+kbr_get_vlan(struct kbr_proto *p, uint ifi, uint vid)
+{
+  struct kbr_vlan *v = kbr_find_vlan(p, ifi, vid);
+
+  if (v)
+    return v;
+
+  v = mb_allocz(p->p.pool, sizeof(struct kbr_vlan));
+
+  v->ifi = ifi;
+  v->vid = vid;
+
+  HASH_INSERT2(p->vlan_hash, VLAN, p->p.pool, v);
+
+  return v;
+}
+
+void
+kbr_got_vlan(struct kbr_proto *p, struct iface *i, uint vid, uint flags)
+{
+  struct kbr_vlan *v = kbr_get_vlan(p, i->index, vid);
+
+  v->flags = flags;
+  v->mark_vlan = true;
+}
+
+void
+kbr_got_vlan_tunnel(struct kbr_proto *p, struct iface *i, uint vid, uint vni, uint flags UNUSED)
+{
+  struct kbr_vlan *v = kbr_get_vlan(p, i->index, vid);
+
+  v->vni = vni;
+  v->mark_tunnel = true;
+}
+
+static inline void
+kbr_vlan_changed(struct kbr_proto *p)
+{
+  tm_start(p->scan_timer, 100 MS);
+}
+
+static void
+kbr_vlan_req_update(struct kbr_proto *p, struct iface *i, uintptr_t owner, uint vid, uint vni)
+{
+  struct kbr_vlan *v = kbr_get_vlan(p, i->index, vid);
+
+  if ((v->owner == owner) && (v->vni_req == vni))
+    return;
+
+  v->vni_req = vni;
+  v->owner = owner;
+  kbr_vlan_changed(p);
+
+  /* Register the interface as VLAN-managed */
+  kbr_get_vlan(p, i->index, 0);
+}
+
+static void
+kbr_vlan_req_withdraw(struct kbr_proto *p, struct iface *i, uintptr_t owner, uint vid)
+{
+  struct kbr_vlan *v = kbr_find_vlan(p, i->index, vid);
+
+  if (!v || (v->owner != owner))
+    return;
+
+  v->vni_req = 0;
+  v->owner = 0;
+  kbr_vlan_changed(p);
+}
+
+static void
+kbr_vlan_req_withdraw_all(struct kbr_proto *p, uintptr_t owner)
+{
+  bool changed = false;
+
+  HASH_WALK(p->vlan_hash, next, v)
+  {
+    if (v->owner != owner)
+      continue;
+
+    v->vni_req = 0;
+    v->owner = 0;
+    changed = true;
+  }
+  HASH_WALK_END;
+
+  if (changed)
+    kbr_vlan_changed(p);
+}
+
+static void
+kbr_vlan_req_notify(ps_subscriber *sub, void *msg, uint len)
+{
+  ASSERT(len >= sizeof(struct vlan_request));
+
+  struct kbr_proto *p = sub->data;
+  struct vlan_request *req = msg;
+
+  TRACE(D_EVENTS, "VLAN %s received for %d VLANs on %s",
+	(req->update ? "request" : "withdraw"), (int) req->vlan_count, req->iface->name);
+
+  if (req->update)
+  {
+    for (int i = 0; i < req->vlan_count; i++)
+      kbr_vlan_req_update(p, req->iface, req->owner, req->vlans[i].vid, req->vlans[i].vni);
+  }
+  else if (req->vlan_count > 0)
+  {
+    for (int i = 0; i < req->vlan_count; i++)
+      kbr_vlan_req_withdraw(p, req->iface, req->owner, req->vlans[i].vid);
+  }
+  else
+    kbr_vlan_req_withdraw_all(p, req->owner);
+}
+
+static void
+kbr_prune_vlans0(struct kbr_proto *p)
+{
+  if (!p->vlan_hash.data)
+    return;
+
+  HASH_WALK(p->vlan_hash, next, v)
+  {
+    if (v->owner && (!v->mark_vlan || !v->mark_tunnel || (v->vni_req != v->vni)))
+    {
+      struct iface *ifa = if_find_by_index(v->ifi);
+      if (!ifa) continue;
+
+      TRACE(D_EVENTS, "%s VLAN %u VNI %u on %s",
+	    (!v->mark_vlan ? "Adding" : "Updating"), v->vid, v->vni, ifa->name);
+      kbr_update_vlan(ifa, v->vid, true, v->mark_vlan, true, v->mark_tunnel, v->vni_req, v->vni);
+    }
+
+    v->active = !!v->owner;
+  }
+  HASH_WALK_END;
+}
+
+static void
+kbr_prune_vlans1(struct kbr_proto *p)
+{
+  if (!p->vlan_hash.data)
+    return;
+
+  HASH_WALK(p->vlan_hash, next, v)
+  {
+
+    if (!v->owner && (v->mark_vlan || v->mark_tunnel) && kbr_find_vlan(p, v->ifi, 0))
+    {
+      struct iface *ifa = if_find_by_index(v->ifi);
+      if (!ifa) continue;
+
+      TRACE(D_EVENTS, "Removing VLAN %u on %s", v->vid, ifa->name);
+      kbr_update_vlan(ifa, v->vid, false, v->mark_vlan, false, v->mark_tunnel, v->vni_req, v->vni);
+    }
+
+    v->mark_vlan = false;
+    v->mark_tunnel = false;
+  }
+  HASH_WALK_END;
+}
+
+
+/*
+ *	Bridge protocol glue
+ */
+
 static void
 kbr_postconfig(struct proto_config *CF)
 {
@@ -188,8 +415,19 @@ kbr_start(struct proto *P)
   p->bridge_dev = cf->bridge_dev;
   p->vlan_filtering = cf->vlan_filtering;
 
+  memset(&p->vlan_hash, 0, sizeof(p->vlan_hash));
+  p->vlan_sub = NULL;
+
   p->scan_timer = tm_new_init(p->p.pool, kbr_scan, p, cf->scan_time, 0);
   tm_start(p->scan_timer, 100 MS);
+
+  if (p->vlan_filtering)
+  {
+    HASH_INIT(p->vlan_hash, p->p.pool, 4);
+
+    p->vlan_sub = ps_subscriber_new(p->p.pool, kbr_vlan_req_notify, p);
+    ps_subscribe_topic(p->vlan_sub, &vlan_requests, p->bridge_dev->name);
+  }
 
   kbr_sys_start(p);
 

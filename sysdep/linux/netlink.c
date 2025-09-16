@@ -148,18 +148,28 @@ nl_send(struct nl_sock *nl, struct nlmsghdr *nh)
 }
 
 static void
-nl_request_dump_link(void)
+nl_request_dump_link(int af, u32 ext_mask)
 {
   struct {
     struct nlmsghdr nh;
     struct ifinfomsg ifi;
+    struct rtattr rta;
+    u32 ext_mask;
   } req = {
     .nh.nlmsg_type = RTM_GETLINK,
     .nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg)),
     .nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP,
     .nh.nlmsg_seq = ++(nl_scan.seq),
-    .ifi.ifi_family = AF_UNSPEC,
+    .ifi.ifi_family = af,
   };
+
+  if (ext_mask)
+  {
+    req.rta.rta_type = IFLA_EXT_MASK;
+    req.rta.rta_len = RTA_LENGTH(4);
+    req.ext_mask = ext_mask;
+    req.nh.nlmsg_len = NLMSG_ALIGN(req.nh.nlmsg_len) + req.rta.rta_len;
+  }
 
   send(nl_scan.fd, &req, sizeof(req), 0);
   nl_scan.last_hdr = NULL;
@@ -364,7 +374,7 @@ struct nl_want_attrs {
 };
 
 
-#define BIRD_IFLA_MAX (IFLA_LINKINFO+1)
+#define BIRD_IFLA_MAX (IFLA_AF_SPEC+1)
 
 static struct nl_want_attrs ifla_attr_want[BIRD_IFLA_MAX] = {
   [IFLA_IFNAME]	  = { 1, 0, 0 },
@@ -372,6 +382,7 @@ static struct nl_want_attrs ifla_attr_want[BIRD_IFLA_MAX] = {
   [IFLA_MASTER]	  = { 1, 1, sizeof(u32) },
   [IFLA_WIRELESS] = { 1, 0, 0 },
   [IFLA_LINKINFO] = { 1, 0, 0 },
+  [IFLA_AF_SPEC]  = { 1, 0, 0 },
 };
 
 #define BIRD_INFO_MAX (IFLA_INFO_DATA+1)
@@ -394,6 +405,21 @@ static struct nl_want_attrs ifla_vxlan_attr_want[BIRD_IFLA_VXLAN_MAX] = {
   [IFLA_VXLAN_LEARNING]	= { 1, 1, sizeof(u8) },
   [IFLA_VXLAN_LOCAL]	= { 1, 1, sizeof(ip4_addr) },
   [IFLA_VXLAN_LOCAL6]	= { 1, 1, sizeof(ip6_addr) },
+};
+
+#define BIRD_IFBRIDGE_MAX (IFLA_BRIDGE_VLAN_TUNNEL_INFO+1)
+
+static struct nl_want_attrs ifbridge_attr_want[BIRD_IFBRIDGE_MAX] UNUSED = {
+  [IFLA_BRIDGE_VLAN_INFO] = { 1, 1, sizeof(struct bridge_vlan_info) },
+  [IFLA_BRIDGE_VLAN_TUNNEL_INFO] = { 1, 0, 0 },
+};
+
+#define BIRD_IFBRIDGE_VLAN_TUNNEL_MAX (IFLA_BRIDGE_VLAN_TUNNEL_FLAGS+1)
+
+static struct nl_want_attrs ifbridge_vlan_tunnel_attr_want[BIRD_IFBRIDGE_VLAN_TUNNEL_MAX] = {
+  [IFLA_BRIDGE_VLAN_TUNNEL_ID]		= { 1, 1, sizeof(u32) },
+  [IFLA_BRIDGE_VLAN_TUNNEL_VID]		= { 1, 1, sizeof(u16) },
+  [IFLA_BRIDGE_VLAN_TUNNEL_FLAGS]	= { 1, 1, sizeof(u16) },
 };
 
 
@@ -1325,7 +1351,7 @@ kif_do_scan(struct kif_proto *p UNUSED)
 
   if_start_update();
 
-  nl_request_dump_link();
+  nl_request_dump_link(AF_UNSPEC, 0);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWLINK || h->nlmsg_type == RTM_DELLINK)
       nl_parse_link(h, 1);
@@ -1368,6 +1394,7 @@ kif_do_scan(struct kif_proto *p UNUSED)
 
   if_end_update();
 }
+
 
 /*
  *	Routes
@@ -2231,7 +2258,7 @@ nl_parse_fdb(struct nl_parse_state *s, struct nlmsghdr *h)
 }
 
 void
-kbr_do_scan(struct kbr_proto *p)
+kbr_do_fdb_scan(struct kbr_proto *p)
 {
   struct nl_parse_state s = {
     .pool = nl_linpool,
@@ -2239,13 +2266,181 @@ kbr_do_scan(struct kbr_proto *p)
     .bridge_id = kbr_bridge_id(p),
   };
 
-  nl_request_dump_neigh(AF_BRIDGE, kbr_bridge_id(p));
-
   struct nlmsghdr *h;
+
+  nl_request_dump_neigh(AF_BRIDGE, kbr_bridge_id(p));
   while (h = nl_get_scan())
   {
     if (h->nlmsg_type == RTM_NEWNEIGH || h->nlmsg_type == RTM_DELNEIGH)
       nl_parse_fdb(&s, h);
+  }
+}
+
+
+/*
+ *	VLANs
+ */
+
+static int
+nl_send_vlan(struct iface *i, uint vid, uint tid, uint flags, int op, int tunnel)
+{
+  struct {
+    struct nlmsghdr h;
+    struct ifinfomsg i;
+    char buf[0];
+  } *r;
+
+  int rsize = sizeof(*r) + 256;
+  r = alloca(rsize);
+
+  memset(&r->h, 0, sizeof(r->h));
+  memset(&r->i, 0, sizeof(r->i));
+  r->h.nlmsg_type = op ? RTM_SETLINK : RTM_DELLINK;
+  r->h.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
+  r->h.nlmsg_flags = op | NLM_F_REQUEST | NLM_F_ACK;
+
+  r->i.ifi_family = AF_BRIDGE;
+  r->i.ifi_index = i->index;
+
+  struct rtattr *afspec = nl_open_attr(&r->h, rsize, IFLA_AF_SPEC);
+
+  if (!tunnel)
+  {
+    struct bridge_vlan_info vinfo = { .flags = flags, .vid = vid, };
+    nl_add_attr(&r->h, rsize, IFLA_BRIDGE_VLAN_INFO, &vinfo, sizeof(vinfo));
+  }
+  else
+  {
+    struct rtattr *tinfo = nl_open_attr(&r->h, rsize, IFLA_BRIDGE_VLAN_TUNNEL_INFO);
+    nl_add_attr_u32(&r->h, rsize, IFLA_BRIDGE_VLAN_TUNNEL_ID, tid);
+    nl_add_attr_u16(&r->h, rsize, IFLA_BRIDGE_VLAN_TUNNEL_VID, vid);
+    nl_add_attr_u16(&r->h, rsize, IFLA_BRIDGE_VLAN_TUNNEL_FLAGS, flags);
+    nl_close_attr(&r->h, tinfo);
+  }
+
+  nl_close_attr(&r->h, afspec);
+
+  /* Ignore missing for DELETE */
+  return nl_exchange(&r->h, (op == NL_OP_DELETE));
+}
+
+void
+kbr_update_vlan(struct iface *i, uint vid, bool new, bool old, bool new_tunnel, bool old_tunnel, uint new_vni, uint old_vni)
+{
+  int err = 0;
+
+  if ((old && new) && (old_tunnel == new_tunnel) && (old_vni == new_vni))
+    return;
+
+  if (old_tunnel)
+    nl_send_vlan(i, vid, old_vni, 0, NL_OP_DELETE, 1);
+
+  if (old && !new)
+    nl_send_vlan(i, vid, 0, 0, NL_OP_DELETE, 0);
+
+  if (new && !old)
+    err = nl_send_vlan(i, vid, 0, 0, NL_OP_ADD, 0);
+
+  if (new_tunnel && !err)
+    err = nl_send_vlan(i, vid, new_vni, 0, NL_OP_ADD, 1);
+
+  if (err < 0)
+    log(L_WARN "NL error %m");
+}
+
+
+static void
+nl_parse_vlan(struct nl_parse_state *s, struct nlmsghdr *h)
+{
+  struct ifinfomsg *i;
+  struct rtattr *a[BIRD_IFLA_MAX];
+  // int new = (h->nlmsg_type == RTM_NEWLINK);
+
+  if (!(i = nl_checkin(h, sizeof(*i))))
+    return;
+
+  struct iface *oif = if_find_by_index(i->ifi_index);
+  if (!oif)
+    return;
+
+  if (i->ifi_family != AF_BRIDGE)
+    return;
+
+  if (!nl_parse_attrs(IFLA_RTA(i), ifla_attr_want, a, sizeof(a)))
+    return;
+
+  if (!a[IFLA_AF_SPEC] || !a[IFLA_MASTER])
+    return;
+
+  u32 bridge_id = rta_get_u32(a[IFLA_MASTER]);
+
+  /* Should be filtered by kernel */
+  if (s->bridge_id && (bridge_id != s->bridge_id))
+    return;
+
+  /* Do we know this bridge? */
+  struct kbr_proto *p = HASH_FIND(nl_bridge_map, BRH, bridge_id);
+  if (!p)
+    return;
+
+  /* Accept VLANs when vlan filtering is enabled */
+  if (!p->vlan_filtering)
+    return;
+
+  struct rtattr *list = a[IFLA_AF_SPEC];
+  uint rem = RTA_PAYLOAD(list);
+
+  /* We have to iterate over rtattrs to handle multiple instances of VLAN info attributes */
+  for (struct rtattr *vi = RTA_DATA(list); RTA_OK(vi, rem); vi = RTA_NEXT(vi, rem))
+  {
+    if (vi->rta_type == IFLA_BRIDGE_VLAN_INFO)
+    {
+      if (RTA_PAYLOAD(vi) != sizeof(struct bridge_vlan_info))
+      {
+	log(L_ERR "nl_parse_attrs: Malformed attribute received");
+	continue;
+      }
+
+      struct bridge_vlan_info *info = RTA_DATA(vi);
+
+      DBG("VLAN %u dev %s flags %x\n", info->vid, oif->name, info->flags);
+      kbr_got_vlan(p, oif, info->vid, info->flags);
+    }
+
+    if (vi->rta_type == IFLA_BRIDGE_VLAN_TUNNEL_INFO)
+    {
+      struct rtattr *a0[BIRD_IFBRIDGE_VLAN_TUNNEL_MAX];
+
+      nl_attr_len = RTA_PAYLOAD(vi);
+      if (!nl_parse_attrs(RTA_DATA(vi), ifbridge_vlan_tunnel_attr_want, a0, sizeof(a0)))
+	continue;
+
+      uint tid = a0[IFLA_BRIDGE_VLAN_TUNNEL_ID] ? rta_get_u32(a0[IFLA_BRIDGE_VLAN_TUNNEL_ID]) : 0;
+      uint vid = a0[IFLA_BRIDGE_VLAN_TUNNEL_VID] ? rta_get_u16(a0[IFLA_BRIDGE_VLAN_TUNNEL_VID]) : 0;
+      uint flags = a0[IFLA_BRIDGE_VLAN_TUNNEL_FLAGS] ? rta_get_u16(a0[IFLA_BRIDGE_VLAN_TUNNEL_FLAGS]) : 0;
+
+      DBG("VLANtun %u dev %s tunnel-id %u flags %x\n", vid, oif->name, tid, flags);
+      kbr_got_vlan_tunnel(p, oif, vid, tid, flags);
+    }
+  }
+}
+
+void
+kbr_do_vlan_scan(struct kbr_proto *p)
+{
+  struct nl_parse_state s = {
+    .pool = nl_linpool,
+    .scan = 1,
+    .bridge_id = kbr_bridge_id(p),
+  };
+
+  struct nlmsghdr *h;
+
+  nl_request_dump_link(AF_BRIDGE, RTEXT_FILTER_BRVLAN);
+  while (h = nl_get_scan())
+  {
+    if (h->nlmsg_type == RTM_NEWLINK || h->nlmsg_type == RTM_DELLINK)
+      nl_parse_vlan(&s, h);
   }
 }
 
