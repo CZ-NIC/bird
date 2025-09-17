@@ -58,7 +58,7 @@ find_tree_linear(const struct f_tree *t, const struct f_val *val)
   return NULL;
 }
 
-static struct f_tree *
+struct f_tree *
 build_tree_rec(struct f_tree **buf, int l, int h)
 {
   struct f_tree *n;
@@ -243,4 +243,70 @@ tree_walk(const struct f_tree *t, void (*hook)(const struct f_tree *, void *), v
   tree_walk(t->left, hook, data);
   hook(t, data);
   tree_walk(t->right, hook, data);
+}
+
+static void
+tree_serialize_balanced_tree_helper(struct f_tree *node, struct f_tree **buf, int *pos)
+{
+  if (node->left)
+    tree_serialize_balanced_tree_helper(node->left, buf, pos);
+
+  buf[(*pos)++] = node;
+
+  if (node->right)
+    tree_serialize_balanced_tree_helper(node->right, buf, pos);
+}
+
+static void
+tree_serialize_balanced_tree(struct f_tree *node, struct f_tree **buf)
+{
+  int pos = 0;
+  tree_serialize_balanced_tree_helper(node, buf, &pos);
+}
+
+/*
+ * Serialize two f_trees, one balanced and one unbalanced, into sorted array @buf
+ */
+void
+tree_serialize_trees(struct f_tree *balanced, int balanced_len, struct f_tree *unbalanced, int unbalanced_len, struct f_tree **buf)
+{
+  /* Serialize balanced tree. Array is implicitly sorted because of in-order traversal */
+  struct f_tree **balanced_nodes = tmp_allocz(sizeof(struct f_tree *) * balanced_len);
+  tree_serialize_balanced_tree(balanced, balanced_nodes);
+
+  /* Serialize unbalanced tree */
+  struct f_tree **unbalanced_nodes = tmp_allocz(sizeof(struct f_tree *) * unbalanced_len);
+  int pos = 0;
+
+  for (struct f_tree *node = unbalanced; node; node = node->left)
+    unbalanced_nodes[pos++] = node;
+
+  /* Sort nodes from unbalanced tree */
+  qsort(unbalanced_nodes, unbalanced_len, sizeof(struct f_tree *), tree_compare);
+
+  int i = 0, j = 0;
+  pos = 0;
+
+  /* Merge two sorted arrays */
+  while ((i < balanced_len) && (j < unbalanced_len))
+  {
+    int res = tree_compare(balanced_nodes[i], unbalanced_nodes[j]);
+
+    if (res == -1)
+      buf[pos++] = balanced_nodes[i++];
+    else if (res == 1)
+      buf[pos++] = unbalanced_nodes[j++];
+    else
+    {
+      buf[pos++] = balanced_nodes[i];
+      i++;
+      j++;
+    }
+  }
+
+  while (i < balanced_len)
+    buf[pos++] = balanced_nodes[i++];
+
+  while (j < unbalanced_len)
+    buf[pos++] = unbalanced_nodes[j++];
 }
