@@ -302,7 +302,8 @@ struct proto_reload_request {
 
 #define PROTO_LEAVE_FROM_MAIN(loop) ({ if (loop != &main_birdloop) birdloop_leave(loop); })
 
-#define PROTO_LOCKED_FROM_MAIN(p)	for (struct birdloop *_proto_loop = PROTO_ENTER_FROM_MAIN(p); _proto_loop; PROTO_LEAVE_FROM_MAIN(_proto_loop), (_proto_loop = NULL))
+#define PROTO_LOCKED_FROM_MAIN(p)	for (struct birdloop *_proto_loop = PROTO_ENTER_FROM_MAIN(p); _proto_loop; \
+proto_announce_state((p), (p)->ea_state), PROTO_LEAVE_FROM_MAIN(_proto_loop), (_proto_loop = NULL))
 
 static inline struct domain_generic *proto_domain(struct proto *p)
 { return birdloop_domain(p->loop); }
