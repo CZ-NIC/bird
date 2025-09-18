@@ -23,7 +23,27 @@
 #include "filter/filter.h"
 #include "filter/f-inst.h"
 
+/* Pool for protocol persistent data set by protocols themselves */
+struct proto_common_private {
+  DOMAIN(attrs) lock;
+  struct proto_common_private **locked_at;
+
+  pool *pool;
+};
+
+typedef union proto_common {
+  DOMAIN(attrs) lock;
+  struct proto_common_private priv;
+} proto_common;
+static proto_common proto_common_pub;
+
+LOBJ_UNLOCK_CLEANUP(proto_common, attrs);
+#define PROTO_COMMON_LOCK(pcm)	LOBJ_LOCK(&proto_common_pub, pcm, proto_common, attrs);
+
+/* Top pool for protocol data */
 pool *proto_pool;
+
+
 static TLIST_LIST(proto) global_proto_list;
 
 static list STATIC_LIST_INIT(protocol_list);
@@ -1920,7 +1940,10 @@ proto_rethink_goal(struct proto *p)
 
     proto_rem_node(&global_proto_list, p);
     rfree(p->event);
-    mb_free(p->message);
+    {
+      PROTO_COMMON_LOCK(pcm);
+      mb_free(p->message);
+    }
     mb_free(p);
     if (!nc)
       goto done;
@@ -2267,6 +2290,11 @@ void
 protos_build(void)
 {
   proto_pool = rp_new(&root_pool, the_bird_domain.the_bird, "Protocols");
+  proto_common_pub.lock = DOMAIN_NEW(attrs);
+  {
+    PROTO_COMMON_LOCK(pcm);
+    pcm->pool = rp_new(proto_pool, pcm->lock.attrs, "Common persistent protocol data");
+  }
 
   /* Protocol attributes */
   ea_register_init(&ea_name);
@@ -2377,6 +2405,8 @@ proto_schedule_down(struct proto *p, byte restart, byte code)
 void
 proto_set_message(struct proto *p, char *msg, int len)
 {
+  PROTO_COMMON_LOCK(pcm);
+
   mb_free(p->message);
   p->message = NULL;
 
@@ -2389,7 +2419,7 @@ proto_set_message(struct proto *p, char *msg, int len)
   if (!len)
     return;
 
-  p->message = mb_alloc(proto_pool, len + 1);
+  p->message = mb_alloc(pcm->pool, len + 1);
   memcpy(p->message, msg, len);
   p->message[len] = 0;
 }
