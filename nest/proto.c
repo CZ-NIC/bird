@@ -1938,6 +1938,18 @@ done:
 	);
 }
 
+struct proto_rethink_goal_deferred {
+  struct deferred_call dc;
+  struct proto *p;
+};
+
+static void
+proto_rethink_goal_deferred(struct deferred_call *dc)
+{
+  SKIP_BACK_DECLARE(struct proto_rethink_goal_deferred, prgd, dc, dc);
+  proto_rethink_goal(prgd->p);
+}
+
 struct proto *
 proto_spawn(struct proto_config *cf, uint disabled)
 {
@@ -1963,7 +1975,11 @@ proto_enable(struct proto *p)
   ASSERT_DIE(birdloop_inside(&main_birdloop));
   bool changed = p->disabled;
   p->disabled = 0;
-  proto_rethink_goal(p);
+  struct proto_rethink_goal_deferred prgd = {
+    .dc.hook = proto_rethink_goal_deferred,
+    .p = p,
+  };
+  defer_call(&prgd.dc, sizeof prgd);
   return changed;
 }
 
@@ -2826,7 +2842,11 @@ proto_cmd_enable(struct proto *p, uintptr_t arg, int cnt UNUSED)
   log(L_INFO "Enabling protocol %s", p->name);
   p->disabled = 0;
   proto_set_message(p, (char *) arg, -1);
-  proto_rethink_goal(p);
+  struct proto_rethink_goal_deferred prgd = {
+    .dc.hook = proto_rethink_goal_deferred,
+    .p = p,
+  };
+  defer_call(&prgd.dc, sizeof prgd);
   cli_msg(-11, "%s: enabled", p->name);
 }
 
