@@ -4557,18 +4557,18 @@ could have up to 5 channels: <cf/ipv4/, <cf/ipv6/, <cf/vpn4/, <cf/vpn6/, and
 	<tag><label id="l3vpn-rd">rd <m/rd/</tag>
 	A shorthand for the option <cf/route distinguisher/.
 
-	<tag><label id="l3vpn-import-target">import target <m/ec/|<m/ec-set/</tag>
+	<tag><label id="l3vpn-import-target">import target <m/ec/|<m/ec-set/|none|all</tag>
 	Route target extended communities specifying which routes should be
 	imported. Either one community or a set. A route is imported if there is
 	non-empty intersection between extended communities of the route and the
 	import target of the L3VPN protocol. Mandatory.
 
-	<tag><label id="l3vpn-export-target">export target <m/ec/|<m/ec-set/</tag>
+	<tag><label id="l3vpn-export-target">export target <m/ec/|<m/ec-set/|none</tag>
 	Route target extended communities that are attached to the route in the
 	export direction. Either one community or a set. Other route target
 	extended communities are removed. Mandatory.
 
-	<tag><label id="l3vpn-route-target">route target <m/ec/|<m/ec-set/</tag>
+	<tag><label id="l3vpn-route-target">route target <m/ec/|<m/ec-set/|none</tag>
 	A shorthand for both <cf/import target/ and <cf/export target/.
 </descrip>
 

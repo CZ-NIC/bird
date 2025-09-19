@@ -67,6 +67,9 @@ l3vpn_channel: l3vpn_channel_start channel_opt_list channel_end;
 l3vpn_proto_start: proto_start L3VPN
 {
   this_proto = proto_config_new(&proto_l3vpn, $1);
+
+  L3VPN_CFG->import_target = RT_UNDEF;
+  L3VPN_CFG->export_target = RT_UNDEF;
 };
 
 
@@ -76,6 +79,7 @@ l3vpn_proto_item:
  | mpls_channel
  | RD VPN_RD { L3VPN_CFG->rd = $2; }
  | ROUTE DISTINGUISHER VPN_RD { L3VPN_CFG->rd = $3; }
+ | IMPORT TARGET ALL { L3VPN_CFG->import_target = RT_ALL; }
  | IMPORT TARGET l3vpn_targets { L3VPN_CFG->import_target = $3; }
  | EXPORT TARGET l3vpn_targets { L3VPN_CFG->export_target = $3; }
  | ROUTE TARGET l3vpn_targets { L3VPN_CFG->import_target = L3VPN_CFG->export_target = $3; }
@@ -93,6 +97,8 @@ l3vpn_proto:
 l3vpn_targets:
    ec_item { f_tree_only_rt($1); $$ = $1; }
  | '[' ec_items ']' { f_tree_only_rt($2); $$ = build_tree($2); }
+ | '[' ']' { $$ = RT_NONE; }
+ | NONE { $$ = RT_NONE; }
  ;
 
 

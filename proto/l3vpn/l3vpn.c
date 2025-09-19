@@ -53,7 +53,6 @@
  * - check for simple nodes in export route
  * - replace pair of channels with shared channel for one address family
  * - improve route comparisons in VRFs
- * - optional import/export target all
  * - optional support for route origins
  * - optional automatic assignment of RDs
  * - MPLS-in-IP encapsulation
@@ -81,9 +80,20 @@ mpls_valid_nexthop(const rta *a)
   return 1;
 }
 
+const struct f_tree l3vpn_rt_all = {
+  .from = { .type = T_EC, .val.ec = 0 },
+  .to = { .type = T_EC, .val.ec = ~0 },
+};
+
 static int
 l3vpn_import_targets(struct l3vpn_proto *p, const struct adata *list)
 {
+  if (p->import_target == RT_ALL)
+    return 1;
+
+  if (p->import_target == RT_NONE)
+    return 0;
+
   return (p->import_target_one) ?
     ec_set_contains(list, p->import_target->from.val.ec) :
     eclist_match_set(list, p->import_target);
@@ -124,7 +134,7 @@ static inline void
 l3vpn_prepare_import_targets(struct l3vpn_proto *p)
 {
   const struct f_tree *t = p->import_target;
-  p->import_target_one = !t->left && !t->right && (t->from.val.ec == t->to.val.ec);
+  p->import_target_one = t && !t->left && !t->right && (t->from.val.ec == t->to.val.ec);
 }
 
 static void
@@ -334,13 +344,13 @@ l3vpn_postconfig(struct proto_config *CF)
   if (rd_zero(cf->rd))
     cf_error("Route distinguisher not specified");
 
-  if (!cf->import_target && !cf->export_target)
+  if ((cf->import_target == RT_UNDEF) && (cf->export_target == RT_UNDEF))
     cf_error("Route target not specified");
 
-  if (!cf->import_target)
+  if (cf->import_target == RT_UNDEF)
     cf_error("Import target not specified");
 
-  if (!cf->export_target)
+  if (cf->export_target == RT_UNDEF)
     cf_error("Export target not specified");
 }
 
