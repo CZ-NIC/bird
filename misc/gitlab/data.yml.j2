@@ -48,7 +48,7 @@ distros:
   {% endfor %}
 
   # Ubuntu regular builds
-  {% for num in ('20.04', '22.04', '24.04', '24.10') -%}
+  {% for num in ('20.04', '22.04', '24.04', '25.04') -%}
   - name: ubuntu-{{ num }}-amd64
     type: pkg-deb
   {% endfor %}
