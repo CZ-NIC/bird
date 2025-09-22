@@ -1897,7 +1897,7 @@ bgp_get_prefix(struct bgp_ptx_private *c, struct netindex *ni, struct rte_src *s
 static void bgp_free_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px);
 
 static inline int
-bgp_update_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_bucket *b)
+bgp_update_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_bucket *b, list *px_free_later)
 {
 #define IS_WITHDRAW_BUCKET(b)	((b) == c->withdraw_bucket)
 #define BPX_TRACE(what)	do { \
@@ -1930,7 +1930,11 @@ bgp_update_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_b
 
     /* Well, we haven't sent anything yet */
     if (!px->last)
-      bgp_free_prefix(c, px);
+      if (px_free_later)
+	/* We may not be allowed to free the prefix directly */
+	add_tail(px_free_later, &px->buck_node);
+      else
+	bgp_free_prefix(c, px);
 
     px->cur = NULL;
     return 0;
@@ -2015,6 +2019,7 @@ bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *bc)
 
     ASSERT_DIE(bc->tx_keep);
 
+    list px_free_later; init_list(&px_free_later);
     HASH_WALK(c->prefix_hash, next, px)
     {
       if (!px->cur)
@@ -2027,7 +2032,7 @@ bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *bc)
 	px->last = NULL;
 
 	/* And send it once again */
-	seen += bgp_update_prefix(c, px, last);
+	seen += bgp_update_prefix(c, px, last, &px_free_later);
       }
     }
     HASH_WALK_END;
@@ -2036,6 +2041,13 @@ bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *bc)
       log(L_TRACE "%s.%s: TX resending %u routes",
 	  bc->c.proto->name, bc->c.name, seen);
 
+    /* Flush withdrawals */
+    struct bgp_prefix *px;
+    WALK_LIST_FIRST(px, px_free_later)
+    {
+      rem_node(&px->buck_node);
+      bgp_free_prefix(c, px);
+    }
   }
 
   if (p->enhanced_refresh)
@@ -2177,12 +2189,19 @@ bgp_free_pending_tx(struct bgp_channel *bc)
 
   /* Move all prefixes to the withdraw bucket to unref the "last" prefixes */
   struct bgp_bucket *b = bgp_get_withdraw_bucket(c);
+  list px_free_later; init_list(&px_free_later);
   HASH_WALK(c->prefix_hash, next, px)
-    bgp_update_prefix(c, px, b);
+    bgp_update_prefix(c, px, b, &px_free_later);
   HASH_WALK_END;
 
   /* Flush withdrawals */
   struct bgp_prefix *px;
+  WALK_LIST_FIRST(px, px_free_later)
+  {
+    rem_node(&px->buck_node);
+    bgp_free_prefix(c, px);
+  }
+
   WALK_LIST_FIRST(px, b->prefixes)
     bgp_done_prefix(c, px, b);
 
@@ -2466,7 +2485,7 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
   path = (new ?: old)->src;
 
   /* And queue the notification */
-  if (bgp_update_prefix(c, bgp_get_prefix(c, NET_TO_INDEX(n), path, bc->add_path_tx), buck))
+  if (bgp_update_prefix(c, bgp_get_prefix(c, NET_TO_INDEX(n), path, bc->add_path_tx), buck, NULL))
     bgp_schedule_packet(p->conn, bc, PKT_UPDATE);
 
   if ((p->cf->tx_size_warning > 0) )
