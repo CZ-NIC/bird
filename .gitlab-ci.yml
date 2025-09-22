@@ -310,9 +310,9 @@ docker-ubuntu-24.04-amd64:
     IMG_NAME: "ubuntu-24.04-amd64"
   <<: *docker-build
 
-docker-ubuntu-24.10-amd64:
+docker-ubuntu-25.04-amd64:
   variables:
-    IMG_NAME: "ubuntu-24.10-amd64"
+    IMG_NAME: "ubuntu-25.04-amd64"
   <<: *docker-build
 
 
@@ -619,12 +619,12 @@ build-ubuntu-24.04-amd64:
       optional: true
   image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
 
-build-ubuntu-24.10-amd64:
+build-ubuntu-25.04-amd64:
   <<: *build-docker-linux-amd64
   needs:
-    - job: docker-ubuntu-24.10-amd64
+    - job: docker-ubuntu-25.04-amd64
       optional: true
-  image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
 
 
 #######################################################
@@ -999,13 +999,13 @@ pkg-ubuntu-24.04-amd64:
     - job: build-release
   image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
 
-pkg-ubuntu-24.10-amd64:
+pkg-ubuntu-25.04-amd64:
   <<: *pkg-deb
   needs:
-    - job: build-ubuntu-24.10-amd64
+    - job: build-ubuntu-25.04-amd64
       artifacts: false
     - job: build-release
-  image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
 
 
 ## Package installability checks
@@ -1267,11 +1267,11 @@ install-ubuntu-24.04-amd64:
     - job: pkg-ubuntu-24.04-amd64
   image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
 
-install-ubuntu-24.10-amd64:
+install-ubuntu-25.04-amd64:
   <<: *install-deb
   needs:
-    - job: pkg-ubuntu-24.10-amd64
-  image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
+    - job: pkg-ubuntu-25.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
 
 
 ###################################
