@@ -1341,13 +1341,13 @@ ea_show(struct cli *c, const eattr *e)
 	  as_path_format(ad, pos, end - pos);
 	  break;
 	case T_CLIST:
-	  ea_show_int_set(c, cls->name, ad, ISF_COMMUNITY_LIST, buf);
+	  ea_show_int_set(c, name, ad, ISF_COMMUNITY_LIST, buf);
 	  return;
 	case T_ECLIST:
-	  ea_show_ec_set(c, cls->name, ad, buf);
+	  ea_show_ec_set(c, name, ad, buf);
 	  return;
 	case T_LCLIST:
-	  ea_show_lc_set(c, cls->name, ad, buf);
+	  ea_show_lc_set(c, name, ad, buf);
 	  return;
 	case T_STRING:
 	  bsnprintf(pos, end - pos, "%s", (const char *) ad->data);
