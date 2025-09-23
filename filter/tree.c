@@ -87,9 +87,9 @@ tree_compare(const void *p1, const void *p2)
  * Transforms degenerated tree into balanced tree.
  */
 struct f_tree *
-build_tree(struct f_tree *from)
+build_tree(struct f_tree *from, bool merge)
 {
-  struct f_tree *tmp, *root;
+  struct f_tree *tmp, *root = NULL;
   struct f_tree **buf;
   int len, i;
 
@@ -112,8 +112,43 @@ build_tree(struct f_tree *from)
 
   qsort(buf, len, sizeof(struct f_tree *), tree_compare);
 
-  root = build_tree_rec(buf, 0, len);
+  int wpos = 0, rpos = 1;
 
+  /*
+   * We maintain two indices: write position (wpos) for the current interval and
+   * read position (rpos) for the next interval. If the current interval overlaps
+   * with the next interval, we extend the current interval's end to encompass
+   * the next interval, and advance the read position. If not, we advance both
+   * positions and compact the output sequence, so the new current interval at
+   * wpos is the previous next interval.
+   */
+  while (rpos < len)
+  {
+    if (val_compare(&buf[wpos]->to, &buf[rpos]->from) < 0)
+    {
+      wpos++;
+
+      if (wpos != rpos)
+	buf[wpos] = buf[rpos];
+
+      rpos++;
+    }
+    else
+    {
+      /* When not merging intervals, overlaping intervals are not allowed */
+      if (!merge)
+	goto done;
+
+      if (val_compare(&buf[wpos]->to, &buf[rpos]->to) < 0)
+	buf[wpos]->to = buf[rpos]->to;
+
+      rpos++;
+    }
+  }
+
+  root = build_tree_rec(buf, 0, wpos + 1);
+
+done:
   if (len > 1024)
     xfree(buf);
 

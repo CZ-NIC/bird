@@ -146,7 +146,7 @@ get_balanced_tree_with_ranged_values(uint nodes_count)
     n->to.val.i = idx++;
   }
 
-  return build_tree(tree);
+  return build_tree(tree, true);
 }
 
 
@@ -166,7 +166,7 @@ t_balancing(void)
     struct f_tree *expected_balanced_tree = get_balanced_full_tree(height);
     show_tree(expected_balanced_tree);
 
-    struct f_tree *balanced_tree_from_simple = build_tree(simple_degenerated_tree);
+    struct f_tree *balanced_tree_from_simple = build_tree(simple_degenerated_tree, true);
     show_tree(balanced_tree_from_simple);
 
     bt_assert(same_tree(balanced_tree_from_simple, expected_balanced_tree));
@@ -194,7 +194,7 @@ t_balancing_random(void)
       struct f_tree *random_degenerated_tree = get_random_degenerated_left_tree(nodes_count);
       show_tree(random_degenerated_tree);
 
-      struct f_tree *balanced_tree_from_random = build_tree(random_degenerated_tree);
+      struct f_tree *balanced_tree_from_random = build_tree(random_degenerated_tree, true);
 
       show_tree(expected_balanced_tree);
       show_tree(balanced_tree_from_random);
