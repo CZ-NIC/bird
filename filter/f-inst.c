@@ -1258,7 +1258,10 @@
     }
 
     /* Balance the tree */
-    item->tree = build_tree(whati->tree);
+    item->tree = build_tree(whati->tree, false);
+
+    if (!item->tree)
+      cf_error("Overlaping intervals in switch cases not allowed");
 
     FID_ITERATE_BODY()
     tree_walk(whati->tree, f_add_tree_lines, fit);

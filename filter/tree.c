@@ -87,7 +87,7 @@ tree_compare(const void *p1, const void *p2)
  * Transforms degenerated tree into balanced tree.
  */
 struct f_tree *
-build_tree(struct f_tree *from)
+build_tree(struct f_tree *from, bool merge)
 {
   struct f_tree *tmp, *root;
   struct f_tree **buf;
@@ -112,7 +112,43 @@ build_tree(struct f_tree *from)
 
   qsort(buf, len, sizeof(struct f_tree *), tree_compare);
 
-  root = build_tree_rec(buf, 0, len);
+  int write = 0, read = 1;
+
+  /*
+   * Algorithm works as follows: read and write positions initially point to two
+   * neighbouring intervals. We determine whether these two intervals can be merged.
+   * If yes, endpoint of new interval currently at write position is calculated and
+   * read position is moved forward. If not, write position is incremented, interval
+   * currently at read position is copied to write position and read position is
+   * incremented.
+   */
+  while (read < len)
+  {
+    const struct f_val *fst_end = &buf[write]->to;
+    const struct f_val *snd_start = &buf[read]->from;
+
+    if (val_compare(fst_end, snd_start) == -1)
+    {
+      write++;
+      buf[write] = buf[read];
+      read++;
+    }
+    else
+    {
+      /* When not merging intervals, overlaping intervals are not allowed */
+      if (!merge)
+	return NULL;
+
+      if (val_compare(&buf[write]->to, &buf[read]->to) == -1)
+	buf[write]->to = buf[read]->to;
+
+      read++;
+    }
+  }
+
+  buf[write++] = buf[read - 1];
+
+  root = build_tree_rec(buf, 0, write);
 
   if (len > 1024)
     xfree(buf);
