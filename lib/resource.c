@@ -35,6 +35,8 @@ struct pool {
   const char *name;
 };
 
+char invalid_nonzero_pointer[0];
+
 static void pool_dump(struct dump_request *, resource *);
 static void pool_free(resource *);
 static resource *pool_lookup(resource *, unsigned long);
