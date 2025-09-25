@@ -51,6 +51,9 @@ static inline int uint_cmp(uint i1, uint i2)
 static inline int u64_cmp(u64 i1, u64 i2)
 { return (int)(i1 > i2) - (int)(i1 < i2); }
 
+#define U32_UNDEF ((u32) -1)
+#define U64_UNDEF ((u64) -1)
+
 
 /* Bitfield macros */
 
