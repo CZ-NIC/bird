@@ -2227,6 +2227,7 @@ bgp_shutdown(struct proto *P)
   }
 
 done:
+  settle_cancel(&p->rtfilter_settle);
   bgp_stop(p, subcode, data, len);
   return p->p.proto_state;
 }
@@ -2376,6 +2377,14 @@ bgp_channel_start(struct channel *C)
   /* Link local address is already in c->link_addr */
   if (ipa_is_link_local(c->next_hop_addr))
     c->next_hop_addr = IPA_NONE;
+
+  /* Initialize rtfilter */
+  if (c->c.net_type == NET_RTFILTER)
+  {
+    p->rtfilter_tree_pool = lp_new(p->p.pool);
+    p->rtfilter_initial_feed = 1;
+    fib_init(&p->rtfilter_fib, p->p.pool, p->p.net_type, sizeof(struct fib_node), 0, 0, NULL);
+  }
 
   return 0; /* XXXX: Currently undefined */
 }
