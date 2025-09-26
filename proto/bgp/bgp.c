@@ -2629,6 +2629,24 @@ bgp_channel_start(struct channel *C)
   if (ipa_is_link_local(c->next_hop_addr))
     c->next_hop_addr = IPA_NONE;
 
+  /* Initialize rtfilter */
+  if (c->c.net_type == NET_RTFILTER)
+  {
+    p->rtfilter_tree = NULL;
+    p->rtfilter_tree_pool = lp_new(p->p.pool);
+    p->rtfilter_initial_feed = 1;
+
+    fib_init(&p->rtfilter_fib, p->p.pool, p->p.net_type, sizeof(struct fib_node), 0, 0, NULL);
+
+    p->rtfilter_settle_cf = (struct settle_config) {
+      .min = 1 S_,
+      .max = 60 S_,
+    };
+
+    settle_init(&p->rtfilter_settle, &p->rtfilter_settle_cf, bgp_build_rtfilter_tree_on_settle, p);
+    settle_kick(&p->rtfilter_settle);
+  }
+
   return 0; /* XXXX: Currently undefined */
 }
 
@@ -2640,6 +2658,20 @@ bgp_channel_shutdown(struct channel *C)
   c->next_hop_addr = IPA_NONE;
   c->link_addr = IPA_NONE;
   c->packets_to_send = 0;
+
+  if (c->c.net_type == NET_RTFILTER)
+  {
+    struct bgp_proto *p = SKIP_BACK(struct bgp_proto, p, c->c.proto);
+
+    settle_cancel(&p->rtfilter_settle);
+    fib_free(&p->rtfilter_fib);
+
+    p->rtfilter_tree = NULL;
+    p->rtfilter_tree_pool = NULL;
+    p->rtfilter_fib = (struct fib) { 0 };
+    p->rtfilter_settle = (struct settle) { 0 };
+    p->rtfilter_settle_cf = (struct settle_config) { 0 };
+  }
 }
 
 static void

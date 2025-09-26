@@ -74,7 +74,7 @@ build_tree_rec(struct f_tree **buf, int l, int h)
   return n;
 }
 
-static int 
+int
 tree_compare(const void *p1, const void *p2)
 {
   return val_compare(&((* (struct f_tree **) p1)->from), &((* (struct f_tree **) p2)->from));

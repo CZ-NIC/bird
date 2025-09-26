@@ -22,6 +22,7 @@
 #include "lib/unaligned.h"
 #include "lib/flowspec.h"
 #include "lib/socket.h"
+#include "lib/settle.h"
 
 #include "nest/cli.h"
 
@@ -2318,6 +2319,10 @@ bgp_decode_nlri_rtfilter(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     else
       bgp_parse_error(s, 10);
 
+    /* Incoming rtfilter update starts settle timer */
+    bgp_receive_rtfilter_entry(s->proto, &net, a);
+    settle_kick(&s->proto->rtfilter_settle);
+
     bgp_rte_update(s, (net_addr *) &net, path_id, a);
   }
 }
@@ -2855,6 +2860,22 @@ bgp_rx_end_mark(struct bgp_parse_state *s, u32 afi)
 
   if (c->gr_active)
     bgp_graceful_restart_done(c);
+
+  if (c->c.net_type == NET_RTFILTER)
+  {
+    p->rtfilter_initial_feed = 0;
+
+    /* Calling settle timer hook manually */
+    bgp_build_rtfilter_tree_on_settle(&p->rtfilter_settle);
+
+    /* Reconfigure settle timer after initial feed */
+    p->rtfilter_settle_cf = (struct settle_config) {
+      .min = 1 S_,
+      .max = 20 S_,
+    };
+
+    settle_init(&p->rtfilter_settle, &p->rtfilter_settle_cf, bgp_build_rtfilter_tree_on_settle, p);
+  }
 }
 
 static inline void

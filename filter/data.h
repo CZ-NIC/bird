@@ -222,6 +222,7 @@ struct f_tree *build_tree(struct f_tree *, bool merge);
 struct f_tree *build_tree_rec(struct f_tree **buf, int l, int h);
 const struct f_tree *find_tree(const struct f_tree *t, const struct f_val *val);
 const struct f_tree *find_tree_linear(const struct f_tree *t, const struct f_val *val);
+int tree_compare(const void *p1, const void *p2);
 int same_tree(const struct f_tree *t0, const struct f_tree *t2);
 int tree_node_count(const struct f_tree *t);
 void tree_format(const struct f_tree *t, buffer *buf);
