@@ -282,6 +282,7 @@ void io_log_event(void *hook, void *data, uint flag);
 int
 ev_run_list_limited(event_list *l, uint limit)
 {
+  struct birdloop *init_cur = birdloop_current;
   event * _Atomic *ep = &l->_executor;
   edlog(l, NULL, NULL, 1, EDL_RUN_LIST);
 
@@ -293,6 +294,7 @@ ev_run_list_limited(event_list *l, uint limit)
     edlog(l, NULL, received, 2, EDL_RUN_LIST);
 
     /* No event to run. */
+    ASSERT_DIE(init_cur == birdloop_current);
     if (!received)
       return 0;
 
@@ -319,6 +321,7 @@ ev_run_list_limited(event_list *l, uint limit)
     {
       edlog(l, e, NULL, 5, EDL_RUN_LIST);
       /* Check limit */
+      ASSERT_DIE(init_cur == birdloop_current);
       if (!--limit)
 	return 1;
 
@@ -336,10 +339,12 @@ ev_run_list_limited(event_list *l, uint limit)
 
       /* Run the event */
       e->hook(e->data);
+      ASSERT_DIE(init_cur == birdloop_current);
       tmp_flush();
 
       edlog(l, e, next, 8, EDL_RUN_LIST);
     }
 
+    ASSERT_DIE(init_cur == birdloop_current);
   return !!atomic_load_explicit(&l->receiver, memory_order_acquire);
 }

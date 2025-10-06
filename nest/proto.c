@@ -2588,6 +2588,7 @@ void
 proto_notify_state(struct proto *p, uint state)
 {
   ASSERT_DIE(birdloop_inside(p->loop));
+  log("proto_notify_state p %x state %i", p, state);
 
   uint ps = p->proto_state;
 
@@ -3248,6 +3249,7 @@ static void proto_announce_state_deferred(struct deferred_call *dc)
 void
 proto_announce_state_later_internal(struct proto *p, ea_list *new_state)
 {
+  log("announce later - p %x", p);
   /* Cancel the previous deferred announcement */
   if (p->deferred_state_announcement)
     p->deferred_state_announcement->p = NULL;

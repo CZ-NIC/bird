@@ -456,7 +456,7 @@ struct proto_pending_update {
 
 void proto_announce_state(struct proto *p, ea_list *attr);
 void proto_announce_state_later_internal(struct proto *p, ea_list *attr);
-#if 0
+#if 1
 #define proto_announce_state_later(p, a) ( log(L_INFO "proto_announce_state_later(%s (%p), %p) at %s:%d", (p)->name, (p), (a), __FILE__, __LINE__), proto_announce_state_later_internal((p), (a)) )
 #else
 #define proto_announce_state_later proto_announce_state_later_internal

@@ -1066,6 +1066,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
     ASSERT_DIE(conn == &p->outgoing_conn);
     ea_set_attr(&pes, EA_LITERAL_EMBEDDED(&ea_bgp_as4_out_conn, 0, conn->as4_session));
   }
+  log("bgp_rx_open p state %i", p->p.proto_state);
   proto_announce_state_later(&p->p, pes);
 
   DBG("BGP: Hold timer set to %d, keepalive to %d, AS to %d, ID to %x, AS4 session to %d\n",
@@ -3523,7 +3524,7 @@ bgp_rx_keepalive(struct bgp_conn *conn)
   bgp_start_timer(p, conn->hold_timer, conn->hold_time);
 
   if (conn->state == BS_OPENCONFIRM)
-  { bgp_conn_enter_established_state(conn); return; }
+  { log("conn state %i, proto state %i", conn->state, p->p.proto_state); bgp_conn_enter_established_state(conn);  return; }
 
   if (conn->state != BS_ESTABLISHED)
     bgp_error(conn, 5, fsm_err_subcode[conn->state], NULL, 0);

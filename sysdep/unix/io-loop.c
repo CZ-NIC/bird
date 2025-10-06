@@ -1995,10 +1995,12 @@ birdloop_run(void *_loop)
   /* Run priority events before the loop is executed */
   ev_run_list(&this_thread->priority_events);
 
+  //log("bef this birdloop %x curr %x", this_birdloop, birdloop_current);
   struct birdloop *loop = _loop;
   account_to(&loop->locking);
   birdloop_enter(loop);
   this_birdloop = loop;
+  //log("this birdloop %x curr %x", this_birdloop, birdloop_current);
 
   /* Wait until pingers end to wait for all events to actually arrive */
   for (u32 ltt;
@@ -2023,8 +2025,10 @@ birdloop_run(void *_loop)
   if (dif > this_thread->max_loop_time_ns + gr->latency_limit TO_NS)
     LOOP_WARN(loop, "locked %lu us after its scheduled end time", dif NS TO_US);
 
+  //log("1 this birdloop %x curr %x", this_birdloop, birdloop_current);
   uint repeat, loop_runs = 0;
   do {
+    //    log("1oop this birdloop %x curr %x", this_birdloop, birdloop_current);
     LOOP_TRACE(loop, DL_SCHEDULING, "Regular run (%d)", loop_runs);
     loop_runs++;
 
@@ -2052,6 +2056,7 @@ birdloop_run(void *_loop)
   } while (repeat && task_still_in_limit());
 
   /* Request meta timer */
+  //log("l this birdloop %x curr %x", this_birdloop, birdloop_current);
   timer *t = timers_first(&loop->time);
   if (t)
     tm_start_in(&loop->timer, tm_remains(t), this_thread->meta);

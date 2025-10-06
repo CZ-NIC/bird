@@ -91,6 +91,7 @@ tm_new_init(pool *p, void (*hook)(struct timer *), void *data, btime rec, uint r
   t->data = data;
   t->recurrent = rec;
   t->randomize = rand;
+  log("timer %x was made", t);
   return t;
 }
 

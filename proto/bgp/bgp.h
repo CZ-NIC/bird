@@ -312,6 +312,7 @@ struct bgp_socket {
   node n;				/* Node in global bgp_sockets */
   list requests;			/* Listen requests */
   sock *sk;				/* Real listening socket */
+  struct birdloop *loop;
   struct bgp_socket_params {
     ip_addr addr;			/* Local address to bind to */
     struct iface *iface;		/* Local interface to bind to */
@@ -372,6 +373,12 @@ struct bgp_session_close_ad {
   int notify_subcode;
   u8 last_error_class;
   byte data[0];
+};
+
+struct bgp_incoming_conn {
+  event *event;
+  sock *sk;
+  struct bgp_proto *p;
 };
 
 struct bgp_incoming_socket {
