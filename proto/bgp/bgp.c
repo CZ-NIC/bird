@@ -688,7 +688,11 @@ bgp_open(struct bgp_proto *p)
   LOCK_DOMAIN(rtable, bgp_listen_domain);
 
   struct bgp_listen_request *req = &p->listen;
-  /* We assume that cf->iface is defined iff cf->local_ip is link-local */
+
+  /* If strict_bind is set, we need local_ip and maybe also iface. Mandatory if
+   * local_ip is link-local. If strict_bind is not set, we bind to all addresses
+   * of that family and match the local IP later when accepting the connection. */
+
   req->params.iface = p->cf->strict_bind ? p->cf->iface : NULL;
   req->params.vrf = p->p.vrf;
   req->params.addr = p->cf->strict_bind ? p->cf->local_ip :
