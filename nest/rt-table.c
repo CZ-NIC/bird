@@ -3380,7 +3380,7 @@ rt_flowspec_link(rtable *src_pub, rtable *dst_pub)
 
   int lock_dst = 0;
 
-  birdloop_enter(dst_pub->loop);
+  BIRDLOOP_ENTER(dst_pub->loop);
 
   RT_LOCKED(src_pub, src)
   {
@@ -3418,14 +3418,12 @@ rt_flowspec_link(rtable *src_pub, rtable *dst_pub)
 
   if (lock_dst)
     rt_lock_table(dst_pub);
-
-  birdloop_leave(dst_pub->loop);
 }
 
 void
 rt_flowspec_unlink(rtable *src, rtable *dst)
 {
-  birdloop_enter(dst->loop);
+  BIRDLOOP_ENTER(dst->loop);
 
   bool unlock_dst = 0;
 
@@ -3448,8 +3446,6 @@ rt_flowspec_unlink(rtable *src, rtable *dst)
 
   if (unlock_dst)
     rt_unlock_table(dst);
-
-  birdloop_leave(dst->loop);
 }
 
 static void
@@ -3617,7 +3613,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
   /* Start the service thread */
   struct birdloop *loop = birdloop_new(pp, DOMAIN_ORDER(service), cf->thread_group->group, "Routing table service %s", cf->name);
-  birdloop_enter(loop);
+  BIRDLOOP_ENTER(loop);
   pool *sp = birdloop_pool(loop);
 
   /* Create the table domain and pool */
@@ -3725,8 +3721,6 @@ rt_setup(pool *pp, struct rtable_config *cf)
   UNLOCK_DOMAIN(rtable, dom);
 
   CALL(cf->master.setup, RT_PUB(t));
-
-  birdloop_leave(t->loop);
 
   return RT_PUB(t);
 }
@@ -5084,18 +5078,19 @@ rt_commit(struct config *new, struct config *old)
       WALK_LIST(o, old->tables)
       {
 	bool ok;
-	birdloop_enter(o->table->loop);
-	RT_LOCKED(o->table, tab)
 	{
-	  r = OBSREF_GET(tab->deleted) ? NULL : rt_find_table_config(new, o->name);
-	  ok = r && !new->shutdown && rt_reconfigure(tab, r, o);
+	  BIRDLOOP_ENTER(o->table->loop);
+	  RT_LOCKED(o->table, tab)
+	  {
+	    r = OBSREF_GET(tab->deleted) ? NULL : rt_find_table_config(new, o->name);
+	    ok = r && !new->shutdown && rt_reconfigure(tab, r, o);
+	  }
 	}
-	birdloop_leave(o->table->loop);
 
 	if (ok)
 	  continue;
 
-	birdloop_enter(o->table->loop);
+	BIRDLOOP_ENTER(o->table->loop);
 	RT_LOCKED(o->table, tab)
 	{
 	  DBG("\t%s: deleted\n", o->name);
@@ -5114,7 +5109,6 @@ rt_commit(struct config *new, struct config *old)
 	}
 
 	CALL(o->table->config->master.stop, o->table);
-	birdloop_leave(o->table->loop);
       }
     }
 

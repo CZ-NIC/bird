@@ -57,12 +57,20 @@ struct timeloop *birdloop_time_loop(struct birdloop *loop);
 /* Get birdloop's pool */
 pool *birdloop_pool(struct birdloop *loop);
 
-/* Enter and exit the birdloop */
+/* Enter the birdloop, leave at the end of the block. */
+#define BIRDLOOP_ENTER(_loop) CLEANUP(birdloop_leave_cleanup) UNUSED struct birdloop *_loop_entered = (birdloop_enter(_loop), (_loop))
+
+/* Auxiliary cleanup function for BIRDLOOP_ENTER */
+void birdloop_leave_cleanup(struct birdloop **);
+
+/* Explicitly enter and exit the birdloop */
 void birdloop_enter(struct birdloop *loop);
 void birdloop_leave(struct birdloop *loop);
 
+/* Check whether we are actually inside a birdloop */
 bool birdloop_inside(struct birdloop *loop);
 
+/* Internal API, do not call */
 void birdloop_mask_wakeups(struct birdloop *loop);
 void birdloop_unmask_wakeups(struct birdloop *loop);
 

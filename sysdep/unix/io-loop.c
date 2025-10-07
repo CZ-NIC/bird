@@ -828,7 +828,7 @@ birdloop_balancer(void)
     uint dropped = 0;
     WALK_TLIST_DELSAFE(birdloop, loop, &this_thread->loops)
     {
-      birdloop_enter(loop);
+      BIRDLOOP_ENTER(loop);
       if (ev_active(&loop->event) && !loop->stopped && !birdloop_hot_potato(loop))
       {
 	/* Pass to another thread */
@@ -850,7 +850,6 @@ birdloop_balancer(void)
 	  break;
 	}
       }
-      birdloop_leave(loop);
     }
 
     if (dropped)
@@ -1009,9 +1008,8 @@ bird_thread_main(void *arg)
 
       WALK_TLIST(birdloop, loop, &thr->loops)
       {
-	birdloop_enter(loop);
+	BIRDLOOP_ENTER(loop);
 	sockets_prepare(loop, &pfd);
-	birdloop_leave(loop);
       }
 
       ASSERT_DIE(pfd.loop.used == pfd.pfd.used);
@@ -1090,7 +1088,7 @@ bird_thread_group_done(thread_group *gpub, TLIST_LIST(birdloop) *leftover_loops)
   while (!EMPTY_TLIST(birdloop, leftover_loops))
   {
     struct birdloop *loop = THEAD(birdloop, leftover_loops);
-    birdloop_enter(loop);
+    BIRDLOOP_ENTER(loop);
     if (loop->thread_group == gpub)
     {
       birdloop_transfer(loop, gpub, default_thread_group);
@@ -1098,7 +1096,6 @@ bird_thread_group_done(thread_group *gpub, TLIST_LIST(birdloop) *leftover_loops)
 
     birdloop_rem_node(leftover_loops, loop);
     birdloop_set_thread(loop, NULL);
-    birdloop_leave(loop);
   }
 
   thread_group_rem_node(&global_thread_group_list, gpub);
@@ -1323,7 +1320,7 @@ static void
 bird_thread_stop(thread_group *gpub, struct config *old_config)
 {
   struct birdloop *tdl = birdloop_new(&root_pool, DOMAIN_ORDER(control), gpub, "Thread dropper");
-  birdloop_enter(tdl);
+  BIRDLOOP_ENTER(tdl);
 
   TG_LOCKED(gpub, group)
   {
@@ -1334,8 +1331,6 @@ bird_thread_stop(thread_group *gpub, struct config *old_config)
     OBSREF_SET(group->thread_dropper.conflock, old_config);
     ev_send_loop(tdl, &group->thread_dropper.event);
   }
-
-  birdloop_leave(tdl);
 }
 
 void
@@ -2267,6 +2262,13 @@ birdloop_leave(struct birdloop *loop)
 {
   birdloop_leave_locked(loop);
   DG_UNLOCK(loop->time.domain);
+}
+
+void
+birdloop_leave_cleanup(struct birdloop **loop)
+{
+  if (*loop)
+    birdloop_leave(*loop);
 }
 
 void
