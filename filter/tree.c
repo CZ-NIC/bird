@@ -89,7 +89,7 @@ tree_compare(const void *p1, const void *p2)
 struct f_tree *
 build_tree(struct f_tree *from, bool merge)
 {
-  struct f_tree *tmp, *root;
+  struct f_tree *tmp, *root = NULL;
   struct f_tree **buf;
   int len, i;
 
@@ -112,44 +112,43 @@ build_tree(struct f_tree *from, bool merge)
 
   qsort(buf, len, sizeof(struct f_tree *), tree_compare);
 
-  int write = 0, read = 1;
+  int wpos = 0, rpos = 1;
 
   /*
-   * Algorithm works as follows: read and write positions initially point to two
-   * neighbouring intervals. We determine whether these two intervals can be merged.
-   * If yes, endpoint of new interval currently at write position is calculated and
-   * read position is moved forward. If not, write position is incremented, interval
-   * currently at read position is copied to write position and read position is
-   * incremented.
+   * We maintain two indices: write position (wpos) for the current interval and
+   * read position (rpos) for the next interval. If the current interval overlaps
+   * with the next interval, we extend the current interval's end to encompass
+   * the next interval, and advance the read position. If not, we advance both
+   * positions and compact the output sequence, so the new current interval at
+   * wpos is the previous next interval.
    */
-  while (read < len)
+  while (rpos < len)
   {
-    const struct f_val *fst_end = &buf[write]->to;
-    const struct f_val *snd_start = &buf[read]->from;
-
-    if (val_compare(fst_end, snd_start) == -1)
+    if (val_compare(&buf[wpos]->to, &buf[rpos]->from) < 0)
     {
-      write++;
-      buf[write] = buf[read];
-      read++;
+      wpos++;
+
+      if (wpos != rpos)
+	buf[wpos] = buf[rpos];
+
+      rpos++;
     }
     else
     {
       /* When not merging intervals, overlaping intervals are not allowed */
       if (!merge)
-	return NULL;
+	goto done;
 
-      if (val_compare(&buf[write]->to, &buf[read]->to) == -1)
-	buf[write]->to = buf[read]->to;
+      if (val_compare(&buf[wpos]->to, &buf[rpos]->to) < 0)
+	buf[wpos]->to = buf[rpos]->to;
 
-      read++;
+      rpos++;
     }
   }
 
-  buf[write++] = buf[read - 1];
+  root = build_tree_rec(buf, 0, wpos + 1);
 
-  root = build_tree_rec(buf, 0, write);
-
+done:
   if (len > 1024)
     xfree(buf);
 
