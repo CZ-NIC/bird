@@ -35,11 +35,11 @@
 #include "conf/conf.h"
 #include "sysdep/unix/krt.h"
 
-DOMAIN(attrs) iface_domain;
+DOMAIN(rtable) iface_domain;
 
-#define IFACE_LOCK	LOCK_DOMAIN(attrs, iface_domain)
-#define IFACE_UNLOCK	UNLOCK_DOMAIN(attrs, iface_domain)
-#define IFACE_ASSERT_LOCKED	ASSERT_DIE(DOMAIN_IS_LOCKED(attrs, iface_domain))
+#define IFACE_LOCK	LOCK_DOMAIN(rtable, iface_domain)
+#define IFACE_UNLOCK	UNLOCK_DOMAIN(rtable, iface_domain)
+#define IFACE_ASSERT_LOCKED	ASSERT_DIE(DOMAIN_IS_LOCKED(rtable, iface_domain))
 
 static TLIST_LIST(ifsub) iface_sub_list;
 static slab *iface_sub_slab;
@@ -1030,10 +1030,10 @@ if_choose_router_id(struct iface_patt *mask, u32 old_id)
 void
 if_init(void)
 {
-  iface_domain = DOMAIN_NEW(attrs);
+  iface_domain = DOMAIN_NEW(rtable);
 
   IFACE_LOCK;
-  if_pool = rp_new(&root_pool, iface_domain.attrs, "Interfaces");
+  if_pool = rp_new(&root_pool, iface_domain.rtable, "Interfaces");
   init_list(&global_iface_list);
   iface_sub_slab = sl_new(if_pool, sizeof(struct iface_notification));
   strcpy(default_vrf.name, "default");

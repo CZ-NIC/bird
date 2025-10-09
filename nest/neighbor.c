@@ -67,11 +67,11 @@ void ifa_unlink(struct ifa *);
 
 extern list global_iface_list;
 
-extern DOMAIN(attrs) iface_domain;
+extern DOMAIN(rtable) iface_domain;
 
-#define IFACE_LOCK	LOCK_DOMAIN(attrs, iface_domain)
-#define IFACE_UNLOCK	UNLOCK_DOMAIN(attrs, iface_domain)
-#define IFACE_ASSERT_LOCKED	ASSERT_DIE(DOMAIN_IS_LOCKED(attrs, iface_domain))
+#define IFACE_LOCK	LOCK_DOMAIN(rtable, iface_domain)
+#define IFACE_UNLOCK	UNLOCK_DOMAIN(rtable, iface_domain)
+#define IFACE_ASSERT_LOCKED	ASSERT_DIE(DOMAIN_IS_LOCKED(rtable, iface_domain))
 
 static inline uint
 neigh_hash(struct proto *p, ip_addr a, struct iface *i)
