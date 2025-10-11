@@ -17,7 +17,7 @@ variables:
   IMG_BASE: registry.nic.cz/labs/bird
   TOOLS_DIR: /home/gitlab-runner/bird-tools
   STAYRTR_BINARY: /usr/local/bin/stayrtr
-  APKG_VERSION: 0.5.1
+  APKG_VERSION: 0.7.0
 
 stages:
   - consistency
