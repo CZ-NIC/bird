@@ -71,18 +71,18 @@ void birdloop_leave_cleanup(struct birdloop **);
 #define BLO_UNLOCK_CLEANUP(_stem) \
   static inline void BLO_UNLOCK_CLEANUP_NAME(_stem)(struct _stem##_private **obj) { \
     if (!*obj) return; \
-    ASSERT_DIE(birdloop_inside((*obj)->lock)); \
+    ASSERT_DIE(birdloop_inside((*obj)->loop)); \
     ASSERT_DIE((*obj)->locked_at == obj); \
     (*obj)->locked_at = NULL; \
-    birdloop_leave((*obj)->lock); \
+    birdloop_leave((*obj)->loop); \
   }
 
 #define BLO_LOCK(_obj, _pobj, _stem) \
-  CLEANUP(BLO_UNLOCK_CLEANUP_NAME(_stem)) struct _stem##_private *_pobj = &(_obj)->priv; birdloop_enter(_pobj->lock); _pobj->locked_at = &_pobj;
+  CLEANUP(BLO_UNLOCK_CLEANUP_NAME(_stem)) struct _stem##_private *_pobj = &(_obj)->priv; birdloop_enter(_pobj->loop); _pobj->locked_at = &_pobj;
 
 #define BLO_LOCKED(_obj, _pobj, _stem) \
   for (CLEANUP(BLO_UNLOCK_CLEANUP_NAME(_stem)) struct _stem##_private *_pobj = &(_obj)->priv; \
-      _pobj ? (birdloop_enter(_pobj->lock), _pobj->locked_at = &pobj) : NULL; \
+      _pobj ? (birdloop_enter(_pobj->loop), _pobj->locked_at = &_pobj) : NULL; \
       BLO_UNLOCK_CLEANUP_NAME(_stem)(&_pobj), _pobj = NULL)
 
 /* Explicitly enter and exit the birdloop */

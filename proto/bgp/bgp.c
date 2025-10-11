@@ -133,14 +133,27 @@
 #include "proto/bmp/bmp.h"
 #endif
 
-static void bgp_listen_create(void *);
+/* Listening socket machinery */
+struct bgp_listen_private {
+  struct birdloop *loop;
+  struct bgp_listen_private **locked_at;
+  list sockets;		/* Listening sockets */
+  list pending;		/* Pending listen requests */
+  event event;
+};
 
-static list STATIC_LIST_INIT(bgp_sockets);		/* Global list of listening sockets */
-static list STATIC_LIST_INIT(bgp_listen_pending);	/* Global list of listening socket open requests */
-static event bgp_listen_event = { .hook = bgp_listen_create };
+typedef union bgp_listen {
+  struct birdloop *loop;
+  struct bgp_listen_private priv;
+} bgp_listen;
 
-static DOMAIN(rtable) bgp_listen_domain;
-static pool *bgp_listen_pool;
+static bgp_listen bgp_listen_pub;
+
+BLO_UNLOCK_CLEANUP(bgp_listen);
+
+#define BGP_LISTEN_LOCKED(bl)	BLO_LOCKED(&bgp_listen_pub, bl, bgp_listen)
+#define BGP_LISTEN_LOCK(bl)	BLO_LOCK(&bgp_listen_pub, bl, bgp_listen)
+#define BGP_LISTEN_UNLOCK(bl)	( BLO_UNLOCK_CLEANUP_NAME(bgp_listen)(&bl), bl = NULL )
 
 static void bgp_connect(struct bgp_proto *p);
 static void bgp_active(struct bgp_proto *p);
@@ -649,7 +662,7 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
 static void
 bgp_close(struct bgp_proto *p)
 {
-  LOCK_DOMAIN(rtable, bgp_listen_domain);
+  BGP_LISTEN_LOCK(bl);
 
   struct bgp_listen_request *req = &p->listen;
   struct bgp_socket *bs = req->sock;
@@ -666,11 +679,9 @@ bgp_close(struct bgp_proto *p)
 
       /* Request listen socket cleanup */
       if (bs && EMPTY_LIST(bs->requests))
-	ev_send(&global_event_list, &bgp_listen_event);
+	ev_send(&global_event_list, &bl->event);
     }
   }
-
-  UNLOCK_DOMAIN(rtable, bgp_listen_domain);
 }
 
 /**
@@ -685,7 +696,7 @@ bgp_close(struct bgp_proto *p)
 static void
 bgp_open(struct bgp_proto *p)
 {
-  LOCK_DOMAIN(rtable, bgp_listen_domain);
+  BGP_LISTEN_LOCK(bl);
 
   struct bgp_listen_request *req = &p->listen;
 
@@ -708,10 +719,8 @@ bgp_open(struct bgp_proto *p)
 
   BGP_TRACE(D_EVENTS, "Requesting listen socket at %I%J port %u", req->params.addr, req->params.iface, req->params.port);
 
-  add_tail(&bgp_listen_pending, &req->n);
-  ev_send(&global_event_list, &bgp_listen_event);
-
-  UNLOCK_DOMAIN(rtable, bgp_listen_domain);
+  add_tail(&bl->pending, &req->n);
+  ev_send(&global_event_list, &bl->event);
 }
 
 static void
@@ -721,22 +730,20 @@ bgp_listen_create(void *_ UNUSED)
   uint flag_mask = SKF_FREEBIND;
 
   while (1) {
-    LOCK_DOMAIN(rtable, bgp_listen_domain);
+    BGP_LISTEN_LOCK(bl);
 
-    if (EMPTY_LIST(bgp_listen_pending))
-    {
-      UNLOCK_DOMAIN(rtable, bgp_listen_domain);
+    /* No more to open, autounlock */
+    if (EMPTY_LIST(bl->pending))
       break;
-    }
 
     /* Get the first request to match */
-    struct bgp_listen_request *req = HEAD(bgp_listen_pending);
+    struct bgp_listen_request *req = HEAD(bl->pending);
     SKIP_BACK_DECLARE(struct bgp_proto, p, listen, req);
     rem_node(&req->n);
 
     /* First try to find existing socket */
     struct bgp_socket *bs;
-    WALK_LIST(bs, bgp_sockets)
+    WALK_LIST(bs, bl->sockets)
       if (ipa_equal(bs->sk->saddr, req->params.addr) &&
 	  (bs->sk->sport == req->params.port) &&
 	  (bs->sk->iface == req->params.iface) &&
@@ -751,7 +758,7 @@ bgp_listen_create(void *_ UNUSED)
     {
       /* Allocating new socket from global protocol pool.
        * We can do this in main_birdloop. */
-      sock *sk = sk_new(bgp_listen_pool);
+      sock *sk = sk_new(birdloop_pool(bl->loop));
       sk->type = SK_TCP_PASSIVE;
       sk->ttl = 255;
       sk->saddr = req->params.addr;
@@ -770,18 +777,18 @@ bgp_listen_create(void *_ UNUSED)
 	sk_log_error(sk, p->p.name);
 	log(L_ERR "%s: Cannot open listening socket", p->p.name);
 	sk_close(sk);
-	UNLOCK_DOMAIN(rtable, bgp_listen_domain);
+	BGP_LISTEN_UNLOCK(bl);
 
 	bgp_initiate_disable(p, BEM_NO_SOCKET);
 	continue;
       }
 
-      bs = mb_allocz(bgp_listen_pool, sizeof(struct bgp_socket));
+      bs = mb_allocz(birdloop_pool(bl->loop), sizeof(struct bgp_socket));
       bs->sk = sk;
       sk->data = bs;
 
       init_list(&bs->requests);
-      add_tail(&bgp_sockets, &bs->n);
+      add_tail(&bl->sockets, &bs->n);
 
       BGP_TRACE(D_EVENTS, "Created new listening socket: %p", bs);
     }
@@ -794,27 +801,23 @@ bgp_listen_create(void *_ UNUSED)
       rem_node(&req->n);
       req->sock = NULL;
 
-      UNLOCK_DOMAIN(rtable, bgp_listen_domain);
-
+      BGP_LISTEN_UNLOCK(bl);
       bgp_initiate_disable(p, BEM_INVALID_AUTH);
       continue;
     }
-
-    UNLOCK_DOMAIN(rtable, bgp_listen_domain);
   }
 
   /* Cleanup leftover listening sockets */
-  LOCK_DOMAIN(rtable, bgp_listen_domain);
+  BGP_LISTEN_LOCK(bl);
   struct bgp_socket *bs;
   node *nxt;
-  WALK_LIST_DELSAFE(bs, nxt, bgp_sockets)
+  WALK_LIST_DELSAFE(bs, nxt, bl->sockets)
     if (EMPTY_LIST(bs->requests))
     {
       sk_close(bs->sk);
       rem_node(&bs->n);
       mb_free(bs);
     }
-  UNLOCK_DOMAIN(rtable, bgp_listen_domain);
 }
 
 static inline struct bgp_channel *
@@ -1876,7 +1879,7 @@ bgp_find_proto(sock *sk)
   /* sk->iface is valid only if src or dst address is link-local */
   int link = ipa_is_link_local(sk->saddr) || ipa_is_link_local(sk->daddr);
 
-  LOCK_DOMAIN(rtable, bgp_listen_domain);
+  BGP_LISTEN_LOCK(bl);
 
   WALK_LIST(req, bs->requests)
   {
@@ -1888,14 +1891,14 @@ bgp_find_proto(sock *sk)
 	(!link || (req->iface == sk->iface)) &&
 	(ipa_zero(req->local_ip) || ipa_equal(req->local_ip, sk->saddr)))
     {
-      best = req->p;
+      /* Non-dynamic protocol instance matched */
+      if (!ipa_zero(req->remote_ip))
+	return req->p;
 
-      if (! ipa_zero(req->remote_ip))
-	break;
+      best = req->p;
     }
   }
 
-  UNLOCK_DOMAIN(rtable, bgp_listen_domain);
   return best;
 }
 
@@ -1925,9 +1928,8 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
   {
     log(L_WARN "BGP: Unexpected connect from unknown address %I%J (port %d)",
 	sk->daddr, ipa_is_link_local(sk->daddr) ? sk->iface : NULL, sk->dport);
-    LOCK_DOMAIN(rtable, bgp_listen_domain);
+    BGP_LISTEN_LOCK(bl);
     sk_close(sk);
-    UNLOCK_DOMAIN(rtable, bgp_listen_domain);
     return 0;
   }
 
@@ -1942,8 +1944,15 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
     {
       log(L_WARN "%s: Connection from address %I%J (port %d) has no TCP-AO key",
           p->p.name, sk->daddr, ipa_is_link_local(sk->daddr) ? sk->iface : NULL, sk->dport);
-      sk_close(sk);
-      goto leave;
+      BGP_LISTEN_LOCKED(bl)
+	sk_close(sk);
+
+      /* We need to announce possible state changes immediately before
+       * leaving the protocol's loop, otherwise we're gonna access the protocol
+       * without having it locked from proto_announce_state_later(). */
+      proto_announce_state(&p->p, p->p.ea_state);
+      birdloop_leave(p->p.loop);
+      return 0;
     }
   }
 
@@ -1969,7 +1978,7 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
       bgp_close_conn(&p->incoming_conn);
   }
 
-  LOCK_DOMAIN(rtable, bgp_listen_domain);
+  BGP_LISTEN_LOCK(bl);
 
   BGP_TRACE(D_EVENTS, "Incoming connection from %I%J (port %d) %s",
 	    sk->daddr, ipa_is_link_local(sk->daddr) ? sk->iface : NULL,
@@ -2015,7 +2024,7 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
   /* For dynamic BGP, spawn new instance and postpone the socket */
   if (bgp_is_dynamic(p))
   {
-    UNLOCK_DOMAIN(rtable, bgp_listen_domain);
+    BGP_LISTEN_UNLOCK(bl);
 
     /* The dynamic protocol must be in the START state */
     ASSERT_DIE(p->p.proto_state == PS_START);
@@ -2041,7 +2050,7 @@ err2:
   sk_close(sk);
 
 leave:
-  UNLOCK_DOMAIN(rtable, bgp_listen_domain);
+  BGP_LISTEN_UNLOCK(bl);
 
   /* We need to announce possible state changes immediately before
    * leaving the protocol's loop, otherwise we're gonna access the protocol
@@ -2485,12 +2494,11 @@ bgp_start(struct proto *P)
   /* Now it's the last chance to move the postponed socket to this BGP,
    * as bgp_start is the only hook running from main loop. */
   if (p->postponed_sk)
-  {
-    LOCK_DOMAIN(rtable, bgp_listen_domain);
-    rmove(p->postponed_sk, p->p.pool);
-    sk_reloop(p->postponed_sk, p->p.loop);
-    UNLOCK_DOMAIN(rtable, bgp_listen_domain);
-  }
+    BGP_LISTEN_LOCKED(bl)
+    {
+      rmove(p->postponed_sk, p->p.pool);
+      sk_reloop(p->postponed_sk, p->p.loop);
+    }
 
   /*
    * Before attempting to create the connection, we need to lock the port,
@@ -3762,8 +3770,12 @@ void bgp_build(void)
 {
   proto_build(&proto_bgp);
   bgp_register_attrs();
-  bgp_listen_domain = DOMAIN_NEW(rtable);
-  LOCK_DOMAIN(rtable, bgp_listen_domain);
-  bgp_listen_pool = rp_new(proto_pool, bgp_listen_domain.rtable, "BGP Listen Sockets");
-  UNLOCK_DOMAIN(rtable, bgp_listen_domain);
+
+  bgp_listen_pub.loop = birdloop_new(proto_pool, DOMAIN_ORDER(service), NULL, "bgp listen loop");
+  BGP_LISTEN_LOCK(bl);
+  init_list(&bl->sockets);
+  init_list(&bl->pending);
+  bl->event = (event) {
+    .hook = bgp_listen_create,
+  };
 }
