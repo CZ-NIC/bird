@@ -308,18 +308,36 @@ struct bgp_ao_state {
   struct bgp_ao_key *best_key;
 };
 
-struct bgp_socket {
-  node n;				/* Node in global bgp_sockets */
+struct bgp_socket_params {
+  ip_addr addr;				/* Local address to bind to */
+  struct iface *iface;			/* Local interface to bind to */
+  struct iface *vrf;			/* VRF to bind to */
+  uint port;				/* Local port to bind to (mandatory) */
+  uint flags;				/* Additional SKF_* flags */
+};
+
+#define BGP_SOCKET_PUB \
+  node n;				/* Node in global bgp_listen -> sockets */ \
+  struct birdloop *loop;		/* Socket's accepting loop */ \
+  struct bgp_socket_params params;	/* Socket matching parameters */ \
+
+struct bgp_socket_private {
+  BGP_SOCKET_PUB;
+  struct bgp_socket_private **locked_at;
   list requests;			/* Listen requests */
   sock *sk;				/* Real listening socket */
-  struct bgp_socket_params {
-    ip_addr addr;			/* Local address to bind to */
-    struct iface *iface;		/* Local interface to bind to */
-    struct iface *vrf;			/* VRF to bind to */
-    uint port;				/* Local port to bind to (mandatory) */
-    uint flags;				/* Additional SKF_* flags */
-  } params;
 };
+
+typedef union bgp_socket {
+  struct { BGP_SOCKET_PUB; };
+  struct bgp_socket_private priv;
+} bgp_socket;
+
+BLO_UNLOCK_CLEANUP(bgp_socket);
+
+#define BGP_SOCKET_LOCKED(_pub, _priv)	BLO_LOCKED(_pub, _priv, bgp_socket)
+#define BGP_SOCKET_LOCK(_pub, _priv)	BLO_LOCK(_pub, _priv, bgp_socket)
+#define BGP_SOCKET_UNLOCK(_pub, _priv)	( BLO_UNLOCK_CLEANUP_NAME(bgp_socket)(_priv), _priv = NULL )
 
 struct bgp_stats {
   uint rx_messages, tx_messages;
@@ -381,7 +399,7 @@ struct bgp_incoming_socket {
 
 struct bgp_listen_request {
   node n;				/* Node in bgp_socket / pending list */
-  struct bgp_socket *sock;		/* Assigned socket */
+  bgp_socket *sock;			/* Assigned socket */
   struct bgp_socket_params params;	/* Listening socket parameters */
   ip_addr local_ip;			/* Local IP address to match */
   struct iface *iface;			/* Local interface to match */
