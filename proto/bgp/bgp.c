@@ -138,8 +138,6 @@ struct bgp_listen_private {
   struct birdloop *loop;
   struct bgp_listen_private **locked_at;
   list sockets;		/* Listening sockets */
-  list pending;		/* Pending listen requests */
-  event event;
 };
 
 typedef union bgp_listen {
@@ -151,6 +149,7 @@ static bgp_listen bgp_listen_pub;
 
 BLO_UNLOCK_CLEANUP(bgp_listen);
 
+#define BGP_LISTEN_PRIV(bl)	ASSERT_DIE(birdloop_inside(bgp_listen_pub.loop)); struct bgp_listen_private *bl = &bgp_listen_pub.priv;
 #define BGP_LISTEN_LOCKED(bl)	BLO_LOCKED(&bgp_listen_pub, bl, bgp_listen)
 #define BGP_LISTEN_LOCK(bl)	BLO_LOCK(&bgp_listen_pub, bl, bgp_listen)
 #define BGP_LISTEN_UNLOCK(bl)	( BLO_UNLOCK_CLEANUP_NAME(bgp_listen)(&bl), bl = NULL )
@@ -165,7 +164,8 @@ static void bgp_update_bfd(struct bgp_proto *p, const struct bfd_options *bfd);
 static int bgp_disable_ao_keys(struct bgp_proto *p);
 static int bgp_incoming_connection(sock *sk, uint dummy UNUSED);
 static void bgp_listen_sock_err(sock *sk UNUSED, int err);
-static void bgp_initiate_disable(struct bgp_proto *p, int err_val);
+static int bgp_listen_open(struct bgp_proto *, struct bgp_listen_request *);
+static void bgp_listen_close(struct bgp_proto *, struct bgp_listen_request *);
 
 static void bgp_graceful_restart_feed(struct bgp_channel *c);
 static void bgp_restart_route_refresh(void *_bc);
@@ -668,26 +668,9 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
 static void
 bgp_close(struct bgp_proto *p)
 {
-  BGP_LISTEN_LOCK(bl);
-
   struct bgp_listen_request *req = &p->listen;
-  struct bgp_socket *bs = req->sock;
-
-  if (enlisted(&req->n))
-  {
-    /* Remove listen request from listen socket or pending list */
-    rem_node(&req->n);
-
-    if (bs)
-    {
-      /* Already had a socket. */
-      req->sock = NULL;
-
-      /* Request listen socket cleanup */
-      if (bs && EMPTY_LIST(bs->requests))
-	ev_send(&global_event_list, &bl->event);
-    }
-  }
+  if (req->sock)
+    bgp_listen_close(p, req);
 }
 
 /**
@@ -699,11 +682,9 @@ bgp_close(struct bgp_proto *p)
  * is acquired and neighbor is ready). When error, caller should change state to
  * PS_DOWN and return immediately.
  */
-static void
+static int
 bgp_open(struct bgp_proto *p)
 {
-  BGP_LISTEN_LOCK(bl);
-
   /* Set parameters of the listening socket
    *
    * If strict_bind is set, we need local_ip and maybe also iface. Mandatory if
@@ -731,9 +712,15 @@ bgp_open(struct bgp_proto *p)
 
   BGP_TRACE(D_EVENTS, "Requesting listen socket at %I%J port %u", req->params.addr, req->params.iface, req->params.port);
 
-  add_tail(&bl->pending, &req->n);
-  ev_send(&global_event_list, &bl->event);
+  return bgp_listen_open(p, req);
 }
+
+#define bgp_listen_debug(p, a, msg, args...) do { \
+  if ((p)->p.debug & D_IFACES) \
+    log(L_TRACE "%s: Listening socket at %I%J port %u (vrf %s) flags %u: " msg, \
+	(p)->p.name, (a)->addr, (a)->iface, (a)->port, \
+	(a)->vrf ? (a)->vrf->name : "default", (a)->flags, ## args); \
+} while (0)
 
 static int
 bgp_socket_match(const struct bgp_socket_params *a, const struct bgp_socket_params *b)
@@ -747,97 +734,79 @@ bgp_socket_match(const struct bgp_socket_params *a, const struct bgp_socket_para
     1;
 }
 
-static void
-bgp_listen_create(void *_ UNUSED)
+static int
+bgp_listen_open(struct bgp_proto *p, struct bgp_listen_request *req)
 {
-  ASSERT_DIE(birdloop_inside(&main_birdloop));
-
-  while (1) {
-    BGP_LISTEN_LOCK(bl);
-
-    /* No more to open, autounlock */
-    if (EMPTY_LIST(bl->pending))
-      break;
-
-    /* Get the first request to match */
-    struct bgp_listen_request *req = HEAD(bl->pending);
-    SKIP_BACK_DECLARE(struct bgp_proto, p, listen, req);
-    rem_node(&req->n);
-
-    /* First try to find existing socket */
-    struct bgp_socket *bs;
-    WALK_LIST(bs, bl->sockets)
-      if (bgp_socket_match(&req->params, &bs->params))
-	break;
-
-    /* Not found any */
-    if (NODE_VALID(bs))
-      BGP_TRACE(D_EVENTS, "Found a listening socket: %p", bs);
-    else
-    {
-      /* Allocating new socket from global protocol pool.
-       * We can do this in main_birdloop. */
-      sock *sk = sk_new(birdloop_pool(bl->loop));
-      sk->type = SK_TCP_PASSIVE;
-      sk->ttl = 255;
-      sk->saddr = req->params.addr;
-      sk->sport = req->params.port;
-      sk->iface = req->params.iface;
-      sk->vrf = req->params.vrf;
-      sk->flags = req->params.flags;
-      sk->tos = IP_PREC_INTERNET_CONTROL;
-      sk->rbsize = BGP_RX_BUFFER_SIZE;
-      sk->tbsize = BGP_TX_BUFFER_SIZE;
-      sk->rx_hook = bgp_incoming_connection;
-      sk->err_hook = bgp_listen_sock_err;
-
-      if (sk_open(sk, &main_birdloop) < 0)
-      {
-	sk_log_error(sk, p->p.name);
-	log(L_ERR "%s: Cannot open listening socket", p->p.name);
-	sk_close(sk);
-	BGP_LISTEN_UNLOCK(bl);
-
-	bgp_initiate_disable(p, BEM_NO_SOCKET);
-	continue;
-      }
-
-      bs = mb_allocz(birdloop_pool(bl->loop), sizeof(struct bgp_socket));
-      bs->sk = sk;
-      bs->params = req->params;
-      sk->data = bs;
-
-      init_list(&bs->requests);
-      add_tail(&bl->sockets, &bs->n);
-
-      BGP_TRACE(D_EVENTS, "Created new listening socket: %p", bs);
-    }
-
-    req->sock = bs;
-    add_tail(&bs->requests, &req->n);
-
-    if (bgp_setup_auth(p, 1) < 0)
-    {
-      rem_node(&req->n);
-      req->sock = NULL;
-
-      BGP_LISTEN_UNLOCK(bl);
-      bgp_initiate_disable(p, BEM_INVALID_AUTH);
-      continue;
-    }
-  }
-
-  /* Cleanup leftover listening sockets */
   BGP_LISTEN_LOCK(bl);
+
+  /* First try to find existing socket */
   struct bgp_socket *bs;
-  node *nxt;
-  WALK_LIST_DELSAFE(bs, nxt, bl->sockets)
-    if (EMPTY_LIST(bs->requests))
+  WALK_LIST(bs, bl->sockets)
+    if (bgp_socket_match(&req->params, &bs->params))
     {
-      sk_close(bs->sk);
-      rem_node(&bs->n);
-      mb_free(bs);
+      bgp_listen_debug(p, &req->params, "exists: %p", bs);
+      add_tail(&bs->requests, &req->n);
+      req->sock = bs;
+      return 0;
     }
+
+  sock *sk = sk_new(birdloop_pool(bl->loop));
+  sk->type = SK_TCP_PASSIVE;
+  sk->ttl = 255;
+  sk->saddr = req->params.addr;
+  sk->sport = req->params.port;
+  sk->iface = req->params.iface;
+  sk->vrf = req->params.vrf;
+  sk->flags = req->params.flags;
+  sk->tos = IP_PREC_INTERNET_CONTROL;
+  sk->rbsize = BGP_RX_BUFFER_SIZE;
+  sk->tbsize = BGP_TX_BUFFER_SIZE;
+  sk->rx_hook = bgp_incoming_connection;
+  sk->err_hook = bgp_listen_sock_err;
+
+  if (sk_open(sk, bl->loop) < 0)
+    goto err;
+
+  bs = mb_allocz(birdloop_pool(bl->loop), sizeof(struct bgp_socket));
+  bs->params = req->params;
+  bs->sk = sk;
+
+  sk->data = bs;
+  req->sock = bs;
+
+  init_list(&bs->requests);
+  add_tail(&bs->requests, &req->n);
+  add_tail(&bl->sockets, &bs->n);
+
+  bgp_listen_debug(p, &req->params, "create: %p", bs);
+
+  return 0;
+
+err:
+  sk_log_error(sk, p->p.name);
+  log(L_ERR "%s: Cannot open listening socket", p->p.name);
+  sk_close(sk);
+  return -1;
+}
+
+static void
+bgp_listen_close(struct bgp_proto *p, struct bgp_listen_request *req)
+{
+  BGP_LISTEN_LOCK(bl);
+  struct bgp_socket *bs = req->sock;
+
+  rem_node(&req->n);
+  if (EMPTY_LIST(bs->requests))
+  {
+    bgp_listen_debug(p, &req->params, "free: %p", bs);
+    sk_close(bs->sk);
+    rem_node(&bs->n);
+    mb_free(bs);
+  }
+  else
+  {
+    bgp_listen_debug(p, &req->params, "unlink: %p", bs);
+  }
 }
 
 static inline struct bgp_channel *
@@ -880,7 +849,13 @@ bgp_startup_timeout(timer *t)
 static void
 bgp_initiate(struct bgp_proto *p)
 {
-  bgp_open(p);
+  int err_val;
+
+  if (bgp_open(p) < 0)
+  { err_val = BEM_NO_SOCKET; goto err1; }
+
+  if (bgp_setup_auth(p, 1) < 0)
+  { err_val = BEM_INVALID_AUTH; goto err2; }
 
   if (p->cf->bfd)
     bgp_update_bfd(p, p->cf->bfd);
@@ -893,25 +868,16 @@ bgp_initiate(struct bgp_proto *p)
   }
   else
     bgp_startup(p);
-}
 
-static void
-bgp_initiate_disable(struct bgp_proto *p, int err_val)
-{
-  PROTO_LOCKED_FROM_MAIN(&p->p)
-  {
-    /* The protocol may be already down for another reason.
-     * Shutdown the protocol only if it isn't already shutting down. */
-    switch (p->p.proto_state)
-    {
-      case PS_START:
-      case PS_UP:
-	p->p.disabled = 1;
-	bgp_store_error(p, NULL, BE_MISC, err_val);
-	bgp_stop(p, err_val, NULL, 0);
-	proto_announce_state(&p->p, p->p.ea_state);
-    }
-  }
+  return;
+
+err2:
+  bgp_close(p);
+err1:
+  p->p.disabled = 1;
+
+  bgp_store_error(p, NULL, BE_MISC, err_val);
+  bgp_stop(p, err_val, NULL, 0);
 }
 
 /**
@@ -1931,10 +1897,9 @@ bgp_find_proto(struct bgp_listen_private *bl UNUSED, sock *sk)
 static int
 bgp_incoming_connection(sock *sk, uint dummy UNUSED)
 {
-  ASSERT_DIE(birdloop_inside(&main_birdloop));
+  BGP_LISTEN_PRIV(bl);
 
   DBG("BGP: Incoming connection from %I port %d\n", sk->daddr, sk->dport);
-  BGP_LISTEN_LOCK(bl);
 
   struct bgp_listen_request *req = bgp_find_proto(bl, sk);
   if (req)
@@ -3831,8 +3796,4 @@ void bgp_build(void)
   bgp_listen_pub.loop = birdloop_new(proto_pool, DOMAIN_ORDER(service), NULL, "bgp listen loop");
   BGP_LISTEN_LOCK(bl);
   init_list(&bl->sockets);
-  init_list(&bl->pending);
-  bl->event = (event) {
-    .hook = bgp_listen_create,
-  };
 }
