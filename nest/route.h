@@ -467,9 +467,6 @@ LOBJ_UNLOCK_CLEANUP(rtable, rtable);
 #define RT_LOCKED(tab, tp)	LOBJ_LOCKED((tab), tp, rtable, rtable)
 #define RT_LOCK(tab, tp)	LOBJ_LOCK((tab), tp, rtable, rtable)
 
-#define RT_LOCK_SIMPLE(tab)	LOBJ_LOCK_SIMPLE((tab), rtable)
-#define RT_UNLOCK_SIMPLE(tab)	LOBJ_UNLOCK_SIMPLE((tab), rtable)
-
 #define RT_UNLOCKED_TEMPORARILY(tab, tp)	LOBJ_UNLOCKED_TEMPORARILY((tab), tp, rtable, rtable)
 
 #define RT_PUB(tab)	SKIP_BACK(rtable, priv, tab)

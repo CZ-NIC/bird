@@ -4943,13 +4943,17 @@ rt_delete(void *tab_)
 {
   ASSERT_DIE(birdloop_inside(&main_birdloop));
 
-  /* We assume that nobody holds the table reference now as use_count is zero.
-   * Anyway the last holder may still hold the lock. Therefore we lock and
-   * unlock it the last time to be sure that nobody is there. */
-  struct rtable_private *tab = RT_LOCK_SIMPLE((rtable *) tab_);
-  OBSREF_CLEAR(tab->deleted);
+  /* Pull out the last references; TODO: make this generic */
+  rtable *tab = tab_;
   DOMAIN(rtable) dom = tab->lock;
-  RT_UNLOCK_SIMPLE(RT_PUB(tab));
+
+  /* We assume that nobody holds the table reference now as use_count is zero.
+   * Anyway the last holder may still hold the lock because of the kernel scheduler.
+   * Therefore we lock and unlock it the last time to be sure that nobody is there.
+   * Also it's semantically more valid to lock when accessing otherwise private things.
+   * */
+  RT_LOCKED(tab, tp)
+    OBSREF_CLEAR(tp->deleted);
 
   /* Everything is freed by freeing the loop */
   birdloop_free(tab->loop);
