@@ -735,11 +735,22 @@ bgp_open(struct bgp_proto *p)
   ev_send(&global_event_list, &bl->event);
 }
 
+static int
+bgp_socket_match(const struct bgp_socket_params *a, const struct bgp_socket_params *b)
+{
+  return
+    ipa_equal(a->addr, b->addr) &&
+    a->iface == b->iface &&
+    a->vrf == b->vrf &&
+    a->port == b->port &&
+    a->flags == b->flags &&
+    1;
+}
+
 static void
 bgp_listen_create(void *_ UNUSED)
 {
   ASSERT_DIE(birdloop_inside(&main_birdloop));
-  uint flag_mask = SKF_FREEBIND;
 
   while (1) {
     BGP_LISTEN_LOCK(bl);
@@ -756,11 +767,7 @@ bgp_listen_create(void *_ UNUSED)
     /* First try to find existing socket */
     struct bgp_socket *bs;
     WALK_LIST(bs, bl->sockets)
-      if (ipa_equal(bs->sk->saddr, req->params.addr) &&
-	  (bs->sk->sport == req->params.port) &&
-	  (bs->sk->iface == req->params.iface) &&
-	  (bs->sk->vrf == req->params.vrf) &&
-	  ((bs->sk->flags & flag_mask) == req->params.flags))
+      if (bgp_socket_match(&req->params, &bs->params))
 	break;
 
     /* Not found any */
@@ -797,6 +804,7 @@ bgp_listen_create(void *_ UNUSED)
 
       bs = mb_allocz(birdloop_pool(bl->loop), sizeof(struct bgp_socket));
       bs->sk = sk;
+      bs->params = req->params;
       sk->data = bs;
 
       init_list(&bs->requests);
