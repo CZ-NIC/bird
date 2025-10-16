@@ -1814,7 +1814,12 @@ bgp_receive_rtfilter_entry(struct bgp_proto *p, const struct net_addr_rtfilter *
   if (a)
     fib_get(&p->rtfilter_fib, (const net_addr *)addr);
   else
-    fib_delete(&p->rtfilter_fib, fib_find(&p->rtfilter_fib, (const net_addr *)addr));
+  {
+    void *e = fib_find(&p->rtfilter_fib, (const net_addr *)addr);
+
+    if (e)
+      fib_delete(&p->rtfilter_fib, e);
+  }
 }
 
 static inline const struct adata *ea_get_adata(struct ea_list *e, uint id)
