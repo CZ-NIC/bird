@@ -2636,7 +2636,7 @@ bgp_channel_start(struct channel *C)
     p->rtfilter_tree_pool = lp_new(p->p.pool);
     p->rtfilter_initial_feed = 1;
 
-    fib_init(&p->rtfilter_fib, p->p.pool, p->p.net_type, sizeof(struct fib_node), 0, 0, NULL);
+    fib_init(&p->rtfilter_fib, p->p.pool, c->c.net_type, sizeof(struct fib_node), 0, 0, NULL);
 
     p->rtfilter_settle_cf = (struct settle_config) {
       .min = 1 S_,
