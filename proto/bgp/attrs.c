@@ -1827,10 +1827,10 @@ static inline const struct adata *ea_get_adata(struct ea_list *e, uint id)
 
 #define EA_BGP_EXT_COMMUNITY	EA_CODE(PROTOCOL_BGP, BA_EXT_COMMUNITY)
 
-static int
-bgp_filter_vpn_rte(const struct rte *e, const struct f_tree *rtfilter_tree)
+static bool
+bgp_filter_vpn_rte(struct bgp_proto *p, const struct rte *e)
 {
-  return eclist_match_set(ea_get_adata(e->attrs->eattrs, EA_BGP_EXT_COMMUNITY), rtfilter_tree);
+  return p->rtfilter_tree && eclist_match_set(ea_get_adata(e->attrs->eattrs, EA_BGP_EXT_COMMUNITY), p->rtfilter_tree);
 }
 
 #undef EA_BGP_EXT_COMMUNITY
@@ -1911,14 +1911,10 @@ bgp_preexport(struct channel *C, rte *e)
       return -1;
   }
 
-  if ((e->net->n.addr->type == NET_VPN4) || (e->net->n.addr->type == NET_VPN6))
-  {
-    /* Initial rtfilter feed has already ended, we can filter VPN routes; refuse them otherwise */
-    if (!p->rtfilter_initial_feed && p->rtfilter_tree)
-      return bgp_filter_vpn_rte(e, p->rtfilter_tree);
-    else
-      return -1;
-  }
+  if (p->rtfilter_use &&
+      ((e->net->n.addr->type == NET_VPN4) || (e->net->n.addr->type == NET_VPN6)) &&
+      !bgp_filter_vpn_rte(p, e))
+    return -1;
 
   return 0;
 }

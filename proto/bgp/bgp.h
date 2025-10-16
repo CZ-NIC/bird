@@ -429,6 +429,7 @@ struct bgp_proto {
   struct settle rtfilter_settle;
   struct settle_config rtfilter_settle_cf;
   int rtfilter_initial_feed;
+  bool rtfilter_use;
 };
 
 struct bgp_channel {
