@@ -88,8 +88,14 @@ const struct f_tree l3vpn_rt_all = {
 static void
 l3vpn_generate_route(struct l3vpn_proto *p, const struct net_addr_rtfilter *addr)
 {
-  struct rta rta = { 0 };
-  struct rte *e = rte_get_temp(&rta, p->p.main_source);
+  struct rta a0 = {
+    .pref   = DEF_PREF_L3VPN_EXPORT,
+    .source = RTS_L3VPN,
+    .scope  = SCOPE_UNIVERSE,
+    .dest   = RTD_NONE,
+  };
+
+  struct rte *e = rte_get_temp(&a0, p->p.main_source);
   rte_update2(p->rtfilter_channel, (net_addr *)addr, e, p->p.main_source);
 }
 
@@ -439,7 +445,9 @@ l3vpn_start(struct proto *P)
     P->mpls_map->vrf_iface = P->vrf;
 
   proto_notify_state(&p->p, PS_UP);
-  l3vpn_split_interval(p, p->import_target);
+
+  if (p->rtfilter_channel)
+    l3vpn_split_interval(p, p->import_target);
 
   return PS_UP;
 }
