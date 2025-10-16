@@ -2307,7 +2307,7 @@ bgp_encode_evpn_ead(struct bgp_write_state *s UNUSED, const net_addr_evpn *net, 
 
   /* Encode MPLS label */
   u32 label = bgp_get_label(s->mpls_labels, 0);
-  put_u24(pos, label << 4);
+  put_u24(pos, label); // << 4);
   ADVANCE(pos, size, 3);
 
   return pos - buf;
@@ -2333,7 +2333,7 @@ bgp_decode_evpn_ead(struct bgp_parse_state *s, net_addr_evpn *net, byte *pos, ui
   ADVANCE(pos, len, 4);
 
   /* Decode MPLS label */
-  u32 label = get_u24(pos) >> 4;
+  u32 label = get_u24(pos); // >> 4;
   ADVANCE(pos, len, 3);
 
   s->mpls_labels = lp_alloc_adata(s->pool, 4);
@@ -2376,13 +2376,13 @@ bgp_encode_evpn_mac(struct bgp_write_state *s UNUSED, const net_addr_evpn *net, 
 
   /* Encode MPLS label */
   u32 label1 = bgp_get_label(s->mpls_labels, 0);
-  put_u24(pos, label1 << 4);
+  put_u24(pos, label1); // << 4);
   ADVANCE(pos, size, 3);
 
   if (bgp_label_ready(s->mpls_labels, 1))
   {
     u32 label2 = bgp_get_label_(s->mpls_labels, 1);
-    put_u24(pos, label2 << 4);
+    put_u24(pos, label2); // << 4);
     ADVANCE(pos, size, 3);
   }
 
@@ -2428,12 +2428,12 @@ bgp_decode_evpn_mac(struct bgp_parse_state *s, net_addr_evpn *net, byte *pos, ui
     bgp_parse_error(s, 1);
 
   u32 label[2], lnum = 1;
-  label[0] = get_u24(pos) >> 4;
+  label[0] = get_u24(pos); // >> 4;
   ADVANCE(pos, len, 3);
 
   if (len >= 3)
   {
-    label[1] = get_u24(pos) >> 4;
+    label[1] = get_u24(pos); // >> 4;
     ADVANCE(pos, len, 3);
     lnum++;
   }
