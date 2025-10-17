@@ -2863,7 +2863,7 @@ bgp_rx_end_mark(struct bgp_parse_state *s, u32 afi)
 
   if (c->c.net_type == NET_RTFILTER)
   {
-    p->rtfilter_initial_feed = 0;
+    p->rtfilter_initial_feed = false;
 
     /* Calling settle timer hook manually */
     bgp_build_rtfilter_tree_on_settle(&p->rtfilter_settle);
