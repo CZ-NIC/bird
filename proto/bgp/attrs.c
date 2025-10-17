@@ -1796,7 +1796,7 @@ bgp_build_rtfilter_tree_on_settle(struct settle *s)
     };
 
     settle_init(&p->rtfilter_settle, &p->rtfilter_settle_cf, bgp_build_rtfilter_tree_on_settle, p);
-    p->rtfilter_initial_feed = 0;
+    p->rtfilter_initial_feed = false;
   }
 
   if (p->rtfilter_fib.entries == 0)
@@ -1911,7 +1911,7 @@ bgp_preexport(struct channel *C, rte *e)
       return -1;
   }
 
-  if (p->rtfilter_use &&
+  if (p->cf->rtfilter_use &&
       ((e->net->n.addr->type == NET_VPN4) || (e->net->n.addr->type == NET_VPN6)) &&
       !bgp_filter_vpn_rte(p, e))
     return -1;

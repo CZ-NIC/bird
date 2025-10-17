@@ -406,6 +406,9 @@ bgp_channel_start: bgp_afi
     BGP_CC->max_llgr_time = ~0U; /* undefined */
     BGP_CC->aigp = 0xff;	/* undefined */
   }
+
+  if (desc->net == NET_RTFILTER)
+    BGP_CFG->rtfilter_use = true;
 };
 
 bgp_nh:

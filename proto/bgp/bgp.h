@@ -163,6 +163,8 @@ struct bgp_config {
   int require_gr;			/* Require remote support for graceful restart [RFC 4724] */
   int require_llgr;			/* Require remote support for long-lived graceful restart [RFC 9494] */
   struct bfd_options *bfd;		/* Use BFD for liveness detection */
+
+  bool rtfilter_use;
 };
 
 struct bgp_channel_config {
@@ -428,8 +430,7 @@ struct bgp_proto {
   struct fib rtfilter_fib;
   struct settle rtfilter_settle;
   struct settle_config rtfilter_settle_cf;
-  int rtfilter_initial_feed;
-  bool rtfilter_use;
+  bool rtfilter_initial_feed;
 };
 
 struct bgp_channel {
