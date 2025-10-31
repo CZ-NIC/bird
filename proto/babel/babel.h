@@ -25,6 +25,7 @@
 #include "lib/socket.h"
 #include "lib/string.h"
 #include "lib/timer.h"
+#include "lib/idm.h"
 
 #define EA_BABEL_METRIC		EA_CODE(PROTOCOL_BABEL, 0)
 #define EA_BABEL_ROUTER_ID	EA_CODE(PROTOCOL_BABEL, 1)
@@ -197,6 +198,7 @@ struct babel_proto {
   slab *source_slab;
   slab *msg_slab;
   slab *seqno_slab;
+  struct idm src_ids;
 
   struct tbf log_pkt_tbf;		/* TBF for packet messages */
 };
@@ -239,6 +241,7 @@ struct babel_iface {
 struct babel_neighbor {
   node n;
   struct babel_iface *ifa;
+  struct rte_src *src;
 
   ip_addr addr;
   u16 rxcost;				/* Sent in last IHU */
