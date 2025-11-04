@@ -101,6 +101,7 @@ struct radv_prefix_config
   u8 skip;			/* Do not include this prefix to RA */
   u8 onlink;			/* Standard options from RFC 4861 */
   u8 autonomous;
+  u8 pd_preferred;
   u32 valid_lifetime;
   u32 preferred_lifetime;
   u8 valid_lifetime_sensitive;	 /* Whether valid_lifetime depends on trigger */

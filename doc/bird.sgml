@@ -5741,6 +5741,11 @@ custom option type 38 value hex:0e:10:20:01:0d:b8:00:0a:00:0b:00:00:00:00;
 	This option specifies whether hosts may use the advertised prefix for
 	stateless autoconfiguration. Default: yes
 
+	<tag><label id="radv-prefix-pd-preferred">pd preferred<m/switch/</tag>
+	This option specifies whether hosts should use prefix delegation in DHCPv6
+	instead of using stateless address autoconfiguration (SLAAC).
+	Default: no.
+
 	<tag><label id="radv-prefix-valid-lifetime">valid lifetime <m/expr/ [sensitive <m/switch/]</tag>
 	This option specifies the time (in seconds) how long (after the
 	receipt of RA) the prefix information is valid, i.e., autoconfigured

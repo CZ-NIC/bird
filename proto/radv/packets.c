@@ -44,8 +44,9 @@ struct radv_opt_prefix
   ip6_addr prefix;
 };
 
-#define OPT_PX_ONLINK 0x80
-#define OPT_PX_AUTONOMOUS 0x40
+#define OPT_PX_ONLINK		  0x80
+#define OPT_PX_AUTONOMOUS	  0x40
+#define OPT_PX_PD_PREFERRED	  0x10
 
 struct radv_opt_mtu
 {
@@ -307,7 +308,8 @@ radv_prepare_prefix(struct radv_iface *ifa, struct radv_prefix *px,
   op->length = 4;
   op->pxlen = px->prefix.pxlen;
   op->flags = (pc->onlink ? OPT_PX_ONLINK : 0) |
-    (pc->autonomous ? OPT_PX_AUTONOMOUS : 0);
+	      (pc->autonomous ? OPT_PX_AUTONOMOUS : 0) |
+	      (pc->pd_preferred ? OPT_PX_PD_PREFERRED : 0);
   op->valid_lifetime = (ifa->ra->active || !pc->valid_lifetime_sensitive) ?
     htonl(pc->valid_lifetime) : 0;
   op->preferred_lifetime = (ifa->ra->active || !pc->preferred_lifetime_sensitive) ?
