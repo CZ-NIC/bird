@@ -1840,6 +1840,20 @@ bgp_filter_vpn_rte(struct bgp_proto *p, const struct rte *e)
  *	BGP protocol glue
  */
 
+static inline bool
+bgp_apply_split_horizon(struct bgp_proto *p, struct rte *e)
+{
+  /*
+   * RFC 4684 3.2:
+   * Route reflector advertises routes to all clients including
+   * the one we got the route from.
+   */
+  if ((e->net->n.addr->type == NET_RTFILTER) && p->rr_client)
+    return false;
+
+  return true;
+}
+
 int
 bgp_preexport(struct channel *C, rte *e)
 {
@@ -1853,7 +1867,7 @@ bgp_preexport(struct channel *C, rte *e)
     return -1;
 
   /* Reject our routes */
-  if (src == p)
+  if ((src == p) && bgp_apply_split_horizon(p, e))
     return -1;
 
   /* Accept non-BGP routes */
@@ -1987,9 +2001,17 @@ bgp_update_attrs(struct bgp_proto *p, struct bgp_channel *c, rte *e, ea_list *at
   /* IBGP route reflection, RFC 4456 */
   if (src && src->is_internal && p->is_internal && (src->local_as == p->local_as))
   {
-    /* ORIGINATOR_ID attribute - attach if not already set */
-    if (! bgp_find_attr(attrs0, BA_ORIGINATOR_ID))
-      bgp_set_attr_u32(&attrs, pool, BA_ORIGINATOR_ID, 0, src->remote_id);
+    if ((e->net->n.addr->type == NET_RTFILTER) && p->rr_client)
+    {
+      u32 router_id = proto_get_router_id(p->p.cf);
+      bgp_set_attr_u32(&attrs, pool, BA_ORIGINATOR_ID, 0, router_id);
+    }
+    else
+    {
+      /* ORIGINATOR_ID attribute - attach if not already set */
+      if (!bgp_find_attr(attrs0, BA_ORIGINATOR_ID))
+	bgp_set_attr_u32(&attrs, pool, BA_ORIGINATOR_ID, 0, src->remote_id);
+    }
 
     /* CLUSTER_LIST attribute - prepend cluster ID */
     a = bgp_find_attr(attrs0, BA_CLUSTER_LIST);
@@ -2222,6 +2244,15 @@ bgp_rte_better(rte *new, rte *old)
     return 0;
   if (new_bgp->is_interior < old_bgp->is_interior)
     return 1;
+
+  /* RFC 4684 3.2 */
+  if ((new->net->n.addr->type == NET_RTFILTER) && new_bgp->is_interior)
+  {
+    if (new_bgp->rr_client > old_bgp->rr_client)
+      return 0;
+    if (new_bgp->rr_client < old_bgp->rr_client)
+      return 1;
+  }
 
   /* RFC 4271 9.1.2.2. e) Compare IGP metrics */
   n = new_bgp->cf->igp_metric ? new->attrs->igp_metric : 0;

@@ -1246,6 +1246,10 @@ bgp_use_gateway(struct bgp_export_state *s)
   if (p->p.vrf_set && ra->nh.iface && !if_in_vrf(ra->nh.iface, p->p.vrf))
     return 0;
 
+  /* Do not use gateway when exporting to route reflector clients */
+  if ((s->route->net->n.addr->type == NET_RTFILTER) && p->rr_client && p->is_internal)
+    return 0;
+
   /* Use it when exported to internal peers */
   if (p->is_interior)
     return 1;
@@ -1257,7 +1261,7 @@ bgp_use_gateway(struct bgp_export_state *s)
 static void
 bgp_update_next_hop_ip(struct bgp_export_state *s, eattr *a, ea_list **to)
 {
-  if (!a || !bgp_use_next_hop(s, a))
+  if (!a || !bgp_use_next_hop(s, a) || ((s->route->net->n.addr->type == NET_RTFILTER) && s->proto->rr_client))
   {
     if (bgp_use_gateway(s))
     {
