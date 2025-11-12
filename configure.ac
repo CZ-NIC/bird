@@ -116,6 +116,9 @@ AC_SUBST([CONTROL_SOCKET])
 YI_CONTROL_SOCKET="\$(runstatedir)/bird_yi.ctl"
 AC_SUBST([YI_CONTROL_SOCKET])
 
+UYTC_TEST_SOCKET="\$(runstatedir)/uytc_test.sock"
+AC_SUBST([UYTC_TEST_SOCKET])
+
 AC_SEARCH_LIBS([clock_gettime], [rt posix4],
   [],
   [AC_MSG_ERROR([Function clock_gettime not available.])]

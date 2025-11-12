@@ -74,6 +74,7 @@
 
 pool *cli_pool;
 pool *yi_pool;
+/* for pool *uytc_test_pool, see nest/cbor_uytc_test.c */
 struct linpool *yi_lnpool;
 
 static byte *
@@ -249,14 +250,14 @@ yi_hello(cli *c)
 {
   log("yi hello");
   sock *s = c->priv;
-  int len = yi_hello_message(s->tbuf); 
+  int len = yi_hello_message(s->tbuf);
 
   if (sk_send(s, len) <= 0)
   {
     log("yi send hello failed");
     return;
   }
-  
+
   c->cont = NULL;
   cli_free_out(c);
   log("yi hello ok");

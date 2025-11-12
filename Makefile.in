@@ -168,6 +168,7 @@ $(objdir)/sysdep/paths.h: Makefile
 	$(Q)echo >>$@ "#define PATH_CONFIG_FILE \"@CONFIG_FILE@\""
 	$(Q)echo >>$@ "#define PATH_CONTROL_SOCKET \"@CONTROL_SOCKET@\""
 	$(Q)echo >>$@ "#define PATH_YI_CONTROL_SOCKET \"@YI_CONTROL_SOCKET@\""
+	$(Q)echo >>$@ "#define PATH_UYTC_TEST_SOCKET \"@UYTC_TEST_SOCKET@\""
 	$(Q)if test -n "@iproutedir@" ; then echo >>$@ "#define PATH_IPROUTE_DIR \"@iproutedir@\"" ; fi
 
 # Unit tests rules

@@ -35,13 +35,16 @@ module show_status {
         type string;
       }
       leaf server_time {
-        type int64;
+        //type int64;
+        type string;
       }
       leaf last_reboot {
-        type int64;
+        //type int64;
+        type string;
       }
       leaf last_reconfiguration {
-        type int64;
+        //type int64;
+        type string;
       }
       container gr_restart {
         leaf waiting_for_n_channels_to_recover {

@@ -1,4 +1,4 @@
-src := a-path.c a-set.c cli.c cmds.c iface.c locks.c mpls.c neighbor.c password.c proto.c proto-build.c rt-attr.c rt-dev.c rt-fib.c rt-show.c rt-table.c cbor.c cbor_shortcuts.c cbor_parse.c cbor_cmds.c
+src := a-path.c a-set.c cli.c cmds.c iface.c locks.c mpls.c neighbor.c password.c proto.c proto-build.c rt-attr.c rt-dev.c rt-fib.c rt-show.c rt-table.c cbor.c cbor_shortcuts.c cbor_parse.c cbor_cmds.c cbor_uytc_test.c
 obj := $(src-o-files)
 $(all-daemon)
 $(cf-local)

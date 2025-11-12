@@ -44,6 +44,8 @@
 #include "unix.h"
 #include "krt.h"
 
+#include "nest/cbor_uytc_test.h"
+
 /*
  *	Debugging
  */
@@ -430,8 +432,15 @@ static struct cli_config initial_yi_control_socket_config = {
   .mode = 0660,
 };
 
+static struct cli_config uytc_test_socket_config = {
+  //.name = "uytc_test.sock",
+  .name = PATH_UYTC_TEST_SOCKET,
+  .mode = 0660,
+};
+
 #define path_control_socket initial_control_socket_config.name
 #define path_yi_control_socket initial_yi_control_socket_config.name
+#define path_uytc_test_socket uytc_test_socket_config.name
 
 static struct cli_config *main_control_socket_config = NULL;
 static struct cli_config *main_yi_control_socket_config = NULL;
@@ -449,6 +458,7 @@ struct cli_listener {
 
 static struct cli_listener *main_control_socket = NULL;
 static struct cli_listener *main_yi_control_socket = NULL;
+static struct cli_listener *uytc_test_socket = NULL;
 
 #include "lib/tlists.h"
 
@@ -562,6 +572,14 @@ cli_err(sock *s, int err)
 }
 
 static void
+uytc_test_conn_err(sock *s UNUSED, int err)
+{
+  /* ignore the error */
+  log(L_INFO "Failed to accept a UYTC test client connection: %s",
+    strerror(err));
+}
+
+static void
 yi_connect_err(sock *s UNUSED, int err)
 {
   ASSERT_DIE(err);
@@ -575,6 +593,13 @@ cli_connect_err(sock *s UNUSED, int err)
   ASSERT_DIE(err);
   if (config->cli_debug)
     log(L_INFO "Failed to accept CLI connection: %s", strerror(err));
+}
+
+static int
+uytc_test_connect(sock *s, uint size)
+{
+  handle_uytc_test_conn(s, size);
+  return 1;
 }
 
 static int
@@ -615,11 +640,40 @@ cli_connect(sock *s, uint size UNUSED)
 }
 
 static struct cli_listener *
+uytc_test_listen(struct cli_config *cf)
+{
+  struct cli_listener *l = mb_allocz(uytc_test_pool, sizeof *l);
+  l->config = cf;
+  sock *s = l->s = sk_new(uytc_test_pool);
+  s->type = SK_UNIX_PASSIVE;
+  s->rx_hook = uytc_test_connect;
+  s->err_hook = uytc_test_conn_err;
+  s->data = l;
+  s->rbsize = 1024;
+  s->tbsize = 2048;
+
+  /* Return value is intentionally ignored */
+  unlink(cf->name);
+
+  if (sk_open_unix(s, cf->name) < 0)
+    die("Cannot open UYTC test socket: %m");
+
+  if (cf->uid || cf->gid)
+    if (chown(cf->name, cf->uid, cf->gid) < 0)
+      die("Cannot chown UYTC test socket: %m");
+
+  if (chmod(cf->name, cf->mode) < 0)
+    die("Cannot chmod UYTC test socket: %m");
+
+  return l;
+}
+
+static struct cli_listener *
 yi_listen(struct cli_config *cf)
 {
-  struct cli_listener *l = mb_allocz(cli_pool, sizeof *l);
+  struct cli_listener *l = mb_allocz(yi_pool, sizeof *l);
   l->config = cf;
-  sock *s = l->s = sk_new(cli_pool);
+  sock *s = l->s = sk_new(yi_pool);
   s->type = SK_UNIX_PASSIVE;
   s->rx_hook = yi_connect;
   s->err_hook = yi_connect_err;
@@ -629,7 +683,7 @@ yi_listen(struct cli_config *cf)
   s->fast_rx = 1;
 
   /* Return value intentionally ignored */
-  unlink(path_yi_control_socket);
+  unlink(cf->name);
 
   if (sk_open_unix(s, cf->name) < 0)
   {
@@ -638,7 +692,7 @@ yi_listen(struct cli_config *cf)
   }
 
   if (cf->uid || cf->gid)
-    if (chown(path_yi_control_socket, cf->uid, cf->gid) < 0)
+    if (chown(cf->name, cf->uid, cf->gid) < 0)
     {
       log(L_ERR "Cannot chown YI control socket %s: %m", cf->name);
       return NULL;
@@ -703,6 +757,8 @@ yi_deafen(struct cli_listener *l)
   mb_free(l);
 }
 
+#define uytc_test_deafen yi_deafen
+
 static void
 cli_deafen(struct cli_listener *l)
 {
@@ -710,6 +766,16 @@ cli_deafen(struct cli_listener *l)
   unlink(l->config->name);
   cli_listener_rem_node(&cli_listeners, l);
   mb_free(l);
+}
+
+static void
+uytc_test_init_unix(uid_t use_uid, gid_t use_gid)
+{
+  uytc_test_socket_config.uid = use_uid;
+  uytc_test_socket_config.gid = use_gid;
+  uytc_test_socket = uytc_test_listen(&uytc_test_socket_config);
+  if (!uytc_test_socket)
+    die("Won't run without UYTC test socket");
 }
 
 static void
@@ -722,7 +788,7 @@ yi_init_unix(uid_t use_uid, gid_t use_gid)
   main_yi_control_socket_config->gid = use_gid;
 
   ASSERT_DIE(main_yi_control_socket == NULL);
-  main_yi_control_socket = cli_listen(main_yi_control_socket_config);
+  main_yi_control_socket = yi_listen(main_yi_control_socket_config);
   if (!main_yi_control_socket)
     die("Won't run without control socket");
 
@@ -884,6 +950,8 @@ sysdep_shutdown_done(void)
 {
   unlink_pid_file();
   cli_deafen(main_control_socket);
+  yi_deafen(main_yi_control_socket);
+  uytc_test_deafen(uytc_test_socket);
   log_msg(L_FATAL "Shutdown completed");
   exit(0);
 }
@@ -1067,6 +1135,7 @@ parse_args(int argc, char **argv)
 {
   int config_changed = 0;
   int socket_changed = 0;
+  int yi_socket_changed = 0;
   int c;
 
   bird_name = get_bird_name(argv[0], "bird");
@@ -1098,6 +1167,10 @@ parse_args(int argc, char **argv)
 	path_control_socket = optarg;
 	socket_changed = 1;
 	break;
+      case 'Y':
+	path_yi_control_socket = optarg;
+	yi_socket_changed = 1;
+	break;
       case 'P':
 	pid_file = optarg;
 	break;
@@ -1115,6 +1188,9 @@ parse_args(int argc, char **argv)
 	  config_name = xbasename(config_name);
 	if (!socket_changed)
 	  path_control_socket = xbasename(path_control_socket);
+	if (!yi_socket_changed)
+	  path_yi_control_socket = xbasename(path_yi_control_socket);
+	path_uytc_test_socket = xbasename(path_uytc_test_socket);
 	break;
       case 'R':
 	graceful_restart_recovery();
@@ -1165,6 +1241,7 @@ main(int argc, char **argv)
 
   cli_init();
   yi_init();
+  uytc_test_init();
 
   if (!parse_and_exit)
   {
@@ -1172,6 +1249,7 @@ main(int argc, char **argv)
     cli_init_unix(use_uid, use_gid);
     yi_init_file();
     yi_init_unix(use_uid, use_gid);
+    uytc_test_init_unix(use_uid, use_gid);
   }
 
   if (use_gid)

@@ -99,6 +99,7 @@ cli *cli_yi_new(void *, struct cli_config *);
 cli *yi_cli_new(void *, struct cli_config *);
 void cli_init(void);
 void yi_init(void);
+void uytc_test_init(void);
 void cli_free(cli *);
 void cli_kick(cli *);
 uint yi_process(uint size, byte *rbuf, byte *tbuf, uint tbsize);
