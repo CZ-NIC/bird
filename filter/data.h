@@ -144,7 +144,7 @@ struct f_trie_walk_state
 };
 
 struct f_tree *f_new_tree(void);
-struct f_tree *build_tree(struct f_tree *);
+struct f_tree *build_tree(struct f_tree *, bool merge);
 const struct f_tree *find_tree(const struct f_tree *t, const struct f_val *val);
 const struct f_tree *find_tree_linear(const struct f_tree *t, const struct f_val *val);
 int same_tree(const struct f_tree *t0, const struct f_tree *t2);

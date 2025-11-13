@@ -10,12 +10,18 @@
 #ifndef _BIRD_L3VPN_H_
 #define _BIRD_L3VPN_H_
 
+extern const struct f_tree l3vpn_rt_all;
+
+#define RT_ALL		(&l3vpn_rt_all)
+#define RT_NONE		((struct f_tree *) NULL)
+#define RT_UNDEF	((struct f_tree *) 1)
+
 struct l3vpn_config {
   struct proto_config c;
 
   vpn_rd rd;
-  struct f_tree *import_target;
-  struct f_tree *export_target;
+  const struct f_tree *import_target;
+  const struct f_tree *export_target;
 };
 
 struct l3vpn_proto {
@@ -26,8 +32,8 @@ struct l3vpn_proto {
   struct channel *vpn6_channel;
 
   vpn_rd rd;
-  struct f_tree *import_target;
-  struct f_tree *export_target;
+  const struct f_tree *import_target;
+  const struct f_tree *export_target;
   u32 *export_target_data;
   uint export_target_length;
   uint import_target_one;
