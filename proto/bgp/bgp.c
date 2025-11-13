@@ -200,7 +200,8 @@ bgp_open(struct bgp_proto *p)
    * interface notifier. By default, listen to nothing.
    *
    * Also dynamically spawned protocol do not need a listening socket,
-   * they already have their parent's one. */
+   * they already have their parent's one and the requests are actually
+   * ignored when looking for the accepting protocol. */
   if (p->cf->ipatt || p->cf->c.parent)
     return 0;
 
@@ -460,6 +461,11 @@ bgp_sk_add_ao_key(struct bgp_proto *p, sock *sk, struct bgp_ao_key *key, const c
 }
 
 static int
+bgp_sk_delete_ao_key(struct bgp_proto *p, sock *sk, struct bgp_ao_key *key,
+		     struct bgp_ao_key *backup, int current_key_id, int rnext_key_id,
+		     const char *kind);
+
+static int
 bgp_enable_ao_key(struct bgp_proto *p, struct bgp_ao_key *key)
 {
   ASSERT(!key->active);
@@ -467,28 +473,46 @@ bgp_enable_ao_key(struct bgp_proto *p, struct bgp_ao_key *key)
   BGP_TRACE(D_EVENTS, "Adding TCP-AO key %d/%d", key->key.send_id, key->key.recv_id);
 
   /* Handle listening sockets */
-  struct bgp_listen_request *blr; node *nxt;
+  struct bgp_listen_request *blr, *failed = NULL; node *nxt;
   WALK_LIST2(blr, nxt, p->listen, pn)
   BGP_SOCKET_LOCKED(blr->sock, bs)
     if (bgp_sk_add_ao_key(p, bs->sk, key, "listening") < 0)
     {
-      key->failed = 1;
-      return -1;
+      failed = blr;
+      goto failA;
     }
-
-  key->active = 1;
 
   /* Handle incoming socket */
   if (p->incoming_conn.sk)
     if (bgp_sk_add_ao_key(p, p->incoming_conn.sk, key, "session (in)") < 0)
-      return -1;
+      goto failA;
 
   /* Handle outgoing socket */
   if (p->outgoing_conn.sk)
     if (bgp_sk_add_ao_key(p, p->outgoing_conn.sk, key, "session (out)") < 0)
-      return -1;
+      goto failB;
 
+  key->active = 1;
   return 0;
+
+failB:
+  /* Cleanup incoming socket */
+  if (p->incoming_conn.sk)
+    bgp_sk_delete_ao_key(p, p->incoming_conn.sk, key, NULL, -1, -1, "session (in)");
+
+failA:
+  /* Cleanup listening sockets */
+  WALK_LIST2(blr, nxt, p->listen, pn)
+  {
+    if (blr == failed)
+      break;
+    BGP_SOCKET_LOCKED(blr->sock, bs)
+      bgp_sk_delete_ao_key(p, bs->sk, key, NULL, -1, -1, "listening");
+  }
+
+  /* Mark as failed */
+  key->failed = 1;
+  return -1;
 }
 
 struct bgp_active_keys {
@@ -541,26 +565,29 @@ bgp_disable_ao_key(struct bgp_proto *p, struct bgp_ao_key *key, struct bgp_activ
 
   BGP_TRACE(D_EVENTS, "Deleting TCP-AO key %d/%d", key->key.send_id, key->key.recv_id);
 
+  /* Try to disable everywhere even if first fails */
+  int rv = 0;
+
   /* Handle listening socket */
   struct bgp_listen_request *blr; node *nxt;
   WALK_LIST2(blr, nxt, p->listen, pn)
   BGP_SOCKET_LOCKED(blr->sock, bs)
     if (bgp_sk_delete_ao_key(p, bs->sk, key, NULL, -1, -1, "listening") < 0)
-      return -1;
+      rv = -1;
 
   key->active = 0;
 
   /* Handle incoming socket */
   if (p->incoming_conn.sk && info)
     if (bgp_sk_delete_ao_key(p, p->incoming_conn.sk, key, info->backup, info->in_current, info->in_rnext, "session (in)") < 0)
-      return -1;
+      rv = -1;
 
   /* Handle outgoing socket */
   if (p->outgoing_conn.sk && info)
     if (bgp_sk_delete_ao_key(p, p->outgoing_conn.sk, key, info->backup, info->out_current, info->out_rnext, "session (out)") < 0)
-      return -1;
+      rv = -1;
 
-  return 0;
+  return rv;
 }
 
 static int
@@ -668,8 +695,7 @@ bgp_enable_ao_keys(struct bgp_proto *p)
   ASSERT(!p->incoming_conn.sk && !p->outgoing_conn.sk);
 
   WALK_LIST_(struct bgp_ao_key, key, p->ao.keys)
-    if (bgp_enable_ao_key(p, key) < 0)
-      goto fail;
+    bgp_enable_ao_key(p, key);
 
   p->ao.best_key = bgp_select_best_ao_key(p);
 
@@ -789,7 +815,7 @@ bgp_reconfigure_ao_keys(struct bgp_proto *p, const struct bgp_config *cf)
     WALK_LIST_DELSAFE(key, key2, old_keys)
       bgp_remove_ao_key(p, key, &info);
 
-    /* If some key removals failed */
+    /* If some key removals failed, restart */
     if (!EMPTY_LIST(old_keys))
       return 0;
   }
@@ -797,8 +823,7 @@ bgp_reconfigure_ao_keys(struct bgp_proto *p, const struct bgp_config *cf)
   /* Enable new keys */
   WALK_LIST_(struct bgp_ao_key, key, p->ao.keys)
     if (!key->active && !key->failed)
-      if (bgp_enable_ao_key(p, key) < 0)
-	return 0;
+      bgp_enable_ao_key(p, key);
 
   /* Update RNext key */
   if (bgp_update_rnext_ao_key(p) < 0)
@@ -2236,8 +2261,8 @@ bgp_start_neighbor(struct bgp_proto *p)
   bgp_initiate(p);
 }
 
-static void
-bgp_iface_update(struct bgp_proto *p, uint flags, struct iface *i)
+static bool
+bgp_iface_match(struct bgp_proto *p, struct iface *i)
 {
   int ps = p->p.proto_state;
 
@@ -2245,11 +2270,17 @@ bgp_iface_update(struct bgp_proto *p, uint flags, struct iface *i)
   ASSERT_DIE(p->cf->strict_bind);
 
   if ((ps == PS_DOWN_XX) || (ps == PS_FLUSH) || (ps == PS_STOP))
-    return;
+    return false;
 
   if (!iface_patt_match(p->cf->ipatt, i, NULL))
-    return;
+    return false;
 
+  return true;
+}
+
+static void
+bgp_iface_update(struct bgp_proto *p, uint flags, struct iface *i)
+{
   struct bgp_socket_params params = {
     .iface = i,
     .vrf = p->p.vrf,
@@ -2283,7 +2314,8 @@ bgp_if_notify(struct proto *P, uint flags, struct iface *i)
 {
   struct bgp_proto *p = (struct bgp_proto *) P;
   ASSERT_DIE(ipa_zero(p->cf->local_ip));
-  bgp_iface_update(p, flags, i);
+  if (bgp_iface_match(p, i))
+    bgp_iface_update(p, flags, i);
 }
 
 static void
@@ -2292,8 +2324,30 @@ bgp_ifa_notify(struct proto *P, uint flags, struct ifa *i)
   struct bgp_proto *p = (struct bgp_proto *) P;
   ASSERT_DIE(!ipa_zero(p->cf->local_ip));
 
-  if (ipa_equal(i->ip, p->cf->local_ip))
+  if (ipa_equal(i->ip, p->cf->local_ip) && bgp_iface_match(p, i->iface))
     bgp_iface_update(p, flags, i->iface);
+}
+
+static void
+bgp_if_reload(struct bgp_proto *p, struct iface_patt *patt)
+{
+  struct ifa *a;
+
+  IFACE_WALK(iface)
+  {
+    bool old = iface_patt_match(p->cf->ipatt, iface, NULL);
+    bool new = iface_patt_match(patt, iface, NULL);
+
+    if (old == new)
+      continue;
+
+    if (ipa_zero(p->cf->local_ip) || p->cf->free_bind)
+      bgp_iface_update(p, old ? IF_CHANGE_DOWN : IF_CHANGE_UP, iface);
+    else
+      WALK_LIST(a, iface->addrs)
+	if (ipa_equal(a->ip, p->cf->local_ip))
+	  bgp_iface_update(p, old ? IF_CHANGE_DOWN : IF_CHANGE_UP, iface);
+  }
 }
 
 static void
@@ -2681,6 +2735,16 @@ bgp_start(struct proto *P)
   /* Initialize listening socket list */
   init_list(&p->listen);
 
+  /* Setup interface notification hooks */
+  P->iface_sub.if_notify = NULL;
+  P->iface_sub.ifa_notify = NULL;
+  if (cf->ipatt) {
+    if (ipa_zero(cf->local_ip) || cf->free_bind)
+      P->iface_sub.if_notify = bgp_if_notify;
+    else
+      P->iface_sub.ifa_notify = bgp_ifa_notify;
+  }
+
   /* Initialize TCP-AO keys */
   init_list(&p->ao.keys);
   if (cf->auth_type == BGP_AUTH_AO)
@@ -2867,9 +2931,6 @@ bgp_init(struct proto_config *CF)
   p->remote_as = cf->remote_as;
 
   p->postponed_sk = NULL;
-
-  P->iface_sub.if_notify = (cf->ipatt && ipa_zero(cf->local_ip)) ? bgp_if_notify : NULL;
-  P->iface_sub.ifa_notify = (cf->ipatt && !ipa_zero(cf->local_ip)) ? bgp_ifa_notify : NULL;
 
   /* Hack: We use cf->remote_ip just to pass remote_ip from bgp_spawn() */
   if (cf->c.parent)
@@ -3364,14 +3425,39 @@ static int
 bgp_reconfigure(struct proto *P, struct proto_config *CF)
 {
   struct bgp_proto *p = (void *) P;
-  const struct bgp_config *new = (void *) CF;
+  struct bgp_config *new = (void *) CF;
   const struct bgp_config *old = p->cf;
+
+  /* XXX: There is a section in documentation describing which configuration
+   * changes force BGP restart. When changing this function, you have to update
+   * also that part of documentation. */
 
   if (proto_get_router_id(CF) != p->local_id)
     return 0;
 
   if (bstrcmp(proto_get_hostname(CF), p->hostname))
     return 0;
+
+  /* Fix the virtual configuration so that memcpy does not fail */
+  if (old->c.parent)
+  {
+    new->remote_ip = old->remote_ip;
+    new->local_ip = old->local_ip;
+
+    /* Pre-check interfaces */
+    if (new->ipatt)
+    {
+      if (!old->iface || !iface_patt_match(new->ipatt, old->iface, NULL))
+	return 0;
+    }
+    else if (new->iface)
+    {
+      if (old->iface != new->iface)
+	return 0;
+    }
+
+    new->iface = old->iface;
+  }
 
   int same = !memcmp(((byte *) old) + sizeof(struct proto_config),
 		     ((byte *) new) + sizeof(struct proto_config),
@@ -3383,7 +3469,19 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
     && !bstrcmp(old->dynamic_name, new->dynamic_name)
     && (old->dynamic_name_digits == new->dynamic_name_digits);
 
-  /* Reconfigure TCP-AP */
+  /* Reconfigure interface notification hooks */
+  same = same && (!P->iface_sub.if_notify == !(new->ipatt && ipa_zero(new->local_ip)));
+  same = same && (!P->iface_sub.ifa_notify == !(new->ipatt && !ipa_zero(new->local_ip)));
+
+  /* Differing pattern lists cause an update of the listening sockets
+   * and also if the connection is up, then active sockets. */
+  bool need_if_reload = same && new->ipatt && old->ipatt && !iface_plists_equal(new->ipatt, old->ipatt);
+  if (need_if_reload && !bgp_is_dynamic(p) && (
+	p->incoming_conn.sk && !iface_patt_match(new->ipatt, p->incoming_conn.sk->iface, NULL) ||
+	p->outgoing_conn.sk && !iface_patt_match(new->ipatt, p->outgoing_conn.sk->iface, NULL)))
+    same = 0;
+
+  /* Reconfigure TCP-AO */
   same = same && bgp_reconfigure_ao_keys(p, new);
 
   /* FIXME: Move channel reconfiguration to generic protocol code ? */
@@ -3433,6 +3531,9 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 
   if (bgp_start_state(p) > BSS_PREPARE)
     bgp_update_bfd(p, new->bfd);
+
+  if (need_if_reload)
+    bgp_if_reload(p, new->ipatt);
 
   return 1;
 }
