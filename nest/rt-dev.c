@@ -32,6 +32,7 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
   struct rt_dev_config *cf = (void *) P->cf;
   struct channel *c;
   net_addr *net = &ad->prefix;
+  net_addr_union nau;
 
   if (!EMPTY_LIST(cf->iface_list) &&
       !iface_patt_find(&cf->iface_list, ad->iface, ad))
@@ -45,9 +46,23 @@ dev_ifa_notify(struct proto *P, uint flags, struct ifa *ad)
     return;
 
   if (ad->prefix.type == NET_IP4)
+  {
     c = p->ip4_channel;
+    if (cf->host)
+    {
+      nau.ip4 = NET_ADDR_IP4(ipa_to_ip4(ad->ip), 32);
+      net = &nau.n;
+    }
+  }
   else if (ad->prefix.type == NET_IP6)
+  {
     c = p->ip6_channel;
+    if (cf->host)
+    {
+      nau.ip6 = NET_ADDR_IP6(ipa_to_ip6(ad->ip), 128);
+      net = &nau.n;
+    }
+  }
   else
     return;
 
@@ -155,6 +170,7 @@ dev_reconfigure(struct proto *P, struct proto_config *CF)
   struct rt_dev_config *n = (void *) CF;
 
   if (!iface_patts_equal(&o->iface_list, &n->iface_list, NULL) ||
+      (o->host != n->host) ||
       (o->check_link != n->check_link))
     return 0;
 
@@ -179,6 +195,7 @@ dev_copy_config(struct proto_config *dest, struct proto_config *src)
   cfg_copy_list(&d->iface_list, &s->iface_list, sizeof(struct iface_patt));
 
   d->check_link = s->check_link;
+  d->host = s->host;
 }
 
 struct protocol proto_device = {
