@@ -828,7 +828,7 @@ birdloop_balancer(void)
     uint dropped = 0;
     WALK_TLIST_DELSAFE(birdloop, loop, &this_thread->loops)
     {
-      BIRDLOOP_ENTER(loop);
+      birdloop_enter(loop);
       if (ev_active(&loop->event) && !loop->stopped && !birdloop_hot_potato(loop))
       {
 	/* Pass to another thread */
@@ -850,6 +850,7 @@ birdloop_balancer(void)
 	  break;
 	}
       }
+      birdloop_leave(loop);
     }
 
     if (dropped)
