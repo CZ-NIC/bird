@@ -297,7 +297,17 @@ struct symbol *cf_root_symbol(const byte *, struct sym_scope *);
  * scope, it's the same @sym as passed to the function.
  */
 #define cf_define_symbol(conf_, osym_, type_, var_, def_) ({ \
-    struct symbol *sym_ = cf_localize_symbol(conf_, osym_); \
+    struct symbol *sym_ = osym_; \
+    if (sym_->class == SYM_KEYWORD) cf_warn("Symbol '%s' overrides existing keyword", sym_->name); \
+    sym_ = cf_localize_symbol(conf_, sym_); \
+    sym_->class = type_; \
+    sym_->var_ = def_; \
+    sym_; })
+
+#define cf_implicit_symbol(conf_, name_, type_, var_, def_) ({ \
+    struct symbol *sym_ = cf_get_symbol(conf_, name_); \
+    if (sym_->class && sym_->class != SYM_KEYWORD) bug("Implicit symbol '%s' overrides another one", sym_->name); \
+    sym_ = cf_localize_symbol(conf_, sym_); \
     sym_->class = type_; \
     sym_->var_ = def_; \
     sym_; })

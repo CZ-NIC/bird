@@ -1432,8 +1432,8 @@ thread_group_finalize_config(void)
     thread_group_config_add_tail(&new_config->thread_group, tgc);
     new_config->default_thread_group = tgc;
 
-    tgc->symbol = cf_define_symbol(
-	new_config, cf_get_symbol(new_config, "worker"),
+    tgc->symbol = cf_implicit_symbol(
+	new_config, "worker",
 	SYM_THREAD_GROUP, thread_group, tgc);
 
     /* Default express thread group */
@@ -1441,8 +1441,8 @@ thread_group_finalize_config(void)
     *tgc = thread_group_config_default_express;
     thread_group_config_add_tail(&new_config->thread_group, tgc);
 
-    tgc->symbol = cf_define_symbol(
-	new_config, cf_get_symbol(new_config, "express"),
+    tgc->symbol = cf_implicit_symbol(
+	new_config, "express",
 	SYM_THREAD_GROUP, thread_group, tgc);
   }
 
