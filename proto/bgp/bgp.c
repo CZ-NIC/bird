@@ -197,8 +197,11 @@ static int
 bgp_open(struct bgp_proto *p)
 {
   /* Interface-patterned listening sockets are created from the
-   * interface notifier. By default, listen to nothing. */
-  if (p->cf->ipatt)
+   * interface notifier. By default, listen to nothing.
+   *
+   * Also dynamically spawned protocol do not need a listening socket,
+   * they already have their parent's one. */
+  if (p->cf->ipatt || p->cf->c.parent)
     return 0;
 
   /* Set parameters of the listening socket
@@ -212,7 +215,7 @@ bgp_open(struct bgp_proto *p)
 
   par->iface = p->cf->strict_bind ? p->cf->iface : NULL;
   par->vrf = p->p.vrf;
-  par->addr = p->cf->strict_bind ? p->cf->local_ip :
+  par->addr = p->cf->strict_bind && ipa_nonzero(p->cf->local_ip) ? p->cf->local_ip :
     (p->ipv4 ? IPA_NONE4 : IPA_NONE6);
   par->port = p->cf->local_port;
   par->flags = p->cf->free_bind ? SKF_FREEBIND : 0;
@@ -868,8 +871,9 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
       pxlen = net_pxlen(p->cf->remote_range);
     }
 
+    /* Set/reset the MD5 password at all listening sockets */
     int rv;
-    struct bgp_listen_request *blr; node *nxt;
+    struct bgp_listen_request *blr, *failed = NULL; node *nxt;
     WALK_LIST2(blr, nxt, p->listen, pn)
     BGP_SOCKET_LOCKED(blr->sock, bs)
     {
@@ -881,7 +885,35 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
 	sk_log_error(bs->sk, p->p.name);
     }
 
-    return rv;
+    if (failed && enable)
+    {
+      /* Trying to rewind from the listening sockets */
+      bool emsg = false;
+      WALK_LIST2(blr, nxt, p->listen, pn)
+	BGP_SOCKET_LOCKED(blr->sock, bs)
+	{
+	  if (blr == failed)
+	    continue;
+
+	  int rrv = sk_set_md5_auth(bs->sk,
+	      p->cf->local_ip, prefix, pxlen, p->cf->iface,
+	      NULL, p->cf->setkey);
+
+	  if (rrv < 0)
+	  {
+	    if (!emsg)
+	    {
+	      log(L_ERR "%s: Trying to rewind MD5 auth failed as well.");
+	      emsg = true;
+	    }
+
+	    sk_log_error(bs->sk, p->p.name);
+	  }
+	}
+
+      /* One socket failed while enabling, the whole protocol failed. */
+      return -1;
+    }
   }
 
   return 0;
@@ -1175,7 +1207,9 @@ bgp_spawn(struct bgp_proto *pp, struct birdsock *sk)
   /* Just pass remote_ip to bgp_init() */
   struct bgp_config *cf = SKIP_BACK(struct bgp_config, c, sym->proto);
   cf->remote_ip = sk->daddr;
+  cf->local_ip = sk->saddr;
   cf->iface = sk->iface;
+  cf->ipatt = NULL;
 
   /* Create the protocol disabled initially */
   SKIP_BACK_DECLARE(struct bgp_proto, p, p, proto_spawn(sym->proto, 1));
@@ -1952,7 +1986,7 @@ bgp_find_proto(struct bgp_socket_private *bs, sock *sk)
 	(!req->remote_range || ipa_in_netX(sk->daddr, req->remote_range)) &&
 	(req->params.vrf == sk->vrf) &&
 	(req->params.port == sk->sport) &&
-	(!link || (req->iface == sk->iface)) &&
+	(!link || (req->iface == sk->iface) || req->ipatt && sk->iface && iface_patt_match(req->ipatt, sk->iface, NULL)) &&
 	(ipa_zero(req->local_ip) || ipa_equal(req->local_ip, sk->saddr)))
     {
       /* Non-dynamic protocol instance matched */
@@ -2199,7 +2233,7 @@ bgp_iface_update(struct bgp_proto *p, uint flags, struct iface *i)
   struct bgp_socket_params params = {
     .iface = i,
     .vrf = p->p.vrf,
-    .addr = p->cf->local_ip,
+    .addr = ipa_nonzero(p->cf->local_ip) ? p->cf->local_ip : (p->ipv4 ? IPA_NONE4 : IPA_NONE6),
     .port = p->cf->local_port,
     .flags = p->cf->free_bind ? SKF_FREEBIND : 0,
   };
@@ -2624,6 +2658,9 @@ bgp_start(struct proto *P)
   p->remote_id = 0;
   p->link_addr = IPA_NONE;
 
+  /* Initialize listening socket list */
+  init_list(&p->listen);
+
   /* Initialize TCP-AO keys */
   init_list(&p->ao.keys);
   if (cf->auth_type == BGP_AUTH_AO)
@@ -2804,9 +2841,7 @@ bgp_init(struct proto_config *CF)
   p->rs_client = cf->rs_client;
   p->rr_client = cf->rr_client;
 
-  p->ipv4 = ipa_nonzero(cf->remote_ip) ?
-    ipa_is_ip4(cf->remote_ip) :
-    (cf->remote_range && (cf->remote_range->type == NET_IP4));
+  p->ipv4 = cf->ipv4;
 
   p->remote_ip = cf->remote_ip;
   p->remote_as = cf->remote_as;
@@ -2827,8 +2862,6 @@ bgp_init(struct proto_config *CF)
 
   /* Add MPLS channel */
   proto_configure_mpls_channel(P, CF, RTS_BGP);
-
-  init_list(&p->listen);
 
   /* Export public info */
   ea_list *pes = p->p.ea_state;
@@ -3071,6 +3104,10 @@ bgp_postconfig(struct proto_config *CF)
   if (cf->check_link < 0)
     cf->check_link = !cf->multihop;
 
+  /* Detect IPv4 */
+  cf->ipv4 = ipa_nonzero(cf->remote_ip) ?
+    ipa_is_ip4(cf->remote_ip) :
+    (cf->remote_range && (cf->remote_range->type == NET_IP4));
 
   if (!cf->local_as)
     cf_error("Local AS number must be set");
