@@ -179,6 +179,193 @@ static void bgp_restart_route_refresh(void *_bc);
 
 
 /*
+ * BGP Instance Management
+ */
+
+/**
+ * bgp_open - open a BGP instance
+ * @p: BGP instance
+ *
+ * This function allocates and configures shared BGP resources, mainly listening
+ * sockets. Should be called as the last step during initialization (when lock
+ * is acquired and neighbor is ready). When error, caller should change state to
+ * PS_DOWN and return immediately.
+ */
+static int
+bgp_open(struct bgp_proto *p)
+{
+  /* Set parameters of the listening socket
+   *
+   * If strict_bind is set, we need local_ip and maybe also iface. Mandatory if
+   * local_ip is link-local. If strict_bind is not set, we bind to all addresses
+   * of that family and match the local IP later when accepting the connection. */
+  struct bgp_socket_params *par = &p->listen.params;
+  par->iface = p->cf->strict_bind ? p->cf->iface : NULL;
+  par->vrf = p->p.vrf;
+  par->addr = p->cf->strict_bind ? p->cf->local_ip :
+    (p->ipv4 ? IPA_NONE4 : IPA_NONE6);
+  par->port = p->cf->local_port;
+  par->flags = p->cf->free_bind ? SKF_FREEBIND : 0;
+
+  /* Set parameters of the accepted socket */
+  struct bgp_listen_request *req = &p->listen;
+  req->local_ip = p->cf->local_ip;
+  req->iface = p->cf->iface;
+  req->remote_ip = p->remote_ip;
+  req->remote_range = p->cf->remote_range;
+
+  req->p = p;
+
+  /* Initialize the incoming socket queue */
+  init_list(&p->listen.incoming_sockets);
+
+  BGP_TRACE(D_EVENTS, "Requesting listen socket at %I%J port %u", req->params.addr, req->params.iface, req->params.port);
+
+  return bgp_listen_open(p, req);
+}
+
+#define bgp_listen_debug(p, a, msg, args...) do { \
+  if ((p)->p.debug & D_IFACES) \
+    log(L_TRACE "%s: Listening socket at %I%J port %u (vrf %s) flags %u: " msg, \
+	(p)->p.name, (a)->addr, (a)->iface, (a)->port, \
+	(a)->vrf ? (a)->vrf->name : "default", (a)->flags, ## args); \
+} while (0)
+
+static int
+bgp_socket_match(const struct bgp_socket_params *a, const struct bgp_socket_params *b)
+{
+  return
+    ipa_equal(a->addr, b->addr) &&
+    a->iface == b->iface &&
+    a->vrf == b->vrf &&
+    a->port == b->port &&
+    a->flags == b->flags &&
+    1;
+}
+
+static int
+bgp_listen_open(struct bgp_proto *p, struct bgp_listen_request *req)
+{
+  BGP_LISTEN_LOCK(bl);
+
+  /* First try to find existing socket */
+  bgp_socket *bs;
+  WALK_LIST(bs, bl->sockets)
+    if (bgp_socket_match(&req->params, &bs->params))
+      BGP_SOCKET_LOCKED(bs, bsp)
+      {
+	bgp_listen_debug(p, &req->params, "exists: %p", bs);
+	add_tail(&bsp->requests, &req->n);
+	req->sock = bs;
+	return 0;
+      }
+
+  sock *sk = sk_new(p->p.pool);
+  sk->type = SK_TCP_PASSIVE;
+  sk->ttl = 255;
+  sk->saddr = req->params.addr;
+  sk->sport = req->params.port;
+  sk->iface = req->params.iface;
+  sk->vrf = req->params.vrf;
+  sk->flags = req->params.flags;
+  sk->tos = IP_PREC_INTERNET_CONTROL;
+  sk->rbsize = BGP_RX_BUFFER_SIZE;
+  sk->tbsize = BGP_TX_BUFFER_SIZE;
+  sk->rx_hook = bgp_incoming_connection;
+  sk->err_hook = bgp_listen_sock_err;
+
+  if (sk_open(sk, p->p.loop) < 0)
+  {
+    sk_log_error(sk, p->p.name);
+    log(L_ERR "%s: Cannot open listening socket", p->p.name);
+    sk_close(sk);
+    return -1;
+  }
+
+  struct birdloop *loop = birdloop_new(bl->pool, DOMAIN_ORDER(service), NULL,
+      "bgp listen socket at %I%J port %u",
+      req->params.addr, req->params.iface, req->params.port);
+
+  pool *pool = birdloop_pool(loop);
+
+  birdloop_enter(loop);
+  sk_reloop(sk, loop);
+  rmove(sk, pool);
+  sk->pool = pool;
+
+  bs = mb_allocz(pool, sizeof(*bs));
+  struct bgp_socket_private *bsp = &bs->priv;
+
+  bsp->loop = loop;
+  bsp->params = req->params;
+  bsp->sk = sk;
+
+  sk->data = bs;
+  req->sock = bs;
+
+  init_list(&bsp->requests);
+  add_tail(&bsp->requests, &req->n);
+  add_tail(&bl->sockets, &bs->n);
+
+  bgp_listen_debug(p, &req->params, "create: %p", bs);
+  birdloop_leave(loop);
+
+  return 0;
+}
+
+static void
+bgp_listen_done(void *_bs)
+{
+  /* Loop finishing must be done from the main loop */
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+  BGP_LISTEN_LOCK(bl);
+
+  /* The loop finisher must at least once enter the loop to ensure
+   * that the requestor is done */
+  BGP_SOCKET_LOCKED((bgp_socket *) _bs, bsp)
+    ;
+
+  /* Everything related is allocated from the loop's pool */
+  birdloop_free(((bgp_socket *) _bs)->loop);
+}
+
+static void
+bgp_listen_close(struct bgp_proto *p, struct bgp_listen_request *req)
+{
+  BGP_LISTEN_LOCK(bl);
+  BGP_SOCKET_LOCK(req->sock, bsp);
+
+  rem_node(&req->n);
+
+  if (EMPTY_LIST(bsp->requests))
+  {
+    bgp_listen_debug(p, &req->params, "free: %p", bsp);
+    sk_close(bsp->sk);
+    rem_node(&bsp->n);
+    birdloop_stop_self(bsp->loop, bgp_listen_done, bsp);
+  }
+  else
+  {
+    bgp_listen_debug(p, &req->params, "unlink: %p", bsp);
+  }
+}
+
+/**
+ * bgp_close - close a BGP instance
+ * @p: BGP instance
+ *
+ * This function frees and deconfigures shared BGP resources.
+ */
+static void
+bgp_close(struct bgp_proto *p)
+{
+  struct bgp_listen_request *req = &p->listen;
+  if (req->sock)
+    bgp_listen_close(p, req);
+}
+
+
+/*
  *	TCP-AO keys
  */
 
@@ -660,191 +847,10 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
   return 0;
 }
 
-/* 
- * BGP Instance Management
+
+/*
+ *	State machinery
  */
-
-/**
- * bgp_close - close a BGP instance
- * @p: BGP instance
- *
- * This function frees and deconfigures shared BGP resources.
- */
-static void
-bgp_close(struct bgp_proto *p)
-{
-  struct bgp_listen_request *req = &p->listen;
-  if (req->sock)
-    bgp_listen_close(p, req);
-}
-
-/**
- * bgp_open - open a BGP instance
- * @p: BGP instance
- *
- * This function allocates and configures shared BGP resources, mainly listening
- * sockets. Should be called as the last step during initialization (when lock
- * is acquired and neighbor is ready). When error, caller should change state to
- * PS_DOWN and return immediately.
- */
-static int
-bgp_open(struct bgp_proto *p)
-{
-  /* Set parameters of the listening socket
-   *
-   * If strict_bind is set, we need local_ip and maybe also iface. Mandatory if
-   * local_ip is link-local. If strict_bind is not set, we bind to all addresses
-   * of that family and match the local IP later when accepting the connection. */
-  struct bgp_socket_params *par = &p->listen.params;
-  par->iface = p->cf->strict_bind ? p->cf->iface : NULL;
-  par->vrf = p->p.vrf;
-  par->addr = p->cf->strict_bind ? p->cf->local_ip :
-    (p->ipv4 ? IPA_NONE4 : IPA_NONE6);
-  par->port = p->cf->local_port;
-  par->flags = p->cf->free_bind ? SKF_FREEBIND : 0;
-
-  /* Set parameters of the accepted socket */
-  struct bgp_listen_request *req = &p->listen;
-  req->local_ip = p->cf->local_ip;
-  req->iface = p->cf->iface;
-  req->remote_ip = p->remote_ip;
-  req->remote_range = p->cf->remote_range;
-
-  req->p = p;
-
-  /* Initialize the incoming socket queue */
-  init_list(&p->listen.incoming_sockets);
-
-  BGP_TRACE(D_EVENTS, "Requesting listen socket at %I%J port %u", req->params.addr, req->params.iface, req->params.port);
-
-  return bgp_listen_open(p, req);
-}
-
-#define bgp_listen_debug(p, a, msg, args...) do { \
-  if ((p)->p.debug & D_IFACES) \
-    log(L_TRACE "%s: Listening socket at %I%J port %u (vrf %s) flags %u: " msg, \
-	(p)->p.name, (a)->addr, (a)->iface, (a)->port, \
-	(a)->vrf ? (a)->vrf->name : "default", (a)->flags, ## args); \
-} while (0)
-
-static int
-bgp_socket_match(const struct bgp_socket_params *a, const struct bgp_socket_params *b)
-{
-  return
-    ipa_equal(a->addr, b->addr) &&
-    a->iface == b->iface &&
-    a->vrf == b->vrf &&
-    a->port == b->port &&
-    a->flags == b->flags &&
-    1;
-}
-
-static int
-bgp_listen_open(struct bgp_proto *p, struct bgp_listen_request *req)
-{
-  BGP_LISTEN_LOCK(bl);
-
-  /* First try to find existing socket */
-  bgp_socket *bs;
-  WALK_LIST(bs, bl->sockets)
-    if (bgp_socket_match(&req->params, &bs->params))
-      BGP_SOCKET_LOCKED(bs, bsp)
-      {
-	bgp_listen_debug(p, &req->params, "exists: %p", bs);
-	add_tail(&bsp->requests, &req->n);
-	req->sock = bs;
-	return 0;
-      }
-
-  sock *sk = sk_new(p->p.pool);
-  sk->type = SK_TCP_PASSIVE;
-  sk->ttl = 255;
-  sk->saddr = req->params.addr;
-  sk->sport = req->params.port;
-  sk->iface = req->params.iface;
-  sk->vrf = req->params.vrf;
-  sk->flags = req->params.flags;
-  sk->tos = IP_PREC_INTERNET_CONTROL;
-  sk->rbsize = BGP_RX_BUFFER_SIZE;
-  sk->tbsize = BGP_TX_BUFFER_SIZE;
-  sk->rx_hook = bgp_incoming_connection;
-  sk->err_hook = bgp_listen_sock_err;
-
-  if (sk_open(sk, p->p.loop) < 0)
-  {
-    sk_log_error(sk, p->p.name);
-    log(L_ERR "%s: Cannot open listening socket", p->p.name);
-    sk_close(sk);
-    return -1;
-  }
-
-  struct birdloop *loop = birdloop_new(bl->pool, DOMAIN_ORDER(service), NULL,
-      "bgp listen socket at %I%J port %u",
-      req->params.addr, req->params.iface, req->params.port);
-
-  pool *pool = birdloop_pool(loop);
-
-  birdloop_enter(loop);
-  sk_reloop(sk, loop);
-  rmove(sk, pool);
-  sk->pool = pool;
-
-  bs = mb_allocz(pool, sizeof(*bs));
-  struct bgp_socket_private *bsp = &bs->priv;
-
-  bsp->loop = loop;
-  bsp->params = req->params;
-  bsp->sk = sk;
-
-  sk->data = bs;
-  req->sock = bs;
-
-  init_list(&bsp->requests);
-  add_tail(&bsp->requests, &req->n);
-  add_tail(&bl->sockets, &bs->n);
-
-  bgp_listen_debug(p, &req->params, "create: %p", bs);
-  birdloop_leave(loop);
-
-  return 0;
-}
-
-static void
-bgp_listen_done(void *_bs)
-{
-  /* Loop finishing must be done from the main loop */
-  ASSERT_DIE(birdloop_inside(&main_birdloop));
-  BGP_LISTEN_LOCK(bl);
-
-  /* The loop finisher must at least once enter the loop to ensure
-   * that the requestor is done */
-  BGP_SOCKET_LOCKED((bgp_socket *) _bs, bsp)
-    ;
-
-  /* Everything related is allocated from the loop's pool */
-  birdloop_free(((bgp_socket *) _bs)->loop);
-}
-
-static void
-bgp_listen_close(struct bgp_proto *p, struct bgp_listen_request *req)
-{
-  BGP_LISTEN_LOCK(bl);
-  BGP_SOCKET_LOCK(req->sock, bsp);
-
-  rem_node(&req->n);
-
-  if (EMPTY_LIST(bsp->requests))
-  {
-    bgp_listen_debug(p, &req->params, "free: %p", bsp);
-    sk_close(bsp->sk);
-    rem_node(&bsp->n);
-    birdloop_stop_self(bsp->loop, bgp_listen_done, bsp);
-  }
-  else
-  {
-    bgp_listen_debug(p, &req->params, "unlink: %p", bsp);
-  }
-}
 
 static inline struct bgp_channel *
 bgp_find_channel(struct bgp_proto *p, u32 afi)
