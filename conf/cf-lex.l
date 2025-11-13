@@ -682,9 +682,6 @@ cf_localize_symbol(struct config *conf, struct symbol *sym)
   if (cf_symbol_is_local(conf, sym))
     cf_error("Symbol '%s' already defined", sym->name);
 
-  if (sym->class == SYM_KEYWORD)
-    cf_warn("Symbol '%s' overrides existing keyword", sym->name);
-
   /* Not allocated here yet, doing it now. */
   cf_swap_soft_scope(conf);
   return cf_new_symbol(conf->current_scope, conf->pool, conf->mem, sym->name);

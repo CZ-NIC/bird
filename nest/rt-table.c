@@ -4076,8 +4076,8 @@ rt_preconfig(struct config *c)
 {
   init_list(&c->tables);
 
-  c->def_tables[NET_IP4] = cf_define_symbol(c, cf_get_symbol(c, "master4"), SYM_TABLE, table, NULL);
-  c->def_tables[NET_IP6] = cf_define_symbol(c, cf_get_symbol(c, "master6"), SYM_TABLE, table, NULL);
+  c->def_tables[NET_IP4] = cf_implicit_symbol(c, "master4", SYM_TABLE, table, NULL);
+  c->def_tables[NET_IP6] = cf_implicit_symbol(c, "master6", SYM_TABLE, table, NULL);
 }
 
 void
