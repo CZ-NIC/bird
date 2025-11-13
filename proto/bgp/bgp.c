@@ -223,6 +223,7 @@ bgp_open(struct bgp_proto *p)
   /* Set parameters of the accepted socket */
   req->local_ip = p->cf->local_ip;
   req->iface = p->cf->iface;
+  req->ipatt = p->cf->ipatt;
   req->remote_ip = p->remote_ip;
   req->remote_range = p->cf->remote_range;
 
@@ -1976,25 +1977,44 @@ bgp_find_proto(struct bgp_socket_private *bs, sock *sk)
 {
   struct bgp_listen_request *best = NULL;
 
-  /* sk->iface is valid only if src or dst address is link-local */
-  int link = ipa_is_link_local(sk->saddr) || ipa_is_link_local(sk->daddr);
+  /* sk->iface is valid only if src or dst address is link-local or if strict bind on interface is set */
+  bool link = ipa_is_link_local(sk->saddr) || ipa_is_link_local(sk->daddr);
 
   struct bgp_listen_request *req; node *nxt;
   WALK_LIST2(req, nxt, bs->requests, sn)
   {
-    if ((ipa_equal(req->remote_ip, sk->daddr) || bgp_is_dynamic(req)) &&
-	(!req->remote_range || ipa_in_netX(sk->daddr, req->remote_range)) &&
-	(req->params.vrf == sk->vrf) &&
-	(req->params.port == sk->sport) &&
-	(!link || (req->iface == sk->iface) || req->ipatt && sk->iface && iface_patt_match(req->ipatt, sk->iface, NULL)) &&
-	(ipa_zero(req->local_ip) || ipa_equal(req->local_ip, sk->saddr)))
-    {
-      /* Non-dynamic protocol instance matched */
-      if (!bgp_is_dynamic(req))
-	return req;
+    /* Remote address configured but not the right one */
+    if (!ipa_equal(req->remote_ip, sk->daddr) && !bgp_is_dynamic(req))
+      continue;
 
-      best = req;
-    }
+    /* Remote range configured but the remote address is not in it */
+    if (req->remote_range && !ipa_in_netX(sk->daddr, req->remote_range))
+      continue;
+
+    /* Not the right VRF */
+    if (req->params.vrf != sk->vrf)
+      continue;
+
+    /* Not the right local port */
+    if (req->params.port != sk->sport)
+      continue;
+
+    /* Local address set but not matching */
+    if (!ipa_zero(req->local_ip) && !ipa_equal(req->local_ip, sk->saddr))
+      continue;
+
+    /* The interface set but not matching */
+    if (link && req->iface && (req->iface != sk->iface))
+      continue;
+
+    /* Interface pattern configured and not matching */
+    if (link && req->ipatt && (!sk->iface || !iface_patt_match(req->ipatt, sk->iface, NULL)))
+      continue;
+
+    best = req;
+
+    if (!bgp_is_dynamic(req))
+      break;
   }
 
   return best;
