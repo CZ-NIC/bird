@@ -164,6 +164,8 @@ static void bgp_update_bfd(struct bgp_proto *p, const struct bfd_options *bfd);
 
 static int bgp_disable_ao_keys(struct bgp_proto *p);
 static int bgp_incoming_connection(sock *sk, uint dummy UNUSED);
+static void bgp_incoming_connection_single(struct callback *cb);
+static void bgp_incoming_connection_dynamic(struct callback *cb);
 static void bgp_listen_sock_err(sock *sk UNUSED, int err);
 static int bgp_listen_open(struct bgp_proto *, struct bgp_listen_request *);
 static void bgp_listen_close(struct bgp_proto *, struct bgp_listen_request *);
@@ -199,7 +201,10 @@ bgp_open(struct bgp_proto *p)
    * If strict_bind is set, we need local_ip and maybe also iface. Mandatory if
    * local_ip is link-local. If strict_bind is not set, we bind to all addresses
    * of that family and match the local IP later when accepting the connection. */
-  struct bgp_socket_params *par = &p->listen.params;
+
+  struct bgp_listen_request *req = mb_allocz(p->p.pool, sizeof *req);
+  struct bgp_socket_params *par = &req->params;
+
   par->iface = p->cf->strict_bind ? p->cf->iface : NULL;
   par->vrf = p->p.vrf;
   par->addr = p->cf->strict_bind ? p->cf->local_ip :
@@ -208,19 +213,22 @@ bgp_open(struct bgp_proto *p)
   par->flags = p->cf->free_bind ? SKF_FREEBIND : 0;
 
   /* Set parameters of the accepted socket */
-  struct bgp_listen_request *req = &p->listen;
   req->local_ip = p->cf->local_ip;
   req->iface = p->cf->iface;
   req->remote_ip = p->remote_ip;
   req->remote_range = p->cf->remote_range;
 
-  req->p = p;
-
   /* Initialize the incoming socket queue */
-  init_list(&p->listen.incoming_sockets);
+  init_list(&req->incoming_sockets);
 
   BGP_TRACE(D_EVENTS, "Requesting listen socket at %I%J port %u", req->params.addr, req->params.iface, req->params.port);
 
+  if (bgp_is_dynamic(p))
+    callback_init(&req->incoming_connection, bgp_incoming_connection_dynamic, &main_birdloop);
+  else
+    callback_init(&req->incoming_connection, bgp_incoming_connection_single, p->p.loop);
+
+  req->p = p;
   return bgp_listen_open(p, req);
 }
 
@@ -246,6 +254,11 @@ bgp_socket_match(const struct bgp_socket_params *a, const struct bgp_socket_para
 static int
 bgp_listen_open(struct bgp_proto *p, struct bgp_listen_request *req)
 {
+  ASSERT_DIE(!NODE_VALID(&req->pn));
+  ASSERT_DIE(!NODE_VALID(&req->sn));
+
+  add_tail(&p->listen, &req->pn);
+
   BGP_LISTEN_LOCK(bl);
 
   /* First try to find existing socket */
@@ -255,7 +268,7 @@ bgp_listen_open(struct bgp_proto *p, struct bgp_listen_request *req)
       BGP_SOCKET_LOCKED(bs, bsp)
       {
 	bgp_listen_debug(p, &req->params, "exists: %p", bs);
-	add_tail(&bsp->requests, &req->n);
+	add_tail(&bsp->requests, &req->sn);
 	req->sock = bs;
 	return 0;
       }
@@ -304,7 +317,7 @@ bgp_listen_open(struct bgp_proto *p, struct bgp_listen_request *req)
   req->sock = bs;
 
   init_list(&bsp->requests);
-  add_tail(&bsp->requests, &req->n);
+  add_tail(&bsp->requests, &req->sn);
   add_tail(&bl->sockets, &bs->n);
 
   bgp_listen_debug(p, &req->params, "create: %p", bs);
@@ -335,8 +348,19 @@ bgp_listen_close(struct bgp_proto *p, struct bgp_listen_request *req)
   BGP_LISTEN_LOCK(bl);
   BGP_SOCKET_LOCK(req->sock, bsp);
 
-  rem_node(&req->n);
+  /* Flush the request itself */
+  rem_node(&req->pn);
+  callback_cancel(&req->incoming_connection);
+  struct bgp_incoming_socket *bis;
+  WALK_LIST_FIRST(bis, req->incoming_sockets)
+  {
+    sk_close(bis->sk);
+    rem_node(&bis->n);
+    mb_free(bis);
+  }
 
+  /* Remove the request from the listening socket */
+  rem_node(&req->sn);
   if (EMPTY_LIST(bsp->requests))
   {
     bgp_listen_debug(p, &req->params, "free: %p", bsp);
@@ -359,9 +383,11 @@ bgp_listen_close(struct bgp_proto *p, struct bgp_listen_request *req)
 static void
 bgp_close(struct bgp_proto *p)
 {
-  struct bgp_listen_request *req = &p->listen;
-  if (req->sock)
+  struct bgp_listen_request *req;
+  WALK_LIST_FIRST2(req, pn, p->listen)
     bgp_listen_close(p, req);
+
+  ASSERT_DIE(EMPTY_LIST(p->listen));
 }
 
 
@@ -429,8 +455,10 @@ bgp_enable_ao_key(struct bgp_proto *p, struct bgp_ao_key *key)
 
   BGP_TRACE(D_EVENTS, "Adding TCP-AO key %d/%d", key->key.send_id, key->key.recv_id);
 
-  /* Handle listening socket */
-  BGP_SOCKET_LOCKED(p->listen.sock, bs)
+  /* Handle listening sockets */
+  struct bgp_listen_request *blr; node *nxt;
+  WALK_LIST2(blr, nxt, p->listen, pn)
+  BGP_SOCKET_LOCKED(blr->sock, bs)
     if (bgp_sk_add_ao_key(p, bs->sk, key, "listening") < 0)
     {
       key->failed = 1;
@@ -460,7 +488,8 @@ struct bgp_active_keys {
 
 static int
 bgp_sk_delete_ao_key(struct bgp_proto *p, sock *sk, struct bgp_ao_key *key,
-		     struct bgp_ao_key *backup, int current_key_id, int rnext_key_id, const char *kind)
+		     struct bgp_ao_key *backup, int current_key_id, int rnext_key_id,
+		     const char *kind)
 {
   struct ao_key *set_current = NULL, *set_rnext = NULL;
 
@@ -502,7 +531,9 @@ bgp_disable_ao_key(struct bgp_proto *p, struct bgp_ao_key *key, struct bgp_activ
   BGP_TRACE(D_EVENTS, "Deleting TCP-AO key %d/%d", key->key.send_id, key->key.recv_id);
 
   /* Handle listening socket */
-  BGP_SOCKET_LOCKED(p->listen.sock, bs)
+  struct bgp_listen_request *blr; node *nxt;
+  WALK_LIST2(blr, nxt, p->listen, pn)
+  BGP_SOCKET_LOCKED(blr->sock, bs)
     if (bgp_sk_delete_ao_key(p, bs->sk, key, NULL, -1, -1, "listening") < 0)
       return -1;
 
@@ -831,7 +862,9 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
     }
 
     int rv;
-    BGP_SOCKET_LOCKED(p->listen.sock, bs)
+    struct bgp_listen_request *blr; node *nxt;
+    WALK_LIST2(blr, nxt, p->listen, pn)
+    BGP_SOCKET_LOCKED(blr->sock, bs)
     {
       rv = sk_set_md5_auth(bs->sk,
 			     p->cf->local_ip, prefix, pxlen, p->cf->iface,
@@ -1899,12 +1932,12 @@ static struct bgp_listen_request *
 bgp_find_proto(struct bgp_socket_private *bs, sock *sk)
 {
   struct bgp_listen_request *best = NULL;
-  struct bgp_listen_request *req;
 
   /* sk->iface is valid only if src or dst address is link-local */
   int link = ipa_is_link_local(sk->saddr) || ipa_is_link_local(sk->daddr);
 
-  WALK_LIST(req, bs->requests)
+  struct bgp_listen_request *req; node *nxt;
+  WALK_LIST2(req, nxt, bs->requests, sn)
   {
     if ((ipa_equal(req->remote_ip, sk->daddr) || bgp_is_dynamic(req)) &&
 	(!req->remote_range || ipa_in_netX(sk->daddr, req->remote_range)) &&
@@ -1947,12 +1980,10 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
   struct bgp_listen_request *req = bgp_find_proto(bs, sk);
   if (req)
   {
-    struct bgp_proto *p = req->p;
     struct bgp_incoming_socket* bis = mb_allocz(sk->pool, sizeof(struct bgp_incoming_socket));
     bis->sk = sk;
-    add_tail(&p->listen.incoming_sockets, &bis->n);
-
-    callback_activate(&p->incoming_connection);
+    add_tail(&req->incoming_sockets, &bis->n);
+    callback_activate(&req->incoming_connection);
   }
   else
   {
@@ -1967,18 +1998,18 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
 static void
 bgp_incoming_connection_dynamic(struct callback *cb)
 {
-  SKIP_BACK_DECLARE(struct bgp_proto, p, incoming_connection, cb);
+  SKIP_BACK_DECLARE(struct bgp_listen_request, req, incoming_connection, cb);
 
   while (true)
   {
     sock *sk = NULL;
-    BGP_SOCKET_LOCKED(p->listen.sock, bsp)
+    BGP_SOCKET_LOCKED(req->sock, bsp)
     {
       /* Pop the first incoming socket from the queue */
-      if (EMPTY_LIST(p->listen.incoming_sockets))
+      if (EMPTY_LIST(req->incoming_sockets))
 	return;
 
-      struct bgp_incoming_socket *bis = HEAD(p->listen.incoming_sockets);
+      struct bgp_incoming_socket *bis = HEAD(req->incoming_sockets);
       sk = bis->sk;
       ASSERT_DIE(sk);
       rem_node(&bis->n);
@@ -1988,29 +2019,31 @@ bgp_incoming_connection_dynamic(struct callback *cb)
     /* Ending up here means that there is no pre-existing explicit BGP session,
      * and therefore the socket was matched by a dynamic entry instead.
      * We need to spawn a new BGP session. */
-    bgp_spawn(p, sk);
+    bgp_spawn(req->p, sk);
   }
 }
 
 static void
 bgp_incoming_connection_single(struct callback *cb)
 {
-  SKIP_BACK_DECLARE(struct bgp_proto, p, incoming_connection, cb);
-  BGP_SOCKET_LOCK(p->listen.sock, bsp);
+  SKIP_BACK_DECLARE(struct bgp_listen_request, req, incoming_connection, cb);
+  struct bgp_proto *p = req->p;
+
+  BGP_SOCKET_LOCK(req->sock, bsp);
 
   /* Called again by race condition, ignore */
-  if (EMPTY_LIST(p->listen.incoming_sockets))
+  if (EMPTY_LIST(req->incoming_sockets))
     return;
 
   /* Use the last socket in the queue, superseding the previous ones */
-  struct bgp_incoming_socket *bis = TAIL(p->listen.incoming_sockets);
+  struct bgp_incoming_socket *bis = TAIL(req->incoming_sockets);
   sock *sk = bis->sk;
   ASSERT_DIE(sk);
   rem_node(&bis->n);
   mb_free(bis);
 
   /* Flush the queue */
-  WALK_LIST_FIRST(bis, p->listen.incoming_sockets)
+  WALK_LIST_FIRST(bis, req->incoming_sockets)
   {
     ASSERT_DIE(bis->sk);
     sk_close(bis->sk);
@@ -2510,11 +2543,6 @@ bgp_start(struct proto *P)
   p->event = ev_new_init(p->p.pool, bgp_decision, p);
   callback_init(&p->uncork.cb, bgp_do_uncork, p->p.loop);
 
-  if (bgp_is_dynamic(p))
-    callback_init(&p->incoming_connection, bgp_incoming_connection_dynamic, &main_birdloop);
-  else
-    callback_init(&p->incoming_connection, bgp_incoming_connection_single, p->p.loop);
-
   p->startup_timer = tm_new_init(p->p.pool, bgp_startup_timeout, p, 0, 0);
   p->gr_timer = tm_new_init(p->p.pool, bgp_graceful_restart_timeout, p, 0, 0);
 
@@ -2674,7 +2702,6 @@ bgp_shutdown(struct proto *P)
 
 done:
   bgp_stop(p, subcode, data, len);
-  ASSERT_DIE(!bgp_is_dynamic(p) || list_length(&p->listen.incoming_sockets) == 0);
   return p->p.proto_state;
 }
 
@@ -2728,6 +2755,8 @@ bgp_init(struct proto_config *CF)
 
   /* Add MPLS channel */
   proto_configure_mpls_channel(P, CF, RTS_BGP);
+
+  init_list(&p->listen);
 
   /* Export public info */
   ea_list *pes = p->p.ea_state;
@@ -3252,8 +3281,10 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
   p->cf = new;
   p->hostname = proto_get_hostname(CF);
 
-  /* Fixup the listen request; all other changes cause a restart. */
-  p->listen.remote_range = new->remote_range;
+  /* Fixup the listen requests; all other changes cause a restart. */
+  struct bgp_listen_request *blr; node *nxt;
+  WALK_LIST2(blr, nxt, p->listen, pn)
+    blr->remote_range = new->remote_range;
 
   /* Check whether existing connections are compatible with required capabilities */
   struct bgp_conn *ci = &p->incoming_conn;

@@ -398,7 +398,8 @@ struct bgp_incoming_socket {
 };
 
 struct bgp_listen_request {
-  node n;				/* Node in bgp_socket / pending list */
+  node pn;				/* Node in bgp_proto listen list */
+  node sn;				/* Node in bgp_socket requests list */
   bgp_socket *sock;			/* Assigned socket */
   struct bgp_socket_params params;	/* Listening socket parameters */
   ip_addr local_ip;			/* Local IP address to match */
@@ -406,6 +407,7 @@ struct bgp_listen_request {
   ip_addr remote_ip;			/* Remote IP address to match */
   const net_addr *remote_range;		/* Remote IP range to match */
   list incoming_sockets;		/* Accepted sockets matched to this request */
+  callback incoming_connection;		/* Callback for incoming connection */
   struct bgp_proto *p;			/* Requesting protocol */
 };
 
@@ -440,7 +442,7 @@ struct bgp_proto {
   struct bgp_conn incoming_conn;	/* Incoming connection we have neither accepted nor rejected yet */
   struct object_lock *lock;		/* Lock for neighbor connection */
   struct neighbor *neigh;		/* Neighbor entry corresponding to remote ip, NULL if multihop */
-  struct bgp_listen_request listen;	/* Shared listening socket */
+  list listen;				/* Requests for shared listening sockets */
   struct bfd_request_ref *bfd_req;	/* BFD request, if BFD is used */
   callback bfd_notify;			/* BFD notification callback */
   struct birdsock *postponed_sk;	/* Postponed incoming socket for dynamic BGP */
@@ -451,7 +453,6 @@ struct bgp_proto {
   btime last_rx_update;			/* Last time of RX update */
   ip_addr link_addr;			/* Link-local version of local_ip */
   event *event;				/* Event for respawning and shutting process */
-  callback incoming_connection;		/* Callback for incoming connection */
   timer *startup_timer;			/* Timer used to delay protocol startup due to previous errors (startup_delay) */
   timer *gr_timer;			/* Timer waiting for reestablishment after graceful restart */
   int dynamic_name_counter;		/* Counter for dynamic BGP names */
