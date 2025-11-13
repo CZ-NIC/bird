@@ -196,6 +196,11 @@ static void bgp_restart_route_refresh(void *_bc);
 static int
 bgp_open(struct bgp_proto *p)
 {
+  /* Interface-patterned listening sockets are created from the
+   * interface notifier. By default, listen to nothing. */
+  if (p->cf->ipatt)
+    return 0;
+
   /* Set parameters of the listening socket
    *
    * If strict_bind is set, we need local_ip and maybe also iface. Mandatory if
@@ -322,6 +327,8 @@ bgp_listen_open(struct bgp_proto *p, struct bgp_listen_request *req)
 
   bgp_listen_debug(p, &req->params, "create: %p", bs);
   birdloop_leave(loop);
+
+  bgp_listen_debug(p, &req->params, "create: %p", bs);
 
   return 0;
 }
@@ -1166,7 +1173,9 @@ bgp_spawn(struct bgp_proto *pp, struct birdsock *sk)
   cfg_mem = NULL;
 
   /* Just pass remote_ip to bgp_init() */
-  ((struct bgp_config *) sym->proto)->remote_ip = sk->daddr;
+  struct bgp_config *cf = SKIP_BACK(struct bgp_config, c, sym->proto);
+  cf->remote_ip = sk->daddr;
+  cf->iface = sk->iface;
 
   /* Create the protocol disabled initially */
   SKIP_BACK_DECLARE(struct bgp_proto, p, p, proto_spawn(sym->proto, 1));
@@ -2174,6 +2183,66 @@ bgp_start_neighbor(struct bgp_proto *p)
 }
 
 static void
+bgp_iface_update(struct bgp_proto *p, uint flags, struct iface *i)
+{
+  int ps = p->p.proto_state;
+
+  ASSERT_DIE(p->cf->ipatt);
+  ASSERT_DIE(p->cf->strict_bind);
+
+  if ((ps == PS_DOWN_XX) || (ps == PS_FLUSH) || (ps == PS_STOP))
+    return;
+
+  if (!iface_patt_match(p->cf->ipatt, i, NULL))
+    return;
+
+  struct bgp_socket_params params = {
+    .iface = i,
+    .vrf = p->p.vrf,
+    .addr = p->cf->local_ip,
+    .port = p->cf->local_port,
+    .flags = p->cf->free_bind ? SKF_FREEBIND : 0,
+  };
+
+  if (flags & IF_CHANGE_UP)
+  {
+    struct bgp_listen_request *req = mb_allocz(p->p.pool, sizeof *req);
+    req->params = params;
+    bgp_listen_open(p, req);
+  }
+
+  if (flags & IF_CHANGE_DOWN)
+  {
+    struct bgp_listen_request *req; node *nxt;
+    WALK_LIST2(req, nxt, p->listen, pn)
+      if (bgp_socket_match(&req->params, &params))
+      {
+	bgp_listen_close(p, req);
+	mb_free(req);
+	break;
+      }
+  }
+}
+
+static void
+bgp_if_notify(struct proto *P, uint flags, struct iface *i)
+{
+  struct bgp_proto *p = (struct bgp_proto *) P;
+  ASSERT_DIE(ipa_zero(p->cf->local_ip));
+  bgp_iface_update(p, flags, i);
+}
+
+static void
+bgp_ifa_notify(struct proto *P, uint flags, struct ifa *i)
+{
+  struct bgp_proto *p = (struct bgp_proto *) P;
+  ASSERT_DIE(!ipa_zero(p->cf->local_ip));
+
+  if (ipa_equal(i->ip, p->cf->local_ip))
+    bgp_iface_update(p, flags, i->iface);
+}
+
+static void
 bgp_neigh_notify(neighbor *n)
 {
   struct bgp_proto *p = (struct bgp_proto *) n->proto;
@@ -2744,6 +2813,9 @@ bgp_init(struct proto_config *CF)
 
   p->postponed_sk = NULL;
 
+  P->iface_sub.if_notify = (cf->ipatt && ipa_zero(cf->local_ip)) ? bgp_if_notify : NULL;
+  P->iface_sub.ifa_notify = (cf->ipatt && !ipa_zero(cf->local_ip)) ? bgp_ifa_notify : NULL;
+
   /* Hack: We use cf->remote_ip just to pass remote_ip from bgp_spawn() */
   if (cf->c.parent)
     cf->remote_ip = IPA_NONE;
@@ -3006,8 +3078,8 @@ bgp_postconfig(struct proto_config *CF)
   if (ipa_zero(cf->remote_ip) && !cf->remote_range)
     cf_error("Neighbor must be configured");
 
-  if (ipa_zero(cf->local_ip) && cf->strict_bind)
-    cf_error("Local address must be configured for strict bind");
+  if (ipa_zero(cf->local_ip) && !cf->ipatt && !cf->iface && cf->strict_bind)
+    cf_error("Local address or an interface must be configured for strict bind");
 
   if (!cf->remote_as && !cf->peer_type)
     cf_error("Remote AS number (or peer type) must be set");
@@ -3021,6 +3093,12 @@ bgp_postconfig(struct proto_config *CF)
   if (!cf->iface && (ipa_is_link_local(cf->local_ip) ||
 		     ipa_is_link_local(cf->remote_ip)))
     cf_error("Link-local addresses require defined interface");
+
+  if (cf->iface && cf->ipatt)
+    cf_error("Interface and interface range cannot be configured together");
+
+  if (cf->ipatt && !cf->strict_bind)
+    cf_error("Interface range needs strict bind");
 
   if (!(cf->capabilities && cf->enable_as4) && (cf->remote_as > 0xFFFF))
     cf_error("Neighbor AS number out of range (AS4 not available)");
@@ -3062,7 +3140,7 @@ bgp_postconfig(struct proto_config *CF)
 		       ipa_is_link_local(cf->remote_ip)))
     cf_error("Multihop BGP cannot be used with link-local addresses");
 
-  if (cf->multihop && cf->iface)
+  if (cf->multihop && (cf->iface || cf->ipatt))
     cf_error("Multihop BGP cannot be bound to interface");
 
   if (cf->multihop && cf->check_link)
@@ -3074,8 +3152,9 @@ bgp_postconfig(struct proto_config *CF)
   if (cf->multihop && cf->onlink)
     cf_error("Multihop BGP cannot be configured onlink");
 
-  if (cf->onlink && !cf->iface)
-    cf_error("Onlink BGP must have interface configured");
+  if (cf->onlink && !cf->iface && !cf->ipatt &&
+      !cf->passive && !ipa_zero(cf->remote_ip))
+    cf_error("Active onlink BGP must have interface configured");
 
   if (!cf->gr_mode && cf->llgr_mode)
     cf_error("Long-lived graceful restart requires basic graceful restart");
