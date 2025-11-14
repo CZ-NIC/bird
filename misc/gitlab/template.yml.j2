@@ -259,6 +259,7 @@ build-release:
     # apkg depends on bs4, and unless we want to backport python 3.6
     # to ancient distros, we need to do this workaround
     - pip3 install beautifulsoup4==4.11.2
+    - pip3 install markupsafe==2.0.1
     - pip3 install apkg==$APKG_VERSION
     - apkg build -a bird-$(cat VERSION)*.tar.gz
   artifacts:
