@@ -246,6 +246,16 @@ docker-ubuntu-18.04-amd64:
     IMG_NAME: "ubuntu-18.04-amd64"
   <<: *docker-build
 
+docker-debian-11-i386:
+  variables:
+    IMG_NAME: "debian-11-i386"
+  <<: *docker-build
+
+docker-debian-11-amd64:
+  variables:
+    IMG_NAME: "debian-11-amd64"
+  <<: *docker-build
+
 docker-debian-10-amd64:
   variables:
     IMG_NAME: "debian-10-amd64"
@@ -254,16 +264,6 @@ docker-debian-10-amd64:
 docker-debian-10-i386:
   variables:
     IMG_NAME: "debian-10-i386"
-  <<: *docker-build
-
-docker-debian-11-amd64:
-  variables:
-    IMG_NAME: "debian-11-amd64"
-  <<: *docker-build
-
-docker-debian-11-i386:
-  variables:
-    IMG_NAME: "debian-11-i386"
   <<: *docker-build
 
 docker-debian-12-amd64:
@@ -529,6 +529,20 @@ build-ubuntu-18.04-amd64:
       optional: true
   image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
 
+build-debian-11-i386:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-11-i386
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-11-i386
+
+build-debian-11-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-11-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-11-amd64
+
 build-debian-10-amd64:
   <<: *build-docker-linux-amd64
   needs:
@@ -542,20 +556,6 @@ build-debian-10-i386:
     - job: docker-debian-10-i386
       optional: true
   image: registry.nic.cz/labs/bird:debian-10-i386
-
-build-debian-11-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-11-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-11-amd64
-
-build-debian-11-i386:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-11-i386
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-11-i386
 
 build-debian-12-amd64:
   <<: *build-docker-linux-amd64
@@ -683,6 +683,7 @@ build-release:
     # apkg depends on bs4, and unless we want to backport python 3.6
     # to ancient distros, we need to do this workaround
     - pip3 install beautifulsoup4==4.11.2
+    - pip3 install markupsafe==2.0.1
     - pip3 install apkg==$APKG_VERSION
     - apkg build -a bird-$(cat VERSION)*.tar.gz
   artifacts:
@@ -896,6 +897,22 @@ pkg-ubuntu-18.04-amd64:
     - job: build-release
   image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
 
+pkg-debian-11-i386:
+  <<: *pkg-deb-legacy
+  needs:
+    - job: build-debian-11-i386
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-11-i386
+
+pkg-debian-11-amd64:
+  <<: *pkg-deb-legacy
+  needs:
+    - job: build-debian-11-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-11-amd64
+
 pkg-debian-10-amd64:
   <<: *pkg-deb
   needs:
@@ -911,22 +928,6 @@ pkg-debian-10-i386:
       artifacts: false
     - job: build-release
   image: registry.nic.cz/labs/bird:debian-10-i386
-
-pkg-debian-11-amd64:
-  <<: *pkg-deb
-  needs:
-    - job: build-debian-11-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-11-amd64
-
-pkg-debian-11-i386:
-  <<: *pkg-deb
-  needs:
-    - job: build-debian-11-i386
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-11-i386
 
 pkg-debian-12-amd64:
   <<: *pkg-deb
@@ -1190,6 +1191,18 @@ install-ubuntu-18.04-amd64:
     - job: pkg-ubuntu-18.04-amd64
   image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
 
+install-debian-11-i386:
+  <<: *install-deb
+  needs:
+    - job: pkg-debian-11-i386
+  image: registry.nic.cz/labs/bird:debian-11-i386
+
+install-debian-11-amd64:
+  <<: *install-deb
+  needs:
+    - job: pkg-debian-11-amd64
+  image: registry.nic.cz/labs/bird:debian-11-amd64
+
 install-debian-10-amd64:
   <<: *install-deb
   needs:
@@ -1201,18 +1214,6 @@ install-debian-10-i386:
   needs:
     - job: pkg-debian-10-i386
   image: registry.nic.cz/labs/bird:debian-10-i386
-
-install-debian-11-amd64:
-  <<: *install-deb
-  needs:
-    - job: pkg-debian-11-amd64
-  image: registry.nic.cz/labs/bird:debian-11-amd64
-
-install-debian-11-i386:
-  <<: *install-deb
-  needs:
-    - job: pkg-debian-11-i386
-  image: registry.nic.cz/labs/bird:debian-11-i386
 
 install-debian-12-amd64:
   <<: *install-deb
