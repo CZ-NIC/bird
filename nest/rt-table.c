@@ -1476,6 +1476,9 @@ channel_notify_any(void *_channel)
 
 	      if (old)
 	      {
+		/* There are more old routes but these we should have
+		 * never seen these newer old routes because we haven't
+		 * seen the appropriate journal items */
 		EXPORT_FLAG_EXPECT(c, oo, accepted, 0);
 		EXPORT_FLAG_EXPECT(c, oo, rejected, 0);
 		oo->src = NULL;
@@ -1483,6 +1486,13 @@ channel_notify_any(void *_channel)
 	      else
 		old = oo;
 	    }
+
+	    /* The old route may have not been seen at all if this is
+	     * a new feed */
+	    if (old &&
+		!bmap_test(&c->export_accepted_map, old->id) &&
+		!bmap_test(&c->export_rejected_map, old->id))
+	      old = NULL;
 
 	    rt_log(c, new, old, RTWH_EXPORT_ANY_FRAW);
 
