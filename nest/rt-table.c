@@ -2445,7 +2445,7 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
     if (req->trace_routes & D_ROUTES)
       log(L_TRACE "%s > ignored %N %s->%s", req->name, i->addr, old ? "filtered" : "none", new ? "filtered" : "none");
 
-  rt_log(c->req, RTE_OR_NULL(new_best), old_best, RTWH_EXPORT_LIMITS);
+  rt_log(c->req, RTE_OR_NULL(new_best), old_best, RTWH_BEST);
 
   /* Propagate the route change */
   rte_announce(table, i, net,
