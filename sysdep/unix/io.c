@@ -115,6 +115,12 @@ rf_fileno(struct rfile *f)
   return f->fd;
 }
 
+void *
+rf_mapping(struct rfile *f)
+{
+  return f->mapping;
+}
+
 static int
 rf_open_get_fd(const char *name, enum rf_mode mode)
 {

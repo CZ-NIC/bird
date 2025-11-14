@@ -71,6 +71,9 @@ struct config {
   TLIST_LIST(thread_group_config) thread_group; /* Configured thread groups */
   struct thread_group_config *default_thread_group;
 
+  const char *table_events_log_name;	/* Binary table event log filename */
+  off_t table_events_log_size;		/* Binary table event log size */
+
   struct sym_scope *root_scope;		/* Scope for root symbols */
   struct sym_scope *current_scope;	/* Current scope where we are actually in while parsing */
   int allow_attributes;			/* Allow attributes in the current state of configuration parsing */

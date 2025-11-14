@@ -1192,6 +1192,8 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
 
   ASSERT_DIE(old || new);
 
+  rt_log(c, new, old, RTWH_EXPORT_LIMITS);
+
   /* One more route, push to the limit */
   if (!old && new)
     if (CHANNEL_LIMIT_PUSH(c, OUT))
@@ -1228,7 +1230,9 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
     channel_rte_trace_out(D_ROUTES, c, old, "removed");
 
   /* Call the protocol hook */
+  rt_log(c, new, old, RTWH_EXPORT_NOTIFY);
   p->rt_notify(p, c, net, new, old);
+  rt_log(c, new, old, RTWH_EXPORT_NOTIFIED);
 }
 
 /**
@@ -1251,6 +1255,8 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old, const rte *tr
     return;
   }
 
+  rt_log(c, new, old, RTWH_EXPORT_BAS_IN);
+
   /* Refeed consideration: old may be NULL if refeeding after filter change. */
   if (!old && new)
   {
@@ -1264,6 +1270,8 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old, const rte *tr
       if (nacc && nrej)
 	EXPORT_FLAG_BAD(c, new);
     }
+
+    rt_log(c, new, old, RTWH_EXPORT_BAS_REF + !!nacc + 2*!!nrej);
   }
 
   /* Have we exported the old route? */
@@ -1384,6 +1392,8 @@ channel_notify_optimal(void *_channel)
 	  const rte *old = u->update->old;
 	  const rte *trte = new ?: old;
 
+	  rt_log(c, new, old, RTWH_EXPORT_ANY_UIN);
+
 	  /* Update the stats */
 	  if (new)
 	    c->out_req.stats.updates_received++;
@@ -1395,6 +1405,7 @@ channel_notify_optimal(void *_channel)
 	      rpe = atomic_load_explicit(&rpe->next, memory_order_acquire) ;)
 	    /* For RA_OPTIMAL, all updates would be used */
 	  {
+
 	    /* Fix the stats: the old item is squashed (ignored) */
 	    if (new)
 	      c->export_stats.updates_ignored++;
@@ -1410,6 +1421,8 @@ channel_notify_optimal(void *_channel)
 	      c->out_req.stats.updates_received++;
 	    else
 	      c->out_req.stats.withdraws_received++;
+
+	    rt_log(c, new, old, RTWH_EXPORT_ANY_USQUASH);
 	  }
 
 	  /* No invalid routes allowed in the best export */
@@ -1471,6 +1484,8 @@ channel_notify_any(void *_channel)
 		old = oo;
 	    }
 
+	    rt_log(c, new, old, RTWH_EXPORT_ANY_FRAW);
+
 	    /* Invalid routes become withdraws */
 	    if (!rte_is_valid(new))
 	      new = NULL;
@@ -1484,6 +1499,8 @@ channel_notify_any(void *_channel)
 	    /* Mark old processed */
 	    if (old)
 	      old->src = NULL;
+
+	    rt_log(c, new, old, RTWH_EXPORT_ANY_FPROC);
 	  }
 
 	  /* Send withdraws if we saw updates before */
@@ -1494,6 +1511,8 @@ channel_notify_any(void *_channel)
 	    {
 	      bool oacc = bmap_test(&c->export_accepted_map, oo->id);
 	      bool orej = bmap_test(&c->export_rejected_map, oo->id);
+
+	      rt_log(c, NULL, oo, RTWH_EXPORT_ANY_FRAW);
 
 	      if (oacc || orej)
 		rt_notify_basic(c, NULL, oo, oo);
@@ -2227,6 +2246,8 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
     return;
   }
 
+  rt_log(c->req, new, old, RTWH_IMPORT);
+
   int new_ok = rte_is_ok(new);
   int old_ok = rte_is_ok(old);
 
@@ -2423,6 +2444,8 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
   else
     if (req->trace_routes & D_ROUTES)
       log(L_TRACE "%s > ignored %N %s->%s", req->name, i->addr, old ? "filtered" : "none", new ? "filtered" : "none");
+
+  rt_log(c->req, RTE_OR_NULL(new_best), old_best, RTWH_EXPORT_LIMITS);
 
   /* Propagate the route change */
   rte_announce(table, i, net,
@@ -5123,6 +5146,16 @@ rt_commit(struct config *new, struct config *old)
 	DBG("\t%s: created\n", r->name);
 	add_tail(&routing_tables, &r->table->n);
       }
+
+  if (!new->table_events_log_name)
+    rt_log_close();
+  else if (
+      !old || !old->table_events_log_name ||
+      new->table_events_log_size != old->table_events_log_size ||
+      strcmp(new->table_events_log_name, old->table_events_log_name)
+      )
+    rt_log_open(new->table_events_log_name, new->table_events_log_size);
+
   DBG("\tdone\n");
 }
 

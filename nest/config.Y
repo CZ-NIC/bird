@@ -449,6 +449,12 @@ debug_default:
 
 /* MRTDUMP PROTOCOLS is in systep/unix/config.Y */
 
+conf: TABLE EVENTS LOG text expr {
+  if ($5 == 0) cf_error("Table events log must have non-zero size. To disable it, remove the directive altogether.");
+  new_config->table_events_log_name = $4;
+  new_config->table_events_log_size = $5 * 1048576ULL;
+};
+
 conf: timeformat_base ;
 
 timeformat_base:

@@ -575,6 +575,12 @@ include "tablename.conf";;
 	to the debug output if debugging is enabled by <cf/-d//<cf/-D/
 	command-line option.
 
+	<tag><label id="opt-table-events-log">table events log "<m/filename/" <m/size/</tag>
+	Set up a special log file for all table events. This log is binary and its purpose
+	is to store information about route propagation for later debugging of data consistency
+	problems. The file size is given in megabytes.
+	Default: not set
+
 	<tag><label id="opt-debug-protocols">debug protocols all|off|{ states|routes|filters|interfaces|events|packets [, <m/.../] }</tag>
 	Set global defaults of protocol debugging options.
 	See <ref id="proto-debug" name="debug"> in the following section.

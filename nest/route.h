@@ -937,4 +937,29 @@ enum aspa_result {
 int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
 enum aspa_result aspa_check(rtable *tab, const struct adata *path, bool force_upstream);
 
+/*
+ *	Route Table Event Log
+ */
+
+void rt_log_open(const char *name, off_t size);
+void rt_log_close(void);
+
+#define RTWH_IMPORT		0x0202
+#define RTWH_BEST		0x02bb
+#define RTWH_EXPORT_ANY_UIN	0x03a0
+#define RTWH_EXPORT_ANY_USQUASH	0x03a1
+#define RTWH_EXPORT_ANY_FRAW	0x03ae
+#define RTWH_EXPORT_ANY_FPROC	0x03af
+#define RTWH_EXPORT_BAS_IN	0x03b1
+#define RTWH_EXPORT_BAS_REF	0x03b4
+#define RTWH_EXPORT_BAS_FIL	0x03bf
+#define RTWH_EXPORT_LIMITS	0x03e3
+#define RTWH_EXPORT_NOTIFY	0x03ea
+#define RTWH_EXPORT_NOTIFIED	0x03ef
+
+void rt_log_import(struct rt_import_request *, const rte *new, const rte *old, u32 magic);
+void rt_log_export_channel(struct channel *, const rte *new, const rte *old, u32 magic);
+
+#define rt_log(hook, new, old, magic) _Generic((hook), struct rt_import_request *: rt_log_import, struct channel *: rt_log_export_channel)(hook, new, old, magic)
+
 #endif
