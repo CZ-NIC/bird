@@ -38,11 +38,11 @@ rt_log_prepare(void)
   u64 modulo = atomic_load_explicit(&rt_log_modulo, memory_order_acquire);
   if (block && modulo)
   {
-    u64 index = atomic_fetch_add_explicit(&rt_log_next_item, 1, memory_order_acq_rel) % modulo;
+    u64 index = atomic_fetch_add_explicit(&rt_log_next_item, 1, memory_order_acq_rel);
     if (!(index % (modulo / 4)))
       log(L_INFO "Rtable binary log index: %lu (modulo %lu)", index, modulo);
 
-    return &block[index];
+    return &block[index % modulo];
   }
   else
   {
