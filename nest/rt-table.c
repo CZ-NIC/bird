@@ -2246,8 +2246,6 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
     return;
   }
 
-  rt_log(c->req, new, old, RTWH_IMPORT);
-
   int new_ok = rte_is_ok(new);
   int old_ok = rte_is_ok(old);
 
@@ -2268,6 +2266,8 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
       new->id = hmap_first_zero(&table->id_map);
       hmap_set(&table->id_map, new->id);
     }
+
+  rt_log(c->req, new, old, RTWH_IMPORT);
 
   /* We need to add a spinlock sentinel to the beginning */
   _Thread_local static struct rte_storage local_sentinel = { .flags = REF_OBSOLETE, };
