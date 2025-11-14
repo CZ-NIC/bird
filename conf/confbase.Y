@@ -96,6 +96,7 @@ CF_DECLS
   struct rtable_config *r;
   struct channel_config *cc;
   struct channel *c;
+  struct igp_table_config igp_table_config;
   struct f_inst *x;
   struct {
     struct f_inst *begin, *end;

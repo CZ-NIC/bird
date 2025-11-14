@@ -183,6 +183,7 @@ CF_ENUM(T_ENUM_MPLS_POLICY, MPLS_POLICY_, NONE, STATIC, PREFIX, AGGREGATE, VRF)
 
 %type <f> imexport
 %type <r> rtable
+%type <igp_table_config> igp_table
 %type <s> optproto
 %type <ra> r_args
 %type <sd> sym_args
@@ -414,6 +415,15 @@ rtable: CF_SYM_KNOWN {
   cf_assert_symbol($1, SYM_TABLE);
   if (!$1->table) rt_new_default_table($1);
   $$ = $1->table;
+} ;
+
+igp_table: IGP TABLE rtable ';' {
+  if ($3->addr_type == NET_IP4)
+    $$.ip4 = $3;
+  else if ($3->addr_type == NET_IP6)
+    $$.ip6 = $3;
+  else
+    cf_error("Incompatible IGP table type");
 } ;
 
 imexport:

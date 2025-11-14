@@ -5195,7 +5195,7 @@ hc_resize(struct hostcache *hc, pool *p, unsigned new_order)
 }
 
 static struct hostentry *
-hc_new_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep, unsigned k)
+hc_new_hostentry(struct rtable_private *tab, struct igp_table *igp, ip_addr a, ip_addr ll, rtable *dep, unsigned k)
 {
   struct hostcache *hc = tab->hostcache;
   pool *p = tab->rp;
@@ -5205,8 +5205,9 @@ hc_new_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep,
     .addr = a,
     .link = ll,
     .tab = dep,
-    .owner = RT_PUB(tab),
+    .igp = igp,
     .hash_key = k,
+    .ucloop = tab->loop,
   };
 
   if (EMPTY_LIST(hc->hostentries))

@@ -702,13 +702,14 @@ struct hostentry {
   ip_addr link;				/* (link-local) IP address of host, used as gw
 					   if host is directly attached */
   rtable *tab;				/* Dependent table, part of key */
-  rtable *owner;			/* Nexthop owner table */
+  struct igp_table *igp;		/* What to pull from IGP, incl. the underlay table */
   struct hostentry *next;		/* Next in hash chain */
   unsigned hash_key;			/* Hash key */
   u32 igp_metric;			/* Chosen route IGP metric */
   _Atomic u32 version;			/* Bumped on update */
   byte nexthop_linkable;		/* Nexthop list is completely non-device */
   ea_list * _Atomic src;		/* Source attributes */
+  struct birdloop *ucloop;		/* Use this loop to cleanup use count */
   struct lfuc uc;			/* Use count */
 };
 
@@ -898,8 +899,10 @@ struct hostentry_adata {
 
 #define HOSTENTRY_LABEL_COUNT(head)	(head->ad.length + sizeof(struct adata) - sizeof(struct hostentry_adata)) / sizeof(u32)
 
+struct igp_table;
+
 void
-ea_set_hostentry(ea_list **to, rtable *dep, rtable *tab, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum]);
+ea_set_hostentry(ea_list **to, rtable *dep, const struct igp_table *tab, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum]);
 
 void ea_show_hostentry(const struct adata *ad, byte *buf, uint size);
 void ea_show_nexthop_list(struct cli *c, struct nexthop_adata *nhad);

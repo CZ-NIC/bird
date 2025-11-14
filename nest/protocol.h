@@ -791,4 +791,60 @@ struct graceful_recovery_context {
   timer wait_timer;
 };
 
+struct igp_table_config {
+  struct rtable_config *ip4;	/* Table for recursive IPv4 next hop lookups */
+  struct rtable_config *ip6;	/* Table for recursive IPv6 next hop lookups */
+};
+
+struct igp_table {
+  rtable *ip4;
+  rtable *ip6;
+};
+
+static inline void igp_table_merge(struct igp_table_config *to, struct igp_table_config *from)
+{
+#define IGPT_COPY(x)  to->x = from->x ?: to->x;
+  IGPT_COPY(ip4);
+  IGPT_COPY(ip6);
+#undef IGPT_COPY
+}
+
+static inline bool igp_table_same(struct igp_table_config *new, struct igp_table_config *old)
+{
+  return
+    new->ip4->table == old->ip4->table &&
+    new->ip6->table == old->ip6->table &&
+    1;
+}
+
+static inline void igp_table_init(struct igp_table *t, struct igp_table_config *c)
+{
+  if (c->ip4)
+    t->ip4 = c->ip4->table;
+
+  if (c->ip6)
+    t->ip6 = c->ip6->table;
+}
+
+static inline void igp_table_lock(struct igp_table *t)
+{
+  if (t->ip4)
+    rt_lock_table(t->ip4);
+
+  if (t->ip6)
+    rt_lock_table(t->ip6);
+}
+
+static inline void igp_table_unlock(struct igp_table *t)
+{
+  if (t->ip4)
+    rt_unlock_table(t->ip4);
+
+  if (t->ip6)
+    rt_unlock_table(t->ip6);
+}
+
+
+
+
 #endif

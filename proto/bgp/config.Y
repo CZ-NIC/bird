@@ -461,16 +461,11 @@ bgp_channel_item:
  | AIGP bool { BGP_CC->aigp = $2; BGP_CC->aigp_originate = 0; }
  | AIGP ORIGINATE { BGP_CC->aigp = 1; BGP_CC->aigp_originate = 1; }
  | COST expr { BGP_CC->cost = $2; if ($2 < 1) cf_error("Cost must be positive"); }
- | IGP TABLE rtable {
+ | igp_table ';' {
     if (BGP_CC->desc->no_igp)
       cf_error("IGP table not allowed here");
 
-    if ($3->addr_type == NET_IP4)
-      BGP_CC->igp_table_ip4 = $3;
-    else if ($3->addr_type == NET_IP6)
-      BGP_CC->igp_table_ip6 = $3;
-    else
-      cf_error("Mismatched IGP table type");
+    igp_table_merge(&BGP_CC->igp_table, &$1);
    }
  | BASE TABLE rtable {
     if (BGP_SAFI(BGP_CC->afi) != BGP_SAFI_FLOW)

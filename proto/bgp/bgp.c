@@ -2967,11 +2967,7 @@ bgp_channel_init(struct channel *C, struct channel_config *CF)
   c->afi = cf->afi;
   c->desc = cf->desc;
 
-  if (cf->igp_table_ip4)
-    c->igp_table_ip4 = cf->igp_table_ip4->table;
-
-  if (cf->igp_table_ip6)
-    c->igp_table_ip6 = cf->igp_table_ip6->table;
+  igp_table_init(&c->igp_table, &cf->igp_table);
 
   if (cf->base_table)
     c->base_table = cf->base_table->table;
@@ -2984,7 +2980,6 @@ bgp_channel_init(struct channel *C, struct channel_config *CF)
   }
 
 }
-
 static int
 bgp_channel_start(struct channel *C)
 {
@@ -2992,11 +2987,7 @@ bgp_channel_start(struct channel *C)
   struct bgp_channel *c = (void *) C;
   ip_addr src = p->local_ip;
 
-  if (c->igp_table_ip4)
-    rt_lock_table(c->igp_table_ip4);
-
-  if (c->igp_table_ip6)
-    rt_lock_table(c->igp_table_ip6);
+  igp_table_lock(&c->igp_table);
 
   if (c->base_table)
   {
@@ -3077,11 +3068,7 @@ bgp_channel_cleanup(struct channel *C)
 {
   struct bgp_channel *c = (void *) C;
 
-  if (c->igp_table_ip4)
-    rt_unlock_table(c->igp_table_ip4);
-
-  if (c->igp_table_ip6)
-    rt_unlock_table(c->igp_table_ip6);
+  igp_table_unlock(&c->igp_table);
 
   if (c->base_table)
   {
@@ -3122,7 +3109,7 @@ bgp_default_igp_table(struct bgp_config *cf, struct bgp_channel_config *cc, u32 
   cc2 = bgp_find_channel_config(cf, afi2);
 
   /* Second, try IGP table configured in the paired channel */
-  if (cc2 && (tab = (type == NET_IP4) ? cc2->igp_table_ip4 : cc2->igp_table_ip6))
+  if (cc2 && (tab = (type == NET_IP4) ? cc2->igp_table.ip4 : cc2->igp_table.ip6))
     return tab;
 
   /* Third, try table connected by the paired channel */
@@ -3375,16 +3362,16 @@ bgp_postconfig(struct proto_config *CF)
     /* Default values of IGP tables */
     if ((cc->gw_mode == GW_RECURSIVE) && !cc->desc->no_igp)
     {
-      if (!cc->igp_table_ip4 && (bgp_cc_is_ipv4(cc) || cc->ext_next_hop))
-	cc->igp_table_ip4 = bgp_default_igp_table(cf, cc, NET_IP4);
+      if (!cc->igp_table.ip4 && (bgp_cc_is_ipv4(cc) || cc->ext_next_hop))
+	cc->igp_table.ip4 = bgp_default_igp_table(cf, cc, NET_IP4);
 
-      if (!cc->igp_table_ip6 && (bgp_cc_is_ipv6(cc) || cc->ext_next_hop))
-	cc->igp_table_ip6 = bgp_default_igp_table(cf, cc, NET_IP6);
+      if (!cc->igp_table.ip6 && (bgp_cc_is_ipv6(cc) || cc->ext_next_hop))
+	cc->igp_table.ip6 = bgp_default_igp_table(cf, cc, NET_IP6);
 
-      if (cc->igp_table_ip4 && bgp_cc_is_ipv6(cc) && !cc->ext_next_hop)
+      if (cc->igp_table.ip4 && bgp_cc_is_ipv6(cc) && !cc->ext_next_hop)
 	cf_error("Mismatched IGP table type");
 
-      if (cc->igp_table_ip6 && bgp_cc_is_ipv4(cc) && !cc->ext_next_hop)
+      if (cc->igp_table.ip6 && bgp_cc_is_ipv4(cc) && !cc->ext_next_hop)
 	cf_error("Mismatched IGP table type");
     }
 
@@ -3556,8 +3543,7 @@ bgp_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impor
       (new->ext_next_hop != old->ext_next_hop) ||
       (new->add_path != old->add_path) ||
       (new->export_table != old->export_table) ||
-      (TABLE(new, igp_table_ip4) != TABLE(old, igp_table_ip4)) ||
-      (TABLE(new, igp_table_ip6) != TABLE(old, igp_table_ip6)) ||
+      !igp_table_same(&new->igp_table, &old->igp_table) ||
       (TABLE(new, base_table) != TABLE(old, base_table)))
     return 0;
 
@@ -4036,11 +4022,11 @@ bgp_show_proto_info(struct proto *P)
       /* After channel is deconfigured, these pointers are no longer valid */
       if (!p->p.reconfiguring || (c->c.channel_state != CS_DOWN))
       {
-	if (c->igp_table_ip4)
-	  cli_msg(-1006, "    IGP IPv4 table: %s", c->igp_table_ip4->name);
+	if (c->igp_table.ip4)
+	  cli_msg(-1006, "    IGP IPv4 table: %s", c->igp_table.ip4->name);
 
-	if (c->igp_table_ip6)
-	  cli_msg(-1006, "    IGP IPv6 table: %s", c->igp_table_ip6->name);
+	if (c->igp_table.ip6)
+	  cli_msg(-1006, "    IGP IPv6 table: %s", c->igp_table.ip6->name);
 
 	if (c->base_table)
 	  cli_msg(-1006, "    Base table:     %s", c->base_table->name);

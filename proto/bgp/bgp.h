@@ -194,8 +194,7 @@ struct bgp_channel_config {
 
   struct settle_config ptx_exporter_settle;    /* Settle timer for export dumps */
 
-  struct rtable_config *igp_table_ip4;	/* Table for recursive IPv4 next hop lookups */
-  struct rtable_config *igp_table_ip6;	/* Table for recursive IPv6 next hop lookups */
+  struct igp_table_config igp_table;	/* Targets for recursive next hops */
   struct rtable_config *base_table;	/* Base table for Flowspec validation */
 };
 
@@ -483,8 +482,7 @@ struct bgp_channel {
   u32 index;
   const struct bgp_af_desc *desc;
 
-  rtable *igp_table_ip4;		/* Table for recursive IPv4 next hop lookups */
-  rtable *igp_table_ip6;		/* Table for recursive IPv6 next hop lookups */
+  struct igp_table igp_table;		/* Recursive next hop lookup setup */
   rtable *base_table;			/* Base table for Flowspec validation */
 
   /* Rest are zeroed when down */
