@@ -48,6 +48,8 @@
 
 #include "static.h"
 
+static void static_add_rte(struct static_proto *p, struct static_route *r);
+
 static inline struct rte_src * static_get_source(struct static_proto *p, uint i)
 { return i ? rt_get_source(&p->p, i) : p->p.main_source; }
 
@@ -185,7 +187,7 @@ static_mark_rte(struct static_proto *p, struct static_route *r)
   BUFFER_PUSH(p->marked) = r;
 
   if (!ev_active(p->event))
-    ev_schedule(p->event);
+    ev_send_loop(p->p.loop, p->event);
 }
 
 static void
@@ -204,7 +206,7 @@ static_mark_all(struct static_proto *p)
   BUFFER_FLUSH(p->marked);
 
   if (!ev_active(p->event))
-    ev_schedule(p->event);
+    ev_send_loop(p->p.loop, p->event);
 }
 
 static void
@@ -221,7 +223,7 @@ static_mark_partial(struct static_proto *p, struct rt_feeding_request *rfr)
     }
 
   if (!ev_active(p->event))
-    ev_schedule(p->event);
+    ev_send_loop(p->p.loop, p->event);
 
   rfr->done(rfr);
 }
@@ -234,7 +236,15 @@ static_announce_marked(void *P)
   struct static_config *cf = (void *) p->p.cf;
   struct static_route *r;
 
-  if (p->marked_all)
+  if (p->p.proto_state == PS_START)
+  {
+    WALK_LIST(r, cf->routes)
+      TMP_SAVED
+	static_add_rte(p, r);
+
+    proto_notify_state(P, PS_UP);
+  }
+  else if (p->marked_all)
   {
     WALK_LIST(r, cf->routes)
       if (r->state == SRS_DIRTY)
@@ -564,8 +574,6 @@ static int
 static_start(struct proto *P)
 {
   struct static_proto *p = (void *) P;
-  struct static_config *cf = (void *) P->cf;
-  struct static_route *r;
 
   if (p->igp_table_ip4)
     rt_lock_table(p->igp_table_ip4);
@@ -577,14 +585,8 @@ static_start(struct proto *P)
 
   BUFFER_INIT(p->marked, p->p.pool, 4);
 
-  /* We have to go UP before routes could be installed */
-  proto_notify_state(P, PS_UP);
-
-  WALK_LIST(r, cf->routes)
-    TMP_SAVED
-      static_add_rte(p, r);
-
-  return PS_UP;
+  ev_send_loop(p->p.loop, p->event);
+  return PS_START;
 }
 
 static int

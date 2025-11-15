@@ -58,6 +58,7 @@ proto: static_proto '}' ;
 static_proto_start: proto_start STATIC
 {
   this_proto = proto_config_new(&proto_static, $1);
+  this_proto->loop_order = DOMAIN_ORDER(proto);
   init_list(&STATIC_CFG->routes);
 };
 
