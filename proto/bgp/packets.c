@@ -19,6 +19,7 @@
 #include "lib/attrs.h"
 #include "proto/mrt/mrt.h"
 #include "conf/conf.h"
+#include "filter/filter.h"
 #include "lib/unaligned.h"
 #include "lib/flowspec.h"
 #include "lib/socket.h"
@@ -2784,6 +2785,11 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
    * IPv4 BGP and MP-BGP. We undo the attribute (and possibly others attached by
    * decode_next_hop hooks) by restoring a->eattrs afterwards.
    */
+
+  /* Do not bother with attributes if rejecting all routes anyway,
+   * treat as silent withdraw. */
+  if ((c->c.in_filter == FILTER_REJECT) && !c->c.in_keep)
+    ea = NULL;
 
   if (ea)
   {
