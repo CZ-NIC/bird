@@ -100,11 +100,10 @@ static_announce_rte(struct static_proto *p, struct static_route *r)
 
   else if (r->dest == RTDX_RECURSIVE)
   {
-    rtable *tab = ipa_is_ip4(r->via) ? p->igp_table_ip4 : p->igp_table_ip6;
     u32 *labels = r->mls ? (void *) r->mls->data : NULL;
     u32 lnum = r->mls ? r->mls->length / sizeof(u32) : 0;
 
-    ea_set_hostentry(&ea, p->p.main_channel->table, tab,
+    ea_set_hostentry(&ea, p->p.main_channel->table, &p->igp_table,
 	r->via, IPA_NONE, lnum, labels);
 
   }
@@ -514,12 +513,12 @@ static_postconfig(struct proto_config *CF)
   struct channel_config *cc = proto_cf_main_channel(CF);
   struct channel_config *mc = proto_cf_mpls_channel(CF);
 
-  if (!cf->igp_table_ip4)
-    cf->igp_table_ip4 = (cc->table->addr_type == NET_IP4) ?
+  if (!cf->igp_table.ip4)
+    cf->igp_table.ip4 = (cc->table->addr_type == NET_IP4) ?
       cc->table : rt_get_default_table(cf->c.global, NET_IP4);
 
-  if (!cf->igp_table_ip6)
-    cf->igp_table_ip6 = (cc->table->addr_type == NET_IP6) ?
+  if (!cf->igp_table.ip6)
+    cf->igp_table.ip6 = (cc->table->addr_type == NET_IP6) ?
       cc->table : rt_get_default_table(cf->c.global, NET_IP6);
 
   WALK_LIST(r, cf->routes)
@@ -551,11 +550,8 @@ static_init(struct proto_config *CF)
   P->reload_routes = static_reload_routes;
   P->sources.class = &static_rte_owner_class;
 
-  if (cf->igp_table_ip4)
-    p->igp_table_ip4 = cf->igp_table_ip4->table;
-
-  if (cf->igp_table_ip6)
-    p->igp_table_ip6 = cf->igp_table_ip6->table;
+  p->igp_table.ip4 = cf->igp_table.ip4->table;
+  p->igp_table.ip6 = cf->igp_table.ip6->table;
 
   return P;
 }
@@ -567,11 +563,7 @@ static_start(struct proto *P)
   struct static_config *cf = (void *) P->cf;
   struct static_route *r;
 
-  if (p->igp_table_ip4)
-    rt_lock_table(p->igp_table_ip4);
-
-  if (p->igp_table_ip6)
-    rt_lock_table(p->igp_table_ip6);
+  igp_table_lock(&p->igp_table);
 
   p->event = ev_new_init(p->p.pool, static_announce_marked, p);
 
@@ -606,11 +598,7 @@ static_cleanup(struct proto *P)
 {
   struct static_proto *p = (void *) P;
 
-  if (p->igp_table_ip4)
-    rt_unlock_table(p->igp_table_ip4);
-
-  if (p->igp_table_ip6)
-    rt_unlock_table(p->igp_table_ip6);
+  igp_table_unlock(&p->igp_table);
 }
 
 static void
@@ -692,8 +680,8 @@ static_reconfigure(struct proto *P, struct proto_config *CF)
   struct static_route *r, *r2, *or, *nr;
 
   /* Check change in IGP tables */
-  if ((IGP_TABLE(o, ip4) != IGP_TABLE(n, ip4)) ||
-      (IGP_TABLE(o, ip6) != IGP_TABLE(n, ip6)))
+  if ((o->igp_table.ip4 != n->igp_table.ip4) ||
+      (o->igp_table.ip6 != n->igp_table.ip6))
     return 0;
 
   if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)) ||
