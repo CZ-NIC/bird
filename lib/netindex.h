@@ -28,7 +28,7 @@ struct netindex {
 typedef union netindex_hash netindex_hash;
 
 /* Initialization and teardown */
-netindex_hash *netindex_hash_new(pool *, event_list *, u8);
+netindex_hash *netindex_hash_new(pool *, struct birdloop *, u8);
 void netindex_hash_delete(netindex_hash *, event *, event_list *);
 
 /* Find/get/resolve index; pointer valid until end of task */ 

@@ -2541,7 +2541,7 @@ static inline void
 proto_do_start(struct proto *p)
 {
   p->sources.debug = p->debug;
-  rt_init_sources(&p->sources, p->name, proto_event_list(p));
+  rt_init_sources(&p->sources, p->name, p->loop);
 
   if (!p->cf->late_if_feed)
     iface_subscribe(&p->iface_sub);
@@ -2582,7 +2582,7 @@ proto_do_stop(struct proto *p)
   p->pool_up = NULL;
 
   proto_stop_channels(p);
-  rt_destroy_sources(&p->sources, p->event);
+  rt_destroy_sources(&p->sources, p->event, p->loop);
 
   p->do_stop = 1;
   proto_send_event(p, p->event);

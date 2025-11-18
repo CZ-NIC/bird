@@ -88,9 +88,11 @@ struct rte_owner {
   u32 hash_key;
   u32 uc;
   u32 debug;
-  event_list *list;
-  event *prune;
-  event *stop;
+
+  callback prune;
+
+  event *stop_event;
+  struct birdloop *stop_loop;
 };
 
 extern DOMAIN(attrs) attrs_domain;
@@ -120,7 +122,7 @@ static inline void rt_lock_source(struct rte_src *src)
 
 static inline void rt_unlock_source(struct rte_src *src)
 {
-  lfuc_unlock(&src->uc, src->owner->list, src->owner->prune);
+  lfuc_unlock(&src->uc, &src->owner->prune);
 }
 
 #ifdef RT_SOURCE_DEBUG
@@ -131,8 +133,8 @@ static inline void rt_unlock_source(struct rte_src *src)
 #define rt_unlock_source(x) ( log(L_INFO "Unlock source %uG at %s:%d", (x)->global_id, __FILE__, __LINE__), _rt_unlock_source_internal(x) )
 #endif
 
-void rt_init_sources(struct rte_owner *, const char *name, event_list *list);
-void rt_destroy_sources(struct rte_owner *, event *);
+void rt_init_sources(struct rte_owner *, const char *name, struct birdloop *loop);
+void rt_destroy_sources(struct rte_owner *, event *, struct birdloop *);
 
 void rt_dump_sources(struct dump_request *, struct rte_owner *);
 

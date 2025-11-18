@@ -93,7 +93,7 @@ static void mpls_remove_range(struct mpls_range *r);
 static void mpls_cleanup_ranges(void *_domain);
 
 static void mpls_free_fec(struct mpls_fec_map *m, struct mpls_fec *fec);
-static void mpls_fec_map_cleanup(void *_m);
+static void mpls_fec_map_cleanup(callback *cb);
 
 /*
  *	MPLS domain
@@ -659,7 +659,7 @@ mpls_channel_shutdown(struct channel *C)
   if (!c->rts)
     return;
 
-  ev_send_loop(c->mpls_map->loop, c->mpls_map->cleanup_event);
+  callback_activate(&c->mpls_map->cleanup);
 }
 
 static void
@@ -792,8 +792,7 @@ mpls_fec_map_new(pool *pp, struct birdloop *loop, struct channel *C, uint rts)
   DBGL("New FEC Map %p", m);
 
   m->pool = p;
-  m->loop = loop;
-  m->cleanup_event = ev_new_init(p, mpls_fec_map_cleanup, m);
+  callback_init(&m->cleanup, mpls_fec_map_cleanup, loop);
   m->channel = C;
   channel_add_obstacle(C);
 
@@ -885,9 +884,10 @@ mpls_fec_map_reconfigure(struct mpls_fec_map *m, struct channel *C)
 }
 
 static void
-mpls_fec_map_cleanup(void *_m)
+mpls_fec_map_cleanup(callback *cb)
 {
-  struct mpls_fec_map *m = _m;
+  SKIP_BACK_DECLARE(struct mpls_fec_map, m, cleanup, cb);
+
   bool finished = (m->channel->channel_state == CS_STOP);
   HASH_WALK_DELSAFE(m->label_hash, next_l, fec)
     if (lfuc_finished(&fec->uc))
@@ -900,7 +900,7 @@ mpls_fec_map_cleanup(void *_m)
 
   if (finished)
   {
-    ev_postpone(m->cleanup_event);
+    callback_cancel(&m->cleanup);
     channel_del_obstacle(m->channel);
   }
 }
@@ -1197,7 +1197,7 @@ inline void mpls_lock_fec(struct mpls_fec *fec)
 
 inline void mpls_unlock_fec(struct mpls_fec *fec)
 {
-  lfuc_unlock(&fec->uc, birdloop_event_list(fec->map->loop), fec->map->cleanup_event);
+  lfuc_unlock(&fec->uc, &fec->map->cleanup);
   DBGL("Unlocked FEC %p %u (deferred)", fec, fec->label);
 }
 

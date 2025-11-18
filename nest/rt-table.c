@@ -130,7 +130,7 @@ struct rt_cork rt_cork;
 
 static void rt_free_hostcache(struct rtable_private *tab);
 static void rt_hcu_uncork(callback *);
-static void rt_update_hostcache(void *tab);
+static void rt_update_hostcache(callback *cb);
 static void rt_next_hop_update(void *_tab);
 static void rt_nhu_uncork(callback *);
 static inline void rt_next_hop_resolve_rte(rte *r);
@@ -658,7 +658,7 @@ rt_setup_roa_aggregator(rtable *t)
       },
     };
 
-    rt_init_sources(&rag->sources, ragname, birdloop_event_list(t->loop));
+    rt_init_sources(&rag->sources, ragname, t->loop);
     rag->main_source = rt_get_source_o(&rag->sources, 0);
 
     tab->master = &rag->stream;
@@ -687,7 +687,7 @@ rt_stop_roa_aggregator(rtable *t)
 
     rt_lock_table(tab);
     rt_destroy_sources(&rag->sources, ev_new_init(tab->rp,
-	  rt_roa_aggregator_sources_gone, tab));
+	  rt_roa_aggregator_sources_gone, tab), tab->loop);
     rt_unlock_source(rag->main_source);
   }
 
@@ -3638,7 +3638,7 @@ rt_setup(pool *pp, struct rtable_config *cf)
   if (t->id >= rtable_max_id)
     rtable_max_id = t->id + 1;
 
-  t->netindex = netindex_hash_new(birdloop_pool(t->loop), birdloop_event_list(t->loop), cf->addr_type);
+  t->netindex = netindex_hash_new(birdloop_pool(t->loop), t->loop, cf->addr_type);
   atomic_store_explicit(&t->routes, mb_allocz(p, RT_INITIAL_ROUTES_BLOCK_SIZE * sizeof(net)), memory_order_relaxed);
   atomic_store_explicit(&t->routes_block_size, RT_INITIAL_ROUTES_BLOCK_SIZE, memory_order_relaxed);
 
@@ -4928,8 +4928,9 @@ rt_shutdown(void *tab_)
   rt_exporter_shutdown(&tab->export_best, NULL);
   rt_exporter_shutdown(&tab->export_all, NULL);
 
-  rfree(tab->hcu_event);
-  tab->hcu_event = NULL;
+  callback_cancel(&tab->hcu);
+  tab->hcu = (callback) {};
+
   rfree(tab->nhu_event);
   tab->nhu_event = NULL;
 
@@ -5287,7 +5288,7 @@ hc_notify_export(void *_hc)
       continue;
 
     RT_LOCK(hc->tab, tab);
-    if (ev_active(tab->hcu_event))
+    if (callback_is_active(&tab->hcu))
       continue;
 
     if (!trie_match_net(hc->trie, n))
@@ -5304,12 +5305,12 @@ hc_notify_export(void *_hc)
 	    hc->req.name, n, NET_TO_INDEX(n)->index);
 
       if ((rt_export_get_state(&hc->req) == TES_READY)
-	  && !ev_active(tab->hcu_event))
+	  && !callback_is_active(&tab->hcu))
       {
 	if (hc->req.trace_routes & D_EVENTS)
 	  log(L_TRACE "%s requesting HCU", hc->req.name);
 
-	ev_send_loop(tab->loop, tab->hcu_event);
+	callback_activate(&tab->hcu);
       }
     }
 
@@ -5334,11 +5335,11 @@ rt_init_hostcache(struct rtable_private *tab)
 
   hc->tab = RT_PUB(tab);
 
-  tab->hcu_event = ev_new_init(tab->rp, rt_update_hostcache, tab);
+  callback_init(&tab->hcu, rt_update_hostcache, tab->loop);
   callback_init(&tab->hcu_uncork.cb, rt_hcu_uncork, tab->loop);
   tab->hostcache = hc;
 
-  ev_send_loop(tab->loop, tab->hcu_event);
+  callback_activate(&tab->hcu);
 }
 
 static void
@@ -5485,16 +5486,16 @@ static void
 rt_hcu_uncork(callback *cb)
 {
   RT_LOCK(SKIP_BACK(rtable, priv.hcu_uncork.cb, cb), tab);
-
-  ev_send_loop(tab->loop, tab->hcu_event);
+  callback_activate(&tab->hcu);
 }
 
 static void
-rt_update_hostcache(void *data)
+rt_update_hostcache(callback *cb)
 {
+  SKIP_BACK_DECLARE(rtable, tpub, hcu, cb);
   rtable **nhu_pending;
 
-  RT_LOCKED((rtable *) data, tab)
+  RT_LOCKED(tpub, tab)
   {
   struct hostcache *hc = tab->hostcache;
 
@@ -5602,7 +5603,7 @@ rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep)
 
   /* Keep the hostentry alive until this task ends */
   lfuc_lock_revive(&he->uc);
-  lfuc_unlock(&he->uc, birdloop_event_list(tab->loop), tab->hcu_event);
+  lfuc_unlock(&he->uc, &tab->hcu);
 
   return he;
 }

@@ -12,6 +12,7 @@
 
 #include "lib/hash.h"
 #include "lib/event.h"
+#include "lib/io-loop.h"
 
 #include <pthread.h>
 
@@ -415,7 +416,7 @@ t_spinhash_basic(void)
 
   shtest v = {};
   void *ST_REHASH = NULL;
-  SPINHASH_INIT(v, ST, rp_new(&root_pool, the_bird_domain.the_bird, "Test pool"), NULL);
+  SPINHASH_INIT(v, ST, rp_new(&root_pool, the_bird_domain.the_bird, "Test pool"), &main_birdloop);
   the_bird_unlock();
 
   for (int i=0; i<ST_READERS; i++)

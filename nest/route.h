@@ -385,7 +385,7 @@ extern uint rtable_max_id;
     struct network * _Atomic routes;	/* Actual route objects in the table */			\
     _Atomic u32 routes_block_size;	/* Size of the route object pointer block */		\
     struct f_trie * _Atomic trie;	/* Trie of prefixes defined in fib */			\
-    event *hcu_event;			/* Hostcache updater */					\
+    callback hcu;			/* Hostcache updater */					\
     struct rt_exporter export_all;	/* Route export journal for all routes */		\
     struct rt_exporter export_best;	/* Route export journal for best routes */		\
 

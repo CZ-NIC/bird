@@ -15,8 +15,7 @@ typedef SPINHASH(struct netindex) netindex_spinhash;
 
 #define NETINDEX_HASH_PUBLIC \
   DOMAIN(attrs) lock;		/* Assigned lock */		\
-  event_list *cleanup_list;	/* Cleanup event list */	\
-  event cleanup_event;		/* Cleanup event */		\
+  callback cleanup;		/* Cleanup callback */		\
   u8 net_type;			/* Which NET_* is stored */	\
   uint _Atomic block_size;	/* How big block is */		\
   struct netindex * _Atomic * _Atomic block;	/* u32 to netindex */		\
