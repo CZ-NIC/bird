@@ -177,7 +177,7 @@ const char *rt_export_state_name(enum rt_export_state state)
   return rt_export_state_name_array[state];
 }
 
-static struct hostentry *rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep);
+static struct hostentry *rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep, const struct igp_table *igp);
 
 static inline rtable *rt_priv_to_pub(struct rtable_private *tab) { return RT_PUB(tab); }
 static inline rtable *rt_pub_to_pub(rtable *tab) { return tab; }
@@ -4125,7 +4125,7 @@ rt_postconfig(struct config *c)
  */
 
 void
-ea_set_hostentry(ea_list **to, rtable *dep, rtable *src, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum])
+ea_set_hostentry(ea_list **to, rtable *dep, const struct igp_table *igp, ip_addr gw, ip_addr ll, u32 lnum, u32 labels[lnum])
 {
   struct {
     struct hostentry_adata head;
@@ -4135,8 +4135,8 @@ ea_set_hostentry(ea_list **to, rtable *dep, rtable *src, ip_addr gw, ip_addr ll,
   h = alloca(sz);
   memset(h, 0, sz);
 
-  RT_LOCKED(src, tab)
-    h->head.he = rt_get_hostentry(tab, gw, ll, dep);
+  RT_LOCKED((ipa_is_ip4(gw) ? igp->ip4 : igp->ip6), tab)
+    h->head.he = rt_get_hostentry(tab, gw, ll, dep, igp);
 
   memcpy(h->head.labels, labels, lnum * sizeof(u32));
 
@@ -5195,7 +5195,7 @@ hc_resize(struct hostcache *hc, pool *p, unsigned new_order)
 }
 
 static struct hostentry *
-hc_new_hostentry(struct rtable_private *tab, struct igp_table *igp, ip_addr a, ip_addr ll, rtable *dep, unsigned k)
+hc_new_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep, const struct igp_table *igp, unsigned k)
 {
   struct hostcache *hc = tab->hostcache;
   pool *p = tab->rp;
@@ -5207,7 +5207,7 @@ hc_new_hostentry(struct rtable_private *tab, struct igp_table *igp, ip_addr a, i
     .tab = dep,
     .igp = igp,
     .hash_key = k,
-    .ucloop = tab->loop,
+    .hcu = &tab->hcu,
   };
 
   if (EMPTY_LIST(hc->hostentries))
@@ -5572,7 +5572,8 @@ rt_update_hostcache(callback *cb)
 }
 
 static struct hostentry *
-rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep)
+rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll,
+    rtable *dep, const struct igp_table *igp)
 {
   ip_addr link = ipa_zero(ll) ? a : ll;
   struct hostentry *he;
@@ -5598,7 +5599,7 @@ rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep)
   }
   else
   {
-    he = hc_new_hostentry(tab, a, link, dep, k);
+    he = hc_new_hostentry(tab, a, link, dep, igp, k);
     rt_update_hostentry(tab, he);
   }
 

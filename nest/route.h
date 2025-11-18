@@ -702,14 +702,14 @@ struct hostentry {
   ip_addr link;				/* (link-local) IP address of host, used as gw
 					   if host is directly attached */
   rtable *tab;				/* Dependent table, part of key */
-  struct igp_table *igp;		/* What to pull from IGP, incl. the underlay table */
+  const struct igp_table *igp;		/* What to pull from IGP, incl. the underlay table */
   struct hostentry *next;		/* Next in hash chain */
   unsigned hash_key;			/* Hash key */
   u32 igp_metric;			/* Chosen route IGP metric */
   _Atomic u32 version;			/* Bumped on update */
   byte nexthop_linkable;		/* Nexthop list is completely non-device */
   ea_list * _Atomic src;		/* Source attributes */
-  struct birdloop *ucloop;		/* Use this loop to cleanup use count */
+  callback *hcu;			/* Call this when use count drops to zero */
   struct lfuc uc;			/* Use count */
 };
 

@@ -150,7 +150,7 @@ static void
 ea_gen_hostentry_freed(const eattr *ea)
 {
   struct hostentry_adata *had = (struct hostentry_adata *) ea->u.ptr;
-  lfuc_unlock(&had->he->uc, &had->he->owner->hcu);
+  lfuc_unlock(&had->he->uc, had->he->hcu);
 }
 
 struct ea_class ea_gen_hostentry = {
@@ -1272,10 +1272,13 @@ ea_show_hostentry(const struct adata *ad, byte *buf, uint size)
 
   uint s = 0;
 
+  const char *tabname = (ipa_is_ip4(had->he->addr) ?
+      had->he->igp->ip4 : had->he->igp->ip6)->name;
+
   if (ipa_nonzero(had->he->link) && !ipa_equal(had->he->link, had->he->addr))
-    s = bsnprintf(buf, size, "via %I %I table %s", had->he->addr, had->he->link, had->he->owner->name);
+    s = bsnprintf(buf, size, "via %I %I table %s", had->he->addr, had->he->link, tabname);
   else
-    s = bsnprintf(buf, size, "via %I table %s", had->he->addr, had->he->owner->name);
+    s = bsnprintf(buf, size, "via %I table %s", had->he->addr, tabname);
 
   uint lc = HOSTENTRY_LABEL_COUNT(had);
   if (!lc)

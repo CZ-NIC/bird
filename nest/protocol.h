@@ -845,6 +845,4 @@ static inline void igp_table_unlock(struct igp_table *t)
 }
 
 
-
-
 #endif
