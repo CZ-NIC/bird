@@ -699,9 +699,10 @@
       case SA_PROTO:	RESULT(sa.type, s, rte->src->owner->name); break;
       default:
 	{
+	  /* Next hop examination */
 	  struct eattr *nhea = ea_find(rte->attrs, &ea_gen_nexthop);
 	  struct nexthop_adata *nhad = nhea ? (struct nexthop_adata *) nhea->u.ptr : NULL;
-	  struct nexthop *nh = nhad ? &nhad->nh : NULL;
+	  struct nexthop *nh = (nhad && NEXTHOP_IS_REACHABLE(nhad)) ? &nhad->nh : NULL;
 
 	  switch (sa.sa_code)
 	  {
