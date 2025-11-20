@@ -2550,6 +2550,7 @@ bgp_create_update_bmp(struct bgp_channel *c, byte *buf, byte *end, struct bgp_bu
     .add_path = c->add_path_rx,
     .mpls = c->desc->mpls,
     .sham = 1,
+    .ignore_non_bgp_attrs = 1,
   };
 
   if (!update)
