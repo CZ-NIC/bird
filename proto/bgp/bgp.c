@@ -2967,7 +2967,6 @@ bgp_channel_init(struct channel *C, struct channel_config *CF)
   c->afi = cf->afi;
   c->desc = cf->desc;
 
-  log("in channel init");
   igp_table_init(&c->igp_table, &cf->igp_table);
 
   if (cf->base_table)

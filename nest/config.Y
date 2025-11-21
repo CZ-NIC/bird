@@ -428,7 +428,6 @@ igp_table:
 }
  | IGP COPY { cf_enter_filters(); } CF_SYM_KNOWN { cf_exit_filters(); } {
   cf_assert_symbol($4, SYM_ATTRIBUTE);
-  log("in copy %s", $4->name);
   struct igp_table_config_additional_attribute *it = cfg_allocz(sizeof(struct igp_table_config_additional_attribute));
   it->id = $4->attribute->id;
   $$ = (struct igp_table_config) { .additional = it };

@@ -464,10 +464,7 @@ bgp_channel_item:
  | igp_table {
     if (BGP_CC->desc->no_igp)
       cf_error("IGP table not allowed here");
-
-    log("lets go merge");
     igp_table_merge(&BGP_CC->igp_table, &$1);
-    log("leave");
    }
  | BASE TABLE rtable {
     if (BGP_SAFI(BGP_CC->afi) != BGP_SAFI_FLOW)

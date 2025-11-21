@@ -811,14 +811,12 @@ struct igp_table {
 
 static inline void igp_table_merge(struct igp_table_config *to, struct igp_table_config *from)
 {
-  log("merge");
 #define IGPT_COPY(x)  to->x = from->x ?: to->x;
   IGPT_COPY(ip4);
   IGPT_COPY(ip6);
 #undef IGPT_COPY
   if (from->additional)
   {
-    log("additional");
     from->additional->next = to->additional;
     to->additional = from->additional;
   }
@@ -826,7 +824,6 @@ static inline void igp_table_merge(struct igp_table_config *to, struct igp_table
 
 static inline bool igp_table_same(struct igp_table_config *new, struct igp_table_config *old)
 {
-  log("compare");
   return
     new->ip4->table == old->ip4->table &&
     new->ip6->table == old->ip6->table &&
@@ -840,7 +837,6 @@ static inline void igp_table_init(struct igp_table *t, struct igp_table_config *
 
   if (c->ip6)
     t->ip6 = c->ip6->table;
-  log("init, igp table %x 4: %x :%x", t, c->ip4, c->ip6);
 
   if (c->additional)
   {
@@ -853,7 +849,6 @@ static inline void igp_table_init(struct igp_table *t, struct igp_table_config *
       n = n->next;
     }
 
-    log("count is %i", count);
     t->additional_len = count;
 
     n = c->additional;
@@ -867,7 +862,6 @@ static inline void igp_table_init(struct igp_table *t, struct igp_table_config *
 
 static inline void igp_table_start(struct igp_table *t)
 {
-  log("start table %x 4:%x 6:%x", t, t->ip4, t->ip6);
   if (t->ip4)
     rt_lock_table(t->ip4);
 
