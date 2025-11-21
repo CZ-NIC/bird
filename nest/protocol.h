@@ -824,9 +824,11 @@ static inline void igp_table_merge(struct igp_table_config *to, struct igp_table
 
 static inline bool igp_table_same(struct igp_table_config *new, struct igp_table_config *old)
 {
-  return
-    new->ip4->table == old->ip4->table &&
-    new->ip6->table == old->ip6->table &&
+  if ((!new->ip4 != !old->ip4) || (!new->ip6 != !old->ip6))
+    return 0;
+
+  return (!new->ip4 || new->ip4->table == old->ip4->table) &&
+    (!new->ip6 || new->ip6 && new->ip6->table == old->ip6->table) &&
     1;
 }
 
