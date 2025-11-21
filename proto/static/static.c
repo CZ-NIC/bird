@@ -563,7 +563,7 @@ static_start(struct proto *P)
   struct static_config *cf = (void *) P->cf;
   struct static_route *r;
 
-  igp_table_lock(&p->igp_table);
+  igp_table_start(&p->igp_table);
 
   p->event = ev_new_init(p->p.pool, static_announce_marked, p);
 
@@ -598,7 +598,7 @@ static_cleanup(struct proto *P)
 {
   struct static_proto *p = (void *) P;
 
-  igp_table_unlock(&p->igp_table);
+  igp_table_stop(&p->igp_table);
 }
 
 static void

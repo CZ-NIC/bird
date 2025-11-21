@@ -4176,6 +4176,9 @@ rta_apply_hostentry(ea_list **to, struct hostentry_adata *head)
 	break;
       }
 
+      for (uint i = 0; i < he->igp->additional_len; i++)
+          ea_copy_attr(to, src, ea_class_find_by_id(he->igp->additional[i]));
+
       eattr *he_nh_ea = ea_find(src, &ea_gen_nexthop);
       ASSERT_DIE(he_nh_ea);
 

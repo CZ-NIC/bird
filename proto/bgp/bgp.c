@@ -2967,6 +2967,7 @@ bgp_channel_init(struct channel *C, struct channel_config *CF)
   c->afi = cf->afi;
   c->desc = cf->desc;
 
+  log("in channel init");
   igp_table_init(&c->igp_table, &cf->igp_table);
 
   if (cf->base_table)
@@ -2987,7 +2988,7 @@ bgp_channel_start(struct channel *C)
   struct bgp_channel *c = (void *) C;
   ip_addr src = p->local_ip;
 
-  igp_table_lock(&c->igp_table);
+  igp_table_start(&c->igp_table);
 
   if (c->base_table)
   {
@@ -3068,7 +3069,7 @@ bgp_channel_cleanup(struct channel *C)
 {
   struct bgp_channel *c = (void *) C;
 
-  igp_table_unlock(&c->igp_table);
+  igp_table_stop(&c->igp_table);
 
   if (c->base_table)
   {

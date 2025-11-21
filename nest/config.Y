@@ -155,7 +155,7 @@ CF_KEYWORDS(ROUTER, ID, HOSTNAME, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBU
 CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, VRF, DEFAULT, TABLE, TABLES, STATES, ROUTES, FILTERS)
 CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS, ASPA)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED, RPKI)
-CF_KEYWORDS(PASSWORD, KEY, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, CHANNELS, INTERFACES)
+CF_KEYWORDS(PASSWORD, KEY, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, CHANNELS, INTERFACES, IGP, COPY)
 CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512, BLAKE2S128, BLAKE2S256, BLAKE2B256, BLAKE2B512)
 CF_KEYWORDS(PRIMARY, STATS, COUNT, FOR, IN, COMMANDS, PREEXPORT, NOEXPORT, EXPORTED, GENERATE)
 CF_KEYWORDS(BGP, PASSWORDS, DESCRIPTION)
@@ -417,14 +417,24 @@ rtable: CF_SYM_KNOWN {
   $$ = $1->table;
 } ;
 
-igp_table: IGP TABLE rtable ';' {
+igp_table:
+  IGP TABLE rtable {
   if ($3->addr_type == NET_IP4)
-    $$.ip4 = $3;
+    $$ = (struct igp_table_config) { .ip4 = $3 };
   else if ($3->addr_type == NET_IP6)
-    $$.ip6 = $3;
+    $$ = (struct igp_table_config) { .ip6 = $3 };
   else
     cf_error("Incompatible IGP table type");
-} ;
+}
+ | IGP COPY { cf_enter_filters(); } CF_SYM_KNOWN { cf_exit_filters(); } {
+  cf_assert_symbol($4, SYM_ATTRIBUTE);
+  log("in copy %s", $4->name);
+  struct igp_table_config_additional_attribute *it = cfg_allocz(sizeof(struct igp_table_config_additional_attribute));
+  it->id = $4->attribute->id;
+  $$ = (struct igp_table_config) { .additional = it };
+};
+
+/* example: igp copy bgp_next_hop; igp copy bgp_communities; igp copy ospf_metric1; */
 
 imexport:
    FILTER filter { $$ = $2; }
