@@ -82,8 +82,6 @@ struct bfd_proto
 {
   struct proto p;
 
-  pthread_spinlock_t lock;
-
   pool *tpool;
 
   struct birdloop *eloop;
