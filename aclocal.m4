@@ -91,8 +91,8 @@ AC_DEFUN([BIRD_CHECK_PTHREADS],
 	    [
 	      pthread_t pt;
 	      pthread_create(&pt, NULL, NULL, NULL);
-	      pthread_spinlock_t lock;
-	      pthread_spin_lock(&lock);
+	      pthread_mutex_t lock;
+	      pthread_mutex_lock(&lock);
 	    ]
 	  )
 	],
