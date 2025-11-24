@@ -340,6 +340,10 @@ AC_MSG_CHECKING([protocols])
 protocols=`echo "$with_protocols" | sed 's/,/ /g'`
 if test "$protocols" = no ; then protocols= ; fi
 for a in $protocols ; do
+  if test "$a" = bfd && ! test "$enable_pthreads" = yes ; then
+    AC_MSG_RESULT([failed])
+    AC_MSG_ERROR([Protocol $a requires pthreads])
+  fi
   if ! test -f $srcdir/proto/$a/Makefile ; then
     AC_MSG_RESULT([failed])
     AC_MSG_ERROR([Requested protocol $a not found])
