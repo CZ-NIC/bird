@@ -174,7 +174,7 @@ krt_capable(rte *e)
   int dest = nhea_dest(nhea);
 
   return
-    ((dest == RTD_UNICAST && !NEXTHOP_ONE(nh)) /* No multipath support */
+    ((dest == RTD_UNICAST && NEXTHOP_ONE(nh)) /* No multipath support */
 #ifdef RTF_REJECT
      || dest == RTD_UNREACHABLE
 #endif
