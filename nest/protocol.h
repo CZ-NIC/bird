@@ -817,18 +817,54 @@ static inline void igp_table_merge(struct igp_table_config *to, struct igp_table
 #undef IGPT_COPY
   if (from->additional)
   {
-    from->additional->next = to->additional;
-    to->additional = from->additional;
+    if (!to->additional)
+    {
+      to->additional = from->additional;
+      return;
+    }
+    if (to->additional < from->additional) // Lets assume attributes with lower id are more likely to be set first
+    {
+      from->additional->next = to->additional;
+      to->additional = from->additional;
+      return;
+    }
+
+    struct igp_table_config_additional_attribute *n = to->additional->next;
+    while (n->id > from->additional->id )
+      n = n->next;
+
+    from->additional->next = n->next;
+    n->next = from->additional;
   }
 }
 
 static inline bool igp_table_same(struct igp_table_config *new, struct igp_table_config *old)
 {
+  if (new->additional)
+  {
+    if (!old->additional)
+      return 0;
+    struct igp_table_config_additional_attribute *na = new->additional;
+    struct igp_table_config_additional_attribute *oa = old->additional;
+
+    while (na && oa)
+    {
+      if (na->id != oa->id)
+        return 0;
+
+      na = na->next;
+      oa = oa->next;
+
+      if (!na != !oa)
+        return false;
+    }
+  }
+
   if ((!new->ip4 != !old->ip4) || (!new->ip6 != !old->ip6))
     return 0;
 
   return (!new->ip4 || new->ip4->table == old->ip4->table) &&
-    (!new->ip6 || new->ip6 && new->ip6->table == old->ip6->table) &&
+    (!new->ip6 || new->ip6->table == old->ip6->table) &&
     1;
 }
 
@@ -854,7 +890,7 @@ static inline void igp_table_init(struct igp_table *t, struct igp_table_config *
     t->additional_len = count;
 
     n = c->additional;
-    for (int i = 0; i < count; i++)
+    for (int i = count - 1; i >= 0; i--)
     {
       t->additional[i] = n->id;
       n = n->next;

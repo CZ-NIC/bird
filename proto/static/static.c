@@ -550,8 +550,7 @@ static_init(struct proto_config *CF)
   P->reload_routes = static_reload_routes;
   P->sources.class = &static_rte_owner_class;
 
-  p->igp_table.ip4 = cf->igp_table.ip4->table;
-  p->igp_table.ip6 = cf->igp_table.ip6->table;
+  igp_table_init(&p->igp_table, &cf->igp_table);
 
   return P;
 }
@@ -680,8 +679,7 @@ static_reconfigure(struct proto *P, struct proto_config *CF)
   struct static_route *r, *r2, *or, *nr;
 
   /* Check change in IGP tables */
-  if ((o->igp_table.ip4 != n->igp_table.ip4) ||
-      (o->igp_table.ip6 != n->igp_table.ip6))
+  if (!igp_table_same(&n->igp_table, &o->igp_table))
     return 0;
 
   if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)) ||
