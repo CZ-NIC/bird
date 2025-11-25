@@ -15,6 +15,9 @@ distros:
     'centos-8',
     'rocky-08',
     'rocky-09',
+    'oracle-08',
+    'oracle-09',
+    'oracle-10',
     'fedora-32',
     'fedora-33',
   ) -%}
@@ -30,7 +33,7 @@ distros:
   {% endfor %}
 
   # Fedora regular builds
-  {% for num in (34, 35, 36, 37, 38, 39, 40, 41, 42) -%}
+  {% for num in (34, 35, 36, 37, 38, 39, 40, 41, 42, 43) -%}
   - name: fedora-{{ num }}-amd64
     type: pkg-rpm
   {% endfor %}
