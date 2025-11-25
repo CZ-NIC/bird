@@ -92,8 +92,7 @@ struct mrt_table_dump_state {
   u16 entry_count;			/* Number of RIB Entries */
   u32 entry_count_offset;		/* Buffer offset to store entry_count later */
 
-  struct rfile *file;			/* tracking for mrt table dump file */
-  int fd;
+  struct rfile *file;			/* Table dump file */
 
   event *event;				/* defer event */
   event_list *target;			/* defer target */

@@ -182,7 +182,7 @@ mrt_init_message(buffer *b, u16 type, u16 subtype)
 }
 
 static void
-mrt_dump_message(buffer *b, int fd)
+mrt_dump_message(buffer *b, struct rfile *rf)
 {
   uint len = mrt_buffer_pos(b);
 
@@ -190,10 +190,10 @@ mrt_dump_message(buffer *b, int fd)
   ASSERT(len >= MRT_HDR_LENGTH);
   put_u32(b->start + 8, len - MRT_HDR_LENGTH);
 
-  if (fd < 0)
+  if (!rf)
     return;
 
-  if (write(fd, b->start, len) < 0)
+  if (write(rf_fileno(rf), b->start, len) < 0)
     log(L_ERR "Write to MRT file failed: %m"); /* TODO: name of file */
 }
 
@@ -251,7 +251,6 @@ mrt_open_file(struct mrt_table_dump_state *s)
     return 0;
   }
 
-  s->fd = rf_fileno(s->file);
   s->time_offset = now_real - now;
 
   return 1;
@@ -262,7 +261,6 @@ mrt_close_file(struct mrt_table_dump_state *s)
 {
   rfree(s->file);
   s->file = NULL;
-  s->fd = -1;
 }
 
 
@@ -359,7 +357,7 @@ mrt_peer_table_dump(struct mrt_table_dump_state *s)
   /* Fix Peer Count */
   put_u16(s->buf.start + s->peer_count_offset, s->peer_count);
 
-  mrt_dump_message(&s->buf, s->fd);
+  mrt_dump_message(&s->buf, s->file);
 }
 
 static void
@@ -531,7 +529,7 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, const struct rt_export_feed *
     return;
 
   s->seqnum++;
-  mrt_dump_message(&s->buf, s->fd);
+  mrt_dump_message(&s->buf, s->file);
 }
 
 /*
@@ -608,8 +606,6 @@ mrt_table_dump_init(pool *pp, const char *name)
   /* We lock the current config as we may reference it indirectly by filter */
 
   OBSREF_SET(s->config, OBSREF_GET(config));
-
-  s->fd = -1;
 
   return s;
 }
@@ -870,7 +866,7 @@ mrt_dump_bgp_message(struct mrt_bgp_data *d, pool *p)
   mrt_init_message(b, MRT_BGP4MP, subtypes[d->as4 + 4*d->add_path]);
   mrt_bgp_header(b, d);
   mrt_put_data(b, d->message, d->msg_len);
-  mrt_dump_message(b, rf_fileno(OBSREF_GET(config)->mrtdump_file));
+  mrt_dump_message(b, OBSREF_GET(config)->mrtdump_file);
   mrt_buffer_free(b);
 }
 
@@ -891,7 +887,7 @@ mrt_dump_bgp_state_change(struct mrt_bgp_data *d, pool *p)
   mrt_bgp_header(b, d);
   mrt_put_u16(b, states[d->old_state]);
   mrt_put_u16(b, states[d->new_state]);
-  mrt_dump_message(b, rf_fileno(OBSREF_GET(config)->mrtdump_file));
+  mrt_dump_message(b, OBSREF_GET(config)->mrtdump_file);
   mrt_buffer_free(b);
 }
 
