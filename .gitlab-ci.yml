@@ -155,6 +155,21 @@ docker-rocky-09-amd64:
     IMG_NAME: "rocky-09-amd64"
   <<: *docker-build
 
+docker-oracle-08-amd64:
+  variables:
+    IMG_NAME: "oracle-08-amd64"
+  <<: *docker-build
+
+docker-oracle-09-amd64:
+  variables:
+    IMG_NAME: "oracle-09-amd64"
+  <<: *docker-build
+
+docker-oracle-10-amd64:
+  variables:
+    IMG_NAME: "oracle-10-amd64"
+  <<: *docker-build
+
 docker-fedora-32-amd64:
   variables:
     IMG_NAME: "fedora-32-amd64"
@@ -238,6 +253,11 @@ docker-fedora-41-amd64:
 docker-fedora-42-amd64:
   variables:
     IMG_NAME: "fedora-42-amd64"
+  <<: *docker-build
+
+docker-fedora-43-amd64:
+  variables:
+    IMG_NAME: "fedora-43-amd64"
   <<: *docker-build
 
 docker-ubuntu-18.04-amd64:
@@ -402,6 +422,27 @@ build-rocky-09-amd64:
       optional: true
   image: registry.nic.cz/labs/bird:rocky-09-amd64
 
+build-oracle-08-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-oracle-08-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:oracle-08-amd64
+
+build-oracle-09-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-oracle-09-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:oracle-09-amd64
+
+build-oracle-10-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-oracle-10-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:oracle-10-amd64
+
 build-fedora-32-amd64:
   <<: *build-docker-linux-amd64
   needs:
@@ -520,6 +561,13 @@ build-fedora-42-amd64:
     - job: docker-fedora-42-amd64
       optional: true
   image: registry.nic.cz/labs/bird:fedora-42-amd64
+
+build-fedora-43-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-fedora-43-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:fedora-43-amd64
 
 build-ubuntu-18.04-amd64:
   <<: *build-docker-linux-amd64
@@ -752,6 +800,30 @@ pkg-rocky-09-amd64:
     - job: build-release
   image: registry.nic.cz/labs/bird:rocky-09-amd64
 
+pkg-oracle-08-amd64:
+  <<: *pkg-rpm-wa
+  needs:
+    - job: build-oracle-08-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:oracle-08-amd64
+
+pkg-oracle-09-amd64:
+  <<: *pkg-rpm-wa
+  needs:
+    - job: build-oracle-09-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:oracle-09-amd64
+
+pkg-oracle-10-amd64:
+  <<: *pkg-rpm-wa
+  needs:
+    - job: build-oracle-10-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:oracle-10-amd64
+
 pkg-fedora-32-amd64:
   <<: *pkg-rpm-wa
   needs:
@@ -887,6 +959,14 @@ pkg-fedora-42-amd64:
       artifacts: false
     - job: build-release
   image: registry.nic.cz/labs/bird:fedora-42-amd64
+
+pkg-fedora-43-amd64:
+  <<: *pkg-rpm
+  needs:
+    - job: build-fedora-43-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:fedora-43-amd64
 
 pkg-ubuntu-18.04-amd64:
   <<: *pkg-deb-legacy
@@ -1082,6 +1162,24 @@ install-rocky-09-amd64:
     - job: pkg-rocky-09-amd64
   image: registry.nic.cz/labs/bird:rocky-09-amd64
 
+install-oracle-08-amd64:
+  <<: *install-rpm
+  needs:
+    - job: pkg-oracle-08-amd64
+  image: registry.nic.cz/labs/bird:oracle-08-amd64
+
+install-oracle-09-amd64:
+  <<: *install-rpm
+  needs:
+    - job: pkg-oracle-09-amd64
+  image: registry.nic.cz/labs/bird:oracle-09-amd64
+
+install-oracle-10-amd64:
+  <<: *install-rpm
+  needs:
+    - job: pkg-oracle-10-amd64
+  image: registry.nic.cz/labs/bird:oracle-10-amd64
+
 install-fedora-32-amd64:
   <<: *install-rpm
   needs:
@@ -1183,6 +1281,12 @@ install-fedora-42-amd64:
   needs:
     - job: pkg-fedora-42-amd64
   image: registry.nic.cz/labs/bird:fedora-42-amd64
+
+install-fedora-43-amd64:
+  <<: *install-rpm
+  needs:
+    - job: pkg-fedora-43-amd64
+  image: registry.nic.cz/labs/bird:fedora-43-amd64
 
 install-ubuntu-18.04-amd64:
   <<: *install-deb
