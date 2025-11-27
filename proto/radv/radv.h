@@ -170,6 +170,9 @@ struct radv_prefix		/* One prefix we advertise */
   u8 valid;			/* Is the prefix valid? If not, we advertise it
 				   with 0 lifetime, so clients stop using it */
   u8 mark;			/* A temporary mark for processing */
+  u8 onlink;			/* Flags copied from prefix config */
+  u8 autonomous;
+
   btime changed;		/* Last time when the prefix changed */
   struct radv_prefix_config *cf; /* The config tied to this prefix */
 };
