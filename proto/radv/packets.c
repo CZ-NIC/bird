@@ -306,8 +306,8 @@ radv_prepare_prefix(struct radv_iface *ifa, struct radv_prefix *px,
   op->type = OPT_PREFIX;
   op->length = 4;
   op->pxlen = px->prefix.pxlen;
-  op->flags = (pc->onlink ? OPT_PX_ONLINK : 0) |
-    (pc->autonomous ? OPT_PX_AUTONOMOUS : 0);
+  op->flags = (px->onlink ? OPT_PX_ONLINK : 0) |
+	      (px->autonomous ? OPT_PX_AUTONOMOUS : 0);
   op->valid_lifetime = (ifa->ra->active || !pc->valid_lifetime_sensitive) ?
     htonl(pc->valid_lifetime) : 0;
   op->preferred_lifetime = (ifa->ra->active || !pc->preferred_lifetime_sensitive) ?
