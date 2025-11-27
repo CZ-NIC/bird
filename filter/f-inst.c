@@ -1101,6 +1101,11 @@
     RESULT(T_RD, rd, net_rd(v1.val.net));
   }
 
+ METHOD(T_HOSTENTRY, addr, 0, [[
+    struct hostentry_adata *ha = (struct hostentry_adata *)v1.val.ad;
+    RESULT(T_IP, ip, ha->he->addr);
+  ]]);
+
   /* Get first ASN from AS PATH */
   METHOD_R(T_PATH, first, T_INT, i, ({ u32 as = 0; as_path_get_first(v1.val.ad, &as); as; }));
 
