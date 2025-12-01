@@ -401,7 +401,7 @@ install-{{ dist["name"] }}:
       enabled=1
       EOF
     - yum -y update
-    - yum -y install bird=3.1.4
+    - yum -y install bird-3.1.4
 
 {%- for dist in distros %}
 {%- if dist["type"] == "pkg-rpm" or dist["type"] == "pkg-rpm-wa" %}

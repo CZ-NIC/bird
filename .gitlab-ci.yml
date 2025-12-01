@@ -1309,7 +1309,7 @@ install-ubuntu-24.10-amd64:
       enabled=1
       EOF
     - yum -y update
-    - yum -y install bird=3.1.4
+    - yum -y install bird-3.1.4
 
 install-stable-repo-centos-7-amd64:
   <<: *install-stable-repo-rpm
