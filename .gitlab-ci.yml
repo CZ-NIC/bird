@@ -1279,6 +1279,7 @@ install-ubuntu-24.10-amd64:
 .install-stable-repo-rpm: &install-stable-repo-rpm
   <<: *test-job
   stage: install
+  needs: []
   script:
     # check that bird is _not_ installed now and no user or group bird exists
     - |
@@ -1295,7 +1296,7 @@ install-ubuntu-24.10-amd64:
         exit 1
       fi
     - |
-      cat > /etc/yum.repo.d/bird.nic.cz.repo <<EOF
+      cat > /etc/yum.repos.d/bird.nic.cz.repo <<EOF
       [bird]
       name=bird (nic.cz)
       baseurl=$REPOURL
