@@ -82,6 +82,12 @@ tag-collect:
   - *never-tag
   - when: always
 
+## Four hours
+.run-every-4-hours: &run-every-4-hours
+  rules:
+#  - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE == "4hrs"
+  - when: always
+
 ############################
 ## Docker builder rebuild ##
 ############################
@@ -1277,7 +1283,7 @@ install-ubuntu-24.10-amd64:
 
 
 .install-stable-repo-rpm: &install-stable-repo-rpm
-  <<: *test-job
+  <<: *run-every-4-hours
   stage: install
   needs: []
   script:
