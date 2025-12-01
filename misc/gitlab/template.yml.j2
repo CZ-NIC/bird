@@ -371,6 +371,7 @@ install-{{ dist["name"] }}:
 .install-stable-repo-rpm: &install-stable-repo-rpm
   <<: *test-job
   stage: install
+  needs: []
   script:
     # check that bird is _not_ installed now and no user or group bird exists
     - |
