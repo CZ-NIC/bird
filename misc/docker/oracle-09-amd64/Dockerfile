@@ -1,22 +1,22 @@
 # bump number for image rebuild: 1
-FROM opensuse/leap:15.4
-RUN zypper -n up
-RUN zypper -n install \
+# check latest supported version at https://wiki.rockylinux.org/rocky/version/#__tabbed_1_2
+FROM oraclelinux:9
+
+RUN yum -y upgrade
+RUN yum -y install \
 	gcc \
 	make \
 	flex \
 	bison \
 	autoconf \
-	pkgconfig \
 	libssh-devel \
 	ncurses-devel \
 	readline-devel
-RUN zypper -n install \
+RUN yum -y install \
 	git \
 	rpm-build \
 	systemd \
 	systemd-rpm-macros \
 	python3 \
 	python3-pip \
-	python3-setuptools \
-	sysuser-tools
+	python3-setuptools

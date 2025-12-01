@@ -18,4 +18,5 @@ RUN zypper -n install \
 	systemd-rpm-macros \
 	python3 \
 	python3-pip \
-	python3-setuptools
+	python3-setuptools \
+	sysuser-tools
