@@ -374,7 +374,7 @@ install-{{ dist["name"] }}:
   image: registry.nic.cz/labs/bird:{{ dist["name"] }}
 {% endfor %}
 
-.install-stable-repo-rpm: &install-stable-repo-rpm
+.install-stable-repo-yum: &install-stable-repo-yum
   <<: *run-every-4-hours
   stage: install
   needs: []
@@ -404,11 +404,33 @@ install-{{ dist["name"] }}:
     - yum -y update
     - yum -y install bird-3.1.4
 
+.install-stable-repo-zypper: &install-stable-repo-zypper
+  <<: *run-every-4-hours
+  stage: install
+  needs: []
+  script:
+    # check that bird is _not_ installed now and no user or group bird exists
+    - |
+      if bird --version >/dev/null 2>&1; then
+        echo "Error: BIRD unexpectedly installed"
+        exit 1
+      fi
+      if id -g bird >/dev/null 2>&1; then
+        echo "Error: User group 'bird' exist before installation"
+        exit 1
+      fi
+      if id -u bird >/dev/null 2>&1; then
+        echo "Error: User 'bird' exist before installation"
+        exit 1
+      fi
+    - zypper ar $REPOURL bird.nic.cz
+    - zypper in bird=3.1.4
+
 {%- for dist in distros %}
 {%- if dist["type"] == "pkg-rpm" or dist["type"] == "pkg-rpm-wa" %}
 
 install-stable-repo-{{ dist["name"] }}:
-  <<: *install-stable-repo-rpm
+  <<: *install-stable-repo-{% if dist["name"][:9] == "opensuse-" %}zypper{% else %}yum{% endif %}
   image: registry.nic.cz/labs/bird:{{ dist["name"] }}
   variables:
 # This abuses the fact that we are building for amd64 only.
