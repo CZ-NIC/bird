@@ -399,6 +399,7 @@ install-{{ dist["name"] }}:
       name=bird (nic.cz)
       baseurl=$REPOURL
       enabled=1
+      gpgcheck=0
       EOF
     - yum -y update
     - yum -y install bird-3.1.4
