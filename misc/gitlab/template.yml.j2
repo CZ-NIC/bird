@@ -351,7 +351,7 @@ pkg-{{ dist["name"] }}:
         exit 1
       fi
     # install packages
-    - find pkg/pkgs/ -type f -name '*.rpm' '(' -ls -exec rpm -i '{}' ';' ')'
+    - find pkg/pkgs/ -type f -name '*.rpm' '(' -ls -exec $RPM_INSTALL_CMD '{}' ';' ')'
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
 
@@ -366,6 +366,12 @@ install-{{ dist["name"] }}:
   needs:
     - job: pkg-{{ dist["name"] }}
   image: registry.nic.cz/labs/bird:{{ dist["name"] }}
+  variables:
+{%- if dist["name"][:12] == "opensuse-16." %}
+    RPM_INSTALL_CMD: zypper --non-interactive --no-gpg-checks in
+{%- else %}
+    RPM_INSTALL_CMD: rpm -i
+{%- endif %}
 {% endfor %}
 
 ###################################

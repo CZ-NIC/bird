@@ -28,6 +28,8 @@ distros:
   - name: opensuse-15.{{ num }}-amd64
     type: pkg-rpm-wa
   {% endfor %}
+  - name: opensuse-16.0-amd64
+    type: pkg-rpm
 
   # Fedora regular builds
   {% for num in (34, 35, 36, 37, 38, 39, 40, 41, 42) -%}

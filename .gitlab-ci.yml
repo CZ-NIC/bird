@@ -196,6 +196,11 @@ docker-opensuse-15.5-amd64:
     IMG_NAME: "opensuse-15.5-amd64"
   <<: *docker-build
 
+docker-opensuse-16.0-amd64:
+  variables:
+    IMG_NAME: "opensuse-16.0-amd64"
+  <<: *docker-build
+
 docker-fedora-34-amd64:
   variables:
     IMG_NAME: "fedora-34-amd64"
@@ -458,6 +463,13 @@ build-opensuse-15.5-amd64:
     - job: docker-opensuse-15.5-amd64
       optional: true
   image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
+
+build-opensuse-16.0-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-opensuse-16.0-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:opensuse-16.0-amd64
 
 build-fedora-34-amd64:
   <<: *build-docker-linux-amd64
@@ -817,6 +829,14 @@ pkg-opensuse-15.5-amd64:
     - job: build-release
   image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
 
+pkg-opensuse-16.0-amd64:
+  <<: *pkg-rpm
+  needs:
+    - job: build-opensuse-16.0-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:opensuse-16.0-amd64
+
 pkg-fedora-34-amd64:
   <<: *pkg-rpm
   needs:
@@ -1054,7 +1074,7 @@ pkg-ubuntu-24.10-amd64:
         exit 1
       fi
     # install packages
-    - find pkg/pkgs/ -type f -name '*.rpm' '(' -ls -exec rpm -i '{}' ';' ')'
+    - find pkg/pkgs/ -type f -name '*.rpm' '(' -ls -exec $RPM_INSTALL_CMD '{}' ';' ')'
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
 
@@ -1064,216 +1084,296 @@ install-centos-7-amd64:
   needs:
     - job: pkg-centos-7-amd64
   image: registry.nic.cz/labs/bird:centos-7-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-centos-8-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-centos-8-amd64
   image: registry.nic.cz/labs/bird:centos-8-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-rocky-08-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-rocky-08-amd64
   image: registry.nic.cz/labs/bird:rocky-08-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-rocky-09-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-rocky-09-amd64
   image: registry.nic.cz/labs/bird:rocky-09-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-fedora-32-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-32-amd64
   image: registry.nic.cz/labs/bird:fedora-32-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-fedora-33-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-33-amd64
   image: registry.nic.cz/labs/bird:fedora-33-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-opensuse-15.0-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-opensuse-15.0-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.0-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-opensuse-15.1-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-opensuse-15.1-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.1-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-opensuse-15.2-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-opensuse-15.2-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.2-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-opensuse-15.3-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-opensuse-15.3-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-opensuse-15.4-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-opensuse-15.4-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-opensuse-15.5-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-opensuse-15.5-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
+
+install-opensuse-16.0-amd64:
+  <<: *install-rpm
+  needs:
+    - job: pkg-opensuse-16.0-amd64
+  image: registry.nic.cz/labs/bird:opensuse-16.0-amd64
+  variables:
+    RPM_INSTALL_CMD: zypper --non-interactive --no-gpg-checks in
 
 install-fedora-34-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-34-amd64
   image: registry.nic.cz/labs/bird:fedora-34-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-fedora-35-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-35-amd64
   image: registry.nic.cz/labs/bird:fedora-35-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-fedora-36-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-36-amd64
   image: registry.nic.cz/labs/bird:fedora-36-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-fedora-37-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-37-amd64
   image: registry.nic.cz/labs/bird:fedora-37-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-fedora-38-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-38-amd64
   image: registry.nic.cz/labs/bird:fedora-38-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-fedora-39-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-39-amd64
   image: registry.nic.cz/labs/bird:fedora-39-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-fedora-40-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-40-amd64
   image: registry.nic.cz/labs/bird:fedora-40-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-fedora-41-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-41-amd64
   image: registry.nic.cz/labs/bird:fedora-41-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-fedora-42-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-42-amd64
   image: registry.nic.cz/labs/bird:fedora-42-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-ubuntu-18.04-amd64:
   <<: *install-deb
   needs:
     - job: pkg-ubuntu-18.04-amd64
   image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-debian-11-i386:
   <<: *install-deb
   needs:
     - job: pkg-debian-11-i386
   image: registry.nic.cz/labs/bird:debian-11-i386
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-debian-11-amd64:
   <<: *install-deb
   needs:
     - job: pkg-debian-11-amd64
   image: registry.nic.cz/labs/bird:debian-11-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-debian-10-amd64:
   <<: *install-deb
   needs:
     - job: pkg-debian-10-amd64
   image: registry.nic.cz/labs/bird:debian-10-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-debian-10-i386:
   <<: *install-deb
   needs:
     - job: pkg-debian-10-i386
   image: registry.nic.cz/labs/bird:debian-10-i386
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-debian-12-amd64:
   <<: *install-deb
   needs:
     - job: pkg-debian-12-amd64
   image: registry.nic.cz/labs/bird:debian-12-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-debian-12-i386:
   <<: *install-deb
   needs:
     - job: pkg-debian-12-i386
   image: registry.nic.cz/labs/bird:debian-12-i386
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-debian-13-amd64:
   <<: *install-deb
   needs:
     - job: pkg-debian-13-amd64
   image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-debian-13-i386:
   <<: *install-deb
   needs:
     - job: pkg-debian-13-i386
   image: registry.nic.cz/labs/bird:debian-13-i386
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-debian-testing-amd64:
   <<: *install-deb
   needs:
     - job: pkg-debian-testing-amd64
   image: registry.nic.cz/labs/bird:debian-testing-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-debian-testing-i386:
   <<: *install-deb
   needs:
     - job: pkg-debian-testing-i386
   image: registry.nic.cz/labs/bird:debian-testing-i386
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-ubuntu-20.04-amd64:
   <<: *install-deb
   needs:
     - job: pkg-ubuntu-20.04-amd64
   image: registry.nic.cz/labs/bird:ubuntu-20.04-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-ubuntu-22.04-amd64:
   <<: *install-deb
   needs:
     - job: pkg-ubuntu-22.04-amd64
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-ubuntu-24.04-amd64:
   <<: *install-deb
   needs:
     - job: pkg-ubuntu-24.04-amd64
   image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 install-ubuntu-24.10-amd64:
   <<: *install-deb
   needs:
     - job: pkg-ubuntu-24.10-amd64
   image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
 
 
 ###################################

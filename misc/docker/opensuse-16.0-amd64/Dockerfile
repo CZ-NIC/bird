@@ -1,5 +1,5 @@
 # bump number for image rebuild: 0
-FROM opensuse/leap:15.3
+FROM opensuse/leap:16.0
 RUN zypper -n up
 RUN zypper -n install \
 	gcc \
