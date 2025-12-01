@@ -368,6 +368,46 @@ install-{{ dist["name"] }}:
   image: registry.nic.cz/labs/bird:{{ dist["name"] }}
 {% endfor %}
 
+.install-stable-repo-rpm: &install-stable-repo-rpm
+  <<: *test-job
+  stage: install
+  script:
+    # check that bird is _not_ installed now and no user or group bird exists
+    - |
+      if bird --version >/dev/null 2>&1; then
+        echo "Error: BIRD unexpectedly installed"
+        exit 1
+      fi
+      if id -g bird >/dev/null 2>&1; then
+        echo "Error: User group 'bird' exist before installation"
+        exit 1
+      fi
+      if id -u bird >/dev/null 2>&1; then
+        echo "Error: User 'bird' exist before installation"
+        exit 1
+      fi
+    - |
+      cat > /etc/yum.repo.d/bird.nic.cz.repo <<EOF
+      [bird]
+      name=bird (nic.cz)
+      baseurl=$REPOURL
+      enabled=1
+      EOF
+    - yum -y update
+    - yum -y install bird=3.1.4
+
+{%- for dist in distros %}
+{%- if dist["type"] == "pkg-rpm" or dist["type"] == "pkg-rpm-wa" %}
+
+install-stable-repo-{{ dist["name"] }}:
+  <<: *install-stable-repo-rpm
+  image: registry.nic.cz/labs/bird:{{ dist["name"] }}
+  variables:
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/{{ dist["name"].split("-") | join("/") }}/x64_64
+{%- endif %}
+{%- endfor %}
+
+
 ###################################
 ## Non-linux build tests in QEMU ##
 ###################################
