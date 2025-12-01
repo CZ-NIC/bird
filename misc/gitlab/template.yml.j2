@@ -410,7 +410,8 @@ install-stable-repo-{{ dist["name"] }}:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:{{ dist["name"] }}
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/{{ dist["name"].split("-") | join("/") }}/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/{{ dist["name"].split("-")[:2] | join("/") }}/x86_64
 {%- endif %}
 {%- endfor %}
 

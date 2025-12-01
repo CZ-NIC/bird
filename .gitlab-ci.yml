@@ -1315,127 +1315,148 @@ install-stable-repo-centos-7-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:centos-7-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/centos/7/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/centos/7/x86_64
 
 install-stable-repo-centos-8-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:centos-8-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/centos/8/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/centos/8/x86_64
 
 install-stable-repo-rocky-08-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:rocky-08-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/rocky/08/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/rocky/08/x86_64
 
 install-stable-repo-rocky-09-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:rocky-09-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/rocky/09/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/rocky/09/x86_64
 
 install-stable-repo-fedora-32-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:fedora-32-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/32/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/32/x86_64
 
 install-stable-repo-fedora-33-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:fedora-33-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/33/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/33/x86_64
 
 install-stable-repo-opensuse-15.0-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:opensuse-15.0-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/opensuse/15.0/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/opensuse/15.0/x86_64
 
 install-stable-repo-opensuse-15.1-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:opensuse-15.1-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/opensuse/15.1/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/opensuse/15.1/x86_64
 
 install-stable-repo-opensuse-15.2-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:opensuse-15.2-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/opensuse/15.2/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/opensuse/15.2/x86_64
 
 install-stable-repo-opensuse-15.3-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/opensuse/15.3/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/opensuse/15.3/x86_64
 
 install-stable-repo-opensuse-15.4-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/opensuse/15.4/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/opensuse/15.4/x86_64
 
 install-stable-repo-opensuse-15.5-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/opensuse/15.5/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/opensuse/15.5/x86_64
 
 install-stable-repo-fedora-34-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:fedora-34-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/34/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/34/x86_64
 
 install-stable-repo-fedora-35-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:fedora-35-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/35/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/35/x86_64
 
 install-stable-repo-fedora-36-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:fedora-36-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/36/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/36/x86_64
 
 install-stable-repo-fedora-37-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:fedora-37-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/37/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/37/x86_64
 
 install-stable-repo-fedora-38-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:fedora-38-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/38/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/38/x86_64
 
 install-stable-repo-fedora-39-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:fedora-39-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/39/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/39/x86_64
 
 install-stable-repo-fedora-40-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:fedora-40-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/40/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/40/x86_64
 
 install-stable-repo-fedora-41-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:fedora-41-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/41/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/41/x86_64
 
 install-stable-repo-fedora-42-amd64:
   <<: *install-stable-repo-rpm
   image: registry.nic.cz/labs/bird:fedora-42-amd64
   variables:
-    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/42/amd64/x64_64
+# This abuses the fact that we are building for amd64 only.
+    REPOURL: http://pkg.labs.nic.cz/rpm/bird/fedora/42/x86_64
 
 
 ###################################
