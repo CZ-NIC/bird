@@ -388,7 +388,7 @@ install-{{ dist["name"] }}:
         exit 1
       fi
     - |
-      cat > /etc/yum.repo.d/bird.nic.cz.repo <<EOF
+      cat > /etc/yum.repos.d/bird.nic.cz.repo <<EOF
       [bird]
       name=bird (nic.cz)
       baseurl=$REPOURL
