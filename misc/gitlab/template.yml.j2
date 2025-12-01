@@ -424,7 +424,7 @@ install-{{ dist["name"] }}:
         exit 1
       fi
     - zypper ar $REPOURL bird.nic.cz
-    - zypper in --non-interactive --allow-unsigned-rpm bird=3.1.4
+    - zypper --no-gpg-checks --non-interactive --allow-unsigned-rpm in bird=3.1.4
 
 {%- for dist in distros %}
 {%- if dist["type"] == "pkg-rpm" or dist["type"] == "pkg-rpm-wa" %}
