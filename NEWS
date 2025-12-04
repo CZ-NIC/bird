@@ -1,3 +1,13 @@
+Version 3.1.5 (2025-12-04)
+  o Babel, OSPF, RIP: Fix crash on interface reconfiguration
+  o RAdv: Fix flags for deprecated prefixes
+  o MRT: Fix dumps with layered attibutes
+  o MRT: Fix crash when protocol mrtdump configured without a specified file
+  o Filters: Fix undefined memory access in nexthop handling
+  o BSD: Fix export of non-multipath routes
+  o Conf: Fix thread groups.
+  o Conf: Implicit symbols should not generate warnings when overriding keywords
+
 Version 3.1.4 (2025-09-22)
   o BGP: Fixed crash on Notification with a message
   o BGP: Fixed invalid memory access in pending TX flush
