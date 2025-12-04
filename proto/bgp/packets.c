@@ -2870,6 +2870,7 @@ bgp_rx_end_mark(struct bgp_parse_state *s, u32 afi)
     p->rtfilter_initial_feed = false;
 
     /* Calling settle timer hook manually */
+    log("End of initial feed, triggering rebuilding rtfilter tree manually...");
     bgp_build_rtfilter_tree_on_settle(&p->rtfilter_settle);
 
     /* Reconfigure settle timer after initial feed */

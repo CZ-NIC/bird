@@ -1746,6 +1746,8 @@ bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
 static struct f_tree *
 bgp_build_rtfilter_tree(struct bgp_proto *p)
 {
+  log("Rebuilding rtfilter tree...");
+  log("%d entries in rtfilter FIB", p->rtfilter_fib.entries);
   int len = p->rtfilter_fib.entries;
   int pos = 0;
 
@@ -1783,6 +1785,7 @@ bgp_build_rtfilter_tree(struct bgp_proto *p)
 void
 bgp_build_rtfilter_tree_on_settle(struct settle *s)
 {
+  log("Triggering rebulding rtfilter tree on settle timer...");
   struct bgp_proto *p = SKIP_BACK(struct bgp_proto, rtfilter_settle, s);
 
   settle_cancel(s);
@@ -1870,6 +1873,14 @@ bgp_preexport(struct channel *C, rte *e)
   if ((src == p) && bgp_apply_split_horizon(p, e))
     return -1;
 
+  if (p->cf->rtfilter_use &&
+      ((e->net->n.addr->type == NET_VPN4) || (e->net->n.addr->type == NET_VPN6)) &&
+      !bgp_filter_vpn_rte(p, e))
+  {
+    log("rtilfter: Rejecting %N", e->net->n.addr);
+    return -1;
+  }
+
   /* Accept non-BGP routes */
   if (src == NULL)
     return 0;
@@ -1924,11 +1935,6 @@ bgp_preexport(struct channel *C, rte *e)
 	      p->cf->local_role==BGP_ROLE_RS_CLIENT))
       return -1;
   }
-
-  if (p->cf->rtfilter_use &&
-      ((e->net->n.addr->type == NET_VPN4) || (e->net->n.addr->type == NET_VPN6)) &&
-      !bgp_filter_vpn_rte(p, e))
-    return -1;
 
   return 0;
 }
