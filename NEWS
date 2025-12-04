@@ -1,3 +1,7 @@
+Version 2.17.3 (2025-12-04)
+  o RAdv: Fix flags for deprecated prefixes
+  o BMP: Fix crash when exporting a route with non-bgp attributes
+
 Version 2.17.2 (2025-09-03)
   o ASPA check fix for AS_SET
   o Invalid check fix in text_or_ipa grammar
