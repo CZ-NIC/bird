@@ -1,11 +1,5 @@
 # bump this to refresh the image: 1
-<<<<<<<< HEAD:misc/docker/ubuntu-25.04-amd64/Dockerfile
-FROM ubuntu:25.04
-|||||||| parent of f88de9142 (CI: Update supported distributions):misc/docker/ubuntu-24.10-amd64/Dockerfile
-FROM ubuntu:24.10
-========
 FROM ubuntu:25.10
->>>>>>>> f88de9142 (CI: Update supported distributions):misc/docker/ubuntu-25.10-amd64/Dockerfile
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get -y update
 RUN apt-get -y upgrade
