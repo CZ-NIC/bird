@@ -14,6 +14,7 @@ RUN yum -y install \
 	readline-devel
 RUN yum -y install \
 	git \
+	redhat-lsb-core \
 	rpm-build \
 	systemd-rpm-macros \
 	python3 \

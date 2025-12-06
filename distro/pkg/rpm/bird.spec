@@ -9,7 +9,7 @@
 
 Name:             bird
 Version:          {{ version }}
-Release:          cznic.{{ release }}%{?dist}
+Release:          cznic.1%{?dist}
 Summary:          BIRD Internet Routing Daemon
 
 Group:            System Environment/Daemons
@@ -88,12 +88,11 @@ powerful language for route filtering.
 %install
 %make_install
 
-{% raw %}
-install -d %{buildroot}{%{_localstatedir}/lib/bird,%{_rundir}/bird}
+install -d %{buildroot}%{_localstatedir}/lib/bird
+install -d %{buildroot}%{_rundir}/bird
 install -D -p -m 0644 %{SOURCE1} %{buildroot}%{_unitdir}/bird.service
 install -D -p -m 0644 %{SOURCE2} %{buildroot}%{_tmpfilesdir}/bird.conf
 install -D -p -m 0644 %{SOURCE3} %{buildroot}%{_sysusersdir}/system-user-bird.conf
-{% endraw %}
 
 %check
 %if 0%{?rhel} && 0%{?rhel} < 8
@@ -150,5 +149,5 @@ getent passwd %{bird_user} >/dev/null || useradd -r -g %{bird_group} -d /var/lib
 %endif
 
 %changelog
-* Wed Apr 07 2021 Jakub Ružička <jakub.ruzicka@nic.cz> - {{ version }}-cznic.1
+* {{ now }} Maria Matejka <maria.matejka@nic.cz> - {{ version }}-cznic.1
 - upstream package

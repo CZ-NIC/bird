@@ -4,18 +4,14 @@
 do not supply official BIRD images and do not prepare any Docker files ourselves.**
 
 We build for the major Linux distributions, FreeBSD and OpenBSD. If you feel
-that your favourite Linux distribution is missing, feel free to send a patch.
+that your favourite Linux distribution is missing, please send a patch.
 
 Where to add your favourite Linux distribution:
 
 - add an appropriate dockerfile here
-- add `docker-*` job in `.gitlab-ci.yml`
-- add `build-*` job in `.gitlab-ci.yml`
-- add `pkg-*` job in `.gitlab-ci.yml`
-
-Our build machinery needs at least Python 3.6 because of `beautifulsoup4`.
-There is a hack for older distributions, installing an older version of
-that dependency which works also with an older Python.
+- possibly add `pkg-*` and `install-*` template job in `misc/gitlab/template.yml.j2`
+- add your distribution into the `distros` list in `misc/gitlab/data.yml.j2`
+- run `make gitlab-local` or `make gitlab-venv` to rebuild `.gitlab-ci.yml`
 
 ## Debian-based distributions
 
@@ -27,20 +23,19 @@ have resources to build against.
 
 ## RedHat-based distributions
 
-We support OpenSUSE, Fedora and CentOS. If you are missing your favourite new
-release, poke us. We are discontinuing the old releases as they stop working.
+We support OpenSUSE, Fedora, CentOS 7+8, Rocky Linux and Oracle Linux. If you are
+missing your favourite new release, poke us. We are discontinuing the old
+releases as they stop working.
 
 The current support for CentOS 7 and 8 has been paid for and we may drop it without
 further notice at the exact moment the customer stops using it.
 
+We failed to find a reliable Docker image for Rocky Linux 10.
+
 ## Any other based distributions
 
-We currently don't package for Arch or Gentoo. Contributions are open, please
-refer to `CONTRIBUTING.md` for further information.
-
-You may also need to send a patch to [APKG](https://gitlab.nic.cz/packaging/apkg)
-to facilitate the package building. Yet, if you wish to just test and check
-builds without packaging, feel free to send the patch anyway.
+We currently don't package for e.g. Alpine, Arch, Gentoo, Mint or Slackware.
+Contributions are open, please refer to `CONTRIBUTING.md` for further information.
 
 ## FreeBSD and OpenBSD
 

@@ -238,6 +238,16 @@ install-docs:
 	$(INSTALL) -d $(DESTDIR)/$(docdir)
 	$(INSTALL_DATA) $(objdir)/doc/{bird,prog}{,-*}.html $(DESTDIR)/$(docdir)/
 
+# Packaging
+archive:
+	tools/make-archive
+
+deb:
+	tools/make-deb
+
+rpm:
+	tools/make-rpm
+
 # Cleanup
 clean::
 	rm -f $(objdir)/sysdep/paths.h $(objdir)/nest/proto-build.c
@@ -256,3 +266,42 @@ distclean: clean
 	rm -rf * .dir-stamp
 	rm -f config.log config.status configure Makefile
 endif
+
+# Help dump
+help:
+	@echo "============================= BIRD make system ============================="
+	@echo
+	@echo "To build BIRD directly from sources, run './configure'. For more information"
+	@echo "about that process, run './configure --help'."
+	@echo "To build BIRD from Git repo, run 'autoreconf' before './configure'."
+	@echo
+	@echo "Source build options:"
+	@echo "    make all                  Build BIRD binaries."
+	@echo "    make test                 Build and run unit tests."
+	@echo "    make docs                 Build documentation."
+	@echo
+	@echo "Partial build options:"
+	@echo "    make obj/path/to/foo.o    Build an object file, don't link."
+	@echo "    make obj/path/to/foo.E    Run only the C preprocessor."
+	@echo "    make obj/path/to/foo.S    Generate an assembler dump."
+	@echo
+	@echo "Development tools:"
+	@echo "    make static-scan          Run CLang static analyzer."
+	@echo "    make tags                 Generate ETags cache."
+	@echo "    make cscope               Generate CScope cache."
+	@echo
+	@echo "Auxiliary commands:"
+	@echo "    make help                 Show this help."
+	@echo "    make clean                Cleanup the build directory. Useful after"
+	@echo "                              major changes or branch switch."
+	@echo "    make distclean            Cleanup everything so that you will have to"
+	@echo "                              run './configure' again."
+	@echo "    make gitlab-local         Re-generate .gitlab-ci.yml without venv"
+	@echo "    make gitlab-venv          Re-generate .gitlab-ci.yml inside a tmp venv"
+	@echo
+	@echo "Distribution commands:"
+	@echo "    make install              Install binaries into the system."
+	@echo "    make archive              Create a release archive (TGZ).
+	@echo "                              This must exist for 'make deb' and 'make rpm'."
+	@echo "    make deb                  Create a DEB package for the current system."
+	@echo "    make rpm                  Create an RPM package for the current system."
