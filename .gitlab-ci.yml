@@ -275,16 +275,6 @@ docker-debian-11-amd64:
     IMG_NAME: "debian-11-amd64"
   <<: *docker-build
 
-docker-debian-10-amd64:
-  variables:
-    IMG_NAME: "debian-10-amd64"
-  <<: *docker-build
-
-docker-debian-10-i386:
-  variables:
-    IMG_NAME: "debian-10-i386"
-  <<: *docker-build
-
 docker-debian-12-amd64:
   variables:
     IMG_NAME: "debian-12-amd64"
@@ -330,9 +320,14 @@ docker-ubuntu-24.04-amd64:
     IMG_NAME: "ubuntu-24.04-amd64"
   <<: *docker-build
 
-docker-ubuntu-24.10-amd64:
+docker-ubuntu-25.04-amd64:
   variables:
-    IMG_NAME: "ubuntu-24.10-amd64"
+    IMG_NAME: "ubuntu-25.04-amd64"
+  <<: *docker-build
+
+docker-ubuntu-25.10-amd64:
+  variables:
+    IMG_NAME: "ubuntu-25.10-amd64"
   <<: *docker-build
 
 
@@ -590,20 +585,6 @@ build-debian-11-amd64:
       optional: true
   image: registry.nic.cz/labs/bird:debian-11-amd64
 
-build-debian-10-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-10-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-10-amd64
-
-build-debian-10-i386:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-10-i386
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-10-i386
-
 build-debian-12-amd64:
   <<: *build-docker-linux-amd64
   needs:
@@ -667,12 +648,19 @@ build-ubuntu-24.04-amd64:
       optional: true
   image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
 
-build-ubuntu-24.10-amd64:
+build-ubuntu-25.04-amd64:
   <<: *build-docker-linux-amd64
   needs:
-    - job: docker-ubuntu-24.10-amd64
+    - job: docker-ubuntu-25.04-amd64
       optional: true
-  image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+
+build-ubuntu-25.10-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-25.10-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
 
 
 #######################################################
@@ -992,22 +980,6 @@ pkg-debian-11-amd64:
     - job: build-release
   image: registry.nic.cz/labs/bird:debian-11-amd64
 
-pkg-debian-10-amd64:
-  <<: *pkg-deb
-  needs:
-    - job: build-debian-10-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-10-amd64
-
-pkg-debian-10-i386:
-  <<: *pkg-deb
-  needs:
-    - job: build-debian-10-i386
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-10-i386
-
 pkg-debian-12-amd64:
   <<: *pkg-deb
   needs:
@@ -1080,13 +1052,21 @@ pkg-ubuntu-24.04-amd64:
     - job: build-release
   image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
 
-pkg-ubuntu-24.10-amd64:
+pkg-ubuntu-25.04-amd64:
   <<: *pkg-deb
   needs:
-    - job: build-ubuntu-24.10-amd64
+    - job: build-ubuntu-25.04-amd64
       artifacts: false
     - job: build-release
-  image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+
+pkg-ubuntu-25.10-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: build-ubuntu-25.10-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
 
 
 ## Package installability checks
@@ -1306,18 +1286,6 @@ install-debian-11-amd64:
     - job: pkg-debian-11-amd64
   image: registry.nic.cz/labs/bird:debian-11-amd64
 
-install-debian-10-amd64:
-  <<: *install-deb
-  needs:
-    - job: pkg-debian-10-amd64
-  image: registry.nic.cz/labs/bird:debian-10-amd64
-
-install-debian-10-i386:
-  <<: *install-deb
-  needs:
-    - job: pkg-debian-10-i386
-  image: registry.nic.cz/labs/bird:debian-10-i386
-
 install-debian-12-amd64:
   <<: *install-deb
   needs:
@@ -1372,11 +1340,17 @@ install-ubuntu-24.04-amd64:
     - job: pkg-ubuntu-24.04-amd64
   image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
 
-install-ubuntu-24.10-amd64:
+install-ubuntu-25.04-amd64:
   <<: *install-deb
   needs:
-    - job: pkg-ubuntu-24.10-amd64
-  image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
+    - job: pkg-ubuntu-25.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+
+install-ubuntu-25.10-amd64:
+  <<: *install-deb
+  needs:
+    - job: pkg-ubuntu-25.10-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
 
 
 ###################################
