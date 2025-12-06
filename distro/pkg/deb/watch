@@ -1,2 +1,2 @@
 version=4
-https://bird.network.cz/download/bird-(2\.[\d.]+).tar.gz
+https://bird.nic.cz/get-bird/ /download/bird-(2.17.\d+).tar.gz
