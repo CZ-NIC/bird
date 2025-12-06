@@ -51,7 +51,7 @@ distros:
   {% endfor %}
 
   # Debian regular builds
-  {% for num in (10, 12, 13, 'testing') -%}
+  {% for num in (12, 13, 'testing') -%}
   {% for arch in ('amd64', 'i386') -%}
   - name: debian-{{num}}-{{arch}}
     type: pkg-deb
@@ -59,7 +59,7 @@ distros:
   {% endfor %}
 
   # Ubuntu regular builds
-  {% for num in ('20.04', '22.04', '24.04', '25.04') -%}
+  {% for num in ('20.04', '22.04', '24.04', '25.04', '25.10') -%}
   - name: ubuntu-{{ num }}-amd64
     type: pkg-deb
   {% endfor %}

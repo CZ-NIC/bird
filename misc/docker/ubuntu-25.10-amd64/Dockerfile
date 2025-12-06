@@ -1,5 +1,5 @@
 # bump this to refresh the image: 1
-FROM ubuntu:25.04
+FROM ubuntu:25.10
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get -y update
 RUN apt-get -y upgrade
