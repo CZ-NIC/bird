@@ -1,0 +1,74 @@
+#!/bin/bash
+
+# Run this script after tools/make-archive
+
+set -e
+
+BUILD=false
+SOURCE=false
+
+for OPT in $(getopt -o BS -n "$0" -- "$@"); do
+  case "$OPT" in
+    '-B')
+      BUILD=true
+      continue
+      ;;
+    '-S')
+      SOURCE=true
+      continue
+      ;;
+    '--')
+      continue
+      ;;
+    -*)
+      echo "Unknown option $OPT"
+      exit 2
+      ;;
+    *)
+      echo "Invalid argument $OPT"
+      exit 2
+      ;;
+  esac
+done 
+
+PKGVERSION=$(tools/version)
+TMPDIR=$(mktemp -dp .)
+DEBPKGSTEM=bird${PKGVERSION:0:1}_$PKGVERSION
+DEBIAN_RELEASE=$(lsb_release -cs)
+ORIG=$(pwd)
+DIRTARGET=$(lsb_release -is)-$(lsb_release -rs | tr '/' '-')
+DIRTARGET=${DIRTARGET,,}
+SRCTARGET=${ORIG}/pkg/srcpkgs/$DIRTARGET/$DEBPKGSTEM-cznic.1/
+BINTARGET=${ORIG}/pkg/pkgs/$DIRTARGET/$DEBPKGSTEM-cznic.1/
+
+echo "Packaging BIRD $PKGVERSION for $(lsb_release -is) $(lsb_release -rs) $(lsb_release -cs) in $TMPDIR"
+
+lsb_release -a
+
+mkdir -p $SRCTARGET $BINTARGET
+
+pushd $TMPDIR 
+  ln ${ORIG}/bird-$PKGVERSION.tar.gz $DEBPKGSTEM.orig.tar.gz
+  tar xf $DEBPKGSTEM.orig.tar.gz
+  pushd bird-$PKGVERSION
+    # Local-fix version
+    cp -r ${ORIG}/distro/pkg/deb debian
+    sed -i "s#{{ version }}#$PKGVERSION#;s#{{ release }}#1~$DEBIAN_RELEASE#;s#{{ now }}#$(date -R)#;" debian/changelog
+
+    # Prepare files for dput
+    if $SOURCE; then
+      dpkg-buildpackage -S -sa -d -us -uc
+      mv ../bird?_*-cznic* ${SRCTARGET}/
+      ln ../bird?_*.orig.tar.gz ${SRCTARGET}/
+    fi
+
+    # Build locally
+    if $BUILD; then
+      dpkg-buildpackage -B -sa -d -us -uc
+      mv ../bird?{,-dbgsym}_*-cznic* ${BINTARGET}/
+      ln ../bird?_*.orig.tar.gz ${BINTARGET}/
+    fi
+  popd
+popd
+
+rm -rf $TMPDIR
