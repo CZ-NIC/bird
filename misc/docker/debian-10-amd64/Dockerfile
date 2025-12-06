@@ -20,6 +20,7 @@ RUN apt-get -y --no-install-recommends install \
 	git \
 	dpkg-dev \
 	debhelper \
+	lsb-release \
 	quilt \
 	python3 \
 	python3-pip \
