@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# Run this script after tools/make-archive
+
+set -e
+
+if [ -n "$STABLE_BUILDDIR" ] && $STABLE_BUILDDIR; then
+  TMPDIR=/tmp/dpkg-buildpackage/bird
+  if [ -d $TMPDIR ]; then
+    echo "Another build is running in $TMPDIR, bad!"
+    exit 1
+  fi
+  mkdir -p $TMPDIR
+  pushd $TMPDIR
+    rm -rf *
+  popd
+else
+  TMPDIR=$(readlink -f $(mktemp -dp .))
+fi
+
+PKGVERSION=$(tools/version)
+DEBPKGSTEM=bird${PKGVERSION:0:1}_$PKGVERSION
+DEBIAN_RELEASE=$(lsb_release -cs)
+ORIG=$(pwd)
+DIRTARGET=$(lsb_release -is)-$(lsb_release -rs | tr '/' '-')
+DIRTARGET=${DIRTARGET,,}
+SRCTARGET=${ORIG}/pkg/srcpkgs/$DIRTARGET/$DEBPKGSTEM-cznic.1/
+BINTARGET=${ORIG}/pkg/pkgs/$DIRTARGET/$DEBPKGSTEM-cznic.1/
+
+echo "Packaging BIRD $PKGVERSION for $(lsb_release -is) $(lsb_release -rs) $(lsb_release -cs) in $TMPDIR"
+
+lsb_release -a
+
+mkdir -p $SRCTARGET $BINTARGET
+
+pushd $TMPDIR
+  cp ${ORIG}/bird-$PKGVERSION.tar.gz $DEBPKGSTEM.orig.tar.gz
+  tar xf $DEBPKGSTEM.orig.tar.gz
+  pushd bird-$PKGVERSION
+    # Fix time
+    COMMIT_DATE=@$(stat -c '%Y' ChangeLog)
+
+    # Local-fix version
+    cp -r ${ORIG}/distro/pkg/deb debian
+    sed -i "s#{{ version }}#$PKGVERSION#;s#{{ release }}#1~$DEBIAN_RELEASE#;s#{{ now }}#$(date -d "$COMMIT_DATE" -R)#;" debian/changelog
+    touch -d "$COMMIT_DATE" debian debian/*
+
+    # Create source package
+    dpkg-buildpackage -S -sa -d -us -uc
+    cp ../bird?_*-cznic* ${SRCTARGET}/
+    cp ../bird?_*.orig.tar.gz ${SRCTARGET}/
+  popd
+
+  rm -rf bird-$PKGVERSION
+  dpkg-source -x *.dsc
+
+  pushd bird${PKGVERSION:0:1}-$PKGVERSION
+    # Build locally
+    dpkg-buildpackage -B -sa -d -us -uc
+    mv ../bird?{,-dbgsym}_*-cznic* ${BINTARGET}/
+    cp ../bird?_*.orig.tar.gz ${BINTARGET}/
+  popd
+popd
+
+rm -rf $TMPDIR

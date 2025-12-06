@@ -2,6 +2,8 @@
 # check latest supported version at https://wiki.rockylinux.org/rocky/version/#__tabbed_1_2
 FROM oraclelinux:10
 
+RUN dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+
 RUN yum -y upgrade
 RUN yum -y install \
 	gcc \
@@ -14,7 +16,9 @@ RUN yum -y install \
 	readline-devel
 RUN yum -y install \
 	git \
+	lsb-release \
 	rpm-build \
+	faketime \
 	systemd \
 	systemd-rpm-macros \
 	python3 \

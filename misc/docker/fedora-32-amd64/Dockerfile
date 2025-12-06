@@ -13,7 +13,9 @@ RUN dnf -y install \
 	readline-devel
 RUN dnf -y install \
 	git \
+	redhat-lsb-core \
 	rpm-build \
+	faketime \
 	systemd-rpm-macros \
 	python3 \
 	python3-pip \
