@@ -13,7 +13,9 @@ RUN zypper -n install \
 	readline-devel
 RUN zypper -n install \
 	git \
+	lsb-release \
 	rpm-build \
+	libfaketime \
 	systemd \
 	systemd-rpm-macros \
 	python3 \

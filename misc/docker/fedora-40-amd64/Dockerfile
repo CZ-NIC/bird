@@ -13,7 +13,9 @@ RUN dnf -y install \
 	readline-devel
 RUN dnf -y install \
 	git \
+	lsb-release \
 	rpm-build \
+	faketime \
 	systemd \
 	systemd-rpm-macros \
 	python3 \

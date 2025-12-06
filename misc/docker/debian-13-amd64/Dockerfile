@@ -21,6 +21,7 @@ RUN apt-get -y --no-install-recommends install \
 	git \
 	dpkg-dev \
 	debhelper \
+	lsb-release \
 	apt-utils \
 	quilt \
 	python3 \

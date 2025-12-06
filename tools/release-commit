@@ -71,14 +71,12 @@ if [ "$badlines" != 0 ]; then
   exit 1
 fi
 
-# Do the changes in the repository: NEWS, bird.spec and VERSION
+# Do the changes in the repository: NEWS and VERSION
 echo >> $news
 cat NEWS >> $news
 mv $news NEWS
 
-sed -i "s/^Version: $current_version\$/Version: $new_version/" misc/bird.spec
-
 echo $new_version > VERSION
 
 # Commit!
-git commit -m "NEWS and version update" -- NEWS VERSION misc/bird.spec
+git commit -m "NEWS and version update" -- NEWS VERSION

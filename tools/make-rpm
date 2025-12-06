@@ -1,0 +1,83 @@
+#!/bin/bash
+
+# Run this script after tools/make-archive
+
+set -e
+
+if lsb-release >/dev/null 2>/dev/null; then
+  LSB_RELEASE=lsb-release
+elif lsb_release >/dev/null 2>/dev/null; then 
+  LSB_RELEASE=lsb_release
+fi
+
+if faketime >/dev/null 2>/dev/null; then
+  FAKETIME=faketime
+else
+  faketime() {
+    shift
+    shift
+    "$@"
+  }
+  echo "WARNING: For fully reproducible builds, faketime is required to reset the time to the release time."
+fi
+
+if [ -n "$STABLE_BUILDDIR" ] && $STABLE_BUILDDIR; then
+  TMPDIR=/tmp/rpmbuild/bird
+  if [ -d $TMPDIR ]; then
+    echo "Another build is running in $TMPDIR, bad!"
+    exit 1
+  fi
+  mkdir -p $TMPDIR
+  pushd $TMPDIR
+    rm -rf *
+  popd
+else
+  TMPDIR=$(readlink -f $(mktemp -dp .))
+fi
+
+PKGVERSION=$(tools/version)
+RPMPKGSTEM=bird-$PKGVERSION
+ORIG=$(pwd)
+DIRTARGET=$($LSB_RELEASE -is)-$($LSB_RELEASE -rs | tr '/' '-')
+DIRTARGET=${DIRTARGET,,}
+SRCTARGET=${ORIG}/pkg/srcpkgs/$DIRTARGET/$RPMPKGSTEM-cznic.1/
+BINTARGET=${ORIG}/pkg/pkgs/$DIRTARGET/$RPMPKGSTEM-cznic.1/
+
+echo "Packaging BIRD $PKGVERSION for $($LSB_RELEASE -is) $($LSB_RELEASE -rs) in $TMPDIR"
+
+# CentOS 7 has an old version of rpmbuild
+RPM_REBUILD_OPTION=-rb
+if [ "$($LSB_RELEASE -is)" = "CentOS" ]; then
+  R=$($LSB_RELEASE -rs)
+  if [ "${R:0:2}" = "7." ]; then
+    RPM_REBUILD_OPTION=--rebuild
+  fi
+fi
+
+$LSB_RELEASE -a
+
+mkdir -p $SRCTARGET $BINTARGET
+mkdir -p $TMPDIR/SOURCES $TMPDIR/BUILD/$RPMPKGSTEM-build
+
+cp distro/pkg/rpm/* $TMPDIR/SOURCES/
+sed -i "s#{{ version }}#$PKGVERSION#;s#{{ now }}#$(date +'%a %b %d %Y')#;" $TMPDIR/SOURCES/bird.spec
+
+cp bird-$PKGVERSION.tar.gz $TMPDIR/SOURCES/$RPMPKGSTEM.tar.gz
+pushd $TMPDIR/SOURCES
+  tar -xf bird-$PKGVERSION.tar.gz bird-$PKGVERSION/ChangeLog
+  FAKEDATE="$(date -d @$(stat -c '%Y' bird-$PKGVERSION/ChangeLog) +'%Y-%m-%d %H:%M:%S')"
+  rm -rf bird-$PKGVERSION
+popd
+
+faketime -f "$FAKEDATE" rpmbuild -D "_topdir $TMPDIR" -bs $TMPDIR/SOURCES/bird.spec
+faketime -f "$FAKEDATE" rpmbuild -D "_topdir $TMPDIR" $RPM_REBUILD_OPTION $TMPDIR/SRPMS/*.rpm
+
+for f in $(find $TMPDIR/RPMS -name '*.rpm'); do
+  cp $f $BINTARGET/
+done
+
+for f in $(find $TMPDIR/SRPMS -name '*.rpm'); do
+  cp $f $SRCTARGET/
+done
+
+rm -rf $TMPDIR
