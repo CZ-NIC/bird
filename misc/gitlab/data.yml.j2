@@ -10,47 +10,114 @@ distros:
       LC_ALL: en_US.UTF-8
       CC: /opt/rh/devtoolset-8/root/usr/bin/gcc
     type: rpm
+    arch: amd64
 
   - name: centos-8-amd64
     type: rpm
+    arch: amd64
 
   # Rocky and Oracle Linux, forks of CentOS/RHEL
-  {% for num in ('08','09') -%}
+  {%- for num in ('08','09') %}
   - name: rocky-{{ num }}-amd64
     type: rpm
-  {% endfor %}
-  {% for num in ('08','09','10') -%}
+    arch: amd64
+  {%- endfor %}
+  {%- for num in ('08','09','10') %}
   - name: oracle-{{ num }}-amd64
     type: rpm
-  {% endfor %}
+    arch: amd64
+  {%- endfor %}
 
   # Last 7 years of OpenSUSE
-  {% for num in (0,1,2,3,4,5) -%}
+  {%- for num in (0,1,2,3,4,5) %}
   - name: opensuse-15.{{ num }}-amd64
     type: rpm
-  {% endfor %}
+    arch: amd64
+  {%- endfor %}
   - name: opensuse-16.0-amd64
     type: rpm
+    arch: amd64
 
   # Last 12 versions of Fedora
-  {% for num in (32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43) -%}
+  {%- for num in (32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43) %}
   - name: fedora-{{ num }}-amd64
     type: rpm
-  {% endfor %}
+    arch: amd64
+  {%- endfor %}
 
   # Debian from oldoldstable up to testing
-  {% for num in (11, 12, 13, 'testing') -%}
-  {% for arch in ('amd64', 'i386') -%}
-  - name: debian-{{num}}-{{arch}}
+  {%- for arch in ('amd64', 'i386') %}
+  - name: debian-11-{{ arch }}
     type: deb
-  {% endfor %}
-  {% endfor %}
+    arch: {{ arch }}
+  {%- endfor %}
+
+  {%- for arch in ('amd64', 'i386', 'arm64', 'armel', 'armhf', 'mips64el', 's390x') %}
+  - name: debian-12-{{ arch }}
+    code: bookworm
+    type: deb
+    arch: {{ arch }}
+    mirror: "http://deb.debian.org/debian"
+    components: main
+  {%- endfor %}
+
+  {%- for arch in ('amd64', 'i386', 'arm64', 'armel', 'armhf', 'riscv64', 's390x') %}
+  - name: debian-13-{{ arch }}
+    code: trixie
+    type: deb
+    arch: {{ arch }}
+    mirror: "http://deb.debian.org/debian"
+    components: main
+  {%- endfor %}
+
+  {%- for arch in ('amd64', 'i386', 'arm64', 'armhf', 'riscv64', 's390x') %}
+  - name: debian-testing-{{arch}}
+    code: testing
+    type: deb
+    arch: {{ arch }}
+    mirror: "http://deb.debian.org/debian"
+    components: main
+  {%- endfor %}
 
   # Last 7 years of Ubuntu LTS
-  {% for num in ('18.04', '20.04', '22.04', '24.04', '25.04', '25.10') -%}
-  - name: ubuntu-{{ num }}-amd64
+  - name: ubuntu-18.04-amd64
     type: deb
-  {% endfor %}
+    arch: amd64
+  - name: ubuntu-20.04-amd64
+    type: deb
+    arch: amd64
+  {%- for arch in ('amd64', 'arm64', 'armhf', 'ppc64el', 'riscv64', 's390x') %}
+  - name: ubuntu-22.04-{{ arch }}
+    type: deb
+    arch: {{ arch }}
+    code: jammy
+    mirror: "http://ports.ubuntu.com/ubuntu-ports/"
+    components: main restricted universe multiverse
+  {%- endfor %}
+  {%- for arch in ('amd64', 'arm64', 'armhf', 'ppc64el', 'riscv64', 's390x') %}
+  - name: ubuntu-24.04-{{ arch }}
+    type: deb
+    arch: {{ arch }}
+    code: noble
+    mirror: "http://ports.ubuntu.com/ubuntu-ports/"
+    components: main restricted universe multiverse
+  {%- endfor %}
+  {%- for arch in ('amd64', 'arm64', 'armhf', 'ppc64el', 'riscv64', 's390x') %}
+  - name: ubuntu-25.04-{{ arch }}
+    type: deb
+    arch: {{ arch }}
+    code: plucky
+    mirror: "http://ports.ubuntu.com/ubuntu-ports/"
+    components: main restricted universe multiverse
+  {%- endfor %}
+  {%- for arch in ('amd64', 'arm64', 'armhf', 'ppc64el', 'riscv64', 's390x') %}
+  - name: ubuntu-25.10-{{ arch }}
+    type: deb
+    arch: {{ arch }}
+    code: questing
+    mirror: "http://ports.ubuntu.com/ubuntu-ports/"
+    components: main restricted universe multiverse
+  {%- endfor %}
 
 birdlab:
   - name: openbsd-75
@@ -61,17 +128,17 @@ birdlab:
     variables:
       AUTOCONF_VERSION: "2.72"
 
-  {% for num in ("09", "10") -%}
+  {%- for num in ("09", "10") %}
   - name: netbsd-{{ num }}
-  {% endfor %}
+  {%- endfor %}
 
-  {% for num in (13, 14) -%}
+  {%- for num in (13, 14) %}
   - name: freebsd-{{ num }}
   - name: freebsd-{{ num }}-netlink
     dist: freebsd-{{ num }}
     variables:
       CONFIGURE_OPTIONS: --with-sysconfig=bsd-netlink --disable-client
-  {% endfor %}
+  {%- endfor %}
 
 partial_build_image:
   name: debian-12-amd64

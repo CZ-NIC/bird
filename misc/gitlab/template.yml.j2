@@ -1,3 +1,9 @@
+{#
+
+Do edit this file by hand. The following header will be placed
+into .gitlab-ci.yml.
+
+#}
 ###########################################################
 #####                                                 #####
 #####       DO  NOT  EDIT  THIS  FILE  BY  HAND       #####
@@ -16,6 +22,7 @@ variables:
   DOCKER_CMD: docker --config="$HOME/.docker/$CI_JOB_ID/"
   IMG_BASE: registry.nic.cz/labs/bird
   TOOLS_DIR: /home/gitlab-runner/bird-tools
+  PBUILDER_DIR: /home/gitlab-runner/pbuilder
   STAYRTR_BINARY: /usr/local/bin/stayrtr
 
 stages:
@@ -129,11 +136,13 @@ tag-collect:
 
   - when: never
 
-{% for docker in [ { "name": "docbuilder" } ] + distros %}
+{% for docker in [ { "name": "docbuilder", "arch": "amd64" } ] + distros %}
+{%- if docker.arch in ("amd64", "i386") %}
 docker-{{ docker["name"] }}:
   variables:
     IMG_NAME: "{{ docker["name"] }}"
   <<: *docker-build
+{%- endif -%}
 {% endfor %}
 
 #####################################################
@@ -191,6 +200,7 @@ docker-{{ docker["name"] }}:
     - amd64
 
 {% for dist in distros %}
+{%- if dist.arch in ("amd64", "i386") %}
 build-{{dist["name"]}}:
   <<: *build-docker-linux-amd64
   needs:
@@ -201,6 +211,7 @@ build-{{dist["name"]}}:
   variables:
 {{ dist["variables"] | to_yaml | indent(4, true) }}
 {%- endif %}
+{%- endif -%}
 {% endfor %}
 
 #######################################################
@@ -259,6 +270,7 @@ build-release:
 
 
 {% for dist in distros %}
+{%- if dist.arch in ("amd64", "i386") %}
 pkg-{{ dist["name"] }}:
   <<: *pkg-{{ dist["type"] }}
   needs:
@@ -270,6 +282,7 @@ pkg-{{ dist["name"] }}:
   variables:
 {{ dist["variables"] | to_yaml | indent(4, true) }}
 {%- endif %}
+{%- endif -%}
 {% endfor %}
 
 ## Package installability checks
@@ -321,6 +334,7 @@ pkg-{{ dist["name"] }}:
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
 
 {% for dist in distros %}
+{%- if dist.arch in ("amd64", "i386") %}
 install-{{ dist["name"] }}:
   <<: *install-{{ dist["type"] }}
   needs:
@@ -332,7 +346,77 @@ install-{{ dist["name"] }}:
 {%- elif dist["type"] == "rpm" %}
     RPM_INSTALL_CMD: rpm -i
 {%- endif %}
+{%- endif -%}
 {% endfor %}
+
+###################################
+## DEB Cross-builds by pbuilder  ##
+###################################
+
+.crossbuild-deb-image: &crossbuild-deb-image
+  stage: image
+  script:
+    - mkdir -p $PBUILDER_DIR/$IMAGE.cache
+    - sudo pbuilder create --architecture $ARCH --distribution $CODE --basetgz $PBUILDER_DIR/$IMAGE.tgz --aptcache $PBUILDER_DIR/$IMAGE.cache --autocleanaptcache --extrapackages "bison flex libncurses-dev m4 quilt xsltproc debhelper docbook-xsl"  --mirror $MIRROR --components "$COMPONENTS"
+  tags:
+    - crossbuilder
+  rules:
+    # Never rebuild for WIP commits
+  - *never-wip
+
+    # Never rebuild for tags
+  - if: '$CI_COMMIT_TAG'
+    when: never
+
+    # Never rebuild for new branches
+  - if: $CI_COMMIT_BEFORE_SHA == "0000000000000000000000000000000000000000"
+    when: never
+
+  - if: $CI_COMMIT_MESSAGE =~ /^PBuilder-init[:] all$/m
+    when: always
+
+  - when: never
+
+.crossbuild-deb-pkg: &crossbuild-deb-pkg
+  stage: pkg
+  script:
+    - sudo pbuilder build --architecture $ARCH --distribution $CODE --basetgz $PBUILDER_DIR/$IMAGE.tgz --aptcache $PBUILDER_DIR/$IMAGE.cache --autocleanaptcache --buildresult pkg/pkgs/*/*/ --binary-arch pkg/srcpkgs/*/*/*.dsc --debbuildopts "-j4" --mirror $MIRROR --components "$COMPONENTS"
+  tags:
+    - crossbuilder
+  artifacts:
+    paths:
+      - pkg/pkgs/*/*/*-cznic*_*.*
+
+{% for dist in distros %}
+{%- if dist.arch not in ('amd64', 'i386') %}
+crossbuild-image-{{ dist.name }}:
+  <<: *crossbuild-deb-image
+  variables:
+    IMAGE: {{ dist.name }}
+    ARCH: {{ dist.arch }}
+    CODE: {{ dist.code }}
+    MIRROR: {{ dist.mirror }}
+    COMPONENTS: {{ dist.components }}
+{%- if 'variables' in dist %}
+{{ dist["variables"] | to_yaml | indent(4, true) }}
+{%- endif %}
+
+crossbuild-pkg-{{ dist.name }}:
+  <<: *crossbuild-deb-pkg
+  needs:
+    - job: crossbuild-image-{{ dist.name }}
+      optional: true
+    - job: pkg-{{ dist.name[:-(dist.arch | length)] }}amd64
+  variables:
+    IMAGE: {{ dist.name }}
+    ARCH: {{ dist.arch }}
+    CODE: {{ dist.code }}
+    MIRROR: {{ dist.mirror }}
+    COMPONENTS: {{ dist.components }}
+{% endif -%}
+{% endfor %}
+
+
 
 ###################################
 ## Non-linux build tests in QEMU ##
