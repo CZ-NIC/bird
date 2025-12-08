@@ -1484,6 +1484,10 @@ bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
     bgp_unset_attr(&a->eattrs, s->pool, BA_AIGP);
   }
 
+  s->err_msg_buf.start = tmp_allocz(256);
+  s->err_msg_buf.pos = s->err_msg_buf.start;
+  s->err_msg_buf.end = s->err_msg_buf.start + 256;
+
   /* Handle OTC ingress procedure, RFC 9234 */
   if (bgp_channel_is_role_applicable(s->channel))
   {
@@ -1493,12 +1497,29 @@ bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
     /* Reject routes from downstream if they are leaked */
     if (e && (p->cf->local_role == BGP_ROLE_PROVIDER ||
 	      p->cf->local_role == BGP_ROLE_RS_SERVER))
+    {
+      if (s->proto->cf->keep_otc_leaked)
+      {
+	s->err_otc_leak = 1;
+	buffer_print(&s->err_msg_buf, "Leaked route: OTC attribute from downstream");
+      }
+
       WITHDRAW("Route leak detected - OTC attribute from downstream");
+    }
 
     /* Reject routes from peers if they are leaked */
     if (e && (p->cf->local_role == BGP_ROLE_PEER) && (e->u.data != p->cf->remote_as))
+    {
+      if (s->proto->cf->keep_otc_leaked)
+      {
+	s->err_otc_leak = 1;
+	buffer_print(&s->err_msg_buf, "Leaked route: OTC atrribute with mismatched ASN (%u)",
+	    (uint)e->u.data);
+      }
+
       WITHDRAW("Route leak detected - OTC attribute with mismatched ASN (%u)",
 	       (uint) e->u.data);
+    }
 
     /* Mark routes from upstream if it did not happened before */
     if (!e && (p->cf->local_role == BGP_ROLE_CUSTOMER ||

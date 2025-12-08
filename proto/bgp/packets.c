@@ -1570,7 +1570,7 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
   if (!a0)
   {
     /* Route update was changed to withdraw */
-    if (s->err_withdraw && s->reach_nlri_step)
+    if (s->err_withdraw && s->reach_nlri_step && !s->err_otc_leak)
       REPORT("Invalid route %N withdrawn", n);
 
     /* Route withdraw */
@@ -1589,6 +1589,15 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
 
   rta *a = rta_clone(s->cached_rta);
   rte *e = rte_get_temp(a, s->last_src);
+
+  if (s->err_otc_leak)
+  {
+    e->flags |= REF_INELIGIBLE;
+
+    /* Add error message as route attribute */
+    size_t len = s->err_msg_buf.pos - s->err_msg_buf.start;
+    ea_set_attr_data(&e->attrs->eattrs, s->pool, EA_INELIGIBILITY_REASON, 0, EAF_TYPE_STRING, s->err_msg_buf.start, len + 1);
+  }
 
   rte_update3(&s->channel->c, n, e, s->last_src);
 }

@@ -36,7 +36,8 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	DYNAMIC, RANGE, NAME, DIGITS, BGP_AIGP, AIGP, ORIGINATE, COST, ENFORCE,
 	FIRST, FREE, VALIDATE, BASE, ROLE, ROLES, PEER, PROVIDER, CUSTOMER,
 	RS_SERVER, RS_CLIENT, REQUIRE, BGP_OTC, GLOBAL, SEND, RECV, MIN, MAX,
-	AUTHENTICATION, NONE, MD5, AO, FORMAT, NATIVE, SINGLE, DOUBLE)
+	AUTHENTICATION, NONE, MD5, AO, FORMAT, NATIVE, SINGLE, DOUBLE, KEEP, OTC,
+	LEAKED)
 
 CF_KEYWORDS(KEY, KEYS, SECRET, DEPRECATED, PREFERRED, ALGORITHM, CMAC, AES128)
 
@@ -88,6 +89,7 @@ bgp_proto_start: proto_start BGP {
      BGP_CFG->dynamic_name = "dynbgp";
      BGP_CFG->check_link = -1;
      BGP_CFG->send_hold_time = -1;
+     BGP_CFG->keep_otc_leaked = 0;
    }
  ;
 
@@ -250,6 +252,7 @@ bgp_proto:
  | bgp_proto LOCAL ROLE bgp_role_name ';' { BGP_CFG->local_role = $4; }
  | bgp_proto REQUIRE ROLES bool ';' { BGP_CFG->require_roles = $4; }
  | bgp_proto DISABLE RX bool ';' { BGP_CFG->disable_rx = $4; }
+ | bgp_proto KEEP OTC LEAKED bool ';' { BGP_CFG->keep_otc_leaked = $5; }
  ;
 
 bgp_afi:
