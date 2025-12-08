@@ -10,6 +10,7 @@ distros:
       LC_ALL: en_US.UTF-8
       CC: /opt/rh/devtoolset-8/root/usr/bin/gcc
     type: pkg-rpm-wa
+    arch: amd64
 
   {% for name in (
     'centos-8',
@@ -23,6 +24,7 @@ distros:
   ) -%}
   - name: {{ name }}-amd64
     type: pkg-rpm-wa
+    arch: amd64
   {% endfor %}
 
   # For some unknown reason we also require older Python packages
@@ -30,38 +32,67 @@ distros:
   {% for num in (0,1,2,3,4,5) -%}
   - name: opensuse-15.{{ num }}-amd64
     type: pkg-rpm-wa
+    arch: amd64
   {% endfor %}
 
   # Fedora regular builds
   {% for num in (34, 35, 36, 37, 38, 39, 40, 41, 42, 43) -%}
   - name: fedora-{{ num }}-amd64
     type: pkg-rpm
+    arch: amd64
   {% endfor %}
 
-  # Debian-based legacy builds
-  # Ubuntu 18.04 has issues with newer version of beautifulsoup4 and old python
-  # Debian 11 has issues with markupsafe v3.0.3
-  {% for name in (
-    'ubuntu-18.04-amd64',
-    'debian-11-i386',
-    'debian-11-amd64',
-  ) -%}
-  - name: {{ name }}
-    type: pkg-deb-legacy
+  # Old Debian-based builds
+  {% for distro in ("ubuntu-18.04", "ubuntu-20.04") %}
+  - name: {{ distro }}-amd64
+    type: pkg-deb
+    arch: amd64
+  {% endfor %}
+
+  {% for arch in ('amd64', 'i386') %}
+  - name: debian-11-{{ arch }}
+    type: pkg-deb
+    arch: {{ arch }}
   {% endfor %}
 
   # Debian regular builds
-  {% for num in (12, 13, 'testing') -%}
-  {% for arch in ('amd64', 'i386') -%}
-  - name: debian-{{num}}-{{arch}}
+  {% for arch in ('amd64', 'i386', 'arm64', 'armel', 'armhf', 'mips64el', 's390x') %}
+  - name: debian-12-{{ arch }}
+    code: bookworm
     type: pkg-deb
+    arch: {{ arch }}
+    mirror: "http://deb.debian.org/debian"
+    components: main
   {% endfor %}
+
+  {% for arch in ('amd64', 'i386', 'arm64', 'armel', 'armhf', 'riscv64', 's390x') -%}
+  - name: debian-13-{{ arch }}
+    code: trixie
+    type: pkg-deb
+    arch: {{ arch }}
+    mirror: "http://deb.debian.org/debian"
+    components: main
+  {% endfor %}
+
+  {% for arch in ('amd64', 'i386', 'arm64', 'armhf', 'riscv64', 's390x') -%}
+  - name: debian-testing-{{arch}}
+    code: testing
+    type: pkg-deb
+    arch: {{ arch }}
+    mirror: "http://deb.debian.org/debian"
+    components: main
   {% endfor %}
 
   # Ubuntu regular builds
-  {% for num in ('20.04', '22.04', '24.04', '25.04', '25.10') -%}
-  - name: ubuntu-{{ num }}-amd64
+  {% for num,code in (('22.04', 'jammy'), ('24.04', 'noble'), ('25.04', 'plucky'), ('25.10', 'questing')) -%}
+  {% for arch in ('amd64', 'arm64', 'armhf', 'ppc64el', 'riscv64', 's390x') -%}
+  - name: ubuntu-{{ num }}-{{ arch }}
     type: pkg-deb
+    arch: {{ arch }}
+    code: {{ code }}
+    mirror: "http://ports.ubuntu.com/ubuntu-ports/"
+    components: main restricted universe multiverse
+  {% endfor %}
   {% endfor %}
 
 birdlab:
