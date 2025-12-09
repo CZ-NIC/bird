@@ -718,6 +718,7 @@ val_format(const struct f_val *v, buffer *buf)
   case T_PATH_MASK: pm_format(v->val.path_mask, buf); return;
   case T_ROUTE: rte_format(v->val.rte, buf); return;
   case T_ROUTES_BLOCK: rte_block_format(&v->val.rte_block, buf); return;
+  case T_HOSTENTRY: ea_show_hostentry(v->val.ad, buf2, 1000); buffer_print(buf, "%s", buf2); return;
   default:	buffer_print(buf, "[unknown type %x]", v->type); return;
   }
 }

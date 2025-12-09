@@ -919,16 +919,30 @@ method_name_cont:
      $$ = f_dispatch_method($1, FM.object, $4, 1);
    }
  | static_attr {
-     if (FM.object->type != T_ROUTE)
-       cf_error("Getting a route attribute from %s, need a route", f_type_name(FM.object->type));
-     $$ = f_new_inst(FI_RTA_GET, FM.object, $1);
+    switch (FM.object->type) {
+      case T_HOSTENTRY:
+        $$ = f_new_inst(FI_RTA_GET, f_new_inst(FI_HOSTENTRY_TO_RTE, FM.object), $1);
+        break;
+      case T_ROUTE:
+        $$ = f_new_inst(FI_RTA_GET, FM.object, $1);
+        break;
+      default:
+        cf_error("Getting a route attribute from %s, need a route", f_type_name(FM.object->type));
+     }
    }
  | CF_SYM_KNOWN {
      if ($1->class != SYM_ATTRIBUTE)
        cf_error("Not a method of %s: %s", f_type_name(FM.object->type), $1->name);
-     if (FM.object->type != T_ROUTE)
-       cf_error("Getting a route attribute from %s, need a route", f_type_name(FM.object->type));
-     $$ = f_new_inst(FI_EA_GET, FM.object, $1->attribute);
+     switch (FM.object->type) {
+       case T_HOSTENTRY:
+        $$ = f_new_inst(FI_EA_GET, f_new_inst(FI_HOSTENTRY_TO_RTE, FM.object), $1->attribute);
+        break;
+       case T_ROUTE:
+        $$ = f_new_inst(FI_EA_GET, FM.object, $1->attribute);
+        break;
+       default:
+        cf_error("Getting a route attribute from %s, need a route", f_type_name(FM.object->type));
+     }
    }
  ;
 

@@ -1283,6 +1283,11 @@
     LINEX(t->data);
   }
 
+  INST(FI_HOSTENTRY_TO_RTE, 1, 1) {
+    struct hostentry_adata *ha = (struct hostentry_adata *)v1.val.ad;
+    RESULT(T_ROUTE, rte, ha->rt)
+  }
+
   INST(FI_IP_MASK, 2, 1) { /* IP.MASK(val) */
     ARG(1, T_IP);
     ARG(2, T_INT);
