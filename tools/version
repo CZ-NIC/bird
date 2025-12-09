@@ -6,6 +6,11 @@ set -e
 toplevel="$(readlink -f $(dirname $0)/../)"
 RELEASE_VERSION=$(cat "$toplevel/VERSION")
 
+if [ -n "$FORCE_VERSION" ]; then
+  echo $FORCE_VERSION
+  exit 0
+fi
+
 # Not in a git repo, or no git installed.
 if ! git status --porcelain > /dev/null; then
   echo $RELEASE_VERSION
