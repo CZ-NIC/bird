@@ -167,3 +167,17 @@ netlab:
   - name: kernel-learn
   - name: mpls-bgp
   - name: mpls-bgp-l3vpn
+
+pipelines:
+  devel:
+    short: D
+    desc: in development branches
+    cond: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+  stable:
+    short: S
+    desc: in stable branches and merge requests
+    cond: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+  tag:
+    short: T
+    desc: in tags
+    cond: '$CI_COMMIT_TAG'

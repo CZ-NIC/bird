@@ -29,35 +29,137 @@ stages:
   - test
 
 ## Common rules
-# Ignore WIP commits
-.never-wip: &never-wip
-  if: $CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/
-  when: never
 # Run for stable branches
 .if-stable: &if-stable
-  if: ($CI_COMMIT_BRANCH =~ /^(stable-.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")
-  when: always
+
 # Do run for tags
 .if-tag: &if-tag
-  if: $CI_COMMIT_TAG
-  when: always
+
 # Never run for tags
 .never-tag: &never-tag
   if: $CI_COMMIT_TAG
   when: never
 
+
+
+
 ## Consistency checks for stable branches
+
 commit-messages:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-commit-messages} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-commit-messages} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: always
+    - if: '${pipeline-kind} == "tag"'
+      when: always
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: commit-messages$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: commit-messages$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: always
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Run in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: always
+    # Run in tags
+    - if: '$CI_COMMIT_TAG'
+      when: always
+
+    # Do not run by default
+    - when: never
+
   stage: consistency
   image: registry.nic.cz/labs/bird:docbuilder
   script:
   - tools/git-check-commits
-  rules:
-  - *if-stable
-  - when: never
 
 ## Tag check
+
 tag-collect:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-tag-collect} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-tag-collect} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: always
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: tag-collect$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: tag-collect$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: always
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Run in tags
+    - if: '$CI_COMMIT_TAG'
+      when: always
+
+    # Do not run by default
+    - when: never
+
   stage: consistency
   image: registry.nic.cz/labs/bird:docbuilder
   script:
@@ -72,16 +174,6 @@ tag-collect:
       - bird-*.tar.gz
       - pkg/pkgs/*
       - pkg/srcpkgs/*
-  rules:
-  - *if-tag
-  - when: never
-
-## Default test job rules
-.test-job: &test-job
-  rules:
-  - *never-wip
-  - *never-tag
-  - when: always
 
 ############################
 ## Docker builder rebuild ##
@@ -110,185 +202,2325 @@ tag-collect:
   tags:
   # That's Docker in Docker
   - dind
-  rules:
-    # Never rebuild for WIP commits
-  - *never-wip
 
-    # Never rebuild for tags
-  - if: '$CI_COMMIT_TAG'
-    when: never
-
-    # Never rebuild for new branches
-  - if: $CI_COMMIT_BEFORE_SHA == "0000000000000000000000000000000000000000"
-    when: never
-
-    # Do any change in Dockerfile (e.g. change a comment) to rebuild the image
-    # FIXME: This probably belongs to bird-tools instead, we may end up with
-    # screwed up docker repository in case of colliding image updates
-  - changes:
-    - misc/docker/$IMG_NAME/Dockerfile
-    when: always
-
-  - when: never
 
 
 docker-docbuilder:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-docbuilder} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-docbuilder} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-docbuilder$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-docbuilder$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "docbuilder"
   <<: *docker-build
+
 docker-centos-7-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-centos-7-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-centos-7-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-centos-7-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-centos-7-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "centos-7-amd64"
   <<: *docker-build
+
 docker-centos-8-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-centos-8-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-centos-8-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-centos-8-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-centos-8-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "centos-8-amd64"
   <<: *docker-build
+
 docker-rocky-08-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-rocky-08-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-rocky-08-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-rocky-08-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-rocky-08-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "rocky-08-amd64"
   <<: *docker-build
+
 docker-rocky-09-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-rocky-09-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-rocky-09-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-rocky-09-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-rocky-09-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "rocky-09-amd64"
   <<: *docker-build
+
 docker-oracle-08-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-oracle-08-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-oracle-08-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-oracle-08-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-oracle-08-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "oracle-08-amd64"
   <<: *docker-build
+
 docker-oracle-09-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-oracle-09-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-oracle-09-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-oracle-09-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-oracle-09-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "oracle-09-amd64"
   <<: *docker-build
+
 docker-oracle-10-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-oracle-10-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-oracle-10-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-oracle-10-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-oracle-10-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "oracle-10-amd64"
   <<: *docker-build
+
 docker-fedora-32-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-fedora-32-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-fedora-32-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-fedora-32-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-fedora-32-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "fedora-32-amd64"
   <<: *docker-build
+
 docker-fedora-33-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-fedora-33-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-fedora-33-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-fedora-33-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-fedora-33-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "fedora-33-amd64"
   <<: *docker-build
+
 docker-opensuse-15.0-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-opensuse-15.0-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-opensuse-15.0-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-opensuse-15.0-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-opensuse-15.0-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "opensuse-15.0-amd64"
   <<: *docker-build
+
 docker-opensuse-15.1-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-opensuse-15.1-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-opensuse-15.1-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-opensuse-15.1-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-opensuse-15.1-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "opensuse-15.1-amd64"
   <<: *docker-build
+
 docker-opensuse-15.2-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-opensuse-15.2-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-opensuse-15.2-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-opensuse-15.2-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-opensuse-15.2-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "opensuse-15.2-amd64"
   <<: *docker-build
+
 docker-opensuse-15.3-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-opensuse-15.3-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-opensuse-15.3-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-opensuse-15.3-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-opensuse-15.3-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "opensuse-15.3-amd64"
   <<: *docker-build
+
 docker-opensuse-15.4-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-opensuse-15.4-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-opensuse-15.4-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-opensuse-15.4-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-opensuse-15.4-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "opensuse-15.4-amd64"
   <<: *docker-build
+
 docker-opensuse-15.5-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-opensuse-15.5-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-opensuse-15.5-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-opensuse-15.5-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-opensuse-15.5-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "opensuse-15.5-amd64"
   <<: *docker-build
+
 docker-fedora-34-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-fedora-34-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-fedora-34-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-fedora-34-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-fedora-34-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "fedora-34-amd64"
   <<: *docker-build
+
 docker-fedora-35-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-fedora-35-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-fedora-35-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-fedora-35-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-fedora-35-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "fedora-35-amd64"
   <<: *docker-build
+
 docker-fedora-36-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-fedora-36-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-fedora-36-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-fedora-36-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-fedora-36-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "fedora-36-amd64"
   <<: *docker-build
+
 docker-fedora-37-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-fedora-37-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-fedora-37-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-fedora-37-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-fedora-37-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "fedora-37-amd64"
   <<: *docker-build
+
 docker-fedora-38-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-fedora-38-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-fedora-38-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-fedora-38-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-fedora-38-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "fedora-38-amd64"
   <<: *docker-build
+
 docker-fedora-39-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-fedora-39-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-fedora-39-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-fedora-39-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-fedora-39-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "fedora-39-amd64"
   <<: *docker-build
+
 docker-fedora-40-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-fedora-40-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-fedora-40-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-fedora-40-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-fedora-40-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "fedora-40-amd64"
   <<: *docker-build
+
 docker-fedora-41-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-fedora-41-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-fedora-41-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-fedora-41-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-fedora-41-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "fedora-41-amd64"
   <<: *docker-build
+
 docker-fedora-42-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-fedora-42-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-fedora-42-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-fedora-42-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-fedora-42-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "fedora-42-amd64"
   <<: *docker-build
+
 docker-fedora-43-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-fedora-43-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-fedora-43-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-fedora-43-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-fedora-43-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "fedora-43-amd64"
   <<: *docker-build
+
 docker-ubuntu-18.04-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-ubuntu-18.04-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-ubuntu-18.04-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-ubuntu-18.04-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-ubuntu-18.04-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "ubuntu-18.04-amd64"
   <<: *docker-build
+
 docker-ubuntu-20.04-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-ubuntu-20.04-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-ubuntu-20.04-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-ubuntu-20.04-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-ubuntu-20.04-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "ubuntu-20.04-amd64"
   <<: *docker-build
+
 docker-debian-11-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-debian-11-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-debian-11-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-debian-11-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-debian-11-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "debian-11-amd64"
   <<: *docker-build
+
 docker-debian-11-i386:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-debian-11-i386} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-debian-11-i386} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-debian-11-i386$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-debian-11-i386$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "debian-11-i386"
   <<: *docker-build
+
 docker-debian-12-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-debian-12-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-debian-12-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-debian-12-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-debian-12-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "debian-12-amd64"
   <<: *docker-build
+
 docker-debian-12-i386:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-debian-12-i386} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-debian-12-i386} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-debian-12-i386$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-debian-12-i386$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "debian-12-i386"
   <<: *docker-build
+
 docker-debian-13-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-debian-13-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-debian-13-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-debian-13-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-debian-13-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "debian-13-amd64"
   <<: *docker-build
+
 docker-debian-13-i386:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-debian-13-i386} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-debian-13-i386} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-debian-13-i386$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-debian-13-i386$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "debian-13-i386"
   <<: *docker-build
+
 docker-debian-testing-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-debian-testing-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-debian-testing-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-debian-testing-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-debian-testing-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "debian-testing-amd64"
   <<: *docker-build
+
 docker-debian-testing-i386:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-debian-testing-i386} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-debian-testing-i386} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-debian-testing-i386$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-debian-testing-i386$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "debian-testing-i386"
   <<: *docker-build
+
 docker-ubuntu-22.04-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-ubuntu-22.04-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-ubuntu-22.04-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-ubuntu-22.04-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-ubuntu-22.04-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "ubuntu-22.04-amd64"
   <<: *docker-build
+
 docker-ubuntu-24.04-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-ubuntu-24.04-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-ubuntu-24.04-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-ubuntu-24.04-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-ubuntu-24.04-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "ubuntu-24.04-amd64"
   <<: *docker-build
+
 docker-ubuntu-25.04-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-ubuntu-25.04-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-ubuntu-25.04-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-ubuntu-25.04-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-ubuntu-25.04-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "ubuntu-25.04-amd64"
   <<: *docker-build
+
 docker-ubuntu-25.10-amd64:
+  rules:
+    # Explicit job triggers from the API
+    - if: '${trigger-job-docker-ubuntu-25.10-amd64} =~ /^(yes|true|trigger)$/'
+      when: always
+    - if: '${trigger-job-docker-ubuntu-25.10-amd64} =~ /^(no|false|block)$/'
+      when: never
+
+    # Explicit pipeline kind override from the API
+
+    - if: '${pipeline-kind} == "devel"'
+      when: never
+    - if: '${pipeline-kind} == "stable"'
+      when: never
+    - if: '${pipeline-kind} == "tag"'
+      when: never
+
+    # Run only explicitly named jobs
+    - if: '${pipeline-kind} == "explicit"'
+      when: never
+
+    # Explicit job triggers from the commit message
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Trigger: docker-ubuntu-25.10-amd64$/mi'
+      when: always
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Job-Block: docker-ubuntu-25.10-amd64$/mi'
+      when: never
+
+    # Explicit pipeline kind override from the commit message
+
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: devel$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: stable$/mi'
+      when: never
+    - if: '$CI_COMMIT_MESSAGE =~ /^CI-Pipeline-Kind: tag$/mi'
+      when: never
+
+    # Ignore WIP commits
+    - if: '$CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/'
+      when: never
+
+
+    # Ignore in development branches
+    - if: '($CI_COMMIT_BRANCH !~ /^(stable-v.*|thread-next|master)$/ && $CI_PIPELINE_SOURCE != "merge_request_event")'
+      when: never
+    # Ignore in stable branches and merge requests
+    - if: '($CI_COMMIT_BRANCH =~ /^(stable-v.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")'
+      when: never
+    # Ignore in tags
+    - if: '$CI_COMMIT_TAG'
+      when: never
+
+    # Do not run by default
+    - when: never
+:
   variables:
     IMG_NAME: "ubuntu-25.10-amd64"
   <<: *docker-build
@@ -303,7 +2535,6 @@ docker-ubuntu-25.10-amd64:
 # Every task needs its docker, see above.
 
 .build: &build-base
-  <<: *test-job
   stage: build
   script:
     - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
@@ -339,6 +2570,10 @@ docker-ubuntu-25.10-amd64:
     # Check that the reported version is the right one
     - ./bird --version |& tee obj/version-built
     - diff obj/version-built version-expected
+  rules:
+  - *never-wip
+  - *never-tag
+  - when: always
 
 .build-docker-linux-amd64: &build-docker-linux-amd64
   <<: *build-base
@@ -590,7 +2825,6 @@ build-ubuntu-25.10-amd64:
 ## A special task for preparing the release archives ##
 #######################################################
 build-release:
-  <<: *test-job
   image: registry.nic.cz/labs/bird:docbuilder
   needs: 
     - job: docker-docbuilder
@@ -610,6 +2844,10 @@ build-release:
       - obj/doc/bird-singlepage.html
       - bird-*.tar.gz
     expire_in: 1 day
+  rules:
+  - *never-wip
+  - *never-tag
+  - when: always
 
 # Packaging rules
 # As we support some ancient versions of different distributions,
@@ -619,7 +2857,6 @@ build-release:
 # We do NOT build separate documentation packages in these rules.
 
 .pkg-deb: &pkg-deb
-  <<: *test-job
   stage: pkg
   script:
     - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
@@ -628,9 +2865,12 @@ build-release:
     paths:
       - pkg/pkgs/*
       - pkg/srcpkgs/*
+  rules:
+  - *never-wip
+  - *never-tag
+  - when: always
 
 .pkg-deb-legacy: &pkg-deb-legacy
-  <<: *test-job
   stage: pkg
   script:
     - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
@@ -639,9 +2879,12 @@ build-release:
     paths:
       - pkg/pkgs/*
       - pkg/srcpkgs/*
+  rules:
+  - *never-wip
+  - *never-tag
+  - when: always
 
 .pkg-rpm: &pkg-rpm
-  <<: *test-job
   stage: pkg
   script:
     - pip3 install apkg
@@ -650,9 +2893,12 @@ build-release:
     paths:
       - pkg/pkgs/*
       - pkg/srcpkgs/*
+  rules:
+  - *never-wip
+  - *never-tag
+  - when: always
 
 .pkg-rpm-wa: &pkg-rpm-wa
-  <<: *test-job
   stage: pkg
   script:
     - sed -i "s/runstatedir/with-runtimedir/" distro/pkg/rpm/bird.spec
@@ -664,6 +2910,10 @@ build-release:
     paths:
       - pkg/pkgs/*
       - pkg/srcpkgs/*
+  rules:
+  - *never-wip
+  - *never-tag
+  - when: always
 
 
 
@@ -947,7 +3197,6 @@ pkg-ubuntu-25.10-amd64:
 ## Package installability checks
 
 .install-deb: &install-deb
-  <<: *test-job
   stage: install
   script:
     # check that bird is _not_ installed now and no user or group bird exists
@@ -968,9 +3217,12 @@ pkg-ubuntu-25.10-amd64:
     - find pkg/pkgs/ -type f -name '*.deb' '(' -ls -exec dpkg -i '{}' ';' ')'
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
+  rules:
+  - *never-wip
+  - *never-tag
+  - when: always
 
 .install-rpm: &install-rpm
-  <<: *test-job
   stage: install
   script:
     # check that bird is _not_ installed now and no user or group bird exists
@@ -991,6 +3243,10 @@ pkg-ubuntu-25.10-amd64:
     - find pkg/pkgs/ -type f -name '*.rpm' '(' -ls -exec rpm -i '{}' ';' ')'
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
+  rules:
+  - *never-wip
+  - *never-tag
+  - when: always
 
 
 install-centos-7-amd64:
@@ -1226,6 +3482,10 @@ install-ubuntu-25.10-amd64:
   artifacts:
     paths:
       - pkg/pkgs/*/*/*-cznic*_*.*
+  rules:
+  - *never-wip
+  - *never-tag
+  - when: always
 
 
 crossbuild-image-debian-12-arm64:
@@ -2133,7 +4393,6 @@ partial-build-linux-static:
 ################################
 
 build-netlab:
-  <<: *test-job
   stage: build
   variables:
     BDIR: build-netlab
@@ -2152,9 +4411,12 @@ build-netlab:
       - $BDIR/bird
       - $BDIR/birdc
     expire_in: 2 hours
+  rules:
+  - *never-wip
+  - *never-tag
+  - when: always
 
 .netlab-test: &test-base
-  <<: *test-job
   stage: test
   needs: [build-netlab]
   tags:
@@ -2182,6 +4444,10 @@ build-netlab:
   artifacts:
     when: on_failure
     untracked: true
+  rules:
+  - *never-wip
+  - *never-tag
+  - when: always
 
 
 test-babel-base:
