@@ -2865,8 +2865,11 @@ bgp_rx_end_mark(struct bgp_parse_state *s, u32 afi)
   if (c->gr_active)
     bgp_graceful_restart_done(c);
 
-  if (c->c.net_type == NET_RTFILTER)
+  if (c->c.net_type == NET_RTFILTER) // && !p->rtfilter_initial_feed ???
   {
+    //if (!p->rtfilter_initial_feed)
+      //bug("stop");
+
     p->rtfilter_initial_feed = false;
 
     /* Calling settle timer hook manually */

@@ -1809,6 +1809,17 @@ bgp_build_rtfilter_tree_on_settle(struct settle *s)
     lp_flush(p->rtfilter_tree_pool);
     p->rtfilter_tree = bgp_build_rtfilter_tree(p);
   }
+
+  struct bgp_channel *c;
+
+  BGP_WALK_CHANNELS(p, c)
+  {
+    if ((c->c.channel_state == CS_UP) && ((c->desc->net == NET_VPN4) || (c->desc->net == NET_VPN6)))
+    {
+      BGP_TRACE(D_PACKETS, "Got END-OF-RIB");
+      channel_request_feeding(&c->c);
+    }
+  }
 }
 
 void
@@ -1871,13 +1882,22 @@ bgp_preexport(struct channel *C, rte *e)
 
   /* Reject our routes */
   if ((src == p) && bgp_apply_split_horizon(p, e))
+  {
+    log("Rejecting %N on split horizon", e->net->n.addr);
+    log("--------------------------------------");
     return -1;
+  }
 
   if (p->cf->rtfilter_use &&
       ((e->net->n.addr->type == NET_VPN4) || (e->net->n.addr->type == NET_VPN6)) &&
       !bgp_filter_vpn_rte(p, e))
   {
+    int type = e->net->n.addr->type;
+    log("rtfilter use:   %s", p->cf->rtfilter_use ? "yes" : "no");
+    log("VPN4/VPN6:      %s", ((type == NET_VPN4) || (type == NET_VPN6)) ? "yes" : "no");
+    log("filter vpn rte: %s", bgp_filter_vpn_rte(p, e) ? "yes" : "no");
     log("rtilfter: Rejecting %N", e->net->n.addr);
+    log("--------------------------------------");
     return -1;
   }
 
