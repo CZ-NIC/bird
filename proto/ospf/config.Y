@@ -59,6 +59,12 @@ ospf_iface_finish(void)
 	cf_error("Keyed hash algorithms are not allowed, use HMAC algorithms");
     }
   }
+
+  if (!ip->stub && ((ip->cost <= 0) || (ip->cost > 65535)))
+    cf_error("Cost must be in range 1-65535");
+
+  if (ip->stub && (ip->cost > 65535))
+    cf_error("Cost must be in range 0-65535 for stub interfaces");
 }
 
 static void
@@ -379,7 +385,7 @@ ospf_vlink_start: VIRTUAL LINK idval
 ;
 
 ospf_iface_item:
-   COST expr { OSPF_PATT->cost = $2 ; if (($2<=0) || ($2>65535)) cf_error("Cost must be in range 1-65535"); }
+   COST expr { OSPF_PATT->cost = $2; }
  | HELLO expr { OSPF_PATT->helloint = $2 ; if (($2<=0) || ($2>65535)) cf_error("Hello interval must be in range 1-65535"); }
  | POLL expr { OSPF_PATT->pollint = $2 ; if ($2<=0) cf_error("Poll int must be greater than zero"); }
  | RETRANSMIT expr { OSPF_PATT->rxmtint = $2 ; if ($2<=1) cf_error("Retransmit int must be greater than one"); }
