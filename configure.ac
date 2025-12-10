@@ -387,6 +387,13 @@ elif test "$bird_cv_lib_log" != yes ; then
   LIBS="$LIBS $bird_cv_lib_log"
 fi
 
+BIRD_CHECK_ATOMIC
+if test "$bird_cv_lib_atomic" = no ; then
+  AC_MSG_ERROR([unable to handle atomic operations.])
+elif test "$bird_cv_lib_atomic" != yes ; then
+  LIBS="$LIBS $bird_cv_lib_atomic"
+fi
+
 AC_CHECK_FUNCS(getrandom)
 AC_CHECK_FUNCS(getentropy)
 

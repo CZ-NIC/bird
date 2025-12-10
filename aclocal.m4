@@ -150,6 +150,76 @@ AC_DEFUN([BIRD_CHECK_ANDROID_LOG],
   )
 ])
 
+AC_DEFUN([BIRD_CHECK_ATOMIC],
+[
+  AC_CACHE_CHECK(
+    [for atomic lib flags],
+    [bird_cv_lib_atomic],
+    AC_LINK_IFELSE([
+      AC_LANG_PROGRAM(
+        [
+	  #include <stdatomic.h>
+	  #include <stdint.h>
+	],
+        [
+	  #define Q 0x1234567890abcdefULL
+	  _Atomic uint64_t woof;
+	  uint64_t wau;
+	  struct cat { int x, y, z, f; } meow;
+	  _Atomic struct cat nya;
+	  atomic_compare_exchange_strong_explicit(&woof, wau, Q, memory_order_acq_rel, memory_order_acquire);
+	  atomic_exchange_explicit(&woof, wau, memory_order_acq_rel);
+	  atomic_exchange_explicit(&meow, nya, memory_order_acq_rel);
+	  atomic_fetch_add_explicit(&woof, Q, memory_order_acq_rel);
+	  atomic_fetch_sub_explicit(&woof, Q, memory_order_acq_rel);
+	  atomic_fetch_and_explicit(&woof, Q, memory_order_acq_rel);
+	  atomic_fetch_or_explicit(&woof, Q, memory_order_acq_rel);
+	  atomic_store_explicit(&meow, nya, memory_order_release);
+	  nya = atomic_load_explicit(&meow, memory_order_acquire);
+	  atomic_store_explicit(&woof, wau, memory_order_release);
+	  wau = atomic_load_explicit(&woof, memory_order_acquire);
+	]
+      )
+    ],
+    [bird_cv_lib_atomic=yes],
+      [
+        bird_tmp_libs="$LIBS"
+        LIBS="$LIBS -latomic"
+        AC_LINK_IFELSE([
+	  AC_LANG_PROGRAM(
+	    [
+	      #include <stdatomic.h>
+	      #include <stdint.h>
+	    ],
+	    [
+	      #define Q 0x1234567890abcdefULL
+	      _Atomic uint64_t woof;
+	      uint64_t wau;
+	      struct cat { int x, y, z, f; } meow;
+	      _Atomic struct cat nya;
+	      atomic_compare_exchange_strong_explicit(&woof, wau, Q, memory_order_acq_rel, memory_order_acquire);
+	      atomic_exchange_explicit(&woof, wau, memory_order_acq_rel);
+	      atomic_exchange_explicit(&meow, nya, memory_order_acq_rel);
+	      atomic_fetch_add_explicit(&woof, Q, memory_order_acq_rel);
+	      atomic_fetch_sub_explicit(&woof, Q, memory_order_acq_rel);
+	      atomic_fetch_and_explicit(&woof, Q, memory_order_acq_rel);
+	      atomic_fetch_or_explicit(&woof, Q, memory_order_acq_rel);
+	      atomic_store_explicit(&meow, nya, memory_order_release);
+	      nya = atomic_load_explicit(&meow, memory_order_acquire);
+	      atomic_store_explicit(&woof, wau, memory_order_release);
+	      wau = atomic_load_explicit(&woof, memory_order_acquire);
+	    ]
+	  )
+        ],
+        [bird_cv_lib_atomic=-latomic],
+        [bird_cv_lib_atomic=no]
+        )
+        LIBS="$bird_tmp_libs"
+      ]
+    )
+  )
+])
+
 AC_DEFUN([BIRD_CHECK_LTO],
 [
   bird_tmp_cflags="$CFLAGS"
