@@ -89,6 +89,7 @@ variables:
   IMG_BASE: registry.nic.cz/labs/bird
   TOOLS_DIR: /home/gitlab-runner/bird-tools
   STAYRTR_BINARY: /usr/local/bin/stayrtr
+  GITLAB_API_URL: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/
 
 stages:
   - consistency
@@ -178,6 +179,7 @@ pipeline-infodump:
     echo "\$CI_COMMIT_MESSAGE = $CI_COMMIT_MESSAGE"
     echo "\$CI_PIPELINE_SOURCE = $CI_PIPELINE_SOURCE"
     echo "\$CI_MERGE_REQUEST_IID = $CI_MERGE_REQUEST_IID"
+    echo "\$GITLAB_API_URL = $GITLAB_API_URL"
     echo "\$wf_kind = $wf_kind"
     echo
     echo "### Inputs ###"

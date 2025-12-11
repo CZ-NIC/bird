@@ -2,14 +2,28 @@
 
 import io
 import json
+import os
 import requests
 import sys
 import zipfile
 
+try:
+    GITLAB_API_URL = os.environ["GITLAB_API_URL"]
+except KeyError:
+    GITLAB_API_URL = "https://gitlab.nic.cz/api/v4/projects/labs%2Fbird/"
+
+try:
+    GITLAB_HEADERS = { "JOB-TOKEN": os.environ["CI_JOB_TOKEN"] }
+except KeyError:
+    GITLAB_HEADERS = {}
+
+artifacts = (sys.argv[1] != "--no-artifacts")
+ref = sys.argv[1] if artifacts else sys.argv[2]
+
 def load_api_request(name, query):
     timeout = 5
     while True:
-        resp = requests.get("https://gitlab.nic.cz/api/v4/projects/labs%2Fbird/" + query)
+        resp = requests.get(GITLAB_API_URL + query, headers=GITLAB_HEADERS)
         if resp.status_code == 200:
             return resp.content
 
@@ -45,7 +59,7 @@ def load_pipelines(sha):
 def load_jobs(pipeline):
     return load_paginated("jobs", f"/pipelines/{pipeline}/jobs/")
 
-for p in load_pipelines(sys.argv[1]):
+for p in load_pipelines(ref):
     if p['status'] in ("failed", "cancelled"):
         print(f"Pipeline {p['id']} {p['status']} at {p['web_url']}")
         failed = [ job for job in load_jobs(p['id']) if job['status'] == "failed" ]
@@ -81,9 +95,12 @@ for p in load_pipelines(sys.argv[1]):
                 print(f"\t{ job['name'] }:")
             for f in job['artifacts']:
                 if f['file_type'] == 'archive':
-                    with zipfile.ZipFile(io.BytesIO(load_api_request("metadata", f"/jobs/{job['id']}/artifacts/"))) as z:
-                        z.extractall()
+                    if artifacts:
+                        with zipfile.ZipFile(io.BytesIO(load_api_request("metadata", f"/jobs/{job['id']}/artifacts/"))) as z:
+                            z.extractall()
+                    else:
+                        print("\t\thas artifacts")
         exit(0)
 
-print("No suitable pipeline found, tag not OK")
+print(f"No suitable pipeline found for { ref }, tag not OK")
 exit(1)
