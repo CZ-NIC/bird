@@ -1,0 +1,25 @@
+#!/bin/bash
+
+set -e
+
+toplevel=$(readlink -f $(dirname $0)/..)
+current_version=$(<$toplevel/VERSION)
+
+pushd $toplevel > /dev/null
+
+# Enforce tag eligibility
+tools/git-check-tag-local
+
+# Download built packages
+tools/git-check-tag-ci --no-artifacts $(git rev-parse HEAD)
+
+# Create the tag
+echo ">>> git tag -sam v$current_version v$current_version"
+GPG_TTY=$(tty) git tag -sam v$current_version v$current_version
+
+# Further instructions
+echo "Created tag v$current_version. You should manually check it."
+echo "    git show v$current_version"
+echo
+echo "Then you probably want to push it."
+echo "    git push origin $current_version."
