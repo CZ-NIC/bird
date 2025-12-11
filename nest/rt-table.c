@@ -1737,7 +1737,7 @@ rt_modify_stale(rtable *t, struct channel *c)
     {
       rte *e;
       for (e = n->routes; e; e = e->next)
-	if ((e->sender == c) && (e->flags & REF_STALE) && !(e->flags & REF_FILTERED))
+	if ((e->sender == c) && (e->flags & REF_STALE) && rte_is_valid(e))
 	  {
 	    e->flags |= REF_MODIFY;
 	    prune = 1;

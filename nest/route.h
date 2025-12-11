@@ -270,17 +270,23 @@ typedef struct rte {
   btime lastmod;			/* Last modified */
 } rte;
 
-#define REF_COW		1		/* Copy this rte on write */
-#define REF_FILTERED	2		/* Route is rejected by import filter */
-#define REF_STALE	4		/* Route is stale in a refresh cycle */
-#define REF_DISCARD	8		/* Route is scheduled for discard */
-#define REF_MODIFY	16		/* Route is scheduled for modify */
+#define REF_COW		  1		/* Copy this rte on write */
+#define REF_INVALID	  2		/* Route has invalid attributes */
+#define REF_INELIGIBLE	  4		/* Route is valid but semantically ineligible */
+#define REF_UNRESOLVABLE  8		/* Route is transiently ineligible */
+#define REF_FILTERED	  16		/* Route is rejected by import filter */
+#define REF_STALE	  32		/* Route is stale in a refresh cycle */
+#define REF_DISCARD	  64		/* Route is scheduled for discard */
+#define REF_MODIFY	  128		/* Route is scheduled for modify */
 
 /* Route is valid for propagation (may depend on other flags in the future), accepts NULL */
-static inline int rte_is_valid(rte *r) { return r && !(r->flags & REF_FILTERED); }
+static inline int rte_is_valid(const struct rte *r)
+{
+  return r && !(r->flags & (REF_INVALID | REF_INELIGIBLE | REF_UNRESOLVABLE | REF_FILTERED));
+}
 
 /* Route just has REF_FILTERED flag */
-static inline int rte_is_filtered(rte *r) { return !!(r->flags & REF_FILTERED); }
+static inline int rte_is_filtered(const struct rte *r) { return !!(r->flags & REF_FILTERED); }
 
 
 /* Types of route announcement, also used as flags */
