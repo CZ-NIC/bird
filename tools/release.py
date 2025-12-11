@@ -201,7 +201,12 @@ class GitlabException(Exception):
 
 # A singleton class providing raw Gitlab API
 class Gitlab:
-    stem = "https://gitlab.nic.cz/api/v4/projects/labs%2Fbird/"
+    def __init__(self):
+        try:
+            self.stem = os.environ["GITLAB_API_URL"]
+        except KeyError:
+            self.stem = "https://gitlab.nic.cz/api/v4/projects/labs%2Fbird/"
+
     def get(self, uri):
         response = requests.get(self.stem + uri, headers={"PRIVATE-TOKEN": git.token()})
         if not response.ok:
