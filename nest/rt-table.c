@@ -1524,6 +1524,10 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
       if (filter == FILTER_REJECT)
 	{
+	  if (new->flags & (REF_INVALID | REF_INELIGIBLE))
+	    if (!c->in_keep_filtered)
+	      goto drop;
+
 	  stats->imp_updates_filtered++;
 	  rte_trace_in(D_FILTERS, c, new, "filtered out");
 
@@ -1536,6 +1540,11 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
       else if (filter)
 	{
 	  int fr = f_run(filter, &new, rte_update_pool, 0);
+
+	  if (new->flags & (REF_INVALID | REF_INELIGIBLE))
+	    if (!c->in_keep_filtered)
+	      goto drop;
+
 	  if (fr > F_ACCEPT)
 	  {
 	    stats->imp_updates_filtered++;
