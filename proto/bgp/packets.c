@@ -1593,10 +1593,23 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
   if (s->err_otc_leak)
   {
     e->flags |= REF_INELIGIBLE;
+    s->err_otc_leak = 0;
 
     /* Add error message as route attribute */
     size_t len = s->err_msg_buf.pos - s->err_msg_buf.start;
-    ea_set_attr_data(&e->attrs->eattrs, s->pool, EA_INELIGIBILITY_REASON, 0, EAF_TYPE_STRING, s->err_msg_buf.start, len + 1);
+
+    if (len)
+      ea_set_attr_data(&e->attrs->eattrs, s->pool, EA_INELIGIBILITY_REASON, 0, EAF_TYPE_STRING, s->err_msg_buf.start, len + 1);
+  }
+
+  if (s->err_loop)
+  {
+    e->flags |= REF_INELIGIBLE;
+    s->err_loop = 0;
+    size_t len = s->err_msg_buf.pos - s->err_msg_buf.start;
+
+    if (len)
+      ea_set_attr_data(&e->attrs->eattrs, s->pool, EA_INELIGIBILITY_REASON, 0, EAF_TYPE_STRING, s->err_msg_buf.start, len + 1);
   }
 
   rte_update3(&s->channel->c, n, e, s->last_src);
