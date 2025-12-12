@@ -1471,6 +1471,10 @@ withdraw:
 
 loop:
   /* Loops are handled as withdraws, but ignored silently. Do not set err_withdraw. */
+  s->err_loop = 1;
+  memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);
+  s->err_msg_buf.pos = s->err_msg_buf.start;
+  buffer_print(&s->err_msg_buf, "Loop detected");
   return NULL;
 }
 
@@ -1501,6 +1505,8 @@ bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
       if (s->proto->cf->keep_otc_leaked)
       {
 	s->err_otc_leak = 1;
+	memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);
+	s->err_msg_buf.pos = s->err_msg_buf.start;
 	buffer_print(&s->err_msg_buf, "Leaked route: OTC attribute from downstream");
       }
 
@@ -1513,6 +1519,8 @@ bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
       if (s->proto->cf->keep_otc_leaked)
       {
 	s->err_otc_leak = 1;
+	memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);
+	s->err_msg_buf.pos = s->err_msg_buf.start;
 	buffer_print(&s->err_msg_buf, "Leaked route: OTC atrribute with mismatched ASN (%u)",
 	    (uint)e->u.data);
       }

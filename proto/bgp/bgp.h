@@ -547,6 +547,7 @@ struct bgp_parse_state {
   uint err_withdraw;
   uint err_subcode;
   uint err_otc_leak;
+  uint err_loop;
   struct buffer err_msg_buf;
   jmp_buf err_jmpbuf;
 
