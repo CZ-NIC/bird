@@ -161,7 +161,7 @@ struct bgp_config {
   int require_llgr;			/* Require remote support for long-lived graceful restart [RFC 9494] */
   struct bfd_options *bfd;		/* Use BFD for liveness detection */
 
-  int keep_otc_leaked;
+  int keep_ineligible;
 };
 
 struct bgp_channel_config {
@@ -546,8 +546,7 @@ struct bgp_parse_state {
 
   uint err_withdraw;
   uint err_subcode;
-  uint err_otc_leak;
-  uint err_loop;
+  uint err_ineligible;
   struct buffer err_msg_buf;
   jmp_buf err_jmpbuf;
 
