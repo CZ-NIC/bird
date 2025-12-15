@@ -1065,6 +1065,16 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 #define WITHDRAW(msg, args...) \
   ({ REPORT(msg, ## args); s->err_withdraw = 1; return; })
 
+#define INVALID(msg, args...)							  \
+  ({										  \
+     REPORT(msg, ## args);							  \
+     s->err_invalid = 1;							  \
+     memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);  \
+     s->err_msg_buf.pos = s->err_msg_buf.start;					  \
+     buffer_print(&s->err_msg_buf, msg, ## args);				  \
+     return;									  \
+  })
+
 #define REJECT(msg, args...)						\
   ({ log(L_ERR "%s: " msg, s->proto->p.name, ## args); s->err_reject = 1; return; })
 
@@ -1095,13 +1105,13 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
     else if (ipa_nonzero2(gw))
       nbr = neigh_find(&p->p, gw, default_iface, nb_flags);
     else
-      WITHDRAW(BAD_NEXT_HOP " - zero address");
+      INVALID(BAD_NEXT_HOP " - zero address");
 
     if (!nbr)
-      WITHDRAW(BAD_NEXT_HOP " - address %I not directly reachable", ipa_nonzero(gw) ? gw : ll);
+      INVALID(BAD_NEXT_HOP " - address %I not directly reachable", ipa_nonzero(gw) ? gw : ll);
 
     if (nbr->scope == SCOPE_HOST)
-      WITHDRAW(BAD_NEXT_HOP " - address %I is local", nbr->addr);
+      INVALID(BAD_NEXT_HOP " - address %I is local", nbr->addr);
 
     a->dest = RTD_UNICAST;
     a->nh.gw = nbr->addr;
@@ -1112,7 +1122,7 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
   else /* GW_RECURSIVE */
   {
     if (ipa_zero2(gw))
-      WITHDRAW(BAD_NEXT_HOP " - zero address");
+      INVALID(BAD_NEXT_HOP " - zero address");
 
     rtable *tab = ipa_is_ip4(gw) ? c->igp_table_ip4 : c->igp_table_ip6;
     ip_addr lla = (c->cf->next_hop_prefer == NHP_LOCAL) ? ll : IPA_NONE;
@@ -1423,7 +1433,7 @@ bgp_decode_next_hop_ip(struct bgp_parse_state *s, byte *data, uint len, rta *a)
     ad->length = 16;
 
   if ((bgp_channel_is_ipv4(c) != ipa_is_ip4(nh[0])) && !c->ext_next_hop)
-    WITHDRAW(BAD_NEXT_HOP MISMATCHED_AF, nh[0], c->desc->name);
+    INVALID(BAD_NEXT_HOP MISMATCHED_AF, nh[0], c->desc->name);
 
   // XXXX validate next hop
 
@@ -1514,7 +1524,7 @@ bgp_decode_next_hop_vpn(struct bgp_parse_state *s, byte *data, uint len, rta *a)
     bgp_parse_error(s, 9);
 
   if ((bgp_channel_is_ipv4(c) != ipa_is_ip4(nh[0])) && !c->ext_next_hop)
-    WITHDRAW(BAD_NEXT_HOP MISMATCHED_AF, nh[0], c->desc->name);
+    INVALID(BAD_NEXT_HOP MISMATCHED_AF, nh[0], c->desc->name);
 
   // XXXX validate next hop
 
