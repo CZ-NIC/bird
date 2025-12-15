@@ -1148,10 +1148,10 @@ rte_same(rte *x, rte *y)
   return
     x->attrs == y->attrs &&
     x->src == y->src &&
-    rte_is_filtered(x) == rte_is_filtered(y);
+    rte_is_valid(x) == rte_is_valid(y);
 }
 
-static inline int rte_is_ok(rte *e) { return e && !rte_is_filtered(e); }
+static inline int rte_is_ok(const struct rte *e) { return e && rte_is_valid(e); }
 
 static void
 rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
@@ -1196,7 +1196,7 @@ rte_recalculate(struct channel *c, net *net, rte *new, struct rte_src *src)
 
 	      old->flags &= ~(REF_STALE | REF_DISCARD | REF_MODIFY);
 
-	      if (!rte_is_filtered(new))
+	      if (!rte_is_valid(new))
 		{
 		  stats->imp_updates_ignored++;
 		  rte_trace_in(D_ROUTES, c, new, "ignored");
