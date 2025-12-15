@@ -1570,7 +1570,7 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
   if (!a0)
   {
     /* Route update was changed to withdraw */
-    if (s->err_withdraw && s->reach_nlri_step && !s->err_otc_leak)
+    if (s->err_withdraw && s->reach_nlri_step && !s->err_ineligible)
       REPORT("Invalid route %N withdrawn", n);
 
     /* Route withdraw */
@@ -1590,24 +1590,13 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
   rta *a = rta_clone(s->cached_rta);
   rte *e = rte_get_temp(a, s->last_src);
 
-  if (s->err_otc_leak)
+  if (s->err_ineligible)
   {
     e->flags |= REF_INELIGIBLE;
-    s->err_otc_leak = 0;
+
+    size_t len = s->err_msg_buf.pos - s->err_msg_buf.start;
 
     /* Add error message as route attribute */
-    size_t len = s->err_msg_buf.pos - s->err_msg_buf.start;
-
-    if (len)
-      ea_set_attr_data(&e->attrs->eattrs, s->pool, EA_INELIGIBILITY_REASON, 0, EAF_TYPE_STRING, s->err_msg_buf.start, len + 1);
-  }
-
-  if (s->err_loop)
-  {
-    e->flags |= REF_INELIGIBLE;
-    s->err_loop = 0;
-    size_t len = s->err_msg_buf.pos - s->err_msg_buf.start;
-
     if (len)
       ea_set_attr_data(&e->attrs->eattrs, s->pool, EA_INELIGIBILITY_REASON, 0, EAF_TYPE_STRING, s->err_msg_buf.start, len + 1);
   }

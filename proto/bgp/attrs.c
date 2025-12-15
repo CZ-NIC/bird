@@ -106,6 +106,15 @@ bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintp
 #define WITHDRAW(msg, args...) \
   ({ REPORT(msg, ## args); s->err_withdraw = 1; return; })
 
+#define INELIGIBLE(msg, args...)						  \
+  ({										  \
+     REPORT(msg, ## args);							  \
+     s->err_ineligible = 1;							  \
+     memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);  \
+     s->err_msg_buf.pos = s->err_msg_buf.start;					  \
+     buffer_print(&s->err_msg_buf, msg, ## args);				  \
+  })
+
 #define UNSET(a) \
   ({ a->undef = 1; return; })
 
@@ -1471,10 +1480,7 @@ withdraw:
 
 loop:
   /* Loops are handled as withdraws, but ignored silently. Do not set err_withdraw. */
-  s->err_loop = 1;
-  memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);
-  s->err_msg_buf.pos = s->err_msg_buf.start;
-  buffer_print(&s->err_msg_buf, "Loop detected");
+  INELIGIBLE("Loop detected");
   return NULL;
 }
 
@@ -1502,12 +1508,10 @@ bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
     if (e && (p->cf->local_role == BGP_ROLE_PROVIDER ||
 	      p->cf->local_role == BGP_ROLE_RS_SERVER))
     {
-      if (s->proto->cf->keep_otc_leaked)
+      if (s->proto->cf->keep_ineligible)
       {
-	s->err_otc_leak = 1;
-	memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);
-	s->err_msg_buf.pos = s->err_msg_buf.start;
-	buffer_print(&s->err_msg_buf, "Leaked route: OTC attribute from downstream");
+	INELIGIBLE("Route leak detected: OTC attribute from downstream");
+	return;
       }
 
       WITHDRAW("Route leak detected - OTC attribute from downstream");
@@ -1516,13 +1520,10 @@ bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
     /* Reject routes from peers if they are leaked */
     if (e && (p->cf->local_role == BGP_ROLE_PEER) && (e->u.data != p->cf->remote_as))
     {
-      if (s->proto->cf->keep_otc_leaked)
+      if (s->proto->cf->keep_ineligible)
       {
-	s->err_otc_leak = 1;
-	memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);
-	s->err_msg_buf.pos = s->err_msg_buf.start;
-	buffer_print(&s->err_msg_buf, "Leaked route: OTC atrribute with mismatched ASN (%u)",
-	    (uint)e->u.data);
+	INELIGIBLE("Route leak detected: OTC attribute with mismatched ASN (%u)", (uint)e->u.data);
+	return;
       }
 
       WITHDRAW("Route leak detected - OTC attribute with mismatched ASN (%u)",
