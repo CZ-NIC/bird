@@ -113,9 +113,12 @@ tag-collect:
     - curl https://branch.www.bird.office.nic.cz/meow.gpg > /etc/pki/rpm-gpg/bird-meow.gpg
     - $ADDREPO
     - $LIST
-    - strace $INSTALL
+    - strace -o str -ff $INSTALL
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
+  artifacts:
+    paths:
+      - 'str.*'
 
 
 install-centos-7-amd64:

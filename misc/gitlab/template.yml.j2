@@ -114,9 +114,12 @@ tag-collect:
     - $ADDREPO
 {#-    - $REPOLIST #}
     - $LIST
-    - strace $INSTALL
+    - strace -o str -ff $INSTALL
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
+  artifacts:
+    paths:
+      - 'str.*'
 
 {% for dist in distros %}{% if "rpm" in dist["type"] %}
 install-{{ dist["name"] }}:
