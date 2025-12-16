@@ -118,8 +118,6 @@ install-{{ dist["name"] }}:
     "pkg-deb": "install-deb",
     "pkg-deb-legacy": "install-deb",
   }[dist["type"]] }}
-  needs:
-    - job: pkg-{{ dist["name"] }}
   image: registry.nic.cz/labs/bird:{{ dist["name"] }}
   variables:
     ADDREPO: {% if "opensuse" in dist["name"] %}zypper ar{% else %}wget -O /etc/yum.repos.d/bird.repo{% endif %}

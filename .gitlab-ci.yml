@@ -113,8 +113,6 @@ tag-collect:
 
 install-centos-7-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-centos-7-amd64
   image: registry.nic.cz/labs/bird:centos-7-amd64
   variables:
     ADDREPO: wget -O /etc/yum.repos.d/bird.repo
@@ -124,8 +122,6 @@ install-centos-7-amd64:
 
 install-centos-8-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-centos-8-amd64
   image: registry.nic.cz/labs/bird:centos-8-amd64
   variables:
     ADDREPO: wget -O /etc/yum.repos.d/bird.repo
@@ -135,8 +131,6 @@ install-centos-8-amd64:
 
 install-rocky-08-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-rocky-08-amd64
   image: registry.nic.cz/labs/bird:rocky-08-amd64
   variables:
     ADDREPO: wget -O /etc/yum.repos.d/bird.repo
@@ -146,8 +140,6 @@ install-rocky-08-amd64:
 
 install-rocky-09-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-rocky-09-amd64
   image: registry.nic.cz/labs/bird:rocky-09-amd64
   variables:
     ADDREPO: wget -O /etc/yum.repos.d/bird.repo
@@ -157,8 +149,6 @@ install-rocky-09-amd64:
 
 install-fedora-32-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-fedora-32-amd64
   image: registry.nic.cz/labs/bird:fedora-32-amd64
   variables:
     ADDREPO: wget -O /etc/yum.repos.d/bird.repo
@@ -168,8 +158,6 @@ install-fedora-32-amd64:
 
 install-fedora-33-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-fedora-33-amd64
   image: registry.nic.cz/labs/bird:fedora-33-amd64
   variables:
     ADDREPO: wget -O /etc/yum.repos.d/bird.repo
@@ -179,8 +167,6 @@ install-fedora-33-amd64:
 
 install-opensuse-15.0-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-opensuse-15.0-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.0-amd64
   variables:
     ADDREPO: zypper ar
@@ -190,8 +176,6 @@ install-opensuse-15.0-amd64:
 
 install-opensuse-15.1-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-opensuse-15.1-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.1-amd64
   variables:
     ADDREPO: zypper ar
@@ -201,8 +185,6 @@ install-opensuse-15.1-amd64:
 
 install-opensuse-15.2-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-opensuse-15.2-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.2-amd64
   variables:
     ADDREPO: zypper ar
@@ -212,8 +194,6 @@ install-opensuse-15.2-amd64:
 
 install-opensuse-15.3-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-opensuse-15.3-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
   variables:
     ADDREPO: zypper ar
@@ -223,8 +203,6 @@ install-opensuse-15.3-amd64:
 
 install-opensuse-15.4-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-opensuse-15.4-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
   variables:
     ADDREPO: zypper ar
@@ -234,8 +212,6 @@ install-opensuse-15.4-amd64:
 
 install-opensuse-15.5-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-opensuse-15.5-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
   variables:
     ADDREPO: zypper ar
@@ -245,8 +221,6 @@ install-opensuse-15.5-amd64:
 
 install-fedora-34-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-fedora-34-amd64
   image: registry.nic.cz/labs/bird:fedora-34-amd64
   variables:
     ADDREPO: wget -O /etc/yum.repos.d/bird.repo
@@ -256,8 +230,6 @@ install-fedora-34-amd64:
 
 install-fedora-35-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-fedora-35-amd64
   image: registry.nic.cz/labs/bird:fedora-35-amd64
   variables:
     ADDREPO: wget -O /etc/yum.repos.d/bird.repo
@@ -267,8 +239,6 @@ install-fedora-35-amd64:
 
 install-fedora-36-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-fedora-36-amd64
   image: registry.nic.cz/labs/bird:fedora-36-amd64
   variables:
     ADDREPO: wget -O /etc/yum.repos.d/bird.repo
@@ -278,8 +248,6 @@ install-fedora-36-amd64:
 
 install-fedora-37-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-fedora-37-amd64
   image: registry.nic.cz/labs/bird:fedora-37-amd64
   variables:
     ADDREPO: wget -O /etc/yum.repos.d/bird.repo
@@ -289,8 +257,6 @@ install-fedora-37-amd64:
 
 install-fedora-38-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-fedora-38-amd64
   image: registry.nic.cz/labs/bird:fedora-38-amd64
   variables:
     ADDREPO: wget -O /etc/yum.repos.d/bird.repo
@@ -300,8 +266,6 @@ install-fedora-38-amd64:
 
 install-fedora-39-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-fedora-39-amd64
   image: registry.nic.cz/labs/bird:fedora-39-amd64
   variables:
     ADDREPO: wget -O /etc/yum.repos.d/bird.repo
@@ -311,8 +275,6 @@ install-fedora-39-amd64:
 
 install-fedora-40-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-fedora-40-amd64
   image: registry.nic.cz/labs/bird:fedora-40-amd64
   variables:
     ADDREPO: wget -O /etc/yum.repos.d/bird.repo
@@ -322,8 +284,6 @@ install-fedora-40-amd64:
 
 install-fedora-41-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-fedora-41-amd64
   image: registry.nic.cz/labs/bird:fedora-41-amd64
   variables:
     ADDREPO: wget -O /etc/yum.repos.d/bird.repo
@@ -333,8 +293,6 @@ install-fedora-41-amd64:
 
 install-fedora-42-amd64:
   <<: *install-rpm
-  needs:
-    - job: pkg-fedora-42-amd64
   image: registry.nic.cz/labs/bird:fedora-42-amd64
   variables:
     ADDREPO: wget -O /etc/yum.repos.d/bird.repo
