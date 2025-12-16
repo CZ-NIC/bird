@@ -473,6 +473,43 @@ channel_stop_export(struct channel *c)
   bmap_reset(&c->export_map, 1024);
 }
 
+/**
+ * channel_disable_export - disable export to the channel
+ * @c: given channel
+ *
+ * Call this function before starting the channel to avoid associated start
+ * of route export (i.e. export_state change from ES_DOWN to ES_FEEDING). Can
+ * be reverted by channel_enable_export(), reverts to the default behavior
+ * during channel flush.
+ */
+void
+channel_disable_export(struct channel *c)
+{
+  ASSERT(c->channel_state == CS_DOWN);
+  ASSERT(c->export_state == ES_DOWN);
+
+  c->export_wait = 1;
+}
+
+/**
+ * channel_enable_export - re-enable export to the channel
+ * @c: given channel
+ *
+ * Call this function to re-enable export that was disabled by
+ * channel_disable_export().
+ */
+void
+channel_enable_export(struct channel *c)
+{
+  ASSERT(c->export_wait);
+
+  c->export_wait = 0;
+
+  /* Resume postponed export of routes */
+  if ((c->channel_state == CS_UP) && !c->gr_wait && c->proto->rt_notify)
+    channel_start_export(c);
+}
+
 
 /* Called by protocol for reload from in_table */
 void
@@ -596,6 +633,8 @@ channel_do_flush(struct channel *c)
   c->reload_event = NULL;
   c->out_table = NULL;
 
+  c->export_wait = 0;
+
   channel_roa_unsubscribe_all(c);
 }
 
@@ -664,7 +703,7 @@ channel_set_state(struct channel *c, uint state)
     if (cs == CS_DOWN)
       channel_do_start(c);
 
-    if (!c->gr_wait && c->proto->rt_notify)
+    if (!c->gr_wait && !c->export_wait && c->proto->rt_notify)
       channel_start_export(c);
 
     channel_do_up(c);
@@ -1613,7 +1652,7 @@ graceful_restart_done(timer *t UNUSED)
     WALK_LIST(c, p->channels)
     {
       /* Resume postponed export of routes */
-      if ((c->channel_state == CS_UP) && c->gr_wait && c->proto->rt_notify)
+      if ((c->channel_state == CS_UP) && c->gr_wait && !c->export_wait && c->proto->rt_notify)
 	channel_start_export(c);
 
       /* Cleanup */

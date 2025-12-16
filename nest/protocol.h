@@ -566,6 +566,7 @@ struct channel {
   u8 refeed_pending;			/* Refeeding and another refeed is scheduled */
   u8 rpki_reload;			/* RPKI changes trigger channel reload */
   u8 bmp_hack;				/* No flush */
+  u8 export_wait;			/* Keep export_state in ES_DOWN */
 
   struct rtable *out_table;		/* Internal table for exported routes */
 
@@ -592,6 +593,7 @@ struct channel {
  *
  * CS_UP - The channel is initialized and the route exchange is allowed. Note
  * that even in CS_UP state, route export may still be down (ES_DOWN) by the
+ * protocol decision (e.g. in asymmetric case where import is active) or by the
  * core decision (e.g. waiting for table convergence after graceful restart).
  * I.e., the protocol decides to open the channel but the core decides to start
  * route export. Route import (caused by rte_update() from the protocol) is not
@@ -644,6 +646,8 @@ void proto_shutdown_mpls_map(struct proto *p, int hooks);
 void channel_set_state(struct channel *c, uint state);
 void channel_setup_in_table(struct channel *c);
 void channel_setup_out_table(struct channel *c);
+void channel_disable_export(struct channel *c);
+void channel_enable_export(struct channel *c);
 void channel_schedule_reload(struct channel *c);
 
 static inline void channel_init(struct channel *c) { channel_set_state(c, CS_START); }
