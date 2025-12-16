@@ -112,7 +112,7 @@ tag-collect:
     - $ADDREPO
     - $REPOLIST
     - $LIST
-    - $INSTALL
+    - strace $INSTALL
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
 
@@ -126,7 +126,7 @@ install-{{ dist["name"] }}:
   }[dist["type"]] }}
   image: registry.nic.cz/labs/bird:{{ dist["name"] }}
   variables:
-    PREINSTALL: {% if "opensuse" in dist["name"] %}zypper in -y curl openssl ca-certificates{% else %}yum install -y openssl ca-certificates{% endif %}
+    PREINSTALL: {% if "opensuse" in dist["name"] %}zypper in -y curl openssl ca-certificates strace{% else %}yum install -y openssl ca-certificates strace{% endif %}
     ADDREPO: {% if "opensuse" in dist["name"] %}zypper ar bird.repo{% else %}cp bird.repo /etc/yum.repos.d/bird.repo{% endif %}
     REPO_URL: {{ dist["branchrepo"] }}
     REPOLIST: {% if "opensuse" in dist["name"] %}zypper lr{% else %}yum repolist -v{% endif %}
