@@ -126,7 +126,7 @@ install-centos-7-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/centos/7/x86_64/bird.repo
     REPOLIST: yum repolist -v
     LIST: yum list bird
-    INSTALL: yum install bird-3.1.5-cznic.1.el7
+    INSTALL: yum install -y bird-3.1.5-cznic.1.el7
 
 install-centos-8-amd64:
   <<: *install-rpm
@@ -137,7 +137,7 @@ install-centos-8-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/centos/8/x86_64/bird.repo
     REPOLIST: yum repolist -v
     LIST: yum list bird
-    INSTALL: yum install bird-3.1.5-cznic.1.el8
+    INSTALL: yum install -y bird-3.1.5-cznic.1.el8
 
 install-rocky-08-amd64:
   <<: *install-rpm
@@ -148,7 +148,7 @@ install-rocky-08-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/rocky/08/x86_64/bird.repo
     REPOLIST: yum repolist -v
     LIST: yum list bird
-    INSTALL: yum install bird-3.1.5-cznic.1.el8
+    INSTALL: yum install -y bird-3.1.5-cznic.1.el8
 
 install-rocky-09-amd64:
   <<: *install-rpm
@@ -159,7 +159,7 @@ install-rocky-09-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/rocky/09/x86_64/bird.repo
     REPOLIST: yum repolist -v
     LIST: yum list bird
-    INSTALL: yum install bird-3.1.5-cznic.1.el9
+    INSTALL: yum install -y bird-3.1.5-cznic.1.el9
 
 install-opensuse-15.0-amd64:
   <<: *install-rpm
@@ -170,7 +170,7 @@ install-opensuse-15.0-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.0/x86_64/bird.repo
     REPOLIST: zypper lr
     LIST: zypper search bird
-    INSTALL: zypper in bird=3.1.5-cznic.1
+    INSTALL: zypper in -y bird=3.1.5-cznic.1
 
 install-opensuse-15.1-amd64:
   <<: *install-rpm
@@ -181,7 +181,7 @@ install-opensuse-15.1-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.1/x86_64/bird.repo
     REPOLIST: zypper lr
     LIST: zypper search bird
-    INSTALL: zypper in bird=3.1.5-cznic.1
+    INSTALL: zypper in -y bird=3.1.5-cznic.1
 
 install-opensuse-15.2-amd64:
   <<: *install-rpm
@@ -192,7 +192,7 @@ install-opensuse-15.2-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.2/x86_64/bird.repo
     REPOLIST: zypper lr
     LIST: zypper search bird
-    INSTALL: zypper in bird=3.1.5-cznic.1
+    INSTALL: zypper in -y bird=3.1.5-cznic.1
 
 install-opensuse-15.3-amd64:
   <<: *install-rpm
@@ -203,7 +203,7 @@ install-opensuse-15.3-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.3/x86_64/bird.repo
     REPOLIST: zypper lr
     LIST: zypper search bird
-    INSTALL: zypper in bird=3.1.5-cznic.1
+    INSTALL: zypper in -y bird=3.1.5-cznic.1
 
 install-opensuse-15.4-amd64:
   <<: *install-rpm
@@ -214,7 +214,7 @@ install-opensuse-15.4-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.4/x86_64/bird.repo
     REPOLIST: zypper lr
     LIST: zypper search bird
-    INSTALL: zypper in bird=3.1.5-cznic.1
+    INSTALL: zypper in -y bird=3.1.5-cznic.1
 
 install-opensuse-15.5-amd64:
   <<: *install-rpm
@@ -225,7 +225,7 @@ install-opensuse-15.5-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.5/x86_64/bird.repo
     REPOLIST: zypper lr
     LIST: zypper search bird
-    INSTALL: zypper in bird=3.1.5-cznic.1
+    INSTALL: zypper in -y bird=3.1.5-cznic.1
 
 install-fedora-34-amd64:
   <<: *install-rpm
@@ -236,7 +236,7 @@ install-fedora-34-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/fedora/34/x86_64/bird.repo
     REPOLIST: yum repolist -v
     LIST: yum list bird
-    INSTALL: yum install bird-3.1.5-cznic.1.fc34
+    INSTALL: yum install -y bird-3.1.5-cznic.1.fc34
 
 install-fedora-35-amd64:
   <<: *install-rpm
@@ -247,7 +247,7 @@ install-fedora-35-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/fedora/35/x86_64/bird.repo
     REPOLIST: yum repolist -v
     LIST: yum list bird
-    INSTALL: yum install bird-3.1.5-cznic.1.fc35
+    INSTALL: yum install -y bird-3.1.5-cznic.1.fc35
 
 install-fedora-36-amd64:
   <<: *install-rpm
@@ -258,7 +258,7 @@ install-fedora-36-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/fedora/36/x86_64/bird.repo
     REPOLIST: yum repolist -v
     LIST: yum list bird
-    INSTALL: yum install bird-3.1.5-cznic.1.fc36
+    INSTALL: yum install -y bird-3.1.5-cznic.1.fc36
 
 install-fedora-37-amd64:
   <<: *install-rpm
@@ -269,7 +269,7 @@ install-fedora-37-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/fedora/37/x86_64/bird.repo
     REPOLIST: yum repolist -v
     LIST: yum list bird
-    INSTALL: yum install bird-3.1.5-cznic.1.fc37
+    INSTALL: yum install -y bird-3.1.5-cznic.1.fc37
 
 install-fedora-38-amd64:
   <<: *install-rpm
@@ -280,7 +280,7 @@ install-fedora-38-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/fedora/38/x86_64/bird.repo
     REPOLIST: yum repolist -v
     LIST: yum list bird
-    INSTALL: yum install bird-3.1.5-cznic.1.fc38
+    INSTALL: yum install -y bird-3.1.5-cznic.1.fc38
 
 install-fedora-39-amd64:
   <<: *install-rpm
@@ -291,7 +291,7 @@ install-fedora-39-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/fedora/39/x86_64/bird.repo
     REPOLIST: yum repolist -v
     LIST: yum list bird
-    INSTALL: yum install bird-3.1.5-cznic.1.fc39
+    INSTALL: yum install -y bird-3.1.5-cznic.1.fc39
 
 install-fedora-40-amd64:
   <<: *install-rpm
@@ -302,7 +302,7 @@ install-fedora-40-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/fedora/40/x86_64/bird.repo
     REPOLIST: yum repolist -v
     LIST: yum list bird
-    INSTALL: yum install bird-3.1.5-cznic.1.fc40
+    INSTALL: yum install -y bird-3.1.5-cznic.1.fc40
 
 install-fedora-41-amd64:
   <<: *install-rpm
@@ -313,7 +313,7 @@ install-fedora-41-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/fedora/41/x86_64/bird.repo
     REPOLIST: yum repolist -v
     LIST: yum list bird
-    INSTALL: yum install bird-3.1.5-cznic.1.fc41
+    INSTALL: yum install -y bird-3.1.5-cznic.1.fc41
 
 install-fedora-42-amd64:
   <<: *install-rpm
@@ -324,5 +324,5 @@ install-fedora-42-amd64:
     REPO_URL: https://branch.www.bird.office.nic.cz/fedora/42/x86_64/bird.repo
     REPOLIST: yum repolist -v
     LIST: yum list bird
-    INSTALL: yum install bird-3.1.5-cznic.1.fc42
+    INSTALL: yum install -y bird-3.1.5-cznic.1.fc42
 
