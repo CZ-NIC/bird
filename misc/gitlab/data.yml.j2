@@ -11,18 +11,22 @@ distros:
       CC: /opt/rh/devtoolset-8/root/usr/bin/gcc
     type: pkg-rpm-wa
     branchrepo: https://branch.www.bird.office.nic.cz/centos/7/x86_64/bird.repo
+    vsuf: .el7
 
-  {% for name in (
-    'centos-8',
-    'rocky-08',
-    'rocky-09',
-    'fedora-32',
-    'fedora-33',
-  ) -%}
-  - name: {{ name }}-amd64
+  - name: centos-8-amd64
     type: pkg-rpm-wa
-    branchrepo: https://branch.www.bird.office.nic.cz/{{ (name.split('-'))[0] }}/{{ (name.split('-'))[1] }}/x86_64/bird.repo
-  {% endfor %}
+    branchrepo: https://branch.www.bird.office.nic.cz/centos/8/x86_64/bird.repo
+    vsuf: .el8
+
+  - name: rocky-08-amd64
+    type: pkg-rpm-wa
+    branchrepo: https://branch.www.bird.office.nic.cz/rocky/08/x86_64/bird.repo
+    vsuf: .el8
+
+  - name: rocky-09-amd64
+    type: pkg-rpm-wa
+    branchrepo: https://branch.www.bird.office.nic.cz/rocky/09/x86_64/bird.repo
+    vsuf: .el9
 
   # For some unknown reason we also require older Python packages
   # for OpenSUSE even with the recent versions.
@@ -37,6 +41,7 @@ distros:
   - name: fedora-{{ num }}-amd64
     type: pkg-rpm
     branchrepo: https://branch.www.bird.office.nic.cz/fedora/{{ num }}/x86_64/bird.repo
+    vsuf: .fc{{ num }}
   {% endfor %}
 
   # Debian-based legacy builds
