@@ -84,6 +84,43 @@ tag-collect:
 
 ## Package installability checks
 
+.install-suse: &install-suse
+  <<: *test-job
+  stage: install
+  script:
+    # check that bird is _not_ installed now and no user or group bird exists
+    - |
+      if bird --version >/dev/null 2>&1; then
+        echo "Error: BIRD unexpectedly installed"
+        exit 1
+      fi
+      if id -g bird >/dev/null 2>&1; then
+        echo "Error: User group 'bird' exist before installation"
+        exit 1
+      fi
+      if id -u bird >/dev/null 2>&1; then
+        echo "Error: User 'bird' exist before installation"
+        exit 1
+      fi
+    # install packages
+    - zypper in -y curl openssl ca-certificates strace
+#    - openssl s_client -showcerts -connect branch.www.bird.office.nic.cz:443 </dev/null 2>/dev/null | openssl x509 -outform PEM > office.crt
+    - curl -k https://branch.www.bird.office.nic.cz/cznic.crt --output cznic.crt
+    - curl -k https://branch.www.bird.office.nic.cz/servers.crt --output servers.crt
+    - trust anchor cznic.crt
+    - trust anchor servers.crt
+    - curl $REPO_URL > bird.repo
+    - curl https://branch.www.bird.office.nic.cz/maria.gpg > /etc/pki/rpm-gpg/bird-maria.gpg
+    - curl https://branch.www.bird.office.nic.cz/meow.gpg > /etc/pki/rpm-gpg/bird-meow.gpg
+    - zypper ar bird.repo
+    - zypper search bird
+    - strace -o str -ff $INSTALL
+    # test that installation is successful
+    - ./tools/test-install "$CI_COMMIT_MESSAGE"
+  artifacts:
+    paths:
+      - 'str.*'
+
 .install-rpm: &install-rpm
   <<: *test-job
   stage: install
@@ -103,7 +140,7 @@ tag-collect:
         exit 1
       fi
     # install packages
-    - $PREINSTALL
+    - yum install -y openssl ca-certificates strace
     - openssl s_client -showcerts -connect branch.www.bird.office.nic.cz:443 </dev/null 2>/dev/null | openssl x509 -outform PEM > /etc/pki/ca-trust/source/anchors/office.crt
     - curl -k https://branch.www.bird.office.nic.cz/cznic.crt --output /etc/pki/ca-trust/source/anchors/cznic.crt
     - curl -k https://branch.www.bird.office.nic.cz/servers.crt --output /etc/pki/ca-trust/source/anchors/servers.crt
@@ -111,9 +148,8 @@ tag-collect:
     - curl $REPO_URL > bird.repo
     - curl https://branch.www.bird.office.nic.cz/maria.gpg > /etc/pki/rpm-gpg/bird-maria.gpg
     - curl https://branch.www.bird.office.nic.cz/meow.gpg > /etc/pki/rpm-gpg/bird-meow.gpg
-    - $ADDREPO
-{#-    - $REPOLIST #}
-    - $LIST
+    - cp bird.repo /etc/yum.repos.d/bird.repo
+    - yum list bird
     - strace -o str -ff $INSTALL
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
@@ -123,18 +159,9 @@ tag-collect:
 
 {% for dist in distros %}{% if "rpm" in dist["type"] %}
 install-{{ dist["name"] }}:
-  <<: *{{ {
-    "pkg-rpm": "install-rpm",
-    "pkg-rpm-wa": "install-rpm",
-    "pkg-deb": "install-deb",
-    "pkg-deb-legacy": "install-deb",
-  }[dist["type"]] }}
+  <<: *{% if "opensuse" in dist["name"] %}install-suse{% else %}install-rpm{% endif %}
   image: registry.nic.cz/labs/bird:{{ dist["name"] }}
   variables:
-    PREINSTALL: {% if "opensuse" in dist["name"] %}zypper in -y curl openssl ca-certificates strace{% else %}yum install -y openssl ca-certificates strace{% endif %}
-    ADDREPO: {% if "opensuse" in dist["name"] %}zypper ar bird.repo{% else %}cp bird.repo /etc/yum.repos.d/bird.repo{% endif %}
     REPO_URL: {{ dist["branchrepo"] }}
-{#-    REPOLIST: {% if "opensuse" in dist["name"] %}zypper lr{% else %}yum repolist -v{% endif %} #}
-    LIST: {% if "opensuse" in dist["name"] %}zypper search bird{% else %}yum list bird{% endif %}
     INSTALL: {% if "opensuse" in dist["name"] %}zypper in -y bird=3.1.5-cznic.1{% else %}yum install -y bird-3.1.5-cznic.1{{ dist["vsuf"] }}{% endif %}
 {% endif %}{% endfor %}
