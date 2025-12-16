@@ -125,7 +125,7 @@ install-{{ dist["name"] }}:
     PREINSTALL: {% if "opensuse" in dist["name"] %}zypper in curl{% else %}true{% endif %}
     ADDREPO: {% if "opensuse" in dist["name"] %}zypper ar bird.repo{% else %}cp bird.repo /etc/yum.repos.d/bird.repo{% endif %}
     REPO_URL: {{ dist["branchrepo"] }}
-    REPOLIST: {% if "opensuse" in dist["name"] %}zypper lr{% else %}yum repolist{% endif %}
+    REPOLIST: {% if "opensuse" in dist["name"] %}zypper lr{% else %}yum repolist -v{% endif %}
     LIST: {% if "opensuse" in dist["name"] %}zypper search bird{% else %}yum list bird{% endif %}
     INSTALL: {% if "opensuse" in dist["name"] %}zypper in bird=3.1.5-cznic.1{% else %}yum install bird-3.1.5-cznic.1{% endif %}
 {% endif %}{% endfor %}
