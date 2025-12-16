@@ -110,8 +110,8 @@ tag-collect:
     - trust anchor cznic.crt
     - trust anchor servers.crt
     - curl $REPO_URL > bird.repo
-    - curl https://branch.www.bird.office.nic.cz/maria.gpg > /etc/pki/rpm-gpg/bird-maria.gpg
-    - curl https://branch.www.bird.office.nic.cz/meow.gpg > /etc/pki/rpm-gpg/bird-meow.gpg
+#    - curl https://branch.www.bird.office.nic.cz/maria.gpg > /etc/pki/rpm-gpg/bird-maria.gpg
+#    - curl https://branch.www.bird.office.nic.cz/meow.gpg > /etc/pki/rpm-gpg/bird-meow.gpg
     - zypper ar bird.repo
     - zypper search bird
     - strace -o strout -ff $INSTALL
@@ -149,6 +149,8 @@ tag-collect:
     - curl $REPO_URL > bird.repo
     - curl https://branch.www.bird.office.nic.cz/maria.gpg > /etc/pki/rpm-gpg/bird-maria.gpg
     - curl https://branch.www.bird.office.nic.cz/meow.gpg > /etc/pki/rpm-gpg/bird-meow.gpg
+    - rpmkeys --import /etc/pki/rpm-gpg/bird-maria.gpg
+    - rpmkeys --import /etc/pki/rpm-gpg/bird-meow.gpg
     - cp bird.repo /etc/yum.repos.d/bird.repo
     - yum list bird
     - strace -o strout -ff $INSTALL
