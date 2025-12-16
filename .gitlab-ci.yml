@@ -82,958 +82,7 @@ tag-collect:
   - *never-tag
   - when: always
 
-############################
-## Docker builder rebuild ##
-############################
-# We are running all the build / packaging tests in Dockers (unless otherwise)
-# and these are rules to build these docker images. These are expensive to run
-# and should run only if needed.
-#
-# Modify the appropriate dockerfile to rebuild these images
-
-.docker: &docker-build
-  stage: image
-  script:
-  - $DOCKER_CMD login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.nic.cz
-  # Make sure we refresh the base image if it updates (eg. security updates, etc)
-  # If we do just the build, cache is always reused and the freshness of the
-  # base image is never checked. However, pull always asks and updates the
-  # image only if it changed ‒ therefore, the cache is used unless there's a
-  # change.
-  - $DOCKER_CMD pull `sed -ne 's/^FROM //p' "misc/docker/$IMG_NAME/Dockerfile"`
-  - $DOCKER_CMD build -t "bird:$IMG_NAME" "misc/docker/$IMG_NAME"
-  - $DOCKER_CMD tag "bird:$IMG_NAME" "$IMG_BASE:$IMG_NAME"
-  - $DOCKER_CMD push "$IMG_BASE:$IMG_NAME"
-  after_script:
-  - rm -f "$HOME/.docker/$CI_JOB_ID/" # cleanup the credentials
-  tags:
-  # That's Docker in Docker
-  - dind
-  rules:
-    # Never rebuild for WIP commits
-  - *never-wip
-
-    # Never rebuild for tags
-  - if: '$CI_COMMIT_TAG'
-    when: never
-
-    # Never rebuild for new branches
-  - if: $CI_COMMIT_BEFORE_SHA == "0000000000000000000000000000000000000000"
-    when: never
-
-    # Do any change in Dockerfile (e.g. change a comment) to rebuild the image
-    # FIXME: This probably belongs to bird-tools instead, we may end up with
-    # screwed up docker repository in case of colliding image updates
-  - changes:
-    - misc/docker/$IMG_NAME/Dockerfile
-    when: always
-
-  - when: never
-
-
-docker-docbuilder:
-  variables:
-    IMG_NAME: "docbuilder"
-  <<: *docker-build
-
-docker-centos-7-amd64:
-  variables:
-    IMG_NAME: "centos-7-amd64"
-  <<: *docker-build
-
-docker-centos-8-amd64:
-  variables:
-    IMG_NAME: "centos-8-amd64"
-  <<: *docker-build
-
-docker-rocky-08-amd64:
-  variables:
-    IMG_NAME: "rocky-08-amd64"
-  <<: *docker-build
-
-docker-rocky-09-amd64:
-  variables:
-    IMG_NAME: "rocky-09-amd64"
-  <<: *docker-build
-
-docker-fedora-32-amd64:
-  variables:
-    IMG_NAME: "fedora-32-amd64"
-  <<: *docker-build
-
-docker-fedora-33-amd64:
-  variables:
-    IMG_NAME: "fedora-33-amd64"
-  <<: *docker-build
-
-docker-opensuse-15.0-amd64:
-  variables:
-    IMG_NAME: "opensuse-15.0-amd64"
-  <<: *docker-build
-
-docker-opensuse-15.1-amd64:
-  variables:
-    IMG_NAME: "opensuse-15.1-amd64"
-  <<: *docker-build
-
-docker-opensuse-15.2-amd64:
-  variables:
-    IMG_NAME: "opensuse-15.2-amd64"
-  <<: *docker-build
-
-docker-opensuse-15.3-amd64:
-  variables:
-    IMG_NAME: "opensuse-15.3-amd64"
-  <<: *docker-build
-
-docker-opensuse-15.4-amd64:
-  variables:
-    IMG_NAME: "opensuse-15.4-amd64"
-  <<: *docker-build
-
-docker-opensuse-15.5-amd64:
-  variables:
-    IMG_NAME: "opensuse-15.5-amd64"
-  <<: *docker-build
-
-docker-fedora-34-amd64:
-  variables:
-    IMG_NAME: "fedora-34-amd64"
-  <<: *docker-build
-
-docker-fedora-35-amd64:
-  variables:
-    IMG_NAME: "fedora-35-amd64"
-  <<: *docker-build
-
-docker-fedora-36-amd64:
-  variables:
-    IMG_NAME: "fedora-36-amd64"
-  <<: *docker-build
-
-docker-fedora-37-amd64:
-  variables:
-    IMG_NAME: "fedora-37-amd64"
-  <<: *docker-build
-
-docker-fedora-38-amd64:
-  variables:
-    IMG_NAME: "fedora-38-amd64"
-  <<: *docker-build
-
-docker-fedora-39-amd64:
-  variables:
-    IMG_NAME: "fedora-39-amd64"
-  <<: *docker-build
-
-docker-fedora-40-amd64:
-  variables:
-    IMG_NAME: "fedora-40-amd64"
-  <<: *docker-build
-
-docker-fedora-41-amd64:
-  variables:
-    IMG_NAME: "fedora-41-amd64"
-  <<: *docker-build
-
-docker-fedora-42-amd64:
-  variables:
-    IMG_NAME: "fedora-42-amd64"
-  <<: *docker-build
-
-docker-ubuntu-18.04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-18.04-amd64"
-  <<: *docker-build
-
-docker-debian-11-i386:
-  variables:
-    IMG_NAME: "debian-11-i386"
-  <<: *docker-build
-
-docker-debian-11-amd64:
-  variables:
-    IMG_NAME: "debian-11-amd64"
-  <<: *docker-build
-
-docker-debian-10-amd64:
-  variables:
-    IMG_NAME: "debian-10-amd64"
-  <<: *docker-build
-
-docker-debian-10-i386:
-  variables:
-    IMG_NAME: "debian-10-i386"
-  <<: *docker-build
-
-docker-debian-12-amd64:
-  variables:
-    IMG_NAME: "debian-12-amd64"
-  <<: *docker-build
-
-docker-debian-12-i386:
-  variables:
-    IMG_NAME: "debian-12-i386"
-  <<: *docker-build
-
-docker-debian-13-amd64:
-  variables:
-    IMG_NAME: "debian-13-amd64"
-  <<: *docker-build
-
-docker-debian-13-i386:
-  variables:
-    IMG_NAME: "debian-13-i386"
-  <<: *docker-build
-
-docker-debian-testing-amd64:
-  variables:
-    IMG_NAME: "debian-testing-amd64"
-  <<: *docker-build
-
-docker-debian-testing-i386:
-  variables:
-    IMG_NAME: "debian-testing-i386"
-  <<: *docker-build
-
-docker-ubuntu-20.04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-20.04-amd64"
-  <<: *docker-build
-
-docker-ubuntu-22.04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-22.04-amd64"
-  <<: *docker-build
-
-docker-ubuntu-24.04-amd64:
-  variables:
-    IMG_NAME: "ubuntu-24.04-amd64"
-  <<: *docker-build
-
-docker-ubuntu-24.10-amd64:
-  variables:
-    IMG_NAME: "ubuntu-24.10-amd64"
-  <<: *docker-build
-
-
-#####################################################
-## Linux distro build tests inside Docker builders ##
-#####################################################
-
-## Build stage
-#
-# Now we compile and run unit tests ... in every single distribution.
-# Every task needs its docker, see above.
-
-.build: &build-base
-  <<: *test-job
-  stage: build
-  script:
-    - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
-    - tools/version && ( echo -n "BIRD version "; tools/version ) > version-expected
-    - |
-      STABLE_VERSION="`cat VERSION`"
-      if [ "$CI_COMMIT_MESSAGE" == "NEWS and version update
-      " ]; then
-        if [ "${STABLE_VERSION}" == "`tools/version`" ]; then
-          echo "Stable version precheck OK"
-        else
-          echo "Stable version discrepancy: $STABLE_VERSION vs. $(tools/version)"
-          exit 1
-        fi
-      else
-        if grep -qF "BIRD version ${STABLE_VERSION}+branch" version-expected; then
-          true
-        else
-          echo -n "Commit $CI_COMMIT_SHA message $CI_COMMIT_MESSAGE expects version "
-          cat version-expected
-          exit 1
-        fi
-      fi
-    - autoreconf
-    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" $CONFIGURE_OPTIONS
-    # Detect which make is available
-    - MAKE=make
-    - which gmake 2>/dev/null >/dev/null && MAKE=gmake
-    - $MAKE
-    - $MAKE check
-    # Build docs when tools are available
-    - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
-    # Check that the reported version is the right one
-    - ./bird --version |& tee obj/version-built
-    - diff obj/version-built version-expected
-
-.build-docker-linux-amd64: &build-docker-linux-amd64
-  <<: *build-base
-  tags:
-    - docker
-    - linux
-    - amd64
-
-
-build-centos-7-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-centos-7-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:centos-7-amd64
-  variables:
-    CC: /opt/rh/devtoolset-8/root/usr/bin/gcc
-    LC_ALL: en_US.UTF-8
-
-build-centos-8-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-centos-8-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:centos-8-amd64
-
-build-rocky-08-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-rocky-08-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:rocky-08-amd64
-
-build-rocky-09-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-rocky-09-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:rocky-09-amd64
-
-build-fedora-32-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-fedora-32-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:fedora-32-amd64
-
-build-fedora-33-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-fedora-33-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:fedora-33-amd64
-
-build-opensuse-15.0-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-opensuse-15.0-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:opensuse-15.0-amd64
-
-build-opensuse-15.1-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-opensuse-15.1-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:opensuse-15.1-amd64
-
-build-opensuse-15.2-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-opensuse-15.2-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:opensuse-15.2-amd64
-
-build-opensuse-15.3-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-opensuse-15.3-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
-
-build-opensuse-15.4-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-opensuse-15.4-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
-
-build-opensuse-15.5-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-opensuse-15.5-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
-
-build-fedora-34-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-fedora-34-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:fedora-34-amd64
-
-build-fedora-35-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-fedora-35-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:fedora-35-amd64
-
-build-fedora-36-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-fedora-36-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:fedora-36-amd64
-
-build-fedora-37-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-fedora-37-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:fedora-37-amd64
-
-build-fedora-38-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-fedora-38-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:fedora-38-amd64
-
-build-fedora-39-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-fedora-39-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:fedora-39-amd64
-
-build-fedora-40-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-fedora-40-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:fedora-40-amd64
-
-build-fedora-41-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-fedora-41-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:fedora-41-amd64
-
-build-fedora-42-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-fedora-42-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:fedora-42-amd64
-
-build-ubuntu-18.04-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-ubuntu-18.04-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
-
-build-debian-11-i386:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-11-i386
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-11-i386
-
-build-debian-11-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-11-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-11-amd64
-
-build-debian-10-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-10-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-10-amd64
-
-build-debian-10-i386:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-10-i386
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-10-i386
-
-build-debian-12-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-12-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-12-amd64
-
-build-debian-12-i386:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-12-i386
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-12-i386
-
-build-debian-13-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-13-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-13-amd64
-
-build-debian-13-i386:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-13-i386
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-13-i386
-
-build-debian-testing-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-testing-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-testing-amd64
-
-build-debian-testing-i386:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-debian-testing-i386
-      optional: true
-  image: registry.nic.cz/labs/bird:debian-testing-i386
-
-build-ubuntu-20.04-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-ubuntu-20.04-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:ubuntu-20.04-amd64
-
-build-ubuntu-22.04-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-ubuntu-22.04-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
-
-build-ubuntu-24.04-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-ubuntu-24.04-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
-
-build-ubuntu-24.10-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-ubuntu-24.10-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
-
-
-#######################################################
-## A special task for preparing the release archives ##
-#######################################################
-build-release:
-  <<: *test-job
-  image: registry.nic.cz/labs/bird:docbuilder
-  needs: 
-    - job: docker-docbuilder
-      optional: true
-  stage: build
-  tags:
-    - docker
-    - linux
-  script:
-    - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
-    - autoreconf
-    - ./configure --with-protocols= --disable-client
-    - make obj/doc/bird-singlepage.html
-    - tools/make-archive
-  artifacts:
-    paths:
-      - obj/doc/bird-singlepage.html
-      - bird-*.tar.gz
-    expire_in: 1 day
-
-# Packaging rules
-# As we support some ancient versions of different distributions,
-# we need to keep several different machineries. It's not so bad
-# but it's bad nevertheless.
-#
-# We do NOT build separate documentation packages in these rules.
-
-.pkg-deb: &pkg-deb
-  <<: *test-job
-  stage: pkg
-  script:
-    # create venv only if it's installed
-    - if python3 -m venv venv; then . venv/bin/activate; fi
-    - pip3 install apkg==$APKG_VERSION
-    - apkg build -a bird-$(cat VERSION)*.tar.gz
-  artifacts:
-    paths:
-      - pkg/pkgs/*
-      - pkg/srcpkgs/*
-
-.pkg-deb-legacy: &pkg-deb-legacy
-  <<: *test-job
-  stage: pkg
-  script:
-    # create venv only if it's installed
-    - if python3 -m venv venv; then . venv/bin/activate; fi
-    # install older version of bs4 that does not use python version >= 3.6
-    # apkg depends on bs4, and unless we want to backport python 3.6
-    # to ancient distros, we need to do this workaround
-    - pip3 install beautifulsoup4==4.11.2
-    - pip3 install markupsafe==2.0.1
-    - pip3 install apkg==$APKG_VERSION
-    - apkg build -a bird-$(cat VERSION)*.tar.gz
-  artifacts:
-    paths:
-      - pkg/pkgs/*
-      - pkg/srcpkgs/*
-
-.pkg-rpm: &pkg-rpm
-  <<: *test-job
-  stage: pkg
-  script:
-    - pip3 install apkg==$APKG_VERSION
-    - apkg build -a bird-$(cat VERSION)*.tar.gz
-  artifacts:
-    paths:
-      - pkg/pkgs/*
-      - pkg/srcpkgs/*
-
-.pkg-rpm-wa: &pkg-rpm-wa
-  <<: *test-job
-  stage: pkg
-  script:
-    - sed -i "s/runstatedir/with-runtimedir/" distro/pkg/rpm/bird.spec
-    # install older version of bs4 that does not use python version >= 3.6
-    - pip3 install beautifulsoup4==4.11.2
-    - pip3 install apkg==$APKG_VERSION
-    - apkg build -a bird-$(cat VERSION)*.tar.gz
-  artifacts:
-    paths:
-      - pkg/pkgs/*
-      - pkg/srcpkgs/*
-
-
-
-pkg-centos-7-amd64:
-  <<: *pkg-rpm-wa
-  needs:
-    - job: build-centos-7-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:centos-7-amd64
-  variables:
-    CC: /opt/rh/devtoolset-8/root/usr/bin/gcc
-    LC_ALL: en_US.UTF-8
-
-pkg-centos-8-amd64:
-  <<: *pkg-rpm-wa
-  needs:
-    - job: build-centos-8-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:centos-8-amd64
-
-pkg-rocky-08-amd64:
-  <<: *pkg-rpm-wa
-  needs:
-    - job: build-rocky-08-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:rocky-08-amd64
-
-pkg-rocky-09-amd64:
-  <<: *pkg-rpm-wa
-  needs:
-    - job: build-rocky-09-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:rocky-09-amd64
-
-pkg-fedora-32-amd64:
-  <<: *pkg-rpm-wa
-  needs:
-    - job: build-fedora-32-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:fedora-32-amd64
-
-pkg-fedora-33-amd64:
-  <<: *pkg-rpm-wa
-  needs:
-    - job: build-fedora-33-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:fedora-33-amd64
-
-pkg-opensuse-15.0-amd64:
-  <<: *pkg-rpm-wa
-  needs:
-    - job: build-opensuse-15.0-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:opensuse-15.0-amd64
-
-pkg-opensuse-15.1-amd64:
-  <<: *pkg-rpm-wa
-  needs:
-    - job: build-opensuse-15.1-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:opensuse-15.1-amd64
-
-pkg-opensuse-15.2-amd64:
-  <<: *pkg-rpm-wa
-  needs:
-    - job: build-opensuse-15.2-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:opensuse-15.2-amd64
-
-pkg-opensuse-15.3-amd64:
-  <<: *pkg-rpm-wa
-  needs:
-    - job: build-opensuse-15.3-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
-
-pkg-opensuse-15.4-amd64:
-  <<: *pkg-rpm-wa
-  needs:
-    - job: build-opensuse-15.4-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
-
-pkg-opensuse-15.5-amd64:
-  <<: *pkg-rpm-wa
-  needs:
-    - job: build-opensuse-15.5-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
-
-pkg-fedora-34-amd64:
-  <<: *pkg-rpm
-  needs:
-    - job: build-fedora-34-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:fedora-34-amd64
-
-pkg-fedora-35-amd64:
-  <<: *pkg-rpm
-  needs:
-    - job: build-fedora-35-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:fedora-35-amd64
-
-pkg-fedora-36-amd64:
-  <<: *pkg-rpm
-  needs:
-    - job: build-fedora-36-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:fedora-36-amd64
-
-pkg-fedora-37-amd64:
-  <<: *pkg-rpm
-  needs:
-    - job: build-fedora-37-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:fedora-37-amd64
-
-pkg-fedora-38-amd64:
-  <<: *pkg-rpm
-  needs:
-    - job: build-fedora-38-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:fedora-38-amd64
-
-pkg-fedora-39-amd64:
-  <<: *pkg-rpm
-  needs:
-    - job: build-fedora-39-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:fedora-39-amd64
-
-pkg-fedora-40-amd64:
-  <<: *pkg-rpm
-  needs:
-    - job: build-fedora-40-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:fedora-40-amd64
-
-pkg-fedora-41-amd64:
-  <<: *pkg-rpm
-  needs:
-    - job: build-fedora-41-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:fedora-41-amd64
-
-pkg-fedora-42-amd64:
-  <<: *pkg-rpm
-  needs:
-    - job: build-fedora-42-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:fedora-42-amd64
-
-pkg-ubuntu-18.04-amd64:
-  <<: *pkg-deb-legacy
-  needs:
-    - job: build-ubuntu-18.04-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
-
-pkg-debian-11-i386:
-  <<: *pkg-deb-legacy
-  needs:
-    - job: build-debian-11-i386
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-11-i386
-
-pkg-debian-11-amd64:
-  <<: *pkg-deb-legacy
-  needs:
-    - job: build-debian-11-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-11-amd64
-
-pkg-debian-10-amd64:
-  <<: *pkg-deb
-  needs:
-    - job: build-debian-10-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-10-amd64
-
-pkg-debian-10-i386:
-  <<: *pkg-deb
-  needs:
-    - job: build-debian-10-i386
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-10-i386
-
-pkg-debian-12-amd64:
-  <<: *pkg-deb
-  needs:
-    - job: build-debian-12-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-12-amd64
-
-pkg-debian-12-i386:
-  <<: *pkg-deb
-  needs:
-    - job: build-debian-12-i386
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-12-i386
-
-pkg-debian-13-amd64:
-  <<: *pkg-deb
-  needs:
-    - job: build-debian-13-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-13-amd64
-
-pkg-debian-13-i386:
-  <<: *pkg-deb
-  needs:
-    - job: build-debian-13-i386
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-13-i386
-
-pkg-debian-testing-amd64:
-  <<: *pkg-deb
-  needs:
-    - job: build-debian-testing-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-testing-amd64
-
-pkg-debian-testing-i386:
-  <<: *pkg-deb
-  needs:
-    - job: build-debian-testing-i386
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:debian-testing-i386
-
-pkg-ubuntu-20.04-amd64:
-  <<: *pkg-deb
-  needs:
-    - job: build-ubuntu-20.04-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:ubuntu-20.04-amd64
-
-pkg-ubuntu-22.04-amd64:
-  <<: *pkg-deb
-  needs:
-    - job: build-ubuntu-22.04-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
-
-pkg-ubuntu-24.04-amd64:
-  <<: *pkg-deb
-  needs:
-    - job: build-ubuntu-24.04-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
-
-pkg-ubuntu-24.10-amd64:
-  <<: *pkg-deb
-  needs:
-    - job: build-ubuntu-24.10-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
-
-
 ## Package installability checks
-
-.install-deb: &install-deb
-  <<: *test-job
-  stage: install
-  script:
-    # check that bird is _not_ installed now and no user or group bird exists
-    - |
-      if bird --version >/dev/null 2>&1; then
-        echo "Error: BIRD unexpectedly installed"
-        exit 1
-      fi
-      if id -g bird >/dev/null 2>&1; then
-        echo "Error: User group 'bird' unexpectedly exist before installation"
-        exit 1
-      fi
-      if id -u bird >/dev/null 2>&1; then
-        echo "Error: User 'bird' unexpectedly exist before installation"
-        exit 1
-      fi
-    # install packages
-    - find pkg/pkgs/ -type f -name '*.deb' '(' -ls -exec dpkg -i '{}' ';' ')'
-    # test that installation is successful
-    - ./tools/test-install "$CI_COMMIT_MESSAGE"
 
 .install-rpm: &install-rpm
   <<: *test-job
@@ -1054,7 +103,10 @@ pkg-ubuntu-24.10-amd64:
         exit 1
       fi
     # install packages
-    - find pkg/pkgs/ -type f -name '*.rpm' '(' -ls -exec rpm -i '{}' ';' ')'
+    - $ADDREPO $REPO_URL
+    - wget $REPO_URL -O /etc/
+    - $LIST
+    - $INSTALL
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
 
@@ -1064,680 +116,229 @@ install-centos-7-amd64:
   needs:
     - job: pkg-centos-7-amd64
   image: registry.nic.cz/labs/bird:centos-7-amd64
+  variables:
+    ADDREPO: wget -O /etc/yum.repos.d/bird.repo
+    REPO_URL: https://branch.www.bird.office.nic.cz/centos/7/x86_64/bird.repo
+    LIST: yum --showduplicates list bird
+    INSTALL: yum install bird-3.1.5-cznic.1
 
 install-centos-8-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-centos-8-amd64
   image: registry.nic.cz/labs/bird:centos-8-amd64
+  variables:
+    ADDREPO: wget -O /etc/yum.repos.d/bird.repo
+    REPO_URL: https://branch.www.bird.office.nic.cz/centos/8/x86_64/bird.repo
+    LIST: yum --showduplicates list bird
+    INSTALL: yum install bird-3.1.5-cznic.1
 
 install-rocky-08-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-rocky-08-amd64
   image: registry.nic.cz/labs/bird:rocky-08-amd64
+  variables:
+    ADDREPO: wget -O /etc/yum.repos.d/bird.repo
+    REPO_URL: https://branch.www.bird.office.nic.cz/rocky/08/x86_64/bird.repo
+    LIST: yum --showduplicates list bird
+    INSTALL: yum install bird-3.1.5-cznic.1
 
 install-rocky-09-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-rocky-09-amd64
   image: registry.nic.cz/labs/bird:rocky-09-amd64
+  variables:
+    ADDREPO: wget -O /etc/yum.repos.d/bird.repo
+    REPO_URL: https://branch.www.bird.office.nic.cz/rocky/09/x86_64/bird.repo
+    LIST: yum --showduplicates list bird
+    INSTALL: yum install bird-3.1.5-cznic.1
 
 install-fedora-32-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-32-amd64
   image: registry.nic.cz/labs/bird:fedora-32-amd64
+  variables:
+    ADDREPO: wget -O /etc/yum.repos.d/bird.repo
+    REPO_URL: https://branch.www.bird.office.nic.cz/fedora/32/x86_64/bird.repo
+    LIST: yum --showduplicates list bird
+    INSTALL: yum install bird-3.1.5-cznic.1
 
 install-fedora-33-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-33-amd64
   image: registry.nic.cz/labs/bird:fedora-33-amd64
+  variables:
+    ADDREPO: wget -O /etc/yum.repos.d/bird.repo
+    REPO_URL: https://branch.www.bird.office.nic.cz/fedora/33/x86_64/bird.repo
+    LIST: yum --showduplicates list bird
+    INSTALL: yum install bird-3.1.5-cznic.1
 
 install-opensuse-15.0-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-opensuse-15.0-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.0-amd64
+  variables:
+    ADDREPO: zypper ar
+    REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.0/x86_64/bird.repo
+    LIST: zypper search bird
+    INSTALL: zypper in bird=3.1.5-cznic.1
 
 install-opensuse-15.1-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-opensuse-15.1-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.1-amd64
+  variables:
+    ADDREPO: zypper ar
+    REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.1/x86_64/bird.repo
+    LIST: zypper search bird
+    INSTALL: zypper in bird=3.1.5-cznic.1
 
 install-opensuse-15.2-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-opensuse-15.2-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.2-amd64
+  variables:
+    ADDREPO: zypper ar
+    REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.2/x86_64/bird.repo
+    LIST: zypper search bird
+    INSTALL: zypper in bird=3.1.5-cznic.1
 
 install-opensuse-15.3-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-opensuse-15.3-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
+  variables:
+    ADDREPO: zypper ar
+    REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.3/x86_64/bird.repo
+    LIST: zypper search bird
+    INSTALL: zypper in bird=3.1.5-cznic.1
 
 install-opensuse-15.4-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-opensuse-15.4-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
+  variables:
+    ADDREPO: zypper ar
+    REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.4/x86_64/bird.repo
+    LIST: zypper search bird
+    INSTALL: zypper in bird=3.1.5-cznic.1
 
 install-opensuse-15.5-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-opensuse-15.5-amd64
   image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
+  variables:
+    ADDREPO: zypper ar
+    REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.5/x86_64/bird.repo
+    LIST: zypper search bird
+    INSTALL: zypper in bird=3.1.5-cznic.1
 
 install-fedora-34-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-34-amd64
   image: registry.nic.cz/labs/bird:fedora-34-amd64
+  variables:
+    ADDREPO: wget -O /etc/yum.repos.d/bird.repo
+    REPO_URL: https://branch.www.bird.office.nic.cz/fedora/34/x86_64/bird.repo
+    LIST: yum --showduplicates list bird
+    INSTALL: yum install bird-3.1.5-cznic.1
 
 install-fedora-35-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-35-amd64
   image: registry.nic.cz/labs/bird:fedora-35-amd64
+  variables:
+    ADDREPO: wget -O /etc/yum.repos.d/bird.repo
+    REPO_URL: https://branch.www.bird.office.nic.cz/fedora/35/x86_64/bird.repo
+    LIST: yum --showduplicates list bird
+    INSTALL: yum install bird-3.1.5-cznic.1
 
 install-fedora-36-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-36-amd64
   image: registry.nic.cz/labs/bird:fedora-36-amd64
+  variables:
+    ADDREPO: wget -O /etc/yum.repos.d/bird.repo
+    REPO_URL: https://branch.www.bird.office.nic.cz/fedora/36/x86_64/bird.repo
+    LIST: yum --showduplicates list bird
+    INSTALL: yum install bird-3.1.5-cznic.1
 
 install-fedora-37-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-37-amd64
   image: registry.nic.cz/labs/bird:fedora-37-amd64
+  variables:
+    ADDREPO: wget -O /etc/yum.repos.d/bird.repo
+    REPO_URL: https://branch.www.bird.office.nic.cz/fedora/37/x86_64/bird.repo
+    LIST: yum --showduplicates list bird
+    INSTALL: yum install bird-3.1.5-cznic.1
 
 install-fedora-38-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-38-amd64
   image: registry.nic.cz/labs/bird:fedora-38-amd64
+  variables:
+    ADDREPO: wget -O /etc/yum.repos.d/bird.repo
+    REPO_URL: https://branch.www.bird.office.nic.cz/fedora/38/x86_64/bird.repo
+    LIST: yum --showduplicates list bird
+    INSTALL: yum install bird-3.1.5-cznic.1
 
 install-fedora-39-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-39-amd64
   image: registry.nic.cz/labs/bird:fedora-39-amd64
+  variables:
+    ADDREPO: wget -O /etc/yum.repos.d/bird.repo
+    REPO_URL: https://branch.www.bird.office.nic.cz/fedora/39/x86_64/bird.repo
+    LIST: yum --showduplicates list bird
+    INSTALL: yum install bird-3.1.5-cznic.1
 
 install-fedora-40-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-40-amd64
   image: registry.nic.cz/labs/bird:fedora-40-amd64
+  variables:
+    ADDREPO: wget -O /etc/yum.repos.d/bird.repo
+    REPO_URL: https://branch.www.bird.office.nic.cz/fedora/40/x86_64/bird.repo
+    LIST: yum --showduplicates list bird
+    INSTALL: yum install bird-3.1.5-cznic.1
 
 install-fedora-41-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-41-amd64
   image: registry.nic.cz/labs/bird:fedora-41-amd64
+  variables:
+    ADDREPO: wget -O /etc/yum.repos.d/bird.repo
+    REPO_URL: https://branch.www.bird.office.nic.cz/fedora/41/x86_64/bird.repo
+    LIST: yum --showduplicates list bird
+    INSTALL: yum install bird-3.1.5-cznic.1
 
 install-fedora-42-amd64:
   <<: *install-rpm
   needs:
     - job: pkg-fedora-42-amd64
   image: registry.nic.cz/labs/bird:fedora-42-amd64
-
-install-ubuntu-18.04-amd64:
-  <<: *install-deb
-  needs:
-    - job: pkg-ubuntu-18.04-amd64
-  image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
-
-install-debian-11-i386:
-  <<: *install-deb
-  needs:
-    - job: pkg-debian-11-i386
-  image: registry.nic.cz/labs/bird:debian-11-i386
-
-install-debian-11-amd64:
-  <<: *install-deb
-  needs:
-    - job: pkg-debian-11-amd64
-  image: registry.nic.cz/labs/bird:debian-11-amd64
-
-install-debian-10-amd64:
-  <<: *install-deb
-  needs:
-    - job: pkg-debian-10-amd64
-  image: registry.nic.cz/labs/bird:debian-10-amd64
-
-install-debian-10-i386:
-  <<: *install-deb
-  needs:
-    - job: pkg-debian-10-i386
-  image: registry.nic.cz/labs/bird:debian-10-i386
-
-install-debian-12-amd64:
-  <<: *install-deb
-  needs:
-    - job: pkg-debian-12-amd64
-  image: registry.nic.cz/labs/bird:debian-12-amd64
-
-install-debian-12-i386:
-  <<: *install-deb
-  needs:
-    - job: pkg-debian-12-i386
-  image: registry.nic.cz/labs/bird:debian-12-i386
-
-install-debian-13-amd64:
-  <<: *install-deb
-  needs:
-    - job: pkg-debian-13-amd64
-  image: registry.nic.cz/labs/bird:debian-13-amd64
-
-install-debian-13-i386:
-  <<: *install-deb
-  needs:
-    - job: pkg-debian-13-i386
-  image: registry.nic.cz/labs/bird:debian-13-i386
-
-install-debian-testing-amd64:
-  <<: *install-deb
-  needs:
-    - job: pkg-debian-testing-amd64
-  image: registry.nic.cz/labs/bird:debian-testing-amd64
-
-install-debian-testing-i386:
-  <<: *install-deb
-  needs:
-    - job: pkg-debian-testing-i386
-  image: registry.nic.cz/labs/bird:debian-testing-i386
-
-install-ubuntu-20.04-amd64:
-  <<: *install-deb
-  needs:
-    - job: pkg-ubuntu-20.04-amd64
-  image: registry.nic.cz/labs/bird:ubuntu-20.04-amd64
-
-install-ubuntu-22.04-amd64:
-  <<: *install-deb
-  needs:
-    - job: pkg-ubuntu-22.04-amd64
-  image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
-
-install-ubuntu-24.04-amd64:
-  <<: *install-deb
-  needs:
-    - job: pkg-ubuntu-24.04-amd64
-  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
-
-install-ubuntu-24.10-amd64:
-  <<: *install-deb
-  needs:
-    - job: pkg-ubuntu-24.10-amd64
-  image: registry.nic.cz/labs/bird:ubuntu-24.10-amd64
-
-
-###################################
-## Non-linux build tests in QEMU ##
-###################################
-.build-birdlab-base: &build-birdlab-base
-  <<: *build-base
-  stage: build
-#  script:
-#    - export BRANCH=$CI_COMMIT_BRANCH
-#    - autoreconf
-#    - ./configure $CONFIGURE_OPTIONS
-#    - gmake
-#    - gmake check
-
-
-build-birdlab-openbsd-75:
-  <<: *build-birdlab-base
   variables:
-    AUTOCONF_VERSION: '2.71'
-  tags:
-    - birdlab-openbsd-75
-    - amd64
-
-build-birdlab-openbsd-76:
-  <<: *build-birdlab-base
-  variables:
-    AUTOCONF_VERSION: '2.72'
-  tags:
-    - birdlab-openbsd-76
-    - amd64
-
-build-birdlab-netbsd-09:
-  <<: *build-birdlab-base
-  tags:
-    - birdlab-netbsd-09
-    - amd64
-
-build-birdlab-netbsd-10:
-  <<: *build-birdlab-base
-  tags:
-    - birdlab-netbsd-10
-    - amd64
-
-build-birdlab-freebsd-13:
-  <<: *build-birdlab-base
-  tags:
-    - birdlab-freebsd-13
-    - amd64
-
-build-birdlab-freebsd-13-netlink:
-  <<: *build-birdlab-base
-  variables:
-    CONFIGURE_OPTIONS: --with-sysconfig=bsd-netlink --disable-client
-  tags:
-    - birdlab-freebsd-13
-    - amd64
-
-build-birdlab-freebsd-14:
-  <<: *build-birdlab-base
-  tags:
-    - birdlab-freebsd-14
-    - amd64
-
-build-birdlab-freebsd-14-netlink:
-  <<: *build-birdlab-base
-  variables:
-    CONFIGURE_OPTIONS: --with-sysconfig=bsd-netlink --disable-client
-  tags:
-    - birdlab-freebsd-14
-    - amd64
-
-
-#########################
-## Partial build tests ##
-#########################
-
-.build-only: &build-only
-  <<: *build-docker-linux-amd64
-  image: registry.nic.cz/labs/bird:debian-12-amd64
-  needs:
-    - job: docker-debian-12-amd64
-      optional: true
-
-
-partial-build-linux-aggregator:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=aggregator
-
-partial-build-linux-babel:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=babel
-
-partial-build-linux-bfd:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=bfd
-
-partial-build-linux-bgp:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=bgp
-
-partial-build-linux-bgp,bmp:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=bgp,bmp
-
-partial-build-linux-l3vpn:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=l3vpn
-
-partial-build-linux-mrt:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=mrt
-
-partial-build-linux-ospf:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=ospf
-
-partial-build-linux-pipe:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=pipe
-
-partial-build-linux-radv:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=radv
-
-partial-build-linux-rip:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=rip
-
-partial-build-linux-rpki:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=rpki
-
-partial-build-linux-static:
-  <<: *build-only
-  variables:
-    CONFIGURE_OPTIONS: --with-protocols=static
-
-
-################################
-## Netlab functionality tests ##
-################################
-
-build-netlab:
-  <<: *test-job
-  stage: build
-  variables:
-    BDIR: build-netlab
-  tags:
-    - netlab
-    - amd64
-  script:
-    - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
-    - autoreconf
-    - mkdir $BDIR
-    - cd $BDIR
-    - ../configure
-    - make
-  artifacts:
-    paths:
-      - $BDIR/bird
-      - $BDIR/birdc
-    expire_in: 2 hours
-
-.netlab-test: &test-base
-  <<: *test-job
-  stage: test
-  needs: [build-netlab]
-  tags:
-    - netlab
-    - amd64
-  script:
-    - sudo rm -rf netlab-failure
-    - DIR=$(pwd)
-    - cd $TOOLS_DIR
-    - sudo git clean -fx
-    - git pull --ff-only
-    - "mv $DIR/build-netlab/* netlab/common/"
-    - ln -s $STAYRTR_BINARY netlab/common/stayrtr
-    - cd netlab
-    - sudo ./stop
-    - ulimit -f 1048576 # Protect the filesystem from overflowing by log bloat
-    - sudo ./runtest -s v2 -m check $TEST_NAME
-  after_script:
-    - DIR=$(pwd)
-    - cd $TOOLS_DIR/netlab
-    - sudo ./stop
-    - "mkdir $DIR/netlab-failure"
-    - git status --porcelain > $DIR/netlab-failure.log
-    - for f in $(git status --porcelain | sed -rn 's#^.[^DRT] netlab/##p'); do mkdir -p $DIR/netlab-failure/$(dirname $f); sudo chmod a+rw $f; sudo mv $f $DIR/netlab-failure/$(dirname $f); done
-  artifacts:
-    when: on_failure
-    untracked: true
-
-
-test-babel-base:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-babel-base
-
-test-babel-auth:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-babel-auth
-
-test-ospf-base:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ospf-base
-
-test-ospf-default:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ospf-default
-
-test-ospf-priority:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ospf-priority
-
-test-ospf-nbma:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ospf-nbma
-
-test-ospf-ptmp:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ospf-ptmp
-
-test-ospf-authentication:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ospf-authentication
-
-test-ospf-bfd:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ospf-bfd
-
-test-ospf-custom:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ospf-custom
-
-test-ospf-area:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ospf-area
-
-test-ospf-vrf:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ospf-vrf
-
-test-bgp-base:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-bgp-base
-
-test-bgp-auth:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-bgp-auth
-
-test-bgp-int:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-bgp-int
-
-test-bgp-merged:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-bgp-merged
-
-test-bgp-flowspec:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-bgp-flowspec
-
-test-bgp-rs-multitab:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-bgp-rs-multitab
-
-test-bgp-rs-singletab:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-bgp-rs-singletab
-
-test-ebgp-graceful:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-graceful
-
-test-ebgp-loop:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-loop
-
-test-ebgp-star:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-star
-
-test-ebgp-role:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-role
-
-test-ebgp-import-limit:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-import-limit
-
-test-ebgp-hostname:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-hostname
-
-test-ebgp-bfd-auth:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-bfd-auth
-
-test-ibgp-loop:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ibgp-loop
-
-test-ibgp-loop-big:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ibgp-loop-big
-
-test-ibgp-flat:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ibgp-flat
-
-test-ibgp-bfd-auth:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ibgp-bfd-auth
-
-test-rip-base:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-rip-base
-
-test-rip-vrf:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-rip-vrf
-
-test-kernel-learn:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-kernel-learn
-
-test-mpls-bgp:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-mpls-bgp
-
-test-mpls-bgp-l3vpn:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-mpls-bgp-l3vpn
-
-test-bgp-aspa:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-bgp-aspa
-
-test-aspa-filter:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-aspa-filter
-
-test-pipe-collision:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-pipe-collision
-
-test-bgp-unnumbered:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-bgp-unnumbered
-
-test-bgp-error-states:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-bgp-error-states
-
-test-ebgp-refresh/gen/imno-basic-imex-basic:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-refresh/gen/imno-basic-imex-basic
-
-test-ebgp-refresh/gen/noex-basic-imno-enhanced:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-refresh/gen/noex-basic-imno-enhanced
-
-test-ebgp-refresh/gen/imex-basic-noex-none:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-refresh/gen/imex-basic-noex-none
-
-test-ebgp-refresh/gen/nono-enhanced-nono-basic:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-refresh/gen/nono-enhanced-nono-basic
-
-test-ebgp-refresh/gen/imno-none-imex-basic:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-refresh/gen/imno-none-imex-basic
-
-test-ebgp-refresh/gen/noex-none-imno-enhanced:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-refresh/gen/noex-none-imno-enhanced
-
-test-ebgp-refresh/gen/imex-none-noex-none:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-refresh/gen/imex-none-noex-none
-
-test-ebgp-refresh/gen/nono-none-nono-basic:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-refresh/gen/nono-none-nono-basic
-
-test-ebgp-refresh/gen/imno-enhanced-imex-enhanced:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-refresh/gen/imno-enhanced-imex-enhanced
-
-test-ebgp-refresh/gen/noex-enhanced-imno-enhanced:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-refresh/gen/noex-enhanced-imno-enhanced
-
-test-ebgp-refresh/gen/imex-enhanced-noex-enhanced:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-refresh/gen/imex-enhanced-noex-enhanced
-
-test-ebgp-refresh/gen/nono-enhanced-nono-enhanced:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-ebgp-refresh/gen/nono-enhanced-nono-enhanced
+    ADDREPO: wget -O /etc/yum.repos.d/bird.repo
+    REPO_URL: https://branch.www.bird.office.nic.cz/fedora/42/x86_64/bird.repo
+    LIST: yum --showduplicates list bird
+    INSTALL: yum install bird-3.1.5-cznic.1
 

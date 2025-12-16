@@ -10,6 +10,7 @@ distros:
       LC_ALL: en_US.UTF-8
       CC: /opt/rh/devtoolset-8/root/usr/bin/gcc
     type: pkg-rpm-wa
+    branchrepo: https://branch.www.bird.office.nic.cz/centos/7/x86_64/bird.repo
 
   {% for name in (
     'centos-8',
@@ -20,6 +21,7 @@ distros:
   ) -%}
   - name: {{ name }}-amd64
     type: pkg-rpm-wa
+    branchrepo: https://branch.www.bird.office.nic.cz/{{ (name.split('-'))[0] }}/{{ (name.split('-'))[1] }}/x86_64/bird.repo
   {% endfor %}
 
   # For some unknown reason we also require older Python packages
@@ -27,12 +29,14 @@ distros:
   {% for num in (0,1,2,3,4,5) -%}
   - name: opensuse-15.{{ num }}-amd64
     type: pkg-rpm-wa
+    branchrepo: https://branch.www.bird.office.nic.cz/opensuse/15.{{ num }}/x86_64/bird.repo
   {% endfor %}
 
   # Fedora regular builds
   {% for num in (34, 35, 36, 37, 38, 39, 40, 41, 42) -%}
   - name: fedora-{{ num }}-amd64
     type: pkg-rpm
+    branchrepo: https://branch.www.bird.office.nic.cz/fedora/{{ num }}/x86_64/bird.repo
   {% endfor %}
 
   # Debian-based legacy builds
