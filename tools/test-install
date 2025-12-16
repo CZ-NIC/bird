@@ -17,7 +17,7 @@ echo "Testing version..."
 bird --version 2>&1 | grep -F "$STABLE_VERSION"
 bird --version 2>version-reported
 
-echo "3.1.5" > version-expected
+echo "BIRD version 3.1.5" > version-expected
 if ! diff version-reported version-expected ; then
   exit 1
 fi
