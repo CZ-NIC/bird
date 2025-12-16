@@ -118,6 +118,7 @@ tag-collect:
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
   artifacts:
+    when: on_failure
     paths:
       - 'strout*'
 
@@ -154,6 +155,7 @@ tag-collect:
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
   artifacts:
+    when: on_failure
     paths:
       - 'strout*'
 
