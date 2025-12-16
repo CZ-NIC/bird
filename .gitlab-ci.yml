@@ -186,7 +186,7 @@ install-opensuse-15.0-amd64:
   <<: *install-rpm
   image: registry.nic.cz/labs/bird:opensuse-15.0-amd64
   variables:
-    PREINSTALL: zypper in --non-interactive curl openssl ca-certificates
+    PREINSTALL: zypper in -y curl openssl ca-certificates
     ADDREPO: zypper ar bird.repo
     REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.0/x86_64/bird.repo
     REPOLIST: zypper lr
@@ -197,7 +197,7 @@ install-opensuse-15.1-amd64:
   <<: *install-rpm
   image: registry.nic.cz/labs/bird:opensuse-15.1-amd64
   variables:
-    PREINSTALL: zypper in --non-interactive curl openssl ca-certificates
+    PREINSTALL: zypper in -y curl openssl ca-certificates
     ADDREPO: zypper ar bird.repo
     REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.1/x86_64/bird.repo
     REPOLIST: zypper lr
@@ -208,7 +208,7 @@ install-opensuse-15.2-amd64:
   <<: *install-rpm
   image: registry.nic.cz/labs/bird:opensuse-15.2-amd64
   variables:
-    PREINSTALL: zypper in --non-interactive curl openssl ca-certificates
+    PREINSTALL: zypper in -y curl openssl ca-certificates
     ADDREPO: zypper ar bird.repo
     REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.2/x86_64/bird.repo
     REPOLIST: zypper lr
@@ -219,7 +219,7 @@ install-opensuse-15.3-amd64:
   <<: *install-rpm
   image: registry.nic.cz/labs/bird:opensuse-15.3-amd64
   variables:
-    PREINSTALL: zypper in --non-interactive curl openssl ca-certificates
+    PREINSTALL: zypper in -y curl openssl ca-certificates
     ADDREPO: zypper ar bird.repo
     REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.3/x86_64/bird.repo
     REPOLIST: zypper lr
@@ -230,7 +230,7 @@ install-opensuse-15.4-amd64:
   <<: *install-rpm
   image: registry.nic.cz/labs/bird:opensuse-15.4-amd64
   variables:
-    PREINSTALL: zypper in --non-interactive curl openssl ca-certificates
+    PREINSTALL: zypper in -y curl openssl ca-certificates
     ADDREPO: zypper ar bird.repo
     REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.4/x86_64/bird.repo
     REPOLIST: zypper lr
@@ -241,7 +241,7 @@ install-opensuse-15.5-amd64:
   <<: *install-rpm
   image: registry.nic.cz/labs/bird:opensuse-15.5-amd64
   variables:
-    PREINSTALL: zypper in --non-interactive curl openssl ca-certificates
+    PREINSTALL: zypper in -y curl openssl ca-certificates
     ADDREPO: zypper ar bird.repo
     REPO_URL: https://branch.www.bird.office.nic.cz/opensuse/15.5/x86_64/bird.repo
     REPOLIST: zypper lr
