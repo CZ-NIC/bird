@@ -110,7 +110,7 @@ tag-collect:
     - update-ca-trust
     - curl $REPO_URL > bird.repo
     - $ADDREPO
-    - $REPOLIST
+{#-    - $REPOLIST #}
     - $LIST
     - strace $INSTALL
     # test that installation is successful
@@ -129,7 +129,7 @@ install-{{ dist["name"] }}:
     PREINSTALL: {% if "opensuse" in dist["name"] %}zypper in -y curl openssl ca-certificates strace{% else %}yum install -y openssl ca-certificates strace{% endif %}
     ADDREPO: {% if "opensuse" in dist["name"] %}zypper ar bird.repo{% else %}cp bird.repo /etc/yum.repos.d/bird.repo{% endif %}
     REPO_URL: {{ dist["branchrepo"] }}
-    REPOLIST: {% if "opensuse" in dist["name"] %}zypper lr{% else %}yum repolist -v{% endif %}
+{#-    REPOLIST: {% if "opensuse" in dist["name"] %}zypper lr{% else %}yum repolist -v{% endif %} #}
     LIST: {% if "opensuse" in dist["name"] %}zypper search bird{% else %}yum list bird{% endif %}
     INSTALL: {% if "opensuse" in dist["name"] %}zypper in -y bird=3.1.5-cznic.1{% else %}yum install -y bird-3.1.5-cznic.1{{ dist["vsuf"] }}{% endif %}
 {% endif %}{% endfor %}
