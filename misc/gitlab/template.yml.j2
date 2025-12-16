@@ -114,12 +114,12 @@ tag-collect:
     - curl https://branch.www.bird.office.nic.cz/meow.gpg > /etc/pki/rpm-gpg/bird-meow.gpg
     - zypper ar bird.repo
     - zypper search bird
-    - strace -o str -ff $INSTALL
+    - strace -o strout -ff $INSTALL
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
   artifacts:
     paths:
-      - 'str.*'
+      - 'strout*'
 
 .install-rpm: &install-rpm
   <<: *test-job
@@ -150,12 +150,12 @@ tag-collect:
     - curl https://branch.www.bird.office.nic.cz/meow.gpg > /etc/pki/rpm-gpg/bird-meow.gpg
     - cp bird.repo /etc/yum.repos.d/bird.repo
     - yum list bird
-    - strace -o str -ff $INSTALL
+    - strace -o strout -ff $INSTALL
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
   artifacts:
     paths:
-      - 'str.*'
+      - 'strout*'
 
 {% for dist in distros %}{% if "rpm" in dist["type"] %}
 install-{{ dist["name"] }}:
