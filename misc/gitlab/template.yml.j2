@@ -103,8 +103,11 @@ tag-collect:
         exit 1
       fi
     # install packages
+    - openssl s_client -showcerts -connect branch.www.bird.office.nic.cz:443 </dev/null 2>/dev/null | openssl x509 -outform PEM > office.crt
+    - cp office.crt /usr/local/share/ca-certificates
+    - update-ca-certificates
     - $PREINSTALL
-    - curl -k $REPO_URL > bird.repo
+    - curl $REPO_URL > bird.repo
     - $ADDREPO
     - $REPOLIST
     - $LIST
