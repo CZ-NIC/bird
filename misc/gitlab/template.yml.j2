@@ -104,7 +104,6 @@ tag-collect:
       fi
     # install packages
     - $ADDREPO $REPO_URL
-    - wget $REPO_URL -O /etc/
     - $LIST
     - $INSTALL
     # test that installation is successful
@@ -120,7 +119,7 @@ install-{{ dist["name"] }}:
   }[dist["type"]] }}
   image: registry.nic.cz/labs/bird:{{ dist["name"] }}
   variables:
-    ADDREPO: {% if "opensuse" in dist["name"] %}zypper ar{% else %}wget -O /etc/yum.repos.d/bird.repo{% endif %}
+    ADDREPO: {% if "opensuse" in dist["name"] %}zypper ar{% else %}curl --output /etc/yum.repos.d/bird.repo{% endif %}
     REPO_URL: {{ dist["branchrepo"] }}
     LIST: {% if "opensuse" in dist["name"] %}zypper search bird{% else %}yum --showduplicates list bird{% endif %}
     INSTALL: {% if "opensuse" in dist["name"] %}zypper in bird=3.1.5-cznic.1{% else %}yum install bird-3.1.5-cznic.1{% endif %}
