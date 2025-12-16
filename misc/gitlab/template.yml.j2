@@ -122,7 +122,7 @@ install-{{ dist["name"] }}:
   }[dist["type"]] }}
   image: registry.nic.cz/labs/bird:{{ dist["name"] }}
   variables:
-    PREINSTALL: {% if "opensuse" in dist["name"] %}zypper in curl{% else %}true{% endif %}
+    PREINSTALL: {% if "opensuse" in dist["name"] %}zypper in --non-interactive curl{% else %}true{% endif %}
     ADDREPO: {% if "opensuse" in dist["name"] %}zypper ar bird.repo{% else %}cp bird.repo /etc/yum.repos.d/bird.repo{% endif %}
     REPO_URL: {{ dist["branchrepo"] }}
     REPOLIST: {% if "opensuse" in dist["name"] %}zypper lr{% else %}yum repolist -v{% endif %}
