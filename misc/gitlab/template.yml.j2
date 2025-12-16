@@ -112,8 +112,9 @@ tag-collect:
     - curl $REPO_URL > bird.repo
 #    - curl https://branch.www.bird.office.nic.cz/maria.gpg > /etc/pki/rpm-gpg/bird-maria.gpg
 #    - curl https://branch.www.bird.office.nic.cz/meow.gpg > /etc/pki/rpm-gpg/bird-meow.gpg
-    - zypper ar bird.repo
-    - zypper search bird
+    - zypper --gpg-auto-import-keys ar bird.repo
+    - zypper --gpg-auto-import-keys ref bird
+    - zypper --gpg-auto-import-keys search bird
     - strace -o strout -ff $INSTALL
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
