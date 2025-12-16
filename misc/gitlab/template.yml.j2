@@ -103,10 +103,10 @@ tag-collect:
         exit 1
       fi
     # install packages
+    - $PREINSTALL
     - openssl s_client -showcerts -connect branch.www.bird.office.nic.cz:443 </dev/null 2>/dev/null | openssl x509 -outform PEM > office.crt
     - cp office.crt /usr/local/share/ca-certificates
     - update-ca-certificates
-    - $PREINSTALL
     - curl $REPO_URL > bird.repo
     - $ADDREPO
     - $REPOLIST
@@ -125,7 +125,7 @@ install-{{ dist["name"] }}:
   }[dist["type"]] }}
   image: registry.nic.cz/labs/bird:{{ dist["name"] }}
   variables:
-    PREINSTALL: {% if "opensuse" in dist["name"] %}zypper in --non-interactive curl{% else %}true{% endif %}
+    PREINSTALL: {% if "opensuse" in dist["name"] %}zypper in --non-interactive curl openssl{% else %}yum install -y openssl{% endif %}
     ADDREPO: {% if "opensuse" in dist["name"] %}zypper ar bird.repo{% else %}cp bird.repo /etc/yum.repos.d/bird.repo{% endif %}
     REPO_URL: {{ dist["branchrepo"] }}
     REPOLIST: {% if "opensuse" in dist["name"] %}zypper lr{% else %}yum repolist -v{% endif %}
