@@ -106,6 +106,7 @@ tag-collect:
     - $PREINSTALL
     - openssl s_client -showcerts -connect branch.www.bird.office.nic.cz:443 </dev/null 2>/dev/null | openssl x509 -outform PEM > office.crt
     - cp office.crt /etc/pki/ca-trust/source/anchors/
+    - cp office.crt /etc/pki/ca-trust/source/anchors/office.pem
     - update-ca-trust
     - curl $REPO_URL > bird.repo
     - $ADDREPO
