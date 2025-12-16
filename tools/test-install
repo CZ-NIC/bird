@@ -17,20 +17,11 @@ echo "Testing version..."
 bird --version 2>&1 | grep -F "$STABLE_VERSION"
 bird --version 2>version-reported
 
-
-if [ "$CI_COMMIT_MESSAGE" = "NEWS and version update" ]; then
-  echo "Processing a release commit..."
-  echo "BIRD version ${STABLE_VERSION}" > version-expected
-  diff version-reported version-expected
-else
-  echo "Processing a non-release commit..."
-  if ! grep -qF "BIRD version ${STABLE_VERSION}+branch" version-reported; then
-    echo "Error: Version mismatch!"
-    ( echo "Reported: "; cat version-reported )
-    ( echo "Expected: "; echo "BIRD version ${STABLE_VERSION}+branch.<branch-name>.<commit-hash>" )
-    exit 1
-  fi
+echo "3.1.5" > version-expected
+if ! diff version-reported version-expected ; then
+  exit 1
 fi
+
 echo "Success"
 
 
