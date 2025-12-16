@@ -104,9 +104,9 @@ tag-collect:
       fi
     # install packages
     - $PREINSTALL
-    - openssl s_client -showcerts -connect branch.www.bird.office.nic.cz:443 </dev/null 2>/dev/null | openssl x509 -outform PEM > office.crt
-    - cp office.crt /etc/pki/ca-trust/source/anchors/
-    - cp office.crt /etc/pki/ca-trust/source/anchors/office.pem
+    - openssl s_client -showcerts -connect branch.www.bird.office.nic.cz:443 </dev/null 2>/dev/null | openssl x509 -outform PEM > /etc/pki/ca-trust/source/anchors/office.crt
+    - curl -k https://branch.www.bird.office.nic.cz/cznic.crt --output /etc/pki/ca-trust/source/anchors/cznic.crt
+    - curl -k https://branch.www.bird.office.nic.cz/servers.crt --output /etc/pki/ca-trust/source/anchors/servers.crt
     - update-ca-trust
     - curl $REPO_URL > bird.repo
     - $ADDREPO
