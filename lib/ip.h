@@ -505,7 +505,6 @@ typedef struct vpn_rt {
 } vpn_rt;
 
 #define RD_NONE		(vpn_rd){}
-#define RT_NONE		(vpn_rt){}
 
 static inline vpn_rd rd_from_u64(u64 val)
 { return (vpn_rd){.hi = val >> 32, .lo = val }; }
