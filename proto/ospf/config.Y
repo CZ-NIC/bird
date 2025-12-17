@@ -38,7 +38,7 @@ ospf_iface_finish(void)
   ip->passwords = get_passwords();
 
   if (ospf_cfg_is_v2() && (ip->autype == OSPF_AUTH_CRYPT) && (ip->helloint < 5))
-    cf_warn("Hello or poll interval less that 5 makes cryptographic authenication prone to replay attacks");
+    cf_warn("Hello or poll interval less that 5 makes cryptographic authentication prone to replay attacks");
 
   if ((ip->autype == OSPF_AUTH_NONE) && (ip->passwords != NULL))
     cf_warn("Password option without authentication option does not make sense");
