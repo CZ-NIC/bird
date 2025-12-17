@@ -115,13 +115,9 @@ tag-collect:
     - zypper --gpg-auto-import-keys ar bird.repo
     - zypper --gpg-auto-import-keys ref bird
     - zypper --gpg-auto-import-keys search bird
-    - strace -o strout -ff $INSTALL
+    - $INSTALL
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
-  artifacts:
-    when: on_failure
-    paths:
-      - 'strout*'
 
 .install-rpm: &install-rpm
   <<: *test-job
@@ -152,13 +148,9 @@ tag-collect:
     - rpm --import bird-oldd.gpg || true
     - cp bird.repo /etc/yum.repos.d/bird.repo
     - yum list bird
-    - strace -o strout -ff $INSTALL
+    - $INSTALL
     # test that installation is successful
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
-  artifacts:
-    when: on_failure
-    paths:
-      - 'strout*'
 
 {% for dist in distros %}{% if "rpm" in dist["type"] %}
 install-{{ dist["name"] }}:
