@@ -22,6 +22,7 @@ struct pool;
   control, \
   proto, \
   service, \
+  bgp_listen, \
   rtable, \
   attrs, \
   logging, \
