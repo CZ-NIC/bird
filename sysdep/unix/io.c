@@ -1606,7 +1606,7 @@ sk_ssh_connect(sock *s)
 	break;
 
       case SSH_KNOWN_HOSTS_OTHER:
-	LOG_WARN_ABOUT_SSH_SERVER_VALIDATION(s, "The server gave use a key of a type while we had another type recorded. " \
+	LOG_WARN_ABOUT_SSH_SERVER_VALIDATION(s, "The server gave use a key of a different type than we have recorded. " \
 					     "It is a possible attack.");
 	server_identity_is_ok = 0;
 	break;
