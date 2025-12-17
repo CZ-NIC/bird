@@ -3,7 +3,7 @@
 import logging
 import sys
 
-from Release import Release, ReleaseException
+from BIRDDevel import Release, ReleaseException
 
 logging.basicConfig(format='%(levelname)# 8s | %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)

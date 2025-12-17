@@ -48,10 +48,10 @@ class Milestone:
         if self.exists:
             raise ReleaseException(f"Milestone {self.version} already exists")
 
-        milestone = gitlab.post(f"milestones", json={
-            "title": f"v{version}",
-            "description": f"Collection of issues intended to be resolved in release {version}",
-            })
+        milestone = gitlab.post(f"milestones",
+            title=f"v{version}",
+            description=f"Collection of issues intended to be resolved in release {version}",
+            )
         logger.debug(f"Gitlab replied: {milestone}")
         self.parse_info(milestone)
 

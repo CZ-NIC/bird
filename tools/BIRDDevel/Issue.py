@@ -20,7 +20,7 @@ class Issue:
 
     @classmethod
     def load(cls, **kwargs):
-        data = gitlab.get(f"issues", **kwargs)
+        data = gitlab.get_all(f"issues", **kwargs)
         return [ cls(data=d) for d in data ]
 
     def parse_info(self, data):
@@ -35,13 +35,12 @@ class Issue:
     
     @classmethod
     def create(cls, args):
-        data = gitlab.post(f"issues", json={
-#        print("Would post:", {
-            "title": args.name,
-            "labels": args.labels,
-            "milestone_id": args.milestone.gitlab_id,
-            "description": args.text,
-            })
+        data = gitlab.post(f"issues", 
+            title=args.name,
+            labels=args.labels,
+            milestone_id=args.milestone.gitlab_id,
+            description=args.text,
+            )
         return cls(data)
 
 class ReleaseChecklistIssue(Issue):

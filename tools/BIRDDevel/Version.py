@@ -15,20 +15,20 @@ class Version:
             assert(len(args) == 1)
             s = args[0].split('.')
             if len(s) > 3:
-                raise ReleaseException(f"Weird version: {value} (too many dots)")
+                raise ReleaseException(f"Weird version: {args[0]} (too many dots)")
 
             try:
                 self.major = int(s[0])
                 self.minor = int(s[1])
             except Exception as e:
-                raise ReleaseException(f"Weird version: {value}") from e
+                raise ReleaseException(f"Weird version: {args[0]}") from e
 
             try:
                 self.patch = int(s[2])
             except IndexError:
                 self.patch = 0
             except Exception as e:
-                raise ReleaseException(f"Weird version: {value}") from e
+                raise ReleaseException(f"Weird version: {args[0]}") from e
 
         if self.major == 2 and self.patch == 0:
             self.branch = "master"

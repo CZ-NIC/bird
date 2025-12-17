@@ -42,8 +42,8 @@ class Git:
                     raise ReleaseException(f"Current branch is {locbranch}, tracking {rembranch} at {remote} but the appropriate uri is kinda sus: {remuri}")
 
 
-        if locbranch != rembranch:
-            raise ReleaseException(f"Hey sis, your local branch {locbranch} tracks remote branch {rembranch} at {remote}. Go and fix that mess.")
+#        if locbranch != rembranch:
+#            raise ReleaseException(f"Hey sis, your local branch {locbranch} tracks remote branch {rembranch} at {remote}. Go and fix that mess.")
 
         self.remote = remote
         self.branch = locbranch
