@@ -837,17 +837,6 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
   return 0;
 }
 
-static inline struct bgp_channel *
-bgp_find_channel(struct bgp_proto *p, u32 afi)
-{
-  struct bgp_channel *c;
-  BGP_WALK_CHANNELS(p, c)
-    if (c->afi == afi)
-      return c;
-
-  return NULL;
-}
-
 static void
 bgp_startup(struct bgp_proto *p)
 {
@@ -2658,6 +2647,10 @@ bgp_channel_start(struct channel *C)
   /* Link local address is already in c->link_addr */
   if (ipa_is_link_local(c->next_hop_addr))
     c->next_hop_addr = IPA_NONE;
+
+  if (p->cf->rtfilter_use)
+    if ((c->afi == BGP_AF_VPN4_MPLS) || (c->afi == BGP_AF_VPN6_MPLS))
+      channel_disable_export(&c->c);
 
   return 0; /* XXXX: Currently undefined */
 }

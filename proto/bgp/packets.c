@@ -2323,6 +2323,8 @@ bgp_decode_nlri_rtfilter(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     else
       bgp_parse_error(s, 10);
 
+    // vzdy disable export na vpn channeloch?
+
     /* Incoming rtfilter update starts settle timer */
     bgp_receive_rtfilter_entry(s->proto, &net, a);
     settle_kick(&s->proto->rtfilter_settle);

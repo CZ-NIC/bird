@@ -1810,6 +1810,23 @@ bgp_build_rtfilter_tree_on_settle(struct settle *s)
     p->rtfilter_tree = bgp_build_rtfilter_tree(p);
   }
 
+  struct bgp_channel *cvpn4 = bgp_find_channel(p, BGP_AF_VPN4_MPLS);
+  struct bgp_channel *cvpn6 = bgp_find_channel(p, BGP_AF_VPN6_MPLS);
+
+  if (cvpn4 && cvpn4->c.export_wait)
+  {
+    ASSERT(cvpn4->c.channel_state == CS_UP);
+    channel_enable_export(&cvpn4->c);
+    //channel_request_feeding(cvpn4);	  ???
+  }
+
+  if (cvpn6 && cvpn6->c.export_wait)
+  {
+    ASSERT(cvpn4->c.channel_state == CS_UP);
+    channel_enable_export(&cvpn6->c);
+  }
+
+  /*
   struct bgp_channel *c;
 
   BGP_WALK_CHANNELS(p, c)
@@ -1820,6 +1837,7 @@ bgp_build_rtfilter_tree_on_settle(struct settle *s)
       channel_request_feeding(&c->c);
     }
   }
+  */
 }
 
 void

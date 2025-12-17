@@ -616,6 +616,17 @@ bgp_parse_error(struct bgp_parse_state *s, uint subcode)
   longjmp(s->err_jmpbuf, 1);
 }
 
+static inline struct bgp_channel *
+bgp_find_channel(struct bgp_proto *p, u32 afi)
+{
+  struct bgp_channel *c;
+  BGP_WALK_CHANNELS(p, c)
+    if (c->afi == afi)
+      return c;
+
+  return NULL;
+}
+
 
 void bgp_start_timer(timer *t, uint value);
 void bgp_check_config(struct bgp_config *c);
