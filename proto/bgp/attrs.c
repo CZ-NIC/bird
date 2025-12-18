@@ -3026,7 +3026,7 @@ bgp_get_route_info(const rte *e, byte *buf)
 	buf += bsprintf(buf, "/-");
       else if (ic->u.i >= IGP_METRIC_UNKNOWN)
 	buf += bsprintf(buf, "/?");
-      else
+      else if (ic->u.i > 0)
 	buf += bsprintf(buf, "/%d", ic->u.i);
     }
   }
