@@ -1328,7 +1328,7 @@ ea_show(struct cli *c, const eattr *e)
     switch (e->type)
       {
 	case T_INT:
-	  if ((cls == &ea_gen_igp_metric) && e->u.data >= IGP_METRIC_UNKNOWN)
+	  if ((cls == &ea_gen_interior_cost) && e->u.data >= IGP_METRIC_UNKNOWN)
 	    return;
 
 	  bsprintf(pos, "%u", e->u.data);
