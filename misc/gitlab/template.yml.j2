@@ -448,6 +448,7 @@ build-netlab:
     - cd $TOOLS_DIR
     - sudo git clean -fx
     - git pull --ff-only
+    - git checkout -f origin/data-v3.2
     - "mv $DIR/build-netlab/* netlab/common/"
     - ln -s $STAYRTR_BINARY netlab/common/stayrtr
     - cd netlab
@@ -461,6 +462,7 @@ build-netlab:
     - "mkdir $DIR/netlab-failure"
     - git status --porcelain > $DIR/netlab-failure.log
     - for f in $(git status --porcelain | sed -rn 's#^.[^DRT] netlab/##p'); do mkdir -p $DIR/netlab-failure/$(dirname $f); sudo chmod a+rw $f; sudo mv $f $DIR/netlab-failure/$(dirname $f); done
+    - git checkout -f master
   artifacts:
     when: on_failure
     untracked: true

@@ -4179,14 +4179,14 @@ rta_apply_hostentry(ea_list **to, struct hostentry_adata *head)
 
     /* Jump-away block for applying the actual attributes */
     do {
-      ea_set_attr_u32(to, &ea_gen_igp_metric, 0, he->igp_metric);
-
       ea_list *src = atomic_load_explicit(&he->src, memory_order_acquire);
       if (!src)
       {
 	ea_set_dest(to, 0, RTD_UNREACHABLE);
 	break;
       }
+
+      ea_set_attr_u32(to, &ea_gen_local_metric, 0, he->igp_metric);
 
       eattr *he_nh_ea = ea_find(src, &ea_gen_nexthop);
       ASSERT_DIE(he_nh_ea);

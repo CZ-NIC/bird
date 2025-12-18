@@ -1132,7 +1132,8 @@ bgp_apply_next_hop(struct bgp_parse_state *s, ea_list **to, ip_addr gw, ip_addr 
     if (nbr->scope == SCOPE_HOST)
       WITHDRAW(BAD_NEXT_HOP " - address %I is local", nbr->addr);
 
-    ea_set_attr_u32(to, &ea_gen_igp_metric, 0, c->cf->cost);
+    if (c->cf->cost)
+      ea_set_attr_u32(to, &ea_gen_local_metric, 0, c->cf->cost);
 
     struct nexthop_adata_mpls nam;
     memset(&nam, 0, sizeof nam);
