@@ -66,6 +66,11 @@ struct ea_class ea_gen_igp_metric = {
   .type = T_INT,
 };
 
+struct ea_class ea_gen_interior_cost = {
+  .name = "interior_cost",
+  .type = T_INT,
+};
+
 struct ea_class ea_gen_preference = {
   .name = "preference",
   .type = T_INT,
@@ -1744,6 +1749,7 @@ rta_init(void)
   /* Other generic route attributes */
   ea_register_init(&ea_gen_preference);
   ea_register_init(&ea_gen_igp_metric);
+  ea_register_init(&ea_gen_interior_cost);
   ea_register_init(&ea_gen_from);
   ea_register_init(&ea_gen_source);
   ea_register_init(&ea_gen_flowspec_valid);

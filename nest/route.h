@@ -139,7 +139,8 @@ struct rt_export_request {
       enum {
 	TE_ADDR_NONE = 0,	/* No address matching */
 	TE_ADDR_EQUAL,		/* Exact query - show route <addr> */
-	TE_ADDR_FOR,		/* Longest prefix match - show route for <addr> */
+	TE_ADDR_CONTAINS,	/* Prefixes containing <addr> */
+	TE_ADDR_LPM,		/* Longest prefix match on given prefix */
 	TE_ADDR_IN,		/* Interval query - show route in <addr> */
 	TE_ADDR_TRIE,		/* Query defined by trie */
 	TE_ADDR_HOOK,		/* Query processed by supplied custom hook */
@@ -304,7 +305,9 @@ static inline int rt_prefilter_net(const struct rt_prefilter *p, const net_addr 
     case TE_ADDR_NONE:	return 1;
     case TE_ADDR_IN:	return net_in_netX(n, p->addr);
     case TE_ADDR_EQUAL:	return net_equal(n, p->addr);
-    case TE_ADDR_FOR:	return net_in_netX(p->addr, n);
+    case TE_ADDR_CONTAINS:
+			return net_in_netX(p->addr, n);
+    case TE_ADDR_LPM:	bug("Prefilter for LPM not implemented.");
     case TE_ADDR_TRIE:	return trie_match_net(p->trie, n);
     case TE_ADDR_HOOK:	return p->hook(p, n);
   }
@@ -804,6 +807,7 @@ void rt_setup_digestor(struct rtable_private *tab);
 struct rt_export_feed *rt_net_feed(rtable *t, const net_addr *a, const struct rt_pending_export *first);
 rte rt_net_best(rtable *t, const net_addr *a);
 int rt_examine(rtable *t, net_addr *a, struct channel *c, const struct filter *filter);
+struct rt_export_feed *rt_net_feed_lpm(rtable *t, const net_addr *a);
 rte *rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *pool, int silent);
 void rt_refresh_begin(struct rt_import_request *);
 void rt_refresh_end(struct rt_import_request *);

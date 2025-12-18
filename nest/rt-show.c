@@ -329,7 +329,7 @@ rt_show_cont(struct cli *c)
     cli_printf(d->cli, 14, "Total: %d of %d routes for %d networks in %d tables",
 	d->show_counter, d->rt_counter, d->net_counter, d->table_counter);
   }
-  else if (!d->rt_counter && ((d->addr_mode == TE_ADDR_EQUAL) || (d->addr_mode == TE_ADDR_FOR)))
+  else if (!d->rt_counter && ((d->addr_mode == TE_ADDR_EQUAL) || (d->addr_mode == TE_ADDR_LPM)))
     cli_printf(d->cli, 8001, "Network not found");
   else
     cli_printf(d->cli, 0, "");

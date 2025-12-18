@@ -757,7 +757,7 @@ r_args:
      $$ = $1;
      if ($$->addr) cf_error("Only one prefix expected");
      $$->addr = $3;
-     $$->addr_mode = TE_ADDR_FOR;
+     $$->addr_mode = TE_ADDR_LPM;
    }
  | r_args IN net_any {
      $$ = $1;

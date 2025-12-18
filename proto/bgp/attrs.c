@@ -387,7 +387,7 @@ bgp_total_aigp_metric_(const rte *e, u64 *metric, const struct adata **ad)
     return 0;
 
   u64 aigp = get_u64(b + 3);
-  u64 step = rt_get_igp_metric(e);
+  u64 step = ea_get_int(e->attrs, &ea_gen_interior_cost, IGP_METRIC_UNKNOWN);
 
   if (!rte_resolvable(e) || (step >= IGP_METRIC_UNKNOWN))
     step = BGP_AIGP_MAX;
@@ -2622,8 +2622,8 @@ bgp_rte_better(const rte *new, const rte *old)
     return 1;
 
   /* RFC 4271 9.1.2.2. e) Compare IGP metrics */
-  n = new_bgp->cf->igp_metric ? rt_get_igp_metric(new) : 0;
-  o = old_bgp->cf->igp_metric ? rt_get_igp_metric(old) : 0;
+  n = new_bgp->cf->igp_metric ? ea_get_int(new->attrs, &ea_gen_interior_cost, 0) : 0;
+  o = old_bgp->cf->igp_metric ? ea_get_int(old->attrs, &ea_gen_interior_cost, 0) : 0;
   if (n < o)
     return 1;
   if (n > o)
@@ -2731,8 +2731,8 @@ bgp_rte_mergable(const rte *pri, const rte *sec)
     return 0;
 
   /* RFC 4271 9.1.2.2. e) Compare IGP metrics */
-  p = pri_bgp->cf->igp_metric ? rt_get_igp_metric(pri) : 0;
-  s = sec_bgp->cf->igp_metric ? rt_get_igp_metric(sec) : 0;
+  p = pri_bgp->cf->igp_metric ? ea_get_int(pri->attrs, &ea_gen_interior_cost, 0) : 0;
+  s = sec_bgp->cf->igp_metric ? ea_get_int(sec->attrs, &ea_gen_interior_cost, 0) : 0;
   if (p != s)
     return 0;
 
@@ -3014,19 +3014,20 @@ bgp_get_route_info(const rte *e, byte *buf)
     if (rte_stale(e))
       buf += bsprintf(buf, "s");
 
+    eattr *ic;
     u64 metric = bgp_total_aigp_metric(e);
     if (metric < BGP_AIGP_MAX)
     {
       buf += bsprintf(buf, "/%lu", metric);
     }
-    else if (metric = rt_get_igp_metric(e))
+    else if (ic = ea_find(e->attrs, &ea_gen_interior_cost))
     {
       if (!rte_resolvable(e))
 	buf += bsprintf(buf, "/-");
-      else if (metric >= IGP_METRIC_UNKNOWN)
+      else if (ic->u.i >= IGP_METRIC_UNKNOWN)
 	buf += bsprintf(buf, "/?");
       else
-	buf += bsprintf(buf, "/%d", metric);
+	buf += bsprintf(buf, "/%d", ic->u.i);
     }
   }
   buf += bsprintf(buf, ") [");

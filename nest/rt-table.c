@@ -4179,7 +4179,7 @@ rta_apply_hostentry(ea_list **to, struct hostentry_adata *head)
 
     /* Jump-away block for applying the actual attributes */
     do {
-      ea_set_attr_u32(to, &ea_gen_igp_metric, 0, he->igp_metric);
+      ea_set_attr_u32(to, &ea_gen_interior_cost, 0, he->igp_metric);
 
       ea_list *src = atomic_load_explicit(&he->src, memory_order_acquire);
       if (!src)
