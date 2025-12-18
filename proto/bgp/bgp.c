@@ -2649,8 +2649,16 @@ bgp_channel_start(struct channel *C)
     c->next_hop_addr = IPA_NONE;
 
   if (p->cf->rtfilter_use)
+  {
     if ((c->afi == BGP_AF_VPN4_MPLS) || (c->afi == BGP_AF_VPN6_MPLS))
+    {
       channel_disable_export(&c->c);
+      // ASSERT(c->channel_state == CS_DOWN) failed
+      // Preco? Od akeho momentu je channel UP? Ked tato funkcia skonci alebo skor?
+      // Ak mozeme disablenout channel len ked je DOWN, co mame potom spravit ked nam zacne
+      // chodit dalsi rtfilter stream?
+    }
+  }
 
   return 0; /* XXXX: Currently undefined */
 }

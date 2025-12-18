@@ -1815,6 +1815,21 @@ bgp_build_rtfilter_tree_on_settle(struct settle *s)
 
   if (cvpn4 && cvpn4->c.export_wait)
   {
+    //ASSERT(cvpn4->c.channel_state == CS_UP);
+    //ASSERT(cvpn4->c.export_wait);
+    channel_enable_export(&cvpn4->c);
+  }
+
+  if (cvpn6 && cvpn6->c.export_wait)
+  {
+    //ASSERT(cvpn6->c.channel_state == CS_UP);
+    //ASSERT(cvpn6->c.export_wait);
+    channel_enable_export(&cvpn6->c);
+  }
+
+  /*
+  if (cvpn4 && cvpn4->c.export_wait)
+  {
     ASSERT(cvpn4->c.channel_state == CS_UP);
     channel_enable_export(&cvpn4->c);
     //channel_request_feeding(cvpn4);	  ???
@@ -1825,6 +1840,7 @@ bgp_build_rtfilter_tree_on_settle(struct settle *s)
     ASSERT(cvpn4->c.channel_state == CS_UP);
     channel_enable_export(&cvpn6->c);
   }
+  */
 
   /*
   struct bgp_channel *c;

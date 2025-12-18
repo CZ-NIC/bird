@@ -2324,6 +2324,24 @@ bgp_decode_nlri_rtfilter(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
       bgp_parse_error(s, 10);
 
     // vzdy disable export na vpn channeloch?
+    /*
+     * Disable export on VPN channels until the end of stream on rtfilter is
+     * received or settle timer triggers.
+     */
+    struct bgp_channel *cvpn4 = bgp_find_channel(s->proto, BGP_AF_VPN4_MPLS);
+    struct bgp_channel *cvpn6 = bgp_find_channel(s->proto, BGP_AF_VPN6_MPLS);
+
+    if (cvpn4)
+    {
+      ASSERT(!cvpn4->c.export_wait);
+      channel_disable_export(&cvpn4->c);
+    }
+
+    if (cvpn6)
+    {
+      ASSERT(!cvpn6->c.export_wait);
+      channel_disable_export(&cvpn6->c);
+    }
 
     /* Incoming rtfilter update starts settle timer */
     bgp_receive_rtfilter_entry(s->proto, &net, a);
