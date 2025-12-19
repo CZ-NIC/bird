@@ -448,7 +448,7 @@ build-netlab:
     - cd $TOOLS_DIR
     - sudo git clean -fx
     - git pull --ff-only
-    - git checkout -f origin/mq-interior-cost
+    - git checkout -f origin/mq-local-metric
     - "mv $DIR/build-netlab/* netlab/common/"
     - ln -s $STAYRTR_BINARY netlab/common/stayrtr
     - cd netlab

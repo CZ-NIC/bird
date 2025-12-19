@@ -454,14 +454,14 @@ extern struct ea_class ea_gen_preference;
 static inline u32 rt_get_preference(const rte *rt)
 { return ea_get_int(rt->attrs, &ea_gen_preference, 0); }
 
-/* IGP metric: explicit metric to be used as interior_cost in case of recursive nexthop */
+/* IGP metric: explicit metric to be used as local_metric in case of recursive nexthop */
 extern struct ea_class ea_gen_igp_metric;
 u32 rt_get_igp_metric(const rte *rt);
 #define IGP_METRIC_UNKNOWN 0x80000000	/* Default igp_metric used when no other
 					   protocol-specific metric is availabe */
 
-/* Interior cost: second-order comparison */
-extern struct ea_class ea_gen_interior_cost;
+/* local metric: second-order comparison */
+extern struct ea_class ea_gen_local_metric;
 
 /* From: Advertising router */
 extern struct ea_class ea_gen_from;

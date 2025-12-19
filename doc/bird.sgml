@@ -2278,18 +2278,19 @@ Common route attributes are:
 	The optional attribute that can be used to specify a distance to the
 	network for routes that do not have a native protocol metric attribute
 	(like <cf/ospf_metric1/ for OSPF routes). It is used to fill in
-	<ref id="rta-interior-cost" name="interior_cost"> attribute when recursive
+	<ref id="rta-local-metric" name="local_metric"> attribute when recursive
 	nexthops are resolved, so that BGP can compare internal distances
 	to boundary routers (see below).
 
-	<tag><label id="rta-interior-cost"><m/int/ interior_cost</tag>
+	<tag><label id="rta-local-metric"><m/int/ local_metric</tag>
 	Attribute storing the route's metric to the resolved recursive nexthop,
-	mainly used by BGP best route selection.
+	mainly used by BGP best route selection. Also known as "interior cost"
+	in RFC 4271.
         It's the copy of the underlying protocol's metric, e.g.
         <cf/ospf_metric1/, or the generic <cf/igp_metric/. For recursive nexthops,
-	setting the <cf/interior_cost/ attribute in the import filters is futile,
+	setting the <cf/local_metric/ attribute in the import filters is futile,
 	as the nexthop resolver overwrites it.
-	Note: In versions up to 3.1.x, the <cf/igp_metric/ attribute was confusingly
+	Note: In versions 3.0.x and 3.1.x, the <cf/igp_metric/ attribute was confusingly
 	used for this purpose.
 
 	<tag><label id="rta-mpls-label"><m/int/ mpls_label</tag>
@@ -3018,7 +3019,7 @@ choose among them and so on.
 	<item>Prefer IGP origin over EGP and EGP origin over incomplete.
 	<item>Prefer the lowest value of the Multiple Exit Discriminator.
 	<item>Prefer routes received via eBGP over ones received via iBGP.
-	<item>Prefer routes with lower <ref id="rta-interior-cost" name="internal distance"> to a boundary router.
+	<item>Prefer routes with lower <ref id="rta-local-metric" name="internal distance"> to a boundary router.
 	<item>Prefer the route with the lowest value of router ID of the
 	advertising router.
 </itemize>

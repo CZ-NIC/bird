@@ -243,9 +243,9 @@ l3vpn_rt_notify(struct proto *P, struct channel *c0, const net_addr *n0, rte *ne
 	ea_set_attr_data(&new->attrs, &ea_gen_nexthop, 0, nhad.ad.data, nhad.ad.length);
       }
 
-      /* Drop original interior cost on export;
+      /* Drop original local metric on export;
        * kept on import as a base for L3VPN metric */
-      ea_unset_attr(&new->attrs, 0, &ea_gen_interior_cost);
+      ea_unset_attr(&new->attrs, 0, &ea_gen_local_metric);
     }
 
     rte_update(dst, n, new, src);
@@ -329,7 +329,7 @@ l3vpn_reload_routes(struct channel *C, struct rt_feeding_request *rfr)
 static inline u32
 l3vpn_metric(const rte *e)
 {
-  eattr *a = ea_find(e->attrs, &ea_gen_igp_metric) ?: ea_find(e->attrs, &ea_gen_interior_cost);
+  eattr *a = ea_find(e->attrs, &ea_gen_igp_metric) ?: ea_find(e->attrs, &ea_gen_local_metric);
   return a ? a->u.i : IGP_METRIC_UNKNOWN;
 }
 
