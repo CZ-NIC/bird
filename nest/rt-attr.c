@@ -1329,9 +1329,9 @@ ea_show(struct cli *c, const eattr *e)
       {
 	case T_INT:
 	  if ((cls == &ea_gen_local_metric) && e->u.data >= IGP_METRIC_UNKNOWN)
-	    return;
-
-	  bsprintf(pos, "%u", e->u.data);
+	    bsprintf(pos, "unknown");
+	  else
+	    bsprintf(pos, "%u", e->u.data);
 	  break;
 	case T_OPAQUE:
 	  opaque_format(ad, pos, end - pos);
