@@ -5,7 +5,7 @@ make_archive_script = "tools/make-archive"
 
 [upstream]
 # needed for get-archive
-archive_url = "https://bird.network.cz/download/bird-{{ version }}.tar.gz"
+archive_url = "https://bird.nic.cz/download/bird-{{ version }}.tar.gz"
 
 [apkg]
 # apkg compat level
