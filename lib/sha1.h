@@ -40,12 +40,12 @@ void sha1_init(struct hash_context *ctx); /* Initialize new algorithm run in the
 /*
  * Push another @len bytes of data pointed to by @buf onto the SHA1 hash
  * currently in @ctx. You can call this any times you want on the same hash (and
- * you do not need to reinitialize it by @sha1_init()). It has the same effect
+ * you do not need to reinitialize it by sha1_init()). It has the same effect
  * as concatenating all the data together and passing them at once.
  */
 void sha1_update(struct hash_context *ctx, const byte *buf, uint len);
 /*
- * No more @sha1_update() calls will be done. This terminates the hash and
+ * No more sha1_update() calls will be done. This terminates the hash and
  * returns a pointer to it.
  *
  * Note that the pointer points into data in the @ctx context. If it ceases to

@@ -234,7 +234,7 @@ void mac_update(struct mac_context *ctx, const byte *data, uint datalen)
  * @ctx: MAC context
  *
  * Finish MAC computation and return a pointer to the result. No more
- * @mac_update() calls could be done, but the context may be reinitialized
+ * mac_update() calls could be done, but the context may be reinitialized
  * later.
  *
  * Note that the returned pointer points into data in the @ctx context. If it
@@ -249,7 +249,7 @@ byte *mac_final(struct mac_context *ctx)
  *
  * Cleanup MAC context after computation (by filling with zeros). Not strictly
  * necessary, just to erase sensitive data from stack. This also invalidates the
- * pointer returned by @mac_final().
+ * pointer returned by mac_final().
  */
 void mac_cleanup(struct mac_context *ctx)
 { DUMMY; }
