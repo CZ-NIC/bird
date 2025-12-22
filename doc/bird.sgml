@@ -21,12 +21,16 @@ configuration - something in config which is not keyword.
 <book>
 
 <title>BIRD {{ VERSION }} User's Guide
+
 <author>
 Ondrej Filip <it/&lt;feela@network.cz&gt;/,
 Martin Mares <it/&lt;mj@ucw.cz&gt;/,
 Maria Matejka <it/&lt;mq@jmq.cz&gt;/,
 Ondrej Zajicek <it/&lt;santiago@crfreenet.org&gt;/
 </author>
+
+<date></date>
+<documentid>bird-userdoc</documentid>
 
 <abstract>
 This document contains user documentation for the BIRD Internet Routing Daemon project.

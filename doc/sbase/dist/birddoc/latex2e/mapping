@@ -3,6 +3,8 @@
 
 % The \relax is there to avoid sgml2latex rewriting the class
 <book>		+ "\\relax\\documentclass\[a4paper,10pt,openany,oneside\]{book}\n"
+			"\\def\\stabledate#1{\\date{}\\pdfinfo{/CreationDate (#1) /ModDate (#1)}}\n"
+			"\\pdfsuppressptexinfo=-1"
 			"\\usepackage\[colorlinks=true,linkcolor=blue,pdftitle={BIRD User's Guide}\]{hyperref}\n"
 			"\\usepackage{enumitem}\n"
 			"\\usepackage{birddoc}\n"
@@ -50,8 +52,11 @@
 <inst>			" \\\\\n\\\\" 	+
 </inst>
 
-<date>		+	"\\date{"
+<date>		+	"\\stabledate{"
 </date>			"}"		  +
+
+<documentid>	+	"\\pdftrailerid{"
+</documentid>		"}"		  +
 
 <newline>		"\\\\ "
 </newline>

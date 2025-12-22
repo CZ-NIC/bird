@@ -32,6 +32,20 @@ function cleanup_tmpdir() {
 
 trap cleanup_tmpdir EXIT
 
+# Gather commit information
+HEAD=$(git rev-parse HEAD)
+COMMIT_DATE=$(git show -q --pretty="format:%aD" HEAD)
+
+# Reproducible archive
+function stabletgz() {
+  tar --sort=name --format=posix \
+    --pax-option=delete=atime,delete=ctime \
+    --clamp-mtime --mtime="$COMMIT_DATE" \
+    --numeric-owner --owner=0 --group=0 \
+    --mode=go+u,go-w -cf - $2 | \
+    gzip --no-name --best > $1
+}
+
 # Create a preliminary archive
 echo "Building $VERSION"
 git archive --format=tar --prefix="$SRCPKG/" HEAD -o $T/initial.tgz
@@ -61,11 +75,16 @@ pushd $T
 
   # Pack sources
   echo "Packing source package"
-  tar czf $SRCPKG.tar.gz $SRCPKG
+  stabletgz $SRCPKG.tar.gz $SRCPKG
 
   if $ARCHIVE_DOCS; then
     # Generate documentation
     pushd $SRCPKG
+      # Fix documentation in time
+      sed -i "s#^<date></date>#<date>$COMMIT_DATE</date>#" doc/bird.sgml
+      sed -i "s#^</documentid>#-$HEAD</documentid>#" doc/bird.sgml
+
+      # Actually make it
       echo "Creating documentation"
       (./configure --with-protocols= --disable-client && make docs) > build.log 2>build.err || (
 	echo "======== Build log ========"
@@ -82,7 +101,7 @@ pushd $T
 
     # Pack sources
     echo "Packing docs package"
-    tar czf $DOCPKG.tar.gz $DOCPKG
+    stabletgz $DOCPKG.tar.gz $DOCPKG
   else
     echo "Skipping documentation build"
   fi

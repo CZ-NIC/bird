@@ -17,6 +17,9 @@ Ondrej Zajicek <it/&lt;santiago@crfreenet.org&gt;/
 Maria Matejka <it/&lt;mq@jmq.cz&gt;/,
 </author>
 
+<date></date>
+<documentid>bird-progdoc</documentid>
+
 <abstract>
 This document contains programmer's documentation for the BIRD Internet Routing Daemon project.
 </abstract>
