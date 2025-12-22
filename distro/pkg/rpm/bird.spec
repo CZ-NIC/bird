@@ -12,8 +12,8 @@ Summary:          BIRD Internet Routing Daemon
 
 Group:            System Environment/Daemons
 License:          GPL-2.0-or-later
-URL:              https://bird.network.cz/
-Source0:          https://bird.network.cz/download/bird-%{version}.tar.gz
+URL:              https://bird.nic.cz/
+Source0:          https://bird.nic.cz/download/bird-%{version}.tar.gz
 Source1:          bird.service
 Source2:          bird.tmpfilesd
 Source3:          bird.sysusersd

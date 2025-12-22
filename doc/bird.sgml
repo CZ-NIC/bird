@@ -6784,23 +6784,21 @@ versions of BIRD:
 (<HTMLURL URL="mailto:bird-users@network.cz" name="bird-users@network.cz">)
 where you can share your experiences with the other users and consult
 your problems with the authors. To subscribe to the list, visit
-<HTMLURL URL="http://bird.network.cz/?m_list" name="http://bird.network.cz/?m_list">.
-The home page of BIRD can be found at <HTMLURL URL="http://bird.network.cz/" name="http://bird.network.cz/">.
+<HTMLURL URL="https://bird.network.cz/mailman/listinfo/bird-users" name="https://bird.network.cz/mailman/listinfo/bird-users">.
+The home page of BIRD can be found at <HTMLURL URL="http://bird.nic.cz/" name="http://bird.nic.cz/">.
 
 <p>BIRD is a relatively young system and it probably contains some bugs. You can
 report any problems to the bird-users list and the authors will be glad to solve
 them, but before you do so, please make sure you have read the available
 documentation and that you are running the latest version (available at
-<HTMLURL URL="ftp://bird.network.cz/pub/bird" name="bird.network.cz:/pub/bird">).
+<HTMLURL URL="https://bird.nic.cz/get-bird" name="https://bird.nic.cz/get-bird">).
 (Of course, a patch which fixes the bug is always welcome as an attachment.)
 
 <p>If you want to understand what is going inside, Internet standards are a good
 and interesting reading. You can get them from
-<HTMLURL URL="ftp://ftp.rfc-editor.org/" name="ftp.rfc-editor.org"> (or a
-nicely sorted version from <HTMLURL URL="ftp://atrey.karlin.mff.cuni.cz/pub/rfc"
-name="atrey.karlin.mff.cuni.cz:/pub/rfc">).
+<HTMLURL URL="ftp://ftp.rfc-editor.org/" name="ftp.rfc-editor.org">.
 
-<p><it/Good luck!/
+<p><it/Good luck and happy routing!/
 
 </book>
 

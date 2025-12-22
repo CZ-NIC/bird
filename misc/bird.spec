@@ -4,11 +4,11 @@ Version: 2.17.1
 Release: 1
 Copyright: GPL
 Group: Networking/Daemons
-Source: ftp://bird.network.cz/pub/bird/bird-%{version}.tar.gz
+Source: ftp://bird.nic.cz/pub/bird/bird-%{version}.tar.gz
 Source1: bird.init
 Source2: birdc6
 Buildroot: /var/tmp/bird-root
-Url: http://bird.network.cz
+Url: http://bird.nic.cz
 Prereq: /sbin/chkconfig
 BuildRequires: flex bison readline-devel ncurses-devel
 

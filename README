@@ -1,6 +1,6 @@
                        BIRD Internet Routing Daemon
 
-                     Home page  http://bird.network.cz/
+                     Home page  http://bird.nic.cz/
                   Mailing list  bird-users@network.cz
 
                 (c) 1998--2008  Martin Mares <mj@ucw.cz>
@@ -10,11 +10,10 @@
 
 ================================================================================
 
-The BIRD project aims to develop a dynamic IP routing daemon with full support
-of all modern routing protocols, easy to use configuration interface and
-powerful route filtering language, primarily targeted on (but not limited to)
-Linux and other UNIX-like systems and distributed under the GNU General
-Public License.
+BIRD is a dynamic IP routing daemon with full support of most modern routing
+protocols, easy to use configuration interface and powerful route filtering
+language, primarily targeted on (but not limited to) Linux and other UNIX-like
+systems and distributed under the GNU General Public License.
 
 What do we support
 ==================
@@ -43,24 +42,26 @@ How to install BIRD
 ===================
 
 	o  From standard distribution package of your OS (recommended)
-	o  From official binary packages for Debian and Red Hat Linux
-	   ftp://bird.network.cz/pub/bird/debian/
-	   ftp://bird.network.cz/pub/bird/redhat/
+	o  From official binary repositories for Debian and Ubuntu
+	   https://pkg.labs.nic.cz/doc/?project=bird
 	o  From source code of the latest stable release version
-	   ftp://bird.network.cz/pub/bird/
+	   https://bird.nic.cz/get-bird/
 	o  From current development code in Git repository
-	   https://gitlab.labs.nic.cz/labs/bird/
+	   https://gitlab.nic.cz/labs/bird/
 
 See the file INSTALL for information about installation from source code.
 
 Documentation
 =============
 
-Online documentation is available at http://bird.network.cz/?get_doc or as HTML
-files in the doc directory, you can install it by `make install-docs' and
-rebuild it by `make docs', but you'll need SGMLtools and LaTeX to be installed
-on your machine. You can also download a neatly formatted PDF version as
-a separate archive (bird-doc-*.tar.gz) from ftp://bird.network.cz/pub/bird/
+Online documentation is available at https://bird.nic.cz/doc/latest/.
+
+You can also build separate HTML files and PDF from the doc directory by
+`make docs' and install it by `make install-docs', but you'll need SGMLtools
+and LaTeX to be installed on your machine.
+
+You can also download a neatly formatted PDF version (packed in TGZ)
+from the online documentation page at https://bird.nic.cz/doc/latest/
 
 User support
 ============

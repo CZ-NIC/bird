@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: bird
 Upstream-Contact: bird-users@network.cz
-Source: https://bird.network.cz
+Source: https://bird.nic.cz
 
 Files: *
 Copyright: 1998-2008 Martin Mareš
