@@ -3,7 +3,7 @@
 # anything else to happen.
 #
 # Please refer to the BIRD User's Guide documentation, which is also available
-# online at http://bird.network.cz/ in HTML format, for more information on
+# online at http://bird.nic.cz/ in HTML format, for more information on
 # configuring BIRD and adding routing protocols.
 
 # Configure logging
