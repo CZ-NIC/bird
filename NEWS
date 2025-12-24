@@ -1,3 +1,19 @@
+Version 2.18 (2025-12-24)
+  o BGP: Support for dynamic onlink and link-local connections
+  o BGP: Listening socket refactoring
+  o BGP: Fix restart behavior on outgoing next hop setting
+  o BGP: Configuring global/link-local IPv6 nexthop
+  o BGP: Disallow AS Sets by default
+  o BMP: Fix crash when exporting a route with non-bgp attributes
+  o L3VPN: Support for import/export target none and import target all
+  o RAdv: P-flag to prefer prefix delegation in DHCPv6
+  o RAdv: Fix flags for deprecated prefixes
+  o Filter: Merging of case intervals
+  o Filter: Append operator
+  o ASPA: Paths containing AS_SET are invalid
+  o Doc: Update website to bird.nic.cz
+  o Various minor fixes in code, comments, documentation and tooling
+
 Version 2.17.1 (2025-04-29)
   o BSD: Fix build on NetBSD
   o BGP: Fix crash when incoming connection for disabled protocol arrives
