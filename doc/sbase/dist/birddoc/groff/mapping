@@ -200,6 +200,9 @@
 <date>		+	".ds mdwdate "
 </date>		+
 
+<documentid>
+</documentid>
+
 <abstract>	+ 	".de printabstract\n"
 			".LP\n"
 </abstract>	+	".."			+

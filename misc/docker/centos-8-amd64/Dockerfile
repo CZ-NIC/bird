@@ -19,6 +19,7 @@ RUN yum -y install \
 RUN yum -y install \
 	git \
 	rpm-build \
+	redhat-lsb-core \
 	systemd-rpm-macros \
 	python3 \
 	python3-pip \

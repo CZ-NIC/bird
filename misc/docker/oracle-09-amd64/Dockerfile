@@ -1,6 +1,6 @@
 # bump number for image rebuild: 1
 # check latest supported version at https://wiki.rockylinux.org/rocky/version/#__tabbed_1_2
-FROM rockylinux/rockylinux:9.5
+FROM oraclelinux:9
 
 RUN dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 

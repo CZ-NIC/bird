@@ -1,5 +1,5 @@
 # bump this to recreate the image: 2
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get -y update
 RUN apt-get -y upgrade
@@ -12,7 +12,7 @@ RUN apt-get -y --no-install-recommends install \
 	pandoc \
 	ncurses-dev \
 	libreadline-dev \
-	libssh-gcrypt-dev \
+	libssh-dev \
 	linuxdoc-tools-latex \
 	texlive-latex-extra \
 	groff \
@@ -22,6 +22,7 @@ RUN apt-get -y --no-install-recommends install \
 RUN apt-get -y --no-install-recommends install \
 	dpkg-dev \
 	debhelper \
+	distro-info-data \
 	apt-utils \
 	quilt \
 	python3 \
