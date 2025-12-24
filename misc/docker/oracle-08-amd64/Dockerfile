@@ -1,8 +1,6 @@
 # bump number for image rebuild: 1
-# check latest supported version at https://wiki.rockylinux.org/rocky/version/#__tabbed_1_2
-FROM rockylinux/rockylinux:9.5
-
-RUN dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+# check latest supported version at https://wiki.rockylinux.org/rocky/version/#__tabbed_1_1
+FROM oraclelinux:8
 
 RUN yum -y upgrade
 RUN yum -y install \
@@ -16,10 +14,8 @@ RUN yum -y install \
 	readline-devel
 RUN yum -y install \
 	git \
-	lsb-release \
+	redhat-lsb-core \
 	rpm-build \
-	faketime \
-	systemd \
 	systemd-rpm-macros \
 	python3 \
 	python3-pip \

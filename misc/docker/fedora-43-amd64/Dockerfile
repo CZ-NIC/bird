@@ -1,7 +1,7 @@
 # bump number for image rebuild: 1
-FROM opensuse/leap:15.4
-RUN zypper -n up
-RUN zypper -n install \
+FROM fedora:43
+RUN dnf -y upgrade
+RUN dnf -y install \
 	gcc \
 	make \
 	flex \
@@ -11,14 +11,13 @@ RUN zypper -n install \
 	libssh-devel \
 	ncurses-devel \
 	readline-devel
-RUN zypper -n install \
+RUN dnf -y install \
 	git \
 	lsb-release \
 	rpm-build \
-	libfaketime \
+	faketime \
 	systemd \
 	systemd-rpm-macros \
 	python3 \
 	python3-pip \
-	python3-setuptools \
-	sysuser-tools
+	python3-setuptools

@@ -536,7 +536,7 @@ anywhere else. <pavel@ucw.cz>
         opts cdata "null">
 
 <!-- Hacked by mdw, abstract now part of titlepag -->
-<!element titlepag o o (progdoc?, title, author, date?, abstract?)>
+<!element titlepag o o (progdoc?, title, author, date?, documentid?, abstract?)>
 <!element title - o (%inline, subtitle?) +(newline)>
 <!element subtitle - o (%inline)>
 <!usemap oneline titlepag>
@@ -547,6 +547,7 @@ anywhere else. <pavel@ucw.cz>
 <!element thanks - o (%inline)>
 <!element inst - o (%inline) +(newline)>
 <!element date - o (#pcdata) >
+<!element documentid - o (#pcdata) >
 
 <!usemap global thanks>
 

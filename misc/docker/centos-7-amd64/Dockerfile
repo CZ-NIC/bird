@@ -37,6 +37,8 @@ RUN yum -y install \
 RUN yum -y install \
 	git \
 	rpm-build \
+	faketime \
+	redhat-lsb-core \
 	python3 \
 	python3-pip \
 	python3-setuptools \

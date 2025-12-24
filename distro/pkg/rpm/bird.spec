@@ -5,9 +5,11 @@
 %define bird_user bird
 %define bird_group bird
 
+%define legacy_users ( 0%{?rhel} && 0%{?rhel} <= 8 )
+
 Name:             bird
 Version:          {{ version }}
-Release:          cznic.{{ release }}%{?dist}
+Release:          cznic.1%{?dist}
 Summary:          BIRD Internet Routing Daemon
 
 Group:            System Environment/Daemons
@@ -16,7 +18,7 @@ URL:              https://bird.nic.cz/
 Source0:          https://bird.nic.cz/download/bird-%{version}.tar.gz
 Source1:          bird.service
 Source2:          bird.tmpfilesd
-Source3:          bird.sysusersd
+Source3:          system-user-bird.conf
 
 BuildRequires:    autoconf
 BuildRequires:    flex
@@ -32,8 +34,13 @@ BuildRequires:    libssh-devel
 BuildRequires:    devtoolset-8-toolchain
 %endif
 BuildRequires:    systemd-rpm-macros
+%if 0%{?suse_version}
+BuildRequires:    sysuser-tools
+%endif
+
 %{?systemd_requires}
 %{?sysusers_requires_compat}
+%{?sysusers_requires}
 
 %description
 BIRD is a dynamic IP routing daemon supporting both, IPv4 and IPv6, Border
@@ -74,15 +81,18 @@ powerful language for route filtering.
 %configure --runstatedir=%{_rundir}/bird
 %make_build all %{!?_without_doc:docs}
 
+%if 0%{?suse_version}
+%sysusers_generate_pre %{SOURCE3} bird system-user-bird.conf
+%endif
+
 %install
 %make_install
 
-{% raw %}
-install -d %{buildroot}{%{_localstatedir}/lib/bird,%{_rundir}/bird}
+install -d %{buildroot}%{_localstatedir}/lib/bird
+install -d %{buildroot}%{_rundir}/bird
 install -D -p -m 0644 %{SOURCE1} %{buildroot}%{_unitdir}/bird.service
 install -D -p -m 0644 %{SOURCE2} %{buildroot}%{_tmpfilesdir}/bird.conf
-install -D -p -m 0644 %{SOURCE3} %{buildroot}%{_sysusersdir}/bird.conf
-{% endraw %}
+install -D -p -m 0644 %{SOURCE3} %{buildroot}%{_sysusersdir}/system-user-bird.conf
 
 %check
 %if 0%{?rhel} && 0%{?rhel} < 8
@@ -91,15 +101,21 @@ install -D -p -m 0644 %{SOURCE3} %{buildroot}%{_sysusersdir}/bird.conf
 
 make test
 
+%if ! %{legacy_users} && ! 0%{?suse_version}
 %pre
-%if 0%{?suse_version} || ( 0%{?rhel} && 0%{?rhel} <= 8 )
-# Create bird user/group manually
-getent group %{bird_group} >/dev/null || groupadd -r %{bird_group}
-getent passwd %{bird_user} >/dev/null || useradd -r -g %{bird_group} -d /var/lib/bird -s /sbin/nologin -c "BIRD daemon user" %{bird_user}
-%else
 %sysusers_create_compat %{SOURCE3}
 %endif
 
+%if 0%{?suse_version}
+%pre -f bird.pre
+%endif
+
+%if %{legacy_users}
+%pre
+# Create bird user/group manually
+getent group %{bird_group} >/dev/null || groupadd -r %{bird_group}
+getent passwd %{bird_user} >/dev/null || useradd -r -g %{bird_group} -d /var/lib/bird -s /sbin/nologin -c "BIRD daemon user" %{bird_user}
+%endif
 
 %post
 %systemd_post bird.service
@@ -114,7 +130,7 @@ getent passwd %{bird_user} >/dev/null || useradd -r -g %{bird_group} -d /var/lib
 %doc NEWS README
 %attr(0640,root,bird) %config(noreplace) %{_sysconfdir}/bird.conf
 %{_unitdir}/bird.service
-%{_sysusersdir}/bird.conf
+%{_sysusersdir}/system-user-bird.conf
 %{_tmpfilesdir}/bird.conf
 %{_sbindir}/bird
 %{_sbindir}/birdc
@@ -133,5 +149,5 @@ getent passwd %{bird_user} >/dev/null || useradd -r -g %{bird_group} -d /var/lib
 %endif
 
 %changelog
-* Wed Apr 07 2021 Jakub Ružička <jakub.ruzicka@nic.cz> - {{ version }}-cznic.1
+* {{ now }} Maria Matejka <maria.matejka@nic.cz> - {{ version }}-cznic.1
 - upstream package
