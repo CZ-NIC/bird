@@ -273,7 +273,7 @@ build-release:
   stage: pkg
   script:
     - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
-    - sed -i "s/runstatedir/with-runtimedir/" distro/pkg/rpm/bird.spec
+#    - sed -i "s/runstatedir/with-runtimedir/" distro/pkg/rpm/bird.spec
     - STABLE_BUILDDIR=true tools/make-rpm
   artifacts:
     paths:
