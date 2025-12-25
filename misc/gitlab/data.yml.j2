@@ -9,61 +9,47 @@ distros:
     variables:
       LC_ALL: en_US.UTF-8
       CC: /opt/rh/devtoolset-8/root/usr/bin/gcc
-    type: pkg-rpm-wa
+    type: rpm
 
-  {% for name in (
-    'centos-8',
-    'rocky-08',
-    'rocky-09',
-    'oracle-08',
-    'oracle-09',
-    'oracle-10',
-    'fedora-32',
-    'fedora-33',
-  ) -%}
-  - name: {{ name }}-amd64
-    type: pkg-rpm-wa
+  - name: centos-8-amd64
+    type: rpm
+
+  # Rocky and Oracle Linux, forks of CentOS/RHEL
+  {% for num in ('08','09') -%}
+  - name: rocky-{{ num }}-amd64
+    type: rpm
+  {% endfor %}
+  {% for num in ('08','09','10') -%}
+  - name: oracle-{{ num }}-amd64
+    type: rpm
   {% endfor %}
 
-  # For some unknown reason we also require older Python packages
-  # for OpenSUSE even with the recent versions.
+  # Last 7 years of OpenSUSE
   {% for num in (0,1,2,3,4,5) -%}
   - name: opensuse-15.{{ num }}-amd64
-    type: pkg-rpm-wa
+    type: rpm
   {% endfor %}
   - name: opensuse-16.0-amd64
-    type: pkg-rpm
+    type: rpm
 
-  # Fedora regular builds
-  {% for num in (34, 35, 36, 37, 38, 39, 40, 41, 42, 43) -%}
+  # Last 12 versions of Fedora
+  {% for num in (32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43) -%}
   - name: fedora-{{ num }}-amd64
-    type: pkg-rpm
+    type: rpm
   {% endfor %}
 
-  # Debian-based legacy builds
-  # Ubuntu 18.04 has issues with newer version of beautifulsoup4 and old python
-  # Debian 11 has issues with markupsafe v3.0.3
-  {% for name in (
-    'ubuntu-18.04-amd64',
-    'debian-11-i386',
-    'debian-11-amd64',
-  ) -%}
-  - name: {{ name }}
-    type: pkg-deb-legacy
-  {% endfor %}
-
-  # Debian regular builds
-  {% for num in (12, 13, 'testing') -%}
+  # Debian from oldoldstable up to testing
+  {% for num in (11, 12, 13, 'testing') -%}
   {% for arch in ('amd64', 'i386') -%}
   - name: debian-{{num}}-{{arch}}
-    type: pkg-deb
+    type: deb
   {% endfor %}
   {% endfor %}
 
-  # Ubuntu regular builds
-  {% for num in ('20.04', '22.04', '24.04', '25.04', '25.10') -%}
+  # Last 7 years of Ubuntu LTS
+  {% for num in ('18.04', '20.04', '22.04', '24.04', '25.04', '25.10') -%}
   - name: ubuntu-{{ num }}-amd64
-    type: pkg-deb
+    type: deb
   {% endfor %}
 
 birdlab:
