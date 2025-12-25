@@ -246,17 +246,6 @@ build-release:
       - pkg/pkgs/*
       - pkg/srcpkgs/*
 
-.pkg-deb-legacy: &pkg-deb-legacy
-  <<: *test-job
-  stage: pkg
-  script:
-    - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
-    - tools/make-deb
-  artifacts:
-    paths:
-      - pkg/pkgs/*
-      - pkg/srcpkgs/*
-
 .pkg-rpm: &pkg-rpm
   <<: *test-job
   stage: pkg
@@ -268,22 +257,10 @@ build-release:
       - pkg/pkgs/*
       - pkg/srcpkgs/*
 
-.pkg-rpm-wa: &pkg-rpm-wa
-  <<: *test-job
-  stage: pkg
-  script:
-    - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
-    - sed -i "s/runstatedir/with-runtimedir/" distro/pkg/rpm/bird.spec
-    - STABLE_BUILDDIR=true tools/make-rpm
-  artifacts:
-    paths:
-      - pkg/pkgs/*
-      - pkg/srcpkgs/*
-
 
 {% for dist in distros %}
 pkg-{{ dist["name"] }}:
-  <<: *{{ dist["type"] }}
+  <<: *pkg-{{ dist["type"] }}
   needs:
     - job: build-{{ dist["name"] }}
       artifacts: false
@@ -345,19 +322,14 @@ pkg-{{ dist["name"] }}:
 
 {% for dist in distros %}
 install-{{ dist["name"] }}:
-  <<: *{{ {
-    "pkg-rpm": "install-rpm",
-    "pkg-rpm-wa": "install-rpm",
-    "pkg-deb": "install-deb",
-    "pkg-deb-legacy": "install-deb",
-  }[dist["type"]] }}
+  <<: *install-{{ dist["type"] }}
   needs:
     - job: pkg-{{ dist["name"] }}
   image: registry.nic.cz/labs/bird:{{ dist["name"] }}
   variables:
 {%- if dist["name"][:12] == "opensuse-16." %}
     RPM_INSTALL_CMD: zypper --non-interactive --no-gpg-checks in
-{%- elif dist["type"][4:7] == "rpm" %}
+{%- elif dist["type"] == "rpm" %}
     RPM_INSTALL_CMD: rpm -i
 {%- endif %}
 {% endfor %}
