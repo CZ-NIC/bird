@@ -1,3 +1,11 @@
+Version 3.2.0 (2025-12-26)
+  o BGP: Listening socket rework
+  o IGP metric: Split out local_metric again
+  o Table: Optimal and Any Export refactoring
+  o Various race condition fixes
+  o All fixes included in 3.1.0 -- 3.1.5
+  o Merged 2.18
+
 Version 3.1.0 (2025-04-01)
   o CLI v2 compatibility layer for show route
   o Thread configuration rework
