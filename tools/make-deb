@@ -29,8 +29,6 @@ BINTARGET=${ORIG}/pkg/pkgs/$DIRTARGET/$DEBPKGSTEM-cznic.1/
 
 echo "Packaging BIRD $PKGVERSION for $(lsb_release -is) $(lsb_release -rs) $(lsb_release -cs) in $TMPDIR"
 
-lsb_release -a
-
 mkdir -p $SRCTARGET $BINTARGET
 
 pushd $TMPDIR
@@ -55,8 +53,15 @@ pushd $TMPDIR
   dpkg-source -x *.dsc
 
   pushd bird${PKGVERSION:0:1}-$PKGVERSION
+    # Check for crossbuild
+    if [ -n "$CROSSBUILD_ARCH" ]; then
+      export CONFIG_SITE=/etc/dpkg-cross/cross-config.$CROSSBUILD_ARCH
+      export DEB_BUILD_OPTIONS=nocheck
+      DPKG_OPTS="--host-arch $CROSSBUILD_ARCH -Pcross,nocheck"
+    fi
+
     # Build locally
-    dpkg-buildpackage -B -sa -d -us -uc
+    dpkg-buildpackage -B -sa -d -us -uc $DPKG_OPTS
     mv ../bird?{,-dbgsym}_*-cznic* ${BINTARGET}/
     cp ../bird?_*.orig.tar.gz ${BINTARGET}/
   popd
