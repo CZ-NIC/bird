@@ -2865,25 +2865,8 @@ bgp_rx_end_mark(struct bgp_parse_state *s, u32 afi)
   if (c->gr_active)
     bgp_graceful_restart_done(c);
 
-  if (c->c.net_type == NET_RTFILTER) // && !p->rtfilter_initial_feed ???
-  {
-    //if (!p->rtfilter_initial_feed)
-      //bug("stop");
-
-    p->rtfilter_initial_feed = false;
-
-    /* Calling settle timer hook manually */
-    log("End of initial feed, triggering rebuilding rtfilter tree manually...");
+  if (c->c.net_type == NET_RTFILTER)
     bgp_build_rtfilter_tree_on_settle(&p->rtfilter_settle);
-
-    /* Reconfigure settle timer after initial feed */
-    p->rtfilter_settle_cf = (struct settle_config) {
-      .min = 1 S_,
-      .max = 20 S_,
-    };
-
-    settle_init(&p->rtfilter_settle, &p->rtfilter_settle_cf, bgp_build_rtfilter_tree_on_settle, p);
-  }
 }
 
 static inline void
