@@ -18,7 +18,7 @@ bird --version 2>&1 | grep -F "$STABLE_VERSION"
 bird --version 2>version-reported
 
 
-if [ "$CI_COMMIT_MESSAGE" = "NEWS and version update" ]; then
+if [ "$CI_COMMIT_MESSAGE" = "NEWS and version update" ] || [ -n "$FORCE_VERSION" ]; then
   echo "Processing a release commit..."
   echo "BIRD version ${STABLE_VERSION}" > version-expected
   diff version-reported version-expected
