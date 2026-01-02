@@ -301,7 +301,7 @@ help:
 	@echo
 	@echo "Distribution commands:"
 	@echo "    make install              Install binaries into the system."
-	@echo "    make archive              Create a release archive (TGZ).
+	@echo "    make archive              Create a release archive (TGZ)."
 	@echo "                              This must exist for 'make deb' and 'make rpm'."
 	@echo "    make deb                  Create a DEB package for the current system."
 	@echo "    make rpm                  Create an RPM package for the current system."
