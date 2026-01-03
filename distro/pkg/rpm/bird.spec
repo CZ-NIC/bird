@@ -19,6 +19,8 @@ Source0:          https://bird.nic.cz/download/bird-%{version}.tar.gz
 Source1:          bird.service
 Source2:          bird.tmpfilesd
 Source3:          system-user-bird.conf
+Source4:	  bird_cznic.repo
+Source5:	  keys
 
 BuildRequires:    autoconf
 BuildRequires:    flex
@@ -70,6 +72,13 @@ and inspection of the status of the daemon, soft reconfiguration as well as a
 powerful language for route filtering.
 %endif
 
+%package repo
+Summary:	  Repository for BIRD Internet Routing Daemon
+Group:		  Unspecified
+
+%description repo
+CZ.NIC upstream repository for BIRD Internet Routing Daemon.
+
 %prep
 %setup -q -n bird-%{version}
 
@@ -93,6 +102,11 @@ install -d %{buildroot}%{_rundir}/bird
 install -D -p -m 0644 %{SOURCE1} %{buildroot}%{_unitdir}/bird.service
 install -D -p -m 0644 %{SOURCE2} %{buildroot}%{_tmpfilesdir}/bird.conf
 install -D -p -m 0644 %{SOURCE3} %{buildroot}%{_sysusersdir}/system-user-bird.conf
+
+install -dm 755 %{buildroot}%{_sysconfdir}/pki/rpm-gpg
+cd %{SOURCE5} && install -pm 644 * %{buildroot}%{_sysconfdir}/pki/rpm-gpg/
+install -dm 755 %{buildroot}%{_sysconfdir}/yum.repos.d
+install -pm 644 %{SOURCE4} %{buildroot}%{_sysconfdir}/yum.repos.d
 
 %check
 %if 0%{?rhel} && 0%{?rhel} < 8
@@ -147,6 +161,10 @@ getent passwd %{bird_user} >/dev/null || useradd -r -g %{bird_group} -d /var/lib
 %doc obj/doc/prog*.html
 %doc obj/doc/prog.pdf
 %endif
+
+%files repo
+%config(noreplace) %{_sysconfdir}/yum.repos.d/bird_cznic.repo
+%{_sysconfdir}/pki/rpm-gpg/*
 
 %changelog
 * {{ now }} Maria Matejka <maria.matejka@nic.cz> - {{ version }}-cznic.1

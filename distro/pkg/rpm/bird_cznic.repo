@@ -1,0 +1,11 @@
+[bird]
+name=bird (nic.cz)
+baseurl=https://pkg.labs.nic.cz/rpm/bird/{{ repodir }}/
+countme=1
+enabled=1
+metadata_expire=24h
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-network.cz
+  file:///etc/pki/rpm-gpg/RPM-GPG-KEY-maria-rsa-bird.nic.cz
+  file:///etc/pki/rpm-gpg/RPM-GPG-KEY-maria-ed25519-bird.nic.cz
+gpgcheck=1
+repo_gpgcheck=0
