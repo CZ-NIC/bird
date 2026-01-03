@@ -38,23 +38,38 @@ fi
 PKGVERSION=$(tools/version)
 RPMPKGSTEM=bird-$PKGVERSION
 ORIG=$(pwd)
-DIRTARGET=$($LSB_RELEASE -is)-$($LSB_RELEASE -rs | tr '/' '-')
+DISTRO=$($LSB_RELEASE -is)
+DISTVER=$($LSB_RELEASE -rs)
+
+RPM_REBUILD_OPTION=-rb
+
+case ${DISTRO,,} in
+  fedora*)	DISTRO=fedora ;;
+  opensuse*)	DISTRO=opensuse ;;
+  oracle*)	DISTRO=oracle
+		DISTVER=${DISTVER/%.*/}
+		if [ "${#DISTVER}" = 1 ]; then DISTVER=0$DISTVER; fi
+		;;
+  rocky*)	DISTRO=rocky
+		DISTVER=${DISTVER/%.*/}
+		if [ "${#DISTVER}" = 1 ]; then DISTVER=0$DISTVER; fi
+		;;
+  centos*)	DISTRO=centos
+		DISTVER=${DISTVER/%.*/}
+		# CentOS 7 has an old version of rpmbuild
+		if [ "$DISTVER" = "7" ]; then RPM_REBUILD_OPTION=--rebuild; fi
+		;;
+  *) echo "No quirks for this ${DISTRO} ${DISTVER}" ;;
+esac
+
+DIRTARGET=${DISTRO}-${DISTVER}
 DIRTARGET=${DIRTARGET,,}
-REPODIR=$($LSB_RELEASE -is)/$($LSB_RELEASE -rs)/$(uname -m)
+REPODIR=${DISTRO}/${DISTVER}/$(uname -m)
 REPODIR=${REPODIR,,}
 SRCTARGET=${ORIG}/pkg/srcpkgs/$DIRTARGET/$RPMPKGSTEM-cznic.1/
 BINTARGET=${ORIG}/pkg/pkgs/$DIRTARGET/$RPMPKGSTEM-cznic.1/
 
-echo "Packaging BIRD $PKGVERSION for $($LSB_RELEASE -is) $($LSB_RELEASE -rs) in $TMPDIR"
-
-# CentOS 7 has an old version of rpmbuild
-RPM_REBUILD_OPTION=-rb
-if [ "$($LSB_RELEASE -is)" = "CentOS" ]; then
-  R=$($LSB_RELEASE -rs)
-  if [ "${R:0:2}" = "7." ]; then
-    RPM_REBUILD_OPTION=--rebuild
-  fi
-fi
+echo "Packaging BIRD $PKGVERSION for ${DISTRO} ${DISTVER} in $TMPDIR"
 
 $LSB_RELEASE -a
 
