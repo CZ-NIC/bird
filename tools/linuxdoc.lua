@@ -91,7 +91,7 @@ G = P{ "Pandoc",
     return pandoc.Str("")
   end;
 
-  BookInside = V"Comment" + V"BookIgnored" + V"Title" + V"Author" + V"Abstract" + V"Chapter" + blankchar + V"ParseFail";
+  BookInside = V"Comment" + V"BookIgnored" + V"Title" + V"Author" + V"Date" + V"DocumentID" + V"Abstract" + V"Chapter" + blankchar + V"ParseFail";
   BookIgnored = P"<toc>";
   Book = P"<book>" * Ct(V"BookInside"^1) * P"</book>" / mergetables;
 
@@ -108,6 +108,9 @@ G = P{ "Pandoc",
 --    return { name = n; email = e; }
     return n .. " <" .. e .. ">"
   end;
+
+  Date = P"<date>" * inelement * P"</date>" / function (t) end;
+  DocumentID = P"<documentid>" * inelement * P"</documentid>" / function (t) end;
 
   Abstract = P"<abstract>" * inelement * P"</abstract>" / function (t)
     return {
