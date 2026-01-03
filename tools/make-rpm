@@ -40,6 +40,8 @@ RPMPKGSTEM=bird-$PKGVERSION
 ORIG=$(pwd)
 DIRTARGET=$($LSB_RELEASE -is)-$($LSB_RELEASE -rs | tr '/' '-')
 DIRTARGET=${DIRTARGET,,}
+REPODIR=$($LSB_RELEASE -is)/$($LSB_RELEASE -rs)/$(uname -m)
+REPODIR=${REPODIR,,}
 SRCTARGET=${ORIG}/pkg/srcpkgs/$DIRTARGET/$RPMPKGSTEM-cznic.1/
 BINTARGET=${ORIG}/pkg/pkgs/$DIRTARGET/$RPMPKGSTEM-cznic.1/
 
@@ -59,8 +61,9 @@ $LSB_RELEASE -a
 mkdir -p $SRCTARGET $BINTARGET
 mkdir -p $TMPDIR/SOURCES $TMPDIR/BUILD/$RPMPKGSTEM-build
 
-cp distro/pkg/rpm/* $TMPDIR/SOURCES/
+cp -r distro/pkg/rpm/* $TMPDIR/SOURCES/
 sed -i "s#{{ version }}#$PKGVERSION#;s#{{ now }}#$(date +'%a %b %d %Y')#;" $TMPDIR/SOURCES/bird.spec
+sed -i "s#{{ repodir }}#$REPODIR#;" $TMPDIR/SOURCES/bird_cznic.repo
 
 cp bird-$PKGVERSION.tar.gz $TMPDIR/SOURCES/$RPMPKGSTEM.tar.gz
 pushd $TMPDIR/SOURCES
