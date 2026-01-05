@@ -1289,7 +1289,6 @@
     rte *r = lp_alloc(tmp_linpool, sizeof(rte));
     /* The reason why there is no ea_ref is that this route will not live longer than the hostentry */
     r->attrs = ha->he->src;
-    debug( ".\n");
     RESULT(T_ROUTE, rte, r);
   }
 

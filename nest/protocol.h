@@ -814,14 +814,12 @@ struct igp_table {
 
 static inline void igp_table_merge(struct igp_table_config *to, struct igp_table_config *from)
 {
-  log("igp_table_merge");
 #define IGPT_COPY(x)  to->x = from->x ?: to->x;
   IGPT_COPY(ip4);
   IGPT_COPY(ip6);
 #undef IGPT_COPY
   if (from->additional)
   {
-    log("with from");
     if (!to->additional)
     {
       to->additional = from->additional;

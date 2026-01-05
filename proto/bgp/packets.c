@@ -1109,7 +1109,6 @@ bgp_apply_next_hop(struct bgp_parse_state *s, ea_list **to, ip_addr gw, ip_addr 
 {
   struct bgp_proto *p = s->proto;
   struct bgp_channel *c = s->channel;
-  log("bgp apply nexthop gw %I ll %I", gw, ll);
 
   if (c->cf->gw_mode == GW_DIRECT)
   {
