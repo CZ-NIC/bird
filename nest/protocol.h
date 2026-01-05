@@ -18,6 +18,7 @@
 #include "nest/limit.h"
 #include "conf/conf.h"
 #include "filter/data.h"
+#include "filter/filter.h"
 
 struct iface;
 struct ifa;
@@ -800,6 +801,7 @@ struct igp_table_config {
   struct rtable_config *ip4;	/* Table for recursive IPv4 next hop lookups */
   struct rtable_config *ip6;	/* Table for recursive IPv6 next hop lookups */
   struct igp_table_config_additional_attribute *additional;
+  struct f_line *fline;
 };
 
 struct igp_table {
@@ -807,16 +809,19 @@ struct igp_table {
   rtable *ip6;
   uint additional[16];
   uint additional_len;
+  struct f_line *fline;
 };
 
 static inline void igp_table_merge(struct igp_table_config *to, struct igp_table_config *from)
 {
+  log("igp_table_merge");
 #define IGPT_COPY(x)  to->x = from->x ?: to->x;
   IGPT_COPY(ip4);
   IGPT_COPY(ip6);
 #undef IGPT_COPY
   if (from->additional)
   {
+    log("with from");
     if (!to->additional)
     {
       to->additional = from->additional;
@@ -840,6 +845,9 @@ static inline void igp_table_merge(struct igp_table_config *to, struct igp_table
 
 static inline bool igp_table_same(struct igp_table_config *new, struct igp_table_config *old)
 {
+  if (!f_same(old->fline, new->fline))
+    return 0;
+
   if (new->additional)
   {
     if (!old->additional)
@@ -875,6 +883,8 @@ static inline void igp_table_init(struct igp_table *t, struct igp_table_config *
 
   if (c->ip6)
     t->ip6 = c->ip6->table;
+
+  t->fline = c->fline;
 
   if (c->additional)
   {

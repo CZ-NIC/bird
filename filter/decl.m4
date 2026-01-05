@@ -673,6 +673,7 @@ FID_WR_PUT(13)
     f_type_method_scopes[i].readonly = 1;
 
   f_type_method_scopes[T_ROUTE].next = &global_filter_scope;
+  f_type_method_scopes[T_HOSTENTRY].next = &global_filter_scope;
 }
 
 /* Line dumpers */

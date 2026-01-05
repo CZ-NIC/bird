@@ -921,6 +921,7 @@ method_name_cont:
  | static_attr {
     switch (FM.object->type) {
       case T_HOSTENTRY:
+        /* Only items from src are accessible */
         $$ = f_new_inst(FI_RTA_GET, f_new_inst(FI_HOSTENTRY_TO_RTE, FM.object), $1);
         break;
       case T_ROUTE:

@@ -426,11 +426,12 @@ igp_table:
   else
     cf_error("Incompatible IGP table type");
 }
- | IGP COPY { cf_enter_filters(); } CF_SYM_KNOWN { cf_exit_filters(); } {
-  cf_assert_symbol($4, SYM_ATTRIBUTE);
-  struct igp_table_config_additional_attribute *it = cfg_allocz(sizeof(struct igp_table_config_additional_attribute));
-  it->id = $4->attribute->id;
-  $$ = (struct igp_table_config) { .additional = it };
+ | IGP FILTER {
+  cf_enter_filters(); }
+    function_body
+  {
+    cf_exit_filters();
+    $$ = (struct igp_table_config) { .fline  = $4 };
 };
 
 /* example: igp copy bgp_next_hop; igp copy bgp_communities; igp copy ospf_metric1; */

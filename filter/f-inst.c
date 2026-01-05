@@ -1284,8 +1284,13 @@
   }
 
   INST(FI_HOSTENTRY_TO_RTE, 1, 1) {
+    ARG(1, T_HOSTENTRY);
     struct hostentry_adata *ha = (struct hostentry_adata *)v1.val.ad;
-    RESULT(T_ROUTE, rte, ha->rt)
+    rte *r = lp_alloc(tmp_linpool, sizeof(rte));
+    /* The reason why there is no ea_ref is that this route will not live longer than the hostentry */
+    r->attrs = ha->he->src;
+    debug( ".\n");
+    RESULT(T_ROUTE, rte, r);
   }
 
   INST(FI_IP_MASK, 2, 1) { /* IP.MASK(val) */
