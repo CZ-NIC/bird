@@ -4145,7 +4145,7 @@ ea_set_hostentry(ea_list **to, rtable *dep, const struct igp_table *igp, ip_addr
 
 
 static void
-rta_apply_hostentry(ea_list **to, struct hostentry_adata *head)
+rta_apply_hostentry(rte *r, struct hostentry_adata *head)
 {
   u32 *labels = head->labels;
   u32 lnum = (u32 *) (head->ad.data + head->ad.length) - labels;
@@ -4176,8 +4176,9 @@ rta_apply_hostentry(ea_list **to, struct hostentry_adata *head)
 	break;
       }
 
-      for (uint i = 0; i < he->igp->additional_len; i++)
-          ea_copy_attr(to, src, ea_class_find_by_id(he->igp->additional[i]));
+      /* Run the IGP resolution filter */
+      f_eval_rte(he->igp->fline, r, 0, NULL, 0, NULL);
+      ea_list **to = &r->attrs;
 
       eattr *he_nh_ea = ea_find(src, &ea_gen_nexthop);
       ASSERT_DIE(he_nh_ea);
@@ -4300,7 +4301,7 @@ rt_next_hop_resolve_rte(rte *r)
   if (!heea)
     return;
 
-  rta_apply_hostentry(&r->attrs, (struct hostentry_adata *) heea->u.ptr);
+  rta_apply_hostentry(r, (struct hostentry_adata *) heea->u.ptr);
 }
 
 #ifdef CONFIG_BGP
