@@ -1233,6 +1233,21 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
     if (peer->gr_aware)
       c->load_state = BFS_LOADING;
 
+    if (p->cf->rtfilter_use)
+    {
+      struct bgp_channel *cvpn4 = bgp_find_channel(p, BGP_AF_VPN4_MPLS);
+      struct bgp_channel *cvpn6 = bgp_find_channel(p, BGP_AF_VPN6_MPLS);
+
+      if (cvpn4)
+	channel_disable_export(&cvpn4->c);
+
+      if (cvpn6)
+	channel_disable_export(&cvpn6->c);
+
+      /* Connection has been successfully established, start settle timer */
+      settle_kick(&p->rtfilter_settle);
+    }
+
     c->ext_next_hop = c->cf->ext_next_hop && (bgp_channel_is_ipv6(c) || rem->ext_next_hop);
     c->add_path_rx = (loc->add_path & BGP_ADD_PATH_RX) && (rem->add_path & BGP_ADD_PATH_TX);
     c->add_path_tx = (loc->add_path & BGP_ADD_PATH_TX) && (rem->add_path & BGP_ADD_PATH_RX);
@@ -2381,13 +2396,18 @@ bgp_start(struct proto *P)
 
     fib_init(&p->rtfilter_fib, p->p.pool, NET_RTFILTER, sizeof(struct fib_node), 0, 0, NULL);
 
+    /*
+     * Configure but DO NOT start settle timer. It can be started only after
+     * connection has been successfully established. During initial feed, wait
+     * until the end of feed (when bgp_rx_end_mark() is called; beware - it
+     * doesn't have to be) or one minute at most.
+     */
     p->rtfilter_settle_cf = (struct settle_config) {
-      .min = 1 S_,
+      .min = 60 S_,
       .max = 60 S_,
     };
 
     settle_init(&p->rtfilter_settle, &p->rtfilter_settle_cf, bgp_build_rtfilter_tree_on_settle, p);
-    settle_kick(&p->rtfilter_settle);
   }
 
   /*
