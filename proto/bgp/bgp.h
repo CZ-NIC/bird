@@ -588,6 +588,8 @@ struct bgp_parse_state {
 #define BGP_MSG_HDR_TYPE_SIZE	1
 #define BGP_MSG_HDR_TYPE_POS	(BGP_MSG_HDR_MARKER_SIZE + BGP_MSG_HDR_LENGTH_SIZE)
 
+struct bgp_channel *bgp_find_channel(const struct bgp_proto *p, u32 afi);
+
 static inline int bgp_channel_is_ipv4(struct bgp_channel *c)
 { return BGP_AFI(c->afi) == BGP_AFI_IPV4; }
 
