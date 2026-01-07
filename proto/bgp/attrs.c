@@ -1785,10 +1785,36 @@ bgp_build_rtfilter_tree(struct bgp_proto *p)
 void
 bgp_build_rtfilter_tree_on_settle(struct settle *s)
 {
-  log("Triggering rebulding rtfilter tree on settle timer...");
   struct bgp_proto *p = SKIP_BACK(struct bgp_proto, rtfilter_settle, s);
 
   settle_cancel(s);
+
+  if (p->rtfilter_fib.entries == 0)
+    p->rtfilter_tree = NULL;
+  else
+  {
+    lp_flush(p->rtfilter_tree_pool);
+    p->rtfilter_tree = bgp_build_rtfilter_tree(p);
+  }
+
+  struct bgp_channel *cvpn4 = bgp_find_channel(p, BGP_AF_VPN4_MPLS);
+  struct bgp_channel *cvpn6 = bgp_find_channel(p, BGP_AF_VPN6_MPLS);
+
+  if (cvpn4)
+  {
+    if (p->rtfilter_initial_feed)
+      channel_enable_export(&cvpn4->c);
+    else
+      channel_request_feeding(&cvpn4->c);
+  }
+
+  if (cvpn6)
+  {
+    if (p->rtfilter_initial_feed)
+      channel_enable_export(&cvpn6->c);
+    else
+      channel_request_feeding(&cvpn6->c);
+  }
 
   if (p->rtfilter_initial_feed)
   {
@@ -1800,25 +1826,6 @@ bgp_build_rtfilter_tree_on_settle(struct settle *s)
 
     settle_init(&p->rtfilter_settle, &p->rtfilter_settle_cf, bgp_build_rtfilter_tree_on_settle, p);
     p->rtfilter_initial_feed = false;
-  }
-
-  if (p->rtfilter_fib.entries == 0)
-    p->rtfilter_tree = NULL;
-  else
-  {
-    lp_flush(p->rtfilter_tree_pool);
-    p->rtfilter_tree = bgp_build_rtfilter_tree(p);
-  }
-
-  struct bgp_channel *c;
-
-  BGP_WALK_CHANNELS(p, c)
-  {
-    if ((c->c.channel_state == CS_UP) && ((c->desc->net == NET_VPN4) || (c->desc->net == NET_VPN6)))
-    {
-      BGP_TRACE(D_PACKETS, "Got END-OF-RIB");
-      channel_request_feeding(&c->c);
-    }
   }
 }
 
