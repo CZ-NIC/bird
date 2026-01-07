@@ -837,8 +837,8 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
   return 0;
 }
 
-static inline struct bgp_channel *
-bgp_find_channel(struct bgp_proto *p, u32 afi)
+struct bgp_channel *
+bgp_find_channel(const struct bgp_proto *p, u32 afi)
 {
   struct bgp_channel *c;
   BGP_WALK_CHANNELS(p, c)
