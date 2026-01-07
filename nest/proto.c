@@ -485,7 +485,6 @@ channel_stop_export(struct channel *c)
 void
 channel_disable_export(struct channel *c)
 {
-  ASSERT(c->channel_state == CS_DOWN);
   ASSERT(c->export_state == ES_DOWN);
 
   c->export_wait = 1;
