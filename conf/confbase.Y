@@ -157,7 +157,7 @@ CF_DECLS
 
 %type <t> text opttext
 %type <bs> bytestring
-%type <s> symbol symbol_known
+%type <s> symbol symbol_known KEYWORD
 
 %type <v> conf_expr bytestring_expr text_or_ipa bytestring_or_text
 
@@ -232,7 +232,7 @@ conf_expr:
  | '(' term ')' { $$ = *cf_eval($2, T_VOID); }
  ;
 
-symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN ;
+symbol: CF_SYM_UNDEFINED | CF_SYM_KNOWN | KEYWORD ;
 symbol_known: CF_SYM_KNOWN ;
 
 
