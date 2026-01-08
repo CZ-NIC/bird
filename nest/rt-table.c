@@ -2713,6 +2713,12 @@ rt_next_hop_update_net(rtable *tab, net *n)
   if (!count)
     return 0;
 
+  /* The announcements and recalculations made inside the previous loop
+   * should not have changed the route linked-list ordering.
+   * Partly enforcing this invariant by requiring to have at least one route
+   * so that the best route can be actually selected. */
+  ASSERT_DIE(n->routes);
+
   /* Find the new best route */
   new_best = NULL;
   for (k = &n->routes; e = *k; k = &e->next)
