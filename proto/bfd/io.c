@@ -100,6 +100,9 @@ pipe_drain(int fd)
   int rv;
   
  try:
+  /* Note: CLang-19 static analyzer reports a possible blocking read here
+   * but it's actually non-blocking. Should be fixed in CLang-20:
+   * https://github.com/llvm/llvm-project/issues/104241 */
   rv = read(fd, buf, 64);
   if (rv < 0)
   {
