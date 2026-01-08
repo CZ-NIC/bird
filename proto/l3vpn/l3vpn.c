@@ -74,8 +74,11 @@ mpls_valid_nexthop(const rta *a)
 
   /* MPLS does not support ARP / neighbor discovery */
   for (const struct nexthop *nh = &a->nh; nh ; nh = nh->next)
+  {
+    ASSUME(nh->iface); /* Multipath nexthops always have interface set */
     if (ipa_zero(nh->gw) && (nh->iface->flags & IF_MULTIACCESS))
       return 0;
+  }
 
   return 1;
 }
