@@ -1100,7 +1100,11 @@ trie_node_format(const struct f_trie_node *n, buffer *buf, int v4)
 	uint lmask = trie_level_mask(pos, i);
 
 	if ((local & lmask) != lmask)
+	{
+	  /* trie_level_mask(pos, 0) == 1u << pos */
+	  ASSUME(i > 0);
 	  break;
+	}
 
 	local &= ~lmask;
       }
