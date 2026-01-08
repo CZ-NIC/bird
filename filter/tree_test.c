@@ -153,8 +153,6 @@ get_balanced_tree_with_ranged_values(uint nodes_count)
 static int
 t_balancing(void)
 {
-  start_conf_env();
-
   uint height;
   for (height = 1; height < MAX_TREE_HEIGHT; height++)
   {
@@ -179,8 +177,6 @@ t_balancing(void)
 static int
 t_balancing_random(void)
 {
-  start_conf_env();
-
   uint height;
   for (height = 1; height < MAX_TREE_HEIGHT; height++)
   {
@@ -209,8 +205,6 @@ t_balancing_random(void)
 static int
 t_find(void)
 {
-  start_conf_env();
-
   uint height;
   for (height = 1; height < MAX_TREE_HEIGHT; height++)
   {
@@ -255,8 +249,6 @@ get_max_value_in_unbalanced_tree(struct f_tree *node, uint max)
 static int
 t_find_ranges(void)
 {
-  start_conf_env();
-
   uint height;
   for (height = 1; height < MAX_TREE_HEIGHT; height++)
   {
@@ -292,6 +284,7 @@ int
 main(int argc, char *argv[])
 {
   bt_init(argc, argv);
+  start_conf_env();
 
   bt_test_suite(t_balancing, "Balancing strong unbalanced trees");
   bt_test_suite(t_balancing_random, "Balancing random unbalanced trees");

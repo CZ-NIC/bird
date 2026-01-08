@@ -177,6 +177,7 @@ docker-{{ docker["name"] }}:
     - which gmake 2>/dev/null >/dev/null && MAKE=gmake
     - $MAKE
     - $MAKE check
+    - $MAKE check TEST_ARGS=-ftv
     # Build docs when tools are available
     - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
     # Check that the reported version is the right one

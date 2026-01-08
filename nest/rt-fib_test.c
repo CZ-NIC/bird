@@ -30,7 +30,6 @@ static inline int net_match(struct test_node *tn, net_addr *query, net_addr *dat
 static int
 t_match_random_net(void)
 {
-  bt_bird_init();
   bt_config_parse(BT_CONFIG_SIMPLE);
 
   for (int round = 0; round < TESTS_NUM; round++)
@@ -81,7 +80,6 @@ t_match_random_net(void)
 static int
 t_fib_walk(void)
 {
-  bt_bird_init();
   bt_config_parse(BT_CONFIG_SIMPLE);
 
   for (int round = 0; round < TESTS_NUM; round++)
@@ -218,7 +216,6 @@ benchmark_fib_dataset(const char *filename, int type)
 static int UNUSED
 t_bench_fib_datasets(void)
 {
-  bt_bird_init();
   bt_config_parse(BT_CONFIG_SIMPLE);
 
   /* Specific datasets, not included */
@@ -236,6 +233,7 @@ int
 main(int argc, char *argv[])
 {
   bt_init(argc, argv);
+  bt_bird_init();
 
   bt_test_suite(t_match_random_net, "Testing random prefix matching");
   bt_test_suite(t_fib_walk, "Testing FIB_WALK() on random FIB");
