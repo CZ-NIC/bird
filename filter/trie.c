@@ -623,12 +623,17 @@ trie_match_longest_ip4(const struct f_trie *t, const net_addr_ip4 *net, net_addr
   const ip4_addr prefix = net->prefix;
   const int pxlen = net->pxlen;
 
+  /* The CLang static analyzer has no idea that IPv4 has only 32 bits */
+  ASSUME(pxlen <= 32);
+
   const struct f_trie_node4 *n = &t->root.v4;
   int len = 0;
 
   ip4_addr found = IP4_NONE;
   int last = -1;
 
+  /* Trie root node is always zero */
+  ASSUME(n->plen == 0);
   while (n)
   {
     /* We are out of path */
