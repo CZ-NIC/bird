@@ -280,6 +280,7 @@ config_do_commit(struct config *c, int type)
     {
       c = old_config;
       type = old_cftype;
+      ASSUME(config);
     }
   else
     config_free(old_config);
