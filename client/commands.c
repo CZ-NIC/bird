@@ -52,6 +52,7 @@ cmd_build_tree(void)
       struct cmd_info *cmd = &command_table[i];
       struct cmd_node *old, *new;
       char *c = cmd->command;
+      ASSUME(*c);
 
       new = &cmd_root;
       while (*c)
