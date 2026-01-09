@@ -143,6 +143,8 @@ rem_node(node *n)
 {
   EXPENSIVE_CHECK(check_list(NULL, n));
 
+  ASSUME(n->prev != NULL);
+  ASSUME(n->next != NULL);
   node *z = n->prev;
   node *x = n->next;
 
