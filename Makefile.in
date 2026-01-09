@@ -68,7 +68,7 @@ endif
 docgoals := docs userdocs progdocs
 testgoals := check test tests tests_run
 cleangoals := clean distclean testsclean
-.PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags cscope prepare gitlab
+.PHONY: all daemon cli $(docgoals) $(testgoals) $(cleangoals) tags cscope prepare gitlab-local gitlab-venv
 
 all: daemon cli
 
