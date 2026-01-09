@@ -212,6 +212,7 @@ aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *b
   {
     /* Pass the route to the protocol */
     case F_ACCEPT:
+      ASSUME(new);
       rte_update2(p->dst, net->n.addr, new, bucket->last_src ?: new->src);
       break;
 
