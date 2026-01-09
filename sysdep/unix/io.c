@@ -2480,7 +2480,7 @@ void
 io_loop(void)
 {
   int poll_tout, timeout;
-  int nfds, events, pout;
+  int nfds, events, pout, perrno;
   timer *t;
   sock *s;
   node *n;
@@ -2565,11 +2565,12 @@ io_loop(void)
       /* And finally enter poll() to find active sockets */
       watchdog_stop();
       pout = poll(pfd, nfds, poll_tout);
+      perrno = errno; /* Keep errno over watchdog_start() */
       watchdog_start();
 
       if (pout < 0)
 	{
-	  if (errno == EINTR || errno == EAGAIN)
+	  if (perrno == EINTR || perrno == EAGAIN)
 	    continue;
 	  die("poll: %m");
 	}
