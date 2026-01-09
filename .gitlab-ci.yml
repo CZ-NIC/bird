@@ -135,6 +135,11 @@ docker-docbuilder:
     IMG_NAME: "docbuilder"
   <<: *docker-build
 
+docker-codechecker:
+  variables:
+    IMG_NAME: "codechecker"
+  <<: *docker-build
+
 docker-centos-7-amd64:
   variables:
     IMG_NAME: "centos-7-amd64"
@@ -377,6 +382,7 @@ docker-ubuntu-25.10-amd64:
     - which gmake 2>/dev/null >/dev/null && MAKE=gmake
     - $MAKE
     - $MAKE check
+    - $MAKE check TEST_ARGS=-ftv
     # Build docs when tools are available
     - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
     # Check that the reported version is the right one
@@ -1427,6 +1433,7 @@ install-ubuntu-25.10-amd64:
 
 build-birdlab-openbsd-75:
   <<: *build-birdlab-base
+  needs: []
   variables:
     AUTOCONF_VERSION: '2.71'
   tags:
@@ -1435,6 +1442,7 @@ build-birdlab-openbsd-75:
 
 build-birdlab-openbsd-76:
   <<: *build-birdlab-base
+  needs: []
   variables:
     AUTOCONF_VERSION: '2.72'
   tags:
@@ -1443,24 +1451,28 @@ build-birdlab-openbsd-76:
 
 build-birdlab-netbsd-09:
   <<: *build-birdlab-base
+  needs: []
   tags:
     - birdlab-netbsd-09
     - amd64
 
 build-birdlab-netbsd-10:
   <<: *build-birdlab-base
+  needs: []
   tags:
     - birdlab-netbsd-10
     - amd64
 
 build-birdlab-freebsd-13:
   <<: *build-birdlab-base
+  needs: []
   tags:
     - birdlab-freebsd-13
     - amd64
 
 build-birdlab-freebsd-13-netlink:
   <<: *build-birdlab-base
+  needs: []
   variables:
     CONFIGURE_OPTIONS: --with-sysconfig=bsd-netlink --disable-client
   tags:
@@ -1469,12 +1481,14 @@ build-birdlab-freebsd-13-netlink:
 
 build-birdlab-freebsd-14:
   <<: *build-birdlab-base
+  needs: []
   tags:
     - birdlab-freebsd-14
     - amd64
 
 build-birdlab-freebsd-14-netlink:
   <<: *build-birdlab-base
+  needs: []
   variables:
     CONFIGURE_OPTIONS: --with-sysconfig=bsd-netlink --disable-client
   tags:
@@ -1560,6 +1574,35 @@ partial-build-linux-static:
     CONFIGURE_OPTIONS: --with-protocols=static
 
 
+#####################
+## Static Analyzer ##
+#####################
+
+static-analysis:
+  <<: *test-job
+  stage: build
+  image: registry.nic.cz/labs/bird:codechecker
+  needs:
+    - job: docker-codechecker
+      optional: true
+  script:
+    - clang --version
+    - autoreconf
+    - CC=clang ./configure --enable-debug
+    - CodeChecker log --build make --output cclog.json
+    - CodeChecker analyze cclog.json --output ccreport --ctu
+    - CodeChecker checkers --help
+    - CodeChecker checkers --details
+    - CodeChecker checkers --profile --details
+    - 'CodeChecker parse --export html --output ccreport-html ccreport || true'
+  artifacts:
+    paths:
+      - cclog.json
+      - ccreport
+      - ccreport-html
+    expire_in: 2 hours
+    when: always
+
 ################################
 ## Netlab functionality tests ##
 ################################
@@ -1567,6 +1610,7 @@ partial-build-linux-static:
 build-netlab:
   <<: *test-job
   stage: build
+  needs: []
   variables:
     BDIR: build-netlab
   tags:

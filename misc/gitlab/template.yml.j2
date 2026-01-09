@@ -129,7 +129,7 @@ tag-collect:
 
   - when: never
 
-{% for docker in [ { "name": "docbuilder" } ] + distros %}
+{% for docker in [ { "name": "docbuilder" }, { "name": "codechecker" } ] + distros %}
 docker-{{ docker["name"] }}:
   variables:
     IMG_NAME: "{{ docker["name"] }}"
@@ -351,6 +351,7 @@ install-{{ dist["name"] }}:
 {% for test in birdlab %}
 build-birdlab-{{ test['name'] }}:
   <<: *build-birdlab-base
+  needs: []
 {%- if 'variables' in test %}
   variables:
 {{ test['variables'] | to_yaml | indent(4, true) }}{%- endif %}
@@ -377,6 +378,35 @@ partial-build-linux-{{ test["protocols"] }}:
     CONFIGURE_OPTIONS: --with-protocols={{ test["protocols"] }}
 {% endfor %}
 
+#####################
+## Static Analyzer ##
+#####################
+
+static-analysis:
+  <<: *test-job
+  stage: build
+  image: registry.nic.cz/labs/bird:codechecker
+  needs:
+    - job: docker-codechecker
+      optional: true
+  script:
+    - clang --version
+    - autoreconf
+    - CC=clang ./configure --enable-debug
+    - CodeChecker log --build make --output cclog.json
+    - CodeChecker analyze cclog.json --output ccreport --ctu
+    - CodeChecker checkers --help
+    - CodeChecker checkers --details
+    - CodeChecker checkers --profile --details
+    - 'CodeChecker parse --export html --output ccreport-html ccreport || true'
+  artifacts:
+    paths:
+      - cclog.json
+      - ccreport
+      - ccreport-html
+    expire_in: 2 hours
+    when: always
+
 ################################
 ## Netlab functionality tests ##
 ################################
@@ -384,6 +414,7 @@ partial-build-linux-{{ test["protocols"] }}:
 build-netlab:
   <<: *test-job
   stage: build
+  needs: []
   variables:
     BDIR: build-netlab
   tags:
