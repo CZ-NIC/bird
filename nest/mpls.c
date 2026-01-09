@@ -744,6 +744,13 @@ mpls_fec_map_reconfigure(struct mpls_fec_map *m, struct channel *C)
 
     /* Try new handle for the FEC */
     struct mpls_handle *new = (fec->policy != MPLS_POLICY_STATIC) ? m->handle : m->static_handle;
+
+    /* Either the policy is static and m->static_handle has been created
+     * in mpls_get_fec_by_label(), or it isn't and m->handle has been
+     * created in mpls_fec_map_new(). The static analyzer does not know that. */
+    ASSUME(new);
+
+    /* FEC belongs to the range */
     if ((fec->label >= new->range->lo) && (fec->label < new->range->hi))
     {
       mpls_move_label(m->domain, fec->handle, new, fec->label);
