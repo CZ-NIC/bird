@@ -958,7 +958,6 @@ ea_show(struct cli *c, const eattr *e)
 {
   struct protocol *p;
   int status = GA_UNKNOWN;
-  const struct adata *ad = (e->type & EAF_EMBEDDED) ? NULL : e->u.ptr;
   byte buf[CLI_MSG_SIZE];
   byte *pos = buf, *end = buf + sizeof(buf);
 
@@ -992,10 +991,18 @@ ea_show(struct cli *c, const eattr *e)
       *pos++ = ':';
       *pos++ = ' ';
 
+      u8 type = e->type & EAF_TYPE_MASK;
+      const struct adata *ad = NULL;
+      if (!(type & EAF_EMBEDDED) && !e->undef)
+      {
+	ad = e->u.ptr;
+	ASSERT(ad);
+      }
+
       if (e->undef)
 	bsprintf(pos, "undefined");
       else
-      switch (e->type & EAF_TYPE_MASK)
+      switch (type)
 	{
 	case EAF_TYPE_INT:
 	  bsprintf(pos, "%u", e->u.data);
