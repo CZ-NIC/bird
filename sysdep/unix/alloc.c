@@ -133,6 +133,7 @@ alloc_page(void)
 static void *
 alloc_cold_page(void)
 {
+  ASSUME(!use_fake);
   struct free_pages *fps = &global_free_pages;
 
   /* If there is any free page kept cold, we use that. */
@@ -187,6 +188,8 @@ free_page(void *ptr)
 static void
 global_free_pages_cleanup_event(void *data UNUSED)
 {
+  ASSUME(!use_fake);
+
   /* Cleanup on shutdown is ignored. All pages may be kept hot, OS will take care. */
   if (shutting_down)
     return;
@@ -240,6 +243,8 @@ global_free_pages_cleanup_event(void *data UNUSED)
 void
 page_dump(struct dump_request *dreq)
 {
+  ASSUME(!use_fake);
+
 #ifdef HAVE_MMAP
   RDUMP("Hot pages:\n");
   node *n;
@@ -268,6 +273,7 @@ resource_sys_init(void)
 #endif
 
 #ifdef HAVE_MMAP
+  ASSERT_DIE(!use_fake);
   ASSERT_DIE(global_free_pages.cnt == 0);
 
   /* Check what page size the system supports */
