@@ -271,6 +271,22 @@ t_add_tail_list(void)
   bt_assert(nodes2[0].prev == &nodes[MAX_NUM-1]);
   bt_assert(l.tail == &nodes2[MAX_NUM-1]);
 
+  /* Corner case of two empty lists */
+  list empty[2];
+  init_list(&empty[0]);
+  init_list(&empty[1]);
+  list ec[2] = { empty[0], empty[1] };
+
+  add_tail_list(&empty[0], &empty[1]);
+
+  bt_assert(empty[0].head == ec[0].head);
+  bt_assert(empty[0].tail == ec[0].tail);
+
+  init_list(&empty[1]);
+
+  bt_assert(empty[1].head == ec[1].head);
+  bt_assert(empty[1].tail == ec[1].tail);
+
   return 1;
 }
 
