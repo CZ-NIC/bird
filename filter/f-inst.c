@@ -1220,6 +1220,7 @@
     FID_INTERPRET_BODY()
 
     /* Push the body on stack */
+    ASSUME(sym->function);
     LINEX(sym->function);
     curline.vbase = curline.ventry;
     curline.emask |= FE_RETURN;
