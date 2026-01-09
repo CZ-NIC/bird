@@ -1600,6 +1600,7 @@ bgp_get_bucket(struct bgp_channel *c, ea_list *new)
     {
       const struct adata *oa = a->u.ptr;
       struct adata *na = (struct adata *) dest;
+      ASSUME(oa);
       memcpy(na, oa, sizeof(struct adata) + oa->length);
       a->u.ptr = na;
       dest += BIRD_ALIGN(sizeof(struct adata) + na->length, CPU_STRUCT_ALIGN);
