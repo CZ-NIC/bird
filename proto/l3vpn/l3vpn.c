@@ -204,6 +204,9 @@ l3vpn_rt_notify(struct proto *P, struct channel *c0, net *net, rte *new, rte *ol
 
   case NET_MPLS:
     return;
+
+  default:
+    bug("%s.%s: Impossible channel type %u", p->p.name, c0->name, c0->net_type);
   }
 
   if (new)
