@@ -733,7 +733,7 @@ bgp_total_aigp_metric(rte *r)
 }
 
 void bgp_build_rtfilter_tree_on_settle(struct settle *s);
-void bgp_receive_rtfilter_entry(struct bgp_proto *p, const struct net_addr_rtfilter *addr, const struct rta *a);
+void bgp_process_rtfilter_entry(struct bgp_proto *p, const struct net_addr_rtfilter *addr, const struct rta *a);
 
 
 /* packets.c */
