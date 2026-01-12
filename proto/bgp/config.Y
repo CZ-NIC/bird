@@ -465,6 +465,7 @@ bgp_channel_item:
     if (BGP_CC->desc->no_igp)
       cf_error("IGP table not allowed here");
     igp_table_merge(&BGP_CC->igp_table, &$1);
+    log("in bgp igp table to merge %x %x", &BGP_CC->igp_table, &$1);
    }
  | BASE TABLE rtable {
     if (BGP_SAFI(BGP_CC->afi) != BGP_SAFI_FLOW)

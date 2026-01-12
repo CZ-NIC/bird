@@ -550,6 +550,7 @@ static_init(struct proto_config *CF)
   P->reload_routes = static_reload_routes;
   P->sources.class = &static_rte_owner_class;
 
+  log("static_init fline %x c %x", cf->igp_table.fline, &cf->igp_table);
   igp_table_init(&p->igp_table, &cf->igp_table);
 
   return P;

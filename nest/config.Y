@@ -427,11 +427,12 @@ igp_table:
     cf_error("Incompatible IGP table type");
 }
  | IGP FILTER {
-  cf_enter_filters(); }
+  cf_enter_filters(); log("in filteeeeeeeeers");}
     function_body
   {
     cf_exit_filters();
     $$ = (struct igp_table_config) { .fline  = $4 };
+    log("in config, fline %x", $4);
 };
 
 /* example: igp copy bgp_next_hop; igp copy bgp_communities; igp copy ospf_metric1; */
