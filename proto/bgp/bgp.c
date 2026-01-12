@@ -228,17 +228,6 @@ bgp_open(struct bgp_proto *p)
   req->remote_ip = p->remote_ip;
   req->remote_range = p->cf->remote_range;
 
-  /* Initialize the incoming socket queue */
-  init_list(&req->incoming_sockets);
-
-  BGP_TRACE(D_EVENTS, "Requesting listen socket at %I%J port %u", req->params.addr, req->params.iface, req->params.port);
-
-  if (bgp_is_dynamic(p))
-    callback_init(&req->incoming_connection, bgp_incoming_connection_dynamic, &main_birdloop);
-  else
-    callback_init(&req->incoming_connection, bgp_incoming_connection_single, p->p.loop);
-
-  req->p = p;
   return bgp_listen_open(p, req);
 }
 
@@ -267,6 +256,17 @@ bgp_listen_open(struct bgp_proto *p, struct bgp_listen_request *req)
   ASSERT_DIE(!NODE_VALID(&req->pn));
   ASSERT_DIE(!NODE_VALID(&req->sn));
 
+  /* Initialize the incoming socket queue */
+  init_list(&req->incoming_sockets);
+
+  BGP_TRACE(D_EVENTS, "Requesting listen socket at %I%J port %u", req->params.addr, req->params.iface, req->params.port);
+
+  if (bgp_is_dynamic(p))
+    callback_init(&req->incoming_connection, bgp_incoming_connection_dynamic, &main_birdloop);
+  else
+    callback_init(&req->incoming_connection, bgp_incoming_connection_single, p->p.loop);
+
+  req->p = p;
   add_tail(&p->listen, &req->pn);
 
   BGP_LISTEN_LOCK(bl);
@@ -1176,6 +1176,8 @@ bgp_down(struct bgp_proto *p)
 {
   /* Close the possibly unpicked dynamic BGP socket */
   if (p->postponed_sk)
+    BGP_LISTEN_LOCKED(bl)
+
     sk_close(p->postponed_sk);
   p->postponed_sk = NULL;
 
@@ -2293,6 +2295,12 @@ bgp_iface_update(struct bgp_proto *p, uint flags, struct iface *i)
   {
     struct bgp_listen_request *req = mb_allocz(p->p.pool, sizeof *req);
     req->params = params;
+
+    req->local_ip = p->cf->local_ip;
+    req->iface = i;
+    req->remote_ip = p->remote_ip;
+    req->remote_range = p->cf->remote_range;
+
     bgp_listen_open(p, req);
   }
 
@@ -2773,11 +2781,13 @@ bgp_start(struct proto *P)
   /* Now it's the last chance to move the postponed socket to this BGP,
    * as bgp_start is the only hook running from main loop. */
   if (p->postponed_sk)
-    BGP_LISTEN_LOCKED(bl)
-    {
-      rmove(p->postponed_sk, p->p.pool);
-      sk_reloop(p->postponed_sk, p->p.loop);
-    }
+  {
+    struct birdloop *loop = p->postponed_sk->loop;
+    birdloop_enter(loop);
+    rmove(p->postponed_sk, p->p.pool);
+    sk_reloop(p->postponed_sk, p->p.loop);
+    birdloop_leave(loop);
+  }
 
   /*
    * Before attempting to create the connection, we need to lock the port,
