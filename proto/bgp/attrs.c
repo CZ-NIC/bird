@@ -1746,8 +1746,6 @@ bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
 static struct f_tree *
 bgp_build_rtfilter_tree(struct bgp_proto *p)
 {
-  log("Rebuilding rtfilter tree...");
-  log("%d entries in rtfilter FIB", p->rtfilter_fib.entries);
   int len = p->rtfilter_fib.entries;
   int pos = 0;
 
@@ -1830,7 +1828,7 @@ bgp_build_rtfilter_tree_on_settle(struct settle *s)
 }
 
 void
-bgp_receive_rtfilter_entry(struct bgp_proto *p, const struct net_addr_rtfilter *addr, const struct rta *a)
+bgp_process_rtfilter_entry(struct bgp_proto *p, const struct net_addr_rtfilter *addr, const struct rta *a)
 {
   if (a)
     fib_get(&p->rtfilter_fib, (const net_addr *)addr);

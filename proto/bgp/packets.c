@@ -2323,8 +2323,8 @@ bgp_decode_nlri_rtfilter(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     else
       bgp_parse_error(s, 10);
 
-    /* Incoming rtfilter update starts settle timer */
-    bgp_receive_rtfilter_entry(s->proto, &net, a);
+    /* Incoming rtfilter update kicks settle timer */
+    bgp_process_rtfilter_entry(s->proto, &net, a);
     settle_kick(&s->proto->rtfilter_settle);
 
     bgp_rte_update(s, (net_addr *) &net, path_id, a);
