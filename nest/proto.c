@@ -499,6 +499,7 @@ struct roa_subscription {
   struct lfjour_recipient digest_recipient;
   event update_event;
   struct settle aspa_settle;
+  uint active_count;
 };
 
 struct roa_reload_request {
@@ -514,6 +515,7 @@ channel_roa_reload_done(struct rt_feeding_request *req)
   ASSERT_DIE(rrr->s->c->channel_state == CS_UP);
 
   lfjour_release(&rrr->s->digest_recipient, rrr->item);
+  rrr->s->active_count--;
   ev_send(proto_work_list(rrr->s->c->proto), &rrr->s->update_event);
   mb_free(rrr);
   /* FIXME: this should reset import/export filters if ACTION BLOCK */
@@ -545,6 +547,7 @@ channel_roa_changed(void *_s)
     if (!first_seq) first_seq = it->seq;
     last_seq = it->seq;
     count++;
+    s->active_count++;
     s->refeed_hook(s->c, &rrr->req);
   }
 
@@ -666,6 +669,8 @@ channel_aspa_subscribe(struct channel *c, rtable *tab, int dir)
 static void
 channel_roa_unsubscribe(struct roa_subscription *s)
 {
+  ASSERT_DIE(s->active_count == 0); /* This should crash */
+
   RT_LOCKED(s->tab, t)
   {
     lfjour_unregister(&s->digest_recipient);
