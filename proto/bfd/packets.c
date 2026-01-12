@@ -437,6 +437,9 @@ bfd_open_rx_sk(struct bfd_proto *p, int multihop, int af)
   if (cf->zero_udp6_checksum_rx)
     sk->flags |= SKF_UDP6_NO_CSUM_RX;
 
+  TRACE(D_PACKETS, "Opening RX socket, AF %u, port %u, vrf %s",
+      sk->subtype, sk->sport, sk->vrf ? sk->vrf->name : "(none)");
+
   if (sk_open(sk) < 0)
     goto err;
 
@@ -474,6 +477,9 @@ bfd_open_rx_sk_bound(struct bfd_proto *p, ip_addr local, struct iface *ifa)
   if (cf->zero_udp6_checksum_rx)
     sk->flags |= SKF_UDP6_NO_CSUM_RX;
 
+  TRACE(D_PACKETS, "Opening RX socket for %I%J port %u, vrf %s",
+      sk->saddr, sk->iface, sk->sport, sk->vrf ? sk->vrf->name : "(none)");
+
   if (sk_open(sk) < 0)
     goto err;
 
@@ -505,6 +511,9 @@ bfd_open_tx_sk(struct bfd_proto *p, ip_addr local, struct iface *ifa)
   sk->priority = sk_priority_control;
   sk->ttl = ifa ? 255 : -1;
   sk->flags = SKF_THREAD | SKF_BIND | SKF_HIGH_PORT;
+
+  TRACE(D_PACKETS, "Opening TX socket from %I%J to port %u, vrf %s",
+      sk->saddr, sk->iface, sk->dport, sk->vrf ? sk->vrf->name : "(none)");
 
   if (sk_open(sk) < 0)
     goto err;
