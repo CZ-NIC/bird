@@ -692,7 +692,6 @@
       STATIC_ATTR;
 
       struct rte *rte = v1.val.rte;
-      log("rte attrs FI_RTA_GET %x", rte->attrs);
 
       switch (sa.sa_code)
       {
@@ -900,9 +899,7 @@
     RESULT_TYPE(da->type);
     {
       struct f_val empty;
-      log("FI_EA_GET %x", v1.val.rte->attrs);
       const eattr *e = ea_find(v1.val.rte->attrs, da->id);
-      log("e = %x", e);
 
       if (e)
       {
@@ -1292,7 +1289,6 @@
     rte *r = lp_alloc(tmp_linpool, sizeof(rte));
     /* The reason why there is no ea_ref is that this route will not live longer than the hostentry */
     r->attrs = ha->he->src;
-    log("  <rte attrs is %x>", ha->he->src);
     RESULT(T_ROUTE, rte, r);
   }
 

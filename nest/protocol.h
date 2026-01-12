@@ -818,7 +818,7 @@ static inline void igp_table_merge(struct igp_table_config *to, struct igp_table
   IGPT_COPY(ip4);
   IGPT_COPY(ip6);
 #undef IGPT_COPY
-log("merge... fline to %x fline from %x", to->fline, from->fline);
+
   if (from->fline)
   {
     if (to->fline)
@@ -890,7 +890,6 @@ static inline void igp_table_init(struct igp_table *t, struct igp_table_config *
     t->ip6 = c->ip6->table;
 
   t->fline = c->fline;
-  log("in init fline %x c %x", c->fline, c);
 
   if (c->additional)
   {

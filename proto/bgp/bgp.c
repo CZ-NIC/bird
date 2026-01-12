@@ -2957,8 +2957,6 @@ bgp_init(struct proto_config *CF)
   return P;
 }
 
-#include "filter/f-inst.h"
-
 static void
 bgp_channel_init(struct channel *C, struct channel_config *CF)
 {
@@ -2969,9 +2967,6 @@ bgp_channel_init(struct channel *C, struct channel_config *CF)
   c->afi = cf->afi;
   c->desc = cf->desc;
 
-  log("bgp_channel_init fline %x table %x", cf->igp_table.fline, &cf->igp_table);
-  if (cf->igp_table.fline)
-    log("len %i", cf->igp_table.fline->items);
   igp_table_init(&c->igp_table, &cf->igp_table);
 
   if (cf->base_table)

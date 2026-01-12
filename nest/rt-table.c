@@ -4147,7 +4147,6 @@ ea_set_hostentry(ea_list **to, rtable *dep, const struct igp_table *igp, ip_addr
 static void
 rta_apply_hostentry(rte *r, struct hostentry_adata *head)
 {
-        log("rta_apply_hostentry");
   u32 *labels = head->labels;
   u32 lnum = (u32 *) (head->ad.data + head->ad.length) - labels;
   struct hostentry *he = head->he;
@@ -4166,7 +4165,6 @@ rta_apply_hostentry(rte *r, struct hostentry_adata *head)
       continue;
     }
 
-    log("hereeee");
     /* Jump-away block for applying the actual attributes */
     do {
       ea_set_attr_u32(&r->attrs, &ea_gen_igp_metric, 0, he->igp_metric);
@@ -4178,11 +4176,10 @@ rta_apply_hostentry(rte *r, struct hostentry_adata *head)
 	break;
       }
 
-      log("Run the IGP resolution filter %x", he->igp->fline);
       /* Run the IGP resolution filter */
       if (he->igp->fline)
         f_eval_rte(he->igp->fline, r, 0, NULL, 0, NULL);
-      log("after rte");
+
       ea_list **to = &r->attrs;
 
       eattr *he_nh_ea = ea_find(src, &ea_gen_nexthop);
@@ -4280,7 +4277,6 @@ rta_apply_hostentry(rte *r, struct hostentry_adata *head)
 static inline int
 rt_next_hop_update_rte(const rte *old, rte *new)
 {
-        log("rt_next_hop_update_rte");
   eattr *hev = ea_find(old->attrs, &ea_gen_hostentry_version);
   if (!hev)
     return 0;
@@ -4307,7 +4303,6 @@ rt_next_hop_resolve_rte(rte *r)
   if (!heea)
     return;
 
-log("rt_next_hop_resolve_rte %x", heea);
   rta_apply_hostentry(r, (struct hostentry_adata *) heea->u.ptr);
 }
 

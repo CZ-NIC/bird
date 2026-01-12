@@ -124,17 +124,13 @@ static enum filter_return
 interpret(struct filter_state *fs, const struct f_line *line, uint argc, const struct f_val *argv, uint resc, struct f_val *resv)
 {
   /* Check of appropriate number of arguments */
-  log("line %x", line);
-  log("line->args %i == argc %i", line->args, argc);
   ASSERT(line->args == argc);
 
-  log("after assert");
   /* Initialize the filter stack */
   struct filter_stack *fstk = &fs->stack;
 
   /* Set the arguments and top-level variables */
   fstk->vcnt = line->vars + line->args;
-  log("??");
   memcpy(fstk->vstk, argv, sizeof(struct f_val) * line->args);
   memset(fstk->vstk + argc, 0, sizeof(struct f_val) * line->vars);
 
@@ -144,12 +140,10 @@ interpret(struct filter_state *fs, const struct f_line *line, uint argc, const s
     .line = line,
     .pos = 0,
   };
-  log("?");
 
 #define curline fstk->estk[fstk->ecnt-1]
 #define prevline fstk->estk[fstk->ecnt-2]
 
-  log("fstk ecnt %i", fstk->ecnt);
   while (fstk->ecnt > 0) {
     while (curline.pos < curline.line->len) {
       const struct f_line_item *what = &(curline.line->items[curline.pos++]);
@@ -269,8 +263,6 @@ f_eval_rte(const struct f_line *expr, struct rte *rte, uint argc, const struct f
 
   f_stack_init(filter_state);
 
-  log("bef interpret");
-  log("%x", filter_state);
   return interpret(&filter_state, expr, argc, argv, resc, resv);
 }
 
