@@ -118,21 +118,6 @@ static inline struct f_dynamic_attr f_new_dynamic_attr_bit(u8 bit, enum f_type f
 static inline struct f_static_attr f_new_static_attr(int f_type, int code, int readonly)
 { return (struct f_static_attr) { .f_type = f_type, .sa_code = code, .readonly = readonly }; }
 
-static inline int f_type_attr(int f_type) {
-  switch (f_type) {
-    case T_INT:		return EAF_TYPE_INT;
-    case T_IP:		return EAF_TYPE_IP_ADDRESS;
-    case T_QUAD:	return EAF_TYPE_ROUTER_ID;
-    case T_PATH:	return EAF_TYPE_AS_PATH;
-    case T_CLIST:	return EAF_TYPE_INT_SET;
-    case T_ECLIST:	return EAF_TYPE_EC_SET;
-    case T_LCLIST:	return EAF_TYPE_LC_SET;
-    case T_BYTESTRING:	return EAF_TYPE_OPAQUE;
-    default:
-      cf_error("Custom route attribute of unsupported type");
-  }
-}
-
 /* Hook for call bt_assert() function in configuration */
 extern void (*bt_assert_hook)(int result, const struct f_line_item *assert);
 

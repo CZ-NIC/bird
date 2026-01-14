@@ -25,55 +25,6 @@
 #include "filter/f-inst.h"
 #include "filter/data.h"
 
-static const char * const f_type_str[] = {
-  [T_VOID]	= "void",
-  [T_NONE]	= "none",
-
-  [T_INT]	= "int",
-  [T_BOOL]	= "bool",
-  [T_PAIR]	= "pair",
-  [T_QUAD]	= "quad",
-
-  [T_ENUM_RTS]	= "enum rts",
-  [T_ENUM_BGP_ORIGIN] = "enum bgp_origin",
-  [T_ENUM_SCOPE] = "enum scope",
-  [T_ENUM_RTD]	= "enum rtd",
-  [T_ENUM_ROA]	= "enum roa",
-  [T_ENUM_ASPA] = "enum aspa",
-  [T_ENUM_NET_TYPE] = "enum net_type",
-  [T_ENUM_RA_PREFERENCE] = "enum ra_preference",
-  [T_ENUM_AF]	= "enum af",
-  [T_ENUM_MPLS_POLICY] = "enum mpls_policy",
-
-  [T_IP]	= "ip",
-  [T_NET]	= "prefix",
-  [T_STRING]	= "string",
-  [T_BYTESTRING]	= "bytestring",
-  [T_PATH_MASK]	= "bgpmask",
-  [T_PATH]	= "bgppath",
-  [T_CLIST]	= "clist",
-  [T_EC]	= "ec",
-  [T_ECLIST]	= "eclist",
-  [T_LC]	= "lc",
-  [T_LCLIST]	= "lclist",
-  [T_RD]	= "rd",
-
-  [T_ROUTE] = "route",
-  [T_ROUTES_BLOCK] = "block of routes",
-};
-
-const char *
-f_type_name(enum f_type t)
-{
-  if (t < ARRAY_SIZE(f_type_str))
-    return f_type_str[t] ?: "?";
-
-  if ((t == T_SET) || (t == T_PREFIX_SET))
-    return "set";
-
-  return "?";
-}
-
 enum f_type
 f_type_element_type(enum f_type t)
 {
@@ -645,7 +596,7 @@ val_format(const struct f_val *v, buffer *buf)
   case T_RD:	rd_format(v->val.rd, buf2, 1024); buffer_print(buf, "%s", buf2); return;
   case T_PREFIX_SET: trie_format(v->val.ti, buf); return;
   case T_SET:	tree_format(v->val.t, buf); return;
-  case T_ENUM:	buffer_print(buf, "(enum %x)%u", v->type, v->val.i); return;
+  case T_ENUM:	buffer_print(buf, "(enum %x)%u", v->type + 0x30 - T_ENUM_RTS, v->val.i); return;
   case T_PATH:	as_path_format(v->val.ad, buf2, 1000); buffer_print(buf, "(path %s)", buf2); return;
   case T_CLIST:	int_set_format(v->val.ad, 1, -1, buf2, 1000); buffer_print(buf, "(clist %s)", buf2); return;
   case T_ECLIST: ec_set_format(v->val.ad, -1, buf2, 1000); buffer_print(buf, "(eclist %s)", buf2); return;

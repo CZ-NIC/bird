@@ -541,8 +541,6 @@ custom_attr: ATTRIBUTE BGP expr type symbol ';' {
   cf_define_symbol(new_config, $5, SYM_ATTRIBUTE, attribute, a);
 };
 
-CF_ENUM(T_ENUM_BGP_ORIGIN, ORIGIN_, IGP, EGP, INCOMPLETE)
-
 /* ASPA shortcuts */
 term: ASPA_CHECK_DOWNSTREAM '(' rtable ')' { $$ =
   f_new_inst(FI_ASPA_CHECK_EXPLICIT,

@@ -16,12 +16,7 @@
 #include "nest/route.h"
 #include "nest/protocol.h"
 
-
-#define MPLS_POLICY_NONE	0
-#define MPLS_POLICY_STATIC	1
-#define MPLS_POLICY_PREFIX	2
-#define MPLS_POLICY_AGGREGATE	3
-#define MPLS_POLICY_VRF		4
+/* MPLS_POLICY_* */
 
 #define MPLS_FEC_DOWN		0
 #define MPLS_FEC_CLEAN		1

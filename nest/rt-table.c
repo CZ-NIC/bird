@@ -291,7 +291,7 @@ net_route(rtable *tab, const net_addr *n)
  * cannot happen). Table @tab must have type NET_ROA4 or NET_ROA6, network @n
  * must have type NET_IP4 or NET_IP6, respectively.
  */
-int
+enum roa
 net_roa_check(rtable *tab, const net_addr *n, u32 asn)
 {
   net_addr_union *nu = SKIP_BACK(net_addr_union, n, n);
@@ -353,7 +353,8 @@ net_roa_check(rtable *tab, const net_addr *n, u32 asn)
  *
  * Implements draft-ietf-sidrops-aspa-verification-16.
  */
-enum aspa_result aspa_check(rtable *tab, const adata *path, bool force_upstream)
+enum aspa
+aspa_check(rtable *tab, const adata *path, bool force_upstream)
 {
   struct lp_state lps;
   lp_save(tmp_linpool, &lps);

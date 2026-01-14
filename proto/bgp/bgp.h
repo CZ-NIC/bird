@@ -16,9 +16,9 @@
 #include "nest/bird.h"
 #include "nest/route.h"
 #include "nest/bfd.h"
-//#include "lib/lists.h"
 #include "lib/hash.h"
 #include "lib/socket.h"
+#include "lib/types-enums.h"
 
 struct eattr;
 
@@ -862,12 +862,6 @@ byte *bgp_create_end_mark_(struct bgp_channel *c, byte *buf);
 
 #define BGP_COMM_LLGR_STALE		0xffff0006	/* Route is stale according to LLGR */
 #define BGP_COMM_NO_LLGR		0xffff0007	/* Do not treat the route according to LLGR */
-
-/* Origins */
-
-#define ORIGIN_IGP		0
-#define ORIGIN_EGP		1
-#define ORIGIN_INCOMPLETE	2
 
 
 #endif

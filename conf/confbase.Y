@@ -49,23 +49,6 @@ static inline void cf_assert_symbol(const struct symbol *sym, uint class) {
   }
 }
 
-static inline const char *
-cf_type_name(enum f_type type)
-{
-  /* There is already f_type_name(), but this uses names more suited
-     to configuration error messages */
-  switch (type)
-  {
-  case T_INT:		return "Number";
-  case T_BOOL:		return "Boolean";
-  case T_IP:		return "IP address";
-  case T_NET:		return "Network";
-  case T_STRING:	return "String";
-  case T_BYTESTRING:	return "Bytestring";
-  default:		return "???";
-  }
-}
-
 static inline void
 cf_assert_type(const struct f_val val, enum f_type type)
 {

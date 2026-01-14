@@ -10,21 +10,10 @@
 #ifndef _BIRD_NET_H_
 #define _BIRD_NET_H_
 
+#include "lib/types-enums.h"
 #include "lib/ip.h"
 
-
-#define NET_IP4		1
-#define NET_IP6		2
-#define NET_VPN4	3
-#define NET_VPN6	4
-#define NET_ROA4	5
-#define NET_ROA6	6
-#define NET_FLOW4	7
-#define NET_FLOW6	8
-#define NET_IP6_SADR	9
-#define NET_MPLS	10
-#define NET_ASPA	11
-#define NET_MAX		12
+/* NET_* defined in lib/types.h */
 
 #define NB_IP4		(1 << NET_IP4)
 #define NB_IP6		(1 << NET_IP6)

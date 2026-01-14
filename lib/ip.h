@@ -13,6 +13,7 @@
 #include "lib/string.h"
 #include "lib/bitops.h"
 #include "lib/unaligned.h"
+#include "lib/types-enums.h"
 
 
 #define IP4_ALL_NODES		ipa_build4(224, 0, 0, 1)
@@ -53,8 +54,10 @@
 /* IANA Address Family Numbers */
 /* https://www.iana.org/assignments/address-family-numbers/address-family-numbers.xhtml */
 /* Would use AF_ prefix, but that collides with POSIX address family numbers */
-#define AFI_IPV4		1
-#define AFI_IPV6		2
+#define AFI_IPV4		AF_IPV4
+#define AFI_IPV6		AF_IPV6
+
+/* moved to types.h */
 
 
 #ifdef DEBUGGING
@@ -251,13 +254,7 @@ int ip6_compare(ip6_addr a, ip6_addr b);
 #define IADDR_BROADCAST		0x2000
 #define IADDR_MULTICAST		0x4000
 
-/* Address scope */
-#define SCOPE_HOST		0
-#define SCOPE_LINK		1
-#define SCOPE_SITE		2
-#define SCOPE_ORGANIZATION	3
-#define SCOPE_UNIVERSE		4
-#define SCOPE_UNDEFINED		5
+/* Address scope defined in lib/types.h as an enum */
 
 int ip4_classify(ip4_addr ad);
 int ip6_classify(ip6_addr *a);

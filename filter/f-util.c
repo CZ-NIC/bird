@@ -270,39 +270,7 @@ static struct resclass ca_class = {
 struct custom_attribute *
 ca_lookup(pool *p, const char *name, int f_type)
 {
-  int ea_type;
-
-  switch (f_type) {
-    case T_INT:
-      ea_type = EAF_TYPE_INT;
-      break;
-    case T_IP:
-      ea_type = EAF_TYPE_IP_ADDRESS;
-      break;
-    case T_QUAD:
-      ea_type = EAF_TYPE_ROUTER_ID;
-      break;
-    case T_PATH:
-      ea_type = EAF_TYPE_AS_PATH;
-      break;
-    case T_CLIST:
-      ea_type = EAF_TYPE_INT_SET;
-      break;
-    case T_ECLIST:
-      ea_type = EAF_TYPE_EC_SET;
-      break;
-    case T_LCLIST:
-      ea_type = EAF_TYPE_LC_SET;
-      break;
-    case T_STRING:
-      ea_type = EAF_TYPE_STRING;
-      break;
-    case T_BYTESTRING:
-      ea_type = EAF_TYPE_OPAQUE;
-      break;
-    default:
-      cf_error("Custom route attribute of unsupported type");
-  }
+  int ea_type = f_type_attr(f_type);
 
   static int inited = 0;
   if (!inited) {

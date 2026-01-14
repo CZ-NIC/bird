@@ -113,25 +113,6 @@ f_new_var(struct sym_scope *s)
  * to the last item in a list (right ptr). For convenience, even items
  * are handled as one-item lists. Lists are merged by f_merge_items().
  */
-static int
-f_valid_set_type(int type)
-{
-  switch (type)
-  {
-  case T_INT:
-  case T_PAIR:
-  case T_QUAD:
-  case T_ENUM:
-  case T_IP:
-  case T_EC:
-  case T_LC:
-  case T_RD:
-    return 1;
-
-  default:
-    return 0;
-  }
-}
 
 static inline struct f_tree *
 f_new_item(struct f_val from, struct f_val to)
@@ -492,7 +473,6 @@ type:
 		cf_error( "You can't create sets of this type." );
 	}
    }
- | ENUM enum_type { $$ = $2; };
  ;
 
 function_argsn:

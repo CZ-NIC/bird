@@ -205,9 +205,7 @@ struct radv_iface
 #define RA_EV_RS 3		/* Received RS */
 
 /* Default Router Preferences (RFC 4191) */
-#define RA_PREF_LOW	0x18
-#define RA_PREF_MEDIUM	0x00
-#define RA_PREF_HIGH	0x08
+/* RA_PREF_* moved to types */
 #define RA_PREF_MASK	0x18
 
 /* Attributes */

@@ -85,6 +85,10 @@ conf-lex-targets := $(addprefix $(objdir)/conf/,cf-lex.o)
 conf-y-targets := $(addprefix $(objdir)/conf/,cf-parse.y keywords.h commands.h)
 cf-local = $(conf-y-targets): $(s)config.Y
 
+# lib/Makefile declarations needed for all other modules
+types-targets := $(addprefix $(objdir)/lib/,types.Y types-enums.h types-union.h types.c)
+types-local = $(types-targets): $(s)types.h
+
 src-o-files = $(patsubst %.c,$(o)%.o,$(src))
 tests-target-files = $(patsubst %.c,$(o)%,$(tests_src))
 

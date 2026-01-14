@@ -320,8 +320,8 @@ static inline net *net_find_valid(rtable *tab, const net_addr *addr)
 static inline net *net_get(rtable *tab, const net_addr *addr) { return (net *) fib_get(&tab->fib, addr); }
 net *net_get(rtable *tab, const net_addr *addr);
 net *net_route(rtable *tab, const net_addr *n);
-int net_roa_check(rtable *tab, const net_addr *n, u32 asn);
-enum aspa_result aspa_check(rtable *tab, const struct adata *path, bool force_upstream);
+enum roa net_roa_check(rtable *tab, const net_addr *n, u32 asn);
+enum aspa aspa_check(rtable *tab, const struct adata *path, bool force_upstream);
 rte *rte_find(net *net, struct rte_src *src);
 rte *rte_get_temp(struct rta *, struct rte_src *src);
 void rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src);
@@ -467,31 +467,6 @@ typedef struct rta {
   struct nexthop nh;			/* Next hop */
 } rta;
 
-#define RTS_STATIC 1			/* Normal static route */
-#define RTS_INHERIT 2			/* Route inherited from kernel */
-#define RTS_DEVICE 3			/* Device route */
-#define RTS_STATIC_DEVICE 4		/* Static device route */
-#define RTS_REDIRECT 5			/* Learned via redirect */
-#define RTS_RIP 6			/* RIP route */
-#define RTS_OSPF 7			/* OSPF route */
-#define RTS_OSPF_IA 8			/* OSPF inter-area route */
-#define RTS_OSPF_EXT1 9			/* OSPF external route type 1 */
-#define RTS_OSPF_EXT2 10		/* OSPF external route type 2 */
-#define RTS_BGP 11			/* BGP route */
-#define RTS_PIPE 12			/* Inter-table wormhole */
-#define RTS_BABEL 13			/* Babel route */
-#define RTS_RPKI 14			/* Route Origin Authorization */
-#define RTS_PERF 15			/* Perf checker */
-#define RTS_L3VPN 16			/* MPLS L3VPN */
-#define RTS_AGGREGATED 17		/* Aggregated route */
-#define RTS_MAX 18
-
-#define RTD_NONE 0			/* Undefined next hop */
-#define RTD_UNICAST 1			/* Next hop is neighbor router */
-#define RTD_BLACKHOLE 2			/* Silently drop packets */
-#define RTD_UNREACHABLE 3		/* Reject as unreachable */
-#define RTD_PROHIBIT 4			/* Administratively prohibited */
-#define RTD_MAX 5
 
 #define IGP_METRIC_UNKNOWN 0x80000000	/* Default igp_metric used when no other
 					   protocol-specific metric is availabe */
@@ -774,19 +749,5 @@ int rt_flowspec_check(rtable *tab_ip, rtable *tab_flow, const net_addr *n, rta *
 #define DEF_PREF_L3VPN_IMPORT	 80	/* L3VPN import -> lower than BGP */
 #define DEF_PREF_L3VPN_EXPORT	120	/* L3VPN export -> higher than BGP */
 #define DEF_PREF_INHERITED	10	/* Routes inherited from other routing daemons */
-
-/*
- *	Route Origin Authorization
- */
-
-#define ROA_UNKNOWN	0
-#define ROA_VALID	1
-#define ROA_INVALID	2
-
-enum aspa_result {
-  ASPA_UNKNOWN = 0,
-  ASPA_VALID,
-  ASPA_INVALID,
-};
 
 #endif
