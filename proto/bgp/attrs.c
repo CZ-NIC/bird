@@ -1486,6 +1486,7 @@ withdraw:
 loop:
   /* Loops are handled as withdraws, but ignored silently. Do not set err_withdraw. */
   INELIGIBLE("Loop detected");
+  s->err_withdraw = 0;	  /* err_withdraw may have been set by INELIGIBLE macro, unset it */
   return NULL;
 }
 
