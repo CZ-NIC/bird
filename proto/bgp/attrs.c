@@ -110,9 +110,14 @@ bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintp
   ({										  \
      REPORT(msg, ## args);							  \
      s->err_ineligible = 1;							  \
-     memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);  \
-     s->err_msg_buf.pos = s->err_msg_buf.start;					  \
-     buffer_print(&s->err_msg_buf, msg, ## args);				  \
+     if (s->proto->cf->keep_ineligible) {					  \
+       s->err_withdraw = 0;							  \
+       memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);\
+       s->err_msg_buf.pos = s->err_msg_buf.start;				  \
+       buffer_print(&s->err_msg_buf, msg, ## args);				  \
+     } else {									  \
+       s->err_withdraw = 1;							  \
+     }										  \
   })
 
 #define UNSET(a) \
@@ -1508,26 +1513,15 @@ bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
     if (e && (p->cf->local_role == BGP_ROLE_PROVIDER ||
 	      p->cf->local_role == BGP_ROLE_RS_SERVER))
     {
-      if (s->proto->cf->keep_ineligible)
-      {
-	INELIGIBLE("Route leak detected: OTC attribute from downstream");
-	return;
-      }
-
-      WITHDRAW("Route leak detected - OTC attribute from downstream");
+      INELIGIBLE("Route leak detected - OTC attribute from downstream");
+      return;
     }
 
     /* Reject routes from peers if they are leaked */
     if (e && (p->cf->local_role == BGP_ROLE_PEER) && (e->u.data != p->cf->remote_as))
     {
-      if (s->proto->cf->keep_ineligible)
-      {
-	INELIGIBLE("Route leak detected: OTC attribute with mismatched ASN (%u)", (uint)e->u.data);
-	return;
-      }
-
-      WITHDRAW("Route leak detected - OTC attribute with mismatched ASN (%u)",
-	       (uint) e->u.data);
+      INELIGIBLE("Route leak detected - OTC attribute with mismatched ASN (%u)", (uint)e->u.data);
+      return;
     }
 
     /* Mark routes from upstream if it did not happened before */
