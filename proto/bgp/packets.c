@@ -1069,9 +1069,14 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   ({										  \
      REPORT(msg, ## args);							  \
      s->err_invalid = 1;							  \
-     memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);  \
-     s->err_msg_buf.pos = s->err_msg_buf.start;					  \
-     buffer_print(&s->err_msg_buf, msg, ## args);				  \
+     if (s->proto->cf->keep_invalid) {						  \
+       s->err_withdraw = 0;							  \
+       memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);\
+       s->err_msg_buf.pos = s->err_msg_buf.start;				  \
+       buffer_print(&s->err_msg_buf, msg, ## args);				  \
+     } else {									  \
+       s->err_withdraw = 1;							  \
+     }										  \
      return;									  \
   })
 
@@ -1600,9 +1605,13 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
   rta *a = rta_clone(s->cached_rta);
   rte *e = rte_get_temp(a, s->last_src);
 
-  if (s->err_ineligible)
+  if (s->err_invalid || s->err_ineligible)
   {
-    e->flags |= REF_INELIGIBLE;
+    if (s->err_invalid)
+      e->flags |= REF_INVALID;
+
+    if (s->err_ineligible)
+      e->flags |= REF_INELIGIBLE;
 
     size_t len = s->err_msg_buf.pos - s->err_msg_buf.start;
 
