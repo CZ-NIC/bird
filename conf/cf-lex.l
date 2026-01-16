@@ -179,7 +179,7 @@ WHITE [ \t]
   v |= l;
 
   cf_lval.rd = rd_from_u64(v);
-  return VPN_RD;
+  return CFT_VPN_RD;
 }
 
 [02]:{DIGIT}+:{DIGIT}+ {
@@ -213,7 +213,7 @@ WHITE [ \t]
   v |= l;
 
   cf_lval.rd = rd_from_u64(v);
-  return VPN_RD;
+  return CFT_VPN_RD;
 }
 
 {DIGIT}+\.{DIGIT}+\.{DIGIT}+\.{DIGIT}+:{DIGIT}+ {
@@ -237,13 +237,13 @@ WHITE [ \t]
   v |= l;
 
   cf_lval.rd = rd_from_u64(v);
-  return VPN_RD;
+  return CFT_VPN_RD;
 }
 
 {DIGIT}+\.{DIGIT}+\.{DIGIT}+\.{DIGIT}+ {
   if (!ip4_pton(yytext, &cf_lval.ip4))
     cf_error("Invalid IPv4 address %s", yytext);
-  return IP4;
+  return CFT_IP4;
 }
 
 ({XIGIT}{2}){16,}|{XIGIT}{2}(:{XIGIT}{2}){15,}|hex:({XIGIT}{2}*|{XIGIT}{2}(:{XIGIT}{2})*) {
@@ -263,13 +263,13 @@ WHITE [ \t]
   ASSERT(bs->length == len);
 
   cf_lval.bs = bs;
-  return BYTETEXT;
+  return CFT_BYTETEXT;
 }
 
 ({XIGIT}*::|({XIGIT}*:){3,})({XIGIT}*|{DIGIT}+\.{DIGIT}+\.{DIGIT}+\.{DIGIT}+) {
   if (!ip6_pton(yytext, &cf_lval.ip6))
     cf_error("Invalid IPv6 address %s", yytext);
-  return IP6;
+  return CFT_IP6;
 }
 
 0x{XIGIT}+ {
@@ -280,7 +280,7 @@ WHITE [ \t]
   if (!e || *e || errno == ERANGE || (unsigned long int)(unsigned int) l != l)
     cf_error("Number out of range");
   cf_lval.i = l;
-  return NUM;
+  return CFT_NUM;
 }
 
 {DIGIT}+ {
@@ -291,12 +291,12 @@ WHITE [ \t]
   if (!e || *e || errno == ERANGE || (unsigned long int)(unsigned int) l != l)
     cf_error("Number out of range");
   cf_lval.i = l;
-  return NUM;
+  return CFT_NUM;
 }
 
 else: {
   /* Hack to distinguish if..else from else: in case */
-  return ELSECOL;
+  return CFT_ELSECOL;
 }
 
 ['] {
@@ -320,11 +320,11 @@ else: {
 
 <CLI>(.|\n) {
   BEGIN(INITIAL);
-  return CLI_MARKER;
+  return CFT_CLI_MARKER;
 }
 
 \.\. {
-  return DDOT;
+  return CFT_DDOT;
 }
 
 [={}:;,.()+*/%<>~\[\]?!\|-] {
@@ -342,12 +342,12 @@ else: {
   BEGIN(INITIAL);
   BUFFER_PUSH(quoted_buffer) = 0;
   cf_lval.t = cfg_strdup(quoted_buffer_data);
-  return TEXT;
+  return CFT_TEXT;
 }
 
 <QUOTED>.	BUFFER_PUSH(quoted_buffer) = yytext[0];
 
-<INITIAL,COMMENT><<EOF>>	{ if (check_eof()) return END; }
+<INITIAL,COMMENT><<EOF>>	{ if (check_eof()) return CFT_END; }
 
 {WHITE}+
 
@@ -373,17 +373,17 @@ else: {
 <CCOMM><<EOF>>	cf_error("Unterminated comment");
 <CCOMM>.
 
-\!\= return NEQ;
-\!\~ return NMA;
-\<\= return LEQ;
-\>\= return GEQ;
-\&\& return AND;
-\|\| return OR;
-\-\> return IMP;
-\+\+ return PP;
+\!\= return CFT_NEQ;
+\!\~ return CFT_NMA;
+\<\= return CFT_LEQ;
+\>\= return CFT_GEQ;
+\&\& return CFT_AND;
+\|\| return CFT_OR;
+\-\> return CFT_IMP;
+\+\+ return CFT_PP;
 
-\[\= return PO;
-\=\] return PC;
+\[\= return CFT_PO;
+\=\] return CFT_PC;
 
 %%
 
@@ -688,14 +688,14 @@ cf_lex_symbol(const char *data)
       int val = sym->keyword->value;
       if (val > 0) return val;
       cf_lval.i = -val;
-      return ENUM_TOKEN;
+      return CFT_ENUM_TOKEN;
     }
     case SYM_METHOD:
-      return (sym->method->arg_num > 1) ? CF_SYM_METHOD_ARGS : CF_SYM_METHOD_BARE;
+      return (sym->method->arg_num > 1) ? CFT_CF_SYM_METHOD_ARGS : CFT_CF_SYM_METHOD_BARE;
     case SYM_VOID:
-      return CF_SYM_UNDEFINED;
+      return CFT_CF_SYM_UNDEFINED;
     default:
-      return CF_SYM_KNOWN;
+      return CFT_CF_SYM_KNOWN;
   }
 }
 

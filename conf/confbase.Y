@@ -165,6 +165,8 @@ CF_DECLS
 
 %start config
 
+%define api.token.prefix {CFT_}
+
 /* See r_args */
 %expect 2
 
