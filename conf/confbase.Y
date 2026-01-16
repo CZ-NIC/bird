@@ -8,8 +8,6 @@
 
 CF_HDR
 
-#define PARSER 1
-
 #include "nest/bird.h"
 #include "conf/conf.h"
 #include "lib/resource.h"

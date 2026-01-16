@@ -23,16 +23,12 @@
 
 /* Utility macros */
 
-#define MIN_(a,b) (((a)<(b))?(a):(b))
-#define MAX_(a,b) (((a)>(b))?(a):(b))
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
 #define CLAMP(a,l,h) (((a)<(l)) ? (l) : (((a)>(h)) ? (h) : (a)))
 
-#ifndef PARSER
-#undef MIN
-#undef MAX
-#define MIN(a,b) MIN_(a,b)
-#define MAX(a,b) MAX_(a,b)
-#endif
+#define MIN_ MIN
+#define MAX_ MAX
 
 #define ROUND_DOWN_POW2(a,b)  ((a) & ~((b)-1))
 #define ROUND_UP_POW2(a,b)  (((a)+((b)-1)) & ~((b)-1))
@@ -102,19 +98,19 @@ static inline int u64_cmp(u64 i1, u64 i2)
 typedef s64 btime;
 //typedef s64 bird_clock_t;
 
-#define S_	* (btime) 1000000
-#define MS_	* (btime) 1000
-#define US_	* (btime) 1
+#define S	* (btime) 1000000
+#define MS	* (btime) 1000
+#define US	* (btime) 1
+#define NS	/1000
+
 #define TO_S	/1000000
 #define TO_MS	/1000
 #define TO_US	/1
 
-#ifndef PARSER
-#define S	S_
-#define MS	MS_
-#define US	US_
-#define NS	/1000
-#endif
+#define S_	S
+#define MS_	MS
+#define US_	US
+#define NS_	NS
 
 #define TIME_INFINITY ((s64) 0x7fffffffffffffff)
 
