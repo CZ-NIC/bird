@@ -55,9 +55,9 @@ mpls_range: mpls_range_start mpls_range_opt_list mpls_range_end;
 
 mpls_range_start: LABEL RANGE symbol
 {
-  if (($3->class == SYM_KEYWORD) && ($3->keyword->value == STATIC))
+  if (($3->class == SYM_KEYWORD) && ($3->keyword->value == CFT_STATIC))
     this_mpls_range = this_mpls_domain->static_range;
-  else if (($3->class == SYM_KEYWORD) && ($3->keyword->value == DYNAMIC))
+  else if (($3->class == SYM_KEYWORD) && ($3->keyword->value == CFT_DYNAMIC))
     this_mpls_range = this_mpls_domain->dynamic_range;
   else
     this_mpls_range = mpls_range_config_new(this_mpls_domain, $3);

@@ -23,7 +23,7 @@ m4_define(CF_DECLS, `m4_divert(-1)')
 m4_define(CF_DEFINES, `m4_divert(-1)')
 
 # Keywords are translated to C initializers
-m4_define(CF_handle_kw, `m4_divert(1){ "m4_translit($1,[[A-Z]],[[a-z]])", $1 },
+m4_define(CF_handle_kw, `m4_divert(1){ "m4_translit($1,[[A-Z]],[[a-z]])", CFT_$1 },
 m4_divert(-1)')
 m4_define(CF_keywd, `m4_ifdef([[CF_tok_$1]],,[[m4_define([[CF_tok_$1]],1)CF_handle_kw($1)]])')
 m4_define(CF_KEYWORDS, `CF_iterate([[CF_keywd]], [[$@]])DNL')
