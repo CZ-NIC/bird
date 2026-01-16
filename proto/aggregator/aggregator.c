@@ -125,7 +125,7 @@ aggregator_resize_slab(struct aggregator_proto *p, u32 id)
   p->trie_slab = sl_new(p->p.pool, node_size);
 
   /* Initialize root node in new slab */
-  p->root = aggregator_root_init(default_rte_bucket, p->trie_slab);
+  p->root = aggregator_new_root(default_rte_bucket, p->trie_slab);
 }
 
 /*
@@ -908,7 +908,7 @@ aggregator_trie_init(struct aggregator_proto *p)
   HASH_INSERT2(p->buckets, AGGR_BUCK, p->p.pool, new_bucket);
 
   /* Allocate and initialize root node */
-  p->root = aggregator_root_init(new_bucket, p->trie_slab);
+  p->root = aggregator_new_root(new_bucket, p->trie_slab);
 }
 
 static int

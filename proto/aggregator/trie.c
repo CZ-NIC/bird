@@ -152,7 +152,7 @@
 /* Only u32 is allowed to use in bitmap because of use of BIT32 macros */
 STATIC_ASSERT(sizeof(((struct trie_node *)0)->potential_buckets[0]) == sizeof(u32));
 
-static const char *px_origin_str[] = {
+static const char * const px_origin_str[] = {
   [FILLER]     = "filler",
   [ORIGINAL]   = "original",
   [AGGREGATED] = "aggregated",
@@ -173,7 +173,7 @@ static const u32 ipa_shift[] = {
  * Allocate and initialize root node
  */
 struct trie_node *
-aggregator_root_init(struct aggregator_bucket *bucket, struct slab *trie_slab)
+aggregator_new_root(struct aggregator_bucket *bucket, struct slab *trie_slab)
 {
   struct trie_node *root = sl_allocz(trie_slab);
 
@@ -238,7 +238,6 @@ static inline int
 aggregator_is_bucket_potential(const struct trie_node *node, u32 id, int bitmap_size)
 {
   ASSERT_DIE(node != NULL);
-
   ASSERT_DIE(id < (sizeof(node->potential_buckets[0]) * bitmap_size * 8));
   return BIT32R_TEST(node->potential_buckets, id);
 }
@@ -249,7 +248,7 @@ aggregator_is_bucket_potential(const struct trie_node *node, u32 id, int bitmap_
  * lies at position equal to bucket ID to enable fast lookup.
  */
 static inline struct aggregator_bucket *
-aggregator_get_bucket_from_id(const struct aggregator_proto *p, u32 id)
+aggregator_find_bucket(const struct aggregator_proto *p, u32 id)
 {
   ASSERT_DIE(id < p->bucket_map_size);
   ASSERT_DIE(p->bucket_map[id] != NULL);
@@ -280,7 +279,7 @@ aggregator_select_lowest_id_bucket(const struct aggregator_proto *p, const struc
     /* We would love if this got optimized out */
     ASSERT_DIE(BIT32R_TEST(node->potential_buckets, id));
 
-    struct aggregator_bucket *bucket = aggregator_get_bucket_from_id(p, id);
+    struct aggregator_bucket *bucket = aggregator_find_bucket(p, id);
     ASSERT_DIE(bucket != NULL);
     ASSERT_DIE(bucket->id == id);
 

@@ -154,7 +154,7 @@ void aggregator_aggregate(struct aggregator_proto *p);
 void aggregator_recompute(struct aggregator_proto *p, struct aggregator_route *old, struct aggregator_route *new);
 void aggregator_bucket_update(struct aggregator_proto *p, struct aggregator_bucket *bucket, const struct net_addr *addr);
 
-struct trie_node *aggregator_root_init(struct aggregator_bucket *bucket, struct slab *trie_slab);
+struct trie_node *aggregator_new_root(struct aggregator_bucket *bucket, struct slab *trie_slab);
 
 void aggregator_trie_dump(struct dump_request *dreq);
 
