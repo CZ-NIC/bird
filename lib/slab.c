@@ -817,6 +817,7 @@ slab_free(resource *r)
 {
   /* At this point, only one thread manipulating the slab is expected */
   slab *s = (slab *) r;
+  ev_postpone(&s->event_clean);
 
   /* No more thread ends are relevant, we are ending anyway */
   bird_thread_end_unregister(&s->thread_end);
