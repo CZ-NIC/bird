@@ -15,7 +15,7 @@
 #include "nest/protocol.h"
 #include "lib/hash.h"
 
-#define BUCKET_LIST_INIT_SIZE              16
+#define BUCKET_MAP_INIT_SIZE		    32
 #define POTENTIAL_BUCKETS_BITMAP_INIT_SIZE  8
 
 #define IP4_WITHDRAWAL_MAX_EXPECTED_LIMIT 100
@@ -75,6 +75,10 @@ struct aggregator_proto {
   struct hmap bucket_id_map;
   int buckets_count;
 
+  /* Map bucket ID -> bucket */
+  struct aggregator_bucket **bucket_map;
+  uint bucket_map_size;
+
   /* Aggregator rule */
   struct aggr_item *aggr_on;
   uint aggr_on_count;
@@ -91,10 +95,6 @@ struct aggregator_proto {
   int bitmap_size;
   bool initial_feed;
   bool logging;
-
-  /* Array of bucket pointers */
-  struct aggregator_bucket **bucket_list;
-  uint bucket_list_size;
 
   /* Route withdrawal */
   struct rte_withdrawal_item *rte_withdrawal_stack;

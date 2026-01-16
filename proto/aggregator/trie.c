@@ -246,10 +246,10 @@ aggregator_is_bucket_potential(const struct trie_node *node, u32 id, int bitmap_
 static inline struct aggregator_bucket *
 aggregator_get_bucket_from_id(const struct aggregator_proto *p, u32 id)
 {
-  ASSERT_DIE(id < p->bucket_list_size);
-  ASSERT_DIE(p->bucket_list[id] != NULL);
-  ASSERT_DIE(p->bucket_list[id]->id == id);
-  return p->bucket_list[id];
+  ASSERT_DIE(id < p->bucket_map_size);
+  ASSERT_DIE(p->bucket_map[id] != NULL);
+  ASSERT_DIE(p->bucket_map[id]->id == id);
+  return p->bucket_map[id];
 }
 
 /*

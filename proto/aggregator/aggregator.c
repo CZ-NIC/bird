@@ -48,31 +48,31 @@ static void
 aggregator_add_bucket(struct aggregator_proto *p, struct aggregator_bucket *bucket)
 {
   ASSERT_DIE(p != NULL);
-  ASSERT_DIE(p->bucket_list != NULL);
+  ASSERT_DIE(p->bucket_map != NULL);
   ASSERT_DIE(bucket != NULL);
 
   /* Save bucket pointer */
-  if (bucket->id < p->bucket_list_size)
+  if (bucket->id < p->bucket_map_size)
   {
-    p->bucket_list[bucket->id] = bucket;
+    p->bucket_map[bucket->id] = bucket;
     return;
   }
 
   /* Reallocate if more space is needed */
-  const size_t old_size = p->bucket_list_size;
+  const size_t old_size = p->bucket_map_size;
 
-  while (bucket->id >= p->bucket_list_size)
-    p->bucket_list_size *= 2;
+  while (bucket->id >= p->bucket_map_size)
+    p->bucket_map_size *= 2;
 
-  ASSERT_DIE(old_size < p->bucket_list_size);
+  ASSERT_DIE(old_size < p->bucket_map_size);
 
-  p->bucket_list = mb_realloc(p->bucket_list, sizeof(p->bucket_list[0]) * p->bucket_list_size);
-  memset(&p->bucket_list[old_size], 0, sizeof(p->bucket_list[0]) * (p->bucket_list_size - old_size));
+  p->bucket_map = mb_realloc(p->bucket_map, sizeof(p->bucket_map[0]) * p->bucket_map_size);
+  memset(&p->bucket_map[old_size], 0, sizeof(p->bucket_map[0]) * (p->bucket_map_size - old_size));
 
-  ASSERT_DIE(bucket->id < p->bucket_list_size);
-  ASSERT_DIE(p->bucket_list[bucket->id] == NULL);
+  ASSERT_DIE(bucket->id < p->bucket_map_size);
+  ASSERT_DIE(p->bucket_map[bucket->id] == NULL);
 
-  p->bucket_list[bucket->id] = bucket;
+  p->bucket_map[bucket->id] = bucket;
 }
 
 /*
@@ -782,8 +782,8 @@ aggregator_rt_notify(struct proto *P, struct channel *src_ch, net *net, rte *new
     /* Free bucket ID */
     hmap_clear(&p->bucket_id_map, old_bucket->id);
 
-    ASSERT_DIE(p->bucket_list[old_bucket->id] == old_bucket);
-    p->bucket_list[old_bucket->id] = NULL;
+    ASSERT_DIE(p->bucket_map[old_bucket->id] == old_bucket);
+    p->bucket_map[old_bucket->id] = NULL;
     p->buckets_count--;
   }
 }
@@ -942,8 +942,8 @@ aggregator_start(struct proto *P)
   if (p->aggr_mode == PREFIX_AGGR)
   {
     ASSERT_DIE(p->trie_slab == NULL);
-    ASSERT_DIE(p->bucket_list == NULL);
-    ASSERT_DIE(p->bucket_list_size == 0);
+    ASSERT_DIE(p->bucket_map == NULL);
+    ASSERT_DIE(p->bucket_map_size == 0);
     ASSERT_DIE(p->buckets_count == 0);
 
     p->bitmap_size = POTENTIAL_BUCKETS_BITMAP_INIT_SIZE;
@@ -951,8 +951,8 @@ aggregator_start(struct proto *P)
     const size_t node_size = sizeof(*p->root) + sizeof(p->root->potential_buckets[0]) * p->bitmap_size;
     p->trie_slab = sl_new(P->pool, node_size);
 
-    p->bucket_list_size = BUCKET_LIST_INIT_SIZE;
-    p->bucket_list = mb_allocz(P->pool, sizeof(p->bucket_list[0]) * p->bucket_list_size);
+    p->bucket_map_size = BUCKET_MAP_INIT_SIZE;
+    p->bucket_map = mb_allocz(P->pool, sizeof(p->bucket_map[0]) * p->bucket_map_size);
 
     p->rte_withdrawal_pool = lp_new(P->pool);
     p->rte_withdrawal_count = 0;
@@ -990,8 +990,8 @@ aggregator_cleanup(struct proto *P)
   p->bitmap_size = 0;
   p->initial_feed = true;
 
-  p->bucket_list = NULL;
-  p->bucket_list_size = 0;
+  p->bucket_map = NULL;
+  p->bucket_map_size = 0;
 
   p->rte_withdrawal_stack = NULL;
   p->rte_withdrawal_count = 0;
