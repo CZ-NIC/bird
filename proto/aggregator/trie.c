@@ -144,6 +144,11 @@
 #include "filter/filter.h"
 #include "proto/aggregator/aggregator.h"
 
+#define ipa_getbit(a,p)	ip6_getbit(a,p)
+#define ipa_setbit(a,p)	ip6_setbit(a,p)
+#define ipa_clrbit(a,p)	ip6_clrbit(a,p)
+
+
 /* Only u32 is allowed to use in bitmap because of use of BIT32 macros */
 STATIC_ASSERT(sizeof(((struct trie_node *)0)->potential_buckets[0]) == sizeof(u32));
 
@@ -407,16 +412,16 @@ aggregator_trie_dump_helper(const struct aggregator_proto *p, const struct trie_
   if (node->child[0])
   {
     ASSERT_DIE((u32)node->depth == pxlen);
-    ip6_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
+    ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
     aggregator_trie_dump_helper(p, node->child[0], prefix, pxlen + 1, buf, dreq);
   }
 
   if (node->child[1])
   {
     ASSERT_DIE((u32)node->depth == pxlen);
-    ip6_setbit(prefix, node->depth + ipa_shift[p->addr_type]);
+    ipa_setbit(prefix, node->depth + ipa_shift[p->addr_type]);
     aggregator_trie_dump_helper(p, node->child[1], prefix, pxlen + 1, buf, dreq);
-    ip6_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
+    ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
   }
 }
 
@@ -481,7 +486,7 @@ aggregator_trie_insert_prefix(struct aggregator_proto *p, ip_addr prefix, u32 px
 
   for (u32 i = 0; i < pxlen; i++)
   {
-    u32 bit = ip6_getbit(prefix, i + ipa_shift[p->addr_type]);
+    u32 bit = ipa_getbit(prefix, i + ipa_shift[p->addr_type]);
 
     /* Add filler nodes onto the path to the actual prefix node */
     if (!node->child[bit])
@@ -518,7 +523,7 @@ aggregator_trie_remove_prefix(struct aggregator_proto *p, ip_addr prefix, u32 px
 
   for (u32 i = 0; i < pxlen; i++)
   {
-    u32 bit = ip6_getbit(prefix, i + ipa_shift[p->addr_type]);
+    u32 bit = ipa_getbit(prefix, i + ipa_shift[p->addr_type]);
     node = node->child[bit];
     ASSERT_DIE(node != NULL);
   }
@@ -563,9 +568,9 @@ aggregator_find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, 
   while (parent)
   {
     if (node == node->parent->child[0])
-      ip6_clrbit(prefix, node->depth + ipa_shift[addr_type] - 1);
+      ipa_clrbit(prefix, node->depth + ipa_shift[addr_type] - 1);
     else if (node == node->parent->child[1])
-      ip6_setbit(prefix, node->depth + ipa_shift[addr_type] - 1);
+      ipa_setbit(prefix, node->depth + ipa_shift[addr_type] - 1);
     else
       bug("Corrupted memory (node is not its parent's child)");
 
@@ -577,7 +582,7 @@ aggregator_find_subtree_prefix(const struct trie_node *target, ip_addr *prefix, 
   /* Descend back to target node */
   for (u32 i = 0; i < len; i++)
   {
-    u32 bit = ip6_getbit(*prefix, node->depth + ipa_shift[addr_type]);
+    u32 bit = ipa_getbit(*prefix, node->depth + ipa_shift[addr_type]);
     node = node->child[bit];
     ASSERT_DIE(node != NULL);
   }
@@ -861,16 +866,16 @@ aggregator_group_prefixes_helper(struct aggregator_proto *p, struct trie_node *n
   if (node->child[0]) /* TODO: nestačí tady left a right? Takhle to vypadá, že se left a right pod rukama můžou přepsat. */
   {
     ASSERT_DIE((u32)node->depth == pxlen);
-    ip6_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
+    ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
     aggregator_group_prefixes_helper(p, node->child[0], prefix, pxlen + 1);
   }
 
   if (node->child[1])
   {
     ASSERT_DIE((u32)node->depth == pxlen);
-    ip6_setbit(prefix, node->depth + ipa_shift[p->addr_type]);
+    ipa_setbit(prefix, node->depth + ipa_shift[p->addr_type]);
     aggregator_group_prefixes_helper(p, node->child[1], prefix, pxlen + 1);
-    ip6_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
+    ipa_clrbit(prefix, node->depth + ipa_shift[p->addr_type]);
   }
 
   /* Prune the trie */
@@ -912,16 +917,16 @@ aggregator_group_prefixes(struct aggregator_proto *p, struct trie_node *node)
   if (node->child[0])
   {
     ASSERT_DIE((u32)node->depth == pxlen);
-    ip6_clrbit(&prefix, node->depth + ipa_shift[p->addr_type]);
+    ipa_clrbit(&prefix, node->depth + ipa_shift[p->addr_type]);
     aggregator_group_prefixes_helper(p, node->child[0], &prefix, pxlen + 1);
   }
 
   if (node->child[1])
   {
     ASSERT_DIE((u32)node->depth == pxlen);
-    ip6_setbit(&prefix, node->depth + ipa_shift[p->addr_type]);
+    ipa_setbit(&prefix, node->depth + ipa_shift[p->addr_type]);
     aggregator_group_prefixes_helper(p, node->child[1], &prefix, pxlen + 1);
-    ip6_clrbit(&prefix, node->depth + ipa_shift[p->addr_type]);
+    ipa_clrbit(&prefix, node->depth + ipa_shift[p->addr_type]);
   }
 }
 
