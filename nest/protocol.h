@@ -409,10 +409,8 @@ void proto_notify_state(struct proto *p, unsigned state);
 #define D_EVENTS 16		/* Protocol events */
 #define D_PACKETS 32		/* Packets sent/received */
 
-#ifndef PARSER
 #define TRACE(flags, msg, args...) \
   do { if (p->p.debug & flags) log(L_TRACE "%s: " msg, p->p.name , ## args ); } while(0)
-#endif
 
 
 /*
