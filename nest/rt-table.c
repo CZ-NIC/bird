@@ -105,6 +105,7 @@
 #include "conf/conf.h"
 #include "filter/filter.h"
 #include "filter/data.h"
+#include "filter/f-inst.h"
 #include "lib/hash.h"
 #include "lib/string.h"
 #include "lib/alloca.h"
@@ -4144,11 +4145,94 @@ ea_set_hostentry(ea_list **to, rtable *dep, const struct igp_table *igp, ip_addr
 }
 
 
-static void
-rta_apply_hostentry(rte *r, struct hostentry_adata *head)
+static bool
+nexthop_apply_explicit(rte *r, struct hostentry_adata *head)
 {
   u32 *labels = head->labels;
   u32 lnum = (u32 *) (head->ad.data + head->ad.length) - labels;
+  struct hostentry *he = head->he;
+  ea_list *src = atomic_load_explicit(&he->src, memory_order_acquire);
+  ea_list **to = &r->attrs;
+
+  eattr *he_nh_ea = ea_find(src, &ea_gen_nexthop);
+  ASSERT_DIE(he_nh_ea);
+
+  struct nexthop_adata *nhad = (struct nexthop_adata *) he_nh_ea->u.ptr;
+  int idest = nhea_dest(he_nh_ea);
+
+  if ((idest != RTD_UNICAST) ||
+    !lnum && he->nexthop_linkable)
+  {
+    /* Just link the nexthop chain, no label append happens. */
+    ea_copy_attr(to, src, &ea_gen_nexthop);
+    return 1;
+  }
+
+  uint total_size = OFFSETOF(struct nexthop_adata, nh);
+
+  NEXTHOP_WALK(nh, nhad)
+  {
+    if (nh->labels + lnum > MPLS_MAX_LABEL_STACK)
+    {
+      log(L_WARN "Sum of label stack sizes %d + %d = %d exceedes allowed maximum (%d)",
+	nh->labels, lnum, nh->labels + lnum, MPLS_MAX_LABEL_STACK);
+      continue;
+    }
+
+    total_size += NEXTHOP_SIZE_CNT(nh->labels + lnum);
+  }
+
+  if (total_size == OFFSETOF(struct nexthop_adata, nh))
+  {
+    log(L_WARN "No valid nexthop remaining, setting route unreachable");
+
+    struct nexthop_adata nha = {
+	  .ad.length = NEXTHOP_DEST_SIZE,
+	  .dest = RTD_UNREACHABLE,
+    };
+
+    ea_set_attr_data(to, &ea_gen_nexthop, 0, &nha.ad.data, nha.ad.length);
+    return 1;
+  }
+
+  struct nexthop_adata *new = (struct nexthop_adata *) tmp_alloc_adata(total_size);
+  struct nexthop *dest = &new->nh;
+
+  NEXTHOP_WALK(nh, nhad)
+  {
+    if (nh->labels + lnum > MPLS_MAX_LABEL_STACK)
+      continue;
+
+    memcpy(dest, nh, NEXTHOP_SIZE(nh));
+    if (lnum)
+    {
+      memcpy(&(dest->label[dest->labels]), labels, lnum * sizeof labels[0]);
+      dest->labels += lnum;
+    }
+
+    if (ipa_nonzero(nh->gw))
+    /* Router nexthop */
+      dest->flags = (dest->flags & RNF_ONLINK);
+    else if (!(nh->iface->flags & IF_MULTIACCESS) || (nh->iface->flags & IF_LOOPBACK))
+      dest->gw = IPA_NONE;		/* PtP link - no need for nexthop */
+    else if (ipa_nonzero(he->link))
+      dest->gw = he->link;		/* Device nexthop with link-local address known */
+    else
+      dest->gw = he->addr;		/* Device nexthop with link-local address unknown */
+
+    dest = NEXTHOP_NEXT(dest);
+  }
+
+  /* Fix final length */
+  new->ad.length = (void *) dest - (void *) new->ad.data;
+  ea_set_attr(to, EA_LITERAL_DIRECT_ADATA(
+	&ea_gen_nexthop, 0, &new->ad));
+  return 0;
+}
+
+static void
+rta_apply_hostentry(rte *r, struct hostentry_adata *head)
+{
   struct hostentry *he = head->he;
 
   rcu_read_lock();
@@ -4179,82 +4263,8 @@ rta_apply_hostentry(rte *r, struct hostentry_adata *head)
       /* Run the IGP resolution filter */
       if (he->igp->fline)
         f_eval_rte(he->igp->fline, r, 0, NULL, 0, NULL);
-
-      ea_list **to = &r->attrs;
-
-      eattr *he_nh_ea = ea_find(src, &ea_gen_nexthop);
-      ASSERT_DIE(he_nh_ea);
-
-      struct nexthop_adata *nhad = (struct nexthop_adata *) he_nh_ea->u.ptr;
-      int idest = nhea_dest(he_nh_ea);
-
-      if ((idest != RTD_UNICAST) ||
-	  !lnum && he->nexthop_linkable)
-      {
-	/* Just link the nexthop chain, no label append happens. */
-	ea_copy_attr(to, src, &ea_gen_nexthop);
-	break;
-      }
-
-      uint total_size = OFFSETOF(struct nexthop_adata, nh);
-
-      NEXTHOP_WALK(nh, nhad)
-      {
-	if (nh->labels + lnum > MPLS_MAX_LABEL_STACK)
-	{
-	  log(L_WARN "Sum of label stack sizes %d + %d = %d exceedes allowed maximum (%d)",
-		nh->labels, lnum, nh->labels + lnum, MPLS_MAX_LABEL_STACK);
-	  continue;
-	}
-
-	total_size += NEXTHOP_SIZE_CNT(nh->labels + lnum);
-      }
-
-      if (total_size == OFFSETOF(struct nexthop_adata, nh))
-      {
-	log(L_WARN "No valid nexthop remaining, setting route unreachable");
-
-	struct nexthop_adata nha = {
-	  .ad.length = NEXTHOP_DEST_SIZE,
-	  .dest = RTD_UNREACHABLE,
-	};
-
-	ea_set_attr_data(to, &ea_gen_nexthop, 0, &nha.ad.data, nha.ad.length);
-	break;
-      }
-
-      struct nexthop_adata *new = (struct nexthop_adata *) tmp_alloc_adata(total_size);
-      struct nexthop *dest = &new->nh;
-
-      NEXTHOP_WALK(nh, nhad)
-      {
-	if (nh->labels + lnum > MPLS_MAX_LABEL_STACK)
-	  continue;
-
-	memcpy(dest, nh, NEXTHOP_SIZE(nh));
-	if (lnum)
-	{
-	  memcpy(&(dest->label[dest->labels]), labels, lnum * sizeof labels[0]);
-	  dest->labels += lnum;
-	}
-
-	if (ipa_nonzero(nh->gw))
-	  /* Router nexthop */
-	  dest->flags = (dest->flags & RNF_ONLINK);
-	else if (!(nh->iface->flags & IF_MULTIACCESS) || (nh->iface->flags & IF_LOOPBACK))
-	  dest->gw = IPA_NONE;		/* PtP link - no need for nexthop */
-	else if (ipa_nonzero(he->link))
-	  dest->gw = he->link;		/* Device nexthop with link-local address known */
-	else
-	  dest->gw = he->addr;		/* Device nexthop with link-local address unknown */
-
-	dest = NEXTHOP_NEXT(dest);
-      }
-
-      /* Fix final length */
-      new->ad.length = (void *) dest - (void *) new->ad.data;
-      ea_set_attr(to, EA_LITERAL_DIRECT_ADATA(
-	    &ea_gen_nexthop, 0, &new->ad));
+      if (f_new_inst(NEXTHOP_APPLY_EXPLICIT, (struct f_val) { .type = T_ROUTE, .val.rte = r}, (struct f_val) { .type = T_PTR, .val.ptr = (void *)head}))//nexthop_apply_explicit(r, head))
+        break;
     }
     while (0);
 
