@@ -487,10 +487,10 @@ struct bgp_channel {
   rtable *igp_table_ip6;		/* Table for recursive IPv6 next hop lookups */
   rtable *base_table;			/* Base table for Flowspec validation */
 
+  union bgp_ptx *tx;			/* TX encapsulation */
+
   /* Rest are zeroed when down */
   pool *pool;
-
-  union bgp_ptx *tx;			/* TX encapsulation */
 
   ip_addr next_hop_addr;		/* Local address for NEXT_HOP attribute */
   ip_addr link_addr;			/* Link-local version of next_hop_addr */
