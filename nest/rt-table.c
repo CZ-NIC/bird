@@ -4145,8 +4145,8 @@ ea_set_hostentry(ea_list **to, rtable *dep, const struct igp_table *igp, ip_addr
 }
 
 
-static bool
-nexthop_apply_explicit(rte *r, struct hostentry_adata *head)
+void
+nexthop_apply(rte *r, struct hostentry_adata *head)
 {
   u32 *labels = head->labels;
   u32 lnum = (u32 *) (head->ad.data + head->ad.length) - labels;
@@ -4165,7 +4165,7 @@ nexthop_apply_explicit(rte *r, struct hostentry_adata *head)
   {
     /* Just link the nexthop chain, no label append happens. */
     ea_copy_attr(to, src, &ea_gen_nexthop);
-    return 1;
+    return;
   }
 
   uint total_size = OFFSETOF(struct nexthop_adata, nh);
@@ -4192,7 +4192,7 @@ nexthop_apply_explicit(rte *r, struct hostentry_adata *head)
     };
 
     ea_set_attr_data(to, &ea_gen_nexthop, 0, &nha.ad.data, nha.ad.length);
-    return 1;
+    return;
   }
 
   struct nexthop_adata *new = (struct nexthop_adata *) tmp_alloc_adata(total_size);
@@ -4227,7 +4227,6 @@ nexthop_apply_explicit(rte *r, struct hostentry_adata *head)
   new->ad.length = (void *) dest - (void *) new->ad.data;
   ea_set_attr(to, EA_LITERAL_DIRECT_ADATA(
 	&ea_gen_nexthop, 0, &new->ad));
-  return 0;
 }
 
 static void
@@ -4263,8 +4262,8 @@ rta_apply_hostentry(rte *r, struct hostentry_adata *head)
       /* Run the IGP resolution filter */
       if (he->igp->fline)
         f_eval_rte(he->igp->fline, r, 0, NULL, 0, NULL);
-      if (f_new_inst(NEXTHOP_APPLY_EXPLICIT, (struct f_val) { .type = T_ROUTE, .val.rte = r}, (struct f_val) { .type = T_PTR, .val.ptr = (void *)head}))//nexthop_apply_explicit(r, head))
-        break;
+      else
+	nexthop_apply(r, head);
     }
     while (0);
 

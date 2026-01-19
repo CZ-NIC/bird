@@ -906,6 +906,7 @@ ea_set_hostentry(ea_list **to, rtable *dep, const struct igp_table *tab, ip_addr
 
 void ea_show_hostentry(const struct adata *ad, byte *buf, uint size);
 void ea_show_nexthop_list(struct cli *c, struct nexthop_adata *nhad);
+void nexthop_apply(rte *r, struct hostentry_adata *head);
 
 /*
  *	Default protocol preferences
