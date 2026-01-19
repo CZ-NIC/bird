@@ -1646,6 +1646,9 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
       } while (!atomic_compare_exchange_strong_explicit(
           &r_found->uc, &uc, uc + 1,
           memory_order_acq_rel, memory_order_acquire));
+
+      rcu_read_unlock();
+
       /* we succesfully increased count, ea_storrage is ours */
       /* free ea_storage we allocated earlier */
       //log("i free %x", r_new);
@@ -1657,7 +1660,6 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
       } else
         sl_free(r_new);
 
-      rcu_read_unlock();
       return r_found->l;
     }
 
