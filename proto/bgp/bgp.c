@@ -1210,7 +1210,13 @@ bgp_decision(void *vp)
   if ((p->p.proto_state == PS_STOP) &&
       (p->outgoing_conn.state == BS_IDLE) &&
       (p->incoming_conn.state == BS_IDLE))
+  {
+    struct bgp_channel *c;
+    BGP_WALK_CHANNELS(p, c)
+      bgp_free_pending_tx(c);
+
     bgp_down(p);
+  }
 }
 
 static void
@@ -1256,10 +1262,6 @@ bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len)
   bgp_graceful_close_conn(&p->incoming_conn, subcode, data, len);
 
   p->p.reload_routes = NULL;
-
-  struct bgp_channel *c;
-  BGP_WALK_CHANNELS(p, c)
-    bgp_free_pending_tx(c);
 
   proto_send_event(&p->p, p->event);
 }
