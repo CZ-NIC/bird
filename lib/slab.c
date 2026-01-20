@@ -351,7 +351,7 @@ sl_alloc_from_page(slab *s, struct sl_head *h)
   /* Looking for a zero bit in a variable-long almost-atomic bitfield */
   for (uint i = 0; i < s->head_bitfield_len; i++)
   {
-    u32 used_bits = atomic_load_explicit(&h->used_bits[i], memory_order_acquire);
+    u32 used_bits = atomic_load_explicit(&h->used_bits[i], memory_order_relaxed);
     if (~used_bits)
     {
       /* There are some zero bits in this part of the bitfield. */
@@ -361,7 +361,7 @@ sl_alloc_from_page(slab *s, struct sl_head *h)
 	return NULL;
 
       /* Set the one, claim the block */
-      u32 check = atomic_fetch_or_explicit(&h->used_bits[i], (1 << pos), memory_order_acq_rel);
+      u32 check = atomic_fetch_or_explicit(&h->used_bits[i], (1 << pos), memory_order_relaxed);
 
       ASSERT_DIE(!(check & (1 << pos))); /* Sanity check: nobody claimed the same block inbetween */
       ASSERT_DIE(!(check & (~used_bits))); /* Sanity check: nobody claimed any other block inbetween */
@@ -779,7 +779,7 @@ sl_free(void *oo)
   /* Remove the corresponding bit from bitfield */
   u32 mask = ~0;
   mask -= 1 << (pos % 32);
-  atomic_fetch_and_explicit(&h->used_bits[pos / 32], mask, memory_order_acq_rel);
+  atomic_fetch_and_explicit(&h->used_bits[pos / 32], mask, memory_order_relaxed);
 
   u16 num_full_before = atomic_fetch_sub_explicit(&h->num_full, 1, memory_order_acq_rel);
 
