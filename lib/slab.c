@@ -361,8 +361,10 @@ sl_alloc_from_page(slab *s, struct sl_head *h)
 	return NULL;
 
       /* Set the one, claim the block */
-      u32 check = atomic_fetch_or_explicit(&h->used_bits[i], (1 << pos), memory_order_relaxed);
+      atomic_fetch_or_explicit(&h->used_bits[i], (1 << pos), memory_order_relaxed);
 
+      /* Load the bitfield again for sanity checks */
+      u32 check = atomic_load_explicit(&h->used_bits[i], memory_order_relaxed);
       ASSERT_DIE(!(check & (1 << pos))); /* Sanity check: nobody claimed the same block inbetween */
       ASSERT_DIE(!(check & (~used_bits))); /* Sanity check: nobody claimed any other block inbetween */
 
