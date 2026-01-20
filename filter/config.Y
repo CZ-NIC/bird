@@ -991,7 +991,6 @@ term:
  | ROA_CHECK '(' rtable ')' { $$ = f_implicit_roa_check($3); }
  | ROA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_new_inst(FI_ROA_CHECK, $5, $7, $3); }
  | ASPA_CHECK '(' rtable ',' term ',' term ')' { $$ = f_new_inst(FI_ASPA_CHECK_EXPLICIT, $5, $7, $3); }
- | NEXTHOP_APPLY '(' ')' { $$ = f_new_inst(FI_NEXTHOP_APPLY); }
 
  | FORMAT '(' term ')' {  $$ = f_new_inst(FI_FORMAT, $3); }
 
@@ -1072,6 +1071,7 @@ cmd:
        cf_error("Attribute %s is read-only", $3->attribute->name);
      $$ = f_new_inst(FI_EA_UNSET, $3->attribute);
    }
+ | NEXTHOP_APPLY '(' ')' ';' { $$ = f_new_inst(FI_NEXTHOP_APPLY); }
  | break_command var_list_r ';' {
     $$ = f_print($2, !!$2, $1);
    }
