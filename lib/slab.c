@@ -365,7 +365,7 @@ sl_alloc_from_page(slab *s, struct sl_head *h)
 
       /* Load the bitfield again for sanity checks */
       u32 check = atomic_load_explicit(&h->used_bits[i], memory_order_relaxed);
-      ASSERT_DIE(!(check & (1 << pos))); /* Sanity check: nobody claimed the same block inbetween */
+      ASSERT_DIE((check & (1 << pos))); /* Sanity check: the block has actually been claimed */
       ASSERT_DIE(!(check & (~used_bits))); /* Sanity check: nobody claimed any other block inbetween */
 
       /* Update allocation count */
