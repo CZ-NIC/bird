@@ -370,8 +370,11 @@ sl_alloc_from_page(slab *s, struct sl_head *h)
       ASSERT_DIE((check & (~used_bits)) == (1 << pos)); /* Sanity check: nobody claimed any other block inbetween */
 #endif
 
-      /* Update allocation count */
-      atomic_fetch_add_explicit(&h->num_full, 1, memory_order_acquire);
+      /* Update allocation count.
+       * This doesn't need any specific memory order as the head can't get cleaned up
+       * when used for allocating.
+       * */
+      atomic_fetch_add_explicit(&h->num_full, 1, memory_order_relaxed);
 
       /* Take the pointer and go away */
       void *out = ((void *) h) + s->head_size + (i * 32 + pos) * s->obj_size;
