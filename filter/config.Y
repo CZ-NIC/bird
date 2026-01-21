@@ -389,9 +389,8 @@ CF_KEYWORDS(FUNCTION, PRINT, PRINTN, UNSET, RETURN,
 %type <ecs> ec_kind
 %type <fret> break_command
 %type <i32> cnum
-%type <e> pair_item ec_item lc_item set_item switch_item ec_items set_items switch_items switch_body
-%type <trie> fprefix_set
-%type <v> set_atom0 set_atom switch_atom fipa
+%type <e> pair_item ec_item lc_item set_item switch_item ec_items switch_items switch_body
+%type <v> set_atom0 set_atom switch_atom fipa set_items
 %type <px> fprefix
 %type <t> get_cf_position
 %type <s> for_var
@@ -732,8 +731,29 @@ ec_items:
  ;
 
 set_items:
-   set_item
- | set_items ',' set_item { $$ = f_merge_items($1, $3); }
+   set_item {
+     $$.type = T_SET;
+     $$.val.t = $1;
+   }
+ | fprefix {
+     $$.type = T_PREFIX_SET;
+     $$.val.ti = f_new_trie(cfg_mem, 0);
+     trie_add_prefix($$.val.ti, &($1.net), $1.lo, $1.hi);
+   }
+ | set_items ',' set_item {
+     if ($1.type == T_PREFIX_SET)
+       cf_error("Mixing prefixes with other items in sets is not supported");
+     ASSERT_DIE($1.type == T_SET);
+     $$.val.t = f_merge_items($1.val.t, $3);
+   }
+ | set_items ',' fprefix {
+     if ($1.type == T_SET)
+       cf_error("Mixing prefixes with other items in sets is not supported");
+     ASSERT_DIE($1.type == T_PREFIX_SET);
+     $$ = $1;
+     if (!trie_add_prefix($$.val.ti, &($3.net), $3.lo, $3.hi))
+       cf_error("Mixed IPv4/IPv6 prefixes in prefix set");
+   }
  ;
 
 switch_items:
@@ -750,11 +770,6 @@ fprefix:
      if (($3 > $5) || ($5 > net_max_prefix_length[$1.type]))
        cf_error("Invalid prefix pattern range: {%u, %u}", $3, $5);
    }
- ;
-
-fprefix_set:
-   fprefix { $$ = f_new_trie(cfg_mem, 0); trie_add_prefix($$, &($1.net), $1.lo, $1.hi); }
- | fprefix_set ',' fprefix { $$ = $1; if (!trie_add_prefix($$, &($3.net), $3.lo, $3.hi)) cf_error("Mixed IPv4/IPv6 prefixes in prefix set"); }
  ;
 
 switch_body: /* EMPTY */ { $$ = NULL; }
@@ -808,12 +823,7 @@ constant:
  | VPN_RD   { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_RD, .val.rd = $1, }); }
  | net_     { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_NET, .val.net = $1, }); }
  | '[' ']' { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_SET, .val.t = NULL, }); }
- | '[' set_items ']' {
-     DBG( "We've got a set here..." );
-     $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_SET, .val.t = build_tree($2, true), });
-     DBG( "ook\n" );
- }
- | '[' fprefix_set ']' { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PREFIX_SET, .val.ti = $2, }); }
+ | '[' set_items ']' { $$ = f_new_inst(FI_CONSTANT, $2); }
  | ENUM_TOKEN { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = $1 >> 16, .val.i = $1 & 0xffff, }); }
  ;
 
