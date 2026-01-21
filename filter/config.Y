@@ -645,14 +645,15 @@ fipa:
  */
 
 set_atom0:
-   NUM    { $$.type = T_INT; $$.val.i = $1; }
- | fipa   { $$ = $1; }
- | VPN_RD { $$.type = T_RD; $$.val.rd = $1; }
- | ENUM_TOKEN { $$.type = pair_a($1); $$.val.i = pair_b($1); }
- | '(' term ')' {
+ '(' term ')' {
      $$ = cf_eval($2, T_VOID);
      if (!f_valid_set_type($$.type))
        cf_error("Set-incompatible type (%s)", f_type_name($$.type));
+   }
+ | constant {
+    if (!f_valid_set_type(SYM_TYPE($1)))
+      cf_error("%s: Set-incompatible type (%s)", $1->name, f_type_name(SYM_TYPE($1)));
+    $$ = *$1->val;
    }
  ;
 
@@ -674,8 +675,7 @@ cnum:
    term { $$ = cf_eval_int($1); }
 
 pair_item:
-   '(' cnum ',' cnum ')'		{ $$ = f_new_pair_item($2, $2, $4, $4); }
- | '(' cnum ',' cnum DDOT cnum ')'	{ $$ = f_new_pair_item($2, $2, $4, $6); }
+   '(' cnum ',' cnum DDOT cnum ')'	{ $$ = f_new_pair_item($2, $2, $4, $6); }
  | '(' cnum ',' '*' ')'			{ $$ = f_new_pair_item($2, $2, 0, CC_ALL); }
  | '(' cnum DDOT cnum ',' cnum ')'	{ $$ = f_new_pair_set($2, $4, $6, $6); }
  | '(' cnum DDOT cnum ',' cnum DDOT cnum ')' { $$ = f_new_pair_set($2, $4, $6, $8); }
@@ -695,14 +695,12 @@ ec_kind:
  ;
 
 ec_item:
-   '(' ec_kind ',' cnum ',' cnum ')'		{ $$ = f_new_ec_item($2, 0, $4, $6, $6); }
- | '(' ec_kind ',' cnum ',' cnum DDOT cnum ')'	{ $$ = f_new_ec_item($2, 0, $4, $6, $8); }
+   '(' ec_kind ',' cnum ',' cnum DDOT cnum ')'	{ $$ = f_new_ec_item($2, 0, $4, $6, $8); }
  | '(' ec_kind ',' cnum ',' '*' ')'		{ $$ = f_new_ec_item($2, 0, $4, 0, EC_ALL); }
  ;
 
 lc_item:
-   '(' cnum ',' cnum ',' cnum ')'	    { $$ = f_new_lc_item($2, $2, $4, $4, $6, $6); }
- | '(' cnum ',' cnum ',' cnum DDOT cnum ')' { $$ = f_new_lc_item($2, $2, $4, $4, $6, $8); }
+   '(' cnum ',' cnum ',' cnum DDOT cnum ')' { $$ = f_new_lc_item($2, $2, $4, $4, $6, $8); }
  | '(' cnum ',' cnum ',' '*' ')'	    { $$ = f_new_lc_item($2, $2, $4, $4, 0, LC_ALL); }
  | '(' cnum ',' cnum DDOT cnum ',' '*' ')'  { $$ = f_new_lc_item($2, $2, $4, $6, 0, LC_ALL); }
  | '(' cnum ',' '*' ',' '*' ')'		    { $$ = f_new_lc_item($2, $2, 0, LC_ALL, 0, LC_ALL); }
