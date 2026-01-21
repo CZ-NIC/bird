@@ -600,7 +600,7 @@ sl_cleanup_full_heads(struct slab *s)
      * so that if we run the wrong variant now, somebody is already scheduling
      * the cleanup routine again.
      * */
-    u16 num_full = atomic_load_explicit(&next->num_full, memory_order_acquire);
+    u16 num_full = atomic_load_explicit(&next->num_full, memory_order_relaxed);
     if (num_full == 0)
     {
       /* Already completely empty! */
@@ -735,7 +735,7 @@ static void sl_thread_end(struct bird_thread_end_callback *btec)
     return;
 
   /* How many items are still allocated from that head? */
-  uint num_full = atomic_load_explicit(&h->num_full, memory_order_acquire);
+  uint num_full = atomic_load_explicit(&h->num_full, memory_order_relaxed);
   if (num_full == 0)
     /* The page is empty, just throw it away */
     sl_free_page(h);
@@ -788,7 +788,7 @@ sl_free(void *oo)
   mask -= 1 << (pos % 32);
   atomic_fetch_and_explicit(&h->used_bits[pos / 32], mask, memory_order_relaxed);
 
-  u16 num_full_before = atomic_fetch_sub_explicit(&h->num_full, 1, memory_order_acq_rel);
+  u16 num_full_before = atomic_fetch_sub_explicit(&h->num_full, 1, memory_order_release);
 
   if ((num_full_before == s->objs_per_slab) || (num_full_before == 1))
     ev_send(s->cleanup_ev_list, &s->event_clean);
