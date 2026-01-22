@@ -1069,6 +1069,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   ({										  \
      REPORT(msg, ## args);							  \
      s->err_invalid = 1;							  \
+     ASSERT(s->err_msg_buf.start);						  \
      if (s->proto->cf->keep_invalid) {						  \
        s->err_withdraw = 0;							  \
        memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);\
@@ -2852,6 +2853,10 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
     .pool = tmp_linpool,
     .as4_session = p->as4_session,
   };
+
+  s.err_msg_buf.start = tmp_allocz(128);
+  s.err_msg_buf.pos = s.err_msg_buf.start;
+  s.err_msg_buf.end = s.err_msg_buf.start + 128;
 
   /* Parse error handler */
   if (setjmp(s.err_jmpbuf))

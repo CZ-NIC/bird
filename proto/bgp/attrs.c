@@ -110,6 +110,7 @@ bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintp
   ({										  \
      REPORT(msg, ## args);							  \
      s->err_ineligible = 1;							  \
+     ASSERT(s->err_msg_buf.start);						  \
      if (s->proto->cf->keep_ineligible) {					  \
        s->err_withdraw = 0;							  \
        memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);\
@@ -1499,10 +1500,6 @@ bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
     REPORT("Discarding AIGP attribute received on non-AIGP session");
     bgp_unset_attr(&a->eattrs, s->pool, BA_AIGP);
   }
-
-  s->err_msg_buf.start = tmp_allocz(256);
-  s->err_msg_buf.pos = s->err_msg_buf.start;
-  s->err_msg_buf.end = s->err_msg_buf.start + 256;
 
   /* Handle OTC ingress procedure, RFC 9234 */
   if (bgp_channel_is_role_applicable(s->channel))
