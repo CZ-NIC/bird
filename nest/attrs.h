@@ -85,6 +85,7 @@ struct f_path_mask {
   struct f_path_mask_item item[0];
 };
 
+void pm_format(const struct f_path_mask *p, buffer *buf);
 int as_path_match(const struct adata *path, const struct f_path_mask *mask);
 
 

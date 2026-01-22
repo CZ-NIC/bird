@@ -88,7 +88,7 @@ ospf_proto_finish(void)
   if (! proto_cf_main_channel(this_proto))
   {
     uint net_type = this_proto->net_type = ospf_cfg_is_v2() ? NET_IP4 : NET_IP6;
-    channel_config_new(NULL, net_label[net_type], net_type, this_proto);
+    channel_config_new(NULL, f_pretty_t_enum_net_type(net_type), net_type, this_proto);
   }
 
   /* Propagate global instance ID to interfaces */
@@ -246,7 +246,7 @@ ospf_af_mc:
 ospf_channel_start: net_type ospf_af_mc
 {
   /* TODO: change name for multicast channels */
-  $$ = this_channel = channel_config_get(NULL, net_label[$1], $1, this_proto);
+  $$ = this_channel = channel_config_get(NULL, f_pretty_t_enum_net_type($1), $1, this_proto);
 
   /* Save the multicast flag */
   OSPF_CFG->af_mc = $2;

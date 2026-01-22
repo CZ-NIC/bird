@@ -609,6 +609,33 @@ rte_mergable(rte *pri, rte *sec)
   return 0;
 }
 
+void
+rte_format(const struct rte *rte, buffer *buf)
+{
+  if (rte)
+    buffer_print(buf, "Route [%d] to %N from %s.%s via %s",
+                 rte->src->global_id, rte->net->n.addr,
+                 rte->sender->proto->name, rte->sender->name,
+                 rte->src->proto->name);
+  else
+    buffer_puts(buf, "[No route]");
+}
+
+void
+rte_block_format(const struct rte *rte, buffer *buf)
+{
+  buffer_print(buf, "Block of routes:");
+
+  int i = 0;
+  while (rte)
+  {
+    buffer_print(buf, "%s%d: ", i ? "; " : " ", i);
+    rte_format(rte, buf);
+    rte = rte->next;
+    i++;
+  }
+}
+
 static void
 rte_trace(struct channel *c, rte *e, int dir, char *msg)
 {
@@ -2067,7 +2094,7 @@ rt_res_dump(struct dump_request *dreq, resource *_r)
 {
   rtable *r = (rtable *) _r;
   RDUMP("name \"%s\", addr_type=%s, rt_count=%u, use_count=%d\n",
-      r->name, net_label[r->addr_type], r->rt_count, r->use_count);
+      r->name, f_pretty_t_enum_net_type(r->addr_type), r->rt_count, r->use_count);
 }
 
 static struct resclass rt_class = {

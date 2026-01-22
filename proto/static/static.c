@@ -840,7 +840,7 @@ static_show_rt(struct static_route *r)
   case RTD_BLACKHOLE:
   case RTD_UNREACHABLE:
   case RTD_PROHIBIT:
-    cli_msg(-1009, "%N\t%s", r->net, rta_dest_names[r->dest]);
+    cli_msg(-1009, "%N\t%s", r->net, f_pretty_t_enum_rtd(r->dest));
     break;
 
   case RTDX_RECURSIVE:

@@ -96,7 +96,7 @@ mpls_channel: mpls_channel_start mpls_channel_opt_list mpls_channel_end;
 
 mpls_channel_start: MPLS
 {
-  $$ = this_channel = channel_config_get(&channel_mpls, net_label[NET_MPLS], NET_MPLS, this_proto);
+  $$ = this_channel = channel_config_get(&channel_mpls, f_pretty_t_enum_net_type(NET_MPLS), NET_MPLS, this_proto);
 
   if (EMPTY_LIST(new_config->mpls_domains))
   {

@@ -60,34 +60,6 @@
 
 const adata null_adata;		/* adata of length 0 */
 
-const char * const rta_src_names[RTS_MAX] = {
-  [RTS_STATIC]		= "static",
-  [RTS_INHERIT]		= "inherit",
-  [RTS_DEVICE]		= "device",
-  [RTS_STATIC_DEVICE]	= "static-device",
-  [RTS_REDIRECT]	= "redirect",
-  [RTS_RIP]		= "RIP",
-  [RTS_OSPF]		= "OSPF",
-  [RTS_OSPF_IA]		= "OSPF-IA",
-  [RTS_OSPF_EXT1]	= "OSPF-E1",
-  [RTS_OSPF_EXT2]	= "OSPF-E2",
-  [RTS_BGP]		= "BGP",
-  [RTS_PIPE]		= "pipe",
-  [RTS_BABEL]		= "Babel",
-  [RTS_RPKI]		= "RPKI",
-  [RTS_PERF]		= "Perf",
-  [RTS_L3VPN]		= "L3VPN",
-  [RTS_AGGREGATED]	= "aggregated",
-};
-
-const char * rta_dest_names[RTD_MAX] = {
-  [RTD_NONE]		= "",
-  [RTD_UNICAST]		= "unicast",
-  [RTD_BLACKHOLE]	= "blackhole",
-  [RTD_UNREACHABLE]	= "unreachable",
-  [RTD_PROHIBIT]	= "prohibited",
-};
-
 pool *rta_pool;
 
 static slab *rta_slab_[4];
@@ -1375,7 +1347,7 @@ rta_dump_all(struct dump_request *dreq)
 void
 rta_show(struct cli *c, rta *a)
 {
-  cli_printf(c, -1008, "\tType: %s %s", rta_src_names[a->source], ip_scope_text(a->scope));
+  cli_printf(c, -1008, "\tType: %s %s", f_pretty_t_enum_rts(a->source), ip_scope_text(a->scope));
 
   for(ea_list *eal = a->eattrs; eal; eal=eal->next)
     for(int i=0; i<eal->count; i++)

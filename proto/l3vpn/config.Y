@@ -52,7 +52,7 @@ proto: l3vpn_proto;
 l3vpn_channel_start: net_type_base
 {
   /* Redefining proto_channel to change default values */
-  $$ = this_channel = channel_config_get(NULL, net_label[$1], $1, this_proto);
+  $$ = this_channel = channel_config_get(NULL, f_pretty_t_enum_net_type($1), $1, this_proto);
   if (!this_channel->copy)
   {
     this_channel->out_filter = FILTER_ACCEPT;

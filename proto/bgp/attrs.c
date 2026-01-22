@@ -409,9 +409,8 @@ bgp_decode_origin(struct bgp_parse_state *s, uint code UNUSED, uint flags, byte 
 static void
 bgp_format_origin(const eattr *a, byte *buf, uint size UNUSED)
 {
-  static const char *bgp_origin_names[] = { "IGP", "EGP", "Incomplete" };
-
-  bsprintf(buf, (a->u.data <= 2) ? bgp_origin_names[a->u.data] : "?");
+  const char *name = f_pretty_t_enum_bgp_origin(a->u.data);
+  strcpy(buf, name);
 }
 
 

@@ -12,7 +12,11 @@
 
 #include "nest/bird.h"
 #include "lib/types-enums.h"
+#include "lib/types-union.h"
 #include "nest/route.h"
+
+#include "filter/tree.h"
+#include "filter/trie.h"
 
 #define T_ENUM T_ENUM_RTS ... T_ENUM_EMPTY
 
@@ -24,26 +28,6 @@ struct f_method {
   enum f_type args_type[];
 };
 
-/* Filter value; size of this affects filter memory consumption */
-struct f_val {
-  enum f_type type;	/* T_*  */
-  union {
-    uint i;
-    u64 ec;
-    lcomm *lc;
-    vpn_rd rd;
-    ip_addr ip;
-    const net_addr *net;
-    const char *s;
-    const struct adata *bs;
-    const struct f_tree *t;
-    const struct f_trie *ti;
-    const struct adata *ad;
-    const struct f_path_mask *path_mask;
-    struct f_path_mask_item *pmi;
-    struct rte *rte;
-  } val;
-};
 
 /* Dynamic attribute definition (eattrs) */
 struct f_dynamic_attr {
@@ -97,147 +81,6 @@ struct f_lval {
   };
 };
 
-/* IP prefix range structure */
-struct f_prefix {
-  net_addr net;		/* The matching prefix must match this net */
-  u8 lo, hi;		/* And its length must fit between lo and hi */
-};
-
-struct f_tree {
-  struct f_tree *left, *right;
-  struct f_val from, to;
-  void *data;
-};
-
-#ifdef ENABLE_COMPACT_TRIES
-/* Compact 4-way tries */
-#define TRIE_STEP		2
-#define TRIE_STACK_LENGTH	65
-#else
-/* Faster 16-way tries */
-#define TRIE_STEP		4
-#define TRIE_STACK_LENGTH	33
-#endif
-
-struct f_trie_node4
-{
-  ip4_addr addr, mask, accept;
-  u16 plen;
-  u16 local;
-  struct f_trie_node4 *c[1 << TRIE_STEP];
-};
-
-struct f_trie_node6
-{
-  ip6_addr addr, mask, accept;
-  u16 plen;
-  u16 local;
-  struct f_trie_node6 *c[1 << TRIE_STEP];
-};
-
-struct f_trie_node
-{
-  union {
-    struct f_trie_node4 v4;
-    struct f_trie_node6 v6;
-  };
-};
-
-struct f_trie
-{
-  linpool *lp;
-  u8 zero;
-  s8 ipv4;				/* -1 for undefined / empty */
-  u16 data_size;			/* Additional data for each trie node */
-  u32 prefix_count;			/* Works only for restricted tries (pxlen == l == h) */
-  struct f_trie_node root;		/* Root trie node */
-};
-
-struct f_trie_walk_state
-{
-  u8 ipv4;
-  u8 accept_length;			/* Current inter-node prefix position */
-  u8 start_pos;				/* Initial prefix position in stack[0] */
-  u8 local_pos;				/* Current intra-node prefix position */
-  u8 stack_pos;				/* Current node in stack below */
-  const struct f_trie_node *stack[TRIE_STACK_LENGTH];
-};
-
-struct f_tree *f_new_tree(void);
-struct f_tree *build_tree(struct f_tree *, bool merge);
-const struct f_tree *find_tree(const struct f_tree *t, const struct f_val *val);
-const struct f_tree *find_tree_linear(const struct f_tree *t, const struct f_val *val);
-int same_tree(const struct f_tree *t0, const struct f_tree *t2);
-int tree_node_count(const struct f_tree *t);
-void tree_format(const struct f_tree *t, buffer *buf);
-void tree_walk(const struct f_tree *t, void (*hook)(const struct f_tree *, void *), void *data);
-
-struct f_trie *f_new_trie(linpool *lp, uint data_size);
-void *trie_add_prefix(struct f_trie *t, const net_addr *n, uint l, uint h);
-int trie_match_net(const struct f_trie *t, const net_addr *n);
-int trie_match_longest_ip4(const struct f_trie *t, const net_addr_ip4 *net, net_addr_ip4 *dst, ip4_addr *found0);
-int trie_match_longest_ip6(const struct f_trie *t, const net_addr_ip6 *net, net_addr_ip6 *dst, ip6_addr *found0);
-void trie_walk_init(struct f_trie_walk_state *s, const struct f_trie *t, const net_addr *from);
-int trie_walk_next(struct f_trie_walk_state *s, net_addr *net);
-int trie_same(const struct f_trie *t1, const struct f_trie *t2);
-void trie_format(const struct f_trie *t, buffer *buf);
-
-static inline int
-trie_match_next_longest_ip4(net_addr_ip4 *n, ip4_addr *found)
-{
-  while (n->pxlen)
-  {
-    n->pxlen--;
-    ip4_clrbit(&n->prefix, n->pxlen);
-
-    if (ip4_getbit(*found, n->pxlen))
-      return 1;
-  }
-
-  return 0;
-}
-
-static inline int
-trie_match_next_longest_ip6(net_addr_ip6 *n, ip6_addr *found)
-{
-  while (n->pxlen)
-  {
-    n->pxlen--;
-    ip6_clrbit(&n->prefix, n->pxlen);
-
-    if (ip6_getbit(*found, n->pxlen))
-      return 1;
-  }
-
-  return 0;
-}
-
-
-#define TRIE_WALK_TO_ROOT_IP4(trie, net, dst) ({		\
-  net_addr_ip4 dst;						\
-  ip4_addr _found;						\
-  for (int _n = trie_match_longest_ip4(trie, net, &dst, &_found); \
-       _n;							\
-       _n = trie_match_next_longest_ip4(&dst, &_found))
-
-#define TRIE_WALK_TO_ROOT_IP6(trie, net, dst) ({		\
-  net_addr_ip6 dst;						\
-  ip6_addr _found;						\
-  for (int _n = trie_match_longest_ip6(trie, net, &dst, &_found); \
-       _n;							\
-       _n = trie_match_next_longest_ip6(&dst, &_found))
-
-#define TRIE_WALK_TO_ROOT_END })
-
-
-#define TRIE_WALK(trie, net, from) ({				\
-  net_addr net;							\
-  struct f_trie_walk_state tws_;				\
-  trie_walk_init(&tws_, trie, from);				\
-  while (trie_walk_next(&tws_, &net))
-
-#define TRIE_WALK_END })
-
 
 #define F_CMP_ERROR 999
 
@@ -247,25 +90,13 @@ struct sym_scope *f_type_method_scope(enum f_type t);
 
 int val_same(const struct f_val *v1, const struct f_val *v2);
 int val_compare(const struct f_val *v1, const struct f_val *v2);
-void val_format(const struct f_val *v, buffer *buf);
+#define val_format(val, buf)  f_val_str(val, buf)
 char *val_format_str(struct linpool *lp, const struct f_val *v);
 const char *val_dump(const struct f_val *v);
 
 static inline int val_is_ip4(const struct f_val *v)
 { return (v->type == T_IP) && ipa_is_ip4(v->val.ip); }
 int val_in_range(const struct f_val *v1, const struct f_val *v2);
-
-int clist_set_type(const struct f_tree *set, struct f_val *v);
-static inline int eclist_set_type(const struct f_tree *set)
-{ return !set || set->from.type == T_EC; }
-static inline int lclist_set_type(const struct f_tree *set)
-{ return !set || set->from.type == T_LC; }
-static inline int path_set_type(const struct f_tree *set)
-{ return !set || set->from.type == T_INT; }
-
-int clist_match_set(const struct adata *clist, const struct f_tree *set);
-int eclist_match_set(const struct adata *list, const struct f_tree *set);
-int lclist_match_set(const struct adata *list, const struct f_tree *set);
 
 const struct adata *clist_filter(struct linpool *pool, const struct adata *list, const struct f_val *set, int pos);
 const struct adata *eclist_filter(struct linpool *pool, const struct adata *list, const struct f_val *set, int pos);

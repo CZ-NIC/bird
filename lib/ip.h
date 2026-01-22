@@ -446,7 +446,7 @@ int ip6_pton(const char *a, ip6_addr *o);
  *	Miscellaneous
  */
 
-char *ip_scope_text(uint);
+#define ip_scope_text(s)  f_pretty_t_enum_scope(s)
 
 
 /*

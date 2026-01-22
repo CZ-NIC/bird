@@ -52,56 +52,6 @@ adata_empty(struct linpool *pool, int l)
   return res;
 }
 
-static void
-pm_format(const struct f_path_mask *p, buffer *buf)
-{
-  int loop = 0;
-
-  buffer_puts(buf, "[= ");
-
-  for (uint i=0; i<p->len; i++)
-  {
-    switch(p->item[i].kind)
-    {
-    case PM_ASN:
-      buffer_print(buf, "%u ", p->item[i].asn);
-      break;
-
-    case PM_QUESTION:
-      buffer_puts(buf, "? ");
-      break;
-
-    case PM_ASTERISK:
-      buffer_puts(buf, "* ");
-      break;
-
-    case PM_LOOP:
-      loop = 1;
-      break;
-
-    case PM_ASN_RANGE:
-      buffer_print(buf, "%u..%u ", p->item[i].from, p->item[i].to);
-      break;
-
-    case PM_ASN_SET:
-      tree_format(p->item[i].set, buf);
-      buffer_puts(buf, " ");
-      break;
-
-    case PM_ASN_EXPR:
-      ASSERT(0);
-    }
-
-    if (loop && (p->item[i].kind != PM_LOOP))
-    {
-      buffer_puts(buf, "+ ");
-      loop = 0;
-    }
-  }
-
-  buffer_puts(buf, "=]");
-}
-
 static inline int
 lcomm_cmp(lcomm *v1, lcomm *v2)
 {
@@ -541,71 +491,6 @@ val_in_range(const struct f_val *v1, const struct f_val *v2)
     return as_path_match_set(v1->val.ad, v2->val.t);
 
   return F_CMP_ERROR;
-}
-
-/*
- * rte_format - format route information
- */
-static void
-rte_format(const struct rte *rte, buffer *buf)
-{
-  if (rte)
-    buffer_print(buf, "Route [%d] to %N from %s.%s via %s",
-                 rte->src->global_id, rte->net->n.addr,
-                 rte->sender->proto->name, rte->sender->name,
-                 rte->src->proto->name);
-  else
-    buffer_puts(buf, "[No route]");
-}
-
-static void
-rte_block_format(const struct rte *rte, buffer *buf)
-{
-  buffer_print(buf, "Block of routes:");
-
-  int i = 0;
-  while (rte)
-  {
-    buffer_print(buf, "%s%d: ", i ? "; " : " ", i);
-    rte_format(rte, buf);
-    rte = rte->next;
-    i++;
-  }
-}
-
-/*
- * val_format - format filter value
- */
-void
-val_format(const struct f_val *v, buffer *buf)
-{
-  char buf2[1024];
-  switch (v->type)
-  {
-  case T_VOID:	buffer_puts(buf, "(void)"); return;
-  case T_BOOL:	buffer_puts(buf, v->val.i ? "TRUE" : "FALSE"); return;
-  case T_INT:	buffer_print(buf, "%u", v->val.i); return;
-  case T_STRING: buffer_print(buf, "%s", v->val.s); return;
-  case T_BYTESTRING: bstrbintohex(v->val.bs->data, v->val.bs->length, buf2, 1000, ':'); buffer_print(buf, "%s", buf2); return;
-  case T_IP:	buffer_print(buf, "%I", v->val.ip); return;
-  case T_NET:   buffer_print(buf, "%N", v->val.net); return;
-  case T_PAIR:	buffer_print(buf, "(%u,%u)", v->val.i >> 16, v->val.i & 0xffff); return;
-  case T_QUAD:	buffer_print(buf, "%R", v->val.i); return;
-  case T_EC:	ec_format(buf2, v->val.ec); buffer_print(buf, "%s", buf2); return;
-  case T_LC:	lc_format(buf2, *v->val.lc); buffer_print(buf, "%s", buf2); return;
-  case T_RD:	rd_format(v->val.rd, buf2, 1024); buffer_print(buf, "%s", buf2); return;
-  case T_PREFIX_SET: trie_format(v->val.ti, buf); return;
-  case T_SET:	tree_format(v->val.t, buf); return;
-  case T_ENUM:	buffer_print(buf, "(enum %x)%u", v->type + 0x30 - T_ENUM_RTS, v->val.i); return;
-  case T_PATH:	as_path_format(v->val.ad, buf2, 1000); buffer_print(buf, "(path %s)", buf2); return;
-  case T_CLIST:	int_set_format(v->val.ad, 1, -1, buf2, 1000); buffer_print(buf, "(clist %s)", buf2); return;
-  case T_ECLIST: ec_set_format(v->val.ad, -1, buf2, 1000); buffer_print(buf, "(eclist %s)", buf2); return;
-  case T_LCLIST: lc_set_format(v->val.ad, -1, buf2, 1000); buffer_print(buf, "(lclist %s)", buf2); return;
-  case T_PATH_MASK: pm_format(v->val.path_mask, buf); return;
-  case T_ROUTE: rte_format(v->val.rte, buf); return;
-  case T_ROUTES_BLOCK: rte_block_format(v->val.rte, buf); return;
-  default:	buffer_print(buf, "[unknown type %x]", v->type); return;
-  }
 }
 
 char *

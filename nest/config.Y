@@ -210,7 +210,7 @@ table_opt:
  | DEBUG debug_mask { this_table->debug = $2; }
  | TRIE bool {
      if (!net_val_match(this_table->addr_type, NB_IP | NB_VPN | NB_ROA | NB_IP6_SADR))
-       cf_error("Trie option not supported for %s table", net_label[this_table->addr_type]);
+       cf_error("Trie option not supported for %s table", f_pretty_t_enum_net_type(this_table->addr_type));
      this_table->trie_used = $2;
    }
  | MIN SETTLE TIME expr_us { this_table->min_settle_time = $4; }
@@ -285,7 +285,7 @@ proto_item:
 
 channel_start: net_type_base
 {
-  $$ = this_channel = channel_config_get(NULL, net_label[$1], $1, this_proto);
+  $$ = this_channel = channel_config_get(NULL, f_pretty_t_enum_net_type($1), $1, this_proto);
 };
 
 channel_item_:

@@ -487,7 +487,7 @@ void filters_dump_all(struct dump_request *dreq)
 	  RDUMP("Protocol %s:\n", sym->name);
 	  struct channel *c;
 	  WALK_LIST(c, sym->proto->proto->channels) {
-	    RDUMP(" Channel %s (%s) IMPORT", c->name, net_label[c->net_type]);
+	    RDUMP(" Channel %s (%s) IMPORT", c->name, f_pretty_t_enum_net_type(c->net_type));
 	    if (c->in_filter == FILTER_ACCEPT)
 	      RDUMP(" ALL\n");
 	    else if (c->in_filter == FILTER_REJECT)

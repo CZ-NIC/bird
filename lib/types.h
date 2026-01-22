@@ -7,113 +7,120 @@
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
 
-TYPEDEF(T_VOID, void, void) {}
+TYPEDEF(T_VOID, void, void) {
+  TD_STR("(void)");
+}
+
 TYPEDEF(T_NONE, void, none) {}
 
 TYPEDEF(T_INT, uint, int) {
   TD_CF_NAME(Number);
   TD_SET_MEMBER;
   TD_EA(EAF_TYPE_INT);
+  TD_STR("%u", _v);
 }
 
 TYPEDEF(T_BOOL, uint, bool) {
   TD_CF_NAME(Boolean);
+  TD_STR(_v ? "true" : "false");
 }
 
 TYPEDEF(T_PAIR, uint, pair) {
   TD_SET_MEMBER;
+  TD_STR("(%u,%u)", _v >> 16, _v & 0xffff);
 }
 TYPEDEF(T_QUAD, uint, quad) {
   TD_SET_MEMBER;
   TD_EA(EAF_TYPE_ROUTER_ID);
+  TD_STR("%R", _v);
 }
 
 /* This should be per partes in protocols */
 ENUMDEF(rts,
-    RTS_NONE,
-    RTS_STATIC,
-    RTS_INHERIT,
-    RTS_DEVICE,
-    RTS_STATIC_DEVICE,
-    RTS_REDIRECT,
-    RTS_RIP,
-    RTS_OSPF,
-    RTS_OSPF_IA,
-    RTS_OSPF_EXT1,
-    RTS_OSPF_EXT2,
-    RTS_BGP,
-    RTS_PIPE,
-    RTS_BABEL,
-    RTS_RPKI,
-    RTS_PERF,
-    RTS_L3VPN,
-    RTS_AGGREGATED,
+			RTS_NONE,
+    static:		RTS_STATIC,
+    inherit:		RTS_INHERIT,
+    device:		RTS_DEVICE,
+    static-device:	RTS_STATIC_DEVICE,
+    redirect:		RTS_REDIRECT,
+    RIP:		RTS_RIP,
+    OSPF:		RTS_OSPF,
+    OSPF-IA:		RTS_OSPF_IA,
+    OSPF-E1:		RTS_OSPF_EXT1,
+    OSPF-E2:		RTS_OSPF_EXT2,
+    BGP:		RTS_BGP,
+    pipe:		RTS_PIPE,
+    Babel:		RTS_BABEL,
+    RPKI:		RTS_RPKI,
+    Perf:		RTS_PERF,
+    L3VPN:		RTS_L3VPN,
+    aggregated:		RTS_AGGREGATED,
     );
 TD_ENUM_INTERNAL_ITEM(rts, RTS_MAX);
 
 /* This should be in proto/bgp/types.h */
 ENUMDEF(bgp_origin,
-    ORIGIN_IGP,
-    ORIGIN_EGP,
-    ORIGIN_INCOMPLETE,
+    IGP:		ORIGIN_IGP,
+    EGP:		ORIGIN_EGP,
+    Incomplete:		ORIGIN_INCOMPLETE,
     );
 
 /* ip.h ? */
 ENUMDEF(scope,
-    SCOPE_HOST,
-    SCOPE_LINK,
-    SCOPE_SITE,
-    SCOPE_ORGANIZATION,
-    SCOPE_UNIVERSE,
-    SCOPE_UNDEFINED,
+    host:		SCOPE_HOST,
+    link:		SCOPE_LINK,
+    site:		SCOPE_SITE,
+    org:		SCOPE_ORGANIZATION,
+    univ:		SCOPE_UNIVERSE,
+    undef:		SCOPE_UNDEFINED,
     );
 
 /* nest/route.h */
 ENUMDEF(rtd,
-    RTD_NONE,
-    RTD_UNICAST,
-    RTD_BLACKHOLE,
-    RTD_UNREACHABLE,
-    RTD_PROHIBIT,
+    :			RTD_NONE,
+    unicast:		RTD_UNICAST,
+    blackhole:		RTD_BLACKHOLE,
+    unreachable:	RTD_UNREACHABLE,
+    prohibited:		RTD_PROHIBIT,
     );
 TD_ENUM_INTERNAL_ITEM(rtd, RTD_MAX);
 
 ENUMDEF(roa,
-    ROA_UNKNOWN,
-    ROA_VALID,
-    ROA_INVALID,
+    unknown:		ROA_UNKNOWN,
+    valid:		ROA_VALID,
+    invalid:		ROA_INVALID,
     )
 
 ENUMDEF(aspa,
-    ASPA_UNKNOWN,
-    ASPA_VALID,
-    ASPA_INVALID,
+    unknown:		ASPA_UNKNOWN,
+    valid:		ASPA_VALID,
+    invalid:		ASPA_INVALID,
     )
 
 /* net.h */
 ENUMDEF(net_type,
-    NET_IP4 = 1,
-    NET_IP6,
-    NET_VPN4,
-    NET_VPN6,
-    NET_ROA4,
-    NET_ROA6,
-    NET_FLOW4,
-    NET_FLOW6,
-    NET_IP6_SADR,
-    NET_MPLS,
-    NET_ASPA,
+    ipv4:		NET_IP4 = 1,
+    ipv6:		NET_IP6,
+    vpn4:		NET_VPN4,
+    vpn6:		NET_VPN6,
+    roa4:		NET_ROA4,
+    roa6:		NET_ROA6,
+    flow4:		NET_FLOW4,
+    flow6:		NET_FLOW6,
+    ipv6-sadr:		NET_IP6_SADR,
+    mpls:		NET_MPLS,
+    aspa:		NET_ASPA,
     );
 TD_ENUM_INTERNAL_ITEM(net_type, NET_MAX);
 
 /* RAdv */
 ENUMDEF(ra_preference,
-    RA_PREF_LOW = 0x18,
-    RA_PREF_MEDIUM = 0x00,
-    RA_PREF_HIGH = 0x08,
+    low:		RA_PREF_LOW = 0x18,
+    medium:		RA_PREF_MEDIUM = 0x00,
+    high:		RA_PREF_HIGH = 0x08,
     );
 
-/* ip.h */
+/* ip.h but looks totally unused */
 ENUMDEF(af,
     AF_IPV4 = 1,
     AF_IPV6 = 2,
@@ -121,11 +128,11 @@ ENUMDEF(af,
 
 /* mpls.h */
 ENUMDEF(mpls_policy,
-    MPLS_POLICY_NONE,
-    MPLS_POLICY_STATIC,
-    MPLS_POLICY_PREFIX,
-    MPLS_POLICY_AGGREGATE,
-    MPLS_POLICY_VRF,
+    none:		MPLS_POLICY_NONE,
+    static:		MPLS_POLICY_STATIC,
+    prefix:		MPLS_POLICY_PREFIX,
+    aggregate:		MPLS_POLICY_AGGREGATE,
+    vrf:		MPLS_POLICY_VRF,
     );
 
 /* Old bytestring hack */
@@ -136,49 +143,67 @@ TYPEDEF(T_IP, ip_addr, ip) {
   TD_CF_NAME(IP address);
   TD_SET_MEMBER;
   TD_EA(EAF_TYPE_IP_ADDRESS);
+  TD_STR("%I", _v);
 }
 
 TYPEDEF(T_NET, const net_addr *, prefix) {
   TD_INCLUDE(lib/net.h)
   TD_CF_NAME(Network);
+  TD_STR("%N", _v);
 }
 
 TYPEDEF(T_STRING, const char *, string) {
   TD_CF_NAME(String);
   TD_EA(EAF_TYPE_STRING);
+  TD_STR("%s", _v);
 }
 
 /* mask for BGP AS Path */
-TYPEDEF(T_PATH_MASK, const struct f_path_mask *, bgpmask);
+TYPEDEF(T_PATH_MASK, const struct f_path_mask *, bgpmask) {
+  TD_STR_BUF(pm_format(_v, _buf));
+}
 
 /* BGP AS Path */
 TYPEDEF(T_PATH, const struct adata *, bgppath) {
   TD_EA(EAF_TYPE_AS_PATH);
+  TD_STR("(path) [%s]", ( as_path_format(_v, _aux, 1000), _aux ));
 }
 
 /* Community list */
 TYPEDEF(T_CLIST, const struct adata *, clist) {
   TD_EA(EAF_TYPE_INT_SET);
+  TD_STR("(clist) [%s]", ( int_set_format(_v, 1, -1, _aux, 1000), _aux ));
 }
 
 /* Extended community value, u64 */
-TYPEDEF(T_EC, u64, ec);
+TYPEDEF(T_EC, u64, ec) {
+  TD_STR("%s", ( ec_format(_aux, _v), _aux ));
+}
 
 /* Extended community list */
 TYPEDEF(T_ECLIST, const struct adata *, eclist) {
   TD_EA(EAF_TYPE_EC_SET);
+  TD_STR("(clist) [%s]", ( ec_set_format(_v, -1, _aux, 1000), _aux ));
 }
 
 /* Large community value, lcomm */
-TYPEDEF(T_LC, lcomm, lc);
+TYPEDEF(T_LC, struct lcomm *, lc) {
+  TD_INCLUDE(nest/attrs.h);
+  TD_STR("%s", ( lc_format(_aux, _v), _aux ));
+}
 
 /* Large community list */
 TYPEDEF(T_LCLIST, const struct adata *, lclist) {
   TD_EA(EAF_TYPE_LC_SET);
+  TD_STR("(clist) [%s]", ( lc_set_format(_v, -1, _aux, 1000), _aux ));
 }
 
 /* Route distinguisher for VPN addresses */
-TYPEDEF(T_RD, vpn_rd, rd);
+TYPEDEF(T_RD, vpn_rd, rd) {
+  TD_INCLUDE(lib/ip.h);
+  TD_INCLUDE(lib/net.h);
+  TD_STR("%s", ( rd_format(_v, _aux, 1000), _aux ));
+}
 
 /* Path mask item for path mask constructors */
 TYPEDEF(T_PATH_MASK_ITEM, struct f_path_mask_item, bgpmask_item);
@@ -186,13 +211,28 @@ TYPEDEF(T_PATH_MASK_ITEM, struct f_path_mask_item, bgpmask_item);
 TYPEDEF(T_BYTESTRING, const struct adata *, bytestring) {
   TD_CF_NAME(Bytestring);
   TD_EA(EAF_TYPE_OPAQUE);
+  TD_STR("%s", ( bstrbintohex(_v->data, _v->length, _aux, 1000, ':'), _aux ));
 }
 
-TYPEDEF(T_ROUTE, struct rte *, route);
-TYPEDEF(T_ROUTES_BLOCK, struct rte *, route set);
+TYPEDEF(T_ROUTE, struct rte *, route) {
+  TD_INCLUDE(nest/route.h);
+  TD_STR_BUF(rte_format(_v, _buf));
+}
 
-TYPEDEF(T_SET, const struct f_tree *, set);
-TYPEDEF(T_PREFIX_SET, const struct f_trie *, prefix set);
+TYPEDEF(T_ROUTES_BLOCK, struct rte *, route set) {
+  TD_INCLUDE(nest/route.h);
+  TD_STR_BUF(rte_block_format(_v, _buf));
+}
+
+TYPEDEF(T_SET, const struct f_tree *, set) {
+  TD_INCLUDE(filter/tree.h);
+  TD_STR_BUF(tree_format(_v, _buf));
+}
+
+TYPEDEF(T_PREFIX_SET, const struct f_trie *, prefix set) {
+  TD_INCLUDE(filter/trie.h);
+  TD_STR_BUF(trie_format(_v, _buf));
+}
 
 
 #endif

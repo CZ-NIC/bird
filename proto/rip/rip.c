@@ -1124,7 +1124,7 @@ rip_postconfig(struct proto_config *CF)
 
   /* Define default channel */
   if (! proto_cf_main_channel(CF))
-    channel_config_new(NULL, net_label[CF->net_type], CF->net_type, CF);
+    channel_config_new(NULL, f_pretty_t_enum_net_type(CF->net_type), CF->net_type, CF);
 }
 
 static struct proto *

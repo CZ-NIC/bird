@@ -467,23 +467,6 @@ ip6_pton(const char *a, ip6_addr *o)
 }
 
 
-/**
- * ip_scope_text - get textual representation of address scope
- * @scope: scope (%SCOPE_xxx)
- *
- * Returns a pointer to a textual name of the scope given.
- */
-char *
-ip_scope_text(uint scope)
-{
-  static char *scope_table[] = { "host", "link", "site", "org", "univ", "undef" };
-
-  if (scope > SCOPE_UNDEFINED)
-    return "?";
-  else
-    return scope_table[scope];
-}
-
 ip4_addr
 ip4_class_mask(ip4_addr ad)
 {

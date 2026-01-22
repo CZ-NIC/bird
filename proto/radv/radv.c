@@ -570,7 +570,7 @@ radv_postconfig(struct proto_config *CF)
 
   /* Define default channel */
   if (! proto_cf_main_channel(CF))
-    channel_config_new(NULL, net_label[NET_IP6], NET_IP6, CF);
+    channel_config_new(NULL, f_pretty_t_enum_net_type(NET_IP6), NET_IP6, CF);
 }
 
 static struct proto *
@@ -730,22 +730,6 @@ radv_get_status(struct proto *P, byte *buf)
     strcpy(buf, "Suppressed");
 }
 
-static const char *
-radv_pref_str(u32 pref)
-{
-  switch (pref)
-  {
-    case RA_PREF_LOW:
-      return "low";
-    case RA_PREF_MEDIUM:
-      return "medium";
-    case RA_PREF_HIGH:
-      return "high";
-    default:
-      return "??";
-  }
-}
-
 /* The buffer has some minimal size */
 static int
 radv_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
@@ -753,7 +737,7 @@ radv_get_attr(const eattr *a, byte *buf, int buflen UNUSED)
   switch (a->id)
   {
   case EA_RA_PREFERENCE:
-    bsprintf(buf, "preference: %s", radv_pref_str(a->u.data));
+    bsprintf(buf, "preference: %s", f_pretty_t_enum_ra_preference(a->u.data));
     return GA_FULL;
   case EA_RA_LIFETIME:
     bsprintf(buf, "lifetime");

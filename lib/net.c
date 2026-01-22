@@ -5,20 +5,6 @@
 #include "lib/flowspec.h"
 
 
-const char * const net_label[] = {
-  [NET_IP4]	= "ipv4",
-  [NET_IP6]	= "ipv6",
-  [NET_VPN4]	= "vpn4",
-  [NET_VPN6]	= "vpn6",
-  [NET_ROA4]	= "roa4",
-  [NET_ROA6]	= "roa6",
-  [NET_FLOW4]	= "flow4",
-  [NET_FLOW6]	= "flow6",
-  [NET_IP6_SADR]= "ipv6-sadr",
-  [NET_MPLS]	= "mpls",
-  [NET_ASPA]	= "aspa",
-};
-
 const u16 net_addr_length[] = {
   [NET_IP4]	= sizeof(net_addr_ip4),
   [NET_IP6]	= sizeof(net_addr_ip6),

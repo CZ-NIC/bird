@@ -147,7 +147,6 @@ typedef union net_addr_union {
 } net_addr_union;
 
 
-extern const char * const net_label[];
 extern const u16 net_addr_length[];
 extern const u8  net_max_prefix_length[];
 extern const u16 net_max_text_length[];

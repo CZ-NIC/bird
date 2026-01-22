@@ -332,6 +332,8 @@ void rt_refresh_begin(rtable *t, struct channel *c);
 void rt_refresh_end(rtable *t, struct channel *c);
 void rt_modify_stale(rtable *t, struct channel *c);
 void rt_schedule_prune(rtable *t);
+void rte_format(const struct rte *rte, buffer *buf);
+void rte_block_format(const struct rte *rte, buffer *buf);
 void rte_dump(struct dump_request *, rte *);
 void rte_free(rte *);
 rte *rte_do_cow(rte *);
@@ -472,10 +474,7 @@ typedef struct rta {
 					   protocol-specific metric is availabe */
 
 
-extern const char * rta_dest_names[RTD_MAX];
-
-static inline const char *rta_dest_name(uint n)
-{ return (n < RTD_MAX) ? rta_dest_names[n] : "???"; }
+#define rta_dest_name(d)  f_pretty_t_enum_rtd(d)
 
 /* Route has regular, reachable nexthop (i.e. not RTD_UNREACHABLE and like) */
 static inline int rte_is_reachable(rte *r)
