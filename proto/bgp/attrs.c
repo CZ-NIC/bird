@@ -119,6 +119,7 @@ bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintp
      } else {									  \
        s->err_withdraw = 1;							  \
      }										  \
+     return;									  \
   })
 
 #define UNSET(a) \
@@ -1509,17 +1510,11 @@ bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
     /* Reject routes from downstream if they are leaked */
     if (e && (p->cf->local_role == BGP_ROLE_PROVIDER ||
 	      p->cf->local_role == BGP_ROLE_RS_SERVER))
-    {
       INELIGIBLE("Route leak detected - OTC attribute from downstream");
-      return;
-    }
 
     /* Reject routes from peers if they are leaked */
     if (e && (p->cf->local_role == BGP_ROLE_PEER) && (e->u.data != p->cf->remote_as))
-    {
       INELIGIBLE("Route leak detected - OTC attribute with mismatched ASN (%u)", (uint)e->u.data);
-      return;
-    }
 
     /* Mark routes from upstream if it did not happened before */
     if (!e && (p->cf->local_role == BGP_ROLE_CUSTOMER ||
