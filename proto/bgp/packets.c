@@ -1586,7 +1586,7 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
   if (!a0)
   {
     /* Route update was changed to withdraw */
-    if (s->err_withdraw && s->reach_nlri_step && !s->err_ineligible)
+    if (s->err_withdraw && s->reach_nlri_step)
       REPORT("Invalid route %N withdrawn", n);
 
     /* Route withdraw */
