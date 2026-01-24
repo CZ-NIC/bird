@@ -379,7 +379,9 @@
     ARG(1, T_INT);
     ARG(2, T_INT);
     ARG(3, T_INT);
-    RESULT(T_LC, lc, [[(lcomm) { v1.val.i, v2.val.i, v3.val.i }]]);
+    lcomm *lc = falloc(sizeof(lcomm));
+    *lc = (lcomm) { v1.val.i, v2.val.i, v3.val.i };
+    RESULT(T_LC, lc, lc);
   }
 
   INST(FI_PATHMASK_CONSTRUCT, 0, 1) {
@@ -611,7 +613,10 @@
   INST(FI_LCLIST_FOR_NEXT, 3, 0) {
     NEVER_CONSTANT;
     ARG(1, T_LCLIST);
-    if (lc_set_walk(v1.val.ad, &v2.val.i, &v3.val.lc))
+    if (!v2.type)
+      v3.val.lc = falloc(sizeof(lcomm));
+
+    if (lc_set_walk(v1.val.ad, &v2.val.i, v3.val.lc))
       LINE(2,0);
 
     METHOD_CONSTRUCTOR("!for_next");
@@ -1121,13 +1126,13 @@
   METHOD_R(T_PAIR, data, T_INT, i, v1.val.i & 0xFFFF);
 
   /* Get ASN part from the large community */
-  METHOD_R(T_LC, asn, T_INT, i, v1.val.lc.asn);
+  METHOD_R(T_LC, asn, T_INT, i, v1.val.lc->asn);
 
   /* Get data1 part from the large community */
-  METHOD_R(T_LC, data1, T_INT, i, v1.val.lc.ldp1);
+  METHOD_R(T_LC, data1, T_INT, i, v1.val.lc->ldp1);
 
   /* Get data2 part from the large community */
-  METHOD_R(T_LC, data2, T_INT, i, v1.val.lc.ldp2);
+  METHOD_R(T_LC, data2, T_INT, i, v1.val.lc->ldp2);
 
   /* Get minimum element from clist */
   METHOD_R(T_CLIST, min, T_PAIR, i, ({ u32 val = 0; int_set_min(v1.val.ad, &val); val; }));
@@ -1142,10 +1147,10 @@
   METHOD_R(T_ECLIST, max, T_EC, ec, ({ u64 val = 0; ec_set_max(v1.val.ad, &val); val; }));
 
   /* Get minimum element from lclist */
-  METHOD_R(T_LCLIST, min, T_LC, lc, ({ lcomm val = {}; lc_set_min(v1.val.ad, &val); val; }));
+  METHOD_R(T_LCLIST, min, T_LC, lc, ({ lcomm *val = falloc(sizeof *val); lc_set_min(v1.val.ad, val); val; }));
 
   /* Get maximum element from lclist */
-  METHOD_R(T_LCLIST, max, T_LC, lc, ({ lcomm val = {}; lc_set_max(v1.val.ad, &val); val; }));
+  METHOD_R(T_LCLIST, max, T_LC, lc, ({ lcomm *val = falloc(sizeof *val); lc_set_max(v1.val.ad, val); val; }));
 
   INST(FI_RETURN, 1, 0) {
     NEVER_CONSTANT;
@@ -1375,7 +1380,7 @@
     ARG(1, T_LCLIST);
     ARG(2, T_LC);
     METHOD_CONSTRUCTOR("add");
-    RESULT(T_LCLIST, ad, [[ lc_set_add(fpool, v1.val.ad, v2.val.lc) ]]);
+    RESULT(T_LCLIST, ad, [[ lc_set_add(fpool, v1.val.ad, *v2.val.lc) ]]);
   }
 
   INST(FI_LCLIST_ADD_LCLIST, 2, 1) {
@@ -1487,7 +1492,7 @@
     ARG(1, T_LCLIST);
     ARG(2, T_LC);
     METHOD_CONSTRUCTOR("delete");
-    RESULT(T_LCLIST, ad, [[ lc_set_del(fpool, v1.val.ad, v2.val.lc) ]]);
+    RESULT(T_LCLIST, ad, [[ lc_set_del(fpool, v1.val.ad, *v2.val.lc) ]]);
   }
 
   INST(FI_LCLIST_DELETE_LCLIST, 2, 1) {

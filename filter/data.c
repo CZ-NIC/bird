@@ -152,14 +152,21 @@ pm_format(const struct f_path_mask *p, buffer *buf)
 }
 
 static inline int
-lcomm_cmp(lcomm v1, lcomm v2)
+lcomm_cmp(lcomm *v1, lcomm *v2)
 {
-  if (v1.asn != v2.asn)
-    return (v1.asn > v2.asn) ? 1 : -1;
-  if (v1.ldp1 != v2.ldp1)
-    return (v1.ldp1 > v2.ldp1) ? 1 : -1;
-  if (v1.ldp2 != v2.ldp2)
-    return (v1.ldp2 > v2.ldp2) ? 1 : -1;
+  if (!v1 && !v2)
+    return 0;
+  if (!v1)
+    return 1;
+  if (!v2)
+    return -1;
+
+  if (v1->asn != v2->asn)
+    return (v1->asn > v2->asn) ? 1 : -1;
+  if (v1->ldp1 != v2->ldp1)
+    return (v1->ldp1 > v2->ldp1) ? 1 : -1;
+  if (v1->ldp2 != v2->ldp2)
+    return (v1->ldp2 > v2->ldp2) ? 1 : -1;
   return 0;
 }
 
@@ -408,7 +415,8 @@ lclist_match_set(const struct adata *list, const struct f_tree *set)
 
   v.type = T_LC;
   for (i = 0; i < len; i += 3) {
-    v.val.lc = lc_get(l, i);
+    lcomm lc = lc_get(l, i);
+    v.val.lc = &lc;
     if (find_tree(set, &v))
       return 1;
   }
@@ -502,9 +510,10 @@ lclist_filter(struct linpool *pool, const struct adata *list, const struct f_val
 
   v.type = T_LC;
   for (i = 0; i < len; i += 3) {
-    v.val.lc = lc_get(l, i);
+    lcomm lc = lc_get(l, i);
+    v.val.lc = &lc;
     /* pos && member(val, set) || !pos && !member(val, set),  member() depends on tree */
-    if ((tree ? !!find_tree(set->val.t, &v) : lc_set_contains(set->val.ad, v.val.lc)) == pos)
+    if ((tree ? !!find_tree(set->val.t, &v) : lc_set_contains(set->val.ad, lc)) == pos)
       k = lc_copy(k, l+i);
   }
 
@@ -543,7 +552,7 @@ val_in_range(const struct f_val *v1, const struct f_val *v2)
     return ec_set_contains(v2->val.ad, v1->val.ec);
 
   if ((v1->type == T_LC) && (v2->type == T_LCLIST))
-    return lc_set_contains(v2->val.ad, v1->val.lc);
+    return lc_set_contains(v2->val.ad, *v1->val.lc);
 
   if ((v1->type == T_STRING) && (v2->type == T_STRING))
     return patmatch(v2->val.s, v1->val.s);
@@ -632,7 +641,7 @@ val_format(const struct f_val *v, buffer *buf)
   case T_PAIR:	buffer_print(buf, "(%u,%u)", v->val.i >> 16, v->val.i & 0xffff); return;
   case T_QUAD:	buffer_print(buf, "%R", v->val.i); return;
   case T_EC:	ec_format(buf2, v->val.ec); buffer_print(buf, "%s", buf2); return;
-  case T_LC:	lc_format(buf2, v->val.lc); buffer_print(buf, "%s", buf2); return;
+  case T_LC:	lc_format(buf2, *v->val.lc); buffer_print(buf, "%s", buf2); return;
   case T_RD:	rd_format(v->val.rd, buf2, 1024); buffer_print(buf, "%s", buf2); return;
   case T_PREFIX_SET: trie_format(v->val.ti, buf); return;
   case T_SET:	tree_format(v->val.t, buf); return;

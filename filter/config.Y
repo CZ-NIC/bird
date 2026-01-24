@@ -240,8 +240,8 @@ f_new_lc_item(u32 f1, u32 t1, u32 f2, u32 t2, u32 f3, u32 t3)
   struct f_tree *t = f_new_tree();
   t->right = t;
   t->from.type = t->to.type = T_LC;
-  t->from.val.lc = (lcomm) {f1, f2, f3};
-  t->to.val.lc = (lcomm) {t1, t2, t3};
+  t->from.val.lc = cfg_store((lcomm) {f1, f2, f3});
+  t->to.val.lc = cfg_store((lcomm) {t1, t2, t3});
   return t;
 }
 
