@@ -150,9 +150,9 @@ ec_set_format(const struct adata *set, int from, byte *buf, uint size)
 }
 
 int
-lc_format(byte *buf, lcomm lc)
+lc_format(byte *buf, lcomm *lc)
 {
-  return bsprintf(buf, "(%u, %u, %u)", lc.asn, lc.ldp1, lc.ldp2);
+  return bsprintf(buf, "(%u, %u, %u)", lc->asn, lc->ldp1, lc->ldp2);
 }
 
 int

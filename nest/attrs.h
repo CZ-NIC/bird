@@ -217,7 +217,7 @@ enum isf_way {
 int int_set_format(const struct adata *set, enum isf_way way, int from, byte *buf, uint size) ACCESS_WRITE(4, 5);
 int ec_format(byte *buf, u64 ec);
 int ec_set_format(const struct adata *set, int from, byte *buf, uint size) ACCESS_WRITE(3, 4);
-int lc_format(byte *buf, lcomm lc);
+int lc_format(byte *buf, lcomm *lc);
 int lc_set_format(const struct adata *set, int from, byte *buf, uint size) ACCESS_WRITE(3, 4);
 int int_set_contains(const struct adata *list, u32 val);
 int ec_set_contains(const struct adata *list, u64 val);

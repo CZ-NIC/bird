@@ -206,7 +206,7 @@ TYPEDEF(T_RD, vpn_rd, rd) {
 }
 
 /* Path mask item for path mask constructors */
-TYPEDEF(T_PATH_MASK_ITEM, struct f_path_mask_item, bgpmask_item);
+TYPEDEF(T_PATH_MASK_ITEM, struct f_path_mask_item *, bgpmask_item);
 
 TYPEDEF(T_BYTESTRING, const struct adata *, bytestring) {
   TD_CF_NAME(Bytestring);
