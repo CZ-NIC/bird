@@ -325,6 +325,10 @@ struct f_val {
   enum f_type type;
   union f_val_long val;
 };
+
+static inline int val_is_ip4(const struct f_val *v)
+{ return (v->type == T_IP) && ipa_is_ip4(v->val.ip); }
+
 ]])
 
 TDX_SECTION(UNION, TDU_FUNCS)
@@ -500,6 +504,102 @@ MUTE')
 
 m4_define(`TD_STR',`TD_STR_BUF(buffer_print(_buf, $@))')
 
+# Comparison of two values of the same type.
+# The expression should be:
+#    0 if v1 == v2
+#   -1 if v1 < v2
+#    1 if v1 > v2
+#
+#     TD_COMPARE(expression)
+#
+#     Available macros:
+#	_t:	  the type enum
+#	_v1, _v2: the values
+
+TDU_FUNCS()m4_dnl
+int f_val_compare(const struct f_val *, const struct f_val *);
+#define F_CMP_ERROR 999
+MUTE
+
+TDQ_ALT
+TDX_SECTION(C, TDC_COMPARE, [[
+int
+f_val_compare(const struct f_val *v1, const struct f_val *v2)
+{
+  if (v1->type != v2->type)
+  {
+    if (v1->type == T_VOID)	/* Hack for else */
+      return -1;
+    if (v2->type == T_VOID)
+      return 1;
+
+    /* IP->Quad implicit conversion. TODO: make this more systematic. */
+    if ((v1->type == T_QUAD) && val_is_ip4(v2))
+      return uint_cmp(v1->val.i, ipa_to_u32(v2->val.ip));
+    if (val_is_ip4(v1) && (v2->type == T_QUAD))
+      return uint_cmp(ipa_to_u32(v1->val.ip), v2->val.i);
+
+    DBG( "Types do not match in val_compare\n" );
+    return F_CMP_ERROR;
+  }
+
+  enum f_type _t = v1->type;
+  switch (_t) {]],
+[[    default: return F_CMP_ERROR;
+  }
+}]])
+TDQ_STD
+
+m4_define(`TD_COMPARE',`m4_dnl
+TDC_COMPARE()m4_dnl
+[[#]]define _v1 (v1->val.TDL_TYPE_UNAME)
+[[#]]define _v2 (v2->val.TDL_TYPE_UNAME)
+    case TDL_TYPE_ENUM: return ($@);
+#undef _v1
+#undef _v2
+MUTE')
+
+# If comparison isn't available, we need to check at least sameness.
+# Returns true if same, otherwise false
+#
+#     TD_SAME(expression)
+#
+#     Available macros:
+#	_t:	  the type enum
+#	_v1, _v2: the values
+
+TDU_FUNCS()m4_dnl
+bool f_val_same(const struct f_val *, const struct f_val *);
+MUTE
+
+TDQ_ALT
+TDX_SECTION(C, TDC_SAME, [[
+bool
+f_val_same(const struct f_val *v1, const struct f_val *v2)
+{
+  int rc = f_val_compare(v1, v2);
+  if (rc != F_CMP_ERROR)
+    return !rc;
+
+  if (v1->type != v2->type)
+    return 0;
+
+  enum f_type _t = v1->type;
+  switch (_t) {]],
+[[    default: bug("Invalid type in val_same(): %x", _t);
+  }
+}]])
+TDQ_STD
+
+m4_define(`TD_SAME',`m4_dnl
+TDC_SAME()m4_dnl
+[[#]]define _v1 (v1->val.TDL_TYPE_UNAME)
+[[#]]define _v2 (v2->val.TDL_TYPE_UNAME)
+    case TDL_TYPE_ENUM: return ($@);
+#undef _v1
+#undef _v2
+MUTE')
+
 # Enum definition.
 #
 #     ENUMDEF(enum name, items...)
@@ -551,6 +651,7 @@ m4_dnl  log(L_BUG "Unknown value %d for ]]TDH_ENUM_CTYPE[[", val);
 TYPEDEF(TDL_ENUM_UC, TDL_ENUM_CTYPE, TDL_ENUM_CTYPE) m4_dnl	Declare this enum type as a config/filter type
 TD_SET_MEMBER[[]]m4_dnl						Enums may be in sets
 TD_STR("%s", f_str_[[]]TDL_ENUM_LC[[(_v)]]);m4_dnl		Display the enum as string
+TD_COMPARE(uint_cmp(_v1, _v2));m4_dnl				Compare the values as integers
 TD_ENUM_ITEMS($@)m4_dnl						Process the enum items if declared
 TDY_TYPE()type: ENUM m4_translit($1,a-z,A-Z) { $$ = TDL_ENUM_UC; } ;
 MUTE')

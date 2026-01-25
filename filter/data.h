@@ -82,20 +82,16 @@ struct f_lval {
 };
 
 
-#define F_CMP_ERROR 999
-
 const char *f_type_name(enum f_type t);
 enum f_type f_type_element_type(enum f_type t);
 struct sym_scope *f_type_method_scope(enum f_type t);
 
-int val_same(const struct f_val *v1, const struct f_val *v2);
-int val_compare(const struct f_val *v1, const struct f_val *v2);
+#define val_same(v1, v2) f_val_same(v1, v2)
+#define val_compare(v1, v2) f_val_compare(v1, v2)
 #define val_format(val, buf)  f_val_str(val, buf)
 char *val_format_str(struct linpool *lp, const struct f_val *v);
 const char *val_dump(const struct f_val *v);
 
-static inline int val_is_ip4(const struct f_val *v)
-{ return (v->type == T_IP) && ipa_is_ip4(v->val.ip); }
 int val_in_range(const struct f_val *v1, const struct f_val *v2);
 
 const struct adata *clist_filter(struct linpool *pool, const struct adata *list, const struct f_val *set, int pos);

@@ -9,6 +9,7 @@
 
 TYPEDEF(T_VOID, void, void) {
   TD_STR("(void)");
+  TD_COMPARE(0);
 }
 
 TYPEDEF(T_NONE, void, none) {}
@@ -18,21 +19,25 @@ TYPEDEF(T_INT, uint, int) {
   TD_SET_MEMBER;
   TD_EA(EAF_TYPE_INT);
   TD_STR("%u", _v);
+  TD_COMPARE(uint_cmp(_v1, _v2));
 }
 
 TYPEDEF(T_BOOL, uint, bool) {
   TD_CF_NAME(Boolean);
   TD_STR(_v ? "true" : "false");
+  TD_COMPARE(uint_cmp(_v1, _v2));
 }
 
 TYPEDEF(T_PAIR, uint, pair) {
   TD_SET_MEMBER;
   TD_STR("(%u,%u)", _v >> 16, _v & 0xffff);
+  TD_COMPARE(uint_cmp(_v1, _v2));
 }
 TYPEDEF(T_QUAD, uint, quad) {
   TD_SET_MEMBER;
   TD_EA(EAF_TYPE_ROUTER_ID);
   TD_STR("%R", _v);
+  TD_COMPARE(uint_cmp(_v1, _v2));
 }
 
 /* This should be per partes in protocols */
@@ -144,58 +149,68 @@ TYPEDEF(T_IP, ip_addr, ip) {
   TD_SET_MEMBER;
   TD_EA(EAF_TYPE_IP_ADDRESS);
   TD_STR("%I", _v);
+  TD_COMPARE(ipa_compare(_v1, _v2));
 }
 
 TYPEDEF(T_NET, const net_addr *, prefix) {
   TD_INCLUDE(lib/net.h)
   TD_CF_NAME(Network);
   TD_STR("%N", _v);
+  TD_COMPARE(net_compare(_v1, _v2));
 }
 
 TYPEDEF(T_STRING, const char *, string) {
   TD_CF_NAME(String);
   TD_EA(EAF_TYPE_STRING);
   TD_STR("%s", _v);
+  TD_COMPARE(strcmp(_v1, _v2));
 }
 
 /* mask for BGP AS Path */
 TYPEDEF(T_PATH_MASK, const struct f_path_mask *, bgpmask) {
   TD_STR_BUF(pm_format(_v, _buf));
+  TD_SAME(pm_same(_v1, _v2));
 }
 
 /* BGP AS Path */
 TYPEDEF(T_PATH, const struct adata *, bgppath) {
   TD_EA(EAF_TYPE_AS_PATH);
   TD_STR("(path) [%s]", ( as_path_format(_v, _aux, 1000), _aux ));
+  TD_COMPARE(as_path_compare(_v1, _v2));
 }
 
 /* Community list */
 TYPEDEF(T_CLIST, const struct adata *, clist) {
   TD_EA(EAF_TYPE_INT_SET);
   TD_STR("(clist) [%s]", ( int_set_format(_v, 1, -1, _aux, 1000), _aux ));
+  TD_SAME(adata_same(_v1, _v2));
 }
 
 /* Extended community value, u64 */
 TYPEDEF(T_EC, u64, ec) {
   TD_STR("%s", ( ec_format(_aux, _v), _aux ));
+  TD_COMPARE(u64_cmp(_v1, _v2));
 }
 
 /* Extended community list */
 TYPEDEF(T_ECLIST, const struct adata *, eclist) {
   TD_EA(EAF_TYPE_EC_SET);
   TD_STR("(eclist) [%s]", ( ec_set_format(_v, -1, _aux, 1000), _aux ));
+  TD_SAME(adata_same(_v1, _v2));
 }
 
 /* Large community value, lcomm */
 TYPEDEF(T_LC, struct lcomm *, lc) {
   TD_INCLUDE(nest/attrs.h);
   TD_STR("%s", ( lc_format(_aux, _v), _aux ));
+  TD_COMPARE(lcomm_cmp(_v1, _v2));
 }
 
 /* Large community list */
 TYPEDEF(T_LCLIST, const struct adata *, lclist) {
   TD_EA(EAF_TYPE_LC_SET);
   TD_STR("(lclist) [%s]", ( lc_set_format(_v, -1, _aux, 1000), _aux ));
+  TD_SAME(adata_same(_v1, _v2));
 }
 
 /* Route distinguisher for VPN addresses */
@@ -203,36 +218,41 @@ TYPEDEF(T_RD, vpn_rd, rd) {
   TD_INCLUDE(lib/ip.h);
   TD_INCLUDE(lib/net.h);
   TD_STR("%s", ( rd_format(_v, _aux, 1000), _aux ));
+  TD_COMPARE(rd_compare(_v1, _v2));
 }
 
 /* Path mask item for path mask constructors */
-TYPEDEF(T_PATH_MASK_ITEM, struct f_path_mask_item *, bgpmask_item);
+TYPEDEF(T_PATH_MASK_ITEM, struct f_path_mask_item *, bgpmask_item) {
+  TD_SAME(pmi_same(_v1, _v2));
+}
 
 TYPEDEF(T_BYTESTRING, const struct adata *, bytestring) {
   TD_CF_NAME(Bytestring);
   TD_EA(EAF_TYPE_OPAQUE);
   TD_STR("%s", ( bstrbintohex(_v->data, _v->length, _aux, 1000, ':'), _aux ));
+  TD_SAME(adata_same(_v1, _v2));
 }
 
 TYPEDEF(T_ROUTE, struct rte *, route) {
   TD_INCLUDE(nest/route.h);
   TD_STR_BUF(rte_format(_v, _buf));
+  TD_SAME(_v1 == _v2);	/* TODO: Check whether this is right */
 }
 
 TYPEDEF(T_ROUTES_BLOCK, struct rte *, route set) {
   TD_INCLUDE(nest/route.h);
   TD_STR_BUF(rte_block_format(_v, _buf));
+  TD_SAME(_v1 == _v2);
 }
 
 TYPEDEF(T_SET, const struct f_tree *, set) {
   TD_INCLUDE(filter/tree.h);
   TD_STR_BUF(tree_format(_v, _buf));
+  TD_SAME(same_tree(_v1, _v2));
 }
 
 TYPEDEF(T_PREFIX_SET, const struct f_trie *, prefix set) {
   TD_INCLUDE(filter/trie.h);
   TD_STR_BUF(trie_format(_v, _buf));
+  TD_SAME(trie_same(_v1, _v2));
 }
-
-
-#endif

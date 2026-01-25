@@ -86,6 +86,9 @@ struct f_path_mask {
 };
 
 void pm_format(const struct f_path_mask *p, buffer *buf);
+int pm_same(const struct f_path_mask *m1, const struct f_path_mask *m2);
+int pmi_same(const struct f_path_mask_item *m1, const struct f_path_mask_item *m2);
+
 int as_path_match(const struct adata *path, const struct f_path_mask *mask);
 
 
@@ -207,6 +210,8 @@ static inline int lc_match(const u32 *l, int i, lcomm v)
 
 static inline u32 *lc_copy(u32 *dst, const u32 *src)
 { memcpy(dst, src, LCOMM_LENGTH); return dst + 3; }
+
+int lcomm_cmp(lcomm *v1, lcomm *v2);
 
 enum isf_way {
   ISF_NUMBERS,

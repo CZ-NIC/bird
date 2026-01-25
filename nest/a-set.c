@@ -187,6 +187,25 @@ lc_set_format(const struct adata *set, int from, byte *buf, uint bufsize)
 }
 
 int
+lcomm_cmp(lcomm *v1, lcomm *v2)
+{
+  if (!v1 && !v2)
+    return 0;
+  if (!v1)
+    return 1;
+  if (!v2)
+    return -1;
+
+  if (v1->asn != v2->asn)
+    return (v1->asn > v2->asn) ? 1 : -1;
+  if (v1->ldp1 != v2->ldp1)
+    return (v1->ldp1 > v2->ldp1) ? 1 : -1;
+  if (v1->ldp2 != v2->ldp2)
+    return (v1->ldp2 > v2->ldp2) ? 1 : -1;
+  return 0;
+}
+
+int
 int_set_contains(const struct adata *list, u32 val)
 {
   if (!list)

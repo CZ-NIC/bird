@@ -14,6 +14,7 @@
 #include "lib/unaligned.h"
 #include "lib/string.h"
 #include "filter/data.h"
+#include "filter/filter.h"
 
 // static inline void put_as(byte *data, u32 as) { put_u32(data, as); }
 // static inline u32 get_as(byte *data) { return get_u32(data); }
@@ -926,6 +927,49 @@ pm_format(const struct f_path_mask *p, buffer *buf)
   }
 
   buffer_puts(buf, "=]");
+}
+
+int
+pm_same(const struct f_path_mask *m1, const struct f_path_mask *m2)
+{
+  if (m1->len != m2->len)
+    return 0;
+
+  for (uint i=0; i<m1->len; i++)
+    if (!pmi_same(&(m1->item[i]), &(m2->item[i])))
+      return 0;
+
+  return 1;
+}
+
+int
+pmi_same(const struct f_path_mask_item *mi1, const struct f_path_mask_item *mi2)
+{
+  if (mi1->kind != mi2->kind)
+    return 0;
+
+  switch (mi1->kind) {
+    case PM_ASN:
+      if (mi1->asn != mi2->asn)
+	return 0;
+      break;
+    case PM_ASN_EXPR:
+      if (!f_same(mi1->expr, mi2->expr))
+	return 0;
+      break;
+    case PM_ASN_RANGE:
+      if (mi1->from != mi2->from)
+	return 0;
+      if (mi1->to != mi2->to)
+	return 0;
+      break;
+    case PM_ASN_SET:
+      if (!same_tree(mi1->set, mi2->set))
+	return 0;
+      break;
+  }
+
+  return 1;
 }
 
 
