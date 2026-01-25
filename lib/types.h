@@ -183,7 +183,7 @@ TYPEDEF(T_EC, u64, ec) {
 /* Extended community list */
 TYPEDEF(T_ECLIST, const struct adata *, eclist) {
   TD_EA(EAF_TYPE_EC_SET);
-  TD_STR("(clist) [%s]", ( ec_set_format(_v, -1, _aux, 1000), _aux ));
+  TD_STR("(eclist) [%s]", ( ec_set_format(_v, -1, _aux, 1000), _aux ));
 }
 
 /* Large community value, lcomm */
@@ -195,7 +195,7 @@ TYPEDEF(T_LC, struct lcomm *, lc) {
 /* Large community list */
 TYPEDEF(T_LCLIST, const struct adata *, lclist) {
   TD_EA(EAF_TYPE_LC_SET);
-  TD_STR("(clist) [%s]", ( lc_set_format(_v, -1, _aux, 1000), _aux ));
+  TD_STR("(lclist) [%s]", ( lc_set_format(_v, -1, _aux, 1000), _aux ));
 }
 
 /* Route distinguisher for VPN addresses */
