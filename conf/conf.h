@@ -107,6 +107,10 @@ extern linpool *cfg_mem;
 #define cfg_alloc(size) lp_alloc(cfg_mem, size)
 #define cfg_allocu(size) lp_allocu(cfg_mem, size)
 #define cfg_allocz(size) lp_allocz(cfg_mem, size)
+
+#define cfg_dup(...) lp_dup(cfg_mem, __VA_ARGS__)
+#define cfg_store(...)	lp_store(cfg_mem, __VA_ARGS__)
+
 char *cfg_strdup(const char *c);
 void cfg_copy_list(list *dest, list *src, unsigned node_size);
 

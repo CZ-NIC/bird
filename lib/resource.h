@@ -83,6 +83,14 @@ void lp_flush(linpool *);			/* Free everything, but leave linpool */
 void lp_save(linpool *m, lp_state *p);		/* Save state */
 void lp_restore(linpool *m, lp_state *p);	/* Restore state */
 
+#define lp_dup(lp, ptr) ({ \
+    typeof((ptr)) _target = lp_alloc((lp), sizeof *(ptr)); \
+    *_target = *(ptr); _target; })
+
+#define lp_store(lp, ...) ({ \
+    typeof(__VA_ARGS__) _lit = __VA_ARGS__; \
+    lp_dup((lp), &_lit); })
+
 extern _Thread_local linpool *tmp_linpool;	/* Temporary linpool autoflushed regularily */
 
 #define tmp_alloc(sz)	lp_alloc(tmp_linpool, sz)
@@ -91,6 +99,9 @@ extern _Thread_local linpool *tmp_linpool;	/* Temporary linpool autoflushed regu
 
 #define tmp_init(p)	tmp_linpool = lp_new_default(p)
 #define tmp_flush()	lp_flush(tmp_linpool)
+
+#define tmp_dup(ptr)	lp_dup(tmp_linpool, ptr)
+#define tmp_store(...)	lp_store(tmp_linpool, __VA_ARGS__)
 
 #define lp_new_default	lp_new
 
