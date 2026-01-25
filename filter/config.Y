@@ -245,6 +245,8 @@ f_new_lc_item(u32 f1, u32 t1, u32 f2, u32 t2, u32 f3, u32 t3)
   return t;
 }
 
+#define f_new_path_mask_item(...) f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = cfg_store((struct f_path_mask_item) __VA_ARGS__), });
+
 static inline struct f_inst *
 f_const_empty(enum f_type t)
 {
@@ -786,16 +788,16 @@ bgp_path:
  ;
 
 bgp_path_tail:
-   NUM bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .asn = $1, .kind = PM_ASN, }, }); $$->next = $2;  }
- | NUM DDOT NUM bgp_path_tail	{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .from = $1, .to = $3, .kind = PM_ASN_RANGE }, }); $$->next = $4; }
- | '[' ']' bgp_path_tail { $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .set = NULL, .kind = PM_ASN_SET }, }); $$->next = $3; }
+   NUM bgp_path_tail		{ $$ = f_new_path_mask_item({ .asn = $1, .kind = PM_ASN, }); $$->next = $2;  }
+ | NUM DDOT NUM bgp_path_tail	{ $$ = f_new_path_mask_item({ .from = $1, .to = $3, .kind = PM_ASN_RANGE }); $$->next = $4; }
+ | '[' ']' bgp_path_tail	{ $$ = f_new_path_mask_item({ .set = NULL, .kind = PM_ASN_SET }); $$->next = $3; }
  | '[' set_items ']' bgp_path_tail {
    if ($2->from.type != T_INT) cf_error("Only integer sets allowed in path mask");
-   $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .set = build_tree($2, true), .kind = PM_ASN_SET }, }); $$->next = $4;
+   $$ = f_new_path_mask_item({ .set = build_tree($2, true), .kind = PM_ASN_SET }); $$->next = $4;
  }
- | '*' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_ASTERISK }, }); $$->next = $2; }
- | '?' bgp_path_tail		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_QUESTION }, }); $$->next = $2; }
- | '+' bgp_path_tail 		{ $$ = f_new_inst(FI_CONSTANT, (struct f_val) { .type = T_PATH_MASK_ITEM, .val.pmi = { .kind = PM_LOOP }, }); $$->next = $2; }
+ | '*' bgp_path_tail		{ $$ = f_new_path_mask_item({ .kind = PM_ASTERISK }); $$->next = $2; }
+ | '?' bgp_path_tail		{ $$ = f_new_path_mask_item({ .kind = PM_QUESTION }); $$->next = $2; }
+ | '+' bgp_path_tail 		{ $$ = f_new_path_mask_item({ .kind = PM_LOOP }); $$->next = $2; }
  | bgp_path_expr bgp_path_tail	{ $$ = $1; $$->next = $2; }
  | 				{ $$ = NULL; }
  ;

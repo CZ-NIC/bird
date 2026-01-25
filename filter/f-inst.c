@@ -393,18 +393,18 @@
     for (uint i=0; i<whati->varcount; i++) {
       switch (vv(i).type) {
 	case T_PATH_MASK_ITEM:
-	  if (vv(i).val.pmi.kind == PM_LOOP)
+	  if (vv(i).val.pmi->kind == PM_LOOP)
 	  {
 	    if (i == 0)
 	      runtime("Path mask iterator '+' cannot be first");
 
 	    /* We want PM_LOOP as prefix operator */
 	    pm->item[i] = pm->item[i - 1];
-	    pm->item[i - 1] = vv(i).val.pmi;
+	    pm->item[i - 1] = *vv(i).val.pmi;
 	    break;
 	  }
 
-	  pm->item[i] = vv(i).val.pmi;
+	  pm->item[i] = *vv(i).val.pmi;
 	  break;
 
 	case T_INT:

@@ -94,7 +94,7 @@ struct f_val {
     const struct f_trie *ti;
     const struct adata *ad;
     const struct f_path_mask *path_mask;
-    struct f_path_mask_item pmi;
+    struct f_path_mask_item *pmi;
     struct rte *rte;
   } val;
 };

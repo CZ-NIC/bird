@@ -303,7 +303,7 @@ val_same(const struct f_val *v1, const struct f_val *v2)
   case T_PATH_MASK:
     return pm_same(v1->val.path_mask, v2->val.path_mask);
   case T_PATH_MASK_ITEM:
-    return pmi_same(&(v1->val.pmi), &(v2->val.pmi));
+    return pmi_same(v1->val.pmi, v2->val.pmi);
   case T_PATH:
   case T_CLIST:
   case T_ECLIST:
