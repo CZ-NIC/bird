@@ -163,6 +163,7 @@ struct bgp_config {
 
   int keep_invalid;
   int keep_ineligible;
+  int keep_unresolvable;
 };
 
 struct bgp_channel_config {
@@ -549,6 +550,7 @@ struct bgp_parse_state {
   uint err_subcode;
   uint err_invalid;
   uint err_ineligible;
+  uint err_unresolvable;
   struct buffer err_msg_buf;
   jmp_buf err_jmpbuf;
 

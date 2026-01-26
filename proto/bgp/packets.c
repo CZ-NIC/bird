@@ -1080,6 +1080,21 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
      return;									  \
   })
 
+#define UNRESOLVABLE(msg, args...)						  \
+  ({										  \
+     REPORT(msg, ## args);							  \
+     s->err_unresolvable = 1;							  \
+     ASSUME(s->err_msg_buf.start);						  \
+     if (s->proto->cf->keep_unresolvable) {					  \
+       memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);\
+       s->err_msg_buf.pos = s->err_msg_buf.start;				  \
+       buffer_print(&s->err_msg_buf, msg, ## args);				  \
+     } else {									  \
+       s->err_withdraw = 1;							  \
+     }										  \
+     return;									  \
+  })
+
 #define REJECT(msg, args...)						\
   ({ log(L_ERR "%s: " msg, s->proto->p.name, ## args); s->err_reject = 1; return; })
 
@@ -1113,9 +1128,11 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
       INVALID(BAD_NEXT_HOP " - zero address");
 
     if (!nbr)
+      // unresolvable
       INVALID(BAD_NEXT_HOP " - address %I not directly reachable", ipa_nonzero(gw) ? gw : ll);
 
     if (nbr->scope == SCOPE_HOST)
+      // unresolvable
       INVALID(BAD_NEXT_HOP " - address %I is local", nbr->addr);
 
     a->dest = RTD_UNICAST;
@@ -1438,6 +1455,7 @@ bgp_decode_next_hop_ip(struct bgp_parse_state *s, byte *data, uint len, rta *a)
     ad->length = 16;
 
   if ((bgp_channel_is_ipv4(c) != ipa_is_ip4(nh[0])) && !c->ext_next_hop)
+    // unresolvable
     INVALID(BAD_NEXT_HOP MISMATCHED_AF, nh[0], c->desc->name);
 
   // XXXX validate next hop
@@ -1529,6 +1547,7 @@ bgp_decode_next_hop_vpn(struct bgp_parse_state *s, byte *data, uint len, rta *a)
     bgp_parse_error(s, 9);
 
   if ((bgp_channel_is_ipv4(c) != ipa_is_ip4(nh[0])) && !c->ext_next_hop)
+    // unresolvable
     INVALID(BAD_NEXT_HOP MISMATCHED_AF, nh[0], c->desc->name);
 
   // XXXX validate next hop
@@ -1605,13 +1624,16 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
   rta *a = rta_clone(s->cached_rta);
   rte *e = rte_get_temp(a, s->last_src);
 
-  if (s->err_invalid || s->err_ineligible)
+  if (s->err_invalid || s->err_ineligible || s->err_unresolvable)
   {
     if (s->err_invalid)
       e->flags |= REF_INVALID;
 
     if (s->err_ineligible)
       e->flags |= REF_INELIGIBLE;
+
+    if (s->err_unresolvable)
+      e->flags |= REF_UNRESOLVABLE;
 
     size_t len = s->err_msg_buf.pos - s->err_msg_buf.start;
 
