@@ -1069,9 +1069,8 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   ({										  \
      REPORT(msg, ## args);							  \
      s->err_invalid = 1;							  \
-     ASSERT(s->err_msg_buf.start);						  \
+     ASSUME(s->err_msg_buf.start);						  \
      if (s->proto->cf->keep_invalid) {						  \
-       s->err_withdraw = 0;							  \
        memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);\
        s->err_msg_buf.pos = s->err_msg_buf.start;				  \
        buffer_print(&s->err_msg_buf, msg, ## args);				  \
