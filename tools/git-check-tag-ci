@@ -6,6 +6,9 @@ import requests
 import sys
 import zipfile
 
+artifacts = (sys.argv[1] != "--no-artifacts")
+ref = sys.argv[1] if artifacts else sys.argv[2]
+
 def load_api_request(name, query):
     timeout = 5
     while True:
@@ -45,7 +48,7 @@ def load_pipelines(sha):
 def load_jobs(pipeline):
     return load_paginated("jobs", f"/pipelines/{pipeline}/jobs/")
 
-for p in load_pipelines(sys.argv[1]):
+for p in load_pipelines(ref):
     if p['status'] in ("failed", "cancelled"):
         print(f"Pipeline {p['id']} {p['status']} at {p['web_url']}")
         failed = [ job for job in load_jobs(p['id']) if job['status'] == "failed" ]
@@ -81,9 +84,12 @@ for p in load_pipelines(sys.argv[1]):
                 print(f"\t{ job['name'] }:")
             for f in job['artifacts']:
                 if f['file_type'] == 'archive':
-                    with zipfile.ZipFile(io.BytesIO(load_api_request("metadata", f"/jobs/{job['id']}/artifacts/"))) as z:
-                        z.extractall()
+                    if artifacts:
+                        with zipfile.ZipFile(io.BytesIO(load_api_request("metadata", f"/jobs/{job['id']}/artifacts/"))) as z:
+                            z.extractall()
+                    else:
+                        print("\t\thas artifacts")
         exit(0)
 
-print("No suitable pipeline found, tag not OK")
+print(f"No suitable pipeline found for { ref }, tag not OK")
 exit(1)
