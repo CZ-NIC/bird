@@ -26,6 +26,8 @@ local entitytab = {
   tilde = "~";
   amp = "&";
   verbar = "|";
+  latex = "LaTeX";
+  tex = "TeX";
 }
 local entity = P"&" * C(P(1 - S"&;")^1) * P";" / function (t)
   local e = entitytab[t]
@@ -146,6 +148,7 @@ G = P{ "Pandoc",
     })
   end;
   Sect1Inside =
+    V"FunctionBlock" +
     V"Sect2" +
     V"Sect2Inside";
 
@@ -171,6 +174,7 @@ G = P{ "Pandoc",
     V"DescripList" +
     V"CodeBlock" +
     V"TableBlock" +
+    V"Comment" +
     blankchar + V"ParseFail";
 
   Para = P"<p>" * Ct(V"InPara") * P"</p>"^-1 / function (t)
@@ -193,6 +197,11 @@ G = P{ "Pandoc",
       V"FilePathShort" +
       V"RFCRef" +
       V"InternalRef" +
+      V"CodeStruct" +
+      V"CodeFunc" +
+      V"CodeConst" +
+      V"CodeType" +
+      V"CodeParam" +
       V"Comment" +
       (V"Label" / function (e) return pandoc.Span({}, { id = e }) end);
 
@@ -277,7 +286,10 @@ G = P{ "Pandoc",
 
   Emph = P"<em/" * ininline * P"/" / pandoc.Strong;
   Bold = P"<bf/" * ininline * P"/" / pandoc.Strong;
-  It = P"<it/" * ininline * P"/" / pandoc.Emph;
+  It = (
+    P"<it/" * ininline * P"/" +
+    P"<it>" * V"InPara" * P"</it>"
+  ) / pandoc.Emph;
   InlineCodeIt = (P"<m/" + P"<M/") * ininline * P"/" / function (e)
     return pandoc.Emph(e, { class = "code" })
   end;
@@ -343,15 +355,57 @@ G = P{ "Pandoc",
     return pandoc.Code(e, { class = "filepath" })
   end;
 
+  CodeStruct = P'<struct/' * ininline * P'/' / function (e)
+    return pandoc.Code("struct " .. e, { class = "ccode struct" })
+  end;
+
+  CodeFunc = P'<func/' * ininline * P'/' / function (e)
+    return pandoc.Code(e, { class = "ccode func" })
+  end;
+
+  CodeConst = (P'<const/' * ininline * P'/' + P'<const>' * inelement * P'</const>') / function (e)
+    return pandoc.Code(e, { class = "ccode const" })
+  end;
+
+  CodeType = P'<type>' * inelement * P'</type>' / function (t)
+    return pandoc.Code(t, { class = "ccode ctype" })
+  end;
+
+  CodeParam = (P'<param/' * ininline * P'/' + P'<param>' * inelement * P'</param>') / function (p)
+    return pandoc.Code(p, { class = "ccode cparam" })
+  end;
+
   Label = P'<label id="' * C((1 - P('"'))^0) * P'">';
 
   ItemList = P"<itemize>" * Ct((V"ItemListItem" + blankchar)^1) * P"</itemize>" / pandoc.BulletList;
   ItemListItem = P"<item>" * V"InPara";
 
-  DescripList = P"<descrip>" * Ct((V"DescripListItem" + blankchar)^1) * P"</descrip>" / pandoc.DefinitionList;
+  DescripList = P"<descrip>" * Ct((
+    V"DescripListItem" +
+    V"DescripListProgItem" +
+    V"DescripListShortItem" +
+    V"DescripListShortProgItem" +
+    blankchar)^1)
+    * P"</descrip>" / pandoc.DefinitionList;
+
   DescripListItem = P"<tag>" * V"Label" * V"InPara" * "</tag>" * (V"InDescrip" - P"<tag>" - P"</descrip>") / function (l,t,u)
 --    logging.temp("dli", t,u)
     return { pandoc.Span(t, { class = "code", id = l }), { u }}
+  end;
+
+  DescripListProgItem = P"<tagp>" * V"InPara" * "</tagp>" * (V"InDescrip" - P"<tagp>" - P"</descrip>") / function (t,u)
+--    logging.temp("dli", t,u)
+    return { pandoc.Span(t, { class = "code" }), { u }}
+  end;
+
+  DescripListShortItem = P"<tag/" * ininline * "/" * (V"InDescrip" - P"<tag" - P"</descrip>") / function (t,u)
+--    logging.temp("dli", t,u)
+    return { pandoc.Span(t, { class = "code" }), { u }}
+  end;
+
+  DescripListShortProgItem = P"<tagp/" * ininline * "/" * (V"InDescrip" - P"<tag" - P"</descrip>") / function (t,u)
+--    logging.temp("dli", t,u)
+    return { pandoc.Span(t, { class = "code" }), { u }}
   end;
 
   CodeBlock = P'<code>' * C((1 - P'</code>')^0) * P'</code>' / pandoc.CodeBlock;
@@ -433,6 +487,43 @@ G = P{ "Pandoc",
 	{{ body = tbody, attr = pandoc.Attr(), row_head_columns = 0, head = {} }},
 	pandoc.TableFoot()
       )
+  end;
+
+--  FunctionBlock = P'<function><p>' * V"CodeType" * blankmore * V"FunctionName" * blankmore * '(' * V"FunctionHeaderArgs" * ')' * inelement / function (t, n, h, inside)
+  FunctionBlock = P'<function><p>' * V"CodeType" * blankmore
+  * '<funcdef>' * inelement * '</funcdef>' * blankmore
+  * V"FunctionHeaderArgs" * P' --'^0 * Ct(V"InPara") * V"FunctionDescription" * "</function>" / function (t, n, ha, hshort, desc)
+--    logging.temp(t, n, ha, hshort, desc)
+--    logging.temp("desc is", desc)
+    return pandoc.Div(mergetables({
+      pandoc.Header(4, {t, " ", n, ha}, { id = "function-" .. n }),
+      pandoc.Span(mergetables(hshort), { class = "functionshortdesc" }),
+      mergetables(desc)
+    }), { class = "function" }
+  )
+  end;
+
+  FunctionName = P'<funcdef>' * ininline * P'</funcdef>' / pandoc.Str;
+
+  FunctionHeaderArg = V"CodeType"^0 * blankmore * V"CodeParam" / function (t, p)
+    return pandoc.Span({ t, p }, { class = "functionargument" })
+--    if #t then return pandoc.Span({ t[0], p }) else return pandoc.Span({ p }) end
+  end;
+
+  FunctionHeaderArgs = P'(' * Ct(( V"FunctionHeaderArg" * (P',' * blankmore)^0)^0) * P')' / function (a)
+    return pandoc.Span(mergetables({"(", a, ")"}), { class = "functionheaderargs" })
+  end;
+
+  FunctionDescription = Ct(V"FunctionDescSect"^0) / function (inside)
+    return mergetables(inside)
+  end;
+
+  FunctionDescSect = P'<funcsect>' * inelement * Ct((V"Sect3Inside" - P"<funcsect>" - P"</function>")^0) / function (name, inside)
+    return mergetables({
+      pandoc.Header(5, name, {}),
+      mergetables(inside),
+      "meow end of " .. name,
+    })
   end;
 
   ParseFail = (1 - P"<sect>" - P"<chapt>" - P"</book>") / function (t) return pandoc.CodeBlock("PARSER FAILED " .. t) end;

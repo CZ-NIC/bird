@@ -82,7 +82,7 @@
 # '|code|' - literal string
 
 # match expressions used to find embedded type information
-$type_constant = "\\\%(\\w+)";
+$type_constant = "(?<![|])\\\%(\\w+)";
 $type_func = "(\\w+\\(\\))";
 $type_param = "\\\@(\\w+)";
 $type_struct = "\\\&(\\w+)";

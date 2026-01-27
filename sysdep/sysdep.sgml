@@ -15,7 +15,7 @@ communication with the network stack differs from one OS to another,
 so we need at least some OS specific code. The good news is that this
 code is isolated in a small set of modules:
 
-<descrip>
+<p><descrip>
 <tagp><tt/config.h/</tagp> is a header file with configuration information,
 definition of the standard set of types and so on.
 <tagp/Startup module/ controls BIRD startup. Common for a family of OS's (e.g.,
