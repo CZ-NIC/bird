@@ -5,8 +5,10 @@
 -->
 
 <sect>Routing protocols
+<label id="routing-protocols">
 
 <sect1>Introduction
+<label id="routing-protocols-introduction">
 
 <p>The routing protocols are the bird's heart and a fine amount of code
 is dedicated to their management and for providing support functions to them.
@@ -42,6 +44,7 @@ configuration of protocols, please refer to the configuration chapter and also
 to the description of the <func/proto_commit/ function.
 
 <sect1>Protocol states
+<label id="routing-protocols-states">
 
 <p>As startup and shutdown of each protocol are complex processes which can be affected
 by lots of external events (user's actions, reconfigurations, behavior of neighboring routers etc.),
@@ -70,5 +73,6 @@ its state by calling the <func/proto_notify_state/ function.
 <p>At any time, the core code can ask the protocol to shut itself down by calling its stop() hook.
 
 <sect1>Functions of the protocol module
+<label id="routing-protocols-functions">
 
 <p>The protocol module provides the following functions:

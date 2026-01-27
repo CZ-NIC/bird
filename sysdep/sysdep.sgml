@@ -5,8 +5,10 @@
 -->
 
 <chapt>System dependent parts
+<label id="sysdep">
 
 <sect>Introduction
+<label id="sysdep-intro">
 
 <p>We've tried to make BIRD as portable as possible, but unfortunately
 communication with the network stack differs from one OS to another,

@@ -5,8 +5,10 @@
 -->
 
 <chapt>Resources
+<label id="resources">
 
 <sect>Introduction
+<label id="resources-introduction">
 
 <p>Most large software projects implemented in classical procedural
 programming languages usually end up with lots of code taking care

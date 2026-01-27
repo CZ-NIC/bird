@@ -580,7 +580,9 @@ sub output_intro_bird {
     # print out each section
     $lineprefix="   ";
     foreach $section (@{$args{'sectionlist'}}) {
-	print "<sect>$section\n<p>\n";
+	my $lbl = lc $section;
+	$lbl =~ tr/ /-/;
+	print "<sect>$section\n<label id=\"$lbl\"><p>\n";
 	output_highlight($args{'sections'}{$section});
     }
 

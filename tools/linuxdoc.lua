@@ -92,7 +92,7 @@ G = P{ "Pandoc",
   end;
 
   BookInside = V"Comment" + V"BookIgnored" + V"Title" + V"Author" + V"Date" + V"DocumentID" + V"Abstract" + V"Chapter" + blankchar + V"ParseFail";
-  BookIgnored = P"<toc>";
+  BookIgnored = P"<toc>" + P"<progdoc>";
   Book = P"<book>" * Ct(V"BookInside"^1) * P"</book>" / mergetables;
 
   Title = P"<title>" * inelement / function (t)
