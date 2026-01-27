@@ -82,7 +82,7 @@
 # '|code|' - literal string
 
 # match expressions used to find embedded type information
-$type_constant = "\\\%(\\w+)";
+$type_constant = "(?<![|])\\\%(\\w+)";
 $type_func = "(\\w+\\(\\))";
 $type_param = "\\\@(\\w+)";
 $type_struct = "\\\&(\\w+)";
@@ -205,7 +205,7 @@ while ($ARGV[0] =~ m/^-(.*)/) {
 # generate a sequence of code that will splice in highlighting information
 # using the s// operator.
 $dohighlight = "";
-foreach $pattern (keys %highlights) {
+foreach $pattern (sort keys %highlights) {
 #    print "scanning pattern $pattern ($highlights{$pattern})\n";
     $dohighlight .=  "\$contents =~ s:$pattern:$highlights{$pattern}:gs;\n";
 }
@@ -580,7 +580,9 @@ sub output_intro_bird {
     # print out each section
     $lineprefix="   ";
     foreach $section (@{$args{'sectionlist'}}) {
-	print "<sect>$section\n<p>\n";
+	my $lbl = lc $section;
+	$lbl =~ tr/ /-/;
+	print "<sect>$section\n<label id=\"$lbl\"><p>\n";
 	output_highlight($args{'sections'}{$section});
     }
 

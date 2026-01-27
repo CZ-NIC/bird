@@ -22,7 +22,7 @@
  * transport. Transport is a way how to wrap a communication with a cache
  * server. There is supported an unprotected TCP transport and an encrypted
  * SSHv2 transport. The SSH transport requires LibSSH library. LibSSH is
- * loading dynamically using |dlopen()| function. SSH support is integrated in
+ * loading dynamically using dlopen() function. SSH support is integrated in
  * |sysdep/unix/io.c|. Each transport must implement an initialization
  * function, an open function and a socket identification function. That's all.
  *
@@ -31,21 +31,21 @@
  * |tcp_transport.c| and |ssh_transport.c| from RTRlib.
  *
  * A RPKI-RTR connection is described by a structure &rpki_cache. The main
- * logic is located in |rpki_cache_change_state()| function. There is a state
+ * logic is located in rpki_cache_change_state() function. There is a state
  * machine. The standard starting state flow looks like |Down| ~> |Connecting|
  * ~> |Sync-Start| ~> |Sync-Running| ~> |Established| and then the last three
  * states are periodically repeated.
  *
  * |Connecting| state establishes the transport connection. The state from a
- * call |rpki_cache_change_state(CONNECTING)| to a call |rpki_connected_hook()|
+ * call rpki_cache_change_state(CONNECTING) to a call rpki_connected_hook()
  *
  * |Sync-Start| state starts with sending |Reset Query| or |Serial Query| and
- * then waits for |Cache Response|. The state from |rpki_connected_hook()| to
- * |rpki_handle_cache_response_pdu()|
+ * then waits for |Cache Response|. The state from rpki_connected_hook() to
+ * rpki_handle_cache_response_pdu()
  *
  * During |Sync-Running| BIRD receives data with IPv4/IPv6 Prefixes from cache
- * server. The state starts from |rpki_handle_cache_response_pdu()| and ends
- * in |rpki_handle_end_of_data_pdu()|.
+ * server. The state starts from rpki_handle_cache_response_pdu() and ends
+ * in rpki_handle_end_of_data_pdu().
  *
  * |Established| state means that BIRD has synced all data with cache server.
  * Schedules a refresh timer event that invokes |Sync-Start|. Schedules Expire
@@ -61,8 +61,8 @@
  *
  * The RPKI-RTR protocol (RFC 6810 bis) defines configurable refresh, retry and
  * expire intervals. For maintaining a connection are used timer events that
- * are scheduled by |rpki_schedule_next_refresh()|,
- * |rpki_schedule_next_retry()| and |rpki_schedule_next_expire()| functions.
+ * are scheduled by rpki_schedule_next_refresh(),
+ * rpki_schedule_next_retry() and rpki_schedule_next_expire() functions.
  *
  * A Refresh timer event performs a sync of |Established| connection. So it
  * shifts state to |Sync-Start|. If at the beginning of second call of a

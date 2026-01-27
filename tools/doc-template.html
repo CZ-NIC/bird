@@ -3,6 +3,12 @@
 {%- set template_part = "header" %}
 {%- set authors = [ $for(author-meta)$ "$author-meta$", $endfor$ ] %}
 {%- set meta_additional = { "author": authors, } %}
+{%- set ns = namespace(progdoc=False) %}
+{%- for v in releases -%}
+  {%- if "$bird_version$" == v.version -%}
+    {%- set ns.progdoc = ("progdoc" in v) -%}
+  {%- endif -%}
+{%- endfor -%}
 {%- include "main.html.j2" %}
 <!--<script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>-->
       <section class="bg-light bird-documentation">
@@ -13,17 +19,11 @@
 	    <div class="col-12 col-xl-6 col-lg-7">
 	      <h1 class="title">{{ title }}</h1>
 	      <div class="version-info pb-20 mb-20 border-bottom border-primary">
-		<h4>Version $bird_version$ | <a href="/download/bird-doc-$bird_version$.tar.gz">TGZ</a></h4>
+		<h4>Version $bird_version$ | <a href="/download/bird-doc-$bird_version$.tar.gz">TGZ</a>{% if ns.progdoc %} | <a href="/doc/prog-$bird_version$.html">ProgDoc</a>{% endif %}</h4>
 		Available versions:
 		{% for v in releases | reverse -%}
 		  {% if (v.type == 'current') or 'show_doc' in v %}
-		    <a href="
-		      {%- if "$bird_version$" == v.version -%}
-		      #
-		      {%- else -%}
-		      /doc/bird-{{ v.version }}.html
-		      {%- endif -%}
-		      " style="{% if v.type == 'current' %}font-weight: bold;{% endif %}">
+		    <a href="/doc/bird-{{ v.version }}.html" style="{% if v.type == 'current' %}font-weight: bold;{% endif %}">
 		      {{- v.version -}}
 		    </a>
 		    {%- if not loop.last %} | {% endif -%}
