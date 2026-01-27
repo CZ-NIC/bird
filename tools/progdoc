@@ -36,7 +36,9 @@ sub process {
     if ($cmd eq "C") { process("$dir/$arg", "Doc"); }
     elsif ($cmd eq "H") {
       push @stack, "H";
-      print OUT "<chapt>$arg\n";
+      my $lbl = lc $arg;
+      $lbl =~ tr/ /-/;
+      print OUT "<chapt>$arg\n<label id=\"$lbl\">\n";
     } elsif ($cmd eq "S") {
       print "    $arg\n";
       my @files = map("$dir/$_", split(' ', $arg));
