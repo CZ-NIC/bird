@@ -304,7 +304,12 @@ alloc_page(void)
   ajlog(ptr, NULL, 0, AJT_ALLOC_MMAP);
 
   for (int i=1; i<ALLOC_PAGES_AT_ONCE; i++)
-    free_page(ptr + page_size * i);
+#if DEBUGGING
+    if (i & 1)
+      mprotect(ptr + page_size * i, page_size, PROT_NONE);
+    else
+#endif
+      free_page(ptr + page_size * i);
 
   return ptr;
 #endif
