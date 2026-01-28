@@ -853,7 +853,7 @@ get_generic_attr(const eattr *a, byte **buf, int buflen)
     return GA_FULL;
 
   case EA_INELIGIBILITY_REASON:
-    *buf += bsprintf(*buf, "ineligibility reason");
+    *buf += bsprintf(*buf, "Ineligibility reason");
     *(*buf)++ = ':';
     *(*buf)++ = ' ';
     *buf += bsprintf(*buf, "%s", a->u.ptr->data);
