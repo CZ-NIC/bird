@@ -23,7 +23,7 @@ $(o)%.sgml: $(s)%.sgml $(objdir)/.dir-stamp
 	sed 's#{{ VERSION }}#$(VERSION)#' <$< >$@
 
 $(o)%.html: $(o)%.sgml
-	cd $(dir $@) && $(toolsdir)/linuxdoc -B html --split=0 $(notdir $<)
+	cd $(dir $@) && $(toolsdir)/linuxdoc -B html $(notdir $<)
 
 ifeq ($(PANDOC),)
 $(o)%.md: $(o)%.sgml
