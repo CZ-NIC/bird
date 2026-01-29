@@ -47,3 +47,4 @@ RUN yum -y install \
 # Backported newer RPM macros, hoping that it stays there for some while until we drop CentOS 7 support
 RUN yum -y install \
 	ftp://ftp.icm.edu.pl/packages/linux-pbone/ftp5.gwdg.de/pub/opensuse/repositories/systemsmanagement:/Ardana:/8:/CentOS/CentOS_7.3/noarch/systemd-rpm-macros-3-5.2.noarch.rpm
+# meow
