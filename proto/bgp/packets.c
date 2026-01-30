@@ -2788,6 +2788,28 @@ bgp_rx_end_mark(struct bgp_parse_state *s, u32 afi)
     bgp_graceful_restart_done(c);
 }
 
+static void
+bgp_set_attr_ineligibility_reason(struct ea_list **to, struct linpool *lp, const struct buffer *buf)
+{
+  struct adata *a = lp_allocz(lp, sizeof(*a) + 128);
+  size_t len = buf->pos - buf->start;
+
+  if (len == 128)
+  {
+    memcpy(a->data, buf->start, 128);
+    a->data[127] = 0;
+    a->length = 128;
+  }
+  else
+  {
+    memcpy(a->data, buf->start, len);
+    a->data[len] = 0;
+    a->length = len + 1;
+  }
+
+  ea_set_attr_ptr(to, lp, EA_INELIGIBILITY_REASON, 0, EAF_TYPE_STRING, a);
+}
+
 static inline void
 bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_list *ea, byte *nh, uint nh_len)
 {
