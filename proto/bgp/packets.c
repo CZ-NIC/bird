@@ -1622,23 +1622,14 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
   rta *a = rta_clone(s->cached_rta);
   rte *e = rte_get_temp(a, s->last_src);
 
-  if (s->err_invalid || s->err_ineligible || s->err_unresolvable)
-  {
-    if (s->err_invalid)
-      e->flags |= REF_INVALID;
+  if (s->err_invalid)
+    e->flags |= REF_INVALID;
 
-    if (s->err_ineligible)
-      e->flags |= REF_INELIGIBLE;
+  if (s->err_ineligible)
+    e->flags |= REF_INELIGIBLE;
 
-    if (s->err_unresolvable)
-      e->flags |= REF_UNRESOLVABLE;
-
-    size_t len = s->err_msg_buf.pos - s->err_msg_buf.start;
-
-    /* Add error message as route attribute */
-    if (len)
-      ea_set_attr_data(&e->attrs->eattrs, s->pool, EA_INELIGIBILITY_REASON, 0, EAF_TYPE_STRING, s->err_msg_buf.start, len + 1);
-  }
+  if (s->err_unresolvable)
+    e->flags |= REF_UNRESOLVABLE;
 
   rte_update3(&s->channel->c, n, e, s->last_src);
 }
@@ -2833,8 +2824,18 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
     c->desc->decode_next_hop(s, nh, nh_len, a);
     bgp_finish_attrs(s, a);
 
+    if (!s->err_withdraw)
+    {
+      if (s->err_invalid || s->err_ineligible || s->err_unresolvable)
+      {
+        size_t len = s->err_msg_buf.pos - s->err_msg_buf.start;
+
+	if (len)
+	  bgp_set_attr_ineligibility_reason(&a->eattrs, s->pool, &s->err_msg_buf);
+      }
+    }
     /* Handle withdraw during next hop decoding */
-    if (s->err_withdraw)
+    else
       a = NULL;
   }
 
