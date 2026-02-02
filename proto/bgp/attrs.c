@@ -114,7 +114,7 @@ bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintp
      if (s->proto->cf->keep_ineligible) {					  \
        memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);\
        s->err_msg_buf.pos = s->err_msg_buf.start;				  \
-       buffer_print(&s->err_msg_buf, msg, ## args);				  \
+       s->err_written = buffer_print(&s->err_msg_buf, msg, ## args);		  \
      } else {									  \
        s->err_withdraw = 1;							  \
      }										  \

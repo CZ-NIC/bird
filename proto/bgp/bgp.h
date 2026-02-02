@@ -551,6 +551,7 @@ struct bgp_parse_state {
   uint err_invalid;
   uint err_ineligible;
   uint err_unresolvable;
+  int err_written;
   struct buffer err_msg_buf;
   jmp_buf err_jmpbuf;
 

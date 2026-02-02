@@ -1073,7 +1073,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
      if (s->proto->cf->keep_invalid) {						  \
        memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);\
        s->err_msg_buf.pos = s->err_msg_buf.start;				  \
-       buffer_print(&s->err_msg_buf, msg, ## args);				  \
+       s->err_written = buffer_print(&s->err_msg_buf, msg, ## args);		  \
      } else {									  \
        s->err_withdraw = 1;							  \
      }										  \
@@ -1088,7 +1088,7 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
      if (s->proto->cf->keep_unresolvable) {					  \
        memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);\
        s->err_msg_buf.pos = s->err_msg_buf.start;				  \
-       buffer_print(&s->err_msg_buf, msg, ## args);				  \
+       s->err_written = buffer_print(&s->err_msg_buf, msg, ## args);		  \
      } else {									  \
        s->err_withdraw = 1;							  \
      }										  \
@@ -2788,26 +2788,18 @@ bgp_rx_end_mark(struct bgp_parse_state *s, u32 afi)
     bgp_graceful_restart_done(c);
 }
 
-static void
-bgp_set_attr_ineligibility_reason(struct ea_list **to, struct linpool *lp, const struct buffer *buf)
+static inline void
+bgp_set_attr_ineligibility_reason(struct ea_list **to, struct linpool *lp, const struct buffer *buf, int written)
 {
-  struct adata *a = lp_allocz(lp, sizeof(*a) + 128);
-  size_t len = buf->pos - buf->start;
-
-  if (len == 128)
-  {
-    memcpy(a->data, buf->start, 128);
-    a->data[127] = 0;
-    a->length = 128;
-  }
+  if (written <= 0)
+    ;
   else
   {
-    memcpy(a->data, buf->start, len);
-    a->data[len] = 0;
-    a->length = len + 1;
+    struct adata *a = lp_allocz(lp, sizeof(*a) + written + 1);
+    memcpy(a->data, buf->start, written + 1);
+    a->length = written + 1;
+    ea_set_attr_ptr(to, lp, EA_INELIGIBILITY_REASON, 0, EAF_TYPE_STRING, a);
   }
-
-  ea_set_attr_ptr(to, lp, EA_INELIGIBILITY_REASON, 0, EAF_TYPE_STRING, a);
 }
 
 static inline void
@@ -2825,6 +2817,10 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
   s->last_id = 0;
   s->last_src = s->proto->p.main_source;
+
+  s->err_msg_buf.start = tmp_allocz(128);
+  s->err_msg_buf.pos = s->err_msg_buf.start;
+  s->err_msg_buf.end = s->err_msg_buf.start + 128;
 
   /*
    * IPv4 BGP and MP-BGP may be used together in one update, therefore we do not
@@ -2849,12 +2845,7 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
     if (!s->err_withdraw)
     {
       if (s->err_invalid || s->err_ineligible || s->err_unresolvable)
-      {
-        size_t len = s->err_msg_buf.pos - s->err_msg_buf.start;
-
-	if (len)
-	  bgp_set_attr_ineligibility_reason(&a->eattrs, s->pool, &s->err_msg_buf);
-      }
+	bgp_set_attr_ineligibility_reason(&a->eattrs, s->pool, &s->err_msg_buf, s->err_written);
     }
     /* Handle withdraw during next hop decoding */
     else
@@ -2895,10 +2886,6 @@ bgp_rx_update(struct bgp_conn *conn, byte *pkt, uint len)
     .pool = tmp_linpool,
     .as4_session = p->as4_session,
   };
-
-  s.err_msg_buf.start = tmp_allocz(128);
-  s.err_msg_buf.pos = s.err_msg_buf.start;
-  s.err_msg_buf.end = s.err_msg_buf.start + 128;
 
   /* Parse error handler */
   if (setjmp(s.err_jmpbuf))
