@@ -385,9 +385,9 @@ sl_alloc_from_page(slab *s, struct sl_head *h)
     {
       /* There are some zero bits in this part of the bitfield. */
       uint pos = u32_ctz(~used_bits);
-      if (ti->used_bits_ptr * 32 + pos >= s->objs_per_slab){ log("too far - i = %i, pos = %i, s->objs_per_slab = %i, s %x", ti->used_bits_ptr, pos, s->objs_per_slab, s);
+      if (ti->used_bits_ptr * 32 + pos >= s->objs_per_slab)
 	/* But too far, we don't have those objects! */
-	return NULL;}
+	return NULL;
 
       /* Set the one, claim the block */
       ti->used_bits_local[ti->used_bits_ptr] = ti->used_bits_local[ti->used_bits_ptr] | (1 << pos);
@@ -947,6 +947,7 @@ static void
 slab_free(resource *r)
 {
   /* At this point, only one thread manipulating the slab is expected */
+  log("slab freee");
   slab *s = (slab *) r;
   ev_postpone(&s->event_clean);
 
@@ -991,6 +992,7 @@ slab_free(resource *r)
     }
     free_page(s->thread_head_info);
   }
+  log("slab freed");
 }
 
 static void

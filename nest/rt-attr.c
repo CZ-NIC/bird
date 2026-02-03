@@ -232,7 +232,7 @@ static struct idm src_ids;
 static struct rte_src * _Atomic * _Atomic rte_src_global;
 static _Atomic uint rte_src_global_max;
 
-void ea_rehash(void*);
+static void ea_rehash(void*);
 
 static void
 rte_src_init(struct event_list *ev)
@@ -1520,17 +1520,76 @@ ea_append(ea_list *to, ea_list *what)
   return res;
 }
 
-
+/* ea_storage storing - multithread version
+ * ea_storages are saved in hash array (array of linked lists) stored in rta_hash table.
+ * Storages are added in ea_lookup_slow(), deleted in ea_storage_free() and array is
+ * rehashed in ea_rehash().
+ * 
+ * Ea_storages have usecounts and can be freed only after their usecount reaches zero.
+ * Once ea_storage has zero usecount, the usecount can not be increased and
+ * the ea_storage just waits to be freed.
+ * 
+ * There two ea_stor_arrays and one ponter to one of them in rta_hash_table. The pointer
+ * points to the currently used array. The other array just waits for next rehash.
+ * Before any lookup, adding or free the other array is checked. If it is set as well,
+ * we know rehash is running. (Right before switching the arrays in rehash, only the other array
+ * appear to exist for a tiny amount of time.)
+ * 
+ * lookup and add
+ * Before adding an ea_storage, we check if we already have it. We go through the linked list
+ * where we expect it. If it is not there, we try to swapthe current head of the linked list
+ * with the new ea_storage. Because looking for the storage runs in rcu readlock, we prepare
+ * the storage in advance. If it is not used, we delete it later. However, most of the time
+ * storages are found and preallocation is expensive. That is why we do not prealocate
+ * 
+ * the storage before the first look up.
+ * If rehash is running, we simply look up for the storage in both old and new array. We
+ * add it then to the new array.
+ * 
+ * If we are not able to increase the usecount of the found ea_storage (because we can not
+ * increase already zero usecount), we try to add th ea_storage instead. If we fail to add
+ * a storage to the linked list (because someone else add or removed the head of the linked list)
+ * we repeat the lookup loop for one more time. If this is the fourth lookup, we take the risk that
+ * we might add the ea_storage for the second time and keep adding until success.
+ * 
+ * free
+ * To free an ea_storage, integer on corresponding place in running_delete array is increased. If it
+ * was higher than zero, some other thread is performing free or rehash on the linked list
+ * our ea_storage is in. In that case, that thread will do our work. If it was zero, we have to
+ * remove all ea_storages with zero usecount from the linked list.
+ * 
+ * The whole cleaning is done with rcu readlock locked to avoid races with rehash. Races with adding
+ * might occur only if we are removing the first head. In that case, we simply reload the head.
+ * 
+ * In cleanup, deleted ea_storages are not freed immediatelly, but deffered to be sure no one
+ * still has pointer on them. They are finally freed in ea_finally_free().
+ * 
+ * rehash
+ * Rehash prepares new ea_stor_array, sets all integers in runing_delete to ones and sets its order.
+ * Then it waits until all threads leave their old rcu locks. Then it rehashes all of the linked
+ * lists with ea_storages. It goes from the tail to the head to make sure lookup loop can allways
+ * find any of the ea_storages. Then running_delete field is checked and all integers are lowered
+ * by one. If needed (i. e. some other thread tried to enter cleanup) the cleanup on that linked
+ * list is performed. Then ea_sor_arrays are swapt and the old one is freed.
+ * 
+ * Race with free is not possible, because we marked ourselves as cleaners in advance. When race
+ * with add occur (both add and rehash are adding head to the same place), we simply reload
+ * the head and try again. For the adding site it is no difference than racing with an other add.
+ * 
+ * Two rehashes can never occure, because only one thread can run it.
+*/
 struct ea_stor_array {
-  struct ea_storage *_Atomic *eas;
-  _Atomic uint order;
+  struct ea_storage *_Atomic *eas; /* hash array of ea_storages */
+  u16 _Atomic *running_delete; /* array of the same size as eas marking linked lists with running cleaning */
+  _Atomic uint order; /* eas size is 1 << order. If not zero, whole struct is considered set and valid. */
 };
 
 struct hash_head {
-  struct ea_stor_array *_Atomic cur;
+  struct ea_stor_array *_Atomic cur; /* Pointer to currently used ea_stor_array (esa1 or esa2).
+                                      * The second will be used after rehash */
   struct ea_stor_array esa1;
   struct ea_stor_array esa2;
-  _Atomic uint count;
+  _Atomic uint count; /* Number of stored ea_storages */
   pool *pool;
   struct event_list *ev_list;
   event rehash_event;
@@ -1547,14 +1606,23 @@ ea_increment_table_count(uint order)
     ev_send(rta_hash_table.ev_list, &rta_hash_table.rehash_event);
 }
 
+static void
+ea_decrement_table_count(uint order)
+{
+  int count = atomic_fetch_sub_explicit(&rta_hash_table.count, 1, memory_order_relaxed);
+  ASSERT_DIE(count > 0);
+
+  if (count < 1 << (order +1) && order > 1 << 28)
+    ev_send(rta_hash_table.ev_list, &rta_hash_table.rehash_event);
+}
+
+/* Lookup for ea_storage in given linked_list in hash array */
 static struct ea_storage *
 ea_walk_chain_for_storage(struct ea_storage *eap_first_next, ea_list *o, u32 squash_upto, uint h)
 {
-  //log("ea_walk_chain_for_storage");
   for (struct ea_storage *eap = eap_first_next; eap;
       eap = atomic_load_explicit(&eap->next_hash, memory_order_acquire))
   {
-    //log("eap %x", eap);
     if (
       (h == eap->hash_key) && ea_same(o, eap->l) &&
           BIT32_TEST(&squash_upto, eap->l->stored))
@@ -1563,18 +1631,10 @@ ea_walk_chain_for_storage(struct ea_storage *eap_first_next, ea_list *o, u32 squ
   return NULL;
 }
 
-ea_list *
-ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
+/* Allocating and preparing ea_storage before storing in rta_hash_table */
+static struct ea_storage*
+ea_alloc_bef_store(ea_list *o, enum ea_stored oid, uint h)
 {
-  ASSERT(o->stored != oid);
-  ASSERT(oid);
-  o = ea_normalize(o, squash_upto);
-  uint h = ea_hash(o);
-
-  squash_upto |= BIT32_VAL(oid);
-
-  /* We are about to go to critical section. Allocate the storage now.
-   * If it is not used, we will free it later. */
   struct ea_storage *r_new = NULL;
   uint elen = ea_list_size(o);
   uint sz = elen + sizeof(struct ea_storage);
@@ -1582,7 +1642,6 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
     if (sz <= ea_slab_sizes[i])
     {
       r_new = sl_alloc(ea_slab[i]);
-      //log("alloc %x", r_new);
       break;
     }
 
@@ -1593,7 +1652,6 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
     RTA_LOCK;
     r_new = mb_alloc(rta_pool, sz);
     RTA_UNLOCK;
-    //log("mb alloc %i", r_new);
   }
 
   ea_list_copy(r_new->l, o, elen);
@@ -1602,226 +1660,275 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
   r_new->l->stored = oid;
   r_new->hash_key = h;
   atomic_store_explicit(&r_new->uc, 1, memory_order_relaxed);
+  return r_new;
+}
 
-  /* The storage is ready to be added if needed. */
+/* Try find and ref given ea_list in rta_hash_table, or store it if not found.
+ * Lookup is done in up to four passes:
+ * 0) Not allocating anything, only try to find given ea_list. If not found, (or
+ *    found, but with already zero usecount), pass fail. We do this because allocating
+ *    too often slows the slab. Besides, most of the lookups is expected to do find
+ *    the eattr.
+ * 1) Allocate the ea_storage in advance, because we do not want to do that
+ *    in the critical section. Try to find the ea_list again, if not found, try 
+ *    to add it. If somebody added od removed the head of linked list with given hash,
+ *    next pass will be proceed.
+ * 2) Storage already allocated, try to find and add.
+ * 3) Storage still allocated. If eattr not found, just keep inserting the ea_storage
+ *    until success. This might result in duplicates, but we have spend too much time here.*/
+ea_list *
+ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
+{
+  ASSERT(o->stored != oid);
+  ASSERT(oid);
+  o = ea_normalize(o, squash_upto);
+  uint h = ea_hash(o);
 
+  squash_upto |= BIT32_VAL(oid);
+
+  struct ea_storage* r_new;
   struct ea_storage *r_found = NULL;
 
-  lookup_loop:
-  rcu_read_lock();
-    struct ea_stor_array *cur = atomic_load_explicit(&rta_hash_table.cur, memory_order_acquire);
-    struct ea_stor_array *next = (cur == &rta_hash_table.esa1)? &rta_hash_table.esa2 : &rta_hash_table.esa1; //maybe it would be more effective if we load it later
-    uint cur_order = atomic_load_explicit(&cur->order, memory_order_relaxed);
-    uint in = h >> (32 - cur_order);
+  for (int lookups = 0; lookups <= 3; lookups++)
+  {
+    /* For the first time, we hope for finding and we do not want prealocated r_new.
+     * We allocate it in the second pass and later we will already have it. */
+    if (lookups == 1)
+      r_new = ea_alloc_bef_store(o, oid, h);
 
-    struct ea_storage *eap_first = NULL;
-    struct ea_storage *eap_first_next = NULL;
+    rcu_read_lock(); /* We need to stay locked for the whole time we use cur and next. */
+      struct ea_stor_array *cur = atomic_load_explicit(&rta_hash_table.cur, memory_order_acquire);
+      /* Find out if cur is esa1 or esa2 - the next is the other one. */
+      struct ea_stor_array *next = (cur == &rta_hash_table.esa1)? &rta_hash_table.esa2 : &rta_hash_table.esa1;
+      uint cur_order = atomic_load_explicit(&cur->order, memory_order_relaxed);
+      uint in = h >> (32 - cur_order);
 
-    /* Actualy search for the ea_storage - maybe we already have it */
+      struct ea_storage *eap_first = NULL;
+      struct ea_storage *eap_first_next = NULL;
 
-    if (cur_order)
-    {
-      eap_first = atomic_load_explicit(&cur->eas[in], memory_order_acquire);
-
-      r_found = ea_walk_chain_for_storage(eap_first, o, squash_upto, h);
-    }
-    /* Maybe rehashing is running right now. Lets check it. */
-    uint next_order = atomic_load_explicit(&next->order, memory_order_relaxed);
-    uint next_in = h >> (32 - next_order);
-
-    if (r_found == NULL && next_order)
-    {
-      eap_first_next = atomic_load_explicit(&next->eas[next_in], memory_order_acquire);
-
-      r_found = ea_walk_chain_for_storage(eap_first_next, o, squash_upto, h);
-    }
-
-    if (r_found)
-    {
-      /* We found out we already have a suitable ea_storage. Lets increment its use count */
-      u64 uc = atomic_load_explicit(&r_found->uc, memory_order_relaxed);
-      do
+      /* Actualy search for the ea_storage - maybe we already have it */
+      if (cur_order)
       {
-        if (uc == 0)
+        eap_first = atomic_load_explicit(&cur->eas[in], memory_order_acquire);
+
+        r_found = ea_walk_chain_for_storage(eap_first, o, squash_upto, h);
+      }
+      /* Maybe rehashing is running right now. Lets check it. */
+      /* next_* is loaded a bit in advance, because if we do not find eattr, we use the next_* later. */
+      uint next_order = atomic_load_explicit(&next->order, memory_order_relaxed);
+      uint next_in = h >> (32 - next_order);
+
+      if (r_found == NULL && next_order)
+      {
+        eap_first_next = atomic_load_explicit(&next->eas[next_in], memory_order_acquire);
+
+        r_found = ea_walk_chain_for_storage(eap_first_next, o, squash_upto, h);
+      }
+
+      if (r_found)
+      {
+        /* We found out we already have a suitable ea_storage. Lets increment its use count */
+        u64 uc = atomic_load_explicit(&r_found->uc, memory_order_relaxed);
+        /* Try to increase the use count. We are not alloved to increase zero use count */
+        while (uc && !atomic_compare_exchange_strong_explicit(
+            &r_found->uc, &uc, uc + 1,
+            memory_order_acq_rel, memory_order_acquire));
+
+        if (uc > 0)
         {
-          /* The found storage has zero use count. In that case, we are not longer allowed to increase it. */
+          /* Success */
           rcu_read_unlock();
-          goto lookup_loop;
+
+          if (lookups)
+          {
+            /* This was not the first iteration, we need to free new_r */
+            if (r_new->l->flags & EALF_HUGE)
+            {
+              RTA_LOCK;
+              mb_free(r_new);
+              RTA_UNLOCK;
+            } else
+              sl_free(r_new);
+          }
+
+          return r_found->l;
         }
-      } while (!atomic_compare_exchange_strong_explicit(
-          &r_found->uc, &uc, uc + 1,
-          memory_order_acq_rel, memory_order_acquire));
-
-      rcu_read_unlock();
-
-      /* we succesfully increased count, ea_storrage is ours */
-      /* free ea_storage we allocated earlier */
-      //log("i free %x", r_new);
-      if (huge)
+      } else if (!lookups)
       {
-        RTA_LOCK;
-        mb_free(r_new);
-        RTA_UNLOCK;
-      } else
-        sl_free(r_new);
-
-      return r_found->l;
-    }
+        /* We do not have prepared new ea_storage, need to reenter the loop and allocate one. */
+        rcu_read_unlock();
+        continue;
+      }
 
     /* suitable ea_storage not found, we need to add it */
+    int success;
+
     if (next_order)
     {
       /* Rehash is running, so we put the new storage to the new array */
-      atomic_store_explicit(&r_new->next_hash, eap_first_next, memory_order_release);
-      if (!atomic_compare_exchange_strong_explicit(
-              &next->eas[next_in], &eap_first_next, r_new,
-              memory_order_acq_rel, memory_order_acquire))
+      do
       {
-        /* Someone was quicker and added something. Maybe added the storage we are about to add, lets check out. */
+        atomic_store_explicit(&r_new->next_hash, eap_first_next, memory_order_release);
+        success = atomic_compare_exchange_strong_explicit(
+                &next->eas[next_in], &eap_first_next, r_new,
+                memory_order_acq_rel, memory_order_acquire);
+        /* If we fail to find or add the ea_storage more than twice, we will add it the hard way.
+         * This might cause adding the same eattr more than once, but it speeds up the process. */
+      } while (lookups > 2 && !success);
+
+      if (!success)
+      {
+        /* Someone was quicker and added something.*/
+        /* Maybe added the storage we are about to add, lets check out. */
         rcu_read_unlock();
-        goto lookup_loop;
+        continue;
       }
     } else
     {
-      atomic_store_explicit(&r_new->next_hash, eap_first, memory_order_release);
-      if (!atomic_compare_exchange_strong_explicit(
-              &cur->eas[in], &eap_first, r_new,
-              memory_order_acq_rel, memory_order_acquire))
+      do
       {
-        /* Someone was quicker and added something. Maybe added the storage we are about to add, lets check out. */
-        rcu_read_unlock();
-        goto lookup_loop;
+        atomic_store_explicit(&r_new->next_hash, eap_first, memory_order_release);
+        success = atomic_compare_exchange_strong_explicit(
+                &cur->eas[in], &eap_first, r_new,
+                memory_order_acq_rel, memory_order_acquire);
+      } while (lookups > 2 && !success);
+
+      if (!success)
+      {
+          /* Maybe someone added the storage we are about to add, lets check out. */
+          rcu_read_unlock();
+          continue;
+        }
       }
-    }
 
-  /* ea_storrage succesfully added */
-  rcu_read_unlock();
+    /* ea_storrage succesfully added */
+    rcu_read_unlock();
 
-  /* Increase the counter of stored ea_storages and check if we need rehash */
-  ea_increment_table_count(cur_order);
-  ea_list_ref(r_new->l);
-  return r_new->l;
+    /* Increase the counter of stored ea_storages and check if we need rehash */
+    ea_increment_table_count(cur_order);
+    ea_list_ref(r_new->l);
+    return r_new->l;
+  }
+
+  ASSERT_DIE(false);
+  return NULL;
 }
 
+/* In order to make freeing blocks in deffer more efficient, more ea_storage can
+ * be added to once deffered deffec_call. This is where we will add those storages. */
+_Thread_local struct deferred_call * deffered;
 
 static void
 ea_finally_free(struct deferred_call *dc)
 {
   /* Free an ea_storrage in defer call */
   SKIP_BACK_DECLARE(struct ea_finally_free_deferred_call, eafdc, dc, dc);
+  if (deffered == dc)
+    deffered = NULL;
 
   if (!rcu_end_sync(eafdc->phase))
   {
-    /* Somebody may still have the pointer of the storage, retry later */
+    /* Somebody may still have the pointer to a storage in dc, retry later */
     defer_call(dc, sizeof *eafdc);
     return;
   }
 
-  struct ea_storage *r = eafdc->attrs;
-  ASSERT_DIE(atomic_load_explicit(&r->uc, memory_order_relaxed) == 0);
-  ea_list_unref(r->l);
-
-  if (r->l->flags & EALF_HUGE)
+  for (int i = 0; i < eafdc->count; i++)
   {
-    RTA_LOCK;
-    mb_free(r);
-    RTA_UNLOCK;
-      //log("mb finally freeing %x", r);
+    struct ea_storage *r = eafdc->attrs[i];
+    ASSERT_DIE(atomic_load_explicit(&r->uc, memory_order_relaxed) == 0);
+    ea_list_unref(r->l);
+
+    if (r->l->flags & EALF_HUGE)
+    {
+      RTA_LOCK;
+      mb_free(r);
+      RTA_UNLOCK;
+    }
+    else
+      sl_free(r);
   }
-  else//{
-    sl_free(r);
-    //log("slab finally freeing %x", r);}
 }
 
-static struct ea_storage *
-ea_free_prepare(struct ea_stor_array *esa, struct ea_storage *r, uint order, bool *success)
+static void
+ea_cleaning_loop(struct ea_stor_array *esa,  uint in)
 {
-  /* Removes r from esa, returns NULL if nothing else needed, ea_storage if we need to remove the ea_storage.
-   * The use counter of this storage is already zero.
-   * (It might be the given storage if we were unsuccesful, or the storage previously pointing to it.) */
-
-  /* What are the golden rules here:
-   *   1) anyone can ADD ea_storage any time, BUT ONLY AS THE HEAD OF THE CHAIN - newer to the end, never anywhere in between
-   *   2) anyone can REMOVE any of the ea_storage, BUT ONLY IF HE SUCCEDED TO INCREASE THE USECOUNT OF THE PREVIOUS EA_STORAGE,
-   *      OR if it is the FIRST STORAGE in the chain
-   *   3) nobody can increase an already zero usecount.
-   *   4) and, obviously, if we increase an usecount, we have to make sure we will decrease it.
-   *   5) no reorder, only add or remove
+  /* Once we are here, we will clean everything at "in" position in given esa.
+   * No one else will perform cleaning or rehash until we leave.
+   *
+   * Access to this function is given only to the first thread which sets appropriet int
+   * in running_delete array from zero to one. Then, this thread looks for the first
+   * ea_storage to remove. It removes the ea_storage, lowers running_delete int for its position and
+   * checks if it was lowered to zero. If it is zero now, thread leaves the loop. If not,
+   * we know, that an other thread wanted to remove a ea_storage, tried to enter cleaning loop,
+   * failed and leaved. In that case, we need to clean the other ea_storage as well and we
+   * continue looking for storage to free.
+   *
+   * The only thing we trully do not want collide with is a rehash. That is why ea_storage_free
+   * is still keeping rcu_readlock when entering this function. Ea_rehash() waits for the lock
+   * and sets all running_delete ints to ones in advance before it enters.
    */
-  ASSERT_DIE(atomic_load_explicit(&r->uc, memory_order_acquire) == 0);
-  uint in = r->hash_key >> (32 - order);
-  struct ea_storage *eap = atomic_load_explicit(&esa->eas[in], memory_order_relaxed);
-  struct ea_storage *ea_old = NULL;
-
-  for (; eap; eap = atomic_load_explicit(&eap->next_hash, memory_order_acquire))
+  do
   {
-    //log("free %x, old %x, old uc %i", r, ea_old, ea_old ? ea_old->uc : 0);
-    if (eap == r)
+    /* Loading eap suffice when entering the linked list, because the only thing
+     * we can collide with is adding. */
+    struct ea_storage *eap = atomic_load_explicit(&esa->eas[in], memory_order_relaxed);
+    struct ea_storage *_Atomic *prev_ptr = &esa->eas[in];
+
+    for (; eap != NULL; eap = atomic_load_explicit(prev_ptr, memory_order_relaxed))
     {
-      /* We found the ea_storage, lets remove it */
-      struct ea_storage *ea_next = atomic_load_explicit(&r->next_hash, memory_order_acquire);
-      /* The ea_next can not be removed, because in order ot remove itself it would need to increment us. But we are already zero. */
-      //log("r %x, next %x (%i)", r, ea_next, ea_next ? ea_next->uc : 0);
-
-      if (ea_old == NULL)
+      /* One pass through ea_storage linked list. It is in do while, because someone might let us free
+       * an ea_storage from beggining of the linked list. */
+      if (eap->uc == 0)
       {
-        /* It is the first storage in chain */
-        struct ea_storage *compare_r = r; /* we don't want to update r */
-        if (!atomic_compare_exchange_strong_explicit(&esa->eas[in], &compare_r, ea_next,
-            memory_order_acq_rel, memory_order_acquire))
-        {
-          success[0] = false;
-        //  log("r %x, next %x (head changed)", r, atomic_load_explicit(&r->next_hash, memory_order_acquire));
-          ASSERT_DIE(ea_next == atomic_load_explicit(&r->next_hash, memory_order_acquire));
-          return r; /* Not success, somebody else added a storage. Lets try again.*/
+        struct ea_storage *next = atomic_load_explicit(&eap->next_hash, memory_order_relaxed);
+        /* removing the first item might result in race with adding */
+        struct ea_storage *eap_for_comp = eap;
+        if (atomic_compare_exchange_strong_explicit(prev_ptr, &eap_for_comp, next, memory_order_relaxed, memory_order_relaxed))
+        { /* This is no longer the first item, no race with adding (or anything else) */
+          atomic_store_explicit(&eap_for_comp->next_hash, next, memory_order_relaxed);
         }
-        success[0] = true;
-        ASSERT_DIE(ea_next == atomic_load_explicit(&r->next_hash, memory_order_acquire));
-        return NULL;
-      } else
-      {
-        u64 uc_prev;
-        /* Try to increase use count of the previous ea_storage (rule 2) */
-        uc_prev = atomic_load_explicit(&ea_old->uc, memory_order_acquire);
-        do
-        {
-          if (uc_prev == 0)
-          {
-            success[0] = false;
-            ASSERT_DIE(ea_next == atomic_load_explicit(&r->next_hash, memory_order_acquire));
-          //  log("previous has zero uc (r %x)", r);
-            return r;
-          }
-        } while (!atomic_compare_exchange_strong_explicit(&ea_old->uc, &uc_prev, uc_prev +1, memory_order_acq_rel, memory_order_acquire));
 
-        /* remove eap */
-        atomic_store_explicit(&ea_old->next_hash, ea_next, memory_order_release);
-        /* decrease increased use count of the previous storage */
-        uc_prev = atomic_fetch_sub_explicit(&ea_old->uc, 1, memory_order_release);
-        if (uc_prev == 1)
+        if (deffered)
         {
-          /* This was the last reference, we ned to remove the previous storage as well. */
-          //log("return previous to free %x", ea_old);
-          success[0] = true;
-          ASSERT_DIE(ea_next == atomic_load_explicit(&r->next_hash, memory_order_acquire));
-          return ea_old;
+          SKIP_BACK_DECLARE(struct ea_finally_free_deferred_call, def, dc, deffered);
+          def->attrs[def->count] = eap;
+          def->count++;
+          /* The deffer is now older than the last ea_storage. To prevent freeing too early,
+           * we shift the RCU phase. */
+          def->phase = rcu_begin_sync();
+
+          if (def->count == MAX_EAS_TO_DEFFER)
+            deffered = NULL; // it is full, next time we will set up new deffered
+        } else
+        {
+          struct ea_finally_free_deferred_call eafdc = {
+            .dc.hook = ea_finally_free,
+            .phase = rcu_begin_sync(), /* Asynchronous wait for RCU */
+            .count = 1,
+          };
+
+          eafdc.attrs[0] = eap;
+          deffered = defer_call(&eafdc.dc, sizeof(eafdc));
         }
-        success[0] = true;
-        ASSERT_DIE(ea_next == atomic_load_explicit(&r->next_hash, memory_order_acquire));
-        return NULL;
+
+        if (atomic_fetch_sub_explicit(&esa->running_delete[in], 1, memory_order_acq_rel) == 1)
+        {
+          /* Dobby is free! We cleaned everything we could, returning */
+          return;
+        }
+        /* Someone gave us more work to do, we have to continue */
       }
-    }
-    ea_old = eap;
-  }
-  success[0] = false;
-  return NULL;
+      else
+        prev_ptr = &eap->next_hash;
+    };
+  } while (true);
 }
 
 static void
 ea_storage_free(struct ea_storage *r)
 {
   u64 uc = atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel);
-  //log("ea_storage_free r %x, uc %i", r, uc);
 
   if (uc != 1)
   {
@@ -1830,95 +1937,41 @@ ea_storage_free(struct ea_storage *r)
     return;
   }
 
-  do
+  /* Usecount is zero now. The item needs to be removed. */
+  rcu_read_lock();
+  struct ea_stor_array *esa = atomic_load_explicit(&rta_hash_table.cur, memory_order_acquire);
+  struct ea_stor_array *next = (esa == &rta_hash_table.esa1)? &rta_hash_table.esa2 : &rta_hash_table.esa1;
+  uint order = atomic_load_explicit(&esa->order, memory_order_relaxed);
+  uint next_order = atomic_load_explicit(&next->order, memory_order_relaxed);
+
+  if (next_order)
   {
-    ASSERT_DIE(atomic_load_explicit(&r->uc, memory_order_acquire) == 0);
-    rcu_read_lock();
-      /* Find the storage in one of the stor arrays and remove it, so nobody will found it again */
-      struct ea_stor_array *cur = atomic_load_explicit(&rta_hash_table.cur, memory_order_acquire);
-      struct ea_stor_array *next = (cur == &rta_hash_table.esa1)? &rta_hash_table.esa2 : &rta_hash_table.esa1;
-      uint cur_order = atomic_load_explicit(&cur->order, memory_order_relaxed);
-      uint next_order = atomic_load_explicit(&next->order, memory_order_relaxed);
+    /* If there is new array, we do not longer need the old one.
+     * The old array is either already transferred or rehash is going to clean it.
+     */
+    esa = next;
+    order = next_order;
+  }
 
-      ASSERT_DIE(cur_order || next_order);
+  ASSERT_DIE(order);
+  ea_decrement_table_count(order);
 
-      /*
-        This is tricky part.
-          The eattr can be:
-                a) in cur only
-                b) in next only
-                c) in both of them, if we are doing rehash right now, next is subset of cur
-          One attempt to delete one eattr from an ea_stor_array (cur or next) may result in:
-                I) eattr not found - returns success false, next_to_free NULL
-                II) eattr found, but was not deleted (retry needed) - returns succes false, next_to_free original eattr
-                III) eattr found, deleted, but due to race we need to free previous eattr in linked list.
-                        this can not occur if we are deleting from cur and eattr fulfill c)
-                        - returns succes true, next_to_free previous eattr
-                IV) eattr found, deleted, nothing more needed - returns succes, next_to_free NULL
+  uint in;
+  in = r->hash_key >> (32 - order);
+  /* Increase the number of ea_storages needed to be removed. Only first freeing thread performs cleaning */
+  u16 cleaning_requests = atomic_fetch_add_explicit(&esa->running_delete[in], 1, memory_order_acq_rel);
 
-          And one more funny thing - the first moment we do rcu_read_unlock cur and next might switch or one of them might disappear.
-
-          Our strategy is try to delete eattr from cur and in case:
-                I) we need to delete it from next. Right now, without rcu_read_unlock,
-                       waiting for swaping next and cur might take longer time. However, if we don't succed, we reenter the do-while loop
-                       with the same configuration.
-                II) just make second attempt - reenter the do-while loop with the same configuration. We might need to deal with next array,
-                       but cur must be solved first.
-                III) We need to consider two cases:
-                       a) basic case - rehash is not running on this index - in this case, next can not contain eattr
-                              we can repeat do-while loop with the returned eattr
-                       b) rehash is running on this index - we can be sure the returned eattr is actually from next array - all eattrs in cur
-                              have their use counts artifically increased and thence there is no need to free them here.
-                              We can repeat do-while loop with the returned eattr, we are actually solving next already.
-                       -> repeat do-while loop with the returned eattr workes for both cases.
-                IV) Nice, but the deleted eattr might be the header of the next array. Plus, we can not be sure, if someone is not about
-                       replacing the next header at the time we are making this decision. Thus, we need to try to delete it from next
-                       as well. And, of course, right now without rcu_read_unlock.
-          Of course, if there is no next array, we will not use it. If case I, II or III occurs while solving next array, we will re-enter
-              do-while loop. We need to repeat all the steps, because reentering loop means refreshing rcu_read_lock.
-              (Not refreshing rcu_read_lock might cause deadlocks.)
-      */
-      bool cur_success = false;
-      bool next_success = false;
-      struct ea_storage *next_to_free = NULL;
-
-      if (cur_order)
-        next_to_free = ea_free_prepare(cur, r, cur_order, &cur_success);
-
-      if (!next_to_free && next_order) /* Yeah, the long comment results in that simple condition. */
-        next_to_free = ea_free_prepare(next, r, next_order, &next_success);
-
+  if (cleaning_requests > 0)
+  {
+    /* Someone is doing our work right now, no more help needed from us. */
     rcu_read_unlock();
-    
-    //if (next_to_free && next_to_free != r)
-      //log("next_to_free        %x", next_to_free);
+    return;
+  }
 
-    if ((cur_success || next_success) && r != next_to_free)
-    {
-      /* Consider if rehash is needed */
-      int count = atomic_fetch_sub_explicit(&rta_hash_table.count, 1, memory_order_relaxed);
-
-      u64 order = atomic_load_explicit(&cur->order, memory_order_relaxed);
-      if (count < 1 << (order - 1) && order > 28)
-        ev_send(rta_hash_table.ev_list, &rta_hash_table.rehash_event);
-
-      /* Schedule actual free of the storage */
-      ASSERT_DIE(atomic_load_explicit(&r->uc, memory_order_relaxed) == 0);
-      struct ea_finally_free_deferred_call eafdc = {
-       .dc.hook = ea_finally_free,
-       .phase = rcu_begin_sync(), /* Asynchronous wait for RCU */
-       .attrs = r,
-      };
-
-      defer_call(&eafdc.dc, sizeof(eafdc));
-    } else
-      ASSERT_DIE(next_to_free);
-    r = next_to_free;
-    if (r)
-      ASSERT_DIE(atomic_load_explicit(&r->uc, memory_order_acquire) == 0);
-  } while (r);
+  /* Now we are the cleaners. We will be cleaning as long as there is at least one remaining uc == 0,  */
+  ea_cleaning_loop(esa, in);
+  rcu_read_unlock();
 }
-
 
 void
 ea_free_deferred(struct deferred_call *dc)
@@ -1927,78 +1980,46 @@ ea_free_deferred(struct deferred_call *dc)
   ea_storage_free(r);
 }
 
-static uint
-ea_make_list_ours(struct ea_stor_array *esa, u64 esa_i)
+/* Recursively rehash one linked list. It needs to be nonstop accessible, thus
+ * we need to rehash it fom the end. It is not supposed to be too long.
+ */
+static void
+ea_rehash_item_rec(struct ea_storage *ea, struct ea_stor_array *next, u32 next_order)
 {
-  /* First, make sure the first item is ours */
-  struct ea_storage *eas_first = NULL;
-  u64 uc = 0;
+  if (!ea)
+    return;
+
+  struct ea_storage *next_ea = atomic_load_explicit(&ea->next_hash, memory_order_relaxed);
+  if (next_ea)
+  {
+    /* we need to solve this first */
+    ea_rehash_item_rec(next_ea, next, next_order);
+  }
+
+  uint next_in = ea->hash_key >> (32 - next_order); /* Position in the new array */
+  struct ea_storage *eap_first_next;
+
+  /* Store to the linked list in new array. There might be race with adding. */
   do
   {
-    rcu_read_lock();
-      eas_first = atomic_load_explicit(&esa->eas[esa_i], memory_order_acquire);
-      //log("get zero %x", eas_first);
+    struct ea_storage *eap_first_next = atomic_load_explicit(&next->eas[next_in], memory_order_acquire);
+    atomic_store_explicit(&ea->next_hash, eap_first_next, memory_order_release);
 
-      if (eas_first)
-      {
-        uc =  atomic_load_explicit(&eas_first->uc, memory_order_acquire);
-
-        /* We must be sure not to increment zero use count */
-        while (uc && !atomic_compare_exchange_strong_explicit(
-            &eas_first->uc, &uc, uc + 1,
-            memory_order_acq_rel, memory_order_acquire));
-      }
-
-    rcu_read_unlock();
-  } while (eas_first && !uc);
-
-
-  if (!eas_first)
-      return 0; // there is nothing at given index
-
-  /* Now, we have first stable point and can go further */ 
-  uint num_stor = 1;
-  struct ea_storage *eas_last_increased = eas_first;
-  struct ea_storage *eas_next = NULL;
-  do
-  {
-    rcu_read_lock();
-      eas_next = atomic_load_explicit(&eas_last_increased->next_hash, memory_order_acquire);
-      //log("eas_next %x", eas_next);
-
-      if (eas_next)
-      {
-        uc =  atomic_load_explicit(&eas_next->uc, memory_order_acquire);
-
-        /* We must be sure not to increment zero use count */
-        while (uc && !atomic_compare_exchange_strong_explicit(
-            &eas_next->uc, &uc, uc + 1,
-            memory_order_acq_rel, memory_order_acquire));
-
-        if (uc)
-        {
-          eas_last_increased = eas_next;
-          num_stor++;
-        }
-      }
-
-    rcu_read_unlock();
-  } while (eas_next);
-
-  return num_stor;
+  } while (!atomic_compare_exchange_strong_explicit(
+      &next->eas[next_in], &eap_first_next, ea,
+      memory_order_acq_rel, memory_order_acquire));
 }
 
-void
+static void
 ea_rehash(void * u UNUSED)
 {
-  //log("rehash start");
   struct ea_stor_array *cur = atomic_load_explicit(&rta_hash_table.cur, memory_order_relaxed);
   struct ea_stor_array *next = (cur == &rta_hash_table.esa1)? &rta_hash_table.esa2 : &rta_hash_table.esa1;
   u32 cur_order = atomic_load_explicit(&cur->order, memory_order_relaxed);
   ASSERT_DIE(atomic_load_explicit(&next->order, memory_order_relaxed) == 0);
 
   /* count new order */
-  int count = atomic_fetch_add_explicit(&rta_hash_table.count, 1, memory_order_relaxed);
+  int count = atomic_load_explicit(&rta_hash_table.count, memory_order_relaxed);
   u32 next_order = cur_order;
 
   while (count > 1 << (next_order + 1))
@@ -2006,7 +2027,6 @@ ea_rehash(void * u UNUSED)
   while (count < 1 << (next_order - 1) && next_order > 28)
     next_order--;
 
-  //log("rehash");
   if (next_order == cur_order)
     return;
 
@@ -2019,114 +2039,42 @@ ea_rehash(void * u UNUSED)
   RTA_LOCK;
   struct ea_storage *_Atomic * new_array =
       mb_allocz(rta_hash_table.pool, sizeof(struct ea_storage *_Atomic) * (1 << next_order));
+  next->running_delete = mb_alloc(rta_hash_table.pool, sizeof(_Atomic u16) * (1 << next_order));
   RTA_UNLOCK;
 
+  for (int i = 0; i < 1 << next_order; i++)
+    next->running_delete[i] = 1; /* Other threads will not perform cleaning before our rehashing and cleaning */
+
   next->eas = new_array;
+  /* Setting the order causes other threads to start noticing the new array  */
   atomic_store_explicit(&next->order, next_order, memory_order_release);
 
-  synchronize_rcu(); /* We need all threads working with ea_storages to know there is new array */
+  /* We need all threads working with ea_storages to know there is new array.
+   * Once threads notice new array, they add items only to the new array and
+   * do not remove any items from the old one. */
+  synchronize_rcu();
 
-
-  /* Move ea_storages from old array to new. */
-  /* Lookup is addind new ea_storages to new array, but we might collide with deleting */
-  /* We need to follow rules of working with ea_storage arrays:
-   *   1) anyone can ADD ea_storage any time, BUT ONLY AS THE HEAD OF THE CHAIN - newer to the end, never anywhere in between
-   *   2) anyone can REMOVE any of the ea_storage, BUT ONLY IF HE SUCCEDED TO INCREASE THE USECOUNT OF THE PREVIOUS EA_STORAGE,
-   *      OR if it is the FIRST STORAGE in the chain
-   *   3) nobody can increase an already zero usecount.
-   *   4) and, obviously, if we increase an usecount, we have to make sure we will decrease it.
-   *   5) no reorder, only add or remove
-  */
+  /* Rehash each linked list from old array to the new. */
   for (int i = 0; i < (1 << cur_order); i++)
   {
-    /* Safely grab first eattr and increase its use count (rules 2 and 3) */
-    uint num_stor = ea_make_list_ours(cur, i);
-    if (num_stor == 0)
-      continue;
-
-    struct ea_storage *local[num_stor];
-    struct ea_storage *ea_ptr = atomic_load_explicit(&cur->eas[i], memory_order_relaxed);
-    for (uint i = 0; i < num_stor; i++)
-    {
-      ASSERT_DIE(ea_ptr);
-      local[i] = ea_ptr;
-      /* We increased the use count for all of the eattrs in cur->eas[i], so we do not need to lock it again */
-      ea_ptr = atomic_load_explicit(&ea_ptr->next_hash, memory_order_relaxed);
-    }
-    ASSERT_DIE(!ea_ptr); /* Check the number of eattrs is correct. */
-
-    /* now nobody can do add or delete from our chain */
-    /* because each storage has to be possible to find at any time,
-     * we have to rehash them backwards. We put them to local array first.
-     */
-    for (int arr_i = num_stor - 1; arr_i >= 0; arr_i--)
-    {
-      //log("set i %i storage %x", arr_i, local[arr_i]);
-      struct ea_storage *ea = local[arr_i];
-      uint h_next = ea->hash_key >> (32 - next_order);
-      struct ea_storage *next_first;
-      rcu_read_lock(); /* We need to load next->eas[h_next] - that key might vanish if we do not lock */
-        do
-        {
-          next_first = atomic_load_explicit(&next->eas[h_next], memory_order_acquire);
-          atomic_store_explicit(&ea->next_hash, next_first, memory_order_release);
-        } while (!atomic_compare_exchange_strong_explicit(
-            &next->eas[h_next], &next_first, ea,
-            memory_order_acq_rel, memory_order_acquire));
-      rcu_read_unlock();
-      /* we increased use count to all storages in local array. For this storage, it is no more needed. */
-     // log("rehash free %x", ea);
-      ea_storage_free(ea);
-    }
+    ea_rehash_item_rec(atomic_load_explicit(&cur->eas[i], memory_order_relaxed), next, next_order);
+    cur->eas[i] = NULL;
   }
 
-  /* We are going to get rid of the old array, so we have to be sure nobody will touch it.
-   * That is why we first set the order of old field to zero (nobody will touch zero-length array)
-   * and then call synchronize_rcu (everybody will know old array is zero-length) */
-  atomic_store_explicit(&cur->order, 0, memory_order_release);
-  synchronize_rcu();
+  /* Cleaning was suspended for the rehash, we have to clean now. */
+  for (int i = 0; i < (1 << next_order); i++)
+    if (atomic_fetch_sub_explicit(&next->running_delete[i], 1, memory_order_acq_rel) != 1) /* Substract the one we added */
+      ea_cleaning_loop(next, i); /* Do cleaning if someone freed something when rehash run. */
+
+  atomic_store_explicit(&cur->order, 0, memory_order_relaxed);
+  atomic_store_explicit(&rta_hash_table.cur, next, memory_order_relaxed);
+
+  synchronize_rcu(); /* To make sure the next rehash can not start before this one is fully accepted. */
 
   RTA_LOCK;
   mb_free(cur->eas);
   RTA_UNLOCK;
   cur->eas = NULL;
-
-  /* Switch the cur pointer to the new array. From now, the new array is the currently used array. */
-  atomic_store_explicit(&rta_hash_table.cur, next, memory_order_relaxed);
-
-  struct ea_stor_array *cur_end = atomic_load_explicit(&rta_hash_table.cur, memory_order_relaxed);
-  struct ea_stor_array *next_end = (cur_end == &rta_hash_table.esa1)? &rta_hash_table.esa2 : &rta_hash_table.esa1;
-  ASSERT_DIE(atomic_load_explicit(&next_end->order, memory_order_relaxed) == 0);
-  ASSERT_DIE(atomic_load_explicit(&cur_end->order, memory_order_relaxed) != 0);
-  //log("rehash goes to last sync");
-
-  synchronize_rcu(); /* To make sure the next rehash can not start before this one is fully accepted. */
-
-#if 0
-  // this is for debug - shows full state of current ea_stor_array
-  for (int j = 0; j < 1<< atomic_load_explicit(&cur_end->order, memory_order_relaxed); j++)
-  {
-    log("%i             . . . %x",j,  cur_end->eas[j]);
-    if (cur_end->eas[j])
-    {
-    int count = 0;
-      struct ea_storage *old_eas = &count;
-      struct ea_storage *old_eas2 = &count;
-      struct ea_storage *eas = cur_end->eas[j];
-      for (; eas; eas = atomic_load_explicit(&eas->next_hash, memory_order_acquire)){
-        log("eas debuggg %x", eas);
-        ASSERT_DIE(eas!=old_eas);
-        ASSERT_DIE(eas!=old_eas2);
-        ASSERT_DIE(eas != &sentinel_rehash);
-        //log("suspicious count %x", eas);
-        old_eas2 = old_eas;
-        old_eas = eas;
-        ASSERT_DIE(atomic_load_explicit(&eas->uc, memory_order_relaxed) < 38791387);
-        }
-     }
-  }
-  log("rehashed");
-#endif
 }
 
 
@@ -2180,6 +2128,7 @@ void
 ea_show_list(struct cli *c, ea_list *eal)
 {
   ea_list *n = ea_normalize(eal, 0);
+
   for (int i  =0; i < n->count; i++)
     ea_show(c, &n->attrs[i]);
 }
@@ -2193,6 +2142,7 @@ ea_init_hash_table(pool *pool, struct event_list *ev_list)
   rta_hash_table.esa1.eas = mb_allocz(pool, sizeof(struct ea_storage *_Atomic ) * 1<<6);
   atomic_store_explicit(&rta_hash_table.esa1.order, 6, memory_order_relaxed);
   atomic_store_explicit(&rta_hash_table.esa2.order, 0, memory_order_relaxed);
+  rta_hash_table.esa1.running_delete = mb_allocz(rta_hash_table.pool, sizeof(_Atomic u16) * (1 << rta_hash_table.esa1.order));
   atomic_store_explicit(&rta_hash_table.cur, &rta_hash_table.esa1, memory_order_relaxed);
 }
 
