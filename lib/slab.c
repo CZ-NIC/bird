@@ -103,6 +103,8 @@
 #include "nest/bird.h"
 #include "lib/resource.h"
 #include "lib/io-loop.h"
+#include "lib/timer.h"
+#include "sysdep/unix/io-loop.h"
 
 
 #ifdef DEBUGGING
@@ -127,8 +129,8 @@ static void sl_thread_end(struct bird_thread_end_callback *);
  *	                        |                          (some blocks freed)
  *			   (pickup a head)			   |
  *				|				   v
- * Free page	  <---     slh_partial		<---       slh_pre_partial
- *     (cleanup: empty head)		(cleanup: move between lists)
+ * Free page	  <---     slh_partial		<--------------
+ *     (cleanup: empty head)
  */
 
 enum sl_head_state {
@@ -148,6 +150,13 @@ struct sl_head {
   _Atomic u32 used_bits[0];
 };
 
+struct sl_per_thread_info {
+  u16 used_bits_ptr; /* Pointer to used_bits_local - helps find free memory a bit faster */
+  u16 still_free; /*Number of certainly free chunks of memory */
+  struct sl_head * _Atomic head; /* Head from which is the thread allocating right now. */
+  u32 used_bits_local[0]; /* Zero bits mean certainly NOT used memory, one bits mean MAYBE used memory. */
+};
+
 
 /* These nodes must be the last nodes of full_heads and partial_heads linked lists, respectively.
  * We need these for sanity checks and for detecting collisions of alloc/free and cleanup. */
@@ -162,12 +171,12 @@ struct slab {
   resource r;
   uint obj_size, head_size, head_bitfield_len;
   uint objs_per_slab, data_size;
-  struct sl_head * _Atomic *threads_active_heads;	/* Array of thread-own heads */
   struct sl_head * _Atomic partial_heads;		/* Heads available for grabbing, list ended by &sl_dummy_last_partial */
   struct sl_head * _Atomic full_heads;			/* Full heads, list ended by &sl_dummy_last_full */
   event event_clean;					/* Cleanup event (The Hired Specialist TM) */
   struct event_list *cleanup_ev_list;			/* Schedule event_clean here */
   struct bird_thread_end_callback thread_end;		/* Gets called on thread end */
+  struct sl_per_thread_info **thread_head_info;         /* Originally there used to be just one head per thread. The rest is just a speedup hack. */
 };
 
 static struct resclass sl_class = {
@@ -185,6 +194,7 @@ static struct resclass sl_class = {
 #define SL_MAYBE_SET_STATE(head, expected_state, new_state) \
     ({ enum sl_head_state orig = expected_state; atomic_compare_exchange_strong_explicit(&head->state, &orig, new_state, memory_order_acq_rel, memory_order_acquire); })
 
+#define SL_CHECK(s) ASSERT_DIE(true) //sl_custom_check(s); // TODO: this can find bugs asap (just add reasonable asserts). Remove only after slab is OK for sure
 
 #if 0
 /* Please do not read this. This is awful and awfully expensive way of debugging. */
@@ -288,12 +298,12 @@ sl_new(pool *p, struct event_list *cleanup_ev_list, uint size)
   if (!s->objs_per_slab)
     bug("Slab: object too large");
 
-  /* We need a block holding the active head pointer for every thread separately */
+  /* We need a block holding the active head pointer for every thread separately.
+   * In order to be able to avoid write detele conflicts, the heads are stored in thread_head_info. */
   ASSERT_DIE(MAX_THREADS * sizeof (struct sl_head * _Atomic) <= (unsigned long) page_size);
   void *page = alloc_page();
   memset(page, 0, page_size);
-  s->threads_active_heads = page;
-  //atomic_store_explicit(&s->threads_active_heads, (struct sl_head *)page, memory_order_relaxed);
+  s->thread_head_info = page;
 
   /* Initialize the partial_heads and full_heads lists by the dummy heads */
   atomic_store_explicit(&s->partial_heads, &slh_dummy_last_partial, memory_order_relaxed);
@@ -337,11 +347,30 @@ void sl_delete(slab *s)
 static void *
 sl_alloc_from_page(slab *s, struct sl_head *h)
 {
+  SL_CHECK(s);
   ASSERT_DIE(SL_GET_STATE(h) == slh_thread);
+  struct sl_per_thread_info *ti = s->thread_head_info[THIS_THREAD_ID];
 
   /* This routine must never collide with itself. It's expected to run
    * only on the head assigned to the current thread.
-   * The collision may happen though with sl_free().
+   *
+   * To avoid colisions with sl_free(), actively used heads have two
+   * bit fields marking used memory.
+   *  - One regular stored in head itself. This bit field is allways
+   *    present and it is used by sl_free(). If its head does not belong to
+   *    a thread, this field is accurate, eg. Zero bit allways stands for
+   *    free memory and set bit for allocated.
+   *
+   *    If the head does belong to a thread, only zero bits can be trusted.
+   *    When the thread get the head, it sets all relevant bits in bitfield to ones.
+   *    The memory in the head belongs to that thread anyway, so the thread marks
+   *    the memory as used in advance.
+   *
+   *  - The other bitfield is represented by used_bits_local. Only the owning
+   *    thread should access it (the only exception is freeing the slab). This field
+   *    starts by copying the regular field and then it is filled with ones from the beginning
+   *    to the end. It has no information about freed objects, only zero bits
+   *    represent free memory for sure.
    *
    * If no object could be allocated, we return NULL. Yet, some block
    * could have been freed inbetween nevertheless. The caller is responsible
@@ -349,37 +378,90 @@ sl_alloc_from_page(slab *s, struct sl_head *h)
    * */
 
   /* Looking for a zero bit in a variable-long almost-atomic bitfield */
-  for (uint i = 0; i < s->head_bitfield_len; i++)
+  for (; ti->used_bits_ptr < s->head_bitfield_len; ti->used_bits_ptr++)
   {
-    u32 used_bits = atomic_load_explicit(&h->used_bits[i], memory_order_acquire);
+    u32 used_bits = ti->used_bits_local[ti->used_bits_ptr];
     if (~used_bits)
     {
       /* There are some zero bits in this part of the bitfield. */
       uint pos = u32_ctz(~used_bits);
-      if (i * 32 + pos >= s->objs_per_slab)
+      if (ti->used_bits_ptr * 32 + pos >= s->objs_per_slab){ log("too far - i = %i, pos = %i, s->objs_per_slab = %i, s %x", ti->used_bits_ptr, pos, s->objs_per_slab, s);
 	/* But too far, we don't have those objects! */
-	return NULL;
+	return NULL;}
 
       /* Set the one, claim the block */
-      u32 check = atomic_fetch_or_explicit(&h->used_bits[i], (1 << pos), memory_order_acq_rel);
-
-      ASSERT_DIE(!(check & (1 << pos))); /* Sanity check: nobody claimed the same block inbetween */
-      ASSERT_DIE(!(check & (~used_bits))); /* Sanity check: nobody claimed any other block inbetween */
+      ti->used_bits_local[ti->used_bits_ptr] = ti->used_bits_local[ti->used_bits_ptr] | (1 << pos);
+      SL_CHECK(s);
 
       /* Update allocation count */
-      atomic_fetch_add_explicit(&h->num_full, 1, memory_order_acquire);
+      /* Well, prove me wrong, but we do not need this.
+       * The actual size is not needed until we reach the end -
+       * at the exact moment, when num full counted by deleting threads become true. */
+      //atomic_fetch_add_explicit(&h->num_full, 1, memory_order_acquire);
 
       /* Take the pointer and go away */
-      void *out = ((void *) h) + s->head_size + (i * 32 + pos) * s->obj_size;
+      void *out = ((void *) h) + s->head_size + (ti->used_bits_ptr * 32 + pos) * s->obj_size;
 #ifdef POISON
       memset(out, 0xcd, s->data_size);
 #endif
+      ti->still_free--;
       return out;
     }
   }
 
-  /* Everything full */
+  /* Looks like everything is full, we need to update the used_bits_local field.  */
+  SL_CHECK(s);
   return NULL;
+}
+
+static int
+sl_count_bits(u32 n, int count_to)
+{
+  int ret = 0;
+  for (int i = 0; i <  count_to; i++)
+    ret = ret + !(n & (1<<i));
+  return ret;
+}
+
+
+/* Used memory of a head belonging to a thread is tracked by two bitfields
+ * as described in sl_alloc_from_page. The one stored in head itself tracks
+ * freed memory and in sl_per_thread_info tracks not allocated memory.
+ *
+ * When there is no more not allocated memory but there is some freed memory,
+ * the bitfield in sl_per_thread_info needs to load the unset bits.
+ * That is done by this function. The bitefield in sl_per_thread_info is expected
+ * to be all set to ones.
+ *
+ * This function is used to set up sl_per_thread_info struct for thread when it
+ * gets new partial head as well.
+ *
+ * The bitfield in head is atomicaly set to ones. The fetched version of the field
+ * is copied to sl_per_thread_info field. The number of flipped bits is added to
+ * head used bits. It can not be just set to max value, because of race conflicts with sl_free().
+ */
+
+static void
+sl_refresh_partial(struct sl_head *head, struct sl_per_thread_info *ti)
+{
+  u32 mask = ~0;
+  SL_CHECK(head->slab);
+  int free_bits = 0; /* number of bits we manage to flip. */
+
+  for (uint i = 0; i < head->slab->head_bitfield_len; i++)
+  {
+    u32 used = atomic_fetch_or_explicit(&head->used_bits[i], mask, memory_order_acq_rel);
+    ti->used_bits_local[i] = used;
+    if ((i + 1) * 32 > head->slab->objs_per_slab)
+      free_bits += sl_count_bits(used, head->slab->objs_per_slab % 32);
+    else
+      free_bits += sl_count_bits(used, 32);
+  }
+
+  ti->used_bits_ptr = 0;
+  atomic_fetch_add_explicit(&head->num_full, free_bits, memory_order_acquire); // reserve gained memory
+  ti->still_free = free_bits;
+  SL_CHECK(head->slab);
 }
 
 static struct sl_head *
@@ -387,6 +469,7 @@ sl_get_partial_head(struct slab *s)
 {
   /* The cleanup must wait until we end */
   rcu_read_lock();
+  SL_CHECK(s);
 
   /* Actual remove the first head */
   struct sl_head *cur_head = atomic_load_explicit(&s->partial_heads, memory_order_acquire),
@@ -420,7 +503,8 @@ sl_get_partial_head(struct slab *s)
     {
       /* At the end */
       ASSERT_DIE(cur_head == &slh_dummy_last_partial);
-      break;
+      rcu_read_unlock();
+      return NULL;
     }
     else
     {
@@ -433,18 +517,17 @@ sl_get_partial_head(struct slab *s)
 	memory_order_acq_rel, memory_order_acquire));
 
   /* Indicate that the head now belongs to a thread */
-  if (cur_head != &slh_dummy_last_partial)
-    SL_SET_STATE(cur_head, slh_partial, slh_thread);
+  SL_SET_STATE(cur_head, slh_partial, slh_thread);
 
   /* The next pointer of cur_head is not changed here. We keep it for counting and dumping memory */
 
   /* Out of critical section, now the cleanup may continue */
   rcu_read_unlock();
+  SL_CHECK(s);
 
-  if (cur_head == &slh_dummy_last_partial)
-    return NULL;
-  else
-    return cur_head;
+  sl_refresh_partial(cur_head, s->thread_head_info[THIS_THREAD_ID]);
+  SL_CHECK(s);
+  return cur_head;
 }
 
 /**
@@ -459,19 +542,42 @@ sl_alloc(slab *s)
 {
   struct sl_head *h = NULL;
 
-  /* Try to use head owned by this thread */
-  if (h = atomic_load_explicit(&s->threads_active_heads[THIS_THREAD_ID], memory_order_relaxed))
+  if (!s->thread_head_info[THIS_THREAD_ID]) /* Have we seen this thread before? */
+  {
+    ASSERT_DIE(this_thread_pool);
+    s->thread_head_info[THIS_THREAD_ID] = mb_allocz(this_thread_pool,
+        sizeof(struct sl_per_thread_info) + sizeof(u32) * s->head_bitfield_len);
+  }
+  ASSERT_DIE(s->thread_head_info[THIS_THREAD_ID]);
+
+  struct sl_per_thread_info *ti = s->thread_head_info[THIS_THREAD_ID];
+
+   /* Try to use head owned by this thread */
+  if (h = atomic_load_explicit(&ti->head, memory_order_acquire))
   {
     void *ret = sl_alloc_from_page(s, h);
 
-    if (ret)
+    if (ret){
+      SL_CHECK(s);
+      return ret;}
+
+    if (atomic_load(&h->num_full) < s->objs_per_slab)
+    {
+      /* The head is not truly full, someone did free some space */
+      sl_refresh_partial(h, ti);
+      ret = sl_alloc_from_page(s, h);
+      ASSERT_DIE(ret);
+      memset(ret, 0, s->data_size);
+      SL_CHECK(s);
       return ret;
+    }
+    SL_CHECK(s);
 
     /* This thread has a head, but it is already full, put the head to full heads.
      * We did not put the head to full heads right after we used up the last space,
      * because someone might clean some our space. It may have been us, actually,
      * as in many cases these allocations end up being released quite soon. */
-    atomic_store_explicit(&s->threads_active_heads[THIS_THREAD_ID], NULL, memory_order_relaxed);
+    atomic_store_explicit(&ti->head, NULL, memory_order_relaxed);
 
     /* First of all, we mark the head as being full, not belonging to a thread.
      * This creates a window of race conditions with sl_free() where we still think
@@ -506,6 +612,7 @@ sl_alloc(slab *s)
   }
 
   /* This thread has no page head. Try to get one from partial heads */
+  SL_CHECK(s);
   h = sl_get_partial_head(s);
   if (!h)
   {
@@ -517,15 +624,26 @@ sl_alloc(slab *s)
     memset(h, 0xba, page_size);
 #endif
 
-    memset(h, 0, s->head_size);
+    /* Set the thread head info */
+    memset(ti->used_bits_local, 0, s->head_bitfield_len * sizeof(u32));
+    ti->still_free = s->objs_per_slab;
+    ti->used_bits_ptr = 0;
+
+
     h->slab = s;
+    h->next = NULL;
+
+    /* Reserve the memory we will use */
+    memset(h->used_bits, 0xff, s->head_bitfield_len * sizeof(u32));
+    atomic_store_explicit(&h->num_full, s->objs_per_slab, memory_order_relaxed);
     atomic_store_explicit(&h->state, slh_thread, memory_order_relaxed);
   }
   ASSERT_DIE(h->slab == s);
 
-  atomic_store_explicit(&s->threads_active_heads[THIS_THREAD_ID], h, memory_order_relaxed);
+  atomic_store_explicit(&ti->head, h, memory_order_relaxed);
   void *ret = sl_alloc_from_page(s, h);
   ASSERT_DIE(ret); /* Since the head is new or partial, there must be a space for allocation. */
+  SL_CHECK(s);
   return ret;
 }
 
@@ -542,6 +660,7 @@ sl_allocz(slab *s)
 {
   void *obj = sl_alloc(s);
   memset(obj, 0, s->data_size);
+  SL_CHECK(s);
   return obj;
 }
 
@@ -566,6 +685,7 @@ sl_free_page(struct sl_head *h)
 static struct sl_head *
 sl_cleanup_full_heads(struct slab *s)
 {
+   SL_CHECK(s);
   /* Prepare the end of the new partial list */
   struct sl_head *new_partials = &slh_dummy_last_partial;
 
@@ -628,7 +748,7 @@ sl_cleanup_full_heads(struct slab *s)
     /* Next head, let's go! */
     next = next_next;
   }
-
+SL_CHECK(s);
   return new_partials;
 }
 
@@ -651,6 +771,7 @@ sl_cleanup_partial_heads(struct slab *s, struct sl_head *new_partials)
   /* Exchange the partial heads for the supplied list */
   struct sl_head *ph = atomic_exchange_explicit(&s->partial_heads, new_partials, memory_order_acq_rel);
   ASSERT_DIE(ph);
+  SL_CHECK(s);
 
   /* Wait for readers to realize */
   synchronize_rcu();
@@ -688,13 +809,16 @@ sl_cleanup_partial_heads(struct slab *s, struct sl_head *new_partials)
 	  memory_order_acq_rel, memory_order_acquire));
     }
     ph = next_head;
+    SL_CHECK(s);
   }
+  SL_CHECK(s);
 }
 
 static void
 sl_cleanup(void *sp)
 {
   struct slab *s = (struct slab*) sp;
+  SL_CHECK(s);
 
   /* Cleanup does weird things and should therefore not collide
    * with memsize and dump calls. We need to lock the pool's domain explicitly. */
@@ -712,16 +836,20 @@ sl_cleanup(void *sp)
   /* If we were locking, we have to unlock! */
   if (locking)
     DG_UNLOCK(dom);
+  SL_CHECK(s);
 }
 
 static void sl_thread_end(struct bird_thread_end_callback *btec)
 {
   SKIP_BACK_DECLARE(slab, s, thread_end, btec);
+  SL_CHECK(s);
 
   /* Getting rid of an active head of a stopping thread.
    * We first pick the head from its place. */
-  struct sl_head *h = atomic_load_explicit(&s->threads_active_heads[THIS_THREAD_ID], memory_order_relaxed);
-  atomic_store_explicit(&s->threads_active_heads[THIS_THREAD_ID], NULL, memory_order_relaxed);
+  struct sl_per_thread_info *ti = s->thread_head_info[THIS_THREAD_ID];
+  s->thread_head_info[THIS_THREAD_ID] = NULL;
+  struct sl_head *h = atomic_load_explicit(&ti->head, memory_order_relaxed);
+  atomic_store_explicit(&ti->head, NULL, memory_order_relaxed);
 
   /* No such head, yay! */
   if (h == NULL)
@@ -729,10 +857,9 @@ static void sl_thread_end(struct bird_thread_end_callback *btec)
 
   /* How many items are still allocated from that head? */
   uint num_full = atomic_load_explicit(&h->num_full, memory_order_acquire);
-  if (num_full == 0)
+  if (num_full - ti->still_free == 0)
     /* The page is empty, just throw it away */
     sl_free_page(h);
-
   else
   {
     /* There are some, let's put the head into the full heads list */
@@ -749,6 +876,9 @@ static void sl_thread_end(struct bird_thread_end_callback *btec)
     if (num_full < s->objs_per_slab)
       ev_send(s->cleanup_ev_list, &s->event_clean);
   }
+
+  //mb_free(ti); TODO: Hopefully this will be freed automatically with the tread, because we do not have locked the right domains
+  SL_CHECK(s);
 }
 
 
@@ -765,6 +895,7 @@ sl_free(void *oo)
 {
   struct sl_head *h = SL_GET_HEAD(oo);
   struct slab *s = h->slab;
+  SL_CHECK(s);
 
 #ifdef POISON
   memset(oo, 0xdb, s->data_size);
@@ -779,12 +910,14 @@ sl_free(void *oo)
   /* Remove the corresponding bit from bitfield */
   u32 mask = ~0;
   mask -= 1 << (pos % 32);
-  atomic_fetch_and_explicit(&h->used_bits[pos / 32], mask, memory_order_acq_rel);
+  u32 check = atomic_fetch_and_explicit(&h->used_bits[pos / 32], mask, memory_order_acq_rel);
+  ASSERT_DIE(check & (1 << (pos % 32)));
 
   u16 num_full_before = atomic_fetch_sub_explicit(&h->num_full, 1, memory_order_acq_rel);
 
   if ((num_full_before == s->objs_per_slab) || (num_full_before == 1))
     ev_send(s->cleanup_ev_list, &s->event_clean);
+  SL_CHECK(s);
 }
 
 void
@@ -806,9 +939,10 @@ sl_check_empty(resource *r)
   /* Assert there are no thread heads */
   for (long unsigned int i = 0; i < page_size / (sizeof(struct sl_head *_Atomic)); i++)
   {
-    struct sl_head *th = atomic_load_explicit(&s->threads_active_heads[i], memory_order_relaxed);
-    if (th)
-      ASSERT_DIE(atomic_load_explicit(&th->num_full, memory_order_relaxed) == 0);
+    struct sl_per_thread_info *ti = s->thread_head_info[i];
+    struct sl_head *h = atomic_load_explicit(&ti->head, memory_order_relaxed);
+    if (h)
+      ASSERT_DIE(atomic_load_explicit(&h->num_full, memory_order_relaxed) == ti->still_free);
   }
 }
 
@@ -843,11 +977,22 @@ slab_free(resource *r)
   atomic_store_explicit(&s->full_heads, &slh_dummy_last_full, memory_order_relaxed);
 
   /* Free thread heads */
-  for (long unsigned int i = 0; i < page_size / (sizeof(struct sl_head *_Atomic)); i++)
+  if (s->thread_head_info)
   {
-    struct sl_head *th = atomic_load_explicit(&s->threads_active_heads[i], memory_order_relaxed);
-    if (th)
-      sl_free_page(th);
+    for (long unsigned int i = 0; i < page_size / (sizeof(struct sl_head *_Atomic)); i++)
+    {
+      struct sl_per_thread_info *ti = s->thread_head_info[i];
+
+      if (ti)
+      {
+        struct sl_head *th = atomic_load_explicit(&ti->head, memory_order_relaxed);
+        if (th)
+          sl_free_page(th);
+
+        //mb_free(ti); TODO: Hopefully this will be freed automatically with the tread, because we do not have locked the right domains
+      }
+    }
+    free_page(s->thread_head_info);
   }
 }
 
@@ -865,7 +1010,8 @@ slab_dump(struct dump_request *dreq, resource *r)
   RDUMP("%*sthreads:\n", dreq->indent+3, "");
   for (long unsigned int i = 0; i < (page_size / sizeof(struct sl_head * _Atomic)); i++)
   {
-    struct sl_head *th = atomic_load_explicit(&s->threads_active_heads[i], memory_order_relaxed);
+    struct sl_per_thread_info *ti = s->thread_head_info[i];
+    struct sl_head *th = atomic_load_explicit(&ti->head, memory_order_relaxed);
     if (th)
     {
       /* There is no guarantee the head remains slh_thread, but it won't be freed. */
@@ -955,11 +1101,15 @@ slab_memsize(resource *r)
   /* Thread heads memsize */
   for (long unsigned int i = 0; i < (page_size / sizeof(struct sl_head * _Atomic)); i++)
   {
-    struct sl_head *h = atomic_load_explicit(&s->threads_active_heads[i], memory_order_relaxed);
-    if (h)
+    if (s->thread_head_info[i])
     {
-      items += atomic_load_explicit(&h->num_full, memory_order_relaxed);
-      heads++;
+      struct sl_per_thread_info *ti = s->thread_head_info[i];
+      struct sl_head *h = atomic_load_explicit(&ti->head, memory_order_relaxed);
+      if (h)
+      {
+        items += atomic_load_explicit(&h->num_full, memory_order_relaxed) - ti->still_free;
+        heads++;
+      }
     }
   }
 

@@ -672,6 +672,7 @@ thread_group_shutdown = {};
 
 
 static _Thread_local struct bird_thread *this_thread;
+_Thread_local pool *this_thread_pool;
 
 static void bird_thread_busy_set(struct thread_group_private *, int val);
 
@@ -984,6 +985,7 @@ bird_thread_main(void *arg)
 
   birdloop_enter(thr->meta);
   this_birdloop = thr->meta;
+  this_thread_pool = thr->pool;
 
   THREAD_TRACE(DL_SCHEDULING, "Started");
 
@@ -1991,6 +1993,8 @@ birdloop_init(void)
   birdloop_enter_locked(&main_birdloop);
   this_birdloop = &main_birdloop;
   this_thread = &main_thread;
+  this_thread_pool = this_thread->pool = main_birdloop.pool =
+    rp_new(&root_pool, the_bird_domain.the_bird, "Main Thread Meta");
 
   hmap_init(&hmap_thread_ids, &root_pool, 1024);
 
