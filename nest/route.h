@@ -393,7 +393,7 @@ struct rt_show_data {
   struct channel *export_channel;
   struct config *running_on_config;
   struct krt_proto *kernel;
-  int export_mode, addr_mode, primary_only, filtered, stats;
+  int export_mode, addr_mode, primary_only, invalid, ineligible, unresolvable, filtered, stats;
 
   int table_open;			/* Iteration (fit) is open */
   int trie_walk;			/* Current table is iterated using trie */

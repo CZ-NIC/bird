@@ -734,6 +734,18 @@ r_args:
      $$ = $1;
      $$->primary_only = 1;
    }
+ | r_args INVALID {
+     $$ = $1;
+     $1->invalid = 1;
+   }
+ | r_args INELIGIBLE {
+     $$ = $1;
+     $1->ineligible = 1;
+   }
+ | r_args UNRESOLVABLE {
+     $$ = $1;
+     $$->unresolvable = 1;
+   }
  | r_args FILTERED {
      $$ = $1;
      $$->filtered = 1;

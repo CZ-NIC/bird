@@ -126,6 +126,15 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 
   for (e = n->routes; e; e = e->next)
     {
+      if (!!(e->flags & REF_INVALID) != d->invalid)
+	continue;
+
+      if (!!(e->flags & REF_INELIGIBLE) != d->ineligible)
+	continue;
+
+      if (!!(e->flags & REF_UNRESOLVABLE) != d->unresolvable)
+	continue;
+
       if (rte_is_filtered(e) != d->filtered)
 	continue;
 
