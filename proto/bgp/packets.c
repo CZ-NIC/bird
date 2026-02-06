@@ -1151,7 +1151,8 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
     s->hostentry = rt_get_hostentry(tab, gw, lla, c->c.table);
 
     if (!s->mpls)
-      rta_apply_hostentry(a, s->hostentry, NULL);
+      if (!rta_apply_hostentry(a, s->hostentry, NULL))
+	UNRESOLVABLE(BAD_NEXT_HOP " - no nexthop");
 
     /* With MPLS, hostentry is applied later in bgp_apply_mpls_labels() */
   }
@@ -1185,7 +1186,9 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a, u32 *labels, uint lnum)
 
     ms.len = lnum;
     memcpy(ms.stack, labels, 4*lnum);
-    rta_apply_hostentry(a, s->hostentry, &ms);
+
+    if (!rta_apply_hostentry(a, s->hostentry, &ms))
+      UNRESOLVABLE(BAD_NEXT_HOP " - no nexthop");
   }
 }
 
