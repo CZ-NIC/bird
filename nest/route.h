@@ -496,8 +496,9 @@ typedef struct rta {
 #define RTD_UNICAST 1			/* Next hop is neighbor router */
 #define RTD_BLACKHOLE 2			/* Silently drop packets */
 #define RTD_UNREACHABLE 3		/* Reject as unreachable */
-#define RTD_PROHIBIT 4			/* Administratively prohibited */
-#define RTD_MAX 5
+#define RTD_UNRESOLVABLE 4		/* Reject as unresolvable */
+#define RTD_PROHIBIT 5			/* Administratively prohibited */
+#define RTD_MAX 6
 
 #define IGP_METRIC_UNKNOWN 0x80000000	/* Default igp_metric used when no other
 					   protocol-specific metric is availabe */
@@ -731,7 +732,7 @@ void rta_show(struct cli *, rta *);
 
 u32 rt_get_igp_metric(rte *rt);
 struct hostentry * rt_get_hostentry(rtable *tab, ip_addr a, ip_addr ll, rtable *dep);
-void rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls);
+bool rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls);
 
 static inline void
 rta_set_recursive_next_hop(rtable *dep, rta *a, rtable *tab, ip_addr gw, ip_addr ll, mpls_label_stack *mls)

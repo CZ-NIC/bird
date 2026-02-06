@@ -85,6 +85,7 @@ const char * rta_dest_names[RTD_MAX] = {
   [RTD_UNICAST]		= "unicast",
   [RTD_BLACKHOLE]	= "blackhole",
   [RTD_UNREACHABLE]	= "unreachable",
+  [RTD_UNRESOLVABLE]	= "unresolvable",
   [RTD_PROHIBIT]	= "prohibited",
 };
 

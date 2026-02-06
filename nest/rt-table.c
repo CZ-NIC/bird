@@ -2396,7 +2396,7 @@ rt_postconfig(struct config *c)
  * triggered by rt_schedule_nhu().
  */
 
-void
+bool
 rta_apply_hostentry(rta *a, struct hostentry *he, mpls_label_stack *mls)
 {
   a->hostentry = he;
@@ -2413,13 +2413,13 @@ no_nexthop:
       a->nh.labels_orig = a->nh.labels = mls->len;
       memcpy(a->nh.label, mls->stack, mls->len * sizeof(u32));
     }
-    return;
+    return !!he->src;
   }
 
   if (((!mls) || (!mls->len)) && he->nexthop_linkable)
   { /* Just link the nexthop chain, no label append happens. */
     memcpy(&(a->nh), &(he->src->nh), nexthop_size(&(he->src->nh)));
-    return;
+    return true;
   }
 
   struct nexthop *nhp = NULL, *nhr = NULL;
@@ -2485,6 +2485,8 @@ no_nexthop:
       log(L_WARN "No valid nexthop remaining, setting route unreachable");
       goto no_nexthop;
     }
+
+  return true;
 }
 
 static inline int
@@ -3515,7 +3517,7 @@ rt_update_hostentry(rtable *tab, struct hostentry *he)
 
   /* Reset the hostentry */
   he->src = NULL;
-  he->dest = RTD_UNREACHABLE;
+  he->dest = RTD_UNRESOLVABLE;
   he->nexthop_linkable = 0;
   he->igp_metric = 0;
 
