@@ -351,7 +351,7 @@ net_roa_check(rtable *tab, const net_addr *n, u32 asn)
  * @tab: ASPA table
  * @path: AS Path to check
  *
- * Implements draft-ietf-sidrops-aspa-verification-16.
+ * Implements draft-ietf-sidrops-aspa-verification-24.
  */
 enum aspa_result aspa_check(rtable *tab, const adata *path, bool force_upstream)
 {
@@ -377,103 +377,117 @@ enum aspa_result aspa_check(rtable *tab, const adata *path, bool force_upstream)
   uint ppos = 0;
   uint nsz = 0;
   while (as_path_walk(path, &ppos, &asns[nsz]))
-    if ((nsz == 0) || (asns[nsz] != asns[nsz-1]))
+    if ((nsz == 0) || (asns[nsz] != asns[nsz - 1]))
       nsz++;
 
   /* Find the provider blocks for every AS on the path
    * and check allowed directions */
-  uint max_up = 0, min_up = 0, max_down = 0, min_down = 0;
+  uint max_up = nsz, min_up = nsz;
 
-  for (uint ap=0; ap<nsz; ap++)
+  /* If we check only the upstream path, there is no down ramp.
+   * Therefore, max_down_ramp and min_down_ramp are set to 0. */
+  uint max_down = force_upstream ? 0 : nsz, min_down = force_upstream ? 0 : nsz;
+  bool max_down_udpated = force_upstream, min_down_updated = force_upstream;
+
+  for (uint ap = 0; ap < nsz; ap++)
   {
-    net_addr_union nau = { .aspa = NET_ADDR_ASPA(asns[ap]), };
+    net_addr_union nau = {
+        .aspa = NET_ADDR_ASPA(asns[ap]),
+    };
     net *n = net_find(tab, &nau.n);
 
     bool found = false, down = false, up = false;
 
-    for (rte *e = (n ? n->routes: NULL); e; e = e->next)
+    /* This whole loop aim to:
+     * - set found to true if there is some valid ASPA records for the current ASN
+     * - set up to true if the previous ASN is listed in the ASPA records
+     * - set down to true if the next ASN is listed in the ASPA records
+     *
+     * In the RFC, the as PATH is reversed compared to the AS_PATH we handle,
+     * explaining why the up variable is linked to the previous AS in the path
+     * and vice versa */
+    for (rte *e = (n ? n->routes : NULL); e; e = e->next)
     {
       if (!rte_is_valid(e))
-	continue;
+        continue;
 
       eattr *ea = ea_find(e->attrs->eattrs, EA_ASPA_PROVIDERS);
       if (!ea)
-	continue;
+        continue;
 
       /* Actually found some ASPA */
       found = true;
 
-      for (uint i=0; i * sizeof(u32) < ea->u.ptr->length; i++)
+      for (uint i = 0; i * sizeof(u32) < ea->u.ptr->length; i++)
       {
-	if ((ap > 0) && ((u32 *) ea->u.ptr->data)[i] == asns[ap-1])
-	  up = true;
-	if ((ap + 1 < nsz) && ((u32 *) ea->u.ptr->data)[i] == asns[ap+1])
-	  down = true;
+        if ((ap > 0) && ((u32 *)ea->u.ptr->data)[i] == asns[ap - 1])
+          up = true;
+        if ((ap + 1 < nsz) && ((u32 *)ea->u.ptr->data)[i] == asns[ap + 1])
+          down = true;
 
-	if (down && up)
-	  /* Both peers found */
-	  goto end_of_aspa;
+        if (down && up)
+          /* Both peers found */
+          goto end_of_aspa;
       }
     }
-end_of_aspa:;
+  end_of_aspa:;
 
-    /* Fast path for the upstream check */
-    if (force_upstream)
+    if ((ap + 1 < nsz) && !down)
     {
-      if (!found)
-	/* Move min-upstream */
-	min_up = ap;
-      else if (ap && !up)
-	/* Exists but doesn't allow this upstream */
-	return ASPA_INVALID;
+      /* Downstream ramp bound update
+       * Updated once since min_down and max_down should be computed
+       * with the maximum index J for which authorized(A(J), A(J-1))
+       * return "Not Provider+" and/or "No Attestation" corresponding
+       * at the first violation when scanning in reverse.
+       *
+       * To compute {min,max}_up we use: N - J + 1
+       * However, J is indexed in reverse order starting from 1,
+       * but we can find back using J = N - ap. Then, basic arithmetic gave us:
+       * {min,max}_up = N - (N - ap) + 1 = ap + 1
+       */
+
+      /* ASPA record exist => Not Provider+ */
+      if (found && !max_down_udpated)
+      { // => NP+
+        max_down = ap + 1;
+        max_down_udpated = true;
+      }
+
+      /* No ASPA record or Invalid => No Attestation / Not Provider+*/
+      if (!min_down_updated)
+      {
+        min_down = ap + 1;
+        min_down_updated = true;
+      }
     }
 
-    /* Fast path for no ASPA here */
-    else if (!found)
+    if ((ap > 0) && !up)
     {
-      /* Extend max-downstream (min-downstream is stopped by unknown) */
-      max_down = ap+1;
+      /* Upstream ramp bound update
+       * Updated every time since max_up and max_down should be computed
+       * with the minimum index I for which authorized(A(I), A(I+1))
+       * return "Not Provider+" and/or "No Attestation" corresponding
+       * at the last violation when scanning in reverse.
+       */
 
-      /* Move min-upstream (can't include unknown) */
-      min_up = ap;
-    }
-
-    /* ASPA exists and downstream may be extended */
-    else if (down)
-    {
-      /* Extending max-downstream always */
-      max_down = ap+1;
-
-      /* Extending min-downstream unless unknown seen */
-      if (min_down == ap)
-	min_down = ap+1;
-
-      /* Downstream only */
-      if (!up)
-	min_up = max_up = ap;
-    }
-
-    /* No extension for downstream, force upstream only from now */
-    else
-    {
-      force_upstream = 1;
-
-      /* Not even upstream, move the ending here */
-      if (!up)
-	min_up = max_up = ap;
+      /* No ASPA record or Invalid => No Attestation / Not Provider+*/
+      if (found)
+        min_up = max_up = nsz - ap;
+      /* ASPA record exist => Not Provider+ */
+      else
+        min_up = nsz - ap;
     }
   }
 
-  /* Is the path surely valid? */
-  if (min_up <= min_down)
-    return ASPA_VALID;
+  /* Is the path invalid? */
+  if ((max_up + max_down) < nsz)
+    return ASPA_INVALID;
 
-  /* Is the path maybe valid? */
-  if (max_up <= max_down)
+  /* Is the path unknown? */
+  if ((min_up + min_down) < nsz)
     return ASPA_UNKNOWN;
 
-  /* Now there is surely a valley there. */
-  return ASPA_INVALID;
+  return ASPA_VALID;
 }
 
 /**
