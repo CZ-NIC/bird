@@ -15,6 +15,28 @@
 #define CHECK_BIT(var,pos) ((var) & (u32)(1<<(pos)))
 
 static int
+t_endianity(void)
+{
+#ifdef CPU_LITTLE_ENDIAN
+  u64 checkval = 0xf0e0d0c0b0a09080;
+# ifdef CPU_BIG_ENDIAN
+  STATIC_ASSERT_MSG(0, "CPU is both big and little endian");
+#endif
+#elifdef CPU_BIG_ENDIAN
+  u64 checkval = 0x8090a0b0c0d0e0f0;
+#endif
+
+  u8 bytes[8];
+  STATIC_ASSERT(sizeof(checkval) == sizeof(bytes));
+  memcpy(bytes, &checkval, sizeof bytes);
+
+  for (int i = 0; i < 8; i++)
+    bt_assert_msg(bytes[i] == 0x80 + 0x10*i, "u64 endianity check, byte %d is %u, expected %u", i, bytes[i], 0x80 + 0x10*i);
+
+  return 1;
+}
+
+static int
 t_mkmask(void)
 {
   int i;
@@ -140,6 +162,7 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
+  bt_test_suite(t_endianity, "endianity");
   bt_test_suite(t_mkmask, "u32_mkmask()");
   bt_test_suite(t_masklen, "u32_masklen()");
   bt_test_suite(t_log2, "u32_log2()");
