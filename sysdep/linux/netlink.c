@@ -1876,7 +1876,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
 	    }
           else if (t == RTAX_CC_ALGO)
 	    {
-	      struct adata *ad = lp_alloc_adata(s->pool, strlen(cc_algo));
+	      struct adata *ad = lp_alloc_adata(s->pool, strlen(cc_algo) + 1);
 	      memcpy(ad->data, cc_algo, ad->length);
 
 	      ea->attrs[n++] = (eattr) {
