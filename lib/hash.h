@@ -219,7 +219,7 @@ static inline void
 mem_hash_mix_str(u64 *h, const char *s)
 {
   const u64 multiplier = 0xb38bc09a61202731ULL;
-  while (s)
+  while (*s)
     *h = *h * multiplier + *s++;
 }
 
