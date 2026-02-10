@@ -1960,7 +1960,7 @@ nl_parse_route(struct nl_parse_state *s, struct nlmsghdr *h)
       for (uint t = 1; t < KRT_METRICS_MAX; t++)
 	if (metrics[0] & (1 << t))
 	  if (t == RTAX_CC_ALGO)
-	    ea_set_attr(&ra, EA_LITERAL_STORE_ADATA(&ea_krt_metrics[t], 0, cc_algo, strlen(cc_algo)));
+	    ea_set_attr(&ra, EA_LITERAL_STORE_ADATA(&ea_krt_metrics[t], 0, cc_algo, strlen(cc_algo) + 1));
 	  else
 	    ea_set_attr(&ra, EA_LITERAL_EMBEDDED(&ea_krt_metrics[t], 0, metrics[t]));
     }
