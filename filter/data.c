@@ -209,7 +209,7 @@ val_compare(const struct f_val *v1, const struct f_val *v2)
     return ipa_compare(v1->val.ip, v2->val.ip);
   case T_NET:
     return net_compare(v1->val.net, v2->val.net);
-  case T_STRING:
+  case T_STRING:;
     int i = strcmp(v1->val.s, v2->val.s);
     return (i > 0) - (i < 0);
   case T_PATH:
