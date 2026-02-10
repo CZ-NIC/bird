@@ -1,0 +1,78 @@
+module bird {
+  yang-version 1.1;
+  namespace "https://bird.nic.cz/yang/v2.18/";
+  prefix "bird";
+
+  import ietf-yang-types {
+    prefix "yang";
+  }
+
+  revision "2026-02-10" {
+    description "Specified show-memory RPC";
+  }
+
+  grouping memory-info-line {
+    description "Information about consumed memory of a specific kind";
+    leaf effective {
+      description "Memory we consider needed";
+      type uint64;
+    }
+    leaf overhead {
+      description "Memory which is standby, unusable or technical";
+      type uint64;
+    }
+  }
+
+  grouping memory-info {
+    description "Complete consumed memory info";
+    grouping tables {
+      description "Memory used by route objects in tables";
+      uses memory-info-line;
+    }
+    grouping attributes {
+      description "Memory used by attribute cache";
+      uses memory-info-line;
+    }
+    grouping protocols {
+      description "Memory used by the prorocols";
+      uses memory-info-line;
+    }
+    grouping config {
+      description "Current config";
+      uses memory-info-line;
+    }
+    grouping total {
+      description "All memory combined";
+      uses memory-info-line;
+    }
+
+    grouping pages {
+      description "Page allocator info";
+      leaf active {
+	description "Active pages (in bytes)";
+	type uint64;
+      }
+      leaf hot {
+	description "Hot free pages (in bytes)";
+	type uint64;
+      }
+      leaf cold {
+	description "Cold free pages (in bytes)";
+	type uint64;
+      }
+      leaf hot-rcu-failure-count {
+	description "Hot page cache depleted while in RCU";
+	type uint64;
+      }
+    }
+  }
+
+  rpc show-memory {
+    description "CLI: show memory";
+    output {
+      container memory-info {
+	uses bird:memory-info;
+      }
+    }
+  }
+}
