@@ -1,68 +1,73 @@
 module bird {
   yang-version 1.1;
   namespace "https://bird.nic.cz/yang/v2.18/";
-  prefix "bird";
+  prefix "bird-api";
 
   import ietf-yang-types {
     prefix "yang";
   }
 
+  organization "cz.nic";
+  contact "foo@b.ar";
+  description "bird api";
+
   revision "2026-02-10" {
     description "Specified show-memory RPC";
+    reference "what";
   }
 
   grouping memory-info-line {
     description "Information about consumed memory of a specific kind";
     leaf effective {
-      description "Memory we consider needed";
       type uint64;
+      description "Memory we consider needed";
     }
     leaf overhead {
-      description "Memory which is standby, unusable or technical";
       type uint64;
+      description "Memory which is standby, unusable or technical";
     }
   }
 
   grouping memory-info {
     description "Complete consumed memory info";
-    grouping tables {
+    container tables {
       description "Memory used by route objects in tables";
       uses memory-info-line;
     }
-    grouping attributes {
+    container attributes {
       description "Memory used by attribute cache";
       uses memory-info-line;
     }
-    grouping protocols {
+    container protocols {
       description "Memory used by the prorocols";
       uses memory-info-line;
     }
-    grouping config {
+    container config {
       description "Current config";
       uses memory-info-line;
     }
-    grouping total {
+    container total {
       description "All memory combined";
       uses memory-info-line;
     }
 
-    grouping pages {
+    container pages {
       description "Page allocator info";
       leaf active {
-	description "Active pages (in bytes)";
 	type uint64;
+	description "Active pages (in bytes)";
       }
       leaf hot {
-	description "Hot free pages (in bytes)";
 	type uint64;
+	description "Hot free pages (in bytes)";
       }
       leaf cold {
-	description "Cold free pages (in bytes)";
 	type uint64;
+	description "Cold free pages (in bytes)";
       }
       leaf hot-rcu-failure-count {
-	description "Hot page cache depleted while in RCU";
 	type uint64;
+	description "Hot page cache depleted while in RCU";
       }
     }
   }
@@ -70,8 +75,9 @@ module bird {
   rpc show-memory {
     description "CLI: show memory";
     output {
-      container memory-info {
-	uses bird:memory-info;
+      container show-memory-info {
+	uses memory-info;
+	description "show memory output";
       }
     }
   }
