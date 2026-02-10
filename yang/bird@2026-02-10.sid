@@ -1,0 +1,171 @@
+{
+  "ietf-sid-file:sid-file": {
+    "module-name": "bird",
+    "module-revision": "2026-02-10",
+    "sid-file-status": "unpublished",
+    "dependency-revision": [
+      {
+        "module-name": "ietf-yang-types",
+        "module-revision": "2013-07-15"
+      }
+    ],
+    "assignment-range": [
+      {
+        "entry-point": "60000",
+        "size": "1000"
+      }
+    ],
+    "item": [
+      {
+        "namespace": "module",
+        "identifier": "bird",
+        "status": "unstable",
+        "sid": "60000"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory",
+        "status": "unstable",
+        "sid": "60001"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/input",
+        "status": "unstable",
+        "sid": "60002"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output",
+        "status": "unstable",
+        "sid": "60003"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info",
+        "status": "unstable",
+        "sid": "60004"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/attributes",
+        "status": "unstable",
+        "sid": "60005"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/attributes/effective",
+        "status": "unstable",
+        "sid": "60006"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/attributes/overhead",
+        "status": "unstable",
+        "sid": "60007"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/config",
+        "status": "unstable",
+        "sid": "60008"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/config/effective",
+        "status": "unstable",
+        "sid": "60009"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/config/overhead",
+        "status": "unstable",
+        "sid": "60010"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/pages",
+        "status": "unstable",
+        "sid": "60011"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/pages/active",
+        "status": "unstable",
+        "sid": "60012"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/pages/cold",
+        "status": "unstable",
+        "sid": "60013"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/pages/hot",
+        "status": "unstable",
+        "sid": "60014"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/pages/hot-rcu-failure-count",
+        "status": "unstable",
+        "sid": "60015"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/protocols",
+        "status": "unstable",
+        "sid": "60016"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/protocols/effective",
+        "status": "unstable",
+        "sid": "60017"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/protocols/overhead",
+        "status": "unstable",
+        "sid": "60018"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/tables",
+        "status": "unstable",
+        "sid": "60019"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/tables/effective",
+        "status": "unstable",
+        "sid": "60020"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/tables/overhead",
+        "status": "unstable",
+        "sid": "60021"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/total",
+        "status": "unstable",
+        "sid": "60022"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/total/effective",
+        "status": "unstable",
+        "sid": "60023"
+      },
+      {
+        "namespace": "data",
+        "identifier": "/bird:cli-show-memory/output/show-memory-info/total/overhead",
+        "status": "unstable",
+        "sid": "60024"
+      }
+    ]
+  }
+}
