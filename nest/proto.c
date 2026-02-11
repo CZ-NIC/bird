@@ -1376,7 +1376,9 @@ proto_loop_stopped(void *ptr)
   ASSERT_DIE(p->loop != &main_birdloop);
 
   p->pool = NULL; /* is freed by birdloop_free() */
+  log("before birdloop free");
   birdloop_free(p->loop);
+  log("after birdloop free");
   p->loop = &main_birdloop;
 
   proto_notify_state(p, PS_DOWN_XX);
