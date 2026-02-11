@@ -194,8 +194,6 @@ static struct resclass sl_class = {
 #define SL_MAYBE_SET_STATE(head, expected_state, new_state) \
     ({ enum sl_head_state orig = expected_state; atomic_compare_exchange_strong_explicit(&head->state, &orig, new_state, memory_order_acq_rel, memory_order_acquire); })
 
-#define SL_CHECK(s) ASSERT_DIE(true) //sl_custom_check(s); // TODO: this can find bugs asap (just add reasonable asserts). Remove only after slab is OK for sure
-
 #if 0
 /* Please do not read this. This is awful and awfully expensive way of debugging. */
 static void
@@ -347,7 +345,6 @@ void sl_delete(slab *s)
 static void *
 sl_alloc_from_page(slab *s, struct sl_head *h)
 {
-  SL_CHECK(s);
   ASSERT_DIE(SL_GET_STATE(h) == slh_thread);
   struct sl_per_thread_info *ti = s->thread_head_info[THIS_THREAD_ID];
 
@@ -391,7 +388,6 @@ sl_alloc_from_page(slab *s, struct sl_head *h)
 
       /* Set the one, claim the block */
       ti->used_bits_local[ti->used_bits_ptr] = ti->used_bits_local[ti->used_bits_ptr] | (1 << pos);
-      SL_CHECK(s);
 
       /* Update allocation count */
       /* Well, prove me wrong, but we do not need this.
@@ -408,9 +404,7 @@ sl_alloc_from_page(slab *s, struct sl_head *h)
       return out;
     }
   }
-
   /* Looks like everything is full, we need to update the used_bits_local field.  */
-  SL_CHECK(s);
   return NULL;
 }
 
@@ -445,7 +439,6 @@ static void
 sl_refresh_partial(struct sl_head *head, struct sl_per_thread_info *ti)
 {
   u32 mask = ~0;
-  SL_CHECK(head->slab);
   int free_bits = 0; /* number of bits we manage to flip. */
 
   for (uint i = 0; i < head->slab->head_bitfield_len; i++)
@@ -458,7 +451,6 @@ sl_refresh_partial(struct sl_head *head, struct sl_per_thread_info *ti)
   ti->used_bits_ptr = 0;
   atomic_fetch_add_explicit(&head->num_full, free_bits, memory_order_acquire); // reserve gained memory
   ti->still_free = free_bits;
-  SL_CHECK(head->slab);
 }
 
 static struct sl_head *
@@ -466,7 +458,6 @@ sl_get_partial_head(struct slab *s)
 {
   /* The cleanup must wait until we end */
   rcu_read_lock();
-  SL_CHECK(s);
 
   /* Actual remove the first head */
   struct sl_head *cur_head = atomic_load_explicit(&s->partial_heads, memory_order_acquire),
@@ -520,10 +511,8 @@ sl_get_partial_head(struct slab *s)
 
   /* Out of critical section, now the cleanup may continue */
   rcu_read_unlock();
-  SL_CHECK(s);
 
   sl_refresh_partial(cur_head, s->thread_head_info[THIS_THREAD_ID]);
-  SL_CHECK(s);
   return cur_head;
 }
 
@@ -554,9 +543,8 @@ sl_alloc(slab *s)
   {
     void *ret = sl_alloc_from_page(s, h);
 
-    if (ret){
-      SL_CHECK(s);
-      return ret;}
+    if (ret)
+      return ret;
 
     if (atomic_load(&h->num_full) < s->objs_per_slab)
     {
@@ -565,10 +553,8 @@ sl_alloc(slab *s)
       ret = sl_alloc_from_page(s, h);
       ASSERT_DIE(ret);
       memset(ret, 0, s->data_size);
-      SL_CHECK(s);
       return ret;
     }
-    SL_CHECK(s);
 
     /* This thread has a head, but it is already full, put the head to full heads.
      * We did not put the head to full heads right after we used up the last space,
@@ -609,7 +595,6 @@ sl_alloc(slab *s)
   }
 
   /* This thread has no page head. Try to get one from partial heads */
-  SL_CHECK(s);
   h = sl_get_partial_head(s);
   if (!h)
   {
@@ -640,7 +625,6 @@ sl_alloc(slab *s)
   atomic_store_explicit(&ti->head, h, memory_order_relaxed);
   void *ret = sl_alloc_from_page(s, h);
   ASSERT_DIE(ret); /* Since the head is new or partial, there must be a space for allocation. */
-  SL_CHECK(s);
   return ret;
 }
 
@@ -657,7 +641,6 @@ sl_allocz(slab *s)
 {
   void *obj = sl_alloc(s);
   memset(obj, 0, s->data_size);
-  SL_CHECK(s);
   return obj;
 }
 
@@ -682,7 +665,6 @@ sl_free_page(struct sl_head *h)
 static struct sl_head *
 sl_cleanup_full_heads(struct slab *s)
 {
-   SL_CHECK(s);
   /* Prepare the end of the new partial list */
   struct sl_head *new_partials = &slh_dummy_last_partial;
 
@@ -745,7 +727,7 @@ sl_cleanup_full_heads(struct slab *s)
     /* Next head, let's go! */
     next = next_next;
   }
-SL_CHECK(s);
+
   return new_partials;
 }
 
@@ -768,7 +750,6 @@ sl_cleanup_partial_heads(struct slab *s, struct sl_head *new_partials)
   /* Exchange the partial heads for the supplied list */
   struct sl_head *ph = atomic_exchange_explicit(&s->partial_heads, new_partials, memory_order_acq_rel);
   ASSERT_DIE(ph);
-  SL_CHECK(s);
 
   /* Wait for readers to realize */
   synchronize_rcu();
@@ -806,16 +787,13 @@ sl_cleanup_partial_heads(struct slab *s, struct sl_head *new_partials)
 	  memory_order_acq_rel, memory_order_acquire));
     }
     ph = next_head;
-    SL_CHECK(s);
   }
-  SL_CHECK(s);
 }
 
 static void
 sl_cleanup(void *sp)
 {
   struct slab *s = (struct slab*) sp;
-  SL_CHECK(s);
 
   /* Cleanup does weird things and should therefore not collide
    * with memsize and dump calls. We need to lock the pool's domain explicitly. */
@@ -833,13 +811,11 @@ sl_cleanup(void *sp)
   /* If we were locking, we have to unlock! */
   if (locking)
     DG_UNLOCK(dom);
-  SL_CHECK(s);
 }
 
 static void sl_thread_end(struct bird_thread_end_callback *btec)
 {
   SKIP_BACK_DECLARE(slab, s, thread_end, btec);
-  SL_CHECK(s);
 
   /* Getting rid of an active head of a stopping thread.
    * We first pick the head from its place. */
@@ -873,9 +849,6 @@ static void sl_thread_end(struct bird_thread_end_callback *btec)
     if (num_full < s->objs_per_slab)
       ev_send(s->cleanup_ev_list, &s->event_clean);
   }
-
-  //mb_free(ti); TODO: Hopefully this will be freed automatically with the tread, because we do not have locked the right domains
-  SL_CHECK(s);
 }
 
 
@@ -892,7 +865,6 @@ sl_free(void *oo)
 {
   struct sl_head *h = SL_GET_HEAD(oo);
   struct slab *s = h->slab;
-  SL_CHECK(s);
 
 #ifdef POISON
   memset(oo, 0xdb, s->data_size);
@@ -914,7 +886,6 @@ sl_free(void *oo)
 
   if ((num_full_before == s->objs_per_slab) || (num_full_before == 1))
     ev_send(s->cleanup_ev_list, &s->event_clean);
-  SL_CHECK(s);
 }
 
 void
@@ -947,7 +918,6 @@ static void
 slab_free(resource *r)
 {
   /* At this point, only one thread manipulating the slab is expected */
-  log("slab freee");
   slab *s = (slab *) r;
   ev_postpone(&s->event_clean);
 
@@ -992,7 +962,6 @@ slab_free(resource *r)
     }
     free_page(s->thread_head_info);
   }
-  log("slab freed");
 }
 
 static void
