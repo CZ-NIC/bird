@@ -2215,7 +2215,9 @@ bgp_free_pending_tx(struct bgp_channel *bc)
   HASH_WALK_END;
 
   HASH_FREE(c->prefix_hash);
+  log("prefix slab start");
   sl_delete(c->prefix_slab);
+  log("prefix slab");
   c->prefix_slab = NULL;
 
   HASH_WALK(c->bucket_hash, next, n)

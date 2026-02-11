@@ -302,6 +302,7 @@ sl_new(pool *p, struct event_list *cleanup_ev_list, uint size)
    * In order to be able to avoid write detele conflicts, the heads are stored in thread_head_info. */
   ASSERT_DIE(MAX_THREADS * sizeof (struct sl_head * _Atomic) <= (unsigned long) page_size);
   void *page = alloc_page();
+  log("new page new slab %p sl %p", page, s);
   memset(page, 0, page_size);
   s->thread_head_info = page;
 
@@ -385,7 +386,7 @@ sl_alloc_from_page(slab *s, struct sl_head *h)
     {
       /* There are some zero bits in this part of the bitfield. */
       uint pos = u32_ctz(~used_bits);
-      if (ti->used_bits_ptr * 32 + pos >= s->objs_per_slab){ log("too far - i = %i, pos = %i, s->objs_per_slab = %i, s %x", ti->used_bits_ptr, pos, s->objs_per_slab, s);
+      if (ti->used_bits_ptr * 32 + pos >= s->objs_per_slab){ //log("too far - i = %i, pos = %i, s->objs_per_slab = %i, s %x", ti->used_bits_ptr, pos, s->objs_per_slab, s);
 	/* But too far, we don't have those objects! */
 	return NULL;}
 
@@ -415,14 +416,25 @@ sl_alloc_from_page(slab *s, struct sl_head *h)
 }
 
 static int
-sl_count_bits(u32 n, int count_to)
+sl_count_free_bits(u32 n)
 {
   int ret = 0;
-  for (int i = 0; i <  count_to; i++)
-    ret = ret + !(n & (1<<i));
+  for (int i = 0; i <  32; i++)
+    ret = ret + !(n & (1<<(31-i)));
   return ret;
 }
 
+static int
+sl_count_all_bits(struct sl_head *h)
+{
+  int ret = 0;
+  for (uint i = 0; i < h->slab->head_bitfield_len-1; i++){
+    ret+=sl_count_free_bits(h->used_bits[i]);
+  }
+  
+  ret+=sl_count_free_bits(h->used_bits[h->slab->head_bitfield_len-1]);
+  return ret;
+}
 
 /* Used memory of a head belonging to a thread is tracked by two bitfields
  * as described in sl_alloc_from_page. The one stored in head itself tracks
@@ -452,16 +464,15 @@ sl_refresh_partial(struct sl_head *head, struct sl_per_thread_info *ti)
   {
     u32 used = atomic_fetch_or_explicit(&head->used_bits[i], mask, memory_order_acq_rel);
     ti->used_bits_local[i] = used;
-    if ((i + 1) * 32 > head->slab->objs_per_slab)
-      free_bits += sl_count_bits(used, head->slab->objs_per_slab % 32);
-    else
-      free_bits += sl_count_bits(used, 32);
+    free_bits += sl_count_free_bits(used);
   }
 
   ti->used_bits_ptr = 0;
   atomic_fetch_add_explicit(&head->num_full, free_bits, memory_order_acquire); // reserve gained memory
   ti->still_free = free_bits;
   SL_CHECK(head->slab);
+  if (head->slab->objs_per_slab - sl_count_all_bits(head)>  head->num_full +4 || head->slab->objs_per_slab - sl_count_all_bits(head)<  head->num_full -4)
+        ASSERT_DIE(false);
 }
 
 static struct sl_head *
@@ -587,6 +598,8 @@ sl_alloc(slab *s)
      * There is no other race condition for now, as the cleanup routine can not see
      * this head yet, and no other thread may pick it from the partial heads. Remember,
      * it's not in full_heads yet, how could it get to partials? */
+    if (h->slab->objs_per_slab - sl_count_all_bits(h)!= h->num_full)
+      log("head %p stinks %i %i", h, h->slab->objs_per_slab - sl_count_all_bits(h), h->num_full);
     SL_SET_STATE(h, slh_thread, slh_full);
 
     /* We may want to detect the race condition here. In some extremely rare cases,
@@ -618,6 +631,7 @@ sl_alloc(slab *s)
   {
     /* There are no partial heads, we need to allocate a new page */
     h = alloc_page();
+    //log("new page alloc %p", h);
     ASSERT_DIE(SL_GET_HEAD(h) == h);
 
 #ifdef POISON
@@ -667,6 +681,20 @@ sl_allocz(slab *s)
 static void
 sl_free_page(struct sl_head *h)
 {
+  if (sl_count_all_bits(h)!=h->slab->objs_per_slab){
+    for (uint i = 0; i<h->slab->head_bitfield_len; i++)
+    {
+        u32 used_bits = h->used_bits[i];
+        if (~used_bits)
+        {
+          uint pos = u32_ctz(~used_bits);
+          if (i * 32 + pos < h->slab->objs_per_slab)
+          log("sl free page, but %p has not been deleted", ((void *) h) + h->slab->head_size + (i * 32 + pos) * h->slab->obj_size);
+        }
+    }
+    if (h->state != slh_thread || sl_count_all_bits(h)!=h->slab->objs_per_slab) {log("jeje jejejejej");free_page(h); return;}
+
+  }
 #ifdef POISON
   memset(h, 0xde, page_size);
 #endif
@@ -722,6 +750,7 @@ sl_cleanup_full_heads(struct slab *s)
       ASSERT_DIE(atomic_exchange_explicit(&fh->next, next_next, memory_order_acq_rel) == next);
 
       /* Free the page completely */
+      //log("free page full clean %p", next);
       sl_free_page(next);
     }
     else if (num_full < s->objs_per_slab)
@@ -784,10 +813,11 @@ sl_cleanup_partial_heads(struct slab *s, struct sl_head *new_partials)
     struct sl_head *next_head = atomic_load_explicit(&ph->next, memory_order_relaxed);
     ASSERT_DIE(next_head);
 
-    if (!atomic_load_explicit(&ph->num_full, memory_order_relaxed))
+    if (!atomic_load_explicit(&ph->num_full, memory_order_relaxed)){
       /* The head is empty, free it. */
+      //log("free page (part clean) %p", ph);
       sl_free_page(ph);
-    else
+    } else
     {
       /* Insert the head into the partial heads list.
        * This runs concurrently with removing heads from partial_heads (sl_get_partial_head),
@@ -857,10 +887,11 @@ static void sl_thread_end(struct bird_thread_end_callback *btec)
 
   /* How many items are still allocated from that head? */
   uint num_full = atomic_load_explicit(&h->num_full, memory_order_acquire);
-  if (num_full - ti->still_free == 0)
+  if (num_full - ti->still_free == 0){
     /* The page is empty, just throw it away */
+    log("free page cleanup %p", h);
     sl_free_page(h);
-  else
+}else
   {
     /* There are some, let's put the head into the full heads list */
     SL_SET_STATE(h, slh_thread, slh_full);
@@ -952,6 +983,7 @@ slab_free(resource *r)
   /* At this point, only one thread manipulating the slab is expected */
   slab *s = (slab *) r;
   ev_postpone(&s->event_clean);
+  log("slab free");
 
   /* No more thread ends are relevant, we are ending anyway */
   bird_thread_end_unregister(&s->thread_end);
@@ -961,6 +993,7 @@ slab_free(resource *r)
   while (SL_GET_STATE(h) != slh_dummy)
   {
     struct sl_head *nh = atomic_load_explicit(&h->next, memory_order_relaxed);
+    log("free page slab free partials %p, full %i", h, h->num_full);
     sl_free_page(h);
     h = nh;
   }
@@ -971,6 +1004,7 @@ slab_free(resource *r)
   while (SL_GET_STATE(h) != slh_dummy)
   {
     struct sl_head *nh = atomic_load_explicit(&h->next, memory_order_relaxed);
+    log("free page slab free full %p, full %i", h, h->num_full);
     sl_free_page(h);
     h = nh;
   }
@@ -986,8 +1020,9 @@ slab_free(resource *r)
       if (ti)
       {
         struct sl_head *th = atomic_load_explicit(&ti->head, memory_order_relaxed);
-        if (th)
-          sl_free_page(th);
+        if (th){
+                log("free page slab free partials %p, active %i", h, h->num_full);
+          sl_free_page(th);}
 
         //mb_free(ti); TODO: Hopefully this will be freed automatically with the tread, because we do not have locked the right domains
       }
