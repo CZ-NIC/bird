@@ -2139,8 +2139,8 @@ ea_init_hash_table(pool *pool, struct event_list *ev_list)
   rta_hash_table.pool = pool;
   rta_hash_table.ev_list = ev_list;
   rta_hash_table.rehash_event.hook = ea_rehash;
-  rta_hash_table.esa1.eas = mb_allocz(pool, sizeof(struct ea_storage *_Atomic ) * 1<<6);
-  atomic_store_explicit(&rta_hash_table.esa1.order, 6, memory_order_relaxed);
+  rta_hash_table.esa1.eas = mb_allocz(pool, sizeof(struct ea_storage *_Atomic ) * 1<<10);
+  atomic_store_explicit(&rta_hash_table.esa1.order, 10, memory_order_relaxed);
   atomic_store_explicit(&rta_hash_table.esa2.order, 0, memory_order_relaxed);
   rta_hash_table.esa1.running_delete = mb_allocz(rta_hash_table.pool, sizeof(_Atomic u16) * (1 << rta_hash_table.esa1.order));
   atomic_store_explicit(&rta_hash_table.cur, &rta_hash_table.esa1, memory_order_relaxed);
