@@ -21,10 +21,12 @@ module bird {
     leaf effective {
       type uint64;
       description "Memory we consider needed";
+      units "byte";
     }
     leaf overhead {
       type uint64;
       description "Memory which is standby, unusable or technical";
+      units "byte";
     }
   }
 
@@ -55,15 +57,18 @@ module bird {
       description "Page allocator info";
       leaf active {
 	type uint64;
-	description "Active pages (in bytes)";
+	description "Active pages";
+	units "byte";
       }
       leaf hot {
 	type uint64;
-	description "Hot free pages (in bytes)";
+	description "Hot free pages";
+	units "byte";
       }
       leaf cold {
 	type uint64;
-	description "Cold free pages (in bytes)";
+	description "Cold free pages";
+	units "byte";
       }
       leaf hot-rcu-failure-count {
 	type uint64;
