@@ -960,6 +960,10 @@ cf_symbol_class_name(struct symbol *sym)
       return "MPLS label range";
     case SYM_KEYWORD:
       return "symbol";
+    case SYM_METHOD:
+      return "method";
+    case SYM_THREAD_GROUP:
+      return "thread group";
     case SYM_CONSTANT_RANGE:
       return "constant";
     case SYM_VARIABLE_RANGE:
