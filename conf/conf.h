@@ -37,6 +37,7 @@ struct config {
   struct symbol *def_tables[NET_MAX];	/* Default routing tables for each network */
   struct iface_patt *router_id_from;	/* Configured list of router ID iface patterns */
 
+  uint yang_api_counter;		/* YANG name counter */
   u32 router_id;			/* Our Router ID */
   const char *hostname;			/* Hostname */
   u32 proto_default_debug;		/* Default protocol debug mask */

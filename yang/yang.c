@@ -42,12 +42,59 @@ static int
 yang_session_rx(sock *sk, uint size)
 {
   struct yang_session *se = sk->data;
+  struct yang_socket *s = se->socket;
+  SKIP_BACK_DECLARE(struct yang_api, api, listen, yang_socket_enlisted(s));
+
+  /* Check the received data in */
   coap_tcp_rx(&se->coap, sk->rbuf, size);
 
-  do {
+  while (true)
+  {
     enum coap_parse_state state = coap_tcp_parse(&se->coap);
     log(L_TRACE "state is %d", state);
-  } while (0);
+    switch (state) {
+      case COAP_PS_MORE:
+	return 1;
+
+      case COAP_PS_ERROR:
+	log(L_INFO "%s: CoAP error %u", api->name, state);
+	sk_close(sk);
+	mb_free(se);
+	return 0;
+
+      case COAP_PS_HEADER:
+	log(L_INFO "Header parsed");
+	continue;
+
+      case COAP_PS_OPTION_COMPLETE:
+	log(L_INFO "Options parsed");
+	continue;
+
+      case COAP_PS_PAYLOAD_COMPLETE:
+	log(L_INFO "Payload parsed");
+	continue;
+
+      default:
+	log(L_INFO "Status %u", state);
+	continue;
+    }
+  }
+}
+
+static void
+yang_session_err(sock *sk, int err)
+{
+  struct yang_session *se = sk->data;
+  struct yang_socket *s = se->socket;
+  SKIP_BACK_DECLARE(struct yang_api, api, listen, yang_socket_enlisted(s));
+
+  if (err)
+    log(L_INFO "%s: Connection lost (%M)", api->name, err);
+  else
+    log(L_INFO "%s: Connection closed", api->name);
+
+  sk_close(sk);
+  mb_free(se);
 }
 
 static int
@@ -61,6 +108,7 @@ yang_socket_accept(sock *sk, uint size UNUSED)
   se->socket = s;
 
   sk->rx_hook = yang_session_rx;
+  sk->err_hook = yang_session_err;
   sk->data = se;
 
   return 0;

@@ -16,8 +16,6 @@ CF_DEFINES
 static struct yang_api_config *this_yang_api;
 static struct yang_socket_config *this_yang_socket;
 
-static uint yang_api_counter = 1;
-
 CF_DECLS
 
 CF_KEYWORDS(YANG, LISTEN, TCP, UDP, COAP, RESTRICTED, MODEL, CLI, MTU)
@@ -45,7 +43,7 @@ yang_api: yang_api_start {
 ;
 
 yang_api_start:
-   YANG /* empty */ { $$ = cf_default_name(new_config, "yang%d", &yang_api_counter); }
+   YANG /* empty */ { $$ = cf_default_name(new_config, "yang%d", &new_config->yang_api_counter); }
  | YANG symbol { $$ = $2; }
 ;
 
