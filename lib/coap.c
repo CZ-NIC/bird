@@ -79,7 +79,7 @@ static enum coap_parse_state
 coap_parse_option(struct coap_session *s, bool allow_partial)
 {
 #define MORE(_s) \
-  if (!allow_partial && ( \
+  if (allow_partial && ( \
 	((_s) >= COAP_PSM_NONE) && \
 	((_s) < COAP_PSE_NONE) || \
 	((_s) == COAP_PS_OPTION_PARTIAL))) \
@@ -188,7 +188,7 @@ coap_parse_option(struct coap_session *s, bool allow_partial)
 
 	/* Zero-length option is already done */
 	if (ctx->option_len == 0)
-	  MORE(COAP_PS_OPTION_COMPLETE);
+	  return ctx->state = COAP_PS_OPTION_COMPLETE;
 
 	/* Now loading the option */
 	ctx->option_chunk_offset = 0;
@@ -208,15 +208,13 @@ coap_parse_option(struct coap_session *s, bool allow_partial)
 	  ctx->option_chunk_len = ctx->option_len - ctx->option_chunk_offset;
 	  ctx->data_ptr += ctx->option_chunk_len;
 	  ASSERT_DIE(ctx->data_ptr <= ctx->data_len);
-	  MORE(COAP_PS_OPTION_COMPLETE);
+	  return ctx->state = COAP_PS_OPTION_COMPLETE;
 	}
 	else
 	{
 	  ctx->data_ptr = ctx->data_len;
 	  MORE(COAP_PS_OPTION_PARTIAL);
 	}
-
-
     }
   }
 
