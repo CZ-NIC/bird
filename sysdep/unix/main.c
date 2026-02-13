@@ -41,6 +41,7 @@
 #include "conf/conf.h"
 #include "filter/filter.h"
 #include "filter/data.h"
+#include "yang/yang.h"
 
 #include "unix.h"
 #include "krt.h"
@@ -1044,6 +1045,7 @@ main(int argc, char **argv)
   mpls_init();
 //  roa_init();
   config_init();
+  yang_init();
 
   /* Arguments and logs */
   parse_args(argc, argv);

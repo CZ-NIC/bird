@@ -56,6 +56,7 @@
 #include "conf/conf.h"
 #include "filter/filter.h"
 #include "sysdep/unix/unix.h"
+#include "yang/yang.h"
 
 
 static jmp_buf conf_jmpbuf;
@@ -322,6 +323,8 @@ config_do_commit(config_ref *cr, int type)
   if (old_config && !c->shutdown)
     log(L_INFO "Reconfiguring");
 
+  DBG("yang_commit\n");
+  yang_commit(c, old_config);
   DBG("filter_commit\n");
   filter_commit(c, old_config);
   DBG("sysdep_commit\n");

@@ -964,6 +964,8 @@ cf_symbol_class_name(struct symbol *sym)
       return "method";
     case SYM_THREAD_GROUP:
       return "thread group";
+    case SYM_YANG_API:
+      return "yang api";
     case SYM_CONSTANT_RANGE:
       return "constant";
     case SYM_VARIABLE_RANGE:

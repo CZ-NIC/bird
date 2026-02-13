@@ -132,6 +132,7 @@ CF_DECLS
   struct adata *ad;
   const struct adata *bs;
   struct aggr_item_node *ai;
+  enum yang_model yang_model;
 }
 
 %token END CLI_MARKER INVALID_TOKEN ELSECOL DDOT
