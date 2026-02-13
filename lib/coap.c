@@ -414,6 +414,25 @@ coap_tcp_parse(struct coap_session *s)
   }
 }
 
+/**
+ * coap_tcp_rx - more data received
+ * @s: The CoAP session
+ * @ptr: Packet data
+ * @len: Packet length
+ *
+ * The TCP parser may receive frames weirdly sliced, and therefore this
+ * simply supplies more data. All the data must be consumed by
+ * coap_tcp_parse() before its lifetime is up.
+ */
+void
+coap_tcp_rx(struct coap_session *s, const char *data, uint len)
+{
+  struct coap_parse_context *ctx = &s->parser;
+
+  ctx->data = data;
+  ctx->data_len = len;
+  ctx->data_ptr = 0;
+}
 
 #if 0
 static const char *

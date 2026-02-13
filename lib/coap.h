@@ -173,17 +173,9 @@ struct coap_params {
 
 /* One CoAP session */
 struct coap_session {
-  struct coap_endpoint *endpoint;	/* Local endpoint which we belong to */
   struct coap_endpoint_ident remote;	/* Remote endpoint identification */
   struct birdsock *sock;		/* Socket to act on */
   struct coap_parse_context parser;	/* Frame parser */
-};
-
-/* Local CoAP endpoint, capable of connecting to multiple others */
-struct coap_endpoint {
-  struct coap_endpoint_ident ident;	/* Endpoint identification */
-// TLIST of sessions!  struct coap_ 
-  struct birdsock *sock;		/* Listening socket */
 };
 
 void coap_udp_rx(struct coap_session *s, const char *data, uint len);
