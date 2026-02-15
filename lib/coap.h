@@ -67,6 +67,47 @@ enum coap_msg_code {
   COAP_SERR_SERVICE_UNAVAILABLE		= COAP_CLS_SERVER_ERROR | 3,	/* RFC 7252 */
   COAP_SERR_GATEWAY_TIMEOUT		= COAP_CLS_SERVER_ERROR | 4,	/* RFC 7252 */
   COAP_SERR_PROXYING_NOT_SUPPORTED	= COAP_CLS_SERVER_ERROR | 5,	/* RFC 7252 */
+
+  COAP_SCO_CSM				= COAP_CLS_STREAM_CONTROL | 1,	/* RFC 8323 */
+  COAP_SCO_PING				= COAP_CLS_STREAM_CONTROL | 2,	/* RFC 8323 */
+  COAP_SCO_PONG				= COAP_CLS_STREAM_CONTROL | 3,	/* RFC 8323 */
+  COAP_SCO_RELEASE			= COAP_CLS_STREAM_CONTROL | 4,	/* RFC 8323 */
+  COAP_SCO_ABORT			= COAP_CLS_STREAM_CONTROL | 5,	/* RFC 8323 */
+} PACKED;
+
+enum coap_option_flags {
+  COAP_OPT_F_CRITICAL			= 1,
+  COAP_OPT_F_UNSAFE_TO_FWD		= 2,
+  COAP_OPT_F_NOCACHEKEY			= 28,
+};
+
+enum coap_option_id {
+					/* +---+---+---+---+--------+--------+ */
+					/* | C | U | N | R | Format | Length | */
+					/* +---+---+---+---+--------+--------+ */
+  COAP_OPT_IF_MATCH		= 1,	/* | x |   |   | x | opaque | 0-8    | */
+  COAP_OPT_URI_HOST		= 3,	/* | x | x | - |   | string | 1-255  | */
+  COAP_OPT_ETAG			= 4,	/* |   |   |   | x | opaque | 1-8    | */
+  COAP_OPT_IF_NONE_MATCH	= 5,	/* | x |   |   |   | empty  | 0      | */
+  COAP_OPT_URI_PORT		= 7,	/* | x | x | - |   | uint   | 0-2    | */
+  COAP_OPT_LOCATION_PATH	= 8,	/* |   |   |   | x | string | 0-255  | */
+  COAP_OPT_URI_PATH		= 11,	/* | x | x | - | x | string | 0-255  | */
+  COAP_OPT_CONTENT_FORMAT	= 12,	/* |   |   |   |   | uint   | 0-2    | */
+  COAP_OPT_MAX_AGE		= 14,	/* |   | x | - |   | uint   | 0-4    | */
+  COAP_OPT_URI_QUERY		= 15,	/* | x | x | - | x | string | 0-255  | */
+  COAP_OPT_ACCEPT		= 17,	/* | x |   |   |   | uint   | 0-2    | */
+  COAP_OPT_LOCATION_QUERY	= 20,	/* |   |   |   | x | string | 0-255  | */
+  COAP_OPT_PROXY_URI		= 35,	/* | x | x | - |   | string | 1-1034 | */
+  COAP_OPT_PROXY_SCHEME		= 39,	/* | x | x | - |   | string | 1-255  | */
+  COAP_OPT_SIZE1		= 60,	/* |   |   | x |   | uint   | 0-4    | */
+					/* +---+---+---+---+--------+--------+ */
+
+  COAP_OPT_MAX_MSG_SIZE		= 2,	/* RFC 8323, COAP_SCO_CSM */
+  COAP_OPT_BLOCKWISE		= 4,	/* RFC 8323, COAP_SCO_CSM */
+  COAP_OPT_CUSTODY		= 2,	/* RFC 8323, COAP_SCO_PING + COAP_SCO_PONG */
+  COAP_OPT_ALTERNATIVE_ADDR	= 2,	/* RFC 8323, COAP_SCO_RELEASE */
+  COAP_OPT_HOLDOFF		= 4,	/* RFC 8323, COAP_SCO_RELEASE */
+  COAP_OPT_BAD_CSM		= 2,	/* RFC 8323, COAP_SCO_ABORT */
 } PACKED;
 
 enum coap_parse_state {
@@ -183,5 +224,7 @@ enum coap_parse_state coap_udp_parse(struct coap_session *s);
 
 void coap_tcp_rx(struct coap_session *s, const char *data, uint len);
 enum coap_parse_state coap_tcp_parse(struct coap_session *s);
+
+enum coap_parse_state coap_process(struct coap_session *s);
 
 #endif /* _LIB_COAP_H_ */

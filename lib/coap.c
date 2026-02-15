@@ -169,7 +169,7 @@ coap_parse_option(struct coap_session *s, bool allow_partial)
 	    break;
 	}
 
-	if (END)
+	if (ctx->option_len && END)
 	  MORE(ctx->state);
 
 	/* Now finally parsing the option len bytes */
@@ -217,6 +217,8 @@ coap_parse_option(struct coap_session *s, bool allow_partial)
 	}
     }
   }
+
+  return ctx->state;
 
 #undef MORE
 }
@@ -410,6 +412,8 @@ coap_tcp_parse(struct coap_session *s)
 	FAIL(COAP_PSE_NEED_RESET);
     }
   }
+
+  return ctx->state;
 }
 
 /**
