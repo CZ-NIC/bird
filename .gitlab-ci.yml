@@ -1692,6 +1692,11 @@ test-bgp-auth:
   variables:
     TEST_NAME: cf-bgp-auth
 
+test-bgp-autopeer:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-autopeer
+
 test-bgp-int:
   <<: *test-base
   variables:
