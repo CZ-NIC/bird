@@ -2049,6 +2049,8 @@ bgp_find_proto(struct bgp_socket_private *bs, sock *sk)
   return best;
 }
 
+static bool bgp_configure_incoming_socket(struct bgp_proto *p, sock *sk);
+
 /**
  * bgp_incoming_connection - handle an incoming connection
  * @sk: TCP socket
@@ -2091,6 +2093,7 @@ static void
 bgp_incoming_connection_dynamic(struct callback *cb)
 {
   SKIP_BACK_DECLARE(struct bgp_listen_request, req, incoming_connection, cb);
+  struct bgp_proto *p = req->p;
 
   while (true)
   {
@@ -2108,10 +2111,19 @@ bgp_incoming_connection_dynamic(struct callback *cb)
       mb_free(bis);
     }
 
+    BGP_TRACE(D_EVENTS, "Incoming connection from %I%J (port %d) %s",
+	sk->daddr, ipa_is_link_local(sk->daddr) ? sk->iface : NULL,
+	sk->dport, "accepted");
+
+    /* Finish socket configuration */
+    if (!bgp_configure_incoming_socket(p, sk))
+      continue;
+
+
     /* Ending up here means that there is no pre-existing explicit BGP session,
      * and therefore the socket was matched by a dynamic entry instead.
      * We need to spawn a new BGP session. */
-    bgp_spawn(req->p, sk);
+    bgp_spawn(p, sk);
   }
 }
 
@@ -2191,6 +2203,22 @@ bgp_incoming_connection_single(struct callback *cb)
     return;
   }
 
+  /* Finish socket configuratino */
+  if (!bgp_configure_incoming_socket(p, sk))
+    return;
+
+  /* Continue locally */
+  rmove(sk, p->p.pool);
+  sk_reloop(sk, p->p.loop);
+
+  bgp_setup_conn(p, &p->incoming_conn);
+  bgp_setup_sk(&p->incoming_conn, sk);
+  bgp_send_open(&p->incoming_conn);
+}
+
+static bool
+bgp_configure_incoming_socket(struct bgp_proto *p, sock *sk)
+{
   uint hops = p->cf->multihop ?: 1;
 
   if (sk_set_ttl(sk, p->cf->ttl_security ? 255 : hops) < 0)
@@ -2222,15 +2250,7 @@ bgp_incoming_connection_single(struct callback *cb)
     sk_reallocate(sk);
   }
 
-  /* Continue locally */
-  rmove(sk, p->p.pool);
-  sk_reloop(sk, p->p.loop);
-
-  bgp_setup_conn(p, &p->incoming_conn);
-  bgp_setup_sk(&p->incoming_conn, sk);
-  bgp_send_open(&p->incoming_conn);
-
-  return;
+  return true;
 
   /* Common error handling */
 err:
@@ -2238,6 +2258,8 @@ err:
 err2:
   log(L_ERR "%s: Incoming connection aborted", p->p.name);
   sk_close(sk);
+
+  return false;
 }
 
 static void
