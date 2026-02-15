@@ -176,7 +176,6 @@ static void bgp_restart_route_refresh(void *_bc);
 /* Dynamic BGP detection */
 #define bgp_is_dynamic(x) (_Generic((x),			\
     struct bgp_proto *: ipa_zero((x)->remote_ip),		\
-    struct bgp_config *: ipa_zero((x)->remote_ip),		\
     struct bgp_listen_request *: ipa_zero((x)->remote_ip)))
 
 
