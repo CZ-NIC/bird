@@ -196,12 +196,8 @@ static int
 bgp_open(struct bgp_proto *p)
 {
   /* Interface-patterned listening sockets are created from the
-   * interface notifier. By default, listen to nothing.
-   *
-   * Also dynamically spawned protocol do not need a listening socket,
-   * they already have their parent's one and the requests are actually
-   * ignored when looking for the accepting protocol. */
-  if (p->cf->ipatt || p->cf->c.parent)
+   * interface notifier. By default, listen to nothing. */
+  if (p->cf->ipatt)
     return 0;
 
   /* Set parameters of the listening socket
