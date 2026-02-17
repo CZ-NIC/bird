@@ -7,14 +7,28 @@
  */
 
 #include "test/birdtest.h"
+#include "test/bt-utils.h"
 #include "lib/resource.h"
 #include "lib/bitops.h"
 #include "lib/event.h"
 #include "lib/io-loop.h"
 
+#include <semaphore.h>
+
+#define	PARALLEL_THREADS 19
+
 static const int sizes[] = {
   8, 12, 18, 27, 41, 75, 131, 269,
 };
+
+static const int parallel_blens[] = {
+  8, 34, 144, 610, 2584,
+//  8, 13, 21, 34, 55, 89, 144, 233,
+//  377, 610, 987, 1597, 2584, 4181, 6765, 10946,
+//  17711, 28657, 46368, 75025, 121393, 196418, 317811, 514229, 832040, 1346269, 2178309, 3524578, 5702887, 9227465, 14930352, 24157817, 39088169, 63245986, 102334155
+};
+
+#define PARALLEL_MAXOP	1048576
 
 #define TEST_SIZE	1024 * 128
 #define ITEMS(sz)	TEST_SIZE / ( (sz) >> u32_log2((sz))/2 )
@@ -159,23 +173,152 @@ t_slab(const void *data)
   mb_free(block);
   return 1;
 }
+
+struct t_slab_parallel_worker {
+  callback cb;
+  byte **block[ARRAY_SIZE(sizes)];
+  byte *checkblock[ARRAY_SIZE(sizes)];
+  slab ** slabs;
+  uint blen;
+  uint counter;
+  u64 rand_ctx;
+  uint id;
+  sem_t *done;
+};
+
+_Atomic u64 yield_count = 0;
+
+static void
+t_slab_parallel_worker_hook(callback *cb)
+{
+  SKIP_BACK_DECLARE(struct t_slab_parallel_worker, w, cb, cb);
+
+  for (; w->counter < PARALLEL_MAXOP; w->counter++)
+  {
+    u64 bp = w->rand_ctx % (ARRAY_SIZE(sizes) * w->blen);
+    uint bszp = bp % ARRAY_SIZE(sizes);
+    uint bpos = bp / ARRAY_SIZE(sizes);
+
+    w->rand_ctx *= 0xba7eac47e4b7a0f7;
+    w->rand_ctx += 0x12a6446d96df29ab;
+
+    if (w->block[bszp][bpos])
+    {
+      ASSERT_DIE(!memcmp(w->block[bszp][bpos], w->checkblock[bszp], sizes[bszp]));
+      sl_free(w->block[bszp][bpos]);
+      w->block[bszp][bpos] = NULL;
+    }
+    else
+    {
+      w->block[bszp][bpos] = sl_alloc(w->slabs[bszp]);
+      memcpy(w->block[bszp][bpos], w->checkblock[bszp], sizes[bszp]);
+    }
+
+    if (!task_still_in_limit())
+    {
+      atomic_fetch_add_explicit(&yield_count, 1, memory_order_relaxed);
+      return callback_activate(cb);
+    }
+  }
+
+  for (uint i = 0; i < ARRAY_SIZE(sizes); i++)
+    for (uint b = 0; b < w->blen; b++)
+      if (w->block[i][b])
+      {
+	ASSERT_DIE(!memcmp(w->block[i][b], w->checkblock[i], sizes[i]));
+	sl_free(w->block[i][b]);
+      }
+
+  sem_post(w->done);
+}
+
+static int
+t_slab_parallel(void)
+{
+  struct birdloop *cleanup_loops[ARRAY_SIZE(sizes)];
+  slab *slabs[ARRAY_SIZE(sizes)];
+
+  for (uint i = 0; i < ARRAY_SIZE(sizes); i++)
+  {
+    cleanup_loops[i] = birdloop_new(&root_pool, DOMAIN_ORDER(proto), NULL, "Cleanup loop %d", i);
+    birdloop_enter(cleanup_loops[i]);
+    slabs[i] = sl_new(birdloop_pool(cleanup_loops[i]), birdloop_event_list(cleanup_loops[i]), sizes[i]);
+    birdloop_leave(cleanup_loops[i]);
+  }
+
+  struct birdloop *worker_loops[PARALLEL_THREADS * ARRAY_SIZE(sizes)];
+
+  for (uint i = 0; i < ARRAY_SIZE(worker_loops); i++)
+  {
+    worker_loops[i] = birdloop_new(&root_pool, DOMAIN_ORDER(service), NULL, "Worker loop %d", i);
+  }
+
+  struct t_slab_parallel_worker tspw[ARRAY_SIZE(parallel_blens) * ARRAY_SIZE(worker_loops)];
+  sem_t sem;
+  sem_init(&sem, 0, 0);
+
+  for (uint i = 0; i < ARRAY_SIZE(tspw); i++)
+  {
+    callback_init(&tspw[i].cb, t_slab_parallel_worker_hook, worker_loops[i % ARRAY_SIZE(worker_loops)]);
+    tspw[i].blen = parallel_blens[i % ARRAY_SIZE(parallel_blens)];
+    tspw[i].slabs = slabs;
+    tspw[i].counter = 0;
+    tspw[i].rand_ctx = i;
+    tspw[i].id = i;
+    tspw[i].done = &sem;
+
+    for (uint s = 0; s < ARRAY_SIZE(sizes); s++)
+    {
+      tspw[i].block[s] = mb_allocz(&root_pool, sizeof (byte *) * tspw[i].blen);
+      tspw[i].checkblock[s] = mb_alloc(&root_pool, sizes[s]);
+
+      for (uint q = 0; q < sizes[s]; q++)
+	tspw[i].checkblock[s][q] = ((q & 0xf) << 4) | (i & 0xf);
+    }
+  }
+
+  for (uint i = 0; i < ARRAY_SIZE(tspw); i++)
+    callback_activate(&tspw[i].cb);
+
+  for (uint i = 0; i < ARRAY_SIZE(tspw); i++)
+    while (sem_trywait(&sem) < 0)
+    {
+      ASSERT_DIE(errno == EAGAIN);
+
+      ev_run_list(&global_event_list);
+      ev_run_list(&global_work_list);
+
+      birdloop_yield();
+    }
+
+  printf("Yield count: %lu\n", yield_count);
+
+  return 1;
+}
+
 int main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
   struct test_request tr;
 
-  for (uint i = 0; i < sizeof(sizes) / sizeof(*sizes); i++){
-      for (uint strategy = TEST_FORWARDS; strategy < TEST__MAX; strategy++)
-      {
-	tr = (struct test_request) {
-	  .size = sizes[i],
-	  .strategy = strategy,
-	};
-	bt_test_suite_arg(t_slab, &tr, "Slab allocator test, size=%d, strategy=%s",
-	    tr.size, strategy_name[strategy]);
-      }
-      }
+  for (uint i = 0; i < sizeof(sizes) / sizeof(*sizes); i++)
+  {
+    for (uint strategy = TEST_FORWARDS; strategy < TEST__MAX; strategy++)
+    {
+      tr = (struct test_request) {
+	.size = sizes[i],
+	.strategy = strategy,
+      };
+      bt_test_suite_arg(t_slab, &tr, "Slab allocator test, size=%d, strategy=%s",
+	  tr.size, strategy_name[strategy]);
+    }
+  }
+
+  bt_bird_init();
+  bt_config_parse(BT_CONFIG_SIMPLE "threads " MACRO_STR_AFTER(PARALLEL_THREADS) ";\n");
+
+  bt_test_suite(t_slab_parallel, "Slab allocator test in parallel");
 
   return bt_exit_value();
 }
