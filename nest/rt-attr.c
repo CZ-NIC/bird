@@ -1753,7 +1753,9 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
 
           return r_found->l;
         }
-      } else if (!lookups)
+      }
+
+      if (!lookups)
       {
         /* We do not have prepared new ea_storage, need to reenter the loop and allocate one. */
         rcu_read_unlock();
@@ -1997,14 +1999,12 @@ ea_rehash_item_rec(struct ea_storage *ea, struct ea_stor_array *next, u32 next_o
   }
 
   uint next_in = ea->hash_key >> (32 - next_order); /* Position in the new array */
-  struct ea_storage *eap_first_next;
 
   /* Store to the linked list in new array. There might be race with adding. */
+  struct ea_storage *eap_first_next = atomic_load_explicit(&next->eas[next_in], memory_order_acquire);
   do
   {
-    struct ea_storage *eap_first_next = atomic_load_explicit(&next->eas[next_in], memory_order_acquire);
     atomic_store_explicit(&ea->next_hash, eap_first_next, memory_order_release);
-
   } while (!atomic_compare_exchange_strong_explicit(
       &next->eas[next_in], &eap_first_next, ea,
       memory_order_acq_rel, memory_order_acquire));
@@ -2073,8 +2073,10 @@ ea_rehash(void * u UNUSED)
 
   RTA_LOCK;
   mb_free(cur->eas);
+  mb_free(cur->running_delete);
   RTA_UNLOCK;
   cur->eas = NULL;
+  cur->running_delete = NULL;
 }
 
 
