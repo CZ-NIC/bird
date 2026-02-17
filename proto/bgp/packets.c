@@ -2794,9 +2794,7 @@ bgp_rx_end_mark(struct bgp_parse_state *s, u32 afi)
 static inline void
 bgp_set_attr_ineligibility_reason(struct ea_list **to, struct linpool *lp, const struct buffer *buf, int written)
 {
-  if (written <= 0)
-    ;
-  else
+  if (written > 0)
   {
     struct adata *a = lp_allocz(lp, sizeof(*a) + written + 1);
     memcpy(a->data, buf->start, written + 1);
