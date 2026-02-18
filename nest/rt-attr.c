@@ -990,8 +990,8 @@ ea_list_size(ea_list *o)
  * and creates the final structure useful for storage or fast searching.
  * The method is a bucket sort.
  *
- * Returns the final ea_list allocated from the tmp_linpool.
- * The adata is linked from the original places.
+ * Returns the final ea_list with some excess memory at the end,
+ * allocated from the tmp_linpool. The adata is linked from the original places.
  */
 ea_list *
 ea_normalize(ea_list *e, u32 upto)
@@ -999,17 +999,21 @@ ea_normalize(ea_list *e, u32 upto)
   /* We expect some work to be actually needed. */
   ASSERT_DIE(!BIT32_TEST(&upto, e->stored));
 
-  /* Allocate the buckets locally */
-  eattr *buckets = allocz(ea_class_max * sizeof(eattr));
+  /* Allocate the output */
+  ea_list *out = tmp_allocz(ea_class_max * sizeof(eattr) + sizeof(ea_list));
+  *out = (ea_list) {
+    .flags = EALF_SORTED,
+  };
+
   uint min_id = ~0, max_id = 0;
 
-  ea_list *next = NULL;
+  eattr *buckets = out->attrs;
 
   /* Walk the attribute lists, one after another. */
   for (; e; e = e->next)
   {
-    if (!next && BIT32_TEST(&upto, e->stored))
-      next = e;
+    if (!out->next && BIT32_TEST(&upto, e->stored))
+      out->next = e;
 
     for (int i = 0; i < e->count; i++)
     {
@@ -1019,7 +1023,7 @@ ea_normalize(ea_list *e, u32 upto)
       if (id < min_id)
 	min_id = id;
 
-      if (next)
+      if (out->next)
       {
 	/* Underlay: check whether the value is duplicate */
 	if (buckets[id].id && buckets[id].fresh)
@@ -1045,18 +1049,6 @@ ea_normalize(ea_list *e, u32 upto)
     }
   }
 
-  /* Find out how big the output actually is. */
-  uint len = 0;
-  for (uint id = min_id; id <= max_id; id++)
-    if (buckets[id].id && !(buckets[id].undef && buckets[id].fresh))
-      len++;
-
-  ea_list *out = tmp_alloc(sizeof(ea_list) + len * sizeof(eattr));
-  *out = (ea_list) {
-    .flags = EALF_SORTED,
-    .next = next,
-  };
-
   /* And now we just walk the list from beginning to end and collect
    * everything to the beginning of the list.
    * Walking just that part which is inhabited for sure. */
@@ -1075,11 +1067,8 @@ ea_normalize(ea_list *e, u32 upto)
 
     /* Move the attribute to the beginning */
     ASSERT_DIE(out->count < id);
-    ASSERT_DIE(out->count < len);
-    out->attrs[out->count++] = buckets[id];
+    buckets[out->count++] = buckets[id];
   }
-
-  ASSERT_DIE(out->count == len);
 
   /* We want to bisect only if the list is long enough */
   if (out->count > 5)
