@@ -893,247 +893,6 @@ ea_walk(struct ea_walk_state *s, uint id, uint max)
   return NULL;
 }
 
-static inline void
-ea_do_sort(ea_list *e)
-{
-  unsigned n = e->count;
-  eattr *a = e->attrs;
-  eattr *b = alloca(n * sizeof(eattr));
-  unsigned s, ss;
-
-  /* We need to use a stable sorting algorithm, hence mergesort */
-  do
-    {
-      s = ss = 0;
-      while (s < n)
-	{
-	  eattr *p, *q, *lo, *hi;
-	  p = b;
-	  ss = s;
-	  *p++ = a[s++];
-	  while (s < n && p[-1].id <= a[s].id)
-	    *p++ = a[s++];
-	  if (s < n)
-	    {
-	      q = p;
-	      *p++ = a[s++];
-	      while (s < n && p[-1].id <= a[s].id)
-		*p++ = a[s++];
-	      lo = b;
-	      hi = q;
-	      s = ss;
-	      while (lo < q && hi < p)
-		if (lo->id <= hi->id)
-		  a[s++] = *lo++;
-		else
-		  a[s++] = *hi++;
-	      while (lo < q)
-		a[s++] = *lo++;
-	      while (hi < p)
-		a[s++] = *hi++;
-	    }
-	}
-    }
-  while (ss);
-}
-
-static bool eattr_same_value(const eattr *a, const eattr *b);
-
-/**
- * In place discard duplicates and undefs in sorted ea_list. We use stable sort
- * for this reason.
- **/
-static inline void
-ea_do_prune(ea_list *e)
-{
-  eattr *s, *d, *l, *s0;
-  int i = 0;
-
-#if 0
-  debug("[[prune]] ");
-  ea_dump(e);
-  debug(" ----> ");
-#endif
-
-  /* Prepare underlay stepper */
-  uint ulc = 0;
-  for (ea_list *u = e->next; u; u = u->next)
-    ulc++;
-
-  struct { eattr *cur, *end; } uls[ulc];
-  {
-    ea_list *u = e->next;
-    for (uint i = 0; i < ulc; i++)
-    {
-      ASSERT_DIE(u->flags & EALF_SORTED);
-      uls[i].cur = u->attrs;
-      uls[i].end = u->attrs + u->count;
-      u = u->next;
-      /* debug(" [[prev %d: %p to %p]] ", i, uls[i].cur, uls[i].end); */
-    }
-  }
-
-  s = d = e->attrs;	    /* Beginning of the list. @s is source, @d is destination. */
-  l = e->attrs + e->count;  /* End of the list */
-
-  /* Walk from begin to end. */
-  while (s < l)
-    {
-      s0 = s++;
-      /* Find a consecutive block of the same attribute */
-      while (s < l && s->id == s[-1].id)
-	s++;
-      /* Now s0 is the most recent version, s[-1] the oldest one */
-
-      /* Find the attribute's underlay version */
-      eattr *prev = NULL;
-      for (uint i = 0; i < ulc; i++)
-      {
-	while ((uls[i].cur < uls[i].end) && (uls[i].cur->id < s0->id))
-	{
-	  uls[i].cur++;
-	  /* debug(" [[prev %d: %p (%s/%d)]] ", i, uls[i].cur, ea_class_global[uls[i].cur->id]->name, uls[i].cur->id); */
-	}
-
-	if ((uls[i].cur >= uls[i].end) || (uls[i].cur->id > s0->id))
-	  continue;
-
-	prev = uls[i].cur;
-	break;
-      }
-
-      /* Drop identicals */
-      if (prev && eattr_same_value(s0, prev))
-      {
-	/* debug(" [[drop identical %s]] ", ea_class_global[s0->id]->name); */
-	continue;
-      }
-
-      /* Drop undefs (identical undefs already dropped before) */
-      if (!prev && s0->undef)
-      {
-	/* debug(" [[drop undef %s]] ", ea_class_global[s0->id]->name); */
-	continue;
-      }
-
-      /* Copy the newest version to destination */
-      *d = *s0;
-
-      /* Preserve info whether it originated locally */
-      d->originated = s[-1].originated;
-
-      /* Not fresh any more, we prefer surstroemming */
-      d->fresh = 0;
-
-      /* Next destination */
-      d++;
-      i++;
-    }
-
-  e->count = i;
-}
-
-/**
- * ea_sort - sort an attribute list
- * @e: list to be sorted
- *
- * This function takes a &ea_list chain and sorts the attributes
- * within each of its entries.
- *
- * If an attribute occurs multiple times in a single &ea_list,
- * ea_sort() leaves only the first (the only significant) occurrence.
- */
-static void
-ea_sort(ea_list *e)
-{
-  if (!(e->flags & EALF_SORTED))
-  {
-    ea_do_sort(e);
-    ea_do_prune(e);
-    e->flags |= EALF_SORTED;
-  }
-
-  if (e->count > 5)
-    e->flags |= EALF_BISECT;
-}
-
-/**
- * ea_scan - estimate attribute list size
- * @e: attribute list
- *
- * This function calculates an upper bound of the size of
- * a given &ea_list after merging with ea_merge().
- */
-static unsigned
-ea_scan(const ea_list *e, u32 upto)
-{
-  unsigned cnt = 0;
-
-  while (e)
-    {
-      cnt += e->count;
-      e = e->next;
-      if (e && BIT32_TEST(&upto, e->stored))
-	break;
-    }
-  return sizeof(ea_list) + sizeof(eattr)*cnt;
-}
-
-/**
- * ea_merge - merge segments of an attribute list
- * @e: attribute list
- * @t: buffer to store the result to
- *
- * This function takes a possibly multi-segment attribute list
- * and merges all of its segments to one.
- *
- * The primary use of this function is for &ea_list normalization:
- * first call ea_scan() to determine how much memory will the result
- * take, then allocate a buffer (usually using alloca()), merge the
- * segments with ea_merge() and finally sort and prune the result
- * by calling ea_sort().
- */
-static void
-ea_merge(ea_list *e, ea_list *t, u32 upto)
-{
-  eattr *d = t->attrs;
-
-  t->flags = 0;
-  t->count = 0;
-
-  while (e)
-    {
-      memcpy(d, e->attrs, sizeof(eattr)*e->count);
-      t->count += e->count;
-      d += e->count;
-      e = e->next;
-
-      if (e && BIT32_TEST(&upto, e->stored))
-	break;
-    }
-
-  t->next = e;
-}
-
-ea_list *
-ea_normalize(ea_list *e, u32 upto)
-{
-#if 0
-  debug("(normalize)");
-  ea_dump(e);
-  debug(" ----> ");
-#endif
-  ea_list *t = tmp_allocz(ea_scan(e, upto));
-  ea_merge(e, t, upto);
-  ea_sort(t);
-#if 0
-  ea_dump(t);
-  debug("\n");
-#endif
-
-  return t;
-}
-
 static bool
 eattr_same_value(const eattr *a, const eattr *b)
 {
@@ -1208,6 +967,104 @@ ea_list_size(ea_list *o)
 
   return elen;
 }
+
+
+/**
+ * ea_normalize - create a normalized version of attributes
+ * @e: input attributes
+ * @upto: bitmask of layers which should stay as an underlay
+ *
+ * This function squashes all updates done atop some ea_list
+ * and creates the final structure useful for storage or fast searching.
+ * The method is a bucket sort.
+ *
+ * Returns the final ea_list with some excess memory at the end,
+ * allocated from the tmp_linpool. The adata is linked from the original places.
+ */
+ea_list *
+ea_normalize(ea_list *e, u32 upto)
+{
+  /* We expect some work to be actually needed. */
+  ASSERT_DIE(!BIT32_TEST(&upto, e->stored));
+
+  /* Allocate the output */
+  ea_list *out = tmp_allocz(ea_class_max * sizeof(eattr) + sizeof(ea_list));
+  *out = (ea_list) {
+    .flags = EALF_SORTED,
+  };
+
+  uint min_id = ~0, max_id = 0;
+
+  eattr *buckets = out->attrs;
+
+  /* Walk the attribute lists, one after another. */
+  for (; e; e = e->next)
+  {
+    if (!out->next && BIT32_TEST(&upto, e->stored))
+      out->next = e;
+
+    for (int i = 0; i < e->count; i++)
+    {
+      uint id = e->attrs[i].id;
+      if (id > max_id)
+	max_id = id;
+      if (id < min_id)
+	min_id = id;
+
+      if (out->next)
+      {
+	/* Underlay: check whether the value is duplicate */
+	if (buckets[id].id && buckets[id].fresh)
+	  if (eattr_same_value(&e->attrs[i], &buckets[id]))
+	    /* Duplicate value treated as no change at all */
+	    buckets[id] = (eattr) {};
+	  else
+	    /* This value is actually needed */
+	    buckets[id].fresh = 0;
+      }
+      else
+      {
+	/* Overlay: not seen yet -> copy the eattr */
+	if (!buckets[id].id)
+	{
+	  buckets[id] = e->attrs[i];
+	  buckets[id].fresh = 1;
+	}
+      }
+
+      /* The originated information is relevant from the lowermost one */
+      buckets[id].originated = e->attrs[i].originated;
+    }
+  }
+
+  /* And now we just walk the list from beginning to end and collect
+   * everything to the beginning of the list.
+   * Walking just that part which is inhabited for sure. */
+  for (uint id = min_id; id <= max_id; id++)
+  {
+    /* Nothing to see for this ID */
+    if (!buckets[id].id)
+      continue;
+
+    /* Drop unnecessary undefs */
+    if (buckets[id].undef && buckets[id].fresh)
+      continue;
+
+    /* Now the freshness is lost, finally */
+    buckets[id].fresh = 0;
+
+    /* Move the attribute to the beginning */
+    ASSERT_DIE(out->count < id);
+    buckets[out->count++] = buckets[id];
+  }
+
+  /* We want to bisect only if the list is long enough */
+  if (out->count > 5)
+    out->flags |= EALF_BISECT;
+
+  return out;
+}
+
 
 void
 ea_list_copy(ea_list *n, ea_list *o, uint elen)
