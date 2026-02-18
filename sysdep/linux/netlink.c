@@ -1034,7 +1034,7 @@ nl_parse_link(struct nlmsghdr *h, int scan)
     if (li[IFLA_INFO_KIND])
       kind = RTA_DATA(li[IFLA_INFO_KIND]);
 
-    if (!strcmp(kind, "bridge") && li[IFLA_INFO_DATA])
+    if (!bstrcmp(kind, "bridge") && li[IFLA_INFO_DATA])
     {
       ea_set_attr_u32(&f.attrs->eattrs, tmp_linpool, EA_IFACE_TYPE, 0, EAF_TYPE_INT, IF_TYPE_BRIDGE);
 
@@ -1048,7 +1048,7 @@ nl_parse_link(struct nlmsghdr *h, int scan)
 	ea_set_attr_u32(&f.attrs->eattrs, tmp_linpool, EA_IFACE_BRIDGE_VLAN_FILTERING, 0, EAF_TYPE_INT, vlan_filtering);
       }
     }
-    else if (!strcmp(kind, "vxlan") && li[IFLA_INFO_DATA])
+    else if (!bstrcmp(kind, "vxlan") && li[IFLA_INFO_DATA])
     {
       ea_set_attr_u32(&f.attrs->eattrs, tmp_linpool, EA_IFACE_TYPE, 0, EAF_TYPE_INT, IF_TYPE_VXLAN);
 
