@@ -165,7 +165,8 @@ normalize_two_leave_last(void)
 
   base->count = 4;
   base->next = NULL;
-  base->stored = EALS_CUSTOM;
+  base = ea_lookup(base, 0, EALS_CUSTOM);
+
   eal1->count = 4;
   eal1->next = base;
   eal1->stored = 0;
