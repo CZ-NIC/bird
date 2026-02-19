@@ -233,15 +233,25 @@ struct coap_tx_frame {
   char token[8];			/* The token */
 
   uint optcnt;				/* Option count */
-  struct coap_tx_option *opt[0];	/* Options, zero-type for payload */
+  struct coap_tx_option *opt[];		/* Options, zero-type for payload */
 };
 
 /* Option preparation block */
 struct coap_tx_option {
   u32 len;				/* Option length */
   enum coap_option_id type;		/* Option type */
-  char data[0];				/* The data */
+  char data[];				/* The data */
 };
+
+#define COAP_TX_OPTION(_type, _len) ({ \
+    struct coap_tx_option *_opt = alloca(_len + sizeof *_opt); \
+    _opt->len = _len; \
+    _opt->type = _type; \
+    _opt; })
+
+#define COAP_TX_FRAME(_code, ...) ({ \
+    struct { struct coap_tx_frame f; struct coap_tx_option *opt[MACRO_COUNT(__VA_ARGS__)]; } _frm = { \
+    .f.code = _code, .f.optcnt = ARRAY_SIZE(_frm.opt), .opt = { __VA_ARGS__ }}; &_frm.f; })
 
 #define TLIST_PREFIX coap_tx
 #define TLIST_TYPE struct coap_tx
@@ -251,7 +261,6 @@ struct coap_tx_option {
 struct coap_tx {
   TLIST_DEFAULT_NODE;
   buffer buf;
-  byte *tx;
 };
 
 #include "lib/tlists.h"
@@ -266,6 +275,7 @@ struct coap_session {
   struct coap_parse_context parser;	/* Frame parser */
 
   TLIST_LIST(coap_tx) tx_queue;		/* Send queue */
+  struct coap_tx *tx_pending;		/* TX block in progress */
 
   bool flush_and_close;			/* Closing, do not accept more data to send */
 
@@ -292,8 +302,9 @@ void coap_tx_header(struct coap_session *s, const struct coap_tx_frame *f, TLIST
 struct coap_tx *coap_tx_extend(struct coap_session *s, TLIST_LIST(coap_tx) *queue);
 void coap_tx_commit(struct coap_session *s, TLIST_LIST(coap_tx) *queue);
 
-/* Flushing prepared send-data */
-void coap_tx_flush(struct coap_session *s);
+/* Send-data sent */
+bool coap_tx_flush(struct coap_session *s, struct birdsock *sk);
+void coap_tx_done(struct coap_session *s, struct coap_tx *blk);
 
 void coap_send_client_error(struct coap_session *s, enum coap_msg_code err);
 

@@ -34,7 +34,15 @@
 
 #include <limits.h>
 
+/* Just to be sure that bytes do what they are expected to do */
 STATIC_ASSERT_MSG(CHAR_BIT == 8, "Weird char length");
+
+/* Check frame and option packing for convenience macros */
+static struct {
+  struct coap_tx_frame f;
+  struct coap_tx_option *optr[1];
+} coap_tx_frame_check;
+STATIC_ASSERT(&coap_tx_frame_check.f.opt[0] == &coap_tx_frame_check.optr[0]);
 
 /* Get onwire length of one option */
 static uint
@@ -66,7 +74,6 @@ coap_tx_extend(struct coap_session *s UNUSED, TLIST_LIST(coap_tx) *queue)
     .buf.start = data,
     .buf.pos = data,
     .buf.end = ((void *) tx) + page_size,
-    .tx = data,
   };
 
   coap_tx_add_tail(queue, tx);
@@ -267,6 +274,7 @@ coap_process_req_empty(struct coap_session *s)
   ASSERT_DIE(ctx->code == COAP_REQ_EMPTY);
 }
 
+/* Capabilities and Settings Message Error */
 static void
 coap_bad_csm(struct coap_session *s, const char *fmt, ...)
 {
@@ -275,42 +283,27 @@ coap_bad_csm(struct coap_session *s, const char *fmt, ...)
 
   struct coap_parse_context *ctx = &s->parser;
 
-  struct {
-    struct coap_tx_option o;
-    u32 data;
-  } opt_bad_csm = { .o = { .len = 1 + (ctx->option_type >= 256), .type = COAP_OPT_BAD_CSM, }};
+  struct coap_tx_option *opt_bad_csm, *payload;
 
   if (ctx->option_type < 256)
-    put_u8(opt_bad_csm.o.data, ctx->option_type);
+    put_u8((
+	  opt_bad_csm = COAP_TX_OPTION(COAP_OPT_BAD_CSM, 1)
+	  )->data, ctx->option_type);
   else
-    put_u16(opt_bad_csm.o.data, ctx->option_type);
+    put_u16((
+	  opt_bad_csm = COAP_TX_OPTION(COAP_OPT_BAD_CSM, 2)
+	  )->data, ctx->option_type);
 
-  struct {
-    struct coap_tx_option o;
-    char data[128];
-  } payload = {
-    .o.len = bvsnprintf(payload.o.data, 128, fmt, args),
-  };
+  payload = COAP_TX_OPTION(0, 128);
+  payload->len = bvsnprintf(payload->data, 128, fmt, args);
 
-  struct {
-    struct coap_tx_frame f;
-    struct coap_tx_option *opt[2];
-  } frm = {
-    .f = {
-      .code = COAP_SCO_ABORT,
-      .toklen = 0,
-    }
-  };
-  frm.f.opt[0] = &opt_bad_csm.o;
-  frm.f.opt[1] = &payload.o;
-
-  coap_tx_send(s, &frm.f);
+  coap_tx_send(s, COAP_TX_FRAME(COAP_SCO_ABORT, opt_bad_csm, payload));
   s->flush_and_close = true;
 
   va_end(args);
 }
 
-/* Process Capabilities and Settings Message */
+/* Capabilities and Settings Message Processing */
 static bool
 coap_process_sco_csm(struct coap_session *s)
 {
@@ -374,6 +367,7 @@ coap_process_sco_csm(struct coap_session *s)
       return true;
 
     case COAP_PS_ERROR:
+    case COAP_PS_EMPTY:
       coap_send_client_error(s, COAP_CERR_BAD_REQUEST);
       return true;
   }
@@ -381,6 +375,21 @@ coap_process_sco_csm(struct coap_session *s)
   return false;
 }
 
+static bool
+coap_process_sco_ping(struct coap_session *s)
+{ return false; }
+
+static bool
+coap_process_sco_pong(struct coap_session *s)
+{ return false; }
+
+static bool
+coap_process_sco_release(struct coap_session *s)
+{ return false; }
+
+static bool
+coap_process_sco_abort(struct coap_session *s)
+{ return false; }
 
 /**
  * coap_process - dispatch default CoAP processes
