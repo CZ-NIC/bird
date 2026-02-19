@@ -267,6 +267,8 @@ struct coap_session {
 
   TLIST_LIST(coap_tx) tx_queue;		/* Send queue */
 
+  bool flush_and_close;			/* Closing, do not accept more data to send */
+
   pool *tx_pool;			/* Pool to allocate TX frames from */
   struct birdsock *sock;		/* Socket to act on */
 };

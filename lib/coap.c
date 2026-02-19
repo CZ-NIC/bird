@@ -267,6 +267,49 @@ coap_process_req_empty(struct coap_session *s)
   ASSERT_DIE(ctx->code == COAP_REQ_EMPTY);
 }
 
+static void
+coap_bad_csm(struct coap_session *s, const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+
+  struct coap_parse_context *ctx = &s->parser;
+
+  struct {
+    struct coap_tx_option o;
+    u32 data;
+  } opt_bad_csm = { .o = { .len = 1 + (ctx->option_type >= 256), .type = COAP_OPT_BAD_CSM, }};
+
+  if (ctx->option_type < 256)
+    put_u8(opt_bad_csm.o.data, ctx->option_type);
+  else
+    put_u16(opt_bad_csm.o.data, ctx->option_type);
+
+  struct {
+    struct coap_tx_option o;
+    char data[128];
+  } payload = {
+    .o.len = bvsnprintf(payload.o.data, 128, fmt, args),
+  };
+
+  struct {
+    struct coap_tx_frame f;
+    struct coap_tx_option *opt[2];
+  } frm = {
+    .f = {
+      .code = COAP_SCO_ABORT,
+      .toklen = 0,
+    }
+  };
+  frm.f.opt[0] = &opt_bad_csm.o;
+  frm.f.opt[1] = &payload.o;
+
+  coap_tx_send(s, &frm.f);
+  s->flush_and_close = true;
+
+  va_end(args);
+}
+
 /* Process Capabilities and Settings Message */
 static bool
 coap_process_sco_csm(struct coap_session *s)
@@ -289,44 +332,7 @@ coap_process_sco_csm(struct coap_session *s)
 	  /* Load maximum message size */
 	  if (ctx->option_len > 4)
 	  {
-	    struct coap_tx_option *otx = coap_tx_alloc(s);
-	    
-
-
-
-	    uint aux = otx->len;
-
-	    uint sz = (sizeof (struct coap_tx_option *) + 1);
-	    uint pos = aux - sz;
-	    uint apos = BIRD_ALIGN(pos, alignof(struct coap_tx_option));
-	    if (apos > pos)
-	      apos -= alignof(struct coap_tx_option);
-
-
-	    uint pos = aux - 
-	    struct coap_tx_option *otx_b = &otx->data[
-	    str
-
-	    ASSERT_DIE(BIRD_CPU_ALIGN(&otx->data[aux]) == &otx->data[aux]);
-
-
-
-
-
-
-	    uint payload_len = bsnprintf(otx->data, otx->len, "Too long option MaxMsgSize: %u", ctx->option_len);
-	    uint otx_auxpos = BIRD_CPU_ALIGN(payload_len);
-
-	    struct coap_tx_option *otx_b = otx->data[otx_auxpos];
-
-	    struct coap_tx_frame *ftx = BIRD_ALIGN
-	    BIRD_SET_ALIGNED_POINTER(ftx, &otx->data[payload_len]);
-
-
-	    
-	    struct coap_tx_frame *ftx = otx->data[payload_len]
-	    mem
-	    coap_send_client_error(s, COAP_CERR_BAD_OPTION);
+	    coap_bad_csm(s, "Too long: %u", ctx->option_len);
 	    return true;
 	  }
 
@@ -343,16 +349,14 @@ coap_process_sco_csm(struct coap_session *s)
 	  if (ctx->option_len == 0)
 	    s->blockwise_rx = true;
 	  else
-	    !!! SEND ABORT not CERR (RFC 8323, sec. 5.6)
-
-	    coap_send_client_error(s, COAP_CERR_BAD_OPTION);
+	    coap_bad_csm(s, "Too long: %u", ctx->option_len);
 
 	  return true;
 
 	default:
 	  /* Ignore an unknown option unless critical */
 	  if (ctx->option_type & COAP_OPT_F_CRITICAL)
-	    coap_send_client_error(s, COAP_CERR_BAD_OPTION);
+	    coap_bad_csm(s, "Unknown option");
 
 	  return true;
       }
@@ -370,7 +374,8 @@ coap_process_sco_csm(struct coap_session *s)
       return true;
 
     case COAP_PS_ERROR:
-      return coap_send_client_error(s, COAP_CERR_BAD_REQUEST);
+      coap_send_client_error(s, COAP_CERR_BAD_REQUEST);
+      return true;
   }
 
   return false;
