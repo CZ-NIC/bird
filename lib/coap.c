@@ -36,6 +36,383 @@
 
 STATIC_ASSERT_MSG(CHAR_BIT == 8, "Weird char length");
 
+/* Get onwire length of one option */
+static uint
+coap_tx_option_raw_len(const struct coap_tx_option *o, uint prev_type)
+{
+  return 1				/* DL-byte */
+	+ (o->type >= prev_type + 13)	/* One-byte delta */
+	+ (o->type >= prev_type + 269)	/* Two-byte delta */
+	+ (o->len >= 13)		/* One-byte length */
+	+ (o->len >= 269)		/* Two-byte length */
+	+ o->len;			/* Actual option length */
+}
+
+/**
+ * coap_tx_extend - Allocate one TX block
+ * @s: CoAP session
+ * @queue: Queue to put the block in
+ *
+ * Allocates and returns one more TX block for the supplied queue.
+ * */
+struct coap_tx *
+coap_tx_extend(struct coap_session *s UNUSED, TLIST_LIST(coap_tx) *queue)
+{
+  /* Allocate new block if there is not enough space for the header.
+   * Also use separate blocks for non-TCP */
+  struct coap_tx *tx = alloc_page();
+  void *data = &tx[1];
+  *tx = (struct coap_tx) {
+    .buf.start = data,
+    .buf.pos = data,
+    .buf.end = ((void *) tx) + page_size,
+    .tx = data,
+  };
+
+  coap_tx_add_tail(queue, tx);
+  return tx;
+}
+
+static void
+coap_tx_put_header(struct coap_session *s, struct coap_tx *tx, TLIST_LIST(coap_tx) *q, const struct coap_tx_frame *f, u64 elen)
+{
+  /* Put version/len/TKL byte, and possibly extended length */
+  switch (s->transport)
+  {
+    case COAP_TRANSPORT_UDP:
+      *tx->buf.pos++ = (f->version & 3) << 6 | (f->type & 3) << 4 | (f->toklen & 7);
+      break;
+
+    case COAP_TRANSPORT_TCP:
+      if (elen < 13)
+	*tx->buf.pos++ = elen << 4 | (f->toklen & 7);
+      else if (elen < 269)
+      {
+	*tx->buf.pos++ = 13 << 4 | (f->toklen & 7);
+	*tx->buf.pos++ = elen - 13;
+      }
+      else if (elen < 65805)
+      {
+	*tx->buf.pos++ = 14 << 4 | (f->toklen & 7);
+	put_u16(tx->buf.pos, elen - 269);
+	tx->buf.pos += 2;
+      }
+      else if (elen < 4295033101)
+      {
+	*tx->buf.pos++ = 15 << 4 | (f->toklen & 7);
+	put_u32(tx->buf.pos, elen - 65805);
+	tx->buf.pos += 4;
+      }
+      else
+	bug("Frame of this size (%lu) may collapse into a black hole.", elen);
+
+      break;
+
+    case COAP_TRANSPORT_WEBSOCKET:
+      *tx->buf.pos++ = f->toklen & 7;
+      break;
+  }
+
+  /* Put code */
+  *tx->buf.pos++ = f->code;
+
+  /* Put msgid for UDP */
+  if (s->transport == COAP_TRANSPORT_UDP)
+  {
+    memcpy(tx->buf.pos, &f->msg_id, 2);
+    tx->buf.pos += 2;
+  }
+
+  /* Put token */
+  ASSERT_DIE(f->toklen <= 8);
+  if (f->toklen)
+    memcpy(tx->buf.pos, f->token, f->toklen);
+  tx->buf.pos += f->toklen;
+
+  ASSERT_DIE(tx->buf.pos <= tx->buf.end);
+
+  /* Put options */
+  uint prev_type = 0;
+  bool payload_marker = false;
+  for (uint i = 0; i < f->optcnt; i++)
+  {
+    struct coap_tx_option *opt = f->opt[i];
+
+    if (!opt->type)
+    {
+      /* This is a payload block */
+      if (!payload_marker)
+      {
+	/* Write a payload marker */
+	payload_marker = true;
+	if (tx->buf.pos == tx->buf.end)
+	  tx = coap_tx_extend(s, q);
+
+	*tx->buf.pos++ = 0xff;
+      }
+
+      /* Copy payload data */
+      for (uint d = 0; d < opt->len; )
+      {
+	if (tx->buf.pos == tx->buf.end)
+	  tx = coap_tx_extend(s, q);
+
+	uint cp = MIN(tx->buf.end - tx->buf.pos, opt->len);
+	memcpy(tx->buf.pos, opt->data, cp);
+	tx->buf.pos += cp;
+      }
+
+      continue;
+    }
+
+    if (opt->type < prev_type || payload_marker)
+      bug("Sending frames with unsorted options is not supported.");
+
+    /* Ensure the whole option is written into one single block */
+    uint rlen = coap_tx_option_raw_len(opt, prev_type);
+
+    if (tx->buf.pos + rlen > tx->buf.end)
+      tx = coap_tx_extend(s, q);
+
+    if (tx->buf.pos + rlen > tx->buf.end)
+      bug("This option (size %u) fits only Antonov An-225. Buy one before continuing.", rlen);
+
+    uint delta = opt->type - prev_type;
+    ASSERT_DIE(delta < 65536);
+
+    uint dlen = (delta >= 13) + (delta >= 269);
+    uint llen = (opt->len >= 13) + (opt->len >= 269);
+
+    /* Write DL-byte */
+    *tx->buf.pos++ = (dlen ? dlen + 13 : delta) << 4 | (llen ? llen + 13 : opt->len);
+
+    /* Write delta */
+    if (dlen == 1)
+      *tx->buf.pos++ = delta - 13;
+    else if (dlen == 2)
+    {
+      put_u16(tx->buf.pos, delta - 269);
+      tx->buf.pos += 2;
+    }
+
+    /* Write length */
+    if (llen == 1)
+      *tx->buf.pos++ = opt->len - 13;
+    else if (llen == 2)
+    {
+      put_u16(tx->buf.pos, opt->len - 269);
+      tx->buf.pos += 2;
+    }
+
+    /* Write option value */
+    memcpy(tx->buf.pos, opt->data, opt->len);
+    tx->buf.pos += opt->len;
+
+    ASSERT_DIE(tx->buf.pos <= tx->buf.end);
+  }
+}
+
+/**
+ * coap_tx_send - send a completely prepared frame
+ * @s: CoAP session
+ * @f: Frame to send
+ */
+void
+coap_tx_send(struct coap_session *s, const struct coap_tx_frame *f)
+{
+  struct coap_tx *tx = s->tx_queue.last;
+
+  if (!tx || (tx->buf.end - tx->buf.pos < 24) || s->transport != COAP_TRANSPORT_TCP)
+    tx = coap_tx_extend(s, &s->tx_queue);
+
+  /* Compute option+payload length */
+  u64 elen = 0;
+  uint prev_type = 0;
+  bool payload_marker = false;
+
+  for (uint i = 0; i < f->optcnt; i++)
+  {
+    struct coap_tx_option *opt = f->opt[i];
+    if (opt->type)
+    {
+      if (opt->type < prev_type || payload_marker)
+	bug("Sending frames with unsorted options is not supported.");
+
+      elen += 1					/* DL-byte */
+	+ (opt->type >= prev_type + 13)		/* One-byte delta */
+	+ (opt->type >= prev_type + 269)	/* Two-byte delta */
+	+ (opt->len >= 13)			/* One-byte length */
+	+ (opt->len >= 269)			/* Two-byte length */
+	+ opt->len;				/* Actual option length */
+      prev_type = opt->type;
+    }
+    else
+    {
+      payload_marker = true;
+      elen += opt->len;
+    }
+  }
+
+  elen += payload_marker;
+  coap_tx_put_header(s, tx, &s->tx_queue, f, elen);
+}
+
+
+
+/* Process Empty Message */
+static bool
+coap_process_req_empty(struct coap_session *s)
+{
+  struct coap_parse_context *ctx = &s->parser;
+  ASSERT_DIE(ctx->code == COAP_REQ_EMPTY);
+}
+
+/* Process Capabilities and Settings Message */
+static bool
+coap_process_sco_csm(struct coap_session *s)
+{
+  struct coap_parse_context *ctx = &s->parser;
+  ASSERT_DIE(ctx->code == COAP_SCO_CSM);
+
+  switch (ctx->state) {
+    case COAP_PS_HEADER:
+      /* Header parsed. Initialize receiving data storage. */
+      s->max_msg_size_rx = 0;
+      s->blockwise_rx = true;
+      return true;
+
+    case COAP_PS_OPTION_PARTIAL:
+    case COAP_PS_OPTION_COMPLETE:
+      /* Load message options. */
+      switch (ctx->option_type) {
+	case COAP_OPT_MAX_MSG_SIZE:
+	  /* Load maximum message size */
+	  if (ctx->option_len > 4)
+	  {
+	    struct coap_tx_option *otx = coap_tx_alloc(s);
+	    
+
+
+
+	    uint aux = otx->len;
+
+	    uint sz = (sizeof (struct coap_tx_option *) + 1);
+	    uint pos = aux - sz;
+	    uint apos = BIRD_ALIGN(pos, alignof(struct coap_tx_option));
+	    if (apos > pos)
+	      apos -= alignof(struct coap_tx_option);
+
+
+	    uint pos = aux - 
+	    struct coap_tx_option *otx_b = &otx->data[
+	    str
+
+	    ASSERT_DIE(BIRD_CPU_ALIGN(&otx->data[aux]) == &otx->data[aux]);
+
+
+
+
+
+
+	    uint payload_len = bsnprintf(otx->data, otx->len, "Too long option MaxMsgSize: %u", ctx->option_len);
+	    uint otx_auxpos = BIRD_CPU_ALIGN(payload_len);
+
+	    struct coap_tx_option *otx_b = otx->data[otx_auxpos];
+
+	    struct coap_tx_frame *ftx = BIRD_ALIGN
+	    BIRD_SET_ALIGNED_POINTER(ftx, &otx->data[payload_len]);
+
+
+	    
+	    struct coap_tx_frame *ftx = otx->data[payload_len]
+	    mem
+	    coap_send_client_error(s, COAP_CERR_BAD_OPTION);
+	    return true;
+	  }
+
+	  for (uint i = 0; i < ctx->option_chunk_len; i++)
+	  {
+	    s->max_msg_size_rx <<= 8;
+	    s->max_msg_size += ctx->option_value[i];
+	  }
+
+	  return true;
+
+	case COAP_OPT_BLOCKWISE:
+	  /* Stream Blockwise Transfer supported */
+	  if (ctx->option_len == 0)
+	    s->blockwise_rx = true;
+	  else
+	    !!! SEND ABORT not CERR (RFC 8323, sec. 5.6)
+
+	    coap_send_client_error(s, COAP_CERR_BAD_OPTION);
+
+	  return true;
+
+	default:
+	  /* Ignore an unknown option unless critical */
+	  if (ctx->option_type & COAP_OPT_F_CRITICAL)
+	    coap_send_client_error(s, COAP_CERR_BAD_OPTION);
+
+	  return true;
+      }
+
+    case COAP_PS_PAYLOAD_PARTIAL:
+      /* Ignore payload */
+      return true;
+
+    case COAP_PS_PAYLOAD_COMPLETE:
+      /* Done, reset the code */
+      ctx->code = 0;
+      return true;
+
+    case COAP_PS_MORE:
+      return true;
+
+    case COAP_PS_ERROR:
+      return coap_send_client_error(s, COAP_CERR_BAD_REQUEST);
+  }
+
+  return false;
+}
+
+
+/**
+ * coap_process - dispatch default CoAP processes
+ * @s: CoAP session
+ *
+ * There are technical and stream control messages and other stuff inside
+ * CoAP which don't have any semantics outside. This call processes all that
+ * stuff so that the YANG subsystem doesn't need to care.
+ *
+ * Returns true if everything was processed here, otherwise yields to YANG by
+ * returning false.
+ */
+bool
+coap_process(struct coap_session *s)
+{
+  struct coap_parse_context *ctx = &s->parser;
+
+  switch (ctx->code) {
+    case COAP_REQ_EMPTY:
+      return coap_process_req_empty(s);
+    case COAP_SCO_CSM:
+      return coap_process_sco_csm(s);
+    case COAP_SCO_PING:
+      return coap_process_sco_ping(s);
+    case COAP_SCO_PONG:
+      return coap_process_sco_pong(s);
+    case COAP_SCO_RELEASE:
+      return coap_process_sco_release(s);
+    case COAP_SCO_ABORT:
+      return coap_process_sco_abort(s);
+
+    default:
+      return false;
+  }
+
+}
+
 #define END			(ctx->data_ptr >= ctx->data_len)
 #define CUR			(&ctx->data[ctx->data_ptr])
 #define ONEBYTE()		(ctx->data[ctx->data_ptr++])
@@ -87,7 +464,16 @@ coap_parse_option(struct coap_session *s, bool allow_partial)
   else \
     FAIL(COAP_PSE_TRUNCATED)
 
+#define CHECK_EOF() do { \
+  if (end_of_frame <= ctx->data_ptr) { \
+    coap_send_client_error(s, COAP_CERR_BAD_REQUEST); \
+    return COAP_PSE_TRUNCATED; \
+  } \
+} while (0)
+
   struct coap_parse_context *ctx = &s->parser;
+
+  s64 end_of_frame = ctx->data_option_offset + ctx->common_len;
 
   while (!END)
   {
@@ -101,8 +487,26 @@ coap_parse_option(struct coap_session *s, bool allow_partial)
       case COAP_PS_ERROR:
 	bug("Unexpected state when parsing CoAP option");
 
-      case COAP_PS_OPTION_COMPLETE:
       case COAP_PS_HEADER:
+	/* Initialize the payload total length */
+	ctx->payload_total_len = ctx->common_len;
+	ctx->data_option_offset = ctx->data_ptr;
+
+	/* fall through */
+
+      case COAP_PS_OPTION_COMPLETE:
+	/* At the end of frame, no more options and no payload */
+	if (end_of_frame == ctx->data_ptr)
+	{
+	  ctx->payload_chunk_offset = 0;
+	  ctx->payload_chunk_len = 0;
+	  ctx->payload_total_len = 0;
+
+	  return ctx->state = COAP_PS_PAYLOAD_COMPLETE;
+	}
+
+	/* fall through */
+
       case COAP_PSM_OPTION_DL:
 	ctx->option_dlbyte = ONEBYTE();
 
@@ -115,6 +519,7 @@ coap_parse_option(struct coap_session *s, bool allow_partial)
 	    {
 	      ctx->state = COAP_PS_PAYLOAD_PARTIAL;
 	      ctx->payload_chunk_offset = ctx->payload_chunk_len = 0;
+	      ctx->payload_total_len = end_of_frame - ctx->data_ptr;
 	      continue;
 	    }
 
@@ -148,11 +553,18 @@ coap_parse_option(struct coap_session *s, bool allow_partial)
 	    continue;
 	}
 
+	CHECK_EOF();
+
 	/* Now the option delta is parsed, continue to the length */
 
 	/* fall through */
 
       case COAP_PSM_OPTION_PRE_LEN:
+	/* Apply the Option Delta */
+	ctx->option_type += ctx->option_delta;
+	ctx->option_delta = 0;
+
+	/* Load the option length */
 	switch (ctx->option_dlbyte & 0xf)
 	{
 	  case 0xf:
@@ -166,6 +578,7 @@ coap_parse_option(struct coap_session *s, bool allow_partial)
 
 	  default:
 	    ctx->option_len = ctx->option_dlbyte & 0xf;
+	    ctx->state = COAP_PS_OPTION_PARTIAL;
 	    break;
 	}
 
@@ -186,11 +599,13 @@ coap_parse_option(struct coap_session *s, bool allow_partial)
 	    continue;
 	}
 
+	CHECK_EOF();
+
 	/* Zero-length option is already done */
 	if (ctx->option_len == 0)
 	  return ctx->state = COAP_PS_OPTION_COMPLETE;
 
-	/* Now loading the option */
+	/* Now loading the option data */
 	ctx->option_chunk_offset = 0;
 	ctx->option_chunk_len = 0;
 
@@ -208,15 +623,19 @@ coap_parse_option(struct coap_session *s, bool allow_partial)
 	  ctx->option_chunk_len = ctx->option_len - ctx->option_chunk_offset;
 	  ctx->data_ptr += ctx->option_chunk_len;
 	  ASSERT_DIE(ctx->data_ptr <= ctx->data_len);
+	  CHECK_EOF();
 	  return ctx->state = COAP_PS_OPTION_COMPLETE;
 	}
 	else
 	{
 	  ctx->data_ptr = ctx->data_len;
+	  CHECK_EOF();
 	  MORE(COAP_PS_OPTION_PARTIAL);
 	}
     }
   }
+
+  CHECK_EOF();
 
   return ctx->state;
 
@@ -313,11 +732,12 @@ void
 coap_udp_rx(struct coap_session *s, const char *data, uint len)
 {
   struct coap_parse_context *ctx = &s->parser;
-
-  ctx->state = COAP_PS_EMPTY;
-  ctx->data = data;
-  ctx->data_len = len;
-  ctx->data_ptr = 0;
+  *ctx = (struct coap_parse_context) {
+    .state = COAP_PS_EMPTY,
+    .data = data,
+    .data_len = len,
+    .data_ptr = 0,
+  };
 }
 
 /**
@@ -430,6 +850,9 @@ void
 coap_tcp_rx(struct coap_session *s, const char *data, uint len)
 {
   struct coap_parse_context *ctx = &s->parser;
+
+  /* Move the data option offset backwards */
+  ctx->data_option_offset -= ctx->data_len;
 
   ctx->data = data;
   ctx->data_len = len;

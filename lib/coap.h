@@ -11,11 +11,20 @@
 #define _LIB_COAP_H_
 
 #include "lib/birdlib.h"
+#include "lib/event.h"
 #include "lib/ip.h"
+#include "lib/tlists.h"
 
 /*
  * RFC-specified constants
  */
+
+/* Underlay transport */
+enum coap_transport_type {
+  COAP_TRANSPORT_UDP = 1,	/* RFC 7252 */
+  COAP_TRANSPORT_TCP = 2,	/* RFC 8323 */
+  COAP_TRANSPORT_WEBSOCKET = 3,	/* RFC 8323 */
+} PACKED;
 
 /* RFC 7252: Message types for CoAP over UDP */
 enum coap_udp_msg_type {
@@ -182,15 +191,16 @@ struct coap_parse_context {
   uint data_len;		/* Received data length */
   uint data_ptr;		/* Where we are in the received data */
   const char *data;		/* Received data to be parsed */
+  s64 data_option_offset;	/* Relative to current data, where is the start of the options? */
 };
 
+#if 0
 /* CoAP Endpoint identification */
 struct coap_endpoint_ident {
   ip_addr remote;		/* UDP, TCP */
   u16 port;			/* UDP, TCP */
 };
 
-#if 0
 /* Messages recently received */
 struct coap_seen_msg {
   u16 msg_id;
@@ -211,20 +221,78 @@ struct coap_params {
   uint max_endpoints;		/* Implementation: Maximum number of remote endpoints served at once */
 };
 
+/* Frame preparation block */
+struct coap_tx_frame {
+  u8 code;				/* Option code to be sent */
+
+  enum coap_udp_msg_type type;		/* Type of the UDP message being sent. UDP only. */
+  u16 msg_id;				/* UDP Message ID. */
+  u8 version;				/* CoAP version. Must be 1 by RFC 7252. UDP only. */
+
+  u8 toklen;				/* Token length to be sent */
+  char token[8];			/* The token */
+
+  uint optcnt;				/* Option count */
+  struct coap_tx_option *opt[0];	/* Options, zero-type for payload */
+};
+
+/* Option preparation block */
+struct coap_tx_option {
+  u32 len;				/* Option length */
+  enum coap_option_id type;		/* Option type */
+  char data[0];				/* The data */
+};
+
+#define TLIST_PREFIX coap_tx
+#define TLIST_TYPE struct coap_tx
+#define TLIST_ITEM n
+#define TLIST_WANT_ADD_TAIL
+#define TLIST_WANT_WALK
+struct coap_tx {
+  TLIST_DEFAULT_NODE;
+  buffer buf;
+  byte *tx;
+};
+
+#include "lib/tlists.h"
 
 /* One CoAP session */
 struct coap_session {
-  struct coap_endpoint_ident remote;	/* Remote endpoint identification */
-  struct birdsock *sock;		/* Socket to act on */
+  enum coap_transport_type transport;	/* Transport type */
+  bool blockwise_rx;			/* Blockwise transfers allowed */
+  u32 max_msg_size;			/* Maximum message size */
+  u32 max_msg_size_rx;			/* Received maximum message size info */
+
   struct coap_parse_context parser;	/* Frame parser */
+
+  TLIST_LIST(coap_tx) tx_queue;		/* Send queue */
+
+  pool *tx_pool;			/* Pool to allocate TX frames from */
+  struct birdsock *sock;		/* Socket to act on */
 };
 
+/* Receiving data from UDP */
 void coap_udp_rx(struct coap_session *s, const char *data, uint len);
 enum coap_parse_state coap_udp_parse(struct coap_session *s);
 
+/* Receiving data from TCP */
 void coap_tcp_rx(struct coap_session *s, const char *data, uint len);
 enum coap_parse_state coap_tcp_parse(struct coap_session *s);
 
-enum coap_parse_state coap_process(struct coap_session *s);
+/* Common RX processing */
+bool coap_process(struct coap_session *s);
+
+/* Send a completely prepared frame */
+void coap_tx_send(struct coap_session *s, const struct coap_tx_frame *f);
+
+/* Prepare the header and a payload buffer, and commit */
+void coap_tx_header(struct coap_session *s, const struct coap_tx_frame *f, TLIST_LIST(coap_tx) *queue);
+struct coap_tx *coap_tx_extend(struct coap_session *s, TLIST_LIST(coap_tx) *queue);
+void coap_tx_commit(struct coap_session *s, TLIST_LIST(coap_tx) *queue);
+
+/* Flushing prepared send-data */
+void coap_tx_flush(struct coap_session *s);
+
+void coap_send_client_error(struct coap_session *s, enum coap_msg_code err);
 
 #endif /* _LIB_COAP_H_ */
