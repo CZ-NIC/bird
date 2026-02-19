@@ -38,56 +38,62 @@ yang_api_same(const struct yang_api_params *a, const struct yang_api_params *b)
   return true;
 }
 
-static bool
-yang_session_step(struct yang_session *se)
-{
-  struct yang_socket *s = se->socket;
-  SKIP_BACK_DECLARE(struct yang_api, api, listen, yang_socket_enlisted(s));
-
-  enum coap_parse_state state = se->coap.parser.state;
-
-  log(L_TRACE "state is %d", state);
-  switch (state) {
-    case COAP_PS_MORE:
-      return false;
-
-    case COAP_PS_ERROR:
-      log(L_INFO "%s: CoAP error %u", api->name, state);
-      sk_close(se->sock);
-      mb_free(se);
-      return false;
-
-    case COAP_PS_HEADER:
-      log(L_INFO "Header parsed");
-      return true;
-
-    case COAP_PS_OPTION_COMPLETE:
-      log(L_INFO "Options parsed");
-      return true;
-
-    case COAP_PS_PAYLOAD_COMPLETE:
-      log(L_INFO "Payload parsed");
-      return true;
-
-    default:
-      log(L_INFO "Status %u", state);
-      return false;
-  }
-}
-
 static int
 yang_session_rx(sock *sk, uint size)
 {
   struct yang_session *se = sk->data;
+  struct yang_socket *s = se->socket;
+  SKIP_BACK_DECLARE(struct yang_api, api, listen, yang_socket_enlisted(s));
 
   /* Check the received data in */
   coap_tcp_rx(&se->coap, sk->rbuf, size);
 
-  /* Parse and process the data */
-  do coap_tcp_parse(&se->coap);
-  while (coap_process(&se->coap) || yang_session_step(se));
+  while (true)
+  {
+    /* Aggresively send data if possible */
+    coap_tx_flush(&se->coap, sk);
 
-  return 1;
+    /* Next parser step */
+    coap_tcp_parse(&se->coap);
+
+    /* It may be CoAP internal */
+    if (coap_process(&se->coap))
+      continue;
+
+    /* Or maybe not */
+    enum coap_parse_state state = se->coap.parser.state;
+
+    log(L_TRACE "state is %d", state);
+    switch (state) {
+      case COAP_PS_MORE:
+	break;
+
+      case COAP_PS_ERROR:
+	log(L_ERR "%s: CoAP error, closing", api->name);
+	sk->rx_hook = NULL;
+	break;
+
+      case COAP_PS_HEADER:
+	log(L_INFO "Dummy: Header parsed");
+	continue;
+
+      case COAP_PS_OPTION_COMPLETE:
+	log(L_INFO "Dummy: Options parsed");
+	continue;
+
+      case COAP_PS_PAYLOAD_COMPLETE:
+	log(L_INFO "Dummy: Payload parsed");
+	continue;
+
+      default:
+	log(L_INFO "Dummy: Status %u", state);
+	break;
+    }
+
+    /* Send remaining data if possible */
+    coap_tx_flush(&se->coap, sk);
+    return 1;
+  }
 }
 
 static void
