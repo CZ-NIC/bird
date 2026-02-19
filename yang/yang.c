@@ -83,10 +83,9 @@ yang_session_rx(sock *sk, uint size)
   /* Check the received data in */
   coap_tcp_rx(&se->coap, sk->rbuf, size);
 
-  do {
-    coap_tcp_parse(&se->coap);
-    coap_process(&se->coap);
-  } while (yang_session_step(se));
+  /* Parse and process the data */
+  do coap_tcp_parse(&se->coap);
+  while (coap_process(&se->coap) || yang_session_step(se));
 
   return 1;
 }
