@@ -97,4 +97,8 @@
 #define MACRO_FOREACH(call, ...) MACRO_EXPAND(MACRO_FOREACH_EXPAND(call, __VA_ARGS__))
 #define MACRO_RPACK(call, terminator, ...) MACRO_EXPAND(MACRO_RPACK_EXPAND(call, terminator, __VA_ARGS__))
 
+/* Return an expression summing to the count of arguments */
+#define MACRO_COUNT1(...) +1
+#define MACRO_COUNT(...)  (0 MACRO_FOREACH(MACRO_COUNT1, __VA_ARGS__))
+
 #endif
