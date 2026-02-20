@@ -28,6 +28,7 @@ struct yang_session {
   union {
     struct coap_session coap;
   };
+  bool error_sent;
 };
 
 /* YANG socket parameters */
