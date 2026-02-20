@@ -97,6 +97,15 @@ yang_session_rx(sock *sk, uint size)
 }
 
 static void
+yang_session_tx(sock *sk)
+{
+  struct yang_session *se = sk->data;
+
+  coap_tx_written(&se->coap, sk);
+  coap_tx_flush(&se->coap, sk);
+}
+
+static void
 yang_session_err(sock *sk, int err)
 {
   struct yang_session *se = sk->data;
@@ -123,6 +132,7 @@ yang_socket_accept(sock *sk, uint size UNUSED)
   se->socket = s;
 
   sk->rx_hook = yang_session_rx;
+  sk->tx_hook = yang_session_tx;
   sk->err_hook = yang_session_err;
   sk->data = se;
 
