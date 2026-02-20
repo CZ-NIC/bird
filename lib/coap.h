@@ -11,9 +11,8 @@
 #define _LIB_COAP_H_
 
 #include "lib/birdlib.h"
-#include "lib/event.h"
-#include "lib/ip.h"
 #include "lib/tlists.h"
+#include "lib/resource.h"
 
 /*
  * RFC-specified constants
@@ -243,10 +242,23 @@ struct coap_tx_option {
   char data[];				/* The data */
 };
 
-#define COAP_TX_OPTION(_type, _len) ({ \
+#define COAP_TX_OPTION_GENERIC(_type, _len) ({ \
     struct coap_tx_option *_opt = alloca(_len + sizeof *_opt); \
     _opt->len = _len; \
     _opt->type = _type; \
+    _opt; })
+
+#define COAP_TX_OPTION_INT(_type, _value) ({ \
+    typeof(_value) _val = _value; \
+    struct coap_tx_option *_opt = COAP_TX_OPTION_GENERIC(_type, sizeof _val); \
+    _Generic((_val), u8: put_u8, u16: put_u16, u32: put_u32)(_opt->data, _val); \
+    _opt; })
+
+#define COAP_TX_OPTION_VPRINTF(_type, _fmt, _vargs) ({ \
+    char _buf[1024]; int _len = bvsnprintf(_buf, sizeof _buf, _fmt, _vargs); \
+    if (_len < 0) log(L_ERR "Too long string at %s:%d", __FILE__, __LINE__); \
+    struct coap_tx_option *_opt = COAP_TX_OPTION_GENERIC(_type, _len); \
+    memcpy(_opt->data, _buf, _len); \
     _opt; })
 
 #define COAP_TX_FRAME(_code, ...) ({ \
@@ -296,16 +308,18 @@ bool coap_process(struct coap_session *s);
 
 /* Send a completely prepared frame */
 void coap_tx_send(struct coap_session *s, const struct coap_tx_frame *f);
+void coap_tx_send_simple(struct coap_session *s, enum coap_msg_code, ...);
 
 /* Prepare the header and a payload buffer, and commit */
 void coap_tx_header(struct coap_session *s, const struct coap_tx_frame *f, TLIST_LIST(coap_tx) *queue);
 struct coap_tx *coap_tx_extend(struct coap_session *s, TLIST_LIST(coap_tx) *queue);
 void coap_tx_commit(struct coap_session *s, TLIST_LIST(coap_tx) *queue);
 
-/* Send-data sent */
-bool coap_tx_flush(struct coap_session *s, struct birdsock *sk);
-void coap_tx_done(struct coap_session *s, struct coap_tx *blk);
+/* Generic errors */
+void coap_bad_request(struct coap_session *s, const char *fmt, ...);
 
-void coap_send_client_error(struct coap_session *s, enum coap_msg_code err);
+/* Send-data sent */
+void coap_tx_flush(struct coap_session *s, struct birdsock *sk);
+void coap_tx_written(struct coap_session *s, struct birdsock *sk);
 
 #endif /* _LIB_COAP_H_ */

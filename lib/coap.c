@@ -32,6 +32,9 @@
 #include "lib/coap.h"
 #include "lib/string.h"
 
+#include "lib/ip.h"
+#include "lib/socket.h"
+
 #include <limits.h>
 
 /* Just to be sure that bytes do what they are expected to do */
@@ -264,7 +267,52 @@ coap_tx_send(struct coap_session *s, const struct coap_tx_frame *f)
   coap_tx_put_header(s, tx, &s->tx_queue, f, elen);
 }
 
+/**
+ * coap_tx_written - indicate that TX buffer has been flushed
+ * @s: CoAP session
+ */
+void
+coap_tx_written(struct coap_session *s, struct birdsock *sk)
+{
+  ASSERT_DIE(s->tx_pending->buf.start == sk->tbuf);
+  sk_set_tbuf(sk, NULL);
+  free_page(s->tx_pending);
+  s->tx_pending = NULL;
+}
 
+/**
+ * coap_tx_flush - flush TX buffers
+ * @s: CoAP session
+ * @sk: BIRD socket
+ */
+void
+coap_tx_flush(struct coap_session *s, struct birdsock *sk)
+{
+  while (!s->tx_pending && !EMPTY_TLIST(coap_tx, &s->tx_queue))
+  {
+    /* Supply the buffer */
+    s->tx_pending = s->tx_queue.first;
+    coap_tx_rem_node(&s->tx_queue, s->tx_pending);
+    sk_set_tbuf(sk, s->tx_pending->buf.start);
+
+    /* Request the write */
+    if (sk_send(sk, s->tx_pending->buf.pos - s->tx_pending->buf.start) > 0)
+      coap_tx_written(s, sk);
+  }
+}
+
+/* Generic errors */
+void
+coap_bad_request(struct coap_session *s, const char *fmt, ...)
+{
+  va_list args;
+  va_start(args, fmt);
+
+  struct coap_tx_option *payload = COAP_TX_OPTION_VPRINTF(0, fmt, args);
+  coap_tx_send(s, COAP_TX_FRAME(COAP_CERR_BAD_REQUEST, payload));
+  coap_tx_send(s, COAP_TX_FRAME(COAP_SCO_ABORT));
+  s->flush_and_close = true;
+}
 
 /* Process Empty Message */
 static bool
@@ -283,19 +331,11 @@ coap_bad_csm(struct coap_session *s, const char *fmt, ...)
 
   struct coap_parse_context *ctx = &s->parser;
 
-  struct coap_tx_option *opt_bad_csm, *payload;
+  struct coap_tx_option *opt_bad_csm = (ctx->option_type < 256)
+    ? COAP_TX_OPTION_INT(COAP_OPT_BAD_CSM, (u8) ctx->option_type)
+    : COAP_TX_OPTION_INT(COAP_OPT_BAD_CSM, (u16) ctx->option_type);
 
-  if (ctx->option_type < 256)
-    put_u8((
-	  opt_bad_csm = COAP_TX_OPTION(COAP_OPT_BAD_CSM, 1)
-	  )->data, ctx->option_type);
-  else
-    put_u16((
-	  opt_bad_csm = COAP_TX_OPTION(COAP_OPT_BAD_CSM, 2)
-	  )->data, ctx->option_type);
-
-  payload = COAP_TX_OPTION(0, 128);
-  payload->len = bvsnprintf(payload->data, 128, fmt, args);
+  struct coap_tx_option *payload = COAP_TX_OPTION_VPRINTF(0, fmt, args);
 
   coap_tx_send(s, COAP_TX_FRAME(COAP_SCO_ABORT, opt_bad_csm, payload));
   s->flush_and_close = true;
@@ -368,7 +408,7 @@ coap_process_sco_csm(struct coap_session *s)
 
     case COAP_PS_ERROR:
     case COAP_PS_EMPTY:
-      coap_send_client_error(s, COAP_CERR_BAD_REQUEST);
+      coap_bad_csm(s, "Parse error");
       return true;
   }
 
@@ -480,7 +520,7 @@ coap_parse_option(struct coap_session *s, bool allow_partial)
 
 #define CHECK_EOF() do { \
   if (end_of_frame <= ctx->data_ptr) { \
-    coap_send_client_error(s, COAP_CERR_BAD_REQUEST); \
+    coap_bad_request(s, "Length discrepancy"); \
     return COAP_PSE_TRUNCATED; \
   } \
 } while (0)
