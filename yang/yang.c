@@ -38,6 +38,54 @@ yang_api_same(const struct yang_api_params *a, const struct yang_api_params *b)
   return true;
 }
 
+static void
+yang_session_rx_option(struct yang_session *se)
+{
+  switch (se->coap.parser.option_type) {
+    case COAP_OPT_URI_HOST:
+      log(L_INFO "URI Host (%u-%u/%u): %*s",
+	  se->coap.parser.option_chunk_offset,
+	  se->coap.parser.option_chunk_offset + se->coap.parser.option_chunk_len,
+	  se->coap.parser.option_len,
+	  se->coap.parser.option_chunk_len, se->coap.parser.option_value);
+      return;
+
+    case COAP_OPT_URI_PORT:
+      log(L_INFO "URI Port");
+      return;
+
+    case COAP_OPT_URI_PATH:
+      log(L_INFO "URI Path (%u-%u/%u): %*s",
+	  se->coap.parser.option_chunk_offset,
+	  se->coap.parser.option_chunk_offset + se->coap.parser.option_chunk_len,
+	  se->coap.parser.option_len,
+	  se->coap.parser.option_chunk_len, se->coap.parser.option_value);
+      return;
+
+    case COAP_OPT_URI_QUERY:
+      log(L_INFO "URI Query (%u-%u/%u): %*s",
+	  se->coap.parser.option_chunk_offset,
+	  se->coap.parser.option_chunk_offset + se->coap.parser.option_chunk_len,
+	  se->coap.parser.option_len,
+	  se->coap.parser.option_chunk_len, se->coap.parser.option_value);
+      return;
+
+    default:
+      if (se->coap.parser.option_type & COAP_OPT_F_CRITICAL)
+      {
+	log(L_INFO "Unhandled option %u, fail", se->coap.parser.option_type);
+	if (!se->error_sent)
+	{
+	  struct coap_tx_option *payload = COAP_TX_OPTION_PRINTF(
+	      0, "Unhandled option %u", se->coap.parser.option_type);
+	  coap_tx_send(&se->coap, COAP_TX_FRAME(COAP_CERR_BAD_OPTION, payload));
+	  se->error_sent = true;
+	}
+      }
+      return;
+  }
+}
+
 static int
 yang_session_rx(sock *sk, uint size)
 {
@@ -75,15 +123,19 @@ yang_session_rx(sock *sk, uint size)
 	break;
 
       case COAP_PS_HEADER:
-	log(L_INFO "Dummy: Header parsed");
+	/* We don't need to react to the header right now */
+	se->error_sent = false;
 	continue;
 
+      case COAP_PS_OPTION_PARTIAL:
       case COAP_PS_OPTION_COMPLETE:
-	log(L_INFO "Dummy: Options parsed");
+	yang_session_rx_option(se);
 	continue;
 
+      case COAP_PS_PAYLOAD_PARTIAL:
       case COAP_PS_PAYLOAD_COMPLETE:
 	log(L_INFO "Dummy: Payload parsed");
+
 	continue;
 
       default:
