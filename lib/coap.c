@@ -882,6 +882,10 @@ coap_tcp_parse(struct coap_session *s)
 	continue;
 
       case COAP_PS_HEADER:
+	ctx->option_type = 0;
+
+	/* fall through */
+
       case COAP_PS_OPTION_PARTIAL:
       case COAP_PS_OPTION_COMPLETE:
       case COAP_PSM_OPTION_NONE ... COAP_PS__MORE_MAX:

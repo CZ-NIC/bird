@@ -254,6 +254,13 @@ struct coap_tx_option {
     _Generic((_val), u8: put_u8, u16: put_u16, u32: put_u32)(_opt->data, _val); \
     _opt; })
 
+#define COAP_TX_OPTION_PRINTF(_type, ...) ({ \
+    char _buf[1024]; int _len = bsnprintf(_buf, sizeof _buf, __VA_ARGS__); \
+    if (_len < 0) log(L_ERR "Too long string at %s:%d", __FILE__, __LINE__); \
+    struct coap_tx_option *_opt = COAP_TX_OPTION_GENERIC(_type, _len); \
+    memcpy(_opt->data, _buf, _len); \
+    _opt; })
+
 #define COAP_TX_OPTION_VPRINTF(_type, _fmt, _vargs) ({ \
     char _buf[1024]; int _len = bvsnprintf(_buf, sizeof _buf, _fmt, _vargs); \
     if (_len < 0) log(L_ERR "Too long string at %s:%d", __FILE__, __LINE__); \
