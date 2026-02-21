@@ -19,6 +19,7 @@
 /* YANG Model Selection */
 enum yang_model {
   YANG_MODEL_CLI = 1,		/* Use BIRD CLI 1:1 model */
+  YANG_MODEL__MAX,
 };
 
 /* YANG session runtime structure */
@@ -29,6 +30,9 @@ struct yang_session {
     struct coap_session coap;
   };
   bool error_sent;
+  const struct yang_url_node **url;
+  bool (*endpoint)(struct yang_session *);
+  uint url_pos;
 };
 
 /* YANG socket parameters */
@@ -117,6 +121,16 @@ struct yang_api {
 };
 
 #include "lib/tlists.h"
+
+/* YANG API URL Tree */
+
+struct yang_url_node {
+  bool (*endpoint)(struct yang_session *);
+  const char *stem;
+  const struct yang_url_node *children[];
+};
+
+extern const struct yang_url_node *yang_url_tree[YANG_MODEL__MAX];
 
 /* YANG API routines */
 

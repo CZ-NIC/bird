@@ -11,6 +11,95 @@
 #include "conf/conf.h"
 #include "yang/yang.h"
 
+static bool yang_default_endpoint(struct yang_session *se);
+
+static bool
+yang_model_cli_endpoint_wellknown_core(struct yang_session *se)
+{
+  struct yang_socket *s = se->socket;
+  SKIP_BACK_DECLARE(struct yang_api, api, listen, yang_socket_enlisted(s));
+
+  switch (se->coap.parser.state) {
+    case COAP_PS_MORE:
+    case COAP_PS_HEADER:
+      log(L_ERR "%s: Unexpected state in endpoint (TODO bad)", api->name);
+      return false;
+
+    case COAP_PS_ERROR:
+      log(L_ERR "%s: CoAP error in endpoint (TODO bad)", api->name);
+      return false;
+
+    case COAP_PS_OPTION_PARTIAL:
+    case COAP_PS_OPTION_COMPLETE:
+      switch (se->coap.parser.option_type) {
+	case COAP_OPT_URI_QUERY:
+	  log(L_INFO "URI Query (%u-%u/%u): %.*s",
+	      se->coap.parser.option_chunk_offset,
+	      se->coap.parser.option_chunk_offset + se->coap.parser.option_chunk_len,
+	      se->coap.parser.option_len,
+	      se->coap.parser.option_chunk_len, se->coap.parser.option_value);
+	  break;
+	default:
+	  if (se->coap.parser.option_type & COAP_OPT_F_CRITICAL)
+	  {
+	    /* TODO: make this a macro or func */
+	    log(L_INFO "Unhandled option %u, fail / TODO copy token", se->coap.parser.option_type);
+	    if (!se->error_sent)
+	    {
+	      struct coap_tx_option *payload = COAP_TX_OPTION_PRINTF(
+		  0, "Unhandled option %u", se->coap.parser.option_type);
+	      coap_tx_send(&se->coap, COAP_TX_FRAME(COAP_CERR_BAD_OPTION, payload));
+	      se->error_sent = true;
+	    }
+	  }
+      }
+      return true;
+
+    case COAP_PS_PAYLOAD_COMPLETE:
+      /* TODO: make this a macro or func? */
+      se->endpoint = yang_default_endpoint;
+
+      /* fall through */
+
+    case COAP_PS_PAYLOAD_PARTIAL:
+      log(L_INFO "Payload (%u-%u/%u)", se->coap.parser.payload_chunk_offset,
+	  se->coap.parser.payload_chunk_offset + se->coap.parser.payload_chunk_len,
+	  se->coap.parser.payload_total_len);
+
+      return true;
+
+    default:
+      bug("what the hell");
+
+  }
+}
+
+static const struct yang_url_node
+yang_model_cli_wellknown_core = {
+  .endpoint = yang_model_cli_endpoint_wellknown_core,
+  .stem = "core",
+  .children = {
+    NULL
+  },
+},
+yang_model_cli_wellknown = {
+  .stem = ".well-known",
+  .children = {
+    &yang_model_cli_wellknown_core,
+    NULL
+  },
+},
+yang_model_cli_root = {
+  NULL, NULL, {
+    &yang_model_cli_wellknown,
+    NULL
+  },
+};
+
+const struct yang_url_node *yang_url_tree[YANG_MODEL__MAX] = {
+  NULL, &yang_model_cli_root,
+};
+
 static TLIST_LIST(yang_api) global_api_list;
 static pool *yang_pool;
 
@@ -41,9 +130,17 @@ yang_api_same(const struct yang_api_params *a, const struct yang_api_params *b)
 static void
 yang_session_rx_option(struct yang_session *se)
 {
+  if (se->coap.parser.option_type > COAP_OPT_URI_PATH)
+  {
+    /* This should have been already resolved by COAP_OPT_URI_PATH
+     * and ending up here means wrong path */
+    log(L_INFO "Error 4.04: Not Found (TODO)");
+    return;
+  }
+
   switch (se->coap.parser.option_type) {
     case COAP_OPT_URI_HOST:
-      log(L_INFO "URI Host (%u-%u/%u): %*s",
+      log(L_INFO "URI Host (%u-%u/%u): %.*s",
 	  se->coap.parser.option_chunk_offset,
 	  se->coap.parser.option_chunk_offset + se->coap.parser.option_chunk_len,
 	  se->coap.parser.option_len,
@@ -55,19 +152,31 @@ yang_session_rx_option(struct yang_session *se)
       return;
 
     case COAP_OPT_URI_PATH:
-      log(L_INFO "URI Path (%u-%u/%u): %*s",
+      log(L_INFO "URI Path (%u-%u/%u): %.*s",
 	  se->coap.parser.option_chunk_offset,
 	  se->coap.parser.option_chunk_offset + se->coap.parser.option_chunk_len,
 	  se->coap.parser.option_len,
 	  se->coap.parser.option_chunk_len, se->coap.parser.option_value);
-      return;
 
-    case COAP_OPT_URI_QUERY:
-      log(L_INFO "URI Query (%u-%u/%u): %*s",
-	  se->coap.parser.option_chunk_offset,
-	  se->coap.parser.option_chunk_offset + se->coap.parser.option_chunk_len,
-	  se->coap.parser.option_len,
-	  se->coap.parser.option_chunk_len, se->coap.parser.option_value);
+      ASSERT_DIE(se->url_pos == se->coap.parser.option_chunk_offset);
+
+      while (*se->url)
+	if (!strncmp(&(*se->url)->stem[se->url_pos], se->coap.parser.option_value, se->coap.parser.option_chunk_len))
+	{
+	  if (se->coap.parser.option_chunk_offset + se->coap.parser.option_chunk_len == se->coap.parser.option_len)
+	  {
+	    se->endpoint = ((*se->url)->endpoint) ?: yang_default_endpoint;
+	    se->url = (*se->url)->children;
+	    return;
+	  }
+	  break;
+	}
+	else
+	  se->url++;
+
+      if (!*se->url)
+	log(L_INFO "Error 4.04: Not Found (TODO)");
+
       return;
 
     default:
@@ -86,12 +195,55 @@ yang_session_rx_option(struct yang_session *se)
   }
 }
 
+static bool
+yang_default_endpoint(struct yang_session *se)
+{
+  enum coap_parse_state state = se->coap.parser.state;
+  struct yang_socket *s = se->socket;
+  SKIP_BACK_DECLARE(struct yang_api, api, listen, yang_socket_enlisted(s));
+
+  log(L_TRACE "state is %d", state);
+  switch (state) {
+    case COAP_PS_MORE:
+      return false;
+
+    case COAP_PS_ERROR:
+      log(L_ERR "%s: CoAP error, closing", api->name);
+      se->sock->rx_hook = NULL;
+      return false;
+
+    case COAP_PS_HEADER:
+      /* Reset all required data structures so that we can process the options */
+      se->error_sent = false;
+      se->url = &yang_url_tree[api->params.model]->children[0];
+      se->url_pos = 0;
+      return true;
+
+    case COAP_PS_OPTION_PARTIAL:
+    case COAP_PS_OPTION_COMPLETE:
+      yang_session_rx_option(se);
+      return true;
+
+    case COAP_PS_PAYLOAD_PARTIAL:
+    case COAP_PS_PAYLOAD_COMPLETE:
+      /* If found, the endpoint function should not be this one */
+      log(L_INFO "Error 4.04: Not Found (TODO)");
+      return true;
+
+    default:
+      log(L_INFO "Dummy: Status %u", state);
+      return false;
+  }
+}
+
 static int
 yang_session_rx(sock *sk, uint size)
 {
   struct yang_session *se = sk->data;
   struct yang_socket *s = se->socket;
   SKIP_BACK_DECLARE(struct yang_api, api, listen, yang_socket_enlisted(s));
+
+  log(L_TRACE "%s: RX data", api->name);
 
   /* Check the received data in */
   coap_tcp_rx(&se->coap, sk->rbuf, size);
@@ -109,39 +261,9 @@ yang_session_rx(sock *sk, uint size)
     if (coap_process(&se->coap))
       continue;
 
-    /* Or maybe not */
-    enum coap_parse_state state = se->coap.parser.state;
-
-    log(L_TRACE "state is %d", state);
-    switch (state) {
-      case COAP_PS_MORE:
-	break;
-
-      case COAP_PS_ERROR:
-	log(L_ERR "%s: CoAP error, closing", api->name);
-	sk->rx_hook = NULL;
-	break;
-
-      case COAP_PS_HEADER:
-	/* We don't need to react to the header right now */
-	se->error_sent = false;
-	continue;
-
-      case COAP_PS_OPTION_PARTIAL:
-      case COAP_PS_OPTION_COMPLETE:
-	yang_session_rx_option(se);
-	continue;
-
-      case COAP_PS_PAYLOAD_PARTIAL:
-      case COAP_PS_PAYLOAD_COMPLETE:
-	log(L_INFO "Dummy: Payload parsed");
-
-	continue;
-
-      default:
-	log(L_INFO "Dummy: Status %u", state);
-	break;
-    }
+    /* Or the current endpoint will take care */
+    if (se->endpoint(se))
+      continue;
 
     /* Send remaining data if possible */
     coap_tx_flush(&se->coap, sk);
@@ -183,6 +305,7 @@ yang_socket_accept(sock *sk, uint size UNUSED)
   struct yang_session *se = mb_allocz(api->pool, sizeof *se);
   se->sock = sk;
   se->socket = s;
+  se->endpoint = yang_default_endpoint;
 
   coap_session_init(&se->coap);
 
