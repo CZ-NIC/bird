@@ -274,7 +274,7 @@ struct coap_tx_option {
 
 #define COAP_TX_RESPONSE(_sess, ...) ({ \
     struct coap_tx_frame *_f = COAP_TX_FRAME(__VA_ARGS__); \
-    _f->toklen = _sess->parser.token_len; memcpy(_f->token, _sess->parser.token, _f->toklen); \
+    _f->toklen = (_sess)->parser.token_len; memcpy(_f->token, (_sess)->parser.token, _f->toklen); \
     _f; })
 
 #define TLIST_PREFIX coap_tx
