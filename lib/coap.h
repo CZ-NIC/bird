@@ -272,6 +272,11 @@ struct coap_tx_option {
     struct { struct coap_tx_frame f; struct coap_tx_option *opt[MACRO_COUNT(__VA_ARGS__)]; } _frm = { \
     .f.code = _code, .f.optcnt = ARRAY_SIZE(_frm.opt), .opt = { __VA_ARGS__ }}; &_frm.f; })
 
+#define COAP_TX_RESPONSE(_sess, ...) ({ \
+    struct coap_tx_frame *_f = COAP_TX_FRAME(__VA_ARGS__); \
+    _f->toklen = _sess->parser.token_len; memcpy(_f->token, _sess->parser.token, _f->toklen); \
+    _f; })
+
 #define TLIST_PREFIX coap_tx
 #define TLIST_TYPE struct coap_tx
 #define TLIST_ITEM n
