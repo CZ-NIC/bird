@@ -320,7 +320,7 @@ coap_bad_request(struct coap_session *s, const char *fmt, ...)
   va_start(args, fmt);
 
   struct coap_tx_option *payload = COAP_TX_OPTION_VPRINTF(0, fmt, args);
-  coap_tx_send(s, COAP_TX_FRAME(COAP_CERR_BAD_REQUEST, payload));
+  coap_tx_send(s, COAP_TX_RESPONSE(s, COAP_CERR_BAD_REQUEST, payload));
   coap_tx_send(s, COAP_TX_FRAME(COAP_SCO_ABORT));
   s->flush_and_close = true;
 }
@@ -348,7 +348,7 @@ coap_bad_csm(struct coap_session *s, const char *fmt, ...)
 
   struct coap_tx_option *payload = COAP_TX_OPTION_VPRINTF(0, fmt, args);
 
-  coap_tx_send(s, COAP_TX_FRAME(COAP_SCO_ABORT, opt_bad_csm, payload));
+  coap_tx_send(s, COAP_TX_RESPONSE(s, COAP_SCO_ABORT, opt_bad_csm, payload));
   s->flush_and_close = true;
 
   va_end(args);
