@@ -33,6 +33,8 @@ yang_model_cli_endpoint_wellknown_core(struct yang_session *se)
     case COAP_PS_OPTION_COMPLETE:
       switch (se->coap.parser.option_type) {
 	case COAP_OPT_URI_QUERY:
+	  /* According to RFC 6690, Sec. 4, we are not required
+	   * to support filtering at the well-known path. It's desirable for later implementation tho. */
 	  log(L_INFO "URI Query (%u-%u/%u): %.*s",
 	      se->coap.parser.option_chunk_offset,
 	      se->coap.parser.option_chunk_offset + se->coap.parser.option_chunk_len,
