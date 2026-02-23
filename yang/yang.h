@@ -36,8 +36,8 @@ struct yang_session {
   u64 sid_stack[16];
   int sid_pos;
   enum yang_parser_state {
-    YANG_PS_BASE = 0,
-    YANG_PS_VALUE = 1,
+    YANG_PS_VALUE = 0,
+    YANG_PS_RELATIVE_SID = 1,
     YANG_PS_ABSOLUTE_SID = 2,
   } sid_state;
 };
