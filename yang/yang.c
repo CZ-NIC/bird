@@ -10,6 +10,7 @@
 #include "lib/tlists.h"
 #include "conf/conf.h"
 #include "yang/yang.h"
+#include "yang/model-cli.h"
 
 static bool yang_default_endpoint(struct yang_session *se);
 
@@ -96,16 +97,155 @@ yang_model_cli_endpoint_wellknown_core(struct yang_session *se)
 }
 
 static bool
+yang_cbor_parser_error(struct yang_session *se, int pos, const char *reason)
+{
+  if (se->error_sent)
+    return true;
+
+  struct coap_tx_option *payload = COAP_TX_OPTION_PRINTF(
+      0, "Parse error at position %u: %s", se->coap.parser.payload_chunk_offset + pos, reason);
+  coap_tx_send(&se->coap, COAP_TX_RESPONSE(&se->coap, COAP_CERR_BAD_REQUEST, payload));
+  se->error_sent = true;
+  return true;
+}
+
+static bool
+yang_push_sid(struct yang_session *se, u64 sid)
+{
+  u64 cur = se->sid_stack[se->sid_pos];
+
+  /* Generate this by UYTC */
+  switch (sid) {
+    case 60001:
+      /* Check parent SID */
+      if (cur != 0)
+	return false;
+
+      break;
+
+    default:
+      /* Unexpected SID */
+      return false;
+  }
+
+  se->sid_stack[se->sid_pos + 1] = se->sid_stack[se->sid_pos] + se->cbor->value;
+  se->sid_pos++;
+
+  return true;
+}
+
+static bool
+yang_pop_sid(struct yang_session *se)
+{
+  u64 cur = se->sid_stack[se->sid_pos];
+
+  /* Generate this by UYTC
+   * Only block-like items */
+  switch (cur) {
+    case 0:
+      /* Nothing to do */
+      break;
+
+    default:
+      /* Unexpected SID */
+      return false;
+  }
+
+  ASSERT_DIE(--se->sid_pos >= 0);
+
+  return true;
+}
+
+
+static bool
 yang_model_cli_cbor_c(struct yang_session *se)
 {
-  struct yang_socket *s = se->socket;
-  SKIP_BACK_DECLARE(struct yang_api, api, listen, yang_socket_enlisted(s));
-
   const char *payload = se->coap.parser.payload;
   uint len = se->coap.parser.payload_chunk_len;
 
-  /* We kinda wanna generate this completely by UYTC */
-  TODO();
+  for (uint i=0; i<len; i++)
+  {
+    while (cbor_parse_block_end(se->cbor))
+      if (!yang_pop_sid(se))
+	return yang_cbor_parser_error(se, i, "End of block error"); /* TODO: make this nicer */
+
+    switch (cbor_parse_byte(se->cbor, payload[i]))
+    {
+      case CPR_ERROR:
+	return yang_cbor_parser_error(se, i, se->cbor->error);
+
+      case CPR_MORE:
+	continue;
+
+      case CPR_MAJOR:
+	switch (se->sid_state)
+	{
+	  case YANG_PS_BASE:
+	    switch (se->cbor->type)
+	    {
+	      case CBOR_POSINT:
+		if (se->sid_stack[se->sid_pos] + se->cbor->value < se->sid_stack[se->sid_pos])
+		  return yang_cbor_parser_error(se, i, "SID overflow");
+
+		if (yang_push_sid(se, se->sid_stack[se->sid_pos] + se->cbor->value))
+		  continue;
+		else
+		  return yang_cbor_parser_error(se, i, "Unexpected SID");
+
+	      case CBOR_NEGINT:
+		if (se->sid_stack[se->sid_pos] - se->cbor->value > se->sid_stack[se->sid_pos])
+		  return yang_cbor_parser_error(se, i, "SID underflow");
+
+		if (yang_push_sid(se, se->sid_stack[se->sid_pos] + se->cbor->value))
+		  continue;
+		else
+		  return yang_cbor_parser_error(se, i, "Unexpected SID");
+
+	      case CBOR_TAG:
+		if (se->cbor->value == CBOR_TAG_ABSOLUTE_SID)
+		{
+		  se->sid_state = YANG_PS_ABSOLUTE_SID;
+		  continue;
+		}
+
+		/* fall through */
+
+	      default:
+		return yang_cbor_parser_error(se, i, "Wrong SID type");
+	    }
+
+	  case YANG_PS_ABSOLUTE_SID:
+	    if (se->cbor->type != CBOR_POSINT)
+	      return yang_cbor_parser_error(se, i, "Wrong type of absolute SID"); // TODO: (%u)", se->cbor->type);
+
+	    if (yang_push_sid(se, se->cbor->value))
+	      continue;
+	    else
+	      return yang_cbor_parser_error(se, i, "Unexpected SID");
+
+	    /* We kinda wanna generate this block by UYTC */
+	  case YANG_PS_VALUE:
+	    switch (se->sid_stack[se->sid_pos])
+	    {
+	      case 60001:
+		if ((se->cbor->type != CBOR_SPECIAL) && (se->cbor->value != CBOR_SPECIAL_NULL))
+		  return yang_cbor_parser_error(se, i, "Wrong data for SID 60001");
+
+		se->sid_pos--;
+		return yang_model_cli_rpc_call_show_memory(se);
+
+	      default:
+		return yang_cbor_parser_error(se, i, "Unexpected SID");
+	    }
+	}
+	bug("this shall not happen");
+
+      case CPR_STR_END:
+	return yang_cbor_parser_error(se, i, "No strings expected");
+    }
+  }
+
+  return true;
 }
 
 static bool
@@ -115,6 +255,7 @@ yang_model_cli_endpoint_c(struct yang_session *se)
   SKIP_BACK_DECLARE(struct yang_api, api, listen, yang_socket_enlisted(s));
 
   switch (se->coap.parser.state) {
+    case COAP_PS_EMPTY:
     case COAP_PS_MORE:
     case COAP_PS_HEADER:
       log(L_ERR "%s: Unexpected state in endpoint (TODO bad)", api->name);
@@ -156,6 +297,8 @@ yang_model_cli_endpoint_c(struct yang_session *se)
 
       return yang_model_cli_cbor_c(se);
   }
+
+  bug("this shall not happen");
 }
 
 static const struct yang_url_node
@@ -182,6 +325,7 @@ yang_model_cli_wellknown = {
 },
 yang_model_cli_root = {
   NULL, NULL, {
+    &yang_model_cli_c,
     &yang_model_cli_wellknown,
     NULL
   },
@@ -308,6 +452,9 @@ yang_default_endpoint(struct yang_session *se)
       se->error_sent = false;
       se->url = &yang_url_tree[api->params.model]->children[0];
       se->url_pos = 0;
+
+      cbor_parser_reset(se->cbor);
+
       return true;
 
     case COAP_PS_OPTION_PARTIAL:
@@ -399,6 +546,7 @@ yang_socket_accept(sock *sk, uint size UNUSED)
   se->endpoint = yang_default_endpoint;
 
   coap_session_init(&se->coap);
+  se->cbor = cbor_parser_new(api->pool, 16);
 
   sk->rx_hook = yang_session_rx;
   sk->tx_hook = yang_session_tx;
