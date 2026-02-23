@@ -121,6 +121,8 @@ bool cbor_put_raw_bytes(struct cbor_writer *w, enum cbor_basic_type type, const 
 /* Arrays and maps */
 bool cbor_put_open(struct cbor_writer *w, enum cbor_basic_type type)
 {
+  w->stack[w->stack_pos].items++;
+
   if (++w->stack_pos >= w->stack_max)
     return false;
 
@@ -140,8 +142,11 @@ bool cbor_put_close(struct cbor_writer *w, u64 actual_size, bool strict)
 
   w->stack_pos--;
 
+  /* The cbor_put() in cbor_put_open() needs to be neutralized */
+  items--;
+
   /* Check the original head position */
-  ASSERT_DIE((head[0] & 0x1f) == 0x1f);
+  ASSERT_DIE((head[0] & 0x1f) == 0x1b);
   ASSERT_DIE(w->data.pos >= w->data.start + 9);
   switch (head[0] >> 5)
   {
@@ -168,33 +173,33 @@ bool cbor_put_close(struct cbor_writer *w, u64 actual_size, bool strict)
   if (items < 0x18)
   {
     memmove(head+1, head+9, w->data.pos - (head+9));
-    head[0] &= (0xe0 | items);
+    head[0] = head[0] & 0xe0 | items;
     w->data.pos -= 8;
   }
   else if (items < 0x100)
   {
     memmove(head+2, head+9, w->data.pos - (head+9));
-    head[0] &= 0xf8;
+    head[0] = head[0] & 0xe0 | 0x18;
     head[1] = items;
     w->data.pos -= 7;
   }
   else if (items < 0x10000)
   {
     memmove(head+3, head+9, w->data.pos - (head+9));
-    head[0] &= 0xf9;
+    head[0] = head[0] & 0xe0 | 0x19;
     put_u16(head+1, items);
     w->data.pos -= 6;
   }
   else if (items < 0x100000000)
   {
     memmove(head+5, head+9, w->data.pos - (head+9));
-    head[0] &= 0xfa;
+    head[0] = head[0] & 0xe0 | 0x1a;
     put_u32(head+1, items);
     w->data.pos -= 4;
   }
   else
   {
-    head[0] &= 0xfb;
+    head[0] = head[0] & 0xe0 | 0x1b;
     put_u64(head+1, items);
   }
 
