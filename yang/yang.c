@@ -50,7 +50,7 @@ yang_model_cli_endpoint_wellknown_core(struct yang_session *se)
 	    {
 	      struct coap_tx_option *payload = COAP_TX_OPTION_PRINTF(
 		  0, "Unhandled option %u", se->coap.parser.option_type);
-	      coap_tx_send(&se->coap, COAP_TX_FRAME(COAP_CERR_BAD_OPTION, payload));
+	      coap_tx_send(&se->coap, COAP_TX_RESPONSE(&se->coap, COAP_CERR_BAD_OPTION, payload));
 	      se->error_sent = true;
 	    }
 	  }
@@ -58,15 +58,34 @@ yang_model_cli_endpoint_wellknown_core(struct yang_session *se)
       return true;
 
     case COAP_PS_PAYLOAD_COMPLETE:
+      if (se->coap.parser.payload_total_len != 0)
+	log(L_WARN "%s: Received GET with a payload. Weird.", api->name);
+
       /* TODO: make this a macro or func? */
       se->endpoint = yang_default_endpoint;
 
       /* fall through */
 
     case COAP_PS_PAYLOAD_PARTIAL:
+      if (!se->error_sent)
+      {
+	struct coap_tx_option
+	  *content_format = COAP_TX_OPTION_INT(
+	      COAP_OPT_CONTENT_FORMAT, (u8) 40),
+	  *payload = COAP_TX_OPTION_PRINTF(0,
+	      "</y>;rt=\"core.c.yl\","
+	      "</c>;rt=\"core.c.ds\","
+	      "</s>;rt=\"core.c.ev\"");
+
+	coap_tx_send(&se->coap, COAP_TX_RESPONSE(&se->coap, COAP_RESP_CONTENT,
+	      content_format, payload));
+      }
+
+#if 0
       log(L_INFO "Payload (%u-%u/%u)", se->coap.parser.payload_chunk_offset,
 	  se->coap.parser.payload_chunk_offset + se->coap.parser.payload_chunk_len,
 	  se->coap.parser.payload_total_len);
+#endif
 
       return true;
 
@@ -76,10 +95,80 @@ yang_model_cli_endpoint_wellknown_core(struct yang_session *se)
   }
 }
 
+static bool
+yang_model_cli_cbor_c(struct yang_session *se)
+{
+  struct yang_socket *s = se->socket;
+  SKIP_BACK_DECLARE(struct yang_api, api, listen, yang_socket_enlisted(s));
+
+  const char *payload = se->coap.parser.payload;
+  uint len = se->coap.parser.payload_chunk_len;
+
+  /* We kinda wanna generate this completely by UYTC */
+  TODO();
+}
+
+static bool
+yang_model_cli_endpoint_c(struct yang_session *se)
+{
+  struct yang_socket *s = se->socket;
+  SKIP_BACK_DECLARE(struct yang_api, api, listen, yang_socket_enlisted(s));
+
+  switch (se->coap.parser.state) {
+    case COAP_PS_MORE:
+    case COAP_PS_HEADER:
+      log(L_ERR "%s: Unexpected state in endpoint (TODO bad)", api->name);
+      return false;
+
+    case COAP_PS_ERROR:
+      log(L_ERR "%s: CoAP error in endpoint (TODO bad)", api->name);
+      return false;
+
+    case COAP_PS_OPTION_PARTIAL:
+    case COAP_PS_OPTION_COMPLETE:
+      if (se->coap.parser.option_type & COAP_OPT_F_CRITICAL)
+      {
+	/* TODO: make this a macro or func */
+	log(L_INFO "Unhandled option %u, fail / TODO copy token", se->coap.parser.option_type);
+	if (!se->error_sent)
+	{
+	  struct coap_tx_option *payload = COAP_TX_OPTION_PRINTF(
+	      0, "Unhandled option %u", se->coap.parser.option_type);
+	  coap_tx_send(&se->coap, COAP_TX_RESPONSE(&se->coap, COAP_CERR_BAD_OPTION, payload));
+	  se->error_sent = true;
+	}
+      }
+      return true;
+
+    case COAP_PS_PAYLOAD_PARTIAL:
+    case COAP_PS_PAYLOAD_COMPLETE:
+      if (se->error_sent)
+	return true;
+
+      if (se->coap.parser.code != COAP_REQ_POST)
+      {
+	struct coap_tx_option *payload = COAP_TX_OPTION_PRINTF(
+	    0, "The CLI endpoint allows only POST/RPC calls");
+	coap_tx_send(&se->coap, COAP_TX_RESPONSE(&se->coap, COAP_CERR_METHOD_NOT_ALLOWED, payload));
+	se->error_sent = true;
+	return true;
+      }
+
+      return yang_model_cli_cbor_c(se);
+  }
+}
+
 static const struct yang_url_node
 yang_model_cli_wellknown_core = {
   .endpoint = yang_model_cli_endpoint_wellknown_core,
   .stem = "core",
+  .children = {
+    NULL
+  },
+},
+yang_model_cli_c = {
+  .endpoint = yang_model_cli_endpoint_c,
+  .stem = "c",
   .children = {
     NULL
   },
@@ -189,7 +278,7 @@ yang_session_rx_option(struct yang_session *se)
 	{
 	  struct coap_tx_option *payload = COAP_TX_OPTION_PRINTF(
 	      0, "Unhandled option %u", se->coap.parser.option_type);
-	  coap_tx_send(&se->coap, COAP_TX_FRAME(COAP_CERR_BAD_OPTION, payload));
+	  coap_tx_send(&se->coap, COAP_TX_RESPONSE(&se->coap, COAP_CERR_BAD_OPTION, payload));
 	  se->error_sent = true;
 	}
       }
