@@ -18,6 +18,17 @@ enum cbor_basic_type {
   CBOR_SPECIAL = 7,
 };
 
+enum cbor_tag_value {
+  CBOR_TAG_ABSOLUTE_SID = 47,
+};
+
+enum cbor_special {
+  CBOR_SPECIAL_FALSE = 20,
+  CBOR_SPECIAL_TRUE = 21,
+  CBOR_SPECIAL_NULL = 22,
+  CBOR_SPECIAL_UNDEF = 23,
+};
+
 const char *cbor_type_str(enum cbor_basic_type);
 
 /**
@@ -86,10 +97,10 @@ bool cbor_put_close(struct cbor_writer *w, u64 actual_size, bool strict);
 #define CBOR_PUT_MAP(w) for (struct cbor_writer *_w = w, *_ww = cbor_open_map(_w) ? (_w) : (bug("buffer overflow on CBOR_MAP"), NULL); (_w = NULL), _ww; cbor_close_map(_ww), _ww = NULL)
 
 /* Specials */
-#define cbor_put_false(w)	cbor_put((w), CBOR_SPECIAL, 20);
-#define cbor_put_true(w)	cbor_put((w), CBOR_SPECIAL, 21);
-#define cbor_put_null(w)	cbor_put((w), CBOR_SPECIAL, 22);
-#define cbor_put_undef(w)	cbor_put((w), CBOR_SPECIAL, 23);
+#define cbor_put_false(w)	cbor_put((w), CBOR_SPECIAL, CBOR_SPECIAL_FALSE);
+#define cbor_put_true(w)	cbor_put((w), CBOR_SPECIAL, CBOR_SPECIAL_TRUE);
+#define cbor_put_null(w)	cbor_put((w), CBOR_SPECIAL, CBOR_SPECIAL_NULL);
+#define cbor_put_undef(w)	cbor_put((w), CBOR_SPECIAL, CBOR_SPECIAL_UNDEF);
 
 #if 0
 void cbor_add_int(struct cbor_writer *writer, int64_t item);
