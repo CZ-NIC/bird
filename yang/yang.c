@@ -137,6 +137,8 @@ yang_push_sid(struct yang_session *se, u64 sid)
 static bool
 yang_pop_sid(struct yang_session *se)
 {
+  ASSERT_DIE(se->sid_pos >= 0);
+
   u64 cur = se->sid_stack[se->sid_pos];
 
   /* Generate this by UYTC
@@ -151,8 +153,7 @@ yang_pop_sid(struct yang_session *se)
       return false;
   }
 
-  ASSERT_DIE(--se->sid_pos >= 0);
-
+  se->sid_pos--;
   return true;
 }
 
@@ -168,6 +169,8 @@ yang_model_cli_cbor_c(struct yang_session *se)
     while (cbor_parse_block_end(se->cbor))
       if (!yang_pop_sid(se))
 	return yang_cbor_parser_error(se, i, "End of block error"); /* TODO: make this nicer */
+
+    ASSERT_DIE(se->sid_pos >= 0);
 
     switch (cbor_parse_byte(se->cbor, payload[i]))
     {
@@ -256,6 +259,13 @@ yang_model_cli_cbor_c(struct yang_session *se)
 	return yang_cbor_parser_error(se, i, "No strings expected");
     }
   }
+
+  while (cbor_parse_block_end(se->cbor))
+    if (!yang_pop_sid(se))
+      return yang_cbor_parser_error(se, len, "End of block error"); /* TODO: make this nicer */
+
+  if (se->sid_pos < 0)
+    ASSERT_DIE(se->coap.parser.state == COAP_PS_PAYLOAD_COMPLETE);
 
   return true;
 }
