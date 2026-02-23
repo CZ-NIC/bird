@@ -13,6 +13,7 @@
 #include "lib/birdlib.h"
 #include "lib/tlists.h"
 #include "lib/ip.h"
+#include "lib/cbor.h"
 #include "lib/coap.h"
 #include "nest/locks.h"
 
@@ -26,13 +27,19 @@ enum yang_model {
 struct yang_session {
   struct yang_socket *socket;
   struct birdsock *sock;
-  union {
-    struct coap_session coap;
-  };
+  struct coap_session coap;
+  struct cbor_parser_context *cbor;
   bool error_sent;
   const struct yang_url_node **url;
   bool (*endpoint)(struct yang_session *);
   uint url_pos;
+  u64 sid_stack[16];
+  int sid_pos;
+  enum yang_parser_state {
+    YANG_PS_BASE = 0,
+    YANG_PS_VALUE = 1,
+    YANG_PS_ABSOLUTE_SID = 2,
+  } sid_state;
 };
 
 /* YANG socket parameters */
