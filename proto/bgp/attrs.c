@@ -2120,6 +2120,9 @@ bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, UNUSE
 	    .src = px->src,
 	    .lastmod = px->lastmod,
 	  };
+
+	if (px->last || px->cur)
+	  rt_unlock_source_later(rt_lock_source(px->src));
       }
 
     ASSERT_DIE(pos == count);
