@@ -373,7 +373,7 @@ cbor_parse_block_end(struct cbor_parser_context *ctx)
     return false;
   }
 
-  if (!ctx->stack_pos--)
+  if (!--ctx->stack_pos)
     ctx->partial_state = CPE_EXIT;
 
   return true;

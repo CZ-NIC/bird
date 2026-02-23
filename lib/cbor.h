@@ -41,7 +41,7 @@ struct cbor_writer {
   struct cbor_writer_stack_item {
     u64 items;
     byte *head;
-  } stack[0];
+  } stack[];
 };
 
 /* Initialization */
@@ -55,6 +55,8 @@ static inline struct cbor_writer *cbor_writer_init(struct cbor_writer *w, uint s
     },
     .stack_max = stack_max_depth,
   };
+  w->stack[0].items = 0;
+  w->stack[0].head = buf;
   return w;
 }
 
