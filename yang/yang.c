@@ -180,26 +180,28 @@ yang_model_cli_cbor_c(struct yang_session *se)
       case CPR_MAJOR:
 	switch (se->sid_state)
 	{
-	  case YANG_PS_BASE:
+	  case YANG_PS_RELATIVE_SID:
 	    switch (se->cbor->type)
 	    {
 	      case CBOR_POSINT:
 		if (se->sid_stack[se->sid_pos] + se->cbor->value < se->sid_stack[se->sid_pos])
 		  return yang_cbor_parser_error(se, i, "SID overflow");
 
-		if (yang_push_sid(se, se->sid_stack[se->sid_pos] + se->cbor->value))
-		  continue;
-		else
+		if (!yang_push_sid(se, se->sid_stack[se->sid_pos] + se->cbor->value))
 		  return yang_cbor_parser_error(se, i, "Unexpected SID");
+
+		se->sid_state = YANG_PS_VALUE;
+		continue;
 
 	      case CBOR_NEGINT:
 		if (se->sid_stack[se->sid_pos] - se->cbor->value > se->sid_stack[se->sid_pos])
 		  return yang_cbor_parser_error(se, i, "SID underflow");
 
-		if (yang_push_sid(se, se->sid_stack[se->sid_pos] + se->cbor->value))
-		  continue;
-		else
+		if (!yang_push_sid(se, se->sid_stack[se->sid_pos] + se->cbor->value))
 		  return yang_cbor_parser_error(se, i, "Unexpected SID");
+
+		se->sid_state = YANG_PS_VALUE;
+		continue;
 
 	      case CBOR_TAG:
 		if (se->cbor->value == CBOR_TAG_ABSOLUTE_SID)
@@ -218,21 +220,31 @@ yang_model_cli_cbor_c(struct yang_session *se)
 	    if (se->cbor->type != CBOR_POSINT)
 	      return yang_cbor_parser_error(se, i, "Wrong type of absolute SID"); // TODO: (%u)", se->cbor->type);
 
-	    if (yang_push_sid(se, se->cbor->value))
-	      continue;
-	    else
+	    if (!yang_push_sid(se, se->cbor->value))
 	      return yang_cbor_parser_error(se, i, "Unexpected SID");
+
+	    se->sid_state = YANG_PS_VALUE;
+	    continue;
 
 	    /* We kinda wanna generate this block by UYTC */
 	  case YANG_PS_VALUE:
 	    switch (se->sid_stack[se->sid_pos])
 	    {
+	      case 0:
+		if (se->cbor->type != CBOR_MAP)
+		  return yang_cbor_parser_error(se, i, "Wrong data for SID 0 / root");
+
+		se->sid_state = YANG_PS_RELATIVE_SID;
+		continue;
+
 	      case 60001:
 		if ((se->cbor->type != CBOR_SPECIAL) && (se->cbor->value != CBOR_SPECIAL_NULL))
 		  return yang_cbor_parser_error(se, i, "Wrong data for SID 60001");
 
 		se->sid_pos--;
-		return yang_model_cli_rpc_call_show_memory(se);
+		se->sid_state = YANG_PS_RELATIVE_SID;
+		yang_model_cli_rpc_call_show_memory(se);
+		continue;
 
 	      default:
 		return yang_cbor_parser_error(se, i, "Unexpected SID");
