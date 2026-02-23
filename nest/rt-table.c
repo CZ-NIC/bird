@@ -1101,6 +1101,7 @@ rte_feed_obtain_copy(struct rtable_reading *tr, net *n, rte *feed, uint count)
 
     feed[i++] = e->rte;
     ea_free_later(ea_ref(e->rte.attrs));
+    rt_unlock_source_later(rt_lock_source(e->rte.src));
   }
 
   if (i != count)
@@ -2765,6 +2766,7 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, struct bmap *seen, bool (*p
 	    ASSERT_DIE(rpos < rcnt + ocnt);
 	    feed->block[rpos++] = *rpe->it.old;
 	    ea_free_later(ea_ref(rpe->it.old->attrs));
+	    rt_unlock_source_later(rt_lock_source(rpe->it.old->src));
 	  }
 	}
 
@@ -2826,6 +2828,7 @@ rt_net_best(rtable *t, const net_addr *a)
 
   ASSERT_DIE(e->rte.net == i->addr);
   ea_free_later(ea_ref(e->rte.attrs));
+  rt_unlock_source_later(rt_lock_source(e->rte.src));
   return RTE_COPY(e);
 }
 

@@ -113,14 +113,39 @@ struct rte_src *rt_find_source_global(u32 id);
 #define rt_unlock_source _rt_unlock_source_internal
 #endif
 
-static inline void rt_lock_source(struct rte_src *src)
+struct rte_src_unlock_deferred {
+  struct deferred_call dc;
+  struct rte_src *src;
+};
+
+static inline struct rte_src *rt_lock_source(struct rte_src *src)
 {
   lfuc_lock(&src->uc);
+  return src;
 }
 
 static inline void rt_unlock_source(struct rte_src *src)
 {
   lfuc_unlock(&src->uc, src->owner->list, src->owner->prune);
+}
+
+static inline void rt_unlock_source_deferred(struct deferred_call *dc)
+{
+  struct rte_src_unlock_deferred *rsd = SKIP_BACK(struct rte_src_unlock_deferred, dc, dc);
+  rt_unlock_source(rsd->src);
+}
+
+static inline void rt_unlock_source_later(struct rte_src *src)
+{
+  if (!src)
+    return;
+
+  struct rte_src_unlock_deferred rsd = {
+    .dc.hook = rt_unlock_source_deferred,
+    .src = src,
+  };
+
+  defer_call(&rsd.dc, sizeof(rsd));
 }
 
 #ifdef RT_SOURCE_DEBUG
