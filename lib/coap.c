@@ -586,6 +586,7 @@ coap_parse_option(struct coap_session *s, bool allow_partial)
 	      ctx->payload = CUR;
 	      ctx->payload_chunk_offset = 0;
 	      ctx->payload_chunk_len = ctx->data_len - ctx->data_ptr;
+	      ctx->payload_total_len = end_of_frame - ctx->data_ptr;
 	      if (ctx->payload_chunk_len >= ctx->payload_total_len)
 	      {
 		ctx->payload_chunk_len = ctx->payload_total_len;
