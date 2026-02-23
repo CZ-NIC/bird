@@ -3253,3 +3253,8 @@ test-evpn-bgp-tags:
   variables:
     TEST_NAME: cf-evpn-bgp-tags
 
+test-show-route-for:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-show-route-for
+
