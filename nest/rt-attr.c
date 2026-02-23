@@ -1851,7 +1851,7 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
     if (lookups == 1)
       r_new = ea_alloc(o, oid, h);
     else if (lookups == 3)
-      log(L_DEBUG "ea_lookup_slow: at least two times in row run into ea_storage with zero use count or lost write-write race.");
+      log(L_WARN "ea_lookup_slow: at least two times in row run into ea_storage with zero use count or lost write-write race.");
 
     rcu_read_lock(); /* We need to stay locked for the whole time we use cur and next. */
       struct ea_hash_array *cur = atomic_load_explicit(&rta_hash_table.cur, memory_order_acquire);
