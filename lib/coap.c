@@ -583,9 +583,21 @@ coap_parse_option(struct coap_session *s, bool allow_partial)
 	    else
 	    {
 	      ctx->state = COAP_PS_PAYLOAD_PARTIAL;
-	      ctx->payload_chunk_offset = ctx->payload_chunk_len = 0;
-	      ctx->payload_total_len = end_of_frame - ctx->data_ptr;
-	      continue;
+	      ctx->payload = CUR;
+	      ctx->payload_chunk_offset = 0;
+	      ctx->payload_chunk_len = ctx->data_len - ctx->data_ptr;
+	      if (ctx->payload_chunk_len >= ctx->payload_total_len)
+	      {
+		ctx->payload_chunk_len = ctx->payload_total_len;
+		ctx->data_ptr += ctx->payload_chunk_len;
+		ASSERT_DIE(ctx->data_ptr <= ctx->data_len);
+		return (ctx->state = COAP_PS_PAYLOAD_COMPLETE), true;
+	      }
+	      else
+	      {
+		ctx->data_ptr = ctx->data_len;
+		return (ctx->state = COAP_PS_PAYLOAD_PARTIAL), true;
+	      }
 	    }
 
 	  case 0xe:
