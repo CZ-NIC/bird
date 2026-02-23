@@ -2108,7 +2108,7 @@ bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, UNUSE
 	  feed->block[pos++] = (rte) {
 	    .attrs = (px->cur == c->withdraw_bucket) ? NULL : ea_free_later(ea_lookup_slow(px->cur->eattrs, 0, EALS_CUSTOM)),
 	    .net = ni->addr,
-	    .src = px->src,
+	    .src = rt_unlock_source_later(rt_lock_source(px->src)),
 	    .lastmod = px->lastmod,
 	    .flags = REF_PENDING,
 	  };
@@ -2117,7 +2117,7 @@ bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, UNUSE
 	  feed->block[pos++] = (rte) {
 	    .attrs = (px->last == c->withdraw_bucket) ? NULL : ea_free_later(ea_lookup_slow(px->last->eattrs, 0, EALS_CUSTOM)),
 	    .net = ni->addr,
-	    .src = px->src,
+	    .src = rt_unlock_source_later(rt_lock_source(px->src)),
 	    .lastmod = px->lastmod,
 	  };
       }
