@@ -1078,8 +1078,8 @@ bgp_decision(void *vp)
     bgp_down(p);
 }
 
-static int
-bgp_spawn(struct bgp_proto *pp, sock *sk)
+static struct bgp_proto *
+bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip, ip_addr local_ip, struct iface *iface)
 {
   struct symbol *sym;
   char fmt[SYM_MAX_LEN];
@@ -1095,13 +1095,24 @@ bgp_spawn(struct bgp_proto *pp, sock *sk)
   new_config = NULL;
   cfg_mem = NULL;
 
+  TRACE_(pp, D_EVENTS, "Spawning BGP instance %s for neighbor %I%J",
+	 sym->name, remote_ip, iface);
+
   /* Just pass remote_ip to bgp_init() */
   struct bgp_config *cf = SKIP_BACK(struct bgp_config, c, sym->proto);
-  cf->remote_ip = sk->daddr;
-  cf->local_ip = sk->saddr;
-  cf->iface = sk->iface;
+  cf->remote_ip = remote_ip;
+  cf->local_ip = local_ip;
+  cf->iface = iface;
+  cf->ipatt = NULL;
 
-  struct bgp_proto *p = SKIP_BACK(struct bgp_proto, p, proto_spawn(sym->proto, 0));
+  return SKIP_BACK(struct bgp_proto, p, proto_spawn(sym->proto, 0));
+}
+
+static int
+bgp_spawn_sk(struct bgp_proto *pp, sock *sk)
+{
+  struct bgp_proto *p = bgp_spawn(pp, sk->daddr, sk->saddr, sk->iface);
+
   p->postponed_sk = sk;
   rmove(sk, p->p.pool);
 
@@ -1937,7 +1948,7 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
 
   /* For dynamic BGP, spawn new instance and postpone the socket */
   if (bgp_is_dynamic(p))
-    return bgp_spawn(p, sk);
+    return bgp_spawn_sk(p, sk);
 
   rmove(sk, p->p.pool);
   bgp_setup_conn(p, &p->incoming_conn);
@@ -3027,6 +3038,7 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
     }
 
     new->iface = old->iface;
+    new->ipatt = NULL;
   }
 
   int same = !memcmp(((byte *) old) + sizeof(struct proto_config),

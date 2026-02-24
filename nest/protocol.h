@@ -410,6 +410,9 @@ void proto_notify_state(struct proto *p, unsigned state);
 #define D_PACKETS 32		/* Packets sent/received */
 
 #ifndef PARSER
+#define TRACE_(proto, flags, msg, args...) \
+  do { if (proto->p.debug & flags) log(L_TRACE "%s: " msg, proto->p.name , ## args ); } while(0)
+
 #define TRACE(flags, msg, args...) \
   do { if (p->p.debug & flags) log(L_TRACE "%s: " msg, p->p.name , ## args ); } while(0)
 #endif
