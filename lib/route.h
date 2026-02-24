@@ -590,10 +590,13 @@ static inline ea_list *ea_lookup(ea_list *r, u32 squash_upto, enum ea_stored oid
     return ea_lookup_slow(r, squash_upto, oid);
 }
 
+#define MAX_EAS_TO_DEFER  10
+
 struct ea_finally_free_deferred_call {
   struct deferred_call dc;
   struct rcu_stored_phase phase;
-  struct ea_storage *attrs;
+  struct ea_storage *attrs[MAX_EAS_TO_DEFER];
+  int count;
 };
 
 struct ea_free_deferred {

@@ -2066,7 +2066,7 @@ ea_cleaning_loop(struct ea_hash_array *esa,  uint in)
 	 * we shift the RCU phase. */
 	def->phase = rcu_begin_sync();
 
-	if (def->count == MAX_EAS_TO_DEFFER)
+	if (def->count == MAX_EAS_TO_DEFER)
 	  ea_deferred_free = NULL; /* it is full, next time we will set up new ea_deferred_free */
       } else
       {
