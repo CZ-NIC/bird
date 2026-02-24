@@ -297,17 +297,34 @@ rt_show_cont(struct cli *c)
   int pos = 0;
 
   RT_FEED_WALK(&d->tab->req, f)
-    if (d->addr_mode == TE_ADDR_FOR)
-      feeds[pos++] = f;
-
-  for (int i = pos - 1; i >= 0; i--)
   {
-    const struct rt_export_feed *f = feeds[i];
-
-    if (f && (f->count_routes > 0))
+    TMP_SAVED
     {
-      rt_show_net(d, f);
-      break;
+      if (d->addr_mode == TE_ADDR_FOR)
+        feeds[pos++] = f;
+      else
+      {
+        if (f->count_routes > 0)
+          rt_show_net(d, f);
+      }
+    }
+  }
+
+  if (d->addr_mode == TE_ADDR_FOR)
+  {
+    for (int i = pos - 1; i >= 0; i--)
+    {
+      const struct rt_export_feed *f = feeds[i];
+
+      /* Skip prefixes longer than requested */
+      if (!f || (f->ni->addr->pxlen > d->addr->pxlen))
+	continue;
+
+      if (f->count_routes > 0)
+      {
+	rt_show_net(d, f);
+	break;
+      }
     }
   }
 
