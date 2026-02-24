@@ -4059,8 +4059,8 @@ of the dynamic BGP sessions.
 <label id="bgp-attr">
 
 <p>BGP defines several route attributes. Some of them (those marked with
-`<tt/I/' in the table below) are available on internal BGP connections only,
-some of them (marked with `<tt/O/') are optional.
+'<tt/I/' in the table below) are available on internal BGP connections only,
+some of them (marked with '<tt/O/') are optional.
 
 <descrip>
 	<tag><label id="rta-bgp-path">bgppath bgp_path</tag>
@@ -4163,6 +4163,26 @@ as one known by BIRD, therefore use of this statement carries a risk of
 incompatibility with future BIRD versions.
 
 <p><cf><label id="bgp-attribute-custom">attribute bgp <m/number/ bytestring <m/name/;</cf>
+
+<sect1>Implementation caveats
+<label id="bgp-caveats">
+
+<p>By default, EBGP is expecting that <cf/bgp_next_hop/ attribute of recieved
+routes is an IP address of a directly connected interface and is in turn used
+as the immediate next hop (gateway) without any change (<cf/gateway direct/).
+This approach is simpler, does not require any routes in a routing table and
+was used in older versions of BIRD. However behavior specified by the BGP is
+<cf/gateway recursive/, which means that the gateway is computed by IGP
+routing table lookup for the IP address from bgp_next_hop. For more info see
+<ref id="bgp-gateway" name="gateway direct|recursive">.
+
+<p>Default handeling of Multi-Exit Discriminator (MED) attribute in the BGP
+route selection algorithm does not strictly conform to the specification in
+<rfc id="4271">. BIRD, by default, uses an simplification based on individual
+route comparison, which is faster, but in some cases may lead to temporally
+dependent behavior (i.e. the selection is dependent on the order in which
+routes appeared). Algorithm implementing proper <rfc id="4271"> route selection
+with deterministic MED handeling can be enabled by option <ref id="bgp-deterministic-med" name="deterministic med">.
 
 <sect1>Example
 <label id="bgp-exam">
@@ -5325,6 +5345,27 @@ doesn't affect routing inside the OSPF domain at all. The fourth attribute
 network. This attribute is read-only. Default is <cf/ospf_metric2 = 10000/ and
 <cf/ospf_tag = 0/.
 
+<sect1>Implementation caveats
+<label id="ospf-caveats">
+
+<p>In OPSFv3, BIRD ignores interfaces without link-local addresses, even when
+they are configured as a stub interface.
+
+<p>Linux netlink allows for setting so called 'peer address' to a network interface.
+It consists of local and remote address that do not have to share the same
+prefix. Current OSPF implementation does not announce peer addresses on non-stub
+interfaces in Router-LSA. It is expected that local part of peer address will be
+present on other interface - that is also a possible workaround for this
+limitation. On stub interfaces BIRD announces just the remote part of the peer
+address.
+
+<p>Automatically detected type of a network (<cf/broadcast/, <cf/pointopoint/, etc.)
+differs based on interface prefix range. By default type is set to <cf/broadcast/,
+but when prefix is 'tight' (/30, /31, /32 with peer address) type <cf/pointopoint/
+is used instead. Session with peers using other OSPF implementations that always
+default to type <cf/broadcast/ might not be established. In such case set the
+network type explicitly with the option <ref id="ospf-type-bcast" name="type broadcast">.
+
 <sect1>Example
 <label id="ospf-exam">
 
@@ -6180,6 +6221,14 @@ protocol rip [ng] [<name>] {
 	case of external routes). When a non-RIP route is exported to RIP, the
 	default tag is 0.
 </descrip>
+
+<sect1>Implementation caveats
+<label id="rip-caveats">
+
+<p>RIP implementation allows for routes with attribute <cf/rip_metric/ set to
+non-standard value of 0, which might lead to issues with nodes that do not allow
+such value. However <cf/rip_metric/ set to 0 makes sense, for example, for host
+routes announcing IP addresses of routers themselves, so BIRD supports it.
 
 <sect1>Example
 <label id="rip-exam">
