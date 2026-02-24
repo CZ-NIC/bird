@@ -1749,6 +1749,7 @@ struct ea_hash_head {
 };
 
 #define EA_MIN_ORDER 12
+#define EA_FREE_FLAG 0x100000000000000
 
 static struct ea_hash_head rta_hash_table;
 
@@ -1884,13 +1885,14 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
       if (r_found)
       {
 	/* We found out we already have a suitable ea_storage. Lets increment its use count */
-	u64 uc = atomic_load_explicit(&r_found->uc, memory_order_relaxed);
-	/* Try to increase the use count. We are not alloved to increase zero use count */
-	while (uc && !atomic_compare_exchange_strong_explicit(
-	    &r_found->uc, &uc, uc + 1,
-	    memory_order_acq_rel, memory_order_acquire));
+	u64 uc = atomic_fetch_add_explicit(&r_found->uc, 1, memory_order_relaxed);
 
-	if (uc > 0)
+	if (uc & EA_FREE_FLAG)
+	{
+	  /* Too late, ea_storage is going to be freed */
+	  atomic_fetch_sub_explicit(&r_found->uc, 1, memory_order_relaxed);
+	  r_found = NULL;
+	} else
 	{
 	  /* Success */
 	  rcu_read_unlock();
@@ -1994,7 +1996,7 @@ ea_finally_free(struct deferred_call *dc)
   for (int i = 0; i < eafdc->count; i++)
   {
     struct ea_storage *r = eafdc->attrs[i];
-    ASSERT_DIE(atomic_load_explicit(&r->uc, memory_order_relaxed) == 0);
+    ASSERT_DIE(atomic_load_explicit(&r->uc, memory_order_relaxed) == EA_FREE_FLAG);
     ea_list_unref(r->l);
 
     if (r->l->flags & EALF_HUGE)
@@ -2037,7 +2039,7 @@ ea_cleaning_loop(struct ea_hash_array *esa,  uint in)
     {
       /* One pass through ea_storage linked list. It is in do while, because someone might let us free
        * an ea_storage from beggining of the linked list. */
-      if (eap->uc != 0)
+      if (!(eap->uc & EA_FREE_FLAG))
       {
 	prev_ptr = &eap->next_hash;
 	continue;
@@ -2101,6 +2103,14 @@ ea_storage_free(struct ea_storage *r)
     ASSERT_DIE(uc > 0); /* Check this is not a double free. */
     return;
   }
+
+  u64 flag = EA_FREE_FLAG;
+  u64 null = 0;
+
+  if (!atomic_compare_exchange_strong_explicit(&r->uc, &null, flag, memory_order_acq_rel, memory_order_acquire))
+  /* Someone managed to increase the use count. No need to free the storage. */
+    return;
+
 
   /* Usecount is zero now. The item needs to be removed. */
   rcu_read_lock();
