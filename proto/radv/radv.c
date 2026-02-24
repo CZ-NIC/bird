@@ -44,6 +44,7 @@
 
 static void radv_prune_prefixes(struct radv_iface *ifa);
 static void radv_prune_routes(struct radv_proto *p);
+static void radv_prune_neighbors(struct radv_proto *p);
 
 static void
 radv_timer(timer *tm)
@@ -75,6 +76,16 @@ radv_timer(timer *tm)
   }
 
   tm_start(ifa->timer, t);
+}
+
+static void
+radv_nbr_timer(timer *tm)
+{
+  struct radv_proto *p = tm->data;
+
+  RADV_TRACE(D_EVENTS, "Neighbor prune timer fired");
+
+  radv_prune_neighbors(p);
 }
 
 static struct radv_prefix_config default_prefix = {
@@ -212,6 +223,108 @@ radv_prune_prefixes(struct radv_iface *ifa)
   }
 
   ifa->prune_time = next;
+}
+
+void
+radv_announce_nbr(struct radv_proto *p, const net_addr *n, uint lifetime)
+{
+  /* Neighbor channel must be configured and ready */
+  if (!p->nbr_channel || (p->nbr_channel->channel_state != CS_UP))
+    return;
+
+  rta a0 = {
+    .source = RTS_RADV,
+    .scope = SCOPE_UNIVERSE,
+    .dest = RTD_NONE,
+    .pref = p->nbr_channel->preference,
+  };
+
+  /* Compute expiration time */
+  btime expires = current_time() + (lifetime S);
+  ea_set_attr_u32(&a0.eattrs, tmp_linpool, EA_RA_LIFETIME, 0, EAF_TYPE_INT, expires TO_S);
+
+  rta *a = rta_lookup(&a0);
+  rte *e = rte_get_temp(a, p->p.main_source);
+
+  rte_update2(p->nbr_channel, n, e, p->p.main_source);
+
+  /* Trigger neighbor prune timer */
+  if (!p->nbr_timer)
+    p->nbr_timer = tm_new_init(p->p.pool, radv_nbr_timer, p, 0, 0);
+
+  tm_set_min(p->nbr_timer, expires);
+}
+
+void
+radv_withdraw_nbr(struct radv_proto *p, const net_addr *n)
+{
+  /* Neighbor channel must be configured and ready */
+  if (!p->nbr_channel || (p->nbr_channel->channel_state != CS_UP))
+    return;
+
+  /* Withdraw the route */
+  rte_update2(p->nbr_channel, n, NULL, p->p.main_source);
+}
+
+static void
+radv_prune_neighbors(struct radv_proto *p)
+{
+  /* Neighbor channel must be configured and ready */
+  if (!p->nbr_channel || (p->nbr_channel->channel_state != CS_UP))
+    return;
+
+  btime now = current_time();
+  btime next = TIME_INFINITY;
+
+  /* Temporary list to store expired neighbors (can't withdraw during export walk) */
+  struct expired_nbr {
+    struct expired_nbr *next;
+    net_addr_nbr n;
+  };
+  struct expired_nbr *expired_list = NULL;
+
+  /* Walk all routes in the nbrs channel to check for expired entries */
+  rtable *t = p->nbr_channel->table;
+  FIB_WALK(&t->fib, net, n)
+  {
+    for (rte *e = n->routes; e; e = e->next)
+    {
+      /* Only process routes from our protocol */
+      if (e->src != p->p.main_source)
+	continue;
+
+      /* Get the expiration time EA */
+      eattr *expires_ea = ea_find(e->attrs->eattrs, EA_RA_LIFETIME);
+      if (!expires_ea)
+	continue;
+
+      btime expires = expires_ea->u.data S;
+
+      if (expires <= now)
+      {
+	/* Neighbor has expired, add to withdrawal list */
+	net_addr_nbr *nbr = (net_addr_nbr *) e->net;
+
+	struct expired_nbr *ep = tmp_allocz(sizeof(struct expired_nbr));
+	net_copy_nbr(&ep->n, nbr);
+	ep->next = expired_list;
+	expired_list = ep;
+
+	RADV_TRACE(D_EVENTS, "Router %N expired", nbr);
+      }
+      else
+	next = MIN(next, expires);
+    }
+  }
+  FIB_WALK_END;
+
+  /* Withdraw all expired neighbors */
+  for (struct expired_nbr *ep = expired_list; ep; ep = ep->next)
+    radv_withdraw_nbr(p, (const net_addr *) &ep->n);
+
+  /* Trigger neighbor prune timer */
+  if (next < TIME_INFINITY)
+    tm_set(p->nbr_timer, MAX(next, now + 1 S));
 }
 
 static char* ev_name[] = { NULL, "Init", "Change", "RS" };
@@ -566,19 +679,28 @@ radv_check_active(struct radv_proto *p)
 static void
 radv_postconfig(struct proto_config *CF)
 {
-  // struct radv_config *cf = (void *) CF;
+  struct radv_config *cf = (void *) CF;
 
   /* Define default channel */
   if (! proto_cf_main_channel(CF))
     channel_config_new(NULL, net_label[NET_IP6], NET_IP6, CF);
+
+  bool router_discovery = false;
+  WALK_LIST_(struct radv_iface_config, ic, cf->patt_list)
+    router_discovery = router_discovery || ic->router_discovery;
+
+  if (router_discovery && !proto_cf_find_channel(CF, NET_NEIGHBOR))
+    cf_error("Router discovery requires neighbor channel");
 }
 
 static struct proto *
 radv_init(struct proto_config *CF)
 {
   struct proto *P = proto_new(CF);
+  struct radv_proto *p = (void *) P;
 
   P->main_channel = proto_add_channel(P, proto_cf_main_channel(CF));
+  proto_configure_channel(P, &p->nbr_channel, proto_cf_find_channel(CF, NET_NEIGHBOR));
 
   P->preexport = radv_preexport;
   P->rt_notify = radv_rt_notify;
@@ -618,6 +740,9 @@ radv_start(struct proto *P)
   radv_set_fib(p, cf->propagate_routes);
   p->prune_time = TIME_INFINITY;
 
+  p->nbr_timer = NULL;
+  p->log_pkt_tbf = (struct tbf){ .rate = 1, .burst = 5 };
+
   return PS_UP;
 }
 
@@ -652,7 +777,8 @@ radv_reconfigure(struct proto *P, struct proto_config *CF)
   struct radv_config *old = (struct radv_config *) (P->cf);
   struct radv_config *new = (struct radv_config *) CF;
 
-  if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)))
+  if (!proto_configure_channel(P, &P->main_channel, proto_cf_main_channel(CF)) ||
+      !proto_configure_channel(P, &p->nbr_channel, proto_cf_find_channel(CF, NET_NEIGHBOR)))
     return 0;
 
   P->cf = CF; /* radv_check_active() requires proper P->cf */
@@ -767,7 +893,7 @@ struct protocol proto_radv = {
   .name =		"RAdv",
   .template =		"radv%d",
   .class =		PROTOCOL_RADV,
-  .channel_mask =	NB_IP6,
+  .channel_mask =	NB_IP6 | NB_NEIGHBOR,
   .proto_size =		sizeof(struct radv_proto),
   .config_size =	sizeof(struct radv_config),
   .postconfig =		radv_postconfig,

@@ -90,6 +90,9 @@ struct radv_opt_custom
   u8 payload[];
 };
 
+#define LOG_PKT(msg, args...) \
+  log_rl(&p->log_pkt_tbf, L_REMOTE "%s: " msg, p->p.name, args)
+
 static int
 radv_prepare_route(struct radv_iface *ifa, struct radv_route *rt,
 		   char **buf, char *bufend)
@@ -460,6 +463,42 @@ radv_receive_rs(struct radv_proto *p, struct radv_iface *ifa, ip_addr from)
     radv_iface_notify(ifa, RA_EV_RS);
 }
 
+void
+radv_receive_ra(struct radv_proto *p, struct radv_iface *ifa, ip_addr from, struct radv_ra_packet *pkt, uint plen)
+{
+  RADV_TRACE(D_PACKETS, "Received RA from %I via %s",
+	     from, ifa->iface->name);
+
+  /* Basic validation */
+  if (plen < sizeof(struct radv_ra_packet))
+  {
+    LOG_PKT("Bad RA packet from %I via %s - %s (%u)",
+	    from, ifa->iface->name, "too short", plen);
+    return;
+  }
+
+  if (ifa->cf->router_discovery)
+  {
+    uint lifetime = ntohs(pkt->router_lifetime);
+
+    net_addr n;
+    net_fill_nbr(&n, from, ifa->iface->index);
+
+    if (lifetime)
+    {
+      RADV_TRACE(D_EVENTS, "Router %N advertised on %s (lifetime %u s)",
+		 &n, ifa->iface->name, lifetime);
+
+      radv_announce_nbr(p, &n, lifetime);
+    }
+    else /* Router lifetime of 0 means withdrawal */
+    {
+      RADV_TRACE(D_EVENTS, "Router %N withdrawn", &n);
+      radv_withdraw_nbr(p, &n);
+    }
+  }
+}
+
 static int
 radv_rx_hook(sock *sk, uint size)
 {
@@ -491,9 +530,7 @@ radv_rx_hook(sock *sk, uint size)
     return 1;
 
   case ICMPV6_RA:
-    RADV_TRACE(D_PACKETS, "Received RA from %I via %s",
-	       sk->faddr, ifa->iface->name);
-    /* FIXME - there should be some checking of received RAs, but we just ignore them */
+    radv_receive_ra(p, ifa, sk->faddr, (struct radv_ra_packet *)buf, size);
     return 1;
 
   default:

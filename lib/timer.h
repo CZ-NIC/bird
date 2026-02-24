@@ -83,6 +83,13 @@ tm_new_init(pool *p, void (*hook)(struct timer *), void *data, btime rec, uint r
 }
 
 static inline void
+tm_set_min(timer *t, btime when)
+{
+  if (!tm_active(t) || (when < t->expires))
+    tm_set(t, when);
+}
+
+static inline void
 tm_set_max(timer *t, btime when)
 {
   if (when > t->expires)

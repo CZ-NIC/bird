@@ -42,7 +42,8 @@ CF_KEYWORDS(RADV, PREFIX, INTERFACE, MIN, MAX, RA, DELAY, INTERVAL, SOLICITED,
 	RETRANS, TIMER, CURRENT, HOP, LIMIT, DEFAULT, VALID, PREFERRED, MULT,
 	LIFETIME, SKIP, ONLINK, AUTONOMOUS, RDNSS, DNSSL, NS, DOMAIN, LOCAL,
 	TRIGGER, SENSITIVE, PREFERENCE, LOW, MEDIUM, HIGH, PROPAGATE, ROUTE,
-	ROUTES, RA_PREFERENCE, RA_LIFETIME, CUSTOM, OPTION, TYPE, VALUE, PD)
+	ROUTES, RA_PREFERENCE, RA_LIFETIME, CUSTOM, OPTION, TYPE, VALUE, PD,
+	ROUTER, DISCOVERY)
 
 CF_ENUM(T_ENUM_RA_PREFERENCE, RA_PREF_, LOW, MEDIUM, HIGH)
 
@@ -67,6 +68,7 @@ radv_proto_start: proto_start RADV
 radv_proto_item:
    proto_item
  | proto_channel
+ | nbrs_channel
  | INTERFACE radv_iface
  | PREFIX radv_prefix { add_tail(&RADV_CFG->pref_list, NODE this_radv_prefix); }
  | RDNSS { init_list(&radv_dns_list); } radv_rdnss { add_tail_list(&RADV_CFG->rdnss_list, &radv_dns_list); }
@@ -140,6 +142,7 @@ radv_iface_item:
  | RDNSS LOCAL bool { RADV_IFACE->rdnss_local = $3; }
  | DNSSL LOCAL bool { RADV_IFACE->dnssl_local = $3; }
  | CUSTOM OPTION LOCAL bool { RADV_IFACE->custom_local = $4; }
+ | ROUTER DISCOVERY bool { RADV_IFACE->router_discovery = $3; }
  ;
 
 radv_preference:
