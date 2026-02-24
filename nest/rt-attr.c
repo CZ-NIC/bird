@@ -2037,7 +2037,7 @@ ea_cleaning_loop(struct ea_hash_array *esa,  uint in)
     {
       /* One pass through ea_storage linked list. It is in do while, because someone might let us free
        * an ea_storage from beggining of the linked list. */
-      if (eap->uc != 0)
+      if (atomic_load_explicit(&eap->uc, memory_order_acquire) != 0)
       {
 	prev_ptr = &eap->next_hash;
 	continue;
