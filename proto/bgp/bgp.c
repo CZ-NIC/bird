@@ -854,6 +854,10 @@ bgp_startup(struct bgp_proto *p)
   BGP_TRACE(D_EVENTS, "Started");
   p->start_state = BSS_CONNECT;
 
+  /* For dynamic BGP, start neighbor channel immediately */
+  if (bgp_is_dynamic(p) && p->nbr_channel && !p->nbr_channel->disabled)
+    channel_set_state(p->nbr_channel, CS_UP);
+
   if (!p->passive)
     bgp_active(p);
 
@@ -1109,6 +1113,11 @@ bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip, ip_addr local_ip, struct ifac
   cf->iface = iface;
   cf->ipatt = NULL;
 
+  /* Remove neighbot channel from spawned session config */
+  struct channel_config *pc = proto_cf_find_channel(&cf->c, NET_NEIGHBOR);
+  if (pc)
+    rem_node(&pc->n);
+
   return SKIP_BACK(struct bgp_proto, p, proto_spawn(sym->proto, 0));
 }
 
@@ -1122,6 +1131,75 @@ bgp_spawn_sk(struct bgp_proto *pp, sock *sk)
 
   return 0;
 }
+
+static void
+bgp_spawn_nbr(struct bgp_proto *pp, const net_addr_nbr *nbr)
+{
+  struct iface *iface = if_find_by_index(nbr->ifindex);
+  if (!iface)
+    return;
+
+  struct bgp_proto *p = bgp_spawn(pp, nbr->addr, pp->cf->local_ip, iface);
+  p->claimed = true;
+}
+
+static struct bgp_proto *
+bgp_find_child_proto(struct bgp_proto *pp, const net_addr_nbr *nbr)
+{
+  WALK_LIST_(struct bgp_proto, p, proto_list)
+  {
+    /* Not a BGP */
+    if (p->p.proto != &proto_bgp)
+      continue;
+
+    /* Not spawned by the parent proto */
+    if (!p->p.cf->parent || (p->p.cf->parent->proto != &pp->p))
+      continue;
+
+    /* Remote address mismatch */
+    if (!ipa_equal(p->remote_ip, nbr->addr))
+      continue;
+
+    /* The interface mismatch */
+    if (p->cf->iface && (p->cf->iface->index != nbr->ifindex))
+      continue;
+
+    return p;
+  }
+
+  return NULL;
+}
+
+void
+bgp_add_nbr(struct bgp_proto *pp, const net_addr_nbr *nbr)
+{
+  struct bgp_proto *cp = bgp_find_child_proto(pp, nbr);
+
+  if (cp)
+  {
+    if (cp->claimed)
+      return;
+
+    TRACE_(pp, D_EVENTS, "Claiming BGP instance %s for neighbor %N", cp->p.name, nbr);
+
+    cp->claimed = true;
+  }
+  else
+    bgp_spawn_nbr(pp, nbr);
+}
+
+void
+bgp_remove_nbr(struct bgp_proto *pp, const net_addr_nbr *nbr)
+{
+  struct bgp_proto *cp = bgp_find_child_proto(pp, nbr);
+  if (!cp || !cp->claimed)
+    return;
+
+  TRACE_(pp, D_EVENTS, "Releasing BGP instance %s for neighbor %N", cp->p.name, nbr);
+
+  cp->claimed = false;
+}
+
 
 void
 bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len)
@@ -1784,9 +1862,6 @@ err2:
   bgp_sock_err(s, 0);
   return;
 }
-
-static inline int bgp_is_dynamic(struct bgp_proto *p)
-{ return ipa_zero(p->remote_ip); }
 
 /**
  * bgp_find_proto - find existing proto for incoming connection
@@ -2542,6 +2617,9 @@ bgp_init(struct proto_config *CF)
   /* Add MPLS channel */
   proto_configure_channel(P, &P->mpls_channel, proto_cf_mpls_channel(CF));
 
+  /* Add neighbor channel for dynamic BGP neighbor discovery */
+  proto_configure_channel(P, &p->nbr_channel, proto_cf_find_channel(CF, NET_NEIGHBOR));
+
   return P;
 }
 
@@ -3004,6 +3082,10 @@ bgp_postconfig(struct proto_config *CF)
 	       cc->min_llgr_time, cc->max_llgr_time);
 
   }
+
+  struct channel_config *nbr = proto_cf_find_channel(CF, NET_NEIGHBOR);
+  if (nbr && !cf->remote_range)
+    cf_error("Neighbor channel requires dynamic BGP (neighbor range option)");
 }
 
 static int
@@ -3043,6 +3125,11 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 
     new->iface = old->iface;
     new->ipatt = NULL;
+
+    /* Remove neighbor channel from spawned session config */
+    struct channel_config *pc = proto_cf_find_channel(&new->c, NET_NEIGHBOR);
+    if (pc)
+      rem_node(&pc->n);
   }
 
   int same = !memcmp(((byte *) old) + sizeof(struct proto_config),
@@ -3086,6 +3173,9 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
 
   /* Reconfigure MPLS channel */
   same = proto_configure_channel(P, &P->mpls_channel, proto_cf_mpls_channel(CF)) && same;
+
+  /* Reconfigure neighbor channel */
+  same = proto_configure_channel(P, &p->nbr_channel, proto_cf_find_channel(CF, NET_NEIGHBOR)) && same;
 
   WALK_LIST_DELSAFE(C, C2, p->p.channels)
     if (C->stale)
@@ -3636,7 +3726,7 @@ struct protocol proto_bgp = {
   .template = 		"bgp%d",
   .class =		PROTOCOL_BGP,
   .preference = 	DEF_PREF_BGP,
-  .channel_mask =	NB_IP | NB_VPN | NB_FLOW | NB_MPLS,
+  .channel_mask =	NB_IP | NB_VPN | NB_FLOW | NB_MPLS | NB_NEIGHBOR,
   .proto_size =		sizeof(struct bgp_proto),
   .config_size =	sizeof(struct bgp_config),
   .postconfig =		bgp_postconfig,

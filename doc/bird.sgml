@@ -3709,6 +3709,7 @@ together with their appropriate channels follows.
 @ <cf/vpn6 multicast/ | <cf/vpn6/          | <cf/ipv4/ and <cf/ipv6/ | 2        | 129
 @ <cf/flow4/	      | <cf/flow4/         | ---                     | 1        | 133
 @ <cf/flow6/          | <cf/flow6/         | ---                     | 2        | 133
+@ <cf/neighbors/      | <cf/neighbor/      | ---                     | ---      | ---
 </tabular>
 </table>
 
@@ -3729,6 +3730,17 @@ of import and export policies (in contrast to other protocols, where default
 policies of <cf/import all/ and <cf/export none/ are used in absence of explicit
 configuration). Note that blanket policies like <cf/all/ or <cf/none/ can still
 be used in explicit configuration.
+
+<p>The <cf/neighbors/ channel is a special channel used for BGP unnumbered
+automatic peering. Unlike traditional AFI/SAFI channels that exchange routing
+information, the <cf/neighbors/ channel is used to dynamically trigger the
+creation of new BGP sessions. When present in a dynamic BGP configuration,
+exporting neighbor objects (typically from RAdv with router discovery enabled)
+to this channel will automatically spawn new BGP sessions for each discovered
+neighbor. The lifetime of these automatic sessions is tied to the presence of
+neighbor objects in the neighbor routing table, withdrawing an object will
+trigger deprecation of the corresponding BGP session. This channel is only
+allowed in dynamic BGP instances (those configured with <cf/neighbor range/).
 
 <p>BGP channels have additional config options (together with the common ones):
 
@@ -4236,6 +4248,47 @@ protocol bgp {
 		export filter someotherfilter;
 		table mymulticasttable4; # Another IPv4 table, dedicated for multicast
 		igp table myigptable4;
+	};
+}
+</code>
+
+<p>Example configuration for BGP unnumbered automatic peering using router discovery:
+
+<p><code>
+# Table for discovered peers
+neighbor table peers;
+
+# RAdv protocol with router discovery enabled
+protocol radv {
+	neighbors { table peers; };	# Export discovered peers to this table
+
+	interface "eth*" {
+		# Normal RAdv configuration options...
+		router discovery yes;	# Enable reception of ICMPv6 RAs
+	};
+}
+
+# Dynamic BGP with neighbor channel for automatic peering
+protocol bgp bgp_root {
+	local as 65000;
+	neighbor range fe80::/64 external;	# Accept link-local peers
+	dynamic name "bgp_auto_";	# Name spawned sessions with this prefix
+	dynamic name digits 2;		# Number of digits in name after prefix
+
+	ipv4 {
+		export all;
+		import all;
+		extended next hop;	# Allow IPv6 next hops for IPv4 routes
+	};
+
+	ipv6 {
+		export all;
+		import all;
+	};
+
+	neighbors {
+		table peers;		# Import peer discovery objects from this table
+		export all;		# Allow all discovered peers to trigger sessions
 	};
 }
 </code>

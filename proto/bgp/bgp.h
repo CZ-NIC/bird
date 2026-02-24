@@ -405,6 +405,7 @@ struct bgp_proto {
   list listen;				/* Requests for shared listening sockets */
   struct bfd_request *bfd_req;		/* BFD request, if BFD is used */
   struct birdsock *postponed_sk;	/* Postponed incoming socket for dynamic BGP */
+  struct channel *nbr_channel;		/* Neighbor channel for dynamic BGP */
   struct bgp_ao_state ao;
   struct bgp_stats stats;		/* BGP statistics */
   btime last_established;		/* Last time of enter/leave of established state */
@@ -419,6 +420,7 @@ struct bgp_proto {
   u8 last_error_class; 			/* Error class of last error */
   u32 last_error_code;			/* Error code of last error. BGP protocol errors
 					   are encoded as (bgp_err_code << 16 | bgp_err_subcode) */
+  bool claimed;				/* Claimed dynamic protocols are kept, unclaimed may be removed */
 };
 
 struct bgp_channel {
@@ -610,6 +612,8 @@ void bgp_check_config(struct bgp_config *c);
 void bgp_error(struct bgp_conn *c, unsigned code, unsigned subcode, byte *data, int len);
 void bgp_close_conn(struct bgp_conn *c);
 void bgp_update_startup_delay(struct bgp_proto *p);
+void bgp_add_nbr(struct bgp_proto *pp, const net_addr_nbr *nbr);
+void bgp_remove_nbr(struct bgp_proto *pp, const net_addr_nbr *nbr);
 void bgp_conn_enter_openconfirm_state(struct bgp_conn *conn);
 void bgp_conn_enter_established_state(struct bgp_conn *conn);
 void bgp_conn_enter_close_state(struct bgp_conn *conn);
@@ -629,6 +633,12 @@ static inline int
 rte_resolvable(rte *rt)
 {
   return rt->attrs->dest != RTD_UNREACHABLE;
+}
+
+static inline int
+bgp_is_dynamic(struct bgp_proto *p)
+{
+  return ipa_zero(p->remote_ip);
 }
 
 
