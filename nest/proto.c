@@ -1338,13 +1338,10 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
   DBG("protos_commit:\n");
   if (old)
   {
+    /* First, add dynamic protocols to the new config */
     WALK_LIST(oc, old->protos)
     {
-      p = oc->proto;
-      sym = cf_find_symbol(new, oc->name);
-
-      /* Handle dynamic protocols */
-      if (!sym && oc->parent && !new->shutdown)
+      if (oc->parent && !cf_find_symbol(new, oc->name) && !new->shutdown)
       {
 	struct symbol *parsym = cf_find_symbol(new, oc->parent->name);
 	if (parsym && parsym->class == SYM_PROTO)
@@ -1359,6 +1356,12 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
 	  cfg_mem = NULL;
 	}
       }
+    }
+
+    WALK_LIST(oc, old->protos)
+    {
+      p = oc->proto;
+      sym = cf_find_symbol(new, oc->name);
 
       if (sym && sym->class == SYM_PROTO && !new->shutdown)
       {
