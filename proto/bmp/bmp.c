@@ -63,8 +63,8 @@
 
 #define HASH_STREAM_KEY(n)		&n->info
 #define HASH_STREAM_NEXT(n)		n->next
-#define HASH_STREAM_EQ(k1,k2)		((k1)->channel_id == (k2)->channel_id) && ((k1)->afi == (k2)->afi) && ((k1)->mode == (k2)->mode)
-#define HASH_STREAM_FN(k)		u32_hash((k)->channel_id) ^ u32_hash((k)->afi) ^ u32_hash((k)->mode)
+#define HASH_STREAM_EQ(k1,k2)		((k1)->channel_id == (k2)->channel_id) && ((k1)->mode == (k2)->mode)
+#define HASH_STREAM_FN(k)		u32_hash((k)->channel_id) ^ u32_hash((k)->mode)
 
 #define HASH_TABLE_KEY(n)		n->table
 #define HASH_TABLE_NEXT(n)		n->next
