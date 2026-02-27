@@ -1978,18 +1978,18 @@ bgp_done_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_buc
   /* Cleanup: We're called from bucket senders. */
   ASSERT_DIE(px->cur == buck);
   rem_node(&px->buck_node);
+  px->cur = NULL;
+
+  /* Unref the previous sent version */
+  if (px->last)
+    if (!--px->last->px_uc)
+      bgp_done_bucket(c, px->last);
+
+  px->last = NULL;
 
   /* We may want to store the updates */
   if (c->c->tx_keep)
   {
-    /* Nothing to be sent right now */
-    px->cur = NULL;
-
-    /* Unref the previous sent version */
-    if (px->last)
-      if (!--px->last->px_uc)
-	bgp_done_bucket(c, px->last);
-
     /* Ref the current sent version */
     if (!IS_WITHDRAW_BUCKET(buck))
     {
