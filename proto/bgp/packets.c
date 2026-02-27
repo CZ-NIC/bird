@@ -1401,7 +1401,7 @@ bgp_encode_next_hop_ip(struct bgp_write_state *s, eattr *a, byte *buf, uint size
    * IPv6 address with IPv6 NLRI.
    */
 
-  if (bgp_channel_is_ipv4(s->ptx->c) && ipa_is_ip4(nh[0]))
+  if (s->direct_ip4_next_hop && ipa_is_ip4(nh[0]))
   {
     put_ip4(buf, ipa_to_ip4(nh[0]));
     return 4;
@@ -1483,7 +1483,7 @@ bgp_encode_next_hop_vpn(struct bgp_write_state *s, eattr *a, byte *buf, uint siz
    * IPv6 address with VPNv6 NLRI.
    */
 
-  if (bgp_channel_is_ipv4(s->ptx->c) && ipa_is_ip4(nh[0]))
+  if (s->direct_ip4_next_hop && ipa_is_ip4(nh[0]))
   {
     put_u64(buf, 0); /* VPN RD is 0 */
     put_ip4(buf+8, ipa_to_ip4(nh[0]));
@@ -2359,13 +2359,13 @@ bgp_get_af_desc(u32 afi)
 static inline uint
 bgp_encode_nlri(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, byte *end)
 {
-  return s->ptx->c->desc->encode_nlri(s, buck, buf, end - buf);
+  return s->desc->encode_nlri(s, buck, buf, end - buf);
 }
 
 static inline uint
 bgp_encode_next_hop(struct bgp_write_state *s, eattr *nh, byte *buf)
 {
-  return s->ptx->c->desc->encode_next_hop(s, nh, buf, 255);
+  return s->desc->encode_next_hop(s, nh, buf, 255);
 }
 
 void
@@ -2436,7 +2436,7 @@ bgp_create_mp_reach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *bu
   buf[4] = BAF_OPTIONAL | BAF_EXT_LEN;
   buf[5] = BA_MP_REACH_NLRI;
   put_u16(buf+6, 0);		/* Will be fixed later */
-  put_af3(buf+8, s->ptx->c->afi);
+  put_af3(buf+8, s->desc->afi);
   byte *pos = buf+11;
 
   /* Encode attributes to temporary buffer */
@@ -2521,7 +2521,7 @@ bgp_create_mp_unreach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
   buf[4] = BAF_OPTIONAL | BAF_EXT_LEN;
   buf[5] = BA_MP_UNREACH_NLRI;
   put_u16(buf+6, 3+len);
-  put_af3(buf+8, s->ptx->c->afi);
+  put_af3(buf+8, s->desc->afi);
 
   return buf+11+len;
 }
@@ -2550,6 +2550,8 @@ bgp_create_update_bmp(ea_list *channel_ea, byte *buf, byte *end, struct bgp_buck
     .mp_reach = (afi != BGP_AF_IPV4) || ea_get_int(channel_ea, &ea_bgp_extended_next_hop, 0),
     .as4_session = 1,
     .add_path = ea_get_int(channel_ea, &ea_bgp_add_path_rx, 0),
+    .direct_ip4_next_hop = (BGP_AFI(desc->afi) == AFI_IPV4),
+    .desc = desc,
     .mpls = desc->mpls,
     .ignore_non_bgp_attrs = 1,
   };
@@ -2628,8 +2630,12 @@ again:
     .as4_session = p->as4_session,
     .add_path = c->add_path_tx,
     .llnh_format = c->cf->llnh_format,
+    .direct_ip4_next_hop = bgp_channel_is_ipv4(ptx->c),
+    .desc = c->desc,
     .mpls = c->desc->mpls,
   };
+
+  ASSERT_DIE(c->desc->afi == c->afi);
 
   /* Try unreachable bucket */
   if ((buck = ptx->withdraw_bucket) && !EMPTY_LIST(buck->prefixes))
