@@ -1030,6 +1030,8 @@ bmp_split_policy(struct bmp_proto *p, const rte *new, const rte *old)
     .proto_id = c->proto->id,
   };
   struct bmp_peer *bp = bmp_get_peer(p, &bpi);
+  if (!bp)
+    return;
 
   struct bmp_stream_info bsi = {
     .channel_id = c->id,
