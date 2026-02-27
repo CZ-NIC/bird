@@ -714,7 +714,13 @@ bmp_add_peer(struct bmp_proto *p, struct bmp_peer_info *bpi, ea_list **cached_ch
     bsi.afi = ea_get_int(bsi.channel_state, &ea_bgp_afi, 0);
     bsi.channel_name = ea_get_adata(bsi.channel_state, &ea_name)->data;
 
-    struct bmp_table *bt = bmp_get_table(p, ea_get_ptr(bsi.channel_state, &ea_rtable, NULL));
+    rtable *tab = ea_get_ptr(bsi.channel_state, &ea_rtable, NULL);
+
+    /* Ignore MPLS tables in BMP */
+    if (tab->addr_type == NET_MPLS)
+      continue;
+
+    struct bmp_table *bt = bmp_get_table(p, tab);
  
     if (p->monitoring_rib.in_pre_policy)
     {
