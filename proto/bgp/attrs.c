@@ -2300,21 +2300,21 @@ bgp_done_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_buc
 
   /* Cleanup: We're called from bucket senders. */
   ASSERT_DIE(px->cur_buck == buck->my_id);
+  px->cur_buck = 0;
+
+  /* Unref the previous sent version */
+  if (px->last_buck)
+  {
+    struct bgp_bucket *last = islab_find(c->bucket_alloc, px->last_buck);
+    if (!--last->px_uc)
+      bgp_done_bucket(c, last);
+  }
+
+  px->last_buck = 0;
 
   /* We may want to store the updates */
   if (c->c->tx_keep)
   {
-    /* Nothing to be sent right now */
-    px->cur_buck = 0;
-
-    /* Unref the previous sent version */
-    if (px->last_buck)
-    {
-      struct bgp_bucket *last = islab_find(c->bucket_alloc, px->last_buck);
-      if (!--last->px_uc)
-	bgp_done_bucket(c, last);
-    }
-
     /* Ref the current sent version */
     if (!IS_WITHDRAW_BUCKET(buck))
     {
