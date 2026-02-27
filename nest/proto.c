@@ -3133,33 +3133,31 @@ proto_iterate_named(struct symbol *sym, struct protocol *proto, struct proto *ol
   }
 }
 
-static void
-proto_journal_item_cleanup_(bool withdrawal, ea_list *old_attr)
+void
+proto_journal_item_cleanup(struct lfjour * journal, struct lfjour_item *i)
 {
+  ASSERT_DIE(journal == &proto_state_table_pub.journal);
+  ASSERT_DIE(PST_IS_LOCKED);
+  struct proto_state_table_private *tp = &proto_state_table_pub.priv;
+
+  /* Called after a journal update was has been read. */
+  struct proto_pending_update *pupdate = SKIP_BACK(struct proto_pending_update, li, i);
+  ea_list *old_attr = pupdate->old;
+
   /* The old attrs can be finally unref'd */
   ea_free_later(old_attr);
 
-  if (!withdrawal)
+  /* There is a new variant of that protocol info */
+  if (pupdate->new)
     return;
 
   /* The protocol itself is finished, cleanup its ID
    * The protocol's structure may be already gone,
    * the only thing left is the ID and the old attributes. */
-  PST_LOCKED(tp)
-  {
-    u32 id = ea_get_int(old_attr, &ea_proto_id, 0);
-    ASSERT_DIE(id);
-    ASSERT_DIE(tp->proto_states[id] == NULL);
-    hmap_clear(&tp->proto_id_map, id);
-  }
-}
-
-void
-proto_journal_item_cleanup(struct lfjour * journal UNUSED, struct lfjour_item *i)
-{
-  /* Called after a journal update was has been read. */
-  struct proto_pending_update *pupdate = SKIP_BACK(struct proto_pending_update, li, i);
-  proto_journal_item_cleanup_(!pupdate->new, pupdate->old);
+  u32 id = ea_get_int(old_attr, &ea_proto_id, 0);
+  ASSERT_DIE(id);
+  ASSERT_DIE(tp->proto_states[id] == NULL);
+  hmap_clear(&tp->proto_id_map, id);
 }
 
 /*
