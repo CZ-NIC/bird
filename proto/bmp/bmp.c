@@ -722,7 +722,7 @@ bmp_add_peer(struct bmp_proto *p, struct bmp_peer_info *bpi, ea_list **cached_ch
       if ((ea_get_int(bsi.channel_state, &ea_in_keep, 0) & RIK_PREFILTER) == RIK_PREFILTER)
         bmp_add_stream(p, bp, bt, &bsi);
       else
-        log(L_WARN "%s: Failed to request pre-policy for %s.%s, import table disabled",
+        log(L_TRACE "%s: Failed to request pre-policy for %s.%s, import table disabled",
 	    p->p.name,
 	    bpi->proto_name,
 	    bsi.channel_name);
