@@ -548,6 +548,7 @@ struct bgp_export_state {
 
 struct bgp_write_state {
   struct bgp_ptx_private *ptx;
+  const struct bgp_af_desc *desc;
   struct linpool *pool;
 
   int mp_reach;
@@ -556,6 +557,7 @@ struct bgp_write_state {
   int llnh_format;
   int mpls;
   int ignore_non_bgp_attrs;
+  int direct_ip4_next_hop;
 
   eattr *mp_next_hop;
   const adata *mpls_labels;
