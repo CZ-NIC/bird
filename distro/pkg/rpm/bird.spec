@@ -79,14 +79,14 @@ powerful language for route filtering.
 %endif
 
 %configure --runstatedir=%{_rundir}/bird
-%make_build all %{!?_without_doc:docs}
+%make_build T=local all %{!?_without_doc:docs}
 
 %if 0%{?suse_version}
 %sysusers_generate_pre %{SOURCE3} bird system-user-bird.conf
 %endif
 
 %install
-%make_install
+%make_install install-conf T=local
 
 install -d %{buildroot}%{_localstatedir}/lib/bird
 install -d %{buildroot}%{_rundir}/bird
@@ -99,7 +99,7 @@ install -D -p -m 0644 %{SOURCE3} %{buildroot}%{_sysusersdir}/system-user-bird.co
 . /opt/rh/devtoolset-8/enable
 %endif
 
-make test
+make test T=local
 
 %if ! %{legacy_users} && ! 0%{?suse_version}
 %pre
@@ -142,10 +142,10 @@ getent passwd %{bird_user} >/dev/null || useradd -r -g %{bird_group} -d /var/lib
 %files doc
 %doc NEWS README
 %doc doc/bird.conf.*
-%doc obj/doc/bird*.html
-%doc obj/doc/bird.pdf
-%doc obj/doc/prog*.html
-%doc obj/doc/prog.pdf
+%doc build/local/doc/bird*.html
+%doc build/local/doc/bird.pdf
+%doc build/local/doc/prog*.html
+%doc build/local/doc/prog.pdf
 %endif
 
 %changelog

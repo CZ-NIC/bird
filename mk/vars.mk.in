@@ -1,0 +1,65 @@
+# Variables for the BIRD Internet Routing Daemon
+# Filled in by Configure.
+
+ACTUAL_CONFARGS := @ACTUAL_CONFARGS@
+
+objdir := @objdir_absolute@
+srcdir := @srcdir_absolute@
+exedir := @exedir_absolute@
+
+ifeq ($(objdir),$(srcdir))
+$(info Object directory: $(objdir))
+$(info Source directory: $(srcdir))
+$(error Object and source directories must be different.)
+endif
+
+ifneq ($(CWD),$(exedir))
+exedir := $(subst $(CWD),.,$(exedir))
+objdir := $(subst $(CWD),.,$(objdir))
+srcdir := $(subst $(CWD),.,$(srcdir))
+endif
+
+CPPFLAGS := -I$(objdir) -I$(srcdir) @CPPFLAGS@
+CFLAGS := $(CPPFLAGS) @CFLAGS@
+
+LDFLAGS := @LDFLAGS@
+M4FLAGS := @M4FLAGS@
+BISONFLAGS := @BISONFLAGS@
+LIBS := @LIBS@
+DAEMON_LIBS := @DAEMON_LIBS@
+CLIENT_LIBS := @CLIENT_LIBS@
+CC := @CC@
+M4 := @M4@
+BISON := @BISON@
+FLEX := @FLEX@
+RANLIB := @RANLIB@
+INSTALL := @INSTALL@
+INSTALL_PROGRAM := @INSTALL_PROGRAM@
+INSTALL_DATA := @INSTALL_DATA@
+PANDOC := @PANDOC@
+
+prefix := @prefix@
+exec_prefix := @exec_prefix@
+bindir := @bindir@
+sbindir := @sbindir@
+sysconfdir := @sysconfdir@
+localstatedir := @localstatedir@
+runstatedir := @runstatedir@
+docdir := @prefix@/doc
+
+iproutedir := @iproutedir@
+
+client := $(addprefix $(objdir)/,@CLIENT@)
+client_exe := $(addprefix $(exedir)/,@CLIENT@)
+daemon := $(objdir)/bird
+daemon_exe := $(exedir)/bird
+
+protocols := @protocols@
+PROTO_BUILD := $(protocols) dev kif krt
+subdirs += $(addprefix proto/,$(protocols))
+
+sysdep_dirs := @sysdep_dirs@
+subdirs += $(sysdep_dirs)
+
+default_config_file := @CONFIG_FILE@
+default_control_socket := @CONTROL_SOCKET@

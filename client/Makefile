@@ -4,7 +4,7 @@ obj := $(src-o-files)
 $(all-client)
 $(conf-y-targets): $(s)cmds.Y
 
-$(exedir)/birdc: $(o)birdc.o
-$(exedir)/birdc: LIBS += $(CLIENT_LIBS)
+$(objdir)/birdc: $(o)birdc.o
+$(objdir)/birdc: LIBS += $(CLIENT_LIBS)
 
-$(exedir)/birdcl: $(o)birdcl.o
+$(objdir)/birdcl: $(o)birdcl.o

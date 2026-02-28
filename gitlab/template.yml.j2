@@ -193,10 +193,8 @@ pipeline-uptodate:
   stage: consistency
   image: registry.nic.cz/labs/bird:docbuilder
   script:
-  - autoreconf -i
-  - ./configure
   - touch gitlab/template.yml.j2
-  - make gitlab-venv
+  - make gitlab-ci VENV=1
   - git status --porcelain
   - git diff --exit-code
   rules:
@@ -207,8 +205,6 @@ docker-uptodate:
   stage: consistency
   image: registry.nic.cz/labs/bird:docbuilder
   script:
-  - autoreconf -i
-  - ./configure
   - touch gitlab/data.yml.j2
   - make gitlab-docker VENV=1
   - touch gitlab/docker/docbuilder/Dockerfile # Docbuilder is a static image, not rebuilt by the templates
@@ -345,7 +341,7 @@ docker-{{ docker["name"] }}:
         export CROSS_RUN=qemu-${CROSSBUILD_ARCH}
       fi
     - autoreconf
-    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" ${CONFIGURE_OPTIONS}
+    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" ${CONFIGURE_OPTIONS} --with-exedir=.
     # Detect which make is available
     - MAKE=make
     - which gmake 2>/dev/null >/dev/null && MAKE=gmake
@@ -354,10 +350,10 @@ docker-{{ docker["name"] }}:
     # Build docs when tools are available
     - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
     # Check that the reported version is the right one
-    - ulimit -c unlimited; ${CROSS_RUN} ./bird --version |& grep -v 'Cannot disable transparent huge pages' | tee obj/version-built
-    - diff obj/version-built version-expected
+    - ulimit -c unlimited; ${CROSS_RUN} ./bird --version |& grep -v 'Cannot disable transparent huge pages' | tee version-built
+    - diff version-built version-expected
   after_script:
-    - if find -name 'core' -or -name 'core.*'; then git clone https://gitlab.nic.cz/labs/bird-group/debugpack; pushd debugpack; pip install -e .; popd; find '(' -name 'core' -or -name 'core.*' ')' -exec debugpack pack '{}' ';'; fi
+    - if find -name 'core' -o -name 'core.*'; then git clone https://gitlab.nic.cz/labs/bird-group/debugpack; pushd debugpack; pip install -e .; popd; find '(' -name 'core' -o -name 'core.*' ')' -exec debugpack pack '{}' ';'; fi
   artifacts:
     when: on_failure
     untracked: true
@@ -411,9 +407,7 @@ build-release:
     - linux
   script:
     - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
-    - autoreconf
-    - ./configure --with-protocols= --disable-client
-    - make obj/doc/bird-singlepage.html obj/doc/prog-singlepage.html
+    - make obj/doc/bird-singlepage.html obj/doc/prog-singlepage.html BUILDDIR=obj
     - if grep '<pre><code>PARSER FAILED ' obj/doc/bird-singlepage.html obj/doc/prog-singlepage.html; then echo "Documentation build is broken!"; false; fi
     - tools/make-archive
   artifacts:
@@ -583,12 +577,6 @@ crossinstall-{{ ca }}-{{ dist["name"] }}:
   <<: *build-base
   stage: build
   needs: []
-#  script:
-#    - export BRANCH=$CI_COMMIT_BRANCH
-#    - autoreconf
-#    - ./configure $CONFIGURE_OPTIONS
-#    - gmake
-#    - gmake check
 
 {% for test in birdlab %}
 build-birdlab-{{ test['name'] }}:

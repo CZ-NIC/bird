@@ -17,6 +17,8 @@ COMMON_FLAGS= --prefix=/usr --sysconfdir=/etc/bird --mandir=\$${prefix}/share/ma
 CFLAGS += -g -O2 -fno-strict-aliasing -fno-strict-overflow -fPIC
 LDFLAGS += -g -O2 -fno-strict-aliasing -fno-strict-overflow -fPIC -Wl,-z,defs -Wl,--as-needed
 
+export TARGET=local
+
 %:
 	dh $@
 
@@ -27,7 +29,8 @@ override_dh_auto_build-indep:
 	dh_auto_build -- docs
 
 override_dh_auto_install:
-	dh_auto_install --destdir=debian/tmp
+	dh_auto_install install-conf --destdir=debian/tmp
+	make install-conf DESTDIR=debian/tmp
 
 override_dh_installinit:
 	dh_installinit --name=bird --restart-after-upgrade

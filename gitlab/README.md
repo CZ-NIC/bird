@@ -15,11 +15,11 @@ the templater, converting [template.yml.j2](template.yml.j2) to the final
 target file.
 
 The main file is committed into the repository, and therefore every change to
-the source files must be accompanied with `make gitlab-local` (if you have
-`jinja2` and `pyaml` installed locally) or `make gitlab-venv` which creates a
-venv for that job on the fly. If that file was generated on the fly, it would
-add some unnecessary half a minute to the CI run time, and make the CI output
-more confusing.
+the source files must be accompanied with `make gitlab-ci`. If you don't have
+`jinja2` and `pyaml` installed locally, add `VENV=1` to create a venv for that
+job on the fly. If that file was generated in the CI by Gitlab, it would
+add some unnecessary half a minute to the CI run time, make the CI output
+more confusing and render the whole thing less debuggable.
 
 We would love to split the main CI file to some nice smaller parts but it would
 probably impose quite a lot of repetitive work because of Gitlab. At least
@@ -112,7 +112,7 @@ Where to add your favourite Linux distribution:
 - add an appropriate dockerfile here
 - possibly add `pkg-*` and `install-*` template job in `gitlab/template.yml.j2`
 - add your distribution into the `distros` list in `gitlab/data.yml.j2`
-- run `make gitlab-local` or `make gitlab-venv` to rebuild `.gitlab-ci.yml`
+- run `make gitlab-ci` to rebuild the CI files
 
 Rebuilding the docker images is done by triggering the appropriate pipeline manually in Gitlab.
 

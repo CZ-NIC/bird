@@ -1,10 +1,14 @@
 dnl ** This is a configure script template for BIRD
 dnl ** Process it with autoconf to get ./configure
 dnl ** (c) 1999--2000 Martin Mares <mj@ucw.cz>
+dnl ** (c) 2008--2026 CZ.NIC, z.s.p.o.
 
 AC_INIT
 AC_CONFIG_SRCDIR([conf/confbase.Y])
 AC_CONFIG_AUX_DIR([tools])
+
+ACTUAL_CONFARGS="$ac_configure_args_raw"
+AC_SUBST([ACTUAL_CONFARGS])
 
 AC_ARG_ENABLE([client],
   [AS_HELP_STRING([--enable-client], [enable building of BIRD client @<:@yes@:>@])],
@@ -85,6 +89,11 @@ AC_ARG_WITH([debugsrcdir],
   [debugsrcdir="$with_debugsrcdir"]
 )
 
+AC_ARG_WITH([exedir],
+  [AS_HELP_STRING([--with-exedir=PATH], [where to copy built binaries])],
+  [given_exedir="yes"]
+)
+
 AC_ARG_VAR([FLEX], [location of the Flex program])
 AC_ARG_VAR([BISON], [location of the Bison program])
 AC_ARG_VAR([M4], [location of the M4 program])
@@ -94,19 +103,24 @@ if test "$enable_debug_expensive" = yes; then
   enable_debug=yes
 fi
 
-if test "$srcdir" = . ; then
-  # Building in current directory => create obj directory holding all objects
-  objdir=obj
+if test "$srcdir" = .; then
+  objdir=`sed -nr 's/^DEFAULT_BUILDDIR := //p' $srcdir/mk/target-local.mk`
+  if test "$objdir" = ""; then
+    AC_MSG_ERROR([No default builddir found in $srcdir/mk/target-local.mk])
+  fi
 else
-  # Building in separate directory
   objdir=.
 fi
 
-exedir=.
+if test "$given_exedir" = yes; then
+  exedir="$with_exedir"
+else
+  exedir="$objdir"
+fi
 
-AC_SUBST([objdir])
-AC_SUBST([exedir])
-AC_SUBST([srcdir])
+if test "`readlink -f $srcdir`" = "`readlink -f $objdir 2>/dev/null`"; then
+  AC_MSG_ERROR([Won't build into the source tree. Use a separated object directory.])
+fi
 
 # Workaround for older Autoconfs that do not define runstatedir
 AS_IF([test -z "${runstatedir}"], [runstatedir='${localstatedir}/run'])
@@ -488,9 +502,34 @@ fi
 AC_SUBST([CLIENT])
 AC_SUBST([CLIENT_LIBS])
 
+# Make directory structure
+for d in ${sysdep_dirs}; do
+  mkdir -p $objdir/$d
+done
+
+for p in ${protocols}; do
+  mkdir -p $objdir/proto/$p
+done
+
+for d in `sed -n 's/^subdirs := //p' $srcdir/mk/common.mk`; do
+  mkdir -p $objdir/$d
+done
+
 mkdir -p $objdir/sysdep
+
+srcdir_absolute=`readlink -f "$srcdir"`
+objdir_absolute=`readlink -f "$objdir"`
+exedir_absolute=`readlink -f "$exedir"`
+
+AC_SUBST([srcdir_absolute])
+AC_SUBST([objdir_absolute])
+AC_SUBST([exedir_absolute])
+
+# Write the output
+
 AC_CONFIG_HEADERS([$objdir/sysdep/autoconf.h:sysdep/autoconf.h.in])
-AC_CONFIG_FILES([Makefile:Makefile.in])
+AC_CONFIG_FILES([$objdir/vars.mk:mk/vars.mk.in])
+AC_CONFIG_FILES([$objdir/Makefile:mk/objdir.mk.in])
 AC_OUTPUT
 
 AC_MSG_RESULT()
@@ -507,4 +546,3 @@ AC_MSG_RESULT([        LibSSH support in RPKI:	$enable_libssh])
 AC_MSG_RESULT([        Kernel MPLS support:	$enable_mpls_kernel])
 AC_MSG_RESULT([        Client:			$enable_client])
 
-rm -f $objdir/.*-stamp

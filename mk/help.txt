@@ -1,0 +1,55 @@
+============================= BIRD make system =============================
+
+Basic source build options:
+    make all		Build BIRD binaries.
+    make test		Build and run unit tests.
+    make docs		Build documentation.
+
+This build system supports -j parallelism. Feel free to use multiple cores.
+
+Targets:
+    make T=profile	Select given build profile.
+			Profiles are stored in mk/target-*.mk
+			Default: local.
+
+You may also set particular variables to temporarily change the build profile.
+Dependency tracking has not been tested for these variables.
+    CONFARGS		Arguments to pass to the configure script
+			(e.g. --enable-debug, --with-some-lib=path).
+    BUILDDIR		Directory where to build, e.g. build/release.
+
+Terminal output modifiers (should have no effect on the actual output):
+    make V=1		Verbose build output (no pretty-print)
+    make C=1		Colored build output even through pipe
+
+Build configure options:
+    make configure	Create the ./configure script
+    make build-config	Run the ./configure script as specified by the profile.
+    make prepare	Run build-config and also expand generated code.
+
+Partial build options:
+    make path/to/foo.o	Build an object file, don't link.
+    make path/to/foo.E	Run only the C preprocessor.
+    make path/to/foo.S	Generate an assembler dump.
+
+Development tools:
+    make static-scan	Run CLang static analyzer.
+    make tags		Generate ETags cache.
+    make cscope		Generate CScope cache.
+
+Auxiliary commands:
+    make help		Show this help.
+    make status		Show information about current build.
+    make clean		Delete the build directory.
+    make distclean	Delete auxiliary files like configure.
+
+Gitlab CI tools:
+    make gitlab-ci	Re-generate .gitlab-ci.yml and Dockerfiles for CI.
+			Add VENV=1 to create a temporary venv for the Python.
+
+Distribution commands:
+    make install	Install binaries into the system.
+    make archive	Create a release archive (TGZ).
+			Must be run before `make deb` and `make rpm`.
+    make deb		Create a set of DEB packages for this machine.
+    make rpm		Create a set of RPM packages for this machine.

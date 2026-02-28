@@ -1,4 +1,4 @@
-obj/doc/bird*.html
-obj/doc/bird.pdf
-obj/doc/prog*.html
-obj/doc/prog.pdf
+build/local/doc/bird*.html
+build/local/doc/bird.pdf
+build/local/doc/prog*.html
+build/local/doc/prog.pdf

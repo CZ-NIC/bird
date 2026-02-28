@@ -1,0 +1,6 @@
+# Makefile to be copied into the objdir in case somebody wants to build from there
+SOURCEDIR := @srcdir_absolute@
+BUILDDIR := @objdir_absolute@
+CONFARGS := @ACTUAL_CONFARGS@
+
+include $(SOURCEDIR)/Makefile

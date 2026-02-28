@@ -29,6 +29,6 @@ $(o)cf-lex.o: CFLAGS+=-Wno-sign-compare -Wno-unused-function
 
 prepare: $(o)keywords.h $(o)commands.h $(o)cf-parse.tab.h
 
-$(addprefix $(o), cf-parse.y keywords.h commands.h cf-parse.tab.h cf-parse.tab.c cf-lex.c): $(objdir)/.dir-stamp
+$(addprefix $(o), cf-parse.y keywords.h commands.h cf-parse.tab.h cf-parse.tab.c cf-lex.c): | $(ods)
 
 $(call clean,cf-parse.tab.h cf-parse.tab.c cf-parse.y keywords.h commands.h cf-lex.c cf-parse.output)
