@@ -24,4 +24,8 @@ endif
 tests_targets := $(tests_targets) $(tests-target-files)
 tests_objs := $(tests_objs) $(src-o-files)
 
+$(o)filter_test.o: $(o)test.conf $(o)test.conf.inc $(o)test.conf.overlay
+$(o)test.%: $(s)test.% $(objdir)/.dir-stamp
+	cp $< $@
+
 $(call clean,inst-gen.h inst-gen.c inst-interpret.c)
