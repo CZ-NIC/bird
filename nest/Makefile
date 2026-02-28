@@ -4,7 +4,7 @@ $(all-daemon)
 $(cf-local)
 $(conf-y-targets): $(s)mpls.Y
 
-$(o)proto-build.c: Makefile $(lastword $(MAKEFILE_LIST)) $(objdir)/.dir-stamp
+$(o)proto-build.c: Makefile $(lastword $(MAKEFILE_LIST)) | $(ods)
 	$(E)echo GEN $@
 	$(Q)( P='$(PROTO_BUILD)' && printf "void %s_build(void);\n" $$P && printf "\nvoid\nprotos_build_gen(void)\n{\n" && printf "  %s_build();\n" $$P && printf "}\n" ) > $@
 

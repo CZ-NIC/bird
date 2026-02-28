@@ -6,13 +6,13 @@ $(cf-local)
 #M4FLAGS_FILTERS=$(filter-out -s,$(M4FLAGS))
 M4FLAGS_FILTERS=$(M4FLAGS)
 
-$(o)inst-gen.h: $(s)decl.m4 $(s)f-inst.c $(objdir)/.dir-stamp
+$(o)inst-gen.h: $(s)decl.m4 $(s)f-inst.c | $(ods)
 	$(M4) $(M4FLAGS_FILTERS) -DTARGET=H -P $^ >$@
 
-$(o)inst-gen.c: $(s)decl.m4 $(s)f-inst.c $(objdir)/.dir-stamp
+$(o)inst-gen.c: $(s)decl.m4 $(s)f-inst.c | $(ods)
 	$(M4) $(M4FLAGS_FILTERS) -DTARGET=C -P $^ >$@
 
-$(o)inst-interpret.c: $(s)decl.m4 $(s)f-inst.c $(objdir)/.dir-stamp
+$(o)inst-interpret.c: $(s)decl.m4 $(s)f-inst.c | $(ods)
 	$(M4) $(M4FLAGS_FILTERS) -DTARGET=I -P $^ >$@
 
 prepare: $(o)inst-interpret.c $(o)inst-gen.h
@@ -25,7 +25,7 @@ tests_targets := $(tests_targets) $(tests-target-files)
 tests_objs := $(tests_objs) $(src-o-files)
 
 $(o)filter_test.o: $(o)test.conf $(o)test.conf.inc $(o)test.conf.overlay
-$(o)test.%: $(s)test.% $(objdir)/.dir-stamp
+$(o)test.%: $(s)test.% | $(ods)
 	cp $< $@
 
 $(call clean,inst-gen.h inst-gen.c inst-interpret.c)

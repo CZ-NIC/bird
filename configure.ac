@@ -1,10 +1,15 @@
 dnl ** This is a configure script template for BIRD
 dnl ** Process it with autoconf to get ./configure
 dnl ** (c) 1999--2000 Martin Mares <mj@ucw.cz>
+dnl ** (c) 2008--2026 CZ.NIC, z.s.p.o.
 
 AC_INIT
 AC_CONFIG_SRCDIR([conf/confbase.Y])
 AC_CONFIG_AUX_DIR([tools])
+
+if test "$srcdir" = "." ; then
+  AC_MSG_ERROR([Run make instead of directly calling configure. See make help for more information.])
+fi
 
 AC_ARG_ENABLE([client],
   [AS_HELP_STRING([--enable-client], [enable building of BIRD client @<:@yes@:>@])],
@@ -94,18 +99,8 @@ if test "$enable_debug_expensive" = yes; then
   enable_debug=yes
 fi
 
-if test "$srcdir" = . ; then
-  # Building in current directory => create obj directory holding all objects
-  objdir=obj
-else
-  # Building in separate directory
-  objdir=.
-fi
+objdir=.
 
-exedir=.
-
-AC_SUBST([objdir])
-AC_SUBST([exedir])
 AC_SUBST([srcdir])
 
 # Workaround for older Autoconfs that do not define runstatedir
@@ -504,4 +499,15 @@ AC_MSG_RESULT([        LibSSH support in RPKI:	$enable_libssh])
 AC_MSG_RESULT([        Kernel MPLS support:	$enable_mpls_kernel])
 AC_MSG_RESULT([        Client:			$enable_client])
 
-rm -f $objdir/.*-stamp
+# Make directory structure
+for d in ${sysdep_dirs}; do
+  mkdir -p $objdir/$d
+done
+
+for p in ${protocols}; do
+  mkdir -p $objdir/proto/$p
+done
+
+for d in `sed -n 's/^subdirs := //p' $srcdir/mk/common.mk`; do
+  mkdir -p $objdir/$d
+done

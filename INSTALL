@@ -1,42 +1,25 @@
 How to install BIRD
 ===================
 
-There are packages available for most of the existing distributions, and it is
-possibly a cleaner way to install BIRD than manually.
+There are packages available via the packaging systems of most of the existing
+distributions, and it is often a cleaner way to install BIRD than manually.
+The upstream team also provides current packages for various DEB and RPM
+distributions.
 
-To install BIRD manually from the source tarball, you need to first build it.
+Getting source code
+===================
 
-$ ./configure
-$ make
+Release tarballs are available at: https://bird.nic.cz/get-bird/
 
-After this, you get binaries bird, birdc and birdcl which will run perfectly
-from wherever you put them. You can install them to the system paths if you want.
+It is also possible to clone Git. Released versions are tagged.
+Please note that sometimes the branch `release-*` exists with
+relevant packaging machinery hotfixes.
 
-# make install
+$ git clone https://gitlab.nic.cz/labs/bird
+$ git checkout v2.18 # for the 2.18 release
 
-Default location for configuration file is /usr/local/etc/bird.conf and
-for control socket is /usr/local/var/run/bird.ctl . You can change that
-by --prefix, --sysconfdir and --runstatedir configure options, e.g.:
-
-$ ./configure --prefix=/usr --sysconfdir=/etc --runstatedir=/run
-
-To compile current development BIRD source code from Git repository, you
-also need Git (to download the source code) and Autoconf (to generate
-the configure script and associated files using 'autoreconf' tool):
-
-$ git clone https://gitlab.labs.nic.cz/labs/bird/
-$ cd bird
-$ autoreconf
-
-Then continue as in usual installation above.
-
-For debugging and development, it's recommended to use the -l flag for BIRD
-binaries to use bird.conf and bird.ctl in the current directory, instead of
-system-wide installation of an unstable version.
-
-
-Requirements
-============
+Build requirements
+==================
 
 For compiling BIRD you need these programs and libraries:
 
@@ -55,4 +38,47 @@ For compiling BIRD documentation you also need:
  - Linuxdoc-Tools
  - LaTeX
 
+If building from Git you also need:
+ - Git
+ - GNU Autoconf
+
+Build process
+=============
+
+You run make.
+
+$ make
+
+This configures and builds binaries bird, birdc and birdcl. You may find them in
+the build/<profile>/ subfolder. These binaries will run perfectly from wherever
+you put them. You can install them to the system paths if you want:
+
+# make install
+
+For debugging and development, it's recommended to use the -l flag for BIRD
+binaries to use bird.conf and bird.ctl in the current directory, instead of
+system-wide installation of an unstable version.
+
+If you don't like reading doc/bird.sgml directly, you may check the website,
+or build documentation locally:
+
 $ make docs
+
+Build profiles
+==============
+
+You may choose different build profiles. Predefined are debug and release.
+By default, tarball builds use release profile, and git builds use debug profile.
+
+You choose the profile by T=<profile>, so that to do release build from Git,
+you run:
+
+$ make T=release
+
+Profiles are defined in mk/target-*.mk, and you can define your own if needed,
+e.g. if you need to select your own ./configure options.
+
+To get more information about the build system:
+
+$ make help
+$ ./configure --help
