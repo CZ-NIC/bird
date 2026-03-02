@@ -150,6 +150,12 @@ static inline void rt_unlock_source_later(struct rte_src *src)
   defer_call(&rsd.dc, sizeof(rsd));
 }
 
+static inline struct rte_src *rt_lock_source_tmp(struct rte_src *src)
+{
+  rt_unlock_source_later(rt_lock_source(src));
+  return src;
+}
+
 #ifdef RT_SOURCE_DEBUG
 #undef rt_lock_source
 #undef rt_unlock_source
