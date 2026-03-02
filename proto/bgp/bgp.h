@@ -19,6 +19,7 @@
 //#include "lib/lists.h"
 #include "lib/hash.h"
 #include "lib/socket.h"
+#include "lib/settle.h"
 
 struct eattr;
 
@@ -423,6 +424,13 @@ struct bgp_proto {
   u32 last_error_code;			/* Error code of last error. BGP protocol errors
 					   are encoded as (bgp_err_code << 16 | bgp_err_subcode) */
   bool claimed;				/* Claimed dynamic protocols are kept, unclaimed may be removed */
+
+  struct f_tree  *rtfilter_tree;
+  struct linpool *rtfilter_tree_pool;
+  struct fib rtfilter_fib;
+  struct settle rtfilter_settle;
+  struct settle_config rtfilter_settle_cf;
+  int rtfilter_initial_feed;
 };
 
 struct bgp_channel {
@@ -729,6 +737,9 @@ bgp_total_aigp_metric(rte *r)
   bgp_total_aigp_metric_(r, &metric, &ad);
   return metric;
 }
+
+void bgp_build_rtfilter_tree_on_settle(struct settle *s);
+void bgp_receive_rtfilter_entry(struct bgp_proto *p, const struct net_addr_rtfilter *addr, const struct rta *a);
 
 
 /* packets.c */
