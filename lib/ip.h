@@ -498,7 +498,14 @@ typedef struct vpn_rd {
   u32 lo;
 } vpn_rd;
 
+/* Route target */
+typedef struct vpn_rt {
+  u32 hi;
+  u32 lo;
+} vpn_rt;
+
 #define RD_NONE		(vpn_rd){}
+#define RT_NONE		(vpn_rt){}
 
 static inline vpn_rd rd_from_u64(u64 val)
 { return (vpn_rd){.hi = val >> 32, .lo = val }; }
@@ -529,6 +536,37 @@ static inline void * put_rd(void *buf, vpn_rd rd)
   put_u32(buf, rd.hi);
   put_u32(buf+4, rd.lo);
   return buf+8;
+}
+
+static inline vpn_rt rt_from_u64(u64 val)
+{ return (vpn_rt) { .hi = val >> 32, .lo = val }; }
+
+static inline u64 rt_to_u64(vpn_rt rt)
+{ return (((u64)rt.hi) << 32) | rt.lo; }
+
+static inline int rt_equal(vpn_rt a, vpn_rt b)
+{ return a.hi == b.hi && a.lo == b.lo; }
+
+static inline int rt_zero(vpn_rt a)
+{ return !a.hi && !a.lo; }
+
+static inline int rt_nonzero(vpn_rt a)
+{ return a.hi || a.lo; }
+
+static inline int rt_compare(vpn_rt a, vpn_rt b)
+{ return uint_cmp(a.hi, b.hi) ?: uint_cmp(a.lo, b.lo); }
+
+static inline u64 rt_hash0(vpn_rt rt, u32 p, u64 acc)
+{ return u32_hash0(rt.hi, p, u32_hash0(rt.lo, p, acc)); }
+
+static inline vpn_rt get_rt(const void *buf)
+{ return (vpn_rt) { .hi = get_u32(buf), .lo = get_u32(buf + 4) }; }
+
+static inline void *put_rt(void *buf, vpn_rt rt)
+{
+  put_u32(buf, rt.hi);
+  put_u32(buf + 4, rt.lo);
+  return buf + 8;
 }
 
 #endif
