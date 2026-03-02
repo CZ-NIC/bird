@@ -1698,16 +1698,16 @@ static uint
 bgp_encode_nlri_ip4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size)
 {
   byte *pos = buf;
+  struct bgp_prefix *px;
 
-  while (!EMPTY_LIST(buck->prefixes) && (size >= BGP_NLRI_MAX))
+  while ((size >= BGP_NLRI_MAX) && (px = bgp_bucket_pop_prefix(s->ptx, buck)))
   {
-    struct bgp_prefix *px = HEAD(buck->prefixes);
     struct net_addr_ip4 *net = NET_PTR_IP4(&px->ni->addr[0]);
 
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->src->global_id);
+      put_u32(pos, px->src_global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -1784,16 +1784,16 @@ static uint
 bgp_encode_nlri_ip6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size)
 {
   byte *pos = buf;
+  struct bgp_prefix *px;
 
-  while (!EMPTY_LIST(buck->prefixes) && (size >= BGP_NLRI_MAX))
+  while ((size >= BGP_NLRI_MAX) && (px = bgp_bucket_pop_prefix(s->ptx, buck)))
   {
-    struct bgp_prefix *px = HEAD(buck->prefixes);
     struct net_addr_ip6 *net = NET_PTR_IP6(&px->ni->addr[0]);
 
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->src->global_id);
+      put_u32(pos, px->src_global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -1869,16 +1869,16 @@ static uint
 bgp_encode_nlri_vpn4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size)
 {
   byte *pos = buf;
+  struct bgp_prefix *px;
 
-  while (!EMPTY_LIST(buck->prefixes) && (size >= BGP_NLRI_MAX))
+  while ((size >= BGP_NLRI_MAX) && (px = bgp_bucket_pop_prefix(s->ptx, buck)))
   {
-    struct bgp_prefix *px = HEAD(buck->prefixes);
     struct net_addr_vpn4 *net = NET_PTR_VPN4(&px->ni->addr[0]);
 
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->src->global_id);
+      put_u32(pos, px->src_global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -1967,16 +1967,16 @@ static uint
 bgp_encode_nlri_vpn6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size)
 {
   byte *pos = buf;
+  struct bgp_prefix *px;
 
-  while (!EMPTY_LIST(buck->prefixes) && (size >= BGP_NLRI_MAX))
+  while ((size >= BGP_NLRI_MAX) && (px = bgp_bucket_pop_prefix(s->ptx, buck)))
   {
-    struct bgp_prefix *px = HEAD(buck->prefixes);
     struct net_addr_vpn6 *net = NET_PTR_VPN6(&px->ni->addr[0]);
 
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->src->global_id);
+      put_u32(pos, px->src_global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -2065,17 +2065,17 @@ static uint
 bgp_encode_nlri_flow4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size)
 {
   byte *pos = buf;
+  struct bgp_prefix *px;
 
-  while (!EMPTY_LIST(buck->prefixes) && (size >= 4))
+  while ((size >= 4) && (px = bgp_bucket_pop_prefix(s->ptx, buck)))
   {
-    struct bgp_prefix *px = HEAD(buck->prefixes);
     struct net_addr_flow4 *net = NET_PTR_FLOW4(&px->ni->addr[0]);
     uint flen = net->length - sizeof(net_addr_flow4);
 
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->src->global_id);
+      put_u32(pos, px->src_global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -2153,17 +2153,17 @@ static uint
 bgp_encode_nlri_flow6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size)
 {
   byte *pos = buf;
+  struct bgp_prefix *px;
 
-  while (!EMPTY_LIST(buck->prefixes) && (size >= 4))
+  while ((size >= 4) && (px = bgp_bucket_pop_prefix(s->ptx, buck)))
   {
-    struct bgp_prefix *px = HEAD(buck->prefixes);
     struct net_addr_flow6 *net = NET_PTR_FLOW6(&px->ni->addr[0]);
     uint flen = net->length - sizeof(net_addr_flow6);
 
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->src->global_id);
+      put_u32(pos, px->src_global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -2567,16 +2567,16 @@ static uint
 bgp_encode_nlri_evpn(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size)
 {
   byte *pos = buf, *end = buf;
+  struct bgp_prefix *px;
 
-  while (!EMPTY_LIST(buck->prefixes) && (size >= BGP_NLRI_EVPN_MAX))
+  while ((size >= BGP_NLRI_EVPN_MAX) && (px = bgp_bucket_pop_prefix(s->ptx, buck)))
   {
-    struct bgp_prefix *px = HEAD(buck->prefixes);
     const net_addr_evpn *net = (void *) px->ni->addr;
 
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->src->global_id);
+      put_u32(pos, px->src_global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -2984,9 +2984,27 @@ bgp_create_mp_unreach(struct bgp_write_state *s, struct bgp_bucket *buck, byte *
 
 #ifdef CONFIG_BMP
 
-static byte *
-bgp_create_update_bmp(ea_list *channel_ea, byte *buf, byte *end, struct bgp_bucket *buck, bool update)
+byte *
+bgp_create_update_bmp(ea_list *channel_ea, byte *buf, byte *end, const struct rte *new)
 {
+  /* Aggressive tmppool flushing */
+  struct lp_state *tmpp = lp_save(tmp_linpool);
+
+  /* Temporary prefix */
+  struct bgp_prefix px = {
+    .src_global_id = new->src->global_id,
+    .ni = NET_TO_INDEX(new->net),
+    .buck_id = 1,
+  };
+
+  /* Temporary bucket */
+  struct bgp_bucket b = {
+    .bmp = 1,
+    .eattrs = new->attrs,
+    .prefixes.pref = &px,
+    .last_pref_id = 1,
+  };
+
   byte *res = NULL;
 
   struct bgp_ptx_private ptx = {
@@ -3011,48 +3029,20 @@ bgp_create_update_bmp(ea_list *channel_ea, byte *buf, byte *end, struct bgp_buck
     .ignore_non_bgp_attrs = 1,
   };
 
-  if (!update)
-  {
-    res = !s.mp_reach ?
-      bgp_create_ip_unreach(&s, buck, buf, end):
-      bgp_create_mp_unreach(&s, buck, buf, end);
-  }
+  if (new->attrs)
+    if (s.mp_reach)
+      res = bgp_create_mp_reach(&s, &b, buf, end);
+    else
+      res = bgp_create_ip_reach(&s, &b, buf, end);
   else
-  {
-    res = !s.mp_reach ?
-      bgp_create_ip_reach(&s, buck, buf, end):
-      bgp_create_mp_reach(&s, buck, buf, end);
-  }
+    if (s.mp_reach)
+      res = bgp_create_mp_unreach(&s, &b, buf, end);
+    else
+      res = bgp_create_ip_unreach(&s, &b, buf, end);
+
+  lp_restore(tmp_linpool, tmpp);
 
   return res;
-}
-
-byte *
-bgp_bmp_encode_rte(ea_list *c, byte *buf, byte *end, const struct rte *new)
-{
-  /* Aggressive tmppool flushing */
-  struct lp_state *tmpp = lp_save(tmp_linpool);
-
-  /* Temporary bucket */
-  struct bgp_bucket b = {
-    .bmp = 1,
-    .eattrs = new->attrs,
-  };
-  init_list(&b.prefixes);
-
-  /* Temporary prefix */
-  struct bgp_prefix px = {
-    .src = new->src,
-    .ni = NET_TO_INDEX(new->net),
-  };
-
-  /* Insert prefix into bucket and create the update */
-  add_tail(&b.prefixes, &px.buck_node);
-  end = bgp_create_update_bmp(c, buf, end, &b, !!new->attrs);
-
-  /* Flush and go */
-  lp_restore(tmp_linpool, tmpp);
-  return end;
 }
 
 #endif /* CONFIG_BMP */
@@ -3091,7 +3081,7 @@ again:
   ASSERT_DIE(c->desc->afi == c->afi);
 
   /* Try unreachable bucket */
-  if ((buck = ptx->withdraw_bucket) && !EMPTY_LIST(buck->prefixes))
+  if ((buck = ptx->withdraw_bucket) && buck->last_pref_id != 0)
   {
     res = (c->afi == BGP_AF_IPV4) && !c->ext_next_hop ?
       bgp_create_ip_unreach(&s, buck, buf, end):

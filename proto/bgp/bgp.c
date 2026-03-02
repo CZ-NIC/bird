@@ -4277,13 +4277,10 @@ bgp_show_proto_info(struct proto *P)
       uint bucket_cnt = 0;
       uint prefix_cnt = 0;
       struct bgp_bucket *buck;
-      struct bgp_prefix *px;
       WALK_LIST(buck, tx->bucket_queue)
       {
 	bucket_cnt++;
-	WALK_LIST(px, buck->prefixes)
-	  if (px->cur)
-	    prefix_cnt++;
+	prefix_cnt += bgp_bucket_pending(buck);
       }
 
       cli_msg(-1006, "    Pending %u attribute sets with total %u prefixes to send",

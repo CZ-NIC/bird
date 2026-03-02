@@ -871,7 +871,7 @@ bmp_route_monitor_notify(struct bmp_proto *p, struct bmp_peer *bp, struct bmp_st
   bmp_put_per_peer_hdr(&msg, &peer);
 
   bmp_buffer_need(&msg, BGP_MAX_EXT_MSG_LENGTH);
-  byte *pos = bgp_bmp_encode_rte(c, msg.pos + BGP_HEADER_LENGTH, msg.end, new);
+  byte *pos = bgp_create_update_bmp(c, msg.pos + BGP_HEADER_LENGTH, msg.end, new);
   if (!pos)
   {
     log(L_WARN "%s: Cannot encode update for %N", p->p.name, new->net);
