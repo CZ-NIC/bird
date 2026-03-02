@@ -520,6 +520,12 @@ struct bgp_channel {
   u8 load_state;			/* Load state (RX) for EoR, RR packets, see BFS_* */
 };
 
+struct px_free_later {
+  struct bgp_prefix **px_free;
+  u32 max;
+  u32 ptr;
+};
+
 struct bgp_ptx_private {
 #define BGP_PTX_PUBLIC \
   DOMAIN(rtable) lock;			/* Domain to be locked for prefix access */ \
@@ -539,6 +545,7 @@ struct bgp_ptx_private {
 
   slab *prefix_slab;			/* Slab holding prefix nodes */
   slab *bucket_slab;			/* Slab holding buckets to send */
+  struct px_free_later free_later; /* Make bgp_update_prefix() freeing prefixes simple and quick without safer HASH function. */
 
   char bmp;                            /* This is a fake ptx for BMP encoding */
 };
@@ -553,19 +560,26 @@ LOBJ_UNLOCK_CLEANUP(bgp_ptx, rtable);
 #define BGP_PTX_PUB(_tx)	SKIP_BACK(union bgp_ptx, priv, (_tx))
 
 struct bgp_prefix {
-  node buck_node;			/* Node in per-bucket list */
   struct bgp_prefix *next;		/* Node in prefix hash */
   struct bgp_bucket *last;		/* Last bucket sent with this prefix */
   struct bgp_bucket *cur;		/* Current bucket (cur == last) if no update is required */
   btime lastmod;			/* Last modification of this prefix */
-  struct rte_src *src;			/* Path ID encoded as rte_src */
+  u32 buck_id;			/* Node in per-bucket list */
+  u32 src_global_id; //struct rte_src *src;			/* Path ID encoded as rte_src */
   struct netindex *ni;			/* Shared with the table */
+};
+
+union bgp_bucket_prefix {
+  struct bgp_prefix *pref;
+  union bgp_bucket_prefix *array;
 };
 
 struct bgp_bucket {
   node send_node;			/* Node in send queue */
   struct bgp_bucket *next;		/* Node in bucket hash table */
-  list prefixes;			/* Prefixes to send in this bucket (struct bgp_prefix) */
+  union bgp_bucket_prefix prefixes;			/* Prefixes to send in this bucket (struct bgp_prefix) */
+  u32 last_pref_id; /* Last byte is for row number, rest is position in the row.
+                       Zero is reserved for "no prefix yet", thus rows are counted from one. */
   ea_list *attrs;			/* Attributes to encode */
   u32 px_uc:31;				/* How many prefixes are linking this bucket */
   u32 bmp:1;				/* Temporary bucket for BMP encoding */
@@ -765,6 +779,9 @@ const char *bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *c);
 void bgp_withdraw_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b);
 int bgp_done_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b);
 
+void bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_prefix *px);
+struct bgp_prefix *bgp_bucket_delete_last_prefix(struct bgp_ptx_private *c, struct bgp_bucket *b);
+int bgp_bucket_count_pref(struct bgp_bucket *b);
 void bgp_done_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_bucket *buck);
 
 int bgp_rte_better(const rte *, const rte *);
@@ -783,7 +800,7 @@ static inline struct bgp_proto *bgp_rte_proto(const rte *rte)
     SKIP_BACK(struct bgp_proto, p.sources, rte->src->owner) : NULL;
 }
 
-byte * bgp_bmp_encode_rte(ea_list *channel_state, byte *buf, byte *end, const struct rte *new);
+byte * bgp_bmp_encode_rte(ea_list *c, byte *buf, byte *end, const struct rte *new);
 
 #define BGP_AIGP_METRIC		1
 #define BGP_AIGP_MAX		U64(0xffffffffffffffff)
