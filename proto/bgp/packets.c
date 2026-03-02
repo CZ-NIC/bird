@@ -1677,16 +1677,16 @@ static uint
 bgp_encode_nlri_ip4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size)
 {
   byte *pos = buf;
+  struct bgp_prefix *px;
 
-  while (!EMPTY_LIST(buck->prefixes) && (size >= BGP_NLRI_MAX))
+  while ((size >= BGP_NLRI_MAX) && (px = bgp_bucket_delete_last_prefix(s->ptx, buck)))
   {
-    struct bgp_prefix *px = HEAD(buck->prefixes);
     struct net_addr_ip4 *net = NET_PTR_IP4(&px->ni->addr[0]);
 
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->src->global_id);
+      put_u32(pos, px->src_global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -1763,16 +1763,16 @@ static uint
 bgp_encode_nlri_ip6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size)
 {
   byte *pos = buf;
+  struct bgp_prefix *px;
 
-  while (!EMPTY_LIST(buck->prefixes) && (size >= BGP_NLRI_MAX))
+  while ((size >= BGP_NLRI_MAX) && (px = bgp_bucket_delete_last_prefix(s->ptx, buck)))
   {
-    struct bgp_prefix *px = HEAD(buck->prefixes);
     struct net_addr_ip6 *net = NET_PTR_IP6(&px->ni->addr[0]);
 
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->src->global_id);
+      put_u32(pos, px->src_global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -1848,16 +1848,16 @@ static uint
 bgp_encode_nlri_vpn4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size)
 {
   byte *pos = buf;
+  struct bgp_prefix *px;
 
-  while (!EMPTY_LIST(buck->prefixes) && (size >= BGP_NLRI_MAX))
+  while ((size >= BGP_NLRI_MAX) && (px = bgp_bucket_delete_last_prefix(s->ptx, buck)))
   {
-    struct bgp_prefix *px = HEAD(buck->prefixes);
     struct net_addr_vpn4 *net = NET_PTR_VPN4(&px->ni->addr[0]);
 
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->src->global_id);
+      put_u32(pos, px->src_global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -1946,16 +1946,16 @@ static uint
 bgp_encode_nlri_vpn6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size)
 {
   byte *pos = buf;
+  struct bgp_prefix *px;
 
-  while (!EMPTY_LIST(buck->prefixes) && (size >= BGP_NLRI_MAX))
+  while ((size >= BGP_NLRI_MAX) && (px = bgp_bucket_delete_last_prefix(s->ptx, buck)))
   {
-    struct bgp_prefix *px = HEAD(buck->prefixes);
     struct net_addr_vpn6 *net = NET_PTR_VPN6(&px->ni->addr[0]);
 
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->src->global_id);
+      put_u32(pos, px->src_global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -2044,17 +2044,17 @@ static uint
 bgp_encode_nlri_flow4(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size)
 {
   byte *pos = buf;
+  struct bgp_prefix *px;
 
-  while (!EMPTY_LIST(buck->prefixes) && (size >= 4))
+  while ((size >= 4) && (px = bgp_bucket_delete_last_prefix(s->ptx, buck)))
   {
-    struct bgp_prefix *px = HEAD(buck->prefixes);
     struct net_addr_flow4 *net = NET_PTR_FLOW4(&px->ni->addr[0]);
     uint flen = net->length - sizeof(net_addr_flow4);
 
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->src->global_id);
+      put_u32(pos, px->src_global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -2132,17 +2132,17 @@ static uint
 bgp_encode_nlri_flow6(struct bgp_write_state *s, struct bgp_bucket *buck, byte *buf, uint size)
 {
   byte *pos = buf;
+  struct bgp_prefix *px;
 
-  while (!EMPTY_LIST(buck->prefixes) && (size >= 4))
+  while ((size >= 4) && (px = bgp_bucket_delete_last_prefix(s->ptx, buck)))
   {
-    struct bgp_prefix *px = HEAD(buck->prefixes);
     struct net_addr_flow6 *net = NET_PTR_FLOW6(&px->ni->addr[0]);
     uint flen = net->length - sizeof(net_addr_flow6);
 
     /* Encode path ID */
     if (s->add_path)
     {
-      put_u32(pos, px->src->global_id);
+      put_u32(pos, px->src_global_id);
       ADVANCE(pos, size, 4);
     }
 
@@ -2581,17 +2581,18 @@ bgp_bmp_encode_rte(ea_list *c, byte *buf, byte *end, const struct rte *new)
   /* Temporary bucket */
   struct bgp_bucket *b = tmp_allocz(sizeof(struct bgp_bucket) + ea_size);
   b->bmp = 1;
-  init_list(&b->prefixes);
+  b->last_pref_id = 0;
 
   if (new->attrs)
     memcpy(b->attrs, new->attrs, ea_size);
 
   /* Temporary prefix */
   struct bgp_prefix *px = tmp_allocz(prefix_size);
-  px->src = tmp_allocz(sizeof(struct rte_src));
-  memcpy(px->src, new->src, sizeof(struct rte_src));
+  //px->src = tmp_allocz(sizeof(struct rte_src));
+  //memcpy(px->src, new->src, sizeof(struct rte_src));
+  px->src_global_id = new->src->global_id;
   px->ni = NET_TO_INDEX(new->net);
-  add_tail(&b->prefixes, &px->buck_node);
+  bgp_add_to_bucket(NULL, b, px);
 
   end = bgp_create_update_bmp(c, buf, end, b, !!new->attrs);
 
@@ -2632,7 +2633,7 @@ again:
   };
 
   /* Try unreachable bucket */
-  if ((buck = ptx->withdraw_bucket) && !EMPTY_LIST(buck->prefixes))
+  if ((buck = ptx->withdraw_bucket) && buck->last_pref_id != 0)
   {
     res = (c->afi == BGP_AF_IPV4) && !c->ext_next_hop ?
       bgp_create_ip_unreach(&s, buck, buf, end):
