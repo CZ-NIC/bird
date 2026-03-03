@@ -5684,7 +5684,9 @@ addresses and choose a default route. BIRD implements router behavior as defined
 in <rfc id="4861">, router preferences and specific routes (<rfc id="4191">),
 and DNS extensions (<rfc id="6106">).
 
-<p>The RAdv protocols supports just IPv6 channel.
+<p>The RAdv protocols supports the IPv6 channel (for the <ref id="radv-trigger" name="trigger prefix">
+and <ref id="radv-propagate-routes" name="more specific route propagation">)
+and the <cf/neighbors/ channel (for the <ref id="radv-router-discovery" name="router discovery">).
 
 <sect1>Configuration
 <label id="radv-config">
@@ -5877,6 +5879,17 @@ custom option type 38 value hex:0e:10:20:01:0d:b8:00:0a:00:0b:00:00:00:00;
 	<tag><label id="radv-iface-custom-local">custom option local <m/switch/</tag>
 	Use only local custom option definitions for this interface. See <cf/rdnss local/
 	option above. Default: no.
+
+	<tag><label id="radv-router-discovery">router discovery <m/switch/</tag>
+	Enable reception and processing of incoming ICMPv6 Router Advertisement
+	messages. When enabled, the RAdv protocol listens for RA messages on
+	configured interfaces and creates route-like objects in a peers routing
+	table based on detected advertisements. These objects contain information
+	about discovered routers and their lifetimes are managed by the Router
+	Lifetime field in the RA messages. When an RA expires, the corresponding
+	object is automatically removed from the peers table. Currently, this feature
+	is primarily used in conjunction with BGP unnumbered automatic peering to
+	automatically discover BGP neighbors. Default: no.
 </descrip>
 
 <p>Prefix specific options

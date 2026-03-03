@@ -194,7 +194,8 @@ struct nexthop_adata_mpls {
 #define RTS_PERF 15			/* Perf checker */
 #define RTS_L3VPN 16			/* MPLS L3VPN */
 #define RTS_AGGREGATED 17		/* Aggregated route */
-#define RTS_MAX 18
+#define RTS_RADV 18			/* Router Advertisement */
+#define RTS_MAX 19
 
 #define RTD_NONE 0			/* Undefined next hop */
 #define RTD_UNICAST 1			/* A standard next hop */
