@@ -32,6 +32,9 @@
 
 #define THREAD_STACK_SIZE	65536	/* To be lowered in near future */
 
+extern _Thread_local struct random_data random_buf;
+extern _Thread_local char random_statebuf[32];
+
 static struct birdloop *birdloop_new_no_pickup(pool *pp, uint order, const char *name, ...);
 
 /*
@@ -1193,6 +1196,11 @@ bird_thread_start(thread_group *gpub)
       thr->params = group->params;
       thr->meta = meta;
       thr->meta->thread = thr;
+
+      unsigned int seed = 0;
+      random_bytes(&seed, sizeof(seed));
+
+      initstate_r(seed, random_statebuf, sizeof(random_statebuf), &random_buf);
 
       wakeup_init(thr);
       ev_init_list(&thr->priority_events, NULL, "Thread direct event list");

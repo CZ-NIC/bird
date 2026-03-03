@@ -20,6 +20,16 @@
 #include <sys/random.h>
 #endif
 
+_Thread_local struct random_data random_buf;
+_Thread_local char random_statebuf[32];
+
+s32
+brandom(void)
+{
+  s32 result = 0;
+  random_r(&random_buf, &result);
+  return result;
+}
 
 u32
 random_u32(void)

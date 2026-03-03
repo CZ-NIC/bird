@@ -280,6 +280,7 @@ asm(
 
 /* Pseudorandom numbers */
 
+s32 brandom(void);
 u32 random_u32(void);
 void random_init(void);
 void random_bytes(void *buf, size_t size);
