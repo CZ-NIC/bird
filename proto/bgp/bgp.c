@@ -1992,12 +1992,12 @@ err2:
 }
 
 /**
- * bgp_find_proto - find existing proto for incoming connection
+ * bgp_find_listen - find existing listening request for incoming connection
  * @sk: TCP socket
  *
  */
 static struct bgp_listen_request *
-bgp_find_proto(struct bgp_socket_private *bs, sock *sk)
+bgp_find_listen(struct bgp_socket_private *bs, sock *sk)
 {
   struct bgp_listen_request *best = NULL;
 
@@ -2044,7 +2044,7 @@ bgp_find_proto(struct bgp_socket_private *bs, sock *sk)
   return best;
 }
 
-static bool bgp_configure_incoming_socket(struct bgp_proto *p, sock *sk);
+static bool bgp_setup_incoming_sk(struct bgp_proto *p, sock *sk);
 
 /**
  * bgp_incoming_connection - handle an incoming connection
@@ -2066,7 +2066,7 @@ bgp_incoming_connection(sock *sk, uint dummy UNUSED)
 
   DBG("BGP: Incoming connection from %I port %d\n", sk->daddr, sk->dport);
 
-  struct bgp_listen_request *req = bgp_find_proto(bs, sk);
+  struct bgp_listen_request *req = bgp_find_listen(bs, sk);
   if (req)
   {
     struct bgp_incoming_socket* bis = mb_allocz(sk->pool, sizeof(struct bgp_incoming_socket));
@@ -2111,7 +2111,7 @@ bgp_incoming_connection_dynamic(struct callback *cb)
 	sk->dport, "accepted");
 
     /* Finish socket configuration */
-    if (!bgp_configure_incoming_socket(p, sk))
+    if (!bgp_setup_incoming_sk(p, sk))
       continue;
 
 
@@ -2199,7 +2199,7 @@ bgp_incoming_connection_single(struct callback *cb)
   }
 
   /* Finish socket configuratino */
-  if (!bgp_configure_incoming_socket(p, sk))
+  if (!bgp_setup_incoming_sk(p, sk))
     return;
 
   /* Continue locally */
@@ -2212,7 +2212,7 @@ bgp_incoming_connection_single(struct callback *cb)
 }
 
 static bool
-bgp_configure_incoming_socket(struct bgp_proto *p, sock *sk)
+bgp_setup_incoming_sk(struct bgp_proto *p, sock *sk)
 {
   uint hops = p->cf->multihop ?: 1;
 
