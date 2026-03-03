@@ -520,6 +520,8 @@ struct bgp_channel {
   u8 load_state;			/* Load state (RX) for EoR, RR packets, see BFS_* */
 };
 
+#define num_slabs 7
+
 struct px_free_later {
   struct bgp_prefix **px_free;
   u32 max;
@@ -545,6 +547,7 @@ struct bgp_ptx_private {
 
   slab *prefix_slab;			/* Slab holding prefix nodes */
   slab *bucket_slab;			/* Slab holding buckets to send */
+  struct slab *bucket_prefix_slabs[num_slabs]; /* slabs holding prefixes inside buckets */
   struct px_free_later free_later; /* Make bgp_update_prefix() freeing prefixes simple and quick without safer HASH function. */
 
   char bmp;                            /* This is a fake ptx for BMP encoding */

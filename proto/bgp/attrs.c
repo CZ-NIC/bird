@@ -1736,19 +1736,39 @@ const u32 fib_nums[] = {1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610
         6765, 10946, 17711, 28657, 46368, 75025, 121393, 196418, 317811, 514229, 832040, 1346269,
         2178309, 3524578, 5702887, 9227465, 14930352, 24157817, 39088169, 63245986, 102334155, 165580141};
 
-#define num_slabs 7
-static struct slab *slabs[num_slabs]; //TODO free slabs
-
 static void
 bgp_init_prefix_allocators(struct bgp_ptx_private *c)
 {
   for (int i = 2; i < num_slabs; i++)
-    slabs[i] = sl_new(c->pool, birdloop_event_list(c->c->c.proto->loop), sizeof(union bgp_bucket_prefix) * fib_nums[i]);
+    c->bucket_prefix_slabs[i] = sl_new(c->pool, birdloop_event_list(c->c->c.proto->loop), sizeof(union bgp_bucket_prefix*) * fib_nums[i]);
+
+  log("slabs inited");
+}
+
+static void
+bgp_free_prefix_allocators(struct bgp_ptx_private *c)
+{
+  for (int i = 2; i < num_slabs; i++)
+    sl_delete(c->bucket_prefix_slabs[i]);
+
+  log("slabs freed");
+}
+
+void
+bgp_pref_slab_check(struct bgp_ptx_private *c)
+{
+  for (int i = 2; i < num_slabs; i++)
+  {
+    void *a = sl_alloc(c->bucket_prefix_slabs[i]);
+    ASSERT_DIE(a);
+    sl_free(a);
+  }
 }
 
 void
 bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_prefix *px)
 {
+  bgp_pref_slab_check(c);
   if (b->last_pref_id == 0)
   {
     /* No prefix yet. My apologies, there is nothing like row zero, first (one item) row has number one.
@@ -1761,7 +1781,10 @@ bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_pr
   {
     /* special case - we need to move the first prefix to the new row */
     struct bgp_prefix *first_pref = b->prefixes.pref;
-    b->prefixes.array = sl_alloc(slabs[2]);
+    if (c)
+      b->prefixes.array = sl_alloc(c->bucket_prefix_slabs[2]);
+    else
+      b->prefixes.array = tmp_alloc(sizeof(union bgp_bucket_prefix)*2);
     b->prefixes.array[0].pref = first_pref;
     first_pref->buck_id = 2;
     b->prefixes.array[1].pref = px;
@@ -1792,8 +1815,8 @@ bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_pr
   union bgp_bucket_prefix new_row;
   row_num++;
 
-  if (row_num < num_slabs)
-    new_row.array = sl_alloc(slabs[row_num]);
+  if (row_num < num_slabs && c)
+    new_row.array = sl_alloc(c->bucket_prefix_slabs[row_num]);
   else
   {
     if (!b->prefixes.array[1].array)
@@ -1822,9 +1845,9 @@ bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_pr
 
 /* returns true if bucket is empty */
 struct bgp_prefix *
-bgp_delete_from_bucket(struct bgp_ptx_private * UNUSED, struct bgp_bucket *b, u32 id)
+bgp_delete_from_bucket(struct bgp_ptx_private * c, struct bgp_bucket *b, u32 id)
 {
-   u32 row_num = BUCKET_PREFIX_ROW(id);
+  u32 row_num = BUCKET_PREFIX_ROW(id);
   u32 pos = BUCKET_PREFIX_POS(id);
   ASSERT_DIE(b->last_pref_id);
 
@@ -1839,6 +1862,7 @@ bgp_delete_from_bucket(struct bgp_ptx_private * UNUSED, struct bgp_bucket *b, u3
   u32 buck_row_num = BUCKET_PREFIX_ROW(b->last_pref_id);
   u32 buck_pos = BUCKET_PREFIX_POS(b->last_pref_id);
   ASSERT_DIE(buck_row_num >= row_num);
+  ASSERT_DIE(pos < fib_nums[row_num]);
   union bgp_bucket_prefix row = b->prefixes;
    struct bgp_prefix *ret;
 
@@ -1849,7 +1873,8 @@ bgp_delete_from_bucket(struct bgp_ptx_private * UNUSED, struct bgp_bucket *b, u3
     b->prefixes.pref = row.array[1 - pos].pref;
     b->prefixes.pref->buck_id = 1;
     b->last_pref_id = 1;
-    sl_free(row.array);
+    if (c)
+      sl_free(row.array);
     return ret;
   }
 
@@ -1860,7 +1885,8 @@ bgp_delete_from_bucket(struct bgp_ptx_private * UNUSED, struct bgp_bucket *b, u3
       /* Need to delete the mb_allocated row */
       b->prefixes = row.array[0];
       //BGP_PTX_LOCK(c->c->tx, c);
-      mb_free(row.array);
+      if (c)
+        mb_free(row.array);
       row = b->prefixes;
     } else
       row = row.array[0];
@@ -1879,7 +1905,9 @@ bgp_delete_from_bucket(struct bgp_ptx_private * UNUSED, struct bgp_bucket *b, u3
     {
       /* The last row will be freed */
       b->prefixes.array = row.array[0].array;
-      sl_free(row.array);
+
+      if (c)
+        sl_free(row.array);
       row = b->prefixes;
     }
     else
@@ -1907,58 +1935,8 @@ bgp_bucket_delete_last_prefix(struct bgp_ptx_private *c, struct bgp_bucket *b)
 {
   if ( b->last_pref_id)
     return bgp_delete_from_bucket(c, b, b->last_pref_id);
+
   return NULL;
-
-  if (b->last_pref_id == 0)
-    return NULL;
-
-  if (b->last_pref_id == 1)
-  {
-    b->last_pref_id = 0;
-    return b->prefixes.pref;
-  }
-
-  union bgp_bucket_prefix row = b->prefixes;
-
-  if (b->prefixes.array[0].array == NULL) /* This should not be activated more than once per bucket. */
-  {
-    b->prefixes.array = b->prefixes.array[0].array;
-    mb_free(row.array);
-  }
-
-  u32 pos = BUCKET_PREFIX_POS(b->last_pref_id);
-  u32 row_num = BUCKET_PREFIX_ROW(b->last_pref_id);
-  struct bgp_prefix *ret = row.array[pos].pref;
-
-  if (pos != 1)
-  {
-    b->last_pref_id -= 1 << 8;
-    ASSERT_DIE(ret);
-    return ret;
-  }
-
-  if (row_num == 2)
-  {
-    b->prefixes.pref = row.array[0].pref;
-    b->last_pref_id = 1;
-    sl_free(row.array);
-    ASSERT_DIE(ret);
-    return ret;
-  }
-
-  b->prefixes.array = row.array[0].array;
-  b->last_pref_id = PREFIX_ID(row_num - 1, fib_nums[row_num - 1]);
-
-  if (row_num < num_slabs)
-    sl_free(row.array);
-  else
-  {
-    //BGP_PTX_LOCK(c->c->tx, c);
-    mb_free(row.array);
-  }
-
-  ASSERT_DIE(ret);
-  return ret;
 }
 
 int
@@ -1994,6 +1972,7 @@ bgp_bucket_count_pref(struct bgp_bucket *b)
     ret += !!row->array[pos].pref->cur;
     pos--;
   }
+
   return ret;
 }
 
@@ -2082,6 +2061,7 @@ bgp_withdraw_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b)
 
   log(L_ERR "%s: Attribute list too long", p->p.name);
   struct bgp_prefix *px;
+
   while (px = bgp_bucket_delete_last_prefix(c, b))
   {
     log(L_ERR "%s: - withdrawing %N", p->p.name, px->ni->addr);
@@ -2509,6 +2489,7 @@ bgp_free_pending_tx(struct bgp_channel *bc)
   sl_delete(c->bucket_slab);
   c->bucket_slab = NULL;
 
+  bgp_free_prefix_allocators(c);
   rp_free(c->pool);
 
   UNLOCK_DOMAIN(rtable, dom);
