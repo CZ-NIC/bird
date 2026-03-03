@@ -152,7 +152,7 @@ CF_DECLS
 %type <settle> settle
 %type <a> ipa net_ip6_slash
 %type <net> net_ip4_ net_ip4 net_ip6_ net_ip6 net_ip_ net_ip net_or_ipa
-%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_ net_aspa_
+%type <net_ptr> net_ net_any net_vpn4_ net_vpn6_ net_vpn_ net_roa4_ net_roa6_ net_roa_ net_ip6_sadr_ net_mpls_ net_aspa_ net_nbr_
 %type <ad> label_stack_start label_stack
 
 %type <t> text opttext
@@ -175,7 +175,7 @@ CF_DECLS
 /* See r_args */
 %expect 2
 
-CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS, FROM, MAX, AS)
+CF_KEYWORDS(DEFINE, ON, OFF, YES, NO, S, MS, US, PORT, VPN, MPLS, FROM, MAX, AS, NEIGHBOR)
 
 CF_GRAMMAR
 
@@ -399,6 +399,12 @@ net_aspa_: ASPA expr
   net_fill_aspa($$, $2);
 }
 
+net_nbr_: NEIGHBOR ipa '%' expr
+{
+  $$ = cfg_alloc(sizeof(net_addr_nbr));
+  net_fill_nbr($$, $2, $4);
+}
+
 net_ip_: net_ip4_ | net_ip6_ ;
 net_vpn_: net_vpn4_ | net_vpn6_ ;
 net_roa_: net_roa4_ | net_roa6_ ;
@@ -411,6 +417,7 @@ net_:
  | net_ip6_sadr_
  | net_mpls_
  | net_aspa_
+ | net_nbr_
  ;
 
 

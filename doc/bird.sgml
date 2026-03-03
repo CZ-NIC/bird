@@ -354,6 +354,21 @@ corresponding MPLS routes. Configuration keyword is <cf/mpls/.
 	<item>Route next hops
 </itemize>
 
+<sect1>Neighbor entries
+<label id="neighbor-routes">
+
+<p>Neighbor entries represent discovered network neighbors. These are used to
+exchange neighbor information between protocols. For example, in automatic BGP
+peering scenarios, protocols responsible for router discovery (such as RAdv)
+announce these entries, which are then exported to a dynamic BGP instance to
+automatically establish peering sessions. The same type is used for both IPv4
+and IPv6 neighbors. Configuration keyword is <cf/neighbor/.
+
+<itemize>
+	<item>(PK) IP address
+	<item>(PK) Interface index
+</itemize>
+
 <sect1>Route next hops
 <label id="route-next-hop">
 
@@ -1821,6 +1836,10 @@ in the foot).
 
 	<cf/NET_MPLS/ holds a single MPLS label and its handling is currently
 	not implemented.
+
+	<cf/NET_NEIGHBOR/ holds a single IP address and an interface index.
+	The IP address can be accessed by operator <cf/.ip/, while the access
+	to the interface index is not implemented.
 
 	<tag><label id="type-rd"><label id="type-vpnrd">rd</tag>
 	This is a route distinguisher according to <rfc id="4364">. There are

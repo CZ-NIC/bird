@@ -1168,7 +1168,7 @@ channel_config_new(const struct channel_class *cc, const char *name, uint net_ty
     if (!net_val_match(net_type, proto->protocol->channel_mask))
       cf_error("Unsupported channel type");
 
-    if (proto->net_type && (net_type != proto->net_type) && (net_type != NET_MPLS))
+    if (proto->net_type && (net_type != proto->net_type) && (net_type != NET_MPLS) && (net_type != NET_NEIGHBOR))
       cf_error("Different channel type");
 
     tab = rt_get_default_table(new_config, net_type);

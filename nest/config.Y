@@ -153,7 +153,7 @@ CF_DECLS
 
 CF_KEYWORDS(ROUTER, ID, HOSTNAME, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT, PIPE)
 CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, VRF, DEFAULT, TABLE, TABLES, STATES, ROUTES, FILTERS)
-CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS, ASPA)
+CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS, ASPA, NEIGHBOR, NEIGHBORS)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED, RPKI)
 CF_KEYWORDS(PASSWORD, KEY, FROM, PASSIVE, TO, ID, EVENTS, PACKETS, PROTOCOLS, CHANNELS, INTERFACES)
 CF_KEYWORDS(ALGORITHM, KEYED, HMAC, MD5, SHA1, SHA256, SHA384, SHA512, BLAKE2S128, BLAKE2S256, BLAKE2B256, BLAKE2B512)
@@ -170,7 +170,7 @@ CF_KEYWORDS(ASPA_PROVIDERS)
 /* For r_args_channel */
 CF_KEYWORDS(IPV4, IPV4_MC, IPV4_MPLS, IPV6, IPV6_MC, IPV6_MPLS, IPV6_SADR, VPN4, VPN4_MC, VPN4_MPLS, VPN6, VPN6_MC, VPN6_MPLS, ROA4, ROA6, FLOW4, FLOW6, MPLS, PRI, SEC, ASPA)
 
-CF_ENUM(T_ENUM_NET_TYPE, NET_, IP4, IP6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, IP6_SADR, MPLS, ASPA)
+CF_ENUM(T_ENUM_NET_TYPE, NET_, IP4, IP6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, IP6_SADR, MPLS, ASPA, NEIGHBOR)
 CF_ENUM(T_ENUM_RTS, RTS_, STATIC, INHERIT, DEVICE, STATIC_DEVICE, REDIRECT,
 	RIP, OSPF, OSPF_IA, OSPF_EXT1, OSPF_EXT2, BGP, PIPE, BABEL, RPKI, L3VPN,
 	AGGREGATED)
@@ -188,7 +188,7 @@ CF_ENUM(T_ENUM_MPLS_POLICY, MPLS_POLICY_, NONE, STATIC, PREFIX, AGGREGATE, VRF)
 %type <sd> sym_args
 %type <i> proto_start debug_mask debug_list debug_flag mrtdump_mask mrtdump_list mrtdump_flag export_mode limit_action net_type net_type_base tos password_algorithm
 %type <ps> proto_patt proto_patt2
-%type <cc> channel_start proto_channel
+%type <cc> channel_start proto_channel nbrs_channel_start nbrs_channel
 %type <cl> limit_spec
 %type <tf> timeformat_spec
 %type <tfp> timeformat_which
@@ -236,6 +236,7 @@ net_type_base:
 net_type:
    net_type_base
  | MPLS { $$ = NET_MPLS; }
+ | NEIGHBOR { $$ = NET_NEIGHBOR; }
  ;
 
 
@@ -408,6 +409,12 @@ channel_end:
 };
 
 proto_channel: channel_start channel_opt_list channel_end;
+
+
+nbrs_channel_start: NEIGHBORS
+{ $$ = this_channel = channel_config_get(NULL, "neighbors", NET_NEIGHBOR, this_proto); };
+
+nbrs_channel: nbrs_channel_start channel_opt_list channel_end;
 
 
 rtable: CF_SYM_KNOWN {
@@ -918,6 +925,7 @@ channel_sym:
  | FLOW6	{ $$ = "flow6"; }
  | MPLS		{ $$ = "mpls"; }
  | ASPA		{ $$ = "aspa"; }
+ | NEIGHBORS	{ $$ = "neighbors"; }
  | PRI		{ $$ = "pri"; }
  | SEC		{ $$ = "sec"; }
  ;
