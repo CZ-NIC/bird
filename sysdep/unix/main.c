@@ -1022,6 +1022,7 @@ main(int argc, char **argv)
   log_switch(1, NULL, NULL);
 
   random_init();
+  random_init_thread();
   resource_init();
   timer_init();
   olock_init();

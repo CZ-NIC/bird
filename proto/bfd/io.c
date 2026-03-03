@@ -480,6 +480,8 @@ birdloop_main(void *arg)
   timer *t;
   int rv, timeout;
 
+  random_init_thread();
+
   birdloop_set_current(loop);
 
   tmp_init(loop->pool);

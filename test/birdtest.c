@@ -127,6 +127,9 @@ bt_init(int argc, char *argv[])
   log_init_debug("");
   log_switch(1, NULL, NULL);
 
+  random_init();
+  random_init_thread();
+
   resource_init();
   ev_init_list(&global_event_list);
 

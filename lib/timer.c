@@ -221,7 +221,7 @@ timers_fire(struct timeloop *loop)
 	when = loop->last_time + t->recurrent;
 
       if (t->randomize)
-	when += random() % (t->randomize + 1);
+	when += brandom() % (t->randomize + 1);
 
       tm_set(t, when);
     }

@@ -931,7 +931,7 @@ bgp_start_timer(timer *t, uint value)
   {
     /* The randomization procedure is specified in RFC 4271 section 10 */
     btime time = value S;
-    btime randomize = random() % ((time / 4) + 1);
+    btime randomize = brandom() % ((time / 4) + 1);
     tm_start(t, time - randomize);
   }
   else
