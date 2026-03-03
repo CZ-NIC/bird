@@ -328,6 +328,18 @@ Their keywords are <cf/roa4/ and <cf/roa6/.
 	<item>(PK) AS number
 </itemize>
 
+<sect1>Autonomous System Provider Authorization routes
+<label id="aspa-routes">
+
+<p>These entries can be used to validate <cf/AS_PATH/ attribute of BGP routes.
+An ASPA entry specifies a list of valid providers for specific Autonomous System.
+Configuration keyword is <cf/aspa/.
+
+<itemize>
+	<item>(PK) AS number
+	<item>List of AS numbers of providers
+</itemize>
+
 <sect1>Flowspec for IPv4 and IPv6
 <label id="flow-routes">
 
@@ -1700,6 +1712,10 @@ in the foot).
 	together with an ASN. They support the same special operators as IP
 	prefixes, and also <cf/.maxlen/ which extracts maximal prefix length,
 	and <cf/.asn/ which extracts the ASN.
+
+	<cf/NET_ASPA/ prefixes hold a client ASN and a list of provider ASNs
+	for the specific client.
+	TODO: add access functions info once implemented
 
 	<cf/NET_FLOW4/ and <cf/NET_FLOW6/ hold an IP prefix together with a
 	flowspec rule. Filters currently do not support much flowspec parsing,
