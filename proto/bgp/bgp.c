@@ -1216,8 +1216,8 @@ bgp_decision(void *vp)
   }
 }
 
-static void
-bgp_spawn(struct bgp_proto *pp, struct birdsock *sk)
+static struct bgp_proto *
+bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip, ip_addr local_ip, struct iface *iface)
 {
   struct symbol *sym;
   char fmt[SYM_MAX_LEN];
@@ -1233,15 +1233,23 @@ bgp_spawn(struct bgp_proto *pp, struct birdsock *sk)
   new_config = NULL;
   cfg_mem = NULL;
 
+  TRACE_(pp, D_EVENTS, "Spawning BGP instance %s for neighbor %I%J",
+	 sym->name, remote_ip, iface);
+
   /* Just pass remote_ip to bgp_init() */
   struct bgp_config *cf = SKIP_BACK(struct bgp_config, c, sym->proto);
-  cf->remote_ip = sk->daddr;
-  cf->local_ip = sk->saddr;
-  cf->iface = sk->iface;
+  cf->remote_ip = remote_ip;
+  cf->local_ip = local_ip;
+  cf->iface = iface;
   cf->ipatt = NULL;
 
-  /* Create the protocol disabled initially */
-  SKIP_BACK_DECLARE(struct bgp_proto, p, p, proto_spawn(sym->proto, 1));
+  return SKIP_BACK(struct bgp_proto, p, proto_spawn(sym->proto, 0));
+}
+
+static void
+bgp_spawn_sk(struct bgp_proto *pp, sock *sk)
+{
+  struct bgp_proto *p = bgp_spawn(pp, sk->daddr, sk->saddr, sk->iface);
 
   /* Pass the socket */
   p->postponed_sk = sk;
@@ -2118,7 +2126,7 @@ bgp_incoming_connection_dynamic(struct callback *cb)
     /* Ending up here means that there is no pre-existing explicit BGP session,
      * and therefore the socket was matched by a dynamic entry instead.
      * We need to spawn a new BGP session. */
-    bgp_spawn(p, sk);
+    bgp_spawn_sk(p, sk);
   }
 }
 
@@ -3486,6 +3494,7 @@ bgp_reconfigure(struct proto *P, struct proto_config *CF)
     }
 
     new->iface = old->iface;
+    new->ipatt = NULL;
   }
 
   int same = !memcmp(((byte *) old) + sizeof(struct proto_config),
