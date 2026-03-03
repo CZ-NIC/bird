@@ -1224,6 +1224,10 @@ bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip, ip_addr local_ip, struct ifac
 
   bsprintf(fmt, "%s%%0%dd", pp->cf->dynamic_name, pp->cf->dynamic_name_digits);
 
+  /* The parent protocol must not be not-yet-reconfigured, otherwise we would
+     mix-up different generations of configuration */
+  ASSERT(pp->p.cf->global == OBSREF_GET(config));
+
   /* This is hack, we would like to share config, but we need to copy it now */
   new_config = OBSREF_GET(config);
   cfg_mem = new_config->mem;

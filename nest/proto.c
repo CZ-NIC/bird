@@ -1758,6 +1758,25 @@ protos_commit(struct config *new, struct config *old, int type)
     .type = type,
   };
 
+  /* First, add dynamic protocols to the new config */
+  if (old)
+    WALK_LIST_(struct proto_config, oc, old->protos)
+      if (oc->parent && !cf_find_symbol(new, oc->name) && !new->shutdown)
+      {
+	struct symbol *parsym = cf_find_symbol(new, oc->parent->name);
+	if (parsym && parsym->class == SYM_PROTO)
+	{
+	  /* This is hack, we would like to share config, but we need to copy it now */
+	  new_config = new;
+	  cfg_mem = new->mem;
+	  new->current_scope = new->root_scope;
+	  struct symbol *sym = cf_get_symbol(new, oc->name);
+	  proto_clone_config(sym, parsym->proto);
+	  new_config = NULL;
+	  cfg_mem = NULL;
+	}
+      }
+
   protos_do_commit(new, old, type);
 }
 
@@ -1787,23 +1806,6 @@ protos_do_commit(struct config *new, struct config *old, int type)
       sym = cf_find_symbol(new, oc->name);
 
       struct birdloop *proto_loop = PROTO_ENTER_FROM_MAIN(p);
-
-      /* Handle dynamic protocols */
-      if (!sym && oc->parent && !new->shutdown)
-      {
-	struct symbol *parsym = cf_find_symbol(new, oc->parent->name);
-	if (parsym && parsym->class == SYM_PROTO)
-	{
-	  /* This is hack, we would like to share config, but we need to copy it now */
-	  new_config = new;
-	  cfg_mem = new->mem;
-	  new->current_scope = new->root_scope;
-	  sym = cf_get_symbol(new, oc->name);
-	  proto_clone_config(sym, parsym->proto);
-	  new_config = NULL;
-	  cfg_mem = NULL;
-	}
-      }
 
       if (sym && sym->class == SYM_PROTO && !new->shutdown)
       {
