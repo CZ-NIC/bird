@@ -69,7 +69,7 @@ radv_timer(timer *tm)
   ifa->last = now;
   btime t = ifa->cf->min_ra_int S;
   btime r = (ifa->cf->max_ra_int - ifa->cf->min_ra_int) S;
-  t += random() % (r + 1);
+  t += brandom() % (r + 1);
 
   if (ifa->initial)
   {

@@ -1783,8 +1783,8 @@ babel_iface_start(struct babel_iface *ifa)
 
   TRACE(D_EVENTS, "Starting interface %s", ifa->ifname);
 
-  ifa->next_hello = current_time() + (random() % ifa->cf->hello_interval);
-  ifa->next_regular = current_time() + (random() % ifa->cf->update_interval);
+  ifa->next_hello = current_time() + (brandom() % ifa->cf->hello_interval);
+  ifa->next_regular = current_time() + (brandom() % ifa->cf->update_interval);
   ifa->next_triggered = current_time() + MIN(1 S, ifa->cf->update_interval / 2);
   ifa->want_triggered = 0;	/* We send an immediate update (below) */
   tm_start_in(ifa->timer, 100 MS, p->p.loop);
@@ -2057,10 +2057,10 @@ babel_reconfigure_iface(struct babel_proto *p, struct babel_iface *ifa, struct b
     log(L_WARN "%s: Missing IPv4 next hop address for %s", p->p.name, ifa->ifname);
 
   if (ifa->next_hello > (current_time() + new->hello_interval))
-    ifa->next_hello = current_time() + (random() % new->hello_interval);
+    ifa->next_hello = current_time() + (brandom() % new->hello_interval);
 
   if (ifa->next_regular > (current_time() + new->update_interval))
-    ifa->next_regular = current_time() + (random() % new->update_interval);
+    ifa->next_regular = current_time() + (brandom() % new->update_interval);
 
   if (new->check_link != old->check_link)
     babel_iface_update_state(ifa);
@@ -2597,7 +2597,7 @@ static inline void
 babel_randomize_router_id(struct babel_proto *p)
 {
   p->router_id &= (u64) 0xffffffff;
-  p->router_id |= ((u64) random()) << 32;
+  p->router_id |= ((u64) brandom()) << 32;
   TRACE(D_EVENTS, "Randomized router ID to %lR", p->router_id);
 }
 

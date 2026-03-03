@@ -585,7 +585,7 @@ rip_iface_start(struct rip_iface *ifa)
 
   if (! ifa->cf->demand_circuit)
   {
-    ifa->next_regular = current_time() + (random() % ifa->cf->update_time) + 100 MS;
+    ifa->next_regular = current_time() + (brandom() % ifa->cf->update_time) + 100 MS;
     tm_set_in(ifa->timer, ifa->next_regular, ifa->rip->p.loop);
   }
   else
@@ -797,7 +797,7 @@ rip_reconfigure_iface(struct rip_proto *p, struct rip_iface *ifa, struct rip_ifa
 
   if ((! ifa->cf->demand_circuit) &&
       (ifa->next_regular > (current_time() + new->update_time)))
-    ifa->next_regular = current_time() + (random() % new->update_time) + 100 MS;
+    ifa->next_regular = current_time() + (brandom() % new->update_time) + 100 MS;
 
   if (ifa->up && new->demand_circuit && (new->passive != old->passive))
   {

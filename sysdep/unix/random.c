@@ -20,14 +20,24 @@
 #include <sys/random.h>
 #endif
 
+_Thread_local struct random_data random_buf;
+_Thread_local char random_statebuf[32];
+
+s32
+brandom(void)
+{
+  s32 result = 0;
+  random_r(&random_buf, &result);
+  return result;
+}
 
 u32
 random_u32(void)
 {
   long int rand_low, rand_high;
 
-  rand_low = random();
-  rand_high = random();
+  rand_low = brandom();
+  rand_high = brandom();
   return (rand_low & 0xffff) | ((rand_high & 0xffff) << 16);
 }
 
