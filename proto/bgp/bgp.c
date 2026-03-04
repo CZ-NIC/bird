@@ -1247,7 +1247,7 @@ bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip, ip_addr local_ip, struct ifac
   cf->iface = iface;
   cf->ipatt = NULL;
 
-  return SKIP_BACK(struct bgp_proto, p, proto_spawn(sym->proto, 0));
+  return SKIP_BACK(struct bgp_proto, p, proto_spawn(sym->proto, 1));
 }
 
 static void
