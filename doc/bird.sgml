@@ -3047,15 +3047,16 @@ protocol bgp [<name>] {
 	<cf/local 10.0.0.1; local as 65000;/ are valid). This parameter is
 	mandatory.
 
-	<tag><label id="bgp-neighbor">neighbor [<m/ip/ | range <m/prefix/] [port <m/number/] [as <m/number/] [internal|external]</tag>
+	<tag><label id="bgp-neighbor">neighbor [<m/ip/ | range <m/prefix/] [onlink] [port <m/number/] [as <m/number/] [internal|external]</tag>
 	Define neighboring router this instance will be talking to and what AS
 	it is located in. In case the neighbor is in the same AS as we are, we
 	automatically switch to IBGP. Alternatively, it is possible to specify
 	just <cf/internal/ or <cf/external/ instead of AS number, in that case
 	either local AS number, or any external AS number is accepted.
-	Optionally, the remote port may also be specified. Like <cf/local/
-	parameter, this parameter may also be used multiple times with different
-	sub-options. This parameter is mandatory.
+	Optionally, the remote port may also be specified. Parameter <cf/onlink/
+	can be used to achive same result as standalone option <ref id="bgp-onlink" name="onlink">.
+	Like <cf/local/ parameter, this parameter may also be used multiple
+	times with different sub-options. This parameter is mandatory.
 
 	It is possible to specify network prefix (with <cf/range/ keyword)
 	instead of explicit neighbor IP address. This enables dynamic BGP
