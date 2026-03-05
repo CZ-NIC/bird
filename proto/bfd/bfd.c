@@ -836,12 +836,10 @@ bfd_request_dump(struct dump_request *dreq, resource *r)
 }
 
 static struct resclass bfd_request_class = {
-  "BFD request",
-  sizeof(struct bfd_request),
-  bfd_request_free,
-  bfd_request_dump,
-  NULL,
-  NULL,
+  .name = "BFD request",
+  .size = sizeof(struct bfd_request),
+  .free = bfd_request_free,
+  .dump = bfd_request_dump,
 };
 
 

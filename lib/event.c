@@ -47,12 +47,10 @@ ev_dump(struct dump_request *dreq, resource *r)
 }
 
 static struct resclass ev_class = {
-  "Event",
-  sizeof(event),
-  (void (*)(resource *)) ev_postpone,
-  ev_dump,
-  NULL,
-  NULL
+  .name = "Event",
+  .size = sizeof(event),
+  .free = (void (*)(resource *)) ev_postpone,
+  .dump = ev_dump,
 };
 
 /**

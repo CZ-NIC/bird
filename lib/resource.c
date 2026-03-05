@@ -41,12 +41,12 @@ static resource *pool_lookup(resource *, unsigned long);
 static struct resmem pool_memsize(resource *P);
 
 static struct resclass pool_class = {
-  "Pool",
-  sizeof(pool),
-  pool_free,
-  pool_dump,
-  pool_lookup,
-  pool_memsize
+  .name = "Pool",
+  .size = sizeof(pool),
+  .free = pool_free,
+  .dump = pool_dump,
+  .lookup  = pool_lookup,
+  .memsize = pool_memsize,
 };
 
 pool root_pool;
@@ -352,12 +352,12 @@ mbl_memsize(resource *r)
 }
 
 static struct resclass mb_class = {
-  "Memory",
-  0,
-  mbl_free,
-  mbl_debug,
-  mbl_lookup,
-  mbl_memsize
+  .name = "Memory",
+  .size = 0,
+  .free = mbl_free,
+  .dump = mbl_debug,
+  .lookup  = mbl_lookup,
+  .memsize = mbl_memsize,
 };
 
 /**

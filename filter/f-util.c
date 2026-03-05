@@ -263,8 +263,6 @@ static struct resclass ca_class = {
   .size = sizeof(struct custom_attribute),
   .free = ca_free,
   .dump = ca_dump,
-  .lookup = NULL,
-  .memsize = NULL,
 };
 
 struct custom_attribute *

@@ -86,12 +86,10 @@ rf_dump(struct dump_request *dreq, resource *r)
 }
 
 static struct resclass rf_class = {
-  "FILE",
-  sizeof(struct rfile),
-  rf_free,
-  rf_dump,
-  NULL,
-  NULL
+  .name = "FILE",
+  .size = sizeof(struct rfile),
+  .free = rf_free,
+  .dump = rf_dump,
 };
 
 struct rfile *
@@ -1099,12 +1097,10 @@ sk_dump(struct dump_request *dreq, resource *r)
 }
 
 static struct resclass sk_class = {
-  "Socket",
-  sizeof(sock),
-  sk_free,
-  sk_dump,
-  NULL,
-  NULL
+  .name = "Socket",
+  .size = sizeof(sock),
+  .free = sk_free,
+  .dump = sk_dump,
 };
 
 /**

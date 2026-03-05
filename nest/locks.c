@@ -98,12 +98,10 @@ olock_dump(struct dump_request *dreq, resource *r)
 }
 
 static struct resclass olock_class = {
-  "ObjLock",
-  sizeof(struct object_lock),
-  olock_free,
-  olock_dump,
-  NULL,
-  NULL,
+  .name = "ObjLock",
+  .size = sizeof(struct object_lock),
+  .free = olock_free,
+  .dump = olock_dump,
 };
 
 /**

@@ -49,12 +49,12 @@ static resource *lp_lookup(resource *, unsigned long);
 static struct resmem lp_memsize(resource *r);
 
 static struct resclass lp_class = {
-  "LinPool",
-  sizeof(struct linpool),
-  lp_free,
-  lp_dump,
-  lp_lookup,
-  lp_memsize
+  .name = "LinPool",
+  .size = sizeof(struct linpool),
+  .free = lp_free,
+  .dump = lp_dump,
+  .lookup  = lp_lookup,
+  .memsize = lp_memsize,
 };
 
 /**

@@ -119,12 +119,10 @@ tm_dump(struct dump_request *dreq, resource *r)
 
 
 static struct resclass tm_class = {
-  "Timer",
-  sizeof(timer),
-  tm_free,
-  tm_dump,
-  NULL,
-  NULL
+  .name = "Timer",
+  .size = sizeof(timer),
+  .free = tm_free,
+  .dump = tm_dump,
 };
 
 timer *

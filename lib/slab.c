@@ -58,12 +58,11 @@ struct slab {
 };
 
 static struct resclass sl_class = {
-  "FakeSlab",
-  sizeof(struct slab),
-  slab_free,
-  slab_dump,
-  NULL,
-  slab_memsize
+  .name = "FakeSlab",
+  .size = sizeof(struct slab),
+  .free = slab_free,
+  .dump = slab_dump,
+  .memsize = slab_memsize,
 };
 
 struct sl_obj {
@@ -184,12 +183,12 @@ struct slab {
 };
 
 static struct resclass sl_class = {
-  "Slab",
-  sizeof(struct slab),
-  slab_free,
-  slab_dump,
-  slab_lookup,
-  slab_memsize
+  .name = "Slab",
+  .size = sizeof(struct slab),
+  .free = slab_free,
+  .dump = slab_dump,
+  .lookup  = slab_lookup,
+  .memsize = slab_memsize,
 };
 
 #define SL_GET_HEAD(x)	((struct sl_head *) (((uintptr_t) (x)) & ~(page_size-1)))

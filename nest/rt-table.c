@@ -2074,8 +2074,6 @@ static struct resclass rt_class = {
   .size = sizeof(struct rtable),
   .free = rt_free,
   .dump = rt_res_dump,
-  .lookup = NULL,
-  .memsize = NULL,
 };
 
 rtable *
