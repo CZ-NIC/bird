@@ -2527,9 +2527,12 @@ bgp_done_route_refresh(struct rt_feeding_request *rfr)
   SKIP_BACK_DECLARE(struct bgp_channel, c, enhanced_rr_request, rfr);
   SKIP_BACK_DECLARE(struct bgp_proto, p, p, c->c.proto);
 
-  /* Schedule EoRR packet */
-  ASSERT_DIE(c->feed_state == BFS_REFRESHING);
+  /* Don't do anything if this is actually a cancelation */
+  if (c->c.channel_state != CS_UP)
+    return;
 
+  /* Schedule EoRR packet  */
+  ASSERT_DIE(c->feed_state == BFS_REFRESHING);
   c->feed_state = BFS_REFRESHED;
   bgp_schedule_packet(p->conn, c, PKT_UPDATE);
 }

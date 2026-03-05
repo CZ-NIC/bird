@@ -542,7 +542,7 @@ rt_feeder_unsubscribe(struct rt_export_feeder *f)
 {
   /* Flush feeding requests. Must be called twice to flush
    * both the active and pending requests. */
-  rt_feeding_done(f) && rt_feeding_done(f);
+  (void) (rt_feeding_done(f) && rt_feeding_done(f));
 
   if (f->domain.rtable)
   {
