@@ -769,7 +769,7 @@ bfd_drop_requests(struct bfd_proto *p)
   HASH_WALK_END;
 }
 
-static struct resclass bfd_request_class;
+static const struct resclass bfd_request_class;
 
 struct bfd_request *
 bfd_request_session(pool *p, ip_addr addr, ip_addr local,
@@ -835,13 +835,11 @@ bfd_request_dump(struct dump_request *dreq, resource *r)
   RDUMP("(code %p, data %p)\n", req->hook, req->data);
 }
 
-static struct resclass bfd_request_class = {
-  "BFD request",
-  sizeof(struct bfd_request),
-  bfd_request_free,
-  bfd_request_dump,
-  NULL,
-  NULL,
+static const struct resclass bfd_request_class = {
+  .name = "BFD request",
+  .size = sizeof(struct bfd_request),
+  .free = bfd_request_free,
+  .dump = bfd_request_dump,
 };
 
 

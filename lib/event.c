@@ -46,13 +46,11 @@ ev_dump(struct dump_request *dreq, resource *r)
 	e->n.next ? "scheduled" : "inactive");
 }
 
-static struct resclass ev_class = {
-  "Event",
-  sizeof(event),
-  (void (*)(resource *)) ev_postpone,
-  ev_dump,
-  NULL,
-  NULL
+static const struct resclass ev_class = {
+  .name = "Event",
+  .size = sizeof(event),
+  .free = (void (*)(resource *)) ev_postpone,
+  .dump = ev_dump,
 };
 
 /**

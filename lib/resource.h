@@ -21,7 +21,7 @@ struct resmem {
 
 typedef struct resource {
   node n;				/* Inside resource pool */
-  struct resclass *class;		/* Resource class */
+  const struct resclass *class;		/* Resource class */
 } resource;
 
 /* Resource class */
@@ -54,7 +54,7 @@ struct resmem rmemsize(void *res);		/* Return size of memory used by the resourc
 void rlookup(unsigned long);		/* Look up address (only for debugging) */
 void rmove(void *, pool *);		/* Move to a different pool */
 
-void *ralloc(pool *, struct resclass *);
+void *ralloc(pool *, const struct resclass *);
 
 extern pool root_pool;
 

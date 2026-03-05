@@ -258,13 +258,11 @@ ca_dump(struct dump_request *dreq, resource *r)
       ca->name, ca->fda->ea_code, ca->fda->type, ca->fda->f_type);
 }
 
-static struct resclass ca_class = {
+static const struct resclass ca_class = {
   .name = "Custom attribute",
   .size = sizeof(struct custom_attribute),
   .free = ca_free,
   .dump = ca_dump,
-  .lookup = NULL,
-  .memsize = NULL,
 };
 
 struct custom_attribute *
