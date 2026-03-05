@@ -88,11 +88,27 @@ static inline bool channel_reload(struct channel *c, struct rt_feeding_request *
 
 static inline void channel_reload_roa(struct channel *c, struct rt_feeding_request *rfr)
 {
-  ASSERT_DIE(channel_reload(c, rfr));
+  if (c->channel_state == CS_UP)
+  {
+    ASSERT_DIE(channel_reload(c, rfr));
+    return;
+  }
+
+  if (c->debug & D_EVENTS)
+    log(L_TRACE "%s.%s: Import temporarily unable to refeed.");
 }
 
 static inline void channel_refeed(struct channel *c, struct rt_feeding_request *rfr)
 {
+  /* Export may be stopped, then we don't refeed */
+  if (rt_export_get_state(&c->out_req) == TES_DOWN)
+  {
+    if (c->debug & D_EVENTS)
+      log(L_TRACE "%s.%s: Export temporarily unable to refeed.");
+
+    return;
+  }
+
   CALL(c->proto->refeed_begin, c, rfr);
   rt_export_refeed(&c->out_req, rfr);
 }
@@ -499,6 +515,7 @@ struct roa_subscription {
   struct lfjour_recipient digest_recipient;
   event update_event;
   struct settle aspa_settle;
+  uint active_count;
 };
 
 struct roa_reload_request {
@@ -511,10 +528,27 @@ static void
 channel_roa_reload_done(struct rt_feeding_request *req)
 {
   SKIP_BACK_DECLARE(struct roa_reload_request, rrr, req, req);
-  ASSERT_DIE(rrr->s->c->channel_state == CS_UP);
+  struct roa_subscription *s = rrr->s;
+  struct channel *c = s->c;
+  struct proto *p = c->proto;
 
-  lfjour_release(&rrr->s->digest_recipient, rrr->item);
-  ev_send(proto_work_list(rrr->s->c->proto), &rrr->s->update_event);
+  lfjour_release(&s->digest_recipient, rrr->item);
+  s->active_count--;
+
+  switch (c->channel_state) {
+    case CS_UP:
+      ev_send(proto_work_list(c->proto), &s->update_event);
+      break;
+    case CS_STOP:
+    case CS_PAUSE:
+      if (c->debug & D_EVENTS)
+	log(L_TRACE "%s.%s: Automatic ROA reload canceled", p->name, c->name);
+      break;
+    default:
+      log(L_BUG "%s.%s: Channel ROA reload done in a wrong state: %s", p->name, c->name, c_states[c->channel_state]);
+      break;
+  }
+
   mb_free(rrr);
   /* FIXME: this should reset import/export filters if ACTION BLOCK */
 }
@@ -545,6 +579,7 @@ channel_roa_changed(void *_s)
     if (!first_seq) first_seq = it->seq;
     last_seq = it->seq;
     count++;
+    s->active_count++;
     s->refeed_hook(s->c, &rrr->req);
   }
 
@@ -666,6 +701,8 @@ channel_aspa_subscribe(struct channel *c, rtable *tab, int dir)
 static void
 channel_roa_unsubscribe(struct roa_subscription *s)
 {
+  ASSERT_DIE(s->active_count == 0);
+
   RT_LOCKED(s->tab, t)
   {
     lfjour_unregister(&s->digest_recipient);
@@ -944,6 +981,13 @@ channel_do_reload(void *_c)
   }
 }
 
+static void
+channel_cancel_reimport(struct channel *c)
+{
+  ev_postpone(&c->reimport_event);
+  rt_feeder_unsubscribe(&c->reimporter);
+}
+
 /* Called by protocol to activate in_table */
 static void
 channel_setup_in_table(struct channel *c)
@@ -988,9 +1032,6 @@ channel_do_up(struct channel *c)
 static void
 channel_do_pause(struct channel *c)
 {
-  /* Drop ROA subscriptions */
-  channel_roa_unsubscribe_all(c);
-
   /* Stop export */
   channel_stop_export(c);
 }
@@ -1003,15 +1044,16 @@ channel_do_stop(struct channel *c)
     rt_stop_import(&c->in_req, channel_import_stopped);
 
   /* Need to abort reimports as well */
-  rt_feeder_unsubscribe(&c->reimporter);
-  ev_postpone(&c->reimport_event);
+  channel_cancel_reimport(c);
+
+  /* Drop ROA subscriptions */
+  channel_roa_unsubscribe_all(c);
 
   c->gr_wait = 0;
   if (OBSREF_GET(c->gr_lock))
     channel_graceful_restart_unlock(c);
 
   CALL(c->class->shutdown, c);
-
 }
 
 static void
@@ -1285,6 +1327,12 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   /* Update RPKI/ROA subscriptions */
   if (import_changed || export_changed || rpki_reload_changed)
   {
+    if (rt_export_feed_active(&c->reimporter))
+    {
+      channel_cancel_reimport(c);
+      rt_feeder_subscribe(&c->table->export_all, &c->reimporter);
+    }
+
     channel_roa_unsubscribe_all(c);
 
     if (c->rpki_reload)

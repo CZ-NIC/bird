@@ -297,6 +297,8 @@ rt_export_get_next_feed(struct rt_export_feeder *f, struct rcu_unwinder *u, stru
   RCU_RETRY_FAST(u);
 }
 
+static bool rt_feeding_done(struct rt_export_feeder *f);
+
 struct rt_export_feed *
 rt_export_next_feed(struct rt_export_feeder *f, struct bmap *seen)
 {
@@ -319,6 +321,15 @@ rt_export_next_feed(struct rt_export_feeder *f, struct bmap *seen)
     return feed;
 
   /* Feeding done */
+  if (rt_feeding_done(f))
+    return rt_export_next_feed(f, seen);
+  else
+    return NULL;
+}
+
+static bool
+rt_feeding_done(struct rt_export_feeder *f)
+{
   struct rt_feeding_request *reverse = NULL;
   while (f->feeding)
   {
@@ -346,11 +357,11 @@ rt_export_next_feed(struct rt_export_feeder *f, struct bmap *seen)
       count, (count == 1) ? "" : "s");
 
   if (!f->feed_pending)
-    return NULL;
+    return false;
 
   f->feeding = f->feed_pending;
   f->feed_pending = NULL;
-  return rt_export_next_feed(f, seen);
+  return true;
 }
 
 static void
@@ -529,6 +540,10 @@ rt_feeder_do_unsubscribe(struct rt_export_feeder *f)
 void
 rt_feeder_unsubscribe(struct rt_export_feeder *f)
 {
+  /* Flush feeding requests. Must be called twice to flush
+   * both the active and pending requests. */
+  rt_feeding_done(f) && rt_feeding_done(f);
+
   if (f->domain.rtable)
   {
     LOCK_DOMAIN(rtable, f->domain);
