@@ -1225,7 +1225,7 @@ bgp_use_next_hop(struct bgp_export_state *s, eattr *a)
     return 1;
 
   /* Check for non-matching AF */
-  if ((ipa_is_ip4(*nh) != bgp_channel_is_ipv4(c)) && !c->ext_next_hop)
+  if (!bgp_channel_match_next_hop_af(c, *nh))
     return 0;
 
   /* Do not pass NEXT_HOP between different VRFs */
@@ -1234,6 +1234,10 @@ bgp_use_next_hop(struct bgp_export_state *s, eattr *a)
 
   /* Keep it when exported to internal peers */
   if (p->is_interior && ipa_nonzero(*nh))
+    return 1;
+
+  /* Locally originated EVPN routes came with their own BGP next hop */
+  if (!s->src && bgp_channel_is_l2vpn(c))
     return 1;
 
   /* Keep it when forwarded between single-hop BGPs on the same iface */
@@ -1258,7 +1262,7 @@ bgp_use_gateway(struct bgp_export_state *s)
     return 0;
 
   /* Check for non-matching AF */
-  if ((ipa_is_ip4(ra->nh.gw) != bgp_channel_is_ipv4(c)) && !c->ext_next_hop)
+  if (!bgp_channel_match_next_hop_af(c, ra->nh.gw))
     return 0;
 
   /* Do not use gateway from different VRF */
@@ -1379,11 +1383,11 @@ bgp_encode_next_hop_ip(struct bgp_write_state *s, eattr *a, byte *buf, uint size
   /*
    * Both IPv4 and IPv6 next hops can be used (with ext_next_hop enabled). This
    * is specified in RFC 8950 for IPv4 and in RFC 4798 for IPv6. The difference
-   * is that IPv4 address is directly encoded with IPv4 NLRI, but as IPv4-mapped
-   * IPv6 address with IPv6 NLRI.
+   * is that IPv4 address is directly encoded with IPv4 NLRI (and EVPN), but as
+   * IPv4-mapped IPv6 address with IPv6 NLRI.
    */
 
-  if (bgp_channel_is_ipv4(s->channel) && ipa_is_ip4(nh[0]))
+  if ((bgp_channel_is_ipv4(s->channel) || bgp_channel_is_l2vpn(s->channel)) && ipa_is_ip4(nh[0]))
   {
     put_ip4(buf, ipa_to_ip4(nh[0]));
     return 4;

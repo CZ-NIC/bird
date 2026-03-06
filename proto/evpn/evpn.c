@@ -169,6 +169,20 @@ evpn_encap_ext_comms(struct evpn_proto *p)
   return ad;
 }
 
+/*
+ * Since only one type of encapsulation is currently supported, return first
+ * (and only) encapsulation. If there were more encapsulation types, we would
+ * have to choose one here.
+ */
+static inline struct evpn_encap *
+evpn_get_encap(struct evpn_proto *p)
+{
+  ASSERT(list_length(&p->encaps) == 1);
+  struct evpn_encap *encap = SKIP_BACK(struct evpn_encap, n, HEAD(p->encaps));
+
+  return encap;
+}
+
 static void
 evpn_announce_mac(struct evpn_proto *p, const net_addr_eth *n0, rte *new)
 {
@@ -187,6 +201,12 @@ evpn_announce_mac(struct evpn_proto *p, const net_addr_eth *n0, rte *new)
       .pref = c->preference,
     };
 
+    ip_addr nh = evpn_get_encap(p)->router_addr;
+    ea_set_attr_data(&a->eattrs, tmp_linpool, EA_BGP_NEXT_HOP, BAF_TRANSITIVE, EAF_TYPE_IP_ADDRESS, &nh, sizeof(nh));
+
+    u32 label = v->vni;
+    ea_set_attr_data(&a->eattrs, tmp_linpool, EA_BGP_MPLS_LABEL_STACK, 0, EAF_TYPE_INT_SET, &label, sizeof(label));
+
     struct adata *ec = evpn_encap_ext_comms(p);
     struct adata *ad = evpn_export_targets(p, ec);
     ea_set_attr_ptr(&a->eattrs, tmp_linpool, EA_BGP_EXT_COMMUNITY, BAF_OPTIONAL | BAF_TRANSITIVE, EAF_TYPE_EC_SET, ad);
@@ -200,20 +220,6 @@ evpn_announce_mac(struct evpn_proto *p, const net_addr_eth *n0, rte *new)
   {
     rte_update2(c, n, NULL, p->p.main_source);
   }
-}
-
-/*
- * Since only one type of encapsulation is currently supported, return first
- * (and only) encapsulation. If there were more encapsulation types, we would
- * have to choose one here.
- */
-static inline struct evpn_encap *
-evpn_get_encap(struct evpn_proto *p)
-{
-  ASSERT(list_length(&p->encaps) == 1);
-  struct evpn_encap *encap = SKIP_BACK(struct evpn_encap, n, HEAD(p->encaps));
-
-  return encap;
 }
 
 static void
@@ -234,6 +240,9 @@ evpn_announce_imet(struct evpn_proto *p, struct evpn_vlan *v, int new)
       .scope = SCOPE_UNIVERSE,
       .pref = c->preference,
     };
+
+    ip_addr nh = encap->router_addr;
+    ea_set_attr_data(&a->eattrs, tmp_linpool, EA_BGP_NEXT_HOP, BAF_TRANSITIVE, EAF_TYPE_IP_ADDRESS, &nh, sizeof(nh));
 
     struct adata *ec = evpn_encap_ext_comms(p);
     struct adata *ad = evpn_export_targets(p, ec);
