@@ -2712,10 +2712,15 @@ bgp_channel_start(struct channel *C)
   /* Set link-local address for IPv6 single-hop BGP */
   if (ipa_is_ip6(c->next_hop_addr) && p->neigh)
   {
-    c->link_addr = p->link_addr;
+    /* Check if the next hop address is on the same interface as the peer */
+    struct neighbor *nbr = neigh_find(&p->p, c->next_hop_addr, p->neigh->iface, 0);
+    if (nbr && (nbr->scope == SCOPE_HOST) && (nbr->iface == p->neigh->iface))
+    {
+      c->link_addr = p->link_addr;
 
-    if (ipa_zero(c->link_addr))
-      log(L_WARN "%s: Missing link-local address", p->p.name);
+      if (ipa_zero(c->link_addr))
+	log(L_WARN "%s: Missing link-local address", p->p.name);
+    }
   }
 
   /* Link local address is already in c->link_addr */
