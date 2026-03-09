@@ -97,7 +97,7 @@ olock_dump(struct dump_request *dreq, resource *r)
     RDUMP(" [wanted]\n");
 }
 
-static struct resclass olock_class = {
+static const struct resclass olock_class = {
   .name = "ObjLock",
   .size = sizeof(struct object_lock),
   .free = olock_free,

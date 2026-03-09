@@ -40,7 +40,7 @@ static void pool_free(resource *);
 static resource *pool_lookup(resource *, unsigned long);
 static struct resmem pool_memsize(resource *P);
 
-static struct resclass pool_class = {
+static const struct resclass pool_class = {
   .name = "Pool",
   .size = sizeof(pool),
   .free = pool_free,
@@ -246,7 +246,7 @@ rmemsize(void *res)
  * from the @size field of the &resclass.
  */
 void *
-ralloc(pool *p, struct resclass *c)
+ralloc(pool *p, const struct resclass *c)
 {
   resource *r = xmalloc(c->size);
   bzero(r, c->size);
@@ -351,7 +351,7 @@ mbl_memsize(resource *r)
   };
 }
 
-static struct resclass mb_class = {
+static const struct resclass mb_class = {
   .name = "Memory",
   .size = 0,
   .free = mbl_free,

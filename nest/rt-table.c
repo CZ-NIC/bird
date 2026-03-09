@@ -2069,7 +2069,7 @@ rt_res_dump(struct dump_request *dreq, resource *_r)
       r->name, net_label[r->addr_type], r->rt_count, r->use_count);
 }
 
-static struct resclass rt_class = {
+static const struct resclass rt_class = {
   .name = "Routing table",
   .size = sizeof(struct rtable),
   .free = rt_free,

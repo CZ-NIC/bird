@@ -48,7 +48,7 @@ static void lp_dump(struct dump_request *, resource *);
 static resource *lp_lookup(resource *, unsigned long);
 static struct resmem lp_memsize(resource *r);
 
-static struct resclass lp_class = {
+static const struct resclass lp_class = {
   .name = "LinPool",
   .size = sizeof(struct linpool),
   .free = lp_free,

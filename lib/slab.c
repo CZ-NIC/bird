@@ -57,7 +57,7 @@ struct slab {
   list objs;
 };
 
-static struct resclass sl_class = {
+static const struct resclass sl_class = {
   .name = "FakeSlab",
   .size = sizeof(struct slab),
   .free = slab_free,
@@ -182,7 +182,7 @@ struct slab {
   struct sl_head_list empty_heads, partial_heads, full_heads;
 };
 
-static struct resclass sl_class = {
+static const struct resclass sl_class = {
   .name = "Slab",
   .size = sizeof(struct slab),
   .free = slab_free,

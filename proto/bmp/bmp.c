@@ -250,7 +250,7 @@ bmp_tx_resource_memsize(resource *r)
   };
 }
 
-static struct resclass bmp_tx_resource_class = {
+static const struct resclass bmp_tx_resource_class = {
   .name = "BMP TX buffers",
   .size = sizeof(struct bmp_tx_resource),
   .free = bmp_tx_resource_free,

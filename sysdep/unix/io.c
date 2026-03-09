@@ -85,7 +85,7 @@ rf_dump(struct dump_request *dreq, resource *r)
   RDUMP("(FILE *%p)\n", a->f);
 }
 
-static struct resclass rf_class = {
+static const struct resclass rf_class = {
   .name = "FILE",
   .size = sizeof(struct rfile),
   .free = rf_free,
@@ -1096,7 +1096,7 @@ sk_dump(struct dump_request *dreq, resource *r)
 	s->iface ? s->iface->name : "none");
 }
 
-static struct resclass sk_class = {
+static const struct resclass sk_class = {
   .name = "Socket",
   .size = sizeof(sock),
   .free = sk_free,
