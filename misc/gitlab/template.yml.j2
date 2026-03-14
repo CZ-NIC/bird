@@ -413,6 +413,7 @@ build-netlab:
     - DIR=$(pwd)
     - cd $TOOLS_DIR
     - sudo git clean -fx
+    - sudo git checkout -f master
     - git pull --ff-only
     - "mv $DIR/build-netlab/* netlab/common/"
     - ln -s $STAYRTR_BINARY netlab/common/stayrtr
