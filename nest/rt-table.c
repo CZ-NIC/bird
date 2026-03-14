@@ -432,44 +432,40 @@ end_of_aspa:;
     else if (!found)
     {
       /* Extend max-downstream (min-downstream is stopped by unknown) */
-      max_down = ap+1;
+      if (max_down == ap)
+	max_down = ap+1;
 
       /* Move min-upstream (can't include unknown) */
       min_up = ap;
     }
 
-    /* ASPA exists and downstream may be extended */
-    else if (down)
-    {
-      /* Extending max-downstream always */
-      max_down = ap+1;
-
-      /* Extending min-downstream unless unknown seen */
-      if (min_down == ap)
-	min_down = ap+1;
-
-      /* Downstream only */
-      if (!up)
-	min_up = max_up = ap;
-    }
-
-    /* No extension for downstream, force upstream only from now */
+    /* ASPA exists */
     else
     {
-      force_upstream = 1;
+      /* Downstream may be extended by this AS */
+      if (down)
+      {
+	/* Extending max-downstream unless invalid seen */
+	if (max_down == ap)
+	  max_down = ap+1;
 
-      /* Not even upstream, move the ending here */
+	/* Extending min-downstream unless unknown seen */
+	if (min_down == ap)
+	  min_down = ap+1;
+      }
+
+      /* Move upstream end unless extensible */
       if (!up)
 	min_up = max_up = ap;
     }
   }
 
   /* Is the path surely valid? */
-  if (min_up <= min_down)
+  if (min_up <= min_down + !force_upstream)
     return ASPA_VALID;
 
   /* Is the path maybe valid? */
-  if (max_up <= max_down)
+  if (max_up <= max_down + !force_upstream)
     return ASPA_UNKNOWN;
 
   /* Now there is surely a valley there. */
