@@ -352,6 +352,155 @@ net_roa_check(rtable *tab, const net_addr *n, u32 asn)
  * @path: AS Path to check
  *
  * Implements draft-ietf-sidrops-aspa-verification-16.
+ *
+ * Straightforward implementation of the draft algorithm would be messy, and
+ * would involve repeatedly checking the table for the same ASN. Therefore, we
+ * check the path in a streamed way.
+ *
+ * First, necessary preparations are done, to unstuff the path
+ * (COMPRESSED_AS_PATH, as of -24), and also refusing confeds and sets right away.
+ *
+ * For the algorithm, it's worth noting that the draft indexes the path
+ * from its end and from one, which has repeatedly brought off-by-one errors
+ * in our implementation, together with measuring the lengths of the up/down ramps.
+ * We index the path from its beginning and from zero.
+ *
+ * We walk the AS Path from its beginning (which is the local-most ASN) to its end
+ * (which is the alleged origin ASN), and keep four pointers (indices) to it:
+ *
+ * - @max_up, the leftmost ASN which can still be part of the up-ramp for UNKNOWN
+ * - @min_up, the leftmost ASN which is a definite part of the up-ramp for VALID
+ * - @max_down, the rightmost ASN which can still be part of the down-ramp for UNKNOWN
+ * - @min_down, the rightmost ASN which is a definite part of the down-ramp for VALID
+ *
+ * The draft calls these points the ramp apexes (or apices?).
+ *
+ * All these pointers are initially zero. Technically, they should be undefined, but
+ * for length-one path, both the up-ramp and down-ramp apex is actually at index zero.
+ *
+ * The down-ramp then goes from zero index to |min_down| for VALID,
+ * and to |max_down| for UNKNOWN. The up-ramp goes backwards
+ * from the other end (|nsz-1|) to |min_up| for VALID, and to |max_up| for UNKNOWN.
+ *
+ * Example:
+ *
+ *	min_down = 3
+ *	min_up = 4
+ *
+ *      +---+---+---+---+---+---+---+
+ *      | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+ *      |   down-ramp   |  up-ramp  |
+ *      +---------------+-----------+
+ *
+ *      In this case, AS(3) is verified provider of AS(2), which is provider of AS(1),
+ *      which is provider of AS(0). Also, AS(4) is verified provider of AS(5), and that of AS(6).
+ *
+ *	Ending the ramps here also means that AS(4) is not a verified provider
+ *	of AS(3), and vice versa. This yields |ASPA_VALID| for downstream.
+ *
+ * Example:
+ *
+ *	min_down = 5
+ *	min_up = 2
+ *
+ *      +---+---+---+---+---+---+---+
+ *      | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+ *      |       down-ramp       |---|
+ *      |-------|      up-ramp      |
+ *      +---------------------------+
+ *
+ *      In this case, the ramps overlap. This happens when AS(2) is a provider of AS(3),
+ *      and at the same time AS(3) is a provider of AS(2). That's perfectly OK and may
+ *      happen in reality quite a few ways. This scenario yields |ASPA_VALID| for downstream.
+ *
+ * Example:
+ *
+ *	min_down = 2
+ *	max_down = 4
+ *	min_up = 6
+ *	max_up = 4
+ *
+ *      +---+---+---+---+---+---+---+---+
+ *      | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+ *      | down-ramp | ????? |-----------|
+ *      |---------------| ????? |up-ramp|
+ *      +-------------------------------+
+ *
+ *      In this case, the certain ramps do not touch. The down-ramp ending is caused
+ *	by AS(2) not having any ASPA published, and the up-ramp ending is caused by AS(6)
+ *	not having any ASPA published. Therefore, we can't yield |ASPA_VALID|.
+ *
+ *	Then, the AS(4) has an ASPA published, not including either AS(3), or AS(5),
+ *	and therefore the uncertain ramps end here. We yield |ASPA_UNKNOWN|.
+ *
+ * Example:
+ *
+ *	min_down = 2
+ *	max_down = 4
+ *	min_up = 4
+ *	max_up = 3
+ *
+ *      +---+---+---+---+---+---+---+
+ *      | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+ *      | down-ramp | ????? |-------|
+ *      |-----------| ? |  up-ramp  |
+ *      +---------------------------+
+ *
+ *	Here, again, AS(2) has no ASPA published, ending the certain down-ramp,
+ *	and AS(4) has no ASPA published, ending the certain up-ramp. But, behold!
+ *	The uncertain down-ramp must be ended here by AS(4) actually publishing
+ *	ASPA not including AS(5).
+ *
+ *	Therefore, this scenario is impossible.
+ *
+ * We process the AS Path by gradually appending more AS's to an empty path.
+ *
+ * In all steps, it is invariant that, for the downstream algorithm, the certain (min)
+ * down-ramp and up-ramp must cover the whole path to get |ASPA_VALID|, and otherwise
+ * the possible (max) down-ramp and up-ramp must cover the whole path to get
+ * |ASPA_UNKNOWN|. Failure to cover the path yields |ASPA_INVALID|.
+ * The draft, as of -24, specifies the same but in double-negative.
+ *
+ * Path coverage means that if |min_up == min_down + 1|, the path is still |ASPA_VALID|
+ * because the apexes are touching, as shown in sec. 5.1 of the draft -24.
+ *
+ * We evaluate this condition at the end of the function. The upstream
+ * algorithm differs from the downstream algorithm only in such a way that the
+ * down-ramp is missing.
+ *
+ * In every step, we look at the current ASN (indicated by @ap) and its left
+ * and right neighbor, and ask:
+ *
+ * - is there an ASPA by this ASN including the left neighbor?
+ *	If yes, adding this ASN does not change |max_up| and |min_up| because the up-ramp
+ *	is extended by this
+ * - is there an ASPA by this ASN including the right neighbor?
+ *	If yes, adding the ASN of the right neighbor may move |max_down| and |min_down|
+ *	to that one, unless the down-ramp is already cut off
+ * - is there any ASPA at all but not for the left neighbor?
+ *	If yes, the up-ramp is broken by this relationship, and we have to move
+ *	both |min_up| and |max_up| to this ASN
+ * - is there any ASPA at all but not for the right neighbor?
+ *	If yes, the down-ramp ends here, unless it has been cut off
+ *	by a previous occurence of this situation. We don't move anything.
+ * - is there no ASPA?
+ *	If yes, we move |min_up| because the certain up-ramp is not extended
+ *	by this. Contrary, |max_up| stays. The same way but opposite, we may
+ *	move |max_down| (if still pointing here) because the maybe down-ramp
+ *	may be extended by this.
+ *
+ * The implementation may look slightly inefficient but we actually want to
+ * extend it later so that it always returns the complete information,
+ * i.e. all relevant AS Path chunks, for the users to investigate in the filters.
+ *
+ * After ASPA gets enough traction so that this function performance is
+ * actually measurable, we expect to update the ASPA checking mechanisms to
+ * cache all the results, and combine the final result from various path chunks,
+ * without having to do an ASPA table lookup for every single unique ASN in the
+ * path.
+ *
+ * Returns: |ASPA_VALID|, |ASPA_UNKNOWN| or |ASPA_INVALID|.
+ * Accesses: @tab for reading.
  */
 enum aspa_result aspa_check(rtable *tab, const adata *path, bool force_upstream)
 {
