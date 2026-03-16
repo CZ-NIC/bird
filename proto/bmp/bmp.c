@@ -1053,7 +1053,7 @@ bmp_split_policy(struct bmp_proto *p, const rte *new, const rte *old)
   }
 
   /* Checking the post policy */
-  if (p->monitoring_rib.in_post_policy)
+  if (p->monitoring_rib.in_post_policy && rte_is_valid(&loc))
   {
     /* Compute the post policy attributes */
     loc.attrs = new ? ea_normalize(new->attrs, 0) : NULL;
