@@ -3007,6 +3007,11 @@ test-log-corner-cases:
   variables:
     TEST_NAME: cf-log-corner-cases
 
+test-roa-reconf-regression:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-roa-reconf-regression
+
 test-ebgp-refresh/gen/imno-basic-imex-basic:
   <<: *test-base
   variables:
