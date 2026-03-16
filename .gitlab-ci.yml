@@ -1827,6 +1827,11 @@ test-bgp-error-states:
   variables:
     TEST_NAME: cf-bgp-error-states
 
+test-roa-reconf-regression:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-roa-reconf-regression
+
 test-ebgp-refresh/gen/imno-basic-imex-basic:
   <<: *test-base
   variables:
