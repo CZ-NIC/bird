@@ -351,7 +351,11 @@ G = P{ "Pandoc",
     return { pandoc.Span(t, { class = "code", id = l }), { u }}
   end;
 
-  CodeBlock = P'<code>' * C((1 - P'</code>')^0) * P'</code>' / pandoc.CodeBlock;
+  CodeBlock = P'<code>' * C((1 - P'</code>')^0) * P'</code>' / function(code)
+    code = code:gsub("&lt;", "<")
+    code = code:gsub("&gt;", ">")
+    return pandoc.CodeBlock(code)
+  end;
 
   TableBlockIgnoreBf = P'<bf/' * ininline * '/';
 
