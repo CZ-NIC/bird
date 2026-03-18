@@ -444,6 +444,10 @@ done:;
 static bool
 krt_init_scan(struct krt_proto *p)
 {
+  /* Do nothing when graceful recovery is running */
+  if (p->p.gr_recovery && KRT_CF->graceful_restart)
+    return 0;
+
   switch (p->sync_state)
   {
     case KPS_INIT:
