@@ -444,12 +444,15 @@ done:;
 static bool
 krt_init_scan(struct krt_proto *p)
 {
+  if (!p->p.gr_recovery && !p->p.rt_notify)
+  {
+    p->p.rt_notify = krt_rt_notify;
+    channel_start_export(p->p.main_channel);
+  }
+
   switch (p->sync_state)
   {
     case KPS_INIT:
-      /* Allow exports now */
-      p->p.rt_notify = krt_rt_notify;
-      channel_start_export(p->p.main_channel);
       rt_refresh_begin(&p->p.main_channel->in_req);
       p->sync_state = KPS_FIRST_SCAN;
       return 1;
@@ -457,11 +460,12 @@ krt_init_scan(struct krt_proto *p)
     case KPS_IDLE:
       rt_refresh_begin(&p->p.main_channel->in_req);
       bmap_reset(&p->seen_map, 1024);
-      p->sync_state = KPS_SCANNING;
+      p->sync_state = p->p.gr_recovery ? KPS_LEARNING : KPS_SCANNING;
       return 1;
 
     case KPS_FIRST_SCAN:
     case KPS_SCANNING:
+    case KPS_LEARNING:
       bug("Kernel scan double-init");
 
     case KPS_PRUNING:
@@ -484,10 +488,17 @@ krt_prune(struct krt_proto *p)
 
     case KPS_SCANNING:
       channel_request_full_refeed(p->p.main_channel);
+
       /* fall through */
     case KPS_FIRST_SCAN:
       p->sync_state = KPS_PRUNING;
       KRT_TRACE(p, D_EVENTS, "Pruning table %s", p->p.main_channel->table->name);
+      rt_refresh_end(&p->p.main_channel->in_req);
+      break;
+
+    case KPS_LEARNING:
+      p->sync_state = KPS_IDLE;
+      KRT_TRACE(p, D_EVENTS, "Pruning table %s (graceful recovery in progress)", p->p.main_channel->table->name);
       rt_refresh_end(&p->p.main_channel->in_req);
       break;
 
@@ -717,6 +728,9 @@ krt_rt_notify(struct proto *P, struct channel *ch, const net_addr *net,
     case KPS_INIT:
       bug("Routes in init state should have been rejected by preexport.");
 
+    case KPS_LEARNING:
+      bug("%s: Graceful recovery in progress but received route notification.", P->name);
+
     case KPS_IDLE:
     case KPS_PRUNING:
       if (new && bmap_test(&p->seen_map, new->id))
@@ -803,6 +817,8 @@ krt_export_fed(struct channel *C)
       p->sync_state = KPS_IDLE;
       break;
 
+    case KPS_LEARNING:
+      bug("%s: Export should not feed during graceful recovery", p->p.name);
   }
 }
 
@@ -913,7 +929,10 @@ krt_start(struct proto *P)
   krt_scan_timer_start(p);
 
   if (p->p.gr_recovery && KRT_CF->graceful_restart)
+  {
     p->p.main_channel->gr_wait = 1;
+    p->sync_state = KPS_IDLE;
+  }
 
   return PS_UP;
 }

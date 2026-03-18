@@ -65,6 +65,7 @@ struct krt_proto {
     KPS_IDLE,
     KPS_SCANNING,
     KPS_PRUNING,
+    KPS_LEARNING,
   } sync_state;			/* What is happening with the table sync routine */
 };
 
