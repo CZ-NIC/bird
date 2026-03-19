@@ -3007,6 +3007,11 @@ test-pipe-collision:
   variables:
     TEST_NAME: cf-pipe-collision
 
+test-log-corner-cases:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-log-corner-cases
+
 test-ebgp-refresh/gen/imno-basic-imex-basic:
   <<: *test-base
   variables:
