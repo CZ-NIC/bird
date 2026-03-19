@@ -167,14 +167,22 @@ lts_request(struct log_channel *lc_close, struct rfile *rf_close, const char *na
 static void
 log_rotate(struct log_channel *lc)
 {
+  struct rfile *old_rf = atomic_load_explicit(&lc->rf, memory_order_relaxed);
+  lts_request(NULL, old_rf, "Log Rotate Close Old File");
+
   if ((rename(lc->filename, lc->backup) < 0) && (unlink(lc->filename) < 0))
+  {
+    atomic_store_explicit(&lc->rf, NULL, memory_order_relaxed);
     return lts_request(lc, NULL, "Log Rotate Failed");
+  }
 
   struct rfile *rf = rf_open(log_pool, lc->filename, RF_APPEND, lc->limit);
   if (!rf)
+  {
+    atomic_store_explicit(&lc->rf, NULL, memory_order_relaxed);
     return lts_request(lc, NULL, "Log Rotate Failed");
+  }
 
-  lts_request(NULL, atomic_load_explicit(&lc->rf, memory_order_relaxed), "Log Rotate Close Old File");
   atomic_store_explicit(&lc->rf, rf, memory_order_release);
 }
 
@@ -274,7 +282,7 @@ log_commit(log_buffer *buf)
 
 	      log_lock();
 	      rf = atomic_load_explicit(&l->rf, memory_order_acquire);
-	      if (rf_writev(rf, iov, iov_count))
+	      if (!rf || rf_writev(rf, iov, iov_count))
 	      {
 		log_unlock();
 		break;
@@ -284,7 +292,7 @@ log_commit(log_buffer *buf)
 	      log_unlock();
 
 	      rf = atomic_load_explicit(&l->rf, memory_order_relaxed);
-	    } while (!rf_writev(rf, iov, iov_count));
+	    } while (rf && !rf_writev(rf, iov, iov_count));
 	  }
 	  else if (sk)
 	  {
