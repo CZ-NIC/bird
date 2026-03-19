@@ -742,7 +742,11 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
 	if (ipa_zero(lc->udp_ip))
 	{
 	  log(L_WARN "Cannot resolve hostname '%s': %s", l->udp_host, err_msg);
-	  goto resolve_fail;
+
+	  log_lock();
+	  mb_free(lc);
+	  log_unlock();
+	  continue;
 	}
       }
 
@@ -757,9 +761,9 @@ log_switch(int initial, list *logs, const char *new_syslog_name)
       if (sk_open(sk, &main_birdloop) < 0)
       {
 	log(L_WARN "Cannot open UDP log socket: %s%#m", sk->err);
-	rfree(sk);
-resolve_fail:
+
 	log_lock();
+	rfree(sk);
 	mb_free(lc);
 	log_unlock();
 	continue;
