@@ -48,7 +48,13 @@ syslog_name:
 
 log_limit:
    /* empty */
- | expr text { this_log->limit = $1; this_log->backup = $2; }
+ | expr text {
+     if ($1 < 16384)
+       cf_error("Log file size limit too low, must be at least 16384.");
+
+     this_log->limit = $1;
+     this_log->backup = $2;
+   }
  ;
 
 log_file:
