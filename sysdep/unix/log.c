@@ -42,9 +42,25 @@ _Thread_local uint this_thread_id;
 
 #include <pthread.h>
 
+static uint log_msg_while_locked = 0;
 static DOMAIN(logging) log_domain;
-#define log_lock()  LOCK_DOMAIN(logging, log_domain);
-#define log_unlock()  UNLOCK_DOMAIN(logging, log_domain);
+
+static void log_lock(void)
+{
+  LOCK_DOMAIN(logging, log_domain);
+}
+
+static void log_unlock(void)
+{
+  uint msgs = log_msg_while_locked;
+  log_msg_while_locked = 0;
+  UNLOCK_DOMAIN(logging, log_domain);
+
+  /* This is a crude mechanism to keep track about meta-log messages without
+   * having to write another mechanism to actually print them out. */
+  if (msgs && atomic_load_explicit(&global_runtime, memory_order_relaxed)->latency_debug)
+    log(L_TRACE "Ignored %u messages to be logged from a log-locked context.", msgs);
+}
 
 static struct log_channel * _Atomic global_logs;
 
@@ -151,8 +167,6 @@ lts_request(struct log_channel *lc_close, struct rfile *rf_close, const char *na
 static void
 log_rotate(struct log_channel *lc)
 {
-  struct log_thread_syncer *lts = mb_allocz(log_pool, sizeof *lts);
-
   if ((rename(lc->filename, lc->backup) < 0) && (unlink(lc->filename) < 0))
     return lts_request(lc, NULL, "Log Rotate Failed");
 
@@ -180,6 +194,14 @@ log_rotate(struct log_channel *lc)
 void
 log_commit(log_buffer *buf)
 {
+  /* Do not log when already log-locked. This mechanism should be replaced in future
+   * by keeping the logs temporarily and flushing them on log_unlock(). */
+  if (DOMAIN_IS_LOCKED(logging, log_domain))
+  {
+    log_msg_while_locked++;
+    return;
+  }
+
   /* Store the last pointer */
   buf->pos[LBP__MAX] = buf->buf.pos;
 
