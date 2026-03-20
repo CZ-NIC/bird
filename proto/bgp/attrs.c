@@ -1732,43 +1732,88 @@ HASH_DEFINE_REHASH_FN(RBH, struct bgp_bucket)
 #define BUCKET_PREFIX_ROW(a)    a & 0xff
 #define BUCKET_PREFIX_POS(a)    a >> 8
 #define PREFIX_ID(r, p)         r + (p << 8)
-const u32 fib_nums[] = {1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181,
+
+/*
+ * Prefixes in buckets
+ * There used to be list of prefixes in each bucket. That solution required each prefix
+ * to contain node struct consisting of two pointers. For new solution one u32 id per prefix and u32 id,
+ * prefix pointers plus some overhead per bucket is needed.
+ * 
+ * In short, to add a prefix to a bucket, bucket stores pointer to the prefix to its struct and computes an id
+ * from the position where the prefix was stored. Then the bucket remembers the new id and stores the id
+ * into the prefix. The prefix contained reference to the bucket anyway and with the given id it is
+ * possible to find the prefix in the bucket.
+ * 
+ * Each bucket keeps last given id and one pointer to stored prefix pointers. If the id is zero, there is no prefix.
+ * If the id is one, the pointer is pointer to the single one prefix. Any bigger id means the pointer
+ * points to a field of prefixes. Each row except of the last one points to next row. We expect the number
+ * of prefixes in the bucket to be exponential, therefore the size of allocated rows goes by fibbonaci numbers.
+ * The pointer in bucket points to the last allocated row. It is the largest row and this enables
+ * the first allocated row with two prefixes to not contain any pointer.
+ * 
+ * Id has two parts - last byte is for row number, rest is position in the row. 
+ * 
+ * Let's see how adding prefix pointers A, B, C... looks like (p means pointer to next row):
+ * num prefixes | last id | buck ptr | rows
+ *      0       |   0 00  |     0    |
+ *      1       |   0 01  |     A    |              (yeah, row 1, index 0)
+ *      2       |   1 02  |     p -----> (A, B)     (row 2, index 1)
+ *      3       |   1 03  |     p -----> (p, C, _) --> (A, B)
+ *      4       |   2 03  |     p -----> (p, C, D) --> (A, B)
+ *      5       |   1 04  |     p -----> (p, E, _, _, _) --> (p, C, D) --> (A, B)
+ *      12      |   4 05  |     p -----> (p, I, J, K, L, _, _, _) --> (p, E, F, G, H) --> (p, C, D) --> (A, B)
+ * 
+ * Deleting
+ * Free spaces after deleted pointers might cause both time and memory issues. When we delete a pointer,
+ * we find the last inserted pointer as well, store that pointer on the place of the deleted one and shift
+ * last given id. And, of course, change the id of the shifted pointer, so it reflects the position
+ * in the struct again.
+ * 
+ * p -----> (p, E, F, G, _) --> (p, C, D) --> (A, B)
+ *     * D delete *
+ * p -----> (p, E, F, _, _) --> (p, C, G) --> (A, B)
+ * 
+ * The first rows are allocated from slabs and they can be freed as soon as they are empty.
+ * But bigger rows are allocated from mb_alloc and are freed more slowly.
+*/
+
+static uint bgp_max_slab_row;
+static const u32 fib_nums[] = {1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181,
         6765, 10946, 17711, 28657, 46368, 75025, 121393, 196418, 317811, 514229, 832040, 1346269,
         2178309, 3524578, 5702887, 9227465, 14930352, 24157817, 39088169, 63245986, 102334155, 165580141};
 
 static void
 bgp_init_prefix_allocators(struct bgp_ptx_private *c)
 {
-  for (int i = 2; i < num_slabs; i++)
-    c->bucket_prefix_slabs[i] = sl_new(c->pool, birdloop_event_list(c->c->c.proto->loop), sizeof(union bgp_bucket_prefix*) * fib_nums[i]);
+  /* If there is not too much prefixes in the bucket, more space is allocated from slabs */
+  if (!bgp_max_slab_row)
+  {
+    uint bgp_max_slabs = page_size / (sizeof (void *)*3);
 
-  log("slabs inited");
+    for (uint i = 2; fib_nums[i] < bgp_max_slabs; i++)
+      bgp_max_slab_row = i;
+  }
+
+  c->bucket_prefix_slabs = mb_allocz(c->pool, sizeof(struct slab *) * bgp_max_slab_row);
+  c->bucket_prefix_slabs[2] = sl_new(c->pool, sizeof(union bgp_bucket_prefix*) * fib_nums[2]);
 }
 
 static void
 bgp_free_prefix_allocators(struct bgp_ptx_private *c)
 {
-  for (int i = 2; i < num_slabs; i++)
-    sl_delete(c->bucket_prefix_slabs[i]);
+  for (uint i = 2; i < bgp_max_slab_row; i++)
+    if (c->bucket_prefix_slabs[i])
+      sl_delete(c->bucket_prefix_slabs[i]);
 
-  log("slabs freed");
-}
-
-void
-bgp_pref_slab_check(struct bgp_ptx_private *c)
-{
-  for (int i = 2; i < num_slabs; i++)
-  {
-    void *a = sl_alloc(c->bucket_prefix_slabs[i]);
-    ASSERT_DIE(a);
-    sl_free(a);
-  }
+  mb_free(c->bucket_prefix_slabs);
 }
 
 void
 bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_prefix *px)
 {
-  bgp_pref_slab_check(c);
+  /* c is null if called with bmp */
+  ASSERT_DIE(b->my_id);
+
   if (b->last_pref_id == 0)
   {
     /* No prefix yet. My apologies, there is nothing like row zero, first (one item) row has number one.
@@ -1782,8 +1827,10 @@ bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_pr
     /* special case - we need to move the first prefix to the new row */
     struct bgp_prefix *first_pref = b->prefixes.pref;
     if (c)
+      /* The first slab is inited in advance */
       b->prefixes.array = sl_alloc(c->bucket_prefix_slabs[2]);
     else
+      /* Bmp hack */
       b->prefixes.array = tmp_alloc(sizeof(union bgp_bucket_prefix)*2);
     b->prefixes.array[0].pref = first_pref;
     first_pref->buck_id = 2;
@@ -1815,8 +1862,13 @@ bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_pr
   union bgp_bucket_prefix new_row;
   row_num++;
 
-  if (row_num < num_slabs && c)
+  if (row_num < bgp_max_slab_row && c)
+  {
+    if (!c->bucket_prefix_slabs[row_num])
+      c->bucket_prefix_slabs[row_num] = sl_new(c->pool, sizeof(union bgp_bucket_prefix*) * fib_nums[row_num]);
+
     new_row.array = sl_alloc(c->bucket_prefix_slabs[row_num]);
+  }
   else
   {
     if (!b->prefixes.array[1].array)
@@ -1832,7 +1884,7 @@ bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_pr
       //BGP_PTX_LOCK(c->c->tx, c);
       new_row.array = mb_alloc(c->pool, sizeof(union bgp_bucket_prefix) * fib_nums[row_num]);
     }
-    else // bmp
+    else /* bmp */
       new_row.array = tmp_alloc(sizeof(union bgp_bucket_prefix) * fib_nums[row_num]);
   }
 
@@ -1843,28 +1895,27 @@ bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_pr
   new_row.array[1].pref = px;
 }
 
-/* returns true if bucket is empty */
 struct bgp_prefix *
 bgp_delete_from_bucket(struct bgp_ptx_private * c, struct bgp_bucket *b, u32 id)
 {
+  ASSERT_DIE(b->my_id);
   u32 row_num = BUCKET_PREFIX_ROW(id);
   u32 pos = BUCKET_PREFIX_POS(id);
   ASSERT_DIE(b->last_pref_id);
 
   if (row_num == 1)
   {
-    /* It was the only prefix in the bucket*/
+    /* It was the only prefix in the bucket */
     b->last_pref_id = 0;
     return b->prefixes.pref;
   }
-
 
   u32 buck_row_num = BUCKET_PREFIX_ROW(b->last_pref_id);
   u32 buck_pos = BUCKET_PREFIX_POS(b->last_pref_id);
   ASSERT_DIE(buck_row_num >= row_num);
   ASSERT_DIE(pos < fib_nums[row_num]);
   union bgp_bucket_prefix row = b->prefixes;
-   struct bgp_prefix *ret;
+  struct bgp_prefix *ret;
 
   if (buck_row_num == 2)
   {
@@ -1880,11 +1931,13 @@ bgp_delete_from_bucket(struct bgp_ptx_private * c, struct bgp_bucket *b, u32 id)
 
   if (!row.array[1].pref)
   {
+    /* The mb_allocated rows are not freed immediately but after one more row below
+     * become empty as well. */
     if (buck_pos == 1)
     {
       /* Need to delete the mb_allocated row */
       b->prefixes = row.array[0];
-      //BGP_PTX_LOCK(c->c->tx, c);
+
       if (c)
         mb_free(row.array);
       row = b->prefixes;
@@ -1896,12 +1949,13 @@ bgp_delete_from_bucket(struct bgp_ptx_private * c, struct bgp_bucket *b, u32 id)
   row.array[buck_pos].pref = NULL;
   ASSERT_DIE(last_pref->buck_id == b->last_pref_id);
 
-  if (buck_pos != 1){
+  /* Compute new last_pref_id. Since we will use the last prefix pointer to fill
+   * the free space after delete, last_pref_id will decrease */
+  if (buck_pos != 1)
     b->last_pref_id -= (1 << 8);
-  }
   else
   {
-    if (buck_row_num < num_slabs && buck_pos == 1)
+    if (buck_row_num < bgp_max_slab_row && buck_pos == 1)
     {
       /* The last row will be freed */
       b->prefixes.array = row.array[0].array;
@@ -1933,7 +1987,7 @@ bgp_delete_from_bucket(struct bgp_ptx_private * c, struct bgp_bucket *b, u32 id)
 struct bgp_prefix *
 bgp_bucket_delete_last_prefix(struct bgp_ptx_private *c, struct bgp_bucket *b)
 {
-  if ( b->last_pref_id)
+  if (b->last_pref_id)
     return bgp_delete_from_bucket(c, b, b->last_pref_id);
 
   return NULL;
@@ -1950,7 +2004,7 @@ bgp_bucket_count_pref(struct bgp_bucket *b)
     return 0;
 
   if (row_num == 1)
-    return !!b->prefixes.pref->cur;
+    return !!b->prefixes.pref->cur_buck;
 
   int ret = 0;
 
@@ -1969,7 +2023,7 @@ bgp_bucket_count_pref(struct bgp_bucket *b)
         pos = fib_nums[row_num] -1;
       }
     }
-    ret += !!row->array[pos].pref->cur;
+    ret += !!row->array[pos].pref->cur_buck;
     pos--;
   }
 
@@ -1980,7 +2034,8 @@ static void
 bgp_init_bucket_table(struct bgp_ptx_private *c)
 {
   HASH_INIT(c->bucket_hash, c->pool, 8);
-  c->bucket_slab = sl_new(c->pool, sizeof(struct bgp_bucket));
+
+  c->bucket_alloc = id_alloc_init(c->pool, sizeof(struct bgp_bucket));
 
   init_list(&c->bucket_queue);
   c->withdraw_bucket = NULL;
@@ -1996,13 +2051,16 @@ bgp_get_bucket(struct bgp_ptx_private *c, ea_list *new)
   if (b)
   {
     ea_free(ns);
+    ASSERT_DIE(b->my_id);
     return b;
   }
 
   /* Allocate the bucket */
-  b = sl_alloc(c->bucket_slab);
+  u32 id;
+  b = id_alloc_alloc(c->bucket_alloc, &id);
   *b = (struct bgp_bucket) {
     .attrs = ns,
+    .my_id = id,
   };
 
   b->last_pref_id = 0;
@@ -2013,24 +2071,22 @@ bgp_get_bucket(struct bgp_ptx_private *c, ea_list *new)
   return b;
 }
 
+
 static struct bgp_bucket *
 bgp_get_withdraw_bucket(struct bgp_ptx_private *c)
 {
-  if (!c->withdraw_bucket)
-  {
-    c->withdraw_bucket = mb_allocz(c->pool, sizeof(struct bgp_bucket));
-    c->withdraw_bucket->last_pref_id = 0;
-  }
+  ASSERT_DIE(c->withdraw_bucket);
 
   return c->withdraw_bucket;
 }
+
 
 static void
 bgp_free_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b)
 {
   HASH_REMOVE2(c->bucket_hash, RBH, c->pool, b);
   ea_free(b->attrs);
-  sl_free(b);
+  id_alloc_free(c->bucket_alloc, b->my_id);
 }
 
 int
@@ -2065,10 +2121,11 @@ bgp_withdraw_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b)
   while (px = bgp_bucket_delete_last_prefix(c, b))
   {
     log(L_ERR "%s: - withdrawing %N", p->p.name, px->ni->addr);
-    ASSERT_DIE(px->cur == b);
+    ASSERT_DIE(px->cur_buck == b->my_id);
 
     bgp_add_to_bucket(c, wb, px);
-    px->cur = wb;
+    px->cur_buck = wb->my_id;
+    ASSERT_DIE(wb->last_pref_id);
   }
 }
 
@@ -2121,7 +2178,7 @@ bgp_get_prefix(struct bgp_ptx_private *c, struct netindex *ni, struct rte_src *s
   }
 
   /* Allocate new prefix */
-  px = sl_alloc(c->prefix_slab);
+  px = sl_allocz(c->prefix_slab);
   *px = (struct bgp_prefix) {
     .src_global_id = src->global_id,
     .ni = ni,
@@ -2159,29 +2216,29 @@ bgp_update_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_b
   px->lastmod = current_time();
 
   /* Already queued for the same bucket */
-  if (px->cur == b)
+  if (px->cur_buck == b->my_id)
   {
     BPX_TRACE("already queued");
     return 0;
   }
 
   /* Unqueue from the old bucket */
-  if (px->cur)
+  if (px->cur_buck)
   {
-    bgp_delete_from_bucket(c, px->cur, px->buck_id);
-    bgp_done_bucket(c, px->cur);
+    bgp_delete_from_bucket(c, id_alloc_find(c->bucket_alloc, px->cur_buck), px->buck_id);
+    bgp_done_bucket(c, id_alloc_find(c->bucket_alloc, px->cur_buck));
   }
 
   /* The new bucket is the same as we sent before */
-  if ((px->last == b) || c->c->tx_keep && !px->last && IS_WITHDRAW_BUCKET(b))
+  if ((px->last_buck == b->my_id) || c->c->tx_keep && !px->last_buck && IS_WITHDRAW_BUCKET(b))
   {
-    if (px->cur)
+    if (px->cur_buck)
       BPX_TRACE("reverted");
     else
       BPX_TRACE("already sent");
 
     /* Well, we haven't sent anything yet */
-    if (!px->last)
+    if (!px->last_buck)
       if (px_free_later)
       {
 	/* We may not be allowed to free the prefix directly */
@@ -2205,7 +2262,7 @@ bgp_update_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_b
       else
 	bgp_free_prefix(c, px);
 
-    px->cur = NULL;
+    px->cur_buck = 0;
     return 0;
   }
 
@@ -2215,7 +2272,7 @@ bgp_update_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_b
 
   /* Enqueue to the new bucket and indicate the change */
   bgp_add_to_bucket(c, b, px);
-  px->cur = b;
+  px->cur_buck = b->my_id;
 
   BPX_TRACE("queued");
   return 1;
@@ -2242,24 +2299,27 @@ bgp_done_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_buc
     return;
 
   /* Cleanup: We're called from bucket senders. */
-  ASSERT_DIE(px->cur == buck);
+  ASSERT_DIE(px->cur_buck == buck->my_id);
 
   /* We may want to store the updates */
   if (c->c->tx_keep)
   {
     /* Nothing to be sent right now */
-    px->cur = NULL;
+    px->cur_buck = 0;
 
     /* Unref the previous sent version */
-    if (px->last)
-      if (!--px->last->px_uc)
-	bgp_done_bucket(c, px->last);
+    if (px->last_buck)
+    {
+      struct bgp_bucket *last = id_alloc_find(c->bucket_alloc, px->last_buck);
+      if (!--last->px_uc)
+	bgp_done_bucket(c, last);
+    }
 
     /* Ref the current sent version */
     if (!IS_WITHDRAW_BUCKET(buck))
     {
-      px->last = buck;
-      px->last->px_uc++;
+      px->last_buck = buck->my_id;
+      buck->px_uc++;
       return;
     }
 
@@ -2286,14 +2346,15 @@ bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *bc)
 
     HASH_WALK(c->prefix_hash, next, px)
     {
-      if (!px->cur)
+      if (!px->cur_buck)
       {
-	ASSERT_DIE(px->last);
-	struct bgp_bucket *last = px->last;
+	ASSERT_DIE(px->last_buck);
+	struct bgp_bucket *last = id_alloc_find(c->bucket_alloc, px->last_buck);
+        ASSERT_DIE(px->last_buck == last->my_id);
 
 	/* Remove the last reference, we wanna resend the route */
-	px->last->px_uc--;
-	px->last = NULL;
+	last->px_uc--;
+	px->last_buck = 0;
 
 	/* And send it once again */
 	seen += bgp_update_prefix(c, px, last, true);
@@ -2351,7 +2412,7 @@ bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, UNUSE
 
   for (struct bgp_prefix *px = chain; px; px = px->next)
     if (px->ni == ni)
-      count += !!px->last + !!px->cur;
+      count += !!px->last_buck + !!px->cur_buck;
 
   if (count)
   {
@@ -2363,22 +2424,30 @@ bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, UNUSE
     for (struct bgp_prefix *px = chain; px; px = px->next)
       if (px->ni == ni)
       {
-	if (px->cur)
+	if (px->cur_buck)
+        {
+          struct bgp_bucket *cur = id_alloc_find(c->bucket_alloc, px->cur_buck);
+          ASSERT_DIE(cur->my_id == px->cur_buck);
 	  feed->block[pos++] = (rte) {
-	    .attrs = (px->cur == c->withdraw_bucket) ? NULL : ea_free_later(ea_lookup_slow(px->cur->attrs, 0, EALS_CUSTOM)),
+	    .attrs = (px->cur_buck == c->withdraw_bucket->my_id) ? NULL : ea_free_later(ea_lookup_slow(cur->attrs, 0, EALS_CUSTOM)),
 	    .net = ni->addr,
 	    .src = rt_find_source_global(px->src_global_id),
 	    .lastmod = px->lastmod,
 	    .flags = REF_PENDING,
 	  };
+        }
 
-	if (px->last)
+	if (px->last_buck)
+        {
+          struct bgp_bucket *last = id_alloc_find(c->bucket_alloc, px->last_buck);
+          ASSERT_DIE(last->my_id == px->last_buck);
 	  feed->block[pos++] = (rte) {
-	    .attrs = (px->last == c->withdraw_bucket) ? NULL : ea_free_later(ea_lookup_slow(px->last->attrs, 0, EALS_CUSTOM)),
+	    .attrs = (px->last_buck == c->withdraw_bucket->my_id) ? NULL : ea_free_later(ea_lookup_slow(last->attrs, 0, EALS_CUSTOM)),
 	    .net = ni->addr,
 	    .src = rt_find_source_global(px->src_global_id),
 	    .lastmod = px->lastmod,
 	  };
+        }
       }
 
     ASSERT_DIE(pos == count);
@@ -2408,6 +2477,7 @@ bgp_init_pending_tx(struct bgp_channel *c)
   bgp_init_bucket_table(bpp);
   bgp_init_prefix_table(bpp);
 
+
   bpp->exporter = (struct rt_exporter) {
     .journal = {
       .loop = c->c.proto->loop,
@@ -2430,6 +2500,10 @@ bgp_init_pending_tx(struct bgp_channel *c)
   c->tx = BGP_PTX_PUB(bpp);
 
   bgp_init_prefix_allocators(bpp);
+  u32 id;
+  bpp->withdraw_bucket = id_alloc_alloc(bpp->bucket_alloc, &id);
+  memset(bpp->withdraw_bucket, 0, sizeof(struct bgp_bucket));
+  bpp->withdraw_bucket->my_id = id;
   UNLOCK_DOMAIN(rtable, dom);
 }
 
@@ -2448,6 +2522,7 @@ bgp_free_pending_tx(struct bgp_channel *bc)
 
   /* Move all prefixes to the withdraw bucket to unref the "last" prefixes */
   struct bgp_bucket *b = bgp_get_withdraw_bucket(c);
+  ASSERT_DIE(b->my_id);
 
   HASH_WALK(c->prefix_hash, next, px)
     bgp_update_prefix(c, px, b, true);
@@ -2486,8 +2561,9 @@ bgp_free_pending_tx(struct bgp_channel *bc)
   HASH_WALK_END;
 
   HASH_FREE(c->bucket_hash);
-  sl_delete(c->bucket_slab);
-  c->bucket_slab = NULL;
+  id_alloc_free(c->bucket_alloc, c->withdraw_bucket->my_id);
+  id_alloc_delete(c->bucket_alloc);
+  c->bucket_alloc = NULL;
 
   bgp_free_prefix_allocators(c);
   rp_free(c->pool);
@@ -2746,8 +2822,9 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
   path = (new ?: old)->src;
 
   /* And queue the notification */
-  if (bgp_update_prefix(c, bgp_get_prefix(c, NET_TO_INDEX(n), path, bc->add_path_tx), buck, NULL))
-    bgp_schedule_packet(p->conn, bc, PKT_UPDATE);
+  if (bgp_update_prefix(c, bgp_get_prefix(c, NET_TO_INDEX(n), path, bc->add_path_tx), buck, NULL)){
+        ASSERT_DIE(buck->last_pref_id);
+    bgp_schedule_packet(p->conn, bc, PKT_UPDATE);}
 
   if ((p->cf->tx_size_warning > 0) )
   {
