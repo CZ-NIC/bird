@@ -1751,20 +1751,8 @@ bgp_free_prefix_allocators(struct bgp_ptx_private *c)
 }
 
 void
-bgp_pref_slab_check(struct bgp_ptx_private *c)
-{
-  for (int i = 2; i < num_slabs; i++)
-  {
-    void *a = sl_alloc(c->bucket_prefix_slabs[i]);
-    ASSERT_DIE(a);
-    sl_free(a);
-  }
-}
-
-void
 bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_prefix *px)
 {
-  bgp_pref_slab_check(c);
   ASSERT_DIE(b->my_id);
 
   if (b->last_pref_id == 0)
