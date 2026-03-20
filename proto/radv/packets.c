@@ -367,6 +367,8 @@ radv_prepare_ra(struct radv_iface *ifa)
   /* Keeping track of first linger timeout */
   ifa->valid_time = TIME_INFINITY;
 
+  ifa->router_lifetime = ntohs(pkt->router_lifetime);
+
   struct radv_prefix *px;
   WALK_LIST(px, ifa->prefixes)
   {
