@@ -202,6 +202,9 @@ radv_iface_opt_list:
 radv_iface:
   radv_iface_start iface_patt_list_nopx radv_iface_opt_list radv_iface_finish;
 
+CF_CLI(SHOW RADV INTERFACES, optproto opttext, [<name>] [\"<interfaces>\"], [[Show information about RA interfaces]])
+{ PROTO_WALK_CMD($4, &proto_radv, p) radv_show_interfaces(p); };
+
 
 radv_prefix_start: net_ip6
 {

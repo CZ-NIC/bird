@@ -354,6 +354,8 @@ radv_prepare_ra(struct radv_iface *ifa)
   pkt->retrans_timer = htonl(ic->retrans_timer);
   buf += sizeof(*pkt);
 
+  ifa->router_lifetime = ntohs(pkt->router_lifetime);
+
   if (ic->link_mtu)
   {
     struct radv_opt_mtu *om = (void *) buf;
