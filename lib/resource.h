@@ -140,6 +140,15 @@ void *sl_allocz(slab *);
 void sl_free(void *);
 void sl_delete(slab *);
 
+/* Id alloc*/
+
+struct id_alloc;
+struct id_alloc *id_alloc_init(pool *pool, size_t obj_size);
+void id_alloc_delete(struct id_alloc* id_all);
+void *id_alloc_alloc(struct id_alloc* id_all, u32* id);
+void *id_alloc_find(struct id_alloc * id_all, u32 id);
+void id_alloc_free(struct id_alloc * id_all, u32 id);
+
 /*
  * Low-level memory allocation functions, please don't use
  * outside resource manager and possibly sysdep code.
