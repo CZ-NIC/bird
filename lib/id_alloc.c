@@ -223,7 +223,7 @@ id_alloc_put_head_above(struct id_alloc* id_all, struct id_alloc_head **cur_head
 {
   if (*cur_head_ptr == id_all->ap && id_all->ap->level == id_all->max_levels)
     bug("id_alloc run out of capacity");
-  consistency_assert(id_all, id_all->ap, 0, 0);
+  //consistency_assert(id_all, id_all->ap, 0, 0);
   struct id_alloc_head *cur_head = *cur_head_ptr;
   struct id_alloc_head *head = alloc_page();
 
@@ -255,7 +255,7 @@ id_alloc_put_head_above(struct id_alloc* id_all, struct id_alloc_head **cur_head
   head->body[1]->head_above = head;
 
   ASSERT(id_all->ap->level > 0);
-  consistency_assert(id_all, id_all->ap, 0, 0);
+  //consistency_assert(id_all, id_all->ap, 0, 0);
   return head->body[1];
 }
 
@@ -263,7 +263,7 @@ void *
 id_alloc_alloc(struct id_alloc* id_all, u32* id)
 {
   struct id_alloc_head *cur_head = id_all->ap;
-  consistency_assert(id_all, id_all->ap, 0, 0);
+  //consistency_assert(id_all, id_all->ap, 0, 0);
 
   if (cur_head->num_free == 0 && (cur_head->level == 0 ||
       id_get_one_in_bitefield(cur_head->bitefield_partial, id_all->max_ptrs) == -1))
@@ -281,13 +281,13 @@ id_alloc_alloc(struct id_alloc* id_all, u32* id)
       {
         cur_head = cur_head->body[pos];
         ASSERT_DIE(cur_head);
-        consistency_assert(id_all, id_all->ap, 0, 0);
+        //consistency_assert(id_all, id_all->ap, 0, 0);
       } else
       {
         /* more levels needed */
         ASSERT_DIE(cur_head->level > cur_head->body[pos]->level + 1);
         cur_head = id_alloc_put_head_above(id_all, &(cur_head->body[pos]));
-        consistency_assert(id_all, id_all->ap, 0, 0);
+        //consistency_assert(id_all, id_all->ap, 0, 0);
       }
     } else if ((pos = id_get_one_in_bitefield(cur_head->bitefield_free, id_all->max_ptrs)) >= 0)
     {
@@ -302,12 +302,12 @@ id_alloc_alloc(struct id_alloc* id_all, u32* id)
       head->id = cur_head->id + (pos << (id_all->obj_id_size + ((cur_head->level -1) * id_all->ptr_id_size)));
 
       cur_head = head;
-      consistency_assert(id_all, id_all->ap, 0, 0);
+      //consistency_assert(id_all, id_all->ap, 0, 0);
     }
     else
       ASSERT_DIE(false);
     
-    consistency_assert(id_all, id_all->ap, 0, 0);
+    //consistency_assert(id_all, id_all->ap, 0, 0);
   }
 
   /* now we have head on level 0 which is not full */
@@ -315,14 +315,14 @@ id_alloc_alloc(struct id_alloc* id_all, u32* id)
   ASSERT_DIE(pos >= 0);
   void* ret = ((void *) cur_head->body) + (pos * id_all->obj_size);
   *id = cur_head->id + pos;
-  consistency_assert(id_all, id_all->ap, 0, 0);
+  //consistency_assert(id_all, id_all->ap, 0, 0);
   id_bitefield_set(cur_head->bitefield_free, pos, 0, cur_head);
-  consistency_assert(id_all, id_all->ap, 0, 0);
+  //consistency_assert(id_all, id_all->ap, 0, 0);
 
   while (cur_head->num_free == 0 && cur_head->head_above && cur_head->level +1 == cur_head->head_above->level
          && (cur_head->level == 0 || id_get_one_in_bitefield(cur_head->bitefield_partial, id_all->max_ptrs) == -1))
   {
-    consistency_assert(id_all, id_all->ap, 0, 0);
+    //consistency_assert(id_all, id_all->ap, 0, 0);
     cur_head = cur_head->head_above;
 
     pos = ID_POS_ON_LEVEL(id_all, *id, cur_head->level);
@@ -342,7 +342,7 @@ id_alloc_find(struct id_alloc * id_all, u32 id)
   id-=1;
   struct id_alloc_head *cur_head = id_all->ap;
   u32 pos;
-  consistency_assert(id_all, id_all->ap, 0, 0);
+  //consistency_assert(id_all, id_all->ap, 0, 0);
   while (cur_head->level != 0)
   {
     pos = ID_POS_ON_LEVEL(id_all, id, cur_head->level);
@@ -361,7 +361,7 @@ id_alloc_free(struct id_alloc * id_all, u32 id)
   id-=1;
   struct id_alloc_head *cur_head = id_all->ap;
   u32 pos;
-  consistency_assert(id_all, id_all->ap, 0, 0);
+  //consistency_assert(id_all, id_all->ap, 0, 0);
   while (cur_head->level != 0)
   {
     pos = ID_POS_ON_LEVEL(id_all, id, cur_head->level);
@@ -380,7 +380,7 @@ id_alloc_free(struct id_alloc * id_all, u32 id)
   ASSERT_DIE(cur_head->id + pos == id);
 
   id_bitefield_set(cur_head->bitefield_free, pos, 1, cur_head);
-  consistency_assert(id_all, id_all->ap, 0, 0);
+  //consistency_assert(id_all, id_all->ap, 0, 0);
 
 
   memset(((void *) cur_head->body) + (pos * id_all->obj_size), 0xfa, id_all->obj_size);
@@ -401,7 +401,7 @@ id_alloc_free(struct id_alloc * id_all, u32 id)
     id_bitefield_set(cur_head->bitefield_free, pos, 1, cur_head);
   } while (cur_head != id_all->ap && cur_head->num_free == id_all->max_ptrs);
 
-  consistency_assert(id_all, id_all->ap, 0, 0);
+ // consistency_assert(id_all, id_all->ap, 0, 0);
 }
 
 

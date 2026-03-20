@@ -564,9 +564,9 @@ LOBJ_UNLOCK_CLEANUP(bgp_ptx, rtable);
 
 struct bgp_prefix {
   struct bgp_prefix *next;		/* Node in prefix hash */
+  btime lastmod;			/* Last modification of this prefix */
   u32 last_buck;		/* Last bucket sent with this prefix */
   u32 cur_buck;		/* Current bucket (cur == last) if no update is required */
-  btime lastmod;			/* Last modification of this prefix */
   u32 buck_id;			/* Node in per-bucket list */
   u32 src_global_id; //struct rte_src *src;			/* Path ID encoded as rte_src */
   struct netindex *ni;			/* Shared with the table */
@@ -579,12 +579,12 @@ union bgp_bucket_prefix {
 
 struct bgp_bucket {
   node send_node;			/* Node in send queue */
-  u32 my_id;
   struct bgp_bucket *next;		/* Node in bucket hash table */
   union bgp_bucket_prefix prefixes;			/* Prefixes to send in this bucket (struct bgp_prefix) */
+  ea_list *attrs;			/* Attributes to encode */
+  u32 my_id;
   u32 last_pref_id; /* Last byte is for row number, rest is position in the row.
                        Zero is reserved for "no prefix yet", thus rows are counted from one. */
-  ea_list *attrs;			/* Attributes to encode */
   u32 px_uc:31;				/* How many prefixes are linking this bucket */
   u32 bmp:1;				/* Temporary bucket for BMP encoding */
 };
