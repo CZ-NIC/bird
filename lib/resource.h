@@ -13,6 +13,8 @@
 #include "lib/locking.h"
 #include "lib/tlists.h"
 
+struct event_list;
+
 #include <stdarg.h>
 
 struct resmem {
@@ -129,7 +131,7 @@ void tmp_init(pool *p);
 void tmp_flush(void);
 
 
-/* Slabs */
+/* Regular Slabs */
 
 typedef struct slab slab;
 
@@ -139,14 +141,50 @@ void *sl_allocz(slab *);
 void sl_free(void *);
 void sl_delete(slab *);
 
+/* Multithreaded Slabs */
+
 typedef struct mslab mslab;
-struct event_list;
 
 mslab *msl_new(pool *p, struct event_list *cleanup_ev_list, uint size);
 void *msl_alloc(mslab *);
 void *msl_allocz(mslab *);
 void msl_free(void *);
 void msl_delete(mslab *);
+
+/* Indexed Slabs */
+
+typedef struct islab islab;
+struct isl_block {
+  void *ptr;
+  u32 id;
+};
+
+islab *isl_new(pool *pool, size_t obj_size);
+bool isl_feasible(size_t size);
+void isl_delete(islab *isl);
+struct isl_block isl_alloc(islab *isl);
+struct isl_block isl_allocz(islab *isl);
+void *isl_find_id(const islab *isl, u32 id);
+u32 isl_find_ptr(const islab *isl, void *ptr);
+void isl_free_id(islab *isl, u32 id);
+void isl_free_ptr(islab *isl, void *ptr);
+
+#define ISL_ALLOC(_t, _idmember, _isl) ({ \
+    struct isl_block _b = isl_alloc(_isl); \
+    _t *_v = _b.ptr; \
+    _v->_idmember = _b.id; \
+    _v; })
+
+#define ISL_ALLOCZ(_t, _idmember, _isl) ({ \
+    struct isl_block _b = isl_allocz(_isl); \
+    _t *_v = _b.ptr; \
+    _v->_idmember = _b.id; \
+    _v; })
+
+#define isl_find(_isl, _item) (_Generic((_item), u32: isl_find_id, default: isl_find_ptr)(_isl, _item))
+
+
+/* Auxiliary slab functions */
 
 uint sl_obj_count(const uint total_size, const uint fixed_overhead, const uint obj_size, const uint bits);
 

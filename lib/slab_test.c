@@ -162,6 +162,7 @@ t_slab(const void *data)
   }
 
   mb_free(block);
+  rfree(s);
   return 1;
 }
 int main(int argc, char *argv[])
