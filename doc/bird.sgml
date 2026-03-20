@@ -1424,6 +1424,9 @@ This argument can be omitted if there exists only a single instance.
 	Show contents of an OSPF LSA database. Options could be used to filter
 	entries.
 
+	<tag><label id="cli-show-radv-interfaces">show radv interfaces [<m/name/] ["<m/interface/"]</tag>
+	Show detailed information about RAdv interfaces and associated state.
+
 	<tag><label id="cli-show-rip-interfaces">show rip interfaces [<m/name/] ["<m/interface/"]</tag>
 	Show detailed information about RIP interfaces.
 

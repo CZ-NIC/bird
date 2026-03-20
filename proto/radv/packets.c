@@ -346,7 +346,7 @@ radv_prepare_ra(struct radv_iface *ifa)
   pkt->checksum = 0;
   pkt->current_hop_limit = ic->current_hop_limit;
   pkt->router_lifetime = (p->valid && (p->active || !ic->default_lifetime_sensitive)) ?
-    htons(ic->default_lifetime) : 0;
+    htonl(ic->default_lifetime) : 0;
   pkt->flags = (ic->managed ? OPT_RA_MANAGED : 0) |
     (ic->other_config ? OPT_RA_OTHER_CFG : 0) |
     (pkt->router_lifetime ? ic->default_preference : 0);
@@ -366,6 +366,8 @@ radv_prepare_ra(struct radv_iface *ifa)
 
   /* Keeping track of first linger timeout */
   ifa->valid_time = TIME_INFINITY;
+
+  ifa->router_lifetime = ntohl(pkt->router_lifetime);
 
   struct radv_prefix *px;
   WALK_LIST(px, ifa->prefixes)
