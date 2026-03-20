@@ -1732,22 +1732,35 @@ HASH_DEFINE_REHASH_FN(RBH, struct bgp_bucket)
 #define BUCKET_PREFIX_ROW(a)    a & 0xff
 #define BUCKET_PREFIX_POS(a)    a >> 8
 #define PREFIX_ID(r, p)         r + (p << 8)
-const u32 fib_nums[] = {1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181,
+
+static uint bgp_max_slab_row;
+static const u32 fib_nums[] = {1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181,
         6765, 10946, 17711, 28657, 46368, 75025, 121393, 196418, 317811, 514229, 832040, 1346269,
         2178309, 3524578, 5702887, 9227465, 14930352, 24157817, 39088169, 63245986, 102334155, 165580141};
 
 static void
 bgp_init_prefix_allocators(struct bgp_ptx_private *c)
 {
-  for (int i = 2; i < num_slabs; i++)
-    c->bucket_prefix_slabs[i] = sl_new(c->pool, birdloop_event_list(c->c->c.proto->loop), sizeof(union bgp_bucket_prefix*) * fib_nums[i]);
+  if (!bgp_max_slab_row)
+  {
+    uint bgp_max_slabs = page_size / (sizeof (void *)*3);
+
+    for (uint i = 2; fib_nums[i] < bgp_max_slabs; i++)
+      bgp_max_slab_row = i;
+  }
+
+  c->bucket_prefix_slabs = mb_allocz(c->pool, sizeof(struct slab *) * bgp_max_slab_row);
+  c->bucket_prefix_slabs[2] = sl_new(c->pool, birdloop_event_list(c->c->c.proto->loop), sizeof(union bgp_bucket_prefix*) * fib_nums[2]);
 }
 
 static void
 bgp_free_prefix_allocators(struct bgp_ptx_private *c)
 {
-  for (int i = 2; i < num_slabs; i++)
-    sl_delete(c->bucket_prefix_slabs[i]);
+  for (uint i = 2; i < bgp_max_slab_row; i++)
+    if (c->bucket_prefix_slabs[i])
+      sl_delete(c->bucket_prefix_slabs[i]);
+
+  mb_free(c->bucket_prefix_slabs);
 }
 
 void
@@ -1768,8 +1781,10 @@ bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_pr
     /* special case - we need to move the first prefix to the new row */
     struct bgp_prefix *first_pref = b->prefixes.pref;
     if (c)
+      /* The first slab is inited in advance */
       b->prefixes.array = sl_alloc(c->bucket_prefix_slabs[2]);
     else
+      /* Bmp hack */
       b->prefixes.array = tmp_alloc(sizeof(union bgp_bucket_prefix)*2);
     b->prefixes.array[0].pref = first_pref;
     first_pref->buck_id = 2;
@@ -1801,8 +1816,13 @@ bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_pr
   union bgp_bucket_prefix new_row;
   row_num++;
 
-  if (row_num < num_slabs && c)
+  if (row_num < bgp_max_slab_row && c)
+  {
+    if (!c->bucket_prefix_slabs[row_num])
+      c->bucket_prefix_slabs[row_num] = sl_new(c->pool, birdloop_event_list(c->c->c.proto->loop), sizeof(union bgp_bucket_prefix*) * fib_nums[row_num]);
+
     new_row.array = sl_alloc(c->bucket_prefix_slabs[row_num]);
+  }
   else
   {
     if (!b->prefixes.array[1].array)
@@ -1887,7 +1907,7 @@ bgp_delete_from_bucket(struct bgp_ptx_private * c, struct bgp_bucket *b, u32 id)
   }
   else
   {
-    if (buck_row_num < num_slabs && buck_pos == 1)
+    if (buck_row_num < bgp_max_slab_row && buck_pos == 1)
     {
       /* The last row will be freed */
       b->prefixes.array = row.array[0].array;
