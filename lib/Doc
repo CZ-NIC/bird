@@ -8,5 +8,6 @@ D resource.sgml
 S resource.c
 S mempool.c
 S slab.c
+S id_alloc.c
 S event.c
 S ../sysdep/unix/io.c
