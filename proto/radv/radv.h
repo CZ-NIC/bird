@@ -194,6 +194,7 @@ struct radv_iface
   list prefixes;		/* The prefixes we advertise (struct radv_prefix) */
   btime prune_time;		/* Next time of prefix list pruning */
   btime valid_time;		/* Cached packet is valid until first linger timeout */
+  uint router_lifetime;
 
   timer *timer;
   struct object_lock *lock;
@@ -235,6 +236,7 @@ static inline void radv_invalidate(struct radv_iface *ifa)
 void radv_iface_notify(struct radv_iface *ifa, int event);
 void radv_announce_nbr(struct radv_proto *p, const net_addr *n, uint lifetime);
 void radv_withdraw_nbr(struct radv_proto *p, const net_addr *n);
+void radv_show_interfaces(struct proto *P);
 
 /* packets.c */
 int radv_process_domain(struct radv_dnssl_config *cf);

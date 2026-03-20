@@ -847,6 +847,30 @@ radv_copy_config(struct proto_config *dest, struct proto_config *src)
   cfg_copy_list(&d->pref_list, &s->pref_list, sizeof(struct radv_prefix_config));
 }
 
+void
+radv_show_interfaces(struct proto *P)
+{
+  struct radv_proto *p = SKIP_BACK(struct radv_proto, p, P);
+  struct radv_iface *ifa = NULL;
+
+  if (p->p.proto_state != PS_UP)
+  {
+    cli_msg(-1028, "%s: is not up", p->p.name);
+    return;
+  }
+
+  cli_msg(-1028, "%s:", p->p.name);
+  cli_msg(-1028, "%-10s %-16s %-13s %-16s", "Interface", "Router lifetime", "Last RA", "Time to next RA");
+
+  WALK_LIST(ifa, p->iface_list)
+  {
+    byte tbuf[TM_DATETIME_BUFFER_SIZE] = { 0 };
+    tm_format_time(tbuf, (this_cli->tf ?: &config->tf_proto), ifa->last);
+
+    cli_msg(-1028, "%-10s %-16u %-13s %t", ifa->iface->name, ifa->router_lifetime, tbuf, tm_remains(ifa->timer));
+  }
+}
+
 static void
 radv_get_status(struct proto *P, byte *buf)
 {
