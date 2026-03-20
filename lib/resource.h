@@ -148,6 +148,16 @@ void *msl_allocz(mslab *);
 void msl_free(void *);
 void msl_delete(mslab *);
 
+/* Id alloc*/
+
+struct id_alloc;
+struct id_alloc *id_alloc_init(pool *pool, size_t obj_size);
+void id_alloc_delete(struct id_alloc* id_all);
+void *id_alloc_alloc(struct id_alloc* id_all, u32* id);
+void *id_alloc_find(struct id_alloc * id_all, u32 id);
+void id_alloc_free(struct id_alloc * id_all, u32 id);
+void id_alloc_free_ptr(struct id_alloc *id_all, void *ptr);
+
 /*
  * Low-level memory allocation functions, please don't use
  * outside resource manager and possibly sysdep code.
