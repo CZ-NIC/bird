@@ -396,6 +396,10 @@ krt_got_route(struct krt_proto *p, rte *e, s8 src)
     }
 #endif
 
+  /* Do not do anything when graceful-recovering */
+  if (p->p.gr_recovery)
+    return;
+
   /* The rest is for KRT_SRC_BIRD (or KRT_SRC_UNKNOWN) */
 
   /* Get the exported version */
@@ -454,7 +458,7 @@ krt_init_scan(struct krt_proto *p)
   {
     case KPS_INIT:
       rt_refresh_begin(&p->p.main_channel->in_req);
-      p->sync_state = KPS_FIRST_SCAN;
+      p->sync_state = p->p.gr_recovery ? KPS_LEARNING : KPS_FIRST_SCAN;
       return 1;
 
     case KPS_IDLE:
@@ -929,10 +933,7 @@ krt_start(struct proto *P)
   krt_scan_timer_start(p);
 
   if (p->p.gr_recovery && KRT_CF->graceful_restart)
-  {
     p->p.main_channel->gr_wait = 1;
-    p->sync_state = KPS_IDLE;
-  }
 
   return PS_UP;
 }
