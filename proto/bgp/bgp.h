@@ -546,7 +546,7 @@ struct bgp_ptx_private {
   HASH(struct bgp_prefix) prefix_hash;	/* Hash table of pending prefices */
 
   slab *prefix_slab;			/* Slab holding prefix nodes */
-  slab *bucket_slab;			/* Slab holding buckets to send */
+  struct id_alloc *bucket_alloc;
   struct slab *bucket_prefix_slabs[num_slabs]; /* slabs holding prefixes inside buckets */
   struct px_free_later free_later; /* Make bgp_update_prefix() freeing prefixes simple and quick without safer HASH function. */
 
@@ -564,8 +564,8 @@ LOBJ_UNLOCK_CLEANUP(bgp_ptx, rtable);
 
 struct bgp_prefix {
   struct bgp_prefix *next;		/* Node in prefix hash */
-  struct bgp_bucket *last;		/* Last bucket sent with this prefix */
-  struct bgp_bucket *cur;		/* Current bucket (cur == last) if no update is required */
+  u32 last_buck;		/* Last bucket sent with this prefix */
+  u32 cur_buck;		/* Current bucket (cur == last) if no update is required */
   btime lastmod;			/* Last modification of this prefix */
   u32 buck_id;			/* Node in per-bucket list */
   u32 src_global_id; //struct rte_src *src;			/* Path ID encoded as rte_src */
@@ -579,6 +579,7 @@ union bgp_bucket_prefix {
 
 struct bgp_bucket {
   node send_node;			/* Node in send queue */
+  u32 my_id;
   struct bgp_bucket *next;		/* Node in bucket hash table */
   union bgp_bucket_prefix prefixes;			/* Prefixes to send in this bucket (struct bgp_prefix) */
   u32 last_pref_id; /* Last byte is for row number, rest is position in the row.
