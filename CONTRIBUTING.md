@@ -84,6 +84,8 @@ messy and you may need some help with it. We're planning to move the Netlab
 suite into the main git repository; after we do that, we'll require every
 contribution to add tests (if applicable, of course).
 
+These automatic tests are used by our [CI](misc/gitlab/).
+
 ## Crediting policy
 
 The credits are scattered over all the source code files; in the commentary
