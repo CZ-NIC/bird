@@ -9,6 +9,78 @@
 #####                                                 #####
 ###########################################################
 
+spec:
+  inputs:
+    netlab:
+      description: "Manually run netlab tests"
+      type: boolean
+      default: false
+    build:
+      description: "Manually run build tests"
+      type: boolean
+      default: false
+    packages:
+      description: "Manually run packaging (will run also build tests anyway)"
+      type: boolean
+      default: false
+    docker-all:
+      description: "Rebuild all dockers"
+      type: boolean
+      default: false
+    docker-regex:
+      description: "Rebuild dockers matching this regex"
+      type: string
+      default: 'NOTHING' # this is another hack because of gitlab syntax quirks
+    docker-one:
+      description: "Rebuild this one docker (keep empty for none)"
+      type: string
+      default: ''
+      options:
+      - ''
+      - docbuilder
+      - centos-7-amd64
+      - centos-8-amd64
+      - rocky-08-amd64
+      - rocky-09-amd64
+      - oracle-08-amd64
+      - oracle-09-amd64
+      - oracle-10-amd64
+      - opensuse-15.0-amd64
+      - opensuse-15.1-amd64
+      - opensuse-15.2-amd64
+      - opensuse-15.3-amd64
+      - opensuse-15.4-amd64
+      - opensuse-15.5-amd64
+      - opensuse-16.0-amd64
+      - fedora-32-amd64
+      - fedora-33-amd64
+      - fedora-34-amd64
+      - fedora-35-amd64
+      - fedora-36-amd64
+      - fedora-37-amd64
+      - fedora-38-amd64
+      - fedora-39-amd64
+      - fedora-40-amd64
+      - fedora-41-amd64
+      - fedora-42-amd64
+      - fedora-43-amd64
+      - debian-11-amd64
+      - debian-11-i386
+      - debian-12-amd64
+      - debian-12-i386
+      - debian-13-amd64
+      - debian-13-i386
+      - debian-testing-amd64
+      - debian-testing-i386
+      - ubuntu-18.04-amd64
+      - ubuntu-20.04-amd64
+      - ubuntu-22.04-amd64
+      - ubuntu-24.04-amd64
+      - ubuntu-25.04-amd64
+      - ubuntu-25.10-amd64
+
+---
+
 variables:
   DEBIAN_FRONTEND: noninteractive
   LC_ALL: C.UTF-8
@@ -26,23 +98,73 @@ stages:
   - install
   - test
 
-## Common rules
+## Common rule snippets
+
+# Note: We would love to just write "if: $[[ inputs.packages ]]"
+# but that's impossible because the value is expected to be a string.
+#
+# Should be fixable by several lines in
+# lib/gitlab/ci/pipeline/expression/statement.rb
+# but I don't have time to do that contribution to gitlab now.## Common rules
 # Ignore WIP commits
 .never-wip: &never-wip
-  if: $CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/
+  if: ($CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/)
   when: never
-# Run for stable branches
-.if-stable: &if-stable
-  if: ($CI_COMMIT_BRANCH =~ /^(stable-.*|thread-next|master)$/ || $CI_PIPELINE_SOURCE == "merge_request_event")
-  when: always
+
+# Do not run for development branches
+.never-dev: &never-dev
+  if: ($CI_COMMIT_BRANCH !~ /^(stable-.*|thread-next|master)$/)
+  when: never
+
 # Do run for tags
 .if-tag: &if-tag
   if: $CI_COMMIT_TAG
-  when: always
+
 # Never run for tags
 .never-tag: &never-tag
   if: $CI_COMMIT_TAG
   when: never
+
+.default-rules:
+# Manual, API and Scheduled jobs have an explicit input setting.
+# Do not run anything unless explicitly requested for these.
+  - if: '($CI_PIPELINE_SOURCE == "web")'
+    when: never
+  - if: '($CI_PIPELINE_SOURCE == "api")'
+    when: never
+  - if: '($CI_PIPELINE_SOURCE == "schedule")'
+    when: never
+# Do not run anything for WIP commits
+  - if: '($CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/)'
+    when: never
+# Tags only happen on releases, don't run full automation
+  - if: '$CI_COMMIT_TAG'
+    when: never
+  - when: on_success
+
+## Pipeline information dump
+pipeline-infodump:
+  stage: consistency
+  image: registry.nic.cz/labs/bird:docbuilder
+  script:
+  - |
+    echo "### Variables ###"
+    echo "\$CI_JOB_ID = $CI_JOB_ID"
+    echo "\$CI_COMMIT_SHA = $CI_COMMIT_SHA"
+    echo "\$CI_COMMIT_BRANCH = $CI_COMMIT_BRANCH"
+    echo "\$CI_COMMIT_TAG = $CI_COMMIT_TAG"
+    echo "\$CI_COMMIT_MESSAGE = $CI_COMMIT_MESSAGE"
+    echo "\$CI_PIPELINE_SOURCE = $CI_PIPELINE_SOURCE"
+    echo "\$CI_MERGE_REQUEST_IID = $CI_MERGE_REQUEST_IID"
+    echo
+    echo "### Inputs ###"
+    echo "Netlab: $[[ inputs.netlab ]]"
+    echo "Build: $[[ inputs.build ]]"
+    echo "Packages: $[[ inputs.packages ]]"
+    echo "Docker all: $[[ inputs.docker-all ]]"
+    echo "Docker regex: $[[ inputs.docker-regex ]]"
+    echo "Docker one: $[[ inputs.docker-one ]]"
+
 
 ## Consistency checks for stable branches
 commit-messages:
@@ -51,7 +173,8 @@ commit-messages:
   script:
   - tools/git-check-commits
   rules:
-  - *if-stable
+  - if: '($CI_COMMIT_BRANCH =~ /^(stable-.*|thread-next|master)$/)'
+    when: on_success
   - when: never
 
 ## Tag check
@@ -71,15 +194,9 @@ tag-collect:
       - pkg/pkgs/*
       - pkg/srcpkgs/*
   rules:
-  - *if-tag
+  - if: '$CI_COMMIT_TAG'
+    when: on_success
   - when: never
-
-## Default test job rules
-.test-job: &test-job
-  rules:
-  - *never-wip
-  - *never-tag
-  - when: always
 
 ############################
 ## Docker builder rebuild ##
@@ -108,231 +225,539 @@ tag-collect:
   tags:
   # That's Docker in Docker
   - dind
-  rules:
-    # Never rebuild for WIP commits
-  - *never-wip
-
-    # Never rebuild for tags
-  - if: '$CI_COMMIT_TAG'
-    when: never
-
-    # Never rebuild for new branches
-  - if: $CI_COMMIT_BEFORE_SHA == "0000000000000000000000000000000000000000"
-    when: never
-
-    # Do any change in Dockerfile (e.g. change a comment) to rebuild the image
-    # FIXME: This probably belongs to bird-tools instead, we may end up with
-    # screwed up docker repository in case of colliding image updates
-  - changes:
-    - misc/docker/$IMG_NAME/Dockerfile
-    when: always
-
-  - when: never
 
 
 docker-docbuilder:
   variables:
     IMG_NAME: "docbuilder"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"docbuilder" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"docbuilder" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-centos-7-amd64:
   variables:
     IMG_NAME: "centos-7-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"centos-7-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"centos-7-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-centos-8-amd64:
   variables:
     IMG_NAME: "centos-8-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"centos-8-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"centos-8-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-rocky-08-amd64:
   variables:
     IMG_NAME: "rocky-08-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"rocky-08-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"rocky-08-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-rocky-09-amd64:
   variables:
     IMG_NAME: "rocky-09-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"rocky-09-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"rocky-09-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-oracle-08-amd64:
   variables:
     IMG_NAME: "oracle-08-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"oracle-08-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"oracle-08-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-oracle-09-amd64:
   variables:
     IMG_NAME: "oracle-09-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"oracle-09-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"oracle-09-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-oracle-10-amd64:
   variables:
     IMG_NAME: "oracle-10-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"oracle-10-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"oracle-10-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-opensuse-15.0-amd64:
   variables:
     IMG_NAME: "opensuse-15.0-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"opensuse-15.0-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"opensuse-15.0-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-opensuse-15.1-amd64:
   variables:
     IMG_NAME: "opensuse-15.1-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"opensuse-15.1-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"opensuse-15.1-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-opensuse-15.2-amd64:
   variables:
     IMG_NAME: "opensuse-15.2-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"opensuse-15.2-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"opensuse-15.2-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-opensuse-15.3-amd64:
   variables:
     IMG_NAME: "opensuse-15.3-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"opensuse-15.3-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"opensuse-15.3-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-opensuse-15.4-amd64:
   variables:
     IMG_NAME: "opensuse-15.4-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"opensuse-15.4-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"opensuse-15.4-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-opensuse-15.5-amd64:
   variables:
     IMG_NAME: "opensuse-15.5-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"opensuse-15.5-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"opensuse-15.5-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-opensuse-16.0-amd64:
   variables:
     IMG_NAME: "opensuse-16.0-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"opensuse-16.0-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"opensuse-16.0-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-fedora-32-amd64:
   variables:
     IMG_NAME: "fedora-32-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"fedora-32-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"fedora-32-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-fedora-33-amd64:
   variables:
     IMG_NAME: "fedora-33-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"fedora-33-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"fedora-33-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-fedora-34-amd64:
   variables:
     IMG_NAME: "fedora-34-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"fedora-34-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"fedora-34-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-fedora-35-amd64:
   variables:
     IMG_NAME: "fedora-35-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"fedora-35-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"fedora-35-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-fedora-36-amd64:
   variables:
     IMG_NAME: "fedora-36-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"fedora-36-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"fedora-36-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-fedora-37-amd64:
   variables:
     IMG_NAME: "fedora-37-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"fedora-37-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"fedora-37-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-fedora-38-amd64:
   variables:
     IMG_NAME: "fedora-38-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"fedora-38-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"fedora-38-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-fedora-39-amd64:
   variables:
     IMG_NAME: "fedora-39-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"fedora-39-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"fedora-39-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-fedora-40-amd64:
   variables:
     IMG_NAME: "fedora-40-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"fedora-40-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"fedora-40-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-fedora-41-amd64:
   variables:
     IMG_NAME: "fedora-41-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"fedora-41-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"fedora-41-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-fedora-42-amd64:
   variables:
     IMG_NAME: "fedora-42-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"fedora-42-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"fedora-42-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-fedora-43-amd64:
   variables:
     IMG_NAME: "fedora-43-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"fedora-43-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"fedora-43-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-debian-11-amd64:
   variables:
     IMG_NAME: "debian-11-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"debian-11-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"debian-11-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-debian-11-i386:
   variables:
     IMG_NAME: "debian-11-i386"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"debian-11-i386" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"debian-11-i386" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-debian-12-amd64:
   variables:
     IMG_NAME: "debian-12-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"debian-12-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"debian-12-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-debian-12-i386:
   variables:
     IMG_NAME: "debian-12-i386"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"debian-12-i386" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"debian-12-i386" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-debian-13-amd64:
   variables:
     IMG_NAME: "debian-13-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"debian-13-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"debian-13-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-debian-13-i386:
   variables:
     IMG_NAME: "debian-13-i386"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"debian-13-i386" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"debian-13-i386" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-debian-testing-amd64:
   variables:
     IMG_NAME: "debian-testing-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"debian-testing-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"debian-testing-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-debian-testing-i386:
   variables:
     IMG_NAME: "debian-testing-i386"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"debian-testing-i386" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"debian-testing-i386" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-ubuntu-18.04-amd64:
   variables:
     IMG_NAME: "ubuntu-18.04-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"ubuntu-18.04-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"ubuntu-18.04-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-ubuntu-20.04-amd64:
   variables:
     IMG_NAME: "ubuntu-20.04-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"ubuntu-20.04-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"ubuntu-20.04-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-ubuntu-22.04-amd64:
   variables:
     IMG_NAME: "ubuntu-22.04-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"ubuntu-22.04-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"ubuntu-22.04-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-ubuntu-24.04-amd64:
   variables:
     IMG_NAME: "ubuntu-24.04-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"ubuntu-24.04-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"ubuntu-24.04-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-ubuntu-25.04-amd64:
   variables:
     IMG_NAME: "ubuntu-25.04-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"ubuntu-25.04-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"ubuntu-25.04-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 docker-ubuntu-25.10-amd64:
   variables:
     IMG_NAME: "ubuntu-25.10-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"ubuntu-25.10-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"ubuntu-25.10-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
   <<: *docker-build
 
 
@@ -345,9 +770,16 @@ docker-ubuntu-25.10-amd64:
 # Now we compile and run unit tests ... in every single distribution.
 # Every task needs its docker, see above.
 
+.build-base-rules:
+  - if: '"$[[ inputs.build ]]" == "true"'
+  - if: '"$[[ inputs.packages ]]" == "true"'
+  - !reference [ .default-rules ]
+
+
 .build: &build-base
-  <<: *test-job
   stage: build
+  rules:
+    - !reference [ .build-base-rules ]
   script:
     - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
     - tools/version && ( echo -n "BIRD version "; tools/version ) > version-expected
@@ -679,7 +1111,6 @@ build-ubuntu-25.10-amd64:
 ## A special task for preparing the release archives ##
 #######################################################
 build-release:
-  <<: *test-job
   image: registry.nic.cz/labs/bird:docbuilder
   needs: 
     - job: docker-docbuilder
@@ -699,6 +1130,7 @@ build-release:
       - obj/doc/bird-singlepage.html
       - bird-*.tar.gz
     expire_in: 1 day
+  rules: !reference [ .build-base-rules ]
 
 # Packaging rules
 # As we support some ancient versions of different distributions,
@@ -707,8 +1139,15 @@ build-release:
 #
 # We do NOT build separate documentation packages in these rules.
 
+.pkg-base: &pkg-base
+  rules:
+  - if: '"$[[ inputs.packages ]]" == "true"'
+  - if: '($CI_COMMIT_BRANCH !~ /^(stable-.*|thread-next|master)$/)'
+    when: never
+  - !reference [ .default-rules ]
+
 .pkg-deb: &pkg-deb
-  <<: *test-job
+  <<: *pkg-base
   stage: pkg
   script:
     - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
@@ -719,7 +1158,7 @@ build-release:
       - pkg/srcpkgs/*
 
 .pkg-rpm: &pkg-rpm
-  <<: *test-job
+  <<: *pkg-base
   stage: pkg
   script:
     - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
@@ -1058,7 +1497,7 @@ pkg-ubuntu-25.10-amd64:
 ## Package installability checks
 
 .install-deb: &install-deb
-  <<: *test-job
+  <<: *pkg-base
   stage: install
   script:
     # check that bird is _not_ installed now and no user or group bird exists
@@ -1081,7 +1520,7 @@ pkg-ubuntu-25.10-amd64:
     - ./tools/test-install "$CI_COMMIT_MESSAGE"
 
 .install-rpm: &install-rpm
-  <<: *test-job
+  <<: *pkg-base
   stage: install
   script:
     # check that bird is _not_ installed now and no user or group bird exists
@@ -1564,8 +2003,13 @@ partial-build-linux-static:
 ## Netlab functionality tests ##
 ################################
 
+.netlab-rules: &netlab-rules
+  rules:
+    - if: '"$[[ inputs.netlab ]]" == "true"'
+    - !reference [ .default-rules ]
+
 build-netlab:
-  <<: *test-job
+  <<: *netlab-rules
   stage: build
   variables:
     BDIR: build-netlab
@@ -1586,7 +2030,7 @@ build-netlab:
     expire_in: 2 hours
 
 .netlab-test: &test-base
-  <<: *test-job
+  <<: *netlab-rules
   stage: test
   needs: [build-netlab]
   tags:
