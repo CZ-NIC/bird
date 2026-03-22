@@ -13,6 +13,8 @@ Where to add your favourite Linux distribution:
 - add your distribution into the `distros` list in `misc/gitlab/data.yml.j2`
 - run `make gitlab-local` or `make gitlab-venv` to rebuild `.gitlab-ci.yml`
 
+Rebuilding the docker images is done by triggering the appropriate pipeline manually in Gitlab.
+
 ## Debian-based distributions
 
 We support Debian between oldoldstable and testing. If not, poke us.

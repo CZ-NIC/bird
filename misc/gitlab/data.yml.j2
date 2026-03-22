@@ -1,7 +1,8 @@
-# Note: 
-# If you change a dockerfile as a first commit on a new branch, 
-# it will not trigger the image rebuild on a push. 
-# For that you need to push another commit. Have fun!
+# Regex denoting stable branches for which we want to build packages
+stable_branch_regex: '^(stable-.*|thread-next|master)$'
+
+# Note: Dockerfiles must be rebuilt by manually triggering the pipeline
+# with an appropriate input via https://gitlab.nic.cz/labs/bird/-/pipelines/new
 
 distros:
   # CentOS 7 with quite some hacks
