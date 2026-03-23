@@ -194,6 +194,19 @@ pipeline-infodump:
     echo "Docker regex: $[[ inputs.docker-regex ]]"
     echo "Docker one: $[[ inputs.docker-one ]]"
 
+## Pipeline consistency check
+pipeline-uptodate:
+  stage: consistency
+  image: registry.nic.cz/labs/bird:docbuilder
+  script:
+  - autoreconf -i
+  - ./configure
+  - touch misc/gitlab/template.yml.j2
+  - make gitlab-venv
+  - git status --porcelain
+  - git diff --exit-code
+  rules:
+  - !reference [ .default-rules ]
 
 ## Consistency checks for stable branches
 commit-messages:
