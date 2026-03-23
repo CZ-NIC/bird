@@ -11,39 +11,113 @@ distros:
       LC_ALL: en_US.UTF-8
       CC: /opt/rh/devtoolset-8/root/usr/bin/gcc
     type: rpm
+    docker: static
 
   - name: centos-8-amd64
     type: rpm
+    docker:
+      parent: 'centos:8'
+      installer: yum -y
+      alternative_lsb: redhat-lsb-core
+      systemd: false
+      preinstall: |
+        # Has to be done for yum to work properly. CentOS 8 is EOL.
+        RUN sed -i s/mirror.centos.org/vault.centos.org/g /etc/yum.repos.d/CentOS-*.repo
+        RUN sed -i s/^#.*baseurl=http/baseurl=http/g /etc/yum.repos.d/CentOS-*.repo
+        RUN sed -i s/^mirrorlist=http/#mirrorlist=http/g /etc/yum.repos.d/CentOS-*.repo
 
   # Rocky and Oracle Linux, forks of CentOS/RHEL
-  {% for num in ('08','09') -%}
+  # check latest supported version at https://wiki.rockylinux.org/rocky/version/#__tabbed_1_2
+  {% for inum,snum in ((8,10),(9,5)) -%}
+  {% if inum >= 10 %}{% set num = inum ~ "" %}{% else %}{% set num = "0" ~ inum %}{% endif -%}
   - name: rocky-{{ num }}-amd64
     type: rpm
+    docker:
+      parent: 'rockylinux/rockylinux:{{ inum }}.{{snum}}'
+      installer: yum -y
+      {%- if num == "08" %}
+      alternative_lsb: redhat-lsb-core
+      systemd: false
+      {%- else %}
+      systemd: true
+      faketime: true
+      preinstall: 'RUN dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-{{ inum }}.noarch.rpm'
+      {%- endif %}
   {% endfor %}
-  {% for num in ('08','09','10') -%}
+  {% for inum in (8,9,10) -%}
+  {% if inum >= 10 %}{% set num = inum ~ "" %}{% else %}{% set num = "0" ~ inum %}{% endif -%}
   - name: oracle-{{ num }}-amd64
     type: rpm
+    docker:
+      parent: 'oraclelinux:{{ inum }}'
+      installer: yum -y
+      {%- if num == "08" %}
+      alternative_lsb: redhat-lsb-core
+      systemd: false
+      {%- else %}
+      systemd: true
+      faketime: true
+      preinstall: 'RUN dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-{{ inum }}.noarch.rpm'
+      {%- endif %}
   {% endfor %}
 
   # Last 7 years of OpenSUSE
   {% for num in (0,1,2,3,4,5) -%}
   - name: opensuse-15.{{ num }}-amd64
     type: rpm
+    docker:
+      parent: 'opensuse/leap:15.{{num}}'
+      installer: zypper -n
+      pkgconfig: true
+      systemd: true
+      faketime: lib
+      sysuser: true
   {% endfor %}
-  - name: opensuse-16.0-amd64
+  {% for num in (0,) -%}
+  - name: opensuse-16.{{ num }}-amd64
     type: rpm
+    docker:
+      parent: 'opensuse/leap:16.{{num}}'
+      installer: zypper -n
+      pkgconfig: true
+      systemd: true
+      faketime: lib
+      sysuser: true
+  {% endfor %}
 
   # Last 12 versions of Fedora
   {% for num in (32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43) -%}
   - name: fedora-{{ num }}-amd64
     type: rpm
+    docker:
+      parent: fedora:{{ num }}
+      installer: dnf -y
+      pkgconfig: true
+      faketime: true
+      {%- if num <= 36 %}
+      alternative_lsb: redhat-lsb-core
+      {%- endif %}
+      {%- if num > 32 %}
+      systemd: true
+      {%- endif %}
+
   {% endfor %}
 
   # Debian from oldoldstable up to testing
-  {% for num in (11, 12, 13, 'testing') -%}
+  {% for num, codename in (
+    (11, "bullseye"),
+    (12, "bookworm"),
+    (13, "trixie"),
+    ("testing", "testing")
+    ) -%}
   {% for arch in ('amd64', 'i386') -%}
   - name: debian-{{num}}-{{arch}}
     type: deb
+    shortname: debian
+    docker:
+      parent: {{ arch }}/debian:{{ codename }}-slim
+      libssh_kind: {% if (num != "testing") and (num < 13) %}libssh-gcrypt{% else %}libssh{% endif %}
+      needs_adduser: {% if (num != "testing") and (num < 13) %}false{% else %}true{% endif %}
   {% endfor %}
   {% endfor %}
 
@@ -51,6 +125,11 @@ distros:
   {% for num in ('18.04', '20.04', '22.04', '24.04', '25.04', '25.10') -%}
   - name: ubuntu-{{ num }}-amd64
     type: deb
+    shortname: ubuntu
+    docker:
+      parent: "ubuntu:{{ num }}"
+      libssh_kind: {% if (num[:2] | int) < 25 %}libssh-gcrypt{% else %}libssh{% endif %}
+      needs_adduser: {% if (num[:2] | int) > 22 %}true{% else %}false{% endif %}
   {% endfor %}
 
 birdlab:
