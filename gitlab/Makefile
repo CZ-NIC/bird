@@ -4,9 +4,24 @@
 #$(s)%.yml: $(s)pipeline.py $(s)%.yml.j2 $(s)data.yml.j2
 .gitlab-ci.yml: $(s)pipeline.py $(s)template.yml.j2 $(s)data.yml.j2
 	python3 $^ > $@
+	@if grep -n '	' $@; then echo "Found a tab in yaml output!"; false; fi
 
 #gitlab-local: $(patsubst %,$(s)%.yml,$(GITLAB_SECTIONS))
 gitlab-local: .gitlab-ci.yml
+
+# Conditionally include Dockerfile build but only if required
+ifneq ($(filter gitlab-docker $(s)docker,$(MAKECMDGOALS)),)
+$(s)docker/%/Dockerfile: $(s)pipeline.py $(s)Dockerfile.j2 $(s)data.yml.j2
+	$(if $(VENV),$(MAKE) $(GITLAB_VENV))
+	mkdir -p $(dir $@)
+	$(if $(VENV),$(call VPYTHON,$(GITLAB_VENV)),python3) $^ target=$* > $@
+
+$(s)docker.mk: $(s)pipeline.py $(s)docker.mk.j2 $(s)data.yml.j2
+	$(if $(VENV),$(MAKE) $(GITLAB_VENV))
+	$(if $(VENV),$(call VPYTHON,$(GITLAB_VENV)),python3) $^ > $@
+
+include $(s)docker.mk
+endif
 
 VPYTHON = VIRTUAL_ENV=$(1) PATH="$(1)/bin:$$PATH" $(1)/bin/python3
 VPIP = VIRTUAL_ENV=$(1) PATH="$(1)/bin:$$PATH" $(1)/bin/pip3

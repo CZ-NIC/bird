@@ -8,10 +8,16 @@ import sys
 import yaml
 
 # Find where we are
-_, template_file, data_file, *_ = sys.argv
+_, template_file, data_file, *more = sys.argv
+hm = { k: v for k,v in [ x.split("=", 1) for x in more ] }
+
+# Crash helper
+def fail(msg):
+    raise Exception(msg)
 
 # Prepare Jinja2 environment
 env = jinja2.Environment(loader=jinja2.FileSystemLoader("."))
+env.globals['fail'] = fail
 env.filters.update({ "to_yaml": lambda x: "" if type(x) is jinja2.runtime.Undefined else yaml.dump(x).rstrip() })
 
 # Load and process input data
@@ -26,10 +32,7 @@ except yaml.parser.ParserError as e:
 template = env.get_template(template_file)
 
 # Render the template
-final = template.render({ **data })
-
-# YAML is picky about tabs, forbid them
-assert('\t' not in final)
+final = template.render({ **data, **hm })
 
 # Produce output
 print(final)
