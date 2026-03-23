@@ -208,6 +208,23 @@ pipeline-uptodate:
   rules:
   - !reference [ .default-rules ]
 
+## Build Docker consistency check
+docker-uptodate:
+  stage: consistency
+  image: registry.nic.cz/labs/bird:docbuilder
+  script:
+  - autoreconf -i
+  - ./configure
+  - touch gitlab/data.yml.j2
+  - make gitlab-docker VENV=1
+  - touch gitlab/docker/docbuilder/Dockerfile # Docbuilder is a static image, not rebuilt by the templates
+  - find gitlab/docker/ -type f -not -newer gitlab/data.yml.j2
+  - '[ "`find gitlab/docker/ -type f -not -newer gitlab/data.yml.j2 | wc -l`" == "0" ]'
+  - git status --porcelain
+  - git diff --exit-code
+  rules:
+  - !reference [ .default-rules ]
+
 ## Consistency checks for stable branches
 commit-messages:
   stage: consistency
@@ -251,6 +268,7 @@ tag-collect:
 
 .docker: &docker-build
   stage: image
+  needs: [] # docker-uptodate maybe?
   script:
   - $DOCKER_CMD login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.nic.cz
   # Make sure we refresh the base image if it updates (eg. security updates, etc)
@@ -1898,6 +1916,7 @@ install-ubuntu-25.10-amd64:
 .build-birdlab-base: &build-birdlab-base
   <<: *build-base
   stage: build
+  needs: []
 #  script:
 #    - export BRANCH=$CI_COMMIT_BRANCH
 #    - autoreconf
@@ -2053,6 +2072,7 @@ partial-build-linux-static:
 build-netlab:
   <<: *netlab-rules
   stage: build
+  needs: []
   variables:
     BDIR: build-netlab
   tags:
