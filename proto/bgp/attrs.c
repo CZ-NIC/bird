@@ -1733,6 +1733,50 @@ HASH_DEFINE_REHASH_FN(RBH, struct bgp_bucket)
 #define BUCKET_PREFIX_POS(a)    a >> 8
 #define PREFIX_ID(r, p)         r + (p << 8)
 
+/*
+ * Prefixes in buckets
+ * There used to be list of prefixes in each bucket. That solution required each prefix
+ * to contain node struct consisting of two pointers. For new solution one u32 id per prefix and u32 id,
+ * prefix pointers plus some overhead per bucket is needed.
+ * 
+ * In short, to add a prefix to a bucket, bucket stores pointer to the prefix to its struct and computes an id
+ * from the position where the prefix was stored. Then the bucket remembers the new id and stores the id
+ * into the prefix. The prefix contained reference to the bucket anyway and with the given id it is
+ * possible to find the prefix in the bucket.
+ * 
+ * Each bucket keeps last given id and one pointer to stored prefix pointers. If the id is zero, there is no prefix.
+ * If the id is one, the pointer is pointer to the single one prefix. Any bigger id means the pointer
+ * points to a field of prefixes. Each row except of the last one points to next row. We expect the number
+ * of prefixes in the bucket to be exponential, therefore the size of allocated rows goes by fibbonaci numbers.
+ * The pointer in bucket points to the last allocated row. It is the largest row and this enables
+ * the first allocated row with two prefixes to not contain any pointer.
+ * 
+ * Id has two parts - last byte is for row number, rest is position in the row. 
+ * 
+ * Let's see how adding prefix pointers A, B, C... looks like (p means pointer to next row):
+ * num prefixes | last id | buck ptr | rows
+ *      0       |   0 00  |     0    |
+ *      1       |   0 01  |     A    |              (yeah, row 1, index 0)
+ *      2       |   1 02  |     p -----> (A, B)     (row 2, index 1)
+ *      3       |   1 03  |     p -----> (p, C, _) --> (A, B)
+ *      4       |   2 03  |     p -----> (p, C, D) --> (A, B)
+ *      5       |   1 04  |     p -----> (p, E, _, _, _) --> (p, C, D) --> (A, B)
+ *      12      |   4 05  |     p -----> (p, I, J, K, L, _, _, _) --> (p, E, F, G, H) --> (p, C, D) --> (A, B)
+ * 
+ * Deleting
+ * Free spaces after deleted pointers might cause both time and memory issues. When we delete a pointer,
+ * we find the last inserted pointer as well, store that pointer on the place of the deleted one and shift
+ * last given id. And, of course, change the id of the shifted pointer, so it reflects the position
+ * in the struct again.
+ * 
+ * p -----> (p, E, F, G, _) --> (p, C, D) --> (A, B)
+ *     * D delete *
+ * p -----> (p, E, F, _, _) --> (p, C, G) --> (A, B)
+ * 
+ * The first rows are allocated from slabs and they can be freed as soon as they are empty.
+ * But bigger rows are allocated from mb_alloc and are freed more slowly.
+*/
+
 static uint bgp_max_slab_row;
 static const u32 fib_nums[] = {1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181,
         6765, 10946, 17711, 28657, 46368, 75025, 121393, 196418, 317811, 514229, 832040, 1346269,
@@ -1741,6 +1785,7 @@ static const u32 fib_nums[] = {1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 3
 static void
 bgp_init_prefix_allocators(struct bgp_ptx_private *c)
 {
+  /* If there is not too much prefixes in the bucket, more space is allocated from slabs */
   if (!bgp_max_slab_row)
   {
     uint bgp_max_slabs = page_size / (sizeof (void *)*3);
@@ -1766,6 +1811,7 @@ bgp_free_prefix_allocators(struct bgp_ptx_private *c)
 void
 bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_prefix *px)
 {
+  /* c is null if called with bmp */
   ASSERT_DIE(b->my_id);
 
   if (b->last_pref_id == 0)
@@ -1838,7 +1884,7 @@ bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_pr
       //BGP_PTX_LOCK(c->c->tx, c);
       new_row.array = mb_alloc(c->pool, sizeof(union bgp_bucket_prefix) * fib_nums[row_num]);
     }
-    else // bmp
+    else /* bmp */
       new_row.array = tmp_alloc(sizeof(union bgp_bucket_prefix) * fib_nums[row_num]);
   }
 
@@ -1859,18 +1905,17 @@ bgp_delete_from_bucket(struct bgp_ptx_private * c, struct bgp_bucket *b, u32 id)
 
   if (row_num == 1)
   {
-    /* It was the only prefix in the bucket*/
+    /* It was the only prefix in the bucket */
     b->last_pref_id = 0;
     return b->prefixes.pref;
   }
-
 
   u32 buck_row_num = BUCKET_PREFIX_ROW(b->last_pref_id);
   u32 buck_pos = BUCKET_PREFIX_POS(b->last_pref_id);
   ASSERT_DIE(buck_row_num >= row_num);
   ASSERT_DIE(pos < fib_nums[row_num]);
   union bgp_bucket_prefix row = b->prefixes;
-   struct bgp_prefix *ret;
+  struct bgp_prefix *ret;
 
   if (buck_row_num == 2)
   {
@@ -1886,11 +1931,13 @@ bgp_delete_from_bucket(struct bgp_ptx_private * c, struct bgp_bucket *b, u32 id)
 
   if (!row.array[1].pref)
   {
+    /* The mb_allocated rows are not freed immediately but after one more row below
+     * become empty as well. */
     if (buck_pos == 1)
     {
       /* Need to delete the mb_allocated row */
       b->prefixes = row.array[0];
-      //BGP_PTX_LOCK(c->c->tx, c);
+
       if (c)
         mb_free(row.array);
       row = b->prefixes;
@@ -1902,9 +1949,10 @@ bgp_delete_from_bucket(struct bgp_ptx_private * c, struct bgp_bucket *b, u32 id)
   row.array[buck_pos].pref = NULL;
   ASSERT_DIE(last_pref->buck_id == b->last_pref_id);
 
-  if (buck_pos != 1){
+  /* Compute new last_pref_id. Since we will use the last prefix pointer to fill
+   * the free space after delete, last_pref_id will decrease */
+  if (buck_pos != 1)
     b->last_pref_id -= (1 << 8);
-  }
   else
   {
     if (buck_row_num < bgp_max_slab_row && buck_pos == 1)
