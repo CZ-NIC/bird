@@ -5,6 +5,8 @@
 #     https://gitlab.nic.cz/labs/bird/-/pipelines/new
 FROM i386/debian:trixie-slim
 ENV DEBIAN_FRONTEND=noninteractive
+RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
+RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
 RUN apt-get -y update
 RUN apt-get -y upgrade
 RUN apt-get -y --no-install-recommends install \
@@ -32,3 +34,4 @@ RUN apt-get -y --no-install-recommends install \
 	python3-pip \
 	python3-setuptools \
 	python3-venv
+RUN apt-get -y clean
