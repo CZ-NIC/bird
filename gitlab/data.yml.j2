@@ -104,16 +104,19 @@ distros:
   {% endfor %}
 
   # Debian from oldoldstable up to testing
-  {% for num, codename in (
-    (11, "bullseye"),
-    (12, "bookworm"),
-    (13, "trixie"),
-    ("testing", "testing")
+  {% for num, codename, crossarch in (
+    (11, "bullseye", []),
+    (12, "bookworm", ["mips64el", "s390x"]),
+    (13, "trixie", ["arm64", "armel", "armhf", "riscv64", "s390x"]),
+    ("testing", "testing", ["arm64", "armhf", "riscv64", "s390x"])
     ) -%}
   {% for arch in ('amd64', 'i386') -%}
   - name: debian-{{num}}-{{arch}}
     type: deb
     shortname: debian
+  {%- if arch == "amd64" %}
+    crossarch: {{ crossarch }}
+  {%- endif %}
     docker:
       parent: {{ arch }}/debian:{{ codename }}-slim
       libssh_kind: {% if (num != "testing") and (num < 13) %}libssh-gcrypt{% else %}libssh{% endif %}
@@ -121,16 +124,32 @@ distros:
   {% endfor %}
   {% endfor %}
 
+# These debian don't crossbuild. TODO fix that.
+# 12 -> ["arm64", "armel", "armhf"] ->  Error 127 from `make check` probably because qemu-user is somehow botched
+
   # Last 7 years of Ubuntu LTS
-  {% for num in ('18.04', '20.04', '22.04', '24.04', '25.04', '25.10') -%}
+  {% for num, crossarch in (
+      ('18.04', []),
+      ('20.04', []),
+      ('22.04', ["riscv64"]),
+      ('24.04', ["arm64", "armhf", "ppc64el", "riscv64", "s390x"]),
+      ('25.04', ["armhf", "ppc64el", "riscv64", "s390x"]),
+      ('25.10', ["arm64", "armhf", "ppc64el", "riscv64", "s390x"]),
+      ) -%}
   - name: ubuntu-{{ num }}-amd64
     type: deb
     shortname: ubuntu
+    crossarch: {{ crossarch }}
     docker:
       parent: "ubuntu:{{ num }}"
       libssh_kind: {% if (num[:2] | int) < 25 %}libssh-gcrypt{% else %}libssh{% endif %}
       needs_adduser: {% if (num[:2] | int) > 22 %}true{% else %}false{% endif %}
   {% endfor %}
+
+# These ubuntu don't crossbuild. TODO fix that.
+# '22.04' -> ["arm64", "armhf", "ppc64el"] -> Error 127 from `make check` probably because qemu-user is somehow botched
+#	  -> ["s390x"] doesn't pack -> debugedit --build-id --build-id-seed=bird2/2.18\+branch.mq.nightly.d0b6b85ebc17-cznic.1\~jammy debian/bird2/usr/sbin/birdc died with signal 11
+# '25.04' -> ["arm64"] fails in `make check` with Timeout expired on `rt-fib_test`
 
 birdlab:
   - name: openbsd-75

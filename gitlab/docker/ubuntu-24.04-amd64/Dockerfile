@@ -5,6 +5,16 @@
 #     https://gitlab.nic.cz/labs/bird/-/pipelines/new
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
+RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
+RUN dpkg --add-architecture arm64
+RUN dpkg --add-architecture armhf
+RUN dpkg --add-architecture ppc64el
+RUN dpkg --add-architecture riscv64
+RUN dpkg --add-architecture s390x
+RUN find /etc/apt/sourc* -type f -exec sed -i '/Components: /a\
+Architectures: amd64' '{}' +
+RUN find /etc/apt/sourc* -type f -exec sed 's#URIs: .*#URIs: http://ports.ubuntu.com/ubuntu-ports/#;s#Architectures: amd64#Architectures: arm64,armhf,ppc64el,riscv64,s390x#' '{}' + > /etc/apt/sources.list.d/crossbuild.sources
+RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
 RUN apt-get -y update
 RUN apt-get -y upgrade
 RUN apt-get -y --no-install-recommends install \
@@ -16,6 +26,24 @@ RUN apt-get -y --no-install-recommends install \
 	ncurses-dev \
 	libreadline-dev \
 	libssh-gcrypt-dev \
+	crossbuild-essential-arm64 \
+	libreadline-dev:arm64 \
+	ncurses-dev:arm64 \
+	crossbuild-essential-armhf \
+	libreadline-dev:armhf \
+	ncurses-dev:armhf \
+	crossbuild-essential-ppc64el \
+	libreadline-dev:ppc64el \
+	ncurses-dev:ppc64el \
+	crossbuild-essential-riscv64 \
+	libreadline-dev:riscv64 \
+	ncurses-dev:riscv64 \
+	crossbuild-essential-s390x \
+	libreadline-dev:s390x \
+	ncurses-dev:s390x \
+	qemu-user \
+	qemu-user-binfmt \
+	binfmt-support \
 	linuxdoc-tools-latex \
 	texlive-latex-extra \
 	opensp \
@@ -33,3 +61,4 @@ RUN apt-get -y --no-install-recommends install \
 	python3-pip \
 	python3-setuptools \
 	python3-venv
+RUN apt-get -y clean

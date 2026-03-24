@@ -9,17 +9,42 @@
 FROM {{ d.parent }}
 {%- if distro.type == "deb" %}
 ENV DEBIAN_FRONTEND=noninteractive
+RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
+{%- for ca in distro.crossarch %}
+RUN dpkg --add-architecture {{ ca }}
+{%- endfor %}
+{%- if distro.name == "ubuntu-22.04-amd64" %}
+RUN find /etc/apt/sourc* -type f -exec sed -i 's/^deb /deb [arch=amd64] /' '{}' +
+RUN find /etc/apt/sourc* -type f -exec sed -r '/^deb /{s#arch=amd64#arch={{ distro.crossarch | join(",") }}#;s#https?://[^ ]+#http://ports.ubuntu.com/ubuntu-ports/#}' '{}' + > /etc/apt/sources.list.d/crossbuild.list
+{%- elif distro.shortname == "ubuntu" and distro.crossarch %}
+RUN find /etc/apt/sourc* -type f -exec sed -i '/Components: /a\
+Architectures: amd64' '{}' +
+RUN find /etc/apt/sourc* -type f -exec sed 's#URIs: .*#URIs: http://ports.ubuntu.com/ubuntu-ports/#;s#Architectures: amd64#Architectures: {{ distro.crossarch | join(",") }}#' '{}' + > /etc/apt/sources.list.d/crossbuild.sources
+{%- endif %}
+RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
 RUN apt-get -y update
 RUN apt-get -y upgrade
 RUN apt-get -y --no-install-recommends install \
-	{% if distro.shortname == "ubuntu" %}tzdata \
-	{% endif %}build-essential \
+	{%- if distro.shortname == "ubuntu" %}
+	tzdata \
+	{%- endif %}
+	build-essential \
 	flex \
 	bison \
 	autoconf \
 	ncurses-dev \
 	libreadline-dev \
 	{{ d.libssh_kind }}-dev \
+	{%- for ca in distro.crossarch %}
+	crossbuild-essential-{{ ca }} \
+	libreadline-dev:{{ ca }} \
+	ncurses-dev:{{ ca }} \
+	{%- endfor %}
+	{%- if distro.crossarch %}
+	qemu-user \
+	qemu-user-binfmt \
+	binfmt-support \
+	{%- endif %}
 	linuxdoc-tools-latex \
 	texlive-latex-extra \
 	opensp \
@@ -37,6 +62,7 @@ RUN apt-get -y --no-install-recommends install \
 	python3-pip \
 	python3-setuptools \
 	python3-venv
+RUN apt-get -y clean
 {%- elif distro.type == "rpm" %}
 {%- if d.preinstall %}
 {{ d.preinstall }}
