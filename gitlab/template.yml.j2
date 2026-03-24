@@ -266,7 +266,7 @@ tag-collect:
   - $DOCKER_CMD tag "bird:$IMG_NAME" "$IMG_BASE:$IMG_NAME"
   - $DOCKER_CMD push "$IMG_BASE:$IMG_NAME"
   after_script:
-  - rm -f "$HOME/.docker/$CI_JOB_ID/" # cleanup the credentials
+  - rm -rf "$HOME/.docker/$CI_JOB_ID/" # cleanup the credentials
   tags:
   # That's Docker in Docker
   - dind
@@ -327,17 +327,24 @@ docker-{{ docker["name"] }}:
           exit 1
         fi
       fi
+    - |
+      if [ -n "$CROSSBUILD_ARCH" ]; then
+        dpkg-architecture -A $CROSSBUILD_ARCH > crossbuild.sh
+        . crossbuild.sh
+        export CONFIGURE_OPTIONS="--host=${DEB_TARGET_GNU_TYPE} ${CONFIGURE_OPTIONS}"
+        export CROSS_RUN=qemu-${CROSSBUILD_ARCH}
+      fi
     - autoreconf
-    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" $CONFIGURE_OPTIONS
+    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" ${CONFIGURE_OPTIONS}
     # Detect which make is available
     - MAKE=make
     - which gmake 2>/dev/null >/dev/null && MAKE=gmake
-    - $MAKE
-    - $MAKE check
+    - $MAKE VERBOSE=1
+    - $MAKE VERBOSE=1 check
     # Build docs when tools are available
     - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
     # Check that the reported version is the right one
-    - ./bird --version |& tee obj/version-built
+    - ${CROSS_RUN} ./bird --version |& tee obj/version-built
     - diff obj/version-built version-expected
 
 .build-docker-linux-amd64: &build-docker-linux-amd64
@@ -357,6 +364,21 @@ build-{{dist["name"]}}:
 {%- if 'variables' in dist %}
   variables:
 {{ dist["variables"] | to_yaml | indent(4, true) }}
+{%- endif %}
+{%- if "crossarch" in dist %}
+{% for ca in dist.crossarch %}
+crossbuild-{{ ca }}-{{ dist["name"] }}:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-{{ dist["name"] }}
+      optional: true
+  image: registry.nic.cz/labs/bird:{{ dist["name"] }}
+  variables:
+    CROSSBUILD_ARCH: {{ ca }}
+{%- if 'variables' in dist %}
+{{ dist["variables"] | to_yaml | indent(4, true) }}
+{%- endif %}
+{% endfor %}
 {%- endif %}
 {% endfor %}
 
@@ -433,6 +455,22 @@ pkg-{{ dist["name"] }}:
   variables:
 {{ dist["variables"] | to_yaml | indent(4, true) }}
 {%- endif %}
+{%- if "crossarch" in dist %}
+{% for ca in dist.crossarch %}
+crosspkg-{{ ca }}-{{ dist["name"] }}:
+  <<: *pkg-{{ dist["type"] }}
+  needs:
+    - job: crossbuild-{{ ca }}-{{ dist["name"] }}
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:{{ dist["name"] }}
+  variables:
+    CROSSBUILD_ARCH: {{ ca }}
+{%- if 'variables' in dist %}
+{{ dist["variables"] | to_yaml | indent(4, true) }}
+{%- endif %}
+{% endfor %}
+{%- endif %}
 {% endfor %}
 
 ## Package installability checks
@@ -441,6 +479,13 @@ pkg-{{ dist["name"] }}:
   <<: *pkg-base
   stage: install
   script:
+    # setup crossbuild architecture
+    - |
+      if [ -n "$CROSSBUILD_ARCH" ]; then
+        dpkg-architecture -A $CROSSBUILD_ARCH > crossbuild.sh
+        . crossbuild.sh
+        export CROSS_RUN=qemu-${CROSSBUILD_ARCH}
+      fi
     # check that bird is _not_ installed now and no user or group bird exists
     - |
       if bird --version >/dev/null 2>&1; then
@@ -495,6 +540,21 @@ install-{{ dist["name"] }}:
 {%- elif dist["type"] == "rpm" %}
     RPM_INSTALL_CMD: rpm -i
 {%- endif %}
+
+{%- for ca in dist.crossarch %}
+crossinstall-{{ ca }}-{{ dist["name"] }}:
+  <<: *install-{{ dist["type"] }}
+  needs:
+    - job: crosspkg-{{ ca }}-{{ dist["name"] }}
+  image: registry.nic.cz/labs/bird:{{ dist["name"] }}
+  variables:
+{%- if dist["name"][:12] == "opensuse-16." %}
+    RPM_INSTALL_CMD: zypper --non-interactive --no-gpg-checks in
+{%- elif dist["type"] == "rpm" %}
+    RPM_INSTALL_CMD: rpm -i
+{%- endif %}
+    CROSSBUILD_ARCH: {{ ca }}
+{%- endfor %}
 {% endfor %}
 
 ###################################

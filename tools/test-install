@@ -8,6 +8,10 @@ if ! id bird >/dev/null 2>&1; then
 fi
 echo "Success"
 
+if [ -n "${CROSS_RUN}" ]; then
+  alias bird="${CROSS_RUN} $(which bird)"
+  alias birdcl="${CROSS_RUN} $(which birdcl)"
+fi
 
 STABLE_VERSION=$(cat VERSION)
 CI_COMMIT_MESSAGE=$(echo "$1" | sed '$s/\r\{0,1\}$//') # trimming new line  

@@ -5,6 +5,11 @@
 #     https://gitlab.nic.cz/labs/bird/-/pipelines/new
 FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
+RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
+RUN dpkg --add-architecture riscv64
+RUN find /etc/apt/sourc* -type f -exec sed -i 's/^deb /deb [arch=amd64] /' '{}' +
+RUN find /etc/apt/sourc* -type f -exec sed -r '/^deb /{s#arch=amd64#arch=riscv64#;s#https?://[^ ]+#http://ports.ubuntu.com/ubuntu-ports/#}' '{}' + > /etc/apt/sources.list.d/crossbuild.list
+RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
 RUN apt-get -y update
 RUN apt-get -y upgrade
 RUN apt-get -y --no-install-recommends install \
@@ -16,6 +21,12 @@ RUN apt-get -y --no-install-recommends install \
 	ncurses-dev \
 	libreadline-dev \
 	libssh-gcrypt-dev \
+	crossbuild-essential-riscv64 \
+	libreadline-dev:riscv64 \
+	ncurses-dev:riscv64 \
+	qemu-user \
+	qemu-user-binfmt \
+	binfmt-support \
 	linuxdoc-tools-latex \
 	texlive-latex-extra \
 	opensp \
@@ -32,3 +43,4 @@ RUN apt-get -y --no-install-recommends install \
 	python3-pip \
 	python3-setuptools \
 	python3-venv
+RUN apt-get -y clean

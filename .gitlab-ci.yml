@@ -281,7 +281,7 @@ tag-collect:
   - $DOCKER_CMD tag "bird:$IMG_NAME" "$IMG_BASE:$IMG_NAME"
   - $DOCKER_CMD push "$IMG_BASE:$IMG_NAME"
   after_script:
-  - rm -f "$HOME/.docker/$CI_JOB_ID/" # cleanup the credentials
+  - rm -rf "$HOME/.docker/$CI_JOB_ID/" # cleanup the credentials
   tags:
   # That's Docker in Docker
   - dind
@@ -862,17 +862,24 @@ docker-ubuntu-25.10-amd64:
           exit 1
         fi
       fi
+    - |
+      if [ -n "$CROSSBUILD_ARCH" ]; then
+        dpkg-architecture -A $CROSSBUILD_ARCH > crossbuild.sh
+        . crossbuild.sh
+        export CONFIGURE_OPTIONS="--host=${DEB_TARGET_GNU_TYPE} ${CONFIGURE_OPTIONS}"
+        export CROSS_RUN=qemu-${CROSSBUILD_ARCH}
+      fi
     - autoreconf
-    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" $CONFIGURE_OPTIONS
+    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" ${CONFIGURE_OPTIONS}
     # Detect which make is available
     - MAKE=make
     - which gmake 2>/dev/null >/dev/null && MAKE=gmake
-    - $MAKE
-    - $MAKE check
+    - $MAKE VERBOSE=1
+    - $MAKE VERBOSE=1 check
     # Build docs when tools are available
     - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
     # Check that the reported version is the right one
-    - ./bird --version |& tee obj/version-built
+    - ${CROSS_RUN} ./bird --version |& tee obj/version-built
     - diff obj/version-built version-expected
 
 .build-docker-linux-amd64: &build-docker-linux-amd64
@@ -1075,6 +1082,7 @@ build-debian-11-amd64:
       optional: true
   image: registry.nic.cz/labs/bird:debian-11-amd64
 
+
 build-debian-11-i386:
   <<: *build-docker-linux-amd64
   needs:
@@ -1088,6 +1096,25 @@ build-debian-12-amd64:
     - job: docker-debian-12-amd64
       optional: true
   image: registry.nic.cz/labs/bird:debian-12-amd64
+
+crossbuild-mips64el-debian-12-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-12-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-12-amd64
+  variables:
+    CROSSBUILD_ARCH: mips64el
+
+crossbuild-s390x-debian-12-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-12-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-12-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
+
 
 build-debian-12-i386:
   <<: *build-docker-linux-amd64
@@ -1103,6 +1130,52 @@ build-debian-13-amd64:
       optional: true
   image: registry.nic.cz/labs/bird:debian-13-amd64
 
+crossbuild-arm64-debian-13-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-13-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
+
+crossbuild-armel-debian-13-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-13-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    CROSSBUILD_ARCH: armel
+
+crossbuild-armhf-debian-13-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-13-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+
+crossbuild-riscv64-debian-13-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-13-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+
+crossbuild-s390x-debian-13-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-13-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
+
+
 build-debian-13-i386:
   <<: *build-docker-linux-amd64
   needs:
@@ -1116,6 +1189,43 @@ build-debian-testing-amd64:
     - job: docker-debian-testing-amd64
       optional: true
   image: registry.nic.cz/labs/bird:debian-testing-amd64
+
+crossbuild-arm64-debian-testing-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-testing-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
+
+crossbuild-armhf-debian-testing-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-testing-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+
+crossbuild-riscv64-debian-testing-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-testing-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+
+crossbuild-s390x-debian-testing-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-debian-testing-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
+
 
 build-debian-testing-i386:
   <<: *build-docker-linux-amd64
@@ -1131,12 +1241,14 @@ build-ubuntu-18.04-amd64:
       optional: true
   image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
 
+
 build-ubuntu-20.04-amd64:
   <<: *build-docker-linux-amd64
   needs:
     - job: docker-ubuntu-20.04-amd64
       optional: true
   image: registry.nic.cz/labs/bird:ubuntu-20.04-amd64
+
 
 build-ubuntu-22.04-amd64:
   <<: *build-docker-linux-amd64
@@ -1145,12 +1257,68 @@ build-ubuntu-22.04-amd64:
       optional: true
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
 
+crossbuild-riscv64-ubuntu-22.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-22.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+
+
 build-ubuntu-24.04-amd64:
   <<: *build-docker-linux-amd64
   needs:
     - job: docker-ubuntu-24.04-amd64
       optional: true
   image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+
+crossbuild-arm64-ubuntu-24.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-24.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
+
+crossbuild-armhf-ubuntu-24.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-24.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+
+crossbuild-ppc64el-ubuntu-24.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-24.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    CROSSBUILD_ARCH: ppc64el
+
+crossbuild-riscv64-ubuntu-24.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-24.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+
+crossbuild-s390x-ubuntu-24.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-24.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
+
 
 build-ubuntu-25.04-amd64:
   <<: *build-docker-linux-amd64
@@ -1159,12 +1327,95 @@ build-ubuntu-25.04-amd64:
       optional: true
   image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
 
+crossbuild-armhf-ubuntu-25.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-25.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+
+crossbuild-ppc64el-ubuntu-25.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-25.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+  variables:
+    CROSSBUILD_ARCH: ppc64el
+
+crossbuild-riscv64-ubuntu-25.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-25.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+
+crossbuild-s390x-ubuntu-25.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-25.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
+
+
 build-ubuntu-25.10-amd64:
   <<: *build-docker-linux-amd64
   needs:
     - job: docker-ubuntu-25.10-amd64
       optional: true
   image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+
+crossbuild-arm64-ubuntu-25.10-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-25.10-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
+
+crossbuild-armhf-ubuntu-25.10-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-25.10-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+
+crossbuild-ppc64el-ubuntu-25.10-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-25.10-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: ppc64el
+
+crossbuild-riscv64-ubuntu-25.10-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-25.10-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+
+crossbuild-s390x-ubuntu-25.10-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-25.10-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
+
 
 
 #######################################################
@@ -1449,6 +1700,7 @@ pkg-debian-11-amd64:
     - job: build-release
   image: registry.nic.cz/labs/bird:debian-11-amd64
 
+
 pkg-debian-11-i386:
   <<: *pkg-deb
   needs:
@@ -1464,6 +1716,27 @@ pkg-debian-12-amd64:
       artifacts: false
     - job: build-release
   image: registry.nic.cz/labs/bird:debian-12-amd64
+
+crosspkg-mips64el-debian-12-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-mips64el-debian-12-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-12-amd64
+  variables:
+    CROSSBUILD_ARCH: mips64el
+
+crosspkg-s390x-debian-12-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-s390x-debian-12-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-12-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
+
 
 pkg-debian-12-i386:
   <<: *pkg-deb
@@ -1481,6 +1754,57 @@ pkg-debian-13-amd64:
     - job: build-release
   image: registry.nic.cz/labs/bird:debian-13-amd64
 
+crosspkg-arm64-debian-13-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-arm64-debian-13-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
+
+crosspkg-armel-debian-13-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-armel-debian-13-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    CROSSBUILD_ARCH: armel
+
+crosspkg-armhf-debian-13-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-armhf-debian-13-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+
+crosspkg-riscv64-debian-13-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-riscv64-debian-13-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+
+crosspkg-s390x-debian-13-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-s390x-debian-13-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
+
+
 pkg-debian-13-i386:
   <<: *pkg-deb
   needs:
@@ -1496,6 +1820,47 @@ pkg-debian-testing-amd64:
       artifacts: false
     - job: build-release
   image: registry.nic.cz/labs/bird:debian-testing-amd64
+
+crosspkg-arm64-debian-testing-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-arm64-debian-testing-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
+
+crosspkg-armhf-debian-testing-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-armhf-debian-testing-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+
+crosspkg-riscv64-debian-testing-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-riscv64-debian-testing-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+
+crosspkg-s390x-debian-testing-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-s390x-debian-testing-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
+
 
 pkg-debian-testing-i386:
   <<: *pkg-deb
@@ -1513,6 +1878,7 @@ pkg-ubuntu-18.04-amd64:
     - job: build-release
   image: registry.nic.cz/labs/bird:ubuntu-18.04-amd64
 
+
 pkg-ubuntu-20.04-amd64:
   <<: *pkg-deb
   needs:
@@ -1520,6 +1886,7 @@ pkg-ubuntu-20.04-amd64:
       artifacts: false
     - job: build-release
   image: registry.nic.cz/labs/bird:ubuntu-20.04-amd64
+
 
 pkg-ubuntu-22.04-amd64:
   <<: *pkg-deb
@@ -1529,6 +1896,17 @@ pkg-ubuntu-22.04-amd64:
     - job: build-release
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
 
+crosspkg-riscv64-ubuntu-22.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-riscv64-ubuntu-22.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+
+
 pkg-ubuntu-24.04-amd64:
   <<: *pkg-deb
   needs:
@@ -1536,6 +1914,57 @@ pkg-ubuntu-24.04-amd64:
       artifacts: false
     - job: build-release
   image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+
+crosspkg-arm64-ubuntu-24.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-arm64-ubuntu-24.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
+
+crosspkg-armhf-ubuntu-24.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-armhf-ubuntu-24.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+
+crosspkg-ppc64el-ubuntu-24.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-ppc64el-ubuntu-24.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    CROSSBUILD_ARCH: ppc64el
+
+crosspkg-riscv64-ubuntu-24.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-riscv64-ubuntu-24.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+
+crosspkg-s390x-ubuntu-24.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-s390x-ubuntu-24.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
+
 
 pkg-ubuntu-25.04-amd64:
   <<: *pkg-deb
@@ -1545,6 +1974,47 @@ pkg-ubuntu-25.04-amd64:
     - job: build-release
   image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
 
+crosspkg-armhf-ubuntu-25.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-armhf-ubuntu-25.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+
+crosspkg-ppc64el-ubuntu-25.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-ppc64el-ubuntu-25.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+  variables:
+    CROSSBUILD_ARCH: ppc64el
+
+crosspkg-riscv64-ubuntu-25.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-riscv64-ubuntu-25.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+
+crosspkg-s390x-ubuntu-25.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-s390x-ubuntu-25.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
+
+
 pkg-ubuntu-25.10-amd64:
   <<: *pkg-deb
   needs:
@@ -1553,6 +2023,57 @@ pkg-ubuntu-25.10-amd64:
     - job: build-release
   image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
 
+crosspkg-arm64-ubuntu-25.10-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-arm64-ubuntu-25.10-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
+
+crosspkg-armhf-ubuntu-25.10-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-armhf-ubuntu-25.10-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+
+crosspkg-ppc64el-ubuntu-25.10-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-ppc64el-ubuntu-25.10-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: ppc64el
+
+crosspkg-riscv64-ubuntu-25.10-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-riscv64-ubuntu-25.10-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+
+crosspkg-s390x-ubuntu-25.10-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-s390x-ubuntu-25.10-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
+
+
 
 ## Package installability checks
 
@@ -1560,6 +2081,13 @@ pkg-ubuntu-25.10-amd64:
   <<: *pkg-base
   stage: install
   script:
+    # setup crossbuild architecture
+    - |
+      if [ -n "$CROSSBUILD_ARCH" ]; then
+        dpkg-architecture -A $CROSSBUILD_ARCH > crossbuild.sh
+        . crossbuild.sh
+        export CROSS_RUN=qemu-${CROSSBUILD_ARCH}
+      fi
     # check that bird is _not_ installed now and no user or group bird exists
     - |
       if bird --version >/dev/null 2>&1; then
@@ -1831,6 +2359,20 @@ install-debian-12-amd64:
     - job: pkg-debian-12-amd64
   image: registry.nic.cz/labs/bird:debian-12-amd64
   variables:
+crossinstall-mips64el-debian-12-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-mips64el-debian-12-amd64
+  image: registry.nic.cz/labs/bird:debian-12-amd64
+  variables:
+    CROSSBUILD_ARCH: mips64el
+crossinstall-s390x-debian-12-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-s390x-debian-12-amd64
+  image: registry.nic.cz/labs/bird:debian-12-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
 
 install-debian-12-i386:
   <<: *install-deb
@@ -1845,6 +2387,41 @@ install-debian-13-amd64:
     - job: pkg-debian-13-amd64
   image: registry.nic.cz/labs/bird:debian-13-amd64
   variables:
+crossinstall-arm64-debian-13-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-arm64-debian-13-amd64
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
+crossinstall-armel-debian-13-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-armel-debian-13-amd64
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    CROSSBUILD_ARCH: armel
+crossinstall-armhf-debian-13-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-armhf-debian-13-amd64
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+crossinstall-riscv64-debian-13-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-riscv64-debian-13-amd64
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+crossinstall-s390x-debian-13-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-s390x-debian-13-amd64
+  image: registry.nic.cz/labs/bird:debian-13-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
 
 install-debian-13-i386:
   <<: *install-deb
@@ -1859,6 +2436,34 @@ install-debian-testing-amd64:
     - job: pkg-debian-testing-amd64
   image: registry.nic.cz/labs/bird:debian-testing-amd64
   variables:
+crossinstall-arm64-debian-testing-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-arm64-debian-testing-amd64
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
+crossinstall-armhf-debian-testing-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-armhf-debian-testing-amd64
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+crossinstall-riscv64-debian-testing-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-riscv64-debian-testing-amd64
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+crossinstall-s390x-debian-testing-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-s390x-debian-testing-amd64
+  image: registry.nic.cz/labs/bird:debian-testing-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
 
 install-debian-testing-i386:
   <<: *install-deb
@@ -1887,6 +2492,13 @@ install-ubuntu-22.04-amd64:
     - job: pkg-ubuntu-22.04-amd64
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
   variables:
+crossinstall-riscv64-ubuntu-22.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-riscv64-ubuntu-22.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
 
 install-ubuntu-24.04-amd64:
   <<: *install-deb
@@ -1894,6 +2506,41 @@ install-ubuntu-24.04-amd64:
     - job: pkg-ubuntu-24.04-amd64
   image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
   variables:
+crossinstall-arm64-ubuntu-24.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-arm64-ubuntu-24.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
+crossinstall-armhf-ubuntu-24.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-armhf-ubuntu-24.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+crossinstall-ppc64el-ubuntu-24.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-ppc64el-ubuntu-24.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    CROSSBUILD_ARCH: ppc64el
+crossinstall-riscv64-ubuntu-24.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-riscv64-ubuntu-24.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+crossinstall-s390x-ubuntu-24.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-s390x-ubuntu-24.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-24.04-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
 
 install-ubuntu-25.04-amd64:
   <<: *install-deb
@@ -1901,6 +2548,34 @@ install-ubuntu-25.04-amd64:
     - job: pkg-ubuntu-25.04-amd64
   image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
   variables:
+crossinstall-armhf-ubuntu-25.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-armhf-ubuntu-25.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+crossinstall-ppc64el-ubuntu-25.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-ppc64el-ubuntu-25.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+  variables:
+    CROSSBUILD_ARCH: ppc64el
+crossinstall-riscv64-ubuntu-25.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-riscv64-ubuntu-25.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+crossinstall-s390x-ubuntu-25.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-s390x-ubuntu-25.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
 
 install-ubuntu-25.10-amd64:
   <<: *install-deb
@@ -1908,6 +2583,41 @@ install-ubuntu-25.10-amd64:
     - job: pkg-ubuntu-25.10-amd64
   image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
   variables:
+crossinstall-arm64-ubuntu-25.10-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-arm64-ubuntu-25.10-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
+crossinstall-armhf-ubuntu-25.10-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-armhf-ubuntu-25.10-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+crossinstall-ppc64el-ubuntu-25.10-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-ppc64el-ubuntu-25.10-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: ppc64el
+crossinstall-riscv64-ubuntu-25.10-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-riscv64-ubuntu-25.10-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+crossinstall-s390x-ubuntu-25.10-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-s390x-ubuntu-25.10-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
 
 
 ###################################
