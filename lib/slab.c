@@ -176,7 +176,7 @@ struct slab {
   event event_clean;					/* Cleanup event (The Hired Specialist TM) */
   struct event_list *cleanup_ev_list;			/* Schedule event_clean here */
   struct bird_thread_end_callback thread_end;		/* Gets called on thread end */
-  struct sl_per_thread_info **thread_head_info;         /* Originally there used to be just one head per thread. The rest is just a speedup hack. */
+  struct sl_per_thread_info * _Atomic *thread_head_info; /* Originally there used to be just one head per thread. The rest is just a speedup hack. */
 };
 
 static struct resclass sl_class = {
@@ -298,7 +298,7 @@ sl_new(pool *p, struct event_list *cleanup_ev_list, uint size)
 
   /* We need a block holding the active head pointer for every thread separately.
    * In order to be able to avoid write detele conflicts, the heads are stored in thread_head_info. */
-  ASSERT_DIE(MAX_THREADS * sizeof (struct sl_head * _Atomic) <= (unsigned long) page_size);
+  ASSERT_DIE(MAX_THREADS * sizeof (struct sl_per_thread_info * _Atomic) <= (unsigned long) page_size);
   void *page = alloc_page();
   memset(page, 0, page_size);
   s->thread_head_info = page;
@@ -346,7 +346,7 @@ static void *
 sl_alloc_from_page(slab *s, struct sl_head *h)
 {
   ASSERT_DIE(SL_GET_STATE(h) == slh_thread);
-  struct sl_per_thread_info *ti = s->thread_head_info[THIS_THREAD_ID];
+  struct sl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[THIS_THREAD_ID], memory_order_relaxed);
 
   /* This routine must never collide with itself. It's expected to run
    * only on the head assigned to the current thread.
@@ -436,8 +436,9 @@ sl_count_free_bits(u32 n)
  */
 
 static void
-sl_refresh_partial(struct sl_head *head, struct sl_per_thread_info *ti)
+sl_refresh_partial(struct slab *s, struct sl_head *head)
 {
+  struct sl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[THIS_THREAD_ID], memory_order_relaxed);
   u32 mask = ~0;
   int free_bits = 0; /* number of bits we manage to flip. */
 
@@ -512,7 +513,7 @@ sl_get_partial_head(struct slab *s)
   /* Out of critical section, now the cleanup may continue */
   rcu_read_unlock();
 
-  sl_refresh_partial(cur_head, s->thread_head_info[THIS_THREAD_ID]);
+  sl_refresh_partial(s, cur_head);
   return cur_head;
 }
 
@@ -528,15 +529,18 @@ sl_alloc(slab *s)
 {
   struct sl_head *h = NULL;
 
-  if (!s->thread_head_info[THIS_THREAD_ID]) /* Have we seen this thread before? */
+  struct sl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[THIS_THREAD_ID], memory_order_relaxed);
+
+  if (!ti) /* Have we seen this thread before? */
   {
     ASSERT_DIE(this_thread_pool);
-    s->thread_head_info[THIS_THREAD_ID] = mb_allocz(this_thread_pool,
-        sizeof(struct sl_per_thread_info) + sizeof(u32) * s->head_bitfield_len);
-  }
-  ASSERT_DIE(s->thread_head_info[THIS_THREAD_ID]);
+    ti = mb_allocz(this_thread_pool,
+	sizeof(struct sl_per_thread_info) + sizeof(u32) * s->head_bitfield_len);
 
-  struct sl_per_thread_info *ti = s->thread_head_info[THIS_THREAD_ID];
+    atomic_store_explicit(
+	&s->thread_head_info[THIS_THREAD_ID],
+	ti, memory_order_relaxed);
+  }
 
    /* Try to use head owned by this thread */
   if (h = atomic_load_explicit(&ti->head, memory_order_acquire))
@@ -549,7 +553,7 @@ sl_alloc(slab *s)
     if (atomic_load(&h->num_full) < s->objs_per_slab)
     {
       /* The head is not truly full, someone did free some space */
-      sl_refresh_partial(h, ti);
+      sl_refresh_partial(s, h);
       ret = sl_alloc_from_page(s, h);
       ASSERT_DIE(ret);
       memset(ret, 0, s->data_size);
@@ -819,8 +823,8 @@ static void sl_thread_end(struct bird_thread_end_callback *btec)
 
   /* Getting rid of an active head of a stopping thread.
    * We first pick the head from its place. */
-  struct sl_per_thread_info *ti = s->thread_head_info[THIS_THREAD_ID];
-  s->thread_head_info[THIS_THREAD_ID] = NULL;
+  struct sl_per_thread_info *ti = atomic_exchange_explicit(&s->thread_head_info[THIS_THREAD_ID], NULL, memory_order_release);
+
   struct sl_head *h = atomic_load_explicit(&ti->head, memory_order_relaxed);
   atomic_store_explicit(&ti->head, NULL, memory_order_relaxed);
 
@@ -907,7 +911,7 @@ sl_check_empty(resource *r)
   /* Assert there are no thread heads */
   for (long unsigned int i = 0; i < page_size / (sizeof(struct sl_head *_Atomic)); i++)
   {
-    struct sl_per_thread_info *ti = s->thread_head_info[i];
+    struct sl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[i], memory_order_relaxed);
     struct sl_head *h = atomic_load_explicit(&ti->head, memory_order_relaxed);
     if (h)
       ASSERT_DIE(atomic_load_explicit(&h->num_full, memory_order_relaxed) == ti->still_free);
@@ -949,7 +953,7 @@ slab_free(resource *r)
   {
     for (long unsigned int i = 0; i < page_size / (sizeof(struct sl_head *_Atomic)); i++)
     {
-      struct sl_per_thread_info *ti = s->thread_head_info[i];
+      struct sl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[i], memory_order_relaxed);
 
       if (ti)
       {
@@ -978,7 +982,7 @@ slab_dump(struct dump_request *dreq, resource *r)
   RDUMP("%*sthreads:\n", dreq->indent+3, "");
   for (long unsigned int i = 0; i < (page_size / sizeof(struct sl_head * _Atomic)); i++)
   {
-    struct sl_per_thread_info *ti = s->thread_head_info[i];
+    struct sl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[i], memory_order_relaxed);
     struct sl_head *th = atomic_load_explicit(&ti->head, memory_order_relaxed);
     if (th)
     {
@@ -1069,9 +1073,10 @@ slab_memsize(resource *r)
   /* Thread heads memsize */
   for (long unsigned int i = 0; i < (page_size / sizeof(struct sl_head * _Atomic)); i++)
   {
-    if (s->thread_head_info[i])
+    struct sl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[i], memory_order_relaxed);
+
+    if (ti)
     {
-      struct sl_per_thread_info *ti = s->thread_head_info[i];
       struct sl_head *h = atomic_load_explicit(&ti->head, memory_order_relaxed);
       if (h)
       {
