@@ -249,6 +249,7 @@ tag-collect:
   artifacts:
     paths:
       - obj/doc/bird-singlepage.html
+      - obj/doc/prog-singlepage.html
       - bird-*.tar.gz
       - pkg/pkgs/*
       - pkg/srcpkgs/*
@@ -1434,11 +1435,13 @@ build-release:
     - if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then export BRANCH=mergerequest-$CI_MERGE_REQUEST_IID; else export BRANCH=$CI_COMMIT_BRANCH; fi
     - autoreconf
     - ./configure --with-protocols= --disable-client
-    - make obj/doc/bird-singlepage.html
+    - make obj/doc/bird-singlepage.html obj/doc/prog-singlepage.html
+    - if grep '<pre><code>PARSER FAILED ' obj/doc/bird-singlepage.html obj/doc/prog-singlepage.html; then echo "Documentation build is broken!"; false; fi
     - tools/make-archive
   artifacts:
     paths:
       - obj/doc/bird-singlepage.html
+      - obj/doc/prog-singlepage.html
       - bird-*.tar.gz
     expire_in: 1 day
   rules: !reference [ .build-base-rules ]
