@@ -11,8 +11,8 @@
  *
  * This allocator is based on slab principles (it allocates memory blocks of fixed size),
  * but it has one specific feature - each allocated block of memory recieves an 32 bit id.
- * This id can be used to find the allocated block and it is needed to free the block.
- * That makes possible to store only 32 bit ids instead of full pointers.
+ * This id can be used to find the allocated block and to free the block. That makes it
+ * possible to store only 32 bit ids instead of full pointers.
  * 
  * The allocator uses tree like struct of pages. The root page (if more pages present)
  * contains pointers to other pages. Those pages contain either pointers to other pages
@@ -99,15 +99,16 @@
 struct id_alloc_head {
   u32 *bitfield_free; /* No object or pointer stored yet */
   u32 *bitfield_partial; /* Rerlevant only for pointer heads - free space somewhere in the subtree */
+  u32 id; /* Id composed from parent head id and index of the thead in parent */
   u16 level; /* 0 for object pages, distance from furthest object page for pointer heads */
   u16 num_free; /* Number of set bites in bitfield_free */
-  u32 id; /* Id composed from parent head id and index of the thead in parent */
   struct id_alloc_head* head_above; /* pointer to parent head */
   struct id_alloc_head **body; /* space for pointers or objects */
   u32 bitfields_val[0]; /* where bitfields are realy stored */
 };
 
 struct id_alloc {
+  resource r;
   int obj_size;
   u16 max_levels;
   u16 last_level_size; /* We might have less space for the greatest level in 32 bit id */
@@ -115,8 +116,22 @@ struct id_alloc {
   u32 max_ptrs; /* Max number of pointers we fit into one page */
   u32 obj_id_size; /* Number of id bits needed to encode object index */
   u32 ptr_id_size; /* Number of id bits needed to encode pointer index */
+  u32 obj_stored;
+  u32 heads_stored;
   pool *pool;
   struct id_alloc_head *ap; /* root head */
+};
+
+void id_delete(resource *r);
+static void id_alloc_dump(struct dump_request *dreq, resource *r);
+static struct resmem id_alloc_memsize(resource *r);
+
+static struct resclass id_alloc_class = {
+  .name = "Id alloc",
+  .size = sizeof(struct id_alloc),
+  .free = id_delete,
+  .dump = id_alloc_dump,
+  .memsize = id_alloc_memsize,
 };
 
 
@@ -130,19 +145,21 @@ check(pool *pool)
 {
   struct id_alloc *id_all = id_alloc_init(pool, 20);
 
-  u32 ids[400];
+  void* bzs[400];
+  u32 bz;
 
   for (int i = 0; i < 400; i++)
-    ASSERT_DIE(id_alloc_alloc(id_all, &ids[i]));
+    ASSERT_DIE(bzs[i] = id_alloc_alloc(id_all, &bz));
 
   for (int i = 0; i <200; i++)
   {
-    id_alloc_free(id_all, ids[200+i]);
-    id_alloc_free(id_all, ids[199-i]);
+    id_alloc_free_ptr(id_all, bzs[200+i]);
+    id_alloc_free_ptr(id_all, bzs[199-i]);
   }
   id_alloc_delete(id_all);
 
 
+  u32 ids[400];
   id_all = id_alloc_init(pool, 20);
 
 
@@ -233,7 +250,7 @@ id_get_one_in_bitfield(u32 *bitfield, int len)
 
 /* Set bit on position pos to given value. */
 static void
-id_bitfield_set(u32 *bitfield, u32 pos, u32 val, struct id_alloc_head *ap)
+id_bitfield_set(struct id_alloc_head *ap, u32 *bitfield, u32 pos, u32 val)
 {
   /* Assert the current value differs from requested one. */
   ASSERT_DIE((bitfield[pos/32] & (1 << (pos % 32))) != val);
@@ -282,10 +299,11 @@ id_alloc_init(pool *pool, size_t obj_size)
 {
   //if(obj_size==12)
   //  check(pool);
-  struct id_alloc *id_all = mb_allocz(pool, sizeof(struct id_alloc));
+  struct id_alloc *id_all = ralloc(pool, &id_alloc_class);
   id_all->pool = pool;
   id_all->obj_size = obj_size;
   id_all->max_objs = id_find_items_per_page(obj_size);
+  ASSERT_DIE(id_all->max_objs > 1);
   id_all->max_ptrs = id_find_items_per_page(sizeof(struct id_alloc_page *));
   id_all->obj_id_size = id_find_id_size(id_all->max_objs);
   id_all->ptr_id_size = id_find_id_size(id_all->max_ptrs);
@@ -304,6 +322,7 @@ id_alloc_init(pool *pool, size_t obj_size)
   
   /* Root head. There is allways at least one head in id alloc */
   id_all->ap = alloc_page();
+  id_all->heads_stored = 1;
   id_init_bitfields(id_all->ap, id_all->max_objs);
   id_all->ap->level = 0;
   id_all->ap->id = 0;
@@ -315,9 +334,15 @@ id_alloc_init(pool *pool, size_t obj_size)
 void
 id_alloc_delete(struct id_alloc* id_all)
 {
-  free_page(id_all->ap);
-  mb_free(id_all);
+  rfree(&id_all->r);
 }
+
+void id_delete(resource *r)
+{
+  struct id_alloc *id_all = (struct id_alloc *) r;
+  free_page(id_all->ap);
+}
+
 
 /* This function is used for adding root head and for adding head between two heads
  * whose levels are more than one level apart. (This happens because alloc tries to
@@ -336,9 +361,9 @@ id_alloc_put_head_above(struct id_alloc* id_all, struct id_alloc_head **cur_head
   else
     id_init_bitfields(head, id_all->max_ptrs);
 
-  id_bitfield_set(head->bitfield_free, 0, 0, head); /* space for old head*/
-  id_bitfield_set(head->bitfield_free, 1, 0, head); /* space for new object head */
-  id_bitfield_set(head->bitfield_partial, 1, 1, head); /* the new head will contain only one object */
+  id_bitfield_set(head, head->bitfield_free, 0, 0); /* space for old head*/
+  id_bitfield_set(head, head->bitfield_free, 1, 0); /* space for new object head */
+  id_bitfield_set(head, head->bitfield_partial, 1, 1); /* the new head will contain only one object */
 
   if (cur_head->level == id_all->ap->level)
     head->level = cur_head->level + 1; /* head is new root */
@@ -362,6 +387,7 @@ id_alloc_put_head_above(struct id_alloc* id_all, struct id_alloc_head **cur_head
   ASSERT_DIE(ID_POS_ON_LEVEL(id_all, head->body[1]->id, head->level ) == 1);
   head->body[1]->head_above = head;
 
+  id_all->heads_stored += 2;
   ASSERT(id_all->ap->level > 0);
   return head->body[1];
 }
@@ -405,9 +431,10 @@ id_alloc_alloc(struct id_alloc* id_all, u32* id)
 
       if (cur_head->level == id_all->max_levels && id_all->max_ptrs - cur_head->num_free == id_all->last_level_size)
         bug("id_alloc run out of capacity");
-      id_bitfield_set(cur_head->bitfield_partial, pos, 1, cur_head);
-      id_bitfield_set(cur_head->bitfield_free, pos, 0, cur_head);
+      id_bitfield_set(cur_head, cur_head->bitfield_partial, pos, 1);
+      id_bitfield_set(cur_head, cur_head->bitfield_free, pos, 0);
       struct id_alloc_head *head = alloc_page();
+      id_all->heads_stored++;
       id_init_bitfields(head, id_all->max_objs);
       cur_head->body[pos] = head;
       head->head_above = cur_head;
@@ -426,7 +453,7 @@ id_alloc_alloc(struct id_alloc* id_all, u32* id)
   ASSERT_DIE(pos >= 0);
   void* ret = ((void *) cur_head->body) + (pos * id_all->obj_size);
   *id = cur_head->id + pos;
-  id_bitfield_set(cur_head->bitfield_free, pos, 0, cur_head);
+  id_bitfield_set(cur_head, cur_head->bitfield_free, pos, 0);
 
   while (cur_head->num_free == 0 && cur_head->head_above && cur_head->level +1 == cur_head->head_above->level
          && (cur_head->level == 0 || id_get_one_in_bitfield(cur_head->bitfield_partial, id_all->max_ptrs) == -1))
@@ -436,10 +463,11 @@ id_alloc_alloc(struct id_alloc* id_all, u32* id)
 
     pos = ID_POS_ON_LEVEL(id_all, *id, cur_head->level);
 
-    id_bitfield_set(cur_head->bitfield_partial, pos, 0, cur_head);
+    id_bitfield_set(cur_head, cur_head->bitfield_partial, pos, 0);
   }
 
   *id = *id + 1; /* Stupid trick - zero id should mean "no object". */
+  id_all->obj_stored++;
 
   return ret;
 }
@@ -463,6 +491,28 @@ id_alloc_find(struct id_alloc * id_all, u32 id)
   return ((void *)cur_head->body) + (pos * id_all->obj_size);
 }
 
+static void
+id_alloc_free_empty_pages(struct id_alloc * id_all, struct id_alloc_head *cur_head)
+{
+  if (cur_head->num_free != id_all->max_objs || cur_head == id_all->ap)
+    return;
+
+  u32 id = cur_head->id;
+
+  /* The head is empty. We need to free it and pass the info to its parent.
+   * If it was the onlz child, free it as well ect. Never free root. */
+  do {
+    struct id_alloc_head *old_head = cur_head;
+    cur_head = cur_head->head_above;
+    u32 pos =  ID_POS_ON_LEVEL(id_all, id, cur_head->level);
+    ASSERT_DIE(cur_head->body[pos] == old_head);
+
+    free_page(old_head);
+    id_bitfield_set(cur_head, cur_head->bitfield_partial, pos, 0);
+    id_bitfield_set(cur_head, cur_head->bitfield_free, pos, 1);
+  } while (cur_head != id_all->ap && cur_head->num_free == id_all->max_ptrs);
+}
+
 void
 id_alloc_free(struct id_alloc * id_all, u32 id)
 {
@@ -479,7 +529,7 @@ id_alloc_free(struct id_alloc * id_all, u32 id)
     {
       /* the head is not in partial heads, it can not be in free heads, so it is considered to be full. 
        * One item will be freed, so we mark it in advance. */
-      id_bitfield_set(cur_head->bitfield_partial, pos, 1, cur_head);
+      id_bitfield_set(cur_head, cur_head->bitfield_partial, pos, 1);
     }
 
     cur_head = cur_head->body[pos];
@@ -488,28 +538,109 @@ id_alloc_free(struct id_alloc * id_all, u32 id)
   pos = ID_POS_ON_LEVEL(id_all, id, cur_head->level);
   ASSERT_DIE(cur_head->id + pos == id);
 
-  id_bitfield_set(cur_head->bitfield_free, pos, 1, cur_head);
+  id_bitfield_set(cur_head, cur_head->bitfield_free, pos, 1);
 
 #ifdef POISON
   memset(((void *) cur_head->body) + (pos * id_all->obj_size), 0xfa, id_all->obj_size);
 #endif
 
-  if (cur_head->num_free != id_all->max_objs || cur_head == id_all->ap)
-    return;
-
-  /* The head is empty. We need to free it and pass the info to its parent.
-   * If it was the onlz child, free it as well ect. Never free root. */
-  do {
-    struct id_alloc_head *old_head = cur_head;
-    cur_head = cur_head->head_above;
-    pos =  ID_POS_ON_LEVEL(id_all, id, cur_head->level);
-    ASSERT_DIE(cur_head->body[pos] == old_head);
-
-    free_page(old_head);
-    id_bitfield_set(cur_head->bitfield_partial, pos, 0, cur_head);
-    id_bitfield_set(cur_head->bitfield_free, pos, 1, cur_head);
-  } while (cur_head != id_all->ap && cur_head->num_free == id_all->max_ptrs);
+  id_alloc_free_empty_pages(id_all, cur_head);
 }
 
 
+/* Alternative way to free an allocated block without knowing its id. */
+void
+id_alloc_free_ptr(struct id_alloc *id_all, void *ptr)
+{
+  struct id_alloc_head *head = PAGE_HEAD(ptr);
+  ASSERT_DIE(head->level == 0);
+  uint off = ptr - ((void *) head->body);
+  uint index = off / id_all->obj_size;
+  ASSERT_DIE(((void *)head->body) + (id_all->obj_size * index) == ptr);
+
+  #ifdef POISON
+  memset(ptr, 0xdb, id_all->obj_size);
+  #endif
+
+  id_bitfield_set(head, head->bitfield_free, index, 1);
+
+  if (head->num_free == 1)
+  {
+    u32 id = head->id;
+
+    while (head->num_free == 1 && head != id_all->ap)
+    {
+      head = head->head_above;
+      u32 pos = ID_POS_ON_LEVEL(id_all, id, head->level);
+      id_bitfield_set(head, head->bitfield_partial, pos, 1);
+    }
+    return;
+  }
+
+  id_alloc_free_empty_pages(id_all, head);
+}
+
+#if 0
+//Not tested
+static void
+id_alloc_count_heads(struct id_alloc *id_all, struct id_alloc_head* head,int *part, int *full, int *overhead)
+{
+        log("count heads");
+  if (head->level == 0)
+  {
+    *part += !!head->num_free;
+    *full += !head->num_free;
+    return;
+  }
+
+  *overhead += 1;
+
+  if (head->level == 1)
+  {
+    for (u32 i = 0; i < id_all->max_ptrs; i++)
+    {
+      *part += !!(head->bitfield_partial[i/32] & (1 << (i % 32)));
+      *full += !(head->bitfield_free[i/32] & (1 << (i % 32)));
+    }
+    return;
+  }
+
+  for (u32 i = 0; i < id_all->max_ptrs; i++)
+  {
+    if (head->bitfield_partial[i/32] & (1 << (i % 32)))
+      id_alloc_count_heads(id_all, head->body[i], part, full, overhead);
+    else if (!(head->bitfield_free[i/32] & (1 << (i % 32))))
+    {
+      /* full subtree */
+      log("more full");
+      *full += id_all->max_ptrs ^ (head->level - 1);
+
+      for (int i = 0; i < (head->level - 1); i++)
+        *overhead += id_all->max_ptrs ^ i;
+    }
+  }
+}
+  #endif
+
 //todo vypisovani pameti, spravny pool atd
+static void
+id_alloc_dump(struct dump_request *dreq, resource *r)
+{
+  //todo
+  struct id_alloc *id_all = (struct id_alloc *) r;
+
+  RDUMP("(%d objs per %d bytes in %d page pages %d stored objects)\n",
+      id_all->max_objs, id_all->obj_size, id_all->heads_stored, id_all->obj_stored);
+}
+
+static struct resmem
+id_alloc_memsize(resource *r)
+{
+  log("memsize");
+  struct id_alloc *id_all = (struct id_alloc *) r;
+
+  return (struct resmem) {
+    .effective = id_all->obj_stored * id_all->obj_size,
+    .overhead = (id_all->heads_stored * page_size) - id_all->obj_stored * id_all->obj_size,
+  };
+}
