@@ -154,6 +154,8 @@ struct sl_per_thread_info {
   u16 used_bits_ptr; /* Pointer to used_bits_local - helps find free memory a bit faster */
   u16 still_free; /*Number of certainly free chunks of memory */
   struct sl_head * _Atomic head; /* Head from which is the thread allocating right now. */
+  _Atomic long allocated_heads;
+  _Atomic long allocated_objs;
   u32 used_bits_local[0]; /* Zero bits mean certainly NOT used memory, one bits mean MAYBE used memory. */
 };
 
@@ -177,6 +179,8 @@ struct slab {
   struct event_list *cleanup_ev_list;			/* Schedule event_clean here */
   struct bird_thread_end_callback thread_end;		/* Gets called on thread end */
   struct sl_per_thread_info * _Atomic *thread_head_info; /* Originally there used to be just one head per thread. The rest is just a speedup hack. */
+  _Atomic long freed_heads;
+  _Atomic long freed_objs;
 };
 
 static struct resclass sl_class = {
@@ -268,6 +272,8 @@ sl_new(pool *p, struct event_list *cleanup_ev_list, uint size)
   s->data_size = size;
   size = (size + align - 1) / align * align;
   s->obj_size = size;
+  atomic_store_explicit(&s->freed_heads, 0, memory_order_relaxed);
+  atomic_store_explicit(&s->freed_objs, 0, memory_order_relaxed);
 
   /* Calculate how many objects fit into a head. */
   s->head_size = sizeof(struct sl_head);
@@ -401,6 +407,7 @@ sl_alloc_from_page(slab *s, struct sl_head *h)
       memset(out, 0xcd, s->data_size);
 #endif
       ti->still_free--;
+      atomic_fetch_add_explicit(&ti->allocated_objs, 1, memory_order_relaxed);
       return out;
     }
   }
@@ -623,6 +630,7 @@ sl_alloc(slab *s)
     memset(h->used_bits, 0xff, s->head_bitfield_len * sizeof(u32));
     atomic_store_explicit(&h->num_full, s->objs_per_slab, memory_order_relaxed);
     atomic_store_explicit(&h->state, slh_thread, memory_order_relaxed);
+    atomic_fetch_add_explicit(&ti->allocated_heads, 1, memory_order_relaxed);
   }
   ASSERT_DIE(h->slab == s);
 
@@ -706,6 +714,7 @@ sl_cleanup_full_heads(struct slab *s)
 
       /* Free the page completely */
       sl_free_page(next);
+      atomic_fetch_add_explicit(&s->freed_heads, 1, memory_order_relaxed);
     }
     else if (num_full < s->objs_per_slab)
     {
@@ -767,8 +776,11 @@ sl_cleanup_partial_heads(struct slab *s, struct sl_head *new_partials)
     ASSERT_DIE(next_head);
 
     if (!atomic_load_explicit(&ph->num_full, memory_order_relaxed))
+    {
       /* The head is empty, free it. */
       sl_free_page(ph);
+      atomic_fetch_add_explicit(&s->freed_heads, 1, memory_order_relaxed);
+    }
     else
     {
       /* Insert the head into the partial heads list.
@@ -821,10 +833,20 @@ static void sl_thread_end(struct bird_thread_end_callback *btec)
 {
   SKIP_BACK_DECLARE(slab, s, thread_end, btec);
 
+  /* Passing statistic to slab struct */
+  struct sl_per_thread_info *ti = atomic_exchange_explicit(&s->thread_head_info[THIS_THREAD_ID], NULL, memory_order_release);
+  if (ti)
+  {
+    atomic_fetch_sub_explicit(&s->freed_heads,
+      atomic_load_explicit(&ti->allocated_heads, memory_order_relaxed), memory_order_relaxed);
+    atomic_store_explicit(&ti->allocated_heads, 0, memory_order_relaxed);
+    atomic_fetch_sub_explicit(&s->freed_objs,
+      atomic_load_explicit(&ti->allocated_objs, memory_order_relaxed), memory_order_relaxed);
+    atomic_store_explicit(&ti->allocated_objs, 0, memory_order_relaxed);
+  }
+
   /* Getting rid of an active head of a stopping thread.
    * We first pick the head from its place. */
-  struct sl_per_thread_info *ti = atomic_exchange_explicit(&s->thread_head_info[THIS_THREAD_ID], NULL, memory_order_release);
-
   struct sl_head *h = atomic_load_explicit(&ti->head, memory_order_relaxed);
   atomic_store_explicit(&ti->head, NULL, memory_order_relaxed);
 
@@ -890,6 +912,8 @@ sl_free(void *oo)
 
   if ((num_full_before == s->objs_per_slab) || (num_full_before == 1))
     ev_send(s->cleanup_ev_list, &s->event_clean);
+
+  atomic_fetch_add_explicit(&s->freed_objs, 1, memory_order_relaxed);
 }
 
 void
@@ -1037,56 +1061,30 @@ slab_dump(struct dump_request *dreq, resource *r)
 static struct resmem
 slab_memsize(resource *r)
 {
+  /* This must be called from main_birdloop. Main_birdloop is the only loop freeing
+   * thread pools where sl_per_thread_info structs are allocated. Calling slab_memsize
+   * from anywhere else might result in conflict with sl_thread_end. */
+  ASSERT_DIE(birdloop_current == &main_birdloop);
   slab *s = (slab *) r;
-  size_t heads = 0;
+  long heads = 0;
+  long items = 0;
 
-  size_t items = heads * s->objs_per_slab;
-
-  /* Fullheads memsize */
-  struct sl_head *h = atomic_load_explicit(&s->full_heads, memory_order_relaxed);
-  while (h!= &slh_dummy_last_full)
+  struct sl_per_thread_info *ti;
+  for (int i = 0; i < MAX_THREADS; i++)
   {
-    heads++;
-    items += atomic_load_explicit(&h->num_full, memory_order_relaxed);
-    h = atomic_load_explicit(&h->next, memory_order_relaxed);
-  }
-
-  /* Partial heads memsize */
-  h = atomic_load_explicit(&s->partial_heads, memory_order_relaxed);
-  while (h!= &slh_dummy_last_partial)
-  {
-    heads++;
-    items += atomic_load_explicit(&h->num_full, memory_order_relaxed);
-
-    h = atomic_load_explicit(&h->next, memory_order_relaxed);
-    enum sl_head_state a = SL_GET_STATE(h);
-
-    if (a != slh_partial && a == slh_dummy)
-      /* This is ugly. A head may have changed its state, but could not disappear.
-       * The next pointer is never nulled or made invalid. If the head has changed
-       * its state, it must be because of it was grabbed from partial_heads linked list.
-       * That is why we can be sure in partial_heads linked list are only
-       * heads we did not yet see in this loop. */
-      h = atomic_load_explicit(&s->partial_heads, memory_order_relaxed);
-  }
-
-  /* Thread heads memsize */
-  for (long unsigned int i = 0; i < (page_size / sizeof(struct sl_head * _Atomic)); i++)
-  {
-    struct sl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[i], memory_order_relaxed);
-
+    ti = atomic_load_explicit(&s->thread_head_info[i], memory_order_relaxed);
     if (ti)
     {
-      struct sl_head *h = atomic_load_explicit(&ti->head, memory_order_relaxed);
-      if (h)
-      {
-        items += atomic_load_explicit(&h->num_full, memory_order_relaxed) - ti->still_free;
-        heads++;
-      }
+      items += atomic_load_explicit(&ti->allocated_objs, memory_order_relaxed);
+      heads += atomic_load_explicit(&ti->allocated_heads, memory_order_relaxed);
+      log("it %li, heads %li", items, heads);
     }
   }
 
+  heads -= atomic_load_explicit(&s->freed_heads, memory_order_relaxed);
+  items -= atomic_load_explicit(&s->freed_objs, memory_order_relaxed);
   size_t eff = items * s->data_size;
+  log("eff %li, over %li items %li", eff, ALLOC_OVERHEAD + sizeof(struct slab) + heads * page_size - eff, items);
 
   return (struct resmem) {
     .effective = eff,
