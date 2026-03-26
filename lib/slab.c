@@ -1077,14 +1077,12 @@ slab_memsize(resource *r)
     {
       items += atomic_load_explicit(&ti->allocated_objs, memory_order_relaxed);
       heads += atomic_load_explicit(&ti->allocated_heads, memory_order_relaxed);
-      log("it %li, heads %li", items, heads);
     }
   }
 
   heads -= atomic_load_explicit(&s->freed_heads, memory_order_relaxed);
   items -= atomic_load_explicit(&s->freed_objs, memory_order_relaxed);
   size_t eff = items * s->data_size;
-  log("eff %li, over %li items %li", eff, ALLOC_OVERHEAD + sizeof(struct slab) + heads * page_size - eff, items);
 
   return (struct resmem) {
     .effective = eff,
