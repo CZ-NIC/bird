@@ -345,7 +345,7 @@ docker-{{ docker["name"] }}:
     # Build docs when tools are available
     - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
     # Check that the reported version is the right one
-    - ${CROSS_RUN} ./bird --version |& tee obj/version-built
+    - ${CROSS_RUN} ./bird --version |& grep -v 'Cannot disable transparent huge pages' | tee obj/version-built
     - diff obj/version-built version-expected
 
 .build-docker-linux-amd64: &build-docker-linux-amd64
