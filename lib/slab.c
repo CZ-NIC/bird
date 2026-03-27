@@ -1007,15 +1007,18 @@ slab_dump(struct dump_request *dreq, resource *r)
   for (long unsigned int i = 0; i < (page_size / sizeof(struct sl_head * _Atomic)); i++)
   {
     struct sl_per_thread_info *ti = atomic_load_explicit(&s->thread_head_info[i], memory_order_relaxed);
-    struct sl_head *th = atomic_load_explicit(&ti->head, memory_order_relaxed);
-    if (th)
+    if (ti)
     {
-      /* There is no guarantee the head remains slh_thread, but it won't be freed. */
-      RDUMP("%*s%p (", dreq->indent+6, "", th);
-      for (uint i=1; i<=s->head_bitfield_len; i++)
-        RDUMP("%08x", atomic_load_explicit(&th->used_bits[s->head_bitfield_len-i], memory_order_relaxed));
-      RDUMP(")\n");
-      pc++;
+      struct sl_head *th = atomic_load_explicit(&ti->head, memory_order_relaxed);
+      if (th)
+      {
+        /* There is no guarantee the head remains slh_thread, but it won't be freed. */
+        RDUMP("%*s%p (", dreq->indent+6, "", th);
+        for (uint i=1; i<=s->head_bitfield_len; i++)
+          RDUMP("%08x", atomic_load_explicit(&th->used_bits[s->head_bitfield_len-i], memory_order_relaxed));
+        RDUMP(")\n");
+        pc++;
+      }
     }
   }
 
@@ -1046,7 +1049,7 @@ slab_dump(struct dump_request *dreq, resource *r)
     h = atomic_load_explicit(&h->next, memory_order_relaxed);
     enum sl_head_state a = SL_GET_STATE(h);
 
-    if (a != slh_partial && a == slh_dummy)
+    if (h != &slh_dummy_last_partial && a == slh_dummy)
       /* This is ugly. A head may have changed its state, but could not disappear.
        * The next pointer is never nulled or made invalid. If the head has changed
        * its state, it must be because of it was grabbed from partial_heads linked list.
