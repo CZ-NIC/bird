@@ -656,8 +656,8 @@ build-netlab:
   after_script:
     - DIR=$(pwd)
     - cd $TOOLS_DIR/netlab
-    - sudo ./stop
-    - "mkdir $DIR/netlab-failure"
+    - sudo ./stop || echo "Stop failed"
+    - "mkdir -p $DIR/netlab-failure"
     - git status --porcelain > $DIR/netlab-failure.log
     - for f in $(git status --porcelain | sed -rn 's#^.[^DRT] netlab/##p'); do mkdir -p $DIR/netlab-failure/$(dirname $f); sudo chmod a+rw $f; sudo mv $f $DIR/netlab-failure/$(dirname $f); done
   artifacts:
