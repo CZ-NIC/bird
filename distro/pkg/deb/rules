@@ -17,11 +17,16 @@ COMMON_FLAGS= --prefix=/usr --sysconfdir=/etc/bird --mandir=\$${prefix}/share/ma
 CFLAGS += -g -O2 -fno-strict-aliasing -fno-strict-overflow -fPIC
 LDFLAGS += -g -O2 -fno-strict-aliasing -fno-strict-overflow -fPIC -Wl,-z,defs -Wl,--as-needed
 
+# BIRD 3 needs atomic 64-bit instructions which are converted to libatomic calls at armel
+ifeq (armel,$(DEB_TARGET_ARCH))
+	LIBS += -latomic
+endif
+
 %:
 	dh $@
 
 override_dh_auto_configure:
-	CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)" dh_auto_configure -- $(COMMON_FLAGS) --with-protocols=all
+	CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)" LIBS="$(LIBS)" dh_auto_configure -- $(COMMON_FLAGS) --with-protocols=all
 
 override_dh_auto_build-indep:
 	dh_auto_build -- docs

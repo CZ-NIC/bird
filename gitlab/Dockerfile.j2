@@ -39,6 +39,9 @@ RUN apt-get -y --no-install-recommends install \
 	crossbuild-essential-{{ ca }} \
 	libreadline-dev:{{ ca }} \
 	ncurses-dev:{{ ca }} \
+	{%- if ca in ("armel", ) %}
+	libatomic1:{{ ca }} \
+	{%- endif %}
 	{%- endfor %}
 	{%- if distro.crossarch %}
 	qemu-user \

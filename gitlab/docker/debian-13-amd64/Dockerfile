@@ -28,6 +28,7 @@ RUN apt-get -y --no-install-recommends install \
 	crossbuild-essential-armel \
 	libreadline-dev:armel \
 	ncurses-dev:armel \
+	libatomic1:armel \
 	crossbuild-essential-armhf \
 	libreadline-dev:armhf \
 	ncurses-dev:armhf \

@@ -335,8 +335,12 @@ docker-{{ docker["name"] }}:
         export CONFIGURE_OPTIONS="--host=${DEB_TARGET_GNU_TYPE} ${CONFIGURE_OPTIONS}"
         export CROSS_RUN=qemu-${CROSSBUILD_ARCH}
       fi
+    - |
+      case $CROSSBUILD_ARCH in
+        armel) LIBS="$LIBS -latomic" ;;
+      esac
     - autoreconf
-    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" ${CONFIGURE_OPTIONS}
+    - ./configure CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" LIBS="$LIBS" ${CONFIGURE_OPTIONS}
     # Detect which make is available
     - MAKE=make
     - which gmake 2>/dev/null >/dev/null && MAKE=gmake
