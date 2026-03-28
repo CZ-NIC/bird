@@ -13,10 +13,7 @@ RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
 {%- for ca in distro.crossarch %}
 RUN dpkg --add-architecture {{ ca }}
 {%- endfor %}
-{%- if distro.name == "ubuntu-22.04-amd64" %}
-RUN find /etc/apt/sourc* -type f -exec sed -i 's/^deb /deb [arch=amd64] /' '{}' +
-RUN find /etc/apt/sourc* -type f -exec sed -r '/^deb /{s#arch=amd64#arch={{ distro.crossarch | join(",") }}#;s#https?://[^ ]+#http://ports.ubuntu.com/ubuntu-ports/#}' '{}' + > /etc/apt/sources.list.d/crossbuild.list
-{%- elif distro.shortname == "ubuntu" and distro.crossarch %}
+{%- if distro.shortname == "ubuntu" and distro.crossarch %}
 RUN find /etc/apt/sourc* -type f -exec sed -i '/Components: /a\
 Architectures: amd64' '{}' +
 RUN find /etc/apt/sourc* -type f -exec sed 's#URIs: .*#URIs: http://ports.ubuntu.com/ubuntu-ports/#;s#Architectures: amd64#Architectures: {{ distro.crossarch | join(",") }}#' '{}' + > /etc/apt/sources.list.d/crossbuild.sources
