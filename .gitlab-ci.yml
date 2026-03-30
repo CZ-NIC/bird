@@ -2972,11 +2972,6 @@ test-rip-base:
   variables:
     TEST_NAME: cf-rip-base
 
-test-rip-vrf:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-rip-vrf
-
 test-kernel-learn:
   <<: *test-base
   variables:
