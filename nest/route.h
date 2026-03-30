@@ -380,6 +380,7 @@ extern uint rtable_max_id;
     uint id;				/* Integer table ID for fast lookup */			\
     DOMAIN(rtable) lock;		/* Lock to take to access the private parts */		\
     struct rtable_config *config;	/* Configuration of this table */			\
+    union rtable *roa_aux_table;	/* Auxiliary table for ROA */				\
     struct birdloop *loop;		/* Service thread */					\
     netindex_hash *netindex;		/* Prefix index for this table */			\
     struct network * _Atomic routes;	/* Actual route objects in the table */			\

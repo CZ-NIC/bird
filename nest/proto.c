@@ -739,7 +739,7 @@ channel_roa_subscribe_filter(struct channel *c, int dir)
     {
     case FI_ROA_CHECK:
       if (valid)
-	channel_roa_subscribe(c, fi->i_FI_ROA_CHECK.rtc->roa_aux_table->table, dir);
+	channel_roa_subscribe(c, fi->i_FI_ROA_CHECK.rtc->table->roa_aux_table, dir);
       found = 1;
       break;
 
