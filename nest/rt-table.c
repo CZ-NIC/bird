@@ -626,6 +626,7 @@ static void
 rt_setup_roa_aggregator(rtable *t)
 {
   rtable *src = t->config->master.src->table;
+  src->roa_aux_table = t;
   struct rt_roa_aggregator *rag;
   {
     RT_LOCK(t, tab);
@@ -719,7 +720,7 @@ net_roa_check(rtable *tp, const net_addr *n, u32 asn)
   SKIP_BACK_DECLARE(net_addr_union, nu, n, n);
   int anything = 0;
 
-  rtable *aux = tp->config->roa_aux_table->table;
+  rtable *aux = tp->roa_aux_table;
 
 #define TW(ipv) do {								\
   TRIE_WALK_TO_ROOT_IP##ipv(trie, &(nu->ip##ipv), var) {			\
