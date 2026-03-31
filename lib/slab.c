@@ -1069,7 +1069,7 @@ slab_memsize(resource *r)
    * from anywhere else might result in conflict with sl_thread_end. */
   ASSERT_DIE(birdloop_current == &main_birdloop);
   slab *s = (slab *) r;
-  long heads = 0;
+  long heads = 1; /* One default page for thread_head_info */
   long items = 0;
 
   struct sl_per_thread_info *ti;
