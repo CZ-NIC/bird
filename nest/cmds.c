@@ -118,10 +118,15 @@ cmd_show_memory(void)
   cli_msg(-1018, "BIRD memory usage");
   cli_msg(-1018, "%-17s Effective    Overhead", "");
   print_size("Routing tables:", rmemsize(rt_table_pool));
+  log("rout end");
   print_size("Route attributes:", rmemsize(rta_pool));
+  log("rout attr end");
   print_size("Protocols:", rmemsize(proto_pool));
+  log("proto end");
   print_size("Current config:", rmemsize(config_pool));
+  log("bef root pool");
   struct resmem total = rmemsize(&root_pool);
+  log("aft root pool");
 #ifdef HAVE_MMAP
   uint hot_pages = atomic_load_explicit(&pages_kept, memory_order_relaxed)
 		+ atomic_load_explicit(&pages_kept_locally, memory_order_relaxed);

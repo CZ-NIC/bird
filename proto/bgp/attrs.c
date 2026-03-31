@@ -1864,8 +1864,10 @@ bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_pr
 
   if (row_num < bgp_max_slab_row && c)
   {
-    if (!c->bucket_prefix_slabs[row_num])
+    if (!c->bucket_prefix_slabs[row_num]){
       c->bucket_prefix_slabs[row_num] = sl_new(c->pool, birdloop_event_list(c->c->c.proto->loop), sizeof(union bgp_bucket_prefix*) * fib_nums[row_num]);
+      log("buck sl %p", c->bucket_prefix_slabs[row_num]);
+    }
 
     new_row.array = sl_alloc(c->bucket_prefix_slabs[row_num]);
   }

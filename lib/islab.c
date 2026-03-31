@@ -527,6 +527,7 @@ islab_free_empty_pages(struct islab * isl, struct islab_head *cur_head)
     ASSERT_DIE(cur_head->body[pos] == old_head);
 
     free_page(old_head);
+    isl->heads_stored--;
     id_bitfield_set(cur_head, cur_head->bitfield_partial, pos, 0);
     id_bitfield_set(cur_head, cur_head->bitfield_free, pos, 1);
   } while (cur_head != isl->ap && cur_head->num_free == isl->max_ptrs);
@@ -564,6 +565,7 @@ islab_free(struct islab * isl, u32 id)
 #endif
 
   islab_free_empty_pages(isl, cur_head);
+  isl->obj_stored--;
 }
 
 
@@ -649,8 +651,10 @@ islab_memsize(resource *r)
 {
   struct islab *isl = (struct islab *) r;
 
+  log("isl  eff %li over %li heads %i", isl->obj_stored * isl->obj_size, (isl->heads_stored * page_size) - (isl->obj_stored * isl->obj_size), isl->heads_stored);
+
   return (struct resmem) {
     .effective = isl->obj_stored * isl->obj_size,
-    .overhead = (isl->heads_stored * page_size) - isl->obj_stored * isl->obj_size,
+    .overhead = (isl->heads_stored * page_size) - (isl->obj_stored * isl->obj_size),
   };
 }

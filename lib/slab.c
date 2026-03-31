@@ -997,7 +997,7 @@ slab_dump(struct dump_request *dreq, resource *r)
 {
   /* This is expected to run from the same loop as sl_cleanup */
   slab *s = (slab *) r;
-  int ec=0, pc=0, fc=0;
+  int thread=0, partial=0, full=0;
 
   RDUMP("(%d objs per %d bytes in page)\n",
       s->objs_per_slab, s->obj_size);
@@ -1017,7 +1017,7 @@ slab_dump(struct dump_request *dreq, resource *r)
         for (uint i=1; i<=s->head_bitfield_len; i++)
           RDUMP("%08x", atomic_load_explicit(&th->used_bits[s->head_bitfield_len-i], memory_order_relaxed));
         RDUMP(")\n");
-        pc++;
+        thread++;
       }
     }
   }
@@ -1031,7 +1031,7 @@ slab_dump(struct dump_request *dreq, resource *r)
     for (uint i=1; i<=s->head_bitfield_len; i++)
       RDUMP("%08x", atomic_load_explicit(&h->used_bits[s->head_bitfield_len-i], memory_order_relaxed));
     RDUMP(")\n");
-    pc++;
+    full++;
     h = atomic_load_explicit(&h->next, memory_order_relaxed);
   }
 
@@ -1044,7 +1044,7 @@ slab_dump(struct dump_request *dreq, resource *r)
     for (uint i=1; i<=s->head_bitfield_len; i++)
       RDUMP("%08x", atomic_load_explicit(&h->used_bits[s->head_bitfield_len-i], memory_order_relaxed));
     RDUMP(")\n");
-    pc++;
+    partial++;
 
     h = atomic_load_explicit(&h->next, memory_order_relaxed);
     enum sl_head_state a = SL_GET_STATE(h);
@@ -1058,7 +1058,7 @@ slab_dump(struct dump_request *dreq, resource *r)
       h = atomic_load_explicit(&s->partial_heads, memory_order_relaxed);
   }
 
-  RDUMP("%*spartial=%d full=%d total=%d\n", dreq->indent+3, "", ec, pc, fc);
+  RDUMP("%*sthread=%d partial=%d full=%d total=%d\n", dreq->indent+3, "", thread, partial, full, thread + partial + full);
 }
 
 static struct resmem
@@ -1083,10 +1083,14 @@ slab_memsize(resource *r)
     }
   }
 
+  long oheads = heads;
+  long oitems = items;
   heads -= atomic_load_explicit(&s->freed_heads, memory_order_relaxed);
   items -= atomic_load_explicit(&s->freed_objs, memory_order_relaxed);
   size_t eff = items * s->data_size;
 
+  log("sl %p eff %li, over %li, items %li, heads %li, freed i %li, freed heads %li", s, eff, ALLOC_OVERHEAD + sizeof(struct slab) + heads * page_size - eff,
+oheads, oitems, atomic_load_explicit(&s->freed_objs, memory_order_relaxed), atomic_load_explicit(&s->freed_heads, memory_order_relaxed));
   return (struct resmem) {
     .effective = eff,
     .overhead = ALLOC_OVERHEAD + sizeof(struct slab) + heads * page_size - eff,
