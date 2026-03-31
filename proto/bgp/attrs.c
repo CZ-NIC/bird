@@ -2150,6 +2150,7 @@ bgp_init_prefix_table(struct bgp_ptx_private *c, struct event_list *ev_l)
 {
   ASSERT_DIE(!c->prefix_slab);
   c->prefix_slab = sl_new(c->pool, ev_l, sizeof(struct bgp_prefix));
+  log("new prefix slab %p", c->prefix_slab);
 
   HASH_INIT(c->prefix_hash, c->pool, 8);
 }
