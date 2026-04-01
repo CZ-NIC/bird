@@ -1,3 +1,9 @@
+Version 2.17.4 (2026-04-01)
+  o ASPA: Fix downstream validation
+  o BGP: Fix restart behavior on reconfiguration
+  o Filters: Fix string attributes
+  o Logging: Fix error handling
+
 Version 2.17.3 (2025-12-04)
   o RAdv: Fix flags for deprecated prefixes
   o BMP: Fix crash when exporting a route with non-bgp attributes
