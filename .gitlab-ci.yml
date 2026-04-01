@@ -2638,14 +2638,6 @@ crossinstall-s390x-ubuntu-25.10-amd64:
 #    - gmake check
 
 
-build-birdlab-openbsd-75:
-  <<: *build-birdlab-base
-  variables:
-    AUTOCONF_VERSION: '2.71'
-  tags:
-    - birdlab-openbsd-75
-    - amd64
-
 build-birdlab-openbsd-76:
   <<: *build-birdlab-base
   variables:
