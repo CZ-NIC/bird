@@ -543,7 +543,7 @@ struct bgp_ptx_private {
 
   HASH(struct bgp_prefix) prefix_hash;	/* Hash table of pending prefices */
 
-  slab *prefix_slab;			/* Slab holding prefix nodes */
+  struct islab *prefix_slab;			/* Slab holding prefix nodes */
   struct islab *bucket_alloc;
   struct slab **bucket_prefix_slabs; /* slabs holding prefixes inside buckets */
   struct px_free_later free_later; /* Make bgp_update_prefix() freeing prefixes simple and quick without safer HASH function. */

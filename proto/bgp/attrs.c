@@ -2146,11 +2146,11 @@ bgp_withdraw_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b)
 HASH_DEFINE_REHASH_FN(PXH, struct bgp_prefix);
 
 static void
-bgp_init_prefix_table(struct bgp_ptx_private *c, struct event_list *ev_l)
+bgp_init_prefix_table(struct bgp_ptx_private *c)
 {
   ASSERT_DIE(!c->prefix_slab);
-  c->prefix_slab = sl_new(c->pool, ev_l, sizeof(struct bgp_prefix));
-  log("new prefix slab %p", c->prefix_slab);
+  c->prefix_slab = islab_init(c->pool, sizeof(struct bgp_prefix));
+  log("new prefix islab %p", c->prefix_slab);
 
   HASH_INIT(c->prefix_hash, c->pool, 8);
 }
@@ -2180,7 +2180,8 @@ bgp_get_prefix(struct bgp_ptx_private *c, struct netindex *ni, struct rte_src *s
   }
 
   /* Allocate new prefix */
-  px = sl_allocz(c->prefix_slab);
+  int id;
+  px = islab_allocz(c->prefix_slab, &id);
   *px = (struct bgp_prefix) {
     .src_global_id = src->global_id,
     .ni = ni,
@@ -2290,7 +2291,7 @@ bgp_free_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px)
   net_unlock_index(c->exporter.netindex, px->ni);
   rt_unlock_source(rt_find_source_global(px->src_global_id));
 
-  sl_free(px);
+  islab_free_ptr(c->prefix_slab, px);
 }
 
 void
@@ -2477,7 +2478,7 @@ bgp_init_pending_tx(struct bgp_channel *c)
   bpp->c = c;
 
   bgp_init_bucket_table(bpp);
-  bgp_init_prefix_table(bpp, birdloop_event_list(c->c.proto->loop));
+  bgp_init_prefix_table(bpp);
 
   bpp->exporter = (struct rt_exporter) {
     .journal = {
@@ -2551,7 +2552,7 @@ bgp_free_pending_tx(struct bgp_channel *bc)
   HASH_WALK_END;
 
   HASH_FREE(c->prefix_hash);
-  sl_delete(c->prefix_slab);
+  islab_delete(c->prefix_slab);
   c->prefix_slab = NULL;
 
   mb_free(c->free_later.px_free);

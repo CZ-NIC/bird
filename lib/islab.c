@@ -492,6 +492,14 @@ islab_alloc(struct islab* isl, u32* id)
 }
 
 void *
+islab_allocz(struct islab* isl, u32* id)
+{
+  void *ret = islab_alloc(isl, id);
+  memset(ret, 0x0, isl->obj_size);
+  return ret;
+}
+
+void *
 islab_find(struct islab * isl, u32 id)
 {
   ASSERT_DIE(id > 0);
@@ -651,7 +659,8 @@ islab_memsize(resource *r)
 {
   struct islab *isl = (struct islab *) r;
 
-  log("isl  eff %li over %li heads %i", isl->obj_stored * isl->obj_size, (isl->heads_stored * page_size) - (isl->obj_stored * isl->obj_size), isl->heads_stored);
+  log("isl %p eff %li over %li heads %i objs %li",isl, isl->obj_stored * isl->obj_size,
+    (isl->heads_stored * page_size) - (isl->obj_stored * isl->obj_size), isl->heads_stored, isl->obj_stored);
 
   return (struct resmem) {
     .effective = isl->obj_stored * isl->obj_size,
