@@ -1,3 +1,14 @@
+Version 3.1.6 (2026-04-01)
+  o ASPA: Fix downstream validation
+  o BMP: Fix route sending
+  o BGP: Fix route refresh after restart
+  o BGP: Fix restart behavior on reconfiguration
+  o Filters: Fix string attributes
+  o Filters: Fix ROA check autoreload reconfiguration
+  o Logging: Fix error handling
+  o Kernel: Fix graceful recovery
+  o Pipe: Fix rare collision bug
+
 Version 3.1.5 (2025-12-04)
   o Babel, OSPF, RIP: Fix crash on interface reconfiguration
   o RAdv: Fix flags for deprecated prefixes
