@@ -592,6 +592,7 @@ islab_free_ptr(struct islab *isl, void *ptr)
   #endif
 
   id_bitfield_set(head, head->bitfield_free, index, 1);
+  isl->obj_stored--;
 
   if (head->num_free == 1)
   {
