@@ -1,3 +1,8 @@
+Version 2.18.1 (2026-04-01)
+  o ASPA: Fix downstream validation
+  o Filters: Fix string attributes
+  o Logging: Fix error handling
+
 Version 2.18 (2025-12-26)
   o BGP: Support for dynamic onlink and link-local connections
   o BGP: Listening socket refactoring
