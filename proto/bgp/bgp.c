@@ -1270,8 +1270,6 @@ bgp_stop(struct bgp_proto *p, int subcode, byte *data, uint len)
   bgp_graceful_close_conn(&p->outgoing_conn, subcode, data, len);
   bgp_graceful_close_conn(&p->incoming_conn, subcode, data, len);
 
-  p->p.reload_routes = NULL;
-
   proto_send_event(&p->p, p->event);
 }
 
@@ -2507,6 +2505,12 @@ bgp_reload_in(struct proto *P, uintptr_t _ UNUSED, int __ UNUSED)
 {
   SKIP_BACK_DECLARE(struct bgp_proto, p, p, P);
 
+  if (!p->route_refresh)
+  {
+    cli_msg(-8006, "%s: not reloading, route refresh unavailable", P->name);
+    return;
+  }
+
   if (P->proto_state == PS_UP)
   {
     struct bgp_channel *c;
@@ -2613,6 +2617,7 @@ bgp_reload_routes(struct channel *C, struct rt_feeding_request *rfr)
     return 0;
 
   struct bgp_proto *p = SKIP_BACK(struct bgp_proto, p, C->proto);
+  ASSERT_DIE(p->route_refresh);
 
   if (p->p.proto_state == PS_UP)
   {
