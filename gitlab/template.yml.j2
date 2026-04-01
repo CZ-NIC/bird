@@ -69,6 +69,7 @@ stages:
 {%- set is_stable =  '($CI_COMMIT_BRANCH =~ /' ~ stable_branch_regex ~ '/)' %}
 {%- set not_stable =  '($CI_COMMIT_BRANCH !~ /' ~ stable_branch_regex ~ '/)' %}
 
+{%- set is_release_commit =  '($CI_COMMIT_MESSAGE =~ /^NEWS and version update/)' %}
 {%- set is_wip =     '($CI_COMMIT_MESSAGE =~ /^(fixup! )*WIP/)' %}
 {%- set is_tag =     '$CI_COMMIT_TAG' %}
 
@@ -96,10 +97,22 @@ workflow:
         wf_desc: '$CI_COMMIT_TAG'
     - if: '{{ is_push }}'
       variables:
+        wf_kind: regular
         wf_prefix: ''
         wf_desc: '$CI_COMMIT_TITLE'
+    - if: '{{ is_stable }} && {{ is_release_commit }}'
+      variables:
+        wf_kind: release
+        wf_prefix: '[RELEASE] '
+        wf_desc: '$CI_COMMIT_BRANCH'
+    - if: '{{ is_release_commit }}'
+      variables:
+        wf_kind: release-candidate
+        wf_prefix: '[RC] '
+        wf_desc: '$CI_COMMIT_BRANCH'
     - when: always
       variables:
+        wf_kind: unknown
         wf_prefix: '[$CI_PIPELINE_SOURCE] '
         wf_desc: '$CI_COMMIT_TITLE'
 
@@ -121,26 +134,7 @@ workflow:
   - when: {% if yesno %}on_success{% else %}never{% endif %}
 {%- endmacro -%}
 
-## Common rules
-# Ignore WIP commits
-.never-wip: &never-wip
-  if: {{ is_wip }}
-  when: never
-
-# Do not run for development branches
-.never-dev: &never-dev
-  if: {{ not_stable }}
-  when: never
-
-# Do run for tags
-.if-tag: &if-tag
-  if: $CI_COMMIT_TAG
-
-# Never run for tags
-.never-tag: &never-tag
-  if: $CI_COMMIT_TAG
-  when: never
-
+## Default rules for regular jobs
 .default-rules:
 # Manual, API and Scheduled jobs have an explicit input setting.
 # Do not run anything unless explicitly requested for these.
@@ -169,6 +163,7 @@ pipeline-infodump:
   "CI_COMMIT_MESSAGE",
   "CI_PIPELINE_SOURCE",
   "CI_MERGE_REQUEST_IID",
+  "wf_kind",
 ] %}
     echo "\${{ VAR }} = ${{ VAR }}"
 {%- endfor %}
@@ -220,6 +215,7 @@ commit-messages:
   - tools/git-check-commits
   rules:
   {{ rule(is_stable, True) }}
+  {{ rule(is_release_commit, True) }}
   {{ rdef(False) }}
 
 ## Tag check
@@ -420,6 +416,8 @@ build-release:
 .pkg-base: &pkg-base
   rules:
   - if: '{{ inputs_packages }}'
+  {{ rule(is_tag, False) }}
+  {{ rule(is_release_commit, True) }}
   {{ rule(not_stable, False) }}
   - !reference [ .default-rules ]
 
