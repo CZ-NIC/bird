@@ -37,11 +37,27 @@ fi
 
 PKGVERSION=$(tools/version)
 RPMPKGSTEM=bird-$PKGVERSION
+PKG_FIXUP=${PKG_FIXUP:=1}
+
+if [ "$((PKG_FIXUP+0))" != "$PKG_FIXUP" ]; then
+  echo "Weird PKG_FIXUP value, must be integer: $PKG_FIXUP"
+  exit 1
+fi
+
+if [ -z "$PKG_RELINFO" ]; then
+  if [ "$PKG_FIXUP" == "1" ]; then
+    PKG_RELINFO="upstream package"
+  else
+    echo "PKG_RELINFO must be supplied together with PKG_FIXUP"
+    exit 1
+  fi
+fi
+
 ORIG=$(pwd)
 DIRTARGET=$($LSB_RELEASE -is)-$($LSB_RELEASE -rs | tr '/' '-')
 DIRTARGET=${DIRTARGET,,}
-SRCTARGET=${ORIG}/pkg/srcpkgs/$DIRTARGET/$RPMPKGSTEM-cznic.1/
-BINTARGET=${ORIG}/pkg/pkgs/$DIRTARGET/$RPMPKGSTEM-cznic.1/
+SRCTARGET=${ORIG}/pkg/srcpkgs/$DIRTARGET/$RPMPKGSTEM-cznic.$PKG_FIXUP/
+BINTARGET=${ORIG}/pkg/pkgs/$DIRTARGET/$RPMPKGSTEM-cznic.$PKG_FIXUP/
 
 echo "Packaging BIRD $PKGVERSION for $($LSB_RELEASE -is) $($LSB_RELEASE -rs) in $TMPDIR"
 
@@ -60,7 +76,7 @@ mkdir -p $SRCTARGET $BINTARGET
 mkdir -p $TMPDIR/SOURCES $TMPDIR/BUILD/$RPMPKGSTEM-build
 
 cp distro/pkg/rpm/* $TMPDIR/SOURCES/
-sed -i "s#{{ version }}#$PKGVERSION#;s#{{ now }}#$(date +'%a %b %d %Y')#;" $TMPDIR/SOURCES/bird.spec
+sed -i "s#{{ version }}#$PKGVERSION#;s#{{ release }}#${PKG_FIXUP}#;s#{{ now }}#$(date +'%a %b %d %Y')#;s#{{ relinfo }}#${PKG_RELINFO}#;" $TMPDIR/SOURCES/bird.spec
 
 cp bird-$PKGVERSION.tar.gz $TMPDIR/SOURCES/$RPMPKGSTEM.tar.gz
 pushd $TMPDIR/SOURCES
