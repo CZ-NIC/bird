@@ -211,18 +211,22 @@ id_find_items_per_page(u32 item_size, bool obj_page)
   int space_for_bitfields;
 
   if (obj_page)
-    space_for_bitfields = (item_pp / 32) + 1;
+    space_for_bitfields = ((item_pp / 32) + !!(item_pp % 32)) * 4;
   else
-    space_for_bitfields = ((item_pp / 32) + 1) * 2;
+    space_for_bitfields = (((item_pp / 32) + !!(item_pp % 32)) * 2) * 4;
 
-  while ((sizeof(struct islab_head) + space_for_bitfields + item_pp * item_size) > (u64) page_size)
+  while ((sizeof(struct islab_head) + space_for_bitfields + (item_pp * item_size)) > (u64) page_size)
   {
     item_pp--;
     if (obj_page)
-      space_for_bitfields = (item_pp / 32) + !!(item_pp % 32);
+      space_for_bitfields = ((item_pp / 32) + !!(item_pp % 32)) * 4;
     else
-      space_for_bitfields = ((item_pp / 32) + !!(item_pp % 32)) * 2;
+      space_for_bitfields = ((item_pp / 32) + !!(item_pp % 32)) * 2 * 4;
   }
+
+  if (item_pp <= 2)
+    bug("islab: objects are too big");
+  //log("head %i, biffileds %i, item pp %i it size %i, pp*siz %i, page %i", sizeof(struct islab_head), space_for_bitfields,item_pp, item_size, item_pp * item_size, page_size);
   return item_pp;
 }
 
@@ -381,6 +385,7 @@ islab_put_head_above(struct islab* isl, struct islab_head **cur_head_ptr)
   id_bitfield_set(head, head->bitfield_free, 0, 0); /* space for old head*/
   id_bitfield_set(head, head->bitfield_free, 1, 0); /* space for new object head */
   id_bitfield_set(head, head->bitfield_partial, 1, 1); /* the new head will contain only one object */
+  //log("head %p set %i put above", head, 1);
 
   if (cur_head->level == isl->ap->level)
     head->level = cur_head->level + 1; /* head is new root */
@@ -451,6 +456,7 @@ islab_alloc(struct islab* isl, u32* id)
         bug("islab run out of capacity");
 
       id_bitfield_set(cur_head, cur_head->bitfield_partial, pos, 1);
+      //log("head %p set %i put below", cur_head, pos);
       id_bitfield_set(cur_head, cur_head->bitfield_free, pos, 0);
       struct islab_head *head = alloc_page();
       isl->heads_stored++;
@@ -527,7 +533,7 @@ islab_free_empty_pages(struct islab * isl, struct islab_head *cur_head)
   u32 id = cur_head->id;
 
   /* The head is empty. We need to free it and pass the info to its parent.
-   * If it was the onlz child, free it as well ect. Never free root. */
+   * If it was the only child, free it as well ect. Never free root. */
   do {
     struct islab_head *old_head = cur_head;
     cur_head = cur_head->head_above;
@@ -539,6 +545,12 @@ islab_free_empty_pages(struct islab * isl, struct islab_head *cur_head)
     id_bitfield_set(cur_head, cur_head->bitfield_partial, pos, 0);
     id_bitfield_set(cur_head, cur_head->bitfield_free, pos, 1);
   } while (cur_head != isl->ap && cur_head->num_free == isl->max_ptrs);
+
+  if (cur_head == isl->ap && cur_head->num_free == isl->max_ptrs)
+  {
+    cur_head->level = 0;
+    id_init_bitfields(cur_head, isl->max_objs, true);
+  }
 }
 
 void
@@ -594,16 +606,19 @@ islab_free_ptr(struct islab *isl, void *ptr)
   id_bitfield_set(head, head->bitfield_free, index, 1);
   isl->obj_stored--;
 
-  if (head->num_free == 1)
+  if (head->num_free == 1 && (head->level + 1 == head->head_above->level))
   {
     u32 id = head->id;
 
-    while (head->num_free == 1 && head != isl->ap)
-    {
+    bool cont;
+    do {
       head = head->head_above;
       u32 pos = ISL_POS_ON_LEVEL(isl, id, head->level);
+      cont = head->num_free == 0;
+      cont = cont && (id_get_one_in_bitfield(head->bitfield_partial, isl->max_ptrs) == -1);
       id_bitfield_set(head, head->bitfield_partial, pos, 1);
-    }
+    } while (cont && head != isl->ap && (head->level + 1 == head->head_above->level));
+
     return;
   }
 
@@ -660,8 +675,8 @@ islab_memsize(resource *r)
 {
   struct islab *isl = (struct islab *) r;
 
-  log("isl %p eff %li over %li heads %i objs %li",isl, isl->obj_stored * isl->obj_size,
-    (isl->heads_stored * page_size) - (isl->obj_stored * isl->obj_size), isl->heads_stored, isl->obj_stored);
+  log("isl %p eff %li over %li heads %i objs %li obj siz %i",isl, isl->obj_stored * isl->obj_size,
+    (isl->heads_stored * page_size) - (isl->obj_stored * isl->obj_size), isl->heads_stored, isl->obj_stored, isl->obj_size);
 
   return (struct resmem) {
     .effective = isl->obj_stored * isl->obj_size,

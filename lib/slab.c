@@ -299,6 +299,7 @@ sl_new(pool *p, struct event_list *cleanup_ev_list, uint size)
   /* But it may converge to zero which is kinda stupid because we want to
    * allocate some blocks, not just juggle empty pages. But that's definitely
    * the user's fault and we won't bother. */
+  log("sl %x obj siz %i, obj pp %i, min page overhead %i", s, s->obj_size, s->objs_per_slab, page_size-(s->obj_size*s->objs_per_slab));
   if (!s->objs_per_slab)
     bug("Slab: object too large");
 
@@ -1080,6 +1081,8 @@ slab_memsize(resource *r)
     {
       items += atomic_load_explicit(&ti->allocated_objs, memory_order_relaxed);
       heads += atomic_load_explicit(&ti->allocated_heads, memory_order_relaxed);
+      int ite = atomic_load_explicit(&ti->allocated_objs, memory_order_relaxed);
+      log("thr %i, items %li heads %li, item size %li", i, ite, atomic_load_explicit(&ti->allocated_heads, memory_order_relaxed), ite*s->obj_size);
     }
   }
 
@@ -1089,8 +1092,8 @@ slab_memsize(resource *r)
   items -= atomic_load_explicit(&s->freed_objs, memory_order_relaxed);
   size_t eff = items * s->data_size;
 
-  log("sl %p eff %li, over %li, items %li, heads %li, freed i %li, freed heads %li", s, eff, ALLOC_OVERHEAD + sizeof(struct slab) + heads * page_size - eff,
-oitems, oheads, atomic_load_explicit(&s->freed_objs, memory_order_relaxed), atomic_load_explicit(&s->freed_heads, memory_order_relaxed));
+  log("sl %p eff %li, over %li, items %li, heads %li, freed i %li, freed heads %li, max pp %i", s, eff, ALLOC_OVERHEAD + sizeof(struct slab) + heads * page_size - eff,
+oitems, oheads, atomic_load_explicit(&s->freed_objs, memory_order_relaxed), atomic_load_explicit(&s->freed_heads, memory_order_relaxed), s->objs_per_slab);
   return (struct resmem) {
     .effective = eff,
     .overhead = ALLOC_OVERHEAD + sizeof(struct slab) + heads * page_size - eff,
