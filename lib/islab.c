@@ -606,7 +606,7 @@ islab_free_ptr(struct islab *isl, void *ptr)
   id_bitfield_set(head, head->bitfield_free, index, 1);
   isl->obj_stored--;
 
-  if (head->num_free == 1 && (head->level + 1 == head->head_above->level))
+  if (head->num_free == 1 && head->head_above && (head->level + 1 == head->head_above->level))
   {
     u32 id = head->id;
 
