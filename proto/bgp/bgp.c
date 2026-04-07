@@ -1140,7 +1140,7 @@ bgp_spawn_nbr(struct bgp_proto *pp, const net_addr_nbr *nbr)
     return;
 
   struct bgp_proto *p = bgp_spawn(pp, nbr->addr, pp->cf->local_ip, iface);
-  p->claimed = true;
+  proto_adopt(&p->p, &pp->p);
 }
 
 static struct bgp_proto *
@@ -1175,29 +1175,43 @@ bgp_add_nbr(struct bgp_proto *pp, const net_addr_nbr *nbr)
 {
   struct bgp_proto *cp = bgp_find_child_proto(pp, nbr);
 
-  if (cp)
-  {
-    if (cp->claimed)
-      return;
-
-    TRACE_(pp, D_EVENTS, "Claiming BGP instance %s for neighbor %N", cp->p.name, nbr);
-
-    cp->claimed = true;
-  }
-  else
+  if (!cp)
     bgp_spawn_nbr(pp, nbr);
+
+  else if (proto_adopt(&cp->p, &pp->p))
+    TRACE_(pp, D_EVENTS, "Claiming BGP instance %s for neighbor %N", cp->p.name, nbr);
 }
 
 void
 bgp_remove_nbr(struct bgp_proto *pp, const net_addr_nbr *nbr)
 {
   struct bgp_proto *cp = bgp_find_child_proto(pp, nbr);
-  if (!cp || !cp->claimed)
+  if (!cp)
     return;
 
-  TRACE_(pp, D_EVENTS, "Releasing BGP instance %s for neighbor %N", cp->p.name, nbr);
+  proto_orphan(&cp->p, &pp->p);
 
-  cp->claimed = false;
+  switch (cp->p.proto_state) {
+    /* The protocol is still living */
+    case PS_UP:
+    case PS_STOP:
+      break;
+
+    case PS_START:
+      /* Graceful restart active */
+      if (cp->gr_active_num)
+	break;
+
+      /* fall through */
+    case PS_DOWN:
+
+      /* The protocol is already dead */
+      proto_zombie(&cp->p);
+      TRACE_(pp, D_EVENTS, "Releasing BGP instance %s (dead) for neighbor %N", cp->p.name, nbr);
+      return;
+  }
+
+  TRACE_(pp, D_EVENTS, "Releasing BGP instance %s (alive) for neighbor %N", cp->p.name, nbr);
 }
 
 

@@ -420,7 +420,6 @@ struct bgp_proto {
   u8 last_error_class; 			/* Error class of last error */
   u32 last_error_code;			/* Error code of last error. BGP protocol errors
 					   are encoded as (bgp_err_code << 16 | bgp_err_subcode) */
-  bool claimed;				/* Claimed dynamic protocols are kept, unclaimed may be removed */
 };
 
 struct bgp_channel {

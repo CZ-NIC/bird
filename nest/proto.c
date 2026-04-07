@@ -47,6 +47,13 @@ static char *p_states[] = { "DOWN", "START", "UP", "STOP" };
 static char *c_states[] = { "DOWN", "START", "UP", "FLUSHING" };
 static char *e_states[] = { "DOWN", "FEEDING", "READY" };
 
+static char *peph_states[] = {
+  [PEPH_NONE]	= "",
+  [PEPH_ORPHAN]	= "orphan",
+  [PEPH_ZOMBIE]	= "zombie",
+  [PEPH_GHOST]	= "ghost",
+};
+
 extern struct protocol proto_unix_iface;
 
 static void channel_request_reload(struct channel *c);
@@ -1064,6 +1071,25 @@ proto_event(void *ptr)
       p->proto->cleanup(p);
 
     p->active = 0;
+
+    /* Prepare final dynamic protocol zombie salvage */
+    if (p->ephemeral == PEPH_GHOST)
+    {
+      /* Trigger the protocol delete branch */
+      p->cf_new = NULL;
+      p->reconfiguring = 1;
+
+      /* Cleanup temporary configuration */
+      rem_node(&p->cf->n);
+      struct symbol *sym = cf_find_symbol(config, p->name);
+
+      if (sym)
+      {
+	sym->class = SYM_VOID;
+	sym->proto = NULL;
+      }
+    }
+
     proto_log_state_change(p);
     proto_rethink_goal(p);
   }
@@ -1163,6 +1189,7 @@ proto_config_new(struct protocol *pr, int class)
   cf->class = class;
   cf->debug = new_config->proto_default_debug;
   cf->mrtdump = new_config->proto_default_mrtdump;
+  cf->child_prune_time = TIME_INFINITY;
 
   init_list(&cf->channels);
 
@@ -1231,15 +1258,6 @@ proto_clone_config(struct symbol *sym, struct proto_config *parent)
 
   sym->class = cf->class;
   sym->proto = cf;
-}
-
-static void
-proto_undef_clone(struct symbol *sym, struct proto_config *cf)
-{
-  rem_node(&cf->n);
-
-  sym->class = SYM_VOID;
-  sym->proto = NULL;
 }
 
 /**
@@ -1374,12 +1392,6 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
 	if (! force_reconfig && proto_reconfigure(p, oc, nc, type))
 	  continue;
 
-	if (nc->parent)
-	{
-	  proto_undef_clone(sym, nc);
-	  goto remove;
-	}
-
 	/* Unsuccessful, we will restart it */
 	if (!p->disabled && !nc->disabled)
 	  log(L_INFO "Restarting protocol %s", p->name);
@@ -1393,7 +1405,6 @@ protos_commit(struct config *new, struct config *old, int force_reconfig, int ty
       }
       else if (!new->shutdown)
       {
-      remove:
 	log(L_INFO "Removing protocol %s", p->name);
 	p->down_code = PDC_CF_REMOVE;
 	p->cf_new = NULL;
@@ -1483,6 +1494,10 @@ proto_rethink_goal(struct proto *p)
   else
     goal = PS_UP;
 
+  /* If ephemeral and down, the protocol is now eligible for reaping */
+  if ((p->proto_state == PS_DOWN) && (p->ephemeral == PEPH_ORPHAN))
+    proto_zombie(p);
+
   q = p->proto;
   if (goal == PS_UP)
   {
@@ -1516,6 +1531,95 @@ proto_spawn(struct proto_config *cf, uint disabled)
   return p;
 }
 
+static void
+proto_salvage(struct proto *p)
+{
+  ASSERT_DIE(p->ephemeral == PEPH_ZOMBIE);
+
+  /* Delete the prune timer */
+  rfree(p->prune_timer);
+  p->prune_timer = NULL;
+
+  /* Shut the protocol down, finalize in rethink_goal */
+  PD(p, "Shutting down a zombie");
+  int state = PS_DOWN;
+  if (p->proto->shutdown)
+    state = p->proto->shutdown(p);
+
+  proto_notify_state(p, state);
+  p->ephemeral = PEPH_GHOST;
+}
+
+static void
+proto_prune_child(struct timer *tm)
+{
+  proto_salvage(tm->data);
+}
+
+static void
+proto_reanimate(struct proto *p)
+{
+  if (p->ephemeral != PEPH_ZOMBIE)
+    return;
+
+  tm_stop(p->prune_timer);
+  p->ephemeral = PEPH_ORPHAN;
+}
+
+/**
+ * proto_adopt - mark the protocol claimed
+ * child: the protocol to be adopted
+ * parent: the parent adopting it
+ *
+ * Returns: false if already adopted, true otherwise.
+ */
+_Bool
+proto_adopt(struct proto *child, struct proto *parent)
+{
+  proto_reanimate(child);
+
+  ASSERT_DIE(child->ephemeral == PEPH_ORPHAN);
+  child->ephemeral = PEPH_NONE;
+
+  if (child->guardian == parent)
+    return false;
+
+  ASSERT_DIE(!child->guardian);
+  child->guardian = parent;
+  return true;
+}
+
+/**
+ * proto_orphan - mark the protocol unclaimed
+ * child: the protocol to be dropped
+ * parent: the parent dropping it
+ */
+void
+proto_orphan(struct proto *child, struct proto *parent)
+{
+  ASSERT_DIE(child->guardian == parent);
+  child->guardian = NULL;
+
+  ASSERT_DIE(child->ephemeral == PEPH_NONE);
+  child->ephemeral = PEPH_ORPHAN;
+}
+
+/**
+ * proto_zombie - mark the orphan dead
+ * p: the protocol to be zombified
+ */
+void
+proto_zombie(struct proto *p)
+{
+  ASSERT_DIE(p->ephemeral == PEPH_ORPHAN);
+  p->ephemeral = PEPH_ZOMBIE;
+
+  if (!p->prune_timer)
+    p->prune_timer = tm_new_init(proto_pool, proto_prune_child, p, 0, 0);
+
+  if (p->cf->parent->child_prune_time != TIME_INFINITY)
+    tm_start(p->prune_timer, p->cf->parent->child_prune_time);
+}
 
 /**
  * DOC: Graceful restart recovery
@@ -1932,6 +2036,8 @@ proto_do_start(struct proto *p)
 static void
 proto_do_up(struct proto *p)
 {
+  proto_reanimate(p);
+
   if (!p->main_source)
   {
     p->main_source = rt_get_source(p, 0);
@@ -2165,6 +2271,14 @@ proto_cmd_show(struct proto *p, uintptr_t verbose, int cnt)
       cli_msg(-1006, "  Router ID:      %R", p->cf->router_id);
     if (p->vrf_set)
       cli_msg(-1006, "  VRF:            %s", p->vrf ? p->vrf->name : "default");
+    if (p->ephemeral)
+      cli_msg(-1006, "  Ephemeral:      %s",
+	  p->ephemeral < ARRAY_SIZE(peph_states) ? peph_states[p->ephemeral] : "???");
+    if (p->prune_timer && tm_active(p->prune_timer))
+    {
+      tm_format_time(tbuf, (this_cli->tf ?: &config->tf_proto), p->prune_timer->expires);
+      cli_msg(-1006, "  Prune at:       %s", buf);
+    }
 
     if (p->proto->show_proto_info)
       p->proto->show_proto_info(p);
@@ -2270,6 +2384,13 @@ proto_cmd_reload(struct proto *p, uintptr_t dir, int cnt UNUSED)
 	channel_request_feeding(c);
 
   cli_msg(-15, "%s: reloading", p->name);
+}
+
+void
+proto_cmd_prune(struct proto *p, uintptr_t arg UNUSED, int cnt UNUSED)
+{
+  if (p->ephemeral == PEPH_ZOMBIE)
+    proto_salvage(p);
 }
 
 extern void pipe_update_debug(struct proto *P);

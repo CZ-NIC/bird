@@ -113,7 +113,7 @@ proto_postconfig(void)
 
 CF_DECLS
 
-CF_KEYWORDS(ROUTER, ID, HOSTNAME, PROTOCOL, TEMPLATE, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT)
+CF_KEYWORDS(ROUTER, ID, HOSTNAME, PROTOCOL, TEMPLATE, CHILD, PREFERENCE, DISABLED, DEBUG, ALL, OFF, DIRECT)
 CF_KEYWORDS(INTERFACE, IMPORT, EXPORT, FILTER, NONE, VRF, DEFAULT, TABLE, TABLES, STATES, ROUTES, FILTERS)
 CF_KEYWORDS(IPV4, IPV6, VPN4, VPN6, ROA4, ROA6, FLOW4, FLOW6, SADR, MPLS, ASPA, NEIGHBOR, NEIGHBORS)
 CF_KEYWORDS(RECEIVE, LIMIT, ACTION, WARN, BLOCK, RESTART, DISABLE, KEEP, FILTERED, RPKI)
@@ -292,6 +292,8 @@ proto_item:
  | DESCRIPTION text { this_proto->dsc = $2; }
  | VRF text { this_proto->vrf = if_get_by_name($2); this_proto->vrf_set = 1; }
  | VRF DEFAULT { this_proto->vrf = NULL; this_proto->vrf_set = 1; }
+ | CHILD PRUNE OFF { this_proto->child_prune_time = TIME_INFINITY; }
+ | CHILD PRUNE TIME expr_us { this_proto->child_prune_time = $4; }
  ;
 
 
@@ -941,6 +943,7 @@ CF_CLI(RELOAD IN, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protoco
 { proto_apply_cmd($3, proto_cmd_reload, 1, CMD_RELOAD_IN); } ;
 CF_CLI(RELOAD OUT, proto_patt, <protocol> | \"<pattern>\" | all, [[Reload protocol (just exported routes)]])
 { proto_apply_cmd($3, proto_cmd_reload, 1, CMD_RELOAD_OUT); } ;
+CF_CLI(PRUNE, proto_patt, <protocol | \"<pattern>\" | all, [[Prune orphaned protocols]])
 
 CF_CLI_HELP(DEBUG, ..., [[Control protocol debugging via BIRD logs]])
 CF_CLI(DEBUG, debug_args, (<protocol> | <channel> | \"<pattern>\" | all) (all | off | { states|routes|filters|interfaces|events|packets [, ...] }), [[Control protocol debugging via BIRD logs]])

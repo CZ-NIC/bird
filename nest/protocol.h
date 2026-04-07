@@ -131,6 +131,7 @@ struct proto_config {
 
   list channels;			/* List of channel configs (struct channel_config) */
   struct iface *vrf;			/* Related VRF instance, NULL if global */
+  btime child_prune_time;		/* For how long to wait before pruning children */
 
   /* Check proto_reconfigure() and proto_copy_config() after changing struct proto_config */
 
@@ -177,8 +178,10 @@ struct proto {
   struct iface *vrf;			/* Related VRF instance, NULL if global */
   struct channel *mpls_channel;		/* MPLS channel, when used */
   struct mpls_fec_map *mpls_map;	/* Maps protocol routes to FECs / labels */
+  struct timer *prune_timer;		/* Timer pending for pruning */
 
   const char *name;				/* Name of this instance (== cf->name) */
+  struct proto *guardian;		/* The protocol responsible for this dynamic one */
   u32 debug;				/* Debugging flags */
   u32 mrtdump;				/* MRTDump flags */
   uint active_channels;			/* Number of active channels */
@@ -193,6 +196,12 @@ struct proto {
   byte gr_recovery;			/* Protocol should participate in graceful restart recovery */
   byte down_sched;			/* Shutdown is scheduled for later (PDS_*) */
   byte down_code;			/* Reason for shutdown (PDC_* codes) */
+  PACKED enum proto_ephemeral {
+    PEPH_NONE = 0,		/* No ephemeral handling */
+    PEPH_ORPHAN,		/* Alive but orphaned, may be adopted */
+    PEPH_ZOMBIE,		/* Lost soul waiting for purgatory */
+    PEPH_GHOST,			/* Pruned, waiting for final free */
+  } ephemeral;
   u32 hash_key;				/* Random key used for hashing of neighbors */
   btime last_state_change;		/* Time of last state transition */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
@@ -301,6 +310,9 @@ struct proto *proto_iterate_named(struct symbol *sym, struct protocol *proto, st
 
 #define PROTO_WALK_CMD(sym,pr,p) for(struct proto *p = NULL; p = proto_iterate_named(sym, pr, p); )
 
+_Bool proto_adopt(struct proto *child, struct proto *parent);
+void proto_orphan(struct proto *child, struct proto *parent);
+void proto_zombie(struct proto *child);
 
 #define CMD_RELOAD	0
 #define CMD_RELOAD_IN	1
