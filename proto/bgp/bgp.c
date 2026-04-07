@@ -854,7 +854,7 @@ bgp_startup(struct bgp_proto *p)
   BGP_TRACE(D_EVENTS, "Started");
   p->start_state = BSS_CONNECT;
 
-  if (!p->passive)
+  if (!p->passive && !p->p.ephemeral)
     bgp_active(p);
 
   if (p->postponed_sk)
@@ -1077,7 +1077,8 @@ bgp_decision(void *vp)
   if ((p->p.proto_state == PS_START) &&
       (p->outgoing_conn.state == BS_IDLE) &&
       (p->incoming_conn.state != BS_OPENCONFIRM) &&
-      !p->passive)
+      !p->passive &&
+      !p->p.ephemeral)
     bgp_active(p);
 
   if ((p->p.proto_state == PS_STOP) &&
@@ -1117,7 +1118,7 @@ bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip, ip_addr local_ip, struct ifac
   cf->iface = iface;
   cf->ipatt = NULL;
 
-  return SKIP_BACK(struct bgp_proto, p, proto_spawn(sym->proto, 0));
+  return SKIP_BACK(struct bgp_proto, p, proto_spawn(sym->proto));
 }
 
 static int
@@ -1128,6 +1129,7 @@ bgp_spawn_sk(struct bgp_proto *pp, sock *sk)
   p->postponed_sk = sk;
   rmove(sk, p->p.persistent_pool);
 
+  proto_enable(&p->p);
   return 0;
 }
 
@@ -2343,7 +2345,6 @@ bgp_start(struct proto *P)
   p->incoming_conn.state = BS_IDLE;
   p->neigh = NULL;
   p->bfd_req = NULL;
-  p->postponed_sk = NULL;
   p->gr_ready = 0;
   p->gr_active_num = 0;
 
@@ -3312,7 +3313,7 @@ bgp_state_dsc(struct bgp_proto *p)
     return "Down";
 
   int state = MAX(p->incoming_conn.state, p->outgoing_conn.state);
-  if ((state == BS_IDLE) && (p->start_state >= BSS_CONNECT) && p->passive)
+  if ((state == BS_IDLE) && (p->start_state >= BSS_CONNECT) && (p->passive || p->p.ephemeral))
     return "Passive";
 
   return bgp_state_names[state];

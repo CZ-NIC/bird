@@ -893,6 +893,12 @@ agreement").
 	configuration for the list of supported channel names. See the
 	<ref id="channel-opts" name="channel configuration section"> for channel
 	definition.
+
+	<tag><label id="proto-child-prune-time">child prune { time <m/time/ | off }</tag>
+	Set time limit for keeping orphaned child protocols. Applicable for dynamic
+	spawning protocols, e.g. <ref id="bgp-neighbor" name="BGP with neighbor range">.
+	See also <ref id="cli-prune-child" name="CLI prune command">.
+	If set to <cf/off/, orphaned children are kept forever. Default: <cf/off/.
 </descrip>
 
 <p>There are several options that give sense only with certain protocols:
@@ -1447,6 +1453,11 @@ This argument can be omitted if there exists only a single instance.
 	<tag><label id="cli-enable-disable-restart">enable|disable|restart <m/name/|"<m/pattern/"|all</tag>
 	Enable, disable or restart a given protocol instance, instances matching
 	the <cf><m/pattern/</cf> or <cf/all/ instances.
+
+	<tag><label id="cli-prune-child">prune <m/name/|"<m/pattern/"|all</tag>
+	Prune dead orphaned child protocols. Ignored for protocols which still
+	show some signs of life. Prunes either a single protocol instance,
+	instances matching the <cf><m/pattern/</cf> or <cf/all/ instances.
 
 	<tag><label id="cli-reload">reload [in|out] <m/name/|"<m/pattern/"|all</tag>
 	Reload a given protocol instance, that means re-import routes from the

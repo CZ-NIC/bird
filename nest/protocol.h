@@ -92,7 +92,9 @@ void protos_build(void);		/* Called from sysdep to initialize protocols */
 void proto_build(struct protocol *);	/* Called from protocol to register itself */
 void protos_preconfig(struct config *);
 void protos_commit(struct config *new, struct config *old, int force_restart, int type);
-struct proto * proto_spawn(struct proto_config *cf, uint disabled);
+struct proto * proto_spawn(struct proto_config *cf);
+bool proto_enable(struct proto *);
+bool proto_disable(struct proto *);
 void protos_dump_all(struct dump_request *);
 
 #define GA_UNKNOWN	0		/* Attribute not recognized */
@@ -131,6 +133,7 @@ struct proto_config {
 
   list channels;			/* List of channel configs (struct channel_config) */
   struct iface *vrf;			/* Related VRF instance, NULL if global */
+  btime child_prune_time;		/* For how long to wait before pruning children */
 
   /* Check proto_reconfigure() and proto_copy_config() after changing struct proto_config */
 
@@ -178,8 +181,10 @@ struct proto {
   struct iface *vrf;			/* Related VRF instance, NULL if global */
   struct channel *mpls_channel;		/* MPLS channel, when used */
   struct mpls_fec_map *mpls_map;	/* Maps protocol routes to FECs / labels */
+  struct timer *prune_timer;		/* Timer pending for pruning */
 
   const char *name;				/* Name of this instance (== cf->name) */
+  struct proto *guardian;		/* The protocol responsible for this dynamic one */
   u32 debug;				/* Debugging flags */
   u32 mrtdump;				/* MRTDump flags */
   uint active_channels;			/* Number of active channels */
@@ -194,6 +199,12 @@ struct proto {
   byte gr_recovery;			/* Protocol should participate in graceful restart recovery */
   byte down_sched;			/* Shutdown is scheduled for later (PDS_*) */
   byte down_code;			/* Reason for shutdown (PDC_* codes) */
+  PACKED enum proto_ephemeral {
+    PEPH_NONE = 0,		/* No ephemeral handling */
+    PEPH_ORPHAN,		/* Alive but orphaned, may be adopted */
+    PEPH_ZOMBIE,		/* Lost soul waiting for purgatory */
+    PEPH_GHOST,			/* Pruned, waiting for final free */
+  } ephemeral;
   u32 hash_key;				/* Random key used for hashing of neighbors */
   btime last_state_change;		/* Time of last state transition */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
@@ -293,6 +304,7 @@ void proto_cmd_disable(struct proto *, uintptr_t, int);
 void proto_cmd_enable(struct proto *, uintptr_t, int);
 void proto_cmd_restart(struct proto *, uintptr_t, int);
 void proto_cmd_reload(struct proto *, uintptr_t, int);
+void proto_cmd_prune(struct proto *, uintptr_t, int);
 void proto_cmd_debug(struct proto *, uintptr_t, int);
 void proto_cmd_mrtdump(struct proto *, uintptr_t, int);
 
@@ -302,6 +314,9 @@ struct proto *proto_iterate_named(struct symbol *sym, struct protocol *proto, st
 
 #define PROTO_WALK_CMD(sym,pr,p) for(struct proto *p = NULL; p = proto_iterate_named(sym, pr, p); )
 
+_Bool proto_adopt(struct proto *child, struct proto *parent);
+void proto_orphan(struct proto *child, struct proto *parent);
+void proto_zombie(struct proto *child);
 
 #define CMD_RELOAD	0
 #define CMD_RELOAD_IN	1
