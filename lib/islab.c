@@ -342,15 +342,8 @@ islab_init(pool *pool, size_t obj_size)
     isl->max_levels++;
     isl->last_level_size = 32 - isl->obj_id_size + isl->ptr_id_size * isl->max_levels;
   }
-  
-  /* Root head. There is allways at least one head in islab */
-  isl->ap = alloc_page();
-  isl->heads_stored = 1;
-  isl->ap->level = 0;
-  isl->ap->id = 0;
-  id_init_bitfields(isl->ap, isl->max_objs, true);
-  isl->ap->head_above = NULL;
 
+  isl->heads_stored = 0;
   return isl;
 }
 
@@ -364,7 +357,7 @@ void
 isl_delete(resource *r)
 {
   struct islab *isl = (struct islab *) r;
-  free_page(isl->ap);
+  ASSERT_DIE(isl->heads_stored == 0 && isl->ap == NULL);
 }
 
 
@@ -417,6 +410,16 @@ islab_put_head_above(struct islab* isl, struct islab_head **cur_head_ptr)
 void *
 islab_alloc(struct islab* isl, u32* id)
 {
+  if (isl->heads_stored == 0)
+  {
+    ASSERT_DIE(isl->ap == NULL);
+    isl->ap = alloc_page();
+    isl->heads_stored = 1;
+    isl->ap->level = 0;
+    isl->ap->id = 0;
+    id_init_bitfields(isl->ap, isl->max_objs, true);
+    isl->ap->head_above = NULL;
+  }
   struct islab_head *cur_head = isl->ap;
   ASSERT_DIE(!!(cur_head->bitfield_partial) == !!(cur_head->level));
 
@@ -527,30 +530,35 @@ islab_find(struct islab * isl, u32 id)
 static void
 islab_free_empty_pages(struct islab * isl, struct islab_head *cur_head)
 {
-  if (cur_head->num_free != isl->max_objs || cur_head == isl->ap)
+  if (cur_head->num_free != isl->max_objs)
     return;
 
   ASSERT_DIE(cur_head->level == 0);
-  u32 id = cur_head->id;
 
   /* The head is empty. We need to free it and pass the info to its parent.
    * If it was the only child, free it as well ect. Never free root. */
-  do {
-    struct islab_head *old_head = cur_head;
-    cur_head = cur_head->head_above;
-    u32 pos =  ISL_POS_ON_LEVEL(isl, id, cur_head->level);
-    ASSERT_DIE(cur_head->body[pos] == old_head);
-
-    free_page(old_head);
-    isl->heads_stored--;
-    id_bitfield_set(cur_head, cur_head->bitfield_partial, pos, 0);
-    id_bitfield_set(cur_head, cur_head->bitfield_free, pos, 1);
-  } while (cur_head != isl->ap && cur_head->num_free == isl->max_ptrs);
-
-  if (cur_head == isl->ap && cur_head->num_free == isl->max_ptrs)
+  if (cur_head != isl->ap)
   {
-    cur_head->level = 0;
-    id_init_bitfields(cur_head, isl->max_objs, true);
+    u32 id = cur_head->id;
+
+    do {
+      struct islab_head *old_head = cur_head;
+      cur_head = cur_head->head_above;
+      u32 pos =  ISL_POS_ON_LEVEL(isl, id, cur_head->level);
+      ASSERT_DIE(cur_head->body[pos] == old_head);
+
+      free_page(old_head);
+      isl->heads_stored--;
+      id_bitfield_set(cur_head, cur_head->bitfield_partial, pos, 0);
+      id_bitfield_set(cur_head, cur_head->bitfield_free, pos, 1);
+    } while (cur_head != isl->ap && cur_head->num_free == isl->max_ptrs);
+  }
+
+  if (cur_head == isl->ap && isl->obj_stored == 0)
+  {
+    free_page(cur_head);
+    isl->ap = NULL;
+    isl->heads_stored = 0;
   }
 }
 
@@ -580,13 +588,13 @@ islab_free(struct islab * isl, u32 id)
   ASSERT_DIE(cur_head->id + pos == id);
 
   id_bitfield_set(cur_head, cur_head->bitfield_free, pos, 1);
+  isl->obj_stored--;
 
 #ifdef POISON
   memset(((void *) cur_head->body) + (pos * isl->obj_size), 0xfa, isl->obj_size);
 #endif
 
   islab_free_empty_pages(isl, cur_head);
-  isl->obj_stored--;
 }
 
 
@@ -680,15 +688,18 @@ islab_memsize(resource *r)
 {
   struct islab *isl = (struct islab *) r;
 
-  isl_empty += isl->ap->num_free == isl->max_objs;
-  isl_overhead += (isl->heads_stored * page_size) - (isl->obj_stored * isl->obj_size);
-  isl_eff += isl->obj_stored * isl->obj_size;
+  if (isl->ap)
+  {
+    isl_overhead += (isl->heads_stored * page_size) - (isl->obj_stored * isl->obj_size);
+    isl_eff += isl->obj_stored * isl->obj_size;
 
-  log("isl %p eff %li over %li heads %i objs %li obj siz %i (em %i e %li o %li)",isl, isl->obj_stored * isl->obj_size,
-    (isl->heads_stored * page_size) - (isl->obj_stored * isl->obj_size), isl->heads_stored, isl->obj_stored, isl->obj_size, isl_empty, isl_eff, isl_overhead);
+    log("isl %p eff %li over %li heads %i objs %li obj siz %i (em %i e %li o %li)",isl, isl->obj_stored * isl->obj_size,
+      sizeof(struct islab) + (isl->heads_stored * page_size) - (isl->obj_stored * isl->obj_size), isl->heads_stored, isl->obj_stored, isl->obj_size, isl_empty, isl_eff, isl_overhead);
+  } else
+    isl_empty++;
 
   return (struct resmem) {
     .effective = isl->obj_stored * isl->obj_size,
-    .overhead = (isl->heads_stored * page_size) - (isl->obj_stored * isl->obj_size),
+    .overhead = sizeof(struct islab) + (isl->heads_stored * page_size) - (isl->obj_stored * isl->obj_size),
   };
 }
