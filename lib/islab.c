@@ -530,6 +530,7 @@ islab_free_empty_pages(struct islab * isl, struct islab_head *cur_head)
   if (cur_head->num_free != isl->max_objs || cur_head == isl->ap)
     return;
 
+  ASSERT_DIE(cur_head->level == 0);
   u32 id = cur_head->id;
 
   /* The head is empty. We need to free it and pass the info to its parent.
@@ -670,13 +671,21 @@ islab_dump(struct dump_request *dreq, resource *r)
   islab_dump_level(dreq, isl, isl->ap, dreq->indent+3);
 }
 
+long isl_empty = 0;
+long isl_overhead = 0;
+long isl_eff = 0;
+
 static struct resmem
 islab_memsize(resource *r)
 {
   struct islab *isl = (struct islab *) r;
 
-  log("isl %p eff %li over %li heads %i objs %li obj siz %i",isl, isl->obj_stored * isl->obj_size,
-    (isl->heads_stored * page_size) - (isl->obj_stored * isl->obj_size), isl->heads_stored, isl->obj_stored, isl->obj_size);
+  isl_empty += isl->ap->num_free == isl->max_objs;
+  isl_overhead += (isl->heads_stored * page_size) - (isl->obj_stored * isl->obj_size);
+  isl_eff += isl->obj_stored * isl->obj_size;
+
+  log("isl %p eff %li over %li heads %i objs %li obj siz %i (em %i e %li o %li)",isl, isl->obj_stored * isl->obj_size,
+    (isl->heads_stored * page_size) - (isl->obj_stored * isl->obj_size), isl->heads_stored, isl->obj_stored, isl->obj_size, isl_empty, isl_eff, isl_overhead);
 
   return (struct resmem) {
     .effective = isl->obj_stored * isl->obj_size,
