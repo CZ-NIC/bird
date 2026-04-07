@@ -25,6 +25,12 @@ if [ $(git status --porcelain -uno | wc -l) = "0" ] && [ $(git show -- VERSION |
   exit 0
 fi
 
+# If there is packaging fixup requirement, ignore branches
+if [ -n "$PKG_FIXUP" ]; then
+  echo $RELEASE_VERSION
+  exit 0
+fi
+
 # We'll create a development version number, get the hash
 HASH=$(git rev-parse --short=12 HEAD)
 

@@ -9,7 +9,7 @@
 
 Name:             bird
 Version:          {{ version }}
-Release:          cznic.1%{?dist}
+Release:          cznic.{{ release }}%{?dist}
 Summary:          BIRD Internet Routing Daemon
 
 Group:            System Environment/Daemons
@@ -149,5 +149,5 @@ getent passwd %{bird_user} >/dev/null || useradd -r -g %{bird_group} -d /var/lib
 %endif
 
 %changelog
-* {{ now }} Maria Matejka <maria.matejka@nic.cz> - {{ version }}-cznic.1
-- upstream package
+* {{ now }} Maria Matejka <maria.matejka@nic.cz> - {{ version }}-cznic.{{ release }}
+- {{ relinfo }}
