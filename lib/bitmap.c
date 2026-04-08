@@ -207,6 +207,7 @@ void
 lmap_init(struct lmap *b, pool *p, struct event_list *ev_l)
 {
   b->slab = sl_new(p, ev_l, 128);
+  log("lmap slab %p", b->slab);
   b->size = 8;
   b->data = mb_allocz(p, b->size * sizeof(u32 *));
   b->root = sl_allocz(b->slab);

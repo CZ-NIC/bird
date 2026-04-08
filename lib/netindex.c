@@ -62,7 +62,8 @@ netindex_hash_new(pool *sp, event_list *cleanup_target, u8 type)
   nh->pool = p;
   nh->net_type = type;
 
-  nh->slab = net_addr_length[type] ? sl_new(nh->pool, cleanup_target, sizeof (struct netindex) + net_addr_length[type]) : NULL;
+  nh->slab = net_addr_length[type] ? islab_init(nh->pool, sizeof (struct netindex) + net_addr_length[type]) : NULL;
+  log("netind %p", nh->slab);
 
   SPINHASH_INIT(nh->hash, NETINDEX, nh->pool, cleanup_target);
   atomic_store_explicit(&nh->block_size, NETINDEX_INIT_BLOCK_SIZE, memory_order_release);
@@ -104,7 +105,7 @@ netindex_hash_cleanup_removed(struct netindex_hash_private *nh, struct netindex 
     hmap_clear(&nh->id_map, ni->index);
 
     if (nh->slab)
-      sl_free(ni);
+      islab_free_ptr(nh->slab, ni);
     else
       mb_free(ni);
   }
@@ -238,8 +239,9 @@ net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n)
   u32 i = hmap_first_zero(&hp->id_map);
   hmap_set(&hp->id_map, i);
 
+  u32 i_;
   struct netindex *ni = hp->slab ?
-    sl_alloc(hp->slab) :
+    islab_alloc(hp->slab, &i_) :
     mb_alloc(hp->pool, n->length + sizeof *ni);
 
   *ni = (struct netindex) {

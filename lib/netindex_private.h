@@ -26,7 +26,7 @@ struct netindex_hash_private {
   struct { NETINDEX_HASH_PUBLIC; };
   struct netindex_hash_private **locked_at;
   pool *pool;
-  slab *slab;
+  struct islab *slab;
   struct hmap id_map;
   u32 block_epoch;
   event *deleted_event;

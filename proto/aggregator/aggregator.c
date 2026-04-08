@@ -392,6 +392,7 @@ aggregator_start(struct proto *P)
 
   p->route_slab = sl_new(P->pool, birdloop_event_list(P->loop), sizeof(struct aggregator_route));
   HASH_INIT(p->routes, P->pool, AGGR_RTE_ORDER);
+  log("agg slabs %p %p", p->bucket_slab, p->route_slab);
 
   p->reload_buckets = (event) {
     .hook = aggregator_reload_buckets,
