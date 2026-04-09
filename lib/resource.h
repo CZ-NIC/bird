@@ -150,13 +150,13 @@ void msl_delete(mslab *);
 
 /* Id alloc*/
 
-struct id_alloc;
-struct id_alloc *id_alloc_init(pool *pool, size_t obj_size);
-void id_alloc_delete(struct id_alloc* id_all);
-void *id_alloc_alloc(struct id_alloc* id_all, u32* id);
-void *id_alloc_find(struct id_alloc * id_all, u32 id);
-void id_alloc_free(struct id_alloc * id_all, u32 id);
-void id_alloc_free_ptr(struct id_alloc *id_all, void *ptr);
+struct islab;
+struct islab *islab_init(pool *pool, size_t obj_size);
+void islab_delete(struct islab* isl);
+void *islab_alloc(struct islab* isl, u32* id);
+void *islab_find(struct islab * isl, u32 id);
+void islab_free(struct islab * isl, u32 id);
+void islab_free_ptr(struct islab *isl, void *ptr);
 
 /*
  * Low-level memory allocation functions, please don't use

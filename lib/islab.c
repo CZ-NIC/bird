@@ -7,7 +7,7 @@
  */
 
 /**
- * DOC: Id allocator
+ * DOC: Islab
  *
  * This allocator is based on slab principles (it allocates memory blocks of fixed size),
  * but it has one specific feature - each allocated block of memory recieves an 32 bit id.
@@ -96,18 +96,18 @@
 #endif
 
 
-struct id_alloc_head {
+struct islab_head {
   u32 *bitfield_free; /* No object or pointer stored yet */
   u32 *bitfield_partial; /* Rerlevant only for pointer heads - free space somewhere in the subtree */
   u32 id; /* Id composed from parent head id and index of the thead in parent */
   u16 level; /* 0 for object pages, distance from furthest object page for pointer heads */
   u16 num_free; /* Number of set bites in bitfield_free */
-  struct id_alloc_head* head_above; /* pointer to parent head */
-  struct id_alloc_head **body; /* space for pointers or objects */
+  struct islab_head* head_above; /* pointer to parent head */
+  struct islab_head **body; /* space for pointers or objects */
   u32 bitfields_val[0]; /* where bitfields are realy stored */
 };
 
-struct id_alloc {
+struct islab {
   resource r;
   int obj_size;
   u16 max_levels;
@@ -119,83 +119,84 @@ struct id_alloc {
   u32 obj_stored;
   u32 heads_stored;
   pool *pool;
-  struct id_alloc_head *ap; /* root head */
+  struct islab_head *ap; /* root head */
 };
 
-void id_delete(resource *r);
-static void id_alloc_dump(struct dump_request *dreq, resource *r);
-static struct resmem id_alloc_memsize(resource *r);
+void isl_delete(resource *r);
+static void islab_dump(struct dump_request *dreq, resource *r);
+static struct resmem islab_memsize(resource *r);
 
-static struct resclass id_alloc_class = {
-  .name = "Id alloc",
-  .size = sizeof(struct id_alloc),
-  .free = id_delete,
-  .dump = id_alloc_dump,
-  .memsize = id_alloc_memsize,
+static struct resclass islab_class = {
+  .name = "Islab",
+  .size = sizeof(struct islab),
+  .free = isl_delete,
+  .dump = islab_dump,
+  .memsize = islab_memsize,
 };
 
 
-#define ID_POS_ON_LEVEL(ia, ii, l)  (l == 0) ? (ii & ((1 << ia->obj_id_size) -1)) \
+#define ISL_POS_ON_LEVEL(ia, ii, l)  (l == 0) ? (ii & ((1 << ia->obj_id_size) -1)) \
   : ((ii >> (ia->obj_id_size + ia->ptr_id_size * (l - 1))) & ((1 << ia->ptr_id_size) -1))
 
+#define ISL_BITFIELD_IS_SET(b, p) (b[p/32] & (1 << (p%32)))
 
-/* Only for testing purposes, maybe part of tests in future id_alloc_test.c */
+/* Only for testing purposes, maybe part of tests in future islab_test.c */
 void
 check(pool *pool)
 {
-  struct id_alloc *id_all = id_alloc_init(pool, 20);
+  struct islab *isl = islab_init(pool, 20);
 
   void* bzs[400];
   u32 bz;
 
   for (int i = 0; i < 400; i++)
-    ASSERT_DIE(bzs[i] = id_alloc_alloc(id_all, &bz));
+    ASSERT_DIE(bzs[i] = islab_alloc(isl, &bz));
 
   for (int i = 0; i <200; i++)
   {
-    id_alloc_free_ptr(id_all, bzs[200+i]);
-    id_alloc_free_ptr(id_all, bzs[199-i]);
+    islab_free_ptr(isl, bzs[200+i]);
+    islab_free_ptr(isl, bzs[199-i]);
   }
-  id_alloc_delete(id_all);
+  islab_delete(isl);
 
 
   u32 ids[400];
-  id_all = id_alloc_init(pool, 20);
+  isl = islab_init(pool, 20);
 
 
   for (int i = 0; i < 400; i++)
-    ASSERT_DIE(id_alloc_alloc(id_all, &ids[i]));
+    ASSERT_DIE(islab_alloc(isl, &ids[i]));
   for (int i = 0; i <200; i++)
   {
-    id_alloc_free(id_all, ids[i]);
+    islab_free(isl, ids[i]);
   }
   for (int i = 0; i <200; i++)
   {
-    ASSERT_DIE(id_alloc_alloc(id_all, &ids[i]));
+    ASSERT_DIE(islab_alloc(isl, &ids[i]));
   }
 
   for (int i = 0; i <200; i++)
   {
-    id_alloc_free(id_all, ids[200+i]);
-    id_alloc_free(id_all, ids[199-i]);
+    islab_free(isl, ids[200+i]);
+    islab_free(isl, ids[199-i]);
   }
-  id_alloc_delete(id_all);
+  islab_delete(isl);
 }
 
 void
-consistency_assert(struct id_alloc *id_all, struct id_alloc_head *h, u32 id, u32 pos)
+consistency_assert(struct islab *isl, struct islab_head *h, u32 id, u32 pos)
 {
   if (h->head_above)
-    ASSERT_DIE(h->id == id + (pos<< (id_all->obj_id_size+ (id_all->ptr_id_size*(h->head_above->level-1)))));
+    ASSERT_DIE(h->id == id + (pos << (isl->obj_id_size+ (isl->ptr_id_size*(h->head_above->level-1)))));
 
   if (h->level == 0)
     return;
 
   int freed = 0;
-  for (u32 i = 0; i < id_all->max_ptrs; i++)
+  for (u32 i = 0; i < isl->max_ptrs; i++)
   {
-    if (!(h->bitfield_free[i/32] & 1<<(i%32)))
-      consistency_assert(id_all, h->body[i], h->id, i);
+    if (!(ISL_BITFIELD_IS_SET(h->bitfield_free, i)))
+      consistency_assert(isl, h->body[i], h->id, i);
     else
       freed++;
   }
@@ -204,15 +205,23 @@ consistency_assert(struct id_alloc *id_all, struct id_alloc_head *h, u32 id, u32
 
 /* Find out how many items can we fit into one page. More items means longer bitfields. */
 static u32
-id_find_items_per_page(u32 item_size)
+id_find_items_per_page(u32 item_size, bool obj_page)
 {
-  int item_pp = (page_size - sizeof(struct id_alloc_head)) / item_size;
-  int space_for_bitfields = ((item_pp / 32) + 1) * 2;
+  int item_pp = (page_size - sizeof(struct islab_head)) / item_size;
+  int space_for_bitfields;
 
-  while ((sizeof(struct id_alloc_head) + space_for_bitfields + item_pp * item_size) > (u64) page_size)
+  if (obj_page)
+    space_for_bitfields = (item_pp / 32) + 1;
+  else
+    space_for_bitfields = ((item_pp / 32) + 1) * 2;
+
+  while ((sizeof(struct islab_head) + space_for_bitfields + item_pp * item_size) > (u64) page_size)
   {
     item_pp--;
-    space_for_bitfields = item_pp / sizeof(void *) + 1;
+    if (obj_page)
+      space_for_bitfields = (item_pp / 32) + !!(item_pp % 32);
+    else
+      space_for_bitfields = ((item_pp / 32) + !!(item_pp % 32)) * 2;
   }
   return item_pp;
 }
@@ -250,10 +259,10 @@ id_get_one_in_bitfield(u32 *bitfield, int len)
 
 /* Set bit on position pos to given value. */
 static void
-id_bitfield_set(struct id_alloc_head *ap, u32 *bitfield, u32 pos, u32 val)
+id_bitfield_set(struct islab_head *ap, u32 *bitfield, u32 pos, u32 val)
 {
   /* Assert the current value differs from requested one. */
-  ASSERT_DIE((bitfield[pos/32] & (1 << (pos % 32))) != val);
+  ASSERT_DIE(ISL_BITFIELD_IS_SET(bitfield, pos) != val);
 
   if (val)
   {
@@ -273,99 +282,107 @@ id_bitfield_set(struct id_alloc_head *ap, u32 *bitfield, u32 pos, u32 val)
 }
 
 static void
-id_init_bitfields(struct id_alloc_head *ap, u32 max_items)
+id_init_bitfields(struct islab_head *ap, u32 max_items, bool is_obj)
 {
   int round = !! (max_items % 32); /* Find out if the last u32 of the bitfield will be full */
   ap->bitfield_free = ap->bitfields_val;
-  ap->bitfield_partial = ap->bitfields_val + (max_items / 32) + round;
-  ap->body = (void*)(ap->bitfield_partial + (max_items / 32) + round);
+
+  if (is_obj)
+  {
+    ap->bitfield_partial = NULL;
+    ap->body = (void*)(ap->bitfields_val + (max_items / 32) + round);
+  }
+  else
+  {
+    ap->bitfield_partial = ap->bitfields_val + (max_items / 32) + round;
+    ap->body = (void*)(ap->bitfield_partial + (max_items / 32) + round);
+  }
   ap->num_free = max_items;
 
   u32 i = 0;
   for (; i < (max_items / 32); i++)
-  {
     ap->bitfield_free[i] = ~0; /* set to ones - everything is free now */
-    ap->bitfield_partial[i] = 0;
-  }
+
   if (round)
-  {
     ap->bitfield_free[i] = (1 << (max_items % 32)) - 1; /* Let padding bits unset */
-    ap->bitfield_partial[i] = 0;
+
+  if (!is_obj)
+  {
+    for (i = 0; i < (max_items / 32) + round; i++)
+      ap->bitfield_partial[i] = 0;
   }
 }
 
-struct id_alloc *
-id_alloc_init(pool *pool, size_t obj_size)
+struct islab *
+islab_init(pool *pool, size_t obj_size)
 {
   //if(obj_size==12)
   //  check(pool);
-  struct id_alloc *id_all = ralloc(pool, &id_alloc_class);
-  id_all->pool = pool;
-  id_all->obj_size = obj_size;
-  id_all->max_objs = id_find_items_per_page(obj_size);
-  ASSERT_DIE(id_all->max_objs > 1);
-  id_all->max_ptrs = id_find_items_per_page(sizeof(struct id_alloc_page *));
-  id_all->obj_id_size = id_find_id_size(id_all->max_objs);
-  id_all->ptr_id_size = id_find_id_size(id_all->max_ptrs);
+  struct islab *isl = ralloc(pool, &islab_class);
+  isl->pool = pool;
+  isl->obj_size = obj_size;
+  isl->max_objs = id_find_items_per_page(obj_size, true);
+  ASSERT_DIE(isl->max_objs > 1);
+  isl->max_ptrs = id_find_items_per_page(sizeof(struct islab_page *), false);
+  isl->obj_id_size = id_find_id_size(isl->max_objs);
+  isl->ptr_id_size = id_find_id_size(isl->max_ptrs);
 
   /* How many levels can we encde into 32 bit id. The head with greatest 
    * possible level might not be possible to fill up completely. */
-  id_all->max_levels = (32 - id_all->obj_id_size) / id_all->ptr_id_size;
+  isl->max_levels = (32 - isl->obj_id_size) / isl->ptr_id_size;
 
-  if (id_all->obj_id_size + id_all->ptr_id_size * id_all->max_levels == 32)
-    id_all->last_level_size = id_all->max_ptrs;
+  if (isl->obj_id_size + isl->ptr_id_size * isl->max_levels == 32)
+    isl->last_level_size = isl->max_ptrs;
   else
   {
-    id_all->max_levels++;
-    id_all->last_level_size = 32 - id_all->obj_id_size + id_all->ptr_id_size * id_all->max_levels;
+    isl->max_levels++;
+    isl->last_level_size = 32 - isl->obj_id_size + isl->ptr_id_size * isl->max_levels;
   }
   
-  /* Root head. There is allways at least one head in id alloc */
-  id_all->ap = alloc_page();
-  id_all->heads_stored = 1;
-  id_init_bitfields(id_all->ap, id_all->max_objs);
-  id_all->ap->level = 0;
-  id_all->ap->id = 0;
-  id_all->ap->head_above = NULL;
+  /* Root head. There is allways at least one head in islab */
+  isl->ap = alloc_page();
+  isl->heads_stored = 1;
+  isl->ap->level = 0;
+  isl->ap->id = 0;
+  id_init_bitfields(isl->ap, isl->max_objs, true);
+  isl->ap->head_above = NULL;
 
-  return id_all;
+  return isl;
 }
 
 void
-id_alloc_delete(struct id_alloc* id_all)
+islab_delete(struct islab* isl)
 {
-  rfree(&id_all->r);
+  rfree(&isl->r);
 }
 
-void id_delete(resource *r)
+void
+isl_delete(resource *r)
 {
-  struct id_alloc *id_all = (struct id_alloc *) r;
-  free_page(id_all->ap);
+  struct islab *isl = (struct islab *) r;
+  free_page(isl->ap);
 }
 
 
 /* This function is used for adding root head and for adding head between two heads
  * whose levels are more than one level apart. (This happens because alloc tries to
  * add next heads without adding unnecessary pointer heads) */
-static struct id_alloc_head *
-id_alloc_put_head_above(struct id_alloc* id_all, struct id_alloc_head **cur_head_ptr)
+static struct islab_head *
+islab_put_head_above(struct islab* isl, struct islab_head **cur_head_ptr)
 {
-  if (*cur_head_ptr == id_all->ap && id_all->ap->level == id_all->max_levels)
-    bug("id_alloc run out of capacity");
-  //consistency_assert(id_all, id_all->ap, 0, 0);
-  struct id_alloc_head *cur_head = *cur_head_ptr;
-  struct id_alloc_head *head = alloc_page(); /* new pointer head */
+  if (*cur_head_ptr == isl->ap && isl->ap->level == isl->max_levels)
+    bug("islab run out of capacity");
+  //consistency_assert(isl, isl->ap, 0, 0);
+  struct islab_head *cur_head = *cur_head_ptr;
+  struct islab_head *head = alloc_page(); /* new pointer head */
 
-  if (*cur_head_ptr == id_all->ap && id_all->ap->level == id_all->max_levels)
-    id_init_bitfields(head, id_all->last_level_size); /* This might be the last level, which might be smaller */
-  else
-    id_init_bitfields(head, id_all->max_ptrs);
+  id_init_bitfields(head, isl->max_ptrs, false);
 
   id_bitfield_set(head, head->bitfield_free, 0, 0); /* space for old head*/
   id_bitfield_set(head, head->bitfield_free, 1, 0); /* space for new object head */
   id_bitfield_set(head, head->bitfield_partial, 1, 1); /* the new head will contain only one object */
 
-  if (cur_head->level == id_all->ap->level)
+  if (cur_head->level == isl->ap->level)
     head->level = cur_head->level + 1; /* head is new root */
   else
     head->level = cur_head->head_above->level - 1; /* computing level for head in between two heads */
@@ -378,41 +395,42 @@ id_alloc_put_head_above(struct id_alloc* id_all, struct id_alloc_head **cur_head
   *cur_head_ptr = head;
 
   head->body[1] = alloc_page(); /* new object page */
-  id_init_bitfields(head->body[1], id_all->max_objs);
+  id_init_bitfields(head->body[1], isl->max_objs, true);
   head->body[1]->level = 0;
   /* id of the new object head is parent id plus its index (1) shifted as it would be the on the greatest 
    * level we can put under the new pointer head. This make space for inserting a head in between if
    * pointer head is not level 1.*/
-  head->body[1]->id = head->id + (1 << (id_all->obj_id_size + (head->level -1) * id_all->ptr_id_size));
-  ASSERT_DIE(ID_POS_ON_LEVEL(id_all, head->body[1]->id, head->level ) == 1);
+  head->body[1]->id = head->id + (1 << (isl->obj_id_size + (head->level -1) * isl->ptr_id_size));
+  ASSERT_DIE(ISL_POS_ON_LEVEL(isl, head->body[1]->id, head->level ) == 1);
   head->body[1]->head_above = head;
 
-  id_all->heads_stored += 2;
-  ASSERT(id_all->ap->level > 0);
+  isl->heads_stored += 2;
+  ASSERT(isl->ap->level > 0);
   return head->body[1];
 }
 
 void *
-id_alloc_alloc(struct id_alloc* id_all, u32* id)
+islab_alloc(struct islab* isl, u32* id)
 {
-  struct id_alloc_head *cur_head = id_all->ap;
+  struct islab_head *cur_head = isl->ap;
+  ASSERT_DIE(!!(cur_head->bitfield_partial) == !!(cur_head->level));
 
   /* Is there any space in current page tree? */
   if (cur_head->num_free == 0 && (cur_head->level == 0 ||
-      id_get_one_in_bitfield(cur_head->bitfield_partial, id_all->max_ptrs) == -1))
-    cur_head = id_alloc_put_head_above(id_all, &id_all->ap);
+      id_get_one_in_bitfield(cur_head->bitfield_partial, isl->max_ptrs) == -1))
+    cur_head = islab_put_head_above(isl, &isl->ap);
 
   /* Look for suitable head on level 0 */
   while (cur_head->level > 0)
   {
-    int pos = id_get_one_in_bitfield(cur_head->bitfield_partial, id_all->max_ptrs);
+    int pos = id_get_one_in_bitfield(cur_head->bitfield_partial, isl->max_ptrs);
 
     if (pos >= 0)
     {
-      /* We found subtree wit free space */
+      /* We found subtree with free space */
       ASSERT_DIE(cur_head->body[pos]->head_above == cur_head);
       if (cur_head->body[pos]->num_free || (cur_head->body[pos]->level &&
-           id_get_one_in_bitfield(cur_head->body[pos]->bitfield_partial, id_all->max_ptrs) >= 0))
+           id_get_one_in_bitfield(cur_head->body[pos]->bitfield_partial, isl->max_ptrs) >= 0))
       {
         /* eveerything ok, we can continue */
         cur_head = cur_head->body[pos];
@@ -423,24 +441,25 @@ id_alloc_alloc(struct id_alloc* id_all, u32* id)
          * (current level is greater than child level + 1.
          * The skipped level is needed now, lets insert missing page */
         ASSERT_DIE(cur_head->level > cur_head->body[pos]->level + 1);
-        cur_head = id_alloc_put_head_above(id_all, &(cur_head->body[pos]));
+        cur_head = islab_put_head_above(isl, &(cur_head->body[pos]));
       }
-    } else if ((pos = id_get_one_in_bitfield(cur_head->bitfield_free, id_all->max_ptrs)) >= 0)
+    } else if ((pos = id_get_one_in_bitfield(cur_head->bitfield_free, isl->max_ptrs)) >= 0)
     {
       /* No partialy filled subtree. But since we got here, there must be a space for new */
 
-      if (cur_head->level == id_all->max_levels && id_all->max_ptrs - cur_head->num_free == id_all->last_level_size)
-        bug("id_alloc run out of capacity");
+      if (cur_head->level == isl->max_levels && isl->max_ptrs - cur_head->num_free == isl->last_level_size)
+        bug("islab run out of capacity");
+
       id_bitfield_set(cur_head, cur_head->bitfield_partial, pos, 1);
       id_bitfield_set(cur_head, cur_head->bitfield_free, pos, 0);
-      struct id_alloc_head *head = alloc_page();
-      id_all->heads_stored++;
-      id_init_bitfields(head, id_all->max_objs);
+      struct islab_head *head = alloc_page();
+      isl->heads_stored++;
+      id_init_bitfields(head, isl->max_objs, true);
       cur_head->body[pos] = head;
       head->head_above = cur_head;
       head->level = 0;
 
-      head->id = cur_head->id + (pos << (id_all->obj_id_size + ((cur_head->level -1) * id_all->ptr_id_size)));
+      head->id = cur_head->id + (pos << (isl->obj_id_size + ((cur_head->level -1) * isl->ptr_id_size)));
 
       cur_head = head;
     }
@@ -449,52 +468,52 @@ id_alloc_alloc(struct id_alloc* id_all, u32* id)
   }
 
   /* now we have head on level 0 which is not full */
-  int pos = id_get_one_in_bitfield(cur_head->bitfield_free, id_all->max_objs);
+  int pos = id_get_one_in_bitfield(cur_head->bitfield_free, isl->max_objs);
   ASSERT_DIE(pos >= 0);
-  void* ret = ((void *) cur_head->body) + (pos * id_all->obj_size);
+  void* ret = ((void *) cur_head->body) + (pos * isl->obj_size);
   *id = cur_head->id + pos;
   id_bitfield_set(cur_head, cur_head->bitfield_free, pos, 0);
 
   while (cur_head->num_free == 0 && cur_head->head_above && cur_head->level +1 == cur_head->head_above->level
-         && (cur_head->level == 0 || id_get_one_in_bitfield(cur_head->bitfield_partial, id_all->max_ptrs) == -1))
+         && (cur_head->level == 0 || id_get_one_in_bitfield(cur_head->bitfield_partial, isl->max_ptrs) == -1))
   {
     /* The head is full, we need to propagate the info up */
     cur_head = cur_head->head_above;
 
-    pos = ID_POS_ON_LEVEL(id_all, *id, cur_head->level);
+    pos = ISL_POS_ON_LEVEL(isl, *id, cur_head->level);
 
     id_bitfield_set(cur_head, cur_head->bitfield_partial, pos, 0);
   }
 
   *id = *id + 1; /* Stupid trick - zero id should mean "no object". */
-  id_all->obj_stored++;
+  isl->obj_stored++;
 
   return ret;
 }
 
 void *
-id_alloc_find(struct id_alloc * id_all, u32 id)
+islab_find(struct islab * isl, u32 id)
 {
   ASSERT_DIE(id > 0);
   id -= 1; /* Stupid trick - zero id should mean "no object". */
-  struct id_alloc_head *cur_head = id_all->ap;
+  struct islab_head *cur_head = isl->ap;
   u32 pos;
-  //consistency_assert(id_all, id_all->ap, 0, 0);
+  //consistency_assert(isl, isl->ap, 0, 0);
   while (cur_head->level != 0)
   {
-    pos = ID_POS_ON_LEVEL(id_all, id, cur_head->level);
+    pos = ISL_POS_ON_LEVEL(isl, id, cur_head->level);
     cur_head = cur_head->body[pos];
   }
 
-  pos = ID_POS_ON_LEVEL(id_all, id, cur_head->level);
-  ASSERT_DIE((cur_head->bitfield_free[pos / 32] & (1 << (pos % 32))) == 0);
-  return ((void *)cur_head->body) + (pos * id_all->obj_size);
+  pos = ISL_POS_ON_LEVEL(isl, id, cur_head->level);
+  ASSERT_DIE(ISL_BITFIELD_IS_SET(cur_head->bitfield_free, pos) == 0);
+  return ((void *)cur_head->body) + (pos * isl->obj_size);
 }
 
 static void
-id_alloc_free_empty_pages(struct id_alloc * id_all, struct id_alloc_head *cur_head)
+islab_free_empty_pages(struct islab * isl, struct islab_head *cur_head)
 {
-  if (cur_head->num_free != id_all->max_objs || cur_head == id_all->ap)
+  if (cur_head->num_free != isl->max_objs || cur_head == isl->ap)
     return;
 
   u32 id = cur_head->id;
@@ -502,30 +521,30 @@ id_alloc_free_empty_pages(struct id_alloc * id_all, struct id_alloc_head *cur_he
   /* The head is empty. We need to free it and pass the info to its parent.
    * If it was the onlz child, free it as well ect. Never free root. */
   do {
-    struct id_alloc_head *old_head = cur_head;
+    struct islab_head *old_head = cur_head;
     cur_head = cur_head->head_above;
-    u32 pos =  ID_POS_ON_LEVEL(id_all, id, cur_head->level);
+    u32 pos =  ISL_POS_ON_LEVEL(isl, id, cur_head->level);
     ASSERT_DIE(cur_head->body[pos] == old_head);
 
     free_page(old_head);
     id_bitfield_set(cur_head, cur_head->bitfield_partial, pos, 0);
     id_bitfield_set(cur_head, cur_head->bitfield_free, pos, 1);
-  } while (cur_head != id_all->ap && cur_head->num_free == id_all->max_ptrs);
+  } while (cur_head != isl->ap && cur_head->num_free == isl->max_ptrs);
 }
 
 void
-id_alloc_free(struct id_alloc * id_all, u32 id)
+islab_free(struct islab * isl, u32 id)
 {
   ASSERT_DIE(id > 0);
   id -= 1; /* Stupid trick - zero id should mean "no object". */
-  struct id_alloc_head *cur_head = id_all->ap;
+  struct islab_head *cur_head = isl->ap;
   u32 pos;
 
   while (cur_head->level != 0)
   {
-    pos = ID_POS_ON_LEVEL(id_all, id, cur_head->level);
+    pos = ISL_POS_ON_LEVEL(isl, id, cur_head->level);
 
-    if ((cur_head->bitfield_partial[pos/32] & (1 << (pos % 32))) == 0)
+    if (ISL_BITFIELD_IS_SET(cur_head->bitfield_partial, pos) == 0)
     {
       /* the head is not in partial heads, it can not be in free heads, so it is considered to be full. 
        * One item will be freed, so we mark it in advance. */
@@ -535,31 +554,31 @@ id_alloc_free(struct id_alloc * id_all, u32 id)
     cur_head = cur_head->body[pos];
   }
 
-  pos = ID_POS_ON_LEVEL(id_all, id, cur_head->level);
+  pos = ISL_POS_ON_LEVEL(isl, id, cur_head->level);
   ASSERT_DIE(cur_head->id + pos == id);
 
   id_bitfield_set(cur_head, cur_head->bitfield_free, pos, 1);
 
 #ifdef POISON
-  memset(((void *) cur_head->body) + (pos * id_all->obj_size), 0xfa, id_all->obj_size);
+  memset(((void *) cur_head->body) + (pos * isl->obj_size), 0xfa, isl->obj_size);
 #endif
 
-  id_alloc_free_empty_pages(id_all, cur_head);
+  islab_free_empty_pages(isl, cur_head);
 }
 
 
 /* Alternative way to free an allocated block without knowing its id. */
 void
-id_alloc_free_ptr(struct id_alloc *id_all, void *ptr)
+islab_free_ptr(struct islab *isl, void *ptr)
 {
-  struct id_alloc_head *head = PAGE_HEAD(ptr);
+  struct islab_head *head = PAGE_HEAD(ptr);
   ASSERT_DIE(head->level == 0);
   uint off = ptr - ((void *) head->body);
-  uint index = off / id_all->obj_size;
-  ASSERT_DIE(((void *)head->body) + (id_all->obj_size * index) == ptr);
+  uint index = off / isl->obj_size;
+  ASSERT_DIE(((void *)head->body) + (isl->obj_size * index) == ptr);
 
   #ifdef POISON
-  memset(ptr, 0xdb, id_all->obj_size);
+  memset(ptr, 0xdb, isl->obj_size);
   #endif
 
   id_bitfield_set(head, head->bitfield_free, index, 1);
@@ -568,79 +587,70 @@ id_alloc_free_ptr(struct id_alloc *id_all, void *ptr)
   {
     u32 id = head->id;
 
-    while (head->num_free == 1 && head != id_all->ap)
+    while (head->num_free == 1 && head != isl->ap)
     {
       head = head->head_above;
-      u32 pos = ID_POS_ON_LEVEL(id_all, id, head->level);
+      u32 pos = ISL_POS_ON_LEVEL(isl, id, head->level);
       id_bitfield_set(head, head->bitfield_partial, pos, 1);
     }
     return;
   }
 
-  id_alloc_free_empty_pages(id_all, head);
+  islab_free_empty_pages(isl, head);
 }
 
-#if 0
-//Not tested
+
 static void
-id_alloc_count_heads(struct id_alloc *id_all, struct id_alloc_head* head,int *part, int *full, int *overhead)
+islab_dump_level(struct dump_request *dreq, struct islab *isl, struct islab_head *head, int off)
 {
-        log("count heads");
+  /* Dump is done recursively, because not too much is levels expected */
+  RDUMP("%*s (%x) head %p (id %x) bitfield free ", off, "", head->level, head, head->id);
+
   if (head->level == 0)
   {
-    *part += !!head->num_free;
-    *full += !head->num_free;
+    u32 obj_bitfield_len = (isl->max_objs / 32) + !!(isl->max_ptrs % 32);
+    for (u32 i = 1; i <= obj_bitfield_len; i++)
+      RDUMP("%x", head->bitfield_free[obj_bitfield_len - i]);
     return;
   }
 
-  *overhead += 1;
+  u32 ptr_bitfield_len = (isl->max_ptrs / 32) + !!(isl->max_ptrs % 32);
+  for (u32 i = 1; i <= ptr_bitfield_len; i++)
+    RDUMP("%x", head->bitfield_free[ptr_bitfield_len - i]);
 
-  if (head->level == 1)
+  RDUMP(", bitfield partial ");
+
+  for (u32 i = 1; i <= ptr_bitfield_len; i++)
+    RDUMP("%x", head->bitfield_partial[ptr_bitfield_len - i]);
+
+  for (u32 i = 0; i < isl->max_ptrs; i++)
   {
-    for (u32 i = 0; i < id_all->max_ptrs; i++)
+    if (ISL_BITFIELD_IS_SET(head->bitfield_free, i) == 0)
     {
-      *part += !!(head->bitfield_partial[i/32] & (1 << (i % 32)));
-      *full += !(head->bitfield_free[i/32] & (1 << (i % 32)));
-    }
-    return;
-  }
-
-  for (u32 i = 0; i < id_all->max_ptrs; i++)
-  {
-    if (head->bitfield_partial[i/32] & (1 << (i % 32)))
-      id_alloc_count_heads(id_all, head->body[i], part, full, overhead);
-    else if (!(head->bitfield_free[i/32] & (1 << (i % 32))))
-    {
-      /* full subtree */
-      log("more full");
-      *full += id_all->max_ptrs ^ (head->level - 1);
-
-      for (int i = 0; i < (head->level - 1); i++)
-        *overhead += id_all->max_ptrs ^ i;
+      RDUMP("\n");
+      struct islab_head *h = head->body[i];
+      islab_dump_level(dreq, isl, h, off + ((head->level - h->level) * 10));
     }
   }
+  RDUMP("\n");
 }
-  #endif
 
-//todo vypisovani pameti, spravny pool atd
 static void
-id_alloc_dump(struct dump_request *dreq, resource *r)
+islab_dump(struct dump_request *dreq, resource *r)
 {
-  //todo
-  struct id_alloc *id_all = (struct id_alloc *) r;
+  struct islab *isl = (struct islab *) r;
 
-  RDUMP("(%d objs per %d bytes in %d page pages %d stored objects)\n",
-      id_all->max_objs, id_all->obj_size, id_all->heads_stored, id_all->obj_stored);
+  RDUMP("\n");
+  islab_dump_level(dreq, isl, isl->ap, dreq->indent+3);
 }
 
 static struct resmem
-id_alloc_memsize(resource *r)
+islab_memsize(resource *r)
 {
-  log("memsize");
-  struct id_alloc *id_all = (struct id_alloc *) r;
+  struct islab *isl = (struct islab *) r;
 
   return (struct resmem) {
-    .effective = id_all->obj_stored * id_all->obj_size,
-    .overhead = (id_all->heads_stored * page_size) - id_all->obj_stored * id_all->obj_size,
+    .effective = isl->obj_stored * isl->obj_size,
+    .overhead = (isl->heads_stored * page_size) - isl->obj_stored * isl->obj_size,
   };
 }

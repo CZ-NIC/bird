@@ -2035,7 +2035,7 @@ bgp_init_bucket_table(struct bgp_ptx_private *c)
 {
   HASH_INIT(c->bucket_hash, c->pool, 8);
 
-  c->bucket_alloc = id_alloc_init(c->pool, sizeof(struct bgp_bucket));
+  c->bucket_alloc = islab_init(c->pool, sizeof(struct bgp_bucket));
 
   init_list(&c->bucket_queue);
   c->withdraw_bucket = NULL;
@@ -2057,7 +2057,7 @@ bgp_get_bucket(struct bgp_ptx_private *c, ea_list *new)
 
   /* Allocate the bucket */
   u32 id;
-  b = id_alloc_alloc(c->bucket_alloc, &id);
+  b = islab_alloc(c->bucket_alloc, &id);
   *b = (struct bgp_bucket) {
     .attrs = ns,
     .my_id = id,
@@ -2086,7 +2086,7 @@ bgp_free_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b)
 {
   HASH_REMOVE2(c->bucket_hash, RBH, c->pool, b);
   ea_free(b->attrs);
-  id_alloc_free(c->bucket_alloc, b->my_id);
+  islab_free(c->bucket_alloc, b->my_id);
 }
 
 int
@@ -2225,8 +2225,8 @@ bgp_update_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_b
   /* Unqueue from the old bucket */
   if (px->cur_buck)
   {
-    bgp_delete_from_bucket(c, id_alloc_find(c->bucket_alloc, px->cur_buck), px->buck_id);
-    bgp_done_bucket(c, id_alloc_find(c->bucket_alloc, px->cur_buck));
+    bgp_delete_from_bucket(c, islab_find(c->bucket_alloc, px->cur_buck), px->buck_id);
+    bgp_done_bucket(c, islab_find(c->bucket_alloc, px->cur_buck));
   }
 
   /* The new bucket is the same as we sent before */
@@ -2310,7 +2310,7 @@ bgp_done_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_buc
     /* Unref the previous sent version */
     if (px->last_buck)
     {
-      struct bgp_bucket *last = id_alloc_find(c->bucket_alloc, px->last_buck);
+      struct bgp_bucket *last = islab_find(c->bucket_alloc, px->last_buck);
       if (!--last->px_uc)
 	bgp_done_bucket(c, last);
     }
@@ -2349,7 +2349,7 @@ bgp_tx_resend(struct bgp_proto *p, struct bgp_channel *bc)
       if (!px->cur_buck)
       {
 	ASSERT_DIE(px->last_buck);
-	struct bgp_bucket *last = id_alloc_find(c->bucket_alloc, px->last_buck);
+	struct bgp_bucket *last = islab_find(c->bucket_alloc, px->last_buck);
         ASSERT_DIE(px->last_buck == last->my_id);
 
 	/* Remove the last reference, we wanna resend the route */
@@ -2426,7 +2426,7 @@ bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, UNUSE
       {
 	if (px->cur_buck)
         {
-          struct bgp_bucket *cur = id_alloc_find(c->bucket_alloc, px->cur_buck);
+          struct bgp_bucket *cur = islab_find(c->bucket_alloc, px->cur_buck);
           ASSERT_DIE(cur->my_id == px->cur_buck);
 	  feed->block[pos++] = (rte) {
 	    .attrs = (px->cur_buck == c->withdraw_bucket->my_id) ? NULL : ea_free_later(ea_lookup_slow(cur->attrs, 0, EALS_CUSTOM)),
@@ -2439,7 +2439,7 @@ bgp_out_feed_net(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, UNUSE
 
 	if (px->last_buck)
         {
-          struct bgp_bucket *last = id_alloc_find(c->bucket_alloc, px->last_buck);
+          struct bgp_bucket *last = islab_find(c->bucket_alloc, px->last_buck);
           ASSERT_DIE(last->my_id == px->last_buck);
 	  feed->block[pos++] = (rte) {
 	    .attrs = (px->last_buck == c->withdraw_bucket->my_id) ? NULL : ea_free_later(ea_lookup_slow(last->attrs, 0, EALS_CUSTOM)),
@@ -2501,7 +2501,7 @@ bgp_init_pending_tx(struct bgp_channel *c)
 
   bgp_init_prefix_allocators(bpp);
   u32 id;
-  bpp->withdraw_bucket = id_alloc_alloc(bpp->bucket_alloc, &id);
+  bpp->withdraw_bucket = islab_alloc(bpp->bucket_alloc, &id);
   memset(bpp->withdraw_bucket, 0, sizeof(struct bgp_bucket));
   bpp->withdraw_bucket->my_id = id;
   UNLOCK_DOMAIN(rtable, dom);
@@ -2561,8 +2561,8 @@ bgp_free_pending_tx(struct bgp_channel *bc)
   HASH_WALK_END;
 
   HASH_FREE(c->bucket_hash);
-  id_alloc_free(c->bucket_alloc, c->withdraw_bucket->my_id);
-  id_alloc_delete(c->bucket_alloc);
+  islab_free(c->bucket_alloc, c->withdraw_bucket->my_id);
+  islab_delete(c->bucket_alloc);
   c->bucket_alloc = NULL;
 
   bgp_free_prefix_allocators(c);
