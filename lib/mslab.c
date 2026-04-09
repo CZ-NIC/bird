@@ -388,9 +388,9 @@ msl_alloc_from_page(mslab *s, struct msl_head *h)
     {
       /* There are some zero bits in this part of the bitfield. */
       uint pos = u32_ctz(~used_bits);
-      if (ti->used_bits_ptr * 32 + pos >= s->objs_per_mslab){ log("too far - i = %i, pos = %i, s->objs_per_mslab = %i, s %x", ti->used_bits_ptr, pos, s->objs_per_mslab, s);
+      if (ti->used_bits_ptr * 32 + pos >= s->objs_per_mslab)
 	/* But too far, we don't have those objects! */
-	return NULL;}
+	    return NULL;
 
       /* Set the one, claim the block */
       ti->used_bits_local[ti->used_bits_ptr] = ti->used_bits_local[ti->used_bits_ptr] | (1 << pos);
