@@ -212,9 +212,9 @@ pool *rta_pool;
 
 /* Assuming page size of 4096, these are magic values for slab allocation */
 static const uint ea_slab_sizes[] = { 56, 112, 168, 288, 448, 800, 1344 };
-static slab *ea_slab[ARRAY_SIZE(ea_slab_sizes)];
+static mslab *ea_slab[ARRAY_SIZE(ea_slab_sizes)];
 
-static slab *rte_src_slab;
+static mslab *rte_src_slab;
 
 static struct idm src_ids;
 #define SRC_ID_INIT_SIZE 4
@@ -235,9 +235,9 @@ static _Atomic uint rte_src_global_max;
 static void ea_rehash(void*);
 
 static void
-rte_src_init(void)
+rte_src_init(struct event_list *ev)
 {
-  rte_src_slab = sl_new(rta_pool, sizeof(struct rte_src));
+  rte_src_slab = msl_new(rta_pool, ev, sizeof(struct rte_src));
 
   uint gmax = SRC_ID_INIT_SIZE * 32;
   struct rte_src * _Atomic *g = mb_alloc(rta_pool, sizeof(struct rte_src * _Atomic) * gmax);
@@ -277,10 +277,11 @@ rt_get_source_o(struct rte_owner *p, u64 id)
     return src;
   }
 
-  RTA_LOCK;
-  src = sl_allocz(rte_src_slab);
+  src = msl_allocz(rte_src_slab);
   src->owner = p;
   src->private_id = id;
+
+  RTA_LOCK;
   src->global_id = idm_alloc(&src_ids);
 
   lfuc_init(&src->uc);
@@ -1795,7 +1796,7 @@ ea_alloc(ea_list *o, enum ea_stored oid, uint h)
   for (uint i = 0; i < ARRAY_SIZE(ea_slab_sizes); i++)
     if (sz <= ea_slab_sizes[i])
     {
-      r_new = sl_alloc(ea_slab[i]);
+      r_new = msl_alloc(ea_slab[i]);
       break;
     }
 
@@ -1905,7 +1906,7 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
 	      mb_free(r_new);
 	      RTA_UNLOCK;
 	    } else
-	      sl_free(r_new);
+	      msl_free(r_new);
 	  }
 
 	  return r_found->l;
@@ -2005,7 +2006,7 @@ ea_finally_free(struct deferred_call *dc)
       RTA_UNLOCK;
     }
     else
-      sl_free(r);
+      msl_free(r);
   }
 }
 
@@ -2353,11 +2354,11 @@ rta_init(void)
   rta_pool = rp_new(&root_pool, attrs_domain.attrs, "Attributes");
 
   for (uint i=0; i<ARRAY_SIZE(ea_slab_sizes); i++)
-    ea_slab[i] = sl_new(rta_pool, ea_slab_sizes[i]);
+    ea_slab[i] = msl_new(rta_pool, birdloop_event_list(&main_birdloop), ea_slab_sizes[i]);
 
   ea_init_hash_table(rta_pool, birdloop_event_list(&main_birdloop));
 
-  rte_src_init();
+  rte_src_init(birdloop_event_list(&main_birdloop));
   ea_class_init();
 
   RTA_UNLOCK;
