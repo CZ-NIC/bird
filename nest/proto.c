@@ -159,7 +159,7 @@ proto_find_channel_by_name(struct proto *p, const char *n)
 struct channel *
 proto_add_channel(struct proto *p, struct channel_config *cf)
 {
-  struct channel *c = mb_allocz(proto_pool, cf->channel->channel_size);
+  struct channel *c = mb_allocz(p->persistent_pool, cf->channel->channel_size);
 
   c->name = cf->name;
   c->channel = cf->channel;
@@ -1084,8 +1084,10 @@ proto_event(void *ptr)
 void *
 proto_new(struct proto_config *cf)
 {
-  struct proto *p = mb_allocz(proto_pool, cf->protocol->proto_size);
+  struct pool *pool = rp_newf(proto_pool, "%s (persistent)", cf->name);
+  struct proto *p = mb_allocz(pool, cf->protocol->proto_size);
 
+  p->persistent_pool = pool;
   p->cf = cf;
   p->debug = cf->debug;
   p->mrtdump = cf->mrtdump;
@@ -1113,7 +1115,7 @@ proto_init(struct proto_config *c, node *n)
   p->vrf_set = c->vrf_set;
   insert_node(&p->n, n);
 
-  p->event = ev_new_init(proto_pool, proto_event, p);
+  p->event = ev_new_init(p->persistent_pool, proto_event, p);
 
   PD(p, "Initializing%s", p->disabled ? " [disabled]" : "");
 
@@ -1124,7 +1126,7 @@ static void
 proto_start(struct proto *p)
 {
   /* Here we cannot use p->cf->name since it won't survive reconfiguration */
-  p->pool = rp_new(proto_pool, p->proto->name);
+  p->pool = rp_new(p->persistent_pool, p->proto->name);
 
   if (graceful_restart_state == GRS_INIT)
     p->gr_recovery = 1;
@@ -1469,9 +1471,7 @@ proto_rethink_goal(struct proto *p)
     config_del_obstacle(p->cf->global);
     proto_remove_channels(p);
     rem_node(&p->n);
-    rfree(p->event);
-    mb_free(p->message);
-    mb_free(p);
+    rfree(p->persistent_pool);
     if (!nc)
       return;
     p = proto_init(nc, n);
@@ -1831,7 +1831,7 @@ proto_set_message(struct proto *p, char *msg, int len)
   if (!len)
     return;
 
-  p->message = mb_alloc(proto_pool, len + 1);
+  p->message = mb_alloc(p->persistent_pool, len + 1);
   memcpy(p->message, msg, len);
   p->message[len] = 0;
 }

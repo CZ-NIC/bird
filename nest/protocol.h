@@ -168,7 +168,8 @@ struct proto {
   struct protocol *proto;		/* Protocol */
   struct proto_config *cf;		/* Configuration data */
   struct proto_config *cf_new;		/* Configuration we want to switch to after shutdown (NULL=delete) */
-  pool *pool;				/* Pool containing local objects */
+  pool *pool;				/* Pool containing local objects; flushed when passing PS_DOWN */
+  pool *persistent_pool;		/* Pool containing local objects; flushed when protocol is removed */
   event *event;				/* Protocol event */
 
   list channels;			/* List of channels to rtables (struct channel) */
@@ -196,7 +197,7 @@ struct proto {
   u32 hash_key;				/* Random key used for hashing of neighbors */
   btime last_state_change;		/* Time of last state transition */
   char *last_state_name_announced;	/* Last state name we've announced to the user */
-  char *message;			/* State-change message, allocated from proto_pool */
+  char *message;			/* State-change message, allocated from persistent_pool */
 
   /*
    *	General protocol hooks:

@@ -860,6 +860,7 @@ bgp_startup(struct bgp_proto *p)
   if (p->postponed_sk)
   {
     /* Apply postponed incoming connection */
+    rmove(p->postponed_sk, p->p.pool);
     bgp_setup_conn(p, &p->incoming_conn);
     bgp_setup_sk(&p->incoming_conn, p->postponed_sk);
     bgp_send_open(&p->incoming_conn);
@@ -1048,6 +1049,13 @@ bgp_graceful_close_conn(struct bgp_conn *conn, int subcode, byte *data, uint len
 static void
 bgp_down(struct bgp_proto *p)
 {
+  /* Close the possibly unpicked dynamic BGP socket */
+  if (p->postponed_sk)
+  {
+    rfree(p->postponed_sk);
+    p->postponed_sk = NULL;
+  }
+
   if (p->start_state > BSS_PREPARE)
   {
     bgp_setup_auth(p, 0);
@@ -1118,7 +1126,7 @@ bgp_spawn_sk(struct bgp_proto *pp, sock *sk)
   struct bgp_proto *p = bgp_spawn(pp, sk->daddr, sk->saddr, sk->iface);
 
   p->postponed_sk = sk;
-  rmove(sk, p->p.pool);
+  rmove(sk, p->p.persistent_pool);
 
   return 0;
 }
