@@ -646,6 +646,8 @@ islab_dump_level(struct dump_request *dreq, struct islab *isl, struct islab_head
     u32 obj_bitfield_len = (isl->max_objs / 32) + !!(isl->max_ptrs % 32);
     for (u32 i = 1; i <= obj_bitfield_len; i++)
       RDUMP("%x", head->bitfield_free[obj_bitfield_len - i]);
+
+    RDUMP("\n");
     return;
   }
 
@@ -676,7 +678,8 @@ islab_dump(struct dump_request *dreq, resource *r)
   struct islab *isl = (struct islab *) r;
 
   RDUMP("\n");
-  islab_dump_level(dreq, isl, isl->ap, dreq->indent+3);
+  if (isl->ap)
+    islab_dump_level(dreq, isl, isl->ap, dreq->indent+3);
 }
 
 long isl_empty = 0;
