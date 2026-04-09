@@ -336,6 +336,7 @@ slab_memsize(resource *r)
     heads++;
 
   size_t eff = items * s->data_size;
+  log("sl ef %li over %li", eff, ALLOC_OVERHEAD + sizeof(struct slab) + heads * page_size - eff);
 
   return (struct resmem) {
     .effective = eff,
