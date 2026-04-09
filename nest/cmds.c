@@ -117,6 +117,7 @@ cmd_show_memory(void)
 {
   cli_msg(-1018, "BIRD memory usage");
   cli_msg(-1018, "%-17s Effective    Overhead", "");
+  log("show mem start");
   print_size("Routing tables:", rmemsize(rt_table_pool));
   log("rout end");
   print_size("Route attributes:", rmemsize(rta_pool));
