@@ -1247,7 +1247,10 @@ bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip, ip_addr local_ip, struct ifac
   cf->iface = iface;
   cf->ipatt = NULL;
 
-  return SKIP_BACK(struct bgp_proto, p, proto_spawn(sym->proto, 1));
+  /* Do not start the protocol immediately */
+  sym->proto->disabled = 1;
+
+  return SKIP_BACK(struct bgp_proto, p, proto_spawn(sym->proto));
 }
 
 static void
@@ -1259,6 +1262,7 @@ bgp_spawn_sk(struct bgp_proto *pp, sock *sk)
   p->postponed_sk = sk;
 
   /* And enable the protocol */
+  p->p.cf->disabled = 0;
   proto_enable(&p->p);
 }
 

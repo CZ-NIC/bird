@@ -2023,11 +2023,9 @@ proto_rethink_goal_deferred(struct deferred_call *dc)
 }
 
 struct proto *
-proto_spawn(struct proto_config *cf, uint disabled)
+proto_spawn(struct proto_config *cf)
 {
   struct proto *p = proto_init(cf, global_proto_list.last);
-  p->disabled = disabled;
-  proto_rethink_goal(p);
   return p;
 }
 
