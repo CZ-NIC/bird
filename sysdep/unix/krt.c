@@ -148,6 +148,15 @@ kif_start(struct proto *P)
   kif_scan(kif_scan_timer);
   tm_start(kif_scan_timer, KIF_CF->scan_time);
 
+  /* On startup, load router id */
+  struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
+  if (!gr->router_id)
+  {
+    gr->router_id = if_choose_router_id(P->cf->global->router_id_from, 0);
+    if (!gr->router_id)
+      die("Cannot determine router ID, please configure it manually");
+  }
+
   return PS_UP;
 }
 

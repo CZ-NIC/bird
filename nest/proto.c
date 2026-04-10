@@ -1934,19 +1934,6 @@ protos_do_commit(struct config *new, struct config *old, int type)
 
   DBG("Protocol start\n");
 
-  /* Determine router ID for the first time - it has to be here and not in
-     global_commit() because it is postponed after start of device protocol */
-  if ((phase == PROTOCOL_STARTUP_NECESSARY) && !old)
-  {
-    struct global_runtime *gr = atomic_load_explicit(&global_runtime, memory_order_relaxed);
-    if (!gr->router_id)
-    {
-      gr->router_id = if_choose_router_id(new->router_id_from, 0);
-      if (!gr->router_id)
-	die("Cannot determine router ID, please configure it manually");
-    }
-  }
-
   /* Commit next round of protocols */
   if (new->shutdown && !new->gr_down)
     protos_commit_request.phase++;
