@@ -226,8 +226,7 @@ struct {								\
     struct { type *data; rw_spinlock lock; } block[0];			\
   } * _Atomic cur, * _Atomic new;					\
   pool *pool;								\
-  event rehash;								\
-  event_list *target;							\
+  callback rehash_cb;							\
 }
 
 #define SPINHASH_INIT(v,id,_pool,_target)				\
@@ -238,20 +237,19 @@ struct {								\
     atomic_store_explicit(&(v).new, NULL, memory_order_relaxed);	\
     atomic_store_explicit(&(v).cur, cb, memory_order_relaxed);		\
     (v).pool = _pool;							\
-    (v).rehash = (event) { .hook = id##_REHASH, .data = &(v), };	\
-    (v).target = _target;						\
+    callback_init(&(v).rehash_cb, id##_REHASH, _target);		\
   })
 
 #define SPINHASH_FREE(v)						\
   ({									\
-    ev_postpone(&(v).rehash);						\
+    callback_cancel(&(v).rehash_cb);					\
+    (v).rehash_cb = (callback) {};					\
     SPINHASH_GETBLOCK((&(v)),_cur,cur);					\
     atomic_store_explicit(&(v).cur, NULL, memory_order_release);	\
     mb_free(_cur);							\
     SPINHASH_GETBLOCK((&(v)),_new,new);					\
     ASSERT_DIE(_new == NULL);						\
     (v).pool = NULL;							\
-    (v).target = NULL;							\
   })
 
 #define SPINHASH_GETBLOCK(v,name,which)					\
@@ -387,12 +385,12 @@ struct {								\
   })
 
 #define SPINHASH_REQUEST_REHASH(v,id,count)				\
-  if (SPINHASH_CHECK_REHASH(v,id,count) && (v)->target)			\
-      ev_send((v)->target, &(v)->rehash);
+  if (SPINHASH_CHECK_REHASH(v,id,count) && (v)->rehash_cb.target)	\
+    callback_activate(&(v)->rehash_cb);
 
 #define SPINHASH_DEFINE_REHASH_FN(id,type)				\
-static void id##_REHASH(void *_v) {					\
-  SPINHASH(type) *v = _v;						\
+static void id##_REHASH(callback *cb) {					\
+  SKIP_BACK_DECLARE(SPINHASH(type), v, rehash_cb, cb);			\
   SPINHASH_REHASH_FN_BODY(v,id,type);					\
 }
 

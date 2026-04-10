@@ -884,7 +884,7 @@ channel_check_stopped(struct channel *c)
       ASSERT_DIE(!rt_export_feed_active(&c->reimporter));
 
       channel_set_state(c, CS_DOWN);
-      proto_send_event(c->proto, c->proto->event);
+      callback_activate(&c->proto->check_done_cb);
 
       break;
 
@@ -1074,7 +1074,7 @@ channel_do_down(struct channel *c)
 
   /* Schedule protocol shutddown */
   if (proto_is_done(c->proto))
-    proto_send_event(c->proto, c->proto->event);
+    callback_activate(&c->proto->check_done_cb);
 }
 
 void
@@ -1432,9 +1432,9 @@ proto_loop_stopped(void *ptr)
 }
 
 static void
-proto_event(void *ptr)
+proto_event(callback *cb)
 {
-  struct proto *p = ptr;
+  SKIP_BACK_DECLARE(struct proto, p, check_done_cb, cb);
 
   if (p->do_stop)
   {
@@ -1544,8 +1544,6 @@ proto_init(struct proto_config *c, struct proto *after)
 
   proto_announce_state(p, p->ea_state);
 
-  p->event = ev_new_init(proto_pool, proto_event, p);
-
   PD(p, "Initializing%s", p->disabled ? " [disabled]" : "");
 
   return p;
@@ -1569,6 +1567,8 @@ proto_start(struct proto *p)
   }
   else
     p->pool = rp_newf(proto_pool, the_bird_domain.the_bird, "Protocol %s", p->cf->name);
+
+  callback_init(&p->check_done_cb, proto_event, p->loop);
 
   p->iface_sub.target = proto_event_list(p);
   p->iface_sub.name = p->name;
@@ -1980,7 +1980,6 @@ proto_rethink_goal(struct proto *p)
     proto_announce_state(p, NULL);
 
     proto_rem_node(&global_proto_list, p);
-    rfree(p->event);
     {
       PROTO_COMMON_LOCK(pcm);
       mb_free(p->message);
@@ -2576,7 +2575,7 @@ static inline void
 proto_do_start(struct proto *p)
 {
   p->sources.debug = p->debug;
-  rt_init_sources(&p->sources, p->name, proto_event_list(p));
+  rt_init_sources(&p->sources, p->name, p->loop);
 
   if (!p->cf->late_if_feed)
     iface_subscribe(&p->iface_sub);
@@ -2617,10 +2616,10 @@ proto_do_stop(struct proto *p)
   p->pool_up = NULL;
 
   proto_stop_channels(p);
-  rt_destroy_sources(&p->sources, p->event);
+  rt_destroy_sources(&p->sources, &p->check_done_cb);
 
   p->do_stop = 1;
-  proto_send_event(p, p->event);
+  callback_activate(&p->check_done_cb);
 }
 
 static void
@@ -2630,7 +2629,7 @@ proto_do_down(struct proto *p)
 
   /* Shutdown is finished in the protocol event */
   if (proto_is_done(p))
-    proto_send_event(p, p->event);
+    callback_activate(&p->check_done_cb);
 }
 
 

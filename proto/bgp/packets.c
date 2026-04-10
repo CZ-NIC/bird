@@ -3578,7 +3578,7 @@ bgp_do_uncork(callback *cb)
   ASSERT_DIE(p->p.active_loops--);
 
   if (p->p.proto_state == PS_FLUSH)
-    ev_send_loop(p->p.loop, p->p.event);
+    callback_activate(&p->p.check_done_cb);
   else if (p->conn && (p->conn->state == BS_ESTABLISHED) && !p->conn->sk->rx_hook)
   {
     struct birdsock *sk = p->conn->sk;

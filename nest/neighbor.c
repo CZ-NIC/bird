@@ -397,7 +397,7 @@ neigh_unlink_locked(neighbor *n)
   proto_neigh_rem_node(&p->neighbors, n);
 
   if ((p->proto_state == PS_FLUSH) && EMPTY_TLIST(proto_neigh, &p->neighbors))
-    proto_send_event(p, p->event);
+    callback_activate(&p->check_done_cb);
 
   n->proto = NULL;
 
