@@ -660,11 +660,11 @@ islab_dump_level(struct dump_request *dreq, struct islab *isl, struct islab_head
   for (u32 i = 1; i <= ptr_bitfield_len; i++)
     RDUMP("%x", head->bitfield_partial[ptr_bitfield_len - i]);
 
+  RDUMP("\n");
   for (u32 i = 0; i < isl->max_ptrs; i++)
   {
     if (ISL_BITFIELD_IS_SET(head->bitfield_free, i) == 0)
     {
-      RDUMP("\n");
       struct islab_head *h = head->body[i];
       islab_dump_level(dreq, isl, h, off + ((head->level - h->level) * 10));
     }
