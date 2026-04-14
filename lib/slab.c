@@ -241,9 +241,9 @@ sl_new(pool *p, uint size)
 {
   slab *s = ralloc(p, &sl_class);
   s->data_size = size;
-  s->obj_size = size = BIRD_ALIGN(size, CPU_STRUCT_ALIGN);
+  s->obj_size = BIRD_ALIGN(size, CPU_STRUCT_ALIGN);
 
-  s->objs_per_slab = sl_obj_count(page_size, sizeof(struct sl_head), size, 1);
+  s->objs_per_slab = sl_obj_count(page_size, sizeof(struct sl_head), s->obj_size, 1);
   s->head_bitfield_len = (s->objs_per_slab + 31) / 32;
   s->head_size = BIRD_ALIGN(sizeof (struct sl_head) + sizeof(u32) * s->head_bitfield_len, CPU_STRUCT_ALIGN);
 
