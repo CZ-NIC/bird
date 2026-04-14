@@ -100,6 +100,32 @@ static const struct resclass sl_class = {
 
 
 /**
+ * sl_obj_count - calculate how many items fit into a memory block
+ * @total_size: total size of the available memory block, e.g. page size
+ * @fixed_overhead: fixed size of a header structure
+ * @obj_size: size of blocks to fit
+ * @bits: bits to allocate per fitted block
+ *
+ * Returns the amount of items which fit into the memory block, when packed
+ * together with the header structure and bitfields.
+ */
+uint
+sl_obj_count(const uint total_size, const uint fixed_overhead, const uint obj_size, const uint bits)
+{
+  uint cnt = (total_size - fixed_overhead) / obj_size;
+  if (cnt == 0)
+    return 0;
+
+  while (cnt && (
+	BIRD_ALIGN(fixed_overhead + sizeof (u32) * bits * ((cnt + 31) / 32), CPU_STRUCT_ALIGN) + cnt * obj_size
+	> total_size))
+    cnt--;
+
+  return cnt;
+}
+
+
+/**
  * sl_new - create a new Slab
  * @p: resource pool
  * @size: block size
@@ -111,22 +137,12 @@ slab *
 sl_new(pool *p, uint size)
 {
   slab *s = ralloc(p, &sl_class);
-  uint align = CPU_STRUCT_ALIGN;
   s->data_size = size;
-  size = (size + align - 1) / align * align;
-  s->obj_size = size;
+  s->obj_size = BIRD_ALIGN(size, CPU_STRUCT_ALIGN);
 
-  s->head_size = sizeof(struct sl_head);
-
-  do {
-    s->objs_per_slab = (page_size - s->head_size) / size;
-    s->head_bitfield_len = (s->objs_per_slab + 31) / 32;
-    s->head_size = (
-	sizeof(struct sl_head)
-      + sizeof(u32) * s->head_bitfield_len
-      + align - 1)
-    / align * align;
-  } while (s->objs_per_slab * size + s->head_size > (size_t) page_size);
+  s->objs_per_slab = sl_obj_count(page_size, sizeof(struct sl_head), s->obj_size, 1);
+  s->head_bitfield_len = (s->objs_per_slab + 31) / 32;
+  s->head_size = BIRD_ALIGN(sizeof (struct sl_head) + sizeof(u32) * s->head_bitfield_len, CPU_STRUCT_ALIGN);
 
   if (!s->objs_per_slab)
     bug("Slab: object too large");

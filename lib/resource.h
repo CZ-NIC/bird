@@ -139,6 +139,8 @@ void *sl_allocz(slab *);
 void sl_free(void *);
 void sl_delete(slab *);
 
+uint sl_obj_count(const uint total_size, const uint fixed_overhead, const uint obj_size, const uint bits);
+
 /*
  * Low-level memory allocation functions, please don't use
  * outside resource manager and possibly sysdep code.
