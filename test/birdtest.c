@@ -39,6 +39,7 @@ static int do_die;
 static int no_fork;
 static int no_timeout;
 static int is_terminal;		/* Whether stdout is a live terminal or pipe redirect */
+int bt_is_extended;
 
 volatile sig_atomic_t async_config_flag;		/* Asynchronous reconfiguration/dump scheduled */
 volatile sig_atomic_t async_dump_flag;
@@ -76,7 +77,7 @@ bt_init(int argc, char *argv[])
   bt_test_id = NULL;
   is_terminal = isatty(fileno(stdout));
 
-  while ((c = getopt(argc, argv, "lcdftv")) >= 0)
+  while ((c = getopt(argc, argv, "lcdftvx")) >= 0)
     switch (c)
     {
       case 'l':
@@ -101,6 +102,10 @@ bt_init(int argc, char *argv[])
 
       case 'v':
 	bt_verbose++;
+	break;
+
+      case 'x':
+	bt_is_extended = 1;
 	break;
 
       default:
@@ -136,7 +141,7 @@ bt_init(int argc, char *argv[])
   return;
 
  usage:
-  printf("Usage: %s [-l] [-c] [-d] [-f] [-t] [-vvv] [<test_suit_name>]\n", argv[0]);
+  printf("Usage: %s [-l] [-c] [-d] [-f] [-t] [-vvv] [-x] [<test_suit_name>]\n", argv[0]);
   printf("Options: \n");
   printf("  -l   List all test suite names and descriptions \n");
   printf("  -c   Force unlimit core dumps (needs root privileges) \n");
@@ -144,6 +149,7 @@ bt_init(int argc, char *argv[])
   printf("  -f   No forking \n");
   printf("  -t   No timeout limit \n");
   printf("  -v   More verbosity, maximum is 3 -vvv \n");
+  printf("  -x   Extended run for stress tests (implies no timeout)\n");
   exit(3);
 }
 
