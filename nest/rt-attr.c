@@ -1263,8 +1263,8 @@ ea_list_ref(ea_list *l)
 
       rcu_read_lock();
       struct ea_class *cl = ea_class_global[a->id];
-      rcu_read_unlock();
       ASSERT_DIE(cl && atomic_load_explicit(&cl->uc, memory_order_relaxed));
+      rcu_read_unlock();
 
       CALL(cl->stored, a);
       atomic_fetch_add_explicit(&cl->uc, 1, memory_order_release);
@@ -1287,8 +1287,8 @@ ea_list_unref(ea_list *l)
 
       rcu_read_lock();
       struct ea_class *cl = ea_class_global[a->id];
-      rcu_read_unlock();
       ASSERT_DIE(cl && atomic_load_explicit(&cl->uc, memory_order_relaxed));
+      rcu_read_unlock();
 
       CALL(cl->freed, a);
       if (atomic_fetch_sub_explicit(&cl->uc, 1, memory_order_release) == 1)
@@ -1470,8 +1470,8 @@ ea_show(struct cli *c, const eattr *e)
 
   rcu_read_lock();
   struct ea_class *cls = ea_class_global[e->id];
-  rcu_read_unlock();
   ASSERT_DIE(cls);
+  rcu_read_unlock();
 
   if (e->undef || cls->hidden)
     return;
@@ -1675,64 +1675,220 @@ ea_append(ea_list *to, ea_list *what)
   return res;
 }
 
-/* ea_storage storing - multithread version
- * ea_storages are saved in hash array (array of linked lists) stored in rta_hash table.
- * Storages are added in ea_lookup_slow(), deleted in ea_storage_free() and array is
- * rehashed in ea_rehash().
+/**
+ * DOC: Route attribute storage
  *
- * Ea_storages have usecounts and can be freed only after their usecount reaches zero.
- * Once ea_storage has zero usecount, the usecount can not be increased and
- * the ea_storage just waits to be freed.
+ * While local procesing of routes is done on local structures, the attributes
+ * have to be stored to a global data structure to have sufficient lifetime.
+ * The global storage also serves deduplication purposes, i.e. when an identical
+ * attribute set is about to be stored, an existing structure is returned instead.
  *
- * There two ea_hash_arrays and one ponter to one of them in rta_hash_table. The pointer
- * points to the currently used array. The other array just waits for next rehash.
- * Before any lookup, adding or free the other array is checked. If it is set as well,
- * we know rehash is running. (Right before switching the arrays in rehash, only the other array
- * appear to exist for a tiny amount of time.)
+ * All the globally-stored attribute sets have the attributes sorted by ID.
  *
- * lookup and add
- * Before adding an ea_storage, we check if we already have it. We go through the linked list
- * where we expect it. If it is not there, we try to swapthe current head of the linked list
- * with the new ea_storage. Because looking for the storage runs in rcu readlock, we prepare
- * the storage in advance. If it is not used, we delete it later. However, most of the time
- * storages are found and preallocation is expensive. That is why we do not prealocate
+ * The public interface consists of:
  *
- * the storage before the first look up.
- * If rehash is running, we simply look up for the storage in both old and new array. We
- * add it then to the new array.
+ * - ea_lookup() to get the global instance of the given attribute list,
+ *   or to bump its usecount
+ * - ea_free() to decrease the instance's usecount, with possibly delayed free
+ * - ea_lookup_tmp() to do ea_lookup() with ea_free() auto-called after the end
+ *   of the task
  *
- * If we are not able to increase the usecount of the found ea_storage (because we can not
- * increase already zero usecount), we try to add th ea_storage instead. If we fail to add
- * a storage to the linked list (because someone else add or removed the head of the linked list)
- * we repeat the lookup loop for one more time. If this is the fourth lookup, we take the risk that
- * we might add the ea_storage for the second time and keep adding until success.
+ * There are also several low-level interface functions and helpers.
  *
- * free
- * To free an ea_storage, integer on corresponding place in running_delete array is increased. If it
- * was higher than zero, some other thread is performing free or rehash on the linked list
- * our ea_storage is in. In that case, that thread will do our work. If it was zero, we have to
- * remove all ea_storages with zero usecount from the linked list.
+ * There may be attributes which need to recursively refer to another attribute set.
+ * These attributes must have |stored| and |freed| hooks of their |struct ea_class|
+ * defined.
  *
- * The whole cleaning is done with rcu readlock locked to avoid races with rehash. Races with adding
- * might occur only if we are removing the first head. In that case, we simply reload the head.
+ * Description of the data structure follows; more detailed information is
+ * directly in the code.
  *
- * In cleanup, deleted ea_storages are not freed immediatelly, but deferred to be sure no one
- * still has pointer on them. They are finally freed in ea_finally_free().
+ ***************************************
+ * Internal structure of route storage *
+ ***************************************
  *
- * rehash
- * Rehash prepares new ea_hash_array, sets all integers in runing_delete to ones and sets its order.
- * Then it waits until all threads leave their old rcu locks. Then it rehashes all of the linked
- * lists with ea_storages. It goes from the tail to the head to make sure lookup loop can allways
- * find any of the ea_storages. Then running_delete field is checked and all integers are lowered
- * by one. If needed (i. e. some other thread tried to enter cleanup) the cleanup on that linked
- * list is performed. Then ea_sor_arrays are swapt and the old one is freed.
+ * Attribute lists, publicly available as |ea_list|, are stored as |ea_storage|
+ * which contains the |ea_list| and adds storage-private data. One should not access
+ * the |ea_storage| from |ea_list|, and definitely not change it.
  *
- * Race with free is not possible, because we marked ourselves as cleaners in advance. When race
- * with add occur (both add and rehash are adding head to the same place), we simply reload
- * the head and try again. For the adding site it is no difference than racing with an other add.
+ * These |struct ea_storage| objects are arranged in a hash array
+ * (array of linked lists) stored in the |rta_hash| table. This table
+ * gets automatically rehashed by ea_rehash() whenever needed.
  *
- * Two rehashes can never occure, because only one thread can run it.
-*/
+ * The usecounts of |ea_storage| must be kept at 1 at all times. Whenever
+ * the usecount reaches zero, it must not be increased again and the |ea_storage|
+ * is waiting for free.
+ *
+ * There are two |ea_hash_array|s which are used to allow rehashing without hard locking.
+ * These are switched atomically when the rehash is done. Rehash awareness is required
+ * for reasonable lockless lookup and free.
+ *
+ **********
+ * Lookup *
+ **********
+ *
+ * The lookup function always checks whether it can return an already existing structure
+ * containing the same data. Therefore, after normalizing the attribute set contents,
+ * it calculates a hash value from its whole content, and looks into the hash array.
+ *
+ * If an entry is already there, the existing structure is returned, otherwise a new
+ * structure is allocated and put there.
+ *
+ * That would work in one thread though. We need thread-safe operation and lockless
+ * collision resolution. With that, the hash chain pass is done as RCU critical section,
+ * and we can't do time-consuming operations during that. Even though in most cases,
+ * mslab allocation is waitless (threads have pre-allocated objects), we may still
+ * end up doing a syscall during allocation (mmap), and that's not acceptable.
+ * Also very large objects (over 1.3k) use mutexes when allocating.
+ *
+ * Therefore, we do multiple passes. In the zeroth pass, we check for en existing entry.
+ * If it is already there, the situation is the easiest, we can just use that,
+ * and spare the allocation.
+ *
+ * Otherwise, we allocate the entry and run another pass. It may have happened
+ * that another thread has just done exactly the same, and we may end up
+ * re-using that entry. In such case, we simply refcount that, and de-allocate
+ * our version. Otherwise, we put the item into the chain.
+ *
+ * But we may have run into a collision again with somebody putting their item
+ * into the chain. That is unfortunate, and therefore we try pass 2, with the
+ * same objective as with pass 1: check for collisions, insert.
+ *
+ * We are not infinitely patient though, and on the pass 3, if we encounter
+ * a collision again, we stop checking the chain and just insert the entry.
+ * That may lead to deduplication, and therefore we issue a warning in such case.
+ * While developing and stress testing, we have never managed to actually trigger it.
+ *
+ * Note: There may be situations where we encounter an entry which is about
+ * to be removed. We ignore these entries.
+ *
+ *************
+ * Use count *
+ *************
+ *
+ * The entries are use-counted. That is an easy way to track their lifetimes
+ * but it brings another catch. What if one thread tries to insert an entry at
+ * the same time as another thread is deleting it?
+ *
+ * First, we would like to refuse to increase usecounts which are already zero.
+ * That is not so easy though. The easy approach would be that both lookup
+ * and free first fetch the count, locally increment/decrement, and then
+ * they try to atomically exchange it for the previous value.
+ *
+ * Yet, when these collide, the cache gets invalidated over and over again,
+ * and in our measurements, the allocation times were severely hampered by waiting
+ * for the usecount update.
+ *
+ * While the allocations are scattered quite randomly all around the time
+ * in locked contexts of various degrees, free is by default deferred to the
+ * end of the task, almost always happens in batches, and does not hold
+ * any additional lock. Therefore, we want to speed up allocations.
+ *
+ *****************************
+ * Free: Marking for removal *
+ *****************************
+ *
+ * The whole entry removal ordeal begins with lowering the usecount, and
+ * if we are lucky, it is still more than one.
+ *
+ * If the usecount becomes zero, the hard time starts. It may have been so
+ * that the allocator has just found this entry, and raised the usecount again.
+ * While we could, in the allocator, first read the usecount and then decide,
+ * it's slow (see above). Instead, the allocator just comes, increments,
+ * and is done (almost).
+ *
+ * The allocator also can't simply check for zero usecount after the increment.
+ * While that may be seen by the allocator, another allocating thread may have
+ * come just after that, seen |uc == 1|, and considered the entry proper again.
+ * Or even worse, there may be multiple threads serializing in the most peculiar ways.
+ *
+ * Therefore, we need a flag. Whenever the usecount becomes zero, the thread
+ * subsequently tries to atomically replace that zero by |EA_FREE_FLAG|,
+ * which is a very high value reserved for an entry which is about to be
+ * removed from the chain. Suddenly, either at least one of the allocating
+ * threads has serialized before this, and therefore the zero replacement
+ * fails (because the entry has been revived), or they serialize after the
+ * exchange, and they now see the flag, and can back off.
+ *
+ * As soon as the entry is successfully flagged, it can be safely removed from the chain.
+ *
+ ******************************************
+ * Free: Actually removing from the chain *
+ ******************************************
+ *
+ * Chain removal is not safe when multiple threads are removing at once,
+ * and there is a well-known race condition between two linked-list deleters,
+ * mistakenly reviving an item. Therefore we need to avoid multiple deleters
+ * running in parallel. Also, to delete an item, one has to walk the chain from
+ * the beginning, to find the ancestor.
+ *
+ * There is a parallel atomic integer array |running_delete|, which has an entry
+ * for every chain in the table. That entry is a hybrid semaphore-spinlock.
+ *
+ * Every deleter increments the appropriate |running_delete| entry when it's
+ * about to remove an item from a chain. The first one wins the cleanup job,
+ * starts walking the chain and removing items. All other deleters find out
+ * that the cleaner is running right now, and they just let go.
+ *
+ * The removal is just pointer manipulation, and it does not collide with
+ * allocation, with the exception of the very first entry in the list,
+ * where it may cause an additional lookup pass.
+ *
+ * When the cleaner is done with removing one item, it decrements the
+ * |running_delete| entry but it continues with removing more entries until the
+ * entry is zero again. This loop could, theoretically, be infinite, but
+ * considering the workload characteristics, it's very improbable.
+ *
+ * There could be also a race condition where another cleaner marks an entry
+ * for deletion, and the cleaner removes that from the chain before the
+ * |running_delete| counter could get incremented. However, that means that
+ * there was another deletion pending, and the cleaner just picked the new one.
+ *
+ * If the cleaner ends before all finished entries are removed from the chain,
+ * it must have been caused by some other threads not yet incrementing the
+ * |running_delete| counter, and one of them will inevitably become the new cleaner,
+ * keeping the balance.
+ *
+ *********************************
+ * Free: Deallocating the memory *
+ *********************************
+ *
+ * We must not immediately return the memory block to the mslab, that would be
+ * a gross negligence punishable by segfault. Even though the entry has been removed
+ * from the list, there may still be an allocator thread holding a pointer to that,
+ * sleeping just before checking the usecount (where it would find out that it is
+ * indeed bad and ultimately retry).
+ *
+ * We could simply call synchronize_rcu() to actively wait until all these sleeping
+ * threads get flushed but that adds a lot of overhead when freeing hundreds of thousands
+ * of routes at once. Instead, we collect these items into a defer call structure,
+ * storing the current RCU phase with them, and only after all the chain removals
+ * are done, the deferred call waits for RCU synchronization once for all removed entries.
+ *
+ * Then, and only then, are the entries returned to the mslab.
+ *
+ *************
+ * Rehashing *
+ *************
+ *
+ * Hold on a minute. The hash array is not constantly sized, and it must grow with
+ * the amount of actually stored entries. Therefore, all the operations keep track
+ * of the number of items inside the whole structure, and whenever the total amount
+ * gets over or under certain threshold, the hash array grows or shrinks.
+ *
+ * The rehash does not lock. Instead, it double-uses the already existing mechanisms
+ * to avoid collisions. The only locking mechanism it uses, is the fixation of this
+ * task into the main thread, making it impossible to collide two rehashes at once.
+ *
+ * First, it allocates all the new structures aside, and initializes them. Most notably,
+ * it initializes all the new |running_delete| entries to 1. The fully
+ * initialized |ea_hash_array| is then atomically released, with RCU synchronization
+ * to flush all previous readers before actually starting the rehash procedure.
+ *
+ * Lookups always check both arrays whenever rehash is running, and they always
+ * add entries to the new one. And free is even easier -- if freeing from
+ * a not-yet-rehashed chain, it sees |running_delete| initialized to 1, and backs off.
+ * The rehash routine then simply drops all obsolete entries when rehashing.
+ */
 struct ea_hash_array {
   struct ea_storage *_Atomic *eas; /* hash array of ea_storages */
   u16 _Atomic *running_delete; /* array of the same size as eas marking linked lists with running cleaning */
