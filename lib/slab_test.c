@@ -14,8 +14,10 @@ static const int sizes[] = {
   8, 12, 18, 27, 41, 75, 131, 269,
 };
 
-#define TEST_SIZE	1024 * 128
+#define TEST_SIZE	1024 * 128 * (bt_is_extended ? 1024 : 1)
 #define ITEMS(sz)	TEST_SIZE / ( (sz) >> u32_log2((sz))/2 )
+
+#define REPS		(bt_is_extended ? 32 : 1)
 
 struct test_request {
   int size;
@@ -92,24 +94,32 @@ t_slab(const void *data)
 
   switch (tr->strategy) {
     case TEST_FORWARDS:
+      for (int rep = 0; rep < REPS; rep++)
+      {
       for (int i = 0; i < n; i++)
 	block[i] = test_alloc(s, sz, &sliz);
 
       for (int i = 0; i < n; i++)
 	test_free(s, block[i], sz, &sliz);
 
+      }
       break;
 
     case TEST_BACKWARDS:
+      for (int rep = 0; rep < REPS; rep++)
+      {
       for (int i = 0; i < n; i++)
 	block[i] = test_alloc(s, sz, &sliz);
 
       for (int i = n - 1; i >= 0; i--)
 	test_free(s, block[i], sz, &sliz);
 
+      }
       break;
 
     case TEST_RANDOM:
+      for (int rep = 0; rep < REPS; rep++)
+      {
       for (int i = 0; i < n; i++)
 	block[i] = test_alloc(s, sz, &sliz);
 
@@ -120,13 +130,14 @@ t_slab(const void *data)
 	if (pos != n - i - 1)
 	  block[pos] = block[n - i - 1];
       }
-
+      }
       break;
 
     case TEST_MIXED:
       {
 	int cur = 0;
 	int pending = n;
+	int recycle = n * (REPS-1);
 
 	while (cur + pending > 0) {
 	  int action = bt_random() % (cur + pending);
@@ -135,6 +146,9 @@ t_slab(const void *data)
 	    test_free(s, block[action], sz, &sliz);
 	    if (action != --cur)
 	      block[action] = block[cur];
+
+	    if (recycle-- > 0)
+	      pending++;
 	  } else {
 	    block[cur++] = test_alloc(s, sz, &sliz);
 	    pending--;
