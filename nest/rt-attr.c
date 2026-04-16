@@ -2,6 +2,9 @@
  *	BIRD -- Route Attribute Cache
  *
  *	(c) 1998--2000 Martin Mares <mj@ucw.cz>
+ *	(c) 2020--2025 Maria Matejka <mq@jmq.cz>
+ *	(c) 2026       Katerina Kubecova <katerina.kubecova@nic.cz>
+ *	(c) 2008--2026 CZ.NIC
  *
  *	Can be freely distributed and used under the terms of the GNU GPL.
  */
@@ -214,7 +217,7 @@ pool *rta_pool;
 static const uint ea_slab_sizes[] = { 56, 112, 168, 288, 448, 800, 1344 };
 static mslab *ea_slab[ARRAY_SIZE(ea_slab_sizes)];
 
-static mslab *rte_src_slab;
+static slab *rte_src_slab;
 
 static struct idm src_ids;
 #define SRC_ID_INIT_SIZE 4
@@ -235,9 +238,9 @@ static _Atomic uint rte_src_global_max;
 static void ea_rehash(void*);
 
 static void
-rte_src_init(struct event_list *ev)
+rte_src_init(void)
 {
-  rte_src_slab = msl_new(rta_pool, ev, sizeof(struct rte_src));
+  rte_src_slab = sl_new(rta_pool, sizeof(struct rte_src));
 
   uint gmax = SRC_ID_INIT_SIZE * 32;
   struct rte_src * _Atomic *g = mb_alloc(rta_pool, sizeof(struct rte_src * _Atomic) * gmax);
@@ -277,11 +280,11 @@ rt_get_source_o(struct rte_owner *p, u64 id)
     return src;
   }
 
-  src = msl_allocz(rte_src_slab);
+  RTA_LOCK;
+  src = sl_allocz(rte_src_slab);
   src->owner = p;
   src->private_id = id;
 
-  RTA_LOCK;
   src->global_id = idm_alloc(&src_ids);
 
   lfuc_init(&src->uc);
@@ -2068,7 +2071,7 @@ ea_cleaning_loop(struct ea_hash_array *esa,  uint in)
 	 * we shift the RCU phase. */
 	def->phase = rcu_begin_sync();
 
-	if (def->count == MAX_EAS_TO_DEFFER)
+	if (def->count == MAX_EAS_TO_DEFER)
 	  ea_deferred_free = NULL; /* it is full, next time we will set up new ea_deferred_free */
       } else
       {
@@ -2358,7 +2361,7 @@ rta_init(void)
 
   ea_init_hash_table(rta_pool, birdloop_event_list(&main_birdloop));
 
-  rte_src_init(birdloop_event_list(&main_birdloop));
+  rte_src_init();
   ea_class_init();
 
   RTA_UNLOCK;
