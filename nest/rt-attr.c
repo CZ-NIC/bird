@@ -1821,10 +1821,10 @@ ea_append(ea_list *to, ea_list *what)
  * running in parallel. Also, to delete an item, one has to walk the chain from
  * the beginning, to find the ancestor.
  *
- * There is a parallel atomic integer array |running_delete|, which has an entry
+ * There is a parallel atomic integer array |delist|, which has an entry
  * for every chain in the table. That entry is a hybrid semaphore-spinlock.
  *
- * Every deleter increments the appropriate |running_delete| entry when it's
+ * Every deleter increments the appropriate |delist| entry when it's
  * about to remove an item from a chain. The first one wins the cleanup job,
  * starts walking the chain and removing items. All other deleters find out
  * that the cleaner is running right now, and they just let go.
@@ -1834,18 +1834,18 @@ ea_append(ea_list *to, ea_list *what)
  * where it may cause an additional lookup pass.
  *
  * When the cleaner is done with removing one item, it decrements the
- * |running_delete| entry but it continues with removing more entries until the
+ * |delist| entry but it continues with removing more entries until the
  * entry is zero again. This loop could, theoretically, be infinite, but
  * considering the workload characteristics, it's very improbable.
  *
  * There could be also a race condition where another cleaner marks an entry
  * for deletion, and the cleaner removes that from the chain before the
- * |running_delete| counter could get incremented. However, that means that
+ * |delist| counter could get incremented. However, that means that
  * there was another deletion pending, and the cleaner just picked the new one.
  *
  * If the cleaner ends before all finished entries are removed from the chain,
  * it must have been caused by some other threads not yet incrementing the
- * |running_delete| counter, and one of them will inevitably become the new cleaner,
+ * |delist| counter, and one of them will inevitably become the new cleaner,
  * keeping the balance.
  *
  *********************************
@@ -1880,13 +1880,13 @@ ea_append(ea_list *to, ea_list *what)
  * task into the main thread, making it impossible to collide two rehashes at once.
  *
  * First, it allocates all the new structures aside, and initializes them. Most notably,
- * it initializes all the new |running_delete| entries to 1. The fully
+ * it initializes all the new |delist| entries to 1. The fully
  * initialized |ea_hash_array| is then atomically released, with RCU synchronization
  * to flush all previous readers before actually starting the rehash procedure.
  *
  * Lookups always check both arrays whenever rehash is running, and they always
  * add entries to the new one. And free is even easier -- if freeing from
- * a not-yet-rehashed chain, it sees |running_delete| initialized to 1, and backs off.
+ * a not-yet-rehashed chain, it sees |delist| initialized to 1, and backs off.
  * The rehash routine then simply drops all obsolete entries when rehashing.
  */
 
@@ -1908,7 +1908,7 @@ enum ea_lookup_pass {
 static struct ea_hash_head {
   struct ea_hash_array {
     struct ea_storage *_Atomic *eas;	/* Hash array of ea_storages */
-    u16 _Atomic *running_delete;	/* Cleaning markers (array of same size as eas) */
+    u16 _Atomic *delist;	/* Cleaning markers (array of same size as eas) */
     _Atomic uint order;			/* Size of eas is 1 << order; inactive if zero */
   } instance[2];			/* Two arrays to switch on rehash */
   _Atomic u8 cur;			/* Index for instance */
@@ -1924,6 +1924,7 @@ static struct ea_hash_head {
   _Atomic u64 delist_hist[EA_FREE_STORAGE_DEFER_MAX+1];	/* Delist loops by length; capped at 32 */
   _Atomic u64 delist_loops_cnt;		/* Total number of delist loops running */
   _Atomic u64 delist_collision_cnt;	/* Total number of delist-alloc collisions */
+  _Atomic u64 delist_avoided_cnt;	/* Total number of occurences of delist already running */
 } rta_hash_table;
 
 
@@ -2245,17 +2246,17 @@ ea_free_storage_deferred(struct deferred_call *dc)
 
 /* Loop removing attribute sets from the given chain */
 static void
-ea_free_delist_loop(struct ea_storage * _Atomic *chain, _Atomic u16 *running_delete)
+ea_free_delist_loop(struct ea_storage * _Atomic *chain, _Atomic u16 *delist)
 {
   /* Once we are here, we will delist eligible items from the given chain.
    * No one else will perform cleaning or rehash until we leave.
    * Access to this function is given only to the first thread which sets the marker
-   * in |running_delete| array from zero to one.
+   * in |delist| array from zero to one.
    *
    * This function looks for the first ea_storage to remove from the list. It removes it,
-   * decrements |running_delete|, and if it isn't zero, it continues searching.
+   * decrements |delist|, and if it isn't zero, it continues searching.
    *
-   * The loop only ends when |running_delete| is zero, and in every other case, it consumes
+   * The loop only ends when |delist| is zero, and in every other case, it consumes
    * more delist requests from that specific chain. It is expected that hash
    * collisions almost never happen.
    *
@@ -2351,7 +2352,7 @@ ea_free_delist_loop(struct ea_storage * _Atomic *chain, _Atomic u16 *running_del
 //      ea_free_storage_deferred_call = SKIP_BACK(struct ea_finally_free_deferred_call, dc, defer_call(&efsdc.dc, sizeof(efsdc)));
     }
 
-    if (atomic_fetch_sub_explicit(running_delete, 1, memory_order_acq_rel) == 1)
+    if (atomic_fetch_sub_explicit(delist, 1, memory_order_acq_rel) == 1)
     {
       /* Update stats */
       if (count > EA_FREE_STORAGE_DEFER_MAX)
@@ -2368,67 +2369,76 @@ ea_free_delist_loop(struct ea_storage * _Atomic *chain, _Atomic u16 *running_del
   }
 }
 
-static void
-ea_storage_free(struct ea_storage *r)
+/**
+ * ea_free_deferred - defer callback to process unreferencing of ea_storage
+ * @dc: the deferred call
+ *
+ * This callback is scheduled by ea_free() and ea_free_later(), to use-uncount
+ * one |ea_storage|. The callback runs as a deferred call to ensure that
+ * the user may actually get an easy reference with task-local lifetime.
+ */
+void
+ea_free_deferred(struct deferred_call *dc)
 {
-  u64 uc = atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel);
+  struct ea_storage *r = ea_get_storage(SKIP_BACK(struct ea_free_deferred, dc, dc)->attrs);
 
+  /* Usecount is zero now. The item needs to be removed. Entering critical section
+   * to avoid collisions with rehash or rarely with other free. */
+  rcu_read_lock();
+
+  /* Check whether this is the last user */
+  u64 uc = atomic_fetch_sub_explicit(&r->uc, 1, memory_order_acq_rel);
   if (uc != 1)
   {
     /* Someone else has a reference to this ea_storage. We can just decrease use count. */
     ASSERT_DIE(uc > 0); /* Check this is not a double free. */
+    rcu_read_unlock();
     return;
   }
 
   u64 flag = EA_FREE_FLAG;
   u64 null = 0;
 
-  if (!atomic_compare_exchange_strong_explicit(&r->uc, &null, flag, memory_order_acq_rel, memory_order_acquire))
   /* Someone managed to increase the use count. No need to free the storage. */
-    return;
-
-
-  /* Usecount is zero now. The item needs to be removed. */
-  rcu_read_lock();
-  struct ea_hash_array *esa = atomic_load_explicit(&rta_hash_table.cur, memory_order_acquire);
-  struct ea_hash_array *next = (esa == &rta_hash_table.esa1)? &rta_hash_table.esa2 : &rta_hash_table.esa1;
-  uint order = atomic_load_explicit(&esa->order, memory_order_relaxed);
-  uint next_order = atomic_load_explicit(&next->order, memory_order_relaxed);
-
-  if (next_order)
+  if (!atomic_compare_exchange_strong_explicit(&r->uc, &null, flag, memory_order_acq_rel, memory_order_acquire))
   {
-    /* If there is new array, we do not longer need the old one.
-     * The old array is either already transferred or rehash is going to clean it.
-     */
-    esa = next;
-    order = next_order;
+    rcu_read_unlock();
+    return;
   }
 
+  /* Find the appropriate array. */
+  u8 iidx = atomic_load_explicit(&rta_hash_table.cur, memory_order_acquire);
+  struct ea_hash_array *esa = rta_hash_table.instance[iidx];
+  struct ea_hash_array *next = rta_hash_table.instance[1-iidx];
+  uint order = atomic_load_explicit(&next->order, memory_order_acquire);
+  if (order)
+    esa = next;
+  else
+    order = atomic_load_explicit(&esa->order, memory_order_acquire);
+
   ASSERT_DIE(order);
-  ea_decrement_table_count(order);
+  ea_count_down(order);
+  uint idx = r->hash_key >> (32 - order);
 
-  uint in;
-  in = r->hash_key >> (32 - order);
-  /* Increase the number of ea_storages needed to be removed. Only first freeing thread performs cleaning */
-  u16 cleaning_requests = atomic_fetch_add_explicit(&esa->running_delete[in], 1, memory_order_acq_rel);
-
-  if (cleaning_requests == 0)
-    /* Now we are the cleaners. We will be cleaning as long as there is at least one remaining uc == 0,  */
-    ea_cleaning_loop(esa, in);
+  /* Mark pending delisting */
+  _Atomic u16 *delist = &esa->delist[idx];
+  if (0 == atomic_fetch_add_explicit(delist, 1, memory_order_acq_rel))
+    /* Nobody else is cleaning up. Our job. */
+    ea_free_delist_loop(&esa->eas[idx], delist);
+  else
+    /* Update stats */
+    atomic_fetch_add_explicit(&rta_hash_table.delist_avoided_cnt, 1, memory_order_relaxed);
 
   rcu_read_unlock();
 }
 
-void
-ea_free_deferred(struct deferred_call *dc)
-{
-  struct ea_storage *r = ea_get_storage(SKIP_BACK(struct ea_free_deferred, dc, dc)->attrs);
-  ea_storage_free(r);
-}
+/*
+ * EA rehashing
+ */
 
-
+/* rehash running from event hook, scheduled by ea_maybe_schedule_rehash() */
 static void
-ea_rehash(void * u UNUSED)
+ea_rehash(void *_ UNUSED)
 {
   struct ea_hash_array *cur = atomic_load_explicit(&rta_hash_table.cur, memory_order_relaxed);
   struct ea_hash_array *next = (cur == &rta_hash_table.esa1)? &rta_hash_table.esa2 : &rta_hash_table.esa1;
@@ -2456,11 +2466,11 @@ ea_rehash(void * u UNUSED)
   RTA_LOCK;
   struct ea_storage *_Atomic * new_array =
       mb_allocz(EA_HASH_POOL, sizeof(struct ea_storage *_Atomic) * (1 << next_order));
-  next->running_delete = mb_alloc(EA_HASH_POOL, sizeof(_Atomic u16) * (1 << next_order));
+  next->delist = mb_alloc(EA_HASH_POOL, sizeof(_Atomic u16) * (1 << next_order));
   RTA_UNLOCK;
 
   for (int i = 0; i < 1 << next_order; i++)
-    next->running_delete[i] = 1; /* Other threads will not perform cleaning before our rehashing and cleaning */
+    next->delist[i] = 1; /* Other threads will not perform cleaning before our rehashing and cleaning */
 
   next->eas = new_array;
   /* Setting the order causes other threads to start noticing the new array  */
@@ -2520,7 +2530,7 @@ ea_rehash(void * u UNUSED)
 
   /* Cleaning was suspended for the rehash, we have to clean now. */
   for (int i = 0; i < (1 << next_order); i++)
-    if (atomic_fetch_sub_explicit(&next->running_delete[i], 1, memory_order_acq_rel) != 1) /* Substract the one we added */
+    if (atomic_fetch_sub_explicit(&next->delist[i], 1, memory_order_acq_rel) != 1) /* Substract the one we added */
       ea_cleaning_loop(next, i); /* Do cleaning if someone freed something when rehash run. */
 
   atomic_store_explicit(&cur->order, 0, memory_order_relaxed);
@@ -2540,10 +2550,10 @@ ea_rehash(void * u UNUSED)
 
   RTA_LOCK;
   mb_free(cur->eas);
-  mb_free(cur->running_delete);
+  mb_free(cur->delist);
   RTA_UNLOCK;
   cur->eas = NULL;
-  cur->running_delete = NULL;
+  cur->delist = NULL;
 }
 
 
@@ -2611,7 +2621,7 @@ ea_init_hash_table(void)
   rta_hash_table.esa1.eas = mb_allocz(pool, sizeof(struct ea_storage *_Atomic ) * 1<<EA_MIN_ORDER);
   atomic_store_explicit(&rta_hash_table.esa1.order, EA_MIN_ORDER, memory_order_relaxed);
   atomic_store_explicit(&rta_hash_table.esa2.order, 0, memory_order_relaxed);
-  rta_hash_table.esa1.running_delete = mb_allocz(EA_HASH_POOL, sizeof(_Atomic u16) * (1 << rta_hash_table.esa1.order));
+  rta_hash_table.esa1.delist = mb_allocz(EA_HASH_POOL, sizeof(_Atomic u16) * (1 << rta_hash_table.esa1.order));
   atomic_store_explicit(&rta_hash_table.cur, &rta_hash_table.esa1, memory_order_relaxed);
 }
 
