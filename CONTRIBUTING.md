@@ -12,10 +12,6 @@ View the document [SECURITY.md](SECURITY.md) to find latest information.
 
 See section [Issue tracker](#issue-tracker) for more information.
 
-### LLMs in contributions
-
-See section [Using LLMs for contributions](#using-llms-for-contributions) for more information.
-
 ### Commit message format
 
 See section [Commit messages](#commit-messages) for more information.
@@ -23,6 +19,10 @@ See section [Commit messages](#commit-messages) for more information.
 ### Code style guide
 
 See section [Coding style](#coding-style) for more information.
+
+### LLMs in contributions
+
+See section [Using LLMs for contributions](#using-llms-for-contributions) for more information.
 
 ---
 
@@ -196,29 +196,6 @@ You should also include appropriate additional info at the end of the commit mes
 - reference issues with closing remarks (`This closes #425.`)
 - write in LinkedLingo or any other fancy style
 
-## Using LLMs for contributions
-
-We do not completely oppose (and do not refuse) LLM-assisted or LLM-generated
-contributions. There is no way to prove whether you have or haven't used LLM.
-We use the same scrutiny for all the contributions regardless, because in the
-end, it's the maintainer team who is going to release and support that code if
-accepted.
-
-It's worth noting that while LLMs significantly shorten the time to get some
-code which theoretically works, we still expect that the contributor
-understands what they are sending. Special care needs to be taken with the
-commit messages; the maintainers have plenty of experience with misleading
-descriptions and reasoning by LLMs.
-
-If you happen to send LLM slop too often, we'll deploy an LLM to reply to your
-e-mails, without actually considering their content.
-
-If you don't understand BIRD code but you wanna help, the best way is to
-[create a reproducer](#testing) causing a crash on an assert.
-
-It's much better to send a hand-written piece of code which is obviously wrong
-but proves the point, than to let LLM generate something which looks right
-but you would fail to explain what it is doing and why.
 
 ## Coding style
 
@@ -266,6 +243,31 @@ Remarks
 - ...
 
 For more information about code refer to the technical documentation.
+
+
+## Using LLMs for contributions
+
+We do not completely oppose (and do not refuse) LLM-assisted or LLM-generated
+contributions. There is no way to prove whether you have or haven't used LLM.
+We use the same scrutiny for all the contributions regardless, because in the
+end, it's the maintainer team who is going to release and support that code if
+accepted.
+
+It's worth noting that while LLMs significantly shorten the time to get some
+code which theoretically works, we still expect that the contributor
+understands what they are sending. Special care needs to be taken with the
+commit messages; the maintainers have plenty of experience with misleading
+descriptions and reasoning by LLMs.
+
+If you happen to send LLM slop too often, we'll deploy an LLM to reply to your
+e-mails, without actually considering their content.
+
+If you don't understand BIRD code but you wanna help, the best way is to
+[create a reproducer](#testing) causing a crash on an assert.
+
+It's much better to send a hand-written piece of code which is obviously wrong
+but proves the point, than to let LLM generate something which looks right
+but you would fail to explain what it is doing and why.
 
 
 ## Testing
