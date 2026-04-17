@@ -1892,8 +1892,10 @@ ea_append(ea_list *to, ea_list *what)
 
 #define EA_MIN_ORDER		12
 #define EA_FREE_FLAG		(1ULL << 60)
+#define EA_FREE_STORAGE_DEFER_MAX	32
 
 #define EA_HASH_POOL		rta_pool
+
 
 enum ea_lookup_pass {
   EA_LOOKUP_FIND,
@@ -1917,6 +1919,11 @@ static struct ea_hash_head {
   _Atomic u64 insert_cnt;		/* Total number of attributes ever inserted */
   _Atomic u64 free_cnt;			/* Total number of attributes ever removed */
   _Atomic u64 found_cnt;		/* Total number of lookups without allocataion */
+  _Atomic u64 sdc_hist[EA_FREE_STORAGE_DEFER_MAX+1];	/* Instances of ea_free_storage_deferred by size */
+  _Atomic u64 sdc_retries;		/* Total number of ea_free_storage_deferred retries */
+  _Atomic u64 delist_hist[EA_FREE_STORAGE_DEFER_MAX+1];	/* Delist loops by length; capped at 32 */
+  _Atomic u64 delist_loops_cnt;		/* Total number of delist loops running */
+  _Atomic u64 delist_collision_cnt;	/* Total number of delist-alloc collisions */
 } rta_hash_table;
 
 
@@ -1960,6 +1967,10 @@ ea_count_down(uint order)
   uint count = atomic_fetch_sub_explicit(&rta_hash_table.count, 1, memory_order_relaxed);
   ea_maybe_schedule_rehash(count, order);
 }
+
+/*
+ * EA Lookup and allocation
+ */
 
 /* Lookup for ea_storage in the given hash array */
 struct ea_chain_info {
@@ -2125,7 +2136,7 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
      * If found anywhere, we're done. If not, r.chain and r.first are set to the
      * rehash-next array chain, and if not rehashing, to the current one.
      */
-    struct ea_chain_info r = {}; 
+    struct ea_chain_info r = {};
     if (ea_find_in_array(&r, icur, o, squash_upto, h)
 	|| ea_find_in_array(&r, 1-icur, o, squash_upto, h))
     {
@@ -2180,121 +2191,180 @@ ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
   bug("Exited ea_lookup_slow() insert loop without return!");
 }
 
-/* In order to make freeing blocks in deffer more efficient, more ea_storage can
- * be added to once deferred deffec_call. This is where we will add those storages. */
-_Thread_local struct deferred_call * ea_deferred_free;
+/*
+ * EA Free
+ */
+
+/* Deferred final storage free. This must run after yet another RCU synchronization
+ * to avoid collisions with chain walks in ea_lookup_slow(). It's inefficient
+ * to wait for RCU synchronously for every single EA, and therefore we simply defer
+ * the final free to the defer caller */
+
+struct ea_free_storage_deferred_call {
+  struct deferred_call dc;
+  struct rcu_stored_phase phase;
+  struct ea_storage *attrs[EA_FREE_STORAGE_DEFER_MAX];
+  int count;
+};
+
+/* Every thread keeps its last already-deferred call, so that subsequent frees spare
+ * some memory. Freeing attributes often comes in batches. */
+_Thread_local struct ea_free_storage_deferred_call *ea_free_storage_deferred_call;
 
 static void
-ea_finally_free(struct deferred_call *dc)
+ea_free_storage_deferred(struct deferred_call *dc)
 {
   /* Free an ea_storrage in defer call */
-  SKIP_BACK_DECLARE(struct ea_finally_free_deferred_call, eafdc, dc, dc);
-  if (ea_deferred_free == dc)
-    ea_deferred_free = NULL;
+  SKIP_BACK_DECLARE(struct ea_free_storage_deferred_call, efsdc, dc, dc);
 
-  if (!rcu_end_sync(eafdc->phase))
+  /* Drop the cached call */
+  if (efsdc == ea_free_storage_deferred_call)
+    ea_free_storage_deferred_call = NULL;
+
+  if (!rcu_end_sync(efsdc->phase))
   {
     /* Somebody may still have the pointer to a storage in dc, retry later */
-    defer_call(dc, sizeof *eafdc);
+    defer_call(dc, sizeof *efsdc);
+    atomic_fetch_add_explicit(&rta_hash_table.sdc_retries, 1, memory_order_relaxed);
     return;
   }
 
-  for (int i = 0; i < eafdc->count; i++)
-  {
-    struct ea_storage *r = eafdc->attrs[i];
-    ASSERT_DIE(atomic_load_explicit(&r->uc, memory_order_relaxed) == EA_FREE_FLAG);
-    ea_list_unref(r->l);
+  /* Update stats */
+  ASSERT_DIE(efsdc->count <= EA_FREE_STORAGE_DEFER_MAX);
+  atomic_fetch_add_explicit(&rta_hash_table.sdc_hist[efsdc->count], 1, memory_order_relaxed);
 
-    if (r->l->flags & EALF_HUGE)
-    {
-      RTA_LOCK;
-      mb_free(r);
-      RTA_UNLOCK;
-    }
-    else
-      msl_free(r);
+  for (int i = 0; i < efsdc->count; i++)
+  {
+    struct ea_storage *r = efsdc->attrs[i];
+    ASSERT_DIE(atomic_load_explicit(&r->uc, memory_order_relaxed) == EA_FREE_FLAG);
+
+    ea_list_unref(r->l);
+    ea_free_storage(r);
   }
 }
 
+/* Loop removing attribute sets from the given chain */
 static void
-ea_cleaning_loop(struct ea_hash_array *esa,  uint in)
+ea_free_delist_loop(struct ea_storage * _Atomic *chain, _Atomic u16 *running_delete)
 {
-  /* Once we are here, we will clean everything at "in" position in given esa.
+  /* Once we are here, we will delist eligible items from the given chain.
    * No one else will perform cleaning or rehash until we leave.
+   * Access to this function is given only to the first thread which sets the marker
+   * in |running_delete| array from zero to one.
    *
-   * Access to this function is given only to the first thread which sets appropriet int
-   * in running_delete array from zero to one. Then, this thread looks for the first
-   * ea_storage to remove. It removes the ea_storage, lowers running_delete int for its position and
-   * checks if it was lowered to zero. If it is zero now, thread leaves the loop. If not,
-   * we know, that an other thread wanted to remove a ea_storage, tried to enter cleaning loop,
-   * failed and leaved. In that case, we need to clean the other ea_storage as well and we
-   * continue looking for storage to free.
+   * This function looks for the first ea_storage to remove from the list. It removes it,
+   * decrements |running_delete|, and if it isn't zero, it continues searching.
    *
-   * The only thing we trully do not want collide with is a rehash. That is why ea_storage_free
-   * is still keeping rcu_readlock when entering this function. Ea_rehash() waits for the lock
-   * and sets all running_delete ints to ones in advance before it enters.
+   * The loop only ends when |running_delete| is zero, and in every other case, it consumes
+   * more delist requests from that specific chain. It is expected that hash
+   * collisions almost never happen.
+   *
+   * The only thing we truly do not want collide with is a rehash. That is why
+   * this whole function is called inside RCU critical section, so that rehash doesn't
+   * invalidate the chain inbetween.
    */
+
+  ASSERT_DIE(rcu_read_active());
+  uint count = 0;
+
+  /* Repeatedly walk the ea_storage linked list. We may need to retry if more work
+   * is requested from another thread. Start at the beginning. */
+
+  struct ea_storage * _Atomic *prev = chain;
+  bool restarted = true;
+
   while (true)
   {
-    /* Loading eap suffice when entering the linked list, because the only thing
-     * we can collide with is adding. */
-    struct ea_storage *eap = atomic_load_explicit(&esa->eas[in], memory_order_relaxed);
-    struct ea_storage *_Atomic *prev_ptr = &esa->eas[in];
+    struct ea_storage *eap = atomic_load_explicit(prev, memory_order_relaxed);
 
-    for (; eap != NULL; eap = atomic_load_explicit(prev_ptr, memory_order_relaxed))
+    /* Restart at the end of the loop */
+    if (!eap)
     {
-      /* One pass through ea_storage linked list. It is in do while, because someone might let us free
-       * an ea_storage from beggining of the linked list. */
-      if (!(eap->uc & EA_FREE_FLAG))
+      if (restarted)
+	bug("Delist loop restarted twice without work");
+
+      restarted = true;
+      prev = chain;
+      continue;
+    }
+
+    /* Check delist eligibility */
+    u64 uc = atomic_load_explicit(&eap->uc, memory_order_relaxed);
+    if (!(uc & EA_FREE_FLAG))
+    {
+      prev = &eap->next_hash;
+      continue;
+    }
+
+    /* Delisting this eap */
+    restarted = false;
+    count++;
+
+    /* Load the next pointer */
+    struct ea_storage *next = atomic_load_explicit(&eap->next_hash, memory_order_relaxed);
+
+    /* Removing the first item might result in race with adding */
+    struct ea_storage *old = eap;
+    if (!atomic_compare_exchange_strong_explicit(prev, &old, next, memory_order_acq_rel, memory_order_relaxed))
+    {
+      /* Update stats */
+      atomic_fetch_add_explicit(&rta_hash_table.delist_collision_cnt, 1, memory_order_relaxed);
+
+      /* But the item must be there somewhere deeper, find it */
+      while (old != eap)
       {
-	prev_ptr = &eap->next_hash;
-	continue;
+	prev = &old->next_hash;
+	old = atomic_load_explicit((prev = &old->next_hash), memory_order_relaxed);
+	ASSERT_DIE(old);
       }
 
-      struct ea_storage *next = atomic_load_explicit(&eap->next_hash, memory_order_relaxed);
-      /* removing the first item might result in race with adding */
-      struct ea_storage *eap_for_comp = eap;
-      if (!atomic_compare_exchange_strong_explicit(prev_ptr, &eap_for_comp, next, memory_order_relaxed, memory_order_relaxed))
-      {
-	while (atomic_load_explicit(&eap_for_comp->next_hash, memory_order_relaxed) != eap)
-	  /* more than one ea_storage might been added */
-	  ASSERT_DIE((eap_for_comp = atomic_load_explicit(&eap_for_comp->next_hash, memory_order_relaxed)) != NULL);
+      /* This is no longer the first item, no race with adding (or anything else) */
+      ASSERT_DIE(atomic_compare_exchange_strong_explicit(prev, &eap, next,
+	    memory_order_acq_rel, memory_order_relaxed));
+    }
 
-	/* This is no longer the first item, no race with adding (or anything else) */
-	ASSERT_DIE(atomic_compare_exchange_strong_explicit(
-	      &eap_for_comp->next_hash, &eap, next,  memory_order_relaxed, memory_order_relaxed));
-      }
+    struct ea_free_storage_deferred_call *def = ea_free_storage_deferred_call;
 
-      if (ea_deferred_free)
-      {
-	SKIP_BACK_DECLARE(struct ea_finally_free_deferred_call, def, dc, ea_deferred_free);
-	def->attrs[def->count] = eap;
-	def->count++;
-	/* The deffer is now older than the last ea_storage. To prevent freeing too early,
-	 * we shift the RCU phase. */
-	def->phase = rcu_begin_sync();
+    if (def)
+    {
+      /* Insert eap into existing storage deferred call */
+      def->attrs[def->count++] = eap;
 
-	if (def->count == MAX_EAS_TO_DEFER)
-	  ea_deferred_free = NULL; /* it is full, next time we will set up new ea_deferred_free */
-      } else
-      {
-	struct ea_finally_free_deferred_call eafdc = {
-	  .dc.hook = ea_finally_free,
-	  .phase = rcu_begin_sync(), /* Asynchronous wait for RCU */
-	  .count = 1,
-	};
+      /* We need to push the RCU phase forwards to match this eap being removed. */
+      def->phase = rcu_begin_sync();
 
-	eafdc.attrs[0] = eap;
-	ea_deferred_free = defer_call(&eafdc.dc, sizeof(eafdc));
-      }
+      /* Deferred call is full */
+      if (def->count == EA_FREE_STORAGE_DEFER_MAX)
+	ea_free_storage_deferred_call = NULL;
+    }
+    else
+    {
+      struct ea_free_storage_deferred_call efsdc = {
+	.dc.hook = ea_free_storage_deferred,
+	.phase = rcu_begin_sync(), /* Asynchronous wait for RCU */
+	.attrs = { eap },
+	.count = 1,
+      };
 
-      if (atomic_fetch_sub_explicit(&esa->running_delete[in], 1, memory_order_acq_rel) == 1)
-      {
-	/* Dobby is free! We cleaned everything we could, returning */
-	return;
-      }
-      /* Someone gave us more work to do, we have to continue */
-    };
+      /* Store the deferred call for later additions */
+      ea_free_storage_deferred_call = DEFER_CALL(efsdc);
+//      ea_free_storage_deferred_call = SKIP_BACK(struct ea_finally_free_deferred_call, dc, defer_call(&efsdc.dc, sizeof(efsdc)));
+    }
+
+    if (atomic_fetch_sub_explicit(running_delete, 1, memory_order_acq_rel) == 1)
+    {
+      /* Update stats */
+      if (count > EA_FREE_STORAGE_DEFER_MAX)
+	count = EA_FREE_STORAGE_DEFER_MAX;
+
+      atomic_fetch_add_explicit(&rta_hash_table.delist_hist[count], 1, memory_order_relaxed);
+      atomic_fetch_add_explicit(&rta_hash_table.delist_loops_cnt, 1, memory_order_relaxed);
+
+      /* Dobby is free! We cleaned everything we could, returning */
+      return;
+    }
+
+    /* Someone gave us more work to do, we have to continue */
   }
 }
 
