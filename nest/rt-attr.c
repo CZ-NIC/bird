@@ -1889,67 +1889,129 @@ ea_append(ea_list *to, ea_list *what)
  * a not-yet-rehashed chain, it sees |running_delete| initialized to 1, and backs off.
  * The rehash routine then simply drops all obsolete entries when rehashing.
  */
-struct ea_hash_array {
-  struct ea_storage *_Atomic *eas; /* hash array of ea_storages */
-  u16 _Atomic *running_delete; /* array of the same size as eas marking linked lists with running cleaning */
-  _Atomic uint order; /* eas size is 1 << order. If not zero, whole struct is considered set and valid. */
+
+#define EA_MIN_ORDER		12
+#define EA_FREE_FLAG		(1ULL << 60)
+
+#define EA_HASH_POOL		rta_pool
+
+enum ea_lookup_pass {
+  EA_LOOKUP_FIND,
+  EA_LOOKUP_INSERT,
+  EA_LOOKUP_RETRY,
+  EA_LOOKUP_FORCE,
+  EA_LOOKUP_MAX,
 };
 
-struct ea_hash_head {
-  struct ea_hash_array *_Atomic cur; /* Pointer to currently used ea_hash_array (esa1 or esa2).
-				      * The second will be used after rehash */
-  struct ea_hash_array esa1;
-  struct ea_hash_array esa2;
-  _Atomic uint count; /* Number of stored ea_storages */
-  pool *pool;
-  struct event_list *ev_list;
+static struct ea_hash_head {
+  struct ea_hash_array {
+    struct ea_storage *_Atomic *eas;	/* Hash array of ea_storages */
+    u16 _Atomic *running_delete;	/* Cleaning markers (array of same size as eas) */
+    _Atomic uint order;			/* Size of eas is 1 << order; inactive if zero */
+  } instance[2];			/* Two arrays to switch on rehash */
+  _Atomic u8 cur;			/* Index for instance */
+  _Atomic uint count;			/* Total number of stored ea_storages */
   event rehash_event;
-  event rehash;
+  _Atomic u64 pass_cnt[EA_LOOKUP_MAX];	/* Total number of runs by pass */
+  _Atomic u64 retry_cnt;		/* Total number of EA_LOOKUP_FORCE retries */
+  _Atomic u64 insert_cnt;		/* Total number of attributes ever inserted */
+  _Atomic u64 free_cnt;			/* Total number of attributes ever removed */
+  _Atomic u64 found_cnt;		/* Total number of lookups without allocataion */
+} rta_hash_table;
+
+
+/* Rehash indicators */
+
+static bool
+ea_needs_rehash_up(const uint count, const uint order)
+{
+  return count > (1U << (order + 1));
+}
+
+static bool
+ea_needs_rehash_down(const uint count, const uint order)
+{
+  return (count > EA_MIN_ORDER) && (count < (1U << (order - 2)));
+}
+
+static void
+ea_maybe_schedule_rehash(uint count, uint order)
+{
+  if (ea_needs_rehash_up(count, order) || ea_needs_rehash_down(count, order))
+    ev_send(&global_work_list, &rta_hash_table.rehash_event);
+}
+
+/* Count updaters */
+
+static void
+ea_count_up(uint order)
+{
+  atomic_fetch_add_explicit(&rta_hash_table.insert_cnt, 1, memory_order_relaxed);
+
+  uint count = atomic_fetch_add_explicit(&rta_hash_table.count, 1, memory_order_relaxed);
+  ea_maybe_schedule_rehash(count, order);
+}
+
+static void
+ea_count_down(uint order)
+{
+  atomic_fetch_add_explicit(&rta_hash_table.free_cnt, 1, memory_order_relaxed);
+
+  uint count = atomic_fetch_sub_explicit(&rta_hash_table.count, 1, memory_order_relaxed);
+  ea_maybe_schedule_rehash(count, order);
+}
+
+/* Lookup for ea_storage in the given hash array */
+struct ea_chain_info {
+  struct ea_storage * _Atomic *chain;
+  struct ea_storage *first, *found;
+  uint order;
 };
 
-#define EA_MIN_ORDER 12
-#define EA_FREE_FLAG 0x100000000000000
-
-static struct ea_hash_head rta_hash_table;
-
-static void
-ea_increment_table_count(uint order)
+static bool
+ea_find_in_array(struct ea_chain_info *f, u8 iidx, ea_list *o, u32 squash_upto, uint h)
 {
-  int count = atomic_fetch_add_explicit(&rta_hash_table.count, 1, memory_order_relaxed);
-  if (count > 1 << (order +1))
-    ev_send(rta_hash_table.ev_list, &rta_hash_table.rehash_event);
-}
+  /* Get instance pointer and info */
+  struct ea_hash_array *arr = &rta_hash_table.instance[iidx];
+  uint order = atomic_load_explicit(&arr->order, memory_order_acquire);
 
-static void
-ea_decrement_table_count(uint order)
-{
-  int count = atomic_fetch_sub_explicit(&rta_hash_table.count, 1, memory_order_relaxed);
-  ASSERT_DIE(count > 0);
+  /* Inactive instance, keep old info */
+  if (!order)
+    return false;
 
-  if (count > (1 << (order + 2)) || (count < (1 << (order - 2)) && count > EA_MIN_ORDER))
-    ev_send(rta_hash_table.ev_list, &rta_hash_table.rehash_event);
-}
+  uint idx = h >> (32 - order);
+  f->chain = &arr->eas[idx];
+  f->first = atomic_load_explicit(f->chain, memory_order_acquire);
+  f->order = order;
 
-/* Lookup for ea_storage in given linked_list in hash array */
-static struct ea_storage *
-ea_walk_chain_for_storage(struct ea_storage *eap_first_next, ea_list *o, u32 squash_upto, uint h)
-{
-  for (struct ea_storage *eap = eap_first_next; eap;
+  for (struct ea_storage *eap = f->first; eap;
       eap = atomic_load_explicit(&eap->next_hash, memory_order_acquire))
-  {
-    if (
-      (h == eap->hash_key) && ea_same(o, eap->l) &&
-	  BIT32_TEST(&squash_upto, eap->l->stored))
-    return eap;
-  }
-  return NULL;
+
+    if ((h == eap->hash_key) && ea_same(o, eap->l) &&
+	BIT32_TEST(&squash_upto, eap->l->stored))
+      /* We found a suitable ea_storage. Lets increment its use count. */
+
+      if (EA_FREE_FLAG &
+	  atomic_fetch_add_explicit(&eap->uc, 1, memory_order_relaxed))
+
+	/* Too late, this ea_storage is about to be freed. */
+	atomic_fetch_sub_explicit(&eap->uc, 1, memory_order_relaxed);
+
+      else
+	/* Successfully usecounted */
+	return (f->found = eap), true;
+
+  return false;
 }
 
-/* Allocating and preparing ea_storage before storing in rta_hash_table */
+/* Allocate ea_storage and prepare for chain insertion */
 static struct ea_storage*
-ea_alloc(ea_list *o, enum ea_stored oid, uint h)
+ea_alloc_storage(ea_list *o, enum ea_stored oid, uint h)
 {
   struct ea_storage *r_new = NULL;
+
+  /* Allocation is done from slabs of fixed lengths, find the smallest
+   * where this object fits */
   uint elen = ea_list_size(o);
   uint sz = elen + sizeof(struct ea_storage);
   for (uint i = 0; i < ARRAY_SIZE(ea_slab_sizes); i++)
@@ -1959,8 +2021,8 @@ ea_alloc(ea_list *o, enum ea_stored oid, uint h)
       break;
     }
 
+  /* Too big for slabs, allocate with locking */
   int huge = r_new ? 0 : EALF_HUGE;
-
   if (huge)
   {
     RTA_LOCK;
@@ -1968,169 +2030,154 @@ ea_alloc(ea_list *o, enum ea_stored oid, uint h)
     RTA_UNLOCK;
   }
 
+  /* Copy data to storage */
   ea_list_copy(r_new->l, o, elen);
-
   r_new->l->flags |= huge;
   r_new->l->stored = oid;
+
+  /* Initialize table-internal data */
   r_new->hash_key = h;
   atomic_store_explicit(&r_new->uc, 1, memory_order_relaxed);
+
   return r_new;
 }
 
+/* Fast-free if found after allocation */
+static void
+ea_free_storage(struct ea_storage *eap)
+{
+  if (!eap)
+    return;
+
+  if (eap->l->flags & EALF_HUGE)
+  {
+    RTA_LOCK;
+    mb_free(eap);
+    RTA_UNLOCK;
+  } else
+    msl_free(eap);
+}
+
+/**
+ * ea_lookup_slow - find and reference the given ea_list
+ * @o: list to insert
+ * @squash_upto: storage levels to stop where squashing (bitmask)
+ * @oid: the storage level of this ea_list
+ *
+ * Expects a locally-allocated ea_list, possibly with multiple layers,
+ * possibly atop another already cached ea_list. Performs normalization,
+ * squashing and cache lookup.
+ *
+ * Returns a globally-available ea_list object with a use count already incremented.
+ * The caller must subsequently explicitly call ea_free() to unreference the object.
+ */
+ea_list *
+ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
+{
+  /* Consistency checks and normalization */
+  ASSERT(o->stored != oid);
+  ASSERT(oid);
+  o = ea_normalize(o, squash_upto);
+  uint h = ea_hash(o);
+  squash_upto |= BIT32_VAL(oid);
+
 /* Try find and ref given ea_list in rta_hash_table, or store it if not found.
  * Lookup is done in up to four passes:
- * 0) Not allocating anything, only try to find given ea_list. If not found, (or
- *    found, but with already zero usecount), pass fail. We do this because allocating
- *    too often slows the slab. Besides, most of the lookups is expected to do find
- *    the eattr.
+ * 0) Not allocating anything, only try to find given ea_list. If not found,
+ *    (or found, but with already zero usecount), pass fails. We do this because
+ *    allocating may sometimes be too slow. Besides, most of the lookups are
+ *    expected to actually do find the eattr.
  * 1) Allocate the ea_storage in advance, because we do not want to do that
  *    in the critical section. Try to find the ea_list again, if not found, try
  *    to add it. If somebody added od removed the head of linked list with given hash,
  *    next pass will be proceed.
  * 2) Storage already allocated, try to find and add.
  * 3) Storage still allocated. If eattr not found, just keep inserting the ea_storage
- *    until success. This might result in duplicates, but we have spend too much time here.*/
-ea_list *
-ea_lookup_slow(ea_list *o, u32 squash_upto, enum ea_stored oid)
-{
-  ASSERT(o->stored != oid);
-  ASSERT(oid);
-  o = ea_normalize(o, squash_upto);
-  uint h = ea_hash(o);
+ *    until success. This might result in duplicates, but we have spend too much time here.
+ */
 
-  squash_upto |= BIT32_VAL(oid);
+  struct ea_storage *new = NULL;
 
-  struct ea_storage* r_new;
-  struct ea_storage *r_found = NULL;
-
-  for (int lookups = 0; lookups <= 3; lookups++)
+  for (enum ea_lookup_pass pass = EA_LOOKUP_FIND; pass < EA_LOOKUP_MAX; pass++)
   {
-    /* For the first time, we hope for finding and we do not want prealocated r_new.
-     * We allocate it in the second pass and later we will already have it. */
-    if (lookups == 1)
-      r_new = ea_alloc(o, oid, h);
-    else if (lookups == 3)
-      log(L_WARN "ea_lookup_slow: at least two times in row run into ea_storage with zero use count or lost write-write race.");
+    switch (pass) {
+      case EA_LOOKUP_INSERT:
+	/* For the first time, we hope for finding and we do not want prealocated r_new.
+	 * We allocate it in the second pass and later we will already have it. */
+	new = ea_alloc_storage(o, oid, h);
+	break;
 
-    rcu_read_lock(); /* We need to stay locked for the whole time we use cur and next. */
-      struct ea_hash_array *cur = atomic_load_explicit(&rta_hash_table.cur, memory_order_acquire);
-      /* Find out if cur is esa1 or esa2 - the next is the other one. */
-      struct ea_hash_array *next = (cur == &rta_hash_table.esa1)? &rta_hash_table.esa2 : &rta_hash_table.esa1;
-      uint cur_order = atomic_load_explicit(&cur->order, memory_order_relaxed);
-      uint in = h >> (32 - cur_order);
+      case EA_LOOKUP_FORCE:
+	log(L_WARN "Attribute cache lookup collision, deduplication may be suboptimal.");
+	break;
 
-      struct ea_storage *eap_first = NULL;
-      struct ea_storage *eap_first_next = NULL;
+      default:
+	break;
+    }
 
-      /* Actualy search for the ea_storage - maybe we already have it */
-      if (cur_order)
-      {
-	eap_first = atomic_load_explicit(&cur->eas[in], memory_order_acquire);
+    /* Entering critical section to avoid collision with rehash and free */
+    rcu_read_lock();
 
-	r_found = ea_walk_chain_for_storage(eap_first, o, squash_upto, h);
-      }
-      /* Maybe rehashing is running right now. Lets check it. */
-      /* next_* is loaded a bit in advance, because if we do not find eattr, we use the next_* later. */
-      uint next_order = atomic_load_explicit(&next->order, memory_order_relaxed);
-      uint next_in = h >> (32 - next_order);
+    /* Load which array is active */
+    u8 icur = atomic_load_explicit(&rta_hash_table.cur, memory_order_acquire);
 
-      if (r_found == NULL && next_order)
-      {
-	eap_first_next = atomic_load_explicit(&next->eas[next_in], memory_order_acquire);
-
-	r_found = ea_walk_chain_for_storage(eap_first_next, o, squash_upto, h);
-      }
-
-      if (r_found)
-      {
-	/* We found out we already have a suitable ea_storage. Lets increment its use count */
-	u64 uc = atomic_fetch_add_explicit(&r_found->uc, 1, memory_order_relaxed);
-
-	if (uc & EA_FREE_FLAG)
-	{
-	  /* Too late, ea_storage is going to be freed */
-	  atomic_fetch_sub_explicit(&r_found->uc, 1, memory_order_relaxed);
-	  r_found = NULL;
-	} else
-	{
-	  /* Success */
-	  rcu_read_unlock();
-
-	  if (lookups)
-	  {
-	    /* This was not the first iteration, we need to free new_r */
-	    if (r_new->l->flags & EALF_HUGE)
-	    {
-	      RTA_LOCK;
-	      mb_free(r_new);
-	      RTA_UNLOCK;
-	    } else
-	      msl_free(r_new);
-	  }
-
-	  return r_found->l;
-	}
-      }
-
-      if (!lookups)
-      {
-	/* We do not have prepared new ea_storage, need to reenter the loop and allocate one. */
-	rcu_read_unlock();
-	continue;
-      }
-
-    /* suitable ea_storage not found, we need to add it */
-    int success;
-
-    if (next_order)
+    /* Lookup in order; find either an entry or at least the appropriate chain.
+     * If found anywhere, we're done. If not, r.chain and r.first are set to the
+     * rehash-next array chain, and if not rehashing, to the current one.
+     */
+    struct ea_chain_info r = {}; 
+    if (ea_find_in_array(&r, icur, o, squash_upto, h)
+	|| ea_find_in_array(&r, 1-icur, o, squash_upto, h))
     {
-      /* Rehash is running, so we put the new storage to the new array */
-      do
-      {
-	atomic_store_explicit(&r_new->next_hash, eap_first_next, memory_order_release);
-	success = atomic_compare_exchange_strong_explicit(
-		&next->eas[next_in], &eap_first_next, r_new,
-		memory_order_acq_rel, memory_order_acquire);
-	/* If we fail to find or add the ea_storage more than twice, we will add it the hard way.
-	 * This might cause adding the same eattr more than once, but it speeds up the process. */
-      } while (lookups > 2 && !success);
+      /* Found, we're done! */
+      rcu_read_unlock();
 
-      if (!success)
-      {
-	/* Someone was quicker and added something.*/
-	/* Maybe added the storage we are about to add, lets check out. */
-	rcu_read_unlock();
-	continue;
-      }
-    } else
+      ea_free_storage(new);
+      atomic_fetch_add_explicit(&rta_hash_table.pass_cnt[pass], 1, memory_order_relaxed);
+      atomic_fetch_add_explicit(&rta_hash_table.found_cnt, 1, memory_order_relaxed);
+
+      return r.found->l;
+    }
+
+    /* Can't insert on first pass */
+    if (pass == EA_LOOKUP_FIND)
     {
-      do
-      {
-	atomic_store_explicit(&r_new->next_hash, eap_first, memory_order_release);
-	success = atomic_compare_exchange_strong_explicit(
-		&cur->eas[in], &eap_first, r_new,
-		memory_order_acq_rel, memory_order_acquire);
-      } while (lookups > 2 && !success);
+      rcu_read_unlock();
+      continue;
+    }
 
-      if (!success)
-      {
-	  /* Maybe someone added the storage we are about to add, lets check out. */
-	  rcu_read_unlock();
-	  continue;
-	}
-      }
+    /* Consistency check */
+    ASSERT_DIE(r.chain);
 
-    /* ea_storrage succesfully added */
+    /* Insert the object to the first place of the chain we have found.
+     * If in the last phase, retry forcibly. */
+    uint retry_count = 0;
+    do atomic_store_explicit(&new->next_hash, r.first, memory_order_release);
+    while (!atomic_compare_exchange_strong_explicit(
+	  r.chain, &r.first, new,
+	  memory_order_acq_rel, memory_order_acquire)
+	&& ++retry_count && (pass == EA_LOOKUP_FORCE));
+
+    /* Leaving the critical section, the rehasher may now proceed. */
     rcu_read_unlock();
 
-    /* Increase the counter of stored ea_storages and check if we need rehash */
-    ea_increment_table_count(cur_order);
-    ea_list_ref(r_new->l);
-    return r_new->l;
+    /* Successfully inserted */
+    if (!retry_count || (pass == EA_LOOKUP_FORCE))
+    {
+      /* Update statistics */
+      ea_count_up(r.order);
+      atomic_fetch_add_explicit(&rta_hash_table.pass_cnt[pass], 1, memory_order_relaxed);
+      atomic_fetch_add_explicit(&rta_hash_table.retry_cnt, retry_count, memory_order_relaxed);
+
+      /* Finalize the list by referencing child storages and return. */
+      ea_list_ref(new->l);
+      return new->l;
+    }
+
+    /* Retrying */
   }
 
-  ASSERT_DIE(false);
-  return NULL;
+  bug("Exited ea_lookup_slow() insert loop without return!");
 }
 
 /* In order to make freeing blocks in deffer more efficient, more ea_storage can
@@ -2338,8 +2385,8 @@ ea_rehash(void * u UNUSED)
 
   RTA_LOCK;
   struct ea_storage *_Atomic * new_array =
-      mb_allocz(rta_hash_table.pool, sizeof(struct ea_storage *_Atomic) * (1 << next_order));
-  next->running_delete = mb_alloc(rta_hash_table.pool, sizeof(_Atomic u16) * (1 << next_order));
+      mb_allocz(EA_HASH_POOL, sizeof(struct ea_storage *_Atomic) * (1 << next_order));
+  next->running_delete = mb_alloc(EA_HASH_POOL, sizeof(_Atomic u16) * (1 << next_order));
   RTA_UNLOCK;
 
   for (int i = 0; i < 1 << next_order; i++)
@@ -2357,7 +2404,7 @@ ea_rehash(void * u UNUSED)
   /* Rehash each linked list from old array to the new. */
   int rehash_array_len = 255;
   RTA_LOCK;
-  struct ea_storage **ea_rehash_array = mb_alloc(rta_hash_table.pool, sizeof(struct ea_storage *) * rehash_array_len);
+  struct ea_storage **ea_rehash_array = mb_alloc(EA_HASH_POOL, sizeof(struct ea_storage *) * rehash_array_len);
   RTA_UNLOCK;
 
   for (int i = 0; i < (1 << cur_order); i++)
@@ -2486,15 +2533,15 @@ ea_show_list(struct cli *c, ea_list *eal)
 }
 
 static void
-ea_init_hash_table(pool *pool, struct event_list *ev_list)
+ea_init_hash_table(void)
 {
-  rta_hash_table.pool = pool;
-  rta_hash_table.ev_list = ev_list;
+  EA_HASH_POOL = pool;
+  rta_hash_table.ev_list = &global_work_list;
   rta_hash_table.rehash_event.hook = ea_rehash;
   rta_hash_table.esa1.eas = mb_allocz(pool, sizeof(struct ea_storage *_Atomic ) * 1<<EA_MIN_ORDER);
   atomic_store_explicit(&rta_hash_table.esa1.order, EA_MIN_ORDER, memory_order_relaxed);
   atomic_store_explicit(&rta_hash_table.esa2.order, 0, memory_order_relaxed);
-  rta_hash_table.esa1.running_delete = mb_allocz(rta_hash_table.pool, sizeof(_Atomic u16) * (1 << rta_hash_table.esa1.order));
+  rta_hash_table.esa1.running_delete = mb_allocz(EA_HASH_POOL, sizeof(_Atomic u16) * (1 << rta_hash_table.esa1.order));
   atomic_store_explicit(&rta_hash_table.cur, &rta_hash_table.esa1, memory_order_relaxed);
 }
 
@@ -2513,9 +2560,9 @@ rta_init(void)
   rta_pool = rp_new(&root_pool, attrs_domain.attrs, "Attributes");
 
   for (uint i=0; i<ARRAY_SIZE(ea_slab_sizes); i++)
-    ea_slab[i] = msl_new(rta_pool, birdloop_event_list(&main_birdloop), ea_slab_sizes[i]);
+    ea_slab[i] = msl_new(rta_pool, &global_work_list, ea_slab_sizes[i]);
 
-  ea_init_hash_table(rta_pool, birdloop_event_list(&main_birdloop));
+  ea_init_hash_table();
 
   rte_src_init();
   ea_class_init();
