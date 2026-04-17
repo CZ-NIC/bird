@@ -1910,7 +1910,7 @@ enum ea_lookup_pass {
 static struct ea_hash_head {
   struct ea_hash_array {
     struct ea_storage *_Atomic *eas;	/* Hash array of ea_storages */
-    u16 _Atomic *delist;	/* Cleaning markers (array of same size as eas) */
+    _Atomic u16 *delist;		/* Cleaning markers (array of same size as eas) */
     _Atomic uint order;			/* Size of eas is 1 << order; inactive if zero */
   } instance[2];			/* Two arrays to switch on rehash */
   _Atomic u8 cur;			/* Index for instance */
@@ -1931,7 +1931,8 @@ static struct ea_hash_head {
   uint rehash_max_chain;		/* Longest chain seen while last rehashing */
   uint rehash_delist_loops;		/* Delist loops active while last rehashing */
   uint total_rehash_cnt;		/* How many rehashes happened */
-  btime last_rehash;			/* When last rehash happened */
+  btime last_rehash_start;		/* When last rehash started */
+  btime last_rehash_end;		/* When last rehash ended */
 } rta_hash_table;
 
 
@@ -2045,7 +2046,7 @@ ea_alloc_storage(ea_list *o, enum ea_stored oid, uint h)
   if (huge)
   {
     RTA_LOCK;
-    r_new = mb_alloc(rta_pool, sz);
+    r_new = mb_alloc(EA_HASH_POOL, sz);
     RTA_UNLOCK;
   }
 
@@ -2467,6 +2468,9 @@ ea_rehash(void *_ UNUSED)
   if (next_order == orig_order)
     return;
 
+  /* Update stats */
+  rta_hash_table.last_rehash_end = current_time_now();
+
   /* Prepare new array */
   ASSERT_DIE(next->eas == NULL);
 
@@ -2614,23 +2618,7 @@ ea_rehash(void *_ UNUSED)
 
   /* Update stats */
   rta_hash_table.total_rehash_cnt++;
-  rta_hash_table.last_rehash = current_time();
-}
-
-
-static void
-ea_dump_esa(struct dump_request *dreq, struct ea_hash_array *esa, u64 order)
-{
-  for (int i = 0; i < 1 << (order); i++)
-  {
-    struct ea_storage *eap = atomic_load_explicit(&esa->eas[i], memory_order_acquire);
-    for (; eap; eap = atomic_load_explicit(&eap->next_hash, memory_order_acquire))
-    {
-      RDUMP("%p ", eap);
-      ea_dump(dreq, eap->l);
-      RDUMP("\n");
-    }
-  }
+  rta_hash_table.last_rehash_end = current_time_now();
 }
 
 /**
@@ -2642,26 +2630,32 @@ ea_dump_esa(struct dump_request *dreq, struct ea_hash_array *esa, u64 order)
 void
 ea_dump_all(struct dump_request *dreq)
 {
-  rcu_read_lock();
-  struct ea_hash_array *esa = atomic_load_explicit(&rta_hash_table.cur, memory_order_relaxed);
-  struct ea_hash_array *next_esa = (esa == &rta_hash_table.esa1)? &rta_hash_table.esa2 : &rta_hash_table.esa1;
-  u64 order = atomic_load_explicit(&esa->order, memory_order_relaxed);
-  u64 next_order = atomic_load_explicit(&next_esa->order, memory_order_relaxed);
+  u8 iidx = atomic_load_explicit(&rta_hash_table.cur, memory_order_relaxed);
+
+  /* Consistency check: Dump runs from main birdloop, as well as rehash. */
+  ASSERT_DIE(atomic_load_explicit(&rta_hash_table.instance[1-iidx].order, memory_order_relaxed) == 0);
+  struct ea_hash_array *esa = &rta_hash_table.instance[iidx];
+
+  uint order = atomic_load_explicit(&esa->order, memory_order_relaxed);
+  ASSERT_DIE(order);
+
   RDUMP("Route attribute cache (%d entries, order %d):\n",
       atomic_load_explicit(&rta_hash_table.count, memory_order_relaxed),
       order);
 
-  if (order)
-    ea_dump_esa(dreq, esa, order);
-
-  if (next_order)
+  for (uint i = 0; i < 1U << (order); i++)
   {
-    RDUMP("Rehashing is running right now. Some of the following routes you might have already seen above.");
-    ea_dump_esa(dreq, next_esa, next_order);
+    for (
+	struct ea_storage *eap = atomic_load_explicit(&esa->eas[i], memory_order_acquire);
+	eap; eap = atomic_load_explicit(&eap->next_hash, memory_order_acquire))
+    {
+      RDUMP("%p ", eap);
+      ea_dump(dreq, eap->l);
+      RDUMP("\n");
+    }
   }
 
   RDUMP("\n");
-  rcu_read_unlock();
 }
 
 void
@@ -2669,21 +2663,21 @@ ea_show_list(struct cli *c, ea_list *eal)
 {
   ea_list *n = ea_normalize(eal, 0);
 
-  for (int i  =0; i < n->count; i++)
+  for (int i = 0; i < n->count; i++)
     ea_show(c, &n->attrs[i]);
 }
 
 static void
 ea_init_hash_table(void)
 {
-  EA_HASH_POOL = pool;
-  rta_hash_table.ev_list = &global_work_list;
-  rta_hash_table.rehash_event.hook = ea_rehash;
-  rta_hash_table.esa1.eas = mb_allocz(pool, sizeof(struct ea_storage *_Atomic ) * 1<<EA_MIN_ORDER);
-  atomic_store_explicit(&rta_hash_table.esa1.order, EA_MIN_ORDER, memory_order_relaxed);
-  atomic_store_explicit(&rta_hash_table.esa2.order, 0, memory_order_relaxed);
-  rta_hash_table.esa1.delist = mb_allocz(EA_HASH_POOL, sizeof(_Atomic u16) * (1 << rta_hash_table.esa1.order));
-  atomic_store_explicit(&rta_hash_table.cur, &rta_hash_table.esa1, memory_order_relaxed);
+  rta_hash_table = (struct ea_hash_head) {
+    .instance[0] = {
+      .eas = mb_allocz(EA_HASH_POOL, sizeof(struct ea_storage * _Atomic) * (1 << EA_MIN_ORDER)),
+      .delist = mb_allocz(EA_HASH_POOL, sizeof(_Atomic u16) * (1 << EA_MIN_ORDER)),
+      .order = EA_MIN_ORDER,
+    },
+    .rehash_event.hook = ea_rehash,
+  };
 }
 
 /**
