@@ -415,7 +415,7 @@ struct rtable_private {
 					 */
 
   struct deferred_call *reconf_end;	/* Reconfiguration done callback */
-  struct rt_export_request best_req;	/* Internal request from best route announcement cleanup */
+  struct lfjour_recipient best_req;	/* Internal request from best route announcement cleanup */
   struct rt_uncork_callback nhu_uncork;	/* Helper event to schedule NHU on uncork */
   struct rt_uncork_callback hcu_uncork;	/* Helper event to schedule HCU on uncork */
   struct timer *prune_timer;		/* Timer for periodic pruning / GC */

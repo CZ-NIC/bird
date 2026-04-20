@@ -1843,17 +1843,17 @@ channel_notify_merged(void *_channel)
 static void
 rt_flush_best(struct rtable_private *tab, u64 upto)
 {
-  u64 last_seq = 0;
-  RT_EXPORT_WALK(&tab->best_req, u)
-  {
-    ASSERT_DIE(u->kind == RT_EXPORT_UPDATE);
-    ASSERT_DIE(u->update->seq <= upto);
-    last_seq = u->update->seq;
-    if (last_seq == upto)
-      return;
-  }
+  log("flush best upto %li tab %p", upto, tab);
+  struct lfjour_item *it = lfjour_get(&tab->best_req);
+  log("seq %p, pending all %li pending best %li", it, lfjour_pending_items(&tab->export_all.journal), lfjour_pending_items(&tab->export_best.journal));
+  if(it)
+    log("seq %i", it->seq);
 
-  rt_trace(tab, D_STATES, "Export best full flushed regular up to %lu", last_seq);
+  for (;it && it->seq <= upto; it = lfjour_get(&tab->best_req)){
+    lfjour_release(&tab->best_req, it);
+        log("releasing %i pending %li", it->seq, lfjour_pending_items(&tab->export_all.journal));}
+
+  rt_trace(tab, D_STATES, "Export best full flushed regular up to %lu", it->seq);
 }
 
 static struct rt_pending_export *
@@ -1915,9 +1915,10 @@ rte_announce(struct rtable_private *tab, const struct netindex *i UNUSED, net *n
     if (best_rpe)
       /* Announced best, need an anchor to all */
       best_rpe->seq_all = all_rpe->it.seq;
-    else if (!lfjour_pending_items(&tab->export_best.journal))
+    else if (!lfjour_pending_items(&tab->export_best.journal)){
       /* Best is idle, flush its recipient immediately */
-      rt_flush_best(tab, all_rpe->it.seq);
+      log("not best, not pending");
+      rt_flush_best(tab, all_rpe->it.seq);}
 
     rt_check_cork_high(tab);
   }
@@ -1969,6 +1970,7 @@ rt_cleanup_export_best(struct lfjour *j, struct lfjour_item *i)
 {
   SKIP_BACK_DECLARE(struct rt_pending_export, rpe, it.li, i);
   SKIP_BACK_DECLARE(struct rtable_private, tab, export_best.journal, j);
+  log("cleanup");
   rt_flush_best(tab, rpe->seq_all);
 
   /* Find the appropriate struct network */
@@ -2000,13 +2002,6 @@ rt_cleanup_export_all(struct lfjour *j, struct lfjour_item *i)
 
   if (is_last)
     tab->gc_counter++;
-}
-
-static void
-rt_dump_best_req(struct rt_export_request *req)
-{
-  SKIP_BACK_DECLARE(struct rtable_private, tab, best_req, req);
-  debug("  Table %s best cleanup request (%p)\n", tab->name, req);
 }
 
 static void
@@ -2083,6 +2078,7 @@ rt_cleanup_done_best(struct rt_exporter *e, u64 end_seq)
   else
   {
     rt_trace(tab, D_STATES, "Export best cleanup complete, flushing regular");
+    log("rt_cleanup_done_best");
     rt_flush_best(tab, ~0ULL);
   }
 }
@@ -2138,6 +2134,13 @@ rte_same(const rte *x, const rte *y)
     ) &&
     x->src == y->src &&
     rte_is_filtered(x) == rte_is_filtered(y);
+}
+
+static void
+rte_best_after_jour(void *t_ UNUSED)
+{
+  // empty
+  log("jour log");
 }
 
 static inline int rte_is_ok(const rte *e) { return e && !rte_is_filtered(e); }
@@ -3711,17 +3714,16 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
   rt_exporter_init(&t->export_all, &cf->export_settle);
 
-  t->best_req = (struct rt_export_request) {
-    .name = mb_sprintf(p, "%s.best-cleanup", t->name),
-    .pool = p,
-    .trace_routes = t->debug,
-    .dump = rt_dump_best_req,
+  t->best_req = (struct lfjour_recipient) {
+    .event = ev_new_init(p, rte_best_after_jour, t),
+    .target = &global_event_list,
   };
 
   /* Subscribe and pre-feed the best_req */
-  rtex_export_subscribe(&t->export_all, &t->best_req);
-  RT_EXPORT_WALK(&t->best_req, u)
-    ASSERT_DIE(u->kind == RT_EXPORT_FEED);
+  lfjour_register(&t->export_all.journal, &t->best_req);
+
+  //RT_EXPORT_WALK(&t->best_req, u)             now it is not possible this way... 
+  //  ASSERT_DIE(u->kind == RT_EXPORT_FEED);
 
   t->cork_threshold = cf->cork_threshold;
 
@@ -4936,7 +4938,11 @@ rt_shutdown(void *tab_)
     settle_cancel(&tab->export_digest->settle);
   }
 
-  rtex_export_unsubscribe(&tab->best_req);
+  log("unregister...");
+  while(tab->best_req.cur)
+    lfjour_release(&tab->best_req, tab->best_req.cur);
+  lfjour_unregister(&tab->best_req);
+
   if (tab->hostcache)
     rtex_export_unsubscribe(&tab->hostcache->req);
 
@@ -5030,7 +5036,7 @@ rt_reconfigure(struct rtable_private *tab, struct rtable_config *new, struct rta
   tab->config = new;
   tab->debug = new->debug;
   tab->export_all.trace_routes = tab->export_best.trace_routes = new->debug;
-  tab->best_req.trace_routes = new->debug;
+  //tab->best_req.trace_routes = new->debug;  can i just delewte it?
   if (tab->export_digest)
     tab->export_digest->req.trace_routes = new->debug;
 
