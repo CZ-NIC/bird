@@ -20,6 +20,8 @@
 #include "lib/resource.h"
 #include "lib/io-loop.h"
 
+#define DEFER_MAX_SIZE		384
+
 struct deferred_call {
   struct deferred_call *next;
   void (*hook)(struct deferred_call *);
@@ -38,7 +40,7 @@ static inline struct deferred_call *
 defer_call(struct deferred_call *call, size_t actual_size)
 {
   /* Reallocate the call to the appropriate linpool */
-  ASSERT_DIE(actual_size < 128);
+  ASSERT_DIE(actual_size < DEFER_MAX_SIZE);
   struct deferred_call *a = lp_alloc(local_deferred.lp, actual_size);
   memcpy(a, call, actual_size);
 
