@@ -7,6 +7,7 @@
  */
 
 #include "test/birdtest.h"
+#include "test/bt-utils.h"
 #include "lib/resource.h"
 #include "lib/bitops.h"
 #include "lib/event.h"
@@ -176,6 +177,7 @@ t_mslab(const void *data)
 int main(int argc, char *argv[])
 {
   bt_init(argc, argv);
+  bt_bird_init();
 
   struct test_request tr;
 

@@ -815,13 +815,6 @@ msl_cleanup(void *sp)
 {
   struct mslab *s = (struct mslab*) sp;
 
-  /* Cleanup does weird things and should therefore not collide
-   * with memsize and dump calls. We need to lock the pool's domain explicitly. */
-  struct domain_generic *dom = resource_parent(&s->r)->domain;
-  int locking = !DG_IS_LOCKED(dom);
-  if (locking)
-    DG_LOCK(dom);
-
   /* We need to flush all readers stuck inside msl_get_partial_head()
    * so that we can safely exchange the partial_heads pointer. */
   struct rcu_stored_phase phase = rcu_begin_sync();
@@ -861,10 +854,6 @@ msl_cleanup(void *sp)
 
   /* Now we can finally clean up partials */
   msl_cleanup_partial_heads(s, ph);
-
-  /* If we were locking, we have to unlock! */
-  if (locking)
-    DG_UNLOCK(dom);
 }
 
 /**
@@ -1003,6 +992,10 @@ mslab_free(resource *r)
   /* At this point, only one thread manipulating the mslab is expected */
   mslab *s = (mslab *) r;
   ev_postpone(&s->event_clean);
+
+  /* Run the cleanup in case it was actually needed
+   * Hack: The resource must be inside a  */
+  msl_cleanup(s);
 
   /* No more thread ends are relevant, we are ending anyway */
   bird_thread_end_unregister(&s->thread_end);
