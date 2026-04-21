@@ -1844,7 +1844,7 @@ static void
 rt_flush_best(struct rtable_private *tab, u64 upto)
 {
   log("flush best upto %li tab %p", upto, tab);
-  struct lfjour_item *it = lfjour_get(&tab->best_req);
+  struct lfjour_item *it = tab->best_req.cur ?: lfjour_get(&tab->best_req);
 
   struct lfjour_item *f = atomic_load_explicit(&tab->export_all.journal.first, memory_order_relaxed);
 
