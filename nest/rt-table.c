@@ -1846,12 +1846,17 @@ rt_flush_best(struct rtable_private *tab, u64 upto)
   log("flush best upto %li tab %p", upto, tab);
   struct lfjour_item *it = lfjour_get(&tab->best_req);
   log("seq %p, pending all %li pending best %li", it, lfjour_pending_items(&tab->export_all.journal), lfjour_pending_items(&tab->export_best.journal));
-  if(it)
+  u64 last_seq = 0;
+  if(it){
     log("seq %i", it->seq);
+    last_seq = it->seq;}
 
-  for (;it && it->seq <= upto; it = lfjour_get(&tab->best_req)){
+  for (;it && it->seq <= upto; it = lfjour_get(&tab->best_req))
+  {
+    last_seq = it->seq;
     lfjour_release(&tab->best_req, it);
-        log("releasing %i pending %li", it->seq, lfjour_pending_items(&tab->export_all.journal));}
+    log("releasing %i pending %li", it->seq, lfjour_pending_items(&tab->export_all.journal));
+  }
 
   rt_trace(tab, D_STATES, "Export best full flushed regular up to %lu", it->seq);
 }
