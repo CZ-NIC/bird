@@ -110,6 +110,7 @@
 #include "lib/alloca.h"
 #include "lib/flowspec.h"
 #include "lib/idm.h"
+#include "sysdep/unix/io-loop.h"
 
 #ifdef CONFIG_BGP
 #include "proto/bgp/bgp.h"
@@ -1843,30 +1844,17 @@ channel_notify_merged(void *_channel)
 static void
 rt_flush_best(struct rtable_private *tab, u64 upto)
 {
-  log("flush best upto %li tab %p", upto, tab);
   struct lfjour_item *it = tab->best_req.cur ?: lfjour_get(&tab->best_req);
 
-  struct lfjour_item *f = atomic_load_explicit(&tab->export_all.journal.first, memory_order_relaxed);
-
-  log("seq %p, pending all %li pending best %li first %li nextseq %lu, fhs %lu, recflags %01x",
-      it,
-      lfjour_pending_items(&tab->export_all.journal),
-      lfjour_pending_items(&tab->export_best.journal),
-      f ? f->seq : -1,
-      tab->export_all.journal.next_seq,
-      tab->best_req.first_holding_seq,
-      atomic_load_explicit(&tab->best_req.recipient_flags, memory_order_relaxed)
-      );
   u64 last_seq = 0;
-  if(it){
-    log("seq %i", it->seq);
-    last_seq = it->seq;}
+
+  if (it)
+    last_seq = it->seq;
 
   for (;it && it->seq <= upto; it = lfjour_get(&tab->best_req))
   {
     last_seq = it->seq;
     lfjour_release(&tab->best_req, it);
-    log("releasing %i pending %li", it->seq, lfjour_pending_items(&tab->export_all.journal));
   }
 
   rt_trace(tab, D_STATES, "Export best full flushed regular up to %lu", last_seq);
@@ -1931,10 +1919,9 @@ rte_announce(struct rtable_private *tab, const struct netindex *i UNUSED, net *n
     if (best_rpe)
       /* Announced best, need an anchor to all */
       best_rpe->seq_all = all_rpe->it.seq;
-    else if (!lfjour_pending_items(&tab->export_best.journal)){
+    else if (!lfjour_pending_items(&tab->export_best.journal))
       /* Best is idle, flush its recipient immediately */
-      log("not best, not pending");
-      rt_flush_best(tab, all_rpe->it.seq);}
+      rt_flush_best(tab, all_rpe->it.seq);
 
     rt_check_cork_high(tab);
   }
@@ -1986,7 +1973,6 @@ rt_cleanup_export_best(struct lfjour *j, struct lfjour_item *i)
 {
   SKIP_BACK_DECLARE(struct rt_pending_export, rpe, it.li, i);
   SKIP_BACK_DECLARE(struct rtable_private, tab, export_best.journal, j);
-  log("cleanup");
   rt_flush_best(tab, rpe->seq_all);
 
   /* Find the appropriate struct network */
@@ -2094,7 +2080,6 @@ rt_cleanup_done_best(struct rt_exporter *e, u64 end_seq)
   else
   {
     rt_trace(tab, D_STATES, "Export best cleanup complete, flushing regular");
-    log("rt_cleanup_done_best");
     rt_flush_best(tab, ~0ULL);
   }
 }
@@ -2156,7 +2141,6 @@ static void
 rte_best_after_jour(void *t_ UNUSED)
 {
   // empty
-  log("jour log");
 }
 
 static inline int rte_is_ok(const rte *e) { return e && !rte_is_filtered(e); }
@@ -3738,9 +3722,6 @@ rt_setup(pool *pp, struct rtable_config *cf)
   /* Subscribe and pre-feed the best_req */
   lfjour_register(&t->export_all.journal, &t->best_req);
 
-  //RT_EXPORT_WALK(&t->best_req, u)             now it is not possible this way... 
-  //  ASSERT_DIE(u->kind == RT_EXPORT_FEED);
-
   t->cork_threshold = cf->cork_threshold;
 
   t->rl_pipe = (struct tbf) TBF_DEFAULT_LOG_LIMITS;
@@ -4961,9 +4942,7 @@ rt_shutdown(void *tab_)
   /* Stop the best route selector and exporter */
   rt_exporter_shutdown(&tab->export_best, NULL);
 
-  log("unregister...");
-  while(tab->best_req.cur)
-    lfjour_release(&tab->best_req, tab->best_req.cur);
+  ASSERT_DIE(tab->best_req.cur == NULL);
   lfjour_unregister(&tab->best_req);
 
   /* Stop the main exporter */
@@ -5058,7 +5037,7 @@ rt_reconfigure(struct rtable_private *tab, struct rtable_config *new, struct rta
   tab->config = new;
   tab->debug = new->debug;
   tab->export_all.trace_routes = tab->export_best.trace_routes = new->debug;
-  //tab->best_req.trace_routes = new->debug;  can i just delewte it?
+
   if (tab->export_digest)
     tab->export_digest->req.trace_routes = new->debug;
 
