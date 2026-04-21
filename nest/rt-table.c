@@ -4938,22 +4938,28 @@ rt_shutdown(void *tab_)
     settle_cancel(&tab->export_digest->settle);
   }
 
+  /* Stop the best route selector and exporter */
+  rt_exporter_shutdown(&tab->export_best, NULL);
+
   log("unregister...");
   while(tab->best_req.cur)
     lfjour_release(&tab->best_req, tab->best_req.cur);
   lfjour_unregister(&tab->best_req);
 
+  /* Stop hostcache updater */
   if (tab->hostcache)
     rtex_export_unsubscribe(&tab->hostcache->req);
 
-  rt_exporter_shutdown(&tab->export_best, NULL);
+  /* Stop the main exporter */
   rt_exporter_shutdown(&tab->export_all, NULL);
 
+  /* Delete auxiliary events */
   rfree(tab->hcu_event);
   tab->hcu_event = NULL;
   rfree(tab->nhu_event);
   tab->nhu_event = NULL;
 
+  /* Delete netindex */
   netindex_hash_delete(tab->netindex,
       ev_new_init(tab->rp, rt_shutdown_finished, tab),
       birdloop_event_list(tab->loop));
