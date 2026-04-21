@@ -3305,10 +3305,55 @@ same_group(const rte *r, u32 lpref, u32 lasn)
 }
 
 static inline int
-use_deterministic_med(struct rte_storage *r)
+use_deterministic_med(const rte *r)
 {
-  struct bgp_proto *p = bgp_rte_proto(&r->rte);
+  struct bgp_proto *p = bgp_rte_proto(r);
   return p && p->cf->deterministic_med;
+}
+
+const rte *
+bgp_rte_best(const rte **routes, u32 count)
+{
+  ASSERT_DIE(count);
+  const rte *after_med[count];
+  u32 after_med_ptr = 0;
+  u32 lpref, lasn;
+
+  for (u32 i = 0; i < count; i++)
+  {
+    const rte *cur_rte = routes[i];
+    if (cur_rte == NULL || !rte_is_valid(cur_rte))
+      continue;
+
+    if (use_deterministic_med(cur_rte))
+    {
+      lpref = rt_get_preference(cur_rte);
+      lasn = bgp_get_neighbor(cur_rte);
+
+      for (u32 j = i + 1; j < count; j++)
+      { //maybe todo: it is possible to optimalise. (split bgp_rte_better or reduce iterating NULLs)
+        if (routes[j] == NULL || !rte_is_valid(routes[j]))
+          continue;
+        if (use_deterministic_med(routes[j]) && same_group(routes[j], lpref, lasn))
+        {
+          if (bgp_rte_better(routes[j], cur_rte))
+            cur_rte = routes[j];
+          routes[j] = NULL;
+        }
+      }
+    }
+    after_med[after_med_ptr] = cur_rte;
+    after_med_ptr++;
+  }
+
+  const rte *best = after_med[0];
+  for (u32 i = 1; i < after_med_ptr; i++)
+  {
+    if (bgp_rte_better(after_med[i], best))
+            best = after_med[i];
+  }
+
+  return best;
 }
 
 int
@@ -3397,7 +3442,7 @@ bgp_rte_recalculate(struct rtable_private *table, net *net,
       ptr = &s->next)
     if (!rte_is_valid(&s->rte))
       break;
-    else if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
+    else if (use_deterministic_med(&s->rte) && same_group(&s->rte, lpref, lasn))
     {
       s->pflags |= BGP_REF_SUPPRESSED;
       if (!r || bgp_rte_better(&s->rte, &r->rte))
@@ -3418,7 +3463,7 @@ bgp_rte_recalculate(struct rtable_private *table, net *net,
       ptr = &s->next)
     if (!rte_is_valid(&s->rte))
       break;
-    else if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
+    else if (use_deterministic_med(&s->rte) && same_group(&s->rte, lpref, lasn))
       if ((s != r) && bgp_rte_mergable(&r->rte, &s->rte))
 	s->pflags &= ~BGP_REF_SUPPRESSED;
 
