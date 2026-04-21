@@ -1845,7 +1845,18 @@ rt_flush_best(struct rtable_private *tab, u64 upto)
 {
   log("flush best upto %li tab %p", upto, tab);
   struct lfjour_item *it = lfjour_get(&tab->best_req);
-  log("seq %p, pending all %li pending best %li", it, lfjour_pending_items(&tab->export_all.journal), lfjour_pending_items(&tab->export_best.journal));
+
+  struct lfjour_item *f = atomic_load_explicit(&tab->export_all.journal.first, memory_order_relaxed);
+
+  log("seq %p, pending all %li pending best %li first %li nextseq %lu, fhs %lu, recflags %01x",
+      it,
+      lfjour_pending_items(&tab->export_all.journal),
+      lfjour_pending_items(&tab->export_best.journal),
+      f ? f->seq : -1,
+      tab->export_all.journal.next_seq,
+      tab->best_req.first_holding_seq,
+      atomic_load_explicit(&tab->best_req.recipient_flags, memory_order_relaxed)
+      );
   u64 last_seq = 0;
   if(it){
     log("seq %i", it->seq);
@@ -1858,7 +1869,7 @@ rt_flush_best(struct rtable_private *tab, u64 upto)
     log("releasing %i pending %li", it->seq, lfjour_pending_items(&tab->export_all.journal));
   }
 
-  rt_trace(tab, D_STATES, "Export best full flushed regular up to %lu", it->seq);
+  rt_trace(tab, D_STATES, "Export best full flushed regular up to %lu", last_seq);
 }
 
 static struct rt_pending_export *
