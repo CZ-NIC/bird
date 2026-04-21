@@ -110,6 +110,7 @@
 #include "lib/alloca.h"
 #include "lib/flowspec.h"
 #include "lib/idm.h"
+#include "sysdep/unix/io-loop.h"
 
 #ifdef CONFIG_BGP
 #include "proto/bgp/bgp.h"
@@ -231,14 +232,21 @@ struct rtable_reading {
       r = RTE_OBSOLETE_CHECK(tr, atomic_load_explicit(ptr, memory_order_acquire));	\
       ptr = &r->next)
 
-#define NET_READ_BEST_ROUTE(tr, n)	RTE_OBSOLETE_CHECK(tr, atomic_load_explicit(&n->routes, memory_order_acquire))
+#define NET_BEST_ROUTE(n)	\
+        atomic_load_explicit(&n->best_rte, memory_order_relaxed);
 
+#define NET_READ_BEST_ROUTE(tr, n) ({	\
+  const rte * r_ = NET_BEST_ROUTE(n); \
+  r_? RTE_OBSOLETE_CHECK(tr, SKIP_BACK(struct rte_storage, rte, r_)) : NULL;     \
+})
 #define NET_WALK_ROUTES(priv, n, ptr, r)					\
   for (struct rte_storage *r = ({ ASSERT_DIE(RT_IS_LOCKED(priv)); NULL; }),	\
 			  * _Atomic *ptr = &(n)->routes;			\
       r = atomic_load_explicit(ptr, memory_order_acquire);			\
       ptr = &r->next)
-#define NET_BEST_ROUTE(priv, n)		({ ASSERT_DIE(RT_IS_LOCKED(priv)); atomic_load_explicit(&n->routes, memory_order_acquire); })
+
+#define NET_BEST_RTE_STOR(n)	\
+        NET_BEST_ROUTE(n)? SKIP_BACK(struct rte_storage, rte, NET_BEST_ROUTE(n)): NULL;
 
 static inline net *
 net_find(struct rtable_reading *tr, const struct netindex *i)
@@ -2052,30 +2060,14 @@ channel_notify_merged(void *_channel)
 static void
 rt_flush_best(struct rtable_private *tab, u64 upto)
 {
-  log("flush best upto %li tab %p", upto, tab);
-  struct lfjour_item *it = tab->best_req.cur ?: lfjour_get(&tab->best_req);
-
-  struct lfjour_item *f = atomic_load_explicit(&tab->export_all.journal.first, memory_order_relaxed);
-
-  log("seq %p, pending all %li pending best %li first %li nextseq %lu, fhs %lu, recflags %01x",
-      it,
-      lfjour_pending_items(&tab->export_all.journal),
-      lfjour_pending_items(&tab->export_best.journal),
-      f ? f->seq : -1,
-      tab->export_all.journal.next_seq,
-      tab->best_req.first_holding_seq,
-      atomic_load_explicit(&tab->best_req.recipient_flags, memory_order_relaxed)
-      );
   u64 last_seq = 0;
-  if(it){
-    log("seq %i", it->seq);
-    last_seq = it->seq;}
-
-  for (;it && it->seq <= upto; it = lfjour_get(&tab->best_req))
+  RT_EXPORT_WALK(&tab->best_req, u)
   {
-    last_seq = it->seq;
-    lfjour_release(&tab->best_req, it);
-    log("releasing %i pending %li", it->seq, lfjour_pending_items(&tab->export_all.journal));
+    ASSERT_DIE(u->kind == RT_EXPORT_UPDATE);
+    ASSERT_DIE(u->update->seq <= upto);
+    last_seq = u->update->seq;
+    if (last_seq == upto)
+      return;
   }
 
   rt_trace(tab, D_STATES, "Export best full flushed regular up to %lu", last_seq);
@@ -2099,17 +2091,80 @@ rte_announce_to(struct rt_exporter *e, struct rt_net_pending_export *npe, const 
     return NULL;
 
   SKIP_BACK_DECLARE(struct rt_pending_export, pushed, it, rei);
+  log("pushed %x seq %i", pushed, pushed->seq_all);
 
   struct rt_pending_export *last = atomic_load_explicit(&npe->last, memory_order_relaxed);
   if (last)
     ASSERT_DIE(atomic_exchange_explicit(&last->next, pushed, memory_order_acq_rel) == NULL);
 
   atomic_store_explicit(&npe->last, pushed, memory_order_release);
+  log("first %x npe %x", npe->first, npe);
   if (!atomic_load_explicit(&npe->first, memory_order_relaxed))
     atomic_store_explicit(&npe->first, pushed, memory_order_release);
 
   return pushed;
 }
+
+static void
+rte_announce_all(struct rtable_private *tab, const struct netindex *i UNUSED, net *net, const rte *new, const rte *old)
+{
+  if (new == old)
+    return;
+
+  /* Try to push */
+  struct rt_pending_export *all_rpe = rte_announce_to(&tab->export_all, &net->all, new, old);
+  if (all_rpe)
+  {
+    all_rpe->seq_all = all_rpe->it.seq; //todo: is this correct?
+    log("all announced %x - seq %i (jour next seq = %i)", all_rpe, all_rpe->seq_all, tab->export_all.journal.next_seq);
+    if (!lfjour_pending_items(&tab->export_best.journal))
+      /* Best is idle, flush its recipient immediately */
+      rt_flush_best(tab, all_rpe->it.seq);
+
+    rt_check_cork_high(tab);
+  }
+  else
+  {
+    /* Not announced anything, cleanup now */
+    hmap_clear(&tab->id_map, old->id);
+    rte_free(SKIP_BACK(struct rte_storage, rte, old), tab);
+  }
+}
+
+static void
+rte_announce_best(struct rtable_private *tab, const struct netindex *i UNUSED, net *net,
+	     const rte *new_best, const rte *old_best, u64 all_seq)
+{
+  /* Update network count */
+  tab->net_count += (!!new_best - !!old_best);
+
+  int new_best_valid = rte_is_valid(new_best);
+  int old_best_valid = rte_is_valid(old_best);
+
+  if (new_best == old_best)
+    return;
+
+  if (new_best_valid)
+    new_best->sender->stats.pref++;
+  if (old_best_valid)
+    old_best->sender->stats.pref--;
+
+  /* Try to push */
+  struct rt_pending_export *best_rpe = NULL;
+
+  best_rpe = rte_announce_to(&tab->export_best, &net->best,
+	new_best_valid ? new_best : NULL, old_best_valid ? old_best : NULL);
+  if (best_rpe){ log("best rpe %x, seq %i", best_rpe, all_seq);
+      /* Announced best, need an anchor to all */
+    best_rpe->seq_all = all_seq;}
+  else if (!lfjour_pending_items(&tab->export_best.journal))
+      /* Best is idle, flush its recipient immediately */
+     rt_flush_best(tab, all_seq);
+
+  rt_check_cork_high(tab);
+
+}
+
 
 static void
 rte_announce(struct rtable_private *tab, const struct netindex *i UNUSED, net *net, const rte *new, const rte *old,
@@ -2132,6 +2187,7 @@ rte_announce(struct rtable_private *tab, const struct netindex *i UNUSED, net *n
   /* Try to push */
   struct rt_pending_export *best_rpe = NULL;
   struct rt_pending_export *all_rpe = rte_announce_to(&tab->export_all, &net->all, new, old);
+
   if (all_rpe)
   {
     /* Also best may have changed */
@@ -2140,10 +2196,9 @@ rte_announce(struct rtable_private *tab, const struct netindex *i UNUSED, net *n
     if (best_rpe)
       /* Announced best, need an anchor to all */
       best_rpe->seq_all = all_rpe->it.seq;
-    else if (!lfjour_pending_items(&tab->export_best.journal)){
+    else if (!lfjour_pending_items(&tab->export_best.journal))
       /* Best is idle, flush its recipient immediately */
-      log("not best, not pending");
-      rt_flush_best(tab, all_rpe->it.seq);}
+      rt_flush_best(tab, all_rpe->it.seq);
 
     rt_check_cork_high(tab);
   }
@@ -2177,6 +2232,7 @@ rt_cleanup_update_pointers(struct rt_net_pending_export *npe, struct rt_pending_
   struct rt_pending_export *last = atomic_load_explicit(&npe->last, memory_order_relaxed);
   ASSERT_DIE(rpe == first);
 
+  log("rt_cleanup_update_pointers %x, npe %x", rpe->next, npe);
   atomic_store_explicit(
       &npe->first,
       atomic_load_explicit(&rpe->next, memory_order_relaxed),
@@ -2193,9 +2249,9 @@ rt_cleanup_update_pointers(struct rt_net_pending_export *npe, struct rt_pending_
 static void
 rt_cleanup_export_best(struct lfjour *j, struct lfjour_item *i)
 {
+        log("rt_cleanup_export_best");
   SKIP_BACK_DECLARE(struct rt_pending_export, rpe, it.li, i);
   SKIP_BACK_DECLARE(struct rtable_private, tab, export_best.journal, j);
-  log("cleanup");
   rt_flush_best(tab, rpe->seq_all);
 
   /* Find the appropriate struct network */
@@ -2203,6 +2259,21 @@ rt_cleanup_export_best(struct lfjour *j, struct lfjour_item *i)
 
   /* Update the first and last pointers */
   rt_cleanup_update_pointers(&net->best, rpe);
+
+  log("jour release up to %i", rpe->seq_all);
+  for (
+      struct lfjour_item *it;
+      (it = lfjour_get(&tab->all_req)) && (it->seq <= rpe->seq_all);
+      lfjour_release(&tab->all_req, it)
+      )
+      log("jour release %i", it->seq);
+}
+
+static void
+rt_dump_best_req(struct rt_export_request *req)
+{
+  SKIP_BACK_DECLARE(struct rtable_private, tab, best_req, req);
+  debug("  Table %s best cleanup request (%p)\n", tab->name, req);
 }
 
 static void
@@ -2210,6 +2281,7 @@ rt_cleanup_export_all(struct lfjour *j, struct lfjour_item *i)
 {
   SKIP_BACK_DECLARE(struct rt_pending_export, rpe, it.li, i);
   SKIP_BACK_DECLARE(struct rtable_private, tab, export_all.journal, j);
+  log("rt_cleanup_export_all");
 
   /* Find the appropriate struct network */
   net *net = rt_cleanup_find_net(tab, rpe);
@@ -2303,7 +2375,6 @@ rt_cleanup_done_best(struct rt_exporter *e, u64 end_seq)
   else
   {
     rt_trace(tab, D_STATES, "Export best cleanup complete, flushing regular");
-    log("rt_cleanup_done_best");
     rt_flush_best(tab, ~0ULL);
   }
 }
@@ -2366,11 +2437,106 @@ rte_same(const rte *x, const rte *y)
 }
 
 static void
-rte_best_after_jour(void *t_ UNUSED)
+rte_best_after_jour(void *t_)
 {
-  // empty
-  log("jour log");
+  log("rte_best_after_jour");
+  struct rtable_private *t = (struct rtable_private *)t_;
+  RT_EXPORT_WALK(&t->best_req, u);
 }
+
+
+_Thread_local const rte ** best_rte_preselection;
+_Thread_local u32 best_rte_sel_size = 0;
+
+static int
+rte_better_(const rte *new, const rte *old)
+{
+  if (!rte_is_valid(new))
+    return 0;
+  if (!rte_is_valid(old))
+    return 1;
+
+  u32 np = rt_get_preference(new);
+  u32 op = rt_get_preference(old);
+
+  if (np > op)
+    return 1;
+  if (np < op)
+    return 0;
+  if (old->src->owner->class != new->src->owner->class)
+    {
+      /*
+       *  If the user has configured protocol preferences, so that two different protocols
+       *  have the same preference, try to break the tie by comparing addresses. Not too
+       *  useful, but keeps the ordering of routes unambiguous.
+       */
+      return old->src->owner->class > new->src->owner->class;
+    }
+  if (best_rte_preselection[0]->src->owner->class->rte_best)
+    return 2; /* decision is on protocol*/
+  return 0;
+}
+
+const rte *
+rte_best_selection(struct rtable_private *table, net *nn)
+{
+  // yeah, we do need the field - at least because of MED in BGP
+  log("rte_best_selection");
+
+  if (best_rte_sel_size == 0)
+  {
+    best_rte_preselection = tmp_alloc(sizeof(rte *)*1);//todo - koeficient 1 is good only for testing purposes.
+    best_rte_sel_size = 1;
+  }
+
+  u32 ptr = 0;
+  const rte *old = NULL;
+  const rte **new_field;
+
+  NET_WALK_ROUTES(table, nn, ep, e)
+  {
+        log("in walk");
+    switch (rte_better_(&e->rte, old))
+    {
+      case 1:
+        ptr = 0;
+        best_rte_preselection[0] = &e->rte;
+        log("first route is %s", e->rte.src->owner->name);
+        old = &e->rte;
+        break;
+      case 2:
+        ptr++;
+        if (best_rte_sel_size < ptr)
+        {
+          new_field = tmp_alloc(sizeof(rte *)*ptr*2);
+          best_rte_sel_size = ptr * 2;
+          memcpy(new_field, best_rte_preselection, sizeof(rte *) * ptr);
+          best_rte_preselection = new_field;
+        }
+        log("adding route with src %s (ptr %i)", e->rte.src->owner->name, ptr);
+        best_rte_preselection[ptr] = &e->rte;
+        break;
+      case 0:
+      /* nothing to change */
+      ;
+     }
+     for (u32 i = 0; i<=ptr; i++)
+       log(";%s;", best_rte_preselection[i]->src->owner->name);
+  }
+  if (ptr == 0)
+  {
+    if (!rte_is_valid(best_rte_preselection[0])) //todo: is this ok in multithreading? What if we find route and it then became invalid?
+      return NULL;
+    /* One preselected rte - it must be the best */
+    return best_rte_preselection[0];
+  }
+  /* more routes - bgp MED? */
+  for (u32 i = 0; i<=ptr; i++)
+    log(".%s.", best_rte_preselection[i]->src->owner->name);
+  ASSERT_DIE(best_rte_preselection[0]->src->owner->class->rte_best);
+  return best_rte_preselection[0]->src->owner->class->rte_best(best_rte_preselection, ptr + 1);
+}
+
 
 static inline int rte_is_ok(const rte *e) { return e && !rte_is_filtered(e); }
 
@@ -2379,8 +2545,10 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
 {
   struct rt_import_request *req = c->req;
   struct rt_import_stats *stats = &c->stats;
-  struct rte_storage *old_best_stored = NET_BEST_ROUTE(table, net);
-  const rte *old_best = old_best_stored ? &old_best_stored->rte : NULL;
+
+  log("......recalculate %N %x new %p id %i, proto %s", i->addr, i->addr->data[15], new? new->id: -1, new? new->src->owner->name:"-");
+  if (new)
+    log("<%s>", new->src->owner->name);
 
   /* If the new route is identical to the old one, we find the attributes in
    * cache and clone these with no performance drop. OTOH, if we were to lookup
@@ -2391,16 +2559,15 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
   {
     new_stored = rte_store(new, i, table);
     new = RTES_WRITE(new_stored);
+    log("new id %i", new_stored->rte.id);
   }
 
-  struct rte_storage * _Atomic *last_ptr = NULL;
   struct rte_storage *old_stored = NULL;
   const rte *old = NULL;
 
   /* Find the original route from the same protocol */
   NET_WALK_ROUTES(table, net, ep, e)
   {
-    last_ptr = &e->next;
     if (e->rte.src == src)
       if (old_stored)
 	bug("multiple routes in table with the same src");
@@ -2493,152 +2660,16 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
       hmap_set(&table->id_map, new->id);
     }
 
-  /* We need to add a spinlock sentinel to the beginning */
-  _Thread_local static struct rte_storage local_sentinel = { .flags = REF_OBSOLETE, };
-  atomic_store_explicit(&local_sentinel.next, old_best_stored, memory_order_release);
-  atomic_store_explicit(&net->routes, &local_sentinel, memory_order_release);
-
   /* Mark also the old route as obsolete. */
   if (old_stored)
     old_stored->flags |= REF_OBSOLETE;
 
-  if (table->config->sorted)
-    {
-      /* If routes are sorted, just insert new route to appropriate position */
-      if (new_stored)
-	{
-	  struct rte_storage * _Atomic *k = &local_sentinel.next, *kk;
-	  for (; kk = atomic_load_explicit(k, memory_order_relaxed); k = &kk->next)
-	    if ((kk != old_stored) && rte_better(new, &kk->rte))
-	      break;
-
-	  /* Do not flip the operation order, the list must stay consistent */
-	  atomic_store_explicit(&new_stored->next, kk, memory_order_release);
-	  atomic_store_explicit(k, new_stored, memory_order_release);
-
-	  table->rt_count++;
-	}
-    }
-  else
-    {
-      /* If routes are not sorted, find the best route and move it on
-	 the first position. There are several optimized cases. */
-
-      if (src->owner->rte_recalculate &&
-	  src->owner->rte_recalculate(table, net, new_stored, old_stored, old_best_stored))
-	goto do_recalculate;
-
-      if (new_stored && rte_better(&new_stored->rte, old_best))
-	{
-	  /* The first case - the new route is clearly optimal,
-	     we link it at the first position */
-
-	  /* First link to the chain */
-	  atomic_store_explicit(&new_stored->next,
-	      atomic_load_explicit(&local_sentinel.next, memory_order_acquire),
-	      memory_order_release);
-
-	  /* And then link to the added route */
-	  atomic_store_explicit(&local_sentinel.next, new_stored, memory_order_release);
-
-	  table->rt_count++;
-	}
-      else if (old == old_best)
-	{
-	  /* The second case - the old best route will disappear, we add the
-	     new route (if we have any) to the list (we don't care about
-	     position) and then we elect the new optimal route and relink
-	     that route at the first position and announce it. New optimal
-	     route might be NULL if there is no more routes */
-
-	do_recalculate:
-	  /* Add the new route to the list right behind the old one */
-	  if (new_stored)
-	  {
-	    /* There is the same piece of code several lines farther. Needs refactoring.
-	     * The old_stored check is needed because of the possible jump from deterministic med */
-	    if (old_stored)
-	    {
-	      atomic_store_explicit(&new_stored->next, atomic_load_explicit(&old_stored->next, memory_order_relaxed), memory_order_release);
-	      atomic_store_explicit(&old_stored->next, new_stored, memory_order_release);
-	    }
-	    else
-	    {
-	      atomic_store_explicit(&new_stored->next, NULL, memory_order_release);
-	      atomic_store_explicit(last_ptr, new_stored, memory_order_release);
-	    }
-
-	    table->rt_count++;
-	  }
-
-	  /* Find a new optimal route (if there is any) */
-	  struct rte_storage * _Atomic *bp = &local_sentinel.next;
-	  struct rte_storage *best = atomic_load_explicit(bp, memory_order_relaxed);
-
-	  /* Best can't be the old one */
-	  if (best == old_stored)
-	  {
-	    bp = &best->next;
-	    best = atomic_load_explicit(bp, memory_order_relaxed);
-	  }
-
-	  if (best)
-	  {
-	    for (struct rte_storage *kk, * _Atomic *k = &best->next;
-		kk = atomic_load_explicit(k, memory_order_relaxed);
-		k = &kk->next)
-	      if (rte_better(&kk->rte, &best->rte))
-		best = atomic_load_explicit(bp = k, memory_order_relaxed);
-
-	    /* Now we know which route is the best one, we have to relink it
-	     * to the front place. */
-
-	    /* First we wait until all readers finish */
-	    synchronize_rcu();
-	    /* Now all readers must have seen the local spinlock sentinel
-	     * and will wait until we re-arrange the structure */
-
-	    /* The best route gets removed from its original place */
-	    atomic_store_explicit(bp,
-		atomic_load_explicit(&best->next, memory_order_relaxed),
-		memory_order_release);
-
-	    /* After the best route, the original chain shall be linked */
-	    atomic_store_explicit(&best->next,
-		atomic_load_explicit(&local_sentinel.next, memory_order_relaxed),
-		memory_order_release);
-
-	    /* And now we finally link the best route first */
-	    atomic_store_explicit(&local_sentinel.next, best, memory_order_release);
-	  }
-	}
-      else if (new_stored)
-	{
-	  /* The third case - the new route is not better than the old
-	     best route (therefore old_best != NULL) and the old best
-	     route was not removed (therefore old_best == net->routes).
-	     We just link the new route to the old/last position. */
-
-	  if (old_stored)
-	  {
-	    atomic_store_explicit(&new_stored->next,
-		atomic_load_explicit(&old_stored->next, memory_order_relaxed),
-		memory_order_release);
-	    atomic_store_explicit(&old_stored->next, new_stored, memory_order_release);
-	  }
-	  else
-	  {
-	    atomic_store_explicit(&new_stored->next, NULL, memory_order_relaxed);
-	    atomic_store_explicit(last_ptr, new_stored, memory_order_release);
-	  }
-	}
-      /* The fourth (empty) case - suboptimal route is being removed, nothing to do */
-    }
-
   /* Finally drop the old route */
+  /// TODO TODO TODO - THIS IS NOT THREAD SAFE
   if (old_stored)
   {
     uint seen = 0;
+    log("NOT THREAD SAFE PART");
     NET_WALK_ROUTES(table, net, ep, e)
       if (e == old_stored)
       {
@@ -2651,33 +2682,115 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
     ASSERT_DIE(seen == 1);
   }
 
-  struct rte_storage *new_best = atomic_load_explicit(&local_sentinel.next, memory_order_relaxed);
+  if (new_stored)
+  {
+  /* store it */
+    struct rte_storage *next = atomic_load_explicit(&net->routes, memory_order_relaxed);
+    do {
+    atomic_store_explicit(&new_stored->next, next, memory_order_relaxed);
+    } while (!atomic_compare_exchange_strong_explicit(&net->routes,
+       &next, new_stored, memory_order_relaxed, memory_order_relaxed));
+  }
 
-  /* Log the route change */
+    /* Log the route change */
   if (new_ok)
-    rt_rte_trace_in(D_ROUTES, req, &new_stored->rte, new_stored == new_best ? "added [best]" : "added");
+    rt_rte_trace_in(D_ROUTES, req, new, "added");
   else if (old_ok)
-    {
-      if (old != old_best)
-	rt_rte_trace_in(D_ROUTES, req, old, "removed");
-      else if (new_best && rte_is_ok(&new_best->rte))
-	rt_rte_trace_in(D_ROUTES, req, old, "removed [replaced]");
-      else
-	rt_rte_trace_in(D_ROUTES, req, old, "removed [sole]");
-    }
+    rt_rte_trace_in(D_ROUTES, req, old, "removed");
   else
     if (req->trace_routes & D_ROUTES)
       log(L_TRACE "%s > ignored %N %s->%s", req->name, i->addr, old ? "filtered" : "none", new ? "filtered" : "none");
 
   /* Propagate the route change */
-  rte_announce(table, i, net,
-      RTE_OR_NULL(new_stored), RTE_OR_NULL(old_stored),
-      RTE_OR_NULL(new_best), RTE_OR_NULL(old_best_stored));
+  rte_announce_all(table, i, net,
+      RTE_OR_NULL(new_stored), RTE_OR_NULL(old_stored));
+}
 
-  /* Now we can finally release the changes back for reading */
-  atomic_store_explicit(&net->routes, new_best, memory_order_release);
+void
+rte_recalculate_best(void *t_)
+{
+  log("rte_recalculate_best");
+  rtable *t = (rtable *)t_;
 
-  return;
+  RT_LOCKED(t, table)
+  {
+    rt_lock_table(table);
+    ASSERT_DIE(RT_IS_LOCKED(table));
+    net *nets = atomic_load_explicit(&table->routes, memory_order_acquire);
+
+    //
+    struct lfjour_item *first = table->all_req.cur;
+    for (struct lfjour_item *it; it = lfjour_get(&table->all_req); )
+    {
+      SKIP_BACK_DECLARE(const struct rt_export_item, rei, li, it);
+      SKIP_BACK_DECLARE(const struct rt_pending_export, rpe, it, rei);
+      log("recal best rpe all %x seq %i", rpe, rpe->seq_all);
+
+      const rte *route = rei->new? rei->new: rei->old;
+      ASSERT_DIE(route);
+      /* We know, that the route is from table, so we can get its index like this: */
+      struct netindex *ni = NET_TO_INDEX(route->net);
+
+      net *nn = &nets[ni->index];
+      //TODO: optimize same net
+      
+      const rte *old_best = NET_BEST_ROUTE(nn);
+      const rte *best = rte_best_selection(table, nn);
+
+      //TODO FIND OUT NETS WITH THEIR NEW ROUTES -THE LAST NEW/OLD ROUTE COUNTS. THE OLD ROUTES HAVE ONE MORE PROBLEM
+    // );
+     // }
+#if 0
+  if (table->config->sorted)
+    {
+        log("sorted");
+    /* We need to add a spinlock sentinel to the beginning */
+    _Thread_local static struct rte_storage local_sentinel = { .flags = REF_OBSOLETE, };
+
+    // TODO: this will be needed to be locked differently. Or at least I hope so. 
+    //atomic_store_explicit(&local_sentinel.next, old_best_stored, memory_order_release);
+    //atomic_store_explicit(&net->routes, &local_sentinel, memory_order_release);
+
+    /* If routes are sorted, just insert new route to appropriate position */
+      if (new)
+	{
+	  struct rte_storage * _Atomic *k = &local_sentinel.next, *kk;
+	  for (; kk = atomic_load_explicit(k, memory_order_relaxed); k = &kk->next)
+	    if ((&kk->rte != old) && rte_better(new, &kk->rte))
+	      break;
+
+	  /* Do not flip the operation order, the list must stay consistent */
+	  //atomic_store_explicit(&new_stored->next, kk, memory_order_release);
+	  //atomic_store_explicit(k, new_stored, memory_order_release);
+
+          //if (kk == local_sentinel.next)
+          //{
+          //  atomic_store_explicit(net->best_rte, new_stored->rte, memory_order_release);
+          //  new_best = new_stored;
+          //}
+
+	  table->rt_count++;
+	}
+    }
+  else
+    {
+  #endif
+
+  /* Log the route change */
+  if (best)
+    if (old_best)
+      log(L_TRACE "new best %N %s old best %N %s", best->net, best->src->owner->name, old_best->net, old_best->src->owner->name);
+    else
+      log(L_TRACE "new best %N no old best %s", best->net, best->src->owner->name);
+
+  atomic_store_explicit(&nn->best_rte, best, memory_order_release);
+
+  /* Propagate the route change */
+  rte_announce_best(table, ni, nn,
+	     best, old_best, rpe->seq_all);
+  }
+  table->all_req.cur = first; //todo: not thread safe
+}
 }
 
 int
@@ -3948,16 +4061,35 @@ rt_setup(pool *pp, struct rtable_config *cf)
 
   rt_exporter_init(&t->export_all, &cf->export_settle);
 
-  t->best_req = (struct lfjour_recipient) {
-    .event = ev_new_init(p, rte_best_after_jour, t),
-    .target = &global_event_list,
+  t->best_req = (struct rt_export_request) {
+    .name = mb_sprintf(p, "%s.best-cleanup", t->name),
+    .pool = p,
+    .trace_routes = t->debug,
+    .dump = rt_dump_best_req,
   };
 
   /* Subscribe and pre-feed the best_req */
-  lfjour_register(&t->export_all.journal, &t->best_req);
+  rtex_export_subscribe(&t->export_all, &t->best_req);
+  RT_EXPORT_WALK(&t->best_req, u)
+    ASSERT_DIE(u->kind == RT_EXPORT_FEED);
 
-  //RT_EXPORT_WALK(&t->best_req, u)             now it is not possible this way... 
-  //  ASSERT_DIE(u->kind == RT_EXPORT_FEED);
+/*
+What is this about:
+1) new route comes and is added
+2) it is sent to export_all journal
+3) one of export all recipients is our function, which computes the best route.
+4) best route is announced in export_best journal. The lf_jour item is still NOT released.
+5) all recipients have released best route anouncment
+6) export_best cleanup releases its  export_all item
+7) all export_all recipients have released export_all
+*/
+
+
+  t->all_req = (struct lfjour_recipient) {
+    .event = ev_new_init(p, rte_recalculate_best, t),
+    .target = &global_event_list,
+  };
+  lfjour_register(&t->export_all.journal, &t->all_req);
 
   t->cork_threshold = cf->cork_threshold;
 
@@ -4173,10 +4305,10 @@ rt_prune_table(void *_tab)
 	MAYBE_DEFER_TASK(birdloop_event_list(tab->loop), tab->prune_event,
 	    "%s pruning", tab->name);
 
-      struct rte_storage *e = NET_BEST_ROUTE(tab, n);
+      const rte *e = NET_BEST_ROUTE(n);
       if (tab->trie_new && e)
       {
-	const net_addr *a = e->rte.net;
+	const net_addr *a = e->net;
 	trie_add_prefix(tab->trie_new, a, a->pxlen, a->pxlen);
       }
     }
@@ -4740,7 +4872,7 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
   uint count = 0;
   int is_flow = net_val_match(tab->addr_type, NB_FLOW);
 
-  struct rte_storage *old_best = NET_BEST_ROUTE(tab, n);
+  const rte *old_best = NET_BEST_ROUTE(n);
   if (!old_best)
     return;
 
@@ -4774,7 +4906,7 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
   /* We add a spinlock sentinel to the beginning */
   struct rte_storage local_sentinel = {
     .flags = REF_OBSOLETE,
-    .next = old_best,
+    .next = tab->routes->routes,//TODO this is double _Atomic and look suspicious (do we know if we have the correct chain?)
   };
   atomic_store_explicit(&n->routes, &local_sentinel, memory_order_release);
 
@@ -4815,7 +4947,11 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
       {
 	/* Not really an efficient way to compute this */
 	if (updates[i].old->rte.src->owner->rte_recalculate)
-	  updates[i].old->rte.src->owner->rte_recalculate(tab, n, updates[i].new_stored, updates[i].old, old_best);
+        {
+          struct rte_storage *old_best_stored = SKIP_BACK(struct rte_storage, rte, old_best);
+          log("rt_next_hop_update_net"); //todo
+	  updates[i].old->rte.src->owner->rte_recalculate(tab, n, updates[i].new_stored, updates[i].old, old_best_stored);
+        }
       }
 
   /* Find the new best route */
@@ -4852,7 +4988,8 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
   /* Now we have to announce the routes the right way, to not cause any
    * strange problems with consistency. */
 
-  ASSERT_DIE(updates[0].old == old_best);
+  struct rte_storage *old_best_stored = SKIP_BACK(struct rte_storage, rte, old_best);
+  ASSERT_DIE(updates[0].old == old_best_stored);
 
   /* Find new best route original position */
   uint nbpos = ~0;
@@ -4865,8 +5002,8 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
   ASSERT_DIE(~nbpos);
 
   struct rt_pending_export *best_rpe =
-    (new_best != old_best) ?
-    rte_announce_to(&tab->export_best, &n->best, &new_best->rte, &old_best->rte)
+    (new_best != old_best_stored) ?
+    rte_announce_to(&tab->export_best, &n->best, &new_best->rte, old_best)
     : NULL;
 
   uint total = 0;
@@ -4980,7 +5117,7 @@ rt_next_hop_update(void *_tab)
   for (; tab->nhu_index < bs; tab->nhu_index++)
     {
       net *n = &routes[tab->nhu_index];
-      struct rte_storage *s = NET_BEST_ROUTE(tab, n);
+      const rte *s = NET_BEST_ROUTE(n);
       if (!s)
 	continue;
 
@@ -4988,7 +5125,7 @@ rt_next_hop_update(void *_tab)
 	  "next hop updater in %s", tab->name);
 
       TMP_SAVED
-	rt_next_hop_update_net(tab, RTE_GET_NETINDEX(&s->rte), n);
+	rt_next_hop_update_net(tab, RTE_GET_NETINDEX(s), n);
     }
 
   /* Finished NHU, cleanup */
@@ -5174,28 +5311,18 @@ rt_shutdown(void *tab_)
     settle_cancel(&tab->export_digest->settle);
   }
 
-  /* Stop hostcache updater */
+  rtex_export_unsubscribe(&tab->best_req);
   if (tab->hostcache)
     rtex_export_unsubscribe(&tab->hostcache->req);
 
-  /* Stop the best route selector and exporter */
   rt_exporter_shutdown(&tab->export_best, NULL);
-
-  log("unregister...");
-  while(tab->best_req.cur)
-    lfjour_release(&tab->best_req, tab->best_req.cur);
-  lfjour_unregister(&tab->best_req);
-
-  /* Stop the main exporter */
   rt_exporter_shutdown(&tab->export_all, NULL);
 
-  /* Delete auxiliary events */
   rfree(tab->hcu_event);
   tab->hcu_event = NULL;
   rfree(tab->nhu_event);
   tab->nhu_event = NULL;
 
-  /* Delete netindex */
   netindex_hash_delete(tab->netindex,
       ev_new_init(tab->rp, rt_shutdown_finished, tab),
       birdloop_event_list(tab->loop));
@@ -5278,7 +5405,7 @@ rt_reconfigure(struct rtable_private *tab, struct rtable_config *new, struct rta
   tab->config = new;
   tab->debug = new->debug;
   tab->export_all.trace_routes = tab->export_best.trace_routes = new->debug;
-  //tab->best_req.trace_routes = new->debug;  can i just delewte it?
+
   if (tab->export_digest)
     tab->export_digest->req.trace_routes = new->debug;
 
@@ -5669,15 +5796,17 @@ rt_update_hostentry(struct rtable_private *tab, struct hostentry *he)
   net_addr he_addr;
   net_fill_ip_host(&he_addr, he->addr);
   net *n = net_route(tr, &he_addr);
+  const rte *e = NULL;
   /*
   log(L_DEBUG "rt_update_hostentry(%s %p) got net_route(%N) = %p",
       tab->name, he, &he_addr, n);
       */
   if (n)
+     e = NET_BEST_ROUTE(n);
+  if (e)
     {
-      struct rte_storage *e = NET_BEST_ROUTE(tab, n);
-      ea_list *a = e->rte.attrs;
-      u32 pref = rt_get_preference(&e->rte);
+      ea_list *a = e->attrs;
+      u32 pref = rt_get_preference(e);
 
       NET_WALK_ROUTES(tab, n, ep, ee)
 	if (rte_is_valid(&ee->rte) &&
@@ -5690,7 +5819,7 @@ rt_update_hostentry(struct rtable_private *tab, struct hostentry *he)
 	  goto done;
 	}
 
-      pxlen = e->rte.net->pxlen;
+      pxlen = e->net->pxlen;
 
       eattr *nhea = ea_find(a, &ea_gen_nexthop);
       ASSERT_DIE(nhea);
@@ -5713,15 +5842,15 @@ rt_update_hostentry(struct rtable_private *tab, struct hostentry *he)
 
       new_src = ea_ref(a);
       he->nexthop_linkable = !direct;
-      he->igp_metric = rt_get_igp_metric(&e->rte);
+      he->igp_metric = rt_get_igp_metric(e);
 
       if ((old_src != new_src) && (tab->debug & D_ROUTES))
 	if (ipa_zero(he->link) || ipa_equal(he->link, he->addr))
 	  log(L_TRACE "%s: Hostentry %p for %I in %s resolved via %N (%uG)",
-	      tab->name, he, he->addr, he->tab->name, e->rte.net, e->rte.src->global_id);
+	      tab->name, he, he->addr, he->tab->name, e->net, e->src->global_id);
 	else
 	  log(L_TRACE "%s: Hostentry %p for %I %I in %s resolved via %N (%uG)",
-	      tab->name, he, he->addr, he->link, he->tab->name, e->rte.net, e->rte.src->global_id);
+	      tab->name, he, he->addr, he->link, he->tab->name, e->net, e->src->global_id);
     }
   else if (old_src && (tab->debug & D_ROUTES))
     if (ipa_zero(he->link) || ipa_equal(he->link, he->addr))
