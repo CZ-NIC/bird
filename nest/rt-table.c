@@ -4954,6 +4954,10 @@ rt_shutdown(void *tab_)
     settle_cancel(&tab->export_digest->settle);
   }
 
+  /* Stop hostcache updater */
+  if (tab->hostcache)
+    rtex_export_unsubscribe(&tab->hostcache->req);
+
   /* Stop the best route selector and exporter */
   rt_exporter_shutdown(&tab->export_best, NULL);
 
@@ -4961,10 +4965,6 @@ rt_shutdown(void *tab_)
   while(tab->best_req.cur)
     lfjour_release(&tab->best_req, tab->best_req.cur);
   lfjour_unregister(&tab->best_req);
-
-  /* Stop hostcache updater */
-  if (tab->hostcache)
-    rtex_export_unsubscribe(&tab->hostcache->req);
 
   /* Stop the main exporter */
   rt_exporter_shutdown(&tab->export_all, NULL);
