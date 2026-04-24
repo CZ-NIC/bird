@@ -140,11 +140,10 @@ struct proto {
   config_ref global_config;		/* Global configuration reference */
   struct proto_config *cf;		/* Configuration data */
   struct proto_config *cf_new;		/* Configuration we want to switch to after shutdown (NULL=delete) */
-  pool *pool;				/* Pool containing local objects */
+  pool *pool;				/* Pool containing local objects; flushed when passing PS_DOWN */
+  pool *persistent_pool;		/* Pool containing local objects; flushed when protocol is removed */
   pool *pool_up;			/* Pool containing local objects which should be dropped as soon
 					   as the protocol enters the STOP / DOWN state */
-  pool *pool_inloop;			/* Pool containing local objects which need to be freed
-					   before the protocol's birdloop actually stops, like olocks */
   callback check_done_cb;		/* Callback: protocol may be done */
   struct birdloop *loop;		/* BIRDloop running this protocol */
 
@@ -166,7 +165,11 @@ struct proto {
   byte disabled;			/* Manually disabled */
   byte proto_state;			/* Protocol state machine (PS_*, see below) */
   byte do_stop;				/* Stop actions are scheduled */
-  byte reconfiguring;			/* We're shutting down due to reconfiguration */
+  enum {
+    PC_NONE,				/* Reconfiguration idle */
+    PC_SHUTDOWN,			/* Requested shutdown for reconfiguration */
+    PC_CLEANUP,				/* Cleaning up remnants */
+  } reconfiguring;
   byte gr_recovery;			/* Protocol should participate in graceful restart recovery */
   byte down_sched;			/* Shutdown is scheduled for later (PDS_*) */
   byte down_code;			/* Reason for shutdown (PDC_* codes) */

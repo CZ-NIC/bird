@@ -266,7 +266,7 @@ proto_find_channel_by_name(struct proto *p, const char *n)
 struct channel *
 proto_add_channel(struct proto *p, struct channel_config *cf)
 {
-  struct channel *c = mb_allocz(proto_pool, cf->class->channel_size);
+  struct channel *c = mb_allocz(p->persistent_pool, cf->class->channel_size);
 
   c->name = cf->name;
   c->class = cf->class;
@@ -1416,22 +1416,6 @@ proto_configure_channel(struct proto *p, struct channel **pc, struct channel_con
 }
 
 static void
-proto_loop_stopped(void *ptr)
-{
-  struct proto *p = ptr;
-
-  ASSERT_DIE(birdloop_inside(&main_birdloop));
-  ASSERT_DIE(p->loop != &main_birdloop);
-
-  p->pool = NULL; /* is freed by birdloop_free() */
-  birdloop_free(p->loop);
-  p->loop = &main_birdloop;
-
-  proto_notify_state(p, PS_DOWN_XX);
-  proto_rethink_goal(p);
-}
-
-static void
 proto_event(callback *cb)
 {
   SKIP_BACK_DECLARE(struct proto, p, check_done_cb, cb);
@@ -1441,23 +1425,16 @@ proto_event(callback *cb)
     p->do_stop = 0;
   }
 
-  if (proto_is_done(p) && p->pool_inloop)  /* perusing pool_inloop to do this once only */
-  {
-    /* Interface notification unsubscribe can't be done
-     * before the protocol is really done, as it also destroys
-     * the neighbors which may be needed (e.g. by BGP->MRT)
-     * during the STOP phase as well. */
-    iface_unsubscribe(&p->iface_sub);
+  if (proto_is_done(p) && p->pool)
+    proto_notify_state(p, PS_DOWN_XX);
 
-    rp_free(p->pool_inloop);
-    p->pool_inloop = NULL;
-    if (p->loop != &main_birdloop)
-      birdloop_stop_self(p->loop, proto_loop_stopped, p);
-    else
-    {
-      proto_notify_state(p, PS_DOWN_XX);
+  switch (p->proto_state)
+  {
+    case PS_START:
+    case PS_UP:
+    case PS_DOWN_XX:
       proto_rethink_goal(p);
-    }
+      break;
   }
 }
 
@@ -1476,9 +1453,28 @@ proto_event(callback *cb)
 void *
 proto_new(struct proto_config *cf)
 {
-  struct proto *p = mb_allocz(proto_pool, cf->protocol->proto_size);
+  struct birdloop *loop;
+  struct pool *pool;
+
+  if (cf->loop_order == DOMAIN_ORDER(the_bird))
+  {
+    loop = &main_birdloop;
+    pool = rp_newf(proto_pool, the_bird_domain.the_bird, "Protocol %s (persistent)", cf->name);
+  }
+  else
+  {
+    loop = birdloop_new(proto_pool, cf->loop_order,
+	cf->thread_group ? cf->thread_group->group : NULL,
+	"Protocol %s", cf->name);
+    pool = birdloop_pool(loop);
+    birdloop_enter(loop);
+  }
+
+  struct proto *p = mb_allocz(pool, cf->protocol->proto_size);
 
   OBSREF_SET(p->global_config, cf->global);
+  p->persistent_pool = pool;
+  p->loop = loop;
   p->cf = cf;
   p->debug = cf->debug;
   p->mrtdump = cf->mrtdump;
@@ -1538,13 +1534,19 @@ proto_init(struct proto_config *c, struct proto *after)
   struct protocol *pr = c->protocol;
   struct proto *p = pr->init(c);
 
-  p->loop = &main_birdloop;
+  ASSERT_DIE(birdloop_inside(p->loop));
+
+  callback_init(&p->check_done_cb, proto_event, p->loop);
+
   p->vrf = c->vrf;
   proto_add_after(&global_proto_list, p, after);
 
   proto_announce_state(p, p->ea_state);
 
   PD(p, "Initializing%s", p->disabled ? " [disabled]" : "");
+
+  if (p->loop != &main_birdloop)
+    birdloop_leave(p->loop);
 
   return p;
 }
@@ -1558,28 +1560,15 @@ proto_start(struct proto *p)
   if (OBSREF_GET(graceful_recovery_context))
     p->gr_recovery = 1;
 
-  if (p->cf->loop_order != DOMAIN_ORDER(the_bird))
-  {
-    p->loop = birdloop_new(proto_pool, p->cf->loop_order,
-	p->cf->thread_group ? p->cf->thread_group->group : NULL,
-	"Protocol %s", p->cf->name);
-    p->pool = birdloop_pool(p->loop);
-  }
-  else
-    p->pool = rp_newf(proto_pool, the_bird_domain.the_bird, "Protocol %s", p->cf->name);
-
-  callback_init(&p->check_done_cb, proto_event, p->loop);
+  ASSERT_DIE(!p->pool);
+  p->pool = rp_newf(p->persistent_pool, birdloop_domain(p->loop), "Protocol %s", p->cf->name);
 
   p->iface_sub.target = proto_event_list(p);
   p->iface_sub.name = p->name;
   p->iface_sub.debug = !!(p->debug & D_IFACES);
 
-  PROTO_LOCKED_FROM_MAIN(p)
-  {
-    p->pool_inloop = rp_newf(p->pool, birdloop_domain(p->loop), "Protocol %s early cleanup objects", p->cf->name);
-    p->pool_up = rp_newf(p->pool, birdloop_domain(p->loop), "Protocol %s stop-free objects", p->cf->name);
-    proto_notify_state(p, (p->proto->start ? p->proto->start(p) : PS_UP));
-  }
+  p->pool_up = rp_newf(p->pool, birdloop_domain(p->loop), "Protocol %s stop-free objects", p->cf->name);
+  proto_notify_state(p, (p->proto->start ? p->proto->start(p) : PS_UP));
 }
 
 
@@ -1760,6 +1749,7 @@ proto_reconfigure(struct proto *p, struct proto_config *oc, struct proto_config 
 }
 
 static struct protos_commit_request {
+  callback cb;
   struct config *new;
   struct config *old;
   enum protocol_startup phase;
@@ -1769,6 +1759,19 @@ static struct protos_commit_request {
 static int proto_rethink_goal_pending = 0;
 
 static void protos_do_commit(struct config *new, struct config *old, int type);
+static void proto_shutdown(struct proto *p);
+
+static void
+protos_commit_cb(callback *cb)
+{
+  ASSERT_DIE(cb == &protos_commit_request.cb);
+
+  protos_do_commit(
+      protos_commit_request.new,
+      protos_commit_request.old,
+      protos_commit_request.type
+      );
+}
 
 /**
  * protos_commit - commit new protocol configuration
@@ -1806,6 +1809,8 @@ protos_commit(struct config *new, struct config *old, int type)
     .type = type,
   };
 
+  callback_init(&protos_commit_request.cb, protos_commit_cb, &main_birdloop);
+
   /* First, add dynamic protocols to the new config */
   if (old)
     WALK_LIST_(struct proto_config, oc, old->protos)
@@ -1831,18 +1836,22 @@ protos_commit(struct config *new, struct config *old, int type)
 static void
 protos_do_commit(struct config *new, struct config *old, int type)
 {
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+
+  if (proto_rethink_goal_pending)
+    return;
+
   enum protocol_startup phase = protos_commit_request.phase;
   struct proto_config *oc, *nc;
   struct symbol *sym;
   struct proto *p;
 
-  if ((phase < PROTOCOL_STARTUP_REGULAR) || (phase > PROTOCOL_STARTUP_NECESSARY))
+  if (!new || (phase < PROTOCOL_STARTUP_REGULAR) || (phase > PROTOCOL_STARTUP_NECESSARY))
   {
     protos_commit_request = (struct protos_commit_request) {};
     return;
   }
 
-  DBG("protos_commit:\n");
   if (old)
   {
     WALK_LIST(oc, old->protos)
@@ -1879,15 +1888,15 @@ protos_do_commit(struct config *new, struct config *old, int type)
 	}
 
 	/* Unsuccessful, we will restart it */
+	p->down_code = nc->disabled ? PDC_CF_DISABLE : PDC_CF_RESTART;
+	p->cf_new = nc;
+
 	if (!p->disabled && !nc->disabled)
 	  log(L_INFO "Restarting protocol %s", p->name);
 	else if (p->disabled && !nc->disabled)
 	  log(L_INFO "Enabling protocol %s", p->name);
 	else if (!p->disabled && nc->disabled)
 	  log(L_INFO "Disabling protocol %s", p->name);
-
-	p->down_code = nc->disabled ? PDC_CF_DISABLE : PDC_CF_RESTART;
-	p->cf_new = nc;
       }
       else if (!new->shutdown)
       {
@@ -1907,11 +1916,15 @@ protos_do_commit(struct config *new, struct config *old, int type)
 	p->cf_new = NULL;
       }
 
-      p->reconfiguring = 1;
+      /* The commit will have to wait until this protocol clears */
+      PD(p, "Waiting for cleanup");
+      proto_rethink_goal_pending++;
+
+      p->reconfiguring = PC_SHUTDOWN;
+      proto_rethink_goal(p);
+
       proto_announce_state(p, p->ea_state);
       PROTO_LEAVE_FROM_MAIN(proto_loop);
-
-      proto_rethink_goal(p);
     }
   }
 
@@ -1927,7 +1940,8 @@ protos_do_commit(struct config *new, struct config *old, int type)
       p = proto_init(nc, after);
       after = p;
 
-      proto_rethink_goal(p);
+      PROTO_LOCKED_FROM_MAIN(p)
+	proto_rethink_goal(p);
     }
     else
       after = nc->proto;
@@ -1941,7 +1955,7 @@ protos_do_commit(struct config *new, struct config *old, int type)
     protos_commit_request.phase--;
 
   /* If something is pending, the next round will be called asynchronously from proto_rethink_goal(). */
-  if (new->shutdown || !proto_rethink_goal_pending)
+  if (!proto_rethink_goal_pending)
     protos_do_commit(new, old, type);
 }
 
@@ -1954,71 +1968,101 @@ proto_shutdown(struct proto *p)
     DBG("Kicking %s down\n", p->name);
     PD(p, "Shutting down");
     proto_notify_state(p, (p->proto->shutdown ? p->proto->shutdown(p) : PS_FLUSH));
-    if (p->reconfiguring)
-    {
-      proto_rethink_goal_pending++;
-      p->reconfiguring = 2;
-    }
+
+    ASSERT_DIE(p->proto_state != PS_DOWN_XX);
   }
+}
+
+static void
+proto_cleanup(struct proto *p)
+{
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+  ASSERT_DIE(p->reconfiguring == PC_CLEANUP);
+
+  if (p->loop != &main_birdloop)
+    birdloop_enter(p->loop);
+
+  struct proto_config *nc = p->cf_new;
+  struct proto *after = p->n.prev;
+
+  DBG("%s has shut down for reconfiguration\n", p->name);
+  p->cf->proto = NULL;
+  OBSREF_CLEAR(p->global_config);
+  proto_remove_channels(p);
+
+  proto_announce_state(p, NULL);
+
+  proto_rem_node(&global_proto_list, p);
+  PD(p, "Cleaned up");
+
+  /* Free last remnants of the protocol */
+  if (p->loop != &main_birdloop)
+  {
+    birdloop_leave(p->loop);
+    birdloop_free(p->loop);
+  }
+  else
+    rp_free(p->persistent_pool);
+
+  /* Protocol is replaced by a new instance */
+  if (nc)
+  {
+    p = proto_init(nc, after);
+    PROTO_LOCKED_FROM_MAIN(p)
+      proto_rethink_goal(p);
+  }
+
+  /* Unblock later reconfig goals */
+  if (!--proto_rethink_goal_pending)
+  {
+    ASSERT_DIE(protos_commit_request.new);
+    callback_activate(&protos_commit_request.cb);
+  }
+}
+
+static void
+proto_loop_stopped(void *ptr)
+{
+  proto_cleanup(ptr);
 }
 
 static void
 proto_rethink_goal(struct proto *p)
 {
-  int goal_pending = (p->reconfiguring == 2);
+  ASSERT_DIE(birdloop_inside(p->loop));
 
-  if (p->reconfiguring && (p->proto_state == PS_DOWN_XX))
+  if (p->reconfiguring == PC_CLEANUP)
+    bug("%s: Requested rethink_goal while already cleaning up", p->name);
+
+  switch (p->proto_state)
   {
-    struct proto_config *nc = p->cf_new;
-    struct proto *after = p->n.prev;
+    case PS_START:
+    case PS_UP:
+      if (p->disabled || p->reconfiguring)
+	proto_shutdown(p);
+      break;
 
-    DBG("%s has shut down for reconfiguration\n", p->name);
-    p->cf->proto = NULL;
-    OBSREF_CLEAR(p->global_config);
-    proto_remove_channels(p);
+    case PS_DOWN_XX:
+      if (p->reconfiguring)
+      {
+	p->reconfiguring = PC_CLEANUP;
 
-    proto_announce_state(p, NULL);
+	/* Protocol is expected to get removed */
+	if (p->loop == &main_birdloop)
+	  proto_cleanup(p);
+	else
+	  birdloop_stop_self(p->loop, proto_loop_stopped, p);
+      }
 
-    proto_rem_node(&global_proto_list, p);
-    {
-      PROTO_COMMON_LOCK(pcm);
-      mb_free(p->message);
-    }
-    mb_free(p);
-    if (!nc)
-      goto done;
+      else if (!p->disabled)
+	proto_start(p);
 
-    p = proto_init(nc, after);
+      break;
+
+    case PS_STOP:
+    case PS_FLUSH:
+      return;
   }
-
-  /* Determine what state we want to reach */
-  if (p->disabled || p->reconfiguring)
-  {
-    PROTO_LOCKED_FROM_MAIN(p)
-      proto_shutdown(p);
-  }
-  else if (p->proto_state == PS_DOWN_XX)
-    proto_start(p);
-
-done:
-  if (goal_pending && !--proto_rethink_goal_pending && protos_commit_request.new)
-    protos_do_commit(
-	protos_commit_request.new,
-	protos_commit_request.old,
-	protos_commit_request.type
-	);
-}
-
-struct proto_rethink_goal_deferred {
-  struct deferred_call dc;
-  struct proto *p;
-};
-
-static void
-proto_rethink_goal_deferred(struct deferred_call *dc)
-{
-  SKIP_BACK_DECLARE(struct proto_rethink_goal_deferred, prgd, dc, dc);
-  proto_rethink_goal(prgd->p);
 }
 
 struct proto *
@@ -2034,7 +2078,7 @@ proto_disable(struct proto *p)
   ASSERT_DIE(birdloop_inside(&main_birdloop));
   bool changed = !p->disabled;
   p->disabled = 1;
-  proto_rethink_goal(p);
+  callback_activate(&p->check_done_cb);
   return changed;
 }
 
@@ -2044,11 +2088,7 @@ proto_enable(struct proto *p)
   ASSERT_DIE(birdloop_inside(&main_birdloop));
   bool changed = p->disabled;
   p->disabled = 0;
-  struct proto_rethink_goal_deferred prgd = {
-    .dc.hook = proto_rethink_goal_deferred,
-    .p = p,
-  };
-  defer_call(&prgd.dc, sizeof prgd);
+  callback_activate(&p->check_done_cb);
   return changed;
 }
 
@@ -2394,7 +2434,9 @@ proto_restart_event_hook(void *_p)
 
   proto_restart = (p->down_sched == PDS_RESTART);
   p->disabled = 1;
-  proto_rethink_goal(p);
+
+  PROTO_LOCKED_FROM_MAIN(p)
+    proto_rethink_goal(p);
 
   if (proto_restart)
   {
@@ -2701,11 +2743,9 @@ proto_notify_state(struct proto *p, uint state)
 
     CALL(p->proto->cleanup, p);
 
-    if (p->pool)
-    {
-      rp_free(p->pool);
-      p->pool = NULL;
-    }
+    iface_unsubscribe(&p->iface_sub);
+    rp_free(p->pool);
+    p->pool = NULL;
 
     break;
 
@@ -2918,11 +2958,7 @@ proto_cmd_enable(struct proto *p, uintptr_t arg, int cnt UNUSED)
   log(L_INFO "Enabling protocol %s", p->name);
   p->disabled = 0;
   proto_set_message(p, (char *) arg, -1);
-  struct proto_rethink_goal_deferred prgd = {
-    .dc.hook = proto_rethink_goal_deferred,
-    .p = p,
-  };
-  defer_call(&prgd.dc, sizeof prgd);
+  proto_start(p);
   cli_msg(-11, "%s: enabled", p->name);
 }
 
