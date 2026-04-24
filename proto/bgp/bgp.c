@@ -2837,7 +2837,7 @@ bgp_start(struct proto *P)
    * so that we are the only instance attempting to talk with that neighbor.
    */
   struct object_lock *lock;
-  lock = p->lock = olock_new(P->pool_inloop);
+  lock = p->lock = olock_new(P->pool);
   lock->addr = p->remote_ip;
   lock->addr_local = p->cf->local_ip;
   lock->port = p->cf->remote_port;
