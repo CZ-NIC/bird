@@ -280,7 +280,10 @@ void proto_apply_cmd(struct proto_spec ps, void (* cmd)(struct proto *, uintptr_
 struct proto *proto_get_named(struct symbol *, struct protocol *);
 struct proto *proto_iterate_named(struct symbol *sym, struct protocol *proto, struct proto *old);
 
-#define PROTO_WALK_CMD(sym,pr,p) for(struct proto *p = NULL; p = proto_iterate_named(sym, pr, p); )
+/* Walk over all protocols with matching name. */
+#define PROTO_WALK_CMD(sym,pr,p) \
+  for (struct proto *p = NULL; p = proto_iterate_named(sym, pr, p); ) \
+    PROTO_LOCKED_FROM_MAIN(p)
 
 /* Request from CLI to reload multiple protocols */
 struct proto_reload_request {
