@@ -1737,6 +1737,7 @@ proto_reconfigure(struct proto *p, struct proto_config *oc, struct proto_config 
 
   p->sources.name = p->name = nc->name;
   p->sources.debug = p->debug = nc->debug;
+  p->iface_sub.name = p->name;
   p->mrtdump = nc->mrtdump;
   p->restart_limit = nc->restart_limit;
   reconfigure_type = type;
