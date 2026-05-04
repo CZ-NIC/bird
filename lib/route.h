@@ -137,8 +137,11 @@ static inline void rt_unlock_source_deferred(struct deferred_call *dc)
 
 static inline void rt_unlock_source_later(struct rte_src *src)
 {
-  if (!src)
-    return;
+#ifdef RT_SOURCE_DEBUG
+  log(L_INFO "Unlock source %uG later at %s:%d", src->global_id, __FILE__, __LINE__);
+#endif
+
+  ASSERT_DIE(src);
 
   struct rte_src_unlock_deferred rsd = {
     .dc.hook = rt_unlock_source_deferred,
