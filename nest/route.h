@@ -548,6 +548,10 @@ struct rt_net_pending_export {
 };
 
 typedef struct network {
+  struct rt_best {
+    u32 global_id;				/* rte->src->global_id */
+    u32 rte_id;					/* rte->id */
+  } _Atomic best_id;
   struct rte_storage * _Atomic routes;		/* Available routes for this network */
 
   /* Uncleaned pending exports */

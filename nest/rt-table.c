@@ -227,19 +227,38 @@ struct rtable_reading {
       RT_READ_RETRY(tr);		\
     s; })
 
+#define NET_BEST_ROUTE_ID(n)	(atomic_load_explicit(&(n)->best_id, memory_order_acquire))
+
 #define NET_READ_WALK_ROUTES(tr, n, ptr, r)						\
   for (struct rte_storage *r, * _Atomic *ptr = &(n)->routes;				\
       r = RTE_OBSOLETE_CHECK(tr, atomic_load_explicit(ptr, memory_order_acquire));	\
       ptr = &r->next)
 
-#define NET_READ_BEST_ROUTE(tr, n)	RTE_OBSOLETE_CHECK(tr, atomic_load_explicit(&n->routes, memory_order_acquire))
+#define NET_READ_FIND_BY_ID(tr, n, gid) ({	\
+    struct rt_best _b = gid;			\
+    struct rte_storage *_s = NULL;		\
+    NET_READ_WALK_ROUTES(tr, n, ptr, r)		\
+      if ((!_b.global_id || _b.global_id == r->rte.src->global_id) && (_b.rte_id == r->rte.id)) \
+	{ _s = r; break; }			\
+    _s; })
+
+#define NET_READ_BEST_ROUTE(tr, n)	NET_READ_FIND_BY_ID(tr, n, NET_BEST_ROUTE_ID(n))
 
 #define NET_WALK_ROUTES(priv, n, ptr, r)					\
   for (struct rte_storage *r = ({ ASSERT_DIE(RT_IS_LOCKED(priv)); NULL; }),	\
 			  * _Atomic *ptr = &(n)->routes;			\
       r = atomic_load_explicit(ptr, memory_order_acquire);			\
       ptr = &r->next)
-#define NET_BEST_ROUTE(priv, n)		({ ASSERT_DIE(RT_IS_LOCKED(priv)); atomic_load_explicit(&n->routes, memory_order_acquire); })
+
+#define NET_FIND_BY_ID(priv, n, gid) ({		\
+    struct rt_best _b = gid;			\
+    struct rte_storage *_s = NULL;		\
+    NET_WALK_ROUTES(priv, n, ptr, r)		\
+      if ((!_b.global_id || _b.global_id == r->rte.src->global_id) && (_b.rte_id == r->rte.id)) \
+	{ _s = r; break; }			\
+    _s; })
+
+#define NET_BEST_ROUTE(priv, n)		NET_FIND_BY_ID(priv, n, NET_BEST_ROUTE_ID(n))
 
 static inline net *
 net_find(struct rtable_reading *tr, const struct netindex *i)
@@ -1907,6 +1926,13 @@ rte_announce(struct rtable_private *tab, const struct netindex *i UNUSED, net *n
     new_best->sender->stats.pref++;
   if (old_best_valid)
     old_best->sender->stats.pref--;
+
+  /* Store the best route selected */
+  atomic_store_explicit(&net->best_id, (new_best_valid ?
+      (struct rt_best) {
+	.global_id = new_best->src->global_id,
+	.rte_id = new_best->id,
+      } : (struct rt_best) {}), memory_order_release);
 
   /* Try to push */
   struct rt_pending_export *best_rpe = NULL;
@@ -4593,6 +4619,11 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
       new_best = s;
     }
   }
+
+  /* Store the best route selected */
+  atomic_store_explicit(&n->best_id, ((struct rt_best) {
+	.global_id = new_best->rte.src->global_id,
+	.rte_id = new_best->rte.id, }), memory_order_release);
 
   /* Relink the new best route to the first position */
   struct rte_storage * _Atomic *best_prev;
