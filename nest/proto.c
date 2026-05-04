@@ -1647,7 +1647,7 @@ proto_new(struct proto_config *cf)
   struct ea_list *state = NULL;
 
   ea_set_attr(&state, EA_LITERAL_STORE_STRING(&ea_name, 0, p->name));
-  ea_set_attr(&state, EA_LITERAL_STORE_PTR(&ea_protocol_type, 0, &p->proto));
+  ea_set_attr(&state, EA_LITERAL_STORE_PTR(&ea_protocol_type, 0, p->proto));
   ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_state, 0, p->proto_state));
   ea_set_attr(&state, EA_LITERAL_STORE_ADATA(&ea_last_modified, 0, &p->last_state_change, sizeof(btime)));
   ea_set_attr(&state, EA_LITERAL_EMBEDDED(&ea_proto_id, 0, p->id));
