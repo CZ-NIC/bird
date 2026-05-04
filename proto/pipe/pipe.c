@@ -49,10 +49,6 @@ pipe_rt_notify(struct proto *P, struct channel *src_ch, const net_addr *n, rte *
   struct pipe_proto *p = (void *) P;
   struct channel *dst = (src_ch == p->pri) ? p->sec : p->pri;
 
-  /* Reject everything on shutdown */
-  if (SHUTTING_DOWN)
-    return;
-
   if (!new && !old)
     return;
 
