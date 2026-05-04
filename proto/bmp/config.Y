@@ -56,14 +56,14 @@ bmp_proto:
  | bmp_proto SYSTEM DESCRIPTION text ';' {
      if (!$4 || (strlen($4) == 0))
        cf_error("String is empty");
-     else if (strlen($4) > 255)
+     else if (strlen($4) > MIB_II_STR_LEN)
        cf_error("Invalid string length");
      BMP_CFG->sys_descr = $4;
    }
  | bmp_proto SYSTEM NAME text ';' {
      if (!$4 || (strlen($4) == 0))
        cf_error("String is empty");
-     else if (strlen($4) > 255)
+     else if (strlen($4) > MIB_II_STR_LEN)
        cf_error("Invalid string length");
      BMP_CFG->sys_name = $4;
    }
