@@ -13,6 +13,21 @@ If you are using LLMs to find possible problems, we expect you to do the
 following assessment before sending a report. In any case, write the report
 yourself, proving that you actually understand what you are reporting.
 
+If you can provide a reproducer, do it right away. There are two major ways
+to do it:
+
+- a unit test which would run while `make test`; consider updating an existing
+  one before adding new
+- a [netlab](https://gitlab.nic.cz/labs/bird-tools/-/tree/master/netlab)
+  or [eduhawk](https://gitlab.nic.cz/labs/eduhawk/) scenario
+  exposing that bug, using either BIRD itself, tools already used there, or
+  possibly a Python script *with no external dependencies*
+
+If the problem happens only for non-Linux builds, do the Eduhawk or Netlab
+reproducer and specify how to setup and connect QEMU in there.
+
+**We prioritize reproducible issues over theoretical code analysis reports.**
+
 ### What is an issue for our security channel
 
 **Do you get more power** compared to your regular
@@ -41,4 +56,4 @@ are doing. Crashes on configuration corner cases, weird combinations of debug
 flags or crazy recursive filters are **not a security issue**, unless exploitable
 unprivileged.
 
-If unsure, use the security channel. If lazy, please do the assessment above :)
+If unsure, use the security channel. If lazy, please do the assessment above. :)

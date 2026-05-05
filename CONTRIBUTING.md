@@ -183,6 +183,7 @@ You should also include appropriate additional info at the end of the commit mes
   - Reported-By: reported the issue and possibly provided crashdumps or other debug data
   - Identified-By: did significant work on finding out the algorithmic cause
   - Reproduced-By: did significant work on reliably reproducing the issue in testbed
+  - Edited-By: did significant work on coding style or fixed some logic
   - Signed-Off-By: reviewed the code and approves
 - relevant links
   - `Introduced-In: commithash` for fixing regressions
@@ -209,10 +210,18 @@ the current coding style themselves, so, please, pick more recent additions for 
 Example from `nest/a-set.c`
 
 ```c
-int
+/**
+ * int_set_min - find minimum in int set
+ * @list: adata to search
+ * @val: the minimum to return
+ *
+ * Returns true if minimum is found, and sets @val to the value.
+ * Returns false if the int set is empty.
+ */
+bool
 int_set_min(const struct adata *list, u32 *val)
 {
-  /* Some example comment */
+  /* No list at all */
   if (!list)
     return 0;
 
@@ -220,6 +229,7 @@ int_set_min(const struct adata *list, u32 *val)
   int len = int_set_get_size(list);
   int i;
 
+  /* Empty list */
   if (len < 1)
     return 0;
 
@@ -237,12 +247,18 @@ Remarks
 - two spaces should be used as indentation, but eight continous spaces should be substituted by a single tab
 - statements preceding function names (return type, etc.) should be on a separate line
 - opening and closing curly braces of a block should be on a separate line (for all types of blocks)
-- in case only single statement follows after `if` or `else`, it should not have braces around it (even if the statement itself has multiple lines)
-- null check of pointers should be simple `if (pointer)` instead of a `if (pointer == NULL)`
-- even for single line comments use `/* */` istead of a `//`
-- ...
+- in case only single statement follows after `if` or `else`, it need not have braces around it,
+  even if the statement itself has multiple lines
+- null check of pointers should be simple `if (pointer)` instead of a `if (pointer == NULL)`,
+  unless the short style is confusing
+- use suffix `++` unless the prefix one is significant
+- even for single line comments use `/* */` instead of a `//`
+- comment semantics, not syntax
+- functions relevant outside the enclosing file should get short documentation above
 
-For more information about code refer to the technical documentation.
+For more information about code refer to the technical documentation but please note
+that even the maintainers sometimes fail to update the relevant comments, and
+the documentation may be wrong.
 
 
 ## Using LLMs for contributions
