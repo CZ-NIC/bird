@@ -36,7 +36,9 @@
 
 static pool *if_pool;
 
+/* Lists of all interfaces based on their IF_SHUTDOWN status */
 list iface_list;
+static list dead_iface_list;
 
 static void if_recalc_preferred(struct iface *i);
 
@@ -112,6 +114,10 @@ if_dump_all(struct dump_request *dreq)
   RDUMP("Known network interfaces:\n");
   WALK_LIST(i, iface_list)
     if_dump(dreq, i);
+
+  WALK_LIST(i, dead_iface_list)
+    if_dump(dreq, i);
+
   RDUMP("Router ID: %08x\n", config->router_id);
 }
 
@@ -261,6 +267,22 @@ if_change_flags(struct iface *i, uint flags)
     if_notify_change((i->flags & IF_UP) ? IF_CHANGE_UP : IF_CHANGE_DOWN, i);
 }
 
+static struct iface *
+if_find_any(const char *name)
+{
+  struct iface *i;
+
+  WALK_LIST(i, iface_list)
+    if (!strcmp(i->name, name))
+      return i;
+
+  WALK_LIST(i, dead_iface_list)
+    if (!strcmp(i->name, name))
+      return i;
+
+  return NULL;
+}
+
 /**
  * if_delete - remove interface
  * @old: interface
@@ -298,11 +320,10 @@ if_delete(struct iface *old)
 struct iface *
 if_update(struct iface *new)
 {
-  struct iface *i;
+  struct iface *i = if_find_any(new->name);
   unsigned c;
 
-  WALK_LIST(i, iface_list)
-    if (!strcmp(new->name, i->name))
+  if (i)
       {
 	new->flags = if_recalc_flags(new, new->flags);
 	c = if_what_changed(i, new);
@@ -334,7 +355,13 @@ if_update(struct iface *new)
 newif:
   init_list(&i->neighbors);
   i->flags |= IF_UPDATED | IF_TMP_DOWN;		/* Tmp down as we don't have addresses yet */
-  add_tail(&iface_list, &i->n);
+
+  /* Put interface into appropriate list */
+  if (i->flags & IF_SHUTDOWN)
+    add_tail(&dead_iface_list, &i->n);
+  else
+    add_tail(&iface_list, &i->n);
+
   return i;
 }
 
@@ -371,7 +398,11 @@ if_end_update(void)
   WALK_LIST(i, iface_list)
     {
       if (!(i->flags & IF_UPDATED))
+      {
 	if_change_flags(i, (i->flags & ~IF_ADMIN_UP) | IF_SHUTDOWN);
+	rem_node(&i->n);
+	add_tail(&dead_iface_list, &i->n);
+      }
       else
 	{
 	  WALK_LIST_DELSAFE(a, b, i->addrs)
@@ -430,7 +461,7 @@ if_find_by_index(unsigned idx)
   struct iface *i;
 
   WALK_LIST(i, iface_list)
-    if (i->index == idx && !(i->flags & IF_SHUTDOWN))
+    if (i->index == idx)
       return i;
   return NULL;
 }
@@ -449,7 +480,7 @@ if_find_by_name(const char *name)
   struct iface *i;
 
   WALK_LIST(i, iface_list)
-    if (!strcmp(i->name, name) && !(i->flags & IF_SHUTDOWN))
+    if (!strcmp(i->name, name))
       return i;
   return NULL;
 }
@@ -463,13 +494,17 @@ if_get_by_name(const char *name)
     if (!strcmp(i->name, name))
       return i;
 
+  WALK_LIST(i, dead_iface_list)
+    if (!strcmp(i->name, name))
+      return i;
+
   /* No active iface, create a dummy */
   i = mb_allocz(if_pool, sizeof(struct iface));
   strncpy(i->name, name, sizeof(i->name)-1);
   i->flags = IF_SHUTDOWN;
   init_list(&i->addrs);
   init_list(&i->neighbors);
-  add_tail(&iface_list, &i->n);
+  add_tail(&dead_iface_list, &i->n);
   return i;
 }
 
@@ -665,8 +700,7 @@ if_choose_router_id(struct iface_patt *mask, u32 old_id)
   b = NULL;
   WALK_LIST(i, iface_list)
     {
-      if (!(i->flags & IF_ADMIN_UP) ||
-	  (i->flags & IF_SHUTDOWN))
+      if (!(i->flags & IF_ADMIN_UP))
 	continue;
 
       WALK_LIST(a, i->addrs)
@@ -711,6 +745,7 @@ if_init(void)
 {
   if_pool = rp_new(&root_pool, "Interfaces");
   init_list(&iface_list);
+  init_list(&dead_iface_list);
   neigh_init(if_pool);
 }
 
@@ -839,9 +874,6 @@ if_show(void)
 
   WALK_LIST(i, iface_list)
     {
-      if (i->flags & IF_SHUTDOWN)
-	continue;
-
       char mbuf[16 + sizeof(i->name)] = {};
       if (i->master)
 	bsprintf(mbuf, " master=%s", i->master->name);
@@ -884,9 +916,6 @@ if_show_summary(void)
     {
       byte a4[IPA_MAX_TEXT_LENGTH + 17];
       byte a6[IPA_MAX_TEXT_LENGTH + 17];
-
-      if (i->flags & IF_SHUTDOWN)
-	continue;
 
       if (i->addr4)
 	bsprintf(a4, "%I/%d", i->addr4->ip, i->addr4->prefix.pxlen);
