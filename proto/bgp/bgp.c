@@ -256,10 +256,11 @@ bgp_listen_open(struct bgp_proto *p, struct bgp_listen_request *req)
 
   BGP_TRACE(D_EVENTS, "Requesting listen socket at %I%J port %u", req->params.addr, req->params.iface, req->params.port);
 
-  if (bgp_is_dynamic(p))
-    callback_init(&req->incoming_connection, bgp_incoming_connection_dynamic, &main_birdloop);
-  else
-    callback_init(&req->incoming_connection, bgp_incoming_connection_single, p->p.loop);
+  callback_init(
+      &req->incoming_connection,
+      bgp_is_dynamic(p) ?
+      bgp_incoming_connection_dynamic : bgp_incoming_connection_single,
+      p->p.loop);
 
   req->p = p;
   add_tail(&p->listen, &req->pn);
@@ -1246,6 +1247,9 @@ bgp_spawn(struct bgp_proto *pp, ip_addr remote_ip, ip_addr local_ip, struct ifac
   cf->local_ip = local_ip;
   cf->iface = iface;
   cf->ipatt = NULL;
+
+  /* The child should get its own loop */
+  cf->c.loop_order = DOMAIN_ORDER(proto);
 
   /* Do not start the protocol immediately */
   sym->proto->disabled = 1;
@@ -3371,6 +3375,10 @@ bgp_postconfig(struct proto_config *CF)
 
   if ((cf->auth_type == BGP_AUTH_AO) && cf->remote_range)
     cf_error("AO authentication not supported on dynamic BGP sessions");
+
+  /* Run dynamic parents in main loop to allow direct spawning */
+  if (ipa_zero(cf->remote_ip))
+    cf->c.loop_order = DOMAIN_ORDER(the_bird);
 
   struct bgp_channel_config *cc;
   BGP_CF_WALK_CHANNELS(cf, cc)
