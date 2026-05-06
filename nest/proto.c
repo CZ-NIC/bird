@@ -44,7 +44,7 @@ LOBJ_UNLOCK_CLEANUP(proto_common, attrs);
 pool *proto_pool;
 
 
-static TLIST_LIST(proto) global_proto_list;
+TLIST_LIST(proto) global_proto_list;
 
 static list STATIC_LIST_INIT(protocol_list);
 

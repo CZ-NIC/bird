@@ -2245,6 +2245,59 @@ bgp_free_pending_tx(struct bgp_channel *bc)
  *	BGP protocol glue
  */
 
+static int
+bgp_preexport_nbr(struct bgp_proto *p, rte *e)
+{
+  const net_addr_nbr *nbr = (const net_addr_nbr *) e->net;
+
+  if (!bgp_is_dynamic(p))
+    return -1;
+
+  /* Matching remote range */
+  if (p->cf->remote_range && !ipa_in_netX(nbr->addr, p->cf->remote_range))
+    return -1;
+
+  /* Matching interface */
+  if (p->cf->iface && (nbr->ifindex != p->cf->iface->index))
+    return -1;
+
+  /* Interface is valid */
+  struct iface *iface = if_find_by_index(nbr->ifindex);
+  if (!iface)
+    return -1;
+
+  /* Matching interface range */
+  if (p->cf->ipatt && !iface_patt_match(p->cf->ipatt, iface, NULL))
+    return -1;
+
+  return 0;
+}
+
+static void
+bgp_rt_notify_nbr(struct bgp_proto *p, const net_addr *n, rte *new, const rte *old)
+{
+  const net_addr_nbr *nbr = (const net_addr_nbr *) n;
+
+  if (!bgp_is_dynamic(p))
+    return;
+
+  /* Consistency check */
+  ASSERT_DIE(birdloop_inside(&main_birdloop));
+
+  /* Protocol is not-yet-reconfigured */
+  if (p->p.cf->global != OBSREF_GET(config))
+  {
+    log(L_WARN "%s: Ignoring neighbor %N received during reconfiguration", p->p.name, n);
+    return;
+  }
+
+  if (new && !old)
+    return bgp_add_nbr(p, nbr);
+
+  if (!new && old)
+    return bgp_remove_nbr(p, nbr);
+}
+
 int
 bgp_preexport(struct channel *C, rte *e)
 {
@@ -2256,9 +2309,14 @@ bgp_preexport(struct channel *C, rte *e)
   if (SHUTTING_DOWN)
     return -1;
 
-  /* Ignore non-BGP channels */
+  /* Handle non-BGP channels */
   if (C->class != &channel_bgp)
+  {
+    if (C->net_type == NET_NEIGHBOR)
+      return bgp_preexport_nbr(p, e);
+
     return -1;
+  }
 
   /* Reject our routes */
   if (src == p)
@@ -2471,9 +2529,14 @@ bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, c
   if (SHUTTING_DOWN)
     return;
 
-  /* Ignore non-BGP channels */
+  /* Handle non-BGP channels */
   if (C->class != &channel_bgp)
+  {
+    if (C->net_type == NET_NEIGHBOR)
+      return bgp_rt_notify_nbr(p, n, new, old);
+
     return;
+  }
 
   struct ea_list *attrs = new ? bgp_update_attrs(p, bc, new, new->attrs, tmp_linpool) : NULL;
 
