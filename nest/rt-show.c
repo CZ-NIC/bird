@@ -382,14 +382,24 @@ rt_show_get_default_tables(struct rt_show_data *d)
 
   if (d->export_protocol)
   {
+    bool channel_found = false;
+    bool export_down = true;
+
     WALK_LIST(c, d->export_protocol->channels)
     {
+      channel_found = true;
+
       if (c->export_state == ES_DOWN)
 	continue;
 
+      export_down = false;
       tab = rt_show_add_table(d, c->table);
       tab->export_channel = c;
     }
+
+    if (channel_found && export_down)
+      cf_error("Requested 'show route export' from protocol that doesn't allow exports");
+
     return;
   }
 
