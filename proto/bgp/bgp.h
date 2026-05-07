@@ -402,6 +402,7 @@ struct bgp_incoming_socket {
 };
 
 struct bgp_listen_request {
+  resource r;				/* Uses the resource mechanism */
   node pn;				/* Node in bgp_proto listen list */
   node sn;				/* Node in bgp_socket requests list */
   bgp_socket *sock;			/* Assigned socket */
