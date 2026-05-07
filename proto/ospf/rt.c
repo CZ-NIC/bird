@@ -2216,7 +2216,7 @@ ospf_update_gr_recovery(struct ospf_proto *p)
 	  /* Find all neighbors from the network-LSA */
 	  struct ospf_lsa_net *net_body = net->lsa_body;
 	  uint cnt = lsa_net_count(&net->lsa);
-	  for (j = 0; j < cnt; i++)
+	  for (j = 0; j < cnt; j++)
 	  {
 	    n = find_neigh(ifa, net_body->routers[j]);
 	    if (!n || (n->state != NEIGHBOR_FULL))

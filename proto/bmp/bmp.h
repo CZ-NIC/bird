@@ -63,8 +63,8 @@ struct bmp_proto {
   sock *sk;                        // TCP connection
   event *tx_ev;                    // TX event
   event *update_ev;                // Update event
-  char sys_descr[MIB_II_STR_LEN];  // sysDescr MIB-II [RFC1213] object
-  char sys_name[MIB_II_STR_LEN];   // sysName MIB-II [RFC1213] object
+  char sys_descr[MIB_II_STR_LEN+1];// sysDescr MIB-II [RFC1213] object
+  char sys_name[MIB_II_STR_LEN+1]; // sysName MIB-II [RFC1213] object
   ip_addr local_addr;              // Source local IP address
   ip_addr station_ip;              // Monitoring station IP address
   u16 station_port;                // Monitoring station TCP port
