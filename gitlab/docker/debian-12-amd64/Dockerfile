@@ -5,6 +5,10 @@
 #     https://gitlab.nic.cz/labs/bird/-/pipelines/new
 FROM amd64/debian:bookworm-slim
 ENV DEBIAN_FRONTEND=noninteractive
+RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
+RUN dpkg --add-architecture mips64el
+RUN dpkg --add-architecture s390x
+RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
 RUN apt-get -y update
 RUN apt-get -y upgrade
 RUN apt-get -y --no-install-recommends install \
@@ -15,6 +19,15 @@ RUN apt-get -y --no-install-recommends install \
 	ncurses-dev \
 	libreadline-dev \
 	libssh-gcrypt-dev \
+	crossbuild-essential-mips64el \
+	libreadline-dev:mips64el \
+	ncurses-dev:mips64el \
+	crossbuild-essential-s390x \
+	libreadline-dev:s390x \
+	ncurses-dev:s390x \
+	qemu-user \
+	qemu-user-binfmt \
+	binfmt-support \
 	linuxdoc-tools-latex \
 	texlive-latex-extra \
 	opensp \
@@ -31,3 +44,4 @@ RUN apt-get -y --no-install-recommends install \
 	python3-pip \
 	python3-setuptools \
 	python3-venv
+RUN apt-get -y clean
