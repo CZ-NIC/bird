@@ -1171,12 +1171,8 @@ bgp_down(struct bgp_proto *p)
 {
   /* Close the possibly unpicked dynamic BGP socket */
   if (p->postponed_sk)
-  {
-    struct birdloop *loop = p->postponed_sk->loop;
-    birdloop_enter(loop);
-    sk_close(p->postponed_sk);
-    birdloop_leave(loop);
-  }
+    BGP_LISTEN_LOCKED(bl)
+      sk_close(p->postponed_sk);
 
   p->postponed_sk = NULL;
 
