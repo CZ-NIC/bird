@@ -1333,6 +1333,13 @@
     RESULT(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, ipa_to_u32(v2.val.ip)) ]]);
   }
 
+  INST(FI_CLIST_ADD_INT, 2, 1) {
+    ARG(1, T_CLIST);
+    ARG(2, T_INT);
+    METHOD_CONSTRUCTOR("add");
+    RESULT(T_CLIST, ad, [[ int_set_add(fpool, v1.val.ad, v2.val.i) ]]);
+  }
+
   INST(FI_CLIST_ADD_QUAD, 2, 1) {
     ARG(1, T_CLIST);
     ARG(2, T_QUAD);
@@ -1397,6 +1404,13 @@
   INST(FI_CLIST_DELETE_PAIR, 2, 1) {
     ARG(1, T_CLIST);
     ARG(2, T_PAIR);
+    METHOD_CONSTRUCTOR("delete");
+    RESULT(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, v2.val.i) ]]);
+  }
+
+  INST(FI_CLIST_DELETE_INT, 2, 1) {
+    ARG(1, T_CLIST);
+    ARG(2, T_INT);
     METHOD_CONSTRUCTOR("delete");
     RESULT(T_CLIST, ad, [[ int_set_del(fpool, v1.val.ad, v2.val.i) ]]);
   }
