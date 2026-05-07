@@ -1,0 +1,15 @@
+GITLAB_DOCKER_IMAGES := \
+{% for distro in distros -%}
+	$(s)docker/{{ distro.name }}/Dockerfile \
+{% endfor %}
+
+gitlab-docker: $(GITLAB_DOCKER_IMAGES)
+
+{% for distro in distros -%}
+{% if distro.docker == "static" %}
+$(s)docker/{{ distro.name }}/Dockerfile: $(s)docker.mk.j2 $(s)data.yml.j2
+	@echo "KEEP $@ (marked as static)"
+	touch $@
+
+{% endif %}
+{% endfor %}
