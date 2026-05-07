@@ -1171,8 +1171,12 @@ bgp_down(struct bgp_proto *p)
 {
   /* Close the possibly unpicked dynamic BGP socket */
   if (p->postponed_sk)
-    BGP_LISTEN_LOCKED(bl)
-      sk_close(p->postponed_sk);
+  {
+    struct birdloop *loop = p->postponed_sk->loop;
+    birdloop_enter(loop);
+    sk_close(p->postponed_sk);
+    birdloop_leave(loop);
+  }
 
   p->postponed_sk = NULL;
 
@@ -2100,21 +2104,22 @@ bgp_incoming_connection_dynamic(struct callback *cb)
       ASSERT_DIE(sk);
       rem_node(&bis->n);
       mb_free(bis);
+
+      BGP_TRACE(D_EVENTS, "Incoming connection from %I%J (port %d) %s",
+	  sk->daddr, ipa_is_link_local(sk->daddr) ? sk->iface : NULL,
+	  sk->dport, "accepted");
+
+      /* Finish socket configuration */
+      if (!bgp_configure_incoming_socket(p, sk))
+	sk = NULL;
+
     }
-
-    BGP_TRACE(D_EVENTS, "Incoming connection from %I%J (port %d) %s",
-	sk->daddr, ipa_is_link_local(sk->daddr) ? sk->iface : NULL,
-	sk->dport, "accepted");
-
-    /* Finish socket configuration */
-    if (!bgp_configure_incoming_socket(p, sk))
-      continue;
-
 
     /* Ending up here means that there is no pre-existing explicit BGP session,
      * and therefore the socket was matched by a dynamic entry instead.
      * We need to spawn a new BGP session. */
-    bgp_spawn(p, sk);
+    if (sk)
+      bgp_spawn(p, sk);
   }
 }
 
