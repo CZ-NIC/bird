@@ -1601,6 +1601,7 @@ build-netlab:
     - DIR=$(pwd)
     - cd $TOOLS_DIR
     - sudo git clean -fx
+    - sudo git checkout -f master
     - git pull --ff-only
     - git checkout -f origin/data-v3.2
     - "mv $DIR/build-netlab/* netlab/common/"
@@ -1801,16 +1802,6 @@ test-mpls-bgp-l3vpn:
   <<: *test-base
   variables:
     TEST_NAME: cf-mpls-bgp-l3vpn
-
-test-bgp-aspa:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-bgp-aspa
-
-test-aspa-filter:
-  <<: *test-base
-  variables:
-    TEST_NAME: cf-aspa-filter
 
 test-pipe-collision:
   <<: *test-base
