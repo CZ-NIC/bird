@@ -351,7 +351,7 @@ else
   AC_DEFINE([HAVE_CLOCK_MONOTONIC_COARSE], [1], [Define to 1 if coarse clock is available])
 fi
 
-all_protocols="aggregator bfd babel bgp l3vpn ospf pipe radv rip rpki static mrt bmp"
+all_protocols="aggregator bfd babel bgp bmp l3vpn mrt ospf pipe radv rip rpki static"
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
 
 if test "$with_protocols" = all ; then
