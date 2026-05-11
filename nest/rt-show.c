@@ -66,8 +66,17 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   if (d->last_table != d->tab)
     rt_show_table(c, d);
 
-  cli_printf(c, -1007, "%-20s %s [%s %s%s]%s%s", ia, rta_dest_name(a->dest),
-	     e->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info);
+  bool invalid	    = !!(e->flags & REF_INVALID);
+  bool ineligible   = !!(e->flags & REF_INELIGIBLE);
+  bool unresolvable = !!(e->flags & REF_UNRESOLVABLE);
+  bool filtered	    = !!(e->flags & REF_FILTERED);
+
+  cli_printf(c, -1007, "%-20s %s [%s %s%s]%s%s %s %s %s %s", ia, rta_dest_name(a->dest),
+	     e->src->proto->name, tm, from, primary ? (sync_error ? " !" : " *") : "", info,
+	     invalid	  ? "invalid"	    : "",
+	     ineligible	  ? "ineligible"    : "",
+	     unresolvable ? "unresolvable"  : "",
+	     filtered	  ? "filtered"	    : "");
 
   if (a->dest == RTD_UNICAST)
     for (nh = &(a->nh); nh; nh = nh->next)
@@ -117,6 +126,15 @@ rt_show_net(struct cli *c, net *n, struct rt_show_data *d)
 
   for (e = n->routes; e; e = e->next)
     {
+      if (!!(e->flags & REF_INVALID) != d->invalid)
+	continue;
+
+      if (!!(e->flags & REF_INELIGIBLE) != d->ineligible)
+	continue;
+
+      if (!!(e->flags & REF_UNRESOLVABLE) != d->unresolvable)
+	continue;
+
       if (rte_is_filtered(e) != d->filtered)
 	continue;
 
