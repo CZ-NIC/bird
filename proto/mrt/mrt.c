@@ -515,7 +515,7 @@ mrt_rib_table_dump(struct mrt_table_dump_state *s, net *n, int add_path)
   rte *rt, *rt0;
   for (rt0 = n->routes; rt = rt0; rt0 = rt0->next)
   {
-    if (rte_is_filtered(rt))
+    if (rte_is_valid(rt))
       continue;
 
     /* Skip routes that should be reported in the other phase */
