@@ -125,6 +125,10 @@ bt_init(int argc, char *argv[])
   bt_suite_case_begin = bt_suite_begin = bt_begin;
 
   the_bird_lock();
+
+  random_init();
+  random_init_thread();
+
   resource_init();
   ev_init_list(&global_event_list, &main_birdloop, "Global event list in unit tests");
   ev_init_list(&global_work_list, &main_birdloop, "Global work list in unit tests");

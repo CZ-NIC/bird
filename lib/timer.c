@@ -182,7 +182,7 @@ timers_fire(struct timeloop *loop, int io_log)
 	when = base_time + t->recurrent;
 
       if (t->randomize)
-	when += random() % (t->randomize + 1);
+	when += brandom() % (t->randomize + 1);
 
       tm_set_in_tl(t, when, loop);
     }

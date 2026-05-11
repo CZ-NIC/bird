@@ -1035,6 +1035,7 @@ main(int argc, char **argv)
   times_update();
   resource_init();
   random_init();
+  random_init_thread();
 
   birdloop_init();
   olock_init();
