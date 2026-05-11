@@ -1686,6 +1686,11 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 
       if (filter == FILTER_REJECT)
 	{
+	  /*
+	   * Control flow here doesn't change by introduction of REF_INVALID, REF_INELIGIBLE
+	   * and REF_UNRESOLVABLE flags: route is logged and is either dropped, or it's kept
+	   * and REF_FILTERED flag is set.
+	   */
 	  stats->imp_updates_filtered++;
 	  rte_trace_in(D_FILTERS, c, new, "filtered out");
 
@@ -1698,11 +1703,12 @@ rte_update2(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
       else if (filter)
 	{
 	  int fr = f_run(filter, &new, rte_update_pool, 0);
-	  if (fr > F_ACCEPT)
-	  {
-	    stats->imp_updates_filtered++;
-	    rte_trace_in(D_FILTERS, c, new, "filtered out");
 
+	  stats->imp_updates_filtered++;
+	  rte_trace_in(D_FILTERS, c, new, "filtered out");
+
+	  if ((fr > F_ACCEPT) || (new->flags & (REF_INVALID | REF_INELIGIBLE | REF_UNRESOLVABLE)))
+	  {
 	    if (! c->in_keep_filtered)
 	      goto drop;
 
