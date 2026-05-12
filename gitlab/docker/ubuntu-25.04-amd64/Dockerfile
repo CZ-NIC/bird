@@ -6,13 +6,14 @@
 FROM ubuntu:25.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
+RUN dpkg --add-architecture arm64
 RUN dpkg --add-architecture armhf
 RUN dpkg --add-architecture ppc64el
 RUN dpkg --add-architecture riscv64
 RUN dpkg --add-architecture s390x
 RUN find /etc/apt/sourc* -type f -exec sed -i '/Components: /a\
 Architectures: amd64' '{}' +
-RUN find /etc/apt/sourc* -type f -exec sed 's#URIs: .*#URIs: http://ports.ubuntu.com/ubuntu-ports/#;s#Architectures: amd64#Architectures: armhf,ppc64el,riscv64,s390x#' '{}' + > /etc/apt/sources.list.d/crossbuild.sources
+RUN find /etc/apt/sourc* -type f -exec sed 's#URIs: .*#URIs: http://ports.ubuntu.com/ubuntu-ports/#;s#Architectures: amd64#Architectures: arm64,armhf,ppc64el,riscv64,s390x#' '{}' + > /etc/apt/sources.list.d/crossbuild.sources
 RUN find /etc/apt/sourc* -type f -exec grep -nH '.*' '{}' +
 RUN apt-get -y update
 RUN apt-get -y upgrade
@@ -25,6 +26,9 @@ RUN apt-get -y --no-install-recommends install \
 	ncurses-dev \
 	libreadline-dev \
 	libssh-dev \
+	crossbuild-essential-arm64 \
+	libreadline-dev:arm64 \
+	ncurses-dev:arm64 \
 	crossbuild-essential-armhf \
 	libreadline-dev:armhf \
 	ncurses-dev:armhf \

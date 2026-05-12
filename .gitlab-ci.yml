@@ -1256,15 +1256,6 @@ build-ubuntu-22.04-amd64:
       optional: true
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
 
-crossbuild-riscv64-ubuntu-22.04-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-ubuntu-22.04-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
-  variables:
-    CROSSBUILD_ARCH: riscv64
-
 
 build-ubuntu-24.04-amd64:
   <<: *build-docker-linux-amd64
@@ -1325,6 +1316,15 @@ build-ubuntu-25.04-amd64:
     - job: docker-ubuntu-25.04-amd64
       optional: true
   image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+
+crossbuild-arm64-ubuntu-25.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-25.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
 
 crossbuild-armhf-ubuntu-25.04-amd64:
   <<: *build-docker-linux-amd64
@@ -1901,16 +1901,6 @@ pkg-ubuntu-22.04-amd64:
     - job: build-release
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
 
-crosspkg-riscv64-ubuntu-22.04-amd64:
-  <<: *pkg-deb
-  needs:
-    - job: crossbuild-riscv64-ubuntu-22.04-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
-  variables:
-    CROSSBUILD_ARCH: riscv64
-
 
 pkg-ubuntu-24.04-amd64:
   <<: *pkg-deb
@@ -1978,6 +1968,16 @@ pkg-ubuntu-25.04-amd64:
       artifacts: false
     - job: build-release
   image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+
+crosspkg-arm64-ubuntu-25.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-arm64-ubuntu-25.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
 
 crosspkg-armhf-ubuntu-25.04-amd64:
   <<: *pkg-deb
@@ -2497,13 +2497,6 @@ install-ubuntu-22.04-amd64:
     - job: pkg-ubuntu-22.04-amd64
   image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
   variables:
-crossinstall-riscv64-ubuntu-22.04-amd64:
-  <<: *install-deb
-  needs:
-    - job: crosspkg-riscv64-ubuntu-22.04-amd64
-  image: registry.nic.cz/labs/bird:ubuntu-22.04-amd64
-  variables:
-    CROSSBUILD_ARCH: riscv64
 
 install-ubuntu-24.04-amd64:
   <<: *install-deb
@@ -2553,6 +2546,13 @@ install-ubuntu-25.04-amd64:
     - job: pkg-ubuntu-25.04-amd64
   image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
   variables:
+crossinstall-arm64-ubuntu-25.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-arm64-ubuntu-25.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-25.04-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
 crossinstall-armhf-ubuntu-25.04-amd64:
   <<: *install-deb
   needs:
