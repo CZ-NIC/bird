@@ -154,6 +154,16 @@ else
   AC_MSG_ERROR([POSIX threads not available.])
 fi
 
+BIRD_CHECK_LIBATOMIC
+
+if test "$bird_cv_lib_atomic" = native ; then
+  true # do nothing
+elif test "$bird_cv_lib_atomic" = no ; then
+  AC_MSG_ERROR([Atomic calls are broken.])
+else
+  LIBS="$LIBS $bird_cv_lib_atomic"
+fi
+
 # This is assumed to be necessary for proper BIRD build
 CFLAGS="$CFLAGS -fno-strict-aliasing -fno-strict-overflow"
 
@@ -299,7 +309,7 @@ fi
 
 AC_SUBST([iproutedir])
 
-DAEMON_LIBS=
+DAEMON_LIBS=$LIBS
 AC_SUBST(DAEMON_LIBS)
 
 if test "$enable_libssh" != no ; then
