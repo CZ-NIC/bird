@@ -309,7 +309,7 @@ fi
 
 AC_SUBST([iproutedir])
 
-DAEMON_LIBS=$LIBS
+DAEMON_LIBS=
 AC_SUBST(DAEMON_LIBS)
 
 if test "$enable_libssh" != no ; then
