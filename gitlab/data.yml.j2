@@ -131,7 +131,7 @@ distros:
   {% for num, crossarch in (
       ('18.04', []),
       ('20.04', []),
-      ('22.04', ["riscv64"]),
+      ('22.04', []),
       ('24.04', ["arm64", "armhf", "ppc64el", "riscv64", "s390x"]),
       ('25.04', ["armhf", "ppc64el", "riscv64", "s390x"]),
       ('25.10', ["arm64", "armhf", "ppc64el", "riscv64", "s390x"]),
@@ -149,6 +149,7 @@ distros:
 # These ubuntu don't crossbuild. TODO fix that.
 # '22.04' -> ["arm64", "armhf", "ppc64el"] -> Error 127 from `make check` probably because qemu-user is somehow botched
 #	  -> ["s390x"] doesn't pack -> debugedit --build-id --build-id-seed=bird2/2.18\+branch.mq.nightly.d0b6b85ebc17-cznic.1\~jammy debian/bird2/usr/sbin/birdc died with signal 11
+#	  -> ["riscv64"] fails on dynamic linking libatomic.so.1 when running tests
 # '25.04' -> ["arm64"] fails in `make check` with Timeout expired on `rt-fib_test`
 
 birdlab:
