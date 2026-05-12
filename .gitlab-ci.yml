@@ -874,7 +874,7 @@ docker-ubuntu-25.10-amd64:
     - MAKE=make
     - which gmake 2>/dev/null >/dev/null && MAKE=gmake
     - $MAKE VERBOSE=1
-    - $MAKE VERBOSE=1 check
+    - $MAKE VERBOSE=1 TEST_RETRY_VERBOSE=1 check
     # Build docs when tools are available
     - if which linuxdoc pdflatex sgmlsasp >/dev/null ; then $MAKE docs ; fi
     # Check that the reported version is the right one
