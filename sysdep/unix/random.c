@@ -22,20 +22,10 @@
 
 _Thread_local unsigned short random_state[3];
 
-long
+u32
 brandom(void)
 {
-  return jrand48(random_state);
-}
-
-u32
-random_u32(void)
-{
-  long int rand_low, rand_high;
-
-  rand_low = brandom();
-  rand_high = brandom();
-  return (rand_low & 0xffff) | ((rand_high & 0xffff) << 16);
+  return (u32) jrand48(random_state);
 }
 
 
