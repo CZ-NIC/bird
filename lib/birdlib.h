@@ -325,6 +325,7 @@ struct dump_request {
   u64 size;
   btime begin;
   uint indent, offset;
+  struct timeformat *tf;
   void (*write)(struct dump_request *, const char *fmt, ...);
   void (*report)(struct dump_request *, int state, const char *fmt, ...);
 };

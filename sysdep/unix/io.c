@@ -426,6 +426,7 @@ cmd_dump_file(struct cli *cli, const char *file, const char *what, void (*dump)(
 
   req->cli = cli;
   req->dr.report = cmd_dump_report;
+  req->dr.tf = cli->tf ?: &(atomic_load_explicit(&global_runtime, memory_order_relaxed))->tf_base;
 
   dump_to_file_run(&req->dr, file, what, dump);
 }
