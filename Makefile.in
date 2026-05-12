@@ -181,7 +181,7 @@ $(tests_targets): %: %.o $(tests_objs) | prepare
 $(tests_targets): LIBS += $(DAEMON_LIBS)
 
 $(tests_targets_ok): %.ok: %
-	$(Q)$(if $(CROSSBUILD_ARCH),qemu-$(CROSSBUILD_ARCH) )$* 2>/dev/null && touch $*.ok
+	$(Q)$(if $(CROSSBUILD_ARCH),qemu-$(CROSSBUILD_ARCH) )$* 2>/dev/null && touch $*.ok $(if $(TEST_RETRY_VERBOSE), || ($(if $(CROSSBUILD_ARCH),qemu-$(CROSSBUILD_ARCH) )$* -ftv && false))
 
 test: testsclean check
 check: tests tests_run
