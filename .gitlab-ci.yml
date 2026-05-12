@@ -78,6 +78,7 @@ spec:
       - ubuntu-24.04-amd64
       - ubuntu-25.04-amd64
       - ubuntu-25.10-amd64
+      - ubuntu-26.04-amd64
 
 ---
 
@@ -819,6 +820,19 @@ docker-ubuntu-25.10-amd64:
 
   <<: *docker-build
 
+docker-ubuntu-26.04-amd64:
+  variables:
+    IMG_NAME: "ubuntu-26.04-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"ubuntu-26.04-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"ubuntu-26.04-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
+  <<: *docker-build
+
 
 #####################################################
 ## Linux distro build tests inside Docker builders ##
@@ -1407,6 +1421,59 @@ crossbuild-s390x-ubuntu-25.10-amd64:
     - job: docker-ubuntu-25.10-amd64
       optional: true
   image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
+
+
+build-ubuntu-26.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-26.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+
+crossbuild-arm64-ubuntu-26.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-26.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
+
+crossbuild-armhf-ubuntu-26.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-26.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+
+crossbuild-ppc64el-ubuntu-26.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-26.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+  variables:
+    CROSSBUILD_ARCH: ppc64el
+
+crossbuild-riscv64-ubuntu-26.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-26.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+
+crossbuild-s390x-ubuntu-26.04-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-ubuntu-26.04-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
   variables:
     CROSSBUILD_ARCH: s390x
 
@@ -2064,6 +2131,65 @@ crosspkg-s390x-ubuntu-25.10-amd64:
     CROSSBUILD_ARCH: s390x
 
 
+pkg-ubuntu-26.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: build-ubuntu-26.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+
+crosspkg-arm64-ubuntu-26.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-arm64-ubuntu-26.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
+
+crosspkg-armhf-ubuntu-26.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-armhf-ubuntu-26.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+
+crosspkg-ppc64el-ubuntu-26.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-ppc64el-ubuntu-26.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+  variables:
+    CROSSBUILD_ARCH: ppc64el
+
+crosspkg-riscv64-ubuntu-26.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-riscv64-ubuntu-26.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+
+crosspkg-s390x-ubuntu-26.04-amd64:
+  <<: *pkg-deb
+  needs:
+    - job: crossbuild-s390x-ubuntu-26.04-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
+
+
 
 ## Package installability checks
 
@@ -2599,6 +2725,48 @@ crossinstall-s390x-ubuntu-25.10-amd64:
   needs:
     - job: crosspkg-s390x-ubuntu-25.10-amd64
   image: registry.nic.cz/labs/bird:ubuntu-25.10-amd64
+  variables:
+    CROSSBUILD_ARCH: s390x
+
+install-ubuntu-26.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: pkg-ubuntu-26.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+  variables:
+crossinstall-arm64-ubuntu-26.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-arm64-ubuntu-26.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+  variables:
+    CROSSBUILD_ARCH: arm64
+crossinstall-armhf-ubuntu-26.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-armhf-ubuntu-26.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+  variables:
+    CROSSBUILD_ARCH: armhf
+crossinstall-ppc64el-ubuntu-26.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-ppc64el-ubuntu-26.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+  variables:
+    CROSSBUILD_ARCH: ppc64el
+crossinstall-riscv64-ubuntu-26.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-riscv64-ubuntu-26.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
+  variables:
+    CROSSBUILD_ARCH: riscv64
+crossinstall-s390x-ubuntu-26.04-amd64:
+  <<: *install-deb
+  needs:
+    - job: crosspkg-s390x-ubuntu-26.04-amd64
+  image: registry.nic.cz/labs/bird:ubuntu-26.04-amd64
   variables:
     CROSSBUILD_ARCH: s390x
 
