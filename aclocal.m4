@@ -105,6 +105,80 @@ AC_DEFUN([BIRD_CHECK_PTHREADS],
   CFLAGS="$bird_tmp_cflags"
 ])
 
+m4_define([libatomic_test_type],[
+  do {
+    _Atomic $1 var_$1;
+    $1 loc_$1 = atomic_load_explicit(&var_$1, $2);
+    atomic_store_explicit(&var_$1, loc_$1, $3);
+    loc_$1 = atomic_exchange_explicit(&var_$1, loc_$1, $4);
+    loc_$1 = atomic_fetch_add_explicit(&var_$1, loc_$1, $4);
+    loc_$1 = atomic_fetch_sub_explicit(&var_$1, loc_$1, $4);
+    loc_$1 = atomic_fetch_and_explicit(&var_$1, loc_$1, $4);
+    loc_$1 = atomic_fetch_or_explicit(&var_$1, loc_$1, $4);
+    atomic_compare_exchange_strong_explicit(&var_$1, &loc_$1, 42, $4, $2);
+  } while (0);
+])
+
+m4_define([libatomic_test_type_orders],[
+libatomic_test_type($1, memory_order_relaxed, memory_order_relaxed, memory_order_relaxed)
+libatomic_test_type($1, memory_order_acquire, memory_order_relaxed, memory_order_acquire)
+libatomic_test_type($1, memory_order_relaxed, memory_order_release, memory_order_release)
+libatomic_test_type($1, memory_order_acquire, memory_order_release, memory_order_acq_rel)
+])
+
+m4_define([libatomic_test_signs],[
+libatomic_test_type_orders(uint$1[]_t)
+libatomic_test_type_orders(int$1[]_t)
+])
+
+m4_define([libatomic_test_program],[
+libatomic_test_signs(8)
+libatomic_test_signs(16)
+libatomic_test_signs(32)
+libatomic_test_signs(64)
+])
+
+AC_DEFUN([BIRD_CHECK_LIBATOMIC],
+[
+  AC_CACHE_CHECK(
+    [how atomics are implemented],
+    [bird_cv_lib_atomic],
+    [
+      AC_LINK_IFELSE(
+	[
+	  AC_LANG_PROGRAM(
+	    [
+	      #include <stdatomic.h>
+	      #include <stdint.h>
+	    ],
+	    libatomic_test_program
+	  )
+	],
+	[bird_cv_lib_atomic=native],
+	[
+	  bird_tmp_libs="$LIBS"
+	  LIBS="$LIBS -latomic"
+
+	  AC_LINK_IFELSE([
+	    AC_LANG_PROGRAM(
+	      [
+		#include <stdatomic.h>
+		#include <stdint.h>
+	      ],
+	      libatomic_test_program
+	    )
+	  ],
+	  [bird_cv_lib_atomic=-latomic],
+	  [bird_cv_lib_atomic=no]
+	  )
+
+	  LIBS="$bird_tmp_libs"
+	]
+      )
+    ]
+  )
+])
+
 AC_DEFUN([BIRD_CHECK_MALLOPT],
 [
   AC_CACHE_CHECK(
