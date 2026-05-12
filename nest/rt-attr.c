@@ -2479,6 +2479,7 @@ ea_rehash(void *_ UNUSED)
   while (ea_needs_rehash_down(count, next_order))
     next_order--;
 
+  /* We don't want to rehash too often */
   if (next_order < orig_order - 1)
     next_order--;
 
@@ -2671,6 +2672,76 @@ ea_dump_all(struct dump_request *dreq)
   }
 
   RDUMP("\n");
+}
+
+static void
+ea_dump_atomic_histogram(struct dump_request *dreq, const char *msg, _Atomic u64 *hist, uint len)
+{
+  RDUMP("%s", msg);
+  for (uint i=0; i<len; i++)
+    RDUMP("%lu%c", atomic_load_explicit(&hist[i], memory_order_relaxed), (i == len - 1) ? '\n' : ' ');
+}
+
+static void
+ea_dump_histogram(struct dump_request *dreq, const char *msg, u64 *hist, uint len)
+{
+  RDUMP("%s", msg);
+  for (uint i=0; i<len; i++)
+    RDUMP("%lu%c", hist[i], (i == len - 1) ? '\n' : ' ');
+}
+
+void
+ea_dump_stats(struct dump_request *dreq)
+{
+  RDUMP("Route attribute cache statistics:\n");
+
+#define DAX(m, v)	RDUMP(m, atomic_load_explicit(&rta_hash_table.v, memory_order_relaxed))
+#define AHIST(m, v)	ea_dump_atomic_histogram(dreq, m, v, ARRAY_SIZE(v))
+#define HIST(m, v)	ea_dump_histogram(dreq, m, v, ARRAY_SIZE(v))
+
+  DAX(	    "  Stored:  %u\n", count);
+  RDUMP(    "  Lookup:\n");
+  for (uint i=0; i<EA_LOOKUP_MAX; i++)
+    RDUMP(  "    Pass %01u success:                 %lu\n",
+	i, atomic_load_explicit(&rta_hash_table.pass_cnt[i], memory_order_relaxed));
+  DAX(	    "    Forced retries:                 %lu\n", retry_cnt);
+  DAX(	    "    Total found:                    %lu\n", found_cnt);
+  DAX(	    "    Total inserted:                 %lu\n", insert_cnt);
+  RDUMP(    "  Free:\n");
+  DAX(	    "    Total freed:                    %lu\n", free_cnt);
+  AHIST(    "    Delist loop length histogram:   ", rta_hash_table.delist_hist);
+  DAX(	    "    Total delist loops:             %lu\n", delist_loops_cnt);
+  DAX(	    "    Delist-alloc collisions:        %lu\n", delist_collision_cnt);
+  DAX(	    "    Delist-delist collisions:       %lu\n", delist_avoided_cnt);
+  AHIST(    "    Storage free bulk histogram:    ", rta_hash_table.sdc_hist);
+  DAX(	    "    Storage free deferred retries:  %lu\n", sdc_retries);
+  RDUMP(    "  Rehash:\n");
+  RDUMP(    "    Total runs:                     %lu\n", rta_hash_table.total_rehash_cnt);
+  RDUMP(    "    Total time:                     %t s\n", rta_hash_table.total_rehash_time);
+  RDUMP(    "    Unneeded:                       %lu\n", rta_hash_table.rehashes_aborted);
+
+  uint lrh = rta_hash_table.total_rehash_cnt;
+  if (lrh > ARRAY_SIZE(rta_hash_table.rehash_info))
+    lrh = ARRAY_SIZE(rta_hash_table.rehash_info);
+
+  RDUMP(    "    Last %u rehashes:\n", lrh);
+  for (uint i = 1; i <= lrh; i++)
+  {
+    struct rehash_info *rhi = &rta_hash_table.rehash_info[(rta_hash_table.total_rehash_cnt - i) % ARRAY_SIZE(rta_hash_table.rehash_info)];
+    char tmbuf[128];
+    tm_format_time(tmbuf, dreq->tf, rhi->start);
+    RDUMP(  "      Start:                        %s\n", tmbuf);
+    tm_format_time(tmbuf, dreq->tf, rhi->end);
+    RDUMP(  "      End:                          %s\n", tmbuf);
+    RDUMP(  "      Order change:                 %u -> %u\n", rhi->orig_order, rhi->next_order);
+    RDUMP(  "      Longest chain:                %u\n", rhi->max_chain);
+    HIST(   "      Chain length histogram:       ", rhi->hist);
+    RDUMP(  "      Delist loops while rehashing: %u\n", rhi->delist_loops);
+  }
+
+#undef DAX
+#undef HIST
+#undef AHIST
 }
 
 void

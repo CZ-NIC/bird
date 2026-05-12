@@ -1707,7 +1707,7 @@ This argument can be omitted if there exists only a single instance.
 	<tag><label id="cli-debug">debug <m/protocol/|<m/pattern/|all all|off|{ states|routes|filters|events|packets [, <m/.../] }</tag>
 	Control protocol debugging.
 
-	<tag><label id="cli-dump">dump resources|sockets|ao keys|events|interfaces|neighbors|attributes|routes|protocols "<m/file/"</tag>
+	<tag><label id="cli-dump">dump resources|sockets|ao keys|events|interfaces|neighbors|attributes|attribute stats|routes|protocols "<m/file/"</tag>
 	Creates the given file (it must not exist) and dumps contents of
 	internal data structures there. By sending SIGUSR1, you get all of
 	these concatenated to <cf/bird.dump/ in the current directory.

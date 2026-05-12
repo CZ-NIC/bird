@@ -680,6 +680,7 @@ static inline ea_list *ea_strip_to(ea_list *r, u32 strip_to)
 
 void ea_dump(struct dump_request *, ea_list *);
 void ea_dump_all(struct dump_request *);
+void ea_dump_stats(struct dump_request *);
 void ea_show_list(struct cli *, ea_list *);
 
 #endif

@@ -981,6 +981,8 @@ CF_CLI(DUMP NEIGHBORS, text,, [[Dump neighbor cache]])
 { cmd_dump_file(this_cli, $3, "neighbor cache", neigh_dump_all); } ;
 CF_CLI(DUMP ATTRIBUTES, text,, [[Dump attribute cache]])
 { cmd_dump_file(this_cli, $3, "attribute cache", ea_dump_all); } ;
+CF_CLI(DUMP ATTRIBUTE STATS, text,, [[Dump attribute cache statistics]])
+{ cmd_dump_file(this_cli, $4, "attribute cache statistics", ea_dump_stats); } ;
 CF_CLI(DUMP ROUTES, text,, [[Dump routes]])
 { cmd_dump_file(this_cli, $3, "routing tables", rt_dump_all); } ;
 CF_CLI(DUMP TABLES, text,, [[Dump table connections]])
