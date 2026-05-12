@@ -89,6 +89,7 @@
  * RFC 5668 - 4-Octet AS Specific BGP Extended Community
  * RFC 5925 - TCP Authentication Option
  * RFC 6286 - AS-Wide Unique BGP Identifier
+ * RFC 6514 - BGP PMSI Tunnel Attribute
  * RFC 6608 - Subcodes for BGP Finite State Machine Error
  * RFC 6793 - BGP Support for 4-Octet AS Numbers
  * RFC 7311 - Accumulated IGP Metric Attribute for BGP
