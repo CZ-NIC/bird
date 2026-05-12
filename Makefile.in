@@ -181,6 +181,8 @@ $(tests_targets): %: %.o $(tests_objs) | prepare
 $(tests_targets): LIBS += $(DAEMON_LIBS)
 
 $(tests_targets_ok): %.ok: %
+	ip a
+	ip r
 	$(Q)$(if $(CROSSBUILD_ARCH),qemu-$(CROSSBUILD_ARCH) )$* -v && touch $*.ok
 
 test: testsclean check
