@@ -80,6 +80,7 @@ void
 async_dump(void)
 {
   struct dump_request *dr = dump_to_file_init(0);
+  dr->tf = &(atomic_load_explicit(&global_runtime, memory_order_relaxed))->tf_base;
   dr->report = async_dump_report;
   dump_to_file_run(dr, "bird.dump", "async dump", async_dump_run);
 }
