@@ -52,7 +52,6 @@ spec:
       - opensuse-15.4-amd64
       - opensuse-15.5-amd64
       - opensuse-16.0-amd64
-      - fedora-32-amd64
       - fedora-33-amd64
       - fedora-34-amd64
       - fedora-35-amd64
@@ -64,6 +63,7 @@ spec:
       - fedora-41-amd64
       - fedora-42-amd64
       - fedora-43-amd64
+      - fedora-44-amd64
       - debian-11-amd64
       - debian-11-i386
       - debian-12-amd64
@@ -482,19 +482,6 @@ docker-opensuse-16.0-amd64:
 
   <<: *docker-build
 
-docker-fedora-32-amd64:
-  variables:
-    IMG_NAME: "fedora-32-amd64"
-
-  rules:
-    # Only rebuild if explicitly requested
-  - if: '"$[[ inputs.docker-all ]]" == "true"'
-  - if: '"fedora-32-amd64" =~ /$[[ inputs.docker-regex ]]/'
-  - if: '"fedora-32-amd64" == "$[[ inputs.docker-one ]]"'
-  - when: never
-
-  <<: *docker-build
-
 docker-fedora-33-amd64:
   variables:
     IMG_NAME: "fedora-33-amd64"
@@ -634,6 +621,19 @@ docker-fedora-43-amd64:
   - if: '"$[[ inputs.docker-all ]]" == "true"'
   - if: '"fedora-43-amd64" =~ /$[[ inputs.docker-regex ]]/'
   - if: '"fedora-43-amd64" == "$[[ inputs.docker-one ]]"'
+  - when: never
+
+  <<: *docker-build
+
+docker-fedora-44-amd64:
+  variables:
+    IMG_NAME: "fedora-44-amd64"
+
+  rules:
+    # Only rebuild if explicitly requested
+  - if: '"$[[ inputs.docker-all ]]" == "true"'
+  - if: '"fedora-44-amd64" =~ /$[[ inputs.docker-regex ]]/'
+  - if: '"fedora-44-amd64" == "$[[ inputs.docker-one ]]"'
   - when: never
 
   <<: *docker-build
@@ -1004,13 +1004,6 @@ build-opensuse-16.0-amd64:
       optional: true
   image: registry.nic.cz/labs/bird:opensuse-16.0-amd64
 
-build-fedora-32-amd64:
-  <<: *build-docker-linux-amd64
-  needs:
-    - job: docker-fedora-32-amd64
-      optional: true
-  image: registry.nic.cz/labs/bird:fedora-32-amd64
-
 build-fedora-33-amd64:
   <<: *build-docker-linux-amd64
   needs:
@@ -1087,6 +1080,13 @@ build-fedora-43-amd64:
     - job: docker-fedora-43-amd64
       optional: true
   image: registry.nic.cz/labs/bird:fedora-43-amd64
+
+build-fedora-44-amd64:
+  <<: *build-docker-linux-amd64
+  needs:
+    - job: docker-fedora-44-amd64
+      optional: true
+  image: registry.nic.cz/labs/bird:fedora-44-amd64
 
 build-debian-11-amd64:
   <<: *build-docker-linux-amd64
@@ -1659,14 +1659,6 @@ pkg-opensuse-16.0-amd64:
     - job: build-release
   image: registry.nic.cz/labs/bird:opensuse-16.0-amd64
 
-pkg-fedora-32-amd64:
-  <<: *pkg-rpm
-  needs:
-    - job: build-fedora-32-amd64
-      artifacts: false
-    - job: build-release
-  image: registry.nic.cz/labs/bird:fedora-32-amd64
-
 pkg-fedora-33-amd64:
   <<: *pkg-rpm
   needs:
@@ -1754,6 +1746,14 @@ pkg-fedora-43-amd64:
       artifacts: false
     - job: build-release
   image: registry.nic.cz/labs/bird:fedora-43-amd64
+
+pkg-fedora-44-amd64:
+  <<: *pkg-rpm
+  needs:
+    - job: build-fedora-44-amd64
+      artifacts: false
+    - job: build-release
+  image: registry.nic.cz/labs/bird:fedora-44-amd64
 
 pkg-debian-11-amd64:
   <<: *pkg-deb
@@ -2355,14 +2355,6 @@ install-opensuse-16.0-amd64:
   variables:
     RPM_INSTALL_CMD: zypper --non-interactive --no-gpg-checks in
 
-install-fedora-32-amd64:
-  <<: *install-rpm
-  needs:
-    - job: pkg-fedora-32-amd64
-  image: registry.nic.cz/labs/bird:fedora-32-amd64
-  variables:
-    RPM_INSTALL_CMD: rpm -i
-
 install-fedora-33-amd64:
   <<: *install-rpm
   needs:
@@ -2448,6 +2440,14 @@ install-fedora-43-amd64:
   needs:
     - job: pkg-fedora-43-amd64
   image: registry.nic.cz/labs/bird:fedora-43-amd64
+  variables:
+    RPM_INSTALL_CMD: rpm -i
+
+install-fedora-44-amd64:
+  <<: *install-rpm
+  needs:
+    - job: pkg-fedora-44-amd64
+  image: registry.nic.cz/labs/bird:fedora-44-amd64
   variables:
     RPM_INSTALL_CMD: rpm -i
 

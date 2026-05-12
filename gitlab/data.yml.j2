@@ -86,7 +86,7 @@ distros:
   {% endfor %}
 
   # Last 12 versions of Fedora
-  {% for num in (32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43) -%}
+  {% for num in (33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44) -%}
   - name: fedora-{{ num }}-amd64
     type: rpm
     docker:
@@ -97,9 +97,7 @@ distros:
       {%- if num <= 36 %}
       alternative_lsb: redhat-lsb-core
       {%- endif %}
-      {%- if num > 32 %}
       systemd: true
-      {%- endif %}
 
   {% endfor %}
 
