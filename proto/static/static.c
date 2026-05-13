@@ -319,6 +319,8 @@ static_add_rte(struct static_proto *p, struct static_route *r)
     {
       n = neigh_find(&p->p, r2->via, r2->iface, NEF_STICKY |
 		     (r2->onlink ? NEF_ONLINK : 0) |
+		     /* Hack for VXLAN forwarding entries */
+		     ((p->p.net_type == NET_ETH) ? NEF_ONLINK : 0) |
 		     (ipa_zero(r2->via) ? NEF_IFACE : 0));
 
       if (!n)
