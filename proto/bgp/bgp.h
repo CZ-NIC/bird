@@ -798,6 +798,8 @@ u32 bgp_rte_igp_metric(const rte *);
 void bgp_rt_notify(struct proto *P, struct channel *C, const net_addr *n, rte *new, const rte *old);
 int bgp_preexport(struct channel *, struct rte *);
 void bgp_get_route_info(const rte *, byte *);
+
+adata * bgp_pmsi_new_ingress_replication(linpool *pool, ip_addr addr, u32 label);
 int bgp_total_aigp_metric_(const rte *e, u64 *metric, const struct adata **ad);
 
 static inline struct bgp_proto *bgp_rte_proto(const rte *rte)
@@ -807,6 +809,32 @@ static inline struct bgp_proto *bgp_rte_proto(const rte *rte)
 }
 
 byte * bgp_bmp_encode_rte(ea_list *channel_state, byte *buf, byte *end, const struct rte *new);
+
+#define BGP_PMSI_TYPE_NO_INFO	0
+#define BGP_PMSI_TYPE_INGRESS_REPLICATION	6
+
+static inline uint
+bgp_pmsi_get_type(const adata *ad)
+{ return ad->data[1]; }
+
+static inline u32
+bgp_pmsi_get_label(const adata *ad)
+{ return get_u24(ad->data + 2); }
+
+static inline ip_addr
+bgp_pmsi_ir_get_endpoint(const adata *ad)
+{
+  uint dlen = ad->length - 5;
+  const byte *data = ad->data + 5;
+
+  if (dlen == sizeof(ip4_addr))
+    return ipa_from_ip4(get_ip4(data));
+  else if (dlen == sizeof(ip6_addr))
+    return ipa_from_ip6(get_ip6(data));
+  else
+    return IPA_NONE;
+}
+
 
 #define BGP_AIGP_METRIC		1
 #define BGP_AIGP_MAX		U64(0xffffffffffffffff)
@@ -891,9 +919,10 @@ enum bgp_attr_id {
   BA_EXT_COMMUNITY	= 0x10,	/* RFC 4360 */
   BA_AS4_PATH		= 0x11,	/* RFC 6793 */
   BA_AS4_AGGREGATOR	= 0x12,	/* RFC 6793 */
+  BA_PMSI_TUNNEL	= 0x16, /* RFC 6514 */
   BA_AIGP		= 0x1a,	/* RFC 7311 */
   BA_LARGE_COMMUNITY	= 0x20,	/* RFC 8092 */
-#define BA_ONLY_TO_CUSTOMER	0x23	/* RFC 9234 */
+  BA_ONLY_TO_CUSTOMER	= 0x23,	/* RFC 9234 */
 
 /* Bird's private internal BGP attributes */
   BA_MPLS_LABEL_STACK	= 0x100, /* MPLS label stack transfer attribute */
