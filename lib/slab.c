@@ -57,13 +57,12 @@ struct slab {
   list objs;
 };
 
-static struct resclass sl_class = {
-  "FakeSlab",
-  sizeof(struct slab),
-  slab_free,
-  slab_dump,
-  NULL,
-  slab_memsize
+static const struct resclass sl_class = {
+  .name = "FakeSlab",
+  .size = sizeof(struct slab),
+  .free = slab_free,
+  .dump = slab_dump,
+  .memsize = slab_memsize,
 };
 
 struct sl_obj {
@@ -183,13 +182,13 @@ struct slab {
   struct sl_head_list empty_heads, partial_heads, full_heads;
 };
 
-static struct resclass sl_class = {
-  "Slab",
-  sizeof(struct slab),
-  slab_free,
-  slab_dump,
-  slab_lookup,
-  slab_memsize
+static const struct resclass sl_class = {
+  .name = "Slab",
+  .size = sizeof(struct slab),
+  .free = slab_free,
+  .dump = slab_dump,
+  .lookup  = slab_lookup,
+  .memsize = slab_memsize,
 };
 
 #define SL_GET_HEAD(x)	PAGE_HEAD(x)

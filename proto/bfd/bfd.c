@@ -899,7 +899,7 @@ bfd_request_ref_dump(struct dump_request *dreq, resource *r)
   rcu_read_unlock();
 }
 
-static struct resclass bfd_request_ref_class = {
+static const struct resclass bfd_request_ref_class = {
   .name = "BFD request reference",
   .size = sizeof(struct bfd_request_ref),
   .free = bfd_request_ref_free,

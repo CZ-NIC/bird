@@ -37,13 +37,13 @@ static void pool_free(resource *);
 static resource *pool_lookup(resource *, unsigned long);
 static struct resmem pool_memsize(resource *P);
 
-static struct resclass pool_class = {
-  "Pool",
-  sizeof(pool),
-  pool_free,
-  pool_dump,
-  pool_lookup,
-  pool_memsize
+static const struct resclass pool_class = {
+  .name = "Pool",
+  .size = sizeof(pool),
+  .free = pool_free,
+  .dump = pool_dump,
+  .lookup  = pool_lookup,
+  .memsize = pool_memsize,
 };
 
 pool root_pool;
@@ -298,7 +298,7 @@ rmemsize(void *res)
  * from the @size field of the &resclass.
  */
 void *
-ralloc(pool *p, struct resclass *c)
+ralloc(pool *p, const struct resclass *c)
 {
   ASSERT_DIE(DG_IS_LOCKED(p->domain));
 
@@ -421,13 +421,13 @@ mbl_memsize(resource *r)
   };
 }
 
-static struct resclass mb_class = {
-  "Memory",
-  0,
-  mbl_free,
-  mbl_debug,
-  mbl_lookup,
-  mbl_memsize
+static const struct resclass mb_class = {
+  .name = "Memory",
+  .size = 0,
+  .free = mbl_free,
+  .dump = mbl_debug,
+  .lookup  = mbl_lookup,
+  .memsize = mbl_memsize,
 };
 
 /**

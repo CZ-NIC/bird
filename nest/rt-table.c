@@ -3757,12 +3757,11 @@ rt_res_memsize(resource *_r)
   };
 }
 
-static struct resclass rt_class = {
+static const struct resclass rt_class = {
   .name = "Routing table",
   .size = sizeof(rtable),
   .free = rt_free,
   .dump = rt_res_dump,
-  .lookup = NULL,
   .memsize = rt_res_memsize,
 };
 

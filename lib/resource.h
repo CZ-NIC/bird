@@ -70,7 +70,7 @@ struct resmem rmemsize(void *res);		/* Return size of memory used by the resourc
 void rlookup(unsigned long);		/* Look up address (only for debugging) */
 void rmove(void *, pool *);		/* Move to a different pool */
 
-void *ralloc(pool *, struct resclass *);
+void *ralloc(pool *, const struct resclass *);
 
 pool *rp_new(pool *, struct domain_generic *, const char *);		/* Create a new pool */
 pool *rp_newf(pool *, struct domain_generic *, const char *, ...);	/* Create a new pool with a formatted string as its name */
