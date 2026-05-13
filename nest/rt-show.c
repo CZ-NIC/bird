@@ -294,35 +294,31 @@ rt_show_cont(struct cli *c)
     rt_show_table(d);
 
   const struct rt_export_feed *feeds[129] = { 0 };
-  int pos = 0;
 
   RT_FEED_WALK(&d->tab->req, f)
     TMP_SAVED
     {
       if (d->addr_mode == TE_ADDR_FOR)
-        feeds[pos++] = f;
+      {
+	/* Skip prefixes longer than requested */
+	if (f && (f->ni->addr->pxlen <= d->addr->pxlen))
+	  feeds[f->ni->addr->pxlen] = f;
+      }
       else
       {
-        if (f->count_routes > 0)
-          rt_show_net(d, f);
+	if (f && (f->count_routes > 0))
+	  rt_show_net(d, f);
       }
     }
 
-  if (d->addr_mode == TE_ADDR_FOR)
+  for (int i = 128; i >= 0; i--)
   {
-    for (int i = pos - 1; i >= 0; i--)
+    const struct rt_export_feed *f = feeds[i];
+
+    if (f && (f->count_routes > 0))
     {
-      const struct rt_export_feed *f = feeds[i];
-
-      /* Skip prefixes longer than requested */
-      if (!f || (f->ni->addr->pxlen > d->addr->pxlen))
-	continue;
-
-      if (f->count_routes > 0)
-      {
-	rt_show_net(d, f);
-	break;
-      }
+      rt_show_net(d, f);
+      break;
     }
   }
 
