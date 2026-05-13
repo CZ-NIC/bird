@@ -11,6 +11,8 @@
 #define _BIRD_NET_H_
 
 #include "lib/ip.h"
+#include "lib/evpn.h"
+#include "lib/hash.h"
 
 
 #define NET_IP4		1
@@ -24,8 +26,9 @@
 #define NET_IP6_SADR	9
 #define NET_MPLS	10
 #define NET_ASPA	11
-#define NET_NEIGHBOR	12
-#define NET_MAX		13
+#define NET_EVPN	12
+#define NET_NEIGHBOR	13
+#define NET_MAX		14
 
 #define NB_IP4		(1 << NET_IP4)
 #define NB_IP6		(1 << NET_IP6)
@@ -38,13 +41,14 @@
 #define NB_IP6_SADR	(1 << NET_IP6_SADR)
 #define NB_MPLS		(1 << NET_MPLS)
 #define NB_ASPA		(1 << NET_ASPA)
+#define NB_EVPN		(1 << NET_EVPN)
 #define NB_NEIGHBOR	(1 << NET_NEIGHBOR)
 
 #define NB_IP		(NB_IP4 | NB_IP6)
 #define NB_VPN		(NB_VPN4 | NB_VPN6)
 #define NB_ROA		(NB_ROA4 | NB_ROA6)
 #define NB_FLOW		(NB_FLOW4 | NB_FLOW6)
-#define NB_DEST		(NB_IP | NB_IP6_SADR | NB_VPN | NB_MPLS)
+#define NB_DEST		(NB_IP | NB_IP6_SADR | NB_VPN | NB_MPLS | NB_EVPN)
 #define NB_ANY		0xffffffff
 
 
@@ -152,6 +156,82 @@ typedef struct net_addr_ip6_sadr {
   ip6_addr src_prefix;
 } net_addr_ip6_sadr;
 
+typedef struct net_addr_evpn_ead {
+  u8 type;
+  u8 subtype;
+  u16 length;
+  u32 tag;
+  vpn_rd rd;
+
+  evpn_esi esi;
+  u8 padding[6];
+} net_addr_evpn_ead;
+
+typedef struct net_addr_evpn_mac {
+  u8 type;
+  u8 subtype;
+  u16 length;
+  u32 tag;
+  vpn_rd rd;
+
+  mac_addr mac;
+  u16 padding;
+} net_addr_evpn_mac;
+
+typedef struct net_addr_evpn_mac_ip {
+  u8 type;
+  u8 subtype;
+  u16 length;
+  u32 tag;
+  vpn_rd rd;
+
+  mac_addr mac;
+  u16 padding0;
+  ip_addr ip;
+} net_addr_evpn_mac_ip;
+
+typedef struct net_addr_evpn_imet {
+  u8 type;
+  u8 subtype;
+  u16 length;
+  u32 tag;
+  vpn_rd rd;
+
+  ip_addr rtr;
+} net_addr_evpn_imet;
+
+typedef struct net_addr_evpn_es {
+  u8 type;
+  u8 subtype;
+  u16 length;
+  u32 tag;	/* unused */
+  vpn_rd rd;
+
+  evpn_esi esi;
+  u8 padding[6];
+  ip_addr rtr;
+} net_addr_evpn_es;
+
+typedef union net_addr_evpn {
+  struct {
+    u8 type;
+    u8 subtype;
+    u16 length;
+    u32 tag;
+    vpn_rd rd;
+    byte data[0];
+  };
+  net_addr_evpn_ead ead;
+  net_addr_evpn_mac mac;
+  net_addr_evpn_mac_ip mac_ip;
+  net_addr_evpn_imet imet;
+  net_addr_evpn_es es;
+} net_addr_evpn;
+
+#define NET_EVPN_HDR_LENGTH	OFFSETOF(net_addr_evpn, data)
+#define NET_EVPN_MAX_LENGTH	(NET_EVPN_HDR_LENGTH + 256)
+
+
 typedef union net_addr_union {
   net_addr n;
   net_addr_ip4 ip4;
@@ -165,6 +245,7 @@ typedef union net_addr_union {
   net_addr_ip6_sadr ip6_sadr;
   net_addr_mpls mpls;
   net_addr_aspa aspa;
+  net_addr_evpn evpn;
   net_addr_nbr nbr;
 } net_addr_union;
 
@@ -223,11 +304,29 @@ extern const u16 net_max_text_length[];
 #define NET_ADDR_IP6_SADR(dst_prefix,dst_pxlen,src_prefix,src_pxlen) \
   ((net_addr_ip6_sadr) { NET_IP6_SADR, dst_pxlen, sizeof(net_addr_ip6_sadr), dst_prefix, src_pxlen, src_prefix })
 
+#define NET_ADDR_MPLS(label) \
+  ((net_addr_mpls) { NET_MPLS, 20, sizeof(net_addr_mpls), label })
+
 #define NET_ADDR_ASPA(asn) \
   ((net_addr_aspa) { NET_ASPA, 32, sizeof(net_addr_aspa), asn })
 
-#define NET_ADDR_MPLS(label) \
-  ((net_addr_mpls) { NET_MPLS, 20, sizeof(net_addr_mpls), label })
+#define NET_ADDR_EVPN_EAD(rd, tag, esi) \
+  ((net_addr_evpn_ead) { NET_EVPN, NET_EVPN_EAD, sizeof(net_addr_evpn_ead), tag, rd, .esi = esi })
+
+#define NET_ADDR_EVPN_MAC(rd, tag, mac) \
+  ((net_addr_evpn_mac) { NET_EVPN, NET_EVPN_MAC, sizeof(net_addr_evpn_mac), tag, rd, .mac = mac })
+
+#define NET_ADDR_EVPN_MAC_IP(rd, tag, mac, ip) \
+  ((net_addr_evpn_mac_ip) { NET_EVPN, NET_EVPN_MAC, sizeof(net_addr_evpn_mac_ip), tag, rd, .mac = mac, .ip = ip })
+
+#define NET_ADDR_EVPN_IMET(rd, tag, rtr) \
+  ((net_addr_evpn_imet) { NET_EVPN, NET_EVPN_IMET, sizeof(net_addr_evpn_imet), tag, rd, .rtr = rtr })
+
+#define NET_ADDR_EVPN_ES(rd, esi, rtr) \
+  ((net_addr_evpn_es) { NET_EVPN, NET_EVPN_ES, sizeof(net_addr_evpn_es), 0, rd, .esi = esi, .rtr = rtr })
+
+#define NET_ADDR_EVPN_RAW(subtype, dlen) \
+  ((net_addr_evpn) {{ NET_EVPN, subtype, NET_EVPN_HDR_LENGTH + dlen, 0, RD_NONE }})
 
 #define NET_ADDR_NBR(addr, ifindex) \
   ((net_addr_nbr) { NET_NEIGHBOR, 0, sizeof(net_addr_nbr), addr, ifindex })
@@ -259,6 +358,28 @@ static inline void net_fill_mpls(net_addr *a, u32 label)
 
 static inline void net_fill_aspa(net_addr *a, u32 asn)
 { *(net_addr_aspa *)a = NET_ADDR_ASPA(asn); }
+
+static inline void net_fill_evpn_ead(net_addr *a, vpn_rd rd, u32 tag, evpn_esi esi)
+{ *(net_addr_evpn_ead *)a = NET_ADDR_EVPN_EAD(rd, tag, esi); }
+
+static inline void net_fill_evpn_mac(net_addr *a, vpn_rd rd, u32 tag, mac_addr mac)
+{ *(net_addr_evpn_mac *)a = NET_ADDR_EVPN_MAC(rd, tag, mac); }
+
+static inline void net_fill_evpn_mac_ip(net_addr *a, vpn_rd rd, u32 tag, mac_addr mac, ip_addr ip)
+{ *(net_addr_evpn_mac_ip *)a = NET_ADDR_EVPN_MAC_IP(rd, tag, mac, ip); }
+
+static inline void net_fill_evpn_imet(net_addr *a, vpn_rd rd, u32 tag, ip_addr rtr)
+{ *(net_addr_evpn_imet *)a = NET_ADDR_EVPN_IMET(rd, tag, rtr); }
+
+static inline void net_fill_evpn_es(net_addr *a, vpn_rd rd, evpn_esi esi, ip_addr rtr)
+{ *(net_addr_evpn_es *)a = NET_ADDR_EVPN_ES(rd, esi, rtr); }
+
+static inline void net_fill_evpn_raw(net_addr *a, uint subtype, byte *data, uint dlen)
+{
+  net_addr_evpn *n = (void *) a;
+  *n = NET_ADDR_EVPN_RAW(subtype, dlen);
+  memcpy(n->data, data, dlen);
+}
 
 static inline void net_fill_nbr(net_addr *a, ip_addr addr, u32 ifindex)
 { *(net_addr_nbr *)a = NET_ADDR_NBR(addr, ifindex); }
@@ -356,6 +477,7 @@ static inline ip_addr net_prefix(const net_addr *a)
 
   case NET_MPLS:
   case NET_ASPA:
+  case NET_EVPN:
   default:
     return IPA_NONE;
   }
@@ -388,9 +510,14 @@ static inline vpn_rd net_rd(const net_addr *a)
     return ((net_addr_vpn4 *)a)->rd;
   case NET_VPN6:
     return ((net_addr_vpn6 *)a)->rd;
+  case NET_EVPN:
+    return ((net_addr_evpn *)a)->rd;
   }
   return RD_NONE;
 }
+
+static inline uint net_evpn_data_length(const net_addr_evpn *a)
+{ return a->length - NET_EVPN_HDR_LENGTH; }
 
 
 static inline int net_equal(const net_addr *a, const net_addr *b)
@@ -428,6 +555,9 @@ static inline int net_equal_mpls(const net_addr_mpls *a, const net_addr_mpls *b)
 
 static inline int net_equal_aspa(const net_addr_aspa *a, const net_addr_aspa *b)
 { return !memcmp(a, b, sizeof(net_addr_aspa)); }
+
+static inline int net_equal_evpn(const net_addr_evpn *a, const net_addr_evpn *b)
+{ return net_equal((const net_addr *) a, (const net_addr *) b); }
 
 static inline int net_equal_nbr(const net_addr_nbr *a, const net_addr_nbr *b)
 { return !memcmp(a, b, sizeof(net_addr_nbr)); }
@@ -517,6 +647,13 @@ static inline int net_compare_mpls(const net_addr_mpls *a, const net_addr_mpls *
 static inline int net_compare_aspa(const net_addr_aspa *a, const net_addr_aspa *b)
 { return uint_cmp(a->asn, b->asn); }
 
+static inline int net_compare_evpn(const net_addr_evpn *a, const net_addr_evpn *b)
+{
+  return
+    uint_cmp(a->subtype, b->subtype) ?: rd_compare(a->rd, b->rd) ?: uint_cmp(a->tag, b->tag) ?:
+    uint_cmp(a->length, b->length) ?: memcmp(a->data, b->data, net_evpn_data_length(a));
+}
+
 static inline int net_compare_nbr(const net_addr_nbr *a, const net_addr_nbr *b)
 { return ipa_compare(a->addr, b->addr) ?: uint_cmp(a->ifindex, b->ifindex); }
 
@@ -558,6 +695,9 @@ static inline void net_copy_mpls(net_addr_mpls *dst, const net_addr_mpls *src)
 
 static inline void net_copy_aspa(net_addr_aspa *dst, const net_addr_aspa *src)
 { memcpy(dst, src, sizeof(net_addr_aspa)); }
+
+static inline void net_copy_evpn(net_addr_evpn *dst, const net_addr_evpn *src)
+{ memcpy(dst, src, src->length); }
 
 static inline void net_copy_nbr(net_addr_nbr *dst, const net_addr_nbr *src)
 { memcpy(dst, src, sizeof(net_addr_nbr)); }
@@ -607,6 +747,9 @@ static inline u32 net_hash_mpls(const net_addr_mpls *n)
 
 static inline u32 net_hash_aspa(const net_addr_aspa *n)
 { return u32_hash(n->asn); }
+
+static inline u32 net_hash_evpn(const net_addr_evpn *n)
+{ return mem_hash(&n->tag, n->length - OFFSETOF(net_addr_evpn, tag)); }
 
 static inline u32 net_hash_nbr(const net_addr_nbr *n)
 { return ipa_hash(n->addr) ^ u32_hash(n->ifindex); }
@@ -662,6 +805,9 @@ static inline int net_validate_mpls(const net_addr_mpls *n)
 
 static inline int net_validate_aspa(const net_addr_aspa *n)
 { return n->asn > 0; }
+
+static inline int net_validate_evpn(const net_addr_evpn *n UNUSED)
+{ return 1; /* XXX */ }
 
 static inline int net_validate_nbr(const net_addr_nbr *n)
 { return ipa_nonzero(n->addr); }
