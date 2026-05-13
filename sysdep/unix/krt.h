@@ -21,6 +21,7 @@ struct kif_proto;
 
 #define KRT_DEFAULT_ECMP_LIMIT	16
 
+extern struct ea_class ea_iface_type, ea_iface_bridge_vlan_filtering, ea_iface_vxlan_id, ea_iface_vxlan_learning, ea_iface_vxlan_ip_addr;
 extern struct ea_class ea_krt_source, ea_krt_metric;
 
 #define KRT_REF_SEEN	0x1	/* Seen in table */
@@ -29,6 +30,16 @@ extern struct ea_class ea_krt_source, ea_krt_metric;
 #define KRT_LEARN_NONE	0	/* Do not learn */
 #define KRT_LEARN_ALIEN	1	/* Learn KRT_SRC_ALIEN routes */
 #define KRT_LEARN_ALL	2	/* Learn both KRT_SRC_ALIEN and KRT_SRC_KERNEL routes */
+
+
+#define EA_IFACE_TYPE			EA_CODE(PROTOCOL_DEVICE, 0)
+
+#define EA_IFACE_BRIDGE_VLAN_FILTERING	EA_CODE(PROTOCOL_DEVICE, 1)
+
+#define EA_IFACE_VXLAN_ID		EA_CODE(PROTOCOL_DEVICE, 2)
+#define EA_IFACE_VXLAN_LEARNING		EA_CODE(PROTOCOL_DEVICE, 3)
+#define EA_IFACE_VXLAN_IP_ADDR		EA_CODE(PROTOCOL_DEVICE, 4)
+
 
 /* Whenever we recognize our own routes, we allow learing of foreign routes */
 

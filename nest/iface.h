@@ -51,6 +51,12 @@ struct iface {
   unsigned uc;				/* Use (link) count */
 };
 
+enum iface_type {
+  IF_TYPE_UNDEF,
+  IF_TYPE_BRIDGE,
+  IF_TYPE_VXLAN,
+};
+
 #define IF_UP 1				/* Currently just IF_ADMIN_UP */
 #define IF_MULTIACCESS 2
 #define IF_BROADCAST 4

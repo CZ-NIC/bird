@@ -247,6 +247,31 @@ kif_copy_config(struct proto_config *dest, struct proto_config *src)
   kif_sys_copy_config(d, s);
 }
 
+struct ea_class ea_iface_type = {
+  .name = "iface_type",
+  .type = T_ENUM_IFACE_TYPE,
+};
+
+struct ea_class ea_iface_bridge_vlan_filtering = {
+  .name = "iface_bridge_vlan_filtering",
+  .type = T_BOOL,
+};
+
+struct ea_class ea_iface_vxlan_id = {
+  .name = "iface_vxlan_id",
+  .type = T_INT,
+};
+
+struct ea_class ea_iface_vxlan_learning = {
+  .name = "iface_vxlan_learning",
+  .type = T_BOOL,
+};
+
+struct ea_class ea_iface_vxlan_ip_addr = {
+  .name = "iface_vxlan_ip_addr",
+  .type = T_IP,
+};
+
 struct protocol proto_unix_iface = {
   .name = 		"Device",
   .template = 		"device%d",
@@ -266,6 +291,14 @@ void
 kif_build(void)
 {
   proto_build(&proto_unix_iface);
+
+  EA_REGISTER_ALL(
+      &ea_iface_type,
+      &ea_iface_bridge_vlan_filtering,
+      &ea_iface_vxlan_id,
+      &ea_iface_vxlan_learning,
+      &ea_iface_vxlan_ip_addr,
+      );
 }
 
 
