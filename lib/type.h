@@ -37,6 +37,7 @@ union bval_long {
   lcomm lc;
   vpn_rd rd;
   ip_addr ip;
+  mac_addr mac;
   const net_addr *net;
   const char *s;
   const struct adata *bs;
@@ -115,6 +116,7 @@ enum btype {
   T_PATH_MASK_ITEM = 0xc8,	/* Path mask item for path mask constructors */
   T_BYTESTRING = 0xcc,
   T_ROA_AGGREGATED = 0xd0,	/* ASN and maxlen tuple list */
+  T_MAC = 0xd8,		/* MAC address */
 
 
   T_SET = 0x80,
