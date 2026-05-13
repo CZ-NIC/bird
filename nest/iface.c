@@ -232,6 +232,8 @@ if_what_changed(struct iface *i, struct iface *j)
     c |= IF_CHANGE_LINK;
   if (i->mtu != j->mtu)
     c |= IF_CHANGE_MTU;
+  if (i->attrs != j->attrs)
+    c |= IF_CHANGE_ATTRS;
   return c;
 }
 
@@ -244,6 +246,7 @@ if_copy(struct iface *to, struct iface *from)
 
   if_unlink(to->master);
   if_link(to->master = from->master);
+  to->attrs = from->attrs;
 }
 
 void
@@ -465,6 +468,9 @@ if_update_locked(struct iface *new)
   struct iface *i;
   unsigned c;
 
+  if (new->attrs)
+    new->attrs = ea_lookup(new->attrs, 0, EALS_CUSTOM);
+
   if (!new->master)
     new->master = &default_vrf;
 
@@ -472,6 +478,8 @@ if_update_locked(struct iface *new)
     if (!strcmp(new->name, i->name))
       {
 	new->flags = if_recalc_flags(new, new->flags);
+	ea_free(i->attrs);
+
 	c = if_what_changed(i, new);
 	if (c & IF_CHANGE_TOO_MUCH)	/* Changed a lot, convert it to down/up */
 	  {

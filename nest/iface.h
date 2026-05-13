@@ -47,6 +47,7 @@ struct iface {
   struct ifa *llv6;			/* Primary link-local address for IPv6 */
   ip4_addr sysdep;			/* Arbitrary IPv4 address for internal sysdep use */
   list neighbors;			/* All neighbors on this interface */
+  struct ea_list *attrs;		/* Additional interface attributes */
   unsigned uc;				/* Use (link) count */
 };
 
@@ -101,6 +102,7 @@ struct iface {
 #define IF_CHANGE_ADDR6	0x200		/* ... */
 #define IF_CHANGE_LLV6 0x400
 #define IF_CHANGE_SYSDEP 0x800
+#define IF_CHANGE_ATTRS 0x1000
 #define IF_CHANGE_TOO_MUCH 0x40000000	/* Used internally */
 
 #define IF_CHANGE_UPDOWN (IF_CHANGE_UP | IF_CHANGE_DOWN)
