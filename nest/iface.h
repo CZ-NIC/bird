@@ -14,6 +14,7 @@
 #include "lib/event.h"
 #include "lib/lists.h"
 #include "lib/tlists.h"
+#include "lib/pubsub.h"
 #include "lib/ip.h"
 
 struct proto;
@@ -295,5 +296,28 @@ int iface_patts_equal(list *, list *, int (*)(struct iface_patt *, struct iface_
 
 
 u32 if_choose_router_id(struct iface_patt *mask, u32 old_id);
+
+
+/*
+ *	VLAN request queue
+ */
+
+struct vlan_req_data {
+  u32 vid;
+  u32 vni;
+};
+
+struct vlan_request {
+  struct iface *bridge;			/* Bridge device, name -> topic */
+  struct iface *iface;			/* Interface to add/remove VLANs */
+  uintptr_t owner;			/* Owner of the VLAN, proto ptr */
+  bool update;				/* Update / withdraw */
+  int vlan_count;			/* Number of VLANs */
+  struct vlan_req_data vlans[];
+};
+
+#define VLAN_REQUEST_LENGTH(n) (sizeof(struct vlan_request) + (n) * sizeof(struct vlan_req_data))
+
+extern ps_queue vlan_requests;
 
 #endif

@@ -48,6 +48,8 @@ static pool *if_pool;
 list global_iface_list;
 struct iface default_vrf;
 
+ps_queue vlan_requests;
+
 static void if_recalc_preferred(struct iface *i);
 
 static void ifa_delete_locked(struct ifa *a);
@@ -1047,6 +1049,8 @@ if_init(void)
   strcpy(default_vrf.name, "default");
   neigh_init(if_pool);
   IFACE_UNLOCK;
+
+  ps_init_queue(&vlan_requests, &root_pool, "VLAN bus");
 }
 
 /*
