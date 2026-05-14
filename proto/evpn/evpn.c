@@ -439,7 +439,7 @@ evpn_validate_iface_attrs(struct evpn_proto *p, const struct iface *i)
   const eattr *ipa = ea_find(i->attrs->eattrs, EA_IFACE_VXLAN_IP_ADDR);
 
   u32 type = ea_get_int(i->attrs->eattrs, EA_IFACE_TYPE, IF_TYPE_UNDEF);
-  u32 if_vni = ea_get_int(i->attrs->eattrs, EA_IFACE_VXLAN_ID, U32_UNDEF);
+  u32 if_vni = ea_get_int(i->attrs->eattrs, EA_IFACE_VXLAN_ID, 0);
 
   if (type != IF_TYPE_VXLAN || !ipa)
     return 0;
@@ -450,20 +450,26 @@ evpn_validate_iface_attrs(struct evpn_proto *p, const struct iface *i)
 
   struct evpn_config *cf = SKIP_BACK(struct evpn_config, c, p->p.cf);
 
+  /*
+   * VLANs -> if_vni must be 0
+   * no VLAN, cf->vni defined -> if_vni must be 0 or cf->vni
+   * no VLAN, cf->vni undefined -> if_vni can be anything (nonzero)
+   */
 
-  if ((cf->vni == U32_UNDEF) && (if_vni == U32_UNDEF))
+  if ((cf->vni == U32_UNDEF) && (if_vni == 0))
   {
     log(L_ERR "%s: Unknown VNI", p->p.name);
     return 0;
   }
 
-  if ((cf->vni != U32_UNDEF) && (if_vni != U32_UNDEF) && (cf->vni != if_vni))
+  u32 req_vni = EMPTY_LIST(cf->vlans) ? cf->vni : 0;
+  if ((cf->vni != U32_UNDEF) && (if_vni != 0) && (if_vni != req_vni))
   {
     log(L_ERR "%s: VNI mismatch", p->p.name);
     return 0;
   }
 
-  if ((cf->vni == U32_UNDEF) && (if_vni != U32_UNDEF))
+  if ((cf->vni == U32_UNDEF) && (if_vni != 0))
     p->vni = if_vni;
 
 
@@ -1003,6 +1009,10 @@ evpn_postconfig(struct proto_config *CF)
 
   if (!cf->export_target)
     cf_error("Export target not specified");
+
+  /* When VLANs are configured, VNI cannot be learned */
+  if ((cf->vni == U32_UNDEF) && !EMPTY_LIST(cf->vlans))
+    cf->vni = 0;
 
   evpn_postconfig_encaps(cf);
   evpn_postconfig_vlans(cf);
