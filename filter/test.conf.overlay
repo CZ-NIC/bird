@@ -1,3 +1,5 @@
 attribute int peek_a_boo;
 
+threads 4;
+
 include "test.conf";
