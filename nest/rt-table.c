@@ -1465,20 +1465,10 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old, const rte *tr
   do_rt_notify(c, trte->net, np, old);
 }
 
-/**
- * channel_notify_optimal - process the export queue for RA_OPTIMAL
- * @_channel: channel to use
- *
- * Actually an event hook. Walks the export journal and distills pairs of
- * announced and withdrawn routes for rt_notify_basic(). Scheduled when the
- * journal gets some new items.
- */
-void
-channel_notify_optimal(void *_channel)
+static void
+channel_notify_optimal_req(struct channel *c, struct rt_export_request *req)
 {
-  struct channel *c = _channel;
-
-  RT_EXPORT_WALK(&c->out_req, u)
+  RT_EXPORT_WALK(req, u)
   {
     switch (u->kind)
     {
@@ -1535,9 +1525,9 @@ channel_notify_optimal(void *_channel)
 
 	  /* Update the stats */
 	  if (new)
-	    c->out_req.stats.updates_received++;
+	    req->stats.updates_received++;
 	  else
-	    c->out_req.stats.withdraws_received++;
+	    req->stats.withdraws_received++;
 
 	  /* Squashing subsequent updates */
 	  for (SKIP_BACK_DECLARE(const struct rt_pending_export, rpe, it, u->update);
@@ -1552,13 +1542,13 @@ channel_notify_optimal(void *_channel)
 
 	    /* Squash the item */
 	    new = rpe->it.new;
-	    rt_export_processed(&c->out_req, rpe->it.seq);
+	    rt_export_processed(req, rpe->it.seq);
 
 	    /* Fix the stats: the new update is received */
 	    if (new)
-	      c->out_req.stats.updates_received++;
+	      req->stats.updates_received++;
 	    else
-	      c->out_req.stats.withdraws_received++;
+	      req->stats.withdraws_received++;
 	  }
 
 	  /* No invalid routes allowed in the best export */
@@ -1572,18 +1562,37 @@ channel_notify_optimal(void *_channel)
 	break;
     }
 
-    MAYBE_DEFER_TASK(c->out_req.r.target, c->out_req.r.event,
+    MAYBE_DEFER_TASK(req->r.target, req->r.event,
 	"export to %s.%s (regular)", c->proto->name, c->name);
   }
 }
 
-
+/**
+ * channel_notify_optimal - process the export queue for RA_OPTIMAL
+ * @_channel: channel to use
+ *
+ * Actually an event hook. Walks the export journal and distills pairs of
+ * announced and withdrawn routes for rt_notify_basic(). Scheduled when the
+ * journal gets some new items.
+ */
 void
-channel_notify_any(void *_channel)
+channel_notify_optimal(void *_channel)
 {
   struct channel *c = _channel;
 
-  RT_EXPORT_WALK(&c->out_req, u)
+  if (c->ra_mode == RA_OPTIMAL)
+    channel_notify_optimal_req(c, &c->out_req);
+  else
+    ASSERT_DIE(c->alt_export);
+
+  if (c->alt_mode == RA_OPTIMAL)
+    channel_notify_optimal_req(c, &c->alt_req);
+}
+
+static void
+channel_notify_any_req(struct channel *c, struct rt_export_request *req)
+{
+  RT_EXPORT_WALK(req, u)
   {
     switch (u->kind)
     {
@@ -1673,9 +1682,9 @@ channel_notify_any(void *_channel)
 
 	  /* Update the stats */
 	  if (new)
-	    c->out_req.stats.updates_received++;
+	    req->stats.updates_received++;
 	  else
-	    c->out_req.stats.withdraws_received++;
+	    req->stats.withdraws_received++;
 
 	  /* Squashing subsequent updates */
 	  for (SKIP_BACK_DECLARE(const struct rt_pending_export, rpe, it, u->update);
@@ -1701,13 +1710,13 @@ channel_notify_any(void *_channel)
 
 	    /* Squash the item */
 	    new = rpe->it.new;
-	    rt_export_processed(&c->out_req, rpe->it.seq);
+	    rt_export_processed(req, rpe->it.seq);
 
 	    /* Fix the stats: the new update is received */
 	    if (new)
-	      c->out_req.stats.updates_received++;
+	      req->stats.updates_received++;
 	    else
-	      c->out_req.stats.withdraws_received++;
+	      req->stats.withdraws_received++;
 	  }
 
 	  /* Invalid routes become withdraws */
@@ -1724,9 +1733,23 @@ channel_notify_any(void *_channel)
 	break;
     }
 
-    MAYBE_DEFER_TASK(c->out_req.r.target, c->out_req.r.event,
+    MAYBE_DEFER_TASK(req->r.target, req->r.event,
 	"export to %s.%s (regular)", c->proto->name, c->name);
   }
+}
+
+void
+channel_notify_any(void *_channel)
+{
+  struct channel *c = _channel;
+
+  if (c->ra_mode == RA_ANY)
+    channel_notify_any_req(c, &c->out_req);
+  else
+    ASSERT_DIE(c->alt_export);
+
+  if (c->alt_mode == RA_ANY)
+    channel_notify_any_req(c, &c->alt_req);
 }
 
 #if 0
@@ -1821,6 +1844,8 @@ void
 channel_notify_accepted(void *_channel)
 {
   struct channel *c = _channel;
+  if (c->alt_export)
+    bug("Channel accepted mode does not support alt_export");
 
   RT_EXPORT_WALK(&c->out_req, u)
   {
@@ -1960,6 +1985,8 @@ void
 channel_notify_merged(void *_channel)
 {
   struct channel *c = _channel;
+  if (c->alt_export)
+    bug("Channel accepted mode does not support alt_export");
 
   RT_EXPORT_WALK(&c->out_req, u)
   {
@@ -5769,6 +5796,8 @@ rt_get_hostentry(struct rtable_private *tab, ip_addr a, ip_addr ll, rtable *dep)
 rte *
 krt_export_net(struct channel *c, const net_addr *a, linpool *lp)
 {
+  ASSERT_DIE(!c->alt_export);
+
   if (c->ra_mode == RA_MERGED)
   {
     struct rt_export_feed *feed = rt_net_feed(c->table, a, NULL);

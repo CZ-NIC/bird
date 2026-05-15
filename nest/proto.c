@@ -111,6 +111,9 @@ static inline void channel_refeed(struct channel *c, struct rt_feeding_request *
 
   CALL(c->proto->refeed_begin, c, rfr);
   rt_export_refeed(&c->out_req, rfr);
+
+  if (c->alt_export)
+    rt_export_refeed(&c->alt_req, rfr);
 }
 
 static inline int proto_is_done(struct proto *p)
@@ -147,9 +150,13 @@ channel_import_log_state_change(struct rt_import_request *req, u8 state)
 }
 
 static void
-channel_export_fed(struct rt_export_request *req)
+channel_export_fed(struct channel *c)
 {
-  SKIP_BACK_DECLARE(struct channel, c, out_req, req);
+  if (c->alt_export && !c->one_refeed_seen)
+  {
+    c->one_refeed_seen = true;
+    return;
+  }
 
   struct limit *l = &c->out_limit;
   if ((c->limit_active & (1 << PLD_OUT)) && (l->count <= l->max))
@@ -161,10 +168,27 @@ channel_export_fed(struct rt_export_request *req)
     CALL(c->proto->export_fed, c);
 }
 
+static void
+channel_export_fed_out(struct rt_export_request *req)
+{
+  SKIP_BACK_DECLARE(struct channel, c, out_req, req);
+  channel_export_fed(c);
+}
+
+static void
+channel_export_fed_alt(struct rt_export_request *req)
+{
+  SKIP_BACK_DECLARE(struct channel, c, alt_req, req);
+  channel_export_fed(c);
+}
+
 void
 channel_request_full_refeed(struct channel *c)
 {
   rt_export_refeed(&c->out_req, NULL);
+
+  if (c->alt_export)
+    rt_export_refeed(&c->alt_req, NULL);
 }
 
 static void
@@ -179,6 +203,13 @@ channel_dump_export_req(struct rt_export_request *req)
 {
   SKIP_BACK_DECLARE(struct channel, c, out_req, req);
   debug("  Channel %s.%s export request %p\n", c->proto->name, c->name, req);
+}
+
+static void
+channel_dump_alt_req(struct rt_export_request *req)
+{
+  SKIP_BACK_DECLARE(struct channel, c, alt_req, req);
+  debug("  Channel %s.%s alt export request %p\n", c->proto->name, c->name, req);
 }
 
 
@@ -284,6 +315,8 @@ proto_add_channel(struct proto *p, struct channel_config *cf)
 
   c->net_type = cf->net_type;
   c->ra_mode = cf->ra_mode;
+  c->alt_mode = cf->alt_mode;
+  c->alt_export = cf->alt_export;
   c->preference = cf->preference;
   c->debug = cf->debug;
   c->merge_limit = cf->merge_limit;
@@ -816,9 +849,13 @@ channel_start_export(struct channel *c)
   if (rt_export_get_state(&c->out_req) != TES_DOWN)
     bug("%s.%s: Attempted to start channel's already started export", c->proto->name, c->name);
 
-  ASSERT(c->channel_state == CS_UP);
+  if (rt_export_get_state(&c->alt_req) != TES_DOWN)
+    bug("%s.%s: Attempted to start channel's already started export (alt)", c->proto->name, c->name);
 
-  pool *p = rp_newf(c->proto->pool, c->proto->pool->domain, "Channel %s.%s export", c->proto->name, c->name);
+  ASSERT(c->channel_state == CS_UP);
+  ASSERT(c->export_pool == NULL);
+
+  pool *p = c->export_pool = rp_newf(c->proto->pool, c->proto->pool->domain, "Channel %s.%s export", c->proto->name, c->name);
 
   c->out_req = (struct rt_export_request) {
     .name = mb_sprintf(p, "%s.%s", c->proto->name, c->name),
@@ -827,13 +864,16 @@ channel_start_export(struct channel *c)
       .event = &c->out_event,
     },
     .pool = p,
-    .feeder.prefilter = {
+    .feeder.prefilter = c->alt_export ? (struct rt_prefilter) {
+      .mode = TE_ADDR_IHOOK,
+      .hook = c->alt_export,
+    } : (struct rt_prefilter) {
       .mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
       .addr = c->out_subprefix,
     },
     .trace_routes = c->debug | c->proto->debug,
     .dump = channel_dump_export_req,
-    .fed = channel_export_fed,
+    .fed = channel_export_fed_out,
   };
 
   c->out_event = (event) {
@@ -869,6 +909,50 @@ channel_start_export(struct channel *c)
     default:
       bug("Unknown route announcement mode");
   }
+
+  if (c->alt_export)
+  {
+    c->alt_req = (struct rt_export_request) {
+      .name = mb_sprintf(p, "%s.%s", c->proto->name, c->name),
+      .r = {
+	.target = proto_work_list(c->proto),
+	.event = &c->alt_event,
+      },
+      .pool = p,
+      .feeder.prefilter = {
+	.mode = TE_ADDR_HOOK,
+	.hook = c->alt_export,
+      },
+      .trace_routes = c->debug | c->proto->debug,
+      .dump = channel_dump_alt_req,
+      .fed = channel_export_fed_alt,
+    };
+
+    c->alt_event = (event) {
+      .data = c,
+    };
+
+    switch (c->alt_mode) {
+      case RA_OPTIMAL:
+	c->alt_event.hook = channel_notify_optimal;
+	rt_export_subscribe(c->table, best, &c->alt_req);
+	break;
+      case RA_ANY:
+	c->alt_event.hook = channel_notify_any;
+	rt_export_subscribe(c->table, all, &c->alt_req);
+	break;
+      case RA_ACCEPTED:
+	c->alt_event.hook = channel_notify_accepted;
+	rt_export_subscribe(c->table, all, &c->alt_req);
+	break;
+      case RA_MERGED:
+	c->alt_event.hook = channel_notify_merged;
+	rt_export_subscribe(c->table, all, &c->alt_req);
+	break;
+      default:
+	bug("Unknown route announcement mode");
+    }
+  };
 }
 
 static void
@@ -881,6 +965,7 @@ channel_check_stopped(struct channel *c)
 	return;
 
       ASSERT_DIE(rt_export_get_state(&c->out_req) == TES_DOWN);
+      ASSERT_DIE(rt_export_get_state(&c->alt_req) == TES_DOWN);
       ASSERT_DIE(!rt_export_feed_active(&c->reimporter));
 
       channel_set_state(c, CS_DOWN);
@@ -893,6 +978,7 @@ channel_check_stopped(struct channel *c)
 	return;
 
       ASSERT_DIE(rt_export_get_state(&c->out_req) == TES_DOWN);
+      ASSERT_DIE(rt_export_get_state(&c->alt_req) == TES_DOWN);
 
       channel_set_state(c, CS_START);
       break;
@@ -1144,25 +1230,24 @@ channel_set_state(struct channel *c, uint state)
 }
 
 static void
-channel_stop_export(struct channel *c)
+channel_stop_export_req(struct channel *c, struct rt_export_request *req, event *ev, u8 mode)
 {
-  switch (rt_export_get_state(&c->out_req))
+  switch (rt_export_get_state(req))
   {
     case TES_FEEDING:
     case TES_PARTIAL:
     case TES_READY:
-      if (c->ra_mode == RA_OPTIMAL)
-	rt_export_unsubscribe(best, &c->out_req);
+      if (mode == RA_OPTIMAL)
+	rt_export_unsubscribe(best, req);
       else
-	rt_export_unsubscribe(all, &c->out_req);
+	rt_export_unsubscribe(all, req);
 
-      ev_postpone(&c->out_event);
+      ev_postpone(ev);
 
       bmap_free(&c->export_accepted_map);
       bmap_free(&c->export_rejected_map);
 
-      c->out_req.name = NULL;
-      rfree(c->out_req.pool);
+      req->name = NULL;
 
       channel_check_stopped(c);
       break;
@@ -1174,6 +1259,18 @@ channel_stop_export(struct channel *c)
     case TES_MAX:
       bug("Impossible export state");
   }
+}
+
+static void
+channel_stop_export(struct channel *c)
+{
+  channel_stop_export_req(c, &c->out_req, &c->out_event, c->ra_mode);
+  channel_stop_export_req(c, &c->alt_req, &c->alt_event, c->alt_mode);
+
+  if (c->export_pool)
+    rp_free(c->export_pool);
+
+  c->export_pool = NULL;
 }
 
 void
@@ -1283,10 +1380,12 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   /* FIXME: better handle these changes, also handle in_keep_filtered */
   if ((c->table != cf->table->table) ||
       (cf->ra_mode && (c->ra_mode != cf->ra_mode)) ||
+      (cf->alt_mode && (c->alt_mode != cf->alt_mode)) ||
       (cf->in_keep != c->in_keep) ||
       cf->out_subprefix && c->out_subprefix &&
 	  !net_equal(cf->out_subprefix, c->out_subprefix) ||
-      (!cf->out_subprefix != !c->out_subprefix))
+      (!cf->out_subprefix != !c->out_subprefix) ||
+      (cf->alt_export != c->alt_export))
     return 0;
 
   /* Note that filter_same() requires arguments in (new, old) order */
@@ -1311,9 +1410,12 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   // c->ra_mode = cf->ra_mode;
   c->merge_limit = cf->merge_limit;
   c->preference = cf->preference;
-  c->out_req.feeder.prefilter.addr = c->out_subprefix = cf->out_subprefix;
+
+  if (!cf->alt_export)
+    c->out_req.feeder.prefilter.addr = c->out_subprefix = cf->out_subprefix;
+
   c->debug = cf->debug;
-  c->in_req.trace_routes = c->out_req.trace_routes = c->debug | c->proto->debug;
+  c->in_req.trace_routes = c->out_req.trace_routes = c->alt_req.trace_routes = c->debug | c->proto->debug;
   c->rpki_reload = cf->rpki_reload;
 
   /* Execute channel-specific reconfigure hook */
@@ -2321,9 +2423,11 @@ protos_dump_all(struct dump_request *dreq)
 	RDUMP("\tInput filter: %s\n", filter_name(c->in_filter));
       if (c->out_filter)
 	RDUMP("\tOutput filter: %s\n", filter_name(c->out_filter));
-      RDUMP("\tChannel state: %s/%s/%s\n", c_states[c->channel_state],
+      RDUMP("\tChannel state: %s/%s/%s/%s\n", c_states[c->channel_state],
 	  c->in_req.hook ? rt_import_state_name(rt_import_get_state(c->in_req.hook)) : "-",
-	  rt_export_state_name(rt_export_get_state(&c->out_req)));
+	  rt_export_state_name(rt_export_get_state(&c->out_req)),
+	  c->alt_export ? rt_export_state_name(rt_export_get_state(&c->alt_req)) : "-"
+	  );
     }
 
     RDUMP("\tSOURCES\n");
@@ -2787,12 +2891,13 @@ channel_show_stats(struct channel *c)
   struct channel_export_stats *ch_es = &c->export_stats;
   struct rt_import_stats *rt_is = c->in_req.hook ? &c->in_req.hook->stats : NULL;
   struct rt_export_stats *rt_es = &c->out_req.stats;
+  struct rt_export_stats *rt_as = &c->alt_req.stats;
 
 #define SON(ie, item)	((ie) ? (ie)->item : 0)
 #define SCI(item) SON(ch_is, item)
 #define SCE(item) SON(ch_es, item)
 #define SRI(item) SON(rt_is, item)
-#define SRE(item) SON(rt_es, item)
+#define SRE(item) SON(rt_es, item) + SON(rt_as, item)
 
   u32 rx_routes = c->rx_limit.count;
   u32 in_routes = c->in_limit.count;
@@ -2844,6 +2949,8 @@ channel_show_info(struct channel *c)
   cli_msg(-1006, "    State:          %s", c_states[c->channel_state]);
   cli_msg(-1006, "    Import state:   %s", rt_import_state_name(rt_import_get_state(c->in_req.hook)));
   cli_msg(-1006, "    Export state:   %s", rt_export_state_name(rt_export_get_state(&c->out_req)));
+  if (c->alt_export)
+    cli_msg(-1006, "    AltExp state:   %s", rt_export_state_name(rt_export_get_state(&c->alt_req)));
   cli_msg(-1006, "    Table:          %s", c->table->name);
   cli_msg(-1006, "    Preference:     %d", c->preference);
   cli_msg(-1006, "    Input filter:   %s", filter_name(c->in_filter));

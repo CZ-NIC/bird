@@ -603,6 +603,7 @@ struct channel_config {
   struct rtable_config *table;		/* Table we're attached to */
   const struct filter *in_filter, *out_filter; /* Attached filters */
   const net_addr *out_subprefix;	/* Export only subprefixes of this net */
+  int (*alt_export)(const struct rt_prefilter *, const net_addr *);	/* Use the alt export for this net */
 
   struct channel_limit rx_limit;	/* Limit for receiving routes from protocol
 					   (relevant when in_keep & RIK_REJECTED) */
@@ -611,6 +612,7 @@ struct channel_config {
 
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
+  u8 alt_mode;				/* Mode for the alt export */
   u16 preference;			/* Default route preference */
   u32 debug;				/* Debugging flags (D_*) */
   u8 copy;				/* Value from channel_config_get() is new (0) or from template (1) */
@@ -667,9 +669,15 @@ struct channel {
   struct rt_import_request in_req;	/* Table import connection */
   struct rt_export_request out_req;	/* Table export connection */
   event out_event;			/* Table export event */
+  struct rt_export_request alt_req;	/* Alternative export request */
+  event alt_event;
+  int (*alt_export)(const struct rt_prefilter *, const net_addr *);	/* Use the alt export for this net */
+  bool one_refeed_seen;			/* Synchronize both refeeds */
+  pool *export_pool;			/* Pool for export auxiliaries */
 
   u8 net_type;				/* Routing table network type (NET_*), 0 for undefined */
   u8 ra_mode;				/* Mode of received route advertisements (RA_*) */
+  u8 alt_mode;				/* Mode for the alt export */
   u16 preference;			/* Default route preference */
   u32 debug;				/* Debugging flags (D_*) */
   u8 merge_limit;			/* Maximal number of nexthops for RA_MERGED */

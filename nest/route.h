@@ -143,6 +143,7 @@ struct rt_export_request {
 	TE_ADDR_IN,		/* Interval query - show route in <addr> */
 	TE_ADDR_TRIE,		/* Query defined by trie */
 	TE_ADDR_HOOK,		/* Query processed by supplied custom hook */
+	TE_ADDR_IHOOK,		/* TE_ADDR_HOOK but inverted */
       } mode;
 
       union {
@@ -307,6 +308,7 @@ static inline int rt_prefilter_net(const struct rt_prefilter *p, const net_addr 
     case TE_ADDR_FOR:	return net_in_netX(p->addr, n);
     case TE_ADDR_TRIE:	return trie_match_net(p->trie, n);
     case TE_ADDR_HOOK:	return p->hook(p, n);
+    case TE_ADDR_IHOOK:	return !p->hook(p, n);
   }
 
   bug("Crazy prefilter application attempt failed wildly.");
