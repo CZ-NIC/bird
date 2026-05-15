@@ -38,7 +38,11 @@ kbr_proto_start: proto_start BRIDGE
 
 kbr_proto_item:
    proto_item
- | proto_channel { $1->ra_mode = RA_ANY; }
+ | proto_channel {
+    $1->ra_mode = RA_OPTIMAL;
+    $1->alt_mode = RA_ANY;
+    $1->alt_export = kbr_alt_export;
+  }
  | BRIDGE DEVICE text { KBR_CFG->bridge_dev = if_get_by_name($3); }
  | VLAN FILTERING bool { KBR_CFG->vlan_filtering = $3; }
  | SCAN TIME expr_us { KBR_CFG->scan_time = $3; }

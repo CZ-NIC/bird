@@ -66,7 +66,7 @@ void kbr_got_fdb(struct kbr_proto *p, const net_addr *n, rte *e, const struct ne
 void kbr_got_vlan(struct kbr_proto *p, struct iface *i, uint vid, uint flags);
 void kbr_got_vlan_tunnel(struct kbr_proto *p, struct iface *i, uint vid, uint vni, uint flags);
 struct kbr_vlan * kbr_find_vlan_by_vni(struct kbr_proto *p, uint ifi, uint vni);
-
+int kbr_alt_export(const struct rt_prefilter *, const net_addr *);
 
 /* krt sysdep */
 

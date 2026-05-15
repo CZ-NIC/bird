@@ -43,6 +43,7 @@ static struct kbr_vlan * kbr_find_vlan(struct kbr_proto *p, uint ifi, uint vid);
 static void kbr_prune_vlans0(struct kbr_proto *p);
 static void kbr_prune_vlans1(struct kbr_proto *p);
 
+static struct rte_owner_class kbr_rte_owner_class;
 
 /*
  *	Bridge entries
@@ -99,6 +100,14 @@ kbr_match_fdb(const rte *x, const rte *y)
 
   const struct nexthop *xn = &nhad->nh, *yn = &ynhad->nh;
   return (xn->iface == yn->iface) && ipa_equal(xn->gw, yn->gw);
+}
+
+
+
+int
+kbr_alt_export(const struct rt_prefilter *rpf UNUSED, const net_addr *n)
+{
+  return mac_zero(net_mac_addr(n));
 }
 
 /* Find matching route in the BIRD table */
@@ -378,7 +387,7 @@ kbr_scan(timer *t)
 }
 
 static void
-kbr_rt_notify(struct proto *P, struct channel *c, const net_addr *n, rte *new, const rte *old)
+kbr_rt_notify(struct proto *P, struct channel *c UNUSED, const net_addr *n, rte *new, const rte *old)
 {
   struct kbr_proto *p = (void *) P;
 
@@ -386,11 +395,12 @@ kbr_rt_notify(struct proto *P, struct channel *c, const net_addr *n, rte *new, c
   if (!p->synced)
     return;
 
-  const rte *r = (new ?: old);
-
+#ifdef CONFIG_EVPN
   /* For managed interfaces we ignore FDB entries when VLAN not active */
   /* For now, we assume EVPN FDB entry <-> direct to managed iface */
-#ifdef CONFIG_EVPN
+
+  const rte *r = (new ?: old);
+
   if (p->vlan_filtering && (rt_get_source_attr(r) == RTS_EVPN))
   {
     const struct nexthop_adata *nhad = rte_get_nexthops(r);
@@ -425,45 +435,17 @@ kbr_rt_notify(struct proto *P, struct channel *c, const net_addr *n, rte *new, c
   rte *new_gw = (nnhad && NEXTHOP_IS_REACHABLE(nnhad) && ipa_nonzero(nnhad->nh.gw)) ? new : NULL;
   const rte *old_gw = (onhad && NEXTHOP_IS_REACHABLE(onhad) && ipa_nonzero(onhad->nh.gw)) ? old : NULL;
 
-  if (mac_zero(net_mac_addr(n)))
+  /* For regular routes, we have one bridge entry, perhaps also one tunnel entry.
+   * For BUM routes, we have multiple tunnel entries, but no bridge entry
+   **/
+  if (!mac_zero(net_mac_addr(n)))
   {
-    /* For BUM routes, we have multiple tunnel entries, but no bridge entry */
-    kbr_trace_out(p, n, new_gw, old_gw, 1);
-    kbr_update_fdb(p, n, new_gw, old_gw, 1);
-    return;
+    kbr_trace_out(p, n, new, old, 0);
+    kbr_replace_fdb(p, n, new, old, 0);
   }
-
-  /*
-   * For regular routes, we need RA_OPTIMAL, but we are stuck with RA_ANY, so we
-   * need to find out new_best / old_best and replay rt_notify_basic()/
-   */
-  rte *new_best = rte_is_valid(net->routes) ? net->routes : NULL;
-  rte *old_best = rte_find_old_best(net, new, old);
-
-  if (new_best == old_best)
-    return;
-
-  if (new_best)
-    new_best = kbr_export_fdb(p, c, new_best, &rt_free);
-
-  new_gw = (new_best && ipa_nonzero(new_best->attrs->nh.gw)) ? new_best : NULL;
-  old_gw = (old_best && ipa_nonzero(old_best->attrs->nh.gw)) ? old_best : NULL;
-
-  /* For regular routes, we have one bridge entry, perhaps also one tunnel entry */
-  kbr_trace_out(p, n, new_best, old_best, 0);
-  kbr_replace_fdb(p, n, new_best, old_best, 0);
 
   kbr_trace_out(p, n, new_gw, old_gw, 1);
   kbr_replace_fdb(p, n, new_gw, old_gw, 1);
-
-  if (rt_free)
-    rte_free(rt_free);
-}
-
-static inline int
-kbr_is_installed(struct channel *c, net *n)
-{
-  return n->routes && bmap_test(&c->export_map, n->routes->id);
 }
 
 static void
@@ -472,34 +454,60 @@ kbr_flush_routes(struct kbr_proto *p)
   struct channel *c = p->p.main_channel;
 
   TRACE(D_EVENTS, "Flushing bridge routes");
-  FIB_WALK(&c->table->fib, net, n)
-  {
-    if (kbr_is_installed(c, n))
-      kbr_rt_notify(&p->p, c, n, NULL, n->routes);
-  }
-  FIB_WALK_END;
+
+  struct rt_export_feeder fx = {
+    .name = "bridge.flusher",
+    .trace_routes = c->debug,
+  };
+
+  /* Synchronous flush */
+  rt_feeder_subscribe(&c->table->export_all, &fx);
+
+  RT_FEED_WALK(&fx, f)
+    TMP_SAVED
+      if (mac_zero(net_mac_addr(f->ni->addr)))
+      {
+	/* For BUM routes, handle all tunnel entries */
+	for (uint i = 0; i < f->count_routes; i++)
+	  if (f->block[i].flags & REF_OBSOLETE)
+	    break;
+	  else if (rte_is_valid(&f->block[i]) && bmap_test(&c->export_accepted_map, f->block[i].id))
+	    kbr_rt_notify(&p->p, c, f->ni->addr, NULL, &f->block[i]);
+      }
+      else
+      {
+	/* For regular routes, handle only the best route */
+	if (f->count_routes && rte_is_valid(&f->block[0]) && bmap_test(&c->export_accepted_map, f->block[0].id))
+	  kbr_rt_notify(&p->p, c, f->ni->addr, NULL, &f->block[0]);
+      }
+
+  rt_feeder_unsubscribe(&fx);
+  
 }
 
 
 static int
 kbr_preexport(struct channel *C, rte *e)
 {
-  struct kbr_proto *p = (void *) C->proto;
-
   /* Reject our own routes */
-  if (e->src->proto == &p->p)
+  if (e->src->owner == &C->proto->sources)
     return -1;
 
   return 0;
 }
 
-static void
-kbr_reload_routes(struct channel *C)
+static int
+kbr_reload_routes(struct channel *C, struct rt_feeding_request *rfr)
 {
   struct kbr_proto *p = (void *) C->proto;
 
   if (p->ready)
     tm_start(p->scan_timer, 0);
+
+  if (rfr)
+    CALL(rfr->done, rfr);
+
+  return 1;
 }
 
 static void
@@ -513,14 +521,14 @@ kbr_feed_end(struct channel *C)
 
 
 static inline u32
-kbr_metric(rte *e)
+kbr_metric(const rte *e)
 {
-  u32 metric = ea_get_int(e->attrs->eattrs, EA_GEN_IGP_METRIC, e->attrs->igp_metric);
-  return MIN(metric, IGP_METRIC_UNKNOWN);
+  struct eattr *ea = ea_find(e->attrs, &ea_gen_igp_metric) ?: ea_find(e->attrs, &ea_gen_local_metric);
+  return ea ? MIN(ea->u.data, IGP_METRIC_UNKNOWN) : 0;
 }
 
 static int
-kbr_rte_better(rte *new, rte *old)
+kbr_rte_better(const rte *new, const rte *old)
 {
   /* This is hack, we should have full BGP-style comparison */
   return kbr_metric(new) < kbr_metric(old);
@@ -771,7 +779,7 @@ kbr_prune_vlans1(struct kbr_proto *p)
 static bool
 kbr_check_iface(struct kbr_proto *p, const struct iface *i)
 {
-  ea_list *attrs = i->attrs ? i->attrs->eattrs : NULL;
+  ea_list *attrs = i->attrs;
 
   if (!(i->flags & IF_UP))
   {
@@ -779,14 +787,14 @@ kbr_check_iface(struct kbr_proto *p, const struct iface *i)
     return false;
   }
 
-  u32 if_type = ea_get_int(attrs, EA_IFACE_TYPE, IF_TYPE_UNDEF);
+  u32 if_type = ea_get_int(attrs, &ea_iface_type, IF_TYPE_UNDEF);
   if (if_type != IF_TYPE_BRIDGE)
   {
     log(L_ERR "%s: Interface %s is not a bridge", p->p.name, i->name);
     return false;
   }
 
-  u32 if_vlan_filtering = ea_get_int(attrs, EA_IFACE_BRIDGE_VLAN_FILTERING, U32_UNDEF);
+  u32 if_vlan_filtering = ea_get_int(attrs, &ea_iface_bridge_vlan_filtering, U32_UNDEF);
   if (p->vlan_filtering && !if_vlan_filtering)
   {
     log(L_WARN "%s: Mismatch in VLAN filtering", p->p.name, i->name);
@@ -820,8 +828,8 @@ kbr_init(struct proto_config *CF)
   P->rt_notify = kbr_rt_notify;
   P->preexport = kbr_preexport;
   P->reload_routes = kbr_reload_routes;
-  P->feed_end = kbr_feed_end;
-  P->rte_better = kbr_rte_better;
+  P->export_fed = kbr_feed_end;
+  P->sources.class = &kbr_rte_owner_class;
 
   return P;
 }
@@ -874,7 +882,7 @@ kbr_shutdown(struct proto *P UNUSED)
 
   kbr_sys_shutdown(p);
 
-  return PS_DOWN;
+  return PS_FLUSH;
 }
 
 static int
@@ -908,7 +916,7 @@ const char * const kbr_src_names[KBR_SRC_MAX] = {
 
 const char kbr_src_abbrev[KBR_SRC_MAX] = "BLSD";
 
-static int
+static void
 ea_kbr_source_format(const eattr *a, byte *buf, uint size)
 {
   if (a->u.data >= ARRAY_SIZE(kbr_src_names) || !kbr_src_names[a->u.data])
@@ -917,20 +925,31 @@ ea_kbr_source_format(const eattr *a, byte *buf, uint size)
     bsnprintf(buf, size, "%s", kbr_src_names[a->u.data]);
 }
 
+struct ea_class ea_kbr_source = {
+  .name = "kbr_source",
+  .legacy_name = "Bridge.source",
+  .type = T_ENUM_KBR_SOURCE,
+  .format = ea_kbr_source_format,
+};
+
 static void
-kbr_get_route_info(rte *rte, byte *buf)
+kbr_get_route_info(const rte *rte, byte *buf)
 {
   eattr *a = ea_find(rte->attrs, &ea_kbr_source);
   char src = (a && a->u.data < sizeof kbr_src_abbrev) ? kbr_src_abbrev[a->u.data] : '?';
 
-  bsprintf(buf, " %c (%u)", src, rte->attrs->pref);
+  bsprintf(buf, " %c (%u)", src, rt_get_preference(rte));
 }
 
+
+static struct rte_owner_class kbr_rte_owner_class = {
+  .rte_better =		kbr_rte_better,
+  .get_route_info =	kbr_get_route_info,
+};
 
 struct protocol proto_bridge = {
   .name =		"Bridge",
   .template =		"bridge%d",
-  .class =		PROTOCOL_BRIDGE,
   .channel_mask =	NB_ETH,
   .proto_size =		sizeof(struct kbr_proto),
   .config_size =	sizeof(struct kbr_config),
@@ -940,12 +959,14 @@ struct protocol proto_bridge = {
   .shutdown =		kbr_shutdown,
   .reconfigure =	kbr_reconfigure,
   .copy_config = 	kbr_copy_config,
-  .get_attr =		kbr_get_attr,
-  .get_route_info =	kbr_get_route_info,
 };
 
 void
 bridge_build(void)
 {
   proto_build(&proto_bridge);
+
+  EA_REGISTER_ALL(
+      &ea_kbr_source,
+      );
 }
