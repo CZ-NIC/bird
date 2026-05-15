@@ -2166,7 +2166,7 @@ static HASH(struct kbr_proto) nl_bridge_map;
 HASH_DEFINE_REHASH_FN(BRH, struct kbr_proto);
 
 static int
-nl_send_fdb(const net_addr *n0, rte *e, int op, int tunnel)
+nl_send_fdb(const net_addr *n0, const rte *e, int op, int tunnel)
 {
   const net_addr_eth *n = (void *) n0;
 
@@ -2194,8 +2194,9 @@ nl_send_fdb(const net_addr *n0, rte *e, int op, int tunnel)
   if (n->vid)
     nl_add_attr_u16(&r->h, rsize, NDA_VLAN, n->vid);
 
-  struct nexthop *nh = &e->attrs->nh;
-  ASSERT(e->attrs->dest == RTD_UNICAST && !nh->next);
+  struct nexthop_adata *nhad = rte_get_nexthops(e);
+  ASSERT_DIE(NEXTHOP_ONE(nhad));
+  struct nexthop *nh = &nhad->nh;
   r->n.ndm_ifindex = nh->iface->index;
 
   if (tunnel)
@@ -2206,7 +2207,7 @@ nl_send_fdb(const net_addr *n0, rte *e, int op, int tunnel)
     if (nh->labels)
       nl_add_attr_u32(&r->h, rsize, NDA_VNI, nh->label[0]);
 
-    eattr *ea = ea_find(e->attrs->eattrs, EA_MPLS_LABEL);
+    eattr *ea = ea_find(e->attrs, &ea_gen_mpls_label);
     if (ea)
       nl_add_attr_u32(&r->h, rsize, NDA_SRC_VNI, ea->u.data);
 
@@ -2218,7 +2219,7 @@ nl_send_fdb(const net_addr *n0, rte *e, int op, int tunnel)
 }
 
 void
-kbr_replace_fdb(struct kbr_proto *p, const net_addr *n, rte *new, rte *old, int tunnel)
+kbr_replace_fdb(struct kbr_proto *p, const net_addr *n, rte *new, const rte *old, int tunnel)
 {
   int err = 0;
 
@@ -2248,7 +2249,7 @@ kbr_replace_fdb(struct kbr_proto *p, const net_addr *n, rte *new, rte *old, int 
 }
 
 void
-kbr_update_fdb(struct kbr_proto *p, const net_addr *n, rte *new, rte *old, int tunnel)
+kbr_update_fdb(struct kbr_proto *p, const net_addr *n, rte *new, const rte *old, int tunnel)
 {
   int err = 0;
 
@@ -2322,12 +2323,15 @@ nl_parse_fdb(struct nl_parse_state *s, struct nlmsghdr *h)
   if (!p)
     return;
 
-  rta ra = {
-    .source = RTS_BRIDGE,
-    .scope = SCOPE_UNIVERSE,
-    .dest = RTD_UNICAST,
-    .nh.iface = oif,
+  rte e0 = {
+    .src = p->p.main_source,
   };
+
+  ea_set_attr_u32(&e0.attrs, &ea_gen_source, 0, RTS_BRIDGE);
+
+  struct nexthop_adata *nhad = tmp_allocz(NEXTHOP_MAX_SIZE + sizeof *nhad);
+  struct nexthop *nh = &nhad->nh;
+  nh->iface = oif;
 
   bool tunnel = false;
 
@@ -2335,17 +2339,17 @@ nl_parse_fdb(struct nl_parse_state *s, struct nlmsghdr *h)
   if (nd->ndm_flags & NTF_SELF)
   {
     /* FDB entries from VXLAN devices */
-    u32 type = ea_get_int((oif->attrs ? oif->attrs->eattrs : NULL), EA_IFACE_TYPE, IF_TYPE_UNDEF);
+    u32 type = ea_get_int(oif->attrs, &ea_iface_type, IF_TYPE_UNDEF);
     if (type != IF_TYPE_VXLAN)
       return;
 
     if (a[NDA_DST])
-      ra.nh.gw = rta_get_ipa(a[NDA_DST]);
+      nh->gw = rta_get_ipa(a[NDA_DST]);
 
     if (a[NDA_VNI])
     {
-      ra.nh.labels = 1;
-      ra.nh.label[0] = rta_get_u32(a[NDA_VNI]);
+      nh->labels = 1;
+      nh->label[0] = rta_get_u32(a[NDA_VNI]);
     }
 
     if (a[NDA_SRC_VNI])
@@ -2377,12 +2381,11 @@ nl_parse_fdb(struct nl_parse_state *s, struct nlmsghdr *h)
   else
     src = KBR_SRC_DYNAMIC;
 
-  ea_set_attr_u32(&ra.eattrs, s->pool, EA_KBR_SOURCE, 0, EAF_TYPE_INT, src);
-
-  rte *e = new ? rte_get_temp(&ra, p->p.main_source) : NULL;
+  ea_set_attr_u32(&e0.attrs, &ea_kbr_source, 0, src);
+  ea_set_attr_data(&e0.attrs, &ea_gen_nexthop, 0, nhad->ad.data, nhad->ad.length = ((void *) NEXTHOP_NEXT(nh) - (void *) nhad->ad.data));
 
   DBG("FDB %s %N dev %s [%x %x %x] %d %d %d\n", (new ? "add" : "del"), &n, oif->name, nd->ndm_state, nd->ndm_flags, nd->ndm_type, (int) src, (int) s->scan, (int) tunnel);
-  kbr_got_fdb(p, &n, e, src, s->scan, tunnel);
+  kbr_got_fdb(p, &n, &e0, nhad, src, s->scan, tunnel);
 }
 
 void
@@ -2837,6 +2840,38 @@ krt_sys_copy_config(struct krt_config *d, struct krt_config *s)
   d->sys.table_id = s->sys.table_id;
   d->sys.metric = s->sys.metric;
 }
+
+#ifdef CONFIG_BRIDGE
+
+int
+kbr_sys_start(struct kbr_proto *p)
+{
+  struct kbr_proto *old = HASH_FIND(nl_bridge_map, BRH, kbr_bridge_id(p));
+
+  if (old)
+  {
+    log(L_ERR "%s: Bridge device %s already registered by %s",
+       p->p.name, p->bridge_dev->name, old->p.name);
+    return 0;
+  }
+
+  HASH_INSERT2(nl_bridge_map, BRH, krt_pool, p);
+
+  nl_open();
+  nl_open_async();
+
+  return 1;
+}
+
+void
+kbr_sys_shutdown(struct kbr_proto *p)
+{
+  HASH_REMOVE2(nl_bridge_map, BRH, krt_pool, p);
+}
+
+#endif /* CONFIG_BRIDGE */
+
+
 
 void
 kif_sys_start(struct kif_proto *p UNUSED)

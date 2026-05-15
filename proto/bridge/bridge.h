@@ -62,6 +62,8 @@ struct kbr_vlan {
   struct kbr_vlan *next_vni;
 };
 
+extern struct ea_class ea_kbr_source;
+
 void kbr_got_fdb(struct kbr_proto *p, const net_addr *n, rte *e, const struct nexthop_adata *nhad, int src, bool scan, bool tunnel);
 void kbr_got_vlan(struct kbr_proto *p, struct iface *i, uint vid, uint flags);
 void kbr_got_vlan_tunnel(struct kbr_proto *p, struct iface *i, uint vid, uint vni, uint flags);
