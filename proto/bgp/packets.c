@@ -1145,14 +1145,7 @@ bgp_apply_next_hop(struct bgp_parse_state *s, ea_list **to, ip_addr gw, ip_addr 
 
     rtable *tab = ipa_is_ip4(gw) ? c->igp_table_ip4 : c->igp_table_ip6;
     ip_addr lla = (c->cf->next_hop_prefer == NHP_LOCAL) ? ll : IPA_NONE;
-
-    if (s->mpls)
-    {
-      u32 labels[BGP_MPLS_MAX];
-      ea_set_hostentry(to, c->c.table, tab, gw, lla, BGP_MPLS_MAX, labels);
-    }
-    else
-      ea_set_hostentry(to, c->c.table, tab, gw, lla, 0, NULL);
+    ea_set_hostentry(to, c->c.table, tab, gw, lla, 0, NULL);
   }
 }
 
@@ -1175,21 +1168,26 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, ea_list **to, u32 lnum, u32 lab
 
   if (s->channel->cf->gw_mode == GW_DIRECT)
   {
+    /* Update nexthop labels */
     eattr *e = ea_find(*to, &ea_gen_nexthop);
-    SKIP_BACK_DECLARE(struct nexthop_adata_mpls, namp, nhad.ad, e->u.ptr);
+    SKIP_BACK_DECLARE(struct nexthop_adata, nhad, ad, e->u.ptr);
 
-    namp->nhad.nh.labels = lnum;
-    memcpy(namp->nhad.nh.label, labels, lnum * sizeof(u32));
-    namp->nhad.ad.length = NEXTHOP_NEXT(&namp->nhad.nh) - (void *) namp->nhad.ad.data;
+    struct nexthop_adata_mpls nam;
+    memset(&nam, 0, sizeof nam);
+    nam.nhad.nh.gw = nhad->nh.gw;
+    nam.nhad.nh.iface = nhad->nh.iface;
+    nam.nhad.nh.flags = nhad->nh.flags;
+    nam.nhad.nh.labels = lnum;
+    memcpy(nam.nhad.nh.label, labels, lnum * sizeof(u32));
+    nam.nhad.ad.length = NEXTHOP_NEXT(&nam.nhad.nh) - (void *) nam.nhad.ad.data;
+    ea_set_attr_data(to, &ea_gen_nexthop, 0, nam.nhad.ad.data, nam.nhad.ad.length);
   }
   else /* GW_RECURSIVE */
   {
     eattr *e = ea_find(*to, &ea_gen_hostentry);
     ASSERT_DIE(e);
     struct hostentry_adata *head = (void *) e->u.ptr;
-    memcpy(head->labels, labels, lnum * sizeof(u32));
-    head->ad.length = (void *)(&head->labels[lnum]) - (void *) head->ad.data;
-    debug("he %p apply mpls labels (%u): %u\n", head->he, lnum, labels[0]);
+    ea_set_hostentry(to, head->he->tab, head->he->owner, head->he->addr, head->he->link, lnum, labels);
   }
 }
 
