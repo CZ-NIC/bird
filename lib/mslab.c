@@ -920,7 +920,7 @@ static void msl_thread_end(struct bird_thread_end_callback *btec)
 
   /* How many items are still allocated from that head? */
   uint num_full = atomic_fetch_sub_explicit(&h->num_full, ti->still_free, memory_order_acq_rel);
-  if (num_full == ti->still_free)
+  if (num_full == 0)
   {
     /* The page is empty, just throw it away.
      * The |num_full| variable decreases over time but |still_free| is constant
