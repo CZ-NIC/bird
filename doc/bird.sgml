@@ -354,6 +354,22 @@ Configuration keywords are <cf/flow4/ and <cf/flow6/.
 	<item>Flow action (encoded internally as BGP communities according to <rfc id="8955">)
 </itemize>
 
+<sect1>Ethernet forwarding entries
+<label id="eth-routes">
+
+<p>Ethernet forwarding entries are entries in bridge forwarding database. They
+control forwarding of ethernet frames based on destination MAC addresses. Each
+entry maps a MAC address (and VLAN ID) to a specific port, determining which
+interface should receive frames destined for that address. Optionally, next hop
+can be used for VXLAN encapsulation (as part of EVPN deployment). Configuration
+keyword is <cf/eth/.
+
+<itemize>
+	<item>(PK) MAC address
+	<item>(PK) VLAN ID
+	<item>Route interface (and next hop)
+</itemize>
+
 <sect1>MPLS switching rules
 <label id="mpls-routes">
 
@@ -364,6 +380,71 @@ corresponding MPLS routes. Configuration keyword is <cf/mpls/.
 <itemize>
 	<item>(PK) MPLS label
 	<item>Route next hops
+</itemize>
+
+<sect1>EVPN routes
+<label id="evpn-routes">
+
+<p>EVPN routes encode control plane information for Ethernet VPN (EVPN)
+networks. They carry MAC address and IP address reachability information using
+BGP advertisements. There are several types of EVPN routes, each serves specific
+purposes - MAC (type 2) routes advertise MAC/IP locations, IMET (type 3) routes
+announce endpoints for broadcast / unknown / multicast communication. These
+routes enable distributed learning of endpoint locations across multiple sites
+in the overlay network. Configuration keyword is <cf/evpn/.
+
+<sect2>EVPN Ethernet Auto-Discovery (EAD) routes
+<label id="evpn-ead-routes">
+
+<p>EVPN EAD routes advertise Ethernet segment reachability and enable
+multihoming redundancy mechanisms. Currently not used by BIRD.
+
+<itemize>
+	<item>(PK) Ethernet Segment Identifier (ESI)
+	<item>(PK) Ethernet Tag ID (tag)
+	<item>(PK) Route Distinguisher (RD)
+	<item>MPLS label / VNI
+</itemize>
+
+<sect2>EVPN MAC/IP Advertisement (MAC) routes
+<label id="evpn-mac-routes">
+
+<p>EVPN MAC routes advertise MAC addresses and optionally their associated IP
+addresses within an EVPN instance.
+
+<itemize>
+	<item>(PK) MAC address
+	<item>(PK) IP address (optional)
+	<item>(PK) Ethernet Tag ID (tag)
+	<item>(PK) Route Distinguisher (RD)
+	<item>Ethernet Segment Identifier (ESI)
+	<item>Router IP address
+	<item>MPLS label / VNI
+</itemize>
+
+<sect2>EVPN Inclusive Multicast Ethernet Tag (IMET) routes
+<label id="evpn-imet-routes">
+
+<p>EVPN IMET routes advertise endpoints for BUM (Broadcast, Unknown, Multicast)
+traffic forwarding.
+
+<itemize>
+	<item>(PK) Ethernet Tag ID (tag)
+	<item>(PK) Route Distinguisher (RD)
+	<item>(PK) Router IP address
+	<item>MPLS label / VNI (in PMSI attribute)
+</itemize>
+
+<sect2>EVPN Ethernet Segment (ES) routes
+<label id="evpn-es-routes">
+
+<p>EVPN ES routes advertise Ethernet segment identifiers and designated
+forwarder election information for multihoming. Currently not used by BIRD.
+
+<itemize>
+	<item>(PK) Ethernet Segment Identifier (ESI)
+	<item>(PK) Route Distinguisher (RD)
+	<item>(PK) Router IP address
 </itemize>
 
 <sect1>Neighbor entries
@@ -1681,6 +1762,10 @@ in the foot).
 	all but first <cf><m>number</m></cf> bits from the IP address. So
 	<cf/1.2.3.4.mask(8) = 1.0.0.0/ is true.
 
+	<tag><label id="type-mac">mac</tag>
+	This type can hold a single MAC address. MAC addresses are written
+	in the usual notation (e.g. <cf/62:68:7f:d9:c6:ec/).
+
 	<tag><label id="type-prefix">prefix</tag>
 	This type can hold a network prefix consisting of IP address, prefix
 	length and several other values. This is the key in route tables.
@@ -1721,8 +1806,24 @@ in the foot).
 	only <cf/.src/ and <cf/.dst/ operators to get source and destination
 	parts of the flowspec as separate <cf/NET_IP4/ / <cf/NET_IP6/ values.
 
+	<cf/NET_ETH/ prefixes holds a MAC address and a VLAN ID, which can be
+	extracted by operators <cf/.mac/ and <cf/.vlan_id/, respectively.
+
 	<cf/NET_MPLS/ holds a single MPLS label and its handling is currently
 	not implemented.
+
+	<cf/NET_EVPN/ is a complex nettype that holds reachability information
+	for Ethernet VPN. It has several subtypes (<cf/NET_EVPN_EAD/,
+	<cf/NET_EVPN_MAC/, <cf/NET_EVPN_IMET/, <cf/NET_EVPN_ES/), which can be
+	determined by the operator <cf/.evpn_type/. Fields and related operators
+	are: Route Distinguisher (<cf/.rd/), MAC address (<cf/.mac/), IP address
+	(<cf/.ip/), EVPN tag (<cf/.evpn_tag/), Ethernet Segment Identifier
+	(<cf/.evpn_esi/), router IP (<cf/.router_ip/). Note that only fields
+	that are a part of primary key for given route subtype can be accessed
+	by these operators (e.g. <cf/.evpn_esi/ can be used for <cf/NET_EVPN_ES/,
+	but not for <cf/NET_EVPN_MAC/ or other types), remaining attributes are
+	stored outside prefix as other route attributes. See <ref id="evpn-routes"
+	name="EVPN routes"> for description of specific subtypes.
 
 	<cf/NET_NEIGHBOR/ holds a single IP address and an interface index.
 	The IP address can be accessed by operator <cf/.ip/, while the access
@@ -3724,6 +3825,7 @@ together with their appropriate channels follows.
 @ <cf/vpn6 multicast/ | <cf/vpn6/          | <cf/ipv4/ and <cf/ipv6/ | 2        | 129
 @ <cf/flow4/	      | <cf/flow4/         | ---                     | 1        | 133
 @ <cf/flow6/          | <cf/flow6/         | ---                     | 2        | 133
+@ <cf/evpn/           | <cf/evpn/          | <cf/ipv4/ and <cf/ipv6/ | 25       | 70
 @ <cf/neighbors/      | <cf/neighbor/      | ---                     | ---      | ---
 </tabular>
 </table>
@@ -4187,6 +4289,14 @@ some of them (marked with `<tt/O/') are optional.
 	<tag><label id="rta-bgp-cluster-list">clist bgp_cluster_list [I, O]</tag>
 	This attribute contains a list of cluster IDs of route reflectors. Each
 	route reflector prepends its cluster ID when reflecting the route.
+
+	<tag><label id="rta-bgp-pmsi-tunnel">void bgp_pmsi_tunnel [O]</tag>
+	The PMSI (P-Multicast Service Interface) tunnel BGP attribute is carried
+	by EVPN IMET routes to describe the multicast tunnel information that
+	carries BUM (Broadcast, Unknown, Multicast) traffic. It specifies the
+	tunnel type (such as PIM-SSM, PIM-ASM, or Ingress Replication), the
+	tunnel identifier, and the MPLS/VNI label for a specific EVPN instance.
+	Currently, the attribute is not accessible from filters.
 
 	<tag><label id="rta-bgp-aigp">void bgp_aigp [O]</tag>
 	This attribute contains accumulated IGP metric, which is a total
