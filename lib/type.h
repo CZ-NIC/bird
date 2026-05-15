@@ -86,8 +86,8 @@ enum btype {
 					/* Otherwise, attribute data is adata */
 
 /* Other user visible types which fit in int */
-  T_BOOL = 0xa0,
-  T_PAIR = 0xa4,  /*	Notice that pair is stored as integer: first << 16 | second */
+  T_BOOL = 0xa1,
+  T_PAIR = 0xa5,  /*	Notice that pair is stored as integer: first << 16 | second */
 
 /* Put enumerational types in 0x20..0x3f range */
   T_ENUM_LO = 0x12,
