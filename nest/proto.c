@@ -1936,10 +1936,13 @@ protos_commit(struct config *new, struct config *old, int type)
   protos_do_commit(new, old, type);
 }
 
+bool protos_do_commit_running = false;
+
 static void
 protos_do_commit(struct config *new, struct config *old, int type)
 {
   ASSERT_DIE(birdloop_inside(&main_birdloop));
+  protos_do_commit_running = true;
 
   if (proto_rethink_goal_pending)
     return;
@@ -2057,6 +2060,8 @@ protos_do_commit(struct config *new, struct config *old, int type)
   else
     protos_commit_request.phase--;
 
+  protos_do_commit_running = false;
+
   /* If something is pending, the next round will be called asynchronously from proto_rethink_goal(). */
   if (!proto_rethink_goal_pending)
     protos_do_commit(new, old, type);
@@ -2116,7 +2121,7 @@ proto_cleanup(struct proto *p)
   }
 
   /* Unblock later reconfig goals */
-  if (!--proto_rethink_goal_pending)
+  if (!--proto_rethink_goal_pending && !protos_do_commit_running)
   {
     ASSERT_DIE(protos_commit_request.new);
     callback_activate(&protos_commit_request.cb);
