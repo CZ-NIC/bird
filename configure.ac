@@ -259,6 +259,7 @@ else
     linux*)
       sysdesc=linux
       default_iproutedir="/etc/iproute2"
+      proto_bridge=bridge
       ;;
     freebsd*)
       sysdesc=bsd
@@ -361,7 +362,7 @@ else
   AC_DEFINE([HAVE_CLOCK_MONOTONIC_COARSE], [1], [Define to 1 if coarse clock is available])
 fi
 
-all_protocols="aggregator bfd babel bgp bmp l3vpn mrt ospf pipe radv rip rpki static"
+all_protocols="aggregator bfd babel bgp bmp $proto_bridge l3vpn mrt ospf pipe radv rip rpki static"
 all_protocols=`echo $all_protocols | sed 's/ /,/g'`
 
 if test "$with_protocols" = all ; then
@@ -373,6 +374,7 @@ AH_TEMPLATE([CONFIG_BABEL], 	[Babel protocol])
 AH_TEMPLATE([CONFIG_BFD],	[BFD protocol])
 AH_TEMPLATE([CONFIG_BGP],	[BGP protocol])
 AH_TEMPLATE([CONFIG_BMP],	[BMP protocol])
+AH_TEMPLATE([CONFIG_BRIDGE],	[Bridge protocol])
 AH_TEMPLATE([CONFIG_L3VPN],	[L3VPN protocol])
 AH_TEMPLATE([CONFIG_MRT],	[MRT protocol])
 AH_TEMPLATE([CONFIG_OSPF],	[OSPF protocol])
