@@ -222,7 +222,8 @@ struct nexthop_adata_mpls {
 #define RTS_L3VPN 16			/* MPLS L3VPN */
 #define RTS_AGGREGATED 17		/* Aggregated route */
 #define RTS_RADV 18			/* Router Advertisement */
-#define RTS_MAX 19
+#define RTS_BRIDGE 19			/* FDB record from the kernel bridge */
+#define RTS_MAX 20
 
 #define RTD_NONE 0			/* Undefined next hop */
 #define RTD_UNICAST 1			/* A standard next hop */
@@ -550,7 +551,7 @@ static inline void ea_set_dest(struct ea_list **to, uint flags, uint dest)
     _iter = NEXTHOP_NEXT(_iter))
 
 
-static inline int nexthop_same(struct nexthop_adata *x, struct nexthop_adata *y)
+static inline int nexthop_same(const struct nexthop_adata *x, const struct nexthop_adata *y)
 { return adata_same(&x->ad, &y->ad); }
 struct nexthop_adata *nexthop_merge(struct nexthop_adata *x, struct nexthop_adata *y, int max, linpool *lp);
 struct nexthop_adata *nexthop_sort(struct nexthop_adata *x, linpool *lp);
@@ -559,20 +560,20 @@ int nexthop_is_sorted(struct nexthop_adata *x);
 #define NEXTHOP_IS_REACHABLE(nhad)	((nhad)->ad.length > NEXTHOP_DEST_SIZE)
 
 static inline struct nexthop_adata *
-rte_get_nexthops(rte *r)
+rte_get_nexthops(const rte *r)
 {
   eattr *nhea = ea_find(r->attrs, &ea_gen_nexthop);
   return nhea ? SKIP_BACK(struct nexthop_adata, ad, nhea->u.ptr) : NULL;
 }
 
 /* Route has regular, reachable nexthop (i.e. not RTD_UNREACHABLE and like) */
-static inline int rte_is_reachable(rte *r)
+static inline int rte_is_reachable(const rte *r)
 {
   struct nexthop_adata *nhad = rte_get_nexthops(r);
   return nhad && NEXTHOP_IS_REACHABLE(nhad);
 }
 
-static inline int nhea_dest(eattr *nhea)
+static inline int nhea_dest(const eattr *nhea)
 {
   if (!nhea)
     return RTD_NONE;

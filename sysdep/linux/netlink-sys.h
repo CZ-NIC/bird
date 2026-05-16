@@ -13,6 +13,7 @@
 #include <linux/if.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
+#include <linux/if_bridge.h>
 
 #ifdef HAVE_MPLS_KERNEL
 #include <linux/lwtunnel.h>

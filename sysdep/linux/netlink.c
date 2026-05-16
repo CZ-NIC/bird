@@ -28,6 +28,8 @@
 #include "lib/macro.h"
 #include "conf/conf.h"
 
+#include "proto/bridge/bridge.h"
+
 #include CONFIG_INCLUDE_NLSYS_H
 
 #define krt_ipv4(p) ((p)->af == AF_INET)
@@ -41,6 +43,7 @@ struct nl_parse_state
   int scan;
 
   u32 rta_flow;
+  u32 bridge_id;
 };
 
 /*
@@ -264,18 +267,28 @@ nl_send(struct nl_sock *nl, struct nlmsghdr *nh)
 }
 
 static void
-nl_request_dump_link(void)
+nl_request_dump_link(int af, u32 ext_mask)
 {
   struct {
     struct nlmsghdr nh;
     struct ifinfomsg ifi;
+    struct rtattr rta;
+    u32 ext_mask;
   } req = {
     .nh.nlmsg_type = RTM_GETLINK,
     .nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg)),
     .nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP,
     .nh.nlmsg_seq = ++(nl_scan.seq),
-    .ifi.ifi_family = AF_UNSPEC,
+    .ifi.ifi_family = af,
   };
+
+  if (ext_mask)
+  {
+    req.rta.rta_type = IFLA_EXT_MASK;
+    req.rta.rta_len = RTA_LENGTH(4);
+    req.ext_mask = ext_mask;
+    req.nh.nlmsg_len = NLMSG_ALIGN(req.nh.nlmsg_len) + req.rta.rta_len;
+  }
 
   send(nl_scan.fd, &req, sizeof(req), 0);
   nl_scan.last_hdr = NULL;
@@ -322,6 +335,34 @@ nl_request_dump_route(int af, int table_id)
     req.rta.rta_type = RTA_TABLE;
     req.rta.rta_len = RTA_LENGTH(4);
     req.table_id = table_id;
+    req.nh.nlmsg_len = NLMSG_ALIGN(req.nh.nlmsg_len) + req.rta.rta_len;
+  }
+
+  send(nl_scan.fd, &req, req.nh.nlmsg_len, 0);
+  nl_scan.last_hdr = NULL;
+}
+
+static void
+nl_request_dump_neigh(int af, int bridge_id)
+{
+  struct {
+    struct nlmsghdr nh;
+    struct ndmsg ndm;
+    struct rtattr rta;
+    u32 master_id;
+  } req = {
+    .nh.nlmsg_type = RTM_GETNEIGH,
+    .nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ndmsg)),
+    .nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP,
+    .nh.nlmsg_seq = ++(nl_scan.seq),
+    .ndm.ndm_family = af,
+  };
+
+  if (bridge_id)
+  {
+    req.rta.rta_type = NDA_MASTER;
+    req.rta.rta_len = RTA_LENGTH(4);
+    req.master_id = bridge_id;
     req.nh.nlmsg_len = NLMSG_ALIGN(req.nh.nlmsg_len) + req.rta.rta_len;
   }
 
@@ -453,7 +494,7 @@ struct nl_want_attrs {
 };
 
 
-#define BIRD_IFLA_MAX (IFLA_LINKINFO+1)
+#define BIRD_IFLA_MAX (IFLA_AF_SPEC+1)
 
 static struct nl_want_attrs ifla_attr_want[BIRD_IFLA_MAX] = {
   [IFLA_IFNAME]	  = { 1, 0, 0 },
@@ -461,6 +502,7 @@ static struct nl_want_attrs ifla_attr_want[BIRD_IFLA_MAX] = {
   [IFLA_MASTER]	  = { 1, 1, sizeof(u32) },
   [IFLA_WIRELESS] = { 1, 0, 0 },
   [IFLA_LINKINFO] = { 1, 0, 0 },
+  [IFLA_AF_SPEC]  = { 1, 0, 0 },
 };
 
 #define BIRD_INFO_MAX (IFLA_INFO_DATA+1)
@@ -483,6 +525,22 @@ static struct nl_want_attrs ifla_vxlan_attr_want[BIRD_IFLA_VXLAN_MAX] = {
   [IFLA_VXLAN_LEARNING]	= { 1, 1, sizeof(u8) },
   [IFLA_VXLAN_LOCAL]	= { 1, 1, sizeof(ip4_addr) },
   [IFLA_VXLAN_LOCAL6]	= { 1, 1, sizeof(ip6_addr) },
+};
+
+
+#define BIRD_IFBRIDGE_MAX (IFLA_BRIDGE_VLAN_TUNNEL_INFO+1)
+
+static struct nl_want_attrs ifbridge_attr_want[BIRD_IFBRIDGE_MAX] UNUSED = {
+  [IFLA_BRIDGE_VLAN_INFO] = { 1, 1, sizeof(struct bridge_vlan_info) },
+  [IFLA_BRIDGE_VLAN_TUNNEL_INFO] = { 1, 0, 0 },
+};
+
+#define BIRD_IFBRIDGE_VLAN_TUNNEL_MAX (IFLA_BRIDGE_VLAN_TUNNEL_FLAGS+1)
+
+static struct nl_want_attrs ifbridge_vlan_tunnel_attr_want[BIRD_IFBRIDGE_VLAN_TUNNEL_MAX] UNUSED = {
+  [IFLA_BRIDGE_VLAN_TUNNEL_ID]		= { 1, 1, sizeof(u32) },
+  [IFLA_BRIDGE_VLAN_TUNNEL_VID]		= { 1, 1, sizeof(u16) },
+  [IFLA_BRIDGE_VLAN_TUNNEL_FLAGS]	= { 1, 1, sizeof(u16) },
 };
 
 
@@ -579,6 +637,18 @@ static struct nl_want_attrs rtm_attr_want_mpls[BIRD_RTA_MAX] = {
 #endif
 
 
+#define BIRD_NDA_MAX  (NDA_SRC_VNI+1)
+
+static struct nl_want_attrs ndm_attr_want[BIRD_NDA_MAX] = {
+  [NDA_DST]	  = { 1, 0, 0 },
+  [NDA_LLADDR]	  = { 1, 1, sizeof(mac_addr) },
+  [NDA_VLAN]	  = { 1, 1, sizeof(u16) },
+  [NDA_VNI]	  = { 1, 1, sizeof(u32) },
+  [NDA_MASTER]	  = { 1, 1, sizeof(u32) },
+  [NDA_SRC_VNI]	  = { 1, 1, sizeof(u32) },
+};
+
+
 static int
 nl_parse_attrs(struct rtattr *a, struct nl_want_attrs *want, struct rtattr **k, int ksize)
 {
@@ -630,9 +700,14 @@ static inline ip_addr rta_get_ipa(struct rtattr *a)
 {
   if (RTA_PAYLOAD(a) == sizeof(ip4_addr))
     return ipa_from_ip4(rta_get_ip4(a));
-  else
+  else if (RTA_PAYLOAD(a) == sizeof(ip6_addr))
     return ipa_from_ip6(rta_get_ip6(a));
+  else
+    return IPA_NONE;
 }
+
+static inline mac_addr rta_get_mac(struct rtattr *a)
+{ return *(mac_addr *) RTA_DATA(a); }
 
 static inline ip_addr rta_get_via(struct rtattr *a)
 {
@@ -1409,7 +1484,7 @@ kif_do_scan(struct kif_proto *p UNUSED)
 
   if_start_update();
 
-  nl_request_dump_link();
+  nl_request_dump_link(AF_UNSPEC, 0);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWLINK || h->nlmsg_type == RTM_DELLINK)
       nl_parse_link(h, 1);
@@ -1452,6 +1527,7 @@ kif_do_scan(struct kif_proto *p UNUSED)
   if_end_update();
 }
 
+
 /*
  *	Routes
  */
@@ -1470,7 +1546,7 @@ static HASH(struct krt_proto) nl_table_map;
 #define RTH_FN(a,i)		a ^ u32_hash(i)
 
 #define RTH_REHASH		rth_rehash
-#define RTH_PARAMS		/8, *2, 2, 2, 6, 20
+#define RTH_PARAMS		/8, *1, 2, 2, 4, 20
 
 HASH_DEFINE_REHASH_FN(RTH, struct krt_proto)
 
@@ -2064,6 +2140,448 @@ krt_do_scan(struct krt_proto *p)
   }
 }
 
+
+#ifdef CONFIG_BRIDGE
+
+/*
+ *	FDB entries
+ */
+
+static inline u32
+kbr_bridge_id(struct kbr_proto *p)
+{
+  return p->bridge_dev->index;
+}
+
+static HASH(struct kbr_proto) nl_bridge_map;
+
+#define BRH_KEY(p)		kbr_bridge_id(p)
+#define BRH_NEXT(p)		p->hash_next
+#define BRH_EQ(i1,i2)		i1 == i2
+#define BRH_FN(i)		u32_hash(i)
+
+#define BRH_REHASH		brh_rehash
+#define BRH_PARAMS		/8, *1, 2, 2, 4, 20
+
+HASH_DEFINE_REHASH_FN(BRH, struct kbr_proto);
+
+static int
+nl_send_fdb(const net_addr *n0, const rte *e, int op, int tunnel)
+{
+  const net_addr_eth *n = (void *) n0;
+
+  struct {
+    struct nlmsghdr h;
+    struct ndmsg n;
+    char buf[0];
+  } *r;
+
+  int rsize = sizeof(*r) + 256;
+  r = alloca(rsize);
+
+  memset(&r->h, 0, sizeof(r->h));
+  memset(&r->n, 0, sizeof(r->n));
+  r->h.nlmsg_type = op ? RTM_NEWNEIGH : RTM_DELNEIGH;
+  r->h.nlmsg_len = NLMSG_LENGTH(sizeof(struct ndmsg));
+  r->h.nlmsg_flags = op | NLM_F_REQUEST | NLM_F_ACK;
+
+  r->n.ndm_family = AF_BRIDGE;
+  r->n.ndm_state = NUD_NOARP;
+  r->n.ndm_flags = (tunnel ? NTF_SELF : NTF_MASTER) | NTF_EXT_LEARNED;
+
+  nl_add_attr(&r->h, rsize, NDA_LLADDR, n->mac.addr, 6);
+
+  if (n->vid)
+    nl_add_attr_u16(&r->h, rsize, NDA_VLAN, n->vid);
+
+  struct nexthop_adata *nhad = rte_get_nexthops(e);
+  ASSERT_DIE(NEXTHOP_ONE(nhad));
+  struct nexthop *nh = &nhad->nh;
+  r->n.ndm_ifindex = nh->iface->index;
+
+  if (tunnel)
+  {
+    ASSERT(ipa_nonzero(nh->gw));
+    nl_add_attr_ipa(&r->h, rsize, NDA_DST, nh->gw);
+
+    if (nh->labels)
+      nl_add_attr_u32(&r->h, rsize, NDA_VNI, nh->label[0]);
+
+    eattr *ea = ea_find(e->attrs, &ea_gen_mpls_label);
+    if (ea)
+      nl_add_attr_u32(&r->h, rsize, NDA_SRC_VNI, ea->u.data);
+
+    r->n.ndm_state |= NUD_PERMANENT;
+  }
+
+  /* Ignore missing for DELETE */
+  return nl_exchange(&r->h, (op == NL_OP_DELETE));
+}
+
+void
+kbr_replace_fdb(struct kbr_proto *p, const net_addr *n, rte *new, const rte *old, int tunnel)
+{
+  int err = 0;
+
+  if (old && new)
+  {
+    err = nl_send_fdb(n, new, NL_OP_REPLACE, tunnel);
+  }
+  else
+  {
+    if (old)
+      nl_send_fdb(n, old, NL_OP_DELETE, tunnel);
+
+    if (new)
+      err = nl_send_fdb(n, new, NL_OP_ADD, tunnel);
+  }
+
+  if (new)
+  {
+    if (err < 0)
+      bmap_clear(&p->sync_map[tunnel], new->id);
+    else
+      bmap_set(&p->sync_map[tunnel], new->id);
+  }
+
+  if (err < 0)
+    log(L_WARN "NL error %m");
+}
+
+void
+kbr_update_fdb(struct kbr_proto *p, const net_addr *n, rte *new, const rte *old, int tunnel)
+{
+  int err = 0;
+
+  if (old)
+    nl_send_fdb(n, old, NL_OP_DELETE, tunnel);
+
+  if (new)
+  {
+    err = nl_send_fdb(n, new, NL_OP_APPEND, tunnel);
+
+    if (err < 0)
+      bmap_clear(&p->sync_map[tunnel], new->id);
+    else
+      bmap_set(&p->sync_map[tunnel], new->id);
+  }
+
+  if (err < 0)
+    log(L_WARN "NL error %m");
+}
+
+#ifndef NDM_RTA
+#define NDM_RTA(n) (struct rtattr *)(((char *) n) + NLMSG_ALIGN(sizeof(struct ndmsg)))
+#endif
+
+static void
+nl_parse_fdb(struct nl_parse_state *s, struct nlmsghdr *h)
+{
+  struct ndmsg *nd;
+  struct rtattr *a[BIRD_NDA_MAX];
+  int new = (h->nlmsg_type == RTM_NEWNEIGH);
+
+  if (!(nd = nl_checkin(h, sizeof(*nd))))
+    return;
+
+  if (nd->ndm_family != AF_BRIDGE)
+    return;
+
+  if (!nl_parse_attrs(NDM_RTA(nd), ndm_attr_want, a, sizeof(a)))
+    return;
+
+  if (!a[NDA_LLADDR])
+    return;
+
+  mac_addr mac = rta_get_mac(a[NDA_LLADDR]);
+  uint vid = a[NDA_VLAN] ? rta_get_u16(a[NDA_VLAN]) : 0;
+
+  net_addr n;
+  net_fill_eth(&n, mac, vid);
+
+  /* Ignore multicast entries */
+  if (!mac_is_unicast(mac))
+    return;
+
+  struct iface *oif = if_find_by_index(nd->ndm_ifindex);
+  if (!oif)
+    return;
+
+  /* NDA_MASTER is not present on 'self' entries */
+  u32 bridge_id = oif->master_index;
+
+  /* Should be filtered by kernel */
+  if (s->bridge_id && (bridge_id != s->bridge_id))
+    return;
+
+  /* When NDA_MASTER is reported, it should be the same */
+  if (a[NDA_MASTER] && (bridge_id != rta_get_u32(a[NDA_MASTER])))
+    return;
+
+  /* Do we know this bridge? */
+  struct kbr_proto *p = HASH_FIND(nl_bridge_map, BRH, bridge_id);
+  if (!p)
+    return;
+
+  rte e0 = {
+    .src = p->p.main_source,
+  };
+
+  ea_set_attr_u32(&e0.attrs, &ea_gen_source, 0, RTS_BRIDGE);
+
+  struct nexthop_adata *nhad = tmp_allocz(NEXTHOP_MAX_SIZE + sizeof *nhad);
+  struct nexthop *nh = &nhad->nh;
+  nh->iface = oif;
+
+  bool tunnel = false;
+
+  /* FDB entries from port devices */
+  if (nd->ndm_flags & NTF_SELF)
+  {
+    /* FDB entries from VXLAN devices */
+    u32 type = ea_get_int(oif->attrs, &ea_iface_type, IF_TYPE_UNDEF);
+    if (type != IF_TYPE_VXLAN)
+      return;
+
+    if (a[NDA_DST])
+      nh->gw = rta_get_ipa(a[NDA_DST]);
+
+    if (a[NDA_VNI])
+    {
+      nh->labels = 1;
+      nh->label[0] = rta_get_u32(a[NDA_VNI]);
+    }
+
+    if (a[NDA_SRC_VNI])
+    {
+      struct kbr_vlan *vlan = kbr_find_vlan_by_vni(p, oif->index, rta_get_u32(a[NDA_SRC_VNI]));
+      if (!vlan)
+      {
+	log(L_TRACE "%s: FDB %N unkown vni %u", p->p.name, &n, rta_get_u32(a[NDA_SRC_VNI]));
+	return;
+      }
+
+      ((net_addr_eth *) &n)->vid = vid = vlan->vid;
+    }
+
+    tunnel = true;
+  }
+
+  /* Accept VLAN-tagged entries when vlan filtering is enabled */
+  if (!vid != !p->vlan_filtering)
+    return;
+
+  int src;
+  if (nd->ndm_flags & NTF_EXT_LEARNED)
+    src = KBR_SRC_BIRD;
+  else if (nd->ndm_state & NUD_PERMANENT)
+    src = KBR_SRC_LOCAL;
+  else if (nd->ndm_state & NUD_NOARP)
+    src = KBR_SRC_STATIC;
+  else
+    src = KBR_SRC_DYNAMIC;
+
+  ea_set_attr_u32(&e0.attrs, &ea_kbr_source, 0, src);
+  ea_set_attr_data(&e0.attrs, &ea_gen_nexthop, 0, nhad->ad.data, nhad->ad.length = ((void *) NEXTHOP_NEXT(nh) - (void *) nhad->ad.data));
+
+  DBG("FDB %s %N dev %s [%x %x %x] %d %d %d\n", (new ? "add" : "del"), &n, oif->name, nd->ndm_state, nd->ndm_flags, nd->ndm_type, (int) src, (int) s->scan, (int) tunnel);
+  kbr_got_fdb(p, &n, new ? &e0 : NULL, nhad, src, s->scan, tunnel);
+}
+
+void
+kbr_do_fdb_scan(struct kbr_proto *p)
+{
+  struct nl_parse_state s = {
+    .pool = nl_linpool,
+    .scan = 1,
+    .bridge_id = kbr_bridge_id(p),
+  };
+
+  struct nlmsghdr *h;
+
+  nl_request_dump_neigh(AF_BRIDGE, kbr_bridge_id(p));
+  while (h = nl_get_scan())
+  {
+    if (h->nlmsg_type == RTM_NEWNEIGH || h->nlmsg_type == RTM_DELNEIGH)
+      nl_parse_fdb(&s, h);
+  }
+}
+
+
+/*
+ *	VLANs
+ */
+
+static int
+nl_send_vlan(struct iface *i, uint vid, uint tid, uint flags, int op, int tunnel)
+{
+  struct {
+    struct nlmsghdr h;
+    struct ifinfomsg i;
+    char buf[0];
+  } *r;
+
+  int rsize = sizeof(*r) + 256;
+  r = alloca(rsize);
+
+  memset(&r->h, 0, sizeof(r->h));
+  memset(&r->i, 0, sizeof(r->i));
+  r->h.nlmsg_type = op ? RTM_SETLINK : RTM_DELLINK;
+  r->h.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
+  r->h.nlmsg_flags = op | NLM_F_REQUEST | NLM_F_ACK;
+
+  r->i.ifi_family = AF_BRIDGE;
+  r->i.ifi_index = i->index;
+
+  struct rtattr *afspec = nl_open_attr(&r->h, rsize, IFLA_AF_SPEC);
+
+  if (!tunnel)
+  {
+    struct bridge_vlan_info vinfo = { .flags = flags, .vid = vid, };
+    nl_add_attr(&r->h, rsize, IFLA_BRIDGE_VLAN_INFO, &vinfo, sizeof(vinfo));
+  }
+  else
+  {
+    struct rtattr *tinfo = nl_open_attr(&r->h, rsize, IFLA_BRIDGE_VLAN_TUNNEL_INFO);
+    nl_add_attr_u32(&r->h, rsize, IFLA_BRIDGE_VLAN_TUNNEL_ID, tid);
+    nl_add_attr_u16(&r->h, rsize, IFLA_BRIDGE_VLAN_TUNNEL_VID, vid);
+    nl_add_attr_u16(&r->h, rsize, IFLA_BRIDGE_VLAN_TUNNEL_FLAGS, flags);
+    nl_close_attr(&r->h, tinfo);
+  }
+
+  nl_close_attr(&r->h, afspec);
+
+  /* Ignore missing for DELETE */
+  return nl_exchange(&r->h, (op == NL_OP_DELETE));
+}
+
+void
+kbr_update_vlan(struct iface *i, uint vid, bool new, bool old, bool new_tunnel, bool old_tunnel, uint new_vni, uint old_vni)
+{
+  int err = 0;
+
+  if ((old && new) && (old_tunnel == new_tunnel) && (old_vni == new_vni))
+    return;
+
+  if (old_tunnel)
+    nl_send_vlan(i, vid, old_vni, 0, NL_OP_DELETE, 1);
+
+  if (old && !new)
+    nl_send_vlan(i, vid, 0, 0, NL_OP_DELETE, 0);
+
+  if (new && !old)
+    err = nl_send_vlan(i, vid, 0, 0, NL_OP_ADD, 0);
+
+  if (new_tunnel && !err)
+    err = nl_send_vlan(i, vid, new_vni, 0, NL_OP_ADD, 1);
+
+  if (err < 0)
+    log(L_WARN "NL error %m");
+}
+
+
+static void
+nl_parse_vlan(struct nl_parse_state *s, struct nlmsghdr *h)
+{
+  struct ifinfomsg *i;
+  struct rtattr *a[BIRD_IFLA_MAX];
+  // int new = (h->nlmsg_type == RTM_NEWLINK);
+
+  if (!(i = nl_checkin(h, sizeof(*i))))
+    return;
+
+  struct iface *oif = if_find_by_index(i->ifi_index);
+  if (!oif)
+    return;
+
+  if (i->ifi_family != AF_BRIDGE)
+    return;
+
+  if (!nl_parse_attrs(IFLA_RTA(i), ifla_attr_want, a, sizeof(a)))
+    return;
+
+  if (!a[IFLA_AF_SPEC] || !a[IFLA_MASTER])
+    return;
+
+  u32 bridge_id = rta_get_u32(a[IFLA_MASTER]);
+
+  /* Should be filtered by kernel */
+  if (s->bridge_id && (bridge_id != s->bridge_id))
+    return;
+
+  /* Do we know this bridge? */
+  struct kbr_proto *p = HASH_FIND(nl_bridge_map, BRH, bridge_id);
+  if (!p)
+    return;
+
+  /* Accept VLANs when vlan filtering is enabled */
+  if (!p->vlan_filtering)
+    return;
+
+  struct rtattr *list = a[IFLA_AF_SPEC];
+  uint rem = RTA_PAYLOAD(list);
+
+  /* We have to iterate over rtattrs to handle multiple instances of VLAN info attributes */
+  for (struct rtattr *vi = RTA_DATA(list); RTA_OK(vi, rem); vi = RTA_NEXT(vi, rem))
+  {
+    if (vi->rta_type == IFLA_BRIDGE_VLAN_INFO)
+    {
+      if (RTA_PAYLOAD(vi) != sizeof(struct bridge_vlan_info))
+      {
+	log(L_ERR "nl_parse_attrs: Malformed attribute received");
+	continue;
+      }
+
+      struct bridge_vlan_info *info = RTA_DATA(vi);
+
+      DBG("VLAN %u dev %s flags %x\n", info->vid, oif->name, info->flags);
+      kbr_got_vlan(p, oif, info->vid, info->flags);
+    }
+
+    if (vi->rta_type == IFLA_BRIDGE_VLAN_TUNNEL_INFO)
+    {
+      struct rtattr *a0[BIRD_IFBRIDGE_VLAN_TUNNEL_MAX];
+
+      nl_attr_len = RTA_PAYLOAD(vi);
+      if (!nl_parse_attrs(RTA_DATA(vi), ifbridge_vlan_tunnel_attr_want, a0, sizeof(a0)))
+	continue;
+
+      uint tid = a0[IFLA_BRIDGE_VLAN_TUNNEL_ID] ? rta_get_u32(a0[IFLA_BRIDGE_VLAN_TUNNEL_ID]) : 0;
+      uint vid = a0[IFLA_BRIDGE_VLAN_TUNNEL_VID] ? rta_get_u16(a0[IFLA_BRIDGE_VLAN_TUNNEL_VID]) : 0;
+      uint flags = a0[IFLA_BRIDGE_VLAN_TUNNEL_FLAGS] ? rta_get_u16(a0[IFLA_BRIDGE_VLAN_TUNNEL_FLAGS]) : 0;
+
+      DBG("VLANtun %u dev %s tunnel-id %u flags %x\n", vid, oif->name, tid, flags);
+      kbr_got_vlan_tunnel(p, oif, vid, tid, flags);
+    }
+  }
+}
+
+void
+kbr_do_vlan_scan(struct kbr_proto *p)
+{
+  struct nl_parse_state s = {
+    .pool = nl_linpool,
+    .scan = 1,
+    .bridge_id = kbr_bridge_id(p),
+  };
+
+  struct nlmsghdr *h;
+
+  nl_request_dump_link(AF_BRIDGE, RTEXT_FILTER_BRVLAN);
+  while (h = nl_get_scan())
+  {
+    if (h->nlmsg_type == RTM_NEWLINK || h->nlmsg_type == RTM_DELLINK)
+      nl_parse_vlan(&s, h);
+  }
+}
+
+#else /* CONFIG_BRIDGE */
+
+static inline void nl_parse_fdb(struct nl_parse_state *s UNUSED, struct nlmsghdr *h UNUSED) { }
+
+#endif /* CONFIG_BRIDGE */
+
+
 /*
  *	Asynchronous Netlink interface
  */
@@ -2088,18 +2606,27 @@ nl_async_msg(struct nlmsghdr *h)
       DBG("KRT: Received async route notification (%d)\n", h->nlmsg_type);
       nl_parse_route(&s, h);
       break;
+
     case RTM_NEWLINK:
     case RTM_DELLINK:
       DBG("KRT: Received async link notification (%d)\n", h->nlmsg_type);
       if (kif_proto)
 	nl_parse_link(h, 0);
       break;
+
     case RTM_NEWADDR:
     case RTM_DELADDR:
       DBG("KRT: Received async address notification (%d)\n", h->nlmsg_type);
       if (kif_proto)
 	nl_parse_addr(h, 0);
       break;
+
+    case RTM_NEWNEIGH:
+    case RTM_DELNEIGH:
+      DBG("KRT: Received async neighbor notification (%d)\n", h->nlmsg_type);
+      nl_parse_fdb(&s, h);
+      break;
+
     default:
       DBG("KRT: Received unknown async notification (%d)\n", h->nlmsg_type);
     }
@@ -2186,7 +2713,7 @@ nl_open_async(void)
 
   bzero(&sa, sizeof(sa));
   sa.nl_family = AF_NETLINK;
-  sa.nl_groups = RTMGRP_LINK |
+  sa.nl_groups = RTMGRP_LINK | RTMGRP_NEIGH |
     RTMGRP_IPV4_IFADDR | RTMGRP_IPV4_ROUTE |
     RTMGRP_IPV6_IFADDR | RTMGRP_IPV6_ROUTE;
 
@@ -2254,7 +2781,11 @@ void
 krt_sys_io_init(void)
 {
   nl_linpool = lp_new_default(krt_pool);
-  HASH_INIT(nl_table_map, krt_pool, 6);
+  HASH_INIT(nl_table_map, krt_pool, 4);
+
+#ifdef CONFIG_BRIDGE
+  HASH_INIT(nl_bridge_map, krt_pool, 4);
+#endif
 
   nl_ea_register();
 }
@@ -2309,6 +2840,38 @@ krt_sys_copy_config(struct krt_config *d, struct krt_config *s)
   d->sys.table_id = s->sys.table_id;
   d->sys.metric = s->sys.metric;
 }
+
+#ifdef CONFIG_BRIDGE
+
+int
+kbr_sys_start(struct kbr_proto *p)
+{
+  struct kbr_proto *old = HASH_FIND(nl_bridge_map, BRH, kbr_bridge_id(p));
+
+  if (old)
+  {
+    log(L_ERR "%s: Bridge device %s already registered by %s",
+       p->p.name, p->bridge_dev->name, old->p.name);
+    return 0;
+  }
+
+  HASH_INSERT2(nl_bridge_map, BRH, krt_pool, p);
+
+  nl_open();
+  nl_open_async();
+
+  return 1;
+}
+
+void
+kbr_sys_shutdown(struct kbr_proto *p)
+{
+  HASH_REMOVE2(nl_bridge_map, BRH, krt_pool, p);
+}
+
+#endif /* CONFIG_BRIDGE */
+
+
 
 void
 kif_sys_start(struct kif_proto *p UNUSED)

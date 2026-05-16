@@ -93,6 +93,7 @@ enum btype {
   T_ENUM_LO = 0x12,
   T_ENUM_HI = 0x3f,
 
+  T_ENUM_KBR_SOURCE = 0x29,
   T_ENUM_IFACE_TYPE = 0x2b,
   T_ENUM_NET_EVPN_TYPE = 0x2d,
   T_ENUM_ASPA = 0x2f,		/* ASPA validation result */

@@ -113,6 +113,31 @@ enum {
 };
 
 
+/* Missing definitions from <linux/if_bridge.h> */
+
+struct bridge_vlan_info {
+  u16 flags;
+  u16 vid;
+};
+
+enum {
+  IFLA_BRIDGE_FLAGS,
+  IFLA_BRIDGE_MODE,
+  IFLA_BRIDGE_VLAN_INFO,
+  IFLA_BRIDGE_VLAN_TUNNEL_INFO,
+  IFLA_BRIDGE_MRP,
+  IFLA_BRIDGE_CFM,
+  IFLA_BRIDGE_MST,
+};
+
+enum {
+  IFLA_BRIDGE_VLAN_TUNNEL_UNSPEC,
+  IFLA_BRIDGE_VLAN_TUNNEL_ID,
+  IFLA_BRIDGE_VLAN_TUNNEL_VID,
+  IFLA_BRIDGE_VLAN_TUNNEL_FLAGS,
+};
+
+
 static inline int
 netlink_error_to_os(int error)
 {
