@@ -4462,6 +4462,105 @@ protocol bmp {
 </code>
 
 
+<sect>Bridge
+<label id="bridge">
+
+<p>The Bridge protocol is responsible for synchronization of BIRD's ethernet
+table with a forwarding database of a bridge device in the OS kernel. Similarly
+to the <ref id="krt" name="Kernel"> protocol, it sends all ethernet table
+updates to the OS kernel, listens to notifications from the OS kernel and from
+time to time it scans the OS bridge forwarding database to see whether some
+routes have changed.
+
+<p>The Bridge protocol support not only regular forwarding entries to local
+interfaces, but also forwarding entries with VXLAN encapsulation to remote
+targets. Due to peculiarities of Linux OS networking stack, VXLAN interface bound
+to the bridge interface has its own forwarding database. The Bridge protocol in
+BIRD is responsible for managing both.
+
+<p>Currently, the bridge protocol is limited to Linux.
+
+<sect1>Configuration
+<label id="bridge-config">
+
+<p>The Bridge protocol uses one ethernet channel. There are some options:
+
+<p><descrip>
+	<tag><label id="bridge-bridge-device">bridge device "<m/name/"</tag>
+	The name of bridge device that is managed by the Bridge protocol instance.
+	Mandatory.
+
+	<tag><label id="bridge-vlan-filtering">vlan filtering <m/switch/</tag>
+	Specify whether the bridge is VLAN-aware or not. Allows export and
+	import of ethernet forwarding entries with defined VLAN ID. The OS
+	bridge device must be created with <cf/vlan_filtering 1/ in order to be
+	VLAN-aware. Default: off.
+
+	<tag><label id="bridge-scan-time">scan time <m/time/</tag>
+	Time between two consecutive scans of the forwarding database of the
+	bridge device. Default: 60 s.
+</descrip>
+
+<sect1>Example
+<label id="bridge-exam">
+
+<p><code>
+eth table ethtab0;
+
+protocol static {
+        eth { table ethtab0; };
+
+	# Locally reachable MAC address
+        route eth 12:20:30:40:50:60 via "eth0";
+
+	# Remotely reachable MAC address through VXLAN (dst 10.1.1.100 vni 100);
+        route eth 12:20:30:40:50:80 via 10.1.1.100 dev "vxlan0" mpls 100;
+}
+
+protocol bridge {
+	eth { table ethtab0; export all; };
+
+	bridge device "br0";
+	scan time 20 s;
+}
+</code>
+
+<sect1>OS setup
+<label id="bridge-setup">
+
+<p>The user is responsible to prepare bridge and (optionally) VXLAN interfaces
+on OS level. Here is an example how to setup simple bridge with VXLAN interface
+that uses fixed VNI:
+
+<code>
+ip link add name $BRIDGE type bridge
+ip link set $BRIDGE up
+
+ip link add name $TUNNEL type vxlan id $VNI local $ROUTER_ADDR dstport 4789 nolearning
+ip link set $TUNNEL master $BRIDGE
+bridge link set dev $TUNNEL learning off
+ip link set $TUNNEL up
+</code>
+
+<p>And here is an example how to setup VLAN-aware bridge with VXLAN interface
+that allows multiple VNIs and dynamic mapping between VNIs and VLANs:
+
+<code>
+ip link add name $BRIDGE type bridge vlan_filtering 1
+ip link set $BRIDGE up
+
+ip link add name $TUNNEL type vxlan local $ROUTER_ADDR dstport 4789 nolearning external
+ip link set $TUNNEL master $BRIDGE
+bridge link set dev $TUNNEL learning off
+bridge link set dev $TUNNEL vlan_tunnel on
+ip link set $TUNNEL up
+</code>
+
+<p>When VLANs are defined by EVPN protocol, The membership of the VXLAN
+interface in VLANs is managed by BIRD, while user is responsible for setting
+VLANs for other (physical) interfaces in the bridge.
+
+
 <sect>Device
 <label id="device">
 
@@ -4607,10 +4706,11 @@ route translation, while the import filter of the output channel is applied
 after that.
 
 <p>Note that outside of BIRD, it is necessary to configure bridge and VXLAN
-interface on Linux OS level. See Bridge protocol for details. When VLANs are
-used, EVPN and Bridge protocols in BIRD are responsible for configuring VLANs on
-the bridge interface for the VXLAN interface, while user is responsible for
-setting VLANs for other (physical) interfaces in the bridge.
+interface on Linux OS level. See <ref id="bridge" name="Bridge"> protocol for
+details. When VLANs are used, EVPN and Bridge protocols in BIRD are responsible
+for configuring VLANs on the bridge interface for the VXLAN interface, while
+user is responsible for setting VLANs for other (physical) interfaces in the
+bridge.
 
 <code>
 protocol evpn [<name>] {
