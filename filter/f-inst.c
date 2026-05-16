@@ -1081,14 +1081,31 @@
       ((net_addr_roa6 *) v1.val.net)->max_pxlen);
   ]]);
 
-  /* Get ROA ASN */
+  /* Get ROA or ASPA ASN */
   METHOD(T_NET, asn, 0, [[
-        if (!net_is_roa(v1.val.net))
-          runtime( "ROA expected" );
+    const net_addr_union *net = (void *) v1.val.net;
+    int asn = 0;
 
-        RESULT(T_INT, i, (v1.val.net->type == NET_ROA4) ?
-          ((net_addr_roa4 *) v1.val.net)->asn :
-          ((net_addr_roa6 *) v1.val.net)->asn);
+    switch (net->n.type)
+    {
+    case NET_ROA4:
+      asn = net->roa4.asn;
+      break;
+
+    case NET_ROA6:
+      asn = net->roa6.asn;
+      break;
+
+    case NET_ASPA:
+      asn = net->aspa.asn;
+      break;
+
+    default:
+      runtime("ROA or ASPA expected");
+      break;
+    }
+
+    RESULT(T_INT, i, asn);
   ]]);
 
   /* Convert prefix to IP */

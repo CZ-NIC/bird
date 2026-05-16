@@ -328,6 +328,18 @@ Their keywords are <cf/roa4/ and <cf/roa6/.
 	<item>(PK) AS number
 </itemize>
 
+<sect1>Autonomous System Provider Authorization routes
+<label id="aspa-routes">
+
+<p>These entries can be used to validate <cf/AS_PATH/ attribute of BGP routes.
+An ASPA entry specifies a list of valid providers for specific Autonomous System.
+Configuration keyword is <cf/aspa/.
+
+<itemize>
+	<item>(PK) AS number
+	<item>List of AS numbers of providers
+</itemize>
+
 <sect1>Flowspec for IPv4 and IPv6
 <label id="flow-routes">
 
@@ -342,6 +354,22 @@ Configuration keywords are <cf/flow4/ and <cf/flow6/.
 	<item>Flow action (encoded internally as BGP communities according to <rfc id="8955">)
 </itemize>
 
+<sect1>Ethernet forwarding entries
+<label id="eth-routes">
+
+<p>Ethernet forwarding entries are entries in bridge forwarding database. They
+control forwarding of ethernet frames based on destination MAC addresses. Each
+entry maps a MAC address (and VLAN ID) to a specific port, determining which
+interface should receive frames destined for that address. Optionally, next hop
+can be used for VXLAN encapsulation (as part of EVPN deployment). Configuration
+keyword is <cf/eth/.
+
+<itemize>
+	<item>(PK) MAC address
+	<item>(PK) VLAN ID
+	<item>Route interface (and next hop)
+</itemize>
+
 <sect1>MPLS switching rules
 <label id="mpls-routes">
 
@@ -352,6 +380,71 @@ corresponding MPLS routes. Configuration keyword is <cf/mpls/.
 <itemize>
 	<item>(PK) MPLS label
 	<item>Route next hops
+</itemize>
+
+<sect1>EVPN routes
+<label id="evpn-routes">
+
+<p>EVPN routes encode control plane information for Ethernet VPN (EVPN)
+networks. They carry MAC address and IP address reachability information using
+BGP advertisements. There are several types of EVPN routes, each serves specific
+purposes - MAC (type 2) routes advertise MAC/IP locations, IMET (type 3) routes
+announce endpoints for broadcast / unknown / multicast communication. These
+routes enable distributed learning of endpoint locations across multiple sites
+in the overlay network. Configuration keyword is <cf/evpn/.
+
+<sect2>EVPN Ethernet Auto-Discovery (EAD) routes
+<label id="evpn-ead-routes">
+
+<p>EVPN EAD routes advertise Ethernet segment reachability and enable
+multihoming redundancy mechanisms. Currently not used by BIRD.
+
+<itemize>
+	<item>(PK) Ethernet Segment Identifier (ESI)
+	<item>(PK) Ethernet Tag ID (tag)
+	<item>(PK) Route Distinguisher (RD)
+	<item>MPLS label / VNI
+</itemize>
+
+<sect2>EVPN MAC/IP Advertisement (MAC) routes
+<label id="evpn-mac-routes">
+
+<p>EVPN MAC routes advertise MAC addresses and optionally their associated IP
+addresses within an EVPN instance.
+
+<itemize>
+	<item>(PK) MAC address
+	<item>(PK) IP address (optional)
+	<item>(PK) Ethernet Tag ID (tag)
+	<item>(PK) Route Distinguisher (RD)
+	<item>Ethernet Segment Identifier (ESI)
+	<item>Router IP address
+	<item>MPLS label / VNI
+</itemize>
+
+<sect2>EVPN Inclusive Multicast Ethernet Tag (IMET) routes
+<label id="evpn-imet-routes">
+
+<p>EVPN IMET routes advertise endpoints for BUM (Broadcast, Unknown, Multicast)
+traffic forwarding.
+
+<itemize>
+	<item>(PK) Ethernet Tag ID (tag)
+	<item>(PK) Route Distinguisher (RD)
+	<item>(PK) Router IP address
+	<item>MPLS label / VNI (in PMSI attribute)
+</itemize>
+
+<sect2>EVPN Ethernet Segment (ES) routes
+<label id="evpn-es-routes">
+
+<p>EVPN ES routes advertise Ethernet segment identifiers and designated
+forwarder election information for multihoming. Currently not used by BIRD.
+
+<itemize>
+	<item>(PK) Ethernet Segment Identifier (ESI)
+	<item>(PK) Route Distinguisher (RD)
+	<item>(PK) Router IP address
 </itemize>
 
 <sect1>Neighbor entries
@@ -1797,6 +1890,10 @@ in the foot).
 	all but first <cf><m>number</m></cf> bits from the IP address. So
 	<cf/1.2.3.4.mask(8) = 1.0.0.0/ is true.
 
+	<tag><label id="type-mac">mac</tag>
+	This type can hold a single MAC address. MAC addresses are written
+	in the usual notation (e.g. <cf/62:68:7f:d9:c6:ec/).
+
 	<tag><label id="type-prefix">prefix</tag>
 	This type can hold a network prefix consisting of IP address, prefix
 	length and several other values. This is the key in route tables.
@@ -1829,13 +1926,32 @@ in the foot).
 	prefixes, and also <cf/.maxlen/ which extracts maximal prefix length,
 	and <cf/.asn/ which extracts the ASN.
 
+	<cf/NET_ASPA/ prefixes hold an ASN, which can be extracted by <cf/.asn/
+	operator.
+
 	<cf/NET_FLOW4/ and <cf/NET_FLOW6/ hold an IP prefix together with a
 	flowspec rule. Filters currently do not support much flowspec parsing,
 	only <cf/.src/ and <cf/.dst/ operators to get source and destination
 	parts of the flowspec as separate <cf/NET_IP4/ / <cf/NET_IP6/ values.
 
+	<cf/NET_ETH/ prefixes holds a MAC address and a VLAN ID, which can be
+	extracted by operators <cf/.mac/ and <cf/.vlan_id/, respectively.
+
 	<cf/NET_MPLS/ holds a single MPLS label and its handling is currently
 	not implemented.
+
+	<cf/NET_EVPN/ is a complex nettype that holds reachability information
+	for Ethernet VPN. It has several subtypes (<cf/NET_EVPN_EAD/,
+	<cf/NET_EVPN_MAC/, <cf/NET_EVPN_IMET/, <cf/NET_EVPN_ES/), which can be
+	determined by the operator <cf/.evpn_type/. Fields and related operators
+	are: Route Distinguisher (<cf/.rd/), MAC address (<cf/.mac/), IP address
+	(<cf/.ip/), EVPN tag (<cf/.evpn_tag/), Ethernet Segment Identifier
+	(<cf/.evpn_esi/), router IP (<cf/.router_ip/). Note that only fields
+	that are a part of primary key for given route subtype can be accessed
+	by these operators (e.g. <cf/.evpn_esi/ can be used for <cf/NET_EVPN_ES/,
+	but not for <cf/NET_EVPN_MAC/ or other types), remaining attributes are
+	stored outside prefix as other route attributes. See <ref id="evpn-routes"
+	name="EVPN routes"> for description of specific subtypes.
 
 	<cf/NET_NEIGHBOR/ holds a single IP address and an interface index.
 	The IP address can be accessed by operator <cf/.ip/, while the access
@@ -3843,6 +3959,7 @@ together with their appropriate channels follows.
 @ <cf/vpn6 multicast/ | <cf/vpn6/          | <cf/ipv4/ and <cf/ipv6/ | 2        | 129
 @ <cf/flow4/	      | <cf/flow4/         | ---                     | 1        | 133
 @ <cf/flow6/          | <cf/flow6/         | ---                     | 2        | 133
+@ <cf/evpn/           | <cf/evpn/          | <cf/ipv4/ and <cf/ipv6/ | 25       | 70
 @ <cf/neighbors/      | <cf/neighbor/      | ---                     | ---      | ---
 </tabular>
 </table>
@@ -4307,6 +4424,14 @@ some of them (marked with `<tt/O/') are optional.
 	This attribute contains a list of cluster IDs of route reflectors. Each
 	route reflector prepends its cluster ID when reflecting the route.
 
+	<tag><label id="rta-bgp-pmsi-tunnel">void bgp_pmsi_tunnel [O]</tag>
+	The PMSI (P-Multicast Service Interface) tunnel BGP attribute is carried
+	by EVPN IMET routes to describe the multicast tunnel information that
+	carries BUM (Broadcast, Unknown, Multicast) traffic. It specifies the
+	tunnel type (such as PIM-SSM, PIM-ASM, or Ingress Replication), the
+	tunnel identifier, and the MPLS/VNI label for a specific EVPN instance.
+	Currently, the attribute is not accessible from filters.
+
 	<tag><label id="rta-bgp-aigp">void bgp_aigp [O]</tag>
 	This attribute contains accumulated IGP metric, which is a total
 	distance to the destination through multiple autonomous systems.
@@ -4434,9 +4559,7 @@ protocol bgp bgp_root {
 <p>The BGP Monitoring Protocol is used for monitoring BGP sessions and obtaining
 routing table data. The current implementation in BIRD is a preliminary release
 with a limited feature set, it will be subject to significant changes in the
-future. It is not ready for production usage and therefore it is not compiled
-by default and have to be enabled during installation by the configure option
-<tt/--with-protocols=/.
+future.
 
 <p>The implementation supports monitoring protocol state changes, pre-policy
 routes (in <ref id="bgp-import-table" name="BGP import tables">) and post-policy
@@ -4469,6 +4592,105 @@ protocol bmp {
 	tx buffer limit 64;
 }
 </code>
+
+
+<sect>Bridge
+<label id="bridge">
+
+<p>The Bridge protocol is responsible for synchronization of BIRD's ethernet
+table with a forwarding database of a bridge device in the OS kernel. Similarly
+to the <ref id="krt" name="Kernel"> protocol, it sends all ethernet table
+updates to the OS kernel, listens to notifications from the OS kernel and from
+time to time it scans the OS bridge forwarding database to see whether some
+routes have changed.
+
+<p>The Bridge protocol support not only regular forwarding entries to local
+interfaces, but also forwarding entries with VXLAN encapsulation to remote
+targets. Due to peculiarities of Linux OS networking stack, VXLAN interface bound
+to the bridge interface has its own forwarding database. The Bridge protocol in
+BIRD is responsible for managing both.
+
+<p>Currently, the bridge protocol is limited to Linux.
+
+<sect1>Configuration
+<label id="bridge-config">
+
+<p>The Bridge protocol uses one ethernet channel. There are some options:
+
+<p><descrip>
+	<tag><label id="bridge-bridge-device">bridge device "<m/name/"</tag>
+	The name of bridge device that is managed by the Bridge protocol instance.
+	Mandatory.
+
+	<tag><label id="bridge-vlan-filtering">vlan filtering <m/switch/</tag>
+	Specify whether the bridge is VLAN-aware or not. Allows export and
+	import of ethernet forwarding entries with defined VLAN ID. The OS
+	bridge device must be created with <cf/vlan_filtering 1/ in order to be
+	VLAN-aware. Default: off.
+
+	<tag><label id="bridge-scan-time">scan time <m/time/</tag>
+	Time between two consecutive scans of the forwarding database of the
+	bridge device. Default: 60 s.
+</descrip>
+
+<sect1>Example
+<label id="bridge-exam">
+
+<p><code>
+eth table ethtab0;
+
+protocol static {
+        eth { table ethtab0; };
+
+	# Locally reachable MAC address
+        route eth 12:20:30:40:50:60 via "eth0";
+
+	# Remotely reachable MAC address through VXLAN (dst 10.1.1.100 vni 100);
+        route eth 12:20:30:40:50:80 via 10.1.1.100 dev "vxlan0" mpls 100;
+}
+
+protocol bridge {
+	eth { table ethtab0; export all; };
+
+	bridge device "br0";
+	scan time 20 s;
+}
+</code>
+
+<sect1>OS setup
+<label id="bridge-setup">
+
+<p>The user is responsible to prepare bridge and (optionally) VXLAN interfaces
+on OS level. Here is an example how to setup simple bridge with VXLAN interface
+that uses fixed VNI:
+
+<code>
+ip link add name $BRIDGE type bridge
+ip link set $BRIDGE up
+
+ip link add name $TUNNEL type vxlan id $VNI local $ROUTER_ADDR dstport 4789 nolearning
+ip link set $TUNNEL master $BRIDGE
+bridge link set dev $TUNNEL learning off
+ip link set $TUNNEL up
+</code>
+
+<p>And here is an example how to setup VLAN-aware bridge with VXLAN interface
+that allows multiple VNIs and dynamic mapping between VNIs and VLANs:
+
+<code>
+ip link add name $BRIDGE type bridge vlan_filtering 1
+ip link set $BRIDGE up
+
+ip link add name $TUNNEL type vxlan local $ROUTER_ADDR dstport 4789 nolearning external
+ip link set $TUNNEL master $BRIDGE
+bridge link set dev $TUNNEL learning off
+bridge link set dev $TUNNEL vlan_tunnel on
+ip link set $TUNNEL up
+</code>
+
+<p>When VLANs are defined by EVPN protocol, The membership of the VXLAN
+interface in VLANs is managed by BIRD, while user is responsible for setting
+VLANs for other (physical) interfaces in the bridge.
 
 
 <sect>Device
@@ -4574,6 +4796,198 @@ protocol direct {
 	ipv4;
 	ipv6;
 	interface -"arc*", "*";		# Exclude the ARCnets
+}
+</code>
+
+
+<sect>EVPN
+<label id="evpn">
+
+<sect1>Introduction
+<label id="evpn-intro">
+
+<p>The EVPN protocol is a component for Ethernet VPNs (<rfc id="7432">) with
+VXLAN overlay (<rfc id="8365">) and implements policies defined there. It serves
+as a translator between BGP EVPN routes and ethernet forwarding entries.
+
+<p>In BGP EVPNs, route distribution is controlled by Route Targets (RT). EVPN
+instances are associated with one or more RTs. Routes are also associated with
+one or more RTs, which are encoded as route target extended communities
+in <ref id="rta-bgp-ext-community" name="bgp_ext_community">. A route is then
+imported into each EVPN instance that shares an associated Route Target. The
+EVPN protocol implements this mechanism through mandatory <cf/import target/ and
+<cf/export target/ protocol options.
+
+<p>One EVPN instance can consist of multiple broadcast domains (VLANs), these
+are identified by EVPN tags on BGP EVPN side and are mapped to VLAN IDs (VID) on
+ethernet side.
+
+<p>The current EVPN implementation in BIRD is a preliminary release limited to
+basic handling of MAC and IMET EVPN routes, it will be subject to changes in the
+future.
+
+<sect1>Configuration
+<label id="evpn-config">
+
+<p>The EVPN protocol instance always must have two channels: <cf/evpn/ and
+<cf/eth/. For convenience, the default export filter in these channels is
+<cf/all/, as the primary way to control import and export of routes is through
+protocol options <cf/import target/ and <cf/export target/. If custom filters
+are used, note that the export filter of the input channel is applied before the
+route translation, while the import filter of the output channel is applied
+after that.
+
+<p>Note that outside of BIRD, it is necessary to configure bridge and VXLAN
+interface on Linux OS level. See <ref id="bridge" name="Bridge"> protocol for
+details. When VLANs are used, EVPN and Bridge protocols in BIRD are responsible
+for configuring VLANs on the bridge interface for the VXLAN interface, while
+user is responsible for setting VLANs for other (physical) interfaces in the
+bridge.
+
+<code>
+protocol evpn [<name>] {
+	route distinguisher <rd>;
+	rd <rd>;
+	import target <ec> | <ec-set>
+	export target <ec> | <ec-set>
+	route target <ec> | <ec-set>
+	vni <number>;
+	vid <number>;
+	tag <number>;
+	encapsulation vxlan {
+		tunnel device "<name>";
+		router address <ip>;
+	};
+	vlan <number> {
+		range <number>;
+		vni <number>;
+		vid <number>;
+	};
+}
+</code>
+
+<p><descrip>
+	<tag><label id="evpn-route-distinguisher">route distinguisher <m/rd/</tag>
+	The route distinguisher that is attached to routes in the export
+	direction. Mandatory.
+
+	<tag><label id="evpn-rd">rd <m/rd/</tag>
+	A shorthand for the option <cf/route distinguisher/.
+
+	<tag><label id="evpn-import-target">import target <m/ec/|<m/ec-set/|none|all</tag>
+	Route target extended communities specifying which routes should be
+	imported. Either one community or a set. A route is imported if there is
+	non-empty intersection between extended communities of the route and the
+	import target of the EVPN protocol. Mandatory.
+
+	<tag><label id="evpn-export-target">export target <m/ec/|<m/ec-set/|none</tag>
+	Route target extended communities that are attached to the route in the
+	export direction. Either one community or a set. Other route target
+	extended communities are removed. Mandatory.
+
+	<tag><label id="evpn-route-target">route target <m/ec/|<m/ec-set/|none</tag>
+	A shorthand for both <cf/import target/ and <cf/export target/.
+
+	<tag><label id="evpn-encapsulation">encapsulation <m/type/ { <m/options/ }</tag>
+	The encapsulation block specifies how ethernet frames are encapsulated
+	when forwarded through overlay network. Currently, the only supported
+	encapsulation type is <cf/vxlan/.
+
+	<tag><label id="evpn-tunnel-device">tunnel device "<m/name/"</tag>
+	The name of VXLAN tunnel device that is used for encapsulation.
+	Mandatory.
+
+	<tag><label id="evpn-router-address">router address <m/ip/</tag>
+	The IP address used for encapsulated traffic. Can be usually
+	autodetected from the VXLAN device.
+
+	<tag><label id="evpn-tag">tag <m/number/</tag>
+	EVPN tag is used in BGP EVPN to identify specific broadcast domain. Must
+	be unique per EVPN instance. Can be used as a protocol option to specify
+	non-zero tag for the EVPN instance. Default: 0
+
+	<tag><label id="evpn-vni">vni <m/number/</tag>
+	VNI label is used in dataplane encapsulation to identify specific
+	broadcast domain. Must be unique per PE router. Can be used both as a
+	protocol option (to specify VNI when the EVPN instance is one broadcast
+	domain) or in <cf/vlan/ block (to specify VNI for each VLAN). Mandatory
+	as a protocol option (unless autodetected from the VXLAN device).
+
+	<tag><label id="evpn-vid">vid <m/number/</tag>
+	VLAN ID is used on ethernet to identify specific ethernet VLAN. Must be
+	unique per ethernet network. Can be used both as a protocol option (to
+	specify VID when the EVPN instance is one broadcast domain) or in
+	<cf/vlan/ block (to specify VID for each VLAN). Default: 0 (untagged)
+	as a protocol option.
+
+	<tag><label id="evpn-vlan">vlan <m/number/ { <m/options/ }</tag>
+	Defines a separate broadcast domain (VLAN) in an EVPN instance.
+	Each VLAN has its own EVPN tag, encapsulation VNI, and ethernet VID, all
+	initialized to the same value (the <cf/vlan/ argument), but VNI and VID
+	can be changed by options in <cf/vlan/ block. When used with <cf/range/
+	option, it can define an interval of VLANs instead of just one VLAN.
+
+	<tag><label id="evpn-range">range <m/number/</tag>
+	Extends <cf/vlan/ block to define an interval of VLANs instead of just
+	one VLAN. Defined VLANs have consecutive values of EVPN tags, VNIs, and
+	VIDs. See <ref id="evpn-exam" name="example">.
+</descrip>
+
+<sect1>Attributes
+<label id="evpn-attr">
+
+<p>The EVPN protocol does not define any route attributes, but uses several BGP
+attributes for EVPN routes.
+
+<sect1>Example
+<label id="evpn-exam">
+
+<p>Here is an example of EVPN setup with one VPN and BGP uplink. Locally
+reachable MAC addresses are learned by the Bridge protocol instance
+<cf/bridge0/ as ethernet forwarding entries and stored in the table
+<cf/ethtab0/, then translated by the EVPN protocol instance <cf/evpn0/ and
+stored in global EVPN table <cf/evpntab/. Routes can also be exchanged through
+BGP with different sites hosting that VPN. Remotelly reachable MAC addresses are
+received by BGP as EVPN routes, translated by <cf/evpn0/ to ethernet forwarding
+entries directed at <cf/vxlan0/ interface and then exported to the kernel by
+<cf/bridge0/. Forwarding of VPN traffic through the network is handled by VXLAN.
+
+<code>
+evpn table evpntab;
+
+# Exchange EVPN routes through BGP
+protocol bgp {
+	evpn { table evpntab; import all; export all; };
+	local 10.0.0.1 as 10;
+	neighbor 10.0.0.2 as 10;
+}
+
+# EVPN Instance 0
+eth table ethtab0;
+
+protocol bridge bridge0 {
+	eth { table ethtab0; export all; };
+
+	bridge device "br0";
+	vlan filtering;
+}
+
+protocol evpn evpn0 {
+	eth { table ethtab0; };
+	evpn { table evpntab; };
+
+	rd 10:12;
+	route target (rt, 10, 10);
+
+	encapsulation vxlan {
+		tunnel device "vxlan0";
+        };
+
+	# VNI for untagged traffic
+	vni 100;
+
+	# VLANs 20-29, VNIs 120-129
+	vlan 20 { range 10; vni 120; };
 }
 </code>
 
