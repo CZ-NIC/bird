@@ -91,7 +91,7 @@ void protos_dump_all(struct dump_request *);
  */
 
 extern struct protocol
-  proto_device, proto_radv, proto_rip, proto_static, proto_mrt,
+  proto_device, proto_radv, proto_rip, proto_static, proto_mrt, proto_evpn,
   proto_ospf, proto_l3vpn, proto_aggregator, proto_bridge,
   proto_pipe, proto_bgp, proto_bmp, proto_bfd, proto_babel, proto_rpki;
 

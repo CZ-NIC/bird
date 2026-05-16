@@ -223,7 +223,8 @@ struct nexthop_adata_mpls {
 #define RTS_AGGREGATED 17		/* Aggregated route */
 #define RTS_RADV 18			/* Router Advertisement */
 #define RTS_BRIDGE 19			/* FDB record from the kernel bridge */
-#define RTS_MAX 20
+#define RTS_EVPN 20			/* EVPN */
+#define RTS_MAX 21
 
 #define RTD_NONE 0			/* Undefined next hop */
 #define RTD_UNICAST 1			/* A standard next hop */

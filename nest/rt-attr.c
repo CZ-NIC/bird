@@ -100,6 +100,7 @@ const char * const rta_src_names[RTS_MAX] = {
   [RTS_L3VPN]		= "L3VPN",
   [RTS_AGGREGATED]	= "aggregated",
   [RTS_BRIDGE]		= "bridge",
+  [RTS_EVPN]		= "EVPN",
 };
 
 static void

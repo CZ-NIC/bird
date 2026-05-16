@@ -2289,6 +2289,10 @@ rte_validate(struct channel *ch, rte *e)
     eattr *nhea = ea_find(e->attrs, &ea_gen_nexthop);
     int dest = nhea_dest(nhea);
 
+    /* XXX hack */
+    if (n->type == NET_EVPN)
+      return 1;
+
     if (dest == RTD_NONE)
       IGNORING("route", "with no destination");
 
