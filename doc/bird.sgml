@@ -4166,9 +4166,7 @@ protocol bgp {
 <p>The BGP Monitoring Protocol is used for monitoring BGP sessions and obtaining
 routing table data. The current implementation in BIRD is a preliminary release
 with a limited feature set, it will be subject to significant changes in the
-future. It is not ready for production usage and therefore it is not compiled
-by default and have to be enabled during installation by the configure option
-<tt/--with-protocols=/.
+future.
 
 <p>The implementation supports monitoring protocol state changes, pre-policy
 routes (in <ref id="bgp-import-table" name="BGP import tables">) and post-policy
