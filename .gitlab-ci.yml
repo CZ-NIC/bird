@@ -3243,3 +3243,13 @@ test-ebgp-refresh/gen/nono-enhanced-nono-enhanced:
   variables:
     TEST_NAME: cf-ebgp-refresh/gen/nono-enhanced-nono-enhanced
 
+test-evpn-bgp:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-evpn-bgp
+
+test-evpn-bgp-tags:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-evpn-bgp-tags
+
