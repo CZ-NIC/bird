@@ -4569,6 +4569,197 @@ protocol direct {
 </code>
 
 
+<sect>EVPN
+<label id="evpn">
+
+<sect1>Introduction
+<label id="evpn-intro">
+
+<p>The EVPN protocol is a component for Ethernet VPNs (<rfc id="7432">) with
+VXLAN overlay (<rfc id="8365">) and implements policies defined there. It serves
+as a translator between BGP EVPN routes and ethernet forwarding entries.
+
+<p>In BGP EVPNs, route distribution is controlled by Route Targets (RT). EVPN
+instances are associated with one or more RTs. Routes are also associated with
+one or more RTs, which are encoded as route target extended communities
+in <ref id="rta-bgp-ext-community" name="bgp_ext_community">. A route is then
+imported into each EVPN instance that shares an associated Route Target. The
+EVPN protocol implements this mechanism through mandatory <cf/import target/ and
+<cf/export target/ protocol options.
+
+<p>One EVPN instance can consist of multiple broadcast domains (VLANs), these
+are identified by EVPN tags on BGP EVPN side and are mapped to VLAN IDs (VID) on
+ethernet side.
+
+<p>The current EVPN implementation in BIRD is a preliminary release limited to
+basic handling of MAC and IMET EVPN routes, it will be subject to changes in the
+future.
+
+<sect1>Configuration
+<label id="evpn-config">
+
+<p>The EVPN protocol instance always must have two channels: <cf/evpn/ and
+<cf/eth/. For convenience, the default export filter in these channels is
+<cf/all/, as the primary way to control import and export of routes is through
+protocol options <cf/import target/ and <cf/export target/. If custom filters
+are used, note that the export filter of the input channel is applied before the
+route translation, while the import filter of the output channel is applied
+after that.
+
+<p>Note that outside of BIRD, it is necessary to configure bridge and VXLAN
+interface on Linux OS level. See Bridge protocol for details. When VLANs are
+used, EVPN and Bridge protocols in BIRD are responsible for configuring VLANs on
+the bridge interface for the VXLAN interface, while user is responsible for
+setting VLANs for other (physical) interfaces in the bridge.
+
+<code>
+protocol evpn [<name>] {
+	route distinguisher <rd>;
+	rd <rd>;
+	import target <ec> | <ec-set>
+	export target <ec> | <ec-set>
+	route target <ec> | <ec-set>
+	vni <number>;
+	vid <number>;
+	tag <number>;
+	encapsulation vxlan {
+		tunnel device "<name>";
+		router address <ip>;
+	};
+	vlan <number> {
+		range <number>;
+		vni <number>;
+		vid <number>;
+	};
+}
+</code>
+
+<p><descrip>
+	<tag><label id="evpn-route-distinguisher">route distinguisher <m/rd/</tag>
+	The route distinguisher that is attached to routes in the export
+	direction. Mandatory.
+
+	<tag><label id="evpn-rd">rd <m/rd/</tag>
+	A shorthand for the option <cf/route distinguisher/.
+
+	<tag><label id="evpn-import-target">import target <m/ec/|<m/ec-set/|none|all</tag>
+	Route target extended communities specifying which routes should be
+	imported. Either one community or a set. A route is imported if there is
+	non-empty intersection between extended communities of the route and the
+	import target of the EVPN protocol. Mandatory.
+
+	<tag><label id="evpn-export-target">export target <m/ec/|<m/ec-set/|none</tag>
+	Route target extended communities that are attached to the route in the
+	export direction. Either one community or a set. Other route target
+	extended communities are removed. Mandatory.
+
+	<tag><label id="evpn-route-target">route target <m/ec/|<m/ec-set/|none</tag>
+	A shorthand for both <cf/import target/ and <cf/export target/.
+
+	<tag><label id="evpn-encapsulation">encapsulation <m/type/ { <m/options/ }</tag>
+	The encapsulation block specifies how ethernet frames are encapsulated
+	when forwarded through overlay network. Currently, the only supported
+	encapsulation type is <cf/vxlan/.
+
+	<tag><label id="evpn-tunnel-device">tunnel device "<m/name/"</tag>
+	The name of VXLAN tunnel device that is used for encapsulation.
+	Mandatory.
+
+	<tag><label id="evpn-router-address">router address <m/ip/</tag>
+	The IP address used for encapsulated traffic. Can be usually
+	autodetected from the VXLAN device.
+
+	<tag><label id="evpn-tag">tag <m/number/</tag>
+	EVPN tag is used in BGP EVPN to identify specific broadcast domain. Must
+	be unique per EVPN instance. Can be used as a protocol option to specify
+	non-zero tag for the EVPN instance. Default: 0
+
+	<tag><label id="evpn-vni">vni <m/number/</tag>
+	VNI label is used in dataplane encapsulation to identify specific
+	broadcast domain. Must be unique per PE router. Can be used both as a
+	protocol option (to specify VNI when the EVPN instance is one broadcast
+	domain) or in <cf/vlan/ block (to specify VNI for each VLAN). Mandatory
+	as a protocol option (unless autodetected from the VXLAN device).
+
+	<tag><label id="evpn-vid">vid <m/number/</tag>
+	VLAN ID is used on ethernet to identify specific ethernet VLAN. Must be
+	unique per ethernet network. Can be used both as a protocol option (to
+	specify VID when the EVPN instance is one broadcast domain) or in
+	<cf/vlan/ block (to specify VID for each VLAN). Default: 0 (untagged)
+	as a protocol option.
+
+	<tag><label id="evpn-vlan">vlan <m/number/ { <m/options/ }</tag>
+	Defines a separate broadcast domain (VLAN) in an EVPN instance.
+	Each VLAN has its own EVPN tag, encapsulation VNI, and ethernet VID, all
+	initialized to the same value (the <cf/vlan/ argument), but VNI and VID
+	can be changed by options in <cf/vlan/ block. When used with <cf/range/
+	option, it can define an interval of VLANs instead of just one VLAN.
+
+	<tag><label id="evpn-range">range <m/number/</tag>
+	Extends <cf/vlan/ block to define an interval of VLANs instead of just
+	one VLAN. Defined VLANs have consecutive values of EVPN tags, VNIs, and
+	VIDs. See <ref id="evpn-exam" name="example">.
+</descrip>
+
+<sect1>Attributes
+<label id="evpn-attr">
+
+<p>The EVPN protocol does not define any route attributes, but uses several BGP
+attributes for EVPN routes.
+
+<sect1>Example
+<label id="evpn-exam">
+
+<p>Here is an example of EVPN setup with one VPN and BGP uplink. Locally
+reachable MAC addresses are learned by the Bridge protocol instance
+<cf/bridge0/ as ethernet forwarding entries and stored in the table
+<cf/ethtab0/, then translated by the EVPN protocol instance <cf/evpn0/ and
+stored in global EVPN table <cf/evpntab/. Routes can also be exchanged through
+BGP with different sites hosting that VPN. Remotelly reachable MAC addresses are
+received by BGP as EVPN routes, translated by <cf/evpn0/ to ethernet forwarding
+entries directed at <cf/vxlan0/ interface and then exported to the kernel by
+<cf/bridge0/. Forwarding of VPN traffic through the network is handled by VXLAN.
+
+<code>
+evpn table evpntab;
+
+# Exchange EVPN routes through BGP
+protocol bgp {
+	evpn { table evpntab; import all; export all; };
+	local 10.0.0.1 as 10;
+	neighbor 10.0.0.2 as 10;
+}
+
+# EVPN Instance 0
+eth table ethtab0;
+
+protocol bridge bridge0 {
+	eth { table ethtab0; export all; };
+
+	bridge device "br0";
+	vlan filtering;
+}
+
+protocol evpn evpn0 {
+	eth { table ethtab0; };
+	evpn { table evpntab; };
+
+	rd 10:12;
+	route target (rt, 10, 10);
+
+	encapsulation vxlan {
+		tunnel device "vxlan0";
+        };
+
+	# VNI for untagged traffic
+	vni 100;
+
+	# VLANs 20-29, VNIs 120-129
+	vlan 20 { range 10; vni 120; };
+}
+</code>
+
+
 <sect>Kernel
 <label id="krt">
 
