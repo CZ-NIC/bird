@@ -22,6 +22,8 @@
 #include "lib/resource.h"
 #include "lib/string.h"
 #include "lib/unaligned.h"
+#include "filter/data.h"
+#include "lib/settle.h"
 
 #include "bgp.h"
 
@@ -1836,6 +1838,127 @@ bgp_free_prefix(struct bgp_channel *c, struct bgp_prefix *px)
   else
     mb_free(px);
 }
+
+
+/*
+ *	RT Constraint
+ */
+
+/*
+ * Received RT constraint entries are stored in FIB structure. When feed end on rtc
+ * channel is received or when settle timer triggers, balanced f_tree is built from
+ * all entries in the FIB. This tree will be used for route filtering.
+ */
+static struct f_tree *
+bgp_build_rtc_tree(struct bgp_proto *p)
+{
+  int len = p->rtc_fib.entries;
+  int pos = 0;
+
+  struct f_tree **buf = tmp_allocz(sizeof(struct f_tree *) * len);
+  struct f_tree *root = NULL;
+
+  FIB_WALK(&p->rtc_fib, struct fib_node, node)
+  {
+    const net_addr_rtc *addr = (net_addr_rtc *)node->addr;
+
+    struct f_tree *t = lp_allocz(p->rtc_tree_pool, sizeof(*t));
+    t->from.type = t->to.type = T_EC;
+    t->from.val.ec = vrt_to_u64(addr->rt);				/* All bits after prefix are 0s */
+    t->to.val.ec   = vrt_to_u64(addr->rt) | ~u64_mkmask(addr->pxlen);	/* All bits after prefix are 1s */
+    t->right = t;
+
+    if (!root)
+      root = t;
+    else
+    {
+      root->right->left = t;
+      root->right = t;
+      t->right = NULL;
+    }
+
+    buf[pos++] = t;
+  }
+  FIB_WALK_END;
+
+  qsort(buf, len, sizeof(struct f_tree *), tree_compare);
+
+  return build_tree_rec(buf, 0, len);
+}
+
+void
+bgp_build_rtc_tree_on_settle(struct settle *s)
+{
+  struct bgp_proto *p = SKIP_BACK(struct bgp_proto, rtc_settle, s);
+
+  settle_cancel(s);
+
+  if (p->rtc_fib.entries == 0)
+    p->rtc_tree = NULL;
+  else
+  {
+    lp_flush(p->rtc_tree_pool);
+    p->rtc_tree = bgp_build_rtc_tree(p);
+  }
+
+  struct bgp_channel *cvpn4 = bgp_find_channel(p, BGP_AF_VPN4_MPLS);
+  struct bgp_channel *cvpn6 = bgp_find_channel(p, BGP_AF_VPN6_MPLS);
+
+  if (cvpn4)
+  {
+    if (p->rtc_initial_feed)
+      channel_enable_export(&cvpn4->c);
+    else
+      channel_request_feeding(&cvpn4->c);
+  }
+
+  if (cvpn6)
+  {
+    if (p->rtc_initial_feed)
+      channel_enable_export(&cvpn6->c);
+    else
+      channel_request_feeding(&cvpn6->c);
+  }
+
+  if (p->rtc_initial_feed)
+  {
+    /* Reconfigure settle timer after initial feed */
+    p->rtc_settle_cf = (struct settle_config) {
+      .min = 1 S_,
+      .max = 20 S_,
+    };
+
+    settle_init(&p->rtc_settle, &p->rtc_settle_cf, bgp_build_rtc_tree_on_settle, p);
+    p->rtc_initial_feed = false;
+  }
+}
+
+void
+bgp_process_rtc_entry(struct bgp_proto *p, const struct net_addr_rtc *addr, const struct rta *a)
+{
+  if (a)
+    fib_get(&p->rtc_fib, (const net_addr *)addr);
+  else
+  {
+    void *e = fib_find(&p->rtc_fib, (const net_addr *)addr);
+
+    if (e)
+      fib_delete(&p->rtc_fib, e);
+  }
+}
+
+static inline const struct adata *ea_get_adata(struct ea_list *e, uint id)
+{ eattr *a = ea_find(e, id); return a ? a->u.ptr : &null_adata; }
+
+#define EA_BGP_EXT_COMMUNITY	EA_CODE(PROTOCOL_BGP, BA_EXT_COMMUNITY)
+
+static bool
+bgp_filter_vpn_rte(struct bgp_proto *p, const struct rte *e)
+{
+  return p->rtc_tree && eclist_match_set(ea_get_adata(e->attrs->eattrs, EA_BGP_EXT_COMMUNITY), p->rtc_tree);
+}
+
+#undef EA_BGP_EXT_COMMUNITY
 
 
 /*
