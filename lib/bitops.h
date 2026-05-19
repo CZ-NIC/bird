@@ -23,6 +23,8 @@
 u32 u32_mkmask(uint n);
 uint u32_masklen(u32 x);
 
+u64 u64_mkmask(uint n);
+
 u32 u32_log2(u32 v);
 
 static inline u32 u32_hash(u32 v) { return v * 2902958171u; }
@@ -32,6 +34,9 @@ static inline u8 u64_popcount(u64 v) { return __builtin_popcountll(v); }
 
 static inline int u32_clz(u32 v) { return __builtin_clz(v); }
 static inline int u32_ctz(u32 v) { return __builtin_ctz(v); }
+
+static inline int u64_clz(u64 v) { return __builtin_clz(v); }
+static inline int u64_ctz(u64 v) { return __builtin_ctz(v); }
 
 static inline int uint_is_pow2(uint n) { return n && !(n & (n-1)); }
 
