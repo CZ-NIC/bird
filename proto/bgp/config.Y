@@ -40,6 +40,7 @@ CF_KEYWORDS(BGP, LOCAL, NEIGHBOR, AS, HOLD, TIME, CONNECT, RETRY, KEEPALIVE,
 	BGP_PMSI_TUNNEL)
 
 CF_KEYWORDS(KEY, KEYS, SECRET, DEPRECATED, PREFERRED, ALGORITHM, CMAC, AES128)
+CF_KEYWORDS(RTFILTER)
 
 %type <i> bgp_nh bgp_llnh bgp_auth_type bgp_role_name tcp_ao_algorithm
 %type <i32> bgp_afi
@@ -265,6 +266,7 @@ bgp_afi:
  | VPN6 MPLS		{ $$ = BGP_AF_VPN6_MPLS; }
  | VPN4 MULTICAST	{ $$ = BGP_AF_VPN4_MC; }
  | VPN6 MULTICAST	{ $$ = BGP_AF_VPN6_MC; }
+ | RTFILTER		{ $$ = BGP_AF_RTFILTER; }
  | FLOW4		{ $$ = BGP_AF_FLOW4; }
  | FLOW6		{ $$ = BGP_AF_FLOW6; }
  | EVPN			{ $$ = BGP_AF_EVPN; }
@@ -407,6 +409,9 @@ bgp_channel_start: bgp_afi
     BGP_CC->max_llgr_time = ~0U; /* undefined */
     BGP_CC->aigp = 0xff;	/* undefined */
   }
+
+  if (desc->net == NET_RTFILTER)
+    BGP_CFG->rtfilter_use = true;
 };
 
 bgp_nh:

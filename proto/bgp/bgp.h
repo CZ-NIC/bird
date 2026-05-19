@@ -19,6 +19,7 @@
 //#include "lib/lists.h"
 #include "lib/hash.h"
 #include "lib/socket.h"
+#include "lib/settle.h"
 
 struct eattr;
 
@@ -35,6 +36,7 @@ struct eattr;
 #define BGP_SAFI_EVPN		70
 #define BGP_SAFI_MPLS_VPN	128
 #define BGP_SAFI_VPN_MULTICAST	129
+#define BGP_SAFI_RTFILTER	132
 #define BGP_SAFI_FLOW		133
 
 /* Internal AF codes */
@@ -47,6 +49,7 @@ struct eattr;
 #define BGP_AF_IPV6		BGP_AF( BGP_AFI_IPV6, BGP_SAFI_UNICAST )
 #define BGP_AF_IPV4_MC		BGP_AF( BGP_AFI_IPV4, BGP_SAFI_MULTICAST )
 #define BGP_AF_IPV6_MC		BGP_AF( BGP_AFI_IPV6, BGP_SAFI_MULTICAST )
+#define BGP_AF_RTFILTER		BGP_AF( BGP_AFI_IPV4, BGP_SAFI_RTFILTER )
 #define BGP_AF_IPV4_MPLS	BGP_AF( BGP_AFI_IPV4, BGP_SAFI_MPLS )
 #define BGP_AF_IPV6_MPLS	BGP_AF( BGP_AFI_IPV6, BGP_SAFI_MPLS )
 #define BGP_AF_VPN4_MPLS	BGP_AF( BGP_AFI_IPV4, BGP_SAFI_MPLS_VPN )
@@ -163,6 +166,8 @@ struct bgp_config {
   int require_gr;			/* Require remote support for graceful restart [RFC 4724] */
   int require_llgr;			/* Require remote support for long-lived graceful restart [RFC 9494] */
   struct bfd_options *bfd;		/* Use BFD for liveness detection */
+
+  bool rtfilter_use;
 };
 
 struct bgp_channel_config {
@@ -424,6 +429,13 @@ struct bgp_proto {
   u32 last_error_code;			/* Error code of last error. BGP protocol errors
 					   are encoded as (bgp_err_code << 16 | bgp_err_subcode) */
   bool claimed;				/* Claimed dynamic protocols are kept, unclaimed may be removed */
+
+  struct f_tree  *rtfilter_tree;
+  struct linpool *rtfilter_tree_pool;
+  struct fib rtfilter_fib;
+  struct settle rtfilter_settle;
+  struct settle_config rtfilter_settle_cf;
+  bool rtfilter_initial_feed;
 };
 
 struct bgp_channel {
@@ -580,6 +592,8 @@ struct bgp_parse_state {
 #define BGP_MSG_HDR_LENGTH_POS	BGP_MSG_HDR_MARKER_SIZE
 #define BGP_MSG_HDR_TYPE_SIZE	1
 #define BGP_MSG_HDR_TYPE_POS	(BGP_MSG_HDR_MARKER_SIZE + BGP_MSG_HDR_LENGTH_SIZE)
+
+struct bgp_channel *bgp_find_channel(const struct bgp_proto *p, u32 afi);
 
 static inline int bgp_channel_is_ipv4(struct bgp_channel *c)
 { return BGP_AFI(c->afi) == BGP_AFI_IPV4; }
@@ -763,6 +777,9 @@ bgp_total_aigp_metric(rte *r)
   bgp_total_aigp_metric_(r, &metric, &ad);
   return metric;
 }
+
+void bgp_build_rtfilter_tree_on_settle(struct settle *s);
+void bgp_process_rtfilter_entry(struct bgp_proto *p, const struct net_addr_rtfilter *addr, const struct rta *a);
 
 
 /* packets.c */
