@@ -3,6 +3,7 @@
 #include "lib/ip.h"
 #include "lib/net.h"
 #include "lib/flowspec.h"
+#include "nest/attrs.h"
 
 
 const char * const net_label[] = {
@@ -14,6 +15,7 @@ const char * const net_label[] = {
   [NET_ROA6]	= "roa6",
   [NET_FLOW4]	= "flow4",
   [NET_FLOW6]	= "flow6",
+  [NET_RTFILTER] = "rt-filter",
   [NET_IP6_SADR]= "ipv6-sadr",
   [NET_ETH]	= "eth",
   [NET_MPLS]	= "mpls",
@@ -31,6 +33,7 @@ const u16 net_addr_length[] = {
   [NET_ROA6]	= sizeof(net_addr_roa6),
   [NET_FLOW4]	= 0,
   [NET_FLOW6]	= 0,
+  [NET_RTFILTER] = sizeof(net_addr_rtfilter),
   [NET_IP6_SADR]= sizeof(net_addr_ip6_sadr),
   [NET_ETH]	= sizeof(net_addr_eth),
   [NET_MPLS]	= sizeof(net_addr_mpls),
@@ -48,6 +51,7 @@ const u8 net_max_prefix_length[] = {
   [NET_ROA6]	= IP6_MAX_PREFIX_LENGTH,
   [NET_FLOW4]	= IP4_MAX_PREFIX_LENGTH,
   [NET_FLOW6]	= IP6_MAX_PREFIX_LENGTH,
+  [NET_RTFILTER] = 64,
   [NET_IP6_SADR]= IP6_MAX_PREFIX_LENGTH,
   [NET_ETH]	= 0,
   [NET_MPLS]	= 0,
@@ -65,6 +69,7 @@ const u16 net_max_text_length[] = {
   [NET_ROA6]	= 60,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128-128 AS4294967295" */
   [NET_FLOW4]	= 0,	/* "flow4 { ... }" */
   [NET_FLOW6]	= 0,	/* "flow6 { ... }" */
+  [NET_RTFILTER] = 38,	/* "4294967296:4294967296/128 AS4294967295" */
   [NET_IP6_SADR]= 92,	/* "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128 from ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128" */
   [NET_ETH]	= 28,	/* "11:22:33:44:55:66 vlan 65535" */
   [NET_MPLS]	= 7,	/* "1048575" */
@@ -83,6 +88,7 @@ STATIC_ASSERT(sizeof(net_addr_roa4)	== 16);
 STATIC_ASSERT(sizeof(net_addr_roa6)	== 28);
 STATIC_ASSERT(sizeof(net_addr_flow4)	==  8);
 STATIC_ASSERT(sizeof(net_addr_flow6)	== 20);
+STATIC_ASSERT(sizeof(net_addr_rtfilter)== 16);
 STATIC_ASSERT(sizeof(net_addr_ip6_sadr)	== 40);
 STATIC_ASSERT(sizeof(net_addr_eth)	== 12);
 STATIC_ASSERT(sizeof(net_addr_mpls)	==  8);
@@ -107,6 +113,7 @@ STATIC_ASSERT(alignof(net_addr_flow4)	== alignof(net_addr));
 STATIC_ASSERT(alignof(net_addr_flow6)	== alignof(net_addr));
 STATIC_ASSERT(alignof(net_addr_flow4)	== alignof(net_addr));
 STATIC_ASSERT(alignof(net_addr_flow6)	== alignof(net_addr));
+STATIC_ASSERT(alignof(net_addr_rtfilter)== alignof(net_addr));
 STATIC_ASSERT(alignof(net_addr_ip6_sadr) == alignof(net_addr));
 STATIC_ASSERT(alignof(net_addr_eth)	== alignof(net_addr));
 STATIC_ASSERT(alignof(net_addr_mpls)	== alignof(net_addr));
@@ -171,6 +178,12 @@ net_format(const net_addr *N, char *buf, int buflen)
     return flow4_net_format(buf, buflen, &n->flow4);
   case NET_FLOW6:
     return flow6_net_format(buf, buflen, &n->flow6);
+  case NET_RTFILTER:
+    {
+    int c = ec_format(buf, rt_to_u64(n->rtfilter.rt));
+    ADVANCE(buf, buflen, c);
+    return bsnprintf(buf, buflen, "/%u AS%u", n->rtfilter.pxlen, n->rtfilter.asn);
+    }
   case NET_IP6_SADR:
     return bsnprintf(buf, buflen, "%I6/%d from %I6/%d", n->ip6_sadr.dst_prefix, n->ip6_sadr.dst_pxlen, n->ip6_sadr.src_prefix, n->ip6_sadr.src_pxlen);
   case NET_ETH:
@@ -215,6 +228,7 @@ net_pxmask(const net_addr *a)
     return ipa_from_ip6(ip6_mkmask(net6_pxlen(a)));
 
   case NET_ETH:
+  case NET_RTFILTER:
   case NET_MPLS:
   case NET_ASPA:
   case NET_EVPN:
@@ -248,6 +262,8 @@ net_compare(const net_addr *a, const net_addr *b)
     return net_compare_flow4((const net_addr_flow4 *) a, (const net_addr_flow4 *) b);
   case NET_FLOW6:
     return net_compare_flow6((const net_addr_flow6 *) a, (const net_addr_flow6 *) b);
+  case NET_RTFILTER:
+    return net_compare_rtfilter((const net_addr_rtfilter *) a, (const net_addr_rtfilter *) b);
   case NET_IP6_SADR:
     return net_compare_ip6_sadr((const net_addr_ip6_sadr *) a, (const net_addr_ip6_sadr *) b);
   case NET_ETH:
@@ -279,6 +295,7 @@ net_hash(const net_addr *n)
   case NET_ROA6: return NET_HASH(n, roa6);
   case NET_FLOW4: return NET_HASH(n, flow4);
   case NET_FLOW6: return NET_HASH(n, flow6);
+  case NET_RTFILTER: return NET_HASH(n, rtfilter);
   case NET_IP6_SADR: return NET_HASH(n, ip6_sadr);
   case NET_ETH: return NET_HASH(n, eth);
   case NET_MPLS: return NET_HASH(n, mpls);
@@ -305,6 +322,7 @@ net_validate(const net_addr *n)
   case NET_ROA6: return NET_VALIDATE(n, roa6);
   case NET_FLOW4: return NET_VALIDATE(n, flow4);
   case NET_FLOW6: return NET_VALIDATE(n, flow6);
+  case NET_RTFILTER: return NET_VALIDATE(n, rtfilter);
   case NET_IP6_SADR: return NET_VALIDATE(n, ip6_sadr);
   case NET_ETH: return NET_VALIDATE(n, eth);
   case NET_MPLS: return NET_VALIDATE(n, mpls);
@@ -338,6 +356,7 @@ net_normalize(net_addr *N)
     return net_normalize_ip6_sadr(&n->ip6_sadr);
 
   case NET_ETH:
+  case NET_RTFILTER:
   case NET_MPLS:
   case NET_ASPA:
   case NET_EVPN:
@@ -369,6 +388,7 @@ net_classify(const net_addr *N)
     return ip6_zero(n->ip6_sadr.dst_prefix) ? (IADDR_HOST | SCOPE_UNIVERSE) : ip6_classify(&n->ip6_sadr.dst_prefix);
 
   case NET_ETH:
+  case NET_RTFILTER:
   case NET_MPLS:
   case NET_ASPA:
   case NET_EVPN:	/* ?? */
@@ -406,6 +426,7 @@ ipa_in_netX(const ip_addr a, const net_addr *n)
 			    ip6_mkmask(net6_pxlen(n))));
 
   case NET_ETH:
+  case NET_RTFILTER:
   case NET_MPLS:
   case NET_ASPA:
   case NET_EVPN:
