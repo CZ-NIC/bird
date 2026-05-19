@@ -1041,5 +1041,6 @@ rip_open_socket(struct rip_iface *ifa)
 err:
   sk_log_error(sk, p->p.name);
   rfree(sk);
+  proto_notify_state(&p->p, PS_START);
   return 0;
 }
