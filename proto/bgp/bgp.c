@@ -839,8 +839,8 @@ bgp_setup_auth(struct bgp_proto *p, int enable)
   return 0;
 }
 
-static inline struct bgp_channel *
-bgp_find_channel(struct bgp_proto *p, u32 afi)
+struct bgp_channel *
+bgp_find_channel(const struct bgp_proto *p, u32 afi)
 {
   struct bgp_channel *c;
   BGP_WALK_CHANNELS(p, c)
@@ -1327,6 +1327,21 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
     /* GR capability implies that neighbor will send End-of-RIB */
     if (peer->gr_aware)
       c->load_state = BFS_LOADING;
+
+    if (p->cf->rtfilter_use)
+    {
+      struct bgp_channel *cvpn4 = bgp_find_channel(p, BGP_AF_VPN4_MPLS);
+      struct bgp_channel *cvpn6 = bgp_find_channel(p, BGP_AF_VPN6_MPLS);
+
+      if (cvpn4)
+	channel_disable_export(&cvpn4->c);
+
+      if (cvpn6)
+	channel_disable_export(&cvpn6->c);
+
+      /* Connection has been successfully established, start settle timer */
+      settle_kick(&p->rtfilter_settle);
+    }
 
     c->ext_next_hop = c->cf->ext_next_hop && (bgp_channel_is_ipv6(c) || rem->ext_next_hop);
     c->add_path_rx = (loc->add_path & BGP_ADD_PATH_RX) && (rem->add_path & BGP_ADD_PATH_TX);
@@ -2464,6 +2479,29 @@ bgp_start(struct proto *P)
       channel_graceful_restart_lock(&c->c);
   }
 
+  /* Initialize rtfilter */
+  if (p->cf->rtfilter_use)
+  {
+    p->rtfilter_tree = NULL;
+    p->rtfilter_tree_pool = lp_new(p->p.pool);
+    p->rtfilter_initial_feed = true;
+
+    fib_init(&p->rtfilter_fib, p->p.pool, NET_RTFILTER, sizeof(struct fib_node), 0, 0, NULL);
+
+    /*
+     * Configure but DO NOT start settle timer. It can be started only after
+     * connection has been successfully established. During initial feed, wait
+     * until the end of feed (when bgp_rx_end_mark() is called; beware - it
+     * doesn't have to be) or one minute at most.
+     */
+    p->rtfilter_settle_cf = (struct settle_config) {
+      .min = 60 S_,
+      .max = 60 S_,
+    };
+
+    settle_init(&p->rtfilter_settle, &p->rtfilter_settle_cf, bgp_build_rtfilter_tree_on_settle, p);
+  }
+
   /*
    * Before attempting to create the connection, we need to lock the port,
    * so that we are the only instance attempting to talk with that neighbor.
@@ -2573,6 +2611,18 @@ bgp_shutdown(struct proto *P)
   }
 
 done:
+  if (p->cf->rtfilter_use)
+  {
+    settle_cancel(&p->rtfilter_settle);
+    fib_free(&p->rtfilter_fib);
+
+    p->rtfilter_tree = NULL;
+    p->rtfilter_tree_pool = NULL;
+    p->rtfilter_fib = (struct fib) { 0 };
+    p->rtfilter_settle = (struct settle) { 0 };
+    p->rtfilter_settle_cf = (struct settle_config) { 0 };
+  }
+
   bgp_stop(p, subcode, data, len);
   return p->p.proto_state;
 }
@@ -3731,7 +3781,7 @@ struct protocol proto_bgp = {
   .template = 		"bgp%d",
   .class =		PROTOCOL_BGP,
   .preference = 	DEF_PREF_BGP,
-  .channel_mask =	NB_IP | NB_VPN | NB_FLOW | NB_EVPN | NB_MPLS | NB_NEIGHBOR,
+  .channel_mask =	NB_IP | NB_VPN | NB_FLOW | NB_EVPN | NB_MPLS | NB_NEIGHBOR | NB_RTFILTER,
   .proto_size =		sizeof(struct bgp_proto),
   .config_size =	sizeof(struct bgp_config),
   .postconfig =		bgp_postconfig,
