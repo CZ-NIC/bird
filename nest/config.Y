@@ -195,6 +195,7 @@ net_type_base:
  | ETH  { $$ = NET_ETH; }
  | ASPA { $$ = NET_ASPA; }
  | EVPN { $$ = NET_EVPN; }
+ | RTFILTER { $$ = NET_RTFILTER; }
  ;
 
 net_type:
