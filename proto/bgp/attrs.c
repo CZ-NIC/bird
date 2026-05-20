@@ -106,6 +106,21 @@ bgp_set_attr(ea_list **attrs, struct linpool *pool, uint code, uint flags, uintp
 #define WITHDRAW(msg, args...) \
   ({ REPORT(msg, ## args); s->err_withdraw = 1; return; })
 
+#define INELIGIBLE(msg, args...)						  \
+  ({										  \
+     REPORT(msg, ## args);							  \
+     s->err_ineligible = 1;							  \
+     ASSUME(s->err_msg_buf.start);						  \
+     if (s->proto->cf->keep_ineligible) {					  \
+       memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);\
+       s->err_msg_buf.pos = s->err_msg_buf.start;				  \
+       s->err_msg_written = buffer_print(&s->err_msg_buf, msg, ## args);		  \
+     } else {									  \
+       s->err_withdraw = 1;							  \
+     }										  \
+     return;									  \
+  })
+
 #define UNSET(a) \
   ({ a->undef = 1; return; })
 
@@ -1561,6 +1576,7 @@ withdraw:
 
 loop:
   /* Loops are handled as withdraws, but ignored silently. Do not set err_withdraw. */
+  s->err_ineligible = 1;
   return NULL;
 }
 
@@ -1583,12 +1599,11 @@ bgp_finish_attrs(struct bgp_parse_state *s, rta *a)
     /* Reject routes from downstream if they are leaked */
     if (e && (p->cf->local_role == BGP_ROLE_PROVIDER ||
 	      p->cf->local_role == BGP_ROLE_RS_SERVER))
-      WITHDRAW("Route leak detected - OTC attribute from downstream");
+      INELIGIBLE("Route leak detected - OTC attribute from downstream");
 
     /* Reject routes from peers if they are leaked */
     if (e && (p->cf->local_role == BGP_ROLE_PEER) && (e->u.data != p->cf->remote_as))
-      WITHDRAW("Route leak detected - OTC attribute with mismatched ASN (%u)",
-	       (uint) e->u.data);
+      INELIGIBLE("Route leak detected - OTC attribute with mismatched ASN (%u)", (uint)e->u.data);
 
     /* Mark routes from upstream if it did not happened before */
     if (!e && (p->cf->local_role == BGP_ROLE_CUSTOMER ||

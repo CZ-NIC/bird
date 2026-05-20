@@ -1066,6 +1066,36 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 #define WITHDRAW(msg, args...) \
   ({ REPORT(msg, ## args); s->err_withdraw = 1; return; })
 
+#define INVALID(msg, args...)							  \
+  ({										  \
+     REPORT(msg, ## args);							  \
+     s->err_invalid = 1;							  \
+     ASSUME(s->err_msg_buf.start);						  \
+     if (s->proto->cf->keep_invalid) {						  \
+       memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);\
+       s->err_msg_buf.pos = s->err_msg_buf.start;				  \
+       s->err_msg_written = buffer_print(&s->err_msg_buf, msg, ## args);		  \
+     } else {									  \
+       s->err_withdraw = 1;							  \
+     }										  \
+     return;									  \
+  })
+
+#define UNRESOLVABLE(msg, args...)						  \
+  ({										  \
+     REPORT(msg, ## args);							  \
+     s->err_unresolvable = 1;							  \
+     ASSUME(s->err_msg_buf.start);						  \
+     if (s->proto->cf->keep_unresolvable) {					  \
+       memset(s->err_msg_buf.start, 0, s->err_msg_buf.pos - s->err_msg_buf.start);\
+       s->err_msg_buf.pos = s->err_msg_buf.start;				  \
+       s->err_msg_written = buffer_print(&s->err_msg_buf, msg, ## args);		  \
+     } else {									  \
+       s->err_withdraw = 1;							  \
+     }										  \
+     return;									  \
+  })
+
 #define REJECT(msg, args...)						\
   ({ log(L_ERR "%s: " msg, s->proto->p.name, ## args); s->err_reject = 1; return; })
 
@@ -1115,13 +1145,13 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
     else if (ipa_nonzero2(gw))
       nbr = neigh_find(&p->p, gw, default_iface, nb_flags);
     else
-      WITHDRAW(BAD_NEXT_HOP " - zero address");
+      INVALID(BAD_NEXT_HOP " - zero address");
 
     if (!nbr)
-      WITHDRAW(BAD_NEXT_HOP " - address %I not directly reachable", ipa_nonzero(gw) ? gw : ll);
+      INVALID(BAD_NEXT_HOP " - address %I not directly reachable", ipa_nonzero(gw) ? gw : ll);
 
     if (nbr->scope == SCOPE_HOST)
-      WITHDRAW(BAD_NEXT_HOP " - address %I is local", nbr->addr);
+      UNRESOLVABLE(BAD_NEXT_HOP " - address %I is local", nbr->addr);
 
     a->dest = RTD_UNICAST;
     a->nh.gw = nbr->addr;
@@ -1132,14 +1162,15 @@ bgp_apply_next_hop(struct bgp_parse_state *s, rta *a, ip_addr gw, ip_addr ll)
   else /* GW_RECURSIVE */
   {
     if (ipa_zero2(gw))
-      WITHDRAW(BAD_NEXT_HOP " - zero address");
+      INVALID(BAD_NEXT_HOP " - zero address");
 
     rtable *tab = ipa_is_ip4(gw) ? c->igp_table_ip4 : c->igp_table_ip6;
     ip_addr lla = (c->cf->next_hop_prefer == NHP_LOCAL) ? ll : IPA_NONE;
     s->hostentry = rt_get_hostentry(tab, gw, lla, c->c.table);
 
     if (!s->mpls)
-      rta_apply_hostentry(a, s->hostentry, NULL);
+      if (!rta_apply_hostentry(a, s->hostentry, NULL))
+	UNRESOLVABLE(BAD_NEXT_HOP " - no nexthop");
 
     /* With MPLS, hostentry is applied later in bgp_apply_mpls_labels() */
   }
@@ -1173,7 +1204,9 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, rta *a, u32 *labels, uint lnum)
 
     ms.len = lnum;
     memcpy(ms.stack, labels, 4*lnum);
-    rta_apply_hostentry(a, s->hostentry, &ms);
+
+    if (!rta_apply_hostentry(a, s->hostentry, &ms))
+      UNRESOLVABLE(BAD_NEXT_HOP " - no nexthop");
   }
 }
 
@@ -1446,7 +1479,7 @@ bgp_decode_next_hop_ip(struct bgp_parse_state *s, byte *data, uint len, rta *a)
     ad->length = 16;
 
   if (!bgp_channel_match_next_hop_af(c, nh[0]))
-    WITHDRAW(BAD_NEXT_HOP MISMATCHED_AF, nh[0], c->desc->name);
+    INVALID(BAD_NEXT_HOP MISMATCHED_AF, nh[0], c->desc->name);
 
   // XXXX validate next hop
 
@@ -1537,7 +1570,7 @@ bgp_decode_next_hop_vpn(struct bgp_parse_state *s, byte *data, uint len, rta *a)
     bgp_parse_error(s, 9);
 
   if (!bgp_channel_match_next_hop_af(c, nh[0]))
-    WITHDRAW(BAD_NEXT_HOP MISMATCHED_AF, nh[0], c->desc->name);
+    INVALID(BAD_NEXT_HOP MISMATCHED_AF, nh[0], c->desc->name);
 
   // XXXX validate next hop
 
@@ -1612,6 +1645,16 @@ bgp_rte_update(struct bgp_parse_state *s, const net_addr *n, u32 path_id, rta *a
 
   rta *a = rta_clone(s->cached_rta);
   rte *e = rte_get_temp(a, s->last_src);
+
+  /* If the route was found not to be valid during nexthop decoding, set its flags here */
+  if (s->err_invalid)
+    e->flags |= REF_INVALID;
+
+  if (s->err_ineligible)
+    e->flags |= REF_INELIGIBLE;
+
+  if (s->err_unresolvable)
+    e->flags |= REF_UNRESOLVABLE;
 
   rte_update3(&s->channel->c, n, e, s->last_src);
 }
@@ -3226,6 +3269,15 @@ bgp_rx_end_mark(struct bgp_parse_state *s, u32 afi)
 }
 
 static inline void
+bgp_set_attr_ineligibility_reason(struct ea_list **to, struct linpool *lp, const struct buffer *buf, int written)
+{
+  struct adata *a = lp_allocz(lp, sizeof(*a) + written + 1);
+  a->length = written + 1;
+  memcpy(a->data, buf->start, a->length);
+  ea_set_attr_ptr(to, lp, EA_INELIGIBILITY_REASON, 0, EAF_TYPE_STRING, a);
+}
+
+static inline void
 bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_list *ea, byte *nh, uint nh_len)
 {
   struct bgp_channel *c = bgp_get_channel(s->proto, afi);
@@ -3240,6 +3292,10 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
 
   s->last_id = 0;
   s->last_src = s->proto->p.main_source;
+
+  s->err_msg_buf.start = tmp_allocz(128);
+  s->err_msg_buf.pos = s->err_msg_buf.start;
+  s->err_msg_buf.end = s->err_msg_buf.start + 128;
 
   /*
    * IPv4 BGP and MP-BGP may be used together in one update, therefore we do not
@@ -3261,8 +3317,15 @@ bgp_decode_nlri(struct bgp_parse_state *s, u32 afi, byte *nlri, uint len, ea_lis
     c->desc->decode_next_hop(s, nh, nh_len, a);
     bgp_finish_attrs(s, a);
 
+    /* If the route is kept despite being not valid, save ineligiblity reason as its attribute */
+    if (!s->err_withdraw)
+    {
+      if (s->err_invalid || s->err_ineligible || s->err_unresolvable)
+	if (s->err_msg_written > 0)
+	  bgp_set_attr_ineligibility_reason(&a->eattrs, s->pool, &s->err_msg_buf, s->err_msg_written);
+    }
     /* Handle withdraw during next hop decoding */
-    if (s->err_withdraw)
+    else
       a = NULL;
   }
 
