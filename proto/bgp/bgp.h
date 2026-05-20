@@ -163,6 +163,10 @@ struct bgp_config {
   int require_gr;			/* Require remote support for graceful restart [RFC 4724] */
   int require_llgr;			/* Require remote support for long-lived graceful restart [RFC 9494] */
   struct bfd_options *bfd;		/* Use BFD for liveness detection */
+
+  int keep_invalid;
+  int keep_ineligible;
+  int keep_unresolvable;
 };
 
 struct bgp_channel_config {
@@ -549,6 +553,11 @@ struct bgp_parse_state {
 
   uint err_withdraw;
   uint err_subcode;
+  uint err_invalid;
+  uint err_ineligible;
+  uint err_unresolvable;
+  int err_msg_written;			/* Length of message written into err_msg_buf */
+  struct buffer err_msg_buf;		/* Reason for route ineligibility */
   jmp_buf err_jmpbuf;
 
   struct hostentry *hostentry;
