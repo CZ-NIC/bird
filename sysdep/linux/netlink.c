@@ -86,7 +86,7 @@ nl_open_sock(struct nl_sock *nl)
 }
 
 static int
-nl_set_strict_dump(struct nl_sock *nl UNUSED, int strict UNUSED)
+nl_set_strict_chk(struct nl_sock *nl UNUSED, int strict UNUSED)
 {
 #ifdef SOL_NETLINK
   return setsockopt(nl->fd, SOL_NETLINK, NETLINK_GET_STRICT_CHK, &strict, sizeof(strict));
@@ -125,7 +125,8 @@ nl_open(void)
   nl_open_sock(&nl_scan);
   nl_open_sock(&nl_req);
 
-  if (nl_set_strict_dump(&nl_scan, 1) < 0)
+  nl_set_strict_chk(&nl_req, 1);
+  if (nl_set_strict_chk(&nl_scan, 1) < 0)
   {
     log(L_WARN "KRT: Netlink strict checking failed, will scan all tables at once");
     krt_use_shared_scan();
