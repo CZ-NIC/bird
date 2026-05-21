@@ -71,6 +71,14 @@ static struct nl_sock nl_scan = {.fd = -1};	/* Netlink socket for synchronous sc
 static struct nl_sock nl_req  = {.fd = -1};	/* Netlink socket for requests */
 
 static void
+nl_set_cap_ack(struct nl_sock *nl UNUSED, int val UNUSED)
+{
+#ifdef SOL_NETLINK
+  setsockopt(nl->fd, SOL_NETLINK, NETLINK_CAP_ACK, &val, sizeof(val));
+#endif
+}
+
+static void
 nl_open_sock(struct nl_sock *nl)
 {
   if (nl->fd < 0)
@@ -82,6 +90,8 @@ nl_open_sock(struct nl_sock *nl)
       nl->rx_buffer = xmalloc(NL_RX_SIZE);
       nl->last_hdr = NULL;
       nl->last_size = 0;
+
+      nl_set_cap_ack(nl, 1);
     }
 }
 
