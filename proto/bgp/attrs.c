@@ -3362,7 +3362,7 @@ bgp_rte_recalculate(struct rtable_private *table, net *net,
       ptr = &s->next)
     if (!rte_is_valid(&s->rte))
       break;
-    else if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
+    else if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn) && s!= old_stored)
     {
       s->pflags |= BGP_REF_SUPPRESSED;
       if (!r || bgp_rte_better(&s->rte, &r->rte))
