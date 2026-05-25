@@ -1,3 +1,24 @@
+Version 3.3.0 (2026-05-25)
+  o BGP: Export memory consumption optimization
+  o BGP: Fix hostentry handling of MPLS and EVPN routes
+  o BGP: Block connections on explicitly disabled instances
+  o Proto/CLI: Lock show-commands
+  o Proto: Loop persists through down state
+  o Nest/CLI: Show only the longest prefix match in 'show route for'
+  o Nest: Lockless attribute cache
+  o Removed locking in random number generation
+  o ASPA: Fix downstream validation
+  o BMP: Fix route sending
+  o BGP: Fix route refresh after restart
+  o BGP: Fix dynamic peer connection
+  o Filters: Fix string attributes
+  o Filters: Fix ROA check autoreload reconfiguration
+  o Logging: Fix error handling
+  o Kernel: Fix graceful recovery
+  o Pipe: Fix rare collision bug
+  o Config: Allow keyword redefinition
+  o Merged 2.19
+
 Version 3.2.0 (2025-12-26)
   o BGP: Listening socket rework
   o IGP metric: Split out local_metric again
