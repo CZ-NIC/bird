@@ -89,6 +89,21 @@ Version 3.0-alpha0 (2022-02-07)
   o Lots of refactoring
   o Bugfixes and improvements as they came along
 
+Version 2.19.0 (2026-05-25)
+  o BGP/MPLS Ethernet VPNs using VXLAN tunnels
+  o BGP: PMSI tunnel attribute
+  o Linux Netlink implementation for bridge interfaces
+  o BGP: Automatic peering based on discovered neighbors
+  o RAdv: Router discovery based on incoming Router Advertisments
+  o Nest: Add message when attempting to reload protocol that is not UP
+  o BMP: Fix off-by-one buffer overflow
+  o OSPF: Fix infinite loop in OSPF Graceful Restart
+  o ASPA: Fix downstream validation
+  o Filters: Fix string attributes
+  o Logging: Fix error handling
+  o Minor filter improvements
+  o Various documentation fixes
+
 Version 2.18 (2025-12-26)
   o BGP: Support for dynamic onlink and link-local connections
   o BGP: Listening socket refactoring
