@@ -694,9 +694,40 @@ err:
   return -1;
 }
 
+/*
+ * @failed_caps: instance of bgp_caps for marking missing capabilities
+ */
 int
-bgp_check_capabilities(struct bgp_conn *conn)
+bgp_check_capabilities(struct bgp_conn *conn, struct bgp_caps *failed_caps)
 {
+#define CAPS_CHECK_FAIL(capability,value)       \
+  do {                                          \
+    if (failed_caps)                            \
+      failed_caps->capability = value;          \
+    return 0;                                   \
+  } while (0)
+
+#define AF_CAPS_CHECK_FAIL(_afi,capability,value)       \
+  do {                                                  \
+    if (failed_caps) {                                  \
+      failed_caps->af_data[0].afi = _afi;               \
+      failed_caps->af_data[0].capability = value;       \
+      failed_caps->af_count = 1;                        \
+    }                                                   \
+    return 0;                                           \
+  } while (0)
+
+#define AF_CAPS_CHECK_FAIL_ANY(_afi,any_capability,capability,value)	\
+  do {									\
+    if (failed_caps) {							\
+      failed_caps->af_data[0].afi = _afi;				\
+      failed_caps->af_data[0].capability = value;			\
+      failed_caps->af_count = 1;					\
+      failed_caps->any_capability = 1;					\
+    }									\
+    return 0;								\
+} while (0)
+
   struct bgp_proto *p = conn->bgp;
   struct bgp_caps *local = conn->local_caps;
   struct bgp_caps *remote = conn->remote_caps;
@@ -707,27 +738,34 @@ bgp_check_capabilities(struct bgp_conn *conn)
      but we need to run this just after we receive OPEN message */
 
   if (p->cf->require_refresh && !remote->route_refresh)
-    return 0;
+    CAPS_CHECK_FAIL(route_refresh, 1);
 
   if (p->cf->require_enhanced_refresh && !remote->enhanced_refresh)
-    return 0;
+    CAPS_CHECK_FAIL(enhanced_refresh, 1);
 
   if (p->cf->require_as4 && !remote->as4_support)
-    return 0;
+    CAPS_CHECK_FAIL(as4_support, 1);
 
   if (p->cf->require_extended_messages && !remote->ext_messages)
-    return 0;
+    CAPS_CHECK_FAIL(ext_messages, 1);
 
   if (p->cf->require_hostname && !remote->hostname)
-    return 0;
+    CAPS_CHECK_FAIL(hostname, "");
 
   if (p->cf->require_gr && !remote->gr_aware)
-    return 0;
+    CAPS_CHECK_FAIL(gr_aware, 1);
 
   if (p->cf->require_llgr && !remote->llgr_aware)
-    return 0;
+    CAPS_CHECK_FAIL(llgr_aware, 1);
 
   /* No check for require_roles, as it uses error code 2.11 instead of 2.7 */
+
+  u32 first_active_channel_afi = 0;
+
+  /*
+   * @failed_caps has one bgp_af_caps entry, but af_count is 0.
+   * AF_CAPS_CHECK_FAIL marks missing capability and increases af_count to 1.
+   */
 
   BGP_WALK_CHANNELS(p, c)
   {
@@ -737,30 +775,51 @@ bgp_check_capabilities(struct bgp_conn *conn)
     /* Find out whether this channel will be active */
     int active = loc->ready && rem->ready;
 
+    if (loc->ready && !first_active_channel_afi)
+      first_active_channel_afi = c->afi;
+
     /* Mandatory must be active */
     if (c->cf->mandatory && !active)
-      return 0;
+      AF_CAPS_CHECK_FAIL(c->afi, ready, 1);
 
     if (active)
     {
       if (c->cf->require_ext_next_hop && !rem->ext_next_hop)
-	return 0;
+        AF_CAPS_CHECK_FAIL_ANY(c->afi, any_ext_next_hop, ext_next_hop, 1);
 
-      if (c->cf->require_add_path && (loc->add_path & BGP_ADD_PATH_RX) && !(rem->add_path & BGP_ADD_PATH_TX))
-	return 0;
+      u32 missing = 0;
 
-      if (c->cf->require_add_path && (loc->add_path & BGP_ADD_PATH_TX) && !(rem->add_path & BGP_ADD_PATH_RX))
-	return 0;
+      if (c->cf->require_add_path)
+      {
+        if ((loc->add_path & BGP_ADD_PATH_RX) && !(rem->add_path & BGP_ADD_PATH_TX))
+          missing |= BGP_ADD_PATH_TX;
+
+        if ((loc->add_path & BGP_ADD_PATH_TX) && !(rem->add_path & BGP_ADD_PATH_RX))
+          missing |= BGP_ADD_PATH_RX;
+      }
+
+      if (missing != 0)
+        AF_CAPS_CHECK_FAIL_ANY(c->afi, any_add_path, add_path, missing);
 
       count++;
     }
   }
 
   /* We need at least one channel active */
-  if (!count)
-    return 0;
+  if (count == 0)
+  {
+    if (!first_active_channel_afi)
+      return 0;
+
+    if (failed_caps)
+      AF_CAPS_CHECK_FAIL(first_active_channel_afi, ready, 1);
+  }
 
   return 1;
+
+#undef CAPS_CHECK_FAIL
+#undef AF_CAPS_CHECK_FAIL
+#undef AF_CAPS_CHECK_FAIL_ANY
 }
 
 static int
@@ -943,9 +1002,27 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
   if (!id || (p->is_internal && id == p->local_id))
   { bgp_error(conn, 2, 3, pkt+24, -4); return; }
 
+  /* Instance of bgp_caps with single bgp_af_caps entry used to store missing capabilities */
+  struct bgp_caps *failed_caps = allocz(sizeof(*failed_caps) + sizeof(failed_caps->af_data[0]));
+  failed_caps->role = BGP_ROLE_UNDEFINED;
+
   /* RFC 5492 5 - check for required capabilities */
-  if (p->cf->capabilities && !bgp_check_capabilities(conn))
-  { bgp_error(conn, 2, 7, NULL, 0); return; }
+  if (p->cf->capabilities && !bgp_check_capabilities(conn, failed_caps))
+  {
+    byte buf[32] = { 0 };
+    byte *end = bgp_write_capabilities(failed_caps, buf);
+
+    /* Send empty message if conn->buf has insufficient size or when write buffer is empty */
+    if (end > buf + sizeof(conn->missing_caps_msg) || end == buf)
+      bgp_error(conn, 2, 7, NULL, 0);
+    else
+    {
+      memcpy(conn->missing_caps_msg, buf, end - buf);
+      bgp_error(conn, 2, 7, conn->missing_caps_msg, end - buf);
+    }
+
+    return;
+  }
 
   struct bgp_caps *caps = conn->remote_caps;
 
@@ -3854,6 +3931,45 @@ bgp_handle_message(struct bgp_proto *p, byte *data, uint len, byte **bp)
   return 1;
 }
 
+static int
+bgp_format_capabilities(byte *data, uint len, byte *buf)
+{
+  switch (data[0])
+  {
+    case 1: {   /* Multiprotocol capability, RFC 4760 */
+      /* Capability length */
+      if ((len >= 1 && data[1] != 4) || len != 6)
+        return bsprintf(buf, "multiprotocol");
+
+      u32 afi = get_af4(data + 2);
+      const struct bgp_af_desc *desc = bgp_get_af_desc(afi);
+      return bsprintf(buf, "multiprotocol: %s", desc->name);
+    }
+    case 2:     /* Route refresh capability, RFC 2918 */
+      return bsprintf(buf, "route refresh");
+    case 5:     /* Extended nexthop encoding capability, RFC 8950 */
+      return bsprintf(buf, "extended nexthop encoding");
+    case 6:     /* Extended message length capability, RFC 8654 */
+      return bsprintf(buf, "extended message length");
+    case 9:     /* BGP role capability, RFC 9234 */
+      return bsprintf(buf, "BGP role");
+    case 64:    /* Graceful restart capability, RFC 4724 */
+      return bsprintf(buf, "graceful restart");
+    case 65:    /* AS4 capability, RFC 6793 */
+      return bsprintf(buf, "AS4");
+    case 69:    /* ADD-PATH capability, RFC 7911 */
+      return bsprintf(buf, "ADD-PATH");
+    case 70:    /* Enhanced route refresh capability, RFC 7313 */
+      return bsprintf(buf, "enhanced route refresh");
+    case 71:    /* Long-lived graceful restart capability, RFC 9494 */
+      return bsprintf(buf, "long-lived graceful restart");
+    case 73:    /* Hostaname, RFC draft */
+      return bsprintf(buf, "hostname");
+    default:
+      return bsprintf(buf, "unrecognized");
+  }
+}
+
 void
 bgp_log_error(struct bgp_proto *p, u8 class, char *msg, uint code, uint subcode, byte *data, uint len)
 {
@@ -3877,6 +3993,12 @@ bgp_log_error(struct bgp_proto *p, u8 class, char *msg, uint code, uint subcode,
 	  goto done;
 	}
 
+      if ((code == 2) && (subcode == 7))
+      {
+        t += bgp_format_capabilities(data, len, t);
+        goto done;
+      }
+
       if ((code == 2) && (subcode == 11) && (len == 1))
         {
 	  t += bsprintf(t, " (%s)", bgp_format_role_name(get_u8(data)));
@@ -3899,7 +4021,7 @@ bgp_log_error(struct bgp_proto *p, u8 class, char *msg, uint code, uint subcode,
 done:
   *t = 0;
   const byte *dsc = bgp_error_dsc(code, subcode);
-  log(L_REMOTE "%s: %s: %s%s", p->p.name, msg, dsc, argbuf);
+  log(L_REMOTE "%s: %s: %s: %s", p->p.name, msg, dsc, argbuf);
 }
 
 static void
