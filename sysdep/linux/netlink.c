@@ -70,11 +70,21 @@ static linpool *nl_linpool;
 static struct nl_sock nl_scan = {.fd = -1};	/* Netlink socket for synchronous scan */
 static struct nl_sock nl_req  = {.fd = -1};	/* Netlink socket for requests */
 
+static const char * nl_get_ext_msg(struct rtattr *a, int length);
+
 static void
 nl_set_cap_ack(struct nl_sock *nl UNUSED, int val UNUSED)
 {
 #ifdef SOL_NETLINK
   setsockopt(nl->fd, SOL_NETLINK, NETLINK_CAP_ACK, &val, sizeof(val));
+#endif
+}
+
+static void
+nl_set_ext_ack(struct nl_sock *nl UNUSED, int val UNUSED)
+{
+#ifdef SOL_NETLINK
+  setsockopt(nl->fd, SOL_NETLINK, NETLINK_EXT_ACK, &val, sizeof(val));
 #endif
 }
 
@@ -92,6 +102,7 @@ nl_open_sock(struct nl_sock *nl)
       nl->last_size = 0;
 
       nl_set_cap_ack(nl, 1);
+      nl_set_ext_ack(nl, 1);
     }
 }
 
@@ -311,22 +322,53 @@ nl_get_reply(struct nl_sock *nl)
 
 static struct tbf rl_netlink_err = TBF_DEFAULT_LOG_LIMITS;
 
+#ifndef NLMSG_RTA
+#define NLMSG_RTA(nlh, len) (struct rtattr *)(((char *) nlh) + NLMSG_SPACE(len))
+#endif
+
 static int
 nl_error(struct nlmsghdr *h, int ignore_esrch)
 {
-  struct nlmsgerr *e;
-  int ec;
+  /*
+   * NLMSG_ERROR structure:
+   *
+   * struct nlmsghdr
+   * struct nlmsgerr (contains header of request)
+   * optional payload of request
+   * optional extended ACK
+   */
 
-  if (h->nlmsg_len < NLMSG_LENGTH(sizeof(struct nlmsgerr)))
-    {
-      log(L_WARN "Netlink: Truncated error message received");
-      return ENOBUFS;
-    }
-  e = (struct nlmsgerr *) NLMSG_DATA(h);
-  ec = netlink_error_to_os(e->error);
-  if (ec && !(ignore_esrch && (ec == ESRCH)))
-    log_rl(&rl_netlink_err, L_WARN "Netlink: %s", strerror(ec));
-  return ec;
+  int err = ENOBUFS;
+  uint body = sizeof(struct nlmsgerr);
+  const char *msg = NULL;
+
+  if (h->nlmsg_len < NLMSG_LENGTH(body))
+    goto err;
+
+  struct nlmsgerr *e = NLMSG_DATA(h);
+  err = netlink_error_to_os(e->error);
+
+  /* No error */
+  if (!err || (ignore_esrch && (err == ESRCH)))
+    return err;
+
+  if (!(h->nlmsg_flags & NLM_F_CAPPED))
+  {
+    body = NLMSG_ALIGN(body) + (e->msg.nlmsg_len - NLMSG_HDRLEN);
+
+    if (h->nlmsg_len < NLMSG_LENGTH(body))
+      goto err;
+  }
+
+  if (h->nlmsg_flags & NLM_F_ACK_TLVS)
+    msg = nl_get_ext_msg(NLMSG_RTA(h, body), NLMSG_PAYLOAD(h, body));
+
+  log_rl(&rl_netlink_err, L_WARN "Netlink: %s", msg ?: strerror(err));
+  return err;
+
+err:
+  log(L_WARN "Netlink: Truncated error message received");
+  return err;
 }
 
 static struct nlmsghdr *
@@ -382,6 +424,13 @@ struct nl_want_attrs {
   u8 defined:1;
   u8 checksize:1;
   u8 size;
+};
+
+
+#define BIRD_NLMSGERR_MAX  (NLMSGERR_ATTR_MSG+1)
+
+static struct nl_want_attrs nlmsgerr_attr_want[BIRD_NLMSGERR_MAX] = {
+  [NLMSGERR_ATTR_MSG] = { 1, 0, 0 },
 };
 
 
@@ -631,6 +680,21 @@ static inline int rta_get_mpls(struct rtattr *a, u32 *stack)
   return labels;
 }
 #endif
+
+static const char *
+nl_get_ext_msg(struct rtattr *a, int length)
+{
+  struct rtattr *attrs[BIRD_NLMSGERR_MAX];
+
+  nl_attr_len = length;
+  if (!nl_parse_attrs(a, nlmsgerr_attr_want, attrs, sizeof(attrs)))
+    return NULL;
+
+  if (!attrs[NLMSGERR_ATTR_MSG])
+    return NULL;
+
+  return rta_get_str(attrs[NLMSGERR_ATTR_MSG]);
+}
 
 struct rtattr *
 nl_add_attr(struct nlmsghdr *h, uint bufsize, uint code, const void *data, uint dlen)
