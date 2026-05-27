@@ -4266,6 +4266,7 @@ rt_postconfig(struct config *c)
 	  cork_threshold,
 	  gc_threshold,
 	  gc_period,
+	  thread_group,
 	  debug);
 #undef COPY
     }
@@ -5013,6 +5014,7 @@ rt_new_table(struct symbol *s, uint addr_type)
       break;
   }
 
+  /* Set default thread group */
   thread_group_finalize_config();
   c->thread_group = new_config->default_thread_group;
 
