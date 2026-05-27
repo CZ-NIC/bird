@@ -21,6 +21,13 @@
 #endif
 
 
+/* Missing definitions from <linux/rtnetlink.h> */
+
+#ifndef RTEXT_FILTER_SKIP_STATS
+#define RTEXT_FILTER_SKIP_STATS (1 << 3)
+#endif
+
+
 /* Missing definitions from <linux/if_link.h> */
 
 enum {
@@ -136,7 +143,6 @@ enum {
   IFLA_BRIDGE_VLAN_TUNNEL_VID,
   IFLA_BRIDGE_VLAN_TUNNEL_FLAGS,
 };
-
 
 static inline int
 netlink_error_to_os(int error)

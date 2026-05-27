@@ -1431,7 +1431,7 @@ kif_do_scan(struct kif_proto *p UNUSED)
 
   if_start_update();
 
-  nl_request_dump_link(AF_UNSPEC, 0);
+  nl_request_dump_link(AF_UNSPEC, RTEXT_FILTER_SKIP_STATS);
   while (h = nl_get_scan())
     if (h->nlmsg_type == RTM_NEWLINK || h->nlmsg_type == RTM_DELLINK)
       nl_parse_link(h, 1);
@@ -2576,7 +2576,8 @@ kbr_do_vlan_scan(struct kbr_proto *p)
 
   struct nlmsghdr *h;
 
-  nl_request_dump_link(AF_BRIDGE, RTEXT_FILTER_BRVLAN);
+  nl_request_dump_link(AF_BRIDGE, RTEXT_FILTER_BRVLAN |
+                                  RTEXT_FILTER_SKIP_STATS);
   while (h = nl_get_scan())
   {
     if (h->nlmsg_type == RTM_NEWLINK || h->nlmsg_type == RTM_DELLINK)
