@@ -306,6 +306,10 @@ ospf_pkt_checkauth3(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf
       DROP("packet length mismatch", len);
 
     struct ospf_lls *lls = (void *) ((byte *) pkt + plen);
+
+    if (ntohs(lls->length) < sizeof(struct ospf_lls))
+      DROP("packet length mismatch", len);
+
     plen += ntohs(lls->length);
   }
 
