@@ -281,12 +281,18 @@ ospf_pkt_checkauth3(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf
   switch(pkt->type)
   {
   case HELLO_P:
+    if (pkt->length < sizeof(struct ospf_hello3_packet))
+      DROP("packet length mismatch", len);
+
     opts = ospf_hello3_options(pkt);
     lls_present = opts & OPT_L_V3;
     auth_present = opts & OPT_AT;
     break;
 
   case DBDES_P:
+    if (pkt->length < sizeof(struct ospf_hello3_packet))
+      DROP("packet length mismatch", len);
+
     opts = ospf_dbdes3_options(pkt);
     lls_present = opts & OPT_L_V3;
     auth_present = opts & OPT_AT;

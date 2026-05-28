@@ -11,37 +11,6 @@
 #include "ospf.h"
 
 
-struct ospf_hello2_packet
-{
-  struct ospf_packet hdr;
-  union ospf_auth2 auth;
-
-  u32 netmask;
-  u16 helloint;
-  u8 options;
-  u8 priority;
-  u32 deadint;
-  u32 dr;
-  u32 bdr;
-
-  u32 neighbors[];
-};
-
-struct ospf_hello3_packet
-{
-  struct ospf_packet hdr;
-
-  u32 iface_id;
-  u32 options;
-  u16 helloint;
-  u16 deadint;
-  u32 dr;
-  u32 bdr;
-
-  u32 neighbors[];
-};
-
-
 uint
 ospf_hello3_options(struct ospf_packet *pkt)
 {
