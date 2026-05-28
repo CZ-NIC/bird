@@ -88,14 +88,8 @@ static inline bool channel_reload(struct channel *c, struct rt_feeding_request *
 
 static inline void channel_reload_roa(struct channel *c, struct rt_feeding_request *rfr)
 {
-  if (c->channel_state == CS_UP)
-  {
-    ASSERT_DIE(channel_reload(c, rfr));
-    return;
-  }
-
-  if (c->debug & D_EVENTS)
-    log(L_TRACE "%s.%s: Import temporarily unable to refeed.");
+  ASSERT_DIE(rt_import_get_state(c->in_req.hook) == TIS_UP);
+  ASSERT_DIE(channel_reload(c, rfr));
 }
 
 static inline void channel_refeed(struct channel *c, struct rt_feeding_request *rfr)
