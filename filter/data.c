@@ -819,7 +819,7 @@ lp_val_copy(struct linpool *lp, const struct f_val *v)
 	} *out = lp_alloc(lp, sizeof(*out) + v->val.ad->length);
 	out->val = *v;
 	out->val.val.ad = &out->ad;
-	memcpy(&out->ad, v->val.ad, v->val.ad->length);
+	memcpy(&out->ad, v->val.ad, sizeof(struct adata) + v->val.ad->length);
 	return &out->val;
       }
 
