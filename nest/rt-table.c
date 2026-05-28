@@ -2468,13 +2468,13 @@ channel_preimport(struct rt_import_request *req, rte *new, const rte *old)
 void
 rte_update(struct channel *c, const net_addr *n, rte *new, struct rte_src *src)
 {
-  if (!c->in_req.hook)
+  u8 import_state = rt_import_get_state(c->in_req.hook);
+
+  if (import_state != TIS_UP)
   {
-    log(L_WARN "%s.%s: Called rte_update without import hook", c->proto->name, c->name);
+    log(L_WARN "%s.%s: Called rte_update after channel shutdown initiated (state %s)", c->proto->name, c->name, rt_import_state_name(import_state));
     return;
   }
-
-  ASSERT(c->channel_state == CS_UP);
 
   /* Storing prefilter routes as an explicit layer */
   if (new && (c->in_keep & RIK_PREFILTER))
