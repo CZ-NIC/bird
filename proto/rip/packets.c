@@ -274,7 +274,7 @@ rip_fill_authentication(struct rip_proto *p, struct rip_iface *ifa, struct rip_p
   case RIP_AUTH_PLAIN:
     auth->must_be_ffff = htons(0xffff);
     auth->auth_type = htons(RIP_AUTH_PLAIN);
-    strncpy(auth->password, pass->password, RIP_PASSWD_LENGTH);
+    memcpy0(auth->password, pass->password, sizeof(auth->password), pass->length);
     return;
 
   case RIP_AUTH_CRYPTO:
@@ -313,7 +313,7 @@ rip_fill_authentication(struct rip_proto *p, struct rip_iface *ifa, struct rip_p
 
     /* Append key for keyed hash, append padding for HMAC (RFC 4822 2.5) */
     if (pass->alg < ALG_HMAC)
-      strncpy(tail->auth_data, pass->password, auth_len);
+      memcpy0(tail->auth_data, pass->password, auth_len, pass->length);
     else
       memset32(tail->auth_data, HMAC_MAGIC, auth_len / 4);
 
@@ -402,7 +402,7 @@ rip_check_authentication(struct rip_proto *p, struct rip_iface *ifa, struct rip_
 
     /* Append key for keyed hash, append padding for HMAC (RFC 4822 2.5) */
     if (pass->alg < ALG_HMAC)
-      strncpy(tail->auth_data, pass->password, auth_len);
+      memcpy0(tail->auth_data, pass->password, auth_len, pass->length);
     else
       memset32(tail->auth_data, HMAC_MAGIC, auth_len / 4);
 

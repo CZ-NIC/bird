@@ -148,7 +148,7 @@ bfd_fill_authentication(struct bfd_proto *p, struct bfd_session *s, struct bfd_c
   {
     struct bfd_crypto_auth *auth = (void *) (pkt + 1);
     uint hash_alg = bfd_auth_type_to_hash_alg[cf->auth_type];
-    uint hash_len = mac_type_length(pass->alg);
+    uint hash_len = mac_type_length(hash_alg);
 
     /* Increase CSN about one time per second */
     u32 new_time = (u64) current_time() >> 20;
@@ -169,7 +169,8 @@ bfd_fill_authentication(struct bfd_proto *p, struct bfd_session *s, struct bfd_c
     pkt->flags |= BFD_FLAG_AP;
     pkt->length += auth->length;
 
-    strncpy(auth->data, pass->password, hash_len);
+    memcpy0(auth->data, pass->password, hash_len, pass->length);
+
     mac_fill(hash_alg, NULL, 0, (byte *) pkt, pkt->length, auth->data);
     return;
   }
@@ -262,7 +263,7 @@ bfd_check_authentication(struct bfd_proto *p, struct bfd_session *s, struct bfd_
 
     byte *auth_data = alloca(hash_len);
     memcpy(auth_data, auth->data, hash_len);
-    strncpy(auth->data, pass->password, hash_len);
+    memcpy0(auth->data, pass->password, hash_len, pass->length);
 
     if (!mac_verify(hash_alg, NULL, 0, (byte *) pkt, pkt->length, auth_data))
       DROP("wrong authentication code", pass->id);
