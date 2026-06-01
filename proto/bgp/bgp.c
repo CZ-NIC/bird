@@ -1603,6 +1603,16 @@ bgp_send_open(struct bgp_conn *conn)
   tm_stop(conn->connect_timer);
   bgp_prepare_capabilities(conn);
   bgp_schedule_packet(conn, NULL, PKT_OPEN);
+
+  if (!conn->sk)
+  {
+    log(L_WARN "%s: Failed to send OPEN", conn->bgp->p.name);
+    return;
+
+    /* CAVEAT: after calling bgp_send_open(), one must check
+     * whether the connection isn't closed (BS_IDLE). */
+  }
+
   bgp_conn_set_state(conn, BS_OPENSENT);
   bgp_start_timer(conn->bgp, conn->hold_timer, conn->bgp->cf->initial_hold_time);
 }
