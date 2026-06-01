@@ -1739,6 +1739,8 @@ bgp_refresh_end(struct bgp_channel *c)
 static void
 bgp_send_open(struct bgp_conn *conn)
 {
+  ASSERT(this_birdloop == conn->bgp->p.loop);
+
   DBG("BGP: Sending open\n");
   conn->sk->rx_hook = bgp_rx;
   conn->sk->tx_hook = bgp_tx;
