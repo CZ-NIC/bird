@@ -121,6 +121,14 @@ bmemcpy(void *dest, const void *src, size_t n)
     return dest;
 }
 
+static inline void *
+memcpy0(void *dst, const void *src, size_t dst_len, size_t src_len)
+{
+  memset(dst, 0, dst_len);
+  memcpy(dst, src, MIN_(dst_len, src_len));
+  return dst;
+}
+
 #define ROUTER_ID_64_LENGTH 23
 
 #endif
