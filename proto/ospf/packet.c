@@ -64,7 +64,8 @@ ospf_pkt_finalize2(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
       log(L_ERR "No suitable password found for authentication");
       return;
     }
-    strncpy(auth->password, pass->password, sizeof(auth->password));
+    memcpy0(auth->password, pass->password, sizeof(auth->password), pass->length);
+
     /* fallthrough */
 
   case OSPF_AUTH_NONE:
@@ -111,7 +112,7 @@ ospf_pkt_finalize2(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
 
     /* Append key for keyed hash, append padding for HMAC (RFC 5709 3.3) */
     if (pass->alg < ALG_HMAC)
-      strncpy(auth_tail, pass->password, auth_len);
+      memcpy0(auth_tail, pass->password, auth_len, pass->length);
     else
       memset32(auth_tail, HMAC_MAGIC, auth_len / 4);
 
@@ -235,7 +236,7 @@ ospf_pkt_checkauth2(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf
 
     /* Append key for keyed hash, append padding for HMAC (RFC 5709 3.3) */
     if (pass->alg < ALG_HMAC)
-      strncpy(auth_tail, pass->password, auth_len);
+      memcpy0(auth_tail, pass->password, auth_len, pass->length);
     else
       memset32(auth_tail, HMAC_MAGIC, auth_len / 4);
 
