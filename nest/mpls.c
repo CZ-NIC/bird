@@ -708,7 +708,8 @@ mpls_channel_reconfigure(struct channel *C, struct channel_config *CC, int *impo
     *import_changed = 1;
   }
 
-  mpls_fec_map_reconfigure(c->mpls_map, C);
+  if (C->channel_state != CS_DOWN)
+    mpls_fec_map_reconfigure(c->mpls_map, C);
 
   return 1;
 }
