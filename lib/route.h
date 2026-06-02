@@ -76,7 +76,7 @@ struct rte_src {
 struct rte_owner_class {
   void (*get_route_info)(const rte *, byte *buf); /* Get route information (for `show route' command) */
   int (*rte_better)(const rte *, const rte *);
-  u32 (*rte_best)(rte **, u32);
+  rte *(*rte_best)(rte **, u32);
   int (*rte_mergable)(const rte *, const rte *);
   u32 (*rte_igp_metric)(const rte *);
 };
