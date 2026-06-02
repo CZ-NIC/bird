@@ -2521,6 +2521,12 @@ rte_stale(const rte *r)
   return a && int_set_contains(a->u.ptr, BGP_COMM_LLGR_STALE);
 }
 
+u32
+bgp_rte_best(rte ** routes, u32 count)
+{
+  
+}
+
 int
 bgp_rte_better(const rte *new, const rte *old)
 {

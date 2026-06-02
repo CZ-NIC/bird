@@ -38,7 +38,6 @@ rt_export_change_state(struct rt_export_request *r, u32 expected_mask, enum rt_e
 const struct rt_export_union *
 rt_export_get(struct rt_export_request *r)
 {
-  log("rt_export_get");
   ASSERT_DIE(!r->cur);
 
 #define EXPORT_FOUND(_kind) do { \
