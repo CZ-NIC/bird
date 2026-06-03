@@ -293,8 +293,6 @@ rt_show_cont(struct cli *c)
   if (d->tables_defined_by & RSD_TDB_SET)
     rt_show_table(d);
 
-  const struct rt_export_feed *feeds[129] = { 0 };
-
   if (d->addr_mode == TE_ADDR_FOR)
     TMP_SAVED
     {
