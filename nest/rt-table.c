@@ -240,7 +240,10 @@ struct rtable_reading {
       r = atomic_load_explicit(ptr, memory_order_acquire);			\
       ptr = &r->next)
 #define NET_BEST_ROUTE(n)	\
-        atomic_load_explicit(n->best_rte, memory_order_relaxed);
+        atomic_load_explicit(&n->best_rte, memory_order_relaxed);
+
+#define NET_BEST_RTE_STOR(n)	\
+        NET_BEST_ROUTE(n)? SKIP_BACK(struct rte_storage, rte, NET_BEST_ROUTE(n)): NULL;
 
 static inline net *
 net_find(struct rtable_reading *tr, const struct netindex *i)
@@ -1931,9 +1934,9 @@ rte_announce(struct rtable_private *tab, const struct netindex *i UNUSED, net *n
     old_best->sender->stats.pref--;
 
   /* Try to push */
-  struct rt_pending_export *all_rpe = NULL;
   struct rt_pending_export *best_rpe = NULL;
   struct rt_pending_export *all_rpe = rte_announce_to(&tab->export_all, &net->all, new, old);
+
   if (all_rpe)
   {
     /* Also best may have changed */
@@ -2173,15 +2176,15 @@ rte_best_after_jour(void *t_)
 {
   log("rte_best_after_jour");
   struct rtable_private *t = (struct rtable_private *)t_;
-  for (
-      struct lfjour_item *it;
-      it = lfjour_get(&t->best_req);
-      lfjour_release(&t->best_req, it)
-      );
+  RT_EXPORT_WALK(&t->best_req, u);
 }
-#if 0
-static int				/* Actually better or at least as good as */
-rte_better_(const rte *old, const rte *new)
+
+
+_Thread_local const rte ** best_rte_preselection;
+_Thread_local u32 best_rte_sel_size = 0;
+
+static int
+rte_better_(const rte *new, const rte *old)
 {
   if (!rte_is_valid(new))
     return 1;
@@ -2208,30 +2211,25 @@ rte_better_(const rte *old, const rte *new)
     return 2; /* decision is on protocol*/
   return 0;
 }
-  #endif
 
-_Thread_local rte **best_rte_preselection;
-_Thread_local u32 best_rte_sel_size = 0;
-
-rte *
+const rte *
 rte_best_selection(struct rtable_private *table, net *nn)
 {
   // yeah, we do need the field - at least because of MED in BGP
-
-  u32 ptr = 0;
-  rte *old = best_rte_preselection[0] = NET_BEST_ROUTE(nn);
-  linpool *lp = table->rp;
+  log("rte_best_selection");
 
   if (best_rte_sel_size == 0)
   {
-    best_rte_preselection = lp_alloc(lp, sizeof(rte *)*1);//todo - koeficient 1 is good only for testing purposes.
+    best_rte_preselection = tmp_alloc(sizeof(rte *)*1);//todo - koeficient 1 is good only for testing purposes.
     best_rte_sel_size = 1;
   }
-    //TODO: THREAD POOL NEEDED
 
+  u32 ptr = 0;
+  const rte *old = best_rte_preselection[0] = NET_BEST_ROUTE(nn);
+//maybe forgot to lock the table?
   NET_WALK_ROUTES(table, nn, ep, e)
   {
-    switch (rte_better_(old, &e->rte))
+    switch (rte_better_(&e->rte, old))
     {
       case 1:
         ptr = 0;
@@ -2242,9 +2240,8 @@ rte_best_selection(struct rtable_private *table, net *nn)
         if (best_rte_sel_size < ptr)
         {
                 //thohle je blbe. musim zjistit, odkud alokovat
-          rte **new_field = lp_alloc(lp, sizeof(rte *)*ptr*2);
+          const rte **new_field = tmp_alloc(sizeof(rte *)*ptr*2);
           memcpy(new_field, best_rte_preselection, sizeof(rte *) * (ptr - 1));
-          lmap_free(best_rte_preselection);
           best_rte_preselection = new_field;
         }
         best_rte_preselection[ptr] = &e->rte;
@@ -2261,7 +2258,8 @@ rte_best_selection(struct rtable_private *table, net *nn)
     return best_rte_preselection[0];
   }
   /* more routes - bgp MED? */
-  return best_rte_preselection[0]->src->owner->class->rte_best();
+  ASSERT_DIE(best_rte_preselection[0]->src->owner->class->rte_best);
+  return best_rte_preselection[0]->src->owner->class->rte_best(best_rte_preselection, best_rte_sel_size);
 }
 
 
@@ -2272,9 +2270,8 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
 {
   struct rt_import_request *req = c->req;
   struct rt_import_stats *stats = &c->stats;
-  rte *old_best = NET_BEST_ROUTE(net);
 
-  log("........................recalculate %N %x new %p id %i", i->addr, i->addr->data[15], new? new->id: -1);
+  log("......recalculate %N %x new %p id %i", i->addr, i->addr->data[15], new? new->id: -1);
 
   /* If the new route is identical to the old one, we find the attributes in
    * cache and clone these with no performance drop. OTOH, if we were to lookup
@@ -2288,14 +2285,12 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
     log("new id %i", new_stored->rte.id);
   }
 
-  struct rte_storage * _Atomic *last_ptr = NULL;
   struct rte_storage *old_stored = NULL;
   const rte *old = NULL;
 
   /* Find the original route from the same protocol */
   NET_WALK_ROUTES(table, net, ep, e)
   {
-    last_ptr = &e->next;
     if (e->rte.src == src)
       if (old_stored)
 	bug("multiple routes in table with the same src");
@@ -2412,11 +2407,11 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
   if (new_stored)
   {
   /* store it */
-    struct rte_storage *next = atomic_load_explicit(&net->routes, memory_order_release);
+    struct rte_storage *next = atomic_load_explicit(&net->routes, memory_order_relaxed);
     do {
     atomic_store_explicit(&new_stored->next, next, memory_order_relaxed);
     } while (!atomic_compare_exchange_strong_explicit(&net->routes,
-       next, new_stored, memory_order_relaxed, memory_order_relaxed));
+       &next, new_stored, memory_order_relaxed, memory_order_relaxed));
   }
 
     /* Log the route change */
@@ -2436,16 +2431,17 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
 void
 rte_recalculate_best(void *t_)
 {
+  log("rte_recalculate_best");
   struct rtable_private *table = (struct rtable_private *)t_;
-  struct lfjour_item *i;
 
   rt_lock_table(table);
   net *nets = atomic_load_explicit(&table->routes, memory_order_acquire);
-  
-  while(i = lfjour_get(&table->best_req))
+
+  for (struct lfjour_item *it; it = lfjour_get(&table->all_req); )
   {
-      SKIP_BACK_DECLARE(struct rt_export_item, rei, li, i);
-      rte *route = rei->new? rei->new: rei->old;
+    SKIP_BACK_DECLARE(const struct rt_export_item, rei, li, it);
+
+      const rte *route = rei->new? rei->new: rei->old;
       ASSERT_DIE(route);
       /* We know, that the route is from table, so we can get its index like this: */
       struct netindex *ni = NET_TO_INDEX(route->net);
@@ -2453,8 +2449,8 @@ rte_recalculate_best(void *t_)
       net *nn = &nets[ni->index];
       //TODO: optimize same net
       
-      rte *old_best = NET_BEST_ROUTE(nn);
-      rte *best = rte_best_selection(table->rp, nn);
+      const rte *old_best = NET_BEST_ROUTE(nn);
+      const rte *best = rte_best_selection(table, nn);
 
       //TODO FIND OUT NETS WITH THEIR NEW ROUTES -THE LAST NEW/OLD ROUTE COUNTS. THE OLD ROUTES HAVE ONE MORE PROBLEM
     // );
@@ -2499,13 +2495,12 @@ rte_recalculate_best(void *t_)
   /* Log the route change */
   log(L_TRACE "new best %N old best %N", best->net, old_best->net);
 
+  atomic_store_explicit(&nn->best_rte, best, memory_order_release);
+
   /* Propagate the route change */
-  rte_announce(table, i, nn,
+  rte_announce(table, ni, nn,
       NULL, NULL,
       best, old_best);
-
-  /* Now we can finally release the changes back for reading */
-  atomic_store_explicit(&nn->routes, best, memory_order_release);
   }
 }
 
@@ -3784,6 +3779,18 @@ rt_setup(pool *pp, struct rtable_config *cf)
   RT_EXPORT_WALK(&t->best_req, u)
     ASSERT_DIE(u->kind == RT_EXPORT_FEED);
 
+/*
+What is this about:
+1) new route comes and is added
+2) it is sent to export_all journal
+3) one of export all recipients is our function, which computes the best route.
+4) best route is announced in export_best journal. The lf_jour item is still NOT released.
+5) all recipients have released best route anouncment
+6) export_best cleanup releases its  export_all item
+7) all export_all recipients have released export_all
+*/
+
+
   t->all_req = (struct lfjour_recipient) {
     .event = ev_new_init(p, rte_recalculate_best, t),
     .target = &global_event_list,
@@ -4004,7 +4011,7 @@ rt_prune_table(void *_tab)
 	MAYBE_DEFER_TASK(birdloop_event_list(tab->loop), tab->prune_event,
 	    "%s pruning", tab->name);
 
-      rte *e = NET_BEST_ROUTE(n);
+      const rte *e = NET_BEST_ROUTE(n);
       if (tab->trie_new && e)
       {
 	const net_addr *a = e->net;
@@ -4570,7 +4577,7 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
   uint count = 0;
   int is_flow = net_val_match(tab->addr_type, NB_FLOW);
 
-  rte *old_best = NET_BEST_ROUTE(n);
+  const rte *old_best = NET_BEST_ROUTE(n);
   if (!old_best)
     return;
 
@@ -4604,7 +4611,7 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
   /* We add a spinlock sentinel to the beginning */
   struct rte_storage local_sentinel = {
     .flags = REF_OBSOLETE,
-    .next = //TODO old_best,
+    .next = tab->routes->routes,//TODO this is double _Atomic and look suspicious (do we know if we have the correct chain?)
   };
   atomic_store_explicit(&n->routes, &local_sentinel, memory_order_release);
 
@@ -4645,7 +4652,11 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
       {
 	/* Not really an efficient way to compute this */
 	if (updates[i].old->rte.src->owner->rte_recalculate)
-	  updates[i].old->rte.src->owner->rte_recalculate(tab, n, updates[i].new_stored, updates[i].old, old_best);
+        {
+          struct rte_storage *old_best_stored = SKIP_BACK(struct rte_storage, rte, old_best);
+          log("rt_next_hop_update_net"); //todo
+	  updates[i].old->rte.src->owner->rte_recalculate(tab, n, updates[i].new_stored, updates[i].old, old_best_stored);
+        }
       }
 
   /* Find the new best route */
@@ -4682,7 +4693,8 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
   /* Now we have to announce the routes the right way, to not cause any
    * strange problems with consistency. */
 
-  ASSERT_DIE(updates[0].old == old_best);
+  struct rte_storage *old_best_stored = SKIP_BACK(struct rte_storage, rte, old_best);
+  ASSERT_DIE(updates[0].old == old_best_stored);
 
   /* Find new best route original position */
   uint nbpos = ~0;
@@ -4695,8 +4707,8 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
   ASSERT_DIE(~nbpos);
 
   struct rt_pending_export *best_rpe =
-    (new_best != old_best) ?
-    rte_announce_to(&tab->export_best, &n->best, &new_best->rte, &old_best->rte)
+    (new_best != old_best_stored) ?
+    rte_announce_to(&tab->export_best, &n->best, &new_best->rte, old_best)
     : NULL;
 
   uint total = 0;
@@ -4810,7 +4822,7 @@ rt_next_hop_update(void *_tab)
   for (; tab->nhu_index < bs; tab->nhu_index++)
     {
       net *n = &routes[tab->nhu_index];
-      struct rte *s = NET_BEST_ROUTE(n);
+      const rte *s = NET_BEST_ROUTE(n);
       if (!s)
 	continue;
 
@@ -5488,13 +5500,15 @@ rt_update_hostentry(struct rtable_private *tab, struct hostentry *he)
   net_addr he_addr;
   net_fill_ip_host(&he_addr, he->addr);
   net *n = net_route(tr, &he_addr);
+  const rte *e = NULL;
   /*
   log(L_DEBUG "rt_update_hostentry(%s %p) got net_route(%N) = %p",
       tab->name, he, &he_addr, n);
       */
   if (n)
+     e = NET_BEST_ROUTE(n);
+  if (e)
     {
-      rte *e = NET_BEST_ROUTE(n);
       ea_list *a = e->attrs;
       u32 pref = rt_get_preference(e);
 

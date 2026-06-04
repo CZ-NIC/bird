@@ -549,7 +549,7 @@ struct rt_net_pending_export {
 };
 
 typedef struct network {
-  rte *_Atomic *best_rte;                       /* The best route */
+  const rte *_Atomic best_rte;                       /* The best route */
   struct rte_storage * _Atomic routes;		/* Available routes for this network */
 
   /* Uncleaned pending exports */

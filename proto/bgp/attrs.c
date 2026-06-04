@@ -2521,12 +2521,6 @@ rte_stale(const rte *r)
   return a && int_set_contains(a->u.ptr, BGP_COMM_LLGR_STALE);
 }
 
-u32
-bgp_rte_best(rte ** routes, u32 count)
-{
-  
-}
-
 int
 bgp_rte_better(const rte *new, const rte *old)
 {
@@ -2758,94 +2752,63 @@ same_group(const rte *r, u32 lpref, u32 lasn)
 }
 
 static inline int
-use_deterministic_med(struct rte_storage *r)
+use_deterministic_med(const rte *r)
 {
-  struct bgp_proto *p = bgp_rte_proto(&r->rte);
+  struct bgp_proto *p = bgp_rte_proto(r);
   return p && p->cf->deterministic_med;
 }
 
-int
-bgp_rte_best(struct rtable_private *table, net *net,
-    rte **routes, u32 count)
+const rte *
+bgp_rte_best(const rte **routes, u32 count)
 {
-
-  rte **after_med[count];
+        log("_____rte best");
+  ASSERT_DIE(count);
+  const rte *after_med[count];
   u32 after_med_ptr = 0;
   u32 lpref, lasn;
 
-  for (int i = 0; i < count; i++)
+  for (u32 i = 0; i < count; i++)
   {
-    rte *cur_rte = routes[i];
+    const rte *cur_rte = routes[i];
     if (cur_rte == NULL || !rte_is_valid(cur_rte))
       continue;
 
-    if (!use_deterministic_med(cur_rte))
+    if (use_deterministic_med(cur_rte))
     {
-      after_med[after_med_ptr] = cur_rte;
-      after_med_ptr++;
-      continue;
+      lpref = rt_get_preference(cur_rte);
+      lasn = bgp_get_neighbor(cur_rte);
+
+      for (u32 j = i; j < count; j++)
+      { //maybe todo: it is possible to optimalise. (split bgp_rte_better or reduce iterating NULLs)
+        if (routes[j] == NULL || !rte_is_valid(routes[j]))
+          continue;
+        if (use_deterministic_med(routes[j]) && same_group(routes[j], lpref, lasn))
+        {
+          if (bgp_rte_better(routes[j], cur_rte))
+            cur_rte = routes[j];
+          routes[j] = NULL;
+        }
+      }
     }
+    after_med[after_med_ptr] = cur_rte;
+    after_med_ptr++;
+  }
 
-    lpref = rt_get_preference(cur_rte);
-    lasn = bgp_get_neighbor(cur_rte);
+  const rte *best = after_med[0];
+  for (u32 i = 1; i < after_med_ptr; i++)
+  {
+    if (bgp_rte_better(after_med[i], best))
+            best = after_med[i];
+  }
 
-    for (int j = i; j < count; j++)
-    { //maybe todo: it is possible to optimalise. (split bgp_rte_better or reduce iterating NULLs)
-      if (routes[j] == NULL || !rte_is_valid(routes[j]))
-        continue;
-      if (use_deterministic_med(routes[j]) && same_group(routes[j], lpref, lasn))
-    {
-      if (!r || bgp_rte_better(&s->rte, &r->rte))
-	r = s;
-    }
-
-  /* Found all existing routes mergable with best-in-group */
-  for (struct rte_storage *s, * _Atomic *ptr = &spinlocked->next;
-      s = atomic_load_explicit(ptr, memory_order_acquire);
-      ptr = &s->next)
-    if (!rte_is_valid(&s->rte))
-      break;
-    else if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
-      if ((s != r) && bgp_rte_mergable(&r->rte, &s->rte))
-	s->pflags &= ~BGP_REF_SUPPRESSED;
-
-  /* Found best-in-group */
-  r->pflags &= ~BGP_REF_SUPPRESSED;
-
-  /*
-   * There are generally two reasons why we have to force
-   * recalculation (return 1): First, the new route may be wrongfully
-   * chosen to be the best in the first case check in
-   * rte_recalculate(), this may happen only if old_best is from the
-   * same group. Second, another (different than new route)
-   * best-in-group is chosen and that may be the proper best (although
-   * rte_recalculate() without ignore that possibility).
-   *
-   * There are three possible cases according to whether the old route
-   * was the best in group (OBG, i.e. !old_suppressed) and whether the
-   * new route is the best in group (NBG, tested by r == new). These
-   * cases work even if old or new is NULL.
-   *
-   * NBG -> new is a possible candidate for the best route, so we just
-   *        check for the first reason using same_group().
-   *
-   * !NBG && OBG -> Second reason applies, return 1
-   *
-   * !NBG && !OBG -> Best in group does not change, old != old_best,
-   *                 rte_better(new, old_best) is false and therefore
-   *                 the first reason does not apply, return 0
-   */
-
-  if (r == new_stored)
-    return old_best && same_group(old_best, lpref, lasn);
-  else
-    return !old_suppressed;
+  return best;
 }
 
 int
 bgp_rte_recalculate(struct rtable_private *table, net *net,
     struct rte_storage *new_stored, struct rte_storage *old_stored, struct rte_storage *old_best_stored)
 {
+        log("OLD RECALCULATE");
   struct rte_storage *key_stored = new_stored ? new_stored : old_stored;
   const struct rte *new = RTE_OR_NULL(new_stored),
 		   *old = RTE_OR_NULL(old_stored),
@@ -2928,7 +2891,7 @@ bgp_rte_recalculate(struct rtable_private *table, net *net,
       ptr = &s->next)
     if (!rte_is_valid(&s->rte))
       break;
-    else if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
+    else if (use_deterministic_med(&s->rte) && same_group(&s->rte, lpref, lasn))
     {
       s->pflags |= BGP_REF_SUPPRESSED;
       if (!r || bgp_rte_better(&s->rte, &r->rte))
@@ -2949,7 +2912,7 @@ bgp_rte_recalculate(struct rtable_private *table, net *net,
       ptr = &s->next)
     if (!rte_is_valid(&s->rte))
       break;
-    else if (use_deterministic_med(s) && same_group(&s->rte, lpref, lasn))
+    else if (use_deterministic_med(&s->rte) && same_group(&s->rte, lpref, lasn))
       if ((s != r) && bgp_rte_mergable(&r->rte, &s->rte))
 	s->pflags &= ~BGP_REF_SUPPRESSED;
 

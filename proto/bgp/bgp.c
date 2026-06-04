@@ -2942,6 +2942,7 @@ done:
 struct rte_owner_class bgp_rte_owner_class = {
   .get_route_info = 	bgp_get_route_info,
   .rte_better =		bgp_rte_better,
+  .rte_best = bgp_rte_best,
   .rte_mergable =	bgp_rte_mergable,
   .rte_igp_metric =	bgp_rte_igp_metric,
 };

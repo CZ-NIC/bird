@@ -771,6 +771,7 @@ int bgp_done_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b);
 void bgp_done_prefix(struct bgp_ptx_private *c, struct bgp_prefix *px, struct bgp_bucket *buck);
 
 int bgp_rte_better(const rte *, const rte *);
+const rte *bgp_rte_best(const rte **routes, u32 count);
 int bgp_rte_mergable(const rte *pri, const rte *sec);
 int bgp_rte_recalculate(struct rtable_private *table, net *net, struct rte_storage *new, struct rte_storage *old, struct rte_storage *old_best);
 void bgp_rte_modify_stale(void *bgp_channel);
