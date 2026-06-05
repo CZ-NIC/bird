@@ -532,10 +532,10 @@ channel_roa_reload_done(struct rt_feeding_request *req)
 
   switch (c->channel_state) {
     case CS_UP:
+    case CS_PAUSE:
       ev_send(proto_work_list(c->proto), &s->update_event);
       break;
     case CS_STOP:
-    case CS_PAUSE:
       if (c->debug & D_EVENTS)
 	log(L_TRACE "%s.%s: Automatic ROA reload canceled", p->name, c->name);
       break;
@@ -1315,9 +1315,13 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   if (c->class->reconfigure && !c->class->reconfigure(c, cf, &import_changed, &export_changed))
     return 0;
 
-  /* If the channel is not open, it has no routes and we cannot reload it anyways */
-  if (c->channel_state != CS_UP)
-    goto done;
+  /* If the import is not UP, it has no routes and we cannot reload it */
+  if (rt_import_get_state(c->in_req.hook) != TIS_UP)
+    import_changed = 0;
+
+  /* If the import is DOWN, we'll refeed it when it starts */
+  if (rt_export_get_state(&c->out_req) == TES_DOWN)
+    export_changed = 0;
 
   /* Update RPKI/ROA subscriptions */
   if (import_changed || export_changed || rpki_reload_changed)
@@ -3040,7 +3044,7 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
   /* All channels must support reload */
   if (prr->dir & CMD_RELOAD_IN)
     WALK_LIST(c, p->channels)
-      if ((c->channel_state == CS_UP) && !channel_reloadable(c))
+      if ((rt_import_get_state(c->in_req.hook) == TIS_UP) && !channel_reloadable(c))
       {
 	cli_msg(-8006, "%s: reload failed", p->name);
 	return;
@@ -3050,15 +3054,15 @@ proto_cmd_reload(struct proto *p, uintptr_t _prr, int cnt UNUSED)
 
   /* re-importing routes */
   WALK_LIST(c, p->channels)
-    if (c->channel_state == CS_UP)
-    {
-      if (prr->dir & CMD_RELOAD_IN)
-	channel_request_reload(c, channel_create_reload_request(prr));
+  {
+    if ((rt_import_get_state(c->in_req.hook) == TIS_UP) && (prr->dir & CMD_RELOAD_IN))
+      channel_request_reload(c, channel_create_reload_request(prr));
 
-      if (prr->dir & CMD_RELOAD_OUT)
-	if (c->out_req.name)
-	  channel_refeed(c, channel_create_reload_request(prr));
-    }
+    if ((c->channel_state == CS_UP)
+	&& (prr->dir & CMD_RELOAD_OUT)
+	&& (c->out_req.name))
+      channel_refeed(c, channel_create_reload_request(prr));
+  }
 
   cli_msg(-15, "%s: reloading", p->name);
 }
