@@ -100,6 +100,7 @@ static inline void channel_refeed(struct channel *c, struct rt_feeding_request *
     if (c->debug & D_EVENTS)
       log(L_TRACE "%s.%s: Export temporarily unable to refeed.");
 
+    CALL(rfr->done, rfr);
     return;
   }
 
@@ -1423,12 +1424,41 @@ channel_reconfigure(struct channel *c, struct channel_config *cf)
   /* Update RPKI/ROA subscriptions */
   if (import_changed || export_changed || rpki_reload_changed)
   {
+    /* Reconfiguring while reimporting. Cancel and retry. */
     if (rt_export_feed_active(&c->reimporter))
     {
       channel_cancel_reimport(c);
       rt_feeder_subscribe(&c->table->export_all, &c->reimporter);
+      import_changed = 1;
     }
 
+    /* Reconfiguring while reexporting. Cancel and retry. */
+    switch (rt_export_get_state(&c->out_req))
+    {
+      case TES_FEEDING:
+      case TES_PARTIAL:
+	{
+	  if (c->ra_mode == RA_OPTIMAL)
+	  {
+	    rt_export_unsubscribe(best, &c->out_req);
+	    rt_export_subscribe(c->table, best, &c->out_req);
+	  }
+	  else
+	  {
+	    rt_export_unsubscribe(all, &c->out_req);
+	    rt_export_subscribe(c->table, all, &c->out_req);
+	  }
+
+	  export_changed = 1;
+
+	  break;
+	}
+
+      default:
+	break;
+    }
+
+    /* Resubscribe autoreloads */
     channel_roa_unsubscribe_all(c);
 
     if (c->rpki_reload)
