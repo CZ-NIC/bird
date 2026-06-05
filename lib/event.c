@@ -334,6 +334,8 @@ ev_run_list_limited(event_list *l, uint limit)
 
       /* Run the event */
       e->hook(e->data);
+
+      ASSERT_DIE(!rcu_read_active());
       tmp_flush();
 
       edlog(l, e, next, 8, EDL_RUN_LIST);
