@@ -2119,8 +2119,8 @@ bgp_decode_nlri_flow4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     if (len < flen)
       bgp_parse_error(s, 1);
 
-    /* Validate flow data */
-    enum flow_validated_state r = flow4_validate(data, dlen);
+    /* Decode flow data */
+    enum flow_validated_state r = flow4_decode(data, dlen);
     if (r != FLOW_ST_VALID)
     {
       log(L_REMOTE "%s: Invalid flow route: %s", s->proto->p.name, flow_validated_state_str(r));
@@ -2214,8 +2214,8 @@ bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     if (len < flen)
       bgp_parse_error(s, 1);
 
-    /* Validate flow data */
-    enum flow_validated_state r = flow6_validate(data, dlen);
+    /* Decode flow data */
+    enum flow_validated_state r = flow6_decode(data, dlen);
     if (r != FLOW_ST_VALID)
     {
       log(L_REMOTE "%s: Invalid flow route: %s", s->proto->p.name, flow_validated_state_str(r));
