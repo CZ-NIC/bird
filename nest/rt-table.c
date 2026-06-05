@@ -1376,6 +1376,11 @@ rt_notify_basic(struct channel *c, const rte *new, const rte *old)
       old = NULL;
     }
 
+    /* We may have received a duplicate withdraw, the old route may be
+     * already gone */
+    else if (!bmap_test(&c->export_accepted_map, old->id))
+      old = NULL;
+
     /* Accepted bit is dropped in do_rt_notify() */
   }
 
