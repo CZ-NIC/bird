@@ -2737,6 +2737,7 @@ io_loop(void)
 		    steps--;
 		    io_log_event(s->rx_hook, s->data, DL_SOCKETS);
 		    e = sk_read(s, pfd.pfd.data[s->index].revents);
+		    ASSERT_DIE(!rcu_read_active());
 		  }
 		while (e && (main_birdloop.sock_active == s) && s->rx_hook && steps);
 
@@ -2750,6 +2751,7 @@ io_loop(void)
 		    steps--;
 		    io_log_event(s->tx_hook, s->data, DL_SOCKETS);
 		    e = sk_write(s);
+		    ASSERT_DIE(!rcu_read_active());
 		  }
 		while (e && (main_birdloop.sock_active == s) && steps);
 
@@ -2781,6 +2783,7 @@ io_loop(void)
 		  count++;
 		  io_log_event(s->rx_hook, s->data, DL_SOCKETS);
 		  sk_read(s, pfd.pfd.data[s->index].revents);
+		  ASSERT_DIE(!rcu_read_active());
 		  if (s != main_birdloop.sock_active)
 		    continue;
 		}
@@ -2788,6 +2791,7 @@ io_loop(void)
 	      if (pfd.pfd.data[s->index].revents & (POLLHUP | POLLERR))
 		{
 		  sk_err(s, pfd.pfd.data[s->index].revents);
+		  ASSERT_DIE(!rcu_read_active());
 		  if (s != main_birdloop.sock_active)
 		    continue;
 		}

@@ -192,6 +192,7 @@ timers_fire(struct timeloop *loop, int io_log)
       io_log_event(t->hook, t->data, DL_TIMERS);
 
     t->hook(t);
+    ASSERT_DIE(!rcu_read_active());
     tmp_flush();
   }
 }
