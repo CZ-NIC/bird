@@ -170,16 +170,8 @@ flow_next_part(const byte *pos, const byte *end, int ipv6)
   case FLOW_TYPE_SRC_PREFIX:
   {
     uint pxlen = *pos++;
-    uint bytes = BYTES(pxlen);
-    if (ipv6)
-    {
-      uint offset = *pos++ / 8;
-      pos += bytes - offset;
-    }
-    else
-    {
-      pos += bytes;
-    }
+    uint offset = ipv6 ? *pos++ : 0;
+    pos += BYTES(pxlen - offset);
     break;
   }
 
@@ -332,11 +324,11 @@ static const char* flow_validated_state_str_[] = {
   [FLOW_ST_EXCEED_MAX_PREFIX_OFFSET]	= "Exceed maximal prefix offset",
   [FLOW_ST_EXCEED_MAX_VALUE_LENGTH]	= "Exceed maximal value length",
   [FLOW_ST_BAD_TYPE_ORDER] 		= "Bad component order",
-  [FLOW_ST_AND_BIT_SHOULD_BE_UNSET] 	= "The AND-bit should be unset",
-  [FLOW_ST_ZERO_BIT_SHOULD_BE_UNSED] 	= "The Zero-bit should be unset",
-  [FLOW_ST_DEST_PREFIX_REQUIRED] 	= "Destination prefix is missing",
-  [FLOW_ST_INVALID_TCP_FLAGS]		= "TCP flags exceeding 0xfff",
-  [FLOW_ST_CANNOT_USE_DONT_FRAGMENT]    = "Cannot use Don't fragment flag in IPv6 flow"
+  [FLOW_ST_NONZERO_PADDING]		= "Nonzero prefix padding",
+  [FLOW_ST_FIRST_AND_BIT_SET] 		= "The first AND-bit is set",
+  [FLOW_ST_ZERO_BIT_SET] 		= "Zero-bit is set",
+  [FLOW_ST_INVALID_TCP_FLAGS]		= "Invalid TCP flags bitmask operand",
+  [FLOW_ST_INVALID_FRAGMENT]   		= "Invalid fragment bitmask operand",
 };
 
 /**
@@ -351,45 +343,28 @@ flow_validated_state_str(enum flow_validated_state code)
   return flow_validated_state_str_[code];
 }
 
-static const u8 flow4_max_value_length[] = {
-  [FLOW_TYPE_DST_PREFIX]	= 0,
-  [FLOW_TYPE_SRC_PREFIX]	= 0,
+/* Maximum length of value fields, as mandated by RFC 8955 */
+static const u8 flow_max_value_length[FLOW_TYPE_MAX] = {
+  [FLOW_TYPE_TCP_FLAGS]		= 2,
+  [FLOW_TYPE_DSCP]		= 1,
+  [FLOW_TYPE_FRAGMENT]		= 1,
+};
+
+/* Maximum valid numeric values (in bytes), semantically */
+static const u8 flow_max_valid_value[FLOW_TYPE_MAX] = {
   [FLOW_TYPE_IP_PROTOCOL]	= 1,
   [FLOW_TYPE_PORT]		= 2,
   [FLOW_TYPE_DST_PORT]		= 2,
   [FLOW_TYPE_SRC_PORT]		= 2,
   [FLOW_TYPE_ICMP_TYPE]		= 1,
   [FLOW_TYPE_ICMP_CODE]		= 1,
-  [FLOW_TYPE_TCP_FLAGS]		= 2,
   [FLOW_TYPE_PACKET_LENGTH]	= 2,
   [FLOW_TYPE_DSCP]		= 1,
-  [FLOW_TYPE_FRAGMENT]		= 1	/* XXX */
+  [FLOW_TYPE_LABEL]		= 4,
 };
-
-static const u8 flow6_max_value_length[] = {
-  [FLOW_TYPE_DST_PREFIX]	= 0,
-  [FLOW_TYPE_SRC_PREFIX]	= 0,
-  [FLOW_TYPE_NEXT_HEADER]	= 1,
-  [FLOW_TYPE_PORT]		= 2,
-  [FLOW_TYPE_DST_PORT]		= 2,
-  [FLOW_TYPE_SRC_PORT]		= 2,
-  [FLOW_TYPE_ICMP_TYPE]		= 1,
-  [FLOW_TYPE_ICMP_CODE]		= 1,
-  [FLOW_TYPE_TCP_FLAGS]		= 2,
-  [FLOW_TYPE_PACKET_LENGTH]	= 2,
-  [FLOW_TYPE_DSCP]		= 1,
-  [FLOW_TYPE_FRAGMENT]		= 1,	/* XXX */
-  [FLOW_TYPE_LABEL]		= 4
-};
-
-static u8
-flow_max_value_length(enum flow_type type, int ipv6)
-{
-  return ipv6 ? flow6_max_value_length[type] : flow4_max_value_length[type];
-}
 
 /**
- * flow_check_cf_bmk_values - check value/bitmask part of flowspec component
+ * flow_check_cf_bitmask_arg - check value/bitmask part of flowspec component
  * @fb: flow builder instance
  * @neg: negation operand
  * @val: value from value/mask pair
@@ -400,38 +375,37 @@ flow_max_value_length(enum flow_type type, int ipv6)
  * to failing of validation.
  */
 void
-flow_check_cf_bmk_values(struct flow_builder *fb, u8 neg, u32 val, u32 mask)
+flow_check_cf_bitmask_arg(struct flow_builder *fb, u8 neg, u32 val, u32 mask)
 {
-  flow_check_cf_value_length(fb, val);
-  flow_check_cf_value_length(fb, mask);
-
   if (neg && !(val == 0 || val == mask))
     cf_error("For negation, value must be zero or bitmask");
 
-  if ((fb->this_type == FLOW_TYPE_TCP_FLAGS) && (mask & 0xf000))
+  if ((fb->this_type == FLOW_TYPE_TCP_FLAGS) && (mask & ~0xfff))
     cf_error("Invalid mask 0x%x, must not exceed 0xfff", mask);
 
-  if ((fb->this_type == FLOW_TYPE_FRAGMENT) && fb->ipv6 && (mask & 0x01))
-    cf_error("Invalid mask 0x%x, bit 0 must be 0", mask);
+  u32 valid = fb->ipv6 ? 0x0e : 0x0f;
+  if ((fb->this_type == FLOW_TYPE_FRAGMENT) && (mask & ~valid))
+    cf_error("Invalid mask 0x%x, must not exceed 0x%x", mask, valid);
 
   if (val & ~mask)
     cf_error("Value 0x%x outside bitmask 0x%x", val, mask);
 }
 
 /**
- * flow_check_cf_value_length - check value by flowspec component type
+ * flow_check_cf_numeric_arg - check numeric argument of flowspec component
  * @fb: flow builder instance
  * @val: value
  *
- * This function checks if the value is in range of component's type support.
- * If some problem will appear, the function calls cf_error() function with
- * a textual description of reason to failing of validation.
+ * This function checks the value of numeric argument to see whether it is in
+ * the range of component's type.  If some problem will appear, the function
+ * calls cf_error() function with a textual description of reason to failing of
+ * validation.
  */
 void
-flow_check_cf_value_length(struct flow_builder *fb, u32 val)
+flow_check_cf_numeric_arg(struct flow_builder *fb, uint val)
 {
   enum flow_type t = fb->this_type;
-  u8 max = flow_max_value_length(t, fb->ipv6);
+  uint max = flow_max_valid_value[t];
 
   if (t == FLOW_TYPE_DSCP && val > 0x3f)
     cf_error("%s value %u out of range (0-63)", flow_type_str(t, fb->ipv6), val);
@@ -443,18 +417,27 @@ flow_check_cf_value_length(struct flow_builder *fb, u32 val)
     cf_error("%s value %u out of range (0-65535)", flow_type_str(t, fb->ipv6), val);
 }
 
+/* Bitmask of padding bits in last byte of prefix */
+static inline u8
+flow_padding(uint n)
+{
+  ASSUME(n % 8 != 0);
+  return (1 << (8 - n % 8)) - 1;
+}
+
 static enum flow_validated_state
-flow_validate(const byte *nlri, uint len, int ipv6)
+flow_decode(byte *nlri, uint length, bool ipv6)
 {
   enum flow_type type = 0;
-  const byte *pos = nlri;
-  const byte *end = nlri + len;
+  byte *pos = nlri;
+  byte *end = nlri + length;
 
   while (pos < end)
   {
     /* Check increasing type ordering */
     if (*pos <= type)
       return FLOW_ST_BAD_TYPE_ORDER;
+
     type = *pos++;
 
     switch (type)
@@ -462,19 +445,42 @@ flow_validate(const byte *nlri, uint len, int ipv6)
     case FLOW_TYPE_DST_PREFIX:
     case FLOW_TYPE_SRC_PREFIX:
     {
-      uint pxlen = *pos++;
-      if (pxlen > (ipv6 ? IP6_MAX_PREFIX_LENGTH : IP4_MAX_PREFIX_LENGTH))
-	return FLOW_ST_EXCEED_MAX_PREFIX_LENGTH;
+      uint pxlen, offset = 0;
 
-      uint bytes = BYTES(pxlen);
-      if (ipv6)
+      if (!ipv6)
       {
-        uint pxoffset = *pos++;
-        if (pxoffset > IP6_MAX_PREFIX_LENGTH || pxoffset > pxlen)
-          return FLOW_ST_EXCEED_MAX_PREFIX_OFFSET;
-        bytes = BYTES(pxlen - pxoffset);
+	if (pos + 1 > end)
+	  return FLOW_ST_NOT_COMPLETE;
+
+	pxlen = *pos++;
+
+	if (pxlen > IP4_MAX_PREFIX_LENGTH)
+	  return FLOW_ST_EXCEED_MAX_PREFIX_LENGTH;
       }
-      pos += bytes;
+      else
+      {
+	if (pos + 2 > end)
+	  return FLOW_ST_NOT_COMPLETE;
+
+	pxlen = *pos++;
+	offset = *pos++;
+
+	if (pxlen > IP6_MAX_PREFIX_LENGTH)
+	  return FLOW_ST_EXCEED_MAX_PREFIX_LENGTH;
+
+	if (offset > pxlen)
+	  return FLOW_ST_EXCEED_MAX_PREFIX_OFFSET;
+      }
+
+      uint bits = pxlen - offset;
+      pos += BYTES(bits);
+
+      if (pos > end)
+	return FLOW_ST_NOT_COMPLETE;
+
+      /* Padding bits in the last byte MUST be 0 */
+      if (bits % 8)
+	pos[-1] &= ~flow_padding(bits);
 
       break;
     }
@@ -483,6 +489,7 @@ flow_validate(const byte *nlri, uint len, int ipv6)
       if (!ipv6)
 	return FLOW_ST_UNKNOWN_COMPONENT;
       /* fall through */
+
     case FLOW_TYPE_IP_PROTOCOL: /* == FLOW_TYPE_NEXT_HEADER */
     case FLOW_TYPE_PORT:
     case FLOW_TYPE_DST_PORT:
@@ -494,70 +501,236 @@ flow_validate(const byte *nlri, uint len, int ipv6)
     case FLOW_TYPE_DSCP:
     case FLOW_TYPE_FRAGMENT:
     {
-      uint last = 0;
-      uint first = 1;
+      /*
+       *    0   1   2   3   4   5   6   7       0   1   2   3   4   5   6   7
+       *  +---+---+---+---+---+---+---+---+   +---+---+---+---+---+---+---+---+
+       *  | e | a |  len  | 0 |lt |gt |eq |   | e | a |  len  | 0 | 0 |not| m |
+       *  +---+---+---+---+---+---+---+---+   +---+---+---+---+---+---+---+---+
+       *
+       *           Numeric operator                    Bitmask operator
+       */
 
+      bool first = true;
+      bool last = false;
       while (!last)
       {
-	/*
-	 *    0   1   2   3   4   5   6   7
-	 *  +---+---+---+---+---+---+---+---+
-	 *  | e | a |  len  | 0 |lt |gt |eq |
-	 *  +---+---+---+---+---+---+---+---+
-	 *
-	 *           Numeric operator
-	 */
+	if (pos + 1 > end)
+	  return FLOW_ST_NOT_COMPLETE;
 
-	last = isset_end(pos);
-
-	/* The AND bit should in the first operator byte of a sequence */
-	if (first && isset_and(pos))
-	  return FLOW_ST_AND_BIT_SHOULD_BE_UNSET;
-
-	/* This bit should be zero */
-	if (*pos & 0x08)
-	  return FLOW_ST_ZERO_BIT_SHOULD_BE_UNSED;
-
-	if (type == FLOW_TYPE_TCP_FLAGS || type == FLOW_TYPE_FRAGMENT)
-	{
-	  /*
-	   *    0   1   2   3   4   5   6   7
-	   *  +---+---+---+---+---+---+---+---+
-	   *  | e | a |  len  | 0 | 0 |not| m |
-	   *  +---+---+---+---+---+---+---+---+
-	   *
-	   *           Bitmask operand
-	   */
-	  if (*pos & 0x04)
-	    return FLOW_ST_ZERO_BIT_SHOULD_BE_UNSED;
-	}
-
-	/* Value length of operator */
 	uint len = get_value_length(pos);
-	if (len > flow_max_value_length(type, ipv6))
+
+	/* Some component values MUST be encoded with limited length */
+	uint maxlen = flow_max_value_length[type];
+	if (maxlen && (len > maxlen))
 	  return FLOW_ST_EXCEED_MAX_VALUE_LENGTH;
 
-	/* TCP Flags component must not check highest nibble (just 12 valid bits) */
-	if ((type == FLOW_TYPE_TCP_FLAGS) && (len == 2) && (pos[1] & 0xf0))
-	  return FLOW_ST_INVALID_TCP_FLAGS;
+	if (pos + 1 + len > end)
+	  return FLOW_ST_NOT_COMPLETE;
 
-	/* Bit-7 must be 0 [draft-ietf-idr-flow-spec-v6] */
-	if ((type == FLOW_TYPE_FRAGMENT) && ipv6 && (pos[1] & 0x01))
-	  return FLOW_ST_CANNOT_USE_DONT_FRAGMENT;
-	/* XXX: Could be a fragment component encoded in 2-bytes? */
+	/* In first operator of sequence, AND bit ... MUST be ignored during decoding */
+	if (first)
+	  pos[0] &= ~0x40;
 
+	/* Zero field MUST be set to 0 on encoding and MUST be ignored during decoding */
+	pos[0] &= ~0x08;
+
+	/* Bitmask operator has additional zero field */
+	if (type == FLOW_TYPE_TCP_FLAGS || type == FLOW_TYPE_FRAGMENT)
+	  pos[0] &= ~0x04;
+
+	/* Zero fields in highest nibble of TCP Flags bitmask operand */
+	if ((type == FLOW_TYPE_TCP_FLAGS) && (len == 2))
+	  pos[1] &= ~0xf0;
+
+	/* Zero fields in fragment bitmask operand */
+	if ((type == FLOW_TYPE_FRAGMENT) && (len == 1))
+	  pos[1] &= ipv6 ? ~0xf1 : ~0xf0;
+
+	/* Move to next operator */
+	first = false;
+	last = isset_end(pos);
 	pos += 1+len;
-
-	if (pos > end && !last)
-	  return FLOW_ST_NOT_COMPLETE;
-
-	if (pos > (end+1))
-	  return FLOW_ST_NOT_COMPLETE;
-
-	first = 0;
       }
       break;
     }
+
+    default:
+      return FLOW_ST_UNKNOWN_COMPONENT;
+    }
+  }
+
+  if (pos != end)
+    return FLOW_ST_NOT_COMPLETE;
+
+  return FLOW_ST_VALID;
+}
+
+/**
+ * flow4_decode - decode incoming BGP IPv4 flowspec data stream
+ * @nlri: flowspec data stream without length header
+ * @len: length of @nlri
+ *
+ * This function checks syntatic correctness of binary flowspec. It returns
+ * %FLOW_ST_VALID, or some other %FLOW_ST_xxx state if the NLRI is malformed.
+ * If the NLRI is valid but not normalized (e.g. some zero bits are set), the
+ * flow4_decode() modify the datastream to normalize it.
+ */
+inline enum flow_validated_state
+flow4_decode(byte *nlri, uint len)
+{
+  return flow_decode(nlri, len, false);
+}
+
+/**
+ * flow6_decode - decode incoming BGP IPv6 flowspec data stream
+ * @nlri: flowspec data stream without length header
+ * @len: length of @nlri
+ *
+ * This function checks syntatic correctness of binary flowspec. It returns
+ * %FLOW_ST_VALID, or some other %FLOW_ST_xxx state if the NLRI is malformed.
+ * If the NLRI is valid but not normalized (e.g. some zero bits are set), the
+ * flow6_decode() modify the datastream to normalize it.
+ */
+inline enum flow_validated_state
+flow6_decode(byte *nlri, uint len)
+{
+  return flow_decode(nlri, len, true);
+}
+
+static enum flow_validated_state
+flow_validate(const byte *nlri, uint len, bool ipv6)
+{
+  enum flow_type type = 0;
+  const byte *pos = nlri;
+  const byte *end = nlri + len;
+
+  while (pos < end)
+  {
+    /* Check increasing type ordering */
+    if (*pos <= type)
+      return FLOW_ST_BAD_TYPE_ORDER;
+
+    type = *pos++;
+
+    switch (type)
+    {
+    case FLOW_TYPE_DST_PREFIX:
+    case FLOW_TYPE_SRC_PREFIX:
+    {
+      uint pxlen, offset = 0;
+
+      if (!ipv6)
+      {
+	if (pos + 1 > end)
+	  return FLOW_ST_NOT_COMPLETE;
+
+	pxlen = *pos++;
+
+	if (pxlen > IP4_MAX_PREFIX_LENGTH)
+	  return FLOW_ST_EXCEED_MAX_PREFIX_LENGTH;
+      }
+      else
+      {
+	if (pos + 2 > end)
+	  return FLOW_ST_NOT_COMPLETE;
+
+	pxlen = *pos++;
+	offset = *pos++;
+
+	if (pxlen > IP6_MAX_PREFIX_LENGTH)
+	  return FLOW_ST_EXCEED_MAX_PREFIX_LENGTH;
+
+	if (offset > pxlen)
+	  return FLOW_ST_EXCEED_MAX_PREFIX_OFFSET;
+      }
+
+      uint bits = pxlen - offset;
+      pos += BYTES(bits);
+
+      if (pos > end)
+	return FLOW_ST_NOT_COMPLETE;
+
+      /* Padding bits in the last byte MUST be 0 */
+      if (bits % 8)
+	if (pos[-1] & flow_padding(bits))
+	  return FLOW_ST_NONZERO_PADDING;
+
+      break;
+    }
+
+    case FLOW_TYPE_LABEL:
+      if (!ipv6)
+	return FLOW_ST_UNKNOWN_COMPONENT;
+      /* fall through */
+
+    case FLOW_TYPE_IP_PROTOCOL: /* == FLOW_TYPE_NEXT_HEADER */
+    case FLOW_TYPE_PORT:
+    case FLOW_TYPE_DST_PORT:
+    case FLOW_TYPE_SRC_PORT:
+    case FLOW_TYPE_ICMP_TYPE:
+    case FLOW_TYPE_ICMP_CODE:
+    case FLOW_TYPE_TCP_FLAGS:
+    case FLOW_TYPE_PACKET_LENGTH:
+    case FLOW_TYPE_DSCP:
+    case FLOW_TYPE_FRAGMENT:
+    {
+      /*
+       *    0   1   2   3   4   5   6   7       0   1   2   3   4   5   6   7
+       *  +---+---+---+---+---+---+---+---+   +---+---+---+---+---+---+---+---+
+       *  | e | a |  len  | 0 |lt |gt |eq |   | e | a |  len  | 0 | 0 |not| m |
+       *  +---+---+---+---+---+---+---+---+   +---+---+---+---+---+---+---+---+
+       *
+       *           Numeric operator                    Bitmask operator
+       */
+
+      bool first = true;
+      bool last = false;
+      while (!last)
+      {
+	if (pos + 1 > end)
+	  return FLOW_ST_NOT_COMPLETE;
+
+	uint len = get_value_length(pos);
+
+	/* Some component values MUST be encoded with limited length */
+	uint maxlen = flow_max_value_length[type];
+	if (maxlen && (len > maxlen))
+	  return FLOW_ST_EXCEED_MAX_VALUE_LENGTH;
+
+	if (pos + 1 + len > end)
+	  return FLOW_ST_NOT_COMPLETE;
+
+	/* In first operator of sequence, AND bit ... MUST be ignored during decoding */
+	if (first && isset_and(pos))
+	  return FLOW_ST_FIRST_AND_BIT_SET;
+
+	/* Zero field MUST be set to 0 on encoding and MUST be ignored during decoding */
+	if (pos[0] & 0x08)
+	  return FLOW_ST_ZERO_BIT_SET;
+
+	/* Bitmask operator has additional zero field */
+	if (type == FLOW_TYPE_TCP_FLAGS || type == FLOW_TYPE_FRAGMENT)
+	  if (pos[0] & 0x04)
+	    return FLOW_ST_ZERO_BIT_SET;
+
+	/* Zero fields in highest nibble of TCP Flags bitmask operand */
+	if ((type == FLOW_TYPE_TCP_FLAGS) && (len == 2))
+	  if (pos[1] & 0xf0)
+	    return FLOW_ST_INVALID_TCP_FLAGS;
+
+	/* Zero fields in fragment bitmask operand */
+	if ((type == FLOW_TYPE_FRAGMENT) && (len == 1))
+	  if (pos[1] & (ipv6 ? 0xf1 : 0xf0))
+	    return FLOW_ST_INVALID_FRAGMENT;
+
+	/* Move to next operator */
+	first = false;
+	last = isset_end(pos);
+	pos += 1+len;
+      }
+      break;
+    }
+
     default:
       return FLOW_ST_UNKNOWN_COMPONENT;
     }
@@ -571,32 +744,32 @@ flow_validate(const byte *nlri, uint len, int ipv6)
 
 /**
  * flow4_validate - check untrustworthy IPv4 flowspec data stream
- * @nlri: flowspec data stream without compressed encoded length value
+ * @nlri: flowspec data stream without length header
  * @len: length of @nlri
  *
- * This function checks meaningfulness of binary flowspec. It should return
- * %FLOW_ST_VALID or %FLOW_ST_UNKNOWN_COMPONENT. If some problem appears, it
- * returns some other %FLOW_ST_xxx state.
+ * This function checks syntactic correctness of binary flowspec. It returns
+ * %FLOW_ST_VALID, or some other %FLOW_ST_xxx state if the NLRI is malformed
+ * or non-normalized.
  */
 inline enum flow_validated_state
 flow4_validate(const byte *nlri, uint len)
 {
-  return flow_validate(nlri, len, 0);
+  return flow_validate(nlri, len, false);
 }
 
 /**
  * flow6_validate - check untrustworthy IPv6 flowspec data stream
- * @nlri: flowspec binary stream without encoded length value
+ * @nlri: flowspec binary stream without length header
  * @len: length of @nlri
  *
- * This function checks meaningfulness of binary flowspec. It should return
- * %FLOW_ST_VALID or %FLOW_ST_UNKNOWN_COMPONENT. If some problem appears, it
- * returns some other %FLOW_ST_xxx state.
+ * This function checks syntactic correctness of binary flowspec. It returns
+ * %FLOW_ST_VALID, or some other %FLOW_ST_xxx state if the NLRI is malformed
+ * or non-normalized.
  */
 inline enum flow_validated_state
 flow6_validate(const byte *nlri, uint len)
 {
-  return flow_validate(nlri, len, 1);
+  return flow_validate(nlri, len, true);
 }
 
 /**
@@ -788,7 +961,13 @@ flow_builder_add_op_val(struct flow_builder *fb, byte op, u32 value)
   /* Set the end-bit for operand-value pair of the component */
   op |= 0x80;
 
-  if (value & 0xff00)
+  /* Label component values SHOULD be encoded as 4-octet quantities */
+  if ((value > 0xffff) || (fb->this_type == FLOW_TYPE_LABEL))
+  {
+    BUFFER_PUSH(fb->data) = op | 0x20;
+    put_u32(BUFFER_INC(fb->data, 4), value);
+  }
+  else if (value > 0xff)
   {
     BUFFER_PUSH(fb->data) = op | 0x10;
     put_u16(BUFFER_INC(fb->data, 2), value);

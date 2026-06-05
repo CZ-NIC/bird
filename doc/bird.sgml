@@ -6614,7 +6614,6 @@ Note that for negated matches, value must be either zero or equal to bitmask
 <p><descrip>
 	<tag><label id="flow-dst">dst <m/inet4/</tag>
 	Set a matching destination prefix (e.g. <cf>dst 192.168.0.0/16</cf>).
-	Only this option is mandatory in IPv4 Flowspec.
 
 	<tag><label id="flow-src">src <m/inet4/</tag>
 	Set a matching source prefix (e.g. <cf>src 10.0.0.0/8</cf>).
@@ -6682,7 +6681,6 @@ protocol static {
 	but with prefix <cf/offset/ <m/number/ too (e.g.
 	<cf>::1234:5678:9800:0000/101 offset 64</cf>). Offset means to don't
 	care of <m/number/ first bits.
-	<item>IPv6 Flowspec hasn't mandatory any flowspec component.
 	<item>In IPv6 packets, there is a matching the last next header value
 	for a matching IP protocol number (e.g. <cf>next header 6</cf>).
 	<item>It is not possible to set <cf>dont_fragment</cf> as a type of
