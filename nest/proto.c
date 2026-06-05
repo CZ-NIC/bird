@@ -3095,7 +3095,23 @@ proto_cmd_enable(struct proto *p, uintptr_t arg, int cnt UNUSED)
   log(L_INFO "Enabling protocol %s", p->name);
   p->disabled = 0;
   proto_set_message(p, (char *) arg, -1);
-  proto_start(p);
+
+  switch (p->proto_state)
+  {
+    case PS_DOWN_XX:
+      proto_start(p);
+      break;
+
+    case PS_STOP:
+    case PS_FLUSH:
+      PD(p, "Protocol will enable itself after flushing");
+      break;
+
+    default:
+      log(L_BUG "Disabled but in state %u!", p->proto_state);
+      break;
+  }
+
   cli_msg(-11, "%s: enabled", p->name);
 }
 
