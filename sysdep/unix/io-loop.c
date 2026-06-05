@@ -536,7 +536,9 @@ sockets_fire(struct birdloop *loop, bool read, bool write)
       {
 	/* Write until task limit is up */
 	while ((s == loop->sock_active) && (e = sk_write(s)) && task_still_in_limit())
-	  ;
+	{
+	  ASSERT_DIE(!rcu_read_active());
+	}
 
 	if (s != loop->sock_active)
 	  continue;
@@ -548,13 +550,18 @@ sockets_fire(struct birdloop *loop, bool read, bool write)
       /* Read until task limit is up */
       if (read && (rev & POLLIN))
 	while ((s == loop->sock_active) && s->rx_hook && sk_read(s, rev) && (s->fast_rx || task_still_in_limit()))
-	  ;
+	{
+	  ASSERT_DIE(!rcu_read_active());
+	}
 
       if (s != loop->sock_active)
 	continue;
 
       if (!(rev & (POLLOUT | POLLIN)) && (rev & POLLERR))
+      {
 	sk_err(s, rev);
+	ASSERT_DIE(!rcu_read_active());
+      }
 
       if (s != loop->sock_active)
 	continue;
