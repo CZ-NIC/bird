@@ -1449,6 +1449,14 @@ bgp_conn_enter_established_state(struct bgp_conn *conn)
     p->channel_map[c->index] = c;
   }
 
+  /* Obeying a pre-existing active cork */
+  if (ev_active(&p->uncork.ev))
+  {
+    ASSERT_DIE(p->p.active_loops > 0);
+    BGP_TRACE(D_PACKETS, "Still corked");
+    sk_pause_rx(p->p.loop, conn->sk);
+  }
+
   /* Breaking rx_hook for simulating receive problem */
   if (p->cf->disable_rx)
   {

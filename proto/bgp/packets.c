@@ -3580,10 +3580,12 @@ bgp_do_uncork(callback *cb)
   else if (p->conn && (p->conn->state == BS_ESTABLISHED) && !p->conn->sk->rx_hook)
   {
     struct birdsock *sk = p->conn->sk;
-    ASSERT_DIE(sk->rpos > sk->rbuf);
     sk_resume_rx(p->p.loop, sk, bgp_rx);
-    bgp_rx(sk, sk->rpos - sk->rbuf);
+
     BGP_TRACE(D_PACKETS, "Uncorked");
+
+    if (sk->rpos > sk->rbuf)
+      bgp_rx(sk, sk->rpos - sk->rbuf);
   }
 }
 
