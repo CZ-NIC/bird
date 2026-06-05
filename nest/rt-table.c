@@ -407,6 +407,8 @@ net_route(struct rtable_reading *tr, const net_addr *n)
 #undef FVR_VPN
 }
 
+static rte rt_net_best_reading(struct rtable_reading *tr, const net_addr *a);
+
 /*
  * ROA aggregation subsystem
  */
@@ -726,7 +728,7 @@ net_roa_check(rtable *tp, const net_addr *n, u32 asn)
 
 #define TW(ipv) do {								\
   TRIE_WALK_TO_ROOT_IP##ipv(trie, &(nu->ip##ipv), var) {			\
-    rte r = rt_net_best(aux, (net_addr *) &var);				\
+    rte r = rt_net_best_reading(tr, (net_addr *) &var);				\
     if (!r.attrs) continue;							\
     SKIP_BACK_DECLARE(struct rt_roa_aggregated_adata, rad,			\
 	ad, ea_get_adata(r.attrs, &ea_roa_aggregated));				\
@@ -2989,12 +2991,11 @@ rt_feed_net_all(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, struct
   return rt_net_feed_internal(tr, index, seen, prefilter, f, SKIP_BACK(const struct rt_pending_export, it, _first));
 }
 
-rte
-rt_net_best(rtable *t, const net_addr *a)
+static rte
+rt_net_best_reading(struct rtable_reading *tr, const net_addr *a)
 {
   rte rt = {};
-
-  RT_READ(t, tr);
+  rtable *t = tr->t;
 
   struct netindex *i = net_find_index(t->netindex, a);
   net *n = i ? net_find(tr, i) : NULL;
@@ -3009,6 +3010,13 @@ rt_net_best(rtable *t, const net_addr *a)
   ea_free_later(ea_ref(e->rte.attrs));
   rt_unlock_source_later(rt_lock_source(e->rte.src));
   return RTE_COPY(e);
+}
+
+rte
+rt_net_best(rtable *t, const net_addr *a)
+{
+  RT_READ(t, tr);
+  return rt_net_best_reading(tr, a);
 }
 
 static struct rt_export_feed *

@@ -522,6 +522,7 @@ static inline void _rcu_unwinder_unlock_(struct rcu_unwinder *o UNUSED)
     }									\
   }									\
   _i->locking_stack = locking_stack;					\
+  ASSERT_DIE(!rcu_read_active());					\
   rcu_read_lock();							\
 
 #define RCU_RETRY(_i) do { if (_i) { _i->file = __FILE__; _i->line = __LINE__; longjmp(_i->buf, 1); } else bug("No rcu retry allowed here"); } while (0)
