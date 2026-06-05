@@ -298,9 +298,13 @@ void net_unlock_index(netindex_hash *h, struct netindex *i)
 struct netindex *
 net_find_index(netindex_hash *h, const net_addr *n)
 {
-  RCU_ANCHOR(u);
+  rcu_read_lock();
+
   struct netindex *ni = net_find_index_fragile(h, n);
-  return (ni && net_validate_index(h, ni)) ? net_lock_revive_unlock(h, ni) : NULL;
+  struct netindex *nv = (ni && net_validate_index(h, ni)) ? net_lock_revive_unlock(h, ni) : NULL;
+
+  rcu_read_unlock();
+  return nv;
 }
 
 struct netindex *
@@ -322,17 +326,20 @@ struct netindex net_index_out_of_range;
 struct netindex *
 net_resolve_index(netindex_hash *h, u32 i)
 {
-  RCU_ANCHOR(u);
+  rcu_read_lock();
 
   struct netindex * _Atomic *block = atomic_load_explicit(&h->block, memory_order_relaxed);
   u32 bs = atomic_load_explicit(&h->block_size, memory_order_relaxed);
 
   if (i >= bs)
+  {
+    rcu_read_unlock();
     return &net_index_out_of_range;
+  }
 
   struct netindex *ni = atomic_load_explicit(&block[i], memory_order_acquire);
-  if (ni == NULL)
-    return NULL;
+  struct netindex *nv = ni ? net_lock_revive_unlock(h, ni) : NULL;
 
-  return net_lock_revive_unlock(h, ni);
+  rcu_read_unlock();
+  return nv;
 }
