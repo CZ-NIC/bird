@@ -2160,38 +2160,27 @@ bgp_bucket_pop_prefix(struct bgp_ptx_private *c, struct bgp_bucket *b)
 int
 bgp_bucket_pending(struct bgp_bucket *b)
 {
-  union bgp_bucket_prefix *row = b->prefixes.array;
   u32 row_num = BUCKET_PREFIX_ROW(b->last_pref_id);
   u32 pos = BUCKET_PREFIX_POS(b->last_pref_id);
 
+  /* Special case for no prefix */
   if (row_num == 0)
     return 0;
 
+  /* Special case for one prefix */
   if (row_num == 1)
-    return !!b->prefixes.pref->cur_buck;
-
-  int ret = 0;
-
-  if (row_num > 2 && row->array[1].pref == NULL)
-    row = row->array[0].array;
-
-  while (row_num)
   {
-    if (pos == 0)
-    {
-      if (row_num == 2)
-        row_num = 0;
-      else {
-        row = row->array[0].array;
-        row_num--;
-        pos = fibo_nums[row_num] -1;
-      }
-    }
-    ret += !!row->array[pos].pref->cur_buck;
-    pos--;
+    ASSERT_DIE(b->prefixes.pref->cur_buck == b->my_id);
+    return 1;
   }
 
-  return ret;
+  /* Last row is partial, other are full;
+   * first item is pointer to the next row. */
+  u32 total = pos;
+  while (--row_num >= 2)
+    total += fibo_nums[row_num] - 1;
+
+  return total + 1;
 }
 
 static void
