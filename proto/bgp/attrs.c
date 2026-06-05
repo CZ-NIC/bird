@@ -1932,11 +1932,53 @@ bgp_free_prefix_allocators(struct bgp_ptx_private *c)
   mb_free(c->bucket_prefix_slabs);
 }
 
+UNUSED static void
+bgp_bucket_consistency(struct bgp_bucket *b)
+{
+  if (b->last_pref_id == 0)
+  {
+    ASSERT_DIE(b->prefixes.pref == NULL);
+    return;
+  }
+
+  if (b->last_pref_id == 1)
+  {
+    ASSERT_DIE(b->prefixes.pref->buck_id == 1);
+    return;
+  }
+
+  u32 row_num = BUCKET_PREFIX_ROW(b->last_pref_id);
+  u32 pos = BUCKET_PREFIX_POS(b->last_pref_id);
+
+  union bgp_bucket_prefix *row = b->prefixes.array;
+
+  if (!row[1].pref)
+  {
+    ASSERT_DIE(row_num + 1 >= bgp_max_slab_row);
+    row = row[0].array;
+  }
+
+  for (; row_num >= 2; row_num--)
+  {
+    for (; pos > 0; pos--)
+      ASSERT_DIE(row[pos].pref->buck_id == PREFIX_ID(row_num, pos));
+
+    pos = fibo_nums[row_num - 1] - 1;
+    row = row[0].array;
+  }
+
+  ASSERT_DIE(((struct bgp_prefix *) row)->buck_id == 2);
+}
+
 static void
 bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_prefix *px)
 {
   ASSERT_DIE(c);
   ASSERT_DIE(b->my_id);
+
+#if 0
+  bgp_bucket_consistency(b);
+#endif
 
   if (b->last_pref_id == 0)
   {
@@ -2017,6 +2059,10 @@ bgp_add_to_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, struct bgp_pr
 static struct bgp_prefix *
 bgp_delete_from_bucket(struct bgp_ptx_private *c, struct bgp_bucket *b, u32 id)
 {
+#if 0
+  bgp_bucket_consistency(b);
+#endif
+
   ASSERT_DIE(b->my_id);
   u32 row_num = BUCKET_PREFIX_ROW(id);
   u32 pos = BUCKET_PREFIX_POS(id);
