@@ -483,6 +483,9 @@ lsa_validate_rt2(struct ospf_lsa_header *lsa, struct ospf_lsa_rt *body)
 
   while (buf < bufend)
   {
+    if (buf + sizeof(struct ospf_lsa_rt2_link) > bufend)
+      return 0;
+
     struct ospf_lsa_rt2_link *l = buf;
     buf += sizeof(struct ospf_lsa_rt2_link) + l->no_tos * sizeof(struct ospf_lsa_rt2_tos);
     i++;
@@ -516,11 +519,11 @@ lsa_validate_rt3(struct ospf_lsa_header *lsa, struct ospf_lsa_rt *body)
 
   while (buf < bufend)
   {
+    if (buf + sizeof(struct ospf_lsa_rt3_link) > bufend)
+      return 0;
+
     struct ospf_lsa_rt3_link *l = buf;
     buf += sizeof(struct ospf_lsa_rt3_link);
-
-    if (buf > bufend)
-      return 0;
 
     if (!((l->type == LSART_PTP) ||
 	  (l->type == LSART_NET) ||
