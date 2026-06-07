@@ -42,6 +42,8 @@ struct ospf_hello3_packet
 };
 
 
+STATIC_ASSERT(OSPF3_MIN_OPTS_LENGTH >= OFFSETOF(struct ospf_hello3_packet, options) + sizeof(u32));
+
 uint
 ospf_hello3_options(struct ospf_packet *pkt)
 {

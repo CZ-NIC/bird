@@ -1087,6 +1087,9 @@ static inline uint ospf_pkt_hdrlen(struct ospf_proto *p)
 static inline void * ospf_tx_buffer(struct ospf_iface *ifa)
 { return ifa->sk->tbuf; }
 
+/* Minimal packet length to safely access options in OSPFv3 HELLO / DBDES packets */
+#define OSPF3_MIN_OPTS_LENGTH	(sizeof(struct ospf_packet) + 8)
+
 /* hello.c */
 #define OHS_HELLO    0
 #define OHS_POLL     1
