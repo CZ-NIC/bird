@@ -312,7 +312,16 @@ ospf_pkt_checkauth3(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf
       DROP("packet length mismatch", len);
 
     struct ospf_lls *lls = (void *) ((byte *) pkt + plen);
-    plen += ntohs(lls->length);
+
+    /* RFC 5613 2.2 - LLS data length is in 32-bit words! */
+    uint lls_length = ntohs(lls->length) * 4;
+    if (lls_length < sizeof(struct ospf_lls))
+      DROP("LLS data too short", lls_length);
+
+    if ((plen + lls_length) > len)
+      DROP("packet length mismatch", len);
+
+    plen += lls_length;
   }
 
   if ((plen + sizeof(struct ospf_auth3)) > len)
