@@ -1177,6 +1177,10 @@ bgp_apply_next_hop(struct bgp_parse_state *s, ea_list **to, ip_addr gw, ip_addr 
 static void
 bgp_apply_mpls_labels(struct bgp_parse_state *s, ea_list **to, u32 lnum, u32 labels[lnum])
 {
+  /* Ignore labels on withdraw */
+  if (!*to)
+    return;
+
   bgp_set_attr_data(to, BA_MPLS_LABEL_STACK, 0, labels, lnum * sizeof labels[0]);
 
   if (lnum > MPLS_MAX_LABEL_STACK)
@@ -1210,9 +1214,13 @@ bgp_apply_mpls_labels(struct bgp_parse_state *s, ea_list **to, u32 lnum, u32 lab
   else /* GW_RECURSIVE */
   {
     eattr *e = ea_find(*to, &ea_gen_hostentry);
-    ASSERT_DIE(e);
-    struct hostentry_adata *head = (void *) e->u.ptr;
-    ea_set_hostentry(to, head->he->tab, head->he->owner, head->he->addr, head->he->link, lnum, labels);
+    if (e)
+    {
+      struct hostentry_adata *head = (void *) e->u.ptr;
+      ea_set_hostentry(to, head->he->tab, head->he->owner, head->he->addr, head->he->link, lnum, labels);
+    }
+    else
+      REPORT("No hostentry for received MPLS labels");
   }
 }
 
