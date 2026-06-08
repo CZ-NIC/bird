@@ -232,15 +232,18 @@ struct rtable_reading {
       r = RTE_OBSOLETE_CHECK(tr, atomic_load_explicit(ptr, memory_order_acquire));	\
       ptr = &r->next)
 
-#define NET_READ_BEST_ROUTE(tr, n)	RTE_OBSOLETE_CHECK(tr, atomic_load_explicit(&n->routes, memory_order_acquire))
+#define NET_BEST_ROUTE(n)	\
+        atomic_load_explicit(&n->best_rte, memory_order_relaxed);
 
+#define NET_READ_BEST_ROUTE(tr, n) ({	\
+  const rte * r_ = NET_BEST_ROUTE(n); \
+  r_? RTE_OBSOLETE_CHECK(tr, SKIP_BACK(struct rte_storage, rte, r_)) : NULL;     \
+})
 #define NET_WALK_ROUTES(priv, n, ptr, r)					\
   for (struct rte_storage *r = ({ ASSERT_DIE(RT_IS_LOCKED(priv)); NULL; }),	\
 			  * _Atomic *ptr = &(n)->routes;			\
       r = atomic_load_explicit(ptr, memory_order_acquire);			\
       ptr = &r->next)
-#define NET_BEST_ROUTE(n)	\
-        atomic_load_explicit(&n->best_rte, memory_order_relaxed);
 
 #define NET_BEST_RTE_STOR(n)	\
         NET_BEST_ROUTE(n)? SKIP_BACK(struct rte_storage, rte, NET_BEST_ROUTE(n)): NULL;
@@ -1852,7 +1855,7 @@ rt_flush_best(struct rtable_private *tab, u64 upto)
   RT_EXPORT_WALK(&tab->best_req, u)
   {
     ASSERT_DIE(u->kind == RT_EXPORT_UPDATE);
-    ASSERT_DIE(u->update->seq <= upto);
+    //ASSERT_DIE(u->update->seq <= upto); todo - we lost the connection with all update
     last_seq = u->update->seq;
     if (last_seq == upto)
       return;
@@ -1914,6 +1917,41 @@ rte_announce_all(struct rtable_private *tab, const struct netindex *i UNUSED, ne
     rte_free(SKIP_BACK(struct rte_storage, rte, old), tab);
   }
 }
+
+static void
+rte_announce_best(struct rtable_private *tab, const struct netindex *i UNUSED, net *net,
+	     const rte *new_best, const rte *old_best)
+{
+  /* Update network count */
+  tab->net_count += (!!new_best - !!old_best);
+
+  int new_best_valid = rte_is_valid(new_best);
+  int old_best_valid = rte_is_valid(old_best);
+
+  if (new_best == old_best)
+    return;
+
+  if (new_best_valid)
+    new_best->sender->stats.pref++;
+  if (old_best_valid)
+    old_best->sender->stats.pref--;
+
+  /* Try to push */
+  struct rt_pending_export *best_rpe = NULL;
+
+  best_rpe = rte_announce_to(&tab->export_best, &net->best,
+	new_best_valid ? new_best : NULL, old_best_valid ? old_best : NULL);
+  //if (best_rpe)   this does not make sense anymore
+      /* Announced best, need an anchor to all */
+   // best_rpe->seq_all = all_rpe->it.seq;
+  //else if (!lfjour_pending_items(&tab->export_best.journal))
+      /* Best is idle, flush its recipient immediately */
+    //  rt_flush_best(tab, all_rpe->it.seq);
+
+  rt_check_cork_high(tab);
+
+}
+
 
 static void
 rte_announce(struct rtable_private *tab, const struct netindex *i UNUSED, net *net, const rte *new, const rte *old,
@@ -2187,12 +2225,12 @@ static int
 rte_better_(const rte *new, const rte *old)
 {
   if (!rte_is_valid(new))
-    return 1;
-  if (!rte_is_valid(old))
     return 0;
+  if (!rte_is_valid(old))
+    return 1;
 
-  u32 np = rt_get_preference(old);
-  u32 op = rt_get_preference(new);
+  u32 np = rt_get_preference(new);
+  u32 op = rt_get_preference(old);
 
   if (np > op)
     return 1;
@@ -2225,41 +2263,46 @@ rte_best_selection(struct rtable_private *table, net *nn)
   }
 
   u32 ptr = 0;
-  const rte *old = best_rte_preselection[0] = NET_BEST_ROUTE(nn);
+  const rte *old = NULL;
 //maybe forgot to lock the table?
   NET_WALK_ROUTES(table, nn, ep, e)
   {
+        log("in walk");
     switch (rte_better_(&e->rte, old))
     {
       case 1:
         ptr = 0;
         best_rte_preselection[0] = &e->rte;
+        log("first route is %s", e->rte.src->owner->name);
+        old = &e->rte;
         break;
       case 2:
         ptr++;
         if (best_rte_sel_size < ptr)
         {
-                //thohle je blbe. musim zjistit, odkud alokovat
           const rte **new_field = tmp_alloc(sizeof(rte *)*ptr*2);
+          best_rte_sel_size = ptr * 2;
           memcpy(new_field, best_rte_preselection, sizeof(rte *) * (ptr - 1));
           best_rte_preselection = new_field;
         }
+        log("adding route with src %s (ptr %i)", e->rte.src->owner->name, ptr);
         best_rte_preselection[ptr] = &e->rte;
         break;
       case 0:
       /* nothing to change */
       ;
      }
-     old = &e->rte;
   }
   if (ptr == 0)
   {
+    if (!rte_is_valid(best_rte_preselection[0])) //todo: is this ok in multithreading? What if we find route and it then became invalid?
+      return NULL;
     /* One preselected rte - it must be the best */
     return best_rte_preselection[0];
   }
   /* more routes - bgp MED? */
   ASSERT_DIE(best_rte_preselection[0]->src->owner->class->rte_best);
-  return best_rte_preselection[0]->src->owner->class->rte_best(best_rte_preselection, best_rte_sel_size);
+  return best_rte_preselection[0]->src->owner->class->rte_best(best_rte_preselection, ptr + 1);
 }
 
 
@@ -2271,7 +2314,9 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
   struct rt_import_request *req = c->req;
   struct rt_import_stats *stats = &c->stats;
 
-  log("......recalculate %N %x new %p id %i", i->addr, i->addr->data[15], new? new->id: -1);
+  log("......recalculate %N %x new %p id %i, proto %s", i->addr, i->addr->data[15], new? new->id: -1, new? new->src->owner->name:"-");
+  if (new)
+    log("<%s>", new->src->owner->name);
 
   /* If the new route is identical to the old one, we find the attributes in
    * cache and clone these with no performance drop. OTOH, if we were to lookup
@@ -2392,6 +2437,7 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
   if (old_stored)
   {
     uint seen = 0;
+    log("NOT THREAD SAFE PART");
     NET_WALK_ROUTES(table, net, ep, e)
       if (e == old_stored)
       {
@@ -2432,14 +2478,17 @@ void
 rte_recalculate_best(void *t_)
 {
   log("rte_recalculate_best");
-  struct rtable_private *table = (struct rtable_private *)t_;
+  rtable *t = (rtable *)t_;
 
-  rt_lock_table(table);
-  net *nets = atomic_load_explicit(&table->routes, memory_order_acquire);
-
-  for (struct lfjour_item *it; it = lfjour_get(&table->all_req); )
+  RT_LOCKED(t, table)
   {
-    SKIP_BACK_DECLARE(const struct rt_export_item, rei, li, it);
+    rt_lock_table(table);
+    ASSERT_DIE(RT_IS_LOCKED(table));
+    net *nets = atomic_load_explicit(&table->routes, memory_order_acquire);
+
+    for (struct lfjour_item *it; it = lfjour_get(&table->all_req); )
+    {
+      SKIP_BACK_DECLARE(const struct rt_export_item, rei, li, it);
 
       const rte *route = rei->new? rei->new: rei->old;
       ASSERT_DIE(route);
@@ -2491,17 +2540,20 @@ rte_recalculate_best(void *t_)
     {
   #endif
 
-
   /* Log the route change */
-  log(L_TRACE "new best %N old best %N", best->net, old_best->net);
+  if (best)
+    if (old_best)
+      log(L_TRACE "new best %N %s old best %N %s", best->net, best->src->owner->name, old_best->net, old_best->src->owner->name);
+    else
+      log(L_TRACE "new best %N no old best %s", best->net, best->src->owner->name);
 
   atomic_store_explicit(&nn->best_rte, best, memory_order_release);
 
   /* Propagate the route change */
-  rte_announce(table, ni, nn,
-      NULL, NULL,
-      best, old_best);
+  rte_announce_best(table, ni, nn,
+	     best, old_best);
   }
+}
 }
 
 int
