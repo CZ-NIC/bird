@@ -774,7 +774,7 @@
 	{
 	  struct eattr *nh_ea = ea_find(fs->rte->attrs, &ea_gen_nexthop);
 	  SKIP_BACK_DECLARE(struct nexthop_adata, nhad, ad, nh_ea ? nh_ea->u.ptr : NULL);
-	  struct nexthop *first = NEXTHOP_IS_REACHABLE(nhad) ? &(nhad->nh) : NULL;
+	  struct nexthop *first = (nh_ea && NEXTHOP_IS_REACHABLE(nhad)) ? &(nhad->nh) : NULL;
 
 	  ip_addr ip = v1.val.ip;
 	  bool onlink = first && (first->flags & RNF_ONLINK);
