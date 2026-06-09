@@ -1,3 +1,29 @@
+Version 3.2.2 (2026-06-09)
+  o BGP: Fix parsing labelled NLRIs with no next hop
+  o BGP: Fix cork behavior in collision with graceful restart
+  o BGP: Fix hostentry handling of MPLS routes
+  o BGP: Fix locking order violations in dynamic socket refusal
+  o BGP: Fix several issues in Flowspec handling
+  o BMP/Nest: No refeed after listener or protocol restart
+  o BMP: Fix off-by-one buffer overflow
+  o MPLS: Fix crash on reconfiguring CS_DOWN channel
+  o OSPF: Fix handling of LLS data length field
+  o OSPF: Fix OOB read in authentication check
+  o OSPF: Fix OOB read in Router-LSA validation
+  o OSPF: Fix infinite loop in OSPF Graceful Restart
+  o Proto: Fix name pointer for interface subscription
+  o CLI/Proto: Lock show-commands
+  o Channel: Fix refeeds and reloads during graceful restart
+  o Export: Mitigate duplicate withdrawals
+  o Filters: Fix crash when setting gateway on recursive nexthops
+  o Filters: Fix path matching when AS path is too long.
+  o Filters: Fix T_BOOL and T_PAIR to be stored as u32
+  o Table: Fix RCU double-anchor
+  o Table: Propagate thread group config into aux
+  o Route: Fix source locking debug mode
+  o RCU: Catch leaks sooner
+  o Build: Detect need for libatomic
+
 Version 3.2.1 (2026-04-01)
   o ASPA: Fix downstream validation
   o BMP: Fix route sending
