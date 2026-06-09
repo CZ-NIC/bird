@@ -2772,10 +2772,11 @@ bgp_rte_best(const rte **routes, u32 count)
 
   for (u32 i = 0; i < count; i++)
   {
-        log("bgp med rte %N (count %i i %i)", routes[i]->net, count, i);
     const rte *cur_rte = routes[i];
     if (cur_rte == NULL || !rte_is_valid(cur_rte))
       continue;
+
+    log("bgp med rte %N (count %i i %i)", routes[i]->net, count, i);
 
     if (use_deterministic_med(cur_rte))
     {

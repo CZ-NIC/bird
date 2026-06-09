@@ -2264,6 +2264,7 @@ rte_best_selection(struct rtable_private *table, net *nn)
 
   u32 ptr = 0;
   const rte *old = NULL;
+  const rte **new_field;
 //maybe forgot to lock the table?
   NET_WALK_ROUTES(table, nn, ep, e)
   {
@@ -2280,9 +2281,9 @@ rte_best_selection(struct rtable_private *table, net *nn)
         ptr++;
         if (best_rte_sel_size < ptr)
         {
-          const rte **new_field = tmp_alloc(sizeof(rte *)*ptr*2);
+          new_field = tmp_alloc(sizeof(rte *)*ptr*2);
           best_rte_sel_size = ptr * 2;
-          memcpy(new_field, best_rte_preselection, sizeof(rte *) * (ptr - 1));
+          memcpy(new_field, best_rte_preselection, sizeof(rte *) * ptr);
           best_rte_preselection = new_field;
         }
         log("adding route with src %s (ptr %i)", e->rte.src->owner->name, ptr);
@@ -2292,6 +2293,8 @@ rte_best_selection(struct rtable_private *table, net *nn)
       /* nothing to change */
       ;
      }
+     for (int i = 0; i<=ptr; i++)
+       log(";%s;", best_rte_preselection[i]->src->owner->name);
   }
   if (ptr == 0)
   {
@@ -2301,6 +2304,8 @@ rte_best_selection(struct rtable_private *table, net *nn)
     return best_rte_preselection[0];
   }
   /* more routes - bgp MED? */
+  for (int i = 0; i<=ptr; i++)
+    log(".%s.", best_rte_preselection[i]->src->owner->name);
   ASSERT_DIE(best_rte_preselection[0]->src->owner->class->rte_best);
   return best_rte_preselection[0]->src->owner->class->rte_best(best_rte_preselection, ptr + 1);
 }
