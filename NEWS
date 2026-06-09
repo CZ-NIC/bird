@@ -1,3 +1,13 @@
+Version 2.18.2 (2026-06-09)
+  o BGP: Fix several issues in Flowspec handling
+  o BMP: Fix off-by-one buffer overflow
+  o BMP: Build by default, it is no longer experimental.
+  o OSPF: Fix handling of LLS data length field
+  o OSPF: Fix OOB read in authentication check
+  o OSPF: Fix OOB read in Router-LSA validation
+  o Filters: Fix path matching when AS path is too long.
+  o OSPF: Fix infinite loop in OSPF Graceful Restart
+
 Version 2.18.1 (2026-04-01)
   o ASPA: Fix downstream validation
   o Filters: Fix string attributes
