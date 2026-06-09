@@ -1,3 +1,10 @@
+Version 2.19.1 (2026-06-09)
+  o BGP: Fix several issues in Flowspec handling
+  o OSPF: Fix handling of LLS data length field
+  o OSPF: Fix OOB read in authentication check
+  o OSPF: Fix OOB read in Router-LSA validation
+  o Filters: Fix path matching when AS path is too long.
+
 Version 2.19.0 (2026-05-25)
   o BGP/MPLS Ethernet VPNs using VXLAN tunnels
   o BGP: PMSI tunnel attribute
