@@ -1,3 +1,23 @@
+Version 3.3.1 (2026-06-09)
+  o BGP: Fix crash when incoming connection for disabled protocol arrives
+  o BGP: Fix parsing labelled NLRIs with no next hop
+  o BGP: Fix cork behavior in collision with graceful restart
+  o BGP: Fix crash on dumping pending export statistics
+  o BGP: Fix several issues in Flowspec handling
+  o BMP/Nest: No refeed after listener or protocol restart
+  o MPLS: Fix crash on reconfiguring CS_DOWN channel
+  o OSPF: Fix handling of LLS data length field
+  o OSPF: Fix OOB read in authentication check
+  o OSPF: Fix OOB read in Router-LSA validation
+  o Proto: Fix regression in protocol enabling
+  o Channel: Fix refeeds and reloads during graceful restart
+  o Export: Mitigate duplicate withdrawals
+  o Filters: Fix crash when setting gateway on recursive nexthops
+  o Filters: Fix path matching when AS path is too long.
+  o Table: Fix RCU double-anchor
+  o Table: Propagate thread group config into aux
+  o RCU: Catch leaks sooner
+
 Version 3.3.0 (2026-05-25)
   o BGP: Export memory consumption optimization
   o BGP: Fix hostentry handling of MPLS and EVPN routes
