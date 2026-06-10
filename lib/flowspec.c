@@ -350,17 +350,17 @@ static const u8 flow_max_value_length[FLOW_TYPE_MAX] = {
   [FLOW_TYPE_FRAGMENT]		= 1,
 };
 
-/* Maximum valid numeric values (in bytes), semantically */
+/* Maximum valid numeric values (in bits), semantically */
 static const u8 flow_max_valid_value[FLOW_TYPE_MAX] = {
-  [FLOW_TYPE_IP_PROTOCOL]	= 1,
-  [FLOW_TYPE_PORT]		= 2,
-  [FLOW_TYPE_DST_PORT]		= 2,
-  [FLOW_TYPE_SRC_PORT]		= 2,
-  [FLOW_TYPE_ICMP_TYPE]		= 1,
-  [FLOW_TYPE_ICMP_CODE]		= 1,
-  [FLOW_TYPE_PACKET_LENGTH]	= 2,
-  [FLOW_TYPE_DSCP]		= 1,
-  [FLOW_TYPE_LABEL]		= 4,
+  [FLOW_TYPE_IP_PROTOCOL]	= 8,
+  [FLOW_TYPE_PORT]		= 16,
+  [FLOW_TYPE_DST_PORT]		= 16,
+  [FLOW_TYPE_SRC_PORT]		= 16,
+  [FLOW_TYPE_ICMP_TYPE]		= 8,
+  [FLOW_TYPE_ICMP_CODE]		= 8,
+  [FLOW_TYPE_PACKET_LENGTH]	= 16,
+  [FLOW_TYPE_DSCP]		= 6,
+  [FLOW_TYPE_LABEL]		= 20,
 };
 
 /**
@@ -405,16 +405,10 @@ void
 flow_check_cf_numeric_arg(struct flow_builder *fb, uint val)
 {
   enum flow_type t = fb->this_type;
-  uint max = flow_max_valid_value[t];
+  u64 max = (U64(1) << flow_max_valid_value[t]) - 1;
 
-  if (t == FLOW_TYPE_DSCP && val > 0x3f)
-    cf_error("%s value %u out of range (0-63)", flow_type_str(t, fb->ipv6), val);
-
-  if (max == 1 && (val > 0xff))
-    cf_error("%s value %u out of range (0-255)", flow_type_str(t, fb->ipv6), val);
-
-  if (max == 2 && (val > 0xffff))
-    cf_error("%s value %u out of range (0-65535)", flow_type_str(t, fb->ipv6), val);
+  if (max && (val > max))
+    cf_error("%s value %u out of range (0-%lu)", flow_type_str(t, fb->ipv6), val, max);
 }
 
 /* Bitmask of padding bits in last byte of prefix */
