@@ -59,7 +59,7 @@ flow_num_type_:
  | ICMP CODE	{ $$ = FLOW_TYPE_ICMP_CODE; }
  | LENGTH	{ $$ = FLOW_TYPE_PACKET_LENGTH; }
  | DSCP		{ $$ = FLOW_TYPE_DSCP; }
- | LABEL	{ $$ = FLOW_TYPE_LABEL; }
+ | LABEL	{ $$ = FLOW_TYPE_LABEL; if (!this_flow->ipv6) cf_error("Flow label not valid in flow4"); }
  ;
 
 flow_num_type: flow_num_type_{ flow_builder_set_type(this_flow, $1); };
@@ -123,7 +123,7 @@ flow_neg:
  ;
 
 flow_frag_val:
-   DONT_FRAGMENT  { $$ = 1; }
+   DONT_FRAGMENT  { $$ = 1; if (this_flow->ipv6) cf_error("Flag dont_fragment not valid in flow6"); }
  | IS_FRAGMENT	  { $$ = 2; }
  | FIRST_FRAGMENT { $$ = 4; }
  | LAST_FRAGMENT  { $$ = 8; }
