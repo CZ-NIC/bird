@@ -11,6 +11,14 @@
 #include <stdlib.h>
 #include "radv.h"
 
+struct radv_rs_packet
+{
+  u8 type;
+  u8 code;
+  u16 checksum;
+  u32 reserved;
+};
+
 struct radv_ra_packet
 {
   u8 type;
@@ -92,6 +100,8 @@ struct radv_opt_custom
 
 #define LOG_PKT(msg, args...) \
   log_rl(&p->log_pkt_tbf, L_REMOTE "%s: " msg, p->p.name, args)
+
+#define DROP(DSC,VAL) do { err_dsc = DSC; err_val = VAL; goto drop; } while (0)
 
 static int
 radv_prepare_route(struct radv_iface *ifa, struct radv_route *rt,
@@ -450,17 +460,38 @@ radv_send_ra(struct radv_iface *ifa, ip_addr to)
     log(L_WARN "%s: TX queue full on %s", p->p.name, ifa->iface->name);
 }
 
-
 static void
-radv_receive_rs(struct radv_proto *p, struct radv_iface *ifa, ip_addr from)
+radv_receive_rs(struct radv_proto *p, struct radv_iface *ifa, ip_addr from, struct radv_rs_packet *pkt, uint plen)
 {
   RADV_TRACE(D_PACKETS, "Received RS from %I via %s",
 	     from, ifa->iface->name);
+
+  const char *err_dsc = NULL;
+  uint err_val = 0;
+
+  /* Basic validation */
+  if (plen < sizeof(struct radv_rs_packet))
+    DROP("too short", plen);
+
+  /* Hop Limit validation */
+  if (ifa->sk->rcv_ttl < 255)
+    DROP("bad hop limit", ifa->sk->rcv_ttl);
+
+  /* ICMP Code validation */
+  if (pkt->code != 0)
+    DROP("bad code", ntohs(pkt->code));
 
   if (ifa->cf->solicited_ra_unicast && ipa_nonzero(from))
     radv_send_ra(ifa, from);
   else
     radv_iface_notify(ifa, RA_EV_RS);
+
+  return;
+
+drop:
+  LOG_PKT("Bad packet from %I via %s - %s (%u)",
+	  sk->faddr, ifa->iface->name, err_dsc, err_val);
+  return;
 }
 
 void
@@ -469,13 +500,20 @@ radv_receive_ra(struct radv_proto *p, struct radv_iface *ifa, ip_addr from, stru
   RADV_TRACE(D_PACKETS, "Received RA from %I via %s",
 	     from, ifa->iface->name);
 
+  const char *err_dsc = NULL;
+  uint err_val = 0;
+
   /* Basic validation */
   if (plen < sizeof(struct radv_ra_packet))
-  {
-    LOG_PKT("Bad RA packet from %I via %s - %s (%u)",
-	    from, ifa->iface->name, "too short", plen);
-    return;
-  }
+    DROP("too short", plen);
+
+  /* Hop Limit validation */
+  if (ifa->sk->rcv_ttl < 255)
+    DROP("bad hop limit", ifa->sk->rcv_ttl);
+
+  /* ICMP Code validation */
+  if (pkt->code != 0)
+    DROP("bad code", pkt->code);
 
   if (ifa->cf->router_discovery)
   {
@@ -497,6 +535,13 @@ radv_receive_ra(struct radv_proto *p, struct radv_iface *ifa, ip_addr from, stru
       radv_withdraw_nbr(p, &n);
     }
   }
+
+  return;
+
+drop:
+  LOG_PKT("Bad packet from %I via %s - %s (%u)",
+	  sk->faddr, ifa->iface->name, err_dsc, err_val);
+  return;
 }
 
 static int
@@ -517,16 +562,13 @@ radv_rx_hook(sock *sk, uint size)
 
   byte *buf = sk->rbuf;
 
-  if (buf[1] != 0)
-    return 1;
-
-  /* Validation is a bit sloppy - Hop Limit is not checked and
-     length of options is ignored for RS and left to later for RA */
+  /* Validation is a bit sloppy - length of options is ignored for RS
+     and left to later for RA */
 
   switch (buf[0])
   {
   case ICMPV6_RS:
-    radv_receive_rs(p, ifa, sk->faddr);
+    radv_receive_rs(p, ifa, sk->faddr, (struct radv_rs_packet *)buf, size);
     return 1;
 
   case ICMPV6_RA:
@@ -573,7 +615,7 @@ radv_sk_open(struct radv_iface *ifa)
   sk->rbsize = 1024; // bufsize(ifa);
   sk->tbsize = 1024; // bufsize(ifa);
   sk->data = ifa;
-  sk->flags = SKF_LADDR_RX;
+  sk->flags = SKF_LADDR_RX | SKF_TTL_RX;
 
   if (sk_open(sk) < 0)
     goto err;
