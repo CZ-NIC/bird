@@ -520,6 +520,10 @@ radv_rx_hook(sock *sk, uint size)
   if (buf[1] != 0)
     return 1;
 
+  /* Hop limit validation */
+  if (sk->rcv_ttl < 255)
+    return 1;
+
   /* Validation is a bit sloppy - Hop Limit is not checked and
      length of options is ignored for RS and left to later for RA */
 
@@ -573,7 +577,7 @@ radv_sk_open(struct radv_iface *ifa)
   sk->rbsize = 1024; // bufsize(ifa);
   sk->tbsize = 1024; // bufsize(ifa);
   sk->data = ifa;
-  sk->flags = SKF_LADDR_RX;
+  sk->flags = SKF_LADDR_RX | SKF_TTL_RX;
 
   if (sk_open(sk, ifa->ra->p.loop) < 0)
     goto err;
