@@ -93,6 +93,8 @@ struct radv_opt_custom
 #define LOG_PKT(msg, args...) \
   log_rl(&p->log_pkt_tbf, L_REMOTE "%s: " msg, p->p.name, args)
 
+#define DROP(DSC,VAL) do { err_dsc = DSC; err_val = VAL; goto drop; } while (0)
+
 static int
 radv_prepare_route(struct radv_iface *ifa, struct radv_route *rt,
 		   char **buf, char *bufend)
@@ -505,6 +507,9 @@ radv_rx_hook(sock *sk, uint size)
   struct radv_iface *ifa = sk->data;
   struct radv_proto *p = ifa->ra;
 
+  const char *err_dsc = NULL;
+  uint err_val = 0;
+
   /* We want just packets from sk->iface */
   if (sk->lifindex != sk->iface->index)
     return 1;
@@ -520,8 +525,12 @@ radv_rx_hook(sock *sk, uint size)
   if (buf[1] != 0)
     return 1;
 
-  /* Validation is a bit sloppy - Hop Limit is not checked and
-     length of options is ignored for RS and left to later for RA */
+  /* Validation is a bit sloppy - length of options is ignored for RS
+     and left to later for RA */
+
+  /* Hop Limit validation */
+  if (sk->rcv_ttl < 255)
+    DROP("bad hop limit", sk->rcv_ttl);
 
   switch (buf[0])
   {
@@ -536,6 +545,11 @@ radv_rx_hook(sock *sk, uint size)
   default:
     return 1;
   }
+
+drop:
+  LOG_PKT("Bad packet from %I via %s - %s (%u)",
+	  sk->faddr, ifa->iface->name, err_dsc, err_val);
+  return 1;
 }
 
 static void
@@ -573,7 +587,7 @@ radv_sk_open(struct radv_iface *ifa)
   sk->rbsize = 1024; // bufsize(ifa);
   sk->tbsize = 1024; // bufsize(ifa);
   sk->data = ifa;
-  sk->flags = SKF_LADDR_RX;
+  sk->flags = SKF_LADDR_RX | SKF_TTL_RX;
 
   if (sk_open(sk) < 0)
     goto err;
