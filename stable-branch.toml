@@ -1,0 +1,39 @@
+## This is a configuration file for the stable-branch tool:
+## https://github.com/marenamat/stable-branch.git
+
+repo = "."
+branches = [
+  "master",
+  "stable-v2.17",
+  "stable-v2.18", 
+  "stable-v2.19", 
+  "thread-next",
+  "stable-v3.1",
+  "stable-v3.2", 
+  "stable-v3.3",
+]
+
+hide_merges = true
+issue_url = "https://gitlab.nic.cz/labs/bird/-/work_items/"
+
+relevant_remotes = [ "embargo", "origin" ]
+
+[match]
+threshold = 0.80    # commit title similarity required to group commits (0–1)
+by_author = true   # also require the same author
+
+[beginnings]
+"master"	= "8180fa5b9ca353bcce165e1dab2a1ee556b1b316"
+"stable-v2.17"	= "v2.17.5"
+"stable-v2.18"	= "v2.18.2"
+"stable-v2.19"	= "v2.19.1"
+"thread-next"	= "3ab69efaf869340ed60234039cbcae1aae105685"
+"stable-v3.1"	= "v3.1.7"
+"stable-v3.2"	= "v3.2.2"
+"stable-v3.3"	= "v3.3.1"
+
+[filter.hide_if]
+Target = [ "minor" ]
+
+[filter.highlight_if]
+Target = [ "patch" ]

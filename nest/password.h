@@ -28,10 +28,10 @@ struct password_item *password_find_by_id(list *l, uint id);
 struct password_item *password_find_by_value(list *l, char *pass, uint size);
 void password_validate_length(const struct password_item *p);
 
-static inline int password_verify(struct password_item *p1, char *p2, uint size)
+static inline int password_verify(const struct password_item *p1, const char *p2, uint size)
 {
   char buf[size];
-  strncpy(buf, p1->password, size);
+  memcpy0(buf, p1->password, size, p1->length);
   return !memcmp(buf, p2, size);
 }
 

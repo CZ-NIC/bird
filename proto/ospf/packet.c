@@ -64,7 +64,8 @@ ospf_pkt_finalize2(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
       log(L_ERR "No suitable password found for authentication");
       return;
     }
-    strncpy(auth->password, pass->password, sizeof(auth->password));
+    memcpy0(auth->password, pass->password, sizeof(auth->password), pass->length);
+
     /* fallthrough */
 
   case OSPF_AUTH_NONE:
@@ -111,7 +112,7 @@ ospf_pkt_finalize2(struct ospf_iface *ifa, struct ospf_packet *pkt, uint *plen)
 
     /* Append key for keyed hash, append padding for HMAC (RFC 5709 3.3) */
     if (pass->alg < ALG_HMAC)
-      strncpy(auth_tail, pass->password, auth_len);
+      memcpy0(auth_tail, pass->password, auth_len, pass->length);
     else
       memset32(auth_tail, HMAC_MAGIC, auth_len / 4);
 
@@ -235,7 +236,7 @@ ospf_pkt_checkauth2(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf
 
     /* Append key for keyed hash, append padding for HMAC (RFC 5709 3.3) */
     if (pass->alg < ALG_HMAC)
-      strncpy(auth_tail, pass->password, auth_len);
+      memcpy0(auth_tail, pass->password, auth_len, pass->length);
     else
       memset32(auth_tail, HMAC_MAGIC, auth_len / 4);
 
@@ -281,12 +282,18 @@ ospf_pkt_checkauth3(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf
   switch(pkt->type)
   {
   case HELLO_P:
+    if (plen < OSPF3_MIN_OPTS_LENGTH)
+      DROP("too short", plen);
+
     opts = ospf_hello3_options(pkt);
     lls_present = opts & OPT_L_V3;
     auth_present = opts & OPT_AT;
     break;
 
   case DBDES_P:
+    if (plen < OSPF3_MIN_OPTS_LENGTH)
+      DROP("too short", plen);
+
     opts = ospf_dbdes3_options(pkt);
     lls_present = opts & OPT_L_V3;
     auth_present = opts & OPT_AT;
@@ -306,7 +313,16 @@ ospf_pkt_checkauth3(struct ospf_neighbor *n, struct ospf_iface *ifa, struct ospf
       DROP("packet length mismatch", len);
 
     struct ospf_lls *lls = (void *) ((byte *) pkt + plen);
-    plen += ntohs(lls->length);
+
+    /* RFC 5613 2.2 - LLS data length is in 32-bit words! */
+    uint lls_length = ntohs(lls->length) * 4;
+    if (lls_length < sizeof(struct ospf_lls))
+      DROP("LLS data too short", lls_length);
+
+    if ((plen + lls_length) > len)
+      DROP("packet length mismatch", len);
+
+    plen += lls_length;
   }
 
   if ((plen + sizeof(struct ospf_auth3)) > len)
