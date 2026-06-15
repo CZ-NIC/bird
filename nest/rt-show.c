@@ -306,7 +306,8 @@ rt_show_cont(struct cli *c)
 	  break;
       }
 
-      rt_show_net(d, lpm);
+      if (lpm)
+	rt_show_net(d, lpm);
     }
   else
     RT_FEED_WALK(&d->tab->req, f)
