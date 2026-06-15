@@ -66,6 +66,7 @@ struct rtable_config {
   uint gc_threshold;			/* Maximum number of operations before GC is run */
   uint gc_period;			/* Approximate time between two consecutive GC runs */
   u32 debug;				/* Debugging flags (D_*) */
+  u32 route_selection_batch; /* Maximum number of routes we can recalculate at once */
   byte sorted;				/* Routes of network are sorted according to rte_better() */
   byte trie_used;			/* Rtable has attached trie */
   struct rt_cork_threshold {
@@ -206,6 +207,7 @@ struct rt_export_union {
     uint count_routes, count_exports;
     struct netindex *ni;
     rte *block;
+    u32 best_rte_idx;
     u64 *exports;
     char data[0];
   } *feed;
@@ -437,6 +439,7 @@ struct rtable_private {
   byte nhu_corked;			/* Next Hop Update is corked with this state */
   byte export_used;			/* Pending Export pruning is scheduled */
   byte cork_active;			/* Cork has been activated */
+  byte all_req_valid; //TODO
   struct rt_cork_threshold cork_threshold;	/* Threshold for table cork */
   u32 prune_index;			/* Rtable prune FIB iterator */
   u32 nhu_index;			/* Next Hop Update FIB iterator */
@@ -794,9 +797,9 @@ static inline void rt_unlock_table_pub(rtable *t, const char *file, uint line)
 { RT_LOCKED(t, tt) rt_unlock_table_priv(tt, file, line); }
 
 #define rt_lock_table(t)	_Generic((t),  rtable *: rt_lock_table_pub, \
-				struct rtable_private *: rt_lock_table_priv)((t), __FILE__, __LINE__)
+				struct rtable_private *: rt_lock_table_priv)((t), __FILE__, __LINE__);
 #define rt_unlock_table(t)	_Generic((t),  rtable *: rt_unlock_table_pub, \
-				struct rtable_private *: rt_unlock_table_priv)((t), __FILE__, __LINE__)
+				struct rtable_private *: rt_unlock_table_priv)((t), __FILE__, __LINE__);
 
 const struct f_trie * rt_lock_trie(struct rtable_private *tab);
 void rt_unlock_trie(struct rtable_private *tab, const struct f_trie *trie);
