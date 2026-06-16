@@ -3077,6 +3077,11 @@ test-bgp-rs-singletab:
   variables:
     TEST_NAME: cf-bgp-rs-singletab
 
+test-bgp-autopeer-radv:
+  <<: *test-base
+  variables:
+    TEST_NAME: cf-bgp-autopeer-radv
+
 test-ebgp-graceful:
   <<: *test-base
   variables:
