@@ -107,6 +107,123 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   }
 }
 
+static int // 1 can continue, 0, do not continue
+rt_show_net_rte(struct rt_show_data *d, const struct rt_export_feed *feed, rte *e, int *first,
+    int *first_show, uint *last_label, int *pass, byte *ia, u32 ia_len, int i)
+{
+  log("rte %N", e->net);
+  if (e->flags & REF_OBSOLETE)
+    return 0;
+
+  if (!d->tab->prefilter && (rte_is_filtered(e) != d->filtered))
+    return 1;
+
+  struct cli *c = d->cli;
+  struct channel *ec = d->tab->export_channel;
+  d->rt_counter++;
+  d->net_counter += *first;
+  *first = 0;
+
+  if (*pass)
+    return 1;
+
+  if (d->tab->prefilter)
+    if (e->sender != d->tab->prefilter->in_req.hook)
+      return 1;
+    else
+      e->attrs = ea_strip_to(e->attrs, BIT32_ALL(EALS_PREIMPORT));
+
+  log("here");
+  /* Export channel is down, do not try to export routes to it */
+  if (ec && (rt_export_get_state(&ec->out_req) == TES_DOWN))
+    goto skip;
+  log("heree");
+  if (d->export_mode == RSEM_EXPORTED)
+  {
+    if (!bmap_test(&ec->export_accepted_map, e->id))
+      goto skip;
+  }
+  else if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_MERGED))
+  {
+    /* Special case for merged export */
+    *pass = 1;
+    rte *em = rt_export_merged(ec, feed, tmp_linpool, 1);
+
+    if (em)
+      e = em;
+    else
+      goto skip;
+  }
+  else if (d->export_mode)
+  {
+    struct proto *ep = ec->proto;
+    int ic = ep->preexport ? ep->preexport(ec, e) : 0;
+
+    if (ec->ra_mode == RA_OPTIMAL || ec->ra_mode == RA_MERGED)
+      *pass = 1;
+
+    if (ic < 0)
+      goto skip;
+
+    if (d->export_mode > RSEM_PREEXPORT)
+    {
+      /*
+       * FIXME - This shows what should be exported according to current
+       * filters, but not what was really exported. 'configure soft'
+       * command may change the export filter and do not update routes.
+       */
+      int do_export = (ic > 0) ||
+	(f_run(ec->out_filter, e, FF_SILENT) <= F_ACCEPT);
+
+      if (do_export != (d->export_mode == RSEM_EXPORT))
+	goto skip;
+
+      if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_ACCEPTED))
+	*pass = 1;
+    }
+  }
+  log("hereee");
+
+  if (d->show_protocol && (&d->show_protocol->sources != e->src->owner))
+    goto skip;
+
+  if (f_run(d->filter, e, 0) > F_ACCEPT)
+    goto skip;
+
+  log("d stats %i", d->stats);
+  if (d->stats < 2)
+  {
+    uint label = ea_get_int(e->attrs, &ea_gen_mpls_label, ~0U);
+
+    log("first show %i last label %x label %x ", *first_show, *last_label, label);
+    if (*first_show || (*last_label != label))
+    {
+        log("here, printing!");
+      if (!~label)
+        net_format(feed->ni->addr, ia, ia_len);
+      else
+        bsnprintf(ia, sizeof(ia), "%N mpls %d", feed->ni->addr, label);
+
+      log("ia %s", ia);
+    }
+    else{log("whhhhhhhhhhaaaaaaaaaaaaaaaaaaattt?");
+      ia[0] = 0;
+     }
+
+    rt_show_rte(c, ia, e, d, !d->tab->prefilter && !i);
+    *first_show = 0;
+    *last_label = label;
+  }
+
+  d->show_counter++;
+
+  skip:
+    if (d->primary_only)
+      return 0;
+#undef e
+  return 1;
+}
+
 static void
 rt_show_net(struct rt_show_data *d, const struct rt_export_feed *feed)
 {
@@ -122,113 +239,21 @@ rt_show_net(struct rt_show_data *d, const struct rt_export_feed *feed)
   int first_show = 1;
   uint last_label = 0;
   int pass = 0;
-
-  for (uint i = 0; i < feed->count_routes; i++)
-    {
-      rte *e = &feed->block[i];
-      if (e->flags & REF_OBSOLETE)
-	break;
-
-      if (!d->tab->prefilter && (rte_is_filtered(e) != d->filtered))
-	continue;
-
-      d->rt_counter++;
-      d->net_counter += first;
-      first = 0;
-
-      if (pass)
-	continue;
-
-      if (d->tab->prefilter)
-	if (e->sender != d->tab->prefilter->in_req.hook)
-	  continue;
-	else
-	  e->attrs = ea_strip_to(e->attrs, BIT32_ALL(EALS_PREIMPORT));
-
-      /* Export channel is down, do not try to export routes to it */
-      if (ec && (rt_export_get_state(&ec->out_req) == TES_DOWN))
-	goto skip;
-
-      if (d->export_mode == RSEM_EXPORTED)
-        {
-	  if (!bmap_test(&ec->export_accepted_map, e->id))
-	    goto skip;
-
-	  // if (ec->ra_mode != RA_ANY)
-	  //   pass = 1;
-        }
-      else if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_MERGED))
-	{
-	  /* Special case for merged export */
-	  pass = 1;
-	  rte *em = rt_export_merged(ec, feed, tmp_linpool, 1);
-
-	  if (em)
-	    e = em;
-	  else
-	    goto skip;
-	}
-      else if (d->export_mode)
-	{
-	  struct proto *ep = ec->proto;
-	  int ic = ep->preexport ? ep->preexport(ec, e) : 0;
-
-	  if (ec->ra_mode == RA_OPTIMAL || ec->ra_mode == RA_MERGED)
-	    pass = 1;
-
-	  if (ic < 0)
-	    goto skip;
-
-	  if (d->export_mode > RSEM_PREEXPORT)
-	    {
-	      /*
-	       * FIXME - This shows what should be exported according to current
-	       * filters, but not what was really exported. 'configure soft'
-	       * command may change the export filter and do not update routes.
-	       */
-	      int do_export = (ic > 0) ||
-		(f_run(ec->out_filter, e, FF_SILENT) <= F_ACCEPT);
-
-	      if (do_export != (d->export_mode == RSEM_EXPORT))
-		goto skip;
-
-	      if ((d->export_mode == RSEM_EXPORT) && (ec->ra_mode == RA_ACCEPTED))
-		pass = 1;
-	    }
-	}
-
-      if (d->show_protocol && (&d->show_protocol->sources != e->src->owner))
-	goto skip;
-
-      if (f_run(d->filter, e, 0) > F_ACCEPT)
-	goto skip;
-
-      if (d->stats < 2)
-      {
-	uint label = ea_get_int(e->attrs, &ea_gen_mpls_label, ~0U);
-
-	if (first_show || (last_label != label))
-	{
-	  if (!~label)
-	    net_format(feed->ni->addr, ia, sizeof(ia));
-	  else
-	    bsnprintf(ia, sizeof(ia), "%N mpls %d", feed->ni->addr, label);
-	}
-	else
-	  ia[0] = 0;
-
-	rt_show_rte(c, ia, e, d, !d->tab->prefilter && !i);
-	first_show = 0;
-	last_label = label;
-      }
-
-      d->show_counter++;
-
-    skip:
-      if (d->primary_only)
-	break;
-#undef e
-    }
+  log("show net best %i", feed->best_rte_idx);
+  int cont = 1;
+  if (feed->best_rte_idx != ~0){ log("the best");
+    cont = rt_show_net_rte(d, feed, &feed->block[feed->best_rte_idx], &first,
+    &first_show, &last_label, &pass, ia, sizeof(ia), 0);}
+log("best to print: %s", ia);
+  log("before for count %i cont %i", feed->count_routes, cont);
+  for (uint i = 0; cont && i < feed->count_routes; i++)
+  {
+    log("in for %i", i);
+    if (i != feed->best_rte_idx)
+      cont = rt_show_net_rte(d, feed, &feed->block[i], &first,
+      &first_show, &last_label, &pass, ia, sizeof(ia), 1);
+    log("to print: %s", ia);
+  }
 
   if ((d->show_counter - d->show_counter_last_flush) > 64)
   {

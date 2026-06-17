@@ -1099,14 +1099,19 @@ rte_feed_obtain(struct rtable_reading *tr, net *n, const rte **feed, uint count)
 }
 #endif
 
-static void
+static u32
 rte_feed_obtain_copy(struct rtable_reading *tr, net *n, rte *feed, uint count)
 {
+  const rte *best = NET_BEST_ROUTE(n);
+  u32 best_rte_idx = ~0;
   uint i = 0;
   NET_READ_WALK_ROUTES(tr, n, ep, e)
   {
     if (i >= count)
       RT_READ_RETRY(tr);
+
+    if (&e->rte == best)
+      best_rte_idx = i;
 
     feed[i++] = e->rte;
     ea_free_later(ea_ref(e->rte.attrs));
@@ -1115,6 +1120,8 @@ rte_feed_obtain_copy(struct rtable_reading *tr, net *n, rte *feed, uint count)
 
   if (i != count)
     RT_READ_RETRY(tr);
+
+  return best_rte_idx;
 }
 
 /**
@@ -1717,7 +1724,7 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
 
   // struct proto *p = c->proto;
   struct nexthop_adata *nhs = NULL;
-  rte *best = &feed->block[0];
+  rte *best = &feed->block[feed->best_rte_idx]; //todo?
 
   /* First route is obsolete */
   if (best->flags & REF_OBSOLETE)
@@ -2800,9 +2807,10 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, struct bmap *seen, bool (*p
       return NULL;
 
     feed = rt_alloc_feed(rcnt+ocnt, ecnt);
+    feed->best_rte_idx = ~0;
 
     if (rcnt)
-      rte_feed_obtain_copy(tr, n, feed->block, rcnt);
+      feed->best_rte_idx = rte_feed_obtain_copy(tr, n, feed->block, rcnt);
 
     if (ecnt)
     {
@@ -2938,11 +2946,16 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, struc
   uint bpos = 0;
   if (best)
   {
-    feed->block[bpos++] = best->rte;
+    feed->block[bpos++] = best->rte; //maybe todo
+    feed->best_rte_idx = 0;
     feed->ni = NET_TO_INDEX(best->rte.net);
   }
   else
+  {
+        log("no best");
+    feed->best_rte_idx = ~0;
     feed->ni = NET_TO_INDEX((first->it.new ?: first->it.old)->net);
+  }
 
   if (ecnt)
   {
