@@ -84,6 +84,7 @@ CF_DECLS
   u32 i32;
   u64 i64;
   vpn_rd rd;
+  vpn_rt rt;
   ip_addr a;
   ip4_addr ip4;
   ip6_addr ip6;
