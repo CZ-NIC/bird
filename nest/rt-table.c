@@ -1874,14 +1874,13 @@ rte_announce_to(struct rt_exporter *e, struct rt_net_pending_export *npe, const 
     return NULL;
 
   SKIP_BACK_DECLARE(struct rt_pending_export, pushed, it, rei);
-  log("pushed all %p next %p it %p %p (new %p old %p)", pushed->all, pushed->next, pushed->it.new, pushed->it.old, new, old);
 
   struct rt_pending_export *last = atomic_load_explicit(&npe->last, memory_order_relaxed);
   if (last)
     ASSERT_DIE(atomic_exchange_explicit(&last->next, pushed, memory_order_acq_rel) == NULL);
 
   atomic_store_explicit(&npe->last, pushed, memory_order_release);
-  log("first %x npe %x", npe->first, npe);
+
   if (!atomic_load_explicit(&npe->first, memory_order_relaxed))
     atomic_store_explicit(&npe->first, pushed, memory_order_release);
 
@@ -1933,16 +1932,12 @@ rte_announce_best(struct rtable_private *tab, const struct netindex *i UNUSED, n
 
   if (best_rpe)
   {
-    //log("best rpe %x, seq %i", best_rpe, all_seq);
-      /* Announced best, need an anchor to all */
-      log(" Announced best,rpe %p", best_rpe);
+    /* Announced best, need an anchor to all */
     best_rpe->all = all_rpe;
   }
-
   else if (!lfjour_pending_items(&tab->export_best.journal))
   {
-      /* Best is idle, flush its recipient immediately */
-    log("jour release up to ");
+    /* Best is idle, flush its recipient immediately */
     lfjour_release(&tab->all_req, &all_rpe->it.li);
   }
 }
@@ -1957,7 +1952,6 @@ rt_cleanup_find_net(struct rtable_private *tab, struct rt_pending_export *rpe)
     rpe->it.new->net :
     rpe->it.old->net;
   struct netindex *ni = NET_TO_INDEX(n);
-  log("addr %N to index %i", n, ni->index);
   ASSERT_DIE(ni->index < atomic_load_explicit(&tab->routes_block_size, memory_order_relaxed));
   net *routes = atomic_load_explicit(&tab->routes, memory_order_relaxed);
   return &routes[ni->index];
@@ -1970,7 +1964,6 @@ rt_cleanup_update_pointers(struct rt_net_pending_export *npe, struct rt_pending_
   struct rt_pending_export *last = atomic_load_explicit(&npe->last, memory_order_relaxed);
   ASSERT_DIE(rpe == first);
 
-  log("rt_cleanup_update_pointers %x, npe %x", rpe->next, npe);
   atomic_store_explicit(
       &npe->first,
       atomic_load_explicit(&rpe->next, memory_order_relaxed),
@@ -1987,7 +1980,6 @@ rt_cleanup_update_pointers(struct rt_net_pending_export *npe, struct rt_pending_
 static void
 rt_cleanup_export_best(struct lfjour *j, struct lfjour_item *i)
 {
-        log("rt_cleanup_export_best");
   SKIP_BACK_DECLARE(struct rt_pending_export, rpe, it.li, i);
   SKIP_BACK_DECLARE(struct rtable_private, tab, export_best.journal, j);
 
@@ -1998,12 +1990,9 @@ rt_cleanup_export_best(struct lfjour *j, struct lfjour_item *i)
   rt_cleanup_update_pointers(&net->best, rpe);
 
   /* Release the all-journal */
-  //log("jour release up to %i", rpe->all->seq);
   if (tab->all_req.cur == NULL)
-  {
-    log("cur == NULL!");
     return;
-  }
+
   lfjour_release(&tab->all_req, &rpe->all->it.li);
 }
 
@@ -2012,7 +2001,6 @@ rt_cleanup_export_all(struct lfjour *j, struct lfjour_item *i)
 {
   SKIP_BACK_DECLARE(struct rt_pending_export, rpe, it.li, i);
   SKIP_BACK_DECLARE(struct rtable_private, tab, export_all.journal, j);
-  log("rt_cleanup_export_all");
 
   /* Find the appropriate struct network */
   net *net = rt_cleanup_find_net(tab, rpe);
@@ -2163,7 +2151,13 @@ rte_same(const rte *x, const rte *y)
     rte_is_filtered(x) == rte_is_filtered(y);
 }
 
-
+ /* Field used for preselection of the best route.
+  * We can not allways determine the best route
+  * in the first walk (bgp MED).
+  * The only reason, why is this field global,
+  * is that it would be allocated and freed too often.
+  */
+ //TODO: is tmp_pool ok for this?
 _Thread_local const rte ** best_rte_preselection;
 _Thread_local u32 best_rte_sel_size = 0;
 
@@ -2199,12 +2193,9 @@ rte_better_(const rte *new, const rte *old)
 const rte *
 rte_best_selection(struct rtable_private *table, net *nn)
 {
-  // yeah, we do need the field - at least because of MED in BGP
-  log("rte_best_selection");
-
   if (best_rte_sel_size == 0)
   {
-    best_rte_preselection = tmp_alloc(sizeof(rte *)*1);//todo - koeficient 1 is good only for testing purposes.
+    best_rte_preselection = tmp_alloc(sizeof(rte *)*8);
     best_rte_sel_size = 1;
   }
 
@@ -2215,17 +2206,16 @@ rte_best_selection(struct rtable_private *table, net *nn)
 
   NET_WALK_ROUTES(table, nn, ep, e)
   {
-        log("in walk");
     switch (rte_better_(&e->rte, old))
     {
       case 1:
         ptr = 0;
         best_rte_preselection[0] = &e->rte;
-        log("first route is %s", e->rte.src->owner->name);
         old = &e->rte;
         break;
       case 2:
         ptr++;
+
         if (best_rte_sel_size < ptr)
         {
           new_field = tmp_alloc(sizeof(rte *)*ptr*2);
@@ -2233,15 +2223,13 @@ rte_best_selection(struct rtable_private *table, net *nn)
           memcpy(new_field, best_rte_preselection, sizeof(rte *) * ptr);
           best_rte_preselection = new_field;
         }
-        log("adding route with src %s (ptr %i)", e->rte.src->owner->name, ptr);
+
         best_rte_preselection[ptr] = &e->rte;
         break;
       case 0:
       /* nothing to change */
       ;
      }
-     for (u32 i = 0; i<=ptr; i++)
-       log(";%s;", best_rte_preselection[i]->src->owner->name);
   }
   if (ptr == 0)
   {
@@ -2251,8 +2239,6 @@ rte_best_selection(struct rtable_private *table, net *nn)
     return best_rte_preselection[0];
   }
   /* more routes - bgp MED? */
-  for (u32 i = 0; i<=ptr; i++)
-    log(".%s.", best_rte_preselection[i]->src->owner->name);
   ASSERT_DIE(best_rte_preselection[0]->src->owner->class->rte_best);
   return best_rte_preselection[0]->src->owner->class->rte_best(best_rte_preselection, ptr + 1);
 }
@@ -2275,7 +2261,6 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
   {
     new_stored = rte_store(new, i, table);
     new = RTES_WRITE(new_stored);
-    log("new id %i", new_stored->rte.id);
   }
 
   struct rte_storage *old_stored = NULL;
@@ -2425,12 +2410,10 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
 static void
 rte_recalculate_best(void *t_)
 {
-  log("rte_recalculate_best");
   rtable *t = (rtable *)t_;
 
   RT_LOCKED(t, table)
     rte_recalculate_best_locked(table);
-
 }
 
 static void
@@ -2438,13 +2421,11 @@ rte_recalculate_best_locked(struct rtable_private *table)
 {
   net *nets = atomic_load_explicit(&table->routes, memory_order_acquire);
 
-  //
   struct lfjour_item *first = table->all_req.cur;
   for (struct lfjour_item *it; it = lfjour_get(&table->all_req); )
   {
     SKIP_BACK_DECLARE(const struct rt_export_item, rei, li, it);
     SKIP_BACK_DECLARE(const struct rt_pending_export, rpe, it, rei);
-    log("recal best rpe all %p seq %i", rpe, it->seq);
 
     const rte *route = rei->new? rei->new: rei->old;
     ASSERT_DIE(route);
@@ -2952,7 +2933,6 @@ rt_feed_net_best(struct rt_exporter *e, struct rcu_unwinder *u, u32 index, struc
   }
   else
   {
-        log("no best");
     feed->best_rte_idx = ~0;
     feed->ni = NET_TO_INDEX((first->it.new ?: first->it.old)->net);
   }

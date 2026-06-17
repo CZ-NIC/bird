@@ -107,11 +107,11 @@ rt_show_rte(struct cli *c, byte *ia, rte *e, struct rt_show_data *d, int primary
   }
 }
 
-static int // 1 can continue, 0, do not continue
+/* returns 1 if for loop in rt_show_net can continue, 0 if not */
+static int
 rt_show_net_rte(struct rt_show_data *d, const struct rt_export_feed *feed, rte *e, int *first,
     int *first_show, uint *last_label, int *pass, byte *ia, u32 ia_len, int i)
 {
-  log("rte %N", e->net);
   if (e->flags & REF_OBSOLETE)
     return 0;
 
@@ -133,11 +133,10 @@ rt_show_net_rte(struct rt_show_data *d, const struct rt_export_feed *feed, rte *
     else
       e->attrs = ea_strip_to(e->attrs, BIT32_ALL(EALS_PREIMPORT));
 
-  log("here");
   /* Export channel is down, do not try to export routes to it */
   if (ec && (rt_export_get_state(&ec->out_req) == TES_DOWN))
     goto skip;
-  log("heree");
+
   if (d->export_mode == RSEM_EXPORTED)
   {
     if (!bmap_test(&ec->export_accepted_map, e->id))
@@ -182,7 +181,6 @@ rt_show_net_rte(struct rt_show_data *d, const struct rt_export_feed *feed, rte *
 	*pass = 1;
     }
   }
-  log("hereee");
 
   if (d->show_protocol && (&d->show_protocol->sources != e->src->owner))
     goto skip;
@@ -190,25 +188,19 @@ rt_show_net_rte(struct rt_show_data *d, const struct rt_export_feed *feed, rte *
   if (f_run(d->filter, e, 0) > F_ACCEPT)
     goto skip;
 
-  log("d stats %i", d->stats);
   if (d->stats < 2)
   {
     uint label = ea_get_int(e->attrs, &ea_gen_mpls_label, ~0U);
 
-    log("first show %i last label %x label %x ", *first_show, *last_label, label);
     if (*first_show || (*last_label != label))
     {
-        log("here, printing!");
       if (!~label)
         net_format(feed->ni->addr, ia, ia_len);
       else
         bsnprintf(ia, sizeof(ia), "%N mpls %d", feed->ni->addr, label);
-
-      log("ia %s", ia);
     }
-    else{log("whhhhhhhhhhaaaaaaaaaaaaaaaaaaattt?");
+    else
       ia[0] = 0;
-     }
 
     rt_show_rte(c, ia, e, d, !d->tab->prefilter && !i);
     *first_show = 0;
@@ -227,7 +219,6 @@ rt_show_net_rte(struct rt_show_data *d, const struct rt_export_feed *feed, rte *
 static void
 rt_show_net(struct rt_show_data *d, const struct rt_export_feed *feed)
 {
-  struct cli *c = d->cli;
   byte ia[NET_MAX_TEXT_LENGTH+16+1];
   struct channel *ec = d->tab->export_channel;
 
@@ -239,20 +230,17 @@ rt_show_net(struct rt_show_data *d, const struct rt_export_feed *feed)
   int first_show = 1;
   uint last_label = 0;
   int pass = 0;
-  log("show net best %i", feed->best_rte_idx);
   int cont = 1;
-  if (feed->best_rte_idx != ~0){ log("the best");
+
+  if (feed->best_rte_idx != (u32) ~0)
     cont = rt_show_net_rte(d, feed, &feed->block[feed->best_rte_idx], &first,
-    &first_show, &last_label, &pass, ia, sizeof(ia), 0);}
-log("best to print: %s", ia);
-  log("before for count %i cont %i", feed->count_routes, cont);
+        &first_show, &last_label, &pass, ia, sizeof(ia), 0);
+
   for (uint i = 0; cont && i < feed->count_routes; i++)
   {
-    log("in for %i", i);
     if (i != feed->best_rte_idx)
       cont = rt_show_net_rte(d, feed, &feed->block[i], &first,
-      &first_show, &last_label, &pass, ia, sizeof(ia), 1);
-    log("to print: %s", ia);
+          &first_show, &last_label, &pass, ia, sizeof(ia), 1);
   }
 
   if ((d->show_counter - d->show_counter_last_flush) > 64)
