@@ -7285,7 +7285,7 @@ versions of BIRD:
 (<HTMLURL URL="mailto:bird-users@network.cz" name="bird-users@network.cz">)
 where you can share your experiences with the other users and consult
 your problems with the authors. To subscribe to the list, visit
-<HTMLURL URL="https://bird.network.cz/mailman/listinfo/bird-users" name="https://bird.network.cz/mailman/listinfo/bird-users">.
+<HTMLURL URL="https://bird.nic.cz/lists/bird-users/" name="https://bird.nic.cz/lists/bird-users/">.
 The home page of BIRD can be found at <HTMLURL URL="http://bird.nic.cz/" name="http://bird.nic.cz/">.
 
 <p>BIRD is a relatively young system and it probably contains some bugs. You can
