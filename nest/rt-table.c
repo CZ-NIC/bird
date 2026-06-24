@@ -2892,8 +2892,13 @@ rt_net_feed_index(struct rtable_reading *tr, net *n, struct bmap *seen, bool (*p
 
   if (rcnt || ocnt || ecnt)
   {
-    if (!ecnt && prefilter && !prefilter(f, NET_READ_BEST_ROUTE(tr, n)->rte.net))
-      return NULL;
+    if (!ecnt && prefilter)
+    {
+      struct rte_storage *best = NET_READ_BEST_ROUTE(tr, n);
+
+      if (best && !prefilter(f, best->rte.net))
+	return NULL;
+    }
 
     feed = rt_alloc_feed(rcnt+ocnt, ecnt);
 
