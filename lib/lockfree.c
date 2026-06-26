@@ -96,7 +96,6 @@ lfjour_push_prepare(struct lfjour *j)
   *i = (struct lfjour_item) {
     .seq = j->next_seq++,
   };
-  log("jour returning item %x seq %i", i, i->seq);
 
   return j->open = i;
 }

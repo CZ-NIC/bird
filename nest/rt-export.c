@@ -492,8 +492,6 @@ rt_exporter_push(struct rt_exporter *e, const struct rt_export_item *uit)
       uit->old, uit->old ? uit->old->id : 0,
       uit->new, uit->new ? uit->new->id : 0);
 
-  log("created seq %i", lit->seq);
-
   lfjour_push_commit(&e->journal);
 
   /* Return the update pointer */

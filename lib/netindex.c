@@ -41,8 +41,10 @@ net_lock_revive_unlock(netindex_hash *h, struct netindex *i)
   if (!i)
     return NULL;
 
+  log("revive %p uc %i", i, i->uc);
   lfuc_lock_revive(&i->uc);
   lfuc_unlock(&i->uc, h->cleanup_list, &h->cleanup_event);
+  log("revive end %p uc %i", i, i->uc);
   return i;
 }
 
@@ -83,11 +85,13 @@ static uint
 netindex_hash_cleanup_removed(struct netindex_hash_private *nh, struct netindex * _Atomic *block, struct netindex **removed, uint cnt)
 {
   synchronize_rcu();
+  log("netindex_hash_cleanup_removed");
 
   uint kept = 0;
   for (uint q = 0; q < cnt; q++)
   {
     struct netindex *ni = removed[q];
+    log("removing netindex %p %i (uc %i)", ni, ni->index, ni->uc);
 
     /* Now no reader can possibly still have the old pointer,
      * unless somebody found it inbetween and ref'd it. */
@@ -286,12 +290,14 @@ net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n)
 void net_lock_index(netindex_hash *h UNUSED, struct netindex *i)
 {
 //  log(L_TRACE "Lock index %p", i);
+  log("Lock index %p", i);
   lfuc_lock(&i->uc);
 }
 
 void net_unlock_index(netindex_hash *h, struct netindex *i)
 {
 //  log(L_TRACE "Unlock index %p", i);
+  log("Unlock index %p", i);  
   lfuc_unlock(&i->uc, h->cleanup_list, &h->cleanup_event);
 }
 

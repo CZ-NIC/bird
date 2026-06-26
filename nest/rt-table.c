@@ -1724,7 +1724,7 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
 
   // struct proto *p = c->proto;
   struct nexthop_adata *nhs = NULL;
-  rte *best = &feed->block[feed->best_rte_idx]; //todo?
+  rte *best = &feed->block[feed->best_rte_idx];
 
   /* First route is obsolete */
   if (best->flags & REF_OBSOLETE)
@@ -1897,7 +1897,10 @@ rte_announce_all(struct rtable_private *tab, const struct netindex *i UNUSED, ne
   struct rt_pending_export *all_rpe = rte_announce_to(&tab->export_all, &net->all, new, old);
   if (all_rpe)
   {
-
+    if (new)
+      log("announce new %p %N idx %i hash %u uc %i ni %p i %p",new, new->net,NET_TO_INDEX(new->net)->index, NET_TO_INDEX(new->net)->hash, NET_TO_INDEX(new->net)->uc, NET_TO_INDEX(new->net), &all_rpe->it);
+    else if (old)
+      log("announce old %p %N idx %i hash %u uc %i ni %p i %p",old, old->net, NET_TO_INDEX(old->net)->index,  NET_TO_INDEX(old->net)->hash, NET_TO_INDEX(old->net)->uc, NET_TO_INDEX(old->net), &all_rpe->it);
     rt_check_cork_high(tab);
   }
   else
@@ -1980,6 +1983,7 @@ rt_cleanup_export_best(struct lfjour *j, struct lfjour_item *i)
 {
   SKIP_BACK_DECLARE(struct rt_pending_export, rpe, it.li, i);
   SKIP_BACK_DECLARE(struct rtable_private, tab, export_best.journal, j);
+  log("cleanup best %p, release all to %p rpe all", i, &rpe->all->it);
 
   /* Find the appropriate struct network */
   net *net = rt_cleanup_find_net(tab, rpe);
@@ -1987,10 +1991,14 @@ rt_cleanup_export_best(struct lfjour *j, struct lfjour_item *i)
   /* Update the first and last pointers */
   rt_cleanup_update_pointers(&net->best, rpe);
 
+  if (net->best_rte)
+    log("ni %p, uc %i", NET_TO_INDEX(net->best_rte->net), NET_TO_INDEX(net->best_rte->net)->uc);
+
   /* Release the all-journal */
   if (tab->all_req.cur == NULL || !rpe->all)
     return;
 
+  log("go to release to %p %p", &rpe->all->it, &rpe->all->it.li);
   lfjour_release(&tab->all_req, &rpe->all->it.li);
 }
 
@@ -1999,6 +2007,7 @@ rt_cleanup_export_all(struct lfjour *j, struct lfjour_item *i)
 {
   SKIP_BACK_DECLARE(struct rt_pending_export, rpe, it.li, i);
   SKIP_BACK_DECLARE(struct rtable_private, tab, export_all.journal, j);
+  log("cleanup all %p", i);
 
   /* Find the appropriate struct network */
   net *net = rt_cleanup_find_net(tab, rpe);
@@ -2009,8 +2018,10 @@ rt_cleanup_export_all(struct lfjour *j, struct lfjour_item *i)
   /* Free the old route */
   if (rpe->it.old)
   {
+        log("is it obsolete %p", rpe->it.old);
     ASSERT_DIE(rpe->it.old->flags & REF_OBSOLETE);
     hmap_clear(&tab->id_map, rpe->it.old->id);
+    log("free rte %p", &rpe->it.old);
     rte_free(SKIP_BACK(struct rte_storage, rte, rpe->it.old), tab);
   }
 
@@ -2365,6 +2376,8 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
     uint seen = 0;
     log("NOT THREAD SAFE PART");
     NET_WALK_ROUTES(table, net, ep, e)
+    {
+      log("in susp walk r %p (e %p old_stored %p %i) next %p", &e->rte, e, old_stored, e == old_stored, e->next);
       if (e == old_stored)
       {
 	ASSERT_DIE(e->rte.src == src);
@@ -2373,6 +2386,7 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
 	    memory_order_release);
 	ASSERT_DIE(!seen++);
       }
+    }
     ASSERT_DIE(seen == 1);
   }
 
@@ -2381,6 +2395,7 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
   /* store it */
     struct rte_storage *next = atomic_load_explicit(&net->routes, memory_order_relaxed);
     do {
+    log("add route %p, currently %p", &new_stored->rte, next);
     atomic_store_explicit(&new_stored->next, next, memory_order_relaxed);
     } while (!atomic_compare_exchange_strong_explicit(&net->routes,
        &next, new_stored, memory_order_relaxed, memory_order_relaxed));
@@ -2396,6 +2411,7 @@ rte_recalculate(struct rtable_private *table, struct rt_import_hook *c, struct n
       log(L_TRACE "%s > ignored %N %s->%s", req->name, i->addr, old ? "filtered" : "none", new ? "filtered" : "none");
 
   /* Propagate the route change */
+  log("rte_recalc announce new %p old %p ", RTE_OR_NULL(new_stored), RTE_OR_NULL(old_stored));
   rte_announce_all(table, i, net,
       RTE_OR_NULL(new_stored), RTE_OR_NULL(old_stored));
 }
@@ -2471,8 +2487,9 @@ rte_recalculate_best_for_net(struct rtable_private *table, net *nets, struct net
 static int
 rte_recalculate_best_locked(struct rtable_private *table)
 {
+  log("rte_recalculate_best_locked");
   net *nets = atomic_load_explicit(&table->routes, memory_order_acquire);
-  u32 nets_to_recalc_size = 4000;
+  u32 nets_to_recalc_size = table->config->route_selection_batch;
   struct netindex ** nets_to_recalc = tmp_alloc(sizeof(rte *) * nets_to_recalc_size);
   u32 nets_count = 0;
   const struct rt_export_item *last_export = NULL;
@@ -2486,6 +2503,8 @@ rte_recalculate_best_locked(struct rtable_private *table)
 
     /* We know, that the route is from table, so we can get its index like this: */
     nets_to_recalc[nets_count] = NET_TO_INDEX(route->net);
+    log("route %p arr idx %i hash %x uc %i ni %p it %p", route, NET_TO_INDEX(route->net)->index, NET_TO_INDEX(route->net)->hash, NET_TO_INDEX(route->net)->uc, NET_TO_INDEX(route->net), it);
+    ASSERT_DIE(NET_TO_INDEX(route->net)->index < 2000);  
   }
 
   if (nets_count == 0)
@@ -2499,11 +2518,13 @@ rte_recalculate_best_locked(struct rtable_private *table)
   {
     struct netindex *ni = nets_to_recalc[i];
     u32 hash = ni->index % nets_count;
+    log("ni index %i ni %p i %i", ni->index, ni, i);
 
     if (hash_dedup[hash] == 0)
     {
       /* the net is definitely not here yet */
       hash_dedup[hash] = dedupl_ptr;
+      log("hash_dedup[hash %i] = dedupl_ptr %i nets dedup %p", hash, dedupl_ptr, ni);
       nets_deduplicated[dedupl_ptr] = ni;
       dedupl_ptr++;
     }
@@ -2521,6 +2542,7 @@ rte_recalculate_best_locked(struct rtable_private *table)
         {
           /* A bit of bad luck, but now we know we can add the net */
           nets_deduplicated[dedupl_ptr] = ni;
+          log("repeated hash %i dedupl_ptr %i nets dedup %p", hash, dedupl_ptr, ni);
           dedupl_ptr++;
         }
       }
@@ -2532,6 +2554,7 @@ rte_recalculate_best_locked(struct rtable_private *table)
   for (u32 i = dedupl_ptr - 1; i > 0; i--)
   {
     struct netindex *ni = nets_deduplicated[i];
+    log("go to recalculate ni %p i %i", ni, i);
     last_best_rpe = rte_recalculate_best_for_net(table, nets, ni);
   }
 
@@ -4230,6 +4253,7 @@ rt_postconfig(struct config *c)
 	  digest_settle,
 	  export_settle,
 	  export_rr_settle,
+    route_selection_batch,
 	  cork_threshold,
 	  gc_threshold,
 	  gc_period,
@@ -4623,7 +4647,9 @@ rt_next_hop_update_rte_store(struct rtable_private *tab, net *n, struct netindex
   else
     n->routes = new_stored;
 
-  rte_announce_all(tab, ni, n, new, &old->rte);
+  log("old %p is obsolete %i", &old->rte, old->rte.flags & REF_OBSOLETE);
+  log("rt_next_hop_update_rte_store announce new %p old %p new stored %p rte %p", new, &old->rte, new_stored, &new_stored->rte);
+  rte_announce_all(tab, ni, n, &new_stored->rte, &old->rte);
 }
 
 static inline void
@@ -4987,6 +5013,7 @@ rt_new_table(struct symbol *s, uint addr_type)
   c->gc_period = (uint) -1;	/* set in rt_postconfig() */
   c->cork_threshold.low = 32768;
   c->cork_threshold.high = 98304;
+  c->route_selection_batch = 2000;
   c->export_settle = (struct settle_config) {
     .min = 1 MS,
     .max = 100 MS,
