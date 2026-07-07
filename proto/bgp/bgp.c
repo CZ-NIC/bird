@@ -1480,15 +1480,15 @@ bgp_conn_leave_established_state(struct bgp_conn *conn, struct bgp_proto *p)
   if (p->p.proto_state == PS_UP)
     bgp_stop(p, 0, NULL, 0);
 
-  uint adsz;
-  struct bgp_session_close_ad *bscad = alloca(adsz = sizeof *bscad + conn->notify_size);
+  uint ad_size = sizeof(struct bgp_session_close_ad) + conn->notify_size;
+  struct bgp_session_close_ad *bscad = alloca(ad_size);
   *bscad = (struct bgp_session_close_ad) {
-    .ad.length = adsz - sizeof(adata),
+    .ad.length = ad_size - sizeof(adata),
     .last_error_class = p->last_error_class,
     .notify_code = conn->notify_code,
     .notify_subcode = conn->notify_subcode,
   };
-  memcpy(bscad->data, conn->notify_data, conn->notify_size);
+  bmemcpy(bscad->data, conn->notify_data, conn->notify_size);
 
   ea_list *pes = p->p.ea_state;
   ea_set_attr(&pes, EA_LITERAL_DIRECT_ADATA(&ea_bgp_close_bmp, 0, &bscad->ad));
