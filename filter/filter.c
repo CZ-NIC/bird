@@ -131,7 +131,7 @@ interpret(struct filter_state *fs, const struct f_line *line, uint argc, const s
 
   /* Set the arguments and top-level variables */
   fstk->vcnt = line->vars + line->args;
-  memcpy(fstk->vstk, argv, sizeof(struct f_val) * line->args);
+  bmemcpy(fstk->vstk, argv, sizeof(struct f_val) * line->args);
   memset(fstk->vstk + argc, 0, sizeof(struct f_val) * line->vars);
 
   /* The same as with the value stack. Not resetting the stack completely for performance reasons. */
@@ -188,7 +188,7 @@ interpret(struct filter_state *fs, const struct f_line *line, uint argc, const s
     return F_ERROR;
   }
 
-  memcpy(resv, fstk->vstk, sizeof(struct f_val) * resc);
+  bmemcpy(resv, fstk->vstk, sizeof(struct f_val) * resc);
   return F_NOP;
 }
 
