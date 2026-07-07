@@ -800,6 +800,47 @@ channel_roa_unsubscribe_all(struct channel *c)
     channel_roa_unsubscribe(s);
 }
 
+/**
+ * channel_disable_export - disable export to the channel
+ * @c: given channel
+ *
+ * Call this function before starting the channel to avoid associated start
+ * of route export (i.e. export_state change from ES_DOWN to ES_FEEDING). Can
+ * be reverted by channel_enable_export(), reverts to the default behavior
+ * during channel flush.
+ */
+void
+channel_disable_export(struct channel *c)
+{
+  ASSERT_DIE(birdloop_inside(c->proto->loop));
+  ASSERT(rt_export_get_state(&c->out_req) == TES_DOWN);
+  ASSERT(rt_export_get_state(&c->alt_req) == TES_DOWN);
+
+  c->export_wait = 1;
+}
+
+/**
+ * channel_enable_export - re-enable export to the channel
+ * @c: given channel
+ *
+ * Call this function to re-enable export that was disabled by
+ * channel_disable_export().
+ */
+void
+channel_enable_export(struct channel *c)
+{
+  ASSERT_DIE(birdloop_inside(c->proto->loop));
+  ASSERT(rt_export_get_state(&c->out_req) == TES_DOWN);
+  ASSERT(rt_export_get_state(&c->alt_req) == TES_DOWN);
+  ASSERT(c->export_wait);
+
+  c->export_wait = 0;
+
+  /* Resume postponed export of routes */
+  if ((c->channel_state == CS_UP) && !c->gr_wait && c->proto->rt_notify)
+    channel_start_export(c);
+}
+
 static void
 channel_start_import(struct channel *c)
 {
@@ -1135,6 +1176,8 @@ channel_do_stop(struct channel *c)
     channel_graceful_restart_unlock(c);
 
   CALL(c->class->shutdown, c);
+
+  c->export_wait = 0;
 }
 
 static void
@@ -1186,7 +1229,7 @@ channel_set_state(struct channel *c, uint state)
     if (cs == CS_DOWN)
       channel_do_start(c);
 
-    if (!c->gr_wait && c->proto->rt_notify)
+    if (!c->gr_wait && !c->export_wait && c->proto->rt_notify)
       channel_start_export(c);
 
     channel_do_up(c);
@@ -2284,7 +2327,7 @@ graceful_recovery_done(struct callback *_ UNUSED)
 	ASSERT_DIE(!OBSREF_GET(c->gr_lock));
 
 	/* Resume postponed export of routes */
-	if ((c->channel_state == CS_UP) && c->gr_wait && p->rt_notify)
+	if ((c->channel_state == CS_UP) && c->gr_wait && !c->export_wait && p->rt_notify)
 	  channel_start_export(c);
 
 	/* Cleanup */
