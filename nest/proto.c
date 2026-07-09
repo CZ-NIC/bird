@@ -940,13 +940,14 @@ channel_start_export(struct channel *c)
       break;
     case RA_MERGED:
       c->out_event.hook = channel_notify_merged;
-      rt_export_subscribe(c->table, all, &c->out_req);
+      rt_export_subscribe(c->table, best, &c->out_req);
+      /* All routes via Alt hook */
       break;
     default:
       bug("Unknown route announcement mode");
   }
 
-  if (c->alt_export)
+  if (c->alt_export || (c->ra_mode == RA_MERGED))
   {
     c->alt_req = (struct rt_export_request) {
       .name = mb_sprintf(p, "%s.%s", c->proto->name, c->name),
@@ -955,9 +956,12 @@ channel_start_export(struct channel *c)
 	.event = &c->alt_event,
       },
       .pool = p,
-      .feeder.prefilter = {
+      .feeder.prefilter = c->alt_export ? (struct rt_prefilter) {
 	.mode = TE_ADDR_HOOK,
 	.hook = c->alt_export,
+      } : (struct rt_prefilter) {
+	.mode = c->out_subprefix ? TE_ADDR_IN : TE_ADDR_NONE,
+	.addr = c->out_subprefix,
       },
       .trace_routes = c->debug | c->proto->debug,
       .dump = channel_dump_alt_req,
@@ -981,6 +985,9 @@ channel_start_export(struct channel *c)
 	c->alt_event.hook = channel_notify_accepted;
 	rt_export_subscribe(c->table, all, &c->alt_req);
 	break;
+      case RA_UNDEF:
+	ASSERT_DIE(c->ra_mode == RA_MERGED);
+	/* fall through */
       case RA_MERGED:
 	c->alt_event.hook = channel_notify_merged;
 	rt_export_subscribe(c->table, all, &c->alt_req);
