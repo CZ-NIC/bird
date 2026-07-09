@@ -3009,6 +3009,9 @@ bgp_postconfig(struct proto_config *CF)
   if (cf->keepalive_time > (cf->hold_time / 2))
     log(L_WARN "Keepalive time should be at most 1/2 of hold time");
 
+  if ((cf->send_hold_time > 0) && (cf->send_hold_time < cf->hold_time))
+    cf_error("Send hold time must be zero or at least hold time");
+
   if (cf->min_hold_time > cf->hold_time)
     cf_error("Min hold time (%u) exceeds hold time (%u)",
 	     cf->min_hold_time, cf->hold_time);
