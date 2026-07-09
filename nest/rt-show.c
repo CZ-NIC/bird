@@ -304,7 +304,7 @@ rt_show_cont(struct cli *c)
 	ASSERT_DIE(f->ni->addr->pxlen <= d->addr->pxlen);
 	if (f && f->count_routes && (!lpm || f->ni->addr->pxlen > lpm->ni->addr->pxlen))
 	  lpm = f;
-	if (lpm->ni->addr->pxlen == d->addr->pxlen)
+	if (lpm && lpm->ni->addr->pxlen == d->addr->pxlen)
 	  break;
       }
 
