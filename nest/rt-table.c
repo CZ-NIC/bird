@@ -1888,7 +1888,13 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
 
   // struct proto *p = c->proto;
   struct nexthop_adata *nhs = NULL;
-  rte *best = &feed->block[0];
+  rte *best = &feed->block[0]; /* actually the new best route, but block[0] will need to be rewritten to load best */
+
+  if (best == NULL)
+  {
+    ASSERT_DIE(c->alt_export);
+    return NULL;
+  }
 
   /* First route is obsolete */
   if (best->flags & REF_OBSOLETE)
@@ -1970,10 +1976,10 @@ rt_export_merged(struct channel *c, const struct rt_export_feed *feed, linpool *
 static void
 rt_notify_merged(struct channel *c, const struct rt_export_feed *f)
 {
-  const rte *old_best = NULL;
+  const rte *old_best = NULL; /* we are looking for the last best we know we have sent to kernel. Used more like a flag than a real thing */
   /* Find old best route */
   for (uint i = 0; i < f->count_routes; i++)
-    if (bmap_test(&c->export_accepted_map, f->block[i].id))
+    if (bmap_test(&c->export_accepted_map, f->block[i].id)) /* one feed has routes from one net */
     {
       old_best = &f->block[i];
       break;
@@ -1992,10 +1998,15 @@ void
 channel_notify_merged(void *_channel)
 {
   struct channel *c = _channel;
-  if (c->alt_export)
-    bug("Channel accepted mode does not support alt_export");
+  struct rt_export_request *req;
 
-  RT_EXPORT_WALK(&c->out_req, u)
+  /* We need to take both all and best reqs. If it is all and we do not have best, we can wait for best*/
+  if (c->alt_export)
+    req = &c->alt_req;
+  else
+    req = &c->out_req;
+
+  RT_EXPORT_WALK(req, u)
   {
     switch (u->kind)
     {
@@ -2010,14 +2021,30 @@ channel_notify_merged(void *_channel)
       case RT_EXPORT_UPDATE:
 	{
 	  struct rt_export_feed *f = rt_net_feed(c->table, u->update->new ? u->update->new->net : u->update->old->net, SKIP_BACK(struct rt_pending_export, it, u->update));
+
+          if (c->alt_export)
+          {
+            rte *best = &f->block[0]; //TODO change after rebase
+            if (best == NULL)
+              return; /* No best route, nothing to recalculate */
+
+            const rte *new = u->update->new;
+            const rte *old = u->update->old;
+
+            if (rte_same(best, old))
+              break; /* New was not selected yet, waiting for out_req. */
+            if (! ((!new || rte_mergable(best, new)) && (!old || rte_mergable(best, old))))
+              break; /* New nor old affect the best route, nothing to do. */
+          }
+
 	  rt_notify_merged(c, f);
 	  for (uint i=0; i<f->count_exports; i++)
-	    rt_export_processed(&c->out_req, f->exports[i]);
+	    rt_export_processed(req, f->exports[i]);
 	  break;
 	}
     }
 
-    MAYBE_DEFER_TASK(c->out_req.r.target, c->out_req.r.event,
+    MAYBE_DEFER_TASK(req->r.target, req->r.event,
 	"export to %s.%s (merged)", c->proto->name, c->name);
   }
 }
