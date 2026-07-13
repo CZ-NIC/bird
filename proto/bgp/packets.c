@@ -2133,7 +2133,7 @@ bgp_decode_nlri_flow4(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     uint pxlen = 0;
 
     /* Decode dst prefix */
-    if (data[0] == FLOW_TYPE_DST_PREFIX)
+    if (dlen && (data[0] == FLOW_TYPE_DST_PREFIX))
     {
       px = flow_read_ip4_part(data);
       pxlen = flow_read_pxlen(data);
@@ -2228,7 +2228,7 @@ bgp_decode_nlri_flow6(struct bgp_parse_state *s, byte *pos, uint len, rta *a)
     uint pxlen = 0;
 
     /* Decode dst prefix */
-    if (data[0] == FLOW_TYPE_DST_PREFIX)
+    if (dlen && (data[0] == FLOW_TYPE_DST_PREFIX))
     {
       px = flow_read_ip6_part(data);
       pxlen = flow_read_pxlen(data);
