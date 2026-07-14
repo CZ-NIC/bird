@@ -936,12 +936,14 @@ bgp_rx_open(struct bgp_conn *conn, byte *pkt, uint len)
 
   /* Compute effective hold and keepalive times */
   uint hold_time = MIN(hold, p->cf->hold_time);
+  uint base_hold_time = p->cf->hold_time ?: 1;
+
   uint keepalive_time = p->cf->keepalive_time ?
-    (p->cf->keepalive_time * hold_time / p->cf->hold_time) :
+    (p->cf->keepalive_time * hold_time / base_hold_time) :
     hold_time / 3;
 
   uint send_hold_time = (p->cf->send_hold_time >= 0) ?
-    (p->cf->send_hold_time * hold_time / p->cf->hold_time) :
+    ((u64) p->cf->send_hold_time * hold_time / base_hold_time) :
     2 * hold_time;
 
   /* Keepalive time might be rounded down to zero */
