@@ -5369,8 +5369,6 @@ rt_shutdown(void *tab_)
   rt_exporter_shutdown(&tab->export_best, NULL);
   rt_exporter_shutdown(&tab->export_all, NULL);
 
-  rfree(tab->hcu_event);
-  tab->hcu_event = NULL;
   rfree(tab->nhu_event);
   tab->nhu_event = NULL;
 
