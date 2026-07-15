@@ -135,6 +135,7 @@ netindex_hash_cleanup(callback *cb)
     if (!ni)
       continue;
 
+    log("netindex_hash_cleanup ni %p type %i", ni, ni->addr ? ni->addr->type: -1);
     /* We may use the acquired netindex pointer as we are
      * the only process which deletes them */
     ASSERT_DIE(i == ni->index);
@@ -286,12 +287,15 @@ net_new_index_locked(struct netindex_hash_private *hp, const net_addr *n)
 void net_lock_index(netindex_hash *h UNUSED, struct netindex *i)
 {
 //  log(L_TRACE "Lock index %p", i);
+  log("Lock index %p type %i", i, i->addr ? i->addr->type: -1);
+  ASSERT_DIE(!i->addr || i->addr->type<20);
   lfuc_lock(&i->uc);
 }
 
 void net_unlock_index(netindex_hash *h, struct netindex *i)
 {
 //  log(L_TRACE "Unlock index %p", i);
+  log("Unlock index %p type %i", i, i->addr ? i->addr->type: -1);
   lfuc_unlock(&i->uc, &h->cleanup_cb);
 }
 

@@ -271,7 +271,7 @@ net_find_valid(struct rtable_reading *tr, netindex_hash *nh, const net_addr *add
   if (!n)
     return NULL;
 
-  log("bef NET_READ_BEST_ROUTE tr u %x", tr->u);
+  log("bef NET_READ_BEST_ROUTE tr u %x ni %p", tr->u, i);
   const rte * r_ = NET_BEST_ROUTE(n);
   struct rte_storage *s = r_? SKIP_BACK(struct rte_storage, rte, r_) : NULL;
 
@@ -1128,7 +1128,7 @@ rte_free_deferred(struct deferred_call *dc)
 
   if (!--tab->rte_free_deferred){
     rt_unlock_table(tab);
-    log("rte_free_deferred 0 , unlock tab %p locking_stack rtable %p", tab, locking_stack.rtable);
+    log("rte_free_deferred 0 , unlock tab %p locking_stack rtable %p ni %p", tab, locking_stack.rtable, i);
   }
 }
 
@@ -1331,6 +1331,7 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
 {
   struct proto *p = c->proto;
   struct channel_export_stats *stats = &c->export_stats;
+  log("do_rt_notify ni %p", NET_TO_INDEX(net));
 
   ASSERT_DIE(old || new);
 
@@ -1386,6 +1387,11 @@ static void
 rt_notify_basic(struct channel *c, const rte *new, const rte *old, const rte *trte)
 {
         log("rt notify basic old %p new %p", old, new);
+  if (new)
+  {
+    log("rt_notify_basic ni %p type %i", new->net, new->net->type);
+    //ASSERT_DIE(new->net->type<20);
+  }
   /* Ignore idempotent withdraws */
   if (!new && !old)
   {
@@ -2019,7 +2025,7 @@ channel_notify_merged(void *_channel)
 
           if (c->alt_export)
           {
-            rte *best = &f->block[0]; //TODO change after rebase
+            rte *best = &f->block[f->best_rte_idx];
             if (best == NULL)
               return; /* No best route, nothing to recalculate */
 
@@ -2662,13 +2668,14 @@ rte_recalculate_best_for_net(struct rtable_private *table, net *nets, struct net
 #endif
 
   /* Log the route change */
+  log("found best %p ni %p ni addr %p %i", best, ni, ni->addr, ni->addr->type);
   if (best)
     if (old_best)
-      log(L_TRACE "new best %N %s %n old best %N %s nn %p", best->net, best->net, best->src->owner->name, old_best->net, old_best->src->owner->name, nn);
+      log(L_TRACE "new best %N %s %n old best %N %s nn %p ni %p", best->net, best->net, best->src->owner->name, old_best->net, old_best->src->owner->name, nn, ni);
     else
-      log(L_TRACE "new best %N %n no old best %s nn %p", best->net, best->net, best->src->owner->name, nn);
+      log(L_TRACE "new best %N %n no old best %s nn %p ni %p", best->net, best->net, best->src->owner->name, nn, ni);
   else
-    log("net %n has no new best ", nn);
+    log("net %n has no new best ni %p", nn, ni);
 
   //log("store best rte %p, to nn %p", best, nn);
   atomic_store_explicit(&nn->best_rte, best, memory_order_release);
@@ -2699,8 +2706,8 @@ rte_recalculate_best_locked(struct rtable_private *table)
 
     /* We know, that the route is from table, so we can get its index like this: */
     nets_to_recalc[nets_count] = NET_TO_INDEX(route->net);
-    log("route %p arr idx %i hash %x uc %i ni %p it %p net %p", route, NET_TO_INDEX(route->net)->index,
-     NET_TO_INDEX(route->net)->hash, NET_TO_INDEX(route->net)->uc, NET_TO_INDEX(route->net), it, route->net);
+    log("route %p arr idx %i hash %x uc %i ni %p it %p net %p net type %i", route, NET_TO_INDEX(route->net)->index,
+     NET_TO_INDEX(route->net)->hash, NET_TO_INDEX(route->net)->uc, NET_TO_INDEX(route->net), it, route->net, route->net->type);
   }
 
   if (nets_count == 0)
@@ -2751,7 +2758,9 @@ rte_recalculate_best_locked(struct rtable_private *table)
   {
     struct netindex *ni = nets_deduplicated[i];
     log("go to recalculate ni %p i %i", ni, i);
-    last_best_rpe = rte_recalculate_best_for_net(table, nets, ni);
+    struct rt_pending_export *lbr = rte_recalculate_best_for_net(table, nets, ni);
+    if (lbr)
+      last_best_rpe = lbr;
   }
 
   SKIP_BACK_DECLARE(struct rt_pending_export, rpe, it, last_export);
@@ -4865,7 +4874,7 @@ rt_next_hop_update_rte_store(struct rtable_private *tab, net *n, struct netindex
   else
     n->routes = new_stored;
 
-  log("rt_next_hop_update_rte_store announce new %p old %p new stored %p rte %p", new, &old->rte, new_stored, &new_stored->rte);
+  log("rt_next_hop_update_rte_store announce new %p old %p new stored %p rte %p, ni %p", new, &old->rte, new_stored, &new_stored->rte, ni);
   rte_announce_all(tab, ni, n, &new_stored->rte, &old->rte);
 }
 
@@ -4914,7 +4923,7 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
           e->flags |= REF_OBSOLETE;
       }
 
-      log("old stor %p old %p new %p att %p.", e, e->rte, new, new.attrs);
+      log("old stor %p old %p new %p att %p ni %p.", e, e->rte, new, new.attrs, ni);
       prev = e;
     }
   }
@@ -4933,7 +4942,7 @@ rt_next_hop_update_net(struct rtable_private *tab, struct netindex *ni, net *n)
           e->flags |= REF_OBSOLETE;
       }
 
-      log("old stor %p old %p new %p att %p_", e, e->rte, new, new.attrs);
+      log("old stor %p old %p new %p att %p ni %p_", e, e->rte, new, new.attrs, ni);
       prev = e;
     }
   }
