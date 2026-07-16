@@ -1335,6 +1335,9 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
 
   ASSERT_DIE(old || new);
 
+  ASSERT_DIE(!old || old->net->type == c->table->addr_type);
+  ASSERT_DIE(!new || new->net->type == c->table->addr_type);
+
   /* One more route, push to the limit */
   if (!old && new)
     if (CHANNEL_LIMIT_PUSH(c, OUT))
@@ -1386,7 +1389,9 @@ do_rt_notify(struct channel *c, const net_addr *net, rte *new, const rte *old)
 static void
 rt_notify_basic(struct channel *c, const rte *new, const rte *old, const rte *trte)
 {
-        log("rt notify basic old %p new %p", old, new);
+  log("rt notify basic old %p new %p", old, new);
+  ASSERT_DIE(!old || old->net->type == c->table->addr_type);
+  ASSERT_DIE(!new || new->net->type == c->table->addr_type);
   if (new)
   {
     log("rt_notify_basic ni %p type %i", new->net, new->net->type);
@@ -1528,6 +1533,9 @@ channel_notify_optimal_req(struct channel *c, struct rt_export_request *req)
 	  const rte *new = u->update->new;
 	  const rte *old = u->update->old;
 	  const rte *trte = new ?: old;
+          ASSERT_DIE(!old || old->net->type == c->table->addr_type);
+          ASSERT_DIE(!new || new->net->type == c->table->addr_type);
+          
 
 	  /* Update the stats */
 	  if (new)
@@ -2403,6 +2411,7 @@ rte_best_selection(struct rtable_private *table, net *nn)
 
   NET_WALK_ROUTES(table, nn, ep, e)
   {
+    log("walk routes e %p e type %i", e->rte, e->rte.net->type);
     switch (rte_better_(best_rte_preselection, &e->rte, old))
     {
       case 1:
@@ -2433,9 +2442,11 @@ rte_best_selection(struct rtable_private *table, net *nn)
     if (!rte_is_valid(best_rte_preselection[0])) //todo: is this ok in multithreading? What if we find route and it then became invalid?
       return NULL;
     /* One preselected rte - it must be the best */
+    log("we have best? e %p e type %i", best_rte_preselection[0], best_rte_preselection[0]->net->type);
     return best_rte_preselection[0];
   }
   /* more routes - bgp MED? */
+  log("more best routes");
   ASSERT_DIE(best_rte_preselection[0]->src->owner->class->rte_best);
   return best_rte_preselection[0]->src->owner->class->rte_best(best_rte_preselection, ptr + 1);
 }
@@ -2668,17 +2679,24 @@ rte_recalculate_best_for_net(struct rtable_private *table, net *nets, struct net
 #endif
 
   /* Log the route change */
-  log("found best %p ni %p ni addr %p %i", best, ni, ni->addr, ni->addr->type);
+  log("found best %p ni %p ni addr %p %i", best,  ni, ni->addr, ni->addr->type);
+  ASSERT_DIE(!best || best->net->type == table->addr_type);
   if (best)
     if (old_best)
-      log(L_TRACE "new best %N %s %n old best %N %s nn %p ni %p", best->net, best->net, best->src->owner->name, old_best->net, old_best->src->owner->name, nn, ni);
+      //log(L_TRACE "new best %p %N %p %s %i old best %N %s nn %p ni %p",best, best->net, best->net, best->src->owner->name, best->net->type,
+        //old_best->net, old_best->src->owner->name, nn, ni);
+        log(L_TRACE "new best %p %N %s old best %p %N", best, best->net, best->src->owner->name, old_best, old_best->net);
     else
-      log(L_TRACE "new best %N %n no old best %s nn %p ni %p", best->net, best->net, best->src->owner->name, nn, ni);
+      //log(L_TRACE "new best %N %n no old best %s nn %p ni %p %i", best->net, best->net, best->src->owner->name, nn, ni, best->net->type);
+      log(L_TRACE "new best %p %N %s", best, best->net, best->src->owner->name);
   else
     log("net %n has no new best ni %p", nn, ni);
 
   //log("store best rte %p, to nn %p", best, nn);
+  ASSERT_DIE(!best || best->net->type == table->addr_type);
   atomic_store_explicit(&nn->best_rte, best, memory_order_release);
+
+  ASSERT_DIE(!best || best->net->type == table->addr_type);
 
   /* Propagate the route change */
   return rte_announce_best(table, ni, nn,
