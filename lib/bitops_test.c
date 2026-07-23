@@ -15,7 +15,7 @@
 #define CHECK_BIT(var,pos) ((var) & (u32)(1<<(pos)))
 
 static int
-t_mkmask(void)
+t_u32_mkmask(void)
 {
   int i;
   u32 compute, expect;
@@ -26,6 +26,23 @@ t_mkmask(void)
     compute = u32_mkmask(i);
     expect  = (u32) (0xffffffff << (32-i));
     bt_assert_msg(compute == expect, "u32_mkmask(%d) = 0x%08X, expected 0x%08X", i, compute, expect);
+  }
+
+  return 1;
+}
+
+static int
+t_u64_mkmask(void)
+{
+  u64 compute, expect;
+
+  bt_assert(u64_mkmask(0) == 0x0000000000000000);
+
+  for (int i = 1; i <= 64; i++)
+  {
+    compute = u64_mkmask(i);
+    expect  = (u64) (0xffffffffffffffff << (64 - i));
+    bt_assert_msg(compute == expect, "u64_mkmask(%d) = 0x%16X, expected 0x%16X", i, compute, expect);
   }
 
   return 1;
@@ -115,9 +132,11 @@ main(int argc, char *argv[])
 {
   bt_init(argc, argv);
 
-  bt_test_suite(t_mkmask, "u32_mkmask()");
+  bt_test_suite(t_u32_mkmask, "u32_mkmask()");
   bt_test_suite(t_masklen, "u32_masklen()");
   bt_test_suite(t_log2, "u32_log2()");
+
+  bt_test_suite(t_u64_mkmask, "u64_mkmask()");
 
   return bt_exit_value();
 }
