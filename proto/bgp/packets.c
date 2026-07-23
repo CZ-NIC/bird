@@ -1085,7 +1085,7 @@ bgp_channel_match_next_hop_af(struct bgp_channel *c, ip_addr nh)
   switch (BGP_AFI(c->afi))
   {
   case BGP_AFI_IPV4:
-    return ipa_is_ip4(nh) || c->ext_next_hop;
+    return ipa_is_ip4(nh) || c->ext_next_hop || (BGP_AFI(c->afi) == BGP_AF_RTFILTER);
 
   case BGP_AFI_IPV6:
     return ipa_is_ip6(nh) || c->ext_next_hop;
@@ -2945,9 +2945,9 @@ static const struct bgp_af_desc bgp_af_table[] = {
     .name = "rt-filter",
     .encode_nlri = bgp_encode_nlri_rtfilter,
     .decode_nlri = bgp_decode_nlri_rtfilter,
-    .encode_next_hop = bgp_encode_next_hop_none,
-    .decode_next_hop = bgp_decode_next_hop_none,
-    .update_next_hop = bgp_update_next_hop_none,
+    .encode_next_hop = bgp_encode_next_hop_ip,
+    .decode_next_hop = bgp_decode_next_hop_ip,
+    .update_next_hop = bgp_update_next_hop_ip,
   },
 };
 
