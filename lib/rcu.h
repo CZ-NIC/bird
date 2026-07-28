@@ -29,8 +29,20 @@ struct rcu_thread {
 
 extern _Thread_local struct rcu_thread this_rcu_thread;
 
+static inline bool rcu_read_active(void)
+{
+  return !!(this_rcu_thread.local_ctl & RCU_NEST_MASK);
+}
+
+void page_fill_hot(void);
+
 static inline void rcu_read_lock(void)
 {
+  /* Be prepared for possible page allocations during critical sections.
+   * That is not nice but it happens anyway. */
+  if (!rcu_read_active())
+    page_fill_hot();
+
   /* Increment the nesting counter */
   atomic_store_explicit(&this_rcu_thread.ctl, (this_rcu_thread.local_ctl += RCU_NEST_CNT), memory_order_release);
 
@@ -52,11 +64,6 @@ static inline void rcu_read_unlock(void)
   /* Just decrement the nesting counter; when unlocked, nobody cares */
   atomic_fetch_sub_explicit(&this_rcu_thread.ctl, RCU_NEST_CNT, memory_order_acq_rel);
   this_rcu_thread.local_ctl--;
-}
-
-static inline bool rcu_read_active(void)
-{
-  return !!(this_rcu_thread.local_ctl & RCU_NEST_MASK);
 }
 
 void synchronize_rcu(void);
