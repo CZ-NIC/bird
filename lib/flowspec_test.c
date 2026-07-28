@@ -282,6 +282,13 @@ t_validation4(void)
       })
     ),
     TS(
+      FLOW_ST_EXCEED_MAX_VALUE_LENGTH,
+      "DSCP of length 2",
+      ((byte []) {
+	FLOW_TYPE_DSCP, 0x91, 00, 63,
+      })
+    ),
+    TS(
       FLOW_ST_BAD_TYPE_ORDER,
       "Bad flowspec component type order",
       ((byte []) {
@@ -298,28 +305,65 @@ t_validation4(void)
       })
     ),
     TS(
-      FLOW_ST_AND_BIT_SHOULD_BE_UNSET,
+      FLOW_ST_UNKNOWN_COMPONENT,
+      "Unknown component of type number 14",
+      ((byte []) {
+	FLOW_TYPE_DST_PREFIX, 24, 5, 6, 7,
+	FLOW_TYPE_TCP_FLAGS, 0x80, 0x55,
+	14 /*something new*/, 0x80, 0x55,
+      })
+    ),
+    TS(
+      FLOW_ST_UNKNOWN_COMPONENT,
+      "Label component in IPv4",
+      ((byte []) {
+	FLOW_TYPE_DST_PREFIX, 24, 5, 6, 7,
+	FLOW_TYPE_LABEL, 0xa0, 0, 0, 0, 0x55,
+      })
+    ),
+    TS(
+      FLOW_ST_NONZERO_PADDING,
+      "Non-zero padding in prefix",
+      ((byte []) {
+	FLOW_TYPE_DST_PREFIX, 20, 5, 6, 7,
+      })
+    ),
+    TS(
+      FLOW_ST_FIRST_AND_BIT_SET,
       "The first numeric operator has set the AND bit",
       ((byte []) {
 	FLOW_TYPE_PORT, 0x43, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
       })
     ),
     TS(
-      FLOW_ST_ZERO_BIT_SHOULD_BE_UNSED,
-      "Set zero bit in operand to one",
+      FLOW_ST_ZERO_BIT_SET,
+      "Set zero bit in operator to one (0x08)",
       ((byte []) {
 	FLOW_TYPE_IP_PROTOCOL, 0x89, 0x06,
       })
     ),
     TS(
-      FLOW_ST_UNKNOWN_COMPONENT,
-      "Unknown component of type number 13",
+      FLOW_ST_ZERO_BIT_SET,
+      "Set zero bit in operator to one (0x04)",
       ((byte []) {
-	FLOW_TYPE_DST_PREFIX, 24, 5, 6, 7,
-	FLOW_TYPE_TCP_FLAGS, 0x80, 0x55,
-	13 /*something new*/, 0x80, 0x55,
+	FLOW_TYPE_FRAGMENT, 0x84, 0x03,
       })
     ),
+    TS(
+      FLOW_ST_INVALID_TCP_FLAGS,
+      "Set zero bit in operand to one (TCP flags)",
+      ((byte []) {
+	FLOW_TYPE_TCP_FLAGS, 0x91, 0xff, 0x3a,
+      })
+    ),
+    TS(
+      FLOW_ST_INVALID_FRAGMENT,
+      "Set zero bit in operand to one (fragment)",
+      ((byte []) {
+	FLOW_TYPE_FRAGMENT, 0x81, 0xff,
+      })
+    ),
+
   };
 #undef TS
 
@@ -338,7 +382,7 @@ t_validation6(void)
   enum flow_validated_state res;
 
   byte nlri1[] = {
-    FLOW_TYPE_DST_PREFIX, 103, 61, 0x01, 0x12, 0x34, 0x56, 0x78, 0x98,
+    FLOW_TYPE_DST_PREFIX, 103, 61, 0x01, 0x12, 0x34, 0x56, 0x78, 0xc0,
     FLOW_TYPE_SRC_PREFIX, 8, 0, 0xc0,
     FLOW_TYPE_NEXT_HEADER, 0x81, 0x06,
     FLOW_TYPE_PORT, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
@@ -393,6 +437,13 @@ t_validation6(void)
       })
     ),
     TS(
+      FLOW_ST_EXCEED_MAX_VALUE_LENGTH,
+      "Fragment of length 2",
+      ((byte []) {
+	FLOW_TYPE_FRAGMENT, 0x91, 00, 0x0f,
+      })
+    ),
+    TS(
       FLOW_ST_BAD_TYPE_ORDER,
       "Bad flowspec component type order",
       ((byte []) {
@@ -404,39 +455,67 @@ t_validation6(void)
       FLOW_ST_BAD_TYPE_ORDER,
       "Doubled destination prefix component",
       ((byte []) {
-	FLOW_TYPE_DST_PREFIX, 103, 61, 0x01, 0x12, 0x34, 0x56, 0x78, 0x98,
-	FLOW_TYPE_DST_PREFIX, 103, 61, 0x01, 0x12, 0x34, 0x56, 0x78, 0x98,
-      })
-    ),
-    TS(
-      FLOW_ST_AND_BIT_SHOULD_BE_UNSET,
-      "The first numeric operator has set the AND bit",
-      ((byte []) {
-	FLOW_TYPE_PORT, 0x43, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90
-      })
-    ),
-    TS(
-      FLOW_ST_ZERO_BIT_SHOULD_BE_UNSED,
-      "Set zero bit in operand to one",
-      ((byte []) {
-	FLOW_TYPE_NEXT_HEADER, 0x89, 0x06
-      })
-    ),
-    TS(
-      FLOW_ST_VALID,
-      "Component of type number 13 (Label) is well-known in IPv6",
-      ((byte []) {
-	FLOW_TYPE_LABEL, 0x80, 0x55
+	FLOW_TYPE_DST_PREFIX, 103, 61, 0x01, 0x12, 0x34, 0x56, 0x78, 0xc0,
+	FLOW_TYPE_DST_PREFIX, 103, 61, 0x01, 0x12, 0x34, 0x56, 0x78, 0xc0,
       })
     ),
     TS(
       FLOW_ST_UNKNOWN_COMPONENT,
       "Unknown component of type number 14",
       ((byte []) {
-	FLOW_TYPE_LABEL, 0x80, 0x55,
+	FLOW_TYPE_TCP_FLAGS, 0x80, 0x55,
 	14 /*something new*/, 0x80, 0x55,
       })
-    )
+      ),
+    TS(
+      FLOW_ST_VALID,
+      "Label component is well-known in IPv6",
+      ((byte []) {
+	FLOW_TYPE_LABEL, 0xa0, 0, 0, 0, 0x55,
+      })
+    ),
+    TS(
+      FLOW_ST_NONZERO_PADDING,
+      "Non-zero padding in prefix",
+      ((byte []) {
+	FLOW_TYPE_DST_PREFIX, 44, 16, 0x40, 0x12, 0x34, 0x56,
+      })
+    ),
+    TS(
+      FLOW_ST_FIRST_AND_BIT_SET,
+      "The first numeric operator has set the AND bit",
+      ((byte []) {
+	FLOW_TYPE_PORT, 0x43, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90
+      })
+    ),
+    TS(
+      FLOW_ST_ZERO_BIT_SET,
+      "Set zero bit in operator to one (0x08)",
+      ((byte []) {
+	FLOW_TYPE_NEXT_HEADER, 0x89, 0x06
+      })
+    ),
+    TS(
+      FLOW_ST_ZERO_BIT_SET,
+      "Set zero bit in operator to one (0x04)",
+      ((byte []) {
+	FLOW_TYPE_FRAGMENT, 0x84, 0x03,
+      })
+    ),
+    TS(
+      FLOW_ST_INVALID_TCP_FLAGS,
+      "Set zero bit in operand to one (TCP flags)",
+      ((byte []) {
+	FLOW_TYPE_TCP_FLAGS, 0x91, 0xff, 0x3a,
+      })
+    ),
+    TS(
+      FLOW_ST_INVALID_FRAGMENT,
+      "Set zero bit in operand to one (fragment)",
+      ((byte []) {
+	FLOW_TYPE_FRAGMENT, 0x81, 0xff,
+      })
+    ),
   };
 #undef TS
 
@@ -444,6 +523,350 @@ t_validation6(void)
   {
     res = flow6_validate(tset[tcase].nlri, tset[tcase].size);
     bt_assert_msg(res == tset[tcase].expect, "Assertion (%s == %s) %s", flow_validated_state_str(res), flow_validated_state_str(tset[tcase].expect), tset[tcase].description);
+  }
+
+  return 1;
+}
+
+static int
+t_decoding4(void)
+{
+  enum flow_validated_state res;
+
+  byte nlri1[] = {
+    FLOW_TYPE_DST_PREFIX, 24, 5, 6, 7,
+    FLOW_TYPE_SRC_PREFIX, 32, 10, 11, 12, 13,
+    FLOW_TYPE_IP_PROTOCOL, 0x81, 0x06,
+    FLOW_TYPE_PORT, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
+    FLOW_TYPE_TCP_FLAGS, 0x80, 0x55,
+  };
+
+  /* Empty NLRI */
+  res = flow4_decode(nlri1, 0);
+  bt_assert(res == FLOW_ST_VALID);
+
+  /* Valid / Not Complete testing */
+  uint valid_sizes[] = {5, 11, 14, 22, 25, 0};
+  uint valid_idx = 0;
+  for (uint size = 1; size <= sizeof(nlri1); size++)
+  {
+    res = flow4_decode(nlri1, size);
+    bt_debug("size %u, result: %s\n", size, flow_validated_state_str(res));
+    if (size == valid_sizes[valid_idx])
+    {
+      valid_idx++;
+      bt_assert(res == FLOW_ST_VALID);
+    }
+    else
+    {
+      bt_assert(res == FLOW_ST_NOT_COMPLETE);
+    }
+  }
+
+  /* Misc err tests */
+
+  struct tset {
+    enum flow_validated_state expect;
+    char *description;
+    u16 size;
+    byte *nlri;
+    byte *result;
+  };
+
+#define TS(type, msg, data, result) ((struct tset) {type, msg, sizeof(data), (data), (result)})
+  struct tset tset[] = {
+    TS(
+      FLOW_ST_EXCEED_MAX_PREFIX_LENGTH,
+      "33-length IPv4 prefix",
+      ((byte []) {
+	FLOW_TYPE_DST_PREFIX, 33, 5, 6, 7, 8, 9
+      }),
+      NULL
+    ),
+    TS(
+      FLOW_ST_EXCEED_MAX_VALUE_LENGTH,
+      "DSCP of length 2",
+      ((byte []) {
+	FLOW_TYPE_DSCP, 0x91, 00, 63,
+      }),
+      NULL
+    ),
+    TS(
+      FLOW_ST_BAD_TYPE_ORDER,
+      "Bad flowspec component type order",
+      ((byte []) {
+	FLOW_TYPE_SRC_PREFIX, 32, 10, 11, 12, 13,
+	FLOW_TYPE_DST_PREFIX, 24, 5, 6, 7,
+      }),
+      NULL
+    ),
+    TS(
+      FLOW_ST_BAD_TYPE_ORDER,
+      "Doubled destination prefix component",
+      ((byte []) {
+	FLOW_TYPE_DST_PREFIX, 24, 5, 6, 7,
+	FLOW_TYPE_DST_PREFIX, 24, 5, 6, 7,
+      }),
+      NULL
+    ),
+    TS(
+      FLOW_ST_UNKNOWN_COMPONENT,
+      "Unknown component of type number 14",
+      ((byte []) {
+	FLOW_TYPE_DST_PREFIX, 24, 5, 6, 7,
+	FLOW_TYPE_TCP_FLAGS, 0x80, 0x55,
+	14 /*something new*/, 0x80, 0x55,
+      }),
+      NULL
+    ),
+    TS(
+      FLOW_ST_UNKNOWN_COMPONENT,
+      "Label component in IPv4",
+      ((byte []) {
+	FLOW_TYPE_DST_PREFIX, 24, 5, 6, 7,
+	FLOW_TYPE_LABEL, 0xa0, 0, 0, 0, 0x55,
+      }),
+      NULL
+    ),
+    TS(
+      FLOW_ST_VALID,
+      "Non-zero padding in prefix",
+      ((byte []) {
+	FLOW_TYPE_DST_PREFIX, 21, 5, 6, 0x7f,
+	FLOW_TYPE_SRC_PREFIX, 24, 5, 6, 0x7f,
+      }),
+      ((byte []) {
+	FLOW_TYPE_DST_PREFIX, 21, 5, 6, 0x78,
+	FLOW_TYPE_SRC_PREFIX, 24, 5, 6, 0x7f,
+      })
+    ),
+    TS(
+      FLOW_ST_VALID,
+      "The first numeric operator has set the AND bit",
+      ((byte []) {
+	FLOW_TYPE_PORT, 0x43, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
+      }),
+      ((byte []) {
+	FLOW_TYPE_PORT, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
+      })
+    ),
+    TS(
+      FLOW_ST_VALID,
+      "Set zero bit in operator to one",
+      ((byte []) {
+	FLOW_TYPE_IP_PROTOCOL, 0x89, 0x06,
+	FLOW_TYPE_FRAGMENT, 0x84, 0x03,
+      }),
+      ((byte []) {
+	FLOW_TYPE_IP_PROTOCOL, 0x81, 0x06,
+	FLOW_TYPE_FRAGMENT, 0x80, 0x03,
+      })
+    ),
+    TS(
+      FLOW_ST_VALID,
+      "Set zero bit in operand to one",
+      ((byte []) {
+	FLOW_TYPE_TCP_FLAGS, 0x91, 0xff, 0x3a,
+	FLOW_TYPE_FRAGMENT, 0x81, 0xff,
+      }),
+      ((byte []) {
+	FLOW_TYPE_TCP_FLAGS, 0x91, 0x0f, 0x3a,
+	FLOW_TYPE_FRAGMENT, 0x81, 0x0f,
+      })
+    ),
+  };
+#undef TS
+
+  for (uint tcase = 0; tcase < ARRAY_SIZE(tset); tcase++)
+  {
+    res = flow4_decode(tset[tcase].nlri, tset[tcase].size);
+    bt_assert_msg(res == tset[tcase].expect, "Assertion (%s == %s) %s", flow_validated_state_str(res), flow_validated_state_str(tset[tcase].expect), tset[tcase].description);
+
+    if ((res == FLOW_ST_VALID) && (tset[tcase].expect == FLOW_ST_VALID))
+    {
+      int pos;
+      for (pos = 0; pos < tset[tcase].size; pos++)
+	if (tset[tcase].nlri[pos] != tset[tcase].result[pos])
+	  break;
+
+      bool ok = (pos == tset[tcase].size);
+      bt_assert_msg(ok, "Assertion (pos %u: 0x%02x == 0x%02x) %s", pos, (ok ? 0 : tset[tcase].nlri[pos]), (ok ? 0 : tset[tcase].result[pos]), tset[tcase].description);
+    }
+  }
+
+  return 1;
+}
+
+static int
+t_decoding6(void)
+{
+  enum flow_validated_state res;
+
+  byte nlri1[] = {
+    FLOW_TYPE_DST_PREFIX, 103, 61, 0x01, 0x12, 0x34, 0x56, 0x78, 0xc0,
+    FLOW_TYPE_SRC_PREFIX, 8, 0, 0xc0,
+    FLOW_TYPE_NEXT_HEADER, 0x81, 0x06,
+    FLOW_TYPE_PORT, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
+    FLOW_TYPE_LABEL, 0x80, 0x55,
+  };
+
+  /* Isn't included destination prefix */
+  res = flow6_decode(nlri1, 0);
+  bt_assert(res == FLOW_ST_VALID);
+
+  /* Valid / Not Complete testing */
+  uint valid_sizes[] = {0, 9, 13, 16, 24, 27, 0};
+  uint valid_idx = 0;
+  for (uint size = 0; size <= sizeof(nlri1); size++)
+  {
+    res = flow6_decode(nlri1, size);
+    bt_debug("size %u, result: %s\n", size, flow_validated_state_str(res));
+    if (size == valid_sizes[valid_idx])
+    {
+      valid_idx++;
+      bt_assert(res == FLOW_ST_VALID);
+    }
+    else
+    {
+      bt_assert(res == FLOW_ST_NOT_COMPLETE);
+    }
+  }
+
+  /* Misc err tests */
+
+  struct tset {
+    enum flow_validated_state expect;
+    char *description;
+    u16 size;
+    byte *nlri;
+    byte *result;
+  };
+
+#define TS(type, msg, data, result) ((struct tset) {type, msg, sizeof(data), (data), (result)})
+  struct tset tset[] = {
+    TS(
+      FLOW_ST_EXCEED_MAX_PREFIX_LENGTH,
+      "129-length IPv6 prefix",
+      ((byte []) {
+	FLOW_TYPE_DST_PREFIX, 129, 64, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12
+      }),
+      NULL
+    ),
+    TS(
+      FLOW_ST_EXCEED_MAX_PREFIX_OFFSET,
+      "Prefix offset is higher than prefix length",
+      ((byte []) {
+	FLOW_TYPE_DST_PREFIX, 48, 64, 0x40, 0x12, 0x34
+      }),
+      NULL
+    ),
+    TS(
+      FLOW_ST_EXCEED_MAX_VALUE_LENGTH,
+      "Fragment of length 2",
+      ((byte []) {
+	FLOW_TYPE_FRAGMENT, 0x91, 00, 0x0f,
+      }),
+      NULL
+    ),
+    TS(
+      FLOW_ST_BAD_TYPE_ORDER,
+      "Bad flowspec component type order",
+      ((byte []) {
+	FLOW_TYPE_NEXT_HEADER, 0x81, 0x06,
+	FLOW_TYPE_SRC_PREFIX, 8, 0, 0xc0,
+      }),
+      NULL
+    ),
+    TS(
+      FLOW_ST_BAD_TYPE_ORDER,
+      "Doubled destination prefix component",
+      ((byte []) {
+	FLOW_TYPE_DST_PREFIX, 103, 61, 0x01, 0x12, 0x34, 0x56, 0x78, 0xc0,
+	FLOW_TYPE_DST_PREFIX, 103, 61, 0x01, 0x12, 0x34, 0x56, 0x78, 0xc0,
+      }),
+      NULL
+    ),
+    TS(
+      FLOW_ST_UNKNOWN_COMPONENT,
+      "Unknown component of type number 14",
+      ((byte []) {
+	FLOW_TYPE_TCP_FLAGS, 0x80, 0x55,
+	14 /*something new*/, 0x80, 0x55,
+      }),
+      NULL
+      ),
+    TS(
+      FLOW_ST_VALID,
+      "Label component is well-known in IPv6",
+      ((byte []) {
+	FLOW_TYPE_LABEL, 0xa0, 0, 0, 0, 0x55,
+      }),
+      ((byte []) {
+	FLOW_TYPE_LABEL, 0xa0, 0, 0, 0, 0x55,
+      })
+    ),
+    TS(
+      FLOW_ST_VALID,
+      "Non-zero padding in prefix",
+      ((byte []) {
+	FLOW_TYPE_DST_PREFIX, 43, 16, 0x40, 0x12, 0x34, 0x7c,
+      }),
+      ((byte []) {
+	FLOW_TYPE_DST_PREFIX, 43, 16, 0x40, 0x12, 0x34, 0x60,
+      })
+    ),
+    TS(
+      FLOW_ST_VALID,
+      "The first numeric operator has set the AND bit",
+      ((byte []) {
+	FLOW_TYPE_PORT, 0x43, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90
+      }),
+      ((byte []) {
+	FLOW_TYPE_PORT, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
+      })
+    ),
+    TS(
+      FLOW_ST_VALID,
+      "Set zero bit in operator to one",
+      ((byte []) {
+	FLOW_TYPE_NEXT_HEADER, 0x89, 0x06,
+	FLOW_TYPE_FRAGMENT, 0x84, 0x02,
+      }),
+      ((byte []) {
+	FLOW_TYPE_IP_PROTOCOL, 0x81, 0x06,
+	FLOW_TYPE_FRAGMENT, 0x80, 0x02,
+      })
+    ),
+    TS(
+      FLOW_ST_VALID,
+      "Set zero bit in operand to one",
+      ((byte []) {
+	FLOW_TYPE_TCP_FLAGS, 0x91, 0xff, 0x3a,
+	FLOW_TYPE_FRAGMENT, 0x81, 0xff,
+      }),
+      ((byte []) {
+	FLOW_TYPE_TCP_FLAGS, 0x91, 0x0f, 0x3a,
+	FLOW_TYPE_FRAGMENT, 0x81, 0x0e,
+      })
+    ),
+  };
+#undef TS
+
+  for (uint tcase = 0; tcase < ARRAY_SIZE(tset); tcase++)
+  {
+    res = flow6_decode(tset[tcase].nlri, tset[tcase].size);
+    bt_assert_msg(res == tset[tcase].expect, "Assertion (%s == %s) %s", flow_validated_state_str(res), flow_validated_state_str(tset[tcase].expect), tset[tcase].description);
+
+    if ((res == FLOW_ST_VALID) && (tset[tcase].expect == FLOW_ST_VALID))
+    {
+      int pos;
+      for (pos = 0; pos < tset[tcase].size; pos++)
+	if (tset[tcase].nlri[pos] != tset[tcase].result[pos])
+	  break;
+
+      bool ok = (pos == tset[tcase].size);
+      bt_assert_msg(ok, "Assertion (pos %u: 0x%02x == 0x%02x) %s", pos, (ok ? 0 : tset[tcase].nlri[pos]), (ok ? 0 : tset[tcase].result[pos]), tset[tcase].description);
+    }
   }
 
   return 1;
@@ -546,7 +969,7 @@ t_builder6(void)
     FLOW_TYPE_SRC_PREFIX, 8, 0, 0xc0,
     FLOW_TYPE_NEXT_HEADER, 0x80, 0x06,
     FLOW_TYPE_PORT, 0x03, 0x89, 0x45, 0x8b, 0x91, 0x1f, 0x90,
-    FLOW_TYPE_LABEL, 0x80, 0x55,
+    FLOW_TYPE_LABEL, 0xa0, 0x00, 0x00, 0x00, 0x55,
   );
 
   /* Normal order */
@@ -729,6 +1152,8 @@ main(int argc, char *argv[])
   bt_test_suite(t_accessors6,   "Testing accessors (IPv6)");
   bt_test_suite(t_validation4,  "Testing validation (IPv4)");
   bt_test_suite(t_validation6,  "Testing validation (IPv6)");
+  bt_test_suite(t_decoding4,    "Testing decoding (IPv4)");
+  bt_test_suite(t_decoding6,    "Testing decoding (IPv6)");
   bt_test_suite(t_builder4,     "Inserting components into existing Flow Specification (IPv4)");
   bt_test_suite(t_builder6,     "Inserting components into existing Flow Specification (IPv6)");
   bt_test_suite(t_formatting4,  "Formatting Flow Specification (IPv4) into text representation");
