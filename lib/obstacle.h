@@ -73,6 +73,16 @@ obstacle_target_count(struct obstacle_target *t)
   return len;
 }
 
+static inline void
+obstacle_target_cleanup(struct obstacle_target *t)
+{
+  /* Call this from the done callback */
+  ASSERT_DIE(!obstacle_target_count(t));
+
+  mb_free((void *) DOMAIN_NAME(resource, t->dom));
+  DOMAIN_FREE(resource, t->dom);
+}
+
 #define OBSREF(_type)	struct { _type *ref; struct obstacle o; }
 
 #define OBSREF_SET(_ref, _val)	({	\
