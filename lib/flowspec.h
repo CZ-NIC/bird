@@ -137,18 +137,21 @@ enum flow_validated_state {
   FLOW_ST_EXCEED_MAX_PREFIX_OFFSET,
   FLOW_ST_EXCEED_MAX_VALUE_LENGTH,
   FLOW_ST_BAD_TYPE_ORDER,
-  FLOW_ST_AND_BIT_SHOULD_BE_UNSET,
-  FLOW_ST_ZERO_BIT_SHOULD_BE_UNSED,
-  FLOW_ST_DEST_PREFIX_REQUIRED,
+  FLOW_ST_NONZERO_PADDING,
+  FLOW_ST_FIRST_AND_BIT_SET,
+  FLOW_ST_ZERO_BIT_SET,
   FLOW_ST_INVALID_TCP_FLAGS,
-  FLOW_ST_CANNOT_USE_DONT_FRAGMENT
+  FLOW_ST_INVALID_FRAGMENT,
 };
 
 const char *flow_validated_state_str(enum flow_validated_state code);
+enum flow_validated_state flow4_decode(byte *nlri, uint len);
+enum flow_validated_state flow6_decode(byte *nlri, uint len);
 enum flow_validated_state flow4_validate(const byte *nlri, uint len);
 enum flow_validated_state flow6_validate(const byte *nlri, uint len);
-void flow_check_cf_value_length(struct flow_builder *fb, u32 expr);
-void flow_check_cf_bmk_values(struct flow_builder *fb, u8 neg, u32 val, u32 mask);
+
+void flow_check_cf_bitmask_arg(struct flow_builder *fb, u8 neg, u32 val, u32 mask);
+void flow_check_cf_numeric_arg(struct flow_builder *fb, uint val);
 void flow4_validate_cf(net_addr_flow4 *f);
 void flow6_validate_cf(net_addr_flow6 *f);
 

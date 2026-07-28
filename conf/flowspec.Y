@@ -73,11 +73,11 @@ flow_srcdst:
 
 flow_num_opts:
    flow_num_op expr {
-     flow_check_cf_value_length(this_flow, $2);
+     flow_check_cf_numeric_arg(this_flow, $2);
      flow_builder_add_op_val(this_flow, $1, $2);
    }
  | flow_num_opts flow_logic_op flow_num_op expr {
-     flow_check_cf_value_length(this_flow, $4);
+     flow_check_cf_numeric_arg(this_flow, $4);
      flow_builder_add_op_val(this_flow, $2 | $3, $4);
    }
  | flow_num_opt_ext
@@ -86,12 +86,12 @@ flow_num_opts:
 
 flow_num_opt_ext_expr:
    expr {
-     flow_check_cf_value_length(this_flow, $1);
+     flow_check_cf_numeric_arg(this_flow, $1);
      flow_builder_add_op_val(this_flow, FLOW_OP_EQ, $1);
    }
  | expr DDOT expr {
-     flow_check_cf_value_length(this_flow, $1);
-     flow_check_cf_value_length(this_flow, $3);
+     flow_check_cf_numeric_arg(this_flow, $1);
+     flow_check_cf_numeric_arg(this_flow, $3);
      flow_builder_add_op_val(this_flow, FLOW_OP_GEQ, $1);
      flow_builder_add_op_val(this_flow, FLOW_OP_AND | FLOW_OP_LEQ, $3);
    }
@@ -104,15 +104,15 @@ flow_num_opt_ext:
 
 flow_bmk_opts:
    flow_neg expr '/' expr {
-     flow_check_cf_bmk_values(this_flow, $1, $2, $4);
+     flow_check_cf_bitmask_arg(this_flow, $1, $2, $4);
      flow_builder_add_val_mask(this_flow, $1, $2, $4);
    }
  | flow_bmk_opts flow_logic_op flow_neg expr '/' expr {
-     flow_check_cf_bmk_values(this_flow, $3, $4, $6);
+     flow_check_cf_bitmask_arg(this_flow, $3, $4, $6);
      flow_builder_add_val_mask(this_flow, $2 | $3, $4, $6);
    }
  | flow_bmk_opts ',' flow_neg expr '/' expr {
-     flow_check_cf_bmk_values(this_flow, $3, $4, $6);
+     flow_check_cf_bitmask_arg(this_flow, $3, $4, $6);
      flow_builder_add_val_mask(this_flow, 0x40 | $3, $4, $6); /* AND */
    }
  ;
