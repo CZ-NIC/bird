@@ -203,6 +203,8 @@ alloc_hot_page(struct free_page *fp) {
   return NULL;
 }
 
+static void *alloc_page_global(void);
+
 void *
 alloc_page(void)
 {
@@ -234,7 +236,14 @@ alloc_page(void)
 
   ASSERT_DIE(pages_kept_here == 0);
 
+  return alloc_page_global();
+}
+
+static void *
+alloc_page_global(void)
+{
   /* If there is any free page kept hot in global storage, we use it. */
+  struct free_page *fp;
   if (fp = alloc_hot_page(fp))
     return fp;
 
@@ -480,6 +489,14 @@ page_cleanup(void *_ UNUSED)
 
   ajlog(NULL, NULL, 0, AJT_CLEANUP_END);
 }
+
+void
+page_fill_hot(void)
+{
+  while (pages_kept_here < KEEP_PAGES_MAX_LOCAL)
+    free_page(alloc_page_global());
+}
+
 #endif
 
 void
