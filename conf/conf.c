@@ -81,10 +81,11 @@ int undo_available;			/* Undo was not requested from last reconfiguration */
 /* Note that both shutting_down and undo_available are related to requests, not processing */
 
 static void
-config_obstacles_cleared(struct callback *_ UNUSED)
+config_obstacles_cleared(struct callback *cb UNUSED)
 {
   ASSERT_DIE(birdloop_inside(&main_birdloop));
   ASSERT_DIE(configuring);
+
   config_done();
 }
 
@@ -206,7 +207,9 @@ config_free(struct config *c)
     return;
 
   synchronize_rcu();
+
   ASSERT_DIE(!obstacle_target_count(&c->obstacles));
+  obstacle_target_cleanup(&c->obstacles);
 
   rp_free(c->pool);
 }

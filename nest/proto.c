@@ -2137,6 +2137,8 @@ graceful_recovery_done(struct callback *_ UNUSED)
   ASSERT_DIE(birdloop_inside(&main_birdloop));
   ASSERT_DIE(_graceful_recovery_context.grc_state == GRS_ACTIVE);
 
+  obstacle_target_cleanup(&_graceful_recovery_context.obstacles);
+
   tm_stop(&_graceful_recovery_context.wait_timer);
   log(L_INFO "Graceful recovery done");
 
