@@ -1286,7 +1286,7 @@ bird_thread_shutdown(void * _ UNUSED)
 
   /* Last try to run the priority event list; ruin it then to be extra sure */
   ev_run_list(&this_thread->priority_events);
-  memset(&this_thread->priority_events, 0xa5, sizeof(this_thread->priority_events));
+  memset(&this_thread->priority_events, POISON_THREAD_SHUTDOWN, sizeof(this_thread->priority_events));
 
   /* Drop loops including the thread dropper itself */
   while (!EMPTY_TLIST(birdloop, &thr->loops))

@@ -234,8 +234,11 @@ rfree(void *res)
   ASSERT_DIE(DG_IS_LOCKED(orig->domain));
   resource_rem_node(&orig->inside, r);
 
+  uint rsz = r->class->size;
+
   r->class->free(r);
   r->class = NULL;
+  memset(r, POISON_RESOURCE_FREE, rsz);
   xfree(r);
 }
 
@@ -522,6 +525,7 @@ mb_free(void *m)
     return;
 
   SKIP_BACK_DECLARE(struct mblock, b, data, m);
+  memset(m, POISON_MB_FREE, b->size);
   rfree(&b->r);
 }
 
