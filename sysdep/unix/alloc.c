@@ -493,7 +493,7 @@ page_cleanup(void *_ UNUSED)
 void
 page_fill_hot(void)
 {
-  while (pages_kept_here < KEEP_PAGES_MAX_LOCAL)
+  while (pages_kept_here < KEEP_PAGES_MIN)
     free_page(alloc_page_global());
 }
 
