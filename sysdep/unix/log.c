@@ -164,26 +164,21 @@ lts_request(struct log_channel *lc_close, struct rfile *rf_close, const char *na
   ev_send_loop(&main_birdloop, &lts->lts_event);
 }
 
-static void
+static bool
 log_rotate(struct log_channel *lc)
 {
   struct rfile *old_rf = atomic_load_explicit(&lc->rf, memory_order_relaxed);
   lts_request(NULL, old_rf, "Log Rotate Close Old File");
 
   if ((rename(lc->filename, lc->backup) < 0) && (unlink(lc->filename) < 0))
-  {
-    atomic_store_explicit(&lc->rf, NULL, memory_order_relaxed);
-    return lts_request(lc, NULL, "Log Rotate Failed");
-  }
+    return lts_request(lc, NULL, "Log Rotate Failed"), false;
 
   struct rfile *rf = rf_open(log_pool, lc->filename, RF_APPEND, lc->limit);
   if (!rf)
-  {
-    atomic_store_explicit(&lc->rf, NULL, memory_order_relaxed);
-    return lts_request(lc, NULL, "Log Rotate Failed");
-  }
+    return lts_request(lc, NULL, "Log Rotate Failed"), false;
 
   atomic_store_explicit(&lc->rf, rf, memory_order_release);
+  return true;
 }
 
 /**
@@ -231,10 +226,12 @@ log_commit(log_buffer *buf)
     glogs = &initial_stderr_log;
   }
 
+  /* Log commit may cause the channel to get removed from the list.
+   * We need to be able to continue walking the list regardless. */
   for (
-      struct log_channel *l = glogs; l;
-      l = atomic_load_explicit(&l->next, memory_order_acquire)
-      )
+      struct log_channel * _Atomic *pprev = &global_logs, *l;
+      l = atomic_load_explicit(pprev, memory_order_acquire);
+      pprev = &l->next)
     {
       uint mask = atomic_load_explicit(&l->mask, memory_order_acquire);
       if (!(mask & (1 << buf->class)))
@@ -288,7 +285,14 @@ log_commit(log_buffer *buf)
 		break;
 	      }
 
-	      log_rotate(l);
+	      if (!log_rotate(l))
+	      {
+		atomic_store_explicit(&l->rf, NULL, memory_order_relaxed);
+		atomic_store_explicit(pprev,
+		    atomic_load_explicit(&l->next, memory_order_acquire),
+		    memory_order_release);
+	      }
+
 	      log_unlock();
 
 	      rf = atomic_load_explicit(&l->rf, memory_order_relaxed);
